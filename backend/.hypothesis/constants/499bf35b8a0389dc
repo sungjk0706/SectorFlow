@@ -1,0 +1,4 @@
+# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/services/trade_history.py
+# hypothesis_version: 6.152.4
+
+[0.0, 0.00015, 0.002, 100, '%H:%M:%S', '%Y-%m-%d', 'BUY', 'SELL', '[체결이력] 전체 이력 초기화 완료', '[체결이력] 파일 로드 실패: %s', '[체결이력] 파일 저장 실패: %s', 'avg_buy_price', 'buy', 'buy-history-append', 'buy-history-update', 'buy_count', 'buy_history', 'buy_total', 'buy_total_amt', 'daily-summary-update', 'daily_summary', 'data', 'date', 'fee', 'order-filled', 'pnl_rate', 'price', 'qty', 'r', 'real', 'realized_pnl', 'reason', 'seconds', 'sell', 'sell-history-append', 'sell-history-update', 'sell_count', 'sell_history', 'side', 'stk_cd', 'stk_nm', 'tax', 'test', 'time', 'total_amt', 'trade', 'trade_history.json', 'trade_mode', 'ts', 'utf-8', 'w']

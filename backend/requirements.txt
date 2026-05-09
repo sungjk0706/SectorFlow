@@ -1,0 +1,44 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SectorFlow — FastAPI 웹 대시보드 + 키움 엔진
+# ─────────────────────────────────────────────────────────────────────────────
+
+# HTTP & WebSocket
+httpx>=0.27.0,<0.28.0
+httpcore>=1.0.7
+websockets>=14.0,<15.0
+
+# Pydantic v2 (설정 검증)
+pydantic>=2.7,<3
+pydantic-settings>=2.3,<3
+
+# Env
+python-dotenv==1.0.0
+
+# Encryption (settings.json 민감 필드)
+cryptography==42.0.0
+
+# 한국 공휴일 판별 (직전 영업일 계산용)
+holidays>=0.83
+
+# Excel parsing (broker specs)
+openpyxl>=3.1.0
+
+# Async file I/O
+aiofiles>=23.0.0
+
+# Logging
+loguru>=0.7.0
+
+# Web Server
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+sse-starlette>=2.0.0
+
+# JWT Authentication
+python-jose[cryptography]>=3.3.0
+
+# Testing
+hypothesis>=6.100.0
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+httpx  # TestClient용 (이미 위에 포함)

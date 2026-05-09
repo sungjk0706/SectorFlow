@@ -1,0 +1,4 @@
+# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/services/dry_run.py
+# hypothesis_version: 6.152.4
+
+[0.0, 0.00015, 0.1, 100, 9000000, 10000000, '0', '3', 'BUY', 'SELL', '[테스트모드] 가상 체결 완료', 'avg_price', 'buy_amt', 'cur_price', 'data', 'eval_amt', 'msg', 'msg1', 'ord_no', 'ord_qty', 'ord_uv', 'output', 'pnl_amount', 'pnl_rate', 'qty', 'r', 'rt_cd', 'stk_cd', 'stk_nm', 'success', 'test_positions.json', 'test_virtual_balance', 'test_virtual_deposit', 'total_fee', 'utf-8', 'w', '시장가']

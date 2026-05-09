@@ -1,0 +1,4 @@
+# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/services/telegram.py
+# hypothesis_version: 6.152.4
+
+[200, 'HTML', '[테스트모드] ', 'chat_id', 'general', 'parse_mode', 'tele_on', 'telegram_bot_token', 'telegram_chat_id', 'text']

@@ -1,0 +1,4 @@
+# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/services/engine_radar_ops.py
+# hypothesis_version: 6.152.4
+
+[0.0, '-', '3', 'active', 'change', 'change_rate', 'code', 'cur_price', 'prev_close', 'quote_src', 'rest', 'sign', 'status', 'strength', 'trade_amount']
