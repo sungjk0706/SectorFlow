@@ -1,0 +1,28 @@
+{
+  "352820": {
+    "stk_cd": "352820",
+    "stk_nm": "하이브",
+    "qty": 8,
+    "avg_price": 248000,
+    "cur_price": 250000,
+    "total_fee": 298,
+    "buy_amt": 1984298,
+    "eval_amt": 2000000,
+    "pnl_amount": 15702,
+    "pnl_rate": 0.79,
+    "change": 6500,
+    "change_rate": 2.67
+  },
+  "035720": {
+    "stk_cd": "035720",
+    "stk_nm": "카카오",
+    "qty": 32,
+    "avg_price": 46350,
+    "cur_price": 46350,
+    "total_fee": 222,
+    "buy_amt": 1483422,
+    "eval_amt": 1483200,
+    "pnl_amount": -222,
+    "pnl_rate": 0.0
+  }
+}

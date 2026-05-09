@@ -1,0 +1,4 @@
+# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/config.py
+# hypothesis_version: 6.141.1
+
+['.env', '.env 환경변수 로드 실패함: %s', 'INFO', '[설정] 설정값 로드 실패함: %s', 'case_sensitive', 'env_file', 'env_file_encoding', 'extra', 'ignore', 'logs/trading.log', 'utf-8']

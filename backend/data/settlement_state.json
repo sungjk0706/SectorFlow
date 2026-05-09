@@ -1,0 +1,34 @@
+{
+  "available_cash": 6835091,
+  "pending_withdrawals": [
+    {
+      "sell_date": "2026-05-08",
+      "stk_cd": "277810",
+      "stk_nm": "레인보우로보틱스",
+      "amount": 1570616,
+      "settlement_date": "2026-05-12"
+    },
+    {
+      "sell_date": "2026-05-08",
+      "stk_cd": "058610",
+      "stk_nm": "에스피지",
+      "amount": 2046091,
+      "settlement_date": "2026-05-12"
+    },
+    {
+      "sell_date": "2026-05-08",
+      "stk_cd": "259960",
+      "stk_nm": "크래프톤",
+      "amount": 1857997,
+      "settlement_date": "2026-05-12"
+    },
+    {
+      "sell_date": "2026-05-08",
+      "stk_cd": "003230",
+      "stk_nm": "삼양식품",
+      "amount": 1353085,
+      "settlement_date": "2026-05-12"
+    }
+  ],
+  "initial_deposit": 10000000
+}

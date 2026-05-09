@@ -1,0 +1,4 @@
+# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/services/auto_trading_effective.py
+# hypothesis_version: 6.152.4
+
+['%H:%M', '09:00', '15:20', 'auto_buy_on', 'auto_sell_on', 'buy_time_end', 'buy_time_start', 'holiday_guard_on', 'sell_time_end', 'sell_time_start', 'time_scheduler_on']
