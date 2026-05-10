@@ -25,8 +25,8 @@ function buildChartFromDailySummary(summary: Record<string, unknown>[]): { date:
 }
 
 /* ── 계좌 현황 테이블 라벨 ── */
-const ACCOUNT_LABELS_REAL = ['매수주문 가능 금액', '오늘 매수 금액', '오늘 매도 금액', '보유주식 평가 금액', '보유주식 평가 손익금', '보유주식 평가 수익률', '누적 총 실현 손익금', '누적 총 실현 수익률']
-const ACCOUNT_LABELS_TEST = ['매수주문 가능 금액', '오늘 매수 금액', '오늘 매도 금액', '보유주식 평가 금액', '보유주식 평가 손익금', '보유주식 평가 수익률', '누적 총 실현 손익금', '누적 총 실현 수익률']
+const ACCOUNT_LABELS_REAL = ['예수금', '주문가능 금액', '오늘 매수 금액', '오늘 매도 금액', '보유주식 평가 금액', '보유주식 평가 손익금', '보유주식 평가 수익률', '누적 총 실현 손익금', '누적 총 실현 수익률']
+const ACCOUNT_LABELS_TEST = ['예수금', '주문가능 금액', '오늘 매수 금액', '오늘 매도 금액', '보유주식 평가 금액', '보유주식 평가 손익금', '보유주식 평가 수익률', '누적 총 실현 손익금', '누적 총 실현 수익률']
 const ROW_CSS = `display:flex;justify-content:space-between;padding:7px 4px;border-bottom:1px solid #f0f0f0;font-size:${FONT_SIZE.label};`
 
 /* ── 매수 컬럼 (7개) ── */
@@ -264,35 +264,38 @@ function renderAccountVals(): void {
     testAccountContainer.style.display = isTestMode ? '' : 'none'
   }
 
-  // 테스트/실전 동일 구조 (8행): 매수주문가능 금액, 오늘 매수, 오늘 매도, 보유주식 평가금액, 보유주식 평가손익금, 보유주식 평가수익률, 누적 실현 손익금액, 누적 실현 수익률
+  // 테스트/실전 동일 구조 (9행): 예수금, 주문가능 금액, 오늘 매수, 오늘 매도, 보유주식 평가금액, 보유주식 평가손익금, 보유주식 평가수익률, 누적 실현 손익금액, 누적 실현 수익률
   const vals = isTestMode ? testAccountValRefs : accountValRefs
-  if (vals.length < 8) return
+  if (vals.length < 9) return
 
-  vals[0].textContent = `${(a?.deposit ?? 0).toLocaleString()}원`
-  vals[1].textContent = `${todayBuyAmt.toLocaleString()}원`
-  vals[2].textContent = `${todaySellAmt.toLocaleString()}원`
+  const deposit = a?.deposit ?? 0
+  vals[0].textContent = `${deposit.toLocaleString()}원`
+  const orderable = Math.max(0, deposit - todayBuyAmt)
+  vals[1].textContent = `${orderable.toLocaleString()}원`
+  vals[2].textContent = `${todayBuyAmt.toLocaleString()}원`
+  vals[3].textContent = `${todaySellAmt.toLocaleString()}원`
   const holdingCount = positions.filter(p => (p.qty ?? 0) > 0).length
-  vals[3].textContent = `${evalTotal.toLocaleString()}원`
+  vals[4].textContent = `${evalTotal.toLocaleString()}원`
   const countLabel = isTestMode ? holdingCountLabelTest : holdingCountLabel
   if (countLabel) countLabel.textContent = `보유주식 평가금액 (${holdingCount}종목)`
 
   const evalSign = evalPnl > 0 ? '+' : ''
   const evalColor = pnlColor(evalPnl)
-  vals[4].textContent = `${evalSign}${evalPnl.toLocaleString()}원`
-  vals[4].style.color = evalColor
+  vals[5].textContent = `${evalSign}${evalPnl.toLocaleString()}원`
+  vals[5].style.color = evalColor
 
   // 보유주식 평가수익률: evalPnl / buyAmtTotal × 100
   const evalRate = buyAmtTotal > 0 ? Math.round(evalPnl / buyAmtTotal * 10000) / 100 : 0
   const evalRateSign = evalRate > 0 ? '+' : ''
-  vals[5].textContent = `${evalRateSign}${evalRate.toFixed(2)}%`
-  vals[5].style.color = evalColor
+  vals[6].textContent = `${evalRateSign}${evalRate.toFixed(2)}%`
+  vals[6].style.color = evalColor
 
   const cumSign = cumPnl.pnl > 0 ? '+' : ''
   const cumColor = pnlColor(cumPnl.pnl)
-  vals[6].textContent = `${cumSign}${cumPnl.pnl.toLocaleString()}원`
-  vals[6].style.color = cumColor
-  vals[7].textContent = `${cumSign}${cumPnl.rate.toFixed(2)}%`
+  vals[7].textContent = `${cumSign}${cumPnl.pnl.toLocaleString()}원`
   vals[7].style.color = cumColor
+  vals[8].textContent = `${cumSign}${cumPnl.rate.toFixed(2)}%`
+  vals[8].style.color = cumColor
 }
 
 /* ── 탭 버튼 스타일 ── */
@@ -503,10 +506,10 @@ function mount(container: HTMLElement): void {
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
-  /* ── 상단 40% ── */
+  /* ── 상단 48% ── */
   const upper = document.createElement('div')
   Object.assign(upper.style, {
-    flex: '0 0 40%',
+    flex: '0 0 48%',
     borderBottom: '1px solid #ddd',
     overflow: 'hidden',
     display: 'flex',
@@ -567,7 +570,7 @@ function mount(container: HTMLElement): void {
     }
     const label = document.createElement('span')
     label.textContent = ACCOUNT_LABELS_REAL[i]
-    if (i === 3) holdingCountLabel = label
+    if (i === 4) holdingCountLabel = label
     const val = document.createElement('span')
     Object.assign(val.style, { textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })
     row.appendChild(label)
@@ -588,7 +591,7 @@ function mount(container: HTMLElement): void {
     }
     const label = document.createElement('span')
     label.textContent = ACCOUNT_LABELS_TEST[i]
-    if (i === 3) holdingCountLabelTest = label
+    if (i === 4) holdingCountLabelTest = label
     const val = document.createElement('span')
     Object.assign(val.style, { textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })
     row.appendChild(label)
@@ -606,7 +609,7 @@ function mount(container: HTMLElement): void {
   const summaryRow = document.createElement('div')
   Object.assign(summaryRow.style, { display: 'flex', gap: '8px', padding: '8px 4px' })
 
-  const CARD_STYLE = `flex:1;background:#fafafa;border:1px solid #eee;border-radius:6px;padding:8px 12px;`
+  const CARD_STYLE = `flex:1;background:#fafafa;border:1px solid #eee;border-radius:6px;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;`
   const CARD_TITLES = ['당일 손익', '당월 손익', '누적 손익']
 
   const pnlEls: HTMLSpanElement[] = []
@@ -621,7 +624,7 @@ function mount(container: HTMLElement): void {
     }
 
     const titleEl = document.createElement('div')
-    Object.assign(titleEl.style, { fontSize: FONT_SIZE.badge, color: '#888', marginBottom: '4px' })
+    Object.assign(titleEl.style, { fontSize: FONT_SIZE.badge, color: '#888', whiteSpace: 'nowrap' })
     titleEl.textContent = CARD_TITLES[i]
 
     const valRow = document.createElement('div')

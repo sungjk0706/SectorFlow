@@ -406,8 +406,6 @@ async def get_account_snapshot() -> dict:
             deposit = settlement_engine.get_available_cash()
             snap.setdefault("deposit", deposit)
             snap.setdefault("orderable", deposit)
-            snap.setdefault("withdrawable", settlement_engine.get_withdrawable_cash())
-            snap.setdefault("pending_withdrawal", settlement_engine.get_pending_withdrawal_total())
         for k in ("total_buy", "total_eval", "total_pnl",
                    "total_buy_amount", "total_eval_amount"):
             snap.setdefault(k, 0)
@@ -967,7 +965,7 @@ def _refresh_account_snapshot_meta() -> None:
     """
     스냅샷 시각·보유종목수·가격소스만 갱신.
     총평가·총손익·총매입·총수익률은 _broker_rest_totals만 사용(REST kt00018 또는 REAL 04 공식 FID 932~934) -- 포지션 합산 없음.
-    테스트모드: 가상 예수금을 deposit/orderable/withdrawable에 반영.
+    테스트모드: 가상 예수금을 deposit/orderable에 반영.
     """
     global _account_snapshot
     _is_test = is_test_mode(_settings_cache)
@@ -976,8 +974,6 @@ def _refresh_account_snapshot_meta() -> None:
     if _is_test:
         # 테스트모드: settlement_engine 예수금 + 포지션 합산으로 totals 구성
         deposit = settlement_engine.get_available_cash()
-        withdrawable = settlement_engine.get_withdrawable_cash()
-        pending_withdrawal = settlement_engine.get_pending_withdrawal_total()
         total_buy = sum(int(p.get("buy_amt", 0) or 0) for p in pos)
         total_eval = sum(int(p.get("eval_amt", 0) or 0) for p in pos)
         total_pnl = total_eval - total_buy
@@ -985,8 +981,6 @@ def _refresh_account_snapshot_meta() -> None:
         
         _account_snapshot["deposit"] = deposit
         _account_snapshot["orderable"] = deposit
-        _account_snapshot["withdrawable"] = withdrawable
-        _account_snapshot["pending_withdrawal"] = pending_withdrawal
         
         test_totals = {
             "total_eval": total_eval,
@@ -1038,8 +1032,6 @@ def _apply_balance_realtime(item: dict, vals: dict) -> None:
         if delta:
             if "deposit" in delta:
                 _account_snapshot["deposit"] = int(delta["deposit"])
-            if "withdrawable" in delta:
-                _account_snapshot["withdrawable"] = int(delta["withdrawable"])
             if "total_eval" in delta:
                 _broker_rest_totals["total_eval"] = int(delta["total_eval"])
             if "total_pnl" in delta:
@@ -1804,7 +1796,7 @@ async def _fetch_account_data(settings: dict) -> dict:
         logger.warning("[계좌] 예수금 응답 없음 (kt00001 실패함) -- 조회 중단")
         return _EMPTY
 
-    ok_dep, dep_body, deposit, orderable, withdrawable = parse_kt00001_deposit(deposit_raw)
+    ok_dep, dep_body, deposit, orderable, _withdrawable = parse_kt00001_deposit(deposit_raw)
     if not ok_dep:
         logger.warning(
             "[계좌] kt00001 오류 return_code=%s 메시지=%s",
@@ -1829,7 +1821,6 @@ async def _fetch_account_data(settings: dict) -> dict:
             "tot_buy":      tot_buy,
             "deposit":      deposit,
             "orderable":    orderable,
-            "withdrawable": withdrawable,
             "total_rate":   total_rate,
         },
         "stock_list": stock_list,
@@ -1897,7 +1888,6 @@ async def _update_account_memory_inner(settings: dict) -> None:
         _account_snapshot["broker"] = "kiwoom"
         _account_snapshot["deposit"] = int(summary.get("deposit", 0) or 0)
         _account_snapshot["orderable"] = int(summary.get("orderable", 0) or 0)
-        _account_snapshot["withdrawable"] = int(summary.get("withdrawable", 0) or 0)
 
     # WS 구독 보강은 _login_post_pipeline / _run_snapshot_and_sell_check 에서 명시적으로 호출.
     # 여기서 호출하면 _account_rest_lock 안에서 _reg_seq_lock 을 잡는 중첩 락 -> 데드락 위험.
