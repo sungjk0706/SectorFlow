@@ -7,8 +7,6 @@ export interface AccountSnapshot {
   total_pnl: number;
   total_pnl_rate: number;
   deposit: number;
-  withdrawable?: number;
-  pending_withdrawal?: number;
   price_source?: string;
   trade_mode: string;
 }

@@ -129,7 +129,7 @@ def _real04_is_stock_item(item: dict) -> bool:
 def real04_official_account_delta(vals: dict) -> dict:
     """
     키움 공식 안내: REAL 04 계좌 단위 레코드 FID (item=계좌번호일 때만 호출)
-      930=예수금, 931=출금가능, 932=총평가금액, 933=총손익, 934=총수익률.
+      930=예수금, 932=총평가금액, 933=총손익, 934=총수익률.
     키가 있을 때만 반환(부분 갱신).
     """
     if not isinstance(vals, dict):
@@ -137,8 +137,6 @@ def real04_official_account_delta(vals: dict) -> dict:
     out: dict = {}
     if "930" in vals:
         out["deposit"] = _parse_int_loose(vals.get("930"))
-    if "931" in vals:
-        out["withdrawable"] = _parse_int_loose(vals.get("931"))
     if "932" in vals:
         out["total_eval"] = _parse_int_loose(vals.get("932"))
     if "933" in vals:
@@ -246,12 +244,11 @@ def build_account_snapshot_meta(
     """
     스냅샷 시각·보유종목수·가격소스만 갱신.
     총평가·총손익·총매입·총수익률은 broker_rest_totals만 사용(REST kt00018 또는 REAL 04 공식 FID 932~934) -- 포지션 합산 없음.
-    예수금·주문가능·출금가능은 kt00001(entr·ord_alow_amt·pymn_alow_amt) 또는 REAL 930·931 추정치.
+    예수금·주문가능은 kt00001(entr·ord_alow_amt) 또는 REAL 930 추정치.
     """
     now_iso = datetime.now(timezone.utc).isoformat()
     dep = int(account_snapshot.get("deposit", 0) or 0)
     ord_a = int(account_snapshot.get("orderable", 0) or 0)
-    wdw = int(account_snapshot.get("withdrawable", 0) or 0)
     tot = broker_rest_totals
     ps = "websocket" if price_source_ws else "rest_bootstrap"
     t_eval = int(tot.get("total_eval", 0))
@@ -264,7 +261,6 @@ def build_account_snapshot_meta(
         "trade_mode":     trade_mode,
         "deposit":        dep,
         "orderable":      ord_a,
-        "withdrawable":   wdw,
         "total_eval":     t_eval,
         "total_pnl":      t_pnl,
         "total_buy":      t_buy,

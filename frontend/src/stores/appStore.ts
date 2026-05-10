@@ -225,8 +225,6 @@ export function applyAccountUpdate(data: AccountUpdateEvent): void {
     && incomingSnap.total_pnl === prevSnap.total_pnl
     && incomingSnap.total_pnl_rate === prevSnap.total_pnl_rate
     && incomingSnap.deposit === prevSnap.deposit
-    && incomingSnap.withdrawable === prevSnap.withdrawable
-    && incomingSnap.pending_withdrawal === prevSnap.pending_withdrawal
   const updates: Partial<AppState> = {}
   if (!snapSame) updates.account = incomingSnap
   if (!positionsSame) updates.positions = incomingPos
