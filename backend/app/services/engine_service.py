@@ -209,11 +209,15 @@ _sector_stocks_last_invalidated: float = 0.0
 _MIN_CACHE_LIFETIME_SEC: float = 1.0
 
 
-def _invalidate_sector_stocks_cache() -> None:
-    """캐시 무효화 — 종목 추가/제거, 순위 변경, 필터 변경 시 호출."""
+def _invalidate_sector_stocks_cache(force: bool = False) -> None:
+    """캐시 무효화 — 종목 추가/제거, 순위 변경, 필터 변경 시 호출.
+    
+    Args:
+        force: True면 1초 제한 무시하고 강제 무효화 (사용자 설정 변경 시 사용)
+    """
     global _sector_stocks_dirty, _sector_stocks_last_invalidated
     now = time.monotonic()
-    if now - _sector_stocks_last_invalidated < _MIN_CACHE_LIFETIME_SEC:
+    if not force and now - _sector_stocks_last_invalidated < _MIN_CACHE_LIFETIME_SEC:
         return  # 1초 내 재무효화 방지
     _sector_stocks_dirty = True
     _sector_stocks_last_invalidated = now
@@ -395,7 +399,16 @@ def _compute_filtered_codes() -> set[str] | None:
     """sector_stock_layout에서 사용자 필터를 적용하여 조건 통과 종목 코드 집합을 반환."""
     global _filtered_sector_codes
     settings = _get_settings()
-    min_amt_억 = float(settings.get("sector_min_trade_amt", 0.0) or 0.0)
+
+    # 설정값 검증 및 안전장치
+    raw_val = settings.get("sector_min_trade_amt")
+    try:
+        min_amt_억 = float(raw_val) if raw_val is not None else 0.0
+    except (TypeError, ValueError):
+        logger.warning("[거래대금필터] 설정값 파싱 실패: %s", raw_val)
+        min_amt_억 = 0.0
+    min_amt_억 = max(0.0, min_amt_억)
+
     min_amt_won = min_amt_억 * 1_0000_0000
     codes = {
         _format_kiwoom_reg_stk_cd(v)
@@ -403,15 +416,26 @@ def _compute_filtered_codes() -> set[str] | None:
         if t == "code" and v
     }
     codes.discard("")
+
     if min_amt_won <= 0:
         _filtered_sector_codes = None
         return None
+
+    # 거래대금 캐시가 비어있으면 필터 비활성화
+    if not _avg_amt_5d:
+        logger.warning("[거래대금필터] 5일거래대금 캐시 비어있음 - 필터 비활성화")
+        _filtered_sector_codes = None
+        return None
+
     filtered = set()
     for cd in codes:
         avg_raw = int(_avg_amt_5d.get(cd, 0) or 0)
         avg_won = avg_raw * 1_000_000
         if avg_won >= min_amt_won:
             filtered.add(cd)
+
+    logger.info("[거래대금필터] 설정 %.0f억 → 필터 통과 %d/%d종목", min_amt_억, len(filtered), len(codes))
+
     if not filtered:
         logger.warning("[거래대금필터] 최소금액 %.1f억 설정됐으나 통과 종목 0개", min_amt_억)
     _filtered_sector_codes = filtered
@@ -1290,7 +1314,11 @@ async def _on_filter_settings_changed() -> None:
         logger.debug("[앱준비][필터변경] 필터 통과 종목 변경 없음 -- 구독 변경 생략")
         return
 
-    _invalidate_sector_stocks_cache()
+    # === 설정 변경 시 강제 캐시 무효화 (1초 제한 무시) ===
+    _invalidate_sector_stocks_cache(force=True)
+    logger.info("[앱준비][필터변경] 캐시 강제 무효화 완료")
+    # ==================================================
+    
     added = (new_codes or set()) - (old_codes or set())
     removed = (old_codes or set()) - (new_codes or set())
     logger.info(
