@@ -1,16 +1,1 @@
-{
-  "316140": {
-    "stk_cd": "316140",
-    "stk_nm": "우리금융지주",
-    "qty": 1,
-    "avg_price": 32900,
-    "cur_price": 32750,
-    "total_fee": 5,
-    "buy_amt": 32905,
-    "eval_amt": 32750,
-    "pnl_amount": -155,
-    "pnl_rate": -0.47,
-    "change": -100,
-    "change_rate": -0.3
-  }
-}
+{}

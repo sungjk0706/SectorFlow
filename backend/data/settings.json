@@ -5,7 +5,7 @@
   "time_scheduler_on": false,
   "auto_buy_on": false,
   "auto_sell_on": false,
-  "buy_time_start": "08:03",
+  "buy_time_start": "08:02",
   "buy_time_end": "19:30",
   "sell_time_start": "08:02",
   "sell_time_end": "19:50",
@@ -53,7 +53,7 @@
   "theme_mode": "dark",
   "ui_zoom": 1.15,
   "sector_min_rise_ratio_pct": 70,
-  "sector_min_trade_amt": 610,
+  "sector_min_trade_amt": 580,
   "sector_sort_keys": [
     "trade_amount",
     "change_rate",
@@ -65,8 +65,8 @@
     "total_trade_amount": 0.3
   },
   "sector_max_targets": 5,
-  "sector_trim_trade_amt_pct": 0,
-  "sector_trim_change_rate_pct": 0,
+  "sector_trim_trade_amt_pct": 10,
+  "sector_trim_change_rate_pct": 10,
   "buy_block_rise_pct": 3,
   "buy_block_fall_pct": 0,
   "buy_min_strength": 100,
