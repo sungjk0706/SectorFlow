@@ -30,6 +30,9 @@ _desktop_settings_toggled_notifier: Callable[[], None] | None = None
 _positions_code_set: set[str] = set()  # positions의 stk_cd 6자리 정규화 set
 _layout_code_set: set[str] = set()  # sector_stock_layout에서 type=="code" 값 set
 
+# ── 실시간 데이터 필드 정의 ─────────────────────────────────────────────────
+_TICK_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "strength")
+
 # ── Delta 캐시 ──────────────────────────────────────────────────────────────
 _position_sent_cache: dict[str, dict] = {}  # 보유종목별 마지막 전송 상태 (account-update delta)
 _snapshot_sent_cache: dict = {}  # 마지막 전송한 account snapshot

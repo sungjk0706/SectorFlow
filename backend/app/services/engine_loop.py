@@ -247,9 +247,7 @@ async def run_engine_loop(es: ModuleType) -> None:
                     fetch_ka10099_eligible_stocks, save_eligible_stocks_cache,
                 )
                 import app.core.industry_map as _ind_mod
-                _fresh = await asyncio.to_thread(
-                    fetch_ka10099_eligible_stocks, es._rest_api,
-                )
+                _fresh = await fetch_ka10099_eligible_stocks(es._rest_api)
                 if _fresh:
                     _ind_mod._eligible_stock_codes = _fresh
                     await asyncio.to_thread(save_eligible_stocks_cache, _fresh)

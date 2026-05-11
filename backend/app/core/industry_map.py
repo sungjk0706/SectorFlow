@@ -12,9 +12,9 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -325,7 +325,7 @@ def resolve_industry_name_to_real_code(sector_name: str) -> str:
 # ── ka10099 종목→업종명 맵 구축 ──────────────────────────────────────────
 
 
-def fetch_ka10099_eligible_stocks(api: "KiwoomRestAPI") -> dict[str, str]:
+async def fetch_ka10099_eligible_stocks(api: "KiwoomRestAPI") -> dict[str, str]:
     """
     ka10099 — 시장별 전체 종목 리스트에서 적격 종목코드 수집 + 부적격 필터.
     코스피(mrkt_tp='0') + 코스닥(mrkt_tp='10') 각각 호출.
@@ -385,7 +385,7 @@ def fetch_ka10099_eligible_stocks(api: "KiwoomRestAPI") -> dict[str, str]:
                 _log.info("[매매적격종목] %s 부적격 사유: %s", mrkt_label, filter_reasons)
 
             # 코스피 → 코스닥 사이 간격
-            time.sleep(0.5)
+            await asyncio.sleep(0.5)
 
         except Exception as e:
             _log.warning("[매매적격종목] ka10099 %s 예외: %s", mrkt_label, e)
@@ -398,7 +398,7 @@ def fetch_ka10099_eligible_stocks(api: "KiwoomRestAPI") -> dict[str, str]:
 # ── 통합 앱준비 ──────────────────────────────────────────────────────
 
 
-def fetch_ka10101_industry_codes(api: "KiwoomRestAPI") -> list[tuple[str, str, str]]:
+async def fetch_ka10101_industry_codes(api: "KiwoomRestAPI") -> list[tuple[str, str, str]]:
     """
     ka10101 — 서버 기반 업종코드+업종명 목록 조회 (키움 공식 확인: 정상 동작 API).
     코스피(mrkt_tp="0") + 코스닥(mrkt_tp="1") 각각 호출.
@@ -422,7 +422,7 @@ def fetch_ka10101_industry_codes(api: "KiwoomRestAPI") -> list[tuple[str, str, s
                 if code and name:
                     result.append((code, name, market_code))
             _log.info("[업종코드] ka10101 %s -- %d개 업종 파싱", label, len([r for r in result if r[2] == market_code]))
-            time.sleep(0.5)
+            await asyncio.sleep(0.5)
         except Exception as e:
             _log.warning("[업종코드] ka10101 %s 예외: %s", label, e)
             continue
@@ -435,7 +435,7 @@ def fetch_ka10101_industry_codes(api: "KiwoomRestAPI") -> list[tuple[str, str, s
     return result
 
 
-def bootstrap_industry_data(api: "KiwoomRestAPI") -> tuple[dict[str, str], list[tuple[str, str, str]]]:
+async def bootstrap_industry_data(api: "KiwoomRestAPI") -> tuple[dict[str, str], list[tuple[str, str, str]]]:
     """
     앱 기동 시 호출 — 업종 데이터 인프라 초기화.
     1) 캐시가 당일 것이면 캐시 사용 (API 호출 없음)
@@ -454,7 +454,7 @@ def bootstrap_industry_data(api: "KiwoomRestAPI") -> tuple[dict[str, str], list[
         _eligible_stock_codes = map_cached
     else:
         try:
-            map_fresh = fetch_ka10099_eligible_stocks(api)
+            map_fresh = await fetch_ka10099_eligible_stocks(api)
             if map_fresh:
                 _eligible_stock_codes = map_fresh
                 save_eligible_stocks_cache(map_fresh)
@@ -470,7 +470,7 @@ def bootstrap_industry_data(api: "KiwoomRestAPI") -> tuple[dict[str, str], list[
         _real_industry_codes = real_cached
         _log.info("[업종부트] 실제업종코드 당일 저장데이터 사용 -- %d개", len(real_cached))
     else:
-        ka10101_result = fetch_ka10101_industry_codes(api)
+        ka10101_result = await fetch_ka10101_industry_codes(api)
         if ka10101_result:
             _real_industry_codes = ka10101_result
             _log.info("[업종부트] ka10101 서버 데이터 사용 -- %d개", len(ka10101_result))
@@ -490,7 +490,7 @@ def bootstrap_industry_data(api: "KiwoomRestAPI") -> tuple[dict[str, str], list[
     return dict(_eligible_stock_codes), list([])
 
 
-def refresh_industry_data(api: "KiwoomRestAPI") -> None:
+async def refresh_industry_data(api: "KiwoomRestAPI") -> None:
     """
     일일 갱신용 — 캐시 무시하고 API 강제 호출 후 캐시 덮어쓰기.
     daily_time_scheduler에서 호출.
@@ -498,7 +498,7 @@ def refresh_industry_data(api: "KiwoomRestAPI") -> None:
     global _eligible_stock_codes, _real_industry_codes, _industry_name_to_real_code
 
     try:
-        map_fresh = fetch_ka10099_eligible_stocks(api)
+        map_fresh = await fetch_ka10099_eligible_stocks(api)
         if map_fresh:
             _eligible_stock_codes = map_fresh
             save_eligible_stocks_cache(map_fresh)
@@ -506,7 +506,7 @@ def refresh_industry_data(api: "KiwoomRestAPI") -> None:
         _log.warning("[업종갱신] ka10099 실패: %s", e)
 
     # 실제 업종코드 — ka10101 서버 데이터 중심, 네트워크 장애 시 하드코딩 비상 폴백
-    ka10101_result = fetch_ka10101_industry_codes(api)
+    ka10101_result = await fetch_ka10101_industry_codes(api)
     if ka10101_result:
         _real_industry_codes = ka10101_result
         _log.info("[업종갱신] ka10101 서버 데이터 사용 -- %d개", len(ka10101_result))
