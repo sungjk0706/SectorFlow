@@ -188,12 +188,6 @@ async def run_snapshot_and_sell_check(force_rest: bool, es: ModuleType) -> None:
         logger.warning("[확정데이터] 처리 중 오류: %s", e)
 
 
-async def try_connect_ws(ws_uri: str, es: ModuleType, max_retries: int = 5) -> None:
-    """DEPRECATED: KiwoomConnector handles connection internally."""
-    # New connector handles connection via connect() method
-    return None
-
-
 def check_test_buy_power(settings: dict, price: int, qty: int, daily_spent: int) -> tuple[bool, str]:
     """
     테스트모드: 매수 전 예수금 검증.
