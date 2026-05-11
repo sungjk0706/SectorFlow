@@ -44,6 +44,8 @@ export interface DataTableOptions<T> {
   rowHeight?: number
   groupRowHeight?: number
   zebraStriping?: boolean
+  /** 행에서 가격을 추출하는 함수 — 제공 시 가격 변동 플래시 효과 활성화 */
+  priceFn?: (row: T) => number
 }
 
 export interface DataTableApi<T> {
@@ -53,6 +55,28 @@ export interface DataTableApi<T> {
   updateItems?: (items: TableRow<T>[]) => void
   updateItem?: (index: number, item: TableRow<T>) => void
   scrollToIndex?: (index: number) => void
+}
+
+/* ── 플래시 효과 상수 ──────────────────────────────────── */
+
+const FLASH_DURATION_MS = 300
+const FLASH_UP_COLOR = 'rgba(255, 59, 48, 0.15)'    // 빨간색 (상승)
+const FLASH_DOWN_COLOR = 'rgba(0, 122, 255, 0.15)'  // 파란색 (하락)
+
+/**
+ * CSS transition 기반 가격 플래시 효과.
+ * reflow 강제로 transition 재시작 (300ms 내 재변경 시 새 플래시).
+ * setTimeout/setInterval 사용 금지 — CSS transition만 사용.
+ */
+function applyFlash(rowEl: HTMLElement, direction: 'up' | 'down'): void {
+  // transition 제거 후 배경색 즉시 적용
+  rowEl.style.transition = 'none'
+  rowEl.style.backgroundColor = direction === 'up' ? FLASH_UP_COLOR : FLASH_DOWN_COLOR
+  // reflow 강제 — transition 재시작 보장
+  void rowEl.offsetHeight
+  // transition 복원 후 투명으로 페이드아웃
+  rowEl.style.transition = 'background-color 300ms ease-out'
+  rowEl.style.backgroundColor = 'transparent'
 }
 
 /* ── 유틸리티 ──────────────────────────────────────────── */
@@ -304,9 +328,13 @@ function createVirtualScrollMode<T extends object>(
 ): DataTableApi<T> {
   let destroyed = false
   const keyFn = options.keyFn!
+  const priceFn = options.priceFn
   let currentRows: TableRow<T>[] = []
   let gridTemplateColumns = ''
   let columnWidthsCalculated = false
+
+  // 플래시 상태: key → { prevPrice, flashTs }
+  const flashState = new Map<string, { prevPrice: number; flashTs: number }>()
 
   const wrapper = document.createElement('div')
   Object.assign(wrapper.style, {
@@ -367,68 +395,196 @@ function createVirtualScrollMode<T extends object>(
 
   updateGridTemplate(columns.map(() => 100 / (columns.length || 1)))
 
+  /** 행이 그룹 행으로 렌더링되었는지 판별 (data-row-type 속성 기반) */
+  function wasGroupRow(rowEl: HTMLElement): boolean {
+    return rowEl.getAttribute('data-row-type') === 'group'
+  }
+
   function renderRow(row: TableRow<T>, index: number, rowEl: HTMLElement) {
-    rowEl.innerHTML = ''
+    const isFirst = rowEl.childElementCount === 0
+    const currentIsGroup = isGroupRow(row)
+    const prevWasGroup = wasGroupRow(rowEl)
+
+    // 공통 스타일 적용
     rowEl.classList.add('data-table-row')
     Object.assign(rowEl.style, { display: 'grid', gridTemplateColumns, borderBottom: '1px solid #e5e7eb' })
     if (zebraStriping && index % 2 === 1) rowEl.style.backgroundColor = '#f9f9f9'
     else rowEl.style.backgroundColor = 'transparent'
 
-    if (isGroupRow(row)) {
-      const cell = document.createElement('div')
-      Object.assign(cell.style, {
-        gridColumn: '1 / -1',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontWeight: FONT_WEIGHT.normal,
-        fontSize: FONT_SIZE.group,
-        color: '#1a237e',
-        padding: '10px 0 4px',
-      })
-      if (row.style) Object.assign(rowEl.style, row.style)
-      cell.textContent = `📊 ${row.label}`
-      if (row.score != null) {
-        const span = document.createElement('span')
-        Object.assign(span.style, {
-          marginLeft: '10px',
-          fontSize: '0.75em',
+    // 최초 렌더링 또는 행 타입 변경 시에만 셀 전체 생성
+    if (isFirst || currentIsGroup !== prevWasGroup) {
+      rowEl.innerHTML = ''
+
+      if (currentIsGroup) {
+        rowEl.setAttribute('data-row-type', 'group')
+        const cell = document.createElement('div')
+        Object.assign(cell.style, {
+          gridColumn: '1 / -1',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
           fontWeight: FONT_WEIGHT.normal,
-          color: scoreColor(row.score),
+          fontSize: FONT_SIZE.group,
+          color: '#1a237e',
+          padding: '10px 0 4px',
         })
-        span.textContent = `(종합점수 : ${row.score.toFixed(1)})`
-        cell.appendChild(span)
+        if (row.style) Object.assign(rowEl.style, row.style)
+        cell.textContent = `📊 ${row.label}`
+        if (row.score != null) {
+          const span = document.createElement('span')
+          Object.assign(span.style, {
+            marginLeft: '10px',
+            fontSize: '0.75em',
+            fontWeight: FONT_WEIGHT.normal,
+            color: scoreColor(row.score),
+          })
+          span.textContent = `(종합점수 : ${row.score.toFixed(1)})`
+          cell.appendChild(span)
+        }
+        rowEl.appendChild(cell)
+        return
       }
-      rowEl.appendChild(cell)
+
+      // 데이터 행 — 최초 셀 생성
+      rowEl.setAttribute('data-row-type', 'data')
+      const dataRow = row as T
+      const rs = rowStyle ? rowStyle(dataRow, index) : undefined
+      if (rs) Object.assign(rowEl.style, rs)
+      for (let i = 0; i < columns.length; i++) {
+        const c = columns[i]
+        const cell = document.createElement('div')
+        Object.assign(cell.style, {
+          boxSizing: 'border-box',
+          padding: '4px 6px',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          fontSize: FONT_SIZE.body,
+          fontFamily: FONT_FAMILY,
+          textAlign: c.align,
+          display: 'flex',
+          alignItems: 'center',
+          minWidth: '0',
+          justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start',
+          borderLeft: i > 0 ? '1px solid #d0d0d0' : 'none',
+        })
+        if (c.cellStyle) Object.assign(cell.style, c.cellStyle)
+        try {
+          const content = c.render(dataRow, index)
+          if (typeof content === 'string') cell.textContent = content
+          else if (content instanceof HTMLElement) cell.appendChild(content)
+        } catch (_) {
+          // 개별 셀 render 예외 시 해당 셀만 건너뛰기
+        }
+        rowEl.appendChild(cell)
+      }
+
+      // 최초 렌더링 시 flashState 초기화 (가격 기록만, 플래시 미적용)
+      if (priceFn) {
+        const key = keyFn(dataRow, index)
+        const price = priceFn(dataRow)
+        if (!flashState.has(key)) {
+          flashState.set(key, { prevPrice: price, flashTs: 0 })
+        }
+      }
       return
     }
 
+    // ── 기존 셀 DOM 유지 + cell diffing ──
+
+    if (currentIsGroup) {
+      // 그룹 행 — 단일 셀 textContent 갱신
+      if (row.style) Object.assign(rowEl.style, row.style)
+      const cell = rowEl.firstElementChild as HTMLElement
+      if (cell) {
+        const newLabel = `📊 ${row.label}`
+        // 텍스트 노드만 비교 (첫 번째 자식 텍스트)
+        const textNode = cell.firstChild
+        if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+          if (textNode.textContent !== newLabel) {
+            textNode.textContent = newLabel
+          }
+        } else {
+          cell.textContent = newLabel
+        }
+        // 점수 span 갱신
+        if (row.score != null) {
+          let span = cell.querySelector('span') as HTMLElement | null
+          const scoreText = `(종합점수 : ${row.score.toFixed(1)})`
+          if (span) {
+            if (span.textContent !== scoreText) span.textContent = scoreText
+            if (span.style.color !== scoreColor(row.score)) span.style.color = scoreColor(row.score)
+          } else {
+            span = document.createElement('span')
+            Object.assign(span.style, {
+              marginLeft: '10px',
+              fontSize: '0.75em',
+              fontWeight: FONT_WEIGHT.normal,
+              color: scoreColor(row.score),
+            })
+            span.textContent = scoreText
+            cell.appendChild(span)
+          }
+        } else {
+          const span = cell.querySelector('span')
+          if (span) span.remove()
+        }
+      }
+      return
+    }
+
+    // 데이터 행 — 셀별 diff
     const dataRow = row as T
     const rs = rowStyle ? rowStyle(dataRow, index) : undefined
     if (rs) Object.assign(rowEl.style, rs)
+    const cells = rowEl.children
     for (let i = 0; i < columns.length; i++) {
-      const c = columns[i]
-      const cell = document.createElement('div')
-      Object.assign(cell.style, {
-        boxSizing: 'border-box',
-        padding: '4px 6px',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-        fontSize: FONT_SIZE.body,
-        fontFamily: FONT_FAMILY,
-        textAlign: c.align,
-        display: 'flex',
-        alignItems: 'center',
-        minWidth: '0',
-        justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start',
-        borderLeft: i > 0 ? '1px solid #d0d0d0' : 'none',
-      })
-      if (c.cellStyle) Object.assign(cell.style, c.cellStyle)
-      const content = c.render(dataRow, index)
-      if (typeof content === 'string') cell.textContent = content
-      else if (content instanceof HTMLElement) cell.appendChild(content)
-      rowEl.appendChild(cell)
+      const cell = cells[i] as HTMLElement
+      if (!cell) continue
+      try {
+        const content = columns[i].render(dataRow, index)
+        if (typeof content === 'string') {
+          // 문자열 셀: textContent 비교 후 변경 시에만 갱신
+          if (cell.textContent !== content) {
+            cell.textContent = content
+          }
+        } else if (content instanceof HTMLElement) {
+          // HTMLElement 셀: outerHTML 비교 후 변경 시에만 교체
+          const existing = cell.firstElementChild as HTMLElement | null
+          if (!existing || existing.outerHTML !== content.outerHTML) {
+            cell.innerHTML = ''
+            cell.appendChild(content)
+          }
+        }
+      } catch (_) {
+        // 개별 셀 render 예외 시 해당 셀만 건너뛰고 기존 DOM 유지
+      }
+    }
+
+    // ── 가격 플래시 효과 ──
+    if (priceFn) {
+      const key = keyFn(dataRow, index)
+      const newPrice = priceFn(dataRow)
+      const state = flashState.get(key)
+      if (state) {
+        const now = performance.now()
+        if (newPrice !== state.prevPrice && state.prevPrice !== 0) {
+          // 가격 변경 감지 → 플래시 적용
+          const direction = newPrice > state.prevPrice ? 'up' : 'down'
+          state.prevPrice = newPrice
+          state.flashTs = now
+          applyFlash(rowEl, direction)
+        } else if (state.flashTs > 0 && now - state.flashTs >= FLASH_DURATION_MS) {
+          // 300ms 경과 → 플래시 미표시 (뷰포트 밖에서 복귀 시)
+          state.prevPrice = newPrice
+        } else {
+          // 가격 미변경 + 300ms 미경과 → 기존 상태 유지
+          state.prevPrice = newPrice
+        }
+      } else {
+        // 최초 등록 (풀에서 재사용된 행이 새 키로 할당된 경우)
+        flashState.set(key, { prevPrice: newPrice, flashTs: 0 })
+      }
     }
   }
 

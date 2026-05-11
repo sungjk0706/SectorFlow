@@ -48,6 +48,8 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
         # ── 레이아웃 적재 ──
         if _cached_layout:
             es._sector_stock_layout[:] = _cached_layout
+            from app.services.engine_account_notify import _rebuild_layout_cache
+            _rebuild_layout_cache(_cached_layout)
             logger.debug("[데이터준비] 레이아웃 저장데이터 로드 -- %d종목",
                         sum(1 for t, _ in _cached_layout if t == "code"))
 

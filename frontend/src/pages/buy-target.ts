@@ -3,6 +3,7 @@
 
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
 import { appStore } from '../stores/appStore'
+import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardTitle } from '../components/common/card-title'
 import { createWsStatusBadge } from '../components/common/setting-row'
 import { createStockNameColumn, createSeqCell, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, createNumberCell, FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
@@ -91,6 +92,8 @@ let badgeEls: { daily: HTMLSpanElement; holding: HTMLSpanElement; perStock: HTML
 let wsBadge: ReturnType<typeof createWsStatusBadge> | null = null
 let emptyEl: HTMLElement | null = null
 let unsubTargets: (() => void) | null = null
+let rafHandle: number | null = null
+let _mounted = false
 
 /* ── 한도 배지 렌더링 ── */
 function renderLimitBadge(el: HTMLSpanElement, label: string, cur: number, max: number, unit = '원'): void {
@@ -144,6 +147,8 @@ function updateBadges(): void {
 
 /* ── mount ── */
 function mount(container: HTMLElement): void {
+  _mounted = true
+  notifyPageActive('buy-target')
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
@@ -184,6 +189,7 @@ function mount(container: HTMLElement): void {
     keyFn: (t) => t.code,
     emptyText: '매수후보가 없습니다.',
     stickyHeader: true,
+    priceFn: (t) => Number(t.cur_price) || 0,
   })
 
   // 빈 상태 메시지 (DataTable 외부 — 기존 동작 유지)
@@ -206,45 +212,71 @@ function mount(container: HTMLElement): void {
   dataTable.updateRows(initialTargets)
   if (emptyEl) emptyEl.style.display = initialTargets.length === 0 ? '' : 'none'
 
-  // Store 구독 — 선택적 구독 가드 (Bug 0 fix: buy-target interest keys only)
+  // Store 구독 — rAF coalescing + reference equality guard
   {
-    let prevBuyTargets = initState.buyTargets
-    let prevPositions = initState.positions
-    let prevSettings = initState.settings
-    let prevWsSubscribeStatus = initState.wsSubscribeStatus
-    let prevBuyLimitStatus = initState.buyLimitStatus
+    // 마지막 렌더링 시점의 참조 (rAF 콜백에서 갱신)
+    let lastRenderedBuyTargets = initState.buyTargets
+    let lastRenderedPositions = initState.positions
+    let lastRenderedSettings = initState.settings
+    let lastRenderedWsSubscribeStatus = initState.wsSubscribeStatus
+    let lastRenderedBuyLimitStatus = initState.buyLimitStatus
 
     unsubTargets = appStore.subscribe((state) => {
-      const changed =
-        state.buyTargets !== prevBuyTargets ||
-        state.positions !== prevPositions ||
-        state.settings !== prevSettings ||
-        state.wsSubscribeStatus !== prevWsSubscribeStatus ||
-        state.buyLimitStatus !== prevBuyLimitStatus
+      // 관심 필드 중 하나라도 변경되었는지 확인
+      const anyChanged =
+        state.buyTargets !== lastRenderedBuyTargets ||
+        state.positions !== lastRenderedPositions ||
+        state.settings !== lastRenderedSettings ||
+        state.wsSubscribeStatus !== lastRenderedWsSubscribeStatus ||
+        state.buyLimitStatus !== lastRenderedBuyLimitStatus
 
-      prevBuyTargets = state.buyTargets
-      prevPositions = state.positions
-      prevSettings = state.settings
-      prevWsSubscribeStatus = state.wsSubscribeStatus
-      prevBuyLimitStatus = state.buyLimitStatus
+      if (!anyChanged) return
 
-      if (!changed) return
+      // rAF coalescing: 이미 예약된 rAF가 있으면 추가 예약하지 않음
+      // 콜백 실행 시 getState()로 최신 상태를 가져오므로 항상 최신 반영
+      if (rafHandle !== null) return
 
-      const targets = [...state.buyTargets].sort((a, b) => {
-        if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
-        return a.rank - b.rank
+      rafHandle = requestAnimationFrame(() => {
+        rafHandle = null
+        if (!_mounted) return
+        const latest = appStore.getState()
+
+        // buyTargets 참조 동일 시 sort + updateRows 생략
+        if (latest.buyTargets !== lastRenderedBuyTargets) {
+          lastRenderedBuyTargets = latest.buyTargets
+          const targets = [...latest.buyTargets].sort((a, b) => {
+            if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
+            return a.rank - b.rank
+          })
+          dataTable?.updateRows(targets)
+          if (emptyEl) emptyEl.style.display = targets.length === 0 ? '' : 'none'
+        }
+
+        // positions/settings/wsSubscribeStatus/buyLimitStatus 참조 동일 시 updateBadges 생략
+        if (
+          latest.positions !== lastRenderedPositions ||
+          latest.settings !== lastRenderedSettings ||
+          latest.wsSubscribeStatus !== lastRenderedWsSubscribeStatus ||
+          latest.buyLimitStatus !== lastRenderedBuyLimitStatus
+        ) {
+          lastRenderedPositions = latest.positions
+          lastRenderedSettings = latest.settings
+          lastRenderedWsSubscribeStatus = latest.wsSubscribeStatus
+          lastRenderedBuyLimitStatus = latest.buyLimitStatus
+          updateBadges()
+          const q = latest.wsSubscribeStatus.quote_subscribed
+          wsBadge?.update(q, 'kiwoom')
+        }
       })
-      dataTable?.updateRows(targets)
-      if (emptyEl) emptyEl.style.display = targets.length === 0 ? '' : 'none'
-      updateBadges()
-      const q = state.wsSubscribeStatus.quote_subscribed
-      wsBadge?.update(q, 'kiwoom')
     })
   }
 }
 
 /* ── unmount ── */
 function unmount(): void {
+  _mounted = false
+  notifyPageInactive('buy-target')
+  if (rafHandle !== null) { cancelAnimationFrame(rafHandle); rafHandle = null }
   if (unsubTargets) { unsubTargets(); unsubTargets = null }
   if (dataTable) { dataTable.destroy(); dataTable = null }
   badgeEls = null

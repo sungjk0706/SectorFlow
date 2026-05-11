@@ -12,7 +12,6 @@ import type {
   EngineStatus,
   SnapshotHistory,
   AccountUpdateEvent,
-  SectorRefreshEvent,
   SectorScoresEvent,
   RealDataEvent,
 } from '../types'
@@ -66,6 +65,7 @@ export interface AppState {
   connected: boolean
   initialized: boolean
   engineReady: boolean
+  backfilling: boolean
 
   /* ── 백그라운드 진행률 ── */
   avgAmtProgress: { current: number; total: number; done: boolean; message?: string; eta_sec?: number; status?: string; step?: number } | null
@@ -97,6 +97,7 @@ const initialState: AppState = {
   connected: false,
   initialized: false,
   engineReady: false,
+  backfilling: false,
   avgAmtProgress: null,
   bootstrapStage: null,
   selectedSector: null,
@@ -105,10 +106,45 @@ const initialState: AppState = {
 
 export const appStore = createStore<AppState>(initialState)
 
+/* ── 인덱스 캐시 (모듈 스코프 — Zustand state 외부) ── */
+let _buyTargetIndexCache: Map<string, number> = new Map()
+let _positionIndexCache: Map<string, number> = new Map()
+
+/** buyTargets 배열로부터 code→index 캐시 재구축 */
+export function rebuildBuyTargetIndex(targets: BuyTarget[]): void {
+  const map = new Map<string, number>()
+  for (let i = 0; i < targets.length; i++) {
+    map.set(targets[i].code, i)
+  }
+  _buyTargetIndexCache = map
+}
+
+/** positions 배열로부터 stk_cd→index 캐시 재구축 */
+export function rebuildPositionIndex(positions: Position[]): void {
+  const map = new Map<string, number>()
+  for (let i = 0; i < positions.length; i++) {
+    map.set(positions[i].stk_cd, i)
+  }
+  _positionIndexCache = map
+}
+
+/** 캐시 조회 헬퍼 (외부 모듈에서 사용 가능) */
+export function getBuyTargetIndex(code: string): number | undefined {
+  return _buyTargetIndexCache.get(code)
+}
+
+export function getPositionIndex(stkCd: string): number | undefined {
+  return _positionIndexCache.get(stkCd)
+}
+
 /* ── 액션 메서드 (store 외부 함수) ── */
 
 export function setConnected(v: boolean): void {
   appStore.setState({ connected: v })
+}
+
+export function setBackfilling(v: boolean): void {
+  appStore.setState({ backfilling: v })
 }
 
 export function setEngineReady(v: boolean): void {
@@ -145,15 +181,19 @@ export function applyInitialSnapshot(data: Record<string, unknown>): void {
   if (!isVersionSupported(data, 'initial-snapshot')) return
   const stocks = (data.sector_stocks as SectorStock[]) ?? []
   const scores = (data.sector_scores as SectorScoreRow[]) ?? []
+  const newBuyTargets = (data.buy_targets as BuyTarget[]) ?? []
+  const newPositions = (data.positions as Position[]) ?? []
+  rebuildBuyTargetIndex(newBuyTargets)
+  rebuildPositionIndex(newPositions)
   appStore.setState({
     account: (data.account as AccountSnapshot) ?? null,
-    positions: (data.positions as Position[]) ?? [],
+    positions: newPositions,
     sectorStocks: stocksToMap(stocks),
     sectorOrder: scores.map(s => s.sector),
     sectorScores: scores,
     sectorStatus: (data.sector_status as SectorStatus) ?? null,
     sectorSummary: (data.sector_summary as Record<string, unknown>) ?? null,
-    buyTargets: (data.buy_targets as BuyTarget[]) ?? [],
+    buyTargets: newBuyTargets,
     settings: (data.settings as AppSettings) ?? null,
     status: (data.status as EngineStatus) ?? null,
     snapshotHistory: (data.snapshot_history as SnapshotHistory[]) ?? [],
@@ -163,6 +203,7 @@ export function applyInitialSnapshot(data: Record<string, unknown>): void {
     buyLimitStatus: (data.buy_limit_status as { daily_buy_spent: number }) ?? { daily_buy_spent: 0 },
     wsSubscribeStatus: (data.ws_subscribe_status as { index_subscribed: boolean; quote_subscribed: boolean }) ?? { index_subscribed: false, quote_subscribed: false },
     initialized: true,
+    backfilling: false,
     engineReady: !!(data.bootstrap_done),
     marketPhase: (data.market_phase as { krx: string; nxt: string }) ?? { krx: 'closed', nxt: 'closed' },
     avgAmtProgress: data.avg_amt_refresh ? { current: (data.avg_amt_refresh as Record<string, unknown>).current as number ?? 0, total: (data.avg_amt_refresh as Record<string, unknown>).total as number ?? 0, done: false, status: ((data.avg_amt_refresh as Record<string, unknown>).status as string) || undefined } : data.confirmed_refresh ? { current: 0, total: 0, done: false, message: ((data.confirmed_refresh as Record<string, unknown>).message as string) || '', status: 'confirmed' } : null,
@@ -202,6 +243,7 @@ export function applyAccountUpdate(data: AccountUpdateEvent): void {
           positions.push(pos)
         }
       }
+      rebuildPositionIndex(positions)
       return {
         account: data.snapshot ?? state.account,
         positions,
@@ -227,13 +269,11 @@ export function applyAccountUpdate(data: AccountUpdateEvent): void {
     && incomingSnap.deposit === prevSnap.deposit
   const updates: Partial<AppState> = {}
   if (!snapSame) updates.account = incomingSnap
-  if (!positionsSame) updates.positions = incomingPos
+  if (!positionsSame) {
+    updates.positions = incomingPos
+    rebuildPositionIndex(incomingPos)
+  }
   if (Object.keys(updates).length > 0) appStore.setState(updates)
-}
-
-/* ── sector-refresh: sector-scores + sector-tick으로 대체됨 (전환 기간 무시) ── */
-export function applySectorRefresh(data: SectorRefreshEvent): void {
-  if (!isVersionSupported(data, 'sector-refresh')) return
 }
 
 /* ── settings-changed: 설정만 갱신 ── */
@@ -292,22 +332,24 @@ export function applyRealData(item: RealDataEvent): void {
         }
       }
 
+      // buyTargets: 인덱스 캐시 O(1) 조회 + splice 기반 증분 갱신
       const bt = state.buyTargets;
-      const btIdx = bt.findIndex(t => t.code === code);
-      let buyTargets = bt;
-      if (btIdx >= 0) {
+      let buyTargetsChanged = false;
+      const btIdx = getBuyTargetIndex(code);
+      if (btIdx !== undefined) {
         const t = bt[btIdx];
         if (!(t.cur_price === price && t.change === change && t.change_rate === rate &&
               t.strength === strength && t.trade_amount === amount)) {
-          buyTargets = [...bt];
-          buyTargets[btIdx] = { ...t, cur_price: price, change: change, change_rate: rate, strength: strength, trade_amount: amount };
+          bt.splice(btIdx, 1, { ...t, cur_price: price, change: change, change_rate: rate, strength: strength, trade_amount: amount });
+          buyTargetsChanged = true;
         }
       }
 
-      // 보유종목 현재가 실시간 반영 + 평가손익/수익률 재계산
-      let positions = state.positions;
-      const posIdx = positions.findIndex(p => p.stk_cd === code);
-      if (posIdx >= 0) {
+      // positions: 인덱스 캐시 O(1) 조회 + splice 기반 증분 갱신 + 파생 필드 재계산
+      const positions = state.positions;
+      let positionsChanged = false;
+      const posIdx = getPositionIndex(code);
+      if (posIdx !== undefined) {
         const pos = positions[posIdx];
         if (pos.cur_price !== price) {
           const buyAmt = pos.buy_amt ?? pos.buy_amount ?? 0;
@@ -315,16 +357,17 @@ export function applyRealData(item: RealDataEvent): void {
           const evalAmount = price * qty;
           const pnlAmount = buyAmt > 0 ? evalAmount - buyAmt : 0;
           const pnlRate = buyAmt > 0 ? Math.round((pnlAmount / buyAmt) * 10000) / 100 : 0;
-          positions = [...positions];
-          positions[posIdx] = { ...pos, cur_price: price, eval_amount: evalAmount, pnl_amount: pnlAmount, pnl_rate: pnlRate };
+          positions.splice(posIdx, 1, { ...pos, cur_price: price, eval_amount: evalAmount, pnl_amount: pnlAmount, pnl_rate: pnlRate });
+          positionsChanged = true;
         }
       }
 
-      if (sectorStocks === state.sectorStocks && buyTargets === bt && positions === state.positions) return state;
+      // no-op guard: 변경 없으면 setState 생략 (reference equality 유지)
+      if (sectorStocks === state.sectorStocks && !buyTargetsChanged && !positionsChanged) return state;
       const patch: Partial<AppState> = {};
       if (sectorStocks !== state.sectorStocks) patch.sectorStocks = sectorStocks;
-      if (buyTargets !== bt) patch.buyTargets = buyTargets;
-      if (positions !== state.positions) patch.positions = positions;
+      if (buyTargetsChanged) patch.buyTargets = bt;
+      if (positionsChanged) patch.positions = positions;
       return patch;
     });
   }
@@ -347,14 +390,13 @@ export function applyOrderbookUpdate(data: { code: string; bid: number; ask: num
   if (!code) return;
   appStore.setState((state) => {
     const bt = state.buyTargets;
-    const idx = bt.findIndex(t => t.code === code);
-    if (idx < 0) return state;
+    const idx = getBuyTargetIndex(code);
+    if (idx === undefined) return state;
     const t = bt[idx];
     const prev = t.order_ratio;
     if (prev && prev[0] === bid && prev[1] === ask) return state;
-    const buyTargets = [...bt];
-    buyTargets[idx] = { ...t, order_ratio: [bid, ask] };
-    return { buyTargets };
+    bt.splice(idx, 1, { ...t, order_ratio: [bid, ask] });
+    return { buyTargets: bt };
   });
 }
 
@@ -426,7 +468,10 @@ export function applyBuyTargetsUpdate(data: { buy_targets: BuyTarget[] }): void 
       && p.guard_pass === n.guard_pass && p.reason === n.reason
       && p.boost_score === n.boost_score
   })
-  if (!same) appStore.setState({ buyTargets: incoming })
+  if (!same) {
+    rebuildBuyTargetIndex(incoming)
+    appStore.setState({ buyTargets: incoming })
+  }
 }
 
 /* ── sector-scores: 업종 점수·상태 갱신 + sectorOrder 갱신 (내용 비교) ── */

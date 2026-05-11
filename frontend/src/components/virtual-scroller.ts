@@ -28,7 +28,44 @@ export interface VirtualScrollerApi<T> {
   destroy(): void
 }
 
+// ── 고정 높이 모드 인터페이스 ────────────────────────────────
+
+export interface FixedHeightMode {
+  enabled: boolean
+  rowHeight: number  // 모든 행이 동일한 높이 (enabled=false면 0)
+}
+
 // ── 순수 함수 (PBT 테스트 가능) ─────────────────────────────
+
+/**
+ * 초기화 시 행 높이 균일 여부를 감지한다.
+ * 모든 행의 높이가 동일하면 고정 높이 모드를 활성화한다.
+ */
+export function detectFixedHeight<T>(
+  items: T[],
+  getRowHeight: (item: T, index: number) => number,
+): FixedHeightMode {
+  if (items.length === 0) return { enabled: false, rowHeight: 0 }
+  const h0 = getRowHeight(items[0], 0)
+  for (let i = 1; i < items.length; i++) {
+    if (getRowHeight(items[i], i) !== h0) return { enabled: false, rowHeight: 0 }
+  }
+  return { enabled: true, rowHeight: h0 }
+}
+
+/**
+ * 고정 높이 모드에서의 오프셋 계산 — O(1) 산술
+ */
+export function getOffsetFixed(index: number, rowHeight: number): number {
+  return index * rowHeight
+}
+
+/**
+ * 고정 높이 모드에서의 총 높이 계산 — O(1) 산술
+ */
+export function getTotalHeightFixed(count: number, rowHeight: number): number {
+  return count * rowHeight
+}
 
 /**
  * 각 행의 누적 오프셋(top)과 총 높이를 계산한다.
@@ -46,6 +83,25 @@ export function computeOffsets<T>(
     acc += getRowHeight(items[i], i)
   }
   return { offsets, totalHeight: acc }
+}
+
+/**
+ * 가변 높이 모드: 특정 인덱스 이후만 증분 갱신한다.
+ * fromIndex 이전의 오프셋은 변경하지 않는다.
+ */
+export function recomputeOffsetsFrom<T>(
+  offsets: number[],
+  items: T[],
+  getRowHeight: (item: T, index: number) => number,
+  fromIndex: number,
+): number {
+  if (items.length === 0) return 0
+  let acc = fromIndex > 0 ? offsets[fromIndex - 1] + getRowHeight(items[fromIndex - 1], fromIndex - 1) : 0
+  for (let i = fromIndex; i < items.length; i++) {
+    offsets[i] = acc
+    acc += getRowHeight(items[i], i)
+  }
+  return acc
 }
 
 /**
@@ -105,6 +161,9 @@ export function createVirtualScroller<T>(
   let offsets: number[] = []
   let totalHeight = 0
 
+  // 고정 높이 모드 상태
+  let fixedMode: FixedHeightMode = detectFixedHeight(items, getRowHeight)
+
   // container에 overflow-y: auto 설정
   container.style.overflowY = 'auto'
   container.style.position = 'relative'
@@ -129,11 +188,50 @@ export function createVirtualScroller<T>(
 
   // ── 내부 함수 ──────────────────────────────────────────
 
-  function recomputeOffsets() {
-    const result = computeOffsets(items, getRowHeight)
-    offsets = result.offsets
-    totalHeight = result.totalHeight
+  /**
+   * 오프셋을 재계산한다.
+   * 고정 높이 모드에서는 산술 계산만 수행 (offsets 배열 순회 없음).
+   */
+  function recomputeAllOffsets() {
+    if (fixedMode.enabled) {
+      // 고정 높이 fast path: O(1) 산술 계산
+      totalHeight = getTotalHeightFixed(items.length, fixedMode.rowHeight)
+      // offsets 배열은 고정 높이 모드에서도 computeVisibleRange 호환을 위해 유지
+      // 하지만 실제 순회 없이 lazy하게 사용 가능
+      offsets = new Array(items.length)
+      for (let i = 0; i < items.length; i++) {
+        offsets[i] = i * fixedMode.rowHeight
+      }
+    } else {
+      // 가변 높이: 전체 재계산
+      const result = computeOffsets(items, getRowHeight)
+      offsets = result.offsets
+      totalHeight = result.totalHeight
+    }
     sentinel.style.height = totalHeight + 'px'
+  }
+
+  /**
+   * 오프셋 drift를 검증한다.
+   * 고정 높이 모드에서 실제 높이와 산술 결과가 1px 이상 차이나면 전체 재계산 fallback.
+   */
+  function validateOffsetDrift(): boolean {
+    if (!fixedMode.enabled || items.length === 0) return true
+    // 샘플 검증: 마지막 항목의 실제 높이와 고정 높이 비교
+    const lastIdx = items.length - 1
+    const actualHeight = getRowHeight(items[lastIdx], lastIdx)
+    // 마지막 행의 높이가 고정 높이와 다르면 drift 발생
+    if (Math.abs(actualHeight - fixedMode.rowHeight) > 1) {
+      return false
+    }
+    // 중간 샘플도 검증 (최대 5개)
+    const step = Math.max(1, Math.floor(items.length / 5))
+    for (let i = 0; i < items.length; i += step) {
+      if (Math.abs(getRowHeight(items[i], i) - fixedMode.rowHeight) > 1) {
+        return false
+      }
+    }
+    return true
   }
 
   function acquireRow(): HTMLElement {
@@ -216,7 +314,7 @@ export function createVirtualScroller<T>(
 
   // ── 초기화 ────────────────────────────────────────────
 
-  recomputeOffsets()
+  recomputeAllOffsets()
   container.addEventListener('scroll', onScroll, { passive: true })
 
   // 초기 렌더링 (container가 이미 크기를 가지고 있을 때)
@@ -234,9 +332,38 @@ export function createVirtualScroller<T>(
 
   function updateItems(newItems: T[]) {
     const oldItems = items
+    const oldLength = items.length
     items = newItems
 
-    recomputeOffsets()
+    // 고정 높이 모드 재감지 (아이템이 변경되었으므로)
+    const newFixedMode = detectFixedHeight(items, getRowHeight)
+
+    if (fixedMode.enabled && newFixedMode.enabled && fixedMode.rowHeight === newFixedMode.rowHeight) {
+      // 고정 높이 모드 유지
+      if (items.length === oldLength) {
+        // 길이 동일 + 고정 높이 → 오프셋 재계산 생략
+        // totalHeight와 offsets 변경 없음
+      } else {
+        // 길이 변경 → 산술 계산으로 totalHeight만 갱신
+        totalHeight = getTotalHeightFixed(items.length, fixedMode.rowHeight)
+        offsets = new Array(items.length)
+        for (let i = 0; i < items.length; i++) {
+          offsets[i] = i * fixedMode.rowHeight
+        }
+        sentinel.style.height = totalHeight + 'px'
+      }
+    } else {
+      // 모드 전환 또는 가변 높이 → 전체 재계산
+      fixedMode = newFixedMode
+      recomputeAllOffsets()
+    }
+
+    // 오프셋 drift 검증 (고정 높이 모드에서)
+    if (fixedMode.enabled && !validateOffsetDrift()) {
+      // drift > 1px → 고정 높이 모드 해제 + 전체 재계산 fallback
+      fixedMode = { enabled: false, rowHeight: 0 }
+      recomputeAllOffsets()
+    }
 
     const scrollTop = container.scrollTop
     const viewportHeight = container.clientHeight
@@ -247,7 +374,7 @@ export function createVirtualScroller<T>(
       scrollTop,
       viewportHeight,
       overscan,
-      (idx) => getRowHeight(items[idx], idx),
+      (idx) => fixedMode.enabled ? fixedMode.rowHeight : getRowHeight(items[idx], idx),
     )
 
     // 기존 활성 행 중 새 items에서 같은 키+같은 아이템인 것은 유지
@@ -302,10 +429,22 @@ export function createVirtualScroller<T>(
 
   function updateItem(index: number, item: T) {
     if (index < 0 || index >= items.length) return
+    const oldHeight = getRowHeight(items[index], index)
     items[index] = item
+    const newHeight = getRowHeight(item, index)
 
-    // 높이가 변경될 수 있으므로 오프셋 재계산
-    recomputeOffsets()
+    if (oldHeight !== newHeight) {
+      if (fixedMode.enabled) {
+        // 높이가 변경되었으므로 고정 높이 모드 해제 + 전체 재계산 fallback
+        fixedMode = { enabled: false, rowHeight: 0 }
+        recomputeAllOffsets()
+      } else {
+        // 가변 높이 모드: 변경된 행 이후만 증분 갱신
+        totalHeight = recomputeOffsetsFrom(offsets, items, getRowHeight, index)
+        sentinel.style.height = totalHeight + 'px'
+      }
+    }
+    // 높이 미변경 시 오프셋 재계산 생략
 
     // 현재 렌더링 범위 내에 있으면 해당 행만 갱신
     if (index >= currentStart && index < currentEnd) {
@@ -313,7 +452,7 @@ export function createVirtualScroller<T>(
       const existing = activeRows.get(key)
       if (existing) {
         existing.el.style.transform = `translateY(${offsets[index]}px)`
-        existing.el.style.height = getRowHeight(item, index) + 'px'
+        existing.el.style.height = newHeight + 'px'
         renderRow(item, index, existing.el)
       }
     }

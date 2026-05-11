@@ -53,8 +53,8 @@ while [ $RETRY -lt $MAX_RETRIES ]; do
     RETRY=$((RETRY+1))
 done
 
-# 브라우저 열기
-open http://localhost:5173
+# 브라우저 열기 (Chrome)
+open -a "Google Chrome" http://localhost:5173
 
 echo ""
 echo "============================================"

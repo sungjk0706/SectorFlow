@@ -124,6 +124,8 @@ async def run_engine_loop(es: ModuleType) -> None:
     es._pending_stock_details = {}
     es._radar_cnsr_order = []
     es._sector_stock_layout = []
+    from app.services.engine_account_notify import _rebuild_layout_cache
+    _rebuild_layout_cache([])
     es._avg_amt_5d = {}
     es._rest_radar_quote_cache = {}
     es._rest_radar_rest_once = set()

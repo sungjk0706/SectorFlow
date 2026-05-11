@@ -137,6 +137,7 @@ async def get_engine_settings(user_id: str = None, profile: str = "default") -> 
     result["boost_order_ratio_score"]      = max(float(flat.get("boost_order_ratio_score") if flat.get("boost_order_ratio_score") is not None else 1.0), 0)
     # ── 공휴일 자동매매 가드 ────────
     result["holiday_guard_on"]             = bool(flat.get("holiday_guard_on", True))
+    result["auto_off_by_holiday"]          = bool(flat.get("auto_off_by_holiday", False))
 
     # ── WS 구독 마스터 스위치 ────────
     result["ws_subscribe_on"]              = bool(flat.get("ws_subscribe_on", True))

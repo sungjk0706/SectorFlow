@@ -91,13 +91,11 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
   let hashListener: (() => void) | null = null
 
   async function loadModule(config: RouteConfig): Promise<PageModule> {
-    /*
     const cached = moduleCache.get(config.path)
     if (cached) return cached
-    */
 
     const mod = await config.load()
-    // moduleCache.set(config.path, mod)
+    moduleCache.set(config.path, mod)
     return mod
   }
 
@@ -139,15 +137,13 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
     // 콜백 통지 (사이드바 활성 메뉴 갱신용 + settingsCard 마운트는 main.ts에서 처리)
     notifyRouteChange(resolved)
 
-    // 캐시 히트: 스피너 없이 동기 마운트 (HMR 및 최신 반영을 위해 비활성화)
-    /*
+    // 캐시 히트: 스피너 없이 동기 마운트
     const cachedModule = moduleCache.get(config.path)
     if (cachedModule) {
       currentModule = cachedModule
       cachedModule.mount(contentEl)
       return
     }
-    */
 
     // 캐시 미스: 스피너 표시 → 비동기 로딩 → 스피너 제거 → 마운트
     showSpinner(contentEl)

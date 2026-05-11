@@ -80,6 +80,8 @@ async def _bootstrap_sector_stocks_async() -> None:
         _broadcast_bootstrap_stage(2, "섹터 매핑 로드")
     elif (_layout_cached := load_layout_cache()):
         _st._sector_stock_layout[:] = _layout_cached
+        from app.services.engine_account_notify import _rebuild_layout_cache
+        _rebuild_layout_cache(_st._sector_stock_layout)
         logger.info(
             "[앱준비] 레이아웃 저장데이터 로드 -- %d종목 (업종맵 API 생략)",
             sum(1 for t, _ in _layout_cached if t == "code"),
@@ -105,6 +107,8 @@ async def _bootstrap_sector_stocks_async() -> None:
                 for cd in stk_codes:
                     auto_layout.append(("code", cd))
             _st._sector_stock_layout[:] = auto_layout
+            from app.services.engine_account_notify import _rebuild_layout_cache
+            _rebuild_layout_cache(_st._sector_stock_layout)
             logger.info(
                 "[앱준비] 업종 매핑 기반 자동 구성 -- %d종목 / %d섹터",
                 sum(1 for t, _ in auto_layout if t == "code"),

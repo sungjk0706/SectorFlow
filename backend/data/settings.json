@@ -52,7 +52,7 @@
   "sell_form_defaults": null,
   "theme_mode": "dark",
   "ui_zoom": 1.15,
-  "sector_min_rise_ratio_pct": 80,
+  "sector_min_rise_ratio_pct": 70,
   "sector_min_trade_amt": 610,
   "sector_sort_keys": [
     "trade_amount",
@@ -130,5 +130,5 @@
   "boost_order_ratio_side": "sell",
   "boost_order_ratio_pct": -20,
   "boost_order_ratio_score": 1,
-  "auto_off_by_holiday": true
+  "auto_off_by_holiday": false
 }

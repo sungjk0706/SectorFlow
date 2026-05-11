@@ -7,6 +7,7 @@ import { createDataTable, type ColumnDef, type DataTableApi } from '../component
 import { createWsStatusBadge } from '../components/common/setting-row'
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, createStockNameColumn, createNumberCell, createPnlCell } from '../components/common/ui-styles'
 import { appStore } from '../stores/appStore'
+import { notifyPageActive, notifyPageInactive } from '../api/ws'
 
 /* ── 헬퍼 ── */
 
@@ -204,6 +205,14 @@ let tableViewContainer: HTMLDivElement | null = null
 let drilldownViewContainer: HTMLDivElement | null = null
 let dummyMsg: HTMLDivElement | null = null
 let unsubAccount: (() => void) | null = null
+
+/* ── rAF coalescing 상태 ── */
+let _rafId: number | null = null
+let _mounted = false
+/** 다음 rAF에서 갱신할 필드 그룹 플래그 */
+let _dirtyAccount = false
+let _dirtyHistory = false
+let _dirtyChart = false
 
 /* ── 드릴다운 상태 ── */
 let drilldownActive = false
@@ -498,6 +507,7 @@ function showTable(): void {
 
 /* ── mount ── */
 function mount(container: HTMLElement): void {
+  notifyPageActive('profit-overview')
   buyHistory = []
   sellHistory = []
   activeTab = 'sell'
@@ -760,63 +770,87 @@ function mount(container: HTMLElement): void {
   updateSummaryCards()
   showTable()
 
-  // appStore 구독 — 매도 내역 변경 시 차트 + 테이블 갱신
+  // appStore 구독 — rAF coalescing + selective update
   let prevSellRef = initState.sellHistory
   let prevBuyRef = initState.buyHistory
   let prevDailySummaryRef = initState.dailySummary
   let prevAccountRef = initState.account
   let prevTradeMode = initState.settings?.trade_mode
   let prevPositionsRef = initState.positions
+  _mounted = true
+
   unsubAccount = appStore.subscribe((curr) => {
-    // 1. 계좌 현황
-    if (curr.account !== prevAccountRef) {
+    // 필드 그룹별 참조 비교
+    const accountChanged = curr.account !== prevAccountRef || curr.positions !== prevPositionsRef
+    const historyChanged = curr.sellHistory !== prevSellRef || curr.buyHistory !== prevBuyRef
+    const chartChanged = curr.dailySummary !== prevDailySummaryRef || curr.settings?.trade_mode !== prevTradeMode
+
+    // 아무것도 변경되지 않으면 skip
+    if (!accountChanged && !historyChanged && !chartChanged) return
+
+    // 참조 갱신
+    if (accountChanged) {
       prevAccountRef = curr.account
-      renderAccountVals()
-    }
-
-    // 1-b. positions 변경 시 계좌현황 갱신 (보유주식 평가금액/평가손익)
-    if (curr.positions !== prevPositionsRef) {
       prevPositionsRef = curr.positions
-      renderAccountVals()
+      _dirtyAccount = true
     }
-
-    // 2. 매수/매도 내역 변경 시 테이블 및 요약카드 갱신
-    const sellChanged = curr.sellHistory !== prevSellRef
-    const buyChanged = curr.buyHistory !== prevBuyRef
-    if (sellChanged || buyChanged) {
+    if (historyChanged) {
       prevSellRef = curr.sellHistory
       prevBuyRef = curr.buyHistory
       sellHistory = curr.sellHistory
       buyHistory = curr.buyHistory
-
-      if (drilldownActive) {
-        showDrilldown()
-      } else {
-        showTable()
-      }
-      updateSummaryCards()
-      updateTabLabels()
-      renderAccountVals()
+      _dirtyHistory = true
+    }
+    if (chartChanged) {
+      prevDailySummaryRef = curr.dailySummary
+      prevTradeMode = curr.settings?.trade_mode
+      _dirtyChart = true
     }
 
-    // 3. 투자 모드 또는 일별 요약 변경 시 차트 + 뱃지 갱신
-    if (curr.dailySummary !== prevDailySummaryRef || curr.settings?.trade_mode !== prevTradeMode) {
-      prevDailySummaryRef = curr.dailySummary
-      const tradeModeChanged = curr.settings?.trade_mode !== prevTradeMode
-      prevTradeMode = curr.settings?.trade_mode
-      chart?.updateData(buildChartFromDailySummary(curr.dailySummary))
-      if (tradeModeChanged) {
-        const isTest = curr.settings?.trade_mode === 'test'
-        wsBadge?.update(!isTest, isTest ? undefined : 'kiwoom', isTest ? '테스트모드' : undefined)
-        retentionLabel.textContent = isTest ? '최근 60거래일 데이터' : '최근 5거래일 데이터'
-        // 계좌 현황 컨테이너 토글
-        if (realAccountContainer && testAccountContainer) {
-          realAccountContainer.style.display = isTest ? 'none' : ''
-          testAccountContainer.style.display = isTest ? '' : 'none'
-        }
+    // rAF coalescing: 이미 예약된 rAF가 있으면 추가 예약하지 않음
+    if (_rafId !== null) return
+
+    _rafId = requestAnimationFrame(() => {
+      _rafId = null
+      if (!_mounted) return
+
+      // 변경된 필드 그룹에 해당하는 DOM 섹션만 갱신
+      if (_dirtyAccount) {
+        _dirtyAccount = false
         renderAccountVals()
       }
-    }
+
+      if (_dirtyHistory) {
+        _dirtyHistory = false
+        if (drilldownActive) {
+          showDrilldown()
+        } else {
+          showTable()
+        }
+        updateSummaryCards()
+        updateTabLabels()
+        renderAccountVals()
+      }
+
+      if (_dirtyChart) {
+        _dirtyChart = false
+        const latest = appStore.getState()
+        const tradeModeChanged = latest.settings?.trade_mode !== prevTradeMode
+        chart?.updateData(buildChartFromDailySummary(latest.dailySummary))
+        if (tradeModeChanged) {
+          prevTradeMode = latest.settings?.trade_mode
+          const isTest = latest.settings?.trade_mode === 'test'
+          wsBadge?.update(!isTest, isTest ? undefined : 'kiwoom', isTest ? '테스트모드' : undefined)
+          retentionLabel.textContent = isTest ? '최근 60거래일 데이터' : '최근 5거래일 데이터'
+          // 계좌 현황 컨테이너 토글
+          if (realAccountContainer && testAccountContainer) {
+            realAccountContainer.style.display = isTest ? 'none' : ''
+            testAccountContainer.style.display = isTest ? '' : 'none'
+          }
+          renderAccountVals()
+        }
+      }
+    })
   })
 
   // 초기 계좌 현황 표시
@@ -825,6 +859,12 @@ function mount(container: HTMLElement): void {
 
 /* ── unmount ── */
 function unmount(): void {
+  _mounted = false
+  notifyPageInactive('profit-overview')
+  if (_rafId !== null) { cancelAnimationFrame(_rafId); _rafId = null }
+  _dirtyAccount = false
+  _dirtyHistory = false
+  _dirtyChart = false
   if (unsubAccount) { unsubAccount(); unsubAccount = null }
   if (chart) { chart.destroy(); chart = null }
   if (sellTable) { sellTable.destroy(); sellTable = null }

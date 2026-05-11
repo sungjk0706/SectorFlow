@@ -452,6 +452,8 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
     _layout = getattr(es, "_sector_stock_layout", None)
     if _layout is not None:
         _layout.clear()
+    from app.services.engine_account_notify import _rebuild_layout_cache
+    _rebuild_layout_cache([])
     getattr(es, "_avg_amt_5d", {}).clear()
     getattr(es, "_high_5d_cache", {}).clear()
     import app.core.industry_map as _ind_mod
@@ -783,6 +785,8 @@ def _update_layout_cache(
             new_layout.append(("code", cd))
 
     es._sector_stock_layout = new_layout
+    from app.services.engine_account_notify import _rebuild_layout_cache
+    _rebuild_layout_cache(new_layout)
     save_layout_cache(new_layout)
     _log.info(
         "[파이프라인] 레이아웃 저장데이터 완전 재구성 — %d종목, %d업종",
