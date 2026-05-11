@@ -20,7 +20,6 @@ logger = get_logger("engine")
 KST = timezone(timedelta(hours=9))
 
 # 장마감 갱신 플래그 -- 당일 1회
-_industry_refresh_done: bool = False
 _avg_amt_5d_refresh_done: bool = False
 _last_reset_date: str = ""
 
@@ -285,22 +284,6 @@ def load_industry_index_cache(engine_service) -> bool:
     except Exception as e:
         logger.warning("[업종저장데이터] 로드 실패: %s", e)
         return False
-
-
-def _run_industry_refresh(engine_service) -> None:
-    """업종 데이터(종목→업종명 매핑, 업종코드 목록)를 키움 서버에서 받아와 1회 전체 갱신하는 함수."""
-    global _industry_refresh_done
-    try:
-        api = getattr(engine_service, "_rest_api", None)
-        if not api:
-            logger.debug("[업종갱신] REST API 미준비 -- 업종 갱신 생략")
-            return
-        from app.core.industry_map import refresh_industry_data
-        asyncio.create_task(refresh_industry_data(api))
-        _industry_refresh_done = True
-        logger.info("[타이머] 업종 데이터 전체 갱신 요청 완료")
-    except Exception as e:
-        logger.warning("[타이머] 업종 데이터 갱신 실패: %s", e)
 
 
 def _run_avg_amt_5d_refresh(engine_service) -> None:
@@ -700,7 +683,7 @@ async def _on_ws_subscribe_start() -> None:
 
 async def _on_ws_subscribe_end() -> None:
     """WS 구독 종료 시각이 되면 자동 실행 -- 실시간 수신 중단 + WS 연결 해제 + 섹터 재계산을 순서대로 하는 함수."""
-    global _ws_subscribe_window_active, _industry_refresh_done, _avg_amt_5d_refresh_done, _0j_real_receiving
+    global _ws_subscribe_window_active, _avg_amt_5d_refresh_done, _0j_real_receiving
     try:
         from app.services import engine_service
         _ws_subscribe_window_active = False
@@ -708,7 +691,6 @@ async def _on_ws_subscribe_end() -> None:
         # 지수 폴링 타이머 중지 (WS 구독 종료 → 폴링 구간도 끝)
         _stop_index_poll_timer()
         # WS 종료 콜백 진입 시 갱신 플래그 초기화 (새 사이클 시작)
-        _industry_refresh_done = False
         _avg_amt_5d_refresh_done = False
         logger.info("[타이머] 실시간 구독 구간 종료 -- 구독 해지 + 실시간 연결 해제")
         _trigger_unreg_all(engine_service)
@@ -1097,12 +1079,11 @@ _midnight_timer_handle = None  # asyncio.TimerHandle
 
 def _on_midnight() -> None:
     """자정(00:00)이 되면 자동 실행 -- 갱신 플래그를 초기화하고 당일 타이머를 새로 예약하는 함수."""
-    global _last_reset_date, _industry_refresh_done, _avg_amt_5d_refresh_done
+    global _last_reset_date, _avg_amt_5d_refresh_done
     global _krx_remove_done, _confirmed_done
     try:
         now = _kst_now()
         _last_reset_date = now.strftime("%Y%m%d")
-        _industry_refresh_done = False
         _avg_amt_5d_refresh_done = False
         _krx_remove_done = False
         _confirmed_done = False
