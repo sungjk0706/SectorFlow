@@ -144,14 +144,6 @@ def _to_al_stk_cd(stk_cd: str) -> str:
     return f"{base}_AL"
 
 
-def _to_nx_stk_cd(stk_cd: str) -> str:
-    """6자리 종목코드 -> NXT 단독 구독용 _NX 접미사 코드 반환. 예: '005930' -> '005930_NX'"""
-    base = _base_stk_cd(stk_cd)
-    if not base:
-        return stk_cd
-    return f"{base}_NX"
-
-
 def is_nxt_code(stk_cd: str) -> bool:
     """종목코드가 NXT 전용(_NX 접미사)인지 판단."""
     return str(stk_cd or "").strip().upper().endswith("_NX")

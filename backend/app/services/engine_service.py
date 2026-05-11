@@ -1780,32 +1780,9 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
             logger.warning("[실시간] 단건 0B REG 실패 -- %s", item_cd)
 
 
-def _resolve_radar_display_name(stk_cd: str, ws_stk_nm: str) -> str:
-    """
-    웹소켓 실시간(FID 302 등)에 종목명이 없거나 코드만 올 때 키움 REST ka10001(주식기본정보)로 보강.
-    data_manager.get_stock_name 은 내부 캐시(_NAME_CACHE)를 사용한다.
-    """
-    return engine_strategy_core.resolve_radar_display_name(stk_cd, ws_stk_nm, _access_token)
-
-
-def _make_detail(stk_cd: str, stk_nm: str, cur_price: int,
-                 sign: str, change: int, change_rate: float,
-                 volume: int = 0, prev_close: int = 0, trade_amount: int = 0, strength: str = "-") -> dict:
-    """대기 종목 상세 딕셔너리 생성 헬퍼."""
-    return engine_strategy_core.make_detail(
-        stk_cd, stk_nm, cur_price, sign, change, change_rate,
-        volume=volume, prev_close=prev_close, trade_amount=trade_amount, strength=strength,
-    )
-
-
 async def _handle_ws_data(data: dict) -> None:
     """WebSocket `data` 페이로드 처리 -- 본문은 `engine_ws_dispatch`에 위임."""
     await engine_ws_dispatch.handle_ws_data(data, sys.modules[__name__])
-
-
-def _get_last_trade_price(stk_cd: str) -> int | None:
-    v = _latest_trade_prices.get(stk_cd)
-    return v if v else None
 
 
 async def _fetch_account_data(settings: dict) -> dict:
@@ -1988,10 +1965,6 @@ async def _run_snapshot_and_sell_check(force_rest: bool = False) -> None:
     - WS 연결·부트스트랩 완료 후 force_rest=False: REST 생략, 스냅샷 메타만 갱신(합계는 마지막 REST 유지).
     """
     await engine_strategy_core.run_snapshot_and_sell_check(force_rest, sys.modules[__name__])
-
-
-async def _try_connect_ws(ws_uri: str) -> asyncio.Task | None:
-    return await engine_strategy_core.try_connect_ws(ws_uri, sys.modules[__name__])
 
 
 async def _engine_loop() -> None:
