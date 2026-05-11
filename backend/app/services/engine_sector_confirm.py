@@ -65,11 +65,6 @@ def _run_flush_sync() -> None:
     _flush_sector_recompute_impl()
 
 
-def mark_sector_dirty(code: str | None = None) -> None:
-    """Deprecated: recompute_sector_for_code() 사용."""
-    recompute_sector_for_code(code)
-
-
 def is_sector_dirty() -> bool:
     return len(_dirty_codes) > 0
 
