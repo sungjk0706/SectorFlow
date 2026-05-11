@@ -1,17 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Settlement Engine -- 테스트모드 전용 예수금/주문가능금액 관리.
+Settlement Engine -- 테스트모드 전용 누적투자금/주문가능금액 관리.
 
 책임:
-  1. _deposit (예수금) 관리 -- 매수 시 차감, 매도해도 불변
-  2. _orderable (주문가능금액) 관리 -- 매수 시 차감, 매도 시 매도대금만큼 증가
+  1. _accumulated_investment (누적투자금) 관리 -- 초기투자금 + 충전금액, 매수/매도 시 불변
+  2. _orderable (주문가능금액) 관리 -- 매수 시 차감, 매도/충전 시 증가
   3. 파일 영속화 (settlement_state.json)
 
-예수금 vs 주문가능금액:
-  - 예수금: 처음 설정한 투자 원금 잔액. 매수하면 줄고, 매도해도 늘지 않음.
+누적투자금 vs 주문가능금액:
+  - 누적투자금: 처음 설정한 투자금 + 충전한 금액의 누적. 매수/매도에 변하지 않음.
   - 주문가능금액: 지금 당장 매수에 쓸 수 있는 돈.
-    = 예수금 잔액 + 매도로 회수된 돈
-    매도하면 매도대금이 여기 더해지고, 예수금보다 커질 수 있음.
+    매수하면 줄고, 매도/충전하면 늘어남.
 """
 from __future__ import annotations
 
@@ -36,8 +35,8 @@ _STATE_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "settleme
 
 
 # ── 모듈 레벨 상태 ──────────────────────────────────────────────────────────
-_deposit: int = 0          # 예수금 (투자 원금 잔액 -- 매수 시 차감, 매도해도 불변)
-_orderable: int = 0        # 주문가능금액 (예수금 + 매도회수금 -- 매도 시 증가 가능)
+_accumulated_investment: int = 0   # 누적투자금 (초기투자금 + 충전금액, 매수/매도 시 불변)
+_orderable: int = 0                 # 주문가능금액 (매수 시 차감, 매도/충전 시 증가)
 _loaded: bool = False
 _initial_deposit: int = 10_000_000
 
@@ -46,8 +45,8 @@ _initial_deposit: int = 10_000_000
 
 def init(initial_deposit: int) -> None:
     """Settlement Engine 초기화."""
-    global _deposit, _orderable, _initial_deposit
-    _deposit = initial_deposit
+    global _accumulated_investment, _orderable, _initial_deposit
+    _accumulated_investment = initial_deposit
     _orderable = initial_deposit
     _initial_deposit = initial_deposit
 
@@ -57,9 +56,9 @@ def get_available_cash() -> int:
     return _orderable
 
 
-def get_deposit() -> int:
-    """예수금 반환 (투자 원금 잔액)."""
-    return _deposit
+def get_accumulated_investment() -> int:
+    """누적투자금 반환 (초기투자금 + 충전금액)."""
+    return _accumulated_investment
 
 
 def get_orderable() -> int:
@@ -89,22 +88,13 @@ def check_buy_power(order_amount: int, daily_limit: int = 0, daily_spent: int = 
 def on_buy_fill(price: int, qty: int) -> int:
     """
     매수 체결 처리.
-    - 주문가능금액(orderable)에서 먼저 차감
-    - 주문가능금액이 부족하면 그 부족분만큼 예수금(deposit)에서 추가 차감
+    - 주문가능금액(orderable)에서만 차감
+    - 누적투자금은 변하지 않음
     반환: 차감 후 주문가능금액.
     """
-    global _deposit, _orderable
+    global _orderable
     cost = price * qty + round(price * qty * BUY_COMMISSION)
-
-    if _orderable >= cost:
-        # 주문가능금액으로 충분 -- 예수금도 동일하게 차감
-        _orderable = max(0, _orderable - cost)
-        _deposit = max(0, _deposit - cost)
-    else:
-        # 주문가능금액 부족 -- 부족분을 예수금에서 추가 차감
-        shortfall = cost - _orderable
-        _orderable = 0
-        _deposit = max(0, _deposit - shortfall)
+    _orderable = max(0, _orderable - cost)
 
     _persist()
     _broadcast_delta()
@@ -117,7 +107,7 @@ def on_sell_fill(price: int, qty: int, stk_cd: str, stk_nm: str) -> int:
     """
     매도 체결 처리.
     - 순매도대금을 주문가능금액(orderable)에만 추가
-    - 예수금(deposit)은 절대 변하지 않음
+    - 누적투자금은 변하지 않음
     반환: 추가 후 주문가능금액.
     """
     global _orderable
@@ -132,15 +122,15 @@ def on_sell_fill(price: int, qty: int, stk_cd: str, stk_nm: str) -> int:
 # ── 충전, Effective Buy Power ───────────────────────────────────────────────
 
 def charge(amount: int) -> int:
-    """예수금 + 주문가능금액 동시 충전. 반환: 충전 후 주문가능금액."""
-    global _deposit, _orderable
+    """누적투자금 + 주문가능금액 동시 충전. 반환: 충전 후 주문가능금액."""
+    global _accumulated_investment, _orderable
     if amount <= 0:
         return _orderable
-    _deposit += amount
+    _accumulated_investment += amount
     _orderable += amount
     _persist()
     _broadcast_delta()
-    logger.info("[정산엔진] 충전 %s원 -> 예수금 %s원 / 주문가능 %s원", f"{amount:,}", f"{_deposit:,}", f"{_orderable:,}")
+    logger.info("[정산엔진] 충전 %s원 -> 누적투자금 %s원 / 주문가능 %s원", f"{amount:,}", f"{_accumulated_investment:,}", f"{_orderable:,}")
     return _orderable
 
 
@@ -157,14 +147,14 @@ def get_effective_buy_power(daily_limit: int = 0, daily_spent: int = 0) -> int:
 # ── 리셋 및 모드 전환 ───────────────────────────────────────────────────────
 
 def reset(initial_deposit: int) -> None:
-    """전체 초기화. 예수금/주문가능금액 모두 리셋."""
-    global _deposit, _orderable, _initial_deposit
-    _deposit = initial_deposit
+    """전체 초기화. 누적투자금/주문가능금액 모두 리셋."""
+    global _accumulated_investment, _orderable, _initial_deposit
+    _accumulated_investment = initial_deposit
     _orderable = initial_deposit
     _initial_deposit = initial_deposit
     _persist()
     _broadcast_delta()
-    logger.info("[정산엔진] 리셋 완료 -- 초기 예수금: %s원", f"{initial_deposit:,}")
+    logger.info("[정산엔진] 리셋 완료 -- 초기투자금: %s원", f"{initial_deposit:,}")
 
 
 def save_state() -> None:
@@ -182,7 +172,7 @@ def restore_state() -> None:
 def _persist() -> None:
     """현재 상태를 settlement_state.json에 저장."""
     data = {
-        "deposit": _deposit,
+        "accumulated_investment": _accumulated_investment,
         "orderable": _orderable,
         "initial_deposit": _initial_deposit,
     }
@@ -196,17 +186,17 @@ def _persist() -> None:
 
 def _load() -> None:
     """settlement_state.json에서 상태 복원."""
-    global _deposit, _orderable, _loaded, _initial_deposit
+    global _accumulated_investment, _orderable, _loaded, _initial_deposit
 
     if not _STATE_PATH.is_file():
         try:
             from app.core.settings_file import load_settings
             s = load_settings()
             _initial_deposit = int(s.get("test_virtual_deposit", 10_000_000) or 0)
-            _deposit = _initial_deposit
+            _accumulated_investment = _initial_deposit
             _orderable = _initial_deposit
         except Exception:
-            _deposit = _initial_deposit
+            _accumulated_investment = _initial_deposit
             _orderable = _initial_deposit
         _loaded = True
         return
@@ -216,17 +206,22 @@ def _load() -> None:
             data = json.load(f)
 
         _initial_deposit = int(data.get("initial_deposit", _initial_deposit))
+        # 신버전 파일 (accumulated_investment 키) 처리
+        if "accumulated_investment" in data:
+            _accumulated_investment = int(data["accumulated_investment"])
+            _orderable = int(data.get("orderable", _accumulated_investment))
+        # 구버전 파일 (deposit 키) 하위 호환 처리
+        elif "deposit" in data:
+            _accumulated_investment = int(data["deposit"])
+            _orderable = int(data.get("orderable", _accumulated_investment))
         # 구버전 파일 (available_cash 키) 하위 호환 처리
-        if "deposit" in data:
-            _deposit = int(data["deposit"])
-            _orderable = int(data.get("orderable", _deposit))
         else:
-            _deposit = int(data.get("available_cash", _initial_deposit))
-            _orderable = _deposit
+            _accumulated_investment = int(data.get("available_cash", _initial_deposit))
+            _orderable = _accumulated_investment
         _loaded = True
         logger.info(
-            "[정산엔진] 상태 복원 완료 -- 예수금: %s원 / 주문가능: %s원",
-            f"{_deposit:,}", f"{_orderable:,}",
+            "[정산엔진] 상태 복원 완료 -- 누적투자금: %s원 / 주문가능: %s원",
+            f"{_accumulated_investment:,}", f"{_orderable:,}",
         )
     except Exception as e:
         logger.warning("[정산엔진] 상태 파일 로드 실패 (기본값 사용): %s", e)
@@ -234,10 +229,10 @@ def _load() -> None:
             from app.core.settings_file import load_settings
             s = load_settings()
             _initial_deposit = int(s.get("test_virtual_deposit", 10_000_000) or 0)
-            _deposit = _initial_deposit
+            _accumulated_investment = _initial_deposit
             _orderable = _initial_deposit
         except Exception:
-            _deposit = _initial_deposit
+            _accumulated_investment = _initial_deposit
             _orderable = _initial_deposit
         _loaded = True
 
