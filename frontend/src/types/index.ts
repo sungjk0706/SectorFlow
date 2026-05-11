@@ -7,6 +7,8 @@ export interface AccountSnapshot {
   total_pnl: number;
   total_pnl_rate: number;
   deposit: number;
+  orderable?: number;
+  initial_deposit?: number;
   price_source?: string;
   trade_mode: string;
 }
