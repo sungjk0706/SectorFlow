@@ -27,7 +27,6 @@ _desktop_sector_notifier: Callable[[], None] | None = None
 _desktop_settings_toggled_notifier: Callable[[], None] | None = None
 
 # ── Delta 캐시 ──────────────────────────────────────────────────────────────
-_prev_sent_cache: dict[str, dict] = {}  # 종목별 마지막 전송 시세 (sector-tick delta)
 _position_sent_cache: dict[str, dict] = {}  # 보유종목별 마지막 전송 상태 (account-update delta)
 _snapshot_sent_cache: dict = {}  # 마지막 전송한 account snapshot
 _prev_scores_cache: list[dict] = []  # 마지막 전송한 sector-scores (delta 비교용)
@@ -116,24 +115,6 @@ def unregister_engine_ws_queue(q) -> None:
 
 # ── Delta 계산 함수 ─────────────────────────────────────────────────────────
 
-_TICK_FIELDS = ("cur_price", "change", "change_rate", "strength", "trade_amount")
-
-
-def _compute_sector_tick_delta(current_stocks: list[dict]) -> list[dict]:
-    """현재 종목 시세와 _prev_sent_cache를 비교하여 변경분만 반환."""
-    changed = []
-    for stock in current_stocks:
-        code = stock.get("code", "")
-        if not code:
-            continue
-        prev = _prev_sent_cache.get(code)
-        if prev is None or any(stock.get(f) != prev.get(f) for f in _TICK_FIELDS):
-            tick = {"code": code}
-            for f in _TICK_FIELDS:
-                tick[f] = stock.get(f, 0)
-            changed.append(tick)
-    return changed
-
 
 def _compute_position_delta(current_positions: list[dict]) -> tuple[list[dict], list[str]]:
     """현재 보유종목과 _position_sent_cache를 비교하여 변경/제거 목록 반환."""
@@ -153,12 +134,7 @@ def _compute_position_delta(current_positions: list[dict]) -> tuple[list[dict], 
 
 def init_sent_caches(sector_stocks: list[dict], positions: list[dict], snapshot: dict) -> None:
     """initial-snapshot 전송 후 delta 캐시 초기화."""
-    global _prev_sent_cache, _position_sent_cache, _snapshot_sent_cache, _prev_scores_cache, _prev_sector_stock_codes, _prev_buy_targets_map
-    _prev_sent_cache = {}
-    for s in sector_stocks:
-        code = s.get("code", "")
-        if code:
-            _prev_sent_cache[code] = {f: s.get(f, 0) for f in _TICK_FIELDS}
+    global _position_sent_cache, _snapshot_sent_cache, _prev_scores_cache, _prev_sector_stock_codes, _prev_buy_targets_map
     _prev_sector_stock_codes = {s.get("code", "") for s in sector_stocks if s.get("code", "")}
     _position_sent_cache = {}
     for p in positions:
@@ -168,33 +144,6 @@ def init_sent_caches(sector_stocks: list[dict], positions: list[dict], snapshot:
     _snapshot_sent_cache = dict(snapshot)
     _prev_scores_cache = []
     _prev_buy_targets_map = None
-
-
-def _split_ticks_by_size(ticks: list[dict], max_bytes: int = 16384) -> list[list[dict]]:
-    """sector-tick 페이로드가 max_bytes 초과 시 분할."""
-    if not ticks:
-        return []
-    import json
-    full = json.dumps({"ticks": ticks, "_v": 1}, ensure_ascii=False).encode("utf-8")
-    if len(full) <= max_bytes:
-        return [ticks]
-    # 이진 탐색으로 최적 분할점 찾기
-    chunks = []
-    remaining = list(ticks)
-    while remaining:
-        lo, hi = 1, len(remaining)
-        best = 1
-        while lo <= hi:
-            mid = (lo + hi) // 2
-            size = len(json.dumps({"ticks": remaining[:mid], "_v": 1}, ensure_ascii=False).encode("utf-8"))
-            if size <= max_bytes:
-                best = mid
-                lo = mid + 1
-            else:
-                hi = mid - 1
-        chunks.append(remaining[:best])
-        remaining = remaining[best:]
-    return chunks
 
 
 # ── 알림 함수 (WebSocket 브로드캐스트) ─────────────────────────────────────────────
@@ -274,71 +223,9 @@ def notify_desktop_sector_scores(*, force: bool = False) -> None:
         logger.warning("[실시간] sector-scores 화면전송 실패: %s", e)
 
 
-def notify_desktop_sector_tick(*, force: bool = False) -> None:
-    """변경된 종목만 delta 전송 → WS sector-tick."""
-    global _prev_sent_cache
-    try:
-        import app.services.engine_service as _es
-        stocks = _es.get_sector_stocks()
-        delta = _compute_sector_tick_delta(stocks)
-        if not delta:
-            return
-        chunks = _split_ticks_by_size(delta)
-        for chunk in chunks:
-            _broadcast("sector-tick", {"ticks": chunk})
-        # 캐시 갱신
-        for tick in delta:
-            code = tick.get("code", "")
-            if code:
-                _prev_sent_cache[code] = {f: tick.get(f, 0) for f in _TICK_FIELDS}
-    except Exception as e:
-        logger.warning("[실시간] sector-tick 화면전송 실패: %s", e)
-
-
-def notify_sector_tick_single(
-    code: str,
-    cur_price: int,
-    change: int,
-    change_rate: float,
-    strength: str,
-    trade_amount: int,
-) -> None:
-    """단일 종목 직접 delta broadcast.
-
-    _handle_real_01()에서 이미 확정된 종목 코드와 5개 필드 값을 직접 받아,
-    _prev_sent_cache와 비교하여 변경분만 broadcast한다.
-
-    - get_sector_stocks() 호출 없음 (lock 획득 0회, 전체 복사 0회)
-    - _compute_sector_tick_delta() 호출 없음 (전체 순회 0회)
-    """
-    if not code:
-        return
-
-    new_vals = {
-        "cur_price": cur_price,
-        "change": change,
-        "change_rate": change_rate,
-        "strength": strength,
-        "trade_amount": trade_amount,
-    }
-
-    prev = _prev_sent_cache.get(code)
-    if prev is not None and all(new_vals[f] == prev.get(f) for f in _TICK_FIELDS):
-        return  # 변경 없음 → broadcast 생략, 캐시 불변
-
-    # 캐시 갱신 (broadcast 성공 여부와 무관하게 항상 수행)
-    _prev_sent_cache[code] = new_vals
-
-    try:
-        _broadcast("sector-tick", {"ticks": [{"code": code, **new_vals}]})
-    except Exception as e:
-        logger.warning("[실시간] sector-tick single 화면전송 실패: %s", e)
-
-
 def notify_desktop_sector_refresh(*, force: bool = False) -> None:
-    """레거시 호환 — sector-scores + sector-tick 분리 호출."""
+    """sector-scores 전송 (sector-tick 제거 — real-data로 대체됨, Phase 6-C)."""
     notify_desktop_sector_scores(force=force)
-    notify_desktop_sector_tick(force=force)
 
 
 def notify_desktop_trade_price(
@@ -363,17 +250,39 @@ def notify_desktop_trade_price(
         logger.warning("[실시간] 체결가 화면전송 실패: %s", e)
 
 
+def _is_relevant_code(nk: str) -> bool:
+    """프론트에서 실제 사용하는 종목 코드인지 판별 (섹터+보유+레이아웃)."""
+    try:
+        import app.services.engine_service as _es
+        from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd as _fmt
+        if nk in _es._pending_stock_details:
+            return True
+        if any(_fmt(str(p.get("stk_cd", ""))) == nk for p in _es._positions):
+            return True
+        if any(v == nk for t, v in _es._sector_stock_layout if t == "code"):
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def notify_raw_real_data(item: dict) -> None:
     """
-    키움 실시간 메시지(REAL)를 가공 없이 전체 브로드캐스트.
-    모든 FID 필드가 프론트엔드로 전달되어 MTS와 데이터 일치 보장.
+    키움 실시간 메시지(REAL)를 가공 없이 브로드캐스트.
+    프론트에 필요한 종목(섹터+보유+레이아웃)만 전송하여 렌더링 과부하 방지.
     """
     if not item or not isinstance(item, dict):
         return
+    raw_code = str(item.get("item") or "").strip()
+    if raw_code:
+        try:
+            from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+            nk = _format_kiwoom_reg_stk_cd(raw_code)
+            if not _is_relevant_code(nk):
+                return
+        except Exception:
+            pass
     try:
-        # 'item' 필드가 종목코드(005930 등)인 경우가 많음.
-        # 프론트엔드 식별을 위해 정규화된 코드를 최상단에 노출 (필요 시)
-        # 하지만 사용자가 "그대로 브로드캐스트" 하라고 했으므로 최소한의 보조 정보만 추가.
         _broadcast("real-data", item)
     except Exception as e:
         logger.warning("[실시간] Raw 데이터 전송 실패: %s", e)
@@ -423,12 +332,12 @@ def notify_desktop_sector_stocks_refresh() -> None:
         # _prev_sector_stock_codes 갱신
         _prev_sector_stock_codes = new_codes
 
-        # delta 캐시도 새 목록 기준으로 리셋
+        # delta 캐시도 새 목록 기준으로 리셋 (sector-tick 제거로 빈 딕셔너리)
         _prev_sent_cache = {}
         for s in stocks:
             code = s.get("code", "")
             if code:
-                _prev_sent_cache[code] = {f: s.get(f, 0) for f in _TICK_FIELDS}
+                _prev_sent_cache[code] = {}
     except Exception as e:
         logger.warning("[실시간] sector-stocks-refresh 화면전송 실패: %s", e)
 
