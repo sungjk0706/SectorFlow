@@ -48,7 +48,7 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
         # ── 레이아웃 적재 ──
         if _cached_layout:
             es._sector_stock_layout[:] = _cached_layout
-            logger.info("[데이터준비] 레이아웃 저장데이터 로드 -- %d종목",
+            logger.debug("[데이터준비] 레이아웃 저장데이터 로드 -- %d종목",
                         sum(1 for t, _ in _cached_layout if t == "code"))
 
         # ── 스냅샷 적재 ──
@@ -82,7 +82,7 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
                     async with es._shared_lock:
                         es._pending_stock_details[base] = entry
                         es._radar_cnsr_order.append(base)
-            logger.info("[데이터준비] 확정데이터 저장데이터 로드 -- %d종목", len(_cached_snapshot))
+            logger.debug("[데이터준비] 확정데이터 저장데이터 로드 -- %d종목", len(_cached_snapshot))
 
         # ── 종목명 보강 (스냅샷 완료 후 실행) ──
         _name_map = await asyncio.to_thread(load_stock_name_cache)
@@ -95,12 +95,12 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
                         entry["name"] = nm
                         _patched += 1
             if _patched:
-                logger.info("[데이터준비] 종목명 보강 -- %d종목", _patched)
+                logger.debug("[데이터준비] 종목명 보강 -- %d종목", _patched)
 
         # ── 5일 평균 + 5일 전고점 적재 ──
         if _cached_avg is not None:
             es._update_avg_amt_5d(_cached_avg)
-            logger.info("[데이터준비] 5일거래대금평균/고가 저장데이터 로드 -- %d종목", len(_cached_avg))
+            logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 로드 -- %d종목", len(_cached_avg))
         else:
             from app.core.avg_amt_cache import load_avg_amt_cache_v2, avg_from_v2
             _stale_result = await asyncio.to_thread(load_avg_amt_cache_v2)
@@ -108,14 +108,14 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
             if _stale_v2 and len(_stale_v2) > 100:
                 _avg_map = avg_from_v2(_stale_v2)
                 es._update_avg_amt_5d(_avg_map)
-                logger.info("[데이터준비] 5일거래대금평균/고가 저장데이터 만료 -- stale 데이터 즉시 로드 (%d종목)", len(_avg_map))  
+                logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 만료 -- stale 데이터 즉시 로드 (%d종목)", len(_avg_map))  
             else:
-                logger.info("[데이터준비] 5일거래대금평균/고가 저장데이터 미스 -- 백그라운드 갱신 예정")
+                logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 미스 -- 백그라운드 갱신 예정")
 
         if _cached_high_5d:
             es._high_5d_cache.clear()
             es._high_5d_cache.update(_cached_high_5d)
-            logger.info("[데이터준비] 5일고가 저장데이터 로드 -- %d종목", len(_cached_high_5d))
+            logger.debug("[데이터준비] 5일고가 저장데이터 로드 -- %d종목", len(_cached_high_5d))
 
         # ── 시장구분 적재 ──
         if _cached_market:
@@ -124,13 +124,13 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
             set_market_map(_mkt_map)
             set_nxt_enable_map(_nxt_map)
             _total_nxt = sum(1 for v in _nxt_map.values() if v)
-            logger.info("[데이터준비] 시장구분 저장데이터 로드 -- %d종목 (NXT %d)", len(_mkt_map), _total_nxt)
+            logger.debug("[데이터준비] 시장구분 저장데이터 로드 -- %d종목 (NXT %d)", len(_mkt_map), _total_nxt)
 
         # ── 적격종목 적재 (앱준비 에서 get_eligible_stocks() 사용) ──
         if _cached_eligible:
             import app.core.industry_map as _ind_mod
             _ind_mod._eligible_stock_codes = _cached_eligible
-            logger.info("[데이터준비] 매매적격종목 저장데이터 로드 -- %d종목", len(_cached_eligible))
+            # 매매적격종목 로그는 industry_map.py에서 이미 출력됨 (중복 제거)
 
         # 캐시선행 완료 플래그 — 앱준비 에서 중복 로드 스킵용
         es._preboot_cache_loaded = True

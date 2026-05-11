@@ -267,9 +267,14 @@ async def _bootstrap_sector_stocks_async() -> None:
         pass
     _src = "섹터매핑" if len(_st._sector_stock_layout) > 0 else "없음"
     _snapshot_count = len(_st._pending_stock_details) if _preboot_hit else len(krx_rows)
+    _layout_count = sum(1 for t, _ in _st._sector_stock_layout if t == "code")
+    _avg_count = len(_st._avg_amt_5d)
+    _filtered_count = len(_st._filtered_sector_codes) if _st._filtered_sector_codes else 0
+    
     logger.info(
-        "[앱준비] 초기화 완료 -- 총 %d종목 (확정데이터=%d / 소스=%s)",
-        len(codes), _snapshot_count, _src,
+        "[앱준비] 모든 준비 완료 -- 총 %d종목 "
+        "(레이아웃=%d, 확정데이터=%d, 5일평균=%d, 필터통과=%d, 소스=%s)",
+        len(codes), _layout_count, _snapshot_count, _avg_count, _filtered_count, _src,
     )
 
     # ── 8단계: 장외 시간 앱 시작 시 확정 데이터 갱신 ────
