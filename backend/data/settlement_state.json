@@ -1,4 +1,5 @@
 {
-  "available_cash": 10047893,
+  "deposit": 10000000,
+  "orderable": 10000000,
   "initial_deposit": 10000000
 }
