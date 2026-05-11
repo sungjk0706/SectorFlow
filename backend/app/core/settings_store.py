@@ -259,9 +259,9 @@ async def after_settings_persisted(
     _VIRTUAL_BALANCE_KEYS = {"test_virtual_balance", "test_virtual_deposit"}
     if changed_keys & _VIRTUAL_BALANCE_KEYS:
         try:
-            from app.core.settings_file import load_settings as _ls
+            from app.core.settings_file import load_settings_async as _ls_async
             from app.services import settlement_engine as _se
-            _s = _ls()
+            _s = await _ls_async()
             _deposit = int(_s.get("test_virtual_balance", _s.get("test_virtual_deposit", 10_000_000)) or 0)
             _se.reset(_deposit)
             # 계좌 스냅샷 갱신 + WS account-update 발송
@@ -365,8 +365,8 @@ async def after_settings_persisted(
     if _ws_changed:
         try:
             from app.services.ws_subscribe_control import on_setting_changed
-            from app.core.settings_file import load_settings
-            raw = load_settings()
+            from app.core.settings_file import load_settings_async
+            raw = await load_settings_async()
             for key in _ws_changed:
                 asyncio.create_task(
                     on_setting_changed(key, bool(raw.get(key)), engine_service)

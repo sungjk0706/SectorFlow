@@ -3,6 +3,7 @@
 로컬 settings.json 파일 읽기/쓰기 헬퍼.
 단일 사용자 모드: backend/data/settings.json 만 사용 (사용자별 폴더 없음).
 """
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -298,3 +299,23 @@ def save_user_settings(username: str, data: dict) -> None:
 def iter_merged_settings_profiles() -> Iterator[tuple[Optional[str], dict]]:
     """루트 data/settings.json 한 개만 순회."""
     yield None, load_settings()
+
+
+# ── 비동기 버전 (이벤트 루프 블로킹 방지) ────────────────────────────────
+
+async def load_settings_async() -> dict:
+    """settings.json 읽기 (비동기 버전). 파일이 없거나 파싱 오류 시 기본값 반환."""
+    return await asyncio.to_thread(load_settings)
+
+
+async def save_settings_async(data: dict) -> None:
+    """설정 전체를 settings.json에 저장 (비동기 버전)."""
+    await asyncio.to_thread(save_settings, data)
+
+
+async def update_settings_async(updates: dict) -> dict:
+    """기존 설정에 업데이트를 병합하여 저장하고 최신 설정 반환 (비동기 버전)."""
+    current = await load_settings_async()
+    current.update({k: v for k, v in updates.items() if v is not None or k in current})
+    await save_settings_async(current)
+    return current
