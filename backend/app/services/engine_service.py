@@ -497,9 +497,9 @@ async def get_account_snapshot() -> dict:
         _is_test = is_test_mode(_settings_cache)
         snap.setdefault("trade_mode", "test" if _is_test else "real")
         if _is_test:
-            snap.setdefault("deposit", settlement_engine.get_deposit())
+            snap.setdefault("accumulated_investment", settlement_engine.get_accumulated_investment())
             snap.setdefault("orderable", settlement_engine.get_orderable())
-            snap.setdefault("initial_deposit", settlement_engine.get_initial_deposit())
+            snap.setdefault("initial_deposit", settlement_engine.get_accumulated_investment())  # 누적투자금과 동일
         for k in ("total_buy", "total_eval", "total_pnl",
                    "total_buy_amount", "total_eval_amount"):
             snap.setdefault(k, 0)
@@ -1066,18 +1066,17 @@ def _refresh_account_snapshot_meta() -> None:
     pos = dry_run.get_positions() if _is_test else _positions
 
     if _is_test:
-        # 테스트모드: settlement_engine 예수금/주문가능금액 분리 반영 + 포지션 합산으로 totals 구성
-        deposit = settlement_engine.get_deposit()
+        # 테스트모드: settlement_engine 누적투자금/주문가능금액 반영 + 포지션 합산으로 totals 구성
+        accumulated_investment = settlement_engine.get_accumulated_investment()
         orderable = settlement_engine.get_orderable()
-        initial_deposit = settlement_engine.get_initial_deposit()
         total_buy = sum(int(p.get("buy_amt", 0) or 0) for p in pos)
         total_eval = sum(int(p.get("eval_amt", 0) or 0) for p in pos)
         total_pnl = total_eval - total_buy
         total_rate = round((total_pnl / total_buy) * 100, 2) if total_buy > 0 else 0.0
 
-        _account_snapshot["deposit"] = deposit
+        _account_snapshot["accumulated_investment"] = accumulated_investment
         _account_snapshot["orderable"] = orderable
-        _account_snapshot["initial_deposit"] = initial_deposit
+        _account_snapshot["initial_deposit"] = accumulated_investment  # 누적투자금과 동일
         
         test_totals = {
             "total_eval": total_eval,

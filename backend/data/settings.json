@@ -53,7 +53,7 @@
   "theme_mode": "dark",
   "ui_zoom": 1.15,
   "sector_min_rise_ratio_pct": 70,
-  "sector_min_trade_amt": 580,
+  "sector_min_trade_amt": 570,
   "sector_sort_keys": [
     "trade_amount",
     "change_rate",

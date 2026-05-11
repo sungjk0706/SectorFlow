@@ -27,7 +27,7 @@ function buildChartFromDailySummary(summary: Record<string, unknown>[]): { date:
 
 /* ── 계좌 현황 테이블 라벨 ── */
 const ACCOUNT_LABELS_REAL = ['예수금', '주문가능 금액', '오늘 매수 금액', '오늘 매도 금액', '보유주식 평가 금액', '보유주식 평가 손익금', '보유주식 평가 수익률', '누적 총 실현 손익금', '누적 총 실현 수익률']
-const ACCOUNT_LABELS_TEST = ['초기 투자금', '예수금', '주문가능 금액', '오늘 매수 금액', '오늘 매도 금액', '보유주식 평가 금액', '보유주식 평가 손익금', '보유주식 평가 수익률', '누적 총 실현 손익금', '누적 총 실현 수익률']
+const ACCOUNT_LABELS_TEST = ['누적 투자금', '주문가능 금액', '오늘 매수 금액', '오늘 매도 금액', '보유주식 평가 금액', '보유주식 평가 손익금', '보유주식 평가 수익률', '누적 총 실현 손익금', '누적 총 실현 수익률']
 const ROW_CSS = `display:flex;justify-content:space-between;padding:7px 4px;border-bottom:1px solid #f0f0f0;font-size:${FONT_SIZE.label};`
 
 /* ── 매수 컬럼 (7개) ── */
@@ -276,34 +276,32 @@ function renderAccountVals(): void {
   }
 
   if (isTestMode) {
-    // 테스트모드: 10행 (초기투자금, 예수금, 주문가능금액, 오늘매수, 오늘매도, 보유평가금액, 보유평가손익, 보유평가수익률, 누적손익, 누적수익률)
+    // 테스트모드: 9행 (누적투자금, 주문가능금액, 오늘매수, 오늘매도, 보유평가금액, 보유평가손익, 보유평가수익률, 누적손익, 누적수익률)
     const tv = testAccountValRefs
-    if (tv.length < 10) return
-    const initialDeposit = a?.initial_deposit ?? 0
-    const deposit = a?.deposit ?? 0
+    if (tv.length < 9) return
+    const accumulatedInvestment = a?.accumulated_investment ?? a?.initial_deposit ?? 0
     const orderable = a?.orderable ?? 0
     const holdingCount = positions.filter(p => (p.qty ?? 0) > 0).length
-    tv[0].textContent = `${initialDeposit.toLocaleString()}원`
-    tv[1].textContent = `${deposit.toLocaleString()}원`
-    tv[2].textContent = `${orderable.toLocaleString()}원`
-    tv[3].textContent = `${todayBuyAmt.toLocaleString()}원`
-    tv[4].textContent = `${todaySellAmt.toLocaleString()}원`
-    tv[5].textContent = `${evalTotal.toLocaleString()}원`
+    tv[0].textContent = `${accumulatedInvestment.toLocaleString()}원`
+    tv[1].textContent = `${orderable.toLocaleString()}원`
+    tv[2].textContent = `${todayBuyAmt.toLocaleString()}원`
+    tv[3].textContent = `${todaySellAmt.toLocaleString()}원`
+    tv[4].textContent = `${evalTotal.toLocaleString()}원`
     if (holdingCountLabelTest) holdingCountLabelTest.textContent = `보유주식 평가금액 (${holdingCount}종목)`
     const evalSign = evalPnl > 0 ? '+' : ''
     const evalColor = pnlColor(evalPnl)
-    tv[6].textContent = `${evalSign}${evalPnl.toLocaleString()}원`
-    tv[6].style.color = evalColor
+    tv[5].textContent = `${evalSign}${evalPnl.toLocaleString()}원`
+    tv[5].style.color = evalColor
     const evalRate = buyAmtTotal > 0 ? Math.round(evalPnl / buyAmtTotal * 10000) / 100 : 0
     const evalRateSign = evalRate > 0 ? '+' : ''
-    tv[7].textContent = `${evalRateSign}${evalRate.toFixed(2)}%`
-    tv[7].style.color = evalColor
+    tv[6].textContent = `${evalRateSign}${evalRate.toFixed(2)}%`
+    tv[6].style.color = evalColor
     const cumSign = cumPnl.pnl > 0 ? '+' : ''
     const cumColor = pnlColor(cumPnl.pnl)
-    tv[8].textContent = `${cumSign}${cumPnl.pnl.toLocaleString()}원`
+    tv[7].textContent = `${cumSign}${cumPnl.pnl.toLocaleString()}원`
+    tv[7].style.color = cumColor
+    tv[8].textContent = `${cumSign}${cumPnl.rate.toFixed(2)}%`
     tv[8].style.color = cumColor
-    tv[9].textContent = `${cumSign}${cumPnl.rate.toFixed(2)}%`
-    tv[9].style.color = cumColor
   } else {
     // 실전모드: 9행 (예수금, 주문가능금액, 오늘매수, 오늘매도, 보유평가금액, 보유평가손익, 보유평가수익률, 누적손익, 누적수익률)
     const rv = accountValRefs
@@ -600,7 +598,7 @@ function mount(container: HTMLElement): void {
     }
     const label = document.createElement('span')
     label.textContent = ACCOUNT_LABELS_TEST[i]
-    if (i === 5) holdingCountLabelTest = label
+    if (i === 4) holdingCountLabelTest = label
     const val = document.createElement('span')
     Object.assign(val.style, { textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })
     row.appendChild(label)

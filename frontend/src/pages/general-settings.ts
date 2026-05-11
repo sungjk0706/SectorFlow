@@ -485,7 +485,7 @@ function renderTestVirtualSection(): HTMLElement {
 
   let inputAmount = Number(vals.test_virtual_deposit) || 0
 
-  // 금액 입력 + 충전
+  // 금액 입력 + 투자금충전
   const inputRow = document.createElement('div')
   inputRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;'
   const inputLabel = document.createElement('span')
@@ -498,8 +498,8 @@ function renderTestVirtualSection(): HTMLElement {
 
   const chargeBtn = document.createElement('button')
   chargeBtn.type = 'button'
-  Object.assign(chargeBtn.style, { padding: '7px 16px', borderRadius: '4px', border: '1px solid #ccc', background: '#f8f9fa', cursor: 'pointer', fontSize: GS.label })
-  chargeBtn.textContent = '충전'
+  Object.assign(chargeBtn.style, { padding: '7px 12px', borderRadius: '4px', border: '1px solid #ccc', background: '#f8f9fa', cursor: 'pointer', fontSize: GS.label })
+  chargeBtn.textContent = '투자금충전'
   chargeBtn.addEventListener('click', async () => {
     if (inputAmount <= 0) return
     try {

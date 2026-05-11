@@ -1,5 +1,5 @@
 {
-  "deposit": 10000000,
-  "orderable": 10000000,
+  "accumulated_investment": 20000000,
+  "orderable": 20000000,
   "initial_deposit": 10000000
 }
