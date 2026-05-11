@@ -9,6 +9,7 @@ export interface AccountSnapshot {
   deposit: number;
   orderable?: number;
   initial_deposit?: number;
+  accumulated_investment?: number;  // 테스트모드: 누적투자금 (초기투자금 + 충전금액)
   price_source?: string;
   trade_mode: string;
 }
