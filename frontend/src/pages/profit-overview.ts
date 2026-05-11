@@ -27,7 +27,7 @@ function buildChartFromDailySummary(summary: Record<string, unknown>[]): { date:
 
 /* ── 계좌 현황 테이블 라벨 ── */
 const ACCOUNT_LABELS_REAL = ['예수금', '주문가능 금액', '오늘 매수 금액', '오늘 매도 금액', '보유주식 평가 금액', '보유주식 평가 손익금', '보유주식 평가 수익률', '누적 총 실현 손익금', '누적 총 실현 수익률']
-const ACCOUNT_LABELS_TEST = ['예수금', '주문가능 금액', '오늘 매수 금액', '오늘 매도 금액', '보유주식 평가 금액', '보유주식 평가 손익금', '보유주식 평가 수익률', '누적 총 실현 손익금', '누적 총 실현 수익률']
+const ACCOUNT_LABELS_TEST = ['초기 투자금', '예수금', '주문가능 금액', '오늘 매수 금액', '오늘 매도 금액', '보유주식 평가 금액', '보유주식 평가 손익금', '보유주식 평가 수익률', '누적 총 실현 손익금', '누적 총 실현 수익률']
 const ROW_CSS = `display:flex;justify-content:space-between;padding:7px 4px;border-bottom:1px solid #f0f0f0;font-size:${FONT_SIZE.label};`
 
 /* ── 매수 컬럼 (7개) ── */
@@ -228,9 +228,11 @@ let monthPnlEl: HTMLSpanElement | null = null
 let monthRateEl: HTMLSpanElement | null = null
 let totalPnlEl: HTMLSpanElement | null = null
 let totalRateEl: HTMLSpanElement | null = null
-/** 당월 카드 참조 — Task 5 드릴다운 클릭 핸들러에서 사용 */
+/** 카드 참조 */
 // eslint-disable-next-line prefer-const
 let monthCard: HTMLDivElement | null = null
+let todayCard: HTMLDivElement | null = null
+let totalCard: HTMLDivElement | null = null
 export { monthCard as _monthCard }
 
 /* ── 계좌 현황 렌더 ── */
@@ -273,38 +275,63 @@ function renderAccountVals(): void {
     testAccountContainer.style.display = isTestMode ? '' : 'none'
   }
 
-  // 테스트/실전 동일 구조 (9행): 예수금, 주문가능 금액, 오늘 매수, 오늘 매도, 보유주식 평가금액, 보유주식 평가손익금, 보유주식 평가수익률, 누적 실현 손익금액, 누적 실현 수익률
-  const vals = isTestMode ? testAccountValRefs : accountValRefs
-  if (vals.length < 9) return
-
-  const deposit = a?.deposit ?? 0
-  vals[0].textContent = `${deposit.toLocaleString()}원`
-  const orderable = Math.max(0, deposit - todayBuyAmt)
-  vals[1].textContent = `${orderable.toLocaleString()}원`
-  vals[2].textContent = `${todayBuyAmt.toLocaleString()}원`
-  vals[3].textContent = `${todaySellAmt.toLocaleString()}원`
-  const holdingCount = positions.filter(p => (p.qty ?? 0) > 0).length
-  vals[4].textContent = `${evalTotal.toLocaleString()}원`
-  const countLabel = isTestMode ? holdingCountLabelTest : holdingCountLabel
-  if (countLabel) countLabel.textContent = `보유주식 평가금액 (${holdingCount}종목)`
-
-  const evalSign = evalPnl > 0 ? '+' : ''
-  const evalColor = pnlColor(evalPnl)
-  vals[5].textContent = `${evalSign}${evalPnl.toLocaleString()}원`
-  vals[5].style.color = evalColor
-
-  // 보유주식 평가수익률: evalPnl / buyAmtTotal × 100
-  const evalRate = buyAmtTotal > 0 ? Math.round(evalPnl / buyAmtTotal * 10000) / 100 : 0
-  const evalRateSign = evalRate > 0 ? '+' : ''
-  vals[6].textContent = `${evalRateSign}${evalRate.toFixed(2)}%`
-  vals[6].style.color = evalColor
-
-  const cumSign = cumPnl.pnl > 0 ? '+' : ''
-  const cumColor = pnlColor(cumPnl.pnl)
-  vals[7].textContent = `${cumSign}${cumPnl.pnl.toLocaleString()}원`
-  vals[7].style.color = cumColor
-  vals[8].textContent = `${cumSign}${cumPnl.rate.toFixed(2)}%`
-  vals[8].style.color = cumColor
+  if (isTestMode) {
+    // 테스트모드: 10행 (초기투자금, 예수금, 주문가능금액, 오늘매수, 오늘매도, 보유평가금액, 보유평가손익, 보유평가수익률, 누적손익, 누적수익률)
+    const tv = testAccountValRefs
+    if (tv.length < 10) return
+    const initialDeposit = a?.initial_deposit ?? 0
+    const deposit = a?.deposit ?? 0
+    const orderable = a?.orderable ?? 0
+    const holdingCount = positions.filter(p => (p.qty ?? 0) > 0).length
+    tv[0].textContent = `${initialDeposit.toLocaleString()}원`
+    tv[1].textContent = `${deposit.toLocaleString()}원`
+    tv[2].textContent = `${orderable.toLocaleString()}원`
+    tv[3].textContent = `${todayBuyAmt.toLocaleString()}원`
+    tv[4].textContent = `${todaySellAmt.toLocaleString()}원`
+    tv[5].textContent = `${evalTotal.toLocaleString()}원`
+    if (holdingCountLabelTest) holdingCountLabelTest.textContent = `보유주식 평가금액 (${holdingCount}종목)`
+    const evalSign = evalPnl > 0 ? '+' : ''
+    const evalColor = pnlColor(evalPnl)
+    tv[6].textContent = `${evalSign}${evalPnl.toLocaleString()}원`
+    tv[6].style.color = evalColor
+    const evalRate = buyAmtTotal > 0 ? Math.round(evalPnl / buyAmtTotal * 10000) / 100 : 0
+    const evalRateSign = evalRate > 0 ? '+' : ''
+    tv[7].textContent = `${evalRateSign}${evalRate.toFixed(2)}%`
+    tv[7].style.color = evalColor
+    const cumSign = cumPnl.pnl > 0 ? '+' : ''
+    const cumColor = pnlColor(cumPnl.pnl)
+    tv[8].textContent = `${cumSign}${cumPnl.pnl.toLocaleString()}원`
+    tv[8].style.color = cumColor
+    tv[9].textContent = `${cumSign}${cumPnl.rate.toFixed(2)}%`
+    tv[9].style.color = cumColor
+  } else {
+    // 실전모드: 9행 (예수금, 주문가능금액, 오늘매수, 오늘매도, 보유평가금액, 보유평가손익, 보유평가수익률, 누적손익, 누적수익률)
+    const rv = accountValRefs
+    if (rv.length < 9) return
+    const deposit = a?.deposit ?? 0
+    const orderable = a?.orderable ?? Math.max(0, deposit - todayBuyAmt)
+    const holdingCount = positions.filter(p => (p.qty ?? 0) > 0).length
+    rv[0].textContent = `${deposit.toLocaleString()}원`
+    rv[1].textContent = `${orderable.toLocaleString()}원`
+    rv[2].textContent = `${todayBuyAmt.toLocaleString()}원`
+    rv[3].textContent = `${todaySellAmt.toLocaleString()}원`
+    rv[4].textContent = `${evalTotal.toLocaleString()}원`
+    if (holdingCountLabel) holdingCountLabel.textContent = `보유주식 평가금액 (${holdingCount}종목)`
+    const evalSign = evalPnl > 0 ? '+' : ''
+    const evalColor = pnlColor(evalPnl)
+    rv[5].textContent = `${evalSign}${evalPnl.toLocaleString()}원`
+    rv[5].style.color = evalColor
+    const evalRate = buyAmtTotal > 0 ? Math.round(evalPnl / buyAmtTotal * 10000) / 100 : 0
+    const evalRateSign = evalRate > 0 ? '+' : ''
+    rv[6].textContent = `${evalRateSign}${evalRate.toFixed(2)}%`
+    rv[6].style.color = evalColor
+    const cumSign = cumPnl.pnl > 0 ? '+' : ''
+    const cumColor = pnlColor(cumPnl.pnl)
+    rv[7].textContent = `${cumSign}${cumPnl.pnl.toLocaleString()}원`
+    rv[7].style.color = cumColor
+    rv[8].textContent = `${cumSign}${cumPnl.rate.toFixed(2)}%`
+    rv[8].style.color = cumColor
+  }
 }
 
 /* ── 탭 버튼 스타일 ── */
@@ -471,35 +498,6 @@ function showTable(): void {
     tableViewContainer.appendChild(dummyMsg)
   }
 
-  // 날짜 필터 활성 시 "← 월간 요약으로 돌아가기" 버튼
-  // 기존 backBtn 제거
-  const existingBack = tableViewContainer.querySelector('[data-back-btn]')
-  if (existingBack) existingBack.remove()
-
-  if (dateFilter) {
-    const backBtn = document.createElement('button')
-    backBtn.setAttribute('data-back-btn', '1')
-    Object.assign(backBtn.style, {
-      display: 'block',
-      margin: '8px auto',
-      padding: '4px 12px',
-      border: '1px solid #1976d2',
-      borderRadius: '4px',
-      background: 'transparent',
-      color: '#1976d2',
-      cursor: 'pointer',
-      fontSize: FONT_SIZE.label,
-    })
-    backBtn.textContent = `← 월간 요약으로 돌아가기 (${dateFilter} 필터 적용 중)`
-    backBtn.addEventListener('click', () => {
-      dateFilter = null
-      drilldownActive = true
-      if (tabRow) tabRow.style.display = 'none'
-      showDrilldown()
-    })
-    tableViewContainer.insertBefore(backBtn, tableViewContainer.firstChild)
-  }
-
   // 탭 스타일 갱신
   if (sellTabBtn) applyTabStyle(sellTabBtn, activeTab === 'sell')
   if (buyTabBtn) applyTabStyle(buyTabBtn, activeTab === 'buy')
@@ -516,10 +514,13 @@ function mount(container: HTMLElement): void {
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
-  /* ── 상단 48% ── */
+  const state = appStore.getState()
+  const isTestMode = state.settings?.trade_mode === 'test'
+
+  /* ── 상단 (테스트모드: 55%, 실전모드: 48%) ── */
   const upper = document.createElement('div')
   Object.assign(upper.style, {
-    flex: '0 0 48%',
+    flex: `0 0 ${isTestMode ? '55%' : '48%'}`,
     borderBottom: '1px solid #ddd',
     overflow: 'hidden',
     display: 'flex',
@@ -529,8 +530,6 @@ function mount(container: HTMLElement): void {
   // 우 50%: 일별 수익률 차트
   const chartPanel = document.createElement('div')
   Object.assign(chartPanel.style, { flex: '5', minWidth: '0', overflow: 'auto', padding: '0 4px' })
-  const state = appStore.getState()
-  const isTestMode = state.settings?.trade_mode === 'test'
   const chartTitle = document.createElement('div')
   Object.assign(chartTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.label, fontWeight: 'normal', color: '#1976d2', padding: '6px 0 8px', borderBottom: '1px solid #eee', marginBottom: '8px' })
   const chartTitleText = document.createElement('span')
@@ -601,7 +600,7 @@ function mount(container: HTMLElement): void {
     }
     const label = document.createElement('span')
     label.textContent = ACCOUNT_LABELS_TEST[i]
-    if (i === 4) holdingCountLabelTest = label
+    if (i === 5) holdingCountLabelTest = label
     const val = document.createElement('span')
     Object.assign(val.style, { textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })
     row.appendChild(label)
@@ -628,10 +627,10 @@ function mount(container: HTMLElement): void {
   for (let i = 0; i < 3; i++) {
     const card = document.createElement('div')
     card.style.cssText = CARD_STYLE
-    if (i === 1) {
-      card.style.cursor = 'pointer'
-      monthCard = card
-    }
+    card.style.cursor = 'pointer'
+    if (i === 0) todayCard = card
+    if (i === 1) monthCard = card
+    if (i === 2) totalCard = card
 
     const titleEl = document.createElement('div')
     Object.assign(titleEl.style, { fontSize: FONT_SIZE.badge, color: '#888', whiteSpace: 'nowrap' })
@@ -717,6 +716,16 @@ function mount(container: HTMLElement): void {
 
   container.appendChild(root)
 
+  // 당일 카드 클릭 → 오늘 날짜 필터
+  if (todayCard) {
+    todayCard.addEventListener('click', () => {
+      drilldownActive = false
+      dateFilter = new Date().toISOString().slice(0, 10)
+      if (tabRow) tabRow.style.display = 'flex'
+      showTable()
+    })
+  }
+
   // 당월 카드 클릭 → 드릴다운 토글
   if (monthCard) {
     monthCard.addEventListener('click', () => {
@@ -728,6 +737,16 @@ function mount(container: HTMLElement): void {
         if (tabRow) tabRow.style.display = 'flex'
         showTable()
       }
+    })
+  }
+
+  // 누적 카드 클릭 → 전체 내역
+  if (totalCard) {
+    totalCard.addEventListener('click', () => {
+      drilldownActive = false
+      dateFilter = null
+      if (tabRow) tabRow.style.display = 'flex'
+      showTable()
     })
   }
 
@@ -766,6 +785,8 @@ function mount(container: HTMLElement): void {
   const initState = appStore.getState()
   sellHistory = initState.sellHistory
   buyHistory = initState.buyHistory
+  // 초기화면: 당일 내역 표시
+  dateFilter = new Date().toISOString().slice(0, 10)
   updateTabLabels()
   updateSummaryCards()
   showTable()

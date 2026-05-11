@@ -249,6 +249,7 @@ def build_account_snapshot_meta(
     now_iso = datetime.now(timezone.utc).isoformat()
     dep = int(account_snapshot.get("deposit", 0) or 0)
     ord_a = int(account_snapshot.get("orderable", 0) or 0)
+    init_dep = int(account_snapshot.get("initial_deposit", 0) or 0)
     tot = broker_rest_totals
     ps = "websocket" if price_source_ws else "rest_bootstrap"
     t_eval = int(tot.get("total_eval", 0))
@@ -257,15 +258,16 @@ def build_account_snapshot_meta(
     t_sell = int(tot.get("total_sell", 0))
     t_rate = float(tot.get("total_rate", 0.0))
     return {
-        "broker":         account_snapshot.get("broker", "kiwoom"),
-        "trade_mode":     trade_mode,
-        "deposit":        dep,
-        "orderable":      ord_a,
-        "total_eval":     t_eval,
-        "total_pnl":      t_pnl,
-        "total_buy":      t_buy,
-        "total_sell":     t_sell,
-        "total_rate":     t_rate,
+        "broker":           account_snapshot.get("broker", "kiwoom"),
+        "trade_mode":       trade_mode,
+        "deposit":          dep,
+        "orderable":        ord_a,
+        "initial_deposit":  init_dep,
+        "total_eval":       t_eval,
+        "total_pnl":        t_pnl,
+        "total_buy":        t_buy,
+        "total_sell":       t_sell,
+        "total_rate":       t_rate,
         # 프론트엔드 호환 키
         "total_buy_amount":  t_buy,
         "total_sell_amount": t_sell,
