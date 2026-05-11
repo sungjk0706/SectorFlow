@@ -26,6 +26,10 @@ _desktop_index_notifier: Callable[[], None] | None = None
 _desktop_sector_notifier: Callable[[], None] | None = None
 _desktop_settings_toggled_notifier: Callable[[], None] | None = None
 
+# ── Set 캐시 (_is_relevant_code O(1) 조회용) ────────────────────────────────
+_positions_code_set: set[str] = set()  # positions의 stk_cd 6자리 정규화 set
+_layout_code_set: set[str] = set()  # sector_stock_layout에서 type=="code" 값 set
+
 # ── Delta 캐시 ──────────────────────────────────────────────────────────────
 _position_sent_cache: dict[str, dict] = {}  # 보유종목별 마지막 전송 상태 (account-update delta)
 _snapshot_sent_cache: dict = {}  # 마지막 전송한 account snapshot
@@ -40,6 +44,30 @@ def _broadcast(event_type: str, data: dict) -> None:
     if "_v" not in data:
         data["_v"] = 1
     ws_manager.broadcast(event_type, data)
+
+
+# ── Set 캐시 재구축 함수 ─────────────────────────────────────────────────────
+
+def _rebuild_positions_cache(positions: list) -> None:
+    """_positions 리스트로부터 _positions_code_set을 재구축한다. 예외 시 이전 캐시 유지."""
+    global _positions_code_set
+    try:
+        _positions_code_set = {
+            _format_kiwoom_reg_stk_cd(str(p.get("stk_cd", "")))
+            for p in positions
+            if str(p.get("stk_cd", "")).strip()
+        }
+    except Exception as e:
+        logger.warning("[캐시] _positions_code_set 재구축 실패 (이전 캐시 유지): %s", e)
+
+
+def _rebuild_layout_cache(layout: list) -> None:
+    """_sector_stock_layout 리스트로부터 _layout_code_set을 재구축한다. 예외 시 이전 캐시 유지."""
+    global _layout_code_set
+    try:
+        _layout_code_set = {v for t, v in layout if t == "code" and v}
+    except Exception as e:
+        logger.warning("[캐시] _layout_code_set 재구축 실패 (이전 캐시 유지): %s", e)
 
 
 # ── 데스크톱 콜백 등록 함수 (no-op, 시그니처 유지) ──────────────────────────
@@ -251,15 +279,14 @@ def notify_desktop_trade_price(
 
 
 def _is_relevant_code(nk: str) -> bool:
-    """프론트에서 실제 사용하는 종목 코드인지 판별 (섹터+보유+레이아웃)."""
+    """프론트에서 실제 사용하는 종목 코드인지 판별 (섹터+보유+레이아웃). set O(1) 조회."""
     try:
         import app.services.engine_service as _es
-        from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd as _fmt
         if nk in _es._pending_stock_details:
             return True
-        if any(_fmt(str(p.get("stk_cd", ""))) == nk for p in _es._positions):
+        if nk in _positions_code_set:
             return True
-        if any(v == nk for t, v in _es._sector_stock_layout if t == "code"):
+        if nk in _layout_code_set:
             return True
     except Exception:
         pass

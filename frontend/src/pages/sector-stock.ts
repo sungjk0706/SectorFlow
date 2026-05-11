@@ -3,6 +3,7 @@
 
 import { createDataTable, type DataTableApi, type ColumnDef, type GroupRow as DataTableGroupRow, type TableRow } from '../components/common/data-table'
 import { appStore, setSelectedSector } from '../stores/appStore'
+import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createStockNameColumn, makeSeqColumn, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, makeAmountColumn, makeAvgAmountColumn, FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
 import { createWsStatusBadge } from '../components/common/setting-row'
 import { createCardTitleWithContent } from '../components/common/card-title'
@@ -208,26 +209,46 @@ let rowCache = new Map<string, { stock: SectorStock; row: DataRowItem }>()
 
 // DOM 참조
 let titleH3: HTMLElement | null = null
+let titleBaseSpan: HTMLElement | null = null
+let titleFilterSpan: HTMLElement | null = null
+let titleCountSpan: HTMLElement | null = null
 let filterBadge: HTMLElement | null = null
 let warningDiv: HTMLElement | null = null
 let emptyDiv: HTMLElement | null = null
 let scrollContainer: HTMLElement | null = null
 let wsBadge: ReturnType<typeof createWsStatusBadge> | null = null
 let _rafId: number | null = null
+let _mounted = false
 
 /* ── mount ── */
 
 function mount(container: HTMLElement): void {
+  _mounted = true
   searchTerm = ''
   currentMatchedCodes = null
   rowCache = new Map()
+  notifyPageActive('sector-analysis')
 
   rootEl = document.createElement('div')
   Object.assign(rootEl.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
-  // 1. 카드 타이틀
+  // 1. 카드 타이틀 — DOM 요소 1회 생성 (이후 textContent/display만 갱신)
   const titleContent = document.createElement('span')
-  titleContent.textContent = '업종별 종목 실시간 시세'
+  titleBaseSpan = document.createElement('span')
+  titleBaseSpan.textContent = '업종별 종목 실시간 시세'
+
+  titleFilterSpan = document.createElement('span')
+  Object.assign(titleFilterSpan.style, { color: '#1a73e8', fontWeight: '500', display: 'none' })
+
+  titleCountSpan = document.createElement('span')
+  titleCountSpan.style.display = 'none'
+
+  titleContent.appendChild(titleBaseSpan)
+  titleContent.appendChild(document.createTextNode(' '))
+  titleContent.appendChild(titleFilterSpan)
+  titleContent.appendChild(document.createTextNode(' '))
+  titleContent.appendChild(titleCountSpan)
+
   titleH3 = createCardTitleWithContent(titleContent)
   rootEl.appendChild(titleH3)
 
@@ -330,6 +351,7 @@ function mount(container: HTMLElement): void {
     stickyHeader: true,
     groupRowHeight: 48,
     rowHeight: 32,
+    priceFn: (item) => item.stock.cur_price ?? 0,
     rowStyle: (row, _idx) => ({
       opacity: row.dim ? '0.65' : '1',
       background: currentMatchedCodes?.has(row.stock.code) ? '#fff9c4' : '',
@@ -380,6 +402,7 @@ function mount(container: HTMLElement): void {
       if (_rafId === null) {
         _rafId = requestAnimationFrame(() => {
           _rafId = null
+          if (!_mounted) return
           refreshRows()
         })
       }
@@ -419,22 +442,16 @@ function updateUI(rows: RowItem[]): void {
   const stockCount = Object.keys(state.sectorStocks).length
   const minTradeAmt = state.settings?.sector_min_trade_amt ?? 0
 
-  // 타이틀 갱신 — 델타 비교 (innerHTML 파괴 금지 → 레이아웃 재계산 방지)
-  if (titleH3) {
-    const newTitle = state.sectorStatus
-      ? `업종별 종목 실시간 시세 <span style="color:#1a73e8;font-weight:500">5일평균최소거래대금(${minTradeAmt})억</span> (${stockCount}종목)`
-      : '업종별 종목 실시간 시세'
-    const existing = titleH3.firstElementChild as HTMLElement | null
-    if (!existing || existing.innerHTML !== newTitle) {
-      titleH3.innerHTML = ''
-      const titleSpan = document.createElement('span')
-      if (state.sectorStatus) {
-        titleSpan.innerHTML = newTitle
-      } else {
-        titleSpan.textContent = newTitle
-      }
-      Object.assign(titleH3.style, { fontSize: FONT_SIZE.title, margin: '0 0 8px', color: '#333' })
-      titleH3.appendChild(titleSpan)
+  // 타이틀 갱신 — CSS display 토글 + textContent 갱신 (innerHTML 파괴 금지)
+  if (titleFilterSpan && titleCountSpan) {
+    if (state.sectorStatus) {
+      titleFilterSpan.textContent = `5일평균최소거래대금(${minTradeAmt})억`
+      titleFilterSpan.style.display = ''
+      titleCountSpan.textContent = `(${stockCount}종목)`
+      titleCountSpan.style.display = ''
+    } else {
+      titleFilterSpan.style.display = 'none'
+      titleCountSpan.style.display = 'none'
     }
   }
 
@@ -475,18 +492,24 @@ function updateUI(rows: RowItem[]): void {
 /* ── unmount ── */
 
 function unmount(): void {
+  _mounted = false
+  notifyPageInactive('sector-analysis')
   if (unsubStore) { unsubStore(); unsubStore = null }
   if (_rafId !== null) { cancelAnimationFrame(_rafId); _rafId = null }
   if (dataTable) { dataTable.destroy(); dataTable = null }
   if (rootEl && rootEl.parentNode) rootEl.parentNode.removeChild(rootEl)
   rootEl = null
   titleH3 = null
+  titleBaseSpan = null
+  titleFilterSpan = null
+  titleCountSpan = null
   filterBadge = null
   warningDiv = null
   emptyDiv = null
   scrollContainer = null
   searchInput = null
   wsBadge = null
+  rowCache.clear()
   rowCache = new Map()
   currentMatchedCodes = null
   searchTerm = ''

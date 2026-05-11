@@ -13,6 +13,7 @@
 import asyncio
 import json
 import sys
+import time
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -102,7 +103,6 @@ register_desktop_sector_notifier = _account_notify.register_desktop_sector_notif
 notify_desktop_index_refresh = _account_notify.notify_desktop_index_refresh
 notify_desktop_sector_refresh = _account_notify.notify_desktop_sector_refresh
 notify_desktop_sector_scores = _account_notify.notify_desktop_sector_scores
-notify_desktop_sector_tick = _account_notify.notify_desktop_sector_tick
 register_desktop_settings_toggled_notifier = _account_notify.register_desktop_settings_toggled_notifier
 notify_desktop_settings_toggled = _account_notify.notify_desktop_settings_toggled
 # WS 신규 이벤트 노티파이어
@@ -147,12 +147,18 @@ _latest_strength: dict[str, str] = {}
 # ── get_sector_stocks() 증분 캐시 (Phase 1, Req 1) ──────────────────────
 _sector_stocks_cache: list | None = None
 _sector_stocks_dirty: bool = True
+_sector_stocks_last_invalidated: float = 0.0
+_MIN_CACHE_LIFETIME_SEC: float = 1.0
 
 
 def _invalidate_sector_stocks_cache() -> None:
     """캐시 무효화 — 종목 추가/제거, 순위 변경, 필터 변경 시 호출."""
-    global _sector_stocks_dirty
+    global _sector_stocks_dirty, _sector_stocks_last_invalidated
+    now = time.monotonic()
+    if now - _sector_stocks_last_invalidated < _MIN_CACHE_LIFETIME_SEC:
+        return  # 1초 내 재무효화 방지
     _sector_stocks_dirty = True
+    _sector_stocks_last_invalidated = now
 
 # ── get_buy_targets_snapshot() 증분 캐시 (Phase 1, Req 2) ────────────────
 _buy_targets_snapshot_cache: list | None = None
@@ -162,6 +168,11 @@ _rest_radar_quote_cache: dict[str, dict] = {}
 _rest_radar_rest_once: set[str] = set()
 
 _rest_api_thread_sem: asyncio.Semaphore | None = None
+
+# ── 계좌 브로드캐스트 coalescing (Phase 2 최적화) ─────────────────────────
+_ACCOUNT_BROADCAST_COALESCE_SEC: float = 0.5  # 0.5초 동안 모아서 1회만 전송
+_account_broadcast_pending_reason: str | None = None
+_account_broadcast_timer: asyncio.TimerHandle | None = None
 
 
 def _get_rest_api_thread_sem() -> asyncio.Semaphore:
@@ -1025,7 +1036,11 @@ def _apply_balance_realtime(item: dict, vals: dict) -> None:
     from app.services.engine_account_rest import _real04_is_stock_item
     if _real04_is_stock_item(item):
         # 종목 단위 레코드 -- 보유수량·매입단가·평가손익 등 갱신
+        _prev_len = len(_positions)
         real04_official_apply_position_line(item, vals, _positions, _latest_trade_prices)
+        if len(_positions) != _prev_len:
+            from app.services.engine_account_notify import _rebuild_positions_cache
+            _rebuild_positions_cache(_positions)
     else:
         # 계좌 단위 레코드 -- 예수금·총평가·총손익 등 갱신
         delta = real04_official_account_delta(vals)
@@ -1437,13 +1452,52 @@ async def on_trade_mode_switched() -> None:
 
 
 def _broadcast_account(reason: str | None = None) -> None:
-    """데이터 갱신 후 UI/WS -- 페이로드 전송은 engine_account_notify."""
-    pos = dry_run.get_positions() if is_test_mode(_settings_cache) else list(_positions)
-    broadcast_account_update(
-        reason,
-        snapshot=dict(_account_snapshot),
-        positions=pos,
-    )
+    """데이터 갱신 후 UI/WS -- 페이로드 전송은 engine_account_notify.
+    
+    Phase 2 최적화: 0.5초 coalescing 적용 - 테스트모드에서 매수/매도/정산 
+    빈번한 브로드캐스트를 모아서 1회만 전송하여 UI 깜빡임 감소.
+    """
+    global _account_broadcast_pending_reason, _account_broadcast_timer
+    
+    # 이유 저장 (마지막 이유만 기록)
+    _account_broadcast_pending_reason = reason or "coalesced"
+    
+    # 기존 타이머 취소
+    if _account_broadcast_timer is not None:
+        _account_broadcast_timer.cancel()
+    
+    # 0.5초 후 실제 브로드캐스트
+    try:
+        loop = asyncio.get_running_loop()
+        _account_broadcast_timer = loop.call_later(
+            _ACCOUNT_BROADCAST_COALESCE_SEC,
+            _apply_delayed_account_broadcast
+        )
+    except RuntimeError:
+        # 이벤트 루프 없음 - 즉시 실행 (초기화 시)
+        _apply_delayed_account_broadcast()
+
+
+def _apply_delayed_account_broadcast() -> None:
+    """0.5초 지연 후 실제 계좌 브로드캐스트 수행."""
+    global _account_broadcast_pending_reason, _account_broadcast_timer
+    
+    reason = _account_broadcast_pending_reason
+    _account_broadcast_pending_reason = None
+    _account_broadcast_timer = None
+    
+    if reason is None:
+        return
+    
+    try:
+        pos = dry_run.get_positions() if is_test_mode(_settings_cache) else list(_positions)
+        broadcast_account_update(
+            reason,
+            snapshot=dict(_account_snapshot),
+            positions=pos,
+        )
+    except Exception as e:
+        logger.debug("[계좌브로드캐스트] 지연 전송 실패: %s", e)
 
 
 def _broadcast_engine_ws() -> None:
@@ -1666,6 +1720,8 @@ async def _clear_radar_and_ready_memory() -> None:
         _radar_cnsr_order = []
         _sector_stock_layout.clear()
         _rest_radar_quote_cache.clear()
+    from app.services.engine_account_notify import _rebuild_layout_cache
+    _rebuild_layout_cache(_sector_stock_layout)
     _checked_stocks = set()
     _rest_radar_rest_once.clear()
     _invalidate_sector_stocks_cache()
@@ -1882,6 +1938,8 @@ async def _update_account_memory_inner(settings: dict) -> None:
         merged = _merge_positions_from_rest(stock_list)
         async with _shared_lock:
             _positions = merged
+        from app.services.engine_account_notify import _rebuild_positions_cache
+        _rebuild_positions_cache(merged)
 
     _account_rest_bootstrapped = True
     async with _shared_lock:

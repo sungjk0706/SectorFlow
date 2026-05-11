@@ -236,19 +236,6 @@ export interface SectorScoresEvent {
   status: SectorStatus;
 }
 
-export interface SectorTickItem {
-  code: string;
-  cur_price: number;
-  change: number;
-  change_rate: number;
-  strength: number | string;
-  trade_amount: number;
-}
-
-export interface SectorTickEvent {
-  ticks: SectorTickItem[];
-}
-
 /** [근본해결] 키움 실시간 Raw 데이터 이벤트 */
 export interface RealDataEvent {
   type: string;
@@ -262,12 +249,6 @@ export interface AccountUpdateEvent {
   removed_codes?: string[];
   // Legacy full snapshot (backward compat)
   positions?: Position[];
-}
-
-export interface SectorRefreshEvent {
-  scores: SectorScoreRow[];
-  status: SectorStatus;
-  stocks: SectorStock[];
 }
 
 export interface WsSubscribeStatusEvent {

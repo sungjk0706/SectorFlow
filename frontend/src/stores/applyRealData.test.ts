@@ -11,8 +11,8 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import * as fc from 'fast-check'
-import { appStore, applyRealData } from './appStore'
-import type { Position, SectorStock, RealDataEvent } from '../types'
+import { appStore, applyRealData, rebuildBuyTargetIndex, rebuildPositionIndex } from './appStore'
+import type { Position, BuyTarget, SectorStock, RealDataEvent } from '../types'
 
 describe('Bug Condition: Position PnL not recalculated on cur_price change', () => {
   beforeEach(() => {
@@ -66,6 +66,7 @@ describe('Bug Condition: Position PnL not recalculated on cur_price change', () 
           }
 
           appStore.setState({ positions: [position] })
+          rebuildPositionIndex([position])
 
           // Create real-data event with new price
           const event: RealDataEvent = {
@@ -169,6 +170,8 @@ describe('Preservation: Non-position stocks and unchanged prices preserve state'
             sectorStocks: { [eventCode]: sectorStock },
             buyTargets: [],
           })
+          rebuildPositionIndex([position])
+          rebuildBuyTargetIndex([])
 
           // Capture positions reference before event
           const positionsBefore = appStore.getState().positions
@@ -226,6 +229,8 @@ describe('Preservation: Non-position stocks and unchanged prices preserve state'
             sectorStocks: { [stkCd]: { code: stkCd, name: 'Test', cur_price: curPrice, change_rate: 0 } },
             buyTargets: [],
           })
+          rebuildPositionIndex([position])
+          rebuildBuyTargetIndex([])
 
           // Capture positions reference before event
           const positionsBefore = appStore.getState().positions
@@ -275,10 +280,7 @@ describe('Preservation: Non-position stocks and unchanged prices preserve state'
             trade_amount: 1000000000,
           }
 
-          appStore.setState({
-            positions: [],
-            sectorStocks: { [code]: sectorStock },
-            buyTargets: [{
+          const buyTargetsList = [{
               rank: 1,
               name: 'TestTarget',
               code,
@@ -292,8 +294,15 @@ describe('Preservation: Non-position stocks and unchanged prices preserve state'
               order_ratio: null,
               guard_pass: true,
               reason: '',
-            }],
+            }]
+
+          appStore.setState({
+            positions: [],
+            sectorStocks: { [code]: sectorStock },
+            buyTargets: buyTargetsList,
           })
+          rebuildBuyTargetIndex(buyTargetsList as BuyTarget[])
+          rebuildPositionIndex([])
 
           // Create real-data event
           const event: RealDataEvent = {
@@ -363,6 +372,8 @@ describe('Preservation: Non-position stocks and unchanged prices preserve state'
             sectorStocks: {},
             buyTargets: [],
           })
+          rebuildPositionIndex([position])
+          rebuildBuyTargetIndex([])
 
           // Create real-data event with different price
           const event: RealDataEvent = {

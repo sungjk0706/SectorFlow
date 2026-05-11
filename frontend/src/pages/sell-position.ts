@@ -5,6 +5,7 @@
 
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
 import { appStore } from '../stores/appStore'
+import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardTitle } from '../components/common/card-title'
 import { createWsStatusBadge } from '../components/common/setting-row'
 import { rateColor, fmtComma, fmtRate, createCodeCell, createStockNameColumn, createNumberCell, createPriceCell } from '../components/common/ui-styles'
@@ -77,8 +78,12 @@ const COLUMNS: ColumnDef<Position>[] = [
 let dataTable: DataTableApi<Position> | null = null
 let unsubStore: (() => void) | null = null
 let wsBadge: ReturnType<typeof createWsStatusBadge> | null = null
+let _rafId: number | null = null
+let _mounted = false
 
 function mount(container: HTMLElement): void {
+  _mounted = true
+  notifyPageActive('sell-position')
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
@@ -112,6 +117,7 @@ function mount(container: HTMLElement): void {
     emptyText: '보유종목이 없습니다.',
     stickyHeader: true,
     zebraStriping: true,
+    priceFn: (p) => p.cur_price ?? 0,
   })
 
   scrollContainer.appendChild(dataTable.el)
@@ -119,29 +125,54 @@ function mount(container: HTMLElement): void {
   container.appendChild(root)
 
   const state = appStore.getState()
-  console.log('[sell-position] sectorStocks size:', Object.keys(state.sectorStocks).length)
-  console.log('[sell-position] positions:', state.positions)
 
   const initialPositions = state.positions
   dataTable.updateRows(initialPositions)
 
-  unsubStore = appStore.subscribe((state) => {
-    const positions = state.positions
-    dataTable?.updateRows(positions)
+  // Store 구독 — reference equality guard + rAF coalescing
+  {
+    let prevPositions = state.positions
+    let prevSectorStocks = state.sectorStocks
 
-    // sectorStocks가 채워지면 테이블 다시 렌더링 (종목명 표시 업데이트)
-    if (Object.keys(state.sectorStocks).length > 0) {
-      dataTable?.updateRows(positions)
-    }
+    unsubStore = appStore.subscribe((state) => {
+      const positionsChanged = state.positions !== prevPositions
+      const sectorStocksChanged = state.sectorStocks !== prevSectorStocks
 
-    // WS 상태 뱃지 업데이트 (테스트모드/실전투자 반영)
-    const isTest = state.settings?.trade_mode === 'test'
-    wsBadge?.update(!isTest, isTest ? undefined : 'kiwoom', isTest ? '테스트모드' : undefined)
-  })
+      prevPositions = state.positions
+      prevSectorStocks = state.sectorStocks
+
+      // positions 참조 미변경 시 updateRows 생략
+      if (!positionsChanged) {
+        // sectorStocks만 변경 시 WS 뱃지만 업데이트
+        if (sectorStocksChanged) {
+          const isTest = state.settings?.trade_mode === 'test'
+          wsBadge?.update(!isTest, isTest ? undefined : 'kiwoom', isTest ? '테스트모드' : undefined)
+        }
+        return
+      }
+
+      // rAF coalescing — 프레임당 1회만 갱신 예약
+      if (_rafId === null) {
+        _rafId = requestAnimationFrame(() => {
+          _rafId = null
+          if (!_mounted) return
+          const latest = appStore.getState()
+          dataTable?.updateRows(latest.positions)
+        })
+      }
+
+      // WS 상태 뱃지 업데이트
+      const isTest = state.settings?.trade_mode === 'test'
+      wsBadge?.update(!isTest, isTest ? undefined : 'kiwoom', isTest ? '테스트모드' : undefined)
+    })
+  }
 }
 
 function unmount(): void {
+  _mounted = false
+  notifyPageInactive('sell-position')
   if (unsubStore) { unsubStore(); unsubStore = null }
+  if (_rafId !== null) { cancelAnimationFrame(_rafId); _rafId = null }
   if (dataTable) { dataTable.destroy(); dataTable = null }
   wsBadge = null
 }

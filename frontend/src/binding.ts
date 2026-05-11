@@ -9,7 +9,6 @@ import {
   setEngineReady,
   applyInitialSnapshot,
   applyAccountUpdate,
-  applySectorRefresh,
   applySectorScores,
   applySettingsChanged,
   applyIndexRefresh,
@@ -30,10 +29,10 @@ import {
   applyOrderbookUpdate,
   appStore,
   stocksToMap,
+  rebuildBuyTargetIndex,
 } from './stores/appStore'
 import type {
   AccountUpdateEvent,
-  SectorRefreshEvent,
   SectorScoresEvent,
   AppSettings,
   EngineStatus,
@@ -70,10 +69,6 @@ export function bindWSToStore(wsClient: WSClient, _store: StoreApi<AppState>): v
 
   wsClient.onEvent('account-update', (data) => {
     applyAccountUpdate(data as AccountUpdateEvent)
-  })
-
-  wsClient.onEvent('sector-refresh', (data) => {
-    applySectorRefresh(data as SectorRefreshEvent)
   })
 
   wsClient.onEvent('sector-scores', (data) => {
@@ -142,6 +137,7 @@ export function bindWSToStore(wsClient: WSClient, _store: StoreApi<AppState>): v
         buyTargets = buyTargets === state.buyTargets ? [...buyTargets, ...added] : [...buyTargets, ...added]
       }
       if (buyTargets === state.buyTargets) return state
+      rebuildBuyTargetIndex(buyTargets)
       return { buyTargets }
     })
   })
