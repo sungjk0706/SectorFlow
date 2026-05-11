@@ -296,8 +296,7 @@ def _run_industry_refresh(engine_service) -> None:
             logger.debug("[업종갱신] REST API 미준비 -- 업종 갱신 생략")
             return
         from app.core.industry_map import refresh_industry_data
-        loop = asyncio.get_running_loop()
-        loop.run_in_executor(None, refresh_industry_data, api)
+        asyncio.create_task(refresh_industry_data(api))
         _industry_refresh_done = True
         logger.info("[타이머] 업종 데이터 전체 갱신 요청 완료")
     except Exception as e:

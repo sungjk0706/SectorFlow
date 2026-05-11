@@ -14,6 +14,7 @@ import asyncio
 import json
 import sys
 import time
+from collections import OrderedDict
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -112,6 +113,60 @@ notify_desktop_sector_stocks_refresh = _account_notify.notify_desktop_sector_sto
 
 logger = get_logger("engine")
 
+# ── LRU 캐시 유틸리티 (메모리 제한용) ────────────────────────────────────────
+class LRUCache(dict):
+    """최대 크기를 가진 LRU(Least Recently Used) 캐시.
+
+    dict를 상속받아 기존 코드와 호환성 유지.
+    maxsize 초과 시 가장 오래된 항목 자동 삭제.
+    """
+    def __init__(self, maxsize: int = 1000, *args, **kwargs):
+        self._maxsize = maxsize
+        self._order: OrderedDict = OrderedDict()
+        super().__init__(*args, **kwargs)
+        # 초기 데이터가 있으면 순서에 추가
+        for key in self:
+            self._order[key] = None
+
+    def __getitem__(self, key):
+        value = super().__getitem__(key)
+        # 접근 시 순서 갱신
+        self._order.move_to_end(key)
+        return value
+
+    def __setitem__(self, key, value):
+        if key in self:
+            self._order.move_to_end(key)
+        else:
+            self._order[key] = None
+            # 크기 초과 시 가장 오래된 항목 삭제
+            if len(self._order) > self._maxsize:
+                oldest = next(iter(self._order))
+                del self._order[oldest]
+                super().__delitem__(oldest)
+        super().__setitem__(key, value)
+
+    def __delitem__(self, key):
+        if key in self._order:
+            del self._order[key]
+        super().__delitem__(key)
+
+    def clear(self):
+        self._order.clear()
+        super().clear()
+
+    def get(self, key, default=None):
+        if key in self:
+            self._order.move_to_end(key)
+            return super().__getitem__(key)
+        return default
+
+    def pop(self, key, *args):
+        if key in self._order:
+            del self._order[key]
+        return super().pop(key, *args)
+
+
 _running = False
 _connector_manager: "ConnectorManager | None" = None  # type: ignore[name-defined]
 _kiwoom_connector: KiwoomConnector | None = None
@@ -124,7 +179,8 @@ _checked_stocks: set = set()
 
 _shared_lock = asyncio.Lock()
 
-_pending_stock_details: dict = {}
+# 최대 3000종목 (관심 종목 상세 정보)
+_pending_stock_details: LRUCache = LRUCache(maxsize=3000)
 _radar_cnsr_order: list[str] = []
 _sector_stock_layout: list[tuple[str, str]] = []
 _avg_amt_5d: dict[str, int] = {}
@@ -132,17 +188,19 @@ _avg_amt_5d: dict[str, int] = {}
 # 5일 전고점 캐시 — 장전 앱준비 시 1회 적재, 장중 읽기 전용
 _high_5d_cache: dict[str, int] = {}       # {종목코드: 5일전고점(원)}
 
-# 호가 잔량 캐시 — WS 0D 수신 시 갱신
-_orderbook_cache: dict[str, tuple[int, int]] = {}  # {종목코드: (매수잔량, 매도잔량)}
+# 호가 잔량 캐시 — WS 0D 수신 시 갱신 (최대 2000종목)
+_orderbook_cache: LRUCache = LRUCache(maxsize=2000)  # {종목코드: (매수잔량, 매도잔량)}
 
 # 0D 구독 중인 종목 집합 — diff 계산용
 _subscribed_0d_stocks: set[str] = set()
 
-_latest_trade_prices: dict = {}
-_latest_trade_amounts: dict[str, int] = {}
+# 실시간 체결가/거래대금 캐시 (최대 2500종목)
+_latest_trade_prices: LRUCache = LRUCache(maxsize=2500)
+_latest_trade_amounts: LRUCache = LRUCache(maxsize=2500)
 _sector_dirty_codes: set[str] = set()
 _filtered_sector_codes: set[str] | None = None
-_latest_strength: dict[str, str] = {}
+# 체결 강도 캐시 (최대 2500종목)
+_latest_strength: LRUCache = LRUCache(maxsize=2500)
 
 # ── get_sector_stocks() 증분 캐시 (Phase 1, Req 1) ──────────────────────
 _sector_stocks_cache: list | None = None
@@ -164,7 +222,8 @@ def _invalidate_sector_stocks_cache() -> None:
 _buy_targets_snapshot_cache: list | None = None
 _buy_targets_cache_ref: object | None = None  # 캐시 구축 시점의 _sector_summary_cache 참조
 
-_rest_radar_quote_cache: dict[str, dict] = {}
+# REST 호가 캐시 (최대 1500종목)
+_rest_radar_quote_cache: LRUCache = LRUCache(maxsize=1500)
 _rest_radar_rest_once: set[str] = set()
 
 _rest_api_thread_sem: asyncio.Semaphore | None = None
@@ -1597,8 +1656,8 @@ async def build_initial_snapshot() -> dict:
     from app.services.daily_time_scheduler import get_market_phase
 
     # 항상 최신 설정을 파일에서 직접 로드 (캐시 사용 안함)
-    from app.core.settings_file import load_settings
-    _raw_settings = load_settings()
+    from app.core.settings_file import load_settings_async
+    _raw_settings = await load_settings_async()
 
     scores_snapshot = await _safe(get_sector_scores_snapshot, ([], 0))
     scores_list, ranked_count = scores_snapshot if isinstance(scores_snapshot, tuple) else (scores_snapshot, 0)
