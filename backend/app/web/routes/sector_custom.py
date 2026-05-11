@@ -270,6 +270,8 @@ async def delete_cache(body: DeleteCacheRequest, _: str = Depends(get_current_us
                 else:
                     engine_service._pending_stock_details.clear()
                     engine_service._sector_stock_layout.clear()
+                    from app.services.engine_account_notify import _rebuild_layout_cache
+                    _rebuild_layout_cache([])
                     import app.core.industry_map as _ind_mod
                     _ind_mod._eligible_stock_codes.clear()
                     from app.services.market_close_pipeline import fetch_unified_confirmed_data

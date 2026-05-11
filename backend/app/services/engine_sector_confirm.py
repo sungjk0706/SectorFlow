@@ -17,6 +17,11 @@ logger = get_logger("engine")
 _dirty_codes: set[str] = set()
 _recompute_handle = None  # asyncio.TimerHandle — cancel 가능한 예약 핸들
 
+# 0D 구독 해지 지연 관리 (guard_pass 경계값 진동 방지)
+_PENDING_UNREG_CODES: set[str] = set()  # 해지 대기 중인 종목 코드
+_PENDING_UNREG_TIMER: asyncio.TimerHandle | None = None  # 해지 타이머
+_UNREG_DELAY_SEC: float = 30.0  # 해지 지연 시간 (30초)
+
 
 def _is_engine_running() -> bool:
     from app.services.engine_service import _running
@@ -50,7 +55,7 @@ def recompute_sector_for_code(code: str | None = None) -> None:
         _flush_sector_recompute_impl()
         return
 
-    _recompute_handle = loop.call_soon(_run_flush_sync)
+    _recompute_handle = loop.call_later(0.3, _run_flush_sync)
 
 
 def _run_flush_sync() -> None:
@@ -112,7 +117,6 @@ def _flush_sector_recompute_impl() -> None:
         )
         from app.services.engine_account_notify import (
             notify_desktop_sector_scores,
-            notify_sector_tick_single,
             notify_buy_targets_update,
         )
         from app.core import sector_mapping
@@ -245,18 +249,6 @@ def _flush_sector_recompute_impl() -> None:
 
         # 업종 점수 delta 전송 (내부에서 변경분만 비교)
         notify_desktop_sector_scores()
-        # dirty 종목만 개별 tick 전송 (get_sector_stocks 전체 복사 없음)
-        for cd in codes_snapshot:
-            pend = _es._pending_stock_details.get(cd)
-            if pend and pend.get("status") == "active":
-                notify_sector_tick_single(
-                    code=cd,
-                    cur_price=int(pend.get("cur_price") or 0),
-                    change=int(pend.get("change") or 0),
-                    change_rate=float(pend.get("change_rate") or 0.0),
-                    strength=str(pend.get("strength") or "-"),
-                    trade_amount=int(pend.get("trade_amount") or 0),
-                )
         notify_buy_targets_update()
 
         try:
@@ -281,7 +273,6 @@ def _full_recompute(_es, settings: dict, codes_snapshot: set[str] | None = None)
     from app.services.engine_sector_score import compute_full_sector_summary
     from app.services.engine_account_notify import (
         notify_desktop_sector_scores,
-        notify_sector_tick_single,
         notify_buy_targets_update,
     )
 
@@ -324,27 +315,6 @@ def _full_recompute(_es, settings: dict, codes_snapshot: set[str] | None = None)
 
     # 업종 점수 delta 전송 (내부에서 변경분만 비교)
     notify_desktop_sector_scores()
-    # dirty 종목만 개별 tick 전송 (get_sector_stocks 전체 복사 없음)
-    if codes_snapshot and "__ALL__" in codes_snapshot:
-        # __ALL__ 플래그: 모든 active 종목을 개별 전송
-        iter_codes = (
-            cd for cd, det in _es._pending_stock_details.items()
-            if det.get("status") == "active"
-        )
-    else:
-        # 특정 dirty 코드만 전송
-        iter_codes = codes_snapshot if codes_snapshot else ()
-    for cd in iter_codes:
-        pend = _es._pending_stock_details.get(cd)
-        if pend and pend.get("status") == "active":
-            notify_sector_tick_single(
-                code=cd,
-                cur_price=int(pend.get("cur_price") or 0),
-                change=int(pend.get("change") or 0),
-                change_rate=float(pend.get("change_rate") or 0.0),
-                strength=str(pend.get("strength") or "-"),
-                trade_amount=int(pend.get("trade_amount") or 0),
-            )
     notify_buy_targets_update()
 
     try:
@@ -361,10 +331,13 @@ def _full_recompute(_es, settings: dict, codes_snapshot: set[str] | None = None)
 
 
 def _sync_0d_subscriptions_sync(es, new_buy_targets) -> None:
-    """buy_targets 변경 시 0D 호가 구독 delta 갱신 (동기 래퍼).
+    """buy_targets 변경 시 0D 호가 구독 delta 갱신 (해지 지연 적용).
 
-    구독 페이로드 구성은 동기로 수행하고, WS 전송은 fire-and-forget으로 처리한다.
+    신규 구독은 즉시, 해지는 30초 지연 후 적용.
+    guard_pass 경계값 진동으로 인한 빈번한 REG/REMOVE 반복을 방지한다.
     """
+    global _PENDING_UNREG_CODES, _PENDING_UNREG_TIMER
+
     from app.services.engine_ws_reg import build_0d_reg_payloads, build_0d_remove_payloads
 
     # WS 미연결 → 스킵
@@ -374,10 +347,10 @@ def _sync_0d_subscriptions_sync(es, new_buy_targets) -> None:
     new_codes = {bt.stock.code for bt in new_buy_targets if bt.stock.guard_pass}
     prev_codes = es._subscribed_0d_stocks
 
+    # 신규 구독: 즉시 적용
     to_reg = new_codes - prev_codes
-    to_unreg = prev_codes - new_codes
-
     if to_reg:
+        logger.info("[호가구독] 신규 등록 %d종목", len(to_reg))
         payloads = build_0d_reg_payloads(sorted(to_reg))
         for payload in payloads:
             try:
@@ -385,8 +358,49 @@ def _sync_0d_subscriptions_sync(es, new_buy_targets) -> None:
                 loop.create_task(es._ws_send_reg_unreg_and_wait_ack(payload))
             except RuntimeError:
                 pass
+        prev_codes = prev_codes | to_reg  # 임시로 추가
+
+    # 해지 대상: 지연 적용
+    new_unreg_candidates = prev_codes - new_codes
+    if new_unreg_candidates:
+        _PENDING_UNREG_CODES.update(new_unreg_candidates)
+        logger.debug("[호가구독] 해지 대기 %d종목 추가 (총 %d종목)",
+                     len(new_unreg_candidates), len(_PENDING_UNREG_CODES))
+
+    # 복귀한 종목은 해지 취소
+    returned_codes = _PENDING_UNREG_CODES & new_codes
+    if returned_codes:
+        _PENDING_UNREG_CODES -= returned_codes
+        logger.debug("[호가구독] 해지 취소 %d종목 (다시 통과)", len(returned_codes))
+
+    # 해지 타이머 설정/재설정
+    if _PENDING_UNREG_CODES:
+        if _PENDING_UNREG_TIMER is not None:
+            _PENDING_UNREG_TIMER.cancel()
+        try:
+            loop = asyncio.get_running_loop()
+            _PENDING_UNREG_TIMER = loop.call_later(
+                _UNREG_DELAY_SEC,
+                _apply_delayed_unreg,
+                es
+            )
+        except RuntimeError:
+            pass
+
+    es._subscribed_0d_stocks = prev_codes
+
+
+def _apply_delayed_unreg(es) -> None:
+    """30초 후 실제 해지 적용."""
+    global _PENDING_UNREG_CODES, _PENDING_UNREG_TIMER
+
+    from app.services.engine_ws_reg import build_0d_remove_payloads
+
+    current_codes = es._subscribed_0d_stocks
+    to_unreg = _PENDING_UNREG_CODES & current_codes  # 아직 구독 중인 것만
 
     if to_unreg:
+        logger.info("[호가구독] 지연 해지 적용 %d종목", len(to_unreg))
         payloads = build_0d_remove_payloads(sorted(to_unreg))
         for payload in payloads:
             try:
@@ -394,8 +408,11 @@ def _sync_0d_subscriptions_sync(es, new_buy_targets) -> None:
                 loop.create_task(es._ws_send_reg_unreg_and_wait_ack(payload))
             except RuntimeError:
                 pass
+        current_codes -= to_unreg
 
-    es._subscribed_0d_stocks = new_codes
+    _PENDING_UNREG_CODES.clear()
+    _PENDING_UNREG_TIMER = None
+    es._subscribed_0d_stocks = current_codes
 
 
 async def _sync_0d_subscriptions(es, new_buy_targets) -> None:

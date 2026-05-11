@@ -125,7 +125,7 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
         # 앱준비 대기 → sector 데이터 순차 유니캐스트
         delayed_task = asyncio.create_task(_send_stocks_delayed(websocket))
 
-        # 수신 루프: ping → pong, 그 외 무시
+        # 수신 루프: ping → pong, page-active/page-inactive → 페이지 추적, 그 외 무시
         while True:
             raw = await websocket.receive_text()
             try:
@@ -137,6 +137,12 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
             msg_type = msg.get("type")
             if msg_type == "ping":
                 await websocket.send_text(json.dumps({"type": "pong"}))
+            elif msg_type == "page-active":
+                page = msg.get("page", "")
+                if page:
+                    ws_manager.set_active_page(websocket, page)
+            elif msg_type == "page-inactive":
+                ws_manager.clear_active_page(websocket)
     except WebSocketDisconnect:
         pass
     except Exception as e:

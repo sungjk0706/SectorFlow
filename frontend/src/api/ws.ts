@@ -1,6 +1,21 @@
 // frontend/src/api/ws.ts — 시세 전용 WebSocket 클라이언트
 
+import { inflate } from 'pako'
 import { forceLogout } from './client'
+import { setBackfilling } from '../stores/appStore'
+
+// key expansion: 백엔드 key shortening 복원
+const KEY_MAP: Record<string, string> = { t: 'type', i: 'item', v: 'values' }
+
+/** 단축 키를 원래 키로 복원 */
+function expandKeys(data: Record<string, unknown>): Record<string, unknown> {
+  const expanded: Record<string, unknown> = {}
+  for (const key of Object.keys(data)) {
+    const fullKey = KEY_MAP[key] || key
+    expanded[fullKey] = data[key]
+  }
+  return expanded
+}
 
 type EventHandler<T = any> = (data: T) => void
 
@@ -15,6 +30,7 @@ export class WSClient {
   private _onConnected: (() => void) | null = null
   private _onDisconnected: (() => void) | null = null
   private token: string | null = null
+  private _hasConnectedOnce: boolean = false
 
   setConnectionCallbacks(onConnected: () => void, onDisconnected: () => void): void {
     this._onConnected = onConnected
@@ -33,23 +49,27 @@ export class WSClient {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
     const url = `${proto}//${location.host}/api/ws/prices?token=${encodeURIComponent(this.token)}`
     const ws = new WebSocket(url)
+    ws.binaryType = 'arraybuffer'
     this.ws = ws
 
     ws.onopen = () => {
       this.reconnectDelay = 1000
       this._startPing()
+      if (this._hasConnectedOnce) {
+        // 재연결 성공 → backfilling 플래그 설정, 서버 initial-snapshot 대기
+        setBackfilling(true)
+      }
+      this._hasConnectedOnce = true
       if (this._onConnected) this._onConnected()
     }
 
     ws.onmessage = (e: MessageEvent) => {
-      try {
-        const msg = JSON.parse(e.data)
-        const eventType = msg.event as string
-        const data = msg.data
-        const list = this.handlers.get(eventType)
-        if (list) list.forEach(h => h(data))
-      } catch (err) {
-        console.error('[WS] 파싱 실패:', err)
+      if (e.data instanceof ArrayBuffer) {
+        // binary frame: zlib decompress → JSON parse → key expand
+        this._handleBinaryFrame(e.data)
+      } else {
+        // text frame: JSON parse → key expand (real-data만)
+        this._handleTextFrame(e.data as string)
       }
     }
 
@@ -101,6 +121,36 @@ export class WSClient {
     }
   }
 
+  private _handleBinaryFrame(buffer: ArrayBuffer): void {
+    try {
+      const decompressed = inflate(new Uint8Array(buffer), { to: 'string' })
+      const msg = JSON.parse(decompressed)
+      this._dispatchMessage(msg)
+    } catch (err) {
+      console.error('[WS] binary frame 디코딩 실패:', err)
+    }
+  }
+
+  private _handleTextFrame(text: string): void {
+    try {
+      const msg = JSON.parse(text)
+      this._dispatchMessage(msg)
+    } catch (err) {
+      console.error('[WS] 파싱 실패:', err)
+    }
+  }
+
+  private _dispatchMessage(msg: { event: string; data: unknown }): void {
+    const eventType = msg.event as string
+    let data = msg.data
+    // real-data 이벤트의 단축 키 복원
+    if (eventType === 'real-data' && data && typeof data === 'object') {
+      data = expandKeys(data as Record<string, unknown>)
+    }
+    const list = this.handlers.get(eventType)
+    if (list) list.forEach(h => h(data))
+  }
+
   onEvent<T = any>(type: string, handler: EventHandler<T>): void {
     const list = (this.handlers.get(type) || []) as EventHandler<any>[]
     list.push(handler)
@@ -138,3 +188,13 @@ export class WSClient {
 }
 
 export const wsClient = new WSClient()
+
+/** 현재 페이지 활성 알림 → 백엔드 per-client 필터링 */
+export function notifyPageActive(page: string): void {
+  wsClient.send(JSON.stringify({ type: 'page-active', page }))
+}
+
+/** 현재 페이지 비활성 알림 → 백엔드 per-client 필터링 해제 */
+export function notifyPageInactive(page: string): void {
+  wsClient.send(JSON.stringify({ type: 'page-inactive', page }))
+}

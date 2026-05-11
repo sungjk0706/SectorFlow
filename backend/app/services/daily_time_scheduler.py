@@ -559,6 +559,55 @@ def _broadcast_market_phase() -> None:
         logger.warning("[타이머] market-phase 화면전송 오류: %s", e)
 
 
+def _apply_auto_toggle_on_startup(settings: dict) -> None:
+    """앱 기동 시 거래일/시간 기준으로 자동매매·WS구독을 자동 ON/OFF.
+    - 거래일 + ws_subscribe_start~end 구간 내 → ON
+    - 비거래일 or 구독 구간 밖 → OFF
+    settings.json 저장 + 프론트 알림까지 수행."""
+    from app.core.trading_calendar import is_krx_holiday, kst_today
+    from app.core.settings_file import update_settings
+
+    today = kst_today()
+    holiday_guard = bool(settings.get("holiday_guard_on", True))
+    is_holiday = is_krx_holiday(today)
+
+    # 거래일 판별: holiday_guard_on이 OFF면 공휴일도 허용
+    is_trade_day = not (holiday_guard and is_holiday)
+
+    # 시간 구간 판별: ws_subscribe_on 제외하고 시간만 확인
+    _dummy = {**settings, "ws_subscribe_on": True}
+    in_time_window = is_ws_subscribe_window(_dummy)
+
+    should_be_on = is_trade_day and in_time_window
+
+    on_or_off = should_be_on
+    keys = {
+        "time_scheduler_on": on_or_off,
+        "auto_buy_on": on_or_off,
+        "auto_sell_on": on_or_off,
+        "ws_subscribe_on": on_or_off,
+        "auto_off_by_holiday": False,
+    }
+    try:
+        update_settings(keys)
+        settings.update(keys)
+        logger.info(
+            "[자동토글] 기동 판별 -- 거래일=%s, 시간구간=%s → 자동매매/WS구독 %s",
+            is_trade_day, in_time_window, "ON" if on_or_off else "OFF",
+        )
+        try:
+            from app.services.engine_account_notify import (
+                notify_desktop_header_refresh,
+                notify_desktop_settings_toggled,
+            )
+            notify_desktop_header_refresh()
+            notify_desktop_settings_toggled()
+        except Exception:
+            pass
+    except Exception as e:
+        logger.warning("[자동토글] 기동 판별 저장 실패: %s", e)
+
+
 def _restore_from_holiday_flag(settings: dict) -> bool:
     """auto_off_by_holiday 플래그가 있으면 자동매매/WS구독을 ON으로 복원하고 플래그 삭제.
     복원이 실행되면 True 반환."""
@@ -667,6 +716,28 @@ async def _on_ws_subscribe_end() -> None:
         # 구독 상태 전체 false + WS 브로드캐스트
         from app.services.ws_subscribe_control import _set_status
         _set_status(index=False, quote=False)
+        # ── 자동매매·WS구독 토글 OFF 저장 (종료 시각 도달) ──
+        try:
+            from app.core.settings_file import update_settings
+            off_keys = {
+                "time_scheduler_on": False,
+                "auto_buy_on": False,
+                "auto_sell_on": False,
+                "ws_subscribe_on": False,
+            }
+            update_settings(off_keys)
+            _cache = getattr(engine_service, "_settings_cache", None)
+            if isinstance(_cache, dict):
+                _cache.update(off_keys)
+            logger.info("[자동토글] 구독 종료 시각 도달 -- 자동매매/WS구독 OFF 저장")
+            from app.services.engine_account_notify import (
+                notify_desktop_header_refresh,
+                notify_desktop_settings_toggled,
+            )
+            notify_desktop_header_refresh()
+            notify_desktop_settings_toggled()
+        except Exception as _e:
+            logger.warning("[자동토글] 구독 종료 OFF 저장 실패: %s", _e)
         # ── WS 연결 해제 ──
         ws = getattr(engine_service, "_connector_manager", None) or getattr(engine_service, "_kiwoom_connector", None)
         if ws and ws.is_connected():
@@ -744,10 +815,9 @@ def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
     ws_start_str = str(settings.get("ws_subscribe_start") or "07:50")[:5]
     ws_end_str = str(settings.get("ws_subscribe_end") or "20:00")[:5]
 
-    # WS 구독 마스터 스위치 OFF면 타이머 예약 스킵
-    if not bool(settings.get("ws_subscribe_on", True)):
-        logger.info("[타이머] 실시간 구독 스위치 OFF -- 타이머 예약 생략")
-        return
+    # ※ ws_subscribe_on 상태와 무관하게 타이머는 항상 예약한다.
+    # 실행 여부는 _on_ws_subscribe_start() 내부에서 판단한다.
+    # (공휴일 가드가 자동으로 OFF한 경우와 사용자 수동 OFF를 여기서 구분할 수 없음)
 
     sh, sm = _parse_hm(ws_start_str)
     eh, em = _parse_hm(ws_end_str)
@@ -1042,8 +1112,15 @@ def _on_midnight() -> None:
         from app.services import engine_service
         settings = getattr(engine_service, "_settings_cache", None)
 
-        # 공휴일 가드: 날짜 변경 시 비거래일이면 자동 OFF
-        _apply_holiday_guard_on_startup(settings)
+        # 날짜 변경 시 거래일/시간 기준 자동 ON/OFF 판별
+        if not settings:
+            try:
+                from app.core.settings_file import load_settings
+                settings = load_settings()
+            except Exception:
+                settings = {}
+        if settings:
+            _apply_auto_toggle_on_startup(settings)
 
         schedule_auto_trade_timers(settings)
         schedule_ws_subscribe_timers(settings)
@@ -1277,18 +1354,15 @@ def start_daily_time_scheduler() -> None:
         from app.services import engine_service
         settings = getattr(engine_service, "_settings_cache", None)
 
-        # ── 공휴일 가드: 앱 기동 시 공휴일이면 자동매매/매수/매도/WS구독 OFF 저장 ──
-        _apply_holiday_guard_on_startup(settings)
-
-        # ── 거래일 복원: ws_subscribe_start 이후 기동 시 플래그 확인 후 자동 ON ──
-        # _apply_holiday_guard_on_startup이 이미 오늘 비거래일 여부를 처리했으므로
-        # 여기서 플래그가 남아 있다면 거래일에 ws_subscribe_start 이후 기동한 것임.
-        if settings and bool(settings.get("auto_off_by_holiday", False)):
-            from app.core.trading_calendar import is_krx_holiday, kst_today
-            _today = kst_today()
-            if _today.weekday() < 5 and not is_krx_holiday(_today):
-                if is_ws_subscribe_window(settings):
-                    _restore_from_holiday_flag(settings)
+        # ── 기동 시 자동 ON/OFF 판별: 거래일+시간구간이면 ON, 아니면 OFF ──
+        if not settings:
+            try:
+                from app.core.settings_file import load_settings
+                settings = load_settings()
+            except Exception:
+                settings = {}
+        if settings:
+            _apply_auto_toggle_on_startup(settings)
 
         schedule_auto_trade_timers(settings)
         schedule_ws_subscribe_timers(settings)

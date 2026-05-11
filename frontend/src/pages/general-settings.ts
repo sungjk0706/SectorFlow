@@ -3,6 +3,7 @@
 // SettingsTabContainer.tsx + TelegramSection + AccountManageSection + TestVirtualSection 통합
 
 import { appStore } from '../stores/appStore'
+import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingsManager, extractDirty, MASKED_FIELDS, type SettingsManager } from '../settings'
 import { createToggleBtn, createMoneyInput, TEXT_INPUT_WIDTH } from '../components/common/setting-row'
 import { toastResult, showSaveToast } from '../components/common/save-toast'
@@ -671,6 +672,7 @@ function syncFromSettings(s: AppSettings | null): void {
 
 /* ── mount ── */
 function mount(container: HTMLElement): void {
+  notifyPageActive('settings')
   settingsMgr = createSettingsManager(appStore)
   vals = {}
   activeTab = 'auto-trade'
@@ -739,6 +741,7 @@ function mount(container: HTMLElement): void {
 
 /* ── unmount ── */
 function unmount(): void {
+  notifyPageInactive('settings')
   if (unsubSettings) { unsubSettings(); unsubSettings = null }
   savingTime = false
   pendingTimeSave = null

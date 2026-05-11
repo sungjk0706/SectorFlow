@@ -18,7 +18,6 @@ from app.services.engine_account_notify import (
     notify_desktop_buy_radar_only,
     notify_desktop_index_refresh,
     notify_desktop_sector_scores,
-    notify_sector_tick_single,
     notify_raw_real_data,
 )
 from app.services.engine_account_rest import (
