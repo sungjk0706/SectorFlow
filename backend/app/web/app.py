@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
     configure_app_logging()
 
     loop = asyncio.get_running_loop()
-    loop.set_default_executor(ThreadPoolExecutor(max_workers=1))
+    loop.set_default_executor(ThreadPoolExecutor(max_workers=8))
 
     from app.services.daily_time_scheduler import start_daily_time_scheduler
     from app.services.engine_service import start_engine

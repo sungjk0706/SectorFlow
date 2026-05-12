@@ -216,7 +216,19 @@ export function bindWSToStore(wsClient: WSClient, _store: StoreApi<AppState>): v
 
   /* ── [근본해결] 무가공 Raw 데이터 수신 (모든 FID 포함) ── */
   wsClient.onEvent<RealDataEvent>('real-data', (data) => {
+    const t0 = performance.now()
     applyRealData(data)
+    const procMs = performance.now() - t0
+    // 서버→클라이언트 전파 지연 (백엔드 _ts 주입 기준)
+    const srvTs = (data as any)._ts as number | undefined
+    const netMs = srvTs ? Math.max(0, Date.now() - srvTs) : -1
+    // 5ms 이상 처리 지연 또는 50ms 이상 네트워크 지연 시 warn
+    if (procMs > 5.0) {
+      console.warn(`[WS] real-data 처리 지연: ${procMs.toFixed(2)}ms`, data.item)
+    }
+    if (netMs > 50) {
+      console.warn(`[WS] real-data 네트워크 지연: ${netMs.toFixed(0)}ms`, data.item)
+    }
   })
 
   /* ── 호가잔량 실시간 갱신 (매수후보 테이블) ── */

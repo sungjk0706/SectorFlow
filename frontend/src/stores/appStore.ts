@@ -312,11 +312,11 @@ export function applyRealData(item: RealDataEvent): void {
 
     if (!rawPrice) return;
 
-    const price = Math.abs(parseInt(String(rawPrice).replace(/,/g, '')) || 0);
-    const change = parseInt(String(rawChange).replace(/,/g, '')) || 0;
-    const rate = parseFloat(String(rawRate).replace(/,/g, '')) || 0;
-    const strength = parseFloat(String(rawStrength).replace(/,/g, '').trim()) || 0;
-    const amount = (parseInt(String(rawAmount).replace(/,/g, '')) || 0) * 1000000;
+    const price = Math.abs(+(String(rawPrice).replace(/,/g, '')) || 0);
+    const change = +(String(rawChange).replace(/,/g, '')) || 0;
+    const rate = +(String(rawRate).replace(/,/g, '')) || 0;
+    const strength = +(String(rawStrength).replace(/,/g, '').trim()) || 0;
+    const amount = (+(String(rawAmount).replace(/,/g, '')) || 0) * 1000000;
 
     appStore.setState((state) => {
       let sectorStocks = state.sectorStocks;
@@ -333,21 +333,23 @@ export function applyRealData(item: RealDataEvent): void {
         }
       }
 
-      // buyTargets: 인덱스 캐시 O(1) 조회 + splice 기반 증분 갱신
-      const bt = state.buyTargets;
+      // buyTargets: 인덱스 캐시 O(1) 조회 + 증분 갱신 (원본 배열 변이 없음)
+      let bt = state.buyTargets;
       let buyTargetsChanged = false;
       const btIdx = getBuyTargetIndex(code);
       if (btIdx !== undefined) {
         const t = bt[btIdx];
         if (!(t.cur_price === price && t.change === change && t.change_rate === rate &&
               t.strength === strength && t.trade_amount === amount)) {
-          bt.splice(btIdx, 1, { ...t, cur_price: price, change: change, change_rate: rate, strength: strength, trade_amount: amount });
+          bt = [...bt];
+          bt[btIdx] = { ...t, cur_price: price, change: change, change_rate: rate, strength: strength, trade_amount: amount };
           buyTargetsChanged = true;
         }
       }
 
-      // positions: 인덱스 캐시 O(1) 조회 + splice 기반 증분 갱신 + 파생 필드 재계산
+      // positions: 인덱스 캐시 O(1) 조회 + 증분 갱신 (원본 배열 변이 없음)
       const positions = state.positions;
+      let newPositions = positions;
       let positionsChanged = false;
       const posIdx = getPositionIndex(code);
       if (posIdx !== undefined) {
@@ -358,7 +360,8 @@ export function applyRealData(item: RealDataEvent): void {
           const evalAmount = price * qty;
           const pnlAmount = buyAmt > 0 ? evalAmount - buyAmt : 0;
           const pnlRate = buyAmt > 0 ? Math.round((pnlAmount / buyAmt) * 10000) / 100 : 0;
-          positions.splice(posIdx, 1, { ...pos, cur_price: price, eval_amount: evalAmount, pnl_amount: pnlAmount, pnl_rate: pnlRate });
+          newPositions = [...positions];
+          newPositions[posIdx] = { ...pos, cur_price: price, eval_amount: evalAmount, pnl_amount: pnlAmount, pnl_rate: pnlRate };
           positionsChanged = true;
         }
       }
@@ -368,7 +371,7 @@ export function applyRealData(item: RealDataEvent): void {
       const patch: Partial<AppState> = {};
       if (sectorStocks !== state.sectorStocks) patch.sectorStocks = sectorStocks;
       if (buyTargetsChanged) patch.buyTargets = bt;
-      if (positionsChanged) patch.positions = positions;
+      if (positionsChanged) patch.positions = newPositions;
       return patch;
     });
   }

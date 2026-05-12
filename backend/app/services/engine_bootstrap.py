@@ -50,8 +50,10 @@ async def _bootstrap_sector_stocks_async() -> None:
     업종맵(ka10099) 기반 전체 종목 초기 시세 로드.
     캐시 데이터가 있으면 REST API 없이도 부트스트랩 완료 가능.
     """
-    _st._bootstrap_event.clear()
-    _st._sector_summary_ready_event.clear()
+    _already_ready = _st._bootstrap_event.is_set()
+    if not _already_ready:
+        _st._bootstrap_event.clear()
+        _st._sector_summary_ready_event.clear()
 
     # ── 테스트모드: Settlement Engine 상태 복원 ──
     if (_st._settings_cache or {}).get("trade_mode") == "test":
@@ -575,18 +577,6 @@ async def _refresh_avg_amt_5d_cache_inner() -> None:
     if not _st._rest_api:
         logger.debug("[전종목5일챠트] REST API 없음 -- 생략 (엔진 준비 중)")
         return
-
-    from app.core.industry_map import get_real_industry_codes
-
-    industry_codes: list[tuple[str, str]] = []
-    try:
-        real_codes_raw = get_real_industry_codes()
-        if real_codes_raw:
-            for item in real_codes_raw:
-                if isinstance(item, (list, tuple)) and len(item) >= 2:
-                    industry_codes.append((str(item[0]), str(item[1])))
-    except Exception as e:
-        logger.warning("[전종목5일챠트] 실제 업종코드 로딩 실패: %s", e)
 
     _v2_result = load_avg_amt_cache_v2()
     existing_v2 = _v2_result[0] if _v2_result else None

@@ -41,6 +41,48 @@
       "fee": 295,
       "reason": "자동매수",
       "trade_mode": "test"
+    },
+    {
+      "ts": "2026-05-12T13:55:41",
+      "date": "2026-05-12",
+      "time": "13:55:41",
+      "side": "BUY",
+      "stk_cd": "298380",
+      "stk_nm": "에이비엘바이오",
+      "price": 130100,
+      "qty": 15,
+      "total_amt": 1951793,
+      "fee": 293,
+      "reason": "자동매수",
+      "trade_mode": "test"
+    },
+    {
+      "ts": "2026-05-12T13:55:41",
+      "date": "2026-05-12",
+      "time": "13:55:41",
+      "side": "BUY",
+      "stk_cd": "476830",
+      "stk_nm": "알지노믹스",
+      "price": 169400,
+      "qty": 11,
+      "total_amt": 1863680,
+      "fee": 280,
+      "reason": "자동매수",
+      "trade_mode": "test"
+    },
+    {
+      "ts": "2026-05-12T14:13:41",
+      "date": "2026-05-12",
+      "time": "14:13:41",
+      "side": "BUY",
+      "stk_cd": "086280",
+      "stk_nm": "현대글로비스",
+      "price": 258500,
+      "qty": 4,
+      "total_amt": 1034155,
+      "fee": 155,
+      "reason": "자동매수",
+      "trade_mode": "test"
     }
   ],
   "sell": [
@@ -61,6 +103,44 @@
       "fee": 292,
       "tax": 3895,
       "reason": "손절 발동",
+      "trade_mode": "test"
+    },
+    {
+      "ts": "2026-05-12T13:37:36",
+      "date": "2026-05-12",
+      "time": "13:37:36",
+      "side": "SELL",
+      "stk_cd": "003230",
+      "stk_nm": "삼양식품",
+      "price": 1316000,
+      "qty": 1,
+      "total_amt": 1313171,
+      "avg_buy_price": 1329500,
+      "buy_total_amt": 1329699,
+      "realized_pnl": -16528,
+      "pnl_rate": -1.24,
+      "fee": 197,
+      "tax": 2632,
+      "reason": "손절 발동",
+      "trade_mode": "test"
+    },
+    {
+      "ts": "2026-05-12T15:02:56",
+      "date": "2026-05-12",
+      "time": "15:02:56",
+      "side": "SELL",
+      "stk_cd": "086280",
+      "stk_nm": "현대글로비스",
+      "price": 264250,
+      "qty": 4,
+      "total_amt": 1054727,
+      "avg_buy_price": 258500,
+      "buy_total_amt": 1034155,
+      "realized_pnl": 20572,
+      "pnl_rate": 1.99,
+      "fee": 159,
+      "tax": 2114,
+      "reason": "T/S 익절",
       "trade_mode": "test"
     }
   ]

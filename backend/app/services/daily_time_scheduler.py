@@ -710,7 +710,7 @@ async def _on_ws_subscribe_start() -> None:
 
 async def _on_ws_subscribe_end() -> None:
     """WS 구독 종료 시각이 되면 자동 실행 -- 실시간 수신 중단 + WS 연결 해제 + 섹터 재계산을 순서대로 하는 함수."""
-    global _ws_subscribe_window_active, _avg_amt_5d_refresh_done, _0j_real_receiving
+    global _ws_subscribe_window_active, _avg_amt_5d_refresh_done, _0j_real_receiving, _confirmed_done
     try:
         from app.services import engine_service
         _ws_subscribe_window_active = False
@@ -719,6 +719,7 @@ async def _on_ws_subscribe_end() -> None:
         _stop_index_poll_timer()
         # WS 종료 콜백 진입 시 갱신 플래그 초기화 (새 사이클 시작)
         _avg_amt_5d_refresh_done = False
+        _confirmed_done = False  # 오후 8시 구독 종료 → 8시 30분 확정 갱신 허용
         logger.info("[타이머] 실시간 구독 구간 종료 -- 구독 해지 + 실시간 연결 해제")
         _trigger_unreg_all(engine_service)
         # 구독 상태 전체 false + WS 브로드캐스트

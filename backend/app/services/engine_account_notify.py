@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 
 from app.core.logger import get_logger
@@ -176,6 +177,8 @@ def init_sent_caches(sector_stocks: list[dict], positions: list[dict], snapshot:
     _snapshot_sent_cache = dict(snapshot)
     _prev_scores_cache = []
     _prev_buy_targets_map = None
+    # Set 캐시 동기화 — _is_relevant_code O(1) 조회용
+    _rebuild_positions_cache(positions)
 
 
 # ── 알림 함수 (WebSocket 브로드캐스트) ─────────────────────────────────────────────
@@ -309,11 +312,13 @@ def notify_raw_real_data(item: dict) -> None:
         try:
             from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
             nk = _format_kiwoom_reg_stk_cd(raw_code)
+            # DEBUG: 032830 필터링 원인 추적
             if not _is_relevant_code(nk):
                 return
         except Exception:
             pass
     try:
+        item["_ts"] = int(time.time() * 1000)
         _broadcast("real-data", item)
     except Exception as e:
         logger.warning("[실시간] Raw 데이터 전송 실패: %s", e)

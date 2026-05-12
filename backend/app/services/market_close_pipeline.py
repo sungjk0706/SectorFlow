@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from types import ModuleType
 
 from app.services.engine_symbol_utils import (
@@ -20,6 +21,7 @@ from app.services.engine_symbol_utils import (
 from app.services.engine_ws_reg import build_0b_remove_payloads
 
 _log = logging.getLogger("engine")
+_CONFIRMED_FETCH_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="confirmed-fetch")
 
 
 def _broadcast_confirmed_progress(
@@ -436,7 +438,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
         load_progress_cache,
         clear_progress_cache,
     )
-    from app.core.trading_calendar import current_trading_date_str
+    from app.core.trading_calendar import current_trading_date_str, kst_today_str
 
     _settings = getattr(es, "_settings_cache", {}) or {}
 
@@ -605,7 +607,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
 
     # ── 2단계 ka10086: 전종목 확정 시세 순차 호출 (이어받기 지원) ───────
     _log.info("[파이프라인] Step 5 시작 — ka10086 전종목 확정 시세 다운로드 (%d종목)", len(all_codes))
-    qry_dt = current_trading_date_str()
+    qry_dt = kst_today_str()  # 당일 확정 시세 조회: 20:00 이후에도 오늘 날짜 사용 (current_trading_date_str은 다음 거래일 반환)
     total = len(all_codes)
     _main_loop = asyncio.get_running_loop()
 
@@ -646,7 +648,10 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
                 resume_codes=resume_codes,  # 이어받기 지원
             )
 
-        confirmed = await asyncio.to_thread(_sync_ka10086)
+        confirmed = await asyncio.get_running_loop().run_in_executor(
+            _CONFIRMED_FETCH_EXECUTOR,
+            _sync_ka10086,
+        )
     except Exception as exc:
         _log.warning("[파이프라인] ka10086 전종목 조회 실패: %s", exc)
         confirmed = {}
