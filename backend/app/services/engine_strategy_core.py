@@ -39,7 +39,8 @@ def resolve_radar_display_name(stk_cd: str, ws_stk_nm: str, access_token) -> str
     rest_nm = ""
     try:
         rest_nm = (data_manager.get_stock_name(stk_cd, access_token) or "").strip()
-    except Exception:
+    except Exception as e:
+        logger.warning("[종목명] REST 조회 실패 %s: %s", stk_cd, e)
         rest_nm = ""
 
     if hint and hint != stk_cd:
@@ -113,8 +114,8 @@ async def register_pending_stock(
         try:
             _task = asyncio.get_running_loop().create_task(es._subscribe_stock_realtime_when_ready(stk_cd))
             _task.add_done_callback(lambda t: logger.warning("[구독등록] 구독 실패: %s", t.exception()) if t.exception() else None)
-        except RuntimeError:
-            pass
+        except RuntimeError as e:
+            logger.error("[구독] task 생성 실패 %s: %s", stk_cd, e)
     elif detail:
         # 이미 모니터링에 등록된 종목 -> 최신 시세만 업데이트 (이탈 상태면 갱신 안 함)
         need_resolve = False

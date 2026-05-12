@@ -368,7 +368,7 @@ function descLabel(text: string): HTMLElement {
 
 function buildTripleHeader(): void {
   const header = shell.tripleHeader
-  header.innerHTML = ''
+  while (header.firstChild) header.removeChild(header.firstChild)
   header.style.fontFamily = FONT_FAMILY
 
   // 좌측: 타이틀 + 증권사 라벨 (flex:1)
@@ -885,7 +885,7 @@ async function onAddSector(e: MouseEvent): Promise<void> {
 
 function buildTripleLeft(): void {
   const left = shell.tripleLeft
-  left.innerHTML = ''
+  while (left.firstChild) left.removeChild(left.firstChild)
   left.style.fontFamily = FONT_FAMILY
   left.appendChild(buildSectorManageCard())
   left.appendChild(buildSchedulerCard())
@@ -896,7 +896,7 @@ function buildTripleLeft(): void {
 
 function buildTripleCenter(): void {
   const center = shell.tripleCenter
-  center.innerHTML = ''
+  while (center.firstChild) center.removeChild(center.firstChild)
   center.style.fontFamily = FONT_FAMILY
 
   centerContentRef = document.createElement('div')
@@ -1166,7 +1166,7 @@ function createSectorRow(sectorName: string): HTMLElement {
 
 function buildTripleRight(): void {
   const right = shell.tripleRight
-  right.innerHTML = ''
+  while (right.firstChild) right.removeChild(right.firstChild)
   right.style.fontFamily = FONT_FAMILY
 
   rightContentRef = document.createElement('div')
@@ -1532,10 +1532,10 @@ function unmount(): void {
   stockNameIndex = new Map()
 
   // Clear shell triple panels
-  shell.tripleHeader.innerHTML = ''
-  shell.tripleLeft.innerHTML = ''
-  shell.tripleCenter.innerHTML = ''
-  shell.tripleRight.innerHTML = ''
+  while (shell.tripleHeader.firstChild) shell.tripleHeader.removeChild(shell.tripleHeader.firstChild)
+  while (shell.tripleLeft.firstChild) shell.tripleLeft.removeChild(shell.tripleLeft.firstChild)
+  while (shell.tripleCenter.firstChild) shell.tripleCenter.removeChild(shell.tripleCenter.firstChild)
+  while (shell.tripleRight.firstChild) shell.tripleRight.removeChild(shell.tripleRight.firstChild)
 }
 
 const pageModule: PageModule = { mount, unmount }

@@ -53,7 +53,7 @@
   "theme_mode": "dark",
   "ui_zoom": 1.15,
   "sector_min_rise_ratio_pct": 60,
-  "sector_min_trade_amt": 570,
+  "sector_min_trade_amt": 650,
   "sector_sort_keys": [
     "trade_amount",
     "change_rate",
@@ -127,7 +127,7 @@
   "boost_high_breakout_on": true,
   "boost_high_breakout_score": 2,
   "boost_order_ratio_on": true,
-  "boost_order_ratio_pct": -10,
+  "boost_order_ratio_pct": -20,
   "boost_order_ratio_score": 1,
   "auto_off_by_holiday": false
 }

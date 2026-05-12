@@ -41,8 +41,8 @@ def _broadcast_bootstrap_stage(
         if progress is not None:
             payload["progress"] = progress
         ws_manager.broadcast("bootstrap-stage", payload)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[부트] stage 브로드캐스트 실패 %s: %s", stage_name, e)
 
 
 async def _bootstrap_sector_stocks_async() -> None:
@@ -269,8 +269,8 @@ async def _bootstrap_sector_stocks_async() -> None:
     try:
         from app.services import engine_account_notify as _account_notify
         _account_notify.notify_desktop_buy_radar_only()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[부트] 매수후보 갱신 실패: %s", e)
     _src = "섹터매핑" if len(_st._sector_stock_layout) > 0 else "없음"
     _snapshot_count = len(_st._pending_stock_details) if _preboot_hit else len(krx_rows)
     _layout_count = sum(1 for t, _ in _st._sector_stock_layout if t == "code")
@@ -422,8 +422,8 @@ async def _deferred_sector_summary() -> None:
                 notify_desktop_sector_stocks_refresh()
                 notify_buy_targets_update()
                 logger.info("[앱준비] 업종순위 화면전송 완료 (접속화면=%d)", _client_cnt)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("[부트] UI 초기 전송 실패: %s", e)
         else:
             # 종목 없음 — 이벤트만 발행 (대기 해제)
             _st._sector_summary_ready_event.set()
@@ -438,13 +438,13 @@ async def _notify_close_data_ui() -> None:
         from app.services import engine_account_notify as _account_notify
         try:
             _account_notify.notify_desktop_buy_radar_only()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[장외] 매수후보 갱신 실패: %s", e)
         try:
             _account_notify.notify_desktop_sector_refresh()
             logger.info("[앱준비][장외갱신] 섹터 분석 패널 갱신 트리거")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[장외] 섹터 갱신 실패: %s", e)
     except Exception as _e:
         logger.warning("[앱준비][장외갱신] 확정 데이터 갱신 실패(무시): %s", _e)
 
@@ -702,8 +702,8 @@ async def _refresh_avg_amt_5d_cache_inner() -> None:
         _account_notify.notify_desktop_sector_refresh()
         _account_notify.notify_desktop_sector_stocks_refresh()
         _account_notify.notify_desktop_sector_scores(force=True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error("[5일평균] 후처리 실패: %s", e)
     _broadcast_avg_amt_progress(1, 1, status="completed")
 
 
@@ -733,8 +733,8 @@ def _broadcast_avg_amt_progress(current: int, total: int, *, status: str = "") -
         if _msg:
             payload["message"] = _msg
         ws_manager.broadcast("avg-amt-progress", payload)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[5일평균] 진행률 전송 실패: %s", e)
 
 
 async def _bg_refresh_avg_amt_5d() -> None:

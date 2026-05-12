@@ -295,8 +295,8 @@ def _is_relevant_code(nk: str) -> bool:
             return True
         if nk in _layout_code_set:
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error("[필터] 종목 %s 판별 실패: %s", nk, e)
     return False
 
 
@@ -312,11 +312,11 @@ def notify_raw_real_data(item: dict) -> None:
         try:
             from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
             nk = _format_kiwoom_reg_stk_cd(raw_code)
-            # DEBUG: 032830 필터링 원인 추적
             if not _is_relevant_code(nk):
                 return
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("[정규화] raw_code=%r 실패: %s", raw_code, e)
+            return
     try:
         item["_ts"] = int(time.time() * 1000)
         _broadcast("real-data", item)

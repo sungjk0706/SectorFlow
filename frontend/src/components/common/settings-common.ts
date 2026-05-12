@@ -130,7 +130,7 @@ function createTimeDropdown(
   div.appendChild(content)
 
   function renderContent() {
-    content.innerHTML = ''
+    while (content.firstChild) content.removeChild(content.firstChild)
     if (currentTab === 'hour') {
       content.appendChild(createGridPanel(HOURS, curH, 6, (h) => {
         curH = h; onChangeH(h); currentTab = 'minute'; renderTabs(); renderContent()
