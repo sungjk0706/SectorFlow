@@ -1,4 +1,0 @@
-# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/services/data_manager.py
-# hypothesis_version: 6.141.1
-
-[0.0, 200, '%', ',', '0', '0.00%', '3', 'A', 'Content-Type', 'acnt_no', 'api-id', 'authorization', 'base_url', 'body', 'buy_amt', 'buy_price', 'buy_uv', 'cur_pric', 'cur_price', 'd2_entra', 'data_manager', 'entr', 'evlt_ploss', 'gAAAA', 'kiwoom_account_no', 'kiwoom_app_key', 'kiwoom_app_key_real', 'kiwoom_app_secret', 'kt00001', 'kt00018', 'ord_alow_amt', 'pnl_amt', 'pnl_rate', 'prft_rt', 'pymn_alow_amt', 'qry_tp', 'qty', 'raw_data', 'rest_api', 'return_code', 'return_msg', 'rmnd_qty', 'stk_cd', 'stk_nm', 'stock_list', 'success', 'summary', 'test', 'test_mode', 'tot_buy', 'tot_eval', 'tot_evlt_amt', 'tot_evlt_pl', 'tot_pnl', 'tot_prft_rt', 'tot_pur_amt', 'total_rate', 'trade_mode', '알수없음']

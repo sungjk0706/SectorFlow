@@ -1,4 +1,0 @@
-# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/core/broker_factory.py
-# hypothesis_version: 6.152.4
-
-['BrokerRouter', 'BrokerRouter | None', '[증권사설정] %s', '[증권사설정] 키움증권 연결 준비', 'broker', 'broker_factory', 'kiwoom']

@@ -1,4 +1,0 @@
-# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/services/engine_loop.py
-# hypothesis_version: 6.152.4
-
-[1000, ' ★ 실제 자금 투입 ★', '****', ',', '[기동시간] 설정 로드: %.0fms', '[기동시간] 전체 기동: %.0fms', '[엔진] %s 토큰 발급 실패: %s', '[엔진] 실시간 연결 완료', '[엔진] 키움증권 접속 완료', '_auth_cache', '_broker_tokens', '_connector_manager', '_v', 'broker', 'broker_config', 'broker_specs', 'data', 'engine', 'engine-ready', 'ka00001', 'kiwoom', 'kiwoom_account_no', 'kt00001', 'kt00018', 'r', 'ready', 'rest_api', 'tr_id', 'utf-8', 'websocket', '미설정', '실전투자', '테스트모드']

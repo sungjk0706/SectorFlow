@@ -1,4 +1,0 @@
-# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/services/engine_ws_dispatch.py
-# hypothesis_version: 6.152.4
-
-[0.0, 160, 200, 5000, 1000000, '+', ',', '-', '0', '00', '005930', '01', '04', '0B', '0d', '0j', '0u', '1', '10', '1030', '1031', '105110', '11', '12', '121', '125', '13', '14', '16', '2', '228', '25', '3', '4', '44', '45', '5', '80', '902', '907', 'A', 'KRX', 'LOGIN', 'NXT', 'REAL', 'REG', 'REMOVE', 'UNREG', '[WS] ◀ %s 응답 상세: %s', '_AL', '_NX', '_al', '_nx', '_raw', 'active', 'ask_depth', 'bid_depth', 'change', 'change_rate', 'code', 'cur_price', 'data', 'engine', 'exited', 'grp_no', 'item', 'prev_close', 'price', 'rate', 'return_code', 'return_msg', 'sign', 'status', 'stk_cd', 'strength', 'trade_amount', 'trnm', 'type', 'values']

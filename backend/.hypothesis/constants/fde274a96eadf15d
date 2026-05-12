@@ -1,4 +1,0 @@
-# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/services/engine_trade_audit.py
-# hypothesis_version: 6.152.4
-
-['[매매판단기록] %s', 'auto_buy_on', 'auto_sell_on', 'buy_amt', 'buy_time_end', 'buy_time_start', 'engine', 'event', 'max_stock_cnt', 'reason_ko', 'sell_time_end', 'sell_time_start', 'settings_snapshot', 'stk_cd']

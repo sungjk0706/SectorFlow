@@ -1,4 +1,0 @@
-# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/services/engine_sector_confirm.py
-# hypothesis_version: 6.141.1
-
-[0.0, 0.3, 1.0, 2.0, 7.0, 20.0, 30.0, 60.0, 100.0, 100000000, '[섹터재계산] 매수 판단 오류: %s', '[호가구독] 신규 등록 %d종목', '[호가구독] 지연 해지 적용 %d종목', '__ALL__', 'active', 'all_codes', 'avg_amt_5d', 'boost_order_ratio_on', 'buy_block_fall_pct', 'buy_block_rise_pct', 'buy_index_kospi_drop', 'buy_min_strength', 'buy_targets', 'data', 'engine', 'item', 'latest_index', 'sector_max_targets', 'sector_min_trade_amt', 'sector_sort_keys', 'sector_weights', 'status', 'stock_details', 'strengths', 'trade_amounts', 'trade_prices']
