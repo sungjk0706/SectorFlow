@@ -138,6 +138,7 @@ function applyCell(cell: HTMLElement, align: string): void {
     display: 'flex',
     alignItems: 'center',
     justifyContent: jc,
+    width: '100%',
     boxSizing: 'border-box',
     padding: CELL_PADDING,
     overflow: 'hidden',
@@ -184,7 +185,7 @@ export function createCodeCell(code: string): HTMLElement {
   return cell
 }
 
-/** 현재가 셀 (우측정렬, 등락률 기반 색상, 0이면 "-") */
+/** 현재가 셀 (우측정렬, 등락률 기반 색상, 가격 미수신 시 "-") */
 export function createPriceCell(price: number, rate: number): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
@@ -203,7 +204,8 @@ export function createPriceCell(price: number, rate: number): HTMLElement {
 export function createChangeCell(change: number): HTMLElement {
   if (change === 0) {
     const cell = document.createElement('div')
-    cell.textContent = '-'
+    applyCell(cell, 'right')
+    cell.textContent = '0'
     return cell
   }
   const wrap = document.createElement('span')
@@ -224,12 +226,12 @@ export function createChangeCell(change: number): HTMLElement {
   return wrap
 }
 
-/** 등락률 셀 (우측정렬, +/- 포맷, rateColor, 0이면 "-") */
+/** 등락률 셀 (우측정렬, +/- 포맷, rateColor, 0이면 "0") */
 export function createRateCell(rate: number): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
   if (rate === 0) {
-    cell.textContent = '-'
+    cell.textContent = '0'
   } else {
     const span = document.createElement('span')
     span.style.color = rateColor(rate)
