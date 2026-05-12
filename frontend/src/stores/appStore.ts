@@ -493,7 +493,13 @@ export function applySectorScores(data: SectorScoresEvent): void {
   const updates: Partial<AppState> = { sectorStatus: data.status ?? null }
   if (!same) {
     updates.sectorScores = scores
-    updates.sectorOrder = scores.map(s => s.sector)
+    const newOrder = scores.map(s => s.sector)
+    const prevOrder = appStore.getState().sectorOrder
+    const orderSame = prevOrder.length === newOrder.length &&
+                      prevOrder.every((s, i) => s === newOrder[i])
+    if (!orderSame) {
+      updates.sectorOrder = newOrder
+    }
   }
   appStore.setState(updates)
 }

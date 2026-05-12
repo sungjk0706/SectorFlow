@@ -130,7 +130,7 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
     }
 
     // 콘텐츠 영역 비우기
-    contentEl.innerHTML = ''
+    while (contentEl.firstChild) contentEl.removeChild(contentEl.firstChild)
 
     currentRoute = resolved
 

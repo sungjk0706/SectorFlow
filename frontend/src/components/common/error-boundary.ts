@@ -19,7 +19,7 @@ function renderError(
   err: unknown,
   mountFn: (container: HTMLElement) => void,
 ) {
-  container.innerHTML = ''
+  while (container.firstChild) container.removeChild(container.firstChild)
 
   const wrap = document.createElement('div')
   Object.assign(wrap.style, {
@@ -47,7 +47,7 @@ function renderError(
   })
   btn.textContent = '다시 시도'
   btn.addEventListener('click', () => {
-    container.innerHTML = ''
+    while (container.firstChild) container.removeChild(container.firstChild)
     withErrorBoundary(mountFn, container)
   })
 
