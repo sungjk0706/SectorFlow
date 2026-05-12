@@ -114,9 +114,11 @@ def get_market_phase(now: datetime | None = None) -> dict:
         krx_status = "장전 동시호가"
     elif t < 930:  # 09:00~15:30 (정규장)
         krx_status = "정규장"
-    elif t < 950:  # 15:30~15:50 (장후 시간외)
+    elif t < 940:  # 15:30~15:40 (정규장 종료 ~ 시간외종가 시작 전)
+        krx_status = "장마감"
+    elif t < 960:  # 15:40~16:00 (장후 시간외종가)
         krx_status = "장후 시간외"
-    elif t < 1080:  # 15:50~18:00 (시간외 단일가)
+    elif t < 1080:  # 16:00~18:00 (시간외 단일가)
         krx_status = "시간외 단일가"
     else:  # 18:00~
         krx_status = "장마감"
@@ -722,6 +724,8 @@ async def _on_ws_subscribe_end() -> None:
         # 구독 상태 전체 false + WS 브로드캐스트
         from app.services.ws_subscribe_control import _set_status
         _set_status(index=False, quote=False)
+        # market-phase WS 브로드캐스트 (구독 종료 시각 기준 상태 반영)
+        _broadcast_market_phase()
         # ── 자동매매·WS구독 토글 OFF 저장 (종료 시각 도달) ──
         try:
             from app.core.settings_file import update_settings
@@ -871,8 +875,14 @@ def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
 
     # ★ 09:00/15:30 고정 폴링 타이머 제거됨 (Task 5.1, 0J REAL 수신 여부로 자동 판단)
 
-    # ★ market-phase 전환 시점 타이머 (08:00, 09:00, 20:00)
-    for hm_h, hm_m, label in ((8, 0, "08:00"), (9, 0, "09:00"), (20, 0, "20:00")):
+    # ★ market-phase 전환 시점 타이머
+    # 08:00 NXT프리, 09:00 KRX정규장, 15:20 NXT메인→휴식, 15:30 KRX정규종료/NXT애프터,
+    # 15:40 KRX시간외종가, 16:00 KRX시간외단일가, 18:00 KRX장마감, 20:00 NXT장마감
+    for hm_h, hm_m, label in (
+        (8, 0, "08:00"), (9, 0, "09:00"),
+        (15, 20, "15:20"), (15, 30, "15:30"), (15, 40, "15:40"), (16, 0, "16:00"), (18, 0, "18:00"),
+        (20, 0, "20:00"),
+    ):
         delay_mp = _seconds_until_hm(hm_h, hm_m)
         if delay_mp > 0 and loop:
             h = loop.call_later(max(delay_mp, 1), _broadcast_market_phase)

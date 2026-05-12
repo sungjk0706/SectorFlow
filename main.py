@@ -36,13 +36,10 @@ if __name__ == "__main__":
     # 2. 종료 시 잠금 파일 자동 삭제 핸들러 등록
     register_cleanup(LOCK_FILE_PATH)
 
-    from fastapi.staticfiles import StaticFiles
     from backend.app.web.app import app
     
     frontend_dist = ROOT / "frontend" / "dist"
-    if frontend_dist.exists():
-        app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
-    else:
+    if not frontend_dist.exists():
         print(f"⚠️ 프론트엔드 빌드 폴더 없음: {frontend_dist}")
 
     # 3. 포트 사용 여부 사전 검사
