@@ -34,6 +34,83 @@ _layout_code_set: set[str] = set()  # sector_stock_layout에서 type=="code" 값
 # ── 실시간 데이터 필드 정의 ─────────────────────────────────────────────────
 _TICK_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "strength")
 
+# ── 압축(Conflation) 설정 ───────────────────────────────────────────────────
+# 01/0B(시세) 타입: 동일 종목·동일 가격·50ms 이내 중복 틱 전송 생략
+_CONFLATE_MS = 50
+_conflate_cache: dict[str, dict] = {}  # code -> {"price": int, "ts": int}
+
+# ── 브로드캐스트 압축 통계 (1초 윈도우) ────────────────────────────────────
+_broadcast_stats: dict = {
+    "window_start_ms": 0,
+    "attempted": 0,
+    "actual": 0,
+}
+
+
+def _record_broadcast(attempted: bool, actual: bool) -> None:
+    """브로드캐스트 시도/실제 전송을 1초 윈도우에 누적."""
+    global _broadcast_stats
+    now = int(time.time() * 1000)
+    st = _broadcast_stats
+    if st["window_start_ms"] == 0:
+        st["window_start_ms"] = now
+    if now - st["window_start_ms"] >= 1000:
+        _flush_broadcast_stats()
+        st["window_start_ms"] = now
+        st["attempted"] = 0
+        st["actual"] = 0
+    if attempted:
+        st["attempted"] += 1
+    if actual:
+        st["actual"] += 1
+
+
+def _flush_broadcast_stats() -> None:
+    """1초 윈도우 브로드캐스트 집계 결과를 INFO 로깅."""
+    global _broadcast_stats
+    st = _broadcast_stats
+    attempted = st["attempted"]
+    if attempted == 0:
+        return
+    actual = st["actual"]
+    ratio = (actual / attempted) * 100
+    logger.info(
+        "[통계] 1초 브로드캐스트 시도=%s 실제=%s 비율=%.1f%%",
+        attempted, actual, ratio,
+    )
+
+
+def _should_conflate(item: dict) -> bool:
+    """동일 종목, 동일 가격, 50ms 이내 중복 틱이면 True (전송 생략)."""
+    msg_type = str(item.get("type", ""))
+    norm = msg_type.strip().upper()
+    if norm not in ("01", "0B"):
+        return False
+    vals = item.get("values", {})
+    if not isinstance(vals, dict):
+        return False
+    raw_price = vals.get("10")
+    if raw_price is None:
+        return False
+    try:
+        price = int(str(raw_price).replace(",", "").replace("+", ""))
+    except (ValueError, TypeError):
+        return False
+    raw_code = str(item.get("item") or "").strip()
+    if not raw_code:
+        return False
+    try:
+        from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+        nk = _format_kiwoom_reg_stk_cd(raw_code)
+    except Exception:
+        return False
+    now = int(time.time() * 1000)
+    last = _conflate_cache.get(nk)
+    if last is not None and last["price"] == price and (now - last["ts"]) < _CONFLATE_MS:
+        return True
+    _conflate_cache[nk] = {"price": price, "ts": now}
+    return False
+
 # ── Delta 캐시 ──────────────────────────────────────────────────────────────
 _position_sent_cache: dict[str, dict] = {}  # 보유종목별 마지막 전송 상태 (account-update delta)
 _snapshot_sent_cache: dict = {}  # 마지막 전송한 account snapshot
@@ -304,8 +381,12 @@ def notify_raw_real_data(item: dict) -> None:
     """
     키움 실시간 메시지(REAL)를 가공 없이 브로드캐스트.
     프론트에 필요한 종목(섹터+보유+레이아웃)만 전송하여 렌더링 과부하 방지.
+    01/0B 시세 타입은 동일 가격·50ms 이내 중복 틱을 압축(Conflation)하여 전송 생략.
     """
     if not item or not isinstance(item, dict):
+        return
+    _record_broadcast(attempted=True, actual=False)
+    if _should_conflate(item):
         return
     raw_code = str(item.get("item") or "").strip()
     if raw_code:
@@ -320,6 +401,7 @@ def notify_raw_real_data(item: dict) -> None:
     try:
         item["_ts"] = int(time.time() * 1000)
         _broadcast("real-data", item)
+        _record_broadcast(attempted=False, actual=True)
     except Exception as e:
         logger.warning("[실시간] Raw 데이터 전송 실패: %s", e)
 

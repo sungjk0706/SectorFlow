@@ -11,6 +11,38 @@ import { initToastContainer } from './components/common/save-toast'
 import { sectorCustomStore } from './stores/sectorCustomStore'
 import { api } from './api/client'
 
+// ── FPS 모니터링 (1초 윈도우) ──
+function startFpsMonitor(): void {
+  let frameCount = 0
+  let lastTime = performance.now()
+  let lowFpsStreak = 0
+
+  function tick(): void {
+    frameCount++
+    const now = performance.now()
+    const elapsed = now - lastTime
+    if (elapsed >= 1000) {
+      const fps = Math.round((frameCount * 1000) / elapsed)
+      if (fps < 50) {
+        lowFpsStreak++
+        if (lowFpsStreak >= 3) {
+          console.warn(`[통계] FPS 저하 지속 — ${fps}fps (3초+)`)
+        }
+      } else {
+        lowFpsStreak = 0
+      }
+      // 5초마다 한 번씩 INFO 수준으로 출력 (콘솔 과부하 방지)
+      if (Math.round(now / 1000) % 5 === 0) {
+        console.log(`[통계] FPS=${fps}`)
+      }
+      frameCount = 0
+      lastTime = now
+    }
+    requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+}
+
 // ── Layout Shell (모듈 레벨 export — sector-custom.ts 등에서 import) ──
 export const shell = createLayoutShell()
 
@@ -224,6 +256,9 @@ function main(): void {
     console.error('[Health] 초기화 실패:', error)
     shell.setOverlay(true, '초기화 실패')
   })
+
+  // FPS 모니터링 시작
+  startFpsMonitor()
 }
 
 /**

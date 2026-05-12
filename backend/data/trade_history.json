@@ -1,4 +1,89 @@
 {
-  "buy": [],
+  "buy": [
+    {
+      "ts": "2026-05-13T08:02:00",
+      "date": "2026-05-13",
+      "time": "08:02:00",
+      "side": "BUY",
+      "stk_cd": "128940",
+      "stk_nm": "한미약품",
+      "price": 466500,
+      "qty": 4,
+      "total_amt": 1866280,
+      "fee": 280,
+      "reason": "자동매수",
+      "trade_mode": "test"
+    },
+    {
+      "ts": "2026-05-13T08:02:00",
+      "date": "2026-05-13",
+      "time": "08:02:00",
+      "side": "BUY",
+      "stk_cd": "196170",
+      "stk_nm": "알테오젠",
+      "price": 351500,
+      "qty": 5,
+      "total_amt": 1757764,
+      "fee": 264,
+      "reason": "자동매수",
+      "trade_mode": "test"
+    },
+    {
+      "ts": "2026-05-13T08:02:00",
+      "date": "2026-05-13",
+      "time": "08:02:00",
+      "side": "BUY",
+      "stk_cd": "068270",
+      "stk_nm": "셀트리온",
+      "price": 197200,
+      "qty": 10,
+      "total_amt": 1972296,
+      "fee": 296,
+      "reason": "자동매수",
+      "trade_mode": "test"
+    },
+    {
+      "ts": "2026-05-13T08:02:00",
+      "date": "2026-05-13",
+      "time": "08:02:00",
+      "side": "BUY",
+      "stk_cd": "079550",
+      "stk_nm": "LIG디펜스앤에어로스페이스",
+      "price": 889000,
+      "qty": 2,
+      "total_amt": 1778267,
+      "fee": 267,
+      "reason": "자동매수",
+      "trade_mode": "test"
+    },
+    {
+      "ts": "2026-05-13T08:02:00",
+      "date": "2026-05-13",
+      "time": "08:02:00",
+      "side": "BUY",
+      "stk_cd": "298380",
+      "stk_nm": "에이비엘바이오",
+      "price": 132800,
+      "qty": 15,
+      "total_amt": 1992299,
+      "fee": 299,
+      "reason": "자동매수",
+      "trade_mode": "test"
+    },
+    {
+      "ts": "2026-05-13T08:02:00",
+      "date": "2026-05-13",
+      "time": "08:02:00",
+      "side": "BUY",
+      "stk_cd": "326030",
+      "stk_nm": "SK바이오팜",
+      "price": 104600,
+      "qty": 6,
+      "total_amt": 627694,
+      "fee": 94,
+      "reason": "자동매수",
+      "trade_mode": "test"
+    }
+  ],
   "sell": []
 }

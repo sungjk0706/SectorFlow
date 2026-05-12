@@ -1,1 +1,74 @@
-{}
+{
+  "128940": {
+    "stk_cd": "128940",
+    "stk_nm": "한미약품",
+    "qty": 4,
+    "avg_price": 466500,
+    "cur_price": 466500,
+    "total_fee": 280,
+    "buy_amt": 1866280,
+    "eval_amt": 1866000,
+    "pnl_amount": -280,
+    "pnl_rate": 0.0
+  },
+  "196170": {
+    "stk_cd": "196170",
+    "stk_nm": "알테오젠",
+    "qty": 5,
+    "avg_price": 351500,
+    "cur_price": 351500,
+    "total_fee": 264,
+    "buy_amt": 1757764,
+    "eval_amt": 1757500,
+    "pnl_amount": -264,
+    "pnl_rate": 0.0
+  },
+  "068270": {
+    "stk_cd": "068270",
+    "stk_nm": "셀트리온",
+    "qty": 10,
+    "avg_price": 197200,
+    "cur_price": 197200,
+    "total_fee": 296,
+    "buy_amt": 1972296,
+    "eval_amt": 1972000,
+    "pnl_amount": -296,
+    "pnl_rate": 0.0
+  },
+  "079550": {
+    "stk_cd": "079550",
+    "stk_nm": "LIG디펜스앤에어로스페이스",
+    "qty": 2,
+    "avg_price": 889000,
+    "cur_price": 889000,
+    "total_fee": 267,
+    "buy_amt": 1778267,
+    "eval_amt": 1778000,
+    "pnl_amount": -267,
+    "pnl_rate": 0.0
+  },
+  "298380": {
+    "stk_cd": "298380",
+    "stk_nm": "에이비엘바이오",
+    "qty": 15,
+    "avg_price": 132800,
+    "cur_price": 132800,
+    "total_fee": 299,
+    "buy_amt": 1992299,
+    "eval_amt": 1992000,
+    "pnl_amount": -299,
+    "pnl_rate": 0.0
+  },
+  "326030": {
+    "stk_cd": "326030",
+    "stk_nm": "SK바이오팜",
+    "qty": 6,
+    "avg_price": 104600,
+    "cur_price": 104600,
+    "total_fee": 94,
+    "buy_amt": 627694,
+    "eval_amt": 627600,
+    "pnl_amount": -94,
+    "pnl_rate": 0.0
+  }
+}
