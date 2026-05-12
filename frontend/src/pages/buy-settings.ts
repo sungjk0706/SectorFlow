@@ -20,6 +20,7 @@ let pendingSave: { key: string; value: unknown } | null = null
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 // 현재 값 추적
 let vals: Record<string, unknown> = {}
+let localOrderRatioPct: number | null = null  // 사용자가 설정한 값 (null=서버값 사용)
 
 // 입력 컴포넌트 참조
 let autoBuyToggle: ReturnType<typeof createToggleBtn> | null = null
@@ -125,7 +126,9 @@ function syncFromSettings(s: AppSettings): void {
   const orderOn = !!r.boost_order_ratio_on
   boostOrderToggle?.setOn(orderOn)
   const signedPct = Number(r.boost_order_ratio_pct ?? 20)
-  boostOrderDualSlider?.setValue(signedPct + 100)
+  if (localOrderRatioPct === null) {
+    boostOrderDualSlider?.setValue(signedPct + 100)
+  }
   boostOrderScoreInput?.setValue(Number(r.boost_order_ratio_score) ?? 1.0)
   if (boostOrderControls) {
     boostOrderControls.style.opacity = orderOn ? '1' : '0.4'
@@ -345,8 +348,8 @@ function mount(container: HTMLElement): void {
     // Row 2: dual label slider
     boostOrderDualSlider = createDualLabelSlider({
       min: 0, max: 200, value: 120, step: 1,
-      leftLabel: (v) => v > 100 ? `매수잔량 +${v - 100}%` : '매수잔량',
-      rightLabel: (v) => v < 100 ? `매도잔량 +${100 - v}%` : '매도잔량',
+      leftLabel: (v) => v < 100 ? `매도잔량 +${100 - v}%` : '매도잔량',
+      rightLabel: (v) => v > 100 ? `매수잔량 +${v - 100}%` : '매수잔량',
       leftColor: '#0d6efd',
       leftColorLight: '#8bb8f8',
       rightColor: '#dc3545',
@@ -356,7 +359,8 @@ function mount(container: HTMLElement): void {
       },
       onCommit(v) {
         vals.boost_order_ratio_pct = v - 100
-        autoSave('boost_order_ratio_pct', v - 100)
+        localOrderRatioPct = v - 100
+        saveImmediate({ boost_order_ratio_pct: v - 100 })
       },
     })
 
@@ -418,6 +422,7 @@ function unmount(): void {
   boostHighToggle = null; boostHighScoreInput = null; boostHighControls = null
   boostOrderToggle = null; boostOrderDualSlider = null; boostOrderScoreInput = null; boostOrderControls = null; boostOrderRow2 = null
   vals = {}
+  localOrderRatioPct = null
 }
 
 export default { mount, unmount }
