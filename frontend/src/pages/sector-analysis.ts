@@ -27,6 +27,38 @@ function createStepLabel(num: string, text: string): HTMLElement {
   return div
 }
 
+function updateMaxTargetsStatus(scores: SectorScoreRow[]): void {
+  if (!maxTargetsStatusEl) return
+  const passed = scores.filter(s => s.rank > 0).length
+  const cutoff = scores.filter(s => s.rank === 0).length
+
+  maxTargetsStatusEl.innerHTML = ''
+  maxTargetsStatusEl.style.gap = '4px'
+
+  const passedLabel = document.createElement('span')
+  passedLabel.textContent = '통과'
+  passedLabel.style.color = '#dc3545'
+  maxTargetsStatusEl.appendChild(passedLabel)
+
+  const passedVal = document.createElement('span')
+  passedVal.textContent = String(passed)
+  passedVal.style.color = '#dc3545'
+  passedVal.style.fontWeight = FONT_WEIGHT.bold
+  maxTargetsStatusEl.appendChild(passedVal)
+
+  const cutoffLabel = document.createElement('span')
+  cutoffLabel.textContent = '컷오프'
+  cutoffLabel.style.color = '#0d6efd'
+  cutoffLabel.style.marginLeft = '10px'
+  maxTargetsStatusEl.appendChild(cutoffLabel)
+
+  const cutoffVal = document.createElement('span')
+  cutoffVal.textContent = String(cutoff)
+  cutoffVal.style.color = '#0d6efd'
+  cutoffVal.style.fontWeight = FONT_WEIGHT.bold
+  maxTargetsStatusEl.appendChild(cutoffVal)
+}
+
 /* ── 헬퍼: ▼ 화살표 구분선 ── */
 function createArrowDivider(): HTMLElement {
   const div = document.createElement('div')
@@ -49,6 +81,7 @@ let trimChangeRateInput: ReturnType<typeof createNumInput> | null = null
 let trimTradeAmtInput: ReturnType<typeof createNumInput> | null = null
 let minRiseRatioInput: ReturnType<typeof createNumInput> | null = null
 let maxTargetsInput: ReturnType<typeof createNumInput> | null = null
+let maxTargetsStatusEl: HTMLSpanElement | null = null
 let dualSlider: DualLabelSliderHandle | null = null
 
 // 현재 값 추적
@@ -85,14 +118,8 @@ function onNumChange(key: string, value: number): void {
   if (key === 'sector_max_targets') {
     if (v < 1) {
       v = 1
-    } else if (rankedSectorsCount > 0 && v > rankedSectorsCount) {
-      v = rankedSectorsCount
-      const msg = document.createElement('p')
-      Object.assign(msg.style, { margin: '0', fontSize: FONT_SIZE.label, color: '#555', lineHeight: '1.6' })
-      msg.textContent = `순위 있는 업종이 ${rankedSectorsCount}개입니다. 최대 ${rankedSectorsCount}까지만 선택 가능합니다.`
-      showPopup('상위 업종 수 초과', msg, [{ label: '확인', onClick: () => {} }])
-      maxTargetsInput?.setValue(v)
     }
+    // 상한 제한 제거: 사용자가 자유롭게 설정 가능
   }
   currentVals[key] = v
   autoSaveNum(key, v)
@@ -100,20 +127,22 @@ function onNumChange(key: string, value: number): void {
 
 async function saveWeightsNow(ratio: number): Promise<void> {
   if (!settingsMgr) return
-  const serverWeights = { rise_ratio: toServerValue(ratio), total_trade_amount: toServerValue(100 - ratio) }
+  const serverWeights = { rise_ratio: toServerValue(100 - ratio), total_trade_amount: toServerValue(ratio) }
   const res = await settingsMgr.saveSection({ sector_weights: serverWeights })
   toastResult(res)
 }
 
 function updateSliderUI(): void {
-  dualSlider?.setValue(currentRiseRatio)
+  if (dualSlider && !dualSlider.isInteracting && dualSlider.getValue() !== currentRiseRatio) {
+    dualSlider.setValue(currentRiseRatio)
+  }
 }
 
 function syncFromSettings(s: AppSettings): void {
   for (const k of NUM_KEYS) currentVals[k] = Number((s as Record<string, unknown>)[k]) || 0
   const w = s.sector_weights || {}
   const r = Number(w.rise_ratio)
-  currentRiseRatio = toDisplayValue(isNaN(r) ? 0.5 : r)
+  currentRiseRatio = 100 - toDisplayValue(isNaN(r) ? 0.5 : r)
 
   // 입력 컴포넌트 값 동기화
   minTradeAmtInput?.setValue(currentVals.sector_min_trade_amt ?? 0)
@@ -303,8 +332,8 @@ function mount(container: HTMLElement): void {
     max: 100,
     value: currentRiseRatio,
     step: 1,
-    leftLabel: (v) => `업종내 상승비율 ${v}%`,
-    rightLabel: (v) => `업종내 거래대금 ${100 - v}%`,
+    leftLabel: (v) => `업종내 상승비율 ${100 - v}%`,
+    rightLabel: (v) => `업종내 거래대금 ${v}%`,
     leftColor: '#0d6efd',
     leftColorLight: '#8bb8f8',
     rightColor: '#fd7e14',
@@ -322,7 +351,39 @@ function mount(container: HTMLElement): void {
   // ⑤ 매수 대상
   root.appendChild(createStepLabel('⑤', '매수 대상'))
   maxTargetsInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_max_targets', v), step: 1, name: 'sector_max_targets' })
-  root.appendChild(createSettingRow('상위 업종 수', maxTargetsInput.el))
+
+  const maxTargetsRow = document.createElement('div')
+  Object.assign(maxTargetsRow.style, {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '6px 0',
+    borderBottom: '1px solid #eee',
+  })
+
+  const maxTargetsLabel = document.createElement('span')
+  maxTargetsLabel.textContent = '상위 업종 수'
+  Object.assign(maxTargetsLabel.style, { flex: '1', fontSize: FONT_SIZE.label, color: '#333', display: 'flex', alignItems: 'center' })
+
+  maxTargetsStatusEl = document.createElement('span')
+  Object.assign(maxTargetsStatusEl.style, {
+    flex: '1.6',
+    fontSize: FONT_SIZE.label,
+    color: '#888',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    whiteSpace: 'nowrap',
+  })
+
+  const rightWrap = document.createElement('div')
+  Object.assign(rightWrap.style, { flex: '1', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' })
+  rightWrap.appendChild(maxTargetsInput.el)
+
+  maxTargetsRow.appendChild(maxTargetsLabel)
+  maxTargetsRow.appendChild(maxTargetsStatusEl)
+  maxTargetsRow.appendChild(rightWrap)
+  root.appendChild(maxTargetsRow)
 
   // 업종 순위 리스트
   const rankSection = document.createElement('div')
@@ -401,6 +462,7 @@ function mount(container: HTMLElement): void {
 
       const maxTargets = Number(currentVals.sector_max_targets) || 1
       updateRankingRows(state.sectorScores, state.selectedSector, maxTargets)
+      updateMaxTargetsStatus(state.sectorScores)
     })
   }
 
@@ -409,6 +471,7 @@ function mount(container: HTMLElement): void {
   rankedSectorsCount = state.sectorStatus?.ranked_sectors_count ?? 0
   const maxTargets = Number(currentVals.sector_max_targets) || 1
   updateRankingRows(state.sectorScores, state.selectedSector, maxTargets)
+  updateMaxTargetsStatus(state.sectorScores)
 }
 
 /* ── unmount ── */
@@ -421,6 +484,7 @@ function unmount(): void {
   trimTradeAmtInput = null
   minRiseRatioInput = null
   maxTargetsInput = null
+  maxTargetsStatusEl = null
   dualSlider = null
   wsBadge = null
   rankRows = []

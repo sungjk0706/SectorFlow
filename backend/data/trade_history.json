@@ -1,4 +1,67 @@
 {
-  "buy": [],
-  "sell": []
+  "buy": [
+    {
+      "ts": "2026-05-12T11:15:49",
+      "date": "2026-05-12",
+      "time": "11:15:49",
+      "side": "BUY",
+      "stk_cd": "003230",
+      "stk_nm": "삼양식품",
+      "price": 1329500,
+      "qty": 1,
+      "total_amt": 1329699,
+      "fee": 199,
+      "reason": "자동매수",
+      "trade_mode": "test"
+    },
+    {
+      "ts": "2026-05-12T11:16:33",
+      "date": "2026-05-12",
+      "time": "11:16:33",
+      "side": "BUY",
+      "stk_cd": "032830",
+      "stk_nm": "삼성생명",
+      "price": 300000,
+      "qty": 6,
+      "total_amt": 1800270,
+      "fee": 270,
+      "reason": "자동매수",
+      "trade_mode": "test"
+    },
+    {
+      "ts": "2026-05-12T11:32:50",
+      "date": "2026-05-12",
+      "time": "11:32:50",
+      "side": "BUY",
+      "stk_cd": "068270",
+      "stk_nm": "셀트리온",
+      "price": 196700,
+      "qty": 10,
+      "total_amt": 1967295,
+      "fee": 295,
+      "reason": "자동매수",
+      "trade_mode": "test"
+    }
+  ],
+  "sell": [
+    {
+      "ts": "2026-05-12T11:53:08",
+      "date": "2026-05-12",
+      "time": "11:53:08",
+      "side": "SELL",
+      "stk_cd": "068270",
+      "stk_nm": "셀트리온",
+      "price": 194750,
+      "qty": 10,
+      "total_amt": 1943313,
+      "avg_buy_price": 196700,
+      "buy_total_amt": 1967295,
+      "realized_pnl": -23982,
+      "pnl_rate": -1.22,
+      "fee": 292,
+      "tax": 3895,
+      "reason": "손절 발동",
+      "trade_mode": "test"
+    }
+  ]
 }

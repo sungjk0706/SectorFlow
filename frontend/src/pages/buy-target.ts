@@ -39,11 +39,11 @@ const COLUMNS: ColumnDef<BuyTarget>[] = [
         span.textContent = '1.00'
         span.style.color = '#888'
       } else if (bid > ask) {
-        span.textContent = `매수×${(bid / ask).toFixed(2)}`
-        span.style.color = '#0d6efd'
-      } else {
-        span.textContent = `매도×${(ask / bid).toFixed(2)}`
+        span.textContent = `매수우세 ${(bid / ask).toFixed(2)}배`
         span.style.color = '#dc3545'
+      } else {
+        span.textContent = `매도우세 ${(ask / bid).toFixed(2)}배`
+        span.style.color = '#0d6efd'
       }
       return span
     },
