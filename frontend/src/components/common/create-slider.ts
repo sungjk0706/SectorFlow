@@ -85,6 +85,7 @@ export interface DualLabelSliderHandle {
   el: HTMLElement
   setValue(v: number): void
   getValue(): number
+  isInteracting: boolean
 }
 
 export function createDualLabelSlider(opts: DualLabelSliderOptions): DualLabelSliderHandle {
@@ -114,8 +115,8 @@ export function createDualLabelSlider(opts: DualLabelSliderOptions): DualLabelSl
   container.appendChild(slider.el)
 
   function applyLabels(v: number): void {
-    const leftVal = v
-    const rightVal = max - v
+    const leftVal = max - v
+    const rightVal = v
     const leftDominant = leftVal >= rightVal
     const rightDominant = rightVal >= leftVal
 
@@ -127,13 +128,21 @@ export function createDualLabelSlider(opts: DualLabelSliderOptions): DualLabelSl
     rightSpan.style.color = rightDominant ? opts.rightColor : opts.rightColorLight
     rightSpan.style.fontWeight = 'normal'
 
-    // 트랙 그라디언트
-    const pct = max > 0 ? (v / max) * 100 : 0
+    // 트랙 그라디언트 (thumb 위치와 일치)
+    const min = opts.min ?? 0
+    const pct = max > min ? ((v - min) / (max - min)) * 100 : 0
     slider.el.style.background = `linear-gradient(to right, ${leftSpan.style.color} ${pct}%, ${rightSpan.style.color} ${pct}%)`
   }
 
   // 초기 라벨 적용
   applyLabels(opts.value ?? opts.min ?? 0)
+
+  // 사용자 인터랙션 감지
+  let isInteracting = false
+  slider.el.addEventListener('mousedown', () => { isInteracting = true })
+  slider.el.addEventListener('touchstart', () => { isInteracting = true })
+  slider.el.addEventListener('mouseup', () => { isInteracting = false })
+  slider.el.addEventListener('touchend', () => { isInteracting = false })
 
   return {
     el: container,
@@ -143,6 +152,9 @@ export function createDualLabelSlider(opts: DualLabelSliderOptions): DualLabelSl
     },
     getValue() {
       return slider.getValue()
+    },
+    get isInteracting() {
+      return isInteracting
     },
   }
 }
