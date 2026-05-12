@@ -138,8 +138,8 @@ function renderTabBar(): HTMLElement {
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'auto-trade', label: '자동매매' },
-    { id: 'telegram', label: '텔레그램' },
     { id: 'account-manage', label: '거래모드' },
+    { id: 'telegram', label: '텔레그램' },
     { id: 'api-settings', label: 'API 설정' },
   ]
 
