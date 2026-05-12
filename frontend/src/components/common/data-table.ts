@@ -20,6 +20,8 @@ export interface ColumnDef<T> {
   maxWidth?: number
   headerStyle?: Partial<CSSStyleDeclaration>
   cellStyle?: Partial<CSSStyleDeclaration>
+  /** 값이 변경되면 셀 배경에 노란 플래시 애니메이션 적용 */
+  flash?: boolean
 }
 
 /* ── GroupRow, TableRow, Options, Api ───────────────────── */
@@ -100,6 +102,23 @@ function calcPercentages<T>(
     samples: samples[i],
   }))
   return computeColumnWidths(inputs, 800).percentages
+}
+
+/** 셀에 노란 플래시 애니메이션 한 번 발동 (중복 발동 시 기존 타이머 정리) */
+function triggerFlash(cell: HTMLElement, duration = 600): void {
+  const key = '_flashTimer' as keyof HTMLElement
+  const prev = (cell as any)[key] as number | undefined
+  if (prev) clearTimeout(prev)
+
+  cell.classList.remove('cell-flash')
+  void cell.offsetWidth // reflow 강제 → 애니메이션 재시작
+  cell.classList.add('cell-flash')
+
+  const timer = setTimeout(() => {
+    cell.classList.remove('cell-flash')
+    ;(cell as any)[key] = undefined
+  }, duration)
+  ;(cell as any)[key] = timer
 }
 
 /* ── createDataTable 팩토리 함수 ──────────────────────── */
@@ -512,6 +531,7 @@ function createVirtualScrollMode<T extends object>(
           // 문자열 셀: textContent 비교 후 변경 시에만 갱신
           if (cell.textContent !== content) {
             cell.textContent = content
+            if (columns[i].flash) triggerFlash(cell)
           }
         } else if (content instanceof HTMLElement) {
           // HTMLElement 셀: outerHTML 비교 후 변경 시에만 교체
@@ -519,6 +539,7 @@ function createVirtualScrollMode<T extends object>(
           if (!existing || existing.outerHTML !== content.outerHTML) {
             cell.innerHTML = ''
             cell.appendChild(content)
+            if (columns[i].flash) triggerFlash(cell)
           }
         }
       } catch (_) {
