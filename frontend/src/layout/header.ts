@@ -15,17 +15,19 @@ const RISE = '#dc3545'
 const FALL = '#1a73e8'
 
 const PHASE_STYLE: Record<string, { bg: string; color: string }> = {
-  '휴장일': { bg: '#f5f5f5', color: '#9e9e9e' },
-  '장개시전': { bg: '#e3f2fd', color: '#1565c0' },
-  '장전 동시호가': { bg: '#fff3e0', color: '#e65100' },
+  /* 장중(거래 가능) — 초록 */
+  '장전 동시호가': { bg: '#e8f5e9', color: '#2e7d32' },
   '정규장': { bg: '#e8f5e9', color: '#2e7d32' },
-  '장후 시간외': { bg: '#e1bee7', color: '#6a1b9a' },
-  '시간외 단일가': { bg: '#fce4ec', color: '#c2185b' },
-  '장마감': { bg: '#ffebee', color: '#c62828' },
-  '프리마켓': { bg: '#e0f7fa', color: '#006064' },
+  '장후 시간외': { bg: '#e8f5e9', color: '#2e7d32' },
+  '시간외 단일가': { bg: '#e8f5e9', color: '#2e7d32' },
+  '프리마켓': { bg: '#e8f5e9', color: '#2e7d32' },
   '메인마켓': { bg: '#e8f5e9', color: '#2e7d32' },
-  '휴식': { bg: '#fff3e0', color: '#e65100' },
-  '애프터마켓': { bg: '#e1bee7', color: '#6a1b9a' },
+  '애프터마켓': { bg: '#e8f5e9', color: '#2e7d32' },
+  /* 비장중(휴장/대기/종료) — 회색 */
+  '휴장일': { bg: '#f5f5f5', color: '#9e9e9e' },
+  '장개시전': { bg: '#f5f5f5', color: '#9e9e9e' },
+  '장마감': { bg: '#f5f5f5', color: '#9e9e9e' },
+  '휴식': { bg: '#f5f5f5', color: '#9e9e9e' },
 }
 
 const STATUS_THEME = {
@@ -79,7 +81,7 @@ function applyIndexChip(
   // - 장마감/휴장일: false (회색)
   const krx = marketPhase?.krx ?? ''
   const isRegular = krx === '정규장'
-  const isClosed = krx === '장마감' || krx === '휴장일' || krx === '' || krx === 'closed'
+  const isClosed = krx === '휴장일' || krx === '' || krx === 'closed'
   const active = isClosed ? false : isRegular ? !!connected : !!polling
   if (!data || !data.price) {
     applyStatusChip(el, `${label} --`, false)
