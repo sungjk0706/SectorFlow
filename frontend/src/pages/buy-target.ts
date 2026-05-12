@@ -221,7 +221,7 @@ function mount(container: HTMLElement): void {
     let lastRenderedBuyLimitStatus = initState.buyLimitStatus
 
     unsubTargets = appStore.subscribe((state) => {
-      // 관심 필드 중 하나라도 변경되었는지 확인
+      // 해당 필드 중 하나라도 변경되었는지 확인
       const anyChanged =
         state.buyTargets !== lastRenderedBuyTargets ||
         state.positions !== lastRenderedPositions ||
