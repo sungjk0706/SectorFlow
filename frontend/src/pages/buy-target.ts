@@ -189,7 +189,6 @@ function mount(container: HTMLElement): void {
     keyFn: (t) => t.code,
     emptyText: '매수후보가 없습니다.',
     stickyHeader: true,
-    priceFn: (t) => Number(t.cur_price) || 0,
   })
 
   // 빈 상태 메시지 (DataTable 외부 — 기존 동작 유지)

@@ -310,8 +310,6 @@ def record_buy(
     if trade_mode != "real":
         _schedule_save()
     _broadcast_buy_append(rec)
-    # 체결 이벤트 발행 (거래내역 테이블 즉시 갱신용)
-    _broadcast_order_filled(rec)
     return rec
 
 
@@ -392,8 +390,6 @@ def record_sell(
     if trade_mode != "real":
         _schedule_save()
     _broadcast_sell_append(rec)
-    # 체결 이벤트 발행 (거래내역 테이블 즉시 갱신용)
-    _broadcast_order_filled(rec)
     return rec
 
 
