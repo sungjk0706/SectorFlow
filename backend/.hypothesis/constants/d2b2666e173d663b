@@ -1,4 +1,0 @@
-# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/core/logger.py
-# hypothesis_version: 6.141.1
-
-[2.0, 1024, 50000, '%Y-%m-%d', '(\\d{4}-\\d{2}-\\d{2})', '.log', 'CRITICAL', 'DEBUG', 'ERROR', 'INFO', 'WARNING', '[연결] 성공', '[연결] 종료', 'a', 'app', 'connection closed', 'connection open', 'engine', 'extra', 'httpcore', 'httpx', 'level', 'level_kr', 'log-writer-debug', 'log-writer-info', 'logs', 'replace', 'sectorflow', 'trading.log', 'trading_debug.log', 'utf-8', 'uvicorn', 'uvicorn.access', 'uvicorn.error', 'websockets', 'websockets.client', 'websockets.server', '디버그', '심각', '연결 닫힘', '오류', '정보', '주의']

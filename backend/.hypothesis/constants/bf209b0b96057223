@@ -1,4 +1,0 @@
-# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/services/engine_ws_parsing.py
-# hypothesis_version: 6.152.4
-
-[0.0, 1e-06, 1000.0, 100, '%', '+', '+.', ',', '-', '--', '-.', '.', '0', '01', '0B', '0d', '0j', '10', '2', '27', '28', '290', '9081', 'D', 'J', 'P', 'U', 'd', 'j']

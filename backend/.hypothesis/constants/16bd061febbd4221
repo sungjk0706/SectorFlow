@@ -1,4 +1,0 @@
-# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/services/engine_strategy_core.py
-# hypothesis_version: 6.152.4
-
-[0.0, '%H:%M:%S', ')', '-', '3', '[구독등록] 구독 실패: %s', '[확정데이터] 처리 중 오류: %s', '_settings_cache', 'active', 'base_price', 'captured_at', 'change', 'change_rate', 'code', 'cur_price', 'engine', 'exited', 'name', 'prev_close', 'qty', 'reason', 'sign', 'status', 'stk_cd', 'strength', 'target_price', 'trade_amount', '알수없음', '종목(']

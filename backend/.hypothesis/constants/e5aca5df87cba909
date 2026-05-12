@@ -1,4 +1,0 @@
-# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/core/encryption.py
-# hypothesis_version: 6.141.1
-
-[b'sectorflow_salt', 100000, '=', 'admin_password', 'kiwoom_app_key', 'kiwoom_app_secret', 'telegram_bot_token']
