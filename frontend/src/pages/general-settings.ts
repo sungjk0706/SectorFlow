@@ -63,7 +63,6 @@ let teleInputs: Record<string, HTMLInputElement> = {}
 let tradeModeSection: HTMLElement | null = null
 let testVirtualSection: HTMLElement | null = null
 let depositInput: ReturnType<typeof createMoneyInput> | null = null
-let balanceDisplay: HTMLElement | null = null
 let depositDisplay: HTMLElement | null = null
 
 // API 설정 탭 참조
@@ -202,12 +201,12 @@ function renderAutoTradeTab(container: HTMLElement): void {
   descLabel1.textContent = '거래일 설정시간 내에서만 자동 매수/매도 실행'
   container.appendChild(descLabel1)
 
-  // 공휴일 자동 차단
+  // 공휴일 자동매매 차단
   const hRow = document.createElement('div')
   Object.assign(hRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px' })
   const hLabel = document.createElement('span')
   Object.assign(hLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  hLabel.textContent = '공휴일 자동 차단'
+  hLabel.textContent = '공휴일 자동매매 차단'
   hRow.appendChild(hLabel)
   holidayToggle = createToggleBtn({ on: false, onClick: async () => {
     const next = !vals.holiday_guard_on
@@ -430,7 +429,7 @@ function renderAccountTab(container: HTMLElement): void {
   container.appendChild(tradeModeSection)
 
   // 가상 예수금 (항상 렌더링, display로 토글)
-  const virtualTitle = sectionTitle('가상 예수금 (테스트모드 전용)')
+  const virtualTitle = sectionTitle('가상 투자금 (테스트모드 전용)')
   testVirtualSection = document.createElement('div')
   const innerSection = renderTestVirtualSection()
   testVirtualSection.appendChild(virtualTitle)
@@ -518,7 +517,7 @@ function renderTestVirtualSection(): HTMLElement {
   const saveDepositBtn = document.createElement('button')
   saveDepositBtn.type = 'button'
   Object.assign(saveDepositBtn.style, { padding: '7px 16px', borderRadius: '4px', border: '1px solid #ccc', background: '#f8f9fa', cursor: 'pointer', fontSize: GS.label })
-  saveDepositBtn.textContent = '기본예수금으로 저장'
+  saveDepositBtn.textContent = '투자금 변경'
   saveDepositBtn.addEventListener('click', async () => {
     const res = await settingsMgr!.saveSection({ test_virtual_deposit: inputAmount, test_virtual_balance: inputAmount })
     showSaveToast(res.ok ? 'saved' : 'error')
@@ -526,21 +525,19 @@ function renderTestVirtualSection(): HTMLElement {
   saveRow.appendChild(saveDepositBtn)
   wrap.appendChild(saveRow)
 
+  // 설명 텍스트
+  const hintRow = document.createElement('div')
+  Object.assign(hintRow.style, { fontSize: '11px', color: '#888', padding: '2px 0 8px', textAlign: 'right' })
+  hintRow.textContent = '누적투자금과 주문가능금액을 입력한 금액으로 변경합니다. 데이터 초기화 시에도 이 금액이 기본값으로 사용됩니다.'
+  wrap.appendChild(hintRow)
+
   // 읽기전용 표시
   const infoWrap = document.createElement('div')
   infoWrap.style.cssText = 'border-top:1px solid #eee;padding:8px 0;'
 
-  const balRow = document.createElement('div')
-  balRow.style.cssText = `display:flex;justify-content:space-between;align-items:center;padding:8px 0;font-size:${GS.label};`
-  balRow.innerHTML = '<span>현재 잔액</span>'
-  balanceDisplay = document.createElement('span')
-  balanceDisplay.textContent = `${(Number(vals.test_virtual_balance) || 0).toLocaleString()}원`
-  balRow.appendChild(balanceDisplay)
-  infoWrap.appendChild(balRow)
-
   const depRow = document.createElement('div')
   depRow.style.cssText = `display:flex;justify-content:space-between;align-items:center;padding:8px 0;font-size:${GS.label};`
-  depRow.innerHTML = '<span>기본예수금</span>'
+  depRow.innerHTML = '<span>기본투자금</span>'
   depositDisplay = document.createElement('span')
   depositDisplay.textContent = `${(Number(vals.test_virtual_deposit) || 0).toLocaleString()}원`
   depRow.appendChild(depositDisplay)
@@ -555,7 +552,7 @@ function renderTestVirtualSection(): HTMLElement {
   Object.assign(resetBtn.style, { padding: '8px 18px', borderRadius: '4px', border: '1px solid #dc3545', background: '#dc3545', color: '#fff', cursor: 'pointer', fontSize: GS.label })
   resetBtn.textContent = '🔴 테스트 데이터 전체 초기화'
   resetBtn.addEventListener('click', async () => {
-    if (!window.confirm('테스트 데이터를 전체 초기화하시겠습니까?\n가상 보유종목, 매매 이력, 예수금이 모두 초기화됩니다.')) return
+    if (!window.confirm('테스트 데이터를 전체 초기화하시겠습니까?\n가상 보유종목, 매매 이력, 투자금이 모두 초기화됩니다.')) return
     try { await api.resetTestData(); showSaveToast('saved') } catch { alert('초기화 실패') }
   })
   resetWrap.appendChild(resetBtn)
@@ -658,7 +655,6 @@ function syncFromSettings(s: AppSettings | null): void {
 
   // 계정관리 탭 (항상 DOM에 존재)
   {
-    if (balanceDisplay) balanceDisplay.textContent = `${(Number(r.test_virtual_balance) || 0).toLocaleString()}원`
     if (depositDisplay) depositDisplay.textContent = `${(Number(r.test_virtual_deposit) || 0).toLocaleString()}원`
   }
 
@@ -751,7 +747,7 @@ function unmount(): void {
   holidayBadgeEls = []; holidayToggleRow = null
   teleToggle = null; teleInputs = {}
   tradeModeSection = null; testVirtualSection = null
-  depositInput = null; balanceDisplay = null; depositDisplay = null
+  depositInput = null; depositDisplay = null
   wsStartSlot = null; wsEndSlot = null
   apiKeyInputs = {}
   vals = {}
