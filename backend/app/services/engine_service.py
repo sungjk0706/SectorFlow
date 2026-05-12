@@ -562,9 +562,12 @@ def get_buy_limit_status() -> dict:
 
 def _broadcast_buy_limit_status() -> None:
     """매수 한도 상태를 WS로 브로드캐스트."""
+    global _buy_targets_snapshot_cache
+    _buy_targets_snapshot_cache = None  # 일일한도 상태 변경 → 매수후보 캐시 무효화
     try:
-        from app.services.engine_account_notify import _broadcast
+        from app.services.engine_account_notify import _broadcast, notify_buy_targets_update
         _broadcast("buy-limit-status", get_buy_limit_status())
+        notify_buy_targets_update()
     except Exception as e:
         logger.warning("[실시간연결] 매수한도 화면전송 실패: %s", e)
 
@@ -788,6 +791,16 @@ def get_buy_targets_snapshot() -> list[dict]:
         }
     _bought_today_set = _auto_trade._bought_today if _auto_trade else set()
 
+    # ── 일일매수한도 도달 여부 (잔여 < 1회 매수금액도 포함) ──
+    _max_daily = int((_settings_cache or {}).get("max_daily_total_buy_amt", 0) or 0)
+    _buy_amt_unit = int((_settings_cache or {}).get("buy_amt", 0) or 0)
+    _daily_spent_now = _auto_trade._daily_buy_spent if _auto_trade else 0
+    if _max_daily > 0:
+        _daily_remain = max(0, _max_daily - _daily_spent_now)
+        _daily_limit_hit = _daily_remain <= 0 or (_buy_amt_unit > 0 and _daily_remain < _buy_amt_unit)
+    else:
+        _daily_limit_hit = False
+
     # 가드 통과 종목
     for t in sorted(ss.buy_targets, key=lambda t: t.rank):
         s = t.stock
@@ -799,6 +812,7 @@ def get_buy_targets_snapshot() -> list[dict]:
         _reason = (
             "보유중" if s.code in _holding_codes
             else "금일매수" if s.code in _bought_today_set
+            else "일일한도" if _daily_limit_hit
             else t.reason
         )
         out.append({
