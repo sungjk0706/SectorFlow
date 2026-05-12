@@ -33,6 +33,7 @@ const COLUMNS: ColumnDef<Position>[] = [
   ),
   {
     key: 'cur_price', label: '현재가', align: 'right',
+    flash: true,
     render: (p) => {
       const buyPrice = p.buy_price ?? p.avg_price ?? 0
       const curPrice = p.cur_price ?? 0
