@@ -179,7 +179,7 @@ _checked_stocks: set = set()
 
 _shared_lock = asyncio.Lock()
 
-# 최대 3000종목 (관심 종목 상세 정보)
+# 최대 3000종목 (매수 후보 종목 상세 정보)
 _pending_stock_details: LRUCache = LRUCache(maxsize=3000)
 _radar_cnsr_order: list[str] = []
 _sector_stock_layout: list[tuple[str, str]] = []
