@@ -23,6 +23,15 @@
         position: absolute;
         right: 0;
       }
+
+      /* ── 실시간 틱 변경 플래시 효과 ── */
+      @keyframes cell-flash {
+        0%   { background-color: rgba(255, 235, 59, 0.45); }
+        100% { background-color: transparent; }
+      }
+      .cell-flash {
+        animation: cell-flash 0.6s ease-out;
+      }
     </style>
   </head>
   <body style="margin:0;overflow:hidden">

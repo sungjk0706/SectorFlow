@@ -324,6 +324,7 @@ export function makePriceColumn<T>(
     key: 'cur_price',
     label: '현재가',
     align: 'right',
+    flash: true,
     render: (t) => createPriceCell(getPrice(t), getRate(t)),
   }
 }
