@@ -232,8 +232,8 @@ _rest_radar_rest_once: set[str] = set()
 
 _rest_api_thread_sem: asyncio.Semaphore | None = None
 
-# ── 계좌 브로드캐스트 coalescing (Phase 2 최적화) ─────────────────────────
-_ACCOUNT_BROADCAST_COALESCE_SEC: float = 0.5  # 0.5초 동안 모아서 1회만 전송
+# ── 계좌 브로드캐스트 coalescing (Phase 2 최적화 → 0초 즉시 전송) ────────
+_ACCOUNT_BROADCAST_COALESCE_SEC: float = 0.0  # 즉시 전송 (실시간 매매에 맞춤)
 _account_broadcast_pending_reason: str | None = None
 _account_broadcast_timer: asyncio.TimerHandle | None = None
 
@@ -463,9 +463,22 @@ async def _reset_realtime_fields() -> None:
         _rest_radar_quote_cache.clear()
         _rest_radar_rest_once.clear()
         _snapshot_history.clear()
-        # 보유종목 현재가 초기화 (전일 종가 혼입 방지)
+        # 보유종목 실시간 필드 초기화 (전일 종가 혼입 방지)
         for pos in _positions:
-            pos["cur_price"] = 0
+            pos["cur_price"] = None
+        
+        # 테스트모드 가상 보유종목 실시간 필드 초기화
+        if is_test_mode(_settings_cache):
+            from app.services import dry_run
+            for pos in dry_run._test_positions.values():
+                pos["cur_price"] = None
+                pos["change"] = None
+                pos["change_rate"] = None
+        
+        # 업종 점수 캐시 초기화 (실시간 데이터 재계산 유도)
+        global _sector_summary_cache, _buy_targets_snapshot_cache
+        _sector_summary_cache = None
+        _buy_targets_snapshot_cache = None
     logger.info(
         "[엔진] 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료 -- %d종목, 실시간/REST 저장데이터 전체 클리어",
         count,
@@ -1690,18 +1703,26 @@ async def build_initial_snapshot() -> dict:
             logger.warning("[확정데이터] %s 호출 실패 — 기본값 사용: %s", fn.__name__, exc)
             return default
 
+    _snapshot_t0 = time.perf_counter()
     positions = await _safe(get_positions, [])
+    logger.info("[실시간연결] 시작화면 데이터 생성 단계 -- 보유종목 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
     account_snap = await _safe(get_account_snapshot, {})
+    logger.info("[실시간연결] 시작화면 데이터 생성 단계 -- 계좌 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
     from app.services import ws_subscribe_control
     from app.services.daily_time_scheduler import get_market_phase
 
-    # 항상 최신 설정을 파일에서 직접 로드 (캐시 사용 안함)
     from app.core.settings_file import load_settings_async
-    _raw_settings = await load_settings_async()
+    try:
+        _raw_settings = await asyncio.wait_for(load_settings_async(), timeout=2.0)
+    except asyncio.TimeoutError:
+        logger.warning("[실시간연결] 시작화면 데이터 생성 단계 -- 설정 로드 2초 초과, 메모리 설정 사용")
+        _raw_settings = dict(_settings_cache or {})
+    logger.info("[실시간연결] 시작화면 데이터 생성 단계 -- 설정 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
     scores_snapshot = await _safe(get_sector_scores_snapshot, ([], 0))
     scores_list, ranked_count = scores_snapshot if isinstance(scores_snapshot, tuple) else (scores_snapshot, 0)
+    logger.info("[실시간연결] 시작화면 데이터 생성 단계 -- 업종점수 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
     
     snapshot: dict = {
         "_v":               1,
@@ -1728,6 +1749,7 @@ async def build_initial_snapshot() -> dict:
             "total": sum(1 for t, _ in _sector_stock_layout if t == "code") if _avg_amt_refresh_running else 0,
         } if _avg_amt_refresh_running else None,
     }
+    logger.info("[실시간연결] 시작화면 데이터 생성 단계 -- 메타 조립 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
     # Delta 캐시 초기화 — sector_stocks는 분할 전송 시점에 초기화
     try:
@@ -1738,7 +1760,7 @@ async def build_initial_snapshot() -> dict:
 
     try:
         payload_bytes = len(json.dumps(snapshot, ensure_ascii=False).encode("utf-8"))
-        logger.info("[확정데이터] 메타 크기 %d bytes", payload_bytes)
+        logger.info("[확정데이터] 메타 크기 %d bytes (생성 %.0fms)", payload_bytes, (time.perf_counter() - _snapshot_t0) * 1000)
     except Exception as exc:
         logger.warning("[확정데이터] 크기 측정 실패: %s", exc)
 

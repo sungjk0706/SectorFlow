@@ -256,6 +256,12 @@ async def run_engine_loop(es: ModuleType) -> None:
                         len(_fresh),
                     )
                     await es._bootstrap_sector_stocks_async()
+                    try:
+                        from app.web.ws_manager import ws_manager
+                        ws_manager.broadcast("engine-ready", {"_v": 1, "ready": True})
+                        logger.info("[앱준비] 앱준비 재실행 완료 — engine-ready 재전송")
+                    except Exception:
+                        pass
             except Exception as _e:
                 logger.warning("[앱준비] _rest_api 설정 후 ka10099 다운로드 실패: %s", _e)
 

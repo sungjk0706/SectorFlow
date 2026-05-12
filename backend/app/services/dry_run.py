@@ -256,7 +256,7 @@ def _apply_sell(code: str, qty: int, price: int) -> None:
         pos["qty"] = new_qty
         avg = int(pos.get("avg_price", 0))
         pos["buy_amt"] = avg * new_qty
-        pos["eval_amt"] = int(pos.get("cur_price", avg)) * new_qty
+        pos["eval_amt"] = int(pos.get("cur_price") or avg) * new_qty
         _recalc_pnl(pos)
     _schedule_save_positions()
 
@@ -264,7 +264,7 @@ def _apply_sell(code: str, qty: int, price: int) -> None:
 def _recalc_pnl(pos: dict) -> None:
     """현재가 기준 손익 재계산 (매수금액=수수료 포함)."""
     avg = int(pos.get("avg_price", 0))
-    cur = int(pos.get("cur_price", avg))
+    cur = int(pos.get("cur_price") or avg)
     qty = int(pos.get("qty", 0))
     total_fee = int(pos.get("total_fee", 0))
     pos["eval_amt"] = cur * qty
@@ -284,7 +284,8 @@ def update_price(code: str, price: int) -> bool:
     pos = _test_positions.get(code)
     if not pos:
         return False
-    if int(pos.get("cur_price", 0)) == price:
+    cur_price = pos.get("cur_price")
+    if cur_price is not None and int(cur_price) == price:
         return False  # 가격 변경 없음 — 재계산 스킵
     pos["cur_price"] = price
     _recalc_pnl(pos)

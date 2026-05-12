@@ -13,7 +13,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import zlib
 from typing import Any
 
 from fastapi import WebSocket
@@ -43,17 +42,17 @@ ALLOWED_FIDS: frozenset[str] = frozenset({'10', '11', '12', '14', '228'})
 # real-data key shortening 매핑
 _KEY_SHORTEN: dict[str, str] = {"type": "t", "item": "i", "values": "v"}
 
-# zlib 압축 임계값 (바이트)
-_COMPRESS_THRESHOLD = 512
+# buy-target 페이지 필터링용 Set 캐시 (_sector_summary_cache 갱신 시 재구성)
+_buy_target_page_cache_id: int = 0
+_buy_target_page_codes: set[str] = set()
+_blocked_target_page_codes: set[str] = set()
 
 
-def _encode_realdata(data: dict) -> tuple[str | None, bytes | None]:
-    """real-data 메시지를 FID 필터 + key shorten + 선택적 zlib 압축으로 인코딩.
+def _encode_realdata(data: dict) -> tuple[str, None]:
+    """real-data 메시지를 FID 필터 + key shorten으로 인코딩.
 
     Returns:
-        (text_frame, None) — 512바이트 이하: 텍스트 프레임 전송
-        (None, binary_frame) — 512바이트 초과: zlib 압축 바이너리 프레임 전송
-        zlib 압축 실패 시 graceful degradation → 텍스트 프레임 전송
+        (text_frame, None) — 텍스트 프레임 전송
     """
     # FID 필터링: values에서 허용된 FID만 유지
     values = data.get("values")
@@ -78,15 +77,6 @@ def _encode_realdata(data: dict) -> tuple[str | None, bytes | None]:
 
     payload = json.dumps({"event": "real-data", "data": shortened}, ensure_ascii=False)
     payload_bytes = payload.encode("utf-8")
-
-    if len(payload_bytes) > _COMPRESS_THRESHOLD:
-        # zlib 압축 시도
-        try:
-            compressed = zlib.compress(payload_bytes)
-            return None, compressed
-        except Exception:
-            # graceful degradation: 압축 실패 시 텍스트 전송
-            return payload, None
 
     return payload, None
 
@@ -216,12 +206,17 @@ class WSManager:
             import app.services.engine_service as _es
             return code in _layout_code_set or code in _es._pending_stock_details
         elif page == "buy-target":
-            # 매수후보 종목만
+            # 매수후보 종목만 — Set 캐시로 O(1) 조회 (Phase 6D)
             import app.services.engine_service as _es
             ss = _es._sector_summary_cache
             if not ss:
                 return True  # 캐시 미초기화 → 안전 폴백
-            return any(bt.stock.code == code for bt in ss.buy_targets) or any(bt.stock.code == code for bt in ss.blocked_targets)
+            global _buy_target_page_cache_id, _buy_target_page_codes, _blocked_target_page_codes
+            if id(ss) != _buy_target_page_cache_id:
+                _buy_target_page_cache_id = id(ss)
+                _buy_target_page_codes = {bt.stock.code for bt in ss.buy_targets} if hasattr(ss, "buy_targets") else set()
+                _blocked_target_page_codes = {bt.stock.code for bt in ss.blocked_targets} if hasattr(ss, "blocked_targets") else set()
+            return code in _buy_target_page_codes or code in _blocked_target_page_codes
         elif page == "sell-position":
             # 보유종목만
             from app.services.engine_account_notify import _positions_code_set
@@ -266,6 +261,15 @@ class WSManager:
                 from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
                 raw_code = str(data.get("item") or "").strip()
                 code = _format_kiwoom_reg_stk_cd(raw_code) if raw_code else ""
+                # 사전 필터링: 어떤 클라이언트도 이 틱이 필요 없으면 압축·task 생성 생략
+                needed = False
+                for ws in self._clients:
+                    page = self._client_active_page.get(ws)
+                    if not page or self._is_code_relevant_for_page(page, code):
+                        needed = True
+                        break
+                if not needed:
+                    return
                 text_frame, binary_frame = _encode_realdata(data)
                 loop.create_task(self._send_realdata_encoded(text_frame, binary_frame, code))
             except RuntimeError:
