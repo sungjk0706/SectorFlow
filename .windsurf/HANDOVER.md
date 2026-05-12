@@ -178,28 +178,84 @@
 
 ---
 
+### Phase 12: 단계 1 — 압축 로직(Conflation) 도입
+- **완료 시점**: 2026-05-13
+- **수정 파일**: `backend/app/services/engine_account_notify.py`
+- **수정 지점**:
+  - `_should_conflate(item)` 함수 추가 (`engine_account_notify.py:43-72`)
+  - `_CONFLATE_MS = 50`, `_conflate_cache` 모듈 스코프 변수 추가 (`engine_account_notify.py:37-40`)
+  - `notify_raw_real_data` 상단에 `_should_conflate(item)` 체크 추가 (`engine_account_notify.py:348-349`)
+- **동작**: 01/0B 시세 타입에서 동일 종목·동일 가격·50ms 이내 중복 틱 → `_broadcast("real-data")` 생략
+- **압축 대상 제외**: 00(주문체결), 04/80(잔고), 0J(지수), 0D(호가잔량) — 이들은 압축하지 않고 정상 전송
+- **검증 결과**:
+  - `python3 -m py_compile` → 문법 검사 통과
+  - `test_conflation.py` 6개 케이스 전체 통과:
+    - 동일 가격 50ms 이내 압축
+    - 가격 변화 시 통과
+    - 50ms 이후 동일 가격 통과
+    - 00/0J/0D 타입 압축 대상 아님
+    - 0B 타입 압축
+    - 스트레스 테스트(20건/20ms): 1건 통과, 19건 압축
+- **기존 동작 변경**: 없음 (압축으로 생략된 틱은 프론트엔드 delta 비교로도 어차피 무시됨)
+
+---
+
+### Phase 13: 단계 2 — 논블로킹 I/O 전면 적용
+- **완료 시점**: 2026-05-13
+- **조사 파일**: `backend/app/services/engine_ws_dispatch.py`, `backend/app/services/engine_loop.py`, `backend/app/core/kiwoom_rest.py`, `backend/app/services/daily_time_scheduler.py`, `backend/app/services/engine_bootstrap.py`
+- **조사 결과**:
+  - 실시간 WS 메시지 처리 경로(`engine_ws_dispatch.py` → `engine_account_notify.py` → `ws_manager.broadcast`)에 `time.sleep`, 동기 HTTP, 동기 파일 I/O가 **존재하지 않음**
+  - REST API 호출(`kiwoom_rest.py`)의 `time.sleep`(429 backoff, 연속조회 간격)은 모두 `engine_loop.py`의 `asyncio.to_thread()`로 별도 스레드에서 실행 (`engine_loop.py:56`, `engine_loop.py:75`)
+  - 동기 파일 I/O(`save_index_cache`, `load_index_cache` 등)는 스케줄러 콜백(장마감 후)에서만 호출, 실시간 경로 무관
+  - `httpx`(`kiwoom_rest.py:17`) 사용, 동기/비동기 모두 지원. 모든 호출이 `asyncio.to_thread()` 경유
+- **수정 필요 여부**: 없음 (이미 논블로킹 I/O 원칙 준수 중)
+
+### Phase 14: 단계 3 — 인메모리 캐시 구축
+- **완료 시점**: 2026-05-13
+- **조사 파일**: `backend/app/services/engine_service.py`, `backend/app/services/engine_cache.py`
+- **조사 결과**:
+  - LRU 캐시가 이미 전면 적용됨 (`engine_service.py:117-203`):
+    - `_pending_stock_details`: LRUCache(maxsize=3000)
+    - `_orderbook_cache`: LRUCache(maxsize=2000)
+    - `_latest_trade_prices/amounts/strength`: LRUCache(maxsize=2500) 각각
+    - `_rest_radar_quote_cache`: LRUCache(maxsize=1500)
+  - 증분 캐시 존재: `_sector_stocks_cache`(1초 생명주기), `_buy_targets_snapshot_cache`
+  - WS 구독 시작 시(`_reset_realtime_fields`, `engine_service.py:452-488`) 모든 실시간 캐시 `clear()` 수행 — 전일 데이터 오염 방지
+  - 파일 캐시 로드(`engine_cache.py:18-140`)는 `asyncio.to_thread()` + `asyncio.gather()`로 병렬 처리
+- **수정 필요 여부**: 없음 (이미 인메모리 캐시 + LRU 적용 완료)
+
+---
+
 ## 다음 진행 대상 Phase
 
-### Phase 10: 위반 9 — 프론트엔드 매매 판단
-- **대상**: `trading.py` 백엔드, 프론트엔드 매매 관련 로직
-- **원칙**: 매수/매도 조건 판단은 반드시 백엔드에서만 처리
-- **현재 상태**: `trading.py`에서 백엔드 처리 확인. 프론트엔드 매매 판단 로직 미확인
+없음 — 모든 Phase 완료.
 
-### Phase 10: 위반 9 — 프론트엔드 매매 판단
+---
+
+### Phase 15: 단계 4 — 전체 통합 및 성능 검증
 - **완료 시점**: 2026-05-13
-- **조사 파일**: `frontend/src/api/client.ts`, `backend/app/services/trading.py`
-- **조사 결과**: 프론트엔드에 매수/매도 주문 실행 API 호출 없음
-  - `api.client.ts`의 API 함수: login, updateSettings, resetTestData, getBuyHistory, getSellHistory, wsSubscribeStart/Stop, getTradingDay, healthCheck, settlementCharge
-  - `/api/order/buy`, `/api/order/sell` 등 엔드포인트 없음
-  - 백엔드 `trading.py`에서만 `AutoTradeManager`가 매매 조건 판단 및 주문 실행 수행
-- **수정 필요 여부**: 없음
-
-### Phase 11: 위반 10 — 실시간 가격 변동 로그
-- **완료 시점**: 2026-05-13
-- **조사 파일**: `backend/app/services/engine_ws_dispatch.py`, `backend/app/services/engine_account_notify.py`
-- **조사 결과**: 정상 체결 틱마다 호출되는 `logger.info`/`warning`/`error`는 존재하지 않음
-  - `logger.debug` 호출은 있으나 DEBUG 레벨은 운영 환경(INFO)에서 출력되지 않음
-  - Phase 1-1에서 추가된 `logger.warning` 2건(`[체결강도]`, `[체결강도WL]`)은 모두 파싱 실패 `except` 블록 내부에만 존재
-  - `engine_account_notify.py` `notify_raw_real_data`: 틱마다 `_broadcast("real-data")`만 실행, 로그 없음
-- **수정 필요 여부**: 없음
-
+- **수정 파일**:
+  - `backend/app/services/engine_ws_dispatch.py`
+  - `backend/app/services/engine_account_notify.py`
+  - `frontend/src/main.ts`
+- **수정 지점**:
+  - `engine_ws_dispatch.py`:
+    - `_tick_stats`, `_real_received_stats` 모듈 변수 추가 (라인 67-79)
+    - `_record_tick(elapsed_ms)` 함수 추가 (라인 82-104) — 1초 윈도우 틱 처리 지연 집계
+    - `_flush_tick_stats()` 함수 추가 (라인 107-118) — 집계 결과 INFO 로깅
+    - `_record_real_received()` 함수 추가 (라인 121-132) — WS REAL 메시지 수신 카운터
+    - `_check_realtime_latency`에서 `_record_tick(elapsed)` 호출 (라인 472)
+    - `_handle_real` 시작 부분에 `_record_real_received()` 호출 (라인 584)
+  - `engine_account_notify.py`:
+    - `_broadcast_stats` 모듈 변수 추가 (라인 42-47)
+    - `_record_broadcast(attempted, actual)` 함수 추가 (라인 50-65)
+    - `_flush_broadcast_stats()` 함수 추가 (라인 68-80)
+    - `notify_raw_real_data`에 `_record_broadcast` 호출 추가 (라인 388, 404)
+  - `frontend/src/main.ts`:
+    - `startFpsMonitor()` 함수 추가 (라인 14-43) — requestAnimationFrame 기반 1초 FPS 카운터
+    - `main()` 끝에 `startFpsMonitor()` 호출 (라인 261)
+- **검증 결과**:
+  - `python3 -m py_compile` → engine_ws_dispatch.py, engine_account_notify.py 문법 통과
+  - `npx tsc --noEmit` → exit code 0, 신규 문법 오류 0건
+  - `grep "except.*pass"` 대상 파일 → 0건
+- **기존 동작 변경**: 없음 (통계 변수 추가만, 기존 흐름 유지)
