@@ -44,8 +44,6 @@ export interface DataTableOptions<T> {
   rowHeight?: number
   groupRowHeight?: number
   zebraStriping?: boolean
-  /** 행에서 가격을 추출하는 함수 — 제공 시 가격 변동 플래시 효과 활성화 */
-  priceFn?: (row: T) => number
 }
 
 export interface DataTableApi<T> {
@@ -57,27 +55,6 @@ export interface DataTableApi<T> {
   scrollToIndex?: (index: number) => void
 }
 
-/* ── 플래시 효과 상수 ──────────────────────────────────── */
-
-const FLASH_DURATION_MS = 300
-const FLASH_UP_COLOR = 'rgba(255, 59, 48, 0.15)'    // 빨간색 (상승)
-const FLASH_DOWN_COLOR = 'rgba(0, 122, 255, 0.15)'  // 파란색 (하락)
-
-/**
- * CSS transition 기반 가격 플래시 효과.
- * reflow 강제로 transition 재시작 (300ms 내 재변경 시 새 플래시).
- * setTimeout/setInterval 사용 금지 — CSS transition만 사용.
- */
-function applyFlash(rowEl: HTMLElement, direction: 'up' | 'down'): void {
-  // transition 제거 후 배경색 즉시 적용
-  rowEl.style.transition = 'none'
-  rowEl.style.backgroundColor = direction === 'up' ? FLASH_UP_COLOR : FLASH_DOWN_COLOR
-  // reflow 강제 — transition 재시작 보장
-  void rowEl.offsetHeight
-  // transition 복원 후 투명으로 페이드아웃
-  rowEl.style.transition = 'background-color 300ms ease-out'
-  rowEl.style.backgroundColor = 'transparent'
-}
 
 /* ── 유틸리티 ──────────────────────────────────────────── */
 
@@ -328,13 +305,9 @@ function createVirtualScrollMode<T extends object>(
 ): DataTableApi<T> {
   let destroyed = false
   const keyFn = options.keyFn!
-  const priceFn = options.priceFn
   let currentRows: TableRow<T>[] = []
   let gridTemplateColumns = ''
   let columnWidthsCalculated = false
-
-  // 플래시 상태: key → { prevPrice, flashTs }
-  const flashState = new Map<string, { prevPrice: number; flashTs: number }>()
 
   const wrapper = document.createElement('div')
   Object.assign(wrapper.style, {
@@ -479,14 +452,6 @@ function createVirtualScrollMode<T extends object>(
         rowEl.appendChild(cell)
       }
 
-      // 최초 렌더링 시 flashState 초기화 (가격 기록만, 플래시 미적용)
-      if (priceFn) {
-        const key = keyFn(dataRow, index)
-        const price = priceFn(dataRow)
-        if (!flashState.has(key)) {
-          flashState.set(key, { prevPrice: price, flashTs: 0 })
-        }
-      }
       return
     }
 
@@ -561,31 +526,6 @@ function createVirtualScrollMode<T extends object>(
       }
     }
 
-    // ── 가격 플래시 효과 ──
-    if (priceFn) {
-      const key = keyFn(dataRow, index)
-      const newPrice = priceFn(dataRow)
-      const state = flashState.get(key)
-      if (state) {
-        const now = performance.now()
-        if (newPrice !== state.prevPrice && state.prevPrice !== 0) {
-          // 가격 변경 감지 → 플래시 적용
-          const direction = newPrice > state.prevPrice ? 'up' : 'down'
-          state.prevPrice = newPrice
-          state.flashTs = now
-          applyFlash(rowEl, direction)
-        } else if (state.flashTs > 0 && now - state.flashTs >= FLASH_DURATION_MS) {
-          // 300ms 경과 → 플래시 미표시 (뷰포트 밖에서 복귀 시)
-          state.prevPrice = newPrice
-        } else {
-          // 가격 미변경 + 300ms 미경과 → 기존 상태 유지
-          state.prevPrice = newPrice
-        }
-      } else {
-        // 최초 등록 (풀에서 재사용된 행이 새 키로 할당된 경우)
-        flashState.set(key, { prevPrice: newPrice, flashTs: 0 })
-      }
-    }
   }
 
   function getRowHeight(row: TableRow<T>): number {

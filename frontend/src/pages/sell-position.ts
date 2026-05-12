@@ -117,7 +117,6 @@ function mount(container: HTMLElement): void {
     emptyText: '보유종목이 없습니다.',
     stickyHeader: true,
     zebraStriping: true,
-    priceFn: (p) => p.cur_price ?? 0,
   })
 
   scrollContainer.appendChild(dataTable.el)
