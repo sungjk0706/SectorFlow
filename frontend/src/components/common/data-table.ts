@@ -212,7 +212,9 @@ function createFixedMode<T extends object>(
   wrapper.appendChild(table)
 
   function renderEmpty() {
-    tbody.innerHTML = ''
+    while (tbody.firstChild) {
+      tbody.removeChild(tbody.firstChild)
+    }
     const tr = document.createElement('tr')
     const td = document.createElement('td')
     td.colSpan = columns.length
@@ -288,7 +290,9 @@ function createFixedMode<T extends object>(
 
   function updateRows(rows: TableRow<T>[]) {
     if (destroyed) return
-    tbody.innerHTML = ''
+    while (tbody.firstChild) {
+      tbody.removeChild(tbody.firstChild)
+    }
     if (rows.length === 0) {
       renderEmpty()
       return
@@ -405,7 +409,9 @@ function createVirtualScrollMode<T extends object>(
 
     // 최초 렌더링 또는 행 타입 변경 시에만 셀 전체 생성
     if (isFirst || currentIsGroup !== prevWasGroup) {
-      rowEl.innerHTML = ''
+      while (rowEl.firstChild) {
+        rowEl.removeChild(rowEl.firstChild)
+      }
 
       if (currentIsGroup) {
         rowEl.setAttribute('data-row-type', 'group')
@@ -537,7 +543,9 @@ function createVirtualScrollMode<T extends object>(
           // HTMLElement 셀: outerHTML 비교 후 변경 시에만 교체
           const existing = cell.firstElementChild as HTMLElement | null
           if (!existing || existing.outerHTML !== content.outerHTML) {
-            cell.innerHTML = ''
+            while (cell.firstChild) {
+              cell.removeChild(cell.firstChild)
+            }
             cell.appendChild(content)
             if (columns[i].flash) triggerFlash(cell)
           }

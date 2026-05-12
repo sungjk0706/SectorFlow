@@ -245,7 +245,7 @@ function patchRouterForDualLayout(
       currentSettingsModule.unmount()
       currentSettingsModule = null
     }
-    shell.leftPanel.innerHTML = ''
+    while (shell.leftPanel.firstChild) shell.leftPanel.removeChild(shell.leftPanel.firstChild)
 
     const route = routes.find(r => r.path === path)
     if (!route || !route.settingsCard) return

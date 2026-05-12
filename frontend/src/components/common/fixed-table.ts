@@ -131,7 +131,7 @@ export function createFixedTable<T extends object>(options: FixedTableOptions<T>
 
   // empty row
   function renderEmpty() {
-    tbody.innerHTML = ''
+    while (tbody.firstChild) tbody.removeChild(tbody.firstChild)
     const tr = document.createElement('tr')
     const td = document.createElement('td')
     td.colSpan = columns.length
@@ -287,7 +287,7 @@ export function createFixedTable<T extends object>(options: FixedTableOptions<T>
 
     // 초기 로딩 또는 rowKey 미제공 시 — 일괄 렌더링
     if (!_initialLoaded || !rowKey) {
-      tbody.innerHTML = ''
+      while (tbody.firstChild) tbody.removeChild(tbody.firstChild)
       _renderedKeyMap.clear()
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i]

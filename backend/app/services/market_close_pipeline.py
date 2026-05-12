@@ -49,8 +49,8 @@ def _broadcast_confirmed_progress(
             ws_manager.broadcast_threadsafe("confirmed-progress", payload, _loop)
         else:
             ws_manager.broadcast("confirmed-progress", payload)
-    except Exception:
-        pass
+    except Exception as e:
+        _log.warning("[확정진행] 브로드캐스트 실패: %s", e)
 
 _log = logging.getLogger(__name__)
 

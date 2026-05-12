@@ -262,6 +262,7 @@ _latest_stock_info: dict = {}
 _auto_trade: AutoTradeManager | None = None
 _engine_user_id: str = ""
 _last_ws_limit_warn_ts: float = 0.0
+_realtime_latency_exceeded: bool = False
 _settings_cache: dict = {}
 
 _subscribed_stocks: set[str] = set()

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from types import ModuleType
 from typing import Callable
 
@@ -268,8 +269,8 @@ def _handle_reg(data: dict, es: ModuleType) -> None:
                     asyncio.get_running_loop().create_task(
                         es._delayed_resubscribe_stock_after_rate_limit(norm)
                     )
-                except RuntimeError:
-                    pass
+                except RuntimeError as e:
+                    logger.warning("[재구독] 루프 미실행 %s: %s", norm, e)
             elif rc not in ("0", "00", ""):
                 es._subscribed_stocks.discard(norm)
         if es._REG_REAL_DEBUG_EXTRA_LOG and rows:
@@ -282,6 +283,7 @@ def _handle_real_01(
     item: dict, vals: dict, raw_type_upper: str, is_0b_tick: bool, es: ModuleType,
 ) -> None:
     """0B/01 체결 처리 — 현재가·거래대금·체결강도 갱신 + 보유종목 반영 + 자동매도 검사."""
+    _ts = int(time.time() * 1000)
     _need_sector_tick = False
     raw_cd = _real_item_stk_cd(item, vals)
     last_px = _parse_fid10_price(vals)
@@ -290,6 +292,7 @@ def _handle_real_01(
             "[REAL·체결] 미반영 -- 종목=%r 최종가=%s (9001/item·FID10/27/28 파싱 후에도 없음)",
             raw_cd, last_px,
         )
+        _check_realtime_latency(_ts, es)
         return
     nk_px = _format_kiwoom_reg_stk_cd(raw_cd)
     _exch = parse_fid9081_exchange(vals)
@@ -332,8 +335,8 @@ def _handle_real_01(
         if is_0b_tick and strength != "-":
             try:
                 _update_strength_buckets(es, nk_px, float(strength), abs(_ws_fid_int(vals, "13", 0)))
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as e:
+                logger.warning("[체결강도] %s 파싱 실패 strength=%r: %s", nk_px, strength, e)
     engine_radar_ops.apply_real01_volume_amount_to_radar_rows(
         raw_cd_for_bucket, vals, es._latest_trade_amounts,
         es._pending_stock_details, is_0b_tick=is_0b_tick,
@@ -383,8 +386,8 @@ def _handle_real_01(
                 if sv is not None and str(sv).strip():
                     try:
                         _update_strength_buckets(es, nk_px, float(str(sv).strip()), abs(_ws_fid_int(vals, "13", 0)))
-                    except (ValueError, TypeError):
-                        pass
+                    except (ValueError, TypeError) as e:
+                        logger.warning("[체결강도WL] %s 파싱 실패 sv=%r: %s", nk_px, sv, e)
             # notify_desktop_buy_radar_only()
             _need_sector_tick = True
             from app.services.engine_sector_confirm import recompute_sector_for_code
@@ -393,21 +396,35 @@ def _handle_real_01(
     # [근본해결] 선택적 전송 제거
     # if _need_sector_tick:
     #     notify_sector_tick_single(...)
+    _check_realtime_latency(_ts, es)
+
+
+def _check_realtime_latency(_ts: int, es: ModuleType) -> None:
+    """실시간 체결 처리 지연 측정 — 50ms 경고, 200ms 초과 시 자동매매 중단 플래그."""
+    elapsed = int(time.time() * 1000) - _ts
+    if elapsed >= 200:
+        logger.error("[체결지연] 처리 시간 %sms → 자동매매 중단 플래그 설정", elapsed)
+        es._realtime_latency_exceeded = True
+    elif elapsed >= 50:
+        logger.warning("[체결지연] 처리 시간 %sms → 50ms 초과", elapsed)
 
 
 def _handle_real_00(item: dict, vals: dict, es: ModuleType) -> None:
     """주문체결(00) 처리 — 자동매매 체결 콜백 + 잔고 갱신 트리거."""
+    _ts = int(time.time() * 1000)
     raw_cd = _real_item_stk_cd(item, vals)
     side = str(vals.get("907", ""))
     try:
         unex = int(str(vals.get("902", "0")).replace(",", "").replace("+", "") or 0)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as e:
+        logger.warning("[미체결] %s 파싱 실패 902=%r: %s", raw_cd, vals.get("902"), e)
         unex = 0
     if es._auto_trade:
         es._auto_trade.on_fill_update(raw_cd, side, unex, es._access_token)
-    
+
     # [근본해결] 부분 체결(unex > 0) 포함 모든 체결 발생 시 즉시 계좌 상태 반영
     es._on_fill_after_ws()
+    _check_realtime_latency(_ts, es)
 
 
 def _handle_real_balance(item: dict, vals: dict, es: ModuleType) -> None:

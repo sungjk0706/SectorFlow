@@ -9,7 +9,6 @@ import { createDualLabelSlider } from '../components/common/create-slider'
 import type { DualLabelSliderHandle } from '../components/common/create-slider'
 import { toDisplayValue, toServerValue } from '../utils/sliderConvert'
 import { FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
-import { showPopup } from '../components/common/popup'
 import type { SectorScoreRow, AppSettings } from '../types'
 
 const NUM_KEYS = ['sector_min_trade_amt', 'sector_min_rise_ratio_pct', 'sector_max_targets', 'sector_trim_trade_amt_pct', 'sector_trim_change_rate_pct'] as const
@@ -32,7 +31,9 @@ function updateMaxTargetsStatus(scores: SectorScoreRow[]): void {
   const passed = scores.filter(s => s.rank > 0).length
   const cutoff = scores.filter(s => s.rank === 0).length
 
-  maxTargetsStatusEl.innerHTML = ''
+  while (maxTargetsStatusEl.firstChild) {
+    maxTargetsStatusEl.removeChild(maxTargetsStatusEl.firstChild)
+  }
   maxTargetsStatusEl.style.gap = '4px'
 
   const passedLabel = document.createElement('span')
@@ -87,7 +88,6 @@ let dualSlider: DualLabelSliderHandle | null = null
 // 현재 값 추적
 let currentVals: Record<string, number> = {}
 let currentRiseRatio = 50
-let rankedSectorsCount = 0  // 순위 있는 업종 수 (rank > 0)
 
 // 업종 순위 행 DOM 참조
 let rankRows: HTMLDivElement[] = []
@@ -255,7 +255,6 @@ function mount(container: HTMLElement): void {
   settingsMgr = createSettingsManager(appStore)
   currentVals = {}
   currentRiseRatio = 50
-  rankedSectorsCount = 0
   rankRows = []
   rowCaches = []
   saving = false
@@ -436,22 +435,15 @@ function mount(container: HTMLElement): void {
     const initSt = appStore.getState()
     let prevSectorScores = initSt.sectorScores
     let prevSelectedSector = initSt.selectedSector
-    let prevSectorStatus = initSt.sectorStatus
     let prevWsSubscribeStatus = initSt.wsSubscribeStatus
 
     unsubStore = appStore.subscribe((state) => {
       const scoresChanged = state.sectorScores !== prevSectorScores
       const sectorChanged = state.selectedSector !== prevSelectedSector
-      const statusChanged = state.sectorStatus !== prevSectorStatus
       const wsStatusChanged = state.wsSubscribeStatus !== prevWsSubscribeStatus
       prevSectorScores = state.sectorScores
       prevSelectedSector = state.selectedSector
-      prevSectorStatus = state.sectorStatus
       prevWsSubscribeStatus = state.wsSubscribeStatus
-
-      if (statusChanged && state.sectorStatus) {
-        rankedSectorsCount = state.sectorStatus.ranked_sectors_count ?? 0
-      }
 
       if (wsStatusChanged) {
         const sub = state.wsSubscribeStatus?.quote_subscribed ?? false
@@ -468,7 +460,6 @@ function mount(container: HTMLElement): void {
 
   // 초기 렌더링
   const state = appStore.getState()
-  rankedSectorsCount = state.sectorStatus?.ranked_sectors_count ?? 0
   const maxTargets = Number(currentVals.sector_max_targets) || 1
   updateRankingRows(state.sectorScores, state.selectedSector, maxTargets)
   updateMaxTargetsStatus(state.sectorScores)
@@ -489,7 +480,6 @@ function unmount(): void {
   wsBadge = null
   rankRows = []
   rowCaches = []
-  rankedSectorsCount = 0
   saving = false
   pendingSave = null
 }

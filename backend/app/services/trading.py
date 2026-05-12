@@ -29,8 +29,8 @@ def _fire_and_forget_telegram(message: str, settings: dict | None) -> None:
             "message": message,
             "settings": settings,
         })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[텔레그램] 알림 큐 등록 실패: %s", e)
 
 
 class AutoTradeManager:
@@ -77,6 +77,15 @@ class AutoTradeManager:
         settings = self._to_trade_settings(self.get_settings_fn())
         raw_all = self.get_settings_fn() or {}
         self._ensure_daily_buy_counter()
+
+        # ── 실시간 지연 중단 게이트 ────────────────────────────────────────────
+        try:
+            import app.services.engine_service as _es_latency
+            if _es_latency._realtime_latency_exceeded:
+                self.log_callback(f"[실시간지연] {stk_cd} 매수 차단 — WS 지연 200ms 초과")
+                return False
+        except Exception:
+            pass
 
         # 스케줄 자동매매 게이트: force_buy(매수대기 수동 매수) 시에만 우회
         if not settings.get("is_auto", False) and not force_buy:
@@ -423,6 +432,15 @@ class AutoTradeManager:
         settings = self._to_trade_settings(base_settings)
         if not settings.get("is_sell_auto", False):
             return
+
+        # ── 실시간 지연 중단 게이트 ────────────────────────────────────────────
+        try:
+            import app.services.engine_service as _es_latency
+            if _es_latency._realtime_latency_exceeded:
+                self.log_callback("[실시간지연] 매도 조건 전체 차단 — WS 지연 200ms 초과")
+                return
+        except Exception:
+            pass
 
         for stock in stock_list:
             s = dict(settings)
