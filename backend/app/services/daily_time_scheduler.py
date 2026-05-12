@@ -562,6 +562,8 @@ def _apply_auto_toggle_on_startup(settings: dict) -> None:
 
     should_be_on = is_trade_day and in_time_window
 
+    # 기동 시각 기준 단순 ON/OFF — 구독 시작 전이면 모두 OFF
+    # ws_subscribe_start 시각 도달 시 _on_ws_subscribe_start가 4개 키를 모두 True로 복원
     on_or_off = should_be_on
     keys = {
         "time_scheduler_on": on_or_off,
@@ -638,9 +640,32 @@ async def _on_ws_subscribe_start() -> None:
                 return
         # 공휴일 강제 OFF 플래그가 있으면 자동 복원 후 진행
         _restore_from_holiday_flag(settings)
-        # WS 구독 마스터 스위치 OFF면 스킵
-        if not bool(settings.get("ws_subscribe_on", True)):
-            return
+        # ★ 구독 시작 시각 도달 → 자동매매·WS구독 4개 키 모두 ON 복원
+        #   (_on_ws_subscribe_end 또는 시작 전 기동으로 False가 된 값을 되돌림)
+        try:
+            from app.core.settings_file import update_settings
+            _on_keys = {
+                "time_scheduler_on": True,
+                "auto_buy_on": True,
+                "auto_sell_on": True,
+                "ws_subscribe_on": True,
+            }
+            update_settings(_on_keys)
+            settings.update(_on_keys)
+            _cache = getattr(engine_service, "_settings_cache", None)
+            if isinstance(_cache, dict):
+                _cache.update(_on_keys)
+            try:
+                from app.services.engine_account_notify import (
+                    notify_desktop_header_refresh,
+                    notify_desktop_settings_toggled,
+                )
+                notify_desktop_header_refresh()
+                notify_desktop_settings_toggled()
+            except Exception:
+                pass
+        except Exception as _e:
+            logger.warning("[타이머] 자동매매 ON 복원 실패: %s", _e)
         _ws_subscribe_window_active = True
         # 0J REAL 플래그 초기화 (새 구독 사이클 시작)
         _0j_real_receiving = False

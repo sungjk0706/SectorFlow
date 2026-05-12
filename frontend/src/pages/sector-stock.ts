@@ -351,7 +351,6 @@ function mount(container: HTMLElement): void {
     stickyHeader: true,
     groupRowHeight: 48,
     rowHeight: 32,
-    priceFn: (item) => item.stock.cur_price ?? 0,
     rowStyle: (row, _idx) => ({
       opacity: row.dim ? '0.65' : '1',
       background: currentMatchedCodes?.has(row.stock.code) ? '#fff9c4' : '',
