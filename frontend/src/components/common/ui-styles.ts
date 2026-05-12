@@ -186,10 +186,10 @@ export function createCodeCell(code: string): HTMLElement {
 }
 
 /** 현재가 셀 (우측정렬, 등락률 기반 색상, 가격 미수신 시 "-") */
-export function createPriceCell(price: number, rate: number): HTMLElement {
+export function createPriceCell(price: number | null | undefined, rate: number): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
-  if (price === 0) {
+  if (!price) {
     cell.textContent = '-'
   } else {
     const span = document.createElement('span')
@@ -226,11 +226,13 @@ export function createChangeCell(change: number): HTMLElement {
   return wrap
 }
 
-/** 등락률 셀 (우측정렬, +/- 포맷, rateColor, 0이면 "0") */
-export function createRateCell(rate: number): HTMLElement {
+/** 등락률 셀 (우측정렬, +/- 포맷, rateColor, null/0이면 "-") */
+export function createRateCell(rate: number | null | undefined): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
-  if (rate === 0) {
+  if (!rate && rate !== 0) {
+    cell.textContent = '-'
+  } else if (rate === 0) {
     cell.textContent = '0'
   } else {
     const span = document.createElement('span')
@@ -242,18 +244,18 @@ export function createRateCell(rate: number): HTMLElement {
 }
 
 /** 거래대금 셀 (우측정렬, 기본색) */
-export function createAmountCell(amount: number): HTMLElement {
+export function createAmountCell(amount: number | null | undefined): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
-  cell.textContent = amount > 0 ? fmtComma(Math.round(amount / 100_000_000)) : '-'
+  cell.textContent = amount && amount > 0 ? fmtComma(Math.round(amount / 100_000_000)) : '-'
   return cell
 }
 
 /** 체결강도 셀 (우측정렬, strengthColor) */
-export function createStrengthCell(strength: number): HTMLElement {
+export function createStrengthCell(strength: number | null | undefined): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
-  if (!isNaN(strength) && strength > 0) {
+  if (strength != null && !isNaN(strength) && strength > 0) {
     cell.textContent = strength.toFixed(1)
     cell.style.color = strengthColor(strength)
   } else {
@@ -317,7 +319,7 @@ export function makeCodeColumn<T>(get: (t: T) => string): ColumnDef<T> {
 
 /** 현재가 컬럼 */
 export function makePriceColumn<T>(
-  getPrice: (t: T) => number,
+  getPrice: (t: T) => number | null | undefined,
   getRate: (t: T) => number,
 ): ColumnDef<T> {
   return {
@@ -340,7 +342,7 @@ export function makeChangeColumn<T>(get: (t: T) => number): ColumnDef<T> {
 }
 
 /** 등락률 컬럼 */
-export function makeRateColumn<T>(get: (t: T) => number): ColumnDef<T> {
+export function makeRateColumn<T>(get: (t: T) => number | null | undefined): ColumnDef<T> {
   return {
     key: 'change_rate',
     label: '등락률',
@@ -350,7 +352,7 @@ export function makeRateColumn<T>(get: (t: T) => number): ColumnDef<T> {
 }
 
 /** 체결강도 컬럼 */
-export function makeStrengthColumn<T>(get: (t: T) => number): ColumnDef<T> {
+export function makeStrengthColumn<T>(get: (t: T) => number | null | undefined): ColumnDef<T> {
   return {
     key: 'strength',
     label: '체결강도',
@@ -360,7 +362,7 @@ export function makeStrengthColumn<T>(get: (t: T) => number): ColumnDef<T> {
 }
 
 /** 거래대금 컬럼 (억 단위 표시) */
-export function makeAmountColumn<T>(get: (t: T) => number): ColumnDef<T> {
+export function makeAmountColumn<T>(get: (t: T) => number | null | undefined): ColumnDef<T> {
   return {
     key: 'trade_amount',
     label: '거래대금',
