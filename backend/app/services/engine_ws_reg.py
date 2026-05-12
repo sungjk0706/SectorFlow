@@ -324,66 +324,68 @@ async def subscribe_sector_stocks_0b(es: ModuleType) -> None:
         )
         filtered_only = filtered_only[:allowed_filtered]
 
-    all_targets_raw = pos_codes + filtered_only
-    if not all_targets_raw:
-        logger.debug("[구독등록][시세] 필터 통과 종목 + 보유종목 없음 -- 생략")
-        return
-
-    # 중복 제거 + 이미 구독된 종목 제외
-    targets = [cd for cd in dict.fromkeys(all_targets_raw) if cd not in es._subscribed_stocks]
-    skipped = len(all_targets_raw) - len(targets)
-    if not targets:
-        logger.debug("[구독등록][시세] 필터 통과 종목 + 보유종목 전체 이미 구독 중 -- 생략")
-        return
-
-    total = len(targets)
-    nchunks = (total + _WL_0B_CHUNK - 1) // _WL_0B_CHUNK
-    logger.info(
-        "[구독등록][시세] 필터 통과 종목 + 보유종목 시작 -- %d종목 -> %d청크 "
-        "(보유 %d, 필터 %d, 생략 %d)",
-        total, nchunks, len(pos_codes), len(filtered_only), skipped,
-    )
-    for cd in targets:
-        es._subscribed_stocks.add(cd)
-
-    # build_0b_reg_payloads 로 페이로드 생성 (모든 청크 refresh="0")
-    chunk_al_lists = []
-    for ci in range(nchunks):
-        chunk = targets[ci * _WL_0B_CHUNK : (ci + 1) * _WL_0B_CHUNK]
-        chunk_al_lists.append((chunk, [get_ws_subscribe_code(cd) for cd in chunk]))
-
-    payloads = build_0b_reg_payloads(
-        [al for _, als in chunk_al_lists for al in als],
-        chunk_size=_WL_0B_CHUNK,
-    )
-
-    ok_total = fail_total = 0
-    for ci, payload in enumerate(payloads):
-        chunk = chunk_al_lists[ci][0]  # 원본 6자리 코드 청크
-        ok, _rc = await es._ws_send_reg_unreg_and_wait_ack(payload)
-        if ok and str(_rc) == "0":
-            ok_total += len(chunk)
-            logger.debug(
-                "[구독등록][시세] 청크 %d/%d 응답 -- %d종목 (누적 성공 %d)",
-                ci + 1, nchunks, len(chunk), ok_total,
-            )
-        else:
-            fail_total += len(chunk)
-            for cd in chunk:
-                es._subscribed_stocks.discard(cd)
-            if ok and str(_rc) != "0":
-                logger.warning(
-                    "[구독등록][시세] 청크 %d/%d 서버 거부 (rc=%s) -- %d종목 구독 실패",
-                    ci + 1, nchunks, _rc, len(chunk),
+    # ── 4) 보유종목 별도 선행 REG ──
+    pos_targets = [cd for cd in pos_codes if cd not in es._subscribed_stocks]
+    if pos_targets:
+        for cd in pos_targets:
+            es._subscribed_stocks.add(cd)
+        pos_al = [get_ws_subscribe_code(cd) for cd in pos_targets]
+        pos_payloads = build_0b_reg_payloads(pos_al, chunk_size=_WL_0B_CHUNK, reset_first=True)
+        pos_ok = pos_fail = 0
+        for ci, payload in enumerate(pos_payloads):
+            chunk = pos_targets[ci * _WL_0B_CHUNK : (ci + 1) * _WL_0B_CHUNK]
+            ok, _rc = await es._ws_send_reg_unreg_and_wait_ack(payload)
+            if ok and str(_rc) == "0":
+                pos_ok += len(chunk)
+                logger.debug(
+                    "[구독등록][보유종목] 청크 %d/%d 응답 -- %d종목 (누적 성공 %d)",
+                    ci + 1, len(pos_payloads), len(chunk), pos_ok,
                 )
             else:
+                pos_fail += len(chunk)
+                for cd in chunk:
+                    es._subscribed_stocks.discard(cd)
                 logger.warning(
-                    "[구독등록][시세] 청크 %d/%d 응답 시간 초과 -- %d종목 구독 실패",
-                    ci + 1, nchunks, len(chunk),
+                    "[구독등록][보유종목] 청크 %d/%d 실패 (rc=%s) -- %d종목 롤백",
+                    ci + 1, len(pos_payloads), _rc, len(chunk),
                 )
+        logger.info(
+            "[구독등록][보유종목] 완료 -- %d종목 / 성공 %d / 실패 %d",
+            len(pos_targets), pos_ok, pos_fail,
+        )
+
+    # ── 5) 필터 통과 종목 누적 REG ──
+    filter_targets = [cd for cd in filtered_only if cd not in es._subscribed_stocks]
+    if not filter_targets:
+        if not pos_targets:
+            logger.debug("[구독등록][시세] 신규 종목 없음 -- 생략")
+        return
+
+    for cd in filter_targets:
+        es._subscribed_stocks.add(cd)
+    filter_al = [get_ws_subscribe_code(cd) for cd in filter_targets]
+    filter_payloads = build_0b_reg_payloads(filter_al, chunk_size=_WL_0B_CHUNK, reset_first=False)
+    filter_ok = filter_fail = 0
+    for ci, payload in enumerate(filter_payloads):
+        chunk = filter_targets[ci * _WL_0B_CHUNK : (ci + 1) * _WL_0B_CHUNK]
+        ok, _rc = await es._ws_send_reg_unreg_and_wait_ack(payload)
+        if ok and str(_rc) == "0":
+            filter_ok += len(chunk)
+            logger.debug(
+                "[구독등록][필터] 청크 %d/%d 응답 -- %d종목 (누적 성공 %d)",
+                ci + 1, len(filter_payloads), len(chunk), filter_ok,
+            )
+        else:
+            filter_fail += len(chunk)
+            for cd in chunk:
+                es._subscribed_stocks.discard(cd)
+            logger.warning(
+                "[구독등록][필터] 청크 %d/%d 실패 (rc=%s) -- %d종목 롤백",
+                ci + 1, len(filter_payloads), _rc, len(chunk),
+            )
     logger.info(
-        "[구독등록][시세] 완료 -- 총 %d종목 / 성공 %d / 실패 %d",
-        total, ok_total, fail_total,
+        "[구독등록][필터] 완료 -- %d종목 / 성공 %d / 실패 %d",
+        len(filter_targets), filter_ok, filter_fail,
     )
 
 
