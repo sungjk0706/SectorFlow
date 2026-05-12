@@ -1,4 +1,0 @@
-# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/services/settlement_engine.py
-# hypothesis_version: 6.141.1
-
-[0.0, 0.00015, 0.002, 10000000, '[정산엔진] 상태 저장 실패: %s', 'amount', 'available_cash', 'data', 'initial_deposit', 'pending_withdrawals', 'r', 'sell_date', 'settlement_date', 'settlement_delta', 'stk_cd', 'stk_nm', 'test_virtual_deposit', 'utf-8', 'w']

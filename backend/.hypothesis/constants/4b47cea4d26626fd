@@ -1,4 +1,0 @@
-# file: /Users/sungjk0706/Desktop/SectorFlow/backend/app/services/engine_account_notify.py
-# hypothesis_version: 6.152.4
-
-[0.0, 16384, '-', '_v', 'account-update', 'added', 'ask', 'bid', 'boost_score', 'buy-targets-delta', 'buy-targets-update', 'buy_targets', 'change', 'change_rate', 'changed', 'changed_positions', 'changed_sectors', 'code', 'cur_price', 'delta', 'engine', 'engine-status', 'guard_pass', 'index-refresh', 'max_targets', 'orderbook-update', 'price', 'qty', 'rank', 'ranked_sectors_count', 'real-data', 'reason', 'removed', 'removed_codes', 'removed_sectors', 'scores', 'sector', 'sector-scores', 'sector-stocks-delta', 'sector-tick', 'sector_max_targets', 'sector_rank', 'settings-changed', 'snapshot', 'snapshot-update', 'snapshot_history', 'status', 'stk_cd', 'stocks', 'strength', 'ticks', 'total_eval', 'total_stocks', 'trade-price', 'trade_amount', 'utf-8', 'ws-subscribe-status']
