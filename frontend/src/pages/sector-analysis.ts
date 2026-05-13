@@ -3,6 +3,7 @@
 
 import { appStore, setSelectedSector } from '../stores/appStore'
 import { createSettingsManager } from '../settings'
+import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingRow, createNumInput, createMoneyInput, createWsStatusBadge } from '../components/common/setting-row'
 import { toastResult } from '../components/common/save-toast'
 import { createDualLabelSlider } from '../components/common/create-slider'
@@ -75,6 +76,8 @@ let unsubSettings: (() => void) | null = null
 let saving = false
 let pendingSave: { key: string; value: number } | null = null
 let wsBadge: ReturnType<typeof createWsStatusBadge> | null = null
+let rafHandle: number | null = null
+let _mounted = false
 
 // 입력 컴포넌트 참조
 let minTradeAmtInput: ReturnType<typeof createMoneyInput> | null = null
@@ -194,23 +197,92 @@ function buildRankingRows(container: HTMLElement): void {
   }
 }
 
-function updateRankingRows(scores: SectorScoreRow[], selected: string | null, maxTargets: number): void {
+function updateRankingRows(scores: SectorScoreRow[], selected: string | null, maxTargets: number, delta: { delta: boolean; changed_sectors: string[]; removed_sectors: string[] } | null = null): void {
   const maxScore = scores.length > 0 ? Math.max(...scores.map(s => s.final_score), 1) : 1
-  for (let i = 0; i < MAX_ROWS; i++) {
-    const row = rankRows[i]
+
+  // 초기화 예외 처리: delta 없거나 최초 데이터 수신 시 전체 화면 생성
+  if (!delta || !delta.delta) {
+    for (let i = 0; i < MAX_ROWS; i++) {
+      const row = rankRows[i]
+      if (!row) continue
+
+      // 숨김 처리
+      if (i >= scores.length) {
+        if (!rowCaches[i] || rowCaches[i]!.visible) {
+          row.style.visibility = 'hidden'
+          rowCaches[i] = { rank: -1, sector: '', total: 0, finalScore: '', riseRatio: '', riseColor: '', tradeAmt: '', barWidth: '', barColor: '', opacity: '', selected: false, visible: false }
+        }
+        continue
+      }
+
+      const s = scores[i]
+      const prev = rowCaches[i]
+      const isSel = selected === s.sector
+      const isUnranked = s.rank === 0
+      const opacity = isUnranked ? '0.4' : (s.rank > maxTargets ? '0.65' : '1')
+      const finalScore = s.final_score.toFixed(1)
+      const riseRatio = s.rise_ratio.toFixed(1) + '%'
+      const riseColor = s.rise_ratio > 50 ? 'red' : s.rise_ratio < 50 ? 'blue' : '#333'
+      const tradeAmt = Math.round(s.total_trade_amount / 100_000_000).toLocaleString()
+      const barWidth = `${Math.min((s.final_score / maxScore) * 100, 100)}%`
+      const barColor = isUnranked ? '#dee2e6' : (s.rank <= maxTargets ? '#0d6efd' : '#adb5bd')
+
+      // 첫 렌더 또는 visibility 변경
+      if (!prev || !prev.visible) row.style.visibility = 'visible'
+
+      // 델타 비교 — 바뀐 속성만 DOM 반영
+      if (!prev || prev.opacity !== opacity) row.style.opacity = opacity
+      if (!prev || prev.sector !== s.sector) row.dataset.sector = s.sector
+      if (!prev || prev.selected !== isSel) {
+        row.style.background = isSel ? '#e8f0fe' : 'transparent'
+        row.style.outline = isSel ? '2px solid #1a73e8' : 'none'
+      }
+
+      const spans = row.firstElementChild!.children as HTMLCollectionOf<HTMLSpanElement>
+      if (!prev || prev.rank !== s.rank) spans[0].textContent = s.rank === 0 ? '❌' : String(s.rank)
+      if (!prev || prev.sector !== s.sector) spans[1].textContent = s.sector
+      if (!prev || prev.total !== s.total) spans[2].textContent = String(s.total || '')
+      if (!prev || prev.finalScore !== finalScore) spans[3].textContent = finalScore
+      if (!prev || prev.riseRatio !== riseRatio) spans[4].textContent = riseRatio
+      if (!prev || prev.riseColor !== riseColor) spans[4].style.color = riseColor
+      if (!prev || prev.tradeAmt !== tradeAmt) spans[5].textContent = tradeAmt
+
+      const bar = row.lastElementChild!.firstElementChild as HTMLDivElement
+      if (!prev || prev.barWidth !== barWidth) bar.style.width = barWidth
+      if (!prev || prev.barColor !== barColor) bar.style.background = barColor
+
+      // 캐시 갱신
+      rowCaches[i] = { rank: s.rank, sector: s.sector, total: s.total, finalScore, riseRatio, riseColor, tradeAmt, barWidth, barColor, opacity, selected: isSel, visible: true }
+    }
+    return
+  }
+
+  // delta 기반 증분 갱신
+  const { changed_sectors, removed_sectors } = delta
+
+  // removed_sectors에 해당하는 행 제거
+  for (const sector of removed_sectors) {
+    const index = rowCaches.findIndex(c => c && c.sector === sector)
+    if (index !== -1 && rankRows[index]) {
+      rankRows[index].style.visibility = 'hidden'
+      rowCaches[index] = { rank: -1, sector: '', total: 0, finalScore: '', riseRatio: '', riseColor: '', tradeAmt: '', barWidth: '', barColor: '', opacity: '', selected: false, visible: false }
+    }
+  }
+
+  // changed_sectors에 해당하는 행 갱신 + 정렬 순서 동기화
+  const sectorToIndex = new Map<string, number>()
+  scores.forEach((s, i) => sectorToIndex.set(s.sector, i))
+
+  for (const sector of changed_sectors) {
+    const newIndex = sectorToIndex.get(sector)
+    if (newIndex === undefined) continue
+
+    const s = scores[newIndex]
+    const prevCacheIndex = rowCaches.findIndex(c => c && c.sector === sector)
+    const row = rankRows[newIndex]
+
     if (!row) continue
 
-    // 숨김 처리
-    if (i >= scores.length) {
-      if (!rowCaches[i] || rowCaches[i]!.visible) {
-        row.style.visibility = 'hidden'
-        rowCaches[i] = { rank: -1, sector: '', total: 0, finalScore: '', riseRatio: '', riseColor: '', tradeAmt: '', barWidth: '', barColor: '', opacity: '', selected: false, visible: false }
-      }
-      continue
-    }
-
-    const s = scores[i]
-    const prev = rowCaches[i]
     const isSel = selected === s.sector
     const isUnranked = s.rank === 0
     const opacity = isUnranked ? '0.4' : (s.rank > maxTargets ? '0.65' : '1')
@@ -221,37 +293,49 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     const barWidth = `${Math.min((s.final_score / maxScore) * 100, 100)}%`
     const barColor = isUnranked ? '#dee2e6' : (s.rank <= maxTargets ? '#0d6efd' : '#adb5bd')
 
-    // 첫 렌더 또는 visibility 변경
-    if (!prev || !prev.visible) row.style.visibility = 'visible'
-
-    // 델타 비교 — 바뀐 속성만 DOM 반영
-    if (!prev || prev.opacity !== opacity) row.style.opacity = opacity
-    if (!prev || prev.sector !== s.sector) row.dataset.sector = s.sector
-    if (!prev || prev.selected !== isSel) {
-      row.style.background = isSel ? '#e8f0fe' : 'transparent'
-      row.style.outline = isSel ? '2px solid #1a73e8' : 'none'
-    }
+    row.style.visibility = 'visible'
+    row.style.opacity = opacity
+    row.dataset.sector = s.sector
+    row.style.background = isSel ? '#e8f0fe' : 'transparent'
+    row.style.outline = isSel ? '2px solid #1a73e8' : 'none'
 
     const spans = row.firstElementChild!.children as HTMLCollectionOf<HTMLSpanElement>
-    if (!prev || prev.rank !== s.rank) spans[0].textContent = s.rank === 0 ? '❌' : String(s.rank)
-    if (!prev || prev.sector !== s.sector) spans[1].textContent = s.sector
-    if (!prev || prev.total !== s.total) spans[2].textContent = String(s.total || '')
-    if (!prev || prev.finalScore !== finalScore) spans[3].textContent = finalScore
-    if (!prev || prev.riseRatio !== riseRatio) spans[4].textContent = riseRatio
-    if (!prev || prev.riseColor !== riseColor) spans[4].style.color = riseColor
-    if (!prev || prev.tradeAmt !== tradeAmt) spans[5].textContent = tradeAmt
+    spans[0].textContent = s.rank === 0 ? '❌' : String(s.rank)
+    spans[1].textContent = s.sector
+    spans[2].textContent = String(s.total || '')
+    spans[3].textContent = finalScore
+    spans[4].textContent = riseRatio
+    spans[4].style.color = riseColor
+    spans[5].textContent = tradeAmt
 
     const bar = row.lastElementChild!.firstElementChild as HTMLDivElement
-    if (!prev || prev.barWidth !== barWidth) bar.style.width = barWidth
-    if (!prev || prev.barColor !== barColor) bar.style.background = barColor
+    bar.style.width = barWidth
+    bar.style.background = barColor
 
     // 캐시 갱신
-    rowCaches[i] = { rank: s.rank, sector: s.sector, total: s.total, finalScore, riseRatio, riseColor, tradeAmt, barWidth, barColor, opacity, selected: isSel, visible: true }
+    rowCaches[newIndex] = { rank: s.rank, sector: s.sector, total: s.total, finalScore, riseRatio, riseColor, tradeAmt, barWidth, barColor, opacity, selected: isSel, visible: true }
+
+    // 정렬 순서 동기화: 점수 변동으로 순위가 바뀌면 DOM 노드 위치 재정렬
+    if (prevCacheIndex !== -1 && prevCacheIndex !== newIndex) {
+      const container = row.parentNode
+      if (container) {
+        // 새 위치에 삽입
+        const targetRow = rankRows[newIndex]
+        const referenceRow = rankRows[newIndex + 1]
+        if (referenceRow) {
+          container.insertBefore(targetRow, referenceRow)
+        } else {
+          container.appendChild(targetRow)
+        }
+      }
+    }
   }
 }
 
 /* ── mount ── */
 function mount(container: HTMLElement): void {
+  _mounted = true
+  notifyPageActive('sector-analysis')
   settingsMgr = createSettingsManager(appStore)
   currentVals = {}
   currentRiseRatio = 50
@@ -426,7 +510,7 @@ function mount(container: HTMLElement): void {
       syncFromSettings(s)
       const state = appStore.getState()
       const maxTargets = Number(currentVals.sector_max_targets) || 1
-      updateRankingRows(state.sectorScores, state.selectedSector, maxTargets)
+      updateRankingRows(state.sectorScores, state.selectedSector, maxTargets, state.sectorScoresDelta)
     }
   })
 
@@ -452,21 +536,32 @@ function mount(container: HTMLElement): void {
 
       if (!scoresChanged && !sectorChanged) return
 
-      const maxTargets = Number(currentVals.sector_max_targets) || 1
-      updateRankingRows(state.sectorScores, state.selectedSector, maxTargets)
-      updateMaxTargetsStatus(state.sectorScores)
+      // rAF coalescing: 이미 예약된 rAF가 있으면 추가 예약하지 않음
+      if (rafHandle !== null) return
+
+      rafHandle = requestAnimationFrame(() => {
+        rafHandle = null
+        if (!_mounted) return
+        const latest = appStore.getState()
+        const maxTargets = Number(currentVals.sector_max_targets) || 1
+        updateRankingRows(latest.sectorScores, latest.selectedSector, maxTargets, latest.sectorScoresDelta)
+        updateMaxTargetsStatus(latest.sectorScores)
+      })
     })
   }
 
   // 초기 렌더링
   const state = appStore.getState()
   const maxTargets = Number(currentVals.sector_max_targets) || 1
-  updateRankingRows(state.sectorScores, state.selectedSector, maxTargets)
+  updateRankingRows(state.sectorScores, state.selectedSector, maxTargets, state.sectorScoresDelta)
   updateMaxTargetsStatus(state.sectorScores)
 }
 
 /* ── unmount ── */
 function unmount(): void {
+  _mounted = false
+  notifyPageInactive('sector-analysis')
+  if (rafHandle !== null) { cancelAnimationFrame(rafHandle); rafHandle = null }
   if (unsubStore) { unsubStore(); unsubStore = null }
   if (unsubSettings) { unsubSettings(); unsubSettings = null }
   if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }

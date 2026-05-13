@@ -371,9 +371,7 @@ async def _ws_send_remove_fire_and_forget(payload: dict) -> bool:
     if not _sender or not _sender.is_connected():
         return False
     sent = await _sender.send_message(payload)
-    if sent:
-        logger.debug("[연결] 구독해지 전송 완료 grp_no=%s", payload.get("grp_no"))
-    else:
+    if not sent:
         logger.warning("[연결] 구독해지 전송 실패 grp_no=%s", payload.get("grp_no"))
     return sent
 
@@ -675,7 +673,6 @@ def get_sector_scores_snapshot() -> tuple[list[dict], int]:
             "total_trade_amount": sc.total_trade_amount,
             "rise_ratio": round(sc.rise_ratio * 100, 1),
             "total": sc.total,
-            "rise_count": sc.rise_count,
         })
         if sc.rank > 0:
             ranked_count += 1
@@ -841,12 +838,10 @@ def get_buy_targets_snapshot() -> list[dict]:
             "rank": t.rank,
             "name": s.name,
             "code": s.code,
-            "sector": s.sector,
             "change": s.change,
             "change_rate": s.change_rate,
             "cur_price": s.cur_price,
             "strength": s.strength,
-            "trade_amount": s.trade_amount,
             "boost_score": round(s.boost_score, 1),
             "order_ratio": _get_orderbook(s.code),
             "high_5d": _high_5d_cache.get(s.code, 0),
@@ -866,12 +861,10 @@ def get_buy_targets_snapshot() -> list[dict]:
             "rank": t.rank,
             "name": s.name,
             "code": s.code,
-            "sector": s.sector,
             "change": s.change,
             "change_rate": s.change_rate,
             "cur_price": s.cur_price,
             "strength": s.strength,
-            "trade_amount": s.trade_amount,
             "boost_score": round(s.boost_score, 1),
             "order_ratio": _get_orderbook(s.code),
             "high_5d": _high_5d_cache.get(s.code, 0),
@@ -1046,7 +1039,6 @@ async def _mark_radar_exited(stk_cd: str) -> None:
         _radar_cnsr_order[:] = [x for x in _radar_cnsr_order if x != rm]
         await _clear_radar_rest_bootstrap_for_stk_cd(rm)
         _invalidate_sector_stocks_cache()
-        logger.debug("[데이터] ⚫ 조건 이탈·목록 제거: %s (%s)", nm, rm)
 
 
 async def clear_exited_from_radar() -> int:
@@ -1261,7 +1253,6 @@ async def _subscribe_radar_stocks_realtime() -> None:
     레이더 종목 REG -- 시장가 운용으로 호가(02) 불필요, 제거됨.
     0B는 _subscribe_sector_stocks_0b 에서 이미 커버됨.
     """
-    logger.debug("[구독등록] 레이더 종목 -- 시장가 운용으로 호가 생략")
 
 
 async def _subscribe_all_tracked_stocks_realtime() -> None:
@@ -1305,11 +1296,7 @@ async def _cleanup_stale_ws_subscriptions_on_session_ready() -> None:
     await ws_subscribe_control.cleanup_stale_subscriptions(sys.modules[__name__])
 
     if _account_rest_bootstrapped:
-        n = await _sweep_unreg_subscribed_except_positions_and_tracked()
-        if n:
-            logger.debug("[구독정리] 비보유·미추적 종목 구독해지 %d건", n)
-    else:
-        logger.debug("[구독정리] 계좌 조회 전 -- 구독해지 생략")
+        await _sweep_unreg_subscribed_except_positions_and_tracked()
 
 
 
@@ -1347,7 +1334,6 @@ async def _on_filter_settings_changed() -> None:
     )
 
     if old_codes == new_codes:
-        logger.debug("[시작][필터변경] 필터 통과 종목 변경 없음 -- 구독 변경 생략")
         return
 
     # === 설정 변경 시 강제 캐시 무효화 (1초 제한 무시) ===
@@ -1422,9 +1408,7 @@ async def _on_filter_settings_changed() -> None:
                     len(unreg_targets), ok_cnt, fail_cnt,
                 )
     elif not is_ws_subscribe_window(_settings_cache):
-        logger.debug("[시작][필터변경] 실시간 구독 구간 외 -- 구독 변경 생략 (필터 결과만 갱신)")
-    else:
-        logger.debug("[시작][필터변경] 실시간 구독 해지 상태 -- 구독 변경 생략")
+        pass
 
     # ── 업종순위 + 매수후보 재계산 ──
     try:

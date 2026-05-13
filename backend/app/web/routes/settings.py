@@ -57,20 +57,48 @@ async def reset_test_data(_: str = Depends(get_current_user)):
             username="admin",
             changed_keys={"test_virtual_deposit", "test_virtual_balance"},
         )
-        # 7. 계좌 스냅샷 갱신 + WS account-update 발송 → 수익현황 예수금/포지션 갱신
+        # 7. 보유종목 메모리 리스트 및 캐시 초기화 + 계좌 스냅샷 갱신 + WS account-update 발송
         from app.services import engine_service as es
-        es._refresh_account_snapshot_meta()
-        es._broadcast_account(reason="test_data_reset")
+        from app.services.engine_account_notify import _rebuild_positions_cache, _positions_code_set, _layout_code_set
+        es.logger.info(
+            "[디버그] 초기화 직전 구독목록 positions=%d subscribed=%d pending=%d layout=%d pos_codes=%d",
+            len(es._positions), len(es._subscribed_stocks),
+            len(es._pending_stock_details), len(es._sector_stock_layout),
+            len(_positions_code_set),
+        )
         async with es._shared_lock:
+            es._positions = []
+            es._subscribed_stocks.clear()
             es._rest_radar_quote_cache.clear()
             es._rest_radar_rest_once.clear()
             es._snapshot_history.clear()
-        es.logger.info("[엔진] 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료")
-        # 8. 일일매수 누적 인메모리 상태 리셋 + WS buy-limit-status 발송
+            es._checked_stocks.clear()
+        _rebuild_positions_cache([])
+        es.logger.info(
+            "[디버그] 초기화 직후 구독목록 positions=%d subscribed=%d pending=%d layout=%d pos_codes=%d",
+            len(es._positions), len(es._subscribed_stocks),
+            len(es._pending_stock_details), len(es._sector_stock_layout),
+            len(_positions_code_set),
+        )
+        es._refresh_account_snapshot_meta()
+        es._broadcast_account(reason="test_data_reset")
+        es.logger.info("[엔진] 보유종목, 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료")
+        # 8. 수익 이력 초기화 WS 브로드캐스트
+        from app.services.engine_account_notify import notify_snapshot_history_update
+        notify_snapshot_history_update()
+        # 9. 일일매수 누적 인메모리 상태 리셋 + 매수 쿨다운/쓰로틀 기록 초기화 + WS buy-limit-status 발송
         if es._auto_trade:
             es._auto_trade._daily_buy_spent = 0
             es._auto_trade._bought_today = set()
+            es._auto_trade._buy_state.clear()
+        es._sector_buy_last_ts.clear()
+        # buy_targets 메모리 초기화 (매수후보 테이블 동기화)
+        if es._sector_summary_cache and hasattr(es._sector_summary_cache, 'buy_targets'):
+            es._sector_summary_cache.buy_targets = []
         es._broadcast_buy_limit_status()
+        # 10. 통합 초기화 완료 신호 (모든 클라이언트 일괄 동기화)
+        from app.services.engine_account_notify import _broadcast
+        _broadcast("test-data-reset-completed", {"_v": 1})
 
         return {"ok": True, "message": "테스트 데이터 전체 초기화 완료"}
     except Exception as e:

@@ -535,20 +535,34 @@ function createVirtualScrollMode<T extends object>(
         const content = columns[i].render(dataRow, index)
         if (typeof content === 'string') {
           // 문자열 셀: textContent 비교 후 변경 시에만 갱신
+          const prevKey = '_prevContent' as keyof HTMLElement
+          const prevContent = (cell as any)[prevKey] as string | undefined
           if (cell.textContent !== content) {
             cell.textContent = content
-            if (columns[i].flash) triggerFlash(cell)
+            // 실제 변경이 있는 경우에만 플래시 터뜨림
+            if (columns[i].flash && prevContent !== undefined && prevContent !== content) {
+              triggerFlash(cell)
+            }
           }
+          // 현재 값을 저장
+          ;(cell as any)[prevKey] = content
         } else if (content instanceof HTMLElement) {
           // HTMLElement 셀: outerHTML 비교 후 변경 시에만 교체
+          const prevKey = '_prevContent' as keyof HTMLElement
+          const prevContent = (cell as any)[prevKey] as string | undefined
           const existing = cell.firstElementChild as HTMLElement | null
           if (!existing || existing.outerHTML !== content.outerHTML) {
             while (cell.firstChild) {
               cell.removeChild(cell.firstChild)
             }
             cell.appendChild(content)
-            if (columns[i].flash) triggerFlash(cell)
+            // 실제 변경이 있는 경우에만 플래시 터뜨림
+            if (columns[i].flash && prevContent !== undefined && prevContent !== content.outerHTML) {
+              triggerFlash(cell)
+            }
           }
+          // 현재 값을 저장
+          ;(cell as any)[prevKey] = content.outerHTML
         }
       } catch (_) {
         // 개별 셀 render 예외 시 해당 셀만 건너뛰고 기존 DOM 유지

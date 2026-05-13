@@ -38,7 +38,7 @@ def merge_positions_from_rest(
     for r in stock_list:
         if not isinstance(r, dict):
             continue
-        cd = str(r.get("stk_cd", "")).strip().lstrip("A")
+        cd = _format_kiwoom_reg_stk_cd(str(r.get("stk_cd", "")).strip())
         if not cd:
             continue
         qty = _rest_row_int(r, "qty", "rmnd_qty")

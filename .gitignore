@@ -1,3 +1,10 @@
+# Virtual environments
+.venv/
+
+# Local configuration
+.python-version
+.windsurf/
+
 # Python
 __pycache__/
 *.py[cod]

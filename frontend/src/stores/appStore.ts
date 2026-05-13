@@ -39,10 +39,12 @@ export interface AppState {
   /* ── 데이터 필드 ── */
   account: AccountSnapshot | null
   positions: Position[]
+  positionCount: number  /* 수익현황 페이지용 보유종목 수 (경량화 페이로드) */
   sectorStocks: Record<string, SectorStock>
   sectorOrder: string[]
   sectorScores: SectorScoreRow[]
   sectorStatus: SectorStatus | null
+  sectorScoresDelta: { delta: boolean; changed_sectors: string[]; removed_sectors: string[] } | null
   sectorSummary: Record<string, unknown> | null
   buyTargets: BuyTarget[]
   settings: AppSettings | null
@@ -80,10 +82,12 @@ export interface AppState {
 const initialState: AppState = {
   account: null,
   positions: [],
+  positionCount: 0,
   sectorStocks: {},
   sectorOrder: [],
   sectorScores: [],
   sectorStatus: null,
+  sectorScoresDelta: null,
   sectorSummary: null,
   buyTargets: [],
   settings: null,
@@ -213,6 +217,27 @@ export function applyInitialSnapshot(data: Record<string, unknown>): void {
 /* ── account-update: 계좌·보유종목 갱신 (delta 지원) ── */
 export function applyAccountUpdate(data: AccountUpdateEvent): void {
   if (!isVersionSupported(data, 'account-update')) return
+
+  // 경량화 페이로드 (수익현황 전용): position_count만 처리
+  if ('position_count' in data) {
+    const positionCount = (data as { position_count?: number }).position_count ?? 0
+    const incomingSnap = data.snapshot
+    const prevAccount = appStore.getState().account
+    const snapSame = incomingSnap && prevAccount
+      && incomingSnap.deposit === prevAccount.deposit
+      && incomingSnap.orderable === prevAccount.orderable
+      && incomingSnap.total_eval_amount === prevAccount.total_eval_amount
+      && incomingSnap.total_pnl === prevAccount.total_pnl
+      && incomingSnap.total_pnl_rate === prevAccount.total_pnl_rate
+      && incomingSnap.accumulated_investment === prevAccount.accumulated_investment
+      && incomingSnap.initial_deposit === prevAccount.initial_deposit
+    appStore.setState({
+      account: snapSame ? prevAccount : (incomingSnap ?? prevAccount),
+      positionCount,
+    })
+    return
+  }
+
   if (data.changed_positions) {
     const changed = data.changed_positions ?? []
     const removed = data.removed_codes ?? []
@@ -244,9 +269,23 @@ export function applyAccountUpdate(data: AccountUpdateEvent): void {
         }
       }
       rebuildPositionIndex(positions)
+      // position_count도 업데이트 (보유종목 수)
+      const positionCount = positions.filter(p => (p.qty ?? 0) > 0).length
+      // snapshot 동등성 비교: 내용이 동일하면 참조 유지 (불필요한 리렌더 방지)
+      const prevAccount = state.account
+      const incomingSnap = data.snapshot
+      const snapSame = incomingSnap && prevAccount
+        && incomingSnap.deposit === prevAccount.deposit
+        && incomingSnap.orderable === prevAccount.orderable
+        && incomingSnap.total_eval_amount === prevAccount.total_eval_amount
+        && incomingSnap.total_pnl === prevAccount.total_pnl
+        && incomingSnap.total_pnl_rate === prevAccount.total_pnl_rate
+        && incomingSnap.accumulated_investment === prevAccount.accumulated_investment
+        && incomingSnap.initial_deposit === prevAccount.initial_deposit
       return {
-        account: data.snapshot ?? state.account,
+        account: snapSame ? prevAccount : (incomingSnap ?? prevAccount),
         positions,
+        positionCount,
       }
     })
     return
@@ -273,6 +312,7 @@ export function applyAccountUpdate(data: AccountUpdateEvent): void {
   if (!positionsSame) {
     updates.positions = incomingPos
     rebuildPositionIndex(incomingPos)
+    updates.positionCount = incomingPos.filter(p => (p.qty ?? 0) > 0).length
   }
   if (Object.keys(updates).length > 0) appStore.setState(updates)
 }
@@ -300,7 +340,11 @@ export function applyRealData(item: RealDataEvent): void {
   if (!rawCode || !vals) return;
 
   // 종목코드 정규화: "028260_AL", "005930_NX" → "028260", "005930"
-  const code = rawCode.includes('_') ? rawCode.split('_')[0] : rawCode;
+  // 선행 0 방어: "5930" → "005930" (백엔드 REST 정규화와 동일)
+  let code = rawCode.includes('_') ? rawCode.split('_')[0] : rawCode;
+  if (/^\d+$/.test(code) && code.length < 6) {
+    code = code.padStart(6, '0');
+  }
 
   // 1. 01/0B/0H (주식체결) 처리
   if (type === '01' || type === '0B' || type === '0H') {
@@ -340,9 +384,9 @@ export function applyRealData(item: RealDataEvent): void {
       if (btIdx !== undefined) {
         const t = bt[btIdx];
         if (!(t.cur_price === price && t.change === change && t.change_rate === rate &&
-              t.strength === strength && t.trade_amount === amount)) {
+              t.strength === strength)) {
           bt = [...bt];
-          bt[btIdx] = { ...t, cur_price: price, change: change, change_rate: rate, strength: strength, trade_amount: amount };
+          bt[btIdx] = { ...t, cur_price: price, change: change, change_rate: rate, strength: strength };
           buyTargetsChanged = true;
         }
       }
@@ -354,16 +398,18 @@ export function applyRealData(item: RealDataEvent): void {
       const posIdx = getPositionIndex(code);
       if (posIdx !== undefined) {
         const pos = positions[posIdx];
-        if (pos.cur_price !== price) {
-          const buyAmt = pos.buy_amt ?? pos.buy_amount ?? 0;
-          const qty = pos.qty ?? 0;
-          const evalAmount = price * qty;
-          const pnlAmount = buyAmt > 0 ? evalAmount - buyAmt : 0;
-          const pnlRate = buyAmt > 0 ? Math.round((pnlAmount / buyAmt) * 10000) / 100 : 0;
+        const buyAmt = pos.buy_amt ?? pos.buy_amount ?? 0;
+        const qty = pos.qty ?? 0;
+        const evalAmount = price * qty;
+        const pnlAmount = buyAmt > 0 ? evalAmount - buyAmt : 0;
+        const pnlRate = buyAmt > 0 ? Math.round((pnlAmount / buyAmt) * 10000) / 100 : 0;
+        if (pos.cur_price !== price || pos.eval_amount !== evalAmount ||
+            pos.pnl_amount !== pnlAmount || pos.pnl_rate !== pnlRate) {
           newPositions = [...positions];
           newPositions[posIdx] = { ...pos, cur_price: price, eval_amount: evalAmount, pnl_amount: pnlAmount, pnl_rate: pnlRate };
           positionsChanged = true;
         }
+      } else if (positions.length > 0) {
       }
 
       // no-op guard: 변경 없으면 setState 생략 (reference equality 유지)
@@ -371,7 +417,9 @@ export function applyRealData(item: RealDataEvent): void {
       const patch: Partial<AppState> = {};
       if (sectorStocks !== state.sectorStocks) patch.sectorStocks = sectorStocks;
       if (buyTargetsChanged) patch.buyTargets = bt;
-      if (positionsChanged) patch.positions = newPositions;
+      if (positionsChanged) {
+        patch.positions = newPositions;
+      }
       return patch;
     });
   }
@@ -518,6 +566,30 @@ export function applyBuyLimitStatus(data: { daily_buy_spent: number }): void {
   appStore.setState({ buyLimitStatus: { daily_buy_spent: data.daily_buy_spent ?? 0 } })
 }
 
+/* ── test-data-reset-completed: 통합 초기화 완료 ── */
+export function applyTestDataResetCompleted(): void {
+  console.log("[초기화] applyTestDataResetCompleted 실행")
+  rebuildPositionIndex([])
+  rebuildBuyTargetIndex([])
+  console.log("Store 업데이트 전")
+  appStore.setState({
+    positions: [],
+    snapshotHistory: [],
+    sellHistory: [],
+    buyHistory: [],
+    dailySummary: [],
+    buyLimitStatus: { daily_buy_spent: 0 },
+    buyTargets: [],
+  })
+  console.log("Store 업데이트 후")
+  const s = appStore.getState()
+  console.log("positions 길이:", s.positions.length)
+  if (s.account && s.settings) {
+    const deposit = Number(s.settings.test_virtual_deposit) || 0
+    appStore.setState({ account: { ...s.account, deposit, orderable: deposit } })
+  }
+}
+
 /* ── buy-targets-update: 매수후보만 갱신 (내용 비교) ── */
 export function applyBuyTargetsUpdate(data: { buy_targets: BuyTarget[] }): void {
   if (!isVersionSupported(data, 'buy-targets-update')) return
@@ -526,10 +598,12 @@ export function applyBuyTargetsUpdate(data: { buy_targets: BuyTarget[] }): void 
   const same = prev.length === incoming.length && prev.every((p, i) => {
     const n = incoming[i]
     return p.rank === n.rank && p.code === n.code && p.name === n.name
-      && p.cur_price === n.cur_price && p.change_rate === n.change_rate
-      && p.strength === n.strength && p.trade_amount === n.trade_amount
+      && p.cur_price === n.cur_price && p.change === n.change && p.change_rate === n.change_rate
+      && p.strength === n.strength
       && p.guard_pass === n.guard_pass && p.reason === n.reason
       && p.boost_score === n.boost_score
+      && p.order_ratio?.[0] === n.order_ratio?.[0] && p.order_ratio?.[1] === n.order_ratio?.[1]
+      && p.high_5d === n.high_5d
   })
   if (!same) {
     rebuildBuyTargetIndex(incoming)
@@ -547,7 +621,7 @@ export function applySectorScores(data: SectorScoresEvent): void {
     return p.rank === n.rank && p.sector === n.sector
       && p.final_score === n.final_score && p.rise_ratio === n.rise_ratio
       && p.total_trade_amount === n.total_trade_amount
-      && p.total === n.total && p.rise_count === n.rise_count
+      && p.total === n.total
   })
   const updates: Partial<AppState> = { sectorStatus: data.status ?? null }
   if (!same) {
@@ -559,6 +633,16 @@ export function applySectorScores(data: SectorScoresEvent): void {
     if (!orderSame) {
       updates.sectorOrder = newOrder
     }
+  }
+  // delta 메타데이터 저장
+  if (data.delta === true) {
+    updates.sectorScoresDelta = {
+      delta: true,
+      changed_sectors: data.changed_sectors ?? [],
+      removed_sectors: data.removed_sectors ?? []
+    }
+  } else {
+    updates.sectorScoresDelta = null
   }
   appStore.setState(updates)
 }

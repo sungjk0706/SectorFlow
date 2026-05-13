@@ -2,9 +2,9 @@
 // 일반설정 — Vanilla TS PageModule
 // SettingsTabContainer.tsx + TelegramSection + AccountManageSection + TestVirtualSection 통합
 
-import { appStore } from '../stores/appStore'
+import { appStore, applyTestDataResetCompleted } from '../stores/appStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
-import { createSettingsManager, extractDirty, MASKED_FIELDS, type SettingsManager } from '../settings'
+import { createSettingsManager, extractDirty, MASKED_FIELDS, type SettingsManager, createGlobalWsBadge } from '../settings'
 import { createToggleBtn, createMoneyInput, TEXT_INPUT_WIDTH } from '../components/common/setting-row'
 import { toastResult, showSaveToast } from '../components/common/save-toast'
 import { createDataTable, type ColumnDef } from '../components/common/data-table'
@@ -47,6 +47,7 @@ let wsToggle: ReturnType<typeof createToggleBtn> | null = null
 let wsTimePairWrap: HTMLElement | null = null
 let holidayBadgeEls: HTMLElement[] = []
 let holidayToggleRow: HTMLElement | null = null
+let wsBadge: HTMLElement | null = null
 
 // TimePairInput
 let wsSH = '09', wsSM = '00', wsEH = '15', wsEM = '00'
@@ -120,6 +121,7 @@ function scheduleTimeSave(startKey: string, endKey: string): void {
     if (Object.keys(dirty).length > 0) {
       const res = await settingsMgr!.saveSection(dirty)
       toastResult(res)
+      if (res.ok) Object.assign(vals, dirty)
     }
     if (pendingTimeSave) {
       const next = pendingTimeSave
@@ -134,7 +136,7 @@ function scheduleTimeSave(startKey: string, endKey: string): void {
 /* ── 탭 렌더링 ── */
 function renderTabBar(): HTMLElement {
   const bar = document.createElement('div')
-  Object.assign(bar.style, { display: 'flex', borderBottom: '1px solid #ddd', marginBottom: '12px' })
+  Object.assign(bar.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #ddd', marginBottom: '12px' })
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'auto-trade', label: '자동매매' },
@@ -142,6 +144,9 @@ function renderTabBar(): HTMLElement {
     { id: 'telegram', label: '텔레그램' },
     { id: 'api-settings', label: 'API 설정' },
   ]
+
+  const btnGroup = document.createElement('div')
+  btnGroup.style.display = 'flex'
 
   for (const tab of tabs) {
     const btn = document.createElement('button')
@@ -156,8 +161,14 @@ function renderTabBar(): HTMLElement {
     })
     btn.textContent = tab.label
     btn.addEventListener('click', () => { activeTab = tab.id; refreshUI() })
-    bar.appendChild(btn)
+    btnGroup.appendChild(btn)
   }
+  bar.appendChild(btnGroup)
+
+  // WS 상태 배지
+  wsBadge = createGlobalWsBadge()
+  bar.appendChild(wsBadge)
+
   return bar
 }
 
@@ -553,7 +564,11 @@ function renderTestVirtualSection(): HTMLElement {
   resetBtn.textContent = '🔴 테스트 데이터 전체 초기화'
   resetBtn.addEventListener('click', async () => {
     if (!window.confirm('테스트 데이터를 전체 초기화하시겠습니까?\n가상 보유종목, 매매 이력, 투자금이 모두 초기화됩니다.')) return
-    try { await api.resetTestData(); showSaveToast('saved') } catch { alert('초기화 실패') }
+    try {
+      await api.resetTestData()
+      applyTestDataResetCompleted()
+      showSaveToast('saved')
+    } catch { alert('초기화 실패') }
   })
   resetWrap.appendChild(resetBtn)
   wrap.appendChild(resetWrap)
@@ -625,7 +640,12 @@ function renderApiSettingsTab(container: HTMLElement): void {
 function syncFromSettings(s: AppSettings | null): void {
   if (!s) return
   const r = s as unknown as Record<string, unknown>
-  vals = { ...r }
+  // 전체 복사 대신 변경된 키만 업데이트
+  for (const k of Object.keys(r)) {
+    if (vals[k] !== r[k]) {
+      vals[k] = r[k]
+    }
+  }
 
   // 자동매매 탭 (항상 DOM에 존재)
   {
@@ -734,21 +754,29 @@ function mount(container: HTMLElement): void {
     .then(data => { isTradingDay = data.is_trading_day; tradingDayLoading = false; updateHolidayBadges(); updateWsTimeDisabled() })
     .catch(() => { isTradingDay = true; tradingDayLoading = false })
 }
-
-/* ── unmount ── */
 function unmount(): void {
   notifyPageInactive('settings')
   if (unsubSettings) { unsubSettings(); unsubSettings = null }
-  savingTime = false
-  pendingTimeSave = null
   if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }
-  tabBar = null; tabContent = null; rootEl = null; tabPanels = null
-  masterToggle = null; holidayToggle = null; wsToggle = null; wsTimePairWrap = null
-  holidayBadgeEls = []; holidayToggleRow = null
-  teleToggle = null; teleInputs = {}
-  tradeModeSection = null; testVirtualSection = null
-  depositInput = null; depositDisplay = null
-  wsStartSlot = null; wsEndSlot = null
+  rootEl = null
+  tabBar = null
+  tabContent = null
+  tabPanels = null
+  masterToggle = null
+  holidayToggle = null
+  wsToggle = null
+  wsTimePairWrap = null
+  holidayBadgeEls = []
+  holidayToggleRow = null
+  wsBadge = null
+  teleToggle = null
+  teleInputs = {}
+  tradeModeSection = null
+  testVirtualSection = null
+  depositInput = null
+  depositDisplay = null
+  wsStartSlot = null
+  wsEndSlot = null
   apiKeyInputs = {}
   vals = {}
 }

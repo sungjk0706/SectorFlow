@@ -39,8 +39,6 @@ export interface SectorStock {
   change_rate: number;
   trade_amount?: number;
   sector?: string;
-  is_kosdaq?: boolean;
-  vi_triggered?: boolean;
   change?: number;
   strength?: number;
   avg_amt_5d?: number;
@@ -65,12 +63,10 @@ export interface BuyTarget {
   rank: number;
   name: string;
   code: string;
-  sector: string;
   change: number;
   change_rate: number;
   cur_price: number;
   strength: number;
-  trade_amount: number;
   boost_score: number;
   order_ratio: [number, number] | null;
   guard_pass: boolean;
@@ -215,7 +211,6 @@ export interface SectorScoreRow {
   total_trade_amount: number;
   rise_ratio: number;
   total: number;
-  rise_count: number;
 }
 
 export interface SectorStatus {
@@ -237,6 +232,9 @@ export interface TradePriceEvent {
 export interface SectorScoresEvent {
   scores: SectorScoreRow[];
   status: SectorStatus;
+  delta?: boolean;
+  changed_sectors?: string[];
+  removed_sectors?: string[];
 }
 
 /** [근본해결] 키움 실시간 Raw 데이터 이벤트 */

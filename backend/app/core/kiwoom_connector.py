@@ -430,6 +430,14 @@ class KiwoomConnector(BrokerConnector):
                     await self._socket.connect()
                     self._connected = True
                 logger.info("[증권사연결] 재연결 성공 (시도 %d회)", attempt)
+                # 재연결 성공 후 큐 클리어 (과거 데이터 제거)
+                if self._ws_queue is not None:
+                    while not self._ws_queue.empty():
+                        try:
+                            self._ws_queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            break
+                    logger.info("[증권사연결] 재연결 후 큐 클리어 완료")
                 try:
                     from app.services.ws_subscribe_control import broadcast_ws_connection_status
                     broadcast_ws_connection_status(True)
