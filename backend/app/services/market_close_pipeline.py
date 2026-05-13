@@ -434,12 +434,11 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
     """
     from app.core.broker_factory import get_router
     from app.core.sector_stock_cache import (
-        save_layout_cache,
         save_stock_name_cache,
         load_progress_cache,
         clear_progress_cache,
     )
-    from app.core.trading_calendar import current_trading_date_str, kst_today_str
+    from app.core.trading_calendar import kst_today_str
 
     _settings = getattr(es, "_settings_cache", {}) or {}
 

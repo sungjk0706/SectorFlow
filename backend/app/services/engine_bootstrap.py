@@ -349,7 +349,6 @@ async def _bootstrap_sector_stocks_async() -> None:
     _task.add_done_callback(lambda t: t.exception() if t.exception() else None)
 
     # 앱준비 완료 → 섹터 재계산 트리거 (이벤트 기반)
-    from app.services import engine_service
     from app.services.engine_sector_confirm import recompute_sector_for_code
     # WS 구간 안이면 delta 비교 캐시 초기화 (전일 데이터 잔존 방지)
     if _in_ws_window:

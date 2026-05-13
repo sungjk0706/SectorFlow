@@ -2,10 +2,9 @@
 """FastAPI 의존성 주입 — 인증된 사용자 추출."""
 from __future__ import annotations
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.web.auth import verify_token
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
