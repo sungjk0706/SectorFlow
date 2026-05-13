@@ -42,6 +42,7 @@ Thumbs.db
 data/*.lock
 data/*.cache
 backend/data/server.lock
+backend/data/*.json
 *.log
 .env
 .env.local
