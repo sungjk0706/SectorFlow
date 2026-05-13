@@ -39,14 +39,9 @@ _mock_es._sector_stock_layout = []  # type: ignore[attr-defined]
 if "app.services.engine_service" not in sys.modules:
     sys.modules["app.services.engine_service"] = _mock_es
 
-import pytest
-from hypothesis import given, settings, assume
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from app.services.engine_account_notify import (
-    _layout_code_set as _orig_layout_set,
-    _positions_code_set as _orig_positions_set,
-)
 import app.services.engine_account_notify as ean
 from app.web.ws_manager import WSManager
 

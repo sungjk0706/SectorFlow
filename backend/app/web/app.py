@@ -202,7 +202,6 @@ app.add_middleware(CacheControlMiddleware)
 
 
 # --- 정적 파일 서빙 (React 빌드 결과물) ---
-import os
 from pathlib import Path
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse

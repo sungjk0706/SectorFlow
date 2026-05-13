@@ -35,7 +35,6 @@ KA10005_GAP_SEC = 0.3
 # ── 유틸리티 ───────────────────────────────────────────────────────────────
 
 try:
-    from zoneinfo import ZoneInfo
 
     def _kst_today_yyyymmdd() -> str:
         from app.core.trading_calendar import current_trading_date_str

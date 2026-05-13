@@ -18,7 +18,6 @@ from __future__ import annotations
 import asyncio
 import copy
 
-import pytest
 from hypothesis import given, settings, assume
 from hypothesis import strategies as st
 

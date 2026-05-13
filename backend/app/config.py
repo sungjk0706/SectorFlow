@@ -3,12 +3,9 @@
 환경 변수 설정 -- 로컬 settings.json 기반 운영.
 암호화·텔레그램 등 시스템 전역 변수만 유지.
 """
-import os
 import logging
 from pathlib import Path
-from typing import Optional
 from pydantic_settings import BaseSettings
-from pydantic import Field
 from functools import lru_cache
 
 logger = logging.getLogger(__name__)

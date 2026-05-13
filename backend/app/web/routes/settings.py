@@ -48,7 +48,6 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         # 4. 테스트 매매 이력 초기화 (실전 이력은 보존)
         clear_test_history()
         # 5. 초기화된 매매 이력 브로드캐스트 → 프론트 테이블 갱신
-        from app.web.ws_manager import ws_manager
         from app.services.trade_history import broadcast_history
         broadcast_history("test")
         # 6. WS settings-changed 발송 → 프론트 설정 UI 갱신
@@ -59,7 +58,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         )
         # 7. 보유종목 메모리 리스트 및 캐시 초기화 + 계좌 스냅샷 갱신 + WS account-update 발송
         from app.services import engine_service as es
-        from app.services.engine_account_notify import _rebuild_positions_cache, _positions_code_set, _layout_code_set
+        from app.services.engine_account_notify import _rebuild_positions_cache, _positions_code_set
         es.logger.info(
             "[디버그] 초기화 직전 구독목록 positions=%d subscribed=%d pending=%d layout=%d pos_codes=%d",
             len(es._positions), len(es._subscribed_stocks),

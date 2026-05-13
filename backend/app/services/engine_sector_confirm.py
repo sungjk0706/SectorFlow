@@ -106,7 +106,6 @@ def _flush_sector_recompute_impl() -> None:
         from app.services.engine_sector_score import (
             compute_sector_scores,
             compute_weighted_scores,
-            compute_full_sector_summary,
             check_index_guard,
             build_buy_targets,
         )
@@ -333,7 +332,7 @@ def _sync_0d_subscriptions_sync(es, new_buy_targets) -> None:
     """
     global _PENDING_UNREG_CODES, _PENDING_UNREG_TIMER
 
-    from app.services.engine_ws_reg import build_0d_reg_payloads, build_0d_remove_payloads
+    from app.services.engine_ws_reg import build_0d_reg_payloads
 
     # WS 미연결 → 스킵
     if not es._kiwoom_connector or not es._kiwoom_connector.is_connected() or not es._login_ok:

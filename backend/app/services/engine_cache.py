@@ -10,7 +10,6 @@ import asyncio
 from types import ModuleType
 
 from app.core.logger import get_logger
-import app.services.engine_state as _st
 
 logger = get_logger("engine")
 

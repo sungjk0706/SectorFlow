@@ -9,13 +9,11 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import httpx as requests
 
 from app.core.broker_providers import UnifiedStockRecord
-from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd, _base_stk_cd
 
 if TYPE_CHECKING:
     from app.core.kiwoom_rest import KiwoomRestAPI
