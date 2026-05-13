@@ -405,6 +405,65 @@ export function applyOrderbookUpdate(data: { code: string; bid: number; ask: num
 }
 
 
+/* ── 공통 헬퍼: 지정된 필드를 null로 설정 ── */
+function nullifyFields<T extends object>(
+  obj: T,
+  fields: string[]
+): T {
+  let changed = false
+  const result: any = { ...obj }
+  for (const f of fields) {
+    if ((obj as any)[f] !== null && (obj as any)[f] !== undefined) {
+      changed = true
+      result[f] = null
+    }
+  }
+  return changed ? result : obj
+}
+
+/* ── realtime-reset: 실시간 필드 일괄 초기화 ── */
+export function applyRealtimeReset(): void {
+  appStore.setState((state) => {
+    const updates: Partial<AppState> = {}
+
+    // sectorStocks: 현재가/대비/등락률/거래대금/체결강도
+    const sectorStocks: Record<string, SectorStock> = {}
+    let sectorChanged = false
+    for (const [code, stock] of Object.entries(state.sectorStocks)) {
+      const n = nullifyFields(stock, ['cur_price', 'change', 'change_rate', 'trade_amount', 'strength'])
+      if (n !== stock) sectorChanged = true
+      sectorStocks[code] = n
+    }
+    if (sectorChanged) updates.sectorStocks = sectorStocks
+
+    // buyTargets: 현재가/대비/등락률/거래대금/체결강도/호가잔량비
+    let buyTargetsChanged = false
+    const buyTargets = state.buyTargets.map((t) => {
+      const n = nullifyFields(t, ['cur_price', 'change', 'change_rate', 'trade_amount', 'strength', 'order_ratio'])
+      if (n !== t) buyTargetsChanged = true
+      return n
+    })
+    if (buyTargetsChanged) {
+      updates.buyTargets = buyTargets
+      rebuildBuyTargetIndex(buyTargets)
+    }
+
+    // positions: 현재가/대비/등락률
+    let positionsChanged = false
+    const positions = state.positions.map((p) => {
+      const n = nullifyFields(p, ['cur_price', 'change', 'change_rate'])
+      if (n !== p) positionsChanged = true
+      return n
+    })
+    if (positionsChanged) {
+      updates.positions = positions
+      rebuildPositionIndex(positions)
+    }
+
+    return Object.keys(updates).length > 0 ? updates : state
+  })
+}
+
 /* ── snapshot-update: 수익 이력만 갱신 ── */
 export function applySnapshotUpdate(data: { snapshot_history: SnapshotHistory[] }): void {
   if (!isVersionSupported(data, 'snapshot-update')) return

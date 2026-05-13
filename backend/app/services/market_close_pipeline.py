@@ -50,7 +50,7 @@ def _broadcast_confirmed_progress(
         else:
             ws_manager.broadcast("confirmed-progress", payload)
     except Exception as e:
-        _log.warning("[확정진행] 브로드캐스트 실패: %s", e)
+        _log.warning("[데이터] 브로드캐스트 실패: %s", e, exc_info=True)
 
 _log = logging.getLogger(__name__)
 
@@ -116,12 +116,12 @@ async def remove_krx_only_stocks(es: ModuleType) -> dict:
     # WS 미연결 시 스킵
     ws = getattr(es, "_kiwoom_connector", None)
     if not ws or not getattr(ws, "is_connected", lambda: False)():
-        _log.warning("[파이프라인] KRX 장마감 구독해지 생략 — 실시간 미연결")
+        _log.warning("[타이머] KRX 장마감 구독해지 생략 — 실시간 미연결")
         return {"removed": 0, "failed": 0, "skipped": True}
 
     krx_codes = _get_krx_only_codes(es)
     if not krx_codes:
-        _log.info("[파이프라인] KRX 장마감 구독해지 대상 없음")
+        _log.info("[타이머] KRX 장마감 구독해지 대상 없음")
         return {"removed": 0, "failed": 0, "skipped": False}
 
     # 종목코드를 WS 구독 형식으로 변환하여 페이로드 생성
@@ -141,8 +141,9 @@ async def remove_krx_only_stocks(es: ModuleType) -> dict:
             ack_ok, rc = await es._ws_send_reg_unreg_and_wait_ack(payload)
         except Exception as exc:
             _log.warning(
-                "[파이프라인] KRX 장마감 구독해지 %d/%d 예외: %s",
+                "[타이머] KRX 장마감 구독해지 %d/%d 예외: %s",
                 ci + 1, len(payloads), exc,
+                exc_info=True,
             )
             failed += len(chunk)
             continue
@@ -153,19 +154,19 @@ async def remove_krx_only_stocks(es: ModuleType) -> dict:
                 es._subscribed_stocks.discard(cd)
             removed += len(chunk)
             _log.info(
-                "[파이프라인] KRX 장마감 구독해지 %d/%d 완료 — %d종목 (rc=%s)",
+                "[타이머] KRX 장마감 구독해지 %d/%d 완료 — %d종목 (rc=%s)",
                 ci + 1, len(payloads), len(chunk), rc,
             )
         else:
             # ACK 타임아웃 — _subscribed_stocks 유지 + 경고
             failed += len(chunk)
             _log.warning(
-                "[파이프라인] KRX 장마감 구독해지 %d/%d ACK 응답없음 — %d종목 유지",
+                "[타이머] KRX 장마감 구독해지 %d/%d ACK 응답없음 — %d종목 유지",
                 ci + 1, len(payloads), len(chunk),
             )
 
     _log.info(
-        "[파이프라인] KRX 장마감 구독해지 완료 — 해지 %d종목, 실패 %d종목",
+        "[타이머] KRX 장마감 구독해지 완료 — 해지 %d종목, 실패 %d종목",
         removed, failed,
     )
     return {"removed": removed, "failed": failed, "skipped": False}
@@ -283,7 +284,7 @@ async def _apply_confirmed_to_memory(
 
         updated += 1
 
-    _log.info("[파이프라인] 확정 데이터 메모리 반영 -- %d종목", updated)
+    _log.info("[타이머] 확정 데이터 메모리 반영 -- %d종목", updated)
     return updated
 
 
@@ -354,9 +355,9 @@ async def _run_post_confirmed_pipeline(es: ModuleType) -> None:
         # (4) 최종 스냅샷 캐시 덮어쓰기
         await _save_confirmed_cache(es)
 
-        _log.info("[파이프라인] post-confirmed 파이프라인 완료 — trade_amounts=%d종목, high_prices=%d종목", len(trade_amounts), len(high_prices))
+        _log.info("[타이머] post-confirmed 파이프라인 완료 — trade_amounts=%d종목, high_prices=%d종목", len(trade_amounts), len(high_prices))
     except Exception as exc:
-        _log.warning("[파이프라인] post-confirmed 파이프라인 오류: %s", exc)
+        _log.warning("[타이머] post-confirmed 파이프라인 오류: %s", exc, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -378,7 +379,7 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
 
     pending: dict = getattr(es, "_pending_stock_details", {})
     if not pending:
-        _log.warning("[파이프라인] _pending_stock_details 비어있음 — 데이터 저장 생략")
+        _log.warning("[타이머] _pending_stock_details 비어있음 — 데이터 저장 생략")
         return False
 
     # 적격종목 필터 — eligible 캐시 기준으로 부적격 종목 제외
@@ -401,15 +402,15 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
         and (not elig or cd in elig)
     ]
     if not rows:
-        _log.warning("[파이프라인] 저장 가능한 종목 없음 — 저장데이터 저장 생략")
+        _log.warning("[타이머] 저장 가능한 종목 없음 — 저장데이터 저장 생략")
         return False
 
     try:
         await asyncio.to_thread(save_snapshot_cache, rows)
-        _log.info("[파이프라인] 확정 데이터 저장데이터 저장 완료 — %d종목", len(rows))
+        _log.info("[타이머] 확정 데이터 저장데이터 저장 완료 — %d종목", len(rows))
         return True
     except Exception as exc:
-        _log.warning("[파이프라인] 확정 데이터 저장데이터 저장 실패: %s", exc)
+        _log.warning("[타이머] 확정 데이터 저장데이터 저장 실패: %s", exc, exc_info=True)
         return False
 
 
@@ -444,7 +445,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
 
     # 중복 실행 방지
     if getattr(es, "_confirmed_refresh_running", False):
-        _log.info("[파이프라인] 확정 조회 이미 진행 중 — 생략")
+        _log.info("[타이머] 확정 조회 이미 진행 중 — 생략")
         return {"fetched": 0, "failed": 0, "cached": False, "skipped": True}
     es._confirmed_refresh_running = True
     es._confirmed_refresh_message = ""
@@ -462,11 +463,11 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
         getattr(es, "_high_5d_cache", {}).clear()
         import app.core.industry_map as _ind_mod
         _ind_mod._eligible_stock_codes.clear()
-        _log.info("[파이프라인] 메모리 전체 초기화 완료 — 새 데이터로 교체 시작")
+        _log.info("[타이머] 메모리 전체 초기화 완료 — 새 데이터로 교체 시작")
     
         # 스케줄러 토글 OFF 시 전체 갱신 스킵
         if not _settings.get("scheduler_market_close_on", True):
-            _log.info("[파이프라인] scheduler_market_close_on=OFF — 전체 갱신 생략")
+            _log.info("[타이머] scheduler_market_close_on=OFF — 전체 갱신 생략")
             es._confirmed_refresh_running = False
             es._confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False, "skipped": True}
@@ -480,7 +481,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
         save_done_event = asyncio.Event()
     
         # ── Step 1: API 호출 (raw data 수집) ─────────────────────────────────
-        _log.info("[파이프라인] Step 1 시작 — ka10099 전종목 리스트 다운로드 (코스피+코스닥)")
+        _log.info("[타이머] Step 1 시작 — ka10099 전종목 리스트 다운로드 (코스피+코스닥)")
         _broadcast_confirmed_progress(0, 0, message="전종목 목록 갱신 중...", step=1)
         try:
             from app.core.broker_providers import UnifiedStockRecord
@@ -488,7 +489,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
                 _sector.fetch_unified_stock_data
             )
             if not records:
-                _log.warning("[파이프라인] ka10099 결과 비어있음 — 통합 확정 조회 중단")
+                _log.warning("[타이머] ka10099 결과 비어있음 — 통합 확정 조회 중단")
                 es._confirmed_refresh_running = False
                 es._confirmed_refresh_message = ""
                 return {"fetched": 0, "failed": 0, "cached": False}
@@ -498,23 +499,23 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             other_count = len(records) - kospi_count - kosdaq_count
             data_fetched_event.set()
             _log.info(
-                "[파이프라인] Step 1 완료 — ka10099 총 %d종목 (코스피 %d, 코스닥 %d, 기타 %d)",
+                "[타이머] Step 1 완료 — ka10099 총 %d종목 (코스피 %d, 코스닥 %d, 기타 %d)",
                 len(records), kospi_count, kosdaq_count, other_count
             )
         except Exception as exc:
-            _log.warning("[파이프라인] ka10099 통합 조회 실패: %s", exc)
+            _log.warning("[타이머] ka10099 통합 조회 실패: %s", exc, exc_info=True)
             # data_fetched_event 미발행 → Step 2 타임아웃으로 자동 중단
             es._confirmed_refresh_running = False
             es._confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
     
         # ── Step 2: 적격 종목 필터링 (매매부적격 종목 제외) ─────────────────
-        _log.info("[파이프라인] Step 2 시작 — 적격 종목 필터링 (매매부적격 종목 제외)")
+        _log.info("[타이머] Step 2 시작 — 적격 종목 필터링 (매매부적격 종목 제외)")
         _broadcast_confirmed_progress(0, 0, message="적격 종목 필터링 중...", step=2)
         try:
             await asyncio.wait_for(data_fetched_event.wait(), timeout=300)
         except asyncio.TimeoutError:
-            _log.error("[파이프라인] Step 2 대기 타임아웃 — data_fetched_event 미수신, 파이프라인 중단")
+            _log.error("[타이머] Step 2 대기 타임아웃 — data_fetched_event 미수신, 파이프라인 중단")
             es._confirmed_refresh_running = False
             es._confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
@@ -532,27 +533,27 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
     
             excluded_count = len(records) - len(confirmed_codes)
             _log.info(
-                "[파이프라인] Step 2 완료 — 적격 종목 필터링: 전체 %d종목 → 적격 %d종목 (제외 %d종목, %.1f%%)",
+                "[타이머] Step 2 완료 — 적격 종목 필터링: 전체 %d종목 → 적격 %d종목 (제외 %d종목, %.1f%%)",
                 len(records), len(confirmed_codes), excluded_count,
                 (excluded_count / len(records) * 100) if records else 0
             )
             if filter_reasons:
                 top_reasons = sorted(filter_reasons.items(), key=lambda x: x[1], reverse=True)[:5]
-                _log.info("[파이프라인] 주요 부적격 사유 (Top 5): %s", dict(top_reasons))
+                _log.info("[타이머] 주요 부적격 사유 (Top 5): %s", dict(top_reasons))
             filtering_done_event.set()
         except Exception as exc:
-            _log.warning("[파이프라인] Step 2 필터링 실패: %s — filtering_done_event 미발행", exc)
+            _log.warning("[타이머] Step 2 필터링 실패: %s — filtering_done_event 미발행", exc, exc_info=True)
             es._confirmed_refresh_running = False
             es._confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
     
         # ── Step 3: 적격 종목만 파싱/매칭 (종목명/시장구분) ───────────────────
-        _log.info("[파이프라인] Step 3 시작 — 적격 종목 파싱 (%d종목)", len(confirmed_codes))
+        _log.info("[타이머] Step 3 시작 — 적격 종목 파싱 (%d종목)", len(confirmed_codes))
         _broadcast_confirmed_progress(0, 0, message="종목 정보 파싱 중...", step=3)
         try:
             await asyncio.wait_for(filtering_done_event.wait(), timeout=300)
         except asyncio.TimeoutError:
-            _log.error("[파이프라인] Step 3 대기 타임아웃 — filtering_done_event 미수신, 파이프라인 중단")
+            _log.error("[타이머] Step 3 대기 타임아웃 — filtering_done_event 미수신, 파이프라인 중단")
             es._confirmed_refresh_running = False
             es._confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
@@ -565,20 +566,20 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
                     name_map[r.code] = r.name
                     market_map[r.code] = r.market_code
             parsing_done_event.set()
-            _log.info("[파이프라인] Step 3 완료 — %d종목 파싱/매칭 (종목명/시장구분)", len(name_map))
+            _log.info("[타이머] Step 3 완료 — %d종목 파싱/매칭 (종목명/시장구분)", len(name_map))
         except Exception as exc:
-            _log.warning("[파이프라인] Step 3 파싱/매칭 실패: %s — parsing_done_event 미발행", exc)
+            _log.warning("[타이머] Step 3 파싱/매칭 실패: %s — parsing_done_event 미발행", exc, exc_info=True)
             es._confirmed_refresh_running = False
             es._confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
     
         # ── Step 4: 동일 종목 집합으로 4개 캐시 저장 + 레이아웃 ──────────────
-        _log.info("[파이프라인] Step 4 시작 — 종목명/업종/시장구분 캐시 저장 (%d종목)", len(confirmed_codes))
+        _log.info("[타이머] Step 4 시작 — 종목명/업종/시장구분 캐시 저장 (%d종목)", len(confirmed_codes))
         _broadcast_confirmed_progress(0, 0, message="캐시 저장 중...", step=4)
         try:
             await asyncio.wait_for(parsing_done_event.wait(), timeout=300)
         except asyncio.TimeoutError:
-            _log.error("[파이프라인] Step 4 대기 타임아웃 — parsing_done_event 미수신, 파이프라인 중단")
+            _log.error("[타이머] Step 4 대기 타임아웃 — parsing_done_event 미수신, 파이프라인 중단")
             es._confirmed_refresh_running = False
             es._confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
@@ -599,16 +600,16 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             all_codes = list(confirmed_codes)
             _update_layout_cache(es, all_codes, name_map)
             save_done_event.set()
-            _log.info("[파이프라인] Step 4 완료 — 3개 저장데이터 저장 (%d종목)", len(confirmed_codes))
+            _log.info("[타이머] Step 4 완료 — 3개 저장데이터 저장 (%d종목)", len(confirmed_codes))
         except Exception as exc:
-            _log.warning("[파이프라인] Step 4 저장데이터 저장 실패: %s — save_done_event 미발행", exc)
+            _log.warning("[타이머] Step 4 저장데이터 저장 실패: %s — save_done_event 미발행", exc, exc_info=True)
             # save_done_event 미발행 → 후속 단계 진행 불가
             es._confirmed_refresh_running = False
             es._confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
     
         # ── 2단계 ka10086: 전종목 확정 시세 순차 호출 (이어받기 지원) ───────
-        _log.info("[파이프라인] Step 5 시작 — ka10086 전종목 확정 시세 다운로드 (%d종목)", len(all_codes))
+        _log.info("[타이머] Step 5 시작 — ka10086 전종목 확정 시세 다운로드 (%d종목)", len(all_codes))
         qry_dt = kst_today_str()  # 당일 확정 시세 조회: 20:00 이후에도 오늘 날짜 사용 (current_trading_date_str은 다음 거래일 반환)
         total = len(all_codes)
         _main_loop = asyncio.get_running_loop()
@@ -622,7 +623,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
         starting_count = len(resume_codes)
         
         if starting_count > 0:
-            _log.info("[파이프라인] 이어받기 — %d/%d종목부터 계속", starting_count, total)
+            _log.info("[타이머] 이어받기 — %d/%d종목부터 계속", starting_count, total)
             _broadcast_confirmed_progress(
                 starting_count, total,
                 message=f"전종목 확정시세 데이터 다운로드 중 ({starting_count}/{total:,}, {int(starting_count/total*100)}%) - 이어받기",
@@ -655,20 +656,20 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
                 _sync_ka10086,
             )
         except Exception as exc:
-            _log.warning("[파이프라인] ka10086 전종목 조회 실패: %s", exc)
+            _log.warning("[타이머] ka10086 전종목 조회 실패: %s", exc, exc_info=True)
             confirmed = {}
     
         fetched = len(confirmed)
         failed = total - fetched
         success_rate = (fetched / total * 100) if total else 0
         _log.info(
-            "[파이프라인] Step 5 완료 — ka10086 확정 시세 다운로드: 성공 %d종목, 실패 %d종목 (%.1f%% 성공)",
+            "[타이머] Step 5 완료 — ka10086 확정 시세 다운로드: 성공 %d종목, 실패 %d종목 (%.1f%% 성공)",
             fetched, failed, success_rate
         )
         # 실패율이 1% 이상이면 경고 로그 (디버깅용)
         if failed > 0 and success_rate < 99.0:
             _log.warning(
-                "[파이프라인] ka10086 실패율 높음: %d/%d종목 (%.1f%%) — kiwoom_sector_rest.py 로그에서 실패 원인 확인",
+                "[타이머] ka10086 실패율 높음: %d/%d종목 (%.1f%%) — kiwoom_sector_rest.py 로그에서 실패 원인 확인",
                 failed, total, 100 - success_rate
             )
     
@@ -694,7 +695,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             import app.core.industry_map as _ind_mod_step6
             final_eligible = set(_ind_mod_step6._eligible_stock_codes.keys())
             if not final_eligible:
-                _log.warning("[파이프라인] Step 6 — 적격종목 비어있음, 메모리 교체 생략")
+                _log.warning("[타이머] Step 6 — 적격종목 비어있음, 메모리 교체 생략")
             else:
                 # Build mapped_pending: 적격종목 중 entry 데이터가 있는 것만 수집
                 mapped_pending: dict = {}
@@ -720,11 +721,11 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
                     ]
     
                 _log.info(
-                    "[파이프라인] Step 7 원자적 메모리 교체 완료 — pending=%d종목, avg=%d, high=%d",
+                    "[타이머] Step 7 원자적 메모리 교체 완료 — pending=%d종목, avg=%d, high=%d",
                     len(mapped_pending), len(new_avg), len(new_high),
                 )
         else:
-            _log.warning("[파이프라인] cached=False — 메모리 교체 생략 (기존 상태 유지)")
+            _log.warning("[타이머] cached=False — 메모리 교체 생략 (기존 상태 유지)")
     
         # ── 4단계: 업종순위 재계산 + WS 브로드캐스트 (화면 자동 갱신) ────────
         try:
@@ -736,14 +737,14 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             recompute_sector_summary_now()
             notify_desktop_sector_scores(force=True)
             notify_desktop_sector_stocks_refresh()
-            _log.info("[파이프라인] 확정 조회 후 업종순위 재계산 + 실시간 화면전송 완료")
+            _log.info("[타이머] 확정 조회 후 업종순위 재계산 + 실시간 화면전송 완료")
         except Exception as _ws_err:
-            _log.warning("[파이프라인] 업종순위 재계산 실패: %s", _ws_err)
-            _log.warning("[파이프라인] 확정 조회 후 실시간 화면전송 실패(무시): %s", _ws_err)
+            _log.warning("[타이머] 업종순위 재계산 실패: %s", _ws_err, exc_info=True)
+            _log.warning("[타이머] 확정 조회 후 실시간 화면전송 실패(무시): %s", _ws_err)
     
         # 파이프라인 전체 완료 로그
         _log.info(
-            "[파이프라인] === 전체 완료 === 총 %d단계 | ka10099: %d종목 | 적격: %d종목 | ka10086: %d/%d종목 | 저장데이터: %s",
+            "[타이머] === 전체 완료 === 총 %d단계 | ka10099: %d종목 | 적격: %d종목 | ka10086: %d/%d종목 | 저장데이터: %s",
             7, len(records), len(confirmed_codes), fetched, total, "저장됨" if cached else "실패"
         )
         return {"fetched": fetched, "failed": failed, "cached": cached}
@@ -799,7 +800,7 @@ def _update_layout_cache(
     _rebuild_layout_cache(new_layout)
     save_layout_cache(new_layout)
     _log.info(
-        "[파이프라인] 레이아웃 저장데이터 완전 재구성 — %d종목, %d업종",
+        "[타이머] 레이아웃 저장데이터 완전 재구성 — %d종목, %d업종",
         len(all_codes), len(final_sector_order),
     )
 

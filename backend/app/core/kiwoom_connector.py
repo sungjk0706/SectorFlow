@@ -74,7 +74,7 @@ class _KiwoomSocket:
             try:
                 await asyncio.wait_for(self._ws.close(), timeout=5.0)
             except Exception:
-                pass
+                logger.warning("[서버소켓] 소켓 종료 실패", exc_info=True)
             self._ws = None
         logger.info("[서버소켓] 연결 종료")
 
@@ -102,7 +102,7 @@ class _KiwoomSocket:
                 obj["token"] = f"{t[:4]}…<마스킹됨>" if len(t) > 8 else "***"
             logger.debug("[서버소켓] ▶ 전송: %s", json.dumps(obj, ensure_ascii=False)[:300])
         except Exception:
-            pass
+            logger.warning("[서버소켓] 토큰 마스킹 실패", exc_info=True)
         await self._ws.send(json.dumps(payload, ensure_ascii=False))
 
     async def _recv_loop(self) -> None:
@@ -183,7 +183,7 @@ class _KiwoomSocket:
                     break
                 else:
                     if not self._stop_event.is_set():
-                        logger.warning("[서버소켓] 수신 오류(계속): %s", e)
+                        logger.warning("[서버소켓] 수신 오류(계속): %s", e, exc_info=True)
                     await asyncio.sleep(1)
 
         logger.info("[서버소켓] 수신 종료")
@@ -276,7 +276,7 @@ class KiwoomConnector(BrokerConnector):
                 from app.services.ws_subscribe_control import broadcast_ws_connection_status
                 broadcast_ws_connection_status(True)
             except Exception:
-                pass
+                logger.warning("[증권사연결] 연결 상태 브로드캐스트 실패", exc_info=True)
 
     async def disconnect(self) -> None:
         """수신루프 중단 + WebSocket 종료. 재연결 루프도 중단."""
@@ -299,7 +299,7 @@ class KiwoomConnector(BrokerConnector):
                 from app.services.ws_subscribe_control import broadcast_ws_connection_status
                 broadcast_ws_connection_status(False)
             except Exception:
-                pass
+                logger.warning("[증권사연결] 연결 해제 상태 브로드캐스트 실패", exc_info=True)
 
     async def send_message(self, payload: dict) -> bool:
         """engine_service._ws_send_reg_unreg_and_wait_ack용 송신 API."""
@@ -362,12 +362,12 @@ class KiwoomConnector(BrokerConnector):
             import app.services.engine_service as _es
             _es._login_ok = False
         except Exception:
-            pass
+            logger.warning("[증권사연결] _login_ok 초기화 실패", exc_info=True)
         try:
             from app.services.ws_subscribe_control import broadcast_ws_connection_status
             broadcast_ws_connection_status(False)
         except Exception:
-            pass
+            logger.warning("[증권사연결] 연결 끊김 상태 브로드캐스트 실패", exc_info=True)
         if self._reconnect_task and not self._reconnect_task.done():
             return
         self._reconnect_task = asyncio.get_running_loop().create_task(self._reconnect_loop())
@@ -403,13 +403,13 @@ class KiwoomConnector(BrokerConnector):
                     from app.services.ws_subscribe_control import broadcast_ws_connection_status
                     broadcast_ws_connection_status(True)
                 except Exception:
-                    pass
+                    logger.warning("[증권사연결] 재연결 상태 브로드캐스트 실패", exc_info=True)
                 # 재연결 후 구독 복원은 ConnectorManager가 담당
                 if self._on_reconnect_success:
                     asyncio.get_running_loop().create_task(self._on_reconnect_success(self.broker_id))
                 return
             except Exception as e:
-                logger.warning("[증권사연결] 재연결 %d회 실패: %s", attempt, e)
+                logger.warning("[증권사연결] 재연결 %d회 실패: %s", attempt, e, exc_info=True)
         logger.error("[증권사연결] 최대 재연결 횟수(10회) 초과 — 포기")
 
     def set_reconnect_success_callback(self, callback: Callable) -> None:

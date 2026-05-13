@@ -126,7 +126,7 @@ describe('Property 13: WS FID Filtering (불필요 필드 제거)', () => {
         const filtered = filterFids(values)
 
         // No key in filtered should have null or undefined value
-        for (const [key, val] of Object.entries(filtered)) {
+        for (const [_key, val] of Object.entries(filtered)) {
           expect(val).not.toBeNull()
           expect(val).not.toBeUndefined()
         }

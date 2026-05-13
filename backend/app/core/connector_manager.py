@@ -48,7 +48,7 @@ class ConnectorManager:
                 self._connectors[broker_name] = connector
                 logger.info("[ConnectorManager] %s Connector 생성 완료", broker_name.upper())
             except ValueError as e:
-                logger.warning("[ConnectorManager] %s Connector 생성 실패 (설정 확인 필요): %s", broker_name.upper(), e)
+                logger.warning("[ConnectorManager] %s Connector 생성 실패 (설정 확인 필요): %s", broker_name.upper(), e, exc_info=True)
 
         if not self._connectors:
             logger.warning("[ConnectorManager] 생성된 Connector 없음 — broker_config.websocket=%r", ws_val)
@@ -91,7 +91,7 @@ class ConnectorManager:
                 await connector.connect()
                 logger.info("[ConnectorManager] %s 연결 완료", broker_name.upper())
             except Exception as e:
-                logger.error("[ConnectorManager] %s 연결 실패: %s", broker_name.upper(), e)
+                logger.error("[ConnectorManager] %s 연결 실패: %s", broker_name.upper(), e, exc_info=True)
 
         await asyncio.gather(
             *[_connect_one(name, conn) for name, conn in self._connectors.items()],
@@ -106,7 +106,7 @@ class ConnectorManager:
             from app.services import engine_ws_reg as _reg
             await _reg.restore_subscriptions_after_reconnect(_es, broker_id)
         except Exception as e:
-            logger.error("[ConnectorManager] %s 구독 복원 실패: %s", broker_id.upper(), e)
+            logger.error("[ConnectorManager] %s 구독 복원 실패: %s", broker_id.upper(), e, exc_info=True)
 
     async def disconnect_all(self) -> None:
         """모든 Connector를 병렬로 해제한다."""
@@ -118,7 +118,7 @@ class ConnectorManager:
                 await connector.disconnect()
                 logger.info("[ConnectorManager] %s 연결 해제 완료", broker_name.upper())
             except Exception as e:
-                logger.warning("[ConnectorManager] %s 연결 해제 실패: %s", broker_name.upper(), e)
+                logger.warning("[ConnectorManager] %s 연결 해제 실패: %s", broker_name.upper(), e, exc_info=True)
 
         await asyncio.gather(
             *[_disconnect_one(name, conn) for name, conn in self._connectors.items()],

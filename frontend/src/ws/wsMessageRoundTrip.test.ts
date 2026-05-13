@@ -18,8 +18,6 @@ import { deflate, inflate } from 'pako'
 
 const ALLOWED_FIDS = new Set(['10', '11', '12', '14', '228'])
 
-const KEY_SHORTEN: Record<string, string> = { type: 't', item: 'i', values: 'v' }
-
 const COMPRESS_THRESHOLD = 512
 
 /**

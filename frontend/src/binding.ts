@@ -27,6 +27,7 @@ import {
   applyDailySummaryUpdate,
   applyRealData,
   applyOrderbookUpdate,
+  applyRealtimeReset,
   appStore,
   stocksToMap,
   rebuildBuyTargetIndex,
@@ -234,5 +235,10 @@ export function bindWSToStore(wsClient: WSClient, _store: StoreApi<AppState>): v
   /* ── 호가잔량 실시간 갱신 (매수후보 테이블) ── */
   wsClient.onEvent('orderbook-update', (data) => {
     applyOrderbookUpdate(data as { code: string; bid: number; ask: number })
+  })
+
+  wsClient.onEvent('realtime-reset', () => {
+    console.log('[WS] realtime-reset 수신 — 실시간 필드 초기화')
+    applyRealtimeReset()
   })
 }

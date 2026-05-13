@@ -39,45 +39,6 @@ _TICK_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "strength"
 _CONFLATE_MS = 50
 _conflate_cache: dict[str, dict] = {}  # code -> {"price": int, "ts": int}
 
-# ── 브로드캐스트 압축 통계 (1초 윈도우) ────────────────────────────────────
-_broadcast_stats: dict = {
-    "window_start_ms": 0,
-    "attempted": 0,
-    "actual": 0,
-}
-
-
-def _record_broadcast(attempted: bool, actual: bool) -> None:
-    """브로드캐스트 시도/실제 전송을 1초 윈도우에 누적."""
-    global _broadcast_stats
-    now = int(time.time() * 1000)
-    st = _broadcast_stats
-    if st["window_start_ms"] == 0:
-        st["window_start_ms"] = now
-    if now - st["window_start_ms"] >= 1000:
-        _flush_broadcast_stats()
-        st["window_start_ms"] = now
-        st["attempted"] = 0
-        st["actual"] = 0
-    if attempted:
-        st["attempted"] += 1
-    if actual:
-        st["actual"] += 1
-
-
-def _flush_broadcast_stats() -> None:
-    """1초 윈도우 브로드캐스트 집계 결과를 INFO 로깅."""
-    global _broadcast_stats
-    st = _broadcast_stats
-    attempted = st["attempted"]
-    if attempted == 0:
-        return
-    actual = st["actual"]
-    ratio = (actual / attempted) * 100
-    logger.info(
-        "[통계] 1초 브로드캐스트 시도=%s 실제=%s 비율=%.1f%%",
-        attempted, actual, ratio,
-    )
 
 
 def _should_conflate(item: dict) -> bool:
@@ -103,6 +64,7 @@ def _should_conflate(item: dict) -> bool:
         from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
         nk = _format_kiwoom_reg_stk_cd(raw_code)
     except Exception:
+        logger.warning("[압축] 코드 정규화 실패", exc_info=True)
         return False
     now = int(time.time() * 1000)
     last = _conflate_cache.get(nk)
@@ -139,8 +101,8 @@ def _rebuild_positions_cache(positions: list) -> None:
             for p in positions
             if str(p.get("stk_cd", "")).strip()
         }
-    except Exception as e:
-        logger.warning("[캐시] _positions_code_set 재구축 실패 (이전 캐시 유지): %s", e)
+    except Exception:
+        logger.warning("[캐시] _positions_code_set 재구축 실패 (이전 캐시 유지)", exc_info=True)
 
 
 def _rebuild_layout_cache(layout: list) -> None:
@@ -148,8 +110,8 @@ def _rebuild_layout_cache(layout: list) -> None:
     global _layout_code_set
     try:
         _layout_code_set = {v for t, v in layout if t == "code" and v}
-    except Exception as e:
-        logger.warning("[캐시] _layout_code_set 재구축 실패 (이전 캐시 유지): %s", e)
+    except Exception:
+        logger.warning("[캐시] _layout_code_set 재구축 실패 (이전 캐시 유지)", exc_info=True)
 
 
 # ── 데스크톱 콜백 등록 함수 (no-op, 시그니처 유지) ──────────────────────────
@@ -268,7 +230,7 @@ def notify_desktop_header_refresh() -> None:
         payload["_v"] = 1
         _broadcast("index-refresh", payload)
     except Exception as e:
-        logger.warning("[실시간연결] 헤더 갱신 화면전송 실패: %s", e)
+        logger.warning("[연결] 헤더 갱신 화면전송 실패: %s", e, exc_info=True)
 
 
 def notify_desktop_settings_toggled() -> None:
@@ -279,7 +241,7 @@ def notify_desktop_settings_toggled() -> None:
         payload["_v"] = 1
         _broadcast("settings-changed", payload)
     except Exception as e:
-        logger.warning("[실시간] 설정 변경 화면전송 실패: %s", e)
+        logger.warning("[데이터] 설정 변경 화면전송 실패: %s", e, exc_info=True)
 
 
 def notify_desktop_index_refresh() -> None:
@@ -290,7 +252,7 @@ def notify_desktop_index_refresh() -> None:
         payload["_v"] = 1
         _broadcast("index-refresh", payload)
     except Exception as e:
-        logger.warning("[실시간연결] 헤더 갱신 화면전송 실패: %s", e)
+        logger.warning("[연결] 헤더 갱신 화면전송 실패: %s", e, exc_info=True)
 
 
 def notify_desktop_sector_scores(*, force: bool = False) -> None:
@@ -332,7 +294,7 @@ def notify_desktop_sector_scores(*, force: bool = False) -> None:
         _broadcast("sector-scores", payload)
         _prev_scores_cache = scores
     except Exception as e:
-        logger.warning("[실시간] sector-scores 화면전송 실패: %s", e)
+        logger.warning("[데이터] sector-scores 화면전송 실패: %s", e, exc_info=True)
 
 
 def notify_desktop_sector_refresh(*, force: bool = False) -> None:
@@ -359,7 +321,7 @@ def notify_desktop_trade_price(
             "trade_amount": int(trade_amount),
         })
     except Exception as e:
-        logger.warning("[실시간] 체결가 화면전송 실패: %s", e)
+        logger.warning("[데이터] 체결가 화면전송 실패: %s", e, exc_info=True)
 
 
 def _is_relevant_code(nk: str) -> bool:
@@ -373,7 +335,7 @@ def _is_relevant_code(nk: str) -> bool:
         if nk in _layout_code_set:
             return True
     except Exception as e:
-        logger.error("[필터] 종목 %s 판별 실패: %s", nk, e)
+        logger.error("[필터] 종목 %s 판별 실패: %s", nk, e, exc_info=True)
     return False
 
 
@@ -385,7 +347,6 @@ def notify_raw_real_data(item: dict) -> None:
     """
     if not item or not isinstance(item, dict):
         return
-    _record_broadcast(attempted=True, actual=False)
     if _should_conflate(item):
         return
     raw_code = str(item.get("item") or "").strip()
@@ -396,14 +357,13 @@ def notify_raw_real_data(item: dict) -> None:
             if not _is_relevant_code(nk):
                 return
         except Exception as e:
-            logger.error("[정규화] raw_code=%r 실패: %s", raw_code, e)
+            logger.error("[정규화] raw_code=%r 실패: %s", raw_code, e, exc_info=True)
             return
     try:
         item["_ts"] = int(time.time() * 1000)
         _broadcast("real-data", item)
-        _record_broadcast(attempted=False, actual=True)
     except Exception as e:
-        logger.warning("[실시간] Raw 데이터 전송 실패: %s", e)
+        logger.warning("[데이터] Raw 데이터 전송 실패: %s", e, exc_info=True)
 
 
 def notify_orderbook_update(code: str, bid: int, ask: int) -> None:
@@ -411,7 +371,7 @@ def notify_orderbook_update(code: str, bid: int, ask: int) -> None:
     try:
         _broadcast("orderbook-update", {"code": code, "bid": bid, "ask": ask})
     except Exception as e:
-        logger.warning("[실시간] 호가잔량 화면전송 실패: %s", e)
+        logger.warning("[데이터] 호가잔량 화면전송 실패: %s", e, exc_info=True)
 
 
 def notify_desktop_buy_radar_only() -> None:
@@ -457,7 +417,7 @@ def notify_desktop_sector_stocks_refresh() -> None:
             if code:
                 _prev_sent_cache[code] = {}
     except Exception as e:
-        logger.warning("[실시간] sector-stocks-refresh 화면전송 실패: %s", e)
+        logger.warning("[데이터] sector-stocks-refresh 화면전송 실패: %s", e, exc_info=True)
 
 
 def notify_desktop_account_tabs_refresh() -> None:
@@ -468,7 +428,7 @@ def notify_desktop_account_tabs_refresh() -> None:
         payload["_v"] = 1
         _broadcast("index-refresh", payload)
     except Exception as e:
-        logger.warning("[실시간] 지수 갱신 화면전송 실패: %s", e)
+        logger.warning("[데이터] 지수 갱신 화면전송 실패: %s", e, exc_info=True)
 
 
 def broadcast_account_update(
@@ -479,14 +439,14 @@ def broadcast_account_update(
     """체결·잔고·실시간 시세 변경 시 → WS account-update (delta 방식)."""
     global _position_sent_cache, _snapshot_sent_cache
     if reason:
-        logger.debug("[계좌화면전송] 시작 reason=%s", reason)
+        logger.debug("[데이터] 계좌화면전송 시작 reason=%s", reason)
 
     changed_positions, removed_codes = _compute_position_delta(positions)
     snapshot_changed = snapshot != _snapshot_sent_cache
 
     if not changed_positions and not removed_codes and not snapshot_changed:
         if reason:
-            logger.debug("[계좌화면전송] 변경 없음 -- 전송 생략 reason=%s", reason)
+            logger.debug("[데이터] 계좌화면전송 변경 없음 -- 전송 생략 reason=%s", reason)
         return
 
     payload = {
@@ -498,7 +458,7 @@ def broadcast_account_update(
     try:
         _broadcast("account-update", payload)
     except Exception as e:
-        logger.warning("[실시간연결] 계좌 화면전송 실패: %s", e)
+        logger.warning("[연결] 계좌 화면전송 실패: %s", e, exc_info=True)
 
     # 캐시 갱신
     _snapshot_sent_cache = dict(snapshot)
@@ -515,7 +475,7 @@ def broadcast_account_update(
             if int(p.get("qty", 0) or 0) > 0
         ]
         logger.info(
-            "[실시간연결] 계좌화면전송 사유=%s 총평가=%s 보유현재가=%s changed=%d removed=%d",
+            "[연결] 계좌화면전송 사유=%s 총평가=%s 보유현재가=%s changed=%d removed=%d",
             reason, snapshot.get("total_eval"), cur_pairs,
             len(changed_positions), len(removed_codes),
         )
@@ -527,7 +487,7 @@ def notify_snapshot_history_update() -> None:
         import app.services.engine_service as _es
         _broadcast("snapshot-update", {"snapshot_history": _es.get_snapshot_history()})
     except Exception as e:
-        logger.warning("[실시간] 수익 이력 화면전송 실패: %s", e)
+        logger.warning("[데이터] 수익 이력 화면전송 실패: %s", e, exc_info=True)
 
 
 _prev_buy_targets_map: dict[str, dict] | None = None
@@ -575,7 +535,7 @@ def notify_buy_targets_update() -> None:
         _prev_buy_targets_map = cur_map
         _broadcast("buy-targets-delta", {"added": added, "removed": removed, "changed": changed})
     except Exception as e:
-        logger.warning("[실시간] 매수후보 화면전송 실패: %s", e)
+        logger.warning("[데이터] 매수후보 화면전송 실패: %s", e, exc_info=True)
 
 
 def broadcast_engine_status_ws(engine_status: dict) -> None:
@@ -584,11 +544,14 @@ def broadcast_engine_status_ws(engine_status: dict) -> None:
         if "_v" not in engine_status:
             engine_status["_v"] = 1
         _broadcast("engine-status", engine_status)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[데이터] 엔진 상태 화면전송 실패: %s", e, exc_info=True)
     notify_desktop_header_refresh()
 
 
 def notify_ws_subscribe_status(status: dict) -> None:
     """WS 구독 상태 변경 시 WS 브로드캐스트. ws_subscribe_control._set_status()에서 사용."""
-    _broadcast("ws-subscribe-status", {"_v": 1, **status})
+    try:
+        _broadcast("ws-subscribe-status", {"_v": 1, **status})
+    except Exception as e:
+        logger.warning("[연결] WS 구독 상태 화면전송 실패: %s", e, exc_info=True)

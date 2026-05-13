@@ -26,29 +26,29 @@ async def _send_stocks_delayed(websocket: WebSocket) -> None:
         from app.services.engine_service import _bootstrap_event
 
         if not _bootstrap_event.is_set():
-            logger.info("[실시간연결] 앱준비 대기 중 -- 업종목록 전송 지연")
+            logger.info("[연결] 앱준비 대기 중 -- 업종목록 전송 지연")
             try:
                 await asyncio.wait_for(_bootstrap_event.wait(), timeout=60.0)
             except asyncio.TimeoutError:
-                logger.warning("[실시간연결] 앱준비 60초 대기 초과 -- 현재 데이터로 전송")
+                logger.warning("[연결] 앱준비 60초 대기 초과 -- 현재 데이터로 전송")
 
         # sector-stocks-refresh: 앱준비 완료 즉시 전송
         from app.services.engine_service import build_sector_stocks_payload
 
         stocks_payload = await build_sector_stocks_payload()
         stock_count = len(stocks_payload.get("stocks", []))
-        logger.info("[실시간연결] 업종목록 화면전송 -- %d종목", stock_count)
+        logger.info("[연결] 업종목록 화면전송 -- %d종목", stock_count)
         await ws_manager.send_to(websocket, "sector-stocks-refresh", stocks_payload)
 
         # 업종순위 계산 완료 대기
         from app.services.engine_service import _sector_summary_ready_event
 
         if not _sector_summary_ready_event.is_set():
-            logger.info("[실시간연결] 업종순위 계산 대기 중")
+            logger.info("[연결] 업종순위 계산 대기 중")
             try:
                 await asyncio.wait_for(_sector_summary_ready_event.wait(), timeout=120.0)
             except asyncio.TimeoutError:
-                logger.warning("[실시간연결] 업종순위 계산 120초 대기 초과 -- 생략")
+                logger.warning("[연결] 업종순위 계산 120초 대기 초과 -- 생략")
                 return
 
         # sector-scores 전송
@@ -72,16 +72,16 @@ async def _send_stocks_delayed(websocket: WebSocket) -> None:
                 },
             }
             await ws_manager.send_to(websocket, "sector-scores", scores_payload)
-            logger.info("[실시간연결] 업종점수 화면전송 -- %d개 섹터", len(scores))
+            logger.info("[연결] 업종점수 화면전송 -- %d개 섹터", len(scores))
         else:
             from app.services import engine_service as _es_check
 
             if _es_check._sector_summary_cache is None:
                 logger.warning(
-                    "[실시간연결] 업종점수 미전송 -- 업종 요약정보 없음"
+                    "[연결] 업종점수 미전송 -- 업종 요약정보 없음"
                 )
             else:
-                logger.info("[실시간연결] 업종점수 미전송 -- 종목 없음 (정상)")
+                logger.info("[연결] 업종점수 미전송 -- 종목 없음 (정상)")
 
         # buy-targets 전송
         from app.services.engine_service import get_buy_targets_snapshot
@@ -91,9 +91,9 @@ async def _send_stocks_delayed(websocket: WebSocket) -> None:
             await ws_manager.send_to(
                 websocket, "buy-targets-update", {"_v": 1, "buy_targets": targets}
             )
-            logger.info("[실시간연결] 매수후보 화면전송 -- %d건", len(targets))
+            logger.info("[연결] 매수후보 화면전송 -- %d건", len(targets))
     except Exception as e:
-        logger.error("[실시간연결] 업종목록 화면전송 실패: %s", e, exc_info=True)
+        logger.error("[연결] 업종목록 화면전송 실패: %s", e, exc_info=True)
 
 
 @router.websocket("/prices")
@@ -109,7 +109,7 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
     await websocket.accept()
     ws_manager.register(websocket)
     logger.info(
-        "[실시간연결] 접속화면 연결 (user=%s, 총 %d)", username, ws_manager.client_count
+        "[연결] 접속화면 연결 (user=%s, 총 %d)", username, ws_manager.client_count
     )
 
     delayed_task: asyncio.Task | None = None
@@ -117,9 +117,9 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
         # initial-snapshot 유니캐스트
         from app.services.engine_service import build_initial_snapshot
 
-        logger.info("[실시간연결] 시작화면 데이터 생성 시작")
+        logger.info("[연결] 시작화면 데이터 생성 시작")
         snapshot = await build_initial_snapshot()
-        logger.info("[실시간연결] 시작화면 데이터 생성 완료")
+        logger.info("[연결] 시작화면 데이터 생성 완료")
         await ws_manager.send_to(websocket, "initial-snapshot", snapshot)
 
         # 앱준비 대기 → sector 데이터 순차 유니캐스트
@@ -146,9 +146,9 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
     except WebSocketDisconnect:
         pass
     except Exception as e:
-        logger.warning("[실시간연결] 접속화면 오류: %s", e)
+        logger.warning("[연결] 접속화면 오류: %s", e)
     finally:
         if delayed_task is not None:
             delayed_task.cancel()
         ws_manager.unregister(websocket)
-        logger.info("[실시간연결] 접속화면 해제 (총 %d)", ws_manager.client_count)
+        logger.info("[연결] 접속화면 해제 (총 %d)", ws_manager.client_count)

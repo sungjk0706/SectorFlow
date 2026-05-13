@@ -340,7 +340,7 @@ async def _ws_send_reg_unreg_and_wait_ack(payload: dict) -> tuple[bool, str]:
         except asyncio.TimeoutError:
             _reg_ack_event.clear()
             logger.warning(
-                "[실시간연결] 구독 응답 대기 시간 초과(10s) -- trnm=%s",
+                "[연결] 구독 응답 대기 시간 초과(10s) -- trnm=%s",
                 payload.get("trnm"),
             )
             await asyncio.sleep(_REG_POST_ACK_GAP_SEC)
@@ -357,7 +357,7 @@ def _notify_reg_ack(return_code: str = "") -> None:
         _reg_ack_return_code = return_code
         _reg_ack_event.set()
     except Exception:
-        pass
+        logger.warning("[연결] REG ACK 상태 설정 실패", exc_info=True)
 
 
 async def _ws_send_remove_fire_and_forget(payload: dict) -> bool:
@@ -372,9 +372,9 @@ async def _ws_send_remove_fire_and_forget(payload: dict) -> bool:
         return False
     sent = await _sender.send_message(payload)
     if sent:
-        logger.debug("[실시간연결] 구독해지 전송 완료 grp_no=%s", payload.get("grp_no"))
+        logger.debug("[연결] 구독해지 전송 완료 grp_no=%s", payload.get("grp_no"))
     else:
-        logger.warning("[실시간연결] 구독해지 전송 실패 grp_no=%s", payload.get("grp_no"))
+        logger.warning("[연결] 구독해지 전송 실패 grp_no=%s", payload.get("grp_no"))
     return sent
 
 
@@ -467,6 +467,8 @@ async def _reset_realtime_fields() -> None:
         # 보유종목 실시간 필드 초기화 (전일 종가 혼입 방지)
         for pos in _positions:
             pos["cur_price"] = None
+            pos["change"] = None
+            pos["change_rate"] = None
         
         # 테스트모드 가상 보유종목 실시간 필드 초기화
         if is_test_mode(_settings_cache):
@@ -480,12 +482,18 @@ async def _reset_realtime_fields() -> None:
         global _sector_summary_cache, _buy_targets_snapshot_cache
         _sector_summary_cache = None
         _buy_targets_snapshot_cache = None
+        _invalidate_sector_stocks_cache(force=True)
+        _account_notify._position_sent_cache.clear()
+        _account_notify._prev_sent_cache.clear()
+        _account_notify._prev_scores_cache.clear()
     logger.info(
-        "[엔진] 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료 -- %d종목, 실시간/REST 저장데이터 전체 클리어",
+        "[데이터] 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료 -- %d종목, 실시간/REST 저장데이터 전체 클리어",
         count,
     )
+    _account_notify._prev_sector_stock_codes.clear()
     notify_desktop_sector_stocks_refresh()
     _broadcast_account("realtime_reset")
+    _account_notify._broadcast("realtime-reset", {})
 
 
 def get_pending_stocks() -> list:
@@ -583,7 +591,7 @@ def _broadcast_buy_limit_status() -> None:
         _broadcast("buy-limit-status", get_buy_limit_status())
         notify_buy_targets_update()
     except Exception as e:
-        logger.warning("[실시간연결] 매수한도 화면전송 실패: %s", e)
+        logger.warning("[연결] 매수한도 화면전송 실패: %s", e, exc_info=True)
 
 
 def _ws_live() -> bool:
@@ -714,14 +722,14 @@ def recompute_sector_summary_now() -> None:
         _invalidate_sector_stocks_cache()
         # 디바운스 대기 중인 재계산 취소 (이전 설정으로 덮어쓰기 방지)
         cancel_pending_recompute()
-        logger.info("[엔진] 섹터 요약 즉시 재계산 완료")
+        logger.info("[데이터] 섹터 요약 즉시 재계산 완료")
 
         # 매수후보 WS 브로드캐스트 + 매수 판단 (항상 실행)
         from app.services.engine_account_notify import notify_buy_targets_update
         notify_buy_targets_update()
         _try_sector_buy()
     except Exception as e:
-        logger.warning("[엔진] 섹터 요약 즉시 재계산 실패: %s", e)
+        logger.warning("[데이터] 섹터 요약 즉시 재계산 실패: %s", e, exc_info=True)
 
 
 
@@ -974,6 +982,7 @@ def get_all_sector_stocks() -> list[dict]:
         try:
             sector = get_merged_sector(cd)
         except Exception:
+            logger.warning("[데이터] 종목 %s 섹터 분류 실패", cd, exc_info=True)
             sector = ""
         result.append({
             "code": cd,
@@ -1037,7 +1046,7 @@ async def _mark_radar_exited(stk_cd: str) -> None:
         _radar_cnsr_order[:] = [x for x in _radar_cnsr_order if x != rm]
         await _clear_radar_rest_bootstrap_for_stk_cd(rm)
         _invalidate_sector_stocks_cache()
-        logger.debug("[모니터링] ⚫ 조건 이탈·목록 제거: %s (%s)", nm, rm)
+        logger.debug("[데이터] ⚫ 조건 이탈·목록 제거: %s (%s)", nm, rm)
 
 
 async def clear_exited_from_radar() -> int:
@@ -1051,7 +1060,7 @@ async def clear_exited_from_radar() -> int:
         ds = set(to_del)
         _radar_cnsr_order[:] = [x for x in _radar_cnsr_order if x not in ds]
         _invalidate_sector_stocks_cache()
-        logger.info("[모니터링] 이탈 종목 %d개 정리 완료", len(to_del))
+        logger.info("[데이터] 이탈 종목 %d개 정리 완료", len(to_del))
     return len(to_del)
 
 
@@ -1333,23 +1342,23 @@ async def _on_filter_settings_changed() -> None:
     new_codes = _compute_filtered_codes()
 
     logger.info(
-        "[앱준비][필터변경] 이전=%d, 신규=%d, 변경없음=%s",
+        "[시작][필터변경] 이전=%d, 신규=%d, 변경없음=%s",
         len(old_codes or set()), len(new_codes or set()), old_codes == new_codes,
     )
 
     if old_codes == new_codes:
-        logger.debug("[앱준비][필터변경] 필터 통과 종목 변경 없음 -- 구독 변경 생략")
+        logger.debug("[시작][필터변경] 필터 통과 종목 변경 없음 -- 구독 변경 생략")
         return
 
     # === 설정 변경 시 강제 캐시 무효화 (1초 제한 무시) ===
     _invalidate_sector_stocks_cache(force=True)
-    logger.info("[앱준비][필터변경] 캐시 강제 무효화 완료")
+    logger.info("[시작][필터변경] 캐시 강제 무효화 완료")
     # ==================================================
     
     added = (new_codes or set()) - (old_codes or set())
     removed = (old_codes or set()) - (new_codes or set())
     logger.info(
-        "[앱준비][필터변경] 필터 통과 종목 변경 -- 추가 %d, 제거 %d (총 %d → %d)",
+        "[시작][필터변경] 필터 통과 종목 변경 -- 추가 %d, 제거 %d (총 %d → %d)",
         len(added), len(removed), len(old_codes or set()), len(new_codes or set()),
     )
 
@@ -1379,11 +1388,11 @@ async def _on_filter_settings_changed() -> None:
                         for cd in chunk:
                             _subscribed_stocks.discard(cd)
                         logger.warning(
-                            "[앱준비][필터변경] 구독등록 응답 시간 초과 (청크 %d) -- %d종목 구독 롤백",
+                            "[시작][필터변경] 구독등록 응답 시간 초과 (청크 %d) -- %d종목 구독 롤백",
                             ci + 1, len(chunk),
                         )
                 logger.info(
-                    "[앱준비][필터변경] 구독등록 완료 -- 추가 %d / 성공 %d / 실패 %d",
+                    "[시작][필터변경] 구독등록 완료 -- 추가 %d / 성공 %d / 실패 %d",
                     len(reg_targets), ok_cnt, fail_cnt,
                 )
 
@@ -1405,37 +1414,37 @@ async def _on_filter_settings_changed() -> None:
                     else:
                         fail_cnt += len(chunk)
                         logger.warning(
-                            "[앱준비][필터변경] 구독해지 응답 시간 초과 (청크 %d) -- %d종목 (다음 변경 시 재시도)",
+                            "[시작][필터변경] 구독해지 응답 시간 초과 (청크 %d) -- %d종목 (다음 변경 시 재시도)",
                             ci + 1, len(chunk),
                         )
                 logger.info(
-                    "[앱준비][필터변경] 구독해지 완료 -- 제거 %d / 성공 %d / 실패 %d",
+                    "[시작][필터변경] 구독해지 완료 -- 제거 %d / 성공 %d / 실패 %d",
                     len(unreg_targets), ok_cnt, fail_cnt,
                 )
     elif not is_ws_subscribe_window(_settings_cache):
-        logger.debug("[앱준비][필터변경] 실시간 구독 구간 외 -- 구독 변경 생략 (필터 결과만 갱신)")
+        logger.debug("[시작][필터변경] 실시간 구독 구간 외 -- 구독 변경 생략 (필터 결과만 갱신)")
     else:
-        logger.debug("[앱준비][필터변경] 실시간 구독 해지 상태 -- 구독 변경 생략")
+        logger.debug("[시작][필터변경] 실시간 구독 해지 상태 -- 구독 변경 생략")
 
     # ── 업종순위 + 매수후보 재계산 ──
     try:
         recompute_sector_summary_now()
     except Exception as e:
-        logger.warning("[앱준비][필터변경] 업종순위 재계산 실패: %s", e)
+        logger.warning("[시작][필터변경] 업종순위 재계산 실패: %s", e, exc_info=True)
 
     # ── WS 3종 전송 ──
     try:
         notify_desktop_sector_stocks_refresh()
     except Exception:
-        pass
+        logger.warning("[데이터] 업종목록 화면전송 실패", exc_info=True)
     try:
         notify_desktop_sector_scores(force=True)
     except Exception:
-        pass
+        logger.warning("[데이터] 업종점수 화면전송 실패", exc_info=True)
     try:
         notify_buy_targets_update()
     except Exception:
-        pass
+        logger.warning("[데이터] 매수후보 화면전송 실패", exc_info=True)
 
 
 async def _run_sector_reg_pipeline() -> None:
@@ -1446,10 +1455,10 @@ async def _run_sector_reg_pipeline() -> None:
         from app.services import ws_subscribe_control
         await ws_subscribe_control.run_conditional_reg_pipeline(sys.modules[__name__])
     except Exception as e:
-        logger.warning("[앱준비] 실시간 구독 파이프라인 실패: %s", e)
+        logger.warning("[시작] 실시간 구독 파이프라인 실패: %s", e, exc_info=True)
     finally:
         _ws_reg_pipeline_done.set()
-        logger.info("[앱준비] 실시간 구독 준비 완료 -- 단건 구독 허용")
+        logger.info("[시작] 실시간 구독 준비 완료 -- 단건 구독 허용")
         if _ws_live():
             _refresh_account_snapshot_meta()
 
@@ -1506,7 +1515,7 @@ async def _fetch_market_map_async() -> None:
             len(new_market_map), get_market_map_version(), total_nxt, len(new_nxt_map) - total_nxt,
         )
     except Exception as e:
-        logger.warning("[시장구분] 캐시 적재 실패 (무시): %s", e)
+        logger.warning("[시장구분] 캐시 적재 실패 (무시): %s", e, exc_info=True)
 
 
 async def _subscribe_index_realtime() -> None:
@@ -1528,10 +1537,10 @@ async def _ensure_ws_subscriptions_for_positions() -> None:
         if not is_test_mode(_settings_cache):
             await _subscribe_account_realtime()
         else:
-            logger.info("[엔진] 테스트모드 -- 계좌 실시간 구독(00/04) 생략")
+            logger.info("[구독] 테스트모드 -- 계좌 실시간 구독(00/04) 생략")
         await _subscribe_positions_stocks_realtime()
     except Exception as e:
-        logger.warning("[엔진] 실시간 구독 전송 실패함: %s", e)
+        logger.warning("[연결] 실시간 구독 전송 실패함: %s", e, exc_info=True)
     finally:
         if _ws_live():
             _refresh_account_snapshot_meta()
@@ -1541,7 +1550,7 @@ async def on_trade_mode_switched() -> None:
     """거래모드 전환 시 호출 -- 엔진 재기동 없이 계좌 구독 상태만 전환한다."""
     _new_test = is_test_mode(_settings_cache)
     _mode_str = "테스트모드" if _new_test else "실전투자"
-    logger.info("[엔진] 거래모드 전환 -> %s (엔진 재기동 없음)", _mode_str)
+    logger.info("[연결] 거래모드 전환 -> %s (엔진 재기동 없음)", _mode_str)
 
     if not is_running() or not _kiwoom_connector or not _kiwoom_connector.is_connected():
         return
@@ -1550,18 +1559,18 @@ async def on_trade_mode_switched() -> None:
         # 실전→테스트: 계좌 실시간 구독(00/04) 해제, 분석용 구독은 유지
         from app.services.engine_ws_reg import _unreg_grp
         await _unreg_grp(sys.modules[__name__], "10")
-        logger.info("[엔진] 테스트모드 전환 -- 계좌 실시간 구독(grp_no=10) 해제 완료")
+        logger.info("[구독] 테스트모드 전환 -- 계좌 실시간 구독(grp_no=10) 해제 완료")
         # Settlement Engine: 파일에서 상태 복원 + 만료 항목 정리 + 타이머 재스케줄
         settlement_engine.restore_state()
-        logger.info("[엔진] 테스트모드 전환 -- Settlement Engine 상태 복원 완료")
+        logger.info("[시작] 테스트모드 전환 -- Settlement Engine 상태 복원 완료")
     else:
         # 테스트→실전: Settlement Engine 상태 저장 + 타이머 취소
         settlement_engine.save_state()
-        logger.info("[엔진] 실전모드 전환 -- Settlement Engine 상태 저장 완료")
+        logger.info("[시작] 실전모드 전환 -- Settlement Engine 상태 저장 완료")
         # 테스트→실전: 계좌 실시간 구독(00/04) + 보유종목 실시간(0B) 등록
         await _subscribe_account_realtime()
         await _subscribe_positions_stocks_realtime()
-        logger.info("[엔진] 실전모드 전환 -- 계좌 실시간 구독(00/04) + 보유종목 실시간(0B) 등록 완료")
+        logger.info("[구독] 실전모드 전환 -- 계좌 실시간 구독(00/04) + 보유종목 실시간(0B) 등록 완료")
 
     # 모드 전환 후 계좌 스냅샷 즉시 갱신
     _refresh_account_snapshot_meta()
@@ -1614,7 +1623,7 @@ def _apply_delayed_account_broadcast() -> None:
             positions=pos,
         )
     except Exception as e:
-        logger.debug("[계좌브로드캐스트] 지연 전송 실패: %s", e)
+        logger.debug("[계좌브로드캐스트] 지연 전송 실패: %s", e, exc_info=True)
 
 
 def _broadcast_engine_ws() -> None:
@@ -1701,14 +1710,14 @@ async def build_initial_snapshot() -> dict:
                 return await result
             return result
         except Exception as exc:
-            logger.warning("[확정데이터] %s 호출 실패 — 기본값 사용: %s", fn.__name__, exc)
+            logger.warning("[데이터] %s 호출 실패 — 기본값 사용: %s", fn.__name__, exc, exc_info=True)
             return default
 
     _snapshot_t0 = time.perf_counter()
     positions = await _safe(get_positions, [])
-    logger.info("[실시간연결] 시작화면 데이터 생성 단계 -- 보유종목 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
+    logger.info("[연결] 시작화면 데이터 생성 단계 -- 보유종목 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
     account_snap = await _safe(get_account_snapshot, {})
-    logger.info("[실시간연결] 시작화면 데이터 생성 단계 -- 계좌 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
+    logger.info("[연결] 시작화면 데이터 생성 단계 -- 계좌 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
     from app.services import ws_subscribe_control
     from app.services.daily_time_scheduler import get_market_phase
@@ -1717,13 +1726,13 @@ async def build_initial_snapshot() -> dict:
     try:
         _raw_settings = await asyncio.wait_for(load_settings_async(), timeout=2.0)
     except asyncio.TimeoutError:
-        logger.warning("[실시간연결] 시작화면 데이터 생성 단계 -- 설정 로드 2초 초과, 메모리 설정 사용")
+        logger.warning("[연결] 시작화면 데이터 생성 단계 -- 설정 로드 2초 초과, 메모리 설정 사용")
         _raw_settings = dict(_settings_cache or {})
-    logger.info("[실시간연결] 시작화면 데이터 생성 단계 -- 설정 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
+    logger.info("[연결] 시작화면 데이터 생성 단계 -- 설정 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
     scores_snapshot = await _safe(get_sector_scores_snapshot, ([], 0))
     scores_list, ranked_count = scores_snapshot if isinstance(scores_snapshot, tuple) else (scores_snapshot, 0)
-    logger.info("[실시간연결] 시작화면 데이터 생성 단계 -- 업종점수 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
+    logger.info("[연결] 시작화면 데이터 생성 단계 -- 업종점수 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
     
     snapshot: dict = {
         "_v":               1,
@@ -1750,20 +1759,20 @@ async def build_initial_snapshot() -> dict:
             "total": sum(1 for t, _ in _sector_stock_layout if t == "code") if _avg_amt_refresh_running else 0,
         } if _avg_amt_refresh_running else None,
     }
-    logger.info("[실시간연결] 시작화면 데이터 생성 단계 -- 메타 조립 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
+    logger.info("[연결] 시작화면 데이터 생성 단계 -- 메타 조립 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
     # Delta 캐시 초기화 — sector_stocks는 분할 전송 시점에 초기화
     try:
         from app.services.engine_account_notify import init_sent_caches
         init_sent_caches([], positions, account_snap)
     except Exception as e:
-        logger.warning("[확정데이터] delta 저장데이터 초기화 실패: %s", e)
+        logger.warning("[데이터] delta 저장데이터 초기화 실패: %s", e, exc_info=True)
 
     try:
         payload_bytes = len(json.dumps(snapshot, ensure_ascii=False).encode("utf-8"))
-        logger.info("[확정데이터] 메타 크기 %d bytes (생성 %.0fms)", payload_bytes, (time.perf_counter() - _snapshot_t0) * 1000)
+        logger.info("[데이터] 메타 크기 %d bytes (생성 %.0fms)", payload_bytes, (time.perf_counter() - _snapshot_t0) * 1000)
     except Exception as exc:
-        logger.warning("[확정데이터] 크기 측정 실패: %s", exc)
+        logger.warning("[데이터] 크기 측정 실패: %s", exc, exc_info=True)
 
     return snapshot
 
@@ -1778,7 +1787,7 @@ async def build_sector_stocks_payload() -> dict:
         from app.services.engine_account_notify import init_sent_caches
         init_sent_caches(sector_stocks, await get_positions(), await get_account_snapshot())
     except Exception:
-        pass
+        logger.warning("[데이터] delta 캐시 초기화 실패", exc_info=True)
 
     from app.services.daily_time_scheduler import is_krx_after_hours
     return {"_v": 1, "stocks": filtered, "krx_after_hours": is_krx_after_hours()}
@@ -1805,21 +1814,21 @@ def _schedule_engine_coro(coro: asyncio.coroutines, *, context: str) -> bool:
             loop.call_soon_threadsafe(lambda: loop.create_task(coro))
             return True
         except Exception as e:
-            logger.warning("[엔진] %s 스케줄 실패함: %s", context, e)
+            logger.warning("[데이터] %s 스케줄 실패함: %s", context, e, exc_info=True)
             try:
                 coro.close()
             except Exception:
-                pass
+                logger.warning("[데이터] coroutine 정리 실패", exc_info=True)
             return False
     try:
         asyncio.get_running_loop().create_task(coro)
         return True
     except Exception as e:
-        logger.warning("[엔진] %s 요청 실패함: %s", context, e)
+        logger.warning("[데이터] %s 요청 실패함: %s", context, e, exc_info=True)
         try:
             coro.close()
         except Exception:
-            pass
+            logger.warning("[데이터] coroutine 정리 실패", exc_info=True)
         return False
 
 
@@ -1885,11 +1894,11 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
     # 배치에서 이미 구독됐으면 단건 불필요 (0B 기준)
     item_cd = _format_kiwoom_reg_stk_cd(stk_cd)
     if item_cd in _subscribed_stocks:
-        logger.debug("[실시간] 단건 REG 생략(배치 완료) -- %s", item_cd)
+        logger.debug("[데이터] 단건 REG 생략(배치 완료) -- %s", item_cd)
         return
     # 배치에 포함되지 않은 신규 모니터링 종목 — 단건 0B REG 전송
     if not _ws_live():
-        logger.debug("[실시간] 단건 REG 생략 — WS 미연결/미로그인 %s", item_cd)
+        logger.debug("[데이터] 단건 REG 생략 — WS 미연결/미로그인 %s", item_cd)
         return
     from app.services.engine_ws_reg import build_0b_reg_payloads
     ws_code = get_ws_subscribe_code(item_cd)
@@ -1898,9 +1907,9 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
         ok, rc = await _ws_send_reg_unreg_and_wait_ack(payloads[0])
         if ok:
             _subscribed_stocks.add(item_cd)
-            logger.debug("[실시간] 단건 0B REG 완료 -- %s (return_code=%s)", item_cd, rc)
+            logger.debug("[데이터] 단건 0B REG 완료 -- %s (return_code=%s)", item_cd, rc)
         else:
-            logger.warning("[실시간] 단건 0B REG 실패 -- %s", item_cd)
+            logger.warning("[데이터] 단건 0B REG 실패 -- %s", item_cd)
 
 
 async def _handle_ws_data(data: dict) -> None:
@@ -1948,7 +1957,7 @@ async def _fetch_account_data(settings: dict) -> dict:
         async with _get_rest_api_thread_sem():
             balance_raw = await asyncio.to_thread(api.get_balance_detail)
     except Exception as e:
-        logger.warning("[계좌] API 호출 예외: %s", e)
+        logger.warning("[계좌] API 호출 예외: %s", e, exc_info=True)
         return _EMPTY
 
     if not deposit_raw:
@@ -2061,7 +2070,7 @@ async def _update_account_memory_inner(settings: dict) -> None:
                     n_unreg,
                 )
         except Exception as e:
-            logger.warning("[엔진] 웹소켓 실시간 구독 정리 실패함: %s", e)
+            logger.warning("[연결] 웹소켓 실시간 구독 정리 실패함: %s", e, exc_info=True)
     _refresh_account_snapshot_meta()
 
     notify_desktop_account_tabs_refresh()
@@ -2192,7 +2201,7 @@ def _try_sector_buy() -> None:
                 if _max_daily > 0 and _auto_trade._daily_buy_spent >= _max_daily:
                     break
         except Exception as e:
-            logger.warning("[섹터매수] execute_buy 오류 %s: %s", s.code, e)
+            logger.warning("[섹터매수] execute_buy 오류 %s: %s", s.code, e, exc_info=True)
 
 
 
@@ -2224,11 +2233,11 @@ async def stop_engine() -> None:
     bg_names = ("daily_time_scheduler",)
     bg_tasks = [t for t in all_tasks if any(n in (t.get_name() or "") for n in bg_names)]
     if bg_tasks:
-        logger.info("[엔진] 백그라운드 태스크 %d개 취소 중...", len(bg_tasks))
+        logger.info("[시작] 백그라운드 태스크 %d개 취소 중...", len(bg_tasks))
         for t in bg_tasks:
             t.cancel()
         await asyncio.gather(*bg_tasks, return_exceptions=True)
-        logger.info("[엔진] 백그라운드 태스크 취소 완료")
+        logger.info("[시작] 백그라운드 태스크 취소 완료")
 
     # 테스트모드 가상 잔고: 엔진 중지 시 초기화하지 않음
     # (포지션·예수금은 사용자가 직접 초기화할 때만 리셋)
@@ -2290,20 +2299,20 @@ async def refresh_engine_settings_cache(user_id: str | None = None, *, use_root:
         _settings_cache = fresh
         _sync_sell_overrides_from_settings()
         label = "root" if load_user is None else (load_user or uid_engine or "root")
-        logger.info("[엔진] 설정 메모리 동기화 완료 (사용자=%s)", label)
+        logger.info("[데이터] 설정 메모리 동기화 완료 (사용자=%s)", label)
 
         # 필터 설정(sector_min_trade_amt) 변경 시 WS 구독 동적 갱신
         new_min_amt = fresh.get("sector_min_trade_amt", 0.0)
         if old_min_amt != new_min_amt and _bootstrap_event.is_set():
             logger.info(
-                "[엔진][필터] 최소 거래대금 설정 변경: %.1f → %.1f억",
+                "[데이터][필터] 최소 거래대금 설정 변경: %.1f → %.1f억",
                 old_min_amt, new_min_amt,
             )
             _schedule_engine_coro(
                 _on_filter_settings_changed(), context="필터 설정 변경",
             )
     except Exception as e:
-        logger.warning("[엔진] 설정 메모리 동기화 실패: %s", e)
+        logger.warning("[데이터] 설정 메모리 동기화 실패: %s", e, exc_info=True)
 
 
 async def reload_engine_settings() -> None:
@@ -2313,16 +2322,16 @@ async def reload_engine_settings() -> None:
     """
     global _engine_user_id
     if not is_running():
-        logger.info("[엔진] 재로딩 요청 -- 엔진이 실행 중이 아님, 건너뜀")
+        logger.info("[시작] 재로딩 요청 -- 엔진이 실행 중이 아님, 건너뜀")
         return
     uid = _engine_user_id
-    logger.info("[엔진] 설정 변경 감지 -> 엔진 재기동 시작 (사용자=%s)", uid or "admin")
+    logger.info("[시작] 설정 변경 감지 -> 엔진 재기동 시작 (사용자=%s)", uid or "admin")
     await stop_engine()
     from app.core.broker_factory import reset_router
     reset_router()
     await asyncio.sleep(0.5)
     await start_engine(uid)
-    logger.info("[엔진] 재기동 완료")
+    logger.info("[시작] 재기동 완료")
 
 
 def get_status() -> dict:
