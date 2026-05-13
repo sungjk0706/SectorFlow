@@ -31,6 +31,7 @@ _desktop_settings_toggled_notifier: Callable[[], None] | None = None
 _positions_code_set: set[str] = set()  # positions의 stk_cd 6자리 정규화 set
 _layout_code_set: set[str] = set()  # sector_stock_layout에서 type=="code" 값 set
 
+
 # ── 실시간 데이터 필드 정의 ─────────────────────────────────────────────────
 _TICK_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "strength")
 
@@ -188,6 +189,24 @@ def unregister_engine_ws_queue(q) -> None:
 # ── Delta 계산 함수 ─────────────────────────────────────────────────────────
 
 
+# Position delta 비교 키: 프론트엔드가 실제 사용하는 필드만 비교
+_POSITION_CMP_KEYS = ("stk_cd", "stk_nm", "qty", "buy_price", "avg_price", "cur_price", "pnl_amount", "pnl_rate")
+
+# Snapshot delta 비교 키: 프론트엔드가 실제 사용하는 필드만 비교
+_SNAPSHOT_CMP_KEYS = ("deposit", "orderable", "accumulated_investment",
+                      "total_buy_amount", "total_eval_amount", "total_pnl", "total_pnl_rate")
+
+
+def _pos_equal(a: dict, b: dict) -> bool:
+    """두 position dict가 필수 필드 기준으로 동등한지 판단."""
+    return all(a.get(k) == b.get(k) for k in _POSITION_CMP_KEYS)
+
+
+def _snap_equal(a: dict, b: dict) -> bool:
+    """두 snapshot dict가 필수 필드 기준으로 동등한지 판단."""
+    return all(a.get(k) == b.get(k) for k in _SNAPSHOT_CMP_KEYS)
+
+
 def _compute_position_delta(current_positions: list[dict]) -> tuple[list[dict], list[str]]:
     """현재 보유종목과 _position_sent_cache를 비교하여 변경/제거 목록 반환."""
     current_map = {}
@@ -198,7 +217,7 @@ def _compute_position_delta(current_positions: list[dict]) -> tuple[list[dict], 
     changed = []
     for code, pos in current_map.items():
         prev = _position_sent_cache.get(code)
-        if prev is None or pos != prev:
+        if prev is None or not _pos_equal(prev, pos):
             changed.append(pos)
     removed = [code for code in _position_sent_cache if code not in current_map]
     return changed, removed
@@ -350,6 +369,7 @@ def notify_raw_real_data(item: dict) -> None:
     if _should_conflate(item):
         return
     raw_code = str(item.get("item") or "").strip()
+    nk = raw_code  # 기본값: raw_code 그대로
     if raw_code:
         try:
             from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
@@ -361,6 +381,7 @@ def notify_raw_real_data(item: dict) -> None:
             return
     try:
         item["_ts"] = int(time.time() * 1000)
+        msg_type = str(item.get("type", ""))
         _broadcast("real-data", item)
     except Exception as e:
         logger.warning("[데이터] Raw 데이터 전송 실패: %s", e, exc_info=True)
@@ -431,34 +452,54 @@ def notify_desktop_account_tabs_refresh() -> None:
         logger.warning("[데이터] 지수 갱신 화면전송 실패: %s", e, exc_info=True)
 
 
-def broadcast_account_update(
-    reason: str | None,
-    snapshot: dict,
-    positions: list,
-) -> None:
-    """체결·잔고·실시간 시세 변경 시 → WS account-update (delta 방식)."""
+def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str | None = None) -> None:
+    """체결·잔고·실시간 시세 변경 시 → WS account-update (delta 방식, 페이지별 페이로드 분리)."""
     global _position_sent_cache, _snapshot_sent_cache
     if reason:
         logger.debug("[데이터] 계좌화면전송 시작 reason=%s", reason)
 
     changed_positions, removed_codes = _compute_position_delta(positions)
-    snapshot_changed = snapshot != _snapshot_sent_cache
+    snapshot_changed = not _snap_equal(snapshot, _snapshot_sent_cache)
 
     if not changed_positions and not removed_codes and not snapshot_changed:
         if reason:
             logger.debug("[데이터] 계좌화면전송 변경 없음 -- 전송 생략 reason=%s", reason)
         return
 
-    payload = {
-        "snapshot": dict(snapshot),
-        "changed_positions": changed_positions,
-        "removed_codes": removed_codes,
-    }
+    # 페이지별 페이로드 분리
+    from app.web.ws_manager import ws_manager
 
-    try:
-        _broadcast("account-update", payload)
-    except Exception as e:
-        logger.warning("[연결] 계좌 화면전송 실패: %s", e, exc_info=True)
+    active_pages = ws_manager.get_active_pages()
+    profit_overview_active = "profit-overview" in active_pages
+    sell_position_active = "sell-position" in active_pages
+
+    # 수익현황 페이지만 활성: 경량화 페이로드 전송
+    if profit_overview_active and not sell_position_active:
+        lightweight_payload = _build_lightweight_payload_for_profit_overview(snapshot, changed_positions, removed_codes)
+        try:
+            ws_manager.broadcast_to_pages("account-update", lightweight_payload, {"profit-overview"})
+        except Exception as e:
+            logger.warning("[연결] 수익현황 경량화 페이로드 전송 실패: %s", e, exc_info=True)
+    # sell-position 페이지 활성 또는 두 페이지 모두 활성: 전체 페이로드 전송
+    else:
+        payload = {
+            "snapshot": dict(snapshot),
+            "changed_positions": changed_positions,
+            "removed_codes": removed_codes,
+        }
+        target_pages = set()
+        if sell_position_active:
+            target_pages.add("sell-position")
+        if profit_overview_active and sell_position_active:
+            target_pages.add("profit-overview")
+
+        try:
+            if target_pages:
+                ws_manager.broadcast_to_pages("account-update", payload, target_pages)
+            else:
+                _broadcast("account-update", payload)
+        except Exception as e:
+            logger.warning("[연결] 계좌 화면전송 실패: %s", e, exc_info=True)
 
     # 캐시 갱신
     _snapshot_sent_cache = dict(snapshot)
@@ -475,25 +516,49 @@ def broadcast_account_update(
             if int(p.get("qty", 0) or 0) > 0
         ]
         logger.info(
-            "[연결] 계좌화면전송 사유=%s 총평가=%s 보유현재가=%s changed=%d removed=%d",
+            "[연결] 계좌화면전송 사유=%s 총평가=%s 보유현재가=%s changed=%d removed=%d profit-overview=%s sell-position=%s",
             reason, snapshot.get("total_eval"), cur_pairs,
             len(changed_positions), len(removed_codes),
+            profit_overview_active, sell_position_active,
         )
 
 
+def _build_lightweight_payload_for_profit_overview(snapshot: dict, changed_positions: list[dict], removed_codes: list[str]) -> dict:
+    """수익현황 페이지용 경량화 페이로드 생성.
+
+    - snapshot: total_buy_amount 제거, total_eval_amount, total_pnl, total_pnl_rate 유지
+    - changed_positions: qty만 포함하여 보유종목 수 계산용으로 변환
+    """
+    # snapshot 필터링
+    lightweight_snapshot = {
+        "deposit": snapshot.get("deposit"),
+        "orderable": snapshot.get("orderable"),
+        "accumulated_investment": snapshot.get("accumulated_investment"),
+        "initial_deposit": snapshot.get("initial_deposit"),
+        "total_eval_amount": snapshot.get("total_eval_amount"),
+        "total_pnl": snapshot.get("total_pnl"),
+        "total_pnl_rate": snapshot.get("total_pnl_rate"),
+    }
+
+    # changed_positions를 position_count로 변환 (qty 합계)
+    position_count = sum(int(p.get("qty", 0) or 0) for p in changed_positions if int(p.get("qty", 0) or 0) > 0)
+
+    return {
+        "snapshot": lightweight_snapshot,
+        "position_count": position_count,
+        "removed_codes": removed_codes,
+    }
+
+
 def notify_snapshot_history_update() -> None:
-    """수익 이력이 새로 기록되면 전체 이력을 WS로 브로드캐스트한다."""
-    try:
-        import app.services.engine_service as _es
-        _broadcast("snapshot-update", {"snapshot_history": _es.get_snapshot_history()})
-    except Exception as e:
-        logger.warning("[데이터] 수익 이력 화면전송 실패: %s", e, exc_info=True)
+    """수익 이력 WS 브로드캐스트 — 프론트엔드 미사용으로 no-op."""
+    pass
 
 
 _prev_buy_targets_map: dict[str, dict] | None = None
 
 # 매수후보 비교 키: 순위·시세·가드 상태 등 변경 감지 대상 필드
-_BUY_TARGET_CMP_KEYS = ("rank", "sector_rank", "cur_price", "change_rate", "strength", "trade_amount", "boost_score", "guard_pass", "reason")
+_BUY_TARGET_CMP_KEYS = ("rank", "cur_price", "change_rate", "strength", "trade_amount", "boost_score", "guard_pass", "reason")
 
 
 def notify_buy_targets_update() -> None:

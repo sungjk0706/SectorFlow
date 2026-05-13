@@ -39,6 +39,11 @@ _STATE_EVENTS: frozenset[str] = frozenset({
 # real-data FID 필터: 프론트엔드에서 사용하는 FID만 전송
 ALLOWED_FIDS: frozenset[str] = frozenset({'10', '11', '12', '14', '228'})
 
+# 인코딩 캐시: (data_hash, fids_tuple) -> (text, binary)
+from collections import OrderedDict
+_encoding_cache: OrderedDict[tuple[str, tuple[str, ...]], tuple[str, None]] = OrderedDict()
+_ENCODING_CACHE_MAX_SIZE = 100
+
 # real-data key shortening 매핑
 _KEY_SHORTEN: dict[str, str] = {"type": "t", "item": "i", "values": "v"}
 
@@ -48,18 +53,35 @@ _buy_target_page_codes: set[str] = set()
 _blocked_target_page_codes: set[str] = set()
 
 
-def _encode_realdata(data: dict) -> tuple[str, None]:
+def _encode_realdata(data: dict, subscribed_fids: frozenset[str] | None = None) -> tuple[str, None]:
     """real-data 메시지를 FID 필터 + key shorten으로 인코딩.
+
+    Args:
+        data: 원본 real-data 메시지
+        subscribed_fids: 클라이언트 구독 FID (None이면 ALLOWED_FIDS 사용)
 
     Returns:
         (text_frame, None) — 텍스트 프레임 전송
     """
-    # FID 필터링: values에서 허용된 FID만 유지
+    # FID 필터링: values에서 구독된 FID만 유지
+    target_fids = subscribed_fids if subscribed_fids is not None else ALLOWED_FIDS
     values = data.get("values")
     if isinstance(values, dict):
-        filtered_values = {k: v for k, v in values.items() if k in ALLOWED_FIDS}
+        filtered_values = {k: v for k, v in values.items() if k in target_fids}
     else:
         filtered_values = values
+
+    # 캐시 키 생성: data 해시 + fids 튜플
+    import hashlib
+    data_str = json.dumps(data, sort_keys=True, ensure_ascii=False)
+    data_hash = hashlib.md5(data_str.encode('utf-8')).hexdigest()
+    fids_tuple = tuple(sorted(target_fids))
+    cache_key = (data_hash, fids_tuple)
+
+    # 캐시 확인
+    global _encoding_cache
+    if cache_key in _encoding_cache:
+        return _encoding_cache[cache_key]
 
     # key shortening: type→t, item→i, values→v
     shortened: dict[str, Any] = {}
@@ -78,6 +100,11 @@ def _encode_realdata(data: dict) -> tuple[str, None]:
     payload = json.dumps({"event": "real-data", "data": shortened}, ensure_ascii=False)
     payload_bytes = payload.encode("utf-8")
 
+    # 캐시 저장 (LRU)
+    _encoding_cache[cache_key] = (payload, None)
+    if len(_encoding_cache) > _ENCODING_CACHE_MAX_SIZE:
+        _encoding_cache.popitem(last=False)
+
     return payload, None
 
 
@@ -88,6 +115,8 @@ class WSManager:
         self._clients: set[WebSocket] = set()
         # per-client 활성 페이지 추적
         self._client_active_page: dict[WebSocket, str] = {}
+        # per-client 구독 FID 추적 (미설정 시 ALLOWED_FIDS 사용)
+        self._client_subscribed_fids: dict[WebSocket, frozenset[str]] = {}
         # 상태형: {event_type: data} — 최신값만 유지
         self._state_queue: dict[str, dict[str, Any]] = {}
         # 이벤트형: [(event_type, data), ...] — 순서 보장
@@ -107,6 +136,7 @@ class WSManager:
         """클라이언트를 _clients set에서 제거."""
         self._clients.discard(ws)
         self._client_active_page.pop(ws, None)
+        self._client_subscribed_fids.pop(ws, None)
         logger.debug("[연결] 클라이언트 해제 (총 %d)", len(self._clients))
 
     # ------------------------------------------------------------------
@@ -120,6 +150,28 @@ class WSManager:
     def clear_active_page(self, ws: WebSocket) -> None:
         """클라이언트의 활성 페이지 해제."""
         self._client_active_page.pop(ws, None)
+
+    def get_active_pages(self) -> set[str]:
+        """현재 활성화된 페이지 집합 반환."""
+        return set(self._client_active_page.values())
+
+    def get_clients_by_page(self, page: str) -> set[WebSocket]:
+        """특정 페이지에 활성화된 클라이언트 집합 반환."""
+        return {ws for ws, p in self._client_active_page.items() if p == page}
+
+    # ------------------------------------------------------------------
+    # Per-client subscribed FID 관리
+    # ------------------------------------------------------------------
+
+    def set_subscribed_fids(self, ws: WebSocket, fids: list[str]) -> None:
+        """클라이언트의 구독 FID 설정."""
+        self._client_subscribed_fids[ws] = frozenset(fids)
+        logger.debug("[구독] 클라이언트 FID 구독 설정: %s", fids)
+
+    def clear_subscribed_fids(self, ws: WebSocket) -> None:
+        """클라이언트의 구독 FID 해제 (기본 ALLOWED_FIDS 사용)."""
+        self._client_subscribed_fids.pop(ws, None)
+        logger.debug("[구독] 클라이언트 FID 구독 해제")
 
     # ------------------------------------------------------------------
     # 내부 큐 관리
@@ -228,22 +280,82 @@ class WSManager:
         # 알 수 없는 페이지 → 전체 전송 (안전 폴백)
         return True
 
-    async def _send_realdata_encoded(self, text: str | None, binary: bytes | None, code: str) -> None:
-        """per-client 필터링 적용 real-data 전송 — text 또는 binary 프레임."""
+    async def _send_realdata_encoded(self, data: dict, code: str) -> None:
+        """per-client 필터링 적용 real-data 전송 — 클라이언트별 FID 구독 반영.
+
+        동일한 subscribed_fids를 가진 클라이언트 그룹별로 인코딩을 한 번만 수행하여
+        CPU 부하를 방지한다.
+        """
+        # 클라이언트를 subscribed_fids별로 그룹화
+        fids_to_clients: dict[frozenset[str], list[WebSocket]] = {}
         dead: set[WebSocket] = set()
+
         for ws in set(self._clients):
             # per-client active_page 필터링
             page = self._client_active_page.get(ws)
             if page and not self._is_code_relevant_for_page(page, code):
                 continue  # 이 클라이언트에는 전송 생략
+
+            # subscribed_fids 그룹화
+            subscribed_fids = self._client_subscribed_fids.get(ws)
+            if subscribed_fids not in fids_to_clients:
+                fids_to_clients[subscribed_fids] = []
+            fids_to_clients[subscribed_fids].append(ws)
+
+        # 그룹별로 인코딩 후 전송
+        for subscribed_fids, clients in fids_to_clients.items():
+            text_frame, binary_frame = _encode_realdata(data, subscribed_fids)
+            for ws in clients:
+                try:
+                    if binary_frame is not None:
+                        await ws.send_bytes(binary_frame)
+                    elif text_frame is not None:
+                        await ws.send_text(text_frame)
+                except Exception:
+                    dead.add(ws)
+                    logger.debug("[연결] WS real-data 인코딩 전송 실패 — 클라이언트 제거", exc_info=True)
+
+        for ws in dead:
+            self.unregister(ws)
+
+    def broadcast_to_pages(self, event_type: str, data: dict, pages: set[str]) -> None:
+        """특정 페이지에 활성화된 클라이언트에게만 throttled 전송 (동기, await 없음).
+
+        pages: 전송 대상 페이지 집합 (예: {"profit-overview", "sell-position"})
+        실시간 무결성 보장을 위해 상태형/이벤트형 구분하여 큐에 적재 후 배치 전송.
+        """
+        if not self._clients or not pages:
+            return
+
+        # 페이지별 클라이언트 필터링
+        target_clients = {ws for ws, page in self._client_active_page.items() if page in pages}
+        if not target_clients:
+            return
+
+        # 상태형/이벤트형 구분하여 큐에 적재
+        if event_type in _STATE_EVENTS:
+            self._state_queue[event_type] = data
+        else:
+            self._event_queue.append((event_type, data))
+
+        self._ensure_flush_task()
+
+        # 페이지별 전송을 위해 _flush를 오버라이드하지 않고,
+        # 별도의 페이지별 전송 로직을 추가해야 함
+        # 간단한 구현을 위해 즉시 전송 방식 사용 (실시간 무결성 우선)
+        loop = asyncio.get_running_loop()
+        loop.create_task(self._send_to_pages_immediate(event_type, data, target_clients))
+
+    async def _send_to_pages_immediate(self, event_type: str, data: dict, target_clients: set[WebSocket]) -> None:
+        """특정 클라이언트 집합에 즉시 전송."""
+        message = json.dumps({"event": event_type, "data": self._stamp(data)}, ensure_ascii=False)
+        dead: set[WebSocket] = set()
+        for ws in target_clients:
             try:
-                if binary is not None:
-                    await ws.send_bytes(binary)
-                elif text is not None:
-                    await ws.send_text(text)
+                await ws.send_text(message)
             except Exception:
                 dead.add(ws)
-                logger.debug("[연결] WS real-data 인코딩 전송 실패 — 클라이언트 제거", exc_info=True)
+                logger.debug("[연결] WS 페이지별 전송 실패 — 클라이언트 제거", exc_info=True)
         for ws in dead:
             self.unregister(ws)
 
@@ -273,8 +385,7 @@ class WSManager:
                         break
                 if not needed:
                     return
-                text_frame, binary_frame = _encode_realdata(data)
-                loop.create_task(self._send_realdata_encoded(text_frame, binary_frame, code))
+                loop.create_task(self._send_realdata_encoded(data, code))
             except RuntimeError:
                 pass
             return
