@@ -219,17 +219,31 @@ export function createFixedTable<T extends object>(options: FixedTableOptions<T>
       try {
         const content = columns[i].render(row, idx)
         if (typeof content === 'string') {
+          const prevKey = '_prevContent' as keyof HTMLElement
+          const prevContent = (cell as any)[prevKey] as string | undefined
           if (cell.textContent !== content) {
             cell.textContent = content
-            if (columns[i].flash) triggerFlash(cell)
+            // 실제 변경이 있는 경우에만 플래시 터뜨림
+            if (columns[i].flash && prevContent !== undefined && prevContent !== content) {
+              triggerFlash(cell)
+            }
           }
+          // 현재 값을 저장
+          ;(cell as any)[prevKey] = content
         } else if (content instanceof HTMLElement) {
+          const prevKey = '_prevContent' as keyof HTMLElement
+          const prevContent = (cell as any)[prevKey] as string | undefined
           const existing = cell.firstElementChild as HTMLElement | null
           if (!existing || existing.outerHTML !== content.outerHTML) {
             cell.textContent = ''
             cell.appendChild(content)
-            if (columns[i].flash) triggerFlash(cell)
+            // 실제 변경이 있는 경우에만 플래시 터뜨림
+            if (columns[i].flash && prevContent !== undefined && prevContent !== content.outerHTML) {
+              triggerFlash(cell)
+            }
           }
+          // 현재 값을 저장
+          ;(cell as any)[prevKey] = content.outerHTML
         }
       } catch {
         // 개별 셀 render 예외 시 해당 셀만 건너뛰기

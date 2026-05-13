@@ -28,7 +28,9 @@ export function createStore<T extends object>(initialState: T): StoreApi<T> {
       }
     }
 
-    if (!hasChange) return
+    if (!hasChange) {
+      return
+    }
 
     state = { ...state, ...nextPartial }
 

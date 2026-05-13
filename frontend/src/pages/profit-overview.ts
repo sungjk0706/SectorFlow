@@ -4,7 +4,7 @@
 
 import { createProfitChart, type ProfitChartApi } from '../components/canvas-profit-chart'
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
-import { createWsStatusBadge } from '../components/common/setting-row'
+import { globalSettingsManager, createGlobalWsBadge } from '../settings'
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, createStockNameColumn, createNumberCell, createPnlCell } from '../components/common/ui-styles'
 import { appStore } from '../stores/appStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
@@ -213,13 +213,14 @@ let _mounted = false
 let _dirtyAccount = false
 let _dirtyHistory = false
 let _dirtyChart = false
+let _dirtySectorStocks = false
 
 /* ── 드릴다운 상태 ── */
 let drilldownActive = false
 let dateFilter: string | null = null
 let drilldownTable: DataTableApi<DailyDrilldownRow> | null = null
 let tabRow: HTMLDivElement | null = null
-let wsBadge: ReturnType<typeof createWsStatusBadge> | null = null
+let wsBadge: HTMLElement | null = null
 
 /* ── 요약 카드 DOM 참조 ── */
 let todayPnlEl: HTMLSpanElement | null = null
@@ -239,7 +240,8 @@ export { monthCard as _monthCard }
 function renderAccountVals(): void {
   const state = appStore.getState()
   const a = state.account
-  const isTestMode = state.settings?.trade_mode === 'test'
+  const settings = globalSettingsManager.getSettings()
+  const isTestMode = settings?.trade_mode === 'test'
 
   // 당일 매수/매도금액은 체결 이력에서 직접 집계
   const today = new Date().toISOString().slice(0, 10)
@@ -250,21 +252,11 @@ function renderAccountVals(): void {
     .filter(r => String(r.date ?? '') === today)
     .reduce((s, r) => s + Number(r.total_amt ?? 0), 0)
 
-  // 보유주식 평가금액/평가손익: positions에서 실시간 합산
-  const positions = state.positions || []
-  let evalTotal = 0
-  let evalPnl = 0
-  let buyAmtTotal = 0
-  for (const pos of positions) {
-    const curPrice = pos.cur_price ?? 0
-    if (curPrice === 0) continue // WS 미수신 상태 제외
-    const qty = pos.qty ?? 0
-    const buyAmt = pos.buy_amt ?? 0
-    const posEval = curPrice * qty
-    evalTotal += posEval
-    evalPnl += posEval - buyAmt
-    buyAmtTotal += buyAmt
-  }
+  // 보유주식 평가금액/평가손익/수익률: 백엔드가 실시간 계산하여 전송한 account 값 직접 사용
+  const positionCount = state.positionCount ?? 0
+  const evalTotal = a?.total_eval_amount ?? 0
+  const evalPnl = a?.total_pnl ?? 0
+  const evalRate = a?.total_pnl_rate ?? 0
 
   // 누적 실현 손익: sellHistory 전체 합산
   const cumPnl = aggregatePnl(sellHistory)
@@ -281,18 +273,16 @@ function renderAccountVals(): void {
     if (tv.length < 9) return
     const accumulatedInvestment = a?.accumulated_investment ?? a?.initial_deposit ?? 0
     const orderable = a?.orderable ?? 0
-    const holdingCount = positions.filter(p => (p.qty ?? 0) > 0).length
     tv[0].textContent = `${accumulatedInvestment.toLocaleString()}원`
     tv[1].textContent = `${orderable.toLocaleString()}원`
     tv[2].textContent = `${todayBuyAmt.toLocaleString()}원`
     tv[3].textContent = `${todaySellAmt.toLocaleString()}원`
     tv[4].textContent = `${evalTotal.toLocaleString()}원`
-    if (holdingCountLabelTest) holdingCountLabelTest.textContent = `보유주식 평가금액 (${holdingCount}종목)`
+    if (holdingCountLabelTest) holdingCountLabelTest.textContent = `보유주식 평가금액 (${positionCount}종목)`
     const evalSign = evalPnl > 0 ? '+' : ''
     const evalColor = pnlColor(evalPnl)
     tv[5].textContent = `${evalSign}${evalPnl.toLocaleString()}원`
     tv[5].style.color = evalColor
-    const evalRate = buyAmtTotal > 0 ? Math.round(evalPnl / buyAmtTotal * 10000) / 100 : 0
     const evalRateSign = evalRate > 0 ? '+' : ''
     tv[6].textContent = `${evalRateSign}${evalRate.toFixed(2)}%`
     tv[6].style.color = evalColor
@@ -308,18 +298,16 @@ function renderAccountVals(): void {
     if (rv.length < 9) return
     const deposit = a?.deposit ?? 0
     const orderable = a?.orderable ?? Math.max(0, deposit - todayBuyAmt)
-    const holdingCount = positions.filter(p => (p.qty ?? 0) > 0).length
     rv[0].textContent = `${deposit.toLocaleString()}원`
     rv[1].textContent = `${orderable.toLocaleString()}원`
     rv[2].textContent = `${todayBuyAmt.toLocaleString()}원`
     rv[3].textContent = `${todaySellAmt.toLocaleString()}원`
     rv[4].textContent = `${evalTotal.toLocaleString()}원`
-    if (holdingCountLabel) holdingCountLabel.textContent = `보유주식 평가금액 (${holdingCount}종목)`
+    if (holdingCountLabel) holdingCountLabel.textContent = `보유주식 평가금액 (${positionCount}종목)`
     const evalSign = evalPnl > 0 ? '+' : ''
     const evalColor = pnlColor(evalPnl)
     rv[5].textContent = `${evalSign}${evalPnl.toLocaleString()}원`
     rv[5].style.color = evalColor
-    const evalRate = buyAmtTotal > 0 ? Math.round(evalPnl / buyAmtTotal * 10000) / 100 : 0
     const evalRateSign = evalRate > 0 ? '+' : ''
     rv[6].textContent = `${evalRateSign}${evalRate.toFixed(2)}%`
     rv[6].style.color = evalColor
@@ -512,8 +500,8 @@ function mount(container: HTMLElement): void {
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
-  const state = appStore.getState()
-  const isTestMode = state.settings?.trade_mode === 'test'
+  const settings = globalSettingsManager.getSettings()
+  const isTestMode = settings?.trade_mode === 'test'
 
   /* ── 상단 (테스트모드: 55%, 실전모드: 48%) ── */
   const upper = document.createElement('div')
@@ -556,12 +544,8 @@ function mount(container: HTMLElement): void {
   accountHeader.appendChild(accountTitle)
 
   // 테스트모드/실시간 상태 뱃지
-  wsBadge = createWsStatusBadge({
-    subscribed: !isTestMode,
-    broker: isTestMode ? undefined : 'kiwoom',
-    label: isTestMode ? '테스트모드' : undefined,
-  })
-  accountHeader.appendChild(wsBadge.el)
+  wsBadge = createGlobalWsBadge()
+  accountHeader.appendChild(wsBadge)
   accountPanel.appendChild(accountHeader)
 
   // 계좌 현황 DOM 생성 (실전모드 + 테스트모드 각각, CSS display 토글)
@@ -762,8 +746,8 @@ function mount(container: HTMLElement): void {
     onDateRangeChange: async (from: string, to: string) => {
       // 날짜 변경 → API 호출 → 차트 갱신
       try {
-        const state = appStore.getState()
-        const tradeMode = state.settings?.trade_mode || 'test'
+        const settings = globalSettingsManager.getSettings()
+        const tradeMode = settings?.trade_mode || 'test'
         const token = localStorage.getItem('token') || 'dev-bypass'
         const params = new URLSearchParams({ date_from: from, date_to: to, trade_mode: tradeMode })
         const resp = await fetch(`/api/trade-history/daily-summary?${params}`, {
@@ -794,15 +778,16 @@ function mount(container: HTMLElement): void {
   let prevBuyRef = initState.buyHistory
   let prevDailySummaryRef = initState.dailySummary
   let prevAccountRef = initState.account
-  let prevTradeMode = initState.settings?.trade_mode
+  let prevTradeMode = globalSettingsManager.getSettings()?.trade_mode
   let prevPositionsRef = initState.positions
+  let prevSectorStocksRef = initState.sectorStocks
   _mounted = true
 
   unsubAccount = appStore.subscribe((curr) => {
     // 필드 그룹별 참조 비교
-    const accountChanged = curr.account !== prevAccountRef || curr.positions !== prevPositionsRef
+    const accountChanged = curr.account !== prevAccountRef || curr.positions !== prevPositionsRef || curr.sectorStocks !== prevSectorStocksRef
     const historyChanged = curr.sellHistory !== prevSellRef || curr.buyHistory !== prevBuyRef
-    const chartChanged = curr.dailySummary !== prevDailySummaryRef || curr.settings?.trade_mode !== prevTradeMode
+    const chartChanged = curr.dailySummary !== prevDailySummaryRef || globalSettingsManager.getSettings()?.trade_mode !== prevTradeMode
 
     // 아무것도 변경되지 않으면 skip
     if (!accountChanged && !historyChanged && !chartChanged) return
@@ -811,7 +796,9 @@ function mount(container: HTMLElement): void {
     if (accountChanged) {
       prevAccountRef = curr.account
       prevPositionsRef = curr.positions
+      prevSectorStocksRef = curr.sectorStocks
       _dirtyAccount = true
+      _dirtySectorStocks = true
     }
     if (historyChanged) {
       prevSellRef = curr.sellHistory
@@ -822,7 +809,7 @@ function mount(container: HTMLElement): void {
     }
     if (chartChanged) {
       prevDailySummaryRef = curr.dailySummary
-      prevTradeMode = curr.settings?.trade_mode
+      prevTradeMode = globalSettingsManager.getSettings()?.trade_mode
       _dirtyChart = true
     }
 
@@ -854,12 +841,13 @@ function mount(container: HTMLElement): void {
       if (_dirtyChart) {
         _dirtyChart = false
         const latest = appStore.getState()
-        const tradeModeChanged = latest.settings?.trade_mode !== prevTradeMode
+        const settings = globalSettingsManager.getSettings()
+        const tradeModeChanged = settings?.trade_mode !== prevTradeMode
         chart?.updateData(buildChartFromDailySummary(latest.dailySummary))
         if (tradeModeChanged) {
-          prevTradeMode = latest.settings?.trade_mode
-          const isTest = latest.settings?.trade_mode === 'test'
-          wsBadge?.update(!isTest, isTest ? undefined : 'kiwoom', isTest ? '테스트모드' : undefined)
+          prevTradeMode = settings?.trade_mode
+          const isTest = settings?.trade_mode === 'test'
+          // WS 상태 배지는 전역 싱글톤이 자동 업데이트하므로 수동 업데이트 제거
           retentionLabel.textContent = isTest ? '최근 60거래일 데이터' : '최근 5거래일 데이터'
           // 계좌 현황 컨테이너 토글
           if (realAccountContainer && testAccountContainer) {
@@ -867,6 +855,15 @@ function mount(container: HTMLElement): void {
             testAccountContainer.style.display = isTest ? '' : 'none'
           }
           renderAccountVals()
+        }
+      }
+
+      if (_dirtySectorStocks) {
+        _dirtySectorStocks = false
+        if (drilldownActive) {
+          showDrilldown()
+        } else {
+          showTable()
         }
       }
     })
@@ -884,6 +881,7 @@ function unmount(): void {
   _dirtyAccount = false
   _dirtyHistory = false
   _dirtyChart = false
+  _dirtySectorStocks = false
   if (unsubAccount) { unsubAccount(); unsubAccount = null }
   if (chart) { chart.destroy(); chart = null }
   if (sellTable) { sellTable.destroy(); sellTable = null }

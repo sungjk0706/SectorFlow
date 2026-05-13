@@ -67,7 +67,6 @@ const sectorScoreRowArb: fc.Arbitrary<SectorScoreRow> = fc.record({
   total_trade_amount: fc.integer({ min: 0, max: 10000000000 }),
   rise_ratio: fc.float({ min: 0, max: 100, noNaN: true }),
   total: fc.integer({ min: 1, max: 100 }),
-  rise_count: fc.integer({ min: 0, max: 100 }),
 })
 
 const sectorStatusArb: fc.Arbitrary<SectorStatus> = fc.record({

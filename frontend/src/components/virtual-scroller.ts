@@ -235,7 +235,16 @@ export function createVirtualScroller<T>(
   }
 
   function acquireRow(): HTMLElement {
-    if (pool.length > 0) return pool.pop()!
+    if (pool.length > 0) {
+      const el = pool.pop()!
+      // pool에서 재사용된 행의 셀 _prevContent 초기화
+      const cells = el.children
+      for (let i = 0; i < cells.length; i++) {
+        const cell = cells[i] as HTMLElement
+        ;(cell as any)['_prevContent'] = undefined
+      }
+      return el
+    }
     const el = document.createElement('div')
     el.style.position = 'absolute'
     el.style.left = '0'

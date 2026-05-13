@@ -100,3 +100,48 @@ export function createSettingsManager(store: StoreApi<AppState> = appStore): Set
 
   return { getSettings, isLoading, saveSection, registerEditing, subscribe, destroy }
 }
+
+// ── 전역 싱글톤 Settings Manager (Python GC 최적화) ──
+export const globalSettingsManager = createSettingsManager(appStore)
+
+// ── 전역 싱글톤 WebSocket 상태 배지 모듈 (store subscriber 1개만 유지) ──
+let globalWsBadgeInstance: HTMLElement | null = null
+let globalWsBadgeUnsub: (() => void) | null = null
+
+export function createGlobalWsBadge(): HTMLElement {
+  if (globalWsBadgeInstance) {
+    return globalWsBadgeInstance
+  }
+
+  const badge = document.createElement('span')
+  Object.assign(badge.style, {
+    fontSize: '11px',
+    fontWeight: 'normal',
+    borderRadius: '3px',
+    padding: '2px 6px',
+    marginLeft: '8px',
+    display: 'inline-block',
+  })
+
+  function updateBadge(): void {
+    const state = appStore.getState()
+    const connected = state.wsSubscribeStatus?.quote_subscribed ?? false
+    badge.textContent = connected ? 'WS 연결' : 'WS 해제'
+    badge.style.color = connected ? '#2e7d32' : '#d32f2f'
+    badge.style.background = connected ? '#e8f5e9' : '#ffeaea'
+  }
+
+  updateBadge()
+  globalWsBadgeUnsub = appStore.subscribe(updateBadge)
+  globalWsBadgeInstance = badge
+
+  return badge
+}
+
+export function destroyGlobalWsBadge(): void {
+  if (globalWsBadgeUnsub) {
+    globalWsBadgeUnsub()
+    globalWsBadgeUnsub = null
+  }
+  globalWsBadgeInstance = null
+}

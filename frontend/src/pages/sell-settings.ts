@@ -3,8 +3,9 @@
 // SellSettingsCard.tsx + SellSettingsSection.tsx + QuickToggle + TimePairInput 통합
 
 import { appStore } from '../stores/appStore'
-import { createSettingsManager, type SettingsManager } from '../settings'
+import { createSettingsManager, type SettingsManager, createGlobalWsBadge } from '../settings'
 import { createSettingRow, createNumInput, createToggleBtn, createFixedValue } from '../components/common/setting-row'
+import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { toastResult } from '../components/common/save-toast'
 import { sectionTitle } from '../components/common/settings-common'
 import { FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
@@ -20,6 +21,7 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null
 let vals: Record<string, unknown> = {}
 
 // 토글 참조
+let wsBadge: HTMLElement | null = null
 let autoSellToggle: ReturnType<typeof createToggleBtn> | null = null
 let timePairHandle: TimePairInputHandle | null = null
 let tpToggle: ReturnType<typeof createToggleBtn> | null = null
@@ -120,6 +122,7 @@ function syncFromSettings(s: AppSettings): void {
 
 /* ── mount ── */
 function mount(container: HTMLElement): void {
+  notifyPageActive('sell-settings')
   settingsMgr = createSettingsManager(appStore)
   saving = false
   pendingSave = null
@@ -127,11 +130,17 @@ function mount(container: HTMLElement): void {
 
   const root = document.createElement('div')
 
-  // 제목
+  // 제목 + WS 상태 배지
+  const headerRow = document.createElement('div')
+  Object.assign(headerRow.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' })
   const h4 = document.createElement('h4')
-  h4.style.margin = '0 0 12px'
+  h4.style.margin = '0'
   h4.textContent = '매도 설정'
-  root.appendChild(h4)
+  headerRow.appendChild(h4)
+
+  wsBadge = createGlobalWsBadge()
+  headerRow.appendChild(wsBadge)
+  root.appendChild(headerRow)
 
   // ── 자동매도 토글 + TimePairInput (1행) ──
   const autoRow = document.createElement('div')
@@ -252,16 +261,19 @@ function mount(container: HTMLElement): void {
 
 /* ── unmount ── */
 function unmount(): void {
+  notifyPageInactive('sell-settings')
   if (unsubSettings) { unsubSettings(); unsubSettings = null }
   if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
   saving = false
   pendingSave = null
   if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }
-  autoSellToggle = null; timePairHandle = null
-  tpToggle = null; tpValInput = null; tpValRow = null
-  lossToggle = null; lossValInput = null; lossValRow = null
-  tsToggle = null; tsStartValInput = null; tsStartRow = null
-  tsDropValInput = null; tsDropRow = null
+  wsBadge = null
+  autoSellToggle = null
+  timePairHandle = null
+  tpToggle = null; lossToggle = null; tsToggle = null
+  tpValInput = null; lossValInput = null
+  tsStartValInput = null; tsDropValInput = null
+  tpValRow = null; lossValRow = null; tsStartRow = null; tsDropRow = null
   vals = {}
 }
 

@@ -28,6 +28,7 @@ import {
   applyRealData,
   applyOrderbookUpdate,
   applyRealtimeReset,
+  applyTestDataResetCompleted,
   appStore,
   stocksToMap,
   rebuildBuyTargetIndex,
@@ -240,5 +241,11 @@ export function bindWSToStore(wsClient: WSClient, _store: StoreApi<AppState>): v
   wsClient.onEvent('realtime-reset', () => {
     console.log('[WS] realtime-reset 수신 — 실시간 필드 초기화')
     applyRealtimeReset()
+  })
+
+  wsClient.onEvent('test-data-reset-completed', () => {
+    console.log('[WS] test-data-reset-completed 수신 — 테스트 데이터 초기화 완료')
+    console.log('[WS] 핸들러 실행')
+    applyTestDataResetCompleted()
   })
 }

@@ -249,7 +249,7 @@ def _flush_sector_recompute_impl() -> None:
         try:
             _es._try_sector_buy()
         except Exception as _buy_err:
-            logger.debug("[섹터재계산] 매수 판단 오류: %s", _buy_err)
+            pass
 
         # buy_targets 변경 시 구독 갱신 직접 호출 (이벤트 기반)
         if _buy_targets_changed(prev_targets, ss.buy_targets):
@@ -359,14 +359,11 @@ def _sync_0d_subscriptions_sync(es, new_buy_targets) -> None:
     new_unreg_candidates = prev_codes - new_codes
     if new_unreg_candidates:
         _PENDING_UNREG_CODES.update(new_unreg_candidates)
-        logger.debug("[호가구독] 해지 대기 %d종목 추가 (총 %d종목)",
-                     len(new_unreg_candidates), len(_PENDING_UNREG_CODES))
 
     # 복귀한 종목은 해지 취소
     returned_codes = _PENDING_UNREG_CODES & new_codes
     if returned_codes:
         _PENDING_UNREG_CODES -= returned_codes
-        logger.debug("[호가구독] 해지 취소 %d종목 (다시 통과)", len(returned_codes))
 
     # 해지 타이머 설정/재설정
     if _PENDING_UNREG_CODES:
@@ -444,10 +441,8 @@ async def _sync_0d_subscriptions(es, new_buy_targets) -> None:
         for payload in payloads:
             try:
                 ack_ok, rc = await es._ws_send_reg_unreg_and_wait_ack(payload)
-                if not ack_ok:
-                    logger.debug("[호가잔량 구독해지] 응답 시간 초과 — 무시")
             except Exception as exc:
-                logger.debug("[호가잔량 구독해지] 전송 오류 (무시): %s", exc)
+                pass
 
     es._subscribed_0d_stocks = new_codes
 

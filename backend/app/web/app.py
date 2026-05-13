@@ -27,7 +27,13 @@ async def lifespan(app: FastAPI):
     from app.services.daily_time_scheduler import start_daily_time_scheduler
     from app.services.engine_service import start_engine
     from app.services.telegram_bot import telegram_bot
+    from app.services import trade_history
     import app.services.engine_service as _es
+
+    # 체결 이력 Consumer Task 시작 (비동기 I/O 백그라운드 처리)
+    # 모듈 전역 변수 초기화 (비정상 종료 후 재시작 시 잔존 상태 방지)
+    trade_history._reset_global_state()
+    trade_history.start_consumer_task()
 
     # 엔진 초기화 (설정 → 데이터 로드 → 증권사 연결)
     logger.info("[웹서버] 엔진 초기화 시작")
@@ -75,6 +81,11 @@ async def lifespan(app: FastAPI):
     # --- shutdown ---
     from app.services.daily_time_scheduler import stop_daily_time_scheduler
     from app.services.engine_service import stop_engine
+    from app.services import trade_history
+
+    # 체결 이력 Consumer Task 종료 (Graceful Shutdown - 큐에 남은 데이터 모두 저장)
+    await trade_history.stop_consumer_task()
+    logger.info("[웹서버] 체결 이력 Consumer Task 종료 완료")
 
     await telegram_bot.stop_async()
     await stop_engine()
