@@ -141,6 +141,11 @@ async def run_engine_loop(es: ModuleType) -> None:
     # 계좌 REST Lock 초기화 -- 이전 세션 잠금 상태 초기화
     es._account_rest_lock = None
 
+    # ── Producer-Consumer Queue 생성 (단계 2: 엔진 프로세스 내에서만 사용) ────
+    # 엔진 프로세스 내에서만 사용하는 asyncio.Queue 생성
+    es._ws_queue = asyncio.Queue(maxsize=10000)
+    logger.info("[엔진] Producer-Consumer Queue 생성 (maxsize=10000)")
+
     try:
         settings = await get_engine_settings(es._engine_user_id or None)
         es._settings_cache = settings
@@ -299,10 +304,17 @@ async def run_engine_loop(es: ModuleType) -> None:
                     from app.core.connector_manager import ConnectorManager
                     _mgr = ConnectorManager(settings)
                     _mgr.set_message_callback(es._kiwoom_message_handler)
+
+                    # ── Producer-Consumer Queue 설정 (단계 1) ───────────────────
+                    kiwoom_connector = _mgr.get_connector("kiwoom")
+                    if kiwoom_connector and hasattr(kiwoom_connector, 'set_queue_callback'):
+                        kiwoom_connector.set_queue_callback(es._ws_queue)
+                        logger.info("[연결] KiwoomConnector Queue 콜백 설정 완료")
+
                     await _mgr.connect_all()
                     es._connector_manager = _mgr
                     # 하위 호환: 기존 변수에 개별 Connector 할당
-                    es._kiwoom_connector = _mgr.get_connector("kiwoom")
+                    es._kiwoom_connector = kiwoom_connector
                     logger.info("[연결] 실시간 연결 완료")
                 except Exception as e:
                     logger.error("[연결] 실시간 연결 초기화 실패: %s", e, exc_info=True)
@@ -314,6 +326,11 @@ async def run_engine_loop(es: ModuleType) -> None:
         logger.info("[기동시간] 전체 기동: %.0fms", (time.perf_counter() - _t0) * 1000)
         es._broadcast_engine_ws()  # 엔진 루프 진입 직후 헤더에 즉시 반영
 
+        # ── Consumer 루프 시작 (단계 2: 엔진 프로세스 내에서만 사용) ───────────────
+        from app.services.engine_ws_dispatch import start_consumer_loop
+        await start_consumer_loop(es._ws_queue, es)
+        logger.info("[엔진] Consumer 루프 시작 완료")
+
         # ── 엔진 종료 대기 (WS 연결/해제는 스케줄러가 관리) ──
         es._engine_stop_event.clear()
         await es._engine_stop_event.wait()
@@ -324,6 +341,11 @@ async def run_engine_loop(es: ModuleType) -> None:
         es._log(f" [시작] 예외: {e}")
         logger.warning("[시작] 엔진 루프 예외", exc_info=True)
     finally:
+        # ── Consumer 루프 종료 (단계 2: 엔진 프로세스 내에서만 사용) ───────────────
+        from app.services.engine_ws_dispatch import stop_consumer_loop
+        await stop_consumer_loop()
+        logger.info("[엔진] Consumer 루프 종료 완료")
+
         if getattr(es, "_connector_manager", None):
             await es._connector_manager.disconnect_all()
         else:

@@ -555,3 +555,55 @@ async def handle_ws_data(data: dict, es: ModuleType) -> None:
     except Exception:
         logger.error("[WS] 메시지 처리 예외 (trnm=%s): %s", data.get("trnm"), data, exc_info=True)
 
+
+# ── Consumer 루프 (asyncio.Queue 기반) ──────────────────────────────────────
+
+_consumer_task: asyncio.Task | None = None
+_consumer_running: bool = False
+
+
+async def start_consumer_loop(queue: asyncio.Queue, es: ModuleType) -> None:
+    """Consumer 루프 — 큐에서 데이터를 꺼내 handle_ws_data()로 전달."""
+    global _consumer_task, _consumer_running
+
+    if _consumer_running:
+        logger.warning("[Consumer] 이미 실행 중")
+        return
+
+    _consumer_running = True
+    _consumer_task = asyncio.get_running_loop().create_task(_consumer_loop_impl(queue, es))
+    logger.info("[Consumer] 루프 시작")
+
+
+async def _consumer_loop_impl(queue: asyncio.Queue, es: ModuleType) -> None:
+    """Consumer 루프 구현."""
+    global _consumer_running
+    try:
+        while _consumer_running:
+            try:
+                data = await queue.get()
+                await handle_ws_data(data, es)
+                queue.task_done()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("[Consumer] 처리 예외 (계속): %s", e, exc_info=True)
+    finally:
+        _consumer_running = False
+        logger.info("[Consumer] 루프 종료")
+
+
+async def stop_consumer_loop() -> None:
+    """Consumer 루프 종료."""
+    global _consumer_running, _consumer_task
+
+    _consumer_running = False
+    if _consumer_task and not _consumer_task.done():
+        _consumer_task.cancel()
+        try:
+            await _consumer_task
+        except asyncio.CancelledError:
+            pass
+    _consumer_task = None
+    logger.info("[Consumer] 루프 정지 완료")
+

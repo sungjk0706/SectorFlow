@@ -37,11 +37,12 @@ class _KiwoomSocket:
     on_message 콜백은 async 함수여야 한다.
     """
 
-    def __init__(self, uri: str, token: str, on_message: Callable, on_disconnect: Callable | None = None):
+    def __init__(self, uri: str, token: str, on_message: Callable, on_disconnect: Callable | None = None, queue_callback: Callable | None = None):
         self._uri = uri
         self._token = token
-        self._on_message = on_message          # async callable
+        self._on_message = on_message          # async callable (폴백)
         self._on_disconnect = on_disconnect    # 연결 끊김 시 호출 (재연결 트리거)
+        self._queue_callback = queue_callback  # Producer 콜백 (asyncio.Queue.put_nowait)
         self._ws = None                        # websockets connection
         self.connected = False
         self._stop_event = asyncio.Event()
@@ -148,9 +149,16 @@ class _KiwoomSocket:
                     await self._on_message(msg)
                     continue
 
-                # 5. REAL → 큐에 투입
+                # 5. REAL → 큐에 투입 (Producer)
                 if trnm == "REAL":
-                    await self._on_message(msg)
+                    if self._queue_callback:
+                        try:
+                            self._queue_callback(msg)  # put_nowait 호출
+                        except asyncio.QueueFull:
+                            logger.warning("[서버소켓] 큐 가득 참 — REAL 데이터 드롭: %s", msg.get("trnm"))
+                    else:
+                        # 폴백: 기존 방식 유지
+                        await self._on_message(msg)
                     continue
 
                 # 6. REG/UNREG/REMOVE/SYSTEM 등
@@ -217,6 +225,7 @@ class KiwoomConnector(BrokerConnector):
         self._holiday_block_enabled: bool = True  # 공휴일 자동 차단 ON/OFF (holiday_guard_on)
         self._reconnect_task: asyncio.Task | None = None
         self._stop_reconnect: bool = False
+        self._ws_queue: asyncio.Queue | None = None  # Producer-Consumer Queue
 
     @property
     def broker_id(self) -> str:
@@ -262,11 +271,22 @@ class KiwoomConnector(BrokerConnector):
             if not token:
                 raise ConnectionError("키움 토큰 발급 실패")
             self._token = token
+            # Queue 콜백 래퍼 (put_nowait 호출)
+            queue_callback = None
+            if self._ws_queue is not None:
+                def _queue_put_nowait(msg: dict) -> None:
+                    try:
+                        self._ws_queue.put_nowait(msg)
+                    except asyncio.QueueFull:
+                        logger.warning("[증권사연결] 큐 가득 참 — 데이터 드롭")
+                queue_callback = _queue_put_nowait
+
             self._socket = _KiwoomSocket(
                 uri=self._ws_uri,
                 token=self._token,
                 on_message=self._on_ws_message,
                 on_disconnect=self._on_socket_disconnect,
+                queue_callback=queue_callback,
             )
             await self._socket.connect()
             self._connected = True
@@ -390,11 +410,22 @@ class KiwoomConnector(BrokerConnector):
                     continue
                 self._token = token
                 async with self._lock:
+                    # Queue 콜백 래퍼 (재연결 시도)
+                    queue_callback = None
+                    if self._ws_queue is not None:
+                        def _queue_put_nowait(msg: dict) -> None:
+                            try:
+                                self._ws_queue.put_nowait(msg)
+                            except asyncio.QueueFull:
+                                logger.warning("[증권사연결] 큐 가득 참 — 데이터 드롭 (재연결)")
+                        queue_callback = _queue_put_nowait
+
                     self._socket = _KiwoomSocket(
                         uri=self._ws_uri,
                         token=self._token,
                         on_message=self._on_ws_message,
                         on_disconnect=self._on_socket_disconnect,
+                        queue_callback=queue_callback,
                     )
                     await self._socket.connect()
                     self._connected = True
@@ -419,6 +450,10 @@ class KiwoomConnector(BrokerConnector):
     def set_message_callback(self, callback: Callable) -> None:
         """메시지 수신 콜백 설정."""
         self._receive_callback = callback
+
+    def set_queue_callback(self, queue: asyncio.Queue) -> None:
+        """Producer-Consumer Queue 설정."""
+        self._ws_queue = queue
 
     def _format_code(self, code: str) -> str:
         """종목코드 포맷팅 — 키움 형식."""
