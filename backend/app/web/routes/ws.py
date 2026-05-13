@@ -143,6 +143,10 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
                     ws_manager.set_active_page(websocket, page)
             elif msg_type == "page-inactive":
                 ws_manager.clear_active_page(websocket)
+            elif msg_type == "subscribe-fids":
+                fids = msg.get("fids", [])
+                if isinstance(fids, list):
+                    ws_manager.set_subscribed_fids(websocket, fids)
     except WebSocketDisconnect:
         pass
     except Exception as e:

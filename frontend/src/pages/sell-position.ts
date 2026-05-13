@@ -5,9 +5,9 @@
 
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
 import { appStore } from '../stores/appStore'
-import { notifyPageActive, notifyPageInactive } from '../api/ws'
+import { createGlobalWsBadge } from '../settings'
+import { notifyPageActive, notifyPageInactive, subscribeFids } from '../api/ws'
 import { createCardTitle } from '../components/common/card-title'
-import { createWsStatusBadge } from '../components/common/setting-row'
 import { rateColor, fmtComma, fmtRate, createCodeCell, createStockNameColumn, createNumberCell, createPriceCell } from '../components/common/ui-styles'
 import type { Position } from '../types'
 
@@ -78,13 +78,14 @@ const COLUMNS: ColumnDef<Position>[] = [
 
 let dataTable: DataTableApi<Position> | null = null
 let unsubStore: (() => void) | null = null
-let wsBadge: ReturnType<typeof createWsStatusBadge> | null = null
+let wsBadge: HTMLElement | null = null
 let _rafId: number | null = null
 let _mounted = false
 
 function mount(container: HTMLElement): void {
   _mounted = true
   notifyPageActive('sell-position')
+  subscribeFids(['10'])  // 현재가(FID '10')만 구독 - 80% 낭비 제거
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
@@ -93,14 +94,8 @@ function mount(container: HTMLElement): void {
   Object.assign(headerRow.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' })
   headerRow.appendChild(createCardTitle('보유종목'))
 
-  const initState = appStore.getState()
-  const isTestMode = initState.settings?.trade_mode === 'test'
-  wsBadge = createWsStatusBadge({
-    subscribed: !isTestMode,
-    broker: isTestMode ? undefined : 'kiwoom',
-    label: isTestMode ? '테스트모드' : undefined,
-  })
-  headerRow.appendChild(wsBadge.el)
+  wsBadge = createGlobalWsBadge()
+  headerRow.appendChild(wsBadge)
   root.appendChild(headerRow)
 
   const scrollContainer = document.createElement('div')
@@ -141,15 +136,14 @@ function mount(container: HTMLElement): void {
       prevPositions = state.positions
       prevSectorStocks = state.sectorStocks
 
-      // positions 참조 미변경 시 updateRows 생략
-      if (!positionsChanged) {
-        // sectorStocks만 변경 시 WS 뱃지만 업데이트
-        if (sectorStocksChanged) {
-          const isTest = state.settings?.trade_mode === 'test'
-          wsBadge?.update(!isTest, isTest ? undefined : 'kiwoom', isTest ? '테스트모드' : undefined)
-        }
+
+      // positions 또는 sectorStocks 변경 시 updateRows 실행
+      // sectorStocks 변경 시에도 createStockNameColumn의 market_type/nxt_enable 배지가 갱신되어야 함
+      if (!positionsChanged && !sectorStocksChanged) {
         return
       }
+
+      // WS 상태 배지는 전역 싱글톤이 자동 업데이트하므로 수동 업데이트 제거
 
       // rAF coalescing — 프레임당 1회만 갱신 예약
       if (_rafId === null) {
@@ -159,11 +153,8 @@ function mount(container: HTMLElement): void {
           const latest = appStore.getState()
           dataTable?.updateRows(latest.positions)
         })
+      } else {
       }
-
-      // WS 상태 뱃지 업데이트
-      const isTest = state.settings?.trade_mode === 'test'
-      wsBadge?.update(!isTest, isTest ? undefined : 'kiwoom', isTest ? '테스트모드' : undefined)
     })
   }
 }

@@ -5,7 +5,7 @@ import { createDataTable, type DataTableApi, type ColumnDef } from '../component
 import { appStore } from '../stores/appStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardTitle } from '../components/common/card-title'
-import { createWsStatusBadge } from '../components/common/setting-row'
+import { globalSettingsManager, createGlobalWsBadge } from '../settings'
 import { createStockNameColumn, createSeqCell, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, createNumberCell, FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
 import type { BuyTarget } from '../types'
 
@@ -89,7 +89,7 @@ const COLUMNS: ColumnDef<BuyTarget>[] = [
 /* ── 모듈 변수 ── */
 let dataTable: DataTableApi<BuyTarget> | null = null
 let badgeEls: { daily: HTMLSpanElement; holding: HTMLSpanElement; perStock: HTMLSpanElement } | null = null
-let wsBadge: ReturnType<typeof createWsStatusBadge> | null = null
+let wsBadge: HTMLElement | null = null
 let emptyEl: HTMLElement | null = null
 let unsubTargets: (() => void) | null = null
 let rafHandle: number | null = null
@@ -114,7 +114,7 @@ function createBadgeSpan(): HTMLSpanElement {
 function updateBadges(): void {
   if (!badgeEls) return
   const state = appStore.getState()
-  const settings = state.settings
+  const settings = globalSettingsManager.getSettings()
   const maxDaily = settings?.max_daily_total_buy_amt ?? 0
   const maxStock = settings?.max_stock_cnt ?? 5
   const buyAmtPerStock = settings?.buy_amt ?? 0
@@ -149,6 +149,7 @@ function updateBadges(): void {
 function mount(container: HTMLElement): void {
   _mounted = true
   notifyPageActive('buy-target')
+  const initState = appStore.getState()
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
@@ -157,13 +158,8 @@ function mount(container: HTMLElement): void {
   Object.assign(headerRow.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' })
   headerRow.appendChild(createCardTitle('매수후보'))
 
-  const initState = appStore.getState()
-  const subscribed = initState.wsSubscribeStatus.quote_subscribed
-  wsBadge = createWsStatusBadge({
-    subscribed,
-    broker: 'kiwoom',
-  })
-  headerRow.appendChild(wsBadge.el)
+  wsBadge = createGlobalWsBadge()
+  headerRow.appendChild(wsBadge)
   root.appendChild(headerRow)
 
   // 한도 배지 행
@@ -216,8 +212,7 @@ function mount(container: HTMLElement): void {
     // 마지막 렌더링 시점의 참조 (rAF 콜백에서 갱신)
     let lastRenderedBuyTargets = initState.buyTargets
     let lastRenderedPositions = initState.positions
-    let lastRenderedSettings = initState.settings
-    let lastRenderedWsSubscribeStatus = initState.wsSubscribeStatus
+    let lastRenderedSettings = globalSettingsManager.getSettings()
     let lastRenderedBuyLimitStatus = initState.buyLimitStatus
 
     unsubTargets = appStore.subscribe((state) => {
@@ -225,8 +220,7 @@ function mount(container: HTMLElement): void {
       const anyChanged =
         state.buyTargets !== lastRenderedBuyTargets ||
         state.positions !== lastRenderedPositions ||
-        state.settings !== lastRenderedSettings ||
-        state.wsSubscribeStatus !== lastRenderedWsSubscribeStatus ||
+        globalSettingsManager.getSettings() !== lastRenderedSettings ||
         state.buyLimitStatus !== lastRenderedBuyLimitStatus
 
       if (!anyChanged) return
@@ -251,20 +245,17 @@ function mount(container: HTMLElement): void {
           if (emptyEl) emptyEl.style.display = targets.length === 0 ? '' : 'none'
         }
 
-        // positions/settings/wsSubscribeStatus/buyLimitStatus 참조 동일 시 updateBadges 생략
+        // positions/settings/buyLimitStatus 참조 동일 시 updateBadges 생략
+        // WS 상태 배지는 전역 싱글톤이 자동 업데이트하므로 수동 업데이트 제거
         if (
           latest.positions !== lastRenderedPositions ||
-          latest.settings !== lastRenderedSettings ||
-          latest.wsSubscribeStatus !== lastRenderedWsSubscribeStatus ||
+          globalSettingsManager.getSettings() !== lastRenderedSettings ||
           latest.buyLimitStatus !== lastRenderedBuyLimitStatus
         ) {
           lastRenderedPositions = latest.positions
-          lastRenderedSettings = latest.settings
-          lastRenderedWsSubscribeStatus = latest.wsSubscribeStatus
+          lastRenderedSettings = globalSettingsManager.getSettings()
           lastRenderedBuyLimitStatus = latest.buyLimitStatus
           updateBadges()
-          const q = latest.wsSubscribeStatus.quote_subscribed
-          wsBadge?.update(q, 'kiwoom')
         }
       })
     })

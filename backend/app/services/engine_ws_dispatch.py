@@ -104,9 +104,8 @@ def _log_ws_trnm_json_detail(trnm: str, data: dict) -> None:
         total_len = len(s)
         if total_len > max_len:
             s = s[:max_len] + f"... (truncated, total {total_len} chars)"
-        logger.debug("[WS] ◀ %s 응답 상세: %s", trnm, s)
     except Exception as e:
-        logger.debug("[WS] ◀ %s 응답 상세 (repr): %r -- %s", trnm, data, e)
+        pass
 
 
 def _log_real_data_items_preview(data: dict) -> None:
@@ -135,14 +134,6 @@ def _log_real_data_items_preview(data: dict) -> None:
             sample_s = json.dumps(sample, ensure_ascii=False)
         except Exception:
             sample_s = str(sample)
-        logger.debug(
-            "[WS] ◀ REAL 항목[#%d] type=%r norm=%s item=%r | fid 샘플=%s",
-            idx,
-            msg_type,
-            norm,
-            iy,
-            sample_s,
-        )
 
 
 def _handle_login(data: dict, es: ModuleType) -> None:
@@ -193,60 +184,14 @@ def _handle_reg(data: dict, es: ModuleType) -> None:
     rows = _reg_data_rows(d)
     msg = str(d.get("return_msg", ""))[:160]
     try:
-        if not rows:
-            logger.debug(
-                "[WS] ◀ %s 응답 data 없음 return_code=%r msg=%s",
-                trnm,
-                rc,
-                msg,
-            )
         ok_rc = rc in ("0", "00", "")
         for row in rows:
             item_val = _reg_response_item_val(row)
             typ = row.get("type")
             grp = row.get("grp_no")
             if trnm in ("UNREG", "REMOVE"):
-                if item_val:
-                    logger.debug(
-                        "[UNREG·종목] ◀ item=%s type=%r grp=%r return_code=%r 해제OK=%s msg=%s",
-                        item_val,
-                        typ,
-                        grp,
-                        rc,
-                        ok_rc,
-                        msg,
-                    )
-                else:
-                    logger.debug(
-                        "[UNREG·조건/계좌] ◀ type=%r grp=%r return_code=%r item=%r 해제OK=%s msg=%s",
-                        typ,
-                        grp,
-                        rc,
-                        item_val,
-                        ok_rc,
-                        msg,
-                    )
                 continue
 
-            if item_val:
-                logger.debug(
-                    "[REG·종목] 응답 item=%s type=%r grp=%r return_code=%r 서버등록OK=%s msg=%s",
-                    item_val,
-                    typ,
-                    grp,
-                    rc,
-                    ok_rc,
-                    msg,
-                )
-            else:
-                logger.debug(
-                    "[REG·계좌/조건] 응답 type=%r grp=%r return_code=%r item=%r msg=%s",
-                    typ,
-                    grp,
-                    rc,
-                    item_val,
-                    msg,
-                )
 
             norm = _format_kiwoom_reg_stk_cd(item_val) if item_val else ""
             if not norm:
@@ -280,10 +225,6 @@ def _handle_real_01(
     raw_cd = _real_item_stk_cd(item, vals)
     last_px = _parse_fid10_price(vals)
     if not raw_cd or last_px <= 0:
-        logger.debug(
-            "[REAL·체결] 미반영 -- 종목=%r 최종가=%s (9001/item·FID10/27/28 파싱 후에도 없음)",
-            raw_cd, last_px,
-        )
         _check_realtime_latency(_ts, es)
         return
     nk_px = _format_kiwoom_reg_stk_cd(raw_cd)
@@ -458,11 +399,6 @@ def _handle_real_0j(item: dict, vals: dict, es: ModuleType) -> None:
             "change": change,
             "rate": rate,
         }
-        logger.debug(
-            "[지수] 0J REAL -- %s %.2f (전일대비 %.2f, 등락율 %.2f%%) src=%s",
-            idx_cd, abs(price), change, rate,
-            "NXT" if _exch_suffix else "KRX",
-        )
         # [근본해결] 중복 알림 제거 (Raw 데이터가 전체 전송함)
         # notify_desktop_index_refresh()
     else:
@@ -481,7 +417,6 @@ def _handle_real_0d(item: dict, vals: dict, es: ModuleType) -> None:
     bid = _ws_fid_int(vals, "125", 0)  # 총 매수호가잔량
     ask = _ws_fid_int(vals, "121", 0)  # 총 매도호가잔량
     if bid < 0 or ask < 0:
-        logger.debug("[0D] 파싱 실패 종목=%s bid=%s ask=%s", nk, bid, ask)
         return
     prev = es._orderbook_cache.get(nk)
     es._orderbook_cache[nk] = (bid, ask)  # 단일 키 직접 대입 (튜플은 불변)

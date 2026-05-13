@@ -293,6 +293,9 @@ def notify_desktop_sector_scores(*, force: bool = False) -> None:
             cur_sectors = {s["sector"] for s in scores}
             removed = [s["sector"] for s in _prev_scores_cache if s["sector"] not in cur_sectors]
 
+            # 메모리 클리닝: 임시 변수 삭제
+            del prev_map, cur_sectors
+
             if not changed and not removed:
                 return  # 변경 없음 → 전송 생략
 
@@ -303,6 +306,9 @@ def notify_desktop_sector_scores(*, force: bool = False) -> None:
                 "changed_sectors": [s["sector"] for s in changed],
                 "removed_sectors": removed,
             }
+
+            # 메모리 클리닝: 임시 리스트 삭제
+            del changed, removed
         else:
             # 최초 전송 또는 force → 전체 스냅샷
             payload = {
@@ -455,15 +461,11 @@ def notify_desktop_account_tabs_refresh() -> None:
 def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str | None = None) -> None:
     """체결·잔고·실시간 시세 변경 시 → WS account-update (delta 방식, 페이지별 페이로드 분리)."""
     global _position_sent_cache, _snapshot_sent_cache
-    if reason:
-        logger.debug("[데이터] 계좌화면전송 시작 reason=%s", reason)
 
     changed_positions, removed_codes = _compute_position_delta(positions)
     snapshot_changed = not _snap_equal(snapshot, _snapshot_sent_cache)
 
     if not changed_positions and not removed_codes and not snapshot_changed:
-        if reason:
-            logger.debug("[데이터] 계좌화면전송 변경 없음 -- 전송 생략 reason=%s", reason)
         return
 
     # 페이지별 페이로드 분리

@@ -3,7 +3,8 @@
 // BuySettingsCard.tsx + BuySettingsSection.tsx + BuyBlockSection.tsx + QuickToggle + TimePairInput 통합
 
 import { appStore } from '../stores/appStore'
-import { createSettingsManager, type SettingsManager } from '../settings'
+import { createSettingsManager, type SettingsManager, createGlobalWsBadge } from '../settings'
+import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingRow, createNumInput, createMoneyInput, createToggleBtn, createFixedValue } from '../components/common/setting-row'
 import { toastResult } from '../components/common/save-toast'
 import { sectionTitle } from '../components/common/settings-common'
@@ -23,6 +24,7 @@ let vals: Record<string, unknown> = {}
 let localOrderRatioPct: number | null = null  // 사용자가 설정한 값 (null=서버값 사용)
 
 // 입력 컴포넌트 참조
+let wsBadge: HTMLElement | null = null
 let autoBuyToggle: ReturnType<typeof createToggleBtn> | null = null
 let timePairHandle: TimePairInputHandle | null = null
 let kospiGuardToggle: ReturnType<typeof createToggleBtn> | null = null
@@ -142,6 +144,7 @@ function syncFromSettings(s: AppSettings): void {
 
 /* ── mount ── */
 function mount(container: HTMLElement): void {
+  notifyPageActive('buy-settings')
   settingsMgr = createSettingsManager(appStore)
   saving = false
   pendingSave = null
@@ -149,11 +152,17 @@ function mount(container: HTMLElement): void {
 
   const root = document.createElement('div')
 
-  // 제목
+  // 제목 + WS 상태 배지
+  const headerRow = document.createElement('div')
+  Object.assign(headerRow.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' })
   const h4 = document.createElement('h4')
-  h4.style.margin = '0 0 12px'
+  h4.style.margin = '0'
   h4.textContent = '매수 설정'
-  root.appendChild(h4)
+  headerRow.appendChild(h4)
+
+  wsBadge = createGlobalWsBadge()
+  headerRow.appendChild(wsBadge)
+  root.appendChild(headerRow)
 
   // ── 자동매수 토글 + TimePairInput (1행) ──
   const autoRow = document.createElement('div')
@@ -408,11 +417,13 @@ function mount(container: HTMLElement): void {
 
 /* ── unmount ── */
 function unmount(): void {
+  notifyPageInactive('buy-settings')
   if (unsubSettings) { unsubSettings(); unsubSettings = null }
   if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
   saving = false
   pendingSave = null
   if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }
+  wsBadge = null
   autoBuyToggle = null
   timePairHandle = null
   kospiGuardToggle = null; kospiDropInput = null

@@ -4,6 +4,7 @@
 import { shell } from '../main'
 import { sectorCustomStore, computeEditWindowOpenByTime, type SectorCustomState } from '../stores/sectorCustomStore'
 import { appStore } from '../stores/appStore'
+import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingsManager, type SettingsManager } from '../settings'
 import { createSettingRow, createToggleBtn } from '../components/common/setting-row'
 import { createCardTitleWithContent } from '../components/common/card-title'
@@ -1429,6 +1430,7 @@ function applyStockMovesDelta(prevMoves: Record<string, string>, newMoves: Recor
 /* ── 8.1 + 8.8: mount / unmount ── */
 
 function mount(_container: HTMLElement): void {
+  notifyPageActive('sector-custom')
   // 8.2: Build tripleHeader
   buildTripleHeader()
 
@@ -1492,6 +1494,7 @@ function mount(_container: HTMLElement): void {
 /* ── 8.8: unmount ── */
 
 function unmount(): void {
+  notifyPageInactive('sector-custom')
   if (unsubCustom) { unsubCustom(); unsubCustom = null }
   if (unsubSse) { unsubSse(); unsubSse = null }
   if (unsubSettings) { unsubSettings(); unsubSettings = null }
