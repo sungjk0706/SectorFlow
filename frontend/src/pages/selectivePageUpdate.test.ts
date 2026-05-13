@@ -10,7 +10,7 @@
  * only the corresponding DOM section SHALL be updated,
  * and other sections SHALL receive zero DOM mutations.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
 import type { AccountSnapshot, Position } from '../types'
 

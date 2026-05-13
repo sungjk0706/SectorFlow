@@ -101,13 +101,13 @@ class WSManager:
     def register(self, ws: WebSocket) -> None:
         """클라이언트를 _clients set에 추가."""
         self._clients.add(ws)
-        logger.debug("[실시간] 클라이언트 연결 (총 %d)", len(self._clients))
+        logger.debug("[연결] 클라이언트 연결 (총 %d)", len(self._clients))
 
     def unregister(self, ws: WebSocket) -> None:
         """클라이언트를 _clients set에서 제거."""
         self._clients.discard(ws)
         self._client_active_page.pop(ws, None)
-        logger.debug("[실시간] 클라이언트 해제 (총 %d)", len(self._clients))
+        logger.debug("[연결] 클라이언트 해제 (총 %d)", len(self._clients))
 
     # ------------------------------------------------------------------
     # Per-client active page 관리
@@ -169,6 +169,7 @@ class WSManager:
                     await ws.send_text(text)
                 except Exception:
                     dead.add(ws)
+                    logger.debug("[연결] WS batch 전송 실패 — 클라이언트 제거", exc_info=True)
                     break
         for ws in dead:
             self.unregister(ws)
@@ -195,6 +196,7 @@ class WSManager:
                 await ws.send_text(text)
             except Exception:
                 dead.add(ws)
+                logger.debug("[연결] WS real-data 즉시 전송 실패 — 클라이언트 제거", exc_info=True)
         for ws in dead:
             self.unregister(ws)
 
@@ -241,6 +243,7 @@ class WSManager:
                     await ws.send_text(text)
             except Exception:
                 dead.add(ws)
+                logger.debug("[연결] WS real-data 인코딩 전송 실패 — 클라이언트 제거", exc_info=True)
         for ws in dead:
             self.unregister(ws)
 
@@ -297,6 +300,7 @@ class WSManager:
             await ws.send_text(text)
         except Exception:
             self.unregister(ws)
+            logger.debug("[연결] WS 단일 전송 실패 — 클라이언트 제거", exc_info=True)
 
     async def send_to(self, ws: WebSocket, event_type: str, data: dict) -> None:
         """특정 클라이언트에만 유니캐스트 (initial-snapshot용)."""
@@ -304,9 +308,9 @@ class WSManager:
         text = json.dumps({"event": event_type, "data": stamped}, ensure_ascii=False)
         try:
             await ws.send_text(text)
-            logger.debug("[실시간연결] %s 화면전송 완료 (size=%d bytes)", event_type, len(text))
+            logger.debug("[연결] %s 화면전송 완료 (size=%d bytes)", event_type, len(text))
         except Exception as e:
-            logger.warning("[실시간연결] %s 화면전송 실패: %s", event_type, str(e))
+            logger.warning("[연결] %s 화면전송 실패: %s", event_type, str(e), exc_info=True)
             self.unregister(ws)
 
     # ------------------------------------------------------------------
@@ -319,7 +323,7 @@ class WSManager:
             try:
                 await ws.close()
             except Exception:
-                pass
+                logger.debug("[연결] WS 클라이언트 종료 실패", exc_info=True)
         self._clients.clear()
 
     # ------------------------------------------------------------------

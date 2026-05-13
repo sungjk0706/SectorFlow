@@ -55,7 +55,6 @@ function createFlashTable() {
     virtualScroll: true,
     keyFn: (r) => r.code,
     rowHeight: 32,
-    priceFn: (r) => r.price,
   })
 }
 

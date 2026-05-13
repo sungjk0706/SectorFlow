@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import * as fc from 'fast-check'
-import { createDataTable, type ColumnDef, type DataTableOptions } from './data-table'
+import { createDataTable, type ColumnDef } from './data-table'
 
 /* ── Test Row Type ── */
 
@@ -217,7 +217,6 @@ describe('Property 6: Cell Diffing Idempotence (동일 데이터 재렌더링 �
 
           // Second render with same data — count total mutations across all rows
           let totalMutations = 0
-          const scrollContainer = table.el.querySelector('div[style*="overflow"]') || table.el
           const observer = new MutationObserver((mutations) => {
             // Filter out mutations that are not related to row content
             for (const m of mutations) {

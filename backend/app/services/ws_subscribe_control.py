@@ -103,7 +103,7 @@ async def _ensure_account_subscription(es: ModuleType) -> None:
         await engine_ws_reg.subscribe_account_realtime(es)
         logger.info("[구독제어] 실전모드 — 계좌(grp 10) 구독 보장 완료")
     except Exception as e:
-        logger.warning("[구독제어] 계좌 구독 보장 실패: %s", e)
+        logger.warning("[구독제어] 계좌 구독 보장 실패: %s", e, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +141,7 @@ async def start_index(es: ModuleType) -> dict:
             logger.info("[구독제어] 지수(0J, grp 2) 구독 시작 완료")
             return {"ok": True, "status": get_subscribe_status()}
         except Exception as e:
-            logger.warning("[구독제어] 지수 구독 시작 실패: %s", e)
+            logger.warning("[구독제어] 지수 구독 시작 실패: %s", e, exc_info=True)
             return {"ok": False, "message": str(e)}
 
 
@@ -167,7 +167,7 @@ async def start_quote(es: ModuleType) -> dict:
             logger.info("[구독제어] 실시간시세(0B, grp 4) 구독 시작 완료")
             return {"ok": True, "status": get_subscribe_status()}
         except Exception as e:
-            logger.warning("[구독제어] 실시간시세 구독 시작 실패: %s", e)
+            logger.warning("[구독제어] 실시간시세 구독 시작 실패: %s", e, exc_info=True)
             return {"ok": False, "message": str(e)}
 
 
@@ -254,7 +254,7 @@ async def run_conditional_reg_pipeline(es: ModuleType) -> None:
                 _set_status(index=True)
                 logger.info("[구독제어] 지수(0J) 자동 구독 완료")
             except Exception as e:
-                logger.warning("[구독제어] 지수 자동 구독 실패: %s", e)
+                logger.warning("[구독제어] 지수 자동 구독 실패: %s", e, exc_info=True)
 
         if quote_auto:
             try:
@@ -262,7 +262,7 @@ async def run_conditional_reg_pipeline(es: ModuleType) -> None:
                 _set_status(quote=True)
                 logger.info("[구독제어] 실시간시세(0B) 자동 구독 완료")
             except Exception as e:
-                logger.warning("[구독제어] 실시간시세 자동 구독 실패: %s", e)
+                logger.warning("[구독제어] 실시간시세 자동 구독 실패: %s", e, exc_info=True)
 
         # 실전모드에서 하나라도 구독 시작했으면 계좌 구독 보장
         if index_auto or quote_auto:

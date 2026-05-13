@@ -113,7 +113,7 @@ async def register_pending_stock(
         # 실시간 체결 구독 -- REG만. 시세는 REAL 01 우선.
         try:
             _task = asyncio.get_running_loop().create_task(es._subscribe_stock_realtime_when_ready(stk_cd))
-            _task.add_done_callback(lambda t: logger.warning("[구독등록] 구독 실패: %s", t.exception()) if t.exception() else None)
+            _task.add_done_callback(lambda t: logger.warning("[구독] 구독 실패: %s", t.exception()) if t.exception() else None)
         except RuntimeError as e:
             logger.error("[구독] task 생성 실패 %s: %s", stk_cd, e)
     elif detail:
@@ -186,7 +186,7 @@ async def run_snapshot_and_sell_check(force_rest: bool, es: ModuleType) -> None:
         if _sell_positions and es._auto_trade and auto_sell_effective(es._settings_cache) and es._access_token:
             es._auto_trade.check_sell_conditions(_sell_positions, es._settings_cache, es._access_token)
     except Exception as e:
-        logger.warning("[확정데이터] 처리 중 오류: %s", e)
+        logger.warning("[데이터] 처리 중 오류: %s", e)
 
 
 def check_test_buy_power(settings: dict, price: int, qty: int, daily_spent: int) -> tuple[bool, str]:
