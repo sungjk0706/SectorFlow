@@ -40,9 +40,9 @@ async def _cache_and_bootstrap(es: ModuleType, settings: dict) -> None:
     try:
         from app.web.ws_manager import ws_manager
         ws_manager.broadcast("engine-ready", {"_v": 1, "ready": True})
-        logger.info("[앱준비] 데이터준비 완료 -- 실시간 준비됨")
+        logger.info("[시작] 데이터준비 완료 -- 실시간 준비됨")
     except Exception:
-        pass
+        logger.warning("[시작] engine-ready 브로드캐스트 실패", exc_info=True)
 
 
 async def _get_token_async(router) -> str | None:
@@ -56,7 +56,7 @@ async def _get_token_async(router) -> str | None:
         token = await asyncio.to_thread(router.auth.get_access_token)
         return token
     except Exception as e:
-        logger.warning("[엔진] 토큰 발급 예외: %s. 확정데이터 전용 모드로 기동.", e)
+        logger.warning("[연결] 토큰 발급 예외: %s. 확정데이터 전용 모드로 기동.", e, exc_info=True)
         return None
 
 
@@ -73,10 +73,10 @@ async def _get_all_tokens_async(router, es) -> None:
     async def _fetch_one(broker_id: str, auth_provider) -> tuple[str, str | None]:
         try:
             token = await asyncio.to_thread(auth_provider.get_access_token)
-            logger.info("[엔진] 키움증권 접속 완료")
+            logger.info("[연결] 키움증권 접속 완료")
             return broker_id, token
         except Exception as e:
-            logger.warning("[엔진] %s 토큰 발급 실패: %s", broker_id.upper(), e)
+            logger.warning("[연결] %s 토큰 발급 실패: %s", broker_id.upper(), e, exc_info=True)
             return broker_id, None
 
     results = await asyncio.gather(
@@ -107,7 +107,7 @@ async def _load_broker_spec_async(spec_path: Path) -> list:
     try:
         return await asyncio.to_thread(_sync_load)
     except Exception as e:
-        logger.warning("[엔진] broker_specs 로드 실패: %s", e)
+        logger.warning("[시작] broker_specs 로드 실패: %s", e, exc_info=True)
         return []
 
 
@@ -169,10 +169,10 @@ async def run_engine_loop(es: ModuleType) -> None:
             if _key and _sec:
                 valid_brokers.append(_bk)
             else:
-                es._log(f" [엔진] {_bk.upper()} API 키가 설정되지 않았습니다. 일반설정에서 입력하세요.")
+                es._log(f" [시작] {_bk.upper()} API 키가 설정되지 않았습니다. 일반설정에서 입력하세요.")
 
         if not valid_brokers:
-            es._log(f" [엔진] 유효한 API 키가 없습니다. 일반설정에서 증권사 API 키를 입력하세요.")
+            es._log(f" [시작] 유효한 API 키가 없습니다. 일반설정에서 증권사 API 키를 입력하세요.")
             es._running = False
             es._broadcast_engine_ws()
             return
@@ -194,34 +194,34 @@ async def run_engine_loop(es: ModuleType) -> None:
 
         _t_parallel_end = time.perf_counter()
         logger.info(
-            "[엔진] [앱시작] 준비완료 -- %.0fms",
+            "[시작] [앱시작] 준비완료 -- %.0fms",
             (_t_parallel_end - _t_parallel_start) * 1000,
         )
         logger.info("[기동시간] 병렬 초기화: %.0fms", (_t_parallel_end - _t_parallel_start) * 1000)
 
         # ── gather 결과 반영: _cache_and_bootstrap ──
         if isinstance(_cache_result, BaseException):
-            logger.warning("[엔진] 저장데이터+앱준비 예외: %s", _cache_result)
+            logger.warning("[시작] 저장데이터+앱준비 예외: %s", _cache_result, exc_info=True)
 
         # ── gather 결과 반영: broker_spec ──
         if isinstance(broker_spec_result, BaseException):
             es._broker_spec = []
-            es._log(f" [엔진] broker_specs/{broker_nm}.json 로드 실패: {broker_spec_result}")
+            es._log(f" [시작] broker_specs/{broker_nm}.json 로드 실패: {broker_spec_result}")
         elif isinstance(broker_spec_result, list):
             es._broker_spec = broker_spec_result
             acnt_no = settings.get(f"{broker_nm}_account_no", "") or settings.get("kiwoom_account_no", "")
-            es._log(f"[엔진] {broker_nm.upper()} [키움증권] 설정로딩 -- TR {len(es._broker_spec)}개, 계좌: {acnt_no or '미설정'}")
+            es._log(f"[시작] {broker_nm.upper()} [키움증권] 설정로딩 -- TR {len(es._broker_spec)}개, 계좌: {acnt_no or '미설정'}")
         else:
             es._broker_spec = []
 
         # ── gather 결과 반영: token ──
         if isinstance(token_result, BaseException):
-            es._log(f" [엔진] 토큰 발급 예외: {token_result}. 스냅샷 전용 모드로 기동.")
+            es._log(f" [연결] 토큰 발급 예외: {token_result}. 스냅샷 전용 모드로 기동.")
             es._access_token = None
         elif token_result:
             es._access_token = token_result
         else:
-            es._log(f" [엔진] {broker_nm.upper()} 토큰 발급 실패. 스냅샷 전용 모드로 기동.")
+            es._log(f" [연결] {broker_nm.upper()} 토큰 발급 실패. 스냅샷 전용 모드로 기동.")
             es._access_token = None
 
         # ── 계좌 조회용 REST = Router의 AuthProvider에서 REST API 인스턴스 공유 ──
@@ -238,7 +238,7 @@ async def run_engine_loop(es: ModuleType) -> None:
                     es._rest_api._balance_tr_id = tr
                 elif tr == "ka00001":
                     es._rest_api._account_tr_id = tr
-            es._log(f"[엔진] {broker_nm.upper()} REST API 인스턴스 연결 완료 (테스트모드={_is_test}, 토큰 단일 캐시)")
+            es._log(f"[연결] {broker_nm.upper()} REST API 인스턴스 연결 완료 (테스트모드={_is_test}, 토큰 단일 캐시)")
 
         # ── _rest_api 설정 후 적격종목 + 앱준비 재실행 (캐시 만료 시) ──
         if not es._sector_stock_layout and es._rest_api:
@@ -252,23 +252,23 @@ async def run_engine_loop(es: ModuleType) -> None:
                     _ind_mod._eligible_stock_codes = _fresh
                     await asyncio.to_thread(save_eligible_stocks_cache, _fresh)
                     logger.info(
-                        "[앱준비] 매매적격종목 저장데이터 만료 -- ka10099 서버 다운로드 %d종목, 앱준비 재실행",
+                        "[시작] 매매적격종목 저장데이터 만료 -- ka10099 서버 다운로드 %d종목, 앱준비 재실행",
                         len(_fresh),
                     )
                     await es._bootstrap_sector_stocks_async()
                     try:
                         from app.web.ws_manager import ws_manager
                         ws_manager.broadcast("engine-ready", {"_v": 1, "ready": True})
-                        logger.info("[앱준비] 앱준비 재실행 완료 — engine-ready 재전송")
+                        logger.info("[시작] 앱준비 재실행 완료 — engine-ready 재전송")
                     except Exception:
-                        pass
+                        logger.warning("[시작] engine-ready 재전송 실패", exc_info=True)
             except Exception as _e:
-                logger.warning("[앱준비] _rest_api 설정 후 ka10099 다운로드 실패: %s", _e)
+                logger.warning("[시작] _rest_api 설정 후 ka10099 다운로드 실패: %s", _e, exc_info=True)
 
         # ── _rest_api 설정 후 5일봉 캐시 갱신 필요 여부 재확인 ──
         if getattr(es, '_avg_amt_needs_bg_refresh', False):
             logger.info(
-                "[앱준비][장외갱신] _rest_api 설정 완료 -- 5일 평균 저장데이터 갱신 예약 (%d종목)",
+                "[시작][장외갱신] _rest_api 설정 완료 -- 5일 평균 저장데이터 갱신 예약 (%d종목)",
                 len(es._avg_amt_5d),
             )
             asyncio.get_event_loop().create_task(es._bg_refresh_avg_amt_5d())
@@ -283,7 +283,7 @@ async def run_engine_loop(es: ModuleType) -> None:
         )
         _acnt_disp     = (_acnt_raw[:4] + "****") if len(_acnt_raw) >= 4 else _acnt_raw
         _real_warn     = " ★ 실제 자금 투입 ★" if not _is_test_flag else ""
-        logger.info("[엔진] 기동 완료 -- %s %s / 계좌: %s%s", _broker_str, _mode_str, _acnt_disp, _real_warn)
+        logger.info("[시작] 기동 완료 -- %s %s / 계좌: %s%s", _broker_str, _mode_str, _acnt_disp, _real_warn)
 
         if es._access_token:
             es._auto_trade = AutoTradeManager(
@@ -303,13 +303,13 @@ async def run_engine_loop(es: ModuleType) -> None:
                     es._connector_manager = _mgr
                     # 하위 호환: 기존 변수에 개별 Connector 할당
                     es._kiwoom_connector = _mgr.get_connector("kiwoom")
-                    logger.info("[엔진] 실시간 연결 완료")
+                    logger.info("[연결] 실시간 연결 완료")
                 except Exception as e:
-                    logger.error("[엔진] 실시간 연결 초기화 실패: %s", e)
+                    logger.error("[연결] 실시간 연결 초기화 실패: %s", e, exc_info=True)
                     es._connector_manager = None
                     es._kiwoom_connector = None
             else:
-                logger.info("[엔진] 실시간 구독 구간 밖 또는 실시간 연결 OFF — Connector 연결 생략")
+                logger.info("[연결] 실시간 구독 구간 밖 또는 실시간 연결 OFF — Connector 연결 생략")
 
         logger.info("[기동시간] 전체 기동: %.0fms", (time.perf_counter() - _t0) * 1000)
         es._broadcast_engine_ws()  # 엔진 루프 진입 직후 헤더에 즉시 반영
@@ -321,7 +321,8 @@ async def run_engine_loop(es: ModuleType) -> None:
     except asyncio.CancelledError:
         pass
     except Exception as e:
-        es._log(f" [엔진] 예외: {e}")
+        es._log(f" [시작] 예외: {e}")
+        logger.warning("[시작] 엔진 루프 예외", exc_info=True)
     finally:
         if getattr(es, "_connector_manager", None):
             await es._connector_manager.disconnect_all()
@@ -334,4 +335,4 @@ async def run_engine_loop(es: ModuleType) -> None:
         es._engine_loop_ref = None
         es._running   = False
         es._broadcast_engine_ws()
-        es._log(f"[엔진] 정지됨 ({es._now_kst()})")
+        es._log(f"[시작] 정지됨 ({es._now_kst()})")

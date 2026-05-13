@@ -150,6 +150,7 @@ def _parse_hm(hm_str: str) -> tuple[int, int]:
         parts = str(hm_str or "").strip().split(":")
         return int(parts[0]), int(parts[1])
     except Exception:
+        logger.warning("[타이머] 시간 파싱 실패 (hm_str=%r)", hm_str, exc_info=True)
         return 0, 0
 
 
@@ -173,6 +174,7 @@ def is_ws_subscribe_window(settings: dict | None = None) -> bool:
             from app.core.settings_file import load_settings
             settings = load_settings()
         except Exception:
+            logger.warning("[타이머] 설정 로드 실패 — 구독 허용", exc_info=True)
             return True  # 설정 읽기 실패 시 구독 허용
 
     # 공휴일 가드: ON이면 공휴일 차단, OFF면 공휴일에도 허용
@@ -207,6 +209,7 @@ def is_edit_window_open(settings: dict | None = None) -> bool:
             from app.core.settings_file import load_settings
             settings = load_settings()
         except Exception:
+            logger.warning("[타이머] 설정 로드 실패 — 빈 설정 사용", exc_info=True)
             settings = {}
     return not is_ws_subscribe_window(settings)
 
@@ -227,14 +230,14 @@ def save_index_cache(engine_service) -> None:
     try:
         latest_index: dict = getattr(engine_service, "_latest_index", {})
         if not latest_index:
-            logger.debug("[지수저장데이터] 저장할 지수 데이터 없음 -- 생략")
+            logger.debug("[시작] 저장할 지수 데이터 없음 -- 생략")
             return
         _INDEX_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
         with open(_INDEX_CACHE_PATH, "w", encoding="utf-8") as f:
             json.dump(latest_index, f, ensure_ascii=False)
-        logger.info("[지수저장데이터] 확정 데이터 저장 완료 -- %s", {k: f"{v.get('price', 0):.2f}" for k, v in latest_index.items()})
+        logger.debug("[시작] 확정 데이터 저장 완료 -- %s", {k: f"{v.get('price', 0):.2f}" for k, v in latest_index.items()})
     except Exception as e:
-        logger.warning("[지수저장데이터] 저장 실패: %s", e)
+        logger.warning("[시작] 저장 실패: %s", e, exc_info=True)
 
 
 def load_index_cache(engine_service) -> bool:
@@ -248,10 +251,10 @@ def load_index_cache(engine_service) -> bool:
             return False
         latest_index: dict = getattr(engine_service, "_latest_index", {})
         latest_index.update(data)
-        logger.info("[지수저장데이터] 확정 데이터 로드 완료 -- %s", {k: f"{v.get('price', 0):.2f}" for k, v in data.items()})
+        logger.debug("[시작] 확정 데이터 로드 완료 -- %s", {k: f"{v.get('price', 0):.2f}" for k, v in data.items()})
         return True
     except Exception as e:
-        logger.warning("[지수저장데이터] 로드 실패: %s", e)
+        logger.warning("[시작] 로드 실패: %s", e, exc_info=True)
         return False
 
 
@@ -260,14 +263,14 @@ def save_industry_index_cache(engine_service) -> None:
     try:
         latest: dict = getattr(engine_service, "_latest_industry_index", {})
         if not latest:
-            logger.debug("[업종저장데이터] 저장할 업종 시세 데이터 없음 -- 생략")
+            logger.debug("[시작] 저장할 업종 시세 데이터 없음 -- 생략")
             return
         _INDUSTRY_INDEX_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
         with open(_INDUSTRY_INDEX_CACHE_PATH, "w", encoding="utf-8") as f:
             json.dump(latest, f, ensure_ascii=False)
-        logger.info("[업종저장데이터] 확정 데이터 저장 완료 -- %d개 업종", len(latest))
+        logger.debug("[시작] 확정 데이터 저장 완료 -- %d개 업종", len(latest))
     except Exception as e:
-        logger.warning("[업종저장데이터] 저장 실패: %s", e)
+        logger.warning("[시작] 저장 실패: %s", e, exc_info=True)
 
 
 def load_industry_index_cache(engine_service) -> bool:
@@ -281,10 +284,10 @@ def load_industry_index_cache(engine_service) -> bool:
             return False
         latest: dict = getattr(engine_service, "_latest_industry_index", {})
         latest.update(data)
-        logger.info("[업종저장데이터] 확정 데이터 로드 완료 -- %d개 업종", len(data))
+        logger.debug("[시작] 확정 데이터 로드 완료 -- %d개 업종", len(data))
         return True
     except Exception as e:
-        logger.warning("[업종저장데이터] 로드 실패: %s", e)
+        logger.warning("[시작] 로드 실패: %s", e, exc_info=True)
         return False
 
 
@@ -292,15 +295,15 @@ def _run_avg_amt_5d_refresh(engine_service) -> None:
     """장마감 후 확정된 당일 1일봉 거래대금을 받아서 5일 평균을 계산하고 캐시 파일에 저장하는 함수."""
     global _avg_amt_5d_refresh_done
     if getattr(engine_service, '_avg_amt_refresh_running', False):
-        logger.info("[타이머] 5일 평균 갱신 이미 진행 중 -- 생략")
+        logger.debug("[타이머] 5일 평균 갱신 이미 진행 중 -- 생략")
         return
     try:
         loop = asyncio.get_running_loop()
         loop.create_task(engine_service.refresh_avg_amt_5d_cache())
         _avg_amt_5d_refresh_done = True
-        logger.info("[타이머] 5일 평균 거래대금 저장데이터 갱신 요청 완료")
+        logger.debug("[타이머] 5일 평균 거래대금 저장데이터 갱신 요청 완료")
     except Exception as e:
-        logger.warning("[타이머] 5일 평균 거래대금 갱신 실패: %s", e)
+        logger.warning("[타이머] 5일 평균 거래대금 갱신 실패: %s", e, exc_info=True)
 
 
 def _on_krx_after_hours_start() -> None:
@@ -327,7 +330,7 @@ def _on_krx_after_hours_start() -> None:
         notify_desktop_sector_stocks_refresh()
         _broadcast("market-phase", get_market_phase())
     except Exception as e:
-        logger.warning("[타이머] KRX 장외 전환 콜백 오류: %s", e)
+        logger.warning("[타이머] KRX 장외 전환 콜백 오류: %s", e, exc_info=True)
 
 
 def _on_krx_after_hours_remove() -> None:
@@ -347,7 +350,7 @@ def _on_krx_after_hours_remove() -> None:
             loop = asyncio.get_running_loop()
             loop.create_task(_do_krx_after_hours_remove())
     except Exception as e:
-        logger.warning("[타이머] 16:01 KRX 장마감 구독해지 예약 오류: %s", e)
+        logger.warning("[타이머] 16:01 KRX 장마감 구독해지 예약 오류: %s", e, exc_info=True)
 
 
 async def _do_krx_after_hours_remove() -> None:
@@ -365,12 +368,12 @@ async def _do_krx_after_hours_remove() -> None:
         result = await remove_krx_only_stocks(es)
         if result.get("skipped"):
             _krx_remove_done = False
-            logger.info("[파이프라인] KRX 장마감 구독해지 생략 — 플래그 복원 (앱준비 후 재시도 가능)")
+            logger.debug("[타이머] KRX 장마감 구독해지 생략 — 플래그 복원 (앱준비 후 재시도 가능)")
         else:
-            logger.info("[파이프라인] KRX 장마감 구독해지 완료 — 해지 %d종목, 실패 %d종목", result.get("removed", 0), result.get("failed", 0))
+            logger.info("[타이머] KRX 장마감 구독해지 완료 — 해지 %d종목, 실패 %d종목", result.get("removed", 0), result.get("failed", 0))
     except Exception as e:
         _krx_remove_done = False
-        logger.warning("[파이프라인] KRX 장마감 구독해지 오류 — 플래그 복원: %s", e)
+        logger.warning("[타이머] KRX 장마감 구독해지 오류 — 플래그 복원: %s", e, exc_info=True)
 
 
 def _fire_unified_confirmed_fetch() -> None:
@@ -383,13 +386,13 @@ def _fire_unified_confirmed_fetch() -> None:
     global _confirmed_done
     try:
         if _confirmed_done:
-            logger.info("[파이프라인] 통합 확정 조회 이미 완료 — 생략")
+            logger.debug("[타이머] 통합 확정 조회 이미 완료 — 생략")
             return
         _confirmed_done = True
         loop = asyncio.get_running_loop()
         loop.create_task(_do_unified_confirmed_fetch())
     except Exception as e:
-        logger.warning("[파이프라인] 20:30 통합 확정 조회 시작 오류: %s", e)
+        logger.warning("[타이머] 20:30 통합 확정 조회 시작 오류: %s", e, exc_info=True)
 
 
 async def _do_unified_confirmed_fetch() -> None:
@@ -401,16 +404,16 @@ async def _do_unified_confirmed_fetch() -> None:
         from app.services.market_close_pipeline import fetch_unified_confirmed_data
         await fetch_unified_confirmed_data(es)
         _confirmed_done = True
-        logger.info("[파이프라인] 20:30 통합 확정 조회 완료")
+        logger.info("[타이머] 20:30 통합 확정 조회 완료")
     except Exception as e:
         _confirmed_done = False
-        logger.warning("[파이프라인] 20:30 통합 확정 조회 실패 — 플래그 복원: %s", e)
+        logger.warning("[타이머] 20:30 통합 확정 조회 실패 — 플래그 복원: %s", e, exc_info=True)
         try:
             from app.services import engine_service as es2
             es2._confirmed_refresh_running = False
             es2._confirmed_refresh_message = ""
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[데이터] 플래그 복원 실패: %s", e, exc_info=True)
 
 
 
@@ -469,7 +472,7 @@ def retry_pipeline_catchup_after_bootstrap() -> None:
         _snap_count = len(_snap)
         _filter_count = len(getattr(engine_service, "_filtered_sector_codes", None) or set())
         if _filter_count > 0 and _snap_count < _filter_count * 0.5:
-            logger.info("[데이터동기화중] 확정데이터 저장데이터 종목 부족 (%d/%d) — 확정 데이터 조회 실행", _snap_count, _filter_count)
+            logger.debug("[타이머] 확정데이터 저장데이터 종목 부족 (%d/%d) — 확정 데이터 조회 실행", _snap_count, _filter_count)
             _fire_unified_confirmed_fetch()
             return
         else:
@@ -487,14 +490,14 @@ def retry_pipeline_catchup_after_bootstrap() -> None:
                 except Exception:
                     _cached_date = ""
                 if _cached_date != current_trading_date_str():
-                    logger.info("[데이터동기화중] 20:30 이후 + 확정 갱신 미완료 (cached=%s, expected=%s) — 통합 확정 조회 실행", _cached_date, current_trading_date_str())
+                    logger.debug("[타이머] 20:30 이후 + 확정 갱신 미완료 (cached=%s, expected=%s) — 통합 확정 조회 실행", _cached_date, current_trading_date_str())
                     _fire_unified_confirmed_fetch()
                     return
             _confirmed_done = True
-            logger.info("[데이터동기화중] 저장데이터 유효 (%d종목) — 재조회 생략", _snap_count)
+            logger.debug("[타이머] 저장데이터 유효 (%d종목) — 재조회 생략", _snap_count)
             return
     else:
-        logger.info("[데이터동기화중] 만료된 저장데이터 발견: %s", ", ".join(_expired))
+        logger.debug("[타이머] 만료된 저장데이터 발견: %s", ", ".join(_expired))
 
     # 이벤트 루프가 필요한 경로: 개별 갱신
     try:
@@ -513,23 +516,23 @@ def retry_pipeline_catchup_after_bootstrap() -> None:
 
     # 1) 핵심 캐시 만료 → 통합 확정 조회 (ka10099 + ka10086)
     if _core_expired and unified_past and not _confirmed_done:
-        logger.info("[데이터동기화중] 핵심 저장데이터 만료 (%s) — 통합 확정 조회 실행", ", ".join(_core_expired))
+        logger.debug("[타이머] 핵심 저장데이터 만료 (%s) — 통합 확정 조회 실행", ", ".join(_core_expired))
         _fire_unified_confirmed_fetch()
     elif _core_expired and not unified_past:
-        logger.info("[데이터동기화중] 핵심 저장데이터 만료 (%s) — ws_subscribe_start(%02d:%02d) 이전이라 대기", ", ".join(_core_expired), ws_start_minutes // 60, ws_start_minutes % 60)
+        logger.debug("[타이머] 핵심 저장데이터 만료 (%s) — ws_subscribe_start(%02d:%02d) 이전이라 대기", ", ".join(_core_expired), ws_start_minutes // 60, ws_start_minutes % 60)
     elif not _core_expired:
         # 핵심 캐시 모두 유효 → 확정 조회 완료로 간주
         _confirmed_done = True
 
     # 2) avg_amt만 만료 → 5일봉 재구축만 트리거 (ka10081)
     if _avg_amt_expired:
-        logger.info("[데이터동기화중] 5일거래대금평균/고가 저장데이터 만료 — 5일챠트 재구축 트리거")
+        logger.debug("[타이머] 5일거래대금평균/고가 저장데이터 만료 — 5일챠트 재구축 트리거")
         try:
             engine_service._avg_amt_needs_bg_refresh = True
             engine_service._broadcast_avg_amt_progress(0, 0, status="cache_deleted")
             loop.create_task(engine_service.refresh_avg_amt_5d_cache())
         except Exception as e:
-            logger.warning("[데이터동기화중] 5일챠트 재구축 트리거 실패: %s", e)
+            logger.warning("[타이머] 5일챠트 재구축 트리거 실패: %s", e, exc_info=True)
 
 
 def _broadcast_market_phase() -> None:
@@ -538,9 +541,9 @@ def _broadcast_market_phase() -> None:
         from app.services.engine_account_notify import _broadcast
         phase = get_market_phase()
         _broadcast("market-phase", phase)
-        logger.info("[타이머] market-phase 화면전송: %s", phase)
+        logger.debug("[타이머] market-phase 화면전송: %s", phase)
     except Exception as e:
-        logger.warning("[타이머] market-phase 화면전송 오류: %s", e)
+        logger.warning("[타이머] market-phase 화면전송 오류: %s", e, exc_info=True)
 
 
 def _apply_auto_toggle_on_startup(settings: dict) -> None:
@@ -577,8 +580,8 @@ def _apply_auto_toggle_on_startup(settings: dict) -> None:
     try:
         update_settings(keys)
         settings.update(keys)
-        logger.info(
-            "[자동토글] 기동 판별 -- 거래일=%s, 시간구간=%s → 자동매매/WS구독 %s",
+        logger.debug(
+            "[타이머] 기동 판별 -- 거래일=%s, 시간구간=%s → 자동매매/WS구독 %s",
             is_trade_day, in_time_window, "ON" if on_or_off else "OFF",
         )
         try:
@@ -588,10 +591,10 @@ def _apply_auto_toggle_on_startup(settings: dict) -> None:
             )
             notify_desktop_header_refresh()
             notify_desktop_settings_toggled()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[데이터] 화면전송 실패: %s", e, exc_info=True)
     except Exception as e:
-        logger.warning("[자동토글] 기동 판별 저장 실패: %s", e)
+        logger.warning("[타이머] 기동 판별 저장 실패: %s", e)
 
 
 def _restore_from_holiday_flag(settings: dict) -> bool:
@@ -610,7 +613,7 @@ def _restore_from_holiday_flag(settings: dict) -> bool:
         from app.core.settings_file import update_settings
         update_settings(on_keys)
         settings.update(on_keys)
-        logger.info("[공휴일가드] 거래일 시작 -- 자동매매/WS구독 자동 복원 (auto_off_by_holiday 해제)")
+        logger.info("[타이머] 거래일 시작 -- 자동매매/WS구독 자동 복원 (auto_off_by_holiday 해제)")
         try:
             from app.services.engine_account_notify import (
                 notify_desktop_header_refresh,
@@ -618,11 +621,11 @@ def _restore_from_holiday_flag(settings: dict) -> bool:
             )
             notify_desktop_header_refresh()
             notify_desktop_settings_toggled()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[데이터] 화면전송 실패: %s", e, exc_info=True)
         return True
     except Exception as e:
-        logger.warning("[공휴일가드] 자동 복원 실패: %s", e)
+        logger.warning("[타이머] 자동 복원 실패: %s", e)
         return False
 
 
@@ -664,8 +667,8 @@ async def _on_ws_subscribe_start() -> None:
                 )
                 notify_desktop_header_refresh()
                 notify_desktop_settings_toggled()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[데이터] 화면전송 실패: %s", e, exc_info=True)
         except Exception as _e:
             logger.warning("[타이머] 자동매매 ON 복원 실패: %s", _e)
         _ws_subscribe_window_active = True
@@ -705,7 +708,7 @@ async def _on_ws_subscribe_start() -> None:
             except Exception as e:
                 logger.error("[타이머] 실시간 연결 실패: %s", e)
     except Exception as e:
-        logger.warning("[타이머] 실시간 구독 시작 콜백 오류: %s", e)
+        logger.warning("[타이머] 실시간 구독 시작 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_ws_subscribe_end() -> None:
@@ -740,7 +743,7 @@ async def _on_ws_subscribe_end() -> None:
             _cache = getattr(engine_service, "_settings_cache", None)
             if isinstance(_cache, dict):
                 _cache.update(off_keys)
-            logger.info("[자동토글] 구독 종료 시각 도달 -- 자동매매/WS구독 OFF 저장")
+            logger.info("[타이머] 구독 종료 시각 도달 -- 자동매매/WS구독 OFF 저장")
             from app.services.engine_account_notify import (
                 notify_desktop_header_refresh,
                 notify_desktop_settings_toggled,
@@ -748,7 +751,7 @@ async def _on_ws_subscribe_end() -> None:
             notify_desktop_header_refresh()
             notify_desktop_settings_toggled()
         except Exception as _e:
-            logger.warning("[자동토글] 구독 종료 OFF 저장 실패: %s", _e)
+            logger.warning("[타이머] 구독 종료 OFF 저장 실패: %s", _e, exc_info=True)
         # ── WS 연결 해제 ──
         ws = getattr(engine_service, "_connector_manager", None) or getattr(engine_service, "_kiwoom_connector", None)
         if ws and ws.is_connected():
@@ -758,7 +761,7 @@ async def _on_ws_subscribe_end() -> None:
         # ── 지수 확정 데이터 캐시 저장 (WS 종료 시점 1회) ──
         save_index_cache(engine_service)
     except Exception as e:
-        logger.warning("[타이머] 실시간 구독 종료 콜백 오류: %s", e)
+        logger.warning("[타이머] 실시간 구독 종료 콜백 오류: %s", e, exc_info=True)
 
 
 def _fire_ws_subscribe_end() -> None:
@@ -785,17 +788,17 @@ async def _ws_disconnect_only() -> None:
     try:
         from app.services import engine_service
         _ws_subscribe_window_active = False
-        logger.info("[설정] 구독 구간 변경 -- 구독 해지 + 실시간 연결 해제")
+        logger.info("[타이머] 구독 구간 변경 -- 구독 해지 + 실시간 연결 해제")
         _trigger_unreg_all(engine_service)
         from app.services.ws_subscribe_control import _set_status
         _set_status(index=False, quote=False)
         ws = getattr(engine_service, "_connector_manager", None) or getattr(engine_service, "_kiwoom_connector", None)
         if ws and ws.is_connected():
             await ws.disconnect() if hasattr(ws, "disconnect") and not hasattr(ws, "disconnect_all") else await ws.disconnect_all() if hasattr(ws, "disconnect_all") else None
-            logger.info("[설정] 실시간 소켓 연결 해제 완료")
+            logger.info("[타이머] 실시간 소켓 연결 해제 완료")
         engine_service._broadcast_engine_ws()
     except Exception as e:
-        logger.warning("[설정] 실시간 구독 해제 오류: %s", e)
+        logger.warning("[타이머] 실시간 구독 해제 오류: %s", e)
 
 
 def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
@@ -912,7 +915,7 @@ def _init_ws_subscribe_state(engine_service) -> None:
         # 0J REAL 플래그 초기화 (기동 시점에는 아직 0J 미수신)
         _0j_real_receiving = False
         # ── 실시간 필드 초기화 (전일 확정 데이터 제거) ──
-        logger.info("[타임스케줄러] 구독 구간 내 시작 -- 실시간 필드 초기화")
+        logger.info("[타이머] 구독 구간 내 시작 -- 실시간 필드 초기화")
         loop = asyncio.get_running_loop()
         loop.create_task(engine_service._reset_realtime_fields())
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
@@ -921,15 +924,15 @@ def _init_ws_subscribe_state(engine_service) -> None:
             _an._prev_scores_cache = []
             engine_service._sector_summary_cache = None
             engine_service._invalidate_sector_stocks_cache()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[데이터] 캐시 초기화 실패: %s", e, exc_info=True)
 
         _trigger_reg_pipeline(engine_service)
         # 기동 시각 기준: 폴링 즉시 시작 → 0J REAL 수신되면 자동 중단
-        logger.info("[타임스케줄러] 기동 시각 %02d:%02d — 폴링 시작 (0J REAL 수신 시 자동 중단)", _kst_now().hour, _kst_now().minute)
+        logger.info("[타이머] 기동 시각 %02d:%02d — 폴링 시작 (0J REAL 수신 시 자동 중단)", _kst_now().hour, _kst_now().minute)
         _start_index_poll_timer()
     else:
-        logger.info("[타임스케줄러] 구독 구간 외 시작")
+        logger.info("[타이머] 구독 구간 외 시작")
         # 구독 상태 false + WS 브로드캐스트
         from app.services.ws_subscribe_control import _set_status
         _set_status(index=False, quote=False)
@@ -952,9 +955,9 @@ def _trigger_reg_pipeline(engine_service) -> None:
             except RuntimeError:
                 pass
         else:
-            logger.info("[타임스케줄러] 구독 구간 진입 -- WS 미연결 상태, 연결 후 자동 구독됨")
+            logger.info("[타이머] 구독 구간 진입 -- WS 미연결 상태, 연결 후 자동 구독됨")
     except Exception as e:
-        logger.warning("[타임스케줄러] REG 파이프라인 트리거 오류: %s", e)
+        logger.warning("[타이머] REG 파이프라인 트리거 오류: %s", e)
 
 
 def _trigger_unreg_all(engine_service) -> None:
@@ -965,7 +968,7 @@ def _trigger_unreg_all(engine_service) -> None:
             cache = getattr(engine_service, attr, None)
             if isinstance(cache, dict):
                 cache.clear()
-        logger.info("[타임스케줄러] WS 저장데이터 클리어 완료 (trade_prices·trade_amounts·strength)")
+        logger.info("[타이머] WS 저장데이터 클리어 완료 (trade_prices·trade_amounts·strength)")
 
         import asyncio
         ws = getattr(engine_service, "_connector_manager", None) or getattr(engine_service, "_kiwoom_connector", None)
@@ -978,7 +981,7 @@ def _trigger_unreg_all(engine_service) -> None:
         except RuntimeError:
             pass
     except Exception as e:
-        logger.warning("[타임스케줄러] UNREG 트리거 오류: %s", e)
+        logger.warning("[타이머] UNREG 트리거 오류: %s", e)
 
 
 async def _do_unreg_all(engine_service) -> None:
@@ -991,7 +994,7 @@ async def _do_unreg_all(engine_service) -> None:
 
         all_codes = subscribed
         if not all_codes:
-            logger.info("[타임스케줄러] REMOVE 대상 없음 -- 이미 구독 없음")
+            logger.info("[타이머] REMOVE 대상 없음 -- 이미 구독 없음")
             return
 
         # grp 4(0B): 구독 중인 종목코드를 data에 포함
@@ -1020,13 +1023,13 @@ async def _do_unreg_all(engine_service) -> None:
         if hasattr(engine_service, "_subscribed_stocks"):
             engine_service._subscribed_stocks.clear()
 
-        logger.info("[타임스케줄러] REMOVE 완료 -- %d종목 구독 해지", len(codes_list))
+        logger.info("[타이머] REMOVE 완료 -- %d종목 구독 해지", len(codes_list))
 
         # ws_subscribe_control 상태 동기화 — 구독 해지 완료
         from app.services import ws_subscribe_control
         ws_subscribe_control._set_status(index=False, quote=False)
     except Exception as e:
-        logger.warning("[타임스케줄러] REMOVE 전송 오류: %s", e)
+        logger.warning("[타이머] REMOVE 전송 오류: %s", e)
 
 
 # ── call_later 기반 매수/매도 시간 전환 타이머 ─────────────────────────────────
@@ -1187,7 +1190,7 @@ def _schedule_index_poll_at_1530(settings: dict | None = None) -> None:
         _start_index_poll_timer()
         return
     _index_poll_start_handle = loop.call_later(max(delay, 1), _start_index_poll_timer)
-    logger.debug("[지수폴링] 15:30 시작 타이머 -- %.0f초 후 예약", delay)
+    logger.debug("[데이터] 15:30 시작 타이머 -- %.0f초 후 예약", delay)
 
 
 def _start_index_poll_timer() -> None:
@@ -1197,7 +1200,7 @@ def _start_index_poll_timer() -> None:
         return  # 이미 작동 중
     if _0j_real_receiving:
         return  # 0J REAL 수신 중이면 폴링 불필요
-    logger.info("[지수폴링] 60초 간격 폴링 시작")
+    logger.info("[데이터] 60초 간격 폴링 시작")
     _do_index_poll_tick()
 
 
@@ -1218,7 +1221,7 @@ def on_0j_real_received() -> None:
     if _0j_real_receiving:
         return  # 이미 수신 중 — 중복 처리 방지
     _0j_real_receiving = True
-    logger.info("[지수폴링] 0J REAL 수신 시작 — 폴링 즉시 중단")
+    logger.info("[데이터] 0J REAL 수신 시작 — 폴링 즉시 중단")
     _stop_index_poll_timer()
 
 
@@ -1246,7 +1249,7 @@ async def _poll_index_ka20001_once() -> None:
     try:
         _sector = get_router(_settings).sector
     except Exception:
-        logger.debug("[지수폴링] BrokerRouter 미준비 -- 폴링 생략")
+        logger.debug("[데이터] BrokerRouter 미준비 -- 폴링 생략")
         return
 
     latest_index: dict = getattr(engine_service, "_latest_index", {})
@@ -1271,9 +1274,9 @@ async def _poll_index_ka20001_once() -> None:
         if rows:
             from app.services.engine_account_notify import notify_desktop_index_refresh
             notify_desktop_index_refresh()
-            logger.info("[지수폴링] ka20001 갱신 -- %s", {k: f"{v['price']:.2f}" for k, v in rows.items()})
+            logger.info("[데이터] ka20001 갱신 -- %s", {k: f"{v['price']:.2f}" for k, v in rows.items()})
     except Exception as e:
-        logger.warning("[지수폴링] ka20001 REST 폴링 실패: %s", e)
+        logger.warning("[데이터] ka20001 REST 폴링 실패: %s", e)
 
 
 # ── ka10001 확정 데이터 갱신 ─────────────────────────────────────────────────
@@ -1346,7 +1349,7 @@ def _apply_holiday_guard_on_startup(settings: dict | None) -> None:
             # 엔진 메모리 캐시도 즉시 반영
             settings.update(off_keys)
             logger.info(
-                "[공휴일가드] 비거래일(%s) -- 자동매매/매수/매도/WS구독 OFF 저장 (auto_off_by_holiday=True)",
+                "[타이머] 비거래일(%s) -- 자동매매/매수/매도/WS구독 OFF 저장 (auto_off_by_holiday=True)",
                 today.isoformat(),
             )
             # WS로 프론트에 변경 알림
@@ -1357,10 +1360,10 @@ def _apply_holiday_guard_on_startup(settings: dict | None) -> None:
                 )
                 notify_desktop_header_refresh()
                 notify_desktop_settings_toggled()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[데이터] 화면전송 실패: %s", e, exc_info=True)
         except Exception as e:
-            logger.warning("[공휴일가드] 설정 저장 실패: %s", e)
+            logger.warning("[타이머] 설정 저장 실패: %s", e)
 
 
 def start_daily_time_scheduler() -> None:
@@ -1386,8 +1389,8 @@ def start_daily_time_scheduler() -> None:
         # 현재 시각 기준 WS 구독 상태 즉시 판정 (기동 시점)
         _init_ws_subscribe_state(engine_service)
     except Exception as e:
-        logger.warning("[타임스케줄러] 타이머 초기 예약 실패: %s", e)
-    logger.info("[타임스케줄러] 시작 (이벤트 기반 타이머)")
+        logger.warning("[타이머] 타이머 초기 예약 실패: %s", e)
+    logger.info("[타이머] 시작 (이벤트 기반 타이머)")
 
 
 async def stop_daily_time_scheduler() -> None:
@@ -1404,4 +1407,4 @@ async def stop_daily_time_scheduler() -> None:
         _midnight_timer_handle.cancel()
         _midnight_timer_handle = None
     _stop_index_poll_timer()
-    logger.info("[타임스케줄러] 중지")
+    logger.info("[타이머] 중지")

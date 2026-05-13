@@ -62,74 +62,10 @@ def _get_wl_codes_cached(es: ModuleType) -> set[str]:
     return _wl_codes_cache
 
 
-_fid14_last_log_time: float = 0.0  # 삼성전자 거래대금 로그 빈도 제한용
-
-# ── 실시간 처리 통계 (1초 윈도우 집계) ──────────────────────────────────
-_tick_stats: dict = {
-    "window_start_ms": 0,
-    "count": 0,
-    "latency_sum_ms": 0,
-    "latency_max_ms": 0,
-    "latency_50plus": 0,
-    "latency_200plus": 0,
-}
-_real_received_stats: dict = {
-    "window_start_ms": 0,
-    "count": 0,
-}
 
 
-def _record_tick(elapsed_ms: int) -> None:
-    """개별 틱 지연을 1초 윈도우에 누적. 1초 경과 시 자동 flush."""
-    global _tick_stats
-    now = int(time.time() * 1000)
-    window = _tick_stats
-    if window["window_start_ms"] == 0:
-        window["window_start_ms"] = now
-    if now - window["window_start_ms"] >= 1000:
-        _flush_tick_stats()
-        window["window_start_ms"] = now
-        window["count"] = 0
-        window["latency_sum_ms"] = 0
-        window["latency_max_ms"] = 0
-        window["latency_50plus"] = 0
-        window["latency_200plus"] = 0
-    window["count"] += 1
-    window["latency_sum_ms"] += elapsed_ms
-    if elapsed_ms > window["latency_max_ms"]:
-        window["latency_max_ms"] = elapsed_ms
-    if elapsed_ms >= 50:
-        window["latency_50plus"] += 1
-    if elapsed_ms >= 200:
-        window["latency_200plus"] += 1
 
 
-def _flush_tick_stats() -> None:
-    """1초 윈도우 집계 결과를 INFO 로깅."""
-    global _tick_stats
-    w = _tick_stats
-    cnt = w["count"]
-    if cnt == 0:
-        return
-    avg = w["latency_sum_ms"] / cnt
-    logger.info(
-        "[통계] 1초 틱=%s 평균지연=%.1fms 최대지연=%sms 50ms+=%s 200ms+=%s",
-        cnt, avg, w["latency_max_ms"], w["latency_50plus"], w["latency_200plus"],
-    )
-
-
-def _record_real_received() -> None:
-    """WS REAL 메시지 수신 1초 카운터."""
-    global _real_received_stats
-    now = int(time.time() * 1000)
-    st = _real_received_stats
-    if st["window_start_ms"] == 0:
-        st["window_start_ms"] = now
-    if now - st["window_start_ms"] >= 1000:
-        logger.info("[통계] 1초 WS REAL 수신=%s", st["count"])
-        st["window_start_ms"] = now
-        st["count"] = 0
-    st["count"] += 1
 
 
 def _update_trade_amount_fid14(
@@ -141,23 +77,12 @@ def _update_trade_amount_fid14(
     FID 14(누적거래대금, 백만원 단위) -- _AL 구독 시 KRX+NXT 통합값.
     키움이 내려주는 당일 누적값(백만원) -> 원 단위로 변환 후 저장.
     """
-    global _fid14_last_log_time
-
     if amt14 <= 0:
         return es._latest_trade_amounts.get(base_nk, 0)
 
     amt_won = amt14 * 1_000_000
     es._latest_trade_amounts[base_nk] = amt_won  # 단일 키 직접 대입 (asyncio 원자적)
 
-    if base_nk == "005930":
-        import time as _time
-        _now = _time.monotonic()
-        if _now - _fid14_last_log_time >= 10.0:
-            _fid14_last_log_time = _now
-            logger.debug(
-                "[거래대금] %s FID14(KRX+NXT통합) %s백만원",
-                base_nk, f"{amt14:,}",
-            )
     return amt_won
 
 
@@ -229,8 +154,8 @@ def _handle_login(data: dict, es: ModuleType) -> None:
         try:
             from app.services.daily_time_scheduler import _trigger_reg_pipeline
             _trigger_reg_pipeline(es)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[연결] REG 파이프라인 트리거 실패: %s", e, exc_info=True)
 
 
 def _reg_response_item_val(row: dict) -> str | None:
@@ -469,7 +394,6 @@ def _handle_real_01(
 def _check_realtime_latency(_ts: int, es: ModuleType) -> None:
     """실시간 체결 처리 지연 측정 — 50ms 경고, 200ms 초과 시 자동매매 중단 플래그."""
     elapsed = int(time.time() * 1000) - _ts
-    _record_tick(elapsed)
     if elapsed >= 200:
         logger.error("[체결지연] 처리 시간 %sms → 자동매매 중단 플래그 설정", elapsed)
         es._realtime_latency_exceeded = True
@@ -581,7 +505,6 @@ _REAL_DISPATCH: dict[str, Callable] = {
 
 def _handle_real(data: dict, es: ModuleType) -> None:
     """REAL 메시지 수신 — 디스패치 테이블로 타입별 핸들러 호출, 항목별 try-except 격리."""
-    _record_real_received()
     if es._REG_REAL_DEBUG_EXTRA_LOG:
         _log_ws_trnm_json_detail("REAL", data if isinstance(data, dict) else {"_raw": data})
         _log_real_data_items_preview(data if isinstance(data, dict) else {})
@@ -619,13 +542,16 @@ def _handle_real(data: dict, es: ModuleType) -> None:
 
 async def handle_ws_data(data: dict, es: ModuleType) -> None:
     """비동기 호출 — LOGIN/REG는 직접 처리, REAL은 직접 동기 호출."""
-    trnm = data.get("trnm")
-    if trnm == "LOGIN":
-        _handle_login(data, es)
-    elif trnm in ("REG", "UNREG", "REMOVE"):
-        _handle_reg(data, es)
-        return
-    elif trnm == "REAL":
-        # REAL 시세는 동기 호출로 즉시 처리 (태스크 큐에 쌓지 않음)
-        _handle_real(data, es)
+    try:
+        trnm = data.get("trnm")
+        if trnm == "LOGIN":
+            _handle_login(data, es)
+        elif trnm in ("REG", "UNREG", "REMOVE"):
+            _handle_reg(data, es)
+            return
+        elif trnm == "REAL":
+            # REAL 시세는 동기 호출로 즉시 처리 (태스크 큐에 쌓지 않음)
+            _handle_real(data, es)
+    except Exception:
+        logger.error("[WS] 메시지 처리 예외 (trnm=%s): %s", data.get("trnm"), data, exc_info=True)
 

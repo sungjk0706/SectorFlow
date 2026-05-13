@@ -38,14 +38,6 @@ const testRowArb = (id: string): fc.Arbitrary<TestRow> =>
     value: fc.integer({ min: 0, max: 999999 }),
   })
 
-/** Generator: array of TestRows with unique ids */
-const testRowsArrayArb: fc.Arbitrary<TestRow[]> = fc
-  .uniqueArray(fc.stringMatching(/^[A-Z][0-9]{3}$/), { minLength: 0, maxLength: 20 })
-  .chain((ids) => {
-    if (ids.length === 0) return fc.constant([] as TestRow[])
-    return fc.tuple(...ids.map((id) => testRowArb(id))) as fc.Arbitrary<TestRow[]>
-  })
-
 /** Generator: pair of old/new row arrays with overlapping keys */
 const oldNewRowsPairArb: fc.Arbitrary<{ oldRows: TestRow[]; newRows: TestRow[] }> = fc
   .uniqueArray(fc.stringMatching(/^[A-Z][0-9]{3}$/), { minLength: 1, maxLength: 30 })

@@ -42,7 +42,7 @@ def _broadcast_bootstrap_stage(
             payload["progress"] = progress
         ws_manager.broadcast("bootstrap-stage", payload)
     except Exception as e:
-        logger.warning("[부트] stage 브로드캐스트 실패 %s: %s", stage_name, e)
+        logger.warning("[시작] stage 브로드캐스트 실패 %s: %s", stage_name, e, exc_info=True)
 
 
 async def _bootstrap_sector_stocks_async() -> None:
@@ -59,7 +59,7 @@ async def _bootstrap_sector_stocks_async() -> None:
     if (_st._settings_cache or {}).get("trade_mode") == "test":
         from app.services import settlement_engine
         settlement_engine._load()
-        logger.info("[앱준비] Settlement Engine 상태 복원 완료 (테스트모드)")
+        logger.debug("[시작] Settlement Engine 상태 복원 완료 (테스트모드)")
 
     from app.services.engine_symbol_utils import _base_stk_cd
     from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
@@ -75,8 +75,8 @@ async def _bootstrap_sector_stocks_async() -> None:
 
     if _preboot_hit:
         # 데이터준비에서 이미 레이아웃·확정데이터·5일평균 로드 완료 — 파일 재로드 스킵
-        logger.info(
-            "[앱준비] 데이터준비 사용 -- %d종목 (레이아웃·확정데이터·5일평균 재로드 생략)",
+        logger.debug(
+            "[시작] 데이터준비 사용 -- %d종목 (레이아웃·확정데이터·5일평균 재로드 생략)",
             sum(1 for t, _ in _st._sector_stock_layout if t == "code"),
         )
         _broadcast_bootstrap_stage(2, "섹터 매핑 로드")
@@ -84,8 +84,8 @@ async def _bootstrap_sector_stocks_async() -> None:
         _st._sector_stock_layout[:] = _layout_cached
         from app.services.engine_account_notify import _rebuild_layout_cache
         _rebuild_layout_cache(_st._sector_stock_layout)
-        logger.info(
-            "[앱준비] 레이아웃 저장데이터 로드 -- %d종목 (업종맵 API 생략)",
+        logger.debug(
+            "[시작] 레이아웃 저장데이터 로드 -- %d종목 (업종맵 API 생략)",
             sum(1 for t, _ in _layout_cached if t == "code"),
         )
         _broadcast_bootstrap_stage(2, "섹터 매핑 로드")
@@ -111,18 +111,18 @@ async def _bootstrap_sector_stocks_async() -> None:
             _st._sector_stock_layout[:] = auto_layout
             from app.services.engine_account_notify import _rebuild_layout_cache
             _rebuild_layout_cache(_st._sector_stock_layout)
-            logger.info(
-                "[앱준비] 업종 매핑 기반 자동 구성 -- %d종목 / %d섹터",
+            logger.debug(
+                "[시작] 업종 매핑 기반 자동 구성 -- %d종목 / %d섹터",
                 sum(1 for t, _ in auto_layout if t == "code"),
                 len(sector_groups),
             )
             save_layout_cache(auto_layout)
         else:
-            logger.info("[앱준비] 섹터 매핑 데이터 없음 -- 레이아웃 자동 구성 생략")
+            logger.debug("[시작] 섹터 매핑 데이터 없음 -- 레이아웃 자동 구성 생략")
 
     codes: list[str] = [v for t, v in _st._sector_stock_layout if t == "code"]
     if not codes:
-        logger.info("[앱준비] 업종맵 종목 없음 -- 초기화 생략")
+        logger.debug("[시작] 업종맵 종목 없음 -- 초기화 생략")
         return
 
     # ── WS 구독 구간 판정 (구간 안이면 확정데이터 시세 초기화) ──
@@ -130,6 +130,7 @@ async def _bootstrap_sector_stocks_async() -> None:
         from app.services.daily_time_scheduler import is_ws_subscribe_window
         _in_ws_window = is_ws_subscribe_window(_st._settings_cache)
     except Exception:
+        logger.warning("[시작] WS 구독 구간 판정 실패", exc_info=True)
         _in_ws_window = False
 
     # ── 2단계: 확정데이터 캐시 확인 → 사용 시 UI 즉시 표시 ──────────────────
@@ -140,13 +141,13 @@ async def _bootstrap_sector_stocks_async() -> None:
 
     if _preboot_snapshot_hit:
         # 데이터준비에서 이미 확정데이터 → 메모리 적재 완료 — 파일 재로드 + 버킷 세팅 스킵
-        logger.info("[앱준비] 데이터준비 사용 -- 확정데이터·거래대금 데이터 재로드 생략 (%d종목)", len(_st._pending_stock_details))
+        logger.debug("[시작] 데이터준비 사용 -- 확정데이터·거래대금 데이터 재로드 생략 (%d종목)", len(_st._pending_stock_details))
         _broadcast_bootstrap_stage(4, "시세 데이터 반영")
     elif (_snapshot_cached := load_snapshot_cache()):
         krx_rows = _snapshot_cached
-        logger.info("[앱준비] 확정데이터 저장데이터 로드 -- %d종목 (UI 즉시 표시)", len(krx_rows))
+        logger.debug("[시작] 확정데이터 저장데이터 로드 -- %d종목 (UI 즉시 표시)", len(krx_rows))
     else:
-        logger.info("[앱준비] 확정데이터 저장데이터 실패 -- 로드 생략 (장마감 후 ka10086 확정 조회로 갱신)")
+        logger.debug("[시작] 확정데이터 저장데이터 실패 -- 로드 생략 (장마감 후 ka10086 확정 조회로 갱신)")
 
     if not _preboot_snapshot_hit:
         # ── 4단계: 거래대금 버킷 세팅 및 화면 표시 ──────────────────────────
@@ -162,8 +163,8 @@ async def _bootstrap_sector_stocks_async() -> None:
             if base and int(detail.get("cur_price") or 0) > 0:
                 _st._rest_radar_rest_once.add(base)
 
-        logger.info(
-            "[거래대금·초기화] REST 버킷 세팅 완료 -- 005930=%s",
+        logger.debug(
+            "[시작] REST 버킷 세팅 완료 -- 005930=%s",
             f"{_st._latest_trade_amounts.get('005930', 0):,}",
         )
 
@@ -191,20 +192,20 @@ async def _bootstrap_sector_stocks_async() -> None:
                     async with _st._shared_lock:
                         _st._pending_stock_details[base] = entry
                         _st._radar_cnsr_order.append(base)
-            logger.info("[앱준비] 확정데이터 반영 완료 -- %d행 (화면 표시)", len(krx_rows))
+            logger.debug("[시작] 확정데이터 반영 완료 -- %d행 (화면 표시)", len(krx_rows))
         else:
-            logger.warning("[앱준비] 확정데이터 없음 -- 화면 표시 생략")
+            logger.warning("[시작] 확정데이터 없음 -- 화면 표시 생략")
 
         if krx_rows:
-            logger.info("[앱준비] 확정데이터 저장데이터 로드 -- 백그라운드 REST 갱신 생략 (저장데이터 사용)")
+            logger.debug("[시작] 확정데이터 저장데이터 로드 -- 백그라운드 REST 갱신 생략 (저장데이터 사용)")
 
     # ── 7단계: 5일 평균 거래대금 ──────
     _broadcast_bootstrap_stage(5, "5일 평균 저장데이터 로드")
     _st._avg_amt_needs_bg_refresh = False
     if _preboot_hit and len(_st._avg_amt_5d) > 0:
         # 데이터준비에서 이미 5일 평균 로드 완료 — 파일 재로드 스킵
-        logger.info(
-            "[앱준비] 데이터준비 사용 -- 5일거래대금평균/고가 재로드 생략 (%d종목)", len(_st._avg_amt_5d)
+        logger.debug(
+            "[시작] 데이터준비 사용 -- 5일거래대금평균/고가 재로드 생략 (%d종목)", len(_st._avg_amt_5d)
         )
     else:
         try:
@@ -218,10 +219,10 @@ async def _bootstrap_sector_stocks_async() -> None:
                 # ── 불완전 캐시 판정 (is_cache_valid() 통과 후 구조 검증) ──
                 _incomplete = False
                 if not _high_map:
-                    logger.warning("[앱준비] 저장데이터 불완전 -- high_5d 없음")
+                    logger.warning("[시작] 저장데이터 불완전 -- high_5d 없음")
                     _incomplete = True
                 elif len(_high_map) != len(_avg_map):
-                    logger.warning("[앱준비] 저장데이터 불완전 -- high_5d 종목수(%d) ≠ avg_map 종목수(%d)", len(_high_map), len(_avg_map))
+                    logger.warning("[시작] 저장데이터 불완전 -- high_5d 종목수(%d) ≠ avg_map 종목수(%d)", len(_high_map), len(_avg_map))
                     _incomplete = True
                 else:
                     # 배열 길이 < 5 검사는 v2 원본에서 해야 함
@@ -231,16 +232,16 @@ async def _bootstrap_sector_stocks_async() -> None:
                     if _v2_raw:
                         _short = sum(1 for arr in _v2_raw.values() if len(arr) < 5)
                         if _short > 0:
-                            logger.warning("[앱준비] 저장데이터 불완전 -- 배열 길이 < 5인 종목 %d개", _short)
+                            logger.warning("[시작] 저장데이터 불완전 -- 배열 길이 < 5인 종목 %d개", _short)
                             _incomplete = True
                         _zero_high = sum(1 for v in _high_map.values() if v == 0)
                         if _zero_high > len(_high_map) * 0.5:
-                            logger.warning("[앱준비] 저장데이터 불완전 -- high_5d=0 종목 %d/%d (50%% 초과)", _zero_high, len(_high_map))
+                            logger.warning("[시작] 저장데이터 불완전 -- high_5d=0 종목 %d/%d (50%% 초과)", _zero_high, len(_high_map))
                             _incomplete = True
                 if _incomplete:
                     _st._avg_amt_needs_bg_refresh = True
-                logger.info(
-                    "[앱준비] 5일 평균 거래대금 저장데이터 로드 -- %d종목, high_5d=%d%s",
+                logger.debug(
+                    "[시작] 5일 평균 거래대금 저장데이터 로드 -- %d종목, high_5d=%d%s",
                     len(_st._avg_amt_5d), len(_high_map),
                     " (불완전 -- 갱신 예정)" if _incomplete else "",
                 )
@@ -252,25 +253,25 @@ async def _bootstrap_sector_stocks_async() -> None:
                 if stale_v2 and len(stale_v2) > 100:
                     avg_map = avg_from_v2(stale_v2)
                     _st._update_avg_amt_5d(avg_map)
-                    logger.info(
-                        "[앱준비] 5일 평균 저장데이터 만료 -- stale 데이터 즉시 로드 (%d종목, 백그라운드 갱신 예정)",
+                    logger.debug(
+                        "[시작] 5일 평균 저장데이터 만료 -- stale 데이터 즉시 로드 (%d종목, 백그라운드 갱신 예정)",
                         len(avg_map),
                     )
                     _st._avg_amt_needs_bg_refresh = True
                 else:
-                    logger.info(
-                        "[앱준비] 5일 평균 거래대금 저장데이터 미스 -- 빈 맵으로 시작 (백그라운드 구축 예정)"
+                    logger.debug(
+                        "[시작] 5일 평균 거래대금 저장데이터 미스 -- 빈 맵으로 시작 (백그라운드 구축 예정)"
                     )
                     _st._avg_amt_needs_bg_refresh = True
         except Exception as e:
-            logger.warning("[앱준비] 5일 평균 거래대금 적재 실패: %s", e)
+            logger.warning("[시작] 5일 평균 거래대금 적재 실패: %s", e, exc_info=True)
             _st._avg_amt_needs_bg_refresh = True
 
     try:
         from app.services import engine_account_notify as _account_notify
         _account_notify.notify_desktop_buy_radar_only()
     except Exception as e:
-        logger.warning("[부트] 매수후보 갱신 실패: %s", e)
+        logger.warning("[시작] 매수후보 갱신 실패: %s", e, exc_info=True)
     _src = "섹터매핑" if len(_st._sector_stock_layout) > 0 else "없음"
     _snapshot_count = len(_st._pending_stock_details) if _preboot_hit else len(krx_rows)
     _layout_count = sum(1 for t, _ in _st._sector_stock_layout if t == "code")
@@ -278,7 +279,7 @@ async def _bootstrap_sector_stocks_async() -> None:
     _filtered_count = len(_st._filtered_sector_codes) if _st._filtered_sector_codes else 0
     
     logger.info(
-        "[앱준비] 모든 준비 완료 -- 총 %d종목 "
+        "[시작] 모든 준비 완료 -- 총 %d종목 "
         "(레이아웃=%d, 확정데이터=%d, 5일평균=%d, 필터통과=%d, 소스=%s)",
         len(codes), _layout_count, _snapshot_count, _avg_count, _filtered_count, _src,
     )
@@ -293,26 +294,26 @@ async def _bootstrap_sector_stocks_async() -> None:
         _is_holiday = is_krx_holiday(kst_today())
         _is_off_market = _is_holiday or _h >= 20 or _h < 8 or (_h >= 15 and datetime.now(_KST).minute >= 30)
         if _is_off_market and not is_test_mode(_st._settings_cache) and _st._rest_api:
-            logger.info(
-                "[앱준비][장외갱신] 장외 시간(%02d시, 휴일=%s) -- ka10086 백그라운드 갱신 예약 (0B REG 비블로킹)",
+            logger.debug(
+                "[시작][장외갱신] 장외 시간(%02d시, 휴일=%s) -- ka10086 백그라운드 갱신 예약 (0B REG 비블로킹)",
                 _h, _is_holiday,
             )
             asyncio.get_event_loop().create_task(_notify_close_data_ui())
 
         if _st._avg_amt_needs_bg_refresh:
-            logger.info(
-                "[앱준비][장외갱신] 5일 평균 저장데이터 갱신 필요 플래그 설정됨 (%d종목) -- _rest_api 설정 후 예약 예정",
+            logger.debug(
+                "[시작][장외갱신] 5일 평균 저장데이터 갱신 필요 플래그 설정됨 (%d종목) -- _rest_api 설정 후 예약 예정",
                 len(_st._avg_amt_5d),
             )
     except Exception as _e:
-        logger.warning("[앱준비][장외갱신] 갱신 예약 실패(무시): %s", _e)
+        logger.warning("[시작][장외갱신] 갱신 예약 실패(무시): %s", _e, exc_info=True)
 
     # ── 확정 상태 초기화 (제거됨 — 실시간 연동 전환) ──
     _st._sector_summary_cache = None
     _st._filtered_sector_codes = _st._compute_filtered_codes()
     _st._invalidate_sector_stocks_cache()
-    logger.info(
-        "[앱준비] 필터 통과 종목 %d개",
+    logger.debug(
+        "[시작] 필터 통과 종목 %d개",
         len(_st._filtered_sector_codes or set()),
     )
 
@@ -335,11 +336,11 @@ async def _bootstrap_sector_stocks_async() -> None:
             async with _st._shared_lock:
                 _st._pending_stock_details[_cd] = _entry
                 _st._radar_cnsr_order.append(_cd)
-        logger.debug("[앱준비] 필터 통과 빈 엔트리 추가 -- %d종목 (실시간 수신 대기)", len(_missing))
+        logger.debug("[시작] 필터 통과 빈 엔트리 추가 -- %d종목 (실시간 수신 대기)", len(_missing))
 
     _broadcast_bootstrap_stage(6, "앱준비 완료")
     _st._bootstrap_event.set()
-    logger.info("[앱준비] 앱준비 완료 플래그 설정")
+    logger.info("[시작] 앱준비 완료 플래그 설정")
 
     # engine-ready WS는 engine_loop.py에서 1회만 전송 — 여기서는 중복 전송하지 않음
 
@@ -361,7 +362,7 @@ async def _bootstrap_sector_stocks_async() -> None:
         from app.services.daily_time_scheduler import retry_pipeline_catchup_after_bootstrap
         retry_pipeline_catchup_after_bootstrap()
     except Exception as _catchup_err:
-        logger.warning("[앱준비] 데이터동기화중 재시도 실패(무시): %s", _catchup_err)
+        logger.warning("[시작] 데이터동기화중 재시도 실패(무시): %s", _catchup_err, exc_info=True)
 
 
 async def _deferred_sector_summary() -> None:
@@ -404,7 +405,7 @@ async def _deferred_sector_summary() -> None:
             )
             _st._sector_summary_cache = _result
             _st._invalidate_sector_stocks_cache()
-            logger.info("[앱준비] 업종순위 후순위 계산 완료 -- %d개 섹터", len(_result.sectors))
+            logger.debug("[시작] 업종순위 후순위 계산 완료 -- %d개 섹터", len(_result.sectors))
 
             # 이벤트 발행 — _send_stocks_delayed()가 대기 중이면 해제
             _st._sector_summary_ready_event.set()
@@ -421,14 +422,14 @@ async def _deferred_sector_summary() -> None:
                 notify_desktop_sector_scores(force=True)
                 notify_desktop_sector_stocks_refresh()
                 notify_buy_targets_update()
-                logger.info("[앱준비] 업종순위 화면전송 완료 (접속화면=%d)", _client_cnt)
+                logger.debug("[시작] 업종순위 화면전송 완료 (접속화면=%d)", _client_cnt)
             except Exception as e:
-                logger.error("[부트] UI 초기 전송 실패: %s", e)
+                logger.error("[시작] UI 초기 전송 실패: %s", e, exc_info=True)
         else:
             # 종목 없음 — 이벤트만 발행 (대기 해제)
             _st._sector_summary_ready_event.set()
     except Exception as _e:
-        logger.warning("[앱준비] 업종순위 후순위 계산 실패(무시): %s", _e)
+        logger.warning("[시작] 업종순위 후순위 계산 실패(무시): %s", _e, exc_info=True)
         _st._sector_summary_ready_event.set()  # 실패해도 대기 해제
 
 
@@ -439,14 +440,14 @@ async def _notify_close_data_ui() -> None:
         try:
             _account_notify.notify_desktop_buy_radar_only()
         except Exception as e:
-            logger.warning("[장외] 매수후보 갱신 실패: %s", e)
+            logger.warning("[시작] 매수후보 갱신 실패: %s", e, exc_info=True)
         try:
             _account_notify.notify_desktop_sector_refresh()
-            logger.info("[앱준비][장외갱신] 섹터 분석 패널 갱신 트리거")
+            logger.debug("[시작][장외갱신] 섹터 분석 패널 갱신 트리거")
         except Exception as e:
-            logger.warning("[장외] 섹터 갱신 실패: %s", e)
+            logger.warning("[시작] 섹터 갱신 실패: %s", e, exc_info=True)
     except Exception as _e:
-        logger.warning("[앱준비][장외갱신] 확정 데이터 갱신 실패(무시): %s", _e)
+        logger.warning("[시작][장외갱신] 확정 데이터 갱신 실패(무시): %s", _e, exc_info=True)
 
 
 async def refresh_avg_amt_5d_cache() -> None:
@@ -459,11 +460,11 @@ async def refresh_avg_amt_5d_cache() -> None:
     # 스케줄러 토글 OFF 시 5일봉 전체 다운로드 스킵
     _settings = _st._settings_cache or {}
     if not _settings.get("scheduler_5d_download_on", True):
-        logger.info("[전종목5일챠트] scheduler_5d_download_on=OFF — 전종목5일챠트 다운로드 생략")
+        logger.debug("[시작] scheduler_5d_download_on=OFF — 전종목5일챠트 다운로드 생략")
         return
 
     if _st._avg_amt_refresh_running:
-        logger.info("[전종목5일챠트] 이미 진행 중 -- 생략")
+        logger.debug("[시작] 이미 진행 중 -- 생략")
         return
     _st._avg_amt_refresh_running = True
     try:
@@ -505,10 +506,10 @@ async def _chunked_fetch_full_5d(
     total = len(codes)
     starting_count = len(completed_set)
     if starting_count > 0:
-        logger.info("[ka10081] 이어받기 — %d/%d종목 복원, 나머지 %d종목 다운로드",
+        logger.debug("[시작] 이어받기 — %d/%d종목 복원, 나머지 %d종목 다운로드",
                     starting_count, total, total - starting_count)
     else:
-        logger.info("[ka10081] 전종목 5일 거래대금/고가 다운로드 시작 — 대상 %d종목", total)
+        logger.debug("[시작] 전종목 5일 거래대금/고가 다운로드 시작 — 대상 %d종목", total)
     remaining_codes = [cd for cd in codes if _norm_stk(cd) not in completed_set]
     for chunk_start in range(0, len(remaining_codes), _st._AVG_AMT_CHUNK_SIZE):
         chunk = remaining_codes[chunk_start : chunk_start + _st._AVG_AMT_CHUNK_SIZE]
@@ -548,7 +549,7 @@ async def _chunked_fetch_full_5d(
         done = starting_count + chunk_start + len(chunk)
         done = min(done, total)
         pct = int(done / total * 100) if total else 0
-        logger.info("[ka10081] 전종목 5일거래대금/고가 다운로드 중 (%d/%d, %d%%)", done, total, pct)
+        logger.debug("[시작] 전종목 5일거래대금/고가 다운로드 중 (%d/%d, %d%%)", done, total, pct)
         # Chunk 완료마다 진행 파일 저장 (이어받기 가능하도록)
         if date_str:
             save_avg_amt_progress(
@@ -559,11 +560,11 @@ async def _chunked_fetch_full_5d(
             try:
                 on_progress(done, total)
             except Exception:
-                pass
+                logger.warning("[시작] 진행률 콜백 실패", exc_info=True)
     success = len(result)
     failed = total - success
     valid_high = sum(1 for v in high_cache.values() if v > 0)
-    logger.info("[ka10081] 전종목 5일 거래대금/고가 다운로드 완료 — 성공 %d종목, 실패 %d종목, 유효고가 %d종목", success, failed, valid_high)
+    logger.debug("[시작] 전종목 5일 거래대금/고가 다운로드 완료 — 성공 %d종목, 실패 %d종목, 유효고가 %d종목", success, failed, valid_high)
     return result, high_cache, high_5d_arr
 
 
@@ -575,7 +576,7 @@ async def _refresh_avg_amt_5d_cache_inner() -> None:
     from app.services import engine_account_notify as _account_notify
 
     if not _st._rest_api:
-        logger.debug("[전종목5일챠트] REST API 없음 -- 생략 (엔진 준비 중)")
+        logger.debug("[시작] REST API 없음 -- 생략 (엔진 준비 중)")
         return
 
     _v2_result = load_avg_amt_cache_v2()
@@ -592,7 +593,7 @@ async def _refresh_avg_amt_5d_cache_inner() -> None:
             _raw = _json.loads(_DEFAULT_CACHE_PATH.read_text(encoding="utf-8"))
             _cached_date = _raw.get("date", "")
         except Exception:
-            pass
+            logger.warning("[시작] 캐시 날짜 읽기 실패", exc_info=True)
         if _cached_date and is_cache_valid(_cached_date):
             # high_5d도 같은 JSON에서 직접 추출 (파일 재읽기 없음)
             _h5d_raw = _raw.get("high_5d")
@@ -600,19 +601,19 @@ async def _refresh_avg_amt_5d_cache_inner() -> None:
                 _h5d = {str(k): int(v) for k, v in _h5d_raw.items() if isinstance(v, (int, float))}
                 _st._high_5d_cache.clear()
                 _st._high_5d_cache.update(_h5d)
-                logger.info("[전종목5일챠트] v2 저장데이터 유효 (%d종목, date=%s) -- 생략, high_5d %d종목 복원", len(existing_v2), _cached_date, len(_h5d))
+                logger.debug("[시작] v2 저장데이터 유효 (%d종목, date=%s) -- 생략, high_5d %d종목 복원", len(existing_v2), _cached_date, len(_h5d))
             else:
-                logger.info("[전종목5일챠트] v2 저장데이터 유효 (%d종목, date=%s) -- 생략 (high_5d 없음)", len(existing_v2), _cached_date)
+                logger.debug("[시작] v2 저장데이터 유효 (%d종목, date=%s) -- 생략 (high_5d 없음)", len(existing_v2), _cached_date)
             return
         else:
-            logger.info("[전종목5일챠트] v2 저장데이터 만료 (%d종목, date=%s) -- 전체 구축 진행", len(existing_v2), _cached_date)
+            logger.debug("[시작] v2 저장데이터 만료 (%d종목, date=%s) -- 전체 구축 진행", len(existing_v2), _cached_date)
 
     # v2 만료 시에도 전체 구축 진행 (위에서 유효하면 이미 return됨)
     from app.core.avg_amt_cache import _norm_stk
     from app.core.industry_map import get_eligible_stocks
     _elig = get_eligible_stocks()
     if not _elig:
-        logger.warning("[전종목5일챠트] 매매적격종목 없음 -- 구축 생략")
+        logger.warning("[시작] 매매적격종목 없음 -- 구축 생략")
         return
     all_codes = list(dict.fromkeys(_norm_stk(_cd) for _cd in _elig if _norm_stk(_cd)))
 
@@ -624,12 +625,12 @@ async def _refresh_avg_amt_5d_cache_inner() -> None:
     _resume = load_avg_amt_progress(_today_str, all_codes, _ws_start)
     if _resume:
         _r_completed, _r_v2, _r_high, _r_high_arr = _resume
-        logger.info("[전종목5일챠트] 이어받기 — %d/%d종목 복원, 나머지 %d종목 다운로드",
+        logger.debug("[시작] 이어받기 — %d/%d종목 복원, 나머지 %d종목 다운로드",
                     len(_r_completed), len(all_codes), len(all_codes) - len(_r_completed))
     else:
         _r_completed, _r_v2, _r_high, _r_high_arr = set(), {}, {}, {}
 
-    logger.info("[전종목5일챠트] v2 저장데이터 없거나 만료 -- %d종목 ka10086 Chunk 구축 시작 (Chunk=%d종목)",
+    logger.debug("[시작] v2 저장데이터 없거나 만료 -- %d종목 ka10086 Chunk 구축 시작 (Chunk=%d종목)",
                 len(all_codes), _st._AVG_AMT_CHUNK_SIZE)
     _broadcast_avg_amt_progress(len(_r_completed), len(all_codes), status="downloading")
     try:
@@ -690,11 +691,11 @@ async def _refresh_avg_amt_5d_cache_inner() -> None:
 
         valid_high_count = sum(1 for v in new_high.values() if v > 0)
         logger.info(
-            "[전종목5일챠트] 전체 구축 완료 -- %d종목 (매핑완료=%d), HighCache %d종목 적재 (유효 %d), 부적격 %d종목 제거",
+            "[시작] 전체 구축 완료 -- %d종목 (매핑완료=%d), HighCache %d종목 적재 (유효 %d), 부적격 %d종목 제거",
             len(avg_map), len(fully_mapped), len(new_high), valid_high_count, len(ineligible_codes),
         )
     except Exception as e:
-        logger.error("[전종목5일챠트] 전체 구축 실패: %s", e)
+        logger.error("[시작] 전체 구축 실패: %s", e, exc_info=True)
 
     try:
         from app.services.engine_service import recompute_sector_summary_now
@@ -703,7 +704,7 @@ async def _refresh_avg_amt_5d_cache_inner() -> None:
         _account_notify.notify_desktop_sector_stocks_refresh()
         _account_notify.notify_desktop_sector_scores(force=True)
     except Exception as e:
-        logger.error("[5일평균] 후처리 실패: %s", e)
+        logger.error("[시작] 후처리 실패: %s", e, exc_info=True)
     _broadcast_avg_amt_progress(1, 1, status="completed")
 
 
@@ -734,32 +735,32 @@ def _broadcast_avg_amt_progress(current: int, total: int, *, status: str = "") -
             payload["message"] = _msg
         ws_manager.broadcast("avg-amt-progress", payload)
     except Exception as e:
-        logger.warning("[5일평균] 진행률 전송 실패: %s", e)
+        logger.warning("[시작] 진행률 전송 실패: %s", e, exc_info=True)
 
 
 async def _bg_refresh_avg_amt_5d() -> None:
     """5일 평균 거래대금 캐시 갱신 — 백그라운드 태스크. 실패 시 60초 간격 최대 3회 재시도."""
     if _st._avg_amt_refresh_running:
-        logger.info("[bg_전종목5일챠트] 이미 갱신 진행 중 -- 생략")
+        logger.info("[시작] 이미 갱신 진행 중 -- 생략")
         return
     _MAX_RETRIES = 3
     _RETRY_INTERVAL = 60
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
-            logger.info("[bg_전종목5일챠트] 백그라운드 5일 평균 거래대금 갱신 시작 (시도 %d/%d)", attempt, _MAX_RETRIES)
+            logger.info("[시작] 백그라운드 5일 평균 거래대금 갱신 시작 (시도 %d/%d)", attempt, _MAX_RETRIES)
             _broadcast_avg_amt_progress(0, 1, status="downloading")
             await refresh_avg_amt_5d_cache()
-            logger.info("[bg_전종목5일챠트] 백그라운드 5일 평균 거래대금 갱신 완료")
+            logger.info("[시작] 백그라운드 5일 평균 거래대금 갱신 완료")
             _st._avg_amt_needs_bg_refresh = False
             _broadcast_avg_amt_progress(1, 1, status="completed")
             return
         except Exception as e:
-            logger.error("[bg_전종목5일챠트] 백그라운드 갱신 실패 (시도 %d/%d): %s", attempt, _MAX_RETRIES, e)
+            logger.error("[시작] 백그라운드 갱신 실패 (시도 %d/%d): %s", attempt, _MAX_RETRIES, e, exc_info=True)
             if attempt < _MAX_RETRIES:
-                logger.info("[bg_전종목5일챠트] %d초 후 재시도", _RETRY_INTERVAL)
+                logger.info("[시작] %d초 후 재시도", _RETRY_INTERVAL)
                 await asyncio.sleep(_RETRY_INTERVAL)
             else:
-                logger.error("[bg_전종목5일챠트] 최대 재시도 횟수 초과 -- 다음 기동까지 대기")
+                logger.error("[시작] 최대 재시도 횟수 초과 -- 다음 기동까지 대기")
                 _broadcast_avg_amt_progress(1, 1, status="failed")
 
 
@@ -767,7 +768,7 @@ async def _login_post_pipeline() -> None:
     """LOGIN 성공 후: 잔고 조회 -> 보유종목 REG -> WS 구독 등록."""
     from app.services import engine_service as es
     _st._ws_reg_pipeline_done.clear()
-    logger.info("[앱준비] 로그인 후 파이프라인 진입")
+    logger.info("[시작] 로그인 후 파이프라인 진입")
     try:
         await es._cleanup_stale_ws_subscriptions_on_session_ready()
 
@@ -776,7 +777,7 @@ async def _login_post_pipeline() -> None:
         _in_ws_window = is_ws_subscribe_window(_st._settings_cache)
 
         if is_test_mode(_st._settings_cache):
-            logger.info("[앱준비] 파이프라인 -- 테스트모드 -- REST 잔고 조회 생략 (가상잔고 사용)")
+            logger.info("[시작] 파이프라인 -- 테스트모드 -- REST 잔고 조회 생략 (가상잔고 사용)")
         elif not _in_ws_window:
             if not _st._account_rest_bootstrapped:
                 import sys as _sys
@@ -784,11 +785,11 @@ async def _login_post_pipeline() -> None:
                     if getattr(_sys.modules.get("app.services.engine_service"), "_rest_api", None) is not None:
                         break
                     await asyncio.sleep(1.0)
-                logger.info("[앱준비] 파이프라인 -- REST 잔고 선행 조회 시작")
+                logger.info("[시작] 파이프라인 -- REST 잔고 선행 조회 시작")
                 await es._update_account_memory(_st._settings_cache)
-                logger.info("[앱준비] 파이프라인 -- REST 잔고 선행 조회 완료 (보유 %d종목)", len(_st._positions))
+                logger.info("[시작] 파이프라인 -- REST 잔고 선행 조회 완료 (보유 %d종목)", len(_st._positions))
             else:
-                logger.info("[앱준비] 파이프라인 -- 잔고 이미 앱준비 완료 -- 재조회 생략 (보유 %d종목)", len(_st._positions))
+                logger.info("[시작] 파이프라인 -- 잔고 이미 앱준비 완료 -- 재조회 생략 (보유 %d종목)", len(_st._positions))
         else:
             if not _st._positions and not _st._account_rest_bootstrapped:
                 import sys as _sys
@@ -796,11 +797,11 @@ async def _login_post_pipeline() -> None:
                     if getattr(_sys.modules.get("app.services.engine_service"), "_rest_api", None) is not None:
                         break
                     await asyncio.sleep(1.0)
-                logger.debug("[앱준비] 파이프라인 -- 실시간 구독 구간이나 포지션 미적재 -- REST 잔고 1회 조회")
+                logger.debug("[시작] 파이프라인 -- 실시간 구독 구간이나 포지션 미적재 -- REST 잔고 1회 조회")
                 await es._update_account_memory(_st._settings_cache)
-                logger.debug("[앱준비] 파이프라인 -- REST 잔고 1회 조회 완료 (보유 %d종목)", len(_st._positions))
+                logger.debug("[시작] 파이프라인 -- REST 잔고 1회 조회 완료 (보유 %d종목)", len(_st._positions))
             else:
-                logger.debug("[앱준비] 파이프라인 -- 실시간 구독 구간 -- REST 잔고 조회 생략 (실시간 수신, 보유 %d종목)", len(_st._positions))
+                logger.debug("[시작] 파이프라인 -- 실시간 구독 구간 -- REST 잔고 조회 생략 (실시간 수신, 보유 %d종목)", len(_st._positions))
 
         from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
         wl_codes: set[str] = set()
@@ -810,7 +811,7 @@ async def _login_post_pipeline() -> None:
             wl_codes.add(_format_kiwoom_reg_stk_cd(v))
         stale = wl_codes & _st._subscribed_stocks
         if stale:
-            logger.debug("[앱준비] 새 세션 -- 0B 구독 상태 초기화 %d종목 (강제 재등록)", len(stale))
+            logger.debug("[시작] 새 세션 -- 0B 구독 상태 초기화 %d종목 (강제 재등록)", len(stale))
             _st._subscribed_stocks -= stale
 
         from app.services import engine_account_notify as _account_notify
@@ -830,7 +831,7 @@ async def _login_post_pipeline() -> None:
             await _account_notify.notify_desktop_sector_refresh(force=True)
             _account_notify.notify_desktop_sector_stocks_refresh()
     except Exception as _e:
-        logger.error("[앱준비] 로그인 후 파이프라인 예외: %s", _e, exc_info=True)
+        logger.error("[시작] 로그인 후 파이프라인 예외: %s", _e, exc_info=True)
 
 
 async def _run_sector_reg_pipeline() -> None:

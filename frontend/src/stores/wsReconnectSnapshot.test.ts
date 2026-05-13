@@ -25,8 +25,6 @@ import type {
   SectorScoreRow,
   SectorStatus,
   BuyTarget,
-  AppSettings,
-  EngineStatus,
   SnapshotHistory,
 } from '../types'
 

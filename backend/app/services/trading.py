@@ -30,7 +30,7 @@ def _fire_and_forget_telegram(message: str, settings: dict | None) -> None:
             "settings": settings,
         })
     except Exception as e:
-        logger.warning("[텔레그램] 알림 큐 등록 실패: %s", e)
+        logger.warning("[텔레그램] 알림 큐 등록 실패: %s", e, exc_info=True)
 
 
 class AutoTradeManager:
@@ -57,6 +57,7 @@ class AutoTradeManager:
             codes.discard("")
             return spent, codes
         except Exception:
+            logger.warning("[매매] 일일 매수 상태 복원 실패", exc_info=True)
             return 0, set()
 
     def _ensure_daily_buy_counter(self) -> None:
@@ -85,7 +86,7 @@ class AutoTradeManager:
                 self.log_callback(f"[실시간지연] {stk_cd} 매수 차단 — WS 지연 200ms 초과")
                 return False
         except Exception:
-            pass
+            logger.warning("[매수가드] 실시간 지연 체크 실패", exc_info=True)
 
         # 스케줄 자동매매 게이트: force_buy(매수대기 수동 매수) 시에만 우회
         if not settings.get("is_auto", False) and not force_buy:
@@ -126,6 +127,7 @@ class AutoTradeManager:
                 import app.services.engine_service as _es_pos
                 _positions_for_count = _es_pos._positions
             except Exception:
+                logger.warning("[매매] 보유 종목 수 조회 실패", exc_info=True)
                 _positions_for_count = []
         holding_count = sum(
             1 for p in _positions_for_count
@@ -185,7 +187,7 @@ class AutoTradeManager:
                         self.log_callback(f"[지수가드] {stk_cd} 매수 차단 -- {_idx_reason}")
                         return False
             except Exception:
-                pass
+                logger.warning("[매수가드] 지수 가드 체크 실패", exc_info=True)
 
         # ── 등락률 + 거래대금 가드 (설정값 기반) ──────────────────────────────
         _change_rate_for_guard: float | None = None
@@ -199,7 +201,7 @@ class AutoTradeManager:
                     _change_rate_for_guard = float(_row.get("change_rate") or 0.0)
                     _trade_amount_for_guard = float(_row.get("trade_amount") or 0.0)
             except Exception:
-                pass
+                logger.warning("[매수가드] 등락률/거래대금 조회 실패", exc_info=True)
         # 등락률 가드
         if _change_rate_for_guard is not None:
             _rise_limit = float(raw_all.get("buy_block_rise_pct", 7.0))
@@ -230,7 +232,7 @@ class AutoTradeManager:
                     if _str_raw is not None:
                         _strength_val = float(_str_raw)
                 except Exception:
-                    pass
+                    logger.warning("[매수가드] 체결강도 조회 실패", exc_info=True)
             if _strength_val is not None and _strength_val < _min_strength:
                 stk_nm_s = data_manager.get_stock_name(stk_cd, access_token)
                 self.log_callback(
@@ -315,7 +317,7 @@ class AutoTradeManager:
             import app.services.engine_service as _es_limit
             _es_limit._broadcast_buy_limit_status()
         except Exception:
-            pass
+            logger.warning("[매수] 매수한도 브로드캐스트 실패", exc_info=True)
 
         return True
 
@@ -395,7 +397,7 @@ class AutoTradeManager:
                         _avg_buy = int(_p.get("avg_price", 0))
                         break
         except Exception:
-            pass
+            logger.warning("[매도] 평균매수가 조회 실패", exc_info=True)
 
         # ── 테스트모드 가드: 테스트모드면 실전 서버에 절대 주문 안 보냄 ─────────
         if is_test_mode(base_settings):
@@ -440,7 +442,7 @@ class AutoTradeManager:
                 self.log_callback("[실시간지연] 매도 조건 전체 차단 — WS 지연 200ms 초과")
                 return
         except Exception:
-            pass
+            logger.warning("[매도가드] 실시간 지연 체크 실패", exc_info=True)
 
         for stock in stock_list:
             s = dict(settings)
@@ -494,7 +496,7 @@ class AutoTradeManager:
                     try:
                         self.execute_sell(stk_cd, cur_price, stk_nm, "손절 발동", sell_qty, pnl_rate, s, base_settings, access_token)
                     except Exception:
-                        pass
+                        logger.error("[매도] 손절 실행 실패", exc_info=True)
                     continue
 
             if s.get("chk_tp", False):
@@ -504,7 +506,7 @@ class AutoTradeManager:
                     try:
                         self.execute_sell(stk_cd, cur_price, stk_nm, "익절 발동", sell_qty, pnl_rate, s, base_settings, access_token)
                     except Exception:
-                        pass
+                        logger.error("[매도] 익절 실행 실패", exc_info=True)
                     continue
 
             if s.get("chk_ts", False):
@@ -556,7 +558,7 @@ def _dryrun_post_buy_broadcast(stk_cd: str, stk_nm: str) -> None:
         es._broadcast_account(reason="dryrun_buy")
         logger.info("[테스트모드] 매수 후 UI 갱신 완료 -- %s(%s)", stk_nm, stk_cd)
     except Exception as e:
-        logger.warning("[테스트모드] 매수 후 UI 갱신 실패: %s", e)
+        logger.warning("[테스트모드] 매수 후 UI 갱신 실패: %s", e, exc_info=True)
 
 
 def _dryrun_post_sell_broadcast(stk_cd: str, stk_nm: str, settings: dict) -> None:
@@ -575,4 +577,4 @@ def _dryrun_post_sell_broadcast(stk_cd: str, stk_nm: str, settings: dict) -> Non
         es._broadcast_account(reason="dryrun_sell")
         logger.info("[테스트모드] 매도 후 UI 갱신 완료 -- %s(%s)", stk_nm, stk_cd)
     except Exception as e:
-        logger.warning("[테스트모드] 매도 후 UI 갱신 실패: %s", e)
+        logger.warning("[테스트모드] 매도 후 UI 갱신 실패: %s", e, exc_info=True)

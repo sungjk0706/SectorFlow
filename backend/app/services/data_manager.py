@@ -8,6 +8,8 @@ from typing import Optional
 from app.core.logger import get_logger
 from app.core.trade_mode import effective_trade_mode, is_test_mode
 
+logger = get_logger("data_manager")
+
 
 def _get_rest_base() -> str:
     """BrokerRouter의 AuthProvider에서 REST base URL 획득."""
@@ -18,10 +20,8 @@ def _get_rest_base() -> str:
         if hasattr(auth, "rest_api") and hasattr(auth.rest_api, "base_url"):
             return auth.rest_api.base_url
     except Exception:
-        pass
+        logger.warning("[데이터관리] base_url 조회 실패", exc_info=True)
     return "https://api.kiwoom.com"
-
-logger = get_logger("data_manager")
 
 
 def _norm_stk_cd(stk_cd: str) -> str:
