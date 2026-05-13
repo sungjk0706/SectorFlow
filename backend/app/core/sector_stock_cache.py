@@ -270,8 +270,8 @@ def load_stock_name_cache() -> dict[str, str] | None:
 
 # ── 확정 시세 다운로드 진행 파일 캐시 ──────────────────────────────────────
 
-from app.core.trading_calendar import _next_business_date, is_krx_holiday
-from datetime import datetime, date
+from app.core.trading_calendar import _next_business_date
+from datetime import datetime
 
 try:
     from zoneinfo import ZoneInfo

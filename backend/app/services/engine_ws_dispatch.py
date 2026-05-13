@@ -16,15 +16,11 @@ from app.services.auto_trading_effective import auto_sell_effective
 from app.core.trade_mode import is_test_mode
 from app.services import dry_run
 from app.services.engine_account_notify import (
-    notify_desktop_buy_radar_only,
-    notify_desktop_index_refresh,
-    notify_desktop_sector_scores,
     notify_raw_real_data,
 )
 from app.services.engine_account_rest import (
     apply_last_price_to_positions_inplace,
 )
-from app.services.engine_trade_audit import audit_trade_decision
 import app.services.engine_radar_ops as engine_radar_ops
 from app.services.engine_symbol_utils import (
     _base_stk_cd,
@@ -39,8 +35,6 @@ from app.services.engine_ws_parsing import (
     _ws_fid_float,
     _ws_fid_int,
     _ws_fid_key_present,
-    _ws_fid_raw,
-    _ws_int,
     parse_fid9081_exchange,
     parse_fid290_session,
 )

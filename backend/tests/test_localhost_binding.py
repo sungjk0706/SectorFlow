@@ -7,14 +7,12 @@ On UNFIXED code, these tests will FAIL — confirming the bug exists.
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
 
 # Project root (two levels up from backend/tests/)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
-import pytest
-from hypothesis import given, settings, assume
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 

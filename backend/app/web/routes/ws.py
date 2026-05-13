@@ -11,7 +11,6 @@ import logging
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
-from app.web.auth import verify_token
 from app.web.ws_manager import ws_manager
 
 logger = logging.getLogger(__name__)

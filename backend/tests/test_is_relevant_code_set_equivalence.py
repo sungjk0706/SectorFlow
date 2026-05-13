@@ -17,8 +17,7 @@ from pathlib import Path
 # Add backend to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import pytest
-from hypothesis import given, settings, assume
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd

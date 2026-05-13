@@ -6,14 +6,12 @@ engine_service.py에서 분리된 REG 구독 로직.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import math
 from types import ModuleType
 
 from app.services.engine_symbol_utils import (
     _format_kiwoom_reg_stk_cd,
-    _to_al_stk_cd,
     get_ws_subscribe_code,
 )
 

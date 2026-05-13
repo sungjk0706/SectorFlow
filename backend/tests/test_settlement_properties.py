@@ -13,11 +13,9 @@ from hypothesis import given, settings, assume
 from hypothesis import strategies as st
 from datetime import date, timedelta
 
-from app.services import settlement_engine
 from app.services.settlement_engine import (
-    PendingWithdrawal, BUY_COMMISSION, SELL_COMMISSION, SECURITIES_TAX,
-    _calc_settlement_date, _seconds_until_settlement,
-    init, get_available_cash, get_withdrawable_cash, get_pending_withdrawal_total,
+    BUY_COMMISSION, SELL_COMMISSION, SECURITIES_TAX,
+    _calc_settlement_date, init, get_available_cash, get_withdrawable_cash, get_pending_withdrawal_total,
     get_pending_withdrawals, check_buy_power, on_buy_fill, on_sell_fill,
     charge, withdraw, get_effective_buy_power, reset,
 )
@@ -191,7 +189,7 @@ def test_persistence_round_trip():
     available_before = get_available_cash()
     pending_before = get_pending_withdrawals()
     # Persist
-    from app.services.settlement_engine import _persist, _load, _pending_withdrawals as _pw_list
+    from app.services.settlement_engine import _persist, _load
     _persist()
     # Reset and reload
     init(0)

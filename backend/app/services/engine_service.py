@@ -15,28 +15,13 @@ import json
 import sys
 import time
 from collections import OrderedDict
-from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.core.engine_settings import get_engine_settings
 from app.core.trade_mode import is_test_mode
-from app.core.avg_amt_cache import (
-    load_avg_amt_cache,
-    load_avg_amt_cache_v2,
-    save_avg_amt_cache,
-    save_avg_amt_cache_v2,
-    avg_from_v2,
-)
-from app.core.sector_stock_cache import (
-    load_layout_cache,
-    save_layout_cache,
-    load_snapshot_cache,
-    save_snapshot_cache,
-)
 from app.core.kiwoom_connector import KiwoomConnector
 from app.core.logger import get_logger
 from app.services.trading import AutoTradeManager
-from app.services import data_manager
 from app.services.auto_trading_effective import auto_buy_effective, auto_sell_effective
 from app.services.engine_account_rest import (
     apply_last_price_to_positions_inplace,
@@ -49,25 +34,11 @@ from app.services.engine_account_rest import (
     real04_official_apply_position_line,
     recalc_broker_totals_from_positions,
 )
-from app.services.engine_ws_parsing import (
-    _normalize_kiwoom_real_type,
-    _parse_fid10_price,
-    _parse_ws_fid12_to_percent,
-    _ws_fid_int,
-    _ws_fid_key_present,
-    _ws_fid_raw,
-    _ws_int,
-)
 from app.services.engine_symbol_utils import (
-    _base_stk_cd,
     _format_kiwoom_reg_stk_cd,
     _normalize_stk_cd_rest,
-    _real_item_stk_cd,
-    _resolve_bucket_key,
-    _to_al_stk_cd,
     get_ws_subscribe_code,
 )
-from app.services.engine_trade_audit import audit_trade_decision
 from app.services.engine_ws_fill_followup import run_after_order_fill_ws
 from app.services import engine_account_notify as _account_notify
 from app.services import engine_radar_ops
@@ -82,7 +53,6 @@ from app.services import settlement_engine
 # engine_cache: 캐시 오케스트레이션
 # engine_state: 상태 프록시 (이 모듈의 전역 변수를 __getattr__로 위임)
 import app.services.engine_bootstrap as _engine_bootstrap
-import app.services.engine_cache as _engine_cache
 
 broadcast_account_update = _account_notify.broadcast_account_update
 broadcast_engine_status_ws = _account_notify.broadcast_engine_status_ws

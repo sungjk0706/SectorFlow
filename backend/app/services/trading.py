@@ -4,12 +4,10 @@
 legacy_pc_engine/logic_auto_trade.py 이식 (설정은 get_settings_fn, PyQt5 제거)
 """
 import time
-import asyncio
 import logging
 from datetime import datetime
 
 from app.services import data_manager
-from app.services import telegram
 from app.services.auto_trading_effective import auto_buy_effective, auto_sell_effective
 from app.core.broker_factory import get_router
 from app.core.trade_mode import is_test_mode
