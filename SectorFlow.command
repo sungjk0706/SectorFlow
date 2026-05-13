@@ -8,9 +8,19 @@ echo "============================================"
 # 가상환경 활성화
 source .venv/bin/activate
 
-# 이전 프로세스 정리
+# ---------------------------------------------------------
+# [개선 1] 이전 프로세스 안전 종료 (Graceful Shutdown)
+# ---------------------------------------------------------
+echo "이전 프로세스 정리 중..."
+# 1. 부드러운 종료 요청 (SIGTERM)
+lsof -ti:8000 | xargs kill -15 2>/dev/null
+lsof -ti:5173 | xargs kill -15 2>/dev/null
+# 장부 정리할 시간(2초) 부여
+sleep 2 
+# 2. 그래도 살아있으면 강제 종료 (SIGKILL)
 lsof -ti:8000 | xargs kill -9 2>/dev/null
 lsof -ti:5173 | xargs kill -9 2>/dev/null
+
 rm -f backend/data/server.lock
 rm -f /tmp/sectorflow.lock
 
@@ -64,7 +74,25 @@ echo ""
 echo "  🌐 브라우저에서 접속하세요:"
 echo "     http://localhost:5173"
 echo ""
-echo "  🛑 종료하려면 이 터미널 창을 닫으세요"
+echo "  🛑 종료하려면 터미널 창을 닫거나 Ctrl+C를 누르세요."
 echo "============================================"
 
+# ---------------------------------------------------------
+# [개선 2] 터미널 종료 시 자식 프로세스 동반 안전 종료 (Trap)
+# ---------------------------------------------------------
+cleanup() {
+    echo ""
+    echo "🛑 SectorFlow 안전 종료 중... (Graceful Shutdown)"
+    kill -15 $BACKEND_PID 2>/dev/null
+    kill -15 $FRONTEND_PID 2>/dev/null
+    # 완전히 꺼질 때까지 대기
+    wait $BACKEND_PID $FRONTEND_PID 2>/dev/null
+    echo "✅ 모든 프로세스가 안전하게 종료되었습니다."
+    exit 0
+}
+
+# SIGINT(Ctrl+C), SIGTERM, EXIT 신호가 오면 cleanup 함수 실행
+trap cleanup SIGINT SIGTERM EXIT
+
+# 백그라운드 프로세스 유지
 wait
