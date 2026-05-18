@@ -17,8 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable, Literal
 
-from app.core import sector_mapping
-from app.core.logger import get_logger
+from backend.app.core import sector_mapping
+from backend.app.core.logger import get_logger
 
 logger = get_logger("engine")
 

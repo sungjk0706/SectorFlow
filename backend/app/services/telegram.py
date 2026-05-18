@@ -5,7 +5,7 @@
 import logging
 import httpx
 
-from app.core.trade_mode import is_test_mode
+from backend.app.core.trade_mode import is_test_mode
 
 logger = logging.getLogger(__name__)
 

@@ -14,8 +14,8 @@ from typing import Optional
 
 import httpx as requests
 
-from app.core.broker_urls import build_broker_urls, KIWOOM_REST_REAL
-from app.core.kiwoom_sector_rest import (
+from backend.app.core.broker_urls import build_broker_urls, KIWOOM_REST_REAL
+from backend.app.core.kiwoom_sector_rest import (
     fetch_ka10086_daily_price as _ka10086_fetch_single,
     fetch_ka10086_sector_all as _ka10086_fetch_all,
     fetch_ka10099_stock_name_map as _ka10099_name_map,

@@ -5,8 +5,8 @@
 """
 import httpx as requests
 from typing import Optional
-from app.core.logger import get_logger
-from app.core.trade_mode import effective_trade_mode
+from backend.app.core.logger import get_logger
+from backend.app.core.trade_mode import effective_trade_mode
 
 logger = get_logger("data_manager")
 

@@ -1,7 +1,8 @@
 // frontend/src/pages/sector-analysis.ts
 // 업종분석 페이지 — Vanilla TS PageModule (SectorAnalysisCard.tsx 1:1 전환)
 
-import { appStore, setSelectedSector } from '../stores/appStore'
+import { hotStore } from '../stores/hotStore'
+import { uiStore, setSelectedSector } from '../stores/uiStore'
 import { createSettingsManager } from '../settings'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingRow, createNumInput, createMoneyInput, createWsStatusBadge } from '../components/common/setting-row'
@@ -336,7 +337,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
 function mount(container: HTMLElement): void {
   _mounted = true
   notifyPageActive('sector-analysis')
-  settingsMgr = createSettingsManager(appStore)
+  settingsMgr = createSettingsManager(uiStore)
   currentVals = {}
   currentRiseRatio = 50
   rankRows = []
@@ -354,7 +355,7 @@ function mount(container: HTMLElement): void {
   h4.textContent = '업종 분석'
   titleRow.appendChild(h4)
 
-  const initSt = appStore.getState()
+  const initSt = uiStore.getState()
   const isSubscribed = initSt.wsSubscribeStatus?.quote_subscribed ?? false
   wsBadge = createWsStatusBadge({ subscribed: isSubscribed, broker: 'kiwoom' })
   titleRow.appendChild(wsBadge.el)
@@ -508,29 +509,32 @@ function mount(container: HTMLElement): void {
     const s = settingsMgr?.getSettings()
     if (s) {
       syncFromSettings(s)
-      const state = appStore.getState()
+      const state = hotStore.getState()
+      const uiState = uiStore.getState()
       const maxTargets = Number(currentVals.sector_max_targets) || 1
-      updateRankingRows(state.sectorScores, state.selectedSector, maxTargets, state.sectorScoresDelta)
+      updateRankingRows(state.sectorScores, uiState.selectedSector, maxTargets, uiState.sectorScoresDelta)
     }
   })
 
-  // appStore 구독 — sectorScores/selectedSector 변동 시 델타 갱신 (변경된 셀만 DOM 반영)
+  // hotStore/uiStore 구독 — sectorScores/selectedSector 변동 시 델타 갱신 (변경된 셀만 DOM 반영)
   {
-    const initSt = appStore.getState()
-    let prevSectorScores = initSt.sectorScores
-    let prevSelectedSector = initSt.selectedSector
-    let prevWsSubscribeStatus = initSt.wsSubscribeStatus
+    const initHot = hotStore.getState()
+    const initUi = uiStore.getState()
+    let prevSectorScores = initHot.sectorScores
+    let prevSelectedSector = initUi.selectedSector
+    let prevWsSubscribeStatus = initUi.wsSubscribeStatus
 
-    unsubStore = appStore.subscribe((state) => {
+    unsubStore = hotStore.subscribe((state) => {
       const scoresChanged = state.sectorScores !== prevSectorScores
-      const sectorChanged = state.selectedSector !== prevSelectedSector
-      const wsStatusChanged = state.wsSubscribeStatus !== prevWsSubscribeStatus
+      const uiState = uiStore.getState()
+      const sectorChanged = uiState.selectedSector !== prevSelectedSector
+      const wsStatusChanged = uiState.wsSubscribeStatus !== prevWsSubscribeStatus
       prevSectorScores = state.sectorScores
-      prevSelectedSector = state.selectedSector
-      prevWsSubscribeStatus = state.wsSubscribeStatus
+      prevSelectedSector = uiState.selectedSector
+      prevWsSubscribeStatus = uiState.wsSubscribeStatus
 
       if (wsStatusChanged) {
-        const sub = state.wsSubscribeStatus?.quote_subscribed ?? false
+        const sub = uiState.wsSubscribeStatus?.quote_subscribed ?? false
         wsBadge?.update(sub, 'kiwoom')
       }
 
@@ -542,18 +546,20 @@ function mount(container: HTMLElement): void {
       rafHandle = requestAnimationFrame(() => {
         rafHandle = null
         if (!_mounted) return
-        const latest = appStore.getState()
+        const latest = hotStore.getState()
+        const latestUi = uiStore.getState()
         const maxTargets = Number(currentVals.sector_max_targets) || 1
-        updateRankingRows(latest.sectorScores, latest.selectedSector, maxTargets, latest.sectorScoresDelta)
+        updateRankingRows(latest.sectorScores, latestUi.selectedSector, maxTargets, latestUi.sectorScoresDelta)
         updateMaxTargetsStatus(latest.sectorScores)
       })
     })
   }
 
   // 초기 렌더링
-  const state = appStore.getState()
+  const state = hotStore.getState()
+  const uiState = uiStore.getState()
   const maxTargets = Number(currentVals.sector_max_targets) || 1
-  updateRankingRows(state.sectorScores, state.selectedSector, maxTargets, state.sectorScoresDelta)
+  updateRankingRows(state.sectorScores, uiState.selectedSector, maxTargets, uiState.sectorScoresDelta)
   updateMaxTargetsStatus(state.sectorScores)
 }
 

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import httpx as requests
 
-from app.core.broker_providers import UnifiedStockRecord
+from backend.app.core.broker_providers import UnifiedStockRecord
 
 if TYPE_CHECKING:
     from app.core.kiwoom_rest import KiwoomRestAPI

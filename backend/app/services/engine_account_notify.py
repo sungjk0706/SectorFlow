@@ -12,8 +12,8 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
-from app.core.logger import get_logger
-from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+from backend.app.core.logger import get_logger
+from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
 
 logger = get_logger("engine")
 

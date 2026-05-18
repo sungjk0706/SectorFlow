@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.core.logger import get_logger
+from backend.app.core.logger import get_logger
 
 logger = get_logger("engine")
 

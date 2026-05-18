@@ -2,8 +2,8 @@
 // Store 구독으로 장 상태, 앱 준비 상태, 엔진 상태, 설정 상태, 지수 실시간 표시
 // 기존 Header.tsx의 모든 로직을 DOM 직접 업데이트로 전환
 
-import { appStore } from '../stores/appStore'
-import type { AppState } from '../stores/appStore'
+import { uiStore } from '../stores/uiStore'
+import type { UIState } from '../stores/uiStore'
 import type { IndexData } from '../types'
 
 // ── 스타일 상수 ──
@@ -189,7 +189,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
 
   // ── Store 구독 ──
 
-  function onStateChange(state: AppState): void {
+  function onStateChange(state: UIState): void {
     const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings } = state
 
     // 장 상태
@@ -344,10 +344,10 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
     }
   }
 
-  const unsubscribe = appStore.subscribe(onStateChange)
+  const unsubscribe = uiStore.subscribe(onStateChange)
 
   // 초기 렌더링
-  onStateChange(appStore.getState())
+  onStateChange(uiStore.getState())
 
   function destroy(): void {
     unsubscribe()

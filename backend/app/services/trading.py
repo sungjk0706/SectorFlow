@@ -7,13 +7,13 @@ import time
 import logging
 from datetime import datetime
 
-from app.services import data_manager
-from app.services.auto_trading_effective import auto_buy_effective, auto_sell_effective
-from app.core.broker_factory import get_router
-from app.core.trade_mode import is_test_mode
-from app.services import dry_run
-from app.services import trade_history
-from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+from backend.app.services import data_manager
+from backend.app.services.auto_trading_effective import auto_buy_effective, auto_sell_effective
+from backend.app.core.broker_factory import get_router
+from backend.app.core.trade_mode import is_test_mode
+from backend.app.services import dry_run
+from backend.app.services import trade_history
+from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
 
 logger = logging.getLogger(__name__)
 

@@ -15,14 +15,14 @@ import logging
 import time
 from typing import Callable, Optional
 
-from app.core.broker_providers import (
+from backend.app.core.broker_providers import (
     AccountProvider,
     AuthProvider,
     OrderProvider,
     SectorProvider,
     WebSocketProvider,
 )
-from app.core.kiwoom_rest import KiwoomRestAPI
+from backend.app.core.kiwoom_rest import KiwoomRestAPI
 
 _log = logging.getLogger(__name__)
 

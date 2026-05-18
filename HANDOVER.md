@@ -1,161 +1,115 @@
-# SectorFlow 아키텍처 최적화 인계서
+# SectorFlow_old 인계서
 
-**작업 날짜:** 2026-05-13  
-**작업 목표:** Trading App Architecture Optimization - Priority 1 완료, Priority 2 완료
+## 완료 단계
+- Phase 1-A: P0-6 hot path console.log 제거 (완료)
+- Phase 1-B: P0-3 DI Container 단일화 (완료)
+- Phase 1-B: P0-5 Worker request ID 불일치 (완료)
+- Phase 2: P1-2 채널 분리 구현 (완료)
+- Phase 2: P1-1 hot state/UI state 분리 롤백 (완료)
+- Phase 2: P1-1 단계 1 액션 함수 분리 (완료)
+- Phase 2: P1-1 단계 2 binding.ts hotStore/uiStore 직접 사용 (완료)
+- Phase 2: P1-1 단계 3 컴포넌트 부분적 이동 (완료)
 
----
+## 현재 상태
+### 빌드 상태
+- 빌드 성공 (npm run build)
+- binding.ts: hotStore/uiStore 직접 사용, 채널 분리 유지
+- main.ts: bindWSToStore 인자 제거
 
-## 완료된 작업 (Priority 1)
+### P1-1 단계 1 완료 내용
+- hotStore.ts: 실시간 데이터 액션 함수 이동 완료
+  - applyAccountUpdate, applyRealData, applyOrderbookUpdate
+  - applyBuyTargetsUpdate, applySectorScores, applySectorStocksRefresh
+  - applyOrderFilled, applyRealtimeReset
+  - applySellHistoryUpdate, applyBuyHistoryUpdate, applyDailySummaryUpdate
+- uiStore.ts: UI 상태 액션 함수 이동 완료
+  - applySettingsChanged, applyIndexRefresh, applySnapshotUpdate
+  - applyAvgAmtProgress, applyBootstrapStage
+  - applyBuyLimitStatus, applyTestDataResetCompleted
+  - setConnected, setEngineReady, setBackfilling, setSelectedSector
+  - applyWsSubscribeStatus, applyWsConnectionStatus, applyMarketPhase
+- appStore.ts: 위임 함수 추가 완료 (호환성 유지)
 
-### Task 2.4: Settings Manager Pattern (SSOT)
-**목적:** Python GC 최적화를 위한 싱글톤 Settings Manager 적용
+### P1-1 단계 2 완료 내용
+- binding.ts: hotStore/uiStore 직접 사용 완료
+  - appStore import 제거, hotStore/uiStore 직접 import
+  - appStore.setState → hotStore.setState 변경
+  - bindWSToStore 인자에서 _store 제거
+- main.ts: bindWSToStore 호출에서 appStore 인자 제거
 
-**수정된 파일:**
-1. **`/frontend/src/settings.ts`**
-   - 전역 싱글톤 `globalSettingsManager` 추가 (line 105)
-   - `export const globalSettingsManager = createSettingsManager(appStore)`
+### P1-1 단계 3 완료 내용
+- header.ts: uiStore로 변경 완료
+- profit-overview.ts: hotStore로 변경 완료
+- buy-target.ts: hotStore + uiStore로 변경 완료
+- sell-position.ts: hotStore로 변경 완료
 
-2. **`/frontend/src/pages/buy-target.ts`**
-   - import: `globalSettingsManager` 추가
-   - `updateBadges()` 함수에서 `appStore.getState().settings` → `globalSettingsManager.getSettings()` 변경
-   - store 구독에서 settings 참조 변경
-   - wsBadge 타입 변경 (`HTMLElement`)
+### P1-1 단계 4 완료 내용
+- settings.ts: createSettingsManager를 uiStore로 변경 완료
+- sell-settings.ts: uiStore로 변경 완료
+- buy-settings.ts: uiStore로 변경 완료
+- general-settings.ts: uiStore로 변경 완료
+- sector-custom.ts: hotStore + uiStore로 변경 완료
+- sector-analysis.ts: hotStore + uiStore로 변경 완료
+- sector-stock.ts: hotStore + uiStore로 변경 완료
 
-3. **`/frontend/src/pages/sell-position.ts`**
-   - import: `globalSettingsManager`, `createGlobalWsBadge` 추가
-   - mount 함수에서 settings 접근 변경
-   - wsBadge 전역 배지 적용
+### P1-1 단계 5 진행 내용
+- ws.ts: setBackfilling을 uiStore로 변경 완료
+- main.ts: appStore를 uiStore로 변경 완료
+- applyRealData.test.ts: 테스트 파일, appStore 유지
 
-4. **`/frontend/src/pages/profit-overview.ts`**
-   - import: `globalSettingsManager`, `createGlobalWsBadge` 추가
-   - `renderAccountVals()` 함수에서 settings 접근 변경
-   - mount 함수에서 settings 접근 변경
-   - onDateRangeChange 콜백에서 settings 접근 변경
-   - store 구독에서 settings 참조 변경
-   - rAF 콜백에서 settings 접근 변경 및 wsBadge.update 제거
+### 실수 및 복구 기록
+- sector-stock.ts에서 sectorOrder 제거 실수 → uiStore에서 sectorOrder 복구 완료
+- sector-analysis.ts에서 sectorScoresDelta 제거 실수 → uiStore에서 sectorScoresDelta 복구 완료
+- 빌드 검증 성공
 
-### Task 2.3: WebSocket Status Badge (Single Subscription)
-**목적:** 단일 store subscriber를 사용하는 전역 WS 배지 모듈
+### 아키텍처 부합성 확인
+- 채널 분리(P1-2): 유지 - GPT5.5_아키텍처 Phase 2-2 부합
+- hotStore/uiStore 분리(P1-1): 단계 4 완료, 단계 5 진행 중 - GPT5.5_아키텍처 Phase 4-1 해당
 
-**수정된 파일:**
-1. **`/frontend/src/settings.ts`**
-   - 전역 WS 배지 모듈 추가 (line 108-147)
-   - `createGlobalWsBadge()`: 단일 subscriber 유지, 싱글톤 패턴
-   - `destroyGlobalWsBadge()`: subscriber 정리
+## 다음 단계
 
-2. **`/frontend/src/pages/general-settings.ts`**
-   - import: `createGlobalWsBadge` 추가
-   - 모듈 상태: `wsBadge: HTMLElement` 추가
-   - `renderTabBar()` 함수: 탭 바 오른쪽에 WS 배지 추가
-   - unmount 함수: wsBadge 정리
+### P1-1 hot state/UI state 분리 (단계적 접근 - 아키텍처 Phase 4-1)
+**제안된 접근 방식:**
 
-3. **`/frontend/src/pages/buy-settings.ts`**
-   - import: `createGlobalWsBadge` 추가
-   - 모듈 상태: `wsBadge: HTMLElement` 추가
-   - mount 함수: 헤더 행에 WS 배지 추가
-   - unmount 함수: wsBadge 정리
+**단계 1: hotStore/uiStore에 액션 함수 이동** (완료)
+- appStore.ts의 액션 함수를 hotStore.ts/uiStore.ts로 분리
+- appStore는 호환성을 위해 임시 유지
+- 빌드 검증
 
-4. **`/frontend/src/pages/sell-settings.ts`**
-   - import: `createGlobalWsBadge` 추가
-   - 모듈 상태: `wsBadge: HTMLElement` 추가
-   - mount 함수: 헤더 행에 WS 배지 추가
-   - unmount 함수: wsBadge 정리
+**단계 2: binding.ts에서 hotStore/uiStore 사용** (완료)
+- 이벤트 핸들러를 hotStore/uiStore로 분배
+- appStore 호출을 hotStore/uiStore 호출로 변경
+- 빌드 검증
 
----
+**단계 3: 컴포넌트 순차적 이동** (완료)
+- header.ts: uiStore로 변경
+- profit-overview.ts: hotStore로 변경
+- buy-target.ts: hotStore + uiStore로 변경
+- sell-position.ts: hotStore로 변경
+- 빌드 검증
 
-## 완료된 작업 (Priority 2)
+**단계 4: settings.ts 수정** (완료)
+- createSettingsManager를 uiStore로 변경
+- 나머지 컴포넌트 이동
+- 빌드 검증
 
-### Task 2.1: rAF Coalescing
-**목적:** `sector-analysis.ts`에 requestAnimationFrame 코일레싱 패턴 적용
+**단계 5: appStore 제거** (진행 중)
+- ws.ts: setBackfilling을 uiStore로 변경 완료
+- main.ts: appStore를 uiStore로 변경 완료
+- applyRealData.test.ts: 테스트 파일, appStore 유지
+- appStore.ts 파일 제거 (다음 세션)
+- 최종 빌드 검증
 
-**수정된 파일:**
-1. **`/frontend/src/pages/sector-analysis.ts`**
-   - 모듈 변수 추가 (line 79-80):
-     - `rafHandle: number | null = null`
-     - `_mounted = false`
-   - mount 함수 (line 337):
-     - `_mounted = true` 추가
-   - appStore subscribe 콜백 (line 539-549):
-     - rAF coalescing 패턴 적용
-     - `if (rafHandle !== null) return`으로 중복 예약 방지
-     - rAF 콜백 내에서 최신 상태 가져오기
-   - unmount 함수 (line 562, 564):
-     - `_mounted = false` 추가
-     - rAF 취소 로직 추가
+## 미해결 문제
+- P1-1 단계 5: appStore.ts 파일 제거 필요 (applyRealData.test.ts는 테스트 파일로 유지)
+- P1-3 주문 상태기계 검증: 대기
+- Phase 3: P2 문제 해결: 대기
+- Phase 4: 문서 동기화: 대기
 
-### Task 2.2: Page Activity Notifications
-**목적:** 페이지 활성/비활성 알림 추가
+## 백업 상태
+- 현재 git commit 없음
+- 빌드 성공 상태
+- P1-1 단계 4 완료, 단계 5 진행 중 (ws.ts, main.ts 변경 완료)
 
-**수정된 파일:**
-1. **`/frontend/src/pages/sector-analysis.ts`**
-   - import 추가 (line 6): `import { notifyPageActive, notifyPageInactive } from '../api/ws'`
-   - mount 함수 (line 338): `notifyPageActive('sector-analysis')` 추가
-   - unmount 함수 (line 563): `notifyPageInactive('sector-analysis')` 추가
-
-2. **`/frontend/src/pages/buy-settings.ts`**
-   - import 추가 (line 7): `import { notifyPageActive, notifyPageInactive } from '../api/ws'`
-   - mount 함수 (line 147): `notifyPageActive('buy-settings')` 추가
-   - unmount 함수 (line 420): `notifyPageInactive('buy-settings')` 추가
-
----
-
-## 아키텍처 원칙
-
-### Python-Centric Resource Efficiency
-- **싱글톤 패턴:** 모듈 레벨 사전 인스턴스화로 객체 생성/소멸 최소화
-- **단일 Subscription:** 전역 상태 배지는 단일 subscriber만 유지
-- **GC 최적화:** 불필요한 객체 생성 방지, 참조 재사용
-
-### Single-Source-Of-Truth (SSOT)
-- **Settings Manager:** 전역 싱글톤으로 중앙화된 설정 관리
-- **WS Badge:** 전역 싱글톤으로 단일 상태 소스
-
----
-
-## 수정된 파일 목록
-
-**Priority 1:**
-1. `/frontend/src/settings.ts` - globalSettingsManager, createGlobalWsBadge 추가
-2. `/frontend/src/pages/buy-target.ts` - globalSettingsManager, createGlobalWsBadge 적용
-3. `/frontend/src/pages/sell-position.ts` - globalSettingsManager, createGlobalWsBadge 적용
-4. `/frontend/src/pages/profit-overview.ts` - globalSettingsManager, createGlobalWsBadge 적용
-5. `/frontend/src/pages/general-settings.ts` - createGlobalWsBadge 적용
-6. `/frontend/src/pages/buy-settings.ts` - createGlobalWsBadge 적용
-7. `/frontend/src/pages/sell-settings.ts` - createGlobalWsBadge 적용
-
-**Priority 2:**
-8. `/frontend/src/pages/sector-analysis.ts` - rAF 코일레싱 패턴 적용, 페이지 활성/비활성 알림 추가
-9. `/frontend/src/pages/buy-settings.ts` - 페이지 활성/비활성 알림 추가
-
----
-
-## 참고 사항
-
-- general-settings.ts는 이미 createSettingsManager를 사용하므로 globalSettingsManager로 변경하지 않음
-- 전역 WS 배지는 createGlobalWsBadge()를 호출하여 DOM에 추가만 하면 됨 (자동 업데이트됨)
-- unmount 시에는 wsBadge 참조만 null로 설정하면 됨 (전역 subscriber는 settings.ts에서 관리)
-- notifyPageInactive 함수는 page 인자가 필요함 (`notifyPageInactive('page-name')`)
-
----
-
-## 수정 과정에서 발생한 오류
-
-### 해결된 오류
-- **notifyPageInactive 인자 누락**: 초기 구현 시 `notifyPageInactive()`로 호출하여 TS2554 오류 발생. `notifyPageInactive('page-name')`으로 수정하여 해결.
-- **기존 빌드 오류 6건**: 본 세션에서 모두 해결 완료
-  1. `general-settings.ts` export default 누락 → `export default { mount, unmount }` 추가
-  2. `buy-target.ts` initState 미정의 → mount 함수 시작에 `const initState = appStore.getState()` 추가
-  3. `profit-overview.ts` unused state 변수 (2곳) → 불필요한 변수 제거
-  4. `sell-position.ts` unused isTestMode 변수 → 불필요한 변수 제거
-  5. `settings.ts` 타입 비교 오류 → `state.wsSubscribeStatus?.quote_subscribed ?? false`로 수정
-  6. `sell-position.ts` 중복 import → 중복된 `globalSettingsManager, createGlobalWsBadge` import 제거
-
----
-
-## 작업 상태
-
-- **Priority 1**: 완료
-- **Priority 2**: 완료
-- **기존 빌드 오류 수정**: 완료
-- **빌드 상태**: 성공 (Exit code: 0)
-- **다음 세션**: 새로운 작업 진행 가능
+## 참고 프로젝트
+- `/Users/sungjk0706/Desktop/SectorFlow` - 구조 참고용

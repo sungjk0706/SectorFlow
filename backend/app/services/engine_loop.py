@@ -13,12 +13,12 @@ import time
 from pathlib import Path
 from types import ModuleType
 
-from app.core.broker_factory import get_router
-from app.core.engine_settings import get_engine_settings
-from app.core.logger import get_logger
-from app.core.trade_mode import is_test_mode
-from app.services.trading import AutoTradeManager
-from app.services.engine_cache import _load_caches_preboot
+from backend.app.core.broker_factory import get_router
+from backend.app.core.engine_settings import get_engine_settings
+from backend.app.core.logger import get_logger
+from backend.app.core.trade_mode import is_test_mode
+from backend.app.services.trading import AutoTradeManager
+from backend.app.services.engine_cache import _load_caches_preboot
 
 logger = get_logger("engine")
 

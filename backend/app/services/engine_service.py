@@ -17,13 +17,13 @@ import time
 from collections import OrderedDict
 from datetime import datetime
 
-from app.core.engine_settings import get_engine_settings
-from app.core.trade_mode import is_test_mode
-from app.core.kiwoom_connector import KiwoomConnector
-from app.core.logger import get_logger
-from app.services.trading import AutoTradeManager
-from app.services.auto_trading_effective import auto_buy_effective, auto_sell_effective
-from app.services.engine_account_rest import (
+from backend.app.core.engine_settings import get_engine_settings
+from backend.app.core.trade_mode import is_test_mode
+from backend.app.core.kiwoom_connector import KiwoomConnector
+from backend.app.core.logger import get_logger
+from backend.app.services.trading import AutoTradeManager
+from backend.app.services.auto_trading_effective import auto_buy_effective, auto_sell_effective
+from backend.app.services.engine_account_rest import (
     apply_last_price_to_positions_inplace,
     broker_totals_from_summary,
     build_account_snapshot_meta,
@@ -34,25 +34,30 @@ from app.services.engine_account_rest import (
     real04_official_apply_position_line,
     recalc_broker_totals_from_positions,
 )
-from app.services.engine_symbol_utils import (
+from backend.app.services.engine_symbol_utils import (
     _format_kiwoom_reg_stk_cd,
     _normalize_stk_cd_rest,
     get_ws_subscribe_code,
 )
-from app.services.engine_ws_fill_followup import run_after_order_fill_ws
-from app.services import engine_account_notify as _account_notify
-from app.services import engine_radar_ops
-from app.services import engine_loop
-from app.services import engine_strategy_core
-from app.services import engine_ws_dispatch
-from app.services import dry_run
-from app.services import settlement_engine
+from backend.app.services.engine_ws_fill_followup import run_after_order_fill_ws
+from backend.app.services import engine_account_notify as _account_notify
+from backend.app.services import engine_radar_ops
+from backend.app.services import engine_loop
+from backend.app.services import engine_strategy_core
+from backend.app.services import engine_ws_dispatch
+from backend.app.services import dry_run
+from backend.app.services import settlement_engine
 
 # ── 모듈 분리 (하위 호환 유지) ──────────────────────────────────────────
 # engine_bootstrap: 앱준비 흐름 함수
 # engine_cache: 캐시 오케스트레이션
 # engine_state: 상태 프록시 (이 모듈의 전역 변수를 __getattr__로 위임)
 import app.services.engine_bootstrap as _engine_bootstrap
+
+# ── StateManager (중앙 상태 관리) ─────────────────────────────────────────
+from backend.app.services.state_manager import StateManager, EventType, OrderStatus
+
+_state_manager: StateManager | None = None
 
 broadcast_account_update = _account_notify.broadcast_account_update
 broadcast_engine_status_ws = _account_notify.broadcast_engine_status_ws
@@ -2058,9 +2063,16 @@ async def _engine_loop() -> None:
 
 
 async def start_engine(user_id: str = "") -> bool:
-    global _engine_task, _running, _engine_user_id
+    global _engine_task, _running, _engine_user_id, _state_manager
     if _engine_task and not _engine_task.done():
         return False
+
+    # StateManager 초기화
+    if _state_manager is None:
+        _state_manager = StateManager()
+        await _state_manager.start()
+        logger.info("[엔진] StateManager 초기화 완료")
+
     _engine_user_id = user_id
     _running        = True
     _engine_task    = asyncio.create_task(_engine_loop())
