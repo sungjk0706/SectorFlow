@@ -36,15 +36,16 @@ class OrderStatus(Enum):
     CANCELLED = "cancelled"
     REJECTED = "rejected"
 
-    # 허용된 상태 전이
-    ALLOWED_TRANSITIONS = {
-        PENDING: {SUBMITTED, CANCELLED, REJECTED},
-        SUBMITTED: {PARTIAL_FILLED, FILLED, CANCELLED, REJECTED},
-        PARTIAL_FILLED: {PARTIAL_FILLED, FILLED, CANCELLED},
-        FILLED: set(),
-        CANCELLED: set(),
-        REJECTED: set(),
-    }
+
+# 상태 전이 규칙 (모듈 레벨 dict)
+ALLOWED_TRANSITIONS: dict[OrderStatus, set[OrderStatus]] = {
+    OrderStatus.PENDING: {OrderStatus.SUBMITTED, OrderStatus.CANCELLED, OrderStatus.REJECTED},
+    OrderStatus.SUBMITTED: {OrderStatus.PARTIAL_FILLED, OrderStatus.FILLED, OrderStatus.CANCELLED, OrderStatus.REJECTED},
+    OrderStatus.PARTIAL_FILLED: {OrderStatus.PARTIAL_FILLED, OrderStatus.FILLED, OrderStatus.CANCELLED},
+    OrderStatus.FILLED: set(),
+    OrderStatus.CANCELLED: set(),
+    OrderStatus.REJECTED: set(),
+}
 
 
 @dataclass
@@ -197,7 +198,7 @@ class StateManager:
         new_status = OrderStatus(data.get("status", "pending"))
 
         # 상태 전이 검증
-        if new_status not in OrderStatus.ALLOWED_TRANSITIONS.get(order.status, set()):
+        if new_status not in ALLOWED_TRANSITIONS.get(order.status, set()):
             _log.warning(f"[StateManager] 허용되지 않은 상태 전이: {order.status} -> {new_status}")
             return
 
