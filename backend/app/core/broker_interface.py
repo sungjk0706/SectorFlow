@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 
-from app.core.broker_providers import (
+from backend.app.core.broker_providers import (
     AccountProvider,
     AuthProvider,
     OrderProvider,

@@ -8,15 +8,15 @@ import asyncio
 import logging
 from typing import Any, Optional
 
-from app.core.encryption import decrypt_value, encrypt_value
-from app.core.settings_file import load_settings, save_settings
-from app.services import engine_service
-from app.services.engine_account_notify import (
+from backend.app.core.encryption import decrypt_value, encrypt_value
+from backend.app.core.settings_file import load_settings, save_settings
+from backend.app.services import engine_service
+from backend.app.services.engine_account_notify import (
     notify_desktop_header_refresh,
     notify_desktop_sector_scores,
     notify_desktop_settings_toggled,
 )
-from app.services.auto_trading_effective import auto_trading_effective
+from backend.app.services.auto_trading_effective import auto_trading_effective
 
 logger = logging.getLogger(__name__)
 

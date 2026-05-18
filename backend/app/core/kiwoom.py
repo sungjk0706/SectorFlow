@@ -6,7 +6,7 @@ legacy_pc_engine/kiwoom_api.py 이식 (Settings 기반)
 import httpx as requests
 from typing import Optional
 
-from app.core.broker_urls import build_broker_urls
+from backend.app.core.broker_urls import build_broker_urls
 
 
 class KiwoomApi:

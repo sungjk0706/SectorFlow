@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
-from app.web.deps import get_current_user
-from app.services.trade_history import get_buy_history, get_sell_history, get_daily_summary
+from backend.app.web.deps import get_current_user
+from backend.app.services.trade_history import get_buy_history, get_sell_history, get_daily_summary
 
 router = APIRouter(prefix="/api/trade-history", tags=["trade-history"])
 

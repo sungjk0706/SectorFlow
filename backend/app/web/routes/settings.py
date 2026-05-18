@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.web.deps import get_current_user
+from backend.app.web.deps import get_current_user
 
 router = APIRouter(prefix="/api", tags=["settings"])
 

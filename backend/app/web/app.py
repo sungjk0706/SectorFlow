@@ -11,6 +11,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
+from backend.app.di.container import get_container
+
 logger = logging.getLogger(__name__)
 
 
@@ -18,17 +20,18 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """FastAPI lifespan 이벤트 핸들러."""
     # --- startup ---
-    from app.core.logging_config import configure_app_logging
+    from backend.app.core.logging_config import configure_app_logging
     configure_app_logging()
 
     loop = asyncio.get_running_loop()
     loop.set_default_executor(ThreadPoolExecutor(max_workers=8))
 
-    from app.services.daily_time_scheduler import start_daily_time_scheduler
-    from app.services.engine_service import start_engine
-    from app.services.telegram_bot import telegram_bot
-    from app.services import trade_history
-    import app.services.engine_service as _es
+    from backend.app.services.daily_time_scheduler import start_daily_time_scheduler
+    from backend.app.services.engine_service import start_engine
+    from backend.app.services.telegram_bot import telegram_bot
+    from backend.app.services import trade_history
+    from backend.app.services.backend_coalescing import BackendCoalescing
+    import backend.app.services.engine_service as _es
 
     # 체결 이력 Consumer Task 시작 (비동기 I/O 백그라운드 처리)
     # 모듈 전역 변수 초기화 (비정상 종료 후 재시작 시 잔존 상태 방지)
@@ -41,6 +44,16 @@ async def lifespan(app: FastAPI):
     if not success:
         logger.error("[웹서버] 엔진 초기화 실패")
         raise RuntimeError("엔진 초기화 실패")
+    
+    # Backend Coalescing 싱글톤 등록
+    backend_coalescing = BackendCoalescing.get_instance()
+    container.register_singleton("backend_coalescing", backend_coalescing)
+    logger.info("[DI Container] backend_coalescing 싱글톤 등록 완료")
+    
+    # WS Manager 싱글톤 등록
+    from app.web.ws_manager import ws_manager
+    container.register_singleton("ws_manager", ws_manager)
+    logger.info("[DI Container] ws_manager 싱글톤 등록 완료")
     
     # 엔진 부트스트랩 완료 대기 (최대 120초)
     try:
@@ -79,9 +92,9 @@ async def lifespan(app: FastAPI):
     yield
 
     # --- shutdown ---
-    from app.services.daily_time_scheduler import stop_daily_time_scheduler
-    from app.services.engine_service import stop_engine
-    from app.services import trade_history
+    from backend.app.services.daily_time_scheduler import stop_daily_time_scheduler
+    from backend.app.services.engine_service import stop_engine
+    from backend.app.services import trade_history
 
     # 체결 이력 Consumer Task 종료 (Graceful Shutdown - 큐에 남은 데이터 모두 저장)
     await trade_history.stop_consumer_task()
@@ -120,28 +133,32 @@ app.add_middleware(
 # (미들웨어는 WebSocket/WS/CORS와 충돌 위험이 있으므로 사용하지 않음)
 
 # --- 라우터 등록 ---
-from app.web.routes.auth import router as auth_router
-from app.web.routes.account import router as account_router
-from app.web.routes.market import router as market_router
-from app.web.routes.status import router as status_router
-from app.web.routes.settings import router as settings_router
-from app.web.routes.ws import router as ws_router
-from app.web.routes.trade import router as trade_router
-from app.web.routes.ws_subscribe import router as ws_subscribe_router
+from backend.app.web.routes.auth import router as auth_router
+from backend.app.web.routes.account import router as account_router
+from backend.app.web.routes.market import router as market_router
+from backend.app.web.routes.status import router as status_router
+from backend.app.web.routes.settings import router as settings_router
+from backend.app.web.routes.ws import router as ws_router
+from backend.app.web.routes.ws_settings import router as ws_settings_router
+from backend.app.web.routes.ws_orders import router as ws_orders_router
+from backend.app.web.routes.trade import router as trade_router
+from backend.app.web.routes.ws_subscribe import router as ws_subscribe_router
 
 app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(market_router)
 app.include_router(status_router)
+app.include_router(ws_settings_router)
+app.include_router(ws_orders_router)
 app.include_router(settings_router)
 app.include_router(ws_router)
 app.include_router(trade_router)
 app.include_router(ws_subscribe_router)
 
-from app.web.routes.sector_custom import router as sector_custom_router
+from backend.app.web.routes.sector_custom import router as sector_custom_router
 app.include_router(sector_custom_router)
 
-from app.web.routes.settlement import router as settlement_router
+from backend.app.web.routes.settlement import router as settlement_router
 app.include_router(settlement_router)
 
 

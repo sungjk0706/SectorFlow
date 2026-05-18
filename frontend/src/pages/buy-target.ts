@@ -2,7 +2,8 @@
 // 매수후보 페이지 — DataTable 적용
 
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
-import { appStore } from '../stores/appStore'
+import { hotStore } from '../stores/hotStore'
+import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardTitle } from '../components/common/card-title'
 import { globalSettingsManager, createGlobalWsBadge } from '../settings'
@@ -113,13 +114,14 @@ function createBadgeSpan(): HTMLSpanElement {
 /* ── 배지 행 업데이트 ── */
 function updateBadges(): void {
   if (!badgeEls) return
-  const state = appStore.getState()
+  const state = hotStore.getState()
+  const uiState = uiStore.getState()
   const settings = globalSettingsManager.getSettings()
   const maxDaily = settings?.max_daily_total_buy_amt ?? 0
   const maxStock = settings?.max_stock_cnt ?? 5
   const buyAmtPerStock = settings?.buy_amt ?? 0
   const holdingCnt = state.positions.filter(p => (p.qty ?? 0) > 0).length
-  const dailySpent = state.buyLimitStatus.daily_buy_spent
+  const dailySpent = uiState.buyLimitStatus.daily_buy_spent
 
   renderLimitBadge(badgeEls.daily, '💰 일일 최대 매수 금액', dailySpent, maxDaily)
   renderLimitBadge(badgeEls.holding, '📦 동시 보유 종목 최대', holdingCnt, maxStock, '종목')
@@ -149,7 +151,7 @@ function updateBadges(): void {
 function mount(container: HTMLElement): void {
   _mounted = true
   notifyPageActive('buy-target')
-  const initState = appStore.getState()
+  const initState = hotStore.getState()
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
@@ -213,15 +215,17 @@ function mount(container: HTMLElement): void {
     let lastRenderedBuyTargets = initState.buyTargets
     let lastRenderedPositions = initState.positions
     let lastRenderedSettings = globalSettingsManager.getSettings()
-    let lastRenderedBuyLimitStatus = initState.buyLimitStatus
+    const initUiState = uiStore.getState()
+    let lastRenderedBuyLimitStatus = initUiState.buyLimitStatus
 
-    unsubTargets = appStore.subscribe((state) => {
+    unsubTargets = hotStore.subscribe((state) => {
+      const uiState = uiStore.getState()
       // 해당 필드 중 하나라도 변경되었는지 확인
       const anyChanged =
         state.buyTargets !== lastRenderedBuyTargets ||
         state.positions !== lastRenderedPositions ||
         globalSettingsManager.getSettings() !== lastRenderedSettings ||
-        state.buyLimitStatus !== lastRenderedBuyLimitStatus
+        uiState.buyLimitStatus !== lastRenderedBuyLimitStatus
 
       if (!anyChanged) return
 
@@ -232,7 +236,8 @@ function mount(container: HTMLElement): void {
       rafHandle = requestAnimationFrame(() => {
         rafHandle = null
         if (!_mounted) return
-        const latest = appStore.getState()
+        const latest = hotStore.getState()
+        const latestUi = uiStore.getState()
 
         // buyTargets 참조 동일 시 sort + updateRows 생략
         if (latest.buyTargets !== lastRenderedBuyTargets) {
@@ -245,16 +250,15 @@ function mount(container: HTMLElement): void {
           if (emptyEl) emptyEl.style.display = targets.length === 0 ? '' : 'none'
         }
 
-        // positions/settings/buyLimitStatus 참조 동일 시 updateBadges 생략
-        // WS 상태 배지는 전역 싱글톤이 자동 업데이트하므로 수동 업데이트 제거
+        // positions 또는 settings 또는 buyLimitStatus 변경 시 배지 업데이트
         if (
           latest.positions !== lastRenderedPositions ||
           globalSettingsManager.getSettings() !== lastRenderedSettings ||
-          latest.buyLimitStatus !== lastRenderedBuyLimitStatus
+          latestUi.buyLimitStatus !== lastRenderedBuyLimitStatus
         ) {
           lastRenderedPositions = latest.positions
           lastRenderedSettings = globalSettingsManager.getSettings()
-          lastRenderedBuyLimitStatus = latest.buyLimitStatus
+          lastRenderedBuyLimitStatus = latestUi.buyLimitStatus
           updateBadges()
         }
       })

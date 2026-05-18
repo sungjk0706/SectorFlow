@@ -21,7 +21,7 @@ from typing import Optional
 
 import httpx
 
-from app.services.auto_trading_effective import auto_trading_effective
+from backend.app.services.auto_trading_effective import auto_trading_effective
 
 logger = logging.getLogger(__name__)
 

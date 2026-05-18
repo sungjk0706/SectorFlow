@@ -15,7 +15,7 @@ import json
 import logging
 from pathlib import Path
 
-from app.core.trading_calendar import is_cache_valid, current_trading_date_str
+from backend.app.core.trading_calendar import is_cache_valid, current_trading_date_str
 
 _log = logging.getLogger(__name__)
 
@@ -270,7 +270,7 @@ def load_stock_name_cache() -> dict[str, str] | None:
 
 # ── 확정 시세 다운로드 진행 파일 캐시 ──────────────────────────────────────
 
-from app.core.trading_calendar import _next_business_date
+from backend.app.core.trading_calendar import _next_business_date
 from datetime import datetime
 
 try:

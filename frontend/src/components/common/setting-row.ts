@@ -317,7 +317,11 @@ export function createToggleBtn(options: {
     render()
   }
 
-  return { el: btn as HTMLElement, setOn }
+  function getOn() {
+    return isOn
+  }
+
+  return { el: btn as HTMLElement, setOn, isOn: getOn }
 }
 
 /* ── 고정 텍스트 값 (시장가 등) ────────────────────────────── */

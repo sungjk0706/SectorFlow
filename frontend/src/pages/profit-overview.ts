@@ -6,7 +6,7 @@ import { createProfitChart, type ProfitChartApi } from '../components/canvas-pro
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
 import { globalSettingsManager, createGlobalWsBadge } from '../settings'
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, createStockNameColumn, createNumberCell, createPnlCell } from '../components/common/ui-styles'
-import { appStore } from '../stores/appStore'
+import { hotStore } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 
 /* ── 헬퍼 ── */
@@ -37,7 +37,7 @@ const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
   { key: 'time', label: '시간', align: 'center', render: r => String(r.time ?? '').slice(0, 5) },
   createStockNameColumn<Record<string, unknown>>(
     (r: Record<string, unknown>) => {
-      const state = appStore.getState()
+      const state = hotStore.getState()
       const sectorStock = state.sectorStocks[String(r.stk_cd ?? '')]
       return {
         name: String(r.stk_nm ?? ''),
@@ -59,7 +59,7 @@ const SELL_COLS: ColumnDef<Record<string, unknown>>[] = [
   { key: 'time', label: '시간', align: 'center', render: r => String(r.time ?? '').slice(0, 5) },
   createStockNameColumn<Record<string, unknown>>(
     (r: Record<string, unknown>) => {
-      const state = appStore.getState()
+      const state = hotStore.getState()
       const sectorStock = state.sectorStocks[String(r.stk_cd ?? '')]
       return {
         name: String(r.stk_nm ?? ''),
@@ -238,7 +238,7 @@ export { monthCard as _monthCard }
 
 /* ── 계좌 현황 렌더 ── */
 function renderAccountVals(): void {
-  const state = appStore.getState()
+  const state = hotStore.getState()
   const a = state.account
   const settings = globalSettingsManager.getSettings()
   const isTestMode = settings?.trade_mode === 'test'
@@ -735,7 +735,7 @@ function mount(container: HTMLElement): void {
   // 차트 생성 — store의 dailySummary 초기 데이터로 시작
   chart = createProfitChart({
     container: chartContainer,
-    data: buildChartFromDailySummary(appStore.getState().dailySummary),
+    data: buildChartFromDailySummary(hotStore.getState().dailySummary),
     onBarClick: (date: string) => {
       // 막대 클릭 → 해당 일자 체결 내역 필터
       dateFilter = date
@@ -764,7 +764,7 @@ function mount(container: HTMLElement): void {
   })
 
   // 초기 데이터 반영 — subscribe 등록 전에 모듈 변수 할당 (Bug 5 fix)
-  const initState = appStore.getState()
+  const initState = hotStore.getState()
   sellHistory = initState.sellHistory
   buyHistory = initState.buyHistory
   // 초기화면: 당일 내역 표시
@@ -773,7 +773,7 @@ function mount(container: HTMLElement): void {
   updateSummaryCards()
   showTable()
 
-  // appStore 구독 — rAF coalescing + selective update
+  // hotStore 구독 — rAF coalescing + selective update
   let prevSellRef = initState.sellHistory
   let prevBuyRef = initState.buyHistory
   let prevDailySummaryRef = initState.dailySummary
@@ -783,7 +783,7 @@ function mount(container: HTMLElement): void {
   let prevSectorStocksRef = initState.sectorStocks
   _mounted = true
 
-  unsubAccount = appStore.subscribe((curr) => {
+  unsubAccount = hotStore.subscribe((curr) => {
     // 필드 그룹별 참조 비교
     const accountChanged = curr.account !== prevAccountRef || curr.positions !== prevPositionsRef || curr.sectorStocks !== prevSectorStocksRef
     const historyChanged = curr.sellHistory !== prevSellRef || curr.buyHistory !== prevBuyRef
@@ -840,7 +840,7 @@ function mount(container: HTMLElement): void {
 
       if (_dirtyChart) {
         _dirtyChart = false
-        const latest = appStore.getState()
+        const latest = hotStore.getState()
         const settings = globalSettingsManager.getSettings()
         const tradeModeChanged = settings?.trade_mode !== prevTradeMode
         chart?.updateData(buildChartFromDailySummary(latest.dailySummary))

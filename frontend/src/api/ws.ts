@@ -1,8 +1,8 @@
 // frontend/src/api/ws.ts — 시세 전용 WebSocket 클라이언트
 
-import { inflate } from 'pako'
 import { forceLogout } from './client'
-import { setBackfilling } from '../stores/appStore'
+import { setBackfilling } from '../stores/uiStore'
+import { event } from '../types/event'
 
 // key expansion: 백엔드 key shortening 복원
 const KEY_MAP: Record<string, string> = { t: 'type', i: 'item', v: 'values' }
@@ -15,6 +15,47 @@ function expandKeys(data: Record<string, unknown>): Record<string, unknown> {
     expanded[fullKey] = data[key]
   }
   return expanded
+}
+
+/** Protobuf 바이너리 스트림 디코딩 */
+function decodeProtobufEvents(buffer: ArrayBuffer): { event: string; data: unknown }[] {
+  const uint8Array = new Uint8Array(buffer)
+  const events: { event: string; data: unknown }[] = []
+  let offset = 0
+
+  while (offset < uint8Array.length) {
+    // 길이 접두사 (4 bytes)
+    if (offset + 4 > uint8Array.length) break
+    const length = new DataView(uint8Array.buffer, offset, 4).getUint32(0, false)
+    offset += 4
+
+    // 이벤트 데이터
+    if (offset + length > uint8Array.length) break
+    const eventBytes = uint8Array.slice(offset, offset + length)
+    offset += length
+
+    // Protobuf 디코딩
+    try {
+      const protoEvent = event.Event.deserializeBinary(eventBytes)
+      const data: Record<string, unknown> = {}
+
+      // data 필드 변환 (Map -> Object)
+      if (protoEvent.data) {
+        protoEvent.data.forEach((value, key) => {
+          data[key] = value
+        })
+      }
+
+      // 종목코드 추가
+      if (data['code']) {
+        events.push({ event: protoEvent.type, data })
+      }
+    } catch (err) {
+      console.error('[WS] Protobuf 디코딩 실패:', err)
+    }
+  }
+
+  return events
 }
 
 type EventHandler<T = any> = (data: T) => void
@@ -31,6 +72,11 @@ export class WSClient {
   private _onDisconnected: (() => void) | null = null
   private token: string | null = null
   private _hasConnectedOnce: boolean = false
+  private channel: 'prices' | 'settings' | 'orders'
+
+  constructor(channel: 'prices' | 'settings' | 'orders' = 'prices') {
+    this.channel = channel
+  }
 
   setConnectionCallbacks(onConnected: () => void, onDisconnected: () => void): void {
     this._onConnected = onConnected
@@ -47,7 +93,7 @@ export class WSClient {
     if (!this.token) return
     this.disconnect()
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const url = `${proto}//${location.host}/api/ws/prices?token=${encodeURIComponent(this.token)}`
+    const url = `${proto}//${location.host}/api/ws/${this.channel}?token=${encodeURIComponent(this.token)}`
     const ws = new WebSocket(url)
     ws.binaryType = 'arraybuffer'
     this.ws = ws
@@ -123,9 +169,11 @@ export class WSClient {
 
   private _handleBinaryFrame(buffer: ArrayBuffer): void {
     try {
-      const decompressed = inflate(new Uint8Array(buffer), { to: 'string' })
-      const msg = JSON.parse(decompressed)
-      this._dispatchMessage(msg)
+      // Protobuf 디코딩 (바이너리 스트림)
+      const events = decodeProtobufEvents(buffer)
+      for (const event of events) {
+        this._dispatchMessage(event)
+      }
     } catch (err) {
       console.error('[WS] binary frame 디코딩 실패:', err)
     }
@@ -187,16 +235,20 @@ export class WSClient {
   }
 }
 
-export const wsClient = new WSClient()
+export const wsClient = new WSClient('prices')
+export const wsSettingsClient = new WSClient('settings')
+export const wsOrdersClient = new WSClient('orders')
 
 /** 현재 페이지 활성 알림 → 백엔드 per-client 필터링 */
 export function notifyPageActive(page: string): void {
   wsClient.send(JSON.stringify({ type: 'page-active', page }))
+  wsSettingsClient.send(JSON.stringify({ type: 'page-active', page }))
 }
 
 /** 현재 페이지 비활성 알림 → 백엔드 per-client 필터링 해제 */
 export function notifyPageInactive(page: string): void {
   wsClient.send(JSON.stringify({ type: 'page-inactive', page }))
+  wsSettingsClient.send(JSON.stringify({ type: 'page-inactive', page }))
 }
 
 /** FID 구독 설정 → 백엔드 per-client FID 필터링 */

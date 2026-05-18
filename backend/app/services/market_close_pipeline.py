@@ -12,13 +12,13 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from types import ModuleType
 
-from app.services.engine_symbol_utils import (
+from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
     _format_kiwoom_reg_stk_cd,
     is_nxt_enabled,
     get_ws_subscribe_code,
 )
-from app.services.engine_ws_reg import build_0b_remove_payloads
+from backend.app.services.engine_ws_reg import build_0b_remove_payloads
 
 _log = logging.getLogger("engine")
 _CONFIRMED_FETCH_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="confirmed-fetch")

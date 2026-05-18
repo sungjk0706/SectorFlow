@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from app.core.broker_interface import BrokerInterface
-from app.core.logger import get_logger
-from app.core.trade_mode import effective_trade_mode, is_test_mode
+from backend.app.core.broker_interface import BrokerInterface
+from backend.app.core.logger import get_logger
+from backend.app.core.trade_mode import effective_trade_mode, is_test_mode
 
 if TYPE_CHECKING:
     from app.core.broker_router import BrokerRouter
@@ -45,20 +45,31 @@ def reset_router() -> None:
 def get_broker(settings: dict) -> BrokerInterface:
     """하위 호환: 기존 코드가 get_broker()를 호출하는 곳에서 동작."""
     from app.core.kiwoom_broker import KiwoomBroker
+    from app.core.ls_broker import LsBroker
 
     broker_name = str(settings.get("broker", "kiwoom") or "kiwoom").lower().strip()
-    if broker_name not in ("kiwoom", ""):
-        logger.warning(
-            "[증권사설정] 지원 증권사: 키움. 증권사=%r -> 키움 사용",
-            broker_name,
+
+    if broker_name == "ls":
+        tm = effective_trade_mode(settings)
+        logger.info(
+            "[증권사설정] LS증권 (trade_mode=%s, is_test=%s)",
+            tm,
+            is_test_mode(settings),
         )
-    tm = effective_trade_mode(settings)
-    logger.info(
-        "[증권사설정] 키움증권 (trade_mode=%s, is_test=%s)",
-        tm,
-        is_test_mode(settings),
-    )
-    return KiwoomBroker(settings)
+        return LsBroker(settings)
+    else:
+        if broker_name not in ("kiwoom", ""):
+            logger.warning(
+                "[증권사설정] 지원 증권사: 키움, LS. 증권사=%r -> 키움 사용",
+                broker_name,
+            )
+        tm = effective_trade_mode(settings)
+        logger.info(
+            "[증권사설정] 키움증권 (trade_mode=%s, is_test=%s)",
+            tm,
+            is_test_mode(settings),
+        )
+        return KiwoomBroker(settings)
 
 
 def create_connector(settings: dict):

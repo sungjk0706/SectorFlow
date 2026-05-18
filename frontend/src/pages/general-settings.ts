@@ -2,7 +2,7 @@
 // 일반설정 — Vanilla TS PageModule
 // SettingsTabContainer.tsx + TelegramSection + AccountManageSection + TestVirtualSection 통합
 
-import { appStore, applyTestDataResetCompleted } from '../stores/appStore'
+import { uiStore, applyTestDataResetCompleted } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingsManager, extractDirty, MASKED_FIELDS, type SettingsManager, createGlobalWsBadge } from '../settings'
 import { createToggleBtn, createMoneyInput, TEXT_INPUT_WIDTH } from '../components/common/setting-row'
@@ -689,7 +689,7 @@ function syncFromSettings(s: AppSettings | null): void {
 /* ── mount ── */
 function mount(container: HTMLElement): void {
   notifyPageActive('settings')
-  settingsMgr = createSettingsManager(appStore)
+  settingsMgr = createSettingsManager(uiStore)
   vals = {}
   activeTab = 'auto-trade'
   holidayBadgeEls = []

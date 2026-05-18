@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt
 
-from app.config import get_settings
+from backend.app.config import get_settings
 
 logger = logging.getLogger(__name__)
 

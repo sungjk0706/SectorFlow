@@ -1,8 +1,8 @@
 // frontend/src/main.ts — 앱 진입점 (순수 TS, React 없음)
 // 기존 main.tsx + App.tsx의 초기화 로직을 통합
 
-import { appStore } from './stores/appStore'
-import { wsClient } from './api/ws'
+import { uiStore } from './stores/uiStore'
+import { wsClient, wsSettingsClient, wsOrdersClient } from './api/ws'
 import { bindWSToStore } from './binding'
 import { createLayoutShell } from './layout/shell'
 import { createRouter } from './router'
@@ -152,7 +152,7 @@ function main(): void {
   document.head.appendChild(globalStyle)
 
   // 1. WS → Store 바인딩
-  bindWSToStore(wsClient, appStore)
+  bindWSToStore(wsClient, wsSettingsClient, wsOrdersClient)
 
   // 2. Layout Shell 마운트
   const rootEl = document.getElementById('root')!
@@ -182,7 +182,7 @@ function main(): void {
   router.init(shell.rightPanel)
 
   // 5. 오버레이 제어 (engineReady 구독)
-  appStore.subscribe((state) => {
+  uiStore.subscribe((state) => {
     if (state.settings === null) {
       shell.setOverlay(true, '로딩 중…')
     } else if (!state.engineReady) {
@@ -193,7 +193,7 @@ function main(): void {
   })
 
   // 初期 오버레이 상태 설정
-  const initState = appStore.getState()
+  const initState = uiStore.getState()
   if (initState.settings === null) {
     shell.setOverlay(true, '로딩 중…')
   } else if (!initState.engineReady) {

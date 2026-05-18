@@ -16,7 +16,7 @@ import json
 import logging
 from pathlib import Path
 
-from app.core.trading_calendar import is_cache_valid
+from backend.app.core.trading_calendar import is_cache_valid
 
 _log = logging.getLogger(__name__)
 

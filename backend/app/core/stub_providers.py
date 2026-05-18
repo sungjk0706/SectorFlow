@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
-from app.core.broker_providers import (
+from backend.app.core.broker_providers import (
     AccountProvider,
     AuthProvider,
     OrderProvider,

@@ -10,14 +10,14 @@ from __future__ import annotations
 
 import logging
 
-from app.core.broker_providers import (
+from backend.app.core.broker_providers import (
     AccountProvider,
     AuthProvider,
     OrderProvider,
     SectorProvider,
     WebSocketProvider,
 )
-from app.core.broker_registry import (
+from backend.app.core.broker_registry import (
     BROKER_DISPLAY_NAMES,
     MUST_SAME_BROKER_PAIRS,
     PROVIDER_REGISTRY,

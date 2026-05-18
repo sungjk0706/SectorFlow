@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd, _real_item_stk_cd
-from app.services.engine_ws_parsing import _parse_fid10_price, _rest_row_float, _rest_row_int
+from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd, _real_item_stk_cd
+from backend.app.services.engine_ws_parsing import _parse_fid10_price, _rest_row_float, _rest_row_int
 
 
 def _parse_int_loose(v) -> int:

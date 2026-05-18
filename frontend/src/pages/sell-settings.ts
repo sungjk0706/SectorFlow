@@ -2,7 +2,7 @@
 // 매도설정 카드 — Vanilla TS PageModule
 // SellSettingsCard.tsx + SellSettingsSection.tsx + QuickToggle + TimePairInput 통합
 
-import { appStore } from '../stores/appStore'
+import { uiStore } from '../stores/uiStore'
 import { createSettingsManager, type SettingsManager, createGlobalWsBadge } from '../settings'
 import { createSettingRow, createNumInput, createToggleBtn, createFixedValue } from '../components/common/setting-row'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
@@ -123,7 +123,7 @@ function syncFromSettings(s: AppSettings): void {
 /* ── mount ── */
 function mount(container: HTMLElement): void {
   notifyPageActive('sell-settings')
-  settingsMgr = createSettingsManager(appStore)
+  settingsMgr = createSettingsManager(uiStore)
   saving = false
   pendingSave = null
   vals = {}

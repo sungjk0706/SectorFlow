@@ -2,7 +2,8 @@
 // 업종별 종목 실시간 시세 — Vanilla TS PageModule (DataTable 적용)
 
 import { createDataTable, type DataTableApi, type ColumnDef, type GroupRow as DataTableGroupRow, type TableRow } from '../components/common/data-table'
-import { appStore, setSelectedSector } from '../stores/appStore'
+import { hotStore } from '../stores/hotStore'
+import { uiStore, setSelectedSector } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createStockNameColumn, makeSeqColumn, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, makeAmountColumn, makeAvgAmountColumn, FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
 import { createWsStatusBadge } from '../components/common/setting-row'
@@ -133,17 +134,10 @@ function computeRows(
   }
 
   // sectorOrder 순서 유지 + 미포함 업종 추가
-  // 단, selectedSector가 있으면 해당 업종만 표시하므로 sectorOrder 정렬 불필요
-  const orderedSectors: string[] = []
-  if (selectedSector) {
-    if (grouped.has(selectedSector)) orderedSectors.push(selectedSector)
-  } else {
-    const seen = new Set<string>()
-    for (const s of sectorOrder) {
-      if (grouped.has(s)) { orderedSectors.push(s); seen.add(s) }
-    }
-    for (const s of grouped.keys()) {
-      if (!seen.has(s)) orderedSectors.push(s)
+  const orderedSectors = [...sectorOrder]
+  for (const sector of grouped.keys()) {
+    if (!orderedSectors.includes(sector)) {
+      orderedSectors.push(sector)
     }
   }
 
@@ -161,14 +155,13 @@ function computeRows(
     const codes = grouped.get(sector)
     if (!codes) continue
     groupIdx++
-    const realRank = sectorRankMap.get(sector) ?? groupIdx
-    const dim = realRank > maxTargets
+    const dim = groupIdx > maxTargets
     const score = scoreMap.get(sector)
 
     rows.push({
       type: 'group',
       sector,
-      label: `${realRank}. ${sector}`,
+      label: `${groupIdx}. ${sector}`,
       score,
       dim,
     })
@@ -369,32 +362,31 @@ function mount(container: HTMLElement): void {
 
   // Store 구독 — 선택적 구독 가드 (Bug 0 fix: sector-stock interest keys only)
   {
-    const initState = appStore.getState()
-    let prevSectorStocks = initState.sectorStocks
-    let prevSectorScores = initState.sectorScores
-    let prevSectorOrder = initState.sectorOrder
-    let prevSelectedSector = initState.selectedSector
-    let prevWsSubscribeStatus = initState.wsSubscribeStatus
-    let prevSettings = initState.settings
+    const initHot = hotStore.getState()
+    const initUi = uiStore.getState()
+    let prevSectorStocks = initHot.sectorStocks
+    let prevSectorScores = initHot.sectorScores
+    let prevSectorOrder = initUi.sectorOrder
+    let prevSelectedSector = initUi.selectedSector
+    let prevWsSubscribeStatus = initUi.wsSubscribeStatus
+    let prevSettings = initUi.settings
 
-    unsubStore = appStore.subscribe((state) => {
-      // selectedSector가 있으면 sectorOrder 변동은 무시 (종목 순서 안정화)
-      // 순위 숫자는 sectorScores 변동으로 갱신됨
-      const orderRelevant = !state.selectedSector && state.sectorOrder !== prevSectorOrder
+    unsubStore = hotStore.subscribe((state) => {
+      const uiState = uiStore.getState()
       const changed =
         state.sectorStocks !== prevSectorStocks ||
         state.sectorScores !== prevSectorScores ||
-        orderRelevant ||
-        state.selectedSector !== prevSelectedSector ||
-        state.wsSubscribeStatus !== prevWsSubscribeStatus ||
-        state.settings !== prevSettings
+        uiState.sectorOrder !== prevSectorOrder ||
+        uiState.selectedSector !== prevSelectedSector ||
+        uiState.wsSubscribeStatus !== prevWsSubscribeStatus ||
+        uiState.settings !== prevSettings
 
       prevSectorStocks = state.sectorStocks
       prevSectorScores = state.sectorScores
-      prevSectorOrder = state.sectorOrder
-      prevSelectedSector = state.selectedSector
-      prevWsSubscribeStatus = state.wsSubscribeStatus
-      prevSettings = state.settings
+      prevSectorOrder = uiState.sectorOrder
+      prevSelectedSector = uiState.selectedSector
+      prevWsSubscribeStatus = uiState.wsSubscribeStatus
+      prevSettings = uiState.settings
 
       if (!changed) return
 
@@ -415,15 +407,16 @@ function mount(container: HTMLElement): void {
 /* ── 행 빌드 + UI 갱신 ── */
 
 function buildRows(): RowItem[] {
-  const state = appStore.getState()
+  const state = hotStore.getState()
+  const uiState = uiStore.getState()
   currentMatchedCodes = filterStocksBySearch(Object.values(state.sectorStocks), searchTerm)
-  const maxTargets = Number(state.settings?.sector_max_targets) || (state.sectorStatus?.max_targets ?? 10)
+  const maxTargets = Number(uiState.settings?.sector_max_targets) || 10
   return computeRows(
     state.sectorStocks,
-    state.sectorOrder,
+    uiState.sectorOrder,
     state.sectorScores,
     maxTargets,
-    state.selectedSector,
+    uiState.selectedSector,
     currentMatchedCodes,
     rowCache,
   )
@@ -437,26 +430,22 @@ function refreshRows(): void {
 }
 
 function updateUI(rows: RowItem[]): void {
-  const state = appStore.getState()
+  const state = hotStore.getState()
+  const uiState = uiStore.getState()
   const stockCount = Object.keys(state.sectorStocks).length
-  const minTradeAmt = state.settings?.sector_min_trade_amt ?? 0
+  const minTradeAmt = uiState.settings?.sector_min_trade_amt ?? 0
 
   // 타이틀 갱신 — CSS display 토글 + textContent 갱신 (innerHTML 파괴 금지)
   if (titleFilterSpan && titleCountSpan) {
-    if (state.sectorStatus) {
-      titleFilterSpan.textContent = `5일평균최소거래대금(${minTradeAmt})억`
-      titleFilterSpan.style.display = ''
-      titleCountSpan.textContent = `(${stockCount}종목)`
-      titleCountSpan.style.display = ''
-    } else {
-      titleFilterSpan.style.display = 'none'
-      titleCountSpan.style.display = 'none'
-    }
+    titleFilterSpan.textContent = `5일평균최소거래대금(${minTradeAmt})억`
+    titleFilterSpan.style.display = ''
+    titleCountSpan.textContent = `(${stockCount}종목)`
+    titleCountSpan.style.display = ''
   }
 
   // 업종 필터 배지
   if (filterBadge) {
-    const selected = state.selectedSector
+    const selected = uiState.selectedSector
     if (selected) {
       filterBadge.style.display = 'flex'
       const label = filterBadge.querySelector('.badge-label') as HTMLElement
@@ -478,7 +467,7 @@ function updateUI(rows: RowItem[]): void {
 
   // WS 상태 배지
   if (wsBadge) {
-    const sub = state.wsSubscribeStatus.quote_subscribed
+    const sub = uiState.wsSubscribeStatus?.quote_subscribed ?? false
     wsBadge.update(sub, 'kiwoom')
   }
 

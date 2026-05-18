@@ -10,7 +10,7 @@ import logging
 import math
 from types import ModuleType
 
-from app.services.engine_symbol_utils import (
+from backend.app.services.engine_symbol_utils import (
     _format_kiwoom_reg_stk_cd,
     get_ws_subscribe_code,
 )

@@ -14,7 +14,7 @@ from typing import Any, Optional
 
 import httpx as requests
 
-from app.core.broker_urls import build_broker_urls
+from backend.app.core.broker_urls import build_broker_urls
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ class DynamicBrokerClient:
         """broker_urls 에서 토큰 URL."""
         return {
             "kiwoom": build_broker_urls("kiwoom")["token_url"],
+            "ls": "https://openapi.ls-sec.co.kr:8080/oauth2/token",
         }
 
     def __init__(self, broker: str, credentials: dict):

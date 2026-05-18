@@ -19,7 +19,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from app.web.deps import get_current_user
+from backend.app.web.deps import get_current_user
 
 _log = logging.getLogger(__name__)
 

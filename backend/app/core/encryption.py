@@ -10,7 +10,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from app.config import get_settings
+from backend.app.config import get_settings
 
 
 def _get_fernet() -> Optional[Fernet]:

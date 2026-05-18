@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.core.trading_calendar import is_krx_holiday, kst_today
-from app.web.deps import get_current_user
+from backend.app.core.trading_calendar import is_krx_holiday, kst_today
+from backend.app.web.deps import get_current_user
 
 router = APIRouter(prefix="/api", tags=["market"])
 

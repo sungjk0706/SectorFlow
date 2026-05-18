@@ -7,7 +7,7 @@ import time
 import httpx as requests
 from typing import Optional
 
-from app.core.broker_urls import build_broker_urls
+from backend.app.core.broker_urls import build_broker_urls
 
 
 def _send_request(url: str, headers: dict, params: dict, max_retries: int = 3, delay: float = 1.0) -> Optional[requests.Response]:

@@ -10,12 +10,12 @@ import asyncio
 from datetime import datetime
 from types import ModuleType
 
-from app.core.logger import get_logger
-from app.core.trade_mode import is_test_mode
-from app.services import data_manager
-from app.services import dry_run
-from app.services import settlement_engine
-from app.services.auto_trading_effective import auto_sell_effective
+from backend.app.core.logger import get_logger
+from backend.app.core.trade_mode import is_test_mode
+from backend.app.services import data_manager
+from backend.app.services import dry_run
+from backend.app.services import settlement_engine
+from backend.app.services.auto_trading_effective import auto_sell_effective
 
 logger = get_logger("engine")
 

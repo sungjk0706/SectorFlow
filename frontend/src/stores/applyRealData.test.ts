@@ -11,13 +11,13 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import * as fc from 'fast-check'
-import { appStore, applyRealData, rebuildBuyTargetIndex, rebuildPositionIndex } from './appStore'
+import { hotStore, applyRealData, rebuildBuyTargetIndex, rebuildPositionIndex } from './hotStore'
 import type { Position, BuyTarget, SectorStock, RealDataEvent } from '../types'
 
 describe('Bug Condition: Position PnL not recalculated on cur_price change', () => {
   beforeEach(() => {
     // Reset store to initial state before each test
-    appStore.setState({
+    hotStore.setState({
       positions: [],
       sectorStocks: {},
       buyTargets: [],
@@ -65,7 +65,7 @@ describe('Bug Condition: Position PnL not recalculated on cur_price change', () 
             pnl_rate: Math.round(((curPrice * qty - buyAmt) / buyAmt) * 10000) / 100,
           }
 
-          appStore.setState({ positions: [position] })
+          hotStore.setState({ positions: [position] })
           rebuildPositionIndex([position])
 
           // Create real-data event with new price
@@ -79,8 +79,8 @@ describe('Bug Condition: Position PnL not recalculated on cur_price change', () 
           applyRealData(event)
 
           // Get updated position
-          const updatedPositions = appStore.getState().positions
-          const updatedPos = updatedPositions.find(p => p.stk_cd === stkCd)
+          const updatedPositions = hotStore.getState().positions
+          const updatedPos = updatedPositions.find((p: Position) => p.stk_cd === stkCd)
 
           expect(updatedPos).toBeDefined()
           if (!updatedPos) return
@@ -114,7 +114,7 @@ describe('Bug Condition: Position PnL not recalculated on cur_price change', () 
  */
 describe('Preservation: Non-position stocks and unchanged prices preserve state', () => {
   beforeEach(() => {
-    appStore.setState({
+    hotStore.setState({
       positions: [],
       sectorStocks: {},
       buyTargets: [],
@@ -165,7 +165,7 @@ describe('Preservation: Non-position stocks and unchanged prices preserve state'
             change_rate: 1.5,
           }
 
-          appStore.setState({
+          hotStore.setState({
             positions: [position],
             sectorStocks: { [eventCode]: sectorStock },
             buyTargets: [],
@@ -174,7 +174,7 @@ describe('Preservation: Non-position stocks and unchanged prices preserve state'
           rebuildBuyTargetIndex([])
 
           // Capture positions reference before event
-          const positionsBefore = appStore.getState().positions
+          const positionsBefore = hotStore.getState().positions
 
           // Create real-data event for a code NOT in positions
           const event: RealDataEvent = {
@@ -186,7 +186,7 @@ describe('Preservation: Non-position stocks and unchanged prices preserve state'
           applyRealData(event)
 
           // Assert positions reference is unchanged (no unnecessary re-render)
-          const positionsAfter = appStore.getState().positions
+          const positionsAfter = hotStore.getState().positions
           expect(positionsAfter).toBe(positionsBefore)
         },
       ),
@@ -224,7 +224,7 @@ describe('Preservation: Non-position stocks and unchanged prices preserve state'
             pnl_rate: Math.round(((curPrice * qty - buyAmt) / buyAmt) * 10000) / 100,
           }
 
-          appStore.setState({
+          hotStore.setState({
             positions: [position],
             sectorStocks: { [stkCd]: { code: stkCd, name: 'Test', cur_price: curPrice, change_rate: 0 } },
             buyTargets: [],
@@ -233,7 +233,7 @@ describe('Preservation: Non-position stocks and unchanged prices preserve state'
           rebuildBuyTargetIndex([])
 
           // Capture positions reference before event
-          const positionsBefore = appStore.getState().positions
+          const positionsBefore = hotStore.getState().positions
 
           // Create real-data event with SAME price as cur_price
           const event: RealDataEvent = {
@@ -245,7 +245,7 @@ describe('Preservation: Non-position stocks and unchanged prices preserve state'
           applyRealData(event)
 
           // Assert positions reference is unchanged (no re-render for same price)
-          const positionsAfter = appStore.getState().positions
+          const positionsAfter = hotStore.getState().positions
           expect(positionsAfter).toBe(positionsBefore)
         },
       ),
@@ -296,7 +296,7 @@ describe('Preservation: Non-position stocks and unchanged prices preserve state'
               reason: '',
             }]
 
-          appStore.setState({
+          hotStore.setState({
             positions: [],
             sectorStocks: { [code]: sectorStock },
             buyTargets: buyTargetsList,
@@ -314,12 +314,12 @@ describe('Preservation: Non-position stocks and unchanged prices preserve state'
           applyRealData(event)
 
           // Assert sectorStocks updated with new price
-          const updatedSectorStock = appStore.getState().sectorStocks[code]
+          const updatedSectorStock = hotStore.getState().sectorStocks[code]
           expect(updatedSectorStock).toBeDefined()
           expect(updatedSectorStock.cur_price).toBe(newPrice)
 
           // Assert buyTargets updated with new price
-          const updatedBuyTarget = appStore.getState().buyTargets.find(t => t.code === code)
+          const updatedBuyTarget = hotStore.getState().buyTargets.find((t: BuyTarget) => t.code === code)
           expect(updatedBuyTarget).toBeDefined()
           if (updatedBuyTarget) {
             expect(updatedBuyTarget.cur_price).toBe(newPrice)
@@ -367,7 +367,7 @@ describe('Preservation: Non-position stocks and unchanged prices preserve state'
             pnl_rate: 0,
           }
 
-          appStore.setState({
+          hotStore.setState({
             positions: [position],
             sectorStocks: {},
             buyTargets: [],
@@ -386,7 +386,7 @@ describe('Preservation: Non-position stocks and unchanged prices preserve state'
           expect(() => applyRealData(event)).not.toThrow()
 
           // Verify position still exists and cur_price is updated
-          const updatedPos = appStore.getState().positions.find(p => p.stk_cd === stkCd)
+          const updatedPos = hotStore.getState().positions.find((p: Position) => p.stk_cd === stkCd)
           expect(updatedPos).toBeDefined()
           if (updatedPos) {
             expect(updatedPos.cur_price).toBe(newPrice)

@@ -30,6 +30,7 @@ export interface Position {
   pnl_rate: number;
   market_type?: string;
   nxt_enable?: boolean;
+  sectorStock?: SectorStock;
 }
 
 export interface SectorStock {
