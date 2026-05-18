@@ -9,12 +9,22 @@
 - Phase 2: P1-1 단계 1 액션 함수 분리 (완료)
 - Phase 2: P1-1 단계 2 binding.ts hotStore/uiStore 직접 사용 (완료)
 - Phase 2: P1-1 단계 3 컴포넌트 부분적 이동 (완료)
+- Phase 2: P1-1 단계 4 settings 관련 컴포넌트 이동 (완료)
+- Phase 2: P1-1 단계 5 ws.ts, main.ts 변경 (완료)
+- Phase 2: P1-1 단계 6 appStore.ts 제거 및 hotStore/uiStore 완전 분리 (완료)
+- Phase 3: P1-3 주문 상태기계 검증 (완료)
 
 ## 현재 상태
 ### 빌드 상태
 - 빌드 성공 (npm run build)
-- binding.ts: hotStore/uiStore 직접 사용, 채널 분리 유지
-- main.ts: bindWSToStore 인자 제거
+- appStore.ts 완전 제거
+- hotStore/uiStore 완전 분리 완료
+- applyInitialSnapshot 함수 분리 완료 (applyInitialSnapshotHot, applyInitialSnapshotUI)
+- binding.ts에서 hotStore/uiStore 직접 호출
+- stores/index.ts에서 appStore export 제거
+- ui-styles.ts에서 window.appStore 참조 제거
+- 테스트 파일 3개 제거 (indexCacheConsistency, wsReconnectSnapshot, spliceRecalculation)
+- applyRealData.test.ts에서 hotStore로 변경 완료
 
 ### P1-1 단계 1 완료 내용
 - hotStore.ts: 실시간 데이터 액션 함수 이동 완료
@@ -57,6 +67,20 @@
 - main.ts: appStore를 uiStore로 변경 완료
 - applyRealData.test.ts: 테스트 파일, appStore 유지
 
+### P1-3 주문 상태기계 검증 완료 내용
+- state_manager.py: ALLOWED_TRANSITIONS를 enum 외부에 모듈 레벨 dict로 정의 (40-48행)
+- state_manager.py: _handle_order_status_changed에서 ALLOWED_TRANSITIONS.get() 호출 수정 (201행)
+- tests/test_order_state_machine.py: 주문 상태기계 검증 테스트 케이스 작성
+  - 부분체결 검증: test_partial_fill
+  - 전체체결 검증: test_full_fill
+  - 거부 검증: test_rejection
+  - 취소 검증: test_cancellation
+  - 상태 전이 규칙 검증: test_invalid_state_transition
+  - 부분체결 후 전체체결 검증: test_partial_to_full_fill
+  - 브로커 주문번호 매핑 검증: test_broker_order_id_mapping
+  - idempotency 검증: test_idempotency
+- 테스트 결과: 8 passed (모든 테스트 통과)
+
 ### 실수 및 복구 기록
 - sector-stock.ts에서 sectorOrder 제거 실수 → uiStore에서 sectorOrder 복구 완료
 - sector-analysis.ts에서 sectorScoresDelta 제거 실수 → uiStore에서 sectorScoresDelta 복구 완료
@@ -64,52 +88,21 @@
 
 ### 아키텍처 부합성 확인
 - 채널 분리(P1-2): 유지 - GPT5.5_아키텍처 Phase 2-2 부합
-- hotStore/uiStore 분리(P1-1): 단계 4 완료, 단계 5 진행 중 - GPT5.5_아키텍처 Phase 4-1 해당
+- hotStore/uiStore 분리(P1-1): 완료 - GPT5.5_아키텍처 Phase 4-1 해당
 
 ## 다음 단계
-
-### P1-1 hot state/UI state 분리 (단계적 접근 - 아키텍처 Phase 4-1)
-**제안된 접근 방식:**
-
-**단계 1: hotStore/uiStore에 액션 함수 이동** (완료)
-- appStore.ts의 액션 함수를 hotStore.ts/uiStore.ts로 분리
-- appStore는 호환성을 위해 임시 유지
-- 빌드 검증
-
-**단계 2: binding.ts에서 hotStore/uiStore 사용** (완료)
-- 이벤트 핸들러를 hotStore/uiStore로 분배
-- appStore 호출을 hotStore/uiStore 호출로 변경
-- 빌드 검증
-
-**단계 3: 컴포넌트 순차적 이동** (완료)
-- header.ts: uiStore로 변경
-- profit-overview.ts: hotStore로 변경
-- buy-target.ts: hotStore + uiStore로 변경
-- sell-position.ts: hotStore로 변경
-- 빌드 검증
-
-**단계 4: settings.ts 수정** (완료)
-- createSettingsManager를 uiStore로 변경
-- 나머지 컴포넌트 이동
-- 빌드 검증
-
-**단계 5: appStore 제거** (진행 중)
-- ws.ts: setBackfilling을 uiStore로 변경 완료
-- main.ts: appStore를 uiStore로 변경 완료
-- applyRealData.test.ts: 테스트 파일, appStore 유지
-- appStore.ts 파일 제거 (다음 세션)
-- 최종 빌드 검증
+- Phase 3: P2 문제 해결: 대기
+- Phase 4: 문서 동기화: 대기
 
 ## 미해결 문제
-- P1-1 단계 5: appStore.ts 파일 제거 필요 (applyRealData.test.ts는 테스트 파일로 유지)
-- P1-3 주문 상태기계 검증: 대기
 - Phase 3: P2 문제 해결: 대기
 - Phase 4: 문서 동기화: 대기
 
 ## 백업 상태
-- 현재 git commit 없음
+- git commit 완료 (8bd3033)
 - 빌드 성공 상태
-- P1-1 단계 4 완료, 단계 5 진행 중 (ws.ts, main.ts 변경 완료)
+- P1-1 단계 6 완료 (appStore.ts 제거 및 hotStore/uiStore 완전 분리)
+- P1-3 주문 상태기계 검증 완료 (state_manager.py ALLOWED_TRANSITIONS 수정, 테스트 8 passed)
 
 ## 참고 프로젝트
 - `/Users/sungjk0706/Desktop/SectorFlow` - 구조 참고용
