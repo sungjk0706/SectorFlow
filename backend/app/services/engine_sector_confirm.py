@@ -10,7 +10,7 @@ recompute_sector_for_code(code)는 이벤트 발생 시 호출되며,
 from __future__ import annotations
 
 import asyncio
-from app.core.logger import get_logger
+from backend.app.core.logger import get_logger
 
 logger = get_logger("engine")
 

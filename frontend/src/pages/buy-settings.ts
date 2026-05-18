@@ -2,7 +2,7 @@
 // 매수설정 카드 — Vanilla TS PageModule
 // BuySettingsCard.tsx + BuySettingsSection.tsx + BuyBlockSection.tsx + QuickToggle + TimePairInput 통합
 
-import { appStore } from '../stores/appStore'
+import { uiStore } from '../stores/uiStore'
 import { createSettingsManager, type SettingsManager, createGlobalWsBadge } from '../settings'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingRow, createNumInput, createMoneyInput, createToggleBtn, createFixedValue } from '../components/common/setting-row'
@@ -145,7 +145,7 @@ function syncFromSettings(s: AppSettings): void {
 /* ── mount ── */
 function mount(container: HTMLElement): void {
   notifyPageActive('buy-settings')
-  settingsMgr = createSettingsManager(appStore)
+  settingsMgr = createSettingsManager(uiStore)
   saving = false
   pendingSave = null
   vals = {}

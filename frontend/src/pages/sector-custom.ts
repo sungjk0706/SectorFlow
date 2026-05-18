@@ -3,7 +3,8 @@
 
 import { shell } from '../main'
 import { sectorCustomStore, computeEditWindowOpenByTime, type SectorCustomState } from '../stores/sectorCustomStore'
-import { appStore } from '../stores/appStore'
+import { hotStore } from '../stores/hotStore'
+import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingsManager, type SettingsManager } from '../settings'
 import { createSettingRow, createToggleBtn } from '../components/common/setting-row'
@@ -439,7 +440,7 @@ function buildSchedulerCard(): HTMLElement {
   schedulerTitle.style.fontSize = FONT_SIZE.section
   card.appendChild(schedulerTitle)
 
-  const settings = appStore.getState().settings
+  const settings = uiStore.getState().settings
   schedulerToggle1 = createToggleBtn({
     on: settings?.scheduler_market_close_on ?? true,
     onClick: () => onToggleScheduler('scheduler_market_close_on', schedulerToggle1!),
@@ -474,7 +475,7 @@ function buildSchedulerCard(): HTMLElement {
 }
 
 async function onToggleScheduler(key: string, toggle: ReturnType<typeof createToggleBtn>): Promise<void> {
-  const currentVal = appStore.getState().settings?.[key] as boolean ?? true
+  const currentVal = uiStore.getState().settings?.[key] as boolean ?? true
   const newVal = !currentVal
   const label = key === 'scheduler_market_close_on' ? '전종목 확정시세 다운로드' : '전종목 5일 거래대금 다운로드'
   const result = await showContextPopup({
@@ -492,7 +493,7 @@ async function onToggleScheduler(key: string, toggle: ReturnType<typeof createTo
 }
 
 function updateSchedulerToggles(): void {
-  const settings = appStore.getState().settings
+  const settings = uiStore.getState().settings
   schedulerToggle1?.setOn(settings?.scheduler_market_close_on ?? true)
   schedulerToggle2?.setOn(settings?.scheduler_5d_download_on ?? true)
 }
@@ -655,7 +656,7 @@ function buildSectorManageCard(): HTMLElement {
     },
     createStockNameColumn<SearchResultRow>(
       (row: SearchResultRow) => {
-        const state = appStore.getState()
+        const state = hotStore.getState()
         const sectorStock = state.sectorStocks[row.code || '']
         return {
           name: row.name,
@@ -1002,7 +1003,7 @@ function buildTripleCenter(): void {
     },
     createStockNameColumn<DetailRow>(
       (row: DetailRow) => {
-        const state = appStore.getState()
+        const state = hotStore.getState()
         const sectorStock = state.sectorStocks[row.code || '']
         return {
           name: row.name,
@@ -1387,7 +1388,7 @@ async function loadInitialData(): Promise<void> {
       stockMoves: data.custom_data.stock_moves,
       deletedSectors: data.custom_data.deleted_sectors,
       mergedSectors: data.merged_sectors,
-      editWindowOpen: computeEditWindowOpenByTime(appStore.getState().settings),
+      editWindowOpen: computeEditWindowOpenByTime(uiStore.getState().settings),
       noSectorCount: data.no_sector_count ?? 0,
       loading: false,
     })
@@ -1474,9 +1475,9 @@ function mount(_container: HTMLElement): void {
     }
   })
 
-  // appStore 구독 — settings 변경 시 editWindowOpen 재계산 + 토글 갱신
-  let prevSettings = appStore.getState().settings
-  unsubSse = appStore.subscribe((state) => {
+  // uiStore 구독 — settings 변경 시 editWindowOpen 재계산 + 토글 갱신
+  let prevSettings = uiStore.getState().settings
+  unsubSse = uiStore.subscribe((state) => {
     if (state.settings !== prevSettings) {
       prevSettings = state.settings
       const newEditWindowOpen = computeEditWindowOpenByTime(state.settings)

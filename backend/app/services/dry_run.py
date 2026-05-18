@@ -16,8 +16,8 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from app.core.settings_file import load_settings, update_settings
-from app.services import settlement_engine
+from backend.app.core.settings_file import load_settings, update_settings
+from backend.app.services import settlement_engine
 
 logger = logging.getLogger(__name__)
 

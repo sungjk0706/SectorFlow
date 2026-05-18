@@ -6,7 +6,7 @@
 """
 from __future__ import annotations
 
-from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd, _resolve_bucket_key
+from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd, _resolve_bucket_key
 
 
 def overlay_radar_row_with_live_price(

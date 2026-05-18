@@ -12,7 +12,7 @@ import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from app.core.logger import get_logger
+from backend.app.core.logger import get_logger
 
 logger = get_logger("engine")
 

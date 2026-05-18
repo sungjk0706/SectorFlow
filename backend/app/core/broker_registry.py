@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from app.core.broker_providers import AuthProvider
+from backend.app.core.broker_providers import AuthProvider
 
 if TYPE_CHECKING:
     pass

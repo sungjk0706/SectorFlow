@@ -8,7 +8,7 @@ from enum import Enum
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.web.deps import get_current_user
+from backend.app.web.deps import get_current_user
 
 router = APIRouter(prefix="/api/ws-subscribe", tags=["ws-subscribe"])
 

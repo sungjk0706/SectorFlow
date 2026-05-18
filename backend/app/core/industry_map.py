@@ -16,7 +16,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from app.core.trading_calendar import is_cache_valid, current_trading_date_str
+from backend.app.core.trading_calendar import is_cache_valid, current_trading_date_str
 
 if TYPE_CHECKING:
     from app.core.kiwoom_rest import KiwoomRestAPI

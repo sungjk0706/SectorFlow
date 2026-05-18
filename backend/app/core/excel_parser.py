@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 import openpyxl
 
-from app.core.broker_urls import KIWOOM_REST_REAL
+from backend.app.core.broker_urls import KIWOOM_REST_REAL
 
 logger = logging.getLogger(__name__)
 

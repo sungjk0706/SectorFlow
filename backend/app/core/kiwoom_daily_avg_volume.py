@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 import httpx as requests
 
 # ── 범용 캐시 모듈에서 re-import (하위 호환) ──────────────────────────────
-from app.core.avg_amt_cache import (  # noqa: F401
+from backend.app.core.avg_amt_cache import (  # noqa: F401
     _CACHE_FILENAME,
     _DEFAULT_CACHE_PATH,
     KA10005_GAP_SEC,

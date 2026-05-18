@@ -10,7 +10,7 @@ import asyncio
 import logging
 from typing import Callable
 
-from app.core.broker_connector import BrokerConnector
+from backend.app.core.broker_connector import BrokerConnector
 
 logger = logging.getLogger(__name__)
 

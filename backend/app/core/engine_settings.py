@@ -5,9 +5,9 @@
 포함: 브로커 자격·스케줄·매수 전략 필드 -- 디스크에 있는 영속 설정.
 미포함: 레이더/대기 큐 -- engine_service 메모리·WebSocket 전용(휘발성).
 """
-from app.core.settings_file import load_settings
-from app.core.encryption import decrypt_value
-from app.core.trade_mode import effective_trade_mode
+from backend.app.core.settings_file import load_settings
+from backend.app.core.encryption import decrypt_value
+from backend.app.core.trade_mode import effective_trade_mode
 
 
 async def get_engine_settings(user_id: str = None, profile: str = "default") -> dict:

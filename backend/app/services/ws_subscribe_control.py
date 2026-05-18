@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 from types import ModuleType
 
-from app.core.logger import get_logger
+from backend.app.core.logger import get_logger
 
 logger = get_logger("engine")
 

@@ -11,24 +11,24 @@ import time
 from types import ModuleType
 from typing import Callable
 
-from app.core.logger import get_logger
-from app.services.auto_trading_effective import auto_sell_effective
-from app.core.trade_mode import is_test_mode
-from app.services import dry_run
-from app.services.engine_account_notify import (
+from backend.app.core.logger import get_logger
+from backend.app.services.auto_trading_effective import auto_sell_effective
+from backend.app.core.trade_mode import is_test_mode
+from backend.app.services import dry_run
+from backend.app.services.engine_account_notify import (
     notify_raw_real_data,
 )
-from app.services.engine_account_rest import (
+from backend.app.services.engine_account_rest import (
     apply_last_price_to_positions_inplace,
 )
 import app.services.engine_radar_ops as engine_radar_ops
-from app.services.engine_symbol_utils import (
+from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
     _format_kiwoom_reg_stk_cd,
     _real_item_stk_cd,
     _resolve_bucket_key,
 )
-from app.services.engine_ws_parsing import (
+from backend.app.services.engine_ws_parsing import (
     _normalize_kiwoom_real_type,
     _parse_fid10_price,
     _parse_ws_fid12_to_percent,

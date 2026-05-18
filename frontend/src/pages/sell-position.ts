@@ -4,7 +4,7 @@
 // frontend/src/pages/sell-position.ts
 
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
-import { appStore } from '../stores/appStore'
+import { hotStore } from '../stores/hotStore'
 import { createGlobalWsBadge } from '../settings'
 import { notifyPageActive, notifyPageInactive, subscribeFids } from '../api/ws'
 import { createCardTitle } from '../components/common/card-title'
@@ -22,7 +22,7 @@ const COLUMNS: ColumnDef<Position>[] = [
   },
   createStockNameColumn<Position>(
     (p: Position) => {
-      const state = appStore.getState()
+      const state = hotStore.getState()
       const sectorStock = state.sectorStocks[p.stk_cd || '']
       return {
         name: p.stk_nm || '',
@@ -119,7 +119,7 @@ function mount(container: HTMLElement): void {
   root.appendChild(scrollContainer)
   container.appendChild(root)
 
-  const state = appStore.getState()
+  const state = hotStore.getState()
 
   const initialPositions = state.positions
   dataTable.updateRows(initialPositions)
@@ -129,7 +129,7 @@ function mount(container: HTMLElement): void {
     let prevPositions = state.positions
     let prevSectorStocks = state.sectorStocks
 
-    unsubStore = appStore.subscribe((state) => {
+    unsubStore = hotStore.subscribe((state) => {
       const positionsChanged = state.positions !== prevPositions
       const sectorStocksChanged = state.sectorStocks !== prevSectorStocks
 
@@ -150,7 +150,7 @@ function mount(container: HTMLElement): void {
         _rafId = requestAnimationFrame(() => {
           _rafId = null
           if (!_mounted) return
-          const latest = appStore.getState()
+          const latest = hotStore.getState()
           dataTable?.updateRows(latest.positions)
         })
       } else {

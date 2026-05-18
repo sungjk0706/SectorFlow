@@ -1,9 +1,9 @@
 // frontend/src/settings.ts — 설정 관리 모듈 (순수 TS, React 의존성 없음)
 
-import { appStore } from './stores/appStore'
+import { uiStore } from './stores/uiStore'
 import { api } from './api/client'
 import type { StoreApi } from './stores/store'
-import type { AppState } from './stores/appStore'
+import type { UIState } from './stores/uiStore'
 import type { AppSettings, SaveResult } from './types'
 
 export const MASKED_VALUE = '***'
@@ -40,7 +40,7 @@ export interface SettingsManager {
   destroy(): void
 }
 
-export function createSettingsManager(store: StoreApi<AppState> = appStore): SettingsManager {
+export function createSettingsManager(store: StoreApi<UIState> = uiStore): SettingsManager {
   let localSettings: AppSettings | null = store.getState().settings
   const editingSet = new Set<string>()
   const subscribers = new Set<() => void>()
@@ -102,7 +102,7 @@ export function createSettingsManager(store: StoreApi<AppState> = appStore): Set
 }
 
 // ── 전역 싱글톤 Settings Manager (Python GC 최적화) ──
-export const globalSettingsManager = createSettingsManager(appStore)
+export const globalSettingsManager = createSettingsManager(uiStore)
 
 // ── 전역 싱글톤 WebSocket 상태 배지 모듈 (store subscriber 1개만 유지) ──
 let globalWsBadgeInstance: HTMLElement | null = null
@@ -124,7 +124,7 @@ export function createGlobalWsBadge(): HTMLElement {
   })
 
   function updateBadge(): void {
-    const state = appStore.getState()
+    const state = uiStore.getState()
     const connected = state.wsSubscribeStatus?.quote_subscribed ?? false
     badge.textContent = connected ? 'WS 연결' : 'WS 해제'
     badge.style.color = connected ? '#2e7d32' : '#d32f2f'
@@ -132,7 +132,7 @@ export function createGlobalWsBadge(): HTMLElement {
   }
 
   updateBadge()
-  globalWsBadgeUnsub = appStore.subscribe(updateBadge)
+  globalWsBadgeUnsub = uiStore.subscribe(updateBadge)
   globalWsBadgeInstance = badge
 
   return badge
