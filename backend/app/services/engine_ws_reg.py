@@ -468,7 +468,7 @@ async def subscribe_positions_stocks_realtime(es: ModuleType) -> None:
         logger.warning("[구독] 종목 구독 생략 -- 로그인 전. 로그인 응답 후 재시도됨.")
         return
 
-    from app.services.engine_service import get_positions
+    from backend.app.services.engine_service import get_positions
     ordered: list[str] = []
     positions = await get_positions()
     for s in positions:

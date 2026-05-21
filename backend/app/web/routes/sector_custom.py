@@ -26,7 +26,7 @@ _log = logging.getLogger(__name__)
 
 def _maybe_warning() -> dict:
     """장중(WS 구독 구간)이면 warning 필드를 반환, 아니면 빈 dict."""
-    from app.services.daily_time_scheduler import is_ws_subscribe_window
+    from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
     if is_ws_subscribe_window():
         return {"warning": "장중 변경은 즉시 매매에 반영됩니다"}
     return {}
@@ -68,9 +68,9 @@ def broadcast_sector_custom_changed() -> None:
 
     현재 Custom_Data + merged_sectors + no_sector_count를 페이로드로 전송.
     """
-    from app.core.sector_custom_data import load_custom_data
-    from app.core.sector_mapping import get_merged_all_sectors
-    from app.web.ws_manager import ws_manager
+    from backend.app.core.sector_custom_data import load_custom_data
+    from backend.app.core.sector_mapping import get_merged_all_sectors
+    from backend.app.web.ws_manager import ws_manager
 
     custom = load_custom_data()
     merged = get_merged_all_sectors()
@@ -78,7 +78,7 @@ def broadcast_sector_custom_changed() -> None:
     # "업종명없음" 소속 종목 수 계산
     no_sector_count = 0
     if "업종명없음" in merged:
-        from app.services.engine_service import get_all_sector_stocks
+        from backend.app.services.engine_service import get_all_sector_stocks
         stocks = get_all_sector_stocks()
         no_sector_count = sum(
             1 for s in stocks if s["sector"] == "업종명없음"
@@ -101,9 +101,9 @@ def broadcast_sector_custom_changed() -> None:
 def _trigger_recompute() -> None:
     """업종순위 재계산 + sector-scores/sector-stocks-refresh WS 브로드캐스트."""
     try:
-        from app.services.engine_service import recompute_sector_summary_now
+        from backend.app.services.engine_service import recompute_sector_summary_now
         recompute_sector_summary_now()
-        from app.services.engine_account_notify import (
+        from backend.app.services.engine_account_notify import (
             notify_desktop_sector_scores,
             notify_desktop_sector_stocks_refresh,
         )
@@ -118,7 +118,7 @@ def _trigger_recompute() -> None:
 @router.get("/all-stocks")
 async def get_all_stocks(_: str = Depends(get_current_user)):
     """전체 종목(매매부적격 제외) 조회 — 업종분류 페이지 전용."""
-    from app.services.engine_service import get_all_sector_stocks
+    from backend.app.services.engine_service import get_all_sector_stocks
     stocks = await asyncio.to_thread(get_all_sector_stocks)
     return {"stocks": stocks}
 
@@ -126,8 +126,8 @@ async def get_all_stocks(_: str = Depends(get_current_user)):
 @router.get("")
 async def get_sector_custom(_: str = Depends(get_current_user)):
     """Merged_View 전체 조회."""
-    from app.core.sector_custom_data import load_custom_data
-    from app.core.sector_mapping import get_merged_all_sectors
+    from backend.app.core.sector_custom_data import load_custom_data
+    from backend.app.core.sector_mapping import get_merged_all_sectors
 
     custom = load_custom_data()
     merged = get_merged_all_sectors()
@@ -135,7 +135,7 @@ async def get_sector_custom(_: str = Depends(get_current_user)):
     # "업종명없음" 소속 종목 수 계산 (broadcast_sector_custom_changed와 동일 로직)
     no_sector_count = 0
     if "업종명없음" in merged:
-        from app.services.engine_service import get_all_sector_stocks
+        from backend.app.services.engine_service import get_all_sector_stocks
         stocks = get_all_sector_stocks()
         no_sector_count = sum(
             1 for s in stocks if s["sector"] == "업종명없음"
@@ -159,7 +159,7 @@ async def get_sector_custom(_: str = Depends(get_current_user)):
 async def rename_sector(body: RenameRequest, _: str = Depends(get_current_user)):
     """업종명 변경."""
     try:
-        from app.core.sector_custom_data import rename_sector as _rename
+        from backend.app.core.sector_custom_data import rename_sector as _rename
         _rename(body.old_name, body.new_name)
         broadcast_sector_custom_changed()
         _trigger_recompute()
@@ -174,7 +174,7 @@ async def rename_sector(body: RenameRequest, _: str = Depends(get_current_user))
 async def create_sector(body: CreateRequest, _: str = Depends(get_current_user)):
     """신규 업종 등록."""
     try:
-        from app.core.sector_custom_data import create_sector as _create
+        from backend.app.core.sector_custom_data import create_sector as _create
         _create(body.name)
         broadcast_sector_custom_changed()
         _trigger_recompute()
@@ -189,7 +189,7 @@ async def create_sector(body: CreateRequest, _: str = Depends(get_current_user))
 async def delete_sector(body: DeleteRequest, _: str = Depends(get_current_user)):
     """업종 삭제."""
     try:
-        from app.core.sector_custom_data import delete_sector as _delete
+        from backend.app.core.sector_custom_data import delete_sector as _delete
         _delete(body.name)
         broadcast_sector_custom_changed()
         _trigger_recompute()
@@ -204,7 +204,7 @@ async def delete_sector(body: DeleteRequest, _: str = Depends(get_current_user))
 async def move_stock(body: MoveStockRequest, _: str = Depends(get_current_user)):
     """종목 업종 이동."""
     try:
-        from app.core.sector_custom_data import move_stock as _move
+        from backend.app.core.sector_custom_data import move_stock as _move
         _move(body.stock_code, body.target_sector)
         broadcast_sector_custom_changed()
         _trigger_recompute()
@@ -219,7 +219,7 @@ async def move_stock(body: MoveStockRequest, _: str = Depends(get_current_user))
 async def move_stocks(body: MoveStocksRequest, _: str = Depends(get_current_user)):
     """종목 배치 업종 이동 — WS 이벤트 + 재계산 1회만 발생."""
     try:
-        from app.core.sector_custom_data import move_stock as _move
+        from backend.app.core.sector_custom_data import move_stock as _move
         for code in body.stock_codes:
             _move(code, body.target_sector)
         broadcast_sector_custom_changed()
@@ -264,17 +264,17 @@ async def delete_cache(body: DeleteCacheRequest, _: str = Depends(get_current_us
         # snapshot 캐시 삭제 후: 메모리 클리어 → fetch_unified_confirmed_data 재갱신 트리거
         if cache_type == "snapshot":
             try:
-                from app.services import engine_service
+                from backend.app.services import engine_service
                 if getattr(engine_service, "_confirmed_refresh_running", False):
                     _log.info("[업종관리] 전종목 재조회 진행 중 — 재조회 생략")
                 else:
                     engine_service._pending_stock_details.clear()
                     engine_service._sector_stock_layout.clear()
-                    from app.services.engine_account_notify import _rebuild_layout_cache
+                    from backend.app.services.engine_account_notify import _rebuild_layout_cache
                     _rebuild_layout_cache([])
-                    import app.core.industry_map as _ind_mod
+                    import backend.app.core.industry_map as _ind_mod
                     _ind_mod._eligible_stock_codes.clear()
-                    from app.services.market_close_pipeline import fetch_unified_confirmed_data
+                    from backend.app.services.market_close_pipeline import fetch_unified_confirmed_data
                     asyncio.create_task(fetch_unified_confirmed_data(engine_service))
                     _log.info("[업종관리] 확정데이터 저장데이터 삭제 → 전종목 재조회 시작")
             except Exception as e2:
@@ -283,7 +283,7 @@ async def delete_cache(body: DeleteCacheRequest, _: str = Depends(get_current_us
         # avg_amt 캐시 삭제 후 이벤트 파이프라인: 메모리 클리어 → 재구축 트리거
         elif cache_type == "avg_amt":
             try:
-                from app.services import engine_service
+                from backend.app.services import engine_service
                 engine_service._avg_amt_5d.clear()
                 engine_service._high_5d_cache.clear()
                 engine_service._avg_amt_needs_bg_refresh = True

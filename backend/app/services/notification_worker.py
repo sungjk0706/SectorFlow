@@ -68,7 +68,7 @@ class NotificationWorker:
         """메시지 타입별 핸들러 라우팅."""
         msg_type = msg.get("type")
         if msg_type == "telegram":
-            from app.services import telegram
+            from backend.app.services import telegram
             await telegram.send_msg_async(
                 msg["message"], settings=msg.get("settings"),
             )

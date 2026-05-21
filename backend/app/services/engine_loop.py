@@ -37,7 +37,7 @@ async def _cache_and_bootstrap(es: ModuleType, settings: dict) -> None:
 
     # 앱준비(필터링) 완료 → 깨끗한 데이터로 브라우저에 engine-ready 전송
     try:
-        from app.web.ws_manager import ws_manager
+        from backend.app.web.ws_manager import ws_manager
         ws_manager.broadcast("engine-ready", {"_v": 1, "ready": True})
         logger.info("[시작] 데이터준비 완료 -- 실시간 준비됨")
     except Exception:
@@ -123,7 +123,7 @@ async def run_engine_loop(es: ModuleType) -> None:
     es._pending_stock_details = {}
     es._radar_cnsr_order = []
     es._sector_stock_layout = []
-    from app.services.engine_account_notify import _rebuild_layout_cache
+    from backend.app.services.engine_account_notify import _rebuild_layout_cache
     _rebuild_layout_cache([])
     es._avg_amt_5d = {}
     es._rest_radar_quote_cache = {}
@@ -247,10 +247,10 @@ async def run_engine_loop(es: ModuleType) -> None:
         # ── _rest_api 설정 후 적격종목 + 앱준비 재실행 (캐시 만료 시) ──
         if not es._sector_stock_layout and es._rest_api:
             try:
-                from app.core.industry_map import (
+                from backend.app.core.industry_map import (
                     fetch_ka10099_eligible_stocks, save_eligible_stocks_cache,
                 )
-                import app.core.industry_map as _ind_mod
+                import backend.app.core.industry_map as _ind_mod
                 _fresh = await fetch_ka10099_eligible_stocks(es._rest_api)
                 if _fresh:
                     _ind_mod._eligible_stock_codes = _fresh
@@ -261,7 +261,7 @@ async def run_engine_loop(es: ModuleType) -> None:
                     )
                     await es._bootstrap_sector_stocks_async()
                     try:
-                        from app.web.ws_manager import ws_manager
+                        from backend.app.web.ws_manager import ws_manager
                         ws_manager.broadcast("engine-ready", {"_v": 1, "ready": True})
                         logger.info("[시작] 앱준비 재실행 완료 — engine-ready 재전송")
                     except Exception:
@@ -295,12 +295,12 @@ async def run_engine_loop(es: ModuleType) -> None:
                 get_settings_fn=es._get_settings,
             )
             es._sync_sell_overrides_from_settings()
-            from app.services.daily_time_scheduler import is_ws_subscribe_window
+            from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
             _should_connect_ws = is_ws_subscribe_window(settings)
             if _should_connect_ws:
                 try:
                     # ConnectorManager 초기화 (다중 증권사 동시 연결 지원)
-                    from app.core.connector_manager import ConnectorManager
+                    from backend.app.core.connector_manager import ConnectorManager
                     _mgr = ConnectorManager(settings)
                     _mgr.set_message_callback(es._kiwoom_message_handler)
 
@@ -326,7 +326,7 @@ async def run_engine_loop(es: ModuleType) -> None:
         es._broadcast_engine_ws()  # 엔진 루프 진입 직후 헤더에 즉시 반영
 
         # ── Consumer 루프 시작 (단계 2: 엔진 프로세스 내에서만 사용) ───────────────
-        from app.services.engine_ws_dispatch import start_consumer_loop
+        from backend.app.services.engine_ws_dispatch import start_consumer_loop
         await start_consumer_loop(es._ws_queue, es)
         logger.info("[엔진] Consumer 루프 시작 완료")
 
@@ -341,7 +341,7 @@ async def run_engine_loop(es: ModuleType) -> None:
         logger.warning("[시작] 엔진 루프 예외", exc_info=True)
     finally:
         # ── Consumer 루프 종료 (단계 2: 엔진 프로세스 내에서만 사용) ───────────────
-        from app.services.engine_ws_dispatch import stop_consumer_loop
+        from backend.app.services.engine_ws_dispatch import stop_consumer_loop
         await stop_consumer_loop()
         logger.info("[엔진] Consumer 루프 종료 완료")
 

@@ -26,6 +26,7 @@ import {
   applyAvgAmtProgress,
   applyTestDataResetCompleted,
   applyInitialSnapshotUI,
+  applyRealtimeState,
 } from './stores/uiStore'
 import type {
   AccountUpdateEvent,
@@ -183,9 +184,6 @@ export function bindWSToStore(
     applyOrderFilled(data as Record<string, unknown>)
   })
 
-  ordersClient.onEvent('realtime-reset', () => {
-    applyRealtimeReset()
-  })
 
   ordersClient.onEvent('test-data-reset-completed', () => {
     applyTestDataResetCompleted()
@@ -224,6 +222,10 @@ export function bindWSToStore(
 
   pricesClient.onEvent('realtime-reset', () => {
     applyRealtimeReset()
+  })
+
+  pricesClient.onEvent('realtime-state', (data) => {
+    applyRealtimeState(data as { status: "waiting" | "live" })
   })
 
   pricesClient.onEvent('test-data-reset-completed', () => {

@@ -37,13 +37,13 @@ KA10005_GAP_SEC = 0.3
 try:
 
     def _kst_today_yyyymmdd() -> str:
-        from app.core.trading_calendar import current_trading_date_str
+        from backend.app.core.trading_calendar import current_trading_date_str
         return current_trading_date_str()
 
 except Exception:
 
     def _kst_today_yyyymmdd() -> str:
-        from app.core.trading_calendar import current_trading_date_str
+        from backend.app.core.trading_calendar import current_trading_date_str
         return current_trading_date_str()
 
 
@@ -379,6 +379,7 @@ def save_avg_amt_progress(
     v2_data: "dict[str, list[int]] | None" = None,
     high_cache: "dict[str, int] | None" = None,
     high_5d_arr: "dict[str, list[int]] | None" = None,
+    latest_dict: "dict[str, dict] | None" = None,
 ) -> None:
     """Chunk 완료마다 호출 — 진행 파일 + 실제 데이터 파일 저장."""
     try:
@@ -401,6 +402,7 @@ def save_avg_amt_progress(
                 "v2_data": v2_data,
                 "high_cache": high_cache or {},
                 "high_5d_arr": high_5d_arr or {},
+                "latest_dict": latest_dict or {},
             }
             _AVG_AMT_RESUME_PATH.write_text(
                 json.dumps(data_payload, ensure_ascii=False), encoding="utf-8"
@@ -413,14 +415,14 @@ def load_avg_amt_progress(
     date: str,
     all_codes: list[str],
     ws_subscribe_start: str = "07:50",
-) -> "tuple[set[str], dict[str, list[int]], dict[str, int], dict[str, list[int]]] | None":
+) -> "tuple[set[str], dict[str, list[int]], dict[str, int], dict[str, list[int]], dict[str, dict]] | None":
     """
     이어받기 진행 파일 로드.
 
     유효 조건: 날짜 일치 + 종목 목록 일치 + 다음 거래일 ws_subscribe_start 이전.
 
     Returns:
-        (completed_codes, v2_data, high_cache, high_5d_arr) 또는 None (이어받기 불가)
+        (completed_codes, v2_data, high_cache, high_5d_arr, latest_dict) 또는 None (이어받기 불가)
     """
     if not _AVG_AMT_PROGRESS_PATH.is_file():
         return None
@@ -429,7 +431,7 @@ def load_avg_amt_progress(
         cached_date = raw.get("date", "")
 
         # 날짜 및 시간 유효성 검증 (sector_stock_cache._is_progress_valid와 동일 로직)
-        from app.core.sector_stock_cache import _is_progress_valid
+        from backend.app.core.sector_stock_cache import _is_progress_valid
         if not _is_progress_valid(cached_date, ws_subscribe_start):
             _log.info("[avg_amt_progress] 만료 또는 날짜 불일치 (cached=%s)", cached_date)
             return None
@@ -446,18 +448,20 @@ def load_avg_amt_progress(
         v2_data: dict[str, list[int]] = {}
         high_cache: dict[str, int] = {}
         high_5d_arr: dict[str, list[int]] = {}
+        latest_dict: dict[str, dict] = {}
         if _AVG_AMT_RESUME_PATH.is_file():
             try:
                 rraw = json.loads(_AVG_AMT_RESUME_PATH.read_text(encoding="utf-8"))
                 v2_data   = rraw.get("v2_data", {})
                 high_cache  = rraw.get("high_cache", {})
                 high_5d_arr = rraw.get("high_5d_arr", {})
+                latest_dict = rraw.get("latest_dict", {})
             except Exception as e:
                 _log.warning("[avg_amt_resume] 로드 실패: %s", e)
 
         _log.info("[avg_amt_progress] 이어받기 로드 -- %d/%d종목 완료, 데이터 %d종목",
                   len(completed), len(all_codes), len(v2_data))
-        return completed, v2_data, high_cache, high_5d_arr
+        return completed, v2_data, high_cache, high_5d_arr, latest_dict
     except Exception as e:
         _log.warning("[avg_amt_progress] 로드 실패: %s", e)
         return None

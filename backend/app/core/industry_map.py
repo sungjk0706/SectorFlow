@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Optional
 from backend.app.core.trading_calendar import is_cache_valid, current_trading_date_str
 
 if TYPE_CHECKING:
-    from app.core.kiwoom_rest import KiwoomRestAPI
+    from backend.app.core.kiwoom_rest import KiwoomRestAPI
 
 _log = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ async def fetch_ka10099_eligible_stocks(api: "KiwoomRestAPI") -> dict[str, str]:
                     c6 = cd.upper()  # 알파벳 코드: 원문 대문자 유지
 
                 # ── 매매 부적격 종목 필터 (입구 컷) ──────────────
-                from app.core.stock_filter import is_excluded
+                from backend.app.core.stock_filter import is_excluded
                 excluded, reason = is_excluded(item, c6)
                 if excluded:
                     filtered += 1

@@ -15,7 +15,7 @@ from backend.app.core.logger import get_logger
 from backend.app.core.trade_mode import effective_trade_mode, is_test_mode
 
 if TYPE_CHECKING:
-    from app.core.broker_router import BrokerRouter
+    from backend.app.core.broker_router import BrokerRouter
 
 logger = get_logger("broker_factory")
 
@@ -26,7 +26,7 @@ def get_router(settings: dict) -> "BrokerRouter":
     """BrokerRouter 싱글턴 반환. 시작 시 1회 생성, 이후 캐시."""
     global _router_cache
     if _router_cache is None:
-        from app.core.broker_router import BrokerRouter
+        from backend.app.core.broker_router import BrokerRouter
 
         _router_cache = BrokerRouter(settings)
         logger.info(_router_cache.summary())
@@ -44,8 +44,8 @@ def reset_router() -> None:
 
 def get_broker(settings: dict) -> BrokerInterface:
     """하위 호환: 기존 코드가 get_broker()를 호출하는 곳에서 동작."""
-    from app.core.kiwoom_broker import KiwoomBroker
-    from app.core.ls_broker import LsBroker
+    from backend.app.core.kiwoom_broker import KiwoomBroker
+    from backend.app.core.ls_broker import LsBroker
 
     broker_name = str(settings.get("broker", "kiwoom") or "kiwoom").lower().strip()
 
@@ -74,6 +74,6 @@ def get_broker(settings: dict) -> BrokerInterface:
 
 def create_connector(settings: dict):
     """설정 기반 BrokerConnector 생성."""
-    from app.core.kiwoom_connector import create_kiwoom_connector
+    from backend.app.core.kiwoom_connector import create_kiwoom_connector
     logger.info("[증권사설정] 키움증권 연결 준비")
     return create_kiwoom_connector(settings)

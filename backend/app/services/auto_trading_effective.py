@@ -35,7 +35,7 @@ def _master_on(flat: Optional[dict[str, Any]]) -> bool:
         return False
     # 공휴일 가드: ON이면 공휴일에 자동매매 차단
     if bool(flat.get("holiday_guard_on", True)):
-        from app.core.trading_calendar import is_krx_holiday, kst_today
+        from backend.app.core.trading_calendar import is_krx_holiday, kst_today
         if is_krx_holiday(kst_today()):
             return False
     return True

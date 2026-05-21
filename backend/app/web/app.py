@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """FastAPI lifespan 이벤트 핸들러."""
     # --- startup ---
+    container = get_container()
     from backend.app.core.logging_config import configure_app_logging
     configure_app_logging()
 
@@ -51,7 +52,7 @@ async def lifespan(app: FastAPI):
     logger.info("[DI Container] backend_coalescing 싱글톤 등록 완료")
     
     # WS Manager 싱글톤 등록
-    from app.web.ws_manager import ws_manager
+    from backend.app.web.ws_manager import ws_manager
     container.register_singleton("ws_manager", ws_manager)
     logger.info("[DI Container] ws_manager 싱글톤 등록 완료")
     
@@ -160,6 +161,9 @@ app.include_router(sector_custom_router)
 
 from backend.app.web.routes.settlement import router as settlement_router
 app.include_router(settlement_router)
+
+from backend.app.web.routes.metrics import router as metrics_router
+app.include_router(metrics_router)
 
 
 # --- 전역 예외 핸들러 ---

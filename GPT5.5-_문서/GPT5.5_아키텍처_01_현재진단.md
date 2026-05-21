@@ -560,9 +560,16 @@ state_sync_ts
 - 이벤트 메시지에 latency tracing 필드 추가
 - frontend/backend 동기화
 
-**P2-2-7: Dashboard/Alert 구현**
-- latency 모니터링 UI
-- 임계치 초과 시 알림
+**P2-2-7: Dashboard/Alert 구현 ✅ 완료**
+
+수정 완료 (2026-05-19):
+- backend/app/core/metrics/latency.py: LatencyMetrics collector 구현 완료
+- backend/app/web/routes/metrics.py: Backend API 엔드포인트 구현 완료
+- frontend/src/api/client.ts: Metrics API 클라이언트 구현 완료
+- frontend/src/pages/metrics-dashboard.ts: Dashboard UI 구현 완료
+- frontend/src/main.ts: 라우트 등록 완료
+- frontend/src/layout/sidebar.ts: 메뉴 항목 추가 완료
+- 검증: python -m py_compile 성공, npm run build 성공
 
 ---
 

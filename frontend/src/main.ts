@@ -82,6 +82,11 @@ const routes: RouteConfig[] = [
     layout: 'single',
     load: () => import('./pages/general-settings').then(m => m.default),
   },
+  {
+    path: '#/metrics-dashboard',
+    layout: 'full',
+    load: () => import('./pages/metrics-dashboard').then(m => m.default),
+  },
 ]
 
 // ── 앱 초기화 ──
