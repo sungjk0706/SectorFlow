@@ -10,6 +10,7 @@ from typing import Any, Optional
 
 from backend.app.core.encryption import decrypt_value, encrypt_value
 from backend.app.core.settings_file import load_settings, save_settings
+from backend.app.core import journal as _journal
 from backend.app.services import engine_service
 from backend.app.services.engine_account_notify import (
     notify_desktop_header_refresh,
@@ -146,6 +147,7 @@ def apply_settings_updates(data: dict, username: str = "admin", profile: Optiona
     })
 
     current = load_settings()
+    before_snapshot = dict(current)  # 저널링용 before 상태 캡처
 
     for k, v in data.items():
         if v is None:
@@ -177,6 +179,17 @@ def apply_settings_updates(data: dict, username: str = "admin", profile: Optiona
         )
 
     save_settings(current)
+    
+    # 저널링: 변경된 키 추적
+    changed_keys = set()
+    for k in data.keys():
+        if k in before_snapshot and before_snapshot[k] != current.get(k):
+            changed_keys.add(k)
+        elif k not in before_snapshot:
+            changed_keys.add(k)
+    
+    if changed_keys:
+        _journal.record_settings_change(changed_keys, before_snapshot, dict(current))
 
 
 def build_masked_settings_dict(username: str = "admin", profile: Optional[str] = None) -> dict[str, Any]:

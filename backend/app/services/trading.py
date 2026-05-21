@@ -11,6 +11,7 @@ from backend.app.services import data_manager
 from backend.app.services.auto_trading_effective import auto_buy_effective, auto_sell_effective
 from backend.app.core.broker_factory import get_router
 from backend.app.core.trade_mode import is_test_mode
+from backend.app.core import journal as _journal
 from backend.app.services import dry_run
 from backend.app.services import trade_history
 from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
@@ -283,6 +284,18 @@ class AutoTradeManager:
             _fire_and_forget_telegram(f"⚠️ [매수실패] {stk_nm}({stk_cd}) 주문 전송 실패. 잠금 해제.", base_settings)
             return False
 
+        # ── 저널링: 주문 요청 기록 ─────────────────────────────────────────────
+        order_id = res.get("order_id", f"buy_{stk_cd}_{int(time.time())}")
+        _mode = "test" if is_test_mode(base_settings) else "real"
+        _journal.record_order_request(
+            order_id=order_id,
+            stock_code=stk_cd,
+            side="buy",
+            quantity=buy_qty,
+            price=float(order_price) if order_price > 0 else float(current_price),
+            trade_mode=_mode,
+        )
+
         fill_price = int(order_price) if order_price > 0 else int(current_price)
         spent = int(buy_qty * fill_price)
         self._daily_buy_spent += max(0, spent)
@@ -411,6 +424,17 @@ class AutoTradeManager:
             self.log_callback(f"[매도] {stk_nm} 주문 전송 실패: {result.get('msg', '알 수 없음')}")
             _fire_and_forget_telegram(f"⚠️ [매도실패] {stk_nm}({stk_cd}) 주문 전송 실패: {result.get('msg', '알 수 없음')}", base_settings)
             return
+
+        # ── 저널링: 주문 요청 기록 ─────────────────────────────────────────────
+        order_id = result.get("order_id", f"sell_{stk_cd}_{int(time.time())}")
+        _journal.record_order_request(
+            order_id=order_id,
+            stock_code=stk_cd,
+            side="sell",
+            quantity=qty,
+            price=float(order_price) if order_price > 0 else float(cur_price),
+            trade_mode=_mode,
+        )
 
         t_str = datetime.now().strftime("%H:%M:%S")
         self.log_callback(f"[{t_str}] [매도주문] {stk_nm} | {reason} | {order_type} | {qty:,}주 | 평가손익: {pnl_rate}%")
