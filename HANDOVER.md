@@ -46,6 +46,7 @@
 - Phase 1.2: Event Bus 구현 (완료)
 - Phase 1.3: Broker Adapter 리팩토링 (건너뜀 - 복잡도로 인해 Phase 1.4로 통합)
 - Phase 1.4: engine_service.py 분리 시작 (건너뜀 - 복잡도로 인해 이후 단계로 연기)
+- Phase 2.1: DataTable 렌더링 최적화 (완료)
 
 ## 현재 상태
 ### Phase 1.1 완료 내용
@@ -74,11 +75,13 @@
 - 작업 범위 재조정: 복잡도로 인해 Phase 1.4로 통합
 - 롤백 완료 (기존 코드 유지)
 
-### Phase 1.4 완료 내용
-- 사전 조사 완료 (engine_service.py, engine_ws_dispatch.py 데이터 처리 흐름 파악)
-- 영향성 조사 완료 (고위험 - 핵심 데이터 처리 경로)
-- 작업 범위 재조정: 복잡도로 인해 이후 단계로 연기
-- 롤백 완료 (기존 코드 유지)
+### Phase 2.1 완료 내용
+- 사전 조사 완료 (sector-stock.ts, buy-target.ts, sell-position.ts DataTable 사용 확인)
+- 영향성 조사 완료 (중위험 - 렌더링 로직 수정)
+- DataTable 렌더링 최적화 완료
+  - 고정 테이블 모드에 requestAnimationFrame 기반 렌더링 주기 제한 추가 (60fps)
+  - 가상 스크롤 모드에 requestAnimationFrame 기반 렌더링 주기 제한 추가 (60fps)
+- 빌드 테스트 완료 (npm run build 성공)
 
 ### 빌드 상태
 - 빌드 성공 (npm run build)
@@ -181,13 +184,13 @@
 - hotStore/uiStore 분리(P1-1): 완료 - GPT5.5_아키텍처 Phase 4-1 해당
 
 ## 다음 단계
-- Phase 2: Frontend 렌더링 최적화 (Phase 1.3, 1.4는 복잡도로 인해 연기)
+- Phase 2.2: React 역할 축소
 
 ## 미해결 문제
 - 없음
 
 ## 백업 상태
-- git commit 완료 (9e9579a)
+- git commit 완료 (42afff8)
 - 빌드 성공 상태
 - P1-1 단계 6 완료 (appStore.ts 제거 및 hotStore/uiStore 완전 분리)
 - P1-3 주문 상태기계 검증 완료 (state_manager.py ALLOWED_TRANSITIONS 수정, 테스트 8 passed)
@@ -196,6 +199,7 @@
 - Phase 1.2 Event Bus 구현 완료 (event_bus.py 생성, 테스트 8 passed)
 - Phase 1.3 Broker Adapter 리팩토링 (건너뜀 - 복잡도로 인해 Phase 1.4로 통합)
 - Phase 1.4 engine_service.py 분리 시작 (건너뜀 - 복잡도로 인해 이후 단계로 연기)
+- Phase 2.1 DataTable 렌더링 최적화 완료 (requestAnimationFrame 기반 렌더링 주기 제한 60fps)
 - Phase 4: 문서 동기화 완료 (GPT5.5_P2-2-7, 로드맵, 현재진단 업데이트)
 
 ## 참고 프로젝트
