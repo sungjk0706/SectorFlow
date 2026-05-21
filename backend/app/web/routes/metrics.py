@@ -33,3 +33,22 @@ async def clear_metrics():
     metrics = get_latency_metrics()
     metrics.clear()
     return {"status": "cleared"}
+
+
+@router.get("/dropped")
+async def get_dropped_count():
+    """Coalescing으로 Drop된 패킷 수 조회."""
+    from backend.app.services.backend_coalescing import BackendCoalescing
+    
+    coalescing = BackendCoalescing.get_instance()
+    return {"dropped_count": coalescing.get_dropped_count()}
+
+
+@router.post("/dropped/reset")
+async def reset_dropped_count():
+    """Drop 카운트 초기화."""
+    from backend.app.services.backend_coalescing import BackendCoalescing
+    
+    coalescing = BackendCoalescing.get_instance()
+    coalescing.reset_dropped_count()
+    return {"status": "dropped_count_reset"}

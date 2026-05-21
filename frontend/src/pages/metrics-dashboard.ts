@@ -196,9 +196,10 @@ export function createMetricsDashboard() {
   // 데이터 로드 함수
   async function loadData() {
     try {
-      const [summary, alerts] = await Promise.all([
+      const [summary, alerts, dropped] = await Promise.all([
         api.fetchMetricsSummary(),
         api.fetchMetricsAlerts(20),
+        api.fetchMetricsDropped(),
       ])
 
       // Phase 2.3: 프론트엔드 메트릭 로드
@@ -211,6 +212,7 @@ export function createMetricsDashboard() {
         { name: '평균 지연시간 (ms)', value: renderSummary.avg.toFixed(2) },
         { name: 'Frame Drop 수', value: String(renderSummary.frameDropCount) },
         { name: 'Frame Drop 비율 (%)', value: (renderSummary.frameDropRate * 100).toFixed(2) },
+        { name: 'Drop 패킷 수', value: String(dropped.dropped_count) },
       ]
 
       if (!frontendTable) {
