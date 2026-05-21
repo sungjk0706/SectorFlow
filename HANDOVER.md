@@ -189,13 +189,13 @@
 - hotStore/uiStore 분리(P1-1): 완료 - GPT5.5_아키텍처 Phase 4-1 해당
 
 ## 다음 단계
-- Phase 4.2: Persistence Journaling 도입
+- Phase 4.2: Persistence Journaling 도입 (다음 세션에서 시작)
 
 ## 미해결 문제
 - 없음
 
 ## 백업 상태
-- git commit 완료 (e2fcb77)
+- git commit 완료 (03fca00)
 - 빌드 성공 상태
 - P1-1 단계 6 완료 (appStore.ts 제거 및 hotStore/uiStore 완전 분리)
 - P1-3 주문 상태기계 검증 완료 (state_manager.py ALLOWED_TRANSITIONS 수정, 테스트 8 passed)
