@@ -32,12 +32,12 @@ async def _send_stocks_delayed(websocket: WebSocket, ws_manager) -> None:
                 logger.warning("[연결] 앱준비 60초 대기 초과 -- 현재 데이터로 전송")
 
         # sector-stocks-refresh: 앱준비 완료 즉시 전송
-        from app.services.engine_service import build_sector_stocks_payload
+        from backend.app.services.engine_service import build_sector_stocks_payload
 
         stocks_payload = await build_sector_stocks_payload()
         stock_count = len(stocks_payload.get("stocks", []))
         logger.info("[연결] 업종목록 화면전송 -- %d종목", stock_count)
-        ws_manager.send_to(websocket, "sector-stocks-refresh", stocks_payload)
+        await ws_manager.send_to(websocket, "sector-stocks-refresh", stocks_payload)
 
         # 업종순위 계산 완료 대기
         from backend.app.services.engine_service import _sector_summary_ready_event
@@ -51,7 +51,7 @@ async def _send_stocks_delayed(websocket: WebSocket, ws_manager) -> None:
                 return
 
         # sector-scores 전송
-        from app.services.engine_service import (
+        from backend.app.services.engine_service import (
             _settings_cache,
             get_sector_scores_snapshot,
         )
@@ -70,10 +70,10 @@ async def _send_stocks_delayed(websocket: WebSocket, ws_manager) -> None:
                     "ranked_sectors_count": ranked_count,
                 },
             }
-            ws_manager.send_to(websocket, "sector-scores", scores_payload)
+            await ws_manager.send_to(websocket, "sector-scores", scores_payload)
             logger.info("[연결] 업종점수 화면전송 -- %d개 섹터", len(scores))
         else:
-            from app.services import engine_service as _es_check
+            from backend.app.services import engine_service as _es_check
 
             if _es_check._sector_summary_cache is None:
                 logger.warning(
@@ -87,7 +87,7 @@ async def _send_stocks_delayed(websocket: WebSocket, ws_manager) -> None:
 
         targets = get_buy_targets_snapshot()
         if targets:
-            ws_manager.send_to(
+            await ws_manager.send_to(
                 websocket, "buy-targets-update", {"_v": 1, "buy_targets": targets}
             )
             logger.info("[연결] 매수후보 화면전송 -- %d건", len(targets))
@@ -119,7 +119,7 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
         logger.info("[연결] 시작화면 데이터 생성 시작")
         snapshot = await build_initial_snapshot()
         logger.info("[연결] 시작화면 데이터 생성 완료")
-        ws_manager.send_to(websocket, "initial-snapshot", snapshot)
+        await ws_manager.send_to(websocket, "initial-snapshot", snapshot)
 
         # 앱준비 대기 → sector 데이터 순차 유니캐스트
         delayed_task = asyncio.create_task(_send_stocks_delayed(websocket, ws_manager))

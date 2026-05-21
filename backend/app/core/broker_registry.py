@@ -37,7 +37,7 @@ MUST_SAME_BROKER_PAIRS: list[tuple[str, str]] = [
 
 def _lazy_kiwoom_registry() -> dict[str, type]:
     """순환 import 방지: 최초 접근 시 키움 Provider 클래스 로드."""
-    from app.core.kiwoom_providers import (
+    from backend.app.core.kiwoom_providers import (
         KiwoomAuthProvider,
         KiwoomAccountProvider,
         KiwoomOrderProvider,

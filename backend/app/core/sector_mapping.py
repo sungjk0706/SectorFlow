@@ -23,7 +23,7 @@ def get_merged_sector(stock_code: str) -> str:
     3. sectors 리네임 1회 적용
     4. deleted_sectors 필터 → 빈 문자열 반환
     """
-    from app.core.sector_custom_data import load_custom_data_readonly
+    from backend.app.core.sector_custom_data import load_custom_data_readonly
 
     custom = load_custom_data_readonly()
 
@@ -46,7 +46,7 @@ def get_merged_all_sectors() -> list[str]:
     sectors values + stock_moves values → 고유 수집
     → deleted_sectors 제거 → 빈 문자열 제거 → 정렬
     """
-    from app.core.sector_custom_data import load_custom_data_readonly
+    from backend.app.core.sector_custom_data import load_custom_data_readonly
 
     custom = load_custom_data_readonly()
 

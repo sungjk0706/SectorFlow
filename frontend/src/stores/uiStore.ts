@@ -45,6 +45,9 @@ export interface UIState {
 
   /* ── 업종 요약 ── */
   sectorSummary: Record<string, unknown> | null
+
+  /* ── 실시간 상태 ── */
+  realtimeStatus: "waiting" | "live" | null
 }
 
 const initialState: UIState = {
@@ -63,6 +66,7 @@ const initialState: UIState = {
   bootstrapStage: null,
   marketPhase: { krx: 'CLOSED', nxt: 'CLOSED' },
   buyLimitStatus: { daily_buy_spent: 0 },
+  realtimeStatus: "waiting",
   wsSubscribeStatus: { index_subscribed: false, quote_subscribed: false },
   sectorScoresDelta: null,
   sectorSummary: null,
@@ -175,6 +179,11 @@ export function applyWsConnectionStatus(data: { connected: boolean }): void {
 /* ── market-phase: 장 상태 갱신 ── */
 export function applyMarketPhase(data: { krx: string; nxt: string }): void {
   uiStore.setState({ marketPhase: data })
+}
+
+/* ── realtime-state: 실시간 상태 갱신 ── */
+export function applyRealtimeState(data: { status: "waiting" | "live" }): void {
+  uiStore.setState({ realtimeStatus: data.status })
 }
 
 /* ── selectedSector: 토글 ── */

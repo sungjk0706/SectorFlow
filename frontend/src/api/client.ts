@@ -136,4 +136,29 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ amount }),
     }),
+
+  // Metrics API
+  fetchMetricsSummary: () =>
+    request<Record<string, {
+      count: number;
+      min: number;
+      max: number;
+      avg: number;
+      p50: number | null;
+      p95: number | null;
+      p99: number | null;
+    }>>('/api/metrics/summary'),
+
+  fetchMetricsAlerts: (limit: number = 20) =>
+    request<Array<{
+      timestamp: number;
+      metric_name: string;
+      value: number;
+      threshold: number;
+    }>>(`/api/metrics/alerts?limit=${limit}`),
+
+  clearMetrics: () =>
+    request<{ status: string }>('/api/metrics/clear', {
+      method: 'POST',
+    }),
 };

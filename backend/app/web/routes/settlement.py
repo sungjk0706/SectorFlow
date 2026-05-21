@@ -15,6 +15,6 @@ async def charge_settlement(body: dict, _: str = Depends(get_current_user)):
     amount = int(body.get("amount", 0))
     if amount <= 0:
         return {"ok": False, "reason": "금액은 0보다 커야 합니다"}
-    from app.services import settlement_engine
+    from backend.app.services import settlement_engine
     new_balance = settlement_engine.charge(amount)
     return {"ok": True, "balance": new_balance}

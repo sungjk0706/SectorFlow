@@ -2,7 +2,7 @@
 """
 엔진 캐시 오케스트레이션.
 
-순환 import 방지: `import app.services.engine_state as _st` 로 상태 접근.
+순환 import 방지: `import backend.app.services.engine_state as _st` 로 상태 접근.
 """
 from __future__ import annotations
 
@@ -22,14 +22,14 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
     종목명 보강은 스냅샷 완료 후 실행 (의존성).
     """
     try:
-        from app.core.sector_stock_cache import (
+        from backend.app.core.sector_stock_cache import (
             load_layout_cache, load_snapshot_cache,
             load_stock_name_cache, load_market_map_cache,
         )
-        from app.core.avg_amt_cache import load_avg_amt_cache
-        from app.core.industry_map import load_eligible_stocks_cache
-        from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd, _base_stk_cd
-        from app.services.engine_strategy_core import make_detail
+        from backend.app.core.avg_amt_cache import load_avg_amt_cache
+        from backend.app.core.industry_map import load_eligible_stocks_cache
+        from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd, _base_stk_cd
+        from backend.app.services.engine_strategy_core import make_detail
 
         # ── 5개 캐시 병렬 로드 ──
         _cached_layout, _cached_snapshot, _cached_avg_result, _cached_market, _cached_eligible = await asyncio.gather(
@@ -47,7 +47,7 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
         # ── 레이아웃 적재 ──
         if _cached_layout:
             es._sector_stock_layout[:] = _cached_layout
-            from app.services.engine_account_notify import _rebuild_layout_cache
+            from backend.app.services.engine_account_notify import _rebuild_layout_cache
             _rebuild_layout_cache(_cached_layout)
             logger.debug("[데이터준비] 레이아웃 저장데이터 로드 -- %d종목",
                         sum(1 for t, _ in _cached_layout if t == "code"))
@@ -103,7 +103,7 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
             es._update_avg_amt_5d(_cached_avg)
             logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 로드 -- %d종목", len(_cached_avg))
         else:
-            from app.core.avg_amt_cache import load_avg_amt_cache_v2, avg_from_v2
+            from backend.app.core.avg_amt_cache import load_avg_amt_cache_v2, avg_from_v2
             _stale_result = await asyncio.to_thread(load_avg_amt_cache_v2)
             _stale_v2 = _stale_result[0] if _stale_result else None
             if _stale_v2 and len(_stale_v2) > 100:
@@ -120,7 +120,7 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
 
         # ── 시장구분 적재 ──
         if _cached_market:
-            from app.services.engine_symbol_utils import set_market_map, set_nxt_enable_map
+            from backend.app.services.engine_symbol_utils import set_market_map, set_nxt_enable_map
             _mkt_map, _nxt_map = _cached_market
             set_market_map(_mkt_map)
             set_nxt_enable_map(_nxt_map)
@@ -129,7 +129,7 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
 
         # ── 적격종목 적재 (앱준비 에서 get_eligible_stocks() 사용) ──
         if _cached_eligible:
-            import app.core.industry_map as _ind_mod
+            import backend.app.core.industry_map as _ind_mod
             _ind_mod._eligible_stock_codes = _cached_eligible
             # 매매적격종목 로그는 industry_map.py에서 이미 출력됨 (중복 제거)
 

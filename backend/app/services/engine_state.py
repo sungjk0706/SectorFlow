@@ -4,7 +4,7 @@
 
 engine_service.py의 전역 상태에 대한 접근 레이어.
 순환 import 방지: 이 모듈은 engine_service를 lazy import한다.
-외부 모듈이 `import app.services.engine_state as _st` 후
+외부 모듈이 `import backend.app.services.engine_state as _st` 후
 `_st.X` 읽기/쓰기 모두 engine_service.X에 프록시된다.
 
 구현: types.ModuleType 서브클래스로 sys.modules 교체 (PEP 562는 __setattr__ 미지원).
@@ -19,7 +19,7 @@ class _EngineStateProxy(types.ModuleType):
     """engine_service 모듈의 읽기/쓰기를 모두 프록시하는 모듈 래퍼."""
 
     def __getattr__(self, name: str):
-        from app.services import engine_service as _es
+        from backend.app.services import engine_service as _es
         try:
             return getattr(_es, name)
         except AttributeError:
@@ -32,12 +32,12 @@ class _EngineStateProxy(types.ModuleType):
         if name.startswith("__") and name.endswith("__"):
             super().__setattr__(name, value)
             return
-        from app.services import engine_service as _es
+        from backend.app.services import engine_service as _es
         setattr(_es, name, value)
 
     def __delattr__(self, name: str):
         # unittest.mock.patch 복원 시 delattr 호출 — engine_service에 위임
-        from app.services import engine_service as _es
+        from backend.app.services import engine_service as _es
         try:
             delattr(_es, name)
         except AttributeError:

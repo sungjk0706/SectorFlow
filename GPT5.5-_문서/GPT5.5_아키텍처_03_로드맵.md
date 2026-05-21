@@ -264,6 +264,8 @@ latency p95 측정
 
 ### 2-3. latency metrics 도입
 
+**상태: ✅ 완료** (2026-05-19 - P2-2-7 Dashboard/Alert 구현)
+
 필수 timestamp:
 
 ```text

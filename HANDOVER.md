@@ -13,6 +13,7 @@
 - Phase 2: P1-1 단계 5 ws.ts, main.ts 변경 (완료)
 - Phase 2: P1-1 단계 6 appStore.ts 제거 및 hotStore/uiStore 완전 분리 (완료)
 - Phase 3: P1-3 주문 상태기계 검증 (완료)
+- Phase 3: P2-2-7 Dashboard/Alert 구현 (완료)
 
 ## 현재 상태
 ### 빌드 상태
@@ -23,6 +24,31 @@
 - binding.ts에서 hotStore/uiStore 직접 호출
 - stores/index.ts에서 appStore export 제거
 - ui-styles.ts에서 window.appStore 참조 제거
+- P2-2-7 Dashboard/Alert 구현 완료
+
+### P2-2-7 Dashboard/Alert 구현 완료 내용
+- backend/app/core/metrics/latency.py: LatencyMetrics collector 구현 완료
+  - record(): 메트릭 기록
+  - get_percentile(): percentile 계산
+  - get_summary(): 요약 통계 (count, min, max, avg, p50, p95, p99)
+  - get_recent_alerts(): 최근 alert 목록
+  - 임계값 초과 시 로그 출력 구현 완료
+- backend/app/web/routes/metrics.py: Backend API 엔드포인트 구현 완료
+  - GET /api/metrics/summary: 전체 메트릭 요약 조회
+  - GET /api/metrics/alerts: 최근 alert 목록 조회
+  - POST /api/metrics/clear: 메트릭 초기화
+- backend/app/web/app.py: metrics_router 등록 완료
+- frontend/src/api/client.ts: Metrics API 클라이언트 구현 완료
+  - fetchMetricsSummary()
+  - fetchMetricsAlerts()
+  - clearMetrics()
+- frontend/src/pages/metrics-dashboard.ts: Dashboard UI 구현 완료
+  - 메트릭 요약 테이블 (count, min, max, avg, p50, p95, p99)
+  - Alert 목록 테이블
+  - 5초 주기 자동 갱신
+  - 새로고침/초기화 버튼
+- frontend/src/main.ts: 라우트 등록 완료 (#/metrics-dashboard)
+- frontend/src/layout/sidebar.ts: 메뉴 항목 추가 완료 (Metrics)
 - 테스트 파일 3개 제거 (indexCacheConsistency, wsReconnectSnapshot, spliceRecalculation)
 - applyRealData.test.ts에서 hotStore로 변경 완료
 
@@ -91,18 +117,18 @@
 - hotStore/uiStore 분리(P1-1): 완료 - GPT5.5_아키텍처 Phase 4-1 해당
 
 ## 다음 단계
-- Phase 3: P2 문제 해결: 대기
-- Phase 4: 문서 동기화: 대기
+- 대기
 
 ## 미해결 문제
-- Phase 3: P2 문제 해결: 대기
-- Phase 4: 문서 동기화: 대기
+- 없음
 
 ## 백업 상태
 - git commit 완료 (8bd3033)
 - 빌드 성공 상태
 - P1-1 단계 6 완료 (appStore.ts 제거 및 hotStore/uiStore 완전 분리)
 - P1-3 주문 상태기계 검증 완료 (state_manager.py ALLOWED_TRANSITIONS 수정, 테스트 8 passed)
+- P2-2-7 Dashboard/Alert 구현 완료 (latency.py, metrics.py, metrics-dashboard.ts, 라우팅/메뉴 연결)
+- Phase 4: 문서 동기화 완료 (GPT5.5_P2-2-7, 로드맵, 현재진단 업데이트)
 
 ## 참고 프로젝트
 - `/Users/sungjk0706/Desktop/SectorFlow` - 구조 참고용

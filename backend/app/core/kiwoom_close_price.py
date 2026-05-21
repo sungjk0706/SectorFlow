@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any, Optional
 import httpx as requests
 
 if TYPE_CHECKING:
-    from app.core.kiwoom_rest import KiwoomRestAPI
+    from backend.app.core.kiwoom_rest import KiwoomRestAPI
 
 _log = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def _prev_weekday_yyyymmdd(from_date: Optional[str] = None) -> str:
     앱에서 직전 영업일을 계산해서 요청해야 함.
     from_date: None이면 오늘 기준.
     """
-    from app.core.trading_calendar import prev_business_date, kst_today
+    from backend.app.core.trading_calendar import prev_business_date, kst_today
     from datetime import datetime as _dt
 
     if from_date:
