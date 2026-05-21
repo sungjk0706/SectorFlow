@@ -21,7 +21,7 @@ from backend.app.services.engine_account_notify import (
 from backend.app.services.engine_account_rest import (
     apply_last_price_to_positions_inplace,
 )
-import app.services.engine_radar_ops as engine_radar_ops
+import backend.app.services.engine_radar_ops as engine_radar_ops
 from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
     _format_kiwoom_reg_stk_cd,
@@ -44,6 +44,10 @@ logger = get_logger("engine")
 # ── _wl_codes 캐시 (매 틱마다 Set 재생성 방지) ──
 _wl_codes_cache: set[str] = set()
 _wl_codes_layout_len: int = -1
+
+# ── LIVE 전환 조건 강화: symbol별 필수 필드 캐시 ──
+_realtime_required_fields_cache: dict[str, dict] = {}  # {symbol: {"price": bool, "change": bool, "volume": bool}}
+_realtime_first_tick_ts_map: dict[str, int] = {}  # {symbol: timestamp (ms)}
 
 
 def _get_wl_codes_cached(es: ModuleType) -> set[str]:
@@ -137,7 +141,7 @@ def _handle_login(data: dict, es: ModuleType) -> None:
         es._cancel_price_trace_delayed_task()
         # LOGIN 성공 → 구독 파이프라인 트리거 (구독 구간 내이면 REG 자동 시작)
         try:
-            from app.services.daily_time_scheduler import _trigger_reg_pipeline
+            from backend.app.services.daily_time_scheduler import _trigger_reg_pipeline
             _trigger_reg_pipeline(es)
         except Exception as e:
             logger.warning("[연결] REG 파이프라인 트리거 실패: %s", e, exc_info=True)
@@ -214,6 +218,42 @@ def _handle_real_01(
     item: dict, vals: dict, raw_type_upper: str, is_0b_tick: bool, es: ModuleType,
 ) -> None:
     """0B/01 체결 처리 — 현재가·거래대금·체결강도 갱신 + 보유종목 반영 + 자동매도 검사."""
+    # LIVE 전환 조건 강화: symbol별 필수 필드 캐시 확인 + 타임아웃
+    if es._get_realtime_state() == "WAITING_FIRST_TICK":
+        raw_cd = _real_item_stk_cd(item, vals)
+        if raw_cd:
+            nk_px = _format_kiwoom_reg_stk_cd(raw_cd)
+            
+            # symbol별 최초 tick 수신 timestamp 기록
+            global _realtime_first_tick_ts_map
+            if nk_px not in _realtime_first_tick_ts_map:
+                _realtime_first_tick_ts_map[nk_px] = int(time.time() * 1000)
+            
+            # 필수 필드 캐시 초기화
+            if nk_px not in _realtime_required_fields_cache:
+                _realtime_required_fields_cache[nk_px] = {"price": False, "change": False, "volume": False}
+            
+            # 필수 필드 채워짐 확인
+            last_px = _parse_fid10_price(vals)
+            if last_px > 0:
+                _realtime_required_fields_cache[nk_px]["price"] = True
+            if _ws_fid_key_present(vals, "11"):
+                _realtime_required_fields_cache[nk_px]["change"] = True
+            if is_0b_tick and _ws_fid_key_present(vals, "14"):
+                _realtime_required_fields_cache[nk_px]["volume"] = True
+            
+            # 모든 필수 필드가 채워졌거나 1000ms 경과 시 LIVE 전환
+            required = _realtime_required_fields_cache[nk_px]
+            current_ts = int(time.time() * 1000)
+            elapsed = current_ts - _realtime_first_tick_ts_map[nk_px]
+            
+            if (required["price"] and required["change"] and required["volume"]) or (elapsed > 1000):
+                # 최소 1개 종목의 필수 필드가 모두 채워지거나 1000ms 경과 시 LIVE 전환
+                es._set_realtime_state("LIVE")
+                # 캐시 초기화 (최초 1회만 실행)
+                _realtime_required_fields_cache.clear()
+                _realtime_first_tick_ts_map.clear()
+    
     _ts = int(time.time() * 1000)
     _need_sector_tick = False
     raw_cd = _real_item_stk_cd(item, vals)
@@ -300,7 +340,7 @@ def _handle_real_01(
     if pend_key:
         # notify_desktop_buy_radar_only()
         _need_sector_tick = True
-        from app.services.engine_sector_confirm import recompute_sector_for_code
+        from backend.app.services.engine_sector_confirm import recompute_sector_for_code
         recompute_sector_for_code(nk_px)
     else:
         _wl_codes = _get_wl_codes_cached(es)
@@ -317,7 +357,7 @@ def _handle_real_01(
                         logger.warning("[체결강도WL] %s 파싱 실패 sv=%r: %s", nk_px, sv, e)
             # notify_desktop_buy_radar_only()
             _need_sector_tick = True
-            from app.services.engine_sector_confirm import recompute_sector_for_code
+            from backend.app.services.engine_sector_confirm import recompute_sector_for_code
             recompute_sector_for_code(nk_px)
 
     # [근본해결] 선택적 전송 제거
@@ -363,7 +403,7 @@ def _handle_real_balance(item: dict, vals: dict, es: ModuleType) -> None:
 
 def _handle_real_0j(item: dict, vals: dict, es: ModuleType) -> None:
     """업종지수(0J) 처리 — 코스피·코스닥 지수 실시간 갱신."""
-    from app.services.daily_time_scheduler import on_0j_real_received
+    from backend.app.services.daily_time_scheduler import on_0j_real_received
     on_0j_real_received()
 
     idx_cd = str(item.get("item") or "").strip().lstrip("A")
@@ -416,7 +456,7 @@ def _handle_real_0d(item: dict, vals: dict, es: ModuleType) -> None:
     es._orderbook_cache[nk] = (bid, ask)  # 단일 키 직접 대입 (튜플은 불변)
     # 매수후보 종목이면 호가잔량비 변경을 프론트에 즉시 전송 (이벤트 기반)
     if prev != (bid, ask) and nk in es._subscribed_0d_stocks:
-        from app.services.engine_account_notify import notify_orderbook_update
+        from backend.app.services.engine_account_notify import notify_orderbook_update
         notify_orderbook_update(nk, bid, ask)
 
 

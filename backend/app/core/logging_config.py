@@ -14,8 +14,8 @@ def parse_log_level(raw: Any) -> str:
 
 
 def configure_app_logging() -> str:
-    from app.config import get_settings
-    from app.core.logger import setup_loguru
+    from backend.app.config import get_settings
+    from backend.app.core.logger import setup_loguru
 
     level = parse_log_level(get_settings().LOG_LEVEL)
     setup_loguru(log_level=level)

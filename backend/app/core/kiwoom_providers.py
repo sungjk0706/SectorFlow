@@ -231,7 +231,7 @@ class KiwoomOrderProvider(OrderProvider):
         trde_tp: str = "3",
         orig_ord_no: str = "",
     ) -> dict:
-        from app.core.kiwoom_order import send_order as _kiwoom_send_order
+        from backend.app.core.kiwoom_order import send_order as _kiwoom_send_order
 
         return _kiwoom_send_order(
             settings,
@@ -301,7 +301,7 @@ class KiwoomSectorProvider(SectorProvider):
     def fetch_daily_5d_data(self, stk_cd: str) -> tuple[list[int], list[int]]:
         if self._rest_api is None:
             return [], []
-        from app.core.kiwoom_daily_avg_volume import (
+        from backend.app.core.kiwoom_daily_avg_volume import (
             fetch_daily_5d_data as _fetch,
         )
 
@@ -330,7 +330,7 @@ class KiwoomSectorProvider(SectorProvider):
     def fetch_unified_stock_data(self) -> list:
         if self._rest_api is None:
             return []
-        from app.core.kiwoom_sector_rest import fetch_ka10099_unified
+        from backend.app.core.kiwoom_sector_rest import fetch_ka10099_unified
         return fetch_ka10099_unified(self._rest_api)
 
 
@@ -347,7 +347,7 @@ class KiwoomWebSocketProvider(WebSocketProvider):
         self._auth = auth_provider
 
     def get_ws_uri(self) -> str:
-        from app.core.broker_urls import build_broker_urls
+        from backend.app.core.broker_urls import build_broker_urls
 
         return build_broker_urls("kiwoom")["ws_uri"]
 

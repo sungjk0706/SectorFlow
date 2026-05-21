@@ -132,8 +132,8 @@ class TelegramBot:
         UI는 로그인 사용자 프로필에만 저장하므로 사용자 파일을 반드시 포함해야 원격 명령이 동작한다.
         """
         try:
-            from app.core.settings_file import iter_merged_settings_profiles
-            from app.core.encryption import decrypt_value
+            from backend.app.core.settings_file import iter_merged_settings_profiles
+            from backend.app.core.encryption import decrypt_value
 
             rows: list[dict] = []
             seen_tokens: set[str] = set()
@@ -299,8 +299,8 @@ class TelegramBot:
         label: str,
     ) -> bool:
         """현재값 반전 후 저장. 새 값 반환."""
-        from app.core.settings_file import load_settings, update_settings
-        from app.services import engine_service
+        from backend.app.core.settings_file import load_settings, update_settings
+        from backend.app.services import engine_service
 
         flat = load_settings()
         if key in ("auto_buy_on", "auto_sell_on", "holiday_guard_on"):
@@ -310,7 +310,7 @@ class TelegramBot:
         new = not cur
         update_settings({key: new})
         await engine_service.refresh_engine_settings_cache(None, use_root=True)
-        from app.services.engine_account_notify import (
+        from backend.app.services.engine_account_notify import (
             notify_desktop_header_refresh,
             notify_desktop_settings_toggled,
         )
@@ -361,8 +361,8 @@ class TelegramBot:
 
     async def _cmd_status_full(self, token: str, chat_id: str, profile: Optional[str] = None):
         try:
-            from app.services.engine_service import get_status, get_account_snapshot
-            from app.core.settings_file import load_settings
+            from backend.app.services.engine_service import get_status, get_account_snapshot
+            from backend.app.core.settings_file import load_settings
 
             eng = get_status()
             eng_running = eng.get("running", False)
@@ -412,7 +412,7 @@ class TelegramBot:
 
     async def _cmd_account(self, token: str, chat_id: str):
         try:
-            from app.services.engine_service import get_account_snapshot
+            from backend.app.services.engine_service import get_account_snapshot
 
             snap = get_account_snapshot()
             if not snap:
@@ -444,8 +444,8 @@ class TelegramBot:
     async def _cmd_sector(self, token: str, chat_id: str) -> None:
         """섹터 강도 상위/하위 요약."""
         try:
-            from app.services import engine_service
-            from app.services.engine_sector_score import compute_full_sector_summary
+            from backend.app.services import engine_service
+            from backend.app.services.engine_sector_score import compute_full_sector_summary
 
             inputs = engine_service.get_sector_summary_inputs()
             if not inputs.get("all_codes"):
@@ -497,7 +497,7 @@ class TelegramBot:
     async def _cmd_buy_candidates(self, token: str, chat_id: str) -> None:
         """매수후보 1~10순위 전송."""
         try:
-            from app.services import engine_service
+            from backend.app.services import engine_service
 
             targets = engine_service.get_buy_targets_snapshot()
             now_str = datetime.now(_KST).strftime("%H:%M")

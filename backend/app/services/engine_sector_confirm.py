@@ -24,7 +24,7 @@ _UNREG_DELAY_SEC: float = 30.0  # 해지 지연 시간 (30초)
 
 
 def _is_engine_running() -> bool:
-    from app.services.engine_service import _running
+    from backend.app.services.engine_service import _running
     return _running
 
 
@@ -101,19 +101,19 @@ def _flush_sector_recompute_impl() -> None:
     _dirty_codes.clear()
 
     try:
-        import app.services.engine_service as _es
-        from app.services.engine_service import _get_settings, get_sector_summary_inputs
-        from app.services.engine_sector_score import (
+        import backend.app.services.engine_service as _es
+        from backend.app.services.engine_service import _get_settings, get_sector_summary_inputs
+        from backend.app.services.engine_sector_score import (
             compute_sector_scores,
             compute_weighted_scores,
             check_index_guard,
             build_buy_targets,
         )
-        from app.services.engine_account_notify import (
+        from backend.app.services.engine_account_notify import (
             notify_desktop_sector_scores,
             notify_buy_targets_update,
         )
-        from app.core import sector_mapping
+        from backend.app.core import sector_mapping
 
         settings = _get_settings()
         existing = _es._sector_summary_cache
@@ -263,9 +263,9 @@ def _full_recompute(_es, settings: dict, codes_snapshot: set[str] | None = None)
 
     동기 함수. 순수 계산 + 알림 + 이벤트 발행만 수행.
     """
-    from app.services.engine_service import get_sector_summary_inputs
-    from app.services.engine_sector_score import compute_full_sector_summary
-    from app.services.engine_account_notify import (
+    from backend.app.services.engine_service import get_sector_summary_inputs
+    from backend.app.services.engine_sector_score import compute_full_sector_summary
+    from backend.app.services.engine_account_notify import (
         notify_desktop_sector_scores,
         notify_buy_targets_update,
     )
@@ -332,7 +332,7 @@ def _sync_0d_subscriptions_sync(es, new_buy_targets) -> None:
     """
     global _PENDING_UNREG_CODES, _PENDING_UNREG_TIMER
 
-    from app.services.engine_ws_reg import build_0d_reg_payloads
+    from backend.app.services.engine_ws_reg import build_0d_reg_payloads
 
     # WS 미연결 → 스킵
     if not es._kiwoom_connector or not es._kiwoom_connector.is_connected() or not es._login_ok:
@@ -385,7 +385,7 @@ def _apply_delayed_unreg(es) -> None:
     """30초 후 실제 해지 적용."""
     global _PENDING_UNREG_CODES, _PENDING_UNREG_TIMER
 
-    from app.services.engine_ws_reg import build_0d_remove_payloads
+    from backend.app.services.engine_ws_reg import build_0d_remove_payloads
 
     current_codes = es._subscribed_0d_stocks
     to_unreg = _PENDING_UNREG_CODES & current_codes  # 아직 구독 중인 것만
@@ -413,7 +413,7 @@ async def _sync_0d_subscriptions(es, new_buy_targets) -> None:
     REG(신규) / REMOVE(제거) 페이로드만 전송한다.
     WS 미연결 시 조용히 스킵.
     """
-    from app.services.engine_ws_reg import build_0d_reg_payloads, build_0d_remove_payloads
+    from backend.app.services.engine_ws_reg import build_0d_reg_payloads, build_0d_remove_payloads
 
     # WS 미연결 → 스킵
     if not es._kiwoom_connector or not es._kiwoom_connector.is_connected() or not es._login_ok:

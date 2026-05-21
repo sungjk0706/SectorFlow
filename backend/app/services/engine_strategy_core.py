@@ -156,7 +156,7 @@ async def run_snapshot_and_sell_check(force_rest: bool, es: ModuleType) -> None:
     - WS 구독 구간 외: REST 조회.
     """
     try:
-        from app.services.daily_time_scheduler import is_ws_subscribe_window
+        from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
         in_window = is_ws_subscribe_window(getattr(es, "_settings_cache", None))
         ws_ok = bool(es._kiwoom_connector and es._kiwoom_connector.is_connected() and es._login_ok)
         # 장중(구독 구간)이면 force_rest여도 REST 생략 -- 실시간 데이터 우선

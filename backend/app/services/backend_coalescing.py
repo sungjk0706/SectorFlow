@@ -15,7 +15,7 @@ import logging
 import time
 from typing import Dict, Optional, Set, Any
 
-import protobuf.event_pb2 as event_pb2
+from backend.protobuf import event_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,8 @@ class BackendCoalescing:
     - burst traffic 대응 가능
     """
 
+    _instance: Optional["BackendCoalescing"] = None
+
     def __init__(self, flush_interval_ms: int = 10, flush_threshold: int = 200):
         self.pending_map: Dict[str, Dict[str, Any]] = {}
         self.flush_interval_ms = flush_interval_ms
@@ -42,6 +44,13 @@ class BackendCoalescing:
         self.websocket_connections: Set = set()
         self.last_flush_time: float = 0
         self.flush_event = asyncio.Event()  # flush 이벤트 (Event 기반 전환)
+
+    @classmethod
+    def get_instance(cls) -> "BackendCoalescing":
+        """싱글톤 인스턴스 반환"""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
 
     def add_event(self, code: str, event: Dict[str, Any]) -> None:
         """이벤트 추가 (종목 기준 Coalescing)"""

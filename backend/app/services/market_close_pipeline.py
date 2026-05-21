@@ -34,7 +34,7 @@ def _broadcast_confirmed_progress(
     _loop가 없는 경우(async context 직접 호출): broadcast() 사용.
     """
     try:
-        from app.web.ws_manager import ws_manager
+        from backend.app.web.ws_manager import ws_manager
         payload = {
             "_v": 1,
             "current": current,
@@ -209,7 +209,7 @@ async def _apply_confirmed_to_memory(
         entry = pending.get(nk)
         if entry is None:
             # 엔트리 없으면 새로 생성
-            from app.services.engine_strategy_core import make_detail
+            from backend.app.services.engine_strategy_core import make_detail
             px = int(detail.get("cur_price") or 0)
             stk_nm = _nm.get(_base_stk_cd(raw_cd), nk)
             entry = make_detail(
@@ -303,7 +303,7 @@ async def _run_post_confirmed_pipeline(es: ModuleType) -> None:
     try:
         # (1) trade_amount + high_price 수집 — 키를 6자리 정규화 형식으로 변환
         # 적격종목만 수집 (부적격 종목이 5일평균 캐시에 포함되지 않도록)
-        import app.core.industry_map as _ind_mod
+        import backend.app.core.industry_map as _ind_mod
         elig = _ind_mod._eligible_stock_codes  # {코드: ""} — 빈 dict이면 필터 미적용
         pending = getattr(es, "_pending_stock_details", {})
         trade_amounts: dict[str, int] = {}
@@ -320,7 +320,7 @@ async def _run_post_confirmed_pipeline(es: ModuleType) -> None:
                 high_prices[normalized] = hp
 
         # (2) v2 캐시 + 고가 배열 롤링 갱신
-        from app.core.avg_amt_cache import (
+        from backend.app.core.avg_amt_cache import (
             load_avg_amt_cache_v2,
             save_avg_amt_cache_v2,
             rolling_update_v2_from_trade_amounts,
@@ -375,7 +375,7 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
     Returns:
         저장 성공 여부.
     """
-    from app.core.sector_stock_cache import save_snapshot_cache, load_stock_name_cache
+    from backend.app.core.sector_stock_cache import save_snapshot_cache, load_stock_name_cache
 
     pending: dict = getattr(es, "_pending_stock_details", {})
     if not pending:
@@ -384,7 +384,7 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
 
     # 적격종목 필터 — eligible 캐시 기준으로 부적격 종목 제외
     # 모듈 직접 참조: Step 4에서 _eligible_stock_codes가 재할당되어도 최신값을 사용
-    import app.core.industry_map as _ind_mod
+    import backend.app.core.industry_map as _ind_mod
     elig = _ind_mod._eligible_stock_codes or {}
 
     # 종목명 캐시로 name 필드 보정
@@ -432,13 +432,13 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
     Returns:
         {"fetched": int, "failed": int, "cached": bool}
     """
-    from app.core.broker_factory import get_router
-    from app.core.sector_stock_cache import (
+    from backend.app.core.broker_factory import get_router
+    from backend.app.core.sector_stock_cache import (
         save_stock_name_cache,
         load_progress_cache,
         clear_progress_cache,
     )
-    from app.core.trading_calendar import kst_today_str
+    from backend.app.core.trading_calendar import kst_today_str
 
     _settings = getattr(es, "_settings_cache", {}) or {}
 
@@ -456,11 +456,11 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
         _layout = getattr(es, "_sector_stock_layout", None)
         if _layout is not None:
             _layout.clear()
-        from app.services.engine_account_notify import _rebuild_layout_cache
+        from backend.app.services.engine_account_notify import _rebuild_layout_cache
         _rebuild_layout_cache([])
         getattr(es, "_avg_amt_5d", {}).clear()
         getattr(es, "_high_5d_cache", {}).clear()
-        import app.core.industry_map as _ind_mod
+        import backend.app.core.industry_map as _ind_mod
         _ind_mod._eligible_stock_codes.clear()
         _log.info("[타이머] 메모리 전체 초기화 완료 — 새 데이터로 교체 시작")
     
@@ -483,7 +483,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
         _log.info("[타이머] Step 1 시작 — ka10099 전종목 리스트 다운로드 (코스피+코스닥)")
         _broadcast_confirmed_progress(0, 0, message="전종목 목록 갱신 중...", step=1)
         try:
-            from app.core.broker_providers import UnifiedStockRecord
+            from backend.app.core.broker_providers import UnifiedStockRecord
             records: list[UnifiedStockRecord] = await asyncio.to_thread(
                 _sector.fetch_unified_stock_data
             )
@@ -520,7 +520,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             return {"fetched": 0, "failed": 0, "cached": False}
     
         try:
-            from app.core.stock_filter import is_excluded
+            from backend.app.core.stock_filter import is_excluded
             confirmed_codes: set[str] = set()
             filter_reasons: dict[str, int] = {}
             for r in records:
@@ -586,12 +586,12 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
         try:
             await asyncio.to_thread(save_stock_name_cache, name_map)
     
-            import app.core.industry_map as _ind_mod
+            import backend.app.core.industry_map as _ind_mod
             eligible_map: dict[str, str] = {cd: "" for cd in confirmed_codes}
             _ind_mod.save_eligible_stocks_cache(eligible_map)
             _ind_mod._eligible_stock_codes = eligible_map
     
-            from app.core.sector_stock_cache import save_market_map_cache
+            from backend.app.core.sector_stock_cache import save_market_map_cache
             # NXT 정보는 서버 응답(nxtEnable)에서 파싱한 원본값 사용 [출처: kiwoom_rest.py:621]
             nxt_map = {r.code: r.nxt_enable for r in records if r.code in confirmed_codes}
             save_market_map_cache(market_map, nxt_map)
@@ -691,7 +691,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
     
         # ── Step 6: 완전한 매핑 단계 (적격종목 × 시세 데이터 매핑) ────────────
         if cached:
-            import app.core.industry_map as _ind_mod_step6
+            import backend.app.core.industry_map as _ind_mod_step6
             final_eligible = set(_ind_mod_step6._eligible_stock_codes.keys())
             if not final_eligible:
                 _log.warning("[타이머] Step 6 — 적격종목 비어있음, 메모리 교체 생략")
@@ -728,8 +728,8 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
     
         # ── 4단계: 업종순위 재계산 + WS 브로드캐스트 (화면 자동 갱신) ────────
         try:
-            from app.services.engine_service import recompute_sector_summary_now
-            from app.services.engine_account_notify import (
+            from backend.app.services.engine_service import recompute_sector_summary_now
+            from backend.app.services.engine_account_notify import (
                 notify_desktop_sector_scores,
                 notify_desktop_sector_stocks_refresh,
             )
@@ -767,8 +767,8 @@ def _update_layout_cache(
     - sector_custom.json의 최신 업종 매핑이 전체 종목에 적용된다.
     - 섹터 헤더가 없는 종목("업종명없음")도 레이아웃에 포함된다.
     """
-    from app.core.sector_mapping import get_merged_sector
-    from app.core.sector_stock_cache import save_layout_cache
+    from backend.app.core.sector_mapping import get_merged_sector
+    from backend.app.core.sector_stock_cache import save_layout_cache
 
     # 전체 종목을 섹터별로 그룹핑 (sector_custom.json 최신 매핑 적용)
     sector_groups: dict[str, list[str]] = {}
@@ -795,7 +795,7 @@ def _update_layout_cache(
             new_layout.append(("code", cd))
 
     es._sector_stock_layout = new_layout
-    from app.services.engine_account_notify import _rebuild_layout_cache
+    from backend.app.services.engine_account_notify import _rebuild_layout_cache
     _rebuild_layout_cache(new_layout)
     save_layout_cache(new_layout)
     _log.info(

@@ -46,7 +46,7 @@ def filter_krx_only_stocks(
     - is_after_hours=False → 원본 그대로 반환
     """
     if is_after_hours is None:
-        from app.services.daily_time_scheduler import is_krx_after_hours
+        from backend.app.services.daily_time_scheduler import is_krx_after_hours
         is_after_hours = is_krx_after_hours()
     if not is_after_hours:
         return codes

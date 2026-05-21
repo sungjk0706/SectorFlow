@@ -32,7 +32,7 @@ from backend.app.core.avg_amt_cache import (  # noqa: F401
 )
 
 if TYPE_CHECKING:
-    from app.core.kiwoom_rest import KiwoomRestAPI
+    from backend.app.core.kiwoom_rest import KiwoomRestAPI
 
 _log = logging.getLogger(__name__)
 
@@ -81,6 +81,8 @@ def _daily_rows_from_json(data: dict[str, Any]) -> list[dict[str, Any]]:
         "stk_day_pole",
         "stk_stk_day_pole",
         "day_pole",
+        "output2",
+        "output1",
         "output",
         "stk_dt_pole",
         "chart",
@@ -134,23 +136,24 @@ def _avg_last_n_amounts(rows: list[dict[str, Any]], n: int = 5) -> int:
 
 def fetch_daily_5d_data(
     api: "KiwoomRestAPI", stk_cd: str
-) -> tuple[list[int], list[int]]:
+) -> tuple[list[int], list[int], dict[str, Any] | None]:
     """ka10081(_AL) 기반 5일치 거래대금+고가 조회. 1회 호출로 최대 600개 일봉에서 최근 5일 추출.
 
     Returns:
-        (amounts_5d, highs_5d)
+        (amounts_5d, highs_5d, latest_row)
         amounts_5d: [백만원, ...] 최신→과거 (최대 5개)
         highs_5d:   [원, ...]   최신→과거 (최대 5개)
-        실패 시 ([], []).
+        latest_row: 최근 1일차 딕셔너리 (cur_prc 등 추출용)
+        실패 시 ([], [], None).
     """
     norm = _norm_stk(stk_cd)
     if not norm:
-        return [], []
+        return [], [], None
     if not api._ensure_token():
-        return [], []
+        return [], [], None
     token = api._token_info.token if api._token_info else ""
     if not token:
-        return [], []
+        return [], [], None
     base = api.base_url.rstrip("/")
     url = f"{base}/api/dostk/chart"
     base_headers = {
@@ -162,47 +165,53 @@ def fetch_daily_5d_data(
         api_id: str,
         body: dict[str, Any],
         extra_headers: dict[str, str] | None = None,
-    ) -> tuple[list[int], list[int]]:
+    ) -> tuple[list[int], list[int], dict[str, Any] | None]:
         h = {**base_headers, "api-id": api_id}
         if extra_headers:
             h.update(extra_headers)
         try:
             resp = requests.post(url, headers=h, json=body, timeout=22)
+            _log.debug("[%s] %s status_code=%d", api_id, norm, resp.status_code)
             if resp.status_code != 200:
-                return [], []
+                return [], [], None
             data = resp.json() if resp.text else {}
             rc = str(data.get("return_code") or data.get("rt_cd") or "0")
+            _log.debug("[%s] %s return_code=%s", api_id, norm, rc)
             if rc not in ("0", "00", ""):
-                return [], []
+                return [], [], None
+            _log.debug("[%s] %s raw response keys: %s", api_id, norm, list(data.keys()) if isinstance(data, dict) else type(data))
             rows = _daily_rows_from_json(data)
+            _log.debug("[%s] %s extracted rows count: %d", api_id, norm, len(rows))
             rows = _ensure_descending_date_order(rows)
             amts: list[int] = []
             highs: list[int] = []
             for r in rows[: max(5 * 2, 20)]:
+                _log.debug("[%s] %s row keys: %s", api_id, norm, list(r.keys()) if isinstance(r, dict) else type(r))
                 v = _amt_from_row(r)
                 if v > 0:
                     amts.append(v)
                     highs.append(_high_from_row(r))
                 if len(amts) >= 5:
                     break
-            return amts, highs
+            _log.debug("[%s] %s final amts count: %d, highs count: %d", api_id, norm, len(amts), len(highs))
+            return amts, highs, (rows[0] if rows else None)
         except Exception as e:
-            _log.debug("[%s] %s try fail: %s", api_id, norm, e)
-            return [], []
+            _log.warning("[%s] %s try fail: %s", api_id, norm, e, exc_info=True)
+            return [], [], None
 
     # ka10081: stk_cd, base_dt, upd_stkpc_tp 모두 문자열
     ka81_body = {
-        "stk_cd": f"{norm}_AL",
+        "stk_cd": f"{norm}",
         "base_dt": _kst_today_yyyymmdd(),
         "upd_stkpc_tp": "1",
     }
     ka81_headers = {"cont-yn": "N", "next-key": ""}
-    amts, highs = _try_chart_data("ka10081", ka81_body, ka81_headers)
+    amts, highs, latest_row = _try_chart_data("ka10081", ka81_body, ka81_headers)
     if amts:
-        return amts, highs
+        return amts, highs, latest_row
 
     _log.warning("[일봉차트] %s -- 5일 거래대금 미수신(ka10081 응답 형식 확인)", norm)
-    return [], []
+    return [], [], None
 
 
 def rolling_update_with_ka20002(

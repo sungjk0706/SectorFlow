@@ -504,7 +504,7 @@ class KiwoomRestAPI:
 
     def fetch_ka10099_eligible_stocks(self) -> dict[str, str]:
         """ka10099 — 적격 종목코드 수집 위임. industry_map 모듈 참조."""
-        from app.core.industry_map import fetch_ka10099_eligible_stocks
+        from backend.app.core.industry_map import fetch_ka10099_eligible_stocks
         return fetch_ka10099_eligible_stocks(self)
 
     def fetch_ka10101(self, mrkt_tp: str) -> list[dict]:

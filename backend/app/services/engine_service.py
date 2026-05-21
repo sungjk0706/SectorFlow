@@ -52,7 +52,7 @@ from backend.app.services import settlement_engine
 # engine_bootstrap: 앱준비 흐름 함수
 # engine_cache: 캐시 오케스트레이션
 # engine_state: 상태 프록시 (이 모듈의 전역 변수를 __getattr__로 위임)
-import app.services.engine_bootstrap as _engine_bootstrap
+import backend.app.services.engine_bootstrap as _engine_bootstrap
 
 # ── StateManager (중앙 상태 관리) ─────────────────────────────────────────
 from backend.app.services.state_manager import StateManager, EventType, OrderStatus
@@ -154,6 +154,9 @@ _checked_stocks: set = set()
 
 _shared_lock = asyncio.Lock()
 
+# 실시간 상태 관리 (이벤트 루프 내 단일 실행 보장)
+_realtime_state: str = "IDLE"  # 가능한 상태: "IDLE", "WAITING_FIRST_TICK", "LIVE"
+
 # 최대 3000종목 (매수 후보 종목 상세 정보)
 _pending_stock_details: LRUCache = LRUCache(maxsize=3000)
 _radar_cnsr_order: list[str] = []
@@ -196,6 +199,32 @@ def _invalidate_sector_stocks_cache(force: bool = False) -> None:
         return  # 1초 내 재무효화 방지
     _sector_stocks_dirty = True
     _sector_stocks_last_invalidated = now
+
+
+def _get_realtime_state() -> str:
+    """실시간 상태 getter."""
+    return _realtime_state
+
+
+def _set_realtime_state(state: str) -> None:
+    """실시간 상태 setter (이벤트 루프 내 단일 실행 보장).
+    
+    Args:
+        state: 새로운 상태 ("IDLE", "WAITING_FIRST_TICK", "LIVE")
+    """
+    global _realtime_state
+    if _realtime_state == state:
+        return  # 상태가 같으면 아무것도 하지 않음
+    
+    _realtime_state = state
+    logger.info("[REALTIME_STATE] 상태 변경: %s", state)
+    
+    # frontend로 전송할 payload 제한 (IDLE는 전송하지 않음)
+    if state == "WAITING_FIRST_TICK":
+        _account_notify._broadcast("realtime-state", {"status": "waiting"})
+    elif state == "LIVE":
+        _account_notify._broadcast("realtime-state", {"status": "live"})
+    # IDLE 상태에서는 이벤트 전송하지 않음
 
 # ── get_buy_targets_snapshot() 증분 캐시 (Phase 1, Req 2) ────────────────
 _buy_targets_snapshot_cache: list | None = None
@@ -249,7 +278,7 @@ _sector_summary_ready_event: asyncio.Event = asyncio.Event()
 _engine_ready_event: asyncio.Event = asyncio.Event()
 _server_ready_event: asyncio.Event = asyncio.Event()
 
-_avg_amt_refresh_running: bool = False
+_avg_amt_refresh_task: asyncio.Task | None = None
 _preboot_cache_loaded: bool = False
 _preboot_ready_event: asyncio.Event = asyncio.Event()
 _engine_stop_event: asyncio.Event = asyncio.Event()
@@ -445,7 +474,7 @@ async def _reset_realtime_fields() -> None:
         
         # 테스트모드 가상 보유종목 실시간 필드 초기화
         if is_test_mode(_settings_cache):
-            from app.services import dry_run
+            from backend.app.services import dry_run
             for pos in dry_run._test_positions.values():
                 pos["cur_price"] = None
                 pos["change"] = None
@@ -459,6 +488,14 @@ async def _reset_realtime_fields() -> None:
         _account_notify._position_sent_cache.clear()
         _account_notify._prev_sent_cache.clear()
         _account_notify._prev_scores_cache.clear()
+        
+        # engine_ws_dispatch.py 캐시 초기화 (메모리 누적 방지)
+        try:
+            import backend.app.services.engine_ws_dispatch as _ws_dispatch
+            _ws_dispatch._realtime_required_fields_cache.clear()
+            _ws_dispatch._realtime_first_tick_ts_map.clear()
+        except Exception:
+            pass  # import 실패 시 무시
     logger.info(
         "[데이터] 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료 -- %d종목, 실시간/REST 저장데이터 전체 클리어",
         count,
@@ -467,6 +504,9 @@ async def _reset_realtime_fields() -> None:
     notify_desktop_sector_stocks_refresh()
     _broadcast_account("realtime_reset")
     _account_notify._broadcast("realtime-reset", {})
+    
+    # 실시간 상태를 WAITING_FIRST_TICK으로 설정
+    _set_realtime_state("WAITING_FIRST_TICK")
 
 
 def get_pending_stocks() -> list:
@@ -560,7 +600,7 @@ def _broadcast_buy_limit_status() -> None:
     global _buy_targets_snapshot_cache
     _buy_targets_snapshot_cache = None  # 일일한도 상태 변경 → 매수후보 캐시 무효화
     try:
-        from app.services.engine_account_notify import _broadcast, notify_buy_targets_update
+        from backend.app.services.engine_account_notify import _broadcast, notify_buy_targets_update
         _broadcast("buy-limit-status", get_buy_limit_status())
         notify_buy_targets_update()
     except Exception as e:
@@ -580,14 +620,14 @@ def get_settings_snapshot() -> dict:
     if isinstance(_settings_cache, dict) and _settings_cache:
         d = dict(_settings_cache)
     else:
-        from app.core.settings_file import load_settings
+        from backend.app.core.settings_file import load_settings
         d = dict(load_settings())
     if "tele_on" not in d:
         d["tele_on"] = bool(d.get("telegram_on", False))
     if "telegram_on" not in d:
         d["telegram_on"] = bool(d.get("tele_on", False))
     # 헤더 칩용: 백엔드 실제 유효 상태 (시간 범위 + 공휴일 + 마스터 스위치 반영)
-    from app.services.auto_trading_effective import (
+    from backend.app.services.auto_trading_effective import (
         auto_buy_effective, auto_sell_effective, auto_trading_effective,
     )
     d["auto_buy_effective"] = auto_buy_effective(d)
@@ -660,8 +700,8 @@ def recompute_sector_summary_now() -> None:
     if not is_running():
         return
     try:
-        from app.services.engine_sector_score import compute_full_sector_summary
-        from app.services.engine_sector_confirm import cancel_pending_recompute
+        from backend.app.services.engine_sector_score import compute_full_sector_summary
+        from backend.app.services.engine_sector_confirm import cancel_pending_recompute
         settings = _get_settings()
         trim_trade = float(settings.get("sector_trim_trade_amt_pct", 0) or 0)
         trim_change = float(settings.get("sector_trim_change_rate_pct", 0) or 0)
@@ -697,7 +737,7 @@ def recompute_sector_summary_now() -> None:
         logger.info("[데이터] 섹터 요약 즉시 재계산 완료")
 
         # 매수후보 WS 브로드캐스트 + 매수 판단 (항상 실행)
-        from app.services.engine_account_notify import notify_buy_targets_update
+        from backend.app.services.engine_account_notify import notify_buy_targets_update
         notify_buy_targets_update()
         _try_sector_buy()
     except Exception as e:
@@ -768,9 +808,9 @@ def get_buy_targets_snapshot() -> list[dict]:
         return _buy_targets_snapshot_cache
 
     # ── 캐시 재구축 ──
-    from app.services.engine_symbol_utils import get_stock_market as _get_mkt
-    from app.services.engine_symbol_utils import is_nxt_enabled as _is_nxt
-    from app.services.daily_time_scheduler import is_krx_after_hours
+    from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt
+    from backend.app.services.engine_symbol_utils import is_nxt_enabled as _is_nxt
+    from backend.app.services.daily_time_scheduler import is_krx_after_hours
     _after_hours = is_krx_after_hours()
     out: list[dict] = []
 
@@ -856,7 +896,7 @@ def get_buy_targets_snapshot() -> list[dict]:
 
 def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
     """보유 잔고에 있으면 수익률(%), 없으면 None."""
-    from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+    from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
 
     nk = _format_kiwoom_reg_stk_cd(str(stk_cd or "").strip())
     if not nk:
@@ -892,9 +932,9 @@ def get_sector_stocks() -> list:
 
     # ── dirty: 캐시 재구축 (필터 + 정렬 1회) ──
     filter_set = _filtered_sector_codes
-    from app.services.engine_symbol_utils import get_stock_market as _get_mkt
-    from app.services.engine_symbol_utils import is_nxt_enabled as _is_nxt
-    from app.core.sector_mapping import get_merged_sector as _get_sector
+    from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt
+    from backend.app.services.engine_symbol_utils import is_nxt_enabled as _is_nxt
+    from backend.app.core.sector_mapping import get_merged_sector as _get_sector
 
     merged: dict[str, dict] = {}
     snap_avg = _avg_amt_5d
@@ -937,8 +977,8 @@ def get_all_sector_stocks() -> list[dict]:
     """
     snapshot = dict(_pending_stock_details)
 
-    from app.core.sector_mapping import get_merged_sector
-    import app.core.industry_map as _ind_mod
+    from backend.app.core.sector_mapping import get_merged_sector
+    import backend.app.core.industry_map as _ind_mod
     elig = _ind_mod._eligible_stock_codes  # {코드: ""} — 빈 dict이면 필터 미적용
 
     result: list[dict] = []
@@ -1122,13 +1162,13 @@ def _apply_balance_realtime(item: dict, vals: dict) -> None:
     종목 단위(item=종목코드): FID 930~933·950·8019·10 포지션 갱신.
     """
     global _account_snapshot, _broker_rest_totals
-    from app.services.engine_account_rest import _real04_is_stock_item
+    from backend.app.services.engine_account_rest import _real04_is_stock_item
     if _real04_is_stock_item(item):
         # 종목 단위 레코드 -- 보유수량·매입단가·평가손익 등 갱신
         _prev_len = len(_positions)
         real04_official_apply_position_line(item, vals, _positions, _latest_trade_prices)
         if len(_positions) != _prev_len:
-            from app.services.engine_account_notify import _rebuild_positions_cache
+            from backend.app.services.engine_account_notify import _rebuild_positions_cache
             _rebuild_positions_cache(_positions)
     else:
         # 계좌 단위 레코드 -- 예수금·총평가·총손익 등 갱신
@@ -1198,7 +1238,7 @@ def _cancel_price_trace_delayed_task() -> None:
 
 async def _subscribe_account_realtime() -> None:
     """계좌 실시간 구독(주문체결·잔고) — engine_ws_reg 모듈로 위임."""
-    from app.services import engine_ws_reg
+    from backend.app.services import engine_ws_reg
     await engine_ws_reg.subscribe_account_realtime(sys.modules[__name__])
 
 
@@ -1216,7 +1256,7 @@ def _log_reg_stock_chunk(scope: str, start_ord: int, end_ord: int, ca: int, cs: 
 
 async def _subscribe_positions_stocks_realtime() -> None:
     """보유 종목 0B REG — engine_ws_reg 모듈로 위임."""
-    from app.services import engine_ws_reg, ws_subscribe_control
+    from backend.app.services import engine_ws_reg, ws_subscribe_control
     await engine_ws_reg.subscribe_positions_stocks_realtime(sys.modules[__name__])
     # REG 실행 후 인메모리 상태 동기화
     if _subscribed_stocks:
@@ -1267,7 +1307,7 @@ async def _cleanup_stale_ws_subscriptions_on_session_ready() -> None:
     if not _kiwoom_connector or not _kiwoom_connector.is_connected():
         return
     # 잔존 구독 정리 (grp_no=5,2,4 UNREG best-effort)
-    from app.services import ws_subscribe_control
+    from backend.app.services import ws_subscribe_control
     await ws_subscribe_control.cleanup_stale_subscriptions(sys.modules[__name__])
 
     if _account_rest_bootstrapped:
@@ -1282,7 +1322,7 @@ async def _subscribe_sector_stocks_0b() -> None:
     REG 성공 후 ws_subscribe_control 상태를 동기화하여
     프론트엔드 구독 표시가 실제 상태와 일치하도록 한다.
     """
-    from app.services import engine_ws_reg, ws_subscribe_control
+    from backend.app.services import engine_ws_reg, ws_subscribe_control
     await engine_ws_reg.subscribe_sector_stocks_0b(sys.modules[__name__])
     # REG 실행 후 인메모리 상태 동기화 → WS 브로드캐스트
     ws_subscribe_control._set_status(quote=True)
@@ -1324,9 +1364,9 @@ async def _on_filter_settings_changed() -> None:
     )
 
     # ── WS 구독 증분 갱신: 구독 구간 + quote 활성 상태에서만 ──
-    from app.services.daily_time_scheduler import is_ws_subscribe_window
-    from app.services import ws_subscribe_control
-    from app.services.engine_ws_reg import build_0b_reg_payloads, build_0b_remove_payloads
+    from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
+    from backend.app.services import ws_subscribe_control
+    from backend.app.services.engine_ws_reg import build_0b_reg_payloads, build_0b_remove_payloads
 
     if is_ws_subscribe_window(_settings_cache) and ws_subscribe_control.get_subscribe_status()["quote_subscribed"]:
         # ── 1) REG added 먼저 (새 종목 실시간 데이터 즉시 수신) ──
@@ -1411,7 +1451,7 @@ async def _run_sector_reg_pipeline() -> None:
         if not _kiwoom_connector or not _kiwoom_connector.is_connected() or not _login_ok:
             return
         # 구독 제어 모듈에 위임 (설정 기반 조건부 REG)
-        from app.services import ws_subscribe_control
+        from backend.app.services import ws_subscribe_control
         await ws_subscribe_control.run_conditional_reg_pipeline(sys.modules[__name__])
     except Exception as e:
         logger.warning("[시작] 실시간 구독 파이프라인 실패: %s", e, exc_info=True)
@@ -1428,8 +1468,8 @@ async def _fetch_market_map_async() -> None:
     당일 캐시 파일이 있으면 즉시 로드 (키움 조회 없음).
     캐시 없으면 ka10099 REST 조회 후 캐시 저장.
     """
-    from app.services.engine_symbol_utils import set_market_map, get_market_map_version, set_nxt_enable_map
-    from app.core.sector_stock_cache import load_market_map_cache, save_market_map_cache
+    from backend.app.services.engine_symbol_utils import set_market_map, get_market_map_version, set_nxt_enable_map
+    from backend.app.core.sector_stock_cache import load_market_map_cache, save_market_map_cache
 
     # 1. 저장데이터 로딩 → 즉시 적재
     cached = load_market_map_cache()
@@ -1479,7 +1519,7 @@ async def _fetch_market_map_async() -> None:
 
 async def _subscribe_index_realtime() -> None:
     """코스피·코스닥 업종지수 0J REG — engine_ws_reg 모듈로 위임."""
-    from app.services import engine_ws_reg
+    from backend.app.services import engine_ws_reg
     await engine_ws_reg.subscribe_index_realtime(sys.modules[__name__])
 
 
@@ -1516,7 +1556,7 @@ async def on_trade_mode_switched() -> None:
 
     if _new_test:
         # 실전→테스트: 계좌 실시간 구독(00/04) 해제, 분석용 구독은 유지
-        from app.services.engine_ws_reg import _unreg_grp
+        from backend.app.services.engine_ws_reg import _unreg_grp
         await _unreg_grp(sys.modules[__name__], "10")
         logger.info("[구독] 테스트모드 전환 -- 계좌 실시간 구독(grp_no=10) 해제 완료")
         # Settlement Engine: 파일에서 상태 복원 + 만료 항목 정리 + 타이머 재스케줄
@@ -1642,7 +1682,7 @@ def _filter_stock_fields(stocks: list[dict]) -> list[dict]:
 
 def _get_trade_history_for_snapshot(side: str) -> list:
     """initial-snapshot용 체결 이력 반환. 현재 trade_mode 기준 필터."""
-    from app.services import trade_history
+    from backend.app.services import trade_history
     mode = get_trade_mode()
     if side == "sell":
         return trade_history.get_sell_history(trade_mode=mode)
@@ -1651,7 +1691,7 @@ def _get_trade_history_for_snapshot(side: str) -> list:
 
 def _get_daily_summary_for_snapshot() -> list:
     """initial-snapshot용 20거래일 일별 요약 반환."""
-    from app.services import trade_history
+    from backend.app.services import trade_history
     return trade_history.get_daily_summary(days=20, trade_mode=get_trade_mode())
 
 
@@ -1678,10 +1718,10 @@ async def build_initial_snapshot() -> dict:
     account_snap = await _safe(get_account_snapshot, {})
     logger.info("[연결] 시작화면 데이터 생성 단계 -- 계좌 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
-    from app.services import ws_subscribe_control
-    from app.services.daily_time_scheduler import get_market_phase
+    from backend.app.services import ws_subscribe_control
+    from backend.app.services.daily_time_scheduler import get_market_phase
 
-    from app.core.settings_file import load_settings_async
+    from backend.app.core.settings_file import load_settings_async
     try:
         _raw_settings = await asyncio.wait_for(load_settings_async(), timeout=2.0)
     except asyncio.TimeoutError:
@@ -1713,16 +1753,16 @@ async def build_initial_snapshot() -> dict:
         "market_phase":     get_market_phase(),
         "broker_config":    _raw_settings.get("broker_config", {}),
         "avg_amt_refresh":  {
-            "running": _avg_amt_refresh_running,
+            "running": _avg_amt_refresh_task is not None and not _avg_amt_refresh_task.done(),
             "current": 0,
-            "total": sum(1 for t, _ in _sector_stock_layout if t == "code") if _avg_amt_refresh_running else 0,
-        } if _avg_amt_refresh_running else None,
+            "total": sum(1 for t, _ in _sector_stock_layout if t == "code") if _avg_amt_refresh_task is not None and not _avg_amt_refresh_task.done() else 0,
+        } if _avg_amt_refresh_task is not None and not _avg_amt_refresh_task.done() else None,
     }
     logger.info("[연결] 시작화면 데이터 생성 단계 -- 메타 조립 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
     # Delta 캐시 초기화 — sector_stocks는 분할 전송 시점에 초기화
     try:
-        from app.services.engine_account_notify import init_sent_caches
+        from backend.app.services.engine_account_notify import init_sent_caches
         init_sent_caches([], positions, account_snap)
     except Exception as e:
         logger.warning("[데이터] delta 저장데이터 초기화 실패: %s", e, exc_info=True)
@@ -1743,12 +1783,12 @@ async def build_sector_stocks_payload() -> dict:
 
     # Delta 캐시 초기화 (종목 데이터 기준)
     try:
-        from app.services.engine_account_notify import init_sent_caches
+        from backend.app.services.engine_account_notify import init_sent_caches
         init_sent_caches(sector_stocks, await get_positions(), await get_account_snapshot())
     except Exception:
         logger.warning("[데이터] delta 캐시 초기화 실패", exc_info=True)
 
-    from app.services.daily_time_scheduler import is_krx_after_hours
+    from backend.app.services.daily_time_scheduler import is_krx_after_hours
     return {"_v": 1, "stocks": filtered, "krx_after_hours": is_krx_after_hours()}
 
 
@@ -1814,7 +1854,7 @@ async def _clear_radar_and_ready_memory() -> None:
         _radar_cnsr_order = []
         _sector_stock_layout.clear()
         _rest_radar_quote_cache.clear()
-    from app.services.engine_account_notify import _rebuild_layout_cache
+    from backend.app.services.engine_account_notify import _rebuild_layout_cache
     _rebuild_layout_cache(_sector_stock_layout)
     _checked_stocks = set()
     _rest_radar_rest_once.clear()
@@ -1859,7 +1899,7 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
     if not _ws_live():
         logger.debug("[데이터] 단건 REG 생략 — WS 미연결/미로그인 %s", item_cd)
         return
-    from app.services.engine_ws_reg import build_0b_reg_payloads
+    from backend.app.services.engine_ws_reg import build_0b_reg_payloads
     ws_code = get_ws_subscribe_code(item_cd)
     payloads = build_0b_reg_payloads([ws_code], reset_first=False)
     if payloads:
@@ -2009,7 +2049,7 @@ async def _update_account_memory_inner(settings: dict) -> None:
         merged = _merge_positions_from_rest(stock_list)
         async with _shared_lock:
             _positions = merged
-        from app.services.engine_account_notify import _rebuild_positions_cache
+        from backend.app.services.engine_account_notify import _rebuild_positions_cache
         _rebuild_positions_cache(merged)
 
     _account_rest_bootstrapped = True
@@ -2129,8 +2169,8 @@ def _try_sector_buy() -> None:
     cooldown = float(settings.get("sector_buy_cooldown_sec") or 90)
     now = _time.time()
 
-    from app.services.daily_time_scheduler import is_krx_after_hours
-    from app.services.engine_symbol_utils import is_nxt_enabled
+    from backend.app.services.daily_time_scheduler import is_krx_after_hours
+    from backend.app.services.engine_symbol_utils import is_nxt_enabled
     _after_hours = is_krx_after_hours()
 
     for bt in ss.buy_targets:
@@ -2148,7 +2188,7 @@ def _try_sector_buy() -> None:
         logger.info("[섹터매수] 매수 시도: %s(%s) 섹터=%s 등락률=%.2f%%",
                     s.name, s.code, s.sector, s.change_rate)
         try:
-            from app.services.engine_symbol_utils import real01_trade_price_from_cache
+            from backend.app.services.engine_symbol_utils import real01_trade_price_from_cache
             _price = real01_trade_price_from_cache(_latest_trade_prices, s.code)
             if _price <= 0:
                 logger.debug("[섹터매수] %s 실시간 시세 없음 -- 생략", s.code)
@@ -2182,7 +2222,7 @@ async def stop_engine() -> None:
     _engine_stop_event.set()
 
     # 디바운스 타이머 정리
-    from app.services.engine_sector_confirm import cancel_sector_confirm_timer
+    from backend.app.services.engine_sector_confirm import cancel_sector_confirm_timer
     cancel_sector_confirm_timer()
 
     if _engine_task:
@@ -2293,7 +2333,7 @@ async def reload_engine_settings() -> None:
     uid = _engine_user_id
     logger.info("[시작] 설정 변경 감지 -> 엔진 재기동 시작 (사용자=%s)", uid or "admin")
     await stop_engine()
-    from app.core.broker_factory import reset_router
+    from backend.app.core.broker_factory import reset_router
     reset_router()
     await asyncio.sleep(0.5)
     await start_engine(uid)
@@ -2350,7 +2390,7 @@ def get_status() -> dict:
     if kosdaq:
         st["kosdaq"] = {"price": kosdaq.get("price", 0), "change": kosdaq.get("change", 0), "rate": kosdaq.get("rate", 0)}
     # ── 지수 폴링 상태 (헤더 표시용) ──
-    from app.services import daily_time_scheduler as _dts
+    from backend.app.services import daily_time_scheduler as _dts
     st["index_polling"] = _dts._index_poll_timer_handle is not None
     # ── 장 상태 (index-refresh 수신 시 marketPhase 동기화용) ──
     st["market_phase"] = _dts.get_market_phase()

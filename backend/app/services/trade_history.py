@@ -97,7 +97,7 @@ def _trim_expired(records: list[dict]) -> list[dict]:
 def _broadcast_sell_append(rec: dict) -> None:
     """매도 체결 후 단건 + 해당 일자 요약을 브로드캐스트."""
     try:
-        from app.web.ws_manager import ws_manager
+        from backend.app.web.ws_manager import ws_manager
         trade_mode = rec.get("trade_mode", "test")
         summary = get_daily_summary(days=20, trade_mode=trade_mode)
         ws_manager.broadcast("sell-history-append", {"trade": rec, "daily_summary": summary})
@@ -108,7 +108,7 @@ def _broadcast_sell_append(rec: dict) -> None:
 def _broadcast_buy_append(rec: dict) -> None:
     """매수 체결 후 단건 브로드캐스트."""
     try:
-        from app.web.ws_manager import ws_manager
+        from backend.app.web.ws_manager import ws_manager
         ws_manager.broadcast("buy-history-append", {"trade": rec})
     except Exception as e:
         logger.warning("[체결이력] 매수 단건 실시간 화면전송 실패: %s", e)
@@ -117,7 +117,7 @@ def _broadcast_buy_append(rec: dict) -> None:
 def _broadcast_full_sell_history(trade_mode: str) -> None:
     """초기 스냅샷용: 해당 trade_mode의 전체 매도 내역 + 일별 요약을 브로드캐스트."""
     try:
-        from app.web.ws_manager import ws_manager
+        from backend.app.web.ws_manager import ws_manager
         rows = [r for r in _sell_history if r.get("trade_mode") == trade_mode]
         ws_manager.broadcast("sell-history-update", {"sell_history": list(reversed(rows))})
         summary = get_daily_summary(days=20, trade_mode=trade_mode)
@@ -129,7 +129,7 @@ def _broadcast_full_sell_history(trade_mode: str) -> None:
 def _broadcast_full_buy_history(trade_mode: str) -> None:
     """초기 스냅샷용: 해당 trade_mode의 전체 매수 내역을 브로드캐스트."""
     try:
-        from app.web.ws_manager import ws_manager
+        from backend.app.web.ws_manager import ws_manager
         rows = [r for r in _buy_history if r.get("trade_mode") == trade_mode]
         ws_manager.broadcast("buy-history-update", {"buy_history": list(reversed(rows))})
     except Exception as e:
@@ -139,7 +139,7 @@ def _broadcast_full_buy_history(trade_mode: str) -> None:
 def _broadcast_order_filled(fill_data: dict) -> None:
     """체결 이벤트 발행 -- 거래내역 테이블 즉시 갱신용."""
     try:
-        from app.web.ws_manager import ws_manager
+        from backend.app.web.ws_manager import ws_manager
         ws_manager.broadcast("order-filled", fill_data)
     except Exception as e:
         logger.warning("[체결이력] 체결 이벤트 실시간 화면전송 실패: %s", e)
@@ -147,7 +147,7 @@ def _broadcast_order_filled(fill_data: dict) -> None:
 
 def _recent_trading_days(days: int) -> list[str]:
     """최근 N영업일 날짜 리스트 반환 (오래된 순, ISO 형식)."""
-    from app.core.trading_calendar import recent_business_days
+    from backend.app.core.trading_calendar import recent_business_days
     return [d.isoformat() for d in recent_business_days(days)]
 
 

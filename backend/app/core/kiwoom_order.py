@@ -58,7 +58,7 @@ def send_order(settings: dict, access_token: str, order_type: str, code: str, qt
     ord_uv = "" if str(trde_tp) == "3" else str(price)
     # NXT 장외 시간대(프리마켓/애프터마켓)면 trde_tp 자동 조정
     if exchange == "NXT" and trde_tp in ("1", "3"):
-        from app.services.daily_time_scheduler import get_nxt_trde_tp
+        from backend.app.services.daily_time_scheduler import get_nxt_trde_tp
         trde_tp = get_nxt_trde_tp(trde_tp)
         if trde_tp in ("P", "U"):
             ord_uv = ""  # 장외 시간대는 가격 불필요

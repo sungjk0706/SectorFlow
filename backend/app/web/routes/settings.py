@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api", tags=["settings"])
 @router.post("/settings")
 async def update_settings(body: dict, _: str = Depends(get_current_user)):
     try:
-        from app.core.settings_store import apply_settings_updates, after_settings_persisted
+        from backend.app.core.settings_store import apply_settings_updates, after_settings_persisted
         changed_keys = set(body.keys())
         apply_settings_updates(body)
         await after_settings_persisted(username="admin", changed_keys=changed_keys)
@@ -28,10 +28,10 @@ async def update_settings(body: dict, _: str = Depends(get_current_user)):
 async def reset_test_data(_: str = Depends(get_current_user)):
     """테스트 데이터 전체 초기화 (가상 보유종목 + 예수금 + 테스트 매매 이력)."""
     try:
-        from app.services.dry_run import clear, set_virtual_deposit
-        from app.services.trade_history import clear_test_history
-        from app.services import settlement_engine
-        from app.core.settings_file import load_settings_async
+        from backend.app.services.dry_run import clear, set_virtual_deposit
+        from backend.app.services.trade_history import clear_test_history
+        from backend.app.services import settlement_engine
+        from backend.app.core.settings_file import load_settings_async
 
         default_deposit = 10_000_000
         settings = await load_settings_async()
@@ -48,17 +48,17 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         # 4. 테스트 매매 이력 초기화 (실전 이력은 보존)
         clear_test_history()
         # 5. 초기화된 매매 이력 브로드캐스트 → 프론트 테이블 갱신
-        from app.services.trade_history import broadcast_history
+        from backend.app.services.trade_history import broadcast_history
         broadcast_history("test")
         # 6. WS settings-changed 발송 → 프론트 설정 UI 갱신
-        from app.core.settings_store import after_settings_persisted
+        from backend.app.core.settings_store import after_settings_persisted
         await after_settings_persisted(
             username="admin",
             changed_keys={"test_virtual_deposit", "test_virtual_balance"},
         )
         # 7. 보유종목 메모리 리스트 및 캐시 초기화 + 계좌 스냅샷 갱신 + WS account-update 발송
-        from app.services import engine_service as es
-        from app.services.engine_account_notify import _rebuild_positions_cache, _positions_code_set
+        from backend.app.services import engine_service as es
+        from backend.app.services.engine_account_notify import _rebuild_positions_cache, _positions_code_set
         es.logger.info(
             "[디버그] 초기화 직전 구독목록 positions=%d subscribed=%d pending=%d layout=%d pos_codes=%d",
             len(es._positions), len(es._subscribed_stocks),
@@ -83,7 +83,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         es._broadcast_account(reason="test_data_reset")
         es.logger.info("[엔진] 보유종목, 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료")
         # 8. 수익 이력 초기화 WS 브로드캐스트
-        from app.services.engine_account_notify import notify_snapshot_history_update
+        from backend.app.services.engine_account_notify import notify_snapshot_history_update
         notify_snapshot_history_update()
         # 9. 일일매수 누적 인메모리 상태 리셋 + 매수 쿨다운/쓰로틀 기록 초기화 + WS buy-limit-status 발송
         if es._auto_trade:
@@ -96,7 +96,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
             es._sector_summary_cache.buy_targets = []
         es._broadcast_buy_limit_status()
         # 10. 통합 초기화 완료 신호 (모든 클라이언트 일괄 동기화)
-        from app.services.engine_account_notify import _broadcast
+        from backend.app.services.engine_account_notify import _broadcast
         _broadcast("test-data-reset-completed", {"_v": 1})
 
         return {"ok": True, "message": "테스트 데이터 전체 초기화 완료"}

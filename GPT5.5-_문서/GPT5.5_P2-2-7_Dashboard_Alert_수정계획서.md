@@ -1,5 +1,7 @@
 # P2-2-7: Dashboard/Alert 구현 수정계획서
 
+**상태: ✅ 완료** (2026-05-19)
+
 ## 작업 목표
 Latency metrics를 시각화하는 Dashboard UI와 임계치 초과 시 Alert 표시 기능 구현
 

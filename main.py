@@ -55,7 +55,7 @@ if __name__ == "__main__":
 
     # 4. uvicorn 서버 시작 (엔진 초기화는 lifespan에서 처리)
     uvicorn.run(
-        "app.web.app:app",
+        "backend.app.web.app:app",
         host="127.0.0.1",
         port=8000,
         log_level="info",

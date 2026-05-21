@@ -61,7 +61,7 @@ def _set_status(
         changed = True
 
     if changed:
-        from app.services.engine_account_notify import _broadcast
+        from backend.app.services.engine_account_notify import _broadcast
         _broadcast("ws-subscribe-status", {
             "_v": 1,
             "index_subscribed": _index_subscribed,
@@ -71,7 +71,7 @@ def _set_status(
 
 def broadcast_ws_connection_status(connected: bool) -> None:
     """Kiwoom WebSocket 연결/해제 상태를 프론트엔드로 브로드캐스트."""
-    from app.services.engine_account_notify import _broadcast
+    from backend.app.services.engine_account_notify import _broadcast
     _broadcast("ws-connection-status", {
         "_v": 1,
         "connected": connected,
@@ -89,7 +89,7 @@ async def _ensure_account_subscription(es: ModuleType) -> None:
 
     테스트모드에서는 계좌 구독 안 함.
     """
-    from app.core.trade_mode import is_test_mode
+    from backend.app.core.trade_mode import is_test_mode
     settings = getattr(es, "_settings_cache", None) or {}
     if is_test_mode(settings):
         return
@@ -98,7 +98,7 @@ async def _ensure_account_subscription(es: ModuleType) -> None:
     if getattr(es, "_ws_account_subscribed", False):
         return
 
-    from app.services import engine_ws_reg
+    from backend.app.services import engine_ws_reg
     try:
         await engine_ws_reg.subscribe_account_realtime(es)
         logger.info("[구독제어] 실전모드 — 계좌(grp 10) 구독 보장 완료")
@@ -133,7 +133,7 @@ async def start_index(es: ModuleType) -> dict:
         if not _ws_connected(es):
             return {"ok": False, "message": "WS 미연결 상태"}
 
-        from app.services import engine_ws_reg
+        from backend.app.services import engine_ws_reg
         try:
             await engine_ws_reg.subscribe_index_realtime(es)
             _set_status(index=True)
@@ -159,7 +159,7 @@ async def start_quote(es: ModuleType) -> dict:
         if not _ws_connected(es):
             return {"ok": False, "message": "WS 미연결 상태"}
 
-        from app.services import engine_ws_reg
+        from backend.app.services import engine_ws_reg
         try:
             await engine_ws_reg.subscribe_sector_stocks_0b(es)
             _set_status(quote=True)
@@ -194,7 +194,7 @@ async def stop_index(es: ModuleType) -> dict:
         if not _index_subscribed:
             return {"ok": True, "status": get_subscribe_status()}
 
-        from app.services.engine_ws_reg import _unreg_grp
+        from backend.app.services.engine_ws_reg import _unreg_grp
         await _unreg_grp(es, "2")
         _set_status(index=False)
         logger.info("[구독제어] 지수(0J, grp 2) UNREG 완료")
@@ -212,7 +212,7 @@ async def stop_quote(es: ModuleType) -> dict:
         if not _quote_subscribed:
             return {"ok": True, "status": get_subscribe_status()}
 
-        from app.services.engine_ws_reg import _unreg_grp
+        from backend.app.services.engine_ws_reg import _unreg_grp
         await _unreg_grp(es, "4")
         _set_status(quote=False)
         logger.info("[구독제어] 실시간시세(0B, grp 4) UNREG 완료")
@@ -229,8 +229,8 @@ async def run_conditional_reg_pipeline(es: ModuleType) -> None:
     WS 구독 구간 외이면 REG 호출 없이 종료.
     모두 false면 종료.
     """
-    from app.services.daily_time_scheduler import is_ws_subscribe_window
-    from app.core.settings_file import load_settings
+    from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
+    from backend.app.core.settings_file import load_settings
 
     settings = load_settings()
 
@@ -246,7 +246,7 @@ async def run_conditional_reg_pipeline(es: ModuleType) -> None:
         return
 
     async with _lock:
-        from app.services import engine_ws_reg
+        from backend.app.services import engine_ws_reg
 
         if index_auto:
             try:
@@ -304,8 +304,8 @@ async def on_setting_changed(key: str, value: bool, es: ModuleType) -> None:
     각 설정은 독립 처리 — 상대편 auto_subscribe 강제 false 없음.
     """
     logger.debug("[구독제어] 설정 변경 수신 %s=%s", key, value)
-    from app.services.daily_time_scheduler import is_ws_subscribe_window
-    from app.core.settings_file import load_settings
+    from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
+    from backend.app.core.settings_file import load_settings
 
     settings = load_settings()
 

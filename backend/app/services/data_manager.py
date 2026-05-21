@@ -13,7 +13,7 @@ logger = get_logger("data_manager")
 
 def _get_rest_base() -> str:
     """BrokerRouter의 AuthProvider에서 REST base URL 획득."""
-    from app.core.broker_factory import get_router
+    from backend.app.core.broker_factory import get_router
     try:
         settings = _load_kiwoom_settings() or {}
         auth = get_router(settings).auth
@@ -40,8 +40,8 @@ def _load_kiwoom_settings() -> Optional[dict]:
     실패 시 None 반환.
     """
     try:
-        from app.core.settings_file import load_settings
-        from app.core.encryption import decrypt_value
+        from backend.app.core.settings_file import load_settings
+        from backend.app.core.encryption import decrypt_value
 
         flat = load_settings()
 
@@ -72,7 +72,7 @@ def get_stock_name(stk_cd: str, access_token: Optional[str] = None) -> str:
     norm = _norm_stk_cd(stk_cd)
     if not norm:
         return "알수없음"
-    from app.core.sector_stock_cache import load_stock_name_cache
+    from backend.app.core.sector_stock_cache import load_stock_name_cache
     name_map = load_stock_name_cache() or {}
     return name_map.get(norm, norm)
 

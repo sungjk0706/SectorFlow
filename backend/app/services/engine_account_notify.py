@@ -62,7 +62,7 @@ def _should_conflate(item: dict) -> bool:
     if not raw_code:
         return False
     try:
-        from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+        from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
         nk = _format_kiwoom_reg_stk_cd(raw_code)
     except Exception:
         logger.warning("[압축] 코드 정규화 실패", exc_info=True)
@@ -85,7 +85,7 @@ _prev_sent_cache: dict[str, dict] = {}  # 마지막 전송한 종목별 상태 �
 # ── WS 브로드캐스트 헬퍼 (lazy import로 순환 임포트 방지) ──────────────────
 def _broadcast(event_type: str, data: dict) -> None:
     """ws_manager.broadcast() 래퍼. 동기 함수 — await 불필요."""
-    from app.web.ws_manager import ws_manager
+    from backend.app.web.ws_manager import ws_manager
     if "_v" not in data:
         data["_v"] = 1
     ws_manager.broadcast(event_type, data)
@@ -244,7 +244,7 @@ def init_sent_caches(sector_stocks: list[dict], positions: list[dict], snapshot:
 def notify_desktop_header_refresh() -> None:
     """엔진 상태(connected, login_ok 등) 변경 시 헤더 갱신 → WS index-refresh."""
     try:
-        import app.services.engine_service as _es
+        import backend.app.services.engine_service as _es
         payload = _es.get_status()
         payload["_v"] = 1
         _broadcast("index-refresh", payload)
@@ -255,7 +255,7 @@ def notify_desktop_header_refresh() -> None:
 def notify_desktop_settings_toggled() -> None:
     """텔레그램 등 외부에서 설정 토글 변경 시 → WS settings-changed."""
     try:
-        import app.services.engine_service as _es
+        import backend.app.services.engine_service as _es
         payload = _es.get_settings_snapshot()
         payload["_v"] = 1
         _broadcast("settings-changed", payload)
@@ -266,7 +266,7 @@ def notify_desktop_settings_toggled() -> None:
 def notify_desktop_index_refresh() -> None:
     """0J 지수 REAL 수신 후 헤더 지수 표시 갱신 → WS index-refresh."""
     try:
-        import app.services.engine_service as _es
+        import backend.app.services.engine_service as _es
         payload = _es.get_status()
         payload["_v"] = 1
         _broadcast("index-refresh", payload)
@@ -278,7 +278,7 @@ def notify_desktop_sector_scores(*, force: bool = False) -> None:
     """업종 순위 + 상태만 전송 → WS sector-scores. delta 전송."""
     global _prev_scores_cache
     try:
-        import app.services.engine_service as _es
+        import backend.app.services.engine_service as _es
         scores, ranked_count = _es.get_sector_scores_snapshot()
 
         # delta 계산: 변경된 섹터만 전송
@@ -352,7 +352,7 @@ def notify_desktop_trade_price(
 def _is_relevant_code(nk: str) -> bool:
     """프론트에서 실제 사용하는 종목 코드인지 판별 (섹터+보유+레이아웃). set O(1) 조회."""
     try:
-        import app.services.engine_service as _es
+        import backend.app.services.engine_service as _es
         if nk in _es._pending_stock_details:
             return True
         if nk in _positions_code_set:
@@ -378,7 +378,7 @@ def notify_raw_real_data(item: dict) -> None:
     nk = raw_code  # 기본값: raw_code 그대로
     if raw_code:
         try:
-            from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+            from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
             nk = _format_kiwoom_reg_stk_cd(raw_code)
             if not _is_relevant_code(nk):
                 return
@@ -412,7 +412,7 @@ def notify_desktop_sector_stocks_refresh() -> None:
     """필터 변경으로 종목 목록이 바뀌었을 때 delta 또는 전체 리스트를 WS로 전송."""
     global _prev_sector_stock_codes, _prev_sent_cache
     try:
-        import app.services.engine_service as _es
+        import backend.app.services.engine_service as _es
         stocks = _es.get_sector_stocks()
         new_codes = {s.get("code", "") for s in stocks if s.get("code", "")}
 
@@ -450,7 +450,7 @@ def notify_desktop_sector_stocks_refresh() -> None:
 def notify_desktop_account_tabs_refresh() -> None:
     """계좌 탭(보유/미체결/수익/거래내역) 전환 시 1회 전체 새로고침 → WS account-tabs-refresh."""
     try:
-        import app.services.engine_service as _es
+        import backend.app.services.engine_service as _es
         payload = _es.get_status()
         payload["_v"] = 1
         _broadcast("index-refresh", payload)
@@ -469,7 +469,7 @@ def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str 
         return
 
     # 페이지별 페이로드 분리
-    from app.web.ws_manager import ws_manager
+    from backend.app.web.ws_manager import ws_manager
 
     active_pages = ws_manager.get_active_pages()
     profit_overview_active = "profit-overview" in active_pages
@@ -567,7 +567,7 @@ def notify_buy_targets_update() -> None:
     """매수후보 목록 변경 시 delta만 WS로 브로드캐스트한다."""
     global _prev_buy_targets_map
     try:
-        import app.services.engine_service as _es
+        import backend.app.services.engine_service as _es
         targets = _es.get_buy_targets_snapshot()
 
         # 현재 타겟을 code→dict 매핑으로 변환

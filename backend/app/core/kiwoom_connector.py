@@ -293,7 +293,7 @@ class KiwoomConnector(BrokerConnector):
             logger.info("[증권사연결] 연결 완료")
             # 연결 상태 브로드캐스트
             try:
-                from app.services.ws_subscribe_control import broadcast_ws_connection_status
+                from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
                 broadcast_ws_connection_status(True)
             except Exception:
                 logger.warning("[증권사연결] 연결 상태 브로드캐스트 실패", exc_info=True)
@@ -316,7 +316,7 @@ class KiwoomConnector(BrokerConnector):
             logger.info("[증권사연결] 연결 종료")
             # 연결 해제 상태 브로드캐스트
             try:
-                from app.services.ws_subscribe_control import broadcast_ws_connection_status
+                from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
                 broadcast_ws_connection_status(False)
             except Exception:
                 logger.warning("[증권사연결] 연결 해제 상태 브로드캐스트 실패", exc_info=True)
@@ -379,12 +379,12 @@ class KiwoomConnector(BrokerConnector):
             return
         self._connected = False
         try:
-            import app.services.engine_service as _es
+            import backend.app.services.engine_service as _es
             _es._login_ok = False
         except Exception:
             logger.warning("[증권사연결] _login_ok 초기화 실패", exc_info=True)
         try:
-            from app.services.ws_subscribe_control import broadcast_ws_connection_status
+            from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
             broadcast_ws_connection_status(False)
         except Exception:
             logger.warning("[증권사연결] 연결 끊김 상태 브로드캐스트 실패", exc_info=True)
@@ -439,7 +439,7 @@ class KiwoomConnector(BrokerConnector):
                             break
                     logger.info("[증권사연결] 재연결 후 큐 클리어 완료")
                 try:
-                    from app.services.ws_subscribe_control import broadcast_ws_connection_status
+                    from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
                     broadcast_ws_connection_status(True)
                 except Exception:
                     logger.warning("[증권사연결] 재연결 상태 브로드캐스트 실패", exc_info=True)
@@ -473,7 +473,7 @@ class KiwoomConnector(BrokerConnector):
     async def _get_token_async(self) -> str | None:
         """토큰 발급 (비동기 래핑)."""
         def _sync_get_token():
-            from app.core.kiwoom_rest import KiwoomRestAPI
+            from backend.app.core.kiwoom_rest import KiwoomRestAPI
             api = KiwoomRestAPI(self._app_key, self._app_secret)
             return api.get_access_token()
         return await asyncio.to_thread(_sync_get_token)

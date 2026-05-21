@@ -213,23 +213,28 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
 
     // 백그라운드 데이터 갱신
     if (avgAmtProgress) {
-      avgAmtChip.style.display = ''
+      avgAmtChip.style.display = 'flex'
+      avgAmtChip.style.position = 'relative'
+      avgAmtChip.style.overflow = 'hidden'
+      avgAmtChip.style.alignItems = 'center'
+      avgAmtChip.style.padding = '3px 8px'
+
       const status = (avgAmtProgress as Record<string, unknown>).status as string || ''
       let msg = ''
       let bg = '#fff3e0'
       let color = '#e65100'
+      let progressPct = 0
 
       switch (status) {
         case 'downloading': {
-          const bMsg = (avgAmtProgress as Record<string, unknown>).message as string || ''
-          const pct = avgAmtProgress.total > 0 ? Math.round((avgAmtProgress.current / avgAmtProgress.total) * 100) : 0
-          msg = bMsg || `전종목 5일거래대금/고가 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${pct}%)`
+          progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
+          msg = `전종목 5일거래대금/고가 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${Math.round(progressPct)}%)`
           bg = '#fff3e0'; color = '#e65100'
           break
         }
         case 'completed': {
-          const cMsg = (avgAmtProgress as Record<string, unknown>).message as string || ''
-          msg = cMsg || '전종목 5일 거래대금,고가 데이터 다운로드 완료'
+          progressPct = 100
+          msg = '전종목 5일 거래대금,고가 데이터 다운로드 완료'
           bg = '#e8f5e9'; color = '#2e7d32'
           break
         }
@@ -238,14 +243,15 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
           bg = '#ffebee'; color = '#c62828'
           break
         case 'partial': {
-          const pPct = avgAmtProgress.total > 0 ? Math.round((avgAmtProgress.current / avgAmtProgress.total) * 100) : 0
-          msg = `전종목 5일 데이터 ${pPct}%만 있음`
+          progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
+          msg = `전종목 5일 데이터 ${Math.round(progressPct)}%만 있음`
           bg = '#fffde7'; color = '#f57f17'
           break
         }
         case 'cache_deleted':
           msg = '전종목 5일 고가 재계산 중'
           bg = '#fff3e0'; color = '#e65100'
+          progressPct = 100
           break
         case 'token_pending':
           msg = '인증 대기중'
@@ -256,17 +262,15 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
           bg = '#e3f2fd'; color = '#1565c0'
           break
         case 'confirmed': {
-          const cMsg = (avgAmtProgress as Record<string, unknown>).message as string || ''
-          const cPct = avgAmtProgress.total > 0 ? Math.round((avgAmtProgress.current / avgAmtProgress.total) * 100) : 0
-          msg = cMsg || (avgAmtProgress.total > 0 ? `전종목 확정시세 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${cPct}%)` : '확정 데이터 갱신 중')
+          progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
+          msg = (avgAmtProgress.total > 0 ? `전종목 확정시세 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${Math.round(progressPct)}%)` : '확정 데이터 갱신 중')
           bg = '#e3f2fd'; color = '#1565c0'
           break
         }
         default: {
-          const dMsg = (avgAmtProgress as Record<string, unknown>).message as string || ''
-          const dPct = avgAmtProgress.total > 0 ? Math.round((avgAmtProgress.current / avgAmtProgress.total) * 100) : 0
-          msg = dMsg || (avgAmtProgress.total > 0
-            ? `전종목 5일거래대금/고가 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${dPct}%)`
+          progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
+          msg = (avgAmtProgress.total > 0
+            ? `전종목 5일거래대금/고가 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${Math.round(progressPct)}%)`
             : '전종목 5일 데이터 준비 중')
           break
         }
@@ -274,18 +278,31 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
 
       if (msg.length > 45) msg = msg.slice(0, 44) + '…'
 
+      // 배경/보더 설정
       avgAmtChip.style.background = bg
-      avgAmtChip.style.color = color
       avgAmtChip.style.border = `1px solid ${color}20`
 
-      // confirmed 상태는 ETA가 이미 msg에 포함됨, 다른 상태는 별도 ETA 추가
+      // ETA 표시
       const isConfirmed = status === 'confirmed'
       const eta = (!isConfirmed && avgAmtProgress.eta_sec && avgAmtProgress.eta_sec > 0)
         ? ` · 약 ${avgAmtProgress.eta_sec >= 60 ? Math.ceil(avgAmtProgress.eta_sec / 60) + '분' : Math.ceil(avgAmtProgress.eta_sec) + '초'} 남음`
         : ''
-      avgAmtChip.innerHTML = status === 'downloading' || status === 'cache_deleted' || status === '' || status === 'confirmed'
-        ? `${spinnerHtml} ${msg}${eta}`
-        : msg
+      
+      const finalMsg = msg + eta
+
+      // 로딩 중이거나 다운로드 중일 때는 프로그레스 바 적용
+      if (['downloading', 'confirmed', 'partial'].includes(status) || status === '') {
+        const fillColor = color + '30' // 투명도를 준 색상
+        avgAmtChip.innerHTML = `
+          <div style="position:absolute;left:0;top:0;height:100%;width:${progressPct}%;background:${fillColor};transition:width 0.3s ease;"></div>
+          <span style="position:relative;color:${color};display:flex;align-items:center;gap:4px;z-index:1;">
+            <span style="display:inline-block;animation:header-spin 1.2s linear infinite">⏳</span>
+            ${finalMsg}
+          </span>
+        `
+      } else {
+        avgAmtChip.innerHTML = `<span style="position:relative;color:${color};z-index:1;">${finalMsg}</span>`
+      }
     } else {
       avgAmtChip.style.display = 'none'
     }

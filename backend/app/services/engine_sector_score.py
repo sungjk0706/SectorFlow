@@ -329,8 +329,8 @@ def compute_sector_scores(
       등락률: stock_details
     """
     # 시장구분 캐시 참조
-    from app.services.engine_symbol_utils import get_stock_market as _get_mkt
-    from app.services.engine_symbol_utils import is_nxt_enabled as _is_nxt
+    from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt
+    from backend.app.services.engine_symbol_utils import is_nxt_enabled as _is_nxt
 
     # 섹터별 종목 그룹핑 — Custom_Data > Auto_Mapping 우선순위 적용
     sector_groups: dict[str, list[str]] = {}

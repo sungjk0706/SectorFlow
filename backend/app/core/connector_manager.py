@@ -57,7 +57,7 @@ class ConnectorManager:
     def _create_single(broker_name: str, settings: dict) -> BrokerConnector:
         """단일 증권사 Connector 생성."""
         if broker_name == "kiwoom":
-            from app.core.kiwoom_connector import create_kiwoom_connector
+            from backend.app.core.kiwoom_connector import create_kiwoom_connector
             return create_kiwoom_connector(settings)
         raise ValueError(f"지원하지 않는 증권사: {broker_name}")
 
@@ -102,8 +102,8 @@ class ConnectorManager:
         """재연결 성공 후 구독 복원 — engine_service._subscribed_stocks 기준으로 REG 재전송."""
         logger.info("[ConnectorManager] %s 재연결 성공 — 구독 복원 시작", broker_id.upper())
         try:
-            from app.services import engine_service as _es
-            from app.services import engine_ws_reg as _reg
+            from backend.app.services import engine_service as _es
+            from backend.app.services import engine_ws_reg as _reg
             await _reg.restore_subscriptions_after_reconnect(_es, broker_id)
         except Exception as e:
             logger.error("[ConnectorManager] %s 구독 복원 실패: %s", broker_id.upper(), e, exc_info=True)

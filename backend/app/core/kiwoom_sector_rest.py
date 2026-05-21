@@ -16,7 +16,7 @@ import httpx as requests
 from backend.app.core.broker_providers import UnifiedStockRecord
 
 if TYPE_CHECKING:
-    from app.core.kiwoom_rest import KiwoomRestAPI
+    from backend.app.core.kiwoom_rest import KiwoomRestAPI
 
 _log = logging.getLogger(__name__)
 
@@ -153,7 +153,7 @@ def fetch_ka10086_sector_all(
         resume_codes: 이전 세션에서 완료된 종목 코드들.
                       완료된 종목은 API 호출을 건너뛰고 snapshot에서 데이터 복원.
     """
-    from app.core.sector_stock_cache import save_progress_cache, load_completed_stocks_from_snapshot
+    from backend.app.core.sector_stock_cache import save_progress_cache, load_completed_stocks_from_snapshot
 
     result: dict[str, dict] = {}
     failed_codes: list[str] = []  # 실패 종목 추적
@@ -276,7 +276,7 @@ def fetch_ka10099_stock_name_map(
                         c6 = cd.upper()  # 알파벳 코드: 원문 대문자 유지
 
                     # ── 매매 부적격 종목 필터 (입구 컷) ──────────────
-                    from app.core.stock_filter import is_excluded
+                    from backend.app.core.stock_filter import is_excluded
                     excluded, reason = is_excluded(item, c6)
                     if excluded:
                         filtered += 1

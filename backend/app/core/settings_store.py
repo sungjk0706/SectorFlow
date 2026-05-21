@@ -259,8 +259,8 @@ async def after_settings_persisted(
     _VIRTUAL_BALANCE_KEYS = {"test_virtual_balance", "test_virtual_deposit"}
     if changed_keys & _VIRTUAL_BALANCE_KEYS:
         try:
-            from app.core.settings_file import load_settings_async as _ls_async
-            from app.services import settlement_engine as _se
+            from backend.app.core.settings_file import load_settings_async as _ls_async
+            from backend.app.services import settlement_engine as _se
             _s = await _ls_async()
             _deposit = int(_s.get("test_virtual_balance", _s.get("test_virtual_deposit", 10_000_000)) or 0)
             _se.reset(_deposit)
@@ -289,7 +289,7 @@ async def after_settings_persisted(
     }
     if changed_keys & _TIME_SCHEDULE_KEYS:
         try:
-            from app.services.daily_time_scheduler import schedule_auto_trade_timers
+            from backend.app.services.daily_time_scheduler import schedule_auto_trade_timers
             new_settings = engine_service.get_settings_snapshot()
             schedule_auto_trade_timers(new_settings)
             # KiwoomConnector 자동매매 플래그 동기화
@@ -303,7 +303,7 @@ async def after_settings_persisted(
     _WS_SCHEDULE_KEYS = {"ws_subscribe_start", "ws_subscribe_end", "ws_subscribe_on"}
     if changed_keys & _WS_SCHEDULE_KEYS:
         try:
-            from app.services import daily_time_scheduler as _dts
+            from backend.app.services import daily_time_scheduler as _dts
             new_settings = engine_service.get_settings_snapshot()
             now_in_window = _dts.is_ws_subscribe_window(new_settings)
             was_active = bool(_dts._ws_subscribe_window_active)
@@ -325,7 +325,6 @@ async def after_settings_persisted(
             # 4) 비활성→구간안: 즉시 WS 연결 + 구독 시작
             elif not was_active and now_in_window:
                 logger.info("[설정] 실시간 구독 구간 변경 → 현재 구간 안 — 즉시 구독 시작")
-                import asyncio
                 asyncio.create_task(_dts._on_ws_subscribe_start())
         except Exception:
             pass
@@ -364,8 +363,8 @@ async def after_settings_persisted(
     _ws_changed = changed_keys & _WS_SUBSCRIBE_CONTROL_KEYS
     if _ws_changed:
         try:
-            from app.services.ws_subscribe_control import on_setting_changed
-            from app.core.settings_file import load_settings_async
+            from backend.app.services.ws_subscribe_control import on_setting_changed
+            from backend.app.core.settings_file import load_settings_async
             raw = await load_settings_async()
             for key in _ws_changed:
                 asyncio.create_task(

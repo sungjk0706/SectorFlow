@@ -80,7 +80,7 @@ def is_krx_after_hours(now: datetime | None = None) -> bool:
     - 영업일(평일 + 공휴일 아님) AND 15:30 <= KST < 20:00 → True
     - 그 외 → False
     """
-    from app.core.trading_calendar import is_krx_holiday
+    from backend.app.core.trading_calendar import is_krx_holiday
     if now is None:
         now = _kst_now()
     today = now.date()
@@ -98,7 +98,7 @@ def get_market_phase(now: datetime | None = None) -> dict:
     현재 KRX/NXT 장 상태 반환 (시간대별 상세 상태).
     반환값: {"krx": 상태문자열, "nxt": 상태문자열}
     """
-    from app.core.trading_calendar import is_krx_holiday
+    from backend.app.core.trading_calendar import is_krx_holiday
     if now is None:
         now = _kst_now()
     today = now.date()
@@ -161,7 +161,7 @@ def is_ws_subscribe_window(settings: dict | None = None) -> bool:
     settings 미전달 시 settings.json에서 직접 읽음.
     """
     # ── 영업일 판단: 주말은 항상 차단, 공휴일은 holiday_guard_on 설정에 따라 ──
-    from app.core.trading_calendar import is_krx_holiday
+    from backend.app.core.trading_calendar import is_krx_holiday
     now = _kst_now()
     today = now.date()
     # 주말은 무조건 차단
@@ -170,7 +170,7 @@ def is_ws_subscribe_window(settings: dict | None = None) -> bool:
 
     if not settings:
         try:
-            from app.core.settings_file import load_settings
+            from backend.app.core.settings_file import load_settings
             settings = load_settings()
         except Exception:
             logger.warning("[타이머] 설정 로드 실패 — 구독 허용", exc_info=True)
@@ -205,7 +205,7 @@ def is_edit_window_open(settings: dict | None = None) -> bool:
     WS 구독 구간 밖이면 편집 가능 (프론트 computeEditWindowOpenByTime과 동일 기준)."""
     if not settings:
         try:
-            from app.core.settings_file import load_settings
+            from backend.app.core.settings_file import load_settings
             settings = load_settings()
         except Exception:
             logger.warning("[타이머] 설정 로드 실패 — 빈 설정 사용", exc_info=True)
@@ -293,7 +293,8 @@ def load_industry_index_cache(engine_service) -> bool:
 def _run_avg_amt_5d_refresh(engine_service) -> None:
     """장마감 후 확정된 당일 1일봉 거래대금을 받아서 5일 평균을 계산하고 캐시 파일에 저장하는 함수."""
     global _avg_amt_5d_refresh_done
-    if getattr(engine_service, '_avg_amt_refresh_running', False):
+    existing_task = getattr(engine_service, '_avg_amt_refresh_task', None)
+    if existing_task is not None and not existing_task.done():
         logger.debug("[타이머] 5일 평균 갱신 이미 진행 중 -- 생략")
         return
     try:
@@ -312,13 +313,13 @@ def _on_krx_after_hours_start() -> None:
     시간외 단일가(15:40~16:00) 0B 데이터를 끝까지 수신한 후 해지하기 위함.
     """
     try:
-        from app.core.trading_calendar import is_krx_holiday
+        from backend.app.core.trading_calendar import is_krx_holiday
         today = _kst_now().date()
         if today.weekday() >= 5 or is_krx_holiday(today):
             return
         logger.info("[타이머] KRX 장외 시간대 진입 (15:30) -- 업종 종합점수 재계산 + 실시간 화면전송")
-        from app.services.engine_service import recompute_sector_summary_now
-        from app.services.engine_account_notify import (
+        from backend.app.services.engine_service import recompute_sector_summary_now
+        from backend.app.services.engine_account_notify import (
             notify_desktop_sector_scores,
             notify_desktop_sector_stocks_refresh,
             _broadcast,
@@ -340,7 +341,7 @@ def _on_krx_after_hours_remove() -> None:
     """
     global _krx_remove_done
     try:
-        from app.core.trading_calendar import is_krx_holiday
+        from backend.app.core.trading_calendar import is_krx_holiday
         today = _kst_now().date()
         if today.weekday() >= 5 or is_krx_holiday(today):
             return
@@ -356,14 +357,14 @@ async def _do_krx_after_hours_remove() -> None:
     """16:01 비동기 헬퍼 — KRX 장마감 구독해지."""
     global _krx_remove_done
     try:
-        from app.core.trading_calendar import is_krx_holiday
+        from backend.app.core.trading_calendar import is_krx_holiday
         today = _kst_now().date()
         if today.weekday() >= 5 or is_krx_holiday(today):
             return
-        from app.services import engine_service as es
+        from backend.app.services import engine_service as es
 
         # KRX 단독 종목 장마감 구독해지
-        from app.services.market_close_pipeline import remove_krx_only_stocks
+        from backend.app.services.market_close_pipeline import remove_krx_only_stocks
         result = await remove_krx_only_stocks(es)
         if result.get("skipped"):
             _krx_remove_done = False
@@ -398,9 +399,9 @@ async def _do_unified_confirmed_fetch() -> None:
     """20:30 통합 확정 조회 비동기 헬퍼."""
     global _confirmed_done
     try:
-        from app.services import engine_service as es
+        from backend.app.services import engine_service as es
         # TODO: fetch_unified_confirmed_data()는 Task 3.4에서 구현 예정
-        from app.services.market_close_pipeline import fetch_unified_confirmed_data
+        from backend.app.services.market_close_pipeline import fetch_unified_confirmed_data
         await fetch_unified_confirmed_data(es)
         _confirmed_done = True
         logger.info("[타이머] 20:30 통합 확정 조회 완료")
@@ -408,7 +409,7 @@ async def _do_unified_confirmed_fetch() -> None:
         _confirmed_done = False
         logger.warning("[타이머] 20:30 통합 확정 조회 실패 — 플래그 복원: %s", e, exc_info=True)
         try:
-            from app.services import engine_service as es2
+            from backend.app.services import engine_service as es2
             es2._confirmed_refresh_running = False
             es2._confirmed_refresh_message = ""
         except Exception as e:
@@ -433,7 +434,7 @@ def retry_pipeline_catchup_after_bootstrap() -> None:
 
     # 사용자 설정의 ws_subscribe_start 시간 로드
     try:
-        from app.core.settings_file import load_settings
+        from backend.app.core.settings_file import load_settings
         _settings = load_settings()
         ws_start = str(_settings.get("ws_subscribe_start") or "07:50")
         sh, sm = _parse_hm(ws_start)
@@ -443,10 +444,10 @@ def retry_pipeline_catchup_after_bootstrap() -> None:
 
     # 5개 캐시 모두 유효해야 확정 조회 완료로 간주 → REST 스킵
     # 하나라도 None(만료)이면 확정 데이터 조회 실행
-    from app.core.sector_stock_cache import load_snapshot_cache, load_stock_name_cache, load_market_map_cache
-    from app.core.industry_map import load_eligible_stocks_cache
-    from app.core.avg_amt_cache import load_avg_amt_cache
-    from app.services import engine_service
+    from backend.app.core.sector_stock_cache import load_snapshot_cache, load_stock_name_cache, load_market_map_cache
+    from backend.app.core.industry_map import load_eligible_stocks_cache
+    from backend.app.core.avg_amt_cache import load_avg_amt_cache
+    from backend.app.services import engine_service
 
     _snap = load_snapshot_cache()
     _stock_name = load_stock_name_cache()
@@ -479,9 +480,9 @@ def retry_pipeline_catchup_after_bootstrap() -> None:
             # 재시도 기간: 20:30 ~ 다음 거래일 ws_subscribe_start 시간까지
             unified_past = t >= 1230 or t < ws_start_minutes
             if unified_past:
-                from app.core.trading_calendar import current_trading_date_str
+                from backend.app.core.trading_calendar import current_trading_date_str
                 # snapshot 캐시 date로 확정 갱신 완료 여부 판별
-                from app.core.sector_stock_cache import SNAPSHOT_CACHE_PATH
+                from backend.app.core.sector_stock_cache import SNAPSHOT_CACHE_PATH
                 import json as _json
                 try:
                     _raw = _json.loads(SNAPSHOT_CACHE_PATH.read_text(encoding="utf-8"))
@@ -537,7 +538,7 @@ def retry_pipeline_catchup_after_bootstrap() -> None:
 def _broadcast_market_phase() -> None:
     """market-phase WS 이벤트 브로드캐스트 (08:00, 09:00, 20:00 전환 시점)."""
     try:
-        from app.services.engine_account_notify import _broadcast
+        from backend.app.services.engine_account_notify import _broadcast
         phase = get_market_phase()
         _broadcast("market-phase", phase)
         logger.debug("[타이머] market-phase 화면전송: %s", phase)
@@ -550,8 +551,8 @@ def _apply_auto_toggle_on_startup(settings: dict) -> None:
     - 거래일 + ws_subscribe_start~end 구간 내 → ON
     - 비거래일 or 구독 구간 밖 → OFF
     settings.json 저장 + 프론트 알림까지 수행."""
-    from app.core.trading_calendar import is_krx_holiday, kst_today
-    from app.core.settings_file import update_settings
+    from backend.app.core.trading_calendar import is_krx_holiday, kst_today
+    from backend.app.core.settings_file import update_settings
 
     today = kst_today()
     holiday_guard = bool(settings.get("holiday_guard_on", True))
@@ -560,31 +561,27 @@ def _apply_auto_toggle_on_startup(settings: dict) -> None:
     # 거래일 판별: holiday_guard_on이 OFF면 공휴일도 허용
     is_trade_day = not (holiday_guard and is_holiday)
 
-    # 시간 구간 판별: ws_subscribe_on 제외하고 시간만 확인
-    _dummy = {**settings, "ws_subscribe_on": True}
-    in_time_window = is_ws_subscribe_window(_dummy)
+    # 시간 구간 판별은 삭제 (거래일이기만 하면 사용자가 스케줄러를 켜둔 것으로 간주하여 ON)
+    should_be_on = is_trade_day
 
-    should_be_on = is_trade_day and in_time_window
-
-    # 기동 시각 기준 단순 ON/OFF — 구독 시작 전이면 모두 OFF
-    # ws_subscribe_start 시각 도달 시 _on_ws_subscribe_start가 4개 키를 모두 True로 복원
+    # 기동 시각 기준 단순 ON/OFF — 거래일이면 모두 ON, 비거래일이면 모두 OFF
     on_or_off = should_be_on
     keys = {
         "time_scheduler_on": on_or_off,
         "auto_buy_on": on_or_off,
         "auto_sell_on": on_or_off,
         "ws_subscribe_on": on_or_off,
-        "auto_off_by_holiday": False,
+        "auto_off_by_holiday": not is_trade_day,
     }
     try:
         update_settings(keys)
         settings.update(keys)
         logger.debug(
-            "[타이머] 기동 판별 -- 거래일=%s, 시간구간=%s → 자동매매/WS구독 %s",
-            is_trade_day, in_time_window, "ON" if on_or_off else "OFF",
+            "[타이머] 기동 판별 -- 거래일=%s → 자동매매/WS구독 %s",
+            is_trade_day, "ON" if on_or_off else "OFF",
         )
         try:
-            from app.services.engine_account_notify import (
+            from backend.app.services.engine_account_notify import (
                 notify_desktop_header_refresh,
                 notify_desktop_settings_toggled,
             )
@@ -609,12 +606,12 @@ def _restore_from_holiday_flag(settings: dict) -> bool:
         "auto_off_by_holiday": False,
     }
     try:
-        from app.core.settings_file import update_settings
+        from backend.app.core.settings_file import update_settings
         update_settings(on_keys)
         settings.update(on_keys)
         logger.info("[타이머] 거래일 시작 -- 자동매매/WS구독 자동 복원 (auto_off_by_holiday 해제)")
         try:
-            from app.services.engine_account_notify import (
+            from backend.app.services.engine_account_notify import (
                 notify_desktop_header_refresh,
                 notify_desktop_settings_toggled,
             )
@@ -632,12 +629,12 @@ async def _on_ws_subscribe_start() -> None:
     """WS 구독 시작 시각이 되면 자동 실행 -- WS 연결 + 실시간 데이터 수신을 시작하는 함수."""
     global _ws_subscribe_window_active, _0j_real_receiving
     try:
-        from app.core.trading_calendar import is_krx_holiday
+        from backend.app.core.trading_calendar import is_krx_holiday
         today = _kst_now().date()
         # 주말/공휴일이면 스킵
         if today.weekday() >= 5:
             return
-        from app.services import engine_service
+        from backend.app.services import engine_service
         settings = getattr(engine_service, "_settings_cache", None) or {}
         if bool(settings.get("holiday_guard_on", True)):
             if is_krx_holiday(today):
@@ -647,7 +644,7 @@ async def _on_ws_subscribe_start() -> None:
         # ★ 구독 시작 시각 도달 → 자동매매·WS구독 4개 키 모두 ON 복원
         #   (_on_ws_subscribe_end 또는 시작 전 기동으로 False가 된 값을 되돌림)
         try:
-            from app.core.settings_file import update_settings
+            from backend.app.core.settings_file import update_settings
             _on_keys = {
                 "time_scheduler_on": True,
                 "auto_buy_on": True,
@@ -660,7 +657,7 @@ async def _on_ws_subscribe_start() -> None:
             if isinstance(_cache, dict):
                 _cache.update(_on_keys)
             try:
-                from app.services.engine_account_notify import (
+                from backend.app.services.engine_account_notify import (
                     notify_desktop_header_refresh,
                     notify_desktop_settings_toggled,
                 )
@@ -674,16 +671,17 @@ async def _on_ws_subscribe_start() -> None:
         # 0J REAL 플래그 초기화 (새 구독 사이클 시작)
         _0j_real_receiving = False
         # ── 실시간 필드 초기화 (전일 확정 데이터 제거) ──
+        logger.info("[RESET CALL] from _on_ws_subscribe_start")
         logger.info("[타이머] 실시간 구독 시작 -- 실시간 필드 초기화 시작")
         loop = asyncio.get_running_loop()
         loop.create_task(engine_service._reset_realtime_fields())
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
-        import app.services.engine_account_notify as _an
+        import backend.app.services.engine_account_notify as _an
         _an._prev_scores_cache = []
         engine_service._sector_summary_cache = None
         engine_service._invalidate_sector_stocks_cache()
         # market-phase WS 브로드캐스트 (WS 구독 시작 = 08:00 또는 09:00 전환 시점)
-        from app.services.engine_account_notify import _broadcast
+        from backend.app.services.engine_account_notify import _broadcast
         _broadcast("market-phase", get_market_phase())
         # WS 구독 시작 시점 → 폴링 즉시 시작 (0J REAL 수신되면 자동 중단)
         _start_index_poll_timer()
@@ -695,7 +693,7 @@ async def _on_ws_subscribe_start() -> None:
         else:
             logger.info("[타이머] 실시간 구독 구간 진입 -- 연결되지 않음, 연결 시도")
             try:
-                from app.core.connector_manager import ConnectorManager
+                from backend.app.core.connector_manager import ConnectorManager
                 settings = engine_service._get_settings()
                 _mgr = ConnectorManager(settings)
                 _mgr.set_message_callback(engine_service._kiwoom_message_handler)
@@ -714,7 +712,7 @@ async def _on_ws_subscribe_end() -> None:
     """WS 구독 종료 시각이 되면 자동 실행 -- 실시간 수신 중단 + WS 연결 해제 + 섹터 재계산을 순서대로 하는 함수."""
     global _ws_subscribe_window_active, _avg_amt_5d_refresh_done, _0j_real_receiving, _confirmed_done
     try:
-        from app.services import engine_service
+        from backend.app.services import engine_service
         _ws_subscribe_window_active = False
         _0j_real_receiving = False
         # 지수 폴링 타이머 중지 (WS 구독 종료 → 폴링 구간도 끝)
@@ -725,13 +723,13 @@ async def _on_ws_subscribe_end() -> None:
         logger.info("[타이머] 실시간 구독 구간 종료 -- 구독 해지 + 실시간 연결 해제")
         _trigger_unreg_all(engine_service)
         # 구독 상태 전체 false + WS 브로드캐스트
-        from app.services.ws_subscribe_control import _set_status
+        from backend.app.services.ws_subscribe_control import _set_status
         _set_status(index=False, quote=False)
         # market-phase WS 브로드캐스트 (구독 종료 시각 기준 상태 반영)
         _broadcast_market_phase()
         # ── 자동매매·WS구독 토글 OFF 저장 (종료 시각 도달) ──
         try:
-            from app.core.settings_file import update_settings
+            from backend.app.core.settings_file import update_settings
             off_keys = {
                 "time_scheduler_on": False,
                 "auto_buy_on": False,
@@ -743,7 +741,7 @@ async def _on_ws_subscribe_end() -> None:
             if isinstance(_cache, dict):
                 _cache.update(off_keys)
             logger.info("[타이머] 구독 종료 시각 도달 -- 자동매매/WS구독 OFF 저장")
-            from app.services.engine_account_notify import (
+            from backend.app.services.engine_account_notify import (
                 notify_desktop_header_refresh,
                 notify_desktop_settings_toggled,
             )
@@ -785,11 +783,11 @@ async def _ws_disconnect_only() -> None:
     """구독 해제 + WS 연결 해제만 수행 (장마감 후처리 제외)."""
     global _ws_subscribe_window_active
     try:
-        from app.services import engine_service
+        from backend.app.services import engine_service
         _ws_subscribe_window_active = False
         logger.info("[타이머] 구독 구간 변경 -- 구독 해지 + 실시간 연결 해제")
         _trigger_unreg_all(engine_service)
-        from app.services.ws_subscribe_control import _set_status
+        from backend.app.services.ws_subscribe_control import _set_status
         _set_status(index=False, quote=False)
         ws = getattr(engine_service, "_connector_manager", None) or getattr(engine_service, "_kiwoom_connector", None)
         if ws and ws.is_connected():
@@ -820,7 +818,7 @@ def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
 
     if not settings:
         try:
-            from app.core.settings_file import load_settings
+            from backend.app.core.settings_file import load_settings
             settings = load_settings()
         except Exception:
             return
@@ -903,7 +901,7 @@ def _init_ws_subscribe_state(engine_service) -> None:
     if not settings or not isinstance(settings, dict) or "index_poll_after_close" not in settings:
         # 엔진 기동 전이라 _settings_cache가 아직 안 채워졌을 수 있음 → 파일에서 직접 읽기
         try:
-            from app.core.settings_file import load_settings
+            from backend.app.core.settings_file import load_settings
             settings = load_settings()
         except Exception:
             settings = settings or {}
@@ -914,12 +912,13 @@ def _init_ws_subscribe_state(engine_service) -> None:
         # 0J REAL 플래그 초기화 (기동 시점에는 아직 0J 미수신)
         _0j_real_receiving = False
         # ── 실시간 필드 초기화 (전일 확정 데이터 제거) ──
+        logger.info("[RESET CALL] from _init_ws_subscribe_state")
         logger.info("[타이머] 구독 구간 내 시작 -- 실시간 필드 초기화")
         loop = asyncio.get_running_loop()
         loop.create_task(engine_service._reset_realtime_fields())
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
         try:
-            import app.services.engine_account_notify as _an
+            import backend.app.services.engine_account_notify as _an
             _an._prev_scores_cache = []
             engine_service._sector_summary_cache = None
             engine_service._invalidate_sector_stocks_cache()
@@ -933,7 +932,7 @@ def _init_ws_subscribe_state(engine_service) -> None:
     else:
         logger.info("[타이머] 구독 구간 외 시작")
         # 구독 상태 false + WS 브로드캐스트
-        from app.services.ws_subscribe_control import _set_status
+        from backend.app.services.ws_subscribe_control import _set_status
         _set_status(index=False, quote=False)
         # WS 구독 구간 밖에서 기동 → 지수 캐시 로드 (확정 데이터, 추가 API 요청 불필요)
         load_index_cache(engine_service)
@@ -997,7 +996,7 @@ async def _do_unreg_all(engine_service) -> None:
             return
 
         # grp 4(0B): 구독 중인 종목코드를 data에 포함
-        from app.services.engine_symbol_utils import get_ws_subscribe_code
+        from backend.app.services.engine_symbol_utils import get_ws_subscribe_code
         codes_list = [get_ws_subscribe_code(cd) for cd in list(all_codes)]
         payload = {
             "trnm": "REMOVE",
@@ -1025,7 +1024,7 @@ async def _do_unreg_all(engine_service) -> None:
         logger.info("[타이머] REMOVE 완료 -- %d종목 구독 해지", len(codes_list))
 
         # ws_subscribe_control 상태 동기화 — 구독 해지 완료
-        from app.services import ws_subscribe_control
+        from backend.app.services import ws_subscribe_control
         ws_subscribe_control._set_status(index=False, quote=False)
     except Exception as e:
         logger.warning("[타이머] REMOVE 전송 오류: %s", e)
@@ -1045,8 +1044,8 @@ def _seconds_until_hm(h: int, m: int) -> float:
 def _on_auto_trade_transition(label: str) -> None:
     """매수/매도 시간 구간 진입/이탈 시 1회 실행되는 콜백."""
     try:
-        from app.services import engine_service
-        from app.services.engine_account_notify import (
+        from backend.app.services import engine_service
+        from backend.app.services.engine_account_notify import (
             notify_desktop_header_refresh,
             notify_desktop_settings_toggled,
         )
@@ -1080,7 +1079,7 @@ def schedule_auto_trade_timers(settings: dict | None = None) -> None:
 
     if not settings:
         try:
-            from app.core.settings_file import load_settings
+            from backend.app.core.settings_file import load_settings
             settings = load_settings()
         except Exception:
             return
@@ -1127,13 +1126,13 @@ def _on_midnight() -> None:
         _confirmed_done = False
         logger.info("[타이머] 자정 날짜 변경 -- 플래그 초기화 (%s)", _last_reset_date)
 
-        from app.services import engine_service
+        from backend.app.services import engine_service
         settings = getattr(engine_service, "_settings_cache", None)
 
         # 날짜 변경 시 거래일/시간 기준 자동 ON/OFF 판별
         if not settings:
             try:
-                from app.core.settings_file import load_settings
+                from backend.app.core.settings_file import load_settings
                 settings = load_settings()
             except Exception:
                 settings = {}
@@ -1241,8 +1240,8 @@ def _do_index_poll_tick() -> None:
 
 async def _poll_index_ka20001_once() -> None:
     """ka20001 업종현재가요청으로 코스피·코스닥 지수를 1회 조회해서 _latest_index에 저장하는 함수."""
-    from app.services import engine_service
-    from app.core.broker_factory import get_router
+    from backend.app.services import engine_service
+    from backend.app.core.broker_factory import get_router
 
     _settings = getattr(engine_service, "_settings_cache", {}) or {}
     try:
@@ -1271,7 +1270,7 @@ async def _poll_index_ka20001_once() -> None:
             if row.get("price", 0) > 0:
                 latest_index[inds_cd] = row
         if rows:
-            from app.services.engine_account_notify import notify_desktop_index_refresh
+            from backend.app.services.engine_account_notify import notify_desktop_index_refresh
             notify_desktop_index_refresh()
             logger.info("[데이터] ka20001 갱신 -- %s", {k: f"{v['price']:.2f}" for k, v in rows.items()})
     except Exception as e:
@@ -1321,14 +1320,14 @@ def _apply_holiday_guard_on_startup(settings: dict | None) -> None:
     사용자가 수동으로 다시 켤 수 있음 (하드코딩 아님)."""
     if not settings:
         try:
-            from app.core.settings_file import load_settings
+            from backend.app.core.settings_file import load_settings
             settings = load_settings()
         except Exception:
             return
     if not bool(settings.get("holiday_guard_on", True)):
         return
 
-    from app.core.trading_calendar import is_krx_holiday, kst_today
+    from backend.app.core.trading_calendar import is_krx_holiday, kst_today
     today = kst_today()
     if today.weekday() >= 5 or is_krx_holiday(today):
         off_keys = {
@@ -1343,7 +1342,7 @@ def _apply_holiday_guard_on_startup(settings: dict | None) -> None:
         if _already_off and bool(settings.get("auto_off_by_holiday", False)):
             return
         try:
-            from app.core.settings_file import update_settings
+            from backend.app.core.settings_file import update_settings
             update_settings(off_keys)
             # 엔진 메모리 캐시도 즉시 반영
             settings.update(off_keys)
@@ -1353,7 +1352,7 @@ def _apply_holiday_guard_on_startup(settings: dict | None) -> None:
             )
             # WS로 프론트에 변경 알림
             try:
-                from app.services.engine_account_notify import (
+                from backend.app.services.engine_account_notify import (
                     notify_desktop_header_refresh,
                     notify_desktop_settings_toggled,
                 )
@@ -1369,13 +1368,13 @@ def start_daily_time_scheduler() -> None:
     """타임스케줄러를 시작하는 함수 -- 이벤트 타이머 초기 예약."""
     # 엔진 기동 시 타이머 초기 예약
     try:
-        from app.services import engine_service
+        from backend.app.services import engine_service
         settings = getattr(engine_service, "_settings_cache", None)
 
         # ── 기동 시 자동 ON/OFF 판별: 거래일+시간구간이면 ON, 아니면 OFF ──
         if not settings:
             try:
-                from app.core.settings_file import load_settings
+                from backend.app.core.settings_file import load_settings
                 settings = load_settings()
             except Exception:
                 settings = {}

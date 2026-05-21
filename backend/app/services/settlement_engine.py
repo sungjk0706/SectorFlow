@@ -189,7 +189,7 @@ def _load() -> None:
 
     if not _STATE_PATH.is_file():
         try:
-            from app.core.settings_file import load_settings
+            from backend.app.core.settings_file import load_settings
             s = load_settings()
             _initial_deposit = int(s.get("test_virtual_deposit", 10_000_000) or 0)
             _accumulated_investment = _initial_deposit
@@ -225,7 +225,7 @@ def _load() -> None:
     except Exception as e:
         logger.warning("[정산엔진] 상태 파일 로드 실패 (기본값 사용): %s", e)
         try:
-            from app.core.settings_file import load_settings
+            from backend.app.core.settings_file import load_settings
             s = load_settings()
             _initial_deposit = int(s.get("test_virtual_deposit", 10_000_000) or 0)
             _accumulated_investment = _initial_deposit
@@ -241,8 +241,8 @@ def _load() -> None:
 def _broadcast_delta() -> None:
     """계좌 변경 브로드캐스트. engine_service의 account-update 메커니즘 사용."""
     try:
-        from app.services import engine_service as es
-        from app.core.trade_mode import is_test_mode
+        from backend.app.services import engine_service as es
+        from backend.app.core.trade_mode import is_test_mode
         if is_test_mode(es._settings_cache):
             es._refresh_account_snapshot_meta()
             es._broadcast_account(reason="settlement_delta")

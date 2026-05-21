@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api", tags=["status"])
 @router.get("/health")
 async def health_check():
     """서버 준비 상태 확인 - 현대적 안정성 패턴."""
-    from app.services import engine_service as es
+    from backend.app.services import engine_service as es
     
     # 상태 확인
     is_server_ready = es._server_ready_event.is_set()
@@ -48,8 +48,8 @@ async def health_check():
 @router.get("/debug/sector-stock/{code}")
 async def debug_sector_stock(code: str):
     """디버그용: 특정 종목의 실시간 데이터 상태 확인."""
-    from app.services import engine_service as es
-    from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+    from backend.app.services import engine_service as es
+    from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
     nk = _format_kiwoom_reg_stk_cd(code.strip())
     pend = es._pending_stock_details.get(nk)
     in_filter = nk in es._filtered_sector_codes
@@ -80,7 +80,7 @@ async def debug_sector_stock(code: str):
 @router.get("/debug/ws-status")
 async def debug_ws_status():
     """디버그용: WS 연결 상태 + 구독 현황 확인."""
-    from app.services import engine_service as es
+    from backend.app.services import engine_service as es
     ws = es._kiwoom_connector
     return {
         "ws_connected": bool(ws and ws.is_connected()) if ws else False,
@@ -99,8 +99,8 @@ async def debug_ws_status():
 @router.post("/debug/trigger-confirmed")
 async def debug_trigger_confirmed():
     """디버그용: 통합 확정 조회 수동 트리거 (캐시 재생성)."""
-    from app.services import engine_service as es
-    from app.services.market_close_pipeline import fetch_unified_confirmed_data
+    from backend.app.services import engine_service as es
+    from backend.app.services.market_close_pipeline import fetch_unified_confirmed_data
     try:
         result = await fetch_unified_confirmed_data(es)
         return {"status": "ok", "result": result}
@@ -111,7 +111,7 @@ async def debug_trigger_confirmed():
 @router.get("/debug/sector-refresh-sample")
 async def debug_sector_refresh_sample():
     """디버그용: sector-refresh WS 이벤트와 동일한 데이터를 직접 반환."""
-    from app.services import engine_service as es
+    from backend.app.services import engine_service as es
     stocks = es.get_sector_stocks()
     status = {}  # 확정 개념 제거됨
     # 삼성전자, SK하이닉스 찾기
@@ -129,7 +129,7 @@ async def debug_sector_refresh_sample():
                 "sector": s.get("sector"),
             }
     # WS 클라이언트 상태 확인
-    from app.web.ws_manager import ws_manager
+    from backend.app.web.ws_manager import ws_manager
     return {
         "total_stocks_in_response": len(stocks),
         "status": status,
@@ -144,9 +144,9 @@ async def debug_orderbook_status(
     codes: list[str] = Query(default=[], description="확인할 종목코드 리스트 (예: 068270,298380)"),
 ):
     """디버그용: 특정 종목의 호가잔량(0D) 구독 및 수신 상태 확인."""
-    from app.services import engine_service as es
-    from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
-    from app.services import data_manager
+    from backend.app.services import engine_service as es
+    from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+    from backend.app.services import data_manager
 
     result = {}
     for raw_code in codes:

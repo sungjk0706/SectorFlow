@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def _fire_and_forget_telegram(message: str, settings: dict | None) -> None:
     """텔레그램 알림을 NotificationWorker 큐로 전송. 예외 격리."""
     try:
-        from app.services.notification_worker import NotificationWorker
+        from backend.app.services.notification_worker import NotificationWorker
         NotificationWorker.get_instance().enqueue({
             "type": "telegram",
             "message": message,
@@ -79,7 +79,7 @@ class AutoTradeManager:
 
         # ── 실시간 지연 중단 게이트 ────────────────────────────────────────────
         try:
-            import app.services.engine_service as _es_latency
+            import backend.app.services.engine_service as _es_latency
             if _es_latency._realtime_latency_exceeded:
                 self.log_callback(f"[실시간지연] {stk_cd} 매수 차단 — WS 지연 200ms 초과")
                 return False
@@ -122,7 +122,7 @@ class AutoTradeManager:
             _positions_for_count = dry_run.get_positions()
         else:
             try:
-                import app.services.engine_service as _es_pos
+                import backend.app.services.engine_service as _es_pos
                 _positions_for_count = _es_pos._positions
             except Exception:
                 logger.warning("[매매] 보유 종목 수 조회 실패", exc_info=True)
@@ -162,9 +162,9 @@ class AutoTradeManager:
         _kosdaq_on = bool(raw_all.get("buy_index_guard_kosdaq_on", False))
         if _kospi_on or _kosdaq_on:
             try:
-                import app.services.engine_service as _es_idx
-                from app.services.engine_sector_score import check_index_guard
-                from app.services.engine_symbol_utils import get_stock_market as _get_mkt
+                import backend.app.services.engine_service as _es_idx
+                from backend.app.services.engine_sector_score import check_index_guard
+                from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt
                 _idx_triggered, _idx_reason, _k_hit, _kd_hit = check_index_guard(
                     dict(_es_idx._latest_index),
                     kospi_on=_kospi_on,
@@ -193,7 +193,7 @@ class AutoTradeManager:
         _pend = (self.get_pending_fn(stk_cd) if hasattr(self, "get_pending_fn") and self.get_pending_fn else None)
         if _pend is None:
             try:
-                import app.services.engine_service as _es
+                import backend.app.services.engine_service as _es
                 _row = _es._pending_stock_details.get(stk_cd)
                 if _row:
                     _change_rate_for_guard = float(_row.get("change_rate") or 0.0)
@@ -225,7 +225,7 @@ class AutoTradeManager:
             _strength_val: float | None = None
             if _pend is None:
                 try:
-                    import app.services.engine_service as _es_str
+                    import backend.app.services.engine_service as _es_str
                     _str_raw = _es_str._latest_strength.get(stk_cd)
                     if _str_raw is not None:
                         _strength_val = float(_str_raw)
@@ -257,7 +257,7 @@ class AutoTradeManager:
 
         # ── 테스트모드: 예수금 검증 (Settlement Engine) ────────────────────────
         if is_test_mode(base_settings):
-            from app.services.engine_strategy_core import check_test_buy_power
+            from backend.app.services.engine_strategy_core import check_test_buy_power
             _check_price = int(order_price) if order_price > 0 else int(current_price)
             ok, reason = check_test_buy_power(
                 settings, _check_price, buy_qty, self._daily_buy_spent,
@@ -312,7 +312,7 @@ class AutoTradeManager:
 
         # ── 매수 한도 상태 WS 브로드캐스트 ──────────────────────────────────
         try:
-            import app.services.engine_service as _es_limit
+            import backend.app.services.engine_service as _es_limit
             _es_limit._broadcast_buy_limit_status()
         except Exception:
             logger.warning("[매수] 매수한도 브로드캐스트 실패", exc_info=True)
@@ -389,7 +389,7 @@ class AutoTradeManager:
                 _pos = dry_run.get_position(stk_cd)
                 _avg_buy = int(_pos.get("avg_price", 0)) if _pos else 0
             else:
-                import app.services.engine_service as _es
+                import backend.app.services.engine_service as _es
                 for _p in _es.get_positions():
                     if _format_kiwoom_reg_stk_cd(str(_p.get("stk_cd", ""))) == stk_cd:
                         _avg_buy = int(_p.get("avg_price", 0))
@@ -435,7 +435,7 @@ class AutoTradeManager:
 
         # ── 실시간 지연 중단 게이트 ────────────────────────────────────────────
         try:
-            import app.services.engine_service as _es_latency
+            import backend.app.services.engine_service as _es_latency
             if _es_latency._realtime_latency_exceeded:
                 self.log_callback("[실시간지연] 매도 조건 전체 차단 — WS 지연 200ms 초과")
                 return
@@ -551,7 +551,7 @@ _DRYRUN_BUY_BROADCAST_DELAY: float = 0.15
 def _dryrun_post_buy_broadcast(stk_cd: str, stk_nm: str) -> None:
     """테스트모드 매수 후 UI 잔고 브로드캐스트 -- 매도탭 보유종목 카드 즉시 반영."""
     try:
-        from app.services import engine_service as es
+        from backend.app.services import engine_service as es
         es._refresh_account_snapshot_meta()
         es._broadcast_account(reason="dryrun_buy")
         logger.info("[테스트모드] 매수 후 UI 갱신 완료 -- %s(%s)", stk_nm, stk_cd)
@@ -562,7 +562,7 @@ def _dryrun_post_buy_broadcast(stk_cd: str, stk_nm: str) -> None:
 def _dryrun_post_sell_broadcast(stk_cd: str, stk_nm: str, settings: dict) -> None:
     """테스트모드 매도 후 UI 잔고 브로드캐스트."""
     try:
-        from app.services import engine_service as es
+        from backend.app.services import engine_service as es
 
         # 가상 잔고에서 매도 완료된 종목 -- _recent_sells 차단 해제
         if es._auto_trade:

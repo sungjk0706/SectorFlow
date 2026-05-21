@@ -30,14 +30,14 @@ async def start_subscription(
     _: str = Depends(get_current_user),
 ):
     """수동 구독 시작. WS 구독 구간 밖이면 400 에러."""
-    from app.services.daily_time_scheduler import is_ws_subscribe_window
-    import app.services.engine_service as es
+    from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
+    import backend.app.services.engine_service as es
 
     settings = getattr(es, "_settings_cache", None) or {}
     if not is_ws_subscribe_window(settings):
         raise HTTPException(status_code=400, detail="WS 구독 구간이 아닙니다")
 
-    from app.services import ws_subscribe_control
+    from backend.app.services import ws_subscribe_control
     _es = sys.modules["app.services.engine_service"]
 
     if body.group == SubscribeGroup.sector:
@@ -65,7 +65,7 @@ async def stop_subscription(
     _: str = Depends(get_current_user),
 ):
     """수동 구독 해지."""
-    from app.services import ws_subscribe_control
+    from backend.app.services import ws_subscribe_control
     _es = sys.modules["app.services.engine_service"]
 
     if body.group == SubscribeGroup.sector:

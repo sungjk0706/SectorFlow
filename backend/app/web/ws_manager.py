@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 _FLUSH_INTERVAL = 0.1  # 배치 전송 주기 (초)
 
-# 상태형 이벤트: 0.1초 내 마지막 값만 유지 (coalescing)
 _STATE_EVENTS: frozenset[str] = frozenset({
     "trade-price",
     "orderbook-update",
@@ -34,6 +33,7 @@ _STATE_EVENTS: frozenset[str] = frozenset({
     "ws-subscribe-status",
     "snapshot-update",
     "sector-stocks-delta",
+    "avg-amt-progress",
 })
 
 # real-data FID 필터: 프론트엔드에서 사용하는 FID만 전송
@@ -256,12 +256,12 @@ class WSManager:
         """페이지별 종목 코드 관련성 판별. 단일 스레드 — 락 불필요."""
         if page == "sector-analysis":
             # 업종별종목시세 테이블용: layout 종목 + pending 종목
-            from app.services.engine_account_notify import _layout_code_set
-            import app.services.engine_service as _es
+            from backend.app.services.engine_account_notify import _layout_code_set
+            import backend.app.services.engine_service as _es
             return code in _layout_code_set or code in _es._pending_stock_details
         elif page == "buy-target":
             # 매수후보 종목만 — Set 캐시로 O(1) 조회 (Phase 6D)
-            import app.services.engine_service as _es
+            import backend.app.services.engine_service as _es
             ss = _es._sector_summary_cache
             if not ss:
                 return True  # 캐시 미초기화 → 안전 폴백
@@ -273,7 +273,7 @@ class WSManager:
             return code in _buy_target_page_codes or code in _blocked_target_page_codes
         elif page == "sell-position":
             # 보유종목만
-            from app.services.engine_account_notify import _positions_code_set
+            from backend.app.services.engine_account_notify import _positions_code_set
             return code in _positions_code_set
         elif page in ("profit-overview", "settings", "buy-settings", "sell-settings", "general-settings", "sector-custom"):
             return False  # real-data 전송 안 함
@@ -373,7 +373,7 @@ class WSManager:
             try:
                 loop = asyncio.get_running_loop()
                 # 종목 코드 추출 + 정규화 (per-client 필터링용)
-                from app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+                from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
                 raw_code = str(data.get("item") or "").strip()
                 code = _format_kiwoom_reg_stk_cd(raw_code) if raw_code else ""
                 # 사전 필터링: 어떤 클라이언트도 이 틱이 필요 없으면 압축·task 생성 생략
