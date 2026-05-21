@@ -1,5 +1,33 @@
 # SectorFlow_old 인계서
 
+## 세션 시작 시 필독 사항
+
+새 세션 작업자는 반드시 아래 계획서들을 먼저 읽어야 합니다:
+
+1. **리팩토링 계획서**: `/Users/sungjk0706/.windsurf/plans/refactoring-plan-d2f61d.md`
+   - 현재 프로젝트 상태 분석
+   - 4단계 리팩토링 계획 (Phase 1-4)
+   - 각 Phase별 세부 작업 내용과 영향 범위
+
+2. **AI 에이전트 자동 체크리스트**: `/Users/sungjk0706/.windsurf/plans/ai-auto-tracker-d2f61d.md`
+   - 작업자가 작업 시작/완료 시 자동으로 체크리스트 업데이트 방법
+   - REFACTORING_CHECKLIST.md 구조
+   - refactoring_tracker.py 사용법
+
+3. **안전장치 및 세션 연속성**: `/Users/sungjk0706/.windsurf/plans/refactoring-safety-protocol-d2f61d.md`
+   - 단계별 사전 정밀 조사 프로세스
+   - 컨텍스트 사용량 주기적 체크
+   - HANDOVER.md 업데이트 프로세스
+   - 안전장치 (백업, 롤백, 테스트)
+
+4. **아키텍처 금지 패턴**: `/Users/sungjk0706/.windsurf/plans/architecture-forbidden-patterns-d2f61d.md`
+   - Python 백엔드 금지 패턴 (time.sleep, threading.Lock, requests 등)
+   - TypeScript 프론트엔드 금지 패턴 (innerHTML 전체 교체, .map 전체 재생성 등)
+   - 기능 로직 보호 원칙 (비즈니스 로직 절대 수정 금지)
+   - 승인 프로세스 (꼭 필요한 경우에만 사용자 승인 후 사용)
+
+**중요**: 이 리팩토링은 철저한 아키텍처 리팩토링입니다. 기능적 로직은 절대 손대지 말고, 아키텍처 금지 패턴을 엄수하며 작업하세요.
+
 ## 완료 단계
 - Phase 1-A: P0-6 hot path console.log 제거 (완료)
 - Phase 1-B: P0-3 DI Container 단일화 (완료)
