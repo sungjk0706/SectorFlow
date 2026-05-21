@@ -42,8 +42,29 @@
 - Phase 2: P1-1 단계 6 appStore.ts 제거 및 hotStore/uiStore 완전 분리 (완료)
 - Phase 3: P1-3 주문 상태기계 검증 (완료)
 - Phase 3: P2-2-7 Dashboard/Alert 구현 (완료)
+- Phase 1.1: Event Model 정의 (완료)
 
 ## 현재 상태
+### Phase 1.1 완료 내용
+- backend/app/core/events.py 생성 완료
+  - BaseEvent, MarketTickEvent, OrderFillEvent, AccountUpdateEvent 정의
+  - BrokerType, EventType Enum 정의
+  - SequenceGenerator 시퀀스 번호 생성기
+  - 이벤트 생성 헬퍼 함수 (create_market_tick_event, create_order_fill_event, create_account_update_event)
+- backend/app/services/state_manager.py 통합 완료
+  - EventType, BrokerType를 events.py에서 import
+  - 기존 EventType 제거, events.py의 EventType 사용
+- backend/app/services/engine_service.py import 경로 수정 완료
+  - EventType을 events.py에서 import
+- backend/tests/test_events.py 테스트 작성 완료
+  - SequenceGenerator 테스트 (2개)
+  - MarketTickEvent 테스트 (2개)
+  - OrderFillEvent 테스트 (2개)
+  - AccountUpdateEvent 테스트 (2개)
+  - EventType Enum 테스트 (7개)
+  - BrokerType Enum 테스트 (2개)
+  - 테스트 결과: 17 passed
+
 ### 빌드 상태
 - 빌드 성공 (npm run build)
 - appStore.ts 완전 제거
@@ -145,17 +166,18 @@
 - hotStore/uiStore 분리(P1-1): 완료 - GPT5.5_아키텍처 Phase 4-1 해당
 
 ## 다음 단계
-- 대기
+- Phase 1.2: Event Bus 구현 (event_bus.py)
 
 ## 미해결 문제
 - 없음
 
 ## 백업 상태
-- git commit 완료 (8bd3033)
+- git commit 완료 (395e8c1)
 - 빌드 성공 상태
 - P1-1 단계 6 완료 (appStore.ts 제거 및 hotStore/uiStore 완전 분리)
 - P1-3 주문 상태기계 검증 완료 (state_manager.py ALLOWED_TRANSITIONS 수정, 테스트 8 passed)
 - P2-2-7 Dashboard/Alert 구현 완료 (latency.py, metrics.py, metrics-dashboard.ts, 라우팅/메뉴 연결)
+- Phase 1.1 Event Model 정의 완료 (events.py 생성, state_manager.py 통합, 테스트 17 passed)
 - Phase 4: 문서 동기화 완료 (GPT5.5_P2-2-7, 로드맵, 현재진단 업데이트)
 
 ## 참고 프로젝트
