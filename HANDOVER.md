@@ -43,6 +43,7 @@
 - Phase 3: P1-3 주문 상태기계 검증 (완료)
 - Phase 3: P2-2-7 Dashboard/Alert 구현 (완료)
 - Phase 1.1: Event Model 정의 (완료)
+- Phase 1.2: Event Bus 구현 (완료)
 
 ## 현재 상태
 ### Phase 1.1 완료 내용
@@ -64,6 +65,24 @@
   - EventType Enum 테스트 (7개)
   - BrokerType Enum 테스트 (2개)
   - 테스트 결과: 17 passed
+
+### Phase 1.2 완료 내용
+- backend/app/core/event_bus.py 생성 완료
+  - EventBus 클래스 (Publish-Subscribe 패턴)
+  - Priority Queue (우선순위 큐)
+  - Coalescing 지원 (동일 종목 이벤트 덮어쓰기)
+  - 비동기 Subscriber 처리
+  - 메트릭 (event_count, dropped_count, queue_size, coalescing_map_size, subscriber_count)
+- backend/tests/test_event_bus.py 테스트 작성 완료
+  - Singleton 테스트 (1개)
+  - Publish/Subscribe 테스트 (1개)
+  - Priority Queue 테스트 (1개)
+  - Coalescing 테스트 (1개)
+  - Unsubscribe 테스트 (1개)
+  - Metrics 테스트 (1개)
+  - Enable/Disable Coalescing 테스트 (1개)
+  - PriorityEvent 정렬 테스트 (1개)
+  - 테스트 결과: 8 passed
 
 ### 빌드 상태
 - 빌드 성공 (npm run build)
@@ -166,18 +185,19 @@
 - hotStore/uiStore 분리(P1-1): 완료 - GPT5.5_아키텍처 Phase 4-1 해당
 
 ## 다음 단계
-- Phase 1.2: Event Bus 구현 (event_bus.py)
+- Phase 1.3: Broker Adapter 리팩토링
 
 ## 미해결 문제
 - 없음
 
 ## 백업 상태
-- git commit 완료 (395e8c1)
+- git commit 완료 (866ea02)
 - 빌드 성공 상태
 - P1-1 단계 6 완료 (appStore.ts 제거 및 hotStore/uiStore 완전 분리)
 - P1-3 주문 상태기계 검증 완료 (state_manager.py ALLOWED_TRANSITIONS 수정, 테스트 8 passed)
 - P2-2-7 Dashboard/Alert 구현 완료 (latency.py, metrics.py, metrics-dashboard.ts, 라우팅/메뉴 연결)
 - Phase 1.1 Event Model 정의 완료 (events.py 생성, state_manager.py 통합, 테스트 17 passed)
+- Phase 1.2 Event Bus 구현 완료 (event_bus.py 생성, 테스트 8 passed)
 - Phase 4: 문서 동기화 완료 (GPT5.5_P2-2-7, 로드맵, 현재진단 업데이트)
 
 ## 참고 프로젝트
