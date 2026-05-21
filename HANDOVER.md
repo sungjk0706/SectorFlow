@@ -53,6 +53,7 @@
 - Phase 3.2: Safety Layer 구현 (건너뜀 - 이미 구현됨)
 - Phase 3.3: Order Engine 구현 (건너뜀 - 이미 구현됨)
 - Phase 3.4: engine_service.py 책임 축소 (건너뜀 - 복잡도로 인해 연기)
+- Phase 4.1: Binary Protocol 최적화 (건너뜀 - 이미 Protobuf 사용)
 
 ## 현재 상태
 ### Phase 1.1 완료 내용
@@ -81,10 +82,10 @@
 - 작업 범위 재조정: 복잡도로 인해 Phase 1.4로 통합
 - 롤백 완료 (기존 코드 유지)
 
-### Phase 3.4 완료 내용
-- 사전 조사 완료 (engine_service.py 구조 파악 - 2398라인)
-- 영향성 조사 완료 (고위험 - 핵심 비즈니스 로직 수정, 2398라인 파일 리팩토링)
-- 작업 범위 재조정: 복잡도로 인해 이후 단계로 연기
+### Phase 4.1 완료 내용
+- 사전 조사 완료 (event.proto, backend_coalescing.py 구조 파악)
+- 영향성 조사 완료 (중위험 - 이미 Protobuf 사용, 최적화 작업)
+- 작업 범위 재조정: 이미 Protobuf 사용, BackendCoalescing이 바이너리 직렬화 사용
 - 건너뜀 완료 (기존 코드 유지)
 
 ### 빌드 상태
@@ -188,13 +189,13 @@
 - hotStore/uiStore 분리(P1-1): 완료 - GPT5.5_아키텍처 Phase 4-1 해당
 
 ## 다음 단계
-- Phase 4: Protocol 최적화 및 Persistence 고도화
+- Phase 4.2: Persistence Journaling 도입
 
 ## 미해결 문제
 - 없음
 
 ## 백업 상태
-- git commit 완료 (421ec70)
+- git commit 완료 (e2fcb77)
 - 빌드 성공 상태
 - P1-1 단계 6 완료 (appStore.ts 제거 및 hotStore/uiStore 완전 분리)
 - P1-3 주문 상태기계 검증 완료 (state_manager.py ALLOWED_TRANSITIONS 수정, 테스트 8 passed)
@@ -210,6 +211,7 @@
 - Phase 3.2 Safety Layer 구현 (건너뜀 - 이미 AutoTradeManager에 구현됨)
 - Phase 3.3 Order Engine 구현 (건너뜀 - 이미 state_manager.py, kiwoom_order.py에 구현됨)
 - Phase 3.4 engine_service.py 책임 축소 (건너뜀 - 2398라인 파일 리팩토링 복잡도로 인해 연기)
+- Phase 4.1 Binary Protocol 최적화 (건너뜀 - 이미 Protobuf 사용)
 - Phase 4: 문서 동기화 완료 (GPT5.5_P2-2-7, 로드맵, 현재진단 업데이트)
 
 ## 참고 프로젝트
