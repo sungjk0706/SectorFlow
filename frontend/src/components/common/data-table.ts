@@ -288,22 +288,51 @@ function createFixedMode<T extends object>(
     currentPercentages = percentages
   }
 
+  // Phase 2.1: 렌더링 주기 제한 (requestAnimationFrame)
+  let pendingRows: TableRow<T>[] | null = null
+  let rafId: number | null = null
+  const TARGET_FPS = 60
+  const FRAME_INTERVAL = 1000 / TARGET_FPS
+  let lastRenderTime = 0
+
+  function scheduleRender() {
+    if (rafId !== null) return
+    rafId = requestAnimationFrame((timestamp) => {
+      if (pendingRows === null) {
+        rafId = null
+        return
+      }
+      const elapsed = timestamp - lastRenderTime
+      if (elapsed < FRAME_INTERVAL) {
+        rafId = requestAnimationFrame(scheduleRender)
+        return
+      }
+      lastRenderTime = timestamp
+      const rows = pendingRows
+      pendingRows = null
+      rafId = null
+      if (destroyed) return
+      while (tbody.firstChild) {
+        tbody.removeChild(tbody.firstChild)
+      }
+      if (rows.length === 0) {
+        renderEmpty()
+        return
+      }
+      const percentages = calcPercentages(columns, rows)
+      updateColWidths(percentages)
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i]
+        if (isGroupRow(row)) tbody.appendChild(renderGroupRow(row))
+        else tbody.appendChild(renderDataRow(row as T, i))
+      }
+    })
+  }
+
   function updateRows(rows: TableRow<T>[]) {
     if (destroyed) return
-    while (tbody.firstChild) {
-      tbody.removeChild(tbody.firstChild)
-    }
-    if (rows.length === 0) {
-      renderEmpty()
-      return
-    }
-    const percentages = calcPercentages(columns, rows)
-    updateColWidths(percentages)
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i]
-      if (isGroupRow(row)) tbody.appendChild(renderGroupRow(row))
-      else tbody.appendChild(renderDataRow(row as T, i))
-    }
+    pendingRows = rows
+    scheduleRender()
   }
 
   function destroy() {
@@ -602,9 +631,38 @@ function createVirtualScrollMode<T extends object>(
     scroller.updateItems(rows)
   }
 
+  // Phase 2.1: 렌더링 주기 제한 (requestAnimationFrame)
+  let pendingRows: TableRow<T>[] | null = null
+  let rafId: number | null = null
+  const TARGET_FPS = 60
+  const FRAME_INTERVAL = 1000 / TARGET_FPS
+  let lastRenderTime = 0
+
+  function scheduleRender() {
+    if (rafId !== null) return
+    rafId = requestAnimationFrame((timestamp) => {
+      if (pendingRows === null) {
+        rafId = null
+        return
+      }
+      const elapsed = timestamp - lastRenderTime
+      if (elapsed < FRAME_INTERVAL) {
+        rafId = requestAnimationFrame(scheduleRender)
+        return
+      }
+      lastRenderTime = timestamp
+      const rows = pendingRows
+      pendingRows = null
+      rafId = null
+      if (destroyed) return
+      internalUpdate(rows)
+    })
+  }
+
   function updateRows(rows: TableRow<T>[]) {
     if (destroyed) return
-    internalUpdate(rows)
+    pendingRows = rows
+    scheduleRender()
   }
 
   function destroy() {
