@@ -49,6 +49,7 @@
 - Phase 2.1: DataTable 렌더링 최적화 (완료)
 - Phase 2.2: React 역할 축소 (건너뜀 - 이미 Vanilla TS)
 - Phase 2.3: 렌더링 성능 모니터링 (완료)
+- Phase 3.1: Strategy Core 완전 분리 (건너뜀 - 복잡도로 인해 연기)
 
 ## 현재 상태
 ### Phase 1.1 완료 내용
@@ -77,18 +78,11 @@
 - 작업 범위 재조정: 복잡도로 인해 Phase 1.4로 통합
 - 롤백 완료 (기존 코드 유지)
 
-### Phase 2.3 완료 내용
-- 사전 조사 완료 (binding.ts, metrics-dashboard.ts 구조 파악)
-- 영향성 조사 완료 (중위험 - 새로운 모듈 추가, 기존 코드 수정)
-- 렌더링 성능 모듈 생성 완료 (render-metrics.ts)
-  - RenderMetric, RenderMetricsSummary 타입 정의
-  - RenderMetrics 클래스 구현 (렌더링 지연시간 측정, frame drop 감지)
-  - 싱글톤 인스턴스 (getRenderMetrics)
-- metrics-dashboard.ts 수정 완료
-  - 프론트엔드 메트릭 섹션 UI 추가
-  - 프론트엔드 메트릭 데이터 로드 로직 추가
-  - 메트릭 초기화 기능에 프론트엔드 메트릭 초기화 추가
-- 빌드 테스트 완료 (npm run build 성공)
+### Phase 3.1 완료 내용
+- 사전 조사 완료 (engine_strategy_core.py, engine_sector_score.py 구조 파악)
+- 영향성 조사 완료 (고위험 - 핵심 비즈니스 로직 수정)
+- 작업 범위 재조정: 복잡도로 인해 이후 단계로 연기
+- 건너뜀 완료 (기존 코드 유지)
 
 ### 빌드 상태
 - 빌드 성공 (npm run build)
@@ -191,13 +185,13 @@
 - hotStore/uiStore 분리(P1-1): 완료 - GPT5.5_아키텍처 Phase 4-1 해당
 
 ## 다음 단계
-- Phase 3: Strategy Core & Order Engine 독립
+- Phase 3.2: Safety Layer 구현
 
 ## 미해결 문제
 - 없음
 
 ## 백업 상태
-- git commit 완료 (1b76fdd)
+- git commit 완료 (0c106e1)
 - 빌드 성공 상태
 - P1-1 단계 6 완료 (appStore.ts 제거 및 hotStore/uiStore 완전 분리)
 - P1-3 주문 상태기계 검증 완료 (state_manager.py ALLOWED_TRANSITIONS 수정, 테스트 8 passed)
@@ -209,6 +203,7 @@
 - Phase 2.1 DataTable 렌더링 최적화 완료 (requestAnimationFrame 기반 렌더링 주기 제한 60fps)
 - Phase 2.2 React 역할 축소 (건너뜀 - 이미 Vanilla TS)
 - Phase 2.3 렌더링 성능 모니터링 완료 (render-metrics.ts 생성, metrics-dashboard.ts 수정)
+- Phase 3.1 Strategy Core 완전 분리 (건너뜀 - 복잡도로 인해 이후 단계로 연기)
 - Phase 4: 문서 동기화 완료 (GPT5.5_P2-2-7, 로드맵, 현재진단 업데이트)
 
 ## 참고 프로젝트
