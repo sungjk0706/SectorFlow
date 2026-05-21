@@ -12,19 +12,11 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Dict, Optional, Set, Any
 
+from backend.app.core.events import EventType, BrokerType
+
 _log = logging.getLogger(__name__)
-
-
-class EventType(Enum):
-    """이벤트 타입"""
-    ORDER_CREATED = "order_created"
-    ORDER_STATUS_CHANGED = "order_status_changed"
-    FILL_EVENT = "fill_event"
-    POSITION_UPDATED = "position_updated"
-    BALANCE_UPDATED = "balance_updated"
 
 
 class OrderStatus(Enum):
