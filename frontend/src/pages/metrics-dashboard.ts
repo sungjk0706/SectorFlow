@@ -6,6 +6,7 @@ import { createGlobalWsBadge } from '../settings'
 import { FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
 import { api } from '../api/client'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
+import { getRenderMetrics } from '../utils/render-metrics'
 
 /* ── 타입 정의 ── */
 
@@ -25,6 +26,13 @@ interface Alert {
   value: number
   threshold: number
 }
+
+/* ── 프론트엔드 메트릭 컬럼 ── */
+
+const FRONTEND_METRIC_COLS: ColumnDef<{ name: string; value: string }>[] = [
+  { key: 'name', label: '메트릭', align: 'left', render: r => r.name },
+  { key: 'value', label: '값', align: 'right', render: r => r.value },
+]
 
 /* ── 메트릭 요약 테이블 컬럼 ── */
 
@@ -86,6 +94,25 @@ export function createMetricsDashboard() {
   header.appendChild(title)
   header.appendChild(createGlobalWsBadge())
   container.appendChild(header)
+
+  // Phase 2.3: 프론트엔드 메트릭 섹션
+  const frontendSection = document.createElement('div')
+  frontendSection.style.cssText = `
+    margin-bottom: 30px;
+  `
+
+  const frontendTitle = document.createElement('h2')
+  frontendTitle.textContent = '프론트엔드 렌더링 성능'
+  frontendTitle.style.cssText = `
+    font-size: ${FONT_SIZE.section};
+    font-weight: ${FONT_WEIGHT.semibold};
+    margin-bottom: 15px;
+  `
+  frontendSection.appendChild(frontendTitle)
+
+  const frontendTableContainer = document.createElement('div')
+  frontendSection.appendChild(frontendTableContainer)
+  container.appendChild(frontendSection)
 
   // 메트릭 요약 섹션
   const metricsSection = document.createElement('div')
@@ -164,6 +191,7 @@ export function createMetricsDashboard() {
   // 테이블 생성
   let metricsTable: DataTableApi<{ name: string; summary: MetricSummary }> | null = null
   let alertsTable: DataTableApi<Alert> | null = null
+  let frontendTable: DataTableApi<{ name: string; value: string }> | null = null
 
   // 데이터 로드 함수
   async function loadData() {
@@ -172,6 +200,29 @@ export function createMetricsDashboard() {
         api.fetchMetricsSummary(),
         api.fetchMetricsAlerts(20),
       ])
+
+      // Phase 2.3: 프론트엔드 메트릭 로드
+      const renderMetrics = getRenderMetrics()
+      const renderSummary = renderMetrics.getSummary()
+      const frontendData = [
+        { name: '렌더링 수', value: String(renderSummary.count) },
+        { name: '최소 지연시간 (ms)', value: renderSummary.min.toFixed(2) },
+        { name: '최대 지연시간 (ms)', value: renderSummary.max.toFixed(2) },
+        { name: '평균 지연시간 (ms)', value: renderSummary.avg.toFixed(2) },
+        { name: 'Frame Drop 수', value: String(renderSummary.frameDropCount) },
+        { name: 'Frame Drop 비율 (%)', value: (renderSummary.frameDropRate * 100).toFixed(2) },
+      ]
+
+      if (!frontendTable) {
+        frontendTable = createDataTable<{ name: string; value: string }>({
+          columns: FRONTEND_METRIC_COLS,
+          virtualScroll: false,
+          stickyHeader: true,
+          emptyText: '프론트엔드 메트릭 데이터 없음',
+        })
+        frontendTableContainer.appendChild(frontendTable.el)
+      }
+      frontendTable.updateRows(frontendData)
 
       // 메트릭 요약 데이터 변환
       const metricsData = Object.entries(summary).map(([name, sum]) => ({ name, summary: sum }))
@@ -209,6 +260,7 @@ export function createMetricsDashboard() {
   clearButton.addEventListener('click', async () => {
     try {
       await api.clearMetrics()
+      getRenderMetrics().reset() // Phase 2.3: 프론트엔드 메트릭 초기화
       await loadData()
     } catch (error) {
       console.error('[MetricsDashboard] 메트릭 초기화 실패:', error)
