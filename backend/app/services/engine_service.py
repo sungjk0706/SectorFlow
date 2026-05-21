@@ -55,7 +55,8 @@ from backend.app.services import settlement_engine
 import backend.app.services.engine_bootstrap as _engine_bootstrap
 
 # ── StateManager (중앙 상태 관리) ─────────────────────────────────────────
-from backend.app.services.state_manager import StateManager, EventType, OrderStatus
+from backend.app.services.state_manager import StateManager, OrderStatus
+from backend.app.core.events import EventType
 
 _state_manager: StateManager | None = None
 
