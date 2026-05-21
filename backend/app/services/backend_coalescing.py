@@ -44,6 +44,7 @@ class BackendCoalescing:
         self.websocket_connections: Set = set()
         self.last_flush_time: float = 0
         self.flush_event = asyncio.Event()  # flush 이벤트 (Event 기반 전환)
+        self.dropped_count: int = 0  # Drop된 패킷 수 (Coalescing으로 덮어쓰기)
 
     @classmethod
     def get_instance(cls) -> "BackendCoalescing":
@@ -54,6 +55,10 @@ class BackendCoalescing:
 
     def add_event(self, code: str, event: Dict[str, Any]) -> None:
         """이벤트 추가 (종목 기준 Coalescing)"""
+        # 동일 종목 코드가 이미 존재하면 Drop 카운트 증가
+        if code in self.pending_map:
+            self.dropped_count += 1
+        
         self.pending_map[code] = event
 
         # 조건 2: pendingMap size > threshold 즉시 flush (Event 기반)
@@ -94,6 +99,14 @@ class BackendCoalescing:
     def remove_websocket(self, websocket) -> None:
         """WebSocket 연결 제거"""
         self.websocket_connections.discard(websocket)
+
+    def get_dropped_count(self) -> int:
+        """Drop된 패킷 수 조회"""
+        return self.dropped_count
+
+    def reset_dropped_count(self) -> None:
+        """Drop 카운트 리셋"""
+        self.dropped_count = 0
 
     async def start(self) -> None:
         """Coalescing 시작"""

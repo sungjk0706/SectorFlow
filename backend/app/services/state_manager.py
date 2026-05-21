@@ -12,9 +12,11 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Dict, Optional, Set, Any
 
 from backend.app.core.events import EventType, BrokerType
+from backend.app.core import journal as _journal
 
 _log = logging.getLogger(__name__)
 
@@ -131,7 +133,7 @@ class StateManager:
                 await self._handle_order_created(event.data)
             elif event.event_type == EventType.ORDER_STATUS_CHANGED:
                 await self._handle_order_status_changed(event.data)
-            elif event.event_type == EventType.FILL_EVENT:
+            elif event.event_type == EventType.ORDER_FILL:
                 await self._handle_fill_event(event.data)
             elif event.event_type == EventType.POSITION_UPDATED:
                 await self._handle_position_updated(event.data)
@@ -282,3 +284,66 @@ class StateManager:
         if order_id:
             return self._orders.get(order_id)
         return None
+
+    # ── Journal Replay ─────────────────────────────────────────────────────────
+
+    async def replay_from_journal(self) -> int:
+        """저널에서 상태 재생 (장애 복구용)
+        
+        Returns:
+            재생된 엔트리 수
+        """
+        def handle_settings_change(entry):
+            """설정 변경 재생 - 현재는 로그만 남김"""
+            data = entry.data
+            changed_keys = data.get("changed_keys", [])
+            _log.info("[StateManager] 저널 재생 - 설정 변경: %s", changed_keys)
+            # 설정 재생은 settings_store.py에서 처리 (여기서는 로그만)
+
+        def handle_order_request(entry):
+            """주문 요청 재생"""
+            data = entry.data
+            order_id = data.get("order_id")
+            stock_code = data.get("stock_code")
+            side = data.get("side")
+            quantity = data.get("quantity")
+            price = data.get("price")
+            
+            # 주문 상태 복구 (PENDING 상태로 재생)
+            order = Order(
+                order_id=order_id,
+                stock_code=stock_code,
+                side=side,
+                quantity=quantity,
+                price=price,
+                status=OrderStatus.PENDING,
+            )
+            self._orders[order_id] = order
+            _log.info("[StateManager] 저널 재생 - 주문 요청 복구: %s %s %d주", order_id, side, quantity)
+
+        def handle_fill_event(entry):
+            """체결 이벤트 재생"""
+            data = entry.data
+            order_id = data.get("order_id")
+            fill_quantity = data.get("fill_quantity")
+            fill_price = data.get("fill_price")
+            
+            # 체결 이벤트 발행 (기존 이벤트 핸들러 재사용)
+            asyncio.create_task(self.emit_event(
+                EventType.ORDER_FILL,
+                {
+                    "order_id": order_id,
+                    "fill_quantity": fill_quantity,
+                    "fill_price": fill_price,
+                }
+            ))
+            _log.info("[StateManager] 저널 재생 - 체결 이벤트 발행: %s %d주", order_id, fill_quantity)
+
+        # 저널 재생 실행
+        replayed_count = _journal.replay_journal(
+            settings_change_handler=handle_settings_change,
+            order_request_handler=handle_order_request,
+            fill_event_handler=handle_fill_event,
+        )
+        
+        return replayed_count

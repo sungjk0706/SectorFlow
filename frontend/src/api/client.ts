@@ -161,4 +161,7 @@ export const api = {
     request<{ status: string }>('/api/metrics/clear', {
       method: 'POST',
     }),
+
+  fetchMetricsDropped: () =>
+    request<{ dropped_count: number }>('/api/metrics/dropped'),
 };

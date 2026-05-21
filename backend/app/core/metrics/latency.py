@@ -23,6 +23,7 @@ class LatencyMetrics:
         "frontend_to_ui_ms": 50,
         "order_to_fill_ms": 1000,
         "fill_to_sync_ms": 200,
+        "end_to_end_ms": 200,  # broker_recv_ts부터 ui_render_ts까지 전체 지연
     }
     
     def __init__(self, max_samples: int = 10000, max_alerts: int = 100):

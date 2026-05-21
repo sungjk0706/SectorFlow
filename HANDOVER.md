@@ -54,6 +54,9 @@
 - Phase 3.3: Order Engine 구현 (건너뜀 - 이미 구현됨)
 - Phase 3.4: engine_service.py 책임 축소 (건너뜀 - 복잡도로 인해 연기)
 - Phase 4.1: Binary Protocol 최적화 (건너뜀 - 이미 Protobuf 사용)
+- Phase 4.2: Persistence Journaling 도입 (완료)
+- Phase 4.3: 관측성(Observability) 고도화 (완료)
+- Phase 4.4: 장애 복구 테스트 (완료)
 
 ## 현재 상태
 ### Phase 1.1 완료 내용
@@ -87,6 +90,83 @@
 - 영향성 조사 완료 (중위험 - 이미 Protobuf 사용, 최적화 작업)
 - 작업 범위 재조정: 이미 Protobuf 사용, BackendCoalescing이 바이너리 직렬화 사용
 - 건너뜀 완료 (기존 코드 유지)
+
+### Phase 4.2 완료 내용
+- backend/app/core/journal.py 생성 완료
+  - Append-only JSON 파일 저널링 구현 (SQLite 도입 없이 아키텍처 존중)
+  - 비동기 Consumer Task 패턴 (trade_history.py와 유사)
+  - 이벤트 타입: SETTINGS_CHANGE, ORDER_REQUEST, FILL_EVENT
+  - 시퀀스 번호 기반 순서 보장
+  - 장애 복구 시 재생 로직 (replay_journal)
+  - Compaction 기능 (최근 1000개만 유지)
+- backend/app/core/settings_store.py 통합 완료
+  - apply_settings_changes 함수에 저널링 추가
+  - before/after 상태 캡처 및 changed_keys 추적
+  - record_settings_change 호출
+- backend/app/services/trading.py 통합 완료
+  - execute_buy 함수에 주문 요청 저널링 추가
+  - execute_sell 함수에 주문 요청 저널링 추가
+  - record_order_request 호출
+- backend/app/services/state_manager.py 통합 완료
+  - replay_from_journal 메서드 추가
+  - 설정 변경, 주문 요청, 체결 이벤트 핸들러 구현
+  - 장애 복구 시 상태 재생 지원
+- backend/tests/test_journal.py 테스트 작성 완료
+  - 시퀀스 생성기 테스트 (1개)
+  - 저널링 기록 테스트 (3개 - 직접 파일 I/O)
+  - 저널 재생 테스트 (1개)
+  - 저널 통계 테스트 (1개)
+  - 저널 초기화 테스트 (1개)
+  - 복합 라이프사이클 테스트 (1개)
+  - 테스트 결과: 8 passed
+
+### Phase 4.3 완료 내용
+- backend/app/core/metrics/latency.py 확장 완료
+  - end_to_end_ms 메트릭 추가 (broker_recv_ts부터 ui_render_ts까지 전체 지연)
+  - threshold 200ms 설정
+- backend/app/services/backend_coalescing.py 통합 완료
+  - dropped_count 필드 추가
+  - add_event 메서드에서 동일 종목 코드 덮어쓰기 시 카운트 증가
+  - get_dropped_count() 메서드 추가
+  - reset_dropped_count() 메서드 추가
+- backend/app/web/routes/metrics.py 확장 완료
+  - GET /api/metrics/dropped 엔드포인트 추가
+  - POST /api/metrics/dropped/reset 엔드포인트 추가
+- frontend/src/api/client.ts 통합 완료
+  - fetchMetricsDropped() 메서드 추가
+- frontend/src/pages/metrics-dashboard.ts 통합 완료
+  - 프론트엔드 메트릭 섹션에 Drop 패킷 수 표시 추가
+  - 자동 갱신 로드에 Drop 카운트 포함
+- binding.ts 확인 - 렌더링 지연시간 추적
+  - 이미 render-metrics.ts에 구현되어 있으므로 변경 없이 유지
+- backend/tests/test_observability.py 테스트 작성 완료
+  - end_to_end_ms 메트릭 threshold 테스트 (1개)
+  - end_to_end_ms 메트릭 기록 테스트 (1개)
+  - end_to_end_ms 메트릭 threshold 초과 alert 테스트 (1개)
+  - dropped_count 초기값 테스트 (1개)
+  - dropped_count 증가 테스트 (1개)
+  - dropped_count 리셋 테스트 (1개)
+  - dropped_count 싱글톤 테스트 (1개)
+  - 전역 LatencyMetrics 인스턴스 테스트 (1개)
+  - 테스트 결과: 8 passed
+
+### Phase 4.4 완료 내용
+- backend/tests/test_recovery.py 생성 완료
+  - Journal 재생 테스트 (4개)
+    - 설정 변경 저널 재생 테스트
+    - 주문 요청 저널 재생 테스트
+    - 체결 이벤트 저널 재생 테스트
+    - 다중 이벤트 저널 재생 테스트
+  - Event Queue 복구 테스트 (1개)
+  - State 복구 테스트 (2개)
+    - State Manager의 저널 재생 기능 테스트
+    - 빈 저널 파일에서의 State 복구 테스트
+  - 통합 복구 테스트 (1개)
+    - 전체 복구 시나리오 테스트
+- backend/app/services/state_manager.py 버그 수정
+  - Enum import 추가 (line 15)
+  - EventType.FILL_EVENT를 EventType.ORDER_FILL로 수정 (line 136, 333)
+- 테스트 결과: 8 passed
 
 ### 빌드 상태
 - 빌드 성공 (npm run build)
@@ -189,7 +269,7 @@
 - hotStore/uiStore 분리(P1-1): 완료 - GPT5.5_아키텍처 Phase 4-1 해당
 
 ## 다음 단계
-- Phase 4.2: Persistence Journaling 도입 (다음 세션에서 시작)
+- Phase 4 완료
 
 ## 미해결 문제
 - 없음
@@ -212,6 +292,9 @@
 - Phase 3.3 Order Engine 구현 (건너뜀 - 이미 state_manager.py, kiwoom_order.py에 구현됨)
 - Phase 3.4 engine_service.py 책임 축소 (건너뜀 - 2398라인 파일 리팩토링 복잡도로 인해 연기)
 - Phase 4.1 Binary Protocol 최적화 (건너뜀 - 이미 Protobuf 사용)
+- Phase 4.2 Persistence Journaling 도입 완료 (journal.py 생성, settings_store.py/trading.py/state_manager.py 통합, 테스트 8 passed)
+- Phase 4.3 관측성(Observability) 고도화 완료 (latency.py 확장, backend_coalescing.py Drop 모니터링, metrics-dashboard.ts 통합, 테스트 8 passed)
+- Phase 4.4 장애 복구 테스트 완료 (test_recovery.py 생성, state_manager.py 버그 수정, 테스트 8 passed)
 - Phase 4: 문서 동기화 완료 (GPT5.5_P2-2-7, 로드맵, 현재진단 업데이트)
 
 ## 참고 프로젝트
