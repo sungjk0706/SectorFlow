@@ -39,6 +39,11 @@ async def lifespan(app: FastAPI):
     trade_history._reset_global_state()
     trade_history.start_consumer_task()
 
+    # Journal Consumer Task 시작 (Phase 4.2 Persistence Journaling)
+    from backend.app.core import journal
+    journal.start_consumer_task()
+    logger.info("[웹서버] Journal Consumer Task 시작 완료")
+
     # 엔진 초기화 (설정 → 데이터 로드 → 증권사 연결)
     logger.info("[웹서버] 엔진 초기화 시작")
     success = await start_engine(user_id="admin")
@@ -100,6 +105,11 @@ async def lifespan(app: FastAPI):
     # 체결 이력 Consumer Task 종료 (Graceful Shutdown - 큐에 남은 데이터 모두 저장)
     await trade_history.stop_consumer_task()
     logger.info("[웹서버] 체결 이력 Consumer Task 종료 완료")
+
+    # Journal Consumer Task 종료 (Phase 4.2 Persistence Journaling)
+    from backend.app.core import journal
+    await journal.stop_consumer_task()
+    logger.info("[웹서버] Journal Consumer Task 종료 완료")
 
     await telegram_bot.stop_async()
     await stop_engine()

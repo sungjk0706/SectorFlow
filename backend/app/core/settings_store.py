@@ -368,6 +368,8 @@ async def after_settings_persisted(
     }
     if changed_keys & _SECTOR_UI_KEYS:
         if engine_service.is_running():
+            if "sector_min_trade_amt" in changed_keys:
+                engine_service._update_avg_amt_5d(dict(engine_service._avg_amt_5d))
             engine_service.recompute_sector_summary_now()
         notify_desktop_sector_scores(force=True)
 

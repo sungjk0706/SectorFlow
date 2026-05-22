@@ -85,7 +85,6 @@ let _mounted = false
 function mount(container: HTMLElement): void {
   _mounted = true
   notifyPageActive('sell-position')
-  subscribeFids(['10'])  // 현재가(FID '10')만 구독 - 80% 낭비 제거
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
