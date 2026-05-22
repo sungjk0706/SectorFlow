@@ -386,21 +386,25 @@ async def _deferred_sector_summary() -> None:
                 # 캐시 없으면 업종 스켈레톤 캐시 구축 (실시간 틱 연동용)
                 from backend.app.services.engine_sector_score import SectorSummary, SectorScore
                 from backend.app.core.sector_mapping import get_merged_sector
+                from backend.app.core.industry_map import load_eligible_stocks_cache
                 
-                # _sector_stock_layout 기반 업종 스켈레톤 생성
-                _sector_names = set()
-                for t, v in _st._sector_stock_layout:
-                    if t == "code":
-                        sector = get_merged_sector(v)
-                        if sector:
-                            _sector_names.add(sector)
+                # 업종별 분모(Total) 선행 고정을 위한 eligible_stocks_cache 로드
+                eligible_stocks = load_eligible_stocks_cache() or {}
+                eligible_codes = set(eligible_stocks.keys()) if eligible_stocks else set()
                 
-                # 업종별 스켈레톤 SectorScore 생성 (rise_ratio=0.0으로 초기화, 실시간 틱으로 갱신)
+                # 업종별 종목 수 집계 (분모 선행 고정)
+                sector_total_counts: dict[str, int] = {}
+                for cd in eligible_codes:
+                    sector = get_merged_sector(cd)
+                    if sector:
+                        sector_total_counts[sector] = sector_total_counts.get(sector, 0) + 1
+                
+                # 업종별 스켈레톤 SectorScore 생성 (분모 선행 고정, rise_ratio=0.0으로 초기화)
                 _sectors = []
-                for sector_name in sorted(_sector_names):
-                    _sectors.append(SectorScore(
+                for sector_name in sorted(sector_total_counts.keys()):
+                    sector_score = SectorScore(
                         sector=sector_name,
-                        total=0,
+                        total=sector_total_counts[sector_name],  # 분모 선행 고정
                         rise_count=0,
                         rise_ratio=0.0,
                         avg_change_rate=0.0,
@@ -416,7 +420,10 @@ async def _deferred_sector_summary() -> None:
                         has_industry_data=False,
                         final_score=0.0,
                         metric_scores={},
-                    ))
+                    )
+                    _sectors.append(sector_score)
+                    # 업종명-SectorScore 인덱싱 맵 바인딩 (O(1) 다이렉트 접근용)
+                    _st._sector_score_index[sector_name] = sector_score
                 
                 _st._sector_summary_cache = SectorSummary(
                     sectors=_sectors,
