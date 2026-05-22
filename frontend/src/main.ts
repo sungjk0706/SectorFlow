@@ -259,6 +259,7 @@ function main(): void {
   // Health Check 시작 후 WS 연결
   waitForServerReady().then(() => {
     wsClient.connect(token)
+    wsSettingsClient.connect(token)
   }).catch(error => {
     console.error('[Health] 초기화 실패:', error)
     shell.setOverlay(true, '초기화 실패')

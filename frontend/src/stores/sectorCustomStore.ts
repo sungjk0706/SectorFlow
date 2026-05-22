@@ -10,6 +10,7 @@ export interface SectorCustomState {
   editWindowOpen: boolean
   loading: boolean
   noSectorCount: number
+  filter_summary?: string
 }
 
 const initialState: SectorCustomState = {
@@ -20,12 +21,13 @@ const initialState: SectorCustomState = {
   editWindowOpen: false,
   loading: false,
   noSectorCount: 0,
+  filter_summary: "",
 }
 
 export const sectorCustomStore = createStore<SectorCustomState>(initialState)
 
 /** SSE `sector-custom-changed` 이벤트 수신 시 store 갱신 */
-export function applySectorCustomChanged(data: SectorCustomChangedEvent): void {
+export function applySectorCustomChanged(data: SectorCustomChangedEvent & { filter_summary?: string }): void {
   const cd = data.custom_data
   sectorCustomStore.setState({
     sectors: cd?.sectors ?? {},
@@ -33,6 +35,7 @@ export function applySectorCustomChanged(data: SectorCustomChangedEvent): void {
     deletedSectors: cd?.deleted_sectors ?? [],
     mergedSectors: data.merged_sectors ?? [],
     noSectorCount: data.no_sector_count ?? 0,
+    filter_summary: data.filter_summary ?? sectorCustomStore.getState().filter_summary,
   })
 }
 

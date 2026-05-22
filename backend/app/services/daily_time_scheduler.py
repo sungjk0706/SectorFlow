@@ -142,30 +142,18 @@ def get_market_phase(now: datetime | None = None) -> dict:
 def is_heavy_operation_allowed(now: datetime | None = None) -> bool:
     """
     대량 다운로드 및 무거운 배치 연산 허용 여부 반환.
-    - 안전 구역(Safe Window): [20:30] ~ [다음 거래일 실시간 연결 시작 시간] → 허용 (True)
-    - 그 외 시간: 차단 (False)
+    - 실시간 연결 구간(ws_subscribe_start ~ ws_subscribe_end): 차단 (False)
+    - 그 외 시간: 허용 (True)
     """
-    from backend.app.core.trading_calendar import is_krx_holiday
     if now is None:
         now = _kst_now()
-    today = now.date()
     
-    # 휴장일이면 안전 구역으로 간주 (전일 허용)
-    if today.weekday() >= 5 or is_krx_holiday(today):
-        return True
+    # 실시간 연결 구간이면 무거운 작업 차단
+    if is_ws_subscribe_window():
+        return False
     
-    t = now.hour * 60 + now.minute
-    
-    # 실시간 연결 시작 시간 (기본값: 08:01 = 481분)
-    # TODO: settings_cache에서 ws_subscribe_start 읽어오기
-    start_time_limit = 481  # 08:01
-    
-    # 안전 구역: 20:30 이후 (~다음날 연결 시작 시간 전)
-    if t >= 1230 or t < start_time_limit:
-        return True
-    
-    # 그 외 시간: 차단 (장중, 낮 시간대 등)
-    return False
+    # 실시간 연결 구간 외면 허용
+    return True
 
 
 def _kst_now() -> datetime:
@@ -553,15 +541,9 @@ def retry_pipeline_catchup_after_bootstrap() -> None:
         # 핵심 캐시 모두 유효 → 확정 조회 완료로 간주
         _confirmed_done = True
 
-    # 2) avg_amt만 만료 → 5일봉 재구축만 트리거 (ka10081)
+    # 2) avg_amt만 만료 → 수동 다운로드 요청 알림 (자동 트리거 폐기)
     if _avg_amt_expired:
-        logger.debug("[타이머] 5일거래대금평균/고가 저장데이터 만료 — 5일챠트 재구축 트리거")
-        try:
-            engine_service._avg_amt_needs_bg_refresh = True
-            engine_service._broadcast_avg_amt_progress(0, 0, status="cache_deleted")
-            loop.create_task(engine_service.refresh_avg_amt_5d_cache())
-        except Exception as e:
-            logger.warning("[타이머] 5일챠트 재구축 트리거 실패: %s", e, exc_info=True)
+        logger.warning("[타이머] 5일거래대금평균/고가 저장데이터 만료 -- 수동 다운로드 필요 (사용자 버튼 클릭 요청)")
 
 
 def _broadcast_market_phase() -> None:

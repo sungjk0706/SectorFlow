@@ -13,8 +13,19 @@ router = APIRouter(prefix="/api", tags=["settings"])
 async def update_settings(body: dict, _: str = Depends(get_current_user)):
     try:
         from backend.app.core.settings_store import apply_settings_updates, after_settings_persisted
+        from backend.app.services.core_queues import get_control_queue
+
         changed_keys = set(body.keys())
         apply_settings_updates(body)
+
+        # control_queue에 설정 변경 신호 전송 (Step 6: 컨트롤 플레인 우회 배관 연동)
+        control_queue = get_control_queue()
+        await control_queue.put({
+            "type": "UPDATE_CONFIG",
+            "payload": body,
+            "changed_keys": changed_keys,
+        })
+
         await after_settings_persisted(username="admin", changed_keys=changed_keys)
         return {"ok": True}
     except Exception as e:

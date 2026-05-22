@@ -136,6 +136,22 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   logo.textContent = '🌊 SectorFlow'
   header.appendChild(logo)
 
+  // 백그라운드 데이터 갱신 칩
+  const avgAmtChip = createChipEl()
+  avgAmtChip.style.display = 'none'
+  header.appendChild(avgAmtChip)
+
+  // 엔진 상태 칩: 키움증권, 키움실시간, 테스트/실전모드
+  const kiwoomBrokerChip = createChipEl()
+  kiwoomBrokerChip.style.display = 'none'
+  const kiwoomWsChip = createChipEl()
+  kiwoomWsChip.style.display = 'none'
+  const modeChip = createChipEl()
+  modeChip.style.display = 'none'
+  header.appendChild(kiwoomBrokerChip)
+  header.appendChild(kiwoomWsChip)
+  header.appendChild(modeChip)
+
   // KRX / NXT 장 상태 칩
   const krxChip = createChipEl()
   const nxtChip = createChipEl()
@@ -146,22 +162,6 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   const bootstrapChip = createChipEl()
   bootstrapChip.style.display = 'none'
   header.appendChild(bootstrapChip)
-
-  // 백그라운드 데이터 갱신 칩
-  const avgAmtChip = createChipEl()
-  avgAmtChip.style.display = 'none'
-  header.appendChild(avgAmtChip)
-
-  // 엔진 상태 칩: 테스트/실전모드, 증권사(키움/LS), 실시간 연결(키움/LS)
-  const modeChip = createChipEl()
-  modeChip.style.display = 'none'
-  const kiwoomBrokerChip = createChipEl()
-  kiwoomBrokerChip.style.display = 'none'
-  const kiwoomWsChip = createChipEl()
-  kiwoomWsChip.style.display = 'none'
-  header.appendChild(modeChip)
-  header.appendChild(kiwoomBrokerChip)
-  header.appendChild(kiwoomWsChip)
 
   // 설정 상태 칩: 자동매매, 자동매수, 자동매도, 텔레그램
   const autoTradeChip = createChipEl()

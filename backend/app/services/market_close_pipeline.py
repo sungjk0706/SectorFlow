@@ -375,7 +375,8 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
     Returns:
         저장 성공 여부.
     """
-    from backend.app.core.sector_stock_cache import save_snapshot_cache, load_stock_name_cache
+    from backend.app.core.sector_stock_cache import load_stock_name_cache
+    from backend.app.db.crud import batch_insert_stocks
 
     pending: dict = getattr(es, "_pending_stock_details", {})
     if not pending:
@@ -406,8 +407,59 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
         return False
 
     try:
-        await asyncio.to_thread(save_snapshot_cache, rows)
-        _log.info("[타이머] 확정 데이터 저장데이터 저장 완료 — %d종목", len(rows))
+        # 데이터 매핑 및 대량 저장 준비
+        stocks_data = []
+        avg_5d_map = getattr(es, "_avg_amt_5d", {})
+        high_5d_map = getattr(es, "_high_5d_cache", {})
+        
+        for cd, detail in rows:
+            sector = detail.get("sector", "기타")
+            if not sector or sector == "":
+                sector = "기타"
+            
+            # 당일 데이터
+            trade_amount = detail.get("trade_amount", 0)
+            today_high = detail.get("high_price", detail.get("cur_price", 0))
+            
+            # 5일 평균/고가 데이터
+            high_5d = high_5d_map.get(cd)
+            if not high_5d:
+                high_5d = today_high
+            
+            avg_5d = avg_5d_map.get(cd)
+            if not avg_5d:
+                avg_5d = trade_amount
+            
+            stocks_data.append({
+                "code": cd,
+                "name": detail.get("name", cd) or cd,
+                "sector": sector,
+                "cur_price": float(detail.get("cur_price", 0)),
+                "sign": str(detail.get("sign", "3")),
+                "change": float(detail.get("change", 0)),
+                "change_rate": float(detail.get("change_rate", 0.0)),
+                "prev_close": float(detail.get("prev_close", 0)),
+                "trade_amount": float(trade_amount),
+                "today_high_price": float(today_high),
+                "avg_5d_trade_amount": float(avg_5d),
+                "high_5d_price": float(high_5d),
+                "strength": str(detail.get("strength", "-"))
+            })
+        
+        # 비동기 이벤트 루프 블로킹 방지: 별도 스레드에서 대량 저장
+        saved_count = await asyncio.to_thread(batch_insert_stocks, stocks_data)
+        _log.info("[타이머] 확정 데이터 DB 저장 완료 -- %d/%d종목", saved_count, len(rows))
+        
+        # JSON 메타데이터 동기화: DB 저장 완료 시 스냅샷 캐시에 당일 날짜 기록
+        # 재기동 시 다운로드 좀비 현상 원천 차단
+        from backend.app.core.sector_stock_cache import save_snapshot_cache
+        from backend.app.core.trading_calendar import current_trading_date_str
+        try:
+            snapshot_rows = [(cd, dict(detail)) for cd, detail in pending.items()]
+            save_snapshot_cache(snapshot_rows)
+            _log.info("[타이머] 스냅샷 캐시 날짜 동기화 완료 -- %s", current_trading_date_str())
+        except Exception as e:
+            _log.warning("[타이머] 스냅샷 캐시 날짜 동기화 실패: %s", e, exc_info=True)
         
         # 메모리 원자적 필터링 (Bug 4 수정)
         if elig:
@@ -415,10 +467,10 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
                 for cd in list(pending.keys()):
                     if cd not in elig:
                         pending.pop(cd, None)
-                        
+                    
         return True
     except Exception as exc:
-        _log.warning("[타이머] 확정 데이터 저장데이터 저장 실패: %s", exc, exc_info=True)
+        _log.warning("[타이머] 확정 데이터 DB 저장 실패: %s", exc, exc_info=True)
         return False
 
 
@@ -539,14 +591,35 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
                     confirmed_codes.add(r.code)
     
             excluded_count = len(records) - len(confirmed_codes)
+            pct = (excluded_count / len(records) * 100) if records else 0
             _log.info(
                 "[타이머] Step 2 완료 — 적격 종목 필터링: 전체 %d종목 → 적격 %d종목 (제외 %d종목, %.1f%%)",
-                len(records), len(confirmed_codes), excluded_count,
-                (excluded_count / len(records) * 100) if records else 0
+                len(records), len(confirmed_codes), excluded_count, pct
             )
+            
+            summary_str = f"전체 {len(records)}종목 → 적격 {len(confirmed_codes)}종목 (제외 {excluded_count}종목, {pct:.1f}%)"
             if filter_reasons:
                 top_reasons = sorted(filter_reasons.items(), key=lambda x: x[1], reverse=True)[:5]
                 _log.info("[타이머] 주요 부적격 사유 (Top 5): %s", dict(top_reasons))
+                
+                # 포맷팅: {'marketCode=8(ETF)': 1115, ...} -> ETF 1115개, 증거금100% 1079개...
+                reason_strs = []
+                for k, v in top_reasons:
+                    if "(" in k:
+                        k_clean = k.split("(")[-1].replace(")", "")
+                    else:
+                        k_clean = k.split("=")[-1]
+                    reason_strs.append(f"{k_clean} {v}개")
+                summary_str += " | 주요 부적격: " + ", ".join(reason_strs)
+            
+            es._latest_filter_summary = summary_str
+            
+            try:
+                from backend.app.web.routes.sector_custom import broadcast_sector_custom_changed
+                broadcast_sector_custom_changed()
+            except Exception as e:
+                _log.warning("Failed to broadcast filter summary: %s", e)
+            
             filtering_done_event.set()
         except Exception as exc:
             _log.warning("[타이머] Step 2 필터링 실패: %s — filtering_done_event 미발행", exc, exc_info=True)

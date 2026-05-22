@@ -94,6 +94,8 @@ let wsBadge: HTMLElement | null = null
 let emptyEl: HTMLElement | null = null
 let unsubTargets: (() => void) | null = null
 let rafHandle: number | null = null
+let onRealDataTick: ((e: Event) => void) | null = null
+let onOrderbookTick: ((e: Event) => void) | null = null
 let _mounted = false
 
 /* ── 한도 배지 렌더링 ── */
@@ -264,12 +266,37 @@ function mount(container: HTMLElement): void {
       })
     })
   }
+
+  // O(1) 초저지연 DOM 갱신 이벤트 리스너
+  onRealDataTick = (e: Event) => {
+    const code = (e as CustomEvent<string>).detail
+    if (dataTable && dataTable.updateItemByKey) {
+      dataTable.updateItemByKey(code)
+    }
+  }
+  window.addEventListener('real-data-tick', onRealDataTick)
+
+  onOrderbookTick = (e: Event) => {
+    const code = (e as CustomEvent<string>).detail
+    if (dataTable && dataTable.updateItemByKey) {
+      dataTable.updateItemByKey(code)
+    }
+  }
+  window.addEventListener('orderbook-tick', onOrderbookTick)
 }
 
 /* ── unmount ── */
 function unmount(): void {
   _mounted = false
   notifyPageInactive('buy-target')
+  if (onRealDataTick) {
+    window.removeEventListener('real-data-tick', onRealDataTick)
+    onRealDataTick = null
+  }
+  if (onOrderbookTick) {
+    window.removeEventListener('orderbook-tick', onOrderbookTick)
+    onOrderbookTick = null
+  }
   if (rafHandle !== null) { cancelAnimationFrame(rafHandle); rafHandle = null }
   if (unsubTargets) { unsubTargets(); unsubTargets = null }
   if (dataTable) { dataTable.destroy(); dataTable = null }
