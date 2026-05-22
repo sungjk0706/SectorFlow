@@ -62,16 +62,17 @@
 
 ## 현재 상태
 ### 최근 완료 단계
-- Phase 1.3+1.4 단계 1.2: Event Bus 통합 완료 (git commit: 9018f26)
-  - KiwoomConnector 수신 데이터를 Event Bus로 Publish 로직 구현
+- Phase 1.3+1.4 단계 1.3: engine_service.py Event Bus 구독 완료 (git commit: 3ce0a8b)
+  - Event Bus 구독 메서드 구현 (_subscribe_to_event_bus)
+  - 이벤트 핸들러 분리 (MarketTickEvent, OrderFillEvent, AccountUpdateEvent)
+  - MarketTickEvent 핸들러에서 캐시 업데이트 로직 구현
   - 기존 Producer-Consumer Queue 방식 유지 (하위 호환)
-  - Event Bus Coalescing 활성화 가능성 확인
 
 ### 다음 단계
-- Phase 1.3+1.4 단계 1.3: Event Bus Subscriber 구현
-  - State Manager가 Event Bus에서 MarketTickEvent 수신
-  - 기존 _handle_real_01 로직을 Event Bus 기반으로 전환
-  - 실시간 데이터 처리 경로를 Event Bus로 완전히 이동
+- Phase 1.3+1.4 단계 1.4: 기존 직접 수신 로직을 Event Bus 기반으로 전환
+  - engine_ws_dispatch.py의 _handle_real_01 로직을 Event Bus 핸들러로 완전히 이동
+  - 기존 WS → Queue → engine_service 경로를 WS → Event Bus → engine_service로 변경
+  - 하위 호환성 유지하며 점진적 전환
 ### Phase 1.1 완료 내용
 - backend/app/core/events.py 생성 완료
   - BaseEvent, MarketTickEvent, OrderFillEvent, AccountUpdateEvent 정의
@@ -107,6 +108,15 @@
 - tests/test_event_bus_integration.py: Event Bus 통합 테스트 추가 (5 passed)
 - 테스트 결과: test_events.py (17 passed), test_event_bus.py (8 passed), test_event_bus_integration.py (5 passed)
 - git commit: 9018f26
+
+### Phase 1.3+1.4 단계 1.3 완료 내용
+- engine_service.py: Event Bus 구독 메서드 추가 (_subscribe_to_event_bus)
+- engine_service.py: 이벤트 핸들러 분리 (_handle_market_tick_event, _handle_order_fill_event, _handle_account_update_event)
+- engine_service.py: start_engine에서 Event Bus 구독 호출 추가
+- tests/test_engine_service_event_bus.py: 핸들러 로직 단위 테스트 추가 (2 passed)
+- tests/conftest.py: RedirectFinder 복구
+- 테스트 결과: test_engine_service_event_bus.py (2 passed)
+- git commit: 3ce0a8b
 
 ### Phase 4.1 완료 내용
 - 사전 조사 완료 (event.proto, backend_coalescing.py 구조 파악)
