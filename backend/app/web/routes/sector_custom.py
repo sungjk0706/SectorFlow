@@ -101,7 +101,13 @@ def broadcast_sector_custom_changed() -> None:
         "no_sector_count": no_sector_count,
         "filter_summary": filter_summary,
     }
-    ws_manager.broadcast("sector-custom-changed", payload)
+    try:
+        from backend.app.services.core_queues import get_broadcast_queue
+        q = get_broadcast_queue()
+        if not q.full():
+            q.put_nowait({"type": "sector-custom-changed", "data": payload})
+    except Exception:
+        ws_manager.broadcast("sector-custom-changed", payload)
 
 
 

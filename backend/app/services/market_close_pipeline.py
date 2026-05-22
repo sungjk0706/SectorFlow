@@ -45,12 +45,21 @@ def _broadcast_confirmed_progress(
             "status": "confirmed",
             "step": step,
         }
+        from backend.app.services.core_queues import get_broadcast_queue
+        
+        if current >= total:
+            payload["status"] = "completed"
+
+        q = get_broadcast_queue()
+        data = {"type": "confirmed-progress", "data": payload}
+        
         if _loop is not None:
-            ws_manager.broadcast_threadsafe("confirmed-progress", payload, _loop)
+            _loop.call_soon_threadsafe(lambda: q.put_nowait(data) if not q.full() else None)
         else:
-            ws_manager.broadcast("confirmed-progress", payload)
-    except Exception as e:
-        _log.warning("[데이터] 브로드캐스트 실패: %s", e, exc_info=True)
+            if not q.full():
+                q.put_nowait(data)
+    except Exception as exc:
+        _log.warning("[데이터] 브로드캐스트 실패: %s", exc, exc_info=True)
 
 _log = logging.getLogger(__name__)
 

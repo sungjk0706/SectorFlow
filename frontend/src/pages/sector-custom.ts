@@ -1429,9 +1429,11 @@ function mount(_container: HTMLElement): void {
     }
   })
 
-  // uiStore 구독 — settings 변경 시 editWindowOpen 재계산 + 토글 갱신
+  // uiStore 구독 — settings 변경 시 editWindowOpen 재계산 + 토글 갱신 및 다운로드 완료 감지
   let prevSettings = uiStore.getState().settings
+  let prevAvgAmtProgressDone = uiStore.getState().avgAmtProgress?.done || false
   unsubSse = uiStore.subscribe((state) => {
+    // 1. Settings check
     if (state.settings !== prevSettings) {
       prevSettings = state.settings
       const newEditWindowOpen = computeEditWindowOpenByTime(state.settings)
@@ -1440,6 +1442,17 @@ function mount(_container: HTMLElement): void {
       }
       updateSchedulerToggles()
     }
+
+    // 2. Download progress check (Auto-refresh on complete)
+    const currentProgressDone = state.avgAmtProgress?.done || false
+    if (currentProgressDone && !prevAvgAmtProgressDone) {
+      const status = state.avgAmtProgress?.status
+      if (status === 'completed' || status === 'confirmed') {
+        console.log('[SectorCustom] 다운로드 완료 감지. 최신 데이터 자동 갱신 시작...')
+        loadInitialData()
+      }
+    }
+    prevAvgAmtProgressDone = currentProgressDone
   })
 
   // 초기 데이터 로드
