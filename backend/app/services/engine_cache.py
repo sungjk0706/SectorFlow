@@ -32,17 +32,40 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
         from backend.app.services.engine_strategy_core import make_detail
 
         # ── 5개 캐시 병렬 로드 ──
-        _cached_layout, _cached_snapshot, _cached_avg_result, _cached_market, _cached_eligible = await asyncio.gather(
+        from backend.app.db.models import create_stocks_table
+        from backend.app.db.crud import get_all_stocks
+        
+        # 테이블이 없으면 생성
+        await asyncio.to_thread(create_stocks_table)
+        
+        _db_stocks = await asyncio.to_thread(get_all_stocks)
+        _cached_layout, _cached_market, _cached_eligible = await asyncio.gather(
             asyncio.to_thread(load_layout_cache),
-            asyncio.to_thread(load_snapshot_cache),
-            asyncio.to_thread(load_avg_amt_cache),
             asyncio.to_thread(load_market_map_cache),
             asyncio.to_thread(load_eligible_stocks_cache),
         )
-
-        # avg_result 언패킹: (avg_map, high_5d_map) | None
-        _cached_avg = _cached_avg_result[0] if _cached_avg_result else None
-        _cached_high_5d = _cached_avg_result[1] if _cached_avg_result else None
+        
+        _cached_snapshot = []
+        _cached_avg = {}
+        _cached_high_5d = {}
+        if _db_stocks:
+            for stock in _db_stocks:
+                cd = stock["code"]
+                _cached_avg[cd] = int(stock.get("avg_5d_trade_amount") or 0)
+                _cached_high_5d[cd] = int(stock.get("high_5d_price") or 0)
+                detail = {
+                    "name": stock.get("name", cd),
+                    "sector": stock.get("sector", "기타"),
+                    "cur_price": stock.get("cur_price", stock.get("prev_close", 0)),
+                    "sign": stock.get("sign", "3"),
+                    "change": stock.get("change", 0),
+                    "change_rate": stock.get("change_rate", 0.0),
+                    "prev_close": stock.get("prev_close", 0),
+                    "trade_amount": stock.get("trade_amount", stock.get("avg_5d_trade_amount", 0)),
+                    "high_price": stock.get("today_high_price", stock.get("high_5d_price", 0)),
+                    "strength": stock.get("strength", "-"),
+                }
+                _cached_snapshot.append((cd, detail))
 
         # ── 레이아웃 적재 ──
         if _cached_layout:

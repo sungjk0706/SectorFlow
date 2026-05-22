@@ -397,8 +397,9 @@ function buildTripleHeader(): void {
   // 중앙: Indicator_Bar — dot + label (flex:1, text-align:center, fontSize: FONT_SIZE.title)
   const center = document.createElement('div')
   Object.assign(center.style, {
-    flex: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+    flex: '5', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
     textAlign: 'center', fontSize: FONT_SIZE.title,
+    minWidth: '0',
   })
 
   indicatorDot = document.createElement('span')
@@ -407,7 +408,13 @@ function buildTripleHeader(): void {
   })
 
   indicatorLabel = document.createElement('span')
-  indicatorLabel.style.fontSize = FONT_SIZE.title
+  Object.assign(indicatorLabel.style, {
+    fontSize: FONT_SIZE.title,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    display: 'block',
+  })
 
   center.appendChild(indicatorDot)
   center.appendChild(indicatorLabel)
@@ -421,14 +428,23 @@ function buildTripleHeader(): void {
 }
 
 function updateIndicatorBar(): void {
-  const { editWindowOpen } = currentState
+  const { editWindowOpen, filter_summary } = currentState
   if (indicatorDot) {
     indicatorDot.style.background = editWindowOpen ? '#198754' : '#dc3545'
+    indicatorDot.style.display = filter_summary ? 'none' : 'inline-block'
   }
   if (indicatorLabel) {
-    indicatorLabel.textContent = editWindowOpen
-      ? '✏️ 수정 가능'
-      : '⚠️ 거래시간중 편집시에는 업종순위에 변동이 있을수 있습니다.'
+    if (filter_summary) {
+      indicatorLabel.textContent = filter_summary
+      indicatorLabel.style.fontSize = FONT_SIZE.body
+      indicatorLabel.style.color = '#6c757d'
+    } else {
+      indicatorLabel.textContent = editWindowOpen
+        ? '✏️ 수정 가능'
+        : '⚠️ 거래시간중 편집시에는 업종순위에 변동이 있을수 있습니다.'
+      indicatorLabel.style.fontSize = FONT_SIZE.title
+      indicatorLabel.style.color = 'inherit'
+    }
   }
 }
 
@@ -440,126 +456,64 @@ function buildSchedulerCard(): HTMLElement {
   schedulerTitle.style.fontSize = FONT_SIZE.section
   card.appendChild(schedulerTitle)
 
-  const settings = uiStore.getState().settings
-  schedulerToggle1 = createToggleBtn({
-    on: settings?.scheduler_market_close_on ?? true,
-    onClick: () => onToggleScheduler('scheduler_market_close_on', schedulerToggle1!),
-  })
+  // 1. 전종목 확정시세 다운로드 (수동)
   const row1Label = document.createElement('div')
   const row1Title = document.createElement('div')
   row1Title.style.fontWeight = FONT_WEIGHT.normal
-  row1Title.textContent = '전종목 확정시세 다운로드(매일 20:30)'
+  row1Title.textContent = '전종목 확정시세 다운로드'
   const row1Desc = document.createElement('div')
   Object.assign(row1Desc.style, { fontSize: FONT_SIZE.small, color: '#888' })
-  row1Desc.textContent = '전종목 목록 + 확정 시세 + 당일 거래대금 롤링'
+  row1Desc.textContent = '전종목 목록 + 확정 시세 + 당일 거래대금을 수동으로 즉시 갱신합니다'
   row1Label.appendChild(row1Title)
   row1Label.appendChild(row1Desc)
-  card.appendChild(createSettingRow(row1Label, schedulerToggle1.el))
 
-  schedulerToggle2 = createToggleBtn({
-    on: settings?.scheduler_5d_download_on ?? true,
-    onClick: () => onToggleScheduler('scheduler_5d_download_on', schedulerToggle2!),
-  })
+  const btn1 = actionBtn('수동 실행', '#198754')
+  btn1.addEventListener('click', () => onTriggerDownload('snapshot'))
+  card.appendChild(createSettingRow(row1Label, btn1))
+
+  // 2. 전종목 5일 거래대금 다운로드 (수동)
   const row2Label = document.createElement('div')
   const row2Title = document.createElement('div')
   row2Title.style.fontWeight = FONT_WEIGHT.normal
   row2Title.textContent = '전종목 5일 거래대금 다운로드'
   const row2Desc = document.createElement('div')
   Object.assign(row2Desc.style, { fontSize: FONT_SIZE.small, color: '#888' })
-  row2Desc.textContent = '전종목 5일 거래대금 REST 다운로드 (캐시 만료 시 자동 실행)'
+  row2Desc.textContent = '전종목 5일 거래대금 전체를 수동으로 즉시 갱신합니다'
   row2Label.appendChild(row2Title)
   row2Label.appendChild(row2Desc)
-  card.appendChild(createSettingRow(row2Label, schedulerToggle2.el))
+
+  const btn2 = actionBtn('수동 실행', '#198754')
+  btn2.addEventListener('click', () => onTriggerDownload('avg_amt'))
+  card.appendChild(createSettingRow(row2Label, btn2))
 
   return card
 }
 
-async function onToggleScheduler(key: string, toggle: ReturnType<typeof createToggleBtn>): Promise<void> {
-  const currentVal = uiStore.getState().settings?.[key] as boolean ?? true
-  const newVal = !currentVal
-  const label = key === 'scheduler_market_close_on' ? '전종목 확정시세 다운로드' : '전종목 5일 거래대금 다운로드'
+async function onTriggerDownload(type: 'snapshot' | 'avg_amt'): Promise<void> {
+  const label = type === 'snapshot' ? '전종목 확정시세 다운로드' : '전종목 5일 거래대금 다운로드'
+  const endpoint = type === 'snapshot' ? '/api/sector-custom/trigger-snapshot-download' : '/api/sector-custom/trigger-avg-amt-download'
+  
   const result = await showContextPopup({
     type: 'confirm',
     x: window.innerWidth / 2,
     y: window.innerHeight / 2,
-    title: `${label} ${newVal ? '활성화' : '비활성화'}`,
-    message: `${label}을(를) ${newVal ? '켜시' : '끄시'}겠습니까?`,
+    title: `${label} 실행`,
+    message: `${label}를 지금 수동으로 즉시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`,
+    confirmText: '실행',
+    confirmColor: '#198754',
   })
+  
   if (!result.confirmed) return
-  if (!settingsMgr) return
-  const res = await settingsMgr.saveSection({ [key]: newVal })
-  toastResult(res)
-  if (res.ok) toggle.setOn(newVal)
-}
-
-function updateSchedulerToggles(): void {
-  const settings = uiStore.getState().settings
-  schedulerToggle1?.setOn(settings?.scheduler_market_close_on ?? true)
-  schedulerToggle2?.setOn(settings?.scheduler_5d_download_on ?? true)
-}
-
-function buildDataManageCard(): HTMLElement {
-  const card = cardWrap()
-  const dataManageTitle = createCardTitleWithContent('데이터 관리 (키움증권 기준)')
-  dataManageTitle.style.fontSize = FONT_SIZE.section
-  card.appendChild(dataManageTitle)
-
-  // 시세 캐시 삭제
-  const cache1Row = document.createElement('div')
-  Object.assign(cache1Row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #eee' })
-  const cache1Info = document.createElement('div')
-  const cache1Title = document.createElement('div')
-  cache1Title.style.fontWeight = FONT_WEIGHT.normal
-  cache1Title.textContent = '🗑️ 전종목 확정시세 캐시 삭제'
-  const cache1Desc = document.createElement('div')
-  Object.assign(cache1Desc.style, { fontSize: FONT_SIZE.small, color: '#888' })
-  cache1Desc.textContent = '확정 시세 + 종목명 + 업종 레이아웃 캐시를 삭제합니다. 장마감 전종목 확정시세 다운로드로 복구됩니다'
-  cache1Info.appendChild(cache1Title)
-  cache1Info.appendChild(cache1Desc)
-  const cacheSnapshotBtn = actionBtn('삭제', '#dc3545')
-  cacheSnapshotBtn.addEventListener('click', (e: MouseEvent) => onDeleteCache('snapshot', e))
-  cache1Row.appendChild(cache1Info)
-  cache1Row.appendChild(cacheSnapshotBtn)
-  card.appendChild(cache1Row)
-
-  // 전종목 5일 거래대금 캐시 삭제
-  const cache2Row = document.createElement('div')
-  Object.assign(cache2Row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' })
-  const cache2Info = document.createElement('div')
-  const cache2Title = document.createElement('div')
-  cache2Title.style.fontWeight = FONT_WEIGHT.normal
-  cache2Title.textContent = '🗑️ 전종목 5일 거래대금,고가 저장데이터 삭제'
-  const cache2Desc = document.createElement('div')
-  Object.assign(cache2Desc.style, { fontSize: FONT_SIZE.small, color: '#888' })
-  cache2Desc.textContent = '전종목 5일 거래대금,고가 저장데이터를 삭제합니다. 전종목 5일 전체 다운로드로 복구됩니다'
-  cache2Info.appendChild(cache2Title)
-  cache2Info.appendChild(cache2Desc)
-  const cacheAvgAmtBtn = actionBtn('삭제', '#dc3545')
-  cacheAvgAmtBtn.addEventListener('click', (e: MouseEvent) => onDeleteCache('avg_amt', e))
-  cache2Row.appendChild(cache2Info)
-  cache2Row.appendChild(cacheAvgAmtBtn)
-  card.appendChild(cache2Row)
-
-  return card
-}
-
-async function onDeleteCache(type: 'snapshot' | 'avg_amt', e: MouseEvent): Promise<void> {
-  const label = type === 'snapshot' ? '전종목 확정시세 저장데이터' : '전종목 5일 거래대금,고가 저장데이터'
-  const result = await showContextPopup({
-    type: 'confirm',
-    x: e.clientX,
-    y: e.clientY,
-    title: `${label} 삭제`,
-    message: `${label}를 삭제하시겠습니까?`,
-    confirmText: '삭제',
-    confirmColor: '#dc3545',
-  })
-  if (!result.confirmed) return
+  
   try {
-    const res = await apiPost<SectorCustomMutationResponse>('/api/sector-custom/delete-cache', { type })
+    const res = await apiPost<SectorCustomMutationResponse>(endpoint, {})
     handleMutationResult(res)
-  } catch { toastResult({ ok: false }) }
+  } catch {
+    toastResult({ ok: false })
+  }
 }
+
+
 
 /* ── 업종 관리 테이블 (Sector_Table) ── */
 
@@ -891,7 +845,6 @@ function buildTripleLeft(): void {
   left.style.fontFamily = FONT_FAMILY
   left.appendChild(buildSectorManageCard())
   left.appendChild(buildSchedulerCard())
-  left.appendChild(buildDataManageCard())
 }
 
 /* ── 8.4: tripleCenter — Stock_List_Panel ── */
@@ -1390,6 +1343,7 @@ async function loadInitialData(): Promise<void> {
       mergedSectors: data.merged_sectors,
       editWindowOpen: computeEditWindowOpenByTime(uiStore.getState().settings),
       noSectorCount: data.no_sector_count ?? 0,
+      filter_summary: data.filter_summary || "",
       loading: false,
     })
     currentState = sectorCustomStore.getState()

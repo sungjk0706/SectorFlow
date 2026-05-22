@@ -977,21 +977,22 @@ def get_sector_stocks() -> list:
 
 
 def get_all_sector_stocks() -> list[dict]:
-    """전체 종목(매매부적격 제외) — _filtered_sector_codes 필터 미적용.
+    """전체 종목(매매부적격 제외) — eligible_stocks_cache 필터 적용.
 
     업종분류 커스텀 페이지 전용. 각 종목: { code, name, sector(get_merged_sector 기반) }
     """
     snapshot = dict(_pending_stock_details)
 
     from backend.app.core.sector_mapping import get_merged_sector
-    import backend.app.core.industry_map as _ind_mod
-    elig = _ind_mod._eligible_stock_codes  # {코드: ""} — 빈 dict이면 필터 미적용
+    from backend.app.core.industry_map import load_eligible_stocks_cache
+    eligible_stocks = load_eligible_stocks_cache() or {}
+    filter_set = set(eligible_stocks.keys()) if eligible_stocks else None
 
     result: list[dict] = []
     for cd, entry in snapshot.items():
         if entry.get("status") != "active":
             continue  # 매매부적격(관리종목, 거래정지, exited 등) 제외
-        if elig and cd not in elig:
+        if filter_set is not None and cd not in filter_set:
             continue  # 적격 필터: eligible이 비어있으면 필터 미적용 (하위 호환)
         try:
             sector = get_merged_sector(cd)
@@ -2220,6 +2221,46 @@ async def _handle_market_tick_event(event) -> None:
                 updates["ask_depth"] = int(vals.get("1031", 0))
             if updates:
                 _pending_stock_details[code] = {**old2, **updates}
+        
+        # 보유종목 현재가 반영 + 자동매매 체결 체크
+        from backend.app.services.engine_account_rest import apply_last_price_to_positions_inplace
+        from backend.app.core.trade_mode import is_test_mode
+        from backend.app.services import dry_run
+        from backend.app.services.auto_trading_effective import auto_sell_effective
+        from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+
+        is_test = is_test_mode(_settings_cache)
+        if is_test:
+            _price_hit = dry_run.update_price(code, price)
+            if _price_hit:
+                _dr_pos = dry_run.get_position(code)
+                if _dr_pos:
+                    _dr_pos["change"] = change
+                    _dr_pos["change_rate"] = change_rate
+        else:
+            _price_hit = apply_last_price_to_positions_inplace(_positions, code, price)
+            
+        if _price_hit and _auto_trade and auto_sell_effective(_settings_cache) and _access_token:
+            if is_test:
+                _pos = dry_run.get_position(code)
+                if _pos:
+                    _auto_trade.check_sell_conditions([_pos], _settings_cache, _access_token)
+            else:
+                _matched = [p for p in _positions if _format_kiwoom_reg_stk_cd(str(p.get("stk_cd", "") or "")) == code]
+                if _matched:
+                    _auto_trade.check_sell_conditions(_matched, _settings_cache, _access_token)
+
+        # 업종 재계산 트리거
+        if code in _pending_stock_details:
+            from backend.app.services.engine_sector_confirm import recompute_sector_for_code
+            recompute_sector_for_code(code)
+        else:
+            from backend.app.services.engine_ws_dispatch import _get_wl_codes_cached
+            import sys
+            _wl_codes = _get_wl_codes_cached(sys.modules[__name__])
+            if code in _wl_codes:
+                from backend.app.services.engine_sector_confirm import recompute_sector_for_code
+                recompute_sector_for_code(code)
         
         # 타임스탬프 기록 (Phase 1.3+1.4 단계 1.6 - 포인트 D)
         import time

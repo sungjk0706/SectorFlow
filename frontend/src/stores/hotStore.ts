@@ -227,74 +227,81 @@ export function applyRealData(item: RealDataEvent): void {
   const rawAmt = parseKiwoomNum(rawAmount);
   const parsedAmount = rawAmt !== undefined ? rawAmt * 1000000 : undefined;
 
-  hotStore.setState((state) => {
-    let sectorStocks = state.sectorStocks;
-    const old = sectorStocks[code];
-    if (old) {
-      const change = parsedChange !== undefined ? parsedChange : old.change;
-      const rate = parsedRate !== undefined ? parsedRate : old.change_rate;
-      const strength = parsedStrength !== undefined ? parsedStrength : old.strength;
-      const amount = parsedAmount !== undefined ? parsedAmount : old.trade_amount;
+  // 2. In-place Mutation (객체 직접 수정) 및 커스텀 이벤트 발생
+  // setState()를 호출하여 배열을 재생성하면 리액티브 구독 패턴에 의해 
+  // 전체 리스트 재정렬 및 VirtualScroller 전체 diff가 발생하여 초저지연을 저해함.
+  // 객체 속성만 직접 변경하고, UI 컴포넌트는 커스텀 이벤트를 구독하여 해당 DOM 셀만 갱신.
 
-      if (!(old.cur_price === price && old.change === change &&
-          old.change_rate === rate && old.strength === strength &&
-          old.trade_amount === amount)) {
-        // 변경된 종목만 교체 — shallow-copy + single-key replacement
-        sectorStocks = { ...sectorStocks, [code]: { ...old,
-          cur_price: price, change: change, change_rate: rate,
-          strength: strength, trade_amount: amount,
-        }};
-      }
+  let changed = false;
+
+  const state = hotStore.getState();
+  const sectorStocks = state.sectorStocks;
+  const old = sectorStocks[code];
+  if (old) {
+    const change = parsedChange !== undefined ? parsedChange : old.change;
+    const rate = parsedRate !== undefined ? parsedRate : old.change_rate;
+    const strength = parsedStrength !== undefined ? parsedStrength : old.strength;
+    const amount = parsedAmount !== undefined ? parsedAmount : old.trade_amount;
+
+    if (!(old.cur_price === price && old.change === change &&
+        old.change_rate === rate && old.strength === strength &&
+        old.trade_amount === amount)) {
+      // In-place mutation
+      old.cur_price = price;
+      old.change = change;
+      old.change_rate = rate;
+      old.strength = strength;
+      old.trade_amount = amount;
+      changed = true;
     }
+  }
 
-    // buyTargets: 인덱스 캐시 O(1) 조회 + 증분 갱신 (원본 배열 변이 없음)
-    let bt = state.buyTargets;
-    let buyTargetsChanged = false;
-    const btIdx = getBuyTargetIndex(code);
-    if (btIdx !== undefined) {
-      const t = bt[btIdx];
-      const change = parsedChange !== undefined ? parsedChange : t.change;
-      const rate = parsedRate !== undefined ? parsedRate : t.change_rate;
-      const strength = parsedStrength !== undefined ? parsedStrength : t.strength;
+  // buyTargets
+  const bt = state.buyTargets;
+  const btIdx = getBuyTargetIndex(code);
+  if (btIdx !== undefined) {
+    const t = bt[btIdx];
+    const change = parsedChange !== undefined ? parsedChange : t.change;
+    const rate = parsedRate !== undefined ? parsedRate : t.change_rate;
+    const strength = parsedStrength !== undefined ? parsedStrength : t.strength;
 
-      if (!(t.cur_price === price && t.change === change && t.change_rate === rate &&
-            t.strength === strength)) {
-        bt = [...bt];
-        bt[btIdx] = { ...t, cur_price: price, change: change, change_rate: rate, strength: strength };
-        buyTargetsChanged = true;
-      }
+    if (!(t.cur_price === price && t.change === change && t.change_rate === rate &&
+          t.strength === strength)) {
+      // In-place mutation
+      t.cur_price = price;
+      t.change = change;
+      t.change_rate = rate;
+      t.strength = strength;
+      changed = true;
     }
+  }
 
-    // positions: 인덱스 캐시 O(1) 조회 + 증분 갱신 (원본 배열 변이 없음)
-    const positions = state.positions;
-    let newPositions = positions;
-    let positionsChanged = false;
-    const posIdx = getPositionIndex(code);
-    if (posIdx !== undefined) {
-      const pos = positions[posIdx];
-      const buyAmt = pos.buy_amt ?? pos.buy_amount ?? 0;
-      const qty = pos.qty ?? 0;
-      const evalAmount = price * qty;
-      const pnlAmount = buyAmt > 0 ? evalAmount - buyAmt : 0;
-      const pnlRate = buyAmt > 0 ? Math.round((pnlAmount / buyAmt) * 10000) / 100 : 0;
-      if (pos.cur_price !== price || pos.eval_amount !== evalAmount ||
-          pos.pnl_amount !== pnlAmount || pos.pnl_rate !== pnlRate) {
-        newPositions = [...positions];
-        newPositions[posIdx] = { ...pos, cur_price: price, eval_amount: evalAmount, pnl_amount: pnlAmount, pnl_rate: pnlRate };
-        positionsChanged = true;
-      }
+  // positions
+  const positions = state.positions;
+  const posIdx = getPositionIndex(code);
+  if (posIdx !== undefined) {
+    const pos = positions[posIdx];
+    const buyAmt = pos.buy_amt ?? pos.buy_amount ?? 0;
+    const qty = pos.qty ?? 0;
+    const evalAmount = price * qty;
+    const pnlAmount = buyAmt > 0 ? evalAmount - buyAmt : 0;
+    const pnlRate = buyAmt > 0 ? Math.round((pnlAmount / buyAmt) * 10000) / 100 : 0;
+    
+    if (pos.cur_price !== price || pos.eval_amount !== evalAmount ||
+        pos.pnl_amount !== pnlAmount || pos.pnl_rate !== pnlRate) {
+      // In-place mutation
+      pos.cur_price = price;
+      pos.eval_amount = evalAmount;
+      pos.pnl_amount = pnlAmount;
+      pos.pnl_rate = pnlRate;
+      changed = true;
     }
+  }
 
-    // no-op guard: 변경 없으면 setState 생략 (reference equality 유지)
-    if (sectorStocks === state.sectorStocks && !buyTargetsChanged && !positionsChanged) return state;
-    const patch: Partial<HotState> = {};
-    if (sectorStocks !== state.sectorStocks) patch.sectorStocks = sectorStocks;
-    if (buyTargetsChanged) patch.buyTargets = bt;
-    if (positionsChanged) {
-      patch.positions = newPositions;
-    }
-    return patch;
-  });
+  // 변경사항이 있을 경우 글로벌 이벤트로 특정 종목의 변경을 알림 (O(1) DOM 갱신용)
+  if (changed) {
+    window.dispatchEvent(new CustomEvent('real-data-tick', { detail: code }));
+  }
   }
 }
 
@@ -303,17 +310,19 @@ export function applyOrderbookUpdate(data: { code: string; bid: number; ask: num
   const code = normalizeStockCode(data.code);
   const { bid, ask } = data;
   if (!code) return;
-  hotStore.setState((state) => {
-    const bt = state.buyTargets;
-    const idx = getBuyTargetIndex(code);
-    if (idx === undefined) return state;
-    const t = bt[idx];
-    const prev = t.order_ratio;
-    if (prev && prev[0] === bid && prev[1] === ask) return state;
-    // In-place mutation: 배열 복사 없이 직접 요소 수정
-    bt[idx] = { ...t, order_ratio: [bid, ask] };
-    return { buyTargets: bt };
-  });
+  const state = hotStore.getState();
+  const bt = state.buyTargets;
+  const idx = getBuyTargetIndex(code);
+  if (idx === undefined) return;
+  const t = bt[idx];
+  const prev = t.order_ratio;
+  if (prev && prev[0] === bid && prev[1] === ask) return;
+  
+  // In-place mutation: 배열 복사 없이 직접 요소 수정
+  t.order_ratio = [bid, ask];
+  
+  // O(1) DOM 갱신을 위해 글로벌 이벤트 발생
+  window.dispatchEvent(new CustomEvent('orderbook-tick', { detail: code }));
 }
 
 /* ── 공통 헬퍼: 지정된 필드를 null로 설정 ── */
@@ -397,18 +406,7 @@ export function applyBuyTargetsUpdate(data: { buy_targets: BuyTarget[] }): void 
 
 /* ── sector-scores: 업종 점수·상태 갱신 (내용 비교) ── */
 export function applySectorScores(data: SectorScoresEvent): void {
-  const scores = data.scores ?? []
-  const prev = hotStore.getState().sectorScores
-  const same = prev.length === scores.length && prev.every((p, i) => {
-    const n = scores[i]
-    return p.rank === n.rank && p.sector === n.sector
-      && p.final_score === n.final_score && p.rise_ratio === n.rise_ratio
-      && p.total_trade_amount === n.total_trade_amount
-      && p.total === n.total
-  })
-  if (!same) {
-    hotStore.setState({ sectorScores: scores })
-  }
+  hotStore.setState({ sectorScores: data.scores }); // 백엔드가 연산한 완성본을 그대로 사용
 }
 
 /* ── sector-stocks-refresh: 필터 변경 시 종목 목록 교체 ── */

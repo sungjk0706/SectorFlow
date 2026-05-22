@@ -35,6 +35,7 @@ from backend.app.services.engine_ws_parsing import (
     _ws_fid_float,
     _ws_fid_int,
     _ws_fid_key_present,
+    _ws_fid_raw,
     parse_fid9081_exchange,
     parse_fid290_session,
 )
@@ -322,9 +323,9 @@ def _handle_real_01(
     prev_close = _ws_fid_int(vals, "16", 0)
     pend = es._pending_stock_details.get(pend_key, {}) if pend_key else {}
     diff = _ws_fid_int(vals, "11", 0) if _ws_fid_key_present(vals, "11") else int(pend.get("change") or 0)
-    rate = _parse_ws_fid12_to_percent(vals.get("12")) if _ws_fid_key_present(vals, "12") else float(pend.get("change_rate") or 0.0)
-    sign = str(vals.get("25", "3")).strip() if _ws_fid_key_present(vals, "25") else str(pend.get("sign") or "3")
-    sv228 = vals.get("228")
+    rate = _parse_ws_fid12_to_percent(_ws_fid_raw(vals, "12")) if _ws_fid_key_present(vals, "12") else float(pend.get("change_rate") or 0.0)
+    sign = str(_ws_fid_raw(vals, "25") or "3").strip() if _ws_fid_key_present(vals, "25") else str(pend.get("sign") or "3")
+    sv228 = _ws_fid_raw(vals, "228")
     strength = str(sv228).strip() if sv228 is not None and str(sv228).strip() != "" else "-"
     _base_nk_14 = _format_kiwoom_reg_stk_cd(_base_stk_cd(raw_cd_for_bucket))
     if is_0b_tick and _ws_fid_key_present(vals, "14"):
@@ -417,7 +418,7 @@ def _handle_real_01(
                 _amt14_wl = abs(_ws_fid_int(vals, "14", 0))
                 _update_trade_amount_fid14(nk_px, _amt14_wl, es)
             if is_0b_tick and _ws_fid_key_present(vals, "228"):
-                sv = vals.get("228")
+                sv = _ws_fid_raw(vals, "228")
                 if sv is not None and str(sv).strip():
                     try:
                         _update_strength_buckets(es, nk_px, float(str(sv).strip()), abs(_ws_fid_int(vals, "13", 0)))
@@ -490,8 +491,8 @@ def _handle_real_0j(item: dict, vals: dict, es: ModuleType) -> None:
         return
     price = _ws_fid_float(vals, "10", 0.0)
     change = _ws_fid_float(vals, "11", 0.0)
-    rate = _parse_ws_fid12_to_percent(vals.get("12"))
-    sig = str(vals.get("25") or "").strip()
+    rate = _parse_ws_fid12_to_percent(_ws_fid_raw(vals, "12"))
+    sig = str(_ws_fid_raw(vals, "25") or "").strip()
     if sig in ("4", "5", "44", "45"):
         change = -abs(change)
         rate = -abs(rate)

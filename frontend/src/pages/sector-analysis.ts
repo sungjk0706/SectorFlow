@@ -30,6 +30,7 @@ function createStepLabel(num: string, text: string): HTMLElement {
 
 function updateMaxTargetsStatus(scores: SectorScoreRow[]): void {
   if (!maxTargetsStatusEl) return
+  // 백엔드에서 이미 계산된 데이터를 그대로 사용 (Dumb Terminal)
   const passed = scores.filter(s => s.rank > 0).length
   const cutoff = scores.filter(s => s.rank === 0).length
 
@@ -214,92 +215,24 @@ function buildRankingRows(container: HTMLElement): void {
   }
 }
 
-function updateRankingRows(scores: SectorScoreRow[], selected: string | null, maxTargets: number, delta: { delta: boolean; changed_sectors: string[]; removed_sectors: string[] } | null = null): void {
+function updateRankingRows(scores: SectorScoreRow[], selected: string | null, maxTargets: number, _delta: { delta: boolean; changed_sectors: string[]; removed_sectors: string[] } | null = null): void {
   const maxScore = scores.length > 0 ? Math.max(...scores.map(s => s.final_score), 1) : 1
 
-  // 초기화 예외 처리: delta 없거나 최초 데이터 수신 시 전체 화면 생성
-  if (!delta || !delta.delta) {
-    for (let i = 0; i < MAX_ROWS; i++) {
-      const row = rankRows[i]
-      if (!row) continue
-
-      // 숨김 처리
-      if (i >= scores.length) {
-        if (!rowCaches[i] || rowCaches[i]!.visible) {
-          row.style.visibility = 'hidden'
-          rowCaches[i] = { rank: -1, sector: '', total: 0, finalScore: '', riseRatio: '', riseColor: '', tradeAmt: '', barWidth: '', barColor: '', opacity: '', selected: false, visible: false }
-        }
-        continue
-      }
-
-      const s = scores[i]
-      const prev = rowCaches[i]
-      const isSel = selected === s.sector
-      const isUnranked = s.rank === 0
-      const opacity = isUnranked ? '0.4' : (s.rank > maxTargets ? '0.65' : '1')
-      const finalScore = s.final_score.toFixed(1)
-      const riseRatio = s.rise_ratio.toFixed(1) + '%'
-      const riseColor = s.rise_ratio > 50 ? 'red' : s.rise_ratio < 50 ? 'blue' : '#333'
-      const tradeAmt = Math.round(s.total_trade_amount / 100_000_000).toLocaleString()
-      const barWidth = `${Math.min((s.final_score / maxScore) * 100, 100)}%`
-      const barColor = isUnranked ? '#dee2e6' : (s.rank <= maxTargets ? '#0d6efd' : '#adb5bd')
-
-      // 첫 렌더 또는 visibility 변경
-      if (!prev || !prev.visible) row.style.visibility = 'visible'
-
-      // 델타 비교 — 바뀐 속성만 DOM 반영
-      if (!prev || prev.opacity !== opacity) row.style.opacity = opacity
-      if (!prev || prev.sector !== s.sector) row.dataset.sector = s.sector
-      if (!prev || prev.selected !== isSel) {
-        row.style.background = isSel ? '#e8f0fe' : 'transparent'
-        row.style.outline = isSel ? '2px solid #1a73e8' : 'none'
-      }
-
-      const spans = row.firstElementChild!.children as HTMLCollectionOf<HTMLSpanElement>
-      if (!prev || prev.rank !== s.rank) spans[0].textContent = s.rank === 0 ? '❌' : String(s.rank)
-      if (!prev || prev.sector !== s.sector) spans[1].textContent = s.sector
-      if (!prev || prev.total !== s.total) spans[2].textContent = String(s.total || '')
-      if (!prev || prev.finalScore !== finalScore) spans[3].textContent = finalScore
-      if (!prev || prev.riseRatio !== riseRatio) spans[4].textContent = riseRatio
-      if (!prev || prev.riseColor !== riseColor) spans[4].style.color = riseColor
-      if (!prev || prev.tradeAmt !== tradeAmt) spans[5].textContent = tradeAmt
-
-      const bar = row.lastElementChild!.firstElementChild as HTMLDivElement
-      if (!prev || prev.barWidth !== barWidth) bar.style.width = barWidth
-      if (!prev || prev.barColor !== barColor) bar.style.background = barColor
-
-      // 캐시 갱신
-      rowCaches[i] = { rank: s.rank, sector: s.sector, total: s.total, finalScore, riseRatio, riseColor, tradeAmt, barWidth, barColor, opacity, selected: isSel, visible: true }
-    }
-    return
-  }
-
-  // delta 기반 증분 갱신
-  const { changed_sectors, removed_sectors } = delta
-
-  // removed_sectors에 해당하는 행 제거
-  for (const sector of removed_sectors) {
-    const index = rowCaches.findIndex(c => c && c.sector === sector)
-    if (index !== -1 && rankRows[index]) {
-      rankRows[index].style.visibility = 'hidden'
-      rowCaches[index] = { rank: -1, sector: '', total: 0, finalScore: '', riseRatio: '', riseColor: '', tradeAmt: '', barWidth: '', barColor: '', opacity: '', selected: false, visible: false }
-    }
-  }
-
-  // changed_sectors에 해당하는 행 갱신 + 정렬 순서 동기화
-  const sectorToIndex = new Map<string, number>()
-  scores.forEach((s, i) => sectorToIndex.set(s.sector, i))
-
-  for (const sector of changed_sectors) {
-    const newIndex = sectorToIndex.get(sector)
-    if (newIndex === undefined) continue
-
-    const s = scores[newIndex]
-    const prevCacheIndex = rowCaches.findIndex(c => c && c.sector === sector)
-    const row = rankRows[newIndex]
-
+  for (let i = 0; i < MAX_ROWS; i++) {
+    const row = rankRows[i]
     if (!row) continue
 
+    // 숨김 처리
+    if (i >= scores.length) {
+      if (!rowCaches[i] || rowCaches[i]!.visible) {
+        row.style.visibility = 'hidden'
+        rowCaches[i] = { rank: -1, sector: '', total: 0, finalScore: '', riseRatio: '', riseColor: '', tradeAmt: '', barWidth: '', barColor: '', opacity: '', selected: false, visible: false }
+      }
+      continue
+    }
+
+    const s = scores[i]
+    const prev = rowCaches[i]
     const isSel = selected === s.sector
     const isUnranked = s.rank === 0
     const opacity = isUnranked ? '0.4' : (s.rank > maxTargets ? '0.65' : '1')
@@ -310,42 +243,32 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     const barWidth = `${Math.min((s.final_score / maxScore) * 100, 100)}%`
     const barColor = isUnranked ? '#dee2e6' : (s.rank <= maxTargets ? '#0d6efd' : '#adb5bd')
 
-    row.style.visibility = 'visible'
-    row.style.opacity = opacity
-    row.dataset.sector = s.sector
-    row.style.background = isSel ? '#e8f0fe' : 'transparent'
-    row.style.outline = isSel ? '2px solid #1a73e8' : 'none'
+    // 첫 렌더 또는 visibility 변경
+    if (!prev || !prev.visible) row.style.visibility = 'visible'
+
+    // 바뀐 속성만 DOM 반영
+    if (!prev || prev.opacity !== opacity) row.style.opacity = opacity
+    if (!prev || prev.sector !== s.sector) row.dataset.sector = s.sector
+    if (!prev || prev.selected !== isSel) {
+      row.style.background = isSel ? '#e8f0fe' : 'transparent'
+      row.style.outline = isSel ? '2px solid #1a73e8' : 'none'
+    }
 
     const spans = row.firstElementChild!.children as HTMLCollectionOf<HTMLSpanElement>
-    spans[0].textContent = s.rank === 0 ? '❌' : String(s.rank)
-    spans[1].textContent = s.sector
-    spans[2].textContent = String(s.total || '')
-    spans[3].textContent = finalScore
-    spans[4].textContent = riseRatio
-    spans[4].style.color = riseColor
-    spans[5].textContent = tradeAmt
+    if (!prev || prev.rank !== s.rank) spans[0].textContent = s.rank === 0 ? '❌' : String(s.rank)
+    if (!prev || prev.sector !== s.sector) spans[1].textContent = s.sector
+    if (!prev || prev.total !== s.total) spans[2].textContent = String(s.total || '')
+    if (!prev || prev.finalScore !== finalScore) spans[3].textContent = finalScore
+    if (!prev || prev.riseRatio !== riseRatio) spans[4].textContent = riseRatio
+    if (!prev || prev.riseColor !== riseColor) spans[4].style.color = riseColor
+    if (!prev || prev.tradeAmt !== tradeAmt) spans[5].textContent = tradeAmt
 
     const bar = row.lastElementChild!.firstElementChild as HTMLDivElement
-    bar.style.width = barWidth
-    bar.style.background = barColor
+    if (!prev || prev.barWidth !== barWidth) bar.style.width = barWidth
+    if (!prev || prev.barColor !== barColor) bar.style.background = barColor
 
     // 캐시 갱신
-    rowCaches[newIndex] = { rank: s.rank, sector: s.sector, total: s.total, finalScore, riseRatio, riseColor, tradeAmt, barWidth, barColor, opacity, selected: isSel, visible: true }
-
-    // 정렬 순서 동기화: 점수 변동으로 순위가 바뀌면 DOM 노드 위치 재정렬
-    if (prevCacheIndex !== -1 && prevCacheIndex !== newIndex) {
-      const container = row.parentNode
-      if (container) {
-        // 새 위치에 삽입
-        const targetRow = rankRows[newIndex]
-        const referenceRow = rankRows[newIndex + 1]
-        if (referenceRow) {
-          container.insertBefore(targetRow, referenceRow)
-        } else {
-          container.appendChild(targetRow)
-        }
-      }
-    }
+    rowCaches[i] = { rank: s.rank, sector: s.sector, total: s.total, finalScore, riseRatio, riseColor, tradeAmt, barWidth, barColor, opacity, selected: isSel, visible: true }
   }
 }
 

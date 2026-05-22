@@ -65,8 +65,8 @@ async def _bootstrap_sector_stocks_async() -> None:
     from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
     from backend.app.core.sector_stock_cache import (
         load_layout_cache, save_layout_cache,
-        load_snapshot_cache,
     )
+    from backend.app.db.crud import get_all_stocks
     from backend.app.core.avg_amt_cache import load_avg_amt_cache
 
     # ── 0단계: 레이아웃 캐시 확인 → 사용 시 업종맵 API 스킵 ──────────────
@@ -143,11 +143,26 @@ async def _bootstrap_sector_stocks_async() -> None:
         # 데이터준비에서 이미 확정데이터 → 메모리 적재 완료 — 파일 재로드 + 버킷 세팅 스킵
         logger.debug("[시작] 데이터준비 사용 -- 확정데이터·거래대금 데이터 재로드 생략 (%d종목)", len(_st._pending_stock_details))
         _broadcast_bootstrap_stage(4, "시세 데이터 반영")
-    elif (_snapshot_cached := load_snapshot_cache()):
-        krx_rows = _snapshot_cached
-        logger.debug("[시작] 확정데이터 저장데이터 로드 -- %d종목 (UI 즉시 표시)", len(krx_rows))
+    elif (_db_stocks := get_all_stocks()):
+        # DB 데이터를 기존 krx_rows 형식(list[tuple[str, dict]])으로 변환
+        krx_rows = []
+        for stock in _db_stocks:
+            detail = {
+                "name": stock.get("name", stock["code"]),
+                "sector": stock.get("sector", "기타"),
+                "cur_price": stock.get("cur_price", stock.get("prev_close", 0)),
+                "sign": stock.get("sign", "3"),
+                "change": stock.get("change", 0),
+                "change_rate": stock.get("change_rate", 0.0),
+                "prev_close": stock.get("prev_close", 0),
+                "trade_amount": stock.get("trade_amount", stock.get("avg_5d_trade_amount", 0)),
+                "high_price": stock.get("today_high_price", stock.get("high_5d_price", 0)),
+                "strength": stock.get("strength", "-"),
+            }
+            krx_rows.append((stock["code"], detail))
+        logger.debug("[시작] DB 확정데이터 로드 -- %d종목 (UI 즉시 표시)", len(krx_rows))
     else:
-        logger.debug("[시작] 확정데이터 저장데이터 실패 -- 로드 생략 (장마감 후 ka10086 확정 조회로 갱신)")
+        logger.debug("[시작] DB 확정데이터 실패 -- 로드 생략 (장마감 후 ka10086 확정 조회로 갱신)")
 
     if not _preboot_snapshot_hit:
         # ── 4단계: 거래대금 버킷 세팅 및 화면 표시 ──────────────────────────
@@ -208,64 +223,25 @@ async def _bootstrap_sector_stocks_async() -> None:
             "[시작] 데이터준비 사용 -- 5일거래대금평균/고가 재로드 생략 (%d종목)", len(_st._avg_amt_5d)
         )
     else:
-        try:
-            _avg_result = load_avg_amt_cache()
-            if _avg_result is not None:
-                _avg_map, _high_map = _avg_result
-                _st._update_avg_amt_5d(_avg_map)
-                if _high_map:
-                    _st._high_5d_cache.clear()
-                    _st._high_5d_cache.update(_high_map)
-                # ── 불완전 캐시 판정 (is_cache_valid() 통과 후 구조 검증) ──
-                _incomplete = False
-                if not _high_map:
-                    logger.warning("[시작] 저장데이터 불완전 -- high_5d 없음")
-                    _incomplete = True
-                elif len(_high_map) != len(_avg_map):
-                    logger.warning("[시작] 저장데이터 불완전 -- high_5d 종목수(%d) ≠ avg_map 종목수(%d)", len(_high_map), len(_avg_map))
-                    _incomplete = True
-                else:
-                    # 배열 길이 < 5 검사는 v2 원본에서 해야 함
-                    from backend.app.core.avg_amt_cache import load_avg_amt_cache_v2
-                    _v2_result = load_avg_amt_cache_v2()
-                    _v2_raw = _v2_result[0] if _v2_result else None
-                    if _v2_raw:
-                        _short = sum(1 for arr in _v2_raw.values() if len(arr) < 5)
-                        if _short > 0:
-                            logger.warning("[시작] 저장데이터 불완전 -- 배열 길이 < 5인 종목 %d개", _short)
-                            _incomplete = True
-                        _zero_high = sum(1 for v in _high_map.values() if v == 0)
-                        if _zero_high > len(_high_map) * 0.5:
-                            logger.warning("[시작] 저장데이터 불완전 -- high_5d=0 종목 %d/%d (50%% 초과)", _zero_high, len(_high_map))
-                            _incomplete = True
-                if _incomplete:
-                    _st._avg_amt_needs_bg_refresh = True
-                logger.debug(
-                    "[시작] 5일 평균 거래대금 저장데이터 로드 -- %d종목, high_5d=%d%s",
-                    len(_st._avg_amt_5d), len(_high_map),
-                    " (불완전 -- 갱신 예정)" if _incomplete else "",
-                )
-            else:
-                # 캐시 만료 — stale v2 데이터가 있으면 일단 로드 (즉시 필터 동작)
-                from backend.app.core.avg_amt_cache import load_avg_amt_cache_v2, avg_from_v2
-                _stale_result = load_avg_amt_cache_v2()
-                stale_v2 = _stale_result[0] if _stale_result else None
-                if stale_v2 and len(stale_v2) > 100:
-                    avg_map = avg_from_v2(stale_v2)
-                    _st._update_avg_amt_5d(avg_map)
-                    logger.debug(
-                        "[시작] 5일 평균 저장데이터 만료 -- stale 데이터 즉시 로드 (%d종목, 백그라운드 갱신 예정)",
-                        len(avg_map),
-                    )
-                    _st._avg_amt_needs_bg_refresh = True
-                else:
-                    logger.debug(
-                        "[시작] 5일 평균 거래대금 저장데이터 미스 -- 빈 맵으로 시작 (백그라운드 구축 예정)"
-                    )
-                    _st._avg_amt_needs_bg_refresh = True
-        except Exception as e:
-            logger.warning("[시작] 5일 평균 거래대금 적재 실패: %s", e, exc_info=True)
-            _st._avg_amt_needs_bg_refresh = True
+        # ── 5일 평균 및 고가 데이터 DB에서 로드 ──
+        from backend.app.db.crud import get_all_stocks
+        _db_stocks = get_all_stocks()
+        if _db_stocks:
+            _avg_map = {}
+            _high_map = {}
+            for row in _db_stocks:
+                cd = row["code"]
+                _avg_map[cd] = int(row.get("avg_5d_trade_amount") or 0)
+                _high_map[cd] = int(row.get("high_price") or 0)
+            
+            _st._update_avg_amt_5d(_avg_map)
+            _st._high_5d_cache.clear()
+            _st._high_5d_cache.update(_high_map)
+            _snapshot_valid = True
+            logger.info("[시작] DB에서 5일 평균 및 고가 데이터 로드 완료 -- %d종목", len(_avg_map))
+        else:
+            logger.warning("[시작] DB 데이터 없음 -- 빈 맵으로 시작 (수동 다운로드 필요)")
+            _snapshot_valid = False
 
     try:
         from backend.app.services import engine_account_notify as _account_notify
@@ -372,73 +348,7 @@ async def _deferred_sector_summary() -> None:
     완료 후 _sector_summary_ready_event.set() + WS 3종 전송.
     """
     try:
-        # 정규장 차단 서킷 브레이커 (Phase 2.1 단계 3)
-        from backend.app.services.daily_time_scheduler import is_heavy_operation_allowed
-        if not is_heavy_operation_allowed():
-            logger.info("[시작] 안전 구역(20:30~연결시작전) 외 시간대 진입으로 인한 업종순위 계산 스킵")
-            # 장중 차단 시 영속성 캐시에서 복원 시도
-            from backend.app.core.sector_summary_cache import load_sector_summary_cache
-            cached_summary = load_sector_summary_cache()
-            if cached_summary:
-                _st._sector_summary_cache = cached_summary
-                logger.info("[시작] 영속성 캐시에서 업종순위 복원 완료")
-            else:
-                # 캐시 없으면 업종 스켈레톤 캐시 구축 (실시간 틱 연동용)
-                from backend.app.services.engine_sector_score import SectorSummary, SectorScore
-                from backend.app.core.sector_mapping import get_merged_sector
-                from backend.app.core.industry_map import load_eligible_stocks_cache
-                
-                # 업종별 분모(Total) 선행 고정을 위한 eligible_stocks_cache 로드
-                eligible_stocks = load_eligible_stocks_cache() or {}
-                eligible_codes = set(eligible_stocks.keys()) if eligible_stocks else set()
-                
-                # 업종별 종목 수 집계 (분모 선행 고정)
-                sector_total_counts: dict[str, int] = {}
-                for cd in eligible_codes:
-                    sector = get_merged_sector(cd)
-                    if sector:
-                        sector_total_counts[sector] = sector_total_counts.get(sector, 0) + 1
-                
-                # 업종별 스켈레톤 SectorScore 생성 (분모 선행 고정, rise_ratio=0.0으로 초기화)
-                _sectors = []
-                for sector_name in sorted(sector_total_counts.keys()):
-                    sector_score = SectorScore(
-                        sector=sector_name,
-                        total=sector_total_counts[sector_name],  # 분모 선행 고정
-                        rise_count=0,
-                        rise_ratio=0.0,
-                        avg_change_rate=0.0,
-                        total_trade_amount=0,
-                        avg_ratio_5d_pct=0.0,
-                        rank=0,
-                        stocks=[],
-                        scored_trade_amount=0,
-                        scored_rise_ratio=0.0,
-                        industry_code="",
-                        industry_up_ratio=0.0,
-                        industry_trade_amount=0,
-                        has_industry_data=False,
-                        final_score=0.0,
-                        metric_scores={},
-                    )
-                    _sectors.append(sector_score)
-                    # 업종명-SectorScore 인덱싱 맵 바인딩 (O(1) 다이렉트 접근용)
-                    _st._sector_score_index[sector_name] = sector_score
-                
-                _st._sector_summary_cache = SectorSummary(
-                    sectors=_sectors,
-                    buy_targets=[],
-                    blocked_targets=[],
-                    index_guard_active=False,
-                    index_guard_reason="",
-                    index_guard_kospi_hit=False,
-                    index_guard_kosdaq_hit=False,
-                    is_skeleton_mode=True,  # 스켈레톤 캐시 모드 플래그
-                )
-                logger.info("[시작] 영속성 캐시 없음, 업종 스켈레톤 캐시 구축 완료 (실시간 틱 연동)")
-            _st._sector_summary_ready_event.set()
-            return
-        
+        # 항상 전체 재계산 수행 (스켈레톤 캐시 모드 제거)
         from backend.app.services.engine_sector_score import compute_full_sector_summary
         _inputs = _st.get_sector_summary_inputs()
         if _inputs.get("all_codes"):
@@ -699,6 +609,22 @@ async def _refresh_avg_amt_5d_cache_inner() -> None:
     if not all_codes:
         return
 
+    # 로컬 데이터 완전성 검증 (방안 1: 중복 다운로드 방지)
+    from backend.app.core.avg_amt_cache import load_avg_amt_cache_v2
+    _existing_v2_result = load_avg_amt_cache_v2()
+    if _existing_v2_result:
+        _existing_v2, _existing_high_arr = _existing_v2_result
+        # 종목수 충분(전체 종목의 90% 이상) 및 배열 길이 5 이상 검증
+        if len(_existing_v2) >= len(all_codes) * 0.9:
+            _short_arrays = sum(1 for arr in _existing_v2.values() if len(arr) < 5)
+            if _short_arrays == 0:
+                logger.info("[시작] 로컬 데이터 완전함 -- 다운로드 스킵 (%d종목, 배열 길이 ≥ 5)", len(_existing_v2))
+                return
+            else:
+                logger.warning("[시작] 로컬 데이터 불완전 -- 배열 길이 < 5인 종목 %d개, 다운로드 진행", _short_arrays)
+        else:
+            logger.warning("[시작] 로컬 데이터 부족 -- 저장된 종목수(%d) < 전체 종목수(%d), 다운로드 진행", len(_existing_v2), len(all_codes))
+
     # 이어받기: 진행 파일 로드
     from backend.app.core.avg_amt_cache import load_avg_amt_progress, clear_avg_amt_progress
     from backend.app.core.trading_calendar import current_trading_date_str
@@ -753,6 +679,7 @@ async def _refresh_avg_amt_5d_cache_inner() -> None:
                     _st._pending_stock_details[cd]["change"] = pred_pre
                     _st._pending_stock_details[cd]["change_rate"] = rate
                     _st._pending_stock_details[cd]["trade_amount"] = abs(trde_prica)
+                    _st._pending_stock_details[cd]["prev_close"] = base_prc
 
         # ── 완전한 매핑 단계 (적격종목 × 시세 × 5일데이터 × 업종) ──────────
         from backend.app.core.sector_mapping import get_merged_sector

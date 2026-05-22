@@ -77,12 +77,18 @@ def broadcast_sector_custom_changed() -> None:
 
     # "업종명없음" 소속 종목 수 계산
     no_sector_count = 0
-    if "업종명없음" in merged:
+    filter_summary = ""
+    try:
         from backend.app.services.engine_service import get_all_sector_stocks
+        import backend.app.services.engine_service as es
         stocks = get_all_sector_stocks()
-        no_sector_count = sum(
-            1 for s in stocks if s["sector"] == "업종명없음"
-        )
+        if "업종명없음" in merged:
+            no_sector_count = sum(
+                1 for s in stocks if s["sector"] == "업종명없음"
+            )
+        filter_summary = getattr(es, "_latest_filter_summary", "")
+    except Exception:
+        pass
 
     payload = {
         "_v": 1,
@@ -93,24 +99,24 @@ def broadcast_sector_custom_changed() -> None:
         },
         "merged_sectors": merged,
         "no_sector_count": no_sector_count,
+        "filter_summary": filter_summary,
     }
     ws_manager.broadcast("sector-custom-changed", payload)
 
 
 
-def _trigger_recompute() -> None:
-    """업종순위 재계산 + sector-scores/sector-stocks-refresh WS 브로드캐스트."""
+async def _trigger_recompute() -> None:
+    """업종순위 재계산 신호 전송 (Step 6: 컨트롤 플레인 우회 배관 연동)."""
     try:
-        from backend.app.services.engine_service import recompute_sector_summary_now
-        recompute_sector_summary_now()
-        from backend.app.services.engine_account_notify import (
-            notify_desktop_sector_scores,
-            notify_desktop_sector_stocks_refresh,
-        )
-        notify_desktop_sector_scores(force=True)
-        notify_desktop_sector_stocks_refresh()
+        from backend.app.services.core_queues import get_control_queue
+
+        control_queue = get_control_queue()
+        await control_queue.put({
+            "type": "RECOMPUTE_SECTOR",
+            "payload": {},
+        })
     except Exception as e:
-        _log.warning("[업종관리] 업종순위 재계산 실패: %s", e)
+        _log.warning("[업종관리] 업종순위 재계산 신호 전송 실패: %s", e)
 
 
 # ── GET /api/sector-custom ───────────────────────────────────────────
@@ -134,12 +140,18 @@ async def get_sector_custom(_: str = Depends(get_current_user)):
 
     # "업종명없음" 소속 종목 수 계산 (broadcast_sector_custom_changed와 동일 로직)
     no_sector_count = 0
-    if "업종명없음" in merged:
+    filter_summary = ""
+    try:
         from backend.app.services.engine_service import get_all_sector_stocks
+        import backend.app.services.engine_service as es
         stocks = get_all_sector_stocks()
-        no_sector_count = sum(
-            1 for s in stocks if s["sector"] == "업종명없음"
-        )
+        if "업종명없음" in merged:
+            no_sector_count = sum(
+                1 for s in stocks if s["sector"] == "업종명없음"
+            )
+        filter_summary = getattr(es, "_latest_filter_summary", "")
+    except Exception:
+        pass
 
     return {
         "custom_data": {
@@ -149,6 +161,7 @@ async def get_sector_custom(_: str = Depends(get_current_user)):
         },
         "merged_sectors": merged,
         "no_sector_count": no_sector_count,
+        "filter_summary": filter_summary,
         "edit_window_open": True,
     }
 
@@ -162,7 +175,7 @@ async def rename_sector(body: RenameRequest, _: str = Depends(get_current_user))
         from backend.app.core.sector_custom_data import rename_sector as _rename
         _rename(body.old_name, body.new_name)
         broadcast_sector_custom_changed()
-        _trigger_recompute()
+        await _trigger_recompute()
         return {"ok": True, **_maybe_warning()}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
@@ -177,7 +190,7 @@ async def create_sector(body: CreateRequest, _: str = Depends(get_current_user))
         from backend.app.core.sector_custom_data import create_sector as _create
         _create(body.name)
         broadcast_sector_custom_changed()
-        _trigger_recompute()
+        await _trigger_recompute()
         return {"ok": True, **_maybe_warning()}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
@@ -192,7 +205,7 @@ async def delete_sector(body: DeleteRequest, _: str = Depends(get_current_user))
         from backend.app.core.sector_custom_data import delete_sector as _delete
         _delete(body.name)
         broadcast_sector_custom_changed()
-        _trigger_recompute()
+        await _trigger_recompute()
         return {"ok": True, **_maybe_warning()}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
@@ -207,7 +220,7 @@ async def move_stock(body: MoveStockRequest, _: str = Depends(get_current_user))
         from backend.app.core.sector_custom_data import move_stock as _move
         _move(body.stock_code, body.target_sector)
         broadcast_sector_custom_changed()
-        _trigger_recompute()
+        await _trigger_recompute()
         return {"ok": True, **_maybe_warning()}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
@@ -223,77 +236,51 @@ async def move_stocks(body: MoveStocksRequest, _: str = Depends(get_current_user
         for code in body.stock_codes:
             _move(code, body.target_sector)
         broadcast_sector_custom_changed()
-        _trigger_recompute()
+        await _trigger_recompute()
         return {"ok": True, **_maybe_warning()}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
 
 
-# ── POST /api/sector-custom/delete-cache ─────────────────────────────
+# ── POST /api/sector-custom/trigger-snapshot-download ──────────────────
 
-@router.post("/delete-cache")
-async def delete_cache(body: DeleteCacheRequest, _: str = Depends(get_current_user)):
-    """캐시 파일 삭제. Edit_Window 제한 없음 (언제든 가능)."""
-    cache_type = body.type
-    if cache_type not in ("snapshot", "avg_amt"):
-        return {"ok": False, "error": f"지원하지 않는 캐시 타입: {cache_type}"}
-
+@router.post("/trigger-snapshot-download")
+async def trigger_snapshot_download(_: str = Depends(get_current_user)):
+    """수동 확정시세 다운로드 실행"""
     try:
-        if cache_type == "snapshot":
-            files = [
-                _DATA_DIR / "confirmed_snapshot_cache.json",
-                _DATA_DIR / "stock_name_cache.json",
-                _DATA_DIR / "sector_layout_cache.json",
-            ]
-        else:  # avg_amt
-            files = [
-                _DATA_DIR / "avg_amt_5d_cache.json",
-            ]
-
-        def _delete_files():
-            deleted = []
-            for f in files:
-                if f.exists():
-                    f.unlink()
-                    deleted.append(f.name)
-            return deleted
-
-        deleted = await asyncio.to_thread(_delete_files)
-        _log.info("[업종관리] 저장데이터 삭제 완료 (%s): %s", cache_type, deleted)
-
-        # snapshot 캐시 삭제 후: 메모리 클리어 → fetch_unified_confirmed_data 재갱신 트리거
-        if cache_type == "snapshot":
-            try:
-                from backend.app.services import engine_service
-                if getattr(engine_service, "_confirmed_refresh_running", False):
-                    _log.info("[업종관리] 전종목 재조회 진행 중 — 재조회 생략")
-                else:
-                    engine_service._pending_stock_details.clear()
-                    engine_service._sector_stock_layout.clear()
-                    from backend.app.services.engine_account_notify import _rebuild_layout_cache
-                    _rebuild_layout_cache([])
-                    import backend.app.core.industry_map as _ind_mod
-                    _ind_mod._eligible_stock_codes.clear()
-                    from backend.app.services.market_close_pipeline import fetch_unified_confirmed_data
-                    asyncio.create_task(fetch_unified_confirmed_data(engine_service))
-                    _log.info("[업종관리] 확정데이터 저장데이터 삭제 → 전종목 재조회 시작")
-            except Exception as e2:
-                _log.warning("[업종관리] 확정데이터 저장데이터 삭제 후 재조회 실패: %s", e2)
-
-        # avg_amt 캐시 삭제 후 이벤트 파이프라인: 메모리 클리어 → 재구축 트리거
-        elif cache_type == "avg_amt":
-            try:
-                from backend.app.services import engine_service
-                engine_service._avg_amt_5d.clear()
-                engine_service._high_5d_cache.clear()
-                engine_service._avg_amt_needs_bg_refresh = True
-                engine_service._broadcast_avg_amt_progress(0, 0, status="cache_deleted")
-                asyncio.create_task(engine_service.refresh_avg_amt_5d_cache())
-                _log.info("[업종관리] 5일 저장데이터 삭제 → 재구축 시작")
-            except Exception as e2:
-                _log.warning("[업종관리] 5일 저장데이터 삭제 후 재구축 실패: %s", e2)
-
+        from backend.app.services import engine_service
+        if getattr(engine_service, "_confirmed_refresh_running", False):
+            return {"ok": False, "error": "전종목 재조회가 이미 진행 중입니다."}
+        
+        engine_service._pending_stock_details.clear()
+        engine_service._sector_stock_layout.clear()
+        from backend.app.services.engine_account_notify import _rebuild_layout_cache
+        _rebuild_layout_cache([])
+        import backend.app.core.industry_map as _ind_mod
+        _ind_mod._eligible_stock_codes.clear()
+        from backend.app.services.market_close_pipeline import fetch_unified_confirmed_data
+        asyncio.create_task(fetch_unified_confirmed_data(engine_service))
+        _log.info("[업종관리] 수동 확정데이터 다운로드 시작")
         return {"ok": True}
     except Exception as e:
-        _log.error("[업종관리] 저장데이터 삭제 실패 (%s): %s", cache_type, e)
+        _log.error("[업종관리] 수동 확정데이터 다운로드 실패: %s", e)
+        return {"ok": False, "error": str(e)}
+
+
+# ── POST /api/sector-custom/trigger-avg-amt-download ──────────────────
+
+@router.post("/trigger-avg-amt-download")
+async def trigger_avg_amt_download(_: str = Depends(get_current_user)):
+    """수동 5일 거래대금 다운로드 실행"""
+    try:
+        from backend.app.services import engine_service
+        engine_service._avg_amt_5d.clear()
+        engine_service._high_5d_cache.clear()
+        engine_service._avg_amt_needs_bg_refresh = True
+        engine_service._broadcast_avg_amt_progress(0, 0, status="cache_deleted")
+        asyncio.create_task(engine_service.refresh_avg_amt_5d_cache())
+        _log.info("[업종관리] 수동 5일 거래대금 다운로드 시작")
+        return {"ok": True}
+    except Exception as e:
+        _log.error("[업종관리] 수동 5일 거래대금 다운로드 실패: %s", e)
         return {"ok": False, "error": str(e)}

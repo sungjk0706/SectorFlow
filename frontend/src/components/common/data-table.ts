@@ -54,6 +54,7 @@ export interface DataTableApi<T> {
   destroy: () => void
   updateItems?: (items: TableRow<T>[]) => void
   updateItem?: (index: number, item: TableRow<T>) => void
+  updateItemByKey?: (key: string) => void
   scrollToIndex?: (index: number) => void
 }
 
@@ -741,6 +742,9 @@ function createVirtualScrollMode<T extends object>(
       if (destroyed) return
       currentRows[index] = item
       scroller.updateItem(index, item)
+    },
+    updateItemByKey: (key: string) => {
+      if (!destroyed) scroller.updateItemByKey(key)
     },
     scrollToIndex: (index: number) => { if (!destroyed) scroller.scrollToIndex(index) },
   }

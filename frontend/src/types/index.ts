@@ -270,6 +270,7 @@ export interface SectorCustomChangedEvent {
   };
   merged_sectors: string[];
   no_sector_count?: number;
+  filter_summary?: string;
 }
 
 export interface SectorCustomResponse {
@@ -281,6 +282,7 @@ export interface SectorCustomResponse {
   merged_sectors: string[];
   edit_window_open: boolean;
   no_sector_count?: number;
+  filter_summary?: string;
 }
 
 export interface SectorCustomMutationResponse {
