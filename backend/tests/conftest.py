@@ -40,7 +40,3 @@ def isolate_settlement_state(tmp_path, monkeypatch):
         "app.services.settlement_engine._STATE_PATH",
         tmp_path / "settlement_state.json",
     )
-    monkeypatch.setattr(
-        "backend.app.services.settlement_engine._STATE_PATH",
-        tmp_path / "settlement_state.json",
-    )
