@@ -375,7 +375,7 @@ async def _deferred_sector_summary() -> None:
         # 정규장 차단 서킷 브레이커 (Phase 2.1 단계 3)
         from backend.app.services.daily_time_scheduler import is_heavy_operation_allowed
         if not is_heavy_operation_allowed():
-            logger.warning("[시작] 20:30 이전 시간대 업종순위 계산 차단 -- 장중/시간외 CPU-bound 연산 방지")
+            logger.warning("[시작] 안전 구역(20:30~연결시작전) 외 시간대 진입으로 인한 업종순위 계산 스킵")
             # 장중 차단 시 영속성 캐시에서 복원 시도
             from backend.app.core.sector_summary_cache import load_sector_summary_cache
             cached_summary = load_sector_summary_cache()
@@ -503,7 +503,7 @@ async def refresh_avg_amt_5d_cache() -> None:
         # 정규장 차단 서킷 브레이커 (Phase 2.1 단계 3)
         from backend.app.services.daily_time_scheduler import is_heavy_operation_allowed
         if not is_heavy_operation_allowed():
-            logger.warning("[시작] 20:30 이전 시간대 5일거래대금 다운로드 차단 -- 장중/시간외 대량 다운로드 방지")
+            logger.warning("[시작] 안전 구역(20:30~연결시작전) 외 시간대 진입으로 인한 5일거래대금 다운로드 스킵")
             return
         if already_running:
             logger.info("[DEBUG] refresh_avg_amt_5d_cache CANCEL EXISTING TASK")
@@ -651,7 +651,7 @@ async def _refresh_avg_amt_5d_cache_inner() -> None:
     # 정규장 차단 서킷 브레이커 (Phase 2.1 단계 3)
     from backend.app.services.daily_time_scheduler import is_heavy_operation_allowed
     if not is_heavy_operation_allowed():
-        logger.warning("[시작] 20:30 이전 시간대 5일거래대금 내부 다운로드 차단 -- 장중/시간외 대량 다운로드 방지")
+        logger.warning("[시작] 안전 구역(20:30~연결시작전) 외 시간대 진입으로 인한 5일거래대금 내부 다운로드 스킵")
         return
 
     all_codes = [v for t, v in _st._sector_stock_layout if t == "code"]

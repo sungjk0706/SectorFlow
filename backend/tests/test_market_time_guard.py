@@ -44,6 +44,20 @@ class TestMarketTimeGuard:
         with patch('backend.app.services.daily_time_scheduler._kst_now', return_value=mock_time):
             assert is_heavy_operation_allowed(), "23:00에 허용되어야 함"
 
+    def test_guard_allows_before_market_open(self, kst):
+        """자정 이후 새벽 시간에는 허용되어야 함"""
+        # 가상 새벽 시간 (04:00)
+        mock_time = datetime(2026, 5, 23, 4, 0, tzinfo=kst)  # 다음날 04:00
+        with patch('backend.app.services.daily_time_scheduler._kst_now', return_value=mock_time):
+            assert is_heavy_operation_allowed(), "04:00에 허용되어야 함"
+
+    def test_guard_blocks_after_market_open(self, kst):
+        """연결 시작 시간 이후에는 차단되어야 함"""
+        # 가상 연결 시작 시간 이후 (08:30) - 평일
+        mock_time = datetime(2026, 5, 22, 8, 30, tzinfo=kst)  # 금요일 08:30
+        with patch('backend.app.services.daily_time_scheduler._kst_now', return_value=mock_time):
+            assert not is_heavy_operation_allowed(), "08:30에 차단되어야 함"
+
     def test_guard_allows_holiday(self, kst):
         """휴장일에는 허용되어야 함"""
         # 가상 휴장일 (토요일 14:00)
