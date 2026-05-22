@@ -51,7 +51,26 @@
 - Phase 1.3: Broker Adapter 리팩토링 (건너뜀 - 복잡도로 인해 Phase 1.4로 통합)
 - Phase 1.4: engine_service.py 분리 시작 (건너뜀 - 복잡도로 인해 이후 단계로 연기)
 - Phase 2.1: DataTable 렌더링 최적화 (완료)
-- Phase 2.1 단계 2: sector-stock.ts Web Component 변환 (완료)
+- Phase 2.1 단계 1: 프론트엔드 UI 컴포넌트 구조 정밀 조사 (완료)
+  - buy-target.ts, sector-stock.ts, profit-overview.ts, sell-position.ts 컴포넌트 구조 분석
+  - hotStore/uiStore 의존성 파악
+  - 렌더링 최적화 기회 식별
+- Phase 2.1 단계 2: sector-stock.ts Web Component 변환 (완료, git commit: 2798c81)
+  - sector-stock.ts를 HTMLElement 상속 Web Component로 변환 (SectorStockTable 클래스)
+  - Shadow DOM 도입 (attachShadow({ mode: 'open' }))
+  - CSS Containment 적용 (contain: content) - 레이아웃 스래싱 방지
+  - 메모리 누수 방지 (disconnectedCallback에서 unsubStore 실행 및 참조 clear)
+  - 기능 로직 보호 (buildRows, computeRows, rowCache 로직 100% 유지)
+  - router.ts: WebComponentPage 타입 추가 및 Web Component 지원
+  - main.ts: sector-stock.ts import로 custom element 등록
+  - npm run build 성공
+  - 프론트엔드 테스트 47개 패스
+- Phase 2.1 단계 3: 4대 파이프라인 물리 격리 구현 (완료)
+  - engine_bootstrap.py: refresh_avg_amt_5d_cache()에 정규장 차단 가드 이식 (Line 473-478)
+  - engine_bootstrap.py: _refresh_avg_amt_5d_cache_inner()에 정규장 차단 가드 이식 (Line 622-627)
+  - engine_bootstrap.py: _deferred_sector_summary()에 정규장 차단 가드 이식 및 스냅샷 복원 로직 추가 (Line 375-384)
+  - ws.py: 초기 스냅샷 대기 타임아웃 120초 → 300초 조정 (Line 40)
+  - 백엔드 통합 테스트 130 passed
 - Phase 2.2: React 역할 축소 (건너뜀 - 이미 Vanilla TS)
 - Phase 2.3: 렌더링 성능 모니터링 (완료)
 - Phase 3.1: Strategy Core 완전 분리 (건너뜀 - 복잡도로 인해 연기)
@@ -65,6 +84,10 @@
 
 ## 현재 상태
 ### 최근 완료 단계
+- Phase 2.1 단계 1: 프론트엔드 UI 컴포넌트 구조 정밀 조사 완료
+  - buy-target.ts, sector-stock.ts, profit-overview.ts, sell-position.ts 컴포넌트 구조 분석
+  - hotStore/uiStore 의존성 파악
+  - 렌더링 최적화 기회 식별
 - Phase 2.1 단계 2: sector-stock.ts Web Component 변환 완료 (git commit: 2798c81)
   - sector-stock.ts를 HTMLElement 상속 Web Component로 변환 (SectorStockTable 클래스)
   - Shadow DOM 도입 (attachShadow({ mode: 'open' }))
@@ -75,9 +98,40 @@
   - main.ts: sector-stock.ts import로 custom element 등록
   - npm run build 성공
   - 프론트엔드 테스트 47개 패스
+- Phase 2.1 단계 3: 4대 파이프라인 물리 격리 구현 완료
+  - engine_bootstrap.py: refresh_avg_amt_5d_cache()에 정규장 차단 가드 이식 (Line 473-478)
+  - engine_bootstrap.py: _refresh_avg_amt_5d_cache_inner()에 정규장 차단 가드 이식 (Line 622-627)
+  - engine_bootstrap.py: _deferred_sector_summary()에 정규장 차단 가드 이식 및 스냅샷 복원 로직 추가 (Line 375-384)
+  - ws.py: 초기 스냅샷 대기 타임아웃 120초 → 300초 조정 (Line 40)
+  - 백엔드 통합 테스트 130 passed
 
-### 다음 단계
-- 필요시 다른 컴포넌트도 Web Component로 변환 (profit-overview.ts, buy-target.ts, sell-position.ts)
+### 긴급 이슈
+#### 이슈 1: 매수후보(buyTargets) 데이터 미표시 현상
+- **현상**: 프론트엔드 매수후보 테이블(buy-target.ts)이 "매수후보가 없습니다." 상태로 유지되며 실시간 데이터 표시 안됨
+- **근본 원인**: backend/app/services/engine_bootstrap.py
+  - Line 312: `_sector_summary_cache`가 `None`으로 초기화됨
+  - Line 348-349: `_deferred_sector_summary()`가 `asyncio.create_task()`로 비동기 실행되어 메인 부트스트랩 흐름을 블로킹하지 않음
+  - 결과: WebSocket 연결 시 초기 스냅샷 전송 시점에 `_sector_summary_cache`가 아직 채워지지 않아 `buyTargets`가 `None`으로 전송됨
+- **임시 조치**: backend/app/web/routes/ws.py
+  - `_send_stocks_delayed`를 `_send_initial_snapshot_delayed`로 리팩토링
+  - `_sector_summary_ready_event` 대기 로직 추가 (120초 타임아웃)
+  - 초기 스냅샷 전송 타이밍을 업종순위 계산 완료 후로 지연
+- **백엔드 테스트**: 통합 테스트 130개 패스 (pytest backend/tests/)
+- **검증 상태**: 5일거래대금/고가 다운로드 소요 시간이 120초 타임아웃을 초과하여 WS 연결 해제 발생. 다운로드 완료 후 재검증 필요
+
+#### 이슈 2: 장중 백그라운드 다운로드 루프 폭주 현상
+- **현상**: 장 거래 시간(09:00~15:30)임에도 불구하고 5일 거래대금 및 고가 관련 다운로드/연산 로직이 실행됨
+- **결함 코드 위치**: backend/app/services/engine_bootstrap.py
+  - Line 367-432: `_deferred_sector_summary()` 함수에 장 시간 가드 부재
+    - `daily_time_scheduler.py`의 `get_market_phase()` 호출 없이 바로 실행
+    - 정규장 시간 내에도 업종순위 계산 실행
+  - Line 605-659: `_refresh_avg_amt_5d_cache_inner()` 함수에 장 시간 가드 부재
+    - 장 시간 검증 없이 5일 거래대금/고가 다운로드 실행
+    - 현재 17:37 (정규장 종료 후)에도 다운로드 진행 중 (34% 완료, 소요 시간 약 3분)
+  - Line 452-488: `refresh_avg_amt_5d_cache()` 함수에 장 시간 가드 부재
+    - Line 469-471: `scheduler_5d_download_on` 설정값 확인만 존재, 장 시간 검증 없음
+- **안전 레이어 연동 부재**: 시스템 전역 장 시간 검증 함수(`get_market_phase()`)가 존재함에도 백그라운드 연산 레이어와 연동되지 않음
+- **영향**: 장중 대량 다운로드로 인한 실시간 이벤트 루프 간섭, REST API 블로킹, 시스템 리소스 과다 소모
 ### Phase 1.1 완료 내용
 - backend/app/core/events.py 생성 완료
   - BaseEvent, MarketTickEvent, OrderFillEvent, AccountUpdateEvent 정의
@@ -339,10 +393,27 @@
 - hotStore/uiStore 분리(P1-1): 완료 - GPT5.5_아키텍처 Phase 4-1 해당
 
 ## 다음 단계
-- Phase 4 완료
+- Phase 2.1 단계 3: RestAPI 및 실시간 파이프라인 물리 격리 구현 예정
+  - 정규장 시간 내 다운로드 원천 차단 안전 가드 이식
+    - `_deferred_sector_summary()` 함수에 `get_market_phase()` 호출 추가
+    - `_refresh_avg_amt_5d_cache_inner()` 함수에 장 시간 가드 추가
+    - `refresh_avg_amt_5d_cache()` 함수에 장 시간 가드 추가
+    - 정규장(09:00~15:30) 시간 내 대량 다운로드 실행 차단
+  - 비동기 연산의 실시간 이벤트 루프 간섭 제거 프로토콜
+    - 5일거래대금/고가 다운로드를 장외 시간대로 스케줄링
+    - 다운로드 완료 타임아웃 조정 (현재 120초 → 300초 또는 무제한)
+    - 초기 스냅샷 전송 전략 수정 (빈 buyTargets로 먼저 전송, 업종순위 계산 완료 후 delta 업데이트)
+  - 백엔드 안전 레이어와 백그라운드 연산 레이어 연동 강화
+    - `daily_time_scheduler.py`의 `get_market_phase()`를 전역 장 시간 검증 표준으로 채택
+    - 모든 백그라운드 연산 함수에 장 시간 가드 의무화
 
 ## 미해결 문제
-- 없음
+- 이슈 1: 매수후보(buyTargets) 데이터 미표시 현상
+  - 임시 조치 적용 완료 (ws.py 리팩토링)
+  - 5일거래대금/고가 다운로드 완료 후 프론트엔드 검증 필요
+- 이슈 2: 장중 백그라운드 다운로드 루프 폭주 현상
+  - 원인 분석 완료 (engine_bootstrap.py 장 시간 가드 부재)
+  - Phase 2.1 단계 3에서 안전 가드 이식 예정
 
 ## 백업 상태
 - git commit 완료 (03fca00)
