@@ -268,6 +268,7 @@ class SectorSummary:
     index_guard_reason: str = ""        # 발동 사유
     index_guard_kospi_hit: bool = False   # 코스피 가드 발동 여부
     index_guard_kosdaq_hit: bool = False  # 코스닥 가드 발동 여부
+    is_skeleton_mode: bool = False     # 스켈레톤 캐시 모드 여부 (실시간 틱 기반 증분 연산용)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
