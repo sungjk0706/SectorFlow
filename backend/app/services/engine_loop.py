@@ -304,6 +304,12 @@ async def run_engine_loop(es: ModuleType) -> None:
                     _mgr = ConnectorManager(settings)
                     _mgr.set_message_callback(es._kiwoom_message_handler)
 
+                    # ── Event Bus 시작 ─────────────────────────────────────────────
+                    from backend.app.core.event_bus import EventBus
+                    event_bus = EventBus.get_instance()
+                    await event_bus.start()
+                    logger.info("[연결] Event Bus 시작 완료")
+
                     # ── Producer-Consumer Queue 설정 (단계 1) ───────────────────
                     kiwoom_connector = _mgr.get_connector("kiwoom")
                     if kiwoom_connector and hasattr(kiwoom_connector, 'set_queue_callback'):
@@ -344,6 +350,12 @@ async def run_engine_loop(es: ModuleType) -> None:
         from backend.app.services.engine_ws_dispatch import stop_consumer_loop
         await stop_consumer_loop()
         logger.info("[엔진] Consumer 루프 종료 완료")
+
+        # ── Event Bus 종료 ───────────────────────────────────────────────────
+        from backend.app.core.event_bus import EventBus
+        event_bus = EventBus.get_instance()
+        await event_bus.stop()
+        logger.info("[연결] Event Bus 종료 완료")
 
         if getattr(es, "_connector_manager", None):
             await es._connector_manager.disconnect_all()

@@ -39,6 +39,54 @@ from backend.app.services.engine_ws_parsing import (
     parse_fid290_session,
 )
 
+# Event Bus 통합 (Phase 1.3+1.4)
+_event_bus_enabled = False
+_event_bus_instance = None
+
+
+def _init_event_bus() -> None:
+    """Event Bus 초기화."""
+    global _event_bus_instance
+    try:
+        from backend.app.core.event_bus import EventBus
+        _event_bus_instance = EventBus.get_instance()
+    except Exception:
+        _event_bus_instance = None
+
+
+def _publish_market_tick_event(
+    code: str,
+    price: int,
+    change: int,
+    change_rate: float,
+    volume: int,
+    trade_amount: int,
+    sign: str,
+    raw_data: dict,
+) -> None:
+    """MarketTickEvent 발행."""
+    if not _event_bus_enabled or not _event_bus_instance:
+        return
+    try:
+        from backend.app.core.events import (
+            BrokerType,
+            create_market_tick_event,
+        )
+        event = create_market_tick_event(
+            broker=BrokerType.KIWOOM,
+            code=code,
+            price=price,
+            change=change,
+            change_rate=change_rate,
+            volume=volume,
+            trade_amount=trade_amount,
+            sign=sign,
+            raw_data=raw_data,
+        )
+        asyncio.create_task(_event_bus_instance.publish(event))
+    except Exception as e:
+        logger.warning("[EventBus] MarketTickEvent 발행 실패: %s", e, exc_info=True)
+
 logger = get_logger("engine")
 
 # ── _wl_codes 캐시 (매 틱마다 Set 재생성 방지) ──
@@ -308,6 +356,20 @@ def _handle_real_01(
         raw_cd_for_bucket, vals, es._latest_trade_amounts,
         es._pending_stock_details, is_0b_tick=is_0b_tick,
     )  # lock 불필요 — 순차 처리 + GIL 원자적
+
+    # Event Bus Publish (Phase 1.3+1.4)
+    if _event_bus_enabled:
+        volume = abs(_ws_fid_int(vals, "13", 0)) if _ws_fid_key_present(vals, "13") else 0
+        _publish_market_tick_event(
+            code=nk_px,
+            price=last_px,
+            change=diff,
+            change_rate=rate,
+            volume=volume,
+            trade_amount=_total14,
+            sign=sign,
+            raw_data={"item": item, "values": vals},
+        )
     if pend_key and es._pending_stock_details.get(pend_key, {}).get("status") == "active":
         # snapshot-replace: 새 dict 생성 후 참조 교체 1회
         old2 = es._pending_stock_details[pend_key]
@@ -533,11 +595,22 @@ _consumer_running: bool = False
 
 async def start_consumer_loop(queue: asyncio.Queue, es: ModuleType) -> None:
     """Consumer 루프 — 큐에서 데이터를 꺼내 handle_ws_data()로 전달."""
-    global _consumer_task, _consumer_running
+    global _consumer_task, _consumer_running, _event_bus_enabled
 
     if _consumer_running:
         logger.warning("[Consumer] 이미 실행 중")
         return
+
+    # Event Bus 초기화 및 활성화 확인
+    _init_event_bus()
+    try:
+        from backend.app.core.event_bus import EventBus
+        event_bus = EventBus.get_instance()
+        _event_bus_enabled = event_bus._is_running
+        if _event_bus_enabled:
+            logger.info("[Consumer] Event Bus 활성화 상태")
+    except Exception:
+        _event_bus_enabled = False
 
     _consumer_running = True
     _consumer_task = asyncio.get_running_loop().create_task(_consumer_loop_impl(queue, es))
@@ -551,6 +624,7 @@ async def _consumer_loop_impl(queue: asyncio.Queue, es: ModuleType) -> None:
         while _consumer_running:
             try:
                 data = await queue.get()
+                # 기존 방식 유지 (하위 호환)
                 await handle_ws_data(data, es)
                 queue.task_done()
             except asyncio.CancelledError:

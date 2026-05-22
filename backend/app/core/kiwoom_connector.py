@@ -218,6 +218,7 @@ class KiwoomConnector(BrokerConnector):
         self._connected = False
         self._receive_callback: Callable | None = None
         self._on_reconnect_success: Callable | None = None
+        self._event_bus_callback: Callable | None = None  # Event Bus Publish 콜백
         self._lock = asyncio.Lock()
         self._received_count = 0
         self._realtime_enabled: bool = True  # 실시간 연결 ON/OFF 플래그 (ws_subscribe_on)
@@ -372,6 +373,10 @@ class KiwoomConnector(BrokerConnector):
                 await self._receive_callback(payload)
             else:
                 self._receive_callback(payload)
+
+    def set_event_bus_callback(self, callback: Callable) -> None:
+        """Event Bus Publish 콜백 설정."""
+        self._event_bus_callback = callback
 
     async def _on_socket_disconnect(self) -> None:
         """_KiwoomSocket 연결 끊김 시 호출 — 재연결 루프 기동."""
