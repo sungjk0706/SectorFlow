@@ -64,7 +64,7 @@
 
 ## 현재 상태
 ### 최근 완료 단계
-- Phase 1.3+1.4 단계 1.6: Event Bus 성능 최적화 및 모니터링 완료
+- Phase 1.3+1.4 단계 1.6: Event Bus 성능 최적화 및 모니터링 완료 (git commit: 476aeb6)
   - event_bus.py: 시간 윈도우 기반 Coalescing 타이머 루프 구현 (원자성 보장)
   - Coalescing 파라미터: window=50ms, max_events=10, interval=10ms
   - 메트릭 확장: avg_queue_wait_ms, avg_dispatch_latency_ms, avg_handler_latency_ms, coalescing_rate
