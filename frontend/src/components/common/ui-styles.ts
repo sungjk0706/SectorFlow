@@ -4,7 +4,7 @@
  */
 
 import type { ColumnDef } from './data-table'
-import { hotStore } from '../../stores/hotStore'
+import { hotStore, normalizeStockCode } from '../../stores/hotStore'
 import { uiStore } from '../../stores/uiStore'
 
 /* ── 폰트 ── */
@@ -433,7 +433,7 @@ export function createStockNameColumnWithSectorLookup<T extends object>(
 
       // hotStore에서 sectorStock 조회
       const sectorStocks = hotStore.getState().sectorStocks
-      const sectorStock = sectorStocks[code]
+      const sectorStock = sectorStocks[normalizeStockCode(code)]
 
       if (!sectorStock && Object.keys(sectorStocks).length === 0) {
         console.warn('[createStockNameColumnWithSectorLookup] sectorStocks is empty. Market type and NXT enable indicators will not be displayed.')

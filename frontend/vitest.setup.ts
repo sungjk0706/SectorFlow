@@ -39,3 +39,37 @@ function patchStyleProperty(propName: string): void {
 
 patchStyleProperty('flex')
 patchStyleProperty('minHeight')
+patchStyleProperty('transition')
+patchStyleProperty('backgroundColor')
+
+// Mock ResizeObserver for JSDOM
+global.ResizeObserver = class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+// Mock requestAnimationFrame and cancelAnimationFrame for synchronous table rendering
+let mockTime = 0
+global.requestAnimationFrame = (cb: (time: number) => void) => {
+  mockTime += 16.7
+  cb(mockTime)
+  return 0
+}
+global.cancelAnimationFrame = (_id: number) => {}
+
+Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+  configurable: true,
+  get() {
+    return 300
+  }
+})
+
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+  configurable: true,
+  get() {
+    return 800
+  }
+})
+
+

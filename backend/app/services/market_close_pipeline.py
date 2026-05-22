@@ -408,6 +408,14 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
     try:
         await asyncio.to_thread(save_snapshot_cache, rows)
         _log.info("[타이머] 확정 데이터 저장데이터 저장 완료 — %d종목", len(rows))
+        
+        # 메모리 원자적 필터링 (Bug 4 수정)
+        if elig:
+            async with es._shared_lock:
+                for cd in list(pending.keys()):
+                    if cd not in elig:
+                        pending.pop(cd, None)
+                        
         return True
     except Exception as exc:
         _log.warning("[타이머] 확정 데이터 저장데이터 저장 실패: %s", exc, exc_info=True)

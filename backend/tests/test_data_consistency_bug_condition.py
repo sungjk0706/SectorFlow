@@ -369,11 +369,11 @@ class TestBug4MemoryReload:
             # Set eligible_stock_codes (non-empty = filter should apply)
             ind_mod._eligible_stock_codes = {code: "" for code in eligible_codes}
 
-            # Simulate "all saves completed" state:
-            # In the unfixed code, there is NO atomic memory swap after saves complete.
-            # The bug is that _pending_stock_details is never filtered to eligible-only.
-            # We check the current state of _pending_stock_details after "saves completed".
-            # (In the fixed code, an atomic swap would remove ineligible stocks here.)
+            # Simulate "all saves completed" state by running the save cache function
+            from backend.app.services.market_close_pipeline import _save_confirmed_cache
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(_save_confirmed_cache(es))
+            loop.close()
 
             # EXPECTED BEHAVIOR: after all saves completed, only eligible stocks remain
             active_codes_in_pending = {

@@ -4,9 +4,9 @@
 // frontend/src/pages/sell-position.ts
 
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
-import { hotStore } from '../stores/hotStore'
+import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import { createGlobalWsBadge } from '../settings'
-import { notifyPageActive, notifyPageInactive, subscribeFids } from '../api/ws'
+import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardTitle } from '../components/common/card-title'
 import { rateColor, fmtComma, fmtRate, createCodeCell, createStockNameColumn, createNumberCell, createPriceCell } from '../components/common/ui-styles'
 import type { Position } from '../types'
@@ -23,7 +23,7 @@ const COLUMNS: ColumnDef<Position>[] = [
   createStockNameColumn<Position>(
     (p: Position) => {
       const state = hotStore.getState()
-      const sectorStock = state.sectorStocks[p.stk_cd || '']
+      const sectorStock = state.sectorStocks[normalizeStockCode(p.stk_cd)]
       return {
         name: p.stk_nm || '',
         market_type: sectorStock?.market_type,

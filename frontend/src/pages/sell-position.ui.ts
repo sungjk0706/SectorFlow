@@ -8,6 +8,7 @@ import { createCardTitle } from '../components/common/card-title'
 import { rateColor, fmtComma, fmtRate, createCodeCell, createStockNameColumn, createNumberCell, createPriceCell } from '../components/common/ui-styles'
 import type { Position } from '../types'
 import type { SectorStock } from '../types'
+import { normalizeStockCode } from '../stores/hotStore'
 
 // ── Props 타입 정의 ──
 
@@ -127,7 +128,7 @@ export function createSellPositionCard(props: SellPositionProps): { el: HTMLElem
   // 초기 데이터 준비 - sectorStocks를 position에 주입
   const positionsWithSectorStock = props.positions.map(p => ({
     ...p,
-    sectorStock: props.sectorStocks[p.stk_cd || '']
+    sectorStock: props.sectorStocks[normalizeStockCode(p.stk_cd)]
   }))
 
   dataTable.updateRows(positionsWithSectorStock)
@@ -139,7 +140,7 @@ export function createSellPositionCard(props: SellPositionProps): { el: HTMLElem
     // sectorStocks를 position에 주입
     const positionsWithSectorStock = props.positions.map(p => ({
       ...p,
-      sectorStock: props.sectorStocks[p.stk_cd || '']
+      sectorStock: props.sectorStocks[normalizeStockCode(p.stk_cd)]
     }))
     
     dataTable?.updateRows(positionsWithSectorStock)

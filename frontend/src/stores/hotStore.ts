@@ -12,10 +12,23 @@ import type {
   RealDataEvent,
 } from '../types'
 
+/** 종목코드 정규화 헬퍼 */
+export function normalizeStockCode(code: string | undefined | null): string {
+  if (!code) return ''
+  let cd = code.includes('_') ? code.split('_')[0] : code
+  if (cd.startsWith('A')) cd = cd.substring(1)
+  if (/^\d+$/.test(cd) && cd.length < 6) {
+    cd = cd.padStart(6, '0')
+  }
+  return cd
+}
+
 /** 배열 → Record 변환 헬퍼 */
 export function stocksToMap(stocks: SectorStock[]): Record<string, SectorStock> {
   const m: Record<string, SectorStock> = {}
-  for (const s of stocks) m[s.code] = s
+  for (const s of stocks) {
+    m[normalizeStockCode(s.code)] = s
+  }
   return m
 }
 
@@ -54,7 +67,7 @@ let _positionIndexCache: Map<string, number> = new Map()
 export function rebuildBuyTargetIndex(targets: BuyTarget[]): void {
   const map = new Map<string, number>()
   for (let i = 0; i < targets.length; i++) {
-    map.set(targets[i].code, i)
+    map.set(normalizeStockCode(targets[i].code), i)
   }
   _buyTargetIndexCache = map
 }
@@ -63,20 +76,18 @@ export function rebuildBuyTargetIndex(targets: BuyTarget[]): void {
 export function rebuildPositionIndex(positions: Position[]): void {
   const map = new Map<string, number>()
   for (let i = 0; i < positions.length; i++) {
-    let cd = positions[i].stk_cd || ''
-    if (cd.startsWith('A')) cd = cd.substring(1)
-    map.set(cd, i)
+    map.set(normalizeStockCode(positions[i].stk_cd), i)
   }
   _positionIndexCache = map
 }
 
 /** 캐시 조회 헬퍼 (외부 모듈에서 사용 가능) */
 export function getBuyTargetIndex(code: string): number | undefined {
-  return _buyTargetIndexCache.get(code)
+  return _buyTargetIndexCache.get(normalizeStockCode(code))
 }
 
 export function getPositionIndex(stkCd: string): number | undefined {
-  return _positionIndexCache.get(stkCd)
+  return _positionIndexCache.get(normalizeStockCode(stkCd))
 }
 
 /* ── 실시간 데이터 액션 함수 ── */
@@ -115,10 +126,10 @@ export function applyAccountUpdate(data: AccountUpdateEvent): void {
       const positions = [...state.positions]
       // removed_codes: 역순 splice 제거
       if (removed.length > 0) {
-        const removedSet = new Set(removed)
+        const removedSet = new Set(removed.map(c => normalizeStockCode(c)))
         const indices: number[] = []
         for (let i = 0; i < positions.length; i++) {
-          if (removedSet.has(positions[i].stk_cd)) indices.push(i)
+          if (removedSet.has(normalizeStockCode(positions[i].stk_cd))) indices.push(i)
         }
         for (let i = indices.length - 1; i >= 0; i--) {
           positions.splice(indices[i], 1)
@@ -126,7 +137,7 @@ export function applyAccountUpdate(data: AccountUpdateEvent): void {
       }
       // changed_positions: 인덱스 찾아 교체 또는 push
       for (const pos of changed) {
-        const idx = positions.findIndex(p => p.stk_cd === pos.stk_cd)
+        const idx = positions.findIndex(p => normalizeStockCode(p.stk_cd) === normalizeStockCode(pos.stk_cd))
         if (idx >= 0) {
           positions[idx] = pos
         } else {
@@ -185,12 +196,8 @@ export function applyRealData(item: RealDataEvent): void {
   const vals = item.values;
   if (!rawCode || !vals) return;
 
-  // 종목코드 정규화: "028260_AL", "005930_NX" → "028260", "005930"
-  // 선행 0 방어: "5930" → "005930" (백엔드 REST 정규화와 동일)
-  let code = rawCode.includes('_') ? rawCode.split('_')[0] : rawCode;
-  if (/^\d+$/.test(code) && code.length < 6) {
-    code = code.padStart(6, '0');
-  }
+  // 종목코드 정규화
+  const code = normalizeStockCode(rawCode);
 
   // 1. 01/0B/0H (주식체결) 처리
   if (type === '01' || type === '0B' || type === '0H') {
@@ -293,7 +300,8 @@ export function applyRealData(item: RealDataEvent): void {
 
 /* ── orderbook-update: 매수후보 호가잔량비 실시간 갱신 ── */
 export function applyOrderbookUpdate(data: { code: string; bid: number; ask: number }): void {
-  const { code, bid, ask } = data;
+  const code = normalizeStockCode(data.code);
+  const { bid, ask } = data;
   if (!code) return;
   hotStore.setState((state) => {
     const bt = state.buyTargets;
@@ -302,8 +310,9 @@ export function applyOrderbookUpdate(data: { code: string; bid: number; ask: num
     const t = bt[idx];
     const prev = t.order_ratio;
     if (prev && prev[0] === bid && prev[1] === ask) return state;
-    bt.splice(idx, 1, { ...t, order_ratio: [bid, ask] });
-    return { buyTargets: bt };
+    const newBt = [...bt];
+    newBt[idx] = { ...t, order_ratio: [bid, ask] };
+    return { buyTargets: newBt };
   });
 }
 
@@ -372,7 +381,7 @@ export function applyBuyTargetsUpdate(data: { buy_targets: BuyTarget[] }): void 
   const prev = hotStore.getState().buyTargets
   const same = prev.length === incoming.length && prev.every((p, i) => {
     const n = incoming[i]
-    return p.rank === n.rank && p.code === n.code && p.name === n.name
+    return p.rank === n.rank && normalizeStockCode(p.code) === normalizeStockCode(n.code) && p.name === n.name
       && p.cur_price === n.cur_price && p.change === n.change && p.change_rate === n.change_rate
       && p.strength === n.strength
       && p.guard_pass === n.guard_pass && p.reason === n.reason
