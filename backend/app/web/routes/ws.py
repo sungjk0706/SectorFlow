@@ -18,37 +18,44 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ws", tags=["websocket"])
 
 
-async def _send_stocks_delayed(websocket: WebSocket, ws_manager) -> None:
-    """앱준비 완료 대기 → sector-stocks-refresh, sector-scores, buy-targets-update 순차 유니캐스트."""
+async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> None:
+    """앱준비 완료 대기 → 업종순위 계산 완료 대기 → initial-snapshot, sector-stocks-refresh, sector-scores, buy-targets-update 순차 유니캐스트."""
     try:
         # 앱준비 완료 대기
         from backend.app.services.engine_service import _bootstrap_event
 
         if not _bootstrap_event.is_set():
-            logger.info("[연결] 앱준비 대기 중 -- 업종목록 전송 지연")
+            logger.info("[연결] 앱준비 대기 중 -- 초기 스냅샷 전송 지연")
             try:
                 await asyncio.wait_for(_bootstrap_event.wait(), timeout=60.0)
             except asyncio.TimeoutError:
                 logger.warning("[연결] 앱준비 60초 대기 초과 -- 현재 데이터로 전송")
 
-        # sector-stocks-refresh: 앱준비 완료 즉시 전송
+        # 업종순위 계산 완료 대기 (매수후보 데이터 포함을 위해 필수)
+        from backend.app.services.engine_service import _sector_summary_ready_event
+
+        if not _sector_summary_ready_event.is_set():
+            logger.info("[연결] 업종순위 계산 대기 중 -- 매수후보 데이터 포함을 위해 대기")
+            try:
+                await asyncio.wait_for(_sector_summary_ready_event.wait(), timeout=300.0)
+            except asyncio.TimeoutError:
+                logger.warning("[연결] 업종순위 계산 300초 대기 초과 -- 매수후보 없이 전송")
+
+        # initial-snapshot 전송 (업종순위 계산 완료 후 buyTargets 포함)
+        from backend.app.services.engine_service import build_initial_snapshot
+
+        logger.info("[연결] 시작화면 데이터 생성 시작")
+        snapshot = await build_initial_snapshot()
+        logger.info("[연결] 시작화면 데이터 생성 완료")
+        await ws_manager.send_to(websocket, "initial-snapshot", snapshot)
+
+        # sector-stocks-refresh 전송
         from backend.app.services.engine_service import build_sector_stocks_payload
 
         stocks_payload = await build_sector_stocks_payload()
         stock_count = len(stocks_payload.get("stocks", []))
         logger.info("[연결] 업종목록 화면전송 -- %d종목", stock_count)
         await ws_manager.send_to(websocket, "sector-stocks-refresh", stocks_payload)
-
-        # 업종순위 계산 완료 대기
-        from backend.app.services.engine_service import _sector_summary_ready_event
-
-        if not _sector_summary_ready_event.is_set():
-            logger.info("[연결] 업종순위 계산 대기 중")
-            try:
-                await asyncio.wait_for(_sector_summary_ready_event.wait(), timeout=120.0)
-            except asyncio.TimeoutError:
-                logger.warning("[연결] 업종순위 계산 120초 대기 초과 -- 생략")
-                return
 
         # sector-scores 전송
         from backend.app.services.engine_service import (
@@ -82,7 +89,7 @@ async def _send_stocks_delayed(websocket: WebSocket, ws_manager) -> None:
             else:
                 logger.info("[연결] 업종점수 미전송 -- 종목 없음 (정상)")
 
-        # buy-targets 전송
+        # buy-targets 전송 (initial-snapshot에 이미 포함되어 있으나, WS delta 메커니즘을 위해 별도 전송)
         from backend.app.services.engine_service import get_buy_targets_snapshot
 
         targets = get_buy_targets_snapshot()
@@ -92,7 +99,7 @@ async def _send_stocks_delayed(websocket: WebSocket, ws_manager) -> None:
             )
             logger.info("[연결] 매수후보 화면전송 -- %d건", len(targets))
     except Exception as e:
-        logger.error("[연결] 업종목록 화면전송 실패: %s", e, exc_info=True)
+        logger.error("[연결] 초기 스냅샷 전송 실패: %s", e, exc_info=True)
 
 
 @router.websocket("/prices")
@@ -113,16 +120,8 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
 
     delayed_task: asyncio.Task | None = None
     try:
-        # initial-snapshot 유니캐스트
-        from backend.app.services.engine_service import build_initial_snapshot
-
-        logger.info("[연결] 시작화면 데이터 생성 시작")
-        snapshot = await build_initial_snapshot()
-        logger.info("[연결] 시작화면 데이터 생성 완료")
-        await ws_manager.send_to(websocket, "initial-snapshot", snapshot)
-
-        # 앱준비 대기 → sector 데이터 순차 유니캐스트
-        delayed_task = asyncio.create_task(_send_stocks_delayed(websocket, ws_manager))
+        # 앱준비 대기 → 업종순위 계산 대기 → initial-snapshot 및 sector 데이터 순차 유니캐스트
+        delayed_task = asyncio.create_task(_send_initial_snapshot_delayed(websocket, ws_manager))
 
         # 수신 루프: ping → pong, page-active/page-inactive → 페이지 추적, 그 외 무시
         while True:

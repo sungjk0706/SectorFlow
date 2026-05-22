@@ -372,6 +372,17 @@ async def _deferred_sector_summary() -> None:
     완료 후 _sector_summary_ready_event.set() + WS 3종 전송.
     """
     try:
+        # 정규장 차단 서킷 브레이커 (Phase 2.1 단계 3)
+        from backend.app.services.daily_time_scheduler import get_market_phase
+        phase = get_market_phase()
+        if phase["krx"] == "정규장":
+            logger.warning("[시작] 정규장 시간대 업종순위 계산 차단 -- 장중 CPU-bound 연산 방지")
+            # 장중 차단 시 최소한의 기본 구조 객체 생성하여 프론트엔드 크래시 방지
+            from backend.app.services.engine_sector_score import SectorSummary
+            _st._sector_summary_cache = SectorSummary(sectors=[], buy_targets=[])
+            _st._sector_summary_ready_event.set()
+            return
+        
         from backend.app.services.engine_sector_score import compute_full_sector_summary
         _inputs = _st.get_sector_summary_inputs()
         if _inputs.get("all_codes"):
@@ -468,6 +479,13 @@ async def refresh_avg_amt_5d_cache() -> None:
         logger.info("[DEBUG] refresh_avg_amt_5d_cache STATE: scheduler_5d_download_on=%s, force_run=%s, existing_task=%s, done=%s", scheduler_on, force_run, existing_task is not None, existing_task.done() if existing_task else None)
         if not scheduler_on and not force_run:
             logger.info("[DEBUG] refresh_avg_amt_5d_cache SKIP 이유: scheduler_5d_download_on=OFF")
+            return
+        
+        # 정규장 차단 서킷 브레이커 (Phase 2.1 단계 3)
+        from backend.app.services.daily_time_scheduler import get_market_phase
+        phase = get_market_phase()
+        if phase["krx"] == "정규장":
+            logger.warning("[시작] 정규장 시간대 5일거래대금 다운로드 차단 -- 장중 대량 다운로드 방지")
             return
         if already_running:
             logger.info("[DEBUG] refresh_avg_amt_5d_cache CANCEL EXISTING TASK")
@@ -611,6 +629,13 @@ async def _refresh_avg_amt_5d_cache_inner() -> None:
         avg_from_v2
     )
     _st._avg_amt_needs_bg_refresh = False
+
+    # 정규장 차단 서킷 브레이커 (Phase 2.1 단계 3)
+    from backend.app.services.daily_time_scheduler import get_market_phase
+    phase = get_market_phase()
+    if phase["krx"] == "정규장":
+        logger.warning("[시작] 정규장 시간대 5일거래대금 내부 다운로드 차단 -- 장중 대량 다운로드 방지")
+        return
 
     all_codes = [v for t, v in _st._sector_stock_layout if t == "code"]
     if not all_codes:
