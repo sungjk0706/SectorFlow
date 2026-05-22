@@ -139,6 +139,25 @@ def get_market_phase(now: datetime | None = None) -> dict:
     return {"krx": krx_status, "nxt": nxt_status}
 
 
+def is_heavy_operation_allowed(now: datetime | None = None) -> bool:
+    """
+    대량 다운로드 및 무거운 배치 연산 허용 여부 반환.
+    - 20:30 이전: 허용 안 함 (정규장 + 시간외 + 마켓 정리 시간)
+    - 20:30 이후: 허용 (장 마감 후 안전 시간대)
+    - 휴장일: 허용
+    """
+    from backend.app.core.trading_calendar import is_krx_holiday
+    if now is None:
+        now = _kst_now()
+    today = now.date()
+    if today.weekday() >= 5 or is_krx_holiday(today):
+        return True  # 휴장일에는 허용
+    t = now.hour * 60 + now.minute
+    if t < 1230:  # ~20:30
+        return False  # 20:30 이전 차단
+    return True  # 20:30 이후 허용
+
+
 def _kst_now() -> datetime:
     return datetime.now(KST)
 
