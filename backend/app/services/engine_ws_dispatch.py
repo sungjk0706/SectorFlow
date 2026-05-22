@@ -40,7 +40,7 @@ from backend.app.services.engine_ws_parsing import (
 )
 
 # Event Bus 통합 (Phase 1.3+1.4)
-_event_bus_enabled = False
+_event_bus_enabled = True  # Phase 1.3+1.4 단계 1.5: 기본 활성화
 _event_bus_instance = None
 
 
