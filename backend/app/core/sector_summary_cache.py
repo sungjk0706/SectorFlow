@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """SectorSummary 영속성 캐시 - 업종순위/매수후보 데이터 저장 및 복원"""
-from __future__ annotations
+from __future__ import annotations
 
 import json
 import logging
