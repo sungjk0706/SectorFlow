@@ -142,20 +142,30 @@ def get_market_phase(now: datetime | None = None) -> dict:
 def is_heavy_operation_allowed(now: datetime | None = None) -> bool:
     """
     대량 다운로드 및 무거운 배치 연산 허용 여부 반환.
-    - 20:30 이전: 허용 안 함 (정규장 + 시간외 + 마켓 정리 시간)
-    - 20:30 이후: 허용 (장 마감 후 안전 시간대)
-    - 휴장일: 허용
+    - 안전 구역(Safe Window): [20:30] ~ [다음 거래일 실시간 연결 시작 시간] → 허용 (True)
+    - 그 외 시간: 차단 (False)
     """
     from backend.app.core.trading_calendar import is_krx_holiday
     if now is None:
         now = _kst_now()
     today = now.date()
+    
+    # 휴장일이면 안전 구역으로 간주 (전일 허용)
     if today.weekday() >= 5 or is_krx_holiday(today):
-        return True  # 휴장일에는 허용
+        return True
+    
     t = now.hour * 60 + now.minute
-    if t < 1230:  # ~20:30
-        return False  # 20:30 이전 차단
-    return True  # 20:30 이후 허용
+    
+    # 실시간 연결 시작 시간 (기본값: 08:01 = 481분)
+    # TODO: settings_cache에서 ws_subscribe_start 읽어오기
+    start_time_limit = 481  # 08:01
+    
+    # 안전 구역: 20:30 이후 (~다음날 연결 시작 시간 전)
+    if t >= 1230 or t < start_time_limit:
+        return True
+    
+    # 그 외 시간: 차단 (장중, 낮 시간대 등)
+    return False
 
 
 def _kst_now() -> datetime:
