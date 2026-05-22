@@ -11,6 +11,7 @@ tick_queue에서 데이터를 꺼내어 연산 수행:
 from __future__ import annotations
 
 import asyncio
+import time
 from types import ModuleType
 from typing import Optional
 
@@ -21,20 +22,77 @@ from backend.app.services.core_queues import (
     get_broadcast_queue,
     get_control_queue,
 )
+from backend.protobuf import event_pb2
 
 logger = get_logger("pipeline_compute")
 
 _compute_task: Optional[asyncio.Task] = None
 _compute_running: bool = False
 
+# P1-4: Latency Metrics
+_latency_metrics = None
+
+
+def _parse_protobuf_batch(binary_data: bytes) -> list[dict]:
+    """
+    Protobuf 바이너리 배치 데이터 파싱.
+
+    Args:
+        binary_data: Protobuf 직렬화된 바이너리 데이터 (길이 접두사 + 이벤트 패킹)
+
+    Returns:
+        파싱된 이벤트 리스트 (dict 형태)
+    """
+    events = []
+    offset = 0
+
+    while offset < len(binary_data):
+        # 길이 접두사 읽기 (4 bytes)
+        if offset + 4 > len(binary_data):
+            logger.warning("[Compute] Protobuf 길이 접두사 불완전")
+            break
+
+        length = int.from_bytes(binary_data[offset:offset+4], byteorder='big')
+        offset += 4
+
+        # 이벤트 데이터 읽기
+        if offset + length > len(binary_data):
+            logger.warning("[Compute] Protobuf 이벤트 데이터 불완전")
+            break
+
+        event_bytes = binary_data[offset:offset+length]
+        offset += length
+
+        # Protobuf 파싱
+        try:
+            event_proto = event_pb2.Event()
+            event_proto.ParseFromString(event_bytes)
+
+            # dict 형태로 변환
+            event_dict = {
+                "type": event_proto.type,
+                "timestamp": event_proto.timestamp,
+                "data": dict(event_proto.data),
+                "latency_trace": dict(event_proto.latency_trace),
+            }
+            events.append(event_dict)
+        except Exception as e:
+            logger.error("[Compute] Protobuf 파싱 예외 (계속): %s", e, exc_info=True)
+
+    return events
+
 
 async def start_compute_loop(es: ModuleType) -> None:
     """Compute Engine 루프 시작."""
-    global _compute_task, _compute_running
+    global _compute_task, _compute_running, _latency_metrics
 
     if _compute_running:
         logger.warning("[Compute] 이미 실행 중")
         return
+
+    # P1-4: Latency Metrics 초기화
+    from backend.app.core.metrics.latency import get_latency_metrics
+    _latency_metrics = get_latency_metrics()
 
     _compute_running = True
     _compute_task = asyncio.get_running_loop().create_task(_compute_loop_impl(es))
@@ -68,20 +126,40 @@ async def _compute_loop_impl(es: ModuleType) -> None:
             try:
                 # ── Control Queue 관문 (Step 6: 컨트롤 플레인 우회 배관 연동) ──
                 # 제어 신호가 있는지 먼저 체크 (get_nowait로 비블로킹 체크)
+                # P0-1: PriorityQueue 전환 - 튜플 언패킹 적용 (우선순위, 데이터)
                 try:
-                    control_signal = control_queue.get_nowait()
+                    _, control_signal = control_queue.get_nowait()
                     await _process_control_signal(control_signal, es, broadcast_queue)
                     control_queue.task_done()
                 except asyncio.QueueEmpty:
                     pass  # 제어 신호 없음, 정상 흐름 계속
 
-                # tick_queue에서 데이터 꺼내기
+                # tick_queue에서 데이터 꺼내기 (P2-5: Protobuf 바이너리)
                 data = await tick_queue.get()
 
-                # 연산 수신 (engine_service의 연산 로직 이관)
-                await _process_tick_data(data, es, order_queue, broadcast_queue)
+                # P1-4: tick_to_compute_ms 측정
+                ingress_timestamp = time.perf_counter_ns()
+
+                # P2-5: Protobuf 파싱
+                parsed_events = _parse_protobuf_batch(data)
+
+                # 파싱된 각 이벤트를 순차적으로 연산 로직에 전달
+                for event in parsed_events:
+                    try:
+                        # P1-4: tick_to_compute_ms 측정
+                        current_time = time.perf_counter_ns()
+                        latency_ms = (current_time - ingress_timestamp) / 1_000_000
+                        _latency_metrics.record("tick_to_compute_ms", latency_ms)
+
+                        # 연산 수신 (engine_service의 연산 로직 이관)
+                        await _process_tick_data(event, es, order_queue, broadcast_queue)
+                    except Exception as e:
+                        logger.error("[Compute] 이벤트 처리 예외 (계속): %s", e, exc_info=True)
 
                 tick_queue.task_done()
+
+                # P0-1: 틱 폭주 시 이벤트 루프 고갈 방지 - 협력적 멀티태스킹 (Yielding)
+                await asyncio.sleep(0)
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -238,9 +316,15 @@ async def _handle_real_tick(
             if not isinstance(vals, dict):
                 vals = {}
 
-            # 0B/01 체결 처리
+            # 0B/01 체결 처리 (주식 현재가)
             if msg_type in ("0B", "01"):
                 await _handle_real_01_tick(item, vals, es, order_queue, broadcast_queue)
+            # 0J 지수 처리 (업종 지수 바)
+            elif msg_type == "0J":
+                await _handle_real_0j_tick(item, vals, es, broadcast_queue)
+            # 0D 호가 처리 (호가 잔량 테이블)
+            elif msg_type == "0D":
+                await _handle_real_0d_tick(item, vals, es, broadcast_queue)
 
     except Exception as e:
         logger.error("[Compute] REAL 틱 처리 예외: %s", e, exc_info=True)
@@ -289,6 +373,115 @@ async def _handle_real_01_tick(
 
     except Exception as e:
         logger.error("[Compute] 0B/01 틱 처리 예외: %s", e, exc_info=True)
+
+
+async def _handle_real_0j_tick(
+    item: dict,
+    vals: dict,
+    es: ModuleType,
+    broadcast_queue: asyncio.Queue,
+) -> None:
+    """
+    0J 지수 틱 처리 (업종 지수 바).
+
+    Args:
+        item: 틱 아이템
+        vals: 틱 값
+        es: engine_service 모듈
+        broadcast_queue: UI 전송 큐
+    """
+    try:
+        from backend.app.services.daily_time_scheduler import on_0j_real_received
+        from backend.app.services.engine_ws_dispatch import _ws_fid_float, _parse_ws_fid12_to_percent, _ws_fid_raw
+
+        # 지수 폴링 중단
+        on_0j_real_received()
+
+        # 종목코드 추출
+        idx_cd = str(item.get("item") or "").strip().lstrip("A")
+        if not idx_cd:
+            raw_item = item.get("item")
+            if isinstance(raw_item, list) and raw_item:
+                idx_cd = str(raw_item[0]).strip()
+
+        # 거래소 접미사 제거
+        _exch_suffix = ""
+        if idx_cd:
+            for sfx in ("_NX", "_AL", "_nx", "_al"):
+                if idx_cd.endswith(sfx):
+                    _exch_suffix = sfx
+                    idx_cd = idx_cd[: -len(sfx)]
+                    break
+
+        if not (idx_cd and isinstance(vals, dict)):
+            return
+
+        # 지수 데이터 파싱
+        price = _ws_fid_float(vals, "10", 0.0)
+        change = _ws_fid_float(vals, "11", 0.0)
+        rate = _parse_ws_fid12_to_percent(_ws_fid_raw(vals, "12"))
+        sig = str(_ws_fid_raw(vals, "25") or "").strip()
+
+        if sig in ("4", "5", "44", "45"):
+            change = -abs(change)
+            rate = -abs(rate)
+
+        # 지수 캐시 업데이트
+        if price != 0 or rate != 0:
+            es._latest_index[idx_cd] = {
+                "price": abs(price),
+                "change": change,
+                "rate": rate,
+            }
+        else:
+            logger.warning("[Compute] 0J 파싱 실패 idx_cd=%s vals=%s", idx_cd, str(vals)[:200])
+
+    except Exception as e:
+        logger.error("[Compute] 0J 틱 처리 예외: %s", e, exc_info=True)
+
+
+async def _handle_real_0d_tick(
+    item: dict,
+    vals: dict,
+    es: ModuleType,
+    broadcast_queue: asyncio.Queue,
+) -> None:
+    """
+    0D 호가 틱 처리 (호가 잔량 테이블).
+
+    Args:
+        item: 틱 아이템
+        vals: 틱 값
+        es: engine_service 모듈
+        broadcast_queue: UI 전송 큐
+    """
+    try:
+        from backend.app.services.engine_symbol_utils import _real_item_stk_cd, _format_kiwoom_reg_stk_cd
+        from backend.app.services.engine_ws_dispatch import _ws_fid_int
+        from backend.app.services.engine_account_notify import notify_orderbook_update
+
+        # 종목코드 추출
+        raw_cd = _real_item_stk_cd(item, vals)
+        if not raw_cd:
+            return
+
+        nk = _format_kiwoom_reg_stk_cd(raw_cd)
+        bid = _ws_fid_int(vals, "125", 0)  # 총 매수호가잔량
+        ask = _ws_fid_int(vals, "121", 0)  # 총 매도호가잔량
+
+        if bid < 0 or ask < 0:
+            return
+
+        # 호가 캐시 업데이트
+        prev = es._orderbook_cache.get(nk)
+        es._orderbook_cache[nk] = (bid, ask)
+
+        # 매수후보 종목이면 호가잔량비 변경을 프론트에 즉시 전송
+        if prev != (bid, ask) and nk in es._subscribed_0d_stocks:
+            notify_orderbook_update(nk, bid, ask)
+
+    except Exception as e:
+        logger.error("[Compute] 0D 틱 처리 예외: %s", e, exc_info=True)
 
 
 async def _check_sector_recompute_needed(

@@ -542,10 +542,11 @@ _REAL_DISPATCH: dict[str, Callable] = {
 
 
 def _handle_real(data: dict, es: ModuleType) -> None:
-    """REAL 메시지 수신 — 디스패치 테이블로 타입별 핸들러 호출, 항목별 try-except 격리."""
+    """REAL 메시지 수신 — 데이터 타입별 분기 처리 (돈 데이터 즉시 우회, 연산 데이터 압축)."""
     if es._REG_REAL_DEBUG_EXTRA_LOG:
         _log_ws_trnm_json_detail("REAL", data if isinstance(data, dict) else {"_raw": data})
         _log_real_data_items_preview(data if isinstance(data, dict) else {})
+    
     real_data = data.get("data")
     if isinstance(real_data, list):
         items = real_data
@@ -553,27 +554,34 @@ def _handle_real(data: dict, es: ModuleType) -> None:
         items = [real_data]
     else:
         items = []
+    
     for item in items:
         if not isinstance(item, dict):
             continue
-        # [근본해결] 무가공 Raw 데이터 즉시 전송 (MTS 무결성 보장)
+        
+        # 무가공 Raw 데이터 즉시 전송 (MTS 무결성 보장)
         notify_raw_real_data(item)
-
+        
         try:
             msg_type = item.get("type")
             norm = _normalize_kiwoom_real_type(msg_type)
             vals = item.get("values", {})
             if not isinstance(vals, dict):
                 vals = {}
-            # 01 타입은 raw_type_upper·is_0b_tick 추가 인자가 필요하므로 별도 분기
-            if norm == "01":
-                _raw_type_upper = str(msg_type or "").strip().upper()
-                _is_0b_tick = _raw_type_upper in ("0B", "01")
-                _handle_real_01(item, vals, _raw_type_upper, _is_0b_tick, es)
-                continue
-            handler = _REAL_DISPATCH.get(norm)
-            if handler is not None:
-                handler(item, vals, es)
+            
+            # 💰 돈 데이터 - 즉시 우회 (체결, 잔고)
+            if norm == "00":
+                _handle_real_00(item, vals, es)
+            elif norm in ("04", "80"):
+                _handle_real_balance(item, vals, es)
+            # 📊 연산 데이터 - 압축 고속도로 (시세, 지수, 호가)
+            else:
+                from backend.app.services.backend_coalescing import BackendCoalescing
+                coalescing = BackendCoalescing.get_instance()
+                try:
+                    coalescing.add_raw_data(item)
+                except Exception as e:
+                    logger.error("[REAL] Coalescing 전송 예외 (계속): %s", e, exc_info=True)
         except Exception as e:
             logger.error("[REAL] 항목 처리 예외 (계속): %s", e, exc_info=True)
 

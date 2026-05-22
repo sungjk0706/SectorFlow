@@ -16,6 +16,7 @@ import time
 from typing import Dict, Optional, Set, Any
 
 from backend.protobuf import event_pb2
+from backend.app.services.core_queues import get_tick_queue
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +155,7 @@ class BackendCoalescing:
                 await self._flush()
 
     async def _flush(self) -> None:
-        """flush 실행 (네트워크로 전송 전 압축)"""
+        """flush 실행 (네트워크로 전송 전 압축 + tick_queue 전송)"""
         if not self.pending_map:
             return
 
@@ -163,14 +164,23 @@ class BackendCoalescing:
         self.pending_map.clear()
         self.last_flush_time = time.time()
 
+        # Protobuf 직렬화 (바이너리 스트림)
+        serialized = self._serialize_events(events)
+
+        # P2-5: tick_queue에 Protobuf 바이너리 전송
+        try:
+            tick_queue = get_tick_queue()
+            tick_queue.put_nowait(serialized)
+            logger.debug(f"[BackendCoalescing] tick_queue 전송: {len(events)} events, {len(serialized)} bytes")
+        except Exception as e:
+            logger.error(f"[BackendCoalescing] tick_queue 전송 실패: {e}", exc_info=True)
+
         # 모든 WebSocket에 전송
         if self.websocket_connections:
             # 병렬 전송으로 개선 (느린 연결의 영향 최소화)
             tasks = []
             for websocket in self.websocket_connections:
                 try:
-                    # Protobuf 직렬화 (바이너리 스트림)
-                    serialized = self._serialize_events(events)
                     tasks.append(websocket.send_bytes(serialized))
                 except Exception as e:
                     logger.error(f"[BackendCoalescing] 전송 준비 실패: {e}")

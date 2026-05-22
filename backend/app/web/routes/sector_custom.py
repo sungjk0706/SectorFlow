@@ -116,11 +116,12 @@ async def _trigger_recompute() -> None:
     try:
         from backend.app.services.core_queues import get_control_queue
 
+        # P0-1: PriorityQueue 전환 - 우선순위 1 (차순위) 튜플 구조
         control_queue = get_control_queue()
-        await control_queue.put({
+        await control_queue.put((1, {
             "type": "RECOMPUTE_SECTOR",
             "payload": {},
-        })
+        }))
     except Exception as e:
         _log.warning("[업종관리] 업종순위 재계산 신호 전송 실패: %s", e)
 
