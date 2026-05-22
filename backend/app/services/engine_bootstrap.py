@@ -383,10 +383,43 @@ async def _deferred_sector_summary() -> None:
                 _st._sector_summary_cache = cached_summary
                 logger.info("[시작] 영속성 캐시에서 업종순위 복원 완료")
             else:
-                # 캐시 없으면 최소한의 기본 구조 객체 생성
-                from backend.app.services.engine_sector_score import SectorSummary
+                # 캐시 없으면 업종 스켈레톤 캐시 구축 (실시간 틱 연동용)
+                from backend.app.services.engine_sector_score import SectorSummary, SectorScore
+                from backend.app.core.sector_mapping import get_merged_sector
+                
+                # _sector_stock_layout 기반 업종 스켈레톤 생성
+                _sector_names = set()
+                for t, v in _st._sector_stock_layout:
+                    if t == "code":
+                        sector = get_merged_sector(v)
+                        if sector:
+                            _sector_names.add(sector)
+                
+                # 업종별 스켈레톤 SectorScore 생성 (rise_ratio=0.0으로 초기화, 실시간 틱으로 갱신)
+                _sectors = []
+                for sector_name in sorted(_sector_names):
+                    _sectors.append(SectorScore(
+                        sector=sector_name,
+                        total=0,
+                        rise_count=0,
+                        rise_ratio=0.0,
+                        avg_change_rate=0.0,
+                        total_trade_amount=0,
+                        avg_ratio_5d_pct=0.0,
+                        rank=0,
+                        stocks=[],
+                        scored_trade_amount=0,
+                        scored_rise_ratio=0.0,
+                        industry_code="",
+                        industry_up_ratio=0.0,
+                        industry_trade_amount=0,
+                        has_industry_data=False,
+                        final_score=0.0,
+                        metric_scores={},
+                    ))
+                
                 _st._sector_summary_cache = SectorSummary(
-                    sectors=[],
+                    sectors=_sectors,
                     buy_targets=[],
                     blocked_targets=[],
                     index_guard_active=False,
@@ -394,7 +427,7 @@ async def _deferred_sector_summary() -> None:
                     index_guard_kospi_hit=False,
                     index_guard_kosdaq_hit=False,
                 )
-                logger.warning("[시작] 영속성 캐시 없음, 빈 객체 생성")
+                logger.info("[시작] 영속성 캐시 없음, 업종 스켈레톤 캐시 구축 완료 (실시간 틱 연동)")
             _st._sector_summary_ready_event.set()
             return
         
