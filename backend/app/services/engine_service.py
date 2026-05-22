@@ -2114,11 +2114,96 @@ async def start_engine(user_id: str = "") -> bool:
         await _state_manager.start()
         logger.info("[엔진] StateManager 초기화 완료")
 
+    # Event Bus 구독 (Phase 1.3+1.4 단계 1.3)
+    await _subscribe_to_event_bus()
+
     _engine_user_id = user_id
     _running        = True
     _engine_task    = asyncio.create_task(_engine_loop())
     _broadcast_engine_ws()
     return True
+
+
+# ── Event Bus 구독 (Phase 1.3+1.4 단계 1.3) ─────────────────────────────────────
+
+async def _subscribe_to_event_bus() -> None:
+    """Event Bus 구독 설정."""
+    try:
+        from app.core.event_bus import EventBus
+        from app.core.events import EventType
+
+        event_bus = EventBus.get_instance()
+        
+        # MarketTickEvent 구독
+        event_bus.subscribe(EventType.MARKET_TICK, _handle_market_tick_event)
+        logger.info("[EventBus] MarketTickEvent 구독 완료")
+        
+        # OrderFillEvent 구독
+        event_bus.subscribe(EventType.ORDER_FILL, _handle_order_fill_event)
+        logger.info("[EventBus] OrderFillEvent 구독 완료")
+        
+        # AccountUpdateEvent 구독
+        event_bus.subscribe(EventType.ACCOUNT_UPDATE, _handle_account_update_event)
+        logger.info("[EventBus] AccountUpdateEvent 구독 완료")
+        
+    except Exception as e:
+        logger.error("[EventBus] 구독 실패: %s", e, exc_info=True)
+
+
+async def _handle_market_tick_event(event) -> None:
+    """MarketTickEvent 핸들러."""
+    try:
+        # Event Bus에서 수신한 MarketTickEvent 처리
+        # 기존 _handle_real_01 로직과 유사하게 캐시 업데이트
+        code = event.code
+        price = event.price
+        change = event.change
+        change_rate = event.change_rate
+        volume = event.volume
+        trade_amount = event.trade_amount
+        sign = event.sign
+        
+        # 캐시 업데이트
+        _latest_trade_prices[code] = price
+        _latest_trade_amounts[code] = trade_amount
+        
+        # _pending_stock_details 업데이트
+        if code in _pending_stock_details:
+            pend_key = code
+            old = _pending_stock_details[pend_key]
+            new_entry = {**old,
+                "cur_price": price,
+                "change": change,
+                "change_rate": change_rate,
+                "sign": sign,
+                "trade_amount": trade_amount,
+            }
+            _pending_stock_details[pend_key] = new_entry
+        
+        logger.debug("[EventBus] MarketTickEvent 처리 완료: %s", code)
+    except Exception as e:
+        logger.error("[EventBus] MarketTickEvent 처리 실패: %s", e, exc_info=True)
+
+
+async def _handle_order_fill_event(event) -> None:
+    """OrderFillEvent 핸들러."""
+    try:
+        # 주문 체결 이벤트 처리
+        logger.info("[EventBus] OrderFillEvent 수신: order_id=%s, stock_code=%s", 
+                   event.order_id, event.stock_code)
+        # TODO: 기존 체결 처리 로직 연결
+    except Exception as e:
+        logger.error("[EventBus] OrderFillEvent 처리 실패: %s", e, exc_info=True)
+
+
+async def _handle_account_update_event(event) -> None:
+    """AccountUpdateEvent 핸들러."""
+    try:
+        # 계정 업데이트 이벤트 처리
+        logger.info("[EventBus] AccountUpdateEvent 수신: balance=%s", event.balance)
+        # TODO: 기존 계정 업데이트 로직 연결
+    except Exception as e:
+        logger.error("[EventBus] AccountUpdateEvent 처리 실패: %s", e, exc_info=True)
 
 
 
