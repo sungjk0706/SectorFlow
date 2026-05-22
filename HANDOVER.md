@@ -46,6 +46,8 @@
 - Phase 1.2: Event Bus 구현 (완료)
 - Phase 1.3+1.4 단계 1.1: 사전 정밀 조사 (완료)
 - Phase 1.3+1.4 단계 1.2: Event Bus 통합 (완료)
+- Phase 1.3+1.4 단계 1.3: engine_service.py Event Bus 구독 (완료)
+- Phase 1.3+1.4 단계 1.4: 기존 직접 수신 로직을 Event Bus 기반으로 전환 (완료)
 - Phase 1.3: Broker Adapter 리팩토링 (건너뜀 - 복잡도로 인해 Phase 1.4로 통합)
 - Phase 1.4: engine_service.py 분리 시작 (건너뜀 - 복잡도로 인해 이후 단계로 연기)
 - Phase 2.1: DataTable 렌더링 최적화 (완료)
