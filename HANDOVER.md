@@ -44,6 +44,8 @@
 - Phase 3: P2-2-7 Dashboard/Alert 구현 (완료)
 - Phase 1.1: Event Model 정의 (완료)
 - Phase 1.2: Event Bus 구현 (완료)
+- Phase 1.3+1.4 단계 1.1: 사전 정밀 조사 (완료)
+- Phase 1.3+1.4 단계 1.2: Event Bus 통합 (완료)
 - Phase 1.3: Broker Adapter 리팩토링 (건너뜀 - 복잡도로 인해 Phase 1.4로 통합)
 - Phase 1.4: engine_service.py 분리 시작 (건너뜀 - 복잡도로 인해 이후 단계로 연기)
 - Phase 2.1: DataTable 렌더링 최적화 (완료)
@@ -59,6 +61,17 @@
 - Phase 4.4: 장애 복구 테스트 (완료)
 
 ## 현재 상태
+### 최근 완료 단계
+- Phase 1.3+1.4 단계 1.2: Event Bus 통합 완료 (git commit: 9018f26)
+  - KiwoomConnector 수신 데이터를 Event Bus로 Publish 로직 구현
+  - 기존 Producer-Consumer Queue 방식 유지 (하위 호환)
+  - Event Bus Coalescing 활성화 가능성 확인
+
+### 다음 단계
+- Phase 1.3+1.4 단계 1.3: Event Bus Subscriber 구현
+  - State Manager가 Event Bus에서 MarketTickEvent 수신
+  - 기존 _handle_real_01 로직을 Event Bus 기반으로 전환
+  - 실시간 데이터 처리 경로를 Event Bus로 완전히 이동
 ### Phase 1.1 완료 내용
 - backend/app/core/events.py 생성 완료
   - BaseEvent, MarketTickEvent, OrderFillEvent, AccountUpdateEvent 정의
@@ -79,11 +92,21 @@
   - BrokerType Enum 테스트 (2개)
   - 테스트 결과: 17 passed
 
-### Phase 1.3 완료 내용
-- 사전 조사 완료 (kiwoom_connector.py, engine_service.py 데이터 수신 흐름 파악)
-- 영향성 조사 완료 (고위험 - 핵심 데이터 수신 경로)
-- 작업 범위 재조정: 복잡도로 인해 Phase 1.4로 통합
-- 롤백 완료 (기존 코드 유지)
+### Phase 1.3+1.4 단계 1.1 완료 내용
+- 사전 정밀 조사 완료 (kiwoom_connector.py, ls_connector.py, engine_service.py 파일 분석)
+- 데이터 흐름 파악 완료 (브로커 → WebSocket → engine_service → State Manager)
+- 영향성 조사 완료 (engine_service.py 의존 파일 16개 목록화)
+- 위험도 평가 완료 (고위험 - 핵심 데이터 수신 경로)
+- 롤백 계획 수립 완료 (git commit: 5ffe444)
+
+### Phase 1.3+1.4 단계 1.2 완료 내용
+- engine_loop.py: Event Bus 시작/종료 로직 추가
+- kiwoom_connector.py: Event Bus 콜백 메서드 추가 (set_event_bus_callback)
+- engine_ws_dispatch.py: Event Bus 활성화 확인 및 MarketTickEvent Publish 로직 추가
+- tests/conftest.py: backend import 오류 수정
+- tests/test_event_bus_integration.py: Event Bus 통합 테스트 추가 (5 passed)
+- 테스트 결과: test_events.py (17 passed), test_event_bus.py (8 passed), test_event_bus_integration.py (5 passed)
+- git commit: 9018f26
 
 ### Phase 4.1 완료 내용
 - 사전 조사 완료 (event.proto, backend_coalescing.py 구조 파악)
