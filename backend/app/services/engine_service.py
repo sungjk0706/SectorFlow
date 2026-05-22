@@ -2151,10 +2151,9 @@ async def _subscribe_to_event_bus() -> None:
 
 
 async def _handle_market_tick_event(event) -> None:
-    """MarketTickEvent 핸들러."""
+    """MarketTickEvent 핸들러 - 기존 _handle_real_01 캐시 업데이트 로직 이식 (Phase 1.3+1.4 단계 1.4)."""
     try:
         # Event Bus에서 수신한 MarketTickEvent 처리
-        # 기존 _handle_real_01 로직과 유사하게 캐시 업데이트
         code = event.code
         price = event.price
         change = event.change
@@ -2162,10 +2161,12 @@ async def _handle_market_tick_event(event) -> None:
         volume = event.volume
         trade_amount = event.trade_amount
         sign = event.sign
+        raw_data = event.raw_data
         
-        # 캐시 업데이트
+        # 캐시 업데이트 (기존 _handle_real_01 로직 이식)
         _latest_trade_prices[code] = price
         _latest_trade_amounts[code] = trade_amount
+        _rest_radar_quote_cache.pop(code, None)
         
         # _pending_stock_details 업데이트
         if code in _pending_stock_details:
@@ -2179,6 +2180,36 @@ async def _handle_market_tick_event(event) -> None:
                 "trade_amount": trade_amount,
             }
             _pending_stock_details[pend_key] = new_entry
+        
+        # 체결강도 업데이트 (raw_data에서 추출)
+        vals = raw_data.get("values", {})
+        sv228 = vals.get("228")
+        strength = str(sv228).strip() if sv228 is not None and str(sv228).strip() != "" else "-"
+        if strength != "-":
+            try:
+                from backend.app.services.engine_ws_dispatch import _update_strength_buckets
+                _update_strength_buckets(sys.modules[__name__], code, float(strength), volume)
+            except (ValueError, TypeError) as e:
+                logger.warning("[EventBus] 체결강도 파싱 실패 strength=%r: %s", strength, e)
+        
+        # Radar 업데이트
+        from backend.app.services import engine_radar_ops
+        raw_cd_for_bucket = code
+        engine_radar_ops.apply_real01_volume_amount_to_radar_rows(
+            raw_cd_for_bucket, vals, _latest_trade_amounts,
+            _pending_stock_details, is_0b_tick=True,
+        )
+        
+        # bid_depth, ask_depth 업데이트
+        if code in _pending_stock_details and _pending_stock_details[code].get("status") == "active":
+            old2 = _pending_stock_details[code]
+            updates = {}
+            if "1030" in vals:
+                updates["bid_depth"] = int(vals.get("1030", 0))
+            if "1031" in vals:
+                updates["ask_depth"] = int(vals.get("1031", 0))
+            if updates:
+                _pending_stock_details[code] = {**old2, **updates}
         
         logger.debug("[EventBus] MarketTickEvent 처리 완료: %s", code)
     except Exception as e:
