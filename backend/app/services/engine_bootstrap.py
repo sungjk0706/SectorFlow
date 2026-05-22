@@ -385,7 +385,15 @@ async def _deferred_sector_summary() -> None:
             else:
                 # 캐시 없으면 최소한의 기본 구조 객체 생성
                 from backend.app.services.engine_sector_score import SectorSummary
-                _st._sector_summary_cache = SectorSummary(sectors=[], buy_targets=[])
+                _st._sector_summary_cache = SectorSummary(
+                    sectors=[],
+                    buy_targets=[],
+                    blocked_targets=[],
+                    index_guard_active=False,
+                    index_guard_reason="",
+                    index_guard_kospi_hit=False,
+                    index_guard_kosdaq_hit=False,
+                )
                 logger.warning("[시작] 영속성 캐시 없음, 빈 객체 생성")
             _st._sector_summary_ready_event.set()
             return

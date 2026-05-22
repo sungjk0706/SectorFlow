@@ -616,6 +616,14 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             return {"fetched": 0, "failed": 0, "cached": False}
     
         # ── 2단계 ka10086: 전종목 확정 시세 순차 호출 (이어받기 지원) ───────
+        # 20:30 이전 시간 가드 (Phase 2.1 단계 3)
+        from backend.app.services.daily_time_scheduler import is_heavy_operation_allowed
+        if not is_heavy_operation_allowed():
+            _log.warning("[타이머] Step 5 차단 — 20:30 이전 시간대 ka10086 전종목 확정 시세 다운로드 방지 -- 장중/시간외 대량 다운로드 방지")
+            es._confirmed_refresh_running = False
+            es._confirmed_refresh_message = ""
+            return {"fetched": 0, "failed": 0, "cached": False}
+        
         _log.info("[타이머] Step 5 시작 — ka10086 전종목 확정 시세 다운로드 (%d종목)", len(all_codes))
         qry_dt = kst_today_str()  # 당일 확정 시세 조회: 20:00 이후에도 오늘 날짜 사용 (current_trading_date_str은 다음 거래일 반환)
         total = len(all_codes)
