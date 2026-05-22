@@ -6,6 +6,7 @@
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -272,8 +273,12 @@ def save_settings(data: dict) -> None:
     """설정 전체를 settings.json에 저장."""
     try:
         _SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(_SETTINGS_PATH, "w", encoding="utf-8") as f:
+        tmp_path = _SETTINGS_PATH.with_suffix(".json.tmp")
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, _SETTINGS_PATH)
     except Exception as e:
         logger.error("settings.json 저장 실패: %s", e)
 

@@ -466,7 +466,7 @@ async def refresh_avg_amt_5d_cache() -> None:
         _st._avg_amt_refresh_task = asyncio.current_task()
         try:
             logger.info("[DEBUG] refresh_avg_amt_5d_cache EXECUTE START")
-            await _refresh_avg_amt_5d_cache_inner()
+            await _refresh_avg_amt_5d_cache_inner(force_run=force_run)
             logger.info("[DEBUG] refresh_avg_amt_5d_cache EXECUTE COMPLETE")
         finally:
             _st._avg_amt_refresh_task = None
@@ -516,7 +516,7 @@ async def _chunked_fetch_full_5d(
     else:
         logger.debug("[시작] 전종목 5일 거래대금/고가 다운로드 시작 — 대상 %d종목", total)
     remaining_codes = [cd for cd in codes if _norm_stk(cd) not in completed_set]
-    MINI_CHUNK = 10
+    MINI_CHUNK = 1
     for chunk_start in range(0, len(remaining_codes), MINI_CHUNK):
         chunk = remaining_codes[chunk_start : chunk_start + MINI_CHUNK]
         def _sync_chunk(c=chunk):
@@ -552,36 +552,43 @@ async def _chunked_fetch_full_5d(
                     out_high_arr[nk] = high_arr
                 else:
                     out_highs[nk] = 0
-                if i + 1 < len(c):
-                    time.sleep(KA10005_GAP_SEC)
+                # MINI_CHUNK가 1이므로 스레드 내 time.sleep은 실행되지 않음
             return out_amts, out_highs, out_high_arr, out_latest
+        
         async with _st._get_rest_api_thread_sem():
             chunk_amts, chunk_highs, chunk_high_arr, chunk_latest = await asyncio.to_thread(_sync_chunk)
             
-        # 이벤트 루프에 명시적 제어권 양보 (워커 스레드 블로킹 해소용)
-        await asyncio.sleep(0)
+        # 이벤트 루프에 명시적 제어권 양보 및 키움 API 호출 제한(초당 3회) 준수
+        await asyncio.sleep(KA10005_GAP_SEC)
         
         result.update(chunk_amts)
         high_cache.update(chunk_highs)
         high_5d_arr.update(chunk_high_arr)
         latest_dict.update(chunk_latest)
         completed_set.update(chunk_amts.keys())
-        # 진행률 콜백은 메인 이벤트 루프에서 호출 (WS broadcast 안전)
+        
+        # 진행률 계산
         done = starting_count + chunk_start + len(chunk)
         done = min(done, total)
         pct = int(done / total * 100) if total else 0
-        logger.info("[시작] 전종목 5일거래대금/고가 다운로드 중 (%d/%d, %d%%)", done, total, pct)
-        # Chunk 완료마다 진행 파일 저장 (이어받기 가능하도록)
-        if date_str:
+        
+        # 로그는 스팸 방지를 위해 DEBUG 레벨로 하향 조정
+        logger.debug("[시작] 전종목 5일거래대금/고가 다운로드 중 (%d/%d, %d%%)", done, total, pct)
+        
+        # 진행 상태 파일 저장은 디스크 I/O 부하 방지를 위해 20건마다 또는 마지막에만 수행
+        if date_str and (chunk_start % 20 == 0 or done == total):
             save_avg_amt_progress(
                 date_str, list(completed_set), codes,
                 result, high_cache, high_5d_arr, latest_dict
             )
+            
+        # UI 진행률(웹소켓 브로드캐스트)은 매 건마다 즉각 호출하여 부드럽게 표시
         if on_progress:
             try:
                 on_progress(done, total)
             except Exception:
                 logger.warning("[시작] 진행률 콜백 실패", exc_info=True)
+                
     success = len(result)
     failed = total - success
     valid_high = sum(1 for v in high_cache.values() if v > 0)
@@ -589,7 +596,7 @@ async def _chunked_fetch_full_5d(
     return result, high_cache, high_5d_arr, latest_dict
 
 
-async def _refresh_avg_amt_5d_cache_inner() -> None:
+async def _refresh_avg_amt_5d_cache_inner(force_run: bool = False) -> None:
     """_chunked_fetch_full_5d 실행 및 결과 병합 (최대 600개 일봉 → 5일 추출).
     - 기존 캐시가 없거나 전일 데이터면 다시 받음. (Chunked 방식 + 이어받기)
     """
@@ -609,21 +616,22 @@ async def _refresh_avg_amt_5d_cache_inner() -> None:
     if not all_codes:
         return
 
-    # 로컬 데이터 완전성 검증 (방안 1: 중복 다운로드 방지)
-    from backend.app.core.avg_amt_cache import load_avg_amt_cache_v2
-    _existing_v2_result = load_avg_amt_cache_v2()
-    if _existing_v2_result:
-        _existing_v2, _existing_high_arr = _existing_v2_result
-        # 종목수 충분(전체 종목의 90% 이상) 및 배열 길이 5 이상 검증
-        if len(_existing_v2) >= len(all_codes) * 0.9:
-            _short_arrays = sum(1 for arr in _existing_v2.values() if len(arr) < 5)
-            if _short_arrays == 0:
-                logger.info("[시작] 로컬 데이터 완전함 -- 다운로드 스킵 (%d종목, 배열 길이 ≥ 5)", len(_existing_v2))
-                return
+    if not force_run:
+        # 로컬 데이터 완전성 검증 (방안 1: 중복 다운로드 방지)
+        from backend.app.core.avg_amt_cache import load_avg_amt_cache_v2
+        _existing_v2_result = load_avg_amt_cache_v2()
+        if _existing_v2_result:
+            _existing_v2, _existing_high_arr = _existing_v2_result
+            # 종목수 충분(전체 종목의 90% 이상) 및 배열 길이 5 이상 검증
+            if len(_existing_v2) >= len(all_codes) * 0.9:
+                _short_arrays = sum(1 for arr in _existing_v2.values() if len(arr) < 5)
+                if _short_arrays == 0:
+                    logger.info("[시작] 로컬 데이터 완전함 -- 다운로드 스킵 (%d종목, 배열 길이 ≥ 5)", len(_existing_v2))
+                    return
+                else:
+                    logger.warning("[시작] 로컬 데이터 불완전 -- 배열 길이 < 5인 종목 %d개, 다운로드 진행", _short_arrays)
             else:
-                logger.warning("[시작] 로컬 데이터 불완전 -- 배열 길이 < 5인 종목 %d개, 다운로드 진행", _short_arrays)
-        else:
-            logger.warning("[시작] 로컬 데이터 부족 -- 저장된 종목수(%d) < 전체 종목수(%d), 다운로드 진행", len(_existing_v2), len(all_codes))
+                logger.warning("[시작] 로컬 데이터 부족 -- 저장된 종목수(%d) < 전체 종목수(%d), 다운로드 진행", len(_existing_v2), len(all_codes))
 
     # 이어받기: 진행 파일 로드
     from backend.app.core.avg_amt_cache import load_avg_amt_progress, clear_avg_amt_progress
@@ -730,6 +738,7 @@ async def _refresh_avg_amt_5d_cache_inner() -> None:
 
     try:
         from backend.app.services.engine_service import recompute_sector_summary_now
+        from backend.app.services import engine_account_notify as _account_notify
         recompute_sector_summary_now()
         _account_notify.notify_desktop_sector_refresh()
         _account_notify.notify_desktop_sector_stocks_refresh()

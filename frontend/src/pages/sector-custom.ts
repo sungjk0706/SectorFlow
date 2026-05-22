@@ -7,7 +7,7 @@ import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingsManager, type SettingsManager } from '../settings'
-import { createSettingRow, createToggleBtn } from '../components/common/setting-row'
+// import { createSettingRow } from '../components/common/setting-row' (removed)
 import { createCardTitleWithContent } from '../components/common/card-title'
 import { toastResult, showSaveToast } from '../components/common/save-toast'
 import { showContextPopup, closeContextPopup } from '../components/common/context-popup'
@@ -42,13 +42,9 @@ let settingsMgr: SettingsManager | null = null
 let unsubSettings: (() => void) | null = null
 
 // UI 참조 — Indicator Bar
-let indicatorDot: HTMLElement | null = null
 let indicatorLabel: HTMLElement | null = null
 
-// UI 참조 — Scheduler
-let schedulerToggle1: ReturnType<typeof createToggleBtn> | null = null
-let schedulerToggle2: ReturnType<typeof createToggleBtn> | null = null
-
+// UI 참조 — Scheduler (moved to sector-scheduler.ui.ts)
 // Staging / Selection 상태
 let stagingSet: Set<string> = new Set()
 let stagingChipMap: Map<string, HTMLElement> = new Map()  // 코드 → Chip DOM 매핑
@@ -402,93 +398,62 @@ function buildTripleHeader(): void {
     minWidth: '0',
   })
 
-  indicatorDot = document.createElement('span')
-  Object.assign(indicatorDot.style, {
-    width: '8px', height: '8px', borderRadius: '50%', display: 'inline-block',
-  })
-
   indicatorLabel = document.createElement('span')
   Object.assign(indicatorLabel.style, {
-    fontSize: FONT_SIZE.title,
+    fontSize: FONT_SIZE.body,
+    color: '#6c757d',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     display: 'block',
   })
 
-  center.appendChild(indicatorDot)
   center.appendChild(indicatorLabel)
   header.appendChild(center)
 
-  // 우측: 여백 (flex:1, text-align:right)
+  // 우측: 여백 대신 수동 갱신 버튼 배치 (flex:1, right aligned)
   const right = document.createElement('div')
-  Object.assign(right.style, { flex: '1', textAlign: 'right' })
+  Object.assign(right.style, {
+    flex: '1', textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '10px', alignItems: 'center'
+  })
+
+  // 버튼 공통 스타일 (크기 확대, 한 줄 표시)
+  const btnStyle = {
+    padding: '8px 16px', border: 'none', borderRadius: '4px',
+    background: '#198754', color: '#fff', cursor: 'pointer',
+    fontSize: FONT_SIZE.body, fontFamily: FONT_FAMILY,
+    fontWeight: 'bold', whiteSpace: 'nowrap',
+    transition: 'background-color 0.2s',
+  }
+
+  const btn1 = document.createElement('button')
+  Object.assign(btn1.style, btnStyle)
+  btn1.textContent = '⬇️ 전종목 확정시세 다운로드'
+  btn1.addEventListener('mouseenter', () => btn1.style.background = '#157347')
+  btn1.addEventListener('mouseleave', () => btn1.style.background = '#198754')
+  btn1.addEventListener('click', () => onTriggerDownload('snapshot'))
+
+  const btn2 = document.createElement('button')
+  Object.assign(btn2.style, btnStyle)
+  btn2.textContent = '⬇️ 전종목 5일 거래대금 다운로드'
+  btn2.addEventListener('mouseenter', () => btn2.style.background = '#157347')
+  btn2.addEventListener('mouseleave', () => btn2.style.background = '#198754')
+  btn2.addEventListener('click', () => onTriggerDownload('avg_amt'))
+
+  right.appendChild(btn1)
+  right.appendChild(btn2)
 
   header.appendChild(right)
 }
 
 function updateIndicatorBar(): void {
-  const { editWindowOpen, filter_summary } = currentState
-  if (indicatorDot) {
-    indicatorDot.style.background = editWindowOpen ? '#198754' : '#dc3545'
-    indicatorDot.style.display = filter_summary ? 'none' : 'inline-block'
-  }
+  const { filter_summary } = currentState
   if (indicatorLabel) {
-    if (filter_summary) {
-      indicatorLabel.textContent = filter_summary
-      indicatorLabel.style.fontSize = FONT_SIZE.body
-      indicatorLabel.style.color = '#6c757d'
-    } else {
-      indicatorLabel.textContent = editWindowOpen
-        ? '✏️ 수정 가능'
-        : '⚠️ 거래시간중 편집시에는 업종순위에 변동이 있을수 있습니다.'
-      indicatorLabel.style.fontSize = FONT_SIZE.title
-      indicatorLabel.style.color = 'inherit'
-    }
+    indicatorLabel.textContent = filter_summary || ''
   }
 }
 
-/* ── 8.3: tripleLeft — 스케줄러 카드 + 데이터 관리 카드 + 업종 테이블 ── */
-
-function buildSchedulerCard(): HTMLElement {
-  const card = cardWrap()
-  const schedulerTitle = createCardTitleWithContent('장마감 후 데이터 갱신 (키움증권 기준)')
-  schedulerTitle.style.fontSize = FONT_SIZE.section
-  card.appendChild(schedulerTitle)
-
-  // 1. 전종목 확정시세 다운로드 (수동)
-  const row1Label = document.createElement('div')
-  const row1Title = document.createElement('div')
-  row1Title.style.fontWeight = FONT_WEIGHT.normal
-  row1Title.textContent = '전종목 확정시세 다운로드'
-  const row1Desc = document.createElement('div')
-  Object.assign(row1Desc.style, { fontSize: FONT_SIZE.small, color: '#888' })
-  row1Desc.textContent = '전종목 목록 + 확정 시세 + 당일 거래대금을 수동으로 즉시 갱신합니다'
-  row1Label.appendChild(row1Title)
-  row1Label.appendChild(row1Desc)
-
-  const btn1 = actionBtn('수동 실행', '#198754')
-  btn1.addEventListener('click', () => onTriggerDownload('snapshot'))
-  card.appendChild(createSettingRow(row1Label, btn1))
-
-  // 2. 전종목 5일 거래대금 다운로드 (수동)
-  const row2Label = document.createElement('div')
-  const row2Title = document.createElement('div')
-  row2Title.style.fontWeight = FONT_WEIGHT.normal
-  row2Title.textContent = '전종목 5일 거래대금 다운로드'
-  const row2Desc = document.createElement('div')
-  Object.assign(row2Desc.style, { fontSize: FONT_SIZE.small, color: '#888' })
-  row2Desc.textContent = '전종목 5일 거래대금 전체를 수동으로 즉시 갱신합니다'
-  row2Label.appendChild(row2Title)
-  row2Label.appendChild(row2Desc)
-
-  const btn2 = actionBtn('수동 실행', '#198754')
-  btn2.addEventListener('click', () => onTriggerDownload('avg_amt'))
-  card.appendChild(createSettingRow(row2Label, btn2))
-
-  return card
-}
-
+// buildSchedulerCard removed.
 async function onTriggerDownload(type: 'snapshot' | 'avg_amt'): Promise<void> {
   const label = type === 'snapshot' ? '전종목 확정시세 다운로드' : '전종목 5일 거래대금 다운로드'
   const endpoint = type === 'snapshot' ? '/api/sector-custom/trigger-snapshot-download' : '/api/sector-custom/trigger-avg-amt-download'
@@ -844,7 +809,6 @@ function buildTripleLeft(): void {
   while (left.firstChild) left.removeChild(left.firstChild)
   left.style.fontFamily = FONT_FAMILY
   left.appendChild(buildSectorManageCard())
-  left.appendChild(buildSchedulerCard())
 }
 
 /* ── 8.4: tripleCenter — Stock_List_Panel ── */
@@ -1304,7 +1268,6 @@ function renderAll(): void {
   updateMasterPanel()
   updateCenterPanel()
   updateRightPanel()
-  updateSchedulerToggles()
   updateStagingPanel()
   setControlsDisabled(!currentState.editWindowOpen)
 }
@@ -1336,16 +1299,23 @@ async function loadInitialData(): Promise<void> {
       stockNameIndex.set(stock.name, code)
     }
 
-    sectorCustomStore.setState({
-      sectors: data.custom_data.sectors,
-      stockMoves: data.custom_data.stock_moves,
-      deletedSectors: data.custom_data.deleted_sectors,
-      mergedSectors: data.merged_sectors,
-      editWindowOpen: computeEditWindowOpenByTime(uiStore.getState().settings),
-      noSectorCount: data.no_sector_count ?? 0,
-      filter_summary: data.filter_summary || "",
-      loading: false,
-    })
+      let summary = data.filter_summary || ""
+      if (summary) {
+        localStorage.setItem('sector_filter_summary', summary)
+      } else {
+        summary = localStorage.getItem('sector_filter_summary') || ""
+      }
+
+      sectorCustomStore.setState({
+        sectors: data.custom_data.sectors,
+        stockMoves: data.custom_data.stock_moves,
+        deletedSectors: data.custom_data.deleted_sectors,
+        mergedSectors: data.merged_sectors,
+        editWindowOpen: computeEditWindowOpenByTime(uiStore.getState().settings),
+        noSectorCount: data.no_sector_count ?? 0,
+        filter_summary: summary,
+        loading: false,
+      })
     currentState = sectorCustomStore.getState()
 
     renderAll()
@@ -1400,7 +1370,6 @@ function mount(_container: HTMLElement): void {
 
   // settingsManager for scheduler toggles
   settingsMgr = createSettingsManager()
-  unsubSettings = settingsMgr.subscribe(() => updateSchedulerToggles())
 
   // sectorCustomStore 구독
   unsubCustom = sectorCustomStore.subscribe((state) => {
@@ -1423,7 +1392,7 @@ function mount(_container: HTMLElement): void {
       updateStagingChipSectors()
     }
 
-    if (state.editWindowOpen !== prev.editWindowOpen) {
+    if (state.editWindowOpen !== prev.editWindowOpen || state.filter_summary !== prev.filter_summary) {
       updateIndicatorBar()
       setControlsDisabled(!state.editWindowOpen)
     }
@@ -1440,7 +1409,6 @@ function mount(_container: HTMLElement): void {
       if (newEditWindowOpen !== sectorCustomStore.getState().editWindowOpen) {
         sectorCustomStore.setState({ editWindowOpen: newEditWindowOpen })
       }
-      updateSchedulerToggles()
     }
 
     // 2. Download progress check (Auto-refresh on complete)
@@ -1470,10 +1438,7 @@ function unmount(): void {
   closeContextPopup()
 
   // Null all DOM refs
-  indicatorDot = null
   indicatorLabel = null
-  schedulerToggle1 = null
-  schedulerToggle2 = null
   masterTableRef = null
   statsLabelRef = null
   addSectorBtnRef = null

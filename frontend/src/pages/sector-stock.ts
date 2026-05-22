@@ -121,6 +121,7 @@ function computeRows(
   selectedSector: string | null,
   matchedCodes: Set<string> | null,
   rowCache: Map<string, { stock: SectorStock; row: DataRowItem }>,
+  minTradeAmt: number
 ): RowItem[] {
   // 업종별 종목 그룹핑
   const grouped = new Map<string, string[]>()
@@ -128,6 +129,10 @@ function computeRows(
     const sector = s.sector || '기타'
     if (selectedSector && sector !== selectedSector) continue
     if (matchedCodes && !matchedCodes.has(s.code)) continue
+    
+    // 5일평균거래대금 컷오프 필터 적용 (백엔드와 정합성 일치)
+    if (minTradeAmt > 0 && (s.avg_amt_5d ?? 0) < minTradeAmt * 100_000_000) continue
+
     let arr = grouped.get(sector)
     if (!arr) { arr = []; grouped.set(sector, arr) }
     arr.push(s.code)
@@ -197,6 +202,7 @@ class SectorStockTable extends HTMLElement {
   private rootEl: HTMLElement | null = null
   private dataTable: DataTableApi<DataRowItem> | null = null
   private unsubStore: (() => void) | null = null
+  private unsubUi: (() => void) | null = null
   private searchInput: ReturnType<typeof createSearchInput> | null = null
   private searchTerm = ''
   private currentMatchedCodes: Set<string> | null = null
@@ -228,6 +234,8 @@ class SectorStockTable extends HTMLElement {
     const uiState = uiStore.getState()
     this.currentMatchedCodes = filterStocksBySearch(Object.values(state.sectorStocks), this.searchTerm)
     const maxTargets = Number(uiState.settings?.sector_max_targets) || 10
+    const minTradeAmt = Number(uiState.settings?.sector_min_trade_amt) || 0
+    
     return computeRows(
       state.sectorStocks,
       uiState.sectorOrder,
@@ -236,6 +244,7 @@ class SectorStockTable extends HTMLElement {
       uiState.selectedSector,
       this.currentMatchedCodes,
       this.rowCache,
+      minTradeAmt
     )
   }
 
@@ -452,7 +461,8 @@ class SectorStockTable extends HTMLElement {
       let prevWsSubscribeStatus = initUi.wsSubscribeStatus
       let prevSettings = initUi.settings
 
-      this.unsubStore = hotStore.subscribe((state) => {
+      const checkAndRefresh = () => {
+        const state = hotStore.getState()
         const uiState = uiStore.getState()
         const changed =
           state.sectorStocks !== prevSectorStocks ||
@@ -478,7 +488,10 @@ class SectorStockTable extends HTMLElement {
             this.refreshRows()
           })
         }
-      })
+      }
+
+      this.unsubStore = hotStore.subscribe(checkAndRefresh)
+      this.unsubUi = uiStore.subscribe(checkAndRefresh)
     }
 
     // 초기 렌더링
@@ -504,6 +517,7 @@ class SectorStockTable extends HTMLElement {
       this.onRealDataTick = null
     }
     if (this.unsubStore) { this.unsubStore(); this.unsubStore = null }
+    if (this.unsubUi) { this.unsubUi(); this.unsubUi = null }
     if (this._rafId !== null) { cancelAnimationFrame(this._rafId); this._rafId = null }
     if (this.dataTable) { this.dataTable.destroy(); this.dataTable = null }
     if (this.rootEl && this.rootEl.parentNode) this.rootEl.parentNode.removeChild(this.rootEl)
