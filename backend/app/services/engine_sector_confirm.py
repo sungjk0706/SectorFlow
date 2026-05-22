@@ -265,69 +265,58 @@ def _flush_sector_recompute_impl() -> None:
 
 
 def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
-    """스켈레톤 캐시 상태에서 실시간 틱 기반 증분 연산 수행.
+    """스켈레톤 캐시 상태에서 실시간 틱 기반 단건 델타 연산 수행.
     
-    업종 전체 종목 기반의 정확한 증분 연산으로 분모 보존형 상승비율 계산.
+    이벤트 주도형 구조: 틱 이벤트가 인입된 단일 종목의 등락 상태 변화만 델타로 처리.
+    분모(Total)는 선행 고정되어 있으므로 분자(Rise Count)만 증분 패치.
+    4대 틱 등락 상태 전환(State Transition) 매트릭스 적용.
     메모리 상의 _sector_summary_cache를 직접 갱신(In-place Update).
     웹소켓 난사 방지를 위해 코알레싱 버퍼링 연동 (캐시 업데이트만 수행).
     """
     from backend.app.core import sector_mapping
-    from backend.app.core.industry_map import load_eligible_stocks_cache
     from backend.app.services.engine_service import get_sector_summary_inputs
     
-    # dirty 종목 → 해당 섹터 추출
-    dirty_sectors: set[str] = set()
-    for cd in codes_snapshot:
-        sec = sector_mapping.get_merged_sector(cd)
-        if sec:
-            dirty_sectors.add(sec)
-    
-    if not dirty_sectors:
-        return
-    
-    # 업종 전체 종목 기반 데이터 원천 추적
-    eligible_stocks = load_eligible_stocks_cache() or {}
-    eligible_codes = set(eligible_stocks.keys()) if eligible_stocks else set()
-    
-    # 실시간 틱 데이터 기반 증분 연산
+    # 실시간 틱 데이터 기반 단건 델타 연산
     inputs = get_sector_summary_inputs()
-    trade_prices = inputs["trade_prices"]
     stock_details = inputs["stock_details"]
     
-    # 각 섹터별 실시간 상승비율 계산 (업종 전체 종목 기반)
-    for sector_name in dirty_sectors:
-        # 해당 업종에 소속된 전체 적격 종목 리스트 추출
-        sector_codes = [
-            cd for cd in eligible_codes
-            if sector_mapping.get_merged_sector(cd) == sector_name
-        ]
-        
-        if not sector_codes:
+    # 각 틱 이벤트 종목별 단건 델타 처리 (배치 루프 제거)
+    for cd in codes_snapshot:
+        # 해당 종목의 업종 추출
+        sector = sector_mapping.get_merged_sector(cd)
+        if not sector:
             continue
         
-        # 상승 종목 수 계산 (업종 전체 종목 기반)
-        rise_count = 0
-        total = 0
-        for cd in sector_codes:
-            price = trade_prices.get(cd, 0)
-            detail = stock_details.get(cd, {})
-            change_rate = detail.get("change_rate", 0.0)
-            
-            if price > 0:
-                total += 1
-                if change_rate > 0:
-                    rise_count += 1
+        # 해당 종목의 현재 등락 상태 확인
+        detail = stock_details.get(cd, {})
+        change_rate = detail.get("change_rate", 0.0)
+        curr_rising = change_rate > 0
         
-        # 상승비율 계산 (분모 보존형)
-        rise_ratio = rise_count / total if total > 0 else 0.0
+        # 이전 상태 조회 (초기값은 False)
+        prev_rising = _es._stock_rising_state.get(cd, False)
         
-        # 메모리 상의 해당 섹터 객체 직접 갱신 (In-place Update)
-        for sc in _es._sector_summary_cache.sectors:
-            if sc.sector == sector_name:
-                sc.total = total
-                sc.rise_count = rise_count
-                sc.rise_ratio = rise_ratio
-                break
+        # 4대 틱 등락 상태 전환(State Transition) 매트릭스
+        # False -> True: 상승 전환, rise_count += 1
+        # True -> False: 하락 전환, rise_count -= 1
+        # False -> False 또는 True -> True: 상태 유지, 연산 없음 (O(1) 쇼트 서킷)
+        if not prev_rising and curr_rising:
+            # 상승 전환
+            sc = _es._sector_score_index.get(sector)
+            if sc:
+                sc.rise_count += 1
+                sc.rise_ratio = sc.rise_count / sc.total if sc.total > 0 else 0.0
+        elif prev_rising and not curr_rising:
+            # 하락 전환
+            sc = _es._sector_score_index.get(sector)
+            if sc:
+                sc.rise_count = max(0, sc.rise_count - 1)
+                sc.rise_ratio = sc.rise_count / sc.total if sc.total > 0 else 0.0
+        else:
+            # 상태 유지 (False->False 또는 True->True): 연산 없음, 즉시 continue
+            pass
+        
+        # 현재 상태를 다음 틱을 위해 업데이트
+        _es._stock_rising_state[cd] = curr_rising
     
     # 웹소켓 난사 방지: 코알레싱 버퍼링 연동
     # 캐시 업데이트만 수행, 백엔드 코알레싱 스케줄러가 주기적으로 통합 발행

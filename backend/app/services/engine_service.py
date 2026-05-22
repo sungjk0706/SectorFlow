@@ -299,6 +299,8 @@ _latest_index: dict[str, dict] = {}
 _latest_industry_index: dict[str, dict] = {}
 _sector_summary_cache: "SectorSummary | None" = None  # type: ignore[name-defined]
 _sector_buy_last_ts: dict[str, float] = {}
+_stock_rising_state: dict[str, bool] = {}  # 종목별 이전 상승 상태 저장소 (실시간 틱 기반 상태 전환용)
+_sector_score_index: dict[str, "SectorScore"] = {}  # 업종명-SectorScore 인덱싱 맵 (O(1) 다이렉트 접근용)
 
 
 _broker_spec: list = []
