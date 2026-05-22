@@ -5,7 +5,6 @@
 import { uiStore } from '../stores/uiStore'
 import { createSettingsManager, type SettingsManager, createGlobalWsBadge } from '../settings'
 import { createSettingRow, createNumInput, createToggleBtn, createFixedValue } from '../components/common/setting-row'
-import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { toastResult } from '../components/common/save-toast'
 import { sectionTitle } from '../components/common/settings-common'
 import { FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
@@ -136,7 +135,6 @@ function syncFromSettings(s: AppSettings): void {
 
 /* ── mount ── */
 function mount(container: HTMLElement): void {
-  notifyPageActive('sell-settings')
   settingsMgr = createSettingsManager(uiStore)
   saving = false
   pendingSave = null
@@ -275,7 +273,6 @@ function mount(container: HTMLElement): void {
 
 /* ── unmount ── */
 function unmount(): void {
-  notifyPageInactive('sell-settings')
   if (unsubSettings) { unsubSettings(); unsubSettings = null }
   if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
   saving = false

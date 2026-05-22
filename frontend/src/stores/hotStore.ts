@@ -310,9 +310,9 @@ export function applyOrderbookUpdate(data: { code: string; bid: number; ask: num
     const t = bt[idx];
     const prev = t.order_ratio;
     if (prev && prev[0] === bid && prev[1] === ask) return state;
-    const newBt = [...bt];
-    newBt[idx] = { ...t, order_ratio: [bid, ask] };
-    return { buyTargets: newBt };
+    // In-place mutation: 배열 복사 없이 직접 요소 수정
+    bt[idx] = { ...t, order_ratio: [bid, ask] };
+    return { buyTargets: bt };
   });
 }
 
