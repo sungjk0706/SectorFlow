@@ -179,11 +179,38 @@ app.include_router(metrics_router)
 # --- 전역 예외 핸들러 ---
 from fastapi import Request
 from fastapi.responses import JSONResponse
+import time
+
+# P1-3: 중복 알림 차단 (5분 제한)
+_last_alert_time: dict[str, float] = {}
+ALERT_COOLDOWN_SECONDS = 300  # 5분
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.exception("[웹서버] 처리되지 않은 예외: %s", exc)
+
+    # P1-3: 텔레그램 알림 (5분 동안 동일 에러 1회 제한)
+    error_type = type(exc).__name__
+    current_time = time.time()
+    last_alert = _last_alert_time.get(error_type, 0)
+
+    if current_time - last_alert >= ALERT_COOLDOWN_SECONDS:
+        # 5분 이상 지났으면 알림 전송
+        from backend.app.services.telegram import send_msg_async
+        from backend.app.core.settings_store import get_settings_async
+
+        try:
+            settings = await get_settings_async()
+            error_msg = f"[SectorFlow 에러 알림]\n에러 타입: {error_type}\n메시지: {str(exc)}\n경로: {request.url.path}"
+            await send_msg_async(error_msg, settings, msg_type="error_alert")
+            _last_alert_time[error_type] = current_time
+            logger.info("[웹서버] 텔레그램 에러 알림 전송 완료 - error_type=%s", error_type)
+        except Exception as e:
+            logger.warning("[웹서버] 텔레그램 알림 전송 실패: %s", e)
+    else:
+        logger.debug("[웹서버] 텔레그램 알림 스킵 (쿨다운 중) - error_type=%s", error_type)
+
     return JSONResponse(
         status_code=500,
         content={"detail": "서버 내부 오류"},

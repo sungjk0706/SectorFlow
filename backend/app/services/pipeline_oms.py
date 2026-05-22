@@ -30,17 +30,31 @@ logger = get_logger("pipeline_oms")
 _oms_task: Optional[asyncio.Task] = None
 _oms_running: bool = False
 
+# P0-2: Circuit Breaker 인스턴스
+_circuit_breaker = None
+
+# P1-4: Latency Metrics
+_latency_metrics = None
+
 # 주문 장부 파일 경로
 _JOURNAL_FILE = "backend/data/journal.jsonl"
 
 
 async def start_oms_loop(es: ModuleType) -> None:
     """OMS 루프 시작."""
-    global _oms_task, _oms_running
+    global _oms_task, _oms_running, _circuit_breaker, _latency_metrics
 
     if _oms_running:
         logger.warning("[OMS] 이미 실행 중")
         return
+
+    # P0-2: Circuit Breaker 초기화
+    from backend.app.services.circuit_breaker import get_circuit_breaker
+    _circuit_breaker = get_circuit_breaker()
+
+    # P1-4: Latency Metrics 초기화
+    from backend.app.core.metrics.latency import get_latency_metrics
+    _latency_metrics = get_latency_metrics()
 
     _oms_running = True
     _oms_task = asyncio.get_running_loop().create_task(_oms_loop_impl(es))
@@ -78,6 +92,13 @@ async def _oms_loop_impl(es: ModuleType) -> None:
             try:
                 # order_queue에서 주문 지령 꺼내기
                 order_cmd = await order_queue.get()
+
+                # P1-4: order_to_broker_ms 측정
+                order_timestamp = order_cmd.get("order_timestamp")
+                if order_timestamp is not None:
+                    current_time = time.perf_counter_ns()
+                    latency_ms = (current_time - order_timestamp) / 1_000_000
+                    _latency_metrics.record("order_to_broker_ms", latency_ms)
 
                 # 주문 실행
                 await _execute_order(order_cmd, es, broadcast_queue)
@@ -249,6 +270,21 @@ async def _execute_buy_order(
         es: engine_service 모듈
         broadcast_queue: UI 전송 큐
     """
+    global _circuit_breaker
+
+    # P0-2: Circuit Breaker 체크 (주문 허용 여부)
+    if not _circuit_breaker.allow_request():
+        logger.warning("[OMS] Circuit Breaker OPEN 상태 - 매수 주문 거부 (code=%s)", code)
+        await broadcast_queue.put({
+            "type": "order_failed",
+            "data": {
+                "action": "BUY",
+                "code": code,
+                "error": "Circuit Breaker OPEN - 주문 거부",
+            },
+        })
+        return
+
     try:
         # 주문 고유 식별값(ID) 생성
         order_id = f"buy_{code}_{int(time.time())}"
@@ -290,6 +326,8 @@ async def _execute_buy_order(
         if success:
             _update_order_status(order_id, "completed")
             logger.info("[OMS] 주문 완료 - order_id=%s, status=completed", order_id)
+            # P0-2: Circuit Breaker 성공 기록
+            _circuit_breaker.record_success()
             await broadcast_queue.put({
                 "type": "order_success",
                 "data": {
@@ -303,6 +341,11 @@ async def _execute_buy_order(
         else:
             _update_order_status(order_id, "failed")
             logger.warning("[OMS] 주문 실패 - order_id=%s, status=failed", order_id)
+            # P0-2: Circuit Breaker 실패 기록
+            _circuit_breaker.record_failure()
+            # P0-2: Circuit Breaker OPEN 상태 전이 시 안전장치 연동
+            if _circuit_breaker.get_state() == "OPEN":
+                await _trigger_circuit_breaker_open_safety(es, broadcast_queue)
             await broadcast_queue.put({
                 "type": "order_failed",
                 "data": {
@@ -315,6 +358,11 @@ async def _execute_buy_order(
 
     except Exception as e:
         logger.error("[OMS] 매수 주문 예외: %s", e, exc_info=True)
+        # P0-2: Circuit Breaker 실패 기록
+        _circuit_breaker.record_failure()
+        # P0-2: Circuit Breaker OPEN 상태 전이 시 안전장치 연동
+        if _circuit_breaker.get_state() == "OPEN":
+            await _trigger_circuit_breaker_open_safety(es, broadcast_queue)
         await broadcast_queue.put({
             "type": "order_failed",
             "data": {
@@ -345,6 +393,21 @@ async def _execute_sell_order(
         es: engine_service 모듈
         broadcast_queue: UI 전송 큐
     """
+    global _circuit_breaker
+
+    # P0-2: Circuit Breaker 체크 (주문 허용 여부)
+    if not _circuit_breaker.allow_request():
+        logger.warning("[OMS] Circuit Breaker OPEN 상태 - 매도 주문 거부 (code=%s)", code)
+        await broadcast_queue.put({
+            "type": "order_failed",
+            "data": {
+                "action": "SELL",
+                "code": code,
+                "error": "Circuit Breaker OPEN - 주문 거부",
+            },
+        })
+        return
+
     try:
         # 주문 고유 식별값(ID) 생성
         order_id = f"sell_{code}_{int(time.time())}"
@@ -392,6 +455,8 @@ async def _execute_sell_order(
         # 응답 수신 시: Completed 상태로 업데이트 또는 제거
         _update_order_status(order_id, "completed")
         logger.info("[OMS] 주문 완료 - order_id=%s, status=completed", order_id)
+        # P0-2: Circuit Breaker 성공 기록
+        _circuit_breaker.record_success()
 
         # 주문 결과 UI에 알림 전송
         await broadcast_queue.put({
@@ -407,6 +472,11 @@ async def _execute_sell_order(
 
     except Exception as e:
         logger.error("[OMS] 매도 주문 예외: %s", e, exc_info=True)
+        # P0-2: Circuit Breaker 실패 기록
+        _circuit_breaker.record_failure()
+        # P0-2: Circuit Breaker OPEN 상태 전이 시 안전장치 연동
+        if _circuit_breaker.get_state() == "OPEN":
+            await _trigger_circuit_breaker_open_safety(es, broadcast_queue)
         await broadcast_queue.put({
             "type": "order_failed",
             "data": {
@@ -415,6 +485,55 @@ async def _execute_sell_order(
                 "error": str(e),
             },
         })
+
+
+# ── P0-2: Circuit Breaker 안전장치 연동 ───────────────────────────────────────────
+
+async def _trigger_circuit_breaker_open_safety(
+    es: ModuleType,
+    broadcast_queue: asyncio.Queue,
+) -> None:
+    """
+    Circuit Breaker OPEN 상태 전이 시 안전장치 연동.
+
+    1. engine_service._shared_lock 획득
+    2. 마스터 스위치(time_scheduler_on) 강제 OFF
+    3. order_queue 플러시 (대기 중인 주문 소거)
+
+    Args:
+        es: engine_service 모듈
+        broadcast_queue: UI 전송 큐
+    """
+    try:
+        # 1. _shared_lock 획득
+        async with es._shared_lock:
+            # 2. 마스터 스위치 강제 OFF
+            es._settings_cache["time_scheduler_on"] = False
+            logger.error("[OMS] Circuit Breaker OPEN - 마스터 스위치 강제 OFF (time_scheduler_on=False)")
+
+            # 3. order_queue 플러시
+            from backend.app.services.core_queues import get_order_queue
+            order_queue = get_order_queue()
+            flushed_count = 0
+            while not order_queue.empty():
+                try:
+                    order_queue.get_nowait()
+                    flushed_count += 1
+                except asyncio.QueueEmpty:
+                    break
+            logger.error("[OMS] Circuit Breaker OPEN - order_queue 플러시 완료 (flushed_count=%d)", flushed_count)
+
+        # UI에 Circuit Breaker OPEN 알림 전송
+        await broadcast_queue.put({
+            "type": "circuit_breaker_open",
+            "data": {
+                "message": "Circuit Breaker OPEN - 계좌 보호 모드 활성화",
+                "flushed_count": flushed_count,
+            },
+        })
+
+    except Exception as e:
+        logger.error("[OMS] Circuit Breaker 안전장치 연동 실패: %s", e, exc_info=True)
 
 
 # ── 주문 장부 저널링 (Journaling) ───────────────────────────────────────────
