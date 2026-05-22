@@ -51,6 +51,7 @@
 - Phase 1.3: Broker Adapter 리팩토링 (건너뜀 - 복잡도로 인해 Phase 1.4로 통합)
 - Phase 1.4: engine_service.py 분리 시작 (건너뜀 - 복잡도로 인해 이후 단계로 연기)
 - Phase 2.1: DataTable 렌더링 최적화 (완료)
+- Phase 2.1 단계 2: sector-stock.ts Web Component 변환 (완료)
 - Phase 2.2: React 역할 축소 (건너뜀 - 이미 Vanilla TS)
 - Phase 2.3: 렌더링 성능 모니터링 (완료)
 - Phase 3.1: Strategy Core 완전 분리 (건너뜀 - 복잡도로 인해 연기)
@@ -64,17 +65,19 @@
 
 ## 현재 상태
 ### 최근 완료 단계
-- Phase 1.3+1.4 단계 1.6: Event Bus 성능 최적화 및 모니터링 완료 (git commit: 476aeb6)
-  - event_bus.py: 시간 윈도우 기반 Coalescing 타이머 루프 구현 (원자성 보장)
-  - Coalescing 파라미터: window=50ms, max_events=10, interval=10ms
-  - 메트릭 확장: avg_queue_wait_ms, avg_dispatch_latency_ms, avg_handler_latency_ms, coalescing_rate
-  - 지연 시간 측정 포인트: A(WS 수신), B(Event Bus Publish), C(Event Bus Dispatch), D(핸들러 완료)
-  - 전체 테스트 통과: 38 passed (기존 35개 + 성능 테스트 3개)
-  - 성능 측정 결과: Coalescing ON 시 100% Rate, Avg Queue Wait 0.07ms, Avg Dispatch Latency 0.06ms, Avg Handler Latency 0.05ms
+- Phase 2.1 단계 2: sector-stock.ts Web Component 변환 완료 (git commit: 2798c81)
+  - sector-stock.ts를 HTMLElement 상속 Web Component로 변환 (SectorStockTable 클래스)
+  - Shadow DOM 도입 (attachShadow({ mode: 'open' }))
+  - CSS Containment 적용 (contain: content) - 레이아웃 스래싱 방지
+  - 메모리 누수 방지 (disconnectedCallback에서 unsubStore 실행 및 참조 clear)
+  - 기능 로직 보호 (buildRows, computeRows, rowCache 로직 100% 유지)
+  - router.ts: WebComponentPage 타입 추가 및 Web Component 지원
+  - main.ts: sector-stock.ts import로 custom element 등록
+  - npm run build 성공
+  - 프론트엔드 테스트 47개 패스
 
 ### 다음 단계
-- Phase 1.3+1.4 완료: Event Bus 기반 실시간 데이터 처리 아키텍처 안착 완료
-- 필요시 실제 운영 환경에서 Coalescing 파라미터 튜닝 (실측 데이터 기반)
+- 필요시 다른 컴포넌트도 Web Component로 변환 (profit-overview.ts, buy-target.ts, sell-position.ts)
 ### Phase 1.1 완료 내용
 - backend/app/core/events.py 생성 완료
   - BaseEvent, MarketTickEvent, OrderFillEvent, AccountUpdateEvent 정의
@@ -352,6 +355,16 @@
 - Phase 1.3 Broker Adapter 리팩토링 (건너뜀 - 복잡도로 인해 Phase 1.4로 통합)
 - Phase 1.4 engine_service.py 분리 시작 (건너뜀 - 복잡도로 인해 이후 단계로 연기)
 - Phase 2.1 DataTable 렌더링 최적화 완료 (requestAnimationFrame 기반 렌더링 주기 제한 60fps)
+- Phase 2.1 단계 2 sector-stock.ts Web Component 변환 완료 (git commit: 2798c81)
+  - SectorStockTable 클래스 정의 (HTMLElement 상속)
+  - Shadow DOM 도입 (attachShadow({ mode: 'open' }))
+  - CSS Containment 적용 (contain: content)
+  - 메모리 누수 방지 (disconnectedCallback에서 unsubStore 실행 및 참조 clear)
+  - 기능 로직 보호 (buildRows, computeRows, rowCache 로직 100% 유지)
+  - router.ts: WebComponentPage 타입 추가 및 Web Component 지원
+  - main.ts: sector-stock.ts import로 custom element 등록
+  - npm run build 성공
+  - 프론트엔드 테스트 47개 패스
 - Phase 2.2 React 역할 축소 (건너뜀 - 이미 Vanilla TS)
 - Phase 2.3 렌더링 성능 모니터링 완료 (render-metrics.ts 생성, metrics-dashboard.ts 수정)
 - Phase 3.1 Strategy Core 완전 분리 (건너뜀 - 복잡도로 인해 이후 단계로 연기)
