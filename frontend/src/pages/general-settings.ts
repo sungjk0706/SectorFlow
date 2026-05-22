@@ -667,9 +667,14 @@ function syncFromSettings(s: AppSettings | null): void {
 
   // 텔레그램 탭 (항상 DOM에 존재)
   {
+    const act = document.activeElement
     teleToggle?.setOn(!!r.tele_on)
     for (const k of ['telegram_chat_id', 'telegram_bot_token']) {
-      if (teleInputs[k]) teleInputs[k].value = String(r[k] || '')
+      if (teleInputs[k]) {
+        if (!act || !teleInputs[k].contains(act)) {
+          teleInputs[k].value = String(r[k] || '')
+        }
+      }
     }
   }
 
@@ -680,8 +685,13 @@ function syncFromSettings(s: AppSettings | null): void {
 
   // API 설정 탭 (항상 DOM에 존재)
   {
+    const act = document.activeElement
     for (const k of ['kiwoom_app_key_real', 'kiwoom_app_secret_real', 'kiwoom_account_no_real']) {
-      if (apiKeyInputs[k]) apiKeyInputs[k].value = String(r[k] || '')
+      if (apiKeyInputs[k]) {
+        if (!act || !apiKeyInputs[k].contains(act)) {
+          apiKeyInputs[k].value = String(r[k] || '')
+        }
+      }
     }
   }
 }

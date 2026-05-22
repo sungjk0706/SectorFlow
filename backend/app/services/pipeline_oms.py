@@ -30,14 +30,16 @@ logger = get_logger("pipeline_oms")
 _oms_task: Optional[asyncio.Task] = None
 _oms_running: bool = False
 
-# P0-2: Circuit Breaker 인스턴스
-_circuit_breaker = None
+# P0-2: Risk Manager 인스턴스
+_risk_manager = None
 
 # P1-4: Latency Metrics
 _latency_metrics = None
 
-# 주문 장부 파일 경로
-_JOURNAL_FILE = "backend/data/journal.jsonl"
+# P1-4: Latency Metrics
+_latency_metrics = None
+
+# 주문 장부 파일 경로 (삭제됨: SQLite 사용)
 
 
 async def start_oms_loop(es: ModuleType) -> None:
@@ -48,9 +50,9 @@ async def start_oms_loop(es: ModuleType) -> None:
         logger.warning("[OMS] 이미 실행 중")
         return
 
-    # P0-2: Circuit Breaker 초기화
-    from backend.app.services.circuit_breaker import get_circuit_breaker
-    _circuit_breaker = get_circuit_breaker()
+    # P0-2: Risk Manager 초기화
+    from backend.app.services.risk_manager import get_risk_manager
+    _risk_manager = get_risk_manager()
 
     # P1-4: Latency Metrics 초기화
     from backend.app.core.metrics.latency import get_latency_metrics
@@ -132,8 +134,10 @@ async def _reconciliation_on_startup(
     logger.info("[OMS] Smart Reconciliation 시작 - 조건부 정산")
 
     try:
+        from backend.app.core.journal import oms_get_pending_orders
+        
         # 1. 로컬 장부에서 Pending 상태인 주문 조회
-        pending_orders = _get_pending_orders()
+        pending_orders = oms_get_pending_orders()
         pending_count = len(pending_orders)
 
         logger.info("[OMS] Pending 주문 수: %d건", pending_count)
@@ -270,17 +274,18 @@ async def _execute_buy_order(
         es: engine_service 모듈
         broadcast_queue: UI 전송 큐
     """
-    global _circuit_breaker
+    global _risk_manager
 
-    # P0-2: Circuit Breaker 체크 (주문 허용 여부)
-    if not _circuit_breaker.allow_request():
-        logger.warning("[OMS] Circuit Breaker OPEN 상태 - 매수 주문 거부 (code=%s)", code)
+    # P0-2: Risk Manager 체크 (매수 주문 허용 여부)
+    allowed, reason = _risk_manager.check_buy_order_allowed(code, price, qty)
+    if not allowed:
+        logger.warning("[OMS] Risk Manager 차단 - 매수 주문 거부 (code=%s, reason=%s)", code, reason)
         await broadcast_queue.put({
             "type": "order_failed",
             "data": {
                 "action": "BUY",
                 "code": code,
-                "error": "Circuit Breaker OPEN - 주문 거부",
+                "error": f"Risk Manager 차단 - {reason}",
             },
         })
         return
@@ -290,13 +295,14 @@ async def _execute_buy_order(
         order_id = f"buy_{code}_{int(time.time())}"
 
         # 주문 요청 직전: Pending 상태로 저널링
-        _journal_order_request(
+        from backend.app.core.journal import record_order_request
+        record_order_request(
             order_id=order_id,
             stock_code=code,
             side="buy",
             quantity=qty,
             price=price,
-            status="pending",
+            trade_mode="real",  # 또는 settings에서 가져와야 함
         )
         logger.info("[OMS] 주문 저널링 완료 - order_id=%s, status=pending", order_id)
 
@@ -324,10 +330,11 @@ async def _execute_buy_order(
 
         # 응답 수신 시: Completed 상태로 업데이트 또는 제거
         if success:
-            _update_order_status(order_id, "completed")
+            from backend.app.core.journal import oms_update_order_status
+            oms_update_order_status(order_id, "completed")
             logger.info("[OMS] 주문 완료 - order_id=%s, status=completed", order_id)
-            # P0-2: Circuit Breaker 성공 기록
-            _circuit_breaker.record_success()
+            # P0-2: Risk Manager 성공 기록 (Circuit Breaker 연동)
+            _risk_manager.record_order_success()
             await broadcast_queue.put({
                 "type": "order_success",
                 "data": {
@@ -339,12 +346,13 @@ async def _execute_buy_order(
                 },
             })
         else:
-            _update_order_status(order_id, "failed")
+            from backend.app.core.journal import oms_update_order_status
+            oms_update_order_status(order_id, "failed")
             logger.warning("[OMS] 주문 실패 - order_id=%s, status=failed", order_id)
-            # P0-2: Circuit Breaker 실패 기록
-            _circuit_breaker.record_failure()
+            # P0-2: Risk Manager 실패 기록
+            _risk_manager.record_order_failure()
             # P0-2: Circuit Breaker OPEN 상태 전이 시 안전장치 연동
-            if _circuit_breaker.get_state() == "OPEN":
+            if _risk_manager.circuit_breaker.get_state() == "OPEN":
                 await _trigger_circuit_breaker_open_safety(es, broadcast_queue)
             await broadcast_queue.put({
                 "type": "order_failed",
@@ -358,10 +366,10 @@ async def _execute_buy_order(
 
     except Exception as e:
         logger.error("[OMS] 매수 주문 예외: %s", e, exc_info=True)
-        # P0-2: Circuit Breaker 실패 기록
-        _circuit_breaker.record_failure()
+        # P0-2: Risk Manager 실패 기록
+        _risk_manager.record_order_failure()
         # P0-2: Circuit Breaker OPEN 상태 전이 시 안전장치 연동
-        if _circuit_breaker.get_state() == "OPEN":
+        if _risk_manager.circuit_breaker.get_state() == "OPEN":
             await _trigger_circuit_breaker_open_safety(es, broadcast_queue)
         await broadcast_queue.put({
             "type": "order_failed",
@@ -393,17 +401,18 @@ async def _execute_sell_order(
         es: engine_service 모듈
         broadcast_queue: UI 전송 큐
     """
-    global _circuit_breaker
+    global _risk_manager
 
-    # P0-2: Circuit Breaker 체크 (주문 허용 여부)
-    if not _circuit_breaker.allow_request():
-        logger.warning("[OMS] Circuit Breaker OPEN 상태 - 매도 주문 거부 (code=%s)", code)
+    # P0-2: Risk Manager 체크 (매도 주문 허용 여부)
+    allowed, reason = _risk_manager.check_sell_order_allowed(code, price, qty)
+    if not allowed:
+        logger.warning("[OMS] Risk Manager 차단 - 매도 주문 거부 (code=%s, reason=%s)", code, reason)
         await broadcast_queue.put({
             "type": "order_failed",
             "data": {
                 "action": "SELL",
                 "code": code,
-                "error": "Circuit Breaker OPEN - 주문 거부",
+                "error": f"Risk Manager 차단 - {reason}",
             },
         })
         return
@@ -413,13 +422,14 @@ async def _execute_sell_order(
         order_id = f"sell_{code}_{int(time.time())}"
 
         # 주문 요청 직전: Pending 상태로 저널링
-        _journal_order_request(
+        from backend.app.core.journal import record_order_request
+        record_order_request(
             order_id=order_id,
             stock_code=code,
             side="sell",
             quantity=qty,
             price=price,
-            status="pending",
+            trade_mode="real",
         )
         logger.info("[OMS] 주문 저널링 완료 - order_id=%s, status=pending", order_id)
 
@@ -453,10 +463,11 @@ async def _execute_sell_order(
         )
 
         # 응답 수신 시: Completed 상태로 업데이트 또는 제거
-        _update_order_status(order_id, "completed")
+        from backend.app.core.journal import oms_update_order_status
+        oms_update_order_status(order_id, "completed")
         logger.info("[OMS] 주문 완료 - order_id=%s, status=completed", order_id)
-        # P0-2: Circuit Breaker 성공 기록
-        _circuit_breaker.record_success()
+        # P0-2: Risk Manager 성공 기록
+        _risk_manager.record_order_success()
 
         # 주문 결과 UI에 알림 전송
         await broadcast_queue.put({
@@ -472,10 +483,10 @@ async def _execute_sell_order(
 
     except Exception as e:
         logger.error("[OMS] 매도 주문 예외: %s", e, exc_info=True)
-        # P0-2: Circuit Breaker 실패 기록
-        _circuit_breaker.record_failure()
+        # P0-2: Risk Manager 실패 기록
+        _risk_manager.record_order_failure()
         # P0-2: Circuit Breaker OPEN 상태 전이 시 안전장치 연동
-        if _circuit_breaker.get_state() == "OPEN":
+        if _risk_manager.circuit_breaker.get_state() == "OPEN":
             await _trigger_circuit_breaker_open_safety(es, broadcast_queue)
         await broadcast_queue.put({
             "type": "order_failed",
@@ -536,157 +547,4 @@ async def _trigger_circuit_breaker_open_safety(
         logger.error("[OMS] Circuit Breaker 안전장치 연동 실패: %s", e, exc_info=True)
 
 
-# ── 주문 장부 저널링 (Journaling) ───────────────────────────────────────────
-
-def _journal_order_request(
-    order_id: str,
-    stock_code: str,
-    side: str,
-    quantity: int,
-    price: float,
-    status: str = "pending",
-) -> None:
-    """
-    주문 요청 저널링.
-
-    주문 요청 직전, Pending 상태로 주문 고유 식별값(ID), 종목코드, 주문 시간, 예상 수량, 단가를 담은 데이터를 로컬 DB(또는 JSON 장부)에 INSERT.
-
-    Args:
-        order_id: 주문 고유 식별값
-        stock_code: 종목코드
-        side: buy/sell
-        quantity: 주문 수량
-        price: 주문 가격
-        status: pending/completed/failed
-    """
-    try:
-        entry = {
-            "event_type": "order_request",
-            "timestamp": time.time(),
-            "seq": _get_next_seq(),
-            "data": {
-                "order_id": order_id,
-                "stock_code": stock_code,
-                "side": side,
-                "quantity": quantity,
-                "price": price,
-                "status": status,
-                "trade_mode": "real",  # 실제 모드인지 테스트 모드인지는 settings에서 확인 필요
-            },
-        }
-
-        # JSONL 파일에 추가 (append)
-        with open(_JOURNAL_FILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-
-        logger.debug("[OMS] 주문 저널링 완료 - order_id=%s, status=%s", order_id, status)
-
-    except Exception as e:
-        logger.error("[OMS] 주문 저널링 실패: %s", e, exc_info=True)
-
-
-def _update_order_status(order_id: str, status: str) -> None:
-    """
-    응답 기반 장부 클리어(Clearing) 로직.
-
-    키움증권 서버에서 응답(ord_no 포함)이 돌아오는 즉시, 해당 주문 ID를 찾아 로컬 장부에서 상태를 Completed로 업데이트하거나, 완료된 주문 건을 장부에서 제거.
-
-    Args:
-        order_id: 주문 고유 식별값
-        status: completed/failed
-    """
-    try:
-        # 현재 장부 읽기
-        if not os.path.exists(_JOURNAL_FILE):
-            logger.warning("[OMS] 장부 파일 없음 - order_id=%s", order_id)
-            return
-
-        updated_entries = []
-        found = False
-
-        with open(_JOURNAL_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                entry = json.loads(line)
-                if entry.get("event_type") == "order_request":
-                    data = entry.get("data", {})
-                    if data.get("order_id") == order_id:
-                        # 해당 주문 ID 찾음 - 상태 업데이트
-                        data["status"] = status
-                        entry["data"] = data
-                        found = True
-                        logger.debug("[OMS] 주문 상태 업데이트 - order_id=%s, status=%s", order_id, status)
-                updated_entries.append(entry)
-
-        if not found:
-            logger.warning("[OMS] 주문 ID를 찾을 수 없음 - order_id=%s", order_id)
-            return
-
-        # 장부 파일 덮어쓰기
-        with open(_JOURNAL_FILE, "w", encoding="utf-8") as f:
-            for entry in updated_entries:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-
-        logger.info("[OMS] 주문 상태 업데이트 완료 - order_id=%s, status=%s", order_id, status)
-
-    except Exception as e:
-        logger.error("[OMS] 주문 상태 업데이트 실패: %s", e, exc_info=True)
-
-
-def _get_pending_orders() -> list[dict]:
-    """
-    로컬 장부에서 Pending 상태인 주문 조회.
-
-    Returns:
-        Pending 상태인 주문 리스트
-    """
-    try:
-        if not os.path.exists(_JOURNAL_FILE):
-            return []
-
-        pending_orders = []
-
-        with open(_JOURNAL_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                entry = json.loads(line)
-                if entry.get("event_type") == "order_request":
-                    data = entry.get("data", {})
-                    if data.get("status") == "pending":
-                        pending_orders.append(data)
-
-        return pending_orders
-
-    except Exception as e:
-        logger.error("[OMS] Pending 주문 조회 실패: %s", e, exc_info=True)
-        return []
-
-
-def _get_next_seq() -> int:
-    """
-    다음 시퀀스 번호 조회.
-
-    Returns:
-        다음 시퀀스 번호
-    """
-    try:
-        if not os.path.exists(_JOURNAL_FILE):
-            return 1
-
-        max_seq = 0
-        with open(_JOURNAL_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                entry = json.loads(line)
-                seq = entry.get("seq", 0)
-                if seq > max_seq:
-                    max_seq = seq
-
-        return max_seq + 1
-
-    except Exception as e:
-        logger.error("[OMS] 시퀀스 번호 조회 실패: %s", e, exc_info=True)
-        return 1
+# (Removed manual JSON journaling functions)

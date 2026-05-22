@@ -948,6 +948,8 @@ def get_sector_stocks() -> list:
     for cd, e in _pending_stock_details.items():
         if filter_set is not None and cd not in filter_set:
             continue
+        if _filtered_sector_codes is not None and cd not in _filtered_sector_codes:
+            continue
         if e.get("status") != "active":
             continue
         # 시세 없는 빈 엔트리 제외
