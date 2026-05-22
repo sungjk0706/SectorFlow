@@ -201,6 +201,7 @@ class SectorStockTable extends HTMLElement {
   private searchTerm = ''
   private currentMatchedCodes: Set<string> | null = null
   private rowCache = new Map<string, { stock: SectorStock; row: DataRowItem }>()
+  private onRealDataTick: ((e: Event) => void) | null = null
 
   // DOM 참조
   private titleH3: HTMLElement | null = null
@@ -482,6 +483,15 @@ class SectorStockTable extends HTMLElement {
 
     // 초기 렌더링
     this.refreshRows()
+
+    // O(1) 초저지연 DOM 갱신 이벤트 리스너
+    this.onRealDataTick = (e: Event) => {
+      const code = (e as CustomEvent<string>).detail
+      if (this.dataTable && this.dataTable.updateItemByKey) {
+        this.dataTable.updateItemByKey(code)
+      }
+    }
+    window.addEventListener('real-data-tick', this.onRealDataTick)
   }
 
   /* ── disconnectedCallback (unmount) ── */
@@ -489,6 +499,10 @@ class SectorStockTable extends HTMLElement {
   disconnectedCallback(): void {
     this._mounted = false
     notifyPageInactive('sector-analysis')
+    if (this.onRealDataTick) {
+      window.removeEventListener('real-data-tick', this.onRealDataTick)
+      this.onRealDataTick = null
+    }
     if (this.unsubStore) { this.unsubStore(); this.unsubStore = null }
     if (this._rafId !== null) { cancelAnimationFrame(this._rafId); this._rafId = null }
     if (this.dataTable) { this.dataTable.destroy(); this.dataTable = null }

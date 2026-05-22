@@ -140,10 +140,10 @@ async def run_engine_loop(es: ModuleType) -> None:
     # 계좌 REST Lock 초기화 -- 이전 세션 잠금 상태 초기화
     es._account_rest_lock = None
 
-    # ── Producer-Consumer Queue 생성 (단계 2: 엔진 프로세스 내에서만 사용) ────
-    # 엔진 프로세스 내에서만 사용하는 asyncio.Queue 생성
-    es._ws_queue = asyncio.Queue(maxsize=10000)
-    logger.info("[엔진] Producer-Consumer Queue 생성 (maxsize=10000)")
+    # ── 전역 이벤트 버스 (Queues) 초기화 (Step 1: 파이프라인 아키텍처) ────
+    from backend.app.services.core_queues import initialize_queues
+    initialize_queues()
+    logger.info("[엔진] 전역 이벤트 버스 (Queues) 초기화 완료")
 
     try:
         settings = await get_engine_settings(es._engine_user_id or None)
@@ -310,11 +310,12 @@ async def run_engine_loop(es: ModuleType) -> None:
                     await event_bus.start()
                     logger.info("[연결] Event Bus 시작 완료")
 
-                    # ── Producer-Consumer Queue 설정 (단계 1) ───────────────────
+                    # ── KiwoomConnector Queue 콜백 설정 (Step 1: tick_queue 연결) ────
+                    from backend.app.services.core_queues import get_tick_queue
                     kiwoom_connector = _mgr.get_connector("kiwoom")
                     if kiwoom_connector and hasattr(kiwoom_connector, 'set_queue_callback'):
-                        kiwoom_connector.set_queue_callback(es._ws_queue)
-                        logger.info("[연결] KiwoomConnector Queue 콜백 설정 완료")
+                        kiwoom_connector.set_queue_callback(get_tick_queue())
+                        logger.info("[연결] KiwoomConnector Queue 콜백 설정 완료 (tick_queue)")
 
                     await _mgr.connect_all()
                     es._connector_manager = _mgr
@@ -331,10 +332,20 @@ async def run_engine_loop(es: ModuleType) -> None:
         logger.info("[기동시간] 전체 기동: %.0fms", (time.perf_counter() - _t0) * 1000)
         es._broadcast_engine_ws()  # 엔진 루프 진입 직후 헤더에 즉시 반영
 
-        # ── Consumer 루프 시작 (단계 2: 엔진 프로세스 내에서만 사용) ───────────────
-        from backend.app.services.engine_ws_dispatch import start_consumer_loop
-        await start_consumer_loop(es._ws_queue, es)
-        logger.info("[엔진] Consumer 루프 시작 완료")
+        # ── 백그라운드 태스크로 파이프라인 루프 시작 (Step 7: 중앙 코디네이터 연동) ──
+        # 순서 보장: Ingestion -> Compute -> OMS -> Gateway
+        from backend.app.services.pipeline_compute import start_compute_loop
+        from backend.app.services.pipeline_oms import start_oms_loop
+        from backend.app.services.pipeline_gateway import start_gateway_loop
+
+        compute_task = asyncio.create_task(start_compute_loop(es))
+        logger.info("[엔진] Compute Engine 루프 시작 (백그라운드 태스크)")
+
+        oms_task = asyncio.create_task(start_oms_loop(es))
+        logger.info("[엔진] OMS 루프 시작 (백그라운드 태스크)")
+
+        gateway_task = asyncio.create_task(start_gateway_loop())
+        logger.info("[엔진] Gateway 루프 시작 (백그라운드 태스크)")
 
         # ── 엔진 종료 대기 (WS 연결/해제는 스케줄러가 관리) ──
         es._engine_stop_event.clear()
@@ -346,10 +357,25 @@ async def run_engine_loop(es: ModuleType) -> None:
         es._log(f" [시작] 예외: {e}")
         logger.warning("[시작] 엔진 루프 예외", exc_info=True)
     finally:
-        # ── Consumer 루프 종료 (단계 2: 엔진 프로세스 내에서만 사용) ───────────────
-        from backend.app.services.engine_ws_dispatch import stop_consumer_loop
-        await stop_consumer_loop()
-        logger.info("[엔진] Consumer 루프 종료 완료")
+        # ── 백그라운드 태스크 종료 (Step 7: 중앙 코디네이터 연동) ───────────────
+        gateway_task.cancel()
+        oms_task.cancel()
+        compute_task.cancel()
+
+        try:
+            await gateway_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await oms_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await compute_task
+        except asyncio.CancelledError:
+            pass
+
+        logger.info("[엔진] 백그라운드 태스크 종료 완료")
 
         # ── Event Bus 종료 ───────────────────────────────────────────────────
         from backend.app.core.event_bus import EventBus

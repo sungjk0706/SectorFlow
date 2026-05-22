@@ -17,6 +17,8 @@ build/
 *.egg
 .pytest_cache/
 .mypy_cache/
+.hypothesis/
+.ruff_cache/
 
 # Node.js
 frontend/node_modules/

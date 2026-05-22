@@ -80,6 +80,7 @@ let dataTable: DataTableApi<Position> | null = null
 let unsubStore: (() => void) | null = null
 let wsBadge: HTMLElement | null = null
 let _rafId: number | null = null
+let onRealDataTick: ((e: Event) => void) | null = null
 let _mounted = false
 
 function mount(container: HTMLElement): void {
@@ -156,11 +157,24 @@ function mount(container: HTMLElement): void {
       }
     })
   }
+
+  // O(1) 초저지연 DOM 갱신 이벤트 리스너
+  onRealDataTick = (e: Event) => {
+    const code = (e as CustomEvent<string>).detail
+    if (dataTable && dataTable.updateItemByKey) {
+      dataTable.updateItemByKey(code)
+    }
+  }
+  window.addEventListener('real-data-tick', onRealDataTick)
 }
 
 function unmount(): void {
   _mounted = false
   notifyPageInactive('sell-position')
+  if (onRealDataTick) {
+    window.removeEventListener('real-data-tick', onRealDataTick)
+    onRealDataTick = null
+  }
   if (unsubStore) { unsubStore(); unsubStore = null }
   if (_rafId !== null) { cancelAnimationFrame(_rafId); _rafId = null }
   if (dataTable) { dataTable.destroy(); dataTable = null }

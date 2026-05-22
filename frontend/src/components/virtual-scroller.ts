@@ -24,6 +24,7 @@ export interface VirtualScrollerOptions<T> {
 export interface VirtualScrollerApi<T> {
   updateItems(items: T[]): void
   updateItem(index: number, item: T): void
+  updateItemByKey(key: string): void
   scrollToIndex(index: number): void
   destroy(): void
 }
@@ -441,6 +442,18 @@ export function createVirtualScroller<T>(
     currentEnd = end
   }
 
+  function updateItemByKey(key: string) {
+    const existing = activeRows.get(key)
+    if (existing) {
+      // items 배열은 외부에서 in-place로 수정되었다고 가정
+      // 캐시된 el에 대해서만 직접 renderRow 호출
+      const item = items[existing.index]
+      if (item) {
+        renderRow(item, existing.index, existing.el)
+      }
+    }
+  }
+
   function updateItem(index: number, item: T) {
     if (index < 0 || index >= items.length) return
     const oldHeight = getRowHeight(items[index], index)
@@ -501,5 +514,11 @@ export function createVirtualScroller<T>(
     if (sentinel.parentNode) sentinel.parentNode.removeChild(sentinel)
   }
 
-  return { updateItems, updateItem, scrollToIndex, destroy }
+  return {
+    updateItems,
+    updateItem,
+    updateItemByKey,
+    scrollToIndex,
+    destroy,
+  }
 }
