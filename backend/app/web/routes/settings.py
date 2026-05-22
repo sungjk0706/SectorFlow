@@ -20,8 +20,9 @@ async def update_settings(body: dict, _: str = Depends(get_current_user)):
 
         # control_queue에 설정 변경 신호 전송 (Step 6: 컨트롤 플레인 우회 배관 연동)
         # P0-1: PriorityQueue 전환 - 우선순위 0 (최우선) 튜플 구조
+        import time
         control_queue = get_control_queue()
-        await control_queue.put((0, {
+        await control_queue.put((0, time.monotonic(), {
             "type": "UPDATE_CONFIG",
             "payload": body,
             "changed_keys": changed_keys,
@@ -30,6 +31,8 @@ async def update_settings(body: dict, _: str = Depends(get_current_user)):
         await after_settings_persisted(username="admin", changed_keys=changed_keys)
         return {"ok": True}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"유효하지 않은 설정값: {e}",

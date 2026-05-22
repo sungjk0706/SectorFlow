@@ -115,24 +115,26 @@ function syncFromSettings(s: AppSettings): void {
     timePairHandle.setEnabled(!!r.auto_buy_on)
   }
 
+  const act = document.activeElement
+
   // 매수 조건
   kospiGuardToggle?.setOn(!!r.buy_index_guard_kospi_on)
-  kospiDropInput?.setValue(Number(r.buy_index_kospi_drop) || 0)
+  if (kospiDropInput && (!act || !kospiDropInput.el.contains(act))) kospiDropInput.setValue(Number(r.buy_index_kospi_drop) || 0)
   kosdaqGuardToggle?.setOn(!!r.buy_index_guard_kosdaq_on)
-  kosdaqDropInput?.setValue(Number(r.buy_index_kosdaq_drop) || 0)
-  riseInput?.setValue(Number(r.buy_block_rise_pct) || 0)
-  fallInput?.setValue(Number(r.buy_block_fall_pct) || 0)
-  strengthInput?.setValue(Number(r.buy_min_strength) || 0)
+  if (kosdaqDropInput && (!act || !kosdaqDropInput.el.contains(act))) kosdaqDropInput.setValue(Number(r.buy_index_kosdaq_drop) || 0)
+  if (riseInput && (!act || !riseInput.el.contains(act))) riseInput.setValue(Number(r.buy_block_rise_pct) || 0)
+  if (fallInput && (!act || !fallInput.el.contains(act))) fallInput.setValue(Number(r.buy_block_fall_pct) || 0)
+  if (strengthInput && (!act || !strengthInput.el.contains(act))) strengthInput.setValue(Number(r.buy_min_strength) || 0)
 
   // 매수 금액
-  maxDailyInput?.setValue(Number(r.max_daily_total_buy_amt) || 0)
-  maxStockCntInput?.setValue(Number(r.max_stock_cnt) || 0)
-  buyAmtInput?.setValue(Number(r.buy_amt) || 0)
+  if (maxDailyInput && (!act || !maxDailyInput.el.contains(act))) maxDailyInput.setValue(Number(r.max_daily_total_buy_amt) || 0)
+  if (maxStockCntInput && (!act || !maxStockCntInput.el.contains(act))) maxStockCntInput.setValue(Number(r.max_stock_cnt) || 0)
+  if (buyAmtInput && (!act || !buyAmtInput.el.contains(act))) buyAmtInput.setValue(Number(r.buy_amt) || 0)
 
   // 매수 가산점
   const highOn = !!r.boost_high_breakout_on
   boostHighToggle?.setOn(highOn)
-  boostHighScoreInput?.setValue(Number(r.boost_high_breakout_score) ?? 1.0)
+  if (boostHighScoreInput && (!act || !boostHighScoreInput.el.contains(act))) boostHighScoreInput.setValue(Number(r.boost_high_breakout_score) ?? 1.0)
   if (boostHighControls) {
     boostHighControls.style.opacity = highOn ? '1' : '0.4'
     boostHighControls.style.pointerEvents = highOn ? 'auto' : 'none'

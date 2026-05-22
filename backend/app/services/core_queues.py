@@ -131,6 +131,9 @@ def clear_all_queues() -> None:
             _broadcast_queue.get_nowait()
     if _control_queue:
         while not _control_queue.empty():
-            _, _ = _control_queue.get_nowait()
+            try:
+                _, _, _ = _control_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
 
     logger.info("[core_queues] 모든 큐 비우기 완료")

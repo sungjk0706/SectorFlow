@@ -61,24 +61,23 @@ async def lifespan(app: FastAPI):
     container.register_singleton("ws_manager", ws_manager)
     logger.info("[DI Container] ws_manager 싱글톤 등록 완료")
     
-    # 엔진 부트스트랩 완료 대기 (최대 120초)
-    try:
-        await asyncio.wait_for(_es._bootstrap_event.wait(), timeout=120.0)
-        logger.info("[웹서버] 엔진 초기화 완료")
-        
-        # 엔진 준비 완료 상태 설정
-        _es._engine_ready_event.set()
-        logger.info("[웹서버] 엔진 준비 완료 이벤트 설정")
-        
-    except asyncio.TimeoutError:
-        logger.error("[웹서버] 엔진 부트스트랩 120초 초과")
-        # 타임아웃이어도 서버는 시작되어야 함
-        logger.warning("[웹서버] 타임아웃 발생했지만 서버 시작 계속 진행")
-        # 엔진 준비 상태는 설정하지 않음 (클라이언트가 health check로 확인)
-
     # 서버 준비 완료 상태 설정 (클라이언트 요청 수신 가능)
+    # 웹 서버가 즉시 기동되어 Health Check 등에 응답할 수 있도록 함
     _es._server_ready_event.set()
-    logger.info("[웹서버] 서버 준비 완료 이벤트 설정")
+    logger.info("[웹서버] 서버 준비 완료 이벤트 설정 (Fast Boot)")
+
+    # 엔진 부트스트랩 완료 대기는 백그라운드 태스크로 전환 (비동기 비차단 초기화)
+    async def _wait_for_engine_ready():
+        try:
+            await asyncio.wait_for(_es._bootstrap_event.wait(), timeout=120.0)
+            logger.info("[웹서버] 엔진 초기화 완료")
+            _es._engine_ready_event.set()
+            logger.info("[웹서버] 엔진 준비 완료 이벤트 설정")
+        except asyncio.TimeoutError:
+            logger.error("[웹서버] 엔진 부트스트랩 120초 초과")
+            logger.warning("[웹서버] 타임아웃 발생했지만 엔진 준비 완료 플래그는 설정하지 않음")
+
+    asyncio.create_task(_wait_for_engine_ready())
 
     # 스케줄러 시작
     start_daily_time_scheduler()

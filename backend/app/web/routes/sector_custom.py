@@ -118,7 +118,8 @@ async def _trigger_recompute() -> None:
 
         # P0-1: PriorityQueue 전환 - 우선순위 1 (차순위) 튜플 구조
         control_queue = get_control_queue()
-        await control_queue.put((1, {
+        import time
+        await control_queue.put((1, time.monotonic(), {
             "type": "RECOMPUTE_SECTOR",
             "payload": {},
         }))

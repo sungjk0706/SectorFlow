@@ -112,23 +112,25 @@ function syncFromSettings(s: AppSettings): void {
     timePairHandle.setEnabled(!!r.auto_sell_on)
   }
 
+  const act = document.activeElement
+
   // 익절
   const tpOn = !!r.tp_apply
   tpToggle?.setOn(tpOn)
-  tpValInput?.setValue(Number(r.tp_val) || 0)
+  if (tpValInput && (!act || !tpValInput.el.contains(act))) tpValInput.setValue(Number(r.tp_val) || 0)
   setRowDisabled(tpValRow, !tpOn)
 
   // 손절
   const lossOn = !!r.loss_apply
   lossToggle?.setOn(lossOn)
-  lossValInput?.setValue(Number(r.loss_val) || 0)
+  if (lossValInput && (!act || !lossValInput.el.contains(act))) lossValInput.setValue(Number(r.loss_val) || 0)
   setRowDisabled(lossValRow, !lossOn)
 
   // 추적매도
   const tsOn = !!r.ts_apply
   tsToggle?.setOn(tsOn)
-  tsStartValInput?.setValue(Number(r.ts_start_val) || 0)
-  tsDropValInput?.setValue(Number(r.ts_drop_val) || 0)
+  if (tsStartValInput && (!act || !tsStartValInput.el.contains(act))) tsStartValInput.setValue(Number(r.ts_start_val) || 0)
+  if (tsDropValInput && (!act || !tsDropValInput.el.contains(act))) tsDropValInput.setValue(Number(r.ts_drop_val) || 0)
   setRowDisabled(tsStartRow, !tsOn)
   setRowDisabled(tsDropRow, !tsOn)
 }

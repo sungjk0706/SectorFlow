@@ -128,7 +128,7 @@ async def _compute_loop_impl(es: ModuleType) -> None:
                 # 제어 신호가 있는지 먼저 체크 (get_nowait로 비블로킹 체크)
                 # P0-1: PriorityQueue 전환 - 튜플 언패킹 적용 (우선순위, 데이터)
                 try:
-                    _, control_signal = control_queue.get_nowait()
+                    _, _, control_signal = control_queue.get_nowait()
                     await _process_control_signal(control_signal, es, broadcast_queue)
                     control_queue.task_done()
                 except asyncio.QueueEmpty:
