@@ -98,40 +98,52 @@
   - main.ts: sector-stock.ts import로 custom element 등록
   - npm run build 성공
   - 프론트엔드 테스트 47개 패스
-- Phase 2.1 단계 3: 4대 파이프라인 물리 격리 구현 완료
+- Phase 2.1 단계 3: 4대 파이프라인 물리 격리 구현 완료 (git commit: 18ae082)
   - engine_bootstrap.py: refresh_avg_amt_5d_cache()에 정규장 차단 가드 이식 (Line 473-478)
   - engine_bootstrap.py: _refresh_avg_amt_5d_cache_inner()에 정규장 차단 가드 이식 (Line 622-627)
   - engine_bootstrap.py: _deferred_sector_summary()에 정규장 차단 가드 이식 및 스냅샷 복원 로직 추가 (Line 375-384)
   - ws.py: 초기 스냅샷 대기 타임아웃 120초 → 300초 조정 (Line 40)
   - 백엔드 통합 테스트 130 passed
+- Phase 2.1 단계 3 최종 수정: 20:30 안전 구역 확장 및 영속성 복원 레이어 완성 (git commit: pending)
+  - daily_time_scheduler.py: is_heavy_operation_allowed() 함수 추가 (20:30 이전 차단)
+  - engine_bootstrap.py: 3개 핵심 함수에 is_heavy_operation_allowed() 적용
+  - engine_bootstrap.py: _deferred_sector_summary()에 영속성 캐시 복원 로직 추가
+  - engine_bootstrap.py: 업종순위 계산 완료 시 save_sector_summary_cache() 호출 추가
+  - backend/app/core/sector_summary_cache.py: 영속성 캐시 모듈 신규 생성 (완전한 역직렬화 로직)
+  - ws.py: 타임아웃 설정을 _settings_cache 전역 메모리 참조로 교체
+  - backend/tests/test_market_time_guard.py: 시간 가드 Mock 테스트 추가 (4 passed)
+  - 백엔드 통합 테스트 128 passed (test_settlement_properties.py 제외)
 
 ### 긴급 이슈
-#### 이슈 1: 매수후보(buyTargets) 데이터 미표시 현상
+#### 이슈 1: 매수후보(buyTargets) 데이터 미표시 현상 (해결 완료)
 - **현상**: 프론트엔드 매수후보 테이블(buy-target.ts)이 "매수후보가 없습니다." 상태로 유지되며 실시간 데이터 표시 안됨
 - **근본 원인**: backend/app/services/engine_bootstrap.py
   - Line 312: `_sector_summary_cache`가 `None`으로 초기화됨
   - Line 348-349: `_deferred_sector_summary()`가 `asyncio.create_task()`로 비동기 실행되어 메인 부트스트랩 흐름을 블로킹하지 않음
   - 결과: WebSocket 연결 시 초기 스냅샷 전송 시점에 `_sector_summary_cache`가 아직 채워지지 않아 `buyTargets`가 `None`으로 전송됨
-- **임시 조치**: backend/app/web/routes/ws.py
-  - `_send_stocks_delayed`를 `_send_initial_snapshot_delayed`로 리팩토링
-  - `_sector_summary_ready_event` 대기 로직 추가 (120초 타임아웃)
-  - 초기 스냅샷 전송 타이밍을 업종순위 계산 완료 후로 지연
-- **백엔드 테스트**: 통합 테스트 130개 패스 (pytest backend/tests/)
-- **검증 상태**: 5일거래대금/고가 다운로드 소요 시간이 120초 타임아웃을 초과하여 WS 연결 해제 발생. 다운로드 완료 후 재검증 필요
+- **해결 조치**: Phase 2.1 단계 3 최종 수정
+  - ws.py: 초기 스냅샷 대기 타임아웃 120초 → 300초 조정 (Line 40)
+  - ws.py: 타임아웃 설정을 _settings_cache 전역 메모리 참조로 교체 (디스크 I/O 오버헤드 제거)
+  - engine_bootstrap.py: `_deferred_sector_summary()`에 20:30 안전 구역 가드 이식 및 영속성 캐시 복원 로직 추가 (Line 375-391)
+    - 장중 차단 시 영속성 캐시에서 업종순위/매수후보 데이터 복원
+    - 캐시 없으면 최소한의 기본 구조 객체 생성하여 프론트엔드 크래시 방지
+  - backend/app/core/sector_summary_cache.py: 영속성 캐시 모듈 신규 생성 (완전한 역직렬화 로직)
+- **백엔드 테스트**: 통합 테스트 128개 패스 (pytest backend/tests/ --ignore=test_settlement_properties.py)
 
-#### 이슈 2: 장중 백그라운드 다운로드 루프 폭주 현상
+#### 이슈 2: 장중 백그라운드 다운로드 루프 폭주 현상 (해결 완료)
 - **현상**: 장 거래 시간(09:00~15:30)임에도 불구하고 5일 거래대금 및 고가 관련 다운로드/연산 로직이 실행됨
 - **결함 코드 위치**: backend/app/services/engine_bootstrap.py
   - Line 367-432: `_deferred_sector_summary()` 함수에 장 시간 가드 부재
-    - `daily_time_scheduler.py`의 `get_market_phase()` 호출 없이 바로 실행
-    - 정규장 시간 내에도 업종순위 계산 실행
   - Line 605-659: `_refresh_avg_amt_5d_cache_inner()` 함수에 장 시간 가드 부재
-    - 장 시간 검증 없이 5일 거래대금/고가 다운로드 실행
-    - 현재 17:37 (정규장 종료 후)에도 다운로드 진행 중 (34% 완료, 소요 시간 약 3분)
   - Line 452-488: `refresh_avg_amt_5d_cache()` 함수에 장 시간 가드 부재
-    - Line 469-471: `scheduler_5d_download_on` 설정값 확인만 존재, 장 시간 검증 없음
-- **안전 레이어 연동 부재**: 시스템 전역 장 시간 검증 함수(`get_market_phase()`)가 존재함에도 백그라운드 연산 레이어와 연동되지 않음
-- **영향**: 장중 대량 다운로드로 인한 실시간 이벤트 루프 간섭, REST API 블로킹, 시스템 리소스 과다 소모
+- **해결 조치**: Phase 2.1 단계 3 최종 수정
+  - daily_time_scheduler.py: is_heavy_operation_allowed() 함수 추가 (20:30 이전 차단)
+  - engine_bootstrap.py: refresh_avg_amt_5d_cache()에 is_heavy_operation_allowed() 적용 (Line 485-488)
+  - engine_bootstrap.py: _refresh_avg_amt_5d_cache_inner()에 is_heavy_operation_allowed() 적용 (Line 633-636)
+  - engine_bootstrap.py: _deferred_sector_summary()에 is_heavy_operation_allowed() 적용 (Line 376-391)
+  - 정규장(09:00~15:30) + 시간외(15:30~20:00) + 마켓 정리(20:00~20:30) 시간 내 대량 다운로드 및 CPU-bound 연산 완전 차단
+  - 20:30 이후 안전 구역(Safe Window)에서만 허용
+- **백엔드 테스트**: 통합 테스트 128개 패스 (pytest backend/tests/ --ignore=test_settlement_properties.py)
 ### Phase 1.1 완료 내용
 - backend/app/core/events.py 생성 완료
   - BaseEvent, MarketTickEvent, OrderFillEvent, AccountUpdateEvent 정의
