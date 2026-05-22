@@ -373,13 +373,20 @@ async def _deferred_sector_summary() -> None:
     """
     try:
         # 정규장 차단 서킷 브레이커 (Phase 2.1 단계 3)
-        from backend.app.services.daily_time_scheduler import get_market_phase
-        phase = get_market_phase()
-        if phase["krx"] == "정규장":
-            logger.warning("[시작] 정규장 시간대 업종순위 계산 차단 -- 장중 CPU-bound 연산 방지")
-            # 장중 차단 시 최소한의 기본 구조 객체 생성하여 프론트엔드 크래시 방지
-            from backend.app.services.engine_sector_score import SectorSummary
-            _st._sector_summary_cache = SectorSummary(sectors=[], buy_targets=[])
+        from backend.app.services.daily_time_scheduler import is_heavy_operation_allowed
+        if not is_heavy_operation_allowed():
+            logger.warning("[시작] 20:30 이전 시간대 업종순위 계산 차단 -- 장중/시간외 CPU-bound 연산 방지")
+            # 장중 차단 시 영속성 캐시에서 복원 시도
+            from backend.app.core.sector_summary_cache import load_sector_summary_cache
+            cached_summary = load_sector_summary_cache()
+            if cached_summary:
+                _st._sector_summary_cache = cached_summary
+                logger.info("[시작] 영속성 캐시에서 업종순위 복원 완료")
+            else:
+                # 캐시 없으면 최소한의 기본 구조 객체 생성
+                from backend.app.services.engine_sector_score import SectorSummary
+                _st._sector_summary_cache = SectorSummary(sectors=[], buy_targets=[])
+                logger.warning("[시작] 영속성 캐시 없음, 빈 객체 생성")
             _st._sector_summary_ready_event.set()
             return
         
@@ -416,6 +423,10 @@ async def _deferred_sector_summary() -> None:
             _st._sector_summary_cache = _result
             _st._invalidate_sector_stocks_cache()
             logger.debug("[시작] 업종순위 후순위 계산 완료 -- %d개 섹터", len(_result.sectors))
+            
+            # 영속성 캐시에 저장
+            from backend.app.core.sector_summary_cache import save_sector_summary_cache
+            save_sector_summary_cache(_result)
 
             # 이벤트 발행 — _send_stocks_delayed()가 대기 중이면 해제
             _st._sector_summary_ready_event.set()
@@ -482,10 +493,9 @@ async def refresh_avg_amt_5d_cache() -> None:
             return
         
         # 정규장 차단 서킷 브레이커 (Phase 2.1 단계 3)
-        from backend.app.services.daily_time_scheduler import get_market_phase
-        phase = get_market_phase()
-        if phase["krx"] == "정규장":
-            logger.warning("[시작] 정규장 시간대 5일거래대금 다운로드 차단 -- 장중 대량 다운로드 방지")
+        from backend.app.services.daily_time_scheduler import is_heavy_operation_allowed
+        if not is_heavy_operation_allowed():
+            logger.warning("[시작] 20:30 이전 시간대 5일거래대금 다운로드 차단 -- 장중/시간외 대량 다운로드 방지")
             return
         if already_running:
             logger.info("[DEBUG] refresh_avg_amt_5d_cache CANCEL EXISTING TASK")
@@ -631,10 +641,9 @@ async def _refresh_avg_amt_5d_cache_inner() -> None:
     _st._avg_amt_needs_bg_refresh = False
 
     # 정규장 차단 서킷 브레이커 (Phase 2.1 단계 3)
-    from backend.app.services.daily_time_scheduler import get_market_phase
-    phase = get_market_phase()
-    if phase["krx"] == "정규장":
-        logger.warning("[시작] 정규장 시간대 5일거래대금 내부 다운로드 차단 -- 장중 대량 다운로드 방지")
+    from backend.app.services.daily_time_scheduler import is_heavy_operation_allowed
+    if not is_heavy_operation_allowed():
+        logger.warning("[시작] 20:30 이전 시간대 5일거래대금 내부 다운로드 차단 -- 장중/시간외 대량 다운로드 방지")
         return
 
     all_codes = [v for t, v in _st._sector_stock_layout if t == "code"]

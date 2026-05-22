@@ -32,14 +32,16 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
                 logger.warning("[연결] 앱준비 60초 대기 초과 -- 현재 데이터로 전송")
 
         # 업종순위 계산 완료 대기 (매수후보 데이터 포함을 위해 필수)
-        from backend.app.services.engine_service import _sector_summary_ready_event
+        from backend.app.services.engine_service import _sector_summary_ready_event, _settings_cache
+
+        _timeout = float(_settings_cache.get("ws_initial_snapshot_timeout_sec", 300.0))
 
         if not _sector_summary_ready_event.is_set():
             logger.info("[연결] 업종순위 계산 대기 중 -- 매수후보 데이터 포함을 위해 대기")
             try:
-                await asyncio.wait_for(_sector_summary_ready_event.wait(), timeout=300.0)
+                await asyncio.wait_for(_sector_summary_ready_event.wait(), timeout=_timeout)
             except asyncio.TimeoutError:
-                logger.warning("[연결] 업종순위 계산 300초 대기 초과 -- 매수후보 없이 전송")
+                logger.warning(f"[연결] 업종순위 계산 {_timeout}초 대기 초과 -- 매수후보 없이 전송")
 
         # initial-snapshot 전송 (업종순위 계산 완료 후 buyTargets 포함)
         from backend.app.services.engine_service import build_initial_snapshot
