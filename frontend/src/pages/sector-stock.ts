@@ -1,5 +1,5 @@
 // frontend/src/pages/sector-stock.ts
-// 업종별 종목 실시간 시세 — Vanilla TS PageModule (DataTable 적용)
+// 업종별 종목 실시간 시세 — Web Component (Shadow DOM + DataTable 적용)
 
 import { createDataTable, type DataTableApi, type ColumnDef, type GroupRow as DataTableGroupRow, type TableRow } from '../components/common/data-table'
 import { hotStore } from '../stores/hotStore'
@@ -190,317 +190,332 @@ function computeRows(
 }
 
 
-/* ── 모듈 상태 ── */
+/* ── Web Component 클래스 ── */
 
-let rootEl: HTMLElement | null = null
-let dataTable: DataTableApi<DataRowItem> | null = null
-let unsubStore: (() => void) | null = null
-let searchInput: ReturnType<typeof createSearchInput> | null = null
-let searchTerm = ''
-let currentMatchedCodes: Set<string> | null = null
-let rowCache = new Map<string, { stock: SectorStock; row: DataRowItem }>()
+class SectorStockTable extends HTMLElement {
+  private shadow: ShadowRoot
+  private rootEl: HTMLElement | null = null
+  private dataTable: DataTableApi<DataRowItem> | null = null
+  private unsubStore: (() => void) | null = null
+  private searchInput: ReturnType<typeof createSearchInput> | null = null
+  private searchTerm = ''
+  private currentMatchedCodes: Set<string> | null = null
+  private rowCache = new Map<string, { stock: SectorStock; row: DataRowItem }>()
 
-// DOM 참조
-let titleH3: HTMLElement | null = null
-let titleBaseSpan: HTMLElement | null = null
-let titleFilterSpan: HTMLElement | null = null
-let titleCountSpan: HTMLElement | null = null
-let filterBadge: HTMLElement | null = null
-let warningDiv: HTMLElement | null = null
-let emptyDiv: HTMLElement | null = null
-let scrollContainer: HTMLElement | null = null
-let wsBadge: ReturnType<typeof createWsStatusBadge> | null = null
-let _rafId: number | null = null
-let _mounted = false
+  // DOM 참조
+  private titleH3: HTMLElement | null = null
+  private titleBaseSpan: HTMLElement | null = null
+  private titleFilterSpan: HTMLElement | null = null
+  private titleCountSpan: HTMLElement | null = null
+  private filterBadge: HTMLElement | null = null
+  private warningDiv: HTMLElement | null = null
+  private emptyDiv: HTMLElement | null = null
+  private scrollContainer: HTMLElement | null = null
+  private wsBadge: ReturnType<typeof createWsStatusBadge> | null = null
+  private _rafId: number | null = null
+  private _mounted = false
 
-/* ── mount ── */
+  constructor() {
+    super()
+    this.shadow = this.attachShadow({ mode: 'open' })
+  }
 
-function mount(container: HTMLElement): void {
-  _mounted = true
-  searchTerm = ''
-  currentMatchedCodes = null
-  rowCache = new Map()
-  notifyPageActive('sector-analysis')
+  /* ── 행 빌드 + UI 갱신 (기능 로직 보호) ── */
 
-  rootEl = document.createElement('div')
-  Object.assign(rootEl.style, { display: 'flex', flexDirection: 'column', height: '100%' })
+  private buildRows(): RowItem[] {
+    const state = hotStore.getState()
+    const uiState = uiStore.getState()
+    this.currentMatchedCodes = filterStocksBySearch(Object.values(state.sectorStocks), this.searchTerm)
+    const maxTargets = Number(uiState.settings?.sector_max_targets) || 10
+    return computeRows(
+      state.sectorStocks,
+      uiState.sectorOrder,
+      state.sectorScores,
+      maxTargets,
+      uiState.selectedSector,
+      this.currentMatchedCodes,
+      this.rowCache,
+    )
+  }
 
-  // 1. 카드 타이틀 — DOM 요소 1회 생성 (이후 textContent/display만 갱신)
-  const titleContent = document.createElement('span')
-  titleBaseSpan = document.createElement('span')
-  titleBaseSpan.textContent = '업종별 종목 실시간 시세'
+  private refreshRows(): void {
+    const rows = this.buildRows()
+    const mappedRows = mapRowsToTableRows(rows)
+    if (this.dataTable) this.dataTable.updateRows(mappedRows)
+    this.updateUI(rows)
+  }
 
-  titleFilterSpan = document.createElement('span')
-  Object.assign(titleFilterSpan.style, { color: '#1a73e8', fontWeight: '500', display: 'none' })
+  private updateUI(rows: RowItem[]): void {
+    const state = hotStore.getState()
+    const uiState = uiStore.getState()
+    const stockCount = Object.keys(state.sectorStocks).length
+    const minTradeAmt = uiState.settings?.sector_min_trade_amt ?? 0
 
-  titleCountSpan = document.createElement('span')
-  titleCountSpan.style.display = 'none'
+    // 타이틀 갱신 — CSS display 토글 + textContent 갱신 (innerHTML 파괴 금지)
+    if (this.titleFilterSpan && this.titleCountSpan) {
+      this.titleFilterSpan.textContent = `5일평균최소거래대금(${minTradeAmt})억`
+      this.titleFilterSpan.style.display = ''
+      this.titleCountSpan.textContent = `(${stockCount}종목)`
+      this.titleCountSpan.style.display = ''
+    }
 
-  titleContent.appendChild(titleBaseSpan)
-  titleContent.appendChild(document.createTextNode(' '))
-  titleContent.appendChild(titleFilterSpan)
-  titleContent.appendChild(document.createTextNode(' '))
-  titleContent.appendChild(titleCountSpan)
-
-  titleH3 = createCardTitleWithContent(titleContent)
-  rootEl.appendChild(titleH3)
-
-  // 2. 선택된 업종 필터 배지
-  filterBadge = document.createElement('div')
-  Object.assign(filterBadge.style, {
-    display: 'none',
-    alignItems: 'center',
-    gap: '8px',
-    marginBottom: '8px',
-    padding: '6px 12px',
-    background: '#e8f0fe',
-    borderRadius: '6px',
-    border: '1px solid #1a73e8',
-  })
-  const badgeLabel = document.createElement('span')
-  Object.assign(badgeLabel.style, { fontSize: FONT_SIZE.badge, color: '#1a73e8', fontWeight: FONT_WEIGHT.normal })
-  badgeLabel.className = 'badge-label'
-  filterBadge.appendChild(badgeLabel)
-
-  const clearBtn = document.createElement('button')
-  Object.assign(clearBtn.style, {
-    marginLeft: 'auto',
-    background: 'none',
-    border: '1px solid #1a73e8',
-    borderRadius: '4px',
-    color: '#1a73e8',
-    cursor: 'pointer',
-    fontSize: FONT_SIZE.badge,
-    padding: '2px 8px',
-  })
-  clearBtn.textContent = '전체 보기'
-  clearBtn.addEventListener('click', () => setSelectedSector(null))
-  filterBadge.appendChild(clearBtn)
-  rootEl.appendChild(filterBadge)
-
-  // 3. 종목 수 초과 경고
-  warningDiv = document.createElement('div')
-  Object.assign(warningDiv.style, {
-    display: 'none',
-    background: '#fff3cd',
-    color: '#856404',
-    border: '1px solid #ffc107',
-    borderRadius: '6px',
-    padding: '6px 12px',
-    marginBottom: '8px',
-    fontSize: FONT_SIZE.badge,
-  })
-  rootEl.appendChild(warningDiv)
-
-  // 4. 검색 + WS 상태 배지
-  const searchRow = document.createElement('div')
-  Object.assign(searchRow.style, {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '12px',
-    marginBottom: '4px',
-  })
-
-  searchInput = createSearchInput({
-    placeholder: '종목명 / 코드 검색',
-    width: '220px',
-    onSearch: (query) => {
-      searchTerm = query
-      refreshRows()
-    },
-  })
-  searchRow.appendChild(searchInput.el)
-
-  const wsWrap = document.createElement('span')
-  wsWrap.style.marginLeft = 'auto'
-  wsBadge = createWsStatusBadge({ subscribed: false, broker: 'kiwoom' })
-  wsWrap.appendChild(wsBadge.el)
-  searchRow.appendChild(wsWrap)
-  rootEl.appendChild(searchRow)
-
-  // 5. 빈 상태 메시지
-  emptyDiv = document.createElement('div')
-  Object.assign(emptyDiv.style, {
-    display: 'none',
-    color: '#aaa',
-    padding: '20px 0',
-    textAlign: 'center',
-    fontSize: FONT_SIZE.badge,
-  })
-  emptyDiv.textContent = '종목 데이터가 없습니다. 엔진이 기동 중인지 확인해주세요.'
-  rootEl.appendChild(emptyDiv)
-
-  // 6. 스크롤 컨테이너 (DataTable.el을 삽입)
-  scrollContainer = document.createElement('div')
-  Object.assign(scrollContainer.style, { flex: '1', minHeight: '200px', display: 'flex', flexDirection: 'column' })
-
-  // 7. DataTable 생성
-  dataTable = createDataTable<DataRowItem>({
-    columns: COLUMNS,
-    virtualScroll: true,
-    keyFn: (item) => item.stock.code,
-    emptyText: '종목 데이터가 없습니다. 엔진이 기동 중인지 확인해주세요.',
-    stickyHeader: true,
-    groupRowHeight: 48,
-    rowHeight: 32,
-    rowStyle: (row, _idx) => ({
-      opacity: row.dim ? '0.65' : '1',
-      background: currentMatchedCodes?.has(row.stock.code) ? '#fff9c4' : '',
-    }),
-  })
-
-  scrollContainer.appendChild(dataTable.el)
-  rootEl.appendChild(scrollContainer)
-  container.appendChild(rootEl)
-
-  // 초기 데이터
-  const initialRows = buildRows()
-  const mappedRows = mapRowsToTableRows(initialRows)
-  dataTable.updateRows(mappedRows)
-  updateUI(initialRows)
-
-  // Store 구독 — 선택적 구독 가드 (Bug 0 fix: sector-stock interest keys only)
-  {
-    const initHot = hotStore.getState()
-    const initUi = uiStore.getState()
-    let prevSectorStocks = initHot.sectorStocks
-    let prevSectorScores = initHot.sectorScores
-    let prevSectorOrder = initUi.sectorOrder
-    let prevSelectedSector = initUi.selectedSector
-    let prevWsSubscribeStatus = initUi.wsSubscribeStatus
-    let prevSettings = initUi.settings
-
-    unsubStore = hotStore.subscribe((state) => {
-      const uiState = uiStore.getState()
-      const changed =
-        state.sectorStocks !== prevSectorStocks ||
-        state.sectorScores !== prevSectorScores ||
-        uiState.sectorOrder !== prevSectorOrder ||
-        uiState.selectedSector !== prevSelectedSector ||
-        uiState.wsSubscribeStatus !== prevWsSubscribeStatus ||
-        uiState.settings !== prevSettings
-
-      prevSectorStocks = state.sectorStocks
-      prevSectorScores = state.sectorScores
-      prevSectorOrder = uiState.sectorOrder
-      prevSelectedSector = uiState.selectedSector
-      prevWsSubscribeStatus = uiState.wsSubscribeStatus
-      prevSettings = uiState.settings
-
-      if (!changed) return
-
-      if (_rafId === null) {
-        _rafId = requestAnimationFrame(() => {
-          _rafId = null
-          if (!_mounted) return
-          refreshRows()
-        })
+    // 업종 필터 배지
+    if (this.filterBadge) {
+      const selected = uiState.selectedSector
+      if (selected) {
+        this.filterBadge.style.display = 'flex'
+        const label = this.filterBadge.querySelector('.badge-label') as HTMLElement
+        if (label) label.textContent = `📌 ${selected}`
+      } else {
+        this.filterBadge.style.display = 'none'
       }
+    }
+
+    // 종목 수 경고
+    if (this.warningDiv) {
+      if (stockCount > 170) {
+        this.warningDiv.style.display = ''
+        this.warningDiv.textContent = `⚠️ 종목 수가 ${stockCount}개로 170개를 초과했습니다. 실시간 연결이 불안정할 수 있습니다.`
+      } else {
+        this.warningDiv.style.display = 'none'
+      }
+    }
+
+    // WS 상태 배지
+    if (this.wsBadge) {
+      const sub = uiState.wsSubscribeStatus?.quote_subscribed ?? false
+      this.wsBadge.update(sub, 'kiwoom')
+    }
+
+    // 빈 상태 / 스크롤 영역 표시 토글
+    const hasRows = rows.length > 0
+    if (this.emptyDiv) this.emptyDiv.style.display = hasRows ? 'none' : ''
+    if (this.scrollContainer) this.scrollContainer.style.display = hasRows ? 'flex' : 'none'
+  }
+
+  /* ── connectedCallback (mount) ── */
+
+  connectedCallback(): void {
+    this._mounted = true
+    this.searchTerm = ''
+    this.currentMatchedCodes = null
+    this.rowCache = new Map()
+    notifyPageActive('sector-analysis')
+
+    this.rootEl = document.createElement('div')
+    Object.assign(this.rootEl.style, { display: 'flex', flexDirection: 'column', height: '100%', contain: 'content' })
+
+    // 1. 카드 타이틀 — DOM 요소 1회 생성 (이후 textContent/display만 갱신)
+    const titleContent = document.createElement('span')
+    this.titleBaseSpan = document.createElement('span')
+    this.titleBaseSpan.textContent = '업종별 종목 실시간 시세'
+
+    this.titleFilterSpan = document.createElement('span')
+    Object.assign(this.titleFilterSpan.style, { color: '#1a73e8', fontWeight: '500', display: 'none' })
+
+    this.titleCountSpan = document.createElement('span')
+    this.titleCountSpan.style.display = 'none'
+
+    titleContent.appendChild(this.titleBaseSpan)
+    titleContent.appendChild(document.createTextNode(' '))
+    titleContent.appendChild(this.titleFilterSpan)
+    titleContent.appendChild(document.createTextNode(' '))
+    titleContent.appendChild(this.titleCountSpan)
+
+    this.titleH3 = createCardTitleWithContent(titleContent)
+    this.rootEl.appendChild(this.titleH3)
+
+    // 2. 선택된 업종 필터 배지
+    this.filterBadge = document.createElement('div')
+    Object.assign(this.filterBadge.style, {
+      display: 'none',
+      alignItems: 'center',
+      gap: '8px',
+      marginBottom: '8px',
+      padding: '6px 12px',
+      background: '#e8f0fe',
+      borderRadius: '6px',
+      border: '1px solid #1a73e8',
     })
-  }
+    const badgeLabel = document.createElement('span')
+    Object.assign(badgeLabel.style, { fontSize: FONT_SIZE.badge, color: '#1a73e8', fontWeight: FONT_WEIGHT.normal })
+    badgeLabel.className = 'badge-label'
+    this.filterBadge.appendChild(badgeLabel)
 
-  // 초기 렌더링
-  refreshRows()
-}
+    const clearBtn = document.createElement('button')
+    Object.assign(clearBtn.style, {
+      marginLeft: 'auto',
+      background: 'none',
+      border: '1px solid #1a73e8',
+      borderRadius: '4px',
+      color: '#1a73e8',
+      cursor: 'pointer',
+      fontSize: FONT_SIZE.badge,
+      padding: '2px 8px',
+    })
+    clearBtn.textContent = '전체 보기'
+    clearBtn.addEventListener('click', () => setSelectedSector(null))
+    this.filterBadge.appendChild(clearBtn)
+    this.rootEl.appendChild(this.filterBadge)
 
-/* ── 행 빌드 + UI 갱신 ── */
+    // 3. 종목 수 초과 경고
+    this.warningDiv = document.createElement('div')
+    Object.assign(this.warningDiv.style, {
+      display: 'none',
+      background: '#fff3cd',
+      color: '#856404',
+      border: '1px solid #ffc107',
+      borderRadius: '6px',
+      padding: '6px 12px',
+      marginBottom: '8px',
+      fontSize: FONT_SIZE.badge,
+    })
+    this.rootEl.appendChild(this.warningDiv)
 
-function buildRows(): RowItem[] {
-  const state = hotStore.getState()
-  const uiState = uiStore.getState()
-  currentMatchedCodes = filterStocksBySearch(Object.values(state.sectorStocks), searchTerm)
-  const maxTargets = Number(uiState.settings?.sector_max_targets) || 10
-  return computeRows(
-    state.sectorStocks,
-    uiState.sectorOrder,
-    state.sectorScores,
-    maxTargets,
-    uiState.selectedSector,
-    currentMatchedCodes,
-    rowCache,
-  )
-}
+    // 4. 검색 + WS 상태 배지
+    const searchRow = document.createElement('div')
+    Object.assign(searchRow.style, {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '12px',
+      marginBottom: '4px',
+    })
 
-function refreshRows(): void {
-  const rows = buildRows()
-  const mappedRows = mapRowsToTableRows(rows)
-  if (dataTable) dataTable.updateRows(mappedRows)
-  updateUI(rows)
-}
+    this.searchInput = createSearchInput({
+      placeholder: '종목명 / 코드 검색',
+      width: '220px',
+      onSearch: (query) => {
+        this.searchTerm = query
+        this.refreshRows()
+      },
+    })
+    searchRow.appendChild(this.searchInput.el)
 
-function updateUI(rows: RowItem[]): void {
-  const state = hotStore.getState()
-  const uiState = uiStore.getState()
-  const stockCount = Object.keys(state.sectorStocks).length
-  const minTradeAmt = uiState.settings?.sector_min_trade_amt ?? 0
+    const wsWrap = document.createElement('span')
+    wsWrap.style.marginLeft = 'auto'
+    this.wsBadge = createWsStatusBadge({ subscribed: false, broker: 'kiwoom' })
+    wsWrap.appendChild(this.wsBadge.el)
+    searchRow.appendChild(wsWrap)
+    this.rootEl.appendChild(searchRow)
 
-  // 타이틀 갱신 — CSS display 토글 + textContent 갱신 (innerHTML 파괴 금지)
-  if (titleFilterSpan && titleCountSpan) {
-    titleFilterSpan.textContent = `5일평균최소거래대금(${minTradeAmt})억`
-    titleFilterSpan.style.display = ''
-    titleCountSpan.textContent = `(${stockCount}종목)`
-    titleCountSpan.style.display = ''
-  }
+    // 5. 빈 상태 메시지
+    this.emptyDiv = document.createElement('div')
+    Object.assign(this.emptyDiv.style, {
+      display: 'none',
+      color: '#aaa',
+      padding: '20px 0',
+      textAlign: 'center',
+      fontSize: FONT_SIZE.badge,
+    })
+    this.emptyDiv.textContent = '종목 데이터가 없습니다. 엔진이 기동 중인지 확인해주세요.'
+    this.rootEl.appendChild(this.emptyDiv)
 
-  // 업종 필터 배지
-  if (filterBadge) {
-    const selected = uiState.selectedSector
-    if (selected) {
-      filterBadge.style.display = 'flex'
-      const label = filterBadge.querySelector('.badge-label') as HTMLElement
-      if (label) label.textContent = `📌 ${selected}`
-    } else {
-      filterBadge.style.display = 'none'
+    // 6. 스크롤 컨테이너 (DataTable.el을 삽입)
+    this.scrollContainer = document.createElement('div')
+    Object.assign(this.scrollContainer.style, { flex: '1', minHeight: '200px', display: 'flex', flexDirection: 'column' })
+
+    // 7. DataTable 생성
+    this.dataTable = createDataTable<DataRowItem>({
+      columns: COLUMNS,
+      virtualScroll: true,
+      keyFn: (item) => item.stock.code,
+      emptyText: '종목 데이터가 없습니다. 엔진이 기동 중인지 확인해주세요.',
+      stickyHeader: true,
+      groupRowHeight: 48,
+      rowHeight: 32,
+      rowStyle: (row, _idx) => ({
+        opacity: row.dim ? '0.65' : '1',
+        background: this.currentMatchedCodes?.has(row.stock.code) ? '#fff9c4' : '',
+      }),
+    })
+
+    this.scrollContainer.appendChild(this.dataTable.el)
+    this.rootEl.appendChild(this.scrollContainer)
+    this.shadow.appendChild(this.rootEl)
+
+    // 초기 데이터
+    const initialRows = this.buildRows()
+    const mappedRows = mapRowsToTableRows(initialRows)
+    this.dataTable.updateRows(mappedRows)
+    this.updateUI(initialRows)
+
+    // Store 구독 — 선택적 구독 가드 (Bug 0 fix: sector-stock interest keys only)
+    {
+      const initHot = hotStore.getState()
+      const initUi = uiStore.getState()
+      let prevSectorStocks = initHot.sectorStocks
+      let prevSectorScores = initHot.sectorScores
+      let prevSectorOrder = initUi.sectorOrder
+      let prevSelectedSector = initUi.selectedSector
+      let prevWsSubscribeStatus = initUi.wsSubscribeStatus
+      let prevSettings = initUi.settings
+
+      this.unsubStore = hotStore.subscribe((state) => {
+        const uiState = uiStore.getState()
+        const changed =
+          state.sectorStocks !== prevSectorStocks ||
+          state.sectorScores !== prevSectorScores ||
+          uiState.sectorOrder !== prevSectorOrder ||
+          uiState.selectedSector !== prevSelectedSector ||
+          uiState.wsSubscribeStatus !== prevWsSubscribeStatus ||
+          uiState.settings !== prevSettings
+
+        prevSectorStocks = state.sectorStocks
+        prevSectorScores = state.sectorScores
+        prevSectorOrder = uiState.sectorOrder
+        prevSelectedSector = uiState.selectedSector
+        prevWsSubscribeStatus = uiState.wsSubscribeStatus
+        prevSettings = uiState.settings
+
+        if (!changed) return
+
+        if (this._rafId === null) {
+          this._rafId = requestAnimationFrame(() => {
+            this._rafId = null
+            if (!this._mounted) return
+            this.refreshRows()
+          })
+        }
+      })
     }
+
+    // 초기 렌더링
+    this.refreshRows()
   }
 
-  // 종목 수 경고
-  if (warningDiv) {
-    if (stockCount > 170) {
-      warningDiv.style.display = ''
-      warningDiv.textContent = `⚠️ 종목 수가 ${stockCount}개로 170개를 초과했습니다. 실시간 연결이 불안정할 수 있습니다.`
-    } else {
-      warningDiv.style.display = 'none'
-    }
-  }
+  /* ── disconnectedCallback (unmount) ── */
 
-  // WS 상태 배지
-  if (wsBadge) {
-    const sub = uiState.wsSubscribeStatus?.quote_subscribed ?? false
-    wsBadge.update(sub, 'kiwoom')
+  disconnectedCallback(): void {
+    this._mounted = false
+    notifyPageInactive('sector-analysis')
+    if (this.unsubStore) { this.unsubStore(); this.unsubStore = null }
+    if (this._rafId !== null) { cancelAnimationFrame(this._rafId); this._rafId = null }
+    if (this.dataTable) { this.dataTable.destroy(); this.dataTable = null }
+    if (this.rootEl && this.rootEl.parentNode) this.rootEl.parentNode.removeChild(this.rootEl)
+    this.rootEl = null
+    this.titleH3 = null
+    this.titleBaseSpan = null
+    this.titleFilterSpan = null
+    this.titleCountSpan = null
+    this.filterBadge = null
+    this.warningDiv = null
+    this.emptyDiv = null
+    this.scrollContainer = null
+    this.searchInput = null
+    this.wsBadge = null
+    this.rowCache.clear()
+    this.rowCache = new Map()
+    this.currentMatchedCodes = null
+    this.searchTerm = ''
   }
-
-  // 빈 상태 / 스크롤 영역 표시 토글
-  const hasRows = rows.length > 0
-  if (emptyDiv) emptyDiv.style.display = hasRows ? 'none' : ''
-  if (scrollContainer) scrollContainer.style.display = hasRows ? 'flex' : 'none'
 }
 
-/* ── unmount ── */
+/* ── Custom Element 등록 ── */
 
-function unmount(): void {
-  _mounted = false
-  notifyPageInactive('sector-analysis')
-  if (unsubStore) { unsubStore(); unsubStore = null }
-  if (_rafId !== null) { cancelAnimationFrame(_rafId); _rafId = null }
-  if (dataTable) { dataTable.destroy(); dataTable = null }
-  if (rootEl && rootEl.parentNode) rootEl.parentNode.removeChild(rootEl)
-  rootEl = null
-  titleH3 = null
-  titleBaseSpan = null
-  titleFilterSpan = null
-  titleCountSpan = null
-  filterBadge = null
-  warningDiv = null
-  emptyDiv = null
-  scrollContainer = null
-  searchInput = null
-  wsBadge = null
-  rowCache.clear()
-  rowCache = new Map()
-  currentMatchedCodes = null
-  searchTerm = ''
-}
+customElements.define('sector-stock-table', SectorStockTable)
 
-export default { mount, unmount }
+/* ── Export for backward compatibility (optional) ── */
+// This export is kept for potential backward compatibility,
+// but the primary usage should be via <sector-stock-table> custom element.
+export default SectorStockTable
