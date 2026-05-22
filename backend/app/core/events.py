@@ -53,6 +53,9 @@ class MarketTickEvent(BaseEvent):
     strength: str = "-"  # 체결강도
     # 추가 메타데이터
     raw_data: Dict[str, Any] = field(default_factory=dict)
+    _ws_receive_timestamp: float = 0.0  # WS 수신 타임스탬프 (Phase 1.3+1.4 단계 1.6)
+    _publish_timestamp: float = 0.0  # Event Bus 발행 타임스탬프 (Phase 1.3+1.4 단계 1.6)
+    _handler_complete_timestamp: float = 0.0  # 핸들러 처리 완료 타임스탬프 (Phase 1.3+1.4 단계 1.6)
 
 
 @dataclass
