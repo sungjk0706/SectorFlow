@@ -4,7 +4,6 @@
 
 import { uiStore } from '../stores/uiStore'
 import { createSettingsManager, type SettingsManager, createGlobalWsBadge } from '../settings'
-import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingRow, createNumInput, createMoneyInput, createToggleBtn, createFixedValue } from '../components/common/setting-row'
 import { toastResult } from '../components/common/save-toast'
 import { sectionTitle } from '../components/common/settings-common'
@@ -156,7 +155,6 @@ function syncFromSettings(s: AppSettings): void {
 
 /* ── mount ── */
 function mount(container: HTMLElement): void {
-  notifyPageActive('buy-settings')
   settingsMgr = createSettingsManager(uiStore)
   saving = false
   pendingSave = null
@@ -428,7 +426,6 @@ function mount(container: HTMLElement): void {
 
 /* ── unmount ── */
 function unmount(): void {
-  notifyPageInactive('buy-settings')
   if (unsubSettings) { unsubSettings(); unsubSettings = null }
   if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
   saving = false
