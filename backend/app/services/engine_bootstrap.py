@@ -426,6 +426,7 @@ async def _deferred_sector_summary() -> None:
                     index_guard_reason="",
                     index_guard_kospi_hit=False,
                     index_guard_kosdaq_hit=False,
+                    is_skeleton_mode=True,  # 스켈레톤 캐시 모드 플래그
                 )
                 logger.info("[시작] 영속성 캐시 없음, 업종 스켈레톤 캐시 구축 완료 (실시간 틱 연동)")
             _st._sector_summary_ready_event.set()

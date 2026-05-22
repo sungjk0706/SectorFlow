@@ -123,6 +123,12 @@ def _flush_sector_recompute_impl() -> None:
             _full_recompute(_es, settings, codes_snapshot)
             return
 
+        # 스켈레톤 캐시 모드 감지 (is_skeleton_mode 플래그 기반)
+        if existing.is_skeleton_mode:
+            # 스켈레톤 캐시인 경우 실시간 틱 기반 증분 연산 수행
+            _skeleton_incremental_update(_es, codes_snapshot)
+            return
+
         # __ALL__ 플래그 + 캐시 존재 → 모든 active 종목을 dirty로 취급하여 증분 경로 사용
         if "__ALL__" in codes_snapshot:
             codes_snapshot = {
@@ -256,6 +262,76 @@ def _flush_sector_recompute_impl() -> None:
 
     except Exception as e:
         logger.warning("[섹터재계산] 증분 재계산 오류: %s", e, exc_info=True)
+
+
+def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
+    """스켈레톤 캐시 상태에서 실시간 틱 기반 증분 연산 수행.
+    
+    업종 전체 종목 기반의 정확한 증분 연산으로 분모 보존형 상승비율 계산.
+    메모리 상의 _sector_summary_cache를 직접 갱신(In-place Update).
+    웹소켓 난사 방지를 위해 코알레싱 버퍼링 연동 (캐시 업데이트만 수행).
+    """
+    from backend.app.core import sector_mapping
+    from backend.app.core.industry_map import load_eligible_stocks_cache
+    from backend.app.services.engine_service import get_sector_summary_inputs
+    
+    # dirty 종목 → 해당 섹터 추출
+    dirty_sectors: set[str] = set()
+    for cd in codes_snapshot:
+        sec = sector_mapping.get_merged_sector(cd)
+        if sec:
+            dirty_sectors.add(sec)
+    
+    if not dirty_sectors:
+        return
+    
+    # 업종 전체 종목 기반 데이터 원천 추적
+    eligible_stocks = load_eligible_stocks_cache() or {}
+    eligible_codes = set(eligible_stocks.keys()) if eligible_stocks else set()
+    
+    # 실시간 틱 데이터 기반 증분 연산
+    inputs = get_sector_summary_inputs()
+    trade_prices = inputs["trade_prices"]
+    stock_details = inputs["stock_details"]
+    
+    # 각 섹터별 실시간 상승비율 계산 (업종 전체 종목 기반)
+    for sector_name in dirty_sectors:
+        # 해당 업종에 소속된 전체 적격 종목 리스트 추출
+        sector_codes = [
+            cd for cd in eligible_codes
+            if sector_mapping.get_merged_sector(cd) == sector_name
+        ]
+        
+        if not sector_codes:
+            continue
+        
+        # 상승 종목 수 계산 (업종 전체 종목 기반)
+        rise_count = 0
+        total = 0
+        for cd in sector_codes:
+            price = trade_prices.get(cd, 0)
+            detail = stock_details.get(cd, {})
+            change_rate = detail.get("change_rate", 0.0)
+            
+            if price > 0:
+                total += 1
+                if change_rate > 0:
+                    rise_count += 1
+        
+        # 상승비율 계산 (분모 보존형)
+        rise_ratio = rise_count / total if total > 0 else 0.0
+        
+        # 메모리 상의 해당 섹터 객체 직접 갱신 (In-place Update)
+        for sc in _es._sector_summary_cache.sectors:
+            if sc.sector == sector_name:
+                sc.total = total
+                sc.rise_count = rise_count
+                sc.rise_ratio = rise_ratio
+                break
+    
+    # 웹소켓 난사 방지: 코알레싱 버퍼링 연동
+    # 캐시 업데이트만 수행, 백엔드 코알레싱 스케줄러가 주기적으로 통합 발행
+    _es._invalidate_sector_stocks_cache()
 
 
 def _full_recompute(_es, settings: dict, codes_snapshot: set[str] | None = None) -> None:
