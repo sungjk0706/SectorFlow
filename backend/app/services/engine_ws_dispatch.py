@@ -344,7 +344,7 @@ def _handle_real_01(
             volume=volume,
             trade_amount=_total14,
             sign=sign,
-            raw_data={"item": item, "values": vals},
+            raw_data={"item": item, "values": vals, "_ws_receive_timestamp": _ws_receive_timestamp},
         )
     
     # 캐시 업데이트는 engine_service._handle_market_tick_event에서 수신 후 처리

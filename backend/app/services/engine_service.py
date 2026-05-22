@@ -2211,6 +2211,15 @@ async def _handle_market_tick_event(event) -> None:
             if updates:
                 _pending_stock_details[code] = {**old2, **updates}
         
+        # 타임스탬프 기록 (Phase 1.3+1.4 단계 1.6 - 포인트 D)
+        import time
+        event._handler_complete_timestamp = time.perf_counter()
+        
+        # 전체 지연 시간 계산 (Phase 1.3+1.4 단계 1.6)
+        if hasattr(event, '_ws_receive_timestamp') and event._ws_receive_timestamp > 0:
+            total_latency_ms = (event._handler_complete_timestamp - event._ws_receive_timestamp) * 1000
+            logger.debug("[EventBus] 전체 지연 시간: %.2fms (WS 수신 → 캐시 업데이트)", total_latency_ms)
+        
         logger.debug("[EventBus] MarketTickEvent 처리 완료: %s", code)
     except Exception as e:
         logger.error("[EventBus] MarketTickEvent 처리 실패: %s", e, exc_info=True)

@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import heapq
 import logging
+import time
 from typing import Callable, Dict, Optional, Set, Any
 from dataclasses import dataclass, field
 
@@ -52,6 +53,13 @@ class EventBus:
         self._coalescing_map: Dict[str, BaseEvent] = {}
         self._coalescing_enabled = True
         
+        # Coalescing 파라미터 (Phase 1.3+1.4 단계 1.6)
+        self._coalescing_window_ms = 50  # Coalescing 시간 윈도우 (밀리초)
+        self._coalescing_max_events = 10  # 윈도우 내 최대 이벤트 수
+        self._coalescing_timer_interval_ms = 10  # Coalescing 타이머 간격
+        self._coalescing_timer_task: Optional[asyncio.Task] = None
+        self._coalescing_map_lock = asyncio.Lock()  # 원자성 보장
+        
         # Subscribers (EventType -> Set[Callable])
         self._subscribers: Dict[EventType, Set[Callable]] = {}
         
@@ -59,9 +67,13 @@ class EventBus:
         self._is_running = False
         self._worker_task: Optional[asyncio.Task] = None
         
-        # 메트릭
+        # 메트릭 (Phase 1.3+1.4 단계 1.6)
         self._event_count = 0
         self._dropped_count = 0
+        self._total_queue_wait_ms = 0.0
+        self._total_dispatch_latency_ms = 0.0
+        self._total_handler_latency_ms = 0.0
+        self._coalescing_applied_count = 0
 
     @classmethod
     def get_instance(cls) -> "EventBus":
@@ -78,6 +90,11 @@ class EventBus:
 
         self._is_running = True
         self._worker_task = asyncio.create_task(self._worker_loop())
+        
+        # Coalescing 타이머 시작 (Phase 1.3+1.4 단계 1.6)
+        if self._coalescing_enabled:
+            self._coalescing_timer_task = asyncio.create_task(self._coalescing_timer_loop())
+        
         logger.info("[EventBus] 시작")
 
     async def stop(self) -> None:
@@ -86,6 +103,15 @@ class EventBus:
             return
 
         self._is_running = False
+        
+        # Coalescing 타이머 중지 (Phase 1.3+1.4 단계 1.6)
+        if self._coalescing_timer_task:
+            self._coalescing_timer_task.cancel()
+            try:
+                await self._coalescing_timer_task
+            except asyncio.CancelledError:
+                pass
+        
         if self._worker_task:
             self._worker_task.cancel()
             try:
@@ -103,12 +129,17 @@ class EventBus:
         """
         self._event_count += 1
         
+        # 타임스탬프 추가 (Phase 1.3+1.4 단계 1.6 - 포인트 B)
+        event._publish_timestamp = time.perf_counter()
+        
         # Coalescing (MarketTickEvent만)
         if self._coalescing_enabled and event.event_type == EventType.MARKET_TICK:
             code = getattr(event, "code", "")
             if code:
-                # 동일 종목 이벤트 덮어쓰기
-                self._coalescing_map[code] = event
+                # 동일 종목 이벤트 덮어쓰기 (Phase 1.3+1.4 단계 1.6 - 타이머 기반)
+                async with self._coalescing_map_lock:
+                    self._coalescing_map[code] = event
+                    self._coalescing_applied_count += 1
                 logger.debug(f"[EventBus] Coalescing: {code} 이벤트 덮어쓰기")
                 return
         
@@ -197,8 +228,19 @@ class EventBus:
                     priority_event = heapq.heappop(self._priority_queue)
                     event = priority_event.event
                 
+                # 타임스탬프 기록 (Phase 1.3+1.4 단계 1.6 - 포인트 C)
+                dispatch_start = time.perf_counter()
+                if hasattr(event, '_publish_timestamp'):
+                    queue_wait_ms = (dispatch_start - event._publish_timestamp) * 1000
+                    self._total_queue_wait_ms += queue_wait_ms
+                
                 # Subscriber들에게 전달
                 await self._dispatch_event(event)
+                
+                # 디스패치 지연 시간 기록 (Phase 1.3+1.4 단계 1.6)
+                dispatch_end = time.perf_counter()
+                dispatch_latency_ms = (dispatch_end - dispatch_start) * 1000
+                self._total_dispatch_latency_ms += dispatch_latency_ms
                 
         except asyncio.CancelledError:
             logger.info("[EventBus] Worker 취소됨")
@@ -219,6 +261,9 @@ class EventBus:
             logger.debug(f"[EventBus] {event_type.value}에 대한 Subscriber 없음")
             return
         
+        # 핸들러 처리 시간 측정 (Phase 1.3+1.4 단계 1.6)
+        handler_start = time.perf_counter()
+        
         # 비동기로 모든 Subscriber에게 전달
         tasks = []
         for callback in subscribers:
@@ -230,15 +275,30 @@ class EventBus:
         
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 핸들러 처리 시간 기록 (Phase 1.3+1.4 단계 1.6)
+        handler_end = time.perf_counter()
+        handler_latency_ms = (handler_end - handler_start) * 1000
+        self._total_handler_latency_ms += handler_latency_ms
 
     def get_metrics(self) -> Dict[str, Any]:
-        """메트릭 반환"""
+        """메트릭 반환 (Phase 1.3+1.4 단계 1.6 확장)"""
+        avg_queue_wait_ms = (self._total_queue_wait_ms / self._event_count) if self._event_count > 0 else 0
+        avg_dispatch_latency_ms = (self._total_dispatch_latency_ms / self._event_count) if self._event_count > 0 else 0
+        avg_handler_latency_ms = (self._total_handler_latency_ms / self._event_count) if self._event_count > 0 else 0
+        coalescing_rate = (self._coalescing_applied_count / self._event_count) if self._event_count > 0 else 0
+        
         return {
             "event_count": self._event_count,
             "dropped_count": self._dropped_count,
             "queue_size": len(self._priority_queue),
             "coalescing_map_size": len(self._coalescing_map),
             "subscriber_count": sum(len(subs) for subs in self._subscribers.values()),
+            "avg_queue_wait_ms": avg_queue_wait_ms,
+            "avg_dispatch_latency_ms": avg_dispatch_latency_ms,
+            "avg_handler_latency_ms": avg_handler_latency_ms,
+            "coalescing_rate": coalescing_rate,
+            "coalescing_applied_count": self._coalescing_applied_count,
         }
 
     def enable_coalescing(self) -> None:
@@ -250,3 +310,31 @@ class EventBus:
         """Coalescing 비활성화"""
         self._coalescing_enabled = False
         logger.info("[EventBus] Coalescing 비활성화")
+
+    async def _coalescing_timer_loop(self) -> None:
+        """Coalescing 타이머 루프 (Phase 1.3+1.4 단계 1.6)"""
+        try:
+            while self._is_running:
+                await asyncio.sleep(self._coalescing_timer_interval_ms / 1000)
+                
+                # Coalescing Map에서 이벤트 발행 (참조 교체로 원자성 보장)
+                async with self._coalescing_map_lock:
+                    if not self._coalescing_map:
+                        continue
+                    
+                    # 참조 교체 (Swap)
+                    events_to_publish = self._coalescing_map.copy()
+                    self._coalescing_map.clear()
+                
+                # 발행
+                for event in events_to_publish.values():
+                    priority = self._get_priority(event)
+                    async with self._queue_lock:
+                        heapq.heappush(self._priority_queue, PriorityEvent(priority, event))
+                
+                logger.debug(f"[EventBus] Coalescing 타이머: {len(events_to_publish)}개 이벤트 발행")
+                
+        except asyncio.CancelledError:
+            logger.info("[EventBus] Coalescing 타이머 취소됨")
+        except Exception as e:
+            logger.error(f"[EventBus] Coalescing 타이머 오류: {e}", exc_info=True)
