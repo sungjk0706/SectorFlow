@@ -385,9 +385,12 @@ def notify_raw_real_data(item: dict) -> None:
         except Exception as e:
             logger.error("[정규화] raw_code=%r 실패: %s", raw_code, e, exc_info=True)
             return
+            
+    # [수정] 프론트엔드 및 ws_manager가 정상 작동할 수 있도록 원본 코드를 정규화된 코드로 교체
+    item["item"] = nk
+    
     try:
         item["_ts"] = int(time.time() * 1000)
-        msg_type = str(item.get("type", ""))
         _broadcast("real-data", item)
     except Exception as e:
         logger.warning("[데이터] Raw 데이터 전송 실패: %s", e, exc_info=True)
@@ -510,6 +513,8 @@ def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str 
         cd = str(p.get("stk_cd", "") or "").strip()
         if cd:
             _position_sent_cache[cd] = dict(p)
+    # _positions_code_set 동기화 — real-data 필터링용 O(1) Set 캐시
+    _rebuild_positions_cache(positions)
 
     if reason:
         cur_pairs = [

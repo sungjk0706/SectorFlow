@@ -641,19 +641,20 @@ function createVirtualScrollMode<T extends object>(
   function scheduleRender() {
     if (rafId !== null) return
     rafId = requestAnimationFrame((timestamp) => {
+      rafId = null // 현재 프레임 실행 시작: rafId 초기화
+
       if (pendingRows === null) {
-        rafId = null
         return
       }
       const elapsed = timestamp - lastRenderTime
       if (elapsed < FRAME_INTERVAL) {
-        rafId = requestAnimationFrame(scheduleRender)
+        // 너무 일찍 실행된 경우 다음 프레임 예약
+        scheduleRender()
         return
       }
       lastRenderTime = timestamp
       const rows = pendingRows
       pendingRows = null
-      rafId = null
       if (destroyed) return
       internalUpdate(rows)
     })

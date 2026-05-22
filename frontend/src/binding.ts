@@ -13,6 +13,7 @@ import {
   applySellHistoryUpdate,
   applyBuyHistoryUpdate,
   applyDailySummaryUpdate,
+  applySectorScores,
   stocksToMap,
   rebuildBuyTargetIndex,
   hotStore,
@@ -27,6 +28,9 @@ import {
   applyTestDataResetCompleted,
   applyInitialSnapshotUI,
   applyRealtimeState,
+  applyWsSubscribeStatus,
+  applyBuyLimitStatus,
+  uiStore,
 } from './stores/uiStore'
 import type {
   AccountUpdateEvent,
@@ -37,6 +41,8 @@ import type {
   SectorStock,
   SectorCustomChangedEvent,
   RealDataEvent,
+  SectorScoreRow,
+  SectorScoresEvent,
 } from './types'
 import { applySectorCustomChanged } from './stores/sectorCustomStore'
 
@@ -226,6 +232,42 @@ export function bindWSToStore(
 
   pricesClient.onEvent('realtime-state', (data) => {
     applyRealtimeState(data as { status: "waiting" | "live" })
+  })
+
+  /* ── sector-scores: 업종순위 실시간 갱신 ── */
+  pricesClient.onEvent('sector-scores', (data) => {
+    const d = data as {
+      scores: SectorScoreRow[]
+      delta?: boolean
+      changed_sectors?: string[]
+      removed_sectors?: string[]
+      status?: Record<string, unknown>
+    }
+    applySectorScores(d as unknown as SectorScoresEvent)
+    // sectorOrder (uiStore) 갱신 — 초기 스냅샷 이후에도 순서 유지
+    if (d.scores) {
+      const prev = uiStore.getState().sectorOrder
+      const newOrder = d.scores.map(s => s.sector)
+      if (prev.length !== newOrder.length || prev.some((s, i) => s !== newOrder[i])) {
+        uiStore.setState({ sectorOrder: newOrder })
+      }
+    }
+    // sectorScoresDelta (uiStore) 갱신
+    uiStore.setState({
+      sectorScoresDelta: d.delta
+        ? { delta: true, changed_sectors: d.changed_sectors ?? [], removed_sectors: d.removed_sectors ?? [] }
+        : null,
+    })
+  })
+
+  /* ── ws-subscribe-status: 구독 상태 실시간 갱신 ── */
+  pricesClient.onEvent('ws-subscribe-status', (data) => {
+    applyWsSubscribeStatus(data as { index_subscribed: boolean; quote_subscribed: boolean })
+  })
+
+  /* ── buy-limit-status: 매수 한도 상태 실시간 갱신 ── */
+  pricesClient.onEvent('buy-limit-status', (data) => {
+    applyBuyLimitStatus(data as { daily_buy_spent: number })
   })
 
   pricesClient.onEvent('test-data-reset-completed', () => {

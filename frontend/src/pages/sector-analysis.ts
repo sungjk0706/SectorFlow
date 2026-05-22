@@ -103,18 +103,32 @@ interface RowCache {
 }
 let rowCaches: (RowCache | null)[] = []
 
-async function autoSaveNum(key: string, value: number): Promise<void> {
-  if (!settingsMgr) return
-  if (saving) { pendingSave = { key, value }; return }
+// Debounced settings save
+let pendingSettings: Record<string, any> = {}
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+
+async function flushSettingsSave(): Promise<void> {
+  if (Object.keys(pendingSettings).length === 0 || !settingsMgr) return
+  const dataToSave = { ...pendingSettings }
+  pendingSettings = {}
+  
   saving = true
   try {
-    const res = await settingsMgr!.saveSection({ [key]: value })
+    const res = await settingsMgr.saveSection(dataToSave)
     toastResult(res)
   } finally {
     saving = false
-    const p = pendingSave
-    if (p) { pendingSave = null; autoSaveNum(p.key, p.value) }
+    // If new changes accumulated during the save, flush again
+    if (Object.keys(pendingSettings).length > 0) {
+      saveTimer = setTimeout(flushSettingsSave, 500)
+    }
   }
+}
+
+function queueSettingSave(key: string, value: any): void {
+  pendingSettings[key] = value
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(flushSettingsSave, 500)
 }
 
 function onNumChange(key: string, value: number): void {
@@ -123,17 +137,14 @@ function onNumChange(key: string, value: number): void {
     if (v < 1) {
       v = 1
     }
-    // 상한 제한 제거: 사용자가 자유롭게 설정 가능
   }
   currentVals[key] = v
-  autoSaveNum(key, v)
+  queueSettingSave(key, v)
 }
 
-async function saveWeightsNow(ratio: number): Promise<void> {
-  if (!settingsMgr) return
+function saveWeightsNow(ratio: number): void {
   const serverWeights = { rise_ratio: toServerValue(100 - ratio), total_trade_amount: toServerValue(ratio) }
-  const res = await settingsMgr.saveSection({ sector_weights: serverWeights })
-  toastResult(res)
+  queueSettingSave('sector_weights', serverWeights)
 }
 
 function updateSliderUI(): void {
@@ -143,17 +154,17 @@ function updateSliderUI(): void {
 }
 
 function syncFromSettings(s: AppSettings): void {
+  if (saving) return
   for (const k of NUM_KEYS) currentVals[k] = Number((s as Record<string, unknown>)[k]) || 0
   const w = s.sector_weights || {}
   const r = Number(w.rise_ratio)
-  currentRiseRatio = 100 - toDisplayValue(isNaN(r) ? 0.5 : r)
-
-  // 입력 컴포넌트 값 동기화
-  minTradeAmtInput?.setValue(currentVals.sector_min_trade_amt ?? 0)
-  trimChangeRateInput?.setValue(currentVals.sector_trim_change_rate_pct ?? 0)
-  trimTradeAmtInput?.setValue(currentVals.sector_trim_trade_amt_pct ?? 0)
-  minRiseRatioInput?.setValue(currentVals.sector_min_rise_ratio_pct ?? 0)
-  maxTargetsInput?.setValue(currentVals.sector_max_targets ?? 0)
+  // focus 뺏김 방지 — 현재 포커스된 input은 업데이트 제외
+  const act = document.activeElement
+  if (minTradeAmtInput && (!act || !minTradeAmtInput.el.contains(act))) minTradeAmtInput.setValue(currentVals.sector_min_trade_amt ?? 0)
+  if (trimChangeRateInput && (!act || !trimChangeRateInput.el.contains(act))) trimChangeRateInput.setValue(currentVals.sector_trim_change_rate_pct ?? 0)
+  if (trimTradeAmtInput && (!act || !trimTradeAmtInput.el.contains(act))) trimTradeAmtInput.setValue(currentVals.sector_trim_trade_amt_pct ?? 0)
+  if (minRiseRatioInput && (!act || !minRiseRatioInput.el.contains(act))) minRiseRatioInput.setValue(currentVals.sector_min_rise_ratio_pct ?? 0)
+  if (maxTargetsInput && (!act || !maxTargetsInput.el.contains(act))) maxTargetsInput.setValue(currentVals.sector_max_targets ?? 0)
   updateSliderUI()
 }
 
