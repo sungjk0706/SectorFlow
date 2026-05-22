@@ -6,7 +6,7 @@ import { createProfitChart, type ProfitChartApi } from '../components/canvas-pro
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
 import { globalSettingsManager, createGlobalWsBadge } from '../settings'
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, createStockNameColumn, createNumberCell, createPnlCell } from '../components/common/ui-styles'
-import { hotStore } from '../stores/hotStore'
+import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 
 /* ── 헬퍼 ── */
@@ -38,7 +38,7 @@ const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
   createStockNameColumn<Record<string, unknown>>(
     (r: Record<string, unknown>) => {
       const state = hotStore.getState()
-      const sectorStock = state.sectorStocks[String(r.stk_cd ?? '')]
+      const sectorStock = state.sectorStocks[normalizeStockCode(String(r.stk_cd ?? ''))]
       return {
         name: String(r.stk_nm ?? ''),
         market_type: sectorStock?.market_type,
@@ -60,7 +60,7 @@ const SELL_COLS: ColumnDef<Record<string, unknown>>[] = [
   createStockNameColumn<Record<string, unknown>>(
     (r: Record<string, unknown>) => {
       const state = hotStore.getState()
-      const sectorStock = state.sectorStocks[String(r.stk_cd ?? '')]
+      const sectorStock = state.sectorStocks[normalizeStockCode(String(r.stk_cd ?? ''))]
       return {
         name: String(r.stk_nm ?? ''),
         market_type: sectorStock?.market_type,

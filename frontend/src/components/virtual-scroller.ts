@@ -313,7 +313,7 @@ export function createVirtualScroller<T>(
 
   function onScroll() {
     const scrollTop = container.scrollTop
-    const viewportHeight = container.clientHeight
+    const viewportHeight = container.clientHeight || 400
 
     const { start, end } = computeVisibleRange(
       offsets,
@@ -334,14 +334,9 @@ export function createVirtualScroller<T>(
   recomputeAllOffsets()
   container.addEventListener('scroll', onScroll, { passive: true })
 
-  // 초기 렌더링 (container가 이미 크기를 가지고 있을 때)
-  // 레이아웃 확정 후 렌더링 — clientHeight가 0이면 재시도
+  // 초기 렌더링 (layout 완료 여부 상관없이 1회 rAF로 즉시 렌더링 시도)
   function initialRender() {
-    if (container.clientHeight > 0) {
-      onScroll()
-    } else {
-      requestAnimationFrame(initialRender)
-    }
+    onScroll()
   }
   requestAnimationFrame(initialRender)
 
@@ -383,7 +378,7 @@ export function createVirtualScroller<T>(
     }
 
     const scrollTop = container.scrollTop
-    const viewportHeight = container.clientHeight
+    const viewportHeight = container.clientHeight || 400
 
     const { start, end } = computeVisibleRange(
       offsets,

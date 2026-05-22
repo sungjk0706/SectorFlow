@@ -21,29 +21,62 @@ import sys
 import types
 from dataclasses import dataclass
 from pathlib import Path
+from unittest.mock import patch
+import pytest
 
 # Add backend to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# ── Pre-import: mock engine_service to avoid import chain issues ─────────────
-# engine_service → trading → telegram uses `dict | None` (Python 3.10+ syntax)
-# We create a minimal mock module to satisfy the lazy imports in _is_code_relevant_for_page
+# Import real engine_account_notify at module level
+import app.services.engine_account_notify as ean
 
+# Import WSManager (it doesn't import engine_service/engine_account_notify at import-time)
+from app.web.ws_manager import WSManager
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+# Create the mock module for engine_service
 _mock_es = types.ModuleType("app.services.engine_service")
 _mock_es._pending_stock_details = {}  # type: ignore[attr-defined]
 _mock_es._sector_summary_cache = None  # type: ignore[attr-defined]
 _mock_es._positions = []  # type: ignore[attr-defined]
 _mock_es._sector_stock_layout = []  # type: ignore[attr-defined]
 
-# Register mock before any import that might trigger the chain
-if "app.services.engine_service" not in sys.modules:
-    sys.modules["app.services.engine_service"] = _mock_es
+@pytest.fixture(scope="module", autouse=True)
+def mock_engine_modules():
+    import app.services
+    import sys
+    bas = sys.modules.get("backend.app.services")
+    
+    orig_app_es = getattr(app.services, "engine_service", None)
+    app.services.engine_service = _mock_es
+    
+    orig_bas_es = None
+    if bas is not None:
+        orig_bas_es = getattr(bas, "engine_service", None)
+        bas.engine_service = _mock_es
 
-from hypothesis import given, settings
-from hypothesis import strategies as st
+    # Patch sys.modules dynamically for the duration of this module's tests to prevent pollution
+    with patch.dict(sys.modules, {
+        "app.services.engine_service": _mock_es,
+        "backend.app.services.engine_service": _mock_es,
+        "backend.app.services.engine_account_notify": ean
+    }):
+        try:
+            yield
+        finally:
+            if orig_app_es is not None:
+                app.services.engine_service = orig_app_es
+            else:
+                if hasattr(app.services, "engine_service"):
+                    delattr(app.services, "engine_service")
+            if bas is not None:
+                if orig_bas_es is not None:
+                    bas.engine_service = orig_bas_es
+                else:
+                    if hasattr(bas, "engine_service"):
+                        delattr(bas, "engine_service")
 
-import app.services.engine_account_notify as ean
-from app.web.ws_manager import WSManager
 
 
 # ── Strategies ───────────────────────────────────────────────────────────────

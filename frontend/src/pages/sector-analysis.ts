@@ -75,7 +75,6 @@ let settingsMgr: ReturnType<typeof createSettingsManager> | null = null
 let unsubStore: (() => void) | null = null
 let unsubSettings: (() => void) | null = null
 let saving = false
-let pendingSave: { key: string; value: number } | null = null
 let wsBadge: ReturnType<typeof createWsStatusBadge> | null = null
 let rafHandle: number | null = null
 let _mounted = false
@@ -121,6 +120,11 @@ async function flushSettingsSave(): Promise<void> {
     // If new changes accumulated during the save, flush again
     if (Object.keys(pendingSettings).length > 0) {
       saveTimer = setTimeout(flushSettingsSave, 500)
+    } else {
+      const latest = settingsMgr.getSettings()
+      if (latest) {
+        syncFromSettings(latest)
+      }
     }
   }
 }
@@ -154,10 +158,12 @@ function updateSliderUI(): void {
 }
 
 function syncFromSettings(s: AppSettings): void {
-  if (saving) return
+  if (saving || Object.keys(pendingSettings).length > 0) return
+  if (dualSlider && dualSlider.isInteracting) return
   for (const k of NUM_KEYS) currentVals[k] = Number((s as Record<string, unknown>)[k]) || 0
   const w = s.sector_weights || {}
-  const r = Number(w.rise_ratio)
+  const tradeAmtVal = w.total_trade_amount !== undefined ? Number(w.total_trade_amount) : 0.5
+  currentRiseRatio = toDisplayValue(tradeAmtVal)
   // focus 뺏김 방지 — 현재 포커스된 input은 업데이트 제외
   const act = document.activeElement
   if (minTradeAmtInput && (!act || !minTradeAmtInput.el.contains(act))) minTradeAmtInput.setValue(currentVals.sector_min_trade_amt ?? 0)
@@ -354,7 +360,7 @@ function mount(container: HTMLElement): void {
   rankRows = []
   rowCaches = []
   saving = false
-  pendingSave = null
+  pendingSettings = {}
 
   const root = document.createElement('div')
 
@@ -588,12 +594,15 @@ function unmount(): void {
   minRiseRatioInput = null
   maxTargetsInput = null
   maxTargetsStatusEl = null
+  if (dualSlider && typeof dualSlider.destroy === 'function') {
+    dualSlider.destroy()
+  }
   dualSlider = null
   wsBadge = null
   rankRows = []
   rowCaches = []
   saving = false
-  pendingSave = null
+  pendingSettings = {}
 }
 
 export default { mount, unmount }

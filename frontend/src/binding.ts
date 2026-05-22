@@ -18,6 +18,7 @@ import {
   rebuildBuyTargetIndex,
   hotStore,
   applyInitialSnapshotHot,
+  normalizeStockCode,
 } from './stores/hotStore'
 import {
   applySettingsChanged,
@@ -93,7 +94,7 @@ export function bindWSToStore(
       if (removed && removed.length > 0) {
         sectorStocks = { ...sectorStocks }
         for (const code of removed) {
-          delete sectorStocks[code]
+          delete sectorStocks[normalizeStockCode(code)]
         }
       }
       if (added && added.length > 0) {
@@ -112,13 +113,13 @@ export function bindWSToStore(
     hotStore.setState((state) => {
       let buyTargets = state.buyTargets
       if (removed && removed.length > 0) {
-        const removedSet = new Set(removed)
-        buyTargets = buyTargets.filter((t: BuyTarget) => !removedSet.has(t.code))
+        const removedSet = new Set(removed.map(c => normalizeStockCode(c)))
+        buyTargets = buyTargets.filter((t: BuyTarget) => !removedSet.has(normalizeStockCode(t.code)))
       }
       if (changed && changed.length > 0) {
         buyTargets = buyTargets === state.buyTargets ? [...buyTargets] : buyTargets
         for (const item of changed) {
-          const idx = buyTargets.findIndex((t: BuyTarget) => t.code === item.code)
+          const idx = buyTargets.findIndex((t: BuyTarget) => normalizeStockCode(t.code) === normalizeStockCode(item.code))
           if (idx >= 0) buyTargets[idx] = item
         }
       }

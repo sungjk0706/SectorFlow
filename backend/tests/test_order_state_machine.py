@@ -63,7 +63,7 @@ async def test_partial_fill(state_manager):
 
     # 부분 체결 (50/100)
     await state_manager.emit_event(
-        EventType.FILL_EVENT,
+        EventType.ORDER_FILL,
         {
             "order_id": "test_order_1",
             "fill_quantity": 50,
@@ -111,7 +111,7 @@ async def test_full_fill(state_manager):
 
     # 전체 체결 (100/100)
     await state_manager.emit_event(
-        EventType.FILL_EVENT,
+        EventType.ORDER_FILL,
         {
             "order_id": "test_order_2",
             "fill_quantity": 100,
@@ -284,7 +284,7 @@ async def test_partial_to_full_fill(state_manager):
 
     # 부분 체결 (50/100)
     await state_manager.emit_event(
-        EventType.FILL_EVENT,
+        EventType.ORDER_FILL,
         {
             "order_id": "test_order_6",
             "fill_quantity": 50,
@@ -301,7 +301,7 @@ async def test_partial_to_full_fill(state_manager):
 
     # 나머지 체결 (50/100)
     await state_manager.emit_event(
-        EventType.FILL_EVENT,
+        EventType.ORDER_FILL,
         {
             "order_id": "test_order_6",
             "fill_quantity": 50,
