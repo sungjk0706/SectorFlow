@@ -289,9 +289,11 @@ async def subscribe_sector_stocks_0b(es: ModuleType) -> None:
     _WS_0B_LIMIT = 200
 
     # ── 1) 보유종목 코드 수집 (최우선) ──
+    from backend.app.services.engine_service import get_positions
+    positions = await get_positions()
     pos_codes_raw = [
         str(s.get("stk_cd", "")).strip()
-        for s in es._positions
+        for s in positions
         if int(s.get("qty", 0) or 0) > 0 and str(s.get("stk_cd", "")).strip()
     ]
     pos_codes: list[str] = list(dict.fromkeys(

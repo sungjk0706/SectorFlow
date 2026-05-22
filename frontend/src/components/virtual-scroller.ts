@@ -168,6 +168,14 @@ export function createVirtualScroller<T>(
   container.style.overflowY = 'auto'
   container.style.position = 'relative'
 
+  // ResizeObserver를 통해 컨테이너 크기 변경(표시/숨김 포함) 시 뷰포트 재계산
+  let ro: ResizeObserver | null = new ResizeObserver(() => {
+    if (container.clientHeight > 0) {
+      onScroll()
+    }
+  })
+  ro.observe(container)
+
   // sentinel div — 전체 높이 확보 + CSS containment로 내부 변경 격리
   const sentinel = document.createElement('div')
   sentinel.style.position = 'relative'
@@ -474,6 +482,10 @@ export function createVirtualScroller<T>(
 
   function destroy() {
     container.removeEventListener('scroll', onScroll)
+    if (ro) {
+      ro.disconnect()
+      ro = null
+    }
     // 모든 활성 행 제거
     for (const [, entry] of activeRows) {
       if (entry.el.parentNode) entry.el.parentNode.removeChild(entry.el)

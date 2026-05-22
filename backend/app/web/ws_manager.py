@@ -272,9 +272,21 @@ class WSManager:
                 _blocked_target_page_codes = {bt.stock.code for bt in ss.blocked_targets} if hasattr(ss, "blocked_targets") else set()
             return code in _buy_target_page_codes or code in _blocked_target_page_codes
         elif page == "sell-position":
-            # 보유종목만
+            # 보유종목만 — Set 캐시로 O(1) 조회, 캐시 미초기화 시 _positions 직접 조회 폴백
             from backend.app.services.engine_account_notify import _positions_code_set
-            return code in _positions_code_set
+            if _positions_code_set:
+                return code in _positions_code_set
+            # 캐시가 아직 비어있으면 _positions 직접 조회 (초기화 타이밍 폴백)
+            try:
+                import backend.app.services.engine_service as _es
+                from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+                return any(
+                    _format_kiwoom_reg_stk_cd(str(p.get("stk_cd", "") or "")) == code
+                    for p in _es._positions
+                    if int(p.get("qty", 0) or 0) > 0
+                )
+            except Exception:
+                return True  # 조회 실패 시 안전 폴백 (전송 허용)
         elif page in ("profit-overview", "settings", "buy-settings", "sell-settings", "general-settings", "sector-custom"):
             return False  # real-data 전송 안 함
         # 알 수 없는 페이지 → 전체 전송 (안전 폴백)

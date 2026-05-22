@@ -194,7 +194,15 @@ def fetch_daily_5d_data(
                 if len(amts) >= 5:
                     break
             _log.debug("[%s] %s final amts count: %d, highs count: %d", api_id, norm, len(amts), len(highs))
-            return amts, highs, (rows[0] if rows else None)
+            latest_row = None
+            for r in rows:
+                cpr = r.get("cur_prc")
+                if cpr is not None and abs(int(str(cpr).replace(",", "") or 0)) > 0:
+                    latest_row = r
+                    break
+            if latest_row is None and rows:
+                latest_row = rows[0]
+            return amts, highs, latest_row
         except Exception as e:
             _log.warning("[%s] %s try fail: %s", api_id, norm, e, exc_info=True)
             return [], [], None

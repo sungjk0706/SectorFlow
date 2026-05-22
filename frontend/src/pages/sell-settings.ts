@@ -85,6 +85,7 @@ function setRowDisabled(row: HTMLElement | null, disabled: boolean): void {
 
 /* ── 설정 동기화 ── */
 function syncFromSettings(s: AppSettings): void {
+  if (saving) return
   const r = s as unknown as Record<string, unknown>
   vals = { ...r }
 

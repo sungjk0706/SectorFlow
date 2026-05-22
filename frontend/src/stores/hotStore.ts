@@ -63,7 +63,9 @@ export function rebuildBuyTargetIndex(targets: BuyTarget[]): void {
 export function rebuildPositionIndex(positions: Position[]): void {
   const map = new Map<string, number>()
   for (let i = 0; i < positions.length; i++) {
-    map.set(positions[i].stk_cd, i)
+    let cd = positions[i].stk_cd || ''
+    if (cd.startsWith('A')) cd = cd.substring(1)
+    map.set(cd, i)
   }
   _positionIndexCache = map
 }
@@ -200,71 +202,92 @@ export function applyRealData(item: RealDataEvent): void {
 
     if (!rawPrice) return;
 
-    const price = Math.abs(+(String(rawPrice).replace(/,/g, '')) || 0);
-    const change = +(String(rawChange).replace(/,/g, '')) || 0;
-    const rate = +(String(rawRate).replace(/,/g, '')) || 0;
-    const strength = +(String(rawStrength).replace(/,/g, '').trim()) || 0;
-    const amount = (+(String(rawAmount).replace(/,/g, '')) || 0) * 1000000;
+  const parseKiwoomNum = (val: unknown): number | undefined => {
+    if (val === undefined || val === null) return undefined;
+    const s = String(val).trim();
+    if (s === '') return undefined;
+    let sign = 1;
+    if (s.includes('-') || s.includes('▼')) sign = -1;
+    const numStr = s.replace(/[^0-9.]/g, '');
+    if (numStr === '') return undefined;
+    return sign * Number(numStr);
+  };
 
-    hotStore.setState((state) => {
-      let sectorStocks = state.sectorStocks;
-      const old = sectorStocks[code];
-      if (old) {
-        if (!(old.cur_price === price && old.change === change &&
-            old.change_rate === rate && old.strength === strength &&
-            old.trade_amount === amount)) {
-          // 변경된 종목만 교체 — shallow-copy + single-key replacement
-          sectorStocks = { ...sectorStocks, [code]: { ...old,
-            cur_price: price, change: change, change_rate: rate,
-            strength: strength, trade_amount: amount,
-          }};
-        }
-      }
+  const price = Math.abs(parseKiwoomNum(rawPrice) || 0);
+  const parsedChange = parseKiwoomNum(rawChange);
+  const parsedRate = parseKiwoomNum(rawRate);
+  const parsedStrength = parseKiwoomNum(rawStrength);
+  const rawAmt = parseKiwoomNum(rawAmount);
+  const parsedAmount = rawAmt !== undefined ? rawAmt * 1000000 : undefined;
 
-      // buyTargets: 인덱스 캐시 O(1) 조회 + 증분 갱신 (원본 배열 변이 없음)
-      let bt = state.buyTargets;
-      let buyTargetsChanged = false;
-      const btIdx = getBuyTargetIndex(code);
-      if (btIdx !== undefined) {
-        const t = bt[btIdx];
-        if (!(t.cur_price === price && t.change === change && t.change_rate === rate &&
-              t.strength === strength)) {
-          bt = [...bt];
-          bt[btIdx] = { ...t, cur_price: price, change: change, change_rate: rate, strength: strength };
-          buyTargetsChanged = true;
-        }
-      }
+  hotStore.setState((state) => {
+    let sectorStocks = state.sectorStocks;
+    const old = sectorStocks[code];
+    if (old) {
+      const change = parsedChange !== undefined ? parsedChange : old.change;
+      const rate = parsedRate !== undefined ? parsedRate : old.change_rate;
+      const strength = parsedStrength !== undefined ? parsedStrength : old.strength;
+      const amount = parsedAmount !== undefined ? parsedAmount : old.trade_amount;
 
-      // positions: 인덱스 캐시 O(1) 조회 + 증분 갱신 (원본 배열 변이 없음)
-      const positions = state.positions;
-      let newPositions = positions;
-      let positionsChanged = false;
-      const posIdx = getPositionIndex(code);
-      if (posIdx !== undefined) {
-        const pos = positions[posIdx];
-        const buyAmt = pos.buy_amt ?? pos.buy_amount ?? 0;
-        const qty = pos.qty ?? 0;
-        const evalAmount = price * qty;
-        const pnlAmount = buyAmt > 0 ? evalAmount - buyAmt : 0;
-        const pnlRate = buyAmt > 0 ? Math.round((pnlAmount / buyAmt) * 10000) / 100 : 0;
-        if (pos.cur_price !== price || pos.eval_amount !== evalAmount ||
-            pos.pnl_amount !== pnlAmount || pos.pnl_rate !== pnlRate) {
-          newPositions = [...positions];
-          newPositions[posIdx] = { ...pos, cur_price: price, eval_amount: evalAmount, pnl_amount: pnlAmount, pnl_rate: pnlRate };
-          positionsChanged = true;
-        }
+      if (!(old.cur_price === price && old.change === change &&
+          old.change_rate === rate && old.strength === strength &&
+          old.trade_amount === amount)) {
+        // 변경된 종목만 교체 — shallow-copy + single-key replacement
+        sectorStocks = { ...sectorStocks, [code]: { ...old,
+          cur_price: price, change: change, change_rate: rate,
+          strength: strength, trade_amount: amount,
+        }};
       }
+    }
 
-      // no-op guard: 변경 없으면 setState 생략 (reference equality 유지)
-      if (sectorStocks === state.sectorStocks && !buyTargetsChanged && !positionsChanged) return state;
-      const patch: Partial<HotState> = {};
-      if (sectorStocks !== state.sectorStocks) patch.sectorStocks = sectorStocks;
-      if (buyTargetsChanged) patch.buyTargets = bt;
-      if (positionsChanged) {
-        patch.positions = newPositions;
+    // buyTargets: 인덱스 캐시 O(1) 조회 + 증분 갱신 (원본 배열 변이 없음)
+    let bt = state.buyTargets;
+    let buyTargetsChanged = false;
+    const btIdx = getBuyTargetIndex(code);
+    if (btIdx !== undefined) {
+      const t = bt[btIdx];
+      const change = parsedChange !== undefined ? parsedChange : t.change;
+      const rate = parsedRate !== undefined ? parsedRate : t.change_rate;
+      const strength = parsedStrength !== undefined ? parsedStrength : t.strength;
+
+      if (!(t.cur_price === price && t.change === change && t.change_rate === rate &&
+            t.strength === strength)) {
+        bt = [...bt];
+        bt[btIdx] = { ...t, cur_price: price, change: change, change_rate: rate, strength: strength };
+        buyTargetsChanged = true;
       }
-      return patch;
-    });
+    }
+
+    // positions: 인덱스 캐시 O(1) 조회 + 증분 갱신 (원본 배열 변이 없음)
+    const positions = state.positions;
+    let newPositions = positions;
+    let positionsChanged = false;
+    const posIdx = getPositionIndex(code);
+    if (posIdx !== undefined) {
+      const pos = positions[posIdx];
+      const buyAmt = pos.buy_amt ?? pos.buy_amount ?? 0;
+      const qty = pos.qty ?? 0;
+      const evalAmount = price * qty;
+      const pnlAmount = buyAmt > 0 ? evalAmount - buyAmt : 0;
+      const pnlRate = buyAmt > 0 ? Math.round((pnlAmount / buyAmt) * 10000) / 100 : 0;
+      if (pos.cur_price !== price || pos.eval_amount !== evalAmount ||
+          pos.pnl_amount !== pnlAmount || pos.pnl_rate !== pnlRate) {
+        newPositions = [...positions];
+        newPositions[posIdx] = { ...pos, cur_price: price, eval_amount: evalAmount, pnl_amount: pnlAmount, pnl_rate: pnlRate };
+        positionsChanged = true;
+      }
+    }
+
+    // no-op guard: 변경 없으면 setState 생략 (reference equality 유지)
+    if (sectorStocks === state.sectorStocks && !buyTargetsChanged && !positionsChanged) return state;
+    const patch: Partial<HotState> = {};
+    if (sectorStocks !== state.sectorStocks) patch.sectorStocks = sectorStocks;
+    if (buyTargetsChanged) patch.buyTargets = bt;
+    if (positionsChanged) {
+      patch.positions = newPositions;
+    }
+    return patch;
+  });
   }
 }
 
