@@ -10,6 +10,8 @@ import type { RouteConfig, PageModule } from './router'
 import { initToastContainer } from './components/common/save-toast'
 import { sectorCustomStore } from './stores/sectorCustomStore'
 import { api } from './api/client'
+// Import sector-stock Web Component to register custom element
+import './pages/sector-stock'
 
 // ── FPS 모니터링 (1초 윈도우) ──
 function startFpsMonitor(): void {
@@ -52,7 +54,7 @@ const routes: RouteConfig[] = [
   {
     path: '#/sector-analysis',
     layout: 'dual',
-    load: () => import('./pages/sector-stock').then(m => m.default),
+    load: () => Promise.resolve({ tagName: 'sector-stock-table' }),
     settingsCard: () => import('./pages/sector-analysis').then(m => m.default),
   },
   {

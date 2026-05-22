@@ -9,9 +9,15 @@ export interface PageModule {
   unmount(): void
 }
 
+export interface WebComponentPage {
+  tagName: string
+}
+
+export type PageLoadResult = PageModule | WebComponentPage
+
 export interface RouteConfig {
   path: string
-  load: () => Promise<PageModule>
+  load: () => Promise<PageLoadResult>
   layout: 'dual' | 'single' | 'full' | 'triple'
   settingsCard?: () => Promise<PageModule>
 }
@@ -82,15 +88,20 @@ function removeSpinner(container: HTMLElement): void {
 export function createRouter(routes: RouteConfig[]): RouterApi {
   const validPaths = routes.map((r) => r.path)
   const routeMap = new Map<string, RouteConfig>(routes.map((r) => [r.path, r]))
-  const moduleCache = new Map<string, PageModule>()
+  const moduleCache = new Map<string, PageLoadResult>()
 
   let contentEl: HTMLElement | null = null
   let currentRoute = ''
   let currentModule: PageModule | null = null
+  let currentWebComponent: HTMLElement | null = null
   const routeChangeListeners = new Set<(route: string) => void>()
   let hashListener: (() => void) | null = null
 
-  async function loadModule(config: RouteConfig): Promise<PageModule> {
+  function isWebComponentPage(result: PageLoadResult): result is WebComponentPage {
+    return 'tagName' in result
+  }
+
+  async function loadModule(config: RouteConfig): Promise<PageLoadResult> {
     const cached = moduleCache.get(config.path)
     if (cached) return cached
 
@@ -123,10 +134,14 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
     const config = routeMap.get(resolved)
     if (!config) return
 
-    // 이전 페이지 unmount (unmount → mount 순서 보장)
+    // 이전 페이지 unmount/cleanup (unmount → mount 순서 보장)
     if (currentModule) {
       currentModule.unmount()
       currentModule = null
+    }
+    if (currentWebComponent) {
+      currentWebComponent.remove()
+      currentWebComponent = null
     }
 
     // 콘텐츠 영역 비우기
@@ -138,10 +153,16 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
     notifyRouteChange(resolved)
 
     // 캐시 히트: 스피너 없이 동기 마운트
-    const cachedModule = moduleCache.get(config.path)
-    if (cachedModule) {
-      currentModule = cachedModule
-      cachedModule.mount(contentEl)
+    const cachedResult = moduleCache.get(config.path)
+    if (cachedResult) {
+      if (isWebComponentPage(cachedResult)) {
+        const wc = document.createElement(cachedResult.tagName)
+        currentWebComponent = wc
+        contentEl.appendChild(wc)
+      } else {
+        currentModule = cachedResult
+        cachedResult.mount(contentEl)
+      }
       return
     }
 
@@ -149,7 +170,7 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
     showSpinner(contentEl)
 
     try {
-      const pageModule = await loadModule(config)
+      const pageResult = await loadModule(config)
 
       // destroy()가 호출되었으면 중단
       if (!contentEl) return
@@ -157,9 +178,16 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
       // 스피너 제거
       removeSpinner(contentEl)
 
-      // 새 페이지 mount (settingsCard는 main.ts의 patchRouterForDualLayout에서 leftPanel에 마운트)
-      currentModule = pageModule
-      pageModule.mount(contentEl)
+      // Web Component vs PageModule 처리
+      if (isWebComponentPage(pageResult)) {
+        const wc = document.createElement(pageResult.tagName)
+        currentWebComponent = wc
+        contentEl.appendChild(wc)
+      } else {
+        // 새 페이지 mount (settingsCard는 main.ts의 patchRouterForDualLayout에서 leftPanel에 마운트)
+        currentModule = pageResult
+        pageResult.mount(contentEl)
+      }
     } catch (err) {
       // destroy()가 호출되었으면 중단
       if (!contentEl) return
@@ -211,6 +239,10 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
     if (currentModule) {
       currentModule.unmount()
       currentModule = null
+    }
+    if (currentWebComponent) {
+      currentWebComponent.remove()
+      currentWebComponent = null
     }
     routeChangeListeners.clear()
     moduleCache.clear()
