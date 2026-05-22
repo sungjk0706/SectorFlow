@@ -104,7 +104,7 @@
   - engine_bootstrap.py: _deferred_sector_summary()에 정규장 차단 가드 이식 및 스냅샷 복원 로직 추가 (Line 375-384)
   - ws.py: 초기 스냅샷 대기 타임아웃 120초 → 300초 조정 (Line 40)
   - 백엔드 통합 테스트 130 passed
-- Phase 2.1 단계 3 최종 수정: 20:30 안전 구역 확장 및 영속성 복원 레이어 완성 (git commit: pending)
+- Phase 2.1 단계 3 최종 수정: 20:30 안전 구역 확장 및 영속성 복원 레이어 완성 (git commit: 7483254)
   - daily_time_scheduler.py: is_heavy_operation_allowed() 함수 추가 (20:30 이전 차단)
   - engine_bootstrap.py: 3개 핵심 함수에 is_heavy_operation_allowed() 적용
   - engine_bootstrap.py: _deferred_sector_summary()에 영속성 캐시 복원 로직 추가
