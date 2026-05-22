@@ -64,18 +64,17 @@
 
 ## 현재 상태
 ### 최근 완료 단계
-- Phase 1.3+1.4 단계 1.4: 기존 직접 수신 로직을 Event Bus 기반으로 전환 완료 (git commit: f81a2d6)
-  - engine_ws_dispatch.py: _handle_real_01에서 캐시 업데이트 제거 (Event Bus Publish만 유지)
-  - engine_service.py: _handle_market_tick_event 핸들러 로직 강화 (기존 _handle_real_01 로직 이식)
-  - 체결강도, Radar, bid_depth/ask_depth 업데이트 로직 추가
-  - 하위 호환성 유지 (Event Bus 비활성화 시 기존 로직 사용)
-  - 데이터 흐름 변경: WS → Event Bus → engine_service
+- Phase 1.3+1.4 단계 1.5: Event Bus 기본 활성화 및 통합 테스트 완료 (git commit: f5161ae)
+  - engine_ws_dispatch.py: _event_bus_enabled를 True로 기본 활성화
+  - tests/test_event_bus_e2e.py: E2E 통합 테스트 추가 (2 passed)
+  - 전체 테스트 통과: 35 passed
+  - Event Bus를 기본적으로 활성화하여 실시간 데이터 처리 경로 변경 완료
 
 ### 다음 단계
-- Phase 1.3+1.4 단계 1.5: Event Bus 기본 활성화 및 통합 테스트
-  - Event Bus를 기본적으로 활성화하여 실시간 데이터 처리
-  - 통합 테스트를 통해 전체 데이터 흐름 검증
-  - 필요시 성능 최적화 및 디버깅
+- Phase 1.3+1.4 단계 1.6: Event Bus 성능 최적화 및 모니터링
+  - Event Bus 처리 성능 모니터링 추가
+  - 필요시 Coalescing 파라미터 튜닝
+  - 실시간 데이터 처리 지연 시간 측정
 ### Phase 1.1 완료 내용
 - backend/app/core/events.py 생성 완료
   - BaseEvent, MarketTickEvent, OrderFillEvent, AccountUpdateEvent 정의
@@ -130,6 +129,13 @@
 - 테스트 결과: test_events.py (17 passed), test_event_bus.py (8 passed), test_event_bus_integration.py (5 passed), test_engine_service_event_bus.py (3 passed)
 - git commit: f81a2d6
 - 데이터 흐름 변경: WS → Queue → engine_service (_handle_real_01 직접 캐시 업데이트) → WS → Event Bus → engine_service (_handle_market_tick_event에서 캐시 업데이트)
+
+### Phase 1.3+1.4 단계 1.5 완료 내용
+- engine_ws_dispatch.py: _event_bus_enabled를 True로 기본 활성화
+- tests/test_event_bus_e2e.py: E2E 통합 테스트 추가 (2 passed)
+- 테스트 결과: 전체 35 passed (test_events.py: 17, test_event_bus.py: 8, test_event_bus_integration.py: 5, test_engine_service_event_bus.py: 3, test_event_bus_e2e.py: 2)
+- git commit: f5161ae
+- Event Bus를 기본적으로 활성화하여 실시간 데이터 처리 경로 변경 완료
 
 ### Phase 4.1 완료 내용
 - 사전 조사 완료 (event.proto, backend_coalescing.py 구조 파악)
