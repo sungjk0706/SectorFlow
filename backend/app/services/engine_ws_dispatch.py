@@ -305,7 +305,8 @@ def _handle_real_01(
                 _realtime_required_fields_cache.clear()
                 _realtime_first_tick_ts_map.clear()
     
-    _ts = int(time.time() * 1000)
+    _ws_receive_timestamp = int(time.time() * 1000)
+    _ts = _ws_receive_timestamp
     _need_sector_tick = False
     raw_cd = _real_item_stk_cd(item, vals)
     last_px = _parse_fid10_price(vals)
