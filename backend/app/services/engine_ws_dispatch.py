@@ -265,7 +265,10 @@ def _handle_reg(data: dict, es: ModuleType) -> None:
 def _handle_real_01(
     item: dict, vals: dict, raw_type_upper: str, is_0b_tick: bool, es: ModuleType,
 ) -> None:
-    """0B/01 체결 처리 — 현재가·거래대금·체결강도 갱신 + 보유종목 반영 + 자동매도 검사."""
+    """0B/01 체결 처리 — Event Bus Publish만 수행 (Phase 1.3+1.4 단계 1.4).
+    
+    캐시 업데이트는 engine_service._handle_market_tick_event에서 수신 후 처리.
+    """
     # LIVE 전환 조건 강화: symbol별 필수 필드 캐시 확인 + 타임아웃
     if es._get_realtime_state() == "WAITING_FIRST_TICK":
         raw_cd = _real_item_stk_cd(item, vals)
@@ -314,8 +317,6 @@ def _handle_real_01(
     _session = parse_fid290_session(vals)
     _exch_label = {"1": "KRX", "2": "NXT"}.get(_exch, "")
     raw_cd_for_bucket = raw_cd
-    es._latest_trade_prices[nk_px] = last_px  # 단일 키 직접 대입 (asyncio 원자적)
-    es._rest_radar_quote_cache.pop(nk_px, None)  # lock 불필요 — 순차 처리 + GIL 원자적
     pend_key = _resolve_bucket_key(raw_cd_for_bucket, es._pending_stock_details)
     prev_close = _ws_fid_int(vals, "16", 0)
     pend = es._pending_stock_details.get(pend_key, {}) if pend_key else {}
@@ -331,33 +332,8 @@ def _handle_real_01(
         _need_sector_tick = True
     else:
         _total14 = es._latest_trade_amounts.get(_base_nk_14, 0)
-    # [근본해결] 선택적 전송 제거 (notify_raw_real_data가 전체 전송함)
-    # es.notify_desktop_trade_price(raw_cd, last_px, change=diff, change_rate=rate, strength=strength, trade_amount=_total14)
-    if pend_key and es._pending_stock_details[pend_key].get("status") in ("active", "exited"):
-        # snapshot-replace: 새 dict 생성 후 참조 교체 1회
-        old = es._pending_stock_details[pend_key]
-        new_entry = {**old,
-            "cur_price": last_px,
-            "prev_close": prev_close,
-            "change": diff,
-            "change_rate": rate,
-            "sign": sign,
-            "strength": strength,
-        }
-        if _ws_fid_key_present(vals, "14"):
-            new_entry["trade_amount"] = _total14
-        es._pending_stock_details[pend_key] = new_entry  # 참조 교체 1회
-        if is_0b_tick and strength != "-":
-            try:
-                _update_strength_buckets(es, nk_px, float(strength), abs(_ws_fid_int(vals, "13", 0)))
-            except (ValueError, TypeError) as e:
-                logger.warning("[체결강도] %s 파싱 실패 strength=%r: %s", nk_px, strength, e)
-    engine_radar_ops.apply_real01_volume_amount_to_radar_rows(
-        raw_cd_for_bucket, vals, es._latest_trade_amounts,
-        es._pending_stock_details, is_0b_tick=is_0b_tick,
-    )  # lock 불필요 — 순차 처리 + GIL 원자적
-
-    # Event Bus Publish (Phase 1.3+1.4)
+    
+    # Event Bus Publish (Phase 1.3+1.4 단계 1.4 - 캐시 업데이트 제거, Publish만 수행)
     if _event_bus_enabled:
         volume = abs(_ws_fid_int(vals, "13", 0)) if _ws_fid_key_present(vals, "13") else 0
         _publish_market_tick_event(
@@ -370,16 +346,45 @@ def _handle_real_01(
             sign=sign,
             raw_data={"item": item, "values": vals},
         )
-    if pend_key and es._pending_stock_details.get(pend_key, {}).get("status") == "active":
-        # snapshot-replace: 새 dict 생성 후 참조 교체 1회
-        old2 = es._pending_stock_details[pend_key]
-        updates: dict = {}
-        if _ws_fid_key_present(vals, "1030"):
-            updates["bid_depth"] = _ws_fid_int(vals, "1030", 0)
-        if _ws_fid_key_present(vals, "1031"):
-            updates["ask_depth"] = _ws_fid_int(vals, "1031", 0)
-        if updates:
-            es._pending_stock_details[pend_key] = {**old2, **updates}  # 참조 교체 1회
+    
+    # 캐시 업데이트는 engine_service._handle_market_tick_event에서 수신 후 처리
+    # 하위 호환성을 위해 Event Bus 비활성화 시 기존 로직 유지
+    if not _event_bus_enabled:
+        es._latest_trade_prices[nk_px] = last_px  # 단일 키 직접 대입 (asyncio 원자적)
+        es._rest_radar_quote_cache.pop(nk_px, None)  # lock 불필요 — 순차 처리 + GIL 원자적
+        if pend_key and es._pending_stock_details[pend_key].get("status") in ("active", "exited"):
+            # snapshot-replace: 새 dict 생성 후 참조 교체 1회
+            old = es._pending_stock_details[pend_key]
+            new_entry = {**old,
+                "cur_price": last_px,
+                "prev_close": prev_close,
+                "change": diff,
+                "change_rate": rate,
+                "sign": sign,
+                "strength": strength,
+            }
+            if _ws_fid_key_present(vals, "14"):
+                new_entry["trade_amount"] = _total14
+            es._pending_stock_details[pend_key] = new_entry  # 참조 교체 1회
+            if is_0b_tick and strength != "-":
+                try:
+                    _update_strength_buckets(es, nk_px, float(strength), abs(_ws_fid_int(vals, "13", 0)))
+                except (ValueError, TypeError) as e:
+                    logger.warning("[체결강도] %s 파싱 실패 strength=%r: %s", nk_px, strength, e)
+        engine_radar_ops.apply_real01_volume_amount_to_radar_rows(
+            raw_cd_for_bucket, vals, es._latest_trade_amounts,
+            es._pending_stock_details, is_0b_tick=is_0b_tick,
+        )  # lock 불필요 — 순차 처리 + GIL 원자적
+        if pend_key and es._pending_stock_details.get(pend_key, {}).get("status") == "active":
+            # snapshot-replace: 새 dict 생성 후 참조 교체 1회
+            old2 = es._pending_stock_details[pend_key]
+            updates: dict = {}
+            if _ws_fid_key_present(vals, "1030"):
+                updates["bid_depth"] = _ws_fid_int(vals, "1030", 0)
+            if _ws_fid_key_present(vals, "1031"):
+                updates["ask_depth"] = _ws_fid_int(vals, "1031", 0)
+            if updates:
+                es._pending_stock_details[pend_key] = {**old2, **updates}  # 참조 교체 1회
     # 보유종목 현재가 반영 (메모리만 갱신, 계좌 broadcast 없음 — 체결/잔고 이벤트에서만 전송)
     if is_test_mode(es._settings_cache):
         _price_hit = dry_run.update_price(nk_px, last_px)
