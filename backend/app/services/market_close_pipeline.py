@@ -619,7 +619,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
         # 20:30 이전 시간 가드 (Phase 2.1 단계 3)
         from backend.app.services.daily_time_scheduler import is_heavy_operation_allowed
         if not is_heavy_operation_allowed():
-            _log.warning("[타이머] 안전 구역(20:30~연결시작전) 외 시간대 진입으로 인한 Step 5 ka10086 전종목 확정 시세 다운로드 스킵")
+            _log.info("[타이머] 안전 구역(20:30~연결시작전) 외 시간대 진입으로 인한 Step 5 ka10086 전종목 확정 시세 다운로드 스킵")
             es._confirmed_refresh_running = False
             es._confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
