@@ -31,7 +31,7 @@ CONTROL_QUEUE_MAXSIZE = 500  # 제어 전용 (최우선순위)
 _tick_queue: Optional[asyncio.Queue] = None
 _order_queue: Optional[asyncio.Queue] = None
 _broadcast_queue: Optional[asyncio.Queue] = None
-_control_queue: Optional[asyncio.Queue] = None
+_control_queue: Optional[asyncio.PriorityQueue] = None
 
 
 def initialize_queues() -> None:
@@ -45,7 +45,7 @@ def initialize_queues() -> None:
     _tick_queue = asyncio.Queue(maxsize=TICK_QUEUE_MAXSIZE)
     _order_queue = asyncio.Queue(maxsize=ORDER_QUEUE_MAXSIZE)
     _broadcast_queue = asyncio.Queue(maxsize=BROADCAST_QUEUE_MAXSIZE)
-    _control_queue = asyncio.Queue(maxsize=CONTROL_QUEUE_MAXSIZE)
+    _control_queue = asyncio.PriorityQueue(maxsize=CONTROL_QUEUE_MAXSIZE)
 
     logger.info(
         "[core_queues] 초기화 완료 - "
@@ -75,7 +75,7 @@ def get_broadcast_queue() -> asyncio.Queue:
     return _broadcast_queue
 
 
-def get_control_queue() -> asyncio.Queue:
+def get_control_queue() -> asyncio.PriorityQueue:
     """제어 전용 큐 반환."""
     if _control_queue is None:
         raise RuntimeError("control_queue가 초기화되지 않음 - initialize_queues() 먼저 호출")
@@ -131,6 +131,6 @@ def clear_all_queues() -> None:
             _broadcast_queue.get_nowait()
     if _control_queue:
         while not _control_queue.empty():
-            _control_queue.get_nowait()
+            _, _ = _control_queue.get_nowait()
 
     logger.info("[core_queues] 모든 큐 비우기 완료")
