@@ -931,8 +931,11 @@ def get_sector_stocks() -> list:
     if not _sector_stocks_dirty and _sector_stocks_cache is not None:
         return _sector_stocks_cache
 
-    # ── dirty: 캐시 재구축 (필터 + 정렬 1회) ──
-    filter_set = _filtered_sector_codes
+    # ── dirty: 캐시 재구축 (eligible_stocks_cache 기준 필터 + 정렬 1회) ──
+    from backend.app.core.industry_map import load_eligible_stocks_cache
+    eligible_stocks = load_eligible_stocks_cache() or {}
+    filter_set = set(eligible_stocks.keys()) if eligible_stocks else None
+    
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt
     from backend.app.services.engine_symbol_utils import is_nxt_enabled as _is_nxt
     from backend.app.core.sector_mapping import get_merged_sector as _get_sector
@@ -1734,13 +1737,18 @@ async def build_initial_snapshot() -> dict:
     scores_list, ranked_count = scores_snapshot if isinstance(scores_snapshot, tuple) else (scores_snapshot, 0)
     logger.info("[연결] 시작화면 데이터 생성 단계 -- 업종점수 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
     
+    # 종목수 일치 보장: eligible_stocks_cache 기준
+    from backend.app.core.industry_map import load_eligible_stocks_cache
+    eligible_stocks = load_eligible_stocks_cache() or {}
+    total_stocks_count = len(eligible_stocks) if eligible_stocks else 0
+    
     snapshot: dict = {
         "_v":               1,
         "account":          account_snap,
         "positions":        positions,
         "sector_stocks":    [],  # 분할 전송 — sector-stocks-refresh 이벤트로 별도 전송
         "sector_scores":    scores_list,
-        "sector_status":    {"total_stocks": len(scores_list), "max_targets": int(_settings_cache.get("sector_max_targets", 3) or 3), "ranked_sectors_count": ranked_count},
+        "sector_status":    {"total_stocks": total_stocks_count, "max_targets": int(_settings_cache.get("sector_max_targets", 3) or 3), "ranked_sectors_count": ranked_count},
         "buy_targets":      await _safe(get_buy_targets_snapshot, []),
         "settings":         _mask_sensitive_settings(_raw_settings),
         "status":           await _safe(get_status, {}),
