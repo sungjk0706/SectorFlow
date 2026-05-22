@@ -3,7 +3,7 @@
 
 import { shell } from '../main'
 import { sectorCustomStore, computeEditWindowOpenByTime, type SectorCustomState } from '../stores/sectorCustomStore'
-import { hotStore } from '../stores/hotStore'
+import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingsManager, type SettingsManager } from '../settings'
@@ -657,7 +657,7 @@ function buildSectorManageCard(): HTMLElement {
     createStockNameColumn<SearchResultRow>(
       (row: SearchResultRow) => {
         const state = hotStore.getState()
-        const sectorStock = state.sectorStocks[row.code || '']
+        const sectorStock = state.sectorStocks[normalizeStockCode(row.code)]
         return {
           name: row.name,
           market_type: sectorStock?.market_type ?? row.market_type,
@@ -1004,7 +1004,7 @@ function buildTripleCenter(): void {
     createStockNameColumn<DetailRow>(
       (row: DetailRow) => {
         const state = hotStore.getState()
-        const sectorStock = state.sectorStocks[row.code || '']
+        const sectorStock = state.sectorStocks[normalizeStockCode(row.code)]
         return {
           name: row.name,
           market_type: sectorStock?.market_type ?? row.market_type,

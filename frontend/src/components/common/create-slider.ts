@@ -86,6 +86,7 @@ export interface DualLabelSliderHandle {
   setValue(v: number): void
   getValue(): number
   isInteracting: boolean
+  destroy(): void
 }
 
 export function createDualLabelSlider(opts: DualLabelSliderOptions): DualLabelSliderHandle {
@@ -139,10 +140,20 @@ export function createDualLabelSlider(opts: DualLabelSliderOptions): DualLabelSl
 
   // 사용자 인터랙션 감지
   let isInteracting = false
-  slider.el.addEventListener('mousedown', () => { isInteracting = true })
-  slider.el.addEventListener('touchstart', () => { isInteracting = true })
-  slider.el.addEventListener('mouseup', () => { isInteracting = false })
-  slider.el.addEventListener('touchend', () => { isInteracting = false })
+  const onStart = () => { isInteracting = true }
+  const onEnd = () => { isInteracting = false }
+
+  slider.el.addEventListener('mousedown', onStart)
+  slider.el.addEventListener('touchstart', onStart)
+  window.addEventListener('mouseup', onEnd)
+  window.addEventListener('touchend', onEnd)
+
+  function destroy() {
+    slider.el.removeEventListener('mousedown', onStart)
+    slider.el.removeEventListener('touchstart', onStart)
+    window.removeEventListener('mouseup', onEnd)
+    window.removeEventListener('touchend', onEnd)
+  }
 
   return {
     el: container,
@@ -156,5 +167,6 @@ export function createDualLabelSlider(opts: DualLabelSliderOptions): DualLabelSl
     get isInteracting() {
       return isInteracting
     },
+    destroy,
   }
 }

@@ -1618,9 +1618,9 @@ def _apply_delayed_account_broadcast() -> None:
     try:
         pos = dry_run.get_positions() if is_test_mode(_settings_cache) else list(_positions)
         broadcast_account_update(
-            reason,
-            snapshot=dict(_account_snapshot),
             positions=pos,
+            snapshot=dict(_account_snapshot),
+            reason=reason,
         )
     except Exception as e:
         logger.debug("[계좌브로드캐스트] 지연 전송 실패: %s", e, exc_info=True)

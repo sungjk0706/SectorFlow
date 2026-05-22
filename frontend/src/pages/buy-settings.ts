@@ -21,7 +21,6 @@ let pendingSave: { key: string; value: unknown } | null = null
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 // 현재 값 추적
 let vals: Record<string, unknown> = {}
-let localOrderRatioPct: number | null = null  // 사용자가 설정한 값 (null=서버값 사용)
 
 // 입력 컴포넌트 참조
 let wsBadge: HTMLElement | null = null
@@ -60,24 +59,37 @@ function autoSave(key: string, value: unknown): void {
   }, 400)
 }
 
-function flushSave(key: string, value: unknown): void {
+async function flushSave(key: string, value: unknown): Promise<void> {
   if (!settingsMgr) return
   if (saving) {
     pendingSave = { key, value }
     return
   }
   saving = true
-  const run = async (k: string, v: unknown): Promise<void> => {
-    const res = await settingsMgr!.saveSection({ [k]: v })
-    toastResult(res)
-    if (pendingSave) {
-      const next = pendingSave
-      pendingSave = null
-      await run(next.key, next.value)
+  try {
+    let currentKey = key
+    let currentValue = value
+    while (true) {
+      const res = await settingsMgr.saveSection({ [currentKey]: currentValue })
+      toastResult(res)
+      if (pendingSave) {
+        currentKey = pendingSave.key
+        currentValue = pendingSave.value
+        pendingSave = null
+      } else {
+        break
+      }
     }
+  } catch (err) {
+    console.error('[BuySettings] save failed:', err)
+  } finally {
     saving = false
+    // Force sync with the latest settings once done saving to ensure UI and server are perfectly in sync
+    const latest = settingsMgr.getSettings()
+    if (latest) {
+      syncFromSettings(latest)
+    }
   }
-  run(key, value)
 }
 
 async function saveImmediate(patch: Record<string, unknown>): Promise<void> {
@@ -88,7 +100,8 @@ async function saveImmediate(patch: Record<string, unknown>): Promise<void> {
 
 /* ── 설정 동기화 ── */
 function syncFromSettings(s: AppSettings): void {
-  if (saving) return
+  if (saving || pendingSave !== null || debounceTimer !== null) return
+  if (boostOrderDualSlider && boostOrderDualSlider.isInteracting) return
   const r = s as unknown as Record<string, unknown>
   vals = { ...r }
 
@@ -129,9 +142,7 @@ function syncFromSettings(s: AppSettings): void {
   const orderOn = !!r.boost_order_ratio_on
   boostOrderToggle?.setOn(orderOn)
   const signedPct = Number(r.boost_order_ratio_pct ?? 20)
-  if (localOrderRatioPct === null) {
-    boostOrderDualSlider?.setValue(signedPct + 100)
-  }
+  boostOrderDualSlider?.setValue(signedPct + 100)
   boostOrderScoreInput?.setValue(Number(r.boost_order_ratio_score) ?? 1.0)
   if (boostOrderControls) {
     boostOrderControls.style.opacity = orderOn ? '1' : '0.4'
@@ -369,8 +380,7 @@ function mount(container: HTMLElement): void {
       },
       onCommit(v) {
         vals.boost_order_ratio_pct = v - 100
-        localOrderRatioPct = v - 100
-        saveImmediate({ boost_order_ratio_pct: v - 100 })
+        flushSave('boost_order_ratio_pct', v - 100)
       },
     })
 
@@ -432,9 +442,13 @@ function unmount(): void {
   riseInput = null; fallInput = null; strengthInput = null
   maxDailyInput = null; maxStockCntInput = null; buyAmtInput = null
   boostHighToggle = null; boostHighScoreInput = null; boostHighControls = null
-  boostOrderToggle = null; boostOrderDualSlider = null; boostOrderScoreInput = null; boostOrderControls = null; boostOrderRow2 = null
+  boostOrderToggle = null
+  if (boostOrderDualSlider && typeof boostOrderDualSlider.destroy === 'function') {
+    boostOrderDualSlider.destroy()
+  }
+  boostOrderDualSlider = null
+  boostOrderScoreInput = null; boostOrderControls = null; boostOrderRow2 = null
   vals = {}
-  localOrderRatioPct = null
 }
 
 export default { mount, unmount }

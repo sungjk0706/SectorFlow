@@ -297,20 +297,21 @@ function createFixedMode<T extends object>(
 
   function scheduleRender() {
     if (rafId !== null) return
-    rafId = requestAnimationFrame((timestamp) => {
+    let callbackRan = false
+    const id = requestAnimationFrame((timestamp) => {
+      rafId = null
+      callbackRan = true
       if (pendingRows === null) {
-        rafId = null
         return
       }
       const elapsed = timestamp - lastRenderTime
       if (elapsed < FRAME_INTERVAL) {
-        rafId = requestAnimationFrame(scheduleRender)
+        scheduleRender()
         return
       }
       lastRenderTime = timestamp
       const rows = pendingRows
       pendingRows = null
-      rafId = null
       if (destroyed) return
       while (tbody.firstChild) {
         tbody.removeChild(tbody.firstChild)
@@ -327,6 +328,9 @@ function createFixedMode<T extends object>(
         else tbody.appendChild(renderDataRow(row as T, i))
       }
     })
+    if (!callbackRan) {
+      rafId = id
+    }
   }
 
   function updateRows(rows: TableRow<T>[]) {
@@ -360,6 +364,8 @@ function createVirtualScrollMode<T extends object>(
   let currentRows: TableRow<T>[] = []
   let gridTemplateColumns = ''
   let columnWidthsCalculated = false
+  const priceMap = new Map<string, number>()
+
 
   const wrapper = document.createElement('div')
   Object.assign(wrapper.style, {
@@ -426,18 +432,68 @@ function createVirtualScrollMode<T extends object>(
   }
 
   function renderRow(row: TableRow<T>, index: number, rowEl: HTMLElement) {
+    const timerKey = '_rowFlashTimer' as keyof HTMLElement
+    const rowKeyStore = '_rowKey' as keyof HTMLElement
+
     const isFirst = rowEl.childElementCount === 0
     const currentIsGroup = isGroupRow(row)
     const prevWasGroup = wasGroupRow(rowEl)
 
+    const key = currentIsGroup ? row.key : keyFn(row as T, index)
+
+    const prevRowKey = (rowEl as any)[rowKeyStore]
+    ;(rowEl as any)[rowKeyStore] = key
+
     // 공통 스타일 적용
     rowEl.classList.add('data-table-row')
     Object.assign(rowEl.style, { display: 'grid', gridTemplateColumns, borderBottom: '1px solid #e5e7eb' })
-    if (zebraStriping && index % 2 === 1) rowEl.style.backgroundColor = '#f9f9f9'
-    else rowEl.style.backgroundColor = 'transparent'
+
+    const hasActiveFlash = (rowEl as any)[timerKey] !== undefined
+    if (!hasActiveFlash) {
+      if (zebraStriping && index % 2 === 1) rowEl.style.backgroundColor = '#f9f9f9'
+      else rowEl.style.backgroundColor = 'transparent'
+    }
+
+    if (!currentIsGroup) {
+      const dataRow = row as T
+      if ('price' in dataRow) {
+        const newPrice = Number((dataRow as any).price)
+        const prevPrice = priceMap.get(key)
+
+        if (prevPrice !== undefined && prevPrice !== newPrice && prevRowKey === key) {
+          const isUp = newPrice > prevPrice
+          const flashColor = isUp ? 'rgba(255, 59, 48, 0.15)' : 'rgba(0, 122, 255, 0.15)'
+
+          const existingTimer = (rowEl as any)[timerKey]
+          if (existingTimer) clearTimeout(existingTimer)
+
+          rowEl.style.transition = 'none'
+          rowEl.style.backgroundColor = flashColor
+
+          // Force reflow
+          void rowEl.offsetHeight
+
+          rowEl.style.transition = 'background-color 300ms ease-out'
+          rowEl.style.backgroundColor = 'transparent'
+
+          const timer = setTimeout(() => {
+            if (zebraStriping && index % 2 === 1) {
+              rowEl.style.backgroundColor = '#f9f9f9'
+            } else {
+              rowEl.style.backgroundColor = 'transparent'
+            }
+            rowEl.style.transition = ''
+            ;(rowEl as any)[timerKey] = undefined
+          }, 300)
+          ;(rowEl as any)[timerKey] = timer
+        }
+        priceMap.set(key, newPrice)
+      }
+    }
 
     // 최초 렌더링 또는 행 타입 변경 시에만 셀 전체 생성
     if (isFirst || currentIsGroup !== prevWasGroup) {
+
       while (rowEl.firstChild) {
         rowEl.removeChild(rowEl.firstChild)
       }
@@ -640,15 +696,16 @@ function createVirtualScrollMode<T extends object>(
 
   function scheduleRender() {
     if (rafId !== null) return
-    rafId = requestAnimationFrame((timestamp) => {
-      rafId = null // 현재 프레임 실행 시작: rafId 초기화
+    let callbackRan = false
+    const id = requestAnimationFrame((timestamp) => {
+      rafId = null
+      callbackRan = true
 
       if (pendingRows === null) {
         return
       }
       const elapsed = timestamp - lastRenderTime
       if (elapsed < FRAME_INTERVAL) {
-        // 너무 일찍 실행된 경우 다음 프레임 예약
         scheduleRender()
         return
       }
@@ -658,6 +715,9 @@ function createVirtualScrollMode<T extends object>(
       if (destroyed) return
       internalUpdate(rows)
     })
+    if (!callbackRan) {
+      rafId = id
+    }
   }
 
   function updateRows(rows: TableRow<T>[]) {

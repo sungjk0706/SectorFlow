@@ -51,24 +51,37 @@ function autoSave(key: string, value: unknown): void {
   }, 400)
 }
 
-function flushSave(key: string, value: unknown): void {
+async function flushSave(key: string, value: unknown): Promise<void> {
   if (!settingsMgr) return
   if (saving) {
     pendingSave = { key, value }
     return
   }
   saving = true
-  const run = async (k: string, v: unknown): Promise<void> => {
-    const res = await settingsMgr!.saveSection({ [k]: v })
-    toastResult(res)
-    if (pendingSave) {
-      const next = pendingSave
-      pendingSave = null
-      await run(next.key, next.value)
+  try {
+    let currentKey = key
+    let currentValue = value
+    while (true) {
+      const res = await settingsMgr.saveSection({ [currentKey]: currentValue })
+      toastResult(res)
+      if (pendingSave) {
+        currentKey = pendingSave.key
+        currentValue = pendingSave.value
+        pendingSave = null
+      } else {
+        break
+      }
     }
+  } catch (err) {
+    console.error('[SellSettings] save failed:', err)
+  } finally {
     saving = false
+    // Force sync with the latest settings once done saving to ensure UI and server are perfectly in sync
+    const latest = settingsMgr.getSettings()
+    if (latest) {
+      syncFromSettings(latest)
+    }
   }
-  run(key, value)
 }
 
 async function saveImmediate(patch: Record<string, unknown>): Promise<void> {
@@ -85,7 +98,7 @@ function setRowDisabled(row: HTMLElement | null, disabled: boolean): void {
 
 /* ── 설정 동기화 ── */
 function syncFromSettings(s: AppSettings): void {
-  if (saving) return
+  if (saving || pendingSave !== null || debounceTimer !== null) return
   const r = s as unknown as Record<string, unknown>
   vals = { ...r }
 
