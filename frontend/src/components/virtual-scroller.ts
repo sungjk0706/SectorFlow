@@ -334,11 +334,13 @@ export function createVirtualScroller<T>(
   recomputeAllOffsets()
   container.addEventListener('scroll', onScroll, { passive: true })
 
-  // 초기 렌더링 (layout 완료 여부 상관없이 1회 rAF로 즉시 렌더링 시도)
+  // 초기 렌더링 (1회성 rAF 트리거)
+  let rafId: number | null = null
   function initialRender() {
+    rafId = null
     onScroll()
   }
-  requestAnimationFrame(initialRender)
+  rafId = requestAnimationFrame(initialRender)
 
   // ── API ───────────────────────────────────────────────
 
@@ -480,6 +482,10 @@ export function createVirtualScroller<T>(
     if (ro) {
       ro.disconnect()
       ro = null
+    }
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId)
+      rafId = null
     }
     // 모든 활성 행 제거
     for (const [, entry] of activeRows) {

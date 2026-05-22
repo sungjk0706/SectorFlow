@@ -1616,10 +1616,10 @@ def _apply_delayed_account_broadcast() -> None:
         return
     
     try:
-        pos = dry_run.get_positions() if is_test_mode(_settings_cache) else list(_positions)
+        pos = dry_run.get_positions() if is_test_mode(_settings_cache) else list(_positions or [])
         broadcast_account_update(
-            positions=pos,
-            snapshot=dict(_account_snapshot),
+            positions=pos or [],
+            snapshot=dict(_account_snapshot or {}),
             reason=reason,
         )
     except Exception as e:

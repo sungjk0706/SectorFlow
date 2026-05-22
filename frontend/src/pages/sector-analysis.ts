@@ -159,7 +159,6 @@ function updateSliderUI(): void {
 
 function syncFromSettings(s: AppSettings): void {
   if (saving || Object.keys(pendingSettings).length > 0) return
-  if (dualSlider && dualSlider.isInteracting) return
   for (const k of NUM_KEYS) currentVals[k] = Number((s as Record<string, unknown>)[k]) || 0
   const w = s.sector_weights || {}
   const tradeAmtVal = w.total_trade_amount !== undefined ? Number(w.total_trade_amount) : 0.5
