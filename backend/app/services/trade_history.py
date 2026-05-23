@@ -353,14 +353,10 @@ def record_sell(
     """
     _ensure_loaded()
     now = datetime.now()
-    # 안전장치: avg_buy_price가 0이면 매수 이력에서 역산
+    # 안전장치: avg_buy_price가 0이면 유령 데이터 혼입 방지를 위해 실현손익 계산 건너뜀
     if avg_buy_price <= 0:
-        avg_buy_price = _calc_avg_buy_price(stk_cd)
-        if avg_buy_price > 0:
-            logger.info(
-                "[체결이력] avg_buy_price 역산 -- %s → %s",
-                stk_cd, f"{avg_buy_price:,}",
-            )
+        logger.warning("[체결이력] 외부에서 전달된 평균매입가(avg_buy_price)가 0 이하입니다. 유령 데이터 혼입 방지를 위해 실현손익 계산을 건너뜁니다.")
+        # realized_pnl 및 pnl_rate를 0으로 처리 (이후 코드에서 avg_buy_price > 0 체크로 안전하게 처리됨)
     total_amt = price * qty
     # 테스트모드: 수수료 0.015%, 세금 0.20%
     fee = round(total_amt * 0.00015) if trade_mode == "test" else 0
