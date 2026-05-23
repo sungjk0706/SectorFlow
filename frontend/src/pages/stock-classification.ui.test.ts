@@ -1,7 +1,7 @@
-// frontend/src/pages/sector-custom.ui.test.ts
-// sector-custom.ui.ts 테스트
+// frontend/src/pages/stock-classification.ui.test.ts
+// stock-classification.ui.ts 테스트
 
-import { renderSectorCustomUi, updateSectorCustomUi, type SectorCustomUiProps } from './sector-custom.ui'
+import { renderStockClassificationUi, updateStockClassificationUi, type StockClassificationUiProps } from './stock-classification.ui'
 
 /* ── 테스트 유틸리티 ── */
 
@@ -23,13 +23,13 @@ function createMockAllStocks(): Map<string, { code: string; name: string; sector
 
 /* ── 테스트 케이스 ── */
 
-export function testSectorCustomUi(): void {
-  console.log('[sector-custom.ui.test] 테스트 시작')
+export function testStockClassificationUi(): void {
+  console.log('[stock-classification.ui.test] 테스트 시작')
 
   const tripleHeader = createMockContainer()
   const tripleLeft = createMockContainer()
 
-  const mockProps: SectorCustomUiProps = {
+  const mockProps: StockClassificationUiProps = {
     editWindowOpen: true,
     sectors: { '반도체': '반도체' },
     stockMoves: {},
@@ -44,49 +44,49 @@ export function testSectorCustomUi(): void {
   }
 
   // 렌더링 테스트
-  renderSectorCustomUi(tripleHeader, tripleLeft, mockProps)
-  console.log('[sector-custom.ui.test] 렌더링 완료')
+  renderStockClassificationUi(tripleHeader, tripleLeft, mockProps)
+  console.log('[stock-classification.ui.test] 렌더링 완료')
 
   // tripleHeader 검증
   if (tripleHeader.querySelector('h4')?.textContent === '업종분류') {
-    console.log('[sector-custom.ui.test] ✓ tripleHeader 타이틀 검증 성공')
+    console.log('[stock-classification.ui.test] ✓ tripleHeader 타이틀 검증 성공')
   } else {
-    console.error('[sector-custom.ui.test] ✗ tripleHeader 타이틀 검증 실패')
+    console.error('[stock-classification.ui.test] ✗ tripleHeader 타이틀 검증 실패')
   }
 
   // tripleLeft 검증
   if (tripleLeft.querySelector('.sf-card-title')?.textContent?.includes('업종 관리')) {
-    console.log('[sector-custom.ui.test] ✓ 업종 관리 카드 타이틀 검증 성공')
+    console.log('[stock-classification.ui.test] ✓ 업종 관리 카드 타이틀 검증 성공')
   } else {
-    console.error('[sector-custom.ui.test] ✗ 업종 관리 카드 타이틀 검증 실패')
+    console.error('[stock-classification.ui.test] ✗ 업종 관리 카드 타이틀 검증 실패')
   }
 
   // 업종 테이블 검증
   const table = tripleLeft.querySelector('table')
   if (table) {
-    console.log('[sector-custom.ui.test] ✓ 업종 테이블 렌더링 성공')
+    console.log('[stock-classification.ui.test] ✓ 업종 테이블 렌더링 성공')
     const rows = table.querySelectorAll('tbody tr')
     if (rows.length === 4) {
-      console.log('[sector-custom.ui.test] ✓ 업종 행 수 검증 성공 (4개)')
+      console.log('[stock-classification.ui.test] ✓ 업종 행 수 검증 성공 (4개)')
     } else {
-      console.error(`[sector-custom.ui.test] ✗ 업종 행 수 검증 실패 (기대: 4, 실제: ${rows.length})`)
+      console.error(`[stock-classification.ui.test] ✗ 업종 행 수 검증 실패 (기대: 4, 실제: ${rows.length})`)
     }
   } else {
-    console.error('[sector-custom.ui.test] ✗ 업종 테이블 렌더링 실패')
+    console.error('[stock-classification.ui.test] ✗ 업종 테이블 렌더링 실패')
   }
 
   // Props 갱신 테스트
   mockProps.editWindowOpen = false
-  updateSectorCustomUi(mockProps)
-  console.log('[sector-custom.ui.test] Props 갱신 완료')
+  updateStockClassificationUi(mockProps)
+  console.log('[stock-classification.ui.test] Props 갱신 완료')
 
   // 정리
   document.body.removeChild(tripleHeader)
   document.body.removeChild(tripleLeft)
-  console.log('[sector-custom.ui.test] 테스트 완료')
+  console.log('[stock-classification.ui.test] 테스트 완료')
 }
 
 // 자동 실행 (브라우저 환경)
 if (typeof window !== 'undefined') {
-  (window as any).testSectorCustomUi = testSectorCustomUi
+  (window as any).testStockClassificationUi = testStockClassificationUi
 }

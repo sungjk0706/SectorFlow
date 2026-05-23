@@ -1,7 +1,7 @@
-// frontend/src/pages/sector-analysis.ui.test.ts
-// sector-analysis.ui.ts 목업 데이터 렌더링 검증
+// frontend/src/pages/sector-ranking.ui.test.ts
+// sector-ranking.ui.ts 목업 데이터 렌더링 검증
 
-import { createSectorAnalysisCard, type SectorAnalysisProps, type SectorScoreRow } from './sector-analysis.ui'
+import { createSectorAnalysisCard, type SectorAnalysisProps, type SectorScoreRow } from './sector-ranking.ui'
 
 // 목업 데이터
 const mockSectorScores: SectorScoreRow[] = [
@@ -33,7 +33,7 @@ const mockProps: SectorAnalysisProps = {
 
 // 테스트 실행
 function testSectorAnalysisCard(): void {
-  console.log('[테스트] sector-analysis.ui.ts 렌더링 검증 시작')
+  console.log('[테스트] sector-ranking.ui.ts 렌더링 검증 시작')
   
   // 컨테이너 생성
   const container = document.createElement('div')
@@ -60,7 +60,7 @@ function testSectorAnalysisCard(): void {
   container.remove()
   console.log('[테스트] 컴포넌트 파괴 완료')
   
-  console.log('[테스트] sector-analysis.ui.ts 렌더링 검증 완료')
+  console.log('[테스트] sector-ranking.ui.ts 렌더링 검증 완료')
 }
 
 // 브라우저 환경에서 실행

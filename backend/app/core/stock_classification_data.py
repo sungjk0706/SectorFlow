@@ -2,7 +2,7 @@
 """
 업종분류 커스텀 데이터 관리 모듈.
 
-사용자가 커스텀한 업종 분류 데이터를 `sector_custom.json`에 별도 저장/관리.
+사용자가 커스텀한 업종 분류 데이터를 `stock_classification.json`에 별도 저장/관리.
 Coalesce_Save 패턴(threading.Lock + snapshot copy + executor thread)으로
 메인 asyncio 이벤트 루프 블로킹 없이 파일 저장.
 
@@ -27,7 +27,7 @@ from pathlib import Path
 _log = logging.getLogger(__name__)
 
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-_CUSTOM_FILE = _DATA_DIR / "sector_custom.json"
+_CUSTOM_FILE = _DATA_DIR / "stock_classification.json"
 
 _lock = threading.Lock()
 
@@ -38,7 +38,7 @@ _save_running: bool = False
 
 # ── 데이터 모델 ──────────────────────────────────────────────────────
 @dataclass
-class SectorCustomData:
+class StockClassificationData:
     """사용자 커스텀 업종 분류 데이터."""
     sectors: dict[str, str] = field(default_factory=dict)
     """업종명 변경 매핑 {원래이름: 새이름}"""
@@ -49,14 +49,14 @@ class SectorCustomData:
 
 
 # ── 인메모리 캐시 ────────────────────────────────────────────────────
-_custom_data: SectorCustomData = SectorCustomData()
+_custom_data: StockClassificationData = StockClassificationData()
 _loaded: bool = False
 
 
 # ── 직렬화 / 역직렬화 ────────────────────────────────────────────────
 
-def _serialize(data: SectorCustomData) -> dict:
-    """SectorCustomData → JSON-serializable dict."""
+def _serialize(data: StockClassificationData) -> dict:
+    """StockClassificationData → JSON-serializable dict."""
     return {
         "sectors": dict(data.sectors),
         "stock_moves": dict(data.stock_moves),
@@ -64,14 +64,14 @@ def _serialize(data: SectorCustomData) -> dict:
     }
 
 
-def _deserialize(raw: dict) -> SectorCustomData:
-    """dict → SectorCustomData. 스키마 검증 포함.
+def _deserialize(raw: dict) -> StockClassificationData:
+    """dict → StockClassificationData. 스키마 검증 포함.
 
     필수 키 누락 또는 타입 오류 시 경고 로그 + 빈 데이터 폴백.
     """
     if not isinstance(raw, dict):
         _log.warning("[커스텀업종] 스키마 오류: 최상위가 dict가 아님 → 빈 데이터 폴백")
-        return SectorCustomData()
+        return StockClassificationData()
 
     sectors = raw.get("sectors")
     stock_moves = raw.get("stock_moves")
@@ -87,34 +87,34 @@ def _deserialize(raw: dict) -> SectorCustomData:
         missing.append("deleted_sectors")
     if missing:
         _log.warning("[커스텀업종] 스키마 오류: 필수 키 누락 %s → 빈 데이터 폴백", missing)
-        return SectorCustomData()
+        return StockClassificationData()
 
     # 타입 검증
     if not isinstance(sectors, dict):
         _log.warning("[커스텀업종] 스키마 오류: sectors가 dict가 아님 → 빈 데이터 폴백")
-        return SectorCustomData()
+        return StockClassificationData()
     if not isinstance(stock_moves, dict):
         _log.warning("[커스텀업종] 스키마 오류: stock_moves가 dict가 아님 → 빈 데이터 폴백")
-        return SectorCustomData()
+        return StockClassificationData()
     if not isinstance(deleted_sectors, list):
         _log.warning("[커스텀업종] 스키마 오류: deleted_sectors가 list가 아님 → 빈 데이터 폴백")
-        return SectorCustomData()
+        return StockClassificationData()
 
     # 값 타입 검증 (dict 내부 key/value가 str인지)
     for k, v in sectors.items():
         if not isinstance(k, str) or not isinstance(v, str):
             _log.warning("[커스텀업종] 스키마 오류: sectors 내부 타입 오류 → 빈 데이터 폴백")
-            return SectorCustomData()
+            return StockClassificationData()
     for k, v in stock_moves.items():
         if not isinstance(k, str) or not isinstance(v, str):
             _log.warning("[커스텀업종] 스키마 오류: stock_moves 내부 타입 오류 → 빈 데이터 폴백")
-            return SectorCustomData()
+            return StockClassificationData()
     for item in deleted_sectors:
         if not isinstance(item, str):
             _log.warning("[커스텀업종] 스키마 오류: deleted_sectors 내부 타입 오류 → 빈 데이터 폴백")
-            return SectorCustomData()
+            return StockClassificationData()
 
-    return SectorCustomData(
+    return StockClassificationData(
         sectors=dict(sectors),
         stock_moves=dict(stock_moves),
         deleted_sectors=list(deleted_sectors),
@@ -123,20 +123,20 @@ def _deserialize(raw: dict) -> SectorCustomData:
 
 # ── 파일 I/O ─────────────────────────────────────────────────────────
 
-def _load_from_file() -> SectorCustomData:
+def _load_from_file() -> StockClassificationData:
     """JSON 파일에서 커스텀 데이터 로드. 파일 없음/파싱 실패 시 빈 데이터 반환."""
     if not _CUSTOM_FILE.exists():
-        return SectorCustomData()
+        return StockClassificationData()
     try:
         with open(_CUSTOM_FILE, "r", encoding="utf-8") as f:
             raw = json.load(f)
         return _deserialize(raw)
     except json.JSONDecodeError as e:
         _log.warning("[커스텀업종] JSON 파싱 실패: %s → 빈 데이터 폴백", e)
-        return SectorCustomData()
+        return StockClassificationData()
     except Exception as e:
         _log.warning("[커스텀업종] 파일 로드 실패: %s → 빈 데이터 폴백", e)
-        return SectorCustomData()
+        return StockClassificationData()
 
 
 def _save_to_file(data_dict: dict) -> None:
@@ -194,7 +194,7 @@ def _coalesced_save() -> None:
 
 # ── 공개 API ─────────────────────────────────────────────────────────
 
-def load_custom_data() -> SectorCustomData:
+def load_custom_data() -> StockClassificationData:
     """커스텀 데이터 로드 (캐시 우선). 스키마 검증 포함."""
     global _custom_data, _loaded
     with _lock:
@@ -208,7 +208,7 @@ def load_custom_data() -> SectorCustomData:
         return copy.deepcopy(_custom_data)
 
 
-def load_custom_data_readonly() -> SectorCustomData:
+def load_custom_data_readonly() -> StockClassificationData:
     """커스텀 데이터 읽기 전용 참조 반환 (deepcopy 없음).
 
     반환된 객체를 절대 수정하지 말 것. 읽기 전용 조회(get_merged_sector 등)에서만 사용.
@@ -224,7 +224,7 @@ def load_custom_data_readonly() -> SectorCustomData:
         return _custom_data
 
 
-def save_custom_data(data: SectorCustomData) -> None:
+def save_custom_data(data: StockClassificationData) -> None:
     """커스텀 데이터 저장 (Coalesce_Save 패턴).
 
     1. _lock 획득 → 인메모리 갱신 + snapshot 복사
@@ -247,7 +247,7 @@ def _get_all_known_sectors() -> set[str]:
     중복 검증용. _lock 내부에서 호출하지 않음.
     """
     with _lock:
-        data = copy.deepcopy(_custom_data) if _loaded else SectorCustomData()
+        data = copy.deepcopy(_custom_data) if _loaded else StockClassificationData()
 
     result: set[str] = set()
     result.update(data.sectors.keys())
@@ -262,14 +262,14 @@ def _get_all_known_sectors() -> set[str]:
 
 # ── 비즈니스 로직 ────────────────────────────────────────────────────
 
-def rename_sector(old_name: str, new_name: str) -> SectorCustomData:
+def rename_sector(old_name: str, new_name: str) -> StockClassificationData:
     """업종명 변경. old_name → new_name 매핑을 sectors에 기록.
 
     검증:
     - new_name이 이미 존재하는 업종명이면 ValueError
     - old_name이 deleted_sectors에 있으면 ValueError
 
-    Returns: 변경 후 SectorCustomData (deepcopy)
+    Returns: 변경 후 StockClassificationData (deepcopy)
     """
     new_name = new_name.strip()
     old_name = old_name.strip()
@@ -314,7 +314,7 @@ def rename_sector(old_name: str, new_name: str) -> SectorCustomData:
     return load_custom_data()
 
 
-def create_sector(name: str) -> SectorCustomData:
+def create_sector(name: str) -> StockClassificationData:
     """신규 업종 등록.
 
     검증:
@@ -322,7 +322,7 @@ def create_sector(name: str) -> SectorCustomData:
 
     sectors에 {name: name} 형태로 기록 (자기 자신 매핑 = 신규 생성 마커).
 
-    Returns: 변경 후 SectorCustomData (deepcopy)
+    Returns: 변경 후 StockClassificationData (deepcopy)
     """
     name = name.strip()
     if not name:
@@ -347,13 +347,13 @@ def create_sector(name: str) -> SectorCustomData:
     return load_custom_data()
 
 
-def delete_sector(name: str) -> SectorCustomData:
+def delete_sector(name: str) -> StockClassificationData:
     """업종 삭제. deleted_sectors에 추가.
 
     검증:
     - 이미 삭제된 업종이면 ValueError
 
-    Returns: 변경 후 SectorCustomData (deepcopy)
+    Returns: 변경 후 StockClassificationData (deepcopy)
     """
     name = name.strip()
     if not name:
@@ -376,13 +376,13 @@ def delete_sector(name: str) -> SectorCustomData:
     return load_custom_data()
 
 
-def move_stock(stock_code: str, target_sector: str) -> SectorCustomData:
+def move_stock(stock_code: str, target_sector: str) -> StockClassificationData:
     """종목을 다른 업종으로 이동. stock_moves에 기록.
 
     검증:
     - target_sector가 deleted_sectors에 있으면 ValueError
 
-    Returns: 변경 후 SectorCustomData (deepcopy)
+    Returns: 변경 후 StockClassificationData (deepcopy)
     """
     stock_code = stock_code.strip()
     target_sector = target_sector.strip()

@@ -11,7 +11,7 @@ from typing import Optional
 from fastapi import Request
 
 VALID_PAGE_CONTEXTS = frozenset({
-    "sector_analysis",
+    "sector_ranking",
     "realtime_quote",
     "trading",
     "account",

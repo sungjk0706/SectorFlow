@@ -5,7 +5,6 @@
 
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
-import { createGlobalWsBadge } from '../settings'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardTitle } from '../components/common/card-title'
 import { rateColor, fmtComma, fmtRate, createCodeCell, createStockNameColumn, createNumberCell, createPriceCell } from '../components/common/ui-styles'
@@ -78,7 +77,6 @@ const COLUMNS: ColumnDef<Position>[] = [
 
 let dataTable: DataTableApi<Position> | null = null
 let unsubStore: (() => void) | null = null
-let wsBadge: HTMLElement | null = null
 let _rafId: number | null = null
 let onRealDataTick: ((e: Event) => void) | null = null
 let _mounted = false
@@ -94,8 +92,6 @@ function mount(container: HTMLElement): void {
   Object.assign(headerRow.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' })
   headerRow.appendChild(createCardTitle('보유종목'))
 
-  wsBadge = createGlobalWsBadge()
-  headerRow.appendChild(wsBadge)
   root.appendChild(headerRow)
 
   const scrollContainer = document.createElement('div')
@@ -178,7 +174,6 @@ function unmount(): void {
   if (unsubStore) { unsubStore(); unsubStore = null }
   if (_rafId !== null) { cancelAnimationFrame(_rafId); _rafId = null }
   if (dataTable) { dataTable.destroy(); dataTable = null }
-  wsBadge = null
 }
 
 export default { mount, unmount }

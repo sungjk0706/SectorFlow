@@ -40,12 +40,12 @@ import type {
   SnapshotHistory,
   BuyTarget,
   SectorStock,
-  SectorCustomChangedEvent,
+  StockClassificationChangedEvent,
   RealDataEvent,
   SectorScoreRow,
   SectorScoresEvent,
 } from './types'
-import { applySectorCustomChanged } from './stores/sectorCustomStore'
+import { applyStockClassificationChanged } from './stores/stockClassificationStore'
 
 /**
  * WS 18개+ 이벤트 타입을 Store 액션에 바인딩한다.
@@ -196,9 +196,9 @@ export function bindWSToStore(
     applyTestDataResetCompleted()
   })
 
-  /* ── sector-custom-changed는 모든 채널에서 수신 가능하도록 prices 채널에 유지 ── */
-  pricesClient.onEvent('sector-custom-changed', (data) => {
-    applySectorCustomChanged(data as SectorCustomChangedEvent)
+  /* ── stock-classification-changed는 모든 채널에서 수신 가능하도록 prices 채널에 유지 ── */
+  pricesClient.onEvent('stock-classification-changed', (data) => {
+    applyStockClassificationChanged(data as StockClassificationChangedEvent)
   })
 
   pricesClient.onEvent('sell-history-append', (data) => {

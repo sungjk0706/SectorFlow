@@ -6,7 +6,6 @@ import { hotStore } from '../stores/hotStore'
 import { uiStore, setSelectedSector } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createStockNameColumn, makeSeqColumn, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, makeAmountColumn, makeAvgAmountColumn, FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
-import { createWsStatusBadge } from '../components/common/setting-row'
 import { createCardTitleWithContent } from '../components/common/card-title'
 import { createSearchInput } from '../components/common/search-input'
 import type { SectorStock, SectorScoreRow } from '../types'
@@ -218,7 +217,6 @@ class SectorStockTable extends HTMLElement {
   private warningDiv: HTMLElement | null = null
   private emptyDiv: HTMLElement | null = null
   private scrollContainer: HTMLElement | null = null
-  private wsBadge: ReturnType<typeof createWsStatusBadge> | null = null
   private _rafId: number | null = null
   private _mounted = false
 
@@ -291,11 +289,6 @@ class SectorStockTable extends HTMLElement {
       }
     }
 
-    // WS 상태 배지
-    if (this.wsBadge) {
-      const sub = uiState.wsSubscribeStatus?.quote_subscribed ?? false
-      this.wsBadge.update(sub, 'kiwoom')
-    }
 
     // 빈 상태 / 스크롤 영역 표시 토글
     const hasRows = rows.length > 0
@@ -310,7 +303,7 @@ class SectorStockTable extends HTMLElement {
     this.searchTerm = ''
     this.currentMatchedCodes = null
     this.rowCache = new Map()
-    notifyPageActive('sector-analysis')
+    notifyPageActive('sector-ranking')
 
     this.rootEl = document.createElement('div')
     Object.assign(this.rootEl.style, { display: 'flex', flexDirection: 'column', height: '100%', contain: 'content' })
@@ -402,11 +395,7 @@ class SectorStockTable extends HTMLElement {
     })
     searchRow.appendChild(this.searchInput.el)
 
-    const wsWrap = document.createElement('span')
-    wsWrap.style.marginLeft = 'auto'
-    this.wsBadge = createWsStatusBadge({ subscribed: false, broker: 'kiwoom' })
-    wsWrap.appendChild(this.wsBadge.el)
-    searchRow.appendChild(wsWrap)
+
     this.rootEl.appendChild(searchRow)
 
     // 5. 빈 상태 메시지
@@ -511,7 +500,7 @@ class SectorStockTable extends HTMLElement {
 
   disconnectedCallback(): void {
     this._mounted = false
-    notifyPageInactive('sector-analysis')
+    notifyPageInactive('sector-ranking')
     if (this.onRealDataTick) {
       window.removeEventListener('real-data-tick', this.onRealDataTick)
       this.onRealDataTick = null
@@ -531,7 +520,6 @@ class SectorStockTable extends HTMLElement {
     this.emptyDiv = null
     this.scrollContainer = null
     this.searchInput = null
-    this.wsBadge = null
     this.rowCache.clear()
     this.rowCache = new Map()
     this.currentMatchedCodes = null

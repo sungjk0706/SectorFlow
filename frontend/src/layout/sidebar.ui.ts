@@ -5,11 +5,11 @@
 import { FONT_SIZE } from '../components/common/ui-styles'
 
 const MENU = [
-  { path: '#/sector-analysis', label: '업종분석', icon: '📊' },
+  { path: '#/sector-ranking', label: '업종순위', icon: '📊' },
   { path: '#/buy-settings', label: '매수설정', icon: '💰' },
   { path: '#/sell-settings', label: '매도설정', icon: '📉' },
   { path: '#/profit-overview', label: '수익현황', icon: '📈' },
-  { path: '#/sector-custom', label: '업종분류', icon: '🏷️', separator: true },
+  { path: '#/stock-classification', label: '업종분류', icon: '🏷️', separator: true },
   { path: '#/general-settings', label: '일반설정', icon: '⚙️' },
 ] as const
 
