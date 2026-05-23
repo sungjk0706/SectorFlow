@@ -35,7 +35,7 @@ class StockScore:
     sector: str
     change_rate: float          # 등락률 (%)
     trade_amount: int           # 당일 거래대금 (원)
-    avg_amt_5d: int             # 5일 평균 거래대금 (원, ka10081 백만원×1_000_000 변환 후)
+    avg_amt_5d: int             # 5일 평균 거래대금 (억 단위)
     ratio_5d_pct: float         # 5D거래대금비율 (%) = trade_amount / avg_amt_5d * 100
     strength: float             # 체결강도 (%, -1 = 미수신)
     cur_price: int              # 현재가
@@ -312,7 +312,7 @@ def compute_sector_scores(
     avg_amt_5d: dict[str, int],
     strengths: dict[str, str],
     stock_details: dict[str, dict],        # _pending_stock_details
-    min_trade_amt_won: float = 0.0,                # 1차 필터: 최소 거래대금 (원 단위, 0=미적용)
+    min_avg_amt_eok: float = 0.0,                  # 1차 필터: 5일평균 최소 거래대금 (억 단위, 0=미적용)
     sector_weights: dict[str, float] | None = None,  # 가중치 기반 점수 계산용
     trim_trade_amt_pct: float = 0.0,       # 업종 내 종목 거래대금 트리밍 비율 (%)
     trim_change_rate_pct: float = 0.0,     # 업종 내 종목 등락률 트리밍 비율 (%)
@@ -376,9 +376,9 @@ def compute_sector_scores(
             if ta <= 0:
                 ta = int(detail.get("acc_trde_prica", 0) or 0)
 
-            # 5일 평균 거래대금 (ka10081 백만원 단위 -> 원 단위)
-            avg5d_raw = int(avg_amt_5d.get(code, 0) or 0)
-            avg5d_won = avg5d_raw * 1_000_000
+            # 5일 평균 거래대금 (억 단위)
+            avg5d_eok = int(avg_amt_5d.get(code, 0) or 0)
+            avg5d_won = avg5d_eok * 100_000_000
 
             # 5D거래대금비율
             ratio_5d = round(ta / avg5d_won * 100.0, 1) if avg5d_won > 0 and ta > 0 else 0.0
@@ -404,7 +404,7 @@ def compute_sector_scores(
                 sector=sector,
                 change_rate=change_rate,
                 trade_amount=ta,
-                avg_amt_5d=avg5d_won,
+                avg_amt_5d=avg5d_eok,
                 ratio_5d_pct=ratio_5d,
                 strength=strength_val,
                 cur_price=cur_price,
@@ -417,8 +417,8 @@ def compute_sector_scores(
             continue
 
         # ── 5일평균거래대금 필터: 업종강도 계산 + 매수후보 모두 적용 ─────────
-        if min_trade_amt_won > 0:
-            filtered_stocks = [s for s in stocks if s.avg_amt_5d >= min_trade_amt_won]
+        if min_avg_amt_eok > 0:
+            filtered_stocks = [s for s in stocks if s.avg_amt_5d >= min_avg_amt_eok]
         else:
             filtered_stocks = stocks
 
@@ -723,7 +723,7 @@ def compute_full_sector_summary(
     block_rise_pct: float = 7.0,
     block_fall_pct: float = 7.0,
     min_strength: float = 0.0,
-    min_trade_amt_won: float = 0.0,
+    min_avg_amt_eok: float = 0.0,
     index_guard_kospi_on: bool = False,
     index_guard_kosdaq_on: bool = False,
     index_kospi_drop: float = 2.0,
@@ -755,7 +755,7 @@ def compute_full_sector_summary(
         avg_amt_5d=avg_amt_5d,
         strengths=strengths,
         stock_details=stock_details,
-        min_trade_amt_won=min_trade_amt_won,
+        min_avg_amt_eok=min_avg_amt_eok,
         sector_weights=sector_weights,
         trim_trade_amt_pct=trim_trade_amt_pct,
         trim_change_rate_pct=trim_change_rate_pct,

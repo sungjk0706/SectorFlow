@@ -171,8 +171,6 @@ app.include_router(stock_classification_router)
 from backend.app.web.routes.settlement import router as settlement_router
 app.include_router(settlement_router)
 
-from backend.app.web.routes.metrics import router as metrics_router
-app.include_router(metrics_router)
 
 
 # --- 전역 예외 핸들러 ---

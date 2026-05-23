@@ -30,6 +30,7 @@ ELIGIBLE_STOCKS_CACHE_PATH = _CACHE_DIR / "eligible_stocks_cache.json"
 # ── 메모리 캐시 ──────────────────────────────────────────────────────────
 # {종목코드(6자리): ""} — 키(종목코드)만 의미 있음, 값은 항상 빈 문자열
 _eligible_stock_codes: dict[str, str] = {}
+_eligible_cache_date: str = ""  # 캐시 날짜 (만료 확인용)
 
 
 # ── 캐시 저장/로드 ───────────────────────────────────────────────────────
@@ -39,8 +40,17 @@ _eligible_stock_codes: dict[str, str] = {}
 def load_eligible_stocks_cache() -> Optional[dict[str, str]]:
     """
     캐시 파일에서 적격 종목코드 맵 로드.
+    메모리 캐시가 유효하면 즉시 반환, 아니면 파일에서 로드.
     캐시가 당일 것이면 반환, 아니면 None (갱신 필요).
     """
+    global _eligible_stock_codes, _eligible_cache_date
+    
+    # 메모리 캐시 확인
+    current_date = current_trading_date_str()
+    if _eligible_cache_date == current_date:
+        return dict(_eligible_stock_codes)
+    
+    # 파일에서 로드
     try:
         if not ELIGIBLE_STOCKS_CACHE_PATH.exists():
             return None
@@ -52,6 +62,10 @@ def load_eligible_stocks_cache() -> Optional[dict[str, str]]:
         data = raw.get("data")
         if not isinstance(data, dict) or not data:
             return None
+        
+        # 메모리 캐시 업데이트
+        _eligible_stock_codes = dict(data)
+        _eligible_cache_date = cached_date
         _log.info("[매매적격종목] 저장데이터 로드 -- %d종목", len(data))
         return data
     except Exception as e:
@@ -61,6 +75,7 @@ def load_eligible_stocks_cache() -> Optional[dict[str, str]]:
 
 def save_eligible_stocks_cache(data: dict[str, str]) -> None:
     """적격 종목코드 맵을 JSON 캐시로 저장."""
+    global _eligible_stock_codes, _eligible_cache_date
     try:
         _CACHE_DIR.mkdir(parents=True, exist_ok=True)
         payload = {"date": current_trading_date_str(), "data": data}
@@ -68,6 +83,9 @@ def save_eligible_stocks_cache(data: dict[str, str]) -> None:
             json.dumps(payload, ensure_ascii=False, indent=1),
             encoding="utf-8",
         )
+        # 메모리 캐시 업데이트
+        _eligible_stock_codes = dict(data)
+        _eligible_cache_date = current_trading_date_str()
         _log.info("[매매적격종목] 저장완료 -- %d종목 (%s)", len(data), ELIGIBLE_STOCKS_CACHE_PATH.name)
     except Exception as e:
         _log.warning("[매매적격종목] 저장실패: %s", e)
@@ -76,14 +94,37 @@ def save_eligible_stocks_cache(data: dict[str, str]) -> None:
 # ── ka10099 종목→업종명 맵 구축 ──────────────────────────────────────────
 
 
-async def fetch_ka10099_eligible_stocks(api: "KiwoomRestAPI") -> dict[str, str]:
+async def fetch_ka10099_eligible_stocks(api) -> dict[str, str]:
     """
-    ka10099 — 시장별 전체 종목 리스트에서 적격 종목코드 수집 + 부적격 필터.
-    코스피(mrkt_tp='0') + 코스닥(mrkt_tp='10') 각각 호출.
+    브로커별 전체 종목 리스트에서 적격 종목코드 수집 + 부적격 필터.
+    LS증권(LsRestAPI)과 키움증권(KiwoomRestAPI) 각각의 규격에 맞춰 조회 및 수집합니다.
     반환: {6자리 종목코드: ""} — 값은 빈 문자열, 키(종목코드)만 의미 있음.
-    업종명은 stock_classification.json이 유일한 출처이므로 여기서 파싱하지 않음.
-    실패 시 빈 딕셔너리.
     """
+    # ── LS증권(LsRestAPI) 대응 ──
+    if api.__class__.__name__ == "LsRestAPI" or hasattr(api, "get_stocks"):
+        if not await api.ensure_token():
+            _log.warning("[매매적격종목] LS증권 토큰 확보 실패 -- 조회 생략")
+            return {}
+        
+        res = await api.get_stocks(gubun="0")
+        if not res or res.get("rsp_cd") not in ("00000", "00040"):
+            _log.warning("[매매적격종목] LS증권 종목조회 실패 (t8436)")
+            return {}
+            
+        result: dict[str, str] = {}
+        items = res.get("t8436OutBlock", [])
+        
+        for item in items:
+            code = item.get("shcode", "").strip()
+            if not code:
+                continue
+            c6 = code.zfill(6)[-6:]
+            result[c6] = ""
+            
+        _log.info("[매매적격종목] LS증권 적격 종목 수집 완료 -- %d종목", len(result))
+        return result
+
+    # ── 키움증권(KiwoomRestAPI) 대응 ──
     if not api._ensure_token():
         _log.warning("[매매적격종목] 토큰 없음 -- ka10099 조회 생략")
         return {}

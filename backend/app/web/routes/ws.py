@@ -100,6 +100,38 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
                 websocket, "buy-targets-update", {"_v": 1, "buy_targets": targets}
             )
             logger.info("[연결] 매수후보 화면전송 -- %d건", len(targets))
+
+        # stock-classification 초기 데이터 전송
+        from backend.app.core.stock_classification_data import load_custom_data
+        from backend.app.core.sector_mapping import get_merged_all_sectors
+
+        custom = load_custom_data()
+        merged = get_merged_all_sectors()
+        no_sector_count = 0
+        filter_summary = ""
+        try:
+            import backend.app.services.engine_service as es
+            stocks = es.get_all_sector_stocks()
+            if "업종명없음" in merged:
+                no_sector_count = sum(1 for s in stocks if s["sector"] == "업종명없음")
+            filter_summary = getattr(es, "_latest_filter_summary", "")
+        except Exception:
+            pass
+
+        stock_classification_payload = {
+            "_v": 1,
+            "custom_data": {
+                "sectors": dict(custom.sectors),
+                "stock_moves": dict(custom.stock_moves),
+                "deleted_sectors": list(custom.deleted_sectors),
+            },
+            "merged_sectors": merged,
+            "no_sector_count": no_sector_count,
+            "filter_summary": filter_summary,
+            "all_stocks": stocks,
+        }
+        await ws_manager.send_to(websocket, "stock-classification-changed", stock_classification_payload)
+        logger.info("[연결] 업종분류 화면전송")
     except Exception as e:
         logger.error("[연결] 초기 스냅샷 전송 실패: %s", e, exc_info=True)
 

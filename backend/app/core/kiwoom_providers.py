@@ -263,7 +263,7 @@ class KiwoomSectorProvider(SectorProvider):
     ) -> Optional[dict]:
         if self._rest_api is None:
             return None
-        return self._rest_api.fetch_ka10086_daily_price(stk_cd, qry_dt)
+        return self._rest_api.fetch_ka10081_daily_price(stk_cd, qry_dt)
 
     def fetch_sector_all_daily(
         self,
@@ -275,7 +275,7 @@ class KiwoomSectorProvider(SectorProvider):
     ) -> dict[str, dict]:
         if self._rest_api is None:
             return {}
-        return self._rest_api.fetch_ka10086_sector_all(
+        return self._rest_api.fetch_ka10081_sector_all(
             krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress,
             resume_codes=resume_codes
         )

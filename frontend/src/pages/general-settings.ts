@@ -6,13 +6,13 @@ import { uiStore, applyTestDataResetCompleted } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingsManager, extractDirty, MASKED_FIELDS, type SettingsManager } from '../settings'
 import { createToggleBtn, createMoneyInput, TEXT_INPUT_WIDTH } from '../components/common/setting-row'
-import { toastResult, showSaveToast } from '../components/common/save-toast'
+import { toastResult, showSaveToast } from '../components/common/toast'
 import { createDataTable, type ColumnDef } from '../components/common/data-table'
 import { api } from '../api/client'
 import { parseHM, sectionTitle, createTimeSlot, updateTimeSlotDisplay } from '../components/common/settings-common'
 import { createTimePairInput, type TimePairInputHandle } from '../components/common/time-pair-input'
 import { FONT_SIZE, FONT_WEIGHT, createDarkInput } from '../components/common/ui-styles'
-import { showPopup } from '../components/common/popup'
+import { showConfirmDialog, showAlertDialog, showCustomDialog } from '../components/common/dialog'
 import type { AppSettings } from '../types'
 
 type TabId = 'auto-trade' | 'telegram' | 'account-manage' | 'api-settings'
@@ -325,11 +325,15 @@ function handleMasterToggle(): void {
     const p = document.createElement('p')
     Object.assign(p.style, { margin: '0', fontSize: FONT_SIZE.label, color: '#333' })
     p.textContent = '오늘은 KRX 비거래일입니다. 자동매매가 실행되지 않습니다.'
-    showPopup('거래일이 아닙니다', p, [
-      { label: '확인', onClick: () => {
-        settingsMgr?.saveSection({ time_scheduler_on: true, holiday_guard_on: false }).then(r => toastResult(r))
-      }, variant: 'primary' },
-    ])
+    showCustomDialog({
+      title: '거래일이 아닙니다',
+      content: p,
+      actions: [
+        { label: '확인', onClick: () => {
+          settingsMgr?.saveSection({ time_scheduler_on: true, holiday_guard_on: false }).then(r => toastResult(r))
+        }, variant: 'primary' },
+      ]
+    })
     return
   }
   const next = !vals.time_scheduler_on
@@ -346,11 +350,15 @@ function handleWsToggle(): void {
     const p = document.createElement('p')
     Object.assign(p.style, { margin: '0', fontSize: FONT_SIZE.label, color: '#333' })
     p.textContent = '오늘은 KRX 비거래일입니다. 자동매매가 실행되지 않습니다.'
-    showPopup('거래일이 아닙니다', p, [
-      { label: '확인', onClick: () => {
-        settingsMgr?.saveSection({ ws_subscribe_on: true, holiday_guard_on: false }).then(r => toastResult(r))
-      }, variant: 'primary' },
-    ])
+    showCustomDialog({
+      title: '거래일이 아닙니다',
+      content: p,
+      actions: [
+        { label: '확인', onClick: () => {
+          settingsMgr?.saveSection({ ws_subscribe_on: true, holiday_guard_on: false }).then(r => toastResult(r))
+        }, variant: 'primary' },
+      ]
+    })
     return
   }
   const next = !vals.ws_subscribe_on
@@ -502,15 +510,19 @@ function handleTradeMode(val: string): void {
     const msg = document.createElement('div')
     Object.assign(msg.style, { fontSize: FONT_SIZE.label, color: '#555', lineHeight: '1.6' })
     msg.innerHTML = '실전투자 모드로 전환하시겠습니까?<br><span style="color:#dc3545;font-weight:500">실제 돈으로 매매가 실행됩니다.</span>'
-    showPopup('⚠️ 실전투자 모드 전환', msg, [
-      { label: '취소', onClick: () => {} },
-      { label: '전환', onClick: async () => {
-        vals.trade_mode = 'real'
-        const res = await settingsMgr!.saveSection({ trade_mode: 'real', test_mode: false, kiwoom_mock_mode: false, mode_real: true })
-        if (!res.ok) vals.trade_mode = 'test'
-        syncTradeMode()
-      }, variant: 'danger' },
-    ])
+    showCustomDialog({
+      title: '⚠️ 실전투자 모드 전환',
+      content: msg,
+      actions: [
+        { label: '취소', onClick: () => {} },
+        { label: '전환', onClick: async () => {
+          vals.trade_mode = 'real'
+          const res = await settingsMgr!.saveSection({ trade_mode: 'real', test_mode: false, kiwoom_mock_mode: false, mode_real: true })
+          if (!res.ok) vals.trade_mode = 'test'
+          syncTradeMode()
+        }, variant: 'danger' },
+      ]
+    })
     return
   }
 
@@ -609,12 +621,19 @@ function renderTestVirtualSection(): HTMLElement {
   Object.assign(resetBtn.style, { padding: '8px 18px', borderRadius: '4px', border: '1px solid #dc3545', background: '#dc3545', color: '#fff', cursor: 'pointer', fontSize: GS.label })
   resetBtn.textContent = '🔴 테스트 데이터 전체 초기화'
   resetBtn.addEventListener('click', async () => {
-    if (!window.confirm('테스트 데이터를 전체 초기화하시겠습니까?\n가상 보유종목, 매매 이력, 투자금이 모두 초기화됩니다.')) return
+    const confirmed = await showConfirmDialog({
+      title: '테스트 데이터 초기화',
+      message: '테스트 데이터를 전체 초기화하시겠습니까?\n가상 보유종목, 매매 이력, 투자금이 모두 초기화됩니다.',
+      isDanger: true
+    })
+    if (!confirmed) return
     try {
       await api.resetTestData()
       applyTestDataResetCompleted()
       showSaveToast('saved')
-    } catch { alert('초기화 실패') }
+    } catch {
+      await showAlertDialog({ title: '오류', message: '초기화 실패' })
+    }
   })
   resetWrap.appendChild(resetBtn)
   wrap.appendChild(resetWrap)

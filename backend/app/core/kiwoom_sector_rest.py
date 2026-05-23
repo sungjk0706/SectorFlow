@@ -53,7 +53,7 @@ def _pct(v: Any) -> float:
         return 0.0
 
 
-def fetch_ka10086_daily_price(
+def fetch_ka10081_daily_and_5d_data(
     api: "KiwoomRestAPI",
     stk_cd: str,
     qry_dt: str,
@@ -62,66 +62,93 @@ def fetch_ka10086_daily_price(
     _raw_cd: str = "",  # 원본 코드 (로그용)
 ) -> Optional[dict]:
     """
-    ka10086(일별주가요청) 단건 조회.
-    장외 시간에도 전일 확정 종가·등락률·거래대금 반환.
+    ka10081(주식일봉차트조회요청) 단건 조회.
+    장외 시간 확정 종가·등락률·거래대금 및 5일치 평균/고가를 한 번에 계산 반환.
     """
     if not api._ensure_token():
         return None
 
     base = api.base_url.rstrip("/")
-    url = f"{base}/api/dostk/mrkcond"
+    url = f"{base}/api/dostk/chart"
 
     raw = str(stk_cd).strip().upper()
-    # 알파벳 코드(0082N0 등)도 그대로 사용, 변환하지 않음
-    # 키움 API는 6자리 숫자 코드와 알파벳 코드 모두 지원
     api_cd = raw
-    # SOR(KRX+NXT 합산) 데이터 조회: _AL 접미사 추가 (숫자 코드에만 적용)
-    # 알파벳 코드는 이미 SOR 데이터로 조회됨
     if raw.isdigit():
         api_cd_sor = f"{raw.zfill(6)[-6:]}_AL"
     else:
-        api_cd_sor = raw  # 알파벳 코드는 그대로 사용
-    log_cd = _raw_cd or api_cd  # 로그용 코드 (원본 우선)
+        api_cd_sor = raw
+    log_cd = _raw_cd or api_cd
 
     headers = {
         "Content-Type": "application/json;charset=UTF-8",
         "authorization": f"Bearer {api._token_info.token}",
-        "api-id": "ka10086",
+        "api-id": "ka10081",
         "cont-yn": "N",
         "next-key": "",
     }
-    body = {"stk_cd": api_cd_sor, "qry_dt": qry_dt, "indc_tp": "1"}
+    body = {"stk_cd": api_cd_sor, "base_dt": qry_dt, "upd_stkpc_tp": "1"}
 
     for attempt in range(3):
         try:
             resp = requests.post(url, headers=headers, json=body, timeout=http_timeout)
             if resp.status_code == 429:
                 wait = 8 * (attempt + 1)
-                _log.warning("[ka10086] 429 -- %ds 대기 후 재시도 (%s/%s)", wait, log_cd, api_cd)
+                _log.warning("[ka10081] 429 -- %ds 대기 후 재시도 (%s/%s)", wait, log_cd, api_cd)
                 time.sleep(wait)
                 continue
             if resp.status_code != 200:
-                _log.warning("[ka10086] 실패[HTTP] 코드=%s -- %s (api:%s)", resp.status_code, log_cd, api_cd)
+                _log.warning("[ka10081] 실패[HTTP] 코드=%s -- %s (api:%s)", resp.status_code, log_cd, api_cd)
                 return None
             data = resp.json()
-            rc = str(data.get("return_code", "0"))
-            if rc not in ("0", "00"):
-                _log.warning("[ka10086] 실패[API] rc=%s msg=%s -- %s (api:%s)", rc, data.get("return_msg", ""), log_cd, api_cd)
+            rc = str(data.get("return_code") or data.get("rt_cd") or "0")
+            if rc not in ("0", "00", ""):
+                _log.warning("[ka10081] 실패[API] rc=%s msg=%s -- %s (api:%s)", rc, data.get("return_msg", ""), log_cd, api_cd)
                 return None
-            rows = data.get("daly_stkpc") or []
+                
+            body_data = data.get("body") or data
+            rows = body_data.get("stk_dt_pole_chart_qry") or body_data.get("output") or []
             if not rows or not isinstance(rows, list):
-                _log.warning("[ka10086] 실패[데이터없음] 응답행 없음 -- %s (api:%s)", log_cd, api_cd)
+                _log.warning("[ka10081] 실패[데이터없음] 응답행 없음 -- %s (api:%s)", log_cd, api_cd)
                 return None
-            row = rows[0]
-            close_px = _si(row.get("clsprc") or row.get("close_pric") or row.get("cur_prc") or 0)
+
+            # 내림차순(최신순) 정렬 보장
+            date_key = "stk_bsns_date" if "stk_bsns_date" in rows[0] else "dt" if "dt" in rows[0] else "date"
+            if rows and len(rows) > 1 and date_key in rows[0] and date_key in rows[-1]:
+                if str(rows[0][date_key]) < str(rows[-1][date_key]):
+                    rows = list(reversed(rows))
+
+            latest = rows[0]
+            close_px = _si(latest.get("cur_prc") or 0)
             if close_px <= 0:
-                _log.warning("[ka10086] 실패[종가0] clsprc=%s -- %s (api:%s)", row.get("clsprc"), log_cd, api_cd)
+                _log.warning("[ka10081] 실패[종가0] cur_prc=%s -- %s (api:%s)", latest.get("cur_prc"), log_cd, api_cd)
                 return None
-            sign = str(row.get("pred_pre_sig") or row.get("sign") or "3").strip() or "3"
-            change_raw = _si_signed(row.get("pred_rt") or row.get("change") or 0)
-            change_rate = _pct(row.get("flu_rt") or row.get("change_rate") or 0)
-            trade_amt = _si(row.get("amt_mn") or 0) * 1_000_000
-            high_price = _si(row.get("high_pric") or 0)
+
+            change_raw = _si_signed(latest.get("pred_pre") or 0)
+            # 전일종가 = 현재가 - 전일대비 (예: 현재가 1000, 전일대비 100 -> 전일종가는 900)
+            prev_close = close_px - change_raw
+            if prev_close > 0:
+                change_rate = round((change_raw / prev_close) * 100, 2)
+            else:
+                change_rate = 0.0
+                
+            sign = "3"
+            if change_raw > 0:
+                sign = "2"
+            elif change_raw < 0:
+                sign = "5"
+
+            trade_amt = _si(latest.get("trde_prica") or 0) * 1_000_000
+            high_price = _si(latest.get("high_pric") or 0)
+
+            # 5일 치 평균 거래대금 및 최고가 계산 (최대 5행)
+            recent_5 = rows[:5]
+            highs_5d = [_si(r.get("high_pric") or 0) for r in recent_5]
+            amts_5d_raw = [_si(r.get("trde_prica") or 0) for r in recent_5]  # 백만원 단위
+            
+            high_price_5d = max(highs_5d) if highs_5d else 0
+            # 5일 평균 거래대금: 백만원 단위를 100으로 나누어 '억' 단위로 저장
+            avg_amt_5d = sum(amts_5d_raw) // len(amts_5d_raw) // 100 if amts_5d_raw else 0
+
             return {
                 "cur_price": close_px,
                 "sign": sign,
@@ -129,15 +156,17 @@ def fetch_ka10086_daily_price(
                 "change_rate": change_rate,
                 "trade_amount": trade_amt,
                 "high_price": high_price,
-                "prev_close": 0,
+                "prev_close": prev_close,
+                "high_price_5d": high_price_5d,
+                "avg_amt_5d": avg_amt_5d,
             }
         except Exception as e:
-            _log.warning("[ka10086] 예외 시도%d %s/%s: %s", attempt + 1, log_cd, api_cd, e)
+            _log.warning("[ka10081] 예외 시도%d %s/%s: %s", attempt + 1, log_cd, api_cd, e)
             time.sleep(0.3 * (attempt + 1))
     return None
 
 
-def fetch_ka10086_sector_all(
+def fetch_ka10081_sector_all(
     api: "KiwoomRestAPI",
     krx_codes: list[str],
     qry_dt: str,
@@ -147,72 +176,60 @@ def fetch_ka10086_sector_all(
     resume_codes: "set[str] | None" = None,
 ) -> dict[str, dict]:
     """
-    개별종목시세 전체 ka10086 순차 조회 -- 장외 시간 확정 데이터 채우기용.
-
-    Args:
-        resume_codes: 이전 세션에서 완료된 종목 코드들.
-                      완료된 종목은 API 호출을 건너뛰고 snapshot에서 데이터 복원.
+    개별종목시세 전체 ka10081 순차 조회 -- 장외 시간 확정 데이터 및 5일 캐시 채우기용.
     """
     from backend.app.core.sector_stock_cache import save_progress_cache, load_completed_stocks_from_snapshot
 
     result: dict[str, dict] = {}
-    failed_codes: list[str] = []  # 실패 종목 추적
+    failed_codes: list[str] = []
     total = len(krx_codes)
 
-    # 이어받기: 완료된 종목 코드들
     completed_codes = resume_codes or set()
     starting_count = len(completed_codes)
 
-    # 완료된 종목 데이터를 snapshot에서 복원
     if completed_codes:
         cached_data = load_completed_stocks_from_snapshot(completed_codes)
         result.update(cached_data)
-        _log.info("[ka10086] 이어받기 -- snapshot에서 %d/%d종목 복원 완료",
+        _log.info("[ka10081] 이어받기 -- snapshot에서 %d/%d종목 복원 완료",
                   len(cached_data), len(completed_codes))
 
-    # 초기 진행률 표시 (이어받기인 경우)
     if on_progress and starting_count > 0:
         on_progress(starting_count, total)
-        _log.info("[ka10086] 이어받기 -- %d/%d종목부터 계속 (복원 %d종목)",
+        _log.info("[ka10081] 이어받기 -- %d/%d종목부터 계속 (복원 %d종목)",
                   starting_count, total, len(result))
     elif on_progress:
         on_progress(0, total)
 
-    # 미완료 종목만 API 호출
     remaining_codes = [cd for cd in krx_codes if cd not in completed_codes]
 
     for cd in remaining_codes:
-        detail = fetch_ka10086_daily_price(api, cd, qry_dt, _raw_cd=cd)  # 원본 코드 전달
+        detail = fetch_ka10081_daily_and_5d_data(api, cd, qry_dt, _raw_cd=cd)
         if detail:
             result[cd] = detail
         else:
-            failed_codes.append(cd)  # 실패 종목 기록
+            failed_codes.append(cd)
 
         done = len(result)
 
-        # 20종목마다 진행 저장 (이어받기 가능하도록)
         if (done - starting_count) % 20 == 0 and done > starting_count:
             save_progress_cache(qry_dt, list(result.keys()), krx_codes, result)
             _pct = int(done / total * 100) if total else 0
-            _log.info("[ka10086] 전종목 확정시세 다운로드 중 (%d/%d, %d%%)", done, total, _pct)
+            _log.info("[ka10081] 전종목 확정시세 다운로드 중 (%d/%d, %d%%)", done, total, _pct)
             if on_progress:
                 on_progress(done, total)
 
-        # 마지막 종목이 아니면 간격 대기
         if done < total:
             time.sleep(interval_sec)
 
-    # 마지막 진행 저장 (완료된 모든 종목)
     if result:
         save_progress_cache(qry_dt, list(result.keys()), krx_codes, result)
 
     if on_progress:
         on_progress(total, total)
 
-    # 실패 종목 로그 출력 (분석용)
     if failed_codes:
-        _log.warning("[ka10086] 실패 종목 %d개: %s", len(failed_codes), failed_codes)
-    _log.info("[ka10086] 완료 -- 성공 %d/%d종목, 실패 %d종목 (이어받기 %d종목)",
+        _log.warning("[ka10081] 실패 종목 %d개: %s", len(failed_codes), failed_codes)
+    _log.info("[ka10081] 완료 -- 성공 %d/%d종목, 실패 %d종목 (이어받기 %d종목)",
               len(result), total, len(failed_codes), starting_count)
     return result
 

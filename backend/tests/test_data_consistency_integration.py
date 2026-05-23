@@ -66,6 +66,7 @@ class TestOnlyEligibleStocksVisibleInUI:
 
             # ── _eligible_stock_codes에 1484종목만 설정 ──
             ind_mod._eligible_stock_codes = {code: "" for code in eligible_codes}
+            ind_mod._eligible_cache_date = ind_mod.current_trading_date_str()
 
             # ── _avg_amt_5d에 전체 1525종목 세팅 ──
             test_avg: dict[str, int] = {}
@@ -248,6 +249,7 @@ class TestEligibleStockBehaviorPreserved:
 
             # ── _eligible_stock_codes 설정 ──
             ind_mod._eligible_stock_codes = {code: "" for code in eligible_codes}
+            ind_mod._eligible_cache_date = ind_mod.current_trading_date_str()
 
             # ── 5일 평균 거래대금 v2 데이터 세팅 (rolling_update 테스트용) ──
             existing_v2 = {
@@ -435,6 +437,7 @@ class TestManualRefreshConsistency:
 
             # ── _eligible_stock_codes에 적격 종목만 설정 ──
             ind_mod._eligible_stock_codes = {code: "" for code in eligible_codes}
+            ind_mod._eligible_cache_date = ind_mod.current_trading_date_str()
 
             # ── 헬퍼: 전체 메모리 구조 초기화 (eligible + ineligible 모두 포함) ──
             def _setup_full_memory():

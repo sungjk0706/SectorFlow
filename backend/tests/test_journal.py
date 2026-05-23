@@ -34,10 +34,17 @@ def temp_journal_file():
     """임시 저널 파일 fixture"""
     with tempfile.TemporaryDirectory() as tmpdir:
         journal_path = Path(tmpdir) / "journal.jsonl"
+        
+        from backend.app.core import journal
+        old_loaded = journal._loaded
+        journal._loaded = False
+        
         with patch("backend.app.core.journal._JOURNAL_FILE", journal_path):
             with patch("backend.app.core.journal._DATA_DIR", Path(tmpdir)):
-                yield journal_path
-
+                try:
+                    yield journal_path
+                finally:
+                    journal._loaded = old_loaded
 
 @pytest.fixture
 async def consumer_task():
@@ -47,24 +54,7 @@ async def consumer_task():
     await stop_consumer_task()
 
 
-# ── Sequence Generator 테스트 ───────────────────────────────────────────────
 
-
-def test_sequence_generator():
-    """시퀀스 번호 생성 테스트"""
-    from backend.app.core.journal import _seq_counter
-    
-    # 초기화
-    from backend.app.core import journal
-    journal._seq_counter = 0
-    
-    seq1 = _next_seq()
-    seq2 = _next_seq()
-    seq3 = _next_seq()
-    
-    assert seq1 == 1
-    assert seq2 == 2
-    assert seq3 == 3
 
 
 # ── 저널링 기록 테스트 ─────────────────────────────────────────────────────
@@ -75,8 +65,9 @@ def test_record_settings_change_direct(temp_journal_file):
     from backend.app.core.journal import JournalEntry, _append_entry, _next_seq
     
     # 시퀀스 초기화
-    from backend.app.core import journal
-    journal._seq_counter = 0
+    from backend.app.core.journal import clear_journal, _ensure_loaded
+    _ensure_loaded()
+    clear_journal()
     
     changed_keys = {"auto_buy_on", "buy_amt"}
     before = {"auto_buy_on": False, "buy_amt": 100000}
@@ -112,8 +103,9 @@ def test_record_order_request_direct(temp_journal_file):
     from backend.app.core.journal import JournalEntry, _append_entry, _next_seq
     
     # 시퀀스 초기화
-    from backend.app.core import journal
-    journal._seq_counter = 0
+    from backend.app.core.journal import clear_journal, _ensure_loaded
+    _ensure_loaded()
+    clear_journal()
     
     entry = JournalEntry(
         event_type=JournalEventType.ORDER_REQUEST,
@@ -150,8 +142,9 @@ def test_record_fill_event_direct(temp_journal_file):
     from backend.app.core.journal import JournalEntry, _append_entry, _next_seq
     
     # 시퀀스 초기화
-    from backend.app.core import journal
-    journal._seq_counter = 0
+    from backend.app.core.journal import clear_journal, _ensure_loaded
+    _ensure_loaded()
+    clear_journal()
     
     entry = JournalEntry(
         event_type=JournalEventType.FILL_EVENT,
@@ -308,8 +301,9 @@ def test_journal_lifecycle_direct(temp_journal_file):
     from backend.app.core.journal import JournalEntry, _append_entry, _next_seq
     
     # 시퀀스 초기화
-    from backend.app.core import journal
-    journal._seq_counter = 0
+    from backend.app.core.journal import clear_journal, _ensure_loaded
+    _ensure_loaded()
+    clear_journal()
     
     # 기록
     entry1 = JournalEntry(

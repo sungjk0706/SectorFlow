@@ -274,6 +274,13 @@ export interface StockClassificationChangedEvent {
   merged_sectors: string[];
   no_sector_count?: number;
   filter_summary?: string;
+  all_stocks?: Array<{
+    code: string;
+    name: string;
+    sector: string;
+    market_type?: string;
+    nxt_enable?: boolean;
+  }>;
 }
 
 export interface StockClassificationResponse {
