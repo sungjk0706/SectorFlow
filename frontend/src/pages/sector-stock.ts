@@ -129,8 +129,8 @@ function computeRows(
     if (selectedSector && sector !== selectedSector) continue
     if (matchedCodes && !matchedCodes.has(s.code)) continue
     
-    // 5일평균거래대금 컷오프 필터 적용 (백엔드와 정합성 일치)
-    if (minTradeAmt > 0 && (s.avg_amt_5d ?? 0) < minTradeAmt * 100_000_000) continue
+    // 5일평균거래대금 컷오프 필터 적용 (백엔드와 정합성 일치, 억 단위 비교)
+    if (minTradeAmt > 0 && (s.avg_amt_5d ?? 0) < minTradeAmt) continue
 
     let arr = grouped.get(sector)
     if (!arr) { arr = []; grouped.set(sector, arr) }

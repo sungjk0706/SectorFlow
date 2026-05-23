@@ -44,8 +44,18 @@ class BackendCoalescing:
         self.flush_task: Optional[asyncio.Task] = None
         self.websocket_connections: Set = set()
         self.last_flush_time: float = 0
-        self.flush_event = asyncio.Event()  # flush 이벤트 (Event 기반 전환)
+        self._flush_event_obj: Optional[asyncio.Event] = None
         self.dropped_count: int = 0  # Drop된 패킷 수 (Coalescing으로 덮어쓰기)
+
+    @property
+    def flush_event(self) -> asyncio.Event:
+        if self._flush_event_obj is None:
+            self._flush_event_obj = asyncio.Event()
+        return self._flush_event_obj
+
+    @flush_event.setter
+    def flush_event(self, val: asyncio.Event) -> None:
+        self._flush_event_obj = val
 
     @classmethod
     def get_instance(cls) -> "BackendCoalescing":

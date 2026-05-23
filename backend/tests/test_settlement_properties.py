@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest
-from hypothesis import given, settings, assume
+from hypothesis import given, settings, assume, HealthCheck
 from hypothesis import strategies as st
 
 from app.services.settlement_engine import (
@@ -35,7 +35,7 @@ def reset_engine_state():
     qty=st.integers(min_value=1, max_value=1000),
     initial=st.integers(min_value=1, max_value=1_000_000_000),
 )
-@settings(max_examples=100, deadline=None)
+@settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.filter_too_much])
 def test_buy_fill_deduction(price, qty, initial):
     """Property 1: Buy fill deduction is exact and preserves non-negativity."""
     init(initial)

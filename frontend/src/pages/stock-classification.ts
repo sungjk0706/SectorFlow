@@ -9,16 +9,15 @@ import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingsManager, type SettingsManager } from '../settings'
 // import { createSettingRow } from '../components/common/setting-row' (removed)
 import { createCardTitleWithContent } from '../components/common/card-title'
-import { toastResult, showSaveToast } from '../components/common/save-toast'
+import { toastResult, showSaveToast } from '../components/common/toast'
 import { showContextPopup, closeContextPopup } from '../components/common/context-popup'
-import { showConfirmModal } from '../components/common/confirm-modal'
+import { showConfirmDialog, showAlertDialog } from '../components/common/dialog'
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
 import { createSearchInput } from '../components/common/search-input'
 import { createSectorRowEl } from '../components/common/sector-row'
 import { FONT_SIZE, FONT_FAMILY, FONT_WEIGHT, createStockNameColumn } from '../components/common/ui-styles'
-import { showPopup } from '../components/common/popup'
 import type { PageModule } from '../router'
-import type { StockClassificationResponse, StockClassificationMutationResponse } from '../types'
+import type { StockClassificationMutationResponse } from '../types'
 
 /* ── 상수 ── */
 
@@ -26,20 +25,40 @@ import type { StockClassificationResponse, StockClassificationMutationResponse }
 function handleMutationResult(res: StockClassificationMutationResponse): void {
   toastResult(res)
   if (res.ok && res.warning) {
-    const msgEl = document.createElement('div')
-    msgEl.textContent = res.warning
-    showPopup('경고', msgEl, [{ label: '확인', onClick: () => { }, variant: 'primary' }])
+    showAlertDialog({ title: '경고', message: res.warning })
   }
 }
 
 /* ── 모듈 상태 ── */
-let allStocks: Map<string, { code: string; name: string; sector: string; market_type?: string; nxt_enable?: boolean }> = new Map()
+// allStocks는 stockClassificationStore.getState().allStocks에서 파생되는 헬퍼 (캐싱)
+let cachedSectorStocksRef: any = null;
+let cachedAllStocksMap: Map<string, { code: string; name: string; sector: string; market_type?: string; nxt_enable?: boolean }> = new Map();
+
+function getAllStocks(): Map<string, { code: string; name: string; sector: string; market_type?: string; nxt_enable?: boolean }> {
+  const current = stockClassificationStore.getState().allStocks;
+  if (current !== cachedSectorStocksRef) {
+    cachedSectorStocksRef = current;
+    cachedAllStocksMap = new Map();
+    for (const s of current) {
+      cachedAllStocksMap.set(s.code, {
+        code: s.code,
+        name: s.name,
+        sector: s.sector || '',
+        market_type: s.market_type,
+        nxt_enable: s.nxt_enable
+      });
+    }
+  }
+  return cachedAllStocksMap;
+}
+
 let stockNameIndex: Map<string, string> = new Map()  // 종목명 → 종목코드 역인덱스
 
 let unsubCustom: (() => void) | null = null
 let unsubSse: (() => void) | null = null
 let settingsMgr: SettingsManager | null = null
 let unsubSettings: (() => void) | null = null
+let unsubHot: (() => void) | null = null
 
 // UI 참조 — Indicator Bar
 let indicatorLabel: HTMLElement | null = null
@@ -56,6 +75,7 @@ let selectedStocks: Set<string> = new Set()
 // UI 참조 — Sector Table (Left)
 let selectedSector: string | null = null
 let anchorRow: number = -1
+let isDragging: boolean = false
 let masterTableRef: DataTableApi<MasterRow> | null = null
 let statsLabelRef: HTMLElement | null = null
 let addSectorBtnRef: HTMLElement | null = null
@@ -105,14 +125,6 @@ interface SearchResultRow {
 
 /* ── API 헬퍼 ── */
 
-async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(path, {
-    headers: { 'Authorization': `Bearer ${localStorage.getItem('token') || 'dev-bypass'}` },
-  })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
-
 async function apiPost<T>(path: string, body: Record<string, unknown> = {}): Promise<T> {
   const res = await fetch(path, {
     method: 'POST',
@@ -136,7 +148,7 @@ export function parseBatchInput(input: string): string[] {
 /** Task 1.3: 토큰 → 종목코드 매칭. 코드 우선(O(1)), 종목명 차선(O(1)), 미매칭 시 null
  *  "나인테크(267320)" 형태 → 괄호 안 코드 추출 후 매칭, 실패 시 괄호 밖 이름으로 재시도 */
 export function resolveToken(token: string): string | null {
-  if (allStocks.has(token)) return token
+  if (getAllStocks().has(token)) return token
   const codeByName = stockNameIndex.get(token)
   if (codeByName !== undefined) return codeByName
 
@@ -145,7 +157,7 @@ export function resolveToken(token: string): string | null {
   if (m) {
     const name = m[1].trim()
     const code = m[2].trim()
-    if (allStocks.has(code)) return code
+    if (getAllStocks().has(code)) return code
     const codeByName2 = stockNameIndex.get(name)
     if (codeByName2 !== undefined) return codeByName2
   }
@@ -170,10 +182,10 @@ export function getMovableCount(): number {
 
 /** Task 4.4: Chip DOM 생성 — 종목명 + 업종명 + × 버튼 */
 export function createChip(code: string): HTMLElement {
-  const stock = allStocks.get(code)
+  const stock = getAllStocks().get(code)
   const stockName = stock?.name ?? code
 
-  // 업종명 해석: stockMoves 우선, 없으면 allStocks.sector, sectors 리네임 적용
+  // 업종명 해석: stockMoves 우선, 없으면 getAllStocks().sector, sectors 리네임 적용
   const { stockMoves, sectors } = currentState
   let sectorName = stockMoves[code] ?? stock?.sector ?? ''
   if (sectors[sectorName]) sectorName = sectors[sectorName]
@@ -272,7 +284,7 @@ function updateStagingPanel(): void {
 function updateStagingChipSectors(): void {
   const { stockMoves, sectors, deletedSectors } = currentState
   for (const [code, chip] of stagingChipMap) {
-    const stock = allStocks.get(code)
+    const stock = getAllStocks().get(code)
     let sectorName = stockMoves[code] ?? stock?.sector ?? ''
     if (sectors[sectorName]) sectorName = sectors[sectorName]
     if (deletedSectors.includes(sectorName)) sectorName = '업종명없음'
@@ -283,14 +295,14 @@ function updateStagingChipSectors(): void {
 
 /* ── Moved_Stock_List 함수 (Task 7) ── */
 
-/* ── 8.6: countStocksBySector / getStocksForSector — allStocks 기반 ── */
+/* ── 8.6: countStocksBySector / getStocksForSector — getAllStocks() 기반 ── */
 
 function countStocksBySector(): Record<string, number> {
   const counts: Record<string, number> = {}
   const { stockMoves, sectors, deletedSectors, mergedSectors } = currentState
   for (const s of mergedSectors) counts[s] = 0
 
-  for (const [, stock] of allStocks) {
+  for (const [, stock] of getAllStocks()) {
     let sector = stockMoves[stock.code] ?? stock.sector ?? ''
     if (sectors[sector]) sector = sectors[sector]
     if (deletedSectors.includes(sector)) sector = '업종명없음'
@@ -304,7 +316,7 @@ function getStocksForSector(sectorName: string): Array<{ code: string; name: str
   const { stockMoves, sectors, deletedSectors } = currentState
   const result: Array<{ code: string; name: string; market_type?: string; nxt_enable?: boolean }> = []
 
-  for (const [, stock] of allStocks) {
+  for (const [, stock] of getAllStocks()) {
     let sector = stockMoves[stock.code] ?? stock.sector ?? ''
     if (sectors[sector]) sector = sectors[sector]
     if (deletedSectors.includes(sector)) sector = '업종명없음'
@@ -396,20 +408,12 @@ function buildTripleHeader(): void {
 
   const btn1 = document.createElement('button')
   Object.assign(btn1.style, btnStyle)
-  btn1.textContent = '⬇️ 확정시세'
+  btn1.textContent = '⬇️ 장마감 확정시세 & 5일데이터 다운로드'
   btn1.addEventListener('mouseenter', () => btn1.style.background = '#157347')
   btn1.addEventListener('mouseleave', () => btn1.style.background = '#198754')
   btn1.addEventListener('click', () => onTriggerDownload('snapshot'))
 
-  const btn2 = document.createElement('button')
-  Object.assign(btn2.style, btnStyle)
-  btn2.textContent = '⬇️ 5일거래대금/고가'
-  btn2.addEventListener('mouseenter', () => btn2.style.background = '#157347')
-  btn2.addEventListener('mouseleave', () => btn2.style.background = '#198754')
-  btn2.addEventListener('click', () => onTriggerDownload('avg_amt'))
-
   buttonContainer.appendChild(btn1)
-  buttonContainer.appendChild(btn2)
   left.appendChild(buttonContainer)
   header.appendChild(left)
 
@@ -449,9 +453,9 @@ function updateIndicatorBar(): void {
 }
 
 // buildSchedulerCard removed.
-async function onTriggerDownload(type: 'snapshot' | 'avg_amt'): Promise<void> {
-  const label = type === 'snapshot' ? '전종목 확정시세 다운로드' : '전종목 5일 거래대금 다운로드'
-  const endpoint = type === 'snapshot' ? '/api/stock-classification/trigger-snapshot-download' : '/api/stock-classification/trigger-avg-amt-download'
+async function onTriggerDownload(_type: 'snapshot'): Promise<void> {
+  const label = '장마감 확정시세 및 5일데이터 다운로드'
+  const endpoint = '/api/stock-classification/trigger-snapshot-download'
   
   const result = await showContextPopup({
     type: 'confirm',
@@ -544,7 +548,7 @@ function buildSectorManageCard(): HTMLElement {
       // 포괄적 검색: 괄호/공백으로 분리된 토큰 중 하나라도 매칭되면 결과에 포함
       const searchTokens = q.split(/[\s()（）]+/).filter(t => t.length > 0)
 
-      for (const [, stock] of allStocks) {
+      for (const [, stock] of getAllStocks()) {
         const nameLower = stock.name.toLowerCase()
         const codeLower = stock.code.toLowerCase()
         const matched = searchTokens.some(t => nameLower.includes(t) || codeLower.includes(t))
@@ -609,7 +613,7 @@ function buildSectorManageCard(): HTMLElement {
     const { stockMoves, sectors } = currentState
     const results: SearchResultRow[] = []
     const searchTokens = q.split(/[\s()（）]+/).filter(t => t.length > 0)
-    for (const [, stock] of allStocks) {
+    for (const [, stock] of getAllStocks()) {
       const nameLower = stock.name.toLowerCase()
       const codeLower = stock.code.toLowerCase()
       const matched = searchTokens.some(t => nameLower.includes(t) || codeLower.includes(t))
@@ -674,7 +678,7 @@ function buildSectorManageCard(): HTMLElement {
     emptyText: '업종이 없습니다.',
     stickyHeader: false,
     rowStyle: (row) => {
-      const style: Partial<CSSStyleDeclaration> = { cursor: 'pointer' }
+      const style: Partial<CSSStyleDeclaration> = { cursor: 'pointer', background: '', borderLeft: '' }
       if (selectedSector === row.sectorName) {
         style.background = '#e3f2fd'
         style.borderLeft = '3px solid #1976d2'
@@ -693,7 +697,8 @@ function buildSectorManageCard(): HTMLElement {
     if (!tr) return
     const tbody = masterTableRef?.el.querySelector('tbody')
     if (!tbody) return
-    const rows = Array.from(tbody.querySelectorAll('tr'))
+    // emptyTr 제외하고 실제 데이터 행만 찾아서 인덱싱
+    const rows = Array.from(tbody.querySelectorAll('tr[data-row-type="data"]'))
     const idx = rows.indexOf(tr as HTMLTableRowElement)
     if (idx < 0) return
     const masterRows = buildMasterRows()
@@ -715,10 +720,17 @@ function buildSectorManageCard(): HTMLElement {
 
 /* ── Master_Panel 갱신 ── */
 
+function getActiveSectors(): string[] {
+  const counts = countStocksBySector()
+  const allSectors = new Set(currentState.mergedSectors)
+  for (const s of Object.keys(counts)) allSectors.add(s)
+  return Array.from(allSectors).filter(s => s !== '').sort((a, b) => a.localeCompare(b))
+}
+
 function buildMasterRows(): MasterRow[] {
   const counts = countStocksBySector()
-  const { mergedSectors } = currentState
-  const rows: MasterRow[] = mergedSectors.map(s => ({
+  const activeSectors = getActiveSectors()
+  const rows: MasterRow[] = activeSectors.map(s => ({
     sectorName: s,
     stockCount: counts[s] ?? 0,
   }))
@@ -736,7 +748,8 @@ function updateMasterPanel(): void {
 function updateStatsLabel(): void {
   if (!statsLabelRef) return
   const counts = countStocksBySector()
-  const sectorCount = currentState.mergedSectors.length
+  const activeSectors = getActiveSectors()
+  const sectorCount = activeSectors.length
   let totalStocks = 0
   for (const c of Object.values(counts)) totalStocks += c
   statsLabelRef.textContent = `업종 ${sectorCount}개 · 전체 종목 ${totalStocks}개`
@@ -932,29 +945,41 @@ function buildTripleCenter(): void {
     stickyHeader: true,
     rowStyle: (row) => {
       if (highlightStockCode && row.code === highlightStockCode) {
-        return { background: '#fff3cd', transition: 'background 0.3s' }
+        return { cursor: 'pointer', background: '#fff3cd', transition: 'background 0.3s' }
       }
       if (selectedStocks.has(row.code)) {
-        return { background: '#e3f2fd' }
+        return { cursor: 'pointer', background: '#e3f2fd', transition: '' }
       }
-      return undefined
+      return { cursor: 'pointer', background: '', transition: '' }
     },
   })
 
   // 키보드 포커스 가능하게 설정
   detailTableRef.el.tabIndex = 0
 
-  // 클릭 이벤트 위임: 일반 클릭(단일 선택), Ctrl+클릭(토글), Shift+클릭(범위 선택)
-  detailTableRef.el.addEventListener('click', (e: MouseEvent) => {
+  // 전역 마우스 업 이벤트로 드래그 상태 해제
+  window.addEventListener('mouseup', () => {
+    isDragging = false
+  })
+
+  // 드래그 시작 및 단일/다중 클릭 핸들러
+  detailTableRef.el.addEventListener('mousedown', (e: MouseEvent) => {
+    if (e.button !== 0) return // 좌클릭만 허용
     const tr = (e.target as HTMLElement).closest('tr')
-    if (!tr) return
+    if (!tr || !selectedSector) return
     const tbody = detailTableRef?.el.querySelector('tbody')
     if (!tbody) return
-    const rows = Array.from(tbody.querySelectorAll('tr'))
+    const rows = Array.from(tbody.querySelectorAll('tr[data-row-type="data"]'))
     const idx = rows.indexOf(tr as HTMLTableRowElement)
-    if (idx < 0 || !selectedSector) return
+    if (idx < 0) return
+    
+    // 텍스트 선택 방지
+    e.preventDefault()
+    isDragging = true
+    
     const stocks = getStocksForSector(selectedSector)
     if (idx >= stocks.length) return
+    const clickedCode = stocks[idx].code
 
     if (e.shiftKey && anchorRow >= 0) {
       // Shift+클릭: anchorRow ~ idx 범위 선택
@@ -962,18 +987,41 @@ function buildTripleCenter(): void {
       for (let i = start; i <= end; i++) selectedStocks.add(stocks[i].code)
     } else if (e.ctrlKey || e.metaKey) {
       // Ctrl+클릭: 토글
-      const code = stocks[idx].code
-      if (selectedStocks.has(code)) selectedStocks.delete(code)
-      else selectedStocks.add(code)
+      if (selectedStocks.has(clickedCode)) selectedStocks.delete(clickedCode)
+      else selectedStocks.add(clickedCode)
       anchorRow = idx
     } else {
       // 일반 클릭: 단일 선택
       selectedStocks.clear()
-      selectedStocks.add(stocks[idx].code)
+      selectedStocks.add(clickedCode)
       anchorRow = idx
     }
 
-    // 행 스타일 갱신 — updateRows만 호출 (innerHTML 클리어 없이 델타 갱신)
+    if (selectedSector) {
+      const updatedStocks = getStocksForSector(selectedSector)
+      detailTableRef!.updateRows(updatedStocks)
+    }
+    updateAllInlineMoveButtons()
+  })
+
+  // 드래그 중 영역 선택
+  detailTableRef.el.addEventListener('mouseover', (e: MouseEvent) => {
+    if (!isDragging || !selectedSector) return
+    const tr = (e.target as HTMLElement).closest('tr')
+    if (!tr) return
+    const tbody = detailTableRef?.el.querySelector('tbody')
+    if (!tbody) return
+    const rows = Array.from(tbody.querySelectorAll('tr[data-row-type="data"]'))
+    const idx = rows.indexOf(tr as HTMLTableRowElement)
+    if (idx < 0 || anchorRow < 0) return
+    
+    const stocks = getStocksForSector(selectedSector)
+    if (idx >= stocks.length) return
+
+    selectedStocks.clear()
+    const [start, end] = [Math.min(anchorRow, idx), Math.max(anchorRow, idx)]
+    for (let i = start; i <= end; i++) selectedStocks.add(stocks[i].code)
+
     if (selectedSector) {
       const updatedStocks = getStocksForSector(selectedSector)
       detailTableRef!.updateRows(updatedStocks)
@@ -1035,14 +1083,15 @@ function updateCenterPanel(): void {
 
 /* ── 8.5: tripleRight — Target_Sector_List ── */
 
-/** 대상 업종 목록 반환: mergedSectors에서 selectedSector 제외 */
+/** 대상 업종 목록 반환: activeSectors에서 selectedSector 제외 */
 function getTargetSectors(): string[] {
+  const activeSectors = getActiveSectors()
   // 배치 입력: selectedSector 없어도 staging에 종목이 있으면 전체 업종 표시
   if (selectedSector === null && stagingSet.size > 0) {
-    return currentState.mergedSectors.slice()
+    return activeSectors
   }
   if (selectedSector === null) return []
-  return currentState.mergedSectors.filter(s => s !== selectedSector)
+  return activeSectors.filter(s => s !== selectedSector)
 }
 
 /** 업종 행 하나 생성: [업종명 span (flex:1)] + [이동 버튼] */
@@ -1221,9 +1270,9 @@ async function onMoveStock(_e: MouseEvent, targetSector: string): Promise<void> 
   const codes = moveSource.codes
 
   // 이동 전 확인 팝업
-  const confirmed = await showConfirmModal({
+  const confirmed = await showConfirmDialog({
     title: '종목 이동',
-    message: buildMoveMessage(codes, allStocks, targetSector),
+    message: buildMoveMessage(codes, getAllStocks(), targetSector),
     confirmText: '이동',
     cancelText: '취소',
   })
@@ -1248,90 +1297,16 @@ async function onMoveStock(_e: MouseEvent, targetSector: string): Promise<void> 
     updateRightPanel()
 
     // 이동 완료 팝업
-    const msg = document.createElement('p')
-    Object.assign(msg.style, { margin: '0', fontSize: FONT_SIZE.body, color: '#333' })
-    msg.textContent = `${codes.length}개 종목이 "${targetSector}" 업종으로 이동되었습니다.`
-    showPopup('✅ 이동 완료', msg, [
-      { label: '확인', onClick: () => { }, variant: 'primary' },
-    ])
+    showAlertDialog({
+      title: '✅ 이동 완료',
+      message: `${codes.length}개 종목이 "${targetSector}" 업종으로 이동되었습니다.`
+    })
   } catch { toastResult({ ok: false }) }
 }
 
-/* ── 전체 UI 갱신 ── */
-function renderAll(): void {
-  updateIndicatorBar()
-  updateMasterPanel()
-  updateCenterPanel()
-  updateRightPanel()
-  updateStagingPanel()
-  setControlsDisabled(!currentState.editWindowOpen)
-}
+/* ── 8.7: SSE 델타 갱신 ── */
 
-/* ── 8.7: loadInitialData + SSE 델타 갱신 ── */
-
-async function loadInitialData(): Promise<void> {
-  try {
-    stockClassificationStore.setState({ loading: true })
-
-    // Parallel fetch: stock-classification config + all-stocks
-    const [data, stocksData] = await Promise.all([
-      apiGet<StockClassificationResponse>('/api/stock-classification'),
-      apiGet<{ stocks: Array<{ code: string; name: string; sector: string; market_type?: string; nxt_enable?: boolean }> }>('/api/stock-classification/all-stocks').catch(err => {
-        console.error('[StockClassification] all-stocks 로드 실패:', err)
-        return { stocks: [] }
-      }),
-    ])
-
-    // Build allStocks Map
-    allStocks = new Map()
-    for (const s of stocksData.stocks) {
-      allStocks.set(s.code, { code: s.code, name: s.name, sector: s.sector, market_type: s.market_type, nxt_enable: s.nxt_enable })
-    }
-
-    // Task 1.3: Build stockNameIndex (종목명 → 종목코드) 역인덱스 1회 구축
-    stockNameIndex = new Map()
-    for (const [code, stock] of allStocks) {
-      stockNameIndex.set(stock.name, code)
-    }
-
-      let summary = data.filter_summary || ""
-      if (summary) {
-        localStorage.setItem('sector_filter_summary', summary)
-      } else {
-        summary = localStorage.getItem('sector_filter_summary') || ""
-      }
-
-      stockClassificationStore.setState({
-        sectors: data.custom_data.sectors,
-        stockMoves: data.custom_data.stock_moves,
-        deletedSectors: data.custom_data.deleted_sectors,
-        mergedSectors: data.merged_sectors,
-        editWindowOpen: computeEditWindowOpenByTime(uiStore.getState().settings),
-        noSectorCount: data.no_sector_count ?? 0,
-        filter_summary: summary,
-        loading: false,
-      })
-    currentState = stockClassificationStore.getState()
-
-    renderAll()
-
-    // "업종명없음" 업종 안내 팝업
-    const noNameStocks = getStocksForSector("업종명없음")
-    if (noNameStocks.length > 0) {
-      const msg = document.createElement('p')
-      Object.assign(msg.style, { margin: '0', fontSize: FONT_SIZE.label, color: '#333' })
-      msg.textContent = `"업종명없음" 업종에 ${noNameStocks.length}개 종목이 있습니다. 업종을 지정해 주세요.`
-      showPopup('⚠️ 업종명없음 종목 안내', msg, [
-        { label: '확인', onClick: () => { }, variant: 'primary' },
-      ])
-    }
-  } catch (e) {
-    console.error('[StockClassification] 초기 데이터 로드 실패:', e)
-    stockClassificationStore.setState({ loading: false })
-  }
-}
-
-/** SSE stock-classification-changed 시 allStocks 델타 갱신 */
+/** SSE stock-classification-changed 시 getAllStocks() 델타 갱신 */
 function applyStockMovesDelta(prevMoves: Record<string, string>, newMoves: Record<string, string>): void {
   // Find changed stock moves
   const changedCodes = new Set<string>()
@@ -1343,8 +1318,18 @@ function applyStockMovesDelta(prevMoves: Record<string, string>, newMoves: Recor
     if (!(code in newMoves)) changedCodes.add(code)
   }
 
-  // Note: allStocks stores base sector from API. stockMoves override is applied at query time
+  // Note: getAllStocks() stores base sector from API. stockMoves override is applied at query time
   // in countStocksBySector/getStocksForSector. So delta update only needs to re-render.
+}
+
+/* ── 8.0: store의 allStocks로 stockNameIndex 업데이트 ── */
+
+function updateStockNameIndex(): void {
+  const allStocks = getAllStocks()
+  stockNameIndex = new Map()
+  for (const [code, stock] of allStocks) {
+    stockNameIndex.set(stock.name, code)
+  }
 }
 
 /* ── 8.1 + 8.8: mount / unmount ── */
@@ -1366,12 +1351,21 @@ function mount(_container: HTMLElement): void {
   // settingsManager for scheduler toggles
   settingsMgr = createSettingsManager()
 
+  // Initialize editWindowOpen state
+  const initialSettings = uiStore.getState().settings
+  const initialEditWindowOpen = computeEditWindowOpenByTime(initialSettings)
+  stockClassificationStore.setState({ editWindowOpen: initialEditWindowOpen })
+
   // stockClassificationStore 구독
   unsubCustom = stockClassificationStore.subscribe((state) => {
     const prev = currentState
     currentState = state
 
-    if (state.mergedSectors !== prev.mergedSectors || state.sectors !== prev.sectors || state.deletedSectors !== prev.deletedSectors || state.stockMoves !== prev.stockMoves) {
+    if (state.allStocks !== prev.allStocks || state.mergedSectors !== prev.mergedSectors || state.sectors !== prev.sectors || state.deletedSectors !== prev.deletedSectors || state.stockMoves !== prev.stockMoves) {
+      if (state.allStocks !== prev.allStocks) {
+        updateStockNameIndex()
+      }
+
       // SSE delta: apply stockMoves changes to allStocks awareness
       applyStockMovesDelta(prev.stockMoves, state.stockMoves)
 
@@ -1393,11 +1387,10 @@ function mount(_container: HTMLElement): void {
     }
   })
 
-  // uiStore 구독 — settings 변경 시 editWindowOpen 재계산 + 토글 갱신 및 다운로드 완료 감지
+  // uiStore 구독 — settings 변경 시 editWindowOpen 재계산 + 토글 갱신
   let prevSettings = uiStore.getState().settings
-  let prevAvgAmtProgressDone = uiStore.getState().avgAmtProgress?.done || false
   unsubSse = uiStore.subscribe((state) => {
-    // 1. Settings check
+    // Settings check
     if (state.settings !== prevSettings) {
       prevSettings = state.settings
       const newEditWindowOpen = computeEditWindowOpenByTime(state.settings)
@@ -1405,21 +1398,15 @@ function mount(_container: HTMLElement): void {
         stockClassificationStore.setState({ editWindowOpen: newEditWindowOpen })
       }
     }
-
-    // 2. Download progress check (Auto-refresh on complete)
-    const currentProgressDone = state.avgAmtProgress?.done || false
-    if (currentProgressDone && !prevAvgAmtProgressDone) {
-      const status = state.avgAmtProgress?.status
-      if (status === 'completed' || status === 'confirmed') {
-        console.log('[StockClassification] 다운로드 완료 감지. 최신 데이터 자동 갱신 시작...')
-        loadInitialData()
-      }
-    }
-    prevAvgAmtProgressDone = currentProgressDone
   })
 
-  // 초기 데이터 로드
-  loadInitialData()
+  // 초기 렌더링 강제 실행 (초기 상태 반영)
+  currentState = stockClassificationStore.getState()
+  updateStockNameIndex()
+  updateIndicatorBar()
+  updateMasterPanel()
+  updateCenterPanel()
+  updateRightPanel()
 }
 
 /* ── 8.8: unmount ── */
@@ -1429,6 +1416,7 @@ function unmount(): void {
   if (unsubCustom) { unsubCustom(); unsubCustom = null }
   if (unsubSse) { unsubSse(); unsubSse = null }
   if (unsubSettings) { unsubSettings(); unsubSettings = null }
+  if (unsubHot) { unsubHot(); unsubHot = null }
   if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }
   closeContextPopup()
 
@@ -1459,8 +1447,9 @@ function unmount(): void {
   stagingCountRef = null
   stagingEmptyRef = null
   selectedStocks = new Set()
-  allStocks = new Map()
   stockNameIndex = new Map()
+  cachedSectorStocksRef = null
+  cachedAllStocksMap = new Map()
 
   // Clear shell triple panels
   while (shell.tripleHeader.firstChild) shell.tripleHeader.removeChild(shell.tripleHeader.firstChild)
@@ -1479,7 +1468,6 @@ export function _testSetState(opts: {
   stagingSet?: Set<string>
   selectedStocks?: Set<string>
 }): void {
-  if (opts.allStocks !== undefined) allStocks = opts.allStocks
   if (opts.stockNameIndex !== undefined) stockNameIndex = opts.stockNameIndex
   if (opts.stagingSet !== undefined) stagingSet = opts.stagingSet
   if (opts.selectedStocks !== undefined) selectedStocks = opts.selectedStocks

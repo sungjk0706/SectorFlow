@@ -357,6 +357,7 @@ class TestPreservationC:
 
             # Set _eligible_stock_codes to EMPTY (backward compatibility mode)
             ind_mod._eligible_stock_codes = {}
+            ind_mod._eligible_cache_date = ind_mod.current_trading_date_str()
 
             result = es.get_all_sector_stocks()
             result_codes = {item["code"] for item in result}
@@ -411,6 +412,7 @@ class TestPreservationC:
 
             es._pending_stock_details = test_pending
             ind_mod._eligible_stock_codes = {}  # empty = no filter
+            ind_mod._eligible_cache_date = ind_mod.current_trading_date_str()
 
             result = es.get_all_sector_stocks()
             result_codes = {item["code"] for item in result}
@@ -481,6 +483,7 @@ class TestPreservationD:
 
             es._pending_stock_details = test_pending
             ind_mod._eligible_stock_codes = {code: "" for code in stock_codes}
+            ind_mod._eligible_cache_date = ind_mod.current_trading_date_str()
 
             # Verify: eligible stock data is accessible and unchanged
             for code in stock_codes:
@@ -534,6 +537,7 @@ class TestPreservationD:
             es._pending_stock_details = test_pending
             # Empty eligible = no filter (backward compat)
             ind_mod._eligible_stock_codes = {}
+            ind_mod._eligible_cache_date = ind_mod.current_trading_date_str()
 
             # UI query should return all active stocks consistently
             result = es.get_all_sector_stocks()

@@ -16,8 +16,8 @@ import httpx as requests
 
 from backend.app.core.broker_urls import build_broker_urls, KIWOOM_REST_REAL
 from backend.app.core.kiwoom_sector_rest import (
-    fetch_ka10086_daily_price as _ka10086_fetch_single,
-    fetch_ka10086_sector_all as _ka10086_fetch_all,
+    fetch_ka10081_daily_and_5d_data as _ka10081_fetch_single,
+    fetch_ka10081_sector_all as _ka10081_fetch_all,
     fetch_ka10099_stock_name_map as _ka10099_name_map,
 )
 
@@ -391,11 +391,11 @@ class KiwoomRestAPI:
         body = {"qry_tp": qry_tp, "dmst_stex_tp": dmst_stex_tp}
         return self._paginated_request(api_id, body=body)
 
-    def fetch_ka10086_daily_price(self, stk_cd: str, qry_dt: str) -> Optional[dict]:
-        """ka10086 단건 조회 -- 장외 시간에도 확정 종가·등락률·거래대금 반환."""
-        return _ka10086_fetch_single(self, stk_cd, qry_dt)
+    def fetch_ka10081_daily_price(self, stk_cd: str, qry_dt: str) -> Optional[dict]:
+        """ka10081 단건 조회 -- 장외 시간 확정 종가·등락률·거래대금 및 5일치 평균 반환."""
+        return _ka10081_fetch_single(self, stk_cd, qry_dt)
 
-    def fetch_ka10086_sector_all(
+    def fetch_ka10081_sector_all(
         self,
         krx_codes: list[str],
         qry_dt: str,
@@ -403,8 +403,8 @@ class KiwoomRestAPI:
         on_progress: "Callable[[int, int], None] | None" = None,
         resume_codes: "set[str] | None" = None,
     ) -> dict[str, dict]:
-        """전체 종목 ka10086 순차 조회 -- 장외 시간 확정 데이터 채우기용."""
-        return _ka10086_fetch_all(self, krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress, resume_codes=resume_codes)
+        """전체 종목 ka10081 순차 조회 -- 장외 시간 확정 데이터 및 5일 캐시 채우기용."""
+        return _ka10081_fetch_all(self, krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress, resume_codes=resume_codes)
 
     def fetch_ka10099_stock_name_map(self) -> dict[str, str]:
         """ka10099 코스피+코스닥 전체 종목명 매핑 조회. {6자리 종목코드: 종목명}."""
