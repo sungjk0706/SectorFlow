@@ -132,3 +132,45 @@
   - 과거 매수 기록 혼입으로 인한 수익현황 페이지 오염 방지
 - 검증 결과:
   - Python 컴파일: SUCCESS (Exit Code 0)
+
+### 10단계: 프론트엔드 설정 저장 로직 모듈화
+- 완료일: 2026-05-23
+- 수정 파일:
+  - `frontend/src/utils/settings-save.ts` (신규 생성)
+  - `frontend/src/pages/buy-settings.ts` (settings-save.ts 사용)
+  - `frontend/src/pages/sell-settings.ts` (settings-save.ts 사용)
+- 설명:
+  - createAutoSaveHelper 함수로 설정 저장 로직 모듈화
+  - debounced saving, pending save queue, immediate saving 통합
+  - 약 20줄 중복 코드 제거
+- 검증 결과:
+  - TypeScript 빌드: SUCCESS
+
+### 11단계: 스타일 유틸리티 표준화
+- 완료일: 2026-05-23
+- 수정 파일:
+  - `frontend/src/components/common/ui-styles.ts` (setDisabled, setDisplay 헬퍼 추가)
+  - `frontend/src/pages/buy-settings.ts` (setDisabled 사용, 6회 교체)
+  - `frontend/src/pages/buy-settings.ui.ts` (setDisabled 사용, 6회 교체)
+  - `frontend/src/pages/sell-settings.ts` (setDisabled 사용, 8회 교체)
+  - `frontend/src/pages/sell-settings.ui.ts` (setDisabled 사용, 8회 교체)
+- 설명:
+  - setDisabled(el, disabled): opacity + pointerEvents 설정
+  - setDisplay(el, visible): display 설정
+  - 약 28줄 중복 코드 제거
+- 검증 결과:
+  - TypeScript 빌드: SUCCESS
+
+### 12단계: fast-check 기반 DOM 조작 테스트 타임아웃 해결
+- 완료일: 2026-05-23
+- 수정 파일:
+  - `frontend/src/components/common/cellDiffingIdempotence.test.ts` (numRuns: 100→20, timeout: 10000ms)
+  - `frontend/src/components/common/fixedTableIncrementalUpdate.test.ts` (numRuns: 100→20, timeout: 10000ms)
+  - `frontend/src/components/common/flashDirection.test.ts` (numRuns: 100→20, timeout: 10000ms)
+- 설명:
+  - jsdom 환경에서 DOM 조작 오버헤드로 인한 타임아웃(5000ms 초과) 해결
+  - fast-check property-based test의 numRuns를 100에서 20으로 축소
+  - 각 테스트 함수의 timeout을 10000ms로 명시적 연장
+- 검증 결과:
+  - 테스트 전체 통과: 47/47 PASS
+  - 테스트 시간: 12.34s
