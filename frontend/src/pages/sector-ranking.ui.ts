@@ -80,7 +80,7 @@ function updateMaxTargetsStatus(scores: SectorScoreRow[], maxTargetsStatusEl: HT
   maxTargetsStatusEl.appendChild(passedVal)
 
   const cutoffLabel = document.createElement('span')
-  cutoffLabel.textContent = '컷오프'
+  cutoffLabel.textContent = '차단'
   cutoffLabel.style.color = '#0d6efd'
   cutoffLabel.style.marginLeft = '10px'
   maxTargetsStatusEl.appendChild(cutoffLabel)
@@ -90,14 +90,6 @@ function updateMaxTargetsStatus(scores: SectorScoreRow[], maxTargetsStatusEl: HT
   cutoffVal.style.color = '#0d6efd'
   cutoffVal.style.fontWeight = FONT_WEIGHT.bold
   maxTargetsStatusEl.appendChild(cutoffVal)
-}
-
-/* ── 헬퍼: ▼ 화살표 구분선 ── */
-function createArrowDivider(): HTMLElement {
-  const div = document.createElement('div')
-  Object.assign(div.style, { textAlign: 'center', color: '#bbb', fontSize: FONT_SIZE.chip, lineHeight: '1', padding: '2px 0' })
-  div.textContent = '▼'
-  return div
 }
 
 /* ── 업종 순위 리스트 빌드 ── */
@@ -247,8 +239,6 @@ export function createSectorAnalysisCard(props: SectorAnalysisProps): { el: HTML
   })
   root.appendChild(createSettingRow('5일평균거래대금 컷오프 (억원)', minTradeAmtInput.el))
 
-  root.appendChild(createArrowDivider())
-
   // ② 업종 컷오프
   root.appendChild(createStepLabel('②', '업종 컷오프'))
   minRiseRatioInput = createNumInput({ 
@@ -258,8 +248,6 @@ export function createSectorAnalysisCard(props: SectorAnalysisProps): { el: HTML
     name: 'sector_min_rise_ratio_pct' 
   })
   root.appendChild(createSettingRow('업종내종목상승비율 컷오프 (%)', minRiseRatioInput.el))
-
-  root.appendChild(createArrowDivider())
 
   // ③ 극단값 제외
   root.appendChild(createStepLabel('③', '극단값 제외'))
@@ -299,8 +287,6 @@ export function createSectorAnalysisCard(props: SectorAnalysisProps): { el: HTML
   trimRow.appendChild(leftCol)
   trimRow.appendChild(rightCol)
   root.appendChild(trimRow)
-
-  root.appendChild(createArrowDivider())
 
   // ④ 점수 가중치
   root.appendChild(createStepLabel('④', '점수 가중치'))

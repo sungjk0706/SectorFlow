@@ -152,7 +152,7 @@ function mount(container: HTMLElement): void {
 
 
   // ── 매수 조건 섹션 ──
-  root.appendChild(sectionTitle('전역 조건'))
+  root.appendChild(sectionTitle('전역 조건 (%)'))
 
   // 코스피 하락 제한
   kospiGuardToggle = createToggleBtn({ on: false, onClick: async () => {
@@ -165,7 +165,7 @@ function mount(container: HTMLElement): void {
   kospiLabelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
   kospiLabelWrap.appendChild(kospiGuardToggle.el)
   const kospiText = document.createElement('span')
-  kospiText.textContent = '코스피 하락 전역매수차단 (%)'
+  kospiText.textContent = '코스피 하락 매수차단'
   kospiLabelWrap.appendChild(kospiText)
   kospiDropInput = createNumInput({ value: 0, onChange: v => { vals.buy_index_kospi_drop = v; autoSave('buy_index_kospi_drop', v) }, step: 1, name: 'buy_index_kospi_drop' })
   root.appendChild(createSettingRow(kospiLabelWrap, kospiDropInput.el))
@@ -181,25 +181,25 @@ function mount(container: HTMLElement): void {
   kosdaqLabelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
   kosdaqLabelWrap.appendChild(kosdaqGuardToggle.el)
   const kosdaqText = document.createElement('span')
-  kosdaqText.textContent = '코스닥 하락 전역매수차단 (%)'
+  kosdaqText.textContent = '코스닥 하락 매수차단'
   kosdaqLabelWrap.appendChild(kosdaqText)
   kosdaqDropInput = createNumInput({ value: 0, onChange: v => { vals.buy_index_kosdaq_drop = v; autoSave('buy_index_kosdaq_drop', v) }, step: 1, name: 'buy_index_kosdaq_drop' })
   root.appendChild(createSettingRow(kosdaqLabelWrap, kosdaqDropInput.el))
 
   // 상승률 제한
   riseInput = createNumInput({ value: 0, onChange: v => { vals.buy_block_rise_pct = v; autoSave('buy_block_rise_pct', v) }, step: 1, name: 'buy_block_rise_pct' })
-  root.appendChild(createSettingRow('종목 상승률 매수차단 (%)', riseInput.el))
+  root.appendChild(createSettingRow('종목 상승률 매수차단', riseInput.el))
 
   // 하락률 제한
   fallInput = createNumInput({ value: 0, onChange: v => { vals.buy_block_fall_pct = v; autoSave('buy_block_fall_pct', v) }, step: 1, name: 'buy_block_fall_pct' })
-  root.appendChild(createSettingRow('종목 하락률 매수차단 (%)', fallInput.el))
+  root.appendChild(createSettingRow('종목 하락률 매수차단', fallInput.el))
 
   // 체결강도 하한
   strengthInput = createNumInput({ value: 0, onChange: v => { vals.buy_min_strength = v; autoSave('buy_min_strength', v) }, step: 1, name: 'buy_min_strength' })
-  root.appendChild(createSettingRow('종목 체결강도 매수차단 (%)', strengthInput.el))
+  root.appendChild(createSettingRow('종목 체결강도 매수차단', strengthInput.el))
 
   // ── 매수 가산점 섹션 ──
-  root.appendChild(sectionTitle('매수 가산점'))
+  root.appendChild(sectionTitle('매수 가산점 (+N)'))
 
   // --- 5일 고가 돌파 ---
   {
@@ -226,18 +226,13 @@ function mount(container: HTMLElement): void {
     controls.style.pointerEvents = 'none'
     boostHighControls = controls
 
-    const scoreLabel = document.createElement('span')
-    scoreLabel.textContent = '가산점'
-    scoreLabel.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;'
-    controls.appendChild(scoreLabel)
-
     boostHighScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_high_breakout_score = v; autoSave('boost_high_breakout_score', v) }, step: 1, name: 'boost_high_breakout_score' })
     controls.appendChild(boostHighScoreInput.el)
 
     root.appendChild(createSettingRow(labelWrap, controls))
   }
 
-  // --- 매수/매도 호가 잔량비율 ---
+  // --- 매수/매도호가 잔량비율 ---
   {
     const block = document.createElement('div')
     block.style.borderBottom = '1px solid #eee'
@@ -261,7 +256,7 @@ function mount(container: HTMLElement): void {
     }})
     labelWrap.appendChild(boostOrderToggle.el)
     const label = document.createElement('span')
-    label.textContent = '매수/매도 호가 잔량비율'
+    label.textContent = '매수/매도호가 잔량비율'
     labelWrap.appendChild(label)
 
     const row1Controls = document.createElement('span')
@@ -269,11 +264,6 @@ function mount(container: HTMLElement): void {
     row1Controls.style.opacity = '0.4'
     row1Controls.style.pointerEvents = 'none'
     boostOrderControls = row1Controls
-
-    const scoreLabel = document.createElement('span')
-    scoreLabel.textContent = '가산점'
-    scoreLabel.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;'
-    row1Controls.appendChild(scoreLabel)
 
     boostOrderScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_order_ratio_score = v; autoSave('boost_order_ratio_score', v) }, step: 1, name: 'boost_order_ratio_score' })
     row1Controls.appendChild(boostOrderScoreInput.el)

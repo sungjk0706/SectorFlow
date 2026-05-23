@@ -148,7 +148,7 @@ export function createBuySettingsCard(props: BuySettingsProps): { el: HTMLElemen
   kospiLabelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
   kospiLabelWrap.appendChild(kospiGuardToggle.el)
   const kospiText = document.createElement('span')
-  kospiText.textContent = '코스피 하락 전역매수차단 (%)'
+  kospiText.textContent = '코스피 하락 매수차단'
   kospiLabelWrap.appendChild(kospiText)
   kospiDropInput = createNumInput({ value: props.buyIndexKospiDrop, onChange: props.onKospiDropChange, step: 1, name: 'buy_index_kospi_drop' })
   root.appendChild(createSettingRow(kospiLabelWrap, kospiDropInput.el))
@@ -161,22 +161,22 @@ export function createBuySettingsCard(props: BuySettingsProps): { el: HTMLElemen
   kosdaqLabelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
   kosdaqLabelWrap.appendChild(kosdaqGuardToggle.el)
   const kosdaqText = document.createElement('span')
-  kosdaqText.textContent = '코스닥 하락 전역매수차단 (%)'
+  kosdaqText.textContent = '코스닥 하락 매수차단'
   kosdaqLabelWrap.appendChild(kosdaqText)
   kosdaqDropInput = createNumInput({ value: props.buyIndexKosdaqDrop, onChange: props.onKosdaqDropChange, step: 1, name: 'buy_index_kosdaq_drop' })
   root.appendChild(createSettingRow(kosdaqLabelWrap, kosdaqDropInput.el))
 
   // 상승률 제한
   riseInput = createNumInput({ value: props.buyBlockRisePct, onChange: props.onRiseChange, step: 1, name: 'buy_block_rise_pct' })
-  root.appendChild(createSettingRow('종목 상승률 매수차단 (%)', riseInput.el))
+  root.appendChild(createSettingRow('종목 상승률 매수차단', riseInput.el))
 
   // 하락률 제한
   fallInput = createNumInput({ value: props.buyBlockFallPct, onChange: props.onFallChange, step: 1, name: 'buy_block_fall_pct' })
-  root.appendChild(createSettingRow('종목 하락률 매수차단 (%)', fallInput.el))
+  root.appendChild(createSettingRow('종목 하락률 매수차단', fallInput.el))
 
   // 체결강도 하한
   strengthInput = createNumInput({ value: props.buyMinStrength, onChange: props.onStrengthChange, step: 1, name: 'buy_min_strength' })
-  root.appendChild(createSettingRow('종목 체결강도 매수차단 (%)', strengthInput.el))
+  root.appendChild(createSettingRow('종목 체결강도 매수차단', strengthInput.el))
 
   // 매수 가산점 섹션
   root.appendChild(sectionTitle('매수 가산점'))
@@ -198,11 +198,6 @@ export function createBuySettingsCard(props: BuySettingsProps): { el: HTMLElemen
     controls.style.opacity = props.boostHighBreakoutOn ? '1' : '0.4'
     controls.style.pointerEvents = props.boostHighBreakoutOn ? 'auto' : 'none'
     boostHighControls = controls
-
-    const scoreLabel = document.createElement('span')
-    scoreLabel.textContent = '가산점'
-    scoreLabel.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;'
-    controls.appendChild(scoreLabel)
 
     boostHighScoreInput = createNumInput({ value: props.boostHighBreakoutScore, onChange: props.onBoostHighScoreChange, step: 1, name: 'boost_high_breakout_score' })
     controls.appendChild(boostHighScoreInput.el)
@@ -231,11 +226,6 @@ export function createBuySettingsCard(props: BuySettingsProps): { el: HTMLElemen
     row1Controls.style.opacity = props.boostOrderRatioOn ? '1' : '0.4'
     row1Controls.style.pointerEvents = props.boostOrderRatioOn ? 'auto' : 'none'
     boostOrderControls = row1Controls
-
-    const scoreLabel = document.createElement('span')
-    scoreLabel.textContent = '가산점'
-    scoreLabel.style.cssText = 'font-size:12px;color:#888;white-space:nowrap;'
-    row1Controls.appendChild(scoreLabel)
 
     boostOrderScoreInput = createNumInput({ value: props.boostOrderRatioScore, onChange: props.onBoostOrderScoreChange, step: 1, name: 'boost_order_ratio_score' })
     row1Controls.appendChild(boostOrderScoreInput.el)

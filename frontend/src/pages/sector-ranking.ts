@@ -51,7 +51,7 @@ function updateMaxTargetsStatus(scores: SectorScoreRow[]): void {
   maxTargetsStatusEl.appendChild(passedVal)
 
   const cutoffLabel = document.createElement('span')
-  cutoffLabel.textContent = '컷오프'
+  cutoffLabel.textContent = '차단'
   cutoffLabel.style.color = '#0d6efd'
   cutoffLabel.style.marginLeft = '10px'
   maxTargetsStatusEl.appendChild(cutoffLabel)
@@ -61,14 +61,6 @@ function updateMaxTargetsStatus(scores: SectorScoreRow[]): void {
   cutoffVal.style.color = '#0d6efd'
   cutoffVal.style.fontWeight = FONT_WEIGHT.bold
   maxTargetsStatusEl.appendChild(cutoffVal)
-}
-
-/* ── 헬퍼: ▼ 화살표 구분선 ── */
-function createArrowDivider(): HTMLElement {
-  const div = document.createElement('div')
-  Object.assign(div.style, { textAlign: 'center', color: '#bbb', fontSize: FONT_SIZE.chip, lineHeight: '1', padding: '2px 0' })
-  div.textContent = '▼'
-  return div
 }
 
 /* ── mount / unmount ── */
@@ -288,35 +280,32 @@ function mount(container: HTMLElement): void {
 
   const root = document.createElement('div')
 
-  // 수신율 컷오프 (기존 타이틀/연결해제 뱃지 위치)
+  // ① 종목 필터
+  root.appendChild(createStepLabel('①', '5일 평균 거래대금(N억) 이하 차단 필터링'))
+  minTradeAmtInput = createMoneyInput({ value: 0, onChange: v => onNumChange('sector_min_trade_amt', v), step: 1, name: 'sector_min_trade_amt' })
+  root.appendChild(createSettingRow('5일평균 최소 거래대금', minTradeAmtInput.el))
+
+  // ② 업종순위
+  root.appendChild(createStepLabel('②', '업종순위 : 필터링종목 실시간데이터 수신율(%N)후 계산'))
   thresholdInput = createNumInput({ value: 70, onChange: v => { onNumChange('sector_start_threshold_pct', v) }, step: 1, name: 'sector_start_threshold_pct' })
-  const thresholdRow = createSettingRow('업종순위 계산 수신율 컷오프 (%)', thresholdInput.el)
+  const thresholdRow = createSettingRow('업종순위 계산 수신율', thresholdInput.el)
   thresholdRow.style.margin = '0 0 12px 0'
   root.appendChild(thresholdRow)
 
-  // ① 종목 필터
-  root.appendChild(createStepLabel('①', '종목 필터'))
-  minTradeAmtInput = createMoneyInput({ value: 0, onChange: v => onNumChange('sector_min_trade_amt', v), step: 1, name: 'sector_min_trade_amt' })
-  root.appendChild(createSettingRow('5일평균거래대금 컷오프 (억원)', minTradeAmtInput.el))
-
-  root.appendChild(createArrowDivider())
-
-  // ② 업종 컷오프
-  root.appendChild(createStepLabel('②', '업종 컷오프'))
+  // ③ 업종 컷오프
+  root.appendChild(createStepLabel('③', '업종내종목상승비율(N%)이하 차단 필터링'))
   minRiseRatioInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_min_rise_ratio_pct', v), step: 1, name: 'sector_min_rise_ratio_pct' })
-  root.appendChild(createSettingRow('업종내종목상승비율 컷오프 (%)', minRiseRatioInput.el))
+  root.appendChild(createSettingRow('업종내 종목 상승비율', minRiseRatioInput.el))
 
-  root.appendChild(createArrowDivider())
-
-  // ③ 극단값 제외
-  root.appendChild(createStepLabel('③', '극단값 제외'))
+  // ④ 극단값 제외
+  root.appendChild(createStepLabel('④', '상하위(N%) 제외후 가중치 계산'))
   const trimRow = document.createElement('div')
   Object.assign(trimRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', borderBottom: '1px solid #eee' })
 
   const leftCol = document.createElement('div')
   const leftLabel = document.createElement('div')
   Object.assign(leftLabel.style, { color: '#555', marginBottom: '4px' })
-  leftLabel.textContent = '상승률 상/하위 컷오프 (%)'
+  leftLabel.textContent = '상승률 상/하위'
   leftCol.appendChild(leftLabel)
   trimChangeRateInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_trim_change_rate_pct', v), step: 1, name: 'sector_trim_change_rate_pct' })
   leftCol.appendChild(trimChangeRateInput.el)
@@ -325,7 +314,7 @@ function mount(container: HTMLElement): void {
   rightCol.style.textAlign = 'right'
   const rightLabel = document.createElement('div')
   Object.assign(rightLabel.style, { color: '#555', marginBottom: '4px' })
-  rightLabel.textContent = '거래대금 상/하위 컷오프 (%)'
+  rightLabel.textContent = '거래대금 상/하위'
   rightCol.appendChild(rightLabel)
   const rightInputWrap = document.createElement('div')
   Object.assign(rightInputWrap.style, { display: 'flex', justifyContent: 'flex-end' })
@@ -337,10 +326,8 @@ function mount(container: HTMLElement): void {
   trimRow.appendChild(rightCol)
   root.appendChild(trimRow)
 
-  root.appendChild(createArrowDivider())
-
-  // ④ 점수 가중치
-  root.appendChild(createStepLabel('④', '점수 가중치'))
+  // ⑤ 점수 가중치
+  root.appendChild(createStepLabel('⑤', '점수 가중치'))
   const weightWrap = document.createElement('div')
   Object.assign(weightWrap.style, { marginBottom: '8px', marginTop: '4px' })
 
