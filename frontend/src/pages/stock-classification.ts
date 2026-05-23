@@ -372,7 +372,7 @@ function buildTripleHeader(): void {
   // 좌측: 수동 갱신 버튼 배치 (기존 타이틀 자리)
   const left = document.createElement('div')
   Object.assign(left.style, {
-    flex: '1', display: 'flex', justifyContent: 'flex-start', gap: '6px', alignItems: 'center'
+    flex: '1', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', gap: '6px', alignItems: 'flex-start'
   })
 
   // 버튼 공통 스타일 (크기 및 폰트 축소)
@@ -384,22 +384,33 @@ function buildTripleHeader(): void {
     transition: 'background-color 0.2s',
   }
 
+  // 설명라벨
+  const descLabel = document.createElement('span')
+  Object.assign(descLabel.style, { fontSize: FONT_SIZE.small, color: '#999', whiteSpace: 'nowrap' })
+  descLabel.textContent = '장마감후 매매적격종목 확정시세 및 5거래일 거래대금/고가 다운로드'
+  left.appendChild(descLabel)
+
+  // 버튼 컨테이너 (가로 정렬)
+  const buttonContainer = document.createElement('div')
+  Object.assign(buttonContainer.style, { display: 'flex', gap: '6px' })
+
   const btn1 = document.createElement('button')
   Object.assign(btn1.style, btnStyle)
-  btn1.textContent = '⬇️ 전종목 확정시세 다운로드'
+  btn1.textContent = '⬇️ 확정시세'
   btn1.addEventListener('mouseenter', () => btn1.style.background = '#157347')
   btn1.addEventListener('mouseleave', () => btn1.style.background = '#198754')
   btn1.addEventListener('click', () => onTriggerDownload('snapshot'))
 
   const btn2 = document.createElement('button')
   Object.assign(btn2.style, btnStyle)
-  btn2.textContent = '⬇️ 전종목 5일 거래대금 다운로드'
+  btn2.textContent = '⬇️ 5일거래대금/고가'
   btn2.addEventListener('mouseenter', () => btn2.style.background = '#157347')
   btn2.addEventListener('mouseleave', () => btn2.style.background = '#198754')
   btn2.addEventListener('click', () => onTriggerDownload('avg_amt'))
 
-  left.appendChild(btn1)
-  left.appendChild(btn2)
+  buttonContainer.appendChild(btn1)
+  buttonContainer.appendChild(btn2)
+  left.appendChild(buttonContainer)
   header.appendChild(left)
 
   // 중앙: Indicator_Bar — dot + label (flex:1, text-align:center, fontSize: FONT_SIZE.title)
