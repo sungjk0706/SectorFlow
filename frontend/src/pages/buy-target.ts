@@ -174,12 +174,12 @@ function mount(container: HTMLElement): void {
 
   // 스크롤 컨테이너
   const scrollContainer = document.createElement('div')
-  Object.assign(scrollContainer.style, { flex: '1', minHeight: '200px', display: 'flex', flexDirection: 'column' })
+  Object.assign(scrollContainer.style, { flex: '1', minHeight: '200px', display: 'flex', flexDirection: 'column', overflowY: 'auto' })
 
   // DataTable 생성
   dataTable = createDataTable<BuyTarget>({
     columns: COLUMNS,
-    virtualScroll: true,
+    virtualScroll: false,
     keyFn: (t) => t.code,
     emptyText: '매수후보가 없습니다.',
     stickyHeader: true,

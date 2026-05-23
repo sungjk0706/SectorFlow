@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
-import { createFixedTable, type ColDef, type TableRow } from './fixed-table'
+import { createFixedTable, type ColDef, type TableRow } from '../../../src/components/common/fixed-table'
 
 /* ── Test row type ── */
 interface TestRow {

@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import * as fc from 'fast-check'
-import { createDataTable, type ColumnDef } from './data-table'
+import { createDataTable, type ColumnDef } from '../../../src/components/common/data-table'
 
 /* ── Test Row Type ── */
 

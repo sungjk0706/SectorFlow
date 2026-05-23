@@ -11,8 +11,8 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import * as fc from 'fast-check'
-import { hotStore, applyRealData, rebuildBuyTargetIndex, rebuildPositionIndex } from './hotStore'
-import type { Position, BuyTarget, SectorStock, RealDataEvent } from '../types'
+import { hotStore, applyRealData, rebuildBuyTargetIndex, rebuildPositionIndex } from '../../src/stores/hotStore'
+import type { Position, BuyTarget, SectorStock, RealDataEvent } from '../../src/types'
 
 describe('Bug Condition: Position PnL not recalculated on cur_price change', () => {
   beforeEach(() => {
