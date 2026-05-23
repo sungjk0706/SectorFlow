@@ -75,7 +75,7 @@ export function createLayoutShell(): {
   // ── 좌측 패널 (dual 레이아웃 시 설정 카드) ──
   const leftPanel = document.createElement('div')
   leftPanel.style.cssText =
-    'width:380px;min-width:380px;border-right:1px solid #ddd;overflow-y:auto;scrollbar-gutter:stable;padding:16px;outline:none;display:none;'
+    'width:340px;min-width:340px;border-right:1px solid #ddd;overflow-y:auto;scrollbar-gutter:stable;padding:8px;outline:none;display:none;'
 
   // ── 우측 패널 (dual 레이아웃 시 데이터 영역) ──
   const rightPanel = document.createElement('div')
