@@ -4,7 +4,7 @@
 
 import { createSettingRow, createNumInput, createToggleBtn, createFixedValue } from '../components/common/setting-row'
 import { sectionTitle } from '../components/common/settings-common'
-import { FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, setDisabled } from '../components/common/ui-styles'
 import { createTimePairInput, type TimePairInputHandle } from '../components/common/time-pair-input'
 import { createCardHeader } from '../components/common/card-header'
 import { createGlobalWsBadge } from '../settings'
@@ -45,11 +45,6 @@ export interface SellSettingsProps {
   onTsDropValChange: (value: number) => void
 }
 
-function setRowDisabled(row: HTMLElement | null, disabled: boolean): void {
-  if (!row) return
-  row.style.opacity = disabled ? '0.4' : '1'
-  row.style.pointerEvents = disabled ? 'none' : 'auto'
-}
 
 /* ── 컴포넌트 생성 함수 ── */
 
@@ -155,10 +150,10 @@ export function createSellSettingsCard(props: SellSettingsProps): { el: HTMLElem
   root.appendChild(tsDropRow)
 
   // 초기 상태 설정
-  setRowDisabled(tpValRow, !props.tpApply)
-  setRowDisabled(lossValRow, !props.lossApply)
-  setRowDisabled(tsStartRow, !props.tsApply)
-  setRowDisabled(tsDropRow, !props.tsApply)
+  setDisabled(tpValRow!, !props.tpApply)
+  setDisabled(lossValRow!, !props.lossApply)
+  setDisabled(tsStartRow!, !props.tsApply)
+  setDisabled(tsDropRow!, !props.tsApply)
 
   // Props 업데이트 함수
   function update(newProps: SellSettingsProps): void {
@@ -173,17 +168,17 @@ export function createSellSettingsCard(props: SellSettingsProps): { el: HTMLElem
     
     tpToggle?.setOn(props.tpApply)
     tpValInput?.setValue(props.tpVal)
-    setRowDisabled(tpValRow, !props.tpApply)
+    setDisabled(tpValRow!, !props.tpApply)
     
     lossToggle?.setOn(props.lossApply)
     lossValInput?.setValue(props.lossVal)
-    setRowDisabled(lossValRow, !props.lossApply)
+    setDisabled(lossValRow!, !props.lossApply)
     
     tsToggle?.setOn(props.tsApply)
     tsStartValInput?.setValue(props.tsStartVal)
     tsDropValInput?.setValue(props.tsDropVal)
-    setRowDisabled(tsStartRow, !props.tsApply)
-    setRowDisabled(tsDropRow, !props.tsApply)
+    setDisabled(tsStartRow!, !props.tsApply)
+    setDisabled(tsDropRow!, !props.tsApply)
   }
 
   // 파괴 함수

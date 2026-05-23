@@ -485,3 +485,16 @@ export function createDarkSelect(options: { value: string; label: string; disabl
   el.value = value
   return el
 }
+
+/* ── 스타일 헬퍼 ── */
+
+/** 요소 비활성화/활성화 설정 (opacity + pointerEvents) */
+export function setDisabled(el: HTMLElement, disabled: boolean): void {
+  el.style.opacity = disabled ? '0.4' : '1'
+  el.style.pointerEvents = disabled ? 'none' : 'auto'
+}
+
+/** 요소 표시/숨김 설정 (display) */
+export function setDisplay(el: HTMLElement, visible: boolean): void {
+  el.style.display = visible ? '' : 'none'
+}

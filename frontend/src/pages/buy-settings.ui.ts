@@ -5,7 +5,7 @@
 import { createSettingRow, createNumInput, createMoneyInput, createToggleBtn, createFixedValue } from '../components/common/setting-row'
 import { sectionTitle } from '../components/common/settings-common'
 import { createDualLabelSlider, type DualLabelSliderHandle } from '../components/common/create-slider'
-import { FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, setDisabled } from '../components/common/ui-styles'
 import { createTimePairInput, type TimePairInputHandle } from '../components/common/time-pair-input'
 import { createCardHeader } from '../components/common/card-header'
 import { createGlobalWsBadge } from '../settings'
@@ -189,8 +189,7 @@ export function createBuySettingsCard(props: BuySettingsProps): { el: HTMLElemen
 
     const controls = document.createElement('span')
     controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
-    controls.style.opacity = props.boostHighBreakoutOn ? '1' : '0.4'
-    controls.style.pointerEvents = props.boostHighBreakoutOn ? 'auto' : 'none'
+    setDisabled(controls, !props.boostHighBreakoutOn)
     boostHighControls = controls
 
     boostHighScoreInput = createNumInput({ value: props.boostHighBreakoutScore, onChange: props.onBoostHighScoreChange, step: 1, name: 'boost_high_breakout_score' })
@@ -217,8 +216,7 @@ export function createBuySettingsCard(props: BuySettingsProps): { el: HTMLElemen
 
     const row1Controls = document.createElement('span')
     row1Controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
-    row1Controls.style.opacity = props.boostOrderRatioOn ? '1' : '0.4'
-    row1Controls.style.pointerEvents = props.boostOrderRatioOn ? 'auto' : 'none'
+    setDisabled(row1Controls, !props.boostOrderRatioOn)
     boostOrderControls = row1Controls
 
     boostOrderScoreInput = createNumInput({ value: props.boostOrderRatioScore, onChange: props.onBoostOrderScoreChange, step: 1, name: 'boost_order_ratio_score' })
@@ -250,8 +248,7 @@ export function createBuySettingsCard(props: BuySettingsProps): { el: HTMLElemen
     const row2 = document.createElement('div')
     Object.assign(row2.style, { padding: '0 0 6px' })
     row2.appendChild(boostOrderDualSlider.el)
-    row2.style.opacity = props.boostOrderRatioOn ? '1' : '0.4'
-    row2.style.pointerEvents = props.boostOrderRatioOn ? 'auto' : 'none'
+    setDisabled(row2, !props.boostOrderRatioOn)
     boostOrderRow2 = row2
 
     block.appendChild(row2)
@@ -298,8 +295,7 @@ export function createBuySettingsCard(props: BuySettingsProps): { el: HTMLElemen
     boostHighToggle?.setOn(props.boostHighBreakoutOn)
     boostHighScoreInput?.setValue(props.boostHighBreakoutScore)
     if (boostHighControls) {
-      boostHighControls.style.opacity = props.boostHighBreakoutOn ? '1' : '0.4'
-      boostHighControls.style.pointerEvents = props.boostHighBreakoutOn ? 'auto' : 'none'
+      setDisabled(boostHighControls, !props.boostHighBreakoutOn)
     }
     
     boostOrderToggle?.setOn(props.boostOrderRatioOn)
@@ -308,12 +304,10 @@ export function createBuySettingsCard(props: BuySettingsProps): { el: HTMLElemen
     }
     boostOrderScoreInput?.setValue(props.boostOrderRatioScore)
     if (boostOrderControls) {
-      boostOrderControls.style.opacity = props.boostOrderRatioOn ? '1' : '0.4'
-      boostOrderControls.style.pointerEvents = props.boostOrderRatioOn ? 'auto' : 'none'
+      setDisabled(boostOrderControls, !props.boostOrderRatioOn)
     }
     if (boostOrderRow2) {
-      boostOrderRow2.style.opacity = props.boostOrderRatioOn ? '1' : '0.4'
-      boostOrderRow2.style.pointerEvents = props.boostOrderRatioOn ? 'auto' : 'none'
+      setDisabled(boostOrderRow2, !props.boostOrderRatioOn)
     }
     
     maxDailyInput?.setValue(props.maxDailyTotalBuyAmt)

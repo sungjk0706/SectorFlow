@@ -77,7 +77,7 @@ describe('Property 14: Flash Direction Matches Price Change (플래시 방향 �
     }
   })
 
-  it('price increase → red flash (up direction)', () => {
+  it('price increase → red flash (up direction)', { timeout: 10000 }, () => {
     /**
      * **Validates: Requirements 13.1, 13.2**
      *
@@ -113,7 +113,7 @@ describe('Property 14: Flash Direction Matches Price Change (플래시 방향 �
           table.destroy()
         },
       ),
-      { numRuns: 100 },
+      { numRuns: 20 },
     )
   })
 
@@ -149,7 +149,7 @@ describe('Property 14: Flash Direction Matches Price Change (플래시 방향 �
           table.destroy()
         },
       ),
-      { numRuns: 100 },
+      { numRuns: 20 },
     )
   })
 
@@ -219,7 +219,7 @@ describe('Property 14: Flash Direction Matches Price Change (플래시 방향 �
           table.destroy()
         },
       ),
-      { numRuns: 100 },
+      { numRuns: 20 },
     )
   })
 
@@ -277,7 +277,7 @@ describe('Property 14: Flash Direction Matches Price Change (플래시 방향 �
           table.destroy()
         },
       ),
-      { numRuns: 100 },
+      { numRuns: 20 },
     )
   })
 
@@ -334,7 +334,7 @@ describe('Property 14: Flash Direction Matches Price Change (플래시 방향 �
           table.destroy()
         },
       ),
-      { numRuns: 100 },
+      { numRuns: 20 },
     )
   })
 

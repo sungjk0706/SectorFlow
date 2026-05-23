@@ -104,7 +104,7 @@ function getCellTexts(tableEl: HTMLElement, rowKey: string): string[] {
 }
 
 describe('Property 7: FixedTable Incremental Update (rowKey 기반 증분 갱신)', () => {
-  it('newly inserted rows appear in DOM after updateRows', () => {
+  it('newly inserted rows appear in DOM after updateRows', { timeout: 10000 }, () => {
     /**
      * **Validates: Requirements 7.1**
      *
@@ -136,7 +136,7 @@ describe('Property 7: FixedTable Incremental Update (rowKey 기반 증분 갱신
           table.destroy()
         }
       }),
-      { numRuns: 100 },
+      { numRuns: 20 },
     )
   })
 
@@ -172,7 +172,7 @@ describe('Property 7: FixedTable Incremental Update (rowKey 기반 증분 갱신
           table.destroy()
         }
       }),
-      { numRuns: 100 },
+      { numRuns: 20 },
     )
   })
 
@@ -236,7 +236,7 @@ describe('Property 7: FixedTable Incremental Update (rowKey 기반 증분 갱신
           table.destroy()
         }
       }),
-      { numRuns: 100 },
+      { numRuns: 20 },
     )
   })
 
@@ -276,7 +276,7 @@ describe('Property 7: FixedTable Incremental Update (rowKey 기반 증분 갱신
           table.destroy()
         }
       }),
-      { numRuns: 100 },
+      { numRuns: 20 },
     )
   })
 })

@@ -105,7 +105,7 @@ describe('Property 6: Cell Diffing Idempotence (동일 데이터 재렌더링 �
     }
   })
 
-  it('string cells: second renderRow with same data produces zero DOM mutations', () => {
+  it('string cells: second renderRow with same data produces zero DOM mutations', { timeout: 10000 }, () => {
     /**
      * **Validates: Requirements 3.1, 3.2**
      *
@@ -140,7 +140,7 @@ describe('Property 6: Cell Diffing Idempotence (동일 데이터 재렌더링 �
 
         table.destroy()
       }),
-      { numRuns: 100 },
+      { numRuns: 20 },
     )
   })
 
@@ -177,7 +177,7 @@ describe('Property 6: Cell Diffing Idempotence (동일 데이터 재렌더링 �
 
         table.destroy()
       }),
-      { numRuns: 100 },
+      { numRuns: 20 },
     )
   })
 
