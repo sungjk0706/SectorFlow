@@ -4,7 +4,7 @@
 
 import { createProfitChart, type ProfitChartApi } from '../components/canvas-profit-chart'
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
-import { globalSettingsManager, createGlobalWsBadge } from '../settings'
+import { globalSettingsManager } from '../settings'
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, createStockNameColumn, createNumberCell, createPnlCell } from '../components/common/ui-styles'
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
@@ -220,8 +220,6 @@ let drilldownActive = false
 let dateFilter: string | null = null
 let drilldownTable: DataTableApi<DailyDrilldownRow> | null = null
 let tabRow: HTMLDivElement | null = null
-let wsBadge: HTMLElement | null = null
-
 /* ── 요약 카드 DOM 참조 ── */
 let todayPnlEl: HTMLSpanElement | null = null
 let todayRateEl: HTMLSpanElement | null = null
@@ -543,9 +541,6 @@ function mount(container: HTMLElement): void {
   accountTitle.textContent = '계좌 현황'
   accountHeader.appendChild(accountTitle)
 
-  // 테스트모드/실시간 상태 뱃지
-  wsBadge = createGlobalWsBadge()
-  accountHeader.appendChild(wsBadge)
   accountPanel.appendChild(accountHeader)
 
   // 계좌 현황 DOM 생성 (실전모드 + 테스트모드 각각, CSS display 토글)
@@ -890,7 +885,6 @@ function unmount(): void {
   drilldownActive = false
   dateFilter = null
   tabRow = null
-  wsBadge = null
   accountValRefs = []
   testAccountValRefs = []
   holdingCountLabel = null

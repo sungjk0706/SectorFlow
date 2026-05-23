@@ -8,7 +8,7 @@ import { createLayoutShell } from './layout/shell'
 import { createRouter } from './router'
 import type { RouteConfig, PageModule } from './router'
 import { initToastContainer } from './components/common/save-toast'
-import { sectorCustomStore } from './stores/sectorCustomStore'
+import { stockClassificationStore } from './stores/stockClassificationStore'
 import { api } from './api/client'
 // Import sector-stock Web Component to register custom element
 import './pages/sector-stock'
@@ -45,17 +45,17 @@ function startFpsMonitor(): void {
   requestAnimationFrame(tick)
 }
 
-// ── Layout Shell (모듈 레벨 export — sector-custom.ts 등에서 import) ──
+// ── Layout Shell (모듈 레벨 export — stock-classification.ts 등에서 import) ──
 export const shell = createLayoutShell()
 
 // ── 라우트 설정 ──
 
 const routes: RouteConfig[] = [
   {
-    path: '#/sector-analysis',
+    path: '#/sector-ranking',
     layout: 'dual',
     load: () => Promise.resolve({ tagName: 'sector-stock-table' }),
-    settingsCard: () => import('./pages/sector-analysis').then(m => m.default),
+    settingsCard: () => import('./pages/sector-ranking').then(m => m.default),
   },
   {
     path: '#/buy-settings',
@@ -75,9 +75,9 @@ const routes: RouteConfig[] = [
     load: () => import('./pages/profit-overview').then(m => m.default),
   },
   {
-    path: '#/sector-custom',
+    path: '#/stock-classification',
     layout: 'triple',
-    load: () => import('./pages/sector-custom').then(m => m.default),
+    load: () => import('./pages/stock-classification').then(m => m.default),
   },
   {
     path: '#/general-settings',
@@ -207,9 +207,9 @@ function main(): void {
     shell.setOverlay(true, '엔진 초기화 중…')
   }
 
-  // 6. 업종명없음 배지 — sectorCustomStore 구독
-  sectorCustomStore.subscribe((state) => {
-    shell.setBadge('#/sector-custom', state.noSectorCount)
+  // 6. 업종명없음 배지 — stockClassificationStore 구독
+  stockClassificationStore.subscribe((state) => {
+    shell.setBadge('#/stock-classification', state.noSectorCount)
   })
 
   // 6. Health Check 후 WS 연결 시작 (현대적 안정성 패턴)

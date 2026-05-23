@@ -4,11 +4,11 @@
 import { FONT_SIZE } from '../components/common/ui-styles'
 
 const MENU = [
-  { path: '#/sector-analysis', label: '업종분석', icon: '📊' },
+  { path: '#/sector-ranking', label: '업종순위', icon: '📊' },
   { path: '#/buy-settings', label: '매수설정', icon: '💰' },
   { path: '#/sell-settings', label: '매도설정', icon: '📉' },
   { path: '#/profit-overview', label: '수익현황', icon: '📈' },
-  { path: '#/sector-custom', label: '업종분류', icon: '🏷️', separator: true },
+  { path: '#/stock-classification', label: '종목분류', icon: '🏷️', separator: true },
   { path: '#/metrics-dashboard', label: 'Metrics', icon: '📊' },
   { path: '#/general-settings', label: '일반설정', icon: '⚙️' },
 ] as const
@@ -23,13 +23,9 @@ export function createSidebar(onNavigate: (path: string) => void): {
 } {
   const nav = document.createElement('nav')
   nav.style.cssText =
-    'width:160px;min-width:160px;background:#f8f9fa;border-right:1px solid #ddd;display:flex;flex-direction:column;padding:12px 0;'
+    'width:120px;min-width:120px;background:#f8f9fa;border-right:1px solid #ddd;display:flex;flex-direction:column;padding:12px 0;'
 
-  // 메뉴 헤더
-  const title = document.createElement('div')
-  title.style.cssText = 'padding:0 12px 12px;font-weight:700;font-size:11px;color:#888;'
-  title.textContent = '메뉴'
-  nav.appendChild(title)
+
 
   // 메뉴 항목 생성
   const items = new Map<string, HTMLAnchorElement>()
@@ -45,7 +41,7 @@ export function createSidebar(onNavigate: (path: string) => void): {
     const a = document.createElement('a')
     a.href = m.path
     a.style.cssText =
-      'display:block;padding:10px 12px;text-decoration:none;font-size:12px;color:#333;background:transparent;border-left:3px solid transparent;cursor:pointer;'
+      'display:block;padding:14px 0;margin-bottom:4px;text-align:center;text-decoration:none;font-size:13.5px;color:#333;background:transparent;border-left:3px solid transparent;cursor:pointer;font-weight:500;'
     a.textContent = `${m.icon} ${m.label}`
     a.addEventListener('click', (e) => {
       e.preventDefault()

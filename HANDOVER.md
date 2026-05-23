@@ -34,7 +34,7 @@
   - `backend/app/services/pipeline_gateway.py` (신규 생성)
   - `backend/app/services/engine_loop.py` (수정)
   - `backend/app/web/routes/settings.py` (수정)
-  - `backend/app/web/routes/sector_custom.py` (수정)
+  - `backend/app/web/routes/stock_classification.py` (수정)
 - 검증 결과:
   - Python 컴파일: SUCCESS
   - 파이프라인 루프 동작: SUCCESS
@@ -45,7 +45,7 @@
 - 수정 파일:
   - `backend/app/services/core_queues.py` (PriorityQueue 전환, 튜플 언패킹)
   - `backend/app/web/routes/settings.py` (우선순위 0 튜플 구조)
-  - `backend/app/web/routes/sector_custom.py` (우선순위 1 튜플 구조)
+  - `backend/app/web/routes/stock_classification.py` (우선순위 1 튜플 구조)
   - `backend/app/services/pipeline_compute.py` (튜플 언패킹, Yielding 추가)
 - 검증 결과:
   - Python 컴파일: SUCCESS

@@ -165,8 +165,8 @@ app.include_router(ws_router)
 app.include_router(trade_router)
 app.include_router(ws_subscribe_router)
 
-from backend.app.web.routes.sector_custom import router as sector_custom_router
-app.include_router(sector_custom_router)
+from backend.app.web.routes.stock_classification import router as stock_classification_router
+app.include_router(stock_classification_router)
 
 from backend.app.web.routes.settlement import router as settlement_router
 app.include_router(settlement_router)

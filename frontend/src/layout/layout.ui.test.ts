@@ -65,7 +65,7 @@ export function testLayoutUi(): void {
   // Sidebar 테스트
   const sidebarContainer = createMockContainer()
   const sidebarProps: SidebarUiProps = {
-    activePath: '#/sector-analysis',
+    activePath: '#/sector-ranking',
     badges: { '#/buy-settings': 3 },
     onNavigate: (path) => console.log(`[TEST] onNavigate: ${path}`),
   }

@@ -4,12 +4,13 @@
 
 import { uiStore, applyTestDataResetCompleted } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
-import { createSettingsManager, extractDirty, MASKED_FIELDS, type SettingsManager, createGlobalWsBadge } from '../settings'
+import { createSettingsManager, extractDirty, MASKED_FIELDS, type SettingsManager } from '../settings'
 import { createToggleBtn, createMoneyInput, TEXT_INPUT_WIDTH } from '../components/common/setting-row'
 import { toastResult, showSaveToast } from '../components/common/save-toast'
 import { createDataTable, type ColumnDef } from '../components/common/data-table'
 import { api } from '../api/client'
 import { parseHM, sectionTitle, createTimeSlot, updateTimeSlotDisplay } from '../components/common/settings-common'
+import { createTimePairInput, type TimePairInputHandle } from '../components/common/time-pair-input'
 import { FONT_SIZE, FONT_WEIGHT, createDarkInput } from '../components/common/ui-styles'
 import { showPopup } from '../components/common/popup'
 import type { AppSettings } from '../types'
@@ -42,12 +43,15 @@ let tabPanels: Record<TabId, HTMLElement> | null = null
 
 // 자동매매 탭 참조
 let masterToggle: ReturnType<typeof createToggleBtn> | null = null
+let autoBuyToggle: ReturnType<typeof createToggleBtn> | null = null
+let buyTimeHandle: TimePairInputHandle | null = null
+let autoSellToggle: ReturnType<typeof createToggleBtn> | null = null
+let sellTimeHandle: TimePairInputHandle | null = null
 let holidayToggle: ReturnType<typeof createToggleBtn> | null = null
 let wsToggle: ReturnType<typeof createToggleBtn> | null = null
 let wsTimePairWrap: HTMLElement | null = null
 let holidayBadgeEls: HTMLElement[] = []
 let holidayToggleRow: HTMLElement | null = null
-let wsBadge: HTMLElement | null = null
 
 // TimePairInput
 let wsSH = '09', wsSM = '00', wsEH = '15', wsEM = '00'
@@ -88,7 +92,7 @@ function updateHolidayBadges(): void {
 }
 
 /* ── TimePairInput (인라인 — 공통 컴포넌트 사용) ── */
-function createTimePairInput(startKey: string, endKey: string): HTMLElement {
+function createWsTimePairInput(startKey: string, endKey: string): HTMLElement {
   const wrap = document.createElement('div')
   Object.assign(wrap.style, { display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 0' })
   wsStartSlot = createTimeSlot(wsSH, wsSM, (h, m) => {
@@ -165,10 +169,6 @@ function renderTabBar(): HTMLElement {
   }
   bar.appendChild(btnGroup)
 
-  // WS 상태 배지
-  wsBadge = createGlobalWsBadge()
-  bar.appendChild(wsBadge)
-
   return bar
 }
 
@@ -207,6 +207,84 @@ function renderAutoTradeTab(container: HTMLElement): void {
   masterRow.appendChild(masterRight)
   container.appendChild(masterRow)
 
+  // 자동매수 행
+  const autoBuyRow = document.createElement('div')
+  Object.assign(autoBuyRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px' })
+  const autoBuyLabel = document.createElement('span')
+  Object.assign(autoBuyLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  autoBuyLabel.textContent = '자동매수'
+  autoBuyRow.appendChild(autoBuyLabel)
+  const autoBuyRight = document.createElement('span')
+  autoBuyRight.style.cssText = 'display:flex;align-items:center;gap:10px;'
+  const buyStart = String(vals.buy_time_start ?? '09:00')
+  const buyEnd = String(vals.buy_time_end ?? '15:00')
+  const { el: buyTpWrap, handle: buyHandle } = createTimePairInput(buyStart, buyEnd, (s, e) => {
+    if (settingsMgr) {
+      const dirty: Record<string, unknown> = {}
+      if (s !== vals.buy_time_start) dirty.buy_time_start = s
+      if (e !== vals.buy_time_end) dirty.buy_time_end = e
+      if (Object.keys(dirty).length > 0) {
+        settingsMgr.saveSection(dirty).then(toastResult)
+        Object.assign(vals, dirty)
+      }
+    }
+  })
+  buyTimeHandle = buyHandle
+  autoBuyToggle = createToggleBtn({ on: false, onClick: async () => {
+    const next = !vals.auto_buy_on
+    vals.auto_buy_on = next; autoBuyToggle!.setOn(next)
+    if (buyTimeHandle) buyTimeHandle.setEnabled(next)
+    const res = await settingsMgr!.saveSection({ auto_buy_on: next })
+    toastResult(res)
+    if (!res.ok) {
+      vals.auto_buy_on = !next; autoBuyToggle!.setOn(!next)
+      if (buyTimeHandle) buyTimeHandle.setEnabled(!next)
+    }
+  }})
+  autoBuyRight.appendChild(buyTpWrap)
+  autoBuyRight.appendChild(autoBuyToggle.el)
+  autoBuyRow.appendChild(autoBuyRight)
+  container.appendChild(autoBuyRow)
+
+  // 자동매도 행
+  const autoSellRow = document.createElement('div')
+  Object.assign(autoSellRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px' })
+  const autoSellLabel = document.createElement('span')
+  Object.assign(autoSellLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  autoSellLabel.textContent = '자동매도'
+  autoSellRow.appendChild(autoSellLabel)
+  const autoSellRight = document.createElement('span')
+  autoSellRight.style.cssText = 'display:flex;align-items:center;gap:10px;'
+  const sellStart = String(vals.sell_time_start ?? '09:00')
+  const sellEnd = String(vals.sell_time_end ?? '15:00')
+  const { el: sellTpWrap, handle: sellHandle } = createTimePairInput(sellStart, sellEnd, (s, e) => {
+    if (settingsMgr) {
+      const dirty: Record<string, unknown> = {}
+      if (s !== vals.sell_time_start) dirty.sell_time_start = s
+      if (e !== vals.sell_time_end) dirty.sell_time_end = e
+      if (Object.keys(dirty).length > 0) {
+        settingsMgr.saveSection(dirty).then(toastResult)
+        Object.assign(vals, dirty)
+      }
+    }
+  })
+  sellTimeHandle = sellHandle
+  autoSellToggle = createToggleBtn({ on: false, onClick: async () => {
+    const next = !vals.auto_sell_on
+    vals.auto_sell_on = next; autoSellToggle!.setOn(next)
+    if (sellTimeHandle) sellTimeHandle.setEnabled(next)
+    const res = await settingsMgr!.saveSection({ auto_sell_on: next })
+    toastResult(res)
+    if (!res.ok) {
+      vals.auto_sell_on = !next; autoSellToggle!.setOn(!next)
+      if (sellTimeHandle) sellTimeHandle.setEnabled(!next)
+    }
+  }})
+  autoSellRight.appendChild(sellTpWrap)
+  autoSellRight.appendChild(autoSellToggle.el)
+  autoSellRow.appendChild(autoSellRight)
+  container.appendChild(autoSellRow)
+
   const descLabel1 = document.createElement('div')
   Object.assign(descLabel1.style, { fontSize: GS.desc, color: '#888', padding: '0 0 4px', marginTop: '-4px' })
   descLabel1.textContent = '거래일 설정시간 내에서만 자동 매수/매도 실행'
@@ -236,42 +314,6 @@ function renderAutoTradeTab(container: HTMLElement): void {
   descLabel2.textContent = 'ON: 공휴일에 자동매매 차단 · OFF: 공휴일에도 허용'
   container.appendChild(descLabel2)
 
-  // 실시간 연결
-  const wsRow = document.createElement('div')
-  Object.assign(wsRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad })
-  const wsLabel = document.createElement('span')
-  Object.assign(wsLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  wsLabel.textContent = '실시간 연결'
-  wsRow.appendChild(wsLabel)
-
-  const wsRight = document.createElement('span')
-  wsRight.style.cssText = 'display:flex;align-items:center;'
-  wsRight.appendChild(createHolidayBadge())
-  wsToggle = createToggleBtn({ on: false, onClick: () => handleWsToggle() })
-  wsRight.appendChild(wsToggle.el)
-  wsRow.appendChild(wsRight)
-  container.appendChild(wsRow)
-
-  const descLabel3 = document.createElement('div')
-  Object.assign(descLabel3.style, { fontSize: GS.desc, color: '#888', padding: '0 0 4px', marginTop: '-4px' })
-  descLabel3.textContent = '시세·체결 실시간 수신 ON/OFF'
-  container.appendChild(descLabel3)
-
-  // 실시간 연결 시간
-  const wsTimeRow = document.createElement('div')
-  wsTimeRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;'
-  const wsTimeLabel = document.createElement('span')
-  Object.assign(wsTimeLabel.style, { minWidth: '110px', fontSize: GS.label, whiteSpace: 'nowrap' })
-  wsTimeLabel.textContent = '실시간 연결 시간'
-  wsTimeRow.appendChild(wsTimeLabel)
-  wsTimeRow.appendChild(createTimePairInput('ws_subscribe_start', 'ws_subscribe_end'))
-  wsTimeRow.appendChild(createHolidayBadge())
-  container.appendChild(wsTimeRow)
-
-  const descLabel4 = document.createElement('div')
-  Object.assign(descLabel4.style, { fontSize: GS.desc, color: '#888', padding: '0 0 4px', marginTop: '-4px' })
-  descLabel4.textContent = '실시간 시세 수신 시작/종료 시간'
-  container.appendChild(descLabel4)
 }
 
 function handleMasterToggle(): void {
@@ -578,6 +620,45 @@ function renderTestVirtualSection(): HTMLElement {
 
 /* ── API 설정 탭 ── */
 function renderApiSettingsTab(container: HTMLElement): void {
+  container.appendChild(sectionTitle('실시간 데이터 통신'))
+
+  // 실시간 연결
+  const wsRow = document.createElement('div')
+  Object.assign(wsRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad })
+  const wsLabel = document.createElement('span')
+  Object.assign(wsLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  wsLabel.textContent = '실시간 연결'
+  wsRow.appendChild(wsLabel)
+
+  const wsRight = document.createElement('span')
+  wsRight.style.cssText = 'display:flex;align-items:center;'
+  wsRight.appendChild(createHolidayBadge())
+  wsToggle = createToggleBtn({ on: false, onClick: () => handleWsToggle() })
+  wsRight.appendChild(wsToggle.el)
+  wsRow.appendChild(wsRight)
+  container.appendChild(wsRow)
+
+  const descLabel3 = document.createElement('div')
+  Object.assign(descLabel3.style, { fontSize: GS.desc, color: '#888', padding: '0 0 4px', marginTop: '-4px' })
+  descLabel3.textContent = '시세·체결 실시간 수신 ON/OFF'
+  container.appendChild(descLabel3)
+
+  // 실시간 연결 시간
+  const wsTimeRow = document.createElement('div')
+  wsTimeRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;'
+  const wsTimeLabel = document.createElement('span')
+  Object.assign(wsTimeLabel.style, { minWidth: '110px', fontSize: GS.label, whiteSpace: 'nowrap' })
+  wsTimeLabel.textContent = '실시간 연결 시간'
+  wsTimeRow.appendChild(wsTimeLabel)
+  wsTimeRow.appendChild(createWsTimePairInput('ws_subscribe_start', 'ws_subscribe_end'))
+  wsTimeRow.appendChild(createHolidayBadge())
+  container.appendChild(wsTimeRow)
+
+  const descLabel4 = document.createElement('div')
+  Object.assign(descLabel4.style, { fontSize: GS.desc, color: '#888', padding: '0 0 20px', marginTop: '-4px' })
+  descLabel4.textContent = '실시간 시세 수신 시작/종료 시간'
+  container.appendChild(descLabel4)
+
   container.appendChild(sectionTitle('키움증권 API 인증 정보'))
 
   const API_FIELDS: { key: string; label: string; type: 'password' | 'text' }[] = [
@@ -663,6 +744,20 @@ function syncFromSettings(s: AppSettings | null): void {
     if (wsStartSlot) updateTimeSlotDisplay(wsStartSlot, sh, sm)
     if (wsEndSlot) updateTimeSlotDisplay(wsEndSlot, eh, em)
     updateWsTimeDisabled()
+
+    // 자동매수
+    autoBuyToggle?.setOn(!!r.auto_buy_on)
+    if (buyTimeHandle) {
+      buyTimeHandle.setValue(String(r.buy_time_start ?? '09:00'), String(r.buy_time_end ?? '15:00'))
+      buyTimeHandle.setEnabled(!!r.auto_buy_on)
+    }
+
+    // 자동매도
+    autoSellToggle?.setOn(!!r.auto_sell_on)
+    if (sellTimeHandle) {
+      sellTimeHandle.setValue(String(r.sell_time_start ?? '09:00'), String(r.sell_time_end ?? '15:00'))
+      sellTimeHandle.setEnabled(!!r.auto_sell_on)
+    }
   }
 
   // 텔레그램 탭 (항상 DOM에 존재)
@@ -773,12 +868,15 @@ function unmount(): void {
   tabContent = null
   tabPanels = null
   masterToggle = null
+  autoBuyToggle = null
+  buyTimeHandle = null
+  autoSellToggle = null
+  sellTimeHandle = null
   holidayToggle = null
   wsToggle = null
   wsTimePairWrap = null
   holidayBadgeEls = []
   holidayToggleRow = null
-  wsBadge = null
   teleToggle = null
   teleInputs = {}
   tradeModeSection = null
