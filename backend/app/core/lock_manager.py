@@ -103,7 +103,13 @@ def register_cleanup(lock_path: Path) -> None:
 
     def _signal_handler(signum: int, frame: object) -> None:
         release_lock(lock_path)
-        sys.exit(0)
+        # Restore default handler and re-raise to exit cleanly without Python SystemExit traceback
+        signal.signal(signum, signal.SIG_DFL)
+        if hasattr(signal, "raise_signal"):
+            signal.raise_signal(signum)
+        else:
+            import os
+            os.kill(os.getpid(), signum)
 
     # SIGTERM, SIGINT 핸들러 등록
     signal.signal(signal.SIGTERM, _signal_handler)

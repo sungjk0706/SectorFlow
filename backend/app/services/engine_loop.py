@@ -72,7 +72,9 @@ async def _get_all_tokens_async(router, es) -> None:
     async def _fetch_one(broker_id: str, auth_provider) -> tuple[str, str | None]:
         try:
             token = await asyncio.to_thread(auth_provider.get_access_token)
-            logger.info("[연결] 키움증권 접속 완료")
+            from backend.app.core.broker_registry import BROKER_DISPLAY_NAMES
+            disp = BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper())
+            logger.info("[연결] %s 접속 완료", disp)
             return broker_id, token
         except Exception as e:
             logger.warning("[연결] %s 토큰 발급 실패: %s", broker_id.upper(), e, exc_info=True)
@@ -192,9 +194,8 @@ async def run_engine_loop(es: ModuleType) -> None:
         # ── 병렬 초기화: 캐시+앱준비 / 토큰 발급 / 브로커 스펙 로드 ──
         _t_parallel_start = time.perf_counter()
 
-        _cache_result, token_result, broker_spec_result, _ = await asyncio.gather(
+        _cache_result, broker_spec_result, all_tokens_result = await asyncio.gather(
             _cache_and_bootstrap(es, settings),
-            _get_token_async(router),
             _load_broker_spec_async(_spec_path),
             _get_all_tokens_async(router, es),
             return_exceptions=True,
@@ -223,14 +224,16 @@ async def run_engine_loop(es: ModuleType) -> None:
             es._broker_spec = []
 
         # ── gather 결과 반영: token ──
-        if isinstance(token_result, BaseException):
-            es._log(f" [연결] 토큰 발급 예외: {token_result}. 스냅샷 전용 모드로 기동.")
+        if isinstance(all_tokens_result, BaseException):
+            es._log(f" [연결] 토큰 발급 예외: {all_tokens_result}. 스냅샷 전용 모드로 기동.")
             es._access_token = None
-        elif token_result:
-            es._access_token = token_result
         else:
-            es._log(f" [연결] {broker_nm.upper()} 토큰 발급 실패. 스냅샷 전용 모드로 기동.")
-            es._access_token = None
+            token = es._broker_tokens.get(broker_nm)
+            if token:
+                es._access_token = token
+            else:
+                es._log(f" [연결] {broker_nm.upper()} 토큰 발급 실패. 스냅샷 전용 모드로 기동.")
+                es._access_token = None
 
         # ── 계좌 조회용 REST = Router의 AuthProvider에서 REST API 인스턴스 공유 ──
         _auth_provider = router.auth

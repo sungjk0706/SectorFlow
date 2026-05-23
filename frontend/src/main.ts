@@ -188,23 +188,21 @@ function main(): void {
   // Router 초기화 — 메인 콘텐츠는 rightPanel에 마운트
   router.init(shell.rightPanel)
 
-  // 5. 오버레이 제어 (engineReady 구독)
+  // 5. 오버레이 제어 (settings가 없어서 기본 렌더링이 불가능할 때만 로딩 표시)
   uiStore.subscribe((state) => {
     if (state.settings === null) {
       shell.setOverlay(true, '로딩 중…')
-    } else if (!state.engineReady) {
-      shell.setOverlay(true, '엔진 초기화 중…')
     } else {
       shell.setOverlay(false, '')
     }
   })
 
-  // 初期 오버레이 상태 설정
+  // 초기 오버레이 상태 설정
   const initState = uiStore.getState()
   if (initState.settings === null) {
     shell.setOverlay(true, '로딩 중…')
-  } else if (!initState.engineReady) {
-    shell.setOverlay(true, '엔진 초기화 중…')
+  } else {
+    shell.setOverlay(false, '')
   }
 
   // 6. 업종명없음 배지 — stockClassificationStore 구독
@@ -228,10 +226,12 @@ function main(): void {
         
         if (health.status === 'ready') {
           console.log('[Health] 서버 준비 완료 - WS 연결 시작')
+          shell.setOverlay(false, '')
           return
         } else if (health.status === 'error') {
           console.error('[Health] 서버 오류 상태:', health.message)
-          shell.setOverlay(true, `서버 오류: ${health.message}`)
+          // 엔진 오류/정지 상태이더라도 사용자가 설정 화면에 진입하여 수정할 수 있도록 오버레이 해제
+          shell.setOverlay(false, '')
           return
         }
         

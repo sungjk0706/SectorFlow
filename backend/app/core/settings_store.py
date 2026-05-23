@@ -27,6 +27,10 @@ ENCRYPT_FIELDS = frozenset({
     "kiwoom_app_secret",
     "kiwoom_app_key_real",
     "kiwoom_app_secret_real",
+    "ls_app_key",
+    "ls_app_secret",
+    "ls_app_key_real",
+    "ls_app_secret_real",
     "telegram_bot_token",
 })
 
@@ -89,6 +93,7 @@ def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
         "kiwoom_account_no_real": _account_field_or_legacy_flat(
             d, "kiwoom_account_no_real", legacy_a
         ).strip(),
+        "broker": str(d.get("broker") or "kiwoom").strip(),
     }
     tok = str(d.get("telegram_bot_token") or "").strip()
     if tok:
@@ -107,7 +112,7 @@ def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
     for key in d:
         if key.startswith("kiwoom_"):
             continue  # 키움은 위에서 레거시 호환 처리 완료
-        if key.endswith(("_app_key", "_app_secret", "_account_no")):
+        if key.endswith(("_app_key", "_app_secret", "_account_no", "_app_key_real", "_app_secret_real", "_account_no_real")):
             val = str(d.get(key) or "").strip()
             if val:
                 data[key] = val

@@ -428,3 +428,87 @@ class LsRestAPI:
 
         _log.warning(f"[LS증권REST] 매도주문 {max_retries}회 모두 실패")
         return None
+
+    # ========== 계좌 관련 메서드 ==========
+
+    async def get_balance(
+        self,
+        prcgb: str = "1", # 1: 평균단가, 2: BEP단가
+        chegb: str = "2", # 0: 결제기준, 2: 체결기준
+        dangb: str = "0", # 0: 정규장, 1: 시간외
+        charge: str = "1", # 0: 제비용미포함, 1: 제비용포함
+        cts_expcode: str = "",
+    ) -> Optional[dict]:
+        """주식잔고2 (t0424) 조회"""
+        url = f"{self.base_url}/stock/accno"
+        headers = {
+            "tr_cd": "t0424",
+            "tr_cont": "N",
+            "tr_cont_key": "",
+        }
+        body = {
+            "t0424InBlock": {
+                "prcgb": prcgb,
+                "chegb": chegb,
+                "dangb": dangb,
+                "charge": charge,
+                "cts_expcode": cts_expcode,
+            }
+        }
+        return await self.call_api(url, method="POST", headers=headers, body=body)
+
+    async def get_daily_history(
+        self,
+        cts_medosu: str = "0",
+        cts_expcode: str = "",
+        cts_price: str = "",
+        cts_middiv: str = "",
+    ) -> Optional[dict]:
+        """주식당일매매일지/수수료 (t0150) 조회"""
+        url = f"{self.base_url}/stock/accno"
+        headers = {
+            "tr_cd": "t0150",
+            "tr_cont": "N",
+            "tr_cont_key": "",
+        }
+        body = {
+            "t0150InBlock": {
+                "cts_medosu": cts_medosu,
+                "cts_expcode": cts_expcode,
+                "cts_price": cts_price,
+                "cts_middiv": cts_middiv,
+            }
+        }
+        return await self.call_api(url, method="POST", headers=headers, body=body)
+
+    # ========== 종목/테마 관련 메서드 ==========
+
+    async def get_themes(self) -> Optional[dict]:
+        """전체테마 (t8425) 조회"""
+        url = f"{self.base_url}/stock/sector"
+        headers = {
+            "tr_cd": "t8425",
+            "tr_cont": "N",
+            "tr_cont_key": "",
+        }
+        body = {
+            "t8425InBlock": {
+                "dummy": "",
+            }
+        }
+        return await self.call_api(url, method="POST", headers=headers, body=body)
+
+    async def get_stocks(self, gubun: str = "0") -> Optional[dict]:
+        """주식종목조회 (t8436) - gubun: 0(전체), 1(코스피), 2(코스닥)"""
+        url = f"{self.base_url}/stock/sector"
+        headers = {
+            "tr_cd": "t8436",
+            "tr_cont": "N",
+            "tr_cont_key": "",
+        }
+        body = {
+            "t8436InBlock": {
+                "gubun": gubun,
+            }
+        }
+        return await self.call_api(url, method="POST", headers=headers, body=body)

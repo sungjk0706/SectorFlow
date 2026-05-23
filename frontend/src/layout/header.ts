@@ -5,6 +5,7 @@
 import { uiStore } from '../stores/uiStore'
 import type { UIState } from '../stores/uiStore'
 import type { IndexData } from '../types'
+import { BROKER_LABELS } from '../components/common/broker-badge'
 
 // ── 스타일 상수 ──
 
@@ -313,14 +314,18 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
     // 엔진 상태
     if (status) {
       const wsOn = settings ? !!settings.ws_subscribe_on : true
+      const broker = settings?.broker || 'kiwoom'
+      const brokerLabel = BROKER_LABELS[broker] || broker
 
       modeChip.style.display = ''
       applyStatusChip(modeChip, status.is_test_mode ? '테스트모드' : '실전모드', undefined, status.is_test_mode ? 'blue' : 'red')
 
       brokerChip.style.display = ''
       brokerWsChip.style.display = ''
-      applyStatusChip(brokerChip, '키움증권', status.kiwoom_token_valid)
-      applyStatusChip(brokerWsChip, '키움실시간', status.kiwoom_connected && wsOn)
+      // 주 사용 증권사 뱃지 (broker 값 기반 동적 렌더링)
+      applyStatusChip(brokerChip, `${brokerLabel}증권`, status.kiwoom_token_valid)
+      // 실시간 연결 뱃지 (임시로 kiwoom_connected 플래그 재사용)
+      applyStatusChip(brokerWsChip, `${brokerLabel}실시간`, status.kiwoom_connected && wsOn)
     } else {
       modeChip.style.display = 'none'
       brokerChip.style.display = 'none'

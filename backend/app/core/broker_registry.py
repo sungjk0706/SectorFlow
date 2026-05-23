@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 # ── 증권사 표시 이름 ──────────────────────────────────────────────────
 BROKER_DISPLAY_NAMES: dict[str, str] = {
     "kiwoom": "키움증권",
+    "ls": "LS증권",
 }
 
 # ── 동일 증권사 강제 쌍 ───────────────────────────────────────────────
@@ -53,6 +54,24 @@ def _lazy_kiwoom_registry() -> dict[str, type]:
     }
 
 
+def _lazy_ls_registry() -> dict[str, type]:
+    """순환 import 방지: 최초 접근 시 LS Provider 클래스 로드."""
+    from backend.app.core.ls_providers import (
+        LsAuthProvider,
+        LsAccountProvider,
+        LsOrderProvider,
+        LsSectorProvider,
+        LsWebSocketProvider,
+    )
+    return {
+        "auth":      LsAuthProvider,
+        "account":   LsAccountProvider,
+        "order":     LsOrderProvider,
+        "sector":    LsSectorProvider,
+        "websocket": LsWebSocketProvider,
+    }
+
+
 
 # 지연 로딩 래퍼 -- 최초 접근 시 실제 클래스 로드
 class _LazyRegistry(dict):
@@ -63,6 +82,7 @@ class _LazyRegistry(dict):
         if not self._loaded:
             self._loaded = True
             self["kiwoom"] = _lazy_kiwoom_registry()
+            self["ls"] = _lazy_ls_registry()
 
     def get(self, key, default=None):
         self._ensure()
