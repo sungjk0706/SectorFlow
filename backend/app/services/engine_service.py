@@ -2320,6 +2320,9 @@ def _try_sector_buy() -> None:
     if not _running:
         return
 
+    if not _auto_trade:
+        return
+
     ss = _sector_summary_cache
     if not ss or not ss.buy_targets:
         return
