@@ -72,6 +72,10 @@ let depositDisplay: HTMLElement | null = null
 
 // API 설정 탭 참조
 let apiKeyInputs: Record<string, HTMLInputElement> = {}
+let brokerRadios: Record<string, HTMLInputElement> = {}
+let activeApiTab: 'kiwoom' | 'ls' = 'kiwoom'
+let apiTabButtons: Record<string, HTMLElement> = {}
+let brokerSaving = false
 
 /* ── 헬퍼 ── */
 function shouldForceOff(): boolean {
@@ -620,6 +624,30 @@ function renderTestVirtualSection(): HTMLElement {
 
 /* ── API 설정 탭 ── */
 function renderApiSettingsTab(container: HTMLElement): void {
+  // Step 2A: 주 사용 증권사 선택 (통신망 전환)
+  container.appendChild(sectionTitle('주 사용 증권사'))
+  const brokerSection = document.createElement('div')
+  Object.assign(brokerSection.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: GS.rowPad, borderBottom: '1px solid #f0f0f0', gap: '24px' })
+
+  for (const v of ['kiwoom', 'ls'] as const) {
+    const label = document.createElement('label')
+    label.style.cssText = 'cursor:pointer;display:flex;align-items:center;gap:6px;font-size:' + GS.label
+    const radio = document.createElement('input')
+    radio.type = 'radio'; radio.name = 'primary-broker'
+    radio.checked = vals.broker === v
+    radio.addEventListener('change', () => handleBrokerChange(v))
+    brokerRadios[v] = radio
+    label.appendChild(radio)
+    label.appendChild(document.createTextNode(v === 'kiwoom' ? '키움증권' : 'LS증권'))
+    brokerSection.appendChild(label)
+  }
+  container.appendChild(brokerSection)
+
+  const brokerDesc = document.createElement('div')
+  Object.assign(brokerDesc.style, { fontSize: GS.desc, color: '#888', padding: '0 0 20px', marginTop: '-4px', textAlign: 'center' })
+  brokerDesc.textContent = '선택한 증권사로 시스템 전체 통신망(시세, 계좌, 주문)이 전환됩니다'
+  container.appendChild(brokerDesc)
+
   container.appendChild(sectionTitle('실시간 데이터 통신'))
 
   // 실시간 연결
@@ -659,17 +687,58 @@ function renderApiSettingsTab(container: HTMLElement): void {
   descLabel4.textContent = '실시간 시세 수신 시작/종료 시간'
   container.appendChild(descLabel4)
 
-  container.appendChild(sectionTitle('키움증권 API 인증 정보'))
+  // Step 2B: API 키 보관용 탭 (키움 API / LS API)
+  const apiTabBar = document.createElement('div')
+  Object.assign(apiTabBar.style, { display: 'flex', gap: '8px', marginBottom: '12px' })
 
-  const API_FIELDS: { key: string; label: string; type: 'password' | 'text' }[] = [
-    { key: 'kiwoom_app_key_real', label: '앱키', type: 'password' },
-    { key: 'kiwoom_app_secret_real', label: '앱시크릿', type: 'password' },
-    { key: 'kiwoom_account_no_real', label: '계좌번호', type: 'text' },
-  ]
+  const tabConfigs = [
+    { id: 'kiwoom', label: '키움 API' },
+    { id: 'ls', label: 'LS API' },
+  ] as const
 
-  const fieldsWrap = document.createElement('div')
+  for (const tab of tabConfigs) {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    const isActive = activeApiTab === tab.id
+    Object.assign(btn.style, {
+      padding: '6px 12px', cursor: 'pointer', border: '1px solid #ddd', background: isActive ? '#f0f0f0' : '#fff',
+      borderRadius: '4px', fontSize: GS.label, color: isActive ? '#333' : '#666',
+    })
+    btn.textContent = tab.label
+    btn.addEventListener('click', () => { activeApiTab = tab.id; refreshApiTabContent() })
+    apiTabButtons[tab.id] = btn
+    apiTabBar.appendChild(btn)
+  }
+  container.appendChild(apiTabBar)
 
-  for (const field of API_FIELDS) {
+  // API 필드 컨테이너
+  const apiFieldsContainer = document.createElement('div')
+  apiFieldsContainer.id = 'api-fields-container'
+  container.appendChild(apiFieldsContainer)
+
+  // 초기 렌더링
+  renderApiFields(apiFieldsContainer)
+}
+
+function renderApiFields(container: HTMLElement): void {
+  container.innerHTML = ''
+
+  const API_FIELDS_CONFIG: Record<string, { key: string; label: string; type: 'password' | 'text' }[]> = {
+    kiwoom: [
+      { key: 'kiwoom_app_key_real', label: '앱키', type: 'password' },
+      { key: 'kiwoom_app_secret_real', label: '앱시크릿', type: 'password' },
+      { key: 'kiwoom_account_no_real', label: '계좌번호', type: 'text' },
+    ],
+    ls: [
+      { key: 'ls_app_key_real', label: '앱키', type: 'password' },
+      { key: 'ls_app_secret_real', label: '앱시크릿', type: 'password' },
+      { key: 'ls_account_no_real', label: '계좌번호', type: 'text' },
+    ],
+  }
+
+  const fields = API_FIELDS_CONFIG[activeApiTab] || []
+
+  for (const field of fields) {
     const row = document.createElement('div')
     Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: '1px solid #eee' })
     const lbl = document.createElement('span')
@@ -681,10 +750,8 @@ function renderApiSettingsTab(container: HTMLElement): void {
     input.value = String(vals[field.key] || '')
     apiKeyInputs[field.key] = input
     row.appendChild(input)
-    fieldsWrap.appendChild(row)
+    container.appendChild(row)
   }
-
-  container.appendChild(fieldsWrap)
 
   const btnRow = document.createElement('div')
   Object.assign(btnRow.style, { textAlign: 'right', marginTop: '10px' })
@@ -697,7 +764,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   })
   saveBtn.textContent = '저장'
   saveBtn.addEventListener('click', async () => {
-    const keys = API_FIELDS.map(f => f.key)
+    const keys = fields.map(f => f.key)
     const orig: Record<string, unknown> = {}
     const current: Record<string, unknown> = {}
     for (const k of keys) {
@@ -715,6 +782,42 @@ function renderApiSettingsTab(container: HTMLElement): void {
   })
   btnRow.appendChild(saveBtn)
   container.appendChild(btnRow)
+}
+
+function refreshApiTabContent(): void {
+  const container = document.getElementById('api-fields-container')
+  if (container) {
+    // 탭 버튼 스타일 업데이트
+    for (const [id, btn] of Object.entries(apiTabButtons)) {
+      const isActive = id === activeApiTab
+      Object.assign(btn.style, {
+        background: isActive ? '#f0f0f0' : '#fff',
+        color: isActive ? '#333' : '#666',
+      })
+    }
+    renderApiFields(container)
+  }
+}
+
+function handleBrokerChange(val: 'kiwoom' | 'ls'): void {
+  if (val === vals.broker || brokerSaving) return
+  brokerSaving = true
+  const prevBroker = vals.broker
+  settingsMgr?.saveSection({ broker: val }).then(res => {
+    if (res.ok) {
+      vals.broker = val
+    } else {
+      vals.broker = prevBroker
+    }
+    syncBrokerRadios()
+    brokerSaving = false
+  })
+}
+
+function syncBrokerRadios(): void {
+  for (const [v, radio] of Object.entries(brokerRadios)) {
+    radio.checked = v === vals.broker
+  }
 }
 
 /* ── 설정 동기화 ── */
@@ -781,13 +884,15 @@ function syncFromSettings(s: AppSettings | null): void {
   // API 설정 탭 (항상 DOM에 존재)
   {
     const act = document.activeElement
-    for (const k of ['kiwoom_app_key_real', 'kiwoom_app_secret_real', 'kiwoom_account_no_real']) {
+    const allApiKeys = ['kiwoom_app_key_real', 'kiwoom_app_secret_real', 'kiwoom_account_no_real', 'ls_app_key_real', 'ls_app_secret_real', 'ls_account_no_real']
+    for (const k of allApiKeys) {
       if (apiKeyInputs[k]) {
         if (!act || !apiKeyInputs[k].contains(act)) {
           apiKeyInputs[k].value = String(r[k] || '')
         }
       }
     }
+    syncBrokerRadios()
   }
 }
 
@@ -886,6 +991,10 @@ function unmount(): void {
   wsStartSlot = null
   wsEndSlot = null
   apiKeyInputs = {}
+  brokerRadios = {}
+  apiTabButtons = {}
+  activeApiTab = 'kiwoom'
+  brokerSaving = false
   vals = {}
 }
 
