@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
-import type { AccountSnapshot, Position } from '../types'
+import type { AccountSnapshot, Position } from '../../src/types'
 
 /* ── 필드 그룹 정의 ── */
 
