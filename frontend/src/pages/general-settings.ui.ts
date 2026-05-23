@@ -9,6 +9,7 @@ import { FONT_SIZE, FONT_WEIGHT, createDarkInput } from '../components/common/ui
 import { createGlobalWsBadge } from '../settings'
 
 type TabId = 'auto-trade' | 'telegram' | 'account-manage' | 'api-settings'
+type BrokerTabId = 'kiwoom' | 'ls'
 
 // 일반설정 페이지 전용 스타일 상수 (공유 FONT_SIZE와 분리)
 const GS = {
@@ -82,6 +83,9 @@ let depositDisplay: HTMLElement | null = null
 
 // API 설정 탭 참조
 let apiKeyInputs: Record<string, HTMLInputElement> = {}
+let activeBrokerTab: BrokerTabId = 'kiwoom'
+let brokerTabBar: HTMLElement | null = null
+let brokerTabPanels: Record<BrokerTabId, HTMLElement> | null = null
 
 /* ── 헬퍼 ── */
 function shouldForceOff(): boolean {
@@ -472,8 +476,98 @@ function renderTestVirtualSection(): HTMLElement {
 
 /* ── API 설정 탭 ── */
 function renderApiSettingsTab(container: HTMLElement): void {
-  container.appendChild(sectionTitle('키움증권 API 인증 정보'))
+  container.appendChild(sectionTitle('증권사 API 인증 정보'))
 
+  // 증권사 탭 바
+  brokerTabBar = document.createElement('div')
+  Object.assign(brokerTabBar.style, { display: 'flex', gap: '8px', marginBottom: '12px', borderBottom: '1px solid #ddd' })
+
+  const brokerTabs: { id: BrokerTabId; label: string }[] = [
+    { id: 'kiwoom', label: '키움증권' },
+    { id: 'ls', label: 'LS증권' },
+  ]
+
+  for (const tab of brokerTabs) {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.dataset.brokerTabId = tab.id
+    const isActive = activeBrokerTab === tab.id
+    Object.assign(btn.style, {
+      padding: '6px 12px', cursor: 'pointer', border: 'none', background: 'transparent', fontSize: FONT_SIZE.tab,
+      borderBottom: isActive ? '2px solid #1976d2' : '2px solid transparent',
+      fontWeight: isActive ? FONT_WEIGHT.normal : FONT_WEIGHT.normal,
+      color: isActive ? '#1976d2' : '#666',
+    })
+    btn.textContent = tab.label
+    btn.addEventListener('click', () => { activeBrokerTab = tab.id; refreshBrokerTabs() })
+    brokerTabBar.appendChild(btn)
+  }
+  container.appendChild(brokerTabBar)
+
+  // 증권사 탭 패널 컨테이너
+  const brokerTabContent = document.createElement('div')
+  container.appendChild(brokerTabContent)
+
+  // 키움증권 패널
+  const kiwoomPanel = document.createElement('div')
+  renderKiwoomApiPanel(kiwoomPanel)
+
+  // LS증권 패널
+  const lsPanel = document.createElement('div')
+  renderLsApiPanel(lsPanel)
+
+  brokerTabPanels = {
+    'kiwoom': kiwoomPanel,
+    'ls': lsPanel,
+  }
+
+  // DOM에 추가하고 비활성 탭은 숨김
+  for (const [id, panel] of Object.entries(brokerTabPanels) as [BrokerTabId, HTMLElement][]) {
+    panel.style.display = id === activeBrokerTab ? '' : 'none'
+    brokerTabContent.appendChild(panel)
+  }
+}
+
+function refreshBrokerTabs(): void {
+  if (!brokerTabBar || !brokerTabPanels) return
+
+  // 탭 바 재렌더링
+  const oldBar = brokerTabBar
+  const container = oldBar.parentNode
+  if (container) {
+    brokerTabBar = document.createElement('div')
+    Object.assign(brokerTabBar.style, { display: 'flex', gap: '8px', marginBottom: '12px', borderBottom: '1px solid #ddd' })
+
+    const brokerTabs: { id: BrokerTabId; label: string }[] = [
+      { id: 'kiwoom', label: '키움증권' },
+      { id: 'ls', label: 'LS증권' },
+    ]
+
+    for (const tab of brokerTabs) {
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.dataset.brokerTabId = tab.id
+      const isActive = activeBrokerTab === tab.id
+      Object.assign(btn.style, {
+        padding: '6px 12px', cursor: 'pointer', border: 'none', background: 'transparent', fontSize: FONT_SIZE.tab,
+        borderBottom: isActive ? '2px solid #1976d2' : '2px solid transparent',
+        fontWeight: isActive ? FONT_WEIGHT.normal : FONT_WEIGHT.normal,
+        color: isActive ? '#1976d2' : '#666',
+      })
+      btn.textContent = tab.label
+      btn.addEventListener('click', () => { activeBrokerTab = tab.id; refreshBrokerTabs() })
+      brokerTabBar.appendChild(btn)
+    }
+    container.replaceChild(brokerTabBar, oldBar)
+  }
+
+  // 탭 패널 display 토글
+  for (const [id, panel] of Object.entries(brokerTabPanels) as [BrokerTabId, HTMLElement][]) {
+    panel.style.display = id === activeBrokerTab ? '' : 'none'
+  }
+}
+
+function renderKiwoomApiPanel(container: HTMLElement): void {
   const vals = props.settings
   const API_FIELDS: { key: string; label: string; type: 'password' | 'text' }[] = [
     { key: 'kiwoom_app_key_real', label: '앱키', type: 'password' },
@@ -515,6 +609,54 @@ function renderApiSettingsTab(container: HTMLElement): void {
     const appSecret = apiKeyInputs['kiwoom_app_secret_real']?.value ?? String(vals.kiwoom_app_secret_real ?? '')
     const accountNo = apiKeyInputs['kiwoom_account_no_real']?.value ?? String(vals.kiwoom_account_no_real ?? '')
     props.onApiSave(appKey, appSecret, accountNo)
+  })
+  btnRow.appendChild(saveBtn)
+  container.appendChild(btnRow)
+}
+
+function renderLsApiPanel(container: HTMLElement): void {
+  const vals = props.settings
+  const API_FIELDS: { key: string; label: string; type: 'password' | 'text' }[] = [
+    { key: 'ls_app_key', label: '앱키', type: 'password' },
+    { key: 'ls_app_secret', label: '앱시크릿', type: 'password' },
+    { key: 'ls_account_no', label: '계좌번호', type: 'text' },
+  ]
+
+  const fieldsWrap = document.createElement('div')
+
+  for (const field of API_FIELDS) {
+    const row = document.createElement('div')
+    Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: '1px solid #eee' })
+    const lbl = document.createElement('span')
+    Object.assign(lbl.style, { fontSize: GS.label, flex: '1' })
+    lbl.textContent = field.label
+    row.appendChild(lbl)
+
+    const input = createDarkInput(field.type)
+    input.value = String(vals[field.key] || '')
+    apiKeyInputs[field.key] = input
+    row.appendChild(input)
+    fieldsWrap.appendChild(row)
+  }
+
+  container.appendChild(fieldsWrap)
+
+  const btnRow = document.createElement('div')
+  Object.assign(btnRow.style, { textAlign: 'right', marginTop: '10px' })
+  const saveBtn = document.createElement('button')
+  saveBtn.type = 'button'
+  Object.assign(saveBtn.style, {
+    padding: GS.btnPad, borderRadius: '4px',
+    border: '1px solid #DC143C', background: 'transparent',
+    color: '#DC143C', cursor: 'pointer', fontSize: GS.label,
+  })
+  saveBtn.textContent = '저장'
+  saveBtn.addEventListener('click', async () => {
+    const appKey = apiKeyInputs['ls_app_key']?.value ?? String(vals.ls_app_key ?? '')
+    const appSecret = apiKeyInputs['ls_app_secret']?.value ?? String(vals.ls_app_secret ?? '')
+    const accountNo = apiKeyInputs['ls_account_no']?.value ?? String(vals.ls_account_no ?? '')
+    // LS증권 저장 핸들러 필요시 props에 추가
+    // props.onLsApiSave(appKey, appSecret, accountNo)
   })
   btnRow.appendChild(saveBtn)
   container.appendChild(btnRow)
@@ -562,7 +704,7 @@ function syncFromSettings(): void {
 
   // API 설정 탭 (항상 DOM에 존재)
   {
-    for (const k of ['kiwoom_app_key_real', 'kiwoom_app_secret_real', 'kiwoom_account_no_real']) {
+    for (const k of ['kiwoom_app_key_real', 'kiwoom_app_secret_real', 'kiwoom_account_no_real', 'ls_app_key', 'ls_app_secret', 'ls_account_no']) {
       if (apiKeyInputs[k]) apiKeyInputs[k].value = String(vals[k] || '')
     }
   }
@@ -642,6 +784,8 @@ export function createGeneralSettingsCard(initialProps: GeneralSettingsProps): {
     wsStartSlot = null
     wsEndSlot = null
     apiKeyInputs = {}
+    brokerTabBar = null
+    brokerTabPanels = null
   }
 
   return { el: rootEl, update, destroy }

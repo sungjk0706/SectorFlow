@@ -5,7 +5,7 @@ import { createDataTable, type DataTableApi, type ColumnDef } from '../component
 import { hotStore } from '../stores/hotStore'
 import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
-import { createCardTitle } from '../components/common/card-title'
+import { createCardHeaderWithMargin } from '../components/common/card-header'
 import { globalSettingsManager } from '../settings'
 import { createStockNameColumn, createSeqCell, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, createNumberCell, FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
 import type { BuyTarget } from '../types'
@@ -156,11 +156,8 @@ function mount(container: HTMLElement): void {
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
-  // 헤더: 제목 + WS 상태 배지
-  const headerRow = document.createElement('div')
-  Object.assign(headerRow.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' })
-  headerRow.appendChild(createCardTitle('매수후보'))
-
+  // 헤더: 제목
+  const headerRow = createCardHeaderWithMargin('매수후보', undefined, '4px')
   root.appendChild(headerRow)
 
   // 한도 배지 행

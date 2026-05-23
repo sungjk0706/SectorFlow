@@ -1,11 +1,13 @@
 /** 증권사별 고유 색상 */
 export const BROKER_COLORS: Record<string, string> = {
   kiwoom: '#FF8C00',
+  ls: '#DC143C',
 }
 
 /** 증권사별 표시 이름 */
 export const BROKER_LABELS: Record<string, string> = {
   kiwoom: '키움',
+  ls: 'LS',
 }
 
 export function createBrokerBadge(broker: string, onClick?: () => void): HTMLElement {

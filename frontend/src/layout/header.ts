@@ -141,16 +141,19 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   avgAmtChip.style.display = 'none'
   header.appendChild(avgAmtChip)
 
-  // 엔진 상태 칩: 키움증권, 키움실시간, 테스트/실전모드
-  const kiwoomBrokerChip = createChipEl()
-  kiwoomBrokerChip.style.display = 'none'
-  const kiwoomWsChip = createChipEl()
-  kiwoomWsChip.style.display = 'none'
+  // 엔진 상태 칩: 증권사, 증권사실시간, 테스트/실전모드
+  const brokerChip = createChipEl()
+  brokerChip.style.display = 'none'
+  const brokerWsChip = createChipEl()
+  brokerWsChip.style.display = 'none'
   const modeChip = createChipEl()
   modeChip.style.display = 'none'
-  header.appendChild(kiwoomBrokerChip)
-  header.appendChild(kiwoomWsChip)
+  const realtimeStateChip = createChipEl()
+  realtimeStateChip.style.display = 'none'
+  header.appendChild(brokerChip)
+  header.appendChild(brokerWsChip)
   header.appendChild(modeChip)
+  header.appendChild(realtimeStateChip)
 
   // KRX / NXT 장 상태 칩
   const krxChip = createChipEl()
@@ -190,7 +193,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   // ── Store 구독 ──
 
   function onStateChange(state: UIState): void {
-    const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings } = state
+    const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings, realtimeStatus } = state
 
     // 장 상태
     applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx)
@@ -314,14 +317,26 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
       modeChip.style.display = ''
       applyStatusChip(modeChip, status.is_test_mode ? '테스트모드' : '실전모드', undefined, status.is_test_mode ? 'blue' : 'red')
 
-      kiwoomBrokerChip.style.display = ''
-      kiwoomWsChip.style.display = ''
-      applyStatusChip(kiwoomBrokerChip, '키움증권', status.kiwoom_token_valid)
-      applyStatusChip(kiwoomWsChip, '키움실시간', status.kiwoom_connected && wsOn)
+      brokerChip.style.display = ''
+      brokerWsChip.style.display = ''
+      applyStatusChip(brokerChip, '키움증권', status.kiwoom_token_valid)
+      applyStatusChip(brokerWsChip, '키움실시간', status.kiwoom_connected && wsOn)
     } else {
       modeChip.style.display = 'none'
-      kiwoomBrokerChip.style.display = 'none'
-      kiwoomWsChip.style.display = 'none'
+      brokerChip.style.display = 'none'
+      brokerWsChip.style.display = 'none'
+    }
+
+    // 실시간 상태 표시줄
+    if (realtimeStatus) {
+      realtimeStateChip.style.display = ''
+      if (realtimeStatus === 'waiting') {
+        applyStatusChip(realtimeStateChip, '🟡 실시간 대기 중', false, 'off')
+      } else if (realtimeStatus === 'live') {
+        applyStatusChip(realtimeStateChip, '🟢 가동 중', true, 'on')
+      }
+    } else {
+      realtimeStateChip.style.display = 'none'
     }
 
     // 설정 상태

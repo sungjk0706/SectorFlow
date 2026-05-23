@@ -6,6 +6,7 @@ import { createProfitChart, type ProfitChartApi } from '../components/canvas-pro
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
 import { createGlobalWsBadge } from '../settings'
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, createStockNameColumn, createNumberCell, createPnlCell } from '../components/common/ui-styles'
+import { ACCOUNT_LABELS_REAL, ACCOUNT_LABELS_TEST } from '../components/common/account-labels'
 import type { SectorStock } from '../types'
 
 // ── Props 타입 정의 ──
@@ -63,9 +64,6 @@ export interface ProfitOverviewProps {
   onChartDateRangeChange: (from: string, to: string) => void
 }
 
-/* ── 계좌 현황 테이블 라벨 ── */
-const ACCOUNT_LABELS_REAL = ['예수금', '주문가능 금액', '오늘 매수 금액', '오늘 매도 금액', '보유주식 평가 금액', '보유주식 평가 손익금', '보유주식 평가 수익률', '누적 총 실현 손익금', '누적 총 실현 수익률']
-const ACCOUNT_LABELS_TEST = ['누적 투자금', '주문가능 금액', '오늘 매수 금액', '오늘 매도 금액', '보유주식 평가 금액', '보유주식 평가 손익금', '보유주식 평가 수익률', '누적 총 실현 손익금', '누적 총 실현 수익률']
 const ROW_CSS = `display:flex;justify-content:space-between;padding:7px 4px;border-bottom:1px solid #f0f0f0;font-size:${FONT_SIZE.label};`
 
 /* ── 매수 컬럼 (7개) ── */
