@@ -11,6 +11,13 @@ export interface StockClassificationState {
   loading: boolean
   noSectorCount: number
   filter_summary?: string
+  allStocks: Array<{
+    code: string;
+    name: string;
+    sector: string;
+    market_type?: string;
+    nxt_enable?: boolean;
+  }>
 }
 
 const initialState: StockClassificationState = {
@@ -18,10 +25,11 @@ const initialState: StockClassificationState = {
   stockMoves: {},
   deletedSectors: [],
   mergedSectors: [],
-  editWindowOpen: false,
+  editWindowOpen: true,
   loading: false,
   noSectorCount: 0,
   filter_summary: "",
+  allStocks: [],
 }
 
 export const stockClassificationStore = createStore<StockClassificationState>(initialState)
@@ -29,13 +37,15 @@ export const stockClassificationStore = createStore<StockClassificationState>(in
 /** SSE `stock-classification-changed` 이벤트 수신 시 store 갱신 */
 export function applyStockClassificationChanged(data: StockClassificationChangedEvent & { filter_summary?: string }): void {
   const cd = data.custom_data
+  const currentState = stockClassificationStore.getState()
   stockClassificationStore.setState({
     sectors: cd?.sectors ?? {},
     stockMoves: cd?.stock_moves ?? {},
     deletedSectors: cd?.deleted_sectors ?? [],
     mergedSectors: data.merged_sectors ?? [],
     noSectorCount: data.no_sector_count ?? 0,
-    filter_summary: data.filter_summary ?? stockClassificationStore.getState().filter_summary,
+    filter_summary: data.filter_summary ?? currentState.filter_summary,
+    allStocks: data.all_stocks ?? currentState.allStocks,
   })
 }
 

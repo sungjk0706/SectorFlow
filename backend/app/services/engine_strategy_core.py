@@ -54,7 +54,7 @@ def resolve_radar_display_name(stk_cd: str, ws_stk_nm: str, access_token) -> str
 
 def make_detail(stk_cd: str, stk_nm: str, cur_price: int,
                  sign: str, change: int, change_rate: float,
-                 prev_close: int = 0, trade_amount: int = 0, strength: str = "-") -> dict:
+                 prev_close: int = 0, trade_amount: int = 0, strength: str = "-", sector: str = "기타") -> dict:
     """대기 종목 상세 딕셔너리 생성 헬퍼."""
     return {
         "code":        stk_cd,
@@ -66,6 +66,7 @@ def make_detail(stk_cd: str, stk_nm: str, cur_price: int,
         "prev_close":  prev_close,
         "trade_amount": trade_amount,
         "strength":    str(strength or "-"),
+        "sector":      sector,
     }
 
 
@@ -87,6 +88,12 @@ async def register_pending_stock(
                 nm = resolve_radar_display_name(stk_cd, detail.get("name") or "", es._access_token)
         else:
             nm = resolve_radar_display_name(stk_cd, "", es._access_token)
+        
+        from backend.app.core.sector_mapping import get_merged_sector
+        sec = detail.get("sector") if detail else None
+        if not sec:
+            sec = get_merged_sector(stk_cd)
+
         entry = make_detail(
             stk_cd,
             nm,
@@ -97,6 +104,7 @@ async def register_pending_stock(
             prev_close=detail.get("prev_close", 0) if detail else 0,
             trade_amount=detail.get("trade_amount", 0) if detail else 0,
             strength=detail.get("strength", "-") if detail else "-",
+            sector=sec,
         )
         # ── 모니터링 추가 필드 ─────────────────────────────────────────────
         entry["status"]       = "active"

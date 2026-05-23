@@ -2,7 +2,7 @@
 // 설정 저장 로직 공통 헬퍼 — 디바운스, 저장 중 상태 관리, pending save 큐
 
 import type { SettingsManager } from '../settings'
-import { toastResult } from '../components/common/save-toast'
+import { toastResult } from '../components/common/toast'
 
 export interface AutoSaveHelper {
   autoSave(key: string, value: unknown): void

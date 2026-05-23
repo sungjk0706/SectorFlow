@@ -219,6 +219,27 @@ _realtime_latency_exceeded: bool = False
 _settings_cache: dict = {}
 
 _subscribed_stocks: set[str] = set()
+class LazyEvent:
+    def __init__(self):
+        self._event = None
+
+    def _get_event(self):
+        if self._event is None:
+            import asyncio
+            self._event = asyncio.Event()
+        return self._event
+
+    def is_set(self) -> bool:
+        return self._get_event().is_set()
+
+    def set(self) -> None:
+        self._get_event().set()
+
+    def clear(self) -> None:
+        self._get_event().clear()
+
+    async def wait(self) -> bool:
+        return await self._get_event().wait()
 
 
 _ws_reg_pipeline_done = LazyEvent()
@@ -228,6 +249,8 @@ _sector_summary_ready_event = LazyEvent()
 # 현대적 안정성을 위한 상태 이벤트
 _engine_ready_event = LazyEvent()
 _server_ready_event = LazyEvent()
+
+_avg_amt_refresh_task: asyncio.Task | None = None
 _preboot_cache_loaded: bool = False
 _preboot_ready_event = LazyEvent()
 _engine_stop_event = LazyEvent()
@@ -261,7 +284,11 @@ _snapshot_history: list = []
 _bootstrap_sector_stocks_async = _engine_bootstrap._bootstrap_sector_stocks_async
 _notify_close_data_ui = _engine_bootstrap._notify_close_data_ui
 _deferred_close_data_refresh = _engine_bootstrap._notify_close_data_ui  # 하위 호환 별칭
-
+refresh_avg_amt_5d_cache = _engine_bootstrap.refresh_avg_amt_5d_cache
+_chunked_fetch_full_5d = _engine_bootstrap._chunked_fetch_full_5d
+_refresh_avg_amt_5d_cache_inner = _engine_bootstrap._refresh_avg_amt_5d_cache_inner
+_broadcast_avg_amt_progress = _engine_bootstrap._broadcast_avg_amt_progress
+_bg_refresh_avg_amt_5d = _engine_bootstrap._bg_refresh_avg_amt_5d
 _login_post_pipeline = _engine_bootstrap._login_post_pipeline
 
 
@@ -380,7 +407,7 @@ def _compute_filtered_codes() -> set[str] | None:
     filtered = set()
     for cd in codes:
         avg_raw = int(_avg_amt_5d.get(cd, 0) or 0)
-        avg_won = avg_raw
+        avg_won = avg_raw * 1_000_000
         if avg_won >= min_amt_won:
             filtered.add(cd)
 
@@ -665,7 +692,7 @@ def recompute_sector_summary_now() -> None:
             block_rise_pct=float(settings.get("buy_block_rise_pct", 7.0)),
             block_fall_pct=float(settings.get("buy_block_fall_pct", 7.0)),
             min_strength=float(settings.get("buy_min_strength", 0)),
-            min_avg_amt_eok=float(settings.get("sector_min_trade_amt", 0.0)),
+            min_trade_amt_won=float(settings.get("sector_min_trade_amt", 0.0)) * 1_0000_0000,
             index_guard_kospi_on=bool(settings.get("buy_index_guard_kospi_on", False)),
             index_guard_kosdaq_on=bool(settings.get("buy_index_guard_kosdaq_on", False)),
             index_kospi_drop=float(settings.get("buy_index_kospi_drop", 2.0)),
@@ -907,7 +934,7 @@ def get_sector_stocks() -> list:
             continue
         # 정적 보강 필드를 원본 dict에 직접 패치 (참조 공유)
         avg5d_raw = int(snap_avg.get(cd, 0) or 0)
-        e["avg_amt_5d"] = avg5d_raw
+        e["avg_amt_5d"] = avg5d_raw * 1_000_000
         e["market_type"] = _get_mkt(cd) or ""
         e["nxt_enable"] = _is_nxt(cd)
         e["sector"] = _get_sector(cd)
@@ -1719,7 +1746,11 @@ async def build_initial_snapshot() -> dict:
         "bootstrap_done":   _bootstrap_event.is_set() or _preboot_cache_loaded,
         "market_phase":     get_market_phase(),
         "broker_config":    _raw_settings.get("broker_config", {}),
-        "avg_amt_refresh":  None,
+        "avg_amt_refresh":  {
+            "running": _avg_amt_refresh_task is not None and not _avg_amt_refresh_task.done(),
+            "current": 0,
+            "total": sum(1 for t, _ in _sector_stock_layout if t == "code") if _avg_amt_refresh_task is not None and not _avg_amt_refresh_task.done() else 0,
+        } if _avg_amt_refresh_task is not None and not _avg_amt_refresh_task.done() else None,
     }
     logger.info("[연결] 시작화면 데이터 생성 단계 -- 메타 조립 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 

@@ -395,7 +395,11 @@ function createFixedMode<T extends object>(
 
         const dataRow = row as T
         const rs = rowStyle ? rowStyle(dataRow, i) : undefined
-        if (rs) Object.assign(rowEl.style, rs)
+        if (rs) {
+          Object.assign(rowEl.style, rs)
+        } else {
+          rowEl.style.removeProperty('background-color')
+        }
         if (zebraStriping) {
            rowEl.style.backgroundColor = (i % 2 === 1) ? '#f9f9f9' : 'transparent'
         }

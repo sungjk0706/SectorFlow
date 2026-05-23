@@ -221,6 +221,10 @@ async def _apply_confirmed_to_memory(
             from backend.app.services.engine_strategy_core import make_detail
             px = int(detail.get("cur_price") or 0)
             stk_nm = _nm.get(_base_stk_cd(raw_cd), nk)
+            from backend.app.core.sector_mapping import get_merged_sector
+            sec = detail.get("sector")
+            if not sec:
+                sec = get_merged_sector(raw_cd)
             entry = make_detail(
                 nk, stk_nm, px,
                 str(detail.get("sign") or "3"),
@@ -228,6 +232,7 @@ async def _apply_confirmed_to_memory(
                 float(detail.get("change_rate") or 0.0),
                 prev_close=int(detail.get("prev_close") or 0),
                 trade_amount=int(detail.get("trade_amount") or 0),
+                sector=sec,
             )
             entry["status"] = "active"
             entry["base_price"] = px
@@ -276,6 +281,15 @@ async def _apply_confirmed_to_memory(
         if hp > 0:
             entry["high_price"] = hp
 
+        # avg_amt_5d and high_price_5d from ka10081
+        avg5d = int(detail.get("avg_amt_5d") or 0)
+        if avg5d > 0:
+            es._avg_amt_5d[nk] = avg5d
+            
+        high5d = int(detail.get("high_price_5d") or 0)
+        if high5d > 0:
+            es._high_5d_cache[nk] = high5d
+
         # strength (from separate dict)
         str_val = strength.get(raw_cd) or strength.get(nk)
         if str_val is not None:
@@ -302,69 +316,34 @@ async def _apply_confirmed_to_memory(
 # ---------------------------------------------------------------------------
 
 async def _run_post_confirmed_pipeline(es: ModuleType) -> None:
-    """확정 조회 완료 후 v2 캐시 롤링 갱신 + 최종 스냅샷 캐시 덮어쓰기.
-
-    (1) _pending_stock_details에서 trade_amount + high_price 수집
-    (2) rolling_update_v2_from_trade_amounts()로 v2 캐시 + 고가 배열 롤링 갱신
-    (3) _high_5d_cache 갱신 + 저장
-    (4) _save_confirmed_cache(es)로 최종 스냅샷 캐시 덮어쓰기
+    """
+    ka10081 도입으로 5일 거래대금 및 최고가를 즉시 추출하므로, 
+    기존의 복잡한 v2 캐시 롤링 갱신 로직은 제거되었습니다.
+    단순히 최종 스냅샷 및 캐시를 저장합니다.
     """
     try:
-        # (1) trade_amount + high_price 수집 — 키를 6자리 정규화 형식으로 변환
-        # 적격종목만 수집 (부적격 종목이 5일평균 캐시에 포함되지 않도록)
-        import backend.app.core.industry_map as _ind_mod
-        elig = _ind_mod._eligible_stock_codes  # {코드: ""} — 빈 dict이면 필터 미적용
-        pending = getattr(es, "_pending_stock_details", {})
-        trade_amounts: dict[str, int] = {}
-        high_prices: dict[str, int] = {}
-        for cd, detail in pending.items():
-            normalized = _base_stk_cd(cd)
-            if elig and normalized not in elig:
-                continue
-            amt = int(detail.get("trade_amount") or 0)
-            if amt > 0:
-                trade_amounts[normalized] = amt
-            hp = int(detail.get("high_price") or 0)
-            if hp > 0:
-                high_prices[normalized] = hp
-
-        # (2) v2 캐시 + 고가 배열 롤링 갱신
-        from backend.app.core.avg_amt_cache import (
-            load_avg_amt_cache_v2,
-            save_avg_amt_cache_v2,
-            rolling_update_v2_from_trade_amounts,
-            avg_from_v2,
-            _kst_today_yyyymmdd,
-        )
-        existing_v2_result = load_avg_amt_cache_v2()
-        if existing_v2_result:
-            existing_v2, existing_high_arr = existing_v2_result
-        else:
-            existing_v2, existing_high_arr = None, None
-        eligible_codes = set(elig.keys()) if elig else None
-        updated_v2, updated_high_arr = rolling_update_v2_from_trade_amounts(
-            existing_v2, trade_amounts,
-            high_prices=high_prices,
-            high_5d_arr=existing_high_arr,
-            eligible_set=eligible_codes,
-        )
-
-        # (3) _high_5d_cache 갱신 + 저장
-        es._high_5d_cache = {code: max(arr) for code, arr in updated_high_arr.items() if arr}
+        # 기존 v2 캐시 배열 저장이 아닌 최신 avg_amt, high_5d 스칼라값만 저장
+        from backend.app.core.avg_amt_cache import save_avg_amt_cache_v2, _kst_today_yyyymmdd
         date = _kst_today_yyyymmdd()
+        # 배열은 빈 dict로 저장 (하위호환)
         save_avg_amt_cache_v2(
-            updated_v2, date,
+            {}, date,
             high_5d=es._high_5d_cache,
-            high_5d_arr=updated_high_arr,
+            high_5d_arr={}
         )
-        # 엔진 메모리 갱신
-        avg_map = avg_from_v2(updated_v2)
-        es._update_avg_amt_5d(avg_map)
-
-        # (4) 최종 스냅샷 캐시 덮어쓰기
+        # avg_amt는 스냅샷에 포함되거나 별도로 저장해야 할 수 있음.
+        # save_avg_amt_cache_v2의 v2_data(첫 인자)가 없으면 avg_from_v2 연산이 안됨.
+        # 따라서 스칼라 값을 v2_data 꼼수로 단일 요소 리스트로 래핑하여 저장.
+        wrapped_v2 = {cd: [val] for cd, val in es._avg_amt_5d.items()}
+        wrapped_high = {cd: [val] for cd, val in es._high_5d_cache.items()}
+        save_avg_amt_cache_v2(
+            wrapped_v2, date,
+            high_5d=es._high_5d_cache,
+            high_5d_arr=wrapped_high
+        )
+        
         await _save_confirmed_cache(es)
-
-        _log.info("[타이머] post-confirmed 파이프라인 완료 — trade_amounts=%d종목, high_prices=%d종목", len(trade_amounts), len(high_prices))
+        _log.info("[타이머] post-confirmed 파이프라인 완료 (롤링 로직 생략)")
     except Exception as exc:
         _log.warning("[타이머] post-confirmed 파이프라인 오류: %s", exc, exc_info=True)
 
@@ -397,19 +376,26 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
     import backend.app.core.industry_map as _ind_mod
     elig = _ind_mod._eligible_stock_codes or {}
 
+    # 메모리 원자적 필터링 (Bug 4 수정) - 시작 시점에 먼저 수행하여 정합성 보장
+    if elig:
+        async with es._shared_lock:
+            for cd in list(pending.keys()):
+                if _base_stk_cd(cd) not in elig:
+                    pending.pop(cd, None)
+
     # 종목명 캐시로 name 필드 보정
     name_map = load_stock_name_cache() or {}
     if name_map:
         for cd, detail in pending.items():
-            nm = name_map.get(cd)
-            if nm and detail.get("name") in (cd, "", None):
+            base_cd = _base_stk_cd(cd)
+            nm = name_map.get(base_cd)
+            if nm and detail.get("name") in (cd, base_cd, "", None):
                 detail["name"] = nm
 
     rows = [
         (cd, dict(detail))
         for cd, detail in pending.items()
         if detail.get("status") in ("active", "exited")
-        and (not elig or cd in elig)
     ]
     if not rows:
         _log.warning("[타이머] 저장 가능한 종목 없음 — 저장데이터 저장 생략")
@@ -421,8 +407,12 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
         avg_5d_map = getattr(es, "_avg_amt_5d", {})
         high_5d_map = getattr(es, "_high_5d_cache", {})
         
+        from backend.app.core.sector_mapping import get_merged_sector
         for cd, detail in rows:
-            sector = detail.get("sector", "기타")
+            base_cd = _base_stk_cd(cd)
+            sector = detail.get("sector")
+            if not sector or sector == "" or sector == "기타":
+                sector = get_merged_sector(base_cd)
             if not sector or sector == "":
                 sector = "기타"
             
@@ -431,11 +421,11 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
             today_high = detail.get("high_price", detail.get("cur_price", 0))
             
             # 5일 평균/고가 데이터
-            high_5d = high_5d_map.get(cd)
+            high_5d = high_5d_map.get(base_cd)
             if not high_5d:
                 high_5d = today_high
             
-            avg_5d = avg_5d_map.get(cd)
+            avg_5d = avg_5d_map.get(base_cd)
             if not avg_5d:
                 avg_5d = trade_amount
             
@@ -470,13 +460,6 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
         except Exception as e:
             _log.warning("[타이머] 스냅샷 캐시 날짜 동기화 실패: %s", e, exc_info=True)
         
-        # 메모리 원자적 필터링 (Bug 4 수정)
-        if elig:
-            async with es._shared_lock:
-                for cd in list(pending.keys()):
-                    if cd not in elig:
-                        pending.pop(cd, None)
-                    
         return True
     except Exception as exc:
         _log.warning("[타이머] 확정 데이터 DB 저장 실패: %s", exc, exc_info=True)
@@ -491,9 +474,9 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
     """20:30 통합 확정 조회 — 전종목 대상 ka10099 + ka10086 + 후처리.
 
     1단계 ka10099: 전종목 목록 갱신 (레이아웃 캐시 + 종목명 캐시 + 신규 종목 섹터 매핑)
-    2단계 ka10086: 전종목 확정 시세 순차 호출 (interval_sec=0.3) → 메모리 + 디스크 갱신
+    2단계 ka10081: 전종목 확정 시세 순차 호출 (interval_sec=0.3) → 메모리 + 디스크 갱신
        - 이어받기 지원: 20종목마다 진행 저장, 재기동 시 중단 지점부터 계속
-    3단계 후처리: v2 캐시 롤링 + 5일 평균 재계산 (업종순위 재계산 안 함)
+    3단계 후처리: 스냅샷 및 캐시 저장 (롤링 갱신 생략)
 
     Args:
         es: engine_service 모듈 참조
@@ -697,17 +680,17 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             es._confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
     
-        # ── 2단계 ka10086: 전종목 확정 시세 순차 호출 (이어받기 지원) ───────
+        # ── 2단계 ka10081: 전종목 확정 시세 순차 호출 (이어받기 지원) ───────
         # 20:30 이전 시간 가드 (Phase 2.1 단계 3)
         from backend.app.services.daily_time_scheduler import is_heavy_operation_allowed
         if not is_heavy_operation_allowed():
-            _log.info("[타이머] 안전 구역(20:30~연결시작전) 외 시간대 진입으로 인한 Step 5 ka10086 전종목 확정 시세 다운로드 스킵")
+            _log.info("[타이머] 안전 구역(20:30~연결시작전) 외 시간대 진입으로 인한 Step 5 ka10081 전종목 확정 시세 다운로드 스킵")
             es._confirmed_refresh_running = False
             es._confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
         
-        _log.info("[타이머] Step 5 시작 — ka10086 전종목 확정 시세 다운로드 (%d종목)", len(all_codes))
-        qry_dt = kst_today_str()  # 당일 확정 시세 조회: 20:00 이후에도 오늘 날짜 사용 (current_trading_date_str은 다음 거래일 반환)
+        _log.info("[타이머] Step 5 시작 — ka10081 전종목 확정 시세 다운로드 (%d종목)", len(all_codes))
+        qry_dt = kst_today_str()
         total = len(all_codes)
         _main_loop = asyncio.get_running_loop()
     
@@ -742,7 +725,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             )
     
         try:
-            def _sync_ka10086():
+            def _sync_ka10081():
                 return _sector.fetch_sector_all_daily(
                     all_codes, qry_dt, interval_sec=0.3, on_progress=_on_progress,
                     resume_codes=resume_codes,  # 이어받기 지원
@@ -750,23 +733,23 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
     
             confirmed = await asyncio.get_running_loop().run_in_executor(
                 _CONFIRMED_FETCH_EXECUTOR,
-                _sync_ka10086,
+                _sync_ka10081,
             )
         except Exception as exc:
-            _log.warning("[타이머] ka10086 전종목 조회 실패: %s", exc, exc_info=True)
+            _log.warning("[타이머] ka10081 전종목 조회 실패: %s", exc, exc_info=True)
             confirmed = {}
     
         fetched = len(confirmed)
         failed = total - fetched
         success_rate = (fetched / total * 100) if total else 0
         _log.info(
-            "[타이머] Step 5 완료 — ka10086 확정 시세 다운로드: 성공 %d종목, 실패 %d종목 (%.1f%% 성공)",
+            "[타이머] Step 5 완료 — ka10081 확정 시세 다운로드: 성공 %d종목, 실패 %d종목 (%.1f%% 성공)",
             fetched, failed, success_rate
         )
         # 실패율이 1% 이상이면 경고 로그 (디버깅용)
         if failed > 0 and success_rate < 99.0:
             _log.warning(
-                "[타이머] ka10086 실패율 높음: %d/%d종목 (%.1f%%) — kiwoom_sector_rest.py 로그에서 실패 원인 확인",
+                "[타이머] ka10081 실패율 높음: %d/%d종목 (%.1f%%) — kiwoom_sector_rest.py 로그에서 실패 원인 확인",
                 failed, total, 100 - success_rate
             )
     
@@ -840,10 +823,11 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             _log.warning("[타이머] 확정 조회 후 실시간 화면전송 실패(무시): %s", _ws_err)
     
         # 파이프라인 전체 완료 로그
-        _log.info(
-            "[타이머] === 전체 완료 === 총 %d단계 | ka10099: %d종목 | 적격: %d종목 | ka10086: %d/%d종목 | 저장데이터: %s",
-            7, len(records), len(confirmed_codes), fetched, total, "저장됨" if cached else "실패"
-        )
+        if cached:
+            _log.info(
+                "[타이머] === 전체 완료 === 총 %d단계 | ka10099: %d종목 | 적격: %d종목 | ka10081: %d/%d종목 | 저장데이터: %s",
+                5, len(all_codes), len(final_eligible) if 'final_eligible' in locals() else 0, fetched, total, "성공"
+            )
         return {"fetched": fetched, "failed": failed, "cached": cached}
     finally:
         es._confirmed_refresh_running = False

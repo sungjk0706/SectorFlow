@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-stock_classification.json 기반 종목 → 업종 매핑 모듈.
+SQLite DB 및 인메모리 기반 종목 → 업종 매핑 모듈.
 
-stock_classification.json의 stock_moves / sectors / deleted_sectors 3개 필드만으로
-최종 업종을 결정한다. Auto_Mapping(eligible_stocks_cache.json) 의존성 없음.
+기존 stock_classification.json 의존성을 제거하고,
+SQLite 데이터베이스(stocks 및 sectors 테이블) 또는 인메모리 캐시를 단일 진실 공급원으로 사용.
 """
 from __future__ import annotations
 
@@ -12,52 +12,48 @@ import logging
 _log = logging.getLogger(__name__)
 
 
-# ── Merged (stock_classification.json 전용) API ──────────────────────────────
-
-
 def get_merged_sector(stock_code: str) -> str:
-    """stock_classification.json 기반 종목 → 최종 업종명.
+    """인메모리 캐시 또는 SQLite DB에서 종목의 최종 업종명을 반환."""
+    # 1) 인메모리 캐시에서 우선 조회
+    try:
+        import backend.app.services.engine_service as es
+        entry = es._pending_stock_details.get(stock_code)
+        if entry and "sector" in entry:
+            return entry["sector"] or "업종명없음"
+    except Exception:
+        pass
 
-    1. stock_moves[stock_code] 존재 → 해당 값
-    2. 없으면 → 빈 문자열
-    3. sectors 리네임 1회 적용
-    4. deleted_sectors 필터 → 빈 문자열 반환
-    """
-    from backend.app.core.stock_classification_data import load_custom_data_readonly
+    # 2) SQLite DB에서 조회
+    from backend.app.db.database import get_db_connection
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT sector FROM stocks WHERE code = ?", (stock_code,))
+        row = cursor.fetchone()
+        if row and row["sector"]:
+            return row["sector"]
+    except Exception as e:
+        _log.warning("[매핑] get_merged_sector DB 조회 실패 (%s): %s", stock_code, e)
+    finally:
+        conn.close()
 
-    custom = load_custom_data_readonly()
-
-    # 1) stock_moves 조회, 없으면 빈 문자열
-    sector = custom.stock_moves.get(stock_code, "")
-
-    # 2) sectors 리네임 1회 적용 (덮어쓰기 방식, 체인 없음)
-    sector = custom.sectors.get(sector, sector)
-
-    # 3) deleted_sectors 필터
-    if sector in custom.deleted_sectors:
-        return "업종명없음"
-
-    return sector or "업종명없음"
+    return "업종명없음"
 
 
 def get_merged_all_sectors() -> list[str]:
-    """stock_classification.json 기반 전체 업종 목록 (정렬).
-
-    sectors values + stock_moves values → 고유 수집
-    → deleted_sectors 제거 → 빈 문자열 제거 → 정렬
-    """
-    from backend.app.core.stock_classification_data import load_custom_data_readonly
-
-    custom = load_custom_data_readonly()
-
-    # sectors values + stock_moves values에서 고유 업종명 수집
-    result: set[str] = set(custom.sectors.values())
-    result.update(custom.stock_moves.values())
-
-    # deleted_sectors 제거
-    result -= set(custom.deleted_sectors)
-
-    # 빈 문자열 제거
-    result.discard("")
-
-    return sorted(result)
+    """SQLite DB sectors 테이블에서 전체 업종 목록 조회 (정렬)."""
+    from backend.app.db.database import get_db_connection
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sectors")
+        rows = cursor.fetchall()
+        sectors = [r["name"] for r in rows if r["name"]]
+        if "업종명없음" not in sectors:
+            sectors.append("업종명없음")
+        return sorted(list(set(sectors)))
+    except Exception as e:
+        _log.warning("[매핑] get_merged_all_sectors DB 조회 실패: %s", e)
+        return ["업종명없음"]
+    finally:
+        conn.close()

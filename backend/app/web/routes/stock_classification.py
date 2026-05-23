@@ -275,20 +275,4 @@ async def trigger_snapshot_download(_: str = Depends(get_current_user)):
         return {"ok": False, "error": str(e)}
 
 
-# ── POST /api/stock-classification/trigger-avg-amt-download ──────────────────
 
-@router.post("/trigger-avg-amt-download")
-async def trigger_avg_amt_download(_: str = Depends(get_current_user)):
-    """수동 5일 거래대금 다운로드 실행"""
-    try:
-        from backend.app.services import engine_service
-        engine_service._avg_amt_5d.clear()
-        engine_service._high_5d_cache.clear()
-        engine_service._avg_amt_needs_bg_refresh = True
-        engine_service._broadcast_avg_amt_progress(0, 0, status="cache_deleted")
-        asyncio.create_task(engine_service.refresh_avg_amt_5d_cache())
-        _log.info("[업종관리] 수동 5일 거래대금 다운로드 시작")
-        return {"ok": True}
-    except Exception as e:
-        _log.error("[업종관리] 수동 5일 거래대금 다운로드 실패: %s", e)
-        return {"ok": False, "error": str(e)}

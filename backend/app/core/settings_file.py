@@ -248,39 +248,118 @@ def _migrate_trade_mode(merged: dict) -> tuple[dict, bool]:
 
 
 def load_settings() -> dict:
-    """settings.json 읽기. 파일이 없거나 파싱 오류 시 기본값 반환."""
+    """SQLite system_settings 테이블에서 설정을 로드하고, 기본값을 병합하여 반환.
+    테이블이 비어 있고 settings.json이 존재한다면 1회 마이그레이션 후 원본 파일 완전 삭제.
+    """
+    from backend.app.db.models import create_system_settings_table
+    from backend.app.db.database import get_db_connection
+    
+    # 1) 항상 테이블 생성 보장
     try:
-        if _SETTINGS_PATH.is_file():
-            with open(_SETTINGS_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            merged = {**_DEFAULTS, **data}
-            merged, dirty = _migrate_legacy_auto_trade_on(merged)
-            merged, dirty_tm = _migrate_trade_mode(merged)
-            merged, dirty_tr = _migrate_time_range_split(merged)
-            merged, dirty_sw = _migrate_sector_weights(merged, data)
-            merged, dirty_si = _migrate_sector_to_industry_index(merged, data)
-            merged, dirty_bc = _migrate_broker_config(merged, data)
-            dirty = dirty or dirty_tm or dirty_tr or dirty_sw or dirty_si or dirty_bc
-            if dirty:
-                save_settings(merged)
-            return merged
+        create_system_settings_table()
     except Exception as e:
-        logger.warning("settings.json 읽기 실패 (기본값 사용): %s", e)
-    return dict(_DEFAULTS)
+        logger.warning("[설정] 테이블 생성 실패: %s", e)
+        
+    db_data: dict = {}
+    
+    # 2) DB에서 설정 쿼리
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT key, value FROM system_settings")
+        rows = cursor.fetchall()
+        for row in rows:
+            k = row["key"]
+            raw_v = row["value"]
+            # 문자열 복원 시 JSON 데이터 형식은 loads로 역직렬화
+            if (raw_v.startswith("{") and raw_v.endswith("}")) or (raw_v.startswith("[") and raw_v.endswith("]")):
+                try:
+                    db_data[k] = json.loads(raw_v)
+                except Exception:
+                    db_data[k] = raw_v
+            else:
+                # 불리언이나 숫자 변환 시도 (하위 호환성 및 타입 매칭)
+                if raw_v == "True":
+                    db_data[k] = True
+                elif raw_v == "False":
+                    db_data[k] = False
+                elif raw_v == "None":
+                    db_data[k] = None
+                else:
+                    try:
+                        # 정수 또는 실수 변환
+                        if "." in raw_v:
+                            db_data[k] = float(raw_v)
+                        else:
+                            db_data[k] = int(raw_v)
+                    except ValueError:
+                        db_data[k] = raw_v
+    except Exception as e:
+        logger.warning("[설정] DB 설정 읽기 실패: %s", e)
+    finally:
+        conn.close()
+
+    # 3) 마이그레이션 트리거: DB가 비어 있고 기존 JSON 파일이 존재할 경우
+    if not db_data and _SETTINGS_PATH.is_file():
+        try:
+            logger.info("[설정] settings.json 마이그레이션 시작...")
+            with open(_SETTINGS_PATH, "r", encoding="utf-8") as f:
+                json_data = json.load(f)
+            
+            # DB에 임시 저장 (save_settings를 사용하여 안전하게 저장)
+            save_settings(json_data)
+            
+            # 저장 성공 후 settings.json 영구 삭제
+            try:
+                os.remove(_SETTINGS_PATH)
+                logger.info("[설정] settings.json 마이그레이션 성공 및 원본 파일 삭제 완료")
+            except Exception as del_err:
+                logger.error("[설정] settings.json 삭제 실패: %s", del_err)
+            
+            # 이관 완료되었으므로 다시 DB에서 조회한 딕셔너리로 교체
+            return load_settings()
+        except Exception as mig_err:
+            logger.error("[설정] settings.json 마이그레이션 실패: %s", mig_err)
+
+    # 4) 기본값 병합 및 마이그레이션 룰 적용
+    merged = {**_DEFAULTS, **db_data}
+    merged, dirty = _migrate_legacy_auto_trade_on(merged)
+    merged, dirty_tm = _migrate_trade_mode(merged)
+    merged, dirty_tr = _migrate_time_range_split(merged)
+    merged, dirty_sw = _migrate_sector_weights(merged, db_data)
+    merged, dirty_si = _migrate_sector_to_industry_index(merged, db_data)
+    merged, dirty_bc = _migrate_broker_config(merged, db_data)
+    
+    dirty = dirty or dirty_tm or dirty_tr or dirty_sw or dirty_si or dirty_bc
+    if dirty:
+        save_settings(merged)
+        
+    return merged
 
 
 def save_settings(data: dict) -> None:
-    """설정 전체를 settings.json에 저장."""
+    """설정 전체를 SQLite system_settings 테이블에 트랜잭션 단위로 저장."""
+    from backend.app.db.database import get_db_connection
+    conn = get_db_connection()
     try:
-        _SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = _SETTINGS_PATH.with_suffix(".json.tmp")
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_path, _SETTINGS_PATH)
+        cursor = conn.cursor()
+        # 트랜잭션 시작
+        cursor.execute("BEGIN TRANSACTION")
+        for k, v in data.items():
+            if isinstance(v, (dict, list)):
+                val_str = json.dumps(v, ensure_ascii=False)
+            else:
+                val_str = str(v)
+            cursor.execute(
+                "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                (k, val_str)
+            )
+        conn.commit()
     except Exception as e:
-        logger.error("settings.json 저장 실패: %s", e)
+        conn.rollback()
+        logger.error("[설정] system_settings DB 저장 실패: %s", e)
+    finally:
+        conn.close()
 
 
 def update_settings(updates: dict) -> dict:

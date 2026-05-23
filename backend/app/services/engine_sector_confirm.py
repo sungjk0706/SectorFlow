@@ -150,7 +150,7 @@ def _flush_sector_recompute_impl() -> None:
         # 2. 해당 섹터의 종목만 재계산
         inputs = get_sector_summary_inputs()
         all_codes = inputs["all_codes"]
-        min_trade_amt_won = float(settings.get("sector_min_trade_amt", 0.0)) * 1_0000_0000
+        min_avg_amt_eok = float(settings.get("sector_min_trade_amt", 0.0))
         trim_trade = float(settings.get("sector_trim_trade_amt_pct", 0) or 0)
         trim_change = float(settings.get("sector_trim_change_rate_pct", 0) or 0)
         sector_weights = settings.get("sector_weights")
@@ -169,7 +169,7 @@ def _flush_sector_recompute_impl() -> None:
                 avg_amt_5d=inputs["avg_amt_5d"],
                 strengths=inputs["strengths"],
                 stock_details=inputs["stock_details"],
-                min_trade_amt_won=min_trade_amt_won,
+                min_avg_amt_eok=min_avg_amt_eok,
                 sector_weights=sector_weights,
                 trim_trade_amt_pct=trim_trade,
                 trim_change_rate_pct=trim_change,
@@ -349,7 +349,7 @@ def _full_recompute(_es, settings: dict, codes_snapshot: set[str] | None = None)
         block_rise_pct=float(settings.get("buy_block_rise_pct", 7.0)),
         block_fall_pct=float(settings.get("buy_block_fall_pct", 7.0)),
         min_strength=float(settings.get("buy_min_strength", 0)),
-        min_trade_amt_won=float(settings.get("sector_min_trade_amt", 0.0)) * 1_0000_0000,
+        min_avg_amt_eok=float(settings.get("sector_min_trade_amt", 0.0)),
         index_guard_kospi_on=bool(settings.get("buy_index_guard_kospi_on", False)),
         index_guard_kosdaq_on=bool(settings.get("buy_index_guard_kosdaq_on", False)),
         index_kospi_drop=float(settings.get("buy_index_kospi_drop", 2.0)),

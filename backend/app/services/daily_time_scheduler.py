@@ -19,7 +19,6 @@ logger = get_logger("engine")
 KST = timezone(timedelta(hours=9))
 
 # 장마감 갱신 플래그 -- 당일 1회
-_avg_amt_5d_refresh_done: bool = False
 _last_reset_date: str = ""
 
 # 장마감 캐시 파이프라인 플래그 -- 당일 1회
@@ -307,20 +306,7 @@ def load_industry_index_cache(engine_service) -> bool:
         return False
 
 
-def _run_avg_amt_5d_refresh(engine_service) -> None:
-    """장마감 후 확정된 당일 1일봉 거래대금을 받아서 5일 평균을 계산하고 캐시 파일에 저장하는 함수."""
-    global _avg_amt_5d_refresh_done
-    existing_task = getattr(engine_service, '_avg_amt_refresh_task', None)
-    if existing_task is not None and not existing_task.done():
-        logger.debug("[타이머] 5일 평균 갱신 이미 진행 중 -- 생략")
-        return
-    try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(engine_service.refresh_avg_amt_5d_cache())
-        _avg_amt_5d_refresh_done = True
-        logger.debug("[타이머] 5일 평균 거래대금 저장데이터 갱신 요청 완료")
-    except Exception as e:
-        logger.warning("[타이머] 5일 평균 거래대금 갱신 실패: %s", e, exc_info=True)
+
 
 
 def _on_krx_after_hours_start() -> None:
@@ -677,7 +663,7 @@ async def _on_ws_subscribe_start() -> None:
             except Exception as e:
                 logger.warning("[데이터] 화면전송 실패: %s", e, exc_info=True)
         except Exception as _e:
-            logger.warning("[타이머] 자동매매 ON 복원 실패: %s", _e)
+            logger.warning("[타이머] 자동매매 ON 복원 실패: %_e")
         _ws_subscribe_window_active = True
         # 0J REAL 플래그 초기화 (새 구독 사이클 시작)
         _0j_real_receiving = False
@@ -721,16 +707,14 @@ async def _on_ws_subscribe_start() -> None:
 
 async def _on_ws_subscribe_end() -> None:
     """WS 구독 종료 시각이 되면 자동 실행 -- 실시간 수신 중단 + WS 연결 해제 + 섹터 재계산을 순서대로 하는 함수."""
-    global _ws_subscribe_window_active, _avg_amt_5d_refresh_done, _0j_real_receiving, _confirmed_done
+    global _ws_subscribe_window_active, _0j_real_receiving, _confirmed_done
     try:
         from backend.app.services import engine_service
         _ws_subscribe_window_active = False
         _0j_real_receiving = False
+        _confirmed_done = False  # 오후 8시 구독 종료 → 8시 30분 확정 갱신 허용
         # 지수 폴링 타이머 중지 (WS 구독 종료 → 폴링 구간도 끝)
         _stop_index_poll_timer()
-        # WS 종료 콜백 진입 시 갱신 플래그 초기화 (새 사이클 시작)
-        _avg_amt_5d_refresh_done = False
-        _confirmed_done = False  # 오후 8시 구독 종료 → 8시 30분 확정 갱신 허용
         logger.info("[타이머] 실시간 구독 구간 종료 -- 구독 해지 + 실시간 연결 해제")
         _trigger_unreg_all(engine_service)
         # 구독 상태 전체 false + WS 브로드캐스트
@@ -1127,33 +1111,34 @@ _midnight_timer_handle = None  # asyncio.TimerHandle
 
 def _on_midnight() -> None:
     """자정(00:00)이 되면 자동 실행 -- 갱신 플래그를 초기화하고 당일 타이머를 새로 예약하는 함수."""
-    global _last_reset_date, _avg_amt_5d_refresh_done
+    global _last_reset_date
     global _krx_remove_done, _confirmed_done
     try:
         now = _kst_now()
-        _last_reset_date = now.strftime("%Y%m%d")
-        _avg_amt_5d_refresh_done = False
-        _krx_remove_done = False
-        _confirmed_done = False
-        logger.info("[타이머] 자정 날짜 변경 -- 플래그 초기화 (%s)", _last_reset_date)
 
-        from backend.app.services import engine_service
-        settings = getattr(engine_service, "_settings_cache", None)
+        if _last_reset_date != now.strftime("%Y%m%d"):
+            _last_reset_date = now.strftime("%Y%m%d")
+            _krx_remove_done = False
+            _confirmed_done = False
+            logger.info("[타이머] 자정 날짜 변경 -- 플래그 초기화 (%s)", _last_reset_date)
 
-        # 날짜 변경 시 거래일/시간 기준 자동 ON/OFF 판별
-        if not settings:
-            try:
-                from backend.app.core.settings_file import load_settings
-                settings = load_settings()
-            except Exception:
-                settings = {}
-        if settings:
-            _apply_auto_toggle_on_startup(settings)
+            from backend.app.services import engine_service
+            settings = getattr(engine_service, "_settings_cache", None)
 
-        schedule_auto_trade_timers(settings)
-        schedule_ws_subscribe_timers(settings)
-        # 다음날 자정 타이머도 재예약
-        schedule_midnight_timer()
+            # 날짜 변경 시 거래일/시간 기준 자동 ON/OFF 판별
+            if not settings:
+                try:
+                    from backend.app.core.settings_file import load_settings
+                    settings = load_settings()
+                except Exception:
+                    settings = {}
+            if settings:
+                _apply_auto_toggle_on_startup(settings)
+
+            schedule_auto_trade_timers(settings)
+            schedule_ws_subscribe_timers(settings)
+            # 다음날 자정 타이머도 재예약
+            schedule_midnight_timer()
     except Exception as e:
         logger.warning("[타이머] 자정 콜백 오류: %s", e)
 

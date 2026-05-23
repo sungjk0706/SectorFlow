@@ -65,14 +65,14 @@ class TestMarketTimeGuard:
         with patch('backend.app.services.daily_time_scheduler._kst_now', return_value=mock_time):
             assert is_heavy_operation_allowed(), "휴장일에 허용되어야 함"
 
-    def test_guard_blocks_at_2030_boundary(self, kst):
-        """20:30 경계 시점 테스트"""
-        # 20:29 (차단)
-        mock_time = datetime(2026, 5, 22, 20, 29, tzinfo=kst)
+    def test_guard_blocks_at_2000_boundary(self, kst):
+        """20:00 경계 시점 테스트"""
+        # 20:00 (차단)
+        mock_time = datetime(2026, 5, 22, 20, 0, tzinfo=kst)
         with patch('backend.app.services.daily_time_scheduler._kst_now', return_value=mock_time):
-            assert not is_heavy_operation_allowed(), "20:29에 차단되어야 함"
+            assert not is_heavy_operation_allowed(), "20:00에 차단되어야 함"
 
-        # 20:30 (허용)
-        mock_time = datetime(2026, 5, 22, 20, 30, tzinfo=kst)
+        # 20:01 (허용)
+        mock_time = datetime(2026, 5, 22, 20, 1, tzinfo=kst)
         with patch('backend.app.services.daily_time_scheduler._kst_now', return_value=mock_time):
-            assert is_heavy_operation_allowed(), "20:30에 허용되어야 함"
+            assert is_heavy_operation_allowed(), "20:01에 허용되어야 함"

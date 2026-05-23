@@ -10,6 +10,8 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.services.backend_coalescing import BackendCoalescing
+from app.services.core_queues import initialize_queues, clear_all_queues
+import pytest
 
 
 class MockWebSocket:
@@ -19,12 +21,17 @@ class MockWebSocket:
     
     async def send_text(self, message: str):
         self.messages.append(message)
+        
+    async def send_bytes(self, message: bytes):
+        self.messages.append(message)
 
 
+@pytest.mark.asyncio
 async def test_backend_coalescing():
     """BackendCoalescing 테스트"""
     print("[테스트] BackendCoalescing 초기화 및 이벤트 처리")
     
+    initialize_queues()
     coalescing = BackendCoalescing(flush_interval_ms=10, flush_threshold=200)
     
     # Mock WebSocket 추가
@@ -55,10 +62,12 @@ async def test_backend_coalescing():
     return True
 
 
+@pytest.mark.asyncio
 async def test_backend_coalescing_threshold():
     """BackendCoalescing threshold 테스트"""
     print("[테스트] BackendCoalescing threshold (200개) 테스트")
     
+    initialize_queues()
     coalescing = BackendCoalescing(flush_interval_ms=1000, flush_threshold=200)
     
     # Mock WebSocket 추가

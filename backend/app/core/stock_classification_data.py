@@ -2,403 +2,151 @@
 """
 업종분류 커스텀 데이터 관리 모듈.
 
-사용자가 커스텀한 업종 분류 데이터를 `stock_classification.json`에 별도 저장/관리.
-Coalesce_Save 패턴(threading.Lock + snapshot copy + executor thread)으로
-메인 asyncio 이벤트 루프 블로킹 없이 파일 저장.
-
-책임:
-  1. load_custom_data()  -- JSON 파싱 + 스키마 검증
-  2. save_custom_data()  -- Coalesce_Save 패턴 저장
-  3. rename_sector()     -- 업종명 변경
-  4. create_sector()     -- 신규 업종 등록
-  5. delete_sector()     -- 업종 삭제
-  6. move_stock()        -- 종목 업종 이동
+기존 JSON 파일 저장을 중단하고, 모든 업종 분류 데이터를 SQLite 데이터베이스(stocks.db)의 
+stocks 및 sectors 테이블에서 직접 조회 및 업데이트하도록 개선.
 """
 from __future__ import annotations
 
-import asyncio
-import copy
-import json
 import logging
-import threading
 from dataclasses import dataclass, field
-from pathlib import Path
 
 _log = logging.getLogger(__name__)
 
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-_CUSTOM_FILE = _DATA_DIR / "stock_classification.json"
 
-_lock = threading.Lock()
-
-# ── Coalesce_Save 플래그 ──────────────────────────────────────────────
-_save_pending: bool = False
-_save_running: bool = False
-
-
-# ── 데이터 모델 ──────────────────────────────────────────────────────
+# ── 데이터 모델 ──
 @dataclass
 class StockClassificationData:
-    """사용자 커스텀 업종 분류 데이터."""
+    """사용자 커스텀 업종 분류 데이터 (하위 호환성용 dummy 구조체)."""
     sectors: dict[str, str] = field(default_factory=dict)
-    """업종명 변경 매핑 {원래이름: 새이름}"""
     stock_moves: dict[str, str] = field(default_factory=dict)
-    """종목코드 → 대상 업종 (커스텀 이동) {stock_code: target_sector}"""
     deleted_sectors: list[str] = field(default_factory=list)
-    """삭제된 업종명 목록"""
 
 
-# ── 인메모리 캐시 ────────────────────────────────────────────────────
-_custom_data: StockClassificationData = StockClassificationData()
-_loaded: bool = False
-
-
-# ── 직렬화 / 역직렬화 ────────────────────────────────────────────────
-
-def _serialize(data: StockClassificationData) -> dict:
-    """StockClassificationData → JSON-serializable dict."""
-    return {
-        "sectors": dict(data.sectors),
-        "stock_moves": dict(data.stock_moves),
-        "deleted_sectors": list(data.deleted_sectors),
-    }
-
-
-def _deserialize(raw: dict) -> StockClassificationData:
-    """dict → StockClassificationData. 스키마 검증 포함.
-
-    필수 키 누락 또는 타입 오류 시 경고 로그 + 빈 데이터 폴백.
-    """
-    if not isinstance(raw, dict):
-        _log.warning("[커스텀업종] 스키마 오류: 최상위가 dict가 아님 → 빈 데이터 폴백")
-        return StockClassificationData()
-
-    sectors = raw.get("sectors")
-    stock_moves = raw.get("stock_moves")
-    deleted_sectors = raw.get("deleted_sectors")
-
-    # 필수 키 존재 검증
-    missing = []
-    if "sectors" not in raw:
-        missing.append("sectors")
-    if "stock_moves" not in raw:
-        missing.append("stock_moves")
-    if "deleted_sectors" not in raw:
-        missing.append("deleted_sectors")
-    if missing:
-        _log.warning("[커스텀업종] 스키마 오류: 필수 키 누락 %s → 빈 데이터 폴백", missing)
-        return StockClassificationData()
-
-    # 타입 검증
-    if not isinstance(sectors, dict):
-        _log.warning("[커스텀업종] 스키마 오류: sectors가 dict가 아님 → 빈 데이터 폴백")
-        return StockClassificationData()
-    if not isinstance(stock_moves, dict):
-        _log.warning("[커스텀업종] 스키마 오류: stock_moves가 dict가 아님 → 빈 데이터 폴백")
-        return StockClassificationData()
-    if not isinstance(deleted_sectors, list):
-        _log.warning("[커스텀업종] 스키마 오류: deleted_sectors가 list가 아님 → 빈 데이터 폴백")
-        return StockClassificationData()
-
-    # 값 타입 검증 (dict 내부 key/value가 str인지)
-    for k, v in sectors.items():
-        if not isinstance(k, str) or not isinstance(v, str):
-            _log.warning("[커스텀업종] 스키마 오류: sectors 내부 타입 오류 → 빈 데이터 폴백")
-            return StockClassificationData()
-    for k, v in stock_moves.items():
-        if not isinstance(k, str) or not isinstance(v, str):
-            _log.warning("[커스텀업종] 스키마 오류: stock_moves 내부 타입 오류 → 빈 데이터 폴백")
-            return StockClassificationData()
-    for item in deleted_sectors:
-        if not isinstance(item, str):
-            _log.warning("[커스텀업종] 스키마 오류: deleted_sectors 내부 타입 오류 → 빈 데이터 폴백")
-            return StockClassificationData()
-
-    return StockClassificationData(
-        sectors=dict(sectors),
-        stock_moves=dict(stock_moves),
-        deleted_sectors=list(deleted_sectors),
-    )
-
-
-# ── 파일 I/O ─────────────────────────────────────────────────────────
-
-def _load_from_file() -> StockClassificationData:
-    """JSON 파일에서 커스텀 데이터 로드. 파일 없음/파싱 실패 시 빈 데이터 반환."""
-    if not _CUSTOM_FILE.exists():
-        return StockClassificationData()
-    try:
-        with open(_CUSTOM_FILE, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-        return _deserialize(raw)
-    except json.JSONDecodeError as e:
-        _log.warning("[커스텀업종] JSON 파싱 실패: %s → 빈 데이터 폴백", e)
-        return StockClassificationData()
-    except Exception as e:
-        _log.warning("[커스텀업종] 파일 로드 실패: %s → 빈 데이터 폴백", e)
-        return StockClassificationData()
-
-
-def _save_to_file(data_dict: dict) -> None:
-    """dict → JSON 파일 저장. executor thread에서 호출."""
-    try:
-        _DATA_DIR.mkdir(parents=True, exist_ok=True)
-        with open(_CUSTOM_FILE, "w", encoding="utf-8") as f:
-            json.dump(data_dict, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        _log.error("[커스텀업종] 파일 저장 실패: %s", e)
-
-
-def _schedule_save(snapshot: dict) -> None:
-    """Coalesce_Save: 파일 저장을 asyncio executor thread로 위임.
-
-    _lock 밖에서 호출. snapshot은 이미 복사된 dict.
-    동시 실행 방지 (coalesce): pending 플래그로 최신 snapshot만 저장.
-    """
-    global _save_pending, _save_running, _pending_snapshot
-    with _lock:
-        _save_pending = True
-        _pending_snapshot = snapshot
-        if _save_running:
-            return
-    try:
-        loop = asyncio.get_running_loop()
-        loop.run_in_executor(None, _coalesced_save)
-    except RuntimeError:
-        # asyncio 루프 없음 (테스트 등) → 동기 저장
-        with _lock:
-            _save_pending = False
-        _save_to_file(snapshot)
-
-
-_pending_snapshot: dict = {}
-
-
-def _coalesced_save() -> None:
-    """pending 플래그가 True인 동안 반복 저장. 동시 실행 1개 보장."""
-    global _save_pending, _save_running, _pending_snapshot
-    with _lock:
-        _save_running = True
-    try:
-        while True:
-            with _lock:
-                if not _save_pending:
-                    break
-                _save_pending = False
-                snap = _pending_snapshot
-            _save_to_file(snap)
-    finally:
-        with _lock:
-            _save_running = False
-
-
-# ── 공개 API ─────────────────────────────────────────────────────────
+# ── 캐시 조회 (하위 호환 및 REST API용 더미 인터페이스) ──
 
 def load_custom_data() -> StockClassificationData:
-    """커스텀 데이터 로드 (캐시 우선). 스키마 검증 포함."""
-    global _custom_data, _loaded
-    with _lock:
-        if _loaded:
-            return copy.deepcopy(_custom_data)
-    # lock 밖에서 파일 I/O (블로킹 최소화)
-    data = _load_from_file()
-    with _lock:
-        _custom_data = data
-        _loaded = True
-        return copy.deepcopy(_custom_data)
+    """하위 호환성을 위한 빈 데이터 로드 함수."""
+    return StockClassificationData()
 
 
 def load_custom_data_readonly() -> StockClassificationData:
-    """커스텀 데이터 읽기 전용 참조 반환 (deepcopy 없음).
-
-    반환된 객체를 절대 수정하지 말 것. 읽기 전용 조회(get_merged_sector 등)에서만 사용.
-    """
-    global _custom_data, _loaded
-    with _lock:
-        if _loaded:
-            return _custom_data
-    data = _load_from_file()
-    with _lock:
-        _custom_data = data
-        _loaded = True
-        return _custom_data
+    """하위 호환성을 위한 빈 데이터 로드 함수."""
+    return StockClassificationData()
 
 
-def save_custom_data(data: StockClassificationData) -> None:
-    """커스텀 데이터 저장 (Coalesce_Save 패턴).
+# ── 비즈니스 로직 (SQLite DB 직접 제어) ──
 
-    1. _lock 획득 → 인메모리 갱신 + snapshot 복사
-    2. _lock 해제 → executor thread에서 파일 저장
-    메인 asyncio 이벤트 루프 블로킹 없음.
-    """
-    with _lock:
-        global _custom_data, _loaded
-        _custom_data = copy.deepcopy(data)
-        _loaded = True
-        snapshot = _serialize(_custom_data)
-    _schedule_save(snapshot)
-
-
-def _get_all_known_sectors() -> set[str]:
-    """Custom_Data에서 알려진 모든 업종명 집합.
-
-    수집 소스: sectors keys + sectors values + stock_moves values
-    → deleted_sectors 제거.
-    중복 검증용. _lock 내부에서 호출하지 않음.
-    """
-    with _lock:
-        data = copy.deepcopy(_custom_data) if _loaded else StockClassificationData()
-
-    result: set[str] = set()
-    result.update(data.sectors.keys())
-    result.update(data.sectors.values())
-    result.update(data.stock_moves.values())
-
-    # deleted_sectors 제외
-    result -= set(data.deleted_sectors)
-
-    return result
-
-
-# ── 비즈니스 로직 ────────────────────────────────────────────────────
-
-def rename_sector(old_name: str, new_name: str) -> StockClassificationData:
-    """업종명 변경. old_name → new_name 매핑을 sectors에 기록.
-
-    검증:
-    - new_name이 이미 존재하는 업종명이면 ValueError
-    - old_name이 deleted_sectors에 있으면 ValueError
-
-    Returns: 변경 후 StockClassificationData (deepcopy)
-    """
-    new_name = new_name.strip()
+def rename_sector(old_name: str, new_name: str) -> None:
+    """업종명을 변경한다. DB와 인메모리 캐시를 동시에 업데이트."""
     old_name = old_name.strip()
-    if not new_name:
-        raise ValueError("새 업종명이 비어있습니다")
-    if not old_name:
-        raise ValueError("기존 업종명이 비어있습니다")
+    new_name = new_name.strip()
+    if not old_name or not new_name:
+        raise ValueError("기존 업종명과 새 업종명은 필수입니다")
     if old_name == new_name:
         raise ValueError("기존 업종명과 새 업종명이 동일합니다")
 
-    data = load_custom_data()
+    # 1) SQLite DB 업데이트
+    from backend.app.db.database import get_db_connection
+    conn = get_db_connection()
+    try:
+        conn.execute("UPDATE sectors SET name = ? WHERE name = ?", (new_name, old_name))
+        conn.execute("UPDATE stocks SET sector = ? WHERE sector = ?", (new_name, old_name))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        _log.error("[DB업데이트] 업종명 변경 실패: %s", e)
+        raise e
+    finally:
+        conn.close()
 
-    # 삭제된 업종 검증
-    if old_name in data.deleted_sectors:
-        raise ValueError(f"삭제된 업종은 이름을 변경할 수 없습니다: {old_name}")
-
-    # 중복 검증: new_name이 이미 존재하는지
-    known = _get_all_known_sectors()
-    if new_name in known:
-        raise ValueError(f"이미 존재하는 업종명입니다: {new_name}")
-
-    # deleted_sectors에서 new_name 제거 (삭제된 업종명으로 리네임 시)
-    if new_name in data.deleted_sectors:
-        data.deleted_sectors.remove(new_name)
-
-    # rename: 원본 key 제거 + 새 이름으로 덮어쓰기
-    # 프론트엔드 = 백엔드 거울 원칙: 사용자가 보는 이름만 저장
-    for key, val in list(data.sectors.items()):
-        if val == old_name:
-            del data.sectors[key]
-    if old_name in data.sectors:
-        del data.sectors[old_name]
-    data.sectors[new_name] = new_name
-
-    # stock_moves에서 old_name을 target으로 가진 항목도 new_name으로 갱신
-    for code, target in list(data.stock_moves.items()):
-        if target == old_name:
-            data.stock_moves[code] = new_name
-
-    save_custom_data(data)
-    _log.info("[커스텀업종] 업종명 변경: %s → %s", old_name, new_name)
-    return load_custom_data()
+    # 2) 인메모리 캐시 업데이트
+    try:
+        import backend.app.services.engine_service as es
+        for cd, entry in es._pending_stock_details.items():
+            if entry.get("sector") == old_name:
+                entry["sector"] = new_name
+        es._invalidate_sector_stocks_cache()
+    except Exception as e:
+        _log.warning("[메모리업데이트] 인메모리 업종명 변경 실패: %s", e)
 
 
-def create_sector(name: str) -> StockClassificationData:
-    """신규 업종 등록.
-
-    검증:
-    - name이 이미 존재하는 업종명이면 ValueError
-
-    sectors에 {name: name} 형태로 기록 (자기 자신 매핑 = 신규 생성 마커).
-
-    Returns: 변경 후 StockClassificationData (deepcopy)
-    """
+def create_sector(name: str) -> None:
+    """신규 업종 등록."""
     name = name.strip()
     if not name:
-        raise ValueError("업종명이 비어있습니다")
+        raise ValueError("업종명은 필수입니다")
 
-    data = load_custom_data()
-
-    # 중복 검증
-    known = _get_all_known_sectors()
-    if name in known:
-        raise ValueError(f"이미 존재하는 업종명입니다: {name}")
-
-    # deleted_sectors에서 name 제거 (삭제된 업종명 재생성 시)
-    if name in data.deleted_sectors:
-        data.deleted_sectors.remove(name)
-
-    # 신규 업종 마커: sectors에 자기 자신 매핑
-    data.sectors[name] = name
-
-    save_custom_data(data)
-    _log.info("[커스텀업종] 신규 업종 생성: %s", name)
-    return load_custom_data()
+    # 1) SQLite DB 업데이트
+    from backend.app.db.database import get_db_connection
+    conn = get_db_connection()
+    try:
+        conn.execute("INSERT OR IGNORE INTO sectors (name) VALUES (?)", (name,))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        _log.error("[DB업데이트] 업종 생성 실패: %s", e)
+        raise e
+    finally:
+        conn.close()
 
 
-def delete_sector(name: str) -> StockClassificationData:
-    """업종 삭제. deleted_sectors에 추가.
-
-    검증:
-    - 이미 삭제된 업종이면 ValueError
-
-    Returns: 변경 후 StockClassificationData (deepcopy)
-    """
+def delete_sector(name: str) -> None:
+    """업종을 삭제한다. 해당 업종의 종목들을 '업종명없음'으로 이동."""
     name = name.strip()
     if not name:
-        raise ValueError("업종명이 비어있습니다")
+        raise ValueError("업종명은 필수입니다")
 
-    data = load_custom_data()
+    # 1) SQLite DB 업데이트
+    from backend.app.db.database import get_db_connection
+    conn = get_db_connection()
+    try:
+        conn.execute("DELETE FROM sectors WHERE name = ?", (name,))
+        conn.execute("UPDATE stocks SET sector = '업종명없음' WHERE sector = ?", (name,))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        _log.error("[DB업데이트] 업종 삭제 실패: %s", e)
+        raise e
+    finally:
+        conn.close()
 
-    if name in data.deleted_sectors:
-        raise ValueError(f"이미 삭제된 업종입니다: {name}")
-
-    # 삭제된 업종에 속한 종목들을 stock_moves에서 제거 (데이터 정합성 확보)
-    stocks_to_remove = [code for code, sector in data.stock_moves.items() if sector == name]
-    for code in stocks_to_remove:
-        del data.stock_moves[code]
-
-    data.deleted_sectors.append(name)
-
-    save_custom_data(data)
-    _log.info("[커스텀업종] 업종 삭제: %s (종목 %d개 매핑 해제)", name, len(stocks_to_remove))
-    return load_custom_data()
+    # 2) 인메모리 캐시 업데이트
+    try:
+        import backend.app.services.engine_service as es
+        for cd, entry in es._pending_stock_details.items():
+            if entry.get("sector") == name:
+                entry["sector"] = "업종명없음"
+        es._invalidate_sector_stocks_cache()
+    except Exception as e:
+        _log.warning("[메모리업데이트] 인메모리 업종 삭제 반영 실패: %s", e)
 
 
-def move_stock(stock_code: str, target_sector: str) -> StockClassificationData:
-    """종목을 다른 업종으로 이동. stock_moves에 기록.
-
-    검증:
-    - target_sector가 deleted_sectors에 있으면 ValueError
-
-    Returns: 변경 후 StockClassificationData (deepcopy)
-    """
+def move_stock(stock_code: str, target_sector: str) -> None:
+    """종목을 다른 업종으로 이동. DB와 인메모리 캐시를 동시에 업데이트."""
     stock_code = stock_code.strip()
     target_sector = target_sector.strip()
-    if not stock_code:
-        raise ValueError("종목코드가 비어있습니다")
-    if not target_sector:
-        raise ValueError("대상 업종명이 비어있습니다")
+    if not stock_code or not target_sector:
+        raise ValueError("종목코드와 대상 업종명은 필수입니다")
 
-    data = load_custom_data()
+    # 1) SQLite DB 업데이트
+    from backend.app.db.database import get_db_connection
+    conn = get_db_connection()
+    try:
+        conn.execute("UPDATE stocks SET sector = ? WHERE code = ?", (target_sector, stock_code))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        _log.error("[DB업데이트] 종목 이동 실패: %s", e)
+        raise e
+    finally:
+        conn.close()
 
-    # 삭제된 업종으로 이동 거부
-    if target_sector in data.deleted_sectors:
-        raise ValueError(f"삭제된 업종으로 이동할 수 없습니다: {target_sector}")
-
-    data.stock_moves[stock_code] = target_sector
-
-    save_custom_data(data)
-    _log.info("[커스텀업종] 종목 이동: %s → %s", stock_code, target_sector)
-    return load_custom_data()
+    # 2) 인메모리 캐시 업데이트
+    try:
+        import backend.app.services.engine_service as es
+        entry = es._pending_stock_details.get(stock_code)
+        if entry:
+            entry["sector"] = target_sector
+            es._invalidate_sector_stocks_cache()
+    except Exception as e:
+        _log.warning("[메모리업데이트] 인메모리 종목 업종 갱신 실패: %s", e)

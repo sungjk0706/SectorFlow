@@ -32,11 +32,32 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
         from backend.app.services.engine_strategy_core import make_detail
 
         # ── 5개 캐시 병렬 로드 ──
-        from backend.app.db.models import create_stocks_table
+        from backend.app.db.models import create_stocks_table, create_sectors_table, create_system_settings_table
         from backend.app.db.crud import get_all_stocks
         
         # 테이블이 없으면 생성
         await asyncio.to_thread(create_stocks_table)
+        await asyncio.to_thread(create_sectors_table)
+        await asyncio.to_thread(create_system_settings_table)
+
+        # sectors 테이블 초기화 로직
+        def _init_sectors():
+            from backend.app.db.database import get_db_connection
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            try:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO sectors (name)
+                    SELECT DISTINCT sector FROM stocks
+                    WHERE sector IS NOT NULL AND sector != '' AND sector != '업종명없음'
+                """)
+                cursor.execute("INSERT OR IGNORE INTO sectors (name) VALUES ('업종명없음')")
+                conn.commit()
+            except Exception as e:
+                logger.warning("[데이터준비] sectors 초기화 실패: %s", e)
+            finally:
+                conn.close()
+        await asyncio.to_thread(_init_sectors)
         
         _db_stocks = await asyncio.to_thread(get_all_stocks)
         _cached_layout, _cached_market, _cached_eligible = await asyncio.gather(
@@ -77,33 +98,33 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
 
         # ── 스냅샷 적재 ──
         if _cached_snapshot:
-            for cd, detail in _cached_snapshot:
-                base = _format_kiwoom_reg_stk_cd(_base_stk_cd(cd))
-                amt = int(detail.get("trade_amount") or 0)
-                async with es._shared_lock:
+            async with es._shared_lock:
+                for cd, detail in _cached_snapshot:
+                    base = _format_kiwoom_reg_stk_cd(_base_stk_cd(cd))
+                    amt = int(detail.get("trade_amount") or 0)
                     if amt > 0:
                         es._latest_trade_amounts[base] = amt
                     if base and int(detail.get("cur_price") or 0) > 0:
                         es._rest_radar_quote_cache[base] = detail
-                if base and int(detail.get("cur_price") or 0) > 0:
-                    es._rest_radar_rest_once.add(base)
-                if base not in es._pending_stock_details:
-                    entry = make_detail(
-                        base, detail.get("name", base) or base,
-                        int(detail.get("cur_price") or 0),
-                        detail.get("sign", "3"),
-                        int(detail.get("change") or 0),
-                        float(detail.get("change_rate") or 0.0),
-                        prev_close=int(detail.get("prev_close") or 0),
-                        trade_amount=amt,
-                        strength=detail.get("strength", "-"),
-                    )
-                    entry["status"] = "active"
-                    entry["base_price"] = int(detail.get("cur_price") or 0)
-                    entry["target_price"] = int(detail.get("cur_price") or 0)
-                    entry["captured_at"] = ""
-                    entry["reason"] = "저장데이터 선행 로드"
-                    async with es._shared_lock:
+                    if base and int(detail.get("cur_price") or 0) > 0:
+                        es._rest_radar_rest_once.add(base)
+                    if base not in es._pending_stock_details:
+                        entry = make_detail(
+                            base, detail.get("name", base) or base,
+                            int(detail.get("cur_price") or 0),
+                            detail.get("sign", "3"),
+                            int(detail.get("change") or 0),
+                            float(detail.get("change_rate") or 0.0),
+                            prev_close=int(detail.get("prev_close") or 0),
+                            trade_amount=amt,
+                            strength=detail.get("strength", "-"),
+                            sector=detail.get("sector", "기타"),
+                        )
+                        entry["status"] = "active"
+                        entry["base_price"] = int(detail.get("cur_price") or 0)
+                        entry["target_price"] = int(detail.get("cur_price") or 0)
+                        entry["captured_at"] = ""
+                        entry["reason"] = "저장데이터 선행 로드"
                         es._pending_stock_details[base] = entry
                         es._radar_cnsr_order.append(base)
             logger.debug("[데이터준비] 확정데이터 저장데이터 로드 -- %d종목", len(_cached_snapshot))

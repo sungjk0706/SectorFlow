@@ -13,8 +13,10 @@ from app.core.ls_rest import LsRestAPI
 from app.core.ls_broker import LsBroker
 from app.services.state_manager import StateManager, EventType
 from app.core.broker_factory import get_broker
+import pytest
 
 
+@pytest.mark.asyncio
 async def test_ls_rest_client():
     """LS증권 REST 클라이언트 테스트"""
     print("[테스트] LS증권 REST 클라이언트 초기화")
@@ -33,6 +35,7 @@ async def test_ls_rest_client():
     return True
 
 
+@pytest.mark.asyncio
 async def test_ls_broker():
     """LS증권 Broker 테스트"""
     print("[테스트] LS증권 Broker 초기화")
@@ -53,6 +56,7 @@ async def test_ls_broker():
     return True
 
 
+@pytest.mark.asyncio
 async def test_state_manager():
     """StateManager 테스트"""
     print("[테스트] StateManager 초기화 및 이벤트 처리")

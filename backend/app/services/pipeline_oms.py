@@ -33,18 +33,12 @@ _oms_running: bool = False
 # P0-2: Risk Manager 인스턴스
 _risk_manager = None
 
-# P1-4: Latency Metrics
-_latency_metrics = None
-
-# P1-4: Latency Metrics
-_latency_metrics = None
-
 # 주문 장부 파일 경로 (삭제됨: SQLite 사용)
 
 
 async def start_oms_loop(es: ModuleType) -> None:
     """OMS 루프 시작."""
-    global _oms_task, _oms_running, _circuit_breaker, _latency_metrics
+    global _oms_task, _oms_running, _circuit_breaker
 
     if _oms_running:
         logger.warning("[OMS] 이미 실행 중")
@@ -53,10 +47,6 @@ async def start_oms_loop(es: ModuleType) -> None:
     # P0-2: Risk Manager 초기화
     from backend.app.services.risk_manager import get_risk_manager
     _risk_manager = get_risk_manager()
-
-    # P1-4: Latency Metrics 초기화
-    from backend.app.core.metrics.latency import get_latency_metrics
-    _latency_metrics = get_latency_metrics()
 
     _oms_running = True
     _oms_task = asyncio.get_running_loop().create_task(_oms_loop_impl(es))
@@ -94,13 +84,6 @@ async def _oms_loop_impl(es: ModuleType) -> None:
             try:
                 # order_queue에서 주문 지령 꺼내기
                 order_cmd = await order_queue.get()
-
-                # P1-4: order_to_broker_ms 측정
-                order_timestamp = order_cmd.get("order_timestamp")
-                if order_timestamp is not None:
-                    current_time = time.perf_counter_ns()
-                    latency_ms = (current_time - order_timestamp) / 1_000_000
-                    _latency_metrics.record("order_to_broker_ms", latency_ms)
 
                 # 주문 실행
                 await _execute_order(order_cmd, es, broadcast_queue)

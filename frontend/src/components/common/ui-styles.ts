@@ -281,7 +281,7 @@ export function createStrengthCell(strength: number | null | undefined): HTMLEle
 export function createAvgAmountCell(amount: number): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
-  cell.textContent = amount > 0 ? fmtComma(Math.round(amount / 100_000_000)) : '-'
+  cell.textContent = amount > 0 ? fmtComma(Math.round(amount)) : '-'
   return cell
 }
 

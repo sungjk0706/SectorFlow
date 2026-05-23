@@ -219,7 +219,7 @@ class KiwoomConnector(BrokerConnector):
         self._receive_callback: Callable | None = None
         self._on_reconnect_success: Callable | None = None
         self._event_bus_callback: Callable | None = None  # Event Bus Publish 콜백
-        self._lock = asyncio.Lock()
+        self._lock: Optional[asyncio.Lock] = None
         self._received_count = 0
         self._realtime_enabled: bool = True  # 실시간 연결 ON/OFF 플래그 (ws_subscribe_on)
         self._auto_trade_enabled: bool = True  # 자동매매 ON/OFF 플래그 (time_scheduler_on)
@@ -265,6 +265,8 @@ class KiwoomConnector(BrokerConnector):
     async def connect(self) -> None:
         """토큰 발급 + WebSocket 연결 + 수신루프 기동."""
         self._stop_reconnect = False
+        if self._lock is None:
+            self._lock = asyncio.Lock()
         async with self._lock:
             if self._connected:
                 return
@@ -317,6 +319,8 @@ class KiwoomConnector(BrokerConnector):
             except asyncio.CancelledError:
                 pass
             self._reconnect_task = None
+        if self._lock is None:
+            self._lock = asyncio.Lock()
         async with self._lock:
             self._connected = False
             if self._socket:
@@ -422,6 +426,8 @@ class KiwoomConnector(BrokerConnector):
                     logger.warning("[증권사연결] 재연결 %d회: 토큰 발급 실패", attempt)
                     continue
                 self._token = token
+                if self._lock is None:
+                    self._lock = asyncio.Lock()
                 async with self._lock:
                     # Queue 콜백 래퍼 (Step 2: 재연결 시도 - 드롭 정책 적용)
                     queue_callback = None

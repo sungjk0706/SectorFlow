@@ -72,9 +72,14 @@ class BrokerRouter:
         ).lower().strip()
 
         for feature in FEATURES:
-            broker_name = str(
-                broker_config.get(feature, default_broker) or default_broker
-            ).lower().strip()
+            if feature == "sector":
+                # 정책: 이 프로젝트는 LS 증권의 확정데이터를 사용하지 않음
+                broker_name = "kiwoom"
+            else:
+                broker_name = str(
+                    broker_config.get(feature, default_broker) or default_broker
+                ).lower().strip()
+                
             try:
                 self._providers[feature] = _create_provider(
                     feature, broker_name, settings, self._auth_cache

@@ -31,8 +31,6 @@ _sector_recompute_task: Optional[asyncio.Task] = None
 _compute_running: bool = False
 _sector_recompute_dirty: bool = False
 
-# P1-4: Latency Metrics
-_latency_metrics = None
 
 
 def _parse_protobuf_batch(binary_data: bytes) -> list[dict]:
@@ -86,15 +84,11 @@ def _parse_protobuf_batch(binary_data: bytes) -> list[dict]:
 
 async def start_compute_loop(es: ModuleType) -> None:
     """Compute Engine 루프 시작."""
-    global _compute_task, _compute_running, _latency_metrics, _sector_recompute_task
+    global _compute_task, _compute_running, _sector_recompute_task
 
     if _compute_running:
         logger.warning("[Compute] 이미 실행 중")
         return
-
-    # P1-4: Latency Metrics 초기화
-    from backend.app.core.metrics.latency import get_latency_metrics
-    _latency_metrics = get_latency_metrics()
 
     _compute_running = True
     _compute_task = asyncio.get_running_loop().create_task(_compute_loop_impl(es))
@@ -146,20 +140,12 @@ async def _compute_loop_impl(es: ModuleType) -> None:
                 # tick_queue에서 데이터 꺼내기 (P2-5: Protobuf 바이너리)
                 data = await tick_queue.get()
 
-                # P1-4: tick_to_compute_ms 측정
-                ingress_timestamp = time.perf_counter_ns()
-
                 # P2-5: Protobuf 파싱
                 parsed_events = _parse_protobuf_batch(data)
 
                 # 파싱된 각 이벤트를 순차적으로 연산 로직에 전달
                 for event in parsed_events:
                     try:
-                        # P1-4: tick_to_compute_ms 측정
-                        current_time = time.perf_counter_ns()
-                        latency_ms = (current_time - ingress_timestamp) / 1_000_000
-                        _latency_metrics.record("tick_to_compute_ms", latency_ms)
-
                         # 연산 수신 (engine_service의 연산 로직 이관)
                         await _process_tick_data(event, es, order_queue, broadcast_queue)
                     except Exception as e:

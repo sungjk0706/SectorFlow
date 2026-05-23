@@ -7,7 +7,7 @@ import { bindWSToStore } from './binding'
 import { createLayoutShell } from './layout/shell'
 import { createRouter } from './router'
 import type { RouteConfig, PageModule } from './router'
-import { initToastContainer } from './components/common/save-toast'
+import { initToastContainer } from './components/common/toast'
 import { stockClassificationStore } from './stores/stockClassificationStore'
 import { api } from './api/client'
 // Import sector-stock Web Component to register custom element
@@ -83,11 +83,6 @@ const routes: RouteConfig[] = [
     path: '#/general-settings',
     layout: 'single',
     load: () => import('./pages/general-settings').then(m => m.default),
-  },
-  {
-    path: '#/metrics-dashboard',
-    layout: 'full',
-    load: () => import('./pages/metrics-dashboard').then(m => m.default),
   },
 ]
 

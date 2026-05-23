@@ -47,7 +47,7 @@ class EventBus:
     def __init__(self):
         # Priority Queue
         self._priority_queue: list[PriorityEvent] = []
-        self._queue_lock = asyncio.Lock()
+        self._queue_lock_obj: Optional[asyncio.Lock] = None
         
         # Coalescing Map (종목코드 -> 이벤트)
         self._coalescing_map: Dict[str, BaseEvent] = {}
@@ -58,11 +58,11 @@ class EventBus:
         self._coalescing_max_events = 10  # 윈도우 내 최대 이벤트 수
         self._coalescing_timer_interval_ms = 10  # Coalescing 타이머 간격
         self._coalescing_timer_task: Optional[asyncio.Task] = None
-        self._coalescing_map_lock = asyncio.Lock()  # 원자성 보장
+        self._coalescing_map_lock_obj: Optional[asyncio.Lock] = None  # 원자성 보장
         
         # Subscribers (EventType -> Set[Callable])
         self._subscribers: Dict[EventType, Set[Callable]] = {}
-        
+
         # Worker 상태
         self._is_running = False
         self._worker_task: Optional[asyncio.Task] = None
@@ -74,6 +74,18 @@ class EventBus:
         self._total_dispatch_latency_ms = 0.0
         self._total_handler_latency_ms = 0.0
         self._coalescing_applied_count = 0
+
+    @property
+    def _queue_lock(self) -> asyncio.Lock:
+        if self._queue_lock_obj is None:
+            self._queue_lock_obj = asyncio.Lock()
+        return self._queue_lock_obj
+
+    @property
+    def _coalescing_map_lock(self) -> asyncio.Lock:
+        if self._coalescing_map_lock_obj is None:
+            self._coalescing_map_lock_obj = asyncio.Lock()
+        return self._coalescing_map_lock_obj
 
     @classmethod
     def get_instance(cls) -> "EventBus":

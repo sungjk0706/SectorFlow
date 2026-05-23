@@ -57,7 +57,7 @@ class LsRestAPI:
         self.base_url = (base_url or "").rstrip("/")
         self._token_info: Optional[LsTokenInfo] = None
         self._client: Optional[httpx.AsyncClient] = None
-        self._lock: asyncio.Lock = asyncio.Lock()
+        self._lock: Optional[asyncio.Lock] = None
 
     async def __aenter__(self) -> "LsRestAPI":
         self._client = httpx.AsyncClient()
@@ -75,6 +75,8 @@ class LsRestAPI:
 
     async def ensure_token(self) -> bool:
         """토큰 확보 (만료 시 자동 갱신)"""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
         async with self._lock:
             if self._token_info and not self._token_info.is_expired():
                 return True

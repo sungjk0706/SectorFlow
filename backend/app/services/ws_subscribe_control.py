@@ -26,7 +26,13 @@ _index_subscribed: bool = False      # grp 2, 0J 활성 여부
 _quote_subscribed: bool = False      # grp 4, 0B 활성 여부
 
 # ── 동시 변경 직렬화 ──────────────────────────────────────────────────────
-_lock = asyncio.Lock()
+_lock: asyncio.Lock | None = None
+
+def _get_lock() -> asyncio.Lock:
+    global _lock
+    if _lock is None:
+        _lock = asyncio.Lock()
+    return _lock
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +132,7 @@ async def start_index(es: ModuleType) -> dict:
         {"ok": True, "status": {...}} on success,
         {"ok": False, "message": "..."} on error.
     """
-    async with _lock:
+    async with _get_lock():
         if _index_subscribed:
             return {"ok": True, "status": get_subscribe_status()}
 
@@ -152,7 +158,7 @@ async def start_quote(es: ModuleType) -> dict:
         {"ok": True, "status": {...}} on success,
         {"ok": False, "message": "..."} on error.
     """
-    async with _lock:
+    async with _get_lock():
         if _quote_subscribed:
             return {"ok": True, "status": get_subscribe_status()}
 
@@ -190,7 +196,7 @@ async def stop_index(es: ModuleType) -> dict:
         {"ok": True, "status": {...}} on success,
         {"ok": False, "message": "..."} on error.
     """
-    async with _lock:
+    async with _get_lock():
         if not _index_subscribed:
             return {"ok": True, "status": get_subscribe_status()}
 
@@ -208,7 +214,7 @@ async def stop_quote(es: ModuleType) -> dict:
         {"ok": True, "status": {...}} on success,
         {"ok": False, "message": "..."} on error.
     """
-    async with _lock:
+    async with _get_lock():
         if not _quote_subscribed:
             return {"ok": True, "status": get_subscribe_status()}
 
@@ -245,7 +251,7 @@ async def run_conditional_reg_pipeline(es: ModuleType) -> None:
         logger.debug("[구독제어] 모든 자동구독 OFF — REG 없이 파이프라인 완료")
         return
 
-    async with _lock:
+    async with _get_lock():
         from backend.app.services import engine_ws_reg
 
         if index_auto:
