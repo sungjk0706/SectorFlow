@@ -27,7 +27,9 @@ from backend.protobuf import event_pb2
 logger = get_logger("pipeline_compute")
 
 _compute_task: Optional[asyncio.Task] = None
+_sector_recompute_task: Optional[asyncio.Task] = None
 _compute_running: bool = False
+_sector_recompute_dirty: bool = False
 
 # P1-4: Latency Metrics
 _latency_metrics = None
@@ -84,7 +86,7 @@ def _parse_protobuf_batch(binary_data: bytes) -> list[dict]:
 
 async def start_compute_loop(es: ModuleType) -> None:
     """Compute Engine 루프 시작."""
-    global _compute_task, _compute_running, _latency_metrics
+    global _compute_task, _compute_running, _latency_metrics, _sector_recompute_task
 
     if _compute_running:
         logger.warning("[Compute] 이미 실행 중")
@@ -96,14 +98,21 @@ async def start_compute_loop(es: ModuleType) -> None:
 
     _compute_running = True
     _compute_task = asyncio.get_running_loop().create_task(_compute_loop_impl(es))
+    _sector_recompute_task = asyncio.get_running_loop().create_task(_sector_recompute_loop_impl(es, get_broadcast_queue()))
     logger.info("[Compute] 루프 시작")
 
 
 async def stop_compute_loop() -> None:
     """Compute Engine 루프 종료."""
-    global _compute_running, _compute_task
+    global _compute_running, _compute_task, _sector_recompute_task
 
     _compute_running = False
+    if _sector_recompute_task:
+        _sector_recompute_task.cancel()
+        try:
+            await _sector_recompute_task
+        except asyncio.CancelledError:
+            pass
     if _compute_task:
         _compute_task.cancel()
         try:
@@ -490,27 +499,57 @@ async def _check_sector_recompute_needed(
 ) -> None:
     """
     업종 점수 재계산 필요 여부 확인.
-
-    Args:
-        es: engine_service 모듈
-        broadcast_queue: UI 전송 큐
+    (스로틀링 최적화: 계산 로직을 백그라운드 루프로 분리하고 깃발만 꽂음)
     """
-    # 업종 점수 재계산 필요 여부 확인 로직
-    # 실제 재계산은 engine_service.recompute_sector_summary_now 호출
+    global _sector_recompute_dirty
+    _sector_recompute_dirty = True
+
+
+async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Queue) -> None:
+    """
+    1초 주기로 돌아가는 업종순위 재계산 스로틀(디바운스) 백그라운드 루프.
+    _sector_recompute_dirty 깃발이 꽂혀 있을 때만 연산을 수행하여 CPU 부하를 극소화.
+    """
+    global _compute_running, _sector_recompute_dirty
     try:
-        # 업종 점수 재계산 (engine_service.recompute_sector_summary_now 이관)
-        es.recompute_sector_summary_now()
+        while _compute_running:
+            try:
+                if _sector_recompute_dirty:
+                    # 데이터 수신율 기반 랭킹 계산 컷오프(대기) 방어 로직
+                    inputs = es.get_sector_summary_inputs()
+                    all_codes = inputs.get("all_codes", [])
+                    trade_prices = inputs.get("trade_prices", {})
+                    
+                    total_count = len(all_codes)
+                    received_count = sum(1 for c in all_codes if c in trade_prices)
+                    
+                    threshold_pct = float(es._settings_cache.get("sector_start_threshold_pct", 70.0))
+                    current_pct = (received_count / total_count * 100) if total_count > 0 else 100.0
+                    
+                    if current_pct < threshold_pct:
+                        # 1초 뒤에 다시 체크하기 위해 깃발 유지
+                        logger.debug("[Compute] 업종순위 계산 대기 중 (수신율: %d/%d = %.1f%% < %.1f%%)", received_count, total_count, current_pct, threshold_pct)
+                        _sector_recompute_dirty = True
+                    else:
+                        _sector_recompute_dirty = False
+                        
+                        # 업종 점수 즉시 재계산
+                        es.recompute_sector_summary_now()
 
-        # UI 업데이트 필요 시 broadcast_queue에 전송
-        summary_data = es.get_sector_scores_snapshot()
-        if summary_data:
-            await broadcast_queue.put({
-                "type": "sector_scores",
-                "data": summary_data,
-            })
-
-    except Exception as e:
-        logger.error("[Compute] 업종 점수 재계산 예외: %s", e, exc_info=True)
+                        # UI 업데이트를 broadcast_queue에 전송
+                        summary_data = es.get_sector_scores_snapshot()
+                        if summary_data:
+                            await broadcast_queue.put({
+                                "type": "sector_scores",
+                                "data": summary_data,
+                            })
+            except Exception as e:
+                logger.error("[Compute] 백그라운드 업종 점수 재계산 예외: %s", e, exc_info=True)
+            
+            # 1초 대기 (스로틀링 주기)
+            await asyncio.sleep(1.0)
+    except asyncio.CancelledError:
+        logger.info("[Compute] 백그라운드 업종 점수 재계산 루프 취소됨")
 
 
 async def _check_buy_target_reached(

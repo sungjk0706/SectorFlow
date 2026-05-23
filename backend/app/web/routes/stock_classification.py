@@ -2,13 +2,13 @@
 """업종분류 커스텀 REST API 라우터.
 
 8개 엔드포인트:
-  GET  /api/sector-custom            — Merged_View 전체 조회
-  POST /api/sector-custom/rename     — 업종명 변경
-  POST /api/sector-custom/create     — 신규 업종 등록
-  POST /api/sector-custom/delete     — 업종 삭제
-  POST /api/sector-custom/move-stock — 종목 이동 (단건)
-  POST /api/sector-custom/move-stocks — 종목 이동 (배치)
-  POST /api/sector-custom/delete-cache — 캐시 삭제
+  GET  /api/stock-classification            — Merged_View 전체 조회
+  POST /api/stock-classification/rename     — 업종명 변경
+  POST /api/stock-classification/create     — 신규 업종 등록
+  POST /api/stock-classification/delete     — 업종 삭제
+  POST /api/stock-classification/move-stock — 종목 이동 (단건)
+  POST /api/stock-classification/move-stocks — 종목 이동 (배치)
+  POST /api/stock-classification/delete-cache — 캐시 삭제
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def _maybe_warning() -> dict:
     return {}
 
 
-router = APIRouter(prefix="/api/sector-custom", tags=["sector-custom"])
+router = APIRouter(prefix="/api/stock-classification", tags=["stock-classification"])
 
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data"
 
@@ -63,12 +63,12 @@ class DeleteCacheRequest(BaseModel):
 
 # ── WS 브로드캐스트 헬퍼 (Task 3.4) ────────────────────────────────
 
-def broadcast_sector_custom_changed() -> None:
-    """sector-custom-changed WS 이벤트 브로드캐스트.
+def broadcast_stock_classification_changed() -> None:
+    """stock-classification-changed WS 이벤트 브로드캐스트.
 
     현재 Custom_Data + merged_sectors + no_sector_count를 페이로드로 전송.
     """
-    from backend.app.core.sector_custom_data import load_custom_data
+    from backend.app.core.stock_classification_data import load_custom_data
     from backend.app.core.sector_mapping import get_merged_all_sectors
     from backend.app.web.ws_manager import ws_manager
 
@@ -105,9 +105,9 @@ def broadcast_sector_custom_changed() -> None:
         from backend.app.services.core_queues import get_broadcast_queue
         q = get_broadcast_queue()
         if not q.full():
-            q.put_nowait({"type": "sector-custom-changed", "data": payload})
+            q.put_nowait({"type": "stock-classification-changed", "data": payload})
     except Exception:
-        ws_manager.broadcast("sector-custom-changed", payload)
+        ws_manager.broadcast("stock-classification-changed", payload)
 
 
 
@@ -127,7 +127,7 @@ async def _trigger_recompute() -> None:
         _log.warning("[업종관리] 업종순위 재계산 신호 전송 실패: %s", e)
 
 
-# ── GET /api/sector-custom ───────────────────────────────────────────
+# ── GET /api/stock-classification ───────────────────────────────────────────
 
 @router.get("/all-stocks")
 async def get_all_stocks(_: str = Depends(get_current_user)):
@@ -138,15 +138,15 @@ async def get_all_stocks(_: str = Depends(get_current_user)):
 
 
 @router.get("")
-async def get_sector_custom(_: str = Depends(get_current_user)):
+async def get_stock_classification(_: str = Depends(get_current_user)):
     """Merged_View 전체 조회."""
-    from backend.app.core.sector_custom_data import load_custom_data
+    from backend.app.core.stock_classification_data import load_custom_data
     from backend.app.core.sector_mapping import get_merged_all_sectors
 
     custom = load_custom_data()
     merged = get_merged_all_sectors()
 
-    # "업종명없음" 소속 종목 수 계산 (broadcast_sector_custom_changed와 동일 로직)
+    # "업종명없음" 소속 종목 수 계산 (broadcast_stock_classification_changed와 동일 로직)
     no_sector_count = 0
     filter_summary = ""
     try:
@@ -174,83 +174,83 @@ async def get_sector_custom(_: str = Depends(get_current_user)):
     }
 
 
-# ── POST /api/sector-custom/rename ──────────────────────────────────
+# ── POST /api/stock-classification/rename ──────────────────────────────────
 
 @router.post("/rename")
 async def rename_sector(body: RenameRequest, _: str = Depends(get_current_user)):
     """업종명 변경."""
     try:
-        from backend.app.core.sector_custom_data import rename_sector as _rename
+        from backend.app.core.stock_classification_data import rename_sector as _rename
         _rename(body.old_name, body.new_name)
-        broadcast_sector_custom_changed()
+        broadcast_stock_classification_changed()
         await _trigger_recompute()
         return {"ok": True, **_maybe_warning()}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
 
 
-# ── POST /api/sector-custom/create ──────────────────────────────────
+# ── POST /api/stock-classification/create ──────────────────────────────────
 
 @router.post("/create")
 async def create_sector(body: CreateRequest, _: str = Depends(get_current_user)):
     """신규 업종 등록."""
     try:
-        from backend.app.core.sector_custom_data import create_sector as _create
+        from backend.app.core.stock_classification_data import create_sector as _create
         _create(body.name)
-        broadcast_sector_custom_changed()
+        broadcast_stock_classification_changed()
         await _trigger_recompute()
         return {"ok": True, **_maybe_warning()}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
 
 
-# ── POST /api/sector-custom/delete ──────────────────────────────────
+# ── POST /api/stock-classification/delete ──────────────────────────────────
 
 @router.post("/delete")
 async def delete_sector(body: DeleteRequest, _: str = Depends(get_current_user)):
     """업종 삭제."""
     try:
-        from backend.app.core.sector_custom_data import delete_sector as _delete
+        from backend.app.core.stock_classification_data import delete_sector as _delete
         _delete(body.name)
-        broadcast_sector_custom_changed()
+        broadcast_stock_classification_changed()
         await _trigger_recompute()
         return {"ok": True, **_maybe_warning()}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
 
 
-# ── POST /api/sector-custom/move-stock ──────────────────────────────
+# ── POST /api/stock-classification/move-stock ──────────────────────────────
 
 @router.post("/move-stock")
 async def move_stock(body: MoveStockRequest, _: str = Depends(get_current_user)):
     """종목 업종 이동."""
     try:
-        from backend.app.core.sector_custom_data import move_stock as _move
+        from backend.app.core.stock_classification_data import move_stock as _move
         _move(body.stock_code, body.target_sector)
-        broadcast_sector_custom_changed()
+        broadcast_stock_classification_changed()
         await _trigger_recompute()
         return {"ok": True, **_maybe_warning()}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
 
 
-# ── POST /api/sector-custom/move-stocks (배치) ───────────────────────
+# ── POST /api/stock-classification/move-stocks (배치) ───────────────────────
 
 @router.post("/move-stocks")
 async def move_stocks(body: MoveStocksRequest, _: str = Depends(get_current_user)):
     """종목 배치 업종 이동 — WS 이벤트 + 재계산 1회만 발생."""
     try:
-        from backend.app.core.sector_custom_data import move_stock as _move
+        from backend.app.core.stock_classification_data import move_stock as _move
         for code in body.stock_codes:
             _move(code, body.target_sector)
-        broadcast_sector_custom_changed()
+        broadcast_stock_classification_changed()
         await _trigger_recompute()
         return {"ok": True, **_maybe_warning()}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
 
 
-# ── POST /api/sector-custom/trigger-snapshot-download ──────────────────
+# ── POST /api/stock-classification/trigger-snapshot-download ──────────────────
 
 @router.post("/trigger-snapshot-download")
 async def trigger_snapshot_download(_: str = Depends(get_current_user)):
@@ -275,7 +275,7 @@ async def trigger_snapshot_download(_: str = Depends(get_current_user)):
         return {"ok": False, "error": str(e)}
 
 
-# ── POST /api/sector-custom/trigger-avg-amt-download ──────────────────
+# ── POST /api/stock-classification/trigger-avg-amt-download ──────────────────
 
 @router.post("/trigger-avg-amt-download")
 async def trigger_avg_amt_download(_: str = Depends(get_current_user)):

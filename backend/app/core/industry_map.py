@@ -81,7 +81,7 @@ async def fetch_ka10099_eligible_stocks(api: "KiwoomRestAPI") -> dict[str, str]:
     ka10099 — 시장별 전체 종목 리스트에서 적격 종목코드 수집 + 부적격 필터.
     코스피(mrkt_tp='0') + 코스닥(mrkt_tp='10') 각각 호출.
     반환: {6자리 종목코드: ""} — 값은 빈 문자열, 키(종목코드)만 의미 있음.
-    업종명은 sector_custom.json이 유일한 출처이므로 여기서 파싱하지 않음.
+    업종명은 stock_classification.json이 유일한 출처이므로 여기서 파싱하지 않음.
     실패 시 빈 딕셔너리.
     """
     if not api._ensure_token():

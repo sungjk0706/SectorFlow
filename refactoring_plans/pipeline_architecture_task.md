@@ -42,7 +42,7 @@
 - [ ] `broadcast_queue.task_done()` 호출
 
 ## 6. 컨트롤 플레인 (Control Plane) 우회 배관 연동
-- [ ] 기존 API 라우터(`settings.py`, `sector_custom.py` 등)에서 사용자가 설정을 변경할 때의 로직 수정
+- [ ] 기존 API 라우터(`settings.py`, `stock_classification.py` 등)에서 사용자가 설정을 변경할 때의 로직 수정
 - [ ] DB에만 저장하던 설정값을 실시간 연산 엔진에 적용하기 위해 `await control_queue.put({'type': 'UPDATE_CONFIG', 'payload': ...})` 호출
 - [ ] `pipeline_compute.py`에서 `tick_queue`를 처리하기 전, `control_queue`에 데이터가 있는지 비동기로 확인하고, 있으면 최우선으로 연산 엔진의 상태(전역 변수 등)를 업데이트하도록 로직 삽입
 

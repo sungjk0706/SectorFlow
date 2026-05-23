@@ -6,7 +6,7 @@ import { hotStore } from '../stores/hotStore'
 import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardTitle } from '../components/common/card-title'
-import { globalSettingsManager, createGlobalWsBadge } from '../settings'
+import { globalSettingsManager } from '../settings'
 import { createStockNameColumn, createSeqCell, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, createNumberCell, FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
 import type { BuyTarget } from '../types'
 
@@ -90,7 +90,6 @@ const COLUMNS: ColumnDef<BuyTarget>[] = [
 /* ── 모듈 변수 ── */
 let dataTable: DataTableApi<BuyTarget> | null = null
 let badgeEls: { daily: HTMLSpanElement; holding: HTMLSpanElement; perStock: HTMLSpanElement } | null = null
-let wsBadge: HTMLElement | null = null
 let emptyEl: HTMLElement | null = null
 let unsubTargets: (() => void) | null = null
 let rafHandle: number | null = null
@@ -162,8 +161,6 @@ function mount(container: HTMLElement): void {
   Object.assign(headerRow.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' })
   headerRow.appendChild(createCardTitle('매수후보'))
 
-  wsBadge = createGlobalWsBadge()
-  headerRow.appendChild(wsBadge)
   root.appendChild(headerRow)
 
   // 한도 배지 행
@@ -301,7 +298,6 @@ function unmount(): void {
   if (unsubTargets) { unsubTargets(); unsubTargets = null }
   if (dataTable) { dataTable.destroy(); dataTable = null }
   badgeEls = null
-  wsBadge = null
   emptyEl = null
 }
 

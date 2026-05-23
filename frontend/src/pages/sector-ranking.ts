@@ -1,4 +1,4 @@
-// frontend/src/pages/sector-analysis.ts
+// frontend/src/pages/sector-ranking.ts
 // 업종분석 페이지 — Vanilla TS PageModule (SectorAnalysisCard.tsx 1:1 전환)
 
 import { hotStore } from '../stores/hotStore'
@@ -13,7 +13,7 @@ import { toDisplayValue, toServerValue } from '../utils/sliderConvert'
 import { FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
 import type { SectorScoreRow, AppSettings } from '../types'
 
-const NUM_KEYS = ['sector_min_trade_amt', 'sector_min_rise_ratio_pct', 'sector_max_targets', 'sector_trim_trade_amt_pct', 'sector_trim_change_rate_pct'] as const
+const NUM_KEYS = ['sector_start_threshold_pct', 'sector_min_trade_amt', 'sector_min_rise_ratio_pct', 'sector_max_targets', 'sector_trim_trade_amt_pct', 'sector_trim_change_rate_pct'] as const
 const MAX_ROWS = 60
 
 /* ── 헬퍼: 단계 라벨 ── */
@@ -81,6 +81,7 @@ let rafHandle: number | null = null
 let _mounted = false
 
 // 입력 컴포넌트 참조
+let thresholdInput: ReturnType<typeof createNumInput> | null = null
 let minTradeAmtInput: ReturnType<typeof createMoneyInput> | null = null
 let trimChangeRateInput: ReturnType<typeof createNumInput> | null = null
 let trimTradeAmtInput: ReturnType<typeof createNumInput> | null = null
@@ -166,6 +167,7 @@ function syncFromSettings(s: AppSettings): void {
   currentRiseRatio = toDisplayValue(tradeAmtVal)
   // focus 뺏김 방지 — 현재 포커스된 input은 업데이트 제외
   const act = document.activeElement
+  if (thresholdInput && (!act || !thresholdInput.el.contains(act))) thresholdInput.setValue(currentVals.sector_start_threshold_pct ?? 70)
   if (minTradeAmtInput && (!act || !minTradeAmtInput.el.contains(act))) minTradeAmtInput.setValue(currentVals.sector_min_trade_amt ?? 0)
   if (trimChangeRateInput && (!act || !trimChangeRateInput.el.contains(act))) trimChangeRateInput.setValue(currentVals.sector_trim_change_rate_pct ?? 0)
   if (trimTradeAmtInput && (!act || !trimTradeAmtInput.el.contains(act))) trimTradeAmtInput.setValue(currentVals.sector_trim_trade_amt_pct ?? 0)
@@ -275,7 +277,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
 /* ── mount ── */
 function mount(container: HTMLElement): void {
   _mounted = true
-  notifyPageActive('sector-analysis')
+  notifyPageActive('sector-ranking')
   settingsMgr = createSettingsManager(uiStore)
   currentVals = {}
   currentRiseRatio = 50
@@ -286,19 +288,11 @@ function mount(container: HTMLElement): void {
 
   const root = document.createElement('div')
 
-  // 제목 + 실시간 상태 뱃지
-  const titleRow = document.createElement('div')
-  Object.assign(titleRow.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 0 12px' })
-  const h4 = document.createElement('h4')
-  h4.style.margin = '0'
-  h4.textContent = '업종 분석'
-  titleRow.appendChild(h4)
-
-  const initSt = uiStore.getState()
-  const isSubscribed = initSt.wsSubscribeStatus?.quote_subscribed ?? false
-  wsBadge = createWsStatusBadge({ subscribed: isSubscribed, broker: 'kiwoom' })
-  titleRow.appendChild(wsBadge.el)
-  root.appendChild(titleRow)
+  // 수신율 컷오프 (기존 타이틀/연결해제 뱃지 위치)
+  thresholdInput = createNumInput({ value: 70, onChange: v => { onNumChange('sector_start_threshold_pct', v) }, step: 1, name: 'sector_start_threshold_pct' })
+  const thresholdRow = createSettingRow('업종순위 계산 수신율 컷오프 (%)', thresholdInput.el)
+  thresholdRow.style.margin = '0 0 12px 0'
+  root.appendChild(thresholdRow)
 
   // ① 종목 필터
   root.appendChild(createStepLabel('①', '종목 필터'))
@@ -505,11 +499,12 @@ function mount(container: HTMLElement): void {
 /* ── unmount ── */
 function unmount(): void {
   _mounted = false
-  notifyPageInactive('sector-analysis')
+  notifyPageInactive('sector-ranking')
   if (rafHandle !== null) { cancelAnimationFrame(rafHandle); rafHandle = null }
   if (unsubStore) { unsubStore(); unsubStore = null }
   if (unsubSettings) { unsubSettings(); unsubSettings = null }
   if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }
+  thresholdInput = null
   minTradeAmtInput = null
   trimChangeRateInput = null
   trimTradeAmtInput = null

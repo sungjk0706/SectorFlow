@@ -1,4 +1,4 @@
-// frontend/src/pages/sector-custom.ui.ts
+// frontend/src/pages/stock-classification.ui.ts
 // 업종분류 커스텀 페이지 — 메인 컨테이너 + tripleHeader + 업종 관리 테이블
 
 import { FONT_SIZE, FONT_FAMILY, FONT_WEIGHT } from '../components/common/ui-styles'
@@ -9,7 +9,7 @@ import { createStockNameColumn } from '../components/common/ui-styles'
 
 /* ── Props 타입 ── */
 
-export interface SectorCustomUiProps {
+export interface StockClassificationUiProps {
   editWindowOpen?: boolean
   sectors?: Record<string, string>
   stockMoves?: Record<string, string>
@@ -82,7 +82,7 @@ function descLabel(text: string): HTMLElement {
 
 /* ── tripleHeader — 공통 헤더 (Indicator_Bar) ── */
 
-export function buildTripleHeader(container: HTMLElement, props: SectorCustomUiProps): void {
+export function buildTripleHeader(container: HTMLElement, props: StockClassificationUiProps): void {
   while (container.firstChild) container.removeChild(container.firstChild)
   container.style.fontFamily = FONT_FAMILY
 
@@ -146,7 +146,7 @@ export function updateIndicatorBar(editWindowOpen: boolean): void {
 
 /* ── 업종 관리 테이블 (Sector_Table) ── */
 
-export function buildSectorManageCard(container: HTMLElement, props: SectorCustomUiProps): void {
+export function buildSectorManageCard(container: HTMLElement, props: StockClassificationUiProps): void {
   const card = cardWrap()
 
   // Card title: "업종 관리" (left) + stats (right)
@@ -361,7 +361,7 @@ export function buildSectorManageCard(container: HTMLElement, props: SectorCusto
   updateMasterPanel(props)
 }
 
-function buildMasterRows(props: SectorCustomUiProps): MasterRow[] {
+function buildMasterRows(props: StockClassificationUiProps): MasterRow[] {
   const allStocks = props.allStocks ?? new Map()
   const { stockMoves = {}, sectors = {}, deletedSectors = [], mergedSectors = [] } = props
   const counts: Record<string, number> = {}
@@ -383,14 +383,14 @@ function buildMasterRows(props: SectorCustomUiProps): MasterRow[] {
   return rows
 }
 
-function updateMasterPanel(props: SectorCustomUiProps): void {
+function updateMasterPanel(props: StockClassificationUiProps): void {
   if (!masterTableRef) return
   const rows = buildMasterRows(props)
   masterTableRef.updateRows(rows)
   updateStatsLabel(props)
 }
 
-function updateStatsLabel(props: SectorCustomUiProps): void {
+function updateStatsLabel(props: StockClassificationUiProps): void {
   if (!statsLabelRef) return
   const allStocks = props.allStocks ?? new Map()
   const { stockMoves = {}, sectors = {}, deletedSectors = [], mergedSectors = [] } = props
@@ -414,10 +414,10 @@ function updateStatsLabel(props: SectorCustomUiProps): void {
 
 /* ── 메인 렌더 함수 ── */
 
-export function renderSectorCustomUi(
+export function renderStockClassificationUi(
   tripleHeader: HTMLElement,
   tripleLeft: HTMLElement,
-  props: SectorCustomUiProps
+  props: StockClassificationUiProps
 ): void {
   buildTripleHeader(tripleHeader, props)
   buildSectorManageCard(tripleLeft, props)
@@ -425,7 +425,7 @@ export function renderSectorCustomUi(
 
 /* ── Props 갱신 ── */
 
-export function updateSectorCustomUi(props: SectorCustomUiProps): void {
+export function updateStockClassificationUi(props: StockClassificationUiProps): void {
   updateIndicatorBar(props.editWindowOpen ?? false)
   updateMasterPanel(props)
 }

@@ -33,7 +33,7 @@ export interface RouterApi {
 // ── 레거시 리다이렉트 매핑 ──
 
 const LEGACY_REDIRECTS: Record<string, string> = {
-  '#/sector': '#/sector-analysis',
+  '#/sector': '#/sector-ranking',
   '#/buy': '#/buy-settings',
   '#/sell': '#/sell-settings',
   '#/account': '#/profit-overview',
@@ -41,7 +41,7 @@ const LEGACY_REDIRECTS: Record<string, string> = {
   '#/settings': '#/general-settings',
 }
 
-const DEFAULT_ROUTE = '#/sector-analysis'
+const DEFAULT_ROUTE = '#/sector-ranking'
 
 // ── 순수 함수: 해시 → 정규 경로 해석 (테스트 가능) ──
 

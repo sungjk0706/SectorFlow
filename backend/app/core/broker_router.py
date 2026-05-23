@@ -45,12 +45,12 @@ class BrokerRouter:
     사용법:
         router = BrokerRouter(settings)
         router.sector.fetch_daily_price("005930", "20240101")  # 전역 설정
-        router.get_provider("sector", "sector_analysis") # 페이지 오버라이드
+        router.get_provider("sector", "sector_ranking") # 페이지 오버라이드
     """
 
     # 페이지별 허용 기능 매핑 (해당 페이지가 사용하는 기능만)
     PAGE_FEATURES: dict[str, tuple[str, ...]] = {
-        "sector_analysis": ("sector",),
+        "sector_ranking": ("sector",),
         "realtime_quote":  ("websocket",),
         "trading":         ("order",),
         "account":         ("account", "auth"),
@@ -166,7 +166,7 @@ class BrokerRouter:
         """
         기능별 Provider 반환.
         - page=None → 전역 설정 (기존 동작)
-        - page="sector_analysis" 등 → page_overrides 적용
+        - page="sector_ranking" 등 → page_overrides 적용
         """
         if page is None:
             return self._providers[feature]

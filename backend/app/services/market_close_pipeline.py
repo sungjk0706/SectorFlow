@@ -624,8 +624,8 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             es._latest_filter_summary = summary_str
             
             try:
-                from backend.app.web.routes.sector_custom import broadcast_sector_custom_changed
-                broadcast_sector_custom_changed()
+                from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed
+                broadcast_stock_classification_changed()
             except Exception as e:
                 _log.warning("Failed to broadcast filter summary: %s", e)
             
@@ -862,13 +862,13 @@ def _update_layout_cache(
     """confirmed_codes 기준으로 레이아웃 캐시를 완전 재구성.
 
     - 부적격이 된 종목은 레이아웃에서 제거된다.
-    - sector_custom.json의 최신 업종 매핑이 전체 종목에 적용된다.
+    - stock_classification.json의 최신 업종 매핑이 전체 종목에 적용된다.
     - 섹터 헤더가 없는 종목("업종명없음")도 레이아웃에 포함된다.
     """
     from backend.app.core.sector_mapping import get_merged_sector
     from backend.app.core.sector_stock_cache import save_layout_cache
 
-    # 전체 종목을 섹터별로 그룹핑 (sector_custom.json 최신 매핑 적용)
+    # 전체 종목을 섹터별로 그룹핑 (stock_classification.json 최신 매핑 적용)
     sector_groups: dict[str, list[str]] = {}
     for cd in all_codes:
         sec = get_merged_sector(cd) or "업종명없음"

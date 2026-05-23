@@ -1,4 +1,4 @@
-// frontend/src/pages/sector-analysis.ui.ts
+// frontend/src/pages/sector-ranking.ui.ts
 // 업종분석 페이지 — 순수 UI 껍데기 (Dumb Component)
 // 비즈니스 로직 제거, Props로 데이터 수신
 

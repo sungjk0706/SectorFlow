@@ -261,7 +261,7 @@ export interface WsSubscribeStatusEvent {
 
 // ── Sector Custom 관련 타입 ──
 
-export interface SectorCustomChangedEvent {
+export interface StockClassificationChangedEvent {
   _v: number;
   custom_data: {
     sectors: Record<string, string>;
@@ -273,7 +273,7 @@ export interface SectorCustomChangedEvent {
   filter_summary?: string;
 }
 
-export interface SectorCustomResponse {
+export interface StockClassificationResponse {
   custom_data: {
     sectors: Record<string, string>;
     stock_moves: Record<string, string>;
@@ -285,7 +285,7 @@ export interface SectorCustomResponse {
   filter_summary?: string;
 }
 
-export interface SectorCustomMutationResponse {
+export interface StockClassificationMutationResponse {
   ok: boolean;
   error?: string;
   warning?: string;

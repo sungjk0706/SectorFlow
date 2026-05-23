@@ -91,7 +91,7 @@ async def _bootstrap_sector_stocks_async() -> None:
         _broadcast_bootstrap_stage(2, "섹터 매핑 로드")
     else:
         _broadcast_bootstrap_stage(2, "섹터 매핑 로드")
-        # ka10099 종목코드 목록 + sector_custom.json 기반 그룹핑
+        # ka10099 종목코드 목록 + stock_classification.json 기반 그룹핑
         from backend.app.core.industry_map import get_eligible_stocks
         from backend.app.core.sector_mapping import get_merged_sector
         stock_codes = get_eligible_stocks()  # {종목코드: ""} — 키만 사용

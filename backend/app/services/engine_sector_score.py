@@ -2,7 +2,7 @@
 """
 섹터 강도 스코어링 및 매수 타겟 큐 생성.
 
-sector_mapping.py sector_custom.json 기반 업종 그룹핑:
+sector_mapping.py stock_classification.json 기반 업종 그룹핑:
   1. 전체 종목 코드를 sector_mapping.get_merged_sector() 로 커스텀 업종별 분류
   2. 섹터별 상승 종목 비율 / 평균 등락률 / 총 거래대금 계산
   3. 섹터 강도 순위 정렬

@@ -2,7 +2,6 @@
 // Metrics Dashboard 페이지 — Latency metrics 시각화 및 Alert 표시
 
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
-import { createGlobalWsBadge } from '../settings'
 import { FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
 import { api } from '../api/client'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
@@ -92,7 +91,6 @@ export function createMetricsDashboard() {
   `
   
   header.appendChild(title)
-  header.appendChild(createGlobalWsBadge())
   container.appendChild(header)
 
   // Phase 2.3: 프론트엔드 메트릭 섹션

@@ -145,6 +145,10 @@ async def run_engine_loop(es: ModuleType) -> None:
     initialize_queues()
     logger.info("[엔진] 전역 이벤트 버스 (Queues) 초기화 완료")
 
+    gateway_task = None
+    oms_task = None
+    compute_task = None
+
     try:
         settings = await get_engine_settings(es._engine_user_id or None)
         es._settings_cache = settings
@@ -358,20 +362,26 @@ async def run_engine_loop(es: ModuleType) -> None:
         logger.warning("[시작] 엔진 루프 예외", exc_info=True)
     finally:
         # ── 백그라운드 태스크 종료 (Step 7: 중앙 코디네이터 연동) ───────────────
-        gateway_task.cancel()
-        oms_task.cancel()
-        compute_task.cancel()
+        if gateway_task:
+            gateway_task.cancel()
+        if oms_task:
+            oms_task.cancel()
+        if compute_task:
+            compute_task.cancel()
 
         try:
-            await gateway_task
+            if gateway_task:
+                await gateway_task
         except asyncio.CancelledError:
             pass
         try:
-            await oms_task
+            if oms_task:
+                await oms_task
         except asyncio.CancelledError:
             pass
         try:
-            await compute_task
+            if compute_task:
+                await compute_task
         except asyncio.CancelledError:
             pass
 

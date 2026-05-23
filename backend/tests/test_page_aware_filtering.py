@@ -7,10 +7,10 @@ Validates that _is_code_relevant_for_page returns the correct boolean result
 based on page-specific rules for any combination of active_page and stock code.
 
 Rules:
-- sector-analysis: layout 종목 + pending 종목만 True
+- sector-ranking: layout 종목 + pending 종목만 True
 - buy-target: buyTargets + blockedTargets 종목만 True (캐시 미초기화 시 True 폴백)
 - sell-position: positions 종목만 True
-- profit-overview / settings / buy-settings / sell-settings / general-settings / sector-custom: always False
+- profit-overview / settings / buy-settings / sell-settings / general-settings / stock-classification: always False
 - unknown page or no active_page: always True (safe fallback)
 
 **Validates: Requirements 17.4, 17.5, 17.6, 17.7, 17.8**
@@ -86,7 +86,7 @@ stock_code_strategy = st.from_regex(r"[0-9]{6}", fullmatch=True)
 
 # Known page identifiers
 KNOWN_PAGES = [
-    "sector-analysis",
+    "sector-ranking",
     "buy-target",
     "sell-position",
     "profit-overview",
@@ -94,7 +94,7 @@ KNOWN_PAGES = [
     "buy-settings",
     "sell-settings",
     "general-settings",
-    "sector-custom",
+    "stock-classification",
 ]
 
 # Pages that always return False
@@ -104,7 +104,7 @@ FALSE_PAGES = frozenset({
     "buy-settings",
     "sell-settings",
     "general-settings",
-    "sector-custom",
+    "stock-classification",
 })
 
 # Generate unknown page names (not in KNOWN_PAGES)
@@ -165,12 +165,12 @@ class _MockSectorSummary:
     pending_codes=st.lists(stock_code_strategy, min_size=0, max_size=10),
 )
 @settings(max_examples=200, deadline=None)
-def test_sector_analysis_page_filters_by_layout_and_pending(
+def test_sector_ranking_page_filters_by_layout_and_pending(
     code: str,
     layout_codes: list[str],
     pending_codes: list[str],
 ):
-    """Property 17: sector-analysis 페이지는 layout 종목 + pending 종목만 True.
+    """Property 17: sector-ranking 페이지는 layout 종목 + pending 종목만 True.
 
     **Validates: Requirements 17.4**
     """
@@ -189,13 +189,13 @@ def test_sector_analysis_page_filters_by_layout_and_pending(
     try:
         ean._layout_code_set = layout_code_set
         _mock_es._pending_stock_details = pending_stock_details
-        result = mgr._is_code_relevant_for_page("sector-analysis", code)
+        result = mgr._is_code_relevant_for_page("sector-ranking", code)
     finally:
         ean._layout_code_set = original_layout
         _mock_es._pending_stock_details = original_pending
 
     assert result == expected, (
-        f"sector-analysis: code={code}, layout={layout_codes}, "
+        f"sector-ranking: code={code}, layout={layout_codes}, "
         f"pending={pending_codes}, expected={expected}, got={result}"
     )
 

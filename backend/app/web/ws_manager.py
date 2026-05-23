@@ -254,7 +254,7 @@ class WSManager:
 
     def _is_code_relevant_for_page(self, page: str, code: str) -> bool:
         """페이지별 종목 코드 관련성 판별. 단일 스레드 — 락 불필요."""
-        if page == "sector-analysis":
+        if page == "sector-ranking":
             # 업종별종목시세 테이블용: layout 종목 + pending 종목
             from backend.app.services.engine_account_notify import _layout_code_set
             import backend.app.services.engine_service as _es
@@ -287,7 +287,7 @@ class WSManager:
                 )
             except Exception:
                 return True  # 조회 실패 시 안전 폴백 (전송 허용)
-        elif page in ("profit-overview", "settings", "buy-settings", "sell-settings", "general-settings", "sector-custom"):
+        elif page in ("profit-overview", "settings", "buy-settings", "sell-settings", "general-settings", "stock-classification"):
             return False  # real-data 전송 안 함
         # 알 수 없는 페이지 → 전체 전송 (안전 폴백)
         return True
