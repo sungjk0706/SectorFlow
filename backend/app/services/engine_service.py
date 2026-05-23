@@ -2454,6 +2454,12 @@ CONNECTION_LEVEL_KEYS: frozenset[str] = frozenset({
     "kiwoom_app_key_real",
     "kiwoom_app_secret_real",
     "kiwoom_account_no_real",
+    "ls_app_key",
+    "ls_app_secret",
+    "ls_account_no",
+    "ls_app_key_real",
+    "ls_app_secret_real",
+    "ls_account_no_real",
 })
 
 # 거래 모드 전환 키 -- 엔진 재기동 없이 캐시 갱신 + 계좌 구독 전환만 수행한다.
@@ -2512,20 +2518,22 @@ async def refresh_engine_settings_cache(user_id: str | None = None, *, use_root:
 async def reload_engine_settings() -> None:
     """
     연결 레벨 설정 변경 시 호출.
-    실행 중인 엔진을 완전 종료한 뒤 새 설정값으로 재기동한다.
+    실행 중인 엔진을 완전 종료한 뒤 새 설정값으로 재기동하거나, 
+    정지 상태인 경우 새로 기동한다.
     """
     global _engine_user_id
-    if not is_running():
-        logger.info("[시작] 재로딩 요청 -- 엔진이 실행 중이 아님, 건너뜀")
-        return
-    uid = _engine_user_id
-    logger.info("[시작] 설정 변경 감지 -> 엔진 재기동 시작 (사용자=%s)", uid or "admin")
-    await stop_engine()
+    uid = _engine_user_id or "admin"
+    if is_running():
+        logger.info("[시작] 설정 변경 감지 -> 실행 중인 엔진 재기동 시작 (사용자=%s)", uid)
+        await stop_engine()
+    else:
+        logger.info("[시작] 설정 변경 감지 -> 정지된 엔진 기동 시도 (사용자=%s)", uid)
+        
     from backend.app.core.broker_factory import reset_router
     reset_router()
     await asyncio.sleep(0.5)
     await start_engine(uid)
-    logger.info("[시작] 재기동 완료")
+    logger.info("[시작] 엔진 (재)기동 완료")
 
 
 def get_status() -> dict:
@@ -2547,12 +2555,14 @@ def get_status() -> dict:
                 "[한도경고] WebSocket 등록 총합 %d개 -- 200개 한도 근접 (0B=%d, 지수=2, 계좌=2)",
                 _reg_total, len(_subscribed_stocks),
             )
+    active_broker = _settings_cache.get("broker", "kiwoom")
+    
     st: dict = {
         "running":         _running,
-        "kiwoom_connected": _kiwoom_connector.is_connected() if _kiwoom_connector else False,
+        "kiwoom_connected": _connector_manager.is_connected() if _connector_manager is not None else (_kiwoom_connector.is_connected() if _kiwoom_connector else False),
         "login_ok":        _login_ok,
         "pending_count":   len(_checked_stocks),
-        "active_broker":   _settings_cache.get("broker", "kiwoom"),
+        "active_broker":   active_broker,
         "trade_mode":      tm,
         "price_source":    _account_snapshot.get("price_source"),
         "ws_account_subscribed": _ws_account_subscribed,
@@ -2560,7 +2570,7 @@ def get_status() -> dict:
         # 진단용 (비밀 미포함): WS·실시간 이슈 원인 추적
         "is_test_mode":    _is_test,
         "has_access_token":   bool(_access_token),
-        "kiwoom_token_valid": bool(_broker_tokens.get("kiwoom")) or bool(_rest_api and _rest_api._token_info and not _rest_api._token_info.is_expired_soon()),
+        "kiwoom_token_valid": bool(_broker_tokens.get(active_broker)) or bool(_broker_tokens.get("kiwoom")) or bool(_rest_api and getattr(_rest_api, "_token_info", None) and not (_rest_api._token_info.is_expired_soon() if hasattr(_rest_api._token_info, "is_expired_soon") else _rest_api._token_info.is_expired())),
         "engine_task_alive": bool(_engine_task and not _engine_task.done()),
         # 시세 누락 진단: 보유·레이더·작전 종목 중 REAL 체결가 미저장 코드
         "tracked_stocks_count": len(tracked),

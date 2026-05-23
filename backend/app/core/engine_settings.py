@@ -85,6 +85,22 @@ async def get_engine_settings(user_id: str = None, profile: str = "default") -> 
         "test_mode":            _is_test,
         "kiwoom_mock_mode":     _is_test,   # 하위 호환
     }
+
+    # 모든 증권사 API 키/시크릿/계좌번호 동적 수집 및 복호화 (real 키 우선)
+    broker_names = {k.split("_")[0] for k in flat if k.endswith("_app_key") or k.endswith("_app_key_real")}
+    for b_name in broker_names:
+        if b_name == "kiwoom":
+            continue
+        k = _dec(flat.get(f"{b_name}_app_key_real")) or _dec(flat.get(f"{b_name}_app_key"))
+        s = _dec(flat.get(f"{b_name}_app_secret_real")) or _dec(flat.get(f"{b_name}_app_secret"))
+        a = str(flat.get(f"{b_name}_account_no_real") or flat.get(f"{b_name}_account_no") or "").strip()
+        result[f"{b_name}_app_key"] = k
+        result[f"{b_name}_app_secret"] = s
+        result[f"{b_name}_account_no"] = a
+        # UI 표시용 _real 유지
+        result[f"{b_name}_app_key_real"] = flat.get(f"{b_name}_app_key_real") or ""
+        result[f"{b_name}_app_secret_real"] = flat.get(f"{b_name}_app_secret_real") or ""
+        result[f"{b_name}_account_no_real"] = str(flat.get(f"{b_name}_account_no_real") or "").strip()
     # logic_auto_trade / AutoTradeManager 호환 키 (flat 필드명 그대로)
     # _to_trade_settings()가 flat 키를 직접 참조하므로 반드시 원본 키명으로 포함해야 한다.
     result["buy_amt"] = int(flat.get("buy_amt", 0) or 0)

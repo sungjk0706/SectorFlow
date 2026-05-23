@@ -99,6 +99,9 @@ export interface EngineStatus {
 }
 
 export interface AppSettings {
+  // 주 사용 증권사 (Primary Broker)
+  broker: string;
+
   // 거래 모드
   trade_mode: string;
   test_mode: boolean;
