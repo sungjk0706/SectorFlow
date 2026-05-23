@@ -161,7 +161,7 @@ function createFixedMode<T extends object>(
   let currentPercentages: number[] = columns.map(() => 100 / (columns.length || 1))
 
   const wrapper = document.createElement('div')
-  Object.assign(wrapper.style, { border: CELL_BORDER, overflow: 'hidden' })
+  Object.assign(wrapper.style, { border: CELL_BORDER, overflowY: 'auto', height: '100%', flex: '1', minHeight: 0 })
 
   const table = document.createElement('table')
   Object.assign(table.style, {
@@ -212,21 +212,22 @@ function createFixedMode<T extends object>(
   table.appendChild(tbody)
   wrapper.appendChild(table)
 
-  function renderEmpty() {
-    while (tbody.firstChild) {
-      tbody.removeChild(tbody.firstChild)
-    }
-    const tr = document.createElement('tr')
-    const td = document.createElement('td')
-    td.colSpan = columns.length
-    Object.assign(td.style, { color: '#aaa', padding: '20px 0', textAlign: 'center' })
-    td.textContent = emptyText
-    tr.appendChild(td)
-    tbody.appendChild(tr)
+  let rowCaches: HTMLElement[] = []
+  const emptyTr = document.createElement('tr')
+  const emptyTd = document.createElement('td')
+  emptyTd.colSpan = columns.length
+  Object.assign(emptyTd.style, { color: '#aaa', padding: '20px 0', textAlign: 'center' })
+  emptyTd.textContent = emptyText
+  emptyTr.appendChild(emptyTd)
+  tbody.appendChild(emptyTr)
+
+  function wasGroupRow(rowEl: HTMLElement): boolean {
+    return rowEl.getAttribute('data-row-type') === 'group'
   }
 
   function renderGroupRow(g: GroupRow): HTMLElement {
     const tr = document.createElement('tr')
+    tr.setAttribute('data-row-type', 'group')
     if (g.style) Object.assign(tr.style, g.style)
     const td = document.createElement('td')
     td.colSpan = columns.length
@@ -255,6 +256,7 @@ function createFixedMode<T extends object>(
 
   function renderDataRow(row: T, idx: number): HTMLElement {
     const tr = document.createElement('tr')
+    tr.setAttribute('data-row-type', 'data')
     const rs = rowStyle ? rowStyle(row, idx) : undefined
     if (rs) Object.assign(tr.style, rs)
     if (zebraStriping && idx % 2 === 1) tr.style.backgroundColor = '#f9f9f9'
@@ -274,15 +276,19 @@ function createFixedMode<T extends object>(
         borderBottom: '1px solid #e5e7eb',
       })
       if (c.cellStyle) Object.assign(td.style, c.cellStyle)
-      const content = c.render(row, idx)
-      if (typeof content === 'string') td.textContent = content
-      else if (content instanceof HTMLElement) td.appendChild(content)
+      try {
+        const content = c.render(row, idx)
+        if (typeof content === 'string') {
+          td.textContent = content
+          ;(td as any)._prevContent = content
+        } else if (content instanceof HTMLElement) {
+          td.appendChild(content)
+        }
+      } catch (_) {}
       tr.appendChild(td)
     }
     return tr
   }
-
-  renderEmpty()
 
   function updateColWidths(percentages: number[]) {
     for (let i = 0; i < colEls.length; i++) colEls[i].style.width = `${percentages[i]}%`
@@ -295,6 +301,8 @@ function createFixedMode<T extends object>(
   const TARGET_FPS = 60
   const FRAME_INTERVAL = 1000 / TARGET_FPS
   let lastRenderTime = 0
+
+  let columnWidthsCalculated = false
 
   function scheduleRender() {
     if (rafId !== null) return
@@ -314,19 +322,108 @@ function createFixedMode<T extends object>(
       const rows = pendingRows
       pendingRows = null
       if (destroyed) return
-      while (tbody.firstChild) {
-        tbody.removeChild(tbody.firstChild)
-      }
+
       if (rows.length === 0) {
-        renderEmpty()
+        emptyTr.style.display = ''
+        for (const tr of rowCaches) tr.style.display = 'none'
         return
       }
-      const percentages = calcPercentages(columns, rows)
-      updateColWidths(percentages)
-      for (let i = 0; i < rows.length; i++) {
+      emptyTr.style.display = 'none'
+
+      if (!columnWidthsCalculated) {
+        const percentages = calcPercentages(columns, rows)
+        updateColWidths(percentages)
+        columnWidthsCalculated = true
+      }
+
+      for (let i = 0; i < Math.max(rows.length, rowCaches.length); i++) {
+        if (i >= rows.length) {
+          rowCaches[i].style.display = 'none'
+          continue
+        }
+
         const row = rows[i]
-        if (isGroupRow(row)) tbody.appendChild(renderGroupRow(row))
-        else tbody.appendChild(renderDataRow(row as T, i))
+        const currentIsGroup = isGroupRow(row)
+
+        if (!rowCaches[i]) {
+          const newRow = currentIsGroup ? renderGroupRow(row as GroupRow) : renderDataRow(row as T, i)
+          rowCaches.push(newRow)
+          tbody.appendChild(newRow)
+          continue
+        }
+
+        const rowEl = rowCaches[i]
+        rowEl.style.display = ''
+
+        if (currentIsGroup !== wasGroupRow(rowEl)) {
+          const newRow = currentIsGroup ? renderGroupRow(row as GroupRow) : renderDataRow(row as T, i)
+          tbody.replaceChild(newRow, rowEl)
+          rowCaches[i] = newRow
+          continue
+        }
+
+        if (currentIsGroup) {
+          if (row.style) Object.assign(rowEl.style, row.style)
+          const td = rowEl.firstElementChild as HTMLElement
+          if (td) {
+            const newLabel = `📊 ${row.label}`
+            const textNode = td.firstChild
+            if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+              if (textNode.textContent !== newLabel) textNode.textContent = newLabel
+            } else {
+              td.textContent = newLabel
+            }
+            if (row.score != null) {
+              let span = td.querySelector('span')
+              const scoreText = `(종합점수 : ${row.score.toFixed(1)})`
+              if (span) {
+                if (span.textContent !== scoreText) span.textContent = scoreText
+                if (span.style.color !== scoreColor(row.score)) span.style.color = scoreColor(row.score)
+              } else {
+                span = document.createElement('span')
+                Object.assign(span.style, { marginLeft: '10px', fontSize: '0.75em', fontWeight: FONT_WEIGHT.normal, color: scoreColor(row.score) })
+                span.textContent = scoreText
+                td.appendChild(span)
+              }
+            } else {
+              const span = td.querySelector('span')
+              if (span) span.remove()
+            }
+          }
+          continue
+        }
+
+        const dataRow = row as T
+        const rs = rowStyle ? rowStyle(dataRow, i) : undefined
+        if (rs) Object.assign(rowEl.style, rs)
+        if (zebraStriping) {
+           rowEl.style.backgroundColor = (i % 2 === 1) ? '#f9f9f9' : 'transparent'
+        }
+        
+        const tds = rowEl.children
+        for (let cIdx = 0; cIdx < columns.length; cIdx++) {
+          const cell = tds[cIdx] as HTMLElement
+          if (!cell) continue
+          try {
+            const content = columns[cIdx].render(dataRow, i)
+            if (typeof content === 'string') {
+              const prevKey = '_prevContent' as keyof HTMLElement
+              const prevContent = (cell as any)[prevKey] as string | undefined
+              if (cell.textContent !== content) {
+                cell.textContent = content
+                if (columns[cIdx].flash && prevContent !== undefined && prevContent !== content) triggerFlash(cell)
+              }
+              ;(cell as any)[prevKey] = content
+            } else if (content instanceof HTMLElement) {
+              const existing = cell.firstElementChild as HTMLElement | null
+              if (!existing || !existing.isEqualNode(content)) {
+                while (cell.firstChild) cell.removeChild(cell.firstChild)
+                cell.appendChild(content)
+                if (columns[cIdx].flash) triggerFlash(cell)
+              }
+            }
+          } catch (_) {}
+        }
       }
     })
     if (!callbackRan) {
@@ -343,9 +440,10 @@ function createFixedMode<T extends object>(
   function destroy() {
     destroyed = true
     wrapper.remove()
+    rowCaches = []
   }
 
-  return { el: wrapper, updateRows, destroy }
+  return { el: wrapper, updateRows, destroy, updateItems: updateRows }
 }
 
 /* ── 가상 스크롤 모드 ─────────────────────────────────── */
@@ -633,22 +731,18 @@ function createVirtualScrollMode<T extends object>(
           // 현재 값을 저장
           ;(cell as any)[prevKey] = content
         } else if (content instanceof HTMLElement) {
-          // HTMLElement 셀: outerHTML 비교 후 변경 시에만 교체
-          const prevKey = '_prevContent' as keyof HTMLElement
-          const prevContent = (cell as any)[prevKey] as string | undefined
+          // HTMLElement 셀: isEqualNode 비교 후 변경 시에만 교체
           const existing = cell.firstElementChild as HTMLElement | null
-          if (!existing || existing.outerHTML !== content.outerHTML) {
+          if (!existing || !existing.isEqualNode(content)) {
             while (cell.firstChild) {
               cell.removeChild(cell.firstChild)
             }
             cell.appendChild(content)
             // 실제 변경이 있는 경우에만 플래시 터뜨림
-            if (columns[i].flash && prevContent !== undefined && prevContent !== content.outerHTML) {
+            if (columns[i].flash) {
               triggerFlash(cell)
             }
           }
-          // 현재 값을 저장
-          ;(cell as any)[prevKey] = content.outerHTML
         }
       } catch (_) {
         // 개별 셀 render 예외 시 해당 셀만 건너뛰고 기존 DOM 유지

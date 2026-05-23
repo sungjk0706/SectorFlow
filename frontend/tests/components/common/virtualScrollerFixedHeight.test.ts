@@ -14,7 +14,7 @@ import {
   detectFixedHeight,
   getOffsetFixed,
   getTotalHeightFixed,
-} from '../virtual-scroller'
+} from '../../../src/components/virtual-scroller'
 
 describe('Property 9: Virtual Scroller Fixed-Height Offset (고정 높이 오프셋 산술)', () => {
   it('offset(i) === i × H for all i in [0, N) and totalHeight === N × H', () => {

@@ -96,12 +96,13 @@ function mount(container: HTMLElement): void {
     flex: '1', 
     minHeight: '200px', 
     display: 'flex', 
-    flexDirection: 'column'
+    flexDirection: 'column',
+    overflowY: 'auto'
   })
 
   dataTable = createDataTable<Position>({
     columns: COLUMNS,
-    virtualScroll: true,
+    virtualScroll: false,
     keyFn: (p) => p.stk_cd || String(p.stk_nm),
     emptyText: '보유종목이 없습니다.',
     stickyHeader: true,

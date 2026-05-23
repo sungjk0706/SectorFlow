@@ -173,7 +173,7 @@ function syncFromSettings(s: AppSettings): void {
 function buildRankingRows(container: HTMLElement): void {
   for (let i = 0; i < MAX_ROWS; i++) {
     const row = document.createElement('div')
-    row.style.cssText = 'height:30px;overflow:hidden;margin-bottom:8px;cursor:pointer;border-radius:6px;padding:4px 2px;visibility:hidden;'
+    row.style.cssText = 'height:30px;overflow:hidden;margin-bottom:8px;cursor:pointer;border-radius:6px;padding:4px 2px;display:none;'
 
     const info = document.createElement('div')
     info.style.cssText = 'display:flex;align-items:center;margin-bottom:2px;padding:0 2px;'
@@ -219,7 +219,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     // 숨김 처리
     if (i >= scores.length) {
       if (!rowCaches[i] || rowCaches[i]!.visible) {
-        row.style.visibility = 'hidden'
+        row.style.display = 'none'
         rowCaches[i] = { rank: -1, sector: '', total: 0, finalScore: '', riseRatio: '', riseColor: '', tradeAmt: '', barWidth: '', barColor: '', opacity: '', selected: false, visible: false }
       }
       continue
@@ -237,8 +237,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     const barWidth = `${Math.min((s.final_score / maxScore) * 100, 100)}%`
     const barColor = isUnranked ? '#dee2e6' : (s.rank <= maxTargets ? '#0d6efd' : '#adb5bd')
 
-    // 첫 렌더 또는 visibility 변경
-    if (!prev || !prev.visible) row.style.visibility = 'visible'
+    if (!prev || !prev.visible) row.style.display = ''
 
     // 바뀐 속성만 DOM 반영
     if (!prev || prev.opacity !== opacity) row.style.opacity = opacity
