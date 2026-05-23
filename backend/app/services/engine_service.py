@@ -451,7 +451,7 @@ def _compute_filtered_codes() -> set[str] | None:
 # ── WS 구독 시작 시 실시간 필드 초기화 ─────────────────────────────────
 
 
-_REALTIME_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "strength")
+_REALTIME_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "strength", "bid_depth", "ask_depth", "high_price")
 
 
 async def _reset_realtime_fields() -> None:
@@ -474,6 +474,9 @@ async def _reset_realtime_fields() -> None:
             pos["cur_price"] = None
             pos["change"] = None
             pos["change_rate"] = None
+            pos["bid_depth"] = None
+            pos["ask_depth"] = None
+            pos["high_price"] = None
         
         # 테스트모드 가상 보유종목 실시간 필드 초기화
         if is_test_mode(_settings_cache):
@@ -482,6 +485,9 @@ async def _reset_realtime_fields() -> None:
                 pos["cur_price"] = None
                 pos["change"] = None
                 pos["change_rate"] = None
+                pos["bid_depth"] = None
+                pos["ask_depth"] = None
+                pos["high_price"] = None
         
         # 업종 점수 캐시 초기화 (실시간 데이터 재계산 유도)
         global _sector_summary_cache, _buy_targets_snapshot_cache
