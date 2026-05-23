@@ -4,7 +4,7 @@
 
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
 import { createGlobalWsBadge } from '../settings'
-import { createCardTitle } from '../components/common/card-title'
+import { createCardHeaderWithMargin } from '../components/common/card-header'
 import { rateColor, fmtComma, fmtRate, createCodeCell, createStockNameColumn, createNumberCell, createPriceCell } from '../components/common/ui-styles'
 import type { Position } from '../types'
 import type { SectorStock } from '../types'
@@ -97,12 +97,8 @@ export function createSellPositionCard(props: SellPositionProps): { el: HTMLElem
   let wsBadge: HTMLElement | null = null
 
   // 헤더: 제목 + WS 상태 배지
-  const headerRow = document.createElement('div')
-  Object.assign(headerRow.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' })
-  headerRow.appendChild(createCardTitle('보유종목'))
-
   wsBadge = createGlobalWsBadge()
-  headerRow.appendChild(wsBadge)
+  const headerRow = createCardHeaderWithMargin('보유종목', wsBadge, '4px')
   root.appendChild(headerRow)
 
   const scrollContainer = document.createElement('div')

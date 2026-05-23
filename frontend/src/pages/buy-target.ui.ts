@@ -3,7 +3,7 @@
 // 비즈니스 로직 제거, Props로 데이터 수신
 
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
-import { createCardTitle } from '../components/common/card-title'
+import { createCardHeaderWithMargin } from '../components/common/card-header'
 import { createGlobalWsBadge } from '../settings'
 import { createStockNameColumn, createSeqCell, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, createNumberCell, FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
 import type { BuyTarget } from '../types'
@@ -130,12 +130,8 @@ export function createBuyTargetCard(props: BuyTargetProps): { el: HTMLElement; u
   let emptyEl: HTMLElement | null = null
 
   // 헤더: 제목 + WS 상태 배지
-  const headerRow = document.createElement('div')
-  Object.assign(headerRow.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' })
-  headerRow.appendChild(createCardTitle('매수후보'))
-
   wsBadge = createGlobalWsBadge()
-  headerRow.appendChild(wsBadge)
+  const headerRow = createCardHeaderWithMargin('매수후보', wsBadge, '4px')
   root.appendChild(headerRow)
 
   // 한도 배지 행
