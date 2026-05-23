@@ -293,12 +293,12 @@ function mount(container: HTMLElement): void {
   root.appendChild(thresholdRow)
 
   // ③ 업종 컷오프
-  root.appendChild(createStepLabel('③', '업종내종목상승비율(N%)이하 차단 필터링'))
+  root.appendChild(createStepLabel('③', '업종내 종목 상승비율(N%)이하 차단 필터링'))
   minRiseRatioInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_min_rise_ratio_pct', v), step: 1, name: 'sector_min_rise_ratio_pct' })
   root.appendChild(createSettingRow('업종내 종목 상승비율', minRiseRatioInput.el))
 
   // ④ 극단값 제외
-  root.appendChild(createStepLabel('④', '상하위(N%) 제외후 가중치 계산'))
+  root.appendChild(createStepLabel('④', '상하위(N%) 종목 제외후 가중치 계산'))
   const trimRow = document.createElement('div')
   Object.assign(trimRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', borderBottom: '1px solid #eee' })
 
