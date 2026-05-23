@@ -36,6 +36,7 @@ export interface HeaderUiProps {
     sell_time_start?: string
     sell_time_end?: string
   }
+  realtimeStatus?: 'waiting' | 'live' | null
 }
 
 /* ── 스타일 상수 ── */
@@ -155,8 +156,9 @@ let nxtChip: HTMLSpanElement | null = null
 let bootstrapChip: HTMLSpanElement | null = null
 let avgAmtChip: HTMLSpanElement | null = null
 let modeChip: HTMLSpanElement | null = null
-let kiwoomBrokerChip: HTMLSpanElement | null = null
-let kiwoomWsChip: HTMLSpanElement | null = null
+let brokerChip: HTMLSpanElement | null = null
+let brokerWsChip: HTMLSpanElement | null = null
+let realtimeStateChip: HTMLSpanElement | null = null
 let autoTradeChip: HTMLSpanElement | null = null
 let autoBuyChip: HTMLSpanElement | null = null
 let autoSellChip: HTMLSpanElement | null = null
@@ -198,13 +200,16 @@ export function createHeader(container: HTMLElement, props: HeaderUiProps): { el
   // 엔진 상태 칩
   modeChip = createChipEl()
   modeChip.style.display = 'none'
-  kiwoomBrokerChip = createChipEl()
-  kiwoomBrokerChip.style.display = 'none'
-  kiwoomWsChip = createChipEl()
-  kiwoomWsChip.style.display = 'none'
+  brokerChip = createChipEl()
+  brokerChip.style.display = 'none'
+  brokerWsChip = createChipEl()
+  brokerWsChip.style.display = 'none'
+  realtimeStateChip = createChipEl()
+  realtimeStateChip.style.display = 'none'
   header.appendChild(modeChip)
-  header.appendChild(kiwoomBrokerChip)
-  header.appendChild(kiwoomWsChip)
+  header.appendChild(brokerChip)
+  header.appendChild(brokerWsChip)
+  header.appendChild(realtimeStateChip)
 
   // 설정 상태 칩
   autoTradeChip = createChipEl()
@@ -239,7 +244,7 @@ export function createHeader(container: HTMLElement, props: HeaderUiProps): { el
 /* ── updateHeader ── */
 
 export function updateHeader(props: HeaderUiProps): void {
-  const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings } = props
+  const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings, realtimeStatus } = props
 
   // 장 상태
   if (krxChip && nxtChip) {
@@ -366,21 +371,35 @@ export function updateHeader(props: HeaderUiProps): void {
   }
 
   // 엔진 상태
-  if (modeChip && kiwoomBrokerChip && kiwoomWsChip) {
+  if (modeChip && brokerChip && brokerWsChip) {
     if (status) {
       const wsOn = settings ? !!settings.ws_subscribe_on : true
 
       modeChip.style.display = ''
       applyStatusChip(modeChip, status.is_test_mode ? '테스트모드' : '실전모드', undefined, status.is_test_mode ? 'blue' : 'red')
 
-      kiwoomBrokerChip.style.display = ''
-      kiwoomWsChip.style.display = ''
-      applyStatusChip(kiwoomBrokerChip, '키움증권', status.kiwoom_token_valid)
-      applyStatusChip(kiwoomWsChip, '키움실시간', status.kiwoom_connected && wsOn)
+      brokerChip.style.display = ''
+      brokerWsChip.style.display = ''
+      applyStatusChip(brokerChip, '키움증권', status.kiwoom_token_valid)
+      applyStatusChip(brokerWsChip, '키움실시간', status.kiwoom_connected && wsOn)
     } else {
       modeChip.style.display = 'none'
-      kiwoomBrokerChip.style.display = 'none'
-      kiwoomWsChip.style.display = 'none'
+      brokerChip.style.display = 'none'
+      brokerWsChip.style.display = 'none'
+    }
+  }
+
+  // 실시간 상태 표시줄
+  if (realtimeStateChip) {
+    if (realtimeStatus) {
+      realtimeStateChip.style.display = ''
+      if (realtimeStatus === 'waiting') {
+        applyStatusChip(realtimeStateChip, '🟡 실시간 대기 중', false, 'off')
+      } else if (realtimeStatus === 'live') {
+        applyStatusChip(realtimeStateChip, '🟢 가동 중', true, 'on')
+      }
+    } else {
+      realtimeStateChip.style.display = 'none'
     }
   }
 

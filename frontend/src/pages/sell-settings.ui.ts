@@ -6,6 +6,7 @@ import { createSettingRow, createNumInput, createToggleBtn, createFixedValue } f
 import { sectionTitle } from '../components/common/settings-common'
 import { FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
 import { createTimePairInput, type TimePairInputHandle } from '../components/common/time-pair-input'
+import { createCardHeader } from '../components/common/card-header'
 import { createGlobalWsBadge } from '../settings'
 
 // ── Props 타입 정의 ──
@@ -76,15 +77,8 @@ export function createSellSettingsCard(props: SellSettingsProps): { el: HTMLElem
   let tsDropRow: HTMLElement | null = null
 
   // 제목 + WS 상태 배지
-  const headerRow = document.createElement('div')
-  Object.assign(headerRow.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' })
-  const h4 = document.createElement('h4')
-  h4.style.margin = '0'
-  h4.textContent = '매도 설정'
-  headerRow.appendChild(h4)
-
   wsBadge = createGlobalWsBadge()
-  headerRow.appendChild(wsBadge)
+  const headerRow = createCardHeader('매도 설정', wsBadge)
   root.appendChild(headerRow)
 
   // 자동매도 토글 + TimePairInput (1행)
