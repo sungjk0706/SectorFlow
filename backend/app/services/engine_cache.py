@@ -153,6 +153,13 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
             if is_avg_amt_5d_map_usable(recovered_avg):
                 _cached_avg = recovered_avg
                 logger.warning("[데이터준비] stocks DB 5일평균 비정상 -- SectorSummary 캐시에서 복구 (%d종목)", len(_cached_avg))
+                # 복구된 데이터를 DB에 즉시 반영 → 다음 재기동 시 warning 제거
+                try:
+                    from backend.app.db.crud import batch_update_avg_5d
+                    updated = await asyncio.to_thread(batch_update_avg_5d, _cached_avg)
+                    logger.info("[데이터준비] stocks DB avg_5d_trade_amount 복구 데이터 반영 완료 -- %d종목", updated)
+                except Exception as _e:
+                    logger.warning("[데이터준비] stocks DB avg_5d_trade_amount 복구 데이터 반영 실패: %s", _e)
             else:
                 cached_result = await asyncio.to_thread(load_avg_amt_cache)
                 if cached_result and is_avg_amt_5d_map_usable(cached_result[0]):
@@ -177,6 +184,22 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
             es._high_5d_cache.clear()
             es._high_5d_cache.update(_cached_high_5d)
             logger.debug("[데이터준비] 5일고가 저장데이터 로드 -- %d종목", len(_cached_high_5d))
+
+        # ── 5일봉 배열 로드 (롤링용) ──
+        from backend.app.core.avg_amt_cache import load_avg_amt_cache_v2
+        cached_arrays = await asyncio.to_thread(load_avg_amt_cache_v2)
+        if cached_arrays:
+            amts_5d_arrays, highs_5d_arrays = cached_arrays
+            if amts_5d_arrays:
+                if not hasattr(es, "_amts_5d_arrays"):
+                    es._amts_5d_arrays = {}
+                es._amts_5d_arrays.update(amts_5d_arrays)
+                logger.debug("[데이터준비] 5일거래대금 배열 로드 -- %d종목", len(amts_5d_arrays))
+            if highs_5d_arrays:
+                if not hasattr(es, "_highs_5d_arrays"):
+                    es._highs_5d_arrays = {}
+                es._highs_5d_arrays.update(highs_5d_arrays)
+                logger.debug("[데이터준비] 5일고가 배열 로드 -- %d종목", len(highs_5d_arrays))
 
         # ── 시장구분 적재 ──
         if _cached_market:
