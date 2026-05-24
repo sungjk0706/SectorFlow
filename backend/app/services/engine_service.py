@@ -48,6 +48,7 @@ from backend.app.services import engine_ws_dispatch
 from backend.app.services import dry_run
 from backend.app.services import settlement_engine
 from backend.app.services.engine_utils import LRUCache, LazyLock, LazyEvent
+from backend.app.core.avg_amt_cache import normalize_avg_amt_5d_map
 
 # ── 모듈 분리 (하위 호환 유지) ──────────────────────────────────────────
 # engine_bootstrap: 앱준비 흐름 함수
@@ -333,9 +334,10 @@ async def _ws_send_remove_fire_and_forget(payload: dict) -> bool:
 def _update_avg_amt_5d(new_data: dict[str, int], *, merge: bool = False) -> None:
     """_avg_amt_5d 갱신 후 필터 자동 재계산."""
     global _filtered_sector_codes
+    normalized = normalize_avg_amt_5d_map(new_data)
     if not merge:
         _avg_amt_5d.clear()
-    _avg_amt_5d.update(new_data)
+    _avg_amt_5d.update(normalized)
     _filtered_sector_codes = _compute_filtered_codes()
     _invalidate_sector_stocks_cache()
     logger.info(
@@ -353,13 +355,12 @@ def _compute_filtered_codes() -> set[str] | None:
     # 설정값 검증 및 안전장치
     raw_val = settings.get("sector_min_trade_amt")
     try:
-        min_amt_억 = float(raw_val) if raw_val is not None else 0.0
+        min_amt_eok = float(raw_val) if raw_val is not None else 0.0
     except (TypeError, ValueError):
         logger.warning("[거래대금필터] 설정값 파싱 실패: %s", raw_val)
-        min_amt_억 = 0.0
-    min_amt_억 = max(0.0, min_amt_억)
+        min_amt_eok = 0.0
+    min_amt_eok = max(0.0, min_amt_eok)
 
-    min_amt_won = min_amt_억 * 1_0000_0000
     codes = {
         _format_kiwoom_reg_stk_cd(v)
         for t, v in _sector_stock_layout
@@ -367,7 +368,9 @@ def _compute_filtered_codes() -> set[str] | None:
     }
     codes.discard("")
 
-    if min_amt_won <= 0:
+    logger.info("[DEBUG-FILTER] _sector_stock_layout len: %d, codes len: %d", len(_sector_stock_layout), len(codes))
+
+    if min_amt_eok <= 0:
         _filtered_sector_codes = None
         return None
 
@@ -379,15 +382,14 @@ def _compute_filtered_codes() -> set[str] | None:
 
     filtered = set()
     for cd in codes:
-        avg_raw = int(_avg_amt_5d.get(cd, 0) or 0)
-        avg_won = avg_raw
-        if avg_won >= min_amt_won:
+        avg_eok = int(_avg_amt_5d.get(cd, 0) or 0)
+        if avg_eok >= min_amt_eok:
             filtered.add(cd)
 
-    logger.info("[거래대금필터] 설정 %.0f억 → 필터 통과 %d/%d종목", min_amt_억, len(filtered), len(codes))
+    logger.info("[거래대금필터] 설정 %.0f억 → 필터 통과 %d/%d종목", min_amt_eok, len(filtered), len(codes))
 
     if not filtered:
-        logger.warning("[거래대금필터] 최소금액 %.1f억 설정됐으나 통과 종목 0개", min_amt_억)
+        logger.warning("[거래대금필터] 최소금액 %.1f억 설정됐으나 통과 종목 0개", min_amt_eok)
     _filtered_sector_codes = filtered
     return filtered
 

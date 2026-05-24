@@ -52,6 +52,7 @@ let wsToggle: ReturnType<typeof createToggleBtn> | null = null
 let wsTimePairWrap: HTMLElement | null = null
 let holidayBadgeEls: HTMLElement[] = []
 let holidayToggleRow: HTMLElement | null = null
+let uiFlashToggle: ReturnType<typeof createToggleBtn> | null = null
 
 // TimePairInput
 let wsSH = '09', wsSM = '00', wsEH = '15', wsEM = '00'
@@ -318,6 +319,34 @@ function renderAutoTradeTab(container: HTMLElement): void {
   descLabel2.textContent = 'ON: 공휴일에 자동매매 차단 · OFF: 공휴일에도 허용'
   container.appendChild(descLabel2)
 
+  // UI 설정 섹션
+  container.appendChild(sectionTitle('UI 설정'))
+  const uiRow = document.createElement('div')
+  Object.assign(uiRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad })
+  const uiLabel = document.createElement('span')
+  Object.assign(uiLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  uiLabel.textContent = '실시간 현재가 플래시 효과'
+  uiRow.appendChild(uiLabel)
+
+  uiFlashToggle = createToggleBtn({ on: false, onClick: async () => {
+    const next = !vals.ui_price_flash_on
+    vals.ui_price_flash_on = next
+    uiFlashToggle!.setOn(next)
+    const res = await settingsMgr!.saveSection({ ui_price_flash_on: next })
+    toastResult(res)
+    if (!res.ok) {
+      vals.ui_price_flash_on = !next
+      uiFlashToggle!.setOn(!next)
+    }
+  }})
+  // 초기 상태 동기화 (syncFromSettings가 나중에 덮어쓸 것임)
+  uiRow.appendChild(uiFlashToggle.el)
+  container.appendChild(uiRow)
+
+  const descLabel3 = document.createElement('div')
+  Object.assign(descLabel3.style, { fontSize: GS.desc, color: '#888', padding: '0 0 4px', marginTop: '-4px' })
+  descLabel3.textContent = '실시간 시세 변경 시 노란색 플래시 깜빡임 효과 적용 여부'
+  container.appendChild(descLabel3)
 }
 
 function handleMasterToggle(): void {
@@ -858,6 +887,7 @@ function syncFromSettings(s: AppSettings | null): void {
     wsToggle?.setOn(forceOff ? false : !!r.ws_subscribe_on)
     updateHolidayBadges()
     updateAutoTradeDisabledStates()
+    uiFlashToggle?.setOn(r.ui_price_flash_on !== false)
 
     // TimePairInput
     const [sh, sm] = parseHM(String(r.ws_subscribe_start ?? ''))

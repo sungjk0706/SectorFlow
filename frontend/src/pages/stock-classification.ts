@@ -140,9 +140,10 @@ async function apiPost<T>(path: string, body: Record<string, unknown> = {}): Pro
 
 /* ── 순수 함수 및 유틸리티 (Task 1) ── */
 
-/** Task 1.1: 쉼표, 공백, 줄바꿈으로 토큰 분리 후 빈 문자열 제거 */
 export function parseBatchInput(input: string): string[] {
-  return input.split(/,/).map(t => t.trim()).filter(t => t.length > 0)
+  // 따옴표 제거 후 쉼표, 탭, 줄바꿈, 띄어쓰기 기준으로 분리
+  const cleaned = input.replace(/["']/g, '')
+  return cleaned.split(/[\s,]+/).map(t => t.trim()).filter(t => t.length > 0)
 }
 
 /** Task 1.3: 토큰 → 종목코드 매칭. 코드 우선(O(1)), 종목명 차선(O(1)), 미매칭 시 null
@@ -287,7 +288,7 @@ function updateStagingChipSectors(): void {
     const stock = getAllStocks().get(code)
     let sectorName = stockMoves[code] ?? stock?.sector ?? ''
     if (sectors[sectorName]) sectorName = sectors[sectorName]
-    if (deletedSectors.includes(sectorName)) sectorName = '업종명없음'
+    if (deletedSectors.includes(sectorName)) sectorName = '기타'
     const sectorSpan = chip.querySelector('.chip-sector')
     if (sectorSpan) sectorSpan.textContent = sectorName
   }
@@ -523,8 +524,8 @@ function buildSectorManageCard(): HTMLElement {
         return
       }
 
-      // Batch_Code_Input 감지: 쉼표 포함 시 배치 모드 (Req 1.5, 1.6, 1.7, 1.8, 1.9)
-      if (query.includes(',')) {
+      // Batch_Code_Input 감지: 쉼표나 따옴표 포함 시 배치 모드 (Req 1.5, 1.6, 1.7, 1.8, 1.9)
+      if (/[,"']/.test(query)) {
         const tokens = parseBatchInput(query)
         for (const token of tokens) {
           const code = resolveToken(token)
@@ -601,10 +602,10 @@ function buildSectorManageCard(): HTMLElement {
   searchResultTableRef.el.addEventListener('click', (e: Event) => {
     const target = e.target as HTMLElement
     const tr = target.closest('tr')
-    if (!tr) return
+    if (!tr || tr.getAttribute('data-row-type') !== 'data') return
     const tbody = searchResultTableRef?.el.querySelector('tbody')
     if (!tbody) return
-    const rows = Array.from(tbody.querySelectorAll('tr'))
+    const rows = Array.from(tbody.querySelectorAll('tr[data-row-type="data"]'))
     const idx = rows.indexOf(tr as HTMLTableRowElement)
     if (idx < 0) return
     // 현재 검색 결과에서 클릭된 행 찾기
@@ -626,15 +627,16 @@ function buildSectorManageCard(): HTMLElement {
     if (idx >= results.length) return
     const clicked = results[idx]
 
-    // Staging_Set에 추가 + 기존 동작(업종 선택 + 종목 하이라이트) 유지
-    addToStaging(clicked.code)
-    selectedSector = clicked.sector
-    highlightStockCode = clicked.code
-    selectedStocks.clear()
-    anchorRow = -1
-    updateMasterPanel()
-    updateCenterPanel()
-    updateRightPanel()
+    // 왼쪽 검색 결과 클릭 시: Staging_Set에만 추가하고 선택된 업종은 변경하지 않음 (UX 개선)
+    const added = addToStaging(clicked.code)
+    if (added) {
+      // 검색창 초기화 및 포커스 복원 (Req 1.5)
+      if (searchInputRef) {
+        searchInputRef.clear()
+        const inputEl = searchInputRef.el.querySelector('input')
+        if (inputEl) inputEl.focus()
+      }
+    }
   })
 
   card.appendChild(searchResultTableRef.el)
@@ -1284,6 +1286,11 @@ async function onMoveStock(_e: MouseEvent, targetSector: string): Promise<void> 
       target_sector: targetSector,
     })
     handleMutationResult(lastRes)
+
+    // 낙관적 업데이트: SSE 수신 전 로컬 상태 즉시 변경하여 뷰에서 사라지게 함
+    for (const code of codes) {
+      currentState.stockMoves[code] = targetSector
+    }
 
     if (moveSource.source === 'staging') {
       clearStaging()

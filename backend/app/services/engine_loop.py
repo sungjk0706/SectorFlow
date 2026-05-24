@@ -251,30 +251,7 @@ async def run_engine_loop(es: ModuleType) -> None:
                     es._rest_api._account_tr_id = tr
             es._log(f"[연결] {broker_nm.upper()} REST API 인스턴스 연결 완료 (테스트모드={_is_test}, 토큰 단일 캐시)")
 
-        # ── _rest_api 설정 후 적격종목 + 앱준비 재실행 (캐시 만료 시) ──
-        if not es._sector_stock_layout and es._rest_api:
-            try:
-                from backend.app.core.industry_map import (
-                    fetch_ka10099_eligible_stocks, save_eligible_stocks_cache,
-                )
-                import backend.app.core.industry_map as _ind_mod
-                _fresh = await fetch_ka10099_eligible_stocks(es._rest_api)
-                if _fresh:
-                    _ind_mod._eligible_stock_codes = _fresh
-                    await asyncio.to_thread(save_eligible_stocks_cache, _fresh)
-                    logger.info(
-                        "[시작] 매매적격종목 저장데이터 만료 -- ka10099 서버 다운로드 %d종목, 앱준비 재실행",
-                        len(_fresh),
-                    )
-                    await es._bootstrap_sector_stocks_async()
-                    try:
-                        from backend.app.web.ws_manager import ws_manager
-                        ws_manager.broadcast("engine-ready", {"_v": 1, "ready": True})
-                        logger.info("[시작] 앱준비 재실행 완료 — engine-ready 재전송")
-                    except Exception:
-                        logger.warning("[시작] engine-ready 재전송 실패", exc_info=True)
-            except Exception as _e:
-                logger.warning("[시작] _rest_api 설정 후 ka10099 다운로드 실패: %s", _e, exc_info=True)
+
 
         # ── _rest_api 설정 후 5일봉 캐시 갱신 필요 여부 재확인 ──
         if getattr(es, '_avg_amt_needs_bg_refresh', False):

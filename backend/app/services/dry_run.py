@@ -18,6 +18,7 @@ from typing import Optional
 
 from backend.app.core.settings_file import load_settings, update_settings
 from backend.app.services import settlement_engine
+from backend.app.db.cache_db import get_kv, set_kv
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +26,6 @@ logger = logging.getLogger(__name__)
 # key: stk_cd (6자리 정규화), value: dict (kt00018 응답 필드와 동일 구조)
 _test_positions: dict[str, dict] = {}
 _positions_loaded: bool = False
-
-_POSITIONS_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "test_positions.json"
 
 # 가짜 주문번호 시퀀스
 _fake_order_seq: int = 9_000_000
@@ -38,32 +37,27 @@ _fake_order_seq: int = 9_000_000
 # ── 포지션 파일 저장/로드 ────────────────────────────────────────────────────
 
 def _save_positions(data: dict[str, dict] | None = None) -> None:
-    """가상 포지션을 JSON 파일에 저장. data가 주어지면 스냅샷을 저장."""
+    """가상 포지션을 SQLite KV 스토어에 저장. data가 주어지면 스냅샷을 저장."""
     to_save = data if data is not None else _test_positions
     try:
-        _POSITIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(_POSITIONS_PATH, "w", encoding="utf-8") as f:
-            json.dump(to_save, f, ensure_ascii=False, indent=2)
+        set_kv("test_positions", to_save)
     except Exception as e:
-        logger.warning("[테스트모드] 가상보유종목.json 저장 실패: %s", e)
+        logger.warning("[테스트모드] SQLite 저장 실패: %s", e)
 
 
 def _load_positions() -> None:
-    """JSON 파일에서 가상 포지션 복원."""
+    """SQLite KV 스토어에서 가상 포지션 복원."""
     global _positions_loaded
     if _positions_loaded:
         return
     _positions_loaded = True
-    if not _POSITIONS_PATH.is_file():
-        return
     try:
-        with open(_POSITIONS_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        data = get_kv("test_positions")
         if isinstance(data, dict):
             _test_positions.update(data)
-            logger.info("[테스트모드] 가상보유종목 복원 -- %d종목", len(_test_positions))
+            logger.info("[테스트모드] SQLite 복원 -- %d종목", len(_test_positions))
     except Exception as e:
-        logger.warning("[테스트모드] 가상보유종목.json 로드 실패: %s", e)
+        logger.warning("[테스트모드] SQLite 로드 실패: %s", e)
 
 
 _pos_save_pending: bool = False

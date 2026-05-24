@@ -8,7 +8,7 @@ export interface ColDef<T> {
   headerStyle?: Partial<CSSStyleDeclaration>
   tdStyle?: Partial<CSSStyleDeclaration>
   /** 값이 변경되면 셀 배경에 노란 플래시 애니메이션 적용 */
-  flash?: boolean
+  flash?: boolean | ((row: T) => boolean)
 }
 
 /* ── 업종 구분 행 (선택) ───────────────────────────────────── */
@@ -224,7 +224,8 @@ export function createFixedTable<T extends object>(options: FixedTableOptions<T>
           if (cell.textContent !== content) {
             cell.textContent = content
             // 실제 변경이 있는 경우에만 플래시 터뜨림
-            if (columns[i].flash && prevContent !== undefined && prevContent !== content) {
+            const shouldFlash = typeof columns[i].flash === 'function' ? (columns[i].flash as any)(row) : columns[i].flash
+            if (shouldFlash && prevContent !== undefined && prevContent !== content) {
               triggerFlash(cell)
             }
           }
@@ -238,7 +239,8 @@ export function createFixedTable<T extends object>(options: FixedTableOptions<T>
             cell.textContent = ''
             cell.appendChild(content)
             // 실제 변경이 있는 경우에만 플래시 터뜨림
-            if (columns[i].flash && prevContent !== undefined && prevContent !== content.outerHTML) {
+            const shouldFlash = typeof columns[i].flash === 'function' ? (columns[i].flash as any)(row) : columns[i].flash
+            if (shouldFlash && prevContent !== undefined && prevContent !== content.outerHTML) {
               triggerFlash(cell)
             }
           }

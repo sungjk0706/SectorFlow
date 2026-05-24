@@ -69,14 +69,35 @@ class LsRestAPI:
             self._client = None
 
     async def ensure_client(self) -> None:
-        """클라이언트 초기화"""
-        if self._client is None:
+        """클라이언트 초기화 (이벤트 루프 변경 감지 대응)"""
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        if self._client is None or getattr(self, '_loop', None) is not current_loop:
+            # 루프가 바뀌었거나 클라이언트가 없으면 새로 생성
+            try:
+                if self._client and not self._client.is_closed:
+                    if getattr(self, '_loop', None) and getattr(self, '_loop').is_running():
+                        await self._client.aclose()
+            except Exception:
+                pass
+            
             self._client = httpx.AsyncClient()
+            self._loop = current_loop
 
     async def ensure_token(self) -> bool:
         """토큰 확보 (만료 시 자동 갱신)"""
-        if self._lock is None:
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        if getattr(self, "_lock", None) is None or getattr(self, "_lock_loop", None) is not current_loop:
             self._lock = asyncio.Lock()
+            self._lock_loop = current_loop
+
         async with self._lock:
             if self._token_info and not self._token_info.is_expired():
                 return True
@@ -496,21 +517,6 @@ class LsRestAPI:
         body = {
             "t8425InBlock": {
                 "dummy": "",
-            }
-        }
-        return await self.call_api(url, method="POST", headers=headers, body=body)
-
-    async def get_stocks(self, gubun: str = "0") -> Optional[dict]:
-        """주식종목조회 (t8436) - gubun: 0(전체), 1(코스피), 2(코스닥)"""
-        url = f"{self.base_url}/stock/sector"
-        headers = {
-            "tr_cd": "t8436",
-            "tr_cont": "N",
-            "tr_cont_key": "",
-        }
-        body = {
-            "t8436InBlock": {
-                "gubun": gubun,
             }
         }
         return await self.call_api(url, method="POST", headers=headers, body=body)

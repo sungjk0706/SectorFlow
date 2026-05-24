@@ -19,6 +19,7 @@ from backend.app.services.engine_symbol_utils import (
     get_ws_subscribe_code,
 )
 from backend.app.services.engine_ws_reg import build_0b_remove_payloads
+from backend.app.core.avg_amt_cache import normalize_avg_amt_5d_value
 
 _log = logging.getLogger("engine")
 _CONFIRMED_FETCH_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="confirmed-fetch")
@@ -282,7 +283,7 @@ async def _apply_confirmed_to_memory(
             entry["high_price"] = hp
 
         # avg_amt_5d and high_price_5d from ka10081
-        avg5d = int(detail.get("avg_amt_5d") or 0)
+        avg5d = normalize_avg_amt_5d_value(detail.get("avg_amt_5d"))
         if avg5d > 0:
             es._avg_amt_5d[nk] = avg5d
             
@@ -425,9 +426,7 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
             if not high_5d:
                 high_5d = today_high
             
-            avg_5d = avg_5d_map.get(base_cd)
-            if not avg_5d:
-                avg_5d = trade_amount
+            avg_5d = normalize_avg_amt_5d_value(avg_5d_map.get(base_cd, 0))
             
             stocks_data.append({
                 "code": cd,
@@ -847,7 +846,7 @@ def _update_layout_cache(
 
     - 부적격이 된 종목은 레이아웃에서 제거된다.
     - stock_classification.json의 최신 업종 매핑이 전체 종목에 적용된다.
-    - 섹터 헤더가 없는 종목("업종명없음")도 레이아웃에 포함된다.
+    - 섹터 헤더가 없는 종목("기타")도 레이아웃에 포함된다.
     """
     from backend.app.core.sector_mapping import get_merged_sector
     from backend.app.core.sector_stock_cache import save_layout_cache
@@ -855,7 +854,7 @@ def _update_layout_cache(
     # 전체 종목을 섹터별로 그룹핑 (stock_classification.json 최신 매핑 적용)
     sector_groups: dict[str, list[str]] = {}
     for cd in all_codes:
-        sec = get_merged_sector(cd) or "업종명없음"
+        sec = get_merged_sector(cd) or "기타"
         sector_groups.setdefault(sec, []).append(cd)
 
     # 섹터 내 종목 정렬 (재현성 보장)

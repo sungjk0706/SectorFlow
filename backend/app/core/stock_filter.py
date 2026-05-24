@@ -82,25 +82,25 @@ def is_excluded(item: dict, stk_cd: str) -> tuple[bool, str]:
                 if kw in part:
                     return True, f"state={part}"
 
-    # ── 3) 우선주 체크 (종목코드 끝자리 ≠ "0") ──────────────────────
-    # 2024년부터 영문 혼용 종목코드(예: 0052D0, 12345A 등)가 도입되어, 
-    # 끝자리가 0이 아니라고 무조건 우선주로 필터링하면 안 됩니다.
-    # 기존 숫자 6자리 코드인 경우에만 우선주(끝자리 0 아님)를 필터링합니다.
-    if stk_cd and stk_cd.isdigit() and stk_cd[-1] != "0":
-        return True, "우선주"
-    # 영문 혼용 코드이면서 우선주인 경우(보통 K, M 등을 배정받거나 이름에 '우' 포함)는 
-    # 별도의 정밀 필터링(종목명 검사 등)이 필요하지만, 
-    # 일단 '알파벳 포함 정상 종목'이 억울하게 입구컷 당하는 치명적 버그를 방지합니다.
-    if stk_cd and not stk_cd.isdigit() and stk_cd[-1] in ("K", "M", "L"):
-        # 기존 우선주 영문 배정 규칙에 해당하는 경우만 우선주로 간주
-        return True, "우선주(영문)"
-
-    # ── 4) 스팩(SPAC) 종목명 체크 ────────────────────────────────────
+    # ── 3) 스팩(SPAC) 및 우선주 종목명 파싱 ─────────────────────────────────
     name_raw = str(
         item.get("hname") or item.get("stk_nm") or item.get("name") or ""
     ).strip()
+
     if "스팩" in name_raw:
         return True, "스팩"
+
+    # ── 4) 우선주 체크 ──────────────────────────────────────────────────
+    # 기존 숫자 6자리 코드인 경우: 끝자리가 0이 아니면 우선주
+    if stk_cd and stk_cd.isdigit() and stk_cd[-1] != "0":
+        return True, "우선주"
+    
+    # 2024년부터 도입된 영문 혼용 코드 (단축코드 6번째 자리에 알파벳 혼용 가능)
+    # 이제 K, M, L 등 특정 알파벳이 일반 종목에도 배정될 수 있으므로, 
+    # 끝자리 알파벳만으로 우선주를 억울하게 입구컷 당하지 않도록 종목명으로 판별합니다.
+    if stk_cd and not stk_cd.isdigit():
+        if name_raw.endswith("우") or name_raw.endswith("우B") or name_raw.endswith("우C"):
+            return True, "우선주(영문)"
 
     # ── 5) auditInfo 감리 체크 ───────────────────────────────────────
     audit = str(item.get("auditInfo") or "").strip()

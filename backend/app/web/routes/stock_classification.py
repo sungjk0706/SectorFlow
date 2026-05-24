@@ -75,16 +75,16 @@ def broadcast_stock_classification_changed() -> None:
     custom = load_custom_data()
     merged = get_merged_all_sectors()
 
-    # "업종명없음" 소속 종목 수 계산
+    # "기타" 소속 종목 수 계산
     no_sector_count = 0
     filter_summary = ""
     try:
         from backend.app.services.engine_service import get_all_sector_stocks
         import backend.app.services.engine_service as es
         stocks = get_all_sector_stocks()
-        if "업종명없음" in merged:
+        if "기타" in merged:
             no_sector_count = sum(
-                1 for s in stocks if s["sector"] == "업종명없음"
+                1 for s in stocks if s["sector"] == "기타"
             )
         filter_summary = getattr(es, "_latest_filter_summary", "")
     except Exception:
@@ -146,16 +146,16 @@ async def get_stock_classification(_: str = Depends(get_current_user)):
     custom = load_custom_data()
     merged = get_merged_all_sectors()
 
-    # "업종명없음" 소속 종목 수 계산 (broadcast_stock_classification_changed와 동일 로직)
+    # "기타" 소속 종목 수 계산 (broadcast_stock_classification_changed와 동일 로직)
     no_sector_count = 0
     filter_summary = ""
     try:
         from backend.app.services.engine_service import get_all_sector_stocks
         import backend.app.services.engine_service as es
         stocks = get_all_sector_stocks()
-        if "업종명없음" in merged:
+        if "기타" in merged:
             no_sector_count = sum(
-                1 for s in stocks if s["sector"] == "업종명없음"
+                1 for s in stocks if s["sector"] == "기타"
             )
         filter_summary = getattr(es, "_latest_filter_summary", "")
     except Exception:

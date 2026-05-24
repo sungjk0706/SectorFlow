@@ -112,8 +112,8 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         try:
             import backend.app.services.engine_service as es
             stocks = es.get_all_sector_stocks()
-            if "업종명없음" in merged:
-                no_sector_count = sum(1 for s in stocks if s["sector"] == "업종명없음")
+            if "기타" in merged:
+                no_sector_count = sum(1 for s in stocks if s["sector"] == "기타")
             filter_summary = getattr(es, "_latest_filter_summary", "")
         except Exception:
             pass
