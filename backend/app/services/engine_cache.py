@@ -23,7 +23,7 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
     """
     try:
         from backend.app.core.sector_stock_cache import (
-            load_layout_cache, load_snapshot_cache,
+            load_layout_cache,
             load_stock_name_cache, load_market_map_cache,
         )
         from backend.app.core.avg_amt_cache import (
@@ -36,14 +36,15 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
         from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd, _base_stk_cd
         from backend.app.services.engine_strategy_core import make_detail
 
-        # ── 5개 캐시 병렬 로드 ──
+        # ── 테이블 초기화 ──
         from backend.app.db.models import create_stocks_table, create_sectors_table, create_system_settings_table
-        from backend.app.db.crud import get_all_stocks
+        from backend.app.db.cache_db import create_completed_snapshot_table
         
         # 테이블이 없으면 생성
         await asyncio.to_thread(create_stocks_table)
         await asyncio.to_thread(create_sectors_table)
         await asyncio.to_thread(create_system_settings_table)
+        await asyncio.to_thread(create_completed_snapshot_table)
 
         # sectors 테이블 초기화 로직
         def _init_sectors():
@@ -53,7 +54,7 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
             try:
                 cursor.execute("""
                     INSERT OR IGNORE INTO sectors (name)
-                    SELECT DISTINCT sector FROM stocks
+                    SELECT DISTINCT sector FROM completed_snapshot
                     WHERE sector IS NOT NULL AND sector != '' AND sector != '기타'
                 """)
                 cursor.execute("INSERT OR IGNORE INTO sectors (name) VALUES ('기타')")
@@ -64,34 +65,27 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
                 conn.close()
         await asyncio.to_thread(_init_sectors)
         
-        _db_stocks = await asyncio.to_thread(get_all_stocks)
+        # ── completed_snapshot 로드 (Phase 2.2) ──
+        from backend.app.db.cache_db import load_completed_snapshot
+        _cached_snapshot = await asyncio.to_thread(load_completed_snapshot)
+        
+        # completed_snapshot이 없으면 앱 기동 실패 (명확한 에러)
+        if _cached_snapshot is None or len(_cached_snapshot) == 0:
+            raise RuntimeError("completed_snapshot 테이블에 데이터가 없습니다. 장마감 후 다시 시도하세요.")
+        
+        # ── 5일평균/고가 로드 (avg_amt_cache에서 별도 로드) ──
+        _cached_avg = {}
+        _cached_high_5d = {}
+        for cd, detail in _cached_snapshot:
+            _cached_avg[cd] = normalize_avg_amt_5d_value(detail.get("avg_5d_trade_amount"))
+            _cached_high_5d[cd] = int(detail.get("high_5d_price") or 0)
+        
+        # ── 레이아웃/시장구분/적격종목 로드 (유지) ──
         _cached_layout, _cached_market, _cached_eligible = await asyncio.gather(
             asyncio.to_thread(load_layout_cache),
             asyncio.to_thread(load_market_map_cache),
             asyncio.to_thread(load_eligible_stocks_cache),
         )
-        
-        _cached_snapshot = []
-        _cached_avg = {}
-        _cached_high_5d = {}
-        if _db_stocks:
-            for stock in _db_stocks:
-                cd = stock["code"]
-                _cached_avg[cd] = normalize_avg_amt_5d_value(stock.get("avg_5d_trade_amount"))
-                _cached_high_5d[cd] = int(stock.get("high_5d_price") or 0)
-                detail = {
-                    "name": stock.get("name", cd),
-                    "sector": stock.get("sector", "기타"),
-                    "cur_price": stock.get("cur_price", stock.get("prev_close", 0)),
-                    "sign": stock.get("sign", "3"),
-                    "change": stock.get("change", 0),
-                    "change_rate": stock.get("change_rate", 0.0),
-                    "prev_close": stock.get("prev_close", 0),
-                    "trade_amount": stock.get("trade_amount", stock.get("avg_5d_trade_amount", 0)),
-                    "high_price": stock.get("today_high_price", stock.get("high_5d_price", 0)),
-                    "strength": stock.get("strength", "-"),
-                }
-                _cached_snapshot.append((cd, detail))
 
         # ── 레이아웃 적재 ──
         if _cached_layout:

@@ -72,7 +72,6 @@ async def _bootstrap_sector_stocks_async() -> None:
     from backend.app.core.sector_stock_cache import (
         load_layout_cache, save_layout_cache,
     )
-    from backend.app.db.crud import get_all_stocks
     from backend.app.core.avg_amt_cache import load_avg_amt_cache
 
     # ── 0단계: 레이아웃 캐시 확인 → 사용 시 업종맵 API 스킵 ──────────────
@@ -103,11 +102,7 @@ async def _bootstrap_sector_stocks_async() -> None:
         stock_codes = get_eligible_stocks()  # {종목코드: ""} — 키만 사용
         
         if not stock_codes:
-            from backend.app.db.crud import get_all_stocks
-            _db_stocks = get_all_stocks()
-            if _db_stocks:
-                stock_codes = {row["code"]: "" for row in _db_stocks}
-                logger.info("[시작] 적격종목 캐시 없음 -- DB stocks 테이블 기반 임시 복구 (%d종목)", len(stock_codes))
+            raise RuntimeError("적격종목 캐시가 없습니다. 장마감 후 다시 시도하세요.")
 
         if stock_codes:
             auto_layout: list[tuple[str, str]] = []
@@ -159,26 +154,8 @@ async def _bootstrap_sector_stocks_async() -> None:
         # 데이터준비에서 이미 확정데이터 → 메모리 적재 완료 — 파일 재로드 + 버킷 세팅 스킵
         logger.debug("[시작] 데이터준비 사용 -- 확정데이터·거래대금 데이터 재로드 생략 (%d종목)", len(_st._pending_stock_details))
         _broadcast_bootstrap_stage(4, "시세 데이터 반영")
-    elif (_db_stocks := get_all_stocks()):
-        # DB 데이터를 기존 krx_rows 형식(list[tuple[str, dict]])으로 변환
-        krx_rows = []
-        for stock in _db_stocks:
-            detail = {
-                "name": stock.get("name", stock["code"]),
-                "sector": stock.get("sector", "기타"),
-                "cur_price": stock.get("cur_price", stock.get("prev_close", 0)),
-                "sign": stock.get("sign", "3"),
-                "change": stock.get("change", 0),
-                "change_rate": stock.get("change_rate", 0.0),
-                "prev_close": stock.get("prev_close", 0),
-                "trade_amount": stock.get("trade_amount", stock.get("avg_5d_trade_amount", 0)),
-                "high_price": stock.get("today_high_price", stock.get("high_5d_price", 0)),
-                "strength": stock.get("strength", "-"),
-            }
-            krx_rows.append((stock["code"], detail))
-        logger.debug("[시작] DB 확정데이터 로드 -- %d종목 (UI 즉시 표시)", len(krx_rows))
     else:
-        logger.debug("[시작] DB 확정데이터 실패 -- 로드 생략 (장마감 후 ka10086 확정 조회로 갱신)")
+        raise RuntimeError("completed_snapshot 테이블에 데이터가 없습니다. 장마감 후 다시 시도하세요.")
 
     if not _preboot_snapshot_hit:
         # ── 4단계: 거래대금 버킷 세팅 및 화면 표시 ──────────────────────────
@@ -240,36 +217,29 @@ async def _bootstrap_sector_stocks_async() -> None:
             "[시작] 데이터준비 사용 -- 5일거래대금평균/고가 재로드 생략 (%d종목)", len(_st._avg_amt_5d)
         )
     else:
-        # ── 5일 평균 및 고가 데이터 DB에서 로드 ──
-        from backend.app.db.crud import get_all_stocks
-        _db_stocks = get_all_stocks()
-        if _db_stocks:
-            _avg_map = {}
-            _high_map = {}
-            for row in _db_stocks:
-                cd = _format_kiwoom_reg_stk_cd(row["code"])
-                _avg_map[cd] = normalize_avg_amt_5d_value(row.get("avg_5d_trade_amount"))
-                _high_map[cd] = int(row.get("high_5d_price") or 0)
-
-            if not is_avg_amt_5d_map_usable(_avg_map):
-                recovered_avg = load_avg_amt_from_sector_summary_cache()
-                if is_avg_amt_5d_map_usable(recovered_avg):
-                    _avg_map = recovered_avg
-                    logger.warning("[시작] DB 5일평균 비정상 -- SectorSummary 캐시에서 복구 (%d종목)", len(_avg_map))
-                else:
-                    cached_result = load_avg_amt_cache()
-                    if cached_result and is_avg_amt_5d_map_usable(cached_result[0]):
-                        _avg_map, _high_map = cached_result
-                        logger.warning("[시작] DB 5일평균 비정상 -- avg_amt 캐시에서 복구 (%d종목)", len(_avg_map))
-            
-            _st._update_avg_amt_5d(_avg_map)
-            _st._high_5d_cache.clear()
-            _st._high_5d_cache.update(_high_map)
-            _snapshot_valid = True
-            logger.info("[시작] DB에서 5일 평균 및 고가 데이터 로드 완료 -- %d종목", len(_avg_map))
+        # ── 5일 평균 및 고가 데이터 캐시에서 로드 ──
+        _avg_map = {}
+        _high_map = {}
+        
+        # sector_summary_cache에서 복구 시도
+        recovered_avg = load_avg_amt_from_sector_summary_cache()
+        if is_avg_amt_5d_map_usable(recovered_avg):
+            _avg_map = recovered_avg
+            logger.warning("[시작] SectorSummary 캐시에서 5일평균 복구 (%d종목)", len(_avg_map))
         else:
-            logger.warning("[시작] DB 데이터 없음 -- 빈 맵으로 시작 (수동 다운로드 필요)")
-            _snapshot_valid = False
+            # avg_amt_cache에서 복구 시도
+            cached_result = load_avg_amt_cache()
+            if cached_result and is_avg_amt_5d_map_usable(cached_result[0]):
+                _avg_map, _high_map = cached_result
+                logger.warning("[시작] avg_amt 캐시에서 5일평균 복구 (%d종목)", len(_avg_map))
+            else:
+                raise RuntimeError("5일평균 캐시가 없습니다. 장마감 후 다시 시도하세요.")
+        
+        _st._update_avg_amt_5d(_avg_map)
+        _st._high_5d_cache.clear()
+        _st._high_5d_cache.update(_high_map)
+        _snapshot_valid = True
+        logger.info("[시작] 캐시에서 5일 평균 및 고가 데이터 로드 완료 -- %d종목", len(_avg_map))
 
     try:
         from backend.app.services import engine_account_notify as _account_notify
