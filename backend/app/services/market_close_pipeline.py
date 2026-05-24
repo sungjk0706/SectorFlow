@@ -362,7 +362,7 @@ async def _run_post_confirmed_pipeline(es: ModuleType) -> None:
 # ---------------------------------------------------------------------------
 
 async def _save_confirmed_cache(es: ModuleType) -> bool:
-    """현재 메모리 데이터를 save_snapshot_cache()로 디스크 저장.
+    """현재 메모리 데이터를 completed_snapshot으로 디스크 저장.
 
     저장 직전에 종목명 캐시를 참조하여 name 필드를 보정한다.
 
@@ -373,7 +373,6 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
         저장 성공 여부.
     """
     from backend.app.core.sector_stock_cache import load_stock_name_cache
-    from backend.app.db.crud import batch_insert_stocks
 
     pending: dict = getattr(es, "_pending_stock_details", {})
     if not pending:
@@ -459,20 +458,41 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
                 "strength": str(detail.get("strength", "-"))
             })
         
-        # 비동기 이벤트 루프 블로킹 방지: 별도 스레드에서 대량 저장
-        saved_count = await asyncio.to_thread(batch_insert_stocks, stocks_data)
-        _log.info("[타이머] 확정 데이터 DB 저장 완료 -- %d/%d종목", saved_count, len(rows))
-        
-        # JSON 메타데이터 동기화: DB 저장 완료 시 스냅샷 캐시에 당일 날짜 기록
-        # 재기동 시 다운로드 좀비 현상 원천 차단
-        from backend.app.core.sector_stock_cache import save_snapshot_cache
-        from backend.app.core.trading_calendar import current_trading_date_str
+        # ── completed_snapshot 저장 (Phase 1.2) ──
         try:
-            snapshot_rows = [(cd, dict(detail)) for cd, detail in pending.items()]
-            save_snapshot_cache(snapshot_rows)
-            _log.info("[타이머] 스냅샷 캐시 날짜 동기화 완료 -- %s", current_trading_date_str())
+            from backend.app.db.database import get_db_connection
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            date_str = current_trading_date_str()
+            
+            # completed_snapshot에 INSERT OR REPLACE
+            for cd, detail in pending.items():
+                cursor.execute("""
+                    INSERT OR REPLACE INTO completed_snapshot 
+                    (code, name, sector, cur_price, change, change_rate, 
+                     strength, trade_amount, avg_5d_trade_amount, high_5d_price, date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    cd,
+                    detail.get("name", cd),
+                    detail.get("sector", "기타"),
+                    detail.get("cur_price", 0),
+                    detail.get("change", 0),
+                    detail.get("change_rate", 0.0),
+                    detail.get("strength", "-"),
+                    detail.get("trade_amount", 0),
+                    detail.get("avg_5d_trade_amount", 0),
+                    detail.get("high_5d_price", 0),
+                    date_str
+                ))
+            
+            conn.commit()
+            conn.close()
+            _log.info("[타이머] completed_snapshot 저장 완료 -- %d종목 (date=%s)", len(pending), date_str)
         except Exception as e:
-            _log.warning("[타이머] 스냅샷 캐시 날짜 동기화 실패: %s", e, exc_info=True)
+            _log.warning("[타이머] completed_snapshot 저장 실패: %s", e, exc_info=True)
         
         return True
     except Exception as exc:

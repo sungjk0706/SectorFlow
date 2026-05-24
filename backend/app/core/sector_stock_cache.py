@@ -79,61 +79,7 @@ def find_sector_for_code(stock_code: str, layout: list[tuple[str, str]]) -> str:
             return val
     return ""
 
-# ── KRX 스냅샷 캐시 ─────────────────────────────────────────────────────
-
-def save_snapshot_cache(rows: list[tuple[str, dict]]) -> None:
-    """ka10095 스냅샷 결과를 SQLite에 저장."""
-    try:
-        date_str = current_trading_date_str()
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM snapshot_cache")
-        
-        insert_values = []
-        for stk_cd, detail in rows:
-            insert_values.append((stk_cd, date_str, json.dumps(detail, ensure_ascii=False)))
-            
-        cursor.executemany("INSERT INTO snapshot_cache (code, date, detail) VALUES (?, ?, ?)", insert_values)
-        
-        conn.commit()
-        conn.close()
-        _log.info("[snapshot_cache] SQLite 저장 완료 -- %d종목", len(rows))
-    except Exception as e:
-        _log.warning("[snapshot_cache] SQLite 저장 실패: %s", e)
-
-def get_snapshot_cache_date() -> str:
-    """snapshot_cache 테이블에 저장된 날짜 반환. 없으면 ""."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT date FROM snapshot_cache LIMIT 1")
-        row = cursor.fetchone()
-        conn.close()
-        return str(row["date"]) if row else ""
-    except Exception:
-        return ""
-
-
-def load_snapshot_cache() -> list[tuple[str, dict]] | None:
-    """당일 캐시가 유효하면 [(종목코드, detail)] 반환, 아니면 None."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT code, date, detail FROM snapshot_cache")
-        rows = cursor.fetchall()
-        conn.close()
-        
-        if not rows:
-            return None
-            
-        cached_date = rows[0]["date"]
-        
-        result = [(str(row["code"]), json.loads(row["detail"])) for row in rows]
-        _log.info("[snapshot_cache] SQLite 로드 -- %d종목 (cached=%s)", len(result), cached_date)
-        return result
-    except Exception as e:
-        _log.warning("[snapshot_cache] SQLite 로드 실패: %s", e)
-        return None
+# ── snapshot_cache 관련 함수 제거 (Phase 4) ─────────────────────────────────
 
 def load_completed_stocks_from_snapshot(completed_codes: set[str]) -> dict[str, dict]:
     if not completed_codes:

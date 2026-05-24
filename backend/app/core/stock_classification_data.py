@@ -51,6 +51,7 @@ def rename_sector(old_name: str, new_name: str) -> None:
     try:
         conn.execute("UPDATE sectors SET name = ? WHERE name = ?", (new_name, old_name))
         conn.execute("UPDATE stocks SET sector = ? WHERE sector = ?", (new_name, old_name))
+        conn.execute("UPDATE completed_snapshot SET sector = ? WHERE sector = ?", (new_name, old_name))
         conn.commit()
     except Exception as e:
         conn.rollback()
@@ -102,6 +103,7 @@ def delete_sector(name: str) -> None:
     try:
         conn.execute("DELETE FROM sectors WHERE name = ?", (name,))
         conn.execute("UPDATE stocks SET sector = '기타' WHERE sector = ?", (name,))
+        conn.execute("UPDATE completed_snapshot SET sector = '기타' WHERE sector = ?", (name,))
         conn.commit()
     except Exception as e:
         conn.rollback()
@@ -133,6 +135,7 @@ def move_stock(stock_code: str, target_sector: str) -> None:
     conn = get_db_connection()
     try:
         conn.execute("UPDATE stocks SET sector = ? WHERE code = ?", (target_sector, stock_code))
+        conn.execute("UPDATE completed_snapshot SET sector = ? WHERE code = ?", (target_sector, stock_code))
         conn.commit()
     except Exception as e:
         conn.rollback()
