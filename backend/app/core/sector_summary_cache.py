@@ -2,9 +2,7 @@
 """SectorSummary 영속성 캐시 - 업종순위/매수후보 데이터 저장 및 복원"""
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
 from typing import Optional
 
 from backend.app.services.engine_sector_score import (
@@ -19,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def save_sector_summary_cache(summary: SectorSummary) -> None:
-    """SectorSummary를 JSON 파일에 저장"""
+    """SectorSummary를 SQLite kv_store에 저장"""
     if summary is None:
         return
     try:

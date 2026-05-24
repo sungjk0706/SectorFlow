@@ -19,7 +19,11 @@ from backend.app.services.engine_symbol_utils import (
     get_ws_subscribe_code,
 )
 from backend.app.services.engine_ws_reg import build_0b_remove_payloads
-from backend.app.core.avg_amt_cache import normalize_avg_amt_5d_value
+from backend.app.core.avg_amt_cache import (
+    normalize_avg_amt_5d_value,
+    is_avg_amt_5d_map_usable,
+    load_avg_amt_from_sector_summary_cache,
+)
 
 _log = logging.getLogger("engine")
 _CONFIRMED_FETCH_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="confirmed-fetch")
@@ -286,10 +290,23 @@ async def _apply_confirmed_to_memory(
         avg5d = normalize_avg_amt_5d_value(detail.get("avg_amt_5d"))
         if avg5d > 0:
             es._avg_amt_5d[nk] = avg5d
-            
+
         high5d = int(detail.get("high_price_5d") or 0)
         if high5d > 0:
             es._high_5d_cache[nk] = high5d
+
+        # 5일봉 배열 저장 (롤링용)
+        amts_5d = detail.get("amts_5d_array")
+        if amts_5d and isinstance(amts_5d, list):
+            if not hasattr(es, "_amts_5d_arrays"):
+                es._amts_5d_arrays = {}
+            es._amts_5d_arrays[nk] = amts_5d
+
+        highs_5d = detail.get("highs_5d_array")
+        if highs_5d and isinstance(highs_5d, list):
+            if not hasattr(es, "_highs_5d_arrays"):
+                es._highs_5d_arrays = {}
+            es._highs_5d_arrays[nk] = highs_5d
 
         # strength (from separate dict)
         str_val = strength.get(raw_cd) or strength.get(nk)
@@ -323,24 +340,15 @@ async def _run_post_confirmed_pipeline(es: ModuleType) -> None:
     단순히 최종 스냅샷 및 캐시를 저장합니다.
     """
     try:
-        # 기존 v2 캐시 배열 저장이 아닌 최신 avg_amt, high_5d 스칼라값만 저장
         from backend.app.core.avg_amt_cache import save_avg_amt_cache_v2, _kst_today_yyyymmdd
         date = _kst_today_yyyymmdd()
-        # 배열은 빈 dict로 저장 (하위호환)
+        # 5일봉 배열 저장 (롤링용)
+        amts_5d_arrays = getattr(es, "_amts_5d_arrays", {})
+        highs_5d_arrays = getattr(es, "_highs_5d_arrays", {})
         save_avg_amt_cache_v2(
-            {}, date,
+            amts_5d_arrays, date,
             high_5d=es._high_5d_cache,
-            high_5d_arr={}
-        )
-        # avg_amt는 스냅샷에 포함되거나 별도로 저장해야 할 수 있음.
-        # save_avg_amt_cache_v2의 v2_data(첫 인자)가 없으면 avg_from_v2 연산이 안됨.
-        # 따라서 스칼라 값을 v2_data 꼼수로 단일 요소 리스트로 래핑하여 저장.
-        wrapped_v2 = {cd: [val] for cd, val in es._avg_amt_5d.items()}
-        wrapped_high = {cd: [val] for cd, val in es._high_5d_cache.items()}
-        save_avg_amt_cache_v2(
-            wrapped_v2, date,
-            high_5d=es._high_5d_cache,
-            high_5d_arr=wrapped_high
+            high_5d_arr=highs_5d_arrays
         )
         
         await _save_confirmed_cache(es)
@@ -407,6 +415,13 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
         stocks_data = []
         avg_5d_map = getattr(es, "_avg_amt_5d", {})
         high_5d_map = getattr(es, "_high_5d_cache", {})
+
+        # DB 저장 전 avg_5d_map 유효성 체크 — 비정상이면 SectorSummary 캐시로 보완
+        if not is_avg_amt_5d_map_usable(avg_5d_map):
+            recovered = load_avg_amt_from_sector_summary_cache()
+            if is_avg_amt_5d_map_usable(recovered):
+                avg_5d_map = recovered
+                _log.warning("[타이머] DB 저장 전 _avg_amt_5d 비정상 -- SectorSummary 캐시로 보완 (%d종목)", len(avg_5d_map))
         
         from backend.app.core.sector_mapping import get_merged_sector
         for cd, detail in rows:

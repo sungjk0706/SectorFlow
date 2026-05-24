@@ -475,14 +475,9 @@ def retry_pipeline_catchup_after_bootstrap() -> None:
             unified_past = t >= 1230 or t < ws_start_minutes
             if unified_past:
                 from backend.app.core.trading_calendar import current_trading_date_str
-                # snapshot 캐시 date로 확정 갱신 완료 여부 판별
-                from backend.app.core.sector_stock_cache import SNAPSHOT_CACHE_PATH
-                import json as _json
-                try:
-                    _raw = _json.loads(SNAPSHOT_CACHE_PATH.read_text(encoding="utf-8"))
-                    _cached_date = _raw.get("date", "")
-                except Exception:
-                    _cached_date = ""
+                # snapshot 캐시 date로 확정 갱신 완료 여부 판별 (SQLite)
+                from backend.app.core.sector_stock_cache import get_snapshot_cache_date
+                _cached_date = get_snapshot_cache_date()
                 if _cached_date != current_trading_date_str():
                     logger.debug("[타이머] 20:30 이후 + 확정 갱신 미완료 (cached=%s, expected=%s) — 통합 확정 조회 실행", _cached_date, current_trading_date_str())
                     _fire_unified_confirmed_fetch()
