@@ -95,12 +95,26 @@ def is_excluded(item: dict, stk_cd: str) -> tuple[bool, str]:
     if stk_cd and stk_cd.isdigit() and stk_cd[-1] != "0":
         return True, "우선주"
     
-    # 2024년부터 도입된 영문 혼용 코드 (단축코드 6번째 자리에 알파벳 혼용 가능)
-    # 이제 K, M, L 등 특정 알파벳이 일반 종목에도 배정될 수 있으므로, 
+    # ── 2024년부터 도입된 영문 혼용 코드 (단축코드 6번째 자리에 알파벳 혼용 가능)
+    # 이제 K, M, L 등 특정 알파벳이 일반 종목에도 배정될 수 있으므로,
     # 끝자리 알파벳만으로 우선주를 억울하게 입구컷 당하지 않도록 종목명으로 판별합니다.
     if stk_cd and not stk_cd.isdigit():
-        if name_raw.endswith("우") or name_raw.endswith("우B") or name_raw.endswith("우C"):
-            return True, "우선주(영문)"
+        import re
+        clean_name = re.sub(r'\(.*?\)$', '', name_raw).strip()
+        suffixes = ["우선주", "우", "우B", "우C", "우D", "우E", "우F"]
+        matched_suffix = None
+        for suffix in suffixes:
+            if clean_name.endswith(suffix):
+                matched_suffix = suffix
+                break
+
+        if matched_suffix:
+            # 우선주 이름은 항상 [회사명] + [우선주접미사] 형태입니다.
+            # 회사명은 최소 2글자 이상이므로, 접미사를 제외한 부분이 최소 2글자 이상이어야 합니다.
+            # 예: "CJ우" -> "CJ" + "우" (길이 3 > 2), "성우" -> "성" + "우" (길이 2 <= 2, 성은 1글자이므로 무시)
+            suffix_len = len(matched_suffix)
+            if len(clean_name) > suffix_len + 1:
+                return True, f"우선주(영문)-{matched_suffix}"
 
     # ── 5) auditInfo 감리 체크 ───────────────────────────────────────
     audit = str(item.get("auditInfo") or "").strip()

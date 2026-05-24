@@ -427,7 +427,7 @@ function createFixedMode<T extends object>(
           try {
             const content = columns[cIdx].render(dataRow, i)
             const itemKeyStore = '_itemKey' as keyof HTMLElement
-            const key = options.keyFn ? options.keyFn(dataRow, i) : String(i)
+            const key = String(i)
             const prevItemKey = (cell as any)[itemKeyStore]
             const isSameItem = prevItemKey === key
             ;(cell as any)[itemKeyStore] = key

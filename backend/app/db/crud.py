@@ -34,6 +34,26 @@ def get_all_stocks():
     
     return [dict(row) for row in rows]
 
+def batch_update_avg_5d(avg_map: dict) -> int:
+    """avg_5d_trade_amount만 일괄 업데이트 (복구 데이터 DB 반영용)."""
+    if not avg_map:
+        return 0
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.executemany(
+            "UPDATE stocks SET avg_5d_trade_amount = ? WHERE code = ?",
+            [(float(v), k) for k, v in avg_map.items()],
+        )
+        conn.commit()
+        return cursor.rowcount
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+
 def batch_insert_stocks(stocks_data):
     """대량 주식 정보를 단일 트랜잭션으로 고속 저장
     

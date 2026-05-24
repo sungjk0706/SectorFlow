@@ -159,6 +159,8 @@ def fetch_ka10081_daily_and_5d_data(
                 "prev_close": prev_close,
                 "high_price_5d": high_price_5d,
                 "avg_amt_5d": avg_amt_5d,
+                "highs_5d_array": highs_5d,
+                "amts_5d_array": amts_5d_raw,
             }
         except Exception as e:
             _log.warning("[ka10081] 예외 시도%d %s/%s: %s", attempt + 1, log_cd, api_cd, e)

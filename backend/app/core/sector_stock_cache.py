@@ -101,6 +101,19 @@ def save_snapshot_cache(rows: list[tuple[str, dict]]) -> None:
     except Exception as e:
         _log.warning("[snapshot_cache] SQLite 저장 실패: %s", e)
 
+def get_snapshot_cache_date() -> str:
+    """snapshot_cache 테이블에 저장된 날짜 반환. 없으면 ""."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT date FROM snapshot_cache LIMIT 1")
+        row = cursor.fetchone()
+        conn.close()
+        return str(row["date"]) if row else ""
+    except Exception:
+        return ""
+
+
 def load_snapshot_cache() -> list[tuple[str, dict]] | None:
     """당일 캐시가 유효하면 [(종목코드, detail)] 반환, 아니면 None."""
     try:
