@@ -436,22 +436,19 @@ def retry_pipeline_catchup_after_bootstrap() -> None:
     except Exception:
         ws_start_minutes = 470  # 기본값 07:50
 
-    # 5개 캐시 모두 유효해야 확정 조회 완료로 간주 → REST 스킵
+    # 4개 캐시 모두 유효해야 확정 조회 완료로 간주 → REST 스킵
     # 하나라도 None(만료)이면 확정 데이터 조회 실행
-    from backend.app.core.sector_stock_cache import load_snapshot_cache, load_stock_name_cache, load_market_map_cache
+    from backend.app.core.sector_stock_cache import load_stock_name_cache, load_market_map_cache
     from backend.app.core.industry_map import load_eligible_stocks_cache
     from backend.app.core.avg_amt_cache import load_avg_amt_cache
     from backend.app.services import engine_service
 
-    _snap = load_snapshot_cache()
     _stock_name = load_stock_name_cache()
     _eligible_stocks = load_eligible_stocks_cache()
     _market_map = load_market_map_cache()
     _avg_amt = load_avg_amt_cache()
 
     _expired = []
-    if _snap is None:
-        _expired.append("snapshot")
     if _stock_name is None:
         _expired.append("stock_name")
     if _eligible_stocks is None:
@@ -462,29 +459,9 @@ def retry_pipeline_catchup_after_bootstrap() -> None:
         _expired.append("avg_amt")
 
     if not _expired:
-        # 모든 캐시 유효 — 종목 수 부족 검사
-        _snap_count = len(_snap)
-        _filter_count = len(getattr(engine_service, "_filtered_sector_codes", None) or set())
-        if _filter_count > 0 and _snap_count < _filter_count * 0.5:
-            logger.debug("[타이머] 확정데이터 저장데이터 종목 부족 (%d/%d) — 확정 데이터 조회 실행", _snap_count, _filter_count)
-            _fire_unified_confirmed_fetch()
-            return
-        else:
-            # 20:30 이후 + 캐시 날짜가 다음 거래일과 불일치 → 확정 갱신 미완료
-            # 재시도 기간: 20:30 ~ 다음 거래일 ws_subscribe_start 시간까지
-            unified_past = t >= 1230 or t < ws_start_minutes
-            if unified_past:
-                from backend.app.core.trading_calendar import current_trading_date_str
-                # snapshot 캐시 date로 확정 갱신 완료 여부 판별 (SQLite)
-                from backend.app.core.sector_stock_cache import get_snapshot_cache_date
-                _cached_date = get_snapshot_cache_date()
-                if _cached_date != current_trading_date_str():
-                    logger.debug("[타이머] 20:30 이후 + 확정 갱신 미완료 (cached=%s, expected=%s) — 통합 확정 조회 실행", _cached_date, current_trading_date_str())
-                    _fire_unified_confirmed_fetch()
-                    return
-            _confirmed_done = True
-            logger.debug("[타이머] 저장데이터 유효 (%d종목) — 재조회 생략", _snap_count)
-            return
+        # 모든 캐시 유효 — 확정 갱신 완료로 간주
+        logger.debug("[타이머] 모든 캐시 유효 — 확정 데이터 조회 스킵")
+        return
     else:
         logger.debug("[타이머] 만료된 저장데이터 발견: %s", ", ".join(_expired))
 
