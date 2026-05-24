@@ -256,11 +256,11 @@ export function createRateCell(rate: number | null | undefined): HTMLElement {
   return cell
 }
 
-/** 거래대금 셀 (우측정렬, 기본색) */
+/** 거래대금 셀 (우측정렬, 기본색, 백만 단위) */
 export function createAmountCell(amount: number | null | undefined): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
-  cell.textContent = amount && amount > 0 ? fmtComma(Math.round(amount / 100_000_000)) : '-'
+  cell.textContent = amount && amount > 0 ? fmtComma(Math.round(amount / 1_000_000)) : '-'
   return cell
 }
 
@@ -339,7 +339,10 @@ export function makePriceColumn<T>(
     key: 'cur_price',
     label: '현재가',
     align: 'right',
-    flash: true,
+    flash: () => {
+      const settings = uiStore.getState().settings
+      return settings?.ui_price_flash_on !== false
+    },
     render: (t) => {
       const realtimeStatus = uiStore.getState().realtimeStatus
       return createPriceCell(getPrice(t), getRate(t), realtimeStatus)
@@ -377,11 +380,11 @@ export function makeStrengthColumn<T>(get: (t: T) => number | null | undefined):
   }
 }
 
-/** 거래대금 컬럼 (억 단위 표시) */
+/** 거래대금 컬럼 (백만 단위 표시) */
 export function makeAmountColumn<T>(get: (t: T) => number | null | undefined): ColumnDef<T> {
   return {
     key: 'trade_amount',
-    label: '거래대금',
+    label: '거래대금(백만)',
     align: 'right',
     render: (t) => createAmountCell(get(t)),
   }
@@ -391,7 +394,7 @@ export function makeAmountColumn<T>(get: (t: T) => number | null | undefined): C
 export function makeAvgAmountColumn<T>(get: (t: T) => number): ColumnDef<T> {
   return {
     key: 'avg_amt_5d',
-    label: '5일평균',
+    label: '5일평균(억)',
     align: 'right',
     render: (t) => createAvgAmountCell(get(t)),
   }

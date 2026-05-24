@@ -19,7 +19,7 @@ def get_merged_sector(stock_code: str) -> str:
         import backend.app.services.engine_service as es
         entry = es._pending_stock_details.get(stock_code)
         if entry and "sector" in entry:
-            return entry["sector"] or "업종명없음"
+            return entry["sector"] or "기타"
     except Exception:
         pass
 
@@ -37,7 +37,7 @@ def get_merged_sector(stock_code: str) -> str:
     finally:
         conn.close()
 
-    return "업종명없음"
+    return "기타"
 
 
 def get_merged_all_sectors() -> list[str]:
@@ -49,11 +49,11 @@ def get_merged_all_sectors() -> list[str]:
         cursor.execute("SELECT name FROM sectors")
         rows = cursor.fetchall()
         sectors = [r["name"] for r in rows if r["name"]]
-        if "업종명없음" not in sectors:
-            sectors.append("업종명없음")
+        if "기타" not in sectors:
+            sectors.append("기타")
         return sorted(list(set(sectors)))
     except Exception as e:
         _log.warning("[매핑] get_merged_all_sectors DB 조회 실패: %s", e)
-        return ["업종명없음"]
+        return ["기타"]
     finally:
         conn.close()

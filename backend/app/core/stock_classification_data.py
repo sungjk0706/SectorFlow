@@ -91,7 +91,7 @@ def create_sector(name: str) -> None:
 
 
 def delete_sector(name: str) -> None:
-    """업종을 삭제한다. 해당 업종의 종목들을 '업종명없음'으로 이동."""
+    """업종을 삭제한다. 해당 업종의 종목들을 '기타'로 이동."""
     name = name.strip()
     if not name:
         raise ValueError("업종명은 필수입니다")
@@ -101,7 +101,7 @@ def delete_sector(name: str) -> None:
     conn = get_db_connection()
     try:
         conn.execute("DELETE FROM sectors WHERE name = ?", (name,))
-        conn.execute("UPDATE stocks SET sector = '업종명없음' WHERE sector = ?", (name,))
+        conn.execute("UPDATE stocks SET sector = '기타' WHERE sector = ?", (name,))
         conn.commit()
     except Exception as e:
         conn.rollback()
@@ -115,7 +115,7 @@ def delete_sector(name: str) -> None:
         import backend.app.services.engine_service as es
         for cd, entry in es._pending_stock_details.items():
             if entry.get("sector") == name:
-                entry["sector"] = "업종명없음"
+                entry["sector"] = "기타"
         es._invalidate_sector_stocks_cache()
     except Exception as e:
         _log.warning("[메모리업데이트] 인메모리 업종 삭제 반영 실패: %s", e)

@@ -13,11 +13,9 @@ from backend.app.services.engine_sector_score import (
     StockScore,
     BuyTarget,
 )
+from backend.app.db.cache_db import get_kv, set_kv
 
 logger = logging.getLogger(__name__)
-
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-_SECTOR_SUMMARY_CACHE_FILE = _DATA_DIR / "sector_summary_cache.json"
 
 
 def save_sector_summary_cache(summary: SectorSummary) -> None:
@@ -34,18 +32,18 @@ def save_sector_summary_cache(summary: SectorSummary) -> None:
             "index_guard_kospi_hit": summary.index_guard_kospi_hit,
             "index_guard_kosdaq_hit": summary.index_guard_kosdaq_hit,
         }
-        _SECTOR_SUMMARY_CACHE_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-        logger.debug("[SectorSummaryCache] 저장 완료")
+        set_kv("sector_summary_cache", data)
+        logger.debug("[SectorSummaryCache] SQLite 저장 완료")
     except Exception as e:
-        logger.error(f"[SectorSummaryCache] 저장 실패: {e}", exc_info=True)
+        logger.error(f"[SectorSummaryCache] SQLite 저장 실패: {e}", exc_info=True)
 
 
 def load_sector_summary_cache() -> Optional[SectorSummary]:
-    """JSON 파일에서 SectorSummary 복원"""
-    if not _SECTOR_SUMMARY_CACHE_FILE.exists():
-        return None
+    """SQLite에서 SectorSummary 복원"""
     try:
-        data = json.loads(_SECTOR_SUMMARY_CACHE_FILE.read_text(encoding="utf-8"))
+        data = get_kv("sector_summary_cache")
+        if not data:
+            return None
         
         sectors = [_dict_to_sector_score(s) for s in data.get("sectors", [])]
         buy_targets = [_dict_to_buy_target(t) for t in data.get("buy_targets", [])]
@@ -60,10 +58,10 @@ def load_sector_summary_cache() -> Optional[SectorSummary]:
             index_guard_kospi_hit=data.get("index_guard_kospi_hit", False),
             index_guard_kosdaq_hit=data.get("index_guard_kosdaq_hit", False),
         )
-        logger.info(f"[SectorSummaryCache] 복원 완료 - sectors: {len(sectors)}, buy_targets: {len(buy_targets)}")
+        logger.info(f"[SectorSummaryCache] SQLite 복원 완료 - sectors: {len(sectors)}, buy_targets: {len(buy_targets)}")
         return summary
     except Exception as e:
-        logger.error(f"[SectorSummaryCache] 복원 실패: {e}", exc_info=True)
+        logger.error(f"[SectorSummaryCache] SQLite 복원 실패: {e}", exc_info=True)
         return None
 
 

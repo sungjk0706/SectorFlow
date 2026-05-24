@@ -234,34 +234,30 @@ _ws_subscribe_timer_handles: list = []  # asyncio.TimerHandle 목록
 _ws_subscribe_window_active: bool | None = None  # 현재 WS 구독 구간 상태
 
 # ── 지수 확정 데이터 캐시 ────────────────────────────────────────────────────
-_INDEX_CACHE_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "index_cache.json"
+# Migrated to SQLite kv_store: index_cache
 
 # ── 업종 시세 확정 데이터 캐시 ────────────────────────────────────────────────
-_INDUSTRY_INDEX_CACHE_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "industry_index_cache.json"
+# Migrated to SQLite kv_store: industry_index_cache
 
+from backend.app.db.cache_db import get_kv, set_kv
 
 def save_index_cache(engine_service) -> None:
-    """WS 구독 종료 시점에 _latest_index(코스피·코스닥 지수)를 캐시 파일로 저장하는 함수."""
+    """WS 구독 종료 시점에 _latest_index(코스피·코스닥 지수)를 SQLite에 저장하는 함수."""
     try:
         latest_index: dict = getattr(engine_service, "_latest_index", {})
         if not latest_index:
             logger.debug("[시작] 저장할 지수 데이터 없음 -- 생략")
             return
-        _INDEX_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(_INDEX_CACHE_PATH, "w", encoding="utf-8") as f:
-            json.dump(latest_index, f, ensure_ascii=False)
+        set_kv("index_cache", latest_index)
         logger.debug("[시작] 확정 데이터 저장 완료 -- %s", {k: f"{v.get('price', 0):.2f}" for k, v in latest_index.items()})
     except Exception as e:
         logger.warning("[시작] 저장 실패: %s", e, exc_info=True)
 
 
 def load_index_cache(engine_service) -> bool:
-    """캐시 파일에서 지수 데이터를 읽어 _latest_index에 로드하는 함수. 성공 시 True 반환."""
+    """SQLite에서 지수 데이터를 읽어 _latest_index에 로드하는 함수. 성공 시 True 반환."""
     try:
-        if not _INDEX_CACHE_PATH.exists():
-            return False
-        with open(_INDEX_CACHE_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        data = get_kv("index_cache")
         if not isinstance(data, dict) or not data:
             return False
         latest_index: dict = getattr(engine_service, "_latest_index", {})
@@ -274,27 +270,22 @@ def load_index_cache(engine_service) -> bool:
 
 
 def save_industry_index_cache(engine_service) -> None:
-    """WS 구독 종료 시점에 _latest_industry_index(업종별 등락률·거래대금)를 캐시 파일로 저장하는 함수."""
+    """WS 구독 종료 시점에 _latest_industry_index(업종별 등락률·거래대금)를 SQLite에 저장하는 함수."""
     try:
         latest: dict = getattr(engine_service, "_latest_industry_index", {})
         if not latest:
             logger.debug("[시작] 저장할 업종 시세 데이터 없음 -- 생략")
             return
-        _INDUSTRY_INDEX_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(_INDUSTRY_INDEX_CACHE_PATH, "w", encoding="utf-8") as f:
-            json.dump(latest, f, ensure_ascii=False)
+        set_kv("industry_index_cache", latest)
         logger.debug("[시작] 확정 데이터 저장 완료 -- %d개 업종", len(latest))
     except Exception as e:
         logger.warning("[시작] 저장 실패: %s", e, exc_info=True)
 
 
 def load_industry_index_cache(engine_service) -> bool:
-    """캐시 파일에서 업종 시세 데이터를 읽어 _latest_industry_index에 로드하는 함수. 성공 시 True 반환."""
+    """SQLite에서 업종 시세 데이터를 읽어 _latest_industry_index에 로드하는 함수. 성공 시 True 반환."""
     try:
-        if not _INDUSTRY_INDEX_CACHE_PATH.exists():
-            return False
-        with open(_INDUSTRY_INDEX_CACHE_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        data = get_kv("industry_index_cache")
         if not isinstance(data, dict) or not data:
             return False
         latest: dict = getattr(engine_service, "_latest_industry_index", {})

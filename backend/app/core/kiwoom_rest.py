@@ -502,60 +502,6 @@ class KiwoomRestAPI:
             _log.warning("[시장구분] ka10099 예외 mrkt_tp=%s: %s", mrkt_tp, e)
             return []
 
-    def fetch_ka10099_eligible_stocks(self) -> dict[str, str]:
-        """ka10099 — 적격 종목코드 수집 위임. industry_map 모듈 참조."""
-        from backend.app.core.industry_map import fetch_ka10099_eligible_stocks
-        return fetch_ka10099_eligible_stocks(self)
-
-    def fetch_ka10101(self, mrkt_tp: str) -> list[dict]:
-        """
-        ka10101 — 업종코드 목록 조회 (키움 공식 확인: 정상 동작 API).
-        엔드포인트: /api/dostk/stkinfo
-        mrkt_tp: "0"=코스피, "1"=코스닥
-        연속조회(cont-yn/next-key) 지원. _call_api 경유.
-        """
-        url = f"{self.base_url}/api/dostk/stkinfo"
-        body = {"mrkt_tp": mrkt_tp}
-        all_items: list[dict] = []
-        cont_yn = "N"
-        next_key = ""
-        page = 0
-        try:
-            while True:
-                if page > 0:
-                    time.sleep(0.3)
-                page += 1
-                resp, _ = self._call_api(
-                    url, "ka10101", body,
-                    cont_yn=cont_yn, next_key=next_key,
-                    label=f"ka10101/{mrkt_tp}/p{page}",
-                )
-                if resp is None:
-                    return all_items
-                data = resp.json()
-                if page == 1:
-                    import json as _json
-                    _log.info(
-                        "[업종코드] ka10101 mrkt_tp=%s 응답 키: %s",
-                        mrkt_tp, list(data.keys()) if isinstance(data, dict) else type(data).__name__,
-                    )
-                items = data.get("list", [])
-                if not isinstance(items, list):
-                    _log.warning("[업종코드] ka10101 mrkt_tp=%s 'list' 키 없음 -- 응답: %s", mrkt_tp, str(data)[:500])
-                    return all_items
-                if page == 1 and items and isinstance(items[0], dict):
-                    _log.info("[업종코드] ka10101 mrkt_tp=%s 첫 항목: %s", mrkt_tp, _json.dumps(items[0], ensure_ascii=False)[:300])
-                    _log.info("[업종코드] ka10101 mrkt_tp=%s 항목수=%d", mrkt_tp, len(items))
-                all_items.extend(items)
-                cont_yn = resp.headers.get("cont-yn", "N")
-                next_key = resp.headers.get("next-key", "")
-                if cont_yn != "Y" or not next_key:
-                    break
-            _log.info("[업종코드] ka10101 mrkt_tp=%s 전체 %d개 조회 완료", mrkt_tp, len(all_items))
-            return all_items
-        except Exception as e:
-            _log.warning("[업종코드] ka10101 예외 mrkt_tp=%s: %s", mrkt_tp, e)
-            return []
 
     def fetch_ka10001_nxt_enable(self, stk_cd: str) -> str:
         """

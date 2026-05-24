@@ -221,27 +221,7 @@ class LsSectorProvider(SectorProvider):
         return None
 
     def fetch_unified_stock_data(self, *args, **kwargs) -> list[UnifiedStockRecord]:
-        if not self._rest_api:
-            return []
-        res = _run_async(self._rest_api.get_stocks(gubun="0"))
-        if not res or res.get("rsp_cd") not in ("00000", "00040"):
-            return []
-        
-        records = []
-        for item in res.get("t8436OutBlock", []):
-            code = item.get("shcode", "").strip()
-            name = item.get("hname", "").strip()
-            market = item.get("gubun", "").strip()
-            # gubun (1:코스피, 2:코스닥) -> marketCode: '0'=코스피, '10'=코스닥
-            mcode = "0" if market == "1" else ("10" if market == "2" else "")
-            records.append(UnifiedStockRecord(
-                code=code,
-                name=name,
-                market_code=mcode,
-                nxt_enable=False,
-                raw_item=item
-            ))
-        return records
+        return []
 
 
 # ── WebSocket Provider ────────────────────────────────────────────────
