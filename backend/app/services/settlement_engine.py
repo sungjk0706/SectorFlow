@@ -19,6 +19,8 @@ import logging
 from datetime import timedelta, timezone
 from pathlib import Path
 
+from backend.app.db.cache_db import get_kv, set_kv
+
 logger = logging.getLogger(__name__)
 
 # ── KST 타임존 ──────────────────────────────────────────────────────────────
@@ -29,8 +31,7 @@ BUY_COMMISSION = 0.00015       # 매수 수수료 0.015%
 SELL_COMMISSION = 0.00015      # 매도 수수료 0.015%
 SECURITIES_TAX = 0.002         # 증권거래세+농특세 0.20%
 
-# ── 영속화 경로 ──────────────────────────────────────────────────────────────
-_STATE_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "settlement_state.json"
+# ── 영속화 ──────────────────────────────────────────────────────────────
 
 
 # ── 모듈 레벨 상태 ──────────────────────────────────────────────────────────
@@ -169,40 +170,26 @@ def restore_state() -> None:
 # ── 영속화 ──────────────────────────────────────────────────────────────────
 
 def _persist() -> None:
-    """현재 상태를 settlement_state.json에 저장."""
+    """현재 상태를 SQLite KV 스토어에 저장."""
     data = {
         "accumulated_investment": _accumulated_investment,
         "orderable": _orderable,
         "initial_deposit": _initial_deposit,
     }
     try:
-        _STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(_STATE_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        set_kv("settlement_state", data)
     except Exception as e:
         logger.warning("[정산엔진] 상태 저장 실패: %s", e)
 
 
 def _load() -> None:
-    """settlement_state.json에서 상태 복원."""
+    """SQLite KV 스토어에서 상태 복원."""
     global _accumulated_investment, _orderable, _loaded, _initial_deposit
 
-    if not _STATE_PATH.is_file():
-        try:
-            from backend.app.core.settings_file import load_settings
-            s = load_settings()
-            _initial_deposit = int(s.get("test_virtual_deposit", 10_000_000) or 0)
-            _accumulated_investment = _initial_deposit
-            _orderable = _initial_deposit
-        except Exception:
-            _accumulated_investment = _initial_deposit
-            _orderable = _initial_deposit
-        _loaded = True
-        return
-
     try:
-        with open(_STATE_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        data = get_kv("settlement_state")
+        if not data:
+            raise FileNotFoundError("SQLite KV Store에서 settlement_state를 찾을 수 없습니다.")
 
         _initial_deposit = int(data.get("initial_deposit", _initial_deposit))
         # 신버전 파일 (accumulated_investment 키) 처리

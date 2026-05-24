@@ -500,10 +500,10 @@ function mount(container: HTMLElement): void {
   const settings = globalSettingsManager.getSettings()
   const isTestMode = settings?.trade_mode === 'test'
 
-  /* ── 상단 (테스트모드: 55%, 실전모드: 48%) ── */
+  /* ── 상단 (자연스러운 높이) ── */
   const upper = document.createElement('div')
   Object.assign(upper.style, {
-    flex: `0 0 ${isTestMode ? '55%' : '48%'}`,
+    flex: 'none',
     borderBottom: '1px solid #ddd',
     overflow: 'hidden',
     display: 'flex',

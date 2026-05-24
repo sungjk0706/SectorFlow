@@ -174,3 +174,21 @@
 - 검증 결과:
   - 테스트 전체 통과: 47/47 PASS
   - 테스트 시간: 12.34s
+
+### 13단계: SQLite 마이그레이션 후 업종순위 0종목 표시 원인 해결
+- 완료일: 2026-05-24
+- 수정 파일:
+  - `backend/app/core/avg_amt_cache.py` (5일평균 거래대금 단위 정규화/복구 헬퍼 추가)
+  - `backend/app/services/engine_service.py` (`_update_avg_amt_5d` 단일 진입점 정규화 적용)
+  - `backend/app/services/engine_cache.py` (stocks DB 5일평균 비정상 시 SectorSummary/avg_amt 캐시 복구)
+  - `backend/app/services/engine_bootstrap.py` (부트스트랩 DB 로드 경로 동일 복구 적용)
+  - `backend/app/services/market_close_pipeline.py` (확정 데이터 저장·메모리 반영 시 5일평균 정규화)
+- 원인:
+  - `backend/data/stocks.db`의 `stocks.avg_5d_trade_amount`가 1458종목 중 1457종목 0으로 저장되어 거래대금 필터 450억 통과 종목이 0개가 됨
+  - 백엔드가 빈 `sector-stocks-refresh`/`sector-scores`를 전송하여 프론트엔드 업종순위가 빈 화면으로 표시됨
+- 검증 결과:
+  - `py_compile`: SUCCESS
+  - 백엔드 관련 모듈 import: SUCCESS
+  - `sector_summary_cache` 복구 데이터: 160종목, usable=True
+  - 레이아웃 교집합 기준 450억 필터 통과: 159종목
+  - `npm run build`: FAIL (`frontend/src/components/common/data-table.ts:430`의 기존 `options` 미정의 오류)

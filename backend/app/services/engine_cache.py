@@ -26,7 +26,12 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
             load_layout_cache, load_snapshot_cache,
             load_stock_name_cache, load_market_map_cache,
         )
-        from backend.app.core.avg_amt_cache import load_avg_amt_cache
+        from backend.app.core.avg_amt_cache import (
+            is_avg_amt_5d_map_usable,
+            load_avg_amt_from_sector_summary_cache,
+            load_avg_amt_cache,
+            normalize_avg_amt_5d_value,
+        )
         from backend.app.core.industry_map import load_eligible_stocks_cache
         from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd, _base_stk_cd
         from backend.app.services.engine_strategy_core import make_detail
@@ -49,9 +54,9 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
                 cursor.execute("""
                     INSERT OR IGNORE INTO sectors (name)
                     SELECT DISTINCT sector FROM stocks
-                    WHERE sector IS NOT NULL AND sector != '' AND sector != '업종명없음'
+                    WHERE sector IS NOT NULL AND sector != '' AND sector != '기타'
                 """)
-                cursor.execute("INSERT OR IGNORE INTO sectors (name) VALUES ('업종명없음')")
+                cursor.execute("INSERT OR IGNORE INTO sectors (name) VALUES ('기타')")
                 conn.commit()
             except Exception as e:
                 logger.warning("[데이터준비] sectors 초기화 실패: %s", e)
@@ -72,7 +77,7 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
         if _db_stocks:
             for stock in _db_stocks:
                 cd = stock["code"]
-                _cached_avg[cd] = int(stock.get("avg_5d_trade_amount") or 0)
+                _cached_avg[cd] = normalize_avg_amt_5d_value(stock.get("avg_5d_trade_amount"))
                 _cached_high_5d[cd] = int(stock.get("high_5d_price") or 0)
                 detail = {
                     "name": stock.get("name", cd),
@@ -143,6 +148,17 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
                 logger.debug("[데이터준비] 종목명 보강 -- %d종목", _patched)
 
         # ── 5일 평균 + 5일 전고점 적재 ──
+        if _cached_avg is not None and not is_avg_amt_5d_map_usable(_cached_avg):
+            recovered_avg = await asyncio.to_thread(load_avg_amt_from_sector_summary_cache)
+            if is_avg_amt_5d_map_usable(recovered_avg):
+                _cached_avg = recovered_avg
+                logger.warning("[데이터준비] stocks DB 5일평균 비정상 -- SectorSummary 캐시에서 복구 (%d종목)", len(_cached_avg))
+            else:
+                cached_result = await asyncio.to_thread(load_avg_amt_cache)
+                if cached_result and is_avg_amt_5d_map_usable(cached_result[0]):
+                    _cached_avg, _cached_high_5d = cached_result
+                    logger.warning("[데이터준비] stocks DB 5일평균 비정상 -- avg_amt 캐시에서 복구 (%d종목)", len(_cached_avg))
+
         if _cached_avg is not None:
             es._update_avg_amt_5d(_cached_avg)
             logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 로드 -- %d종목", len(_cached_avg))

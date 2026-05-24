@@ -32,11 +32,9 @@ class RedirectFinder:
 if not any(isinstance(finder, RedirectFinder) for finder in sys.meta_path):
     sys.meta_path.insert(0, RedirectFinder())
 
-
 @pytest.fixture(autouse=True)
-def isolate_settlement_state(tmp_path, monkeypatch):
-    """settlement_engine._STATE_PATH를 임시 경로로 교체하여 실제 파일 보호."""
-    monkeypatch.setattr(
-        "app.services.settlement_engine._STATE_PATH",
-        tmp_path / "settlement_state.json",
-    )
+def setup_test_db():
+    """테스트용 SQLite DB 스키마 초기화."""
+    from backend.app.db.cache_db import init_cache_tables
+    init_cache_tables()
+    yield

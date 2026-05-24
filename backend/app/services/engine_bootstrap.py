@@ -10,6 +10,12 @@ from __future__ import annotations
 import asyncio
 
 from backend.app.core.logger import get_logger
+from backend.app.core.avg_amt_cache import (
+    is_avg_amt_5d_map_usable,
+    load_avg_amt_from_sector_summary_cache,
+    load_avg_amt_cache,
+    normalize_avg_amt_5d_value,
+)
 import backend.app.services.engine_state as _st
 
 logger = get_logger("engine")
@@ -95,6 +101,13 @@ async def _bootstrap_sector_stocks_async() -> None:
         from backend.app.core.industry_map import get_eligible_stocks
         from backend.app.core.sector_mapping import get_merged_sector
         stock_codes = get_eligible_stocks()  # {종목코드: ""} — 키만 사용
+        
+        if not stock_codes:
+            from backend.app.db.crud import get_all_stocks
+            _db_stocks = get_all_stocks()
+            if _db_stocks:
+                stock_codes = {row["code"]: "" for row in _db_stocks}
+                logger.info("[시작] 적격종목 캐시 없음 -- DB stocks 테이블 기반 임시 복구 (%d종목)", len(stock_codes))
 
         if stock_codes:
             auto_layout: list[tuple[str, str]] = []
@@ -123,6 +136,9 @@ async def _bootstrap_sector_stocks_async() -> None:
     codes: list[str] = [v for t, v in _st._sector_stock_layout if t == "code"]
     if not codes:
         logger.debug("[시작] 업종맵 종목 없음 -- 초기화 생략")
+        _broadcast_bootstrap_stage(6, "앱준비 완료")
+        _st._bootstrap_event.set()
+        _st._sector_summary_ready_event.set()
         return
 
     # ── WS 구독 구간 판정 (구간 안이면 확정데이터 시세 초기화) ──
@@ -231,9 +247,20 @@ async def _bootstrap_sector_stocks_async() -> None:
             _avg_map = {}
             _high_map = {}
             for row in _db_stocks:
-                cd = row["code"]
-                _avg_map[cd] = int(row.get("avg_5d_trade_amount") or 0)
-                _high_map[cd] = int(row.get("high_price") or 0)
+                cd = _format_kiwoom_reg_stk_cd(row["code"])
+                _avg_map[cd] = normalize_avg_amt_5d_value(row.get("avg_5d_trade_amount"))
+                _high_map[cd] = int(row.get("high_5d_price") or 0)
+
+            if not is_avg_amt_5d_map_usable(_avg_map):
+                recovered_avg = load_avg_amt_from_sector_summary_cache()
+                if is_avg_amt_5d_map_usable(recovered_avg):
+                    _avg_map = recovered_avg
+                    logger.warning("[시작] DB 5일평균 비정상 -- SectorSummary 캐시에서 복구 (%d종목)", len(_avg_map))
+                else:
+                    cached_result = load_avg_amt_cache()
+                    if cached_result and is_avg_amt_5d_map_usable(cached_result[0]):
+                        _avg_map, _high_map = cached_result
+                        logger.warning("[시작] DB 5일평균 비정상 -- avg_amt 캐시에서 복구 (%d종목)", len(_avg_map))
             
             _st._update_avg_amt_5d(_avg_map)
             _st._high_5d_cache.clear()

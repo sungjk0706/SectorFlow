@@ -66,6 +66,7 @@ function updateMaxTargetsStatus(scores: SectorScoreRow[]): void {
 /* ── mount / unmount ── */
 let settingsMgr: ReturnType<typeof createSettingsManager> | null = null
 let unsubStore: (() => void) | null = null
+let unsubUiStore: (() => void) | null = null
 let unsubSettings: (() => void) | null = null
 let saving = false
 let wsBadge: ReturnType<typeof createWsStatusBadge> | null = null
@@ -233,7 +234,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     const finalScore = s.final_score.toFixed(1)
     const riseRatio = s.rise_ratio.toFixed(1) + '%'
     const riseColor = s.rise_ratio > 50 ? 'red' : s.rise_ratio < 50 ? 'blue' : '#333'
-    const tradeAmt = Math.round(s.total_trade_amount / 100_000_000).toLocaleString()
+    const tradeAmt = Math.floor(s.total_trade_amount / 1_000_000).toLocaleString()
     const barWidth = `${Math.min((s.final_score / maxScore) * 100, 100)}%`
     const barColor = isUnranked ? '#dee2e6' : (s.rank <= maxTargets ? '#0d6efd' : '#adb5bd')
 
@@ -401,7 +402,7 @@ function mount(container: HTMLElement): void {
     ['width:40px;text-align:right;margin-right:12px;', '종목수'],
     ['width:48px;text-align:right;', '종합점수'],
     ['width:64px;text-align:right;', '상승비율'],
-    ['width:72px;text-align:right;', '거래대금(억)'],
+    ['width:72px;text-align:right;', '거래대금(백만)'],
   ]
   for (const [css, text] of headerDefs) {
     const sp = document.createElement('span')
@@ -443,9 +444,10 @@ function mount(container: HTMLElement): void {
     let prevSelectedSector = initUi.selectedSector
     let prevWsSubscribeStatus = initUi.wsSubscribeStatus
 
-    unsubStore = hotStore.subscribe((state) => {
-      const scoresChanged = state.sectorScores !== prevSectorScores
+    const checkAndRender = () => {
+      const state = hotStore.getState()
       const uiState = uiStore.getState()
+      const scoresChanged = state.sectorScores !== prevSectorScores
       const sectorChanged = uiState.selectedSector !== prevSelectedSector
       const wsStatusChanged = uiState.wsSubscribeStatus !== prevWsSubscribeStatus
       prevSectorScores = state.sectorScores
@@ -471,7 +473,10 @@ function mount(container: HTMLElement): void {
         updateRankingRows(latest.sectorScores, latestUi.selectedSector, maxTargets, latestUi.sectorScoresDelta)
         updateMaxTargetsStatus(latest.sectorScores)
       })
-    })
+    }
+
+    unsubStore = hotStore.subscribe(checkAndRender)
+    unsubUiStore = uiStore.subscribe(checkAndRender)
   }
 
   // 초기 렌더링
@@ -488,6 +493,7 @@ function unmount(): void {
   notifyPageInactive('sector-ranking')
   if (rafHandle !== null) { cancelAnimationFrame(rafHandle); rafHandle = null }
   if (unsubStore) { unsubStore(); unsubStore = null }
+  if (unsubUiStore) { unsubUiStore(); unsubUiStore = null }
   if (unsubSettings) { unsubSettings(); unsubSettings = null }
   if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }
   thresholdInput = null
