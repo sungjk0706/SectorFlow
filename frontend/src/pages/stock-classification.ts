@@ -412,7 +412,7 @@ function buildTripleHeader(): void {
   btn1.textContent = '⬇️ 확정시세+5일봉 다운로드'
   btn1.addEventListener('mouseenter', () => btn1.style.background = '#157347')
   btn1.addEventListener('mouseleave', () => btn1.style.background = '#198754')
-  btn1.addEventListener('click', () => onTriggerDownload('snapshot'))
+  btn1.addEventListener('click', () => onTriggerDownload())
 
   buttonContainer.appendChild(btn1)
   left.appendChild(buttonContainer)
@@ -454,7 +454,7 @@ function updateIndicatorBar(): void {
 }
 
 // buildSchedulerCard removed.
-async function onTriggerDownload(type: 'snapshot'): Promise<void> {
+async function onTriggerDownload(): Promise<void> {
   const label = '확정시세+5일봉 다운로드'
   const endpoint = '/api/stock-classification/trigger-snapshot-download'
 
