@@ -5,6 +5,9 @@ master_stocks_table의 day1~day5_amount, day1~day5_high 컬럼으로 변환
 """
 import sys
 from pathlib import Path
+from backend.app.core.logger import get_logger
+
+logger = get_logger("migrate")
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
@@ -17,20 +20,20 @@ def migrate_json_to_columns():
     cache_data = get_kv("avg_amt_5d_cache")
     
     if not cache_data:
-        print("[변환] kv_store에 avg_amt_5d_cache 데이터가 없습니다.")
+        logger.warning("[변환] kv_store에 avg_amt_5d_cache 데이터가 없습니다.")
         return
     
-    print(f"[변환] avg_amt_5d_cache 로드 완료 -- version={cache_data.get('version')}, date={cache_data.get('date')}")
+    logger.info("[변환] avg_amt_5d_cache 로드 완료 -- version=%s, date=%s", cache_data.get('version'), cache_data.get('date'))
     
     # 데이터 추출
     v2_data = cache_data.get("data", {})  # dict[str, list[int]]
     high_5d_arr = cache_data.get("high_5d_arr", {})  # dict[str, list[int]]
     
     if not v2_data:
-        print("[변환] data 필드가 비어있습니다.")
+        logger.warning("[변환] data 필드가 비어있습니다.")
         return
     
-    print(f"[변환] v2_data: {len(v2_data)}종목, high_5d_arr: {len(high_5d_arr)}종목")
+    logger.info("[변환] v2_data: %d종목, high_5d_arr: %d종목", len(v2_data), len(high_5d_arr))
     
     # master_stocks_table 업데이트
     conn = get_db_connection()
@@ -59,11 +62,11 @@ def migrate_json_to_columns():
             update_count += 1
         
         conn.commit()
-        print(f"[변환] 완료 -- {update_count}개 종목 업데이트")
+        logger.info("[변환] 완료 -- %d개 종목 업데이트", update_count)
         
     except Exception as e:
         conn.rollback()
-        print(f"[변환] 실패: {e}")
+        logger.error("[변환] 실패: %s", e, exc_info=True)
         raise
     finally:
         conn.close()

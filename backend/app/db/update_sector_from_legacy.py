@@ -4,6 +4,9 @@
 """
 import json
 from pathlib import Path
+from backend.app.core.logger import get_logger
+
+logger = get_logger("migrate")
 
 def update_sector_from_legacy():
     from backend.app.db.database import get_db_connection
@@ -14,7 +17,7 @@ def update_sector_from_legacy():
         data = json.load(f)
     
     stock_moves = data["stock_moves"]
-    print(f"[업데이트] 레거시 매핑 로드 완료 -- {len(stock_moves)}종목")
+    logger.info("[업데이트] 레거시 매핑 로드 완료 -- %d종목", len(stock_moves))
     
     # master_stocks_table 업데이트
     conn = get_db_connection()
@@ -31,17 +34,17 @@ def update_sector_from_legacy():
                 update_count += 1
         
         conn.commit()
-        print(f"[업데이트] 완료 -- {update_count}개 종목 업데이트")
+        logger.info("[업데이트] 완료 -- %d개 종목 업데이트", update_count)
         
         # 삼성전자 확인
         cursor.execute("SELECT sector FROM master_stocks_table WHERE code = '005930'")
         row = cursor.fetchone()
         if row:
-            print(f"[확인] 삼성전자(005930) sector: {row['sector']}")
+            logger.info("[확인] 삼성전자(005930) sector: %s", row['sector'])
         
     except Exception as e:
         conn.rollback()
-        print(f"[업데이트] 실패: {e}")
+        logger.error("[업데이트] 실패: %s", e, exc_info=True)
         raise
     finally:
         conn.close()
