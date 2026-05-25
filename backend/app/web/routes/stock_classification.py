@@ -57,9 +57,6 @@ class MoveStocksRequest(BaseModel):
     stock_codes: list[str]
     target_sector: str
 
-class DeleteCacheRequest(BaseModel):
-    type: str  # "snapshot" | "avg_amt"
-
 
 # ── WS 브로드캐스트 헬퍼 (Task 3.4) ────────────────────────────────
 
