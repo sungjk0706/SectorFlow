@@ -19,14 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class ParamDef:
-    name: str
-    type: str = "string"
-    required: bool = False
-    description: str = ""
-
-
-@dataclass
 class BrokerSpecRow:
     spec_name:       str
     method:          str          # GET | POST

@@ -188,8 +188,6 @@ async def run_engine_loop(es: ModuleType) -> None:
             return
 
         # REST/토큰 발급은 기준 증권사(broker_nm) 기준 유지
-        api_key    = settings.get(f"{broker_nm}_app_key", "")
-        api_secret = settings.get(f"{broker_nm}_app_secret", "")
 
         # ── 병렬 초기화: 캐시+앱준비 / 토큰 발급 / 브로커 스펙 로드 ──
         _t_parallel_start = time.perf_counter()
