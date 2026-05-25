@@ -99,8 +99,7 @@ let sectorRowMap: Map<string, HTMLElement> = new Map()
 let prevTargetSectors: Set<string> = new Set()
 let selectedTargetSector: string | null = null  // 우측 패널 선택된 대상 업종
 
-// 현재 상태 캐시
-let currentState: StockClassificationState = stockClassificationStore.getState()
+// 현재 상태 캐시 삭제 - 단일 진실 공급원 원칙: store만 참조
 
 /* ── 행 데이터 타입 ── */
 interface MasterRow {
@@ -187,7 +186,8 @@ export function createChip(code: string): HTMLElement {
   const stockName = stock?.name ?? code
 
   // 업종명 해석: stockMoves 우선, 없으면 getAllStocks().sector, sectors 리네임 적용
-  const { stockMoves, sectors } = currentState
+  const state = stockClassificationStore.getState()
+  const { stockMoves, sectors } = state
   let sectorName = stockMoves[code] ?? stock?.sector ?? ''
   if (sectors[sectorName]) sectorName = sectors[sectorName]
 
@@ -283,7 +283,8 @@ function updateStagingPanel(): void {
 
 /** Task 9.1: SSE 수신 시 모든 Chip의 업종명 텍스트만 갱신 (전체 리렌더링 금지) */
 function updateStagingChipSectors(): void {
-  const { stockMoves, sectors, deletedSectors } = currentState
+  const state = stockClassificationStore.getState()
+  const { stockMoves, sectors, deletedSectors } = state
   for (const [code, chip] of stagingChipMap) {
     const stock = getAllStocks().get(code)
     let sectorName = stockMoves[code] ?? stock?.sector ?? ''
@@ -300,7 +301,8 @@ function updateStagingChipSectors(): void {
 
 function countStocksBySector(): Record<string, number> {
   const counts: Record<string, number> = {}
-  const { stockMoves, sectors, deletedSectors, mergedSectors } = currentState
+  const state = stockClassificationStore.getState()
+  const { stockMoves, sectors, deletedSectors, mergedSectors } = state
   for (const s of mergedSectors) counts[s] = 0
 
   for (const [, stock] of getAllStocks()) {
@@ -314,7 +316,8 @@ function countStocksBySector(): Record<string, number> {
 }
 
 function getStocksForSector(sectorName: string): Array<{ code: string; name: string; market_type?: string; nxt_enable?: boolean }> {
-  const { stockMoves, sectors, deletedSectors } = currentState
+  const state = stockClassificationStore.getState()
+  const { stockMoves, sectors, deletedSectors } = state
   const result: Array<{ code: string; name: string; market_type?: string; nxt_enable?: boolean }> = []
 
   for (const [, stock] of getAllStocks()) {
@@ -447,7 +450,8 @@ function buildTripleHeader(): void {
 }
 
 function updateIndicatorBar(): void {
-  const { filter_summary } = currentState
+  const state = stockClassificationStore.getState()
+  const { filter_summary } = state
   if (indicatorLabel) {
     indicatorLabel.textContent = filter_summary || ''
   }
@@ -543,7 +547,8 @@ function buildSectorManageCard(): HTMLElement {
       }
 
       const q = query.toLowerCase()
-      const { stockMoves, sectors } = currentState
+      const state = stockClassificationStore.getState()
+      const { stockMoves, sectors } = state
       const results: SearchResultRow[] = []
 
       // 포괄적 검색: 괄호/공백으로 분리된 토큰 중 하나라도 매칭되면 결과에 포함
@@ -611,7 +616,8 @@ function buildSectorManageCard(): HTMLElement {
     // 현재 검색 결과에서 클릭된 행 찾기
     const q = searchInputRef?.getValue()?.toLowerCase() ?? ''
     if (!q) return
-    const { stockMoves, sectors } = currentState
+    const state = stockClassificationStore.getState()
+    const { stockMoves, sectors } = state
     const results: SearchResultRow[] = []
     const searchTokens = q.split(/[\s()（）]+/).filter(t => t.length > 0)
     for (const [, stock] of getAllStocks()) {
@@ -724,7 +730,8 @@ function buildSectorManageCard(): HTMLElement {
 
 function getActiveSectors(): string[] {
   const counts = countStocksBySector()
-  const allSectors = new Set(currentState.mergedSectors)
+  const state = stockClassificationStore.getState()
+  const allSectors = new Set(state.mergedSectors)
   for (const s of Object.keys(counts)) allSectors.add(s)
   return Array.from(allSectors).filter(s => s !== '').sort((a, b) => a.localeCompare(b))
 }
@@ -744,7 +751,8 @@ function updateMasterPanel(): void {
   const rows = buildMasterRows()
   masterTableRef.updateRows(rows)
   updateStatsLabel()
-  setControlsDisabled(!currentState.editWindowOpen)
+  const state = stockClassificationStore.getState()
+  setControlsDisabled(!state.editWindowOpen)
 }
 
 function updateStatsLabel(): void {
@@ -1080,7 +1088,8 @@ function updateCenterPanel(): void {
   detailTitleRef.textContent = `${selectedSector} 종목 목록 (${stocks.length}개)`
   detailTableRef.updateRows(stocks)
 
-  setControlsDisabled(!currentState.editWindowOpen)
+  const state = stockClassificationStore.getState()
+  setControlsDisabled(!state.editWindowOpen)
 }
 
 /* ── 8.5: tripleRight — Target_Sector_List ── */
@@ -1249,7 +1258,8 @@ function updateRightPanel(): void {
 
   updateTargetSectorList()
   updateAllInlineMoveButtons()
-  setControlsDisabled(!currentState.editWindowOpen)
+  const state = stockClassificationStore.getState()
+  setControlsDisabled(!state.editWindowOpen)
 }
 
 /** 이동 확인 팝업 메시지 생성 (순수 함수) */
@@ -1287,10 +1297,13 @@ async function onMoveStock(_e: MouseEvent, targetSector: string): Promise<void> 
     })
     handleMutationResult(lastRes)
 
-    // 낙관적 업데이트: SSE 수신 전 로컬 상태 즉시 변경하여 뷰에서 사라지게 함
+    // 낙관적 업데이트: store 상태 변경하여 뷰에서 사라지게 함
+    const state = stockClassificationStore.getState()
+    const newStockMoves = { ...state.stockMoves }
     for (const code of codes) {
-      currentState.stockMoves[code] = targetSector
+      newStockMoves[code] = targetSector
     }
+    stockClassificationStore.setState({ stockMoves: newStockMoves })
 
     if (moveSource.source === 'staging') {
       clearStaging()
@@ -1364,9 +1377,20 @@ function mount(_container: HTMLElement): void {
   stockClassificationStore.setState({ editWindowOpen: initialEditWindowOpen })
 
   // stockClassificationStore 구독
+  let prevState: StockClassificationState | null = null
   unsubCustom = stockClassificationStore.subscribe((state) => {
-    const prev = currentState
-    currentState = state
+    const prev = prevState
+    prevState = state
+
+    if (!prev) {
+      // 첫 호출: 초기 렌더링
+      updateStockNameIndex()
+      updateMasterPanel()
+      updateCenterPanel()
+      updateRightPanel()
+      updateStagingChipSectors()
+      return
+    }
 
     if (state.allStocks !== prev.allStocks || state.mergedSectors !== prev.mergedSectors || state.sectors !== prev.sectors || state.deletedSectors !== prev.deletedSectors || state.stockMoves !== prev.stockMoves) {
       if (state.allStocks !== prev.allStocks) {
@@ -1408,7 +1432,6 @@ function mount(_container: HTMLElement): void {
   })
 
   // 초기 렌더링 강제 실행 (초기 상태 반영)
-  currentState = stockClassificationStore.getState()
   updateStockNameIndex()
   updateIndicatorBar()
   updateMasterPanel()
