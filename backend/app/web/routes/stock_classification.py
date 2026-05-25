@@ -254,12 +254,12 @@ async def move_stocks(body: MoveStocksRequest, _: str = Depends(get_current_user
 
 @router.post("/trigger-snapshot-download")
 async def trigger_snapshot_download(_: str = Depends(get_current_user)):
-    """수동 확정시세 다운로드 실행"""
+    """수동 확정시세 다운로드 실행 (ka10081만)"""
     try:
         from backend.app.services import engine_service
         if getattr(engine_service, "_confirmed_refresh_running", False):
             return {"ok": False, "error": "전종목 재조회가 이미 진행 중입니다."}
-        
+
         engine_service._pending_stock_details.clear()
         engine_service._sector_stock_layout.clear()
         from backend.app.services.engine_account_notify import _rebuild_layout_cache
@@ -268,11 +268,10 @@ async def trigger_snapshot_download(_: str = Depends(get_current_user)):
         _ind_mod._eligible_stock_codes.clear()
         from backend.app.services.market_close_pipeline import fetch_unified_confirmed_data
         asyncio.create_task(fetch_unified_confirmed_data(engine_service))
-        _log.info("[업종관리] 수동 확정데이터 다운로드 시작")
+        _log.info("[업종관리] 수동 확정시세 다운로드 시작")
         return {"ok": True}
     except Exception as e:
-        _log.error("[업종관리] 수동 확정데이터 다운로드 실패: %s", e)
+        _log.error("[업종관리] 수동 확정시세 다운로드 실패: %s", e)
         return {"ok": False, "error": str(e)}
-
 
 

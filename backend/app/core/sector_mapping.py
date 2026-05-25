@@ -28,7 +28,7 @@ def get_merged_sector(stock_code: str) -> str:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT sector FROM stocks WHERE code = ?", (stock_code,))
+        cursor.execute("SELECT sector FROM master_stocks_table WHERE code = ?", (stock_code,))
         row = cursor.fetchone()
         if row and row["sector"]:
             return row["sector"]

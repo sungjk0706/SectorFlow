@@ -1,17 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-5일 평균 거래대금 저장데이터 — SQLite 기반 범용 모듈.
+5일 평균 거래대금 저장데이터 — completed_snapshot 테이블 기반 모듈.
 """
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
 from datetime import datetime
 
 from backend.app.core.trading_calendar import is_cache_valid, current_trading_date_str, _next_business_date
 from backend.app.db.database import get_db_connection
-from backend.app.db.cache_db import get_kv, set_kv, delete_kv
 
 try:
     from zoneinfo import ZoneInfo
@@ -42,8 +39,7 @@ def normalize_avg_amt_5d_value(value) -> int:
         return 0
     if v <= 0:
         return 0
-    if v > 10_000_000:
-        v = v / 100_000_000
+    # 백만원 단위 그대로 저장 (정규화 제거)
     return int(v)
 
 def normalize_avg_amt_5d_map(data: dict) -> dict[str, int]:
@@ -78,132 +74,44 @@ def load_avg_amt_from_sector_summary_cache() -> dict[str, int]:
         return {}
 
 # ── 저장데이터 저장/로드 ────────────────────────────────────────────────────────
-
-def load_avg_amt_cache(path=None) -> tuple[dict[str, int], dict[str, int]] | None:
-    raw = get_kv("avg_amt_5d_cache")
-    if not raw:
-        return None
-    try:
-        cached_date = raw.get("date", "")
-        data = raw.get("data")
-        if not isinstance(data, dict):
-            return None
-
-        is_v2 = raw.get("version") == 2
-        _h5d_raw = raw.get("high_5d")
-        high_5d: dict[str, int] = {}
-        if isinstance(_h5d_raw, dict):
-            high_5d = {str(k): int(v) for k, v in _h5d_raw.items() if isinstance(v, (int, float))}
-
-        if is_v2:
-            if not is_cache_valid(cached_date):
-                _log.info("[avg_amt_cache] 날짜 만료 -- 저장데이터 무효화 (cached=%s)", cached_date)
-                return None
-            result: dict[str, int] = {}
-            for k, v in data.items():
-                if isinstance(v, list) and v:
-                    valid = [x for x in v if isinstance(x, (int, float)) and x > 0]
-                    if valid:
-                        val = int(sum(valid) / len(valid))
-                        result[str(k)] = normalize_avg_amt_5d_value(val)
-                elif isinstance(v, (int, float)) and v > 0:
-                    result[str(k)] = normalize_avg_amt_5d_value(v)
-            _log.debug("[avg_amt_cache] v2 SQLite 로드 -- %d종목, high_5d=%d (cached=%s)", len(result), len(high_5d), cached_date)
-            return result, high_5d
-        else:
-            if not is_cache_valid(cached_date):
-                _log.info("[avg_amt_cache] v1 날짜 만료 -- 저장데이터 무효화 (cached=%s)", cached_date)
-                return None
-            return normalize_avg_amt_5d_map(data), high_5d
-    except Exception as e:
-        _log.warning("[avg_amt_cache] 로드 실패 -- %s", e)
-        return None
-
-def load_avg_amt_cache_v2(path=None) -> tuple[dict[str, list[int]], dict[str, list[int]]] | None:
-    raw = get_kv("avg_amt_5d_cache")
-    if not raw:
-        return None
-    try:
-        if raw.get("version") != 2:
-            return None
-        cached_date = raw.get("date", "")
-        data = raw.get("data")
-        if not isinstance(data, dict):
-            return None
-        result: dict[str, list[int]] = {}
-        for k, v in data.items():
-            if isinstance(v, list):
-                result[str(k)] = [int(x) for x in v]
-
-        _h5d_arr_raw = raw.get("high_5d_arr")
-        high_5d_arr: dict[str, list[int]] = {}
-        if isinstance(_h5d_arr_raw, dict):
-            for k, v in _h5d_arr_raw.items():
-                if isinstance(v, list):
-                    high_5d_arr[str(k)] = [int(x) for x in v]
-
-        if not is_cache_valid(cached_date):
-            _log.info("[avg_amt_cache_v2] 날짜 만료 -- stale 로드 (cached=%s, %d종목, high_5d_arr=%d)", cached_date, len(result), len(high_5d_arr))
-        else:
-            _log.debug("[avg_amt_cache_v2] 로드 -- %d종목, high_5d_arr=%d (cached=%s)", len(result), len(high_5d_arr), cached_date)
-        return result, high_5d_arr
-    except Exception as e:
-        _log.warning("[avg_amt_cache_v2] 로드 실패 -- %s", e)
-        return None
-
-def save_avg_amt_cache(data: dict[str, int], path=None) -> None:
-    payload = {"date": _kst_today_yyyymmdd(), "data": data}
-    set_kv("avg_amt_5d_cache", payload)
-    _log.info("[avg_amt_cache] SQLite 저장완료 -- %d종목", len(data))
-
-def save_avg_amt_cache_v2(data: dict[str, list[int]], date_str: str | None = None, path=None, *, high_5d: dict[str, int] | None = None, high_5d_arr: dict[str, list[int]] | None = None) -> None:
-    ds = date_str or _kst_today_yyyymmdd()
-    try:
-        existing = get_kv("avg_amt_5d_cache")
-        if existing and existing.get("version") == 2 and existing.get("date") == ds and existing.get("data") == data:
-            if high_5d is None or existing.get("high_5d") == high_5d:
-                if high_5d_arr is None or existing.get("high_5d_arr") == high_5d_arr:
-                    _log.info("[avg_amt_cache_v2] 데이터 동일 -- 저장 생략 (date=%s, %d종목)", ds, len(data))
-                    return
-
-        payload: dict = {"version": 2, "date": ds, "data": data}
-        if high_5d is not None:
-            payload["high_5d"] = high_5d
-        elif existing and isinstance(existing.get("high_5d"), dict):
-            payload["high_5d"] = existing["high_5d"]
-            
-        if high_5d_arr is not None:
-            payload["high_5d_arr"] = high_5d_arr
-        elif existing and isinstance(existing.get("high_5d_arr"), dict):
-            payload["high_5d_arr"] = existing["high_5d_arr"]
-            
-        set_kv("avg_amt_5d_cache", payload)
-        _log.info("[avg_amt_cache_v2] SQLite 저장 완료 -- %d종목 (date=%s)", len(data), ds)
-    except Exception as e:
-        _log.warning("[avg_amt_cache_v2] SQLite 저장 실패 -- %s", e)
-
-def avg_from_v2(v2_data: dict[str, list[int]]) -> dict[str, int]:
-    result: dict[str, int] = {}
-    for k, arr in v2_data.items():
-        if arr:
-            valid = [x for x in arr if isinstance(x, (int, float)) and x > 0]
-            if valid:
-                val = int(sum(valid) / len(valid))
-                result[str(k)] = normalize_avg_amt_5d_value(val)
-            else:
-                result[str(k)] = 0
-        else:
-            result[str(k)] = 0
-    return result
+# load_avg_amt_cache는 더 이상 사용하지 않음 (master_stocks_table 단일 진실 공급원)
+# load_avg_amt_cache_v2, save_avg_amt_cache_v2, avg_from_v2는 더 이상 사용하지 않음 (master_stocks_table 단일 진실 공급원)
 
 def load_high_5d_from_cache(path=None) -> dict[str, int] | None:
-    raw = get_kv("avg_amt_5d_cache")
-    if not raw or raw.get("version") != 2:
+    """master_stocks_table 테이블에서 5일 최고가 로드 (컬럼 방식)"""
+    try:
+        date_str = current_trading_date_str()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT code, day1_high, day2_high, day3_high, day4_high, day5_high
+            FROM master_stocks_table
+            WHERE date = ?
+        """, (date_str,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        if not rows:
+            _log.warning("[load_high_5d] 오늘 날짜의 데이터가 없습니다 (date=%s)", date_str)
+            return None
+        
+        result: dict[str, int] = {}
+        
+        for row in rows:
+            code = row["code"]
+            highs = [row["day1_high"], row["day2_high"], row["day3_high"], row["day4_high"], row["day5_high"]]
+            
+            valid_highs = [x for x in highs if isinstance(x, (int, float)) and x > 0]
+            if valid_highs:
+                result[code] = int(max(valid_highs))
+        
+        _log.debug("[load_high_5d] 로드 완료 -- %d종목 (date=%s)", len(result), date_str)
+        return result
+    except Exception as e:
+        _log.warning("[load_high_5d] 로드 실패 -- %s", e)
         return None
-    h5d = raw.get("high_5d")
-    if not isinstance(h5d, dict) or not h5d:
-        return None
-    return {str(k): int(v) for k, v in h5d.items() if isinstance(v, (int, float))}
 
 # ── 5일거래대금 이어받기 진행 파일 ────────────────────────────────────────
 
@@ -214,26 +122,58 @@ def save_avg_amt_progress(
     high_5d_arr: "dict[str, list[int]] | None" = None,
     latest_dict: "dict[str, dict] | None" = None,
 ) -> None:
+    """이어받기 기능 - completed_snapshot 테이블에 직접 저장 (컬럼 방식)"""
     try:
-        payload = {
-            "date": date,
-            "total": len(all_codes),
-            "completed": completed_codes,
-            "codes_hash": sorted(all_codes),
-        }
-        set_kv("avg_amt_5d_progress", payload)
-
-        if v2_data is not None:
-            data_payload = {
-                "date": date,
-                "v2_data": v2_data,
-                "high_cache": high_cache or {},
-                "high_5d_arr": high_5d_arr or {},
-                "latest_dict": latest_dict or {},
-            }
-            set_kv("avg_amt_5d_resume", data_payload)
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 진행 상황 저장을 위한 별도 테이블 생성
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS avg_amt_progress (
+                code TEXT PRIMARY KEY,
+                date TEXT,
+                completed INTEGER,
+                day1_amount REAL,
+                day2_amount REAL,
+                day3_amount REAL,
+                day4_amount REAL,
+                day5_amount REAL,
+                day1_high REAL,
+                day2_high REAL,
+                day3_high REAL,
+                day4_high REAL,
+                day5_high REAL
+            )
+        ''')
+        
+        # 완료된 종목 저장
+        for code in completed_codes:
+            if v2_data and code in v2_data:
+                amounts = v2_data[code]
+                highs = high_5d_arr.get(code, []) if high_5d_arr else []
+                
+                cursor.execute('''
+                    INSERT OR REPLACE INTO avg_amt_progress
+                    (code, date, completed, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount,
+                     day1_high, day2_high, day3_high, day4_high, day5_high)
+                    VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (code, date, 
+                      amounts[0] if len(amounts) > 0 else 0,
+                      amounts[1] if len(amounts) > 1 else 0,
+                      amounts[2] if len(amounts) > 2 else 0,
+                      amounts[3] if len(amounts) > 3 else 0,
+                      amounts[4] if len(amounts) > 4 else 0,
+                      highs[0] if len(highs) > 0 else 0,
+                      highs[1] if len(highs) > 1 else 0,
+                      highs[2] if len(highs) > 2 else 0,
+                      highs[3] if len(highs) > 3 else 0,
+                      highs[4] if len(highs) > 4 else 0))
+        
+        conn.commit()
+        conn.close()
+        _log.info("[avg_amt_progress] 저장 완료 -- %d/%d종목", len(completed), len(all_codes))
     except Exception as e:
-        _log.warning("[avg_amt_progress] SQLite 저장 실패: %s", e)
+        _log.warning("[avg_amt_progress] 저장 실패: %s", e)
 
 def _parse_hm(time_str: str) -> tuple[int, int]:
     try:
@@ -259,34 +199,66 @@ def _is_progress_valid(cached_date_str: str, ws_subscribe_start: str) -> bool:
         return False
 
 def load_avg_amt_progress(date: str, all_codes: list[str], ws_subscribe_start: str = "07:50") -> "tuple[set[str], dict[str, list[int]], dict[str, int], dict[str, list[int]], dict[str, dict]] | None":
-    raw = get_kv("avg_amt_5d_progress")
-    if not raw:
-        return None
+    """이어받기 기능 - avg_amt_progress 테이블에서 로드 (컬럼 방식)"""
     try:
-        cached_date = raw.get("date", "")
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT date FROM avg_amt_progress LIMIT 1")
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return None
+        
+        cached_date = row["date"]
         if not _is_progress_valid(cached_date, ws_subscribe_start):
             _log.info("[avg_amt_progress] 만료 또는 날짜 불일치 (cached=%s)", cached_date)
+            conn.close()
             return None
-        cached_hash = raw.get("codes_hash", [])
-        if set(cached_hash) != set(all_codes):
-            _log.info("[avg_amt_progress] 종목 목록 불일치")
-            return None
-        completed = set(raw.get("completed", []))
-
+        
+        cursor.execute("SELECT code FROM avg_amt_progress WHERE completed = 1")
+        rows = cursor.fetchall()
+        completed = {row["code"] for row in rows}
+        
         v2_data, high_cache, high_5d_arr, latest_dict = {}, {}, {}, {}
-        rraw = get_kv("avg_amt_5d_resume")
-        if rraw:
-            v2_data   = rraw.get("v2_data", {})
-            high_cache  = rraw.get("high_cache", {})
-            high_5d_arr = rraw.get("high_5d_arr", {})
-            latest_dict = rraw.get("latest_dict", {})
-
-        _log.info("[avg_amt_progress] SQLite 이어받기 로드 -- %d/%d종목 완료", len(completed), len(all_codes))
+        
+        cursor.execute("""
+            SELECT code, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount,
+                   day1_high, day2_high, day3_high, day4_high, day5_high
+            FROM avg_amt_progress
+            WHERE completed = 1
+        """)
+        rows = cursor.fetchall()
+        
+        for row in rows:
+            code = row["code"]
+            amounts = [row["day1_amount"], row["day2_amount"], row["day3_amount"], row["day4_amount"], row["day5_amount"]]
+            highs = [row["day1_high"], row["day2_high"], row["day3_high"], row["day4_high"], row["day5_high"]]
+            
+            valid_amounts = [int(x) for x in amounts if isinstance(x, (int, float)) and x > 0]
+            if valid_amounts:
+                v2_data[code] = valid_amounts
+            
+            valid_highs = [int(x) for x in highs if isinstance(x, (int, float)) and x > 0]
+            if valid_highs:
+                high_5d_arr[code] = valid_highs
+                high_cache[code] = int(max(valid_highs))
+        
+        conn.close()
+        _log.info("[avg_amt_progress] 이어받기 로드 -- %d/%d종목 완료", len(completed), len(all_codes))
         return completed, v2_data, high_cache, high_5d_arr, latest_dict
     except Exception as e:
         _log.warning("[avg_amt_progress] 로드 실패: %s", e)
         return None
 
 def clear_avg_amt_progress() -> None:
-    delete_kv(["avg_amt_5d_progress", "avg_amt_5d_resume"])
-    _log.debug("[avg_amt_progress] SQLite 임시 데이터 삭제 완료")
+    """이어받기 기능 - avg_amt_progress 테이블 삭제"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DROP TABLE IF EXISTS avg_amt_progress")
+        conn.commit()
+        conn.close()
+        _log.debug("[avg_amt_progress] 테이블 삭제 완료")
+    except Exception as e:
+        _log.warning("[avg_amt_progress] 삭제 실패: %s", e)

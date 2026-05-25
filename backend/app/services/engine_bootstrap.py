@@ -13,7 +13,6 @@ from backend.app.core.logger import get_logger
 from backend.app.core.avg_amt_cache import (
     is_avg_amt_5d_map_usable,
     load_avg_amt_from_sector_summary_cache,
-    load_avg_amt_cache,
     normalize_avg_amt_5d_value,
 )
 import backend.app.services.engine_state as _st
@@ -72,7 +71,7 @@ async def _bootstrap_sector_stocks_async() -> None:
     from backend.app.core.sector_stock_cache import (
         load_layout_cache, save_layout_cache,
     )
-    from backend.app.core.avg_amt_cache import load_avg_amt_cache
+    # load_avg_amt_cache는 더 이상 사용하지 않음 (master_stocks_table 단일 진실 공급원)
 
     # ── 0단계: 레이아웃 캐시 확인 → 사용 시 업종맵 API 스킵 ──────────────
     _broadcast_bootstrap_stage(1, "레이아웃 저장데이터 확인")
@@ -155,7 +154,7 @@ async def _bootstrap_sector_stocks_async() -> None:
         logger.debug("[시작] 데이터준비 사용 -- 확정데이터·거래대금 데이터 재로드 생략 (%d종목)", len(_st._pending_stock_details))
         _broadcast_bootstrap_stage(4, "시세 데이터 반영")
     else:
-        raise RuntimeError("completed_snapshot 테이블에 데이터가 없습니다. 장마감 후 다시 시도하세요.")
+        raise RuntimeError("master_stocks_table 테이블에 데이터가 없습니다. 장마감 후 다시 시도하세요.")
 
     if not _preboot_snapshot_hit:
         # ── 4단계: 거래대금 버킷 세팅 및 화면 표시 ──────────────────────────
@@ -227,13 +226,7 @@ async def _bootstrap_sector_stocks_async() -> None:
             _avg_map = recovered_avg
             logger.warning("[시작] SectorSummary 캐시에서 5일평균 복구 (%d종목)", len(_avg_map))
         else:
-            # avg_amt_cache에서 복구 시도
-            cached_result = load_avg_amt_cache()
-            if cached_result and is_avg_amt_5d_map_usable(cached_result[0]):
-                _avg_map, _high_map = cached_result
-                logger.warning("[시작] avg_amt 캐시에서 5일평균 복구 (%d종목)", len(_avg_map))
-            else:
-                raise RuntimeError("5일평균 캐시가 없습니다. 장마감 후 다시 시도하세요.")
+            raise RuntimeError("5일평균 캐시가 없습니다. 장마감 후 다시 시도하세요.")
         
         _st._update_avg_amt_5d(_avg_map)
         _st._high_5d_cache.clear()

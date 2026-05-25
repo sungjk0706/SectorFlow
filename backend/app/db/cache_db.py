@@ -20,16 +20,7 @@ def init_cache_tables():
         )
     ''')
     
-    # 3. 5일 평균 거래대금 캐시 테이블
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS avg_amt_cache (
-            code TEXT PRIMARY KEY,
-            date TEXT,
-            amt_array TEXT
-        )
-    ''')
-    
-    # 4. 시장 구분 맵 테이블
+    # 3. 시장 구분 맵 테이블
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS market_map (
             code TEXT PRIMARY KEY,
@@ -97,12 +88,12 @@ def delete_kv(keys: list[str]) -> None:
 
 
 def create_completed_snapshot_table():
-    """completed_snapshot 테이블 생성 (읽기 전용 스냅샷)"""
+    """master_stocks_table 테이블 생성 (메인 마스터 테이블)"""
     conn = get_db_connection()
     cursor = conn.cursor()
     
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS completed_snapshot (
+        CREATE TABLE IF NOT EXISTS master_stocks_table (
             code TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             sector TEXT,
@@ -113,22 +104,32 @@ def create_completed_snapshot_table():
             trade_amount REAL,
             avg_5d_trade_amount REAL,
             high_5d_price REAL,
+            day1_amount REAL,
+            day2_amount REAL,
+            day3_amount REAL,
+            day4_amount REAL,
+            day5_amount REAL,
+            day1_high REAL,
+            day2_high REAL,
+            day3_high REAL,
+            day4_high REAL,
+            day5_high REAL,
             date TEXT
         )
     ''')
     
     # 인덱스 생성
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_sector ON completed_snapshot(sector)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_date ON completed_snapshot(date)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_sector_date ON completed_snapshot(sector, date)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_sector ON master_stocks_table(sector)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_date ON master_stocks_table(date)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_sector_date ON master_stocks_table(sector, date)')
     
     conn.commit()
     conn.close()
-    _log.info("completed_snapshot 테이블 초기화 완료.")
+    _log.info("master_stocks_table 테이블 초기화 완료.")
 
 
 def load_completed_snapshot() -> list[tuple[str, dict]] | None:
-    """completed_snapshot 테이블에서 완성된 스냅샷 로드"""
+    """master_stocks_table 테이블에서 완성된 스냅샷 로드"""
     try:
         from backend.app.core.trading_calendar import current_trading_date_str
         
@@ -140,15 +141,28 @@ def load_completed_snapshot() -> list[tuple[str, dict]] | None:
         cursor.execute("""
             SELECT code, name, sector, cur_price, change, change_rate, 
                    strength, trade_amount, avg_5d_trade_amount, high_5d_price
-            FROM completed_snapshot
+            FROM master_stocks_table
             WHERE date = ?
         """, (date_str,))
         
         rows = cursor.fetchall()
+        
+        # 오늘 날짜의 데이터가 없으면 최신 데이터 로드
+        if not rows:
+            _log.warning("[master_stocks_table] 오늘 날짜의 스냅샷이 없습니다 (date=%s), 최신 데이터 로드 시도", date_str)
+            cursor.execute("""
+                SELECT code, name, sector, cur_price, change, change_rate, 
+                       strength, trade_amount, avg_5d_trade_amount, high_5d_price
+                FROM master_stocks_table
+                ORDER BY date DESC
+                LIMIT 1
+            """)
+            rows = cursor.fetchall()
+        
         conn.close()
         
         if not rows:
-            _log.warning("[completed_snapshot] 오늘 날짜의 스냅샷이 없습니다 (date=%s)", date_str)
+            _log.warning("[master_stocks_table] 데이터가 없습니다")
             return None
         
         result = []
@@ -166,11 +180,11 @@ def load_completed_snapshot() -> list[tuple[str, dict]] | None:
             }
             result.append((row["code"], detail))
         
-        _log.info("[completed_snapshot] 로드 완료 -- %d종목 (date=%s)", len(result), date_str)
+        _log.info("[master_stocks_table] 로드 완료 -- %d종목", len(result))
         return result
         
     except Exception as e:
-        _log.warning("[completed_snapshot] 로드 실패: %s", e)
+        _log.warning("[master_stocks_table] 로드 실패: %s", e)
         return None
 
 

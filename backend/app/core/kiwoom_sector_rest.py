@@ -63,7 +63,7 @@ def fetch_ka10081_daily_and_5d_data(
 ) -> Optional[dict]:
     """
     ka10081(주식일봉차트조회요청) 단건 조회.
-    장외 시간 확정 종가·등락률·거래대금 및 5일치 평균/고가를 한 번에 계산 반환.
+    장외 시간 확정 종가·등락률·거래대금만 반환 (5일데이터 제외).
     """
     if not api._ensure_token():
         return None
@@ -140,15 +140,6 @@ def fetch_ka10081_daily_and_5d_data(
             trade_amt = _si(latest.get("trde_prica") or 0) * 1_000_000
             high_price = _si(latest.get("high_pric") or 0)
 
-            # 5일 치 평균 거래대금 및 최고가 계산 (최대 5행)
-            recent_5 = rows[:5]
-            highs_5d = [_si(r.get("high_pric") or 0) for r in recent_5]
-            amts_5d_raw = [_si(r.get("trde_prica") or 0) for r in recent_5]  # 백만원 단위
-            
-            high_price_5d = max(highs_5d) if highs_5d else 0
-            # 5일 평균 거래대금: 백만원 단위를 100으로 나누어 '억' 단위로 저장
-            avg_amt_5d = sum(amts_5d_raw) // len(amts_5d_raw) // 100 if amts_5d_raw else 0
-
             return {
                 "cur_price": close_px,
                 "sign": sign,
@@ -157,14 +148,104 @@ def fetch_ka10081_daily_and_5d_data(
                 "trade_amount": trade_amt,
                 "high_price": high_price,
                 "prev_close": prev_close,
-                "high_price_5d": high_price_5d,
-                "avg_amt_5d": avg_amt_5d,
-                "highs_5d_array": highs_5d,
-                "amts_5d_array": amts_5d_raw,
             }
         except Exception as e:
             _log.warning("[ka10081] 예외 시도%d %s/%s: %s", attempt + 1, log_cd, api_cd, e)
-            time.sleep(0.3 * (attempt + 1))
+            # 지수 백오프: 1초, 2초, 4초
+            backoff = min(2 ** attempt, 4)
+            time.sleep(backoff)
+    return None
+
+
+def fetch_ka10081_daily_5d_data(
+    api: "KiwoomRestAPI",
+    stk_cd: str,
+    qry_dt: str,
+    *,
+    http_timeout: float = 10.0,
+    _raw_cd: str = "",  # 원본 코드 (로그용)
+) -> Optional[dict]:
+    """
+    ka10081(주식일봉차트조회요청) 단건 조회.
+    최근 5개 일봉에서 5일 평균 거래대금 및 최고가를 계산 반환.
+    """
+    if not api._ensure_token():
+        return None
+
+    base = api.base_url.rstrip("/")
+    url = f"{base}/api/dostk/chart"
+
+    raw = str(stk_cd).strip().upper()
+    api_cd = raw
+    if raw.isdigit():
+        api_cd_sor = f"{raw.zfill(6)[-6:]}_AL"
+    else:
+        api_cd_sor = raw
+    log_cd = _raw_cd or api_cd
+
+    headers = {
+        "Content-Type": "application/json;charset=UTF-8",
+        "authorization": f"Bearer {api._token_info.token}",
+        "api-id": "ka10081",
+        "cont-yn": "N",
+        "next-key": "",
+    }
+    body = {"stk_cd": api_cd_sor, "base_dt": qry_dt, "upd_stkpc_tp": "1"}
+
+    for attempt in range(3):
+        try:
+            resp = requests.post(url, headers=headers, json=body, timeout=http_timeout)
+            if resp.status_code == 429:
+                wait = 8 * (attempt + 1)
+                _log.warning("[ka10081-5d] 429 -- %ds 대기 후 재시도 (%s/%s)", wait, log_cd, api_cd)
+                time.sleep(wait)
+                continue
+            if resp.status_code != 200:
+                _log.warning("[ka10081-5d] 실패[HTTP] 코드=%s -- %s (api:%s)", resp.status_code, log_cd, api_cd)
+                return None
+            data = resp.json()
+            rc = str(data.get("return_code") or data.get("rt_cd") or "0")
+            if rc not in ("0", "00", ""):
+                _log.warning("[ka10081-5d] 실패[API] rc=%s msg=%s -- %s (api:%s)", rc, data.get("return_msg", ""), log_cd, api_cd)
+                return None
+
+            body_data = data.get("body") or data
+            rows = body_data.get("stk_dt_pole_chart_qry") or body_data.get("output") or []
+            if not rows or not isinstance(rows, list):
+                _log.warning("[ka10081-5d] 실패[데이터없음] 응답행 없음 -- %s (api:%s)", log_cd, api_cd)
+                return None
+
+            # 내림차순(최신순) 정렬 보장
+            date_key = "stk_bsns_date" if "stk_bsns_date" in rows[0] else "dt" if "dt" in rows[0] else "date"
+            if rows and len(rows) > 1 and date_key in rows[0] and date_key in rows[-1]:
+                if str(rows[0][date_key]) < str(rows[-1][date_key]):
+                    rows = list(reversed(rows))
+
+            # 최근 5개 추출
+            recent_5 = rows[:5]
+            if len(recent_5) < 5:
+                _log.warning("[ka10081-5d] 데이터 부족 -- %d개 (필요 5개) -- %s", len(recent_5), log_cd)
+                return None
+
+            # 5일 고가/거래대금 추출
+            highs_5d = [_si(r.get("high_pric") or 0) for r in recent_5]
+            amts_5d_raw = [_si(r.get("trde_prica") or 0) for r in recent_5]  # 백만원 단위
+            amts_5d = [amt * 1_000_000 for amt in amts_5d_raw]  # 원단위 변환
+
+            high_price_5d = max(highs_5d) if highs_5d else 0
+            # 5일 평균 거래대금: 억원 단위로 저장 (원 ÷ 1억)
+            avg_amt_5d = sum(amts_5d) // 5 // 100_000_000 if amts_5d else 0
+
+            return {
+                "high_price_5d": high_price_5d,
+                "avg_amt_5d": avg_amt_5d,
+                "highs_5d_array": highs_5d,
+                "amts_5d_array": amts_5d,
+            }
+        except Exception as e:
+            _log.warning("[ka10081-5d] 예외 시도%d %s/%s: %s", attempt + 1, log_cd, api_cd, e)
+            backoff = min(2 ** attempt, 4)
+            time.sleep(backoff)
     return None
 
 
@@ -173,7 +254,7 @@ def fetch_ka10081_sector_all(
     krx_codes: list[str],
     qry_dt: str,
     *,
-    interval_sec: float = 0.3,
+    interval_sec: float = 0.33,
     on_progress: "Callable[[int, int], None] | None" = None,
     resume_codes: "set[str] | None" = None,
 ) -> dict[str, dict]:
@@ -205,7 +286,7 @@ def fetch_ka10081_sector_all(
     remaining_codes = [cd for cd in krx_codes if cd not in completed_codes]
 
     for cd in remaining_codes:
-        detail = fetch_ka10081_daily_and_5d_data(api, cd, qry_dt, _raw_cd=cd)
+        detail = fetch_ka10081_daily_5d_data(api, cd, qry_dt, _raw_cd=cd)
         if detail:
             result[cd] = detail
         else:
@@ -216,7 +297,7 @@ def fetch_ka10081_sector_all(
         if (done - starting_count) % 20 == 0 and done > starting_count:
             save_progress_cache(qry_dt, list(result.keys()), krx_codes, result)
             _pct = int(done / total * 100) if total else 0
-            _log.info("[ka10081] 전종목 확정시세 다운로드 중 (%d/%d, %d%%)", done, total, _pct)
+            _log.info("[ka10081] 전종목 5일봉 다운로드 중 (%d/%d, %d%%)", done, total, _pct)
             if on_progress:
                 on_progress(done, total)
 
@@ -320,7 +401,9 @@ def fetch_ka10099_stock_name_map(
                 break
             except Exception as e:
                 _log.warning("[ka10099-name] 예외 시도%d %s: %s", attempt + 1, label, e)
-                time.sleep(0.5 * (attempt + 1))
+                # 지수 백오프: 1초, 2초, 4초
+                backoff = min(2 ** attempt, 4)
+                time.sleep(backoff)
 
         # 코스피→코스닥 사이 간격
         time.sleep(0.5)
@@ -353,71 +436,190 @@ def fetch_ka10099_unified(
         base = api.base_url.rstrip("/")
         url = f"{base}/api/dostk/stkinfo"
 
+        cont_yn = "N"
+        next_key = ""
+        market_count = 0
+
+        while True:
+            headers = {
+                "Content-Type": "application/json;charset=UTF-8",
+                "authorization": f"Bearer {api._token_info.token}",
+                "api-id": "ka10099",
+                "cont-yn": cont_yn,
+                "next-key": next_key,
+            }
+            body = {"mrkt_tp": mrkt_tp}
+
+            for attempt in range(3):
+                try:
+                    resp = requests.post(url, headers=headers, json=body, timeout=http_timeout)
+                    if resp.status_code == 429:
+                        wait = 8 * (attempt + 1)
+                        _log.warning("[전종목목록] 429 %s -- %ds 대기", label, wait)
+                        time.sleep(wait)
+                        continue
+                    if resp.status_code != 200:
+                        _log.warning("[전종목목록] HTTP %s -- %s", resp.status_code, label)
+                        break
+                    data = resp.json()
+                    items = data.get("list") or []
+                    count = 0
+                    for item in items:
+                        if not isinstance(item, dict):
+                            continue
+                        cd = str(item.get("code") or "").strip().lstrip("A")
+                        if not cd:
+                            continue
+                        # 알파벳 포함 여부에 따라 정규화 분기 (2024년 신규 종목코드 대응)
+                        if cd.isdigit():
+                            c6 = cd.zfill(6)[-6:]  # 기존 숫자코드: 6자리 패딩
+                        else:
+                            c6 = cd.upper()  # 알파벳 코드: 원문 대문자 유지
+
+                        # 종목명 파싱 [출처: kiwoom_sector_rest.py:220-225]
+                        nm = ""
+                        for key in ("name", "hname", "stk_nm"):
+                            v = item.get(key)
+                            if v and str(v).strip():
+                                nm = str(v).strip()
+                                break
+
+                        # 시장구분 [출처: stock_filter.py:62]
+                        mc = str(item.get("marketCode") or "").strip()
+
+                        # NXT 중복상장 여부 [출처: kiwoom_rest.py:621]
+                        nxt = str(item.get("nxtEnable") or "N").strip().upper() == "Y"
+
+                        result.append(UnifiedStockRecord(
+                            code=c6,
+                            name=nm,
+                            market_code=mc,
+                            nxt_enable=nxt,
+                            raw_item=item,
+                        ))
+                        count += 1
+                    market_count += count
+                    _log.info("[전종목목록] %s -- %d종목 (누적 %d)", label, count, market_count)
+                    
+                    # 연속조회 확인
+                    resp_cont_yn = resp.headers.get("cont-yn", "N")
+                    resp_next_key = resp.headers.get("next-key", "")
+                    
+                    if resp_cont_yn == "Y" and resp_next_key:
+                        cont_yn = "Y"
+                        next_key = resp_next_key
+                        _log.info("[전종목목록] %s -- 연속조회 계속 (next-key: %s)", label, next_key[:20] + "..." if len(next_key) > 20 else next_key)
+                        break  # 다음 while 루프로 계속
+                    else:
+                        # 연속조회 종료
+                        cont_yn = "N"
+                        next_key = ""
+                        break  # while 루프 종료
+                except Exception as e:
+                    _log.warning("[전종목목록] 예외 시도%d %s: %s", attempt + 1, label, e)
+                    # 지수 백오프: 1초, 2초, 4초
+                    backoff = min(2 ** attempt, 4)
+                    time.sleep(backoff)
+            else:
+                # 재시도 모두 실패
+                _log.warning("[전종목목록] %s -- 재시도 모두 실패, 연속조회 중단", label)
+                break
+            
+            # 연속조회 종료 확인
+            if cont_yn == "N":
+                break
+
+        # 코스피→코스닥 사이 간격
+        time.sleep(0.5)
+
+    _log.info("[전종목목록] 전체 -- %d종목", len(result))
+    return result
+
+
+def fetch_ka10100_stock_info(
+    api: "KiwoomRestAPI",
+    stk_cd: str,
+    *,
+    http_timeout: float = 10.0,
+) -> Optional[dict]:
+    """
+    ka10100(종목정보조회) 단건 조회.
+
+    Parameters
+    ----------
+    api : KiwoomRestAPI
+        KiwoomRestAPI 인스턴스
+    stk_cd : str
+        종목코드 6자리
+    http_timeout : float
+        HTTP 타임아웃 (초)
+
+    Returns
+    -------
+    Optional[dict]
+        응답 데이터 딕셔너리 또는 None (실패 시)
+    """
+    if not api._ensure_token():
+        _log.warning("[ka10100] 토큰 없음 -- 조회 생략")
+        return None
+
+    base = api.base_url.rstrip("/")
+    url = f"{base}/api/dostk/stkinfo"
+
+    cont_yn = "N"
+    next_key = ""
+    result = None
+
+    while True:
         headers = {
             "Content-Type": "application/json;charset=UTF-8",
             "authorization": f"Bearer {api._token_info.token}",
-            "api-id": "ka10099",
-            "cont-yn": "N",
-            "next-key": "",
+            "cont-yn": cont_yn,
+            "next-key": next_key,
+            "api-id": "ka10100",
         }
-        body = {"mrkt_tp": mrkt_tp}
+        body = {"stk_cd": stk_cd}
 
         for attempt in range(3):
             try:
                 resp = requests.post(url, headers=headers, json=body, timeout=http_timeout)
                 if resp.status_code == 429:
                     wait = 8 * (attempt + 1)
-                    _log.warning("[전종목목록] 429 %s -- %ds 대기", label, wait)
+                    _log.warning("[ka10100] 429 -- %ds 대기 (%s)", wait, stk_cd)
                     time.sleep(wait)
                     continue
                 if resp.status_code != 200:
-                    _log.warning("[전종목목록] HTTP %s -- %s", resp.status_code, label)
+                    _log.warning("[ka10100] HTTP %s -- %s", resp.status_code, stk_cd)
                     break
                 data = resp.json()
-                items = data.get("list") or []
-                count = 0
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    cd = str(item.get("code") or "").strip().lstrip("A")
-                    if not cd:
-                        continue
-                    # 알파벳 포함 여부에 따라 정규화 분기 (2024년 신규 종목코드 대응)
-                    if cd.isdigit():
-                        c6 = cd.zfill(6)[-6:]  # 기존 숫자코드: 6자리 패딩
-                    else:
-                        c6 = cd.upper()  # 알파벳 코드: 원문 대문자 유지
-
-                    # 종목명 파싱 [출처: kiwoom_sector_rest.py:220-225]
-                    nm = ""
-                    for key in ("name", "hname", "stk_nm"):
-                        v = item.get(key)
-                        if v and str(v).strip():
-                            nm = str(v).strip()
-                            break
-
-                    # 시장구분 [출처: stock_filter.py:62]
-                    mc = str(item.get("marketCode") or "").strip()
-
-                    # NXT 중복상장 여부 [출처: kiwoom_rest.py:621]
-                    nxt = str(item.get("nxtEnable") or "N").strip().upper() == "Y"
-
-                    result.append(UnifiedStockRecord(
-                        code=c6,
-                        name=nm,
-                        market_code=mc,
-                        nxt_enable=nxt,
-                        raw_item=item,
-                    ))
-                    count += 1
-                _log.info("[전종목목록] %s -- %d종목", label, count)
-                break
+                result = data
+                
+                # 연속조회 확인
+                resp_cont_yn = resp.headers.get("cont-yn", "N")
+                resp_next_key = resp.headers.get("next-key", "")
+                
+                if resp_cont_yn == "Y" and resp_next_key:
+                    cont_yn = "Y"
+                    next_key = resp_next_key
+                    _log.info("[ka10100] %s -- 연속조회 계속 (next-key: %s)", stk_cd, next_key[:20] + "..." if len(next_key) > 20 else next_key)
+                    break  # 다음 while 루프로 계속
+                else:
+                    # 연속조회 종료
+                    cont_yn = "N"
+                    next_key = ""
+                    break  # while 루프 종료
             except Exception as e:
-                _log.warning("[전종목목록] 예외 시도%d %s: %s", attempt + 1, label, e)
-                time.sleep(0.5 * (attempt + 1))
+                _log.warning("[ka10100] 예외 시도%d %s: %s", attempt + 1, stk_cd, e)
+                # 지수 백오프: 1초, 2초, 4초
+                backoff = min(2 ** attempt, 4)
+                time.sleep(backoff)
+        else:
+            # 재시도 모두 실패
+            _log.warning("[ka10100] %s -- 재시도 모두 실패", stk_cd)
+            break
+        
+        # 연속조회 종료 확인
+        if cont_yn == "N":
+            break
 
-        # 코스피→코스닥 사이 간격
-        time.sleep(0.5)
-
-    _log.info("[전종목목록] 전체 -- %d종목", len(result))
     return result

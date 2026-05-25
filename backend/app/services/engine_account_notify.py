@@ -115,13 +115,6 @@ def _rebuild_layout_cache(layout: list) -> None:
         logger.warning("[캐시] _layout_code_set 재구축 실패 (이전 캐시 유지)", exc_info=True)
 
 
-# ── 데스크톱 콜백 등록 함수 (no-op, 시그니처 유지) ──────────────────────────
-
-def register_desktop_account_notifier(
-    fn: Callable[[str | None, dict], None] | None,
-) -> None:
-    """레거시 no-op. 데스크톱 UI 제거로 더 이상 사용되지 않음."""
-    pass
 
 
 def register_desktop_trade_price_notifier(

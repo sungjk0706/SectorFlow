@@ -280,6 +280,21 @@ class KiwoomSectorProvider(SectorProvider):
             resume_codes=resume_codes
         )
 
+    def fetch_sector_all_5d(
+        self,
+        krx_codes: list[str],
+        qry_dt: str,
+        interval_sec: float = 0.33,
+        on_progress: Callable[[int, int], None] | None = None,
+        resume_codes: set[str] | None = None,
+    ) -> dict[str, dict]:
+        if self._rest_api is None:
+            return {}
+        return self._rest_api.fetch_ka10081_sector_all(
+            krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress,
+            resume_codes=resume_codes
+        )
+
     def fetch_industry_stocks(self, inds_cd: str) -> list[dict]:
         # ka20002 삭제됨 — 빈 리스트 반환
         return []
