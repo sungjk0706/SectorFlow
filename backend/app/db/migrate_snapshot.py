@@ -6,6 +6,9 @@ completed_snapshot → master_stocks_table 마이그레이션 스크립트
 import sys
 import sqlite3
 from pathlib import Path
+from backend.app.core.logger import get_logger
+
+logger = get_logger("migrate")
 
 # 프로젝트 루트 경로
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -26,7 +29,7 @@ def migrate_to_master_stocks_table():
         # completed_snapshot 테이블 존재 확인
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='completed_snapshot'")
         if not cursor.fetchone():
-            print("[마이그레이션] completed_snapshot 테이블이 존재하지 않습니다.")
+            logger.warning("[마이그레이션] completed_snapshot 테이블이 존재하지 않습니다.")
             return
         
         # completed_snapshot에서 데이터 읽기
@@ -38,7 +41,7 @@ def migrate_to_master_stocks_table():
         rows = cursor.fetchall()
         
         if not rows:
-            print("[마이그레이션] completed_snapshot 테이블에 데이터가 없습니다.")
+            logger.warning("[마이그레이션] completed_snapshot 테이블에 데이터가 없습니다.")
             return
         
         # master_stocks_table에 INSERT OR REPLACE
@@ -77,11 +80,11 @@ def migrate_to_master_stocks_table():
             insert_count += 1
         
         conn.commit()
-        print(f"[마이그레이션] 완료 -- {insert_count}개 행 이전 완료")
+        logger.info("[마이그레이션] 완료 -- %d개 행 이전 완료", insert_count)
         
     except Exception as e:
         conn.rollback()
-        print(f"[마이그레이션] 실패: {e}")
+        logger.error("[마이그레이션] 실패: %s", e, exc_info=True)
         raise
     finally:
         conn.close()

@@ -250,7 +250,7 @@ def setup_loguru(log_level: str = "DEBUG") -> None:
 
     _loguru_logger.add(
         _stdout_utf8,
-        level="INFO",
+        level=log_level,
         format="<green>{time:HH:mm:ss}</green> [<level>{extra[level_kr]}</level>] {message}",
         colorize=True,
         filter=_inject_kr_level,
@@ -265,11 +265,9 @@ def setup_loguru(log_level: str = "DEBUG") -> None:
     )
 
     # ── 3. 파일 — DEBUG 전체 (trading_debug.log, 일별 분할, 50MB 로테이션, 1일 보관) ─────
-    # OPTIMIZATION: DEBUG 로그 과다로 인한 디스크 I/O 지연 방지를 위해 INFO 레벨로 상향
-    # 필요시 DEBUG 레벨로 복원 가능 (level="DEBUG")
     _loguru_logger.add(
         _debug_file_sink,
-        level="INFO",  # DEBUG → INFO 변경 (성능 최적화)
+        level=log_level,
         format=_FILE_FORMAT,
         colorize=False,
     )
