@@ -84,10 +84,14 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
 
-  updateSettings: (data: Record<string, unknown>) =>
-    request<{ ok: boolean }>('/api/settings', {
-      method: 'POST',
-      body: JSON.stringify(data),
+
+  getSettings: () =>
+    request<Record<string, unknown>>('/api/settings'),
+
+  patchSettingField: (fieldName: string, value: unknown) =>
+    request<{ ok: boolean }>(`/api/settings/${fieldName}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ value }),
     }),
 
   resetTestData: () =>

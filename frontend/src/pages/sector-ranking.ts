@@ -97,40 +97,7 @@ interface RowCache {
 }
 let rowCaches: (RowCache | null)[] = []
 
-// Debounced settings save
-let pendingSettings: Record<string, any> = {}
-let saveTimer: ReturnType<typeof setTimeout> | null = null
-
-async function flushSettingsSave(): Promise<void> {
-  if (Object.keys(pendingSettings).length === 0 || !settingsMgr) return
-  const dataToSave = { ...pendingSettings }
-  pendingSettings = {}
-  
-  saving = true
-  try {
-    const res = await settingsMgr.saveSection(dataToSave)
-    toastResult(res)
-  } finally {
-    saving = false
-    // If new changes accumulated during the save, flush again
-    if (Object.keys(pendingSettings).length > 0) {
-      saveTimer = setTimeout(flushSettingsSave, 500)
-    } else {
-      const latest = settingsMgr.getSettings()
-      if (latest) {
-        syncFromSettings(latest)
-      }
-    }
-  }
-}
-
-function queueSettingSave(key: string, value: any): void {
-  pendingSettings[key] = value
-  if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(flushSettingsSave, 500)
-}
-
-function onNumChange(key: string, value: number): void {
+async function onNumChange(key: string, value: number): Promise<void> {
   let v = value
   if (key === 'sector_max_targets') {
     if (v < 1) {
@@ -138,12 +105,18 @@ function onNumChange(key: string, value: number): void {
     }
   }
   currentVals[key] = v
-  queueSettingSave(key, v)
+  if (settingsMgr) {
+    const res = await settingsMgr.saveSection({ [key]: v })
+    toastResult(res)
+  }
 }
 
-function saveWeightsNow(ratio: number): void {
+async function saveWeightsNow(ratio: number): Promise<void> {
   const serverWeights = { rise_ratio: toServerValue(100 - ratio), total_trade_amount: toServerValue(ratio) }
-  queueSettingSave('sector_weights', serverWeights)
+  if (settingsMgr) {
+    const res = await settingsMgr.saveSection({ sector_weights: serverWeights })
+    toastResult(res)
+  }
 }
 
 function updateSliderUI(): void {
@@ -153,7 +126,7 @@ function updateSliderUI(): void {
 }
 
 function syncFromSettings(s: AppSettings): void {
-  if (saving || Object.keys(pendingSettings).length > 0) return
+  if (saving) return
   for (const k of NUM_KEYS) {
     const newValue = (s as Record<string, unknown>)[k];
     currentVals[k] = newValue !== undefined ? Number(newValue) : currentVals[k];
@@ -279,7 +252,6 @@ function mount(container: HTMLElement): void {
   rankRows = []
   rowCaches = []
   saving = false
-  pendingSettings = {}
 
   const root = document.createElement('div')
 
@@ -514,7 +486,6 @@ function unmount(): void {
   rankRows = []
   rowCaches = []
   saving = false
-  pendingSettings = {}
 }
 
 export default { mount, unmount }
