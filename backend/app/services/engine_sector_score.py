@@ -649,7 +649,6 @@ def build_buy_targets(
 
     all_stocks.sort(key=_proximity_key)
 
-    primary_label = sort_key_label(effective_keys[0]) if effective_keys else sort_key_label("change_rate")
     pass_rank = 1
     blocked_rank = 1
     for stock, sc in all_stocks:
