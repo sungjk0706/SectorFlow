@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""설정 변경 라우터 — GET /settings는 WS initial-snapshot으로 대체됨."""
+"""설정 라우터 — RESTful 아키텍처 (GET 조회, PATCH 개별 수정)."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,22 +9,44 @@ from backend.app.web.deps import get_current_user
 router = APIRouter(prefix="/api", tags=["settings"])
 
 
-@router.post("/settings")
-async def update_settings(body: dict, _: str = Depends(get_current_user)):
+@router.get("/settings")
+async def get_settings(_: str = Depends(get_current_user)):
+    """전체 설정 조회 (마스킹된 민감 필드 포함)."""
     try:
+        from backend.app.core.settings_store import build_masked_settings_dict
+        return build_masked_settings_dict(username="admin")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"설정 조회 실패: {e}",
+        )
+
+
+@router.patch("/settings/{field_name}")
+async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_current_user)):
+    """개별 필드 수정 (RESTful 표준)."""
+    try:
+        if "value" not in body:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="value 필드가 필요합니다",
+            )
+
         from backend.app.core.settings_store import apply_settings_updates, after_settings_persisted
         from backend.app.services.core_queues import get_control_queue
 
-        changed_keys = set(body.keys())
-        apply_settings_updates(body)
+        data = {field_name: body["value"]}
+        changed_keys = {field_name}
+        apply_settings_updates(data)
 
-        # control_queue에 설정 변경 신호 전송 (Step 6: 컨트롤 플레인 우회 배관 연동)
-        # P0-1: PriorityQueue 전환 - 우선순위 0 (최우선) 튜플 구조
+        # control_queue에 설정 변경 신호 전송
         import time
         control_queue = get_control_queue()
         await control_queue.put((0, time.monotonic(), {
             "type": "UPDATE_CONFIG",
-            "payload": body,
+            "payload": data,
             "changed_keys": changed_keys,
         }))
 
