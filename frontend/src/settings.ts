@@ -69,8 +69,9 @@ export function createSettingsManager(store: StoreApi<UIState> = uiStore): Setti
   async function saveSection(data: Record<string, unknown>): Promise<SaveResult> {
     if (Object.keys(data).length === 0) return { ok: true }
     try {
-      await api.updateSettings(data)
-      // 저장 성공 시 로컬 settings에 즉시 병합
+      for (const [key, value] of Object.entries(data)) {
+        await api.patchSettingField(key, value)
+      }
       if (localSettings) {
         localSettings = { ...localSettings, ...data } as AppSettings
         notify()
