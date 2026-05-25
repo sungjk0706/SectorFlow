@@ -25,7 +25,7 @@ def batch_update_avg_5d(avg_map: dict) -> int:
     cursor = conn.cursor()
     try:
         cursor.executemany(
-            "UPDATE stocks SET avg_5d_trade_amount = ? WHERE code = ?",
+            "UPDATE master_stocks_table SET avg_5d_trade_amount = ? WHERE code = ?",
             [(float(v), k) for k, v in avg_map.items()],
         )
         conn.commit()

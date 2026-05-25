@@ -78,6 +78,8 @@ def market_sell(settings: dict, access_token: str, code: str, qty: int) -> dict:
     return send_order(settings, access_token, "SELL", code, qty, price=0, trde_tp="3")
 
 
+
+
 def get_unexecuted_orders(settings: dict, access_token: str, code: str = "") -> dict:
     host = build_broker_urls("kiwoom")["rest_base"]
     acnt_no = str(settings.get("kiwoom_account_no", "") or "")

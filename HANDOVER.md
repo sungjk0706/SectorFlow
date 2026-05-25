@@ -100,15 +100,22 @@
   - 0J/0D 핸들러 이관: SUCCESS
 
 ## 현재 상태
-- 작업 중인 기능: 없음 (2차 리팩토링 전체 완료)
-- 진행률: P0-1, P0-2, P1-3, P1-4, P2-5 완료 (5/5 단계)
+- 작업 중인 기능: 없음 (조사 및 원복 완료)
+- 진행률: 100%
 - 마지막 커밋: 없음 (git commit 필요)
 
 ## 다음 단계
-- 2차 리팩토링 전체 완료. 다음 작업 대기 중.
+1. 장마감(15:30) 이후 ka10086 최신 데이터 반영 확인
+2. 5일봉 데이터 DB 저장 로직 재검증 (기동 시 자동 다운로드 로직 추가 필요)
+3. 업종명 분류 문제 복구 (레거시 sector_custom.json 사용)
 
 ## 미해결 문제
-- 없음
+- 5일봉 데이터 DB 저장: master_stocks_table에 avg_5d_trade_amount가 0으로 저장됨
+  - 원인: fetch_5d_data_only는 수동 요청 시에만 실행됨, 기동 시 자동 실행 로직 없음
+  - 해결 방안: 기동 시 5일봉 데이터 다운로드 자동 실행 로직 추가 필요
+- 업종명 분류 문제: 모든 종목이 "기타"로 분류됨
+  - 원인: sector_custom.json이 없고, stocks 테이블에도 sector 데이터가 없음
+  - 복구 계획: 레거시 sector_custom.json 사용하여 completed_snapshot 업데이트
 
 ## 주의 사항
 - DB 파일 위치: `data/stocks.db`
@@ -196,3 +203,88 @@
   - `sector_summary_cache` 복구 데이터: 160종목, usable=True
   - 레이아웃 교집합 기준 450억 필터 통과: 159종목
   - `npm run build`: SUCCESS
+
+### 14단계: 업종명 분류 문제 조사 (진행 중)
+- 완료일: 2026-05-25
+- 조사 내용:
+  - 완료된 조사:
+    - completed_snapshot 테이블 sector 컬럼 존재 확인 (backend/app/db/cache_db.py:108)
+    - sector 데이터 저장 로직 확인 (market_close_pipeline.py:429-433)
+    - get_merged_sector() 함수 분석 (sector_mapping.py:15-40)
+    - ka10099 API 응답 파싱 확인 (kiwoom_sector_rest.py:414-420)
+    - UnifiedStockRecord sector 필드 확인 (broker_providers.py:25-31)
+    - 레거시 프로젝트 sector_custom.json 확인 (/Users/sungjk0706/Desktop/SectorFlow1/backend/data/sector_custom.json)
+    - 현재 프로젝트 sector_custom.json 미존재 확인
+  - 근본 원인:
+    - 현재 프로젝트는 사용자 커스텀 업종명을 사용하지만, sector_custom.json이 없음
+    - sector_mapping.py는 stocks 테이블만 참조하지만, stocks 테이블에도 sector 데이터가 없음
+    - 따라서 모든 종목이 "기타"로 분류됨
+  - 복구 계획:
+    - 레거시 sector_custom.json의 stock_moves (종목코드 → 업종명 매핑)를 사용하여 completed_snapshot 업데이트
+    - 현재 프로젝트에 sector_custom.json 관리 모듈 도입 (레거시 sector_custom_data.py 참고)
+    - get_merged_sector() 함수가 sector_custom.json을 참조하도록 수정
+  - 예상 결과:
+    - 업데이트 대상 종목 수: 약 800개
+    - 업데이트 후 "기타" 잔여 종목: 약 600개
+- 수정 파일 (예정):
+  - backend/app/core/sector_mapping.py (sector_custom.json 참조 추가)
+  - backend/app/core/sector_custom_data.py (신규 생성, 레거시 참고)
+- 검증 결과:
+  - 조사 완료, 복구 계획 수립 완료
+
+### 15단계: 5일봉 데이터 DB 저장 문제 조사 (완료)
+- 완료일: 2026-05-25
+- 문제 증상:
+  - 5일봉 데이터 다운로드 완료 확인 (사용자 눈으로 확인)
+  - master_stocks_table에 avg_5d_trade_amount가 0으로 저장됨 (1458종목 중 1457종목)
+  - day1~5_amount, day1~5_high도 대부분 0으로 저장됨
+- 조사 내용:
+  - 완료된 조사:
+    - master_stocks_table 저장 로직 확인 (market_close_pipeline.py:536-554)
+    - _apply_5d_to_memory 함수 확인 (market_close_pipeline.py:194-268)
+    - fetch_ka10086_daily_5d_data 반환 데이터 확인 (kiwoom_sector_rest.py:233-237)
+    - fetch_5d_data_only 함수 확인 (market_close_pipeline.py:939-960)
+    - fetch_5d_data_only 호출처 확인 (stock_classification.py:288-289)
+    - 백엔드 로그 파일 확인 (trading_2026-05-25.log)
+  - 근본 원인:
+    - fetch_5d_data_only는 수동 요청 시에만 실행됨 (stock_classification.py)
+    - 기동 시에는 자동으로 실행되지 않음
+    - 사용자 로그에 "[타이머] 5일봉 데이터 메모리 및 DB 반영" 로그 없음
+    - 따라서 _apply_5d_to_memory가 호출되지 않음
+    - es._amts_5d_arrays, es._highs_5d_arrays가 비어있음
+    - master_stocks_table에 0으로 저장됨
+  - 해결 방안:
+    - 기동 시 5일봉 데이터 다운로드 자동 실행 로직 추가 필요
+    - 또는 수동 다운로드 후 DB 저장 로직 확인 필요
+- 수정 파일 (예정):
+  - backend/app/services/market_close_pipeline.py (기동 시 자동 다운로드 로직 추가)
+- 검증 결과:
+  - 조사 완료, 해결 방안 수립 완료
+
+### 16단계: ka10086 vs ka10081 비교 조사 및 원복 (완료)
+- 완료일: 2026-05-25
+- 조사 내용:
+  - 완료된 조사:
+    - ka10086 API 특성: 일별집계성 지표, 장마감 후 정산 데이터 반영
+    - ka10081 API 특성: 일봉 차트 데이터, 장중에도 데이터 반영 가능
+    - 키움 답변 확인: ka10081로 5일봉 구현 가능 (최근 5개 일봉 추출, max/sum 집계)
+    - DB 데이터 비교: ka10081(현재가)은 20260526, ka10086(5일봉)은 4월 데이터
+    - ka10086 원인: 공휴일 연속으로 장마감 후 정산 데이터가 반영되지 않음
+  - 시도한 작업:
+    - ka10081로 5일봉 데이터 수집 구현 (fetch_ka10081_daily_5d_data 함수 추가)
+    - ka10086 관련 함수 삭제 및 ka10081로 대체
+    - 테스트 코드 작성 시도 (import 오류로 실행 실패)
+    - 전체 원복 (ka10086으로 복원)
+  - 결론:
+    - ka10086은 장마감 후 정산 데이터 반영 (현재 공휴일 연속으로 4월 데이터만 존재)
+    - ka10081은 장중에도 데이터 반영 가능하지만, 실시간성 보장 없음
+    - 장마감(15:30) 이후 재다운로드 시 ka10086 최신 데이터 반영 예정
+- 수정 파일 (원복 완료):
+  - backend/app/core/kiwoom_sector_rest.py (ka10086으로 복원)
+  - backend/app/core/kiwoom_providers.py (ka10086으로 복원)
+  - backend/app/core/kiwoom_rest.py (ka10086으로 복원)
+  - backend/app/services/market_close_pipeline.py (테스트 코드 제거)
+  - test_*.py 파일 삭제
+- 검증 결과:
+  - py_compile: SUCCESS
+  - 원복 완료
