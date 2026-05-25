@@ -50,7 +50,7 @@ async def start_oms_loop(es: ModuleType) -> None:
 
     _oms_running = True
     _oms_task = asyncio.get_running_loop().create_task(_oms_loop_impl(es))
-    logger.info("[OMS] 루프 시작")
+    logger.debug("[OMS] 루프 시작")
 
 
 async def stop_oms_loop() -> None:
@@ -64,7 +64,7 @@ async def stop_oms_loop() -> None:
             await _oms_task
         except asyncio.CancelledError:
             pass
-    logger.info("[OMS] 루프 종료")
+    logger.debug("[OMS] 루프 종료")
 
 
 async def _oms_loop_impl(es: ModuleType) -> None:
@@ -95,7 +95,7 @@ async def _oms_loop_impl(es: ModuleType) -> None:
                 logger.error("[OMS] 처리 예외 (계속): %s", e, exc_info=True)
     finally:
         _oms_running = False
-        logger.info("[OMS] 루프 종료")
+        logger.debug("[OMS] 루프 종료")
 
 
 async def _reconciliation_on_startup(
