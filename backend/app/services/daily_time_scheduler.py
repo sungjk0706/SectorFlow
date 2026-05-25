@@ -440,13 +440,11 @@ def retry_pipeline_catchup_after_bootstrap() -> None:
     # 하나라도 None(만료)이면 확정 데이터 조회 실행
     from backend.app.core.sector_stock_cache import load_stock_name_cache, load_market_map_cache
     from backend.app.core.industry_map import load_eligible_stocks_cache
-    from backend.app.core.avg_amt_cache import load_avg_amt_cache
     from backend.app.services import engine_service
 
     _stock_name = load_stock_name_cache()
     _eligible_stocks = load_eligible_stocks_cache()
     _market_map = load_market_map_cache()
-    _avg_amt = load_avg_amt_cache()
 
     _expired = []
     if _stock_name is None:
@@ -455,8 +453,6 @@ def retry_pipeline_catchup_after_bootstrap() -> None:
         _expired.append("industry_map")
     if _market_map is None:
         _expired.append("market_map")
-    if _avg_amt is None:
-        _expired.append("avg_amt")
 
     if not _expired:
         # 모든 캐시 유효 — 확정 갱신 완료로 간주

@@ -16,12 +16,12 @@ _DATA_DIR      = Path(__file__).resolve().parent.parent.parent / "data"
 _SETTINGS_PATH = _DATA_DIR / "settings.json"
 
 
-def is_root_settings_profile(profile: Optional[str]) -> bool:
-    """단일 파일 모드: 항상 data/settings.json 만 사용 (쿼리 profile 값은 무시)."""
+def is_root_settings_profile() -> bool:
+    """단일 파일 모드: 항상 data/settings.json 만 사용."""
     return True
 
 
-def settings_path_for_profile(profile: Optional[str], username: str) -> Path:
+def settings_path_for_profile(username: str) -> Path:
     """실제 읽기/쓰기 대상 settings.json 경로 (로깅·진단용). 항상 루트 파일."""
     return _SETTINGS_PATH
 

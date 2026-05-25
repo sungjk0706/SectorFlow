@@ -392,7 +392,7 @@ class KiwoomRestAPI:
         return self._paginated_request(api_id, body=body)
 
     def fetch_ka10081_daily_price(self, stk_cd: str, qry_dt: str) -> Optional[dict]:
-        """ka10081 단건 조회 -- 장외 시간 확정 종가·등락률·거래대금 및 5일치 평균 반환."""
+        """ka10081 단건 조회 -- 장외 시간 확정 종가·등락률·거래대금 반환 (5일데이터 제외)."""
         return _ka10081_fetch_single(self, stk_cd, qry_dt)
 
     def fetch_ka10081_sector_all(
@@ -403,7 +403,7 @@ class KiwoomRestAPI:
         on_progress: "Callable[[int, int], None] | None" = None,
         resume_codes: "set[str] | None" = None,
     ) -> dict[str, dict]:
-        """전체 종목 ka10081 순차 조회 -- 장외 시간 확정 데이터 및 5일 캐시 채우기용."""
+        """전체 종목 ka10081 순차 조회 -- 장외 시간 확정 데이터용."""
         return _ka10081_fetch_all(self, krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress, resume_codes=resume_codes)
 
     def fetch_ka10099_stock_name_map(self) -> dict[str, str]:

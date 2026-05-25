@@ -29,7 +29,6 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
         from backend.app.core.avg_amt_cache import (
             is_avg_amt_5d_map_usable,
             load_avg_amt_from_sector_summary_cache,
-            load_avg_amt_cache,
             normalize_avg_amt_5d_value,
         )
         from backend.app.core.industry_map import load_eligible_stocks_cache
@@ -37,14 +36,13 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
         from backend.app.services.engine_strategy_core import make_detail
 
         # ── 테이블 초기화 ──
-        from backend.app.db.models import create_stocks_table, create_sectors_table, create_system_settings_table
-        from backend.app.db.cache_db import create_completed_snapshot_table
+        from backend.app.db.models import create_sectors_table, create_system_settings_table
+        from backend.app.db.cache_db import create_completed_snapshot_table as create_master_stocks_table
         
         # 테이블이 없으면 생성
-        await asyncio.to_thread(create_stocks_table)
         await asyncio.to_thread(create_sectors_table)
         await asyncio.to_thread(create_system_settings_table)
-        await asyncio.to_thread(create_completed_snapshot_table)
+        await asyncio.to_thread(create_master_stocks_table)
 
         # sectors 테이블 초기화 로직
         def _init_sectors():
@@ -54,7 +52,7 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
             try:
                 cursor.execute("""
                     INSERT OR IGNORE INTO sectors (name)
-                    SELECT DISTINCT sector FROM completed_snapshot
+                    SELECT DISTINCT sector FROM master_stocks_table
                     WHERE sector IS NOT NULL AND sector != '' AND sector != '기타'
                 """)
                 cursor.execute("INSERT OR IGNORE INTO sectors (name) VALUES ('기타')")
@@ -65,13 +63,13 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
                 conn.close()
         await asyncio.to_thread(_init_sectors)
         
-        # ── completed_snapshot 로드 (Phase 2.2) ──
-        from backend.app.db.cache_db import load_completed_snapshot
-        _cached_snapshot = await asyncio.to_thread(load_completed_snapshot)
+        # ── master_stocks_table 로드 (Phase 2.2) ──
+        from backend.app.db.cache_db import load_completed_snapshot as load_master_stocks
+        _cached_snapshot = await asyncio.to_thread(load_master_stocks)
         
-        # completed_snapshot이 없으면 앱 기동 실패 (명확한 에러)
+        # master_stocks_table이 없으면 앱 기동 실패 (명확한 에러)
         if _cached_snapshot is None or len(_cached_snapshot) == 0:
-            raise RuntimeError("completed_snapshot 테이블에 데이터가 없습니다. 장마감 후 다시 시도하세요.")
+            raise RuntimeError("master_stocks_table 테이블에 데이터가 없습니다. 장마감 후 다시 시도하세요.")
         
         # ── 5일평균/고가 로드 (avg_amt_cache에서 별도 로드) ──
         _cached_avg = {}
@@ -155,45 +153,18 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
                 except Exception as _e:
                     logger.warning("[데이터준비] stocks DB avg_5d_trade_amount 복구 데이터 반영 실패: %s", _e)
             else:
-                cached_result = await asyncio.to_thread(load_avg_amt_cache)
-                if cached_result and is_avg_amt_5d_map_usable(cached_result[0]):
-                    _cached_avg, _cached_high_5d = cached_result
-                    logger.warning("[데이터준비] stocks DB 5일평균 비정상 -- avg_amt 캐시에서 복구 (%d종목)", len(_cached_avg))
+                logger.warning("[데이터준비] stocks DB 5일평균 비정상 -- 백그라운드 갱신 예정")
 
         if _cached_avg is not None:
             es._update_avg_amt_5d(_cached_avg)
             logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 로드 -- %d종목", len(_cached_avg))
         else:
-            from backend.app.core.avg_amt_cache import load_avg_amt_cache_v2, avg_from_v2
-            _stale_result = await asyncio.to_thread(load_avg_amt_cache_v2)
-            _stale_v2 = _stale_result[0] if _stale_result else None
-            if _stale_v2 and len(_stale_v2) > 100:
-                _avg_map = avg_from_v2(_stale_v2)
-                es._update_avg_amt_5d(_avg_map)
-                logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 만료 -- stale 데이터 즉시 로드 (%d종목)", len(_avg_map))  
-            else:
-                logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 미스 -- 백그라운드 갱신 예정")
+            logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 미스 -- 백그라운드 갱신 예정")
 
         if _cached_high_5d:
             es._high_5d_cache.clear()
             es._high_5d_cache.update(_cached_high_5d)
             logger.debug("[데이터준비] 5일고가 저장데이터 로드 -- %d종목", len(_cached_high_5d))
-
-        # ── 5일봉 배열 로드 (롤링용) ──
-        from backend.app.core.avg_amt_cache import load_avg_amt_cache_v2
-        cached_arrays = await asyncio.to_thread(load_avg_amt_cache_v2)
-        if cached_arrays:
-            amts_5d_arrays, highs_5d_arrays = cached_arrays
-            if amts_5d_arrays:
-                if not hasattr(es, "_amts_5d_arrays"):
-                    es._amts_5d_arrays = {}
-                es._amts_5d_arrays.update(amts_5d_arrays)
-                logger.debug("[데이터준비] 5일거래대금 배열 로드 -- %d종목", len(amts_5d_arrays))
-            if highs_5d_arrays:
-                if not hasattr(es, "_highs_5d_arrays"):
-                    es._highs_5d_arrays = {}
-                es._highs_5d_arrays.update(highs_5d_arrays)
-                logger.debug("[데이터준비] 5일고가 배열 로드 -- %d종목", len(highs_5d_arrays))
 
         # ── 시장구분 적재 ──
         if _cached_market:

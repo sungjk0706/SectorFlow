@@ -29,6 +29,7 @@ _BLOCKED_STATE_KEYWORDS: list[str] = [
     "거래정지",
     "불성실공시",
     "상장폐지",
+    "상장폐지예고",
     "정리매매",
     "투자경고",
     "투자위험",
@@ -66,6 +67,13 @@ def is_excluded(item: dict, stk_cd: str) -> tuple[bool, str]:
     if mc and mc not in _ALLOWED_MARKET_CODES:
         label = _MARKET_CODE_LABELS.get(mc, mc)
         return True, f"marketCode={mc}({label})"
+
+    # ── 0-1) marketName 비주식 분류 체크 ─────────────────────────────
+    market_name = str(item.get("marketName") or "").strip().lower()
+    non_equity_keywords = ["etf", "etn", "elw", "리츠", "reit", "k-otc", "kots", "코넥스"]
+    for kw in non_equity_keywords:
+        if kw in market_name:
+            return True, f"비주식분류={market_name}"
 
     # ── 1) orderWarning 체크 ─────────────────────────────────────────
     ow = str(item.get("orderWarning") or "0").strip()
@@ -116,9 +124,90 @@ def is_excluded(item: dict, stk_cd: str) -> tuple[bool, str]:
             if len(clean_name) > suffix_len + 1:
                 return True, f"우선주(영문)-{matched_suffix}"
 
+    # ── 4-1) companyClassName 우선주 판별 (코스닥만 존재) ─────────────
+    company_class = str(item.get("companyClassName") or "").strip()
+    if company_class and "우선주" in company_class:
+        return True, f"우선주(회사분류)-{company_class}"
+
     # ── 5) auditInfo 감리 체크 ───────────────────────────────────────
     audit = str(item.get("auditInfo") or "").strip()
     if audit and audit != "정상":
         return True, f"감리={audit}"
+
+    # ── 6) listCount 비정상값 체크 ─────────────────────────────────────
+    list_count = str(item.get("listCount") or "").strip()
+    if list_count and (list_count == "0000000000000000" or list_count == "0"):
+        return True, f"상장주식수비정상={list_count}"
+
+    # ── 7) lastPrice 비정상값 체크 ────────────────────────────────────
+    last_price = str(item.get("lastPrice") or "").strip()
+    if last_price and (last_price == "00000000" or last_price == "0"):
+        return True, f"전일종가비정상={last_price}"
+
+    # ── 8) regDay 신규상장 체크 (경고 등급) ─────────────────────────────
+    reg_day = str(item.get("regDay") or "").strip()
+    if reg_day and len(reg_day) == 8:
+        try:
+            from datetime import datetime, timedelta
+            reg_date = datetime.strptime(reg_day, "%Y%m%d")
+            today = datetime.now()
+            # 상장 후 3개월 이내
+            if today - reg_date < timedelta(days=90):
+                # 경고 로그만 출력 (차단하지 않음)
+                import logging
+                _filter_log = logging.getLogger(__name__)
+                days_since_listing = (today - reg_date).days
+                _filter_log.warning("[필터경고] 신규상장 종목: %s (상장 %d일 경과)", stk_cd, days_since_listing)
+        except ValueError:
+            pass
+
+    return False, ""
+
+
+def is_excluded_with_ka10100(
+    item: dict,
+    stk_cd: str,
+    ka10100_data: Optional[dict] = None,
+) -> tuple[bool, str]:
+    """
+    ka10100 데이터를 활용한 2차 필터링.
+
+    Parameters
+    ----------
+    item : dict
+        ka10099 응답의 개별 종목 딕셔너리
+    stk_cd : str
+        6자리 종목코드 (정규화 완료된 값)
+    ka10100_data : Optional[dict]
+        ka10100 응답 데이터 (없으면 1차 필터링만 수행)
+
+    Returns
+    -------
+    (excluded: bool, reason: str)
+        excluded=True 이면 매매 부적격. reason 에 사유 문자열.
+    """
+    # 1차 필터링 수행
+    excluded, reason = is_excluded(item, stk_cd)
+    if excluded:
+        return excluded, reason
+
+    # ka10100 데이터가 없으면 1차 필터링 결과만 반환
+    if not ka10100_data:
+        return False, ""
+
+    # 2차 필터링: companyClassName 우선주 판별 보강
+    company_class = str(ka10100_data.get("companyClassName") or "").strip()
+    if company_class and "우선주" in company_class:
+        return True, f"우선주(ka10100)-{company_class}"
+
+    # 2차 필터링: listCount 검증
+    list_count = str(ka10100_data.get("listCount") or "").strip()
+    if list_count and (list_count == "0000000000000000" or list_count == "0"):
+        return True, f"상장주식수비정상(ka10100)={list_count}"
+
+    # 2차 필터링: lastPrice 검증
+    last_price = str(ka10100_data.get("lastPrice") or "").strip()
+    if last_price and (last_price == "00000000" or last_price == "0"):
+        return True, f"전일종가비정상(ka10100)={last_price}"
 
     return False, ""

@@ -400,7 +400,7 @@ function buildTripleHeader(): void {
   // 설명라벨
   const descLabel = document.createElement('span')
   Object.assign(descLabel.style, { fontSize: FONT_SIZE.small, color: '#999', whiteSpace: 'nowrap' })
-  descLabel.textContent = '장마감후 매매적격종목 확정시세 및 5거래일 거래대금/고가 다운로드'
+  descLabel.textContent = '장마감 후 매매적격종목 확정시세 및 5일봉 거래대금,고가 데이터 저장'
   left.appendChild(descLabel)
 
   // 버튼 컨테이너 (가로 정렬)
@@ -409,7 +409,7 @@ function buildTripleHeader(): void {
 
   const btn1 = document.createElement('button')
   Object.assign(btn1.style, btnStyle)
-  btn1.textContent = '⬇️ 장마감 확정시세 & 5일데이터 다운로드'
+  btn1.textContent = '⬇️ 확정시세+5일봉 다운로드'
   btn1.addEventListener('mouseenter', () => btn1.style.background = '#157347')
   btn1.addEventListener('mouseleave', () => btn1.style.background = '#198754')
   btn1.addEventListener('click', () => onTriggerDownload('snapshot'))
@@ -454,10 +454,10 @@ function updateIndicatorBar(): void {
 }
 
 // buildSchedulerCard removed.
-async function onTriggerDownload(_type: 'snapshot'): Promise<void> {
-  const label = '장마감 확정시세 및 5일데이터 다운로드'
+async function onTriggerDownload(type: 'snapshot'): Promise<void> {
+  const label = '확정시세+5일봉 다운로드'
   const endpoint = '/api/stock-classification/trigger-snapshot-download'
-  
+
   const result = await showContextPopup({
     type: 'confirm',
     x: window.innerWidth / 2,
@@ -467,9 +467,9 @@ async function onTriggerDownload(_type: 'snapshot'): Promise<void> {
     confirmText: '실행',
     confirmColor: '#198754',
   })
-  
+
   if (!result.confirmed) return
-  
+
   try {
     const res = await apiPost<StockClassificationMutationResponse>(endpoint, {})
     handleMutationResult(res)

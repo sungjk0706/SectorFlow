@@ -18,18 +18,19 @@ from typing import TYPE_CHECKING, Any
 import httpx as requests
 
 # ── 범용 캐시 모듈에서 re-import (하위 호환) ──────────────────────────────
-from backend.app.core.avg_amt_cache import (  # noqa: F401
-    _CACHE_FILENAME,
-    _DEFAULT_CACHE_PATH,
-    KA10005_GAP_SEC,
-    _kst_today_yyyymmdd,
-    _norm_stk,
-    load_avg_amt_cache,
-    load_avg_amt_cache_v2,
-    save_avg_amt_cache,
-    save_avg_amt_cache_v2,
-    avg_from_v2,
-)
+# avg_amt_cache.py는 더 이상 사용하지 않음 (master_stocks_table 단일 진실 공급원)
+# from backend.app.core.avg_amt_cache import (  # noqa: F401
+#     _CACHE_FILENAME,
+#     _DEFAULT_CACHE_PATH,
+#     KA10005_GAP_SEC,
+#     _kst_today_yyyymmdd,
+#     _norm_stk,
+#     load_avg_amt_cache,
+#     load_avg_amt_cache_v2,
+#     save_avg_amt_cache,
+#     save_avg_amt_cache_v2,
+#     avg_from_v2,
+# )
 
 if TYPE_CHECKING:
     from backend.app.core.kiwoom_rest import KiwoomRestAPI
@@ -222,12 +223,3 @@ def fetch_daily_5d_data(
     return [], [], None
 
 
-def rolling_update_with_ka20002(
-    api: "KiwoomRestAPI",
-    existing_v2: dict[str, list[int]],
-    industry_codes: list[tuple[str, str]],
-    *,
-    gap_sec: float = 0.5,
-) -> dict[str, list[int]]:
-    """ka20002 삭제됨 — 기존 캐시를 그대로 반환."""
-    return dict(existing_v2)

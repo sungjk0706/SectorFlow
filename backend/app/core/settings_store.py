@@ -295,7 +295,7 @@ async def after_settings_persisted(
             try:
                 engine_service._avg_amt_needs_bg_refresh = True
                 engine_service._broadcast_avg_amt_progress(0, 0, status="requested")
-                asyncio.create_task(engine_service.refresh_avg_amt_5d_cache())
+                # refresh_avg_amt_5d_cache는 더 이상 사용하지 않음 (master_stocks_table 단일 진실 공급원)
                 logger.info("[설정] scheduler_5d_download_on=ON → 5일봉 다운로드 트리거")
             except Exception:
                 logger.warning("[설정] 5일봉 다운로드 트리거 실패", exc_info=True)
