@@ -19,8 +19,18 @@ router = APIRouter(prefix="/api/ws", tags=["websocket"])
 
 
 async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> None:
-    """앱준비 완료 대기 → 업종순위 계산 완료 대기 → initial-snapshot, sector-stocks-refresh, sector-scores, buy-targets-update 순차 유니캐스트."""
+    """데이터 준비 완료 대기 → 앱준비 완료 대기 → 업종순위 계산 완료 대기 → initial-snapshot, sector-stocks-refresh, sector-scores, buy-targets-update 순차 유니캐스트."""
     try:
+        # 데이터 준비 완료 대기 (_pending_stock_details 채워짐 보장)
+        from backend.app.services.engine_service import _data_ready_event
+
+        if not _data_ready_event.is_set():
+            logger.info("[연결] 데이터 준비 대기 중 -- 초기 스냅샷 전송 지연")
+            try:
+                await asyncio.wait_for(_data_ready_event.wait(), timeout=60.0)
+            except asyncio.TimeoutError:
+                logger.warning("[연결] 데이터 준비 60초 대기 초과 -- 현재 데이터로 전송")
+
         # 앱준비 완료 대기
         from backend.app.services.engine_service import _bootstrap_event
 

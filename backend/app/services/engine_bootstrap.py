@@ -278,7 +278,7 @@ async def _bootstrap_sector_stocks_async() -> None:
     # ── 확정 상태 초기화 (제거됨 — 실시간 연동 전환) ──
     _st._sector_summary_cache = None
     _st._filtered_sector_codes = _st._compute_filtered_codes()
-    _st._invalidate_sector_stocks_cache()
+    _st._invalidate_sector_stocks_cache(force=True)  # 부트스트랩 시점에는 강제 무효화
     logger.debug(
         "[시작] 필터 통과 종목 %d개",
         len(_st._filtered_sector_codes or set()),
@@ -309,6 +309,11 @@ async def _bootstrap_sector_stocks_async() -> None:
     _broadcast_bootstrap_stage(6, "앱준비 완료")
     _st._bootstrap_event.set()
     logger.info("[시작] 앱준비 완료 플래그 설정")
+
+    # 데이터 준비 완료 플래그 설정 — WebSocket 연결 허용
+    from backend.app.services import engine_service
+    engine_service._data_ready_event.set()
+    logger.info("[시작] 데이터 준비 완료 플래그 설정")
 
     # engine-ready WS는 engine_loop.py에서 1회만 전송 — 여기서는 중복 전송하지 않음
 
@@ -372,7 +377,7 @@ async def _deferred_sector_summary() -> None:
                 compute_full_sector_summary, **_inputs, **_kwargs
             )
             _st._sector_summary_cache = _result
-            _st._invalidate_sector_stocks_cache()
+            _st._invalidate_sector_stocks_cache(force=True)  # 업종순위 계산 완료 후 강제 무효화
             logger.debug("[시작] 업종순위 후순위 계산 완료 -- %d개 섹터", len(_result.sectors))
             
             # 영속성 캐시에 저장
