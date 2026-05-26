@@ -54,7 +54,7 @@ from backend.app.core.avg_amt_cache import normalize_avg_amt_5d_map
 # engine_bootstrap: 앱준비 흐름 함수
 # engine_cache: 캐시 오케스트레이션
 # engine_state: 상태 프록시 (이 모듈의 전역 변수를 __getattr__로 위임)
-import backend.app.services.engine_bootstrap as _engine_bootstrap
+# engine_bootstrap은 순환 의존성 방지를 위해 직접 import하지 않음
 
 # ── StateManager (중앙 상태 관리) ─────────────────────────────────────────
 from backend.app.services.state_manager import StateManager, OrderStatus
@@ -106,6 +106,9 @@ _shared_lock = LazyLock()
 # 실시간 상태 관리 (이벤트 루프 내 단일 실행 보장)
 _realtime_state: str = "IDLE"  # 가능한 상태: "IDLE", "WAITING_FIRST_TICK", "LIVE"
 
+# 데이터 준비 완료 플래그 — WebSocket 연결 전 데이터 준비 보장
+_data_ready_event: asyncio.Event = asyncio.Event()
+
 # 최대 3000종목 (매수 후보 종목 상세 정보)
 _pending_stock_details: LRUCache = LRUCache(maxsize=3000)
 _radar_cnsr_order: list[str] = []
@@ -138,15 +141,16 @@ _MIN_CACHE_LIFETIME_SEC: float = 1.0
 
 def _invalidate_sector_stocks_cache(force: bool = False) -> None:
     """캐시 무효화 — 종목 추가/제거, 순위 변경, 필터 변경 시 호출.
-    
+
     Args:
         force: True면 1초 제한 무시하고 강제 무효화 (사용자 설정 변경 시 사용)
     """
-    global _sector_stocks_dirty, _sector_stocks_last_invalidated
+    global _sector_stocks_dirty, _sector_stocks_last_invalidated, _sector_stocks_cache
     now = time.monotonic()
     if not force and now - _sector_stocks_last_invalidated < _MIN_CACHE_LIFETIME_SEC:
         return  # 1초 내 재무효화 방지
     _sector_stocks_dirty = True
+    _sector_stocks_cache = None  # 캐시를 None으로 설정하여 재계산 유도
     _sector_stocks_last_invalidated = now
 
 
@@ -256,13 +260,6 @@ _rest_api: "KiwoomRestAPI | None" = None  # type: ignore[name-defined]
 _account_snapshot: dict = {}
 _positions: list = []
 _snapshot_history: list = []
-
-# ── 하위 호환 re-export: engine_bootstrap 함수 ──
-_bootstrap_sector_stocks_async = _engine_bootstrap._bootstrap_sector_stocks_async
-_notify_close_data_ui = _engine_bootstrap._notify_close_data_ui
-_deferred_close_data_refresh = _engine_bootstrap._notify_close_data_ui  # 하위 호환 별칭
-
-_login_post_pipeline = _engine_bootstrap._login_post_pipeline
 
 
 
@@ -539,23 +536,23 @@ def get_snapshot_history() -> list:
     return list(_snapshot_history)
 
 
-def get_buy_limit_status() -> dict:
+async def get_buy_limit_status() -> dict:
     """매수 한도 상태를 dict로 반환 (프론트 배지용)."""
     settings = _settings_cache or {}
     daily_buy_spent = 0
     if _auto_trade:
-        _auto_trade._ensure_daily_buy_counter()
+        await _auto_trade._ensure_daily_buy_counter()
         daily_buy_spent = _auto_trade._daily_buy_spent
     return {"daily_buy_spent": daily_buy_spent}
 
 
-def _broadcast_buy_limit_status() -> None:
+async def _broadcast_buy_limit_status() -> None:
     """매수 한도 상태를 WS로 브로드캐스트."""
     global _buy_targets_snapshot_cache
     _buy_targets_snapshot_cache = None  # 일일한도 상태 변경 → 매수후보 캐시 무효화
     try:
         from backend.app.services.engine_account_notify import _broadcast, notify_buy_targets_update
-        _broadcast("buy-limit-status", get_buy_limit_status())
+        _broadcast("buy-limit-status", await get_buy_limit_status())
         notify_buy_targets_update()
     except Exception as e:
         logger.warning("[연결] 매수한도 화면전송 실패: %s", e, exc_info=True)
@@ -648,10 +645,12 @@ def get_sector_scores_snapshot() -> tuple[list[dict], int]:
     return out, ranked_count
 
 
-def recompute_sector_summary_now() -> None:
+async def recompute_sector_summary_now() -> None:
     """설정 변경 시 즉시 _sector_summary_cache 재계산 (10초 루프 대기 없이)."""
     global _sector_summary_cache
+    logger.info("[업종순위] recompute_sector_summary_now 진입, is_running=%s", is_running())
     if not is_running():
+        logger.info("[업종순위] 엔진 미실행으로 종료")
         return
     try:
         from backend.app.services.engine_sector_score import compute_full_sector_summary
@@ -659,6 +658,8 @@ def recompute_sector_summary_now() -> None:
         settings = _get_settings()
         trim_trade = float(settings.get("sector_trim_trade_amt_pct", 0) or 0)
         trim_change = float(settings.get("sector_trim_change_rate_pct", 0) or 0)
+        sector_weights = settings.get("sector_weights")
+        logger.info("[업종순위] 재계산 sector_weights: %s", sector_weights)
         _ss = compute_full_sector_summary(
             **get_sector_summary_inputs(),
             sort_keys=settings.get("sector_sort_keys") or None,
@@ -693,7 +694,7 @@ def recompute_sector_summary_now() -> None:
         # 매수후보 WS 브로드캐스트 + 매수 판단 (항상 실행)
         from backend.app.services.engine_account_notify import notify_buy_targets_update
         notify_buy_targets_update()
-        _try_sector_buy()
+        await _try_sector_buy()
     except Exception as e:
         logger.warning("[데이터] 섹터 요약 즉시 재계산 실패: %s", e, exc_info=True)
 
@@ -888,7 +889,7 @@ def get_sector_stocks() -> list:
     from backend.app.core.industry_map import load_eligible_stocks_cache
     eligible_stocks = load_eligible_stocks_cache() or {}
     filter_set = set(eligible_stocks.keys()) if eligible_stocks else None
-    
+
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt
     from backend.app.services.engine_symbol_utils import is_nxt_enabled as _is_nxt
     from backend.app.core.sector_mapping import get_merged_sector as _get_sector
@@ -1104,13 +1105,13 @@ def _refresh_account_snapshot_meta() -> None:
     _account_snapshot = snap
 
 
-def _apply_last_price_to_positions(stk_cd: str, price: int) -> bool:
+async def _apply_last_price_to_positions(stk_cd: str, price: int) -> bool:
     """실시간 체결(REAL 01) -- 체결가 반영 + 평가손익·수익률·평가금액 실시간 재계산. 보유에 반영되면 True."""
     global _broker_rest_totals
     # 테스트모드: dry_run 가상 잔고에 현재가 반영 (6자리 정규화)
     if is_test_mode(_settings_cache):
         nk = _format_kiwoom_reg_stk_cd(str(stk_cd or "").strip())
-        return dry_run.update_price(nk, price) if nk else False
+        return await dry_run.update_price(nk, price) if nk else False
     
     hit = apply_last_price_to_positions_inplace(_positions, stk_cd, price)
     if hit:
@@ -1150,16 +1151,16 @@ def _apply_balance_realtime(item: dict, vals: dict) -> None:
     _broadcast_account(reason="balance_04")
 
 
-def _on_fill_after_ws() -> None:
+async def _on_fill_after_ws() -> None:
     """주문체결(00) 완료 직후 -- REST 없이 메모리·매도조건만 갱신."""
 
-    def _sell_if_applicable() -> None:
+    async def _sell_if_applicable() -> None:
         if is_test_mode(_settings_cache):
             pos = dry_run.get_positions()
         else:
             pos = _positions
         if pos and _auto_trade and auto_sell_effective(_settings_cache) and _access_token:
-            _auto_trade.check_sell_conditions(pos, _settings_cache, _access_token)
+            await _auto_trade.check_sell_conditions(pos, _settings_cache, _access_token)
 
     run_after_order_fill_ws(
         0.0,
@@ -1390,7 +1391,7 @@ async def _on_filter_settings_changed() -> None:
 
     # ── 업종순위 + 매수후보 재계산 ──
     try:
-        recompute_sector_summary_now()
+        await recompute_sector_summary_now()
     except Exception as e:
         logger.warning("[시작][필터변경] 업종순위 재계산 실패: %s", e, exc_info=True)
 
@@ -2183,7 +2184,7 @@ async def _handle_market_tick_event(event) -> None:
 
         is_test = is_test_mode(_settings_cache)
         if is_test:
-            _price_hit = dry_run.update_price(code, price)
+            _price_hit = await dry_run.update_price(code, price)
             if _price_hit:
                 _dr_pos = dry_run.get_position(code)
                 if _dr_pos:
@@ -2196,11 +2197,11 @@ async def _handle_market_tick_event(event) -> None:
             if is_test:
                 _pos = dry_run.get_position(code)
                 if _pos:
-                    _auto_trade.check_sell_conditions([_pos], _settings_cache, _access_token)
+                    await _auto_trade.check_sell_conditions([_pos], _settings_cache, _access_token)
             else:
                 _matched = [p for p in _positions if _format_kiwoom_reg_stk_cd(str(p.get("stk_cd", "") or "")) == code]
                 if _matched:
-                    _auto_trade.check_sell_conditions(_matched, _settings_cache, _access_token)
+                    await _auto_trade.check_sell_conditions(_matched, _settings_cache, _access_token)
 
         # 업종 재계산 트리거
         if code in _pending_stock_details:
@@ -2252,7 +2253,7 @@ async def _handle_account_update_event(event) -> None:
 
 
 
-def _try_sector_buy() -> None:
+async def _try_sector_buy() -> None:
     """
     이벤트 기반 매수 판단 — 실시간 데이터 변경 시 _do_sector_recompute()에서 호출.
     auto_buy_effective(시간 범위 + auto_buy_on + 마스터 스위치) 통과 시 매수 실행.
@@ -2325,7 +2326,7 @@ def _try_sector_buy() -> None:
             if _price <= 0:
                 logger.debug("[섹터매수] %s 실시간 시세 없음 -- 생략", s.code)
                 continue
-            _ordered = _auto_trade.execute_buy(
+            _ordered = await _auto_trade.execute_buy(
                 s.code, float(_price), _checked_stocks, _access_token,
                 force_buy=False,
                 reason=f"업종자동매수 업종={s.sector}",
@@ -2335,7 +2336,7 @@ def _try_sector_buy() -> None:
                 _holding_cnt += 1
                 if _holding_cnt >= _max_limit:
                     break
-                _auto_trade._ensure_daily_buy_counter()
+                await _auto_trade._ensure_daily_buy_counter()
                 if _max_daily > 0 and _auto_trade._daily_buy_spent >= _max_daily:
                     break
         except Exception as e:
