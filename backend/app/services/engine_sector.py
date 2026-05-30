@@ -10,6 +10,7 @@ from backend.app.services.engine_state import (
     _sector_summary_cache,
     _invalidate_sector_stocks_cache,
     # _pending_stock_details 제거
+    _radar_cnsr_order,
     _filtered_sector_codes,
     _sector_stocks_cache,
     _sector_stocks_dirty,
