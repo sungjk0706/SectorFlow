@@ -11,6 +11,7 @@ recompute_sector_for_code(code)는 이벤트 발생 시 호출되며,
 
 import asyncio
 from backend.app.core.logger import get_logger
+from backend.app.services.engine_radar import get_high_5d_cache
 
 logger = get_logger("engine")
 
@@ -220,7 +221,7 @@ async def _flush_sector_recompute_impl() -> None:
             min_strength=float(settings.get("buy_min_strength", 0)),
             max_sectors=int(settings.get("sector_max_targets", 3)),
             # 가산점 파라미터
-            high_5d_cache=_es._high_5d_cache,
+            high_5d_cache=get_high_5d_cache(),
             orderbook_cache={},  # 호가잔량 캐시 삭제로 빈 dict 전달
             boost_high_on=bool(settings.get("boost_high_breakout_on", False)),
             boost_high_score=float(settings.get("boost_high_breakout_score", 1.0)),
@@ -341,7 +342,7 @@ async def _full_recompute(_es, settings: dict, codes_snapshot: set[str] | None =
         trim_trade_amt_pct=trim_trade,
         trim_change_rate_pct=trim_change,
         # 가산점 파라미터
-        high_5d_cache=_es._high_5d_cache,
+        high_5d_cache=get_high_5d_cache(),
         orderbook_cache={},  # 호가잔량 캐시 삭제로 빈 dict 전달
         boost_high_on=bool(settings.get("boost_high_breakout_on", False)),
         boost_high_score=float(settings.get("boost_high_breakout_score", 1.0)),

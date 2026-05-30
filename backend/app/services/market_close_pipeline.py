@@ -1263,7 +1263,7 @@ async def fetch_confirmed_data_only() -> dict:
         from backend.app.services.engine_account_notify import _rebuild_layout_cache
         _rebuild_layout_cache([])
         getattr(es, "_avg_amt_5d", {}).clear()
-        getattr(es, "_high_5d_cache", {}).clear()
+        # _high_5d_cache 제거: _master_stocks_cache의 high_5d_price 사용
         import backend.app.core.industry_map as _ind_mod
         _ind_mod._eligible_stock_codes.clear()
         _log.info("[수동 확정시세] 메모리 전체 초기화 완료 — 새 데이터로 교체 시작")
@@ -1534,20 +1534,18 @@ async def fetch_confirmed_data_only() -> dict:
                 mapped_pending: dict = {}
                 # _pending_stock_details 제거: _radar_cnsr_order만 필터링
                 new_avg = {cd: v for cd, v in es._avg_amt_5d.items() if cd in final_eligible}
-                new_high = {cd: v for cd, v in es._high_5d_cache.items() if cd in final_eligible}
+                # _high_5d_cache 제거: _master_stocks_cache의 high_5d_price 사용
 
                 async with es._shared_lock:
                     es._avg_amt_5d.clear()
                     es._avg_amt_5d.update(new_avg)
-                    es._high_5d_cache.clear()
-                    es._high_5d_cache.update(new_high)
                     es._radar_cnsr_order[:] = [
                         cd for cd in es._radar_cnsr_order if cd in final_eligible
                     ]
 
                 _log.info(
-                    "[수동 확정시세] Step 7 원자적 메모리 교체 완료 — pending=%d종목, avg=%d, high=%d",
-                    len(mapped_pending), len(new_avg), len(new_high),
+                    "[수동 확정시세] Step 7 원자적 메모리 교체 완료 — pending=%d종목, avg=%d",
+                    len(mapped_pending), len(new_avg),
                 )
         
         try:

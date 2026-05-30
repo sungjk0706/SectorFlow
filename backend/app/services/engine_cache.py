@@ -16,7 +16,6 @@ from backend.app.services.engine_state import (
     _rest_radar_rest_once,
     # _pending_stock_details 제거
     _radar_cnsr_order,
-    _high_5d_cache,
 )
 
 logger = get_logger("engine")
