@@ -255,10 +255,11 @@ class WSManager:
     def _is_code_relevant_for_page(self, page: str, code: str) -> bool:
         """페이지별 종목 코드 관련성 판별. 단일 스레드 — 락 불필요."""
         if page == "sector-ranking":
-            # 업종별종목시세 테이블용: layout 종목 + pending 종목
+            # 업종별종목시세 테이블용: layout 종목 + radar 종목
             from backend.app.services.engine_account_notify import _layout_code_set
             import backend.app.services.engine_service as _es
-            return code in _layout_code_set or code in _es._pending_stock_details
+            # _pending_stock_details 제거: _radar_cnsr_order 사용
+            return code in _layout_code_set or code in _es._radar_cnsr_order
         elif page == "buy-target":
             # 매수후보 종목만 — Set 캐시로 O(1) 조회 (Phase 6D)
             import backend.app.services.engine_service as _es

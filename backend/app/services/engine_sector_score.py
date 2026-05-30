@@ -303,7 +303,7 @@ async def compute_sector_scores(
     trade_amounts: dict[str, int],
     avg_amt_5d: dict[str, int],
     strengths: dict[str, str],
-    stock_details: dict[str, dict],        # _pending_stock_details
+    stock_details: dict[str, dict],        # _master_stocks_cache
     min_avg_amt_eok: float = 0.0,                  # 1차 필터: 5일평균 최소 거래대금 (억 단위, 0=미적용)
     sector_weights: dict[str, float] | None = None,  # 가중치 기반 점수 계산용
     trim_trade_amt_pct: float = 0.0,       # 업종 내 종목 거래대금 트리밍 비율 (%)

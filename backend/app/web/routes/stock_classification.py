@@ -289,7 +289,7 @@ async def trigger_confirmed_download(_: str = Depends(get_current_user)):
         if getattr(engine_service, "_confirmed_refresh_running", False):
             return {"ok": False, "error": "확정시세 다운로드가 이미 진행 중입니다."}
 
-        engine_service._pending_stock_details.clear()
+        # _pending_stock_details 제거: clear() 제거
         engine_service._sector_stock_layout.clear()
         from backend.app.services.engine_account_notify import _rebuild_layout_cache
         _rebuild_layout_cache([])

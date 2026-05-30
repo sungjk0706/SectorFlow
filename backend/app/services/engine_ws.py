@@ -20,7 +20,7 @@ from backend.app.services.engine_state import (
     _login_ok,
     _refresh_account_snapshot_meta,
     _account_rest_bootstrapped,
-    _pending_stock_details,
+    # _pending_stock_details 제거
 )
 
 logger = get_logger("engine_ws")
@@ -281,11 +281,12 @@ def _item_cd_tracked_radar_or_ready(item_cd: str) -> bool:
     잔고 REST 반영 후 UNREG 스윕 등에서 UNREG 대상에서 제외한다.
     """
     from backend.app.services.engine_symbol_utils import _normalize_stk_cd_rest
-    
+    from backend.app.services.engine_state import _radar_cnsr_order
+
     nk = _normalize_stk_cd_rest(str(item_cd).strip().lstrip("A"))
     if not nk or nk == "000000":
         return False
-    for k in _pending_stock_details.keys():
+    for k in _radar_cnsr_order:
         if _normalize_stk_cd_rest(str(k).strip().lstrip("A")) == nk:
             return True
     return False

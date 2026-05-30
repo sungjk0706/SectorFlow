@@ -101,9 +101,9 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         from backend.app.services import engine_service as es
         from backend.app.services.engine_account_notify import _rebuild_positions_cache, _positions_code_set
         es.logger.info(
-            "[디버그] 초기화 직전 구독목록 positions=%d subscribed=%d pending=%d layout=%d pos_codes=%d",
+            "[디버그] 초기화 직전 구독목록 positions=%d subscribed=%d radar=%d layout=%d pos_codes=%d",
             len(es._positions), len(es._subscribed_stocks),
-            len(es._pending_stock_details), len(es._sector_stock_layout),
+            len(es._radar_cnsr_order), len(es._sector_stock_layout),
             len(_positions_code_set),
         )
         async with es._shared_lock:
@@ -115,9 +115,9 @@ async def reset_test_data(_: str = Depends(get_current_user)):
             es._checked_stocks.clear()
         _rebuild_positions_cache([])
         es.logger.info(
-            "[디버그] 초기화 직후 구독목록 positions=%d subscribed=%d pending=%d layout=%d pos_codes=%d",
+            "[디버그] 초기화 직후 구독목록 positions=%d subscribed=%d radar=%d layout=%d pos_codes=%d",
             len(es._positions), len(es._subscribed_stocks),
-            len(es._pending_stock_details), len(es._sector_stock_layout),
+            len(es._radar_cnsr_order), len(es._sector_stock_layout),
             len(_positions_code_set),
         )
         await es._refresh_account_snapshot_meta()

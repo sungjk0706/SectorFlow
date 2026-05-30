@@ -60,8 +60,8 @@ async def rename_sector(old_name: str, new_name: str) -> None:
     # 2) 인메모리 캐시 증분 업데이트
     try:
         import backend.app.services.engine_service as es
-        # _pending_stock_details 증분 업데이트
-        for cd, entry in es._pending_stock_details.items():
+        # _pending_stock_details 제거: _master_stocks_cache 증분 업데이트
+        for cd, entry in es._master_stocks_cache.items():
             if entry.get("sector") == old_name:
                 entry["sector"] = new_name
         # _sector_cache 증분 업데이트
@@ -113,8 +113,8 @@ async def delete_sector(name: str) -> None:
     # 2) 인메모리 캐시 증분 업데이트
     try:
         import backend.app.services.engine_service as es
-        # _pending_stock_details 증분 업데이트
-        for cd, entry in es._pending_stock_details.items():
+        # _pending_stock_details 제거: _master_stocks_cache 증분 업데이트
+        for cd, entry in es._master_stocks_cache.items():
             if entry.get("sector") == name:
                 entry["sector"] = "기타"
         # _sector_cache 증분 업데이트
@@ -148,8 +148,8 @@ async def move_stock(stock_code: str, target_sector: str) -> None:
     # 2) 인메모리 캐시 증분 업데이트
     try:
         import backend.app.services.engine_service as es
-        # _pending_stock_details 증분 업데이트
-        entry = es._pending_stock_details.get(stock_code)
+        # _pending_stock_details 제거: _master_stocks_cache 증분 업데이트
+        entry = es._master_stocks_cache.get(stock_code)
         if entry:
             entry["sector"] = target_sector
         # _sector_cache 증분 업데이트
