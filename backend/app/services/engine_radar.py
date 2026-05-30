@@ -86,7 +86,7 @@ async def _apply_real01_volume_amount_to_radar_rows(raw_cd: str, vals: dict, *, 
             raw_cd,
             vals,
             {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 전달
-            _pending_stock_details,
+            {},  # _pending_stock_details 제거: 빈 dict 전달
             is_0b_tick=is_0b_tick,
         )
 
@@ -96,23 +96,20 @@ async def _apply_real01_volume_amount_to_radar_rows(raw_cd: str, vals: dict, *, 
 async def _mark_radar_exited(stk_cd: str) -> None:
     """
     레이더 목록에서 종목 제거.
-    pending 키는 6자리 정규화.
+    _pending_stock_details 제거: _radar_cnsr_order에서만 제거
     """
     from backend.app.services.engine_symbol_utils import _normalize_stk_cd_rest
-    
+
     nk = _normalize_stk_cd_rest(str(stk_cd).strip().lstrip("A"))
     rm: str | None = None
-    if nk in _pending_stock_details:
+    if nk in _radar_cnsr_order:
         rm = nk
     else:
-        for k in list(_pending_stock_details.keys()):
+        for k in list(_radar_cnsr_order):
             if _normalize_stk_cd_rest(str(k)) == nk:
                 rm = k
                 break
     if rm is not None:
-        nm = _pending_stock_details[rm].get("name", rm)
-        async with _shared_lock:
-            _pending_stock_details[rm]["status"] = "exited"  # 삭제 대신 마킹 -- 시세 테이블 유지
         _radar_cnsr_order[:] = [x for x in _radar_cnsr_order if x != rm]
         if _clear_radar_rest_bootstrap_for_stk_cd:
             await _clear_radar_rest_bootstrap_for_stk_cd(rm)
@@ -122,17 +119,8 @@ async def _mark_radar_exited(stk_cd: str) -> None:
 
 async def clear_exited_from_radar() -> int:
     """모니터링에서 이탈 종목 전체 삭제. 삭제된 개수 반환."""
-    to_del = [cd for cd, e in _pending_stock_details.items() if e.get("status") == "exited"]
-    async with _shared_lock:
-        for cd in to_del:
-            del _pending_stock_details[cd]
-    if to_del:
-        ds = set(to_del)
-        _radar_cnsr_order[:] = [x for x in _radar_cnsr_order if x not in ds]
-        if _invalidate_sector_stocks_cache:
-            _invalidate_sector_stocks_cache()
-        logger.info("[데이터] 이탈 종목 %d개 정리 완료", len(to_del))
-    return len(to_del)
+    # _pending_stock_details 제거: _radar_cnsr_order만 관리하므로 삭제 불필요
+    return 0
 
 
 async def _drop_rest_radar_quote_for_nk(nk: str) -> None:
@@ -156,7 +144,7 @@ async def _clear_radar_and_ready_memory() -> None:
     from backend.app.services.engine_account_notify import _rebuild_layout_cache
 
     async with _shared_lock:
-        _pending_stock_details.clear()
+        # _pending_stock_details 제거: clear() 제거
         _radar_cnsr_order.clear()
         _sector_stock_layout.clear()
         # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_rest_radar_quote_cache)
@@ -181,7 +169,8 @@ async def _tracked_ui_stock_codes() -> set[str]:
             c = _format_broker_reg_stk_cd(str(p.get("stk_cd", "") or ""))
             if c:
                 out.add(c)
-    for k in _pending_stock_details.keys():
+    # _pending_stock_details 제거: _radar_cnsr_order 사용
+    for k in _radar_cnsr_order:
         c = _format_broker_reg_stk_cd(str(k))
         if c:
             out.add(c)

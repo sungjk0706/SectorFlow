@@ -69,7 +69,7 @@ def _broadcast_confirmed_progress(
 # ---------------------------------------------------------------------------
 
 def _get_krx_only_codes(es: ModuleType) -> list[str]:
-    """_subscribed_stocks / _pending_stock_details / _sector_stock_layout에서 KRX 단독 종목(nxt_enable=False)만 추출.
+    """_subscribed_stocks / _radar_cnsr_order / _sector_stock_layout에서 KRX 단독 종목(nxt_enable=False)만 추출.
 
     Args:
         es: engine_service 모듈 참조
@@ -83,8 +83,9 @@ def _get_krx_only_codes(es: ModuleType) -> list[str]:
     sources: list[set | dict | list] = []
     if hasattr(es, "_subscribed_stocks"):
         sources.append(es._subscribed_stocks)
-    if hasattr(es, "_pending_stock_details"):
-        sources.append(es._pending_stock_details)
+    # _pending_stock_details 제거: _radar_cnsr_order 사용
+    if hasattr(es, "_radar_cnsr_order"):
+        sources.append(es._radar_cnsr_order)
 
     for src in sources:
         for raw_cd in list(src):
@@ -445,7 +446,8 @@ async def _apply_confirmed_to_memory(
         반영된 종목 수.
     """
     _nm = name_map or {}
-    pending: dict = getattr(es, "_pending_stock_details", {})
+    # _pending_stock_details 제거: _master_stocks_cache 사용
+    pending: dict = getattr(es, "_master_stocks_cache", {})
     # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
     ltp: dict = {}
     lta: dict = {}
@@ -626,10 +628,11 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
     """
     from backend.app.core.sector_stock_cache import load_stock_name_cache
 
-    pending: dict = getattr(es, "_pending_stock_details", {})
+    # _pending_stock_details 제거: _master_stocks_cache 사용
+    pending: dict = getattr(es, "_master_stocks_cache", {})
     amts_5d_arrays = getattr(es, "_amts_5d_arrays", {})
     if not pending and not amts_5d_arrays:
-        _log.warning("[타이머] 저장할 데이터(_pending_stock_details 및 _amts_5d_arrays)가 모두 비어있음 — 데이터 저장 생략")
+        _log.warning("[타이머] 저장할 데이터(_master_stocks_cache 및 _amts_5d_arrays)가 모두 비어있음 — 데이터 저장 생략")
         return False
 
     # 적격종목 필터 — eligible 캐시 기준으로 부적격 종목 제외
@@ -806,7 +809,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
         await _restore_5d_arrays_from_db(es)
     
         # ── 메모리 전체 초기화 — 새 데이터로 완전 교체 (정합성 보장) ──────────
-        getattr(es, "_pending_stock_details", {}).clear()
+        # _pending_stock_details 제거: clear() 제거
         _layout = getattr(es, "_sector_stock_layout", None)
         if _layout is not None:
             _layout.clear()
@@ -1107,22 +1110,15 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             if not final_eligible:
                 _log.warning("[타이머] Step 6 — 적격종목 비어있음, 메모리 교체 생략")
             else:
-                # _apply_confirmed_to_memory가 이미 es._pending_stock_details를 업데이트했으므로
-                # 최신 다운로드 데이터가 포함된 es._pending_stock_details를 직접 필터링
-                mapped_pending = {cd: es._pending_stock_details[cd] for cd in final_eligible if cd in es._pending_stock_details}
-
-                # ── Step 7: 원자적 메모리 교체 (_shared_lock 내부) ────────────
+                # _pending_stock_details 제거: _radar_cnsr_order만 필터링
                 async with es._shared_lock:
-                    es._pending_stock_details.clear()
-                    for key, value in mapped_pending.items():
-                        es._pending_stock_details[key] = value
                     es._radar_cnsr_order[:] = [
                         cd for cd in es._radar_cnsr_order if cd in final_eligible
                     ]
 
                 _log.info(
-                    "[타이머] Step 7 원자적 메모리 교체 완료 — pending=%d종목",
-                    len(mapped_pending),
+                    "[타이머] Step 7 원자적 메모리 교체 완료 — radar=%d종목",
+                    len(es._radar_cnsr_order),
                 )
         else:
             _log.warning("[타이머] cached=False — 메모리 교체 생략 (기존 상태 유지)")
@@ -1188,9 +1184,9 @@ async def _update_layout_cache(
     # 전체 종목을 섹터별로 그룹핑 (stock_classification.json 최신 매핑 적용)
     sector_groups: dict[str, list[str]] = {}
     for cd in all_codes:
-        # 1) pending stock details 캐시 확인
+        # _pending_stock_details 제거: _master_stocks_cache 사용
         sec = None
-        entry = es._pending_stock_details.get(cd)
+        entry = es._master_stocks_cache.get(cd)
         if entry and "sector" in entry:
             sec = entry["sector"]
         # 2) DB 매핑 확인
@@ -1199,7 +1195,7 @@ async def _update_layout_cache(
         # 3) 기본값
         if not sec:
             sec = "기타"
-            
+
         sector_groups.setdefault(sec, []).append(cd)
 
     # 섹터 내 종목 정렬 (재현성 보장)
@@ -1260,7 +1256,7 @@ async def fetch_confirmed_data_only() -> dict:
 
     try:
         # ── 메모리 전체 초기화 — 새 데이터로 완전 교체 (정합성 보장) ──────────
-        getattr(es, "_pending_stock_details", {}).clear()
+        # _pending_stock_details 제거: clear() 제거
         _layout = getattr(es, "_sector_stock_layout", None)
         if _layout is not None:
             _layout.clear()
@@ -1536,17 +1532,11 @@ async def fetch_confirmed_data_only() -> dict:
             final_eligible = set(_ind_mod_step6._eligible_stock_codes.keys())
             if final_eligible:
                 mapped_pending: dict = {}
-                for cd in final_eligible:
-                    entry = es._pending_stock_details.get(cd)
-                    if entry is not None:
-                        mapped_pending[cd] = entry
-
+                # _pending_stock_details 제거: _radar_cnsr_order만 필터링
                 new_avg = {cd: v for cd, v in es._avg_amt_5d.items() if cd in final_eligible}
                 new_high = {cd: v for cd, v in es._high_5d_cache.items() if cd in final_eligible}
 
                 async with es._shared_lock:
-                    es._pending_stock_details.clear()
-                    es._pending_stock_details.update(mapped_pending)
                     es._avg_amt_5d.clear()
                     es._avg_amt_5d.update(new_avg)
                     es._high_5d_cache.clear()
@@ -1896,19 +1886,9 @@ async def fetch_5d_data_only() -> dict:
                 highs_5d = res.get("highs_5d_array") or [] if res else []
 
                 if amounts_5d and highs_5d and len(amounts_5d) > 0 and len(highs_5d) > 0:
-                    # _pending_stock_details 에 기본 종목 정보 등록 보장
-                    if nk not in es._pending_stock_details:
-                        from backend.app.services.engine_strategy_core import make_detail
-                        stk_nm = name_map.get(_base_stk_cd(nk), nk)
-                        sec = db_mapping.get(_base_stk_cd(nk)) or "기타"
-                        es._pending_stock_details[nk] = make_detail(
-                            nk, stk_nm, 0, "3", 0, 0.0,
-                            prev_close=0, trade_amount=0, sector=sec
-                        )
-                        es._pending_stock_details[nk]["status"] = "active"
-                        es._pending_stock_details[nk]["reason"] = "5일봉 수동 다운로드"
-                        if hasattr(es, "_radar_cnsr_order") and nk not in es._radar_cnsr_order:
-                            es._radar_cnsr_order.append(nk)
+                    # _pending_stock_details 제거: _radar_cnsr_order에만 추가
+                    if hasattr(es, "_radar_cnsr_order") and nk not in es._radar_cnsr_order:
+                        es._radar_cnsr_order.append(nk)
 
                     # 메모리 캐시 및 배열 갱신
                     es._amts_5d_arrays[nk] = amounts_5d

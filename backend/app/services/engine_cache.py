@@ -14,7 +14,7 @@ from backend.app.services.engine_state import (
     _shared_lock,
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_amounts, _rest_radar_quote_cache)
     _rest_radar_rest_once,
-    _pending_stock_details,
+    # _pending_stock_details 제거
     _radar_cnsr_order,
     _high_5d_cache,
 )
@@ -101,6 +101,7 @@ async def _load_caches_preboot(settings: dict) -> None:
         # ── 레이아웃 적재 삭제 (master_stocks_table sector 컬럼으로 대체) ──
 
         # ── 스냅샷 적재 ──
+        # _pending_stock_details 제거: _radar_cnsr_order에만 코드 추가
         if _cached_snapshot:
             async with _shared_lock:
                 for cd, detail in _cached_snapshot.items():
@@ -108,39 +109,12 @@ async def _load_caches_preboot(settings: dict) -> None:
                     # 실시간 틱 데이터 저장 제거 (거래대금, REST 캐시 저장 안 함)
                     if base and int(detail.get("cur_price") or 0) > 0:
                         _rest_radar_rest_once.add(base)
-                    if base not in _pending_stock_details:
-                        entry = make_detail(
-                            base, detail.get("name", base) or base,
-                            int(detail.get("cur_price") or 0),
-                            detail.get("sign", "3"),
-                            int(detail.get("change") or 0),
-                            float(detail.get("change_rate") or 0.0),
-                            prev_close=int(detail.get("prev_close") or 0),
-                            trade_amount=float(detail.get("trade_amount") or 0),
-                            strength=detail.get("strength", "-"),
-                            sector=detail.get("sector", "기타"),
-                        )
-                        entry["status"] = "active"
-                        entry["base_price"] = int(detail.get("cur_price") or 0)
-                        entry["target_price"] = int(detail.get("cur_price") or 0)
-                        entry["captured_at"] = ""
-                        entry["reason"] = "저장데이터 선행 로드"
-                        _pending_stock_details[base] = entry
+                    if base not in _radar_cnsr_order:
                         _radar_cnsr_order.append(base)
             logger.debug("[데이터준비] 확정데이터 저장데이터 로드 -- %d종목", len(_cached_snapshot))
 
         # ── 종목명 보강 (스냅샷 완료 후 실행) ──
-        _name_map = await load_stock_name_cache()
-        if _name_map:
-            _patched = 0
-            async with _shared_lock:
-                for cd, entry in _pending_stock_details.items():
-                    nm = _name_map.get(cd)
-                    if nm and entry.get("name") in (cd, "", None):
-                        entry["name"] = nm
-                        _patched += 1
-            if _patched:
-                logger.debug("[데이터준비] 종목명 보강 -- %d종목", _patched)
+        # _pending_stock_details 제거: 종목명 보강 불필요 (_master_stocks_cache 사용)
 
         # ── 5일 평균 + 5일 전고점 적재 ──
         if _cached_avg is not None and sum(1 for v in _cached_avg.values() if int(v or 0) > 0) < 100:

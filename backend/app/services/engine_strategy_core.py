@@ -16,7 +16,7 @@ from backend.app.services import dry_run
 from backend.app.services import settlement_engine
 from backend.app.services.auto_trading_effective import auto_sell_effective
 from backend.app.services.engine_state import (
-    _pending_stock_details,
+    # _pending_stock_details 제거
     _access_token,
     _shared_lock,
     _radar_cnsr_order,
@@ -92,43 +92,10 @@ async def register_pending_stock(
 ) -> None:
     """
     종목을 모니터링에 등록.
-    - detail 없으면 기본값으로 채운다(보강 조회 없음).
+    _pending_stock_details 제거: _radar_cnsr_order에만 추가
     """
-    if stk_cd not in _pending_stock_details:
-        cur_price = detail.get("cur_price", 0) if detail else 0
-        if detail:
-            nm = detail.get("name", stk_cd) or stk_cd
-            if not detail.get("name") or nm == stk_cd:
-                nm = resolve_radar_display_name(stk_cd, detail.get("name") or "", _access_token)
-        else:
-            nm = resolve_radar_display_name(stk_cd, "", _access_token)
-        
-        from backend.app.core.sector_mapping import get_merged_sector
-        sec = detail.get("sector") if detail else None
-        if not sec:
-            sec = await get_merged_sector(stk_cd)
-
-        entry = make_detail(
-            stk_cd,
-            nm,
-            cur_price,
-            detail.get("sign", "3") if detail else "3",
-            detail.get("change", 0) if detail else 0,
-            detail.get("change_rate", 0.0) if detail else 0.0,
-            prev_close=detail.get("prev_close", 0) if detail else 0,
-            trade_amount=detail.get("trade_amount", 0) if detail else 0,
-            strength=detail.get("strength", "-") if detail else "-",
-            sector=sec,
-        )
-        # ── 모니터링 추가 필드 ─────────────────────────────────────────────
-        entry["status"]       = "active"
-        entry["base_price"]   = cur_price
-        entry["target_price"] = cur_price
-        entry["captured_at"]  = datetime.now().strftime("%H:%M:%S")
-        entry["reason"]       = reason
-        # ──────────────────────────────────────────────────────────────────
+    if stk_cd not in _radar_cnsr_order:
         async with _shared_lock:
-            _pending_stock_details[stk_cd] = entry
             _radar_cnsr_order.append(stk_cd)
         if _invalidate_sector_stocks_cache:
             _invalidate_sector_stocks_cache()
@@ -140,36 +107,6 @@ async def register_pending_stock(
             _task.add_done_callback(lambda t: logger.warning("[구독] 구독 실패: %s", t.exception()) if t.exception() else None)
         except RuntimeError as e:
             logger.error("[구독] task 생성 실패 %s: %s", stk_cd, e)
-    elif detail:
-        # 이미 모니터링에 등록된 종목 -> 최신 시세만 업데이트 (이탈 상태면 갱신 안 함)
-        need_resolve = False
-        async with _shared_lock:
-            entry = _pending_stock_details[stk_cd]
-            if entry.get("status") == "exited":
-                return
-            if detail.get("cur_price"):
-                prev_px = int(entry.get("cur_price") or 0)
-                new_px = int(detail["cur_price"])
-                entry["cur_price"]   = new_px
-                entry["sign"]        = detail.get("sign", entry.get("sign", "3"))
-                entry["change"]      = detail.get("change", entry.get("change", 0))
-                entry["change_rate"] = detail.get("change_rate", entry.get("change_rate", 0.0))
-                if prev_px <= 0 < new_px:
-                    entry["base_price"]   = new_px
-                    entry["target_price"] = new_px
-            if detail.get("prev_close"):
-                entry["prev_close"] = detail["prev_close"]
-            if "trade_amount" in detail:
-                entry["trade_amount"] = detail["trade_amount"]
-            if detail.get("name") and detail["name"] != stk_cd:
-                entry["name"] = detail["name"]
-            else:
-                need_resolve = (entry.get("name") == stk_cd)
-        # REST 조회는 Lock 밖에서 수행 (네트워크 호출)
-        if need_resolve:
-            rest_nm = resolve_radar_display_name(stk_cd, detail.get("name") or "", _access_token)
-            async with _shared_lock:
-                entry["name"] = rest_nm
 
 
 async def run_snapshot_and_sell_check(force_rest: bool) -> None:
