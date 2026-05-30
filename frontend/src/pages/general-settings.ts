@@ -546,7 +546,7 @@ function handleTradeMode(val: string): void {
         { label: '취소', onClick: () => {} },
         { label: '전환', onClick: async () => {
           vals.trade_mode = 'real'
-          const res = await settingsMgr!.saveSection({ trade_mode: 'real', test_mode: false, kiwoom_mock_mode: false, mode_real: true })
+          const res = await settingsMgr!.saveSection({ trade_mode: 'real', test_mode: false, mock_mode: false, mode_real: true })
           if (!res.ok) vals.trade_mode = 'test'
           syncTradeMode()
         }, variant: 'danger' },
@@ -557,7 +557,7 @@ function handleTradeMode(val: string): void {
 
   vals.trade_mode = val
   const isReal = val === 'real'
-  settingsMgr?.saveSection({ trade_mode: val, test_mode: !isReal, kiwoom_mock_mode: !isReal, mode_real: isReal }).then(res => {
+  settingsMgr?.saveSection({ trade_mode: val, test_mode: !isReal, mock_mode: !isReal, mode_real: isReal }).then(res => {
     if (!res.ok) vals.trade_mode = 'test'
     syncTradeMode()
   })
@@ -830,6 +830,50 @@ function renderApiFields(container: HTMLElement): void {
   })
   btnRow.appendChild(saveBtn)
   container.appendChild(btnRow)
+
+  // 거래일 캐시 갱신 버튼
+  const calendarRefreshRow = document.createElement('div')
+  Object.assign(calendarRefreshRow.style, { marginTop: '20px', borderTop: '1px solid #eee', paddingTop: '16px' })
+  const calendarRefreshLabel = document.createElement('div')
+  Object.assign(calendarRefreshLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal, marginBottom: '8px' })
+  calendarRefreshLabel.textContent = '거래일 데이터'
+  calendarRefreshRow.appendChild(calendarRefreshLabel)
+
+  const calendarRefreshBtn = document.createElement('button')
+  calendarRefreshBtn.type = 'button'
+  Object.assign(calendarRefreshBtn.style, {
+    padding: GS.btnPad, borderRadius: '4px',
+    border: '1px solid #1976d2', background: '#1976d2',
+    color: '#fff', cursor: 'pointer', fontSize: GS.label,
+  })
+  calendarRefreshBtn.textContent = '캘린더 동기화'
+  calendarRefreshBtn.addEventListener('click', async () => {
+    const confirmed = await showConfirmDialog({
+      title: '거래일 캐시 갱신',
+      message: 'KRX 거래일 데이터를 최신으로 동기화하시겠습니까?',
+      isDanger: false
+    })
+    if (!confirmed) return
+    try {
+      calendarRefreshBtn.textContent = '갱신 중...'
+      calendarRefreshBtn.setAttribute('disabled', 'true')
+      await api.post('/api/trading-calendar/refresh')
+      showSaveToast('saved')
+    } catch {
+      showSaveToast('error')
+    } finally {
+      calendarRefreshBtn.textContent = '캘린더 동기화'
+      calendarRefreshBtn.removeAttribute('disabled')
+    }
+  })
+  calendarRefreshRow.appendChild(calendarRefreshBtn)
+
+  const calendarRefreshDesc = document.createElement('div')
+  Object.assign(calendarRefreshDesc.style, { fontSize: GS.desc, color: '#888', marginTop: '6px' })
+  calendarRefreshDesc.textContent = 'pykrx를 통해 최신 KRX 거래일 데이터를 가져와 DB 캐시를 갱신합니다'
+  calendarRefreshRow.appendChild(calendarRefreshDesc)
+
+  container.appendChild(calendarRefreshRow)
 }
 
 function refreshApiTabContent(): void {
@@ -940,6 +984,10 @@ function syncFromSettings(s: AppSettings | null): void {
           apiKeyInputs[k].value = String(r[k] || '')
         }
       }
+    }
+    // broker 값 동기화
+    if (r.broker !== undefined && vals.broker !== r.broker) {
+      vals.broker = r.broker
     }
     syncBrokerRadios()
   }

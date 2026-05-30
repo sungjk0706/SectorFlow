@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """업종분류 커스텀 REST API 라우터.
 
@@ -10,7 +11,6 @@
   POST /api/stock-classification/move-stocks — 종목 이동 (배치)
   POST /api/stock-classification/delete-cache — 캐시 삭제
 """
-from __future__ import annotations
 
 import asyncio
 import logging
@@ -24,10 +24,10 @@ from backend.app.web.deps import get_current_user
 _log = logging.getLogger(__name__)
 
 
-def _maybe_warning() -> dict:
+async def _maybe_warning() -> dict:
     """장중(WS 구독 구간)이면 warning 필드를 반환, 아니면 빈 dict."""
     from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
-    if is_ws_subscribe_window():
+    if await is_ws_subscribe_window():
         return {"warning": "장중 변경은 즉시 매매에 반영됩니다"}
     return {}
 
@@ -60,41 +60,69 @@ class MoveStocksRequest(BaseModel):
 
 # ── WS 브로드캐스트 헬퍼 (Task 3.4) ────────────────────────────────
 
-def broadcast_stock_classification_changed() -> None:
+async def broadcast_stock_classification_changed() -> None:
     """stock-classification-changed WS 이벤트 브로드캐스트.
 
-    현재 Custom_Data + merged_sectors + no_sector_count를 페이로드로 전송.
+    DB에서 직접 데이터를 조회하여 실시간 스냅샷 전송.
     """
-    from backend.app.core.stock_classification_data import load_custom_data
     from backend.app.core.sector_mapping import get_merged_all_sectors
     from backend.app.web.ws_manager import ws_manager
+    from backend.app.db.database import get_db_connection
 
-    custom = load_custom_data()
-    merged = get_merged_all_sectors()
+    merged = await get_merged_all_sectors()
 
-    # "기타" 소속 종목 수 계산
+    # DB에서 업종별 종목수 계산
+    sector_counts = {}
     no_sector_count = 0
+    try:
+        conn = await get_db_connection()
+        cursor = await conn.execute("SELECT sector, COUNT(*) as count FROM master_stocks_table GROUP BY sector")
+        rows = await cursor.fetchall()
+        for row in rows:
+            sector = row["sector"] or "기타"
+            count = row["count"]
+            if sector == "기타":
+                no_sector_count = count
+            else:
+                sector_counts[sector] = count
+    except Exception as e:
+        _log.warning("[업종관리] 업종별 종목수 조회 실패: %s", e)
+
+    # 커스텀 업종 목록 (sectors 테이블)
+    custom_sectors = {}
+    try:
+        conn = await get_db_connection()
+        cursor = await conn.execute("SELECT name FROM sectors")
+        rows = await cursor.fetchall()
+        for row in rows:
+            custom_sectors[row["name"]] = ""
+    except Exception as e:
+        _log.warning("[업종관리] 커스텀 업종 목록 조회 실패: %s", e)
+
     filter_summary = ""
     try:
         from backend.app.services.engine_service import get_all_sector_stocks
-        import backend.app.services.engine_service as es
-        stocks = get_all_sector_stocks()
-        if "기타" in merged:
-            no_sector_count = sum(
-                1 for s in stocks if s["sector"] == "기타"
-            )
-        filter_summary = getattr(es, "_latest_filter_summary", "")
-    except Exception:
+        import backend.app.services.engine_state as state
+        stocks = await get_all_sector_stocks()
+        filter_summary = getattr(state, "_latest_filter_summary", "")
+        if not filter_summary:
+            from backend.app.core.sector_stock_cache import load_filter_summary_cache
+            filter_summary = await load_filter_summary_cache()
+            state._latest_filter_summary = filter_summary
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("[업종관리] broadcast_stock_classification_changed 예외: %s", e, exc_info=True)
         pass
 
     payload = {
         "_v": 1,
         "custom_data": {
-            "sectors": dict(custom.sectors),
-            "stock_moves": dict(custom.stock_moves),
-            "deleted_sectors": list(custom.deleted_sectors),
+            "sectors": custom_sectors,
+            "stock_moves": {},
+            "deleted_sectors": [],
         },
         "merged_sectors": merged,
+        "sector_counts": sector_counts,
         "no_sector_count": no_sector_count,
         "filter_summary": filter_summary,
     }
@@ -130,7 +158,7 @@ async def _trigger_recompute() -> None:
 async def get_all_stocks(_: str = Depends(get_current_user)):
     """전체 종목(매매부적격 제외) 조회 — 업종분류 페이지 전용."""
     from backend.app.services.engine_service import get_all_sector_stocks
-    stocks = await asyncio.to_thread(get_all_sector_stocks)
+    stocks = await get_all_sector_stocks()
     return {"stocks": stocks}
 
 
@@ -141,20 +169,24 @@ async def get_stock_classification(_: str = Depends(get_current_user)):
     from backend.app.core.sector_mapping import get_merged_all_sectors
 
     custom = load_custom_data()
-    merged = get_merged_all_sectors()
+    merged = await get_merged_all_sectors()
 
     # "기타" 소속 종목 수 계산 (broadcast_stock_classification_changed와 동일 로직)
     no_sector_count = 0
     filter_summary = ""
     try:
         from backend.app.services.engine_service import get_all_sector_stocks
-        import backend.app.services.engine_service as es
-        stocks = get_all_sector_stocks()
+        import backend.app.services.engine_state as state
+        stocks = await get_all_sector_stocks()
         if "기타" in merged:
             no_sector_count = sum(
                 1 for s in stocks if s["sector"] == "기타"
             )
-        filter_summary = getattr(es, "_latest_filter_summary", "")
+        filter_summary = getattr(state, "_latest_filter_summary", "")
+        if not filter_summary:
+            from backend.app.core.sector_stock_cache import load_filter_summary_cache
+            filter_summary = await load_filter_summary_cache()
+            state._latest_filter_summary = filter_summary
     except Exception:
         pass
 
@@ -178,10 +210,10 @@ async def rename_sector(body: RenameRequest, _: str = Depends(get_current_user))
     """업종명 변경."""
     try:
         from backend.app.core.stock_classification_data import rename_sector as _rename
-        _rename(body.old_name, body.new_name)
-        broadcast_stock_classification_changed()
+        await _rename(body.old_name, body.new_name)
+        await broadcast_stock_classification_changed()
         await _trigger_recompute()
-        return {"ok": True, **_maybe_warning()}
+        return {"ok": True, **await _maybe_warning()}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
 
@@ -193,10 +225,10 @@ async def create_sector(body: CreateRequest, _: str = Depends(get_current_user))
     """신규 업종 등록."""
     try:
         from backend.app.core.stock_classification_data import create_sector as _create
-        _create(body.name)
-        broadcast_stock_classification_changed()
+        await _create(body.name)
+        await broadcast_stock_classification_changed()
         await _trigger_recompute()
-        return {"ok": True, **_maybe_warning()}
+        return {"ok": True, **await _maybe_warning()}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
 
@@ -208,10 +240,10 @@ async def delete_sector(body: DeleteRequest, _: str = Depends(get_current_user))
     """업종 삭제."""
     try:
         from backend.app.core.stock_classification_data import delete_sector as _delete
-        _delete(body.name)
-        broadcast_stock_classification_changed()
+        await _delete(body.name)
+        await broadcast_stock_classification_changed()
         await _trigger_recompute()
-        return {"ok": True, **_maybe_warning()}
+        return {"ok": True, **await _maybe_warning()}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
 
@@ -223,10 +255,10 @@ async def move_stock(body: MoveStockRequest, _: str = Depends(get_current_user))
     """종목 업종 이동."""
     try:
         from backend.app.core.stock_classification_data import move_stock as _move
-        _move(body.stock_code, body.target_sector)
-        broadcast_stock_classification_changed()
+        await _move(body.stock_code, body.target_sector)
+        await broadcast_stock_classification_changed()
         await _trigger_recompute()
-        return {"ok": True, **_maybe_warning()}
+        return {"ok": True, **await _maybe_warning()}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
 
@@ -240,22 +272,22 @@ async def move_stocks(body: MoveStocksRequest, _: str = Depends(get_current_user
         from backend.app.core.stock_classification_data import move_stock as _move
         for code in body.stock_codes:
             _move(code, body.target_sector)
-        broadcast_stock_classification_changed()
+        await broadcast_stock_classification_changed()
         await _trigger_recompute()
-        return {"ok": True, **_maybe_warning()}
+        return {"ok": True, **await _maybe_warning()}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
 
 
-# ── POST /api/stock-classification/trigger-snapshot-download ──────────────────
+# ── POST /api/stock-classification/trigger-confirmed-download ──────────────────
 
-@router.post("/trigger-snapshot-download")
-async def trigger_snapshot_download(_: str = Depends(get_current_user)):
-    """수동 확정시세 다운로드 실행 (ka10081만)"""
+@router.post("/trigger-confirmed-download")
+async def trigger_confirmed_download(_: str = Depends(get_current_user)):
+    """수동 매매적격종목 확정시세 다운로드 실행"""
     try:
         from backend.app.services import engine_service
         if getattr(engine_service, "_confirmed_refresh_running", False):
-            return {"ok": False, "error": "전종목 재조회가 이미 진행 중입니다."}
+            return {"ok": False, "error": "확정시세 다운로드가 이미 진행 중입니다."}
 
         engine_service._pending_stock_details.clear()
         engine_service._sector_stock_layout.clear()
@@ -263,12 +295,31 @@ async def trigger_snapshot_download(_: str = Depends(get_current_user)):
         _rebuild_layout_cache([])
         import backend.app.core.industry_map as _ind_mod
         _ind_mod._eligible_stock_codes.clear()
-        from backend.app.services.market_close_pipeline import fetch_unified_confirmed_data
-        asyncio.create_task(fetch_unified_confirmed_data(engine_service))
-        _log.info("[업종관리] 수동 확정시세 다운로드 시작")
+        from backend.app.services.market_close_pipeline import fetch_confirmed_data_only
+        asyncio.create_task(fetch_confirmed_data_only())
+        _log.info("[업종관리] 수동 매매적격종목 확정시세 다운로드 시작")
         return {"ok": True}
     except Exception as e:
-        _log.error("[업종관리] 수동 확정시세 다운로드 실패: %s", e)
+        _log.error("[업종관리] 수동 매매적격종목 확정시세 다운로드 실패: %s", e)
+        return {"ok": False, "error": str(e)}
+
+
+# ── POST /api/stock-classification/trigger-5d-download ────────────────────────
+
+@router.post("/trigger-5d-download")
+async def trigger_5d_download(_: str = Depends(get_current_user)):
+    """수동 5일봉 거래대금,고가 다운로드 실행"""
+    try:
+        from backend.app.services import engine_service
+        if getattr(engine_service, "_confirmed_refresh_running", False):
+            return {"ok": False, "error": "5일봉 다운로드가 이미 진행 중입니다."}
+
+        from backend.app.services.market_close_pipeline import fetch_5d_data_only
+        asyncio.create_task(fetch_5d_data_only())
+        _log.info("[업종관리] 수동 5일봉 거래대금,고가 다운로드 시작")
+        return {"ok": True}
+    except Exception as e:
+        _log.error("[업종관리] 수동 5일봉 거래대금,고가 다운로드 실패: %s", e)
         return {"ok": False, "error": str(e)}
 
 

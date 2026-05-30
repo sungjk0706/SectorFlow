@@ -1,6 +1,6 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """디버그 세션 NDJSON -- 프로젝트 루트 `debug-92c6a0.log` 단일 경로."""
-from __future__ import annotations
 
 import json
 import re

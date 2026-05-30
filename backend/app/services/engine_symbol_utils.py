@@ -1,37 +1,27 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 키움·REST 종목코드 정규화 및 REAL item/9001 필드 해석 -- 전역 엔진 상태 없음.
 
 engine_service에서 분리된 순수 함수만 둔다 (로직·입출력 동일 유지).
 """
-from __future__ import annotations
 
 # ── 시장 구분 캐시 ────────────────────────────────────────────────────────────
-# 로그인 후 ka10099 로 적재. { "005930": "0", "035720": "10" }
-# "0" = 코스피, "10" = 코스닥
-# 기존 로직 완전 독립 -- 읽기 전용 접근만 허용.
-_market_map: dict[str, str] = {}
+# master_stocks_cache 로 단일화하여 사용 (기존 market_map 변수 및 관련 로직 제거)
 _market_map_version: int = 0  # set_market_map 호출 시마다 증가 -- UI 갱신 감지용
-
-# ── NXT 중복상장 캐시 ─────────────────────────────────────────────────────────
-# 로그인 후 ka10001 순차 조회로 적재. { "005930": True, "000660": True, "999999": False }
-# True = KRX+NXT 중복상장, False = KRX 단독
-_nxt_enable_map: dict[str, bool] = {}
-
-
-def set_nxt_enable_map(new_map: dict[str, bool]) -> None:
-    """로그인 후 engine_service 에서 1회 호출 -- NXT 중복상장 캐시 교체."""
-    global _nxt_enable_map
-    _nxt_enable_map = dict(new_map)
 
 
 def is_nxt_enabled(stk_cd: str) -> bool:
     """
     종목코드가 NXT 중복상장 종목인지 반환.
-    캐시 미적재 시 False (KRX 단독으로 처리).
+    `_master_stocks_cache`에서 직접 조회.
     """
+    from backend.app.services.engine_state import _master_stocks_cache
     base = _base_stk_cd(stk_cd) if stk_cd else ""
-    return _nxt_enable_map.get(base, False)
+    stock = _master_stocks_cache.get(base)
+    if stock:
+        return bool(stock.get("nxt_enable", False))
+    return False
 
 
 def filter_krx_only_stocks(
@@ -68,9 +58,14 @@ def get_ws_subscribe_code(stk_cd: str) -> str:
 
 
 def set_market_map(new_map: dict[str, str]) -> None:
-    """로그인 후 engine_service 에서 1회 호출 -- 기존 캐시 교체."""
-    global _market_map, _market_map_version
-    _market_map = dict(new_map)
+    """메모리 마스터 캐시 갱신 및 UI 감지용 버전 업데이트."""
+    global _market_map_version
+    from backend.app.services.engine_state import _master_stocks_cache
+    for code, market in new_map.items():
+        if code in _master_stocks_cache:
+            _master_stocks_cache[code]["market"] = market
+        else:
+            _master_stocks_cache[code] = {"market": market}
     _market_map_version += 1
 
 
@@ -84,32 +79,19 @@ def get_stock_market(stk_cd: str) -> str | None:
     종목코드 -> 시장 구분 코드 반환.
     "0" = 코스피, "10" = 코스닥, None = 미확인
     """
-    if not _market_map:
-        return None
+    from backend.app.services.engine_state import _master_stocks_cache
     base = _base_stk_cd(stk_cd) if stk_cd else ""
-    return _market_map.get(base)
+    stock = _master_stocks_cache.get(base)
+    if stock:
+        return stock.get("market")
+    return None
 
 
-def real01_trade_price_from_cache(latest_trade_prices: dict, stk_cd: str) -> int:
+
+
+def _format_broker_reg_stk_cd(stk_cd: str) -> str:
     """
-    REAL type=01 체결로만 갱신되는 `_latest_trade_prices` 캐시에서 현재가.
-    임의 가정 금지 -- 없거나 0이면 0 반환.
-    """
-    if not latest_trade_prices:
-        return 0
-    nk = _format_kiwoom_reg_stk_cd(stk_cd)
-    p = latest_trade_prices.get(nk)
-    if p and int(p) > 0:
-        return int(p)
-    for k, v in latest_trade_prices.items():
-        if _format_kiwoom_reg_stk_cd(str(k)) == nk and v and int(v) > 0:
-            return int(v)
-    return 0
-
-
-def _format_kiwoom_reg_stk_cd(stk_cd: str) -> str:
-    """
-    키움 WebSocket REG 의 item 종목코드 -- 공식 예시는 6자리 숫자(선행 0 유지).
+    브로커 WebSocket REG 의 item 종목코드 -- 공식 예시는 6자리 숫자(선행 0 유지).
     보유 REST 등에서 'A006910' / '006910' 모두 허용.
     _AL / _NX 접미사는 제거하고 순수 6자리 반환 (수신 파싱용).
     """
@@ -122,6 +104,9 @@ def _format_kiwoom_reg_stk_cd(stk_cd: str) -> str:
     if s.isdigit():
         return s.zfill(6)[-6:]
     return s
+
+# 하위 호환을 위한 별칭
+_format_kiwoom_reg_stk_cd = _format_broker_reg_stk_cd
 
 
 def _base_stk_cd(stk_cd: str) -> str:

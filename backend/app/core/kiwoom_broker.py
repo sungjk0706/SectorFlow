@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 키움증권 브로커 구현체 (KiwoomBroker)
@@ -9,10 +10,10 @@
 
 get_account_balance() 가 공통 표준 반환 구조(data_manager.py 기준)의 진입점.
 """
-from __future__ import annotations
 
+import asyncio
 import logging
-import time
+from backend.app.core.trade_mode import is_test_mode
 from typing import Optional
 
 from backend.app.core.broker_interface import BrokerInterface
@@ -30,7 +31,7 @@ class KiwoomBroker(BrokerInterface):
     def __init__(self, settings: dict):
         self._settings = settings
 
-        app_key    = (settings.get("kiwoom_app_key")    or "").strip()
+        app_key = (settings.get("kiwoom_app_key") or "").strip()
         app_secret = (settings.get("kiwoom_app_secret") or "").strip()
 
         self._api       = KiwoomApi(settings)
@@ -39,28 +40,28 @@ class KiwoomBroker(BrokerInterface):
         self._acnt_no   = self._rest_api._acnt_no
 
     # ── 인증 ──────────────────────────────────────────────────────────────
-    def get_access_token(self) -> Optional[str]:
+    async def get_access_token(self) -> Optional[str]:
         """[au10001] WebSocket 로그인용 토큰 -- KiwoomRestAPI와 동일 캐시 사용(이중 발급·429 예방)."""
-        return self._rest_api.get_access_token()
+        return await self._rest_api.get_access_token()
 
-    def ensure_token(self) -> bool:
+    async def ensure_token(self) -> bool:
         """토큰 유효성 확인, 만료 시 자동 갱신."""
-        return self._rest_api._ensure_token()
+        return await self._rest_api._ensure_token()
 
     # ── 계좌 조회 ─────────────────────────────────────────────────────────
-    def get_account_number(self) -> Optional[str]:
-        return self._rest_api.get_account_number()
+    async def get_account_number(self) -> Optional[str]:
+        return await self._rest_api.get_account_number()
 
-    def get_deposit_detail(self, acnt_no: str = "") -> Optional[dict]:
+    async def get_deposit_detail(self, acnt_no: str = "") -> Optional[dict]:
         resolved = acnt_no or self._acnt_no
         self._rest_api._acnt_no = resolved
-        return self._rest_api.get_deposit_detail(acnt_no=resolved)
+        return await self._rest_api.get_deposit_detail(acnt_no=resolved)
 
-    def get_balance_detail(self, qry_tp: str = "1", dmst_stex_tp: str = "KRX") -> Optional[dict]:
+    async def get_balance_detail(self, qry_tp: str = "1", dmst_stex_tp: str = "KRX") -> Optional[dict]:
         """계좌평가잔고내역 조회."""
-        return self._rest_api.get_balance_detail(qry_tp, dmst_stex_tp)
+        return await self._rest_api.get_balance_detail(qry_tp, dmst_stex_tp)
 
-    def get_account_balance(self, acnt_no: str = "") -> dict:
+    async def get_account_balance(self, acnt_no: str = "") -> dict:
         """
         [공통 표준] 계좌 잔고 통합 조회.
 
@@ -80,7 +81,7 @@ class KiwoomBroker(BrokerInterface):
             "raw_data": {},
         }
 
-        if not self._rest_api._ensure_token():
+        if not await self._rest_api._ensure_token():
             _log.warning("[키움증권]  토큰 없음 (au10001 실패) -- 계좌잔고 조회 중단")
             return _empty
 
@@ -99,10 +100,10 @@ class KiwoomBroker(BrokerInterface):
                 return 0.0
 
         # kt00001 -- 예수금 · 주문가능금액
-        dep_raw = self._rest_api.get_deposit_detail(acnt_no=resolved)
-        time.sleep(0.5)  # 429 예방
+        dep_raw = await self._rest_api.get_deposit_detail(acnt_no=resolved)
+        await asyncio.sleep(0.5)  # 429 예방
         # kt00018 -- 평가잔고 + 종목별 상세
-        bal_raw = self._rest_api.get_balance_detail()
+        bal_raw = await self._rest_api.get_balance_detail()
 
         if not dep_raw:
             _log.warning("[키움증권] kt00001 응답 없음")
@@ -179,7 +180,7 @@ class KiwoomBroker(BrokerInterface):
         }
 
     # ── 주문 ──────────────────────────────────────────────────────────────
-    def send_order(
+    async def send_order(
         self,
         settings: dict,
         access_token: str,
@@ -190,7 +191,7 @@ class KiwoomBroker(BrokerInterface):
         trde_tp: str = "3",
         orig_ord_no: str = "",
     ) -> dict:
-        return _kiwoom_send_order(
+        return await _kiwoom_send_order(
             settings, access_token, order_type, code, qty,
             price=price, trde_tp=trde_tp, orig_ord_no=orig_ord_no,
         )

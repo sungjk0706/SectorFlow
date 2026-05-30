@@ -17,7 +17,6 @@ import logging
 import re
 import time
 from datetime import datetime, timezone, timedelta
-from typing import Optional
 
 import httpx
 
@@ -58,7 +57,7 @@ _KST = timezone(timedelta(hours=9))
 
 class TelegramBot:
     def __init__(self):
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
         self._running = False
         self._offsets: dict[str, int] = {}
         self._last_poll_ok_mon: float | None = None
@@ -234,7 +233,7 @@ class TelegramBot:
 
     # ── 명령어 라우터 ─────────────────────────────────────────────────────────
 
-    async def _handle_command(self, token: str, chat_id: str, text: str, profile: Optional[str] = None):
+    async def _handle_command(self, token: str, chat_id: str, text: str, profile: str | None = None):
         raw = (text.split()[0] if text else "").strip()
         cmd = raw.lstrip("/").lower()
         # 한글 명령은 lower()가 동일 -- 영문 alias 만 소문자 처리됨
@@ -302,24 +301,24 @@ class TelegramBot:
         from backend.app.core.settings_file import load_settings, update_settings
         from backend.app.services import engine_service
 
-        flat = load_settings()
+        flat = await load_settings()
         if key in ("auto_buy_on", "auto_sell_on", "holiday_guard_on"):
             cur = bool(flat.get(key, True))
         else:
             cur = bool(flat.get(key, False))
         new = not cur
-        update_settings({key: new})
+        await update_settings({key: new})
         await engine_service.refresh_engine_settings_cache(None, use_root=True)
         from backend.app.services.engine_account_notify import (
             notify_desktop_header_refresh,
             notify_desktop_settings_toggled,
         )
         notify_desktop_header_refresh()
-        notify_desktop_settings_toggled()
+        await notify_desktop_settings_toggled()
         logger.info("[텔레그램] 설정 %s -> %s (%s)", key, new, label)
         return new
 
-    async def _cmd_toggle_auto_master(self, token: str, chat_id: str, profile: Optional[str] = None):
+    async def _cmd_toggle_auto_master(self, token: str, chat_id: str, profile: str | None = None):
         try:
             new = await self._toggle_setting_bool("time_scheduler_on", "자동매매 마스터")
             if new:
@@ -337,7 +336,7 @@ class TelegramBot:
         except Exception as exc:
             await self._send(token, chat_id, f" 오류 발생: {str(exc)[:120]}")
 
-    async def _cmd_toggle_auto_buy(self, token: str, chat_id: str, profile: Optional[str] = None):
+    async def _cmd_toggle_auto_buy(self, token: str, chat_id: str, profile: str | None = None):
         try:
             new = await self._toggle_setting_bool("auto_buy_on", "자동 매수")
             await self._send(
@@ -348,7 +347,7 @@ class TelegramBot:
         except Exception as exc:
             await self._send(token, chat_id, f" 오류 발생: {str(exc)[:120]}")
 
-    async def _cmd_toggle_auto_sell(self, token: str, chat_id: str, profile: Optional[str] = None):
+    async def _cmd_toggle_auto_sell(self, token: str, chat_id: str, profile: str | None = None):
         try:
             new = await self._toggle_setting_bool("auto_sell_on", "자동 매도")
             await self._send(
@@ -359,14 +358,14 @@ class TelegramBot:
         except Exception as exc:
             await self._send(token, chat_id, f" 오류 발생: {str(exc)[:120]}")
 
-    async def _cmd_status_full(self, token: str, chat_id: str, profile: Optional[str] = None):
+    async def _cmd_status_full(self, token: str, chat_id: str, profile: str | None = None):
         try:
             from backend.app.services.engine_service import get_status, get_account_snapshot
             from backend.app.core.settings_file import load_settings
 
             eng = get_status()
             eng_running = eng.get("running", False)
-            flat = load_settings()
+            flat = await load_settings()
             t_on = bool(flat.get("time_scheduler_on", False))
             buy_on = bool(flat.get("auto_buy_on", True))
             sell_on = bool(flat.get("auto_sell_on", True))
@@ -452,7 +451,7 @@ class TelegramBot:
                 await self._send(token, chat_id, " 종목 데이터가 없습니다. 엔진 가동 후 다시 시도하세요.")
                 return
 
-            summary = compute_full_sector_summary(
+            summary = await compute_full_sector_summary(
                 **inputs,
             )
 
@@ -485,10 +484,6 @@ class TelegramBot:
                         f"avg {s.avg_change_rate:+.2f}%  "
                         f"상승 {s.rise_count}/{s.total}"
                     )
-
-            # 지수 가드
-            if summary.index_guard_active:
-                lines.append(f"\n 지수 가드 발동: {summary.index_guard_reason}")
 
             await self._send(token, chat_id, "\n".join(lines))
         except Exception as exc:
@@ -535,7 +530,7 @@ class TelegramBot:
             "증권사 앱/HTS에서 당일 실현을 확인하거나 잔고·상태를 참고하세요.",
         )
 
-    async def _cmd_toggle_holiday(self, token: str, chat_id: str, profile: Optional[str] = None):
+    async def _cmd_toggle_holiday(self, token: str, chat_id: str, profile: str | None = None):
         new = await self._toggle_setting_bool("holiday_guard_on", "공휴일 자동매매")
         status = "ON (공휴일 차단)" if new else "OFF (공휴일 허용)"
         await self._send(token, chat_id, f"📅 공휴일 자동매매: <b>{status}</b>")

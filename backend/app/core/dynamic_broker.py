@@ -5,12 +5,12 @@ DynamicBrokerClient
 - 브로커 전환 시 코드 변경 없이 DB 데이터만 교체하면 동작
 - OAuth2 (client_credentials) 토큰 자동 갱신 지원
 
-현재: 키움증권(kiwoom)만 지원.
+현재: kiwoom만 지원.
 """
 import json
 import logging
 import time
-from typing import Any, Optional
+from typing import Any
 
 import httpx as requests
 
@@ -40,7 +40,7 @@ class DynamicBrokerClient:
         self.broker      = broker
         self.creds       = credentials
         self.specs: dict[str, dict] = {}   # spec_name -> row dict
-        self._token: Optional[str]  = None
+        self._token: str | None  = None
         self._token_exp: float      = 0.0  # unix timestamp
 
     # ── 명세 로드 ──────────────────────────────────────────────────────
@@ -115,9 +115,9 @@ class DynamicBrokerClient:
     def call(
         self,
         spec_name: str,
-        params: Optional[dict] = None,
-        body: Optional[dict]   = None,
-        extra_headers: Optional[dict] = None,
+        params: dict | None = None,
+        body: dict | None   = None,
+        extra_headers: dict | None = None,
         timeout: int = 15,
     ) -> dict[str, Any]:
         """
@@ -148,11 +148,8 @@ class DynamicBrokerClient:
 
         # 명세에 정의된 추가 헤더 (tr_id 등)
         spec_headers: dict = spec.get("extra_headers") or {}
-        if isinstance(spec_headers, str):
-            try:
-                spec_headers = json.loads(spec_headers)
-            except Exception:
-                spec_headers = {}
+        if not isinstance(spec_headers, dict):
+            raise ValueError(f"[dynamic_broker] spec.extra_headers 타입 오류: 기대 dict, 실제 {type(spec_headers).__name__}")
         headers.update(spec_headers)
 
         # 호출자가 넘긴 추가 헤더 (tr_id 오버라이드 등)
@@ -178,7 +175,7 @@ class DynamicBrokerClient:
     def list_specs(self) -> list[str]:
         return list(self.specs.keys())
 
-    def spec_info(self, spec_name: str) -> Optional[dict]:
+    def spec_info(self, spec_name: str) -> dict | None:
         return self.specs.get(spec_name)
 
     def __repr__(self) -> str:

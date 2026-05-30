@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional
 # -*- coding: utf-8 -*-
 """
 중앙 상태 관리자 (StateManager)
@@ -6,14 +8,12 @@
 외부에서 상태 직접 수정은 불가능하다.
 단일 worker가 큐를 순차적으로 처리하여 동시성 문제를 완전히 제거한다.
 """
-from __future__ import annotations
 
 import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Optional, Set, Any
 
 from backend.app.core.events import EventType, BrokerType
 from backend.app.core import journal as _journal

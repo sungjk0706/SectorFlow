@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 Broker Connector — 추상 브로커 커넥터 인터페이스
@@ -7,12 +8,11 @@ Broker Connector — 추상 브로커 커넥터 인터페이스
   - 폴링 방식: receive() 메서드 구현
   - 콜백 방식: set_message_callback() 지원
 """
-from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Callable
+from collections.abc import Callable
 
 
 class DataPriority(Enum):

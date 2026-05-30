@@ -1,0 +1,377 @@
+import asyncio
+import json
+import logging
+from backend.app.db.database import get_db_connection
+
+_log = logging.getLogger(__name__)
+
+async def init_cache_tables():
+    """캐시용 테이블들을 생성합니다."""
+    conn = await get_db_connection()
+
+    # sector_layout 테이블 삭제 (master_stocks_table sector 컬럼으로 대체)
+    # market_map 테이블 삭제 (master_stocks_table로 통합)
+
+    # 6. 정산 상태 테이블
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS settlement_state (
+            id INTEGER PRIMARY KEY,
+            accumulated_investment INTEGER,
+            orderable INTEGER,
+            initial_deposit INTEGER,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # 7. 테스트 포지션 테이블
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS test_positions (
+            id INTEGER PRIMARY KEY,
+            data TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # 9. 적격 종목 캐시 테이블
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS eligible_stocks_cache (
+            id INTEGER PRIMARY KEY,
+            date TEXT,
+            data TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # sector_summary_cache 테이블 삭제 (메모리 캐시로 대체)
+
+    # 거래일 캐시 테이블
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS trading_days_cache (
+            id INTEGER PRIMARY KEY,
+            data TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    await conn.commit()
+    _log.info("SQLite 캐시 테이블 초기화 완료.")
+
+# ── 정산 상태 ─────────────────────────────────────────────────────────────
+async def save_settlement_state(data: dict) -> None:
+    """정산 상태 저장"""
+    try:
+        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
+        query = """INSERT OR REPLACE INTO settlement_state 
+                   (id, accumulated_investment, orderable, initial_deposit) 
+                   VALUES (1, ?, ?, ?)"""
+        params = (data.get("accumulated_investment", 0),
+                  data.get("orderable", 0),
+                  data.get("initial_deposit", 0))
+        op = DBWriteOperation(
+            table="settlement_state",
+            operation="INSERT_OR_REPLACE",
+            data={},
+            query=query,
+            params=params,
+        )
+        await execute_db_write(op, wait=True)
+    except Exception as e:
+        _log.warning("[settlement_state] 저장 실패: %s", e)
+
+async def load_settlement_state() -> dict | None:
+    """정산 상태 로드"""
+    try:
+        conn = await get_db_connection()
+        cursor = await conn.execute("""SELECT accumulated_investment, orderable, initial_deposit 
+                                        FROM settlement_state WHERE id = 1""")
+        row = await cursor.fetchone()
+        if row:
+            return {
+                "accumulated_investment": row["accumulated_investment"],
+                "orderable": row["orderable"],
+                "initial_deposit": row["initial_deposit"],
+            }
+    except Exception as e:
+        _log.warning("[settlement_state] 로드 실패: %s", e)
+    return None
+
+
+
+
+# ── 테스트 포지션 ─────────────────────────────────────────────────────────
+async def save_test_positions(data: dict) -> None:
+    """테스트 포지션 저장"""
+    try:
+        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
+        from backend.app.db.json_utils import encode_json_field
+        query = "INSERT OR REPLACE INTO test_positions (id, data) VALUES (1, ?)"
+        params = (encode_json_field(data),)
+        op = DBWriteOperation(
+            table="test_positions",
+            operation="INSERT_OR_REPLACE",
+            data={},
+            query=query,
+            params=params,
+        )
+        await execute_db_write(op, wait=True)
+    except Exception as e:
+        _log.warning("[test_positions] 저장 실패: %s", e)
+
+async def load_test_positions() -> dict | None:
+    """테스트 포지션 로드"""
+    try:
+        from backend.app.db.json_utils import decode_json_field
+        conn = await get_db_connection()
+        cursor = await conn.execute("SELECT data FROM test_positions WHERE id = 1")
+        row = await cursor.fetchone()
+        if row:
+            return decode_json_field(row["data"], expected_type=dict)
+    except Exception as e:
+        _log.warning("[test_positions] 로드 실패: %s", e)
+    return None
+
+
+# ── 적격 종목 캐시 ─────────────────────────────────────────────────────────
+async def save_eligible_stocks_cache(date: str, data: dict) -> None:
+    """적격 종목 캐시 저장"""
+    try:
+        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
+        from backend.app.db.json_utils import encode_json_field
+        query = "INSERT OR REPLACE INTO eligible_stocks_cache (id, date, data) VALUES (1, ?, ?)"
+        params = (date, encode_json_field(data))
+        op = DBWriteOperation(
+            table="eligible_stocks_cache",
+            operation="INSERT_OR_REPLACE",
+            data={},
+            query=query,
+            params=params,
+        )
+        await execute_db_write(op, wait=True)
+    except Exception as e:
+        _log.warning("[eligible_stocks_cache] 저장 실패: %s", e)
+
+async def load_eligible_stocks_cache() -> dict | None:
+    """적격 종목 캐시 로드"""
+    try:
+        from backend.app.db.json_utils import decode_json_field
+        conn = await get_db_connection()
+        cursor = await conn.execute("SELECT date, data FROM eligible_stocks_cache WHERE id = 1")
+        row = await cursor.fetchone()
+        if row:
+            return {"date": row["date"], "data": decode_json_field(row["data"], expected_type=dict)}
+    except Exception as e:
+        _log.warning("[eligible_stocks_cache] 로드 실패: %s", e)
+    return None
+
+
+# sector_summary_cache 삭제 (메모리 캐시로 대체)
+
+# ── 거래일 캐시 ───────────────────────────────────────────────────────────
+async def save_trading_days_cache(data: dict) -> None:
+    """거래일 캐시 저장 (year, date 구조화 테이블)"""
+    try:
+        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
+        
+        # 1. 기존 데이터 삭제 작업 수행
+        op_del = DBWriteOperation(
+            table="trading_days_cache",
+            operation="DELETE",
+            data={},
+            query="DELETE FROM trading_days_cache",
+            params=(),
+        )
+        await execute_db_write(op_del, wait=True)
+        
+        # 2. 대량 인서트 파라미터 빌드
+        params = []
+        for year_str, dates in data.items():
+            if year_str == "last_updated":
+                # last_updated 메타 데이터는 year=0 으로 지정하여 저장
+                val = str(dates)
+                if len(val) == 8:
+                    val = f"{val[:4]}-{val[4:6]}-{val[6:]}"
+                params.append((0, val))
+            else:
+                year = int(year_str)
+                for d_str in dates:
+                    # YYYYMMDD -> YYYY-MM-DD
+                    if len(d_str) == 8:
+                        d_formatted = f"{d_str[:4]}-{d_str[4:6]}-{d_str[6:]}"
+                    else:
+                        d_formatted = d_str
+                    params.append((year, d_formatted))
+                    
+        if params:
+            op_ins = DBWriteOperation(
+                table="trading_days_cache",
+                operation="INSERT_MANY",
+                data={},
+                query="INSERT OR REPLACE INTO trading_days_cache (year, date) VALUES (?, ?)",
+                params=params,
+            )
+            await execute_db_write(op_ins, wait=True)
+    except Exception as e:
+        _log.warning("[trading_days_cache] 저장 실패: %s", e)
+
+async def load_trading_days_cache() -> dict | None:
+    """거래일 캐시 로드 (호환성을 위해 {year_str: list[YYYYMMDD], 'last_updated': YYYYMMDD} 형태로 복원 반환)"""
+    try:
+        conn = await get_db_connection()
+        cursor = await conn.execute("SELECT year, date FROM trading_days_cache")
+        rows = await cursor.fetchall()
+        
+        if not rows:
+            return None
+            
+        result = {}
+        for r in rows:
+            yr = r["year"]
+            dt = r["date"]
+            # YYYY-MM-DD -> YYYYMMDD 로 다시 변환하여 호환성 유지
+            d_clean = dt.replace("-", "")
+            if yr == 0:
+                result["last_updated"] = d_clean
+            else:
+                yr_str = str(yr)
+                if yr_str not in result:
+                    result[yr_str] = []
+                result[yr_str].append(d_clean)
+        return result
+    except Exception as e:
+        _log.warning("[trading_days_cache] 로드 실패: %s", e)
+    return None
+
+
+
+async def create_master_stocks_table():
+    """master_stocks_table 테이블 생성 (통합 마스터 테이블 - 모든 시세/업종 일괄 관리)"""
+    conn = await get_db_connection()
+
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS master_stocks_table (
+            code TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            market TEXT,
+            sector TEXT,
+            cur_price REAL,
+            change REAL,
+            change_rate REAL,
+            trade_amount REAL,
+            high_price REAL,
+            avg_5d_trade_amount INTEGER,
+            high_5d_price REAL,
+            date TEXT,
+            nxt_enable INTEGER DEFAULT 0
+        )
+    ''')
+
+    # 인덱스 생성
+    await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_market ON master_stocks_table(market)')
+    await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_date ON master_stocks_table(date)')
+    await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_avg_5d ON master_stocks_table(avg_5d_trade_amount)')
+
+    await conn.commit()
+    _log.info("master_stocks_table 테이블 초기화 완료.")
+
+
+async def migrate_add_high_price_column():
+    """기존 master_stocks_table에 high_price 컬럼 추가 (마이그레이션)"""
+    conn = await get_db_connection()
+    
+    # 컬럼 존재 여부 확인
+    cursor = await conn.execute("PRAGMA table_info(master_stocks_table)")
+    columns = await cursor.fetchall()
+    column_names = {col["name"] for col in columns}
+    
+    if "high_price" not in column_names:
+        await conn.execute("ALTER TABLE master_stocks_table ADD COLUMN high_price REAL")
+        await conn.commit()
+        _log.info("[마이그레이션] master_stocks_table에 high_price 컬럼 추가 완료")
+    else:
+        _log.info("[마이그레이션] high_price 컬럼 이미 존재 - 스킵")
+
+
+async def migrate_add_nxt_enable_column():
+    """기존 master_stocks_table에 nxt_enable 컬럼 추가 (마이그레이션).
+    앱 기동 시마다 1회 실행하여 구 버전 DB에서도 nxt_enable 컬럼이 보장되도록 한다."""
+    conn = await get_db_connection()
+
+    cursor = await conn.execute("PRAGMA table_info(master_stocks_table)")
+    columns = await cursor.fetchall()
+    column_names = {col["name"] for col in columns}
+
+    if "nxt_enable" not in column_names:
+        await conn.execute("ALTER TABLE master_stocks_table ADD COLUMN nxt_enable INTEGER DEFAULT 0")
+        await conn.commit()
+        _log.info("[마이그레이션] master_stocks_table에 nxt_enable 컬럼 추가 완료")
+    else:
+        _log.debug("[마이그레이션] nxt_enable 컬럼 이미 존재 - 스킵")
+
+
+async def create_stock_5d_array_table():
+    """stock_5d_array 테이블 생성 (5일봉 배열 데이터 저장용)"""
+    conn = await get_db_connection()
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS stock_5d_array (
+            code TEXT,
+            date TEXT,
+            day1_amount REAL,
+            day2_amount REAL,
+            day3_amount REAL,
+            day4_amount REAL,
+            day5_amount REAL,
+            day1_high REAL,
+            day2_high REAL,
+            day3_high REAL,
+            day4_high REAL,
+            day5_high REAL,
+            PRIMARY KEY (code, date)
+        )
+    ''')
+    await conn.execute('CREATE INDEX IF NOT EXISTS idx_stock_5d_array_code ON stock_5d_array(code)')
+    await conn.execute('CREATE INDEX IF NOT EXISTS idx_stock_5d_array_date ON stock_5d_array(date)')
+    await conn.commit()
+    _log.info("stock_5d_array 테이블 초기화 완료.")
+
+
+async def load_master_stocks_table() -> tuple[dict[str, dict], dict[str, str]]:
+    """master_stocks_table 전체를 메모리(KrX format)로 로드 및 sector 캐시 반환 (단일 테이블 조회)"""
+    try:
+        conn = await get_db_connection()
+        cursor = await conn.execute("""
+            SELECT code, name, market, sector, cur_price, change, change_rate, trade_amount, avg_5d_trade_amount, high_5d_price, date, nxt_enable
+            FROM master_stocks_table
+        """)
+        rows = await cursor.fetchall()
+        
+        result = {}
+        sector_cache = {}
+        for r in rows:
+            code = str(r["code"])
+            sector = str(r["sector"] or "기타")
+            
+            result[code] = {
+                "name": str(r["name"] or ""),
+                "market": str(r["market"] or ""),
+                "nxt_enable": bool(r["nxt_enable"] or 0),
+                "cur_price": float(r["cur_price"] or 0),
+                "change": float(r["change"] or 0),
+                "change_rate": float(r["change_rate"] or 0),
+                "sign": "3",  # 체결강도가 DB에 영구저장되지 않으므로 기본값 3(보합)으로 설정
+                "trade_amount": float(r["trade_amount"] or 0),
+                "avg_5d_trade_amount": int(r["avg_5d_trade_amount"] or 0),
+                "high_price": float(r["high_5d_price"] or 0),
+                "prev_close": float(r["cur_price"] or 0) - float(r["change"] or 0),
+                "volume": 0,
+                "sector": sector,
+                "amts_5d_array": [],
+                "highs_5d_array": []
+            }
+            sector_cache[code] = sector
+        _log.info("[master_stocks_table] 로드 완료 -- %d종목", len(result))
+        return result, sector_cache
+    except Exception as e:
+        _log.warning("[master_stocks_table] 로드 실패: %s", e)
+        return {}, {}
+
+

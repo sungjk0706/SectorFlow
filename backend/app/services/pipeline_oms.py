@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional
 # -*- coding: utf-8 -*-
 """
 OMS 전용 배관 (Order Pipeline) - 파이프라인 아키텍처 Step 4
@@ -10,14 +12,12 @@ OMS 전용 배관 (Order Pipeline) - 파이프라인 아키텍처 Step 4
 - 응답 수신 시: Completed 상태로 업데이트 또는 제거
 - 기동 시: Pending 데이터가 존재하면 서버 원장 조회 (조건부 정산)
 """
-from __future__ import annotations
 
 import asyncio
 import json
 import os
 import time
 from types import ModuleType
-from typing import Optional
 
 from backend.app.core.logger import get_logger
 from backend.app.services.core_queues import (
@@ -75,7 +75,7 @@ async def _oms_loop_impl(es: ModuleType) -> None:
 
     try:
         # ── Reconciliation(강제 정산) 관문 ───────────────────────────────────────
-        # 큐 컨슘 루프가 돌기 직전, 키움증권 서버 API를 호출하여 원장 대조
+        # 큐 컨슘 루프가 돌기 직전, 증권사 서버 API를 호출하여 원장 대조
         await _reconciliation_on_startup(es, broadcast_queue)
         logger.info("[OMS] Reconciliation 완료 - 큐 컨슘 루프 시작")
 
@@ -118,9 +118,9 @@ async def _reconciliation_on_startup(
 
     try:
         from backend.app.core.journal import oms_get_pending_orders
-        
+
         # 1. 로컬 장부에서 Pending 상태인 주문 조회
-        pending_orders = oms_get_pending_orders()
+        pending_orders = await oms_get_pending_orders()
         pending_count = len(pending_orders)
 
         logger.info("[OMS] Pending 주문 수: %d건", pending_count)
@@ -157,7 +157,7 @@ async def _reconciliation_on_startup(
             return
 
         # 실제 체결 내역 조회
-        balance_raw = await asyncio.to_thread(get_account_profit_rate, access_token)
+        balance_raw = await get_account_profit_rate(access_token)
         if not balance_raw:
             logger.warning("[OMS] Reconciliation 실패 - 체결 내역 조회 실패")
             await broadcast_queue.put({
@@ -279,7 +279,7 @@ async def _execute_buy_order(
 
         # 주문 요청 직전: Pending 상태로 저널링
         from backend.app.core.journal import record_order_request
-        record_order_request(
+        await record_order_request(
             order_id=order_id,
             stock_code=code,
             side="buy",
@@ -302,7 +302,7 @@ async def _execute_buy_order(
         )
 
         # 매수 주문 실행
-        success = auto_trade.execute_buy(
+        success = await auto_trade.execute_buy(
             stk_cd=code,
             current_price=price,
             checked_stocks=set(),
@@ -406,7 +406,7 @@ async def _execute_sell_order(
 
         # 주문 요청 직전: Pending 상태로 저널링
         from backend.app.core.journal import record_order_request
-        record_order_request(
+        await record_order_request(
             order_id=order_id,
             stock_code=code,
             side="sell",
@@ -430,10 +430,10 @@ async def _execute_sell_order(
         )
 
         # 종목명 조회
-        stk_nm = get_stock_name(code, access_token)
+        stk_nm = await get_stock_name(code, access_token)
 
         # 매도 주문 실행
-        auto_trade.execute_sell(
+        await auto_trade.execute_sell(
             stk_cd=code,
             cur_price=price,
             stk_nm=stk_nm,

@@ -15,7 +15,6 @@ OMS Circuit Breaker - 주문 실패 시 계좌 보호
 """
 import time
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ class CircuitBreaker:
         self.failure_count = 0
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
-        self.last_failure_time: Optional[float] = None
+        self.last_failure_time: float | None = None
 
     def record_failure(self) -> None:
         """주문 실패 기록."""
@@ -96,7 +95,7 @@ class CircuitBreaker:
 
 
 # 전역 인스턴스 (OMS 루프에서 공유)
-_circuit_breaker: Optional[CircuitBreaker] = None
+_circuit_breaker: CircuitBreaker | None = None
 
 
 def get_circuit_breaker() -> CircuitBreaker:

@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 LS증권 브로커 구현체 (LsBroker)
@@ -6,10 +7,8 @@ LS증권 브로커 구현체 (LsBroker)
   - LsRestAPI (ls_rest.py): OAuth2 토큰 관리, REST API 호출, 주문 실행
   - LsBroker (이 파일): BrokerInterface로 캡슐화
 """
-from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from backend.app.core.broker_interface import BrokerInterface
 from backend.app.core.ls_rest import LsRestAPI
@@ -31,7 +30,7 @@ class LsBroker(BrokerInterface):
         self._acnt_no = account_no
 
     # ── 인증 ──────────────────────────────────────────────────────────────
-    def get_access_token(self) -> Optional[str]:
+    def get_access_token(self) -> str | None:
         """OAuth2 액세스 토큰 반환"""
         return self._rest_api.get_token()
 
@@ -42,15 +41,15 @@ class LsBroker(BrokerInterface):
         return False
 
     # ── 계좌 조회 ─────────────────────────────────────────────────────────
-    def get_account_number(self) -> Optional[str]:
+    def get_account_number(self) -> str | None:
         return self._acnt_no
 
-    def get_deposit_detail(self, acnt_no: str = "") -> Optional[dict]:
+    def get_deposit_detail(self, acnt_no: str = "") -> dict | None:
         """예수금 상세 조회 - LS증권 미구현"""
         _log.warning("[LS증권] 예수금 조회 미구현")
         return None
 
-    def get_balance_detail(self, qry_tp: str = "1", dmst_stex_tp: str = "KRX") -> Optional[dict]:
+    def get_balance_detail(self, qry_tp: str = "1", dmst_stex_tp: str = "KRX") -> dict | None:
         """계좌평가잔고내역 조회 - LS증권 미구현"""
         _log.warning("[LS증권] 잔고 조회 미구현")
         return None
@@ -106,7 +105,7 @@ class LsBroker(BrokerInterface):
         order_type: str = "00",  # 00:지정가
         side: str = "BUY",  # BUY or SELL
         member_code: str = "NXT",
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         비동기 주문 전송 (LS증권 전용)
 

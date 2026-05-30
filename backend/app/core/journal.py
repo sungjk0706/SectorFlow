@@ -1,6 +1,7 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
-Persistence Journaling - SQLite 기반 저널링
+Persistence Journaling - 메모리 기반 저널링
 
 책임:
   1. 설정 변경 기록 (SETTINGS_CHANGE)
@@ -9,31 +10,24 @@ Persistence Journaling - SQLite 기반 저널링
   4. 장애 복구 시 재생 로직
 
 특징:
-  - SQLite를 활용한 동기식 즉시 기록 (Race Condition 방지)
-  - WAL 모드 적용으로 I/O 병목 완화
-  - 순서 보장 (AUTOINCREMENT id)
+  - 메모리 기반 저널링 (실시간 파이프라인 DB 접근 금지)
+  - 순서 보장 (리스트 순서)
+  - 장마감 후 배치 파이프라인에서 DB 저장
 """
-from __future__ import annotations
 
+import asyncio
 import json
 import logging
-import sqlite3
-import threading
 import time
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-_DB_FILE = _DATA_DIR / "journal.db"
-_OLD_JSON_FILE = _DATA_DIR / "journal.jsonl"
-_JOURNAL_FILE = _OLD_JSON_FILE
-
-_db_lock = threading.Lock()
-_loaded = False
+# ── 메모리 저장소 ─────────────────────────────────────────────────────────────
+_journal_entries: list[dict] = []
+_journal_lock: asyncio.Lock = asyncio.Lock()
 
 
 # ── Journal Event Types ──────────────────────────────────────────────────────
@@ -57,89 +51,27 @@ class JournalEntry:
 
 # ── DB Connection ─────────────────────────────────────────────────────────────
 
-def _get_conn() -> sqlite3.Connection:
-    db_file = _DATA_DIR / "journal.db"
-    conn = sqlite3.connect(str(db_file), timeout=10.0)
-    # WAL 모드 활성화로 동시 읽기/쓰기 성능 향상
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.row_factory = sqlite3.Row
-    return conn
+async def _get_conn() -> None:
+    """No-op - 메모리 전용으로 변경"""
+    pass
 
 
-def _ensure_loaded() -> None:
-    """DB 초기화 및 마이그레이션"""
-    global _loaded
-    if _loaded:
-        return
-
-    with _db_lock:
-        if _loaded:
-            return
-
-        _DATA_DIR.mkdir(parents=True, exist_ok=True)
-        with _get_conn() as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS journal (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_type TEXT,
-                    timestamp REAL,
-                    data TEXT
-                )
-            """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_journal_type ON journal(event_type)")
-            
-        _migrate_from_json()
-        _loaded = True
+async def _ensure_loaded() -> None:
+    """No-op - 메모리 전용으로 변경"""
+    pass
 
 
-def _migrate_from_json() -> None:
-    """기존 journal.jsonl 파일 마이그레이션"""
-    if not _OLD_JSON_FILE.exists():
-        return
-        
-    try:
-        with _get_conn() as conn:
-            cursor = conn.execute("SELECT COUNT(*) as cnt FROM journal")
-            if cursor.fetchone()["cnt"] > 0:
-                _OLD_JSON_FILE.rename(_OLD_JSON_FILE.with_suffix(".jsonl.bak"))
-                return
-                
-        entries_to_insert = []
-        with open(_OLD_JSON_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    raw = json.loads(line)
-                    entries_to_insert.append((
-                        raw["event_type"],
-                        raw["timestamp"],
-                        json.dumps(raw["data"], ensure_ascii=False)
-                    ))
-                except Exception:
-                    pass
-                    
-        if entries_to_insert:
-            with _get_conn() as conn:
-                with conn:
-                    conn.executemany(
-                        "INSERT INTO journal (event_type, timestamp, data) VALUES (?, ?, ?)",
-                        entries_to_insert
-                    )
-                    
-        _OLD_JSON_FILE.rename(_OLD_JSON_FILE.with_suffix(".jsonl.bak"))
-        logger.info("[Journal] JSONL 데이터 SQLite 마이그레이션 완료 (%d건)", len(entries_to_insert))
-    except Exception as e:
-        logger.error("[Journal] 마이그레이션 실패: %s", e, exc_info=True)
+async def _migrate_from_json() -> None:
+    """No-op - 메모리 전용으로 변경"""
+    pass
 
 
 # ── File I/O ─────────────────────────────────────────────────────────────────
 
-def _append_entry(event_type: Any, timestamp: float | None = None, data: dict | None = None) -> int:
-    """저널 엔트리를 DB에 추가하고 seq 반환"""
-    _ensure_loaded()
-    
+async def _append_entry(event_type: Any, timestamp: float | None = None, data: dict | None = None) -> int:
+    """저널 엔트리를 메모리에 추가하고 seq 반환"""
+    await _ensure_loaded()
+
     # 1. dataclass 및 인자 하위 호환 파싱
     if hasattr(event_type, "event_type"):  # JournalEntry dataclass
         entry = event_type
@@ -153,98 +85,52 @@ def _append_entry(event_type: Any, timestamp: float | None = None, data: dict | 
 
     seq = 0
     try:
-        with _db_lock:
-            with _get_conn() as conn:
-                with conn:
-                    cursor = conn.execute(
-                        "INSERT INTO journal (event_type, timestamp, data) VALUES (?, ?, ?)",
-                        (evt_type, evt_ts, json.dumps(evt_data, ensure_ascii=False))
-                    )
-                    seq = cursor.lastrowid or 0
+        async with _journal_lock:
+            seq = len(_journal_entries) + 1
+            _journal_entries.append({
+                "id": seq,
+                "event_type": evt_type,
+                "timestamp": evt_ts,
+                "data": evt_data
+            })
     except Exception as e:
-        logger.error("[Journal] DB 쓰기 실패: %s", e, exc_info=True)
-
-    # 2. _JOURNAL_FILE이 설정된 경우 JSONL 파일에 동시 기록 (테스트 호환성)
-    if _JOURNAL_FILE:
-        try:
-            _JOURNAL_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with open(_JOURNAL_FILE, "a", encoding="utf-8") as f:
-                json.dump({
-                    "event_type": evt_type,
-                    "timestamp": evt_ts,
-                    "seq": seq,
-                    "data": evt_data
-                }, f, ensure_ascii=False)
-                f.write("\n")
-        except Exception:
-            pass
+        logger.error("[Journal] 메모리 쓰기 실패: %s", e, exc_info=True)
 
     return seq
 
 
-def _read_all_entries() -> list[JournalEntry]:
-    """DB 또는 임시 테스트 파일에서 모든 엔트리 읽기"""
-    _ensure_loaded()
-    
-    # 1. _JOURNAL_FILE이 설정되어 있고 실존한다면 JSONL에서 읽기 (테스트 호환성)
-    if _JOURNAL_FILE and _JOURNAL_FILE.exists() and _JOURNAL_FILE.suffix == ".jsonl":
-        entries = []
-        try:
-            with open(_JOURNAL_FILE, "r", encoding="utf-8") as f:
-                for idx, line in enumerate(f, start=1):
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        raw = json.loads(line)
-                        event_type = JournalEventType(raw["event_type"])
-                        entries.append(JournalEntry(
-                            event_type=event_type,
-                            timestamp=raw["timestamp"],
-                            seq=raw.get("seq", idx),
-                            data=raw["data"]
-                        ))
-                    except Exception:
-                        pass
-            return entries
-        except Exception:
-            pass
-
-    # 2. 일반 동작 시 SQLite DB에서 읽기
+async def _read_all_entries() -> list[JournalEntry]:
+    """메모리에서 모든 엔트리 읽기"""
+    await _ensure_loaded()
     entries = []
     try:
-        with _get_conn() as conn:
-            cursor = conn.execute("SELECT id, event_type, timestamp, data FROM journal ORDER BY id ASC")
-            for row in cursor.fetchall():
+        async with _journal_lock:
+            for row in _journal_entries:
                 try:
                     event_type = JournalEventType(row["event_type"])
                     entries.append(JournalEntry(
                         event_type=event_type,
                         timestamp=row["timestamp"],
                         seq=row["id"],
-                        data=json.loads(row["data"]),
+                        data=row["data"],
                     ))
                 except Exception as e:
                     logger.warning("[Journal] 엔트리 파싱 실패 (id=%s): %s", row["id"], e)
     except Exception as e:
-        logger.error("[Journal] DB 읽기 실패: %s", e, exc_info=True)
+        logger.error("[Journal] 메모리 읽기 실패: %s", e, exc_info=True)
     return entries
 
 
-def _perform_compaction() -> None:
+async def _perform_compaction() -> None:
     """Compaction - 오래된 엔트리 정리 (최근 1000개 유지)"""
-    _ensure_loaded()
+    await _ensure_loaded()
     try:
-        with _db_lock:
-            with _get_conn() as conn:
-                with conn:
-                    # 보존할 시작 ID 찾기
-                    cursor = conn.execute("SELECT id FROM journal ORDER BY id DESC LIMIT 1 OFFSET 1000")
-                    row = cursor.fetchone()
-                    if row:
-                        cutoff_id = row["id"]
-                        cursor = conn.execute("DELETE FROM journal WHERE id <= ?", (cutoff_id,))
-                        logger.info("[Journal] Compaction 완료 - %d개 이전 엔트리 삭제됨", cursor.rowcount)
+        async with _journal_lock:
+            if len(_journal_entries) > 1000:
+                cutoff_index = len(_journal_entries) - 1000
+                removed = _journal_entries[:cutoff_index]
+                _journal_entries[:] = _journal_entries[cutoff_index:]
+                logger.info("[Journal] Compaction 완료 - %d개 이전 엔트리 삭제됨", len(removed))
     except Exception as e:
         logger.error("[Journal] Compaction 실패: %s", e, exc_info=True)
 
@@ -263,9 +149,9 @@ async def stop_consumer_task() -> None:
 
 # ── Public API - 기록 ────────────────────────────────────────────────────────
 
-def record_settings_change(changed_keys: set[str], before: dict, after: dict) -> None:
+async def record_settings_change(changed_keys: set[str], before: dict, after: dict) -> None:
     """설정 변경 기록"""
-    _append_entry(
+    await _append_entry(
         JournalEventType.SETTINGS_CHANGE.value,
         time.time(),
         {
@@ -277,7 +163,7 @@ def record_settings_change(changed_keys: set[str], before: dict, after: dict) ->
     logger.debug("[Journal] 설정 변경 기록 - 키: %s", changed_keys)
 
 
-def record_order_request(
+async def record_order_request(
     order_id: str,
     stock_code: str,
     side: str,
@@ -286,7 +172,7 @@ def record_order_request(
     trade_mode: str,
 ) -> None:
     """주문 요청 기록"""
-    _append_entry(
+    await _append_entry(
         JournalEventType.ORDER_REQUEST.value,
         time.time(),
         {
@@ -302,7 +188,7 @@ def record_order_request(
     logger.debug("[Journal] 주문 요청 기록 - %s %s %d주", order_id, side, quantity)
 
 
-def record_fill_event(
+async def record_fill_event(
     order_id: str,
     stock_code: str,
     side: str,
@@ -311,7 +197,7 @@ def record_fill_event(
     trade_mode: str,
 ) -> None:
     """체결 이벤트 기록"""
-    _append_entry(
+    await _append_entry(
         JournalEventType.FILL_EVENT.value,
         time.time(),
         {
@@ -328,59 +214,44 @@ def record_fill_event(
 
 # ── OMS 전용 메서드 ─────────────────────────────────────────────────────────
 
-def oms_get_pending_orders() -> list[dict]:
+async def oms_get_pending_orders() -> list[dict]:
     """OMS용 로컬 장부에서 Pending 상태인 주문 조회"""
-    _ensure_loaded()
+    await _ensure_loaded()
     pending = []
     try:
-        # JSON 데이터 내부를 검색하는 대신 가장 단순하게 전체 ORDER_REQUEST를 읽어서 필터링
-        with _get_conn() as conn:
-            cursor = conn.execute("SELECT id, data FROM journal WHERE event_type = ?", (JournalEventType.ORDER_REQUEST.value,))
-            for row in cursor.fetchall():
-                try:
-                    data = json.loads(row["data"])
+        async with _journal_lock:
+            for row in _journal_entries:
+                if row["event_type"] == JournalEventType.ORDER_REQUEST.value:
+                    data = row["data"]
                     if data.get("status") == "pending":
                         pending.append(data)
-                except Exception:
-                    pass
     except Exception as e:
         logger.error("[Journal] Pending 주문 조회 실패: %s", e, exc_info=True)
     return pending
 
 
-def oms_update_order_status(order_id: str, status: str) -> None:
+async def oms_update_order_status(order_id: str, status: str) -> None:
     """OMS용 주문 상태 업데이트"""
-    _ensure_loaded()
+    await _ensure_loaded()
     try:
-        with _db_lock:
-            with _get_conn() as conn:
-                # 해당 order_id를 가진 엔트리를 찾아 갱신
-                cursor = conn.execute("SELECT id, data FROM journal WHERE event_type = ?", (JournalEventType.ORDER_REQUEST.value,))
-                for row in cursor.fetchall():
-                    data = json.loads(row["data"])
+        async with _journal_lock:
+            for row in _journal_entries:
+                if row["event_type"] == JournalEventType.ORDER_REQUEST.value:
+                    data = row["data"]
                     if data.get("order_id") == order_id:
                         data["status"] = status
-                        with conn:
-                            conn.execute(
-                                "UPDATE journal SET data = ? WHERE id = ?",
-                                (json.dumps(data, ensure_ascii=False), row["id"])
-                            )
                         logger.debug("[Journal] 주문 상태 업데이트 - order_id=%s, status=%s", order_id, status)
                         return
     except Exception as e:
         logger.error("[Journal] 주문 상태 업데이트 실패: %s", e, exc_info=True)
 
 
-def oms_get_next_seq() -> int:
-    """OMS용 다음 시퀀스 번호 발급 (SQLite의 AUTOINCREMENT를 모방)"""
-    _ensure_loaded()
+async def oms_get_next_seq() -> int:
+    """OMS용 다음 시퀀스 번호 발급"""
+    await _ensure_loaded()
     try:
-        with _get_conn() as conn:
-            cursor = conn.execute("SELECT seq FROM sqlite_sequence WHERE name='journal'")
-            row = cursor.fetchone()
-            if row:
-                return row["seq"] + 1
-            return 1
+        async with _journal_lock:
+            return len(_journal_entries) + 1
     except Exception:
         return 1
 
@@ -389,15 +260,15 @@ _next_seq = oms_get_next_seq
 
 # ── Public API - 재생 ─────────────────────────────────────────────────────────
 
-def replay_journal(
+async def replay_journal(
     settings_change_handler: callable | None = None,
     order_request_handler: callable | None = None,
     fill_event_handler: callable | None = None,
 ) -> int:
     """저널 재생"""
-    entries = _read_all_entries()
+    entries = await _read_all_entries()
     replayed_count = 0
-    
+
     for entry in entries:
         try:
             if entry.event_type == JournalEventType.SETTINGS_CHANGE and settings_change_handler:
@@ -410,38 +281,26 @@ def replay_journal(
         except Exception as e:
             logger.error("[Journal] 엔트리 재생 실패 (seq=%d): %s", entry.seq, e, exc_info=True)
             continue
-    
+
     logger.info("[Journal] 저널 재생 완료 - %d/%d 엔트리 재생됨", replayed_count, len(entries))
     return replayed_count
 
 
-def clear_journal() -> None:
+async def clear_journal() -> None:
     """저널 초기화"""
-    _ensure_loaded()
+    await _ensure_loaded()
     try:
-        with _db_lock:
-            with _get_conn() as conn:
-                with conn:
-                    conn.execute("DELETE FROM journal")
-                    # SQLite 시퀀스 초기화
-                    conn.execute("DELETE FROM sqlite_sequence WHERE name='journal'")
-        
-        # JSONL 임시 파일 삭제 (테스트 호환성)
-        if _JOURNAL_FILE and _JOURNAL_FILE.exists():
-            try:
-                _JOURNAL_FILE.unlink()
-            except Exception:
-                pass
-                
-        logger.info("[Journal] 저널 파일 초기화 완료")
+        async with _journal_lock:
+            _journal_entries.clear()
+        logger.info("[Journal] 저널 초기화 완료")
     except Exception as e:
-        logger.error("[Journal] 저널 파일 초기화 실패: %s", e, exc_info=True)
+        logger.error("[Journal] 저널 초기화 실패: %s", e, exc_info=True)
 
 
-def get_journal_stats() -> dict[str, Any]:
+async def get_journal_stats() -> dict[str, Any]:
     """저널 통계 조회"""
-    entries = _read_all_entries()
-    
+    entries = await _read_all_entries()
+
     stats = {
         "total_entries": len(entries),
         "settings_changes": 0,
@@ -450,11 +309,11 @@ def get_journal_stats() -> dict[str, Any]:
         "oldest_timestamp": None,
         "newest_timestamp": None,
     }
-    
+
     if entries:
         stats["oldest_timestamp"] = entries[0].timestamp
         stats["newest_timestamp"] = entries[-1].timestamp
-        
+
         for entry in entries:
             if entry.event_type == JournalEventType.SETTINGS_CHANGE:
                 stats["settings_changes"] += 1
@@ -462,5 +321,10 @@ def get_journal_stats() -> dict[str, Any]:
                 stats["order_requests"] += 1
             elif entry.event_type == JournalEventType.FILL_EVENT:
                 stats["fill_events"] += 1
-    
+
     return stats
+
+
+async def close_db_connection() -> None:
+    """No-op - 메모리 전용으로 변경"""
+    pass

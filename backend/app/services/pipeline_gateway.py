@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional
 # -*- coding: utf-8 -*-
 """
 UI 브로드캐스터 (Gateway Pipeline) - 파이프라인 아키텍처 Step 5
@@ -11,11 +13,9 @@ Gateway 루프는 broadcast_queue를 지속적으로 컨슘하여,
 데이터 폭주 방지(Coalescing) 적용:
 - 동일 종목에 대한 시세 업데이트가 0.1초 내에 여러 번 발생하면 최신값만 골라 묶어서 한 번에 전송
 """
-from __future__ import annotations
 
 import asyncio
 import time
-from typing import Optional
 
 from backend.app.core.logger import get_logger
 from backend.app.services.core_queues import get_broadcast_queue

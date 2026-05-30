@@ -1,6 +1,6 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """JWT 토큰 생성/검증 모듈."""
-from __future__ import annotations
 
 import os
 import logging

@@ -1,9 +1,9 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """WebSocket 통합 엔드포인트 — 모든 이벤트를 단일 채널로 전송.
 
 fire-and-forget broadcast는 WSManager가 담당하며,
 이 엔드포인트는 연결 관리 + initial snapshot + ping-pong만 처리한다."""
-from __future__ import annotations
 
 import asyncio
 import json
@@ -19,41 +19,81 @@ router = APIRouter(prefix="/api/ws", tags=["websocket"])
 
 
 async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> None:
-    """데이터 준비 완료 대기 → 앱준비 완료 대기 → 업종순위 계산 완료 대기 → initial-snapshot, sector-stocks-refresh, sector-scores, buy-targets-update 순차 유니캐스트."""
+    """데이터 준비 완료 대기 → 앱준비 완료 대기 → stock-classification-changed 전송 → 업종순위 계산 완료 대기 → initial-snapshot, sector-stocks-refresh, sector-scores, buy-targets-update 순차 유니캐스트."""
     try:
-        # 데이터 준비 완료 대기 (_pending_stock_details 채워짐 보장)
         from backend.app.services.engine_service import _data_ready_event
+        from backend.app.services.engine_config import get_settings_snapshot
 
-        if not _data_ready_event.is_set():
+        settings = await get_settings_snapshot()
+        _trade_mode = settings.get("trade_mode", "")
+
+        # 이벤트 구동 방식: 데이터 준비 완료 시 즉시 전송 (타임아웃/폴링 제거)
+        if _trade_mode != "test" and not _data_ready_event.is_set():
             logger.info("[연결] 데이터 준비 대기 중 -- 초기 스냅샷 전송 지연")
-            try:
-                await asyncio.wait_for(_data_ready_event.wait(), timeout=60.0)
-            except asyncio.TimeoutError:
-                logger.warning("[연결] 데이터 준비 60초 대기 초과 -- 현재 데이터로 전송")
+            await _data_ready_event.wait()
+            logger.info("[연결] 데이터 준비 완료 -- 초기 스냅샷 전송 시작")
+        elif _trade_mode == "test":
+            logger.info("[연결] 테스트모드 -- 데이터 준비 대기 스킵")
 
-        # 앱준비 완료 대기
+        # 앱준비 완료 대기 (이벤트 구동)
         from backend.app.services.engine_service import _bootstrap_event
 
-        if not _bootstrap_event.is_set():
+        settings = await get_settings_snapshot()
+        _trade_mode = settings.get("trade_mode", "")
+
+        # 테스트모드가 아니고 앱준비가 완료되지 않은 경우에만 대기
+        if _trade_mode != "test" and not _bootstrap_event.is_set():
             logger.info("[연결] 앱준비 대기 중 -- 초기 스냅샷 전송 지연")
-            try:
-                await asyncio.wait_for(_bootstrap_event.wait(), timeout=60.0)
-            except asyncio.TimeoutError:
-                logger.warning("[연결] 앱준비 60초 대기 초과 -- 현재 데이터로 전송")
+            await _bootstrap_event.wait()
+            logger.info("[연결] 앱준비 완료 -- 초기 스냅샷 전송 시작")
+        elif _trade_mode == "test":
+            logger.info("[연결] 테스트모드 -- 앱준비 대기 스킵")
 
-        # 업종순위 계산 완료 대기 (매수후보 데이터 포함을 위해 필수)
-        from backend.app.services.engine_service import _sector_summary_ready_event, _settings_cache
+        # 엔진 준비 완료 유니캐스트 전송 (engine-ready)
+        if _bootstrap_event.is_set() or _trade_mode == "test":
+            await ws_manager.send_to(websocket, "engine-ready", {"_v": 1, "ready": True})
+            logger.info("[연결] 엔진 준비 완료 유니캐스트 전송 (engine-ready)")
 
-        _timeout = float(_settings_cache.get("ws_initial_snapshot_timeout_sec", 300.0))
+        # stock-classification 초기 데이터 전송 (업종순위 계산과 무관하게 독립 전송)
+        from backend.app.core.stock_classification_data import load_custom_data
+        from backend.app.core.sector_mapping import get_merged_all_sectors
 
-        if not _sector_summary_ready_event.is_set():
-            logger.info("[연결] 업종순위 계산 대기 중 -- 매수후보 데이터 포함을 위해 대기")
-            try:
-                await asyncio.wait_for(_sector_summary_ready_event.wait(), timeout=_timeout)
-            except asyncio.TimeoutError:
-                logger.warning(f"[연결] 업종순위 계산 {_timeout}초 대기 초과 -- 매수후보 없이 전송")
+        custom = load_custom_data()
+        merged = await get_merged_all_sectors()
+        no_sector_count = 0
+        filter_summary = ""
+        try:
+            import backend.app.services.engine_service as es
+            import backend.app.services.engine_state as state
+            stocks = await es.get_all_sector_stocks()
+            if not stocks:
+                # 캐시에서 기존 저장 데이터 우선 표시
+                stocks = await es.get_all_sector_stocks_from_cache()
+            if "기타" in merged:
+                no_sector_count = sum(1 for s in stocks if s["sector"] == "기타")
+            filter_summary = getattr(state, "_latest_filter_summary", "")
+        except Exception:
+            pass
 
-        # initial-snapshot 전송 (업종순위 계산 완료 후 buyTargets 포함)
+        stock_classification_payload = {
+            "_v": 1,
+            "custom_data": {
+                "sectors": dict(custom.sectors),
+                "stock_moves": dict(custom.stock_moves),
+                "deleted_sectors": list(custom.deleted_sectors),
+            },
+            "merged_sectors": merged,
+            "no_sector_count": no_sector_count,
+            "filter_summary": filter_summary,
+            "all_stocks": stocks,
+        }
+        await ws_manager.send_to(websocket, "stock-classification-changed", stock_classification_payload)
+        logger.info("[연결] 업종분류 화면전송")
+
+        # 업종순위 계산 대기 로직 삭제 (앱 기동과 업종순위 계산 독립성 보장)
+        # 업종순위 계산은 백그라운드 태스크로 실행되며, 완료 시 WS로 전송됨
+
+        # initial-snapshot 전송 (업종순위 계산 완료와 무관하게 즉시 전송)
         from backend.app.services.engine_service import build_initial_snapshot
 
         logger.info("[연결] 시작화면 데이터 생성 시작")
@@ -95,7 +135,7 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
             from backend.app.services import engine_service as _es_check
 
             if _es_check._sector_summary_cache is None:
-                logger.warning(
+                logger.info(
                     "[연결] 업종점수 미전송 -- 업종 요약정보 없음"
                 )
             else:
@@ -110,38 +150,6 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
                 websocket, "buy-targets-update", {"_v": 1, "buy_targets": targets}
             )
             logger.info("[연결] 매수후보 화면전송 -- %d건", len(targets))
-
-        # stock-classification 초기 데이터 전송
-        from backend.app.core.stock_classification_data import load_custom_data
-        from backend.app.core.sector_mapping import get_merged_all_sectors
-
-        custom = load_custom_data()
-        merged = get_merged_all_sectors()
-        no_sector_count = 0
-        filter_summary = ""
-        try:
-            import backend.app.services.engine_service as es
-            stocks = es.get_all_sector_stocks()
-            if "기타" in merged:
-                no_sector_count = sum(1 for s in stocks if s["sector"] == "기타")
-            filter_summary = getattr(es, "_latest_filter_summary", "")
-        except Exception:
-            pass
-
-        stock_classification_payload = {
-            "_v": 1,
-            "custom_data": {
-                "sectors": dict(custom.sectors),
-                "stock_moves": dict(custom.stock_moves),
-                "deleted_sectors": list(custom.deleted_sectors),
-            },
-            "merged_sectors": merged,
-            "no_sector_count": no_sector_count,
-            "filter_summary": filter_summary,
-            "all_stocks": stocks,
-        }
-        await ws_manager.send_to(websocket, "stock-classification-changed", stock_classification_payload)
-        logger.info("[연결] 업종분류 화면전송")
     except Exception as e:
         logger.error("[연결] 초기 스냅샷 전송 실패: %s", e, exc_info=True)
 
@@ -189,6 +197,19 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
                 fids = msg.get("fids", [])
                 if isinstance(fids, list):
                     ws_manager.set_subscribed_fids(websocket, fids)
+            elif msg_type == "cancel-download":
+                # 다운로드 중단 요청 처리
+                from backend.app.services import engine_service as es
+                download_type = msg.get("download_type", "")
+                logger.info("[연결] cancel-download 요청 수신: download_type=%s", download_type)
+                if download_type == "confirmed":
+                    es._confirmed_refresh_running_confirmed = False
+                    logger.info("[연결] 확정시세 다운로드 중단 요청 처리 완료 - 플래그=False")
+                elif download_type == "5d":
+                    es._confirmed_refresh_running_5d = False
+                    logger.info("[연결] 5일봉 다운로드 중단 요청 처리 완료 - 플래그=False")
+                else:
+                    logger.warning("[연결] 알 수 없는 download_type: %s", download_type)
     except WebSocketDisconnect:
         pass
     except Exception as e:

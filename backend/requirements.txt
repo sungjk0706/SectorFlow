@@ -14,17 +14,20 @@ pydantic-settings>=2.3,<3
 # Env
 python-dotenv==1.0.0
 
-# Encryption (settings.json 민감 필드)
+# Encryption (민감 필드)
 cryptography==42.0.0
 
-# 한국 공휴일 판별 (직전 영업일 계산용)
-holidays>=0.83
+# KRX 거래일 판별 (exchange_calendars)
+exchange_calendars>=4.0.0
 
 # Excel parsing (broker specs)
 openpyxl>=3.1.0
 
 # Async file I/O
 aiofiles>=23.0.0
+
+# Async SQLite
+aiosqlite>=0.19.0
 
 # Logging
 loguru>=0.7.0
@@ -40,7 +43,7 @@ python-jose[cryptography]>=3.3.0
 # Testing
 hypothesis>=6.100.0
 pytest>=8.0.0
-pytest-asyncio>=0.23.0
+pytest-asyncio>=1.0.0
 httpx  # TestClient용 (이미 위에 포함)
 
 # Protobuf (실시간 데이터 직렬화)

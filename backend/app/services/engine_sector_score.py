@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 섹터 강도 스코어링 및 매수 타겟 큐 생성.
@@ -12,10 +13,10 @@ sector_mapping.py stock_classification.json 기반 업종 그룹핑:
 호출 측(engine_service)이 필요한 데이터를 인자로 넘긴다 -- 순환 import 없음.
 UI(buy_widget) 및 엔진 루프 양쪽에서 호출 가능.
 """
-from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Literal
+from collections.abc import Callable
+from typing import Literal
 
 from backend.app.core import sector_mapping
 from backend.app.core.logger import get_logger
@@ -64,11 +65,6 @@ class SectorScore:
     # ── 점수 계산용 (트리밍/필터 후 값) ──
     scored_trade_amount: int = 0        # 가중치 점수 계산에 사용되는 거래대금
     scored_rise_ratio: float = 0.0      # 가중치 점수 계산에 사용되는 상승비율
-    # ── 업종 지수 기반 필드 (WS 0U) ──
-    industry_code: str = ""             # 매칭된 업종코드 (예: "013")
-    industry_up_ratio: float = 0.0      # 업종 상승종목비율 (0.0~1.0, 252/(252+255))
-    industry_trade_amount: int = 0      # 업종 거래대금 (백만원, 0U FID 14)
-    has_industry_data: bool = False     # 0U 데이터 매칭 여부
     # ── 신규 필드: 가중치 점수 시스템 ──
     final_score: float = 0.0                          # 가중치 최종 점수 (0.0~100.0)
     metric_scores: dict[str, float] = field(default_factory=dict)  # 지표별 정규화 점수
@@ -264,10 +260,6 @@ class SectorSummary:
     sectors: list[SectorScore]          # 강도 순위 정렬
     buy_targets: list[BuyTarget]        # 매수 타겟 큐 (가드 통과 종목만)
     blocked_targets: list[BuyTarget]    # 가드 차단 종목 (UI 표시용)
-    index_guard_active: bool = False    # 지수 연동 가드 발동 여부 (하나라도 발동)
-    index_guard_reason: str = ""        # 발동 사유
-    index_guard_kospi_hit: bool = False   # 코스피 가드 발동 여부
-    index_guard_kosdaq_hit: bool = False  # 코스닥 가드 발동 여부
     is_skeleton_mode: bool = False     # 스켈레톤 캐시 모드 여부 (실시간 틱 기반 증분 연산용)
 
 
@@ -304,7 +296,7 @@ def sort_key_label(key: SortKey) -> str:
 # 핵심 계산 함수
 # ──────────────────────────────────────────────────────────────────────────────
 
-def compute_sector_scores(
+async def compute_sector_scores(
     all_codes: list[str],
     *,
     trade_prices: dict[str, int],
@@ -336,7 +328,7 @@ def compute_sector_scores(
     # 섹터별 종목 그룹핑 — Custom_Data > Auto_Mapping 우선순위 적용
     sector_groups: dict[str, list[str]] = {}
     for code in all_codes:
-        sector_name = sector_mapping.get_merged_sector(code)
+        sector_name = await sector_mapping.get_merged_sector(code)
         if not sector_name:
             continue  # 미매핑 종목 제외
         if sector_name not in sector_groups:
@@ -393,8 +385,6 @@ def compute_sector_scores(
             # 종목명
             name = (
                 detail.get("name")
-                or ka_row.get("stk_nm")
-                or ka_row.get("hname")
                 or code
             )
 
@@ -511,50 +501,6 @@ def apply_stock_guards(
     stock.guard_pass = True
     stock.guard_reason = ""
     return stock
-
-
-def check_index_guard(
-    latest_index: dict[str, dict],
-    *,
-    kospi_on: bool = False,
-    kosdaq_on: bool = False,
-    kospi_drop: float = 2.0,
-    kosdaq_drop: float = 2.0,
-) -> tuple[bool, str, bool, bool]:
-    """
-    지수 연동 가드 체크.
-    반환: (발동여부, 사유문자열, 코스피발동, 코스닥발동)
-
-    kospi_on / kosdaq_on: 개별 지수 가드 활성화 여부.
-    """
-    _kospi_on = kospi_on
-    _kosdaq_on = kosdaq_on
-
-    if not _kospi_on and not _kosdaq_on:
-        return False, "", False, False
-
-    kospi = latest_index.get("001", {})
-    kosdaq = latest_index.get("101", {})
-    kospi_rate = float(kospi.get("rate", 0.0) or 0.0)
-    kosdaq_rate = float(kosdaq.get("rate", 0.0) or 0.0)
-
-    kospi_hit = _kospi_on and kospi_rate <= -abs(kospi_drop)
-    kosdaq_hit = _kosdaq_on and kosdaq_rate <= -abs(kosdaq_drop)
-
-    triggered = kospi_hit or kosdaq_hit
-
-    if not triggered:
-        return False, "", False, False
-
-    parts = []
-    if kospi_hit:
-        parts.append("코스피")
-    if kosdaq_hit:
-        parts.append("코스닥")
-    reason = " / ".join(parts)
-    return True, reason, kospi_hit, kosdaq_hit
-
-
 def build_buy_targets(
     sector_scores: list[SectorScore],
     *,
@@ -563,10 +509,6 @@ def build_buy_targets(
     block_rise_pct: float = 7.0,
     block_fall_pct: float = 7.0,
     min_strength: float = 0.0,
-    index_guard_kospi_hit: bool = False,
-    index_guard_kosdaq_hit: bool = False,
-    index_guard_reason: str = "",
-    latest_index: dict[str, dict] | None = None,
     max_sectors: int = 3,
     # ── 가산점 관련 파라미터 (기본값 = 모든 가산점 OFF → boost_score=0.0) ──
     high_5d_cache: dict[str, int] | None = None,
@@ -652,26 +594,7 @@ def build_buy_targets(
     pass_rank = 1
     blocked_rank = 1
     for stock, sc in all_stocks:
-        # 종목별 시장 가드: 해당 시장이 급락했을 때만 차단
-        _stock_guard_hit = False
-        if stock.market_type == "0" and index_guard_kospi_hit:
-            _stock_guard_hit = True
-        elif stock.market_type == "10" and index_guard_kosdaq_hit:
-            _stock_guard_hit = True
-        elif not stock.market_type and (index_guard_kospi_hit or index_guard_kosdaq_hit):
-            # 시장 미확인 종목은 안전하게 차단
-            _stock_guard_hit = True
-
-        if _stock_guard_hit:
-            target = BuyTarget(
-                rank=blocked_rank,
-                sector_rank=sc.rank,
-                stock=stock,
-                reason=index_guard_reason,
-            )
-            blocked_targets.append(target)
-            blocked_rank += 1
-        elif not stock.guard_pass:
+        if not stock.guard_pass:
             target = BuyTarget(
                 rank=blocked_rank,
                 sector_rank=sc.rank,
@@ -691,15 +614,10 @@ def build_buy_targets(
             buy_targets.append(target)
             pass_rank += 1
 
-    index_guard_active = index_guard_kospi_hit or index_guard_kosdaq_hit
     return SectorSummary(
         sectors=sector_scores,
         buy_targets=buy_targets,
         blocked_targets=blocked_targets,
-        index_guard_active=index_guard_active,
-        index_guard_reason=index_guard_reason,
-        index_guard_kospi_hit=index_guard_kospi_hit,
-        index_guard_kosdaq_hit=index_guard_kosdaq_hit,
     )
 
 
@@ -707,7 +625,7 @@ def build_buy_targets(
 # engine_service 에서 호출하는 통합 진입점
 # ──────────────────────────────────────────────────────────────────────────────
 
-def compute_full_sector_summary(
+async def compute_full_sector_summary(
     all_codes: list[str],
     *,
     trade_prices: dict[str, int],
@@ -723,10 +641,6 @@ def compute_full_sector_summary(
     block_fall_pct: float = 7.0,
     min_strength: float = 0.0,
     min_avg_amt_eok: float = 0.0,
-    index_guard_kospi_on: bool = False,
-    index_guard_kosdaq_on: bool = False,
-    index_kospi_drop: float = 2.0,
-    index_kosdaq_drop: float = 2.0,
     max_sectors: int = 3,
     sector_weights: dict[str, float] | None = None,
     trim_trade_amt_pct: float = 0.0,
@@ -747,7 +661,7 @@ def compute_full_sector_summary(
     sector_mapping.get_merged_sector() 기반 커스텀 업종 그룹핑.
     """
     # 1. 섹터 스코어 계산
-    sector_scores = compute_sector_scores(
+    sector_scores = await compute_sector_scores(
         all_codes,
         trade_prices=trade_prices,
         trade_amounts=trade_amounts,
@@ -773,16 +687,7 @@ def compute_full_sector_summary(
         # 표시 순서: pass 먼저, fail은 뒤에
         sector_scores = pass_sectors + fail_sectors
 
-    # 2. 지수 가드 체크
-    index_guard_active, index_guard_reason, _kospi_hit, _kosdaq_hit = check_index_guard(
-        latest_index,
-        kospi_on=index_guard_kospi_on,
-        kosdaq_on=index_guard_kosdaq_on,
-        kospi_drop=index_kospi_drop,
-        kosdaq_drop=index_kosdaq_drop,
-    )
-
-    # 3. 매수 타겟 큐 생성
+    # 2. 매수 타겟 큐 생성
     summary = build_buy_targets(
         sector_scores,
         sort_keys=sort_keys,
@@ -790,10 +695,6 @@ def compute_full_sector_summary(
         block_rise_pct=block_rise_pct,
         block_fall_pct=block_fall_pct,
         min_strength=min_strength,
-        index_guard_kospi_hit=_kospi_hit,
-        index_guard_kosdaq_hit=_kosdaq_hit,
-        index_guard_reason=index_guard_reason,
-        latest_index=latest_index,
         max_sectors=max_sectors,
         # 가산점 pass-through
         high_5d_cache=high_5d_cache,

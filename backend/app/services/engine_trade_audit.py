@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 엔진 매매 판단 감사 로그.
@@ -5,7 +6,6 @@
 사용자가 매수 설정 등 UI에 저장한 값과, 그 시점의 수치·조건 만족 여부를
 한 줄 JSON으로 남겨 사고 시 원인 추적이 가능하게 한다.
 """
-from __future__ import annotations
 
 import json
 from typing import Any

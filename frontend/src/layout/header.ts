@@ -4,16 +4,12 @@
 
 import { uiStore } from '../stores/uiStore'
 import type { UIState } from '../stores/uiStore'
-import type { IndexData } from '../types'
 import { BROKER_LABELS } from '../components/common/broker-badge'
 
 // ── 스타일 상수 ──
 
 const CHIP_STYLE =
   'padding:3px 8px;border-radius:10px;font-size:10px;font-weight:600;cursor:default;white-space:nowrap;'
-
-const RISE = '#dc3545'
-const FALL = '#1a73e8'
 
 const PHASE_STYLE: Record<string, { bg: string; color: string }> = {
   /* 장중(거래 가능) — 초록 */
@@ -68,46 +64,6 @@ function applyMarketPhaseChip(el: HTMLSpanElement, market: string, phase: string
   el.textContent = `${market} ${phase}`
 }
 
-function applyIndexChip(
-  el: HTMLSpanElement,
-  label: string,
-  data: IndexData | undefined,
-  polling: boolean | undefined,
-  connected: boolean | undefined,
-  marketPhase: { krx: string; nxt: string } | undefined,
-): void {
-  // active 판단: marketPhase 기반
-  // - KRX 정규장(09:00~15:30): connected 기준
-  // - 폴링 구간(ws_subscribe_start~09:00, 15:30~ws_subscribe_end): polling 기준
-  // - 장마감/휴장일: false (회색)
-  const krx = marketPhase?.krx ?? ''
-  const isRegular = krx === '정규장'
-  const isClosed = krx === '휴장일' || krx === '' || krx === 'closed'
-  const active = isClosed ? false : isRegular ? !!connected : !!polling
-  if (!data || !data.price) {
-    applyStatusChip(el, `${label} --`, false)
-    return
-  }
-  const rate = Number(data.rate) || 0
-  const sign = rate > 0 ? '+' : ''
-  const priceStr = Number(data.price).toLocaleString('ko-KR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
-  const text = `${label} ${priceStr} ${sign}${rate.toFixed(2)}%${polling && !isRegular && !isClosed ? ' 🔄' : ''}`
-  const bg = active
-    ? rate > 0
-      ? '#ffebee'
-      : rate < 0
-        ? '#e3f2fd'
-        : '#e8f5e9'
-    : '#f5f5f5'
-  const color = active ? (rate > 0 ? RISE : rate < 0 ? FALL : '#2e7d32') : '#9e9e9e'
-  el.style.background = bg
-  el.style.color = color
-  el.style.border = `1px solid ${color}20`
-  el.textContent = text
-}
 
 
 // ── spin 키프레임 (1회 삽입) ──
@@ -181,13 +137,6 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   header.appendChild(autoSellChip)
   header.appendChild(teleChip)
 
-  // 지수 칩: 코스피, 코스닥
-  const kospiChip = createChipEl()
-  kospiChip.style.display = 'none'
-  const kosdaqChip = createChipEl()
-  kosdaqChip.style.display = 'none'
-  header.appendChild(kospiChip)
-  header.appendChild(kosdaqChip)
 
   const spinnerHtml = '<span style="display:inline-block;animation:header-spin 1.2s linear infinite">⏳</span>'
 
@@ -224,59 +173,74 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
       avgAmtChip.style.padding = '3px 8px'
 
       const status = (avgAmtProgress as Record<string, unknown>).status as string || ''
-      let msg = ''
+      let msg = avgAmtProgress.message || '' // 백엔드에서 제공한 메시지가 있으면 최우선으로 사용
       let bg = '#fff3e0'
       let color = '#e65100'
       let progressPct = 0
 
-      switch (status) {
-        case 'downloading': {
-          progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
-          msg = `전종목 5일거래대금/고가 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${Math.round(progressPct)}%)`
-          bg = '#fff3e0'; color = '#e65100'
-          break
+      // 백엔드 메시지가 비어있을 때만 하드코딩 템플릿으로 분기
+      if (!msg) {
+        switch (status) {
+          case 'downloading': {
+            progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
+            msg = `전종목 5일거래대금/고가 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${Math.round(progressPct)}%)`
+            bg = '#fff3e0'; color = '#e65100'
+            break
+          }
+          case 'completed': {
+            progressPct = 100
+            msg = '전종목 5일 거래대금,고가 데이터 다운로드 완료'
+            bg = '#e8f5e9'; color = '#2e7d32'
+            break
+          }
+          case 'failed':
+            msg = '전종목 5일 고가 실패'
+            bg = '#ffebee'; color = '#c62828'
+            break
+          case 'partial': {
+            progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
+            msg = `전종목 5일 데이터 ${Math.round(progressPct)}%만 있음`
+            bg = '#fffde7'; color = '#f57f17'
+            break
+          }
+          case 'cache_deleted':
+            msg = '전종목 5일 고가 재계산 중'
+            bg = '#fff3e0'; color = '#e65100'
+            progressPct = 100
+            break
+          case 'token_pending':
+            msg = '인증 대기중'
+            bg = '#f5f5f5'; color = '#616161'
+            break
+          case 'requested':
+            msg = '전종목 5일 데이터 준비 시작'
+            bg = '#e3f2fd'; color = '#1565c0'
+            break
+          case 'confirmed': {
+            progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
+            msg = (avgAmtProgress.total > 0 ? `전종목 확정시세 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${Math.round(progressPct)}%)` : '확정 데이터 갱신 중')
+            bg = '#e3f2fd'; color = '#1565c0'
+            break
+          }
+          default: {
+            progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
+            msg = (avgAmtProgress.total > 0
+              ? `전종목 5일거래대금/고가 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${Math.round(progressPct)}%)`
+              : '전종목 5일 데이터 준비 중')
+            break
+          }
         }
-        case 'completed': {
-          progressPct = 100
-          msg = '전종목 5일 거래대금,고가 데이터 다운로드 완료'
+      } else {
+        // 백엔드에서 메시지가 전달된 경우 적절한 스타일을 설정해 준다
+        progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
+        if (status === 'completed') {
           bg = '#e8f5e9'; color = '#2e7d32'
-          break
-        }
-        case 'failed':
-          msg = '전종목 5일 고가 실패'
+        } else if (status === 'confirmed') {
+          bg = '#e3f2fd'; color = '#1565c0'
+        } else if (status === 'failed') {
           bg = '#ffebee'; color = '#c62828'
-          break
-        case 'partial': {
-          progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
-          msg = `전종목 5일 데이터 ${Math.round(progressPct)}%만 있음`
-          bg = '#fffde7'; color = '#f57f17'
-          break
-        }
-        case 'cache_deleted':
-          msg = '전종목 5일 고가 재계산 중'
+        } else {
           bg = '#fff3e0'; color = '#e65100'
-          progressPct = 100
-          break
-        case 'token_pending':
-          msg = '인증 대기중'
-          bg = '#f5f5f5'; color = '#616161'
-          break
-        case 'requested':
-          msg = '전종목 5일 데이터 준비 시작'
-          bg = '#e3f2fd'; color = '#1565c0'
-          break
-        case 'confirmed': {
-          progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
-          msg = (avgAmtProgress.total > 0 ? `전종목 확정시세 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${Math.round(progressPct)}%)` : '확정 데이터 갱신 중')
-          bg = '#e3f2fd'; color = '#1565c0'
-          break
-        }
-        default: {
-          progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
-          msg = (avgAmtProgress.total > 0
-            ? `전종목 5일거래대금/고가 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${Math.round(progressPct)}%)`
-            : '전종목 5일 데이터 준비 중')
-          break
         }
       }
 
@@ -323,9 +287,9 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
       brokerChip.style.display = ''
       brokerWsChip.style.display = ''
       // 주 사용 증권사 뱃지 (broker 값 기반 동적 렌더링)
-      applyStatusChip(brokerChip, `${brokerLabel}증권`, status.kiwoom_token_valid)
-      // 실시간 연결 뱃지 (임시로 kiwoom_connected 플래그 재사용)
-      applyStatusChip(brokerWsChip, `${brokerLabel}실시간`, status.kiwoom_connected && wsOn)
+      applyStatusChip(brokerChip, `${brokerLabel}증권`, status.broker_token_valid)
+      // 실시간 연결 뱃지 (broker_connected 플래그 사용)
+      applyStatusChip(brokerWsChip, `${brokerLabel}실시간`, status.broker_connected && wsOn)
     } else {
       modeChip.style.display = 'none'
       brokerChip.style.display = 'none'
@@ -369,16 +333,6 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
       teleChip.style.display = 'none'
     }
 
-    // 지수
-    if (status) {
-      kospiChip.style.display = ''
-      kosdaqChip.style.display = ''
-      applyIndexChip(kospiChip, '코스피', status.kospi, status.index_polling, status.kiwoom_connected, marketPhase)
-      applyIndexChip(kosdaqChip, '코스닥', status.kosdaq, status.index_polling, status.kiwoom_connected, marketPhase)
-    } else {
-      kospiChip.style.display = 'none'
-      kosdaqChip.style.display = 'none'
-    }
   }
 
   const unsubscribe = uiStore.subscribe(onStateChange)

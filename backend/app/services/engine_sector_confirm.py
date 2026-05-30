@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 섹터 재계산 — 이벤트 기반 증분 갱신.
@@ -7,7 +8,6 @@ recompute_sector_for_code(code)는 이벤트 발생 시 호출되며,
 연속 호출은 coalesce되어 1회만 재계산한다.
 구독 갱신은 buy_targets 변경 시 직접 호출된다.
 """
-from __future__ import annotations
 
 import asyncio
 from backend.app.core.logger import get_logger
@@ -52,17 +52,18 @@ def recompute_sector_for_code(code: str | None = None) -> None:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         # 이벤트 루프 없음(테스트 등) — 즉시 실행 폴백
-        _flush_sector_recompute_impl()
+        asyncio.run(_flush_sector_recompute_impl())
         return
 
-    _recompute_handle = loop.call_later(0.3, _run_flush_sync)
+    _recompute_handle = loop.call_later(0.3, _run_flush_async)
 
 
-def _run_flush_sync() -> None:
+def _run_flush_async() -> None:
     """call_later 콜백 — _flush 실행 후 핸들 초기화."""
     global _recompute_handle
     _recompute_handle = None
-    _flush_sector_recompute_impl()
+    loop = asyncio.get_running_loop()
+    loop.create_task(_flush_sector_recompute_impl())
 
 
 def is_sector_dirty() -> bool:
@@ -87,10 +88,10 @@ def _buy_targets_changed(prev_targets, new_targets) -> bool:
     return prev_codes != new_codes
 
 
-def _flush_sector_recompute_impl() -> None:
+async def _flush_sector_recompute_impl() -> None:
     """dirty 종목의 섹터만 증분 재계산. 캐시 없으면 전체 재계산.
 
-    동기 함수. 순수 계산 + 알림 + 구독 갱신만 수행.
+    비동기 함수. 순수 계산 + 알림 + 구독 갱신만 수행.
     """
     global _dirty_codes
     
@@ -106,7 +107,6 @@ def _flush_sector_recompute_impl() -> None:
         from backend.app.services.engine_sector_score import (
             compute_sector_scores,
             compute_weighted_scores,
-            check_index_guard,
             build_buy_targets,
         )
         from backend.app.services.engine_account_notify import (
@@ -120,13 +120,13 @@ def _flush_sector_recompute_impl() -> None:
 
         # 캐시 없음(콜드 스타트) → 전체 재계산 1회 (이후 증분 모드 전환)
         if not existing:
-            _full_recompute(_es, settings, codes_snapshot)
+            await _full_recompute(_es, settings, codes_snapshot)
             return
 
         # 스켈레톤 캐시 모드 감지 (is_skeleton_mode 플래그 기반)
         if existing.is_skeleton_mode:
             # 스켈레톤 캐시인 경우 실시간 틱 기반 증분 연산 수행
-            _skeleton_incremental_update(_es, codes_snapshot)
+            await _skeleton_incremental_update(_es, codes_snapshot)
             return
 
         # __ALL__ 플래그 + 캐시 존재 → 모든 active 종목을 dirty로 취급하여 증분 경로 사용
@@ -140,7 +140,7 @@ def _flush_sector_recompute_impl() -> None:
         # 1. dirty 종목 → 해당 섹터 추출
         dirty_sectors: set[str] = set()
         for cd in codes_snapshot:
-            sec = sector_mapping.get_merged_sector(cd)
+            sec = await sector_mapping.get_merged_sector(cd)
             if sec:
                 dirty_sectors.add(sec)
 
@@ -153,16 +153,16 @@ def _flush_sector_recompute_impl() -> None:
         min_avg_amt_eok = float(settings.get("sector_min_trade_amt", 0.0))
         trim_trade = float(settings.get("sector_trim_trade_amt_pct", 0) or 0)
         trim_change = float(settings.get("sector_trim_change_rate_pct", 0) or 0)
-        sector_weights = settings.get("sector_weights")
+        sector_weights = settings.get("sector_weights") or {}
 
         # dirty 섹터에 속한 종목코드만 필터
         dirty_codes_for_calc = [
             cd for cd in all_codes
-            if sector_mapping.get_merged_sector(cd) in dirty_sectors
+            if await sector_mapping.get_merged_sector(cd) in dirty_sectors
         ]
 
         if dirty_codes_for_calc:
-            new_sector_scores = compute_sector_scores(
+            new_sector_scores = await compute_sector_scores(
                 dirty_codes_for_calc,
                 trade_prices=inputs["trade_prices"],
                 trade_amounts=inputs["trade_amounts"],
@@ -209,15 +209,7 @@ def _flush_sector_recompute_impl() -> None:
             # 표시 순서: pass 먼저, fail은 뒤에
             merged = pass_sectors + fail_sectors
 
-        # 6. 지수 가드 + 매수 타겟 큐
-        index_guard_active, index_guard_reason, kospi_hit, kosdaq_hit = check_index_guard(
-            inputs["latest_index"],
-            kospi_on=bool(settings.get("buy_index_guard_kospi_on", False)),
-            kosdaq_on=bool(settings.get("buy_index_guard_kosdaq_on", False)),
-            kospi_drop=float(settings.get("buy_index_kospi_drop", 2.0)),
-            kosdaq_drop=float(settings.get("buy_index_kosdaq_drop", 2.0)),
-        )
-
+        # 6. 매수 타겟 큐
         # buy_targets 변경 감지를 위해 이전 값 저장
         prev_targets = existing.buy_targets if hasattr(existing, 'buy_targets') else None
 
@@ -228,14 +220,10 @@ def _flush_sector_recompute_impl() -> None:
             block_rise_pct=float(settings.get("buy_block_rise_pct", 7.0)),
             block_fall_pct=float(settings.get("buy_block_fall_pct", 7.0)),
             min_strength=float(settings.get("buy_min_strength", 0)),
-            index_guard_kospi_hit=kospi_hit,
-            index_guard_kosdaq_hit=kosdaq_hit,
-            index_guard_reason=index_guard_reason,
-            latest_index=inputs["latest_index"],
             max_sectors=int(settings.get("sector_max_targets", 3)),
             # 가산점 파라미터
             high_5d_cache=_es._high_5d_cache,
-            orderbook_cache=_es._orderbook_cache,
+            orderbook_cache={},  # 호가잔량 캐시 삭제로 빈 dict 전달
             boost_high_on=bool(settings.get("boost_high_breakout_on", False)),
             boost_high_score=float(settings.get("boost_high_breakout_score", 1.0)),
             boost_order_ratio_on=bool(settings.get("boost_order_ratio_on", False)),
@@ -264,7 +252,7 @@ def _flush_sector_recompute_impl() -> None:
         logger.warning("[섹터재계산] 증분 재계산 오류: %s", e, exc_info=True)
 
 
-def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
+async def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
     """스켈레톤 캐시 상태에서 실시간 틱 기반 단건 델타 연산 수행.
     
     이벤트 주도형 구조: 틱 이벤트가 인입된 단일 종목의 등락 상태 변화만 델타로 처리.
@@ -283,7 +271,7 @@ def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
     # 각 틱 이벤트 종목별 단건 델타 처리 (배치 루프 제거)
     for cd in codes_snapshot:
         # 해당 종목의 업종 추출
-        sector = sector_mapping.get_merged_sector(cd)
+        sector = await sector_mapping.get_merged_sector(cd)
         if not sector:
             continue
         
@@ -323,10 +311,10 @@ def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
     _es._invalidate_sector_stocks_cache()
 
 
-def _full_recompute(_es, settings: dict, codes_snapshot: set[str] | None = None) -> None:
+async def _full_recompute(_es, settings: dict, codes_snapshot: set[str] | None = None) -> None:
     """전체 재계산 (캐시 없을 때 — 콜드 스타트).
 
-    동기 함수. 순수 계산 + 알림 + 이벤트 발행만 수행.
+    비동기 함수. 순수 계산 + 알림 + 이벤트 발행만 수행.
     """
     from backend.app.services.engine_service import get_sector_summary_inputs
     from backend.app.services.engine_sector_score import compute_full_sector_summary
@@ -342,7 +330,7 @@ def _full_recompute(_es, settings: dict, codes_snapshot: set[str] | None = None)
     trim_change = float(settings.get("sector_trim_change_rate_pct", 0) or 0)
 
     inputs = get_sector_summary_inputs()
-    ss = compute_full_sector_summary(
+    ss = await compute_full_sector_summary(
         **inputs,
         sort_keys=settings.get("sector_sort_keys") or None,
         min_rise_ratio=float(settings.get("sector_min_rise_ratio_pct", 60.0)) / 100.0,
@@ -350,17 +338,13 @@ def _full_recompute(_es, settings: dict, codes_snapshot: set[str] | None = None)
         block_fall_pct=float(settings.get("buy_block_fall_pct", 7.0)),
         min_strength=float(settings.get("buy_min_strength", 0)),
         min_avg_amt_eok=float(settings.get("sector_min_trade_amt", 0.0)),
-        index_guard_kospi_on=bool(settings.get("buy_index_guard_kospi_on", False)),
-        index_guard_kosdaq_on=bool(settings.get("buy_index_guard_kosdaq_on", False)),
-        index_kospi_drop=float(settings.get("buy_index_kospi_drop", 2.0)),
-        index_kosdaq_drop=float(settings.get("buy_index_kosdaq_drop", 2.0)),
         max_sectors=int(settings.get("sector_max_targets", 3)),
         sector_weights=settings.get("sector_weights"),
         trim_trade_amt_pct=trim_trade,
         trim_change_rate_pct=trim_change,
         # 가산점 파라미터
         high_5d_cache=_es._high_5d_cache,
-        orderbook_cache=_es._orderbook_cache,
+        orderbook_cache={},  # 호가잔량 캐시 삭제로 빈 dict 전달
         boost_high_on=bool(settings.get("boost_high_breakout_on", False)),
         boost_high_score=float(settings.get("boost_high_breakout_score", 1.0)),
         boost_order_ratio_on=bool(settings.get("boost_order_ratio_on", False)),

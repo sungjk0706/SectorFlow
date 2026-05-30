@@ -1,20 +1,28 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 엔진 캐시 오케스트레이션.
 
 순환 import 방지: `import backend.app.services.engine_state as _st` 로 상태 접근.
 """
-from __future__ import annotations
 
 import asyncio
-from types import ModuleType
 
 from backend.app.core.logger import get_logger
+from backend.app.services.engine_state import (
+    _sector_stock_layout,
+    _shared_lock,
+    # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_amounts, _rest_radar_quote_cache)
+    _rest_radar_rest_once,
+    _pending_stock_details,
+    _radar_cnsr_order,
+    _high_5d_cache,
+)
 
 logger = get_logger("engine")
 
 
-async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
+async def _load_caches_preboot(settings: dict) -> None:
     """캐시 선행 로드: 장외 시간에만 실행 (장중에는 실시간 데이터가 채움).
     REST 호출 없이 캐시 파일 → 메모리 직접 적재만 수행.
 
@@ -23,89 +31,84 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
     """
     try:
         from backend.app.core.sector_stock_cache import (
-            load_layout_cache,
-            load_stock_name_cache, load_market_map_cache,
-        )
-        from backend.app.core.avg_amt_cache import (
-            is_avg_amt_5d_map_usable,
-            load_avg_amt_from_sector_summary_cache,
-            normalize_avg_amt_5d_value,
+            load_stock_name_cache,
         )
         from backend.app.core.industry_map import load_eligible_stocks_cache
         from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd, _base_stk_cd
         from backend.app.services.engine_strategy_core import make_detail
 
         # ── 테이블 초기화 ──
-        from backend.app.db.models import create_sectors_table, create_system_settings_table
-        from backend.app.db.cache_db import create_completed_snapshot_table as create_master_stocks_table
-        
+        from backend.app.db.models import create_sectors_table, create_user_settings_table
+        from backend.app.db.stock_tables import create_master_stocks_table, migrate_add_high_price_column, migrate_add_nxt_enable_column
+
         # 테이블이 없으면 생성
-        await asyncio.to_thread(create_sectors_table)
-        await asyncio.to_thread(create_system_settings_table)
-        await asyncio.to_thread(create_master_stocks_table)
+        await create_sectors_table()
+        await create_user_settings_table()
+        await create_master_stocks_table()
+        
+        # 마이그레이션: high_price 컬럼 추가
+        await migrate_add_high_price_column()
+        # 마이그레이션: nxt_enable 컬럼 추가
+        await migrate_add_nxt_enable_column()
 
         # sectors 테이블 초기화 로직
-        def _init_sectors():
+        async def _init_sectors():
             from backend.app.db.database import get_db_connection
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            conn = await get_db_connection()
             try:
-                cursor.execute("""
+                await conn.execute("""
                     INSERT OR IGNORE INTO sectors (name)
                     SELECT DISTINCT sector FROM master_stocks_table
                     WHERE sector IS NOT NULL AND sector != '' AND sector != '기타'
                 """)
-                cursor.execute("INSERT OR IGNORE INTO sectors (name) VALUES ('기타')")
-                conn.commit()
+                await conn.execute("INSERT OR IGNORE INTO sectors (name) VALUES ('기타')")
+                await conn.commit()
             except Exception as e:
                 logger.warning("[데이터준비] sectors 초기화 실패: %s", e)
-            finally:
-                conn.close()
-        await asyncio.to_thread(_init_sectors)
+        await _init_sectors()
         
-        # ── master_stocks_table 로드 (Phase 2.2) ──
-        from backend.app.db.cache_db import load_completed_snapshot as load_master_stocks
-        _cached_snapshot = await asyncio.to_thread(load_master_stocks)
+        # ── master_stocks_table 로드 ──
+        from backend.app.db.stock_tables import load_master_stocks_table
+        _cached_snapshot, _sector_cache = await load_master_stocks_table()
         
         # master_stocks_table이 없으면 앱 기동 실패 (명확한 에러)
-        if _cached_snapshot is None or len(_cached_snapshot) == 0:
+        if not _cached_snapshot:
             raise RuntimeError("master_stocks_table 테이블에 데이터가 없습니다. 장마감 후 다시 시도하세요.")
         
-        # ── 5일평균/고가 로드 (avg_amt_cache에서 별도 로드) ──
+        # sector 캐시 및 마스터 캐시 저장
+        import backend.app.services.engine_state as _st
+        _st._sector_cache = _sector_cache
+        _st._master_stocks_cache = _cached_snapshot
+        
+        # ── 5일평균/고가 로드 및 5일 배열 복원 ──
         _cached_avg = {}
         _cached_high_5d = {}
-        for cd, detail in _cached_snapshot:
-            _cached_avg[cd] = normalize_avg_amt_5d_value(detail.get("avg_5d_trade_amount"))
-            _cached_high_5d[cd] = int(detail.get("high_5d_price") or 0)
+        _amts_5d_arrays = getattr(_st, "_amts_5d_arrays", {})
+        _highs_5d_arrays = getattr(_st, "_highs_5d_arrays", {})
         
-        # ── 레이아웃/시장구분/적격종목 로드 (유지) ──
-        _cached_layout, _cached_market, _cached_eligible = await asyncio.gather(
-            asyncio.to_thread(load_layout_cache),
-            asyncio.to_thread(load_market_map_cache),
-            asyncio.to_thread(load_eligible_stocks_cache),
-        )
+        for cd, detail in _cached_snapshot.items():
+            _cached_avg[cd] = int(detail.get("avg_5d_trade_amount") or 0)
+            _cached_high_5d[cd] = int(detail.get("high_price") or 0)
+            # 5일봉 시계열 배열 복원
+            if "amts_5d_array" in detail:
+                _amts_5d_arrays[cd] = detail["amts_5d_array"]
+            if "highs_5d_array" in detail:
+                _highs_5d_arrays[cd] = detail["highs_5d_array"]
+        
+        # ── 적격종목 로드 (유지) ──
+        _cached_eligible = await load_eligible_stocks_cache()
 
-        # ── 레이아웃 적재 ──
-        if _cached_layout:
-            es._sector_stock_layout[:] = _cached_layout
-            from backend.app.services.engine_account_notify import _rebuild_layout_cache
-            _rebuild_layout_cache(_cached_layout)
-            logger.debug("[데이터준비] 레이아웃 저장데이터 로드 -- %d종목",
-                        sum(1 for t, _ in _cached_layout if t == "code"))
+        # ── 레이아웃 적재 삭제 (master_stocks_table sector 컬럼으로 대체) ──
 
         # ── 스냅샷 적재 ──
         if _cached_snapshot:
-            async with es._shared_lock:
-                for cd, detail in _cached_snapshot:
+            async with _shared_lock:
+                for cd, detail in _cached_snapshot.items():
                     base = _format_kiwoom_reg_stk_cd(_base_stk_cd(cd))
-                    amt = int(detail.get("trade_amount") or 0)
-                    if amt > 0:
-                        es._latest_trade_amounts[base] = amt
+                    # 실시간 틱 데이터 저장 제거 (거래대금, REST 캐시 저장 안 함)
                     if base and int(detail.get("cur_price") or 0) > 0:
-                        es._rest_radar_quote_cache[base] = detail
-                    if base and int(detail.get("cur_price") or 0) > 0:
-                        es._rest_radar_rest_once.add(base)
-                    if base not in es._pending_stock_details:
+                        _rest_radar_rest_once.add(base)
+                    if base not in _pending_stock_details:
                         entry = make_detail(
                             base, detail.get("name", base) or base,
                             int(detail.get("cur_price") or 0),
@@ -113,7 +116,7 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
                             int(detail.get("change") or 0),
                             float(detail.get("change_rate") or 0.0),
                             prev_close=int(detail.get("prev_close") or 0),
-                            trade_amount=amt,
+                            trade_amount=float(detail.get("trade_amount") or 0),
                             strength=detail.get("strength", "-"),
                             sector=detail.get("sector", "기타"),
                         )
@@ -122,16 +125,16 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
                         entry["target_price"] = int(detail.get("cur_price") or 0)
                         entry["captured_at"] = ""
                         entry["reason"] = "저장데이터 선행 로드"
-                        es._pending_stock_details[base] = entry
-                        es._radar_cnsr_order.append(base)
+                        _pending_stock_details[base] = entry
+                        _radar_cnsr_order.append(base)
             logger.debug("[데이터준비] 확정데이터 저장데이터 로드 -- %d종목", len(_cached_snapshot))
 
         # ── 종목명 보강 (스냅샷 완료 후 실행) ──
-        _name_map = await asyncio.to_thread(load_stock_name_cache)
+        _name_map = await load_stock_name_cache()
         if _name_map:
             _patched = 0
-            async with es._shared_lock:
-                for cd, entry in es._pending_stock_details.items():
+            async with _shared_lock:
+                for cd, entry in _pending_stock_details.items():
                     nm = _name_map.get(cd)
                     if nm and entry.get("name") in (cd, "", None):
                         entry["name"] = nm
@@ -140,40 +143,25 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
                 logger.debug("[데이터준비] 종목명 보강 -- %d종목", _patched)
 
         # ── 5일 평균 + 5일 전고점 적재 ──
-        if _cached_avg is not None and not is_avg_amt_5d_map_usable(_cached_avg):
-            recovered_avg = await asyncio.to_thread(load_avg_amt_from_sector_summary_cache)
-            if is_avg_amt_5d_map_usable(recovered_avg):
-                _cached_avg = recovered_avg
-                logger.warning("[데이터준비] stocks DB 5일평균 비정상 -- SectorSummary 캐시에서 복구 (%d종목)", len(_cached_avg))
-                # 복구된 데이터를 DB에 즉시 반영 → 다음 재기동 시 warning 제거
-                try:
-                    from backend.app.db.crud import batch_update_avg_5d
-                    updated = await asyncio.to_thread(batch_update_avg_5d, _cached_avg)
-                    logger.info("[데이터준비] stocks DB avg_5d_trade_amount 복구 데이터 반영 완료 -- %d종목", updated)
-                except Exception as _e:
-                    logger.warning("[데이터준비] stocks DB avg_5d_trade_amount 복구 데이터 반영 실패: %s", _e)
-            else:
-                logger.warning("[데이터준비] stocks DB 5일평균 비정상 -- 백그라운드 갱신 예정")
+        if _cached_avg is not None and sum(1 for v in _cached_avg.values() if int(v or 0) > 0) < 100:
+            logger.info("[데이터준비] stocks DB 5일평균 비정상 -- 백그라운드 갱신 예정")
 
         if _cached_avg is not None:
-            es._update_avg_amt_5d(_cached_avg)
+            from backend.app.services.engine_sector import _update_avg_amt_5d
+            _update_avg_amt_5d(_cached_avg)
             logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 로드 -- %d종목", len(_cached_avg))
         else:
             logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 미스 -- 백그라운드 갱신 예정")
 
         if _cached_high_5d:
-            es._high_5d_cache.clear()
-            es._high_5d_cache.update(_cached_high_5d)
+            for key, value in _cached_high_5d.items():
+                if key in _st._master_stocks_cache:
+                    _st._master_stocks_cache[key]["high_5d_price"] = value
             logger.debug("[데이터준비] 5일고가 저장데이터 로드 -- %d종목", len(_cached_high_5d))
 
-        # ── 시장구분 적재 ──
-        if _cached_market:
-            from backend.app.services.engine_symbol_utils import set_market_map, set_nxt_enable_map
-            _mkt_map, _nxt_map = _cached_market
-            set_market_map(_mkt_map)
-            set_nxt_enable_map(_nxt_map)
-            _total_nxt = sum(1 for v in _nxt_map.values() if v)
-            logger.debug("[데이터준비] 시장구분 저장데이터 로드 -- %d종목 (NXT %d)", len(_mkt_map), _total_nxt)
+        # ── 시장구분 적재 제거 (master_stocks_cache 사용으로 대체) ──
+        _total_nxt = sum(1 for v in _st._master_stocks_cache.values() if v.get("nxt_enable"))
+        logger.debug("[데이터준비] 시장구분(마스터 캐시) 로드 완료 -- %d종목 (NXT %d)", len(_st._master_stocks_cache), _total_nxt)
 
         # ── 적격종목 적재 (앱준비 에서 get_eligible_stocks() 사용) ──
         if _cached_eligible:
@@ -182,6 +170,7 @@ async def _load_caches_preboot(es: ModuleType, settings: dict) -> None:
             # 매매적격종목 로그는 industry_map.py에서 이미 출력됨 (중복 제거)
 
         # 캐시선행 완료 플래그 — 앱준비 에서 중복 로드 스킵용
-        es._preboot_cache_loaded = True
+        import backend.app.services.engine_state as engine_state
+        engine_state._preboot_cache_loaded = True
     except Exception as _cache_err:
-        logger.warning("[데이터준비] 저장데이터 로드 실패 (무시, 기존 흐름으로 진행): %s", _cache_err)
+        logger.info("[데이터준비] 저장데이터 로드 실패 (무시, 기존 흐름으로 진행): %s", _cache_err)

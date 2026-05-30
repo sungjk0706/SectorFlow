@@ -1,27 +1,28 @@
+from typing import Optional
 # -*- coding: utf-8 -*-
 """
 키움 주문 API - 매수/매도/정정/취소, 미체결조회
 legacy_pc_engine/api_order.py 이식 (Settings 기반)
 """
-import time
-import httpx as requests
-from typing import Optional
+import asyncio
+import httpx
 
 from backend.app.core.broker_urls import build_broker_urls
 
 
-def _send_request(url: str, headers: dict, params: dict, max_retries: int = 3, delay: float = 1.0) -> Optional[requests.Response]:
+async def _send_request(url: str, headers: dict, params: dict, max_retries: int = 3, delay: float = 1.0) -> Optional[httpx.Response]:
     import logging
     _log = logging.getLogger(__name__)
     for attempt in range(max_retries):
         try:
-            r = requests.post(url, headers=headers, json=params, timeout=5)
-            if r.status_code == 200:
-                return r
-            _log.warning("[주문API] HTTP %s (시도=%d/%d) url=%s", r.status_code, attempt + 1, max_retries, url)
+            async with httpx.AsyncClient() as client:
+                r = await client.post(url, headers=headers, json=params, timeout=5)
+                if r.status_code == 200:
+                    return r
+                _log.warning("[주문API] HTTP %s (시도=%d/%d) url=%s", r.status_code, attempt + 1, max_retries, url)
         except Exception as e:
             _log.warning("[주문API] 통신 예외 (시도=%d/%d): %s", attempt + 1, max_retries, e)
-        time.sleep(delay)
+        await asyncio.sleep(delay)
     _log.error("[주문API] %d회 재시도 모두 실패 url=%s", max_retries, url)
     return None
 
@@ -45,7 +46,7 @@ def resolve_exchange(settings: dict, code: str) -> str:
     return "SOR"  # 기본값: KRX+NXT 자동 라우팅
 
 
-def send_order(settings: dict, access_token: str, order_type: str, code: str, qty: int, price: int = 0, trde_tp: str = "3", orig_ord_no: str = "") -> dict:
+async def send_order(settings: dict, access_token: str, order_type: str, code: str, qty: int, price: int = 0, trde_tp: str = "3", orig_ord_no: str = "") -> dict:
     host = build_broker_urls("kiwoom")["rest_base"]
     exchange = resolve_exchange(settings, code)
     acnt_no = str(settings.get("kiwoom_account_no", "") or "")
@@ -66,7 +67,7 @@ def send_order(settings: dict, access_token: str, order_type: str, code: str, qt
 
     url = f"{host}/api/dostk/ordr"
     headers = {"Content-Type": "application/json;charset=UTF-8", "authorization": f"Bearer {access_token}", "api-id": api_id}
-    r = _send_request(url, headers, params)
+    r = await _send_request(url, headers, params)
     if not r:
         return {"success": False, "msg": f"[{order_type}] 통신 장애", "data": None}
     data = r.json()
@@ -74,13 +75,13 @@ def send_order(settings: dict, access_token: str, order_type: str, code: str, qt
     return {"success": ok, "msg": data.get("msg1", "알 수 없음"), "data": data}
 
 
-def market_sell(settings: dict, access_token: str, code: str, qty: int) -> dict:
-    return send_order(settings, access_token, "SELL", code, qty, price=0, trde_tp="3")
+async def market_sell(settings: dict, access_token: str, code: str, qty: int) -> dict:
+    return await send_order(settings, access_token, "SELL", code, qty, price=0, trde_tp="3")
 
 
 
 
-def get_unexecuted_orders(settings: dict, access_token: str, code: str = "") -> dict:
+async def get_unexecuted_orders(settings: dict, access_token: str, code: str = "") -> dict:
     host = build_broker_urls("kiwoom")["rest_base"]
     acnt_no = str(settings.get("kiwoom_account_no", "") or "")
     stk_cd = str(code).strip()
@@ -88,7 +89,7 @@ def get_unexecuted_orders(settings: dict, access_token: str, code: str = "") -> 
     url = f"{host}/api/dostk/acnt"
     headers = {"Content-Type": "application/json;charset=UTF-8", "authorization": f"Bearer {access_token}", "api-id": "ka10075", "cont-yn": "N"}
     params = {"acnt_no": acnt_no, "all_stk_tp": all_stk_tp, "trde_tp": "0", "stk_cd": stk_cd, "stex_tp": "0"}
-    r = _send_request(url, headers, params)
+    r = await _send_request(url, headers, params)
     if not r:
         return {"success": False, "msg": "미체결조회 통신 장애", "data": []}
     d = r.json()

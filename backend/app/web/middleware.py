@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional
 # -*- coding: utf-8 -*-
 """
 페이지 컨텍스트 유틸리티
@@ -5,9 +7,7 @@
 미들웨어 대신 각 라우트에서 직접 호출하는 헬퍼 함수.
 WebSocket/WS/CORS와 충돌 없음.
 """
-from __future__ import annotations
 
-from typing import Optional
 from fastapi import Request
 
 VALID_PAGE_CONTEXTS = frozenset({

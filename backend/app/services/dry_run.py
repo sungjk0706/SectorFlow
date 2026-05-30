@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional
 # -*- coding: utf-8 -*-
 """
 Dry-Run 모듈 -- 테스트모드 전용 가상 체결 엔진 + 영속 잔고.
@@ -7,18 +9,15 @@ Dry-Run 모듈 -- 테스트모드 전용 가상 체결 엔진 + 영속 잔고.
   2. _test_positions     -- 가상 잔고 (data/test_positions.json 에 영속)
   3. update_price()      -- 0B 틱으로 가상 잔고 현재가/수익률 갱신
 """
-from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import threading
 from pathlib import Path
-from typing import Optional
 
 from backend.app.core.settings_file import load_settings, update_settings
 from backend.app.services import settlement_engine
-from backend.app.db.cache_db import get_kv, set_kv
+from backend.app.db.stock_tables import load_test_positions, save_test_positions
 
 logger = logging.getLogger(__name__)
 
@@ -36,23 +35,23 @@ _fake_order_seq: int = 9_000_000
 
 # ── 포지션 파일 저장/로드 ────────────────────────────────────────────────────
 
-def _save_positions(data: dict[str, dict] | None = None) -> None:
+async def _save_positions(data: dict[str, dict] | None = None) -> None:
     """가상 포지션을 SQLite KV 스토어에 저장. data가 주어지면 스냅샷을 저장."""
     to_save = data if data is not None else _test_positions
     try:
-        set_kv("test_positions", to_save)
+        await save_test_positions(to_save)
     except Exception as e:
         logger.warning("[테스트모드] SQLite 저장 실패: %s", e)
 
 
-def _load_positions() -> None:
+async def _load_positions() -> None:
     """SQLite KV 스토어에서 가상 포지션 복원."""
     global _positions_loaded
     if _positions_loaded:
         return
     _positions_loaded = True
     try:
-        data = get_kv("test_positions")
+        data = await load_test_positions()
         if isinstance(data, dict):
             _test_positions.update(data)
             logger.info("[테스트모드] SQLite 복원 -- %d종목", len(_test_positions))
@@ -62,40 +61,34 @@ def _load_positions() -> None:
 
 _pos_save_pending: bool = False
 _pos_save_running: bool = False
-_pos_lock = threading.Lock()
+_pos_lock = asyncio.Lock()
 
 
-def _schedule_save_positions() -> None:
-    """포지션 파일 저장을 asyncio 스레드풀로 위임. 동시 실행 방지 (coalesce)."""
+async def _schedule_save_positions() -> None:
+    """포지션 파일 저장 예약. 동시 실행 방지 (coalesce)."""
     global _pos_save_pending, _pos_save_running
-    with _pos_lock:
+    async with _pos_lock:
         _pos_save_pending = True
         if _pos_save_running:
             return
-    try:
-        loop = asyncio.get_running_loop()
-        loop.run_in_executor(None, _coalesced_save_positions)
-    except RuntimeError:
-        with _pos_lock:
-            _pos_save_pending = False
-        _save_positions()
+        _pos_save_running = True
+    asyncio.create_task(_coalesced_save_positions())
 
 
-def _coalesced_save_positions() -> None:
+async def _coalesced_save_positions() -> None:
     """pending 플래그가 True인 동안 반복 저장. 동시 실행 1개 보장."""
     global _pos_save_pending, _pos_save_running
-    with _pos_lock:
-        _pos_save_running = True
     try:
         while True:
-            with _pos_lock:
+            async with _pos_lock:
                 if not _pos_save_pending:
+                    _pos_save_running = False
                     break
                 _pos_save_pending = False
                 snapshot = dict(_test_positions)
-            _save_positions(snapshot)
+            await _save_positions(snapshot)
     finally:
-        with _pos_lock:
+        async with _pos_lock:
             _pos_save_running = False
 
 
@@ -130,9 +123,9 @@ async def fake_send_order(
 
     side = order_type.upper()
     if side == "BUY":
-        _apply_buy(code, qty, fill_price)
+        await _apply_buy(code, qty, fill_price)
     elif side == "SELL":
-        _apply_sell(code, qty, fill_price)
+        await _apply_sell(code, qty, fill_price)
 
     logger.info(
         "[테스트모드] %s %s %d주 @%s -> 가상체결 ord_no=%s",
@@ -155,55 +148,14 @@ async def fake_send_order(
     }
 
 
-def fake_send_order_sync(
-    settings: dict,
-    access_token: str,
-    order_type: str,
-    code: str,
-    qty: int,
-    price: int = 0,
-    trde_tp: str = "3",
-) -> dict:
-    """
-    동기 버전 -- trading.py의 execute_buy/execute_sell은 동기 함수이므로
-    이벤트 루프 없이 즉시 반환.
-    """
-    order_no = _next_fake_order_no()
-    fill_price = price if price > 0 else _estimate_market_price(code)
-
-    side = order_type.upper()
-    if side == "BUY":
-        _apply_buy(code, qty, fill_price)
-    elif side == "SELL":
-        _apply_sell(code, qty, fill_price)
-
-    logger.info(
-        "[테스트모드] %s %s %d주 @%s -> 가상체결 ord_no=%s",
-        side, code, qty, f"{fill_price:,}" if fill_price else "시장가", order_no,
-    )
-
-    return {
-        "success": True,
-        "msg": "[테스트모드] 가상 체결 완료",
-        "data": {
-            "rt_cd": "0",
-            "msg1": "[테스트모드] 가상 체결 완료",
-            "output": {
-                "ord_no": order_no,
-                "stk_cd": str(code),
-                "ord_qty": str(qty),
-                "ord_uv": str(fill_price),
-            },
-        },
-    }
 
 
 # ── 2. 인메모리 잔고 관리 ───────────────────────────────────────────────────
 
-def _apply_buy(code: str, qty: int, price: int) -> None:
+async def _apply_buy(code: str, qty: int, price: int) -> None:
     """매수 체결 -> 가상 잔고에 추가/증가 + Settlement Engine 예수금 차감."""
-    _load_positions()
-    settlement_engine.on_buy_fill(price, qty)
+    await _load_positions()
+    await settlement_engine.on_buy_fill(price, qty)
     fee = round(price * qty * 0.00015)  # 포지션 추적용 수수료
     pos = _test_positions.get(code)
     if pos:
@@ -229,14 +181,14 @@ def _apply_buy(code: str, qty: int, price: int) -> None:
             "pnl_amount": -(fee),
             "pnl_rate": 0.0,
         }
-    _schedule_save_positions()
+    await _schedule_save_positions()
 
 
-def _apply_sell(code: str, qty: int, price: int) -> None:
+async def _apply_sell(code: str, qty: int, price: int) -> None:
     """매도 체결 -> 가상 잔고에서 차감 + Settlement Engine 매도 정산. 수량 0이면 제거."""
-    _load_positions()
+    await _load_positions()
     stk_nm = _test_positions.get(code, {}).get("stk_nm", "")
-    settlement_engine.on_sell_fill(price, qty, code, stk_nm)
+    await settlement_engine.on_sell_fill(price, qty, code, stk_nm)
     pos = _test_positions.get(code)
     if not pos:
         logger.warning("[테스트모드] 매도 요청했으나 가상 잔고에 %s 없음", code)
@@ -251,7 +203,7 @@ def _apply_sell(code: str, qty: int, price: int) -> None:
         pos["buy_amt"] = avg * new_qty
         pos["eval_amt"] = int(pos.get("cur_price") or avg) * new_qty
         _recalc_pnl(pos)
-    _schedule_save_positions()
+    await _schedule_save_positions()
 
 
 def _recalc_pnl(pos: dict) -> None:
@@ -268,12 +220,12 @@ def _recalc_pnl(pos: dict) -> None:
 
 # ── 3. 실시간 시세 연동 ─────────────────────────────────────────────────────
 
-def update_price(code: str, price: int) -> bool:
+async def update_price(code: str, price: int) -> bool:
     """
     0B 틱 수신 시 호출 -- 가상 잔고의 현재가/수익률 갱신.
     반환: True=가격 변경됨, False=해당 종목 미보유 또는 가격 동일
     """
-    _load_positions()
+    await _load_positions()
     pos = _test_positions.get(code)
     if not pos:
         return False
@@ -285,44 +237,44 @@ def update_price(code: str, price: int) -> bool:
     return True
 
 
-def set_stock_name(code: str, name: str) -> None:
+async def set_stock_name(code: str, name: str) -> None:
     """종목명 세팅 (매수 시점에 이름을 모를 수 있으므로 별도 호출)."""
     pos = _test_positions.get(code)
     if pos:
         pos["stk_nm"] = name
-        _schedule_save_positions()
+        await _schedule_save_positions()
 
 
 # ── 4. 조회 헬퍼 ────────────────────────────────────────────────────────────
 
-def get_positions() -> list[dict]:
+async def get_positions() -> list[dict]:
     """engine_service가 잔고 목록으로 사용할 수 있는 리스트 반환."""
-    _load_positions()
+    await _load_positions()
     return list(_test_positions.values())
 
 
-def get_position(code: str) -> Optional[dict]:
-    _load_positions()
+async def get_position(code: str) -> Optional[dict]:
+    await _load_positions()
     return _test_positions.get(code)
 
 
-def has_position(code: str) -> bool:
-    _load_positions()
+async def has_position(code: str) -> bool:
+    await _load_positions()
     pos = _test_positions.get(code)
     return pos is not None and int(pos.get("qty", 0)) > 0
 
 
-def position_codes() -> set[str]:
-    _load_positions()
+async def position_codes() -> set[str]:
+    await _load_positions()
     return {cd for cd, p in _test_positions.items() if int(p.get("qty", 0)) > 0}
 
 
-def clear() -> None:
+async def clear() -> None:
     """가상 포지션만 초기화 (예수금은 건드리지 않음 -- 사용자 직접 초기화만 허용)."""
     global _positions_loaded
     _test_positions.clear()
     _positions_loaded = True
-    _schedule_save_positions()
+    await _schedule_save_positions()
 
 
 def _estimate_market_price(code: str) -> int:
@@ -340,15 +292,15 @@ def get_virtual_balance() -> int:
     return settlement_engine.get_available_cash()
 
 
-def get_virtual_deposit_setting() -> int:
+async def get_virtual_deposit_setting() -> int:
     """설정된 가상 예수금 초기값 반환."""
-    s = load_settings()
+    s = await load_settings()
     return int(s.get("test_virtual_deposit", 10_000_000) or 0)
 
 
-def set_virtual_deposit(amount: int) -> None:
+async def set_virtual_deposit(amount: int) -> None:
     """가상 예수금 설정값 저장 + 현재 잔액도 동일하게 리셋."""
-    update_settings({
+    await update_settings({
         "test_virtual_deposit": amount,
         "test_virtual_balance": amount,
     })
@@ -356,11 +308,11 @@ def set_virtual_deposit(amount: int) -> None:
     logger.info("[테스트모드] 가상 예수금 설정: %s원 (잔액도 리셋)", f"{amount:,}")
 
 
-def reset_virtual_balance() -> None:
+async def reset_virtual_balance() -> None:
     """현재 가상 예수금 잔액을 설정값(초기값)으로 리셋 (Settlement Engine 위임)."""
-    deposit = get_virtual_deposit_setting()
+    deposit = await get_virtual_deposit_setting()
     settlement_engine.reset(deposit)
-    update_settings({"test_virtual_balance": deposit})
+    await update_settings({"test_virtual_balance": deposit})
     logger.info("[테스트모드] 가상 예수금 잔액 초기화: %s원", f"{deposit:,}")
 
 

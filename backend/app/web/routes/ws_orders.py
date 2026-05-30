@@ -1,8 +1,8 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """WebSocket 체결 전용 채널.
 
 시세 폭주가 체결 이벤트를 막지 않도록 별도 채널로 분리."""
-from __future__ import annotations
 
 import asyncio
 import json
