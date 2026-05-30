@@ -160,18 +160,10 @@ class AutoTradeManager:
             return False
 
         # ── 등락률 + 거래대금 가드 (설정값 기반) ──────────────────────────────
+        # _pending_stock_details 제거: WS 틱에서 직접 전달 필요
+        # 일단 비활성화 (추후 WS 틱 이벤트 핸들러 수정 필요)
         _change_rate_for_guard: float | None = None
         _trade_amount_for_guard: float | None = None
-        _pend = (self.get_pending_fn(stk_cd) if hasattr(self, "get_pending_fn") and self.get_pending_fn else None)
-        if _pend is None:
-            try:
-                import backend.app.services.engine_service as _es
-                _row = _es._pending_stock_details.get(stk_cd)
-                if _row:
-                    _change_rate_for_guard = float(_row.get("change_rate") or 0.0)
-                    _trade_amount_for_guard = float(_row.get("trade_amount") or 0.0)
-            except Exception:
-                logger.warning("[매수가드] 등락률/거래대금 조회 실패", exc_info=True)
         # 등락률 가드
         if _change_rate_for_guard is not None:
             _rise_limit = float(raw_all.get("buy_block_rise_pct", 7.0))

@@ -292,7 +292,8 @@ async def _handle_real_01(
 
     # 캐시 업데이트 삭제 (실시간 틱 데이터 저장 제거)
     # REST 캐시 pop 로직 삭제 (캐시가 삭제되었으므로 pop 호출 불필요)
-    if pend_key and engine_state._pending_stock_details[pend_key].get("status") in ("active", "exited"):
+    # _pending_stock_details 제거: _radar_cnsr_order로 status 확인
+    if pend_key and pend_key in engine_state._radar_cnsr_order:
         # 실시간 틱 데이터 저장 제거 (cur_price, trade_amount, strength 저장 안 함)
         # 필요한 경우에만 틱 데이터를 직접 전달하여 사용
         if is_0b_tick and strength != "-":
@@ -302,18 +303,10 @@ async def _handle_real_01(
                 logger.warning("[체결강도] %s 파싱 실패 strength=%r: %s", nk_px, strength, e)
         engine_radar_ops.apply_real01_volume_amount_to_radar_rows(
             raw_cd_for_bucket, vals, {},  # _latest_trade_amounts 대신 빈 dict 전달
-            engine_state._pending_stock_details, is_0b_tick=is_0b_tick,
+            {},  # _pending_stock_details 제거: 빈 dict 전달
+            is_0b_tick=is_0b_tick,
         )  # lock 불필요 — 순차 처리 + GIL 원자적
-        if pend_key and engine_state._pending_stock_details.get(pend_key, {}).get("status") == "active":
-            # snapshot-replace: 새 dict 생성 후 참조 교체 1회
-            old2 = engine_state._pending_stock_details[pend_key]
-            updates: dict = {}
-            if _ws_fid_key_present(vals, "1030"):
-                updates["bid_depth"] = _ws_fid_int(vals, "1030", 0)
-            if _ws_fid_key_present(vals, "1031"):
-                updates["ask_depth"] = _ws_fid_int(vals, "1031", 0)
-            if updates:
-                engine_state._pending_stock_details[pend_key] = {**old2, **updates}  # 참조 교체 1회
+        # bid_depth, ask_depth 업데이트 제거 (사용처 없음)
     # 보유종목 현재가 반영 (메모리만 갱신, 계좌 broadcast 없음 — 체결/잔고 이벤트에서만 전송)
     if is_test_mode(engine_state._settings_cache):
         _price_hit = await dry_run.update_price(nk_px, last_px)

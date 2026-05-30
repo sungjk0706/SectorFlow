@@ -354,17 +354,15 @@ async def compute_sector_scores(
                 cur_price = int(detail.get("cur_price", 0) or 0)
             # cur_price 0도 유효한 데이터 -- WS 틱 미수신 상태일 뿐, 스킵하지 않음
 
-            # 등락률
-            change_rate = float(detail.get("change_rate", 0.0) or 0.0)
+            # 등락률 (WS 틱에서만 제공, 캐시 fallback 제거)
+            change_rate = 0.0  # strengths dict에 없으면 0
 
             # 전일 대비 (원)
             change = int(detail.get("change", 0) or 0)
 
-            # 거래대금 (원 단위)
+            # 거래대금 (원 단위) - WS 틱 우선, 캐시 fallback 제거
             ta_ws = int(trade_amounts.get(code, 0) or 0)
             ta = ta_ws
-            if ta <= 0:
-                ta = int(detail.get("trade_amount", 0) or 0)
             if ta <= 0:
                 ta = int(detail.get("acc_trde_prica", 0) or 0)
 
@@ -375,8 +373,8 @@ async def compute_sector_scores(
             # 5D거래대금비율
             ratio_5d = round(ta / avg5d_won * 100.0, 1) if avg5d_won > 0 and ta > 0 else 0.0
 
-            # 체결강도
-            st_raw = strengths.get(code) or detail.get("strength") or "-"
+            # 체결강도 (WS 틱 우선, 캐시 fallback 제거)
+            st_raw = strengths.get(code) or "-"
             try:
                 strength_val = float(str(st_raw).replace("%", "").replace(",", "").strip())
             except (ValueError, TypeError):

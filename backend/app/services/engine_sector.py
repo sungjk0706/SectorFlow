@@ -94,13 +94,21 @@ async def recompute_sector_summary_now() -> None:
 
 def get_sector_summary_inputs() -> dict:
     """업종 요약 계산 입력 데이터 반환."""
+    # _pending_stock_details 제거: _radar_cnsr_order + _master_stocks_cache로 대체
+    from backend.app.services.engine_state import _master_stocks_cache
+    stock_details = {}
+    for cd in _radar_cnsr_order:
+        if cd in _master_stocks_cache:
+            stock = _master_stocks_cache[cd].copy()
+            stock["status"] = "active"
+            stock_details[cd] = stock
     return {
-        "all_codes": list(_pending_stock_details.keys()),
+        "all_codes": list(_radar_cnsr_order),
         "trade_prices": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
         "trade_amounts": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
         "avg_amt_5d": _avg_amt_5d,
         "strengths": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
-        "stock_details": dict(_pending_stock_details),
+        "stock_details": stock_details,
         "latest_index": {},
     }
 
@@ -111,7 +119,7 @@ async def get_sector_stocks() -> list:
     from backend.app.core.industry_map import load_eligible_stocks_cache_from_db
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
     from backend.app.core.sector_mapping import get_merged_sector as _get_sector
-    
+
     if not _sector_stocks_dirty and _sector_stocks_cache is not None:
         return _sector_stocks_cache
 
@@ -122,18 +130,21 @@ async def get_sector_stocks() -> list:
     merged: dict[str, dict] = {}
     from backend.app.services.engine_state import _master_stocks_cache
 
-    for cd, e in _pending_stock_details.items():
+    # _pending_stock_details 제거: _radar_cnsr_order + _master_stocks_cache로 대체
+    for cd in _radar_cnsr_order:
         if filter_set is not None and cd not in filter_set:
             continue
         if _filtered_sector_codes is not None and cd not in _filtered_sector_codes:
             continue
-        if e.get("status") != "active":
+        if cd not in _master_stocks_cache:
             continue
+        e = _master_stocks_cache[cd].copy()
+        e["status"] = "active"
         # 시세 없는 빈 엔트리 제외
         if int(e.get("cur_price") or 0) <= 0 and (not e.get("name") or e.get("name") == cd):
             continue
         # 정적 보강 필드를 원본 dict에 직접 패치 (참조 공유)
-        avg5d_raw = int(_master_stocks_cache.get(cd, {}).get("avg_5d_trade_amount", 0) or 0)
+        avg5d_raw = int(e.get("avg_5d_trade_amount", 0) or 0)
         e["avg_amt_5d"] = avg5d_raw
         e["market_type"] = _get_mkt(cd) or ""
         e["nxt_enable"] = _is_nxt(cd)
