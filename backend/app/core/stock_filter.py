@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional
 # -*- coding: utf-8 -*-
 """
 매매 부적격 종목 필터 — ka10099 응답 기반 입구 컷.
@@ -10,7 +12,8 @@
   4. 종목명에 "스팩" 포함 → SPAC (기업인수목적회사)
   5. auditInfo ≠ "" AND ≠ "정상" → 감리지정/감리비정상/투자주의환기종목
 """
-from __future__ import annotations
+
+from backend.app.core.trading_calendar import get_kst_today
 
 # marketCode 화이트리스트 — 코스피("0")와 코스닥("10")만 매매 적격
 _ALLOWED_MARKET_CODES: set[str] = {"0", "10"}
@@ -149,8 +152,8 @@ def is_excluded(item: dict, stk_cd: str) -> tuple[bool, str]:
     if reg_day and len(reg_day) == 8:
         try:
             from datetime import datetime, timedelta
-            reg_date = datetime.strptime(reg_day, "%Y%m%d")
-            today = datetime.now()
+            reg_date = datetime.strptime(reg_day, "%Y%m%d").date()
+            today = get_kst_today()
             # 상장 후 3개월 이내
             if today - reg_date < timedelta(days=90):
                 # 경고 로그만 출력 (차단하지 않음)
@@ -167,7 +170,7 @@ def is_excluded(item: dict, stk_cd: str) -> tuple[bool, str]:
 def is_excluded_with_ka10100(
     item: dict,
     stk_cd: str,
-    ka10100_data: Optional[dict] = None,
+    ka10100_data: dict | None = None,
 ) -> tuple[bool, str]:
     """
     ka10100 데이터를 활용한 2차 필터링.
@@ -211,3 +214,6 @@ def is_excluded_with_ka10100(
         return True, f"전일종가비정상(ka10100)={last_price}"
 
     return False, ""
+
+
+

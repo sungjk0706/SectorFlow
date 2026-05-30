@@ -1,10 +1,10 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 키움 WebSocket·REST 페이로드 파싱 -- 전역 엔진 상태 없음.
 
 engine_service에서 분리된 순수 함수만 둔다 (로직·입출력 동일 유지).
 """
-from __future__ import annotations
 
 
 def _ws_int(vals: dict, key: str, default: int = 0) -> int:

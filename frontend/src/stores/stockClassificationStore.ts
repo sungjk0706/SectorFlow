@@ -8,7 +8,6 @@ export interface StockClassificationState {
   deletedSectors: string[]
   mergedSectors: string[]
   editWindowOpen: boolean
-  loading: boolean
   noSectorCount: number
   filter_summary?: string
   allStocks: Array<{
@@ -26,7 +25,6 @@ const initialState: StockClassificationState = {
   deletedSectors: [],
   mergedSectors: [],
   editWindowOpen: true,
-  loading: false,
   noSectorCount: 0,
   filter_summary: "",
   allStocks: [],

@@ -1,6 +1,6 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """FastAPI 웹 서버 — 엔진과 동일한 asyncio 이벤트 루프에서 실행."""
-from __future__ import annotations
 
 import asyncio
 import logging
@@ -15,20 +15,84 @@ from backend.app.di.container import get_container
 
 logger = logging.getLogger(__name__)
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan 이벤트 핸들러."""
     # --- startup ---
-    container = get_container()
     from backend.app.core.logging_config import configure_app_logging
     configure_app_logging()
+    
+    container = get_container()
 
+    # DB 캐시 테이블 초기화 (가장 먼저 실행)
+    from backend.app.db.db_writer import start_db_writer
+    await start_db_writer()
+    
+    # 전역 큐 초기화 (엔진 시작 전 보장)
+    from backend.app.services.core_queues import initialize_queues
+    initialize_queues()
+    
+    from backend.app.db.stock_tables import init_cache_tables, create_stock_5d_array_table
+    await init_cache_tables()
+    await create_stock_5d_array_table()
+    
+    # SQLite 3차 마이그레이션 자동 실행 (통합 단일 마스터 테이블 구축)
+    from backend.app.db.migration_v3 import run_migration_v3
+    await run_migration_v3()
+
+    # 거래일 캐시 초기화
+    from backend.app.core.trading_calendar import initialize_trading_calendar_cache
+    await initialize_trading_calendar_cache()
+
+    # 새 설정 테이블 초기화 (표준 아키텍처)
+    from backend.app.db.models import (
+        create_system_settings_table,
+        create_user_settings_table,
+        create_broker_credentials_table,
+        create_system_config_table,
+        create_broker_specs_table,
+        create_integrated_system_settings_table,
+    )
+    await create_system_settings_table()
+    await create_user_settings_table()
+    await create_broker_credentials_table()
+    await create_system_config_table()
+    await create_broker_specs_table()
+
+    # 기존 system_settings 테이블이 있을 경우 개별 테이블로 마이그레이션 실행
+    from backend.app.db.migration import migrate_settings_from_system_settings, drop_system_settings_table
+    await migrate_settings_from_system_settings()
+
+    # broker_specs JSON → SQLite 마이그레이션
+    from backend.app.db.models import migrate_broker_specs_from_json
+    await migrate_broker_specs_from_json()
+
+    # 최종 통합설정 마스터 물리 테이블 및 트리거(integrated_system_settings) 생성
+    await create_integrated_system_settings_table()
+
+    # 기존 system_settings 테이블 안전 제거
+    await drop_system_settings_table()
+
+    # 단일 통합설정 마스터 테이블(integrated_system_settings)로부터 1회 로드 완료
+    from backend.app.core.settings_file import load_settings
+    settings = await load_settings()
+    
+    # settings를 container에 등록
+    container.register_singleton("settings", settings)
+
+    logger.info("[웹서버] ThreadPoolExecutor 설정 직전")
     loop = asyncio.get_running_loop()
     loop.set_default_executor(ThreadPoolExecutor(max_workers=8))
+    logger.info("[웹서버] ThreadPoolExecutor 설정 완료")
 
+    logger.info("[웹서버] daily_time_scheduler import 직전")
     from backend.app.services.daily_time_scheduler import start_daily_time_scheduler
+    logger.info("[웹서버] daily_time_scheduler import 완료")
+    
+    logger.info("[웹서버] engine_service import 직전")
     from backend.app.services.engine_service import start_engine
+    logger.info("[웹서버] engine_service import 완료")
+    
     from backend.app.services.telegram_bot import telegram_bot
     from backend.app.services import trade_history
     from backend.app.services.backend_coalescing import BackendCoalescing
@@ -41,18 +105,24 @@ async def lifespan(app: FastAPI):
 
     # Journal Consumer Task 시작 (Phase 4.2 Persistence Journaling)
     from backend.app.core import journal
+    logger.info("[웹서버] journal.start_consumer_task() 호출 직전")
     journal.start_consumer_task()
+    logger.info("[웹서버] journal.start_consumer_task() 호출 완료")
     logger.info("[웹서버] Journal Consumer Task 시작 완료")
 
     # 엔진 초기화 (설정 → 데이터 로드 → 증권사 연결)
     logger.info("[웹서버] 엔진 초기화 시작")
+    logger.info("[웹서버] start_engine() 호출 직전")
     success = await start_engine(user_id="admin")
+    logger.info("[웹서버] start_engine() 반환 완료, success=%s", success)
     if not success:
         logger.error("[웹서버] 엔진 초기화 실패")
         raise RuntimeError("엔진 초기화 실패")
     
+    logger.info("[웹서버] 엔진 초기화 성공, backend_coalescing 등록 진입")
     # Backend Coalescing 싱글톤 등록
     backend_coalescing = BackendCoalescing.get_instance()
+    await backend_coalescing.start()
     container.register_singleton("backend_coalescing", backend_coalescing)
     logger.info("[DI Container] backend_coalescing 싱글톤 등록 완료")
     
@@ -66,28 +136,15 @@ async def lifespan(app: FastAPI):
     _es._server_ready_event.set()
     logger.info("[웹서버] 서버 준비 완료 이벤트 설정 (Fast Boot)")
 
-    # 엔진 부트스트랩 완료 대기는 백그라운드 태스크로 전환 (비동기 비차단 초기화)
-    async def _wait_for_engine_ready():
-        try:
-            await asyncio.wait_for(_es._bootstrap_event.wait(), timeout=120.0)
-            logger.info("[웹서버] 엔진 초기화 완료")
-            _es._engine_ready_event.set()
-            logger.info("[웹서버] 엔진 준비 완료 이벤트 설정")
-        except asyncio.TimeoutError:
-            logger.error("[웹서버] 엔진 부트스트랩 120초 초과")
-            logger.warning("[웹서버] 타임아웃 발생했지만 엔진 준비 완료 플래그는 설정하지 않음")
-
-    asyncio.create_task(_wait_for_engine_ready())
+    # 엔진 준비 완료 플래그 즉시 설정 (백그라운드 다운로드와 무관하게 웹서버 기동 완료)
+    _es._engine_ready_event.set()
+    logger.info("[웹서버] 엔진 준비 완료 이벤트 설정 (비차단)")
 
     # 스케줄러 시작
-    start_daily_time_scheduler()
+    await start_daily_time_scheduler()
 
-    # 텔레그램은 후순위 — 앱준비 완료 + 여유 시간 후 시작 (편의 기능)
+    # 텔레그램은 후순위 — 여유 시간 후 시작 (편의 기능, 타이머 제거)
     async def _start_telegram_lazy():
-        try:
-            await asyncio.wait_for(_es._bootstrap_event.wait(), timeout=120.0)
-        except asyncio.TimeoutError:
-            logger.warning("[웹서버] 엔진 앱준비 120초 대기 초과")
         await asyncio.sleep(3.0)  # 브로커·WS 안정화 후 시작
         telegram_bot.start()
         logger.info("[웹서버] 텔레그램 폴링 시작 (후순위)")
@@ -113,6 +170,13 @@ async def lifespan(app: FastAPI):
     await telegram_bot.stop_async()
     await stop_engine()
     await stop_daily_time_scheduler()
+    
+    # DB Writer 종료 및 DB 커넥션 정리
+    from backend.app.db.db_writer import stop_db_writer
+    from backend.app.db.database import close_db_connection
+    await stop_db_writer()
+    await close_db_connection()
+    logger.info("[웹서버] DB Writer 및 DB 커넥션 정리 완료")
     
     # 상태 이벤트 정리
     _es._engine_ready_event.clear()

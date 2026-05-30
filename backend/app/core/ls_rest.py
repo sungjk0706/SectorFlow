@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional
 # -*- coding: utf-8 -*-
 """
 LS증권 REST API 통신 클래스
@@ -5,13 +7,11 @@ LS증권 REST API 통신 클래스
 - OAuth2 토큰 관리
 - 주문 실행 (매수, 매도, 정정, 취소)
 """
-from __future__ import annotations
 
 import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import Optional
 
 import httpx
 
@@ -227,7 +227,7 @@ class LsRestAPI:
                     continue
 
                 if resp.status_code != 200:
-                    _log.info(f"[LS증권REST] HTTP {resp.status_code}")
+                    _log.info(f"[LS증권REST] HTTP {resp.status_code} - Body: {resp.text}")
                     return None
 
                 return resp.json()

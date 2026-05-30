@@ -1,14 +1,14 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 ConnectorManager — 다중 증권사 WebSocket 연결 관리자.
 
 broker_config.websocket 설정을 읽어 필요한 Connector를 모두 생성·연결한다.
 """
-from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from backend.app.core.broker_connector import BrokerConnector
 
@@ -56,10 +56,17 @@ class ConnectorManager:
     @staticmethod
     def _create_single(broker_name: str, settings: dict) -> BrokerConnector:
         """단일 증권사 Connector 생성."""
-        if broker_name == "kiwoom":
-            from backend.app.core.kiwoom_connector import create_kiwoom_connector
-            return create_kiwoom_connector(settings)
-        raise ValueError(f"지원하지 않는 증권사: {broker_name}")
+        from backend.app.core.broker_registry import CONNECTOR_REGISTRY
+
+        connector_registry = CONNECTOR_REGISTRY.get(broker_name)
+        if not connector_registry:
+            raise ValueError(f"지원하지 않는 증권사: {broker_name}")
+
+        create_connector = connector_registry.get("create_connector")
+        if not create_connector:
+            raise ValueError(f"{broker_name}은(는) create_connector를 제공하지 않습니다")
+
+        return create_connector(settings)
 
     # ── 콜백 ──────────────────────────────────────────────────────────
 

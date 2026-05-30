@@ -15,8 +15,12 @@ async def get_engine_settings(user_id: str = None, profile: str = "default") -> 
     data/settings.json 로드 후 복호화 dict 반환 (단일 파일).
     user_id / profile 인자는 호환용으로 무시됨.
     """
-    flat = load_settings()
+    flat = await load_settings()
+    return build_engine_settings_dict(flat)
 
+
+def build_engine_settings_dict(flat: dict) -> dict:
+    """flat 설정 딕셔너리로부터 복호화 및 타입 캐스팅 가공 처리가 완료된 엔진 설정을 빌드합니다."""
     def _dec(v) -> str:
         if not v:
             return ""
@@ -68,7 +72,7 @@ async def get_engine_settings(user_id: str = None, profile: str = "default") -> 
         "sell_custom_qty":      int(flat.get("sell_custom_qty", 0) or 0),
         # 리스크
         "rate_limit_per_sec":   int(flat.get("rate_limit_per_sec", 3) or 3),
-        "max_position_size":    int(flat.get("max_position_size") or 0),
+        "max_position_size":    (lambda raw: 0 if raw is None or raw == "None" or raw == "" else int(raw))(flat.get("max_position_size")),
         # 텔레그램 (복호화)
         "tele_on":              bool(flat.get("tele_on", False)),
         "telegram_on":          bool(flat.get("tele_on", False)),
@@ -83,7 +87,7 @@ async def get_engine_settings(user_id: str = None, profile: str = "default") -> 
         "kiwoom_app_secret_real": flat.get("kiwoom_app_secret_real") or "",
         "kiwoom_account_no_real": str(flat.get("kiwoom_account_no_real") or "").strip(),
         "test_mode":            _is_test,
-        "kiwoom_mock_mode":     _is_test,   # 하위 호환
+        "mock_mode":            _is_test,   # 하위 호환
     }
 
     # 모든 증권사 API 키/시크릿/계좌번호 동적 수집 및 복호화 (real 키 우선)
@@ -127,10 +131,6 @@ async def get_engine_settings(user_id: str = None, profile: str = "default") -> 
     result["buy_block_rise_pct"]          = float(flat.get("buy_block_rise_pct") if flat.get("buy_block_rise_pct") is not None else 7.0)
     result["buy_block_fall_pct"]          = float(flat.get("buy_block_fall_pct") if flat.get("buy_block_fall_pct") is not None else 7.0)
     result["buy_min_strength"]            = float(flat.get("buy_min_strength") if flat.get("buy_min_strength") is not None else 0)
-    result["buy_index_guard_kospi_on"]    = bool(flat.get("buy_index_guard_kospi_on", False))
-    result["buy_index_guard_kosdaq_on"]   = bool(flat.get("buy_index_guard_kosdaq_on", False))
-    result["buy_index_kospi_drop"]        = float(flat.get("buy_index_kospi_drop") if flat.get("buy_index_kospi_drop") is not None else 2.0)
-    result["buy_index_kosdaq_drop"]       = float(flat.get("buy_index_kosdaq_drop") if flat.get("buy_index_kosdaq_drop") is not None else 2.0)
     # 업종 내 종목 트리밍 비율 (%)
     result["sector_trim_trade_amt_pct"]    = float(flat.get("sector_trim_trade_amt_pct") if flat.get("sector_trim_trade_amt_pct") is not None else 10.0)
     result["sector_trim_change_rate_pct"]  = float(flat.get("sector_trim_change_rate_pct") if flat.get("sector_trim_change_rate_pct") is not None else 10.0)
@@ -162,11 +162,7 @@ async def get_engine_settings(user_id: str = None, profile: str = "default") -> 
     result["scheduler_market_close_on"]    = bool(flat.get("scheduler_market_close_on", True))
     result["scheduler_5d_download_on"]     = bool(flat.get("scheduler_5d_download_on", True))
 
-    # ── 장마감 후 지수 폴링 스위치 ────────
-    result["index_poll_after_close"]       = bool(flat.get("index_poll_after_close", False))
-
     # ── WS 구독 자동 스위치 ────────
-    result["index_auto_subscribe"]         = bool(flat.get("index_auto_subscribe", True))
     result["quote_auto_subscribe"]         = bool(flat.get("quote_auto_subscribe", False))
 
     # ── 테스트모드 가상 예수금 ────────
@@ -185,5 +181,9 @@ async def get_engine_settings(user_id: str = None, profile: str = "default") -> 
         }
 
     result["broker_config"] = _normalize_broker_config(flat)
+
+    # ── broker_specs 복사 (app.py에서 미리 로드된 데이터) ────────
+    if "_broker_specs" in flat:
+        result["_broker_specs"] = flat["_broker_specs"]
 
     return result

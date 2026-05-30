@@ -8,7 +8,8 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Iterator, Optional
+from collections.abc import Iterator
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,8 @@ def settings_path_for_profile(username: str) -> Path:
 
 
 _DEFAULTS: dict = {
-    "broker": "kiwoom",
-    # 키움: "test" | "real" -- 테스트/실전 API·WS·REG·자격증명 분기의 기준
+    "broker": "",
+    # 테스트/실전 API·WS·REG·자격증명 분기의 기준
     "trade_mode": "test",
     "mode_real": False,
     "time_scheduler_on": True,
@@ -66,7 +67,13 @@ _DEFAULTS: dict = {
     "kiwoom_app_key_real": None,
     "kiwoom_app_secret_real": None,
     "kiwoom_account_no_real": "",
-    "kiwoom_mock_mode": True,
+    "ls_app_key": None,
+    "ls_app_secret": None,
+    "ls_account_no": "",
+    "ls_app_key_real": None,
+    "ls_app_secret_real": None,
+    "ls_account_no_real": "",
+    "mock_mode": True,
 
     "sell_per_symbol": {},
     # 매수/매도 폼 「기본값 저장」 전용 -- 엔진은 사용하지 않음(설정 저장과 별도 스냅샷).
@@ -87,18 +94,11 @@ _DEFAULTS: dict = {
     "buy_block_rise_pct": 7.0,
     "buy_block_fall_pct": 7.0,
     "buy_min_strength": 0,
-    "buy_index_guard_kospi_on": False,
-    "buy_index_guard_kosdaq_on": False,
-    "buy_index_kospi_drop": 2.0,
-    "buy_index_kosdaq_drop": 2.0,
     # 공휴일 자동 OFF
     "holiday_guard_on": True,
     # WS 구독 마스터 스위치
     "ws_subscribe_on": True,
-    # 장마감 후 지수 폴링 (15:30~WS구독종료)
-    "index_poll_after_close": False,
-    # WS 구독 제어 — 지수(0J) / 실시간시세(0B) 자동구독
-    "index_auto_subscribe": True,
+    # WS 구독 제어 — 실시간시세(0B) 자동구독
     "quote_auto_subscribe": True,
     # 테스트모드 가상 예수금 -- 설정 금액(초기값)과 현재 잔액
     "test_virtual_deposit": 10_000_000,
@@ -180,7 +180,7 @@ def _migrate_time_range_split(merged: dict) -> tuple[dict, bool]:
 
 def _migrate_sector_to_industry_index(merged: dict, raw_data: dict) -> tuple[dict, bool]:
     """
-    sector_auto_subscribe → index_auto_subscribe 마이그레이션.
+    sector_auto_subscribe → quote_auto_subscribe 마이그레이션.
     raw_data에 sector_auto_subscribe가 있고 신규 키가 없으면 변환.
     industry_auto_subscribe는 제거됨 (0U 구독 폐지).
     """
@@ -192,12 +192,12 @@ def _migrate_sector_to_industry_index(merged: dict, raw_data: dict) -> tuple[dic
     if "sector_auto_subscribe" not in raw_data:
         return merged, dirty
     # 이미 신규 키가 raw_data에 있으면 스킵 (이미 마이그레이션됨)
-    if "index_auto_subscribe" in raw_data:
+    if "quote_auto_subscribe" in raw_data:
         # 레거시 키만 제거
         merged.pop("sector_auto_subscribe", None)
         return merged, True
     old_val = bool(raw_data["sector_auto_subscribe"])
-    merged["index_auto_subscribe"] = old_val
+    merged["quote_auto_subscribe"] = old_val
     merged.pop("sector_auto_subscribe", None)
     return merged, True
 
@@ -218,8 +218,8 @@ def _migrate_broker_config(merged: dict, raw_data: dict) -> tuple[dict, bool]:
 
 def _migrate_trade_mode(merged: dict) -> tuple[dict, bool]:
     """
-    trade_mode 도입 이전 설정 호환: kiwoom_mock_mode -> trade_mode.
-    trade_mode·kiwoom_mock_mode·test_mode·mode_real 필드를 일치시킨다.
+    trade_mode 도입 이전 설정 호환: mock_mode -> trade_mode.
+    trade_mode·mock_mode·test_mode·mode_real 필드를 일치시킨다.
     레거시 'mock' 값은 'test'로 자동 변환.
     """
     dirty = False
@@ -230,16 +230,16 @@ def _migrate_trade_mode(merged: dict) -> tuple[dict, bool]:
         tm = "test"
         dirty = True
     if tm not in ("test", "real"):
-        merged["trade_mode"] = "test" if bool(merged.get("test_mode", merged.get("kiwoom_mock_mode", True))) else "real"
+        merged["trade_mode"] = "test" if bool(merged.get("test_mode", merged.get("mock_mode", True))) else "real"
         dirty = True
     tm = str(merged["trade_mode"])
     # test_mode 불리언 동기화
     if bool(merged.get("test_mode", False)) != (tm == "test"):
         merged["test_mode"] = tm == "test"
         dirty = True
-    # kiwoom_mock_mode 하위 호환 동기화
-    if bool(merged.get("kiwoom_mock_mode", True)) != (tm == "test"):
-        merged["kiwoom_mock_mode"] = tm == "test"
+    # mock_mode 하위 호환 동기화
+    if bool(merged.get("mock_mode", True)) != (tm == "test"):
+        merged["mock_mode"] = tm == "test"
         dirty = True
     if bool(merged.get("mode_real", False)) != (tm == "real"):
         merged["mode_real"] = tm == "real"
@@ -247,159 +247,235 @@ def _migrate_trade_mode(merged: dict) -> tuple[dict, bool]:
     return merged, dirty
 
 
-def load_settings() -> dict:
-    """SQLite system_settings 테이블에서 설정을 로드하고, 기본값을 병합하여 반환.
-    테이블이 비어 있고 settings.json이 존재한다면 1회 마이그레이션 후 원본 파일 완전 삭제.
+async def load_settings() -> dict:
+    """통합설정 완성본 뷰(integrated_system_settings)에서 설정을 1:1로 로드합니다.
+    실패 시 기본값 사용, 사용자에게 알림.
     """
-    from backend.app.db.models import create_system_settings_table
     from backend.app.db.database import get_db_connection
-    
-    # 1) 항상 테이블 생성 보장
-    try:
-        create_system_settings_table()
-    except Exception as e:
-        logger.warning("[설정] 테이블 생성 실패: %s", e)
-        
+    from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS, DEFAULT_SYSTEM_CONFIG
+
     db_data: dict = {}
-    
-    # 2) DB에서 설정 쿼리
-    conn = get_db_connection()
+
     try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT key, value FROM system_settings")
-        rows = cursor.fetchall()
+        conn = await get_db_connection()
+        # 오직 integrated_system_settings 완성본 뷰 하나만 1:1 조회
+        cursor = await conn.execute("SELECT key, value, value_type FROM integrated_system_settings")
+        rows = await cursor.fetchall()
         for row in rows:
-            k = row["key"]
-            raw_v = row["value"]
-            # 문자열 복원 시 JSON 데이터 형식은 loads로 역직렬화
-            if (raw_v.startswith("{") and raw_v.endswith("}")) or (raw_v.startswith("[") and raw_v.endswith("]")):
-                try:
-                    db_data[k] = json.loads(raw_v)
-                except Exception:
-                    db_data[k] = raw_v
+            key = row["key"]
+            value = row["value"]
+            value_type = row["value_type"]
+            parsed_val = _parse_value(value, value_type)
+            if key.startswith("broker_specs:"):
+                broker_name = key.split(":", 1)[1]
+                if "_broker_specs" not in db_data:
+                    db_data["_broker_specs"] = {}
+                db_data["_broker_specs"][broker_name] = parsed_val
             else:
-                # 불리언이나 숫자 변환 시도 (하위 호환성 및 타입 매칭)
-                if raw_v == "True":
-                    db_data[k] = True
-                elif raw_v == "False":
-                    db_data[k] = False
-                elif raw_v == "None":
-                    db_data[k] = None
-                else:
-                    try:
-                        # 정수 또는 실수 변환
-                        if "." in raw_v:
-                            db_data[k] = float(raw_v)
-                        else:
-                            db_data[k] = int(raw_v)
-                    except ValueError:
-                        db_data[k] = raw_v
+                db_data[key] = parsed_val
+        logger.info("[설정] integrated_system_settings 로드 완료 (%d개 설정 항목)", len(db_data))
     except Exception as e:
-        logger.warning("[설정] DB 설정 읽기 실패: %s", e)
-    finally:
-        conn.close()
+        logger.error("[설정] integrated_system_settings 로드 실패: %s", e)
+        _notify_load_failure("설정 데이터 로드 실패. 기본값으로 설정됩니다.")
+        # 실패 시 기본값 리턴
+        return {**DEFAULT_USER_SETTINGS, **DEFAULT_SYSTEM_CONFIG}
 
-    # 3) 마이그레이션 트리거: DB가 비어 있고 기존 JSON 파일이 존재할 경우
-    if not db_data and _SETTINGS_PATH.is_file():
-        try:
-            logger.info("[설정] settings.json 마이그레이션 시작...")
-            with open(_SETTINGS_PATH, "r", encoding="utf-8") as f:
-                json_data = json.load(f)
-            
-            # DB에 임시 저장 (save_settings를 사용하여 안전하게 저장)
-            save_settings(json_data)
-            
-            # 저장 성공 후 settings.json 영구 삭제
-            try:
-                os.remove(_SETTINGS_PATH)
-                logger.info("[설정] settings.json 마이그레이션 성공 및 원본 파일 삭제 완료")
-            except Exception as del_err:
-                logger.error("[설정] settings.json 삭제 실패: %s", del_err)
-            
-            # 이관 완료되었으므로 다시 DB에서 조회한 딕셔너리로 교체
-            return load_settings()
-        except Exception as mig_err:
-            logger.error("[설정] settings.json 마이그레이션 실패: %s", mig_err)
+    # 기본값 병합 (DB에 없는 키)
+    for key, default_value in DEFAULT_USER_SETTINGS.items():
+        if key not in db_data:
+            db_data[key] = default_value
 
-    # 4) 기본값 병합 및 마이그레이션 룰 적용
-    merged = {**_DEFAULTS, **db_data}
+    for key, default_value in DEFAULT_SYSTEM_CONFIG.items():
+        if key not in db_data:
+            db_data[key] = default_value
+
+    # 레거시 마이그레이션 룰 적용
+    merged = {**db_data}
     merged, dirty = _migrate_legacy_auto_trade_on(merged)
     merged, dirty_tm = _migrate_trade_mode(merged)
     merged, dirty_tr = _migrate_time_range_split(merged)
     merged, dirty_sw = _migrate_sector_weights(merged, db_data)
     merged, dirty_si = _migrate_sector_to_industry_index(merged, db_data)
     merged, dirty_bc = _migrate_broker_config(merged, db_data)
-    
+
     dirty = dirty or dirty_tm or dirty_tr or dirty_sw or dirty_si or dirty_bc
     if dirty:
-        save_settings(merged)
-        
+        await save_settings(merged)
+
     return merged
 
 
-def save_settings(data: dict) -> None:
-    """설정 전체를 SQLite system_settings 테이블에 트랜잭션 단위로 저장."""
+def _parse_value(value: str, value_type: str) -> Any:
+    """value_type에 따라 문자열을 적절한 타입으로 변환
+    
+    Repository Boundary: JSON TEXT는 반드시 이 함수에서 decode되어야 함.
+    서비스/엔진 레이어는 순수 Python 타입만 사용해야 함.
+    """
+    from backend.app.db.json_utils import decode_json_field
+    import json
+    
+    if value_type == "boolean":
+        return value == "True"
+    elif value_type == "number":
+        if "." in value:
+            return float(value)
+        return int(value)
+    elif value_type == "json":
+        # JSON 타입은 반드시 decode_json_field로 변환
+        # 타입 계약 강제: dict/list 반환 보장
+        # 먼저 파싱 후 타입 확인
+        try:
+            decoded = json.loads(value)
+            if isinstance(decoded, dict):
+                return decode_json_field(value, expected_type=dict)
+            elif isinstance(decoded, list):
+                return decode_json_field(value, expected_type=list)
+            else:
+                raise ValueError(f"[settings_file] JSON 타입 지원 안 함: {type(decoded).__name__}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"[settings_file] JSON 파싱 실패: {e}")
+    else:  # string
+        return value
+
+
+def _notify_load_failure(message: str) -> None:
+    """설정 로드 실패 알림 (로그 + WebSocket)"""
+    logger.error("[설정] %s", message)
+    # WebSocket UI 배너 알림은 나중에 구현 (프론트엔드 연동 필요)
+
+
+async def save_settings(data: dict) -> None:
+    """표준 아키텍처: 테이블별 분기 저장 (user_settings, broker_credentials, system_config).
+    
+    Repository Boundary: dict/list는 value_type="json"으로 저장하여 타입 계약 명확화.
+    """
     from backend.app.db.database import get_db_connection
-    conn = get_db_connection()
+    from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS, DEFAULT_SYSTEM_CONFIG
+
+    # 증권사 인증 키 접두사
+    BROKER_KEY_PREFIXES = frozenset([
+        "kiwoom_app_key", "kiwoom_app_secret",
+        "kiwoom_app_key_real", "kiwoom_app_secret_real",
+        "ls_app_key", "ls_app_secret",
+    ])
+
+    # 시스템 설정 키 접두사
+    SYSTEM_CONFIG_KEYS = frozenset([
+        "krx_", "nxt_",
+        "db_connection_timeout", "db_retry_count", "db_retry_delay",
+        "cache_size", "log_level",
+    ])
+
+    conn = await get_db_connection()
     try:
-        cursor = conn.cursor()
         # 트랜잭션 시작
-        cursor.execute("BEGIN TRANSACTION")
+        await conn.execute("BEGIN TRANSACTION")
+
         for k, v in data.items():
-            if isinstance(v, (dict, list)):
+            if k == "_broker_specs":
+                if isinstance(v, dict):
+                    for b_name, spec in v.items():
+                        spec_str = json.dumps(spec, ensure_ascii=False)
+                        await conn.execute(
+                            "INSERT OR REPLACE INTO broker_specs (broker_name, spec_data, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                            (b_name, spec_str)
+                        )
+                continue
+            if k.startswith("broker_specs:"):
+                b_name = k.split(":", 1)[1]
+                spec_str = json.dumps(v, ensure_ascii=False)
+                await conn.execute(
+                    "INSERT OR REPLACE INTO broker_specs (broker_name, spec_data, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                    (b_name, spec_str)
+                )
+                continue
+
+            # None이나 빈 문자열이면 기본값으로 대체 (데이터 무결성 보장)
+            if v is None or (isinstance(v, str) and v == ""):
+                if k in DEFAULT_USER_SETTINGS:
+                    v = DEFAULT_USER_SETTINGS[k]
+                elif k in DEFAULT_SYSTEM_CONFIG:
+                    v = DEFAULT_SYSTEM_CONFIG[k]
+                else:
+                    # 기본값이 없으면 건너뜀
+                    continue
+
+            # 값 타입 추론
+            if isinstance(v, bool):
+                value_type = "boolean"
+                val_str = str(v)
+            elif isinstance(v, (int, float)):
+                value_type = "number"
+                val_str = str(v)
+            elif isinstance(v, (dict, list)):
+                value_type = "json"  # 수정: dict/list는 "json" 타입으로 저장
                 val_str = json.dumps(v, ensure_ascii=False)
             else:
+                value_type = "string"
                 val_str = str(v)
-            cursor.execute(
-                "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
-                (k, val_str)
-            )
-        conn.commit()
+
+            # 테이블 분기 (개별 원천 데이터 테이블 갱신)
+            if any(k.startswith(prefix) for prefix in BROKER_KEY_PREFIXES):
+                # broker_credentials에 저장
+                broker_name = "kiwoom" if k.startswith("kiwoom") else "ls"
+                await conn.execute(
+                    "INSERT OR REPLACE INTO broker_credentials (broker_name, key, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                    (broker_name, k, val_str)
+                )
+            elif any(k.startswith(prefix) for prefix in SYSTEM_CONFIG_KEYS):
+                # system_config에 저장
+                await conn.execute(
+                    "INSERT OR REPLACE INTO system_config (key, value, value_type, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                    (k, val_str, value_type)
+                )
+            else:
+                # user_settings에 저장
+                await conn.execute(
+                    "INSERT OR REPLACE INTO user_settings (key, value, value_type, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                    (k, val_str, value_type)
+                )
+
+        await conn.commit()
     except Exception as e:
-        conn.rollback()
-        logger.error("[설정] system_settings DB 저장 실패: %s", e)
-    finally:
-        conn.close()
+        await conn.rollback()
+        logger.error("[설정] DB 저장 실패: %s", e)
 
 
-def update_settings(updates: dict) -> dict:
+async def update_settings(updates: dict) -> dict:
     """기존 설정에 업데이트를 병합하여 저장하고 최신 설정 반환."""
-    current = load_settings()
+    current = await load_settings()
     current.update({k: v for k, v in updates.items() if v is not None or k in current})
-    save_settings(current)
+    await save_settings(current)
     return current
 
 
-def load_user_settings(username: str) -> dict:
+async def load_user_settings(username: str) -> dict:
     """호환용 -- 사용자별 파일은 사용하지 않고 항상 load_settings() 를 반환."""
-    return load_settings()
+    return await load_settings()
 
 
-def save_user_settings(username: str, data: dict) -> None:
+async def save_user_settings(username: str, data: dict) -> None:
     """호환용 -- 항상 루트 settings.json 에 저장."""
-    save_settings(data)
+    await save_settings(data)
 
 
-def iter_merged_settings_profiles() -> Iterator[tuple[Optional[str], dict]]:
+async def iter_merged_settings_profiles() -> Iterator[tuple[str | None, dict]]:
     """루트 data/settings.json 한 개만 순회."""
-    yield None, load_settings()
+    yield None, await load_settings()
 
 
 # ── 비동기 버전 (이벤트 루프 블로킹 방지) ────────────────────────────────
 
 async def load_settings_async() -> dict:
     """settings.json 읽기 (비동기 버전). 파일이 없거나 파싱 오류 시 기본값 반환."""
-    return await asyncio.to_thread(load_settings)
+    return await load_settings()
 
 
 async def save_settings_async(data: dict) -> None:
     """설정 전체를 settings.json에 저장 (비동기 버전)."""
-    await asyncio.to_thread(save_settings, data)
+    await save_settings(data)
 
 
 async def update_settings_async(updates: dict) -> dict:
     """기존 설정에 업데이트를 병합하여 저장하고 최신 설정 반환 (비동기 버전)."""
-    current = await load_settings_async()
-    current.update({k: v for k, v in updates.items() if v is not None or k in current})
-    await save_settings_async(current)
-    return current
+    return await update_settings(updates)

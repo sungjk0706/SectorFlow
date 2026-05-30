@@ -1,10 +1,10 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 계좌·포지션 REST(kt00001/kt00018) 병합 및 스냅샷 메타 계산 -- 엔진 전역을 직접 두지 않는다.
 
 상태(_positions 등)는 호출부(engine_service)가 인자로 넘기고, 여기서는 동일 입력에 동일 출력만 보장한다.
 """
-from __future__ import annotations
 
 from datetime import datetime, timezone
 
@@ -32,7 +32,6 @@ def merge_positions_from_rest(
 ) -> list:
     """
     REST kt00018 잔고 반영. 수량·매입·종목명은 REST 기준.
-    현재가: latest_trade_prices(REAL 01 등 실시간)에 값이 있으면 항상 우선 -- REST 현재가로 덮지 않음.
     """
     merged: list = []
     for r in stock_list:
@@ -45,12 +44,7 @@ def merge_positions_from_rest(
         if qty <= 0:
             continue
         buy = _rest_row_int(r, "buy_price", "buy_uv", "pur_pric")
-        rest_px = _rest_row_int(r, "cur_price", "cur_pric", "cur_prc")
-        live_px = latest_trade_prices.get(cd)
-        if live_px and int(live_px) > 0:
-            cur = int(live_px)
-        else:
-            cur = rest_px
+        cur = _rest_row_int(r, "cur_price", "cur_pric", "cur_prc")
         ba = _rest_row_int(r, "buy_amount", "buy_amt", "pur_amt")
         if ba <= 0:
             ba = buy * qty
@@ -213,7 +207,6 @@ def real04_official_apply_position_line(
         matched["stk_nm"] = stk_nm
     if not prefer_01 and cur_price > 0:
         matched["cur_price"] = cur_price
-        latest_trade_prices[raw_cd] = cur_price
     if qty is not None and qty > 0:
         matched["qty"] = qty
     if buy_price is not None and buy_price > 0:
@@ -258,7 +251,7 @@ def build_account_snapshot_meta(
     t_sell = int(tot.get("total_sell", 0))
     t_rate = float(tot.get("total_rate", 0.0))
     return {
-        "broker":           account_snapshot.get("broker", "kiwoom"),
+        "broker":           account_snapshot.get("broker", ""),
         "trade_mode":       trade_mode,
         "deposit":          dep,
         "orderable":        ord_a,

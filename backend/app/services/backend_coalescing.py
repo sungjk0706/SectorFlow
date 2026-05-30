@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional
 # -*- coding: utf-8 -*-
 """
 Backend 1차 Coalescing 레이어
@@ -7,13 +9,11 @@ Backend 1차 Coalescing 레이어
 - flush 타이밍: 조건 1 (10ms 경과) OR 조건 2 (pendingMap size > 200)
 - Protobuf 직렬화 (바이너리 스트림)
 """
-from __future__ import annotations
 
 import asyncio
 import json
 import logging
 import time
-from typing import Dict, Optional, Set, Any
 
 from backend.protobuf import event_pb2
 from backend.app.services.core_queues import get_tick_queue
@@ -94,7 +94,7 @@ class BackendCoalescing:
 
     def _extract_code(self, data: Dict[str, Any]) -> str:
         """종목코드 추출"""
-        # 키움증권 형식
+        # 증권사 형식
         if "code" in data:
             return data["code"]
         # LS증권 형식
@@ -121,13 +121,15 @@ class BackendCoalescing:
 
     async def start(self) -> None:
         """Coalescing 시작"""
+        logger.info("[BackendCoalescing] start() 호출됨 - is_running=%s", self.is_running)
         if self.is_running:
+            logger.warning("[BackendCoalescing] 이미 실행 중, early return")
             return
 
         self.is_running = True
         self.last_flush_time = time.time()
         self.flush_task = asyncio.create_task(self._flush_loop())
-        logger.info("[BackendCoalescing] 시작")
+        logger.info("[BackendCoalescing] 시작 - 로그 확인용")
 
     async def stop(self) -> None:
         """Coalescing 중지"""

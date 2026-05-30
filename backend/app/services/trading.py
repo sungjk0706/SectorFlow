@@ -45,12 +45,13 @@ class AutoTradeManager:
         self._recent_sells: set = set()  # 매도 주문 전송 완료 종목 -- 체결/실패 확인까지 재주문 차단
         self._buy_state: dict = {}
         self._daily_buy_date: str = datetime.now().strftime("%Y-%m-%d")
-        self._daily_buy_spent, self._bought_today = self._restore_daily_buy_state()
+        self._daily_buy_spent = 0
+        self._bought_today = set()
 
-    def _restore_daily_buy_state(self) -> tuple[int, set]:
+    async def _restore_daily_buy_state(self) -> tuple[int, set]:
         """기동 시 trade_history에서 오늘 매수 합계 + 매수 종목 set 복원."""
         try:
-            rows = trade_history.get_buy_history(today_only=True)
+            rows = await trade_history.get_buy_history(today_only=True)
             spent = sum(int(r.get("total_amt", 0) or 0) for r in rows)
             codes = {str(r.get("stk_cd", "")).strip() for r in rows if r.get("stk_cd")}
             codes.discard("")
@@ -59,13 +60,13 @@ class AutoTradeManager:
             logger.warning("[매매] 일일 매수 상태 복원 실패", exc_info=True)
             return 0, set()
 
-    def _ensure_daily_buy_counter(self) -> None:
+    async def _ensure_daily_buy_counter(self) -> None:
         today = datetime.now().strftime("%Y-%m-%d")
         if self._daily_buy_date != today:
             self._daily_buy_date = today
-            self._daily_buy_spent, self._bought_today = self._restore_daily_buy_state()
+            self._daily_buy_spent, self._bought_today = await self._restore_daily_buy_state()
 
-    def execute_buy(self, stk_cd: str, current_price: float, checked_stocks: set,
+    async def execute_buy(self, stk_cd: str, current_price: float, checked_stocks: set,
                     access_token: str, force_buy: bool = False, reason: str = "") -> bool:
         """
         매수 주문 실행.
@@ -76,7 +77,7 @@ class AutoTradeManager:
         """
         settings = self._to_trade_settings(self.get_settings_fn())
         raw_all = self.get_settings_fn() or {}
-        self._ensure_daily_buy_counter()
+        await self._ensure_daily_buy_counter()
 
         # ── 실시간 지연 중단 게이트 ────────────────────────────────────────────
         try:
@@ -120,7 +121,7 @@ class AutoTradeManager:
         max_limit = settings.get("max_limit", 5)
         base_settings_for_mode = self.get_settings_fn() or {}
         if is_test_mode(base_settings_for_mode):
-            _positions_for_count = dry_run.get_positions()
+            _positions_for_count = await dry_run.get_positions()
         else:
             try:
                 import backend.app.services.engine_service as _es_pos
@@ -158,36 +159,6 @@ class AutoTradeManager:
             self.log_callback(f"[매수제한] {stk_cd} 서버 현재가 미수신(<=0). 주문 차단.")
             return False
 
-        # ── 지수 가드 (설정값 기반, 시장별 독립 적용) ──────────────────────
-        _kospi_on = bool(raw_all.get("buy_index_guard_kospi_on", False))
-        _kosdaq_on = bool(raw_all.get("buy_index_guard_kosdaq_on", False))
-        if _kospi_on or _kosdaq_on:
-            try:
-                import backend.app.services.engine_service as _es_idx
-                from backend.app.services.engine_sector_score import check_index_guard
-                from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt
-                _idx_triggered, _idx_reason, _k_hit, _kd_hit = check_index_guard(
-                    dict(_es_idx._latest_index),
-                    kospi_on=_kospi_on,
-                    kosdaq_on=_kosdaq_on,
-                    kospi_drop=float(raw_all.get("buy_index_kospi_drop", 2.0)),
-                    kosdaq_drop=float(raw_all.get("buy_index_kosdaq_drop", 2.0)),
-                )
-                if _idx_triggered:
-                    _mkt = _get_mkt(stk_cd) or ""
-                    _block = False
-                    if _mkt == "0" and _k_hit:
-                        _block = True
-                    elif _mkt == "10" and _kd_hit:
-                        _block = True
-                    elif not _mkt:
-                        _block = True  # 시장 미확인 → 안전하게 차단
-                    if _block:
-                        self.log_callback(f"[지수가드] {stk_cd} 매수 차단 -- {_idx_reason}")
-                        return False
-            except Exception:
-                logger.warning("[매수가드] 지수 가드 체크 실패", exc_info=True)
-
         # ── 등락률 + 거래대금 가드 (설정값 기반) ──────────────────────────────
         _change_rate_for_guard: float | None = None
         _trade_amount_for_guard: float | None = None
@@ -223,15 +194,8 @@ class AutoTradeManager:
         # 체결강도 가드
         _min_strength = float(raw_all.get("buy_min_strength", 0))
         if _min_strength > 0:
+            # 실시간 체결강도 캐시 읽기 로직 삭제 (캐시가 삭제되었으므로 읽기 불가, None 반환)
             _strength_val: float | None = None
-            if _pend is None:
-                try:
-                    import backend.app.services.engine_service as _es_str
-                    _str_raw = _es_str._latest_strength.get(stk_cd)
-                    if _str_raw is not None:
-                        _strength_val = float(_str_raw)
-                except Exception:
-                    logger.warning("[매수가드] 체결강도 조회 실패", exc_info=True)
             if _strength_val is not None and _strength_val < _min_strength:
                 stk_nm_s = data_manager.get_stock_name(stk_cd, access_token)
                 self.log_callback(
@@ -271,10 +235,10 @@ class AutoTradeManager:
         # ── 테스트모드 가드: 테스트모드면 실전 서버에 절대 주문 안 보냄 ─────────
         if is_test_mode(base_settings):
             _dry_price = int(order_price) if order_price > 0 else int(current_price)
-            res = dry_run.fake_send_order_sync(
+            res = await dry_run.fake_send_order(
                 base_settings, access_token, "BUY", stk_cd, buy_qty, _dry_price, trde_tp,
             )
-            dry_run.set_stock_name(stk_cd, stk_nm)
+            await dry_run.set_stock_name(stk_cd, stk_nm)
         else:
             res = get_router(base_settings).order.send_order(base_settings, access_token, "BUY", stk_cd, buy_qty, int(order_price), trde_tp)
 
@@ -314,7 +278,7 @@ class AutoTradeManager:
 
         # ── 테스트모드: 매수 후 UI 즉시 갱신 (매도탭 보유종목 카드 반영) ──────
         if is_test_mode(base_settings):
-            _dryrun_post_buy_broadcast(stk_cd, stk_nm)
+            await _dryrun_post_buy_broadcast(stk_cd, stk_nm)
 
         t_str = datetime.now().strftime("%H:%M:%S")
         fmt_price = f"{fill_price:,}"
@@ -332,7 +296,7 @@ class AutoTradeManager:
 
         return True
 
-    def on_fill_update(
+    async def on_fill_update(
         self, stk_cd: str, side: str, unex_qty: int, access_token: str | None = None
     ) -> None:
         nk = _format_kiwoom_reg_stk_cd(str(stk_cd or ""))
@@ -365,11 +329,11 @@ class AutoTradeManager:
 
         # 테스트모드: WS 체결 콜백 수신 시 dry_run 잔고 현재가 동기화
         if is_test_mode(self.get_settings_fn()):
-            cur = dry_run.get_position(nk)
+            cur = await dry_run.get_position(nk)
             if cur:
                 logger.debug("[테스트모드] on_fill_update side=%s code=%s unex=%s", side, nk, unex)
 
-    def execute_sell(
+    async def execute_sell(
         self,
         stk_cd: str,
         cur_price: float,
@@ -399,7 +363,7 @@ class AutoTradeManager:
         _avg_buy = 0
         try:
             if _mode == "test":
-                _pos = dry_run.get_position(stk_cd)
+                _pos = await dry_run.get_position(stk_cd)
                 _avg_buy = int(_pos.get("avg_price", 0)) if _pos else 0
             else:
                 import backend.app.services.engine_service as _es
@@ -413,7 +377,7 @@ class AutoTradeManager:
         # ── 테스트모드 가드: 테스트모드면 실전 서버에 절대 주문 안 보냄 ─────────
         if is_test_mode(base_settings):
             _dry_sell_price = int(order_price) if order_price > 0 else int(cur_price)
-            result = dry_run.fake_send_order_sync(
+            result = await dry_run.fake_send_order(
                 base_settings, access_token, "SELL", stk_cd, qty, _dry_sell_price, trde_tp,
             )
         else:
@@ -452,7 +416,7 @@ class AutoTradeManager:
         if is_test_mode(base_settings):
             _dryrun_post_sell_broadcast(stk_cd, stk_nm, base_settings)
 
-    def check_sell_conditions(self, stock_list: list, base_settings: dict, access_token: str) -> None:
+    async def check_sell_conditions(self, stock_list: list, base_settings: dict, access_token: str) -> None:
         settings = self._to_trade_settings(base_settings)
         if not settings.get("is_sell_auto", False):
             return
@@ -572,11 +536,11 @@ class AutoTradeManager:
 _DRYRUN_BUY_BROADCAST_DELAY: float = 0.15
 
 
-def _dryrun_post_buy_broadcast(stk_cd: str, stk_nm: str) -> None:
+async def _dryrun_post_buy_broadcast(stk_cd: str, stk_nm: str) -> None:
     """테스트모드 매수 후 UI 잔고 브로드캐스트 -- 매도탭 보유종목 카드 즉시 반영."""
     try:
         from backend.app.services import engine_service as es
-        es._refresh_account_snapshot_meta()
+        await es._refresh_account_snapshot_meta()
         es._broadcast_account(reason="dryrun_buy")
         logger.info("[테스트모드] 매수 후 UI 갱신 완료 -- %s(%s)", stk_nm, stk_cd)
     except Exception as e:

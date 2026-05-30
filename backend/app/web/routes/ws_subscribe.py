@@ -1,6 +1,6 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """WS 구독 제어 라우터 — 업종(0U) / 지수(0J) / 실시간시세(0B) 수동 시작·중지."""
-from __future__ import annotations
 
 import sys
 from enum import Enum
@@ -14,9 +14,8 @@ router = APIRouter(prefix="/api/ws-subscribe", tags=["ws-subscribe"])
 
 
 class SubscribeGroup(str, Enum):
-    sector = "sector"       # 하위 호환: industry + index 동시 제어
+    sector = "sector"       # 하위 호환: industry 동시 제어
     industry = "industry"   # grp 5 (0U)
-    index = "index"         # grp 2 (0J)
     quote = "quote"         # grp 4 (0B)
 
 
@@ -34,23 +33,18 @@ async def start_subscription(
     import backend.app.services.engine_service as es
 
     settings = getattr(es, "_settings_cache", None) or {}
-    if not is_ws_subscribe_window(settings):
+    if not await is_ws_subscribe_window(settings):
         raise HTTPException(status_code=400, detail="WS 구독 구간이 아닙니다")
 
     from backend.app.services import ws_subscribe_control
     _es = sys.modules["app.services.engine_service"]
 
     if body.group == SubscribeGroup.sector:
-        # 하위 호환: industry + index 동시 시작
-        r1 = await ws_subscribe_control.start_industry(_es)
-        r2 = await ws_subscribe_control.start_index(_es)
-        if not r1.get("ok") and not r2.get("ok"):
-            return {"ok": False, "message": r1.get("message", "알 수 없는 오류")}
+        # 업종 구독 폐지됨 (sector_mapping 기반 자체 집계)
         return {"ok": True, "status": ws_subscribe_control.get_subscribe_status()}
     elif body.group == SubscribeGroup.industry:
-        result = await ws_subscribe_control.start_industry(_es)
-    elif body.group == SubscribeGroup.index:
-        result = await ws_subscribe_control.start_index(_es)
+        # 업종 구독 폐지됨 (sector_mapping 기반 자체 집계)
+        return {"ok": True, "status": ws_subscribe_control.get_subscribe_status()}
     else:
         result = await ws_subscribe_control.start_quote(_es)
 
@@ -69,16 +63,13 @@ async def stop_subscription(
     _es = sys.modules["app.services.engine_service"]
 
     if body.group == SubscribeGroup.sector:
-        # 하위 호환: industry + index 동시 해지
+        # 하위 호환: industry 해지
         r1 = await ws_subscribe_control.stop_industry(_es)
-        r2 = await ws_subscribe_control.stop_index(_es)
-        if not r1.get("ok") and not r2.get("ok"):
+        if not r1.get("ok"):
             return {"ok": False, "message": r1.get("message", "알 수 없는 오류")}
         return {"ok": True, "status": ws_subscribe_control.get_subscribe_status()}
     elif body.group == SubscribeGroup.industry:
         result = await ws_subscribe_control.stop_industry(_es)
-    elif body.group == SubscribeGroup.index:
-        result = await ws_subscribe_control.stop_index(_es)
     else:
         result = await ws_subscribe_control.stop_quote(_es)
 

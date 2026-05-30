@@ -31,6 +31,7 @@ import {
   applyRealtimeState,
   applyWsSubscribeStatus,
   applyBuyLimitStatus,
+  applyEngineReloadComplete,
   uiStore,
 } from './stores/uiStore'
 import type {
@@ -159,6 +160,11 @@ export function bindWSToStore(
     applySettingsChanged(data as AppSettings)
   })
 
+  settingsClient.onEvent('engine-reload-complete', () => {
+    console.log('[WS] engine-reload-complete 수신 — 엔진 재시작 완료')
+    applyEngineReloadComplete()
+  })
+
   settingsClient.onEvent('index-refresh', (data) => {
     applyIndexRefresh(data as EngineStatus)
   })
@@ -213,6 +219,7 @@ export function bindWSToStore(
 
   pricesClient.onEvent('engine-ready', () => {
     console.log('[WS] engine-ready 수신 — 부트스트랩 완료')
+    applyEngineReloadComplete()
   })
 
   pricesClient.onEvent('confirmed-progress', (data) => {

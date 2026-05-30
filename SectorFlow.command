@@ -25,7 +25,7 @@ rm -f backend/data/server.lock
 rm -f /tmp/sectorflow.lock
 
 # 백엔드 실행
-python main.py &
+.venv/bin/python main.py &
 BACKEND_PID=$!
 
 # 백엔드 준비 대기 (포트 체크 방식)

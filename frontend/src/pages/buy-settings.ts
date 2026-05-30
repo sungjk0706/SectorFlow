@@ -19,10 +19,6 @@ let saveHelper: ReturnType<typeof createAutoSaveHelper> | null = null
 let vals: Record<string, unknown> = {}
 
 // 입력 컴포넌트 참조
-let kospiGuardToggle: ReturnType<typeof createToggleBtn> | null = null
-let kospiDropInput: ReturnType<typeof createNumInput> | null = null
-let kosdaqGuardToggle: ReturnType<typeof createToggleBtn> | null = null
-let kosdaqDropInput: ReturnType<typeof createNumInput> | null = null
 let riseInput: ReturnType<typeof createNumInput> | null = null
 let fallInput: ReturnType<typeof createNumInput> | null = null
 let strengthInput: ReturnType<typeof createNumInput> | null = null
@@ -58,10 +54,6 @@ function syncFromSettings(s: AppSettings): void {
   const act = document.activeElement
 
   // 매수 조건
-  kospiGuardToggle?.setOn(!!r.buy_index_guard_kospi_on)
-  if (kospiDropInput && (!act || !kospiDropInput.el.contains(act))) kospiDropInput.setValue(Number(r.buy_index_kospi_drop) || 0)
-  kosdaqGuardToggle?.setOn(!!r.buy_index_guard_kosdaq_on)
-  if (kosdaqDropInput && (!act || !kosdaqDropInput.el.contains(act))) kosdaqDropInput.setValue(Number(r.buy_index_kosdaq_drop) || 0)
   if (riseInput && (!act || !riseInput.el.contains(act))) riseInput.setValue(Number(r.buy_block_rise_pct) || 0)
   if (fallInput && (!act || !fallInput.el.contains(act))) fallInput.setValue(Number(r.buy_block_fall_pct) || 0)
   if (strengthInput && (!act || !strengthInput.el.contains(act))) strengthInput.setValue(Number(r.buy_min_strength) || 0)
@@ -102,39 +94,7 @@ function mount(container: HTMLElement): void {
 
 
   // ── 매수 조건 섹션 ──
-  root.appendChild(sectionTitle('전역 조건 (%)'))
-
-  // 코스피 하락 제한
-  kospiGuardToggle = createToggleBtn({ on: false, onClick: async () => {
-    const next = !vals.buy_index_guard_kospi_on
-    vals.buy_index_guard_kospi_on = next
-    kospiGuardToggle!.setOn(next)
-    await saveHelper!.saveImmediate({ buy_index_guard_kospi_on: next })
-  }})
-  const kospiLabelWrap = document.createElement('span')
-  kospiLabelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
-  kospiLabelWrap.appendChild(kospiGuardToggle.el)
-  const kospiText = document.createElement('span')
-  kospiText.textContent = '코스피 하락 매수차단'
-  kospiLabelWrap.appendChild(kospiText)
-  kospiDropInput = createNumInput({ value: 0, onChange: v => { vals.buy_index_kospi_drop = v; saveHelper!.autoSave('buy_index_kospi_drop', v) }, step: 1, name: 'buy_index_kospi_drop' })
-  root.appendChild(createSettingRow(kospiLabelWrap, kospiDropInput.el))
-
-  // 코스닥 하락 제한
-  kosdaqGuardToggle = createToggleBtn({ on: false, onClick: async () => {
-    const next = !vals.buy_index_guard_kosdaq_on
-    vals.buy_index_guard_kosdaq_on = next
-    kosdaqGuardToggle!.setOn(next)
-    await saveHelper!.saveImmediate({ buy_index_guard_kosdaq_on: next })
-  }})
-  const kosdaqLabelWrap = document.createElement('span')
-  kosdaqLabelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
-  kosdaqLabelWrap.appendChild(kosdaqGuardToggle.el)
-  const kosdaqText = document.createElement('span')
-  kosdaqText.textContent = '코스닥 하락 매수차단'
-  kosdaqLabelWrap.appendChild(kosdaqText)
-  kosdaqDropInput = createNumInput({ value: 0, onChange: v => { vals.buy_index_kosdaq_drop = v; saveHelper!.autoSave('buy_index_kosdaq_drop', v) }, step: 1, name: 'buy_index_kosdaq_drop' })
-  root.appendChild(createSettingRow(kosdaqLabelWrap, kosdaqDropInput.el))
+  root.appendChild(sectionTitle('매수 차단'))
 
   // 상승률 제한
   riseInput = createNumInput({ value: 0, onChange: v => { vals.buy_block_rise_pct = v; saveHelper!.autoSave('buy_block_rise_pct', v) }, step: 1, name: 'buy_block_rise_pct' })
@@ -283,8 +243,6 @@ function unmount(): void {
   if (unsubSettings) { unsubSettings(); unsubSettings = null }
   if (saveHelper) { saveHelper.destroy(); saveHelper = null }
   if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }
-  kospiGuardToggle = null; kospiDropInput = null
-  kosdaqGuardToggle = null; kosdaqDropInput = null
   riseInput = null; fallInput = null; strengthInput = null
   maxDailyInput = null; maxStockCntInput = null; buyAmtInput = null
   boostHighToggle = null; boostHighScoreInput = null; boostHighControls = null

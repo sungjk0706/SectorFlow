@@ -1,11 +1,10 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 민감 설정 암호화 (cryptography Fernet)
 API 키, 비밀번호 등 -> DB 저장 시 암호화
 """
-from __future__ import annotations
 import base64
-from typing import Optional
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -13,7 +12,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from backend.app.config import get_settings
 
 
-def _get_fernet() -> Optional[Fernet]:
+def _get_fernet() -> Fernet | None:
     """ENCRYPTION_KEY에서 Fernet 인스턴스 생성"""
     key = get_settings().ENCRYPTION_KEY
     if not key or len(key.strip()) < 32:
@@ -33,7 +32,7 @@ def _get_fernet() -> Optional[Fernet]:
         return None
 
 
-def encrypt_value(plain: str) -> Optional[str]:
+def encrypt_value(plain: str) -> str | None:
     """평문 -> 암호문 (base64). key 없으면 None 반환"""
     if not plain or not plain.strip():
         return None
@@ -46,7 +45,7 @@ def encrypt_value(plain: str) -> Optional[str]:
         return plain
 
 
-def decrypt_value(cipher: str) -> Optional[str]:
+def decrypt_value(cipher: str) -> str | None:
     """암호문 -> 평문. 복호화 실패 시 None"""
     if not cipher or not cipher.strip():
         return None

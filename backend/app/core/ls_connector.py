@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 LS증권 Connector — LS증권 WebSocket 커넥터
@@ -9,13 +10,12 @@ LS증권 Connector — LS증권 WebSocket 커넥터
 - 재연결 루프 (지수 백오프)
 - LS WebSocket 메시지 → 내부 형식 변환
 """
-from __future__ import annotations
 
 import asyncio
 import copy
 import json
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from backend.app.core.broker_connector import BrokerConnector
 
@@ -237,7 +237,6 @@ class LsConnector(BrokerConnector):
         self._connected = False
         self._receive_callback: Callable | None = None
         self._on_reconnect_success: Callable | None = None
-        self._event_bus_callback: Callable | None = None  # Event Bus Publish 콜백
         self._lock: asyncio.Lock | None = None
         self._received_count = 0
         self._realtime_enabled: bool = True  # 실시간 연결 ON/OFF 플래그
@@ -319,6 +318,12 @@ class LsConnector(BrokerConnector):
             await self._socket.connect()
             self._connected = True
             logger.info("[LS증권연결] 연결 완료")
+            try:
+                import backend.app.services.engine_state as _es_state
+                _es_state._login_ok = True
+                _es_state._notify_reg_ack()
+            except Exception:
+                logger.warning("[LS증권연결] _login_ok 설정 실패", exc_info=True)
             # 연결 상태 브로드캐스트
             try:
                 from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
@@ -413,10 +418,6 @@ class LsConnector(BrokerConnector):
                 await self._receive_callback(payload)
             else:
                 self._receive_callback(payload)
-
-    def set_event_bus_callback(self, callback: Callable) -> None:
-        """Event Bus Publish 콜백 설정."""
-        self._event_bus_callback = callback
 
     async def _on_socket_disconnect(self) -> None:
         """_LsSocket 연결 끊김 시 호출 — 재연결 루프 기동."""

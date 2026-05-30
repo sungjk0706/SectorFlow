@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 증권사 API 명세 엑셀 파서
-- 키움증권 OpenAPI 명세서 포맷 자동 인식
+- 증권사 OpenAPI 명세서 포맷 자동 인식
 - 범용 포맷 (URL + Method + Name 컬럼 포함 시 자동 흡수)
 반환: List[BrokerSpecRow]
 """
 import re
 import logging
 from io import BytesIO
-from typing import Any, Optional
+from typing import Any
 from dataclasses import dataclass, field
 
 import openpyxl
@@ -47,7 +47,7 @@ def _looks_like_path(s: str) -> bool:
     return bool(re.match(r"^/[A-Za-z0-9_\-/.{}]+$", s.strip()))
 
 
-def _extract_method(s: str) -> Optional[str]:
+def _extract_method(s: str) -> str | None:
     s = s.upper()
     if "POST" in s:
         return "POST"
@@ -90,7 +90,7 @@ def _try_parse_kiwoom(ws) -> list[BrokerSpecRow]:
     if header_row is None:
         return []
 
-    def col(keys: list[str]) -> Optional[int]:
+    def col(keys: list[str]) -> int | None:
         for k in keys:
             if k in col_map:
                 return col_map[k]
@@ -135,7 +135,7 @@ def _try_parse_kiwoom(ws) -> list[BrokerSpecRow]:
             extra_headers= extra,
         ))
 
-    logger.info("키움 포맷 파싱 완료: %d 건", len(results))
+    logger.info("포맷 파싱 완료: %d 건", len(results))
     return results
 
 
@@ -208,7 +208,7 @@ def _try_parse_generic(ws, broker: str) -> list[BrokerSpecRow]:
 def parse_broker_excel(
     data: bytes,
     broker: str = "custom",
-    sheet_name: Optional[str] = None,
+    sheet_name: str | None = None,
 ) -> list[BrokerSpecRow]:
     """
     엑셀 바이트를 받아 증권사 API 명세 목록을 반환.

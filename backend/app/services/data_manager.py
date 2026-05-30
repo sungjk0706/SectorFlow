@@ -3,25 +3,30 @@
 계좌 수익률, 종목명 조회
 종목명: 로컬 stock_name_cache.json (장마감 파이프라인에서 갱신)
 """
-import httpx as requests
-from typing import Optional
+import asyncio
+import httpx
 from backend.app.core.logger import get_logger
 from backend.app.core.trade_mode import effective_trade_mode
 
 logger = get_logger("data_manager")
 
 
-def _get_rest_base() -> str:
+async def _get_rest_base() -> str:
     """BrokerRouter의 AuthProvider에서 REST base URL 획득."""
     from backend.app.core.broker_factory import get_router
+    from backend.app.core.broker_urls import build_broker_urls
     try:
-        settings = _load_kiwoom_settings() or {}
+        settings = await _load_broker_settings() or {}
         auth = get_router(settings).auth
         if hasattr(auth, "rest_api") and hasattr(auth.rest_api, "base_url"):
             return auth.rest_api.base_url
     except Exception:
         logger.warning("[데이터관리] base_url 조회 실패", exc_info=True)
-    return "https://api.kiwoom.com"
+    # 기본값: broker 기반 URL
+    settings = await _load_broker_settings() or {}
+    broker_nm = str(settings.get("broker", "") or "").lower().strip()
+    urls = build_broker_urls(broker_nm)
+    return urls.get("rest_base", "")
 
 
 def _norm_stk_cd(stk_cd: str) -> str:
@@ -34,16 +39,16 @@ def _norm_stk_cd(stk_cd: str) -> str:
     return s.upper()
 
 
-def _load_kiwoom_settings() -> Optional[dict]:
+async def _load_broker_settings() -> dict | None:
     """
-    로컬 settings.json에서 키움 설정 로드 (동기 버전).
+    로컬 settings.json에서 브로커 설정 로드 (비동기 버전).
     실패 시 None 반환.
     """
     try:
         from backend.app.core.settings_file import load_settings
         from backend.app.core.encryption import decrypt_value
 
-        flat = load_settings()
+        flat = await load_settings()
 
         def _dec(v) -> str:
             if not v:
@@ -52,14 +57,16 @@ def _load_kiwoom_settings() -> Optional[dict]:
             return decrypt_value(s) if s.startswith("gAAAA") else s
 
         tm = effective_trade_mode(flat)
-        k = _dec(flat.get("kiwoom_app_key_real")) or _dec(flat.get("kiwoom_app_key"))
-        s = _dec(flat.get("kiwoom_app_secret_real")) or _dec(flat.get("kiwoom_app_secret"))
-        a = str(flat.get("kiwoom_account_no_real") or flat.get("kiwoom_account_no") or "")
+        broker_nm = str(flat.get("broker", "") or "").lower().strip()
+        k = _dec(flat.get(f"{broker_nm}_app_key_real")) or _dec(flat.get(f"{broker_nm}_app_key"))
+        s = _dec(flat.get(f"{broker_nm}_app_secret_real")) or _dec(flat.get(f"{broker_nm}_app_secret"))
+        a = str(flat.get(f"{broker_nm}_account_no_real") or flat.get(f"{broker_nm}_account_no") or "")
 
         return {
-            "kiwoom_app_key":    k,
-            "kiwoom_app_secret": s,
-            "kiwoom_account_no": a,
+            "broker": broker_nm,
+            f"{broker_nm}_app_key":    k,
+            f"{broker_nm}_app_secret": s,
+            f"{broker_nm}_account_no": a,
             "test_mode":         tm == "test",
             "trade_mode":        tm,
         }
@@ -67,17 +74,17 @@ def _load_kiwoom_settings() -> Optional[dict]:
         return None
 
 
-def get_stock_name(stk_cd: str, access_token: Optional[str] = None) -> str:
+async def get_stock_name(stk_cd: str, access_token: str | None = None) -> str:
     """종목코드 -> 종목명. 로컬 stock_name_cache.json에서만 조회."""
     norm = _norm_stk_cd(stk_cd)
     if not norm:
         return "알수없음"
     from backend.app.core.sector_stock_cache import load_stock_name_cache
-    name_map = load_stock_name_cache() or {}
+    name_map = await load_stock_name_cache() or {}
     return name_map.get(norm, norm)
 
 
-def get_account_profit_rate(access_token: str) -> dict:
+async def get_account_profit_rate(access_token: str) -> dict:
     """
     계좌 수익률 조회 -- 키움 REST API (kt00018: 계좌평가잔고내역) 직접 호출.
     토큰 없거나 API 실패 시 빈 dict 반환 (엔진 루프 중단 없음).
@@ -93,12 +100,13 @@ def get_account_profit_rate(access_token: str) -> dict:
         return _empty
 
     try:
-        settings = _load_kiwoom_settings()
+        settings = await _load_broker_settings()
         if not settings:
             return _empty
 
-        host = _get_rest_base()
-        acnt_no = str(settings.get("kiwoom_account_no", "") or "")
+        host = await _get_rest_base()
+        broker_nm = str(settings.get("broker", "") or "").lower().strip()
+        acnt_no = str(settings.get(f"{broker_nm}_account_no", "") or "")
 
         url = f"{host}/api/dostk/acnt"
         headers = {
@@ -110,7 +118,9 @@ def get_account_profit_rate(access_token: str) -> dict:
         if acnt_no:
             body["acnt_no"] = acnt_no
 
-        resp = requests.post(url, headers=headers, json=body or None, timeout=10)
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, headers=headers, json=body or None, timeout=10)
+        
         if resp.status_code != 200:
             logger.debug("[데이터관리] kt00018 실패함: %s", resp.status_code)
             return _empty
@@ -172,7 +182,7 @@ def get_account_profit_rate(access_token: str) -> dict:
         return _empty
 
 
-def get_main_account_info(access_token: str) -> list:
+async def get_main_account_info(access_token: str) -> list:
     """
     계좌 메인 정보 -- [예수금, 주문가능, 출금가능(pymn), "0", "0.00%"] 문자열 리스트.
     키움 REST API kt00001(예수금상세현황) 직접 호출.
@@ -184,12 +194,13 @@ def get_main_account_info(access_token: str) -> list:
         return _fallback
 
     try:
-        settings = _load_kiwoom_settings()
+        settings = await _load_broker_settings()
         if not settings:
             return _fallback
 
-        host = _get_rest_base()
-        acnt_no = str(settings.get("kiwoom_account_no", "") or "")
+        host = await _get_rest_base()
+        broker_nm = str(settings.get("broker", "") or "").lower().strip()
+        acnt_no = str(settings.get(f"{broker_nm}_account_no", "") or "")
 
         url = f"{host}/api/dostk/acnt"
         headers = {
@@ -201,7 +212,9 @@ def get_main_account_info(access_token: str) -> list:
         if acnt_no:
             body["acnt_no"] = acnt_no
 
-        resp = requests.post(url, headers=headers, json=body, timeout=10)
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, headers=headers, json=body, timeout=10)
+        
         if resp.status_code != 200:
             return _fallback
 

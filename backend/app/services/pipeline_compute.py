@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional
 # -*- coding: utf-8 -*-
 """
 초고속 연산 엔진 (Compute Engine) - 파이프라인 아키텍처 Step 3
@@ -8,12 +10,10 @@ tick_queue에서 데이터를 꺼내어 연산 수행:
 - 매수/매도 타점 도달 여부 판단
 - 결과를 order_queue 또는 broadcast_queue로 전송
 """
-from __future__ import annotations
 
 import asyncio
 import time
 from types import ModuleType
-from typing import Optional
 
 from backend.app.core.logger import get_logger
 from backend.app.services.core_queues import (
@@ -216,6 +216,10 @@ async def _handle_config_update(
                 es._settings_cache[key] = payload.get(key)
 
         logger.info("[Compute] 설정값 업데이트 완료 - changed_keys=%s", changed_keys)
+        
+        # 설정(거래모드, 증권사 등) 변경에 따라 Header 상태 갱신
+        from backend.app.services.engine_account_notify import notify_desktop_header_refresh
+        notify_desktop_header_refresh()
 
     except Exception as e:
         logger.error("[Compute] 설정 변경 처리 예외: %s", e, exc_info=True)
@@ -314,9 +318,6 @@ async def _handle_real_tick(
             # 0B/01 체결 처리 (주식 현재가)
             if msg_type in ("0B", "01"):
                 await _handle_real_01_tick(item, vals, es, order_queue, broadcast_queue)
-            # 0J 지수 처리 (업종 지수 바)
-            elif msg_type == "0J":
-                await _handle_real_0j_tick(item, vals, es, broadcast_queue)
             # 0D 호가 처리 (호가 잔량 테이블)
             elif msg_type == "0D":
                 await _handle_real_0d_tick(item, vals, es, broadcast_queue)
@@ -368,73 +369,6 @@ async def _handle_real_01_tick(
 
     except Exception as e:
         logger.error("[Compute] 0B/01 틱 처리 예외: %s", e, exc_info=True)
-
-
-async def _handle_real_0j_tick(
-    item: dict,
-    vals: dict,
-    es: ModuleType,
-    broadcast_queue: asyncio.Queue,
-) -> None:
-    """
-    0J 지수 틱 처리 (업종 지수 바).
-
-    Args:
-        item: 틱 아이템
-        vals: 틱 값
-        es: engine_service 모듈
-        broadcast_queue: UI 전송 큐
-    """
-    try:
-        from backend.app.services.daily_time_scheduler import on_0j_real_received
-        from backend.app.services.engine_ws_dispatch import _ws_fid_float, _parse_ws_fid12_to_percent, _ws_fid_raw
-
-        # 지수 폴링 중단
-        on_0j_real_received()
-
-        # 종목코드 추출
-        idx_cd = str(item.get("item") or "").strip().lstrip("A")
-        if not idx_cd:
-            raw_item = item.get("item")
-            if isinstance(raw_item, list) and raw_item:
-                idx_cd = str(raw_item[0]).strip()
-
-        # 거래소 접미사 제거
-        _exch_suffix = ""
-        if idx_cd:
-            for sfx in ("_NX", "_AL", "_nx", "_al"):
-                if idx_cd.endswith(sfx):
-                    _exch_suffix = sfx
-                    idx_cd = idx_cd[: -len(sfx)]
-                    break
-
-        if not (idx_cd and isinstance(vals, dict)):
-            return
-
-        # 지수 데이터 파싱
-        price = _ws_fid_float(vals, "10", 0.0)
-        change = _ws_fid_float(vals, "11", 0.0)
-        rate = _parse_ws_fid12_to_percent(_ws_fid_raw(vals, "12"))
-        sig = str(_ws_fid_raw(vals, "25") or "").strip()
-
-        if sig in ("4", "5", "44", "45"):
-            change = -abs(change)
-            rate = -abs(rate)
-
-        # 지수 캐시 업데이트
-        if price != 0 or rate != 0:
-            es._latest_index[idx_cd] = {
-                "price": abs(price),
-                "change": change,
-                "rate": rate,
-            }
-        else:
-            logger.warning("[Compute] 0J 파싱 실패 idx_cd=%s vals=%s", idx_cd, str(vals)[:200])
-
-    except Exception as e:
-        logger.error("[Compute] 0J 틱 처리 예외: %s", e, exc_info=True)
-
-
 async def _handle_real_0d_tick(
     item: dict,
     vals: dict,
@@ -467,12 +401,9 @@ async def _handle_real_0d_tick(
         if bid < 0 or ask < 0:
             return
 
-        # 호가 캐시 업데이트
-        prev = es._orderbook_cache.get(nk)
-        es._orderbook_cache[nk] = (bid, ask)
-
+        # 호가잔량 캐시 삭제로 저장 로직 제거
         # 매수후보 종목이면 호가잔량비 변경을 프론트에 즉시 전송
-        if prev != (bid, ask) and nk in es._subscribed_0d_stocks:
+        if nk in es._subscribed_0d_stocks:
             notify_orderbook_update(nk, bid, ask)
 
     except Exception as e:

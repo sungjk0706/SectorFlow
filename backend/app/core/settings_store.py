@@ -1,12 +1,12 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 설정 파일(settings.json) 읽기·저장·엔진 동기화 -- HTTP 레이어 없이 데스크톱/UI에서 직접 사용.
 """
-from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from backend.app.core.encryption import decrypt_value, encrypt_value
 from backend.app.core.settings_file import load_settings, save_settings
@@ -22,17 +22,16 @@ from backend.app.services.auto_trading_effective import auto_trading_effective
 logger = logging.getLogger(__name__)
 
 
-ENCRYPT_FIELDS = frozenset({
-    "kiwoom_app_key",
-    "kiwoom_app_secret",
-    "kiwoom_app_key_real",
-    "kiwoom_app_secret_real",
-    "ls_app_key",
-    "ls_app_secret",
-    "ls_app_key_real",
-    "ls_app_secret_real",
-    "telegram_bot_token",
-})
+def get_encrypt_fields(broker_nm: str) -> frozenset[str]:
+    """broker 기반 암호화 필드 목록을 동적으로 생성한다."""
+    base_fields = {"telegram_bot_token"}
+    broker_fields = {
+        f"{broker_nm}_app_key",
+        f"{broker_nm}_app_secret",
+        f"{broker_nm}_app_key_real",
+        f"{broker_nm}_app_secret_real",
+    }
+    return frozenset(base_fields | broker_fields)
 
 
 def normalize_stk_cd_key(code: str) -> str:
@@ -71,7 +70,7 @@ def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
     legacy_a = str(d.get("kiwoom_account_no") or "")
     mode = d.get("trade_mode")
     if mode not in ("test", "mock", "real"):
-        mode = "test" if bool(d.get("test_mode", d.get("kiwoom_mock_mode", True))) else "real"
+        mode = "test" if bool(d.get("test_mode", d.get("mock_mode", True))) else "real"
     if mode == "mock":
         mode = "test"
     data: dict[str, Any] = {
@@ -88,7 +87,7 @@ def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
         "tele_on": bool(d.get("tele_on", False)),
         "trade_mode": mode,
         "test_mode": mode == "test",
-        "kiwoom_mock_mode": mode == "test",   # 하위 호환
+        "mock_mode": mode == "test",   # 하위 호환
         "mode_real": mode == "real",
         "kiwoom_account_no_real": _account_field_or_legacy_flat(
             d, "kiwoom_account_no_real", legacy_a
@@ -141,7 +140,7 @@ def changed_keys_general_save(before_editing: dict, new_payload: dict) -> set[st
     }
 
 
-def apply_settings_updates(data: dict, username: str = "admin", profile: Optional[str] = None) -> None:
+async def apply_settings_updates(data: dict, username: str = "admin", profile: str | None = None) -> None:
     """업데이트 데이터를 data/settings.json 에 병합 저장."""
     import re
     _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
@@ -151,11 +150,20 @@ def apply_settings_updates(data: dict, username: str = "admin", profile: Optiona
         "sell_time_start", "sell_time_end",
     })
 
-    current = load_settings()
+    current = await load_settings()
     before_snapshot = dict(current)  # 저널링용 before 상태 캡처
 
     for k, v in data.items():
         if v is None:
+            continue
+        # broker 필드: 허용된 값만 저장
+        if k == "broker":
+            from backend.app.core.broker_registry import PROVIDER_REGISTRY
+            broker_val = str(v).strip().lower()
+            allowed_brokers = set(PROVIDER_REGISTRY.keys())
+            if broker_val not in allowed_brokers:
+                raise ValueError(f"지원하지 않는 증권사: {v} (허용된 값: {sorted(allowed_brokers)})")
+            current[k] = broker_val
             continue
         # 시간 필드: HH:MM 형식이 아니면 무시 (입력 중간 상태 방어)
         if k in _TIME_FIELDS:
@@ -165,7 +173,9 @@ def apply_settings_updates(data: dict, username: str = "admin", profile: Optiona
                 continue
         if k in ("sell_per_symbol",) and isinstance(v, dict):
             v = normalize_symbol_override_map(v)
-        if k in ENCRYPT_FIELDS and v and v != "***":
+        broker_nm = str(current.get("broker", "") or "").lower().strip()
+        encrypt_fields = get_encrypt_fields(broker_nm)
+        if k in encrypt_fields and v and v != "***":
             if not str(v).startswith("gAAAA"):
                 enc = encrypt_value(str(v))
                 if enc:
@@ -173,17 +183,17 @@ def apply_settings_updates(data: dict, username: str = "admin", profile: Optiona
                     continue
         current[k] = v
 
-    mode_keys = {"trade_mode", "kiwoom_mock_mode", "mode_real"}
+    mode_keys = {"trade_mode", "mock_mode", "mode_real"}
     if set(data.keys()) & mode_keys:
         logger.info(
-            "[설정] 투자모드 업데이트 요청: trade_mode=%s kiwoom_mock_mode=%s mode_real=%s keys=%s",
+            "[설정] 투자모드 업데이트 요청: trade_mode=%s mock_mode=%s mode_real=%s keys=%s",
             current.get("trade_mode"),
-            current.get("kiwoom_mock_mode"),
+            current.get("mock_mode"),
             current.get("mode_real"),
             sorted(list(set(data.keys()) & mode_keys)),
         )
 
-    save_settings(current)
+    await save_settings(current)
     
     # 저널링: 변경된 키 추적
     changed_keys = set()
@@ -194,16 +204,59 @@ def apply_settings_updates(data: dict, username: str = "admin", profile: Optiona
             changed_keys.add(k)
     
     if changed_keys:
-        _journal.record_settings_change(changed_keys, before_snapshot, dict(current))
+        await _journal.record_settings_change(changed_keys, before_snapshot, dict(current))
+
+        # ── RAM 캐시 증분 갱신 (인메모리 key-value 교체) ──
+        try:
+            from backend.app.core.engine_settings import build_engine_settings_dict
+            processed_cache = build_engine_settings_dict(current)
+            from backend.app.di.container import get_container
+            
+            # 1) engine_service._settings_cache 갱신
+            key_mappings = {
+                "buy_amt": "buy_amount",
+                "max_stock_cnt": "max_stock_count",
+                "loss_apply": "loss_cut_apply",
+                "loss_val": "loss_cut_value",
+                "ts_apply": "trailing_stop_apply",
+                "ts_start_val": "trailing_start_value",
+                "ts_drop_val": "trailing_drop_value"
+            }
+            
+            for k in changed_keys:
+                mapped_keys = {k}
+                if k in key_mappings:
+                    mapped_keys.add(key_mappings[k])
+                
+                for mk in mapped_keys:
+                    if mk in processed_cache:
+                        engine_service._settings_cache[mk] = processed_cache[mk]
+                
+                if k in current:
+                    engine_service._settings_cache[k] = processed_cache.get(k, current[k])
+
+            # 2) DI container settings 싱글톤 갱신
+            container = get_container()
+            container_settings = container.get_singleton("settings")
+            if isinstance(container_settings, dict):
+                for k in changed_keys:
+                    if k in current:
+                        container_settings[k] = current[k]
+                    if k == "_broker_specs" and "_broker_specs" in current:
+                        container_settings["_broker_specs"] = current["_broker_specs"]
+        except Exception as e:
+            logger.warning("[설정] RAM 캐시 증분 갱신 실패: %s", e, exc_info=True)
 
 
-def build_masked_settings_dict(username: str = "admin", profile: Optional[str] = None) -> dict[str, Any]:
+async def build_masked_settings_dict(username: str = "admin", profile: str | None = None) -> dict[str, Any]:
     """민감 필드 마스킹된 설정 dict (UI 표시용)."""
-    flat = load_settings()
+    flat = await load_settings()
     display_id = "root"
     masked = dict(flat)
 
-    for f in ENCRYPT_FIELDS:
+    broker_nm = str(flat.get("broker", "") or "").lower().strip()
+    encrypt_fields = get_encrypt_fields(broker_nm)
+    for f in encrypt_fields:
         v = masked.get(f)
         if v and str(v).startswith("gAAAA"):
             masked[f] = "***"
@@ -220,14 +273,16 @@ def build_masked_settings_dict(username: str = "admin", profile: Optional[str] =
     return masked
 
 
-def load_settings_for_editing() -> dict:
+async def load_settings_for_editing() -> dict:
     """
     로컬 편집용: 암호화 필드를 복호화한 dict.
     데스크톱 단일 사용자 전용 -- 메모리에 평문이 올라감.
     """
-    flat = load_settings()
+    flat = await load_settings()
     out = dict(flat)
-    for f in ENCRYPT_FIELDS:
+    broker_nm = str(flat.get("broker", "") or "").lower().strip()
+    encrypt_fields = get_encrypt_fields(broker_nm)
+    for f in encrypt_fields:
         v = out.get(f)
         if v and str(v).startswith("gAAAA"):
             out[f] = decrypt_value(v) or ""
@@ -237,26 +292,27 @@ def load_settings_for_editing() -> dict:
 async def after_settings_persisted(
     username: str,
     changed_keys: set,
-    profile: Optional[str] = None,
+    profile: str | None = None,
 ) -> None:
     """파일 저장 후 엔진·스케줄러와 동기화 -- 어떤 설정이든 저장되면 WS settings-changed 를 보낸다."""
     if not changed_keys:
         notify_desktop_header_refresh()
         return
 
-    # ── 1) 캐시 갱신 (모든 경로 공통) ────────────────────────────────────
-    await engine_service.refresh_engine_settings_cache(None, use_root=True)
+    # ── 1) 캐시 갱신 제거 (apply_settings_updates에서 메모리 증분 갱신 처리됨) ──
 
-    # ── 2) 연결 레벨 키 → 엔진 재기동 ───────────────────────────────────
-    if changed_keys & engine_service.CONNECTION_LEVEL_KEYS:
+    # ── 2) 연결 레벨 키 → 엔진 실시간 핫-리로드 ───────────────────────────────────
+    broker_nm = str(engine_service._settings_cache.get("broker", "") or "").lower().strip()
+    connection_keys = engine_service.get_connection_level_keys(broker_nm)
+    if changed_keys & connection_keys:
         if engine_service.is_running():
-            asyncio.create_task(engine_service.reload_engine_settings())
+            asyncio.create_task(engine_service.update_broker_credentials_live())
             logger.info(
-                "[설정] 연결 레벨 설정 변경 감지 -> 엔진 재기동 예약 (키=%s)",
-                changed_keys & engine_service.CONNECTION_LEVEL_KEYS,
+                "[설정] 연결 레벨 설정 변경 감지 -> 실시간 자격 증명 핫-갱신 및 토큰 재시도 가동 (키=%s)",
+                changed_keys & connection_keys,
             )
         notify_desktop_header_refresh()
-        notify_desktop_settings_toggled()
+        await notify_desktop_settings_toggled()
         return
 
     # ── 3) 거래모드 전환 → 캐시 갱신 + 계좌 구독 전환 ────────────────────
@@ -265,13 +321,28 @@ async def after_settings_persisted(
             asyncio.create_task(engine_service.on_trade_mode_switched())
             logger.info("[설정] 거래모드 전환 감지 -> 저장데이터 갱신 + 계좌 구독 전환 (엔진 재기동 없음)")
         notify_desktop_header_refresh()
-        notify_desktop_settings_toggled()
+        await notify_desktop_settings_toggled()
         return
 
-    # ── 4) 일반 설정 변경 ────────────────────────────────────────────────
+    # ── 4) 일반 설정 변경 (증분 브로드캐스트 전송) ────────────────────────
     notify_desktop_header_refresh()
-    # 어떤 키든 저장되면 무조건 WS settings-changed 발송
-    notify_desktop_settings_toggled()
+    
+    changed_dict = {}
+    try:
+        from backend.app.services.engine_config import _mask_sensitive_settings
+        from backend.app.di.container import get_container
+        container = get_container()
+        container_settings = container.get_singleton("settings")
+        if isinstance(container_settings, dict):
+            display_settings = dict(container_settings)
+            masked_settings = _mask_sensitive_settings(display_settings)
+            for k in changed_keys:
+                if k in masked_settings:
+                    changed_dict[k] = masked_settings[k]
+    except Exception as e:
+        logger.warning("[설정] 마스킹 델타 추출 실패: %s", e)
+
+    await notify_desktop_settings_toggled(changed_dict)
 
     # 테스트모드 가상 예수금 변경 시 Settlement Engine 동기화 + 계좌 스냅샷 갱신
     _VIRTUAL_BALANCE_KEYS = {"test_virtual_balance", "test_virtual_deposit"}
@@ -281,9 +352,9 @@ async def after_settings_persisted(
             from backend.app.services import settlement_engine as _se
             _s = await _ls_async()
             _deposit = int(_s.get("test_virtual_balance", _s.get("test_virtual_deposit", 10_000_000)) or 0)
-            _se.reset(_deposit)
+            await _se.reset(_deposit)
             # 계좌 스냅샷 갱신 + WS account-update 발송
-            engine_service._refresh_account_snapshot_meta()
+            await engine_service._refresh_account_snapshot_meta()
             engine_service._broadcast_account(reason="virtual_balance_changed")
         except Exception:
             logger.warning("[설정] 가상 예수금 동기화 실패", exc_info=True)
@@ -294,8 +365,6 @@ async def after_settings_persisted(
         if _5d_on:
             try:
                 engine_service._avg_amt_needs_bg_refresh = True
-                engine_service._broadcast_avg_amt_progress(0, 0, status="requested")
-                # refresh_avg_amt_5d_cache는 더 이상 사용하지 않음 (master_stocks_table 단일 진실 공급원)
                 logger.info("[설정] scheduler_5d_download_on=ON → 5일봉 다운로드 트리거")
             except Exception:
                 logger.warning("[설정] 5일봉 다운로드 트리거 실패", exc_info=True)
@@ -309,7 +378,7 @@ async def after_settings_persisted(
         try:
             from backend.app.services.daily_time_scheduler import schedule_auto_trade_timers
             new_settings = engine_service.get_settings_snapshot()
-            schedule_auto_trade_timers(new_settings)
+            await schedule_auto_trade_timers(new_settings)
             # KiwoomConnector 자동매매 플래그 동기화
             ws = getattr(engine_service, "_kiwoom_connector", None)
             if ws and "time_scheduler_on" in changed_keys:
@@ -363,8 +432,6 @@ async def after_settings_persisted(
         "sector_min_rise_ratio_pct", "sector_min_trade_amt",
         "sector_max_targets", "buy_block_rise_pct", "buy_block_fall_pct",
         "buy_min_strength",
-        "buy_index_guard_kospi_on", "buy_index_guard_kosdaq_on",
-        "buy_index_kospi_drop", "buy_index_kosdaq_drop",
         "sector_trim_trade_amt_pct", "sector_trim_change_rate_pct",
         # 가산점 설정
         "boost_high_breakout_on", "boost_high_breakout_score",
@@ -396,5 +463,5 @@ async def after_settings_persisted(
             logger.warning("[설정] ws_subscribe_control 설정 변경 반영 실패", exc_info=True)
 
 
-async def after_buy_settings_persisted(username: str, changed_keys: set, data: dict, profile: Optional[str] = None) -> None:
+async def after_buy_settings_persisted(username: str, changed_keys: set, data: dict, profile: str | None = None) -> None:
     await after_settings_persisted(username, changed_keys, profile)

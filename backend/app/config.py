@@ -47,12 +47,12 @@ class Settings(BaseSettings):
     # ADMIN_USERNAME: str = "admin"
     # ADMIN_PASSWORD: str = "1234"
 
-    # Kiwoom REST API (엔진 테스트용 .env 폴백)
+    # Broker REST API (엔진 테스트용 .env 폴백)
     # URL 상수는 broker_urls.py (Single Source of Truth) 참조.
-    KIWOOM_BASE_URL: str = "https://api.kiwoom.com"
-    KIWOOM_APP_KEY: str = ""
-    KIWOOM_APP_SECRET: str = ""
-    KIWOOM_ACCOUNT_NO: str = ""
+    # BROKER_BASE_URL: str = ""
+    # BROKER_APP_KEY: str = ""
+    # BROKER_APP_SECRET: str = ""
+    # BROKER_ACCOUNT_NO: str = ""
 
     # Telegram
     TELEGRAM_BOT_TOKEN: str = ""

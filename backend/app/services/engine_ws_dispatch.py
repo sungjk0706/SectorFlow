@@ -1,15 +1,19 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 WebSocket 수신 `trnm` 분기 -- `engine_service._handle_ws_data` 본문을 위임.
-`engine_service` 모듈 객체를 인자로 받아 순환 import 없이 모듈 전역 상태를 갱신한다.
+engine_state에서 직접 상태를 참조하여 순환 import 없이 모듈 전역 상태를 갱신한다.
 """
-from __future__ import annotations
 
 import asyncio
 import json
 import time
+
+import backend.app.services.engine_state as engine_state
+from backend.app.services import engine_account
+from backend.app.services import engine_lifecycle
 from types import ModuleType
-from typing import Callable
+from collections.abc import Callable
 
 from backend.app.core.logger import get_logger
 from backend.app.services.auto_trading_effective import auto_sell_effective
@@ -40,54 +44,6 @@ from backend.app.services.engine_ws_parsing import (
     parse_fid290_session,
 )
 
-# Event Bus 통합 (Phase 1.3+1.4)
-_event_bus_enabled = True  # Phase 1.3+1.4 단계 1.5: 기본 활성화
-_event_bus_instance = None
-
-
-def _init_event_bus() -> None:
-    """Event Bus 초기화."""
-    global _event_bus_instance
-    try:
-        from backend.app.core.event_bus import EventBus
-        _event_bus_instance = EventBus.get_instance()
-    except Exception:
-        _event_bus_instance = None
-
-
-def _publish_market_tick_event(
-    code: str,
-    price: int,
-    change: int,
-    change_rate: float,
-    volume: int,
-    trade_amount: int,
-    sign: str,
-    raw_data: dict,
-) -> None:
-    """MarketTickEvent 발행."""
-    if not _event_bus_enabled or not _event_bus_instance:
-        return
-    try:
-        from backend.app.core.events import (
-            BrokerType,
-            create_market_tick_event,
-        )
-        event = create_market_tick_event(
-            broker=BrokerType.KIWOOM,
-            code=code,
-            price=price,
-            change=change,
-            change_rate=change_rate,
-            volume=volume,
-            trade_amount=trade_amount,
-            sign=sign,
-            raw_data=raw_data,
-        )
-        asyncio.create_task(_event_bus_instance.publish(event))
-    except Exception as e:
-        logger.warning("[EventBus] MarketTickEvent 발행 실패: %s", e, exc_info=True)
-
 logger = get_logger("engine")
 
 # ── _wl_codes 캐시 (매 틱마다 Set 재생성 방지) ──
@@ -99,12 +55,12 @@ _realtime_required_fields_cache: dict[str, dict] = {}  # {symbol: {"price": bool
 _realtime_first_tick_ts_map: dict[str, int] = {}  # {symbol: timestamp (ms)}
 
 
-def _get_wl_codes_cached(es: ModuleType) -> set[str]:
+def _get_wl_codes_cached() -> set[str]:
     """sector_stock_layout → code Set 캐시. 레이아웃 길이가 바뀔 때만 재생성."""
     global _wl_codes_cache, _wl_codes_layout_len
-    cur_len = len(es._sector_stock_layout)
+    cur_len = len(engine_state._sector_stock_layout)
     if cur_len != _wl_codes_layout_len:
-        _wl_codes_cache = {v for t, v in es._sector_stock_layout if t == "code"}
+        _wl_codes_cache = {v for t, v in engine_state._sector_stock_layout if t == "code"}
         _wl_codes_layout_len = cur_len
     return _wl_codes_cache
 
@@ -118,29 +74,28 @@ def _get_wl_codes_cached(es: ModuleType) -> set[str]:
 def _update_trade_amount_fid14(
     base_nk: str,
     amt14: int,
-    es: ModuleType,
 ) -> int:
     """
     FID 14(누적거래대금, 백만원 단위) -- _AL 구독 시 KRX+NXT 통합값.
-    키움이 내려주는 당일 누적값(백만원) -> 원 단위로 변환 후 저장.
+    키움이 내려주는 당일 누적값(백만원) -> 원 단위로 변환 후 반환.
+    저장하지 않고 순간 계산만 수행.
     """
     if amt14 <= 0:
-        return es._latest_trade_amounts.get(base_nk, 0)
+        return 0
 
     amt_won = amt14 * 1_000_000
-    es._latest_trade_amounts[base_nk] = amt_won  # 단일 키 직접 대입 (asyncio 원자적)
-
     return amt_won
 
 
 def _update_strength_buckets(
-    es: ModuleType,
     nk_px: str,
     str_f: float,
     vol13: int,
 ) -> None:
-    """KRX 단독 체결강도 갱신."""
-    es._latest_strength[nk_px] = f"{str_f:.2f}"  # 단일 키 직접 대입 (asyncio 원자적)
+    """KRX 단독 체결강도 갱신.
+    저장하지 않고 순간 계산만 수행.
+    """
+    pass
 
 
 def _log_ws_trnm_json_detail(trnm: str, data: dict) -> None:
@@ -169,7 +124,7 @@ def _log_real_data_items_preview(data: dict) -> None:
             continue
         msg_type = item.get("type")
         norm = _normalize_kiwoom_real_type(msg_type)
-        if norm not in ("01", "0j", "0u"):
+        if norm not in ("01", "0j"):
             continue
         iy = item.get("item")
         vals = item.get("values", {})
@@ -183,15 +138,15 @@ def _log_real_data_items_preview(data: dict) -> None:
             sample_s = str(sample)
 
 
-def _handle_login(data: dict, es: ModuleType) -> None:
+def _handle_login(data: dict) -> None:
     if str(data.get("return_code", "")) == "0":
-        es._login_ok = True
-        es._notify_reg_ack()
-        es._cancel_price_trace_delayed_task()
+        engine_state._login_ok = True
+        engine_state._notify_reg_ack()
+        engine_state._cancel_price_trace_delayed_task()
         # LOGIN 성공 → 구독 파이프라인 트리거 (구독 구간 내이면 REG 자동 시작)
         try:
             from backend.app.services.daily_time_scheduler import _trigger_reg_pipeline
-            _trigger_reg_pipeline(es)
+            _trigger_reg_pipeline()
         except Exception as e:
             logger.warning("[연결] REG 파이프라인 트리거 실패: %s", e, exc_info=True)
 
@@ -220,7 +175,7 @@ def _reg_data_rows(d: dict) -> list[dict]:
     return []
 
 
-def _handle_reg(data: dict, es: ModuleType) -> None:
+def _handle_reg(data: dict) -> None:
     """
     키움: 응답 순서 ≠ 요청 순서 -- FIFO 매칭 금지. data[] 각 객체의 item·type·grp_no로 처리.
     trnm REG / UNREG 동일 구조.
@@ -244,34 +199,34 @@ def _handle_reg(data: dict, es: ModuleType) -> None:
             if not norm:
                 continue
             if rc == "105110":
-                es._subscribed_stocks.discard(norm)
+                engine_state._subscribed_stocks.discard(norm)
                 logger.warning(
                     "[WS] REG 응답 건수한도(105110) -- 즉시 재시도하지 않음 item=%s (응답 본문 기준)",
                     norm,
                 )
                 try:
                     asyncio.get_running_loop().create_task(
-                        es._delayed_resubscribe_stock_after_rate_limit(norm)
+                        engine_lifecycle._delayed_resubscribe_stock_after_rate_limit(norm)
                     )
                 except RuntimeError as e:
                     logger.warning("[재구독] 루프 미실행 %s: %s", norm, e)
             elif rc not in ("0", "00", ""):
-                es._subscribed_stocks.discard(norm)
-        if es._REG_REAL_DEBUG_EXTRA_LOG and rows:
+                engine_state._subscribed_stocks.discard(norm)
+        if engine_state._REG_REAL_DEBUG_EXTRA_LOG and rows:
             _log_ws_trnm_json_detail(trnm, d if d else {"_raw": data})
     finally:
-        es._notify_reg_ack(return_code=rc)
+        engine_state._notify_reg_ack(return_code=rc)
 
 
-def _handle_real_01(
-    item: dict, vals: dict, raw_type_upper: str, is_0b_tick: bool, es: ModuleType,
+async def _handle_real_01(
+    item: dict, vals: dict, raw_type_upper: str, is_0b_tick: bool,
 ) -> None:
     """0B/01 체결 처리 — Event Bus Publish만 수행 (Phase 1.3+1.4 단계 1.4).
     
     캐시 업데이트는 engine_service._handle_market_tick_event에서 수신 후 처리.
     """
     # LIVE 전환 조건 강화: symbol별 필수 필드 캐시 확인 + 타임아웃
-    if es._get_realtime_state() == "WAITING_FIRST_TICK":
+    if engine_state._get_realtime_state() == "WAITING_FIRST_TICK":
         raw_cd = _real_item_stk_cd(item, vals)
         if raw_cd:
             nk_px = _format_kiwoom_reg_stk_cd(raw_cd)
@@ -301,7 +256,7 @@ def _handle_real_01(
             
             if (required["price"] and required["change"] and required["volume"]) or (elapsed > 1000):
                 # 최소 1개 종목의 필수 필드가 모두 채워지거나 1000ms 경과 시 LIVE 전환
-                es._set_realtime_state("LIVE")
+                engine_state._set_realtime_state("LIVE")
                 # 캐시 초기화 (최초 1회만 실행)
                 _realtime_required_fields_cache.clear()
                 _realtime_first_tick_ts_map.clear()
@@ -312,16 +267,16 @@ def _handle_real_01(
     raw_cd = _real_item_stk_cd(item, vals)
     last_px = _parse_fid10_price(vals)
     if not raw_cd or last_px <= 0:
-        _check_realtime_latency(_ts, es)
+        _check_realtime_latency(_ts)
         return
     nk_px = _format_kiwoom_reg_stk_cd(raw_cd)
     _exch = parse_fid9081_exchange(vals)
     _session = parse_fid290_session(vals)
     _exch_label = {"1": "KRX", "2": "NXT"}.get(_exch, "")
     raw_cd_for_bucket = raw_cd
-    pend_key = _resolve_bucket_key(raw_cd_for_bucket, es._pending_stock_details)
+    pend_key = _resolve_bucket_key(raw_cd_for_bucket, engine_state._pending_stock_details)
     prev_close = _ws_fid_int(vals, "16", 0)
-    pend = es._pending_stock_details.get(pend_key, {}) if pend_key else {}
+    pend = engine_state._pending_stock_details.get(pend_key, {}) if pend_key else {}
     diff = _ws_fid_int(vals, "11", 0) if _ws_fid_key_present(vals, "11") else int(pend.get("change") or 0)
     rate = _parse_ws_fid12_to_percent(_ws_fid_raw(vals, "12")) if _ws_fid_key_present(vals, "12") else float(pend.get("change_rate") or 0.0)
     sign = str(_ws_fid_raw(vals, "25") or "3").strip() if _ws_fid_key_present(vals, "25") else str(pend.get("sign") or "3")
@@ -330,98 +285,70 @@ def _handle_real_01(
     _base_nk_14 = _format_kiwoom_reg_stk_cd(_base_stk_cd(raw_cd_for_bucket))
     if is_0b_tick and _ws_fid_key_present(vals, "14"):
         _amt14 = abs(_ws_fid_int(vals, "14", 0))
-        _total14 = _update_trade_amount_fid14(_base_nk_14, _amt14, es)
+        _total14 = _update_trade_amount_fid14(_base_nk_14, _amt14)
         _need_sector_tick = True
     else:
-        _total14 = es._latest_trade_amounts.get(_base_nk_14, 0)
-    
-    # Event Bus Publish (Phase 1.3+1.4 단계 1.4 - 캐시 업데이트 제거, Publish만 수행)
-    if _event_bus_enabled:
-        volume = abs(_ws_fid_int(vals, "13", 0)) if _ws_fid_key_present(vals, "13") else 0
-        _publish_market_tick_event(
-            code=nk_px,
-            price=last_px,
-            change=diff,
-            change_rate=rate,
-            volume=volume,
-            trade_amount=_total14,
-            sign=sign,
-            raw_data={"item": item, "values": vals, "_ws_receive_timestamp": _ws_receive_timestamp},
-        )
-    
-    # 캐시 업데이트는 engine_service._handle_market_tick_event에서 수신 후 처리
-    # 하위 호환성을 위해 Event Bus 비활성화 시 기존 로직 유지
-    if not _event_bus_enabled:
-        es._latest_trade_prices[nk_px] = last_px  # 단일 키 직접 대입 (asyncio 원자적)
-        es._rest_radar_quote_cache.pop(nk_px, None)  # lock 불필요 — 순차 처리 + GIL 원자적
-        if pend_key and es._pending_stock_details[pend_key].get("status") in ("active", "exited"):
-            # snapshot-replace: 새 dict 생성 후 참조 교체 1회
-            old = es._pending_stock_details[pend_key]
-            new_entry = {**old,
-                "cur_price": last_px,
-                "prev_close": prev_close,
-                "change": diff,
-                "change_rate": rate,
-                "sign": sign,
-                "strength": strength,
-            }
-            if _ws_fid_key_present(vals, "14"):
-                new_entry["trade_amount"] = _total14
-            es._pending_stock_details[pend_key] = new_entry  # 참조 교체 1회
-            if is_0b_tick and strength != "-":
-                try:
-                    _update_strength_buckets(es, nk_px, float(strength), abs(_ws_fid_int(vals, "13", 0)))
-                except (ValueError, TypeError) as e:
-                    logger.warning("[체결강도] %s 파싱 실패 strength=%r: %s", nk_px, strength, e)
+        _total14 = 0
+
+    # 캐시 업데이트 삭제 (실시간 틱 데이터 저장 제거)
+    # REST 캐시 pop 로직 삭제 (캐시가 삭제되었으므로 pop 호출 불필요)
+    if pend_key and engine_state._pending_stock_details[pend_key].get("status") in ("active", "exited"):
+        # 실시간 틱 데이터 저장 제거 (cur_price, trade_amount, strength 저장 안 함)
+        # 필요한 경우에만 틱 데이터를 직접 전달하여 사용
+        if is_0b_tick and strength != "-":
+            try:
+                _update_strength_buckets(nk_px, float(strength), abs(_ws_fid_int(vals, "13", 0)))
+            except (ValueError, TypeError) as e:
+                logger.warning("[체결강도] %s 파싱 실패 strength=%r: %s", nk_px, strength, e)
         engine_radar_ops.apply_real01_volume_amount_to_radar_rows(
-            raw_cd_for_bucket, vals, es._latest_trade_amounts,
-            es._pending_stock_details, is_0b_tick=is_0b_tick,
+            raw_cd_for_bucket, vals, {},  # _latest_trade_amounts 대신 빈 dict 전달
+            engine_state._pending_stock_details, is_0b_tick=is_0b_tick,
         )  # lock 불필요 — 순차 처리 + GIL 원자적
-        if pend_key and es._pending_stock_details.get(pend_key, {}).get("status") == "active":
+        if pend_key and engine_state._pending_stock_details.get(pend_key, {}).get("status") == "active":
             # snapshot-replace: 새 dict 생성 후 참조 교체 1회
-            old2 = es._pending_stock_details[pend_key]
+            old2 = engine_state._pending_stock_details[pend_key]
             updates: dict = {}
             if _ws_fid_key_present(vals, "1030"):
                 updates["bid_depth"] = _ws_fid_int(vals, "1030", 0)
             if _ws_fid_key_present(vals, "1031"):
                 updates["ask_depth"] = _ws_fid_int(vals, "1031", 0)
             if updates:
-                es._pending_stock_details[pend_key] = {**old2, **updates}  # 참조 교체 1회
+                engine_state._pending_stock_details[pend_key] = {**old2, **updates}  # 참조 교체 1회
     # 보유종목 현재가 반영 (메모리만 갱신, 계좌 broadcast 없음 — 체결/잔고 이벤트에서만 전송)
-    if is_test_mode(es._settings_cache):
-        _price_hit = dry_run.update_price(nk_px, last_px)
+    if is_test_mode(engine_state._settings_cache):
+        _price_hit = await dry_run.update_price(nk_px, last_px)
         if _price_hit:
             _dr_pos = dry_run.get_position(nk_px)
             if _dr_pos:
                 _dr_pos["change"] = diff
                 _dr_pos["change_rate"] = rate
     else:
-        _price_hit = apply_last_price_to_positions_inplace(es._positions, raw_cd_for_bucket, last_px)
-    if _price_hit and es._auto_trade and auto_sell_effective(es._settings_cache) and es._access_token:
-        if is_test_mode(es._settings_cache):
+        _price_hit = apply_last_price_to_positions_inplace(engine_state._positions, raw_cd_for_bucket, last_px)
+    if _price_hit and engine_state._auto_trade and auto_sell_effective(engine_state._settings_cache) and engine_state._access_token:
+        if is_test_mode(engine_state._settings_cache):
             _pos = dry_run.get_position(nk_px)
             if _pos:
-                es._auto_trade.check_sell_conditions([_pos], es._settings_cache, es._access_token)
+                await engine_state._auto_trade.check_sell_conditions([_pos], engine_state._settings_cache, engine_state._access_token)
         else:
-            _matched = [p for p in es._positions if _format_kiwoom_reg_stk_cd(str(p.get("stk_cd", "") or "")) == nk_px]
+            _matched = [p for p in engine_state._positions if _format_kiwoom_reg_stk_cd(str(p.get("stk_cd", "") or "")) == nk_px]
             if _matched:
-                es._auto_trade.check_sell_conditions(_matched, es._settings_cache, es._access_token)
+                await engine_state._auto_trade.check_sell_conditions(_matched, engine_state._settings_cache, engine_state._access_token)
     if pend_key:
         # notify_desktop_buy_radar_only()
         _need_sector_tick = True
         from backend.app.services.engine_sector_confirm import recompute_sector_for_code
         recompute_sector_for_code(nk_px)
     else:
-        _wl_codes = _get_wl_codes_cached(es)
+        _wl_codes = _get_wl_codes_cached()
         if nk_px in _wl_codes:
             if is_0b_tick and _ws_fid_key_present(vals, "14"):
                 _amt14_wl = abs(_ws_fid_int(vals, "14", 0))
-                _update_trade_amount_fid14(nk_px, _amt14_wl, es)
+                _update_trade_amount_fid14(nk_px, _amt14_wl)
             if is_0b_tick and _ws_fid_key_present(vals, "228"):
                 sv = _ws_fid_raw(vals, "228")
                 if sv is not None and str(sv).strip():
                     try:
-                        _update_strength_buckets(es, nk_px, float(str(sv).strip()), abs(_ws_fid_int(vals, "13", 0)))
+                        _update_strength_buckets(nk_px, float(str(sv).strip()), abs(_ws_fid_int(vals, "13", 0)))
                     except (ValueError, TypeError) as e:
                         logger.warning("[체결강도WL] %s 파싱 실패 sv=%r: %s", nk_px, sv, e)
             # notify_desktop_buy_radar_only()
@@ -432,20 +359,20 @@ def _handle_real_01(
     # [근본해결] 선택적 전송 제거
     # if _need_sector_tick:
     #     notify_sector_tick_single(...)
-    _check_realtime_latency(_ts, es)
+    _check_realtime_latency(_ts)
 
 
-def _check_realtime_latency(_ts: int, es: ModuleType) -> None:
+def _check_realtime_latency(_ts: int) -> None:
     """실시간 체결 처리 지연 측정 — 50ms 경고, 200ms 초과 시 자동매매 중단 플래그."""
     elapsed = int(time.time() * 1000) - _ts
     if elapsed >= 200:
         logger.error("[체결지연] 처리 시간 %sms → 자동매매 중단 플래그 설정", elapsed)
-        es._realtime_latency_exceeded = True
+        engine_state._realtime_latency_exceeded = True
     elif elapsed >= 50:
         logger.warning("[체결지연] 처리 시간 %sms → 50ms 초과", elapsed)
 
 
-def _handle_real_00(item: dict, vals: dict, es: ModuleType) -> None:
+async def _handle_real_00(item: dict, vals: dict) -> None:
     """주문체결(00) 처리 — 자동매매 체결 콜백 + 잔고 갱신 트리거."""
     _ts = int(time.time() * 1000)
     raw_cd = _real_item_stk_cd(item, vals)
@@ -455,63 +382,22 @@ def _handle_real_00(item: dict, vals: dict, es: ModuleType) -> None:
     except (ValueError, TypeError) as e:
         logger.warning("[미체결] %s 파싱 실패 902=%r: %s", raw_cd, vals.get("902"), e)
         unex = 0
-    if es._auto_trade:
-        es._auto_trade.on_fill_update(raw_cd, side, unex, es._access_token)
+    if engine_state._auto_trade:
+        await engine_state._auto_trade.on_fill_update(raw_cd, side, unex, engine_state._access_token)
 
     # [근본해결] 부분 체결(unex > 0) 포함 모든 체결 발생 시 즉시 계좌 상태 반영
-    es._on_fill_after_ws()
-    _check_realtime_latency(_ts, es)
+    engine_account._on_fill_after_ws()
+    _check_realtime_latency(_ts)
 
 
-def _handle_real_balance(item: dict, vals: dict, es: ModuleType) -> None:
+async def _handle_real_balance(item: dict, vals: dict) -> None:
     """04/80 잔고 처리 — 실시간 잔고 변동 반영."""
     # REAL 04는 flat 구조 -- FID가 values 안이 아닌 item 루트에 직접 위치
     # item 자체를 vals로 사용 (키움 공식 답변 확인)
-    es._apply_balance_realtime(item, item)
+    await engine_account._apply_balance_realtime(item, item)
 
 
-def _handle_real_0j(item: dict, vals: dict, es: ModuleType) -> None:
-    """업종지수(0J) 처리 — 코스피·코스닥 지수 실시간 갱신."""
-    from backend.app.services.daily_time_scheduler import on_0j_real_received
-    on_0j_real_received()
-
-    idx_cd = str(item.get("item") or "").strip().lstrip("A")
-    if not idx_cd:
-        raw_item = item.get("item")
-        if isinstance(raw_item, list) and raw_item:
-            idx_cd = str(raw_item[0]).strip()
-    _exch_suffix = ""
-    if idx_cd:
-        for sfx in ("_NX", "_AL", "_nx", "_al"):
-            if idx_cd.endswith(sfx):
-                _exch_suffix = sfx
-                idx_cd = idx_cd[: -len(sfx)]
-                break
-    if not (idx_cd and isinstance(vals, dict)):
-        return
-    price = _ws_fid_float(vals, "10", 0.0)
-    change = _ws_fid_float(vals, "11", 0.0)
-    rate = _parse_ws_fid12_to_percent(_ws_fid_raw(vals, "12"))
-    sig = str(_ws_fid_raw(vals, "25") or "").strip()
-    if sig in ("4", "5", "44", "45"):
-        change = -abs(change)
-        rate = -abs(rate)
-    if price != 0 or rate != 0:
-        es._latest_index[idx_cd] = {  # 단일 키 직접 대입 (값 자체가 새 dict)
-            "price": abs(price),
-            "change": change,
-            "rate": rate,
-        }
-        # [근본해결] 중복 알림 제거 (Raw 데이터가 전체 전송함)
-        # notify_desktop_index_refresh()
-    else:
-        logger.warning(
-            "[지수] 0J REAL -- %s 파싱 실패 vals=%s",
-            idx_cd, str(vals)[:200],
-        )
-
-
-def _handle_real_0d(item: dict, vals: dict, es: ModuleType) -> None:
+def _handle_real_0d(item: dict, vals: dict) -> None:
     """0D 호가잔량 처리 — 매수잔량(FID 125)·매도잔량(FID 121) 캐시 갱신 + 매수후보 실시간 반영."""
     raw_cd = _real_item_stk_cd(item, vals)
     if not raw_cd:
@@ -521,10 +407,9 @@ def _handle_real_0d(item: dict, vals: dict, es: ModuleType) -> None:
     ask = _ws_fid_int(vals, "121", 0)  # 총 매도호가잔량
     if bid < 0 or ask < 0:
         return
-    prev = es._orderbook_cache.get(nk)
-    es._orderbook_cache[nk] = (bid, ask)  # 단일 키 직접 대입 (튜플은 불변)
+    # 호가잔량 캐시 삭제로 저장 로직 제거
     # 매수후보 종목이면 호가잔량비 변경을 프론트에 즉시 전송 (이벤트 기반)
-    if prev != (bid, ask) and nk in es._subscribed_0d_stocks:
+    if nk in engine_state._subscribed_0d_stocks:
         from backend.app.services.engine_account_notify import notify_orderbook_update
         notify_orderbook_update(nk, bid, ask)
 
@@ -536,14 +421,13 @@ _REAL_DISPATCH: dict[str, Callable] = {
     "00": _handle_real_00,      # 주문체결
     "04": _handle_real_balance,  # 잔고
     "80": _handle_real_balance,  # 잔고 (04와 동일 핸들러)
-    "0j": _handle_real_0j,      # 업종지수
     "0d": _handle_real_0d,      # 호가잔량
 }
 
 
-def _handle_real(data: dict, es: ModuleType) -> None:
+async def _handle_real(data: dict) -> None:
     """REAL 메시지 수신 — 데이터 타입별 분기 처리 (돈 데이터 즉시 우회, 연산 데이터 압축)."""
-    if es._REG_REAL_DEBUG_EXTRA_LOG:
+    if engine_state._REG_REAL_DEBUG_EXTRA_LOG:
         _log_ws_trnm_json_detail("REAL", data if isinstance(data, dict) else {"_raw": data})
         _log_real_data_items_preview(data if isinstance(data, dict) else {})
     
@@ -571,9 +455,9 @@ def _handle_real(data: dict, es: ModuleType) -> None:
             
             # 💰 돈 데이터 - 즉시 우회 (체결, 잔고)
             if norm == "00":
-                _handle_real_00(item, vals, es)
+                await _handle_real_00(item, vals)
             elif norm in ("04", "80"):
-                _handle_real_balance(item, vals, es)
+                await _handle_real_balance(item, vals)
             # 📊 연산 데이터 - 압축 고속도로 (시세, 지수, 호가)
             else:
                 from backend.app.services.backend_coalescing import BackendCoalescing
@@ -586,18 +470,18 @@ def _handle_real(data: dict, es: ModuleType) -> None:
             logger.error("[REAL] 항목 처리 예외 (계속): %s", e, exc_info=True)
 
 
-async def handle_ws_data(data: dict, es: ModuleType) -> None:
+async def handle_ws_data(data: dict) -> None:
     """비동기 호출 — LOGIN/REG는 직접 처리, REAL은 직접 동기 호출."""
     try:
         trnm = data.get("trnm")
         if trnm == "LOGIN":
-            _handle_login(data, es)
+            _handle_login(data)
         elif trnm in ("REG", "UNREG", "REMOVE"):
-            _handle_reg(data, es)
+            _handle_reg(data)
             return
         elif trnm == "REAL":
             # REAL 시세는 동기 호출로 즉시 처리 (태스크 큐에 쌓지 않음)
-            _handle_real(data, es)
+            await _handle_real(data)
     except Exception:
         logger.error("[WS] 메시지 처리 예외 (trnm=%s): %s", data.get("trnm"), data, exc_info=True)
 
@@ -608,31 +492,20 @@ _consumer_task: asyncio.Task | None = None
 _consumer_running: bool = False
 
 
-async def start_consumer_loop(queue: asyncio.Queue, es: ModuleType) -> None:
+async def start_consumer_loop(queue: asyncio.Queue) -> None:
     """Consumer 루프 — 큐에서 데이터를 꺼내 handle_ws_data()로 전달."""
-    global _consumer_task, _consumer_running, _event_bus_enabled
+    global _consumer_task, _consumer_running
 
     if _consumer_running:
         logger.warning("[Consumer] 이미 실행 중")
         return
 
-    # Event Bus 초기화 및 활성화 확인
-    _init_event_bus()
-    try:
-        from backend.app.core.event_bus import EventBus
-        event_bus = EventBus.get_instance()
-        _event_bus_enabled = event_bus._is_running
-        if _event_bus_enabled:
-            logger.info("[Consumer] Event Bus 활성화 상태")
-    except Exception:
-        _event_bus_enabled = False
-
     _consumer_running = True
-    _consumer_task = asyncio.get_running_loop().create_task(_consumer_loop_impl(queue, es))
+    _consumer_task = asyncio.get_running_loop().create_task(_consumer_loop_impl(queue))
     logger.info("[Consumer] 루프 시작")
 
 
-async def _consumer_loop_impl(queue: asyncio.Queue, es: ModuleType) -> None:
+async def _consumer_loop_impl(queue: asyncio.Queue) -> None:
     """Consumer 루프 구현."""
     global _consumer_running
     try:
@@ -640,7 +513,7 @@ async def _consumer_loop_impl(queue: asyncio.Queue, es: ModuleType) -> None:
             try:
                 data = await queue.get()
                 # 기존 방식 유지 (하위 호환)
-                await handle_ws_data(data, es)
+                await handle_ws_data(data)
                 queue.task_done()
             except asyncio.CancelledError:
                 break

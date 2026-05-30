@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 업종 데이터 인프라
@@ -8,19 +9,18 @@
 주의: ka10099 실제 응답 필드명이 키움AI 답변과 다를 수 있음.
       첫 호출 시 응답 전체를 로그에 남기고, 파싱 실패해도 앱이 죽지 않게 방어.
 """
-from __future__ import annotations
 
 import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
-from backend.app.core.trading_calendar import is_cache_valid, current_trading_date_str
-from backend.app.db.cache_db import get_kv, set_kv
+from backend.app.core.trading_calendar import is_cache_valid, get_current_trading_day_str
+from backend.app.db.stock_tables import load_eligible_stocks_cache, save_eligible_stocks_cache
 
-if TYPE_CHECKING:
-    from backend.app.core.kiwoom_rest import KiwoomRestAPI
+
+
 
 _log = logging.getLogger(__name__)
 
@@ -34,27 +34,37 @@ _eligible_cache_date: str = ""  # 캐시 날짜 (만료 확인용)
 
 
 
-def load_eligible_stocks_cache() -> Optional[dict[str, str]]:
+async def load_eligible_stocks_cache_from_db() -> dict[str, str] | None:
     """
     캐시 파일에서 적격 종목코드 맵 로드.
-    (항상 SQLite에서 로드하며, 장마감 이후 확정 다운로드로만 갱신되므로 만료를 검사하지 않음)
+    설정된 실시간연결시작 시간을 기준으로 만료 여부를 판별합니다.
     """
     global _eligible_stock_codes, _eligible_cache_date
     
-    if _eligible_stock_codes:
-        return dict(_eligible_stock_codes)
-    
     try:
-        raw = get_kv("eligible_stocks_cache")
+        raw = await load_eligible_stocks_cache()
         if not raw:
             return None
         data = raw.get("data")
         if not isinstance(data, dict) or not data:
             return None
         
+        cached_date = raw.get("date", "")
+        
+        # 유효성 검사 추가
+        from backend.app.core.settings_file import load_settings_async
+        settings = await load_settings_async()
+        ws_start = settings.get("ws_subscribe_start", "07:50")
+        
+        if not is_cache_valid(cached_date, ws_start):
+            _log.info("[매매적격종목] 캐시 만료 (cached=%s, ws_start=%s)", cached_date, ws_start)
+            _eligible_stock_codes = {}
+            _eligible_cache_date = ""
+            return None
+        
         # 메모리 캐시 업데이트
         _eligible_stock_codes = dict(data)
-        _eligible_cache_date = raw.get("date", "")
+        _eligible_cache_date = cached_date
         _log.info("[매매적격종목] SQLite 로드 -- %d종목 (cached=%s)", len(data), _eligible_cache_date)
         return data
     except Exception as e:
@@ -62,16 +72,16 @@ def load_eligible_stocks_cache() -> Optional[dict[str, str]]:
         return None
 
 
-def save_eligible_stocks_cache(data: dict[str, str]) -> None:
+async def persist_eligible_stocks_cache(data: dict[str, str]) -> None:
     """적격 종목코드 맵을 JSON 캐시로 저장."""
     global _eligible_stock_codes, _eligible_cache_date
     try:
-        payload = {"date": current_trading_date_str(), "data": data}
-        set_kv("eligible_stocks_cache", payload)
+        date_str = get_current_trading_day_str()
+        await save_eligible_stocks_cache(date_str, data)
         
         # 메모리 캐시 업데이트
         _eligible_stock_codes = dict(data)
-        _eligible_cache_date = current_trading_date_str()
+        _eligible_cache_date = date_str
         _log.info("[매매적격종목] SQLite 저장완료 -- %d종목", len(data))
     except Exception as e:
         _log.warning("[매매적격종목] SQLite 저장실패: %s", e)
