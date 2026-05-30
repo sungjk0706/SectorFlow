@@ -208,30 +208,11 @@ async def _bootstrap_sector_stocks_async() -> None:
         _invalidate_sector_stocks_cache(force=True)
 
         _filter_set = _st._filtered_sector_codes or set()
-        _missing = _filter_set - set(_st._pending_stock_details.keys())
+        # _pending_stock_details 제거: _radar_cnsr_order에만 추가
+        _missing = _filter_set - set(_st._radar_cnsr_order)
         if _missing:
-            from backend.app.services import engine_strategy_core as _esc
-            from backend.app.core.sector_stock_cache import load_stock_name_cache as _load_names
-            _name_map = _load_names() or {}
-            def make_missing_entry(cd):
-                _nm = _name_map.get(cd, cd)
-                _sector = _st._master_stocks_cache.get(cd, {}).get("sector", "기타")
-                _entry = _esc.make_detail(cd, _nm, 0, "3", 0, 0.0, sector=_sector)
-                _entry["status"] = "active"
-                _entry["base_price"] = 0
-                _entry["target_price"] = 0
-                _entry["captured_at"] = ""
-                _entry["reason"] = "필터 통과 빈 엔트리"
-                return (cd, _entry)
-
-            entries = list(map(make_missing_entry, _missing))
-            entries_dict = dict(map(lambda x: (x[0], x[1]), entries))
-            bases_list = list(map(lambda x: x[0], entries))
-
             async with _st._shared_lock:
-                for key, value in entries_dict.items():
-                    _st._pending_stock_details[key] = value
-                _st._radar_cnsr_order.extend(bases_list)
+                _st._radar_cnsr_order.extend(list(_missing))
             logger.debug("[시작] 필터 통과 빈 엔트리 추가 -- %d종목", len(_missing))
 
         _broadcast_bootstrap_stage(5, "앱준비 완료")

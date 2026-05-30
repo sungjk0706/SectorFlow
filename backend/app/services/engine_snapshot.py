@@ -15,7 +15,7 @@ from backend.app.services.engine_state import (
     _bootstrap_event,
     _preboot_cache_loaded,
     _shared_lock,
-    _pending_stock_details,
+    # _pending_stock_details 제거
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_amounts, _latest_trade_prices, _latest_strength, _rest_radar_quote_cache, _orderbook_cache)
     _subscribed_0d_stocks,
     _rest_radar_rest_once,

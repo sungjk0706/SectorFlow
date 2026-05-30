@@ -46,7 +46,7 @@ from backend.app.services.engine_state import (
     _reg_ack_return_code,
     _rest_api_thread_sem,
     _account_rest_lock,
-    _pending_stock_details,
+    # _pending_stock_details 제거
     _radar_cnsr_order,
     _sector_stock_layout,
     _amts_5d_arrays,

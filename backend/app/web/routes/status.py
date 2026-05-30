@@ -55,7 +55,8 @@ async def debug_sector_stock(code: str):
     from backend.app.services import engine_service as es
     from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
     nk = _format_kiwoom_reg_stk_cd(code.strip())
-    pend = es._pending_stock_details.get(nk)
+    # _pending_stock_details 제거: _master_stocks_cache 사용
+    pend = es._master_stocks_cache.get(nk, {})
     in_filter = nk in es._filtered_sector_codes
     in_subscribed = nk in es._subscribed_stocks
     # 실시간 틱 데이터 캐시 읽기 로직 삭제 (캐시가 삭제되었으므로 읽기 불가, None 반환)
@@ -93,7 +94,7 @@ async def debug_ws_status():
         "running": es._running,
         "subscribed_stocks_count": len(es._subscribed_stocks),
         "filtered_sector_codes_count": len(es._filtered_sector_codes),
-        "pending_stock_details_count": len(es._pending_stock_details),
+        "radar_cnsr_order_count": len(es._radar_cnsr_order),  # _pending_stock_details 제거
         "latest_trade_prices_count": 0,  # 실시간 틱 데이터 캐시 삭제로 0 반환
         "ws_reg_pipeline_done": es._ws_reg_pipeline_done.is_set(),
         "bootstrap_done": es._bootstrap_event.is_set(),

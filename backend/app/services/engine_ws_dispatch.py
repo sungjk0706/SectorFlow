@@ -274,12 +274,12 @@ async def _handle_real_01(
     _session = parse_fid290_session(vals)
     _exch_label = {"1": "KRX", "2": "NXT"}.get(_exch, "")
     raw_cd_for_bucket = raw_cd
-    pend_key = _resolve_bucket_key(raw_cd_for_bucket, engine_state._pending_stock_details)
+    # _pending_stock_details 제거: pend_key 제거, 빈 dict 사용
     prev_close = _ws_fid_int(vals, "16", 0)
-    pend = engine_state._pending_stock_details.get(pend_key, {}) if pend_key else {}
-    diff = _ws_fid_int(vals, "11", 0) if _ws_fid_key_present(vals, "11") else int(pend.get("change") or 0)
-    rate = _parse_ws_fid12_to_percent(_ws_fid_raw(vals, "12")) if _ws_fid_key_present(vals, "12") else float(pend.get("change_rate") or 0.0)
-    sign = str(_ws_fid_raw(vals, "25") or "3").strip() if _ws_fid_key_present(vals, "25") else str(pend.get("sign") or "3")
+    pend = {}
+    diff = _ws_fid_int(vals, "11", 0) if _ws_fid_key_present(vals, "11") else 0
+    rate = _parse_ws_fid12_to_percent(_ws_fid_raw(vals, "12")) if _ws_fid_key_present(vals, "12") else 0.0
+    sign = str(_ws_fid_raw(vals, "25") or "3").strip() if _ws_fid_key_present(vals, "25") else "3"
     sv228 = _ws_fid_raw(vals, "228")
     strength = str(sv228).strip() if sv228 is not None and str(sv228).strip() != "" else "-"
     _base_nk_14 = _format_kiwoom_reg_stk_cd(_base_stk_cd(raw_cd_for_bucket))
@@ -293,7 +293,8 @@ async def _handle_real_01(
     # 캐시 업데이트 삭제 (실시간 틱 데이터 저장 제거)
     # REST 캐시 pop 로직 삭제 (캐시가 삭제되었으므로 pop 호출 불필요)
     # _pending_stock_details 제거: _radar_cnsr_order로 status 확인
-    if pend_key and pend_key in engine_state._radar_cnsr_order:
+    nk_px_base = _format_kiwoom_reg_stk_cd(_base_stk_cd(raw_cd))
+    if nk_px_base in engine_state._radar_cnsr_order:
         # 실시간 틱 데이터 저장 제거 (cur_price, trade_amount, strength 저장 안 함)
         # 필요한 경우에만 틱 데이터를 직접 전달하여 사용
         if is_0b_tick and strength != "-":

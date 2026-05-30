@@ -9,7 +9,7 @@ from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import (
     _sector_summary_cache,
     _invalidate_sector_stocks_cache,
-    _pending_stock_details,
+    # _pending_stock_details 제거
     _filtered_sector_codes,
     _sector_stocks_cache,
     _sector_stocks_dirty,
@@ -174,12 +174,14 @@ async def get_all_sector_stocks() -> list[dict]:
     from backend.app.core.sector_mapping import get_merged_sector
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
     from backend.app.core.sector_stock_cache import load_stock_name_cache
+    from backend.app.services.engine_state import _radar_cnsr_order, _master_stocks_cache
 
-    snapshot = dict(_pending_stock_details)
+    # _pending_stock_details 제거: _radar_cnsr_order + _master_stocks_cache 사용
     name_map = await load_stock_name_cache() or {}
 
     result: list[dict] = []
-    for cd, entry in snapshot.items():
+    for cd in _radar_cnsr_order:
+        entry = _master_stocks_cache.get(cd, {})
         if entry.get("status") != "active":
             continue  # 매매부적격(관리종목, 거래정지, exited 등) 제외
         try:

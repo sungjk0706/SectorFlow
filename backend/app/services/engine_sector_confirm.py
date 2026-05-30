@@ -130,11 +130,9 @@ async def _flush_sector_recompute_impl() -> None:
             return
 
         # __ALL__ 플래그 + 캐시 존재 → 모든 active 종목을 dirty로 취급하여 증분 경로 사용
+        # _pending_stock_details 제거: _radar_cnsr_order 사용
         if "__ALL__" in codes_snapshot:
-            codes_snapshot = {
-                cd for cd, det in _es._pending_stock_details.items()
-                if det.get("status") == "active"
-            }
+            codes_snapshot = set(_es._radar_cnsr_order)
 
         # ── 증분 갱신 ──
         # 1. dirty 종목 → 해당 섹터 추출

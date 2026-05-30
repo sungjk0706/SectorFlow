@@ -26,10 +26,10 @@ async def get_merged_sector(stock_code: str) -> str:
     except Exception:
         pass
 
-    # 2) 인메모리 캐시에서 조회 (pending_stock_details)
+    # 2) 인메모리 캐시에서 조회 (_master_stocks_cache)
     try:
         import backend.app.services.engine_service as es
-        entry = es._pending_stock_details.get(stock_code)
+        entry = es._master_stocks_cache.get(stock_code)
         if entry and "sector" in entry:
             return entry["sector"] or "기타"
     except Exception:
