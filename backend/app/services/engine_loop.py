@@ -24,7 +24,7 @@ from backend.app.services.engine_state import (
     _connector_manager,
     _subscribed_stocks,
     _checked_stocks,
-    _pending_stock_details,
+    # _pending_stock_details 제거
     _radar_cnsr_order,
     _sector_stock_layout,
     _avg_amt_5d,
@@ -162,7 +162,7 @@ async def run_engine_loop() -> None:
     logger.info("[엔진] run_engine_loop() 진입")
     import backend.app.services.engine_state as _es
     global _login_ok, _connector_manager, _broker_tokens, _subscribed_stocks
-    global _checked_stocks, _pending_stock_details, _radar_cnsr_order
+    global _checked_stocks, _radar_cnsr_order
     global _sector_stock_layout, _avg_amt_5d
     global _rest_radar_rest_once, _running, _engine_loop_ref
     global _preboot_cache_loaded, _preboot_ready_event, _account_rest_lock
@@ -181,7 +181,7 @@ async def run_engine_loop() -> None:
     _notify_reg_ack()
     _cancel_price_trace_delayed_task()
     _checked_stocks.clear()
-    _pending_stock_details.clear()
+    # _pending_stock_details 제거: clear() 제거
     _radar_cnsr_order.clear()
     _sector_stock_layout.clear()
     from backend.app.services.engine_account_notify import _rebuild_layout_cache

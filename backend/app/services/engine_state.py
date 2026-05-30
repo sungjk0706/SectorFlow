@@ -52,7 +52,7 @@ _rest_api_thread_sem: asyncio.Semaphore | None = None
 _account_rest_lock: asyncio.Lock | None = None
 
 # ── 데이터 캐시 ────────────────────────────────────────────────────────
-_pending_stock_details: LRUCache = LRUCache(maxsize=3000)
+# _pending_stock_details 제거
 _radar_cnsr_order: list[str] = []
 _sector_stock_layout: list[tuple[str, str]] = []
 _amts_5d_arrays: dict = {}
