@@ -83,9 +83,7 @@ async def _bootstrap_sector_stocks_async() -> None:
             return
 
         # 메모리 캐시에 단일 진실 공급원으로 로드
-        _st._pending_stock_details.clear()
-        for key, value in loaded_data.items():
-            _st._pending_stock_details[key] = value
+        # _pending_stock_details 제거: _master_stocks_cache만 사용
         for key, value in sector_cache.items():
             if key in _st._master_stocks_cache:
                 _st._master_stocks_cache[key]["sector"] = value
@@ -157,42 +155,12 @@ async def _bootstrap_sector_stocks_async() -> None:
         logger.debug("[시작] REST 버킷 세팅 완료")
 
         # 화면 표시용 엔트리 생성
+        # _pending_stock_details 제거: _radar_cnsr_order에만 코드 추가
         if krx_rows:
-            from backend.app.services import engine_strategy_core
-            def make_entry(item):
-                stk_cd, detail = item
-                base = _format_kiwoom_reg_stk_cd(_base_stk_cd(stk_cd))
-                if base and base not in _st._pending_stock_details:
-                    entry = engine_strategy_core.make_detail(
-                        base,
-                        detail.get("name", base) or base,
-                        int(detail.get("cur_price") or 0),
-                        detail.get("sign", "3"),
-                        int(detail.get("change") or 0),
-                        float(detail.get("change_rate") or 0.0),
-                        prev_close=int(detail.get("prev_close") or 0),
-                        trade_amount=int(detail.get("trade_amount") or 0),
-                        strength=detail.get("strength", "-"),
-                        sector=detail.get("sector", "기타"),
-                    )
-                    entry["status"] = "active"
-                    entry["base_price"] = int(detail.get("cur_price") or 0)
-                    entry["target_price"] = int(detail.get("cur_price") or 0)
-                    entry["captured_at"] = ""
-                    entry["reason"] = "확정데이터 초기 로드"
-                    return (base, entry)
-                return None
-
-            filtered = filter(lambda x: _format_kiwoom_reg_stk_cd(_base_stk_cd(x[0])) and _format_kiwoom_reg_stk_cd(_base_stk_cd(x[0])) not in _st._pending_stock_details, krx_rows)
-            mapped = map(make_entry, filtered)
-            entries = list(filter(None, mapped))
-
-            entries_dict = dict(map(lambda x: (x[0], x[1]), entries))
-            bases_list = list(map(lambda x: x[0], entries))
+            filtered = filter(lambda x: _format_kiwoom_reg_stk_cd(_base_stk_cd(x[0])), krx_rows)
+            bases_list = list(map(lambda x: _format_kiwoom_reg_stk_cd(_base_stk_cd(x[0])), filtered))
 
             async with _st._shared_lock:
-                for key, value in entries_dict.items():
-                    _st._pending_stock_details[key] = value
                 _st._radar_cnsr_order.extend(bases_list)
             logger.debug("[시작] 확정데이터 반영 완료 -- %d행 (화면 표시)", len(krx_rows))
         else:
