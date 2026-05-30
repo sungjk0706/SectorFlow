@@ -173,7 +173,8 @@ def _get_daily_summary_for_snapshot() -> list:
 
 # ── 실시간 필드 초기화 ─────────────────────────────────────────────
 
-_REALTIME_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "strength", "bid_depth", "ask_depth", "high_price")
+# _pending_stock_details 제거: bid_depth, ask_depth 제거
+_REALTIME_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "strength", "high_price")
 
 
 async def _reset_realtime_fields() -> None:
@@ -191,12 +192,9 @@ async def _reset_realtime_fields() -> None:
     )
     from backend.app.services.engine_account import _broadcast_account
     from backend.app.services.engine_sector import _invalidate_sector_stocks_cache
-    
+
+    # _pending_stock_details 제거: 루프 제거 (이미 WS 틱 저장 제거됨)
     async with _shared_lock:
-        count = len(_pending_stock_details)
-        for entry in _pending_stock_details.values():
-            for f in _REALTIME_FIELDS:
-                entry[f] = None
         # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_latest_trade_amounts, _latest_trade_prices, _latest_strength)
         # 호가잔량 캐시 삭제로 clear 로직 제거
         _subscribed_0d_stocks.clear()

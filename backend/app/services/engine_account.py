@@ -412,31 +412,10 @@ async def _update_account_memory_inner(settings: dict) -> None:
 def _merge_positions_from_rest(stock_list: list) -> list:
     """
     REST kt00018 잔고 반영. 수량·매입·종목명은 REST 기준.
-    change/change_rate: _pending_stock_details 캐시에서 보완 (첫 틱 전 0 표시 방지).
+    _pending_stock_details 보강 로직 제거 (첫 틱 전 0 표시는 WS 틱 수신 대기로 해결).
     """
     from backend.app.services.engine_account_rest import merge_positions_from_rest
-    from backend.app.services.engine_symbol_utils import _format_broker_reg_stk_cd
-    
-    es = _get_es_module()
-    if not es:
-        return stock_list
-
-    _pending_stock_details = getattr(es, "_pending_stock_details", {})
-
-    result = merge_positions_from_rest(stock_list, None)
-    for pos in result:
-        cd = _format_broker_reg_stk_cd(str(pos.get("stk_cd", "") or ""))
-        if not cd:
-            continue
-        src = _pending_stock_details.get(cd)
-        if src:
-            if "change" not in pos or pos.get("change") == 0:
-                pos["change"] = src.get("change", 0)
-            if "change_rate" not in pos or pos.get("change_rate") == 0:
-                pos["change_rate"] = src.get("change_rate", 0.0)
-            if "sign" not in pos:
-                pos["sign"] = src.get("sign", "3")
-    return result
+    return merge_positions_from_rest(stock_list, None)
 
 
 def _apply_broker_totals_from_summary(summary: dict) -> None:

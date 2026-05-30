@@ -8,7 +8,7 @@
 import asyncio
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import (
-    _pending_stock_details,
+    # _pending_stock_details 제거: _radar_cnsr_order + _master_stocks_cache로 대체
     _sector_stock_layout,
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_prices, _latest_trade_amounts, _rest_radar_quote_cache)
     _shared_lock,
@@ -27,7 +27,15 @@ logger = get_logger("engine_radar")
 
 def get_pending_stocks() -> list:
     """활성 상태의 종목 목록 반환."""
-    return [e for e in _pending_stock_details.values() if e.get("status") == "active"]
+    # _pending_stock_details 제거: _radar_cnsr_order + _master_stocks_cache로 대체
+    from backend.app.services.engine_state import _master_stocks_cache
+    result = []
+    for cd in _radar_cnsr_order:
+        if cd in _master_stocks_cache:
+            stock = _master_stocks_cache[cd].copy()
+            stock["status"] = "active"  # _radar_cnsr_order에 있으면 active
+            result.append(stock)
+    return result
 
 
 def get_sector_stock_layout() -> list[tuple[str, str]]:
