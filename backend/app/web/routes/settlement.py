@@ -1,6 +1,6 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """정산 엔진 라우터 — 충전."""
-from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 

@@ -1,10 +1,10 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 레이더/작전 테이블용 실시간 시세 오버레이 및 REAL 01 거래대금 반영.
 
 `engine_service` 모듈 전역 dict를 인자로 받아 갱신한다 -- 순환 import 없이 호출부에서 주입.
 """
-from __future__ import annotations
 
 from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd, _resolve_bucket_key
 

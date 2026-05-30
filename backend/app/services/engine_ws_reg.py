@@ -1,10 +1,10 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 키움 WebSocket REG/UNREG 구독 관리 — 순수 함수 + async 구독 함수.
 
 engine_service.py에서 분리된 REG 구독 로직.
 """
-from __future__ import annotations
 
 import logging
 import math
@@ -13,6 +13,10 @@ from types import ModuleType
 from backend.app.services.engine_symbol_utils import (
     _format_kiwoom_reg_stk_cd,
     get_ws_subscribe_code,
+)
+from backend.app.services.engine_state import (
+    _login_ok,
+    _subscribed_stocks,
 )
 
 logger = logging.getLogger("engine")
@@ -234,11 +238,7 @@ async def _unreg_grp(es: ModuleType, grp_no: str) -> bool:
 
     # 그 외 grp: 구독 중인 아이템을 data에 포함하여 REMOVE (빈 data 전송 시 305003 에러)
     data: list[dict] = []
-    if grp_no == "5":
-        # 업종 0U — 구독 폐지됨 (sector_mapping 기반 자체 집계로 전환)
-        logger.debug("[구독] grp_no=5 생략 — 0U 구독 폐지됨")
-        return True
-    elif grp_no == "2":
+    if grp_no == "2":
         # 지수 0J (코스피 001, 코스닥 101)
         data = [{"item": ["001", "101"], "type": ["0J"]}]
     elif grp_no == "10":
@@ -389,38 +389,6 @@ async def subscribe_sector_stocks_0b(es: ModuleType) -> None:
     )
 
 
-async def subscribe_index_realtime(es: ModuleType) -> None:
-    """코스피(001)·코스닥(101) 업종지수 0J REG — refresh='0'으로 누적 등록.
-
-    engine_service.py의 _subscribe_index_realtime() 이동 버전.
-    0J는 09:00~15:30 전송, 이후 REST 폴링 또는 캐시로 대체.
-
-    Args:
-        es: engine_service 모듈 참조
-    """
-    if not es._kiwoom_connector or not es._kiwoom_connector.is_connected() or not es._login_ok:
-        return
-
-    from datetime import datetime, time as _time, timezone, timedelta
-    _KST = timezone(timedelta(hours=9))
-    _now = datetime.now(_KST).time()
-    _market_open  = _time(9, 0)
-    _market_close = _time(15, 35)
-    if not (_market_open <= _now <= _market_close):
-        logger.debug("[데이터] 0J REG 생략 — 장외 시간 (REST 폴링으로 대체)")
-        return
-
-    payload = build_index_reg_payload()
-    try:
-        ok, _rc = await es._ws_send_reg_unreg_and_wait_ack(payload)
-        if ok:
-            logger.info("[데이터] 코스피·코스닥 구독 완료 (09:00~15:30 전송, 이후 REST 폴링)")
-        else:
-            logger.warning("[데이터] 코스피·코스닥 구독 응답 시간 초과")
-    except Exception as e:
-        logger.warning("[데이터] 구독 실패: %s", e, exc_info=True)
-
-
 async def subscribe_account_realtime(es: ModuleType) -> None:
     """계좌 단위 실시간 구독: 주문체결(00)·잔고(04) — refresh='0'으로 누적 등록.
 
@@ -435,7 +403,8 @@ async def subscribe_account_realtime(es: ModuleType) -> None:
         return
 
     s = es._settings_cache or {}
-    acnt = str(s.get("kiwoom_account_no", "") or "").strip()
+    broker_nm = str(s.get("broker", "") or "").lower().strip()
+    acnt = str(s.get(f"{broker_nm}_account_no", "") or "").strip()
     if not acnt:
         logger.warning("[연결] 계좌번호 미설정 -- 구독 요청은 빈값으로 전송")
 
@@ -537,14 +506,16 @@ async def restore_subscriptions_after_reconnect(es: ModuleType, broker_id: str) 
         es: engine_service 모듈 참조
         broker_id: 재연결된 증권사 ID
     """
-    if not getattr(es, "_login_ok", False):
+    global _subscribed_stocks
+
+    if not _login_ok or False:
         logger.debug("[재연결] %s 로그인 전 — 구독 복원 생략 (LOGIN 후 파이프라인이 처리)", broker_id.upper())
         return
 
-    subscribed = set(getattr(es, "_subscribed_stocks", set()))
+    subscribed = set(_subscribed_stocks or set())
     if subscribed:
         # 재연결 시 서버 측 구독이 초기화됐으므로 _subscribed_stocks를 비우고 재등록
-        es._subscribed_stocks.clear()
+        _subscribed_stocks.clear()
         targets_al = [get_ws_subscribe_code(cd) for cd in subscribed]
         payloads = build_0b_reg_payloads(targets_al, chunk_size=100, reset_first=True)
         _CHUNK = 100
@@ -552,10 +523,11 @@ async def restore_subscriptions_after_reconnect(es: ModuleType, broker_id: str) 
         targets_list = list(subscribed)
         for ci, payload in enumerate(payloads):
             chunk_orig = targets_list[ci * _CHUNK : (ci + 1) * _CHUNK]
-            ok, _rc = await es._ws_send_reg_unreg_and_wait_ack(payload)
+            from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
+            ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload)
             if ok and str(_rc) == "0":
                 for cd in chunk_orig:
-                    es._subscribed_stocks.add(cd)
+                    _subscribed_stocks.add(cd)
                 ok_total += len(chunk_orig)
             else:
                 fail_total += len(chunk_orig)

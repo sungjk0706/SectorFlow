@@ -1,6 +1,6 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """거래내역 라우터 — 매수/매도 체결 이력 조회."""
-from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 

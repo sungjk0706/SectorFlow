@@ -1,6 +1,6 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """엔진 상태 라우터 — GET 엔드포인트는 WS initial-snapshot으로 대체됨."""
-from __future__ import annotations
 
 from fastapi import APIRouter, Query
 
@@ -11,22 +11,26 @@ router = APIRouter(prefix="/api", tags=["status"])
 async def health_check():
     """서버 준비 상태 확인 - 현대적 안정성 패턴."""
     from backend.app.services import engine_service as es
-    
+    from backend.app.services.engine_state import _confirmed_refresh_running
+
     # 상태 확인
     is_server_ready = es._server_ready_event.is_set()
     is_engine_ready = es._engine_ready_event.is_set()
     is_bootstrap_done = es._bootstrap_event.is_set()
     is_running = es._running
-    
+
     if is_server_ready and is_engine_ready:
         status = "ready"
         message = "엔진 준비 완료"
+    elif _confirmed_refresh_running:
+        status = "downloading"
+        message = "확정 데이터 다운로드 중"
     elif is_running:
         status = "initializing"
         message = "초기화 중..."
     else:
-        status = "error"
-        message = "엔진 실행 중지"
+        status = "ready"
+        message = "서버 준비 완료 (엔진 미실행)"
     
     # 진행 상황 상세
     progress = {
@@ -54,10 +58,11 @@ async def debug_sector_stock(code: str):
     pend = es._pending_stock_details.get(nk)
     in_filter = nk in es._filtered_sector_codes
     in_subscribed = nk in es._subscribed_stocks
-    tp = es._latest_trade_prices.get(nk)
-    ta = es._latest_trade_amounts.get(nk)
-    st = es._latest_strength.get(nk)
-    rq = es._rest_radar_quote_cache.get(nk)
+    # 실시간 틱 데이터 캐시 읽기 로직 삭제 (캐시가 삭제되었으므로 읽기 불가, None 반환)
+    tp = None
+    ta = None
+    st = None
+    rq = None
     return {
         "code": nk,
         "in_filtered_sector_codes": in_filter,
@@ -89,7 +94,7 @@ async def debug_ws_status():
         "subscribed_stocks_count": len(es._subscribed_stocks),
         "filtered_sector_codes_count": len(es._filtered_sector_codes),
         "pending_stock_details_count": len(es._pending_stock_details),
-        "latest_trade_prices_count": len(es._latest_trade_prices),
+        "latest_trade_prices_count": 0,  # 실시간 틱 데이터 캐시 삭제로 0 반환
         "ws_reg_pipeline_done": es._ws_reg_pipeline_done.is_set(),
         "bootstrap_done": es._bootstrap_event.is_set(),
         "sector_confirmed": False,  # 확정 개념 제거됨
@@ -152,14 +157,15 @@ async def debug_orderbook_status(
     for raw_code in codes:
         nk = _format_kiwoom_reg_stk_cd(raw_code.strip())
         is_subscribed = nk in es._subscribed_0d_stocks
-        ob_data = es._orderbook_cache.get(nk)
+        # 호가잔량 캐시 삭제로 None 반환
+        ob_data = None
         stock_name = data_manager.get_stock_name(nk)
 
         result[nk] = {
             "name": stock_name,
             "subscribed_0d": is_subscribed,
-            "orderbook_cached": ob_data is not None,
-            "orderbook_data": ob_data if ob_data else None,
+            "orderbook_cached": False,
+            "orderbook_data": None,
         }
 
     return {

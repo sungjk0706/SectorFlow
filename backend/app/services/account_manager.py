@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 계좌 관리 모듈
@@ -5,10 +6,8 @@
 - 잔고 업데이트
 - 예수금 관리
 """
-from __future__ import annotations
 
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 

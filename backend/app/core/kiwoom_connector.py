@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 Kiwoom Connector — 키움증권 WebSocket 커넥터
@@ -5,13 +6,12 @@ Kiwoom Connector — 키움증권 WebSocket 커넥터
 ws_client.py 완전 대체: _KiwoomSocket 내부 클래스에 수신루프/큐/송신 통합.
 크로스 플랫폼: Windows, macOS, Linux
 """
-from __future__ import annotations
 
 import asyncio
 import copy
 import json
 import logging
-from typing import Callable
+from typing import Callable, Optional
 
 from backend.app.core.broker_connector import BrokerConnector
 
@@ -502,11 +502,9 @@ class KiwoomConnector(BrokerConnector):
 
     async def _get_token_async(self) -> str | None:
         """토큰 발급 (비동기 래핑)."""
-        def _sync_get_token():
-            from backend.app.core.kiwoom_rest import KiwoomRestAPI
-            api = KiwoomRestAPI(self._app_key, self._app_secret)
-            return api.get_access_token()
-        return await asyncio.to_thread(_sync_get_token)
+        from backend.app.core.kiwoom_rest import KiwoomRestAPI
+        api = KiwoomRestAPI(self._app_key, self._app_secret)
+        return await api.get_access_token()
 
 
 # ── 팩토리 ───────────────────────────────────────────────────────────────────

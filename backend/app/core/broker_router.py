@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 BrokerRouter — 기능별 Provider 매핑 중앙 라우터.
@@ -6,7 +7,6 @@ BrokerRouter — 기능별 Provider 매핑 중앙 라우터.
 - 동일 증권사의 Provider는 AuthProvider 인스턴스 공유
 - validate()로 설정 검증, summary()로 로그 출력
 """
-from __future__ import annotations
 
 import logging
 
@@ -14,7 +14,6 @@ from backend.app.core.broker_providers import (
     AccountProvider,
     AuthProvider,
     OrderProvider,
-    SectorProvider,
     WebSocketProvider,
 )
 from backend.app.core.broker_registry import (
@@ -26,13 +25,12 @@ from backend.app.core.broker_registry import (
 
 logger = logging.getLogger(__name__)
 
-FEATURES = ("account", "order", "sector", "auth", "websocket")
+FEATURES = ("account", "order", "auth", "websocket")
 
 # 기능 → 한글 표시 이름
 _FEATURE_DISPLAY: dict[str, str] = {
     "account": "계좌",
     "order": "주문",
-    "sector": "업종",
     "auth": "인증",
     "websocket": "웹소켓",
 }
@@ -50,7 +48,6 @@ class BrokerRouter:
 
     # 페이지별 허용 기능 매핑 (해당 페이지가 사용하는 기능만)
     PAGE_FEATURES: dict[str, tuple[str, ...]] = {
-        "sector_ranking": ("sector",),
         "realtime_quote":  ("websocket",),
         "trading":         ("order",),
         "account":         ("account", "auth"),
@@ -62,32 +59,61 @@ class BrokerRouter:
         self._auth_cache: dict[str, AuthProvider] = {}
         self._broker_map: dict[str, str] = {}  # feature -> broker_name
         self._page_providers: dict[tuple[str, str], object] = {}  # (page, feature) -> Provider
+        self._specs: dict[str, dict] = {}  # broker_name -> role_mappings
+        self._load_specs()
         self._build(settings)
+
+    def _load_specs(self) -> None:
+        """settings에 미리 로드된 broker_specs 사용."""
+        broker_config = self._settings.get("broker_config") or {}
+        default_broker = str(
+            self._settings.get("broker", "") or "ls"
+        ).lower().strip()
+
+        # 모든 사용 중인 broker의 spec 로드
+        brokers_to_load = set([default_broker])
+        for feature in FEATURES:
+            broker_name = str(
+                broker_config.get(feature, default_broker) or default_broker
+            ).lower().strip()
+            brokers_to_load.add(broker_name)
+
+        # settings에 미리 로드된 spec 사용
+        preloaded_specs = self._settings.get("_broker_specs") or {}
+        for broker_name in brokers_to_load:
+            if not broker_name:
+                continue
+            if broker_name in preloaded_specs:
+                spec_data = preloaded_specs[broker_name]
+                if isinstance(spec_data, dict):
+                    self._specs[broker_name] = spec_data.get("role_mappings", {})
+                    logger.debug("[BrokerRouter] %s spec 로드 완료 (settings)", broker_name)
+                else:
+                    logger.warning("[BrokerRouter] %s spec 형식 오류: %s (기대: dict)", broker_name, type(spec_data))
+            else:
+                logger.warning("[BrokerRouter] %s spec 없음 (settings)", broker_name)
 
     def _build(self, settings: dict) -> None:
         """설정 기반으로 Provider 인스턴스 생성 및 캐싱."""
         broker_config = settings.get("broker_config") or {}
         default_broker = str(
-            settings.get("broker", "kiwoom") or "kiwoom"
+            settings.get("broker", "") or "ls"
         ).lower().strip()
 
         for feature in FEATURES:
-            if feature == "sector":
-                # 정책: 이 프로젝트는 LS 증권의 확정데이터를 사용하지 않음
-                broker_name = "kiwoom"
-            else:
-                broker_name = str(
-                    broker_config.get(feature, default_broker) or default_broker
-                ).lower().strip()
+            broker_name = str(
+                broker_config.get(feature, default_broker) or default_broker
+            ).lower().strip()
                 
-            try:
-                self._providers[feature] = _create_provider(
-                    feature, broker_name, settings, self._auth_cache
-                )
+            provider = _create_provider(
+                feature, broker_name, settings, self._auth_cache
+            )
+            if provider:
+                self._providers[feature] = provider
                 self._broker_map[feature] = broker_name
-            except ValueError as e:
-                # 미등록 증권사 → 기본 브로커로 폴백
-                logger.warning("[BrokerRouter] %s — %s 폴백", e, default_broker)
+            else:
+                # broker 비어있음 → 기본 브로커로 폴백
+                logger.warning("[BrokerRouter] broker 비어있음 — %s 폴백", default_broker)
                 self._providers[feature] = _create_provider(
                     feature, default_broker, settings, self._auth_cache
                 )
@@ -102,10 +128,6 @@ class BrokerRouter:
     @property
     def order(self) -> OrderProvider:
         return self._providers["order"]  # type: ignore[return-value]
-
-    @property
-    def sector(self) -> SectorProvider:
-        return self._providers["sector"]  # type: ignore[return-value]
 
     @property
     def auth(self) -> AuthProvider:
@@ -134,9 +156,8 @@ class BrokerRouter:
             key = self._settings.get(f"{broker_name}_app_key")
             secret = self._settings.get(f"{broker_name}_app_secret")
             if not key or not secret:
-                display = BROKER_DISPLAY_NAMES.get(broker_name, broker_name)
                 messages.append(
-                    f"{display} API 키가 설정되지 않았습니다. "
+                    f"증권사 API 키가 설정되지 않았습니다. "
                     f"일반설정에서 입력하세요."
                 )
 
@@ -154,15 +175,12 @@ class BrokerRouter:
         return messages
 
     def summary(self) -> str:
-        """[브로커] 시세=키움증권, 계좌=키움증권, ... 형식 로그 문자열."""
+        """[브로커] 시세=설정됨, 계좌=설정됨, ... 형식 로그 문자열."""
         parts: list[str] = []
         for feature in FEATURES:
-            broker_name = self._broker_map.get(feature, "kiwoom")
-            display_broker = BROKER_DISPLAY_NAMES.get(
-                broker_name, broker_name
-            )
+            broker_name = self._broker_map.get(feature, "")
             display_feature = _FEATURE_DISPLAY.get(feature, feature)
-            parts.append(f"{display_feature}={display_broker}")
+            parts.append(f"{display_feature}=설정됨")
         return "[증권사] " + ", ".join(parts)
 
     # ── 페이지 컨텍스트 지원 ──────────────────────────────────────────
@@ -232,18 +250,16 @@ class BrokerRouter:
                 # Provider 구현 존재 확인
                 broker_providers = PROVIDER_REGISTRY.get(broker_name)
                 if not broker_providers or feature not in broker_providers:
-                    display = BROKER_DISPLAY_NAMES.get(broker_name, broker_name)
                     feat_display = _FEATURE_DISPLAY.get(feature, feature)
                     messages.append(
-                        f"{display}은(는) {feat_display} 기능을 지원하지 않습니다"
+                        f"{broker_name}은(는) {feat_display} 기능을 지원하지 않습니다"
                     )
                     continue
                 # API 키 존재 확인
                 key = self._settings.get(f"{broker_name}_app_key")
                 secret = self._settings.get(f"{broker_name}_app_secret")
                 if not key or not secret:
-                    display = BROKER_DISPLAY_NAMES.get(broker_name, broker_name)
-                    messages.append(f"{display} API 키가 설정되지 않았습니다")
+                    messages.append(f"증권사 API 키가 설정되지 않았습니다")
 
         # 매매 페이지: order 증권사 확인
         trading_config = page_overrides.get("trading") or {}

@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 키움증권 Provider 구현체
@@ -6,20 +7,19 @@
   - KiwoomAuthProvider      : KiwoomRestAPI 토큰 관리 위임
   - KiwoomAccountProvider   : KiwoomRestAPI 계좌 조회 위임
   - KiwoomOrderProvider     : kiwoom_order.send_order 캡슐화
-  - KiwoomSectorProvider    : kiwoom_sector_rest + kiwoom_daily_avg_volume 캡슐화
+  - KiwoomSectorProvider    : kiwoom_stock_rest + kiwoom_daily_avg_volume 캡슐화
   - KiwoomWebSocketProvider : broker_urls 기반 WS URI 제공
 """
-from __future__ import annotations
 
+import asyncio
 import logging
-import time
+from backend.app.core.trade_mode import is_test_mode
 from typing import Callable, Optional
 
 from backend.app.core.broker_providers import (
     AccountProvider,
     AuthProvider,
     OrderProvider,
-    SectorProvider,
     WebSocketProvider,
 )
 from backend.app.core.kiwoom_rest import KiwoomRestAPI
@@ -40,11 +40,11 @@ class KiwoomAuthProvider(AuthProvider):
             settings.get("kiwoom_account_no", "") or ""
         )
 
-    def get_access_token(self) -> Optional[str]:
-        return self._rest_api.get_access_token()
+    async def get_access_token(self) -> Optional[str]:
+        return await self._rest_api.get_access_token()
 
-    def ensure_token(self) -> bool:
-        return self._rest_api._ensure_token()
+    async def ensure_token(self) -> bool:
+        return await self._rest_api._ensure_token()
 
     @property
     def broker_name(self) -> str:
@@ -70,26 +70,26 @@ class KiwoomAccountProvider(AccountProvider):
         self._rest_api = auth_provider.rest_api if auth_provider else None
         self._acnt_no = str(settings.get("kiwoom_account_no", "") or "")
 
-    def get_account_number(self) -> Optional[str]:
+    async def get_account_number(self) -> Optional[str]:
         if self._rest_api is None:
             return None
-        return self._rest_api.get_account_number()
+        return await self._rest_api.get_account_number()
 
-    def get_deposit_detail(self, acnt_no: str = "") -> Optional[dict]:
+    async def get_deposit_detail(self, acnt_no: str = "") -> Optional[dict]:
         if self._rest_api is None:
             return None
         resolved = acnt_no or self._acnt_no
         self._rest_api._acnt_no = resolved
-        return self._rest_api.get_deposit_detail(acnt_no=resolved)
+        return await self._rest_api.get_deposit_detail(acnt_no=resolved)
 
-    def get_balance_detail(
+    async def get_balance_detail(
         self, qry_tp: str = "1", dmst_stex_tp: str = "KRX"
     ) -> Optional[dict]:
         if self._rest_api is None:
             return None
-        return self._rest_api.get_balance_detail(qry_tp, dmst_stex_tp)
+        return await self._rest_api.get_balance_detail(qry_tp, dmst_stex_tp)
 
-    def get_account_balance(self, acnt_no: str = "") -> dict:
+    async def get_account_balance(self, acnt_no: str = "") -> dict:
         """
         [공통 표준] 계좌 잔고 통합 조회.
         kt00001(예수금) + kt00018(평가잔고) 결합 → 표준 구조 반환.
@@ -107,7 +107,7 @@ class KiwoomAccountProvider(AccountProvider):
         }
         if self._rest_api is None:
             return _empty
-        if not self._rest_api._ensure_token():
+        if not await self._rest_api._ensure_token():
             _log.warning(
                 "[키움증권계좌] 토큰 없음 -- 계좌잔고 조회 중단"
             )
@@ -129,9 +129,9 @@ class KiwoomAccountProvider(AccountProvider):
             except (ValueError, TypeError):
                 return 0.0
 
-        dep_raw = self._rest_api.get_deposit_detail(acnt_no=resolved)
-        time.sleep(0.5)  # 429 예방
-        bal_raw = self._rest_api.get_balance_detail()
+        dep_raw = await self._rest_api.get_deposit_detail(acnt_no=resolved)
+        await asyncio.sleep(0.5)  # 429 예방
+        bal_raw = await self._rest_api.get_balance_detail()
 
         if not dep_raw:
             _log.warning("[키움증권계좌] kt00001 응답 없음")
@@ -220,7 +220,7 @@ class KiwoomOrderProvider(OrderProvider):
         self._settings = settings
         self._auth = auth_provider
 
-    def send_order(
+    async def send_order(
         self,
         settings: dict,
         access_token: str,
@@ -233,7 +233,7 @@ class KiwoomOrderProvider(OrderProvider):
     ) -> dict:
         from backend.app.core.kiwoom_order import send_order as _kiwoom_send_order
 
-        return _kiwoom_send_order(
+        return await _kiwoom_send_order(
             settings,
             access_token,
             order_type,
@@ -245,9 +245,9 @@ class KiwoomOrderProvider(OrderProvider):
         )
 
 
-# ── Sector Provider ───────────────────────────────────────────────────
-class KiwoomSectorProvider(SectorProvider):
-    """기존 kiwoom_sector_rest + kiwoom_daily_avg_volume 캡슐화."""
+# ── Stock Provider ─────────────────────────────────────────────────────
+class KiwoomStockProvider:
+    """키움 주식 데이터 Provider (ka10099, ka10081 캡슐화)."""
 
     def __init__(
         self,
@@ -258,95 +258,66 @@ class KiwoomSectorProvider(SectorProvider):
         self._auth = auth_provider
         self._rest_api = auth_provider.rest_api if auth_provider else None
 
-    def fetch_daily_price(
+    async def fetch_all_stocks(
+        self,
+        *,
+        http_timeout: float = 15.0,
+    ) -> list:
+        """ka10099 코스피+코스닥 2회 호출 → 전체 종목 통합 정보 반환."""
+        if self._rest_api is None:
+            return []
+        from backend.app.core.kiwoom_stock_rest import fetch_ka10099_unified
+        return await fetch_ka10099_unified(self._rest_api, http_timeout=http_timeout)
+
+    async def fetch_stock_daily_price(
         self, stk_cd: str, qry_dt: str
-    ) -> Optional[dict]:
+    ) -> dict | None:
+        """ka10081 단건 조회 -- 장외 시간 확정 종가·등락률·거래대금 반환 (1일봉)."""
         if self._rest_api is None:
             return None
-        return self._rest_api.fetch_ka10081_daily_price(stk_cd, qry_dt)
+        from backend.app.core.kiwoom_stock_rest import fetch_ka10081_daily_price
+        return await fetch_ka10081_daily_price(self._rest_api, stk_cd, qry_dt)
 
-    def fetch_sector_all_daily(
-        self,
-        krx_codes: list[str],
-        qry_dt: str,
-        interval_sec: float = 0.1,
-        on_progress: Callable[[int, int], None] | None = None,
-        resume_codes: set[str] | None = None,
-    ) -> dict[str, dict]:
+    async def fetch_stock_5day_data(
+        self, stk_cd: str, qry_dt: str
+    ) -> dict | None:
+        """ka10081 단건 조회 -- 최근 5개 일봉에서 5일 평균 거래대금 및 최고가 계산 반환."""
         if self._rest_api is None:
-            return {}
-        return self._rest_api.fetch_ka10081_sector_all(
-            krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress,
-            resume_codes=resume_codes
-        )
+            return None
+        from backend.app.core.kiwoom_stock_rest import fetch_ka10081_daily_5d_data
+        return await fetch_ka10081_daily_5d_data(self._rest_api, stk_cd, qry_dt)
 
-    def fetch_sector_all_5d(
+    async def fetch_all_stocks_5day(
         self,
         krx_codes: list[str],
         qry_dt: str,
         interval_sec: float = 0.33,
-        on_progress: Callable[[int, int], None] | None = None,
-        resume_codes: set[str] | None = None,
+        on_progress: "Callable[[int, int], None] | None" = None,
+        resume_codes: "set[str] | None" = None,
     ) -> dict[str, dict]:
+        """전체 종목 ka10081 순차 조회 -- 5일봉 데이터 채우기용."""
         if self._rest_api is None:
             return {}
-        return self._rest_api.fetch_ka10081_sector_all(
-            krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress,
-            resume_codes=resume_codes
+        from backend.app.core.kiwoom_stock_rest import fetch_ka10081_all_stocks
+        return await fetch_ka10081_all_stocks(
+            krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress, resume_codes=resume_codes
         )
 
-    def fetch_industry_stocks(self, inds_cd: str) -> list[dict]:
-        # ka20002 삭제됨 — 빈 리스트 반환
-        return []
-
-    def fetch_avg_amt_5d(self, stk_cd: str) -> int:
+    async def fetch_all_stocks_daily_confirmed(
+        self,
+        krx_codes: list[str],
+        qry_dt: str,
+        interval_sec: float = 0.33,
+        on_progress: "Callable[[int, int], None] | None" = None,
+        resume_codes: "set[str] | None" = None,
+    ) -> dict[str, dict]:
+        """전체 종목 ka10081 순차 조회 -- 확정 시세(1일봉) 데이터 채우기용."""
         if self._rest_api is None:
-            return 0
-        amts, _ = self.fetch_daily_5d_data(stk_cd)
-        if not amts:
-            return 0
-        return sum(amts) // len(amts)
-
-    def fetch_daily_amounts_5d(self, stk_cd: str) -> list[int]:
-        if self._rest_api is None:
-            return []
-        amts, _ = self.fetch_daily_5d_data(stk_cd)
-        return amts
-
-    def fetch_daily_5d_data(self, stk_cd: str) -> tuple[list[int], list[int]]:
-        if self._rest_api is None:
-            return [], []
-        from backend.app.core.kiwoom_daily_avg_volume import (
-            fetch_daily_5d_data as _fetch,
+            return {}
+        from backend.app.core.kiwoom_stock_rest import fetch_ka10081_all_stocks
+        return await fetch_ka10081_all_stocks(
+            self._rest_api, krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress, resume_codes=resume_codes
         )
-
-        return _fetch(self._rest_api, stk_cd)
-
-    def fetch_market_code_list(self, mrkt_tp: str) -> list[str]:
-        if self._rest_api is None:
-            return []
-        return self._rest_api.fetch_ka10099_market_code_list(mrkt_tp)
-
-    def fetch_eligible_stocks(self) -> dict[str, str]:
-        if self._rest_api is None:
-            return {}
-        return self._rest_api.fetch_ka10099_eligible_stocks()
-
-    def fetch_index(self, mrkt_tp: str, inds_cd: str) -> Optional[dict]:
-        if self._rest_api is None:
-            return None
-        return self._rest_api.fetch_ka20001_index(mrkt_tp, inds_cd)
-
-    def fetch_stock_name_map(self) -> dict[str, str]:
-        if self._rest_api is None:
-            return {}
-        return self._rest_api.fetch_ka10099_stock_name_map()
-
-    def fetch_unified_stock_data(self) -> list:
-        if self._rest_api is None:
-            return []
-        from backend.app.core.kiwoom_sector_rest import fetch_ka10099_unified
-        return fetch_ka10099_unified(self._rest_api)
 
 
 # ── WebSocket Provider ────────────────────────────────────────────────

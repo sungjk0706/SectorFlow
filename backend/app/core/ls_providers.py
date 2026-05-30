@@ -1,17 +1,20 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 LS증권 Provider 구현체
 """
-from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Callable, Optional
+import time
+from collections.abc import Callable
+from datetime import datetime
 
 from backend.app.core.broker_providers import (
-    AuthProvider, AccountProvider, OrderProvider, SectorProvider, WebSocketProvider, UnifiedStockRecord
+    AuthProvider, AccountProvider, OrderProvider, WebSocketProvider, UnifiedStockRecord
 )
 from backend.app.core.ls_rest import LsRestAPI
+from backend.app.core.trading_calendar import get_kst_today_str
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +39,7 @@ class LsAuthProvider(AuthProvider):
         app_secret = (settings.get("ls_app_secret") or "").strip()
         self._rest_api = LsRestAPI(app_key, app_secret)
 
-    def get_access_token(self) -> Optional[str]:
+    def get_access_token(self) -> str | None:
         # 토큰 갱신 시도 (asyncio.run 사용)
         ok = _run_async(self._rest_api.ensure_token())
         if ok:
@@ -62,10 +65,10 @@ class LsAccountProvider(AccountProvider):
         self._rest_api = getattr(auth_provider, "rest_api", None)
         self._acnt_no = str(settings.get("ls_account_no", "") or "")
 
-    def get_account_number(self) -> Optional[str]:
+    def get_account_number(self) -> str | None:
         return self._acnt_no
 
-    def get_deposit_detail(self, acnt_no: str = "") -> Optional[dict]:
+    def get_deposit_detail(self, acnt_no: str = "") -> dict | None:
         if not self._rest_api:
             return None
         res = _run_async(self._rest_api.get_balance(cts_expcode=""))
@@ -73,7 +76,7 @@ class LsAccountProvider(AccountProvider):
             return res
         return res
 
-    def get_balance_detail(self, qry_tp: str = "1", dmst_stex_tp: str = "KRX") -> Optional[dict]:
+    def get_balance_detail(self, qry_tp: str = "1", dmst_stex_tp: str = "KRX") -> dict | None:
         if not self._rest_api:
             return None
         res = _run_async(self._rest_api.get_balance(cts_expcode=""))
@@ -182,46 +185,6 @@ class LsOrderProvider(OrderProvider):
         
         err_msg = res.get("rsp_msg") if res else "Network Error"
         return {"success": False, "error": err_msg, "raw_res": res}
-
-
-# ── Sector Provider ───────────────────────────────────────────────────
-class LsSectorProvider(SectorProvider):
-    def __init__(self, settings: dict, auth_provider: AuthProvider):
-        self._settings = settings
-        self._rest_api = getattr(auth_provider, "rest_api", None)
-
-    def fetch_daily_price(self, *args, **kwargs) -> Optional[dict]:
-        return None
-
-    def fetch_sector_all_daily(self, *args, **kwargs) -> dict[str, dict]:
-        return {}
-
-    def fetch_industry_stocks(self, *args, **kwargs) -> list[dict]:
-        return []
-
-    def fetch_avg_amt_5d(self, *args, **kwargs) -> int:
-        return 0
-
-    def fetch_daily_amounts_5d(self, *args, **kwargs) -> list[int]:
-        return []
-
-    def fetch_daily_5d_data(self, *args, **kwargs) -> tuple[list[int], list[int]]:
-        return [], []
-
-    def fetch_market_code_list(self, *args, **kwargs) -> list[str]:
-        return []
-
-    def fetch_eligible_stocks(self, *args, **kwargs) -> dict[str, str]:
-        return {}
-
-    def fetch_stock_name_map(self, *args, **kwargs) -> dict[str, str]:
-        return {}
-
-    def fetch_index(self, *args, **kwargs) -> Optional[dict]:
-        return None
-
-    def fetch_unified_stock_data(self, *args, **kwargs) -> list[UnifiedStockRecord]:
-        return []
 
 
 # ── WebSocket Provider ────────────────────────────────────────────────

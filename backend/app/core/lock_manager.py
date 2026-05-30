@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 잠금 파일(Lock File) 기반 중복 실행 방지 모듈.
@@ -6,7 +7,6 @@
 변경: 가이드라인에 따라 PID 체크 등 복잡한 로직을 제거하고 OS 레벨의 파일 락에만 의존하는 "단순 파일 락"으로 전환.
 크로스 플랫폼 지원: Windows, macOS, Linux
 """
-from __future__ import annotations
 
 import atexit
 import logging

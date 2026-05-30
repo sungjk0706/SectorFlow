@@ -123,7 +123,7 @@ export const api = {
   // Health Check for modern stability pattern
   healthCheck: () =>
     request<{
-      status: 'ready' | 'initializing' | 'error';
+      status: 'ready' | 'initializing' | 'downloading' | 'error';
       message: string;
       progress: {
         server_ready: boolean;
@@ -139,5 +139,11 @@ export const api = {
     request<{ ok: boolean; available_cash: number }>('/api/settlement/charge', {
       method: 'POST',
       body: JSON.stringify({ amount }),
+    }),
+
+  post: (path: string, body?: unknown) =>
+    request<{ ok: boolean; message?: string }>(path, {
+      method: 'POST',
+      body: body ? JSON.stringify(body) : undefined,
     }),
 };

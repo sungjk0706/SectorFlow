@@ -1,24 +1,23 @@
+from __future__ import annotations
+from typing import Optional
 # -*- coding: utf-8 -*-
 """
 키움증권 REST API 통신 클래스 (64비트 호환)
-- 순수 HTTP/JSON (requests 사용, OCX/COM 미사용)
+- 순수 HTTP/JSON (httpx.AsyncClient 사용, OCX/COM 미사용)
 - OAuth2 client_credentials: App Key, App Secret -> Access Token
 """
-from __future__ import annotations
 
+import asyncio
 import logging
-import threading
 import time
 from dataclasses import dataclass
-from typing import Optional
 
-import httpx as requests
+import httpx
 
 from backend.app.core.broker_urls import build_broker_urls, KIWOOM_REST_REAL
-from backend.app.core.kiwoom_sector_rest import (
-    fetch_ka10081_daily_and_5d_data as _ka10081_fetch_single,
-    fetch_ka10081_sector_all as _ka10081_fetch_all,
-    fetch_ka10099_stock_name_map as _ka10099_name_map,
+from backend.app.core.kiwoom_stock_rest import (
+    fetch_ka10081_daily_price as _ka10081_fetch_single,
+    fetch_ka10081_all_stocks as _ka10081_fetch_all,
 )
 
 _log = logging.getLogger(__name__)
@@ -66,12 +65,15 @@ class KiwoomRestAPI:
         app_key: str,
         app_secret: str,
         base_url: str = KIWOOM_REST_REAL,
+        settings: Optional[dict] = None,
     ):
         self.app_key = (app_key or "").strip()
         self.app_secret = (app_secret or "").strip()
         self.base_url = (base_url or KIWOOM_REST_REAL).rstrip("/")
         self._token_info: Optional[TokenInfo] = None
-        self._lock = threading.RLock()  # 스레드 간 REST 호출 직렬화 — access violation 방지 (RLock: _request→_ensure_token 재진입 허용)
+        self._lock = asyncio.Lock()  # 비동기 Lock — REST 호출 직렬화
+        self._settings = settings or {}
+        self._client: Optional[httpx.AsyncClient] = None
 
     def __enter__(self) -> "KiwoomRestAPI":
         return self
@@ -79,11 +81,24 @@ class KiwoomRestAPI:
     def __exit__(self, *_) -> None:
         pass
 
-    def _ensure_token(self) -> bool:
-        with self._lock:
+    async def _ensure_token(self) -> bool:
+        async with self._lock:
             if self._token_info and not self._token_info.is_expired_soon():
                 return True
-            return self._issue_token()
+            return await self._issue_token()
+
+    def get_spec(self, role_key: str, feature: Optional[str] = None) -> Optional[str]:
+        """BrokerRouter에서 spec 조회 (connector에서 사용 가능한 래퍼)."""
+        if not self._settings:
+            return None
+        try:
+            from backend.app.core.broker_factory import get_router
+            router = get_router(self._settings)
+            if router:
+                return router.get_spec(role_key, feature=feature)
+        except Exception:
+            pass
+        return None
 
     # ── 공통 REST 호출 (429 adaptive backoff) ────────────────────────────────
     # 모든 키움 REST API 호출은 이 함수를 경유하여 일관된 429 처리를 보장한다.
@@ -96,21 +111,21 @@ class KiwoomRestAPI:
     _API_MAX_RETRIES: int = 3
     _API_BACKOFF_BASE: float = 8.0    # 429 시 대기 = base * (attempt+1)
 
-    def _call_api(
+    async def _call_api(
         self,
         url: str,
         api_id: str,
-        body: dict | None = None,
+        body: Optional[dict] = None,
         *,
         timeout: float = 15.0,
-        max_retries: int | None = None,
+        max_retries: Optional[int] = None,
         cont_yn: str = "N",
         next_key: str = "",
         label: str = "",
-    ) -> tuple[requests.Response | None, bool]:
+    ) -> tuple[httpx.Optional[Response], bool]:
         """범용 키움 REST POST 호출 — 429 exponential backoff + adaptive delay.
 
-        반환: (Response | None, hit_429: bool)
+        반환: (Optional[Response], hit_429: bool)
         - Response: 성공(200) 시 httpx.Response, 실패 시 None
         - hit_429: 이번 호출에서 429를 한 번이라도 만났으면 True
 
@@ -120,7 +135,7 @@ class KiwoomRestAPI:
         tag = label or api_id
         hit_429 = False
 
-        if not self._ensure_token():
+        if not await self._ensure_token():
             _log.warning("[REST] %s 토큰 없음 -- 생략", tag)
             return None, False
 
@@ -135,7 +150,9 @@ class KiwoomRestAPI:
 
         for attempt in range(retries):
             try:
-                resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+                if not self._client:
+                    self._client = httpx.AsyncClient(limits=httpx.Limits(max_keepalive_connections=5, max_connections=10))
+                resp = await self._client.post(url, headers=headers, json=payload, timeout=timeout)
 
                 if resp.status_code == 429:
                     hit_429 = True
@@ -146,7 +163,7 @@ class KiwoomRestAPI:
                     )
                     # adaptive delay 증가
                     self._api_delay = min(self._api_delay * 2, self._API_DELAY_MAX)
-                    time.sleep(wait_sec)
+                    await asyncio.sleep(wait_sec)
                     continue
 
                 if resp.status_code != 200:
@@ -158,16 +175,16 @@ class KiwoomRestAPI:
                 return resp, hit_429
 
             except Exception as e:
-                _log.warning("[REST] %s 예외 (시도=%d): %s", tag, attempt + 1, e)
+                _log.warning("[REST] %s 예외 (시도=%d): %s: %s", tag, attempt + 1, type(e).__name__, str(e))
                 if attempt < retries - 1:
-                    time.sleep(2 * (attempt + 1))
+                    await asyncio.sleep(2 * (attempt + 1))
                     continue
                 return None, hit_429
 
         _log.warning("[REST] %s %d회 재시도 모두 실패", tag, retries)
         return None, hit_429
 
-    def _issue_token(self) -> bool:
+    async def _issue_token(self) -> bool:
         """OAuth2 접근 토큰 발급 (키움 REST API 명세 au10001). 429 시 최대 3회 재시도."""
         if not self.app_key or not self.app_secret:
             _log.warning("[키움증권]  토큰 발급 불가 -- app_key 또는 app_secret 없음")
@@ -187,8 +204,9 @@ class KiwoomRestAPI:
                         "[키움증권] 토큰 재시도 %d/3 -- %d초 대기 후 재요청 (au10001)",
                         attempt + 1, wait_sec,
                     )
-                    time.sleep(wait_sec)
-                resp = requests.post(url, headers=headers, json=body, timeout=15)
+                    await asyncio.sleep(wait_sec)
+                async with httpx.AsyncClient() as client:
+                    resp = await client.post(url, headers=headers, json=body, timeout=15)
                 data = resp.json() if resp.text else {}
                 if resp.status_code == 429:
                     wait_sec = 10 * (attempt + 1)
@@ -196,7 +214,7 @@ class KiwoomRestAPI:
                         "[키움증권]  429 요청 과다(au10001) -- %d초 대기 후 재시도 (%d/3)",
                         wait_sec, attempt + 1,
                     )
-                    time.sleep(wait_sec)
+                    await asyncio.sleep(wait_sec)
                     continue
                 if resp.status_code != 200:
                     _log.warning(
@@ -238,20 +256,20 @@ class KiwoomRestAPI:
         _log.warning("[키움증권]  토큰 발급 3회 모두 실패 (429 초과)")
         return False
 
-    def get_access_token(self) -> Optional[str]:
-        if not self._ensure_token():
+    async def get_access_token(self) -> Optional[str]:
+        if not await self._ensure_token():
             return None
         return self._token_info.token if self._token_info else None
 
-    def get_auth_headers(self, api_id: str) -> Optional[dict]:
-        """스레드 안전 인증 헤더 생성 — Lock 내에서 토큰 확인/갱신 + 헤더 dict 반환을 원자적으로 수행.
+    async def get_auth_headers(self, api_id: str) -> Optional[dict]:
+        """비동기 안전 인증 헤더 생성 — Lock 내에서 토큰 확인/갱신 + 헤더 dict 반환을 원자적으로 수행.
 
         _post_ka10095_chunk() 등 외부 함수에서 api._ensure_token() + api._token_info.token을
         직접 접근하는 대신 이 메서드를 사용하여 토큰 불일치를 원천 차단한다.
         토큰 확보 실패 시 None 반환.
         """
-        with self._lock:
-            if not self._ensure_token():
+        async with self._lock:
+            if not await self._ensure_token():
                 return None
             return {
                 "Content-Type": "application/json;charset=UTF-8",
@@ -261,10 +279,10 @@ class KiwoomRestAPI:
                 "next-key": "",
             }
 
-    def _request(self, api_id: str, body: Optional[dict] = None,
+    async def _request(self, api_id: str, body: Optional[dict] = None,
                  cont_yn: str = "N", next_key: str = "") -> Optional[dict]:
-        with self._lock:
-            if not self._ensure_token():
+        async with self._lock:
+            if not await self._ensure_token():
                 _log.warning("[키움증권] 요청 건너뜀 -- 유효한 토큰 없음 (api-id=%s)", api_id)
                 return None
             url = f"{self.base_url}{self.ACCOUNT_URL}"
@@ -279,15 +297,17 @@ class KiwoomRestAPI:
             for attempt in range(3):
                 try:
                     if attempt > 0:
-                        time.sleep(3 * attempt)
-                    resp = requests.post(url, headers=headers, json=payload, timeout=15)
+                        await asyncio.sleep(3 * attempt)
+                    if not self._client:
+                        self._client = httpx.AsyncClient(limits=httpx.Limits(max_keepalive_connections=5, max_connections=10))
+                    resp = await self._client.post(url, headers=headers, json=payload, timeout=15)
                     if resp.status_code == 429:
                         wait_sec = 10 * (attempt + 1)
                         _log.warning(
                             "[키움증권]  429 요청 과다(api-id=%s) -- %d초 대기 후 재시도 (%d/3)",
                             api_id, wait_sec, attempt + 1,
                         )
-                        time.sleep(wait_sec)
+                        await asyncio.sleep(wait_sec)
                         continue
                     if resp.status_code != 200:
                         _log.warning(
@@ -301,10 +321,10 @@ class KiwoomRestAPI:
                     return None
             return None
 
-    def _paginated_request(self, api_id: str, body: Optional[dict] = None) -> Optional[dict]:
+    async def _paginated_request(self, api_id: str, body: Optional[dict] = None) -> Optional[dict]:
         """연속조회(cont-yn=Y)를 처리하여 전체 페이지를 합산 반환. 페이지간 0.3초 대기."""
-        with self._lock:
-            if not self._ensure_token():
+        async with self._lock:
+            if not await self._ensure_token():
                 _log.warning("[키움증권] 연속조회 요청 건너뜀 -- 유효한 토큰 없음 (api-id=%s)", api_id)
                 return None
             url = f"{self.base_url}{self.ACCOUNT_URL}"
@@ -321,13 +341,15 @@ class KiwoomRestAPI:
             page = 0
             while True:
                 if page > 0:
-                    time.sleep(0.3)  # 연속조회 페이지 간 요청 간격
+                    await asyncio.sleep(0.3)  # 연속조회 페이지 간 요청 간격
                 page += 1
                 headers = {**base_headers, "cont-yn": cont_yn, "next-key": next_key}
                 retry_429 = 0
                 while True:
                     try:
-                        resp = requests.post(url, headers=headers, json=payload, timeout=15)
+                        if not self._client:
+                            self._client = httpx.AsyncClient(limits=httpx.Limits(max_keepalive_connections=5, max_connections=10))
+                        resp = await self._client.post(url, headers=headers, json=payload, timeout=15)
                         if resp.status_code == 429:
                             retry_429 += 1
                             wait_sec = 10 * retry_429
@@ -337,7 +359,7 @@ class KiwoomRestAPI:
                             )
                             if retry_429 >= 3:
                                 return result
-                            time.sleep(wait_sec)
+                            await asyncio.sleep(wait_sec)
                             continue
                         if resp.status_code != 200:
                             _log.warning(
@@ -364,14 +386,14 @@ class KiwoomRestAPI:
                 target["acnt_evlt_remn_indv_tot"] = all_items
             return result
 
-    def get_account_number(self) -> Optional[str]:
+    async def get_account_number(self) -> Optional[str]:
         api_id = getattr(self, "_account_tr_id", self.API_ID_ACCOUNT)
-        data = self._request(api_id)
+        data = await self._request(api_id)
         if not data:
             return None
         return data.get("acctNo") or (data.get("body") or {}).get("acctNo")
 
-    def get_deposit_detail(self, acnt_no: str = "", qry_tp: str = "3") -> Optional[dict]:
+    async def get_deposit_detail(self, acnt_no: str = "", qry_tp: str = "3") -> Optional[dict]:
         """
         kt00001 예수금상세현황 조회.
         qry_tp: '3'=추정조회(기본), '2'=일반조회  -- 키움 API 필수 파라미터.
@@ -381,21 +403,21 @@ class KiwoomRestAPI:
         resolved_acnt = acnt_no or getattr(self, "_acnt_no", "")
         if resolved_acnt:
             body["acnt_no"] = resolved_acnt
-        return self._request(api_id, body=body)
+        return await self._request(api_id, body=body)
 
-    def get_balance_detail(
+    async def get_balance_detail(
         self, qry_tp: str = "1", dmst_stex_tp: str = "KRX"
     ) -> Optional[dict]:
         """계좌평가잔고내역 조회 (api-id: kt00018). 연속조회 자동 처리."""
         api_id = getattr(self, "_balance_tr_id", "kt00018")
         body = {"qry_tp": qry_tp, "dmst_stex_tp": dmst_stex_tp}
-        return self._paginated_request(api_id, body=body)
+        return await self._paginated_request(api_id, body=body)
 
-    def fetch_ka10081_daily_price(self, stk_cd: str, qry_dt: str) -> Optional[dict]:
+    async def fetch_ka10081_daily_price(self, stk_cd: str, qry_dt: str) -> Optional[dict]:
         """ka10081 단건 조회 -- 장외 시간 확정 종가·등락률·거래대금 반환 (5일데이터 제외)."""
-        return _ka10081_fetch_single(self, stk_cd, qry_dt)
+        return await _ka10081_fetch_single(self, stk_cd, qry_dt)
 
-    def fetch_ka10081_sector_all(
+    async def fetch_ka10081_sector_all(
         self,
         krx_codes: list[str],
         qry_dt: str,
@@ -404,13 +426,13 @@ class KiwoomRestAPI:
         resume_codes: "set[str] | None" = None,
     ) -> dict[str, dict]:
         """전체 종목 ka10081 순차 조회 -- 장외 시간 확정 데이터용."""
-        return _ka10081_fetch_all(self, krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress, resume_codes=resume_codes)
+        return await _ka10081_fetch_all(self, krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress, resume_codes=resume_codes)
 
-    def fetch_ka10099_stock_name_map(self) -> dict[str, str]:
-        """ka10099 코스피+코스닥 전체 종목명 매핑 조회. {6자리 종목코드: 종목명}."""
-        return _ka10099_name_map(self)
+    async def fetch_market_stock_name_map(self) -> dict[str, str]:
+        """시장 종목명 매핑 조회. {6자리 종목코드: 종목명}."""
+        return await _market_stock_name_map(self)
 
-    def fetch_ka20001_index(self, mrkt_tp: str, inds_cd: str) -> Optional[dict]:
+    async def fetch_ka20001_index(self, mrkt_tp: str, inds_cd: str) -> Optional[dict]:
         """ka20001 -- 업종현재가요청. 지수(현재가·등락률) + 상승/하락 종목수.
 
         mrkt_tp: "0"=코스피, "1"=코스닥
@@ -418,7 +440,7 @@ class KiwoomRestAPI:
         반환: {"price", "change", "rate", "up_count", "down_count"} 또는 None
         """
         url = f"{self.base_url}/api/dostk/sect"
-        resp, _ = self._call_api(url, "ka20001", {"mrkt_tp": mrkt_tp, "inds_cd": inds_cd},
+        resp, _ = await self._call_api(url, "ka20001", {"mrkt_tp": mrkt_tp, "inds_cd": inds_cd},
                                   timeout=10.0, label=f"ka20001/{inds_cd}")
         if resp is None:
             return None
@@ -455,16 +477,20 @@ class KiwoomRestAPI:
             "down_count": _i(data.get("fall")),
         }
 
-    def fetch_ka10099_market_code_list(self, mrkt_tp: str) -> list[str]:
+    async def fetch_ka10099_market_code_list(self, mrkt_tp: str) -> list[str]:
         """
         ka10099 -- 시장별 종목 코드 리스트 조회.
         mrkt_tp: "0"=코스피, "10"=코스닥
         반환: 종목코드 문자열 리스트 (6자리, 실패 시 빈 리스트)
         """
-        result = self.fetch_ka10099_full(mrkt_tp)
+        result = await self.fetch_ka10099_full(mrkt_tp)
         return [cd for cd, _, _ in result]
 
-    def fetch_ka10099_full(self, mrkt_tp: str) -> list[tuple[str, bool, str]]:
+    async def fetch_market_stock_list(self, mrkt_tp: str) -> list[tuple[str, bool, str]]:
+        """시장별 종목 코드 + NXT 중복상장 여부 + 시장구분코드 동시 조회 (별칭)."""
+        return await self.fetch_ka10099_full(mrkt_tp)
+
+    async def fetch_ka10099_full(self, mrkt_tp: str) -> list[tuple[str, bool, str]]:
         """
         ka10099 -- 시장별 종목 코드 + NXT 중복상장 여부 + 시장구분코드 동시 조회.
         mrkt_tp: "0"=코스피, "10"=코스닥
@@ -477,7 +503,7 @@ class KiwoomRestAPI:
         엔드포인트: /api/dostk/stkinfo
         """
         url = f"{self.base_url}/api/dostk/stkinfo"
-        resp, _ = self._call_api(url, "ka10099", {"mrkt_tp": mrkt_tp},
+        resp, _ = await self._call_api(url, "ka10099", {"mrkt_tp": mrkt_tp},
                                   label=f"ka10099/{mrkt_tp}")
         if resp is None:
             return []
@@ -503,13 +529,13 @@ class KiwoomRestAPI:
             return []
 
 
-    def fetch_ka10001_nxt_enable(self, stk_cd: str) -> str:
+    async def fetch_ka10001_nxt_enable(self, stk_cd: str) -> str:
         """
         ka10001 -- 종목 기본정보 조회로 NXT 중복상장 여부 확인.
         반환: 'Y' = KRX+NXT 중복상장, 'N' = KRX 단독, '' = 조회 실패
         """
         url = f"{self.base_url}/api/dostk/stkinfo"
-        resp, _ = self._call_api(url, "ka10001", {"stk_cd": str(stk_cd).strip()},
+        resp, _ = await self._call_api(url, "ka10001", {"stk_cd": str(stk_cd).strip()},
                                   timeout=10.0, label=f"ka10001/{stk_cd}")
         if resp is None:
             return ""
@@ -532,7 +558,7 @@ class KiwoomRestAPI:
             _log.debug("[NXT] ka10001 조회 실패 %s: %s", stk_cd, e)
             return ""
 
-    def fetch_nxt_enable_map(self, codes: list[str], interval_sec: float = 0.17) -> dict[str, bool]:
+    async def fetch_nxt_enable_map(self, codes: list[str], interval_sec: float = 0.17) -> dict[str, bool]:
         """
         종목 리스트 전체 ka10001 순차 조회 -> {종목코드: NXT여부} 반환.
         interval_sec: 호출 간격 (초당 ~6건, 키움 제한 안전 마진)
@@ -540,13 +566,13 @@ class KiwoomRestAPI:
         result: dict[str, bool] = {}
         for i, cd in enumerate(codes):
             if i > 0:
-                time.sleep(interval_sec)
-            val = self.fetch_ka10001_nxt_enable(cd)
+                await asyncio.sleep(interval_sec)
+            val = await self.fetch_ka10001_nxt_enable(cd)
             result[cd] = (val == "Y")
         return result
 
 
-def kiwoom_try_token(app_key: str, app_secret: str) -> tuple[bool, Optional[str], Optional[dict]]:
+async def kiwoom_try_token(app_key: str, app_secret: str) -> tuple[bool, Optional[str], Optional[dict]]:
     """
     키움 OAuth2 토큰 발급 시도. (success, token, error_detail) 반환.
     error_detail: 실패 시 키움 응답 {err_cd, err_msg, ...} 또는 예외 정보
@@ -561,7 +587,8 @@ def kiwoom_try_token(app_key: str, app_secret: str) -> tuple[bool, Optional[str]
     if not body["appkey"] or not body["secretkey"]:
         return False, None, {"err_msg": "App Key / Secret 없음"}
     try:
-        resp = requests.post(url, headers={"Content-Type": "application/json;charset=UTF-8"}, json=body, timeout=15)
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, headers={"Content-Type": "application/json;charset=UTF-8"}, json=body, timeout=15)
         data = resp.json() if resp.text else {}
         if resp.status_code != 200:
             return False, None, {"status": resp.status_code, "url": url, **data}

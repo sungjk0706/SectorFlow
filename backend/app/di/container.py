@@ -1,7 +1,8 @@
 # backend/app/di/container.py
 # DI Container - 단일 인스턴스 관리
 
-from typing import Any, Dict, Type, TypeVar, cast, get_type_hints
+from collections.abc import Callable
+from typing import Any, Type, TypeVar, cast, get_type_hints
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,8 +14,8 @@ class Container:
     """단일 인스턴스 DI Container"""
     
     _instance: 'Container | None' = None
-    _services: Dict[Type[Any], Any] = {}
-    _singletons: Dict[str, Any] = {}
+    _services: dict[Type[Any], Any] = {}
+    _singletons: dict[str, Any] = {}
     
     def __new__(cls) -> 'Container':
         if cls._instance is None:

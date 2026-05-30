@@ -1,6 +1,6 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """설정 라우터 — RESTful 아키텍처 (GET 조회, PATCH 개별 수정)."""
-from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -14,7 +14,7 @@ async def get_settings(_: str = Depends(get_current_user)):
     """전체 설정 조회 (마스킹된 민감 필드 포함)."""
     try:
         from backend.app.core.settings_store import build_masked_settings_dict
-        return build_masked_settings_dict(username="admin")
+        return await build_masked_settings_dict(username="admin")
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -39,16 +39,20 @@ async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_
 
         data = {field_name: body["value"]}
         changed_keys = {field_name}
-        apply_settings_updates(data)
+        await apply_settings_updates(data)
 
-        # control_queue에 설정 변경 신호 전송
-        import time
-        control_queue = get_control_queue()
-        await control_queue.put((0, time.monotonic(), {
-            "type": "UPDATE_CONFIG",
-            "payload": data,
-            "changed_keys": changed_keys,
-        }))
+        # control_queue에 설정 변경 신호 전송 (엔진 기동 시만)
+        try:
+            import time
+            control_queue = get_control_queue()
+            await control_queue.put((0, time.monotonic(), {
+                "type": "UPDATE_CONFIG",
+                "payload": data,
+                "changed_keys": changed_keys,
+            }))
+        except RuntimeError:
+            # control_queue가 초기화되지 않은 경우 (엔진 미기동) 무시
+            pass
 
         await after_settings_persisted(username="admin", changed_keys=changed_keys)
         return {"ok": True}
@@ -105,7 +109,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         async with es._shared_lock:
             es._positions = []
             es._subscribed_stocks.clear()
-            es._rest_radar_quote_cache.clear()
+            # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_rest_radar_quote_cache)
             es._rest_radar_rest_once.clear()
             es._snapshot_history.clear()
             es._checked_stocks.clear()
@@ -116,7 +120,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
             len(es._pending_stock_details), len(es._sector_stock_layout),
             len(_positions_code_set),
         )
-        es._refresh_account_snapshot_meta()
+        await es._refresh_account_snapshot_meta()
         es._broadcast_account(reason="test_data_reset")
         es.logger.info("[엔진] 보유종목, 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료")
         # 8. 수익 이력 초기화 WS 브로드캐스트
@@ -141,6 +145,24 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"테스트 데이터 초기화 실패: {e}",
+        )
+
+
+@router.post("/trading-calendar/refresh")
+async def refresh_trading_calendar(_: str = Depends(get_current_user)):
+    """거래일 캐시 수동 갱신 (pykrx)."""
+    try:
+        from backend.app.core.trading_calendar import refresh_trading_days_cache
+
+        await refresh_trading_days_cache()
+
+        return {"ok": True, "message": "거래일 캐시 갱신 완료"}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"거래일 캐시 갱신 실패: {e}",
         )
 
 

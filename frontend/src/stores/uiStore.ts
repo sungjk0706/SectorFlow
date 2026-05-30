@@ -48,6 +48,9 @@ export interface UIState {
 
   /* ── 실시간 상태 ── */
   realtimeStatus: "waiting" | "live" | null
+
+  /* ── 엔진 재시작 완료 상태 ── */
+  engineReloadComplete: boolean
 }
 
 const initialState: UIState = {
@@ -70,6 +73,7 @@ const initialState: UIState = {
   wsSubscribeStatus: { index_subscribed: false, quote_subscribed: false },
   sectorScoresDelta: null,
   sectorSummary: null,
+  engineReloadComplete: false,
 }
 
 export const uiStore = createStore<UIState>(initialState)
@@ -113,9 +117,15 @@ export function applyBootstrapStage(data: { stage_id: number; stage_name: string
   uiStore.setState({ bootstrapStage: data })
 }
 
-/* ── settings-changed: 설정만 갱신 ── */
-export function applySettingsChanged(data: AppSettings): void {
-  uiStore.setState({ settings: data })
+/* ── settings-changed: 설정만 갱신 (증분 갱신 대응) ── */
+export function applySettingsChanged(data: AppSettings | { delta: boolean; changed: Partial<AppSettings> }): void {
+  if (data && 'delta' in data && data.delta) {
+    uiStore.setState((state) => ({
+      settings: state.settings ? { ...state.settings, ...(data.changed && typeof data.changed === 'object' ? data.changed : {}) } : (data.changed as AppSettings),
+    }))
+  } else {
+    uiStore.setState({ settings: data as AppSettings })
+  }
 }
 
 /* ── index-refresh: 엔진 상태 + 장 상태 갱신 ── */
@@ -124,6 +134,11 @@ export function applyIndexRefresh(data: EngineStatus): void {
   const mp = (data as unknown as Record<string, unknown>).market_phase as { krx: string; nxt: string } | undefined
   if (mp) patch.marketPhase = mp
   uiStore.setState(patch)
+}
+
+/* ── engine-reload-complete: 엔진 재시작 완료 ── */
+export function applyEngineReloadComplete(): void {
+  uiStore.setState({ engineReloadComplete: true })
 }
 
 /* ── snapshot-update: 수익 이력만 갱신 ── */
@@ -169,10 +184,10 @@ export function applyWsSubscribeStatus(data: { index_subscribed: boolean; quote_
   uiStore.setState({ wsSubscribeStatus: data })
 }
 
-/* ── ws-connection-status: Kiwoom WebSocket 연결 상태 갱신 ── */
+/* ── ws-connection-status: Broker WebSocket 연결 상태 갱신 ── */
 export function applyWsConnectionStatus(data: { connected: boolean }): void {
   uiStore.setState((state) => ({
-    status: state.status ? { ...state.status, kiwoom_connected: data.connected } : null,
+    status: state.status ? { ...state.status, broker_connected: data.connected } : null,
   }))
 }
 

@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 브로커 Provider 서브 인터페이스 (ABC)
@@ -12,11 +13,10 @@
 엔진/서비스 코드는 이 인터페이스만 참조하여 증권사 독립적으로 동작.
 BrokerRouter가 설정 기반으로 기능별 Provider 구현체를 매핑한다.
 """
-from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Callable, Optional
+from collections.abc import Callable
 
 
 # ── 공통 데이터 구조체 ───────────────────────────────────────────────
@@ -36,7 +36,7 @@ class AuthProvider(ABC):
     """인증 토큰 발급/관리. 동일 증권사의 모든 Provider가 공유."""
 
     @abstractmethod
-    def get_access_token(self) -> Optional[str]:
+    def get_access_token(self) -> str | None:
         """OAuth2 액세스 토큰 발급/반환 (캐싱 포함)."""
         ...
 
@@ -57,12 +57,12 @@ class AccountProvider(ABC):
     """계좌 조회: 예수금, 잔고, 보유종목."""
 
     @abstractmethod
-    def get_account_number(self) -> Optional[str]:
+    def get_account_number(self) -> str | None:
         """계좌번호 조회."""
         ...
 
     @abstractmethod
-    def get_deposit_detail(self, acnt_no: str = "") -> Optional[dict]:
+    def get_deposit_detail(self, acnt_no: str = "") -> dict | None:
         """예수금 상세 조회."""
         ...
 
@@ -89,7 +89,7 @@ class AccountProvider(ABC):
     @abstractmethod
     def get_balance_detail(
         self, qry_tp: str = "1", dmst_stex_tp: str = "KRX"
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """계좌평가잔고내역 조회 (연속조회 포함)."""
         ...
 
@@ -114,82 +114,6 @@ class OrderProvider(ABC):
         매수/매도/정정/취소 주문.
         반환: {"success": bool, "msg": str, "data": dict | None}
         """
-        ...
-
-
-# ── Sector Provider ───────────────────────────────────────────────────
-class SectorProvider(ABC):
-    """업종 데이터: 업종별 종목, 시세 스냅샷, 5일 평균 거래대금."""
-
-    @abstractmethod
-    def fetch_daily_price(
-        self, stk_cd: str, qry_dt: str
-    ) -> Optional[dict]:
-        """일별 주가 조회 (확정 종가/등락률/거래대금)."""
-        ...
-
-    @abstractmethod
-    def fetch_sector_all_daily(
-        self,
-        krx_codes: list[str],
-        qry_dt: str,
-        interval_sec: float = 0.1,
-        on_progress: Callable[[int, int], None] | None = None,
-        resume_codes: set[str] | None = None,
-    ) -> dict[str, dict]:
-        """전체 종목 일별 주가 순차 조회."""
-        ...
-
-    @abstractmethod
-    def fetch_industry_stocks(self, inds_cd: str) -> list[dict]:
-        """업종별 종목 시세 조회."""
-        ...
-
-    @abstractmethod
-    def fetch_avg_amt_5d(self, stk_cd: str) -> int:
-        """단일 종목 5일 평균 거래대금 (백만원)."""
-        ...
-
-    @abstractmethod
-    def fetch_daily_amounts_5d(self, stk_cd: str) -> list[int]:
-        """단일 종목 5일치 거래대금 배열 (백만원, 최신→과거)."""
-        ...
-
-    @abstractmethod
-    def fetch_daily_5d_data(self, stk_cd: str) -> tuple[list[int], list[int]]:
-        """단일 종목 5일치 거래대금 배열 + 고가 배열 동시 반환.
-
-        Returns:
-            (amounts_5d, highs_5d)
-            amounts_5d: [백만원, ...] 최신→과거 (최대 5개)
-            highs_5d:   [원, ...]   최신→과거 (최대 5개)
-            실패 시 ([], []).
-        """
-        ...
-
-    @abstractmethod
-    def fetch_market_code_list(self, mrkt_tp: str) -> list[str]:
-        """시장별 종목 코드 리스트."""
-        ...
-
-    @abstractmethod
-    def fetch_eligible_stocks(self) -> dict[str, str]:
-        """적격 종목코드 수집 {종목코드: ""}."""
-        ...
-
-    @abstractmethod
-    def fetch_stock_name_map(self) -> dict[str, str]:
-        """전체 종목명 매핑 {6자리 종목코드: 종목명}."""
-        ...
-
-    @abstractmethod
-    def fetch_index(self, mrkt_tp: str, inds_cd: str) -> Optional[dict]:
-        """업종 지수 현재가 조회."""
-        ...
-
-    @abstractmethod
-    def fetch_unified_stock_data(self) -> list[UnifiedStockRecord]:
-        """통합 파싱 — 종목코드·종목명·업종명·시장구분을 한꺼번에 추출."""
         ...
 
 

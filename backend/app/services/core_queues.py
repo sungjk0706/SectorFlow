@@ -1,3 +1,5 @@
+from __future__ import annotations
+from typing import Optional
 # -*- coding: utf-8 -*-
 """
 전역 이벤트 버스 (Queues) - 파이프라인 아키텍처 핵심 배관
@@ -10,10 +12,8 @@ HTS급 실시간 처리를 위한 4개 코어 큐:
 
 외부 브로커(Redis 등) 미사용 - 순수 asyncio.Queue 기반 프로세스 내 배관.
 """
-from __future__ import annotations
 
 import asyncio
-from typing import Optional
 
 from backend.app.core.logger import get_logger
 
@@ -39,7 +39,7 @@ def initialize_queues() -> None:
     global _tick_queue, _order_queue, _broadcast_queue, _control_queue
 
     if _tick_queue is not None:
-        logger.warning("[core_queues] 이미 초기화됨 - 재초기화 생략")
+        logger.info("[core_queues] 이미 초기화됨 - 재초기화 생략")
         return
 
     _tick_queue = asyncio.Queue(maxsize=TICK_QUEUE_MAXSIZE)

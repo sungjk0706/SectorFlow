@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 계좌·엔진 상태 변경 알림 -- WebSocket 브로드캐스트 기반.
@@ -7,7 +8,6 @@
 
 델타 비교만으로 전송 여부를 결정한다 — 변경 있으면 즉시 전송, 변경 없으면 생략.
 """
-from __future__ import annotations
 
 import time
 from collections.abc import Callable
@@ -110,7 +110,9 @@ def _rebuild_layout_cache(layout: list) -> None:
     """_sector_stock_layout 리스트로부터 _layout_code_set을 재구축한다. 예외 시 이전 캐시 유지."""
     global _layout_code_set
     try:
-        _layout_code_set = {v for t, v in layout if t == "code" and v}
+        # 기존 set 객체 주소 유지, 내부만 갱신 (주소 스왑 금지)
+        _layout_code_set.clear()
+        _layout_code_set.update({v for t, v in layout if t == "code" and v})
     except Exception:
         logger.warning("[캐시] _layout_code_set 재구축 실패 (이전 캐시 유지)", exc_info=True)
 
@@ -245,26 +247,22 @@ def notify_desktop_header_refresh() -> None:
         logger.warning("[연결] 헤더 갱신 화면전송 실패: %s", e, exc_info=True)
 
 
-def notify_desktop_settings_toggled() -> None:
-    """텔레그램 등 외부에서 설정 토글 변경 시 → WS settings-changed."""
+async def notify_desktop_settings_toggled(changed_keys_dict: dict | None = None) -> None:
+    """텔레그램 등 외부에서 설정 토글 변경 시 → WS settings-changed (증분 전송 지원)."""
     try:
-        import backend.app.services.engine_service as _es
-        payload = _es.get_settings_snapshot()
-        payload["_v"] = 1
+        if changed_keys_dict:
+            payload = {
+                "_v": 1,
+                "delta": True,
+                "changed": changed_keys_dict
+            }
+        else:
+            import backend.app.services.engine_service as _es
+            payload = await _es.get_settings_snapshot()
+            payload["_v"] = 1
         _broadcast("settings-changed", payload)
     except Exception as e:
         logger.warning("[데이터] 설정 변경 화면전송 실패: %s", e, exc_info=True)
-
-
-def notify_desktop_index_refresh() -> None:
-    """0J 지수 REAL 수신 후 헤더 지수 표시 갱신 → WS index-refresh."""
-    try:
-        import backend.app.services.engine_service as _es
-        payload = _es.get_status()
-        payload["_v"] = 1
-        _broadcast("index-refresh", payload)
-    except Exception as e:
-        logger.warning("[연결] 헤더 갱신 화면전송 실패: %s", e, exc_info=True)
 
 
 def notify_desktop_sector_scores(*, force: bool = False) -> None:
@@ -404,12 +402,12 @@ def notify_desktop_buy_radar_only() -> None:
     pass
 
 
-def notify_desktop_sector_stocks_refresh() -> None:
+async def notify_desktop_sector_stocks_refresh() -> None:
     """필터 변경으로 종목 목록이 바뀌었을 때 delta 또는 전체 리스트를 WS로 전송."""
     global _prev_sector_stock_codes, _prev_sent_cache
     try:
         import backend.app.services.engine_service as _es
-        stocks = _es.get_sector_stocks()
+        stocks = await _es.get_sector_stocks()
         new_codes = {s.get("code", "") for s in stocks if s.get("code", "")}
 
         if not _prev_sector_stock_codes:

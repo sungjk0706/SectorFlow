@@ -77,25 +77,16 @@ export interface BuyTarget {
   high_5d?: number;
 }
 
-export interface IndexData {
-  price: number;
-  change: number;
-  rate: number;
-}
-
 export interface EngineStatus {
   running: boolean;
-  kiwoom_connected: boolean;
+  broker_connected: boolean;
   login_ok: boolean;
-  kiwoom_token_valid: boolean;
+  broker_token_valid: boolean;
   trade_mode: string;
   is_test_mode: boolean;
   engine_task_alive: boolean;
   stock_subscribed_count: number;
   ws_reg_total_estimate: number;
-  kospi?: IndexData;
-  kosdaq?: IndexData;
-  index_polling?: boolean;
 }
 
 export interface AppSettings {
@@ -105,7 +96,7 @@ export interface AppSettings {
   // 거래 모드
   trade_mode: string;
   test_mode: boolean;
-  kiwoom_mock_mode: boolean;
+  mock_mode: boolean;
   mode_real: boolean;
 
   // 매수 설정
@@ -149,10 +140,6 @@ export interface AppSettings {
   // 매수 차단
   buy_block_rise_pct: number;
   buy_block_fall_pct: number;
-  buy_index_guard_kospi_on: boolean;
-  buy_index_guard_kosdaq_on: boolean;
-  buy_index_kospi_drop: number;
-  buy_index_kosdaq_drop: number;
 
   // 텔레그램
   tele_on: boolean;

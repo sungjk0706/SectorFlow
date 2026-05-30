@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 Loguru 기반 트레이딩 로거 — 안전한 파일 로깅 포함.
@@ -12,7 +13,6 @@ Loguru 기반 트레이딩 로거 — 안전한 파일 로깅 포함.
   → 해결: 표준 queue.Queue + 전용 데몬 스레드로 파일 쓰기 분리.
      asyncio 이벤트 루프와 완전 독립, OS 파이프 미사용, IOCP 충돌 없음.
 """
-from __future__ import annotations
 
 import io
 import logging
