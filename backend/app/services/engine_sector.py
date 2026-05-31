@@ -8,12 +8,11 @@
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import (
     _sector_summary_cache,
-    _invalidate_sector_stocks_cache,
-    # _pending_stock_details 제거
-    _radar_cnsr_order,
+    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
+    # _radar_cnsr_order 삭제: _subscribed_stocks 사용
     _filtered_sector_codes,
-    _sector_stocks_cache,
-    _sector_stocks_dirty,
+    # _sector_stocks_cache 제거
+    # _sector_stocks_dirty 제거
     _subscribed_stocks,
     _settings_cache,
     _sector_stock_layout,
@@ -86,8 +85,7 @@ async def recompute_sector_summary_now() -> None:
         )
         _sector_summary_cache = _ss
         cancel_pending_recompute()
-        if _invalidate_sector_stocks_cache:
-            _invalidate_sector_stocks_cache()
+        # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
         logger.info("[업종순위] 재계산 완료")
     except Exception as e:
         logger.warning("[업종순위] 재계산 실패: %s", e, exc_info=True)
@@ -95,19 +93,21 @@ async def recompute_sector_summary_now() -> None:
 
 def get_sector_summary_inputs() -> dict:
     """업종 요약 계산 입력 데이터 반환."""
-    # _pending_stock_details 제거: _radar_cnsr_order + _master_stocks_cache로 대체
+    # _radar_cnsr_order 삭제: _subscribed_stocks + _master_stocks_cache로 대체
     from backend.app.services.engine_state import _master_stocks_cache
     stock_details = {}
-    for cd in _radar_cnsr_order:
+    for cd in _subscribed_stocks:
         if cd in _master_stocks_cache:
             stock = _master_stocks_cache[cd].copy()
             stock["status"] = "active"
             stock_details[cd] = stock
+    # _avg_amt_5d 제거: _master_stocks_cache에서 직접 추출
+    avg_amt_5d = {cd: entry.get("avg_5d_trade_amount", 0) for cd, entry in _master_stocks_cache.items()}
     return {
-        "all_codes": list(_radar_cnsr_order),
+        "all_codes": list(_subscribed_stocks),
         "trade_prices": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
         "trade_amounts": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
-        "avg_amt_5d": _avg_amt_5d,
+        "avg_amt_5d": avg_amt_5d,
         "strengths": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
         "stock_details": stock_details,
         "latest_index": {},
@@ -115,24 +115,20 @@ def get_sector_summary_inputs() -> dict:
 
 
 async def get_sector_stocks() -> list:
-    """업종별 종목 시세 테이블용 — 캐시 유효 시 참조 직접 반환, dirty 시 재구축."""
-    global _sector_stocks_cache, _sector_stocks_dirty
+    """업종별 종목 시세 테이블용 — _master_stocks_cache 기반 실시간 필터링/정렬."""
     from backend.app.core.industry_map import load_eligible_stocks_cache_from_db
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
     from backend.app.core.sector_mapping import get_merged_sector as _get_sector
 
-    if not _sector_stocks_dirty and _sector_stocks_cache is not None:
-        return _sector_stocks_cache
-
-    # ── dirty: 캐시 재구축 (eligible_stocks_cache 기준 필터 + 정렬 1회) ──
+    # ── 실시간 필터링 (eligible_stocks_cache 기준 필터 + 정렬) ──
     eligible_stocks = await load_eligible_stocks_cache_from_db() or {}
     filter_set = set(eligible_stocks.keys()) if eligible_stocks else None
 
     merged: dict[str, dict] = {}
     from backend.app.services.engine_state import _master_stocks_cache
 
-    # _pending_stock_details 제거: _radar_cnsr_order + _master_stocks_cache로 대체
-    for cd in _radar_cnsr_order:
+    # _subscribed_stocks + _master_stocks_cache로 필터링
+    for cd in _subscribed_stocks:
         if filter_set is not None and cd not in filter_set:
             continue
         if _filtered_sector_codes is not None and cd not in _filtered_sector_codes:
@@ -144,7 +140,7 @@ async def get_sector_stocks() -> list:
         # 시세 없는 빈 엔트리 제외
         if int(e.get("cur_price") or 0) <= 0 and (not e.get("name") or e.get("name") == cd):
             continue
-        # 정적 보강 필드를 원본 dict에 직접 패치 (참조 공유)
+        # 정적 보강 필드
         avg5d_raw = int(e.get("avg_5d_trade_amount", 0) or 0)
         e["avg_amt_5d"] = avg5d_raw
         e["market_type"] = _get_mkt(cd) or ""
@@ -162,8 +158,6 @@ async def get_sector_stocks() -> list:
     result = list(merged.values())
     result.sort(key=lambda r: sector_order.get(r.get("sector", ""), 9999))
 
-    _sector_stocks_cache = result
-    _sector_stocks_dirty = False
     return result
 
 
@@ -174,15 +168,14 @@ async def get_all_sector_stocks() -> list[dict]:
     """
     from backend.app.core.sector_mapping import get_merged_sector
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
-    from backend.app.core.sector_stock_cache import load_stock_name_cache
-    from backend.app.services.engine_state import _radar_cnsr_order, _master_stocks_cache
+    from backend.app.db.stock_tables import load_stock_name_cache
+    from backend.app.services.engine_state import _master_stocks_cache
 
-    # _pending_stock_details 제거: _radar_cnsr_order + _master_stocks_cache 사용
+    # 단일 소스 진리: _master_stocks_cache만 사용 (실시간 구독 상태와 분리)
     name_map = await load_stock_name_cache() or {}
 
     result: list[dict] = []
-    for cd in _radar_cnsr_order:
-        entry = _master_stocks_cache.get(cd, {})
+    for cd, entry in _master_stocks_cache.items():
         if entry.get("status") != "active":
             continue  # 매매부적격(관리종목, 거래정지, exited 등) 제외
         try:
@@ -205,11 +198,7 @@ async def get_all_sector_stocks() -> list[dict]:
     return result
 
 
-def _invalidate_sector_stocks_cache(force: bool = False) -> None:
-    """업종 종목 캐시 무효화."""
-    global _sector_stocks_dirty, _buy_targets_snapshot_cache
-    _sector_stocks_dirty = True
-    _buy_targets_snapshot_cache = None  # 매수후보 캐시도 무효화
+# _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
 
 # get_all_sector_stocks_from_cache 삭제 (master_stocks_table로 대체)
@@ -247,10 +236,7 @@ async def _on_filter_settings_changed() -> None:
     if old_codes == new_codes:
         return
 
-    # === 설정 변경 시 강제 캐시 무효화 (1초 제한 무시) ===
-    _invalidate_sector_stocks_cache(force=True)
-    logger.info("[시작][필터변경] 캐시 강제 무효화 완료")
-    # ==================================================
+    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
     
     added = (new_codes or set()) - (old_codes or set())
     removed = (old_codes or set()) - (new_codes or set())
@@ -405,8 +391,7 @@ def _update_avg_amt_5d(new_data: dict[str, int], *, merge: bool = False) -> None
         if key in _master_stocks_cache:
             _master_stocks_cache[key]["avg_5d_trade_amount"] = value
     _filtered_sector_codes = _compute_filtered_codes()
-    if _invalidate_sector_stocks_cache:
-        _invalidate_sector_stocks_cache()
+    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
     logger.info(
         "[5일평균] 갱신 완료 -- %d종목, 필터 통과 %s개",
         len(normalized),
