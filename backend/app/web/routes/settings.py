@@ -72,10 +72,10 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         from backend.app.services.dry_run import clear, set_virtual_deposit
         from backend.app.services.trade_history import clear_test_history
         from backend.app.services import settlement_engine
-        from backend.app.core.settings_file import load_settings_async
+        import backend.app.services.engine_state as _st
 
         default_deposit = 10_000_000
-        settings = await load_settings_async()
+        settings = _st._settings_cache or {}
         default_deposit = int(
             settings.get("test_virtual_deposit", default_deposit) or default_deposit
         )

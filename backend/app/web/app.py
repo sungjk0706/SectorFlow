@@ -40,6 +40,10 @@ async def lifespan(app: FastAPI):
     from backend.app.db.migration_v3 import run_migration_v3
     await run_migration_v3()
 
+    # SQLite 4차 마이그레이션 자동 실행 (downloaded_at 컬럼 추가 - 이어받기 기능)
+    from backend.app.db.migration_v4 import run_migration_v4
+    await run_migration_v4()
+
     # 거래일 캐시 초기화
     from backend.app.core.trading_calendar import initialize_trading_calendar_cache
     await initialize_trading_calendar_cache()
@@ -76,9 +80,14 @@ async def lifespan(app: FastAPI):
     # 단일 통합설정 마스터 테이블(integrated_system_settings)로부터 1회 로드 완료
     from backend.app.core.settings_file import load_settings
     settings = await load_settings()
-    
+
     # settings를 container에 등록
     container.register_singleton("settings", settings)
+
+    # _settings_cache 초기화 (단일 소스 진리 보장)
+    import backend.app.services.engine_state as _st
+    _st._settings_cache.clear()
+    _st._settings_cache.update(settings)
 
     logger.info("[웹서버] ThreadPoolExecutor 설정 직전")
     loop = asyncio.get_running_loop()

@@ -7,8 +7,9 @@
 """
 import asyncio
 from backend.app.core.kiwoom_connector import KiwoomConnector
+from backend.app.core.kiwoom_providers import KiwoomAuthProvider
 from backend.app.services.trading import AutoTradeManager
-from backend.app.services.engine_utils import LRUCache, LazyLock, LazyEvent
+from backend.app.services.engine_utils import LazyLock, LazyEvent
 from backend.app.services.state_manager import StateManager, OrderStatus
 
 # ── StateManager ─────────────────────────────────────────────────────────
@@ -18,6 +19,7 @@ _state_manager: StateManager | None = None
 _running = False
 _connector_manager: "ConnectorManager | None" = None  # type: ignore[name-defined]
 _kiwoom_connector: KiwoomConnector | None = None
+_kiwoom_auth_provider: KiwoomAuthProvider | None = None
 _broker_tokens: dict[str, str] = {}  # {broker_id: access_token}
 _engine_task: asyncio.Task | None = None
 _engine_loop_ref: asyncio.AbstractEventLoop | None = None
@@ -28,7 +30,7 @@ _engine_user_id: str = ""
 _last_ws_limit_warn_ts: float = 0.0
 _realtime_latency_exceeded: bool = False
 _avg_amt_needs_bg_refresh: bool = False
-_invalidate_sector_stocks_cache = None
+# _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 _refresh_account_snapshot_meta = None
 _update_account_memory = None
 
@@ -52,19 +54,17 @@ _rest_api_thread_sem: asyncio.Semaphore | None = None
 _account_rest_lock: asyncio.Lock | None = None
 
 # ── 데이터 캐시 ────────────────────────────────────────────────────────
-# _pending_stock_details 제거
-_radar_cnsr_order: list[str] = []
+# _radar_cnsr_order 삭제
 _sector_stock_layout: list[tuple[str, str]] = []
-_amts_5d_arrays: dict = {}
-_highs_5d_arrays: dict = {}
+# _avg_amt_5d 제거: _master_stocks_cache에서 직접 사용
+# _amts_5d_arrays, _highs_5d_arrays 제거: stock_5d_array 테이블에서 직접 읽도록 대체
 _subscribed_0d_stocks: set[str] = set()
 # 실시간 틱 데이터 캐시 삭제 (_latest_trade_prices, _latest_trade_amounts, _latest_strength)
-_sector_dirty_codes: set[str] = set()
 _filtered_sector_codes: set[str] | None = None
 # 실시간 틱 데이터 캐시 삭제 (_latest_strength)
-_sector_stocks_cache: list | None = None
-_sector_stocks_dirty: bool = True
-_sector_stocks_last_invalidated: float = 0.0
+# _sector_stocks_cache 제거: _master_stocks_cache 기반 실시간 필터링으로 대체
+# _sector_stocks_dirty 제거
+# _sector_stocks_last_invalidated 제거
 _MIN_CACHE_LIFETIME_SEC: float = 1.0
 _buy_targets_snapshot_cache: list | None = None
 _buy_targets_cache_ref: object | None = None
@@ -161,8 +161,4 @@ def _notify_reg_ack(return_code: str = "") -> None:
         logger = get_logger(__name__)
         logger.warning("[연결] REG ACK 상태 설정 실패", exc_info=True)
 
-def _invalidate_sector_stocks_cache() -> None:
-    """업종 종목 캐시 무효화."""
-    global _sector_stocks_dirty, _buy_targets_snapshot_cache
-    _sector_stocks_dirty = True
-    _buy_targets_snapshot_cache = None
+# _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음

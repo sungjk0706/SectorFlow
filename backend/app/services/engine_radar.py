@@ -8,12 +8,12 @@
 import asyncio
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import (
-    # _pending_stock_details 제거: _radar_cnsr_order + _master_stocks_cache로 대체
+    # _radar_cnsr_order 삭제: _subscribed_stocks + _master_stocks_cache로 대체
     _sector_stock_layout,
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_prices, _latest_trade_amounts, _rest_radar_quote_cache)
     _shared_lock,
-    _radar_cnsr_order,
-    _invalidate_sector_stocks_cache,
+    _subscribed_stocks,
+    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
     _rest_radar_rest_once,
     _checked_stocks,
     _settings_cache,
@@ -27,13 +27,13 @@ logger = get_logger("engine_radar")
 
 def get_pending_stocks() -> list:
     """활성 상태의 종목 목록 반환."""
-    # _pending_stock_details 제거: _radar_cnsr_order + _master_stocks_cache로 대체
+    # _radar_cnsr_order 삭제: _subscribed_stocks + _master_stocks_cache로 대체
     from backend.app.services.engine_state import _master_stocks_cache
     result = []
-    for cd in _radar_cnsr_order:
+    for cd in _subscribed_stocks:
         if cd in _master_stocks_cache:
             stock = _master_stocks_cache[cd].copy()
-            stock["status"] = "active"  # _radar_cnsr_order에 있으면 active
+            stock["status"] = "active"  # _subscribed_stocks에 있으면 active
             result.append(stock)
     return result
 
@@ -96,25 +96,24 @@ async def _apply_real01_volume_amount_to_radar_rows(raw_cd: str, vals: dict, *, 
 async def _mark_radar_exited(stk_cd: str) -> None:
     """
     레이더 목록에서 종목 제거.
-    _pending_stock_details 제거: _radar_cnsr_order에서만 제거
+    _radar_cnsr_order 삭제: _subscribed_stocks에서만 제거
     """
     from backend.app.services.engine_symbol_utils import _normalize_stk_cd_rest
 
     nk = _normalize_stk_cd_rest(str(stk_cd).strip().lstrip("A"))
     rm: str | None = None
-    if nk in _radar_cnsr_order:
+    if nk in _subscribed_stocks:
         rm = nk
     else:
-        for k in list(_radar_cnsr_order):
+        for k in list(_subscribed_stocks):
             if _normalize_stk_cd_rest(str(k)) == nk:
                 rm = k
                 break
     if rm is not None:
-        _radar_cnsr_order[:] = [x for x in _radar_cnsr_order if x != rm]
+        _subscribed_stocks.discard(rm)
         if _clear_radar_rest_bootstrap_for_stk_cd:
             await _clear_radar_rest_bootstrap_for_stk_cd(rm)
-        if _invalidate_sector_stocks_cache:
-            _invalidate_sector_stocks_cache()
+        # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
 
 async def clear_exited_from_radar() -> int:
@@ -144,15 +143,14 @@ async def _clear_radar_and_ready_memory() -> None:
     from backend.app.services.engine_account_notify import _rebuild_layout_cache
 
     async with _shared_lock:
-        # _pending_stock_details 제거: clear() 제거
-        _radar_cnsr_order.clear()
+        # _radar_cnsr_order 삭제: _subscribed_stocks.clear()
+        _subscribed_stocks.clear()
         _sector_stock_layout.clear()
         # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_rest_radar_quote_cache)
     _rebuild_layout_cache(_sector_stock_layout)
     _checked_stocks.clear()
     _rest_radar_rest_once.clear()
-    if _invalidate_sector_stocks_cache:
-        _invalidate_sector_stocks_cache()
+    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
 
 async def _tracked_ui_stock_codes() -> set[str]:
@@ -169,8 +167,8 @@ async def _tracked_ui_stock_codes() -> set[str]:
             c = _format_broker_reg_stk_cd(str(p.get("stk_cd", "") or ""))
             if c:
                 out.add(c)
-    # _pending_stock_details 제거: _radar_cnsr_order 사용
-    for k in _radar_cnsr_order:
+    # _radar_cnsr_order 삭제: _subscribed_stocks 사용
+    for k in _subscribed_stocks:
         c = _format_broker_reg_stk_cd(str(k))
         if c:
             out.add(c)

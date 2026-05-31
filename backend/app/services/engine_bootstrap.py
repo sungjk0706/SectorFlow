@@ -71,7 +71,7 @@ async def _bootstrap_sector_stocks_async() -> None:
         logger.info("[시작] master_stocks_table에서 전체 종목 Eager 로딩 시작...")
 
         from backend.app.db.stock_tables import load_master_stocks_table
-        loaded_data, sector_cache = await load_master_stocks_table()
+        loaded_data = await load_master_stocks_table()
 
         if not loaded_data:
             logger.warning("[시작] master_stocks_table에 데이터 없음 -- 장마감 후 수동 확정시세 실행 필요")
@@ -82,12 +82,6 @@ async def _bootstrap_sector_stocks_async() -> None:
             engine_service._data_ready_event.set()
             return
 
-        # 메모리 캐시에 단일 진실 공급원으로 로드
-        # _pending_stock_details 제거: _master_stocks_cache만 사용
-        for key, value in sector_cache.items():
-            if key in _st._master_stocks_cache:
-                _st._master_stocks_cache[key]["sector"] = value
-
         logger.info("[시작] master_stocks_table %d종목 메모리 Eager 로딩 완료!", len(loaded_data))
         _broadcast_bootstrap_stage(2, "섹터 매핑 로드")
 
@@ -97,7 +91,7 @@ async def _bootstrap_sector_stocks_async() -> None:
 
         sector_groups: defaultdict[str, list[str]] = defaultdict(list)
         for code in loaded_data.keys():
-            sector = sector_cache.get(code, "기타")
+            sector = loaded_data[code].get("sector", "기타")
             sector_groups[sector].append(code)
 
         # 섹터 순서: 기존 레이아웃의 섹터 순서를 최대한 유지하고 신규 섹터는 뒤에 추가
@@ -155,14 +149,35 @@ async def _bootstrap_sector_stocks_async() -> None:
         logger.debug("[시작] REST 버킷 세팅 완료")
 
         # 화면 표시용 엔트리 생성
-        # _pending_stock_details 제거: _radar_cnsr_order에만 코드 추가
+        # _radar_cnsr_order 삭제: 필터링된 종목만 바로 구독 신청
+        # sector_min_trade_amt 필터링 적용 (설계 의도 준수)
         if krx_rows:
-            filtered = filter(lambda x: _format_kiwoom_reg_stk_cd(_base_stk_cd(x[0])), krx_rows)
-            bases_list = list(map(lambda x: _format_kiwoom_reg_stk_cd(_base_stk_cd(x[0])), filtered))
+            # 설정값 로드 (_settings_cache는 app.py에서 이미 초기화됨)
+            _settings = _st._settings_cache or {}
+            min_amt = float(_settings.get("sector_min_trade_amt", 0.0) or 0.0)
 
-            async with _st._shared_lock:
-                _st._radar_cnsr_order.extend(bases_list)
-            logger.debug("[시작] 확정데이터 반영 완료 -- %d행 (화면 표시)", len(krx_rows))
+            # 필터링 적용 후 바로 구독 신청
+            filtered_codes = []
+            for code, data in krx_rows:
+                base = _format_kiwoom_reg_stk_cd(_base_stk_cd(code))
+                if not base:
+                    continue
+                if min_amt > 0:
+                    avg_amt = data.get("avg_5d_trade_amount", 0) or 0
+                    if avg_amt >= min_amt:
+                        filtered_codes.append(base)
+                else:
+                    filtered_codes.append(base)
+
+            # 필터링된 종목만 바로 구독 신청
+            for code in filtered_codes:
+                try:
+                    from backend.app.services.engine_ws import _subscribe_stock_realtime_when_ready
+                    _task = asyncio.get_running_loop().create_task(_subscribe_stock_realtime_when_ready(code))
+                    _task.add_done_callback(lambda t: logger.warning("[구독] 구독 실패: %s", t.exception()) if t.exception() else None)
+                except RuntimeError as e:
+                    logger.error("[구독] task 생성 실패 %s: %s", code, e)
+            logger.debug("[시작] 확정데이터 반영 완료 -- %d행 (화면 표시, 필터링: %d종목)", len(krx_rows), len(filtered_codes))
         else:
             logger.info("[시작] 확정데이터 없음 -- 화면 표시 생략")
 
@@ -180,6 +195,7 @@ async def _bootstrap_sector_stocks_async() -> None:
             if high_price > 0:
                 _high_map[code] = high_price
 
+        # _update_avg_amt_5d는 _master_stocks_cache를 직접 업데이트하므로 호출 유지
         _update_avg_amt_5d(_avg_map)
         for key, value in _high_map.items():
             if key in _st._master_stocks_cache:
@@ -202,18 +218,39 @@ async def _bootstrap_sector_stocks_async() -> None:
         )
 
         # ── 필터 계산 및 빈 엔트리 추가 ─────────────────────────────────────
-        from backend.app.services.engine_sector import _compute_filtered_codes, _invalidate_sector_stocks_cache
+        from backend.app.services.engine_sector import _compute_filtered_codes
         _st._sector_summary_cache = None
         _st._filtered_sector_codes = _compute_filtered_codes()
-        _invalidate_sector_stocks_cache(force=True)
+        # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
         _filter_set = _st._filtered_sector_codes or set()
-        # _pending_stock_details 제거: _radar_cnsr_order에만 추가
-        _missing = _filter_set - set(_st._radar_cnsr_order)
+        # _radar_cnsr_order 삭제: 필터링된 종목만 바로 구독 신청
+        # sector_min_trade_amt 필터링 적용 (설계 의도 준수)
+        _missing = _filter_set
         if _missing:
-            async with _st._shared_lock:
-                _st._radar_cnsr_order.extend(list(_missing))
-            logger.debug("[시작] 필터 통과 빈 엔트리 추가 -- %d종목", len(_missing))
+            # 설정값 로드 (_settings_cache는 app.py에서 이미 초기화됨)
+            _settings = _st._settings_cache or {}
+            min_amt = float(_settings.get("sector_min_trade_amt", 0.0) or 0.0)
+
+            # 필터링 적용 후 바로 구독 신청
+            filtered_missing = []
+            for code in _missing:
+                if min_amt > 0:
+                    avg_amt = _master_stocks_cache.get(code, {}).get("avg_5d_trade_amount", 0) or 0
+                    if avg_amt >= min_amt:
+                        filtered_missing.append(code)
+                else:
+                    filtered_missing.append(code)
+
+            if filtered_missing:
+                for code in filtered_missing:
+                    try:
+                        from backend.app.services.engine_ws import _subscribe_stock_realtime_when_ready
+                        _task = asyncio.get_running_loop().create_task(_subscribe_stock_realtime_when_ready(code))
+                        _task.add_done_callback(lambda t: logger.warning("[구독] 구독 실패: %s", t.exception()) if t.exception() else None)
+                    except RuntimeError as e:
+                        logger.error("[구독] task 생성 실패 %s: %s", code, e)
+                logger.debug("[시작] 필터 통과 빈 엔트리 추가 -- %d종목 (필터링: %d종목)", len(_missing), len(filtered_missing))
 
         _broadcast_bootstrap_stage(5, "앱준비 완료")
         _st._bootstrap_event.set()
@@ -274,11 +311,7 @@ async def _deferred_sector_summary() -> None:
         _inputs = get_sector_summary_inputs()
         if _inputs.get("all_codes"):
             _settings = _st._settings_cache or {}
-            # 앱준비 시점에 _settings_cache가 아직 빈 딕셔너리일 수 있음
-            # → 설정 파일에서 직접 로드하여 사용자 설정값 반영 보장
-            if not _settings:
-                from backend.app.core.settings_file import load_settings
-                _settings = await load_settings()
+            # _settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
             _trim_trade = float(_settings.get("sector_trim_trade_amt_pct", 0) or 0)
             _trim_change = float(_settings.get("sector_trim_change_rate_pct", 0) or 0)
             _kwargs = dict(
@@ -294,9 +327,8 @@ async def _deferred_sector_summary() -> None:
                 trim_change_rate_pct=_trim_change,
             )
             _result = await compute_full_sector_summary(**_inputs, **_kwargs)
-            from backend.app.services.engine_sector import _invalidate_sector_stocks_cache
             _st._sector_summary_cache = _result
-            _invalidate_sector_stocks_cache(force=True)  # 업종순위 계산 완료 후 강제 무효화
+            # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
             logger.debug("[시작] 업종순위 후순위 계산 완료 -- %d개 섹터", len(_result.sectors))
             
             # 영속성 캐시 저장 삭제 (메모리 캐시로 대체)

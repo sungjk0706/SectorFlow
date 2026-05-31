@@ -4,77 +4,49 @@ from __future__ import annotations
 LS증권 브로커 구현체 (LsBroker)
 
 구조:
-  - LsRestAPI (ls_rest.py): OAuth2 토큰 관리, REST API 호출, 주문 실행
-  - LsBroker (이 파일): BrokerInterface로 캡슐화
+  - BrokerRouter: 기능별 Provider 매핑 중앙 라우터
+  - LsBroker (이 파일): BrokerInterface로 캡슐화, BrokerRouter 위임
 """
 
 import logging
 
 from backend.app.core.broker_interface import BrokerInterface
-from backend.app.core.ls_rest import LsRestAPI
+from backend.app.core.broker_router import BrokerRouter
 
 _log = logging.getLogger(__name__)
 
 
 class LsBroker(BrokerInterface):
-    """LS증권 REST 브로커"""
+    """LS증권 브로커 (BrokerRouter 위임 패턴)"""
 
     def __init__(self, settings: dict):
         self._settings = settings
-
-        app_key = (settings.get("ls_app_key") or "").strip()
-        app_secret = (settings.get("ls_app_secret") or "").strip()
-        account_no = str(settings.get("ls_account_no", "") or "")
-
-        self._rest_api = LsRestAPI(app_key, app_secret)
-        self._acnt_no = account_no
+        self._router = BrokerRouter(settings)
 
     # ── 인증 ──────────────────────────────────────────────────────────────
     def get_access_token(self) -> str | None:
         """OAuth2 액세스 토큰 반환"""
-        return self._rest_api.get_token()
+        return self._router.auth.get_access_token()
 
     def ensure_token(self) -> bool:
         """토큰 유효성 확인, 만료 시 자동 갱신"""
-        # 비동기 메서드이므로 동기 컨텍스트에서는 False 반환
-        # 실제 사용 시 async context에서 호출 필요
-        return False
+        return self._router.auth.ensure_token()
 
     # ── 계좌 조회 ─────────────────────────────────────────────────────────
     def get_account_number(self) -> str | None:
-        return self._acnt_no
+        return self._router.account.get_account_number()
 
     def get_deposit_detail(self, acnt_no: str = "") -> dict | None:
-        """예수금 상세 조회 - LS증권 미구현"""
-        _log.warning("[LS증권] 예수금 조회 미구현")
-        return None
+        """예수금 상세 조회"""
+        return self._router.account.get_deposit_detail(acnt_no)
 
     def get_balance_detail(self, qry_tp: str = "1", dmst_stex_tp: str = "KRX") -> dict | None:
-        """계좌평가잔고내역 조회 - LS증권 미구현"""
-        _log.warning("[LS증권] 잔고 조회 미구현")
-        return None
+        """계좌평가잔고내역 조회"""
+        return self._router.account.get_balance_detail(qry_tp, dmst_stex_tp)
 
     def get_account_balance(self, acnt_no: str = "") -> dict:
-        """
-        [공통 표준] 계좌 잔고 통합 조회 - LS증권 미구현
-
-        추후 LS증권 API 추가 시 구현 필요
-        """
-        _log.warning("[LS증권] 계좌 잔고 조회 미구현")
-        return {
-            "success": False,
-            "summary": {
-                "tot_eval": 0,
-                "tot_pnl": 0,
-                "tot_buy": 0,
-                "deposit": 0,
-                "orderable": 0,
-                "withdrawable": 0,
-                "total_rate": 0.0,
-            },
-            "stock_list": [],
-            "raw_data": {},
-        }
+        """계좌 잔고 통합 조회"""
+        return self._router.account.get_account_balance(acnt_no)
 
     # ── 주문 ──────────────────────────────────────────────────────────────
     def send_order(
@@ -97,51 +69,10 @@ class LsBroker(BrokerInterface):
         _log.warning("[LS증권] 동기 주문 인터페이스 미구현 - async LsRestAPI 사용 필요")
         return {"success": False, "error": "async interface required"}
 
-    async def send_order_async(
-        self,
-        stock_code: str,
-        quantity: int,
-        price: float,
-        order_type: str = "00",  # 00:지정가
-        side: str = "BUY",  # BUY or SELL
-        member_code: str = "NXT",
-    ) -> dict | None:
-        """
-        비동기 주문 전송 (LS증권 전용)
-
-        Args:
-            stock_code: 종목코드 (A+종목코드 형식)
-            quantity: 주문수량
-            price: 주문가
-            order_type: 호가유형코드 (00:지정가, 03:시장가)
-            side: 매수/매도 (BUY/SELL)
-            member_code: 회원사번호 (KRX, NXT)
-
-        Returns:
-            주문 결과
-        """
-        if side.upper() == "BUY":
-            return await self._rest_api.buy_order(
-                stock_code=stock_code,
-                quantity=quantity,
-                price=price,
-                order_type=order_type,
-                member_code=member_code,
-            )
-        else:  # SELL
-            return await self._rest_api.sell_order(
-                stock_code=stock_code,
-                quantity=quantity,
-                price=price,
-                order_type=order_type,
-                member_code=member_code,
-            )
-
     # ── WebSocket ─────────────────────────────────────────────────────────
     def get_ws_uri(self) -> str:
-        """WebSocket URI - LS증권 미구현"""
-        _log.warning("[LS증권] WebSocket URI 미구현")
-        return ""
+        """WebSocket URI"""
+        return self._router.websocket.get_ws_uri()
 
     # ── 메타 ──────────────────────────────────────────────────────────────
     @property

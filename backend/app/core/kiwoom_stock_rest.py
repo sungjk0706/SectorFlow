@@ -206,15 +206,13 @@ async def fetch_ka10081_daily_5d_data(
         return {
             "high_price_5d": high_price_5d,
             "avg_amt_5d": avg_amt_5d,
-            "highs_5d_array": highs_5d,
-            "amts_5d_array": amts_5d,
         }
     except Exception as e:
         _log.warning("[ka10081-5d] 파싱 예외 %s/%s: %s", log_cd, api_cd, e)
         return None
 
 
-async def fetch_ka10081_all_stocks(
+async def fetch_ka10081_all_stocks_daily_confirmed(
     api: "KiwoomRestAPI",
     krx_codes: list[str],
     qry_dt: str,
@@ -224,24 +222,49 @@ async def fetch_ka10081_all_stocks(
     resume_codes: "set[str] | None" = None,
 ) -> dict[str, dict]:
     """
-    전체 종목 ka10081 순차 조회 -- 장외 시간 확정 데이터 및 5일 캐시 채우기용.
+    전체 종목 ka10081 순차 조회 -- 확정시세 전용.
     """
-    from backend.app.core.sector_stock_cache import save_progress_cache
+    from backend.app.db.database import get_db_connection
     from backend.app.services import engine_service as es
 
     result: dict[str, dict] = {}
     failed_codes: list[str] = []
     total = len(krx_codes)
+    starting_count = len(resume_codes) if resume_codes else 0
 
-    # 이어받기 기능 제거 (system_settings 테이블 삭제로 인해)
+    # 이어받기: 이미 완료된 종목은 result에 미리 추가
     if resume_codes:
-        _log.warning("[ka10081] 이어받기 기능 제거됨 -- resume_codes 무시 (%d종목)", len(resume_codes))
+        _log.info("[ka10081-confirmed] 이어받기 -- %d/%d종목부터 계속", starting_count, total)
+        conn = await get_db_connection()
+        for code in resume_codes:
+            cursor = await conn.execute(
+                "SELECT code, name, market, sector, cur_price, change, change_rate, trade_amount, high_price, prev_close, date "
+                "FROM master_stocks_table WHERE code = ? AND date = ?",
+                (code, qry_dt)
+            )
+            row = await cursor.fetchone()
+            if row:
+                result[code] = {
+                    "code": row["code"],
+                    "name": row["name"],
+                    "market": row["market"],
+                    "sector": row["sector"],
+                    "cur_price": row["cur_price"],
+                    "change": row["change"],
+                    "change_rate": row["change_rate"],
+                    "trade_amount": row["trade_amount"],
+                    "high_price": row["high_price"],
+                    "prev_close": row["prev_close"],
+                    "date": row["date"],
+                }
+        # 다운로드 대상에서 완료된 종목 제외
+        krx_codes = [cd for cd in krx_codes if cd not in resume_codes]
 
     if on_progress:
-        on_progress(0, total)
+        on_progress(len(result), total)
 
     pending = set()
-    done_count = 0
+    done_count = len(result)
 
     async def _handle_done_tasks(done_tasks):
         nonlocal done_count
@@ -250,24 +273,30 @@ async def fetch_ka10081_all_stocks(
             try:
                 detail = t.result()
             except Exception as e:
-                _log.warning("[ka10081] fetch 예외 %s: %s", cd_val, e)
+                _log.warning("[ka10081-confirmed] fetch 예외 %s: %s", cd_val, e)
                 detail = None
-                
+
             if detail:
                 result[cd_val] = detail
+                # downloaded_at 업데이트
+                try:
+                    conn = await get_db_connection()
+                    await conn.execute(
+                        "UPDATE master_stocks_table SET downloaded_at = datetime('now') WHERE code = ?",
+                        (cd_val,)
+                    )
+                    await conn.commit()
+                except Exception as e:
+                    _log.warning("[ka10081-confirmed] downloaded_at 업데이트 실패 %s: %s", cd_val, e)
             else:
                 failed_codes.append(cd_val)
 
             done_count += 1
             cur_done = done_count
 
-            # 디스크 I/O는 20개 단위로 수행 (성능 최적화)
-            if cur_done % 20 == 0:
-                await save_progress_cache(qry_dt, list(result.keys()), krx_codes, result)
-
             # 화면 로그는 1종목 단위 실시간 출력 (직관성 확보)
             _pct = int(cur_done / total * 100) if total else 0
-            _log.info("[ka10081] 확정시세 실시간 다운로드 중: %d/%d (%d%%)", cur_done, total, _pct)
+            _log.info("[ka10081-confirmed] 확정시세 실시간 다운로드 중: %d/%d (%d%%)", cur_done, total, _pct)
             if on_progress:
                 on_progress(cur_done, total)
 
@@ -276,15 +305,15 @@ async def fetch_ka10081_all_stocks(
     for cd in remaining_codes:
         # 중단 요청 확인
         if not getattr(es, "_confirmed_refresh_running_confirmed", True):
-            _log.info("[ka10081] 중단 요청 수신 — 다운로드 중단")
+            _log.info("[ka10081-confirmed] 중단 요청 수신 — 다운로드 중단")
             break
 
-        task = asyncio.create_task(fetch_ka10081_daily_5d_data(api, cd, qry_dt, _raw_cd=cd))
+        task = asyncio.create_task(fetch_ka10081_daily_price(api, cd, qry_dt, _raw_cd=cd))
         task.cd = cd
         pending.add(task)
-        
+
         await asyncio.sleep(interval_sec)
-        
+
         done, pending = await asyncio.wait(pending, timeout=0)
         if done:
             await _handle_done_tasks(done)
@@ -294,15 +323,129 @@ async def fetch_ka10081_all_stocks(
         if done:
             await _handle_done_tasks(done)
 
-    if result:
-        await save_progress_cache(qry_dt, list(result.keys()), krx_codes, result)
+    if on_progress:
+        on_progress(total, total)
+
+    if failed_codes:
+        _log.warning("[ka10081-confirmed] 실패 종목 %d개: %s", len(failed_codes), failed_codes)
+    _log.info("[ka10081-confirmed] 완료 -- 성공 %d/%d종목, 실패 %d종목 (이어받기 %d종목)",
+              len(result), total, len(failed_codes), starting_count)
+    return result
+
+
+async def fetch_ka10081_all_stocks_5day(
+    api: "KiwoomRestAPI",
+    krx_codes: list[str],
+    qry_dt: str,
+    *,
+    interval_sec: float = 0.33,
+    on_progress: "Callable[[int, int], None] | None" = None,
+    resume_codes: "set[str] | None" = None,
+) -> dict[str, dict]:
+    """
+    전체 종목 ka10081 순차 조회 -- 5일봉 전용.
+    """
+    from backend.app.db.database import get_db_connection
+    from backend.app.services import engine_service as es
+
+    result: dict[str, dict] = {}
+    failed_codes: list[str] = []
+    total = len(krx_codes)
+    starting_count = len(resume_codes) if resume_codes else 0
+
+    # 이어받기: 이미 완료된 종목은 result에 미리 추가
+    if resume_codes:
+        _log.info("[ka10081-5d] 이어받기 -- %d/%d종목부터 계속", starting_count, total)
+        conn = await get_db_connection()
+        for code in resume_codes:
+            cursor = await conn.execute(
+                "SELECT code, name, market, sector, avg_5d_trade_amount, high_5d_price, date "
+                "FROM master_stocks_table WHERE code = ? AND date = ?",
+                (code, qry_dt)
+            )
+            row = await cursor.fetchone()
+            if row:
+                result[code] = {
+                    "code": row["code"],
+                    "name": row["name"],
+                    "market": row["market"],
+                    "sector": row["sector"],
+                    "avg_5d_trade_amount": row["avg_5d_trade_amount"],
+                    "high_5d_price": row["high_5d_price"],
+                    "date": row["date"],
+                }
+        # 다운로드 대상에서 완료된 종목 제외
+        krx_codes = [cd for cd in krx_codes if cd not in resume_codes]
+
+    if on_progress:
+        on_progress(len(result), total)
+
+    pending = set()
+    done_count = len(result)
+
+    async def _handle_done_tasks(done_tasks):
+        nonlocal done_count
+        for t in done_tasks:
+            cd_val = getattr(t, "cd", "")
+            try:
+                detail = t.result()
+            except Exception as e:
+                _log.warning("[ka10081-5d] fetch 예외 %s: %s", cd_val, e)
+                detail = None
+
+            if detail:
+                result[cd_val] = detail
+                # downloaded_at 업데이트
+                try:
+                    conn = await get_db_connection()
+                    await conn.execute(
+                        "UPDATE master_stocks_table SET downloaded_at = datetime('now') WHERE code = ?",
+                        (cd_val,)
+                    )
+                    await conn.commit()
+                except Exception as e:
+                    _log.warning("[ka10081-5d] downloaded_at 업데이트 실패 %s: %s", cd_val, e)
+            else:
+                failed_codes.append(cd_val)
+
+            done_count += 1
+            cur_done = done_count
+
+            # 화면 로그는 1종목 단위 실시간 출력 (직관성 확보)
+            _pct = int(cur_done / total * 100) if total else 0
+            _log.info("[ka10081-5d] 5일봉 실시간 다운로드 중: %d/%d (%d%%)", cur_done, total, _pct)
+            if on_progress:
+                on_progress(cur_done, total)
+
+    remaining_codes = krx_codes
+
+    for cd in remaining_codes:
+        # 중단 요청 확인
+        if not getattr(es, "_confirmed_refresh_running_5d", True):
+            _log.info("[ka10081-5d] 중단 요청 수신 — 다운로드 중단")
+            break
+
+        task = asyncio.create_task(fetch_ka10081_daily_5d_data(api, cd, qry_dt, _raw_cd=cd))
+        task.cd = cd
+        pending.add(task)
+
+        await asyncio.sleep(interval_sec)
+
+        done, pending = await asyncio.wait(pending, timeout=0)
+        if done:
+            await _handle_done_tasks(done)
+
+    while pending:
+        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+        if done:
+            await _handle_done_tasks(done)
 
     if on_progress:
         on_progress(total, total)
 
     if failed_codes:
-        _log.warning("[ka10081] 실패 종목 %d개: %s", len(failed_codes), failed_codes)
-    _log.info("[ka10081] 완료 -- 성공 %d/%d종목, 실패 %d종목 (이어받기 %d종목)",
+        _log.warning("[ka10081-5d] 실패 종목 %d개: %s", len(failed_codes), failed_codes)
+    _log.info("[ka10081-5d] 완료 -- 성공 %d/%d종목, 실패 %d종목 (이어받기 %d종목)",
               len(result), total, len(failed_codes), starting_count)
     return result
 

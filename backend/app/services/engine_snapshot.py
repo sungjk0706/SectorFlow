@@ -38,7 +38,7 @@ async def build_initial_snapshot() -> dict:
     """
     from backend.app.services import ws_subscribe_control
     from backend.app.services.daily_time_scheduler import get_market_phase
-    from backend.app.core.settings_file import load_settings_async
+    import backend.app.services.engine_state as _st
     from backend.app.core.industry_map import load_eligible_stocks_cache
     from backend.app.services.engine_account import (
         get_positions, get_account_snapshot, get_snapshot_history,
@@ -65,11 +65,8 @@ async def build_initial_snapshot() -> dict:
     account_snap = await _safe(get_account_snapshot, {})
     logger.info("[연결] 시작화면 데이터 생성 단계 -- 계좌 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
-    try:
-        _raw_settings = await asyncio.wait_for(load_settings_async(), timeout=2.0)
-    except asyncio.TimeoutError:
-        logger.warning("[연결] 시작화면 데이터 생성 단계 -- 설정 로드 2초 초과, 메모리 설정 사용")
-        _raw_settings = dict(_settings_cache or {})
+    # _settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
+    _raw_settings = dict(_st._settings_cache or {})
     logger.info("[연결] 시작화면 데이터 생성 단계 -- 설정 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
     scores_snapshot = await _safe(get_sector_scores_snapshot, ([], 0))
@@ -191,7 +188,7 @@ async def _reset_realtime_fields() -> None:
         _broadcast,
     )
     from backend.app.services.engine_account import _broadcast_account
-    from backend.app.services.engine_sector import _invalidate_sector_stocks_cache
+    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
     # _pending_stock_details 제거: 루프 제거 (이미 WS 틱 저장 제거됨)
     async with _shared_lock:
@@ -223,8 +220,7 @@ async def _reset_realtime_fields() -> None:
         # 업종 점수 캐시 초기화 (실시간 데이터 재계산 유도)
         _sector_summary_cache = None
         _buy_targets_snapshot_cache = None
-        if _invalidate_sector_stocks_cache:
-            _invalidate_sector_stocks_cache(force=True)
+        # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
         _position_sent_cache.clear()
         _prev_sent_cache.clear()
         _prev_scores_cache.clear()

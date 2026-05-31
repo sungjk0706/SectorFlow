@@ -344,9 +344,7 @@ def _is_relevant_code(nk: str) -> bool:
     """프론트에서 실제 사용하는 종목 코드인지 판별 (섹터+보유+레이아웃). set O(1) 조회."""
     try:
         import backend.app.services.engine_service as _es
-        # _pending_stock_details 제거: _radar_cnsr_order 사용
-        if nk in _es._radar_cnsr_order:
-            return True
+        # _radar_cnsr_order 삭제: 제로-체크 보장 (구독된 종목만 틱 수신)
         if nk in _positions_code_set:
             return True
         if nk in _layout_code_set:
