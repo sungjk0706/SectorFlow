@@ -210,8 +210,8 @@ async def _load() -> None:
     except Exception as e:
         logger.warning("[정산엔진] 상태 파일 로드 실패 (기본값 사용): %s", e)
         try:
-            from backend.app.core.settings_file import load_settings_async
-            s = await load_settings_async()
+            import backend.app.services.engine_state as _st
+            s = _st._settings_cache or {}
             _initial_deposit = int(s.get("test_virtual_deposit", 10_000_000) or 0)
             _accumulated_investment = _initial_deposit
             _orderable = _initial_deposit

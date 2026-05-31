@@ -17,7 +17,7 @@ import httpx
 from backend.app.core.broker_urls import build_broker_urls, KIWOOM_REST_REAL
 from backend.app.core.kiwoom_stock_rest import (
     fetch_ka10081_daily_price as _ka10081_fetch_single,
-    fetch_ka10081_all_stocks as _ka10081_fetch_all,
+    fetch_ka10081_all_stocks_daily_confirmed as _ka10081_fetch_all,
 )
 
 _log = logging.getLogger(__name__)

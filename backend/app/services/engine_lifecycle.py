@@ -18,6 +18,7 @@ from backend.app.services.engine_state import (
     _engine_user_id,
     _engine_stop_event,
     _kiwoom_connector,
+    _kiwoom_auth_provider,
     _connector_manager,
     _login_ok,
     _settings_cache,
@@ -38,8 +39,9 @@ logger = get_logger("engine_lifecycle")
 
 async def start_engine(user_id: str = "") -> bool:
     """엔진 시작."""
-    global _engine_task, _running, _state_manager, _engine_user_id
+    global _engine_task, _running, _state_manager, _engine_user_id, _kiwoom_auth_provider
     from backend.app.services.state_manager import StateManager
+    from backend.app.core.kiwoom_providers import KiwoomAuthProvider
     
     if _engine_task and not _engine_task.done():
         return False
@@ -49,6 +51,11 @@ async def start_engine(user_id: str = "") -> bool:
         _state_manager = StateManager()
         await _state_manager.start()
         logger.info("[엔진] StateManager 초기화 완료")
+
+    # KiwoomAuthProvider 초기화 (단일 인스턴스)
+    if _kiwoom_auth_provider is None:
+        _kiwoom_auth_provider = KiwoomAuthProvider(_settings_cache)
+        logger.info("[엔진] KiwoomAuthProvider 초기화 완료")
 
     _engine_user_id = user_id
     _running = True
@@ -276,9 +283,7 @@ async def _try_sector_buy() -> None:
 # ── 헬퍼 함수 ─────────────────────────────────────────────────
 
 def _log(msg: str) -> None:
-    """로그 출력 (테스트모드 접두사 추가)."""
-    if is_test_mode(_settings_cache) and not msg.startswith("[테스트모드]"):
-        msg = f"[테스트모드] {msg}"
+    """로그 출력."""
     logger.info(msg)
 
 

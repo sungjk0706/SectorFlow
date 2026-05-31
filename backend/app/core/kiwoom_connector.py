@@ -511,8 +511,8 @@ class KiwoomConnector(BrokerConnector):
 
 def create_kiwoom_connector(settings: dict) -> KiwoomConnector:
     """설정 dict에서 KiwoomConnector 생성."""
-    app_key = (settings.get("kiwoom_app_key") or "").strip()
-    app_secret = (settings.get("kiwoom_app_secret") or "").strip()
+    app_key = (settings.get("kiwoom_app_key_real") or settings.get("kiwoom_app_key") or "").strip()
+    app_secret = (settings.get("kiwoom_app_secret_real") or settings.get("kiwoom_app_secret") or "").strip()
     if not app_key or not app_secret:
         raise ValueError("키움 app_key, app_secret이 설정되지 않았습니다")
     return KiwoomConnector(app_key=app_key, app_secret=app_secret)

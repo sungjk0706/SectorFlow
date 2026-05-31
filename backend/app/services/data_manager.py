@@ -45,10 +45,10 @@ async def _load_broker_settings() -> dict | None:
     실패 시 None 반환.
     """
     try:
-        from backend.app.core.settings_file import load_settings
         from backend.app.core.encryption import decrypt_value
+        import backend.app.services.engine_state as _st
 
-        flat = await load_settings()
+        flat = _st._settings_cache or {}
 
         def _dec(v) -> str:
             if not v:
@@ -79,7 +79,7 @@ async def get_stock_name(stk_cd: str, access_token: str | None = None) -> str:
     norm = _norm_stk_cd(stk_cd)
     if not norm:
         return "알수없음"
-    from backend.app.core.sector_stock_cache import load_stock_name_cache
+    from backend.app.db.stock_tables import load_stock_name_cache
     name_map = await load_stock_name_cache() or {}
     return name_map.get(norm, norm)
 

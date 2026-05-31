@@ -24,10 +24,9 @@ from backend.app.services.engine_state import (
     _connector_manager,
     _subscribed_stocks,
     _checked_stocks,
-    # _pending_stock_details 제거
-    _radar_cnsr_order,
+    # _radar_cnsr_order 삭제
     _sector_stock_layout,
-    _avg_amt_5d,
+    # _avg_amt_5d 제거: _master_stocks_cache에서 직접 사용
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_rest_radar_quote_cache)
     _rest_radar_rest_once,
     _running,
@@ -162,8 +161,8 @@ async def run_engine_loop() -> None:
     logger.info("[엔진] run_engine_loop() 진입")
     import backend.app.services.engine_state as _es
     global _login_ok, _connector_manager, _broker_tokens, _subscribed_stocks
-    global _checked_stocks, _radar_cnsr_order
-    global _sector_stock_layout, _avg_amt_5d
+    global _checked_stocks  # _radar_cnsr_order 삭제
+    global _sector_stock_layout  # _avg_amt_5d 제거
     global _rest_radar_rest_once, _running, _engine_loop_ref
     global _preboot_cache_loaded, _preboot_ready_event, _account_rest_lock
     global _engine_user_id, _settings_cache, _broker_spec, _access_token
@@ -181,8 +180,7 @@ async def run_engine_loop() -> None:
     _notify_reg_ack()
     _cancel_price_trace_delayed_task()
     _checked_stocks.clear()
-    # _pending_stock_details 제거: clear() 제거
-    _radar_cnsr_order.clear()
+    # _radar_cnsr_order 삭제: clear() 제거
     _sector_stock_layout.clear()
     from backend.app.services.engine_account_notify import _rebuild_layout_cache
     _rebuild_layout_cache([])
@@ -209,9 +207,8 @@ async def run_engine_loop() -> None:
     compute_task = None
 
     try:
-        settings = await get_engine_settings(_engine_user_id or None)
-        _settings_cache.clear()
-        _settings_cache.update(settings)
+        # _settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
+        settings = _settings_cache
         logger.info("[기동시간] 설정 로드: %.0fms", (time.perf_counter() - _t0) * 1000)
 
         # 엔진 내부 준비 완료 시그널 — Uvicorn 리스닝 + 브라우저 열기 즉시 허용
@@ -350,6 +347,7 @@ async def run_engine_loop() -> None:
         _broadcast_engine_ws()  # 엔진 루프 진입 직후 헤더에 즉시 반영
 
         # ── 백그라운드 태스크로 파이프라인 루프 시작 (Step 7: 중앙 코디네이터 연동) ──
+        # 테스트모드와 무관하게 항상 시작 (UI 전송 등 돈과 무관한 기능 실행)
         # 순서 보장: Ingestion -> Compute -> OMS -> Gateway
         from backend.app.services.pipeline_compute import start_compute_loop
         from backend.app.services.pipeline_oms import start_oms_loop

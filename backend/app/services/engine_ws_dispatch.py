@@ -292,21 +292,20 @@ async def _handle_real_01(
 
     # 캐시 업데이트 삭제 (실시간 틱 데이터 저장 제거)
     # REST 캐시 pop 로직 삭제 (캐시가 삭제되었으므로 pop 호출 불필요)
-    # _pending_stock_details 제거: _radar_cnsr_order로 status 확인
+    # _radar_cnsr_order 삭제: 제로-체크 보장 (구독된 종목만 틱 수신)
     nk_px_base = _format_kiwoom_reg_stk_cd(_base_stk_cd(raw_cd))
-    if nk_px_base in engine_state._radar_cnsr_order:
-        # 실시간 틱 데이터 저장 제거 (cur_price, trade_amount, strength 저장 안 함)
-        # 필요한 경우에만 틱 데이터를 직접 전달하여 사용
-        if is_0b_tick and strength != "-":
-            try:
-                _update_strength_buckets(nk_px, float(strength), abs(_ws_fid_int(vals, "13", 0)))
-            except (ValueError, TypeError) as e:
-                logger.warning("[체결강도] %s 파싱 실패 strength=%r: %s", nk_px, strength, e)
-        engine_radar_ops.apply_real01_volume_amount_to_radar_rows(
-            raw_cd_for_bucket, vals, {},  # _latest_trade_amounts 대신 빈 dict 전달
-            {},  # _pending_stock_details 제거: 빈 dict 전달
-            is_0b_tick=is_0b_tick,
-        )  # lock 불필요 — 순차 처리 + GIL 원자적
+    # 실시간 틱 데이터 저장 제거 (cur_price, trade_amount, strength 저장 안 함)
+    # 필요한 경우에만 틱 데이터를 직접 전달하여 사용
+    if is_0b_tick and strength != "-":
+        try:
+            _update_strength_buckets(nk_px, float(strength), abs(_ws_fid_int(vals, "13", 0)))
+        except (ValueError, TypeError) as e:
+            logger.warning("[체결강도] %s 파싱 실패 strength=%r: %s", nk_px, strength, e)
+    engine_radar_ops.apply_real01_volume_amount_to_radar_rows(
+        raw_cd_for_bucket, vals, {},  # _latest_trade_amounts 대신 빈 dict 전달
+        {},  # _pending_stock_details 제거: 빈 dict 전달
+        is_0b_tick=is_0b_tick,
+    )  # lock 불필요 — 순차 처리 + GIL 원자적
         # bid_depth, ask_depth 업데이트 제거 (사용처 없음)
     # 보유종목 현재가 반영 (메모리만 갱신, 계좌 broadcast 없음 — 체결/잔고 이벤트에서만 전송)
     if is_test_mode(engine_state._settings_cache):
