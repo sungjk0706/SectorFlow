@@ -51,9 +51,9 @@ async def load_eligible_stocks_cache_from_db() -> dict[str, str] | None:
         
         cached_date = raw.get("date", "")
         
-        # 유효성 검사 추가
-        from backend.app.core.settings_file import load_settings_async
-        settings = await load_settings_async()
+        # 유효성 검사 추가 (_settings_cache는 app.py에서 이미 초기화됨)
+        import backend.app.services.engine_state as _st
+        settings = _st._settings_cache or {}
         ws_start = settings.get("ws_subscribe_start", "07:50")
         
         if not is_cache_valid(cached_date, ws_start):

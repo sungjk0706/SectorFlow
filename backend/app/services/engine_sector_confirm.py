@@ -131,9 +131,9 @@ async def _flush_sector_recompute_impl() -> None:
             return
 
         # __ALL__ 플래그 + 캐시 존재 → 모든 active 종목을 dirty로 취급하여 증분 경로 사용
-        # _pending_stock_details 제거: _radar_cnsr_order 사용
+        # _radar_cnsr_order 삭제: _subscribed_stocks 사용
         if "__ALL__" in codes_snapshot:
-            codes_snapshot = set(_es._radar_cnsr_order)
+            codes_snapshot = set(_es._subscribed_stocks)
 
         # ── 증분 갱신 ──
         # 1. dirty 종목 → 해당 섹터 추출
@@ -232,7 +232,7 @@ async def _flush_sector_recompute_impl() -> None:
 
         # 참조 교체 방식으로 캐시 갱신 (R5.6)
         _es._sector_summary_cache = ss
-        _es._invalidate_sector_stocks_cache()
+        # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
         # 업종 점수 delta 전송 (내부에서 변경분만 비교)
         notify_desktop_sector_scores()
@@ -307,7 +307,7 @@ async def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
     
     # 웹소켓 난사 방지: 코알레싱 버퍼링 연동
     # 캐시 업데이트만 수행, 백엔드 코알레싱 스케줄러가 주기적으로 통합 발행
-    _es._invalidate_sector_stocks_cache()
+    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
 
 async def _full_recompute(_es, settings: dict, codes_snapshot: set[str] | None = None) -> None:
@@ -353,7 +353,7 @@ async def _full_recompute(_es, settings: dict, codes_snapshot: set[str] | None =
 
     # 참조 교체 방식으로 캐시 갱신 (R5.6)
     _es._sector_summary_cache = ss
-    _es._invalidate_sector_stocks_cache()
+    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
     # 업종 점수 delta 전송 (내부에서 변경분만 비교)
     notify_desktop_sector_scores()

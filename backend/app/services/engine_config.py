@@ -27,11 +27,11 @@ def _get_settings() -> dict:
 
 async def get_settings_snapshot() -> dict:
     """설정 스냅샷 반환 (민감 정보 마스킹 포함)."""
+    # _settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
     if isinstance(_settings_cache, dict) and _settings_cache:
         d = dict(_settings_cache)
     else:
-        from backend.app.core.settings_file import load_settings
-        d = dict(await load_settings())
+        d = dict(_settings_cache or {})
     
     if "tele_on" not in d:
         d["tele_on"] = bool(d.get("telegram_on", False))

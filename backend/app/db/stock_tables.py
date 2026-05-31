@@ -308,6 +308,87 @@ async def migrate_add_nxt_enable_column():
         _log.debug("[마이그레이션] nxt_enable 컬럼 이미 존재 - 스킵")
 
 
+async def load_progress_cache(date: str, all_codes: list[str], ws_subscribe_start: str = "07:50") -> set[str]:
+    """master_stocks_table에서 이어받기 완료 종목 로드 (downloaded_at 기반)."""
+    try:
+        from datetime import datetime, timedelta
+        from backend.app.core.trading_calendar import _KST
+        
+        conn = await get_db_connection()
+        
+        # 다음 거래일 계산
+        if _KST:
+            now = datetime.now(_KST)
+        else:
+            now = datetime.now()
+        
+        # ws_subscribe_start 시간 파싱
+        try:
+            parts = str(ws_subscribe_start).strip().split(":")
+            sh, sm = int(parts[0]), int(parts[1])
+        except Exception:
+            sh, sm = 7, 50
+        
+        # 다음 거래일 07:50까지 유효
+        expiry = datetime(now.year, now.month, now.day, sh, sm) + timedelta(days=1)
+        
+        # downloaded_at이 오늘 날짜이고 유효한 종목만 로드
+        cursor = await conn.execute(
+            "SELECT code FROM master_stocks_table "
+            "WHERE date = ? AND downloaded_at IS NOT NULL "
+            "AND datetime(downloaded_at) < datetime(?)",
+            (date, expiry.strftime("%Y-%m-%d %H:%M:%S"))
+        )
+        rows = await cursor.fetchall()
+        
+        completed = {row["code"] for row in rows}
+        
+        # 종목 목록 불일치 확인
+        if completed and set(all_codes) != set(all_codes):
+            # 상장폐지/신규상장 발생 시 이어받기 무시
+            _log.info("[progress_cache] 종목 목록 불일치 (상장폐지/신규상장 발생)")
+            return set()
+        
+        if completed:
+            _log.info("[progress_cache] master_stocks_table 로드 완료 -- %d/%d종목", len(completed), len(all_codes))
+        
+        return completed
+    except Exception as e:
+        _log.warning("[progress_cache] master_stocks_table 로드 실패: %s", e)
+        return set()
+
+
+async def clear_progress_cache() -> None:
+    """다운로드 완료 후 downloaded_at 컬럼 정리 (선택적 - 필요 시 사용)."""
+    try:
+        # downloaded_at 컬럼은 유지하되, 오래된 데이터만 정리하려면 여기에 로직 추가
+        # 현재는 downloaded_at을 유지하여 이어받기 기능 지원
+        _log.debug("[progress_cache] downloaded_at 컬럼 유지 (이어받기 지원)")
+    except Exception as e:
+        _log.warning("[progress_cache] downloaded_at 정리 실패: %s", e)
+
+
+async def load_stock_name_cache() -> dict[str, str] | None:
+    """종목명을 master_stocks_table.name 컬럼에서 조회 (단일 진실 공급원)."""
+    try:
+        conn = await get_db_connection()
+        cursor = await conn.execute("SELECT code, name FROM master_stocks_table")
+        rows = await cursor.fetchall()
+        
+        if not rows:
+            return None
+            
+        name_map = {}
+        for row in rows:
+            name_map[str(row["code"])] = str(row["name"])
+            
+        _log.info("[stock_name_cache] master_stocks_table 로드 -- %d종목", len(name_map))
+        return name_map
+    except Exception as e:
+        _log.warning("[stock_name_cache] master_stocks_table 로드 실패: %s", e)
+        return None
+
+
 async def create_stock_5d_array_table():
     """stock_5d_array 테이블 생성 (5일봉 배열 데이터 저장용)"""
     conn = await get_db_connection()
@@ -334,8 +415,8 @@ async def create_stock_5d_array_table():
     _log.info("stock_5d_array 테이블 초기화 완료.")
 
 
-async def load_master_stocks_table() -> tuple[dict[str, dict], dict[str, str]]:
-    """master_stocks_table 전체를 메모리(KrX format)로 로드 및 sector 캐시 반환 (단일 테이블 조회)"""
+async def load_master_stocks_table() -> dict[str, dict]:
+    """master_stocks_table 전체를 메모리(KrX format)로 로드 (단일 테이블 조회)"""
     try:
         conn = await get_db_connection()
         cursor = await conn.execute("""
@@ -345,7 +426,6 @@ async def load_master_stocks_table() -> tuple[dict[str, dict], dict[str, str]]:
         rows = await cursor.fetchall()
         
         result = {}
-        sector_cache = {}
         for r in rows:
             code = str(r["code"])
             sector = str(r["sector"] or "기타")
@@ -364,14 +444,12 @@ async def load_master_stocks_table() -> tuple[dict[str, dict], dict[str, str]]:
                 "prev_close": float(r["cur_price"] or 0) - float(r["change"] or 0),
                 "volume": 0,
                 "sector": sector,
-                "amts_5d_array": [],
-                "highs_5d_array": []
+                "status": "active"
             }
-            sector_cache[code] = sector
         _log.info("[master_stocks_table] 로드 완료 -- %d종목", len(result))
-        return result, sector_cache
+        return result
     except Exception as e:
         _log.warning("[master_stocks_table] 로드 실패: %s", e)
-        return {}, {}
+        return {}
 
 

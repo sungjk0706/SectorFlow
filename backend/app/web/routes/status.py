@@ -94,7 +94,7 @@ async def debug_ws_status():
         "running": es._running,
         "subscribed_stocks_count": len(es._subscribed_stocks),
         "filtered_sector_codes_count": len(es._filtered_sector_codes),
-        "radar_cnsr_order_count": len(es._radar_cnsr_order),  # _pending_stock_details 제거
+        # _radar_cnsr_order 삭제: subscribed_stocks_count로 대체
         "latest_trade_prices_count": 0,  # 실시간 틱 데이터 캐시 삭제로 0 반환
         "ws_reg_pipeline_done": es._ws_reg_pipeline_done.is_set(),
         "bootstrap_done": es._bootstrap_event.is_set(),
@@ -118,7 +118,7 @@ async def debug_trigger_confirmed():
 async def debug_sector_refresh_sample():
     """디버그용: sector-refresh WS 이벤트와 동일한 데이터를 직접 반환."""
     from backend.app.services import engine_service as es
-    stocks = es.get_sector_stocks()
+    stocks = await es.get_sector_stocks()
     status = {}  # 확정 개념 제거됨
     # 삼성전자, SK하이닉스 찾기
     sample = {}

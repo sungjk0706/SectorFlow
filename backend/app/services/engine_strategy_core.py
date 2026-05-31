@@ -19,7 +19,7 @@ from backend.app.services.engine_state import (
     # _pending_stock_details 제거
     _access_token,
     _shared_lock,
-    _radar_cnsr_order,
+    # _radar_cnsr_order 삭제
     _settings_cache,
     _kiwoom_connector,
     _login_ok,
@@ -27,7 +27,7 @@ from backend.app.services.engine_state import (
     _checked_stocks,
     _auto_trade,
     _account_rest_bootstrapped,
-    _invalidate_sector_stocks_cache,
+    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
     _refresh_account_snapshot_meta,
     _update_account_memory,
 )
@@ -85,28 +85,8 @@ def make_detail(stk_cd: str, stk_nm: str, cur_price: int,
     }
 
 
-async def register_pending_stock(
-    stk_cd: str,
-    detail: dict | None,
-    reason: str,
-) -> None:
-    """
-    종목을 모니터링에 등록.
-    _pending_stock_details 제거: _radar_cnsr_order에만 추가
-    """
-    if stk_cd not in _radar_cnsr_order:
-        async with _shared_lock:
-            _radar_cnsr_order.append(stk_cd)
-        if _invalidate_sector_stocks_cache:
-            _invalidate_sector_stocks_cache()
-
-        # 실시간 체결 구독 -- REG만. 시세는 REAL 01 우선.
-        try:
-            from backend.app.services.engine_ws import _subscribe_stock_realtime_when_ready
-            _task = asyncio.get_running_loop().create_task(_subscribe_stock_realtime_when_ready(stk_cd))
-            _task.add_done_callback(lambda t: logger.warning("[구독] 구독 실패: %s", t.exception()) if t.exception() else None)
-        except RuntimeError as e:
-            logger.error("[구독] task 생성 실패 %s: %s", stk_cd, e)
+# register_pending_stock() 삭제: _radar_cnsr_order 삭제로 더 이상 필요 없음
+# 호출처 없음 (dead code)
 
 
 async def run_snapshot_and_sell_check(force_rest: bool) -> None:

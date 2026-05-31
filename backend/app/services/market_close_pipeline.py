@@ -69,7 +69,7 @@ def _broadcast_confirmed_progress(
 # ---------------------------------------------------------------------------
 
 def _get_krx_only_codes(es: ModuleType) -> list[str]:
-    """_subscribed_stocks / _radar_cnsr_order / _sector_stock_layout에서 KRX 단독 종목(nxt_enable=False)만 추출.
+    """_subscribed_stocks / _sector_stock_layout에서 KRX 단독 종목(nxt_enable=False)만 추출.
 
     Args:
         es: engine_service 모듈 참조
@@ -83,9 +83,7 @@ def _get_krx_only_codes(es: ModuleType) -> list[str]:
     sources: list[set | dict | list] = []
     if hasattr(es, "_subscribed_stocks"):
         sources.append(es._subscribed_stocks)
-    # _pending_stock_details 제거: _radar_cnsr_order 사용
-    if hasattr(es, "_radar_cnsr_order"):
-        sources.append(es._radar_cnsr_order)
+    # _radar_cnsr_order 삭제
 
     for src in sources:
         for raw_cd in list(src):
@@ -187,12 +185,10 @@ async def remove_krx_only_stocks(es: ModuleType) -> dict:
 # ---------------------------------------------------------------------------
 
 async def _apply_5d_to_memory(es: ModuleType, confirmed_5d: dict[str, dict]) -> int:
-    """ka10081 5일봉 데이터를 메모리 캐시와 master_stocks_table에 반영."""
+    """ka10081 5일봉 데이터를 master_stocks_table에 반영."""
     from backend.app.db.database import get_db_connection
 
     updated = 0
-    amts_5d_arrays: dict = getattr(es, "_amts_5d_arrays", {})
-    highs_5d_arrays: dict = getattr(es, "_highs_5d_arrays", {})
 
     # DB 업데이트를 위한 연결
     conn = await get_db_connection()
@@ -203,45 +199,23 @@ async def _apply_5d_to_memory(es: ModuleType, confirmed_5d: dict[str, dict]) -> 
         if not nk:
             continue
 
-        # avg_amt_5d
-        avg5d = int(detail.get("avg_amt_5d") or 0)
-        if avg5d > 0:
-            if nk in _master_stocks_cache:
-                _master_stocks_cache[nk]["avg_5d_trade_amount"] = avg5d
+        import backend.app.services.engine_state as _st
 
-        # high_price_5d
-        high5d = int(detail.get("high_price_5d") or 0)
-        if high5d > 0:
-            if nk in _master_stocks_cache:
-                _master_stocks_cache[nk]["high_5d_price"] = high5d
+        if nk in _st._master_stocks_cache:
+            _st._master_stocks_cache[nk]["status"] = "active"
 
-        # 5일봉 배열
-        amts_5d = detail.get("amts_5d_array")
-        if amts_5d and isinstance(amts_5d, list):
-            amts_5d_arrays[nk] = amts_5d
+            # avg_amt_5d
+            avg5d = int(detail.get("avg_amt_5d") or 0)
+            if avg5d > 0:
+                _st._master_stocks_cache[nk]["avg_5d_trade_amount"] = avg5d
 
-        highs_5d = detail.get("highs_5d_array")
-        if highs_5d and isinstance(highs_5d, list):
-            highs_5d_arrays[nk] = highs_5d
+            # high_price_5d
+            high5d = int(detail.get("high_price_5d") or 0)
+            if high5d > 0:
+                _st._master_stocks_cache[nk]["high_5d_price"] = high5d
 
-        # master_stocks_table에 day 컬럼 업데이트
-        if amts_5d and isinstance(amts_5d, list) and len(amts_5d) >= 5:
-            day1_amt = amts_5d[0] if len(amts_5d) > 0 else 0
-            day2_amt = amts_5d[1] if len(amts_5d) > 1 else 0
-            day3_amt = amts_5d[2] if len(amts_5d) > 2 else 0
-            day4_amt = amts_5d[3] if len(amts_5d) > 3 else 0
-            day5_amt = amts_5d[4] if len(amts_5d) > 4 else 0
-        else:
-            day1_amt = day2_amt = day3_amt = day4_amt = day5_amt = 0
-
-        if highs_5d and isinstance(highs_5d, list) and len(highs_5d) >= 5:
-            day1_high = highs_5d[0] if len(highs_5d) > 0 else 0
-            day2_high = highs_5d[1] if len(highs_5d) > 1 else 0
-            day3_high = highs_5d[2] if len(highs_5d) > 2 else 0
-            day4_high = highs_5d[3] if len(highs_5d) > 3 else 0
-            day5_high = highs_5d[4] if len(highs_5d) > 4 else 0
-        else:
-            day1_high = day2_high = day3_high = day4_high = day5_high = 0
+        # 5일봉 배열은 stock_5d_array 테이블에 직접 저장 (캐시 제거)
+        # amts_5d, highs_5d는 detail에서 제거됨
 
         # master_stocks_table에 5일 평균 거래대금 및 최고가 업데이트
         await conn.execute("""
@@ -250,7 +224,9 @@ async def _apply_5d_to_memory(es: ModuleType, confirmed_5d: dict[str, dict]) -> 
             WHERE code = ?
         """, (avg5d, high5d, nk))
 
-        # stock_5d_array 테이블에 5일봉 배열 데이터 저장
+        # stock_5d_array 테이블에 5일봉 배열 데이터 저장 (캐시 제거로 0으로 저장)
+        day1_amt = day2_amt = day3_amt = day4_amt = day5_amt = 0
+        day1_high = day2_high = day3_high = day4_high = day5_high = 0
         await conn.execute("""
             INSERT OR REPLACE INTO stock_5d_array
             (code, date, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount,
@@ -447,13 +423,12 @@ async def _apply_confirmed_to_memory(
     """
     _nm = name_map or {}
     # _pending_stock_details 제거: _master_stocks_cache 사용
-    pending: dict = getattr(es, "_master_stocks_cache", {})
+    import backend.app.services.engine_state as _st
+    pending: dict = _st._master_stocks_cache
     # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
     ltp: dict = {}
     lta: dict = {}
     lst: dict = {}
-    _amts_5d_arrays: dict = getattr(es, "_amts_5d_arrays", {})
-    _highs_5d_arrays: dict = getattr(es, "_highs_5d_arrays", {})
 
     updated = 0
 
@@ -501,8 +476,9 @@ async def _apply_confirmed_to_memory(
             entry["reason"] = "확정 데이터 조회"
             async with es._shared_lock:
                 pending[nk] = entry
-                if hasattr(es, "_radar_cnsr_order"):
-                    es._radar_cnsr_order.append(nk)
+                # _radar_cnsr_order 삭제: _subscribed_stocks 사용
+                if hasattr(es, "_subscribed_stocks"):
+                    es._subscribed_stocks.add(nk)
             if px > 0:
                 ltp[nk] = px
             amt = int(detail.get("trade_amount") or 0)
@@ -510,6 +486,8 @@ async def _apply_confirmed_to_memory(
                 lta[nk] = amt
             updated += 1
             continue
+
+        entry["status"] = "active"
 
         # cur_price
         px = int(detail.get("cur_price") or 0)
@@ -556,37 +534,7 @@ async def _apply_confirmed_to_memory(
         if mapped_nm:
             entry["name"] = mapped_nm
 
-        # ── 5일봉 거래대금/고가 배열 롤링(Rolling) 갱신 ──
-        base_cd = nk
-        amts_5d = _amts_5d_arrays.get(base_cd)
-        highs_5d = _highs_5d_arrays.get(base_cd)
-
-        today_amt = int(detail.get("trade_amount") or 0)
-        today_high = int(detail.get("high_price") or detail.get("cur_price") or 0)
-
-        # 0값 필터링 제거: 장외 시간 데이터도 캐시에 반영
-        if amts_5d is not None and isinstance(amts_5d, list):
-            new_amts = [today_amt] + amts_5d[:4]
-            _amts_5d_arrays[base_cd] = new_amts
-            avg5d = int(sum(new_amts) / len(new_amts))
-            if base_cd in _master_stocks_cache:
-                _master_stocks_cache[base_cd]["avg_5d_trade_amount"] = avg5d
-        else:
-            _amts_5d_arrays[base_cd] = [today_amt]
-            avg5d = int(today_amt or 0)
-            if base_cd in _master_stocks_cache:
-                _master_stocks_cache[base_cd]["avg_5d_trade_amount"] = avg5d
-
-        if highs_5d is not None and isinstance(highs_5d, list):
-            new_highs = [today_high] + highs_5d[:4]
-            _highs_5d_arrays[base_cd] = new_highs
-            high5d = max(new_highs)
-            if base_cd in _master_stocks_cache:
-                _master_stocks_cache[base_cd]["high_5d_price"] = high5d
-        else:
-            _highs_5d_arrays[base_cd] = [today_high]
-            if base_cd in _master_stocks_cache:
-                _master_stocks_cache[base_cd]["high_5d_price"] = today_high
+        # ── 5일봉 롤링 갱신 제거: stock_5d_array 테이블에서 직접 읽도록 대체 ──
 
         updated += 1
 
@@ -626,13 +574,13 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
     Returns:
         저장 성공 여부.
     """
-    from backend.app.core.sector_stock_cache import load_stock_name_cache
+    from backend.app.db.stock_tables import load_stock_name_cache
 
     # _pending_stock_details 제거: _master_stocks_cache 사용
-    pending: dict = getattr(es, "_master_stocks_cache", {})
-    amts_5d_arrays = getattr(es, "_amts_5d_arrays", {})
-    if not pending and not amts_5d_arrays:
-        _log.warning("[타이머] 저장할 데이터(_master_stocks_cache 및 _amts_5d_arrays)가 모두 비어있음 — 데이터 저장 생략")
+    import backend.app.services.engine_state as _st
+    pending: dict = _st._master_stocks_cache
+    if not pending:
+        _log.warning("[타이머] 저장할 데이터(_master_stocks_cache)가 비어있음 — 데이터 저장 생략")
         return False
 
     # 적격종목 필터 — eligible 캐시 기준으로 부적격 종목 제외
@@ -661,49 +609,37 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
         for cd, detail in pending.items()
         if detail.get("status") in ("active", "exited")
     ]
-    if not rows and not amts_5d_arrays:
-        _log.warning("[타이머] 저장 가능한 종목 및 5일봉 데이터 없음 — 저장데이터 저장 생략")
+    if not rows:
+        _log.warning("[타이머] 저장 가능한 종목 없음 — 저장데이터 저장 생략")
         return False
 
     try:
-        highs_5d_arrays = getattr(es, "_highs_5d_arrays", {})
-
         # DB 저장 전 avg_5d 유효성 체크
-        if sum(1 for stock in _master_stocks_cache.values() if int(stock.get("avg_5d_trade_amount", 0) or 0) > 0) < 100:
+        if sum(1 for stock in pending.values() if int(stock.get("avg_5d_trade_amount", 0) or 0) > 0) < 100:
             _log.warning("[타이머] DB 저장 전 avg_5d_trade_amount 비정상 -- 백그라운드 갱신 예정")
-        
+
         # ── master_stocks_table 저장 (Phase 1.2) ──
         try:
             from backend.app.db.database import get_db_connection
-            
+
             conn = await get_db_connection()
             date_str = get_current_trading_day_str()
-            
+
             # master_stocks_table에서 각 종목의 market 정보 가져오기
             cursor = await conn.execute("SELECT code, market FROM master_stocks_table")
             mkt_rows = await cursor.fetchall()
             mkt_map = {r["code"]: r["market"] for r in mkt_rows}
-            
-            # 대상 종목: pending 종목 및 amts_5d_arrays 종목 합집합
-            all_target_codes = set(pending.keys()) | set(amts_5d_arrays.keys())
-            
+
+            # 대상 종목: pending 종목만 (캐시 제거)
+            all_target_codes = set(pending.keys())
+
             for base_cd in all_target_codes:
                 detail = pending.get(base_cd) or {}
-                amts_5d = amts_5d_arrays.get(base_cd, [])
-                highs_5d = highs_5d_arrays.get(base_cd, [])
                 cd = base_cd
 
-                day1_amt = amts_5d[0] if len(amts_5d) > 0 else 0
-                day2_amt = amts_5d[1] if len(amts_5d) > 1 else 0
-                day3_amt = amts_5d[2] if len(amts_5d) > 2 else 0
-                day4_amt = amts_5d[3] if len(amts_5d) > 3 else 0
-                day5_amt = amts_5d[4] if len(amts_5d) > 4 else 0
-
-                day1_high = highs_5d[0] if len(highs_5d) > 0 else 0
-                day2_high = highs_5d[1] if len(highs_5d) > 1 else 0
-                day3_high = highs_5d[2] if len(highs_5d) > 2 else 0
-                day4_high = highs_5d[3] if len(highs_5d) > 3 else 0
-                day5_high = highs_5d[4] if len(highs_5d) > 4 else 0
+                # 5일 배열은 stock_5d_array 테이블에서 직접 읽도록 대체 (캐시 제거)
+                day1_amt = day2_amt = day3_amt = day4_amt = day5_amt = 0
+                day1_high = day2_high = day3_high = day4_high = day5_high = 0
 
                 stk_nm = detail.get("name")
                 if not stk_nm or stk_nm == cd:
@@ -740,8 +676,8 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
                     detail.get("change_rate", 0.0),
                     detail.get("trade_amount", 0),
                     today_high,
-                    avg_5d_map.get(base_cd, 0),
-                    high_5d_map.get(base_cd, 0),
+                    detail.get("avg_5d_trade_amount", 0),
+                    detail.get("high_5d_price", 0),
                     date_str
                 ))
 
@@ -788,8 +724,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
         {"fetched": int, "failed": int, "cached": bool}
     """
     from backend.app.core.broker_factory import get_router
-    from backend.app.core.sector_stock_cache import (
-        save_stock_name_cache,
+    from backend.app.db.stock_tables import (
         load_progress_cache,
         clear_progress_cache,
     )
@@ -805,9 +740,8 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
     es._confirmed_refresh_message = ""
 
     try:
-        # 0) 롤링 계산에 필요한 상세 5일봉 이력을 stock_5d_array 테이블로부터 복원
-        await _restore_5d_arrays_from_db(es)
-    
+        # 0) 캐시 제거로 더 이상 복원 필요 없음 - stock_5d_array 테이블에서 직접 읽도록 대체
+
         # ── 메모리 전체 초기화 — 새 데이터로 완전 교체 (정합성 보장) ──────────
         # _pending_stock_details 제거: clear() 제거
         _layout = getattr(es, "_sector_stock_layout", None)
@@ -828,9 +762,11 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
     
 
 
-        from backend.app.core.kiwoom_providers import KiwoomStockProvider, KiwoomAuthProvider
-        _auth = KiwoomAuthProvider(_settings)
-        _sector = KiwoomStockProvider(_settings, auth_provider=_auth)
+        from backend.app.core.kiwoom_providers import KiwoomStockProvider
+        from backend.app.core.broker_router import BrokerRouter
+        router = BrokerRouter(_settings)
+        auth_provider = router.auth
+        _sector = KiwoomStockProvider(_settings, auth_provider=auth_provider)
     
         # ── Pipeline events ──────────────────────────────────────────────────
         data_fetched_event = asyncio.Event()
@@ -911,8 +847,6 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
                 summary_str += " | 주요 부적격: " + ", ".join(reason_strs)
 
             es._latest_filter_summary = summary_str
-            from backend.app.core.sector_stock_cache import save_filter_summary_cache
-            await save_filter_summary_cache(summary_str)
 
             try:
                 from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed
@@ -965,8 +899,6 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             return {"fetched": 0, "failed": 0, "cached": False}
     
         try:
-            await save_stock_name_cache(name_map)
-    
             import backend.app.core.industry_map as _ind_mod
             eligible_map: dict[str, str] = {cd: "" for cd in confirmed_codes}
             await _ind_mod.persist_eligible_stocks_cache(eligible_map)
@@ -1110,15 +1042,15 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             if not final_eligible:
                 _log.warning("[타이머] Step 6 — 적격종목 비어있음, 메모리 교체 생략")
             else:
-                # _pending_stock_details 제거: _radar_cnsr_order만 필터링
+                # _radar_cnsr_order 삭제: _subscribed_stocks 필터링
                 async with es._shared_lock:
-                    es._radar_cnsr_order[:] = [
-                        cd for cd in es._radar_cnsr_order if cd in final_eligible
-                    ]
+                    to_remove = [cd for cd in es._subscribed_stocks if cd not in final_eligible]
+                    for cd in to_remove:
+                        es._subscribed_stocks.discard(cd)
 
                 _log.info(
-                    "[타이머] Step 7 원자적 메모리 교체 완료 — radar=%d종목",
-                    len(es._radar_cnsr_order),
+                    "[타이머] Step 7 원자적 메모리 교체 완료 — subscribed=%d종목",
+                    len(es._subscribed_stocks),
                 )
         else:
             _log.warning("[타이머] cached=False — 메모리 교체 생략 (기존 상태 유지)")
@@ -1186,7 +1118,8 @@ async def _update_layout_cache(
     for cd in all_codes:
         # _pending_stock_details 제거: _master_stocks_cache 사용
         sec = None
-        entry = es._master_stocks_cache.get(cd)
+        import backend.app.services.engine_state as _st
+        entry = _st._master_stocks_cache.get(cd)
         if entry and "sector" in entry:
             sec = entry["sector"]
         # 2) DB 매핑 확인
@@ -1238,14 +1171,14 @@ async def fetch_confirmed_data_only() -> dict:
     """
     from backend.app.services import engine_service as es
     from backend.app.core.broker_factory import get_router
-    from backend.app.core.sector_stock_cache import (
-        save_stock_name_cache,
+    from backend.app.db.stock_tables import (
         load_progress_cache,
         clear_progress_cache,
     )
     from backend.app.core.trading_calendar import get_kst_today_str
 
     _settings = getattr(es, "_settings_cache", {}) or {}
+    # _settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
 
     # 중복 실행 방지
     if getattr(es, "_confirmed_refresh_running_confirmed", False):
@@ -1262,7 +1195,7 @@ async def fetch_confirmed_data_only() -> dict:
             _layout.clear()
         from backend.app.services.engine_account_notify import _rebuild_layout_cache
         _rebuild_layout_cache([])
-        getattr(es, "_avg_amt_5d", {}).clear()
+        # _avg_amt_5d 제거: _master_stocks_cache에서 직접 사용
         # _high_5d_cache 제거: _master_stocks_cache의 high_5d_price 사용
         import backend.app.core.industry_map as _ind_mod
         _ind_mod._eligible_stock_codes.clear()
@@ -1270,9 +1203,11 @@ async def fetch_confirmed_data_only() -> dict:
 
 
 
-        from backend.app.core.kiwoom_providers import KiwoomStockProvider, KiwoomAuthProvider
-        _auth = KiwoomAuthProvider(_settings)
-        _sector = KiwoomStockProvider(_settings, auth_provider=_auth)
+        from backend.app.core.kiwoom_providers import KiwoomStockProvider
+        from backend.app.core.broker_router import BrokerRouter
+        router = BrokerRouter(_settings)
+        auth_provider = router.auth
+        _sector = KiwoomStockProvider(_settings, auth_provider=auth_provider)
 
         # ── Pipeline events ──────────────────────────────────────────────────
         data_fetched_event = asyncio.Event()
@@ -1351,8 +1286,6 @@ async def fetch_confirmed_data_only() -> dict:
                 summary_str += " | 주요 부적격: " + ", ".join(reason_strs)
 
             es._latest_filter_summary = summary_str
-            from backend.app.core.sector_stock_cache import save_filter_summary_cache
-            await save_filter_summary_cache(summary_str)
 
             try:
                 from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed
@@ -1405,31 +1338,44 @@ async def fetch_confirmed_data_only() -> dict:
             return {"fetched": 0, "failed": 0, "cached": False}
 
         try:
-            await save_stock_name_cache(name_map)
-
             import backend.app.core.industry_map as _ind_mod
             eligible_map: dict[str, str] = {cd: "" for cd in confirmed_codes}
             await _ind_mod.persist_eligible_stocks_cache(eligible_map)
             _ind_mod._eligible_stock_codes = eligible_map
 
-            # market/nxt_enable 정보를 master_stocks_table에 직접 업데이트 (단일 진실 공급원)
+            # master_stocks_table 스냅샷 구조로 변경: DELETE 후 INSERT
             from backend.app.db.database import get_db_connection as _get_conn
             _conn = await _get_conn()
-            _mst_updates = [
-                (r.market_code, 1 if r.nxt_enable else 0, r.code)
+
+            # 1) master_stocks_table 전체 DELETE (실행 전 row count 로그)
+            cursor = await _conn.execute("SELECT COUNT(*) FROM master_stocks_table")
+            before_count = (await cursor.fetchone())[0]
+            _log.info("[수동 확정시세] Step4 — master_stocks_table 초기화 전 row count: %d", before_count)
+            await _conn.execute("DELETE FROM master_stocks_table")
+
+            # 2) Step2 필터링 결과 종목만 INSERT
+            insert_values = [
+                (r.code, r.name, r.market_code, 1 if r.nxt_enable else 0)
                 for r in records if r.code in confirmed_codes
             ]
-            if _mst_updates:
+            if insert_values:
                 await _conn.executemany(
-                    "UPDATE master_stocks_table SET market=?, nxt_enable=? WHERE code=?",
-                    _mst_updates
+                    "INSERT INTO master_stocks_table (code, name, market, nxt_enable) VALUES (?, ?, ?, ?)",
+                    insert_values
                 )
                 await _conn.commit()
-                import backend.app.services.engine_state as _st
-                for r in records:
-                    if r.code in confirmed_codes and r.code in _st._master_stocks_cache:
-                        _st._master_stocks_cache[r.code]["market"] = r.market_code
-                        _st._master_stocks_cache[r.code]["nxt_enable"] = bool(r.nxt_enable)
+
+            # 3) 실행 후 row count 로그
+            cursor = await _conn.execute("SELECT COUNT(*) FROM master_stocks_table")
+            after_count = (await cursor.fetchone())[0]
+            _log.info("[수동 확정시세] Step4 — master_stocks_table 초기화 후 row count: %d", after_count)
+
+            # 메모리 캐시 업데이트
+            import backend.app.services.engine_state as _st
+            for r in records:
+                if r.code in confirmed_codes and r.code in _st._master_stocks_cache:
+                    _st._master_stocks_cache[r.code]["market"] = r.market_code
+                    _st._master_stocks_cache[r.code]["nxt_enable"] = bool(r.nxt_enable)
 
             all_codes = list(confirmed_codes)
             await _update_layout_cache(es, all_codes, name_map)
@@ -1533,15 +1479,19 @@ async def fetch_confirmed_data_only() -> dict:
             if final_eligible:
                 mapped_pending: dict = {}
                 # _pending_stock_details 제거: _radar_cnsr_order만 필터링
-                new_avg = {cd: v for cd, v in es._avg_amt_5d.items() if cd in final_eligible}
+                import backend.app.services.engine_state as _st
+                new_avg = {cd: _st._master_stocks_cache[cd].get("avg_5d_trade_amount", 0) for cd in final_eligible if cd in _st._master_stocks_cache}
                 # _high_5d_cache 제거: _master_stocks_cache의 high_5d_price 사용
 
                 async with es._shared_lock:
-                    es._avg_amt_5d.clear()
-                    es._avg_amt_5d.update(new_avg)
-                    es._radar_cnsr_order[:] = [
-                        cd for cd in es._radar_cnsr_order if cd in final_eligible
-                    ]
+                    # _master_stocks_cache에서 직접 업데이트
+                    for cd, v in new_avg.items():
+                        if cd in _st._master_stocks_cache:
+                            _st._master_stocks_cache[cd]["avg_5d_trade_amount"] = v
+                    # _radar_cnsr_order 삭제: _subscribed_stocks 필터링
+                    to_remove = [cd for cd in es._subscribed_stocks if cd not in final_eligible]
+                    for cd in to_remove:
+                        es._subscribed_stocks.discard(cd)
 
                 _log.info(
                     "[수동 확정시세] Step 7 원자적 메모리 교체 완료 — pending=%d종목, avg=%d",
@@ -1570,12 +1520,11 @@ async def fetch_confirmed_data_only() -> dict:
 async def fetch_5d_data_only() -> dict:
     """수동 5일봉 거래대금,고가 다운로드 파이프라인.
     
-    진행 과정 (Step 1 ~ Step 5) 및 브로드캐스트를 지원하며,
+    DB의 master_stocks_table에 등록된 매매적격종목을 대상으로
     개별 종목의 5일 고가 및 거래대금 데이터를 다운로드하여 DB 및 메모리에 저장합니다.
     """
     from backend.app.services import engine_service as es
     from backend.app.core.broker_factory import get_router
-    from backend.app.core.sector_stock_cache import save_stock_name_cache
     from backend.app.core.trading_calendar import get_kst_today_str
 
     _settings = getattr(es, "_settings_cache", {}) or {}
@@ -1588,177 +1537,36 @@ async def fetch_5d_data_only() -> dict:
     es._confirmed_refresh_message = ""
 
     try:
-        # 0) 롤링 계산에 필요한 상세 5일봉 이력을 stock_5d_array 테이블로부터 복원
-        await _restore_5d_arrays_from_db(es)
+        from backend.app.core.kiwoom_providers import KiwoomStockProvider
+        from backend.app.core.broker_router import BrokerRouter
+        router = BrokerRouter(_settings)
+        auth_provider = router.auth
+        _sector = KiwoomStockProvider(_settings, auth_provider=auth_provider)
 
-        from backend.app.core.kiwoom_providers import KiwoomStockProvider, KiwoomAuthProvider
-        _auth = KiwoomAuthProvider(_settings)
-        _sector = KiwoomStockProvider(_settings, auth_provider=_auth)
-
-        # ── Pipeline events ──────────────────────────────────────────────────
-        data_fetched_event = asyncio.Event()
-        parsing_done_event = asyncio.Event()
-        filtering_done_event = asyncio.Event()
-        save_done_event = asyncio.Event()
-
-        # ── Step 1: API 호출 (raw data 수집) ─────────────────────────────────
-        _log.info("[수동 5일봉] Step 1 시작 — ka10099 전종목 리스트 다운로드 (코스피+코스닥)")
-        _broadcast_confirmed_progress(0, 0, message="1단계: 코스피/코스닥 전종목 목록 수집 중...", step=1)
-        try:
-            from backend.app.core.broker_providers import UnifiedStockRecord
-            records: list[UnifiedStockRecord] = await _sector.fetch_all_stocks()
-            if not records:
-                _log.warning("[수동 5일봉] 전종목 목록 수집 결과 비어있음 — 중단")
-                es._confirmed_refresh_running_5d = False
-                es._confirmed_refresh_message = ""
-                return {"fetched": 0, "failed": 0, "cached": False}
-            kospi_count = sum(1 for r in records if r.market_code == "0")
-            kosdaq_count = sum(1 for r in records if r.market_code == "10")
-            other_count = len(records) - kospi_count - kosdaq_count
-            data_fetched_event.set()
-            _log.info(
-                "[수동 5일봉] Step 1 완료 — ka10099 총 %d종목 (코스피 %d, 코스닥 %d, 기타 %d)",
-                len(records), kospi_count, kosdaq_count, other_count
-            )
-        except Exception as exc:
-            _log.warning("[수동 5일봉] ka10099 통합 조회 실패: %s", exc, exc_info=True)
-            es._confirmed_refresh_running_5d = False
-            es._confirmed_refresh_message = ""
-            return {"fetched": 0, "failed": 0, "cached": False}
-
-        # ── Step 2: 적격 종목 필터링 (매매부적격 종목 제외) ─────────────────
-        _log.info("[수동 5일봉] Step 2 시작 — 적격 종목 필터링")
-        _broadcast_confirmed_progress(0, 0, message="2단계: 매매부적격종목 필터링 중...", step=2)
-        try:
-            await asyncio.wait_for(data_fetched_event.wait(), timeout=300)
-        except asyncio.TimeoutError:
-            _log.error("[수동 5일봉] Step 2 대기 타임아웃 — 파이프라인 중단")
-            es._confirmed_refresh_running_5d = False
-            es._confirmed_refresh_message = ""
-            return {"fetched": 0, "failed": 0, "cached": False}
-
-        try:
-            confirmed_codes: set[str] = set()
-            filter_reasons: dict[str, int] = {}
-            from backend.app.core.stock_filter import is_excluded
-            for r in records:
-                excluded, reason = is_excluded(r.raw_item, r.code)
-                if excluded:
-                    filter_reasons[reason] = filter_reasons.get(reason, 0) + 1
-                else:
-                    confirmed_codes.add(r.code)
-
-            excluded_count = len(records) - len(confirmed_codes)
-            pct = (excluded_count / len(records) * 100) if records else 0
-            _log.info(
-                "[수동 5일봉] Step 2 완료 — 대상: %d종목, 필터링 통과: %d종목, 제외 사유: %s",
-                len(records), len(confirmed_codes), filter_reasons,
-            )
-            _broadcast_confirmed_progress(0, 0, message=f"✅ 2단계 완료: 총 {len(records)}종목 중 {len(confirmed_codes)}종목 적격 판정", step=2)
-            await asyncio.sleep(1.5)
-
-            summary_str = f"전체 {len(records)}종목 → 적격 {len(confirmed_codes)}종목 (제외 {excluded_count}종목, {pct:.1f}%)"
-            if filter_reasons:
-                top_reasons = sorted(filter_reasons.items(), key=lambda x: x[1], reverse=True)[:5]
-                _log.info("[수동 5일봉] 주요 부적격 사유 (Top 5): %s", dict(top_reasons))
-                reason_strs = [f"{k.split('=')[-1]} {v}개" for k, v in top_reasons]
-                summary_str += " | 주요 부적격: " + ", ".join(reason_strs)
-            es._latest_filter_summary = summary_str
-            from backend.app.core.sector_stock_cache import save_filter_summary_cache
-            await save_filter_summary_cache(summary_str)
-
-            filtering_done_event.set()
-        except Exception as exc:
-            _log.warning("[수동 5일봉] Step 2 필터링 실패: %s", exc, exc_info=True)
-            es._confirmed_refresh_running_5d = False
-            es._confirmed_refresh_message = ""
-            return {"fetched": 0, "failed": 0, "cached": False}
-
-        # ── Step 3: 적격 종목만 파싱/매칭 (종목명/시장구분) ───────────────────
-        _log.info("[수동 5일봉] Step 3 시작 — 적격 종목 파싱 (%d종목)", len(confirmed_codes))
-        _broadcast_confirmed_progress(0, 0, message="3단계: 종목 정보 파싱 중...", step=3)
-        try:
-            await asyncio.wait_for(filtering_done_event.wait(), timeout=300)
-        except asyncio.TimeoutError:
-            _log.error("[수동 5일봉] Step 3 대기 타임아웃 — 파이프라인 중단")
-            es._confirmed_refresh_running_5d = False
-            es._confirmed_refresh_message = ""
-            return {"fetched": 0, "failed": 0, "cached": False}
-
-        try:
-            name_map: dict[str, str] = {}
-            market_map: dict[str, str] = {}
-            for r in records:
-                if r.code in confirmed_codes:
-                    name_map[r.code] = r.name
-                    market_map[r.code] = r.market_code
-            parsing_done_event.set()
-            _log.info("[수동 5일봉] Step 3 완료 — %d종목 파싱/매칭 완료", len(name_map))
-        except Exception as exc:
-            _log.warning("[수동 5일봉] Step 3 파싱/매칭 실패: %s", exc, exc_info=True)
-            es._confirmed_refresh_running_5d = False
-            es._confirmed_refresh_message = ""
-            return {"fetched": 0, "failed": 0, "cached": False}
-
-        # ── Step 4: 동일 종목 집합으로 4개 캐시 저장 + 레이아웃 ──────────────
-        _log.info("[수동 5일봉] Step 4 시작 — 캐시 저장")
-        _broadcast_confirmed_progress(0, 0, message="4단계: 디스크 캐시 저장 중...", step=4)
-        try:
-            await asyncio.wait_for(parsing_done_event.wait(), timeout=300)
-        except asyncio.TimeoutError:
-            _log.error("[수동 5일봉] Step 4 대기 타임아웃 — 파이프라인 중단")
-            es._confirmed_refresh_running_5d = False
-            es._confirmed_refresh_message = ""
-            return {"fetched": 0, "failed": 0, "cached": False}
-
-        try:
-            await save_stock_name_cache(name_map)
-
-            import backend.app.core.industry_map as _ind_mod
-            eligible_map: dict[str, str] = {cd: "" for cd in confirmed_codes}
-            await _ind_mod.persist_eligible_stocks_cache(eligible_map)
-            _ind_mod._eligible_stock_codes = eligible_map
-
-            # market/nxt_enable 정보를 master_stocks_table에 직접 업데이트 (단일 진실 공급원)
-            from backend.app.db.database import get_db_connection as _get_conn
-            _conn = await _get_conn()
-            _mst_updates = [
-                (r.market_code, 1 if r.nxt_enable else 0, r.code)
-                for r in records if r.code in confirmed_codes
-            ]
-            if _mst_updates:
-                await _conn.executemany(
-                    "UPDATE master_stocks_table SET market=?, nxt_enable=? WHERE code=?",
-                    _mst_updates
-                )
-                await _conn.commit()
-                import backend.app.services.engine_state as _st
-                for r in records:
-                    if r.code in confirmed_codes and r.code in _st._master_stocks_cache:
-                        _st._master_stocks_cache[r.code]["market"] = r.market_code
-                        _st._master_stocks_cache[r.code]["nxt_enable"] = bool(r.nxt_enable)
-
-            all_codes = list(confirmed_codes)
-            await _update_layout_cache(es, all_codes, name_map)
-            save_done_event.set()
-            _log.info("[수동 5일봉] Step 4 완료")
-        except Exception as exc:
-            _log.warning("[수동 5일봉] Step 4 저장데이터 저장 실패: %s", exc, exc_info=True)
+        # ── DB에서 매매적격종목 코드 리스트 직접 로드 ──────────────────────────
+        _log.info("[수동 5일봉] master_stocks_table에서 매매적격종목 목록 로드 시작")
+        from backend.app.db.database import get_db_connection
+        conn = await get_db_connection()
+        cursor = await conn.execute("SELECT code FROM master_stocks_table")
+        rows = await cursor.fetchall()
+        all_codes = [r["code"] for r in rows]
+        total = len(all_codes)
+        
+        _log.info("[수동 5일봉] 대상 적격 종목 수: %d", total)
+        if total == 0:
+            _log.warning("[수동 5일봉] 대상 종목 없음 — 중단")
             es._confirmed_refresh_running_5d = False
             es._confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
 
         # ── Step 5: 개별 5일봉 데이터 다운로드 ───────
-        total = len(all_codes)
         _log.info("[수동 5일봉] Step 5 시작 — 개별 5일봉 다운로드 (%d종목)", total)
         _broadcast_confirmed_progress(0, total, message=f"5단계: 개별 5일봉 데이터 다운로드 중 (0/{total:,}, 0%)", step=5)
 
         # 오늘 날짜의 기존 다운로드 데이터 확인 (이어받기)
-        from backend.app.db.database import get_db_connection
         qry_dt = get_kst_today_str()
         downloaded_codes = set()
         try:
-            conn = await get_db_connection()
             cursor = await conn.execute("""
                 SELECT code FROM stock_5d_array WHERE date = ?
             """, (qry_dt,))
@@ -1767,13 +1575,6 @@ async def fetch_5d_data_only() -> dict:
             _log.info("[수동 5일봉] 오늘 날짜(%s) 기존 다운로드된 종목 수: %d", qry_dt, len(downloaded_codes))
         except Exception as e:
             _log.warning("[수동 5일봉] 기존 다운로드 데이터 확인 실패: %s", e)
-
-        # _master_stocks_cache에서 sector 정보 직접 읽기 (단일 진실 공급원)
-        import backend.app.services.engine_state as _st_cache
-        db_mapping = {
-            code: data.get("sector", "기타")
-            for code, data in _st_cache._master_stocks_cache.items()
-        }
 
         fetched = 0
         failed = 0
@@ -1788,8 +1589,6 @@ async def fetch_5d_data_only() -> dict:
                 return
             
             try:
-                from backend.app.db.database import get_db_connection
-                conn = await get_db_connection()
                 date_str = get_kst_today_str()
                 
                 for cd, (amts_5d, highs_5d) in buffer.items():
@@ -1837,7 +1636,6 @@ async def fetch_5d_data_only() -> dict:
                 skipped += 1
                 # DB에서 기존 데이터를 메모리에 복원
                 try:
-                    conn = await get_db_connection()
                     cursor = await conn.execute("""
                         SELECT day1_amount, day2_amount, day3_amount, day4_amount, day5_amount,
                                day1_high, day2_high, day3_high, day4_high, day5_high
@@ -1847,18 +1645,17 @@ async def fetch_5d_data_only() -> dict:
                     if row:
                         amounts_5d = [row["day1_amount"], row["day2_amount"], row["day3_amount"], row["day4_amount"], row["day5_amount"]]
                         highs_5d = [row["day1_high"], row["day2_high"], row["day3_high"], row["day4_high"], row["day5_high"]]
-                        es._amts_5d_arrays[nk] = amounts_5d
-                        es._highs_5d_arrays[nk] = highs_5d
                         
                         avg5d = int(sum(amounts_5d) / len(amounts_5d))
                         high5d = max(highs_5d)
                         
-                        if avg5d > 0:
-                            if nk in _master_stocks_cache:
-                                _master_stocks_cache[nk]["avg_5d_trade_amount"] = avg5d
-                        if high5d > 0:
-                            if nk in _master_stocks_cache:
-                                _master_stocks_cache[nk]["high_5d_price"] = high5d
+                        import backend.app.services.engine_state as _st
+                        if nk in _st._master_stocks_cache:
+                            _st._master_stocks_cache[nk]["status"] = "active"
+                            if avg5d > 0:
+                                _st._master_stocks_cache[nk]["avg_5d_trade_amount"] = avg5d
+                            if high5d > 0:
+                                _st._master_stocks_cache[nk]["high_5d_price"] = high5d
                         
                         fetched += 1
                 except Exception as e:
@@ -1884,27 +1681,25 @@ async def fetch_5d_data_only() -> dict:
                 highs_5d = res.get("highs_5d_array") or [] if res else []
 
                 if amounts_5d and highs_5d and len(amounts_5d) > 0 and len(highs_5d) > 0:
-                    # _pending_stock_details 제거: _radar_cnsr_order에만 추가
-                    if hasattr(es, "_radar_cnsr_order") and nk not in es._radar_cnsr_order:
-                        es._radar_cnsr_order.append(nk)
+                    # _radar_cnsr_order 삭제: _subscribed_stocks에 추가
+                    if hasattr(es, "_subscribed_stocks"):
+                        es._subscribed_stocks.add(nk)
 
-                    # 메모리 캐시 및 배열 갱신
-                    es._amts_5d_arrays[nk] = amounts_5d
-                    es._highs_5d_arrays[nk] = highs_5d
-
+                    # 메모리 캐시 제거: stock_5d_array 테이블에 직접 저장
                     avg5d = int(sum(amounts_5d) / len(amounts_5d))
                     high5d = max(highs_5d)
 
-                    if avg5d > 0:
-                        if nk in _master_stocks_cache:
-                            _master_stocks_cache[nk]["avg_5d_trade_amount"] = avg5d
-                    if high5d > 0:
-                        if nk in _master_stocks_cache:
-                            _master_stocks_cache[nk]["high_5d_price"] = high5d
+                    import backend.app.services.engine_state as _st
+                    if nk in _st._master_stocks_cache:
+                        _st._master_stocks_cache[nk]["status"] = "active"
+                        if avg5d > 0:
+                            _st._master_stocks_cache[nk]["avg_5d_trade_amount"] = avg5d
+                        if high5d > 0:
+                            _st._master_stocks_cache[nk]["high_5d_price"] = high5d
 
                     # 배치 저장 버퍼에 추가
                     pending_5d_save[nk] = (amounts_5d, highs_5d)
-                    
+
                     fetched += 1
                     _log.info("[5일봉 다운로드] [%d/%d] 종목 %s 다운로드 완료", idx + 1, total, base_cd)
                 else:
@@ -1972,39 +1767,5 @@ async def fetch_5d_data_only() -> dict:
 
 
 async def _restore_5d_arrays_from_db(es: ModuleType):
-    """장마감 배치 구동 시점에만 stock_5d_array 테이블에서 직전 5일 배열 이력을 메모리 캐시에 로드."""
-    from backend.app.db.database import get_db_connection
-    _amts_5d_arrays = getattr(es, "_amts_5d_arrays", {})
-    _highs_5d_arrays = getattr(es, "_highs_5d_arrays", {})
-    
-    try:
-        conn = await get_db_connection()
-        # 각 종목별로 가장 최근 날짜의 5일봉 이력 데이터를 조회
-        cursor = await conn.execute("""
-            SELECT code, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount,
-                   day1_high, day2_high, day3_high, day4_high, day5_high
-            FROM stock_5d_array
-            WHERE (code, date) IN (
-                SELECT code, MAX(date) FROM stock_5d_array GROUP BY code
-            )
-        """)
-        rows = await cursor.fetchall()
-        for r in rows:
-            code = r["code"]
-            _amts_5d_arrays[code] = [
-                float(r["day1_amount"] or 0),
-                float(r["day2_amount"] or 0),
-                float(r["day3_amount"] or 0),
-                float(r["day4_amount"] or 0),
-                float(r["day5_amount"] or 0)
-            ]
-            _highs_5d_arrays[code] = [
-                float(r["day1_high"] or 0),
-                float(r["day2_high"] or 0),
-                float(r["day3_high"] or 0),
-                float(r["day4_high"] or 0),
-                float(r["day5_high"] or 0)
-            ]
-        _log.info("[파이프라인] stock_5d_array 이력 데이터 메모리 복원 완료 (%d종목)", len(rows))
-    except Exception as e:
-        _log.warning("[파이프라인] stock_5d_array 이력 복원 실패: %s", e)
+    """캐시 제거로 더 이상 사용하지 않음 - stock_5d_array 테이블에서 직접 읽도록 대체."""
+    pass

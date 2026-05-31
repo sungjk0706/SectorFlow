@@ -16,17 +16,7 @@ async def get_merged_sector(stock_code: str) -> str:
     """인메모리 캐시 또는 SQLite DB에서 종목의 최종 업종명을 반환."""
     stock_code = stock_code.upper()  # 대문자 통일 (키움 원본 포맷 고수, 대조 시점에만 변환)
 
-    # 1) sector 캐시에서 우선 조회 (master_stocks_table 로드 시 저장)
-    try:
-        import backend.app.services.engine_service as es
-        if hasattr(es._st, "_sector_cache") and es._st._sector_cache:
-            sector = es._st._sector_cache.get(stock_code)
-            if sector:
-                return sector
-    except Exception:
-        pass
-
-    # 2) 인메모리 캐시에서 조회 (_master_stocks_cache)
+    # 1) 인메모리 캐시에서 조회 (_master_stocks_cache)
     try:
         import backend.app.services.engine_service as es
         entry = es._master_stocks_cache.get(stock_code)
@@ -35,7 +25,7 @@ async def get_merged_sector(stock_code: str) -> str:
     except Exception:
         pass
 
-    # 3) SQLite DB에서 조회
+    # 2) SQLite DB에서 조회
     from backend.app.db.database import get_db_connection
     conn = await get_db_connection()
     try:

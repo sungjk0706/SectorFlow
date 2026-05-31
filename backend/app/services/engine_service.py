@@ -11,7 +11,7 @@ from backend.app.core.logger import get_logger
 from backend.app.core.kiwoom_connector import KiwoomConnector
 from backend.app.services.trading import AutoTradeManager
 from backend.app.services import engine_account_notify as _account_notify
-from backend.app.services.engine_utils import LRUCache, LazyLock, LazyEvent
+from backend.app.services.engine_utils import LazyLock, LazyEvent
 from backend.app.services.state_manager import StateManager, OrderStatus
 
 # ── 전역 상태 import (engine_state에서 직접 import) ─────────────────────
@@ -20,6 +20,7 @@ from backend.app.services.engine_state import (
     _running,
     _connector_manager,
     _kiwoom_connector,
+    _kiwoom_auth_provider,
     _broker_tokens,
     _engine_task,
     _engine_loop_ref,
@@ -46,19 +47,16 @@ from backend.app.services.engine_state import (
     _reg_ack_return_code,
     _rest_api_thread_sem,
     _account_rest_lock,
-    # _pending_stock_details 제거
-    _radar_cnsr_order,
+    # _radar_cnsr_order 삭제
     _sector_stock_layout,
-    _amts_5d_arrays,
-    _highs_5d_arrays,
+    # _amts_5d_arrays, _highs_5d_arrays 제거: stock_5d_array 테이블에서 직접 읽도록 대체
     _subscribed_0d_stocks,
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_prices, _latest_trade_amounts)
-    _sector_dirty_codes,
     _filtered_sector_codes,
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_strength)
-    _sector_stocks_cache,
-    _sector_stocks_dirty,
-    _sector_stocks_last_invalidated,
+    # _sector_stocks_cache 제거: _master_stocks_cache 기반 실시간 필터링으로 대체
+    # _sector_stocks_dirty 제거
+    # _sector_stocks_last_invalidated 제거
     _MIN_CACHE_LIFETIME_SEC,
     _buy_targets_snapshot_cache,
     _buy_targets_cache_ref,
@@ -157,6 +155,7 @@ from backend.app.services.engine_config import (
 from backend.app.services.engine_radar import (
     get_pending_stocks,
     get_sector_stock_layout,
+    # get_avg_amt_5d_map 유지: _master_stocks_cache에서 직접 추출
     get_avg_amt_5d_map,
     get_high_5d_cache,
     _overlay_radar_row_with_live_price,
@@ -174,9 +173,10 @@ from backend.app.services.engine_sector import (
     get_sector_summary_inputs,
     get_sector_stocks,
     get_all_sector_stocks,
-    _invalidate_sector_stocks_cache,
+    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
     _on_filter_settings_changed as _sector_on_filter_settings_changed,
     _compute_filtered_codes,
+    # _update_avg_amt_5d 유지: _master_stocks_cache를 직접 업데이트
     _update_avg_amt_5d,
 )
 from backend.app.services.engine_lifecycle import (

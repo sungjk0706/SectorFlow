@@ -64,12 +64,7 @@ async def rename_sector(old_name: str, new_name: str) -> None:
         for cd, entry in es._master_stocks_cache.items():
             if entry.get("sector") == old_name:
                 entry["sector"] = new_name
-        # _sector_cache 증분 업데이트
-        if hasattr(es._st, "_sector_cache") and es._st._sector_cache:
-            for cd, sector in es._st._sector_cache.items():
-                if sector == old_name:
-                    es._st._sector_cache[cd] = new_name
-        es._invalidate_sector_stocks_cache()
+        # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
     except Exception as e:
         _log.warning("[메모리업데이트] 인메모리 업종명 변경 실패: %s", e)
 
@@ -117,12 +112,7 @@ async def delete_sector(name: str) -> None:
         for cd, entry in es._master_stocks_cache.items():
             if entry.get("sector") == name:
                 entry["sector"] = "기타"
-        # _sector_cache 증분 업데이트
-        if hasattr(es._st, "_sector_cache") and es._st._sector_cache:
-            for cd, sector in es._st._sector_cache.items():
-                if sector == name:
-                    es._st._sector_cache[cd] = "기타"
-        es._invalidate_sector_stocks_cache()
+        # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
     except Exception as e:
         _log.warning("[메모리업데이트] 인메모리 업종 삭제 반영 실패: %s", e)
 
@@ -152,9 +142,6 @@ async def move_stock(stock_code: str, target_sector: str) -> None:
         entry = es._master_stocks_cache.get(stock_code)
         if entry:
             entry["sector"] = target_sector
-        # _sector_cache 증분 업데이트
-        if hasattr(es._st, "_sector_cache") and es._st._sector_cache:
-            es._st._sector_cache[stock_code] = target_sector
-        es._invalidate_sector_stocks_cache()
+        # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
     except Exception as e:
         _log.warning("[메모리업데이트] 인메모리 종목 업종 갱신 실패: %s", e)

@@ -182,9 +182,9 @@ async def run_conditional_reg_pipeline() -> None:
     모두 false면 종료.
     """
     from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
-    from backend.app.core.settings_file import load_settings
+    import backend.app.services.engine_state as _st
 
-    settings = await load_settings()
+    settings = _st._settings_cache or {}
 
     if not await is_ws_subscribe_window(settings):
         logger.debug("[구독제어] 실시간 구독 구간 외 — REG 파이프라인 생략")
@@ -236,9 +236,9 @@ async def on_setting_changed(key: str, value: bool) -> None:
     """
     logger.debug("[구독제어] 설정 변경 수신 %s=%s", key, value)
     from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
-    from backend.app.core.settings_file import load_settings
+    import backend.app.services.engine_state as _st
 
-    settings = await load_settings()
+    settings = _st._settings_cache or {}
 
     if not await is_ws_subscribe_window(settings):
         logger.info(

@@ -298,10 +298,11 @@ class TelegramBot:
         label: str,
     ) -> bool:
         """현재값 반전 후 저장. 새 값 반환."""
-        from backend.app.core.settings_file import load_settings, update_settings
+        from backend.app.core.settings_file import update_settings
         from backend.app.services import engine_service
+        import backend.app.services.engine_state as _st
 
-        flat = await load_settings()
+        flat = _st._settings_cache or {}
         if key in ("auto_buy_on", "auto_sell_on", "holiday_guard_on"):
             cur = bool(flat.get(key, True))
         else:

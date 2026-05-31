@@ -33,11 +33,11 @@ class KiwoomAuthProvider(AuthProvider):
 
     def __init__(self, settings: dict):
         self._settings = settings
-        app_key = (settings.get("kiwoom_app_key") or "").strip()
-        app_secret = (settings.get("kiwoom_app_secret") or "").strip()
+        app_key = (settings.get("kiwoom_app_key_real") or settings.get("kiwoom_app_key") or "").strip()
+        app_secret = (settings.get("kiwoom_app_secret_real") or settings.get("kiwoom_app_secret") or "").strip()
         self._rest_api = KiwoomRestAPI(app_key, app_secret)
         self._rest_api._acnt_no = str(
-            settings.get("kiwoom_account_no", "") or ""
+            settings.get("kiwoom_account_no_real") or settings.get("kiwoom_account_no", "") or ""
         )
 
     async def get_access_token(self) -> Optional[str]:
@@ -298,8 +298,8 @@ class KiwoomStockProvider:
         """전체 종목 ka10081 순차 조회 -- 5일봉 데이터 채우기용."""
         if self._rest_api is None:
             return {}
-        from backend.app.core.kiwoom_stock_rest import fetch_ka10081_all_stocks
-        return await fetch_ka10081_all_stocks(
+        from backend.app.core.kiwoom_stock_rest import fetch_ka10081_all_stocks_5day
+        return await fetch_ka10081_all_stocks_5day(
             krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress, resume_codes=resume_codes
         )
 
@@ -314,8 +314,8 @@ class KiwoomStockProvider:
         """전체 종목 ka10081 순차 조회 -- 확정 시세(1일봉) 데이터 채우기용."""
         if self._rest_api is None:
             return {}
-        from backend.app.core.kiwoom_stock_rest import fetch_ka10081_all_stocks
-        return await fetch_ka10081_all_stocks(
+        from backend.app.core.kiwoom_stock_rest import fetch_ka10081_all_stocks_daily_confirmed
+        return await fetch_ka10081_all_stocks_daily_confirmed(
             self._rest_api, krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress, resume_codes=resume_codes
         )
 

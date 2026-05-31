@@ -281,15 +281,13 @@ def _item_cd_tracked_radar_or_ready(item_cd: str) -> bool:
     잔고 REST 반영 후 UNREG 스윕 등에서 UNREG 대상에서 제외한다.
     """
     from backend.app.services.engine_symbol_utils import _normalize_stk_cd_rest
-    from backend.app.services.engine_state import _radar_cnsr_order
+    from backend.app.services.engine_state import _subscribed_stocks
 
     nk = _normalize_stk_cd_rest(str(item_cd).strip().lstrip("A"))
     if not nk or nk == "000000":
         return False
-    for k in _radar_cnsr_order:
-        if _normalize_stk_cd_rest(str(k).strip().lstrip("A")) == nk:
-            return True
-    return False
+    # _radar_cnsr_order 삭제: _subscribed_stocks 사용 (제로-체크 보장)
+    return nk in _subscribed_stocks
 
 
 async def _sweep_unreg_subscribed_except_positions_and_tracked() -> int:
