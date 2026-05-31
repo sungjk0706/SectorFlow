@@ -113,7 +113,14 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         from backend.app.services.engine_service import (
             _settings_cache,
             get_sector_scores_snapshot,
+            _sector_summary_ready_event,
         )
+
+        # 업종 요약정보 생성 완료 대기 (테스트모드 포함)
+        if not _sector_summary_ready_event.is_set():
+            logger.info("[연결] 업종 요약정보 생성 대기 중")
+            await _sector_summary_ready_event.wait()
+            logger.info("[연결] 업종 요약정보 생성 완료")
 
         scores_result = get_sector_scores_snapshot()
         scores, ranked_count = scores_result if isinstance(scores_result, tuple) else (scores_result, 0)

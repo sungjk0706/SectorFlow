@@ -36,10 +36,12 @@ def recompute_sector_for_code(code: str | None = None) -> None:
     추가 틱: dirty set에만 추가, 기존 예약 유지 (cancel 안 함).
     → 연속 틱 폭풍 중에도 0.3s마다 반드시 1회 실행된다.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("[업종순위] recompute_sector_for_code 호출: code=%s", code)
     global _recompute_handle
 
-    if not _is_engine_running():
-        return
+    # 엔진 실행 상태 확인 제거: 업종 요약정보는 엔진 실행 상태와 무관하게 생성 (테스트모드 포함)
 
     if code:
         _dirty_codes.add(code)
@@ -95,8 +97,9 @@ async def _flush_sector_recompute_impl() -> None:
     비동기 함수. 순수 계산 + 알림 + 구독 갱신만 수행.
     """
     global _dirty_codes
-    
-    if not _dirty_codes or not _is_engine_running():
+
+    # _is_engine_running() 확인 제거: 업종 요약정보는 엔진 실행 상태와 무관하게 생성 (테스트모드 포함)
+    if not _dirty_codes:
         return
 
     codes_snapshot = set(_dirty_codes)
@@ -130,10 +133,11 @@ async def _flush_sector_recompute_impl() -> None:
             await _skeleton_incremental_update(_es, codes_snapshot)
             return
 
-        # __ALL__ 플래그 + 캐시 존재 → 모든 active 종목을 dirty로 취급하여 증분 경로 사용
-        # _radar_cnsr_order 삭제: _subscribed_stocks 사용
+        # __ALL__ 플래그 + 캐시 존재 → 전체 종목(all_codes)를 dirty로 취급하여 증분 경로 사용
+        # _subscribed_stocks 대신 all_codes 사용: 업종 요약정보는 실시간 구독 상태와 무관하게 전체 종목 기준으로 계산
         if "__ALL__" in codes_snapshot:
-            codes_snapshot = set(_es._subscribed_stocks)
+            inputs = get_sector_summary_inputs()
+            codes_snapshot = set(inputs["all_codes"])
 
         # ── 증분 갱신 ──
         # 1. dirty 종목 → 해당 섹터 추출
@@ -247,6 +251,9 @@ async def _flush_sector_recompute_impl() -> None:
         if _buy_targets_changed(prev_targets, ss.buy_targets):
             _sync_0d_subscriptions_sync(_es, ss.buy_targets)
 
+        # 업종 요약정보 생성 완료 이벤트 설정
+        _es._sector_summary_ready_event.set()
+
     except Exception as e:
         logger.warning("[섹터재계산] 증분 재계산 오류: %s", e, exc_info=True)
 
@@ -315,6 +322,9 @@ async def _full_recompute(_es, settings: dict, codes_snapshot: set[str] | None =
 
     비동기 함수. 순수 계산 + 알림 + 이벤트 발행만 수행.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("[업종순위] _full_recompute 진입")
     from backend.app.services.engine_service import get_sector_summary_inputs
     from backend.app.services.engine_sector_score import compute_full_sector_summary
     from backend.app.services.engine_account_notify import (
@@ -367,6 +377,9 @@ async def _full_recompute(_es, settings: dict, codes_snapshot: set[str] | None =
     # buy_targets 변경 시 구독 갱신 직접 호출 (이벤트 기반)
     if _buy_targets_changed(prev_targets, ss.buy_targets):
         _sync_0d_subscriptions_sync(_es, ss.buy_targets)
+
+    # 업종 요약정보 생성 완료 이벤트 설정
+    _es._sector_summary_ready_event.set()
 
 
 # ── 0D 구독 delta 갱신 ────────────────────────────────────────────────────
