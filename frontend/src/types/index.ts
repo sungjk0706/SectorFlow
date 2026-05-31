@@ -286,4 +286,5 @@ export interface StockClassificationMutationResponse {
   ok: boolean;
   error?: string;
   warning?: string;
+  all_stocks?: Array<{ code: string; name: string; sector: string; market_type?: string; nxt_enable?: boolean }>;
 }
