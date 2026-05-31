@@ -1407,13 +1407,18 @@ async function onMoveStock(_e: MouseEvent, targetSector: string): Promise<void> 
     })
     handleMutationResult(lastRes)
 
-    // 낙관적 업데이트: store 상태 변경하여 뷰에서 사라지게 함
-    const state = stockClassificationStore.getState()
-    const newStockMoves = { ...state.stockMoves }
-    for (const code of codes) {
-      newStockMoves[code] = targetSector
+    // 서버 응답 기반 업데이트 (델타 전송 원칙 준수)
+    if (lastRes.ok && lastRes.all_stocks) {
+      stockClassificationStore.setState({ allStocks: lastRes.all_stocks })
+      
+      // stockMoves 업데이트
+      const state = stockClassificationStore.getState()
+      const newStockMoves = { ...state.stockMoves }
+      for (const code of codes) {
+        newStockMoves[code] = targetSector
+      }
+      stockClassificationStore.setState({ stockMoves: newStockMoves })
     }
-    stockClassificationStore.setState({ stockMoves: newStockMoves })
 
     if (moveSource.source === 'staging') {
       clearStaging()
