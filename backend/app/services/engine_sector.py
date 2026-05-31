@@ -33,7 +33,10 @@ def get_sector_scores_snapshot() -> tuple[list[dict], int]:
     - scores_list: 전체 업종 목록 (rank=0 포함)
     - ranked_sectors_count: 순위 있는 업종 수 (rank > 0)
     """
-    ss = _sector_summary_cache
+    # 로컬 바인딩(_sector_summary_cache)은 engine_state import 시점에 고정되어 업데이트 안 됨
+    # engine_service._sector_summary_cache가 engine_sector_confirm이 업데이트하는 단일 소스
+    import backend.app.services.engine_service as _es_ref
+    ss = _es_ref._sector_summary_cache
     if not ss:
         return [], 0
     out: list[dict] = []
@@ -96,15 +99,16 @@ def get_sector_summary_inputs() -> dict:
     # _radar_cnsr_order 삭제: _subscribed_stocks + _master_stocks_cache로 대체
     from backend.app.services.engine_state import _master_stocks_cache
     stock_details = {}
-    for cd in _subscribed_stocks:
-        if cd in _master_stocks_cache:
-            stock = _master_stocks_cache[cd].copy()
-            stock["status"] = "active"
-            stock_details[cd] = stock
+    # _subscribed_stocks 대신 _master_stocks_cache의 모든 종목 사용 (실시간 구독 의존성 제거)
+    for cd, entry in _master_stocks_cache.items():
+        stock = entry.copy()
+        stock["status"] = "active"
+        stock_details[cd] = stock
     # _avg_amt_5d 제거: _master_stocks_cache에서 직접 추출
-    avg_amt_5d = {cd: entry.get("avg_5d_trade_amount", 0) for cd, entry in _master_stocks_cache.items()}
+    # 단위 변환: DB는 원 단위, compute_sector_scores는 억 단위 기대
+    avg_amt_5d = {cd: int(entry.get("avg_5d_trade_amount", 0) or 0) // 100_000_000 for cd, entry in _master_stocks_cache.items()}
     return {
-        "all_codes": list(_subscribed_stocks),
+        "all_codes": list(_master_stocks_cache.keys()),
         "trade_prices": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
         "trade_amounts": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
         "avg_amt_5d": avg_amt_5d,
@@ -127,15 +131,17 @@ async def get_sector_stocks() -> list:
     merged: dict[str, dict] = {}
     from backend.app.services.engine_state import _master_stocks_cache
 
-    # _subscribed_stocks + _master_stocks_cache로 필터링
-    for cd in _subscribed_stocks:
+    # 순회 소스: _filtered_sector_codes > _master_stocks_cache.keys()
+    # _subscribed_stocks 제거: 테스트모드에서 비어있어 0종목 반환하는 버그 해결
+    # 단일 소스 진리: _master_stocks_cache가 종목 데이터의 단일 소스
+    source_codes: set[str] = _filtered_sector_codes if _filtered_sector_codes is not None else set(_master_stocks_cache.keys())
+    for cd in source_codes:
         if filter_set is not None and cd not in filter_set:
-            continue
-        if _filtered_sector_codes is not None and cd not in _filtered_sector_codes:
             continue
         if cd not in _master_stocks_cache:
             continue
         e = _master_stocks_cache[cd].copy()
+        e["code"] = cd  # master_stocks_cache는 code를 KEY로만 보유 -- 값 dict에 명시 (프론트 stocksToMap/delta 식별용)
         e["status"] = "active"
         # 시세 없는 빈 엔트리 제외
         if int(e.get("cur_price") or 0) <= 0 and (not e.get("name") or e.get("name") == cd):
@@ -150,7 +156,8 @@ async def get_sector_stocks() -> list:
 
     # 업종 분석 순위 기준 정렬
     sector_order: dict[str, int] = {}
-    ss = _sector_summary_cache
+    import backend.app.services.engine_service as _es_ref2
+    ss = _es_ref2._sector_summary_cache
     if ss:
         for sc in ss.sectors:
             sector_order[sc.sector] = sc.rank
@@ -369,7 +376,9 @@ def _compute_filtered_codes() -> set[str] | None:
 
     filtered = set()
     for cd in codes:
-        avg_eok = int(_master_stocks_cache.get(cd, {}).get("avg_5d_trade_amount", 0) or 0)
+        # 단위 변환: DB는 원 단위, 설정값은 억 단위
+        avg_won = int(_master_stocks_cache.get(cd, {}).get("avg_5d_trade_amount", 0) or 0)
+        avg_eok = avg_won // 100_000_000
         if avg_eok >= min_amt_eok:
             filtered.add(cd)
 

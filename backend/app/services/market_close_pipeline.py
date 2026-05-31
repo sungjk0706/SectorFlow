@@ -1563,18 +1563,18 @@ async def fetch_5d_data_only() -> dict:
         _log.info("[수동 5일봉] Step 5 시작 — 개별 5일봉 다운로드 (%d종목)", total)
         _broadcast_confirmed_progress(0, total, message=f"5단계: 개별 5일봉 데이터 다운로드 중 (0/{total:,}, 0%)", step=5)
 
-        # 오늘 날짜의 기존 다운로드 데이터 확인 (이어받기)
+        # 오늘 날짜의 기존 다운로드 데이터 삭제 (수동 다운로드는 무조건 재다운로드)
         qry_dt = get_kst_today_str()
-        downloaded_codes = set()
         try:
-            cursor = await conn.execute("""
-                SELECT code FROM stock_5d_array WHERE date = ?
+            await conn.execute("""
+                DELETE FROM stock_5d_array WHERE date = ?
             """, (qry_dt,))
-            rows = await cursor.fetchall()
-            downloaded_codes = {r["code"] for r in rows}
-            _log.info("[수동 5일봉] 오늘 날짜(%s) 기존 다운로드된 종목 수: %d", qry_dt, len(downloaded_codes))
+            await conn.commit()
+            _log.info("[수동 5일봉] 오늘 날짜(%s) 기존 데이터 삭제 후 재다운로드", qry_dt)
         except Exception as e:
-            _log.warning("[수동 5일봉] 기존 다운로드 데이터 확인 실패: %s", e)
+            _log.warning("[수동 5일봉] 기존 데이터 삭제 실패: %s", e)
+
+        downloaded_codes = set()  # 빈 세트로 초기화 (이어받기 비활성화)
 
         fetched = 0
         failed = 0
@@ -1582,6 +1582,13 @@ async def fetch_5d_data_only() -> dict:
         
         # 20종목마다 저장을 위한 임시 버퍼
         pending_5d_save: dict[str, tuple[list[int], list[int]]] = {}
+        
+        def _compute_avg_from_5d_array(amts: list[int]) -> int:
+            """불완전 배열의 평균 계산 (0 값 제외)"""
+            valid_amts = [a for a in amts if a > 0]
+            if not valid_amts:
+                return 0
+            return sum(valid_amts) // len(valid_amts)
         
         async def _save_5d_array_batch(buffer: dict[str, tuple[list[int], list[int]]]) -> None:
             """5일봉 데이터 배치 저장 (20종목마다 호출)"""
@@ -1592,6 +1599,12 @@ async def fetch_5d_data_only() -> dict:
                 date_str = get_kst_today_str()
                 
                 for cd, (amts_5d, highs_5d) in buffer.items():
+                    # 빈 배열(0개)은 저장하지 않음
+                    if not amts_5d or not highs_5d:
+                        _log.warning("[수동 5일봉] 빈 데이터 — 저장 건너뜀: %s", cd)
+                        continue
+                    
+                    # 있는 배열만큼만 채움 (신규 종목 지원)
                     day1_amt = amts_5d[0] if len(amts_5d) > 0 else 0
                     day2_amt = amts_5d[1] if len(amts_5d) > 1 else 0
                     day3_amt = amts_5d[2] if len(amts_5d) > 2 else 0
@@ -1632,34 +1645,49 @@ async def fetch_5d_data_only() -> dict:
                 continue
 
             # 이미 다운로드된 종목은 건너뛰기 (이어받기)
+            # 데이터 유효성 검증: 최소 1일 데이터(day1)가 있으면 유효로 간주 (신규 종목 지원)
             if nk in downloaded_codes:
-                skipped += 1
-                # DB에서 기존 데이터를 메모리에 복원
-                try:
-                    cursor = await conn.execute("""
-                        SELECT day1_amount, day2_amount, day3_amount, day4_amount, day5_amount,
-                               day1_high, day2_high, day3_high, day4_high, day5_high
-                        FROM stock_5d_array WHERE code = ? AND date = ?
+                cursor = await conn.execute("""
+                    SELECT day1_amount, day1_high FROM stock_5d_array 
+                    WHERE code = ? AND date = ?
+                """, (nk, qry_dt))
+                row = await cursor.fetchone()
+                # 최소 1일 데이터(day1)가 있으면 유효한 다운로드로 간주
+                if row and (row["day1_amount"] > 0 or row["day1_high"] > 0):
+                    skipped += 1
+                    # DB에서 기존 데이터를 메모리에 복원
+                    try:
+                        cursor = await conn.execute("""
+                            SELECT day1_amount, day2_amount, day3_amount, day4_amount, day5_amount,
+                                   day1_high, day2_high, day3_high, day4_high, day5_high
+                            FROM stock_5d_array WHERE code = ? AND date = ?
+                        """, (nk, qry_dt))
+                        row = await cursor.fetchone()
+                        if row:
+                            amounts_5d = [row["day1_amount"], row["day2_amount"], row["day3_amount"], row["day4_amount"], row["day5_amount"]]
+                            highs_5d = [row["day1_high"], row["day2_high"], row["day3_high"], row["day4_high"], row["day5_high"]]
+                            
+                            avg5d = _compute_avg_from_5d_array(amounts_5d)
+                            high5d = max(highs_5d)
+                            
+                            import backend.app.services.engine_state as _st
+                            if nk in _st._master_stocks_cache:
+                                _st._master_stocks_cache[nk]["status"] = "active"
+                                if avg5d > 0:
+                                    _st._master_stocks_cache[nk]["avg_5d_trade_amount"] = avg5d
+                                if high5d > 0:
+                                    _st._master_stocks_cache[nk]["high_5d_price"] = high5d
+                            
+                            fetched += 1
+                    except Exception as e:
+                        _log.warning("[수동 5일봉] 기존 데이터 복원 실패 (%s): %s", nk, e)
+                else:
+                    # 빈 레코드(day1도 없음)는 삭제 후 재다운로드
+                    await conn.execute("""
+                        DELETE FROM stock_5d_array WHERE code = ? AND date = ?
                     """, (nk, qry_dt))
-                    row = await cursor.fetchone()
-                    if row:
-                        amounts_5d = [row["day1_amount"], row["day2_amount"], row["day3_amount"], row["day4_amount"], row["day5_amount"]]
-                        highs_5d = [row["day1_high"], row["day2_high"], row["day3_high"], row["day4_high"], row["day5_high"]]
-                        
-                        avg5d = int(sum(amounts_5d) / len(amounts_5d))
-                        high5d = max(highs_5d)
-                        
-                        import backend.app.services.engine_state as _st
-                        if nk in _st._master_stocks_cache:
-                            _st._master_stocks_cache[nk]["status"] = "active"
-                            if avg5d > 0:
-                                _st._master_stocks_cache[nk]["avg_5d_trade_amount"] = avg5d
-                            if high5d > 0:
-                                _st._master_stocks_cache[nk]["high_5d_price"] = high5d
-                        
-                        fetched += 1
-                except Exception as e:
-                    _log.warning("[수동 5일봉] 기존 데이터 복원 실패 (%s): %s", nk, e)
+                    await conn.commit()
+                    _log.info("[수동 5일봉] 빈 레코드 삭제 후 재다운로드: %s", nk)
                 
                 # 진행률 브로드캐스트
                 pct = int((idx + 1) / total * 100)
@@ -1686,7 +1714,7 @@ async def fetch_5d_data_only() -> dict:
                         es._subscribed_stocks.add(nk)
 
                     # 메모리 캐시 제거: stock_5d_array 테이블에 직접 저장
-                    avg5d = int(sum(amounts_5d) / len(amounts_5d))
+                    avg5d = _compute_avg_from_5d_array(amounts_5d)
                     high5d = max(highs_5d)
 
                     import backend.app.services.engine_state as _st
