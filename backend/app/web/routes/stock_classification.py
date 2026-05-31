@@ -105,10 +105,6 @@ async def broadcast_stock_classification_changed() -> None:
         import backend.app.services.engine_state as state
         stocks = await get_all_sector_stocks()
         filter_summary = getattr(state, "_latest_filter_summary", "")
-        if not filter_summary:
-            from backend.app.core.sector_stock_cache import load_filter_summary_cache
-            filter_summary = await load_filter_summary_cache()
-            state._latest_filter_summary = filter_summary
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("[업종관리] broadcast_stock_classification_changed 예외: %s", e, exc_info=True)
@@ -270,11 +266,17 @@ async def move_stocks(body: MoveStocksRequest, _: str = Depends(get_current_user
     """종목 배치 업종 이동 — WS 이벤트 + 재계산 1회만 발생."""
     try:
         from backend.app.core.stock_classification_data import move_stock as _move
+        from backend.app.services.engine_service import get_all_sector_stocks
+        
         for code in body.stock_codes:
-            _move(code, body.target_sector)
+            await _move(code, body.target_sector)
+        
+        # 응답에 all_stocks 포함 (델타 전송 원칙 준수)
+        stocks = await get_all_sector_stocks()
+        
         await broadcast_stock_classification_changed()
         await _trigger_recompute()
-        return {"ok": True, **await _maybe_warning()}
+        return {"ok": True, "all_stocks": stocks, **await _maybe_warning()}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
 
