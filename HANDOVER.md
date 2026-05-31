@@ -2,6 +2,43 @@
 
 ## 완료 단계
 
+### 2026-05-31: 종목분류 페이지 업종 매핑 근본해결 완료
+- **완료일**: 2026-05-31
+- **작업**: 종목분류 페이지 업종 매핑 데이터 마이그레이션 및 아키텍처 수정
+- **수정 파일**:
+  - backend/app/services/engine_sector.py:172-178 - get_all_sector_stocks()를 _subscribed_stocks 기반에서 _master_stocks_cache 기반으로 변경
+  - migrate_sector_from_legacy.py (신규 생성): 레거시 DB 업종 매핑 마이그레이션 스크립트
+  - cleanup_orphan_sectors.py (신규 생성): 증거금 100% 종목 정리 스크립트
+- **검증**:
+  - py_compile 성공
+  - 레거시 추출: 1458종목
+  - master_stocks_table: 1367종목 (업종 매핑 완료)
+  - custom_sector_mappings: 1367종목 (1:1 매핑)
+  - 기타 업종 종목: 0종목
+- **해결 효과**:
+  - 실시간 파이프라인과 배치 파이프라인 분리 원칙 준수
+  - 단일 소스 진리 준수: _master_stocks_cache 기반 데이터 소스
+  - 업종 매핑 완료: 1367종목 모두 업종 분류 (바이오/제약 96종목, 반도체/소부장 88종목 등)
+  - 증거금 100% 종목 136종목 정리
+- **Git**: commit 83dac9f, push 완료
+
+### 2026-05-31: 종목 이동 기능 델타 전송 원칙 준수 수정 완료
+- **완료일**: 2026-05-31
+- **작업**: 종목 이동 기능에서 델타 전송 원칙 준수 및 비동기 아키텍처 부합
+- **수정 파일**:
+  - backend/app/web/routes/stock_classification.py:264-281 - move-stocks 응답에 all_stocks 포함
+  - frontend/src/types/index.ts:285-290 - StockClassificationMutationResponse 타입에 all_stocks 필드 추가
+  - frontend/src/pages/stock-classification.ts:1403-1435 - onMoveStock()에서 서버 응답 기반 업데이트
+- **검증**:
+  - 백엔드 py_compile 성공
+  - 프론트엔드 npm run build 성공
+- **해결 효과**:
+  - 델타 전송 원칙 준수: 응답에 필요한 데이터 포함
+  - 비동기 아키텍처 부합: move_stock() 이미 비동기 함수
+  - 낙관적 업데이트 제거: 서버 상태 기반 업데이트
+  - 단일 소스 진리 준수: 서버 응답의 all_stocks가 단일 소스
+- **Git**: commit 0f0d4ba, push 완료
+
 ### 2026-05-31: 확정시세 다운로드 아키텍처 분리 완료
 - **완료일**: 2026-05-31
 - **작업**: 확정시세 파이프라인과 5일봉 파이프라인 완전 분리
@@ -404,24 +441,37 @@
   - 비동기 체인 일관성 보장
 
 ## 현재 상태
-- **작업 중인 기능**: master_stocks_table 스냅샷 구조 변경 및 중복 저장 로직 조사
-- **진행률**: 50% (Step4 스냅샷 구조 변경 완료, Step5 중복 저장 로직 조사 완료, 해결 방안 제시 대기)
-- **최종 상태**: Step4에서 DELETE → INSERT 스냅샷 구조 변경 완료, Step5에서 _save_confirmed_cache 중복 호출 문제 확인
+- **작업 중인 기능**: 업종순위 페이지 좌측 카드 레이아웃 설정 적용 문제 점검
+- **진행률**: 90% (단위 불일치 해결 완료, async 호출 해결 완료, 앱 기동 테스트 완료)
+- **최종 상태**:
+  - engine_sector.py:108-109 - get_sector_summary_inputs()에서 원 단위를 억 단위로 변환
+  - engine_sector.py:379-383 - _compute_filtered_codes()에서 원 단위를 억 단위로 변환
+  - settings_store.py:447-449 - recompute_sector_summary_now()를 _schedule_engine_coro로 감싸서 async 실행 보장
+  - py_compile 검증 성공
+  - 앱 기동 테스트 완료: "업종목록 화면전송 -- 184종목" (필터 작동 확인)
+- **수정 파일**:
+  - backend/app/services/engine_sector.py:108-109 - 단위 변환 추가
+  - backend/app/services/engine_sector.py:379-383 - 단위 변환 추가
+  - backend/app/core/settings_store.py:447-449 - async 스케줄링 추가
 
 ## 다음 단계
-- Step5에서 _save_confirmed_cache 호출 제거 여부 결정 (사용자 승인 필요)
-- 해결 방안 선택:
-  1. Step4에서 DELETE를 하지 않고 UPDATE 구조 유지 (기존 방식)
-  2. Step5에서 _save_confirmed_cache 호출 제거
-  3. _apply_confirmed_to_memory에서 master_stocks_table 조회 대신 name_map에서 sector 사용
+- 업종순위 페이지 좌측 카드 레이아웃 설정 적용 점검
+  - sector_weights 가중치 설정이 점수 계산에 반영되는지 확인
+  - sector_trim_trade_amt_pct trim 설정이 적용되는지 확인
+  - sector_trim_change_rate_pct trim 설정이 적용되는지 확인
+  - sector_sort_keys 정렬 설정이 적용되는지 확인
+  - sector_rank_primary 1차 정렬 기준이 적용되는지 확인
+  - sector_min_rise_ratio_pct 상승종목비율 필터가 적용되는지 확인
+  - boost_high_breakout_on/boost_order_ratio_on 가산점 설정이 적용되는지 확인
+  - compute_sector_scores() 함수에서 각 설정값이 실제로 사용되는지 코드 추적
+  - recompute_sector_summary_now()에서 설정값이 compute_full_sector_summary()에 전달되는지 확인
 
 ## 미해결 문제
-- **Step4 DELETE → Step5 조회 실패 문제**:
-  - 증상: Step4에서 master_stocks_table DELETE 후 Step5에서 _apply_confirmed_to_memory가 master_stocks_table에서 sector 조회 실패
-  - 결과: 메모리 캐시 엔트리 생성 시 sector가 "기타"로 설정됨 → _save_confirmed_cache에서 status 필터링 실패 → "저장 가능한 종목 없음" 로그
-  - 원인: market_close_pipeline.py:1351 DELETE → market_close_pipeline.py:440 master_stocks_table 조회
-  - 수정 파일: market_close_pipeline.py:1343-1375 (Step4 스냅샷 구조 변경 완료)
-  - 대기: 사용자 승인 필요
+- 업종순위 페이지 좌측 카드 레이아웃 설정부분에서 5일평균 최소 거래대금 필터만 작동, 다른 설정들은 작동하지 않음
+  - sector_weights 가중치 설정 반영 여부 미확인
+  - sector_trim_trade_amt_pct trim 설정 반영 여부 미확인
+  - sector_trim_change_rate_pct trim 설정 반영 여부 미확인
+  - 기타 설정값 반영 여부 미확인
 
 ## 2026-05-31: 캐시 필요성 토론 세션 완료
 - **완료일**: 2026-05-31

@@ -444,7 +444,9 @@ async def after_settings_persisted(
                 engine_service._schedule_engine_coro(
                     engine_service._on_filter_settings_changed(), context="필터 설정 변경"
                 )
-            engine_service.recompute_sector_summary_now()
+            engine_service._schedule_engine_coro(
+                engine_service.recompute_sector_summary_now(), context="섹터 설정 변경"
+            )
         notify_desktop_sector_scores(force=True)
 
     # WS 구독 제어 설정 변경 시 즉시 반영 (구독 시작/해지)

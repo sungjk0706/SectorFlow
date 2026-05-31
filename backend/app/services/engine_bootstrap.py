@@ -118,11 +118,8 @@ async def _bootstrap_sector_stocks_async() -> None:
 
         codes: list[str] = [v for t, v in _st._sector_stock_layout if t == "code"]
         if not codes:
-            logger.debug("[시작] 업종맵 종목 없음 -- 초기화 생략")
-            _broadcast_bootstrap_stage(6, "앱준비 완료")
-            _st._bootstrap_event.set()
-            _st._sector_summary_ready_event.set()
-            return
+            logger.debug("[시작] 업종맵 종목 없음 -- 업종 요약정보 생성 계속 진행")
+            # early return 제거: 업종 요약정보는 codes와 무관하게 생성
 
         # ── WS 구독 구간 판정 ─────────────────────────────────────────────
         try:
@@ -260,14 +257,12 @@ async def _bootstrap_sector_stocks_async() -> None:
         engine_service._data_ready_event.set()
         logger.info("[시작] 데이터 준비 완료 플래그 설정")
 
-        # ── 업종순위 후순위 계산 ───────────────────────────────────────────
-        _task = asyncio.create_task(_deferred_sector_summary())
-        _task.add_done_callback(lambda t: t.exception() if t.exception() else None)
-
+        # ── 업종순위 계산 ───────────────────────────────────────────
+        # _deferred_sector_summary() 제거: recompute_sector_for_code() 단일 경로 사용
+        # _in_ws_window 조건 제거: 업종 요약정보는 _in_ws_window와 무관하게 생성
         from backend.app.services.engine_sector_confirm import recompute_sector_for_code
-        if _in_ws_window:
-            import backend.app.services.engine_account_notify as _an
-            _an._prev_scores_cache = []
+        import backend.app.services.engine_account_notify as _an
+        _an._prev_scores_cache = []
         recompute_sector_for_code(None)
 
         # 앱준비 완료 → 기동 시 스킵된 장마감 파이프라인 데이터동기화중 재시도
@@ -283,7 +278,7 @@ async def _bootstrap_sector_stocks_async() -> None:
         # 이벤트 설정하여 시스템이 계속 진행할 수 있도록 함
         _broadcast_bootstrap_stage(6, "앱준비 완료")
         _st._bootstrap_event.set()
-        _st._sector_summary_ready_event.set()
+        # _sector_summary_ready_event.set() 제거: 업종 요약정보 생성 완료 시 engine_sector_confirm에서 설정
         from backend.app.services import engine_service
         engine_service._data_ready_event.set()
     except Exception as e:
@@ -292,7 +287,7 @@ async def _bootstrap_sector_stocks_async() -> None:
         # 이벤트 설정하여 시스템이 계속 진행할 수 있도록 함
         _broadcast_bootstrap_stage(6, "앱준비 완료")
         _st._bootstrap_event.set()
-        _st._sector_summary_ready_event.set()
+        # _sector_summary_ready_event.set() 제거: 업종 요약정보 생성 완료 시 engine_sector_confirm에서 설정
         from backend.app.services import engine_service
         engine_service._data_ready_event.set()
 
@@ -330,11 +325,10 @@ async def _deferred_sector_summary() -> None:
             _st._sector_summary_cache = _result
             # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
             logger.debug("[시작] 업종순위 후순위 계산 완료 -- %d개 섹터", len(_result.sectors))
-            
+
             # 영속성 캐시 저장 삭제 (메모리 캐시로 대체)
 
-            # 이벤트 발행 — _send_stocks_delayed()가 대기 중이면 해제
-            _st._sector_summary_ready_event.set()
+            # _sector_summary_ready_event.set() 제거: 업종 요약정보 생성 완료 시 engine_sector_confirm에서 설정
 
             # WS broadcast — 이미 연결된 클라이언트에게 전송
             try:

@@ -204,8 +204,8 @@ async def fetch_ka10081_daily_5d_data(
         avg_amt_5d = sum(amts_5d) // 5 // 100_000_000 if amts_5d else 0
 
         return {
-            "high_price_5d": high_price_5d,
-            "avg_amt_5d": avg_amt_5d,
+            "amts_5d_array": amts_5d,
+            "highs_5d_array": highs_5d,
         }
     except Exception as e:
         _log.warning("[ka10081-5d] 파싱 예외 %s/%s: %s", log_cd, api_cd, e)
