@@ -72,7 +72,6 @@ class KiwoomRestAPI:
         self.base_url = (base_url or KIWOOM_REST_REAL).rstrip("/")
         self._token_info: Optional[TokenInfo] = None
         self._lock = asyncio.Lock()  # 비동기 Lock — REST 호출 직렬화
-        self._settings = settings or {}
         self._client: Optional[httpx.AsyncClient] = None
 
     def __enter__(self) -> "KiwoomRestAPI":
@@ -89,11 +88,9 @@ class KiwoomRestAPI:
 
     def get_spec(self, role_key: str, feature: Optional[str] = None) -> Optional[str]:
         """BrokerRouter에서 spec 조회 (connector에서 사용 가능한 래퍼)."""
-        if not self._settings:
-            return None
         try:
             from backend.app.core.broker_factory import get_router
-            router = get_router(self._settings)
+            router = get_router()
             if router:
                 return router.get_spec(role_key, feature=feature)
         except Exception:

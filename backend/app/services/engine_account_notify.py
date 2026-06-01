@@ -292,7 +292,7 @@ def notify_desktop_sector_scores(*, force: bool = False) -> None:
 
             payload = {
                 "scores": scores,
-                "status": {"total_stocks": len(scores), "max_targets": int(_es._settings_cache.get("sector_max_targets", 3) or 3), "ranked_sectors_count": ranked_count},
+                "status": {"total_stocks": len(scores), "max_targets": int(_es._integrated_system_settings_cache.get("sector_max_targets", 3) or 3), "ranked_sectors_count": ranked_count},
                 "delta": True,
                 "changed_sectors": [s["sector"] for s in changed],
                 "removed_sectors": removed,
@@ -304,7 +304,7 @@ def notify_desktop_sector_scores(*, force: bool = False) -> None:
             # 최초 전송 또는 force → 전체 스냅샷
             payload = {
                 "scores": scores,
-                "status": {"total_stocks": len(scores), "max_targets": int(_es._settings_cache.get("sector_max_targets", 3) or 3), "ranked_sectors_count": ranked_count},
+                "status": {"total_stocks": len(scores), "max_targets": int(_es._integrated_system_settings_cache.get("sector_max_targets", 3) or 3), "ranked_sectors_count": ranked_count},
             }
 
         _broadcast("sector-scores", payload)

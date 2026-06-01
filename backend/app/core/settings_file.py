@@ -1,93 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 설정 데이터베이스(SQLite) 읽기/쓰기 헬퍼.
-단일 사용자 모드: SQLite의 integrated_system_settings 완성본 뷰 및 개별 테이블(user_settings, broker_credentials, system_config) 사용.
+단일 사용자 모드: SQLite의 integrated_system_settings 단일 테이블 사용.
 """
 import asyncio
 import json
 import logging
-from collections.abc import Iterator
 from typing import Any
 
 logger = logging.getLogger(__name__)
-
-_DEFAULTS: dict = {
-    "broker": "",
-    # 테스트/실전 API·WS·REG·자격증명 분기의 기준
-    "trade_mode": "test",
-    "mode_real": False,
-    "time_scheduler_on": True,
-    "auto_buy_on": True,
-    "auto_sell_on": True,
-    "buy_time_start": "09:00",
-    "buy_time_end": "15:20",
-    "sell_time_start": "09:00",
-    "sell_time_end": "15:20",
-    "buy_amt": 0,
-    "max_daily_total_buy_amt": 0,
-    "max_stock_cnt": 5,
-    # 매수 설정 UI -- 0이면 해당 자동 동작 비활성(엔진은 UI 값만 사용)
-    "tp_val": 5.0,
-    "tp_apply": True,
-    "loss_apply": False,
-    "loss_val": 0.0,
-    "ts_apply": False,
-    "ts_start_val": 0.0,
-    "ts_drop_val": 0.0,
-    "sell_price_type": "mkt",
-    "sell_offset": 0,
-    "sell_custom_qty": 0,
-    "sell_qty_type": "%",
-    "buy_min_trade_amt": 0.0,
-    "max_position_size": None,
-    "rate_limit_per_sec": 3,
-    "tele_on": False,
-
-    "telegram_bot_token": None,
-    "telegram_chat_id": None,
-    "kiwoom_app_key": None,
-    "kiwoom_app_secret": None,
-    "kiwoom_account_no": "",
-    "kiwoom_app_key_real": None,
-    "kiwoom_app_secret_real": None,
-    "kiwoom_account_no_real": "",
-    "ls_app_key": None,
-    "ls_app_secret": None,
-    "ls_account_no": "",
-    "ls_app_key_real": None,
-    "ls_app_secret_real": None,
-    "ls_account_no_real": "",
-    "mock_mode": True,
-
-    "sell_per_symbol": {},
-    # 매수/매도 폼 「기본값 저장」 전용 -- 엔진은 사용하지 않음(설정 저장과 별도 스냅샷).
-    "buy_form_defaults": None,
-    "sell_form_defaults": None,
-    "theme_mode": "dark",
-    "ui_zoom": 1.15,
-    # 섹터 강도 / 매수 필터
-    "sector_min_rise_ratio_pct": 60.0,
-    "sector_min_trade_amt": 0.0,
-    "sector_sort_keys": ["change_rate", "trade_amount", "strength"],
-    "sector_rank_primary": "rise_ratio",
-    "sector_weights": {"total_trade_amount": 0.5, "rise_ratio": 0.5},
-    "sector_max_targets": 3,
-    # 업종 내 종목 트리밍 비율 (%)
-    "sector_trim_trade_amt_pct": 10.0,
-    "sector_trim_change_rate_pct": 10.0,
-    "buy_block_rise_pct": 7.0,
-    "buy_block_fall_pct": 7.0,
-    "buy_min_strength": 0,
-    # 공휴일 자동 OFF
-    "holiday_guard_on": True,
-    # WS 구독 마스터 스위치
-    "ws_subscribe_on": True,
-    # WS 구독 제어 — 실시간시세(0B) 자동구독
-    "quote_auto_subscribe": True,
-    # 테스트모드 가상 예수금 -- 설정 금액(초기값)과 현재 잔액
-    "test_virtual_deposit": 10_000_000,
-    "test_virtual_balance": 10_000_000,
-}
 
 
 def migrate_rank_primary_to_weights(sector_rank_primary: str) -> dict[str, float]:
@@ -183,15 +104,22 @@ def _migrate_trade_mode(merged: dict) -> tuple[dict, bool]:
     return merged, dirty
 
 
-# 캐싱을 위한 모듈 레벨 변수
+# 암호화 필드 목록 (단일 정의)
+_ENCRYPT_FIELDS: frozenset[str] = frozenset({
+    "kiwoom_app_key", "kiwoom_app_secret",
+    "ls_app_key", "ls_app_secret",
+    "telegram_bot_token",
+})
+
+# 모듈 레벨 캐시 (Cache-Aside 패턴 — 이 모듈이 소유)
 _integrated_system_settings_cache: dict | None = None
 _cache_lock = asyncio.Lock()
 
 
 async def load_integrated_system_settings() -> dict:
     """
-    integrated_system_settings 테이블에서 설정을 로드하여 캐싱합니다.
-    최초 호출 시에만 DB 조회를 수행하며, 이후에는 캐시된 데이터를 반환합니다.
+    Cache-Aside 패턴: 캐시가 있으면 반환, 없으면 DB 로드 후 캐시 저장.
+    캐시 무효화는 save_settings() 커밋 직후 수행.
     """
     global _integrated_system_settings_cache
 
@@ -213,7 +141,7 @@ async def load_integrated_system_settings() -> dict:
                 value = row["value"]
                 value_type = row["value_type"]
                 parsed_val = _parse_value(value, value_type)
-                if key.startswith("broker_specs:"):
+                if key.startswith("_broker_specs:") or key.startswith("broker_specs:"):
                     broker_name = key.split(":", 1)[1]
                     if "_broker_specs" not in db_data:
                         db_data["_broker_specs"] = {}
@@ -233,6 +161,21 @@ async def load_integrated_system_settings() -> dict:
             if key not in db_data:
                 db_data[key] = default_value
 
+        if "_broker_specs" not in db_data or not db_data["_broker_specs"]:
+            from pathlib import Path
+            broker_specs_dir = Path(__file__).parent.parent.parent / "data" / "broker_specs"
+            if broker_specs_dir.exists():
+                db_data["_broker_specs"] = {}
+                for spec_file in broker_specs_dir.glob("*.json"):
+                    broker_name = spec_file.stem
+                    try:
+                        with open(spec_file, "r", encoding="utf-8") as f:
+                            spec_data = json.load(f)
+                        db_data["_broker_specs"][broker_name] = spec_data
+                        logger.info("[설정] broker_specs 초기화: %s", broker_name)
+                    except Exception as e:
+                        logger.warning("[설정] broker_specs 로드 실패 (%s): %s", spec_file, e)
+
         merged = {**db_data}
         merged, dirty = _migrate_legacy_auto_trade_on(merged)
         merged, dirty_tm = _migrate_trade_mode(merged)
@@ -245,27 +188,16 @@ async def load_integrated_system_settings() -> dict:
         if dirty:
             await save_settings(merged)
 
-        # 복호화 처리 (암호화된 필드만 복호화)
         from backend.app.core.encryption import decrypt_value
-
-        encrypt_fields = [
-            "kiwoom_app_key", "kiwoom_app_secret", "kiwoom_app_key_real", "kiwoom_app_secret_real",
-            "ls_app_key", "ls_app_secret", "ls_app_key_real", "ls_app_secret_real",
-            "telegram_bot_token"
-        ]
-
-        for f in encrypt_fields:
+        for f in _ENCRYPT_FIELDS:
             v = merged.get(f)
             if v and str(v).startswith("gAAAA"):
                 merged[f] = decrypt_value(v) or ""
 
-        # 캐시 저장
         _integrated_system_settings_cache = dict(merged)
         return dict(_integrated_system_settings_cache)
 
 
-# 하위 호환성을 위한 별칭
-load_settings = load_integrated_system_settings
 
 
 def _parse_value(value: str, value_type: str) -> Any:
@@ -294,52 +226,41 @@ def _parse_value(value: str, value_type: str) -> Any:
 
 
 async def save_settings(data: dict) -> None:
-    """SQLite 데이터베이스 각 설정 테이블 분기 저장 (user_settings, broker_credentials, system_config)."""
+    """SQLite 데이터베이스 integrated_system_settings 테이블에 저장.
+    암호화 필드가 평문인 경우 자동 암호화 후 저장 (engine_state 캐시에서 온 복호화값 대응)."""
     from backend.app.db.database import get_db_connection
-    from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS, DEFAULT_SYSTEM_CONFIG
-
-    BROKER_KEY_PREFIXES = frozenset([
-        "kiwoom_app_key", "kiwoom_app_secret",
-        "kiwoom_app_key_real", "kiwoom_app_secret_real",
-        "ls_app_key", "ls_app_secret",
-    ])
-
-    SYSTEM_CONFIG_KEYS = frozenset([
-        "krx_", "nxt_",
-        "db_connection_timeout", "db_retry_count", "db_retry_delay",
-        "cache_size", "log_level",
-    ])
+    from backend.app.core.encryption import encrypt_value
 
     conn = await get_db_connection()
     try:
         await conn.execute("BEGIN TRANSACTION")
 
         for k, v in data.items():
+            if v is None:
+                continue
+            # 암호화 필드: 평문이면 암호화 (engine_state 캐시에서 온 복호화값 처리)
+            if k in _ENCRYPT_FIELDS and v and not str(v).startswith("gAAAA"):
+                enc = encrypt_value(str(v))
+                if enc:
+                    v = enc
             if k == "_broker_specs":
                 if isinstance(v, dict):
                     for b_name, spec in v.items():
                         spec_str = json.dumps(spec, ensure_ascii=False)
                         await conn.execute(
-                            "INSERT OR REPLACE INTO broker_specs (broker_name, spec_data, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
-                            (b_name, spec_str)
+                            "INSERT OR REPLACE INTO integrated_system_settings (key, value, value_type, updated_at) VALUES (?, ?, 'json', CURRENT_TIMESTAMP)",
+                            (f"_broker_specs:{b_name}", spec_str)
                         )
                 continue
-            if k.startswith("broker_specs:"):
+            if k.startswith("_broker_specs:") or k.startswith("broker_specs:"):
                 b_name = k.split(":", 1)[1]
                 spec_str = json.dumps(v, ensure_ascii=False)
                 await conn.execute(
-                    "INSERT OR REPLACE INTO broker_specs (broker_name, spec_data, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
-                    (b_name, spec_str)
+                    "INSERT OR REPLACE INTO integrated_system_settings (key, value, value_type, updated_at) VALUES (?, ?, 'json', CURRENT_TIMESTAMP)",
+                    (f"_broker_specs:{b_name}", spec_str)
                 )
                 continue
 
-            if v is None or (isinstance(v, str) and v == ""):
-                if k in DEFAULT_USER_SETTINGS:
-                    v = DEFAULT_USER_SETTINGS[k]
-                elif k in DEFAULT_SYSTEM_CONFIG:
-                    v = DEFAULT_SYSTEM_CONFIG[k]
-                else:
-                    continue
 
             if isinstance(v, bool):
                 value_type = "boolean"
@@ -354,45 +275,25 @@ async def save_settings(data: dict) -> None:
                 value_type = "string"
                 val_str = str(v)
 
-            if any(k.startswith(prefix) for prefix in BROKER_KEY_PREFIXES):
-                broker_name = "kiwoom" if k.startswith("kiwoom") else "ls"
-                await conn.execute(
-                    "INSERT OR REPLACE INTO broker_credentials (broker_name, key, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
-                    (broker_name, k, val_str)
-                )
-            elif any(k.startswith(prefix) for prefix in SYSTEM_CONFIG_KEYS):
-                await conn.execute(
-                    "INSERT OR REPLACE INTO system_config (key, value, value_type, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
-                    (k, val_str, value_type)
-                )
-            else:
-                await conn.execute(
-                    "INSERT OR REPLACE INTO user_settings (key, value, value_type, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
-                    (k, val_str, value_type)
-                )
+            await conn.execute(
+                "INSERT OR REPLACE INTO integrated_system_settings (key, value, value_type, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                (k, val_str, value_type)
+            )
 
         await conn.commit()
+        # Cache-Aside 무효화: 다음 읽기 시 DB에서 최신값 재로드
+        global _integrated_system_settings_cache
+        _integrated_system_settings_cache = None
     except Exception as e:
         await conn.rollback()
         logger.error("[설정] DB 저장 실패: %s", e)
 
 
 async def update_settings(updates: dict) -> dict:
-    """기존 DB 설정에 업데이트를 병합하여 저장하고 최신 설정 반환."""
-    global _integrated_system_settings_cache
+    """기존 설정에 업데이트를 병합하여 DB 저장. 캐시는 save_settings()에서 자동 무효화."""
     current = await load_integrated_system_settings()
     current.update({k: v for k, v in updates.items() if v is not None or k in current})
     await save_settings(current)
-    # 캐시 무효화
-    _integrated_system_settings_cache = None
     return current
 
 
-async def save_settings_async(data: dict) -> None:
-    """비동기 DB 설정 저장."""
-    await save_settings(data)
-
-
-async def update_settings_async(updates: dict) -> dict:
-    """비동기 DB 설정 병합 저장."""
-    return await update_settings(updates)

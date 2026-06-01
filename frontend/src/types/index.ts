@@ -150,9 +150,9 @@ export interface AppSettings {
   kiwoom_app_key: string;
   kiwoom_app_secret: string;
   kiwoom_account_no: string;
-  kiwoom_app_key_real: string;
-  kiwoom_app_secret_real: string;
-  kiwoom_account_no_real: string;
+  ls_app_key: string;
+  ls_app_secret: string;
+  ls_account_no: string;
 
   // 테스트 가상잔고
   test_virtual_deposit: number;

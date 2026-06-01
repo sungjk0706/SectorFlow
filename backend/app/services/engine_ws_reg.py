@@ -16,7 +16,6 @@ from backend.app.services.engine_symbol_utils import (
 )
 from backend.app.services.engine_state import (
     _login_ok,
-    _subscribed_stocks,
 )
 
 logger = logging.getLogger("engine")
@@ -216,25 +215,29 @@ async def _unreg_grp(es: ModuleType, grp_no: str) -> bool:
         True if 성공(또는 등록 항목 없음), False if 실패/타임아웃.
     """
     # grp_no=4(0B): 등록된 종목 코드를 data에 포함
-    if grp_no == "4" and hasattr(es, "_subscribed_stocks") and es._subscribed_stocks:
-        stock_list = [get_ws_subscribe_code(cd) for cd in list(es._subscribed_stocks)]
-        _CHUNK = 100
-        nchunks = math.ceil(len(stock_list) / _CHUNK)
-        for ci in range(nchunks):
-            chunk = stock_list[ci * _CHUNK : (ci + 1) * _CHUNK]
-            payload = {
-                "trnm":    "REMOVE",
-                "grp_no":  grp_no,
-                "refresh": "1",
-                "data":    [{"item": chunk, "type": ["0B"]}],
-            }
-            try:
-                await es._ws_send_remove_fire_and_forget(payload)
-                logger.debug("[구독] grp_no=%s 청크 %d/%d 전송 완료 (%d종목)", grp_no, ci+1, nchunks, len(chunk))
-            except Exception as e:
-                logger.warning("[구독] grp_no=%s 청크 %d/%d 오류: %s", grp_no, ci+1, nchunks, e, exc_info=True)
-        es._subscribed_stocks.clear()
-        return True
+    if grp_no == "4":
+        subscribed_codes = {cd for cd, entry in es._master_stocks_cache.items() if entry.get("_subscribed", False)}
+        if subscribed_codes:
+            stock_list = [get_ws_subscribe_code(cd) for cd in list(subscribed_codes)]
+            _CHUNK = 100
+            nchunks = math.ceil(len(stock_list) / _CHUNK)
+            for ci in range(nchunks):
+                chunk = stock_list[ci * _CHUNK : (ci + 1) * _CHUNK]
+                payload = {
+                    "trnm":    "REMOVE",
+                    "grp_no":  grp_no,
+                    "refresh": "1",
+                    "data":    [{"item": chunk, "type": ["0B"]}],
+                }
+                try:
+                    await es._ws_send_remove_fire_and_forget(payload)
+                    logger.debug("[구독] grp_no=%s 청크 %d/%d 전송 완료 (%d종목)", grp_no, ci+1, nchunks, len(chunk))
+                except Exception as e:
+                    logger.warning("[구독] grp_no=%s 청크 %d/%d 오류: %s", grp_no, ci+1, nchunks, e, exc_info=True)
+            for cd in subscribed_codes:
+                if cd in es._master_stocks_cache:
+                    es._master_stocks_cache[cd].pop("_subscribed", None)
+            return True
 
     # 그 외 grp: 구독 중인 아이템을 data에 포함하여 REMOVE (빈 data 전송 시 305003 에러)
     data: list[dict] = []
@@ -301,10 +304,11 @@ async def subscribe_sector_stocks_0b(es: ModuleType) -> None:
     ))
 
     # ── 2) 필터 통과 종목 코드 수집 ──
-    # _filtered_sector_codes가 None(필터 미설정)이면 _sector_stock_layout 전체 코드 사용
-    _raw_filter = es._filtered_sector_codes
-    if _raw_filter is None:
-        _raw_filter = {v for t, v in es._sector_stock_layout if t == "code" and v}
+    # _master_stocks_cache의 "_filtered" 키 사용
+    _raw_filter = {cd for cd, entry in es._master_stocks_cache.items() if entry.get("_filtered", False)}
+    if not _raw_filter:
+        # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
+        _raw_filter = {v for t, v in es._integrated_system_settings_cache.get("sector_stock_layout", []) if t == "code" and v}
     filtered_codes: list[str] = list(dict.fromkeys(
         _format_kiwoom_reg_stk_cd(cd) for cd in _raw_filter if cd
     ))
@@ -325,10 +329,11 @@ async def subscribe_sector_stocks_0b(es: ModuleType) -> None:
         filtered_only = filtered_only[:allowed_filtered]
 
     # ── 4) 보유종목 별도 선행 REG ──
-    pos_targets = [cd for cd in pos_codes if cd not in es._subscribed_stocks]
+    pos_targets = [cd for cd in pos_codes if not es._master_stocks_cache.get(cd, {}).get("_subscribed", False)]
     if pos_targets:
         for cd in pos_targets:
-            es._subscribed_stocks.add(cd)
+            if cd in es._master_stocks_cache:
+                es._master_stocks_cache[cd]["_subscribed"] = True
         pos_al = [get_ws_subscribe_code(cd) for cd in pos_targets]
         pos_payloads = build_0b_reg_payloads(pos_al, chunk_size=_WL_0B_CHUNK, reset_first=True)
         pos_ok = pos_fail = 0
@@ -344,7 +349,8 @@ async def subscribe_sector_stocks_0b(es: ModuleType) -> None:
             else:
                 pos_fail += len(chunk)
                 for cd in chunk:
-                    es._subscribed_stocks.discard(cd)
+                    if cd in es._master_stocks_cache:
+                        es._master_stocks_cache[cd].pop("_subscribed", None)
                 logger.warning(
                     "[구독][보유종목] 청크 %d/%d 실패 (rc=%s) -- %d종목 롤백",
                     ci + 1, len(pos_payloads), _rc, len(chunk),
@@ -355,14 +361,15 @@ async def subscribe_sector_stocks_0b(es: ModuleType) -> None:
         )
 
     # ── 5) 필터 통과 종목 누적 REG ──
-    filter_targets = [cd for cd in filtered_only if cd not in es._subscribed_stocks]
+    filter_targets = [cd for cd in filtered_only if not es._master_stocks_cache.get(cd, {}).get("_subscribed", False)]
     if not filter_targets:
         if not pos_targets:
             logger.debug("[구독][시세] 신규 종목 없음 -- 생략")
         return
 
     for cd in filter_targets:
-        es._subscribed_stocks.add(cd)
+        if cd in es._master_stocks_cache:
+            es._master_stocks_cache[cd]["_subscribed"] = True
     filter_al = [get_ws_subscribe_code(cd) for cd in filter_targets]
     filter_payloads = build_0b_reg_payloads(filter_al, chunk_size=_WL_0B_CHUNK, reset_first=False)
     filter_ok = filter_fail = 0
@@ -378,7 +385,8 @@ async def subscribe_sector_stocks_0b(es: ModuleType) -> None:
         else:
             filter_fail += len(chunk)
             for cd in chunk:
-                es._subscribed_stocks.discard(cd)
+                if cd in es._master_stocks_cache:
+                    es._master_stocks_cache[cd].pop("_subscribed", None)
             logger.warning(
                 "[구독][필터] 청크 %d/%d 실패 (rc=%s) -- %d종목 롤백",
                 ci + 1, len(filter_payloads), _rc, len(chunk),
@@ -402,7 +410,7 @@ async def subscribe_account_realtime(es: ModuleType) -> None:
         logger.warning("[연결] 계좌 구독 생략 -- 미연결")
         return
 
-    s = es._settings_cache or {}
+    s = es._integrated_system_settings_cache or {}
     broker_nm = str(s.get("broker", "") or "").lower().strip()
     acnt = str(s.get(f"{broker_nm}_account_no", "") or "").strip()
     if not acnt:
@@ -454,7 +462,7 @@ async def subscribe_positions_stocks_realtime(es: ModuleType) -> None:
     logger.info("[시작] 보유 REG 대상 %d종목: %s", len(norm_list), norm_list)
 
     # 이미 구독 중인 종목 제외
-    new_0b = [cd for cd in norm_list if cd not in es._subscribed_stocks]
+    new_0b = [cd for cd in norm_list if not es._master_stocks_cache.get(cd, {}).get("_subscribed", False)]
     if not new_0b:
         logger.debug("[구독][보유종목] 전체 이미 구독 중 -- 생략")
         return
@@ -464,7 +472,8 @@ async def subscribe_positions_stocks_realtime(es: ModuleType) -> None:
     logger.debug("[구독][보유종목] %d종목 -> %d청크", len(new_0b), nchunks_0b)
 
     for cd in new_0b:
-        es._subscribed_stocks.add(cd)
+        if cd in es._master_stocks_cache:
+            es._master_stocks_cache[cd]["_subscribed"] = True
 
     # NXT 중복상장 여부에 따라 _AL / 순수6자리 자동 분기 후 build_0b_reg_payloads 사용
     # 기존 구독에 추가하는 것이므로 reset_first=False (모든 청크 refresh="1")
@@ -484,7 +493,8 @@ async def subscribe_positions_stocks_realtime(es: ModuleType) -> None:
         else:
             fail_0b += len(chunk)
             for cd in chunk:
-                es._subscribed_stocks.discard(cd)
+                if cd in es._master_stocks_cache:
+                    es._master_stocks_cache[cd].pop("_subscribed", None)
             logger.warning(
                 "[구독][보유종목] 청크 %d/%d 응답 시간 초과 -- %d종목 롤백",
                 ci + 1, nchunks_0b, len(chunk),
@@ -499,23 +509,23 @@ async def subscribe_positions_stocks_realtime(es: ModuleType) -> None:
 async def restore_subscriptions_after_reconnect(es: ModuleType, broker_id: str) -> None:
     """재연결 성공 후 기존 구독 종목을 복원한다.
 
-    _subscribed_stocks에 저장된 종목 목록을 기준으로 0B REG를 재전송한다.
+    _master_stocks_cache의 "_subscribed" 키를 기준으로 0B REG를 재전송한다.
     지수(0J)와 계좌(00/04) 구독도 함께 복원한다.
 
     Args:
         es: engine_service 모듈 참조
         broker_id: 재연결된 증권사 ID
     """
-    global _subscribed_stocks
-
     if not _login_ok or False:
         logger.debug("[재연결] %s 로그인 전 — 구독 복원 생략 (LOGIN 후 파이프라인이 처리)", broker_id.upper())
         return
 
-    subscribed = set(_subscribed_stocks or set())
+    subscribed = {cd for cd, entry in es._master_stocks_cache.items() if entry.get("_subscribed", False)}
     if subscribed:
-        # 재연결 시 서버 측 구독이 초기화됐으므로 _subscribed_stocks를 비우고 재등록
-        _subscribed_stocks.clear()
+        # 재연결 시 서버 측 구독이 초기화됐으므로 "_subscribed" 키를 제거하고 재등록
+        for cd in subscribed:
+            if cd in es._master_stocks_cache:
+                es._master_stocks_cache[cd].pop("_subscribed", None)
         targets_al = [get_ws_subscribe_code(cd) for cd in subscribed]
         payloads = build_0b_reg_payloads(targets_al, chunk_size=100, reset_first=True)
         _CHUNK = 100
@@ -527,7 +537,8 @@ async def restore_subscriptions_after_reconnect(es: ModuleType, broker_id: str) 
             ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload)
             if ok and str(_rc) == "0":
                 for cd in chunk_orig:
-                    _subscribed_stocks.add(cd)
+                    if cd in es._master_stocks_cache:
+                        es._master_stocks_cache[cd]["_subscribed"] = True
                 ok_total += len(chunk_orig)
             else:
                 fail_total += len(chunk_orig)

@@ -22,13 +22,12 @@ from backend.app.services.engine_state import (
     _broker_tokens,
     _login_ok,
     _connector_manager,
-    _subscribed_stocks,
     _checked_stocks,
     # _radar_cnsr_order 삭제
-    _sector_stock_layout,
+    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
     # _avg_amt_5d 제거: _master_stocks_cache에서 직접 사용
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_rest_radar_quote_cache)
-    _rest_radar_rest_once,
+    # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
     _running,
     _engine_loop_ref,
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_amounts, _latest_trade_prices, _latest_strength)
@@ -36,7 +35,7 @@ from backend.app.services.engine_state import (
     _preboot_ready_event,
     _account_rest_lock,
     _engine_user_id,
-    _settings_cache,
+    _integrated_system_settings_cache,
     _broker_spec,
     _access_token,
     _rest_api,
@@ -160,12 +159,13 @@ async def _load_broker_spec_async(broker_nm: str, settings: dict) -> list:
 async def run_engine_loop() -> None:
     logger.info("[엔진] run_engine_loop() 진입")
     import backend.app.services.engine_state as _es
-    global _login_ok, _connector_manager, _broker_tokens, _subscribed_stocks
+    global _login_ok, _connector_manager, _broker_tokens
     global _checked_stocks  # _radar_cnsr_order 삭제
-    global _sector_stock_layout  # _avg_amt_5d 제거
-    global _rest_radar_rest_once, _running, _engine_loop_ref
+    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
+    # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
+    global _running, _engine_loop_ref
     global _preboot_cache_loaded, _preboot_ready_event, _account_rest_lock
-    global _engine_user_id, _settings_cache, _broker_spec, _access_token
+    global _engine_user_id, _integrated_system_settings_cache, _broker_spec, _access_token
     global _rest_api, _avg_amt_needs_bg_refresh, _auto_trade, _kiwoom_connector
     global _engine_stop_event
 
@@ -175,17 +175,20 @@ async def run_engine_loop() -> None:
     _es._login_ok = False
     _connector_manager = None
     _broker_tokens.clear()
-    _subscribed_stocks.clear()
+    # _master_stocks_cache에서 "_subscribed" 제거
+    for entry in _es._master_stocks_cache.values():
+        entry.pop("_subscribed", None)
     from backend.app.services.engine_state import _notify_reg_ack, _cancel_price_trace_delayed_task
     _notify_reg_ack()
     _cancel_price_trace_delayed_task()
     _checked_stocks.clear()
     # _radar_cnsr_order 삭제: clear() 제거
-    _sector_stock_layout.clear()
+    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
+    _integrated_system_settings_cache["sector_stock_layout"] = []
     from backend.app.services.engine_account_notify import _rebuild_layout_cache
     _rebuild_layout_cache([])
     # 실시간 틱 데이터 캐시 초기화 삭제 (_rest_radar_quote_cache.clear() 제거)
-    _rest_radar_rest_once.clear()
+    # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
     _running = True
     import backend.app.services.engine_state as _es
     _es._running = True
@@ -207,16 +210,16 @@ async def run_engine_loop() -> None:
     compute_task = None
 
     try:
-        # _settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
-        settings = _settings_cache
+        # _integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
+        settings = _integrated_system_settings_cache
         logger.info("[기동시간] 설정 로드: %.0fms", (time.perf_counter() - _t0) * 1000)
 
         # 엔진 내부 준비 완료 시그널 — Uvicorn 리스닝 + 브라우저 열기 즉시 허용
         _preboot_ready_event.set()
 
-        # ── broker/router 생성 (settings만 필요, gather 이전에 준비) ──
+        # ── broker/router 생성 (단일 소스 진리: _integrated_system_settings_cache 직접 사용) ──
         broker_nm: str = str(settings.get("broker", "") or "").lower().strip()
-        router = get_router(settings)
+        router = get_router()
 
         # ── API 키 검증: broker_config.websocket 기준 모든 증권사 확인 ──
         broker_config = settings.get("broker_config") or {}

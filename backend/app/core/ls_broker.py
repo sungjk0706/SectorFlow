@@ -19,9 +19,8 @@ _log = logging.getLogger(__name__)
 class LsBroker(BrokerInterface):
     """LS증권 브로커 (BrokerRouter 위임 패턴)"""
 
-    def __init__(self, settings: dict):
-        self._settings = settings
-        self._router = BrokerRouter(settings)
+    def __init__(self):
+        self._router = BrokerRouter()
 
     # ── 인증 ──────────────────────────────────────────────────────────────
     def get_access_token(self) -> str | None:

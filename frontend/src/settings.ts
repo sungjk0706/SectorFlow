@@ -11,7 +11,7 @@ export const MASKED_VALUE = '***'
 /** 마스킹 필드 — 서버에서 *** 로 내려오는 키 */
 export const MASKED_FIELDS = new Set([
   'kiwoom_app_key', 'kiwoom_app_secret',
-  'kiwoom_app_key_real', 'kiwoom_app_secret_real',
+  'ls_app_key', 'ls_app_secret',
   'telegram_bot_token',
 ])
 

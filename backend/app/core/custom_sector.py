@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 class CustomSector:
     """사용자 커스텀 업종 데이터 관리 (증권사 API 비종속)"""
 
-    def __init__(self, settings: dict):
-        self._settings = settings
+    def __init__(self):
+        pass
 
     async def fetch_daily_price(
         self, stk_cd: str, qry_dt: str

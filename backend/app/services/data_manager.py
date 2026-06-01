@@ -15,16 +15,15 @@ async def _get_rest_base() -> str:
     """BrokerRouter의 AuthProvider에서 REST base URL 획득."""
     from backend.app.core.broker_factory import get_router
     from backend.app.core.broker_urls import build_broker_urls
+    from backend.app.services.engine_state import _integrated_system_settings_cache
     try:
-        settings = await _load_broker_settings() or {}
-        auth = get_router(settings).auth
+        auth = get_router().auth
         if hasattr(auth, "rest_api") and hasattr(auth.rest_api, "base_url"):
             return auth.rest_api.base_url
     except Exception:
         logger.warning("[데이터관리] base_url 조회 실패", exc_info=True)
     # 기본값: broker 기반 URL
-    settings = await _load_broker_settings() or {}
-    broker_nm = str(settings.get("broker", "") or "").lower().strip()
+    broker_nm = str(_integrated_system_settings_cache.get("broker", "") or "").lower().strip()
     urls = build_broker_urls(broker_nm)
     return urls.get("rest_base", "")
 
@@ -48,7 +47,7 @@ async def _load_broker_settings() -> dict | None:
         from backend.app.core.encryption import decrypt_value
         import backend.app.services.engine_state as _st
 
-        flat = _st._settings_cache or {}
+        flat = _st._integrated_system_settings_cache or {}
 
         def _dec(v) -> str:
             if not v:
@@ -58,9 +57,9 @@ async def _load_broker_settings() -> dict | None:
 
         tm = effective_trade_mode(flat)
         broker_nm = str(flat.get("broker", "") or "").lower().strip()
-        k = _dec(flat.get(f"{broker_nm}_app_key_real")) or _dec(flat.get(f"{broker_nm}_app_key"))
-        s = _dec(flat.get(f"{broker_nm}_app_secret_real")) or _dec(flat.get(f"{broker_nm}_app_secret"))
-        a = str(flat.get(f"{broker_nm}_account_no_real") or flat.get(f"{broker_nm}_account_no") or "")
+        k = _dec(flat.get(f"{broker_nm}_app_key"))
+        s = _dec(flat.get(f"{broker_nm}_app_secret"))
+        a = str(flat.get(f"{broker_nm}_account_no") or "")
 
         return {
             "broker": broker_nm,
@@ -100,13 +99,10 @@ async def get_account_profit_rate(access_token: str) -> dict:
         return _empty
 
     try:
-        settings = await _load_broker_settings()
-        if not settings:
-            return _empty
-
+        from backend.app.services.engine_state import _integrated_system_settings_cache
         host = await _get_rest_base()
-        broker_nm = str(settings.get("broker", "") or "").lower().strip()
-        acnt_no = str(settings.get(f"{broker_nm}_account_no", "") or "")
+        broker_nm = str(_integrated_system_settings_cache.get("broker", "") or "").lower().strip()
+        acnt_no = str(_integrated_system_settings_cache.get(f"{broker_nm}_account_no", "") or "")
 
         url = f"{host}/api/dostk/acnt"
         headers = {
@@ -198,9 +194,10 @@ async def get_main_account_info(access_token: str) -> list:
         if not settings:
             return _fallback
 
+        from backend.app.services.engine_state import _integrated_system_settings_cache
         host = await _get_rest_base()
-        broker_nm = str(settings.get("broker", "") or "").lower().strip()
-        acnt_no = str(settings.get(f"{broker_nm}_account_no", "") or "")
+        broker_nm = str(_integrated_system_settings_cache.get("broker", "") or "").lower().strip()
+        acnt_no = str(_integrated_system_settings_cache.get(f"{broker_nm}_account_no", "") or "")
 
         url = f"{host}/api/dostk/acnt"
         headers = {

@@ -31,13 +31,13 @@ _log = logging.getLogger(__name__)
 class KiwoomAuthProvider(AuthProvider):
     """기존 KiwoomRestAPI의 토큰 관리 로직 위임."""
 
-    def __init__(self, settings: dict):
-        self._settings = settings
-        app_key = (settings.get("kiwoom_app_key_real") or settings.get("kiwoom_app_key") or "").strip()
-        app_secret = (settings.get("kiwoom_app_secret_real") or settings.get("kiwoom_app_secret") or "").strip()
+    def __init__(self):
+        from backend.app.services.engine_state import _integrated_system_settings_cache
+        app_key = (_integrated_system_settings_cache.get("kiwoom_app_key_real") or _integrated_system_settings_cache.get("kiwoom_app_key") or "").strip()
+        app_secret = (_integrated_system_settings_cache.get("kiwoom_app_secret_real") or _integrated_system_settings_cache.get("kiwoom_app_secret") or "").strip()
         self._rest_api = KiwoomRestAPI(app_key, app_secret)
         self._rest_api._acnt_no = str(
-            settings.get("kiwoom_account_no_real") or settings.get("kiwoom_account_no", "") or ""
+            _integrated_system_settings_cache.get("kiwoom_account_no_real") or _integrated_system_settings_cache.get("kiwoom_account_no", "") or ""
         )
 
     async def get_access_token(self) -> Optional[str]:
@@ -62,13 +62,12 @@ class KiwoomAccountProvider(AccountProvider):
 
     def __init__(
         self,
-        settings: dict,
         auth_provider: Optional[KiwoomAuthProvider] = None,
     ):
-        self._settings = settings
+        from backend.app.services.engine_state import _integrated_system_settings_cache
         self._auth = auth_provider
         self._rest_api = auth_provider.rest_api if auth_provider else None
-        self._acnt_no = str(settings.get("kiwoom_account_no", "") or "")
+        self._acnt_no = str(_integrated_system_settings_cache.get("kiwoom_account_no", "") or "")
 
     async def get_account_number(self) -> Optional[str]:
         if self._rest_api is None:
@@ -214,10 +213,8 @@ class KiwoomOrderProvider(OrderProvider):
 
     def __init__(
         self,
-        settings: dict,
         auth_provider: Optional[KiwoomAuthProvider] = None,
     ):
-        self._settings = settings
         self._auth = auth_provider
 
     async def send_order(
@@ -251,10 +248,8 @@ class KiwoomStockProvider:
 
     def __init__(
         self,
-        settings: dict,
         auth_provider: Optional[KiwoomAuthProvider] = None,
     ):
-        self._settings = settings
         self._auth = auth_provider
         self._rest_api = auth_provider.rest_api if auth_provider else None
 
@@ -326,10 +321,8 @@ class KiwoomWebSocketProvider(WebSocketProvider):
 
     def __init__(
         self,
-        settings: dict,
         auth_provider: Optional[KiwoomAuthProvider] = None,
     ):
-        self._settings = settings
         self._auth = auth_provider
 
     def get_ws_uri(self) -> str:

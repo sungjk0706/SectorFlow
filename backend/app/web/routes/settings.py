@@ -100,24 +100,27 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         # 7. 보유종목 메모리 리스트 및 캐시 초기화 + 계좌 스냅샷 갱신 + WS account-update 발송
         from backend.app.services import engine_service as es
         from backend.app.services.engine_account_notify import _rebuild_positions_cache, _positions_code_set
+        subscribed_count = sum(1 for entry in es._master_stocks_cache.values() if entry.get("_subscribed", False))
         es.logger.info(
             "[디버그] 초기화 직전 구독목록 positions=%d subscribed=%d radar=%d layout=%d pos_codes=%d",
-            len(es._positions), len(es._subscribed_stocks),
-            len(es._radar_cnsr_order), len(es._sector_stock_layout),
+            len(es._positions), subscribed_count,
+            len(es._radar_cnsr_order), len(es._settings_cache.get("sector_stock_layout", [])),
             len(_positions_code_set),
         )
         async with es._shared_lock:
             es._positions = []
-            es._subscribed_stocks.clear()
+            for entry in es._master_stocks_cache.values():
+                entry.pop("_subscribed", None)
             # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_rest_radar_quote_cache)
-            es._rest_radar_rest_once.clear()
+            # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
             es._snapshot_history.clear()
             es._checked_stocks.clear()
         _rebuild_positions_cache([])
+        subscribed_count_after = sum(1 for entry in es._master_stocks_cache.values() if entry.get("_subscribed", False))
         es.logger.info(
             "[디버그] 초기화 직후 구독목록 positions=%d subscribed=%d radar=%d layout=%d pos_codes=%d",
-            len(es._positions), len(es._subscribed_stocks),
-            len(es._radar_cnsr_order), len(es._sector_stock_layout),
+            len(es._positions), subscribed_count_after,
+            len(es._radar_cnsr_order), len(es._settings_cache.get("sector_stock_layout", [])),
             len(_positions_code_set),
         )
         await es._refresh_account_snapshot_meta()
@@ -131,7 +134,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
             es._auto_trade._daily_buy_spent = 0
             es._auto_trade._bought_today = set()
             es._auto_trade._buy_state.clear()
-        es._sector_buy_last_ts.clear()
+        # _sector_buy_last_ts 제거: _master_stocks_cache[code]["_last_buy_ts"]로 통합
         # buy_targets 메모리 초기화 (매수후보 테이블 동기화)
         if es._sector_summary_cache and hasattr(es._sector_summary_cache, 'buy_targets'):
             es._sector_summary_cache.buy_targets = []

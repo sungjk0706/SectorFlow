@@ -213,7 +213,7 @@ async def _handle_config_update(
             # 설정값 업데이트
             changed_keys = payload.get("changed_keys", set())
             for key in changed_keys:
-                es._settings_cache[key] = payload.get(key)
+                es._integrated_system_settings_cache[key] = payload.get(key)
 
         logger.info("[Compute] 설정값 업데이트 완료 - changed_keys=%s", changed_keys)
         
@@ -403,7 +403,7 @@ async def _handle_real_0d_tick(
 
         # 호가잔량 캐시 삭제로 저장 로직 제거
         # 매수후보 종목이면 호가잔량비 변경을 프론트에 즉시 전송
-        if nk in es._subscribed_0d_stocks:
+        if es._master_stocks_cache.get(nk, {}).get("_subscribed_0d", False):
             notify_orderbook_update(nk, bid, ask)
 
     except Exception as e:
@@ -440,7 +440,7 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
                     total_count = len(all_codes)
                     received_count = sum(1 for c in all_codes if c in trade_prices)
                     
-                    threshold_pct = float(es._settings_cache.get("sector_start_threshold_pct", 70.0))
+                    threshold_pct = float(es._integrated_system_settings_cache.get("sector_start_threshold_pct", 70.0))
                     current_pct = (received_count / total_count * 100) if total_count > 0 else 100.0
                     
                     if current_pct < threshold_pct:
@@ -486,7 +486,7 @@ async def _check_buy_target_reached(
     # 실제 매수 판단은 engine_service._try_sector_buy 호출
     try:
         # 매수 판단 (engine_service._try_sector_buy 이관)
-        es._try_sector_buy()
+        await es._try_sector_buy()
 
         # 매수 타점에 도달하면 order_queue에 주문 지령 전송
         # (실제 주문 실행은 Step 4 OMS Pipeline에서 수행)

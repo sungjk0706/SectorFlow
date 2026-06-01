@@ -48,46 +48,21 @@ async def lifespan(app: FastAPI):
     from backend.app.core.trading_calendar import initialize_trading_calendar_cache
     await initialize_trading_calendar_cache()
 
-    # 새 설정 테이블 초기화 (표준 아키텍처)
-    from backend.app.db.models import (
-        create_system_settings_table,
-        create_user_settings_table,
-        create_broker_credentials_table,
-        create_system_config_table,
-        create_broker_specs_table,
-        create_integrated_system_settings_table,
-    )
-    await create_system_settings_table()
-    await create_user_settings_table()
-    await create_broker_credentials_table()
-    await create_system_config_table()
-    await create_broker_specs_table()
-
-    # 기존 system_settings 테이블이 있을 경우 개별 테이블로 마이그레이션 실행
-    from backend.app.db.migration import migrate_settings_from_system_settings, drop_system_settings_table
-    await migrate_settings_from_system_settings()
-
-    # broker_specs JSON → SQLite 마이그레이션
-    from backend.app.db.models import migrate_broker_specs_from_json
-    await migrate_broker_specs_from_json()
-
-    # 최종 통합설정 마스터 물리 테이블 및 트리거(integrated_system_settings) 생성
+    # 통합설정 테이블 초기화
+    from backend.app.db.models import create_integrated_system_settings_table
     await create_integrated_system_settings_table()
 
-    # 기존 system_settings 테이블 안전 제거
-    await drop_system_settings_table()
-
     # 단일 통합설정 마스터 테이블(integrated_system_settings)로부터 1회 로드 완료
-    from backend.app.core.settings_file import load_settings
-    settings = await load_settings()
+    from backend.app.core.settings_file import load_integrated_system_settings
+    settings = await load_integrated_system_settings()
 
     # settings를 container에 등록
     container.register_singleton("settings", settings)
 
-    # _settings_cache 초기화 (단일 소스 진리 보장)
+    # _integrated_system_settings_cache 초기화 (단일 소스 진리 보장)
     import backend.app.services.engine_state as _st
-    _st._settings_cache.clear()
-    _st._settings_cache.update(settings)
+    _st._integrated_system_settings_cache.clear()
+    _st._integrated_system_settings_cache.update(settings)
 
     logger.info("[웹서버] ThreadPoolExecutor 설정 직전")
     loop = asyncio.get_running_loop()

@@ -22,10 +22,9 @@ _log = logging.getLogger(__name__)
 class KiwoomBroker(BrokerInterface):
     """키움증권 REST + WebSocket 브로커 (BrokerRouter 위임 패턴)"""
 
-    def __init__(self, settings: dict):
-        self._settings = settings
+    def __init__(self):
         from backend.app.core.broker_router import BrokerRouter
-        self._router = BrokerRouter(settings)
+        self._router = BrokerRouter()
 
     # ── 인증 ──────────────────────────────────────────────────────────────
     async def get_access_token(self) -> Optional[str]:

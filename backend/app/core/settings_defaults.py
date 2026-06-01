@@ -55,17 +55,29 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "boost_order_ratio_pct": 20,
     "boost_order_ratio_score": 1.0,
     
-    # 매도 설정
-    "tp_apply": False,
-    "tp_val": 0,
-    "loss_apply": False,
-    "loss_val": 0,
-    "ts_apply": False,
-    "ts_start_val": 0,
-    "ts_drop_val": 0,
-}
-
-# 시스템 설정 기본값 (system_config)
+     # 매도 설정
+     "tp_apply": False,
+     "tp_val": 0,
+     "loss_apply": False,
+     "loss_val": 0,
+     "ts_apply": False,
+     "ts_start_val": 0,
+     "ts_drop_val": 0,
+     
+     # 업종순위 설정
+     "sector_min_rise_ratio_pct": 60.0,
+     "buy_block_rise_pct": 7.0,
+     "buy_block_fall_pct": 7.0,
+     "buy_min_strength": 0.0,
+     "sector_min_trade_amt": 0.0,
+     "sector_max_targets": 3,
+     "sector_trim_trade_amt_pct": 10.0,
+     "sector_trim_change_rate_pct": 10.0,
+     "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
+     "sector_sort_keys": ["score"],
+ }
+ 
+ # 시스템 설정 기본값 (system_config)
 DEFAULT_SYSTEM_CONFIG: dict[str, Any] = {
     # 마켓 시간 (증권사 공식값)
     "krx_open_time": "09:00",

@@ -773,14 +773,14 @@ function renderApiFields(container: HTMLElement): void {
 
   const API_FIELDS_CONFIG: Record<string, { key: string; label: string; type: 'password' | 'text' }[]> = {
     kiwoom: [
-      { key: 'kiwoom_app_key_real', label: '앱키', type: 'password' },
-      { key: 'kiwoom_app_secret_real', label: '앱시크릿', type: 'password' },
-      { key: 'kiwoom_account_no_real', label: '계좌번호', type: 'text' },
+      { key: 'kiwoom_app_key', label: '앱키', type: 'password' },
+      { key: 'kiwoom_app_secret', label: '앱시크릿', type: 'password' },
+      { key: 'kiwoom_account_no', label: '계좌번호', type: 'text' },
     ],
     ls: [
-      { key: 'ls_app_key_real', label: '앱키', type: 'password' },
-      { key: 'ls_app_secret_real', label: '앱시크릿', type: 'password' },
-      { key: 'ls_account_no_real', label: '계좌번호', type: 'text' },
+      { key: 'ls_app_key', label: '앱키', type: 'password' },
+      { key: 'ls_app_secret', label: '앱시크릿', type: 'password' },
+      { key: 'ls_account_no', label: '계좌번호', type: 'text' },
     ],
   }
 
@@ -977,7 +977,7 @@ function syncFromSettings(s: AppSettings | null): void {
   // API 설정 탭 (항상 DOM에 존재)
   {
     const act = document.activeElement
-    const allApiKeys = ['kiwoom_app_key_real', 'kiwoom_app_secret_real', 'kiwoom_account_no_real', 'ls_app_key_real', 'ls_app_secret_real', 'ls_account_no_real']
+    const allApiKeys = ['kiwoom_app_key', 'kiwoom_app_secret', 'kiwoom_account_no', 'ls_app_key', 'ls_app_secret', 'ls_account_no']
     for (const k of allApiKeys) {
       if (apiKeyInputs[k]) {
         if (!act || !apiKeyInputs[k].contains(act)) {

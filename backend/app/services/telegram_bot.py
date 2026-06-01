@@ -302,14 +302,14 @@ class TelegramBot:
         from backend.app.services import engine_service
         import backend.app.services.engine_state as _st
 
-        flat = _st._settings_cache or {}
+        flat = _st._integrated_system_settings_cache or {}
         if key in ("auto_buy_on", "auto_sell_on", "holiday_guard_on"):
             cur = bool(flat.get(key, True))
         else:
             cur = bool(flat.get(key, False))
         new = not cur
         await update_settings({key: new})
-        await engine_service.refresh_engine_settings_cache(None, use_root=True)
+        await engine_service.refresh_engine_integrated_system_settings_cache(None, use_root=True)
         from backend.app.services.engine_account_notify import (
             notify_desktop_header_refresh,
             notify_desktop_settings_toggled,
@@ -362,11 +362,11 @@ class TelegramBot:
     async def _cmd_status_full(self, token: str, chat_id: str, profile: str | None = None):
         try:
             from backend.app.services.engine_service import get_status, get_account_snapshot
-            from backend.app.core.settings_file import load_settings
+            from backend.app.core.settings_file import load_integrated_system_settings
 
             eng = get_status()
             eng_running = eng.get("running", False)
-            flat = await load_settings()
+            flat = await load_integrated_system_settings()
             t_on = bool(flat.get("time_scheduler_on", False))
             buy_on = bool(flat.get("auto_buy_on", True))
             sell_on = bool(flat.get("auto_sell_on", True))

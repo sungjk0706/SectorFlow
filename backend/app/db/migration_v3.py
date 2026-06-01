@@ -87,14 +87,7 @@ async def run_migration_v3() -> None:
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_mst_date ON master_stocks_table(date)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_mst_avg_5d ON master_stocks_table(avg_5d_trade_amount)")
             
-            # 1-4. 안전한 원천 테이블 생성 보장 (custom_sector_mappings & stock_5d_array)
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS custom_sector_mappings (
-                    code TEXT PRIMARY KEY,
-                    sector TEXT NOT NULL
-                )
-            """)
-            
+            # 1-4. 안전한 원천 테이블 생성 보장 (stock_5d_array)
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS stock_5d_array (
                     code TEXT,
@@ -123,10 +116,6 @@ async def run_migration_v3() -> None:
             # market_map 테이블 존재 여부
             cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='market_map'")
             has_market_table = await cursor.fetchone() is not None
-            
-            # custom_sector_mappings 테이블 존재 여부
-            cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='custom_sector_mappings'")
-            has_sector_table = await cursor.fetchone() is not None
             
             # stock_5d_array 테이블 존재 여부
             cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='stock_5d_array'")
@@ -159,15 +148,6 @@ async def run_migration_v3() -> None:
                     for r in await cursor.fetchall():
                         market_map[r["code"]] = r["market"]
             
-            # 만약 기존에 custom_sector_mappings 테이블이 비어있거나 없었다면, 구 마스터 테이블의 sector 컬럼에서 백업
-            sector_backup = []
-            if "sector" in column_names:
-                cursor = await conn.execute("SELECT code, sector FROM master_stocks_table_old_v3 WHERE sector IS NOT NULL AND sector != ''")
-                sector_backup = await cursor.fetchall()
-                
-            if has_sector_table and sector_backup:
-                for r in sector_backup:
-                    await conn.execute("INSERT OR IGNORE INTO custom_sector_mappings (code, sector) VALUES (?, ?)", (r["code"], r["sector"]))
             
             # 만약 기존에 stock_5d_array 테이블에 데이터가 없고 구 마스터 테이블에 day1~5 정보가 남아있었다면 백업
             if "day1_amount" in column_names:
@@ -197,14 +177,7 @@ async def run_migration_v3() -> None:
                 market = market_map.get(code) or r_dict.get("market") or ""
                 
                 # 업종 매핑 병합
-                sector = "기타"
-                if has_sector_table:
-                    cursor = await conn.execute("SELECT sector FROM custom_sector_mappings WHERE code = ?", (code,))
-                    s_row = await cursor.fetchone()
-                    if s_row:
-                        sector = s_row["sector"]
-                else:
-                    sector = r_dict.get("sector") or "기타"
+                sector = r_dict.get("sector") or "기타"
                     
                 # 5일 평균 및 최고가 계산값 복원
                 avg_5d = r_dict.get("avg_5d_trade_amount") or 0.0

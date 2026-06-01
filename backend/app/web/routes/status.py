@@ -57,8 +57,8 @@ async def debug_sector_stock(code: str):
     nk = _format_kiwoom_reg_stk_cd(code.strip())
     # _pending_stock_details 제거: _master_stocks_cache 사용
     pend = es._master_stocks_cache.get(nk, {})
-    in_filter = nk in es._filtered_sector_codes
-    in_subscribed = nk in es._subscribed_stocks
+    in_filter = pend.get("_filtered", False)
+    in_subscribed = pend.get("_subscribed", False)
     # 실시간 틱 데이터 캐시 읽기 로직 삭제 (캐시가 삭제되었으므로 읽기 불가, None 반환)
     tp = None
     ta = None
@@ -68,8 +68,8 @@ async def debug_sector_stock(code: str):
         "code": nk,
         "in_filtered_sector_codes": in_filter,
         "in_subscribed_stocks": in_subscribed,
-        "filtered_count": len(es._filtered_sector_codes),
-        "subscribed_count": len(es._subscribed_stocks),
+        "filtered_count": sum(1 for entry in es._master_stocks_cache.values() if entry.get("_filtered", False)),
+        "subscribed_count": sum(1 for entry in es._master_stocks_cache.values() if entry.get("_subscribed", False)),
         "pending_status": pend.get("status") if pend else None,
         "pending_cur_price": pend.get("cur_price") if pend else None,
         "pending_change": pend.get("change") if pend else None,
@@ -92,8 +92,8 @@ async def debug_ws_status():
         "ws_connected": bool(ws and ws.is_connected()) if ws else False,
         "login_ok": es._login_ok,
         "running": es._running,
-        "subscribed_stocks_count": len(es._subscribed_stocks),
-        "filtered_sector_codes_count": len(es._filtered_sector_codes),
+        "subscribed_stocks_count": sum(1 for entry in es._master_stocks_cache.values() if entry.get("_subscribed", False)),
+        "filtered_sector_codes_count": sum(1 for entry in es._master_stocks_cache.values() if entry.get("_filtered", False)),
         # _radar_cnsr_order 삭제: subscribed_stocks_count로 대체
         "latest_trade_prices_count": 0,  # 실시간 틱 데이터 캐시 삭제로 0 반환
         "ws_reg_pipeline_done": es._ws_reg_pipeline_done.is_set(),
@@ -157,7 +157,7 @@ async def debug_orderbook_status(
     result = {}
     for raw_code in codes:
         nk = _format_kiwoom_reg_stk_cd(raw_code.strip())
-        is_subscribed = nk in es._subscribed_0d_stocks
+        is_subscribed = es._master_stocks_cache.get(nk, {}).get("_subscribed_0d", False)
         # 호가잔량 캐시 삭제로 None 반환
         ob_data = None
         stock_name = data_manager.get_stock_name(nk)
@@ -171,5 +171,5 @@ async def debug_orderbook_status(
 
     return {
         "stocks": result,
-        "total_subscribed_0d": len(es._subscribed_0d_stocks),
+        "total_subscribed_0d": sum(1 for entry in es._master_stocks_cache.values() if entry.get("_subscribed_0d", False)),
     }

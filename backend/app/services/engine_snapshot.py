@@ -11,18 +11,17 @@ import json
 import time
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import (
-    _settings_cache,
+    _integrated_system_settings_cache,
     _bootstrap_event,
     _preboot_cache_loaded,
     _shared_lock,
     # _pending_stock_details 제거
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_amounts, _latest_trade_prices, _latest_strength, _rest_radar_quote_cache, _orderbook_cache)
-    _subscribed_0d_stocks,
-    _rest_radar_rest_once,
+    # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
+    # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
     _snapshot_history,
     _positions,
     _sector_summary_cache,
-    _buy_targets_snapshot_cache,
     _realtime_state,
 )
 
@@ -39,7 +38,6 @@ async def build_initial_snapshot() -> dict:
     from backend.app.services import ws_subscribe_control
     from backend.app.services.daily_time_scheduler import get_market_phase
     import backend.app.services.engine_state as _st
-    from backend.app.core.industry_map import load_eligible_stocks_cache
     from backend.app.services.engine_account import (
         get_positions, get_account_snapshot, get_snapshot_history,
         get_buy_limit_status,
@@ -65,28 +63,25 @@ async def build_initial_snapshot() -> dict:
     account_snap = await _safe(get_account_snapshot, {})
     logger.info("[연결] 시작화면 데이터 생성 단계 -- 계좌 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
-    # _settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
-    _raw_settings = dict(_st._settings_cache or {})
+    # 단일 소스 진리: _integrated_system_settings_cache 직접 사용
     logger.info("[연결] 시작화면 데이터 생성 단계 -- 설정 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
     scores_snapshot = await _safe(get_sector_scores_snapshot, ([], 0))
     scores_list, ranked_count = scores_snapshot if isinstance(scores_snapshot, tuple) else (scores_snapshot, 0)
     logger.info("[연결] 시작화면 데이터 생성 단계 -- 업종점수 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
-    
-    # 종목수 일치 보장: eligible_stocks_cache 기준
-    from backend.app.core.industry_map import load_eligible_stocks_cache_from_db
-    eligible_stocks = await load_eligible_stocks_cache_from_db() or {}
-    total_stocks_count = len(eligible_stocks) if eligible_stocks else 0
-    
+
+    # 종목수 일치 보장: master_stocks_table 기준
+    total_stocks_count = len(_st._master_stocks_cache)
+
     snapshot: dict = {
         "_v":               1,
         "account":          account_snap,
         "positions":        positions,
         "sector_stocks":    [],  # 분할 전송 — sector-stocks-refresh 이벤트로 별도 전송
         "sector_scores":    scores_list,
-        "sector_status":    {"total_stocks": total_stocks_count, "max_targets": int(_settings_cache.get("sector_max_targets", 3) or 3), "ranked_sectors_count": ranked_count},
+        "sector_status":    {"total_stocks": total_stocks_count, "max_targets": int(_st._integrated_system_settings_cache.get("sector_max_targets", 3) or 3), "ranked_sectors_count": ranked_count},
         "buy_targets":      await _safe(get_buy_targets_snapshot, []),
-        "settings":         _mask_sensitive_settings(_raw_settings),
+        "settings":         _mask_sensitive_settings(_st._integrated_system_settings_cache),
         "status":           await _safe(get_status, {}),
         "snapshot_history": await _safe(get_snapshot_history, []),
         "sell_history":     await _safe(lambda: _get_trade_history_for_snapshot("sell"), []),
@@ -96,7 +91,7 @@ async def build_initial_snapshot() -> dict:
         "ws_subscribe_status": ws_subscribe_control.get_subscribe_status(),
         "bootstrap_done":   _bootstrap_event.is_set() if _bootstrap_event else _preboot_cache_loaded,
         "market_phase":     get_market_phase(),
-        "broker_config":    _raw_settings.get("broker_config", {}),
+        "broker_config":    _st._integrated_system_settings_cache.get("broker_config", {}),
         "avg_amt_refresh":  None,
     }
     logger.info("[연결] 시작화면 데이터 생성 단계 -- 메타 조립 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
@@ -176,7 +171,8 @@ _REALTIME_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "stren
 
 async def _reset_realtime_fields() -> None:
     """WS 구독 시작 시 실시간 필드를 None으로 초기화하고 실시간 캐시 3종을 비운다."""
-    global _sector_summary_cache, _buy_targets_snapshot_cache
+    global _sector_summary_cache
+    # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
     from backend.app.core.trade_mode import is_test_mode
     from backend.app.services import dry_run
     from backend.app.services.engine_account_notify import (
@@ -194,9 +190,11 @@ async def _reset_realtime_fields() -> None:
     async with _shared_lock:
         # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_latest_trade_amounts, _latest_trade_prices, _latest_strength)
         # 호가잔량 캐시 삭제로 clear 로직 제거
-        _subscribed_0d_stocks.clear()
+        # _subscribed_0d_stocks 제거: _master_stocks_cache에서 "_subscribed_0d" 제거
+        for entry in _master_stocks_cache.values():
+            entry.pop("_subscribed_0d", None)
         # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_rest_radar_quote_cache)
-        _rest_radar_rest_once.clear()
+        # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
         _snapshot_history.clear()
         # 보유종목 실시간 필드 초기화 (전일 종가 혼입 방지)
         for pos in _positions:
@@ -208,7 +206,7 @@ async def _reset_realtime_fields() -> None:
             pos["high_price"] = None
         
         # 테스트모드 가상 보유종목 실시간 필드 초기화
-        if is_test_mode(_settings_cache):
+        if is_test_mode(_integrated_system_settings_cache):
             for pos in dry_run._test_positions.values():
                 pos["cur_price"] = None
                 pos["change"] = None
@@ -219,7 +217,7 @@ async def _reset_realtime_fields() -> None:
         
         # 업종 점수 캐시 초기화 (실시간 데이터 재계산 유도)
         _sector_summary_cache = None
-        _buy_targets_snapshot_cache = None
+        # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
         # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
         _position_sent_cache.clear()
         _prev_sent_cache.clear()
@@ -260,9 +258,10 @@ def _get_realtime_state() -> str:
 
 def get_buy_targets_snapshot() -> list:
     """매수 후보 스냅샷 반환."""
-    if _buy_targets_snapshot_cache is None:
+    # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
+    if _sector_summary_cache is None or not _sector_summary_cache.buy_targets:
         return []
-    return list(_buy_targets_snapshot_cache.values())
+    return list(_sector_summary_cache.buy_targets.values())
 
 
 def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
@@ -275,7 +274,7 @@ def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
     if not nk:
         return None
     # 테스트모드: dry_run 가상 잔고에서 조회
-    if is_test_mode(_settings_cache):
+    if is_test_mode(_integrated_system_settings_cache):
         pos = dry_run.get_position(nk)
         if pos and int(pos.get("qty", 0) or 0) > 0:
             try:
