@@ -48,23 +48,20 @@ from backend.app.services.engine_state import (
     _rest_api_thread_sem,
     _account_rest_lock,
     # _radar_cnsr_order 삭제
-    _sector_stock_layout,
+    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
     # _amts_5d_arrays, _highs_5d_arrays 제거: stock_5d_array 테이블에서 직접 읽도록 대체
-    _subscribed_0d_stocks,
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_prices, _latest_trade_amounts)
-    _filtered_sector_codes,
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_strength)
     # _sector_stocks_cache 제거: _master_stocks_cache 기반 실시간 필터링으로 대체
     # _sector_stocks_dirty 제거
     # _sector_stocks_last_invalidated 제거
     _MIN_CACHE_LIFETIME_SEC,
-    _buy_targets_snapshot_cache,
+    # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
     _buy_targets_cache_ref,
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_rest_radar_quote_cache)
-    _rest_radar_rest_once,
+    # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
     _sector_summary_cache,
-    _sector_buy_last_ts,
-    _stock_rising_state,
+    # _sector_buy_last_ts 제거: _master_stocks_cache[code]["_last_buy_ts"]로 통합
     _sector_score_index,
     _confirmed_refresh_running,
     _confirmed_refresh_message,
@@ -74,8 +71,7 @@ from backend.app.services.engine_state import (
     _broker_rest_totals,
     _latest_stock_info,
     _auto_trade,
-    _settings_cache,
-    _subscribed_stocks,
+    _integrated_system_settings_cache,
     _broker_spec,
     _rest_api,
     _account_snapshot,
@@ -146,7 +142,7 @@ from backend.app.services.engine_account import (
 from backend.app.services.engine_config import (
     _get_settings,
     get_settings_snapshot,
-    refresh_engine_settings_cache,
+    refresh_engine_integrated_system_settings_cache,
     reload_engine_settings,
     _mask_sensitive_settings,
     get_connection_level_keys,
@@ -176,8 +172,6 @@ from backend.app.services.engine_sector import (
     # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
     _on_filter_settings_changed as _sector_on_filter_settings_changed,
     _compute_filtered_codes,
-    # _update_avg_amt_5d 유지: _master_stocks_cache를 직접 업데이트
-    _update_avg_amt_5d,
 )
 from backend.app.services.engine_lifecycle import (
     start_engine,
@@ -282,9 +276,8 @@ _apply_delayed_account_broadcast = _apply_delayed_account_broadcast
 _position_codes_with_qty = _position_codes_with_qty
 
 # engine_config
-_get_settings = _get_settings
 get_settings_snapshot = get_settings_snapshot
-refresh_engine_settings_cache = refresh_engine_settings_cache
+refresh_engine_integrated_system_settings_cache = refresh_engine_integrated_system_settings_cache
 reload_engine_settings = reload_engine_settings
 _mask_sensitive_settings = _mask_sensitive_settings
 get_connection_level_keys = get_connection_level_keys
@@ -311,7 +304,6 @@ get_sector_summary_inputs = get_sector_summary_inputs
 get_sector_stocks = get_sector_stocks
 get_all_sector_stocks = get_all_sector_stocks
 _compute_filtered_codes = _compute_filtered_codes
-_update_avg_amt_5d = _update_avg_amt_5d
 
 # engine_lifecycle
 start_engine = start_engine

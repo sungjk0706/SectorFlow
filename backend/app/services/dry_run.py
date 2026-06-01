@@ -6,7 +6,7 @@ Dry-Run 모듈 -- 테스트모드 전용 가상 체결 엔진 + 영속 잔고.
 
 책임:
   1. fake_send_order()  -- 키움 send_order 응답과 동일한 구조의 가짜 체결 반환
-  2. _test_positions     -- 가상 잔고 (data/test_positions.json 에 영속)
+  2. _test_positions     -- 가상 잔고 (SQLite test_positions 테이블에 영속)
   3. update_price()      -- 0B 틱으로 가상 잔고 현재가/수익률 갱신
 """
 
@@ -15,7 +15,7 @@ import json
 import logging
 from pathlib import Path
 
-from backend.app.core.settings_file import load_settings, update_settings
+from backend.app.core.settings_file import load_integrated_system_settings, update_settings
 from backend.app.services import settlement_engine
 from backend.app.db.stock_tables import load_test_positions, save_test_positions
 
@@ -294,7 +294,7 @@ def get_virtual_balance() -> int:
 
 async def get_virtual_deposit_setting() -> int:
     """설정된 가상 예수금 초기값 반환."""
-    s = await load_settings()
+    s = await load_integrated_system_settings()
     return int(s.get("test_virtual_deposit", 10_000_000) or 0)
 
 

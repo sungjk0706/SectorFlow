@@ -22,13 +22,13 @@ logger = get_logger("broker_factory")
 _router_cache: "BrokerRouter | None" = None
 
 
-def get_router(settings: dict) -> "BrokerRouter":
+def get_router() -> "BrokerRouter":
     """BrokerRouter 싱글턴 반환. 시작 시 1회 생성, 이후 캐시."""
     global _router_cache
     if _router_cache is None:
         from backend.app.core.broker_router import BrokerRouter
 
-        _router_cache = BrokerRouter(settings)
+        _router_cache = BrokerRouter()
         logger.info(_router_cache.summary())
         warnings = _router_cache.validate()
         for w in warnings:

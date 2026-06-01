@@ -26,21 +26,21 @@ async def init_cache_tables():
     # 7. 테스트 포지션 테이블
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS test_positions (
-            id INTEGER PRIMARY KEY,
-            data TEXT,
+            stk_cd TEXT PRIMARY KEY,
+            stk_nm TEXT,
+            qty INTEGER,
+            avg_price INTEGER,
+            cur_price INTEGER,
+            total_fee INTEGER,
+            buy_amt INTEGER,
+            eval_amt INTEGER,
+            pnl_amount INTEGER,
+            pnl_rate REAL,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
 
-    # 9. 적격 종목 캐시 테이블
-    await conn.execute('''
-        CREATE TABLE IF NOT EXISTS eligible_stocks_cache (
-            id INTEGER PRIMARY KEY,
-            date TEXT,
-            data TEXT,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+    # eligible_stocks_cache 테이블 삭제 (master_stocks_table이 단일 소스)
 
     # sector_summary_cache 테이블 삭제 (메모리 캐시로 대체)
 
@@ -100,69 +100,74 @@ async def load_settlement_state() -> dict | None:
 
 # ── 테스트 포지션 ─────────────────────────────────────────────────────────
 async def save_test_positions(data: dict) -> None:
-    """테스트 포지션 저장"""
+    """테스트 포지션 저장 (개별 컬럼)"""
     try:
         from backend.app.db.db_writer import execute_db_write, DBWriteOperation
-        from backend.app.db.json_utils import encode_json_field
-        query = "INSERT OR REPLACE INTO test_positions (id, data) VALUES (1, ?)"
-        params = (encode_json_field(data),)
-        op = DBWriteOperation(
-            table="test_positions",
-            operation="INSERT_OR_REPLACE",
-            data={},
-            query=query,
-            params=params,
-        )
-        await execute_db_write(op, wait=True)
+        conn = await get_db_connection()
+        
+        # 기존 데이터 삭제
+        await conn.execute("DELETE FROM test_positions")
+        
+        # 각 종목별로 INSERT
+        for stk_cd, pos_data in data.items():
+            await conn.execute('''
+                INSERT OR REPLACE INTO test_positions (
+                    stk_cd, stk_nm, qty, avg_price, cur_price,
+                    total_fee, buy_amt, eval_amt, pnl_amount, pnl_rate
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                stk_cd,
+                pos_data.get("stk_nm", ""),
+                pos_data.get("qty", 0),
+                pos_data.get("avg_price", 0),
+                pos_data.get("cur_price", 0),
+                pos_data.get("total_fee", 0),
+                pos_data.get("buy_amt", 0),
+                pos_data.get("eval_amt", 0),
+                pos_data.get("pnl_amount", 0),
+                pos_data.get("pnl_rate", 0.0),
+            ))
+        
+        await conn.commit()
     except Exception as e:
         _log.warning("[test_positions] 저장 실패: %s", e)
 
 async def load_test_positions() -> dict | None:
-    """테스트 포지션 로드"""
+    """테스트 포지션 로드 (개별 컬럼)"""
     try:
-        from backend.app.db.json_utils import decode_json_field
         conn = await get_db_connection()
-        cursor = await conn.execute("SELECT data FROM test_positions WHERE id = 1")
-        row = await cursor.fetchone()
-        if row:
-            return decode_json_field(row["data"], expected_type=dict)
+        cursor = await conn.execute('''
+            SELECT stk_cd, stk_nm, qty, avg_price, cur_price,
+                   total_fee, buy_amt, eval_amt, pnl_amount, pnl_rate
+            FROM test_positions
+        ''')
+        rows = await cursor.fetchall()
+        
+        if not rows:
+            return {}
+        
+        result = {}
+        for row in rows:
+            result[row["stk_cd"]] = {
+                "stk_cd": row["stk_cd"],
+                "stk_nm": row["stk_nm"],
+                "qty": row["qty"],
+                "avg_price": row["avg_price"],
+                "cur_price": row["cur_price"],
+                "total_fee": row["total_fee"],
+                "buy_amt": row["buy_amt"],
+                "eval_amt": row["eval_amt"],
+                "pnl_amount": row["pnl_amount"],
+                "pnl_rate": row["pnl_rate"],
+            }
+        
+        return result
     except Exception as e:
         _log.warning("[test_positions] 로드 실패: %s", e)
     return None
 
 
-# ── 적격 종목 캐시 ─────────────────────────────────────────────────────────
-async def save_eligible_stocks_cache(date: str, data: dict) -> None:
-    """적격 종목 캐시 저장"""
-    try:
-        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
-        from backend.app.db.json_utils import encode_json_field
-        query = "INSERT OR REPLACE INTO eligible_stocks_cache (id, date, data) VALUES (1, ?, ?)"
-        params = (date, encode_json_field(data))
-        op = DBWriteOperation(
-            table="eligible_stocks_cache",
-            operation="INSERT_OR_REPLACE",
-            data={},
-            query=query,
-            params=params,
-        )
-        await execute_db_write(op, wait=True)
-    except Exception as e:
-        _log.warning("[eligible_stocks_cache] 저장 실패: %s", e)
-
-async def load_eligible_stocks_cache() -> dict | None:
-    """적격 종목 캐시 로드"""
-    try:
-        from backend.app.db.json_utils import decode_json_field
-        conn = await get_db_connection()
-        cursor = await conn.execute("SELECT date, data FROM eligible_stocks_cache WHERE id = 1")
-        row = await cursor.fetchone()
-        if row:
-            return {"date": row["date"], "data": decode_json_field(row["data"], expected_type=dict)}
-    except Exception as e:
-        _log.warning("[eligible_stocks_cache] 로드 실패: %s", e)
-    return None
-
+# eligible_stocks_cache 함수 삭제 (master_stocks_table이 단일 소스)
 
 # sector_summary_cache 삭제 (메모리 캐시로 대체)
 

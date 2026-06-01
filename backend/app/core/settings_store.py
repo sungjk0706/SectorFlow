@@ -9,7 +9,7 @@ import logging
 from typing import Any
 
 from backend.app.core.encryption import decrypt_value, encrypt_value
-from backend.app.core.settings_file import load_settings, save_settings
+from backend.app.core.settings_file import load_integrated_system_settings, save_settings
 from backend.app.core import journal as _journal
 from backend.app.services import engine_service
 from backend.app.services.engine_account_notify import (
@@ -23,13 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 def get_encrypt_fields(broker_nm: str) -> frozenset[str]:
-    """broker 기반 암호화 필드 목록을 동적으로 생성한다."""
+    """모든 증권사의 암호화 필드 목록을 반환 (단일 소스 진리 준수)."""
     base_fields = {"telegram_bot_token"}
+    # 모든 증권사의 암호화 필드 포함
     broker_fields = {
-        f"{broker_nm}_app_key",
-        f"{broker_nm}_app_secret",
-        f"{broker_nm}_app_key_real",
-        f"{broker_nm}_app_secret_real",
+        "kiwoom_app_key", "kiwoom_app_secret",
+        "ls_app_key", "ls_app_secret",
     }
     return frozenset(base_fields | broker_fields)
 
@@ -63,7 +62,7 @@ def _account_field_or_legacy_flat(d: dict, key: str, legacy: str) -> str:
 def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
     """
     일반설정 저장 버튼이 보내는 payload와 동일한 규칙으로 dict를 구성한다.
-    load_settings_for_editing() 스냅샷과 현재 위젯 payload를 비교할 때 사용.
+    load_integrated_system_settings_for_editing() 스냅샷과 현재 위젯 payload를 비교할 때 사용.
     """
     legacy_k = str(d.get("kiwoom_app_key") or "")
     legacy_s = str(d.get("kiwoom_app_secret") or "")
@@ -89,20 +88,20 @@ def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
         "test_mode": mode == "test",
         "mock_mode": mode == "test",   # 하위 호환
         "mode_real": mode == "real",
-        "kiwoom_account_no_real": _account_field_or_legacy_flat(
-            d, "kiwoom_account_no_real", legacy_a
+        "kiwoom_account_no": _account_field_or_legacy_flat(
+            d, "kiwoom_account_no", legacy_a
         ).strip(),
         "broker": str(d.get("broker") or "kiwoom").strip(),
     }
     tok = str(d.get("telegram_bot_token") or "").strip()
     if tok:
         data["telegram_bot_token"] = tok
-    # 키움 레거시 호환 (kiwoom_app_key → kiwoom_app_key_real)
-    rk = str(d.get("kiwoom_app_key_real") or "") or legacy_k
-    rs = str(d.get("kiwoom_app_secret_real") or "") or legacy_s
+    # 키움 레거시 호환 제거 (단일 소스 진리 준수)
+    rk = str(d.get("kiwoom_app_key") or "")
+    rs = str(d.get("kiwoom_app_secret") or "")
     for field, val in (
-        ("kiwoom_app_key_real", rk),
-        ("kiwoom_app_secret_real", rs),
+        ("kiwoom_app_key", rk),
+        ("kiwoom_app_secret", rs),
     ):
         s = val.strip()
         if s:
@@ -111,7 +110,7 @@ def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
     for key in d:
         if key.startswith("kiwoom_"):
             continue  # 키움은 위에서 레거시 호환 처리 완료
-        if key.endswith(("_app_key", "_app_secret", "_account_no", "_app_key_real", "_app_secret_real", "_account_no_real")):
+        if key.endswith(("_app_key", "_app_secret", "_account_no")):
             val = str(d.get(key) or "").strip()
             if val:
                 data[key] = val
@@ -150,11 +149,15 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
         "sell_time_start", "sell_time_end",
     })
 
-    current = await load_settings()
+    current = await load_integrated_system_settings()
     before_snapshot = dict(current)  # 저널링용 before 상태 캡처
 
     for k, v in data.items():
         if v is None:
+            continue  # 아무것도 안 함 (기존 값 유지)
+        if v == "":
+            # 빈 문자열은 삭제 요청으로 간주
+            current[k] = ""
             continue
         # broker 필드: 허용된 값만 저장
         if k == "broker":
@@ -212,7 +215,7 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
             processed_cache = build_engine_settings_dict(current)
             from backend.app.di.container import get_container
             
-            # 1) engine_service._settings_cache 갱신
+            # 1) engine_service._integrated_system_settings_cache 갱신
             key_mappings = {
                 "buy_amt": "buy_amount",
                 "max_stock_cnt": "max_stock_count",
@@ -222,18 +225,18 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
                 "ts_start_val": "trailing_start_value",
                 "ts_drop_val": "trailing_drop_value"
             }
-            
+
             for k in changed_keys:
                 mapped_keys = {k}
                 if k in key_mappings:
                     mapped_keys.add(key_mappings[k])
-                
+
                 for mk in mapped_keys:
                     if mk in processed_cache:
-                        engine_service._settings_cache[mk] = processed_cache[mk]
-                
+                        engine_service._integrated_system_settings_cache[mk] = processed_cache[mk]
+
                 if k in current:
-                    engine_service._settings_cache[k] = processed_cache.get(k, current[k])
+                    engine_service._integrated_system_settings_cache[k] = processed_cache.get(k, current[k])
 
             # 2) DI container settings 싱글톤 갱신
             container = get_container()
@@ -250,7 +253,7 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
 
 async def build_masked_settings_dict(username: str = "admin", profile: str | None = None) -> dict[str, Any]:
     """민감 필드 마스킹된 설정 dict (UI 표시용)."""
-    flat = await load_settings()
+    flat = await load_integrated_system_settings()
     display_id = "root"
     masked = dict(flat)
 
@@ -273,12 +276,12 @@ async def build_masked_settings_dict(username: str = "admin", profile: str | Non
     return masked
 
 
-async def load_settings_for_editing() -> dict:
+async def load_integrated_system_settings_for_editing() -> dict:
     """
     로컬 편집용: 암호화 필드를 복호화한 dict.
     데스크톱 단일 사용자 전용 -- 메모리에 평문이 올라감.
     """
-    flat = await load_settings()
+    flat = await load_integrated_system_settings()
     out = dict(flat)
     broker_nm = str(flat.get("broker", "") or "").lower().strip()
     encrypt_fields = get_encrypt_fields(broker_nm)
@@ -302,7 +305,7 @@ async def after_settings_persisted(
     # ── 1) 캐시 갱신 제거 (apply_settings_updates에서 메모리 증분 갱신 처리됨) ──
 
     # ── 2) 연결 레벨 키 → 엔진 실시간 핫-리로드 ───────────────────────────────────
-    broker_nm = str(engine_service._settings_cache.get("broker", "") or "").lower().strip()
+    broker_nm = str(engine_service._integrated_system_settings_cache.get("broker", "") or "").lower().strip()
     connection_keys = engine_service.get_connection_level_keys(broker_nm)
     if changed_keys & connection_keys:
         if engine_service.is_running():
@@ -350,7 +353,7 @@ async def after_settings_persisted(
         try:
             import backend.app.services.engine_state as _st
             from backend.app.services import settlement_engine as _se
-            _s = _st._settings_cache or {}
+            _s = _st._integrated_system_settings_cache or {}
             _deposit = int(_s.get("test_virtual_balance", _s.get("test_virtual_deposit", 10_000_000)) or 0)
             await _se.reset(_deposit)
             # 계좌 스냅샷 갱신 + WS account-update 발송
@@ -456,7 +459,7 @@ async def after_settings_persisted(
         try:
             from backend.app.services.ws_subscribe_control import on_setting_changed
             import backend.app.services.engine_state as _st
-            raw = _st._settings_cache or {}
+            raw = _st._integrated_system_settings_cache or {}
             for key in _ws_changed:
                 asyncio.create_task(
                     on_setting_changed(key, bool(raw.get(key)), engine_service)

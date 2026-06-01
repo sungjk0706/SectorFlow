@@ -9,14 +9,12 @@ from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import (
     _sector_summary_cache,
     # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
-    # _radar_cnsr_order 삭제: _subscribed_stocks 사용
-    _filtered_sector_codes,
+    # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed" 사용
     # _sector_stocks_cache 제거
     # _sector_stocks_dirty 제거
-    _subscribed_stocks,
-    _settings_cache,
-    _sector_stock_layout,
-    _buy_targets_snapshot_cache,
+    _integrated_system_settings_cache,
+    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
+    # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_prices, _latest_trade_amounts, _latest_strength)
 )
 from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
@@ -60,29 +58,28 @@ async def recompute_sector_summary_now() -> None:
     global _sector_summary_cache
     from backend.app.services.engine_sector_score import compute_full_sector_summary
     from backend.app.services.engine_sector_confirm import cancel_pending_recompute
-    from backend.app.services.engine_config import _get_settings
     from backend.app.services.engine_lifecycle import is_running
-    
+    import backend.app.services.engine_service as _es
+
     logger.info("[업종순위] recompute_sector_summary_now 진입, is_running=%s", is_running())
     if not is_running():
         logger.info("[업종순위] 엔진 미실행으로 종료")
         return
     try:
-        settings = _get_settings()
-        trim_trade = float(settings.get("sector_trim_trade_amt_pct", 0) or 0)
-        trim_change = float(settings.get("sector_trim_change_rate_pct", 0) or 0)
-        sector_weights = settings.get("sector_weights") or {}
+        trim_trade = float(_es._integrated_system_settings_cache.get("sector_trim_trade_amt_pct", 0) or 0)
+        trim_change = float(_es._integrated_system_settings_cache.get("sector_trim_change_rate_pct", 0) or 0)
+        sector_weights = _es._integrated_system_settings_cache.get("sector_weights") or {}
         logger.info("[업종순위] 재계산 sector_weights: %s", sector_weights)
         _ss = await compute_full_sector_summary(
             **get_sector_summary_inputs(),
-            sort_keys=settings.get("sector_sort_keys") or None,
-            min_rise_ratio=float(settings.get("sector_min_rise_ratio_pct", 60.0)) / 100.0,
-            block_rise_pct=float(settings.get("buy_block_rise_pct", 7.0)),
-            block_fall_pct=float(settings.get("buy_block_fall_pct", 7.0)),
-            min_strength=float(settings.get("buy_min_strength", 0)),
-            min_avg_amt_eok=float(settings.get("sector_min_trade_amt", 0.0)),
-            max_sectors=int(settings.get("sector_max_targets", 3)),
-            sector_weights=settings.get("sector_weights") or {},
+            sort_keys=_es._integrated_system_settings_cache.get("sector_sort_keys") or None,
+            min_rise_ratio=float(_es._integrated_system_settings_cache.get("sector_min_rise_ratio_pct", 60.0)) / 100.0,
+            block_rise_pct=float(_es._integrated_system_settings_cache.get("buy_block_rise_pct", 7.0)),
+            block_fall_pct=float(_es._integrated_system_settings_cache.get("buy_block_fall_pct", 7.0)),
+            min_strength=float(_es._integrated_system_settings_cache.get("buy_min_strength", 0)),
+            min_avg_amt_eok=float(_es._integrated_system_settings_cache.get("sector_min_trade_amt", 0.0)),
+            max_sectors=int(_es._integrated_system_settings_cache.get("sector_max_targets", 3)),
+            sector_weights=_es._integrated_system_settings_cache.get("sector_weights") or {},
             trim_trade_amt_pct=trim_trade,
             trim_change_rate_pct=trim_change,
         )
@@ -96,17 +93,17 @@ async def recompute_sector_summary_now() -> None:
 
 def get_sector_summary_inputs() -> dict:
     """업종 요약 계산 입력 데이터 반환."""
-    # _radar_cnsr_order 삭제: _subscribed_stocks + _master_stocks_cache로 대체
+    # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed" 사용
     from backend.app.services.engine_state import _master_stocks_cache
     stock_details = {}
-    # _subscribed_stocks 대신 _master_stocks_cache의 모든 종목 사용 (실시간 구독 의존성 제거)
+    # _master_stocks_cache의 모든 종목 사용 (실시간 구독 의존성 제거)
     for cd, entry in _master_stocks_cache.items():
         stock = entry.copy()
         stock["status"] = "active"
         stock_details[cd] = stock
     # _avg_amt_5d 제거: _master_stocks_cache에서 직접 추출
-    # 단위 변환: DB는 원 단위, compute_sector_scores는 억 단위 기대
-    avg_amt_5d = {cd: int(entry.get("avg_5d_trade_amount", 0) or 0) // 100_000_000 for cd, entry in _master_stocks_cache.items()}
+    # 단일 소스 진리: _master_stocks_cache에 이미 억 단위로 저장됨
+    avg_amt_5d = {cd: int(entry.get("avg_5d_trade_amount", 0) or 0) for cd, entry in _master_stocks_cache.items()}
     return {
         "all_codes": list(_master_stocks_cache.keys()),
         "trade_prices": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
@@ -120,19 +117,18 @@ def get_sector_summary_inputs() -> dict:
 
 async def get_sector_stocks() -> list:
     """업종별 종목 시세 테이블용 — _master_stocks_cache 기반 실시간 필터링/정렬."""
-    from backend.app.core.industry_map import load_eligible_stocks_cache_from_db
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
     from backend.app.core.sector_mapping import get_merged_sector as _get_sector
 
-    # ── 실시간 필터링 (eligible_stocks_cache 기준 필터 + 정렬) ──
-    eligible_stocks = await load_eligible_stocks_cache_from_db() or {}
-    filter_set = set(eligible_stocks.keys()) if eligible_stocks else None
+    # eligible_stocks_cache 제거: master_stocks_table이 단일 소스
+    # sector_min_trade_amt 필터링은 _master_stocks_cache의 avg_5d_trade_amount로 수행
+    filter_set = None  # 모든 종목 허용 (필터링은 _filtered_sector_codes에서 수행)
 
     merged: dict[str, dict] = {}
     from backend.app.services.engine_state import _master_stocks_cache
 
     # 순회 소스: _filtered_sector_codes > _master_stocks_cache.keys()
-    # _subscribed_stocks 제거: 테스트모드에서 비어있어 0종목 반환하는 버그 해결
+    # _master_stocks_cache의 "_subscribed" 제거: 테스트모드에서 비어있어 0종목 반환하는 버그 해결
     # 단일 소스 진리: _master_stocks_cache가 종목 데이터의 단일 소스
     source_codes: set[str] = _filtered_sector_codes if _filtered_sector_codes is not None else set(_master_stocks_cache.keys())
     for cd in source_codes:
@@ -147,8 +143,8 @@ async def get_sector_stocks() -> list:
         if int(e.get("cur_price") or 0) <= 0 and (not e.get("name") or e.get("name") == cd):
             continue
         # 정적 보강 필드
-        avg5d_raw = int(e.get("avg_5d_trade_amount", 0) or 0)
-        e["avg_amt_5d"] = avg5d_raw
+        # 단일 소스 진리: _master_stocks_cache에 이미 억 단위로 저장됨
+        e["avg_amt_5d"] = int(e.get("avg_5d_trade_amount", 0) or 0)
         e["market_type"] = _get_mkt(cd) or ""
         e["nxt_enable"] = _is_nxt(cd)
         e["sector"] = await _get_sector(cd)
@@ -218,7 +214,7 @@ async def _on_filter_settings_changed() -> None:
     1. _compute_filtered_codes() → old/new diff (added, removed)
     2. old == new → 스킵 (WS 없음, WS 없음)
     3. WS 구독 구간 + quote 활성: REG added 먼저 → UNREG removed 나중에
-    4. _subscribed_stocks 증분 갱신 (add/discard, clear 금지)
+    4. _master_stocks_cache의 "_subscribed" 증분 갱신 (add/discard, clear 금지)
     5. recompute_sector_summary_now() → 업종순위 + 매수후보 재계산
     6. WS 3종: sector-stocks-refresh, sector-scores, buy-targets-update
     """
@@ -253,13 +249,15 @@ async def _on_filter_settings_changed() -> None:
     )
 
     # ── WS 구독 증분 갱신: 구독 구간 + quote 활성 상태에서만 ──
-    if await is_ws_subscribe_window(_settings_cache) and ws_subscribe_control.get_subscribe_status()["quote_subscribed"]:
+    if await is_ws_subscribe_window(_integrated_system_settings_cache) and ws_subscribe_control.get_subscribe_status()["quote_subscribed"]:
+        from backend.app.services.engine_state import _master_stocks_cache
         # ── 1) REG added 먼저 (새 종목 실시간 데이터 즉시 수신) ──
         if added:
-            reg_targets = [cd for cd in added if cd not in _subscribed_stocks]
+            reg_targets = [cd for cd in added if not _master_stocks_cache.get(cd, {}).get("_subscribed", False)]
             if reg_targets:
                 for cd in reg_targets:
-                    _subscribed_stocks.add(cd)
+                    if cd in _master_stocks_cache:
+                        _master_stocks_cache[cd]["_subscribed"] = True
                 reg_ws_codes = [get_ws_subscribe_code(cd) for cd in reg_targets]
                 payloads = build_0b_reg_payloads(reg_ws_codes, reset_first=False)
                 _CHUNK = 100
@@ -275,7 +273,8 @@ async def _on_filter_settings_changed() -> None:
                     else:
                         fail_cnt += len(chunk)
                         for cd in chunk:
-                            _subscribed_stocks.discard(cd)
+                            if cd in _master_stocks_cache:
+                                _master_stocks_cache[cd].pop("_subscribed", None)
                         logger.warning(
                             "[시작][필터변경] 구독등록 응답 시간 초과 (청크 %d) -- %d종목 구독 롤백",
                             ci + 1, len(chunk),
@@ -287,7 +286,7 @@ async def _on_filter_settings_changed() -> None:
 
         # ── 2) UNREG removed 나중에 (기존 종목 해지) ──
         if removed:
-            unreg_targets = [cd for cd in removed if cd in _subscribed_stocks]
+            unreg_targets = [cd for cd in removed if _master_stocks_cache.get(cd, {}).get("_subscribed", False)]
             if unreg_targets:
                 unreg_ws_codes = [get_ws_subscribe_code(cd) for cd in unreg_targets]
                 payloads = build_0b_remove_payloads(unreg_ws_codes)
@@ -302,7 +301,8 @@ async def _on_filter_settings_changed() -> None:
                     if ack_ok:
                         ok_cnt += len(chunk)
                         for cd in chunk:
-                            _subscribed_stocks.discard(cd)
+                            if cd in _master_stocks_cache:
+                                _master_stocks_cache[cd].pop("_subscribed", None)
                     else:
                         fail_cnt += len(chunk)
                         logger.warning(
@@ -313,7 +313,7 @@ async def _on_filter_settings_changed() -> None:
                     "[시작][필터변경] 구독해지 완료 -- 제거 %d / 성공 %d / 실패 %d",
                     len(unreg_targets), ok_cnt, fail_cnt,
                 )
-    elif not await is_ws_subscribe_window(_settings_cache):
+    elif not await is_ws_subscribe_window(_integrated_system_settings_cache):
         pass
 
     # ── 업종순위 + 매수후보 재계산 ──
@@ -338,15 +338,16 @@ async def _on_filter_settings_changed() -> None:
 
 
 def _compute_filtered_codes() -> set[str] | None:
-    """sector_stock_layout에서 사용자 필터를 적용하여 조건 통과 종목 코드 집합을 반환."""
+    """sector_stock_layout에서 사용자 필터를 적용하여 조건 통과 종목 코드 집합을 반환.
+    
+    _master_stocks_cache에 "_filtered" 키를 설정하여 통합.
+    """
     global _filtered_sector_codes
     from backend.app.services.engine_symbol_utils import _format_broker_reg_stk_cd
-    from backend.app.services.engine_config import _get_settings
-    
-    settings = _get_settings()
+    from backend.app.services.engine_state import _master_stocks_cache, _integrated_system_settings_cache
 
     # 설정값 검증 및 안전장치
-    raw_val = settings.get("sector_min_trade_amt")
+    raw_val = _integrated_system_settings_cache.get("sector_min_trade_amt")
     try:
         min_amt_eok = float(raw_val) if raw_val is not None else 0.0
     except (TypeError, ValueError):
@@ -356,19 +357,21 @@ def _compute_filtered_codes() -> set[str] | None:
 
     codes = {
         _format_broker_reg_stk_cd(v)
-        for t, v in _sector_stock_layout
+        for t, v in _integrated_system_settings_cache.get("sector_stock_layout", [])
         if t == "code" and v
     }
     codes.discard("")
 
-    logger.info("[DEBUG-FILTER] _sector_stock_layout len: %d, codes len: %d", len(_sector_stock_layout), len(codes))
+    logger.info("[DEBUG-FILTER] sector_stock_layout len: %d, codes len: %d", len(_integrated_system_settings_cache.get("sector_stock_layout", [])), len(codes))
 
     if min_amt_eok <= 0:
         _filtered_sector_codes = None
+        # 필터 비활성화 시 모든 종목의 "_filtered" 제거
+        for cd in _master_stocks_cache:
+            _master_stocks_cache[cd].pop("_filtered", None)
         return None
 
     # 거래대금 캐시가 비어있으면 필터 비활성화
-    from backend.app.services.engine_state import _master_stocks_cache
     if not _master_stocks_cache:
         logger.warning("[거래대금필터] master_stocks_cache 비어있음 - 필터 비활성화")
         _filtered_sector_codes = None
@@ -376,11 +379,16 @@ def _compute_filtered_codes() -> set[str] | None:
 
     filtered = set()
     for cd in codes:
-        # 단위 변환: DB는 원 단위, 설정값은 억 단위
+        # 단일 소스 진리: _master_stocks_cache의 avg_5d_trade_amount는 원 단위
         avg_won = int(_master_stocks_cache.get(cd, {}).get("avg_5d_trade_amount", 0) or 0)
         avg_eok = avg_won // 100_000_000
         if avg_eok >= min_amt_eok:
             filtered.add(cd)
+            if cd in _master_stocks_cache:
+                _master_stocks_cache[cd]["_filtered"] = True
+        else:
+            if cd in _master_stocks_cache:
+                _master_stocks_cache[cd].pop("_filtered", None)
 
     logger.info("[거래대금필터] 설정 %.0f억 → 필터 통과 %d/%d종목", min_amt_eok, len(filtered), len(codes))
 
@@ -388,21 +396,3 @@ def _compute_filtered_codes() -> set[str] | None:
         logger.warning("[거래대금필터] 최소금액 %.1f억 설정됐으나 통과 종목 0개", min_amt_eok)
     _filtered_sector_codes = filtered
     return filtered
-
-
-def _update_avg_amt_5d(new_data: dict[str, int], *, merge: bool = False) -> None:
-    """_master_stocks_cache의 avg_5d_trade_amount 갱신 후 필터 자동 재계산."""
-    global _filtered_sector_codes
-    from backend.app.services.engine_state import _master_stocks_cache
-    
-    normalized = {k: int(v or 0) for k, v in new_data.items() if v}
-    for key, value in normalized.items():
-        if key in _master_stocks_cache:
-            _master_stocks_cache[key]["avg_5d_trade_amount"] = value
-    _filtered_sector_codes = _compute_filtered_codes()
-    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
-    logger.info(
-        "[5일평균] 갱신 완료 -- %d종목, 필터 통과 %s개",
-        len(normalized),
-        len(_filtered_sector_codes) if _filtered_sector_codes is not None else "전체",
-    )

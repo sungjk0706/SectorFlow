@@ -69,7 +69,7 @@ def _broadcast_confirmed_progress(
 # ---------------------------------------------------------------------------
 
 def _get_krx_only_codes(es: ModuleType) -> list[str]:
-    """_subscribed_stocks / _sector_stock_layout에서 KRX 단독 종목(nxt_enable=False)만 추출.
+    """_master_stocks_cache에서 KRX 단독 종목(nxt_enable=False)만 추출.
 
     Args:
         es: engine_service 모듈 참조
@@ -81,8 +81,10 @@ def _get_krx_only_codes(es: ModuleType) -> list[str]:
     seen: set[str] = set()
 
     sources: list[set | dict | list] = []
-    if hasattr(es, "_subscribed_stocks"):
-        sources.append(es._subscribed_stocks)
+    # _master_stocks_cache의 "_subscribed" 사용
+    subscribed_codes = {cd for cd, entry in es._master_stocks_cache.items() if entry.get("_subscribed", False)}
+    if subscribed_codes:
+        sources.append(subscribed_codes)
     # _radar_cnsr_order 삭제
 
     for src in sources:
@@ -95,7 +97,8 @@ def _get_krx_only_codes(es: ModuleType) -> list[str]:
                 result.append(base)
 
     # 레이아웃 캐시에서 seen에 없는 KRX 단독 종목 추가 (항상 순회)
-    layout = getattr(es, "_sector_stock_layout", [])
+    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
+    layout = es._integrated_system_settings_cache.get("sector_stock_layout", [])
     for kind, val in layout:
         if kind == "code":
             base = _base_stk_cd(val)
@@ -157,16 +160,17 @@ async def remove_krx_only_stocks(es: ModuleType) -> dict:
             continue
 
         if ack_ok:
-            # ACK 성공 — _subscribed_stocks에서 제거
+            # ACK 성공 — _master_stocks_cache에서 "_subscribed" 제거
             for cd in chunk:
-                es._subscribed_stocks.discard(cd)
+                if cd in es._master_stocks_cache:
+                    es._master_stocks_cache[cd].pop("_subscribed", None)
             removed += len(chunk)
             _log.info(
                 "[타이머] KRX 장마감 구독해지 %d/%d 완료 — %d종목 (rc=%s)",
                 ci + 1, len(payloads), len(chunk), rc,
             )
         else:
-            # ACK 타임아웃 — _subscribed_stocks 유지 + 경고
+            # ACK 타임아웃 — _master_stocks_cache의 "_subscribed" 유지 + 경고
             failed += len(chunk)
             _log.warning(
                 "[타이머] KRX 장마감 구독해지 %d/%d ACK 응답없음 — %d종목 유지",
@@ -204,13 +208,13 @@ async def _apply_5d_to_memory(es: ModuleType, confirmed_5d: dict[str, dict]) -> 
         if nk in _st._master_stocks_cache:
             _st._master_stocks_cache[nk]["status"] = "active"
 
-            # avg_amt_5d
-            avg5d = int(detail.get("avg_amt_5d") or 0)
+            # avg_amt_5d - 단일 소스 진리: _master_stocks_cache 직접 업데이트
+            avg5d = int(detail.get("avg_5d_trade_amount") or 0)
             if avg5d > 0:
                 _st._master_stocks_cache[nk]["avg_5d_trade_amount"] = avg5d
 
             # high_price_5d
-            high5d = int(detail.get("high_price_5d") or 0)
+            high5d = int(detail.get("high_5d_price") or 0)
             if high5d > 0:
                 _st._master_stocks_cache[nk]["high_5d_price"] = high5d
 
@@ -476,9 +480,9 @@ async def _apply_confirmed_to_memory(
             entry["reason"] = "확정 데이터 조회"
             async with es._shared_lock:
                 pending[nk] = entry
-                # _radar_cnsr_order 삭제: _subscribed_stocks 사용
-                if hasattr(es, "_subscribed_stocks"):
-                    es._subscribed_stocks.add(nk)
+                # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed" 사용
+                if nk in es._master_stocks_cache:
+                    es._master_stocks_cache[nk]["_subscribed"] = True
             if px > 0:
                 ltp[nk] = px
             amt = int(detail.get("trade_amount") or 0)
@@ -583,17 +587,8 @@ async def _save_confirmed_cache(es: ModuleType) -> bool:
         _log.warning("[타이머] 저장할 데이터(_master_stocks_cache)가 비어있음 — 데이터 저장 생략")
         return False
 
-    # 적격종목 필터 — eligible 캐시 기준으로 부적격 종목 제외
-    # 모듈 직접 참조: Step 4에서 _eligible_stock_codes가 재할당되어도 최신값을 사용
-    import backend.app.core.industry_map as _ind_mod
-    elig = _ind_mod._eligible_stock_codes or {}
-
-    # 메모리 원자적 필터링 (Bug 4 수정) - 시작 시점에 먼저 수행하여 정합성 보장
-    if elig:
-        async with es._shared_lock:
-            for cd in list(pending.keys()):
-                if _base_stk_cd(cd) not in elig:
-                    pending.pop(cd, None)
+    # 적격종목 필터 제거: Step 2에서 이미 is_excluded()로 필터링하여 confirmed_codes 생성
+    # master_stocks_table에는 confirmed_codes에 있는 종목만 저장됨
 
     # 종목명 캐시로 name 필드 보정
     name_map = await load_stock_name_cache() or {}
@@ -730,7 +725,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
     )
     from backend.app.core.trading_calendar import get_kst_today_str
 
-    _settings = getattr(es, "_settings_cache", {}) or {}
+    # 단일 소스 진리: _integrated_system_settings_cache 직접 사용
 
     # 중복 실행 방지
     if getattr(es, "_confirmed_refresh_running_confirmed", False):
@@ -744,17 +739,14 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
 
         # ── 메모리 전체 초기화 — 새 데이터로 완전 교체 (정합성 보장) ──────────
         # _pending_stock_details 제거: clear() 제거
-        _layout = getattr(es, "_sector_stock_layout", None)
-        if _layout is not None:
-            _layout.clear()
+        # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
+        es._integrated_system_settings_cache["sector_stock_layout"] = []
         from backend.app.services.engine_account_notify import _rebuild_layout_cache
         _rebuild_layout_cache([])
-        import backend.app.core.industry_map as _ind_mod
-        _ind_mod._eligible_stock_codes.clear()
         _log.info("[타이머] 메모리 전체 초기화 완료 — 새 데이터로 교체 시작")
     
         # 스케줄러 토글 OFF 시 전체 갱신 스킵
-        if not _settings.get("scheduler_market_close_on", True):
+        if not es._integrated_system_settings_cache.get("scheduler_market_close_on", True):
             _log.info("[타이머] scheduler_market_close_on=OFF — 전체 갱신 생략")
             es._confirmed_refresh_running_confirmed = False
             es._confirmed_refresh_message = ""
@@ -764,10 +756,10 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
 
         from backend.app.core.kiwoom_providers import KiwoomStockProvider
         from backend.app.core.broker_router import BrokerRouter
-        router = BrokerRouter(_settings)
+        router = BrokerRouter()
         auth_provider = router.auth
-        _sector = KiwoomStockProvider(_settings, auth_provider=auth_provider)
-    
+        _sector = KiwoomStockProvider(es._integrated_system_settings_cache, auth_provider=auth_provider)
+
         # ── Pipeline events ──────────────────────────────────────────────────
         data_fetched_event = asyncio.Event()
         parsing_done_event = asyncio.Event()
@@ -899,11 +891,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             return {"fetched": 0, "failed": 0, "cached": False}
     
         try:
-            import backend.app.core.industry_map as _ind_mod
-            eligible_map: dict[str, str] = {cd: "" for cd in confirmed_codes}
-            await _ind_mod.persist_eligible_stocks_cache(eligible_map)
-            _ind_mod._eligible_stock_codes = eligible_map
-    
+            # eligible_stocks_cache 저장 제거: confirmed_codes가 단일 소스
             # market/nxt_enable 정보를 master_stocks_table에 직접 업데이트 (단일 진실 공급원)
             from backend.app.db.database import get_db_connection as _get_conn
             _conn = await _get_conn()
@@ -950,8 +938,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
         _main_loop = asyncio.get_running_loop()
 
         # 사용자 설정의 ws_subscribe_start 시간 확인 (진행 파일 유효 기간용)
-        _settings = getattr(es, "_settings_cache", {}) or {}
-        ws_subscribe_start = str(_settings.get("ws_subscribe_start") or "07:50")
+        ws_subscribe_start = str(es._integrated_system_settings_cache.get("ws_subscribe_start") or "07:50")
 
         # 이어받기: 진행 파일 로드 (다음 거래일 ws_subscribe_start까지 유효)
         resume_codes = await load_progress_cache(qry_dt, all_codes, ws_subscribe_start)
@@ -1037,20 +1024,22 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
     
         # ── Step 6: 완전한 매핑 단계 (적격종목 × 시세 데이터 매핑) ────────────
         if cached:
-            import backend.app.core.industry_map as _ind_mod_step6
-            final_eligible = set(_ind_mod_step6._eligible_stock_codes.keys())
+            # eligible_stocks_cache 제거: confirmed_codes가 단일 소스
+            final_eligible = confirmed_codes
             if not final_eligible:
                 _log.warning("[타이머] Step 6 — 적격종목 비어있음, 메모리 교체 생략")
             else:
-                # _radar_cnsr_order 삭제: _subscribed_stocks 필터링
+                # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed" 필터링
                 async with es._shared_lock:
-                    to_remove = [cd for cd in es._subscribed_stocks if cd not in final_eligible]
+                    to_remove = [cd for cd, entry in es._master_stocks_cache.items() if entry.get("_subscribed", False) and cd not in final_eligible]
                     for cd in to_remove:
-                        es._subscribed_stocks.discard(cd)
+                        if cd in es._master_stocks_cache:
+                            es._master_stocks_cache[cd].pop("_subscribed", None)
 
+                subscribed_count = sum(1 for entry in es._master_stocks_cache.values() if entry.get("_subscribed", False))
                 _log.info(
                     "[타이머] Step 7 원자적 메모리 교체 완료 — subscribed=%d종목",
-                    len(es._subscribed_stocks),
+                    subscribed_count,
                 )
         else:
             _log.warning("[타이머] cached=False — 메모리 교체 생략 (기존 상태 유지)")
@@ -1136,7 +1125,8 @@ async def _update_layout_cache(
         sector_groups[sec].sort()
 
     # 섹터 순서: 기존 레이아웃의 섹터 순서를 최대한 유지하고 신규 섹터는 뒤에 추가
-    old_layout: list[tuple[str, str]] = getattr(es, "_sector_stock_layout", [])
+    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
+    old_layout: list[tuple[str, str]] = es._integrated_system_settings_cache.get("sector_stock_layout", [])
     old_sector_order = list(dict.fromkeys(v for t, v in old_layout if t == "sector"))
 
     new_sectors = [s for s in sector_groups if s not in old_sector_order]
@@ -1149,7 +1139,8 @@ async def _update_layout_cache(
         for cd in sector_groups[sec]:
             new_layout.append(("code", cd))
 
-    es._sector_stock_layout = new_layout
+    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
+    es._integrated_system_settings_cache["sector_stock_layout"] = new_layout
     from backend.app.services.engine_account_notify import _rebuild_layout_cache
     _rebuild_layout_cache(new_layout)
     # sector_layout 캐시 저장 삭제 (master_stocks_table sector 컬럼으로 대체)
@@ -1177,8 +1168,7 @@ async def fetch_confirmed_data_only() -> dict:
     )
     from backend.app.core.trading_calendar import get_kst_today_str
 
-    _settings = getattr(es, "_settings_cache", {}) or {}
-    # _settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
+    # 단일 소스 진리: _integrated_system_settings_cache 직접 사용
 
     # 중복 실행 방지
     if getattr(es, "_confirmed_refresh_running_confirmed", False):
@@ -1190,24 +1180,21 @@ async def fetch_confirmed_data_only() -> dict:
     try:
         # ── 메모리 전체 초기화 — 새 데이터로 완전 교체 (정합성 보장) ──────────
         # _pending_stock_details 제거: clear() 제거
-        _layout = getattr(es, "_sector_stock_layout", None)
-        if _layout is not None:
-            _layout.clear()
+        # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
+        es._integrated_system_settings_cache["sector_stock_layout"] = []
         from backend.app.services.engine_account_notify import _rebuild_layout_cache
         _rebuild_layout_cache([])
         # _avg_amt_5d 제거: _master_stocks_cache에서 직접 사용
         # _high_5d_cache 제거: _master_stocks_cache의 high_5d_price 사용
-        import backend.app.core.industry_map as _ind_mod
-        _ind_mod._eligible_stock_codes.clear()
         _log.info("[수동 확정시세] 메모리 전체 초기화 완료 — 새 데이터로 교체 시작")
 
 
 
         from backend.app.core.kiwoom_providers import KiwoomStockProvider
         from backend.app.core.broker_router import BrokerRouter
-        router = BrokerRouter(_settings)
+        router = BrokerRouter()
         auth_provider = router.auth
-        _sector = KiwoomStockProvider(_settings, auth_provider=auth_provider)
+        _sector = KiwoomStockProvider(es._integrated_system_settings_cache, auth_provider=auth_provider)
 
         # ── Pipeline events ──────────────────────────────────────────────────
         data_fetched_event = asyncio.Event()
@@ -1338,11 +1325,7 @@ async def fetch_confirmed_data_only() -> dict:
             return {"fetched": 0, "failed": 0, "cached": False}
 
         try:
-            import backend.app.core.industry_map as _ind_mod
-            eligible_map: dict[str, str] = {cd: "" for cd in confirmed_codes}
-            await _ind_mod.persist_eligible_stocks_cache(eligible_map)
-            _ind_mod._eligible_stock_codes = eligible_map
-
+            # eligible_stocks_cache 저장 제거: confirmed_codes가 단일 소스
             # master_stocks_table 스냅샷 구조로 변경: DELETE 후 INSERT
             from backend.app.db.database import get_db_connection as _get_conn
             _conn = await _get_conn()
@@ -1394,7 +1377,7 @@ async def fetch_confirmed_data_only() -> dict:
         _main_loop = asyncio.get_running_loop()
 
         # 이어받기
-        ws_subscribe_start = str(_settings.get("ws_subscribe_start") or "07:50")
+        ws_subscribe_start = str(es._integrated_system_settings_cache.get("ws_subscribe_start") or "07:50")
         resume_codes = await load_progress_cache(qry_dt, all_codes, ws_subscribe_start)
         starting_count = len(resume_codes)
 
@@ -1474,8 +1457,8 @@ async def fetch_confirmed_data_only() -> dict:
     
         # Step 6/7/8: 원자적 메모리 교체 및 업종순위 재계산
         if cached:
-            import backend.app.core.industry_map as _ind_mod_step6
-            final_eligible = set(_ind_mod_step6._eligible_stock_codes.keys())
+            # eligible_stocks_cache 제거: confirmed_codes가 단일 소스
+            final_eligible = confirmed_codes
             if final_eligible:
                 mapped_pending: dict = {}
                 # _pending_stock_details 제거: _radar_cnsr_order만 필터링
@@ -1488,10 +1471,11 @@ async def fetch_confirmed_data_only() -> dict:
                     for cd, v in new_avg.items():
                         if cd in _st._master_stocks_cache:
                             _st._master_stocks_cache[cd]["avg_5d_trade_amount"] = v
-                    # _radar_cnsr_order 삭제: _subscribed_stocks 필터링
-                    to_remove = [cd for cd in es._subscribed_stocks if cd not in final_eligible]
+                    # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed" 필터링
+                    to_remove = [cd for cd, entry in es._master_stocks_cache.items() if entry.get("_subscribed", False) and cd not in final_eligible]
                     for cd in to_remove:
-                        es._subscribed_stocks.discard(cd)
+                        if cd in es._master_stocks_cache:
+                            es._master_stocks_cache[cd].pop("_subscribed", None)
 
                 _log.info(
                     "[수동 확정시세] Step 7 원자적 메모리 교체 완료 — pending=%d종목, avg=%d",
@@ -1527,7 +1511,7 @@ async def fetch_5d_data_only() -> dict:
     from backend.app.core.broker_factory import get_router
     from backend.app.core.trading_calendar import get_kst_today_str
 
-    _settings = getattr(es, "_settings_cache", {}) or {}
+    # 단일 소스 진리: _integrated_system_settings_cache 직접 사용
 
     # 중복 실행 방지
     if getattr(es, "_confirmed_refresh_running_5d", False):
@@ -1539,9 +1523,9 @@ async def fetch_5d_data_only() -> dict:
     try:
         from backend.app.core.kiwoom_providers import KiwoomStockProvider
         from backend.app.core.broker_router import BrokerRouter
-        router = BrokerRouter(_settings)
+        router = BrokerRouter()
         auth_provider = router.auth
-        _sector = KiwoomStockProvider(_settings, auth_provider=auth_provider)
+        _sector = KiwoomStockProvider(es._integrated_system_settings_cache, auth_provider=auth_provider)
 
         # ── DB에서 매매적격종목 코드 리스트 직접 로드 ──────────────────────────
         _log.info("[수동 5일봉] master_stocks_table에서 매매적격종목 목록 로드 시작")
@@ -1669,10 +1653,11 @@ async def fetch_5d_data_only() -> dict:
                             
                             avg5d = _compute_avg_from_5d_array(amounts_5d)
                             high5d = max(highs_5d)
-                            
+
                             import backend.app.services.engine_state as _st
                             if nk in _st._master_stocks_cache:
                                 _st._master_stocks_cache[nk]["status"] = "active"
+                                # 단일 소스 진리: _master_stocks_cache 직접 업데이트
                                 if avg5d > 0:
                                     _st._master_stocks_cache[nk]["avg_5d_trade_amount"] = avg5d
                                 if high5d > 0:
@@ -1709,9 +1694,10 @@ async def fetch_5d_data_only() -> dict:
                 highs_5d = res.get("highs_5d_array") or [] if res else []
 
                 if amounts_5d and highs_5d and len(amounts_5d) > 0 and len(highs_5d) > 0:
-                    # _radar_cnsr_order 삭제: _subscribed_stocks에 추가
-                    if hasattr(es, "_subscribed_stocks"):
-                        es._subscribed_stocks.add(nk)
+                    # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed"에 추가
+                    import backend.app.services.engine_state as _st
+                    if nk in _st._master_stocks_cache:
+                        _st._master_stocks_cache[nk]["_subscribed"] = True
 
                     # 메모리 캐시 제거: stock_5d_array 테이블에 직접 저장
                     avg5d = _compute_avg_from_5d_array(amounts_5d)

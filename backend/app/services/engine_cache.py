@@ -10,10 +10,10 @@ import asyncio
 
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import (
-    _sector_stock_layout,
+    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
     _shared_lock,
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_amounts, _rest_radar_quote_cache)
-    _rest_radar_rest_once,
+    # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
     # _radar_cnsr_order 삭제
 )
 
@@ -31,17 +31,15 @@ async def _load_caches_preboot(settings: dict) -> None:
         from backend.app.db.stock_tables import (
             load_stock_name_cache,
         )
-        from backend.app.core.industry_map import load_eligible_stocks_cache
         from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd, _base_stk_cd
         from backend.app.services.engine_strategy_core import make_detail
 
         # ── 테이블 초기화 ──
-        from backend.app.db.models import create_sectors_table, create_user_settings_table
+        from backend.app.db.models import create_sectors_table
         from backend.app.db.stock_tables import create_master_stocks_table, migrate_add_high_price_column, migrate_add_nxt_enable_column
 
         # 테이블이 없으면 생성
         await create_sectors_table()
-        await create_user_settings_table()
         await create_master_stocks_table()
         
         # 마이그레이션: high_price 컬럼 추가
@@ -82,11 +80,11 @@ async def _load_caches_preboot(settings: dict) -> None:
         _cached_high_5d = {}
 
         for cd, detail in _cached_snapshot.items():
+            # 단일 소스 진리: 원 단위 그대로 저장 (_update_avg_amt_5d에서 변환)
             _cached_avg[cd] = int(detail.get("avg_5d_trade_amount") or 0)
             _cached_high_5d[cd] = int(detail.get("high_price") or 0)
 
-        # ── 적격종목 로드 (유지) ──
-        _cached_eligible = await load_eligible_stocks_cache()
+        # eligible_stocks_cache 로드 제거: master_stocks_table이 단일 소스
 
         # ── 레이아웃 적재 삭제 (master_stocks_table sector 컬럼으로 대체) ──
 
@@ -101,10 +99,10 @@ async def _load_caches_preboot(settings: dict) -> None:
             for cd, detail in _cached_snapshot.items():
                 base = _format_kiwoom_reg_stk_cd(_base_stk_cd(cd))
                 # 실시간 틱 데이터 저장 제거 (거래대금, REST 캐시 저장 안 함)
-                if base and int(detail.get("cur_price") or 0) > 0:
-                    _rest_radar_rest_once.add(base)
+                # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
                 if min_amt > 0:
-                    avg_amt = detail.get("avg_5d_trade_amount", 0) or 0
+                    # 단일 소스 진리: _cached_avg는 원 단위, 필터링 시 억 단위 변환
+                    avg_amt = (_cached_avg.get(cd, 0) or 0) // 100_000_000
                     if avg_amt >= min_amt:
                         filtered_codes.append(base)
                 else:
@@ -127,9 +125,8 @@ async def _load_caches_preboot(settings: dict) -> None:
         if _cached_avg is not None and sum(1 for v in _cached_avg.values() if int(v or 0) > 0) < 100:
             logger.info("[데이터준비] stocks DB 5일평균 비정상 -- 백그라운드 갱신 예정")
 
+        # _update_avg_amt_5d 제거: _master_stocks_cache가 단일 소스
         if _cached_avg is not None:
-            from backend.app.services.engine_sector import _update_avg_amt_5d
-            _update_avg_amt_5d(_cached_avg)
             logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 로드 -- %d종목", len(_cached_avg))
         else:
             logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 미스 -- 백그라운드 갱신 예정")
@@ -144,11 +141,7 @@ async def _load_caches_preboot(settings: dict) -> None:
         _total_nxt = sum(1 for v in _st._master_stocks_cache.values() if v.get("nxt_enable"))
         logger.debug("[데이터준비] 시장구분(마스터 캐시) 로드 완료 -- %d종목 (NXT %d)", len(_st._master_stocks_cache), _total_nxt)
 
-        # ── 적격종목 적재 (앱준비 에서 get_eligible_stocks() 사용) ──
-        if _cached_eligible:
-            import backend.app.core.industry_map as _ind_mod
-            _ind_mod._eligible_stock_codes = _cached_eligible
-            # 매매적격종목 로그는 industry_map.py에서 이미 출력됨 (중복 제거)
+        # eligible_stocks_cache 적재 제거: master_stocks_table이 단일 소스
 
         # 캐시선행 완료 플래그 — 앱준비 에서 중복 로드 스킵용
         import backend.app.services.engine_state as engine_state

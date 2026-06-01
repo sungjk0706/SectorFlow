@@ -25,26 +25,26 @@ class ConnectorManager:
     - get_connector(broker_id) 로 개별 Connector에 접근 가능하다.
     """
 
-    def __init__(self, settings: dict) -> None:
-        self._settings = settings
+    def __init__(self) -> None:
         self._connectors: dict[str, BrokerConnector] = {}
         self._callback: Callable | None = None
-        self._build(settings)
+        self._build()
 
     # ── 생성 ──────────────────────────────────────────────────────────
 
-    def _build(self, settings: dict) -> None:
-        """broker_config.websocket 값을 파싱해 Connector 인스턴스를 생성한다."""
-        broker_config = settings.get("broker_config") or {}
+    def _build(self) -> None:
+        """단일 소스 진리: _integrated_system_settings_cache 직접 사용."""
+        from backend.app.services.engine_state import _integrated_system_settings_cache
+        broker_config = _integrated_system_settings_cache.get("broker_config") or {}
         ws_val = str(
-            broker_config.get("websocket") or settings.get("broker", "kiwoom") or "kiwoom"
+            broker_config.get("websocket") or _integrated_system_settings_cache.get("broker", "kiwoom") or "kiwoom"
         ).lower().strip()
 
         broker_names = [b.strip() for b in ws_val.split(",") if b.strip()]
 
         for broker_name in broker_names:
             try:
-                connector = self._create_single(broker_name, settings)
+                connector = self._create_single(broker_name, _integrated_system_settings_cache)
                 self._connectors[broker_name] = connector
                 logger.info("[ConnectorManager] %s Connector 생성 완료", broker_name.upper())
             except ValueError as e:
@@ -106,7 +106,7 @@ class ConnectorManager:
         )
 
     async def _on_reconnect_success(self, broker_id: str) -> None:
-        """재연결 성공 후 구독 복원 — engine_service._subscribed_stocks 기준으로 REG 재전송."""
+        """재연결 성공 후 구독 복원 — _master_stocks_cache의 "_subscribed" 키 기준으로 REG 재전송."""
         logger.info("[ConnectorManager] %s 재연결 성공 — 구독 복원 시작", broker_id.upper())
         try:
             from backend.app.services import engine_service as _es

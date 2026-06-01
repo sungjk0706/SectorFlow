@@ -57,10 +57,11 @@ _realtime_first_tick_ts_map: dict[str, int] = {}  # {symbol: timestamp (ms)}
 
 def _get_wl_codes_cached() -> set[str]:
     """sector_stock_layout → code Set 캐시. 레이아웃 길이가 바뀔 때만 재생성."""
+    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
     global _wl_codes_cache, _wl_codes_layout_len
-    cur_len = len(engine_state._sector_stock_layout)
+    cur_len = len(engine_state._integrated_system_settings_cache.get("sector_stock_layout", []))
     if cur_len != _wl_codes_layout_len:
-        _wl_codes_cache = {v for t, v in engine_state._sector_stock_layout if t == "code"}
+        _wl_codes_cache = {v for t, v in engine_state._integrated_system_settings_cache.get("sector_stock_layout", []) if t == "code"}
         _wl_codes_layout_len = cur_len
     return _wl_codes_cache
 
@@ -199,7 +200,8 @@ def _handle_reg(data: dict) -> None:
             if not norm:
                 continue
             if rc == "105110":
-                engine_state._subscribed_stocks.discard(norm)
+                if norm in engine_state._master_stocks_cache:
+                    engine_state._master_stocks_cache[norm].pop("_subscribed", None)
                 logger.warning(
                     "[WS] REG 응답 건수한도(105110) -- 즉시 재시도하지 않음 item=%s (응답 본문 기준)",
                     norm,
@@ -211,7 +213,8 @@ def _handle_reg(data: dict) -> None:
                 except RuntimeError as e:
                     logger.warning("[재구독] 루프 미실행 %s: %s", norm, e)
             elif rc not in ("0", "00", ""):
-                engine_state._subscribed_stocks.discard(norm)
+                if norm in engine_state._master_stocks_cache:
+                    engine_state._master_stocks_cache[norm].pop("_subscribed", None)
         if engine_state._REG_REAL_DEBUG_EXTRA_LOG and rows:
             _log_ws_trnm_json_detail(trnm, d if d else {"_raw": data})
     finally:
@@ -308,7 +311,7 @@ async def _handle_real_01(
     )  # lock 불필요 — 순차 처리 + GIL 원자적
         # bid_depth, ask_depth 업데이트 제거 (사용처 없음)
     # 보유종목 현재가 반영 (메모리만 갱신, 계좌 broadcast 없음 — 체결/잔고 이벤트에서만 전송)
-    if is_test_mode(engine_state._settings_cache):
+    if is_test_mode(engine_state._integrated_system_settings_cache):
         _price_hit = await dry_run.update_price(nk_px, last_px)
         if _price_hit:
             _dr_pos = dry_run.get_position(nk_px)
@@ -317,15 +320,15 @@ async def _handle_real_01(
                 _dr_pos["change_rate"] = rate
     else:
         _price_hit = apply_last_price_to_positions_inplace(engine_state._positions, raw_cd_for_bucket, last_px)
-    if _price_hit and engine_state._auto_trade and auto_sell_effective(engine_state._settings_cache) and engine_state._access_token:
-        if is_test_mode(engine_state._settings_cache):
+    if _price_hit and engine_state._auto_trade and auto_sell_effective(engine_state._integrated_system_settings_cache) and engine_state._access_token:
+        if is_test_mode(engine_state._integrated_system_settings_cache):
             _pos = dry_run.get_position(nk_px)
             if _pos:
-                await engine_state._auto_trade.check_sell_conditions([_pos], engine_state._settings_cache, engine_state._access_token)
+                await engine_state._auto_trade.check_sell_conditions([_pos], engine_state._integrated_system_settings_cache, engine_state._access_token)
         else:
             _matched = [p for p in engine_state._positions if _format_kiwoom_reg_stk_cd(str(p.get("stk_cd", "") or "")) == nk_px]
             if _matched:
-                await engine_state._auto_trade.check_sell_conditions(_matched, engine_state._settings_cache, engine_state._access_token)
+                await engine_state._auto_trade.check_sell_conditions(_matched, engine_state._integrated_system_settings_cache, engine_state._access_token)
     if pend_key:
         # notify_desktop_buy_radar_only()
         _need_sector_tick = True
@@ -402,7 +405,7 @@ def _handle_real_0d(item: dict, vals: dict) -> None:
         return
     # 호가잔량 캐시 삭제로 저장 로직 제거
     # 매수후보 종목이면 호가잔량비 변경을 프론트에 즉시 전송 (이벤트 기반)
-    if nk in engine_state._subscribed_0d_stocks:
+    if engine_state._master_stocks_cache.get(nk, {}).get("_subscribed_0d", False):
         from backend.app.services.engine_account_notify import notify_orderbook_update
         notify_orderbook_update(nk, bid, ask)
 

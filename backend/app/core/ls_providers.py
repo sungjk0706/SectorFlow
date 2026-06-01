@@ -33,10 +33,10 @@ def _run_async(coro):
 
 # ── Auth Provider ─────────────────────────────────────────────────────
 class LsAuthProvider(AuthProvider):
-    def __init__(self, settings: dict):
-        self._settings = settings
-        app_key = (settings.get("ls_app_key") or "").strip()
-        app_secret = (settings.get("ls_app_secret") or "").strip()
+    def __init__(self):
+        from backend.app.services.engine_state import _integrated_system_settings_cache
+        app_key = (_integrated_system_settings_cache.get("ls_app_key") or "").strip()
+        app_secret = (_integrated_system_settings_cache.get("ls_app_secret") or "").strip()
         self._rest_api = LsRestAPI(app_key, app_secret)
 
     def get_access_token(self) -> str | None:
@@ -60,10 +60,10 @@ class LsAuthProvider(AuthProvider):
 
 # ── Account Provider ──────────────────────────────────────────────────
 class LsAccountProvider(AccountProvider):
-    def __init__(self, settings: dict, auth_provider: AuthProvider):
-        self._settings = settings
+    def __init__(self, auth_provider: AuthProvider):
+        from backend.app.services.engine_state import _integrated_system_settings_cache
         self._rest_api = getattr(auth_provider, "rest_api", None)
-        self._acnt_no = str(settings.get("ls_account_no", "") or "")
+        self._acnt_no = str(_integrated_system_settings_cache.get("ls_account_no", "") or "")
 
     def get_account_number(self) -> str | None:
         return self._acnt_no
@@ -146,8 +146,7 @@ class LsAccountProvider(AccountProvider):
 
 # ── Order Provider ────────────────────────────────────────────────────
 class LsOrderProvider(OrderProvider):
-    def __init__(self, settings: dict, auth_provider: AuthProvider):
-        self._settings = settings
+    def __init__(self, auth_provider: AuthProvider):
         self._rest_api = getattr(auth_provider, "rest_api", None)
 
     def send_order(self, order_type: int, acnt_no: str, code: str, qty: int, price: int, hoga_gb: str, **kwargs) -> dict:
@@ -189,8 +188,7 @@ class LsOrderProvider(OrderProvider):
 
 # ── WebSocket Provider ────────────────────────────────────────────────
 class LsWebSocketProvider(WebSocketProvider):
-    def __init__(self, settings: dict, auth_provider: AuthProvider):
-        self._settings = settings
+    def __init__(self, auth_provider: AuthProvider):
         self._auth = auth_provider
 
     def get_ws_uri(self) -> str:

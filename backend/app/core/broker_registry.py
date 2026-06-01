@@ -178,14 +178,14 @@ def _create_provider(
     # Auth는 증권사당 1개만 생성 (토큰 공유)
     if feature == "auth":
         if broker_name not in auth_cache:
-            auth_cache[broker_name] = provider_cls(settings)
+            auth_cache[broker_name] = provider_cls()
         return auth_cache[broker_name]
 
     # 다른 Provider는 auth_provider 주입
     if broker_name not in auth_cache:
         auth_cls = broker_providers.get("auth")
         if auth_cls:
-            auth_cache[broker_name] = auth_cls(settings)
+            auth_cache[broker_name] = auth_cls()
 
     auth_provider = auth_cache.get(broker_name)
-    return provider_cls(settings, auth_provider=auth_provider)
+    return provider_cls(auth_provider=auth_provider)
