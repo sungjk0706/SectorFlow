@@ -111,7 +111,7 @@ _ENCRYPT_FIELDS: frozenset[str] = frozenset({
     "telegram_bot_token",
 })
 
-# 모듈 레벨 캐시 (Cache-Aside 패턴 — 이 모듈이 소유)
+# 캐시 A: DB 설정 복호화 미러(RAW). Cache-Aside. save 시 무효화.
 _integrated_system_settings_cache: dict | None = None
 _cache_lock = asyncio.Lock()
 

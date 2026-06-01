@@ -86,6 +86,7 @@ _broker_rest_totals: dict = {
 }
 _latest_stock_info: dict = {}
 _auto_trade: AutoTradeManager | None = None
+# 캐시 B: 엔진 런타임 통합 상태(가공설정+sector_stock_layout). refresh()로 갱신, 런타임 키는 보존.
 _integrated_system_settings_cache: dict = {}
 _broker_spec: list = []
 _rest_api: "KiwoomRestAPI | None" = None  # type: ignore[name-defined]
