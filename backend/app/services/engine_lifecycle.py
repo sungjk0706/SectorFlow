@@ -23,7 +23,6 @@ from backend.app.services.engine_state import (
     _login_ok,
     _integrated_system_settings_cache,
     _auto_trade,
-    _sector_summary_cache,
     _positions,
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_prices)
     _checked_stocks,
@@ -207,7 +206,7 @@ async def _try_sector_buy() -> None:
     if not _auto_trade:
         return
 
-    ss = _sector_summary_cache
+    ss = _es._sector_summary_cache
     if not ss or not ss.buy_targets:
         return
 

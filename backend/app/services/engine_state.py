@@ -68,7 +68,7 @@ _MIN_CACHE_LIFETIME_SEC: float = 1.0
 _buy_targets_cache_ref: object | None = None
 # 실시간 틱 데이터 캐시 삭제 (_rest_radar_quote_cache)
 # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
-_sector_summary_cache: "SectorSummary | None" = None  # type: ignore[name-defined]
+# _sector_summary_cache 제거: engine_service._sector_summary_cache로 통합 (단일 소스 진리)
 # _sector_buy_last_ts 제거: _master_stocks_cache[code]["_last_buy_ts"]로 통합
 _sector_score_index: dict[str, "SectorScore"] = {}  # type: ignore[name-defined]
 _confirmed_refresh_running: bool = False

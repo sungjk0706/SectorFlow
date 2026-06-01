@@ -21,7 +21,6 @@ from backend.app.services.engine_state import (
     # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
     _snapshot_history,
     _positions,
-    _sector_summary_cache,
     _realtime_state,
 )
 
@@ -171,7 +170,6 @@ _REALTIME_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "stren
 
 async def _reset_realtime_fields() -> None:
     """WS 구독 시작 시 실시간 필드를 None으로 초기화하고 실시간 캐시 3종을 비운다."""
-    global _sector_summary_cache
     # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
     from backend.app.core.trade_mode import is_test_mode
     from backend.app.services import dry_run
@@ -216,7 +214,8 @@ async def _reset_realtime_fields() -> None:
                 pos["high_price"] = None
         
         # 업종 점수 캐시 초기화 (실시간 데이터 재계산 유도)
-        _sector_summary_cache = None
+        import backend.app.services.engine_service as _es
+        _es._sector_summary_cache = None
         # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
         # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
         _position_sent_cache.clear()
@@ -258,10 +257,13 @@ def _get_realtime_state() -> str:
 
 def get_buy_targets_snapshot() -> list:
     """매수 후보 스냅샷 반환."""
+    from dataclasses import asdict
     # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
-    if _sector_summary_cache is None or not _sector_summary_cache.buy_targets:
+    import backend.app.services.engine_service as _es
+    ss = _es._sector_summary_cache
+    if ss is None or not ss.buy_targets:
         return []
-    return list(_sector_summary_cache.buy_targets.values())
+    return [asdict(target) for target in ss.buy_targets]
 
 
 def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
