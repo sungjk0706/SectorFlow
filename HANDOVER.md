@@ -2,6 +2,26 @@
 
 ## 완료 단계
 
+### 2026-06-02: settings_cache_fix_plan P0/P3 완료
+- **완료일**: 2026-06-02
+- **작업**: 설정 캐시 아키텍처 수정계획서 P0, P3 항목 완료
+- **수정 파일** (3개):
+  - backend/app/services/engine_config.py:80-90 - refresh() 런타임 전용 키 보존 로직 추가 (sector_stock_layout)
+  - backend/app/core/settings_file.py:114 - 캐시 A 주석 추가
+  - backend/app/services/engine_state.py:89 - 캐시 B 주석 추가
+- **검증**:
+  - py_compile 성공 (engine_config.py, settings_file.py, engine_state.py)
+  - 앱 기동 성공
+  - 업종순위 종목 표시 확인 (167종목 → 197종목, 설정 저장 후 layout 보존 확인)
+  - API 키 시나리오 회귀 테스트 (키움 키 저장 시 경고 미발생, 핫-리로드 성공)
+  - 앱 재시작 후 저장값 보존 확인 (197종목 유지)
+- **해결 효과**:
+  - refresh()가 sector_stock_layout(DB에 없는 런타임 상태)을 보존하여 장중 설정 저장/시간 전환 시 layout 소실 버그 근본 해결
+  - 캐시 A/B 역할 문서화 (캐시 A: DB 설정 복호화 미러, 캐시 B: 엔진 런타임 통합 상태)
+- **추후 해결 문제**:
+  - 가중치 슬라이더 미작동 문제 (업종순위 계산 수신율 의심)
+  - LS 증권 저장 팝업 미발생 문제
+
 ### 2026-06-02: 설정 캐시 단일 소스 진리 통합 완료
 - **완료일**: 2026-06-02
 - **근본 원인**: `settings_file.py` 로컬 `_integrated_system_settings_cache`가 `engine_state._integrated_system_settings_cache`와 별도로 존재하여 PATCH 후 캐시 불일치 발생 → `update_broker_credentials_live()` 핫-리로드 시 stale 캐시에서 빈 API 키 반환 → "[경고] 주입할 유효한 API Key 또는 Secret이 존재하지 않습니다."
@@ -99,17 +119,18 @@
   - Phase 5: 검증 (py_compile, 앱 기동)
 
 ## 현재 상태
-- **작업 중인 기능**: 없음 (설정 저장 로직 증분 갱신 전면 수정 완료)
+- **작업 중인 기능**: 없음 (settings_cache_fix_plan P0/P3 완료)
 - **진행률**: 100%
-- **마지막 커밋**: 없음 (테스트 완료 후 커밋 필요)
-- **앱 상태**: 정상 실행 중 (http://127.0.0.1:8000, 02:59:07 기동)
+- **마지막 커밋**: 996026d (롤백 지점: settings_cache_fix_plan 적용 전)
+- **앱 상태**: 정상 종료됨 (검증 완료 후 종료)
 
 ## 다음 단계
-- Git commit으로 변경사항 저장
-- 사용자 확인 후 추가 작업 진행
+- Git commit으로 변경사항 저장 (engine_config.py, settings_file.py, engine_state.py)
+- 사용자 확인 후 추후 해결 문제 조사 진행
 
 ## 미해결 문제
-- 없음
+- 가중치 슬라이더 미작동 문제 (업종순위 계산 수신율 의심)
+- LS 증권 저장 팝업 미발생 문제
 
 ### 2026-06-02: master_stocks_table 중복 로드 제거 완료
 - **완료일**: 2026-06-02
