@@ -2,6 +2,41 @@
 
 ## 완료 단계
 
+### 2026-06-02: BuyTarget JSON 직렬화 오류 근본 해결 완료
+- **완료일**: 2026-06-02
+- **근본 원인**: get_buy_targets_snapshot()이 BuyTarget dataclass 객체 리스트를 그대로 반환하여 json.dumps() 직렬화 실패
+- **수정 파일** (1개):
+  - backend/app/services/engine_snapshot.py:258-266 - get_buy_targets_snapshot() 함수에 dataclasses.asdict() 추가
+- **검증**:
+  - py_compile 성공 (engine_snapshot.py)
+  - 앱 기동 성공 (42ms, 오류 없음)
+- **해결 효과**:
+  - JSON 직렬화 문제 해결
+  - 아키텍처 원칙 준수 (단일 소스 진리, 표준 라이브러리 사용, 최소 수정)
+- **남은 확인 사항**:
+  - 브라우저에서 실제 초기 스냅샷 전송 테스트 필요
+
+### 2026-06-02: _sector_summary_cache 단일 소스 진리 통합 완료
+- **완료일**: 2026-06-02
+- **근본 원인**: engine_state.py와 engine_service.py에 각각 `_sector_summary_cache`가 존재하여 데이터 불일치 발생 → 업종순위 가중치 슬라이더 미작동
+- **수정 파일** (6개):
+  - backend/app/services/engine_sector.py: _sector_summary_cache import 제거, global 선언 제거, _es._sector_summary_cache로 변경
+  - backend/app/services/engine_snapshot.py: _sector_summary_cache import 제거, global 선언 제거, _es._sector_summary_cache로 변경, get_buy_targets_snapshot() 수정
+  - backend/app/services/daily_time_scheduler.py: _sector_summary_cache import 제거, global 선언 제거, _es._sector_summary_cache로 변경
+  - backend/app/services/engine_lifecycle.py: _sector_summary_cache import 제거, _es._sector_summary_cache로 변경
+  - backend/app/services/engine_state.py: _sector_summary_cache 선언 제거, 주석으로 통합 사실 기록
+  - backend/app/services/engine_service.py: _sector_summary_cache import 제거, 모듈 내에 정의 추가 (단일 소스 진리)
+- **추가 수정** (버그 수정):
+  - backend/app/services/engine_snapshot.py:265 - `ss.buy_targets.values()` → `ss.buy_targets` (buy_targets는 list 타입)
+- **검증**:
+  - py_compile 성공 (모든 수정 파일)
+- **해결 효과**:
+  - 단일 소스 진리: engine_service._sector_summary_cache가 유일한 섹터 요약 캐시
+  - 중복 캐시 제거: engine_state._sector_summary_cache 제거
+  - 아키텍처 원칙 준수 (단일 소스 원칙)
+- **다음 단계**:
+  - 앱 재시작 후 슬라이더 테스트 필요
+
 ### 2026-06-02: settings_cache_fix_plan P0/P3 완료
 - **완료일**: 2026-06-02
 - **작업**: 설정 캐시 아키텍처 수정계획서 P0, P3 항목 완료
@@ -119,17 +154,18 @@
   - Phase 5: 검증 (py_compile, 앱 기동)
 
 ## 현재 상태
-- **작업 중인 기능**: 없음 (settings_cache_fix_plan P0/P3 완료)
+- **작업 중인 기능**: BuyTarget JSON 직렬화 오류 해결 완료
 - **진행률**: 100%
-- **마지막 커밋**: 996026d (롤백 지점: settings_cache_fix_plan 적용 전)
-- **앱 상태**: 정상 종료됨 (검증 완료 후 종료)
+- **마지막 수정**: get_buy_targets_snapshot()에 dataclasses.asdict() 추가
+- **앱 상태**: 기동 성공 (42ms, 오류 없음)
 
 ## 다음 단계
-- Git commit으로 변경사항 저장 (engine_config.py, settings_file.py, engine_state.py)
-- 사용자 확인 후 추후 해결 문제 조사 진행
+- 브라우저에서 실제 초기 스냅샷 전송 테스트 (사용자 지시 대기)
+- 앱 재시작 후 슬라이더 테스트 (사용자 지시 대기)
+- 미해결 문제 조사 진행 (사용자 지시 대기)
+  - LS 증권 저장 팝업 미발생 문제
 
 ## 미해결 문제
-- 가중치 슬라이더 미작동 문제 (업종순위 계산 수신율 의심)
 - LS 증권 저장 팝업 미발생 문제
 
 ### 2026-06-02: master_stocks_table 중복 로드 제거 완료
