@@ -78,8 +78,16 @@ async def refresh_engine_integrated_system_settings_cache(user_id: str | None = 
         old_min_amt = _integrated_system_settings_cache.get("sector_min_trade_amt", 0.0) if _integrated_system_settings_cache else 0.0
 
         fresh = await get_engine_settings(load_user if load_user else None)
+        # 런타임 전용 상태 보존 (build_engine_settings_dict 결과에 없는 캐시 B 전용 런타임 상태)
+        _RUNTIME_ONLY_KEYS = ("sector_stock_layout",)
+        preserved = {
+            k: _integrated_system_settings_cache.get(k)
+            for k in _RUNTIME_ONLY_KEYS
+            if k in _integrated_system_settings_cache
+        }
         _integrated_system_settings_cache.clear()
         _integrated_system_settings_cache.update(fresh)
+        _integrated_system_settings_cache.update(preserved)
         
         # 필터 설정 변경 감지 → 증분 구독 갱신
         new_min_amt = fresh.get("sector_min_trade_amt", 0.0)
