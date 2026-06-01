@@ -60,7 +60,7 @@ from backend.app.services.engine_state import (
     _buy_targets_cache_ref,
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_rest_radar_quote_cache)
     # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
-    _sector_summary_cache,
+    # _sector_summary_cache 제거: engine_service 모듈 내에서 정의
     # _sector_buy_last_ts 제거: _master_stocks_cache[code]["_last_buy_ts"]로 통합
     _sector_score_index,
     _confirmed_refresh_running,
@@ -93,6 +93,9 @@ from backend.app.services.engine_state import (
     _on_filter_settings_changed,
     _cancel_price_trace_delayed_task,
 )
+
+# ── 업종 요약 캐시 (단일 소스 진리) ───────────────────────────────────────
+_sector_summary_cache: "SectorSummary | None" = None  # type: ignore[name-defined]
 
 # ── 분리된 모듈 import ─────────────────────────────────────────────────
 from backend.app.services.engine_ws import (

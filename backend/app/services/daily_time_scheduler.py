@@ -15,7 +15,6 @@ from pathlib import Path
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import (
     _integrated_system_settings_cache,
-    _sector_summary_cache,
     _connector_manager,
     _kiwoom_connector,
     _login_ok,
@@ -518,7 +517,7 @@ async def _restore_from_holiday_flag(settings: dict) -> bool:
 
 async def _on_ws_subscribe_start() -> None:
     """WS 구독 시작 시각이 되면 자동 실행 -- WS 연결 + 실시간 데이터 수신을 시작하는 함수."""
-    global _ws_subscribe_window_active, _integrated_system_settings_cache, _sector_summary_cache, _connector_manager, _kiwoom_connector
+    global _ws_subscribe_window_active, _integrated_system_settings_cache, _connector_manager, _kiwoom_connector
     try:
         from backend.app.core.trading_calendar import is_trading_day
         today = _kst_now().date()
@@ -566,8 +565,8 @@ async def _on_ws_subscribe_start() -> None:
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
         import backend.app.services.engine_account_notify as _an
         _an._prev_scores_cache = []
-        global _sector_summary_cache
-        _sector_summary_cache = None
+        import backend.app.services.engine_service as _es
+        _es._sector_summary_cache = None
         # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
         # market-phase WS 브로드캐스트 (WS 구독 시작 = 08:00 또는 09:00 전환 시점)
         from backend.app.services.engine_account_notify import _broadcast
@@ -795,8 +794,8 @@ async def _init_ws_subscribe_state() -> None:
         try:
             import backend.app.services.engine_account_notify as _an
             _an._prev_scores_cache = []
-            global _sector_summary_cache
-            _sector_summary_cache = None
+            import backend.app.services.engine_service as _es
+            _es._sector_summary_cache = None
             # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
         except Exception as e:
             logger.warning("[데이터] 캐시 초기화 실패: %s", e, exc_info=True)

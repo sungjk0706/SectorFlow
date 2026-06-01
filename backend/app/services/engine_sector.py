@@ -7,7 +7,6 @@
 """
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import (
-    _sector_summary_cache,
     # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
     # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed" 사용
     # _sector_stocks_cache 제거
@@ -55,10 +54,10 @@ def get_sector_scores_snapshot() -> tuple[list[dict], int]:
 
 async def recompute_sector_summary_now() -> None:
     """설정 변경 시 즉시 _sector_summary_cache 재계산 (10초 루프 대기 없이)."""
-    global _sector_summary_cache
     from backend.app.services.engine_sector_score import compute_full_sector_summary
     from backend.app.services.engine_sector_confirm import cancel_pending_recompute
     from backend.app.services.engine_lifecycle import is_running
+    from backend.app.services.engine_account_notify import notify_desktop_sector_scores
     import backend.app.services.engine_service as _es
 
     logger.info("[업종순위] recompute_sector_summary_now 진입, is_running=%s", is_running())
@@ -83,9 +82,10 @@ async def recompute_sector_summary_now() -> None:
             trim_trade_amt_pct=trim_trade,
             trim_change_rate_pct=trim_change,
         )
-        _sector_summary_cache = _ss
+        _es._sector_summary_cache = _ss
         cancel_pending_recompute()
         # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
+        notify_desktop_sector_scores(force=True)
         logger.info("[업종순위] 재계산 완료")
     except Exception as e:
         logger.warning("[업종순위] 재계산 실패: %s", e, exc_info=True)
