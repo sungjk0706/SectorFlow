@@ -15,8 +15,7 @@ from backend.app.services.engine_state import (
     _reg_ack_event,
     _REG_POST_ACK_GAP_SEC,
     _ws_reg_pipeline_done,
-    _subscribed_stocks,
-    _settings_cache,
+    _integrated_system_settings_cache,
     _login_ok,
     _refresh_account_snapshot_meta,
     _account_rest_bootstrapped,
@@ -138,7 +137,8 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
     
     # 배치에서 이미 구독됐으면 단건 불필요 (0B 기준)
     item_cd = _format_broker_reg_stk_cd(stk_cd)
-    if item_cd in _subscribed_stocks:
+    from backend.app.services.engine_state import _master_stocks_cache
+    if _master_stocks_cache.get(item_cd, {}).get("_subscribed", False):
         logger.debug("[데이터] 단건 REG 생략(배치 완료) -- %s", item_cd)
         return
     
@@ -148,12 +148,14 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
         return
     
     from backend.app.services.engine_ws_reg import build_0b_reg_payloads
+    from backend.app.services.engine_state import _master_stocks_cache
     ws_code = get_ws_subscribe_code(item_cd)
     payloads = build_0b_reg_payloads([ws_code], reset_first=False)
     if payloads:
         ok, rc = await _ws_send_reg_unreg_and_wait_ack(payloads[0])
         if ok:
-            _subscribed_stocks.add(item_cd)
+            if item_cd in _master_stocks_cache:
+                _master_stocks_cache[item_cd]["_subscribed"] = True
             logger.debug("[데이터] 단건 0B REG 완료 -- %s (return_code=%s)", item_cd, rc)
         else:
             logger.warning("[데이터] 단건 0B REG 실패 -- %s", item_cd)
@@ -180,9 +182,10 @@ def _log_reg_stock_chunk(scope: str, start_ord: int, end_ord: int, ca: int, cs: 
 async def _subscribe_positions_stocks_realtime() -> None:
     """보유 종목 0B REG — engine_ws_reg 모듈로 위임."""
     from backend.app.services import engine_ws_reg, ws_subscribe_control
+    from backend.app.services.engine_state import _master_stocks_cache
     await engine_ws_reg.subscribe_positions_stocks_realtime(None)
     # REG 실행 후 인메모리 상태 동기화
-    if _subscribed_stocks:
+    if any(entry.get("_subscribed", False) for entry in _master_stocks_cache.values()):
         ws_subscribe_control._set_status(quote=True)
 
 
@@ -224,7 +227,7 @@ async def _ensure_ws_subscriptions_for_positions() -> None:
     try:
         if not _kiwoom_connector or not _kiwoom_connector.is_connected() or not _login_ok:
             return
-        if not is_test_mode(_settings_cache):
+        if not is_test_mode(_integrated_system_settings_cache):
             await _subscribe_account_realtime()
         else:
             logger.info("[구독] 테스트모드 -- 계좌 실시간 구독(00/04) 생략")
@@ -281,13 +284,13 @@ def _item_cd_tracked_radar_or_ready(item_cd: str) -> bool:
     잔고 REST 반영 후 UNREG 스윕 등에서 UNREG 대상에서 제외한다.
     """
     from backend.app.services.engine_symbol_utils import _normalize_stk_cd_rest
-    from backend.app.services.engine_state import _subscribed_stocks
+    from backend.app.services.engine_state import _master_stocks_cache
 
     nk = _normalize_stk_cd_rest(str(item_cd).strip().lstrip("A"))
     if not nk or nk == "000000":
         return False
-    # _radar_cnsr_order 삭제: _subscribed_stocks 사용 (제로-체크 보장)
-    return nk in _subscribed_stocks
+    # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed" 사용 (제로-체크 보장)
+    return _master_stocks_cache.get(nk, {}).get("_subscribed", False)
 
 
 async def _sweep_unreg_subscribed_except_positions_and_tracked() -> int:

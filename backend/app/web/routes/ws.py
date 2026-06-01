@@ -111,7 +111,7 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
 
         # sector-scores 전송
         from backend.app.services.engine_service import (
-            _settings_cache,
+            _integrated_system_settings_cache,
             get_sector_scores_snapshot,
             _sector_summary_ready_event,
         )
@@ -131,7 +131,7 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
                 "status": {
                     "total_stocks": len(scores),
                     "max_targets": int(
-                        _settings_cache.get("sector_max_targets", 3) or 3
+                        _integrated_system_settings_cache.get("sector_max_targets", 3) or 3
                     ),
                     "ranked_sectors_count": ranked_count,
                 },

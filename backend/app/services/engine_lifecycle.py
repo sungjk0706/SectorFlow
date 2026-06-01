@@ -21,14 +21,15 @@ from backend.app.services.engine_state import (
     _kiwoom_auth_provider,
     _connector_manager,
     _login_ok,
-    _settings_cache,
+    _integrated_system_settings_cache,
     _auto_trade,
     _sector_summary_cache,
     _positions,
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_prices)
     _checked_stocks,
     _access_token,
-    _sector_buy_last_ts,
+    # _sector_buy_last_ts 제거: _master_stocks_cache[code]["_last_buy_ts"]로 통합
+    _master_stocks_cache,
     _engine_loop_ref,
 )
 
@@ -54,7 +55,7 @@ async def start_engine(user_id: str = "") -> bool:
 
     # KiwoomAuthProvider 초기화 (단일 인스턴스)
     if _kiwoom_auth_provider is None:
-        _kiwoom_auth_provider = KiwoomAuthProvider(_settings_cache)
+        _kiwoom_auth_provider = KiwoomAuthProvider()
         logger.info("[엔진] KiwoomAuthProvider 초기화 완료")
 
     _engine_user_id = user_id
@@ -125,9 +126,9 @@ def get_status() -> dict:
     """엔진 상태 반환."""
     # 실시간 구독 종목 수
     import backend.app.services.engine_state as _es
-    sub_count = len(_es._subscribed_stocks) if _es._subscribed_stocks else 0
+    sub_count = sum(1 for entry in _es._master_stocks_cache.values() if entry.get("_subscribed", False))
     
-    test_mode = is_test_mode(_es._settings_cache)
+    test_mode = is_test_mode(_es._integrated_system_settings_cache)
     ws = _es._connector_manager or _es._kiwoom_connector
     conn_ok = bool(ws and ws.is_connected())
     
@@ -154,7 +155,7 @@ async def on_trade_mode_switched() -> None:
     from backend.app.services.engine_ws import _subscribe_account_realtime, _subscribe_positions_stocks_realtime
     from backend.app.services.engine_account import _refresh_account_snapshot_meta, _broadcast_account
     
-    _new_test = is_test_mode(_settings_cache)
+    _new_test = is_test_mode(_integrated_system_settings_cache)
     _mode_str = "테스트모드" if _new_test else "실전투자"
     logger.info("[연결] 거래모드 전환 -> %s (엔진 재기동 없음)", _mode_str)
 
@@ -194,12 +195,12 @@ async def _try_sector_buy() -> None:
     auto_buy_effective(시간 범위 + auto_buy_on + 마스터 스위치) 통과 시 매수 실행.
     쿨다운: sector_buy_cooldown_sec(기본 90초).
     """
-    global _sector_buy_last_ts
+    # _sector_buy_last_ts 제거: _master_stocks_cache[code]["_last_buy_ts"]로 통합
     from backend.app.services import dry_run
     from backend.app.services.daily_time_scheduler import is_krx_after_hours
     from backend.app.services.engine_symbol_utils import is_nxt_enabled
-    from backend.app.services.engine_config import _get_settings
-    
+    import backend.app.services.engine_service as _es
+
     if not _running:
         return
 
@@ -210,15 +211,13 @@ async def _try_sector_buy() -> None:
     if not ss or not ss.buy_targets:
         return
 
-    settings = _get_settings()
-
     # ── 자동매수 게이트 (auto_buy_on + 시간 범위 + 마스터 스위치 통합 체크) ──
-    if not auto_buy_effective(settings):
+    if not auto_buy_effective(_es._integrated_system_settings_cache):
         return
 
     # ── 전역 조건 사전 체크 ──────────────────────────────────────────
-    _max_limit = int(settings.get("max_stock_cnt", 5) or 5)
-    if is_test_mode(settings):
+    _max_limit = int(_es._integrated_system_settings_cache.get("max_stock_cnt", 5) or 5)
+    if is_test_mode(_es._integrated_system_settings_cache):
         _pos_for_cnt = await dry_run.get_positions()
     else:
         _pos_for_cnt = _positions
@@ -226,18 +225,18 @@ async def _try_sector_buy() -> None:
     if _holding_cnt >= _max_limit:
         return
 
-    _buy_amt = int(settings.get("buy_amt", 0) or 0)
+    _buy_amt = int(_es._integrated_system_settings_cache.get("buy_amt", 0) or 0)
     if _buy_amt <= 0:
         return
 
-    _max_daily = int(settings.get("max_daily_total_buy_amt", 0) or 0)
+    _max_daily = int(_es._integrated_system_settings_cache.get("max_daily_total_buy_amt", 0) or 0)
     if _max_daily > 0:
         _daily_remain = _max_daily - _auto_trade._daily_buy_spent
         if _daily_remain <= 0:
             return
 
     # ── 종목별 매수 시도 ─────────────────────────────────────────────
-    cooldown = float(settings.get("sector_buy_cooldown_sec") or 90)
+    cooldown = float(_es._integrated_system_settings_cache.get("sector_buy_cooldown_sec") or 90)
     now = time.time()
 
     _after_hours = is_krx_after_hours()
@@ -249,11 +248,12 @@ async def _try_sector_buy() -> None:
         # 장외 시간 KRX 단독 종목 매수 차단
         if _after_hours and not is_nxt_enabled(s.code):
             continue
-        last_ts = _sector_buy_last_ts.get(s.code, 0.0)
+        # _sector_buy_last_ts 제거: _master_stocks_cache[code]["_last_buy_ts"]로 통합
+        last_ts = _master_stocks_cache.get(s.code, {}).get("_last_buy_ts", 0.0)
         if now - last_ts < cooldown:
             continue
 
-        _sector_buy_last_ts[s.code] = now
+        _master_stocks_cache[s.code]["_last_buy_ts"] = now
         
         logger.info("[섹터매수] 매수 시도: %s(%s) 섹터=%s 등락률=%.2f%%",
                     s.name, s.code, s.sector, s.change_rate)
@@ -324,9 +324,9 @@ def _schedule_engine_coro(coro: asyncio.coroutines, *, context: str) -> bool:
 
 def _sync_sell_overrides_from_settings() -> None:
     """sell_per_symbol -> AutoTradeManager.ts_overrides 동기화."""
-    if not _auto_trade or not isinstance(_settings_cache, dict):
+    if not _auto_trade or not isinstance(_integrated_system_settings_cache, dict):
         return
-    sp = _settings_cache.get("sell_per_symbol")
+    sp = _integrated_system_settings_cache.get("sell_per_symbol")
     _auto_trade.ts_overrides = dict(sp) if isinstance(sp, dict) else {}
 
 
@@ -344,18 +344,18 @@ async def _delayed_resubscribe_stock_after_rate_limit(norm_cd: str) -> None:
 async def update_broker_credentials_live() -> None:
     """[근본 해결] 엔진 재기동 없이 실행 중인 REST 및 커넥터 인스턴스에 인증키를 즉시 핫-리로드하고 토큰 재발급을 가동한다."""
     import backend.app.services.engine_state as es
-    from backend.app.core.settings_store import load_settings_for_editing
+    from backend.app.core.settings_store import load_integrated_system_settings_for_editing
     from backend.app.core.broker_factory import reset_router
-    
+
     _log("[설정] 무중단 실시간 자격 증명 핫-리로드 시작")
-    
+
     # 1. 암호화 필드가 복호화된 평문 설정 딕셔너리 로드
-    raw_settings = await load_settings_for_editing()
-    broker_nm = str(es._settings_cache.get("broker", "kiwoom")).lower().strip()
+    raw_settings = await load_integrated_system_settings_for_editing()
+    broker_nm = str(es._integrated_system_settings_cache.get("broker", "kiwoom")).lower().strip()
     
-    app_key = str(raw_settings.get(f"{broker_nm}_app_key_real") or raw_settings.get(f"{broker_nm}_app_key") or "").strip()
-    app_secret = str(raw_settings.get(f"{broker_nm}_app_secret_real") or raw_settings.get(f"{broker_nm}_app_secret") or "").strip()
-    acnt_no = str(raw_settings.get(f"{broker_nm}_account_no_real") or raw_settings.get(f"{broker_nm}_account_no") or "").strip()
+    app_key = str(raw_settings.get(f"{broker_nm}_app_key") or "").strip()
+    app_secret = str(raw_settings.get(f"{broker_nm}_app_secret") or "").strip()
+    acnt_no = str(raw_settings.get(f"{broker_nm}_account_no") or "").strip()
     
     if not app_key or not app_secret:
         _log("[경고] 주입할 유효한 API Key 또는 Secret이 존재하지 않습니다.")

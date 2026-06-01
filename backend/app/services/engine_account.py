@@ -33,13 +33,13 @@ async def get_account_snapshot() -> dict:
     
     _shared_lock = getattr(es, "_shared_lock", None)
     _account_snapshot = getattr(es, "_account_snapshot", {})
-    _settings_cache = getattr(es, "_settings_cache", {})
+    _integrated_system_settings_cache = getattr(es, "_integrated_system_settings_cache", {})
     
     async with _shared_lock:
         snap = dict(_account_snapshot)
     
     if not snap or "trade_mode" not in snap:
-        _is_test = is_test_mode(_settings_cache)
+        _is_test = is_test_mode(_integrated_system_settings_cache)
         snap.setdefault("trade_mode", "test" if _is_test else "real")
         if _is_test:
             snap.setdefault("accumulated_investment", settlement_engine.get_accumulated_investment())
@@ -59,8 +59,8 @@ def get_trade_mode() -> str:
     es = _get_es_module()
     if not es:
         return "real"
-    _settings_cache = getattr(es, "_settings_cache", {})
-    return "test" if is_test_mode(_settings_cache) else "real"
+    _integrated_system_settings_cache = getattr(es, "_integrated_system_settings_cache", {})
+    return "test" if is_test_mode(_integrated_system_settings_cache) else "real"
 
 
 async def get_positions() -> list:
@@ -73,9 +73,9 @@ async def get_positions() -> list:
     
     _shared_lock = getattr(es, "_shared_lock", None)
     _positions = getattr(es, "_positions", [])
-    _settings_cache = getattr(es, "_settings_cache", {})
+    _integrated_system_settings_cache = getattr(es, "_integrated_system_settings_cache", {})
     
-    if is_test_mode(_settings_cache):
+    if is_test_mode(_integrated_system_settings_cache):
         return await dry_run.get_positions()
     async with _shared_lock:
         return list(_positions)
@@ -90,9 +90,9 @@ async def get_total_buy_amount() -> int:
         return 0
 
     _broker_rest_totals = getattr(es, "_broker_rest_totals", {})
-    _settings_cache = getattr(es, "_settings_cache", {})
+    _integrated_system_settings_cache = getattr(es, "_integrated_system_settings_cache", {})
 
-    if is_test_mode(_settings_cache):
+    if is_test_mode(_integrated_system_settings_cache):
         return sum(int(p.get("buy_amt", 0) or 0) for p in await dry_run.get_positions())
     return int(_broker_rest_totals.get("total_buy", 0) or 0)
 
@@ -106,9 +106,9 @@ async def get_total_eval_amount() -> int:
         return 0
 
     _broker_rest_totals = getattr(es, "_broker_rest_totals", {})
-    _settings_cache = getattr(es, "_settings_cache", {})
+    _integrated_system_settings_cache = getattr(es, "_integrated_system_settings_cache", {})
 
-    if is_test_mode(_settings_cache):
+    if is_test_mode(_integrated_system_settings_cache):
         return sum(int(p.get("eval_amt", 0) or 0) for p in await dry_run.get_positions())
     return int(_broker_rest_totals.get("total_eval", 0) or 0)
 
@@ -122,9 +122,9 @@ async def get_total_pnl() -> int:
         return 0
 
     _broker_rest_totals = getattr(es, "_broker_rest_totals", {})
-    _settings_cache = getattr(es, "_settings_cache", {})
+    _integrated_system_settings_cache = getattr(es, "_integrated_system_settings_cache", {})
 
-    if is_test_mode(_settings_cache):
+    if is_test_mode(_integrated_system_settings_cache):
         return sum(int(p.get("pnl_amount", 0) or 0) for p in await dry_run.get_positions())
     return int(_broker_rest_totals.get("total_pnl", 0) or 0)
 
@@ -136,9 +136,9 @@ def get_total_pnl_rate() -> float:
         return 0.0
     
     _broker_rest_totals = getattr(es, "_broker_rest_totals", {})
-    _settings_cache = getattr(es, "_settings_cache", {})
+    _integrated_system_settings_cache = getattr(es, "_integrated_system_settings_cache", {})
     
-    if is_test_mode(_settings_cache):
+    if is_test_mode(_integrated_system_settings_cache):
         total_buy = get_total_buy_amount()
         total_pnl = get_total_pnl()
         return round((total_pnl / total_buy) * 100, 2) if total_buy > 0 else 0.0
@@ -160,10 +160,10 @@ async def get_buy_limit_status() -> dict:
     if not es:
         return {"daily_buy_spent": 0}
     
-    _settings_cache = getattr(es, "_settings_cache", {})
+    _integrated_system_settings_cache = getattr(es, "_integrated_system_settings_cache", {})
     _auto_trade = getattr(es, "_auto_trade", None)
     
-    settings = _settings_cache or {}
+    settings = _integrated_system_settings_cache or {}
     daily_buy_spent = 0
     if _auto_trade:
         await _auto_trade._ensure_daily_buy_counter()
@@ -176,11 +176,11 @@ async def _broadcast_buy_limit_status() -> None:
     es = _get_es_module()
     if not es:
         return
-    
-    _buy_targets_snapshot_cache = getattr(es, "_buy_targets_snapshot_cache", None)
-    _buy_targets_snapshot_cache = None  # 일일한도 상태 변경 → 매수후보 캐시 무효화
-    setattr(es, "_buy_targets_snapshot_cache", _buy_targets_snapshot_cache)
-    
+
+    # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
+    # 일일한도 상태 변경 → _sector_summary_cache 무효화로 대체
+    es._sector_summary_cache = None
+
     try:
         from backend.app.services.engine_account_notify import _broadcast, notify_buy_targets_update
         _broadcast("buy-limit-status", await get_buy_limit_status())
@@ -447,11 +447,11 @@ async def _refresh_account_snapshot_meta() -> None:
     
     _account_snapshot = getattr(es, "_account_snapshot", {})
     _broker_rest_totals = getattr(es, "_broker_rest_totals", {})
-    _settings_cache = getattr(es, "_settings_cache", {})
+    _integrated_system_settings_cache = getattr(es, "_integrated_system_settings_cache", {})
     _positions = getattr(es, "_positions", [])
     _ws_live = getattr(es, "_ws_live", None)
     
-    _is_test = is_test_mode(_settings_cache)
+    _is_test = is_test_mode(_integrated_system_settings_cache)
     pos = await dry_run.get_positions() if _is_test else _positions
 
     if _is_test:
@@ -502,10 +502,10 @@ async def _apply_last_price_to_positions(stk_cd: str, price: int) -> bool:
     
     _broker_rest_totals = getattr(es, "_broker_rest_totals", {})
     _positions = getattr(es, "_positions", [])
-    _settings_cache = getattr(es, "_settings_cache", {})
+    _integrated_system_settings_cache = getattr(es, "_integrated_system_settings_cache", {})
     
     # 테스트모드: dry_run 가상 잔고에 현재가 반영 (6자리 정규화)
-    if is_test_mode(_settings_cache):
+    if is_test_mode(_integrated_system_settings_cache):
         nk = _format_broker_reg_stk_cd(str(stk_cd or "").strip())
         return await dry_run.update_price(nk, price) if nk else False
     
@@ -574,27 +574,27 @@ async def _on_fill_after_ws() -> None:
     if not es:
         return
     
-    _settings_cache = getattr(es, "_settings_cache", {})
+    _integrated_system_settings_cache = getattr(es, "_integrated_system_settings_cache", {})
     _auto_trade = getattr(es, "_auto_trade", None)
     _access_token = getattr(es, "_access_token", None)
     _refresh_account_snapshot_meta = getattr(es, "_refresh_account_snapshot_meta", None)
     _broadcast_account = getattr(es, "_broadcast_account", None)
 
     async def _sell_if_applicable() -> None:
-        if is_test_mode(_settings_cache):
+        if is_test_mode(_integrated_system_settings_cache):
             pos = await dry_run.get_positions()
         else:
             _positions = getattr(es, "_positions", [])
             pos = _positions
-        if pos and _auto_trade and auto_sell_effective(_settings_cache) and _access_token:
-            await _auto_trade.check_sell_conditions(pos, _settings_cache, _access_token)
+        if pos and _auto_trade and auto_sell_effective(_integrated_system_settings_cache) and _access_token:
+            await _auto_trade.check_sell_conditions(pos, _integrated_system_settings_cache, _access_token)
 
     run_after_order_fill_ws(
         0.0,
         _refresh_account_snapshot_meta,
         lambda reason=None: _broadcast_account(reason=reason) if _broadcast_account else None,
         _sell_if_applicable,
-        is_dry_run=is_test_mode(_settings_cache),
+        is_dry_run=is_test_mode(_integrated_system_settings_cache),
     )
 
 
@@ -653,7 +653,7 @@ async def _apply_delayed_account_broadcast() -> None:
     _account_broadcast_timer = getattr(es, "_account_broadcast_timer", None)
     _account_snapshot = getattr(es, "_account_snapshot", {})
     _positions = getattr(es, "_positions", [])
-    _settings_cache = getattr(es, "_settings_cache", {})
+    _integrated_system_settings_cache = getattr(es, "_integrated_system_settings_cache", {})
     
     reason = _account_broadcast_pending_reason
     _account_broadcast_pending_reason = None
@@ -665,7 +665,7 @@ async def _apply_delayed_account_broadcast() -> None:
         return
     
     try:
-        pos = await dry_run.get_positions() if is_test_mode(_settings_cache) else list(_positions or [])
+        pos = await dry_run.get_positions() if is_test_mode(_integrated_system_settings_cache) else list(_positions or [])
         broadcast_account_update(
             positions=pos or [],
             snapshot=dict(_account_snapshot or {}),
@@ -685,10 +685,10 @@ async def _position_codes_with_qty() -> set[str]:
     if not es:
         return set()
 
-    _settings_cache = getattr(es, "_settings_cache", {})
+    _integrated_system_settings_cache = getattr(es, "_integrated_system_settings_cache", {})
     _positions = getattr(es, "_positions", [])
 
-    if is_test_mode(_settings_cache):
+    if is_test_mode(_integrated_system_settings_cache):
         return await dry_run.position_codes()
     out: set[str] = set()
     for s in list(_positions):

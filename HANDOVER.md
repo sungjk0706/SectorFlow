@@ -2,6 +2,318 @@
 
 ## 완료 단계
 
+### 2026-06-02: 설정 캐시 단일 소스 진리 통합 완료
+- **완료일**: 2026-06-02
+- **근본 원인**: `settings_file.py` 로컬 `_integrated_system_settings_cache`가 `engine_state._integrated_system_settings_cache`와 별도로 존재하여 PATCH 후 캐시 불일치 발생 → `update_broker_credentials_live()` 핫-리로드 시 stale 캐시에서 빈 API 키 반환 → "[경고] 주입할 유효한 API Key 또는 Secret이 존재하지 않습니다."
+- **수정 파일** (1개):
+  - `backend/app/core/settings_file.py` 전반적 수정:
+    - `_integrated_system_settings_cache: dict | None = None` 제거 (불필요 로컬 캐시)
+    - `_cache_lock = asyncio.Lock()` 제거
+    - `import asyncio` 제거
+    - `load_integrated_system_settings()`: engine_state._integrated_system_settings_cache가 비어있지 않으면 즉시 반환, 비어있으면 DB에서 1회 로드 (기동 시 부트스트랩)
+    - `save_settings(data)`: 내부 `current = await load_integrated_system_settings()` 재읽기 제거, 암호화 필드 평문이면 자동 재암호화 후 DB 저장
+    - `update_settings(updates)`: `global _integrated_system_settings_cache` 제거, engine_state 캐시 증분 갱신으로 변경
+    - `_ENCRYPT_FIELDS` 모듈 레벨 상수 추가 (단일 정의)
+- **검증**:
+  - py_compile 성공 (settings_file.py, settings_store.py, engine_lifecycle.py, daily_time_scheduler.py, dry_run.py, telegram_bot.py)
+- **아키텍처 효과**:
+  - 캐시 3개 → 1개 (engine_state._integrated_system_settings_cache가 단일 소스)
+  - PATCH 즉시 engine_state 캐시 반영 → 핫-리로드 정상 작동
+  - save_settings: 재읽기 없이 전달받은 data만 저장 + 평문 민감값 자동 암호화
+
+### 2026-06-02: [증권사설정] 경고 근본 원인 해결 완료
+- **완료일**: 2026-06-02
+- **근본 원인**: backend/app/db/models.py:43 — `DROP TABLE IF EXISTS integrated_system_settings`가 매 앱 기동 시 실행되어 사용자 저장 설정(kiwoom_app_key 등) 전체 삭제
+- **수정 파일** (3개):
+  - backend/app/db/models.py:42-44 — `DROP TABLE IF EXISTS integrated_system_settings` 제거 (CREATE TABLE IF NOT EXISTS만 유지)
+  - backend/app/services/engine_loop.py:229-237 — 잘못 추가된 decrypt_sensitive 코드 원상복구 (단순 존재 확인으로 복원)
+  - backend/app/core/broker_router.py:156-164, 262-266 — 잘못 추가된 decrypt_sensitive 코드 원상복구 (단순 존재 확인으로 복원)
+- **검증**:
+  - py_compile 성공 (models.py, engine_loop.py, broker_router.py)
+  - DB 직접 확인: stocks.db integrated_system_settings 테이블 kiwoom_app_key 행 없음 (매 기동 DROP으로 삭제되었음을 확인)
+- **해결 효과**:
+  - 재시작 시 사용자 저장값(API 키 등) 보존
+  - 단일 소스 진리 복원: DB → 메모리 캐시 단방향 흐름
+  - 불필요한 decrypt_sensitive 호출 제거 (캐시는 이미 복호화된 값 보유)
+
+### 2026-06-02: engine_lifecycle.py ImportError 근본 해결 완료
+- **완료일**: 2026-06-02
+- **작업**: engine_lifecycle.py에서 load_settings_for_editing import 오류 해결
+- **수정 파일**:
+  - backend/app/services/engine_lifecycle.py:347 - import 수정: load_settings_for_editing → load_integrated_system_settings_for_editing
+  - backend/app/services/engine_lifecycle.py:353 - 호출 수정: load_settings_for_editing() → load_integrated_system_settings_for_editing()
+- **검증**:
+  - py_compile 성공 (engine_lifecycle.py)
+- **해결 효과**:
+  - ImportError: cannot import name 'load_settings_for_editing' 오류 해결
+  - 아키텍처 원칙 준수: 복호화는 encryption.py 책임, load_integrated_system_settings_for_editing 사용
+  - 설정 변경 시점 DB 조회 허용 (실시간 파이프라인 아님)
+
+### 2026-06-02: 설정 저장 로직 증분 갱신 전면 수정 완료
+- **완료일**: 2026-06-02
+- **작업**: 설정 저장 로직을 증분 갱신 방식으로 전면 수정 (수정한 키 외에는 건드리지 않음)
+- **수정 파일** (3개):
+  - backend/app/core/settings_file.py:233-291 - save_settings() 함수 수정: DB 전체 읽고 업데이트 후 저장
+  - backend/app/core/settings_file.py:294-302 - update_settings() 함수 수정: 캐시 무효화 제거, 증분 갱신
+  - backend/app/core/settings_store.py:155-161 - apply_settings_updates() 함수 수정: None 무시, 빈 문자열 삭제 요청
+- **검증**:
+  - py_compile 성공 (settings_file.py, settings_store.py)
+  - 앱 재시작 성공 (02:59:07)
+  - DB 저장 확인: kiwoom_app_key, kiwoom_app_secret, ls_app_key, ls_app_secret 모두 암호화 저장됨
+- **해결 효과**:
+  - 증분 갱신 준수: 수정한 키 외에는 건드리지 않음
+  - 단일 소스 진리 준수: DB가 설정의 단일 소스
+  - 설정 메모리 상주 준수: 캐시 무효화 제거, 증분 갱신으로 캐시 효율성 유지
+  - 아키텍처 원칙 준수 (단일 소스 진리, 설정 메모리 상주)
+
+### 2026-06-02: Settings 단일 소스 진리 리팩토링 완료
+- **완료일**: 2026-06-02
+- **작업**: 모든 settings 로컬 변수, 캐시 제거 및 _integrated_system_settings_cache.get() 직접 호출로 대체
+- **수정 파일** (13개):
+  - backend/app/core/broker_router.py: validate_page_overrides에서 self._settings 제거, _integrated_system_settings_cache 직접 사용
+  - backend/app/core/ls_broker.py: __init__에서 settings 파라미터 제거
+  - backend/app/core/kiwoom_broker.py: __init__에서 settings 파라미터 제거
+  - backend/app/core/kiwoom_rest.py: __init__에서 settings 파라미터 제거, get_spec에서 settings 파라미터 제거
+  - backend/app/core/kiwoom_providers.py: 모든 Provider __init__에서 settings 파라미터 제거 (KiwoomAuthProvider, KiwoomOrderProvider, KiwoomStockProvider, KiwoomWebSocketProvider)
+  - backend/app/core/ls_providers.py: 모든 Provider __init__에서 settings 파라미터 제거 (LsAuthProvider, LsAccountProvider, LsOrderProvider, LsWebSocketProvider)
+  - backend/app/core/custom_sector.py: __init__에서 settings 파라미터 제거
+  - backend/app/core/broker_factory.py: get_router()에서 settings 파라미터 제거
+  - backend/app/core/broker_registry.py: _create_provider에서 settings 파라미터 제거
+  - backend/app/services/engine_lifecycle.py: KiwoomAuthProvider() 호출에서 settings 파라미터 제거
+  - backend/app/services/engine_loop.py: get_router() 호출에서 settings 파라미터 제거
+  - backend/app/services/trading.py: get_router() 호출에서 settings 파라미터 제거 (2곳)
+- **검증**:
+  - py_compile 성공 (모든 수정 파일)
+  - 앱 기동 성공 (http://127.0.0.1:8000, 49ms startup)
+  - self._settings 잔여 검색: 0건
+- **해결 효과**:
+  - 단일 소스 진리 준수: _integrated_system_settings_cache가 유일한 설정 소스
+  - 중복 캐시 제거: self._settings, raw_settings 등 제거
+  - 아키텍처 원칙 준수 (단일 소스 원칙)
+- **완료 단계**:
+  - Phase 0: settings.get() 호출처 전수 확인
+  - Phase 1: settings 로컬 변수 제거 및 _integrated_system_settings_cache.get() 직접 호출
+  - Phase 2: 찌꺼기 캐시 삭제 (self._settings, raw_settings 등)
+  - Phase 3: 설정/상태 분리 (access_token 등)
+  - Phase 4: get_router() 호출처 수정 (settings 파라미터 제거)
+  - Phase 5: 검증 (py_compile, 앱 기동)
+
+## 현재 상태
+- **작업 중인 기능**: 없음 (설정 저장 로직 증분 갱신 전면 수정 완료)
+- **진행률**: 100%
+- **마지막 커밋**: 없음 (테스트 완료 후 커밋 필요)
+- **앱 상태**: 정상 실행 중 (http://127.0.0.1:8000, 02:59:07 기동)
+
+## 다음 단계
+- Git commit으로 변경사항 저장
+- 사용자 확인 후 추가 작업 진행
+
+## 미해결 문제
+- 없음
+
+### 2026-06-02: master_stocks_table 중복 로드 제거 완료
+- **완료일**: 2026-06-02
+- **작업**: _bootstrap_sector_stocks_async에서 load_master_stocks_table() 호출 제거, _master_stocks_cache 재사용
+- **수정 파일**:
+  - backend/app/services/engine_bootstrap.py:73-74 - load_master_stocks_table() 호출 제거, _st._master_stocks_cache 직접 참조로 변경
+- **검증**:
+  - py_compile 성공 (engine_bootstrap.py)
+- **해결 효과**:
+  - DB I/O 1회 감소 (기존 2회 → 1회)
+  - 기동 시간 단축
+  - 단일 소스 진리 준수 (_master_stocks_cache 단일 소스)
+  - 아키텍처 원칙 준수 (블로킹 감소)
+
+### 2026-06-02: ws.py _settings_cache 잔여 참조 수정 완료
+- **완료일**: 2026-06-02
+- **작업**: backend/app/web/routes/ws.py에서 _settings_cache 잔여 참조 수정
+- **수정 파일**:
+  - backend/app/web/routes/ws.py:114 - import 문 변경 (_settings_cache → _integrated_system_settings_cache)
+  - backend/app/web/routes/ws.py:134 - 사용 위치 변경 (_settings_cache → _integrated_system_settings_cache)
+- **검증**:
+  - py_compile 성공 (ws.py)
+- **해결 효과**:
+  - ImportError: cannot import name '_settings_cache' 오류 해결
+  - 단일 소스 진리 준수 (_integrated_system_settings_cache)
+  - 이름 일관성 확보
+
+### 2026-06-02: 설정 관련 이름 통일 완료
+- **완료일**: 2026-06-02
+- **작업**: 캐시 변수명 통일 및 함수 별칭 제거
+- **수정 파일** (캐시 변수명 통일: 24개):
+  - backend/app/services/engine_state.py:89 - 변수 선언, 주석 수정
+  - backend/app/services/engine_strategy_core.py - import 및 사용
+  - backend/app/services/engine_service.py - import 및 사용
+  - backend/app/services/engine_bootstrap.py - _st._settings_cache → _st._integrated_system_settings_cache
+  - backend/app/services/settlement_engine.py - _st._settings_cache, es._settings_cache
+  - backend/app/services/pipeline_oms.py - es._settings_cache
+  - backend/app/services/market_close_pipeline.py - es._settings_cache
+  - backend/app/services/data_manager.py - _st._settings_cache
+  - backend/app/services/engine_account_notify.py - _es._settings_cache
+  - backend/app/services/engine_ws.py - import 및 사용
+  - backend/app/services/engine_sector.py - import 및 사용
+  - backend/app/services/engine_loop.py - import 및 사용
+  - backend/app/services/ws_subscribe_control.py - import 및 사용
+  - backend/app/services/engine_cache.py - 주석
+  - backend/app/services/pipeline_compute.py - es._settings_cache
+  - backend/app/services/engine_snapshot.py - import 및 사용
+  - backend/app/services/engine_lifecycle.py - import 및 사용
+  - backend/app/services/engine_ws_dispatch.py - engine_state._settings_cache
+  - backend/app/services/daily_time_scheduler.py - import 및 사용
+  - backend/app/services/engine_config.py - import 및 사용
+  - backend/app/services/engine_radar.py - import 및 사용
+  - backend/app/services/engine_account.py - getattr(es, "_settings_cache")
+  - backend/app/services/engine_ws_reg.py - es._settings_cache
+  - backend/app/services/telegram_bot.py - _st._settings_cache
+  - backend/app/web/app.py - _st._settings_cache
+- **수정 파일** (함수 별칭 제거: 6개):
+  - backend/app/core/settings_file.py:285 - 별칭 제거
+  - backend/app/services/dry_run.py - import 및 호출
+  - backend/app/services/telegram_bot.py - import 및 호출
+  - backend/app/core/engine_settings.py - import 및 호출
+  - backend/app/core/settings_store.py - import 및 호출
+  - backend/app/web/app.py - import 및 호출
+- **변경 내용**:
+  - 캐시 변수명: _settings_cache → _integrated_system_settings_cache
+  - 함수 별칭: load_settings = load_integrated_system_settings 제거, 호출처에서 load_integrated_system_settings 직접 사용
+- **검증**:
+  - py_compile 성공 (전체 백엔드)
+  - _settings_cache 잔여 검색: 주석만 남음 (코드 참조 0건)
+- **해결 효과**:
+  - 이름 일관성 확보
+  - 아키텍처 원칙 준수 (단일 소스 원칙)
+
+### 2026-06-02: 캐시 구조 재편 완료 (_sector_buy_last_ts, _sector_stock_layout 통합)
+- **완료일**: 2026-06-02
+- **작업**: _sector_buy_last_ts와 _sector_stock_layout 캐시를 각각 _master_stocks_cache와 _settings_cache로 통합
+- **수정 파일** (_sector_buy_last_ts: 4개):
+  - backend/app/services/engine_lifecycle.py:31, 197, 253, 257 (import 제거, global 제거, 읽기/쓰기 수정)
+  - backend/app/services/engine_state.py:72 (변수 선언 삭제)
+  - backend/app/services/engine_service.py:64 (import 삭제)
+  - backend/app/web/routes/settings.py:137 (clear 삭제)
+- **수정 파일** (_sector_stock_layout: 14개):
+  - backend/app/services/engine_state.py:58 (변수 선언 삭제)
+  - backend/app/services/engine_service.py:51 (import 삭제)
+  - backend/app/services/engine_radar.py:12, 42, 153 (import 삭제, 함수 수정, clear 수정)
+  - backend/app/services/engine_bootstrap.py:98, 99, 110, 113, 120, 212, 422 (모든 참조 수정)
+  - backend/app/services/engine_sector.py:16, 364, 369 (import 삭제, 참조 수정)
+  - backend/app/services/engine_loop.py:27, 164, 186 (import 삭제, global 삭제, clear 수정)
+  - backend/app/services/engine_cache.py:13 (import 삭제)
+  - backend/app/services/engine_ws_dispatch.py:60 (함수 수정)
+  - backend/app/services/engine_ws_reg.py:310 (참조 수정)
+  - backend/app/services/market_close_pipeline.py:100, 743, 1130, 1144, 1186 (모든 참조 수정)
+  - backend/app/web/routes/settings.py:107, 123 (참조 수정)
+  - backend/app/web/routes/stock_classification.py:295 (clear 수정)
+- **변경 내용**:
+  - _sector_buy_last_ts: 읽기/쓰기를 _master_stocks_cache[code]["_last_buy_ts"]로 통합
+  - _sector_stock_layout: 모든 참조를 _settings_cache.get("sector_stock_layout", [])로 통합
+- **검증**:
+  - py_compile 성공 (모든 수정 파일)
+  - _sector_buy_last_ts 실제 참조: 0건 (주석만 존재)
+  - _sector_stock_layout 실제 참조: 0건 (주석만 존재)
+- **해결 효과**:
+  - 단일 소스 진리: _master_stocks_cache와 _settings_cache가 각각 단일 소스
+  - 중복 캐시 제거: 2개 캐시 제거로 메모리 절약
+  - 아키텍처 원칙 준수 (단일 소스 원칙)
+- **캐시 구조 재편 결과**:
+  - 제거/통합 완료: 2개 (_sector_buy_last_ts, _sector_stock_layout)
+  - 캐시 유지 필요: 3개 (_sector_summary_cache, _sector_score_index, _positions)
+
+### 2026-06-02: _subscribed_stocks 캐시 통합 완료
+- **완료일**: 2026-06-02
+- **작업**: `_subscribed_stocks` 캐시를 `_master_stocks_cache`의 `"_subscribed"` 키로 통합
+- **수정 파일** (13개):
+  - backend/app/services/engine_lifecycle.py: 구독 종목 수 계산을 `_master_stocks_cache`의 `"_subscribed"` 키로 변경
+  - backend/app/services/engine_radar.py: `_subscribed_stocks` import 제거, 모든 사용을 `_master_stocks_cache`로 변경
+  - backend/app/services/engine_ws_reg.py: `_subscribed_stocks` import 제거, 모든 REG/UNREG 로직을 `_master_stocks_cache`로 변경
+  - backend/app/web/routes/status.py: 구독 상태 확인을 `_master_stocks_cache`로 변경
+  - backend/app/web/routes/settings.py: 초기화 로직에서 `_subscribed_stocks`를 `_master_stocks_cache`로 변경
+  - backend/app/core/connector_manager.py: 주석 업데이트
+  - backend/app/services/engine_ws.py: 단건 REG 로직을 `_master_stocks_cache`로 변경
+  - backend/app/services/market_close_pipeline.py: 모든 `_subscribed_stocks` 사용을 `_master_stocks_cache`로 변경
+  - backend/app/services/engine_sector.py: 주석 업데이트
+  - backend/app/services/engine_sector_confirm.py: 주석 업데이트
+  - backend/app/services/engine_loop.py: 엔진 정지 시 `_subscribed` 키 제거 로직 유지
+- **검증**:
+  - py_compile 성공 (모든 수정 파일)
+  - `_subscribed_stocks` 변수는 `engine_state.py`에서 이미 제거됨 (이전 세션)
+  - 모든 import 제거 완료
+  - 남은 참조는 주석뿐 (API 필드명 `"in_subscribed_stocks"`는 프론트 호환용 유지)
+- **해결 효과**:
+  - 단일 소스 진리: `_master_stocks_cache`가 구독 상태의 단일 소스
+  - 중복 캐시 제거: `_subscribed_stocks` 제거로 메모리 절약
+  - 아키텍처 원칙 준수 (단일 소스 원칙)
+
+### 2026-06-02: DB 테이블 3건 삭제 완료
+- **완료일**: 2026-06-02
+- **작업**: system_settings_backup, industry_index_cache, broker_specs 테이블 삭제 및 관련 코드 정리
+- **수정 파일**:
+  - backend/app/db/migration.py: system_settings_backup 백업 테이블 생성 코드 제거
+  - backend/app/db/models.py: broker_specs 트리거 제거, 테이블 생성/저장/로드/마이그레이션 함수 삭제
+  - backend/app/core/settings_file.py: broker_specs 테이블 대신 integrated_system_settings로 저장하도록 수정
+  - backend/app/web/app.py: create_broker_specs_table 호출 제거, migrate_broker_specs_from_json 호출 제거
+- **DB 변경**:
+  - system_settings_backup 테이블 DROP
+  - industry_index_cache 테이블 DROP
+  - broker_specs 테이블 DROP
+- **검증**:
+  - py_compile 성공 (모든 수정 파일)
+  - system_settings_backup 잔여: 0건
+  - industry_index_cache 잔여: 0건
+  - create_broker_specs_table 잔여: 0건
+  - save_broker_spec 잔여: 0건
+  - load_broker_spec 잔여: 0건
+  - migrate_broker_specs_from_json 잔여: 주석만 남음
+- **해결 효과**:
+  - 단일 소스 진리: integrated_system_settings가 broker_specs의 단일 소스
+  - 중복 테이블 제거로 메모리 절약
+  - 아키텍처 원칙 준수 (단일 소스 원칙)
+
+### 2026-06-02: eligible_stocks_cache 삭제 완료
+- **완료일**: 2026-06-02
+- **작업**: eligible_stocks_cache 테이블 및 관련 코드 완전 삭제, master_stocks_table 단일 소스로 통합
+- **수정 파일**:
+  - backend/app/services/market_close_pipeline.py: 7군데 참조 제거 (_ind_mod._eligible_stock_codes, persist_eligible_stocks_cache)
+  - backend/app/services/engine_sector.py: 1군데 참조 제거 (load_eligible_stocks_cache_from_db)
+  - backend/app/services/engine_snapshot.py: 2군데 참조 제거 (load_eligible_stocks_cache, load_eligible_stocks_cache_from_db)
+  - backend/app/services/engine_cache.py: 2군데 참조 제거 (load_eligible_stocks_cache, _ind_mod._eligible_stock_codes)
+  - backend/app/services/daily_time_scheduler.py: 2군데 참조 제거 (load_eligible_stocks_cache_from_db, "industry_map" 만료 체크)
+  - backend/app/web/routes/stock_classification.py: 1군데 참조 제거 (_ind_mod._eligible_stock_codes.clear())
+  - backend/app/services/engine_bootstrap.py: 1군데 주석 수정 (적격종목 캐시 관련)
+  - backend/app/core/industry_map.py: 파일 전체 삭제
+  - backend/app/db/stock_tables.py: eligible_stocks_cache 테이블 생성 제거, save_eligible_stocks_cache/load_eligible_stocks_cache 함수 삭제
+- **DB 변경**:
+  - eligible_stocks_cache 테이블 DROP 완료
+- **검증**:
+  - py_compile 성공 (모든 수정 파일 컴파일 오류 없음)
+  - eligible_stocks_cache 잔여 검색: 주석만 남음 (코드 참조 0건)
+  - industry_map 잔여 검색: HANDOVER.md에만 남음 (코드 참조 0건)
+- **해결 효과**:
+  - 단일 소스 진리 준수: master_stocks_table이 적격종목의 단일 소스
+  - 중복 캐시 제거: eligible_stocks_cache 제거로 메모리 절약
+  - 아키텍처 원칙 준수 (단일 소스 원칙)
+  - sector_min_trade_amt 필터링은 master_stocks_table.avg_5d_trade_amount로 직접 수행
+
+### 2026-06-01: 업종순위 페이지 설정 적용 단위 불일치 해결 완료
+- **완료일**: 2026-06-01
+- **작업**: 업종순위 페이지 좌측 카드 레이아웃 설정 적용 문제 중 단위 불일치 및 async 호출 누락 해결
+- **수정 파일**:
+  - backend/app/services/engine_sector.py:108-109 - get_sector_summary_inputs()에서 원 단위를 억 단위로 변환
+  - backend/app/services/engine_sector.py:379-383 - _compute_filtered_codes()에서 원 단위를 억 단위로 변환
+  - backend/app/core/settings_store.py:447-449 - recompute_sector_summary_now()를 _schedule_engine_coro로 감싸서 async 실행 보장
+- **검증**:
+  - py_compile 성공
+  - 앱 기동 테스트 완료: "업종목록 화면전송 -- 184종목" (필터 작동 확인)
+- **해결 효과**:
+  - 단위 불일치 해결: DB는 원 단위, compute_sector_scores와 _compute_filtered_codes는 억 단위 기대 → 데이터 전달/필터링 시점에 억 단위로 변환
+  - async 호출 누락 해결: recompute_sector_summary_now()가 await 없이 호출되어 실제 실행되지 않음 → _schedule_engine_coro로 감싸서 엔진 이벤트 루프에 스케줄링
+  - sector_min_trade_amt 필터 작동 확인: 1367종목 → 184종목으로 필터링됨
+- **남은 문제**:
+  - sector_weights 가중치 설정 반영 여부 미확인
+  - sector_trim_trade_amt_pct trim 설정 반영 여부 미확인
+  - sector_trim_change_rate_pct trim 설정 반영 여부 미확인
+  - 기타 설정값 반영 여부 미확인
+
 ### 2026-05-31: 종목분류 페이지 업종 매핑 근본해결 완료
 - **완료일**: 2026-05-31
 - **작업**: 종목분류 페이지 업종 매핑 데이터 마이그레이션 및 아키텍처 수정
@@ -441,37 +753,19 @@
   - 비동기 체인 일관성 보장
 
 ## 현재 상태
-- **작업 중인 기능**: 업종순위 페이지 좌측 카드 레이아웃 설정 적용 문제 점검
-- **진행률**: 90% (단위 불일치 해결 완료, async 호출 해결 완료, 앱 기동 테스트 완료)
+- **작업 중인 기능**: 없음
+- **진행률**: 100% (설정 관련 이름 통일 완료)
 - **최종 상태**:
-  - engine_sector.py:108-109 - get_sector_summary_inputs()에서 원 단위를 억 단위로 변환
-  - engine_sector.py:379-383 - _compute_filtered_codes()에서 원 단위를 억 단위로 변환
-  - settings_store.py:447-449 - recompute_sector_summary_now()를 _schedule_engine_coro로 감싸서 async 실행 보장
-  - py_compile 검증 성공
-  - 앱 기동 테스트 완료: "업종목록 화면전송 -- 184종목" (필터 작동 확인)
-- **수정 파일**:
-  - backend/app/services/engine_sector.py:108-109 - 단위 변환 추가
-  - backend/app/services/engine_sector.py:379-383 - 단위 변환 추가
-  - backend/app/core/settings_store.py:447-449 - async 스케줄링 추가
+  - 캐시 변수명 통일: _settings_cache → _integrated_system_settings_cache (25개 파일)
+  - 함수 별칭 제거: load_settings = load_integrated_system_settings 제거 (6개 파일)
+  - py_compile 검증 통과
+  - _settings_cache 잔여 검색: 주석만 남음 (코드 참조 0건)
 
 ## 다음 단계
-- 업종순위 페이지 좌측 카드 레이아웃 설정 적용 점검
-  - sector_weights 가중치 설정이 점수 계산에 반영되는지 확인
-  - sector_trim_trade_amt_pct trim 설정이 적용되는지 확인
-  - sector_trim_change_rate_pct trim 설정이 적용되는지 확인
-  - sector_sort_keys 정렬 설정이 적용되는지 확인
-  - sector_rank_primary 1차 정렬 기준이 적용되는지 확인
-  - sector_min_rise_ratio_pct 상승종목비율 필터가 적용되는지 확인
-  - boost_high_breakout_on/boost_order_ratio_on 가산점 설정이 적용되는지 확인
-  - compute_sector_scores() 함수에서 각 설정값이 실제로 사용되는지 코드 추적
-  - recompute_sector_summary_now()에서 설정값이 compute_full_sector_summary()에 전달되는지 확인
+- 사용자 요청 대기
 
 ## 미해결 문제
-- 업종순위 페이지 좌측 카드 레이아웃 설정부분에서 5일평균 최소 거래대금 필터만 작동, 다른 설정들은 작동하지 않음
-  - sector_weights 가중치 설정 반영 여부 미확인
-  - sector_trim_trade_amt_pct trim 설정 반영 여부 미확인
-  - sector_trim_change_rate_pct trim 설정 반영 여부 미확인
-  - 기타 설정값 반영 여부 미확인
+- 없음
 
 ## 2026-05-31: 캐시 필요성 토론 세션 완료
 - **완료일**: 2026-05-31

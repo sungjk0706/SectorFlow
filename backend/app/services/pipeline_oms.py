@@ -142,8 +142,7 @@ async def _reconciliation_on_startup(
         from backend.app.services.data_manager import get_account_profit_rate
         from backend.app.services.engine_account_rest import parse_kt00018_balance
 
-        settings = es._get_settings()
-        access_token = settings.get("access_token")
+        access_token = es._access_token
 
         if not access_token:
             logger.warning("[OMS] Reconciliation 실패 - access_token 없음")
@@ -292,8 +291,7 @@ async def _execute_buy_order(
         # trading.py의 AutoTradeManager.execute_buy 호출
         from backend.app.services.trading import AutoTradeManager
 
-        settings = es._get_settings()
-        access_token = settings.get("access_token")
+        access_token = es._access_token
 
         # AutoTradeManager 인스턴스 생성 (기존 방식 유지)
         auto_trade = AutoTradeManager(
@@ -420,8 +418,7 @@ async def _execute_sell_order(
         from backend.app.services.trading import AutoTradeManager
         from backend.app.services.data_manager import get_stock_name
 
-        settings = es._get_settings()
-        access_token = settings.get("access_token")
+        access_token = es._access_token
 
         # AutoTradeManager 인스턴스 생성
         auto_trade = AutoTradeManager(
@@ -502,7 +499,7 @@ async def _trigger_circuit_breaker_open_safety(
         # 1. _shared_lock 획득
         async with es._shared_lock:
             # 2. 마스터 스위치 강제 OFF
-            es._settings_cache["time_scheduler_on"] = False
+            es._integrated_system_settings_cache["time_scheduler_on"] = False
             logger.error("[OMS] Circuit Breaker OPEN - 마스터 스위치 강제 OFF (time_scheduler_on=False)")
 
             # 3. order_queue 플러시

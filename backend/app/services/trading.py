@@ -232,7 +232,7 @@ class AutoTradeManager:
             )
             await dry_run.set_stock_name(stk_cd, stk_nm)
         else:
-            res = get_router(base_settings).order.send_order(base_settings, access_token, "BUY", stk_cd, buy_qty, int(order_price), trde_tp)
+            res = get_router().order.send_order(base_settings, access_token, "BUY", stk_cd, buy_qty, int(order_price), trde_tp)
 
         if not (res and res.get("success")):
             self._buy_state[stk_cd]["has_open_buy"] = False
@@ -373,7 +373,7 @@ class AutoTradeManager:
                 base_settings, access_token, "SELL", stk_cd, qty, _dry_sell_price, trde_tp,
             )
         else:
-            result = get_router(base_settings).order.send_order(base_settings, access_token, "SELL", stk_cd, qty, int(order_price), trde_tp)
+            result = get_router().order.send_order(base_settings, access_token, "SELL", stk_cd, qty, int(order_price), trde_tp)
 
         if not result.get("success"):
             self._recent_sells.discard(stk_cd)

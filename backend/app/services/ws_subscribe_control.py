@@ -18,9 +18,8 @@ import asyncio
 
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import (
-    _settings_cache,
+    _integrated_system_settings_cache,
     _ws_account_subscribed,
-    _subscribed_stocks,
     _connector_manager,
     _login_ok,
     _kiwoom_connector,
@@ -96,7 +95,7 @@ async def _ensure_account_subscription() -> None:
     테스트모드에서는 계좌 구독 안 함.
     """
     from backend.app.core.trade_mode import is_test_mode
-    if is_test_mode(_settings_cache):
+    if is_test_mode(_integrated_system_settings_cache):
         return
 
     # 이미 구독 중이면 no-op (멱등)
@@ -184,7 +183,7 @@ async def run_conditional_reg_pipeline() -> None:
     from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
     import backend.app.services.engine_state as _st
 
-    settings = _st._settings_cache or {}
+    settings = _st._integrated_system_settings_cache or {}
 
     if not await is_ws_subscribe_window(settings):
         logger.debug("[구독제어] 실시간 구독 구간 외 — REG 파이프라인 생략")
@@ -220,7 +219,9 @@ async def cleanup_stale_subscriptions() -> None:
 
     # 서버 측 구독은 다음 REG의 refresh='0'(reset_first=True)이 덮어씀.
     # REMOVE ACK 대기 없이 인메모리 상태만 초기화 — 장외 시간 90초 지연 응답으로 인한 이벤트 오염 방지.
-    _subscribed_stocks.clear()
+    from backend.app.services.engine_state import _master_stocks_cache
+    for entry in _master_stocks_cache.values():
+        entry.pop("_subscribed", None)
     _set_status(quote=False)
     logger.debug("[구독제어] 잔존 구독 정리 완료 — 전체 OFF (인메모리 초기화, 서버 측은 다음 REG refresh=0으로 덮어씀)")
 
@@ -238,7 +239,7 @@ async def on_setting_changed(key: str, value: bool) -> None:
     from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
     import backend.app.services.engine_state as _st
 
-    settings = _st._settings_cache or {}
+    settings = _st._integrated_system_settings_cache or {}
 
     if not await is_ws_subscribe_window(settings):
         logger.info(

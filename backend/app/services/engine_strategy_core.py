@@ -20,7 +20,7 @@ from backend.app.services.engine_state import (
     _access_token,
     _shared_lock,
     # _radar_cnsr_order 삭제
-    _settings_cache,
+    _integrated_system_settings_cache,
     _kiwoom_connector,
     _login_ok,
     _positions,
@@ -98,7 +98,7 @@ async def run_snapshot_and_sell_check(force_rest: bool) -> None:
     """
     try:
         from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
-        in_window = await is_ws_subscribe_window(_settings_cache)
+        in_window = await is_ws_subscribe_window(_integrated_system_settings_cache)
         ws_ok = bool(_kiwoom_connector and _kiwoom_connector.is_connected() and _login_ok)
         # 장중(구독 구간)이면 force_rest여도 REST 생략 -- 실시간 데이터 우선
         if in_window and not force_rest:
@@ -107,7 +107,7 @@ async def run_snapshot_and_sell_check(force_rest: bool) -> None:
         elif not in_window or force_rest:
             if not _account_rest_bootstrapped or not ws_ok or force_rest:
                 if _update_account_memory:
-                    await _update_account_memory(_settings_cache)
+                    await _update_account_memory(_integrated_system_settings_cache)
             else:
                 if _refresh_account_snapshot_meta:
                     await _refresh_account_snapshot_meta()
@@ -116,31 +116,32 @@ async def run_snapshot_and_sell_check(force_rest: bool) -> None:
             if cd and int(s.get("qty", 0)) > 0:
                 _checked_stocks.add(cd)
         # 테스트모드: dry_run 가상 잔고 기준으로 매도 조건 검사
-        _sell_positions = await dry_run.get_positions() if is_test_mode(_settings_cache) else _positions
+        _sell_positions = await dry_run.get_positions() if is_test_mode(_integrated_system_settings_cache) else _positions
         # _checked_stocks를 현재 보유 종목 기준으로 재구성 -- 매도 완료 종목 제거 반영
         _live_codes: set[str] = set()
-        for s in (await dry_run.get_positions() if is_test_mode(_settings_cache) else _positions):
+        for s in (await dry_run.get_positions() if is_test_mode(_integrated_system_settings_cache) else _positions):
             cd = str(s.get("stk_cd", "")).strip()
             if cd and int(s.get("qty", 0)) > 0:
                 _live_codes.add(cd)
-        if is_test_mode(_settings_cache):
+        if is_test_mode(_integrated_system_settings_cache):
             for cd in await dry_run.position_codes():
                 _live_codes.add(cd)
         _checked_stocks.clear()
         _checked_stocks.update(_live_codes)
-        if _sell_positions and _auto_trade and auto_sell_effective(_settings_cache) and _access_token:
-            await _auto_trade.check_sell_conditions(_sell_positions, _settings_cache, _access_token)
+        if _sell_positions and _auto_trade and auto_sell_effective(_integrated_system_settings_cache) and _access_token:
+            await _auto_trade.check_sell_conditions(_sell_positions, _integrated_system_settings_cache, _access_token)
     except Exception as e:
         logger.warning("[데이터] 처리 중 오류: %s", e)
 
 
-def check_test_buy_power(settings: dict, price: int, qty: int, daily_spent: int) -> tuple[bool, str]:
+def check_test_buy_power(price: int, qty: int, daily_spent: int) -> tuple[bool, str]:
     """
     테스트모드: 매수 전 예수금 검증.
     Settlement Engine의 check_buy_power를 호출하여 매수 가능 여부를 확인한다.
     반환: (ok, reason) -- ok=False이면 매수 거부 사유를 reason에 포함.
     """
     order_amount = price * qty
-    daily_limit = int(settings.get("max_daily_total_buy_amt", 0) or 0)
+    from backend.app.services.engine_state import _integrated_system_settings_cache
+    daily_limit = int(_integrated_system_settings_cache.get("max_daily_total_buy_amt", 0) or 0)
     ok, reason = settlement_engine.check_buy_power(order_amount, daily_limit, daily_spent)
     return ok, reason

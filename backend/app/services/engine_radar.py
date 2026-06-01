@@ -8,15 +8,14 @@
 import asyncio
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import (
-    # _radar_cnsr_order 삭제: _subscribed_stocks + _master_stocks_cache로 대체
-    _sector_stock_layout,
+    # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed" 사용
+    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_prices, _latest_trade_amounts, _rest_radar_quote_cache)
     _shared_lock,
-    _subscribed_stocks,
     # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
-    _rest_radar_rest_once,
+    # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
     _checked_stocks,
-    _settings_cache,
+    _integrated_system_settings_cache,
     _positions,
 )
 
@@ -27,20 +26,21 @@ logger = get_logger("engine_radar")
 
 def get_pending_stocks() -> list:
     """활성 상태의 종목 목록 반환."""
-    # _radar_cnsr_order 삭제: _subscribed_stocks + _master_stocks_cache로 대체
+    # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed" 사용
     from backend.app.services.engine_state import _master_stocks_cache
     result = []
-    for cd in _subscribed_stocks:
-        if cd in _master_stocks_cache:
-            stock = _master_stocks_cache[cd].copy()
-            stock["status"] = "active"  # _subscribed_stocks에 있으면 active
+    for cd, entry in _master_stocks_cache.items():
+        if entry.get("_subscribed", False):
+            stock = entry.copy()
+            stock["status"] = "active"  # _subscribed 키가 있으면 active
             result.append(stock)
     return result
 
 
 def get_sector_stock_layout() -> list[tuple[str, str]]:
     """업종 종목 레이아웃 반환."""
-    return list(_sector_stock_layout)
+    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
+    return list(_integrated_system_settings_cache.get("sector_stock_layout", []))
 
 
 def get_avg_amt_5d_map() -> dict[str, int]:
@@ -96,21 +96,23 @@ async def _apply_real01_volume_amount_to_radar_rows(raw_cd: str, vals: dict, *, 
 async def _mark_radar_exited(stk_cd: str) -> None:
     """
     레이더 목록에서 종목 제거.
-    _radar_cnsr_order 삭제: _subscribed_stocks에서만 제거
+    _radar_cnsr_order 삭제: _master_stocks_cache에서 "_subscribed" 제거
     """
     from backend.app.services.engine_symbol_utils import _normalize_stk_cd_rest
+    from backend.app.services.engine_state import _master_stocks_cache
 
     nk = _normalize_stk_cd_rest(str(stk_cd).strip().lstrip("A"))
     rm: str | None = None
-    if nk in _subscribed_stocks:
+    if _master_stocks_cache.get(nk, {}).get("_subscribed", False):
         rm = nk
     else:
-        for k in list(_subscribed_stocks):
-            if _normalize_stk_cd_rest(str(k)) == nk:
+        for k, entry in _master_stocks_cache.items():
+            if entry.get("_subscribed", False) and _normalize_stk_cd_rest(str(k)) == nk:
                 rm = k
                 break
     if rm is not None:
-        _subscribed_stocks.discard(rm)
+        if rm in _master_stocks_cache:
+            _master_stocks_cache[rm].pop("_subscribed", None)
         if _clear_radar_rest_bootstrap_for_stk_cd:
             await _clear_radar_rest_bootstrap_for_stk_cd(rm)
         # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
@@ -135,21 +137,25 @@ async def _clear_radar_rest_bootstrap_for_stk_cd(stk_cd: str) -> None:
     nk = _format_broker_reg_stk_cd(str(stk_cd).strip().lstrip("A"))
     if nk:
         # 실시간 틱 데이터 캐시 삭제로 pop 로직 삭제
-        _rest_radar_rest_once.discard(nk)
+        # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
+        pass
 
 
 async def _clear_radar_and_ready_memory() -> None:
     """레이더 및 레디 메모리 초기화."""
     from backend.app.services.engine_account_notify import _rebuild_layout_cache
+    from backend.app.services.engine_state import _master_stocks_cache
 
     async with _shared_lock:
-        # _radar_cnsr_order 삭제: _subscribed_stocks.clear()
-        _subscribed_stocks.clear()
-        _sector_stock_layout.clear()
+        # _radar_cnsr_order 삭제: _master_stocks_cache에서 "_subscribed" 제거
+        for entry in _master_stocks_cache.values():
+            entry.pop("_subscribed", None)
+        # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
+        _integrated_system_settings_cache["sector_stock_layout"] = []
         # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_rest_radar_quote_cache)
-    _rebuild_layout_cache(_sector_stock_layout)
+    _rebuild_layout_cache([])
     _checked_stocks.clear()
-    _rest_radar_rest_once.clear()
+    # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
     # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
 
@@ -161,15 +167,17 @@ async def _tracked_ui_stock_codes() -> set[str]:
     from backend.app.core.trade_mode import is_test_mode
 
     out: set[str] = set()
-    pos = await dry_run.get_positions() if is_test_mode(_settings_cache) else list(_positions)
+    pos = await dry_run.get_positions() if is_test_mode(_integrated_system_settings_cache) else list(_positions)
     for p in pos:
         if int(p.get("qty", 0) or 0) > 0:
             c = _format_broker_reg_stk_cd(str(p.get("stk_cd", "") or ""))
             if c:
                 out.add(c)
-    # _radar_cnsr_order 삭제: _subscribed_stocks 사용
-    for k in _subscribed_stocks:
-        c = _format_broker_reg_stk_cd(str(k))
-        if c:
-            out.add(c)
+    # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed" 사용
+    from backend.app.services.engine_state import _master_stocks_cache
+    for k, entry in _master_stocks_cache.items():
+        if entry.get("_subscribed", False):
+            c = _format_broker_reg_stk_cd(str(k))
+            if c:
+                out.add(c)
     return out

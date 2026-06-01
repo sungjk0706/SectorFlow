@@ -55,24 +55,21 @@ _account_rest_lock: asyncio.Lock | None = None
 
 # ── 데이터 캐시 ────────────────────────────────────────────────────────
 # _radar_cnsr_order 삭제
-_sector_stock_layout: list[tuple[str, str]] = []
+# _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
 # _avg_amt_5d 제거: _master_stocks_cache에서 직접 사용
 # _amts_5d_arrays, _highs_5d_arrays 제거: stock_5d_array 테이블에서 직접 읽도록 대체
-_subscribed_0d_stocks: set[str] = set()
 # 실시간 틱 데이터 캐시 삭제 (_latest_trade_prices, _latest_trade_amounts, _latest_strength)
-_filtered_sector_codes: set[str] | None = None
 # 실시간 틱 데이터 캐시 삭제 (_latest_strength)
 # _sector_stocks_cache 제거: _master_stocks_cache 기반 실시간 필터링으로 대체
 # _sector_stocks_dirty 제거
 # _sector_stocks_last_invalidated 제거
 _MIN_CACHE_LIFETIME_SEC: float = 1.0
-_buy_targets_snapshot_cache: list | None = None
+# _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
 _buy_targets_cache_ref: object | None = None
 # 실시간 틱 데이터 캐시 삭제 (_rest_radar_quote_cache)
-_rest_radar_rest_once: set[str] = set()
+# _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
 _sector_summary_cache: "SectorSummary | None" = None  # type: ignore[name-defined]
-_sector_buy_last_ts: dict[str, float] = {}
-_stock_rising_state: dict[str, bool] = {}
+# _sector_buy_last_ts 제거: _master_stocks_cache[code]["_last_buy_ts"]로 통합
 _sector_score_index: dict[str, "SectorScore"] = {}  # type: ignore[name-defined]
 _confirmed_refresh_running: bool = False
 _confirmed_refresh_running_confirmed: bool = False  # 확정시세 다운로드 전용
@@ -89,8 +86,7 @@ _broker_rest_totals: dict = {
 }
 _latest_stock_info: dict = {}
 _auto_trade: AutoTradeManager | None = None
-_settings_cache: dict = {}
-_subscribed_stocks: set[str] = set()
+_integrated_system_settings_cache: dict = {}
 _broker_spec: list = []
 _rest_api: "KiwoomRestAPI | None" = None  # type: ignore[name-defined]
 _account_snapshot: dict = {}
@@ -138,12 +134,10 @@ def _set_realtime_state(state: str) -> None:
     elif state == "LIVE":
         _account_notify._broadcast("realtime-state", {"status": "live"})
 
-def _on_filter_settings_changed() -> None:
+async def _on_filter_settings_changed() -> None:
     """필터 설정 변경 시 처리 (engine_sector 모듈 위임)."""
     from backend.app.services.engine_sector import _on_filter_settings_changed as _sector_on_filter
-    import asyncio
-    loop = asyncio.get_running_loop()
-    loop.create_task(_sector_on_filter())
+    await _sector_on_filter()
 
 def _cancel_price_trace_delayed_task() -> None:
     """호환용 노-op."""
