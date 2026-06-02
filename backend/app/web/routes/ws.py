@@ -28,29 +28,23 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         _trade_mode = settings.get("trade_mode", "")
 
         # 이벤트 구동 방식: 데이터 준비 완료 시 즉시 전송 (타임아웃/폴링 제거)
-        if _trade_mode != "test" and not _data_ready_event.is_set():
+        # 테스트모드와 실전모드 동일하게 데이터 준비 대기 (앱 기동 준비는 돈과 무관)
+        if not _data_ready_event.is_set():
             logger.info("[연결] 데이터 준비 대기 중 -- 초기 스냅샷 전송 지연")
             await _data_ready_event.wait()
             logger.info("[연결] 데이터 준비 완료 -- 초기 스냅샷 전송 시작")
-        elif _trade_mode == "test":
-            logger.info("[연결] 테스트모드 -- 데이터 준비 대기 스킵")
 
         # 앱준비 완료 대기 (이벤트 구동)
+        # 테스트모드와 실전모드 동일하게 앱준비 대기 (앱 기동 준비는 돈과 무관)
         from backend.app.services.engine_service import _bootstrap_event
 
-        settings = await get_settings_snapshot()
-        _trade_mode = settings.get("trade_mode", "")
-
-        # 테스트모드가 아니고 앱준비가 완료되지 않은 경우에만 대기
-        if _trade_mode != "test" and not _bootstrap_event.is_set():
+        if not _bootstrap_event.is_set():
             logger.info("[연결] 앱준비 대기 중 -- 초기 스냅샷 전송 지연")
             await _bootstrap_event.wait()
             logger.info("[연결] 앱준비 완료 -- 초기 스냅샷 전송 시작")
-        elif _trade_mode == "test":
-            logger.info("[연결] 테스트모드 -- 앱준비 대기 스킵")
 
         # 엔진 준비 완료 유니캐스트 전송 (engine-ready)
-        if _bootstrap_event.is_set() or _trade_mode == "test":
+        if _bootstrap_event.is_set():
             await ws_manager.send_to(websocket, "engine-ready", {"_v": 1, "ready": True})
             logger.info("[연결] 엔진 준비 완료 유니캐스트 전송 (engine-ready)")
 

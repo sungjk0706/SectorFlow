@@ -210,7 +210,6 @@ async def run_migration_v3() -> None:
             await conn.execute("DROP TABLE IF EXISTS stock_names")
             await conn.execute("DROP TABLE IF EXISTS market_map")
             await conn.commit()
-            logger.info("[마이그레이션 v3] master_stocks_table 이미 최종 데이터마트 규격에 부합함. 마이그레이션 스킵.")
             
     except Exception as e:
         await conn.rollback()

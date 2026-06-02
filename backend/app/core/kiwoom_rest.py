@@ -242,10 +242,7 @@ class KiwoomRestAPI:
                         )
                     return False
                 self._token_info = TokenInfo(token=token, expires_dt=expires_dt)
-                _log.info(
-                    "[키움증권] 키움증권 접속완료 (au10001) token=%s... expires_dt=%s",
-                    token[:10], expires_dt,
-                )
+                _log.info("[키움증권] 토큰 발급 완료")
                 return True
             except Exception as e:
                 _log.warning("[키움증권] 토큰 요청 예외 (시도=%d): %s", attempt + 1, e)

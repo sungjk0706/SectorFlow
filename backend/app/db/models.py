@@ -2,16 +2,7 @@ from backend.app.db.database import get_db_connection
 import json
 
 # stocks 테이블 삭제 - master_stocks_table로 통합
-
-async def create_sectors_table():
-    """sectors 테이블 생성"""
-    conn = await get_db_connection()
-    await conn.execute("""
-        CREATE TABLE IF NOT EXISTS sectors (
-            name TEXT PRIMARY KEY
-        )
-    """)
-    await conn.commit()
+# sectors 테이블 삭제 - custom_sectors가 원본, master_stocks_table.sector가 파생
 
 async def create_system_settings_table():
     """system_settings 테이블 생성 (통합설정 완성본 - 마이그레이션용 임시)"""

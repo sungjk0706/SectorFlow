@@ -6,7 +6,6 @@ import type {
   AppSettings,
   EngineStatus,
   SnapshotHistory,
-  SectorScoreRow,
 } from '../types'
 
 export interface UIState {
@@ -15,7 +14,6 @@ export interface UIState {
   status: EngineStatus | null
   snapshotHistory: SnapshotHistory[]
   sectorStatus: SectorStatus | null
-  sectorOrder: string[]
   selectedSector: string | null
   positionCount: number
 
@@ -58,7 +56,6 @@ const initialState: UIState = {
   status: null,
   snapshotHistory: [],
   sectorStatus: null,
-  sectorOrder: [],
   selectedSector: null,
   positionCount: 0,
   connected: false,
@@ -210,13 +207,11 @@ export function setSelectedSector(sector: string | null): void {
 
 /* ── initial-snapshot (uiStore): UI 상태 초기화 ── */
 export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
-  const scores = (data.sector_scores as SectorScoreRow[]) ?? []
   uiStore.setState({
     settings: (data.settings as AppSettings) ?? null,
     status: (data.status as EngineStatus) ?? null,
     snapshotHistory: (data.snapshot_history as SnapshotHistory[]) ?? [],
     sectorStatus: (data.sector_status as SectorStatus) ?? null,
-    sectorOrder: scores.map(s => s.sector),
     sectorSummary: (data.sector_summary as Record<string, unknown>) ?? null,
     buyLimitStatus: (data.buy_limit_status as { daily_buy_spent: number }) ?? { daily_buy_spent: 0 },
     wsSubscribeStatus: (data.ws_subscribe_status as { index_subscribed: boolean; quote_subscribed: boolean }) ?? { index_subscribed: false, quote_subscribed: false },

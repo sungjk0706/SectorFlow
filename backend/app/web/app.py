@@ -5,13 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
-from backend.app.di.container import get_container
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +20,6 @@ async def lifespan(app: FastAPI):
     from backend.app.core.logging_config import configure_app_logging
     configure_app_logging()
     
-    container = get_container()
 
     # DB 캐시 테이블 초기화 (가장 먼저 실행)
     from backend.app.db.db_writer import start_db_writer
@@ -56,18 +53,12 @@ async def lifespan(app: FastAPI):
     from backend.app.core.settings_file import load_integrated_system_settings
     settings = await load_integrated_system_settings()
 
-    # settings를 container에 등록
-    container.register_singleton("settings", settings)
 
     # _integrated_system_settings_cache 초기화 (단일 소스 진리 보장)
     import backend.app.services.engine_state as _st
     _st._integrated_system_settings_cache.clear()
     _st._integrated_system_settings_cache.update(settings)
 
-    logger.info("[웹서버] ThreadPoolExecutor 설정 직전")
-    loop = asyncio.get_running_loop()
-    loop.set_default_executor(ThreadPoolExecutor(max_workers=8))
-    logger.info("[웹서버] ThreadPoolExecutor 설정 완료")
 
     logger.info("[웹서버] daily_time_scheduler import 직전")
     from backend.app.services.daily_time_scheduler import start_daily_time_scheduler
@@ -107,13 +98,9 @@ async def lifespan(app: FastAPI):
     # Backend Coalescing 싱글톤 등록
     backend_coalescing = BackendCoalescing.get_instance()
     await backend_coalescing.start()
-    container.register_singleton("backend_coalescing", backend_coalescing)
-    logger.info("[DI Container] backend_coalescing 싱글톤 등록 완료")
     
     # WS Manager 싱글톤 등록
     from backend.app.web.ws_manager import ws_manager
-    container.register_singleton("ws_manager", ws_manager)
-    logger.info("[DI Container] ws_manager 싱글톤 등록 완료")
     
     # 서버 준비 완료 상태 설정 (클라이언트 요청 수신 가능)
     # 웹 서버가 즉시 기동되어 Health Check 등에 응답할 수 있도록 함
