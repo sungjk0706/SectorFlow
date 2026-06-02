@@ -252,14 +252,6 @@ export function bindWSToStore(
       status?: Record<string, unknown>
     }
     applySectorScores(d as unknown as SectorScoresEvent)
-    // sectorOrder (uiStore) 갱신 — 초기 스냅샷 이후에도 순서 유지
-    if (d.scores) {
-      const prev = uiStore.getState().sectorOrder
-      const newOrder = d.scores.map(s => s.sector)
-      if (prev.length !== newOrder.length || prev.some((s, i) => s !== newOrder[i])) {
-        uiStore.setState({ sectorOrder: newOrder })
-      }
-    }
     // sectorScoresDelta (uiStore) 갱신
     uiStore.setState({
       sectorScoresDelta: d.delta

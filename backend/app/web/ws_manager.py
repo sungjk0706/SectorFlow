@@ -131,6 +131,12 @@ class WSManager:
         """클라이언트를 _clients set에 추가."""
         self._clients.add(ws)
         logger.debug("[연결] 클라이언트 연결 (총 %d)", len(self._clients))
+        # 클라이언트 연결 시점 초기 데이터 전송 (타이밍 문제 해결)
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._send_initial_data_on_connect(ws))
+        except RuntimeError:
+            pass
 
     def unregister(self, ws: WebSocket) -> None:
         """클라이언트를 _clients set에서 제거."""
@@ -449,6 +455,24 @@ class WSManager:
             except Exception:
                 logger.debug("[연결] WS 클라이언트 종료 실패", exc_info=True)
         self._clients.clear()
+
+    # ------------------------------------------------------------------
+    # 초기 데이터 전송 (타이밍 문제 해결)
+    # ------------------------------------------------------------------
+
+    async def _send_initial_data_on_connect(self, ws: WebSocket) -> None:
+        """클라이언트 연결 시점 초기 데이터 전송."""
+        try:
+            # buy-targets 초기 데이터 전송
+            import backend.app.services.engine_service as _es
+            targets = _es.get_buy_targets_snapshot()
+            if targets:
+                data = {"buy_targets": targets, "_v": 1}
+                message = json.dumps({"event": "buy-targets-update", "data": data}, ensure_ascii=False)
+                await ws.send_text(message)
+                logger.debug("[연결] buy-targets 초기 데이터 전송 완료 (size=%d bytes)", len(message))
+        except Exception as e:
+            logger.warning("[연결] 초기 데이터 전송 실패: %s", e, exc_info=True)
 
     # ------------------------------------------------------------------
     # 프로퍼티

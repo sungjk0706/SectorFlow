@@ -69,7 +69,7 @@ def resolve_radar_display_name(stk_cd: str, ws_stk_nm: str, access_token) -> str
 
 def make_detail(stk_cd: str, stk_nm: str, cur_price: int,
                  sign: str, change: int, change_rate: float,
-                 prev_close: int = 0, trade_amount: int = 0, strength: str = "-", sector: str = "기타") -> dict:
+                 trade_amount: int = 0, strength: str = "-", sector: str = "기타") -> dict:
     """대기 종목 상세 딕셔너리 생성 헬퍼."""
     return {
         "code":        stk_cd,
@@ -78,7 +78,6 @@ def make_detail(stk_cd: str, stk_nm: str, cur_price: int,
         "sign":        sign,        # "1"상한 "2"상승 "3"보합 "4"하한 "5"하락
         "change":      change,
         "change_rate": change_rate,
-        "prev_close":  prev_close,
         "trade_amount": trade_amount,
         "strength":    str(strength or "-"),
         "sector":      sector,

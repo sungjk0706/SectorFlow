@@ -108,10 +108,10 @@ async def fetch_ka10081_daily_price(
             return None
 
         change_raw = _si_signed(latest.get("pred_pre") or 0)
-        # 전일종가 = 현재가 - 전일대비
-        prev_close = close_px - change_raw
-        if prev_close > 0:
-            change_rate = round((change_raw / prev_close) * 100, 2)
+        # 등락률 = 전일대비 / (현재가 - 전일대비) × 100
+        prev_close_calc = close_px - change_raw
+        if prev_close_calc > 0:
+            change_rate = round((change_raw / prev_close_calc) * 100, 2)
         else:
             change_rate = 0.0
             
@@ -121,7 +121,7 @@ async def fetch_ka10081_daily_price(
         elif change_raw < 0:
             sign = "5"
 
-        trade_amt = _si(latest.get("trde_prica") or 0) * 1_000_000
+        trade_amt = _si(latest.get("trde_prica") or 0)  # 백만원 단위
         high_price = _si(latest.get("high_pric") or 0)
 
         return {
@@ -131,7 +131,6 @@ async def fetch_ka10081_daily_price(
             "change_rate": change_rate,
             "trade_amount": trade_amt,
             "high_price": high_price,
-            "prev_close": prev_close,
         }
     except Exception as e:
         _log.warning("[ka10081] 파싱 예외 %s/%s: %s", log_cd, api_cd, e)
@@ -196,12 +195,9 @@ async def fetch_ka10081_daily_5d_data(
 
         # 5일 고가/거래대금 추출
         highs_5d = [_si(r.get("high_pric") or 0) for r in recent_5]
-        amts_5d_raw = [_si(r.get("trde_prica") or 0) for r in recent_5]  # 백만원 단위
-        amts_5d = [amt * 1_000_000 for amt in amts_5d_raw]  # 원단위 변환
+        amts_5d = [_si(r.get("trde_prica") or 0) for r in recent_5]  # 백만원 단위
 
         high_price_5d = max(highs_5d) if highs_5d else 0
-        # 5일 평균 거래대금: 억원 단위로 저장 (원 ÷ 1억)
-        avg_amt_5d = sum(amts_5d) // 5 // 100_000_000 if amts_5d else 0
 
         return {
             "amts_5d_array": amts_5d,
@@ -238,7 +234,7 @@ async def fetch_ka10081_all_stocks_daily_confirmed(
         conn = await get_db_connection()
         for code in resume_codes:
             cursor = await conn.execute(
-                "SELECT code, name, market, sector, cur_price, change, change_rate, trade_amount, high_price, prev_close, date "
+                "SELECT code, name, market, sector, cur_price, change, change_rate, trade_amount, high_price, date "
                 "FROM master_stocks_table WHERE code = ? AND date = ?",
                 (code, qry_dt)
             )
@@ -254,7 +250,6 @@ async def fetch_ka10081_all_stocks_daily_confirmed(
                     "change_rate": row["change_rate"],
                     "trade_amount": row["trade_amount"],
                     "high_price": row["high_price"],
-                    "prev_close": row["prev_close"],
                     "date": row["date"],
                 }
         # 다운로드 대상에서 완료된 종목 제외
@@ -265,6 +260,7 @@ async def fetch_ka10081_all_stocks_daily_confirmed(
 
     pending = set()
     done_count = len(result)
+    downloaded_at_codes: list[str] = []
 
     async def _handle_done_tasks(done_tasks):
         nonlocal done_count
@@ -278,16 +274,7 @@ async def fetch_ka10081_all_stocks_daily_confirmed(
 
             if detail:
                 result[cd_val] = detail
-                # downloaded_at 업데이트
-                try:
-                    conn = await get_db_connection()
-                    await conn.execute(
-                        "UPDATE master_stocks_table SET downloaded_at = datetime('now') WHERE code = ?",
-                        (cd_val,)
-                    )
-                    await conn.commit()
-                except Exception as e:
-                    _log.warning("[ka10081-confirmed] downloaded_at 업데이트 실패 %s: %s", cd_val, e)
+                downloaded_at_codes.append(cd_val)
             else:
                 failed_codes.append(cd_val)
 
@@ -325,6 +312,17 @@ async def fetch_ka10081_all_stocks_daily_confirmed(
 
     if on_progress:
         on_progress(total, total)
+
+    if downloaded_at_codes:
+        try:
+            conn = await get_db_connection()
+            await conn.executemany(
+                "UPDATE master_stocks_table SET downloaded_at = datetime('now') WHERE code = ?",
+                [(cd,) for cd in downloaded_at_codes]
+            )
+            await conn.commit()
+        except Exception as e:
+            _log.warning("[ka10081-confirmed] downloaded_at 배치 업데이트 실패: %s", e)
 
     if failed_codes:
         _log.warning("[ka10081-confirmed] 실패 종목 %d개: %s", len(failed_codes), failed_codes)
@@ -382,6 +380,7 @@ async def fetch_ka10081_all_stocks_5day(
 
     pending = set()
     done_count = len(result)
+    downloaded_at_codes: list[str] = []
 
     async def _handle_done_tasks(done_tasks):
         nonlocal done_count
@@ -395,16 +394,7 @@ async def fetch_ka10081_all_stocks_5day(
 
             if detail:
                 result[cd_val] = detail
-                # downloaded_at 업데이트
-                try:
-                    conn = await get_db_connection()
-                    await conn.execute(
-                        "UPDATE master_stocks_table SET downloaded_at = datetime('now') WHERE code = ?",
-                        (cd_val,)
-                    )
-                    await conn.commit()
-                except Exception as e:
-                    _log.warning("[ka10081-5d] downloaded_at 업데이트 실패 %s: %s", cd_val, e)
+                downloaded_at_codes.append(cd_val)
             else:
                 failed_codes.append(cd_val)
 
@@ -442,6 +432,17 @@ async def fetch_ka10081_all_stocks_5day(
 
     if on_progress:
         on_progress(total, total)
+
+    if downloaded_at_codes:
+        try:
+            conn = await get_db_connection()
+            await conn.executemany(
+                "UPDATE master_stocks_table SET downloaded_at = datetime('now') WHERE code = ?",
+                [(cd,) for cd in downloaded_at_codes]
+            )
+            await conn.commit()
+        except Exception as e:
+            _log.warning("[ka10081-5d] downloaded_at 배치 업데이트 실패: %s", e)
 
     if failed_codes:
         _log.warning("[ka10081-5d] 실패 종목 %d개: %s", len(failed_codes), failed_codes)

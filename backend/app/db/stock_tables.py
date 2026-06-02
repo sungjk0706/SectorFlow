@@ -261,9 +261,9 @@ async def create_master_stocks_table():
             cur_price REAL,
             change REAL,
             change_rate REAL,
-            trade_amount REAL,
+            trade_amount REAL,  -- 백만원 단위
             high_price REAL,
-            avg_5d_trade_amount INTEGER,
+            avg_5d_trade_amount INTEGER,  -- 백만원 단위
             high_5d_price REAL,
             date TEXT,
             nxt_enable INTEGER DEFAULT 0
@@ -293,7 +293,7 @@ async def migrate_add_high_price_column():
         await conn.commit()
         _log.info("[마이그레이션] master_stocks_table에 high_price 컬럼 추가 완료")
     else:
-        _log.info("[마이그레이션] high_price 컬럼 이미 존재 - 스킵")
+        pass
 
 
 async def migrate_add_nxt_enable_column():
@@ -401,11 +401,11 @@ async def create_stock_5d_array_table():
         CREATE TABLE IF NOT EXISTS stock_5d_array (
             code TEXT,
             date TEXT,
-            day1_amount REAL,
-            day2_amount REAL,
-            day3_amount REAL,
-            day4_amount REAL,
-            day5_amount REAL,
+            day1_amount REAL,  -- 백만원 단위
+            day2_amount REAL,  -- 백만원 단위
+            day3_amount REAL,  -- 백만원 단위
+            day4_amount REAL,  -- 백만원 단위
+            day5_amount REAL,  -- 백만원 단위
             day1_high REAL,
             day2_high REAL,
             day3_high REAL,
@@ -446,7 +446,6 @@ async def load_master_stocks_table() -> dict[str, dict]:
                 "trade_amount": float(r["trade_amount"] or 0),
                 "avg_5d_trade_amount": int(r["avg_5d_trade_amount"] or 0),
                 "high_price": float(r["high_5d_price"] or 0),
-                "prev_close": float(r["cur_price"] or 0) - float(r["change"] or 0),
                 "volume": 0,
                 "sector": sector,
                 "status": "active"

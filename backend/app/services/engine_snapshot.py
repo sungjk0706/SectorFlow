@@ -15,6 +15,7 @@ from backend.app.services.engine_state import (
     _bootstrap_event,
     _preboot_cache_loaded,
     _shared_lock,
+    _master_stocks_cache,
     # _pending_stock_details 제거
     # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_amounts, _latest_trade_prices, _latest_strength, _rest_radar_quote_cache, _orderbook_cache)
     # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
@@ -231,7 +232,7 @@ async def _reset_realtime_fields() -> None:
             pass  # import 실패 시 무시
     logger.info(
         "[데이터] 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료 -- %d종목, 실시간/REST 저장데이터 전체 클리어",
-        count,
+        len(_master_stocks_cache),
     )
     _prev_sector_stock_codes.clear()
     await notify_desktop_sector_stocks_refresh()

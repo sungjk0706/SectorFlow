@@ -109,7 +109,7 @@ async def _get_all_tokens_async(router) -> None:
             token = await asyncio.to_thread(auth_provider.get_access_token)
             from backend.app.core.broker_registry import BROKER_DISPLAY_NAMES
             disp = BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper())
-            logger.info("[연결] %s 접속 완료", disp)
+            logger.info("[연결] %s 토큰 발급 완료", disp)
             return broker_id, token
         except Exception as e:
             logger.warning("[연결] %s 토큰 발급 실패: %s", broker_id.upper(), e, exc_info=True)
@@ -289,7 +289,7 @@ async def run_engine_loop() -> None:
                 elif tr == "ka00001":
                     _rest_api._account_tr_id = tr
             from backend.app.services.engine_service import _log
-            _log(f"[연결] 증권사 REST API 인스턴스 연결 완료 (테스트모드={_is_test}, 토큰 단일 캐시)")
+            _log(f"[연결] {broker_nm} 증권사 연결 완료 (테스트모드={_is_test})")
 
 
 
@@ -317,7 +317,7 @@ async def run_engine_loop() -> None:
                 try:
                     # ConnectorManager 초기화 (다중 증권사 동시 연결 지원)
                     from backend.app.core.connector_manager import ConnectorManager
-                    _mgr = ConnectorManager(settings)
+                    _mgr = ConnectorManager()
                     from backend.app.services.engine_service import _broker_message_handler
                     _mgr.set_message_callback(_broker_message_handler)
 

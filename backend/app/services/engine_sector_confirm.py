@@ -208,8 +208,7 @@ async def _flush_sector_recompute_impl() -> None:
             # fail 그룹은 순위 없음 (0)
             for sc in fail_sectors:
                 sc.rank = 0
-            # 표시 순서: pass 먼저, fail은 뒤에
-            merged = pass_sectors + fail_sectors
+            # 표시 순서는 프론트엔드에서 결정 (백엔드는 final_score 기준 정렬 유지)
 
         # 6. 매수 타겟 큐
         # buy_targets 변경 감지를 위해 이전 값 저장

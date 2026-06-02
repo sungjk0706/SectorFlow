@@ -49,7 +49,7 @@ async def rename_sector(old_name: str, new_name: str) -> None:
     from backend.app.db.database import get_db_connection
     conn = await get_db_connection()
     try:
-        await conn.execute("UPDATE sectors SET name = ? WHERE name = ?", (new_name, old_name))
+        await conn.execute("UPDATE custom_sectors SET name = ? WHERE name = ?", (new_name, old_name))
         await conn.execute("UPDATE master_stocks_table SET sector = ? WHERE sector = ?", (new_name, old_name))
         await conn.commit()
     except Exception as e:
@@ -79,7 +79,7 @@ async def create_sector(name: str) -> None:
     from backend.app.db.database import get_db_connection
     conn = await get_db_connection()
     try:
-        await conn.execute("INSERT OR IGNORE INTO sectors (name) VALUES (?)", (name,))
+        await conn.execute("INSERT OR IGNORE INTO custom_sectors (name) VALUES (?)", (name,))
         await conn.commit()
     except Exception as e:
         await conn.rollback()
@@ -97,7 +97,7 @@ async def delete_sector(name: str) -> None:
     from backend.app.db.database import get_db_connection
     conn = await get_db_connection()
     try:
-        await conn.execute("DELETE FROM sectors WHERE name = ?", (name,))
+        await conn.execute("DELETE FROM custom_sectors WHERE name = ?", (name,))
         await conn.execute("UPDATE master_stocks_table SET sector = '기타' WHERE sector = ?", (name,))
         await conn.commit()
     except Exception as e:
@@ -124,11 +124,12 @@ async def move_stock(stock_code: str, target_sector: str) -> None:
     if not stock_code or not target_sector:
         raise ValueError("종목코드와 대상 업종명은 필수입니다")
 
-    # 1) SQLite DB 업데이트
+    # 1) SQLite DB 업데이트 (custom_sectors 원본 + master_stocks_table 파생)
     from backend.app.db.database import get_db_connection
     conn = await get_db_connection()
     try:
         await conn.execute("UPDATE master_stocks_table SET sector = ? WHERE code = ?", (target_sector, stock_code))
+        await conn.execute("INSERT OR REPLACE INTO custom_sectors (name, stock_code) VALUES (?, ?)", (target_sector, stock_code))
         await conn.commit()
     except Exception as e:
         await conn.rollback()
@@ -145,3 +146,32 @@ async def move_stock(stock_code: str, target_sector: str) -> None:
         # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
     except Exception as e:
         _log.warning("[메모리업데이트] 인메모리 종목 업종 갱신 실패: %s", e)
+
+
+async def sync_sector_from_custom_sectors() -> None:
+    """custom_sectors 테이블을 기준으로 master_stocks_table.sector 동기화.
+    
+    확정시세 다운로드 후 사용자 커스텀 업종 매핑 복구용.
+    """
+    from backend.app.db.database import get_db_connection
+    conn = await get_db_connection()
+    
+    try:
+        # custom_sectors에서 매핑 로드
+        cursor = await conn.execute("SELECT name, stock_code FROM custom_sectors")
+        rows = await cursor.fetchall()
+        
+        updated = 0
+        for row in rows:
+            await conn.execute(
+                "UPDATE master_stocks_table SET sector = ? WHERE code = ?",
+                (row["name"], row["stock_code"])
+            )
+            updated += 1
+        
+        await conn.commit()
+        _log.info("[동기화] custom_sectors 기반 master_stocks_table.sector 동기화 완료 -- %d종목", updated)
+    except Exception as e:
+        await conn.rollback()
+        _log.error("[동기화] custom_sectors 기반 동기화 실패: %s", e)
+        raise e

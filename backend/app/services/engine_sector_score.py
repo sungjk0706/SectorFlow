@@ -325,9 +325,21 @@ async def compute_sector_scores(
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt
     from backend.app.services.engine_symbol_utils import is_nxt_enabled as _is_nxt
 
+    # ── 1차 필터: 5일평균거래대금 (업종 그룹핑 전 적용 - 단일 소스 진리) ──
+    filtered_codes = []
+    if min_avg_amt_eok > 0:
+        for code in all_codes:
+            # 단일 소스 진리: avg_5d_trade_amount는 백만원 단위, 필터링 시 억 단위 변환
+            avg5d_million = int(avg_amt_5d.get(code, 0) or 0)
+            avg5d_eok = avg5d_million // 100  # 백만원 → 억단위 변환
+            if avg5d_eok >= min_avg_amt_eok:
+                filtered_codes.append(code)
+    else:
+        filtered_codes = all_codes.copy()
+
     # 섹터별 종목 그룹핑 — Custom_Data > Auto_Mapping 우선순위 적용
     sector_groups: dict[str, list[str]] = {}
-    for code in all_codes:
+    for code in filtered_codes:
         sector_name = await sector_mapping.get_merged_sector(code)
         if not sector_name:
             continue  # 미매핑 종목 제외
@@ -682,8 +694,7 @@ async def compute_full_sector_summary(
         # fail 그룹은 순위 없음 (0)
         for sc in fail_sectors:
             sc.rank = 0
-        # 표시 순서: pass 먼저, fail은 뒤에
-        sector_scores = pass_sectors + fail_sectors
+        # 표시 순서는 프론트엔드에서 결정 (백엔드는 final_score 기준 정렬 유지)
 
     # 2. 매수 타겟 큐 생성
     summary = build_buy_targets(

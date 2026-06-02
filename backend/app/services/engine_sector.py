@@ -119,21 +119,20 @@ async def get_sector_stocks() -> list:
     """업종별 종목 시세 테이블용 — _master_stocks_cache 기반 실시간 필터링/정렬."""
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
     from backend.app.core.sector_mapping import get_merged_sector as _get_sector
+    import backend.app.services.engine_service as _es_ref
 
     # eligible_stocks_cache 제거: master_stocks_table이 단일 소스
     # sector_min_trade_amt 필터링은 _master_stocks_cache의 avg_5d_trade_amount로 수행
-    filter_set = None  # 모든 종목 허용 (필터링은 _filtered_sector_codes에서 수행)
+
+    # 5일평균거래대금 필터링 (백엔드에서 필터링 수행 - 단일 소스 진리)
+    min_avg_amt_eok = float(_es_ref._integrated_system_settings_cache.get("sector_min_trade_amt", 0.0))
 
     merged: dict[str, dict] = {}
     from backend.app.services.engine_state import _master_stocks_cache
 
-    # 순회 소스: _filtered_sector_codes > _master_stocks_cache.keys()
-    # _master_stocks_cache의 "_subscribed" 제거: 테스트모드에서 비어있어 0종목 반환하는 버그 해결
     # 단일 소스 진리: _master_stocks_cache가 종목 데이터의 단일 소스
-    source_codes: set[str] = _filtered_sector_codes if _filtered_sector_codes is not None else set(_master_stocks_cache.keys())
-    for cd in source_codes:
-        if filter_set is not None and cd not in filter_set:
-            continue
+    # _filtered_sector_codes 제거: sector_stock_layout 의존성 제거
+    for cd in _master_stocks_cache.keys():
         if cd not in _master_stocks_cache:
             continue
         e = _master_stocks_cache[cd].copy()
@@ -143,8 +142,12 @@ async def get_sector_stocks() -> list:
         if int(e.get("cur_price") or 0) <= 0 and (not e.get("name") or e.get("name") == cd):
             continue
         # 정적 보강 필드
-        # 단일 소스 진리: _master_stocks_cache에 이미 억 단위로 저장됨
-        e["avg_amt_5d"] = int(e.get("avg_5d_trade_amount", 0) or 0)
+        # 단일 소스 진리: avg_5d_trade_amount는 백만원 단위, 필터링 시 억 단위 변환
+        avg5d_million = int(e.get("avg_5d_trade_amount", 0) or 0)
+        e["avg_amt_5d"] = avg5d_million // 100  # 백만원 → 억단위 변환
+        # 5일평균거래대금 필터링 (백엔드에서 필터링 수행)
+        if min_avg_amt_eok > 0 and e["avg_amt_5d"] < min_avg_amt_eok:
+            continue
         e["market_type"] = _get_mkt(cd) or ""
         e["nxt_enable"] = _is_nxt(cd)
         e["sector"] = await _get_sector(cd)
@@ -208,114 +211,10 @@ async def get_all_sector_stocks() -> list[dict]:
 
 
 async def _on_filter_settings_changed() -> None:
-    """필터 설정 변경 시 diff 기반 증분 구독 갱신 + 업종순위 재계산 + WS 3종 전송.
+    """필터 설정 변경 시 업종순위 재계산 + WS 전송.
 
-    흐름:
-    1. _compute_filtered_codes() → old/new diff (added, removed)
-    2. old == new → 스킵 (WS 없음, WS 없음)
-    3. WS 구독 구간 + quote 활성: REG added 먼저 → UNREG removed 나중에
-    4. _master_stocks_cache의 "_subscribed" 증분 갱신 (add/discard, clear 금지)
-    5. recompute_sector_summary_now() → 업종순위 + 매수후보 재계산
-    6. WS 3종: sector-stocks-refresh, sector-scores, buy-targets-update
+    sector_stock_layout 의존성 제거: 단일 소스(_master_stocks_cache) 기반 필터링
     """
-    from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
-    from backend.app.services import ws_subscribe_control
-    from backend.app.services.engine_ws_reg import build_0b_reg_payloads, build_0b_remove_payloads
-    from backend.app.services.engine_symbol_utils import get_ws_subscribe_code
-    from backend.app.services.engine_account_notify import (
-        notify_desktop_sector_stocks_refresh,
-        notify_desktop_sector_scores,
-        notify_buy_targets_update,
-    )
-    
-    old_codes = _filtered_sector_codes.copy() if _filtered_sector_codes is not None else None
-    new_codes = _compute_filtered_codes()
-
-    logger.info(
-        "[시작][필터변경] 이전=%d, 신규=%d, 변경없음=%s",
-        len(old_codes or set()), len(new_codes or set()), old_codes == new_codes,
-    )
-
-    if old_codes == new_codes:
-        return
-
-    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
-    
-    added = (new_codes or set()) - (old_codes or set())
-    removed = (old_codes or set()) - (new_codes or set())
-    logger.info(
-        "[시작][필터변경] 필터 통과 종목 변경 -- 추가 %d, 제거 %d (총 %d → %d)",
-        len(added), len(removed), len(old_codes or set()), len(new_codes or set()),
-    )
-
-    # ── WS 구독 증분 갱신: 구독 구간 + quote 활성 상태에서만 ──
-    if await is_ws_subscribe_window(_integrated_system_settings_cache) and ws_subscribe_control.get_subscribe_status()["quote_subscribed"]:
-        from backend.app.services.engine_state import _master_stocks_cache
-        # ── 1) REG added 먼저 (새 종목 실시간 데이터 즉시 수신) ──
-        if added:
-            reg_targets = [cd for cd in added if not _master_stocks_cache.get(cd, {}).get("_subscribed", False)]
-            if reg_targets:
-                for cd in reg_targets:
-                    if cd in _master_stocks_cache:
-                        _master_stocks_cache[cd]["_subscribed"] = True
-                reg_ws_codes = [get_ws_subscribe_code(cd) for cd in reg_targets]
-                payloads = build_0b_reg_payloads(reg_ws_codes, reset_first=False)
-                _CHUNK = 100
-                ok_cnt = fail_cnt = 0
-                for ci, payload in enumerate(payloads):
-                    chunk = reg_targets[ci * _CHUNK : (ci + 1) * _CHUNK]
-                    if _ws_send_reg_unreg_and_wait_ack:
-                        ack_ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload)
-                    else:
-                        ack_ok = False
-                    if ack_ok:
-                        ok_cnt += len(chunk)
-                    else:
-                        fail_cnt += len(chunk)
-                        for cd in chunk:
-                            if cd in _master_stocks_cache:
-                                _master_stocks_cache[cd].pop("_subscribed", None)
-                        logger.warning(
-                            "[시작][필터변경] 구독등록 응답 시간 초과 (청크 %d) -- %d종목 구독 롤백",
-                            ci + 1, len(chunk),
-                        )
-                logger.info(
-                    "[시작][필터변경] 구독등록 완료 -- 추가 %d / 성공 %d / 실패 %d",
-                    len(reg_targets), ok_cnt, fail_cnt,
-                )
-
-        # ── 2) UNREG removed 나중에 (기존 종목 해지) ──
-        if removed:
-            unreg_targets = [cd for cd in removed if _master_stocks_cache.get(cd, {}).get("_subscribed", False)]
-            if unreg_targets:
-                unreg_ws_codes = [get_ws_subscribe_code(cd) for cd in unreg_targets]
-                payloads = build_0b_remove_payloads(unreg_ws_codes)
-                _CHUNK = 100
-                ok_cnt = fail_cnt = 0
-                for ci, payload in enumerate(payloads):
-                    chunk = unreg_targets[ci * _CHUNK : (ci + 1) * _CHUNK]
-                    if _ws_send_reg_unreg_and_wait_ack:
-                        ack_ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload)
-                    else:
-                        ack_ok = False
-                    if ack_ok:
-                        ok_cnt += len(chunk)
-                        for cd in chunk:
-                            if cd in _master_stocks_cache:
-                                _master_stocks_cache[cd].pop("_subscribed", None)
-                    else:
-                        fail_cnt += len(chunk)
-                        logger.warning(
-                            "[시작][필터변경] 구독해지 응답 시간 초과 (청크 %d) -- %d종목 (다음 변경 시 재시도)",
-                            ci + 1, len(chunk),
-                        )
-                logger.info(
-                    "[시작][필터변경] 구독해지 완료 -- 제거 %d / 성공 %d / 실패 %d",
-                    len(unreg_targets), ok_cnt, fail_cnt,
-                )
-    elif not await is_ws_subscribe_window(_integrated_system_settings_cache):
-        pass
-
     # ── 업종순위 + 매수후보 재계산 ──
     try:
         await recompute_sector_summary_now()
@@ -337,62 +236,5 @@ async def _on_filter_settings_changed() -> None:
         logger.warning("[데이터] 매수후보 화면전송 실패", exc_info=True)
 
 
-def _compute_filtered_codes() -> set[str] | None:
-    """sector_stock_layout에서 사용자 필터를 적용하여 조건 통과 종목 코드 집합을 반환.
-    
-    _master_stocks_cache에 "_filtered" 키를 설정하여 통합.
-    """
-    global _filtered_sector_codes
-    from backend.app.services.engine_symbol_utils import _format_broker_reg_stk_cd
-    from backend.app.services.engine_state import _master_stocks_cache, _integrated_system_settings_cache
-
-    # 설정값 검증 및 안전장치
-    raw_val = _integrated_system_settings_cache.get("sector_min_trade_amt")
-    try:
-        min_amt_eok = float(raw_val) if raw_val is not None else 0.0
-    except (TypeError, ValueError):
-        logger.warning("[거래대금필터] 설정값 파싱 실패: %s", raw_val)
-        min_amt_eok = 0.0
-    min_amt_eok = max(0.0, min_amt_eok)
-
-    codes = {
-        _format_broker_reg_stk_cd(v)
-        for t, v in _integrated_system_settings_cache.get("sector_stock_layout", [])
-        if t == "code" and v
-    }
-    codes.discard("")
-
-    logger.info("[DEBUG-FILTER] sector_stock_layout len: %d, codes len: %d", len(_integrated_system_settings_cache.get("sector_stock_layout", [])), len(codes))
-
-    if min_amt_eok <= 0:
-        _filtered_sector_codes = None
-        # 필터 비활성화 시 모든 종목의 "_filtered" 제거
-        for cd in _master_stocks_cache:
-            _master_stocks_cache[cd].pop("_filtered", None)
-        return None
-
-    # 거래대금 캐시가 비어있으면 필터 비활성화
-    if not _master_stocks_cache:
-        logger.warning("[거래대금필터] master_stocks_cache 비어있음 - 필터 비활성화")
-        _filtered_sector_codes = None
-        return None
-
-    filtered = set()
-    for cd in codes:
-        # 단일 소스 진리: _master_stocks_cache의 avg_5d_trade_amount는 원 단위
-        avg_won = int(_master_stocks_cache.get(cd, {}).get("avg_5d_trade_amount", 0) or 0)
-        avg_eok = avg_won // 100_000_000
-        if avg_eok >= min_amt_eok:
-            filtered.add(cd)
-            if cd in _master_stocks_cache:
-                _master_stocks_cache[cd]["_filtered"] = True
-        else:
-            if cd in _master_stocks_cache:
-                _master_stocks_cache[cd].pop("_filtered", None)
-
-    logger.info("[거래대금필터] 설정 %.0f억 → 필터 통과 %d/%d종목", min_amt_eok, len(filtered), len(codes))
-
-    if not filtered:
-        logger.warning("[거래대금필터] 최소금액 %.1f억 설정됐으나 통과 종목 0개", min_amt_eok)
-    _filtered_sector_codes = filtered
-    return filtered
+# _compute_filtered_codes() 삭제: sector_stock_layout 의존성 제거
+# _filtered_sector_codes 전역 변수 삭제: 단일 소스(_master_stocks_cache) 기반 필터링

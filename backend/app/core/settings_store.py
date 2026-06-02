@@ -22,6 +22,20 @@ from backend.app.services.auto_trading_effective import auto_trading_effective
 logger = logging.getLogger(__name__)
 
 
+def _schedule_settings_task(coro, context: str) -> None:
+    task = asyncio.create_task(coro)
+
+    def _log_task_error(done_task: asyncio.Task) -> None:
+        try:
+            done_task.result()
+        except asyncio.CancelledError:
+            logger.info("[설정] %s 태스크 취소됨", context)
+        except Exception:
+            logger.warning("[설정] %s 태스크 실패", context, exc_info=True)
+
+    task.add_done_callback(_log_task_error)
+
+
 def get_encrypt_fields(broker_nm: str) -> frozenset[str]:
     """모든 증권사의 암호화 필드 목록을 반환 (단일 소스 진리 준수)."""
     base_fields = {"telegram_bot_token"}
@@ -213,9 +227,8 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
         try:
             from backend.app.core.engine_settings import build_engine_settings_dict
             processed_cache = build_engine_settings_dict(current)
-            from backend.app.di.container import get_container
             
-            # 1) engine_service._integrated_system_settings_cache 갱신
+            # engine_service._integrated_system_settings_cache 갱신
             key_mappings = {
                 "buy_amt": "buy_amount",
                 "max_stock_cnt": "max_stock_count",
@@ -237,16 +250,6 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
 
                 if k in current:
                     engine_service._integrated_system_settings_cache[k] = processed_cache.get(k, current[k])
-
-            # 2) DI container settings 싱글톤 갱신
-            container = get_container()
-            container_settings = container.get_singleton("settings")
-            if isinstance(container_settings, dict):
-                for k in changed_keys:
-                    if k in current:
-                        container_settings[k] = current[k]
-                    if k == "_broker_specs" and "_broker_specs" in current:
-                        container_settings["_broker_specs"] = current["_broker_specs"]
         except Exception as e:
             logger.warning("[설정] RAM 캐시 증분 갱신 실패: %s", e, exc_info=True)
 
@@ -309,7 +312,7 @@ async def after_settings_persisted(
     connection_keys = engine_service.get_connection_level_keys(broker_nm)
     if changed_keys & connection_keys:
         if engine_service.is_running():
-            asyncio.create_task(engine_service.update_broker_credentials_live())
+            _schedule_settings_task(engine_service.update_broker_credentials_live(), "자격 증명 핫-갱신")
             logger.info(
                 "[설정] 연결 레벨 설정 변경 감지 -> 실시간 자격 증명 핫-갱신 및 토큰 재시도 가동 (키=%s)",
                 changed_keys & connection_keys,
@@ -321,7 +324,7 @@ async def after_settings_persisted(
     # ── 3) 거래모드 전환 → 캐시 갱신 + 계좌 구독 전환 ────────────────────
     if changed_keys & engine_service.TRADE_MODE_KEYS:
         if engine_service.is_running():
-            asyncio.create_task(engine_service.on_trade_mode_switched())
+            _schedule_settings_task(engine_service.on_trade_mode_switched(), "거래모드 전환")
             logger.info("[설정] 거래모드 전환 감지 -> 저장데이터 갱신 + 계좌 구독 전환 (엔진 재기동 없음)")
         notify_desktop_header_refresh()
         await notify_desktop_settings_toggled()
@@ -333,15 +336,11 @@ async def after_settings_persisted(
     changed_dict = {}
     try:
         from backend.app.services.engine_config import _mask_sensitive_settings
-        from backend.app.di.container import get_container
-        container = get_container()
-        container_settings = container.get_singleton("settings")
-        if isinstance(container_settings, dict):
-            display_settings = dict(container_settings)
-            masked_settings = _mask_sensitive_settings(display_settings)
-            for k in changed_keys:
-                if k in masked_settings:
-                    changed_dict[k] = masked_settings[k]
+        display_settings = dict(engine_service._integrated_system_settings_cache)
+        masked_settings = _mask_sensitive_settings(display_settings)
+        for k in changed_keys:
+            if k in masked_settings:
+                changed_dict[k] = masked_settings[k]
     except Exception as e:
         logger.warning("[설정] 마스킹 델타 추출 실패: %s", e)
 
@@ -395,11 +394,11 @@ async def after_settings_persisted(
         try:
             from backend.app.services import daily_time_scheduler as _dts
             new_settings = engine_service.get_settings_snapshot()
-            now_in_window = _dts.is_ws_subscribe_window(new_settings)
+            now_in_window = await _dts.is_ws_subscribe_window(new_settings)
             was_active = bool(_dts._ws_subscribe_window_active)
 
             # 1) 타이머 재예약 (항상)
-            _dts.schedule_ws_subscribe_timers(new_settings)
+            await _dts.schedule_ws_subscribe_timers(new_settings)
 
             # 2) KiwoomConnector 실시간 연결 플래그 업데이트
             ws = getattr(engine_service, "_kiwoom_connector", None)
@@ -415,7 +414,7 @@ async def after_settings_persisted(
             # 4) 비활성→구간안: 즉시 WS 연결 + 구독 시작
             elif not was_active and now_in_window:
                 logger.info("[설정] 실시간 구독 구간 변경 → 현재 구간 안 — 즉시 구독 시작")
-                asyncio.create_task(_dts._on_ws_subscribe_start())
+                _schedule_settings_task(_dts._on_ws_subscribe_start(), "실시간 구독 시작")
         except Exception:
             pass
 
@@ -461,8 +460,9 @@ async def after_settings_persisted(
             import backend.app.services.engine_state as _st
             raw = _st._integrated_system_settings_cache or {}
             for key in _ws_changed:
-                asyncio.create_task(
-                    on_setting_changed(key, bool(raw.get(key)), engine_service)
+                _schedule_settings_task(
+                    on_setting_changed(key, bool(raw.get(key)), engine_service),
+                    f"WS 구독 제어 설정 반영({key})",
                 )
         except Exception:
             logger.warning("[설정] ws_subscribe_control 설정 변경 반영 실패", exc_info=True)

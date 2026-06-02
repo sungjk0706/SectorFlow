@@ -4,9 +4,9 @@
 import { hotStore } from '../stores/hotStore'
 import { uiStore, setSelectedSector } from '../stores/uiStore'
 import { createSettingsManager } from '../settings'
+import { createAutoSaveHelper, type AutoSaveHelper } from '../utils/settings-save'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingRow, createNumInput, createMoneyInput, createWsStatusBadge } from '../components/common/setting-row'
-import { toastResult } from '../components/common/toast'
 import { createDualLabelSlider } from '../components/common/create-slider'
 import type { DualLabelSliderHandle } from '../components/common/create-slider'
 import { toDisplayValue, toServerValue } from '../utils/sliderConvert'
@@ -65,6 +65,7 @@ function updateMaxTargetsStatus(scores: SectorScoreRow[]): void {
 
 /* ── mount / unmount ── */
 let settingsMgr: ReturnType<typeof createSettingsManager> | null = null
+let autoSaveHelper: AutoSaveHelper | null = null
 let unsubStore: (() => void) | null = null
 let unsubUiStore: (() => void) | null = null
 let unsubSettings: (() => void) | null = null
@@ -105,17 +106,15 @@ async function onNumChange(key: string, value: number): Promise<void> {
     }
   }
   currentVals[key] = v
-  if (settingsMgr) {
-    const res = await settingsMgr.saveSection({ [key]: v })
-    toastResult(res)
+  if (autoSaveHelper) {
+    autoSaveHelper.autoSave(key, v)
   }
 }
 
 async function saveWeightsNow(ratio: number): Promise<void> {
   const serverWeights = { rise_ratio: toServerValue(100 - ratio), total_trade_amount: toServerValue(ratio) }
-  if (settingsMgr) {
-    const res = await settingsMgr.saveSection({ sector_weights: serverWeights })
-    toastResult(res)
+  if (autoSaveHelper) {
+    await autoSaveHelper.saveImmediate({ sector_weights: serverWeights })
   }
 }
 
@@ -187,14 +186,22 @@ function buildRankingRows(container: HTMLElement): void {
 }
 
 function updateRankingRows(scores: SectorScoreRow[], selected: string | null, maxTargets: number, _delta: { delta: boolean; changed_sectors: string[]; removed_sectors: string[] } | null = null): void {
-  const maxScore = scores.length > 0 ? Math.max(...scores.map(s => s.final_score), 1) : 1
+  // rank > 0 먼저 표시 (프론트엔드에서 표시 순서 결정)
+  const sortedScores = [...scores].sort((a, b) => {
+    if (a.rank === 0 && b.rank === 0) return b.final_score - a.final_score
+    if (a.rank === 0) return 1
+    if (b.rank === 0) return -1
+    return b.final_score - a.final_score
+  })
+  
+  const maxScore = sortedScores.length > 0 ? Math.max(...sortedScores.map(s => s.final_score), 1) : 1
 
   for (let i = 0; i < MAX_ROWS; i++) {
     const row = rankRows[i]
     if (!row) continue
 
     // 숨김 처리
-    if (i >= scores.length) {
+    if (i >= sortedScores.length) {
       if (!rowCaches[i] || rowCaches[i]!.visible) {
         row.style.display = 'none'
         rowCaches[i] = { rank: -1, sector: '', total: 0, finalScore: '', riseRatio: '', riseColor: '', tradeAmt: '', barWidth: '', barColor: '', opacity: '', selected: false, visible: false }
@@ -202,7 +209,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
       continue
     }
 
-    const s = scores[i]
+    const s = sortedScores[i]
     const prev = rowCaches[i]
     const isSel = selected === s.sector
     const isUnranked = s.rank === 0
@@ -210,7 +217,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     const finalScore = s.final_score.toFixed(1)
     const riseRatio = s.rise_ratio.toFixed(1) + '%'
     const riseColor = s.rise_ratio > 50 ? 'red' : s.rise_ratio < 50 ? 'blue' : '#333'
-    const tradeAmt = Math.floor(s.total_trade_amount / 1_000_000).toLocaleString()
+    const tradeAmt = Math.floor(s.total_trade_amount / 100).toLocaleString()  // 백만원 → 억단위
     const barWidth = `${Math.min((s.final_score / maxScore) * 100, 100)}%`
     const barColor = isUnranked ? '#dee2e6' : (s.rank <= maxTargets ? '#0d6efd' : '#adb5bd')
 
@@ -247,6 +254,7 @@ function mount(container: HTMLElement): void {
   _mounted = true
   notifyPageActive('sector-ranking')
   settingsMgr = createSettingsManager(uiStore)
+  autoSaveHelper = createAutoSaveHelper(settingsMgr)
   currentVals = {}
   currentRiseRatio = 50
   rankRows = []
@@ -377,7 +385,7 @@ function mount(container: HTMLElement): void {
     ['width:40px;text-align:right;margin-right:12px;', '종목수'],
     ['width:48px;text-align:right;', '종합점수'],
     ['width:64px;text-align:right;', '상승비율'],
-    ['width:72px;text-align:right;', '거래대금(백만)'],
+    ['width:72px;text-align:right;', '거래대금(억)'],
   ]
   for (const [css, text] of headerDefs) {
     const sp = document.createElement('span')
@@ -470,6 +478,7 @@ function unmount(): void {
   if (unsubStore) { unsubStore(); unsubStore = null }
   if (unsubUiStore) { unsubUiStore(); unsubUiStore = null }
   if (unsubSettings) { unsubSettings(); unsubSettings = null }
+  if (autoSaveHelper) { autoSaveHelper.destroy(); autoSaveHelper = null }
   if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }
   thresholdInput = null
   minTradeAmtInput = null

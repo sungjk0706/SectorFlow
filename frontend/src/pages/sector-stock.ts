@@ -114,13 +114,11 @@ function mapRowsToTableRows(rows: RowItem[]): TableRow<DataRowItem>[] {
 
 function computeRows(
   stockMap: Record<string, SectorStock>,
-  sectorOrder: string[],
   sectorScores: SectorScoreRow[],
   maxTargets: number,
   selectedSector: string | null,
   matchedCodes: Set<string> | null,
-  rowCache: Map<string, { stock: SectorStock; row: DataRowItem }>,
-  minTradeAmt: number
+  rowCache: Map<string, { stock: SectorStock; row: DataRowItem }>
 ): RowItem[] {
   // 업종별 종목 그룹핑
   const grouped = new Map<string, string[]>()
@@ -128,16 +126,22 @@ function computeRows(
     const sector = s.sector || '기타'
     if (selectedSector && sector !== selectedSector) continue
     if (matchedCodes && !matchedCodes.has(s.code)) continue
-    
-    // 5일평균거래대금 컷오프 필터 적용 (백엔드와 정합성 일치, 억 단위 비교)
-    if (minTradeAmt > 0 && (s.avg_amt_5d ?? 0) < minTradeAmt) continue
+
+    // 5일평균거래대금 필터링은 백엔드에서 수행 (단일 소스 진리)
 
     let arr = grouped.get(sector)
     if (!arr) { arr = []; grouped.set(sector, arr) }
     arr.push(s.code)
   }
 
-  // sectorOrder 순서 유지 + 미포함 업종 추가
+  // rank > 0 먼저 표시 (프론트엔드에서 표시 순서 결정)
+  const sortedSectorScores = [...sectorScores].sort((a, b) => {
+    if (a.rank === 0 && b.rank === 0) return b.final_score - a.final_score
+    if (a.rank === 0) return 1
+    if (b.rank === 0) return -1
+    return b.final_score - a.final_score
+  })
+  const sectorOrder = sortedSectorScores.map(s => s.sector)
   const orderedSectors = [...sectorOrder]
   for (const sector of grouped.keys()) {
     if (!orderedSectors.includes(sector)) {
@@ -152,23 +156,24 @@ function computeRows(
   for (let i = 0; i < sectorOrder.length; i++) sectorRankMap.set(sectorOrder[i], i + 1)
 
   const rows: RowItem[] = []
-  let groupIdx = 0
   let stockSeq = 0
 
   for (const sector of orderedSectors) {
     const codes = grouped.get(sector)
-    if (!codes) continue
-    groupIdx++
-    const dim = groupIdx > maxTargets
+    const sectorRank = sortedSectorScores.find(s => s.sector === sector)?.rank ?? 0
+    const dim = sectorRank > maxTargets
     const score = scoreMap.get(sector)
 
     rows.push({
       type: 'group',
       sector,
-      label: `${groupIdx}. ${sector}`,
+      label: `${sectorRank}. ${sector}`,
       score,
       dim,
     })
+
+    // 종목이 없으면 종목 행 추가 안 함
+    if (!codes) continue
 
     // selectedSector 모드: 종목코드 기준 안정 정렬 (Map 삽입순서 변동 방지)
     const sortedCodes = selectedSector ? [...codes].sort() : codes
@@ -232,17 +237,15 @@ class SectorStockTable extends HTMLElement {
     const uiState = uiStore.getState()
     this.currentMatchedCodes = filterStocksBySearch(Object.values(state.sectorStocks), this.searchTerm)
     const maxTargets = Number(uiState.settings?.sector_max_targets) || 10
-    const minTradeAmt = Number(uiState.settings?.sector_min_trade_amt) || 0
-    
+    // 5일평균거래대금 필터링은 백엔드에서 수행 (단일 소스 진리)
+
     return computeRows(
       state.sectorStocks,
-      uiState.sectorOrder,
       state.sectorScores,
       maxTargets,
       uiState.selectedSector,
       this.currentMatchedCodes,
-      this.rowCache,
-      minTradeAmt
+      this.rowCache
     )
   }
 
@@ -445,7 +448,6 @@ class SectorStockTable extends HTMLElement {
       const initUi = uiStore.getState()
       let prevSectorStocks = initHot.sectorStocks
       let prevSectorScores = initHot.sectorScores
-      let prevSectorOrder = initUi.sectorOrder
       let prevSelectedSector = initUi.selectedSector
       let prevWsSubscribeStatus = initUi.wsSubscribeStatus
       let prevSettings = initUi.settings
@@ -456,14 +458,12 @@ class SectorStockTable extends HTMLElement {
         const changed =
           state.sectorStocks !== prevSectorStocks ||
           state.sectorScores !== prevSectorScores ||
-          uiState.sectorOrder !== prevSectorOrder ||
           uiState.selectedSector !== prevSelectedSector ||
           uiState.wsSubscribeStatus !== prevWsSubscribeStatus ||
           uiState.settings !== prevSettings
 
         prevSectorStocks = state.sectorStocks
         prevSectorScores = state.sectorScores
-        prevSectorOrder = uiState.sectorOrder
         prevSelectedSector = uiState.selectedSector
         prevWsSubscribeStatus = uiState.wsSubscribeStatus
         prevSettings = uiState.settings

@@ -52,11 +52,6 @@ async def start_engine(user_id: str = "") -> bool:
         await _state_manager.start()
         logger.info("[엔진] StateManager 초기화 완료")
 
-    # KiwoomAuthProvider 초기화 (단일 인스턴스)
-    if _kiwoom_auth_provider is None:
-        _kiwoom_auth_provider = KiwoomAuthProvider()
-        logger.info("[엔진] KiwoomAuthProvider 초기화 완료")
-
     _engine_user_id = user_id
     _running = True
     logger.info("[엔진] start_engine() - asyncio.create_task(_engine_loop()) 호출 직전")
@@ -300,7 +295,10 @@ def _schedule_engine_coro(coro: asyncio.coroutines, *, context: str) -> bool:
     loop = _engine_loop_ref
     if loop and not loop.is_closed():
         try:
-            loop.call_soon_threadsafe(lambda: loop.create_task(coro))
+            def _create_with_callback():
+                task = loop.create_task(coro)
+                task.add_done_callback(lambda t: logger.warning("[데이터] %s 태스크 실패: %s", context, t.exception()) if t.exception() else None)
+            loop.call_soon_threadsafe(_create_with_callback)
             return True
         except Exception as e:
             logger.warning("[데이터] %s 스케줄 실패함: %s", context, e, exc_info=True)
@@ -310,7 +308,8 @@ def _schedule_engine_coro(coro: asyncio.coroutines, *, context: str) -> bool:
                 logger.warning("[데이터] coroutine 정리 실패", exc_info=True)
             return False
     try:
-        asyncio.get_running_loop().create_task(coro)
+        task = asyncio.get_running_loop().create_task(coro)
+        task.add_done_callback(lambda t: logger.warning("[데이터] %s 태스크 실패: %s", context, t.exception()) if t.exception() else None)
         return True
     except Exception as e:
         logger.warning("[데이터] %s 요청 실패함: %s", context, e, exc_info=True)

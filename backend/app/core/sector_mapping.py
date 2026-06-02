@@ -41,17 +41,17 @@ async def get_merged_sector(stock_code: str) -> str:
 
 
 async def get_merged_all_sectors() -> list[str]:
-    """SQLite DB sectors 테이블에서 전체 업종 목록 조회 (정렬)."""
-    from backend.app.db.database import get_db_connection
-    conn = await get_db_connection()
+    """인메모리 캐시(_master_stocks_cache)에서 전체 업종 목록 조회 (정렬)."""
     try:
-        cursor = await conn.cursor()
-        await cursor.execute("SELECT name FROM sectors")
-        rows = await cursor.fetchall()
-        sectors = [r["name"] for r in rows if r["name"]]
+        import backend.app.services.engine_service as es
+        sectors = set()
+        for entry in es._master_stocks_cache.values():
+            sector = entry.get("sector")
+            if sector and sector != "":
+                sectors.add(sector)
         if "기타" not in sectors:
-            sectors.append("기타")
-        return sorted(list(set(sectors)))
+            sectors.add("기타")
+        return sorted(list(sectors))
     except Exception as e:
-        _log.warning("[매핑] get_merged_all_sectors DB 조회 실패: %s", e)
+        _log.warning("[매핑] get_merged_all_sectors 인메모리 캐시 조회 실패: %s", e)
         return ["기타"]

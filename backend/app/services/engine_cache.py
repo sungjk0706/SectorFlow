@@ -19,6 +19,9 @@ from backend.app.services.engine_state import (
 
 logger = get_logger("engine")
 
+# 구독 동시성 상한 (앱 기동 시 일회성 구독 준비)
+_subscribe_semaphore = asyncio.Semaphore(50)
+
 
 async def _load_caches_preboot(settings: dict) -> None:
     """캐시 선행 로드: 장외 시간에만 실행 (장중에는 실시간 데이터가 채움).
@@ -35,34 +38,16 @@ async def _load_caches_preboot(settings: dict) -> None:
         from backend.app.services.engine_strategy_core import make_detail
 
         # ── 테이블 초기화 ──
-        from backend.app.db.models import create_sectors_table
         from backend.app.db.stock_tables import create_master_stocks_table, migrate_add_high_price_column, migrate_add_nxt_enable_column
 
         # 테이블이 없으면 생성
-        await create_sectors_table()
         await create_master_stocks_table()
-        
+
         # 마이그레이션: high_price 컬럼 추가
         await migrate_add_high_price_column()
         # 마이그레이션: nxt_enable 컬럼 추가
         await migrate_add_nxt_enable_column()
 
-        # sectors 테이블 초기화 로직
-        async def _init_sectors():
-            from backend.app.db.database import get_db_connection
-            conn = await get_db_connection()
-            try:
-                await conn.execute("""
-                    INSERT OR IGNORE INTO sectors (name)
-                    SELECT DISTINCT sector FROM master_stocks_table
-                    WHERE sector IS NOT NULL AND sector != '' AND sector != '기타'
-                """)
-                await conn.execute("INSERT OR IGNORE INTO sectors (name) VALUES ('기타')")
-                await conn.commit()
-            except Exception as e:
-                logger.warning("[데이터준비] sectors 초기화 실패: %s", e)
-        await _init_sectors()
-        
         # ── master_stocks_table 로드 ──
         from backend.app.db.stock_tables import load_master_stocks_table
         _cached_snapshot = await load_master_stocks_table()
@@ -112,7 +97,10 @@ async def _load_caches_preboot(settings: dict) -> None:
             for code in filtered_codes:
                 try:
                     from backend.app.services.engine_ws import _subscribe_stock_realtime_when_ready
-                    _task = asyncio.get_running_loop().create_task(_subscribe_stock_realtime_when_ready(code))
+                    async def _subscribe_with_semaphore():
+                        async with _subscribe_semaphore:
+                            await _subscribe_stock_realtime_when_ready(code)
+                    _task = asyncio.get_running_loop().create_task(_subscribe_with_semaphore())
                     _task.add_done_callback(lambda t: logger.warning("[구독] 구독 실패: %s", t.exception()) if t.exception() else None)
                 except RuntimeError as e:
                     logger.error("[구독] task 생성 실패 %s: %s", code, e)
