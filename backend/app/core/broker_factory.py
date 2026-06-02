@@ -88,4 +88,7 @@ def create_connector(settings: dict):
     if not create_connector_func:
         raise ValueError(f"{broker_name}은(는) create_connector를 제공하지 않습니다")
 
+    # kiwoom은 단일 소스 진리 원칙으로 settings 전달 불필요
+    if broker_name == "kiwoom":
+        return create_connector_func()
     return create_connector_func(settings)

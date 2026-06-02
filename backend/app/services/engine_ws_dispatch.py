@@ -278,7 +278,6 @@ async def _handle_real_01(
     _exch_label = {"1": "KRX", "2": "NXT"}.get(_exch, "")
     raw_cd_for_bucket = raw_cd
     # _pending_stock_details 제거: pend_key 제거, 빈 dict 사용
-    prev_close = _ws_fid_int(vals, "16", 0)
     pend = {}
     diff = _ws_fid_int(vals, "11", 0) if _ws_fid_key_present(vals, "11") else 0
     rate = _parse_ws_fid12_to_percent(_ws_fid_raw(vals, "12")) if _ws_fid_key_present(vals, "12") else 0.0

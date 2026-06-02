@@ -14,6 +14,9 @@ import backend.app.services.engine_state as _st
 
 logger = get_logger("engine")
 
+# 구독 동시성 상한 (앱 기동 시 일회성 구독 준비)
+_subscribe_semaphore = asyncio.Semaphore(50)
+
 # ── 앱준비 단계 정의 (하드코딩 금지 — len()으로 total 산출) ──
 BOOTSTRAP_STAGES = [
     (1, "레이아웃 저장데이터 확인"),
@@ -171,7 +174,10 @@ async def _bootstrap_sector_stocks_async() -> None:
             for code in filtered_codes:
                 try:
                     from backend.app.services.engine_ws import _subscribe_stock_realtime_when_ready
-                    _task = asyncio.get_running_loop().create_task(_subscribe_stock_realtime_when_ready(code))
+                    async def _subscribe_with_semaphore():
+                        async with _subscribe_semaphore:
+                            await _subscribe_stock_realtime_when_ready(code)
+                    _task = asyncio.get_running_loop().create_task(_subscribe_with_semaphore())
                     _task.add_done_callback(lambda t: logger.warning("[구독] 구독 실패: %s", t.exception()) if t.exception() else None)
                 except RuntimeError as e:
                     logger.error("[구독] task 생성 실패 %s: %s", code, e)
@@ -216,39 +222,35 @@ async def _bootstrap_sector_stocks_async() -> None:
         )
 
         # ── 필터 계산 및 빈 엔트리 추가 ─────────────────────────────────────
-        from backend.app.services.engine_sector import _compute_filtered_codes
-        _st._sector_summary_cache = None
-        _compute_filtered_codes()  # _master_stocks_cache에 "_filtered" 설정
+        # _compute_filtered_codes 제거: sector_stock_layout 의존성 제거
+        # 단일 소스(_master_stocks_cache) 기반 필터링
         # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
-        _filter_set = {cd for cd, entry in _st._master_stocks_cache.items() if entry.get("_filtered", False)}
-        # _radar_cnsr_order 삭제: 필터링된 종목만 바로 구독 신청
         # sector_min_trade_amt 필터링 적용 (설계 의도 준수)
-        _missing = _filter_set
-        if _missing:
-            # 단일 소스 진리: _integrated_system_settings_cache 직접 사용
-            min_amt = float(_st._integrated_system_settings_cache.get("sector_min_trade_amt", 0.0) or 0.0)
-
-            # 필터링 적용 후 바로 구독 신청
+        min_amt = float(_st._integrated_system_settings_cache.get("sector_min_trade_amt", 0.0) or 0.0)
+        _missing = set(_st._master_stocks_cache.keys())
+        if _missing and min_amt > 0:
+            # 단일 소스 진리: avg_5d_trade_amount는 백만원 단위, 필터링 시 억 단위 변환
             filtered_missing = []
             for code in _missing:
-                if min_amt > 0:
-                    # 단일 소스 진리: _master_stocks_cache에 이미 억 단위로 저장됨 (_update_avg_amt_5d 변환)
-                    avg_amt = _master_stocks_cache.get(code, {}).get("avg_5d_trade_amount", 0) or 0
-                    if avg_amt >= min_amt:
-                        filtered_missing.append(code)
-                else:
+                avg_amt_million = _master_stocks_cache.get(code, {}).get("avg_5d_trade_amount", 0) or 0
+                avg_amt_eok = avg_amt_million // 100  # 백만원 → 억단위 변환
+                if avg_amt_eok >= min_amt:
                     filtered_missing.append(code)
+            _missing = set(filtered_missing)
 
-            if filtered_missing:
-                for code in filtered_missing:
-                    try:
-                        from backend.app.services.engine_ws import _subscribe_stock_realtime_when_ready
-                        _task = asyncio.get_running_loop().create_task(_subscribe_stock_realtime_when_ready(code))
-                        _task.add_done_callback(lambda t: logger.warning("[구독] 구독 실패: %s", t.exception()) if t.exception() else None)
-                    except RuntimeError as e:
-                        logger.error("[구독] task 생성 실패 %s: %s", code, e)
-                logger.debug("[시작] 필터 통과 빈 엔트리 추가 -- %d종목 (필터링: %d종목)", len(_missing), len(filtered_missing))
+        if _missing:
+            for code in _missing:
+                try:
+                    from backend.app.services.engine_ws import _subscribe_stock_realtime_when_ready
+                    async def _subscribe_with_semaphore():
+                        async with _subscribe_semaphore:
+                            await _subscribe_stock_realtime_when_ready(code)
+                    _task = asyncio.get_running_loop().create_task(_subscribe_with_semaphore())
+                    _task.add_done_callback(lambda t: logger.warning("[구독] 구독 실패: %s", t.exception()) if t.exception() else None)
+                except RuntimeError as e:
+                    logger.error("[구독] task 생성 실패 %s: %s", code, e)
+            logger.debug("[시작] 필터 통과 빈 엔트리 추가 -- %d종목", len(_missing))
 
         _broadcast_bootstrap_stage(5, "앱준비 완료")
         _st._bootstrap_event.set()
@@ -322,7 +324,8 @@ async def _deferred_sector_summary() -> None:
                 trim_change_rate_pct=_trim_change,
             )
             _result = await compute_full_sector_summary(**_inputs, **_kwargs)
-            _st._sector_summary_cache = _result
+            import backend.app.services.engine_service as _es
+            _es._sector_summary_cache = _result
             # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
             logger.debug("[시작] 업종순위 후순위 계산 완료 -- %d개 섹터", len(_result.sectors))
 

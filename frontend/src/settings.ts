@@ -41,7 +41,6 @@ export interface SettingsManager {
 }
 
 export function createSettingsManager(store: StoreApi<UIState> = uiStore): SettingsManager {
-  let localSettings: AppSettings | null = store.getState().settings
   const editingSet = new Set<string>()
   const subscribers = new Set<() => void>()
 
@@ -50,20 +49,17 @@ export function createSettingsManager(store: StoreApi<UIState> = uiStore): Setti
   }
 
   // store의 settings 변경 감지 — 편집 중이 아닐 때만 반영
-  const unsubStore = store.subscribe((state) => {
+  const unsubStore = store.subscribe(() => {
     if (editingSet.size > 0) return
-    if (state.settings !== localSettings) {
-      localSettings = state.settings
-      notify()
-    }
+    notify()
   })
 
   function getSettings(): AppSettings | null {
-    return localSettings
+    return store.getState().settings
   }
 
   function isLoading(): boolean {
-    return localSettings === null
+    return store.getState().settings === null
   }
 
   async function saveSection(data: Record<string, unknown>): Promise<SaveResult> {
@@ -72,10 +68,7 @@ export function createSettingsManager(store: StoreApi<UIState> = uiStore): Setti
       for (const [key, value] of Object.entries(data)) {
         await api.patchSettingField(key, value)
       }
-      if (localSettings) {
-        localSettings = { ...localSettings, ...data } as AppSettings
-        notify()
-      }
+      // 로컬 즉시 업데이트 제거 - WS settings-changed 이벤트로만 갱신
       return { ok: true }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '저장 실패'

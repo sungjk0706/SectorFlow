@@ -38,8 +38,6 @@ def overlay_radar_row_with_live_price(
             cp = int(rq.get("cur_price") or 0)
             if cp > 0:
                 out["cur_price"] = cp
-                if rq.get("prev_close"):
-                    out["prev_close"] = int(rq["prev_close"])
                 if "change" in rq:
                     out["change"] = int(rq.get("change") or 0)
                 if "change_rate" in rq:

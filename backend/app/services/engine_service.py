@@ -62,6 +62,7 @@ from backend.app.services.engine_state import (
     # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
     # _sector_summary_cache 제거: engine_service 모듈 내에서 정의
     # _sector_buy_last_ts 제거: _master_stocks_cache[code]["_last_buy_ts"]로 통합
+    _master_stocks_cache,
     _sector_score_index,
     _confirmed_refresh_running,
     _confirmed_refresh_message,
@@ -174,7 +175,7 @@ from backend.app.services.engine_sector import (
     get_all_sector_stocks,
     # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
     _on_filter_settings_changed as _sector_on_filter_settings_changed,
-    _compute_filtered_codes,
+    # _compute_filtered_codes 제거: sector_stock_layout 의존성 제거
 )
 from backend.app.services.engine_lifecycle import (
     start_engine,
@@ -306,7 +307,7 @@ recompute_sector_summary_now = recompute_sector_summary_now
 get_sector_summary_inputs = get_sector_summary_inputs
 get_sector_stocks = get_sector_stocks
 get_all_sector_stocks = get_all_sector_stocks
-_compute_filtered_codes = _compute_filtered_codes
+# _compute_filtered_codes 제거: sector_stock_layout 의존성 제거
 
 # engine_lifecycle
 start_engine = start_engine

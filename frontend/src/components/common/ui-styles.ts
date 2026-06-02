@@ -256,11 +256,11 @@ export function createRateCell(rate: number | null | undefined): HTMLElement {
   return cell
 }
 
-/** 거래대금 셀 (우측정렬, 기본색, 백만 단위) */
+/** 거래대금 셀 (우측정렬, 기본색, 억 단위) */
 export function createAmountCell(amount: number | null | undefined): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
-  cell.textContent = amount && amount > 0 ? fmtComma(Math.round(amount / 1_000_000)) : '-'
+  cell.textContent = amount && amount > 0 ? (amount / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '-'  // 백만원 → 억단위 (소수점 1자리, 콤마)
   return cell
 }
 
@@ -281,7 +281,8 @@ export function createStrengthCell(strength: number | null | undefined): HTMLEle
 export function createAvgAmountCell(amount: number): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
-  cell.textContent = amount > 0 ? fmtComma(Math.round(amount)) : '-'
+  // 백만원 단위 → 억단위 변환 (소수점 1자리, 콤마)
+  cell.textContent = amount > 0 ? (amount / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '-'
   return cell
 }
 
@@ -380,11 +381,11 @@ export function makeStrengthColumn<T>(get: (t: T) => number | null | undefined):
   }
 }
 
-/** 거래대금 컬럼 (백만 단위 표시) */
+/** 거래대금 컬럼 (억 단위 표시) */
 export function makeAmountColumn<T>(get: (t: T) => number | null | undefined): ColumnDef<T> {
   return {
     key: 'trade_amount',
-    label: '거래대금(백만)',
+    label: '거래대금(억)',
     align: 'right',
     render: (t) => createAmountCell(get(t)),
   }

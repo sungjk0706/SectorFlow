@@ -111,91 +111,82 @@ _ENCRYPT_FIELDS: frozenset[str] = frozenset({
     "telegram_bot_token",
 })
 
-# 캐시 A: DB 설정 복호화 미러(RAW). Cache-Aside. save 시 무효화.
-_integrated_system_settings_cache: dict | None = None
-_cache_lock = asyncio.Lock()
+# 캐시 제거: engine_state._integrated_system_settings_cache를 단일 소스 진리로 사용
 
 
 async def load_integrated_system_settings() -> dict:
     """
-    Cache-Aside 패턴: 캐시가 있으면 반환, 없으면 DB 로드 후 캐시 저장.
-    캐시 무효화는 save_settings() 커밋 직후 수행.
+    DB에서 직접 로드 (캐시 제거).
+    engine_state._integrated_system_settings_cache를 단일 소스 진리로 사용.
     """
-    global _integrated_system_settings_cache
+    from backend.app.db.database import get_db_connection
+    from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS, DEFAULT_SYSTEM_CONFIG
 
-    async with _cache_lock:
-        if _integrated_system_settings_cache is not None:
-            return dict(_integrated_system_settings_cache)
+    db_data: dict = {}
 
-        from backend.app.db.database import get_db_connection
-        from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS, DEFAULT_SYSTEM_CONFIG
+    try:
+        conn = await get_db_connection()
+        cursor = await conn.execute("SELECT key, value, value_type FROM integrated_system_settings")
+        rows = await cursor.fetchall()
+        for row in rows:
+            key = row["key"]
+            value = row["value"]
+            value_type = row["value_type"]
+            parsed_val = _parse_value(value, value_type)
+            if key.startswith("_broker_specs:") or key.startswith("broker_specs:"):
+                broker_name = key.split(":", 1)[1]
+                if "_broker_specs" not in db_data:
+                    db_data["_broker_specs"] = {}
+                db_data["_broker_specs"][broker_name] = parsed_val
+            else:
+                db_data[key] = parsed_val
+        logger.info("[설정] DB integrated_system_settings 로드 완료 (%d개 설정 항목)", len(db_data))
+    except Exception as e:
+        logger.error("[설정] DB integrated_system_settings 로드 실패: %s", e)
+        return {**DEFAULT_USER_SETTINGS, **DEFAULT_SYSTEM_CONFIG}
 
-        db_data: dict = {}
+    for key, default_value in DEFAULT_USER_SETTINGS.items():
+        if key not in db_data:
+            db_data[key] = default_value
 
-        try:
-            conn = await get_db_connection()
-            cursor = await conn.execute("SELECT key, value, value_type FROM integrated_system_settings")
-            rows = await cursor.fetchall()
-            for row in rows:
-                key = row["key"]
-                value = row["value"]
-                value_type = row["value_type"]
-                parsed_val = _parse_value(value, value_type)
-                if key.startswith("_broker_specs:") or key.startswith("broker_specs:"):
-                    broker_name = key.split(":", 1)[1]
-                    if "_broker_specs" not in db_data:
-                        db_data["_broker_specs"] = {}
-                    db_data["_broker_specs"][broker_name] = parsed_val
-                else:
-                    db_data[key] = parsed_val
-            logger.info("[설정] DB integrated_system_settings 로드 완료 (%d개 설정 항목)", len(db_data))
-        except Exception as e:
-            logger.error("[설정] DB integrated_system_settings 로드 실패: %s", e)
-            return {**DEFAULT_USER_SETTINGS, **DEFAULT_SYSTEM_CONFIG}
+    for key, default_value in DEFAULT_SYSTEM_CONFIG.items():
+        if key not in db_data:
+            db_data[key] = default_value
 
-        for key, default_value in DEFAULT_USER_SETTINGS.items():
-            if key not in db_data:
-                db_data[key] = default_value
+    if "_broker_specs" not in db_data or not db_data["_broker_specs"]:
+        from pathlib import Path
+        broker_specs_dir = Path(__file__).parent.parent.parent / "data" / "broker_specs"
+        if broker_specs_dir.exists():
+            db_data["_broker_specs"] = {}
+            for spec_file in broker_specs_dir.glob("*.json"):
+                broker_name = spec_file.stem
+                try:
+                    with open(spec_file, "r", encoding="utf-8") as f:
+                        spec_data = json.load(f)
+                    db_data["_broker_specs"][broker_name] = spec_data
+                    logger.info("[설정] broker_specs 초기화: %s", broker_name)
+                except Exception as e:
+                    logger.warning("[설정] broker_specs 로드 실패 (%s): %s", spec_file, e)
 
-        for key, default_value in DEFAULT_SYSTEM_CONFIG.items():
-            if key not in db_data:
-                db_data[key] = default_value
+    merged = {**db_data}
+    merged, dirty = _migrate_legacy_auto_trade_on(merged)
+    merged, dirty_tm = _migrate_trade_mode(merged)
+    merged, dirty_tr = _migrate_time_range_split(merged)
+    merged, dirty_sw = _migrate_sector_weights(merged, db_data)
+    merged, dirty_si = _migrate_sector_to_industry_index(merged, db_data)
+    merged, dirty_bc = _migrate_broker_config(merged, db_data)
 
-        if "_broker_specs" not in db_data or not db_data["_broker_specs"]:
-            from pathlib import Path
-            broker_specs_dir = Path(__file__).parent.parent.parent / "data" / "broker_specs"
-            if broker_specs_dir.exists():
-                db_data["_broker_specs"] = {}
-                for spec_file in broker_specs_dir.glob("*.json"):
-                    broker_name = spec_file.stem
-                    try:
-                        with open(spec_file, "r", encoding="utf-8") as f:
-                            spec_data = json.load(f)
-                        db_data["_broker_specs"][broker_name] = spec_data
-                        logger.info("[설정] broker_specs 초기화: %s", broker_name)
-                    except Exception as e:
-                        logger.warning("[설정] broker_specs 로드 실패 (%s): %s", spec_file, e)
+    dirty = dirty or dirty_tm or dirty_tr or dirty_sw or dirty_si or dirty_bc
+    if dirty:
+        await save_settings(merged)
 
-        merged = {**db_data}
-        merged, dirty = _migrate_legacy_auto_trade_on(merged)
-        merged, dirty_tm = _migrate_trade_mode(merged)
-        merged, dirty_tr = _migrate_time_range_split(merged)
-        merged, dirty_sw = _migrate_sector_weights(merged, db_data)
-        merged, dirty_si = _migrate_sector_to_industry_index(merged, db_data)
-        merged, dirty_bc = _migrate_broker_config(merged, db_data)
+    from backend.app.core.encryption import decrypt_value
+    for f in _ENCRYPT_FIELDS:
+        v = merged.get(f)
+        if v and str(v).startswith("gAAAA"):
+            merged[f] = decrypt_value(v) or ""
 
-        dirty = dirty or dirty_tm or dirty_tr or dirty_sw or dirty_si or dirty_bc
-        if dirty:
-            await save_settings(merged)
-
-        from backend.app.core.encryption import decrypt_value
-        for f in _ENCRYPT_FIELDS:
-            v = merged.get(f)
-            if v and str(v).startswith("gAAAA"):
-                merged[f] = decrypt_value(v) or ""
-
-        _integrated_system_settings_cache = dict(merged)
-        return dict(_integrated_system_settings_cache)
+    return dict(merged)
 
 
 
@@ -281,9 +272,6 @@ async def save_settings(data: dict) -> None:
             )
 
         await conn.commit()
-        # Cache-Aside 무효화: 다음 읽기 시 DB에서 최신값 재로드
-        global _integrated_system_settings_cache
-        _integrated_system_settings_cache = None
     except Exception as e:
         await conn.rollback()
         logger.error("[설정] DB 저장 실패: %s", e)

@@ -88,14 +88,14 @@ async def broadcast_stock_classification_changed() -> None:
     except Exception as e:
         _log.warning("[업종관리] 업종별 종목수 조회 실패: %s", e)
 
-    # 커스텀 업종 목록 (sectors 테이블)
+    # 커스텀 업종 목록 (인메모리 캐시에서 조회)
     custom_sectors = {}
     try:
-        conn = await get_db_connection()
-        cursor = await conn.execute("SELECT name FROM sectors")
-        rows = await cursor.fetchall()
-        for row in rows:
-            custom_sectors[row["name"]] = ""
+        import backend.app.services.engine_service as es
+        for entry in es._master_stocks_cache.values():
+            sector = entry.get("sector")
+            if sector and sector != "":
+                custom_sectors[sector] = ""
     except Exception as e:
         _log.warning("[업종관리] 커스텀 업종 목록 조회 실패: %s", e)
 

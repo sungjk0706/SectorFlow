@@ -28,7 +28,7 @@ async def run_migration_v4() -> None:
             
             logger.info("[마이그레이션 v4] downloaded_at 컬럼 추가 완료")
         else:
-            logger.info("[마이그레이션 v4] downloaded_at 컬럼 이미 존재 - 스킵")
+            pass
             
     except Exception as e:
         logger.error("[마이그레이션 v4] 마이그레이션 실패: %s", e)
