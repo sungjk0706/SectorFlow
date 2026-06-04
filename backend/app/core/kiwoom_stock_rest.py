@@ -283,7 +283,7 @@ async def fetch_ka10081_all_stocks_daily_confirmed(
 
             # 화면 로그는 1종목 단위 실시간 출력 (직관성 확보)
             _pct = int(cur_done / total * 100) if total else 0
-            _log.info("[ka10081-confirmed] 확정시세 실시간 다운로드 중: %d/%d (%d%%)", cur_done, total, _pct)
+            _log.info("[ka10081] 적격종목 확정시세 다운로드중: %d/%d (%d%%)", cur_done, total, _pct)
             if on_progress:
                 on_progress(cur_done, total)
 
@@ -403,7 +403,7 @@ async def fetch_ka10081_all_stocks_5day(
 
             # 화면 로그는 1종목 단위 실시간 출력 (직관성 확보)
             _pct = int(cur_done / total * 100) if total else 0
-            _log.info("[ka10081-5d] 5일봉 실시간 다운로드 중: %d/%d (%d%%)", cur_done, total, _pct)
+            _log.info("[ka10081] 적격종목 5일봉 거래대금,고가 다운로드중: %d/%d (%d%%)", cur_done, total, _pct)
             if on_progress:
                 on_progress(cur_done, total)
 
@@ -412,7 +412,7 @@ async def fetch_ka10081_all_stocks_5day(
     for cd in remaining_codes:
         # 중단 요청 확인
         if not getattr(es, "_confirmed_refresh_running_5d", True):
-            _log.info("[ka10081-5d] 중단 요청 수신 — 다운로드 중단")
+            _log.info("[ka10081] 적격종목 5일봉 다운로드 중단 요청 수신")
             break
 
         task = asyncio.create_task(fetch_ka10081_daily_5d_data(api, cd, qry_dt, _raw_cd=cd))
@@ -442,11 +442,11 @@ async def fetch_ka10081_all_stocks_5day(
             )
             await conn.commit()
         except Exception as e:
-            _log.warning("[ka10081-5d] downloaded_at 배치 업데이트 실패: %s", e)
+            _log.warning("[ka10081] 적격종목 5일봉 downloaded_at 배치 업데이트 실패: %s", e)
 
     if failed_codes:
-        _log.warning("[ka10081-5d] 실패 종목 %d개: %s", len(failed_codes), failed_codes)
-    _log.info("[ka10081-5d] 완료 -- 성공 %d/%d종목, 실패 %d종목 (이어받기 %d종목)",
+        _log.warning("[ka10081] 적격종목 5일봉 실패 종목 %d개: %s", len(failed_codes), failed_codes)
+    _log.info("[ka10081] 적격종목 5일봉 다운로드 완료 -- 성공 %d/%d종목, 실패 %d종목 (이어받기 %d종목)",
               len(result), total, len(failed_codes), starting_count)
     return result
 

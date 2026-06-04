@@ -75,6 +75,12 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
      "sector_trim_change_rate_pct": 10.0,
      "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
      "sector_sort_keys": ["score"],
+
+     # 장마감 후 스케줄러 토글 (기본값 True = 활성화)
+     # ws_subscribe_end 도달 시 확정 데이터 다운로드 실행 여부
+     "scheduler_market_close_on": True,
+     # 5일 거래대금/최고가 롤링 다운로드 실행 여부
+     "scheduler_5d_download_on": True,
  }
  
  # 시스템 설정 기본값 (system_config)

@@ -176,8 +176,12 @@ function buildRankingRows(container: HTMLElement): void {
     row.appendChild(barOuter)
 
     row.addEventListener('click', () => {
-      const sector = row.dataset.sector
-      if (sector) setSelectedSector(sector)
+      const state = hotStore.getState()
+      const scores = state.sectorScores
+      const rowIndex = rankRows.indexOf(row)
+      if (rowIndex >= 0 && rowIndex < scores.length) {
+        setSelectedSector(scores[rowIndex].sector)
+      }
     })
 
     container.appendChild(row)
@@ -217,7 +221,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     const finalScore = s.final_score.toFixed(1)
     const riseRatio = s.rise_ratio.toFixed(1) + '%'
     const riseColor = s.rise_ratio > 50 ? 'red' : s.rise_ratio < 50 ? 'blue' : '#333'
-    const tradeAmt = Math.floor(s.total_trade_amount / 100).toLocaleString()  // 백만원 → 억단위
+    const tradeAmt = (s.total_trade_amount / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })  // 백만원 → 억단위 (소수점 1자리, 콤마)
     const barWidth = `${Math.min((s.final_score / maxScore) * 100, 100)}%`
     const barColor = isUnranked ? '#dee2e6' : (s.rank <= maxTargets ? '#0d6efd' : '#adb5bd')
 

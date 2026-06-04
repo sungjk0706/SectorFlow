@@ -1,7 +1,7 @@
 from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
-설정 파일(settings.json) 읽기·저장·엔진 동기화 -- HTTP 레이어 없이 데스크톱/UI에서 직접 사용.
+설정(SQLite DB) 읽기·저장·엔진 동기화 -- HTTP 레이어 없이 데스크톱/UI에서 직접 사용.
 """
 
 import asyncio
@@ -11,12 +11,6 @@ from typing import Any
 from backend.app.core.encryption import decrypt_value, encrypt_value
 from backend.app.core.settings_file import load_integrated_system_settings, save_settings
 from backend.app.core import journal as _journal
-from backend.app.services import engine_service
-from backend.app.services.engine_account_notify import (
-    notify_desktop_header_refresh,
-    notify_desktop_sector_scores,
-    notify_desktop_settings_toggled,
-)
 from backend.app.services.auto_trading_effective import auto_trading_effective
 
 logger = logging.getLogger(__name__)
@@ -154,7 +148,7 @@ def changed_keys_general_save(before_editing: dict, new_payload: dict) -> set[st
 
 
 async def apply_settings_updates(data: dict, username: str = "admin", profile: str | None = None) -> None:
-    """업데이트 데이터를 data/settings.json 에 병합 저장."""
+    """업데이트 데이터를 SQLite integrated_system_settings 테이블에 병합 저장."""
     import re
     _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
     _TIME_FIELDS = frozenset({
@@ -222,36 +216,8 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
     
     if changed_keys:
         await _journal.record_settings_change(changed_keys, before_snapshot, dict(current))
-
-        # ── RAM 캐시 증분 갱신 (인메모리 key-value 교체) ──
-        try:
-            from backend.app.core.engine_settings import build_engine_settings_dict
-            processed_cache = build_engine_settings_dict(current)
-            
-            # engine_service._integrated_system_settings_cache 갱신
-            key_mappings = {
-                "buy_amt": "buy_amount",
-                "max_stock_cnt": "max_stock_count",
-                "loss_apply": "loss_cut_apply",
-                "loss_val": "loss_cut_value",
-                "ts_apply": "trailing_stop_apply",
-                "ts_start_val": "trailing_start_value",
-                "ts_drop_val": "trailing_drop_value"
-            }
-
-            for k in changed_keys:
-                mapped_keys = {k}
-                if k in key_mappings:
-                    mapped_keys.add(key_mappings[k])
-
-                for mk in mapped_keys:
-                    if mk in processed_cache:
-                        engine_service._integrated_system_settings_cache[mk] = processed_cache[mk]
-
-                if k in current:
-                    engine_service._integrated_system_settings_cache[k] = processed_cache.get(k, current[k])
-        except Exception as e:
-            logger.warning("[설정] RAM 캐시 증분 갱신 실패: %s", e, exc_info=True)
+    
+    return changed_keys
 
 
 async def build_masked_settings_dict(username: str = "admin", profile: str | None = None) -> dict[str, Any]:
@@ -293,180 +259,3 @@ async def load_integrated_system_settings_for_editing() -> dict:
         if v and str(v).startswith("gAAAA"):
             out[f] = decrypt_value(v) or ""
     return out
-
-
-async def after_settings_persisted(
-    username: str,
-    changed_keys: set,
-    profile: str | None = None,
-) -> None:
-    """파일 저장 후 엔진·스케줄러와 동기화 -- 어떤 설정이든 저장되면 WS settings-changed 를 보낸다."""
-    if not changed_keys:
-        notify_desktop_header_refresh()
-        return
-
-    # ── 1) 캐시 갱신 제거 (apply_settings_updates에서 메모리 증분 갱신 처리됨) ──
-
-    # ── 2) 연결 레벨 키 → 엔진 실시간 핫-리로드 ───────────────────────────────────
-    broker_nm = str(engine_service._integrated_system_settings_cache.get("broker", "") or "").lower().strip()
-    connection_keys = engine_service.get_connection_level_keys(broker_nm)
-    if changed_keys & connection_keys:
-        if engine_service.is_running():
-            _schedule_settings_task(engine_service.update_broker_credentials_live(), "자격 증명 핫-갱신")
-            logger.info(
-                "[설정] 연결 레벨 설정 변경 감지 -> 실시간 자격 증명 핫-갱신 및 토큰 재시도 가동 (키=%s)",
-                changed_keys & connection_keys,
-            )
-        notify_desktop_header_refresh()
-        await notify_desktop_settings_toggled()
-        return
-
-    # ── 3) 거래모드 전환 → 캐시 갱신 + 계좌 구독 전환 ────────────────────
-    if changed_keys & engine_service.TRADE_MODE_KEYS:
-        if engine_service.is_running():
-            _schedule_settings_task(engine_service.on_trade_mode_switched(), "거래모드 전환")
-            logger.info("[설정] 거래모드 전환 감지 -> 저장데이터 갱신 + 계좌 구독 전환 (엔진 재기동 없음)")
-        notify_desktop_header_refresh()
-        await notify_desktop_settings_toggled()
-        return
-
-    # ── 4) 일반 설정 변경 (증분 브로드캐스트 전송) ────────────────────────
-    notify_desktop_header_refresh()
-    
-    changed_dict = {}
-    try:
-        from backend.app.services.engine_config import _mask_sensitive_settings
-        display_settings = dict(engine_service._integrated_system_settings_cache)
-        masked_settings = _mask_sensitive_settings(display_settings)
-        for k in changed_keys:
-            if k in masked_settings:
-                changed_dict[k] = masked_settings[k]
-    except Exception as e:
-        logger.warning("[설정] 마스킹 델타 추출 실패: %s", e)
-
-    await notify_desktop_settings_toggled(changed_dict)
-
-    # 테스트모드 가상 예수금 변경 시 Settlement Engine 동기화 + 계좌 스냅샷 갱신
-    _VIRTUAL_BALANCE_KEYS = {"test_virtual_balance", "test_virtual_deposit"}
-    if changed_keys & _VIRTUAL_BALANCE_KEYS:
-        try:
-            import backend.app.services.engine_state as _st
-            from backend.app.services import settlement_engine as _se
-            _s = _st._integrated_system_settings_cache or {}
-            _deposit = int(_s.get("test_virtual_balance", _s.get("test_virtual_deposit", 10_000_000)) or 0)
-            await _se.reset(_deposit)
-            # 계좌 스냅샷 갱신 + WS account-update 발송
-            await engine_service._refresh_account_snapshot_meta()
-            engine_service._broadcast_account(reason="virtual_balance_changed")
-        except Exception:
-            logger.warning("[설정] 가상 예수금 동기화 실패", exc_info=True)
-
-    # 5일봉 다운로드 토글 ON 시 즉시 다운로드 트리거
-    if "scheduler_5d_download_on" in changed_keys:
-        _5d_on = bool(engine_service.get_settings_snapshot().get("scheduler_5d_download_on", True))
-        if _5d_on:
-            try:
-                engine_service._avg_amt_needs_bg_refresh = True
-                logger.info("[설정] scheduler_5d_download_on=ON → 5일봉 다운로드 트리거")
-            except Exception:
-                logger.warning("[설정] 5일봉 다운로드 트리거 실패", exc_info=True)
-
-    # 자동매매 시간 관련 설정 변경 시 타이머 재예약 + KiwoomConnector 플래그 동기화
-    _TIME_SCHEDULE_KEYS = {
-        "time_scheduler_on", "auto_buy_on", "auto_sell_on",
-        "buy_time_start", "buy_time_end", "sell_time_start", "sell_time_end",
-    }
-    if changed_keys & _TIME_SCHEDULE_KEYS:
-        try:
-            from backend.app.services.daily_time_scheduler import schedule_auto_trade_timers
-            new_settings = engine_service.get_settings_snapshot()
-            await schedule_auto_trade_timers(new_settings)
-            # KiwoomConnector 자동매매 플래그 동기화
-            ws = getattr(engine_service, "_kiwoom_connector", None)
-            if ws and "time_scheduler_on" in changed_keys:
-                ws.set_auto_trade_enabled(bool(new_settings.get("time_scheduler_on", True)))
-        except Exception:
-            pass
-
-    # WS 구독 시간/스위치 변경 시 → 즉시 구간 재판정 + 타이머 재예약
-    _WS_SCHEDULE_KEYS = {"ws_subscribe_start", "ws_subscribe_end", "ws_subscribe_on"}
-    if changed_keys & _WS_SCHEDULE_KEYS:
-        try:
-            from backend.app.services import daily_time_scheduler as _dts
-            new_settings = engine_service.get_settings_snapshot()
-            now_in_window = await _dts.is_ws_subscribe_window(new_settings)
-            was_active = bool(_dts._ws_subscribe_window_active)
-
-            # 1) 타이머 재예약 (항상)
-            await _dts.schedule_ws_subscribe_timers(new_settings)
-
-            # 2) KiwoomConnector 실시간 연결 플래그 업데이트
-            ws = getattr(engine_service, "_kiwoom_connector", None)
-            if ws:
-                ws.set_realtime_enabled(bool(new_settings.get("ws_subscribe_on", True)))
-                ws.set_holiday_block_enabled(bool(new_settings.get("holiday_guard_on", True)))
-
-            # 3) 활성→구간밖: 즉시 구독 해제 + WS 끊기 (장마감 후처리 없이)
-            if was_active and not now_in_window:
-                logger.info("[설정] 실시간 구독 구간 변경 → 현재 구간 밖 — 즉시 구독 해제")
-                _dts._fire_ws_disconnect_only()
-
-            # 4) 비활성→구간안: 즉시 WS 연결 + 구독 시작
-            elif not was_active and now_in_window:
-                logger.info("[설정] 실시간 구독 구간 변경 → 현재 구간 안 — 즉시 구독 시작")
-                _schedule_settings_task(_dts._on_ws_subscribe_start(), "실시간 구독 시작")
-        except Exception:
-            pass
-
-    # 공휴일 자동 차단 설정 변경 시 KiwoomConnector 플래그 업데이트
-    if "holiday_guard_on" in changed_keys:
-        try:
-            ws = getattr(engine_service, "_kiwoom_connector", None)
-            if ws:
-                new_settings = engine_service.get_settings_snapshot()
-                ws.set_holiday_block_enabled(bool(new_settings.get("holiday_guard_on", True)))
-        except Exception:
-            pass
-
-    # 섹터 정렬/필터 관련 설정 변경 시 업종 점수만 재계산 (종목 시세는 WS delta로만 전송)
-    _SECTOR_UI_KEYS = {
-        "sector_sort_keys", "sector_rank_primary", "sector_weights",
-        "sector_min_rise_ratio_pct", "sector_min_trade_amt",
-        "sector_max_targets", "buy_block_rise_pct", "buy_block_fall_pct",
-        "buy_min_strength",
-        "sector_trim_trade_amt_pct", "sector_trim_change_rate_pct",
-        # 가산점 설정
-        "boost_high_breakout_on", "boost_high_breakout_score",
-        "boost_order_ratio_on",
-        "boost_order_ratio_pct", "boost_order_ratio_score",
-    }
-    if changed_keys & _SECTOR_UI_KEYS:
-        if engine_service.is_running():
-            if "sector_min_trade_amt" in changed_keys:
-                engine_service._schedule_engine_coro(
-                    engine_service._on_filter_settings_changed(), context="필터 설정 변경"
-                )
-            engine_service._schedule_engine_coro(
-                engine_service.recompute_sector_summary_now(), context="섹터 설정 변경"
-            )
-        notify_desktop_sector_scores(force=True)
-
-    # WS 구독 제어 설정 변경 시 즉시 반영 (구독 시작/해지)
-    _WS_SUBSCRIBE_CONTROL_KEYS = {"index_auto_subscribe", "quote_auto_subscribe"}
-    _ws_changed = changed_keys & _WS_SUBSCRIBE_CONTROL_KEYS
-    if _ws_changed:
-        try:
-            from backend.app.services.ws_subscribe_control import on_setting_changed
-            import backend.app.services.engine_state as _st
-            raw = _st._integrated_system_settings_cache or {}
-            for key in _ws_changed:
-                _schedule_settings_task(
-                    on_setting_changed(key, bool(raw.get(key)), engine_service),
-                    f"WS 구독 제어 설정 반영({key})",
-                )
-        except Exception:
-            logger.warning("[설정] ws_subscribe_control 설정 변경 반영 실패", exc_info=True)
-
-
-async def after_buy_settings_persisted(username: str, changed_keys: set, data: dict, profile: str | None = None) -> None:
-    await after_settings_persisted(username, changed_keys, profile)

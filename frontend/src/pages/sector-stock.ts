@@ -142,10 +142,26 @@ function computeRows(
     return b.final_score - a.final_score
   })
   const sectorOrder = sortedSectorScores.map(s => s.sector)
-  const orderedSectors = [...sectorOrder]
-  for (const sector of grouped.keys()) {
-    if (!orderedSectors.includes(sector)) {
-      orderedSectors.push(sector)
+  // selectedSector 또는 검색 모드: 빈 배열로 시작
+  const orderedSectors = (selectedSector || matchedCodes) ? [] : [...sectorOrder]
+
+  if (selectedSector) {
+    if (grouped.has(selectedSector)) {
+      orderedSectors.push(selectedSector)
+    }
+  } else if (matchedCodes) {
+    // 검색 모드: 검색된 종목이 속한 업종만 표시
+    for (const sector of grouped.keys()) {
+      if (!orderedSectors.includes(sector)) {
+        orderedSectors.push(sector)
+      }
+    }
+  } else {
+    // 전체 모드: 모든 업종 표시
+    for (const sector of grouped.keys()) {
+      if (!orderedSectors.includes(sector)) {
+        orderedSectors.push(sector)
+      }
     }
   }
 

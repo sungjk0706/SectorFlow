@@ -11,26 +11,7 @@ import time
 from backend.app.core.logger import get_logger
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.services.auto_trading_effective import auto_buy_effective
-from backend.app.services.engine_state import (
-    _engine_task,
-    _running,
-    _state_manager,
-    _engine_user_id,
-    _engine_stop_event,
-    _kiwoom_connector,
-    _kiwoom_auth_provider,
-    _connector_manager,
-    _login_ok,
-    _integrated_system_settings_cache,
-    _auto_trade,
-    _positions,
-    # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_prices)
-    _checked_stocks,
-    _access_token,
-    # _sector_buy_last_ts 제거: _master_stocks_cache[code]["_last_buy_ts"]로 통합
-    _master_stocks_cache,
-    _engine_loop_ref,
-)
+from backend.app.services.engine_state import state
 
 logger = get_logger("engine_lifecycle")
 
@@ -39,25 +20,24 @@ logger = get_logger("engine_lifecycle")
 
 async def start_engine(user_id: str = "") -> bool:
     """엔진 시작."""
-    global _engine_task, _running, _state_manager, _engine_user_id, _kiwoom_auth_provider
     from backend.app.services.state_manager import StateManager
     from backend.app.core.kiwoom_providers import KiwoomAuthProvider
-    
-    if _engine_task and not _engine_task.done():
+
+    if state.engine_task and not state.engine_task.done():
         return False
 
     # StateManager 초기화
-    if _state_manager is None:
-        _state_manager = StateManager()
-        await _state_manager.start()
+    if state.state_manager is None:
+        state.state_manager = StateManager()
+        await state.state_manager.start()
         logger.info("[엔진] StateManager 초기화 완료")
 
-    _engine_user_id = user_id
-    _running = True
+    state.engine_user_id = user_id
+    state.running = True
     logger.info("[엔진] start_engine() - asyncio.create_task(_engine_loop()) 호출 직전")
-    _engine_task = asyncio.create_task(_engine_loop())
+    state.engine_task = asyncio.create_task(_engine_loop())
     logger.info("[엔진] start_engine() - asyncio.create_task(_engine_loop()) 호출 완료")
-    
+
     _broadcast_engine_ws()
     return True
 
@@ -76,24 +56,23 @@ async def _engine_loop() -> None:
 
 async def stop_engine() -> None:
     """엔진 중지."""
-    global _running, _engine_task
     from backend.app.services.engine_sector_confirm import cancel_sector_confirm_timer
-    
-    _running = False
-    
-    if _engine_stop_event:
-        _engine_stop_event.set()
+
+    state.running = False
+
+    if state.engine_stop_event:
+        state.engine_stop_event.set()
 
     # 디바운스 타이머 정리
     cancel_sector_confirm_timer()
 
-    if _engine_task:
-        _engine_task.cancel()
+    if state.engine_task:
+        state.engine_task.cancel()
         try:
-            await _engine_task
+            await state.engine_task
         except asyncio.CancelledError:
             pass
-        _engine_task = None
+        state.engine_task = None
 
     # 백그라운드 태스크 일괄 취소
     current = asyncio.current_task()
@@ -113,31 +92,45 @@ async def stop_engine() -> None:
 
 def is_running() -> bool:
     """엔진이 현재 가동 중인지 확인한다."""
-    return _running and _engine_task is not None and not _engine_task.done()
+    return state.running and state.engine_task is not None and not state.engine_task.done()
 
 
 def get_status() -> dict:
     """엔진 상태 반환."""
     # 실시간 구독 종목 수
-    import backend.app.services.engine_state as _es
-    sub_count = sum(1 for entry in _es._master_stocks_cache.values() if entry.get("_subscribed", False))
-    
-    test_mode = is_test_mode(_es._integrated_system_settings_cache)
-    ws = _es._connector_manager or _es._kiwoom_connector
+    sub_count = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
+
+    test_mode = is_test_mode(state.integrated_system_settings_cache)
+    ws = state.connector_manager or state.kiwoom_connector
     conn_ok = bool(ws and ws.is_connected())
-    
+
+    # broker별 실제 연결 상태 (state.broker_tokens 기반)
+    broker_statuses: dict = {}
+    for broker_id, token in state.broker_tokens.items():
+        ws_connected = False
+        if state.connector_manager:
+            conn = state.connector_manager.get_connector(broker_id)
+            ws_connected = bool(conn and conn.is_connected())
+        elif broker_id == "kiwoom" and state.kiwoom_connector:
+            ws_connected = state.kiwoom_connector.is_connected()
+        broker_statuses[broker_id] = {
+            "token_valid": bool(token),
+            "ws_connected": ws_connected,
+        }
+
     return {
-        "running": _es._running,
+        "running": state.running,
         "connected": conn_ok,
-        "broker_connected": conn_ok,  # 프론트 매핑용
-        "logged_in": _es._login_ok,
-        "login_ok": _es._login_ok,  # 프론트 매핑용
-        "broker_token_valid": bool(_es._access_token),  # 토큰 발급 성공 여부
+        "broker_connected": conn_ok,  # 프론트 매핑용 (하위 호환)
+        "logged_in": state.login_ok,
+        "login_ok": state.login_ok,  # 프론트 매핑용
+        "broker_token_valid": bool(state.access_token),  # 하위 호환
         "trade_mode": "test" if test_mode else "real",
         "is_test_mode": test_mode,  # 프론트 매핑용
-        "engine_task_alive": _es._engine_task is not None and not _es._engine_task.done(),
+        "engine_task_alive": state.engine_task is not None and not state.engine_task.done(),
         "stock_subscribed_count": sub_count,
         "ws_reg_total_estimate": sub_count,
+        "broker_statuses": broker_statuses,  # broker별 실제 연결 상태
     }
 
 
@@ -148,18 +141,18 @@ async def on_trade_mode_switched() -> None:
     from backend.app.services import settlement_engine
     from backend.app.services.engine_ws import _subscribe_account_realtime, _subscribe_positions_stocks_realtime
     from backend.app.services.engine_account import _refresh_account_snapshot_meta, _broadcast_account
-    
-    _new_test = is_test_mode(_integrated_system_settings_cache)
+
+    _new_test = is_test_mode(state.integrated_system_settings_cache)
     _mode_str = "테스트모드" if _new_test else "실전투자"
     logger.info("[연결] 거래모드 전환 -> %s (엔진 재기동 없음)", _mode_str)
 
-    if not is_running() or not _kiwoom_connector or not _kiwoom_connector.is_connected():
+    if not is_running() or not state.kiwoom_connector or not state.kiwoom_connector.is_connected():
         return
 
     if _new_test:
         # 실전→테스트: 계좌 실시간 구독(00/04) 해제, 분석용 구독은 유지
         from backend.app.services.engine_ws_reg import _unreg_grp
-        await _unreg_grp(None, "10")
+        await _unreg_grp("10")
         logger.info("[구독] 테스트모드 전환 -- 계좌 실시간 구독(grp_no=10) 해제 완료")
         # Settlement Engine: 파일에서 상태 복원 + 만료 항목 정리 + 타이머 재스케줄
         settlement_engine.restore_state()
@@ -189,48 +182,48 @@ async def _try_sector_buy() -> None:
     auto_buy_effective(시간 범위 + auto_buy_on + 마스터 스위치) 통과 시 매수 실행.
     쿨다운: sector_buy_cooldown_sec(기본 90초).
     """
-    # _sector_buy_last_ts 제거: _master_stocks_cache[code]["_last_buy_ts"]로 통합
+    # _sector_buy_last_ts 제거: state.master_stocks_cache[code]["_last_buy_ts"]로 통합
     from backend.app.services import dry_run
     from backend.app.services.daily_time_scheduler import is_krx_after_hours
     from backend.app.services.engine_symbol_utils import is_nxt_enabled
-    import backend.app.services.engine_service as _es
+    from backend.app.services.engine_service import _sector_summary_cache
 
-    if not _running:
+    if not state.running:
         return
 
-    if not _auto_trade:
+    if not state.auto_trade:
         return
 
-    ss = _es._sector_summary_cache
+    ss = _sector_summary_cache
     if not ss or not ss.buy_targets:
         return
 
     # ── 자동매수 게이트 (auto_buy_on + 시간 범위 + 마스터 스위치 통합 체크) ──
-    if not auto_buy_effective(_es._integrated_system_settings_cache):
+    if not auto_buy_effective(state.integrated_system_settings_cache):
         return
 
     # ── 전역 조건 사전 체크 ──────────────────────────────────────────
-    _max_limit = int(_es._integrated_system_settings_cache.get("max_stock_cnt", 5) or 5)
-    if is_test_mode(_es._integrated_system_settings_cache):
+    _max_limit = int(state.integrated_system_settings_cache.get("max_stock_cnt", 5) or 5)
+    if is_test_mode(state.integrated_system_settings_cache):
         _pos_for_cnt = await dry_run.get_positions()
     else:
-        _pos_for_cnt = _positions
+        _pos_for_cnt = state.positions
     _holding_cnt = sum(1 for p in _pos_for_cnt if int(p.get("qty", 0)) > 0)
     if _holding_cnt >= _max_limit:
         return
 
-    _buy_amt = int(_es._integrated_system_settings_cache.get("buy_amt", 0) or 0)
+    _buy_amt = int(state.integrated_system_settings_cache.get("buy_amt", 0) or 0)
     if _buy_amt <= 0:
         return
 
-    _max_daily = int(_es._integrated_system_settings_cache.get("max_daily_total_buy_amt", 0) or 0)
+    _max_daily = int(state.integrated_system_settings_cache.get("max_daily_total_buy_amt", 0) or 0)
     if _max_daily > 0:
-        _daily_remain = _max_daily - _auto_trade._daily_buy_spent
+        _daily_remain = _max_daily - state.auto_trade._daily_buy_spent
         if _daily_remain <= 0:
             return
 
     # ── 종목별 매수 시도 ─────────────────────────────────────────────
-    cooldown = float(_es._integrated_system_settings_cache.get("sector_buy_cooldown_sec") or 90)
+    cooldown = float(state.integrated_system_settings_cache.get("sector_buy_cooldown_sec") or 90)
     now = time.time()
 
     _after_hours = is_krx_after_hours()
@@ -242,23 +235,22 @@ async def _try_sector_buy() -> None:
         # 장외 시간 KRX 단독 종목 매수 차단
         if _after_hours and not is_nxt_enabled(s.code):
             continue
-        # _sector_buy_last_ts 제거: _master_stocks_cache[code]["_last_buy_ts"]로 통합
-        last_ts = _master_stocks_cache.get(s.code, {}).get("_last_buy_ts", 0.0)
+        # _sector_buy_last_ts 제거: state.master_stocks_cache[code]["_last_buy_ts"]로 통합
+        last_ts = state.master_stocks_cache.get(s.code, {}).get("_last_buy_ts", 0.0)
         if now - last_ts < cooldown:
             continue
 
-        _master_stocks_cache[s.code]["_last_buy_ts"] = now
+        state.master_stocks_cache[s.code]["_last_buy_ts"] = now
         
         logger.info("[섹터매수] 매수 시도: %s(%s) 섹터=%s 등락률=%.2f%%",
                     s.name, s.code, s.sector, s.change_rate)
         try:
-            # 실시간 틱 데이터 캐시 삭제로 인해 현재가 조회 불가 (항상 0 반환)
-            _price = 0
+            _price = int(s.cur_price or 0)
             if _price <= 0:
                 logger.debug("[섹터매수] %s 실시간 시세 없음 -- 생략", s.code)
                 continue
-            _ordered = await _auto_trade.execute_buy(
-                s.code, float(_price), _checked_stocks, _access_token,
+            _ordered = await state.auto_trade.execute_buy(
+                s.code, float(_price), state.checked_stocks, state.access_token,
                 force_buy=False,
                 reason=f"업종자동매수 업종={s.sector}",
             )
@@ -267,8 +259,8 @@ async def _try_sector_buy() -> None:
                 _holding_cnt += 1
                 if _holding_cnt >= _max_limit:
                     break
-                await _auto_trade._ensure_daily_buy_counter()
-                if _max_daily > 0 and _auto_trade._daily_buy_spent >= _max_daily:
+                await state.auto_trade._ensure_daily_buy_counter()
+                if _max_daily > 0 and state.auto_trade._daily_buy_spent >= _max_daily:
                     break
         except Exception as e:
             logger.warning("[섹터매수] execute_buy 오류 %s: %s", s.code, e, exc_info=True)
@@ -292,7 +284,7 @@ def _schedule_engine_coro(coro: asyncio.coroutines, *, context: str) -> bool:
     엔진 이벤트 루프에 코루틴을 안전하게 스케줄한다.
     UI 스레드(이벤트 루프 없음)에서 호출되는 경우 call_soon_threadsafe를 사용한다.
     """
-    loop = _engine_loop_ref
+    loop = state.engine_loop_ref
     if loop and not loop.is_closed():
         try:
             def _create_with_callback():
@@ -322,10 +314,10 @@ def _schedule_engine_coro(coro: asyncio.coroutines, *, context: str) -> bool:
 
 def _sync_sell_overrides_from_settings() -> None:
     """sell_per_symbol -> AutoTradeManager.ts_overrides 동기화."""
-    if not _auto_trade or not isinstance(_integrated_system_settings_cache, dict):
+    if not state.auto_trade or not isinstance(state.integrated_system_settings_cache, dict):
         return
-    sp = _integrated_system_settings_cache.get("sell_per_symbol")
-    _auto_trade.ts_overrides = dict(sp) if isinstance(sp, dict) else {}
+    sp = state.integrated_system_settings_cache.get("sell_per_symbol")
+    state.auto_trade.ts_overrides = dict(sp) if isinstance(sp, dict) else {}
 
 
 def _broadcast_engine_ws() -> None:
@@ -341,7 +333,6 @@ async def _delayed_resubscribe_stock_after_rate_limit(norm_cd: str) -> None:
 
 async def update_broker_credentials_live() -> None:
     """[근본 해결] 엔진 재기동 없이 실행 중인 REST 및 커넥터 인스턴스에 인증키를 즉시 핫-리로드하고 토큰 재발급을 가동한다."""
-    import backend.app.services.engine_state as es
     from backend.app.core.settings_store import load_integrated_system_settings_for_editing
     from backend.app.core.broker_factory import reset_router
 
@@ -349,67 +340,70 @@ async def update_broker_credentials_live() -> None:
 
     # 1. 암호화 필드가 복호화된 평문 설정 딕셔너리 로드
     raw_settings = await load_integrated_system_settings_for_editing()
-    broker_nm = str(es._integrated_system_settings_cache.get("broker", "kiwoom")).lower().strip()
-    
+    broker_nm = str(state.integrated_system_settings_cache.get("broker", "kiwoom")).lower().strip()
+
     app_key = str(raw_settings.get(f"{broker_nm}_app_key") or "").strip()
     app_secret = str(raw_settings.get(f"{broker_nm}_app_secret") or "").strip()
     acnt_no = str(raw_settings.get(f"{broker_nm}_account_no") or "").strip()
-    
+
     if not app_key or not app_secret:
         _log("[경고] 주입할 유효한 API Key 또는 Secret이 존재하지 않습니다.")
         return
 
     # 2. 실행 중인 KiwoomRestAPI 전역 인스턴스 내부 변수 즉시 갱신
-    if es._rest_api:
-        es._rest_api.app_key = app_key
-        es._rest_api.app_secret = app_secret
-        es._rest_api._acnt_no = acnt_no
-        es._rest_api._token_info = None  # 이전의 실패 만료 상태 리셋
+    if state.rest_api:
+        state.rest_api.app_key = app_key
+        state.rest_api.app_secret = app_secret
+        state.rest_api._acnt_no = acnt_no
+        state.rest_api._token_info = None  # 이전의 실패 만료 상태 리셋
         _log("[설정] KiwoomRestAPI 인스턴스 자격 증명 핫-갱신 완료")
-        
+
     # 3. 실행 중인 실시간 WebSocket 커넥터 내부 변수 즉시 갱신
-    if es._kiwoom_connector:
-        es._kiwoom_connector._app_key = app_key
-        es._kiwoom_connector._app_secret = app_secret
+    if state.kiwoom_connector:
+        state.kiwoom_connector._app_key = app_key
+        state.kiwoom_connector._app_secret = app_secret
         _log("[설정] KiwoomConnector 인스턴스 자격 증명 핫-갱신 완료")
 
     # 4. Broker Router 캐시 초기화
     reset_router()
-    
+
     # 5. 비동기 백그라운드 태스크로 즉시 토큰 발급 및 파이프라인 언블로킹 시도
-    es._token_ready_event.clear()  # 이전 대기 상태로 초기화
+    state.token_ready_event.clear()  # 이전 대기 상태로 초기화
     asyncio.create_task(_retry_token_issuance_live(broker_nm))
 
 
 async def _retry_token_issuance_live(broker_nm: str) -> None:
     """갱신된 자격 증명으로 즉각 토큰 발급을 재시도하고 이벤트를 브로드캐스팅한다."""
-    import backend.app.services.engine_state as es
-    
+
     _log("[연결] 갱신된 API Key 기반 실시간 토큰 발급 요청 중...")
-    
-    if not es._rest_api:
+
+    if not state.rest_api:
         _log("[오류] REST API 인스턴스가 존재하지 않아 토큰 요청을 중단합니다.")
         return
-        
+
     try:
         # requests.post() 동기 통신을 이벤트 루프 차단 없이 비동기 백그라운드 실행
-        success = await es._rest_api._ensure_token()
-        if success and es._rest_api._token_info:
-            new_token = es._rest_api._token_info.token
-            es._access_token = new_token
-            es._login_ok = True
-            es._broker_tokens[broker_nm] = new_token
-            
-            _log(f"[연결] 증권사 토큰 재발급 성공! (토큰: {new_token[:10]}...)")
-            
+        success = await state.rest_api._ensure_token()
+        if success and state.rest_api._token_info:
+            new_token = state.rest_api._token_info.token
+            state.access_token = new_token
+            state.login_ok = True
+            state.broker_tokens[broker_nm] = new_token
+
+            if new_token is not None:
+                masked = new_token[:4] + "****" + new_token[-2:] if len(new_token) > 6 else "****"
+                _log(f"[연결] 증권사 토큰 재발급 성공! (토큰: {masked})")
+            else:
+                _log("[연결] 증권사 토큰 재발급 성공했으나 토큰 값이 빈 문자열입니다.")
+
             # 대기 중인 모든 파이프라인에 인증 완료 신호 전파
-            es._token_ready_event.set()
-            
+            state.token_ready_event.set()
+
             # 실시간 웹소켓 커넥터가 끊겨 있거나 사용 불가 상태였다면 새 토큰으로 재연결 시도
-            if es._kiwoom_connector and not es._kiwoom_connector.is_connected():
+            if state.kiwoom_connector and not state.kiwoom_connector.is_connected():
                 _log("[연결] 새 토큰 기반 실시간 웹소켓 커넥터 연결 재시도 시작")
-                asyncio.create_task(es._kiwoom_connector.connect())
+                asyncio.create_task(state.kiwoom_connector.connect())
         else:
-            _log(f"[경고] 토큰 발급 응답 실패 - success={success}, token_info={es._rest_api._token_info}")
+            _log(f"[경고] 토큰 발급 응답 실패 - success={success}, token_info={state.rest_api._token_info}")
     except Exception as e:
         _log(f"[오류] 토큰 실시간 재발급 중 예외 발생: {e}")

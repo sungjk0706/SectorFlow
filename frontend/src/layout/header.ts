@@ -98,17 +98,14 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   avgAmtChip.style.display = 'none'
   header.appendChild(avgAmtChip)
 
-  // 엔진 상태 칩: 증권사, 증권사실시간, 테스트/실전모드
-  const brokerChip = createChipEl()
-  brokerChip.style.display = 'none'
-  const brokerWsChip = createChipEl()
-  brokerWsChip.style.display = 'none'
+  // 엔진 상태 칩: 증권사(동적), 테스트/실전모드
+  const brokerChipsContainer = document.createElement('span')
+  brokerChipsContainer.style.cssText = 'display:none;gap:4px;align-items:center;'
+  header.appendChild(brokerChipsContainer)
   const modeChip = createChipEl()
   modeChip.style.display = 'none'
   const realtimeStateChip = createChipEl()
   realtimeStateChip.style.display = 'none'
-  header.appendChild(brokerChip)
-  header.appendChild(brokerWsChip)
   header.appendChild(modeChip)
   header.appendChild(realtimeStateChip)
 
@@ -278,22 +275,46 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
     // 엔진 상태
     if (status) {
       const wsOn = settings ? !!settings.ws_subscribe_on : true
-      const broker = settings?.broker || 'kiwoom'
-      const brokerLabel = BROKER_LABELS[broker] || broker
 
       modeChip.style.display = ''
       applyStatusChip(modeChip, status.is_test_mode ? '테스트모드' : '실전모드', undefined, status.is_test_mode ? 'blue' : 'red')
 
-      brokerChip.style.display = ''
-      brokerWsChip.style.display = ''
-      // 주 사용 증권사 뱃지 (broker 값 기반 동적 렌더링)
-      applyStatusChip(brokerChip, `${brokerLabel}증권`, status.broker_token_valid)
-      // 실시간 연결 뱃지 (broker_connected 플래그 사용)
-      applyStatusChip(brokerWsChip, `${brokerLabel}실시간`, status.broker_connected && wsOn)
+      // broker_statuses 기반 동적 칩 렌더링 (백엔드 상태 그대로 표시)
+      const brokerStatuses = status.broker_statuses ?? {}
+      const brokerIds = Object.keys(brokerStatuses)
+
+      if (brokerIds.length > 0) {
+        // 기존 칩 초기화 후 재생성
+        brokerChipsContainer.innerHTML = ''
+        for (const brokerId of brokerIds) {
+          const bs = brokerStatuses[brokerId]
+          const label = BROKER_LABELS[brokerId] ?? brokerId
+
+          const tokenChip = createChipEl()
+          applyStatusChip(tokenChip, `${label}증권`, bs.token_valid)
+          brokerChipsContainer.appendChild(tokenChip)
+
+          const wsChip = createChipEl()
+          applyStatusChip(wsChip, `${label}실시간`, bs.ws_connected && wsOn)
+          brokerChipsContainer.appendChild(wsChip)
+        }
+        brokerChipsContainer.style.display = 'inline-flex'
+      } else {
+        // broker_statuses 없으면 하위 호환: settings.broker 기반 단일 표시
+        const broker = settings?.broker || 'kiwoom'
+        const brokerLabel = BROKER_LABELS[broker] || broker
+        brokerChipsContainer.innerHTML = ''
+        const tokenChip = createChipEl()
+        applyStatusChip(tokenChip, `${brokerLabel}증권`, status.broker_token_valid)
+        const wsChip = createChipEl()
+        applyStatusChip(wsChip, `${brokerLabel}실시간`, status.broker_connected && wsOn)
+        brokerChipsContainer.appendChild(tokenChip)
+        brokerChipsContainer.appendChild(wsChip)
+        brokerChipsContainer.style.display = 'inline-flex'
+      }
     } else {
       modeChip.style.display = 'none'
-      brokerChip.style.display = 'none'
-      brokerWsChip.style.display = 'none'
+      brokerChipsContainer.style.display = 'none'
     }
 
     // 실시간 상태 표시줄

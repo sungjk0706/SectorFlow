@@ -37,7 +37,8 @@ _debug_file_queue: queue.Queue[str | None] = queue.Queue(maxsize=50_000)
 _writer_started = False
 
 
-_MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB — 파일 크기 제한
+_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB — 파일 크기 제한
+_BACKUP_COUNT = 5  # 최대 5개 파일 보관
 
 
 def _rotate_old_logs(pattern: str, keep_days: int) -> None:
@@ -119,6 +120,12 @@ def _file_writer_loop(q: queue.Queue, base_name: str, keep_days: int) -> None:
                         if fh is not None:
                             fh.close()
                         part += 1
+                        # _BACKUP_COUNT 초과 시 가장 오래된 파일 삭제
+                        if part > _BACKUP_COUNT:
+                            oldest_part = part - _BACKUP_COUNT - 1
+                            oldest_suffix = f".{oldest_part}" if oldest_part > 0 else ""
+                            oldest_path = LOG_DIR / f"{stem}_{today}{oldest_suffix}.log"
+                            oldest_path.unlink(missing_ok=True)
                         fh = _open_part()
                         if fh is None:
                             continue
@@ -256,10 +263,10 @@ def setup_loguru(log_level: str = "DEBUG") -> None:
         filter=_inject_kr_level,
     )
 
-    # ── 2. 파일 — INFO 이상 (trading.log, 일별 분할, 50MB 로테이션, 2일 보관) ────────────
+    # ── 2. 파일 — WARNING 이상 (trading.log, 일별 분할, 50MB 로테이션, 1일 보관) ────────────
     _loguru_logger.add(
         _info_file_sink,
-        level="INFO",
+        level="WARNING",
         format=_FILE_FORMAT,
         colorize=False,
     )

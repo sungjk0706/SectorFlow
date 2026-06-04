@@ -20,34 +20,28 @@ logger = logging.getLogger(__name__)
 
 def _run_async(coro):
     """비동기 함수를 동기적으로 실행하기 위한 헬퍼. 
-    (to_thread 로 호출된 별도 스레드에서만 사용해야 함)"""
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-    if loop and loop.is_running():
-        # 만약 비동기 루프 안에서 직접 호출되었다면 asyncio.create_task 등을 써야 하지만,
-        # Provider 인터페이스는 동기 호출을 가정하므로, 보통 to_thread 안에서 실행됨.
-        raise RuntimeError("비동기 루프 내에서 _run_async를 호출할 수 없습니다. asyncio.to_thread 내에서 사용하세요.")
+    (to_thread 로 호출된 별도 스레드에서만 사용해야 함)
+    참고: AuthProvider/OrderProvider는 async def이나, AccountProvider는 여전히 동기 def이므로
+    LsAccountProvider에서 이 함수를 사용함."""
     return asyncio.run(coro)
 
 # ── Auth Provider ─────────────────────────────────────────────────────
 class LsAuthProvider(AuthProvider):
     def __init__(self):
-        from backend.app.services.engine_state import _integrated_system_settings_cache
-        app_key = (_integrated_system_settings_cache.get("ls_app_key") or "").strip()
-        app_secret = (_integrated_system_settings_cache.get("ls_app_secret") or "").strip()
+        from backend.app.services.engine_state import state
+        app_key = (state.integrated_system_settings_cache.get("ls_app_key") or "").strip()
+        app_secret = (state.integrated_system_settings_cache.get("ls_app_secret") or "").strip()
         self._rest_api = LsRestAPI(app_key, app_secret)
 
-    def get_access_token(self) -> str | None:
-        # 토큰 갱신 시도 (asyncio.run 사용)
-        ok = _run_async(self._rest_api.ensure_token())
+    async def get_access_token(self) -> str | None:
+        # 토큰 갱신 시도
+        ok = await self._rest_api.ensure_token()
         if ok:
             return self._rest_api.get_token()
         return None
 
-    def ensure_token(self) -> bool:
-        return _run_async(self._rest_api.ensure_token())
+    async def ensure_token(self) -> bool:
+        return await self._rest_api.ensure_token()
 
     @property
     def broker_name(self) -> str:
@@ -61,9 +55,9 @@ class LsAuthProvider(AuthProvider):
 # ── Account Provider ──────────────────────────────────────────────────
 class LsAccountProvider(AccountProvider):
     def __init__(self, auth_provider: AuthProvider):
-        from backend.app.services.engine_state import _integrated_system_settings_cache
+        from backend.app.services.engine_state import state
         self._rest_api = getattr(auth_provider, "rest_api", None)
-        self._acnt_no = str(_integrated_system_settings_cache.get("ls_account_no", "") or "")
+        self._acnt_no = str(state.integrated_system_settings_cache.get("ls_account_no", "") or "")
 
     def get_account_number(self) -> str | None:
         return self._acnt_no
@@ -149,25 +143,40 @@ class LsOrderProvider(OrderProvider):
     def __init__(self, auth_provider: AuthProvider):
         self._rest_api = getattr(auth_provider, "rest_api", None)
 
-    def send_order(self, order_type: int, acnt_no: str, code: str, qty: int, price: int, hoga_gb: str, **kwargs) -> dict:
+    async def send_order(
+        self,
+        settings: dict,
+        access_token: str,
+        order_type: str,
+        code: str,
+        qty: int,
+        price: int = 0,
+        trde_tp: str = "3",
+        orig_ord_no: str = "",
+    ) -> dict:
+        # LS증권은 추상 인터페이스와 다른 파라미터 구조를 가짐
+        # 내부적으로 LS API 파라미터로 변환하여 호출
         if not self._rest_api:
             return {"success": False, "error": "LS Rest API Not initialized"}
 
-        # order_type (1: 신규매수, 2: 신규매도)
-        if order_type == 1:
-            res = _run_async(self._rest_api.buy_order(
+        # order_type (매수: 'buy', 매도: 'sell')
+        ls_order_type = 1 if order_type == 'buy' else 2
+        hoga_gb = trde_tp  # 호가구분 매핑
+
+        if ls_order_type == 1:
+            res = await self._rest_api.buy_order(
                 stock_code=f"A{code}",
                 quantity=qty,
                 price=float(price),
                 order_type=hoga_gb
-            ))
-        elif order_type == 2:
-            res = _run_async(self._rest_api.sell_order(
+            )
+        elif ls_order_type == 2:
+            res = await self._rest_api.sell_order(
                 stock_code=f"A{code}",
                 quantity=qty,
                 price=float(price),
                 order_type=hoga_gb
-            ))
+            )
         else:
             return {"success": False, "error": f"Unsupported order_type: {order_type}"}
 

@@ -34,12 +34,17 @@ async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_
                 detail="value 필드가 필요합니다",
             )
 
-        from backend.app.core.settings_store import apply_settings_updates, after_settings_persisted
+        from backend.app.core.settings_store import apply_settings_updates
+        from backend.app.services import engine_service
         from backend.app.services.core_queues import get_control_queue
 
         data = {field_name: body["value"]}
         changed_keys = {field_name}
         await apply_settings_updates(data)
+
+        # 엔진 인메모리 캐시 동기화 및 후처리 실행 (services 레이어로 직접 명시 호출)
+        if engine_service.is_running():
+            await engine_service.apply_settings_change(changed_keys)
 
         # control_queue에 설정 변경 신호 전송 (엔진 기동 시만)
         try:
@@ -53,8 +58,6 @@ async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_
         except RuntimeError:
             # control_queue가 초기화되지 않은 경우 (엔진 미기동) 무시
             pass
-
-        await after_settings_persisted(username="admin", changed_keys=changed_keys)
         return {"ok": True}
     except Exception as e:
         import traceback
@@ -91,21 +94,15 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         # 5. 초기화된 매매 이력 브로드캐스트 → 프론트 테이블 갱신
         from backend.app.services.trade_history import broadcast_history
         broadcast_history("test")
-        # 6. WS settings-changed 발송 → 프론트 설정 UI 갱신
-        from backend.app.core.settings_store import after_settings_persisted
-        await after_settings_persisted(
-            username="admin",
-            changed_keys={"test_virtual_deposit", "test_virtual_balance"},
-        )
         # 7. 보유종목 메모리 리스트 및 캐시 초기화 + 계좌 스냅샷 갱신 + WS account-update 발송
         from backend.app.services import engine_service as es
-        from backend.app.services.engine_account_notify import _rebuild_positions_cache, _positions_code_set
+        from backend.app.services.engine_account_notify import _rebuild_positions_cache, notify_cache
         subscribed_count = sum(1 for entry in es._master_stocks_cache.values() if entry.get("_subscribed", False))
         es.logger.info(
             "[디버그] 초기화 직전 구독목록 positions=%d subscribed=%d radar=%d layout=%d pos_codes=%d",
             len(es._positions), subscribed_count,
             len(es._radar_cnsr_order), len(es._settings_cache.get("sector_stock_layout", [])),
-            len(_positions_code_set),
+            len(notify_cache.positions_code_set),
         )
         async with es._shared_lock:
             es._positions = []
@@ -121,7 +118,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
             "[디버그] 초기화 직후 구독목록 positions=%d subscribed=%d radar=%d layout=%d pos_codes=%d",
             len(es._positions), subscribed_count_after,
             len(es._radar_cnsr_order), len(es._settings_cache.get("sector_stock_layout", [])),
-            len(_positions_code_set),
+            len(notify_cache.positions_code_set),
         )
         await es._refresh_account_snapshot_meta()
         es._broadcast_account(reason="test_data_reset")

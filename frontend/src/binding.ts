@@ -140,13 +140,6 @@ export function bindWSToStore(
     }
   })
 
-  pricesClient.onEvent('sell-history-append', (data) => {
-    const { trade } = data as { trade: Record<string, unknown> }
-    if (trade) {
-      hotStore.setState((state) => ({ sellHistory: [trade, ...state.sellHistory] }))
-    }
-  })
-
   pricesClient.onEvent('real-data', (data) => {
     applyRealData(data as RealDataEvent)
   })
@@ -268,9 +261,5 @@ export function bindWSToStore(
   /* ── buy-limit-status: 매수 한도 상태 실시간 갱신 ── */
   pricesClient.onEvent('buy-limit-status', (data) => {
     applyBuyLimitStatus(data as { daily_buy_spent: number })
-  })
-
-  pricesClient.onEvent('test-data-reset-completed', () => {
-    applyTestDataResetCompleted()
   })
 }

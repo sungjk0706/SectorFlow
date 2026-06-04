@@ -75,5 +75,5 @@ def get_settings() -> Settings:
     try:
         return Settings()
     except Exception as e:
-        logger.error("[설정] 설정값 로드 실패함: %s", e)
-        return Settings.model_construct(ENCRYPTION_KEY="")
+        logger.critical("[설정] 시스템 설정값 로드에 실패하여 구동을 일시 중단합니다: %s", e)
+        raise RuntimeError("시스템 필수 환경 변수(.env) 로드 실패") from e

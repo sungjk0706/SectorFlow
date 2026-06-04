@@ -341,41 +341,52 @@ class KiwoomConnector(BrokerConnector):
         return await self._socket.send(payload)
 
     async def subscribe(self, code: str, data_types: list[str]) -> bool:
-        """종목 구독 등록."""
+        """단건 종목 구독 등록 (하위 호환성용)."""
+        return await self.subscribe_stocks([code])
+
+    async def unsubscribe(self, code: str, data_types: list[str]) -> bool:
+        """단건 종목 구독 해지 (하위 호환성용)."""
+        return await self.unsubscribe_stocks([code])
+
+    async def subscribe_stocks(self, codes: list[str]) -> bool:
+        """종목 리스트 실시간 구독 등록 (Kiwoom WebSocket: 벌크 청크 조립 후 ACK 대기)."""
         if not self.is_connected() or not self._socket:
             logger.warning("[증권사연결] 구독 실패 — 연결 없음")
             return False
-        formatted_code = self._format_code(code)
-        type_mapping = {"0B": "0B", "0D": "0D", "quote": "0B", "fill": "0D"}
-        mapped_types = [type_mapping.get(dt, dt) for dt in data_types]
-        payload = {
-            "trnm": "REG",
-            "grp_no": "4",
-            "refresh": "1",
-            "data": [{"item": [formatted_code], "type": mapped_types}],
-        }
-        success = await self._socket.send(payload)
-        if success:
-            logger.debug("[증권사연결] 구독 등록: %s (%s)", code, mapped_types)
-        return success
 
-    async def unsubscribe(self, code: str, data_types: list[str]) -> bool:
-        """종목 구독 해지."""
+        from backend.app.services.engine_ws_reg import build_0b_reg_payloads
+        from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
+        from backend.app.services.engine_symbol_utils import get_ws_subscribe_code
+
+        ws_codes = [get_ws_subscribe_code(cd) for cd in codes]
+        # 기존 구독에 추가 등록하는 방식이므로 reset_first=False
+        payloads = build_0b_reg_payloads(ws_codes, chunk_size=100, reset_first=False)
+
+        success_all = True
+        for payload in payloads:
+            ok, rc = await _ws_send_reg_unreg_and_wait_ack(payload)
+            if not ok or str(rc) != "0":
+                success_all = False
+        return success_all
+
+    async def unsubscribe_stocks(self, codes: list[str]) -> bool:
+        """종목 리스트 실시간 구독 해지 (Kiwoom WebSocket: 벌크 REMOVE 전송)."""
         if not self.is_connected() or not self._socket:
             return False
-        formatted_code = self._format_code(code)
-        type_mapping = {"0B": "0B", "0D": "0D", "quote": "0B", "fill": "0D"}
-        mapped_types = [type_mapping.get(dt, dt) for dt in data_types]
-        payload = {
-            "trnm": "REMOVE",
-            "grp_no": "4",
-            "refresh": "1",
-            "data": [{"item": [formatted_code], "type": mapped_types}],
-        }
-        success = await self._socket.send(payload)
-        if success:
-            logger.debug("[증권사연결] 구독 해지: %s", code)
-        return success
+
+        from backend.app.services.engine_ws_reg import build_0b_remove_payloads
+        from backend.app.services.engine_ws import _ws_send_remove_fire_and_forget
+        from backend.app.services.engine_symbol_utils import get_ws_subscribe_code
+
+        ws_codes = [get_ws_subscribe_code(cd) for cd in codes]
+        payloads = build_0b_remove_payloads(ws_codes, chunk_size=100)
+
+        success_all = True
+        for payload in payloads:
+            ok = await _ws_send_remove_fire_and_forget(payload)
+            if not ok:
+                success_all = False
+        return success_all
 
     async def _on_ws_message(self, payload: dict) -> None:
         """_KiwoomSocket 콜백 → 핸들러 직접 호출."""
@@ -396,8 +407,8 @@ class KiwoomConnector(BrokerConnector):
             return
         self._connected = False
         try:
-            import backend.app.services.engine_service as _es
-            _es._login_ok = False
+            from backend.app.services.engine_state import state
+            state.login_ok = False
         except Exception:
             logger.warning("[증권사연결] _login_ok 초기화 실패", exc_info=True)
         try:
@@ -510,10 +521,10 @@ class KiwoomConnector(BrokerConnector):
 # ── 팩토리 ───────────────────────────────────────────────────────────────────
 
 def create_kiwoom_connector() -> KiwoomConnector:
-    """단일 소스 진리: _integrated_system_settings_cache 직접 사용."""
-    from backend.app.services.engine_state import _integrated_system_settings_cache
-    app_key = (_integrated_system_settings_cache.get("kiwoom_app_key_real") or _integrated_system_settings_cache.get("kiwoom_app_key") or "").strip()
-    app_secret = (_integrated_system_settings_cache.get("kiwoom_app_secret_real") or _integrated_system_settings_cache.get("kiwoom_app_secret") or "").strip()
+    """단일 소스 진리: state.integrated_system_settings_cache 직접 사용."""
+    from backend.app.services.engine_state import state
+    app_key = (state.integrated_system_settings_cache.get("kiwoom_app_key_real") or state.integrated_system_settings_cache.get("kiwoom_app_key") or "").strip()
+    app_secret = (state.integrated_system_settings_cache.get("kiwoom_app_secret_real") or state.integrated_system_settings_cache.get("kiwoom_app_secret") or "").strip()
     if not app_key or not app_secret:
         raise ValueError("키움 app_key, app_secret이 설정되지 않았습니다")
     return KiwoomConnector(app_key=app_key, app_secret=app_secret)

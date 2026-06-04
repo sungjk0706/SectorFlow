@@ -14,11 +14,11 @@ _market_map_version: int = 0  # set_market_map 호출 시마다 증가 -- UI 갱
 def is_nxt_enabled(stk_cd: str) -> bool:
     """
     종목코드가 NXT 중복상장 종목인지 반환.
-    `_master_stocks_cache`에서 직접 조회.
+    `state.master_stocks_cache`에서 직접 조회.
     """
-    from backend.app.services.engine_state import _master_stocks_cache
+    from backend.app.services.engine_state import state
     base = _base_stk_cd(stk_cd) if stk_cd else ""
-    stock = _master_stocks_cache.get(base)
+    stock = state.master_stocks_cache.get(base)
     if stock:
         return bool(stock.get("nxt_enable", False))
     return False
@@ -60,12 +60,12 @@ def get_ws_subscribe_code(stk_cd: str) -> str:
 def set_market_map(new_map: dict[str, str]) -> None:
     """메모리 마스터 캐시 갱신 및 UI 감지용 버전 업데이트."""
     global _market_map_version
-    from backend.app.services.engine_state import _master_stocks_cache
+    from backend.app.services.engine_state import state
     for code, market in new_map.items():
-        if code in _master_stocks_cache:
-            _master_stocks_cache[code]["market"] = market
+        if code in state.master_stocks_cache:
+            state.master_stocks_cache[code]["market"] = market
         else:
-            _master_stocks_cache[code] = {"market": market}
+            state.master_stocks_cache[code] = {"market": market}
     _market_map_version += 1
 
 
@@ -79,9 +79,9 @@ def get_stock_market(stk_cd: str) -> str | None:
     종목코드 -> 시장 구분 코드 반환.
     "0" = 코스피, "10" = 코스닥, None = 미확인
     """
-    from backend.app.services.engine_state import _master_stocks_cache
+    from backend.app.services.engine_state import state
     base = _base_stk_cd(stk_cd) if stk_cd else ""
-    stock = _master_stocks_cache.get(base)
+    stock = state.master_stocks_cache.get(base)
     if stock:
         return stock.get("market")
     return None

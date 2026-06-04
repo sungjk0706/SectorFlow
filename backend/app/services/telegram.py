@@ -38,7 +38,8 @@ def send_msg(message: str, settings: dict | None = None) -> bool:
         params = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
         res = httpx.post(url, data=params, timeout=5)
         return res.status_code == 200
-    except Exception:
+    except Exception as e:
+        logger.warning("[텔레그램] 메시지 동기 전송 실패: %s", e, exc_info=True)
         return False
 
 

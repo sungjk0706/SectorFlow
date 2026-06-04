@@ -22,7 +22,6 @@ from backend.app.services.core_queues import (
     get_broadcast_queue,
     get_control_queue,
 )
-from backend.protobuf import event_pb2
 
 logger = get_logger("pipeline_compute")
 
@@ -31,55 +30,19 @@ _sector_recompute_task: Optional[asyncio.Task] = None
 _compute_running: bool = False
 _sector_recompute_dirty: bool = False
 
+# 실시간데이터 필드 키 목록 (engine_snapshot._REALTIME_FIELDS와 동일)
+# ws_subscribe_start 시점에 _reset_realtime_fields()가 이 필드들을 None으로 초기화한다.
+# None이 아닌 값 = 실시간 틱 또는 장마감 후 확정 데이터가 수신된 것을 의미.
+_REALTIME_CHECK_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "strength", "high_price")
 
 
-def _parse_protobuf_batch(binary_data: bytes) -> list[dict]:
+def _has_any_realtime_data(entry: dict) -> bool:
+    """종목 캐시 엔트리에 실시간데이터 필드가 1개라도 채워져 있는지 확인.
+
+    ws_subscribe_start 시점에 _reset_realtime_fields()가 모든 필드를 None으로 초기화하므로,
+    None이 아닌 값이 존재한다는 것은 실시간 틱 또는 확정 데이터가 수신되었음을 의미.
     """
-    Protobuf 바이너리 배치 데이터 파싱.
-
-    Args:
-        binary_data: Protobuf 직렬화된 바이너리 데이터 (길이 접두사 + 이벤트 패킹)
-
-    Returns:
-        파싱된 이벤트 리스트 (dict 형태)
-    """
-    events = []
-    offset = 0
-
-    while offset < len(binary_data):
-        # 길이 접두사 읽기 (4 bytes)
-        if offset + 4 > len(binary_data):
-            logger.warning("[Compute] Protobuf 길이 접두사 불완전")
-            break
-
-        length = int.from_bytes(binary_data[offset:offset+4], byteorder='big')
-        offset += 4
-
-        # 이벤트 데이터 읽기
-        if offset + length > len(binary_data):
-            logger.warning("[Compute] Protobuf 이벤트 데이터 불완전")
-            break
-
-        event_bytes = binary_data[offset:offset+length]
-        offset += length
-
-        # Protobuf 파싱
-        try:
-            event_proto = event_pb2.Event()
-            event_proto.ParseFromString(event_bytes)
-
-            # dict 형태로 변환
-            event_dict = {
-                "type": event_proto.type,
-                "timestamp": event_proto.timestamp,
-                "data": dict(event_proto.data),
-                "latency_trace": dict(event_proto.latency_trace),
-            }
-            events.append(event_dict)
-        except Exception as e:
-            logger.error("[Compute] Protobuf 파싱 예외 (계속): %s", e, exc_info=True)
-
-    return events
+    return any(entry.get(f) is not None for f in _REALTIME_CHECK_FIELDS)
 
 
 async def start_compute_loop(es: ModuleType) -> None:
@@ -137,11 +100,12 @@ async def _compute_loop_impl(es: ModuleType) -> None:
                 except asyncio.QueueEmpty:
                     pass  # 제어 신호 없음, 정상 흐름 계속
 
-                # tick_queue에서 데이터 꺼내기 (P2-5: Protobuf 바이너리)
+                # tick_queue에서 데이터 꺼내기 (Python dict 메모리 참조 직통)
                 data = await tick_queue.get()
 
-                # P2-5: Protobuf 파싱
-                parsed_events = _parse_protobuf_batch(data)
+                # data 자체가 딕셔너리(REAL 데이터 등)이므로 직접 전달
+                # 큐에 여러 이벤트가 리스트로 올 경우를 대비한 방어 로직
+                parsed_events = [data] if isinstance(data, dict) else data
 
                 # 파싱된 각 이벤트를 순차적으로 연산 로직에 전달
                 for event in parsed_events:
@@ -240,14 +204,16 @@ async def _handle_sector_recompute(
         # _shared_lock 획득하여 race condition 방지
         async with es._shared_lock:
             # 업종순위 재계산
-            es.recompute_sector_summary_now()
+            await es.recompute_sector_summary_now()
 
         # UI 업데이트
         summary_data = es.get_sector_scores_snapshot()
         if summary_data:
+            # summary_data는 tuple[list[dict], int]이므로 첫 번째 요소만 사용
+            scores_list, _ = summary_data
             await broadcast_queue.put({
                 "type": "sector_scores",
-                "data": summary_data,
+                "data": {"scores": scores_list},  # dict로 감싸서 전송
             })
 
         logger.info("[Compute] 업종순위 재계산 완료")
@@ -352,6 +318,15 @@ async def _handle_real_01_tick(
         if not raw_cd:
             return
 
+        # UI 프론트엔드로 RAW 틱 데이터 브로드캐스트 (Gateway 파이프라인으로 전송)
+        item["item"] = raw_cd
+        import time
+        item["_ts"] = int(time.time() * 1000)
+        try:
+            broadcast_queue.put_nowait({"type": "real-data", "data": item})
+        except asyncio.QueueFull:
+            pass
+
         # FID 13·14가 있는 틱에서만 캐시 갱신
         is_0b_tick = str(item.get("type", "")).strip().upper() in ("0B", "01")
         if is_0b_tick and "14" in vals:
@@ -426,44 +401,79 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
     """
     1초 주기로 돌아가는 업종순위 재계산 스로틀(디바운스) 백그라운드 루프.
     _sector_recompute_dirty 깃발이 꽂혀 있을 때만 연산을 수행하여 CPU 부하를 극소화.
+
+    Phase 1 (1회): 실시간데이터 필드 수신율 임계값 대기 — 통과 후 Phase 2로 전환 (반복 체크 없음)
+
+      수신율 계산 기준:
+        - ws_subscribe_start 시점에 _reset_realtime_fields()가 6개 실시간 필드를 None으로 초기화.
+        - None이 아닌 필드가 1개라도 있는 종목 = 실시간 틱 또는 확정 데이터가 수신된 종목.
+        - received_count == 0: 아직 아무 데이터도 없음(필드 초기화 직후) → 대기.
+        - received_count >= 1: 수신율(%) 계산 시작 → N% 임계값 통과 시 Phase 2 진입.
+
+      시나리오별 동작:
+        - 장마감 후 기동: 확정 데이터가 이미 필드에 존재 → received_count > 0 → 즉시 수신율 계산
+          → 임계값 통과 → 업종순위 즉시 계산 (무한루프 없음)
+        - 장중 기동(ws_subscribe_start 이후): 필드 초기화 상태 → 틱 수신 시작 시
+          received_count >= 1 → 수신율 계산 시작 → N% 도달 시 계산
+
+    Phase 2 (반복): dirty 플래그 확인 → engine_sector_confirm 증분 재계산 트리거 (1초 스로틀)
     """
+    from backend.app.services.engine_sector_confirm import recompute_sector_for_code
     global _compute_running, _sector_recompute_dirty
     try:
+        # Phase 1: 실시간데이터 필드 수신율 임계값 대기 (1회성 스타트업 게이트)
+        while _compute_running:
+            try:
+                inputs = await es.get_sector_summary_inputs()
+                all_codes = inputs.get("all_codes", [])
+                stock_details = inputs.get("stock_details", {})
+                total_count = len(all_codes)
+
+                if total_count == 0:
+                    logger.info("[Compute] 업종순위 계산 대기 중 (종목 없음 -- 부트스트랩 대기)")
+                    await asyncio.sleep(1.0)
+                    continue
+
+                # 실시간데이터 필드(cur_price, change_rate 등) 중 1개라도 None이 아닌 종목 카운트.
+                # cur_price > 0 기준이 아닌 None 여부로 판단:
+                #   - ws_subscribe_start → _reset_realtime_fields()가 모두 None으로 초기화
+                #   - 실시간 틱 수신 또는 장마감 후 확정 데이터 수신 → None이 아닌 값으로 채워짐
+                received_count = sum(
+                    1 for entry in stock_details.values()
+                    if _has_any_realtime_data(entry)
+                )
+
+                # received_count == 0: 실시간 필드가 초기화된 상태(ws_subscribe_start 직후).
+                # 첫 번째 데이터(틱 또는 확정)가 수신될 때까지 대기.
+                if received_count == 0:
+                    logger.info("[Compute] 업종순위 계산 대기 중 (실시간 데이터 수신 전 -- 0/%d)", total_count)
+                    await asyncio.sleep(1.0)
+                    continue
+
+                threshold_pct = float(es._integrated_system_settings_cache.get("sector_start_threshold_pct", 70.0))
+                current_pct = received_count / total_count * 100
+
+                if current_pct < threshold_pct:
+                    logger.info("[Compute] 업종순위 계산 대기 중 (수신율: %d/%d = %.1f%% < %.1f%%)", received_count, total_count, current_pct, threshold_pct)
+                    await asyncio.sleep(1.0)
+                else:
+                    logger.info("[Compute] 수신율 임계값 통과 (%.1f%%) — 증분 재계산 활성화", current_pct)
+                    _sector_recompute_dirty = False
+                    recompute_sector_for_code(None)  # 콜드 스타트 1회 전체 재계산
+                    break
+            except Exception as e:
+                logger.error("[Compute] 수신율 체크 예외: %s", e, exc_info=True)
+                await asyncio.sleep(1.0)
+
+        # Phase 2: 1초 스로틀 증분 재계산 루프
         while _compute_running:
             try:
                 if _sector_recompute_dirty:
-                    # 데이터 수신율 기반 랭킹 계산 컷오프(대기) 방어 로직
-                    inputs = es.get_sector_summary_inputs()
-                    all_codes = inputs.get("all_codes", [])
-                    trade_prices = inputs.get("trade_prices", {})
-                    
-                    total_count = len(all_codes)
-                    received_count = sum(1 for c in all_codes if c in trade_prices)
-                    
-                    threshold_pct = float(es._integrated_system_settings_cache.get("sector_start_threshold_pct", 70.0))
-                    current_pct = (received_count / total_count * 100) if total_count > 0 else 100.0
-                    
-                    if current_pct < threshold_pct:
-                        # 1초 뒤에 다시 체크하기 위해 깃발 유지
-                        logger.debug("[Compute] 업종순위 계산 대기 중 (수신율: %d/%d = %.1f%% < %.1f%%)", received_count, total_count, current_pct, threshold_pct)
-                        _sector_recompute_dirty = True
-                    else:
-                        _sector_recompute_dirty = False
-                        
-                        # 업종 점수 즉시 재계산
-                        es.recompute_sector_summary_now()
-
-                        # UI 업데이트를 broadcast_queue에 전송
-                        summary_data = es.get_sector_scores_snapshot()
-                        if summary_data:
-                            await broadcast_queue.put({
-                                "type": "sector_scores",
-                                "data": summary_data,
-                            })
+                    _sector_recompute_dirty = False
+                    recompute_sector_for_code(None)
             except Exception as e:
                 logger.error("[Compute] 백그라운드 업종 점수 재계산 예외: %s", e, exc_info=True)
-            
-            # 1초 대기 (스로틀링 주기)
+
             await asyncio.sleep(1.0)
     except asyncio.CancelledError:
         logger.info("[Compute] 백그라운드 업종 점수 재계산 루프 취소됨")
@@ -495,7 +505,7 @@ async def _check_buy_target_reached(
             # 매수 후보 종목이 있으면 broadcast_queue에 전송 (UI 업데이트)
             await broadcast_queue.put({
                 "type": "buy_targets",
-                "data": buy_targets,
+                "data": {"buy_targets": buy_targets},
             })
 
     except Exception as e:

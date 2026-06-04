@@ -15,10 +15,24 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 
-from backend.app.core.events import EventType, BrokerType
 from backend.app.core import journal as _journal
 
 _log = logging.getLogger(__name__)
+
+
+class BrokerType(Enum):
+    """브로커 타입"""
+    KIWOOM = "kiwoom"
+    LS = "ls"
+
+
+class EventType(Enum):
+    """이벤트 타입"""
+    ORDER_CREATED = "order_created"
+    ORDER_STATUS_CHANGED = "order_status_changed"
+    ORDER_FILL = "order_fill"
+    POSITION_UPDATED = "position_updated"
+    BALANCE_UPDATED = "balance_updated"
 
 
 class OrderStatus(Enum):

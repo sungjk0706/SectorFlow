@@ -7,7 +7,6 @@ from __future__ import annotations
   - AuthProvider     : 인증 토큰 발급/관리
   - AccountProvider  : 계좌 조회 (예수금, 잔고, 보유종목)
   - OrderProvider    : 주문 실행 (매수, 매도)
-  - SectorProvider   : 업종 데이터 (업종별 종목, 시세, 5일 평균 거래대금)
   - WebSocketProvider: 실시간 WebSocket 연결
 
 엔진/서비스 코드는 이 인터페이스만 참조하여 증권사 독립적으로 동작.
@@ -36,12 +35,12 @@ class AuthProvider(ABC):
     """인증 토큰 발급/관리. 동일 증권사의 모든 Provider가 공유."""
 
     @abstractmethod
-    def get_access_token(self) -> str | None:
+    async def get_access_token(self) -> str | None:
         """OAuth2 액세스 토큰 발급/반환 (캐싱 포함)."""
         ...
 
     @abstractmethod
-    def ensure_token(self) -> bool:
+    async def ensure_token(self) -> bool:
         """토큰 유효성 확인, 만료 시 자동 갱신. True=유효."""
         ...
 
@@ -99,7 +98,7 @@ class OrderProvider(ABC):
     """주문 실행: 매수, 매도, 정정, 취소."""
 
     @abstractmethod
-    def send_order(
+    async def send_order(
         self,
         settings: dict,
         access_token: str,

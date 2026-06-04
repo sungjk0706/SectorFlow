@@ -156,52 +156,69 @@ class _LsSocket:
 
         logger.info("[LS서버소켓] 수신 종료")
 
-    def _convert_ls_to_internal(self, tr_cd: str, header: dict, body: dict) -> dict | None:
+    def _convert_ls_to_internal(self, tr_cd: str, header: dict, body: dict | None) -> dict | None:
         """LS WebSocket 메시지 → 내부 tick_queue 형식 변환.
 
         LS US3 (체결) → 키움 REAL 형식과 호환
         """
+        if not body:
+            return None
+
         if tr_cd == "US3":
             # 체결 데이터
             shcode = body.get("shcode", "")
             if not shcode:
                 return None
 
-            # LS에서 받은 데이터는 문자열이므로 숫자로 변환
+            # LS에서 받은 데이터는 문자열이므로 숫자로 변환 (엔진 호환성을 위해 값 추출 시 정규화)
             price = int(body.get("price", 0) or 0)
             volume = int(body.get("volume", 0) or 0)
             value = int(body.get("value", 0) or 0)
-            chetime = body.get("chetime", "")
-            sign = body.get("sign", "")
+            chetime = str(body.get("chetime", "")).strip()
+            sign = str(body.get("sign", "3")).strip()
             change = int(body.get("change", 0) or 0)
             drate = float(body.get("drate", 0) or 0)
             open_price = int(body.get("open", 0) or 0)
             high = int(body.get("high", 0) or 0)
             low = int(body.get("low", 0) or 0)
             cvolume = int(body.get("cvolume", 0) or 0)
-            cgubun = body.get("cgubun", "")
+            cgubun = str(body.get("cgubun", "")).strip()
             offerho = int(body.get("offerho", 0) or 0)
             bidho = int(body.get("bidho", 0) or 0)
+            cpower = float(body.get("cpower", 0) or 0.0)
 
-            # 내부 형식 (키움 REAL과 호환)
+            # 부호 적용 (키움 포맷)
+            sign_char = ""
+            if sign in ("4", "5"):
+                sign_char = "-"
+            elif sign in ("1", "2"):
+                sign_char = "+"
+
+            price_str = f"{sign_char}{price}" if sign_char else str(price)
+            change_str = f"{sign_char}{change}" if sign_char else str(change)
+            drate_str = f"{sign_char}{drate}" if sign_char else str(drate)
+
+            # 내부 형식 (키움 REAL과 완벽 호환되도록 type, values 래핑 및 FID 매핑)
             return {
                 "trnm": "REAL",
                 "data": [{
+                    "type": "0B", # 주식 체결
                     "code": shcode,
-                    "price": price,
-                    "volume": volume,
-                    "value": value,
-                    "chetime": chetime,
-                    "sign": sign,
-                    "change": change,
-                    "drate": drate,
-                    "open": open_price,
-                    "high": high,
-                    "low": low,
-                    "cvolume": cvolume,
-                    "cgubun": cgubun,
-                    "offerho": offerho,
-                    "bidho": bidho,
+                    "values": {
+                        "10": price_str,       # 현재가
+                        "11": change_str,      # 전일대비
+                        "12": drate_str,       # 등락률
+                        "13": str(cvolume),    # 거래량(당일체결량)
+                        "14": str(value),      # 누적거래대금(백만원)
+                        "15": str(volume),     # 누적거래량
+                        "16": str(open_price), # 시가
+                        "17": str(high),       # 고가
+                        "18": str(low),        # 저가
+                        "20": chetime,         # 체결시간
+                        "27": str(offerho),    # 최우선매도호가
+                        "28": str(bidho),      # 최우선매수호가
+                        "228": str(cpower),    # 체결강도
+                    }
                 }]
             }
         elif tr_cd == "IJ_":
@@ -319,11 +336,15 @@ class LsConnector(BrokerConnector):
             self._connected = True
             logger.info("[LS증권연결] 연결 완료")
             try:
-                import backend.app.services.engine_state as _es_state
-                _es_state._login_ok = True
-                _es_state._notify_reg_ack()
+                from backend.app.services.engine_state import state
+                state.login_ok = True
+                from backend.app.services.engine_state import _notify_reg_ack
+                _notify_reg_ack()
+                # LS증권은 소켓 연결 완료가 로그인 완료이므로 직접 REG 파이프라인 트리거
+                from backend.app.services.daily_time_scheduler import _trigger_reg_pipeline
+                _trigger_reg_pipeline()
             except Exception:
-                logger.warning("[LS증권연결] _login_ok 설정 실패", exc_info=True)
+                logger.warning("[LS증권연결] _login_ok 설정 및 파이프라인 트리거 실패", exc_info=True)
             # 연결 상태 브로드캐스트
             try:
                 from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
@@ -363,52 +384,71 @@ class LsConnector(BrokerConnector):
         return await self._socket.send(payload)
 
     async def subscribe(self, code: str, data_types: list[str]) -> bool:
-        """종목 구독 등록 (LS WebSocket: tr_type=3, tr_cd=US3)."""
+        """단건 종목 구독 등록 (하위 호환성용)."""
+        return await self.subscribe_stocks([code])
+
+    async def unsubscribe(self, code: str, data_types: list[str]) -> bool:
+        """단건 종목 구독 해지 (하위 호환성용)."""
+        return await self.unsubscribe_stocks([code])
+
+    async def subscribe_stocks(self, codes: list[str]) -> bool:
+        """종목 리스트 실시간 구독 등록 (LS WebSocket: tr_type=3, tr_cd=US3)."""
         if not self.is_connected() or not self._socket:
             logger.warning("[LS증권연결] 구독 실패 — 연결 없음")
             return False
 
-        # LS 종목코드 포맷: U + 6자리 + 공백 3자리
-        formatted_code = self._format_code(code)
+        success_all = True
+        for code in codes:
+            # LS 종목코드 포맷: U + 6자리 + 공백 3자리
+            formatted_code = self._format_code(code)
 
-        # LS는 US3 (체결) 하나만 지원
-        payload = {
-            "header": {
-                "token": self._token,
-                "tr_type": "3"  # 3: 실시간 시세 등록
-            },
-            "body": {
-                "tr_cd": "US3",
-                "tr_key": formatted_code
+            # LS는 US3 (체결) 하나만 지원
+            payload = {
+                "header": {
+                    "token": self._token,
+                    "tr_type": "3"  # 3: 실시간 시세 등록
+                },
+                "body": {
+                    "tr_cd": "US3",
+                    "tr_key": formatted_code
+                }
             }
-        }
-        success = await self._socket.send(payload)
-        if success:
-            logger.debug("[LS증권연결] 구독 등록: %s", code)
-        return success
+            success = await self._socket.send(payload)
+            if not success:
+                success_all = False
+            else:
+                logger.debug("[LS증권연결] 구독 등록: %s", code)
+            # 웹소켓 부하 조절을 위해 아주 미세한 지연 추가
+            await asyncio.sleep(0.01)
+        return success_all
 
-    async def unsubscribe(self, code: str, data_types: list[str]) -> bool:
-        """종목 구독 해지 (LS WebSocket: tr_type=4, tr_cd=US3)."""
+    async def unsubscribe_stocks(self, codes: list[str]) -> bool:
+        """종목 리스트 실시간 구독 해지 (LS WebSocket: tr_type=4, tr_cd=US3)."""
         if not self.is_connected() or not self._socket:
             return False
 
-        # LS 종목코드 포맷: U + 6자리 + 공백 3자리
-        formatted_code = self._format_code(code)
+        success_all = True
+        for code in codes:
+            # LS 종목코드 포맷: U + 6자리 + 공백 3자리
+            formatted_code = self._format_code(code)
 
-        payload = {
-            "header": {
-                "token": self._token,
-                "tr_type": "4"  # 4: 실시간 시세 해제
-            },
-            "body": {
-                "tr_cd": "US3",
-                "tr_key": formatted_code
+            payload = {
+                "header": {
+                    "token": self._token,
+                    "tr_type": "4"  # 4: 실시간 시세 해제
+                },
+                "body": {
+                    "tr_cd": "US3",
+                    "tr_key": formatted_code
+                }
             }
-        }
-        success = await self._socket.send(payload)
-        if success:
-            logger.debug("[LS증권연결] 구독 해지: %s", code)
-        return success
+            success = await self._socket.send(payload)
+            if not success:
+                success_all = False
+            else:
+                logger.debug("[LS증권연결] 구독 해지: %s", code)
+            await asyncio.sleep(0.01)
+        return success_all
 
     async def _on_ws_message(self, payload: dict) -> None:
         """_LsSocket 콜백 → 핸들러 직접 호출."""
@@ -425,8 +465,8 @@ class LsConnector(BrokerConnector):
             return
         self._connected = False
         try:
-            import backend.app.services.engine_service as _es
-            _es._login_ok = False
+            from backend.app.services.engine_state import state
+            state.login_ok = False
         except Exception:
             logger.warning("[LS증권연결] _login_ok 초기화 실패", exc_info=True)
         try:
@@ -483,6 +523,11 @@ class LsConnector(BrokerConnector):
                     )
                     await self._socket.connect()
                     self._connected = True
+                    try:
+                        from backend.app.services.engine_state import state
+                        state.login_ok = True
+                    except Exception:
+                        pass
                 logger.info("[LS증권연결] 재연결 성공 (시도 %d회)", attempt)
                 # 재연결 성공 후 큐 클리어 (과거 데이터 제거)
                 if self._ws_queue is not None:
@@ -520,7 +565,11 @@ class LsConnector(BrokerConnector):
     def _format_code(self, code: str) -> str:
         """종목코드 포맷팅 — LS 형식 (U + 6자리 + 공백 3자리)."""
         code = code.strip().upper().lstrip("A")
-        if len(code) == 6:
+        for suffix in ("_AL", "_NX"):
+            if code.endswith(suffix):
+                code = code[:-len(suffix)]
+                break
+        if len(code) == 6 and code.isdigit():
             return f"U{code}   "
         return code
 
@@ -536,10 +585,11 @@ class LsConnector(BrokerConnector):
 
 # ── 팩토리 ───────────────────────────────────────────────────────────────────
 
-def create_ls_connector(settings: dict) -> LsConnector:
-    """설정 dict에서 LsConnector 생성."""
-    app_key = (settings.get("ls_app_key") or "").strip()
-    app_secret = (settings.get("ls_app_secret") or "").strip()
+def create_ls_connector() -> LsConnector:
+    """단일 소스 진리: state.integrated_system_settings_cache 직접 사용."""
+    from backend.app.services.engine_state import state
+    app_key = state.integrated_system_settings_cache.get("ls_app_key", "").strip()
+    app_secret = state.integrated_system_settings_cache.get("ls_app_secret", "").strip()
     if not app_key or not app_secret:
         raise ValueError("LS app_key, app_secret이 설정되지 않았습니다")
     return LsConnector(app_key=app_key, app_secret=app_secret)

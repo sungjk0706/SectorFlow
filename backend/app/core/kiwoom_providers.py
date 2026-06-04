@@ -7,7 +7,7 @@ from __future__ import annotations
   - KiwoomAuthProvider      : KiwoomRestAPI 토큰 관리 위임
   - KiwoomAccountProvider   : KiwoomRestAPI 계좌 조회 위임
   - KiwoomOrderProvider     : kiwoom_order.send_order 캡슐화
-  - KiwoomSectorProvider    : kiwoom_stock_rest + kiwoom_daily_avg_volume 캡슐화
+  - KiwoomStockProvider     : kiwoom_stock_rest + kiwoom_daily_avg_volume 캡슐화
   - KiwoomWebSocketProvider : broker_urls 기반 WS URI 제공
 """
 
@@ -32,12 +32,12 @@ class KiwoomAuthProvider(AuthProvider):
     """기존 KiwoomRestAPI의 토큰 관리 로직 위임."""
 
     def __init__(self):
-        from backend.app.services.engine_state import _integrated_system_settings_cache
-        app_key = (_integrated_system_settings_cache.get("kiwoom_app_key_real") or _integrated_system_settings_cache.get("kiwoom_app_key") or "").strip()
-        app_secret = (_integrated_system_settings_cache.get("kiwoom_app_secret_real") or _integrated_system_settings_cache.get("kiwoom_app_secret") or "").strip()
+        from backend.app.services.engine_state import state
+        app_key = (state.integrated_system_settings_cache.get("kiwoom_app_key_real") or state.integrated_system_settings_cache.get("kiwoom_app_key") or "").strip()
+        app_secret = (state.integrated_system_settings_cache.get("kiwoom_app_secret_real") or state.integrated_system_settings_cache.get("kiwoom_app_secret") or "").strip()
         self._rest_api = KiwoomRestAPI(app_key, app_secret)
         self._rest_api._acnt_no = str(
-            _integrated_system_settings_cache.get("kiwoom_account_no_real") or _integrated_system_settings_cache.get("kiwoom_account_no", "") or ""
+            state.integrated_system_settings_cache.get("kiwoom_account_no_real") or state.integrated_system_settings_cache.get("kiwoom_account_no", "") or ""
         )
 
     async def get_access_token(self) -> Optional[str]:
@@ -64,10 +64,10 @@ class KiwoomAccountProvider(AccountProvider):
         self,
         auth_provider: Optional[KiwoomAuthProvider] = None,
     ):
-        from backend.app.services.engine_state import _integrated_system_settings_cache
+        from backend.app.services.engine_state import state
         self._auth = auth_provider
         self._rest_api = auth_provider.rest_api if auth_provider else None
-        self._acnt_no = str(_integrated_system_settings_cache.get("kiwoom_account_no", "") or "")
+        self._acnt_no = str(state.integrated_system_settings_cache.get("kiwoom_account_no", "") or "")
 
     async def get_account_number(self) -> Optional[str]:
         if self._rest_api is None:
@@ -250,6 +250,11 @@ class KiwoomStockProvider:
         self,
         auth_provider: Optional[KiwoomAuthProvider] = None,
     ):
+        if auth_provider is not None and not isinstance(auth_provider, KiwoomAuthProvider):
+            raise TypeError(
+                f"KiwoomStockProvider는 KiwoomAuthProvider만 지원합니다. "
+                f"전달된 타입: {type(auth_provider).__name__}"
+            )
         self._auth = auth_provider
         self._rest_api = auth_provider.rest_api if auth_provider else None
 

@@ -21,7 +21,8 @@ def _parse_int_loose(v) -> int:
 
 def _parse_float_loose(v) -> float:
     try:
-        return float(str(v).replace(",", "").replace("%", "") or 0)
+        cleaned = str(v).replace(",", "").replace("%", "").lstrip("-")
+        return float(cleaned or 0)
     except (ValueError, TypeError):
         return 0.0
 

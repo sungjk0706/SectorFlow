@@ -1,4 +1,4 @@
-// frontend/src/api/ws.ts — 시세 전용 WebSocket 클라이언트
+// frontend/src/api/ws.ts — 다중 채널 WebSocket 클라이언트 (prices, settings, orders)
 
 import { forceLogout } from './client'
 import { setBackfilling } from '../stores/uiStore'

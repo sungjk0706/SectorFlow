@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-엔진 전용 설정 로더 -- 로컬 settings.json 파일에서 읽어 복호화 후 반환.
+엔진 전용 설정 로더 -- SQLite integrated_system_settings 테이블에서 읽어 복호화 후 반환.
 
 포함: 브로커 자격·스케줄·매수 전략 필드 -- 디스크에 있는 영속 설정.
 미포함: 레이더/대기 큐 -- engine_service 메모리·WebSocket 전용(휘발성).
@@ -13,7 +13,7 @@ from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
 
 async def get_engine_settings(user_id: str = None, profile: str = "default") -> dict:
     """
-    data/settings.json 로드 후 복호화 dict 반환 (단일 파일).
+    SQLite integrated_system_settings 테이블 로드 후 복호화 dict 반환.
     user_id / profile 인자는 호환용으로 무시됨.
     """
     flat = await load_integrated_system_settings()
@@ -163,8 +163,10 @@ def build_engine_settings_dict(flat: dict) -> dict:
     result["ws_subscribe_on"]              = bool(merged.get("ws_subscribe_on"))
 
     # ── 장마감 후 스케줄러 토글 ────────
-    result["scheduler_market_close_on"]    = bool(merged.get("scheduler_market_close_on"))
-    result["scheduler_5d_download_on"]     = bool(merged.get("scheduler_5d_download_on"))
+    # DEFAULT_USER_SETTINGS 기본값: True (활성화)
+    # 미설정 시 bool(None)=False로 처리되던 버그 수정 → 방어 기본값 True 명시
+    result["scheduler_market_close_on"]    = bool(merged.get("scheduler_market_close_on", True))
+    result["scheduler_5d_download_on"]     = bool(merged.get("scheduler_5d_download_on", True))
 
     # ── WS 구독 자동 스위치 ────────
     result["quote_auto_subscribe"]         = bool(merged.get("quote_auto_subscribe"))

@@ -6,16 +6,7 @@
 - 필터 설정 관리
 """
 from backend.app.core.logger import get_logger
-from backend.app.services.engine_state import (
-    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
-    # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed" 사용
-    # _sector_stocks_cache 제거
-    # _sector_stocks_dirty 제거
-    _integrated_system_settings_cache,
-    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
-    # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
-    # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_prices, _latest_trade_amounts, _latest_strength)
-)
+from backend.app.services.engine_state import state
 from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
 
 logger = get_logger("engine_sector")
@@ -70,7 +61,7 @@ async def recompute_sector_summary_now() -> None:
         sector_weights = _es._integrated_system_settings_cache.get("sector_weights") or {}
         logger.info("[업종순위] 재계산 sector_weights: %s", sector_weights)
         _ss = await compute_full_sector_summary(
-            **get_sector_summary_inputs(),
+            **await get_sector_summary_inputs(),
             sort_keys=_es._integrated_system_settings_cache.get("sector_sort_keys") or None,
             min_rise_ratio=float(_es._integrated_system_settings_cache.get("sector_min_rise_ratio_pct", 60.0)) / 100.0,
             block_rise_pct=float(_es._integrated_system_settings_cache.get("buy_block_rise_pct", 7.0)),
@@ -84,6 +75,17 @@ async def recompute_sector_summary_now() -> None:
         )
         _es._sector_summary_cache = _ss
         cancel_pending_recompute()
+
+        # ── 5일평균최소거래대금(N억원) 이상 종목 마킹 ──
+        min_avg_amt_eok = float(_es._integrated_system_settings_cache.get("sector_min_trade_amt", 0.0))
+        for cd, entry in state.master_stocks_cache.items():
+            avg5d_million = int(entry.get("avg_5d_trade_amount", 0) or 0)
+            avg5d_eok = avg5d_million // 100
+            if min_avg_amt_eok > 0 and avg5d_eok < min_avg_amt_eok:
+                entry.pop("_filtered", None)
+            else:
+                entry["_filtered"] = True
+
         # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
         notify_desktop_sector_scores(force=True)
         logger.info("[업종순위] 재계산 완료")
@@ -91,21 +93,23 @@ async def recompute_sector_summary_now() -> None:
         logger.warning("[업종순위] 재계산 실패: %s", e, exc_info=True)
 
 
-def get_sector_summary_inputs() -> dict:
+async def get_sector_summary_inputs() -> dict:
     """업종 요약 계산 입력 데이터 반환."""
-    # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed" 사용
-    from backend.app.services.engine_state import _master_stocks_cache
+    # 우측테이블의 종목들을 그대로 사용 (단일 소스 진리)
+    # get_sector_stocks는 이미 5일평균거래대금 필터링된 종목들만 반환
+    sector_stocks_list = await get_sector_stocks()
+    
     stock_details = {}
-    # _master_stocks_cache의 모든 종목 사용 (실시간 구독 의존성 제거)
-    for cd, entry in _master_stocks_cache.items():
-        stock = entry.copy()
-        stock["status"] = "active"
-        stock_details[cd] = stock
-    # _avg_amt_5d 제거: _master_stocks_cache에서 직접 추출
-    # 단일 소스 진리: _master_stocks_cache에 이미 억 단위로 저장됨
-    avg_amt_5d = {cd: int(entry.get("avg_5d_trade_amount", 0) or 0) for cd, entry in _master_stocks_cache.items()}
+    for stock_entry in sector_stocks_list:
+        cd = stock_entry["code"]
+        stock_details[cd] = stock_entry
+    
+    # 필터링된 종목만 avg_amt_5d 추출
+    avg_amt_5d = {cd: int(entry.get("avg_amt_5d", 0) or 0) 
+                  for cd, entry in stock_details.items()}
+    
     return {
-        "all_codes": list(_master_stocks_cache.keys()),
+        "all_codes": list(stock_details.keys()),  # 우측테이블의 종목만 반환
         "trade_prices": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
         "trade_amounts": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
         "avg_amt_5d": avg_amt_5d,
@@ -128,25 +132,26 @@ async def get_sector_stocks() -> list:
     min_avg_amt_eok = float(_es_ref._integrated_system_settings_cache.get("sector_min_trade_amt", 0.0))
 
     merged: dict[str, dict] = {}
-    from backend.app.services.engine_state import _master_stocks_cache
 
-    # 단일 소스 진리: _master_stocks_cache가 종목 데이터의 단일 소스
+    # 단일 소스 진리: state.master_stocks_cache가 종목 데이터의 단일 소스
     # _filtered_sector_codes 제거: sector_stock_layout 의존성 제거
-    for cd in _master_stocks_cache.keys():
-        if cd not in _master_stocks_cache:
+    for cd in state.master_stocks_cache.keys():
+        if cd not in state.master_stocks_cache:
             continue
-        e = _master_stocks_cache[cd].copy()
+        e = state.master_stocks_cache[cd].copy()
         e["code"] = cd  # master_stocks_cache는 code를 KEY로만 보유 -- 값 dict에 명시 (프론트 stocksToMap/delta 식별용)
         e["status"] = "active"
         # 시세 없는 빈 엔트리 제외
         if int(e.get("cur_price") or 0) <= 0 and (not e.get("name") or e.get("name") == cd):
             continue
         # 정적 보강 필드
-        # 단일 소스 진리: avg_5d_trade_amount는 백만원 단위, 필터링 시 억 단위 변환
+        # 단일 소스 진리: avg_5d_trade_amount는 백만원 단위
+        # 프론트엔드 createAvgAmountCell이 /100으로 억 단위 표시하므로 백만원 단위 그대로 전송
         avg5d_million = int(e.get("avg_5d_trade_amount", 0) or 0)
-        e["avg_amt_5d"] = avg5d_million // 100  # 백만원 → 억단위 변환
-        # 5일평균거래대금 필터링 (백엔드에서 필터링 수행)
-        if min_avg_amt_eok > 0 and e["avg_amt_5d"] < min_avg_amt_eok:
+        e["avg_amt_5d"] = avg5d_million  # 백만원 단위 그대로 (프론트엔드 /100 변환)
+        # 5일평균거래대금 필터링: 억 단위 설정값과 비교 (백만원 // 100 = 억)
+        avg5d_eok = avg5d_million // 100
+        if min_avg_amt_eok > 0 and avg5d_eok < min_avg_amt_eok:
             continue
         e["market_type"] = _get_mkt(cd) or ""
         e["nxt_enable"] = _is_nxt(cd)
@@ -174,14 +179,11 @@ async def get_all_sector_stocks() -> list[dict]:
     """
     from backend.app.core.sector_mapping import get_merged_sector
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
-    from backend.app.db.stock_tables import load_stock_name_cache
-    from backend.app.services.engine_state import _master_stocks_cache
 
-    # 단일 소스 진리: _master_stocks_cache만 사용 (실시간 구독 상태와 분리)
-    name_map = await load_stock_name_cache() or {}
+    # 단일 소스 진리: state.master_stocks_cache만 사용 (실시간 구독 상태와 분리)
 
     result: list[dict] = []
-    for cd, entry in _master_stocks_cache.items():
+    for cd, entry in state.master_stocks_cache.items():
         if entry.get("status") != "active":
             continue  # 매매부적격(관리종목, 거래정지, exited 등) 제외
         try:
@@ -191,8 +193,6 @@ async def get_all_sector_stocks() -> list[dict]:
             sector = ""
 
         name = entry.get("name", "")
-        if not name:
-            name = name_map.get(cd.upper(), cd)
 
         result.append({
             "code": cd,
@@ -215,6 +215,12 @@ async def _on_filter_settings_changed() -> None:
 
     sector_stock_layout 의존성 제거: 단일 소스(_master_stocks_cache) 기반 필터링
     """
+    from backend.app.services.engine_account_notify import (
+        notify_desktop_sector_stocks_refresh,
+        notify_desktop_sector_scores,
+        notify_buy_targets_update,
+    )
+
     # ── 업종순위 + 매수후보 재계산 ──
     try:
         await recompute_sector_summary_now()

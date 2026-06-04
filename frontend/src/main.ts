@@ -256,6 +256,7 @@ function main(): void {
   waitForServerReady().then(() => {
     wsClient.connect(token)
     wsSettingsClient.connect(token)
+    wsOrdersClient.connect(token)
   }).catch(error => {
     console.error('[Health] 초기화 실패:', error)
     shell.setOverlay(true, '초기화 실패')
@@ -298,6 +299,13 @@ function patchRouterForDualLayout(
       }
       */
       const settingsMod = await route.settingsCard()
+      
+      // 비동기 로딩이 완료된 시점에 사용자가 이미 다른 페이지로 이동했다면 마운트를 스킵한다.
+      if (location.hash !== path) {
+        console.log(`[Router] 라우트 전환 감지로 비동기 마운트 취소: ${path}`)
+        return
+      }
+
       currentSettingsModule = settingsMod
       settingsMod.mount(shell.leftPanel)
     } catch (err) {
