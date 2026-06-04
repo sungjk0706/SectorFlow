@@ -12,9 +12,9 @@ REAL 수신 시 type "0B"는 engine_service._normalize_real_type 에서 "01"과 
 
 
 def effective_trade_mode(settings: dict | None) -> str:
-    """엔진 캐시 또는 settings.json 플랫 dict에서 'test' | 'real' 반환.
+    """엔진 캐시 또는 DB에서 로드한 플랫 dict에서 'test' | 'real' 반환.
 
-    하위 호환: 기존 settings.json의 'mock' 값과 'mock_mode' 키도 인식하여
+    하위 호환: 기존 'mock' 값과 'mock_mode' 키도 인식하여
     자동으로 'test'로 매핑한다.
     """
     s = settings or {}

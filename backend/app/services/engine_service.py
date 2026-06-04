@@ -16,82 +16,11 @@ from backend.app.services.state_manager import StateManager, OrderStatus
 
 # ── 전역 상태 import (engine_state에서 직접 import) ─────────────────────
 from backend.app.services.engine_state import (
-    _state_manager,
-    _running,
-    _connector_manager,
-    _kiwoom_connector,
-    _kiwoom_auth_provider,
-    _broker_tokens,
-    _engine_task,
-    _engine_loop_ref,
-    _access_token,
-    _login_ok,
-    _checked_stocks,
-    _engine_user_id,
-    _last_ws_limit_warn_ts,
-    _realtime_latency_exceeded,
-    _shared_lock,
-    _realtime_state,
-    _data_ready_event,
-    _token_ready_event,
-    _ws_reg_pipeline_done,
-    _bootstrap_event,
-    _sector_summary_ready_event,
-    _engine_ready_event,
-    _server_ready_event,
-    _preboot_cache_loaded,
-    _preboot_ready_event,
-    _engine_stop_event,
-    _reg_seq_lock,
-    _reg_ack_event,
-    _reg_ack_return_code,
-    _rest_api_thread_sem,
-    _account_rest_lock,
-    # _radar_cnsr_order 삭제
-    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
-    # _amts_5d_arrays, _highs_5d_arrays 제거: stock_5d_array 테이블에서 직접 읽도록 대체
-    # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_prices, _latest_trade_amounts)
-    # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_strength)
-    # _sector_stocks_cache 제거: _master_stocks_cache 기반 실시간 필터링으로 대체
-    # _sector_stocks_dirty 제거
-    # _sector_stocks_last_invalidated 제거
-    _MIN_CACHE_LIFETIME_SEC,
-    # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
-    _buy_targets_cache_ref,
-    # 실시간 틱 데이터 캐시 삭제로 import 제거 (_rest_radar_quote_cache)
-    # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
-    # _sector_summary_cache 제거: engine_service 모듈 내에서 정의
-    # _sector_buy_last_ts 제거: _master_stocks_cache[code]["_last_buy_ts"]로 통합
-    _master_stocks_cache,
-    _sector_score_index,
-    _confirmed_refresh_running,
-    _confirmed_refresh_message,
-    _latest_filter_summary,
-    _ws_account_subscribed,
-    _account_rest_bootstrapped,
-    _broker_rest_totals,
-    _latest_stock_info,
-    _auto_trade,
-    _integrated_system_settings_cache,
-    _broker_spec,
-    _rest_api,
-    _account_snapshot,
-    _positions,
-    _snapshot_history,
-    _REG_POST_ACK_GAP_SEC,
-    _REG_RATE_LIMIT_RESUB_SEC,
-    _REG_STOCK_LOG_CHUNK_SIZE,
-    _REG_REAL_DEBUG_EXTRA_LOG,
-    _AVG_AMT_CHUNK_SIZE,
-    _INDUSTRY_CHUNK_SIZE,
-    _ACCOUNT_BROADCAST_COALESCE_SEC,
-    _account_broadcast_pending_reason,
-    _account_broadcast_timer,
+    state,
     _get_rest_api_thread_sem,
     _get_account_rest_lock,
     _get_realtime_state,
     _set_realtime_state,
-    _on_filter_settings_changed,
     _cancel_price_trace_delayed_task,
 )
 
@@ -337,6 +266,194 @@ _get_realtime_state = _get_realtime_state
 # 실시간 호가잔량 기능 삭제로 export 제거 (_get_orderbook)
 get_buy_targets_snapshot = get_buy_targets_snapshot
 get_position_pnl_pct_for_code = get_position_pnl_pct_for_code
+
+
+async def apply_settings_change(changed_keys: set[str]) -> None:
+    """설정 변경 후 엔진 동기화 (settings_store.py에서 이관)"""
+    from backend.app.services.engine_account_notify import (
+        notify_desktop_header_refresh,
+        notify_desktop_sector_scores,
+        notify_desktop_settings_toggled,
+    )
+    from backend.app.services.engine_config import _mask_sensitive_settings
+    from backend.app.services import settlement_engine as _se
+    from backend.app.services import daily_time_scheduler as _dts
+    from backend.app.services import ws_subscribe_control
+    import backend.app.services.engine_state as _st
+
+    if not changed_keys:
+        notify_desktop_header_refresh()
+        return
+
+    # ── 1) RAM 캐시 갱신 — PATCH 저장 직후 DB 최신값을 캐시에 반영 ──────────────
+    # [핵심] DB 저장 후 브로드캐스트 전에 반드시 캐시를 갱신해야 최신 값이 전송됨.
+    # refresh_engine_integrated_system_settings_cache는 엔진 실행 여부와 무관하게 캐시를 갱신함.
+    from backend.app.services.engine_config import refresh_engine_integrated_system_settings_cache
+    await refresh_engine_integrated_system_settings_cache(None, use_root=True)
+
+    # ── 2) 연결 레벨 키 → 엔진 실시간 핫-리로드 ───────────────────────────────────
+    broker_nm = str(state.integrated_system_settings_cache.get("broker", "") or "").lower().strip()
+    connection_keys = get_connection_level_keys(broker_nm)
+    if changed_keys & connection_keys:
+        if is_running():
+            _schedule_engine_coro(update_broker_credentials_live(), "자격 증명 핫-갱신")
+            logger.info(
+                "[설정] 연결 레벨 설정 변경 감지 -> 실시간 자격 증명 핫-갱신 및 토큰 재시도 가동 (키=%s)",
+                changed_keys & connection_keys,
+            )
+        notify_desktop_header_refresh()
+        await notify_desktop_settings_toggled()
+        return
+
+    # ── 3) 거래모드 전환 → 캐시 갱신 + 계좌 구독 전환 ────────────────────
+    if changed_keys & TRADE_MODE_KEYS:
+        if is_running():
+            _schedule_engine_coro(on_trade_mode_switched(), "거래모드 전환")
+            logger.info("[설정] 거래모드 전환 감지 -> 저장데이터 갱신 + 계좌 구독 전환 (엔진 재기동 없음)")
+        notify_desktop_header_refresh()
+        await notify_desktop_settings_toggled()
+        return
+
+    # ── 4) 일반 설정 변경 (증분 브로드캐스트 전송) ────────────────────────
+    notify_desktop_header_refresh()
+    
+    changed_dict = {}
+    try:
+        display_settings = dict(state.integrated_system_settings_cache)
+        masked_settings = _mask_sensitive_settings(display_settings)
+        for k in changed_keys:
+            if k in masked_settings:
+                changed_dict[k] = masked_settings[k]
+    except Exception as e:
+        logger.warning("[설정] 마스킹 델타 추출 실패: %s", e)
+
+    await notify_desktop_settings_toggled(changed_dict)
+
+    # 테스트모드 가상 예수금 변경 시 Settlement Engine 동기화 + 계좌 스냅샷 갱신
+    _VIRTUAL_BALANCE_KEYS = {"test_virtual_balance", "test_virtual_deposit"}
+    if changed_keys & _VIRTUAL_BALANCE_KEYS:
+        try:
+            _s = state.integrated_system_settings_cache or {}
+            _deposit = int(_s.get("test_virtual_balance", _s.get("test_virtual_deposit", 10_000_000)) or 0)
+            await _se.reset(_deposit)
+            # 계좌 스냅샷 갱신 + WS account-update 발송
+            await _refresh_account_snapshot_meta()
+            _broadcast_account(reason="virtual_balance_changed")
+        except Exception:
+            logger.warning("[설정] 가상 예수금 동기화 실패", exc_info=True)
+
+    # 5일봉 다운로드 토글 ON 시 즉시 다운로드 트리거
+    if "scheduler_5d_download_on" in changed_keys:
+        _5d_on = bool(get_settings_snapshot().get("scheduler_5d_download_on", True))
+        if _5d_on:
+            try:
+                state.avg_amt_needs_bg_refresh = True
+                logger.info("[설정] scheduler_5d_download_on=ON → 5일봉 다운로드 트리거")
+            except Exception:
+                logger.warning("[설정] 5일봉 다운로드 트리거 실패", exc_info=True)
+
+    # 자동매매 시간 관련 설정 변경 시 타이머 재예약 + KiwoomConnector 플래그 동기화
+    _TIME_SCHEDULE_KEYS = {
+        "time_scheduler_on", "auto_buy_on", "auto_sell_on",
+        "buy_time_start", "buy_time_end", "sell_time_start", "sell_time_end",
+    }
+    if changed_keys & _TIME_SCHEDULE_KEYS:
+        try:
+            from backend.app.services.daily_time_scheduler import schedule_auto_trade_timers
+            new_settings = get_settings_snapshot()
+            await schedule_auto_trade_timers(new_settings)
+            # KiwoomConnector 자동매매 플래그 동기화
+            ws = getattr(state.kiwoom_connector, None)
+            if ws and "time_scheduler_on" in changed_keys:
+                ws.set_auto_trade_enabled(bool(new_settings.get("time_scheduler_on", True)))
+        except Exception:
+            pass
+
+    # WS 구독 시간/스위치 변경 시 → 즉시 구간 재판정 + 타이머 재예약
+    _WS_SCHEDULE_KEYS = {"ws_subscribe_start", "ws_subscribe_end", "ws_subscribe_on"}
+    if changed_keys & _WS_SCHEDULE_KEYS:
+        try:
+            new_settings = get_settings_snapshot()
+            now_in_window = await _dts.is_ws_subscribe_window(new_settings)
+            was_active = bool(_dts._ws_subscribe_window_active)
+
+            # 1) 타이머 재예약 (항상)
+            await _dts.schedule_ws_subscribe_timers(new_settings)
+
+            # 2) KiwoomConnector 실시간 연결 플래그 업데이트
+            ws = getattr(state.kiwoom_connector, None)
+            if ws:
+                ws.set_realtime_enabled(bool(new_settings.get("ws_subscribe_on", True)))
+                ws.set_holiday_block_enabled(bool(new_settings.get("holiday_guard_on", True)))
+
+            # 3) 활성→구간밖: 즉시 구독 해제 + WS 끊기 (장마감 후처리 없이)
+            if was_active and not now_in_window:
+                logger.info("[설정] 실시간 구독 구간 변경 → 현재 구간 밖 — 즉시 구독 해제")
+                _dts._fire_ws_disconnect_only()
+
+            # 4) 비활성→구간안: 즉시 WS 연결 + 구독 시작
+            elif not was_active and now_in_window:
+                logger.info("[설정] 실시간 구독 구간 변경 → 현재 구간 안 — 즉시 구독 시작")
+                _schedule_engine_coro(_dts._on_ws_subscribe_start(), "실시간 구독 시작")
+        except Exception:
+            pass
+
+    # 공휴일 자동 차단 설정 변경 시 KiwoomConnector 플래그 업데이트
+    if "holiday_guard_on" in changed_keys:
+        try:
+            ws = getattr(state.kiwoom_connector, None)
+            if ws:
+                new_settings = get_settings_snapshot()
+                ws.set_holiday_block_enabled(bool(new_settings.get("holiday_guard_on", True)))
+        except Exception:
+            pass
+
+    # 섹터 정렬/필터 관련 설정 변경 시 업종 점수만 재계산 (종목 시세는 WS delta로만 전송)
+    _SECTOR_UI_KEYS = {
+        "sector_sort_keys", "sector_rank_primary", "sector_weights",
+        "sector_min_rise_ratio_pct", "sector_min_trade_amt",
+        "sector_max_targets", "buy_block_rise_pct", "buy_block_fall_pct",
+        "buy_min_strength",
+        "sector_trim_trade_amt_pct", "sector_trim_change_rate_pct",
+        # 가산점 설정
+        "boost_high_breakout_on", "boost_high_breakout_score",
+        "boost_order_ratio_on",
+        "boost_order_ratio_pct", "boost_order_ratio_score",
+    }
+    if changed_keys & _SECTOR_UI_KEYS:
+        if is_running():
+            if "sector_min_trade_amt" in changed_keys:
+                _schedule_engine_coro(
+                    state.on_filter_settings_changed(), context="필터 설정 변경"
+                )
+            _schedule_engine_coro(
+                recompute_sector_summary_now(), context="섹터 설정 변경"
+            )
+        notify_desktop_sector_scores(force=True)
+
+    # WS 구독 제어 설정 변경 시 즉시 반영 (구독 시작/해지)
+    _WS_SUBSCRIBE_CONTROL_KEYS = {"index_auto_subscribe", "quote_auto_subscribe"}
+    _ws_changed = changed_keys & _WS_SUBSCRIBE_CONTROL_KEYS
+    if _ws_changed:
+        try:
+            raw = state.integrated_system_settings_cache or {}
+            for key in _ws_changed:
+                _schedule_engine_coro(
+                    ws_subscribe_control.on_setting_changed(key, bool(raw.get(key)), engine_service),
+                    f"WS 구독 제어 설정 반영({key})",
+                )
+        except Exception:
+            logger.warning("[설정] ws_subscribe_control 설정 변경 반영 실패", exc_info=True)
 get_latest_trade_price_for_ui = get_latest_trade_price_for_ui
 _run_snapshot_and_sell_check = _run_snapshot_and_sell_check
-_token_ready_event = _token_ready_event
+
+
+# ── 모듈 수준 동적 속성 위임 (호환성 유지 - PEP 562) ─────────────────────
+def __getattr__(name: str):
+    if name.startswith('_'):
+        clean_name = name[1:]
+        from backend.app.services.engine_state import state
+        if hasattr(state, clean_name):
+            return getattr(state, clean_name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+

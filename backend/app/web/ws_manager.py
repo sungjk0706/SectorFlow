@@ -48,7 +48,7 @@ _ENCODING_CACHE_MAX_SIZE = 100
 _KEY_SHORTEN: dict[str, str] = {"type": "t", "item": "i", "values": "v"}
 
 # buy-target 페이지 필터링용 Set 캐시 (_sector_summary_cache 갱신 시 재구성)
-_buy_target_page_cache_id: int = 0
+_buy_target_page_cache_version: int = 0
 _buy_target_page_codes: set[str] = set()
 _blocked_target_page_codes: set[str] = set()
 
@@ -262,27 +262,30 @@ class WSManager:
         """페이지별 종목 코드 관련성 판별. 단일 스레드 — 락 불필요."""
         if page == "sector-ranking":
             # 업종별종목시세 테이블용: layout 종목 + radar 종목
-            from backend.app.services.engine_account_notify import _layout_code_set
+            from backend.app.services.engine_account_notify import notify_cache
             import backend.app.services.engine_service as _es
-            # _pending_stock_details 제거: _radar_cnsr_order 사용
-            return code in _layout_code_set or code in _es._radar_cnsr_order
+            # _pending_stock_details 제거: _master_stocks_cache의 _subscribed 속성 사용
+            is_layout = code in notify_cache.layout_code_set
+            is_radar = _es._master_stocks_cache.get(code, {}).get("_subscribed", False)
+            return is_layout or is_radar
         elif page == "buy-target":
             # 매수후보 종목만 — Set 캐시로 O(1) 조회 (Phase 6D)
             import backend.app.services.engine_service as _es
             ss = _es._sector_summary_cache
             if not ss:
                 return True  # 캐시 미초기화 → 안전 폴백
-            global _buy_target_page_cache_id, _buy_target_page_codes, _blocked_target_page_codes
-            if id(ss) != _buy_target_page_cache_id:
-                _buy_target_page_cache_id = id(ss)
+            global _buy_target_page_cache_version, _buy_target_page_codes, _blocked_target_page_codes
+            current_version = getattr(ss, "version", 1)
+            if current_version != _buy_target_page_cache_version:
+                _buy_target_page_cache_version = current_version
                 _buy_target_page_codes = {bt.stock.code for bt in ss.buy_targets} if hasattr(ss, "buy_targets") else set()
                 _blocked_target_page_codes = {bt.stock.code for bt in ss.blocked_targets} if hasattr(ss, "blocked_targets") else set()
             return code in _buy_target_page_codes or code in _blocked_target_page_codes
         elif page == "sell-position":
             # 보유종목만 — Set 캐시로 O(1) 조회, 캐시 미초기화 시 _positions 직접 조회 폴백
-            from backend.app.services.engine_account_notify import _positions_code_set
-            if _positions_code_set:
-                return code in _positions_code_set
+            from backend.app.services.engine_account_notify import notify_cache
+            if notify_cache.positions_code_set:
+                return code in notify_cache.positions_code_set
             # 캐시가 아직 비어있으면 _positions 직접 조회 (초기화 타이밍 폴백)
             try:
                 import backend.app.services.engine_service as _es

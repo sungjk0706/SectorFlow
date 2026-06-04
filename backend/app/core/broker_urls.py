@@ -6,7 +6,7 @@
 다른 파일에서는 이 모듈의 상수·함수를 import 해서 사용한다.
 
 증권사 추가 시: _BROKER_URL_DEFAULTS dict에 한 줄만 추가하면 됨.
-settings.json의 broker_urls 섹션으로 런타임 오버라이드 가능.
+settings dict(DB에서 로드)의 broker_urls 섹션으로 런타임 오버라이드 가능.
 """
 
 # ── 증권사별 기본 URL (코드 내 유일한 정의 지점) ──────────────────────────

@@ -219,62 +219,72 @@ def _parse_value(value: str, value_type: str) -> Any:
 async def save_settings(data: dict) -> None:
     """SQLite 데이터베이스 integrated_system_settings 테이블에 저장.
     암호화 필드가 평문인 경우 자동 암호화 후 저장 (engine_state 캐시에서 온 복호화값 대응)."""
-    from backend.app.db.database import get_db_connection
+    from backend.app.db.database import get_db_connection, get_db_lock
     from backend.app.core.encryption import encrypt_value
 
-    conn = await get_db_connection()
-    try:
-        await conn.execute("BEGIN TRANSACTION")
+    async with get_db_lock():
+        conn = await get_db_connection()
+        try:
+            await conn.execute("BEGIN TRANSACTION")
 
-        for k, v in data.items():
-            if v is None:
-                continue
-            # 암호화 필드: 평문이면 암호화 (engine_state 캐시에서 온 복호화값 처리)
-            if k in _ENCRYPT_FIELDS and v and not str(v).startswith("gAAAA"):
-                enc = encrypt_value(str(v))
-                if enc:
-                    v = enc
-            if k == "_broker_specs":
-                if isinstance(v, dict):
-                    for b_name, spec in v.items():
-                        spec_str = json.dumps(spec, ensure_ascii=False)
-                        await conn.execute(
-                            "INSERT OR REPLACE INTO integrated_system_settings (key, value, value_type, updated_at) VALUES (?, ?, 'json', CURRENT_TIMESTAMP)",
-                            (f"_broker_specs:{b_name}", spec_str)
-                        )
-                continue
-            if k.startswith("_broker_specs:") or k.startswith("broker_specs:"):
-                b_name = k.split(":", 1)[1]
-                spec_str = json.dumps(v, ensure_ascii=False)
-                await conn.execute(
-                    "INSERT OR REPLACE INTO integrated_system_settings (key, value, value_type, updated_at) VALUES (?, ?, 'json', CURRENT_TIMESTAMP)",
-                    (f"_broker_specs:{b_name}", spec_str)
+            # 벌크 파라미터 수집
+            bulk_params = []
+            broker_specs_params = []
+
+            for k, v in data.items():
+                if v is None:
+                    continue
+                # 암호화 필드: 평문이면 암호화 (engine_state 캐시에서 온 복호화값 처리)
+                if k in _ENCRYPT_FIELDS and v and not str(v).startswith("gAAAA"):
+                    enc = encrypt_value(str(v))
+                    if enc:
+                        v = enc
+                if k == "_broker_specs":
+                    if isinstance(v, dict):
+                        for b_name, spec in v.items():
+                            spec_str = json.dumps(spec, ensure_ascii=False)
+                            broker_specs_params.append((f"_broker_specs:{b_name}", spec_str, "json"))
+                    continue
+                if k.startswith("_broker_specs:") or k.startswith("broker_specs:"):
+                    b_name = k.split(":", 1)[1]
+                    spec_str = json.dumps(v, ensure_ascii=False)
+                    broker_specs_params.append((f"_broker_specs:{b_name}", spec_str, "json"))
+                    continue
+
+                # 타입 변환
+                if isinstance(v, bool):
+                    value_type = "boolean"
+                    val_str = str(v)
+                elif isinstance(v, (int, float)):
+                    value_type = "number"
+                    val_str = str(v)
+                elif isinstance(v, (dict, list)):
+                    value_type = "json"
+                    val_str = json.dumps(v, ensure_ascii=False)
+                else:
+                    value_type = "string"
+                    val_str = str(v)
+
+                bulk_params.append((k, val_str, value_type))
+
+            # 벌크 실행
+            if broker_specs_params:
+                await conn.executemany(
+                    "INSERT OR REPLACE INTO integrated_system_settings (key, value, value_type, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                    broker_specs_params
                 )
-                continue
+            if bulk_params:
+                await conn.executemany(
+                    "INSERT OR REPLACE INTO integrated_system_settings (key, value, value_type, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                    bulk_params
+                )
 
-
-            if isinstance(v, bool):
-                value_type = "boolean"
-                val_str = str(v)
-            elif isinstance(v, (int, float)):
-                value_type = "number"
-                val_str = str(v)
-            elif isinstance(v, (dict, list)):
-                value_type = "json"
-                val_str = json.dumps(v, ensure_ascii=False)
-            else:
-                value_type = "string"
-                val_str = str(v)
-
-            await conn.execute(
-                "INSERT OR REPLACE INTO integrated_system_settings (key, value, value_type, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
-                (k, val_str, value_type)
-            )
-
-        await conn.commit()
-    except Exception as e:
-        await conn.rollback()
-        logger.error("[설정] DB 저장 실패: %s", e)
+            await conn.commit()
+            logger.info("[설정] DB 저장 완료 -- %d개 broker_specs, %d개 일반 설정", len(broker_specs_params), len(bulk_params))
+        except Exception as e:
+            await conn.rollback()
+            logger.error("[설정] DB 저장 실패: %s", e, exc_info=True)
+            raise
 
 
 async def update_settings(updates: dict) -> dict:

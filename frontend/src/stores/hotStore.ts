@@ -225,7 +225,7 @@ export function applyRealData(item: RealDataEvent): void {
   const parsedRate = parseKiwoomNum(rawRate);
   const parsedStrength = parseKiwoomNum(rawStrength);
   const rawAmt = parseKiwoomNum(rawAmount);
-  const parsedAmount = rawAmt !== undefined ? rawAmt * 1000000 : undefined;
+  const parsedAmount = rawAmt !== undefined ? rawAmt : undefined;
 
   // 2. In-place Mutation (객체 직접 수정) 및 커스텀 이벤트 발생
   // setState()를 호출하여 배열을 재생성하면 리액티브 구독 패턴에 의해 

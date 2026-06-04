@@ -25,8 +25,8 @@ _UNREG_DELAY_SEC: float = 30.0  # 해지 지연 시간 (30초)
 
 
 def _is_engine_running() -> bool:
-    from backend.app.services.engine_service import _running
-    return _running
+    from backend.app.services.engine_state import state
+    return state.running
 
 
 def recompute_sector_for_code(code: str | None = None) -> None:
@@ -135,7 +135,7 @@ async def _flush_sector_recompute_impl() -> None:
         # __ALL__ 플래그 + 캐시 존재 → 전체 종목(all_codes)를 dirty로 취급하여 증분 경로 사용
         # _master_stocks_cache의 "_subscribed" 대신 all_codes 사용: 업종 요약정보는 실시간 구독 상태와 무관하게 전체 종목 기준으로 계산
         if "__ALL__" in codes_snapshot:
-            inputs = get_sector_summary_inputs()
+            inputs = await get_sector_summary_inputs()
             codes_snapshot = set(inputs["all_codes"])
 
         # ── 증분 갱신 ──
@@ -150,12 +150,13 @@ async def _flush_sector_recompute_impl() -> None:
             return
 
         # 2. 해당 섹터의 종목만 재계산
-        inputs = get_sector_summary_inputs()
+        from backend.app.services.engine_state import state
+        inputs = await get_sector_summary_inputs()
         all_codes = inputs["all_codes"]
-        min_avg_amt_eok = float(_es._integrated_system_settings_cache.get("sector_min_trade_amt", 0.0))
-        trim_trade = float(_es._integrated_system_settings_cache.get("sector_trim_trade_amt_pct", 0) or 0)
-        trim_change = float(_es._integrated_system_settings_cache.get("sector_trim_change_rate_pct", 0) or 0)
-        sector_weights = _es._integrated_system_settings_cache.get("sector_weights") or {}
+        min_avg_amt_eok = float(state.integrated_system_settings_cache.get("sector_min_trade_amt", 0.0))
+        trim_trade = float(state.integrated_system_settings_cache.get("sector_trim_trade_amt_pct", 0) or 0)
+        trim_change = float(state.integrated_system_settings_cache.get("sector_trim_change_rate_pct", 0) or 0)
+        sector_weights = state.integrated_system_settings_cache.get("sector_weights") or {}
 
         # dirty 섹터에 속한 종목코드만 필터
         dirty_codes_for_calc = [
@@ -198,7 +199,7 @@ async def _flush_sector_recompute_impl() -> None:
         compute_weighted_scores(merged, weights=sector_weights)
 
         # 5. 업종 컷오프: 상승비율 미만 업종은 순위 없음(rank=0)
-        min_rise_ratio = float(settings.get("sector_min_rise_ratio_pct", 60.0)) / 100.0
+        min_rise_ratio = float(state.integrated_system_settings_cache.get("sector_min_rise_ratio_pct", 60.0)) / 100.0
         if min_rise_ratio > 0:
             pass_sectors = [sc for sc in merged if sc.rise_ratio >= min_rise_ratio]
             fail_sectors = [sc for sc in merged if sc.rise_ratio < min_rise_ratio]
@@ -216,20 +217,20 @@ async def _flush_sector_recompute_impl() -> None:
 
         ss = build_buy_targets(
             merged,
-            sort_keys=settings.get("sector_sort_keys") or None,
+            sort_keys=state.integrated_system_settings_cache.get("sector_sort_keys") or None,
             min_rise_ratio=min_rise_ratio,
-            block_rise_pct=float(settings.get("buy_block_rise_pct", 7.0)),
-            block_fall_pct=float(settings.get("buy_block_fall_pct", 7.0)),
-            min_strength=float(settings.get("buy_min_strength", 0)),
-            max_sectors=int(settings.get("sector_max_targets", 3)),
+            block_rise_pct=float(state.integrated_system_settings_cache.get("buy_block_rise_pct", 7.0)),
+            block_fall_pct=float(state.integrated_system_settings_cache.get("buy_block_fall_pct", 7.0)),
+            min_strength=float(state.integrated_system_settings_cache.get("buy_min_strength", 0)),
+            max_sectors=int(state.integrated_system_settings_cache.get("sector_max_targets", 3)),
             # 가산점 파라미터
             high_5d_cache=get_high_5d_cache(),
             orderbook_cache={},  # 호가잔량 캐시 삭제로 빈 dict 전달
-            boost_high_on=bool(settings.get("boost_high_breakout_on", False)),
-            boost_high_score=float(settings.get("boost_high_breakout_score", 1.0)),
-            boost_order_ratio_on=bool(settings.get("boost_order_ratio_on", False)),
-            boost_order_ratio_pct=float(settings.get("boost_order_ratio_pct", 20.0)),
-            boost_order_ratio_score=float(settings.get("boost_order_ratio_score", 1.0)),
+            boost_high_on=bool(state.integrated_system_settings_cache.get("boost_high_breakout_on", False)),
+            boost_high_score=float(state.integrated_system_settings_cache.get("boost_high_breakout_score", 1.0)),
+            boost_order_ratio_on=bool(state.integrated_system_settings_cache.get("boost_order_ratio_on", False)),
+            boost_order_ratio_pct=float(state.integrated_system_settings_cache.get("boost_order_ratio_pct", 20.0)),
+            boost_order_ratio_score=float(state.integrated_system_settings_cache.get("boost_order_ratio_score", 1.0)),
         )
 
         # 참조 교체 방식으로 캐시 갱신 (R5.6)
@@ -269,7 +270,7 @@ async def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
     from backend.app.services.engine_service import get_sector_summary_inputs
     
     # 실시간 틱 데이터 기반 단건 델타 연산
-    inputs = get_sector_summary_inputs()
+    inputs = await get_sector_summary_inputs()
     stock_details = inputs["stock_details"]
     
     # 각 틱 이벤트 종목별 단건 델타 처리 (배치 루프 제거)
@@ -330,34 +331,36 @@ async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
         notify_desktop_sector_scores,
         notify_buy_targets_update,
     )
+    from backend.app.services.engine_state import state
 
     # buy_targets 변경 감지를 위해 이전 값 저장
-    prev_targets = _es._sector_summary_cache.buy_targets if _es._sector_summary_cache and hasattr(_es._sector_summary_cache, 'buy_targets') else None
+    _prev_cache = _es._sector_summary_cache
+    prev_targets = _prev_cache.buy_targets if _prev_cache and hasattr(_prev_cache, 'buy_targets') else None
 
-    trim_trade = float(_es._integrated_system_settings_cache.get("sector_trim_trade_amt_pct", 0) or 0)
-    trim_change = float(_es._integrated_system_settings_cache.get("sector_trim_change_rate_pct", 0) or 0)
+    trim_trade = float(state.integrated_system_settings_cache.get("sector_trim_trade_amt_pct", 0) or 0)
+    trim_change = float(state.integrated_system_settings_cache.get("sector_trim_change_rate_pct", 0) or 0)
 
-    inputs = get_sector_summary_inputs()
+    inputs = await get_sector_summary_inputs()
     ss = await compute_full_sector_summary(
         **inputs,
-        sort_keys=_es._integrated_system_settings_cache.get("sector_sort_keys") or None,
-        min_rise_ratio=float(_es._integrated_system_settings_cache.get("sector_min_rise_ratio_pct", 60.0)) / 100.0,
-        block_rise_pct=float(_es._integrated_system_settings_cache.get("buy_block_rise_pct", 7.0)),
-        block_fall_pct=float(_es._integrated_system_settings_cache.get("buy_block_fall_pct", 7.0)),
-        min_strength=float(_es._integrated_system_settings_cache.get("buy_min_strength", 0)),
-        min_avg_amt_eok=float(_es._integrated_system_settings_cache.get("sector_min_trade_amt", 0.0)),
-        max_sectors=int(_es._integrated_system_settings_cache.get("sector_max_targets", 3)),
-        sector_weights=_es._integrated_system_settings_cache.get("sector_weights"),
+        sort_keys=state.integrated_system_settings_cache.get("sector_sort_keys") or None,
+        min_rise_ratio=float(state.integrated_system_settings_cache.get("sector_min_rise_ratio_pct", 60.0)) / 100.0,
+        block_rise_pct=float(state.integrated_system_settings_cache.get("buy_block_rise_pct", 7.0)),
+        block_fall_pct=float(state.integrated_system_settings_cache.get("buy_block_fall_pct", 7.0)),
+        min_strength=float(state.integrated_system_settings_cache.get("buy_min_strength", 0)),
+        min_avg_amt_eok=float(state.integrated_system_settings_cache.get("sector_min_trade_amt", 0.0)),
+        max_sectors=int(state.integrated_system_settings_cache.get("sector_max_targets", 3)),
+        sector_weights=state.integrated_system_settings_cache.get("sector_weights"),
         trim_trade_amt_pct=trim_trade,
         trim_change_rate_pct=trim_change,
         # 가산점 파라미터
         high_5d_cache=get_high_5d_cache(),
         orderbook_cache={},  # 호가잔량 캐시 삭제로 빈 dict 전달
-        boost_high_on=bool(_es._integrated_system_settings_cache.get("boost_high_breakout_on", False)),
-        boost_high_score=float(_es._integrated_system_settings_cache.get("boost_high_breakout_score", 1.0)),
-        boost_order_ratio_on=bool(_es._integrated_system_settings_cache.get("boost_order_ratio_on", False)),
-        boost_order_ratio_pct=float(_es._integrated_system_settings_cache.get("boost_order_ratio_pct", 20.0)),
-        boost_order_ratio_score=float(_es._integrated_system_settings_cache.get("boost_order_ratio_score", 1.0)),
+        boost_high_on=bool(state.integrated_system_settings_cache.get("boost_high_breakout_on", False)),
+        boost_high_score=float(state.integrated_system_settings_cache.get("boost_high_breakout_score", 1.0)),
+        boost_order_ratio_on=bool(state.integrated_system_settings_cache.get("boost_order_ratio_on", False)),
+        boost_order_ratio_pct=float(state.integrated_system_settings_cache.get("boost_order_ratio_pct", 20.0)),
+        boost_order_ratio_score=float(state.integrated_system_settings_cache.get("boost_order_ratio_score", 1.0)),
     )
 
     # 참조 교체 방식으로 캐시 갱신 (R5.6)
@@ -369,7 +372,8 @@ async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
     notify_buy_targets_update()
 
     try:
-        await _es._try_sector_buy()
+        from backend.app.services.engine_lifecycle import _try_sector_buy
+        await _try_sector_buy()
     except Exception as _buy_err:
         logger.debug("[섹터재계산] 매수 판단 오류: %s", _buy_err)
 
@@ -378,7 +382,7 @@ async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
         _sync_0d_subscriptions_sync(_es, ss.buy_targets)
 
     # 업종 요약정보 생성 완료 이벤트 설정
-    _es._sector_summary_ready_event.set()
+    state.sector_summary_ready_event.set()
 
 
 # ── 0D 구독 delta 갱신 ────────────────────────────────────────────────────
@@ -392,14 +396,21 @@ def _sync_0d_subscriptions_sync(es, new_buy_targets) -> None:
     """
     global _PENDING_UNREG_CODES, _PENDING_UNREG_TIMER
 
+    from backend.app.services.engine_state import state
     from backend.app.services.engine_ws_reg import build_0d_reg_payloads
+    from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
 
     # WS 미연결 → 스킵
-    if not es._kiwoom_connector or not es._kiwoom_connector.is_connected() or not es._login_ok:
+    ws = state.connector_manager or state.kiwoom_connector
+    if not ws or not ws.is_connected() or not state.login_ok:
+        return
+
+    # LS증권은 호가 구독(0D)을 지원하지 않으므로 스킵
+    if ws.broker_id == "ls":
         return
 
     new_codes = {bt.stock.code for bt in new_buy_targets if bt.stock.guard_pass}
-    prev_codes = {cd for cd, entry in es._master_stocks_cache.items() if entry.get("_subscribed_0d", False)}
+    prev_codes = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed_0d", False)}
 
     # 신규 구독: 즉시 적용
     to_reg = new_codes - prev_codes
@@ -409,7 +420,7 @@ def _sync_0d_subscriptions_sync(es, new_buy_targets) -> None:
         for payload in payloads:
             try:
                 loop = asyncio.get_running_loop()
-                loop.create_task(es._ws_send_reg_unreg_and_wait_ack(payload))
+                loop.create_task(_ws_send_reg_unreg_and_wait_ack(payload))
             except RuntimeError:
                 pass
         prev_codes = prev_codes | to_reg  # 임시로 추가
@@ -438,10 +449,10 @@ def _sync_0d_subscriptions_sync(es, new_buy_targets) -> None:
         except RuntimeError:
             pass
 
-    # _master_stocks_cache에 "_subscribed_0d" 설정
+    # state.master_stocks_cache에 "_subscribed_0d" 설정
     for cd in prev_codes:
-        if cd in es._master_stocks_cache:
-            es._master_stocks_cache[cd]["_subscribed_0d"] = True
+        if cd in state.master_stocks_cache:
+            state.master_stocks_cache[cd]["_subscribed_0d"] = True
 
 
 def _apply_delayed_unreg(es) -> None:
@@ -450,7 +461,7 @@ def _apply_delayed_unreg(es) -> None:
 
     from backend.app.services.engine_ws_reg import build_0d_remove_payloads
 
-    current_codes = {cd for cd, entry in es._master_stocks_cache.items() if entry.get("_subscribed_0d", False)}
+    current_codes = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed_0d", False)}
     to_unreg = _PENDING_UNREG_CODES & current_codes  # 아직 구독 중인 것만
 
     if to_unreg:
@@ -459,17 +470,17 @@ def _apply_delayed_unreg(es) -> None:
         for payload in payloads:
             try:
                 loop = asyncio.get_running_loop()
-                loop.create_task(es._ws_send_reg_unreg_and_wait_ack(payload))
+                loop.create_task(_ws_send_reg_unreg_and_wait_ack(payload))
             except RuntimeError:
                 pass
         current_codes -= to_unreg
 
     _PENDING_UNREG_CODES.clear()
     _PENDING_UNREG_TIMER = None
-    # _master_stocks_cache에서 "_subscribed_0d" 제거
+    # state.master_stocks_cache에서 "_subscribed_0d" 제거
     for cd in to_unreg:
-        if cd in es._master_stocks_cache:
-            es._master_stocks_cache[cd].pop("_subscribed_0d", None)
+        if cd in state.master_stocks_cache:
+            state.master_stocks_cache[cd].pop("_subscribed_0d", None)
 
 
 async def _sync_0d_subscriptions(es, new_buy_targets) -> None:
@@ -479,14 +490,21 @@ async def _sync_0d_subscriptions(es, new_buy_targets) -> None:
     REG(신규) / REMOVE(제거) 페이로드만 전송한다.
     WS 미연결 시 조용히 스킵.
     """
+    from backend.app.services.engine_state import state
     from backend.app.services.engine_ws_reg import build_0d_reg_payloads, build_0d_remove_payloads
+    from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
 
     # WS 미연결 → 스킵
-    if not es._kiwoom_connector or not es._kiwoom_connector.is_connected() or not es._login_ok:
+    ws = state.connector_manager or state.kiwoom_connector
+    if not ws or not ws.is_connected() or not state.login_ok:
+        return
+
+    # LS증권은 호가 구독(0D)을 지원하지 않으므로 스킵
+    if ws.broker_id == "ls":
         return
 
     new_codes = {bt.stock.code for bt in new_buy_targets if bt.stock.guard_pass}
-    prev_codes = es._subscribed_0d_stocks
+    prev_codes = state.subscribed_0d_stocks
 
     to_reg = new_codes - prev_codes
     to_unreg = prev_codes - new_codes
@@ -495,7 +513,7 @@ async def _sync_0d_subscriptions(es, new_buy_targets) -> None:
         payloads = build_0d_reg_payloads(sorted(to_reg))
         for payload in payloads:
             try:
-                ack_ok, rc = await es._ws_send_reg_unreg_and_wait_ack(payload)
+                ack_ok, rc = await _ws_send_reg_unreg_and_wait_ack(payload)
                 if not ack_ok:
                     logger.warning("[호가잔량 구독등록] 응답 시간 초과 — %d종목", len(payload["data"][0]["item"]))
             except Exception as exc:
@@ -505,11 +523,11 @@ async def _sync_0d_subscriptions(es, new_buy_targets) -> None:
         payloads = build_0d_remove_payloads(sorted(to_unreg))
         for payload in payloads:
             try:
-                ack_ok, rc = await es._ws_send_reg_unreg_and_wait_ack(payload)
+                ack_ok, rc = await _ws_send_reg_unreg_and_wait_ack(payload)
             except Exception as exc:
                 pass
 
-    es._subscribed_0d_stocks = new_codes
+    state.subscribed_0d_stocks = new_codes
 
 
 # ── 호환용 ────────────────────────────────────────────────────────────────

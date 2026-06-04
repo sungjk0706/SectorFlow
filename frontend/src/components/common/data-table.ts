@@ -644,7 +644,7 @@ function createVirtualScrollMode<T extends object>(
           gridColumn: '1 / -1',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent: 'flex-start',
           fontWeight: FONT_WEIGHT.normal,
           fontSize: FONT_SIZE.group,
           color: '#1a237e',

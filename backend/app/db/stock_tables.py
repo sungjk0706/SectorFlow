@@ -274,6 +274,7 @@ async def create_master_stocks_table():
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_market ON master_stocks_table(market)')
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_date ON master_stocks_table(date)')
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_avg_5d ON master_stocks_table(avg_5d_trade_amount)')
+    await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_sector ON master_stocks_table(sector)')
 
     await conn.commit()
     _log.info("master_stocks_table 테이블 초기화 완료.")
@@ -372,27 +373,7 @@ async def clear_progress_cache() -> None:
     except Exception as e:
         _log.warning("[progress_cache] downloaded_at 정리 실패: %s", e)
 
-
-async def load_stock_name_cache() -> dict[str, str] | None:
-    """종목명을 master_stocks_table.name 컬럼에서 조회 (단일 진실 공급원)."""
-    try:
-        conn = await get_db_connection()
-        cursor = await conn.execute("SELECT code, name FROM master_stocks_table")
-        rows = await cursor.fetchall()
-        
-        if not rows:
-            return None
-            
-        name_map = {}
-        for row in rows:
-            name_map[str(row["code"])] = str(row["name"])
-            
-        _log.info("[stock_name_cache] master_stocks_table 로드 -- %d종목", len(name_map))
-        return name_map
-    except Exception as e:
-        _log.warning("[stock_name_cache] master_stocks_table 로드 실패: %s", e)
-        return None
-
+# load_stock_name_cache 함수 삭제: 메모리 캐시(_master_stocks_cache)로 단일화
 
 async def create_stock_5d_array_table():
     """stock_5d_array 테이블 생성 (5일봉 배열 데이터 저장용)"""
@@ -446,6 +427,7 @@ async def load_master_stocks_table() -> dict[str, dict]:
                 "trade_amount": float(r["trade_amount"] or 0),
                 "avg_5d_trade_amount": int(r["avg_5d_trade_amount"] or 0),
                 "high_price": float(r["high_5d_price"] or 0),
+                "date": str(r["date"] or ""),
                 "volume": 0,
                 "sector": sector,
                 "status": "active"

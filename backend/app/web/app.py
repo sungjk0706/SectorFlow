@@ -45,6 +45,15 @@ async def lifespan(app: FastAPI):
     from backend.app.core.trading_calendar import initialize_trading_calendar_cache
     await initialize_trading_calendar_cache()
 
+    # 필터 요약 캐시 초기 로드
+    try:
+        from backend.app.core.sector_stock_cache import load_filter_summary_cache
+        from backend.app.services.engine_state import state
+        state.latest_filter_summary = await load_filter_summary_cache()
+        logger.info("[웹서버] 필터 요약 캐시 로드 완료: %s", state.latest_filter_summary)
+    except Exception as e:
+        logger.warning("[웹서버] 필터 요약 캐시 초기 로드 실패: %s", e)
+
     # 통합설정 테이블 초기화
     from backend.app.db.models import create_integrated_system_settings_table
     await create_integrated_system_settings_table()
@@ -54,10 +63,10 @@ async def lifespan(app: FastAPI):
     settings = await load_integrated_system_settings()
 
 
-    # _integrated_system_settings_cache 초기화 (단일 소스 진리 보장)
-    import backend.app.services.engine_state as _st
-    _st._integrated_system_settings_cache.clear()
-    _st._integrated_system_settings_cache.update(settings)
+    # state.integrated_system_settings_cache 초기화 (단일 소스 진리 보장)
+    from backend.app.services.engine_state import state
+    state.integrated_system_settings_cache.clear()
+    state.integrated_system_settings_cache.update(settings)
 
 
     logger.info("[웹서버] daily_time_scheduler import 직전")
@@ -104,11 +113,12 @@ async def lifespan(app: FastAPI):
     
     # 서버 준비 완료 상태 설정 (클라이언트 요청 수신 가능)
     # 웹 서버가 즉시 기동되어 Health Check 등에 응답할 수 있도록 함
-    _es._server_ready_event.set()
+    from backend.app.services.engine_state import state
+    state.server_ready_event.set()
     logger.info("[웹서버] 서버 준비 완료 이벤트 설정 (Fast Boot)")
 
     # 엔진 준비 완료 플래그 즉시 설정 (백그라운드 다운로드와 무관하게 웹서버 기동 완료)
-    _es._engine_ready_event.set()
+    state.engine_ready_event.set()
     logger.info("[웹서버] 엔진 준비 완료 이벤트 설정 (비차단)")
 
     # 스케줄러 시작
@@ -150,8 +160,8 @@ async def lifespan(app: FastAPI):
     logger.info("[웹서버] DB Writer 및 DB 커넥션 정리 완료")
     
     # 상태 이벤트 정리
-    _es._engine_ready_event.clear()
-    _es._server_ready_event.clear()
+    state.engine_ready_event.clear()
+    state.server_ready_event.clear()
     logger.info("[웹서버] 엔진 종료 완료")
 
 

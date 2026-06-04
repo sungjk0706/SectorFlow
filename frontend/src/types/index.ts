@@ -87,6 +87,7 @@ export interface EngineStatus {
   engine_task_alive: boolean;
   stock_subscribed_count: number;
   ws_reg_total_estimate: number;
+  broker_statuses?: Record<string, { token_valid: boolean; ws_connected: boolean }>;
 }
 
 export interface AppSettings {
