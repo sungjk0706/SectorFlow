@@ -10,20 +10,7 @@ import asyncio
 import json
 import time
 from backend.app.core.logger import get_logger
-from backend.app.services.engine_state import (
-    _integrated_system_settings_cache,
-    _bootstrap_event,
-    _preboot_cache_loaded,
-    _shared_lock,
-    _master_stocks_cache,
-    # _pending_stock_details 제거
-    # 실시간 틱 데이터 캐시 삭제로 import 제거 (_latest_trade_amounts, _latest_trade_prices, _latest_strength, _rest_radar_quote_cache, _orderbook_cache)
-    # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
-    # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
-    _snapshot_history,
-    _positions,
-    _realtime_state,
-)
+from backend.app.services.engine_state import state
 
 logger = get_logger("engine_snapshot")
 
@@ -71,7 +58,7 @@ async def build_initial_snapshot() -> dict:
     logger.info("[연결] 시작화면 데이터 생성 단계 -- 업종점수 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
     # 종목수 일치 보장: master_stocks_table 기준
-    total_stocks_count = len(_st._master_stocks_cache)
+    total_stocks_count = len(state.master_stocks_cache)
 
     snapshot: dict = {
         "_v":               1,
@@ -79,9 +66,9 @@ async def build_initial_snapshot() -> dict:
         "positions":        positions,
         "sector_stocks":    [],  # 분할 전송 — sector-stocks-refresh 이벤트로 별도 전송
         "sector_scores":    scores_list,
-        "sector_status":    {"total_stocks": total_stocks_count, "max_targets": int(_st._integrated_system_settings_cache.get("sector_max_targets", 3) or 3), "ranked_sectors_count": ranked_count},
+        "sector_status":    {"total_stocks": total_stocks_count, "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3) or 3), "ranked_sectors_count": ranked_count},
         "buy_targets":      await _safe(get_buy_targets_snapshot, []),
-        "settings":         _mask_sensitive_settings(_st._integrated_system_settings_cache),
+        "settings":         _mask_sensitive_settings(state.integrated_system_settings_cache),
         "status":           await _safe(get_status, {}),
         "snapshot_history": await _safe(get_snapshot_history, []),
         "sell_history":     await _safe(lambda: _get_trade_history_for_snapshot("sell"), []),
@@ -89,9 +76,9 @@ async def build_initial_snapshot() -> dict:
         "daily_summary":    await _safe(lambda: _get_daily_summary_for_snapshot(), []),
         "buy_limit_status": await _safe(get_buy_limit_status, {"daily_buy_spent": 0}),
         "ws_subscribe_status": ws_subscribe_control.get_subscribe_status(),
-        "bootstrap_done":   _bootstrap_event.is_set() if _bootstrap_event else _preboot_cache_loaded,
+        "bootstrap_done":   state.bootstrap_event.is_set() if state.bootstrap_event else state.preboot_cache_loaded,
         "market_phase":     get_market_phase(),
-        "broker_config":    _st._integrated_system_settings_cache.get("broker_config", {}),
+        "broker_config":    state.integrated_system_settings_cache.get("broker_config", {}),
         "avg_amt_refresh":  None,
     }
     logger.info("[연결] 시작화면 데이터 생성 단계 -- 메타 조립 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
@@ -175,10 +162,7 @@ async def _reset_realtime_fields() -> None:
     from backend.app.core.trade_mode import is_test_mode
     from backend.app.services import dry_run
     from backend.app.services.engine_account_notify import (
-        _position_sent_cache,
-        _prev_sent_cache,
-        _prev_scores_cache,
-        _prev_sector_stock_codes,
+        notify_cache,
         notify_desktop_sector_stocks_refresh,
         _broadcast,
     )
@@ -186,26 +170,28 @@ async def _reset_realtime_fields() -> None:
     # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
     # _pending_stock_details 제거: 루프 제거 (이미 WS 틱 저장 제거됨)
-    async with _shared_lock:
+    async with state.shared_lock:
         # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_latest_trade_amounts, _latest_trade_prices, _latest_strength)
         # 호가잔량 캐시 삭제로 clear 로직 제거
-        # _subscribed_0d_stocks 제거: _master_stocks_cache에서 "_subscribed_0d" 제거
-        for entry in _master_stocks_cache.values():
+        # _subscribed_0d_stocks 제거: state.master_stocks_cache에서 "_subscribed_0d" 제거
+        for entry in state.master_stocks_cache.values():
             entry.pop("_subscribed_0d", None)
+            for f in _REALTIME_FIELDS:
+                entry[f] = None
         # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_rest_radar_quote_cache)
         # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
-        _snapshot_history.clear()
+        state.snapshot_history.clear()
         # 보유종목 실시간 필드 초기화 (전일 종가 혼입 방지)
-        for pos in _positions:
+        for pos in state.positions:
             pos["cur_price"] = None
             pos["change"] = None
             pos["change_rate"] = None
             pos["bid_depth"] = None
             pos["ask_depth"] = None
             pos["high_price"] = None
-        
+
         # 테스트모드 가상 보유종목 실시간 필드 초기화
-        if is_test_mode(_integrated_system_settings_cache):
+        if is_test_mode(state.integrated_system_settings_cache):
             for pos in dry_run._test_positions.values():
                 pos["cur_price"] = None
                 pos["change"] = None
@@ -213,16 +199,15 @@ async def _reset_realtime_fields() -> None:
                 pos["bid_depth"] = None
                 pos["ask_depth"] = None
                 pos["high_price"] = None
-        
+
         # 업종 점수 캐시 초기화 (실시간 데이터 재계산 유도)
         import backend.app.services.engine_service as _es
         _es._sector_summary_cache = None
         # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
         # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
-        _position_sent_cache.clear()
-        _prev_sent_cache.clear()
-        _prev_scores_cache.clear()
-        
+        # 캡슐화된 notify_cache.clear_all() 호출로 결합성 제거
+        notify_cache.clear_all()
+
         # engine_ws_dispatch.py 캐시 초기화 (메모리 누적 방지)
         try:
             import backend.app.services.engine_ws_dispatch as _ws_dispatch
@@ -230,41 +215,88 @@ async def _reset_realtime_fields() -> None:
             _ws_dispatch._realtime_first_tick_ts_map.clear()
         except Exception:
             pass  # import 실패 시 무시
+
+        # DB master_stocks_table 실시간 필드 초기화 (과거 데이터 혼입 방지)
+        try:
+            from backend.app.db.database import get_db_connection
+            conn = await get_db_connection()
+            await conn.execute("""
+                UPDATE master_stocks_table
+                SET cur_price = NULL,
+                    change = NULL,
+                    change_rate = NULL,
+                    trade_amount = NULL,
+                    high_price = NULL
+            """)
+            await conn.commit()
+            logger.info("[데이터] DB master_stocks_table 실시간 필드 초기화 완료")
+        except Exception as db_err:
+            logger.error("[데이터] DB master_stocks_table 실시간 필드 초기화 실패: %s", db_err, exc_info=True)
     logger.info(
         "[데이터] 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료 -- %d종목, 실시간/REST 저장데이터 전체 클리어",
-        len(_master_stocks_cache),
+        len(state.master_stocks_cache),
     )
-    _prev_sector_stock_codes.clear()
     await notify_desktop_sector_stocks_refresh()
     _broadcast_account("realtime_reset")
     _broadcast("realtime-reset", {})
-    
+
     # 실시간 상태를 WAITING_FIRST_TICK으로 설정
     _set_realtime_state("WAITING_FIRST_TICK")
 
 
-def _set_realtime_state(state: str) -> None:
+def _set_realtime_state(new_state: str) -> None:
     """실시간 상태 설정."""
-    global _realtime_state
-    _realtime_state = state
+    state.realtime_state = new_state
 
 
 def _get_realtime_state() -> str:
     """실시간 상태 반환."""
-    return _realtime_state or "UNKNOWN"
+    return state.realtime_state or "UNKNOWN"
 
 
 # ── 기타 헬퍼 ─────────────────────────────────────────────────
 
 def get_buy_targets_snapshot() -> list:
-    """매수 후보 스냅샷 반환."""
-    from dataclasses import asdict
-    # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
+    """매수 후보 스냅샷 반환 (가드 통과 및 차단 종목 일체 병합 + 평탄화)."""
     import backend.app.services.engine_service as _es
     ss = _es._sector_summary_cache
-    if ss is None or not ss.buy_targets:
+    if ss is None:
         return []
-    return [asdict(target) for target in ss.buy_targets]
+    
+    def _flatten_target(t) -> dict:
+        # t.stock(StockScore) 객체의 중첩 데이터를 루트 레벨로 꺼내어 Flat 딕셔너리 구성
+        m_entry = state.master_stocks_cache.get(t.stock.code, {})
+        high_5d = m_entry.get("high_5d_price", 0)
+        
+        return {
+            "rank": t.rank,
+            "sector_rank": t.sector_rank,
+            "code": t.stock.code,
+            "name": t.stock.name,
+            "sector": t.stock.sector,
+            "change_rate": t.stock.change_rate,
+            "trade_amount": t.stock.trade_amount,
+            "avg_amt_5d": t.stock.avg_amt_5d,
+            "ratio_5d_pct": t.stock.ratio_5d_pct,
+            "strength": t.stock.strength,
+            "cur_price": t.stock.cur_price,
+            "change": t.stock.change,
+            "market_type": t.stock.market_type,
+            "nxt_enable": t.stock.nxt_enable,
+            "guard_pass": t.stock.guard_pass,
+            "reason": t.reason,
+            "boost_score": t.stock.boost_score,
+            "high_5d": high_5d,
+            "order_ratio": None,
+        }
+
+    combined = []
+    if ss.buy_targets:
+        combined.extend([_flatten_target(t) for t in ss.buy_targets])
+    if ss.blocked_targets:
+        combined.extend([_flatten_target(t) for t in ss.blocked_targets])
+        
+    return combined
 
 
 def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
@@ -277,7 +309,7 @@ def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
     if not nk:
         return None
     # 테스트모드: dry_run 가상 잔고에서 조회
-    if is_test_mode(_integrated_system_settings_cache):
+    if is_test_mode(state.integrated_system_settings_cache):
         pos = dry_run.get_position(nk)
         if pos and int(pos.get("qty", 0) or 0) > 0:
             try:
@@ -285,7 +317,7 @@ def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
             except (TypeError, ValueError):
                 return 0.0
         return None
-    for p in _positions:
+    for p in state.positions:
         pcd = _format_broker_reg_stk_cd(str(p.get("stk_cd", "") or ""))
         if pcd != nk:
             continue

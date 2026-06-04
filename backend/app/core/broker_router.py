@@ -42,8 +42,8 @@ class BrokerRouter:
 
     사용법:
         router = BrokerRouter()
-        router.sector.fetch_daily_price("005930", "20240101")  # 전역 설정
-        router.get_provider("sector", "sector_ranking") # 페이지 오버라이드
+        router.order.send_order(...)  # 전역 설정
+        router.get_provider("order", "sector_ranking") # 페이지 오버라이드
     """
 
     # 페이지별 허용 기능 매핑 (해당 페이지가 사용하는 기능만)
@@ -63,11 +63,11 @@ class BrokerRouter:
         self._build()
 
     def _load_specs(self) -> None:
-        """단일 소스 진리: _integrated_system_settings_cache 직접 사용."""
-        from backend.app.services.engine_state import _integrated_system_settings_cache
-        broker_config = _integrated_system_settings_cache.get("broker_config") or {}
+        """단일 소스 진리: state.integrated_system_settings_cache 직접 사용."""
+        from backend.app.services.engine_state import state
+        broker_config = state.integrated_system_settings_cache.get("broker_config") or {}
         default_broker = str(
-            _integrated_system_settings_cache.get("broker", "") or "ls"
+            state.integrated_system_settings_cache.get("broker", "") or "ls"
         ).lower().strip()
 
         # 모든 사용 중인 broker의 spec 로드
@@ -79,7 +79,7 @@ class BrokerRouter:
             brokers_to_load.add(broker_name)
 
         # settings에 미리 로드된 spec 사용
-        preloaded_specs = _integrated_system_settings_cache.get("_broker_specs") or {}
+        preloaded_specs = state.integrated_system_settings_cache.get("_broker_specs") or {}
         for broker_name in brokers_to_load:
             if not broker_name:
                 continue
@@ -94,11 +94,11 @@ class BrokerRouter:
                 logger.warning("[BrokerRouter] %s spec 없음 (settings)", broker_name)
 
     def _build(self) -> None:
-        """단일 소스 진리: _integrated_system_settings_cache 직접 사용."""
-        from backend.app.services.engine_state import _integrated_system_settings_cache
-        broker_config = _integrated_system_settings_cache.get("broker_config") or {}
+        """단일 소스 진리: state.integrated_system_settings_cache 직접 사용."""
+        from backend.app.services.engine_state import state
+        broker_config = state.integrated_system_settings_cache.get("broker_config") or {}
         default_broker = str(
-            _integrated_system_settings_cache.get("broker", "") or "ls"
+            state.integrated_system_settings_cache.get("broker", "") or "ls"
         ).lower().strip()
 
         for feature in FEATURES:
@@ -107,7 +107,7 @@ class BrokerRouter:
             ).lower().strip()
 
             provider = _create_provider(
-                feature, broker_name, _integrated_system_settings_cache, self._auth_cache
+                feature, broker_name, state.integrated_system_settings_cache, self._auth_cache
             )
             if provider:
                 self._providers[feature] = provider
@@ -116,7 +116,7 @@ class BrokerRouter:
                 # broker 비어있음 → 기본 브로커로 폴백
                 logger.warning("[BrokerRouter] broker 비어있음 — %s 폴백", default_broker)
                 self._providers[feature] = _create_provider(
-                    feature, default_broker, _integrated_system_settings_cache, self._auth_cache
+                    feature, default_broker, state.integrated_system_settings_cache, self._auth_cache
                 )
                 self._broker_map[feature] = default_broker
 
@@ -149,14 +149,14 @@ class BrokerRouter:
         2. 주문-계좌 동일 증권사 경고
         3. 미지원 증권사/기능 조합 (이미 _build에서 ValueError)
         """
-        from backend.app.services.engine_state import _integrated_system_settings_cache
+        from backend.app.services.engine_state import state
         messages: list[str] = []
         used_brokers = set(self._broker_map.values())
 
         # 인증 정보 존재 확인
         for broker_name in used_brokers:
-            key = _integrated_system_settings_cache.get(f"{broker_name}_app_key")
-            secret = _integrated_system_settings_cache.get(f"{broker_name}_app_secret")
+            key = state.integrated_system_settings_cache.get(f"{broker_name}_app_key")
+            secret = state.integrated_system_settings_cache.get(f"{broker_name}_app_secret")
             if not key or not secret:
                 messages.append(
                     f"증권사 API 키가 설정되지 않았습니다. "
@@ -193,7 +193,7 @@ class BrokerRouter:
         - page=None → 전역 설정 (기존 동작)
         - page="sector_ranking" 등 → page_overrides 적용
         """
-        from backend.app.services.engine_state import _integrated_system_settings_cache
+        from backend.app.services.engine_state import state
         if page is None:
             return self._providers[feature]
 
@@ -202,7 +202,7 @@ class BrokerRouter:
             return self._page_providers[cache_key]
 
         # page_overrides에서 해당 페이지·기능의 증권사 조회
-        page_overrides = _integrated_system_settings_cache.get("page_overrides") or {}
+        page_overrides = state.integrated_system_settings_cache.get("page_overrides") or {}
         page_config = page_overrides.get(page) or {}
         broker_name = page_config.get(feature)
 
@@ -218,7 +218,7 @@ class BrokerRouter:
         # 오버라이드 증권사의 Provider 생성
         try:
             provider = _create_provider(
-                feature, broker_name, _integrated_system_settings_cache, self._auth_cache
+                feature, broker_name, state.integrated_system_settings_cache, self._auth_cache
             )
             self._page_providers[cache_key] = provider
             return provider
@@ -237,9 +237,9 @@ class BrokerRouter:
 
     def validate_page_overrides(self) -> list[str]:
         """page_overrides 설정 검증. 경고 메시지 리스트 반환."""
-        from backend.app.services.engine_state import _integrated_system_settings_cache
+        from backend.app.services.engine_state import state
         messages: list[str] = []
-        page_overrides = _integrated_system_settings_cache.get("page_overrides") or {}
+        page_overrides = state.integrated_system_settings_cache.get("page_overrides") or {}
 
         for page, config in page_overrides.items():
             if page not in self.PAGE_FEATURES:

@@ -23,6 +23,9 @@ from backend.app.core.logger import get_logger
 
 logger = get_logger("engine")
 
+# 전역 버전 카운터 (캐시 갱신 감지용)
+_sector_summary_version_counter = 0
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 데이터 클래스
@@ -261,6 +264,7 @@ class SectorSummary:
     buy_targets: list[BuyTarget]        # 매수 타겟 큐 (가드 통과 종목만)
     blocked_targets: list[BuyTarget]    # 가드 차단 종목 (UI 표시용)
     is_skeleton_mode: bool = False     # 스켈레톤 캐시 모드 여부 (실시간 틱 기반 증분 연산용)
+    version: int = 1                    # 버전 관리 필드 (캐시 갱신 감지용)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -378,9 +382,10 @@ async def compute_sector_scores(
             if ta <= 0:
                 ta = int(detail.get("trade_amount", 0) or 0)
 
-            # 5일 평균 거래대금 (억 단위)
-            avg5d_eok = int(avg_amt_5d.get(code, 0) or 0)
-            avg5d_won = avg5d_eok * 100_000_000
+            # 5일 평균 거래대금: avg_amt_5d dict는 master_stocks_cache["avg_5d_trade_amount"] = 백만원 단위
+            avg5d_million = int(avg_amt_5d.get(code, 0) or 0)
+            avg5d_eok = avg5d_million // 100  # 백만원 → 억 단위 변환
+            avg5d_won = avg5d_million * 1_000_000  # 백만원 → 원 단위 변환 (비율 계산용)
 
             # 5D거래대금비율
             ratio_5d = round(ta / avg5d_won * 100.0, 1) if avg5d_won > 0 and ta > 0 else 0.0
@@ -529,6 +534,7 @@ def build_buy_targets(
     boost_order_ratio_pct: float = 20.0,
     boost_order_ratio_score: float = 1.0,
 ) -> SectorSummary:
+    global _sector_summary_version_counter
     """
     섹터 스코어 -> 매수 타겟 큐 생성.
 
@@ -624,10 +630,12 @@ def build_buy_targets(
             buy_targets.append(target)
             pass_rank += 1
 
+    _sector_summary_version_counter += 1
     return SectorSummary(
         sectors=sector_scores,
         buy_targets=buy_targets,
         blocked_targets=blocked_targets,
+        version=_sector_summary_version_counter,
     )
 
 

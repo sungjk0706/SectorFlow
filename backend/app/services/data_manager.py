@@ -15,7 +15,7 @@ async def _get_rest_base() -> str:
     """BrokerRouter의 AuthProvider에서 REST base URL 획득."""
     from backend.app.core.broker_factory import get_router
     from backend.app.core.broker_urls import build_broker_urls
-    from backend.app.services.engine_state import _integrated_system_settings_cache
+    from backend.app.services.engine_state import state
     try:
         auth = get_router().auth
         if hasattr(auth, "rest_api") and hasattr(auth.rest_api, "base_url"):
@@ -23,7 +23,7 @@ async def _get_rest_base() -> str:
     except Exception:
         logger.warning("[데이터관리] base_url 조회 실패", exc_info=True)
     # 기본값: broker 기반 URL
-    broker_nm = str(_integrated_system_settings_cache.get("broker", "") or "").lower().strip()
+    broker_nm = str(state.integrated_system_settings_cache.get("broker", "") or "").lower().strip()
     urls = build_broker_urls(broker_nm)
     return urls.get("rest_base", "")
 
@@ -74,13 +74,13 @@ async def _load_broker_settings() -> dict | None:
 
 
 async def get_stock_name(stk_cd: str, access_token: str | None = None) -> str:
-    """종목코드 -> 종목명. 로컬 stock_name_cache.json에서만 조회."""
+    """종목코드 -> 종목명. 메모리 캐시(_master_stocks_cache)에서만 조회."""
     norm = _norm_stk_cd(stk_cd)
     if not norm:
         return "알수없음"
-    from backend.app.db.stock_tables import load_stock_name_cache
-    name_map = await load_stock_name_cache() or {}
-    return name_map.get(norm, norm)
+    import backend.app.services.engine_state as _st
+    entry = _st._master_stocks_cache.get(norm)
+    return entry.get("name", norm) if entry else norm
 
 
 async def get_account_profit_rate(access_token: str) -> dict:
@@ -99,10 +99,10 @@ async def get_account_profit_rate(access_token: str) -> dict:
         return _empty
 
     try:
-        from backend.app.services.engine_state import _integrated_system_settings_cache
+        from backend.app.services.engine_state import state
         host = await _get_rest_base()
-        broker_nm = str(_integrated_system_settings_cache.get("broker", "") or "").lower().strip()
-        acnt_no = str(_integrated_system_settings_cache.get(f"{broker_nm}_account_no", "") or "")
+        broker_nm = str(state.integrated_system_settings_cache.get("broker", "") or "").lower().strip()
+        acnt_no = str(state.integrated_system_settings_cache.get(f"{broker_nm}_account_no", "") or "")
 
         url = f"{host}/api/dostk/acnt"
         headers = {
@@ -194,10 +194,10 @@ async def get_main_account_info(access_token: str) -> list:
         if not settings:
             return _fallback
 
-        from backend.app.services.engine_state import _integrated_system_settings_cache
+        from backend.app.services.engine_state import state
         host = await _get_rest_base()
-        broker_nm = str(_integrated_system_settings_cache.get("broker", "") or "").lower().strip()
-        acnt_no = str(_integrated_system_settings_cache.get(f"{broker_nm}_account_no", "") or "")
+        broker_nm = str(state.integrated_system_settings_cache.get("broker", "") or "").lower().strip()
+        acnt_no = str(state.integrated_system_settings_cache.get(f"{broker_nm}_account_no", "") or "")
 
         url = f"{host}/api/dostk/acnt"
         headers = {

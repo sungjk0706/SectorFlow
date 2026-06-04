@@ -15,22 +15,7 @@ from backend.app.services import data_manager
 from backend.app.services import dry_run
 from backend.app.services import settlement_engine
 from backend.app.services.auto_trading_effective import auto_sell_effective
-from backend.app.services.engine_state import (
-    # _pending_stock_details 제거
-    _access_token,
-    _shared_lock,
-    # _radar_cnsr_order 삭제
-    _integrated_system_settings_cache,
-    _kiwoom_connector,
-    _login_ok,
-    _positions,
-    _checked_stocks,
-    _auto_trade,
-    _account_rest_bootstrapped,
-    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
-    _refresh_account_snapshot_meta,
-    _update_account_memory,
-)
+from backend.app.services.engine_state import state
 
 logger = get_logger("engine")
 
@@ -97,38 +82,38 @@ async def run_snapshot_and_sell_check(force_rest: bool) -> None:
     """
     try:
         from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
-        in_window = await is_ws_subscribe_window(_integrated_system_settings_cache)
-        ws_ok = bool(_kiwoom_connector and _kiwoom_connector.is_connected() and _login_ok)
+        in_window = await is_ws_subscribe_window(state.integrated_system_settings_cache)
+        ws_ok = bool(state.kiwoom_connector and state.kiwoom_connector.is_connected() and state.login_ok)
         # 장중(구독 구간)이면 force_rest여도 REST 생략 -- 실시간 데이터 우선
         if in_window and not force_rest:
-            if _refresh_account_snapshot_meta:
-                await _refresh_account_snapshot_meta()
+            if state.refresh_account_snapshot_meta:
+                await state.refresh_account_snapshot_meta()
         elif not in_window or force_rest:
-            if not _account_rest_bootstrapped or not ws_ok or force_rest:
-                if _update_account_memory:
-                    await _update_account_memory(_integrated_system_settings_cache)
+            if not state.account_rest_bootstrapped or not ws_ok or force_rest:
+                if state.update_account_memory:
+                    await state.update_account_memory(state.integrated_system_settings_cache)
             else:
-                if _refresh_account_snapshot_meta:
-                    await _refresh_account_snapshot_meta()
-        for s in _positions:
+                if state.refresh_account_snapshot_meta:
+                    await state.refresh_account_snapshot_meta()
+        for s in state.positions:
             cd = str(s.get("stk_cd", "")).strip()
             if cd and int(s.get("qty", 0)) > 0:
-                _checked_stocks.add(cd)
+                state.checked_stocks.add(cd)
         # 테스트모드: dry_run 가상 잔고 기준으로 매도 조건 검사
-        _sell_positions = await dry_run.get_positions() if is_test_mode(_integrated_system_settings_cache) else _positions
+        _sell_positions = await dry_run.get_positions() if is_test_mode(state.integrated_system_settings_cache) else state.positions
         # _checked_stocks를 현재 보유 종목 기준으로 재구성 -- 매도 완료 종목 제거 반영
         _live_codes: set[str] = set()
-        for s in (await dry_run.get_positions() if is_test_mode(_integrated_system_settings_cache) else _positions):
+        for s in (await dry_run.get_positions() if is_test_mode(state.integrated_system_settings_cache) else state.positions):
             cd = str(s.get("stk_cd", "")).strip()
             if cd and int(s.get("qty", 0)) > 0:
                 _live_codes.add(cd)
-        if is_test_mode(_integrated_system_settings_cache):
+        if is_test_mode(state.integrated_system_settings_cache):
             for cd in await dry_run.position_codes():
                 _live_codes.add(cd)
-        _checked_stocks.clear()
-        _checked_stocks.update(_live_codes)
-        if _sell_positions and _auto_trade and auto_sell_effective(_integrated_system_settings_cache) and _access_token:
-            await _auto_trade.check_sell_conditions(_sell_positions, _integrated_system_settings_cache, _access_token)
+        state.checked_stocks.clear()
+        state.checked_stocks.update(_live_codes)
+        if _sell_positions and state.auto_trade and auto_sell_effective(state.integrated_system_settings_cache) and state.access_token:
+            await state.auto_trade.check_sell_conditions(_sell_positions, state.integrated_system_settings_cache, state.access_token)
     except Exception as e:
         logger.warning("[데이터] 처리 중 오류: %s", e)
 
@@ -140,7 +125,6 @@ def check_test_buy_power(price: int, qty: int, daily_spent: int) -> tuple[bool, 
     반환: (ok, reason) -- ok=False이면 매수 거부 사유를 reason에 포함.
     """
     order_amount = price * qty
-    from backend.app.services.engine_state import _integrated_system_settings_cache
-    daily_limit = int(_integrated_system_settings_cache.get("max_daily_total_buy_amt", 0) or 0)
+    daily_limit = int(state.integrated_system_settings_cache.get("max_daily_total_buy_amt", 0) or 0)
     ok, reason = settlement_engine.check_buy_power(order_amount, daily_limit, daily_spent)
     return ok, reason

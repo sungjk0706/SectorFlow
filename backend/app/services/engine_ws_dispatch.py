@@ -141,7 +141,7 @@ def _log_real_data_items_preview(data: dict) -> None:
 
 def _handle_login(data: dict) -> None:
     if str(data.get("return_code", "")) == "0":
-        engine_state._login_ok = True
+        engine_state.state.login_ok = True
         engine_state._notify_reg_ack()
         engine_state._cancel_price_trace_delayed_task()
         # LOGIN 성공 → 구독 파이프라인 트리거 (구독 구간 내이면 REG 자동 시작)
@@ -292,12 +292,21 @@ async def _handle_real_01(
     else:
         _total14 = 0
 
+    # [복구] master_stocks_cache 실시간 틱 업데이트
+    entry = engine_state._master_stocks_cache.get(nk_px)
+    if entry is not None:
+        entry["cur_price"] = last_px
+        entry["change"] = diff
+        entry["change_rate"] = rate
+        if _total14 > 0:
+            entry["trade_amount"] = _total14
+        if strength != "-":
+            entry["strength"] = strength
+
     # 캐시 업데이트 삭제 (실시간 틱 데이터 저장 제거)
     # REST 캐시 pop 로직 삭제 (캐시가 삭제되었으므로 pop 호출 불필요)
     # _radar_cnsr_order 삭제: 제로-체크 보장 (구독된 종목만 틱 수신)
     nk_px_base = _format_kiwoom_reg_stk_cd(_base_stk_cd(raw_cd))
-    # 실시간 틱 데이터 저장 제거 (cur_price, trade_amount, strength 저장 안 함)
-    # 필요한 경우에만 틱 데이터를 직접 전달하여 사용
     if is_0b_tick and strength != "-":
         try:
             _update_strength_buckets(nk_px, float(strength), abs(_ws_fid_int(vals, "13", 0)))
@@ -331,8 +340,6 @@ async def _handle_real_01(
     if pend_key:
         # notify_desktop_buy_radar_only()
         _need_sector_tick = True
-        from backend.app.services.engine_sector_confirm import recompute_sector_for_code
-        recompute_sector_for_code(nk_px)
     else:
         _wl_codes = _get_wl_codes_cached()
         if nk_px in _wl_codes:
@@ -348,8 +355,6 @@ async def _handle_real_01(
                         logger.warning("[체결강도WL] %s 파싱 실패 sv=%r: %s", nk_px, sv, e)
             # notify_desktop_buy_radar_only()
             _need_sector_tick = True
-            from backend.app.services.engine_sector_confirm import recompute_sector_for_code
-            recompute_sector_for_code(nk_px)
 
     # [근본해결] 선택적 전송 제거
     # if _need_sector_tick:
@@ -362,7 +367,7 @@ def _check_realtime_latency(_ts: int) -> None:
     elapsed = int(time.time() * 1000) - _ts
     if elapsed >= 200:
         logger.error("[체결지연] 처리 시간 %sms → 자동매매 중단 플래그 설정", elapsed)
-        engine_state._realtime_latency_exceeded = True
+        engine_state.state.realtime_latency_exceeded = True
     elif elapsed >= 50:
         logger.warning("[체결지연] 처리 시간 %sms → 50ms 초과", elapsed)
 

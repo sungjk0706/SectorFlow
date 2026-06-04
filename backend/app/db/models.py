@@ -3,23 +3,7 @@ import json
 
 # stocks 테이블 삭제 - master_stocks_table로 통합
 # sectors 테이블 삭제 - custom_sectors가 원본, master_stocks_table.sector가 파생
-
-async def create_system_settings_table():
-    """system_settings 테이블 생성 (통합설정 완성본 - 마이그레이션용 임시)"""
-    conn = await get_db_connection()
-    await conn.execute("""
-        CREATE TABLE IF NOT EXISTS system_settings (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL,
-            value_type TEXT NOT NULL DEFAULT 'string',
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    try:
-        await conn.execute("ALTER TABLE system_settings ADD COLUMN value_type TEXT NOT NULL DEFAULT 'string'")
-    except Exception:
-        pass
-    await conn.commit()
+# system_settings 테이블 삭제 - integrated_system_settings로 통합 완료
 
 async def create_integrated_system_settings_table():
     """integrated_system_settings 물리 테이블 생성"""
