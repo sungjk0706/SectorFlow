@@ -48,7 +48,7 @@ async def recompute_sector_summary_now() -> None:
     from backend.app.services.engine_sector_score import compute_full_sector_summary
     from backend.app.services.engine_sector_confirm import cancel_pending_recompute
     from backend.app.services.engine_lifecycle import is_running
-    from backend.app.services.engine_account_notify import notify_desktop_sector_scores
+    from backend.app.services.engine_account_notify import notify_desktop_sector_scores, notify_buy_targets_update
     import backend.app.services.engine_service as _es
 
     logger.info("[업종순위] recompute_sector_summary_now 진입, is_running=%s", is_running())
@@ -88,6 +88,7 @@ async def recompute_sector_summary_now() -> None:
 
         # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
         notify_desktop_sector_scores(force=True)
+        notify_buy_targets_update()
         logger.info("[업종순위] 재계산 완료")
     except Exception as e:
         logger.warning("[업종순위] 재계산 실패: %s", e, exc_info=True)
