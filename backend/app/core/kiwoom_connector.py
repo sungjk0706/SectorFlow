@@ -218,7 +218,6 @@ class KiwoomConnector(BrokerConnector):
         self._connected = False
         self._receive_callback: Callable | None = None
         self._on_reconnect_success: Callable | None = None
-        self._event_bus_callback: Callable | None = None  # Event Bus Publish 콜백
         self._lock: Optional[asyncio.Lock] = None
         self._received_count = 0
         self._realtime_enabled: bool = True  # 실시간 연결 ON/OFF 플래그 (ws_subscribe_on)
@@ -388,6 +387,43 @@ class KiwoomConnector(BrokerConnector):
                 success_all = False
         return success_all
 
+    async def subscribe_dynamic(self, codes: list[str]) -> None:
+        """동적 데이터 구독 (Kiwoom 0D 일괄 등록)."""
+        if not self.is_connected() or not self._socket:
+            logger.warning("[증권사연결] 동적 구독 실패 — 연결 없음")
+            return
+
+        from backend.app.services.engine_ws_reg import build_0d_reg_payloads
+        from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
+
+        payloads = build_0d_reg_payloads(codes)
+
+        for payload in payloads:
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(_ws_send_reg_unreg_and_wait_ack(payload))
+            except RuntimeError:
+                pass
+
+    async def unsubscribe_dynamic(self, codes: list[str]) -> None:
+        """동적 데이터 구독 해지 (Kiwoom 0D 일괄 해지)."""
+        if not self.is_connected() or not self._socket:
+            return
+
+        from backend.app.services.engine_ws_reg import build_0d_remove_payloads
+        from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
+
+        payloads = build_0d_remove_payloads(codes)
+
+        for payload in payloads:
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(_ws_send_reg_unreg_and_wait_ack(payload))
+            except RuntimeError:
+                pass
+
     async def _on_ws_message(self, payload: dict) -> None:
         """_KiwoomSocket 콜백 → 핸들러 직접 호출."""
         self._received_count += 1
@@ -396,10 +432,6 @@ class KiwoomConnector(BrokerConnector):
                 await self._receive_callback(payload)
             else:
                 self._receive_callback(payload)
-
-    def set_event_bus_callback(self, callback: Callable) -> None:
-        """Event Bus Publish 콜백 설정."""
-        self._event_bus_callback = callback
 
     async def _on_socket_disconnect(self) -> None:
         """_KiwoomSocket 연결 끊김 시 호출 — 재연결 루프 기동."""

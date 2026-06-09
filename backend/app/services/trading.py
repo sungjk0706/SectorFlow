@@ -15,6 +15,7 @@ from backend.app.core import journal as _journal
 from backend.app.services import dry_run
 from backend.app.services import trade_history
 from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+from backend.app.services.risk_manager import get_risk_manager
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +82,8 @@ class AutoTradeManager:
 
         # ── 실시간 지연 중단 게이트 ────────────────────────────────────────────
         try:
-            import backend.app.services.engine_service as _es_latency
-            if _es_latency._realtime_latency_exceeded:
+            from backend.app.services.engine_state import state as engine_state
+            if engine_state.realtime_latency_exceeded:
                 self.log_callback(f"[실시간지연] {stk_cd} 매수 차단 — WS 지연 200ms 초과")
                 return False
         except Exception:
@@ -160,22 +161,22 @@ class AutoTradeManager:
             return False
 
         # ── 등락률 + 거래대금 가드 (설정값 기반) ──────────────────────────────
-        # _pending_stock_details 제거: WS 틱에서 직접 전달 필요
-        # 일단 비활성화 (추후 WS 틱 이벤트 핸들러 수정 필요)
-        _change_rate_for_guard: float | None = None
-        _trade_amount_for_guard: float | None = None
+        # 단일 소스 진리: master_stocks_cache에서 직접 읽기
+        from backend.app.services.sector_data_provider import SectorDataProvider
+
         # 등락률 가드
-        if _change_rate_for_guard is not None:
-            _rise_limit = float(raw_all.get("buy_block_rise_pct", 7.0))
-            _fall_limit = float(raw_all.get("buy_block_fall_pct", 7.0))
+        _rise_limit = float(raw_all.get("buy_block_rise_pct", 7.0))
+        _fall_limit = float(raw_all.get("buy_block_fall_pct", 7.0))
+        _change_rate = SectorDataProvider.get_stock_field(stk_cd, "change_rate")
+        if _change_rate is not None:
             _blocked = False
             _block_reason = ""
-            if _change_rate_for_guard >= _rise_limit:
+            if _change_rate >= _rise_limit:
                 _blocked = True
-                _block_reason = f"상승률 {_change_rate_for_guard:+.1f}%"
-            elif _change_rate_for_guard <= -_fall_limit:
+                _block_reason = f"상승률 {_change_rate:+.1f}%"
+            elif _change_rate <= -_fall_limit:
                 _blocked = True
-                _block_reason = f"하락률 {abs(_change_rate_for_guard):.1f}%"
+                _block_reason = f"하락률 {abs(_change_rate):.1f}%"
             if _blocked:
                 stk_nm_g = data_manager.get_stock_name(stk_cd, access_token)
                 self.log_callback(
@@ -186,14 +187,18 @@ class AutoTradeManager:
         # 체결강도 가드
         _min_strength = float(raw_all.get("buy_min_strength", 0))
         if _min_strength > 0:
-            # 실시간 체결강도 캐시 읽기 로직 삭제 (캐시가 삭제되었으므로 읽기 불가, None 반환)
-            _strength_val: float | None = None
-            if _strength_val is not None and _strength_val < _min_strength:
-                stk_nm_s = data_manager.get_stock_name(stk_cd, access_token)
-                self.log_callback(
-                    f"[체결강도가드] {stk_nm_s}({stk_cd}) 체결강도 {_strength_val:.0f} < {_min_strength:.0f} -- 매수 차단"
-                )
-                return False
+            _strength_raw = SectorDataProvider.get_stock_field(stk_cd, "strength")
+            if _strength_raw is not None and _strength_raw != "-":
+                try:
+                    _strength_val = float(_strength_raw)
+                    if _strength_val < _min_strength:
+                        stk_nm_s = data_manager.get_stock_name(stk_cd, access_token)
+                        self.log_callback(
+                            f"[체결강도가드] {stk_nm_s}({stk_cd}) 체결강도 {_strength_val:.0f} < {_min_strength:.0f} -- 매수 차단"
+                        )
+                        return False
+                except (ValueError, TypeError):
+                    pass
 
         buy_qty = effective_buy_amt // int(current_price)
         if buy_qty <= 0:
@@ -203,6 +208,24 @@ class AutoTradeManager:
         trde_tp = "3"
         order_price = 0
         order_type = "시장가"
+
+        # ── RiskManager 게이트 (try-except 삼키기 금지: 검사 실패 시 상위에서 차단) ──
+        # 서킷브레이커(주문 실패 누적 보호)는 테스트/실전 공통.
+        # 예수금·일일손실 한도(돈 I/O)는 실거래 전용 — 원칙 9(테스트모드 동등성: 돈만 가상).
+        risk_mgr = get_risk_manager()
+        if is_test_mode(base_settings_for_mode):
+            if not risk_mgr.circuit_breaker.allow_request():
+                self.log_callback(
+                    f"[리스크차단] {stk_cd} 매수 차단 — Circuit Breaker {risk_mgr.circuit_breaker.get_state()}"
+                )
+                return False
+        else:
+            _allowed, _risk_reason = risk_mgr.check_buy_order_allowed(
+                stk_cd, float(current_price), buy_qty
+            )
+            if not _allowed:
+                self.log_callback(f"[리스크차단] {stk_cd} 매수 차단 — {_risk_reason}")
+                return False
 
         self._buy_state[stk_cd] = {"last_req_ts": now, "has_open_buy": True}
         stk_nm = data_manager.get_stock_name(stk_cd, access_token)
@@ -217,7 +240,7 @@ class AutoTradeManager:
             from backend.app.services.engine_strategy_core import check_test_buy_power
             _check_price = int(order_price) if order_price > 0 else int(current_price)
             ok, reason = check_test_buy_power(
-                settings, _check_price, buy_qty, self._daily_buy_spent,
+                _check_price, buy_qty, self._daily_buy_spent,
             )
             if not ok:
                 logger.info("[전략] 매수 거부: %s (%s)", stk_cd, reason)
@@ -232,18 +255,33 @@ class AutoTradeManager:
             )
             await dry_run.set_stock_name(stk_cd, stk_nm)
         else:
-            res = get_router().order.send_order(base_settings, access_token, "BUY", stk_cd, buy_qty, int(order_price), trde_tp)
+            res = await get_router().order.send_order(base_settings, access_token, "BUY", stk_cd, buy_qty, int(order_price), trde_tp)
 
         if not (res and res.get("success")):
             self._buy_state[stk_cd]["has_open_buy"] = False
             self.log_callback(f" [매수실패] {stk_nm} 주문 전송 실패. 잠금 해제.")
             _fire_and_forget_telegram(f"⚠️ [매수실패] {stk_nm}({stk_cd}) 주문 전송 실패. 잠금 해제.", base_settings)
+            try:
+                risk_mgr = get_risk_manager()
+                risk_mgr.record_order_failure()
+                # CircuitBreaker OPEN 시 마스터 스위치 강제 OFF
+                if risk_mgr.circuit_breaker.get_state() == "OPEN":
+                    from backend.app.services.engine_state import state
+                    from backend.app.services.engine_account_notify import _broadcast
+                    state.auto_trade = False
+                    state.integrated_system_settings_cache["auto_trade_on"] = False
+                    _broadcast("circuit_breaker_open", {
+                        "message": "Circuit Breaker OPEN - 마스터 스위치 강제 OFF",
+                    })
+                    logger.error("[CircuitBreaker] OPEN 상태 - 마스터 스위치 강제 OFF")
+            except Exception:
+                logger.warning("[매수] RiskManager 실패 보고 실패", exc_info=True)
             return False
 
         # ── 저널링: 주문 요청 기록 ─────────────────────────────────────────────
         order_id = res.get("order_id", f"buy_{stk_cd}_{int(time.time())}")
         _mode = "test" if is_test_mode(base_settings) else "real"
-        _journal.record_order_request(
+        await _journal.record_order_request(
             order_id=order_id,
             stock_code=stk_cd,
             side="buy",
@@ -259,7 +297,7 @@ class AutoTradeManager:
         # ── 체결 이력 기록 ────────────────────────────────────────────────────
         _buy_reason = reason or "자동매수"
         _mode = "test" if is_test_mode(base_settings) else "real"
-        trade_history.record_buy(
+        await trade_history.record_buy(
             stk_cd=stk_cd, stk_nm=stk_nm,
             price=fill_price, qty=buy_qty,
             reason=_buy_reason, trade_mode=_mode,
@@ -285,6 +323,13 @@ class AutoTradeManager:
             _es_limit._broadcast_buy_limit_status()
         except Exception:
             logger.warning("[매수] 매수한도 브로드캐스트 실패", exc_info=True)
+
+        # ── RiskManager 성공 보고 ─────────────────────────────────────────────
+        try:
+            risk_mgr = get_risk_manager()
+            risk_mgr.record_order_success()
+        except Exception:
+            logger.warning("[매수] RiskManager 성공 보고 실패", exc_info=True)
 
         return True
 
@@ -373,17 +418,32 @@ class AutoTradeManager:
                 base_settings, access_token, "SELL", stk_cd, qty, _dry_sell_price, trde_tp,
             )
         else:
-            result = get_router().order.send_order(base_settings, access_token, "SELL", stk_cd, qty, int(order_price), trde_tp)
+            result = await get_router().order.send_order(base_settings, access_token, "SELL", stk_cd, qty, int(order_price), trde_tp)
 
         if not result.get("success"):
             self._recent_sells.discard(stk_cd)
             self.log_callback(f"[매도] {stk_nm} 주문 전송 실패: {result.get('msg', '알 수 없음')}")
             _fire_and_forget_telegram(f"⚠️ [매도실패] {stk_nm}({stk_cd}) 주문 전송 실패: {result.get('msg', '알 수 없음')}", base_settings)
+            try:
+                risk_mgr = get_risk_manager()
+                risk_mgr.record_order_failure()
+                # CircuitBreaker OPEN 시 마스터 스위치 강제 OFF
+                if risk_mgr.circuit_breaker.get_state() == "OPEN":
+                    from backend.app.services.engine_state import state
+                    from backend.app.services.engine_account_notify import _broadcast
+                    state.auto_trade = False
+                    state.integrated_system_settings_cache["auto_trade_on"] = False
+                    _broadcast("circuit_breaker_open", {
+                        "message": "Circuit Breaker OPEN - 마스터 스위치 강제 OFF",
+                    })
+                    logger.error("[CircuitBreaker] OPEN 상태 - 마스터 스위치 강제 OFF")
+            except Exception:
+                logger.warning("[매도] RiskManager 실패 보고 실패", exc_info=True)
             return
 
         # ── 저널링: 주문 요청 기록 ─────────────────────────────────────────────
         order_id = result.get("order_id", f"sell_{stk_cd}_{int(time.time())}")
-        _journal.record_order_request(
+        await _journal.record_order_request(
             order_id=order_id,
             stock_code=stk_cd,
             side="sell",
@@ -397,7 +457,7 @@ class AutoTradeManager:
 
         # ── 체결 이력 기록 ────────────────────────────────────────────────────
         _sell_price = int(order_price) if order_price > 0 else int(cur_price)
-        trade_history.record_sell(
+        await trade_history.record_sell(
             stk_cd=stk_cd, stk_nm=stk_nm,
             price=_sell_price, qty=qty,
             avg_buy_price=_avg_buy, reason=reason,
@@ -408,6 +468,13 @@ class AutoTradeManager:
         if is_test_mode(base_settings):
             _dryrun_post_sell_broadcast(stk_cd, stk_nm, base_settings)
 
+        # ── RiskManager 성공 보고 ─────────────────────────────────────────────
+        try:
+            risk_mgr = get_risk_manager()
+            risk_mgr.record_order_success()
+        except Exception:
+            logger.warning("[매도] RiskManager 성공 보고 실패", exc_info=True)
+
     async def check_sell_conditions(self, stock_list: list, base_settings: dict, access_token: str) -> None:
         settings = self._to_trade_settings(base_settings)
         if not settings.get("is_sell_auto", False):
@@ -415,12 +482,22 @@ class AutoTradeManager:
 
         # ── 실시간 지연 중단 게이트 ────────────────────────────────────────────
         try:
-            import backend.app.services.engine_service as _es_latency
-            if _es_latency._realtime_latency_exceeded:
+            from backend.app.services.engine_state import state as engine_state
+            if engine_state.realtime_latency_exceeded:
                 self.log_callback("[실시간지연] 매도 조건 전체 차단 — WS 지연 200ms 초과")
                 return
         except Exception:
             logger.warning("[매도가드] 실시간 지연 체크 실패", exc_info=True)
+
+        # ── RiskManager Circuit Breaker 체크 ───────────────────────────────────
+        try:
+            risk_mgr = get_risk_manager()
+            allowed, reason = risk_mgr.check_sell_order_allowed(stk_cd, 0, 0)
+            if not allowed:
+                self.log_callback(f"[리스크차단] 매도 조건 전체 차단 — {reason}")
+                return
+        except Exception:
+            logger.warning("[매도가드] RiskManager 체크 실패", exc_info=True)
 
         for stock in stock_list:
             s = dict(settings)
@@ -472,7 +549,7 @@ class AutoTradeManager:
                 hit_sl = pnl_rate <= -loss_val
                 if hit_sl:
                     try:
-                        self.execute_sell(stk_cd, cur_price, stk_nm, "손절 발동", sell_qty, pnl_rate, s, base_settings, access_token)
+                        await self.execute_sell(stk_cd, cur_price, stk_nm, "손절 발동", sell_qty, pnl_rate, s, base_settings, access_token)
                     except Exception:
                         logger.error("[매도] 손절 실행 실패", exc_info=True)
                     continue
@@ -482,7 +559,7 @@ class AutoTradeManager:
                 hit_tp = pnl_rate >= tp_val
                 if hit_tp:
                     try:
-                        self.execute_sell(stk_cd, cur_price, stk_nm, "익절 발동", sell_qty, pnl_rate, s, base_settings, access_token)
+                        await self.execute_sell(stk_cd, cur_price, stk_nm, "익절 발동", sell_qty, pnl_rate, s, base_settings, access_token)
                     except Exception:
                         logger.error("[매도] 익절 실행 실패", exc_info=True)
                     continue
@@ -494,7 +571,7 @@ class AutoTradeManager:
                 if max_reached["pnl_rate"] >= ts_start_val:
                     drop_rate = ((highest_price - cur_price) / highest_price * 100) if highest_price > 0 else 0
                     if drop_rate >= ts_drop_val:
-                        self.execute_sell(stk_cd, cur_price, stk_nm, "T/S 익절", sell_qty, pnl_rate, s, base_settings, access_token)
+                        await self.execute_sell(stk_cd, cur_price, stk_nm, "T/S 익절", sell_qty, pnl_rate, s, base_settings, access_token)
 
     def _to_trade_settings(self, raw: dict) -> dict:
         """engine_settings 형식을 logic_auto_trade 호환 형식으로 변환."""

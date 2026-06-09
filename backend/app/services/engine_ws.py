@@ -8,6 +8,7 @@ WebSocket 구독 관련 모듈
 import asyncio
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
+from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine_ws")
 
@@ -124,7 +125,7 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
 
     # 배치에서 이미 구독됐으면 단건 불필요 (0B 기준)
     item_cd = _format_broker_reg_stk_cd(stk_cd)
-    if state.master_stocks_cache.get(item_cd, {}).get("_subscribed", False):
+    if SectorDataProvider.get_stock_field(item_cd, "_subscribed"):
         logger.debug("[데이터] 단건 REG 생략(배치 완료) -- %s", item_cd)
         return
 
@@ -134,15 +135,16 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
         logger.debug("[데이터] 단건 REG 생략 — WS 미연결/미로그인 %s", item_cd)
         return
 
-    if item_cd in state.master_stocks_cache:
-        state.master_stocks_cache[item_cd]["_subscribed"] = True
+    if SectorDataProvider.has_stock(item_cd):
+        await SectorDataProvider.update_stock_field(item_cd, "_subscribed", True)
 
     ok = await ws.subscribe_stocks([item_cd])
     if ok:
         logger.debug("[데이터] 단건 0B REG 완료 -- %s", item_cd)
     else:
-        if item_cd in state.master_stocks_cache:
-            state.master_stocks_cache[item_cd].pop("_subscribed", None)
+        if SectorDataProvider.has_stock(item_cd):
+            entry = SectorDataProvider.get_stock(item_cd)
+            entry.pop("_subscribed", None)
         logger.warning("[데이터] 단건 0B REG 실패 -- %s", item_cd)
 
 
@@ -169,7 +171,8 @@ async def _subscribe_positions_stocks_realtime() -> None:
     from backend.app.services import engine_ws_reg, ws_subscribe_control
     await engine_ws_reg.subscribe_positions_stocks_realtime()
     # REG 실행 후 인메모리 상태 동기화
-    if any(entry.get("_subscribed", False) for entry in state.master_stocks_cache.values()):
+    all_stocks = SectorDataProvider.get_all_stocks()
+    if any(entry.get("_subscribed", False) for entry in all_stocks.values()):
         ws_subscribe_control._set_status(quote=True)
 
 
@@ -277,9 +280,30 @@ def _item_cd_tracked_radar_or_ready(item_cd: str) -> bool:
     if not nk or nk == "000000":
         return False
     # _radar_cnsr_order 삭제: state.master_stocks_cache의 "_subscribed" 사용 (제로-체크 보장)
-    return state.master_stocks_cache.get(nk, {}).get("_subscribed", False)
+    return SectorDataProvider.get_stock_field(nk, "_subscribed")
 
 
 async def _sweep_unreg_subscribed_except_positions_and_tracked() -> int:
     """비보유·비추적 종목 정리 -- 시장가 운용으로 호가(02) 제거됨, 현재 no-op."""
     return 0
+
+async def subscribe_dynamic_data(codes: list[str]) -> None:
+    """동적 데이터(0D, PGM, UH1, UPH 등) 실시간 구독 등록을 커넥터에 위임합니다."""
+    from backend.app.services.engine_state import state
+    ws = state.connector_manager or state.kiwoom_connector
+    logger.info("[동적구독] subscribe_dynamic_data 호출 - codes: %s", codes)
+    if not ws or not ws.is_connected() or not state.login_ok:
+        logger.warning("[동적구독] 구독 실패 - ws=%s, connected=%s, login_ok=%s", ws, ws.is_connected() if ws else False, state.login_ok)
+        return
+    if hasattr(ws, "subscribe_dynamic"):
+        await ws.subscribe_dynamic(codes)
+
+
+async def unsubscribe_dynamic_data(codes: list[str]) -> None:
+    """동적 데이터 실시간 구독 해지를 커넥터에 위임합니다."""
+    from backend.app.services.engine_state import state
+    ws = state.connector_manager or state.kiwoom_connector
+    if not ws or not ws.is_connected() or not state.login_ok:
+        return
+    if hasattr(ws, "unsubscribe_dynamic"):
+        await ws.unsubscribe_dynamic(codes)

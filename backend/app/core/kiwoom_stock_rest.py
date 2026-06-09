@@ -113,7 +113,7 @@ async def fetch_ka10081_daily_price(
         if prev_close_calc > 0:
             change_rate = round((change_raw / prev_close_calc) * 100, 2)
         else:
-            change_rate = 0.0
+            change_rate = None
             
         sign = "3"
         if change_raw > 0:

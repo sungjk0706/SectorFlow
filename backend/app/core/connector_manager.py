@@ -155,27 +155,14 @@ class ConnectorManager:
     # ── 송신 (REG/UNREG 라우팅) ───────────────────────────────────────
 
     async def send_message(self, payload: dict) -> bool:
-        """
-        REG/UNREG 페이로드를 키움 Connector로 라우팅해 송신한다.
-        키움이 없으면 첫 번째 연결된 Connector로 폴백.
-        """
-        # 키움 우선
-        kiwoom = self._connectors.get("kiwoom")
-        if kiwoom and kiwoom.is_connected():
-            return await kiwoom.send_message(payload)
-
-        # 폴백: 첫 번째 연결된 Connector
+        """REG/UNREG 페이로드를 연결된 Connector로 라우팅해 송신한다."""
         for c in self._connectors.values():
-            if c.is_connected():
-                if hasattr(c, "send_message"):
-                    return await c.send_message(payload) # type: ignore
+            if c.is_connected() and hasattr(c, "send_message"):
+                return await c.send_message(payload) # type: ignore
         return False
 
     async def subscribe_stocks(self, codes: list[str]) -> bool:
         """종목 실시간 구독 라우팅"""
-        kiwoom = self._connectors.get("kiwoom")
-        if kiwoom and kiwoom.is_connected() and hasattr(kiwoom, "subscribe_stocks"):
-            return await kiwoom.subscribe_stocks(codes) # type: ignore
         for c in self._connectors.values():
             if c.is_connected() and hasattr(c, "subscribe_stocks"):
                 return await c.subscribe_stocks(codes) # type: ignore
@@ -183,9 +170,6 @@ class ConnectorManager:
 
     async def unsubscribe_stocks(self, codes: list[str]) -> bool:
         """종목 실시간 구독 해지 라우팅"""
-        kiwoom = self._connectors.get("kiwoom")
-        if kiwoom and kiwoom.is_connected() and hasattr(kiwoom, "unsubscribe_stocks"):
-            return await kiwoom.unsubscribe_stocks(codes) # type: ignore
         for c in self._connectors.values():
             if c.is_connected() and hasattr(c, "unsubscribe_stocks"):
                 return await c.unsubscribe_stocks(codes) # type: ignore
@@ -193,9 +177,6 @@ class ConnectorManager:
 
     async def subscribe_account(self) -> bool:
         """계좌 실시간 구독 라우팅"""
-        kiwoom = self._connectors.get("kiwoom")
-        if kiwoom and kiwoom.is_connected() and hasattr(kiwoom, "subscribe_account"):
-            return await kiwoom.subscribe_account() # type: ignore
         for c in self._connectors.values():
             if c.is_connected() and hasattr(c, "subscribe_account"):
                 return await c.subscribe_account() # type: ignore
@@ -209,3 +190,15 @@ class ConnectorManager:
                 if await c.unsubscribe_all(): # type: ignore
                     success = True
         return success
+
+    async def subscribe_dynamic(self, codes: list[str]) -> None:
+        """동적 데이터(호가, 프로그램 매매) 구독 등록 라우팅"""
+        for c in self._connectors.values():
+            if c.is_connected() and hasattr(c, "subscribe_dynamic"):
+                await c.subscribe_dynamic(codes) # type: ignore
+
+    async def unsubscribe_dynamic(self, codes: list[str]) -> None:
+        """동적 데이터 구독 해지 라우팅"""
+        for c in self._connectors.values():
+            if c.is_connected() and hasattr(c, "unsubscribe_dynamic"):
+                await c.unsubscribe_dynamic(codes) # type: ignore

@@ -82,12 +82,12 @@ from backend.app.services.engine_config import (
     TRADE_MODE_KEYS,
 )
 from backend.app.services.engine_radar import (
-    get_pending_stocks,
-    get_sector_stock_layout,
+    get_subscribed_stocks,
+    get_sector_layout,
     # get_avg_amt_5d_map 유지: _master_stocks_cache에서 직접 추출
-    get_avg_amt_5d_map,
-    get_high_5d_cache,
-    _overlay_radar_row_with_live_price,
+    get_avg_trade_amount_5d_map,
+    get_high_price_5d_cache,
+    merge_live_price_to_radar_row,
     _apply_real01_volume_amount_to_radar_rows,
     _mark_radar_exited,
     clear_exited_from_radar,
@@ -96,32 +96,30 @@ from backend.app.services.engine_radar import (
     _clear_radar_and_ready_memory,
     _tracked_ui_stock_codes,
 )
-from backend.app.services.engine_sector import (
+from backend.app.services.sector_data_provider import (
     get_sector_scores_snapshot,
-    recompute_sector_summary_now,
     get_sector_summary_inputs,
     get_sector_stocks,
+    get_buy_targets_sector_stocks,
     get_all_sector_stocks,
-    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
+    recompute_sector_summary_now,
     _on_filter_settings_changed as _sector_on_filter_settings_changed,
-    # _compute_filtered_codes 제거: sector_stock_layout 의존성 제거
 )
 from backend.app.services.engine_lifecycle import (
     start_engine,
     _engine_loop,
     stop_engine,
-    is_running,
-    get_status,
+    is_engine_running,
+    get_engine_status,
     on_trade_mode_switched,
-    _try_sector_buy,
-    _log,
-    _now_kst,
-    _schedule_engine_coro,
-    _sync_sell_overrides_from_settings,
-    _broadcast_engine_ws,
-    update_broker_credentials_live,
+    log_message,
+    get_current_kst_time,
+    schedule_engine_task,
+    sync_sell_overrides,
+    broadcast_engine_status,
     _delayed_resubscribe_stock_after_rate_limit,
 )
+from backend.app.services.buy_order_executor import try_sector_buy
 from backend.app.services.engine_snapshot import (
     build_initial_snapshot,
     build_sector_stocks_payload,
@@ -132,7 +130,7 @@ from backend.app.services.engine_snapshot import (
     _set_realtime_state,
     _get_realtime_state,
     # 실시간 호가잔량 기능 삭제로 import 제거 (_get_orderbook)
-    get_buy_targets_snapshot,
+    # get_buy_targets_snapshot 제거: get_buy_targets_sector_stocks로 대체
     get_position_pnl_pct_for_code,
     get_latest_trade_price_for_ui,
     _run_snapshot_and_sell_check,
@@ -217,11 +215,11 @@ get_connection_level_keys = get_connection_level_keys
 TRADE_MODE_KEYS = TRADE_MODE_KEYS
 
 # engine_radar
-get_pending_stocks = get_pending_stocks
-get_sector_stock_layout = get_sector_stock_layout
-get_avg_amt_5d_map = get_avg_amt_5d_map
-get_high_5d_cache = get_high_5d_cache
-_overlay_radar_row_with_live_price = _overlay_radar_row_with_live_price
+get_pending_stocks = get_subscribed_stocks
+get_sector_stock_layout = get_sector_layout
+get_avg_amt_5d_map = get_avg_trade_amount_5d_map
+get_high_5d_cache = get_high_price_5d_cache
+_overlay_radar_row_with_live_price = merge_live_price_to_radar_row
 _apply_real01_volume_amount_to_radar_rows = _apply_real01_volume_amount_to_radar_rows
 _mark_radar_exited = _mark_radar_exited
 clear_exited_from_radar = clear_exited_from_radar
@@ -235,6 +233,7 @@ get_sector_scores_snapshot = get_sector_scores_snapshot
 recompute_sector_summary_now = recompute_sector_summary_now
 get_sector_summary_inputs = get_sector_summary_inputs
 get_sector_stocks = get_sector_stocks
+get_buy_targets_sector_stocks = get_buy_targets_sector_stocks
 get_all_sector_stocks = get_all_sector_stocks
 # _compute_filtered_codes 제거: sector_stock_layout 의존성 제거
 
@@ -242,17 +241,16 @@ get_all_sector_stocks = get_all_sector_stocks
 start_engine = start_engine
 _engine_loop = _engine_loop
 stop_engine = stop_engine
-is_running = is_running
-get_status = get_status
+is_running = is_engine_running
+get_status = get_engine_status
 on_trade_mode_switched = on_trade_mode_switched
-_try_sector_buy = _try_sector_buy
-_log = _log
-_now_kst = _now_kst
-_schedule_engine_coro = _schedule_engine_coro
-_sync_sell_overrides_from_settings = _sync_sell_overrides_from_settings
-_broadcast_engine_ws = _broadcast_engine_ws
+try_sector_buy = try_sector_buy
+_log = log_message
+_now_kst = get_current_kst_time
+schedule_engine_task = schedule_engine_task
+_sync_sell_overrides_from_settings = sync_sell_overrides
+_broadcast_engine_ws = broadcast_engine_status
 _delayed_resubscribe_stock_after_rate_limit = _delayed_resubscribe_stock_after_rate_limit
-update_broker_credentials_live = update_broker_credentials_live
 
 # engine_snapshot
 build_initial_snapshot = build_initial_snapshot
@@ -264,7 +262,7 @@ _reset_realtime_fields = _reset_realtime_fields
 _set_realtime_state = _set_realtime_state
 _get_realtime_state = _get_realtime_state
 # 실시간 호가잔량 기능 삭제로 export 제거 (_get_orderbook)
-get_buy_targets_snapshot = get_buy_targets_snapshot
+# get_buy_targets_snapshot 제거: get_buy_targets_sector_stocks로 대체
 get_position_pnl_pct_for_code = get_position_pnl_pct_for_code
 
 
@@ -291,25 +289,22 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
     from backend.app.services.engine_config import refresh_engine_integrated_system_settings_cache
     await refresh_engine_integrated_system_settings_cache(None, use_root=True)
 
-    # ── 2) 연결 레벨 키 → 엔진 실시간 핫-리로드 ───────────────────────────────────
-    broker_nm = str(state.integrated_system_settings_cache.get("broker", "") or "").lower().strip()
-    connection_keys = get_connection_level_keys(broker_nm)
-    if changed_keys & connection_keys:
-        if is_running():
-            _schedule_engine_coro(update_broker_credentials_live(), "자격 증명 핫-갱신")
-            logger.info(
-                "[설정] 연결 레벨 설정 변경 감지 -> 실시간 자격 증명 핫-갱신 및 토큰 재시도 가동 (키=%s)",
-                changed_keys & connection_keys,
-            )
+    # ── 2) broker 변경 → 엔진 재기동 (단일 진입점 보장) ───────────────────────
+    if "broker" in changed_keys:
+        if is_engine_running():
+            from backend.app.services.engine_lifecycle import stop_engine, start_engine
+            logger.info("[설정] broker 변경 감지 -> 엔진 재기동 (단일 진입점 보장)")
+            await stop_engine()
+            await start_engine()
         notify_desktop_header_refresh()
         await notify_desktop_settings_toggled()
         return
 
-    # ── 3) 거래모드 전환 → 캐시 갱신 + 계좌 구독 전환 ────────────────────
+    # ── 3) 투자모드 전환 → 캐시 갱신 + 계좌 구독 전환 ────────────────────
     if changed_keys & TRADE_MODE_KEYS:
-        if is_running():
-            _schedule_engine_coro(on_trade_mode_switched(), "거래모드 전환")
-            logger.info("[설정] 거래모드 전환 감지 -> 저장데이터 갱신 + 계좌 구독 전환 (엔진 재기동 없음)")
+        if is_engine_running():
+            schedule_engine_task(on_trade_mode_switched(), context="투자모드 전환")
+            logger.info("[설정] 투자모드 전환 감지 -> 저장데이터 갱신 + 계좌 구독 전환 (엔진 재기동 없음)")
         notify_desktop_header_refresh()
         await notify_desktop_settings_toggled()
         return
@@ -394,7 +389,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             # 4) 비활성→구간안: 즉시 WS 연결 + 구독 시작
             elif not was_active and now_in_window:
                 logger.info("[설정] 실시간 구독 구간 변경 → 현재 구간 안 — 즉시 구독 시작")
-                _schedule_engine_coro(_dts._on_ws_subscribe_start(), "실시간 구독 시작")
+                schedule_engine_task(_dts._on_ws_subscribe_start(), "실시간 구독 시작")
         except Exception:
             pass
 
@@ -419,14 +414,15 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         "boost_high_breakout_on", "boost_high_breakout_score",
         "boost_order_ratio_on",
         "boost_order_ratio_pct", "boost_order_ratio_score",
+        "boost_program_net_buy_on", "boost_program_net_buy_score",
     }
     if changed_keys & _SECTOR_UI_KEYS:
-        if is_running():
+        if is_engine_running():
             if "sector_min_trade_amt" in changed_keys:
-                _schedule_engine_coro(
+                schedule_engine_task(
                     state.on_filter_settings_changed(), context="필터 설정 변경"
                 )
-            _schedule_engine_coro(
+            schedule_engine_task(
                 recompute_sector_summary_now(), context="섹터 설정 변경"
             )
         notify_desktop_sector_scores(force=True)
@@ -438,7 +434,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         try:
             raw = state.integrated_system_settings_cache or {}
             for key in _ws_changed:
-                _schedule_engine_coro(
+                schedule_engine_task(
                     ws_subscribe_control.on_setting_changed(key, bool(raw.get(key)), engine_service),
                     f"WS 구독 제어 설정 반영({key})",
                 )

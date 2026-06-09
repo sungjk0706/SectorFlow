@@ -5,7 +5,6 @@ import type {
   Position,
   SectorStock,
   SectorScoreRow,
-  BuyTarget,
   AccountSnapshot,
   AccountUpdateEvent,
   SectorScoresEvent,
@@ -39,7 +38,7 @@ export interface HotState {
   positionCount: number
   sectorStocks: Record<string, SectorStock>
   sectorScores: SectorScoreRow[]
-  buyTargets: BuyTarget[]
+  buyTargets: SectorStock[]
   sellHistory: Record<string, unknown>[]
   buyHistory: Record<string, unknown>[]
   dailySummary: Record<string, unknown>[]
@@ -64,7 +63,7 @@ let _buyTargetIndexCache: Map<string, number> = new Map()
 let _positionIndexCache: Map<string, number> = new Map()
 
 /** buyTargets 배열로부터 code→index 캐시 재구축 */
-export function rebuildBuyTargetIndex(targets: BuyTarget[]): void {
+export function rebuildBuyTargetIndex(targets: SectorStock[]): void {
   const map = new Map<string, number>()
   for (let i = 0; i < targets.length; i++) {
     map.set(normalizeStockCode(targets[i].code), i)
@@ -220,9 +219,30 @@ export function applyRealData(item: RealDataEvent): void {
     return sign * Number(numStr);
   };
 
+  const parseChangeRateToPercent = (val: unknown): number | undefined => {
+    if (val === undefined || val === null) return undefined;
+    const s = String(val).trim();
+    if (s === '') return undefined;
+    let sign = 1;
+    if (s.includes('-') || s.includes('▼')) sign = -1;
+    const numStr = s.replace(/[^0-9.]/g, '');
+    if (numStr === '') return undefined;
+    const raw = Number(numStr);
+    const absRaw = Math.abs(raw);
+    const isIntLike = Math.abs(raw - Math.round(raw)) < 1e-6;
+    let result: number;
+    if (isIntLike && absRaw >= 100) {
+      result = absRaw / 1000.0;
+    } else {
+      result = absRaw;
+    }
+    if (result > 1000.0) return undefined;
+    return sign * result;
+  };
+
   const price = Math.abs(parseKiwoomNum(rawPrice) || 0);
   const parsedChange = parseKiwoomNum(rawChange);
-  const parsedRate = parseKiwoomNum(rawRate);
+  const parsedRate = parseChangeRateToPercent(rawRate);
   const parsedStrength = parseKiwoomNum(rawStrength);
   const rawAmt = parseKiwoomNum(rawAmount);
   const parsedAmount = rawAmt !== undefined ? rawAmt : undefined;
@@ -256,23 +276,31 @@ export function applyRealData(item: RealDataEvent): void {
     }
   }
 
-  // buyTargets
+  // buyTargets - sectorStocks에서 실시간 데이터 병합 (단일 소스 진리)
   const bt = state.buyTargets;
   const btIdx = getBuyTargetIndex(code);
   if (btIdx !== undefined) {
     const t = bt[btIdx];
-    const change = parsedChange !== undefined ? parsedChange : t.change;
-    const rate = parsedRate !== undefined ? parsedRate : t.change_rate;
-    const strength = parsedStrength !== undefined ? parsedStrength : t.strength;
+    const sectorStock = sectorStocks[code];
+    if (sectorStock) {
+      const change = sectorStock.change;
+      const rate = sectorStock.change_rate;
+      const strength = sectorStock.strength;
+      const amount = sectorStock.trade_amount;
 
-    if (!(t.cur_price === price && t.change === change && t.change_rate === rate &&
-          t.strength === strength)) {
-      // In-place mutation
-      t.cur_price = price;
-      t.change = change;
-      t.change_rate = rate;
-      t.strength = strength;
-      changed = true;
+      // null이 아닐 때만 업데이트 (데이터 없음 표현)
+      if (rate !== null && rate !== undefined) {
+        if (!(t.cur_price === price && t.change === change && t.change_rate === rate &&
+              t.strength === strength && t.trade_amount === amount)) {
+          // In-place mutation
+          t.cur_price = price;
+          t.change = change;
+          t.change_rate = rate;
+          t.strength = strength;
+          t.trade_amount = amount;
+          changed = true;
+        }
+      }
     }
   }
 
@@ -356,17 +384,8 @@ export function applyRealtimeReset(): void {
     }
     if (sectorChanged) updates.sectorStocks = sectorStocks
 
-    // buyTargets: 현재가/대비/등락률/거래대금/체결강도/호가잔량비
-    let buyTargetsChanged = false
-    const buyTargets = state.buyTargets.map((t) => {
-      const n = nullifyFields(t, ['cur_price', 'change', 'change_rate', 'trade_amount', 'strength', 'order_ratio'])
-      if (n !== t) buyTargetsChanged = true
-      return n
-    })
-    if (buyTargetsChanged) {
-      updates.buyTargets = buyTargets
-      rebuildBuyTargetIndex(buyTargets)
-    }
+    // buyTargets: 실시간 필드는 sectorStocks 단일 소스에서 가져오므로 초기화 제거
+    // (아키텍처 원칙: 단일 소스 진리)
 
     // positions: 현재가/대비/등락률
     let positionsChanged = false
@@ -385,8 +404,11 @@ export function applyRealtimeReset(): void {
 }
 
 /* ── buy-targets-update: 매수후보만 갱신 (내용 비교) ── */
-export function applyBuyTargetsUpdate(data: { buy_targets: BuyTarget[] }): void {
-  const incoming = data.buy_targets ?? []
+export function applyBuyTargetsUpdate(data: { buy_targets: SectorStock[] }): void {
+  const incoming = (data.buy_targets ?? []).map(t => ({
+    ...t,
+    code: normalizeStockCode(t.code)
+  }))
   const prev = hotStore.getState().buyTargets
   const same = prev.length === incoming.length && prev.every((p, i) => {
     const n = incoming[i]
@@ -446,7 +468,10 @@ export function applyBuyHistoryUpdate(data: { buy_history: Record<string, unknow
 export function applyInitialSnapshotHot(data: Record<string, unknown>): void {
   const stocks = (data.sector_stocks as SectorStock[]) ?? []
   const scores = (data.sector_scores as SectorScoreRow[]) ?? []
-  const newBuyTargets = (data.buy_targets as BuyTarget[]) ?? []
+  const newBuyTargets = ((data.buy_targets as SectorStock[]) ?? []).map(t => ({
+    ...t,
+    code: normalizeStockCode(t.code)
+  }))
   const newPositions = (data.positions as Position[]) ?? []
   rebuildBuyTargetIndex(newBuyTargets)
   rebuildPositionIndex(newPositions)

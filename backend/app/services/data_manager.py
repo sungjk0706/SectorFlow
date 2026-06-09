@@ -7,6 +7,7 @@ import asyncio
 import httpx
 from backend.app.core.logger import get_logger
 from backend.app.core.trade_mode import effective_trade_mode
+from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("data_manager")
 
@@ -73,13 +74,12 @@ async def _load_broker_settings() -> dict | None:
         return None
 
 
-async def get_stock_name(stk_cd: str, access_token: str | None = None) -> str:
+def get_stock_name(stk_cd: str, access_token: str | None = None) -> str:
     """종목코드 -> 종목명. 메모리 캐시(_master_stocks_cache)에서만 조회."""
     norm = _norm_stk_cd(stk_cd)
     if not norm:
         return "알수없음"
-    import backend.app.services.engine_state as _st
-    entry = _st._master_stocks_cache.get(norm)
+    entry = SectorDataProvider.get_stock(norm)
     return entry.get("name", norm) if entry else norm
 
 

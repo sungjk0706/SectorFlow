@@ -8,26 +8,26 @@ import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardHeaderWithMargin } from '../components/common/card-header'
 import { globalSettingsManager } from '../settings'
 import { createStockNameColumn, createSeqCell, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, createNumberCell, FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
-import type { BuyTarget } from '../types'
+import type { SectorStock } from '../types'
 
 /* ── ColumnDef 배열 (12개 컬럼) ── */
-const COLUMNS: ColumnDef<BuyTarget>[] = [
+const COLUMNS: ColumnDef<SectorStock>[] = [
   { key: 'seq', label: '순번', align: 'center', render: (_t, idx) => createSeqCell(idx + 1) },
-  makeCodeColumn<BuyTarget>((t) => t.code),
-  createStockNameColumn<BuyTarget>(
-    (t: BuyTarget) => ({
+  makeCodeColumn<SectorStock>((t) => t.code),
+  createStockNameColumn<SectorStock>(
+    (t: SectorStock) => ({
       name: t.name,
       market_type: t.market_type,
       nxt_enable: t.nxt_enable
     })
   ),
-  makePriceColumn<BuyTarget>(
+  makePriceColumn<SectorStock>(
     (t) => Number(t.cur_price) || 0,
     (t) => Number(t.change_rate) || 0,
   ),
-  makeChangeColumn<BuyTarget>((t) => Number(t.change) || 0),
-  makeRateColumn<BuyTarget>((t) => Number(t.change_rate) || 0),
-  makeStrengthColumn<BuyTarget>((t) => Number(t.strength)),
+  makeChangeColumn<SectorStock>((t) => Number(t.change) || 0),
+  makeRateColumn<SectorStock>((t) => Number(t.change_rate) || 0),
+  makeStrengthColumn<SectorStock>((t) => Number(t.strength)),
   {
     key: 'order_ratio', label: '호가잔량비', align: 'right',
     cellStyle: { fontSize: FONT_SIZE.badge },
@@ -37,14 +37,35 @@ const COLUMNS: ColumnDef<BuyTarget>[] = [
       if (bid <= 0 && ask <= 0) return ''
       const span = document.createElement('span')
       if (bid === ask) {
-        span.textContent = '1.00'
+        span.textContent = '100.0%'
         span.style.color = '#888'
       } else if (bid > ask) {
-        span.textContent = `매수우세 ${(bid / ask).toFixed(2)}배`
+        span.textContent = `[매수우위] ${((bid / ask) * 100).toFixed(1)}%`
         span.style.color = '#dc3545'
       } else {
-        span.textContent = `매도우세 ${(ask / bid).toFixed(2)}배`
+        span.textContent = `[매도우위] ${((ask / bid) * 100).toFixed(1)}%`
         span.style.color = '#0d6efd'
+      }
+      return span
+    },
+  },
+  {
+    key: 'program_net_buy', label: '프순매', align: 'right',
+    cellStyle: { fontSize: FONT_SIZE.badge },
+    render: (t) => {
+      if (t.program_net_buy === undefined || t.program_net_buy === null) return ''
+      // tval이 금액(원)이라면 백만 원 단위로 환산, LS증권 대금 포맷을 고려하여 백만 단위로 나눈 후 1자리 소수점 표시
+      const valMillions = t.program_net_buy / 1000000;
+      const span = document.createElement('span')
+      // 1자리 소수점 및 콤마 포맷 (Intl.NumberFormat 사용)
+      const formatter = new Intl.NumberFormat('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+      span.textContent = formatter.format(valMillions);
+      if (t.program_net_buy > 0) {
+        span.style.color = '#dc3545' // Red for net buy
+      } else if (t.program_net_buy < 0) {
+        span.style.color = '#0d6efd' // Blue for net sell
+      } else {
+        span.style.color = '#888'
       }
       return span
     },
@@ -88,13 +109,14 @@ const COLUMNS: ColumnDef<BuyTarget>[] = [
 ]
 
 /* ── 모듈 변수 ── */
-let dataTable: DataTableApi<BuyTarget> | null = null
+let dataTable: DataTableApi<SectorStock> | null = null
 let badgeEls: { daily: HTMLSpanElement; holding: HTMLSpanElement; perStock: HTMLSpanElement } | null = null
 let emptyEl: HTMLElement | null = null
 let unsubTargets: (() => void) | null = null
 let rafHandle: number | null = null
 let onRealDataTick: ((e: Event) => void) | null = null
 let onOrderbookTick: ((e: Event) => void) | null = null
+let onProgramTick: ((e: Event) => void) | null = null
 let _mounted = false
 
 /* ── 한도 배지 렌더링 ── */
@@ -177,12 +199,13 @@ function mount(container: HTMLElement): void {
   Object.assign(scrollContainer.style, { flex: '1', minHeight: '200px', display: 'flex', flexDirection: 'column', overflowY: 'auto' })
 
   // DataTable 생성
-  dataTable = createDataTable<BuyTarget>({
+  dataTable = createDataTable<SectorStock>({
     columns: COLUMNS,
-    virtualScroll: false,
+    virtualScroll: true,
     keyFn: (t) => t.code,
     emptyText: '매수후보가 없습니다.',
     stickyHeader: true,
+    rowHeight: 32,
   })
 
   // 빈 상태 메시지 (DataTable 외부 — 기존 동작 유지)
@@ -198,7 +221,7 @@ function mount(container: HTMLElement): void {
   // 초기 데이터
   const initialTargets = [...initState.buyTargets].sort((a, b) => {
     if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
-    return a.rank - b.rank
+    return (a.rank ?? 999999) - (b.rank ?? 999999)
   })
   updateBadges()
 
@@ -240,7 +263,7 @@ function mount(container: HTMLElement): void {
           lastRenderedBuyTargets = latest.buyTargets
           const targets = [...latest.buyTargets].sort((a, b) => {
             if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
-            return a.rank - b.rank
+            return (a.rank ?? 999999) - (b.rank ?? 999999)
           })
           dataTable?.updateRows(targets)
           if (emptyEl) emptyEl.style.display = targets.length === 0 ? '' : 'none'
@@ -277,6 +300,14 @@ function mount(container: HTMLElement): void {
     }
   }
   window.addEventListener('orderbook-tick', onOrderbookTick)
+
+  onProgramTick = (e: Event) => {
+    const code = (e as CustomEvent<string>).detail
+    if (dataTable && dataTable.updateItemByKey) {
+      dataTable.updateItemByKey(code)
+    }
+  }
+  window.addEventListener('program-tick', onProgramTick)
 }
 
 /* ── unmount ── */
@@ -290,6 +321,10 @@ function unmount(): void {
   if (onOrderbookTick) {
     window.removeEventListener('orderbook-tick', onOrderbookTick)
     onOrderbookTick = null
+  }
+  if (onProgramTick) {
+    window.removeEventListener('program-tick', onProgramTick)
+    onProgramTick = null
   }
   if (rafHandle !== null) { cancelAnimationFrame(rafHandle); rafHandle = null }
   if (unsubTargets) { unsubTargets(); unsubTargets = null }

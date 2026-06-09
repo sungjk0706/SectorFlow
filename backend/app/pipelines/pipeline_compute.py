@@ -8,27 +8,28 @@ tick_queue에서 데이터를 꺼내어 연산 수행:
 - 업종 점수 계산
 - 체결강도 업데이트
 - 매수/매도 타점 도달 여부 판단
-- 결과를 order_queue 또는 broadcast_queue로 전송
+- 결과를 broadcast_queue로 전송
 """
 
 import asyncio
 import time
 from types import ModuleType
 
+# 0.3초 배치 재계산을 위한 더티 코드 셋 추가
+_dirty_codes: set[str] = set()
 from backend.app.core.logger import get_logger
 from backend.app.services.core_queues import (
     get_tick_queue,
-    get_order_queue,
     get_broadcast_queue,
     get_control_queue,
 )
+from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("pipeline_compute")
 
 _compute_task: Optional[asyncio.Task] = None
 _sector_recompute_task: Optional[asyncio.Task] = None
 _compute_running: bool = False
-_sector_recompute_dirty: bool = False
 
 # 실시간데이터 필드 키 목록 (engine_snapshot._REALTIME_FIELDS와 동일)
 # ws_subscribe_start 시점에 _reset_realtime_fields()가 이 필드들을 None으로 초기화한다.
@@ -83,7 +84,6 @@ async def _compute_loop_impl(es: ModuleType) -> None:
     """Compute Engine 루프 구현."""
     global _compute_running
     tick_queue = get_tick_queue()
-    order_queue = get_order_queue()
     broadcast_queue = get_broadcast_queue()
     control_queue = get_control_queue()
 
@@ -111,7 +111,7 @@ async def _compute_loop_impl(es: ModuleType) -> None:
                 for event in parsed_events:
                     try:
                         # 연산 수신 (engine_service의 연산 로직 이관)
-                        await _process_tick_data(event, es, order_queue, broadcast_queue)
+                        await _process_tick_data(event, es, broadcast_queue)
                     except Exception as e:
                         logger.error("[Compute] 이벤트 처리 예외 (계속): %s", e, exc_info=True)
 
@@ -151,6 +151,31 @@ async def _process_control_signal(
         elif signal_type == "RECOMPUTE_SECTOR":
             # 업종순위 재계산 신호 처리
             await _handle_sector_recompute(es, broadcast_queue)
+        elif signal_type == "sector_recompute":
+            # 실시간 틱 기반 업종순위 개별 종목 증분 업데이트 신호 처리
+            code = signal.get("code")
+            if code:
+                from backend.app.services.engine_sector_confirm import request_sector_recompute
+                request_sector_recompute(code)
+        elif signal_type == "DYNAMIC_REG":
+            from backend.app.services.engine_ws import subscribe_dynamic_data
+            from backend.app.services.engine_state import state
+            codes = payload.get("codes", [])
+            await subscribe_dynamic_data(codes)
+            # _subscribed_dynamic 플래그 설정
+            for cd in codes:
+                if SectorDataProvider.has_stock(cd):
+                    await SectorDataProvider.update_stock_field(cd, "_subscribed_dynamic", True)
+        elif signal_type == "DYNAMIC_UNREG":
+            from backend.app.services.engine_ws import unsubscribe_dynamic_data
+            from backend.app.services.engine_state import state
+            codes = payload.get("codes", [])
+            await unsubscribe_dynamic_data(codes)
+            # _subscribed_dynamic 플래그 제거
+            for cd in codes:
+                if SectorDataProvider.has_stock(cd):
+                    entry = SectorDataProvider.get_stock(cd)
+                    entry.pop("_subscribed_dynamic", None)
         else:
             logger.warning("[Compute] 알 수 없는 제어 신호: %s", signal_type)
 
@@ -171,22 +196,13 @@ async def _handle_config_update(
         es: engine_service 모듈
         broadcast_queue: UI 전송 큐
     """
-    try:
-        # _shared_lock 획득하여 race condition 방지
-        async with es._shared_lock:
-            # 설정값 업데이트
-            changed_keys = payload.get("changed_keys", set())
-            for key in changed_keys:
-                es._integrated_system_settings_cache[key] = payload.get(key)
-
-        logger.info("[Compute] 설정값 업데이트 완료 - changed_keys=%s", changed_keys)
-        
-        # 설정(거래모드, 증권사 등) 변경에 따라 Header 상태 갱신
-        from backend.app.services.engine_account_notify import notify_desktop_header_refresh
-        notify_desktop_header_refresh()
-
-    except Exception as e:
-        logger.error("[Compute] 설정 변경 처리 예외: %s", e, exc_info=True)
+    # 캐시 직접 업데이트 제거 - 단일 소스 진리 원칙 준수
+    # DB에서 캐시 갱신은 settings.py → apply_settings_change → refresh_engine_integrated_system_settings_cache 경로만 사용
+    logger.info("[Compute] 설정 변경 처리 - 캐시 업데이트는 settings.py에서 DB 로드로 수행됨")
+    
+    # 설정(투자모드, 증권사 등) 변경에 따라 Header 상태 갱신
+    from backend.app.services.engine_account_notify import notify_desktop_header_refresh
+    notify_desktop_header_refresh()
 
 
 async def _handle_sector_recompute(
@@ -206,15 +222,9 @@ async def _handle_sector_recompute(
             # 업종순위 재계산
             await es.recompute_sector_summary_now()
 
-        # UI 업데이트
-        summary_data = es.get_sector_scores_snapshot()
-        if summary_data:
-            # summary_data는 tuple[list[dict], int]이므로 첫 번째 요소만 사용
-            scores_list, _ = summary_data
-            await broadcast_queue.put({
-                "type": "sector_scores",
-                "data": {"scores": scores_list},  # dict로 감싸서 전송
-            })
+        # UI 업데이트 - 단일 진입점 원칙 준수
+        from backend.app.services.engine_account_notify import notify_desktop_sector_scores
+        notify_desktop_sector_scores(force=True)
 
         logger.info("[Compute] 업종순위 재계산 완료")
 
@@ -225,7 +235,6 @@ async def _handle_sector_recompute(
 async def _process_tick_data(
     data: dict,
     es: ModuleType,
-    order_queue: asyncio.Queue,
     broadcast_queue: asyncio.Queue,
 ) -> None:
     """
@@ -234,20 +243,18 @@ async def _process_tick_data(
     Args:
         data: 틱 데이터 (dict)
         es: engine_service 모듈 (전역 상태 접근용)
-        order_queue: 주문 지령 큐
         broadcast_queue: UI 전송 큐
     """
     # Step 3: engine_service의 연산 로직 이관
     # 1. 틱 데이터 파싱 및 캐시 업데이트
     trnm = data.get("trnm")
     if trnm == "REAL":
-        await _handle_real_tick(data, es, order_queue, broadcast_queue)
+        await _handle_real_tick(data, es, broadcast_queue)
 
 
 async def _handle_real_tick(
     data: dict,
     es: ModuleType,
-    order_queue: asyncio.Queue,
     broadcast_queue: asyncio.Queue,
 ) -> None:
     """
@@ -256,7 +263,6 @@ async def _handle_real_tick(
     Args:
         data: REAL 틱 데이터
         es: engine_service 모듈
-        order_queue: 주문 지령 큐
         broadcast_queue: UI 전송 큐
     """
     # engine_service._apply_real01_volume_amount_to_radar_rows 이관
@@ -275,18 +281,24 @@ async def _handle_real_tick(
             if not isinstance(item, dict):
                 continue
 
-            # 틱 타입 확인
+            # 틱 타입 확인 및 정규화 (호가잔량 "0d", 체결 "01" 등)
             msg_type = item.get("type")
+            from backend.app.services.engine_ws_parsing import _normalize_kiwoom_real_type
+            norm_type = _normalize_kiwoom_real_type(msg_type)
+            
             vals = item.get("values", {})
             if not isinstance(vals, dict):
                 vals = {}
 
             # 0B/01 체결 처리 (주식 현재가)
-            if msg_type in ("0B", "01"):
-                await _handle_real_01_tick(item, vals, es, order_queue, broadcast_queue)
+            if norm_type == "01":
+                await _handle_real_01_tick(item, vals, es, broadcast_queue)
             # 0D 호가 처리 (호가 잔량 테이블)
-            elif msg_type == "0D":
+            elif norm_type == "0d":
                 await _handle_real_0d_tick(item, vals, es, broadcast_queue)
+            # PGM 프로그램 순매수 처리 (커스텀 타입)
+            elif norm_type == "PGM":
+                await _handle_real_pgm_tick(item, vals, es, broadcast_queue)
 
     except Exception as e:
         logger.error("[Compute] REAL 틱 처리 예외: %s", e, exc_info=True)
@@ -296,7 +308,6 @@ async def _handle_real_01_tick(
     item: dict,
     vals: dict,
     es: ModuleType,
-    order_queue: asyncio.Queue,
     broadcast_queue: asyncio.Queue,
 ) -> None:
     """
@@ -306,7 +317,6 @@ async def _handle_real_01_tick(
         item: 틱 아이템
         vals: 틱 값
         es: engine_service 모듈
-        order_queue: 주문 지령 큐
         broadcast_queue: UI 전송 큐
     """
     # engine_service._apply_real01_volume_amount_to_radar_rows 이관
@@ -327,20 +337,25 @@ async def _handle_real_01_tick(
         except asyncio.QueueFull:
             pass
 
-        # FID 13·14가 있는 틱에서만 캐시 갱신
+        # 현재가/등락률/대비/거래대금/고가/체결강도 FID 중 하나라도 있으면 캐시 갱신 (단일 소스 진리)
+        # 기존 "14" in vals 조건은 FID 14(거래대금)가 없는 틱에서 change_rate 갱신이 누락되는 버그를 유발했음.
         is_0b_tick = str(item.get("type", "")).strip().upper() in ("0B", "01")
-        if is_0b_tick and "14" in vals:
+        if is_0b_tick and any(f in vals for f in ("10", "11", "12", "14", "17", "228")):
             # engine_service._apply_real01_volume_amount_to_radar_rows 호출
             # 전역 변수 접근을 위해 es 모듈 사용
             await es._apply_real01_volume_amount_to_radar_rows(raw_cd, vals, is_0b_tick=is_0b_tick)
 
-            # 연산 결과: 업종 점수 재계산 필요 여부 확인
-            # 업종 점수 재계산이 필요하면 broadcast_queue에 전송
-            await _check_sector_recompute_needed(es, broadcast_queue)
+            # 연산 결과: 틱 수신 시 해당 종목에 대한 업종 점수 증분 재계산 트리거 (이벤트 큐 대신 _dirty_codes에 추가)
+            from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+            nk = _format_kiwoom_reg_stk_cd(raw_cd)
+            if nk:
+                global _dirty_codes
+                _dirty_codes.add(nk)
 
             # 연산 결과: 매수 타점 도달 여부 확인
-            # 매수 타점에 도달하면 order_queue에 주문 지령 전송
-            await _check_buy_target_reached(es, order_queue, broadcast_queue)
+            # 매수 타점에 도달하면 직접 주문 실행 (trading.py)
+            await _check_buy_target_reached(es, broadcast_queue)
+
 
     except Exception as e:
         logger.error("[Compute] 0B/01 틱 처리 예외: %s", e, exc_info=True)
@@ -376,57 +391,67 @@ async def _handle_real_0d_tick(
         if bid < 0 or ask < 0:
             return
 
-        # 호가잔량 캐시 삭제로 저장 로직 제거
         # 매수후보 종목이면 호가잔량비 변경을 프론트에 즉시 전송
-        if es._master_stocks_cache.get(nk, {}).get("_subscribed_0d", False):
+        cache_entry = SectorDataProvider.get_stock(nk)
+        if cache_entry.get("_subscribed_dynamic", False):
+            cache_entry["order_ratio"] = [bid, ask]
             notify_orderbook_update(nk, bid, ask)
 
     except Exception as e:
         logger.error("[Compute] 0D 틱 처리 예외: %s", e, exc_info=True)
 
 
-async def _check_sector_recompute_needed(
+async def _handle_real_pgm_tick(
+    item: dict,
+    vals: dict,
     es: ModuleType,
     broadcast_queue: asyncio.Queue,
 ) -> None:
     """
-    업종 점수 재계산 필요 여부 확인.
-    (스로틀링 최적화: 계산 로직을 백그라운드 루프로 분리하고 깃발만 꽂음)
+    PGM 프로그램 순매수 틱 처리.
     """
-    global _sector_recompute_dirty
-    _sector_recompute_dirty = True
+    try:
+        from backend.app.services.engine_symbol_utils import _real_item_stk_cd, _format_kiwoom_reg_stk_cd
+        from backend.app.services.engine_account_notify import notify_program_update
+
+        # 종목코드 추출
+        raw_cd = _real_item_stk_cd(item, vals)
+        if not raw_cd:
+            return
+
+        nk = _format_kiwoom_reg_stk_cd(raw_cd)
+        tval_str = vals.get("tval", "0")
+        try:
+            tval = int(tval_str)
+        except ValueError:
+            tval = 0
+
+        # 매수후보 종목이면 프로그램 순매수 변경을 프론트에 즉시 전송
+        cache_entry = SectorDataProvider.get_stock(nk)
+        if cache_entry.get("_subscribed_dynamic", False):
+            cache_entry["program_net_buy"] = tval
+            notify_program_update(nk, tval)
+
+    except Exception as e:
+        logger.error("[Compute] PGM 틱 처리 예외: %s", e, exc_info=True)
 
 
 async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Queue) -> None:
     """
-    1초 주기로 돌아가는 업종순위 재계산 스로틀(디바운스) 백그라운드 루프.
-    _sector_recompute_dirty 깃발이 꽂혀 있을 때만 연산을 수행하여 CPU 부하를 극소화.
+    1초 주기로 돌아가는 업종순위 재계산 백그라운드 루프.
+    현재는 Phase 1(수신율 대기 후 초기 1회 전체 계산) 기능만 수행하고 루프를 종료하여,
+    틱이 들어올 때만 증분 재계산하는 이벤트 기반 방식을 채택합니다.
 
-    Phase 1 (1회): 실시간데이터 필드 수신율 임계값 대기 — 통과 후 Phase 2로 전환 (반복 체크 없음)
-
-      수신율 계산 기준:
-        - ws_subscribe_start 시점에 _reset_realtime_fields()가 6개 실시간 필드를 None으로 초기화.
-        - None이 아닌 필드가 1개라도 있는 종목 = 실시간 틱 또는 확정 데이터가 수신된 종목.
-        - received_count == 0: 아직 아무 데이터도 없음(필드 초기화 직후) → 대기.
-        - received_count >= 1: 수신율(%) 계산 시작 → N% 임계값 통과 시 Phase 2 진입.
-
-      시나리오별 동작:
-        - 장마감 후 기동: 확정 데이터가 이미 필드에 존재 → received_count > 0 → 즉시 수신율 계산
-          → 임계값 통과 → 업종순위 즉시 계산 (무한루프 없음)
-        - 장중 기동(ws_subscribe_start 이후): 필드 초기화 상태 → 틱 수신 시작 시
-          received_count >= 1 → 수신율 계산 시작 → N% 도달 시 계산
-
-    Phase 2 (반복): dirty 플래그 확인 → engine_sector_confirm 증분 재계산 트리거 (1초 스로틀)
+    Phase 1 (1회): 실시간데이터 필드 수신율 임계값 대기 — 통과 후 Phase 2로 전환 없이 루프 종료
     """
-    from backend.app.services.engine_sector_confirm import recompute_sector_for_code
-    global _compute_running, _sector_recompute_dirty
+    from backend.app.services.engine_sector_confirm import request_sector_recompute
+    global _compute_running
     try:
         # Phase 1: 실시간데이터 필드 수신율 임계값 대기 (1회성 스타트업 게이트)
         while _compute_running:
             try:
                 inputs = await es.get_sector_summary_inputs()
                 all_codes = inputs.get("all_codes", [])
-                stock_details = inputs.get("stock_details", {})
                 total_count = len(all_codes)
 
                 if total_count == 0:
@@ -438,9 +463,11 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
                 # cur_price > 0 기준이 아닌 None 여부로 판단:
                 #   - ws_subscribe_start → _reset_realtime_fields()가 모두 None으로 초기화
                 #   - 실시간 틱 수신 또는 장마감 후 확정 데이터 수신 → None이 아닌 값으로 채워짐
+                # 단일 소스 진리: master_stocks_cache 직접 참조
+                from backend.app.services.engine_state import state
                 received_count = sum(
-                    1 for entry in stock_details.values()
-                    if _has_any_realtime_data(entry)
+                    1 for code in all_codes
+                    if _has_any_realtime_data(SectorDataProvider.get_stock(code))
                 )
 
                 # received_count == 0: 실시간 필드가 초기화된 상태(ws_subscribe_start 직후).
@@ -457,31 +484,31 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
                     logger.info("[Compute] 업종순위 계산 대기 중 (수신율: %d/%d = %.1f%% < %.1f%%)", received_count, total_count, current_pct, threshold_pct)
                     await asyncio.sleep(1.0)
                 else:
-                    logger.info("[Compute] 수신율 임계값 통과 (%.1f%%) — 증분 재계산 활성화", current_pct)
-                    _sector_recompute_dirty = False
-                    recompute_sector_for_code(None)  # 콜드 스타트 1회 전체 재계산
+                    request_sector_recompute(None)  # 콜드 스타트 1회 전체 재계산
                     break
             except Exception as e:
                 logger.error("[Compute] 수신율 체크 예외: %s", e, exc_info=True)
                 await asyncio.sleep(1.0)
 
-        # Phase 2: 1초 스로틀 증분 재계산 루프
+        # Phase 2: 0.3초 배치 재계산 루프
         while _compute_running:
-            try:
-                if _sector_recompute_dirty:
-                    _sector_recompute_dirty = False
-                    recompute_sector_for_code(None)
-            except Exception as e:
-                logger.error("[Compute] 백그라운드 업종 점수 재계산 예외: %s", e, exc_info=True)
+            await asyncio.sleep(0.3)
+            global _dirty_codes
+            if _dirty_codes:
+                # 안전하게 복사 후 클리어
+                codes_to_compute = set(_dirty_codes)
+                _dirty_codes.clear()
+                
+                # 재계산 실행
+                for code in codes_to_compute:
+                    request_sector_recompute(code)
 
-            await asyncio.sleep(1.0)
     except asyncio.CancelledError:
         logger.info("[Compute] 백그라운드 업종 점수 재계산 루프 취소됨")
 
 
 async def _check_buy_target_reached(
     es: ModuleType,
-    order_queue: asyncio.Queue,
     broadcast_queue: asyncio.Queue,
 ) -> None:
     """
@@ -489,22 +516,20 @@ async def _check_buy_target_reached(
 
     Args:
         es: engine_service 모듈
-        order_queue: 주문 지령 큐
         broadcast_queue: UI 전송 큐
     """
     # 매수 타점 도달 여부 확인 로직
-    # 실제 매수 판단은 engine_service._try_sector_buy 호출
+    # 실제 매수 판단은 engine_service.try_sector_buy 호출
     try:
-        # 매수 판단 (engine_service._try_sector_buy 이관)
-        await es._try_sector_buy()
+        # 매수 판단 (engine_service.try_sector_buy 이관)
+        await es.try_sector_buy()
 
-        # 매수 타점에 도달하면 order_queue에 주문 지령 전송
-        # (실제 주문 실행은 Step 4 OMS Pipeline에서 수행)
-        buy_targets = es.get_buy_targets_snapshot()
+        # 매수 타점에 도달하면 직접 주문 실행 (trading.py)
+        buy_targets = await es.get_buy_targets_sector_stocks()
         if buy_targets:
             # 매수 후보 종목이 있으면 broadcast_queue에 전송 (UI 업데이트)
             await broadcast_queue.put({
-                "type": "buy_targets",
+                "type": "buy-targets-update",
                 "data": {"buy_targets": buy_targets},
             })
 

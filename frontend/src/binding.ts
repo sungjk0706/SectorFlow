@@ -39,7 +39,6 @@ import type {
   AppSettings,
   EngineStatus,
   SnapshotHistory,
-  BuyTarget,
   SectorStock,
   StockClassificationChangedEvent,
   RealDataEvent,
@@ -80,7 +79,7 @@ export function bindWSToStore(
 
 
   pricesClient.onEvent('buy-targets-update', (data) => {
-    applyBuyTargetsUpdate(data as { buy_targets: BuyTarget[] })
+    applyBuyTargetsUpdate(data as { buy_targets: SectorStock[] })
   })
 
   pricesClient.onEvent('sector-stocks-refresh', (data) => {
@@ -110,22 +109,55 @@ export function bindWSToStore(
   })
 
   pricesClient.onEvent('buy-targets-delta', (data) => {
-    const { added, removed, changed } = data as { added: BuyTarget[]; removed: string[]; changed: BuyTarget[] }
+    const { added, removed, changed } = data as { added: SectorStock[]; removed: string[]; changed: SectorStock[] }
     hotStore.setState((state) => {
       let buyTargets = state.buyTargets
       if (removed && removed.length > 0) {
         const removedSet = new Set(removed.map(c => normalizeStockCode(c)))
-        buyTargets = buyTargets.filter((t: BuyTarget) => !removedSet.has(normalizeStockCode(t.code)))
+        buyTargets = buyTargets.filter((t: SectorStock) => !removedSet.has(normalizeStockCode(t.code)))
       }
       if (changed && changed.length > 0) {
         buyTargets = buyTargets === state.buyTargets ? [...buyTargets] : buyTargets
+        console.log('[buy-targets-delta] changed total items:', changed.length)
         for (const item of changed) {
-          const idx = buyTargets.findIndex((t: BuyTarget) => normalizeStockCode(t.code) === normalizeStockCode(item.code))
-          if (idx >= 0) buyTargets[idx] = item
+          const idx = buyTargets.findIndex((t: SectorStock) => normalizeStockCode(t.code) === normalizeStockCode(item.code))
+          console.log('[buy-targets-delta] changed item code:', item.code, 'idx:', idx)
+          if (idx >= 0) {
+            // 아키텍처 원칙 — sectorStocks가 실시간 데이터 단일 소스
+            const sectorStock = state.sectorStocks[normalizeStockCode(item.code)]
+            console.log('[buy-targets-delta] sectorStock?.change_rate:', sectorStock?.change_rate)
+            console.log('[buy-targets-delta] item.change_rate:', item.change_rate)
+            buyTargets[idx] = {
+              ...item,
+              cur_price: sectorStock?.cur_price,
+              change: sectorStock?.change,
+              change_rate: sectorStock?.change_rate,
+              strength: sectorStock?.strength,
+              trade_amount: sectorStock?.trade_amount,
+            }
+            console.log('[buy-targets-delta] final buyTargets[idx].change_rate:', buyTargets[idx].change_rate)
+          }
         }
       }
       if (added && added.length > 0) {
-        buyTargets = buyTargets === state.buyTargets ? [...buyTargets, ...added] : [...buyTargets, ...added]
+        // 아키텍처 원칙 — sectorStocks가 실시간 데이터 단일 소스
+        const addedWithRealtime = added.map(item => {
+          const sectorStock = state.sectorStocks[normalizeStockCode(item.code)]
+          console.log('[buy-targets-delta] added code:', item.code)
+          console.log('[buy-targets-delta] added sectorStock?.change_rate:', sectorStock?.change_rate)
+          console.log('[buy-targets-delta] added item.change_rate:', item.change_rate)
+          const result = {
+            ...item,
+            cur_price: sectorStock?.cur_price,
+            change: sectorStock?.change,
+            change_rate: sectorStock?.change_rate,
+            strength: sectorStock?.strength,
+            trade_amount: sectorStock?.trade_amount,
+          }
+          console.log('[buy-targets-delta] added final change_rate:', result.change_rate)
+          return result
+        })
+        buyTargets = buyTargets === state.buyTargets ? [...buyTargets, ...addedWithRealtime] : [...buyTargets, ...addedWithRealtime]
       }
       if (buyTargets === state.buyTargets) return state
       rebuildBuyTargetIndex(buyTargets)

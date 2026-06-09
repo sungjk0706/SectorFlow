@@ -11,6 +11,7 @@ import json
 import time
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
+from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine_snapshot")
 
@@ -29,9 +30,9 @@ async def build_initial_snapshot() -> dict:
         get_positions, get_account_snapshot, get_snapshot_history,
         get_buy_limit_status,
     )
-    from backend.app.services.engine_sector import get_sector_scores_snapshot, get_sector_stocks
-    from backend.app.services.engine_lifecycle import get_status
+    from backend.app.services.sector_data_provider import get_sector_scores_snapshot, get_sector_stocks, get_buy_targets_sector_stocks
     from backend.app.services.engine_config import _mask_sensitive_settings
+    from backend.app.services.engine_lifecycle import get_engine_status
 
     async def _safe(fn, default):
         """getter 호출을 감싸서 실패하면 기본값을 돌려준다."""
@@ -46,19 +47,15 @@ async def build_initial_snapshot() -> dict:
 
     _snapshot_t0 = time.perf_counter()
     positions = await _safe(get_positions, [])
-    logger.info("[연결] 시작화면 데이터 생성 단계 -- 보유종목 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
     account_snap = await _safe(get_account_snapshot, {})
-    logger.info("[연결] 시작화면 데이터 생성 단계 -- 계좌 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
     # 단일 소스 진리: _integrated_system_settings_cache 직접 사용
-    logger.info("[연결] 시작화면 데이터 생성 단계 -- 설정 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
     scores_snapshot = await _safe(get_sector_scores_snapshot, ([], 0))
     scores_list, ranked_count = scores_snapshot if isinstance(scores_snapshot, tuple) else (scores_snapshot, 0)
-    logger.info("[연결] 시작화면 데이터 생성 단계 -- 업종점수 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
     # 종목수 일치 보장: master_stocks_table 기준
-    total_stocks_count = len(state.master_stocks_cache)
+    total_stocks_count = SectorDataProvider.get_stock_count()
 
     snapshot: dict = {
         "_v":               1,
@@ -67,9 +64,9 @@ async def build_initial_snapshot() -> dict:
         "sector_stocks":    [],  # 분할 전송 — sector-stocks-refresh 이벤트로 별도 전송
         "sector_scores":    scores_list,
         "sector_status":    {"total_stocks": total_stocks_count, "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3) or 3), "ranked_sectors_count": ranked_count},
-        "buy_targets":      await _safe(get_buy_targets_snapshot, []),
+        "buy_targets":      await _safe(get_buy_targets_sector_stocks, []),
         "settings":         _mask_sensitive_settings(state.integrated_system_settings_cache),
-        "status":           await _safe(get_status, {}),
+        "status":           get_engine_status(),
         "snapshot_history": await _safe(get_snapshot_history, []),
         "sell_history":     await _safe(lambda: _get_trade_history_for_snapshot("sell"), []),
         "buy_history":      await _safe(lambda: _get_trade_history_for_snapshot("buy"), []),
@@ -81,7 +78,6 @@ async def build_initial_snapshot() -> dict:
         "broker_config":    state.integrated_system_settings_cache.get("broker_config", {}),
         "avg_amt_refresh":  None,
     }
-    logger.info("[연결] 시작화면 데이터 생성 단계 -- 메타 조립 %.0fms", (time.perf_counter() - _snapshot_t0) * 1000)
 
     # Delta 캐시 초기화 — sector_stocks는 분할 전송 시점에 초기화
     try:
@@ -92,7 +88,6 @@ async def build_initial_snapshot() -> dict:
 
     try:
         payload_bytes = len(json.dumps(snapshot, ensure_ascii=False).encode("utf-8"))
-        logger.info("[데이터] 메타 크기 %d bytes (생성 %.0fms)", payload_bytes, (time.perf_counter() - _snapshot_t0) * 1000)
     except Exception as exc:
         logger.warning("[데이터] 크기 측정 실패: %s", exc, exc_info=True)
 
@@ -101,7 +96,7 @@ async def build_initial_snapshot() -> dict:
 
 async def build_sector_stocks_payload() -> dict:
     """sector-stocks-refresh 이벤트용 종목 데이터 페이로드를 조립한다."""
-    from backend.app.services.engine_sector import get_sector_stocks
+    from backend.app.services.sector_data_provider import get_sector_stocks
     from backend.app.services.engine_account import get_positions, get_account_snapshot
     from backend.app.services.daily_time_scheduler import is_krx_after_hours
     
@@ -174,7 +169,8 @@ async def _reset_realtime_fields() -> None:
         # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_latest_trade_amounts, _latest_trade_prices, _latest_strength)
         # 호가잔량 캐시 삭제로 clear 로직 제거
         # _subscribed_0d_stocks 제거: state.master_stocks_cache에서 "_subscribed_0d" 제거
-        for entry in state.master_stocks_cache.values():
+        all_stocks = SectorDataProvider.get_all_stocks()
+        for entry in all_stocks.values():
             entry.pop("_subscribed_0d", None)
             for f in _REALTIME_FIELDS:
                 entry[f] = None
@@ -234,7 +230,7 @@ async def _reset_realtime_fields() -> None:
             logger.error("[데이터] DB master_stocks_table 실시간 필드 초기화 실패: %s", db_err, exc_info=True)
     logger.info(
         "[데이터] 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료 -- %d종목, 실시간/REST 저장데이터 전체 클리어",
-        len(state.master_stocks_cache),
+        SectorDataProvider.get_stock_count(),
     )
     await notify_desktop_sector_stocks_refresh()
     _broadcast_account("realtime_reset")
@@ -256,47 +252,8 @@ def _get_realtime_state() -> str:
 
 # ── 기타 헬퍼 ─────────────────────────────────────────────────
 
-def get_buy_targets_snapshot() -> list:
-    """매수 후보 스냅샷 반환 (가드 통과 및 차단 종목 일체 병합 + 평탄화)."""
-    import backend.app.services.engine_service as _es
-    ss = _es._sector_summary_cache
-    if ss is None:
-        return []
-    
-    def _flatten_target(t) -> dict:
-        # t.stock(StockScore) 객체의 중첩 데이터를 루트 레벨로 꺼내어 Flat 딕셔너리 구성
-        m_entry = state.master_stocks_cache.get(t.stock.code, {})
-        high_5d = m_entry.get("high_5d_price", 0)
-        
-        return {
-            "rank": t.rank,
-            "sector_rank": t.sector_rank,
-            "code": t.stock.code,
-            "name": t.stock.name,
-            "sector": t.stock.sector,
-            "change_rate": t.stock.change_rate,
-            "trade_amount": t.stock.trade_amount,
-            "avg_amt_5d": t.stock.avg_amt_5d,
-            "ratio_5d_pct": t.stock.ratio_5d_pct,
-            "strength": t.stock.strength,
-            "cur_price": t.stock.cur_price,
-            "change": t.stock.change,
-            "market_type": t.stock.market_type,
-            "nxt_enable": t.stock.nxt_enable,
-            "guard_pass": t.stock.guard_pass,
-            "reason": t.reason,
-            "boost_score": t.stock.boost_score,
-            "high_5d": high_5d,
-            "order_ratio": None,
-        }
-
-    combined = []
-    if ss.buy_targets:
-        combined.extend([_flatten_target(t) for t in ss.buy_targets])
-    if ss.blocked_targets:
-        combined.extend([_flatten_target(t) for t in ss.blocked_targets])
-        
-    return combined
+# get_buy_targets_snapshot 제거: get_buy_targets_sector_stocks로 대체
+# 매수후보 테이블은 이제 master_stocks_cache 기반 상위 업종 필터링을 사용
 
 
 def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:

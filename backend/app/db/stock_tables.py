@@ -173,10 +173,14 @@ async def load_test_positions() -> dict | None:
 
 # ── 거래일 캐시 ───────────────────────────────────────────────────────────
 async def save_trading_days_cache(data: dict) -> None:
-    """거래일 캐시 저장 (year, date 구조화 테이블)"""
+    """거래일 캐시 저장 (현재 연도 및 미래 연도만 저장 - 과거 거래일 불필요)"""
     try:
         from backend.app.db.db_writer import execute_db_write, DBWriteOperation
-        
+        from datetime import datetime
+
+        # 현재 연도 확인
+        current_year = datetime.now().year
+
         # 1. 기존 데이터 삭제 작업 수행
         op_del = DBWriteOperation(
             table="trading_days_cache",
@@ -186,8 +190,8 @@ async def save_trading_days_cache(data: dict) -> None:
             params=(),
         )
         await execute_db_write(op_del, wait=True)
-        
-        # 2. 대량 인서트 파라미터 빌드
+
+        # 2. 대량 인서트 파라미터 빌드 (현재 연도 및 미래 연도만)
         params = []
         for year_str, dates in data.items():
             if year_str == "last_updated":
@@ -198,14 +202,16 @@ async def save_trading_days_cache(data: dict) -> None:
                 params.append((0, val))
             else:
                 year = int(year_str)
-                for d_str in dates:
-                    # YYYYMMDD -> YYYY-MM-DD
-                    if len(d_str) == 8:
-                        d_formatted = f"{d_str[:4]}-{d_str[4:6]}-{d_str[6:]}"
-                    else:
-                        d_formatted = d_str
-                    params.append((year, d_formatted))
-                    
+                # 현재 연도 및 미래 연도만 저장
+                if year >= current_year:
+                    for d_str in dates:
+                        # YYYYMMDD -> YYYY-MM-DD
+                        if len(d_str) == 8:
+                            d_formatted = f"{d_str[:4]}-{d_str[4:6]}-{d_str[6:]}"
+                        else:
+                            d_formatted = d_str
+                        params.append((year, d_formatted))
+
         if params:
             op_ins = DBWriteOperation(
                 table="trading_days_cache",

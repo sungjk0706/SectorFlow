@@ -115,7 +115,7 @@ async def _broadcast_buy_limit_status() -> None:
     try:
         from backend.app.services.engine_account_notify import _broadcast, notify_buy_targets_update
         _broadcast("buy-limit-status", await get_buy_limit_status())
-        notify_buy_targets_update()
+        await notify_buy_targets_update()
     except Exception as e:
         logger.warning("[연결] 매수한도 화면전송 실패: %s", e, exc_info=True)
 

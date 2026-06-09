@@ -31,7 +31,7 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "telegram_chat_id": "",
     "telegram_bot_token": "",
     
-    # 거래모드
+    # 투자모드
     "trade_mode": "test",
     "test_mode": True,
     "mock_mode": True,
@@ -54,7 +54,9 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "boost_order_ratio_on": False,
     "boost_order_ratio_pct": 20,
     "boost_order_ratio_score": 1.0,
-    
+    "boost_program_net_buy_on": False,
+    "boost_program_net_buy_score": 1.0,
+
      # 매도 설정
      "tp_apply": False,
      "tp_val": 0,

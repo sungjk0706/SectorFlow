@@ -149,7 +149,7 @@ function renderTabBar(): HTMLElement {
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'auto-trade', label: '자동매매' },
-    { id: 'account-manage', label: '거래모드' },
+    { id: 'account-manage', label: '투자모드' },
     { id: 'telegram', label: '텔레그램' },
     { id: 'api-settings', label: 'API 설정' },
   ]
@@ -503,9 +503,9 @@ function renderTelegramTab(container: HTMLElement): void {
 
 /* ── 계정관리 탭 ── */
 function renderAccountTab(container: HTMLElement): void {
-  container.appendChild(sectionTitle('거래모드'))
+  container.appendChild(sectionTitle('투자모드'))
 
-  // 거래모드 선택 (중앙정렬)
+  // 투자모드 선택 (중앙정렬)
   tradeModeSection = document.createElement('div')
   Object.assign(tradeModeSection.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: GS.rowPad, borderBottom: '1px solid #f0f0f0', gap: '24px' })
 
@@ -846,11 +846,11 @@ function renderApiFields(container: HTMLElement): void {
     border: '1px solid #1976d2', background: '#1976d2',
     color: '#fff', cursor: 'pointer', fontSize: GS.label,
   })
-  calendarRefreshBtn.textContent = '캘린더 동기화'
+  calendarRefreshBtn.textContent = '캘린더 동기화 (비상시용)'
   calendarRefreshBtn.addEventListener('click', async () => {
     const confirmed = await showConfirmDialog({
-      title: '거래일 캐시 갱신',
-      message: 'KRX 거래일 데이터를 최신으로 동기화하시겠습니까?',
+      title: '거래일 캐시 갱신 (비상시용)',
+      message: '비상시용 - 연초 자동 갱신됨. 수동 갱신하시겠습니까?',
       isDanger: false
     })
     if (!confirmed) return
@@ -862,7 +862,7 @@ function renderApiFields(container: HTMLElement): void {
     } catch {
       showSaveToast('error')
     } finally {
-      calendarRefreshBtn.textContent = '캘린더 동기화'
+      calendarRefreshBtn.textContent = '캘린더 동기화 (비상시용)'
       calendarRefreshBtn.removeAttribute('disabled')
     }
   })
@@ -870,7 +870,7 @@ function renderApiFields(container: HTMLElement): void {
 
   const calendarRefreshDesc = document.createElement('div')
   Object.assign(calendarRefreshDesc.style, { fontSize: GS.desc, color: '#888', marginTop: '6px' })
-  calendarRefreshDesc.textContent = 'pykrx를 통해 최신 KRX 거래일 데이터를 가져와 DB 캐시를 갱신합니다'
+  calendarRefreshDesc.textContent = '비상시용 - 연초 자동 갱신됨'
   calendarRefreshRow.appendChild(calendarRefreshDesc)
 
   container.appendChild(calendarRefreshRow)

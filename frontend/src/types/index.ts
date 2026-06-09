@@ -45,6 +45,14 @@ export interface SectorStock {
   avg_amt_5d?: number;
   market_type?: string;
   nxt_enable?: boolean;
+  // 매수후보 테이블용 추가 필드 (단일 소스 진리 유지)
+  rank?: number;
+  guard_pass?: boolean;
+  reason?: string;
+  boost_score?: number;
+  order_ratio?: [number, number] | null;
+  high_5d?: number;
+  program_net_buy?: number;
 }
 
 export interface RadarStock {
@@ -59,23 +67,7 @@ export interface RadarStock {
   nxt_enable?: boolean;
 }
 
-
-export interface BuyTarget {
-  rank: number;
-  name: string;
-  code: string;
-  change: number;
-  change_rate: number;
-  cur_price: number;
-  strength: number;
-  boost_score: number;
-  order_ratio: [number, number] | null;
-  guard_pass: boolean;
-  reason: string;
-  market_type?: string;
-  nxt_enable?: boolean;
-  high_5d?: number;
-}
+// BuyTarget 제거: 매수후보 테이블은 SectorStock 타입 사용 (단일 소스 진리)
 
 export interface EngineStatus {
   running: boolean;

@@ -140,7 +140,6 @@ async def load_integrated_system_settings() -> dict:
                 db_data["_broker_specs"][broker_name] = parsed_val
             else:
                 db_data[key] = parsed_val
-        logger.info("[설정] DB integrated_system_settings 로드 완료 (%d개 설정 항목)", len(db_data))
     except Exception as e:
         logger.error("[설정] DB integrated_system_settings 로드 실패: %s", e)
         return {**DEFAULT_USER_SETTINGS, **DEFAULT_SYSTEM_CONFIG}

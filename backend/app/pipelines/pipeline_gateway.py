@@ -97,7 +97,7 @@ async def _process_broadcast(data: dict) -> None:
 
         # 시계열 데이터(종목별)인 경우 Coalescing 적용
         if event_type in ("real-data", "trade-price", "orderbook-update"):
-            code = payload.get("code")
+            code = payload.get("item")  # pipeline_compute.py:349에서 "item" 키로 설정
             if code:
                 # Coalescing 체크
                 if _should_coalesce(code, payload):

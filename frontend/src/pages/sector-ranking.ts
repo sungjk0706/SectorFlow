@@ -32,7 +32,6 @@ function updateMaxTargetsStatus(scores: SectorScoreRow[]): void {
   if (!maxTargetsStatusEl) return
   // 백엔드에서 이미 계산된 데이터를 그대로 사용 (Dumb Terminal)
   const passed = scores.filter(s => s.rank > 0).length
-  const cutoff = scores.filter(s => s.rank === 0).length
 
   while (maxTargetsStatusEl.firstChild) {
     maxTargetsStatusEl.removeChild(maxTargetsStatusEl.firstChild)
@@ -49,18 +48,6 @@ function updateMaxTargetsStatus(scores: SectorScoreRow[]): void {
   passedVal.style.color = '#dc3545'
   passedVal.style.fontWeight = FONT_WEIGHT.bold
   maxTargetsStatusEl.appendChild(passedVal)
-
-  const cutoffLabel = document.createElement('span')
-  cutoffLabel.textContent = '차단'
-  cutoffLabel.style.color = '#0d6efd'
-  cutoffLabel.style.marginLeft = '10px'
-  maxTargetsStatusEl.appendChild(cutoffLabel)
-
-  const cutoffVal = document.createElement('span')
-  cutoffVal.textContent = String(cutoff)
-  cutoffVal.style.color = '#0d6efd'
-  cutoffVal.style.fontWeight = FONT_WEIGHT.bold
-  maxTargetsStatusEl.appendChild(cutoffVal)
 }
 
 /* ── mount / unmount ── */
@@ -176,11 +163,9 @@ function buildRankingRows(container: HTMLElement): void {
     row.appendChild(barOuter)
 
     row.addEventListener('click', () => {
-      const state = hotStore.getState()
-      const scores = state.sectorScores
-      const rowIndex = rankRows.indexOf(row)
-      if (rowIndex >= 0 && rowIndex < scores.length) {
-        setSelectedSector(scores[rowIndex].sector)
+      const sector = row.dataset.sector
+      if (sector) {
+        setSelectedSector(sector)
       }
     })
 
@@ -314,7 +299,12 @@ function mount(container: HTMLElement): void {
   root.appendChild(trimRow)
 
   // ⑤ 점수 가중치
-  root.appendChild(createStepLabel('⑤', '점수 가중치'))
+  const weightLabel = createStepLabel('⑤', '점수 가중치')
+  const weightDesc = document.createElement('span')
+  Object.assign(weightDesc.style, { fontSize: FONT_SIZE.small, color: '#888', marginLeft: '8px' })
+  weightDesc.textContent = '상승 종목 비율과 평균 거래대금의 중요도를 조절합니다.'
+  weightLabel.appendChild(weightDesc)
+  root.appendChild(weightLabel)
   const weightWrap = document.createElement('div')
   Object.assign(weightWrap.style, { marginBottom: '8px', marginTop: '4px' })
 
@@ -323,8 +313,8 @@ function mount(container: HTMLElement): void {
     max: 100,
     value: currentRiseRatio,
     step: 1,
-    leftLabel: (v) => `업종내 상승비율 ${100 - v}%`,
-    rightLabel: (v) => `업종내 거래대금 ${v}%`,
+    leftLabel: (v) => `상승 종목 비율 ${100 - v}%`,
+    rightLabel: (v) => `평균 거래대금 ${v}%`,
     leftColor: '#0d6efd',
     leftColorLight: '#8bb8f8',
     rightColor: '#fd7e14',

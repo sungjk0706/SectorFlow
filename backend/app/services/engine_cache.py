@@ -10,6 +10,7 @@ import asyncio
 
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
+from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine")
 
@@ -26,17 +27,6 @@ async def _load_caches_preboot(settings: dict) -> None:
     try:
         from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd, _base_stk_cd
         from backend.app.services.engine_strategy_core import make_detail
-
-        # ── 테이블 초기화 ──
-        from backend.app.db.stock_tables import create_master_stocks_table, migrate_add_high_price_column, migrate_add_nxt_enable_column
-
-        # 테이블이 없으면 생성
-        await create_master_stocks_table()
-
-        # 마이그레이션: high_price 컬럼 추가
-        await migrate_add_high_price_column()
-        # 마이그레이션: nxt_enable 컬럼 추가
-        await migrate_add_nxt_enable_column()
 
         # ── master_stocks_table 로드 ──
         from backend.app.db.stock_tables import load_master_stocks_table
@@ -93,7 +83,7 @@ async def _load_caches_preboot(settings: dict) -> None:
             _cached_high_5d[cd] = high_price
             # 즉시 메모리 반영 (단일 루프로 통합)
             if high_price > 0:
-                state.master_stocks_cache[cd]["high_5d_price"] = high_price
+                await SectorDataProvider.update_stock_field(cd, "high_5d_price", high_price)
 
         # eligible_stocks_cache 로드 제거: master_stocks_table이 단일 소스
 
@@ -112,8 +102,9 @@ async def _load_caches_preboot(settings: dict) -> None:
             logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 미스 -- 백그라운드 갱신 예정")
 
         # ── 시장구분 적재 제거 (master_stocks_cache 사용으로 대체) ──
-        _total_nxt = sum(1 for v in state.master_stocks_cache.values() if v.get("nxt_enable"))
-        logger.debug("[데이터준비] 시장구분(마스터 캐시) 로드 완료 -- %d종목 (NXT %d)", len(state.master_stocks_cache), _total_nxt)
+        all_stocks = SectorDataProvider.get_all_stocks()
+        _total_nxt = sum(1 for v in all_stocks.values() if v.get("nxt_enable"))
+        logger.debug("[데이터준비] 시장구분(마스터 캐시) 로드 완료 -- %d종목 (NXT %d)", len(all_stocks), _total_nxt)
 
         # eligible_stocks_cache 적재 제거: master_stocks_table이 단일 소스
 
@@ -121,11 +112,12 @@ async def _load_caches_preboot(settings: dict) -> None:
         state.preboot_cache_loaded = True
 
         # ── 기동 완료 로직 이관 (engine_bootstrap.py _bootstrap_sector_stocks_async에서 이관) ──
-        # 테스트모드: Settlement Engine 상태 복원
+        # 테스트모드: Settlement Engine 초기화 (기본값 설정)
         if (state.integrated_system_settings_cache or {}).get("trade_mode") == "test":
             from backend.app.services import settlement_engine
-            await settlement_engine._load()
-            logger.debug("[데이터준비] Settlement Engine 상태 복원 완료 (테스트모드)")
+            initial_deposit = (state.integrated_system_settings_cache or {}).get("initial_deposit", 10_000_000)
+            settlement_engine.init(initial_deposit)
+            logger.debug("[데이터준비] Settlement Engine 초기화 완료 (테스트모드)")
 
         # 업종순위 계산 초기화 제거 (수신율 체크 후 pipeline_compute.py에서 재계산)
         import backend.app.services.engine_account_notify as _an
@@ -133,10 +125,8 @@ async def _load_caches_preboot(settings: dict) -> None:
 
         # 기동 완료 플래그 설정
         state.bootstrap_event.set()
-        logger.info("[데이터준비] 앱준비 완료 플래그 설정")
 
         state.data_ready_event.set()
-        logger.info("[데이터준비] 데이터 준비 완료 플래그 설정")
 
         # 앱준비 완료 → 기동 시 스킵된 장마감 파이프라인 데이터동기화중 재시도
         try:
