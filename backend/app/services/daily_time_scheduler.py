@@ -685,6 +685,10 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
         h = loop.call_later(max(delay_start, 1), lambda: asyncio.create_task(_on_ws_subscribe_start()))
         state.ws_subscribe_timer_handles.append(h)
         logger.debug("[타이머] 실시간 구독 시작 (%s) -- %.0f초 후 예약", ws_start_str, delay_start)
+    elif delay_start <= 0 and delay_end > 0 and loop:
+        # 이미 시작 시간이 지났지만, 종료 시간 전이면 즉시 실행
+        logger.info("[타이머] 실시간 구독 시작 시간 (%s) 이미 경과 -- 즉시 실행 (종료 시간 %s 전)", ws_start_str, ws_end_str)
+        loop.create_task(_on_ws_subscribe_start())
 
     if delay_end > 0 and loop:
         h = loop.call_later(max(delay_end, 1), _fire_ws_subscribe_end)
@@ -898,8 +902,10 @@ async def schedule_auto_trade_timers(settings: dict | None = None) -> None:
         # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
         settings = state.integrated_system_settings_cache or {}
 
+    # ws_subscribe 타이머는 time_scheduler_on과 무관하게 항상 예약 (독립 기능)
+    # 매수/매도 타이머만 time_scheduler_on 체크
     if not bool(settings.get("time_scheduler_on", False)):
-        return  # 마스터 스위치 OFF면 타이머 불필요
+        return  # 마스터 스위치 OFF면 매수/매도 타이머 불필요
 
     # 예약 대상 시각들: 매수 시작/종료, 매도 시작/종료
     time_points = [
