@@ -42,11 +42,13 @@ _initial_deposit: int = 10_000_000
 # ── 기본 getters 및 init ────────────────────────────────────────────────────
 
 def init(initial_deposit: int) -> None:
-    """Settlement Engine 초기화."""
+    """Settlement Engine 초기화 (기본값 설정만 수행, DB 로드는 _load()에서 수행)."""
     global _accumulated_investment, _orderable, _initial_deposit
-    _accumulated_investment = initial_deposit
-    _orderable = initial_deposit
     _initial_deposit = initial_deposit
+    # _load()가 호출되지 않은 경우 기본값 사용
+    if not _loaded:
+        _accumulated_investment = initial_deposit
+        _orderable = initial_deposit
 
 
 def get_available_cash() -> int:
@@ -162,7 +164,7 @@ async def save_state() -> None:
 
 async def restore_state() -> None:
     """파일에서 상태 복원 (모드 전환 시 호출)."""
-    await _load()
+    await _load(force_reload=True)
 
 
 # ── 영속화 ──────────────────────────────────────────────────────────────────
@@ -180,9 +182,18 @@ async def _persist() -> None:
         logger.warning("[정산엔진] 상태 저장 실패: %s", e)
 
 
-async def _load() -> None:
-    """SQLite KV 스토어에서 상태 복원."""
+async def _load(force_reload: bool = False) -> None:
+    """SQLite KV 스토어에서 상태 복원.
+    
+    Args:
+        force_reload: True이면 이미 로드되어 있어도 강제 재로드 (모드 전환 시 사용)
+    """
     global _accumulated_investment, _orderable, _loaded, _initial_deposit
+
+    # 이미 로드되어 있고 강제 재로드가 아니면 스킵
+    if _loaded and not force_reload:
+        logger.debug("[정산엔진] 이미 로드됨 - 스킵")
+        return
 
     try:
         data = await load_settlement_state()

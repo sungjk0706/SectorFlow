@@ -445,7 +445,7 @@ class TelegramBot:
         """섹터 강도 상위/하위 요약."""
         try:
             from backend.app.services import engine_service
-            from backend.app.services.engine_sector_score import compute_full_sector_summary
+            from backend.app.domain.sector_calculator import compute_full_sector_summary
 
             inputs = engine_service.get_sector_summary_inputs()
             if not inputs.get("all_codes"):
@@ -495,7 +495,7 @@ class TelegramBot:
         try:
             from backend.app.services import engine_service
 
-            targets = engine_service.get_buy_targets_snapshot()
+            targets = await engine_service.get_buy_targets_sector_stocks()
             now_str = datetime.now(_KST).strftime("%H:%M")
 
             if not targets:

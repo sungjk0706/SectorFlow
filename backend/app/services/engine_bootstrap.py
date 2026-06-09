@@ -11,6 +11,7 @@ import asyncio
 
 from backend.app.core.logger import get_logger
 import backend.app.services.engine_state as _st
+from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine")
 
@@ -60,8 +61,8 @@ async def _deferred_sector_summary() -> None:
     """
     try:
         # 항상 전체 재계산 수행 (스켈레톤 캐시 모드 제거)
-        from backend.app.services.engine_sector_score import compute_full_sector_summary
-        from backend.app.services.engine_sector import get_sector_summary_inputs
+        from backend.app.domain.sector_calculator import compute_full_sector_summary
+        from backend.app.services.sector_data_provider import get_sector_summary_inputs
         _inputs = get_sector_summary_inputs()
         if _inputs.get("all_codes"):
             # 단일 소스 진리: _integrated_system_settings_cache 직접 사용
@@ -100,7 +101,7 @@ async def _deferred_sector_summary() -> None:
                 _client_cnt = ws_manager.client_count
                 notify_desktop_sector_scores(force=True)
                 await notify_desktop_sector_stocks_refresh()
-                notify_buy_targets_update()
+                await notify_buy_targets_update()
                 logger.debug("[시작] 업종순위 화면전송 완료 (접속화면=%d)", _client_cnt)
             except Exception as e:
                 logger.error("[시작] UI 초기 전송 실패: %s", e, exc_info=True)
@@ -178,12 +179,14 @@ async def _login_post_pipeline() -> None:
             if t != "code":
                 continue
             wl_codes.add(_format_kiwoom_reg_stk_cd(v))
-        stale = {cd for cd, entry in _st._master_stocks_cache.items() if entry.get("_subscribed", False) and cd in wl_codes}
+        all_stocks = SectorDataProvider.get_all_stocks()
+        stale = {cd for cd, entry in all_stocks.items() if entry.get("_subscribed", False) and cd in wl_codes}
         if stale:
             logger.debug("[시작] 새 세션 -- 0B 구독 상태 초기화 %d종목 (강제 재등록)", len(stale))
             for cd in stale:
-                if cd in _st._master_stocks_cache:
-                    _st._master_stocks_cache[cd].pop("_subscribed", None)
+                if SectorDataProvider.has_stock(cd):
+                    entry = SectorDataProvider.get_stock(cd)
+                    entry.pop("_subscribed", None)
 
         from backend.app.services import engine_account_notify as _account_notify
 
@@ -201,7 +204,7 @@ async def _login_post_pipeline() -> None:
             await _account_notify.notify_desktop_sector_stocks_refresh()
         else:
             _st._ws_reg_pipeline_done.set()
-            await _account_notify.notify_desktop_sector_refresh(force=True)
+            _account_notify.notify_desktop_sector_refresh(force=True)
             await _account_notify.notify_desktop_sector_stocks_refresh()
     except Exception as _e:
         logger.error("[시작] 로그인 후 파이프라인 예외: %s", _e, exc_info=True)

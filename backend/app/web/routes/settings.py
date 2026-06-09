@@ -36,7 +36,6 @@ async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_
 
         from backend.app.core.settings_store import apply_settings_updates
         from backend.app.services import engine_service
-        from backend.app.services.core_queues import get_control_queue
 
         data = {field_name: body["value"]}
         changed_keys = {field_name}
@@ -46,18 +45,6 @@ async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_
         if engine_service.is_running():
             await engine_service.apply_settings_change(changed_keys)
 
-        # control_queue에 설정 변경 신호 전송 (엔진 기동 시만)
-        try:
-            import time
-            control_queue = get_control_queue()
-            await control_queue.put((0, time.monotonic(), {
-                "type": "UPDATE_CONFIG",
-                "payload": data,
-                "changed_keys": changed_keys,
-            }))
-        except RuntimeError:
-            # control_queue가 초기화되지 않은 경우 (엔진 미기동) 무시
-            pass
         return {"ok": True}
     except Exception as e:
         import traceback
@@ -78,7 +65,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         import backend.app.services.engine_state as _st
 
         default_deposit = 10_000_000
-        settings = _st._settings_cache or {}
+        settings = _st._integrated_system_settings_cache or {}
         default_deposit = int(
             settings.get("test_virtual_deposit", default_deposit) or default_deposit
         )
@@ -101,7 +88,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         es.logger.info(
             "[디버그] 초기화 직전 구독목록 positions=%d subscribed=%d radar=%d layout=%d pos_codes=%d",
             len(es._positions), subscribed_count,
-            len(es._radar_cnsr_order), len(es._settings_cache.get("sector_stock_layout", [])),
+            len(es._radar_cnsr_order), len(es._integrated_system_settings_cache.get("sector_stock_layout", [])),
             len(notify_cache.positions_code_set),
         )
         async with es._shared_lock:
@@ -117,7 +104,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         es.logger.info(
             "[디버그] 초기화 직후 구독목록 positions=%d subscribed=%d radar=%d layout=%d pos_codes=%d",
             len(es._positions), subscribed_count_after,
-            len(es._radar_cnsr_order), len(es._settings_cache.get("sector_stock_layout", [])),
+            len(es._radar_cnsr_order), len(es._integrated_system_settings_cache.get("sector_stock_layout", [])),
             len(notify_cache.positions_code_set),
         )
         await es._refresh_account_snapshot_meta()

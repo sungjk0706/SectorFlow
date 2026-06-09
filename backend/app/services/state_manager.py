@@ -113,7 +113,6 @@ class StateManager:
 
         self._worker_started = True
         self._worker_task = asyncio.create_task(self._worker_loop())
-        _log.info("[StateManager] worker 시작")
 
     async def stop(self) -> None:
         """StateManager worker 중지"""

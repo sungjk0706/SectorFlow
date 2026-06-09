@@ -706,15 +706,18 @@ async def _save_confirmed_cache(
     es: ModuleType,
     skip_codes: set[str] | None = None,
     name_map: dict[str, str] | None = None,
+    eligible_codes: set[str] | None = None,
 ) -> bool:
     """현재 메모리 데이터를 master_stocks_table로 디스크 저장.
 
     저장 직전에 종목명 캐시를 참조하여 name 필드를 보정한다.
     execute_unified_rolling_and_save가 이미 처리한 종목은 skip_codes로 제외하여 중복 저장 방지.
+    eligible_codes가 주어지면 해당 종목만 저장 (confirmed_codes 기반 단일 소스 진리).
 
     Args:
         es: engine_service 모듈 참조
         skip_codes: execute_unified_rolling_and_save에서 이미 처리한 종목 코드 집합
+        eligible_codes: 매매적격 종목 코드 집합 (이 외 종목은 저장하지 않음)
 
     Returns:
         저장 성공 여부.
@@ -726,15 +729,17 @@ async def _save_confirmed_cache(
         _log.warning("[타이머] 저장할 데이터(_master_stocks_cache)가 비어있음 — 데이터 저장 생략")
         return False
 
-    # 적격종목 필터 제거: Step 2에서 이미 is_excluded()로 필터링하여 confirmed_codes 생성
-    # master_stocks_table에는 confirmed_codes에 있는 종목만 저장됨
-
     # 종목명 보정 제거: _master_stocks_cache에 이미 name 필드 포함됨
+
+    all_target_codes = set(pending.keys())
+    # eligible_codes가 주어지면 confirmed_codes 외 종목 저장 방지 (단일 소스 진리)
+    if eligible_codes:
+        all_target_codes = all_target_codes & eligible_codes
 
     rows = [
         (cd, dict(detail))
         for cd, detail in pending.items()
-        if detail.get("status") in ("active", "exited")
+        if cd in all_target_codes and detail.get("status") in ("active", "exited")
     ]
     if not rows:
         _log.warning("[타이머] 저장 가능한 종목 없음 — 저장데이터 저장 생략")
@@ -1176,11 +1181,19 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             _log.warning("[타이머] custom_sectors 기반 동기화 실패: %s", _sync_err, exc_info=True)
 
         # 디스크 캐시 저장 (execute_unified_rolling_and_save에서 이미 처리한 종목 제외)
-        cached = await _save_confirmed_cache(es, skip_codes=set(confirmed.keys()) if confirmed else None)
+        cached = await _save_confirmed_cache(es, skip_codes=set(confirmed.keys()) if confirmed else None, eligible_codes=confirmed_codes)
 
         # 완료 후 진행 파일 삭제
         if cached:
             await clear_progress_cache()
+
+        # ── 종목분류 페이지 갱신 브로드캐스트 (캐시 갱신 완료 후 전송) ────────
+        try:
+            from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed
+            await broadcast_stock_classification_changed()
+            _log.info("[타이머] 종목분류 페이지 갱신 브로드캐스트 완료")
+        except Exception as _bc_err:
+            _log.warning("[타이머] 종목분류 페이지 갱신 브로드캐스트 실패(무시): %s", _bc_err)
 
         _broadcast_confirmed_progress(total, total, message=f"전종목 확정시세 데이터 다운로드 완료 ({fetched:,}/{total:,})", step=5)
 
@@ -1633,11 +1646,19 @@ async def fetch_confirmed_data_only() -> dict:
             _log.info("[수동 확정시세] 단일 벌크 트랜잭션 완료")
 
         # 디스크 캐시 저장 (execute_unified_rolling_and_save에서 이미 처리한 종목 제외)
-        cached = await _save_confirmed_cache(es, skip_codes=set(confirmed.keys()) if confirmed else None)
+        cached = await _save_confirmed_cache(es, skip_codes=set(confirmed.keys()) if confirmed else None, eligible_codes=confirmed_codes)
 
         # 완료 후 진행 파일 삭제
         if cached:
             await clear_progress_cache()
+
+        # ── 종목분류 페이지 갱신 브로드캐스트 (캐시 갱신 완료 후 전송) ────────
+        try:
+            from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed
+            await broadcast_stock_classification_changed()
+            _log.info("[수동 확정시세] 종목분류 페이지 갱신 브로드캐스트 완료")
+        except Exception as _bc_err:
+            _log.warning("[수동 확정시세] 종목분류 페이지 갱신 브로드캐스트 실패(무시): %s", _bc_err)
 
         _broadcast_confirmed_progress(total, total, message=f"✅ 확정시세 다운로드 완료 ({fetched:,}/{total:,})", step=5)
 

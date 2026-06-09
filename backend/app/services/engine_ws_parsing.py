@@ -147,15 +147,16 @@ def _rest_row_float(row: dict, *keys: str, default: float = 0.0) -> float:
     return default
 
 
-def _parse_ws_fid12_to_percent(v) -> float:
+def parse_change_rate_to_percent(v) -> float:
     """
-    키움 WS FID 12 (등락율) -- API 제공 값 그대로 해석(키움 공식 가이드: 클라이언트 재계산 비권장).
-    정수×1000 스케일(예: 3100 -> 3.10%) 또는 소수 퍼센트(3.15 -> 3.15%).
-    JSON으로 온 11980.0 등 부동소수도 정수 스케일로 처리(문자열의 '.' 분기 사용 금지).
+    증권사 공통 등락율 파서.
+    소수점 퍼센트 형식 (두 증권사 공통) 및 1000 스케일 변환 (키움 조건부) 지원.
     """
     if v is None:
         return 0.0
-    s = str(v).replace(",", "").replace("%", "").replace("+", "").strip()
+    raw_str = str(v)
+    is_neg = "▼" in raw_str or raw_str.strip().startswith("-")
+    s = raw_str.replace(",", "").replace("%", "").replace("+", "").replace("▼", "").replace("▲", "").replace("-", "").strip()
     if not s or s == "0":
         return 0.0
     try:
@@ -172,7 +173,16 @@ def _parse_ws_fid12_to_percent(v) -> float:
         result = abs_raw
     if result > 1000.0:
         return 0.0
-    return -result if raw < 0 else result
+    return -result if is_neg else result
+
+
+def _parse_ws_fid12_to_percent(v) -> float:
+    """
+    키움 WS FID 12 (등락율) -- API 제공 값 그대로 해석(키움 공식 가이드: 클라이언트 재계산 비권장).
+    정수×1000 스케일(예: 3100 -> 3.10%) 또는 소수 퍼센트(3.15 -> 3.15%).
+    JSON으로 온 11980.0 등 부동소수도 정수 스케일로 처리(문자열의 '.' 분기 사용 금지).
+    """
+    return parse_change_rate_to_percent(v)
 
 
 # ── NXT 관련 FID 파서 ─────────────────────────────────────────────────────────

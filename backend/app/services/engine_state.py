@@ -70,6 +70,8 @@ class EngineState:
 
         # ── 계좌 상태 ───────────────────────────────────────────────────────────
         self.ws_account_subscribed: bool = False
+        self.ws_connection_status: bool = False
+        self.quote_subscribed: bool = False
         self.account_rest_bootstrapped: bool = False
         self.broker_rest_totals: dict = {
             "total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_rate": 0.0,
@@ -105,7 +107,7 @@ class EngineState:
 
     async def on_filter_settings_changed(self) -> None:
         """필터 설정 변경 시 처리 (engine_sector 모듈 위임)."""
-        from backend.app.services.engine_sector import _on_filter_settings_changed as _sector_on_filter
+        from backend.app.services.sector_data_provider import _on_filter_settings_changed as _sector_on_filter
         await _sector_on_filter()
 
 

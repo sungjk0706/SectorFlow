@@ -281,7 +281,7 @@ async def notify_desktop_settings_toggled(changed_keys_dict: dict | None = None)
         }
     else:
         import backend.app.services.engine_service as _es
-        payload = await _es.get_settings_snapshot()
+        payload = _es.get_settings_snapshot()
         payload["_v"] = 1
     _safe_broadcast("settings-changed", payload)
 
@@ -562,10 +562,12 @@ def notify_snapshot_history_update() -> None:
 _BUY_TARGET_CMP_KEYS = ("rank", "cur_price", "change_rate", "strength", "trade_amount", "boost_score", "guard_pass", "reason")
 
 
-def notify_buy_targets_update() -> None:
+async def notify_buy_targets_update() -> None:
     """매수후보 목록 변경 시 delta만 WS로 브로드캐스트한다."""
     import backend.app.services.engine_service as _es
-    targets = _es.get_buy_targets_snapshot()
+    from backend.app.services.sector_data_provider import SectorDataProvider
+
+    targets = await _es.get_buy_targets_sector_stocks()
 
     # 현재 타겟을 code→dict 매핑으로 변환
     cur_map: dict[str, dict] = {}
@@ -584,13 +586,26 @@ def notify_buy_targets_update() -> None:
     prev_codes = set(notify_cache.prev_buy_targets_map.keys())
     cur_codes = set(cur_map.keys())
 
-    added = [cur_map[c] for c in (cur_codes - prev_codes)]
+    # added 항목: 종목 목록만 전송 (실시간 필드 제외)
+    added = []
+    for c in cur_codes - prev_codes:
+        item = cur_map[c].copy()
+        # 실시간 필드 제거: 프론트엔드 sectorStocks 단일 소스
+        for key in ['cur_price', 'change', 'change_rate', 'strength', 'trade_amount']:
+            item.pop(key, None)
+        added.append(item)
     removed = list(prev_codes - cur_codes)
+    # changed 항목: 종목 목록만 전송 (실시간 필드 제외)
     changed = []
     for code in cur_codes & prev_codes:
-        cur_t = cur_map[code]
+        cur_t = cur_map[code].copy()
+        # 실시간 필드 제거: 프론트엔드 sectorStocks 단일 소스
+        for key in ['cur_price', 'change', 'change_rate', 'strength', 'trade_amount']:
+            cur_t.pop(key, None)
         prev_t = notify_cache.prev_buy_targets_map[code]
-        if any(cur_t.get(k) != prev_t.get(k) for k in _BUY_TARGET_CMP_KEYS):
+        # 비교 키에서 실시간 필드 제외
+        cmp_keys = [k for k in _BUY_TARGET_CMP_KEYS if k not in ['cur_price', 'change_rate', 'strength', 'trade_amount']]
+        if any(cur_t.get(k) != prev_t.get(k) for k in cmp_keys):
             changed.append(cur_t)
 
     if not added and not removed and not changed:
@@ -612,3 +627,9 @@ def notify_ws_subscribe_status(status: dict) -> None:
     """WS 구독 상태 변경 시 WS 브로드캐스트. ws_subscribe_control._set_status()에서 사용."""
     payload = {"_v": 1, **status}
     _safe_broadcast("ws-subscribe-status", payload)
+
+
+def notify_program_update(code: str, net_buy: int) -> None:
+    """프로그램 순매수 변경 시 WS로 브로드캐스트."""
+    payload = {"code": code, "net_buy": net_buy}
+    _safe_broadcast("program-update", payload)

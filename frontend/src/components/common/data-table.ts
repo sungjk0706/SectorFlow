@@ -160,12 +160,13 @@ export function createDataTable<T extends object>(
   if (virtualScroll) {
     return createVirtualScrollMode(options, columns, stickyHeader, emptyText, rowStyle, rowHeight, groupRowHeight, zebraStriping)
   }
-  return createFixedMode(columns, stickyHeader, emptyText, rowStyle, zebraStriping)
+  return createFixedMode(options, columns, stickyHeader, emptyText, rowStyle, zebraStriping)
 }
 
 /* ── 고정 테이블 모드 ─────────────────────────────────── */
 
 function createFixedMode<T extends object>(
+  options: DataTableOptions<T>,
   columns: ColumnDef<T>[],
   stickyHeader: boolean,
   emptyText: string,
@@ -173,6 +174,7 @@ function createFixedMode<T extends object>(
   zebraStriping?: boolean,
 ): DataTableApi<T> {
   let destroyed = false
+  let currentRows: TableRow<T>[] = []
   let currentPercentages: number[] = columns.map(() => 100 / (columns.length || 1))
 
   const wrapper = document.createElement('div')
@@ -336,6 +338,7 @@ function createFixedMode<T extends object>(
       }
       lastRenderTime = timestamp
       const rows = pendingRows
+      currentRows = rows
       pendingRows = null
       if (destroyed) return
 
@@ -471,7 +474,63 @@ function createFixedMode<T extends object>(
     rowCaches = []
   }
 
-  return { el: wrapper, updateRows, destroy, updateItems: updateRows }
+  function updateItemByKey(key: string) {
+    if (destroyed) return
+    if (!options.keyFn) return
+    const idx = currentRows.findIndex((row) => {
+      if (isGroupRow(row)) return false
+      return options.keyFn!(row as T, currentRows.indexOf(row)) === key
+    })
+    if (idx < 0) return
+    const rowEl = rowCaches[idx]
+    if (!rowEl || rowEl.style.display === 'none') return
+
+    const dataRow = currentRows[idx] as T
+    const rs = rowStyle ? rowStyle(dataRow, idx) : undefined
+    if (rs) {
+      Object.assign(rowEl.style, rs)
+    } else {
+      rowEl.style.removeProperty('background-color')
+    }
+    if (zebraStriping) {
+       rowEl.style.backgroundColor = (idx % 2 === 1) ? '#f9f9f9' : 'transparent'
+    }
+    
+    const tds = rowEl.children
+    for (let cIdx = 0; cIdx < columns.length; cIdx++) {
+      const cell = tds[cIdx] as HTMLElement
+      if (!cell) continue
+      try {
+        const content = columns[cIdx].render(dataRow, idx)
+        const itemKeyStore = '_itemKey' as keyof HTMLElement
+        const cellKey = String(idx)
+        const prevItemKey = (cell as any)[itemKeyStore]
+        const isSameItem = prevItemKey === cellKey
+        ;(cell as any)[itemKeyStore] = cellKey
+
+        if (typeof content === 'string') {
+          const prevKey = '_prevContent' as keyof HTMLElement
+          const prevContent = (cell as any)[prevKey] as string | undefined
+          if (cell.textContent !== content) {
+            cell.textContent = content
+            const shouldFlash = typeof columns[cIdx].flash === 'function' ? (columns[cIdx].flash as any)() : columns[cIdx].flash
+            if (shouldFlash && isSameItem && prevContent !== undefined && prevContent !== content) triggerFlash(cell)
+          }
+          ;(cell as any)[prevKey] = content
+        } else if (content instanceof HTMLElement) {
+          const existing = cell.firstElementChild as HTMLElement | null
+          if (!existing || !existing.isEqualNode(content)) {
+            while (cell.firstChild) cell.removeChild(cell.firstChild)
+            cell.appendChild(content)
+            const shouldFlash = typeof columns[cIdx].flash === 'function' ? (columns[cIdx].flash as any)() : columns[cIdx].flash
+            if (shouldFlash && isSameItem && existing) triggerFlash(cell)
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  return { el: wrapper, updateRows, destroy, updateItems: updateRows, updateItemByKey }
 }
 
 /* ── 가상 스크롤 모드 ─────────────────────────────────── */

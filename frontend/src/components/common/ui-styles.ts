@@ -63,7 +63,8 @@ export function changeArrow(v: number): string {
 }
 
 /** 등락률 포맷: +3.70 / -2.15 / 0.00 (부호 포함, 색상으로도 구분) */
-export function fmtRate(v: number): string {
+export function fmtRate(v: number | null | undefined): string {
+  if (v === null || v === undefined) return '-'
   if (v > 0) return '+' + v.toFixed(2)
   if (v < 0) return v.toFixed(2)
   return '0.00'
@@ -239,14 +240,12 @@ export function createChangeCell(change: number): HTMLElement {
   return wrap
 }
 
-/** 등락률 셀 (우측정렬, +/- 포맷, rateColor, null/0이면 "-") */
+/** 등락률 셀 (우측정렬, +/- 포맷, rateColor, null이면 "-", 0이면 "0.00%") */
 export function createRateCell(rate: number | null | undefined): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
-  if (!rate && rate !== 0) {
+  if (rate === null || rate === undefined) {
     cell.textContent = '-'
-  } else if (rate === 0) {
-    cell.textContent = '0'
   } else {
     const span = document.createElement('span')
     span.style.color = rateColor(rate)

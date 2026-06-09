@@ -121,6 +121,7 @@ async def broadcast_stock_classification_changed() -> None:
         "sector_counts": sector_counts,
         "no_sector_count": no_sector_count,
         "filter_summary": filter_summary,
+        "all_stocks": stocks,
     }
     try:
         from backend.app.services.core_queues import get_broadcast_queue
