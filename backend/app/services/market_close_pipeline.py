@@ -1056,6 +1056,18 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
                     confirmed_codes_list
                 )
 
+                # 1-1) 신규상장 종목 감지 및 기타 섹터 추가
+                cursor = await _conn.execute("SELECT code FROM master_stocks_table")
+                existing_codes = set(row[0] for row in await cursor.fetchall())
+                new_listed_codes = confirmed_codes - existing_codes
+
+                if new_listed_codes:
+                    insert_values = [("기타", code) for code in new_listed_codes]
+                    await _conn.executemany(
+                        "INSERT INTO custom_sectors (name, stock_code) VALUES (?, ?)",
+                        insert_values
+                    )
+
             # 2) Step2 필터링 결과 종목 UPSERT (기존 데이터 보존하며 추가)
             insert_values = [
                 (r.code, r.name, r.market_code, 1 if r.nxt_enable else 0)

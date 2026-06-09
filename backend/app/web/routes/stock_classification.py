@@ -63,28 +63,24 @@ class MoveStocksRequest(BaseModel):
 async def broadcast_stock_classification_changed() -> None:
     """stock-classification-changed WS 이벤트 브로드캐스트.
 
-    DB에서 직접 데이터를 조회하여 실시간 스냅샷 전송.
+    메모리 캐시(_master_stocks_cache)에서 데이터를 조회하여 실시간 스냅샷 전송.
     """
     from backend.app.core.sector_mapping import get_merged_all_sectors
     from backend.app.web.ws_manager import ws_manager
-    from backend.app.db.database import get_db_connection
 
     merged = await get_merged_all_sectors()
 
-    # DB에서 업종별 종목수 계산
+    # 메모리 캐시에서 업종별 종목수 계산
     sector_counts = {}
     no_sector_count = 0
     try:
-        conn = await get_db_connection()
-        cursor = await conn.execute("SELECT sector, COUNT(*) as count FROM master_stocks_table GROUP BY sector")
-        rows = await cursor.fetchall()
-        for row in rows:
-            sector = row["sector"] or "기타"
-            count = row["count"]
+        import backend.app.services.engine_service as es
+        for entry in es._master_stocks_cache.values():
+            sector = entry.get("sector", "기타")
             if sector == "기타":
-                no_sector_count = count
+                no_sector_count += 1
             else:
-                sector_counts[sector] = count
+                sector_counts[sector] = sector_counts.get(sector, 0) + 1
     except Exception as e:
         _log.warning("[업종관리] 업종별 종목수 조회 실패: %s", e)
 
@@ -99,16 +95,21 @@ async def broadcast_stock_classification_changed() -> None:
     except Exception as e:
         _log.warning("[업종관리] 커스텀 업종 목록 조회 실패: %s", e)
 
+    # 메모리 캐시에서 all_stocks 조회
+    stocks = {}
     filter_summary = ""
     try:
-        from backend.app.services.engine_service import get_all_sector_stocks
+        import backend.app.services.engine_service as es
         import backend.app.services.engine_state as state
-        stocks = await get_all_sector_stocks()
+        for code, entry in es._master_stocks_cache.items():
+            stocks[code] = {
+                "name": entry.get("name", ""),
+                "sector": entry.get("sector", "기타"),
+                "market": entry.get("market", ""),
+            }
         filter_summary = getattr(state, "_latest_filter_summary", "")
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning("[업종관리] broadcast_stock_classification_changed 예외: %s", e, exc_info=True)
-        pass
+        _log.warning("[업종관리] all_stocks 조회 실패: %s", e)
 
     payload = {
         "_v": 1,

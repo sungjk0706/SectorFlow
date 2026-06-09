@@ -86,6 +86,10 @@ async def create_sector(name: str) -> None:
         _log.error("[DB업데이트] 업종 생성 실패: %s", e)
         raise e
 
+    # 2) 인메모리 캐시 업데이트 (새 업종 추가)
+    # 업종 정의만 추가하므로 별도 메모리 캐시 업데이트 불필요
+    # 종목이 매핑될 때 sector 필드가 업데이트됨
+
 
 async def delete_sector(name: str) -> None:
     """업종을 삭제한다. 해당 업종의 종목들을 '기타'로 이동."""
@@ -154,6 +158,8 @@ async def sync_sector_from_custom_sectors() -> None:
     확정시세 다운로드 후 사용자 커스텀 업종 매핑 복구용.
     """
     from backend.app.db.database import get_db_connection
+    import backend.app.services.engine_state as _st
+    
     conn = await get_db_connection()
     
     try:
@@ -171,6 +177,17 @@ async def sync_sector_from_custom_sectors() -> None:
         
         await conn.commit()
         _log.info("[동기화] custom_sectors 기반 master_stocks_table.sector 동기화 완료 -- %d종목", updated)
+        
+        # 메모리 캐시 sector 필드 갱신
+        import backend.app.services.engine_service as es
+        async with es._shared_lock:
+            for row in rows:
+                code = row["stock_code"]
+                sector = row["name"]
+                if code in _st._master_stocks_cache:
+                    _st._master_stocks_cache[code]["sector"] = sector
+        
+        _log.info("[동기화] 메모리 캐시 sector 필드 갱신 완료 -- %d종목", updated)
     except Exception as e:
         await conn.rollback()
         _log.error("[동기화] custom_sectors 기반 동기화 실패: %s", e)
