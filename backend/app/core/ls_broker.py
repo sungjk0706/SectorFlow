@@ -23,13 +23,13 @@ class LsBroker(BrokerInterface):
         self._router = BrokerRouter()
 
     # ── 인증 ──────────────────────────────────────────────────────────────
-    def get_access_token(self) -> str | None:
+    async def get_access_token(self) -> str | None:
         """OAuth2 액세스 토큰 반환"""
-        return self._router.auth.get_access_token()
+        return await self._router.auth.get_access_token()
 
-    def ensure_token(self) -> bool:
+    async def ensure_token(self) -> bool:
         """토큰 유효성 확인, 만료 시 자동 갱신"""
-        return self._router.auth.ensure_token()
+        return await self._router.auth.ensure_token()
 
     # ── 계좌 조회 ─────────────────────────────────────────────────────────
     def get_account_number(self) -> str | None:
