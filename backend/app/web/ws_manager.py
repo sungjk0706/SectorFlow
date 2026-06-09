@@ -117,8 +117,8 @@ class WSManager:
         self._client_active_page: dict[WebSocket, str] = {}
         # per-client 구독 FID 추적 (미설정 시 ALLOWED_FIDS 사용)
         self._client_subscribed_fids: dict[WebSocket, frozenset[str]] = {}
-        # 상태형: {event_type: data} — 최신값만 유지
-        self._state_queue: dict[str, dict[str, Any]] = {}
+        # 상태형: {(event_type, code): data} — 최신값만 유지 (coalescing)
+        self._state_queue: dict[tuple[str, str | None], Any] = {}
         # 이벤트형: [(event_type, data), ...] — 순서 보장
         self._event_queue: list[tuple[str, dict[str, Any]]] = []
         self._flush_task: asyncio.Task | None = None
@@ -214,8 +214,8 @@ class WSManager:
         batch: list[str] = []
         for event_type, data in events:
             batch.append(json.dumps({"event": event_type, "data": self._stamp(data)}, ensure_ascii=False))
-        for event_type, data in states.items():
-            batch.append(json.dumps({"event": event_type, "data": self._stamp(data)}, ensure_ascii=False))
+        for (event_type, code), state_data in states.items():
+            batch.append(json.dumps({"event": event_type, "data": self._stamp(state_data)}, ensure_ascii=False))
 
         if not batch:
             return
@@ -413,7 +413,9 @@ class WSManager:
             return
         self._ensure_flush_task()
         if event_type in _STATE_EVENTS:
-            self._state_queue[event_type] = data
+            # 종목별 코알레싱 적용: 종목 코드가 포함된 데이터는 (이벤트타입, 종목코드) 단위로 덮어쓰기하여 유실 방지
+            code = data.get("code") or data.get("stk_cd") or data.get("item")
+            self._state_queue[(event_type, code)] = data
         else:
             self._event_queue.append((event_type, data))
 
@@ -468,7 +470,7 @@ class WSManager:
         try:
             # buy-targets 초기 데이터 전송
             import backend.app.services.engine_service as _es
-            targets = _es.get_buy_targets_snapshot()
+            targets = await _es.get_buy_targets_sector_stocks()
             if targets:
                 data = {"buy_targets": targets, "_v": 1}
                 message = json.dumps({"event": "buy-targets-update", "data": data}, ensure_ascii=False)

@@ -18,11 +18,12 @@ import asyncio
 
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
+from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine")
 
 # ── 인메모리 상태 ──────────────────────────────────────────────────────────
-_quote_subscribed: bool = False      # grp 4, 0B 활성 여부
+# 상태는 engine_state.py의 state에 통합 관리 (단일 소스 진리)
 
 # ── 동시 변경 직렬화 ──────────────────────────────────────────────────────
 _lock: asyncio.Lock | None = None
@@ -41,7 +42,7 @@ def _get_lock() -> asyncio.Lock:
 def get_subscribe_status() -> dict[str, bool]:
     """현재 구독 상태 반환."""
     return {
-        "quote_subscribed": _quote_subscribed,
+        "quote_subscribed": state.quote_subscribed,
     }
 
 
@@ -53,23 +54,24 @@ def _set_status(
     quote: bool | None = None,
 ) -> None:
     """상태 변경 시에만 WS ws-subscribe-status 브로드캐스트."""
-    global _quote_subscribed
-
     changed = False
-    if quote is not None and quote != _quote_subscribed:
-        _quote_subscribed = quote
+    if quote is not None and quote != state.quote_subscribed:
+        state.quote_subscribed = quote
         changed = True
 
     if changed:
         from backend.app.services.engine_account_notify import _broadcast
         _broadcast("ws-subscribe-status", {
             "_v": 1,
-            "quote_subscribed": _quote_subscribed,
+            "quote_subscribed": state.quote_subscribed,
         })
 
 
 def broadcast_ws_connection_status(connected: bool) -> None:
-    """Kiwoom WebSocket 연결/해제 상태를 프론트엔드로 브로드캐스트."""
+    """Kiwoom WebSocket 연결/해제 상태를 프론트엔드로 브로드캐스트 (상태 변경 시에만)."""
+    if state.ws_connection_status == connected:
+        return  # 상태 변경 없음 → 전송 생략
+    state.ws_connection_status = connected
     from backend.app.services.engine_account_notify import _broadcast
     _broadcast("ws-connection-status", {
         "_v": 1,
@@ -116,7 +118,7 @@ async def start_quote() -> dict:
         {"ok": False, "message": "..."} on error.
     """
     async with _get_lock():
-        if _quote_subscribed:
+        if state.quote_subscribed:
             return {"ok": True, "status": get_subscribe_status()}
 
         if not _ws_connected():
@@ -154,7 +156,7 @@ async def stop_quote() -> dict:
         {"ok": False, "message": "..."} on error.
     """
     async with _get_lock():
-        if not _quote_subscribed:
+        if not state.quote_subscribed:
             return {"ok": True, "status": get_subscribe_status()}
 
         from backend.app.services.engine_ws_reg import _unreg_grp
@@ -212,7 +214,8 @@ async def cleanup_stale_subscriptions() -> None:
 
     # 서버 측 구독은 다음 REG의 refresh='0'(reset_first=True)이 덮어씀.
     # REMOVE ACK 대기 없이 인메모리 상태만 초기화 — 장외 시간 90초 지연 응답으로 인한 이벤트 오염 방지.
-    for entry in state.master_stocks_cache.values():
+    all_stocks = SectorDataProvider.get_all_stocks()
+    for entry in all_stocks.values():
         entry.pop("_subscribed", None)
     _set_status(quote=False)
     logger.debug("[구독제어] 잔존 구독 정리 완료 — 전체 OFF (인메모리 초기화, 서버 측은 다음 REG refresh=0으로 덮어씀)")

@@ -24,7 +24,7 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         from backend.app.services.engine_service import _data_ready_event
         from backend.app.services.engine_config import get_settings_snapshot
 
-        settings = await get_settings_snapshot()
+        settings = get_settings_snapshot()
         _trade_mode = settings.get("trade_mode", "")
 
         # 이벤트 구동 방식: 데이터 준비 완료 시 즉시 전송 (타임아웃/폴링 제거)
@@ -46,7 +46,12 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         # 엔진 준비 완료 유니캐스트 전송 (engine-ready)
         if _bootstrap_event.is_set():
             await ws_manager.send_to(websocket, "engine-ready", {"_v": 1, "ready": True})
-            logger.info("[연결] 엔진 준비 완료 유니캐스트 전송 (engine-ready)")
+            
+            # 엔진 상태 전송 (index-refresh)
+            from backend.app.services.engine_lifecycle import get_engine_status
+            engine_status = get_engine_status()
+            engine_status["_v"] = 1
+            await ws_manager.send_to(websocket, "index-refresh", engine_status)
 
         # stock-classification 초기 데이터 전송 (업종순위 계산과 무관하게 독립 전송)
         from backend.app.core.stock_classification_data import load_custom_data
@@ -82,7 +87,6 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
             "all_stocks": stocks,
         }
         await ws_manager.send_to(websocket, "stock-classification-changed", stock_classification_payload)
-        logger.info("[연결] 업종분류 화면전송")
 
         # 업종순위 계산 대기 로직 삭제 (앱 기동과 업종순위 계산 독립성 보장)
         # 업종순위 계산은 백그라운드 태스크로 실행되며, 완료 시 WS로 전송됨
@@ -90,17 +94,13 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         # initial-snapshot 전송 (업종순위 계산 완료와 무관하게 즉시 전송)
         from backend.app.services.engine_service import build_initial_snapshot
 
-        logger.info("[연결] 시작화면 데이터 생성 시작")
         snapshot = await build_initial_snapshot()
-        logger.info("[연결] 시작화면 데이터 생성 완료")
         await ws_manager.send_to(websocket, "initial-snapshot", snapshot)
 
         # sector-stocks-refresh 전송
         from backend.app.services.engine_service import build_sector_stocks_payload
 
         stocks_payload = await build_sector_stocks_payload()
-        stock_count = len(stocks_payload.get("stocks", []))
-        logger.info("[연결] 업종목록 화면전송 -- %d종목", stock_count)
         await ws_manager.send_to(websocket, "sector-stocks-refresh", stocks_payload)
 
         # sector-scores 전송
@@ -131,7 +131,6 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
                 },
             }
             await ws_manager.send_to(websocket, "sector-scores", scores_payload)
-            logger.info("[연결] 업종점수 화면전송 -- %d개 섹터", len(scores))
         else:
             from backend.app.services import engine_service as _es_check
 
@@ -143,14 +142,13 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
                 logger.info("[연결] 업종점수 미전송 -- 종목 없음 (정상)")
 
         # buy-targets 전송 (initial-snapshot에 이미 포함되어 있으나, WS delta 메커니즘을 위해 별도 전송)
-        from backend.app.services.engine_service import get_buy_targets_snapshot
+        from backend.app.services.engine_service import get_buy_targets_sector_stocks
 
-        targets = get_buy_targets_snapshot()
+        targets = await get_buy_targets_sector_stocks()
         if targets:
             await ws_manager.send_to(
                 websocket, "buy-targets-update", {"_v": 1, "buy_targets": targets}
             )
-            logger.info("[연결] 매수후보 화면전송 -- %d건", len(targets))
     except Exception as e:
         logger.error("[연결] 초기 스냅샷 전송 실패: %s", e, exc_info=True)
 

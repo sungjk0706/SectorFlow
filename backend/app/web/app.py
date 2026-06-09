@@ -21,25 +21,13 @@ async def lifespan(app: FastAPI):
     configure_app_logging()
     
 
-    # DB 캐시 테이블 초기화 (가장 먼저 실행)
+    # DB Writer 시작
     from backend.app.db.db_writer import start_db_writer
     await start_db_writer()
-    
+
     # 전역 큐 초기화 (엔진 시작 전 보장)
     from backend.app.services.core_queues import initialize_queues
     initialize_queues()
-    
-    from backend.app.db.stock_tables import init_cache_tables, create_stock_5d_array_table
-    await init_cache_tables()
-    await create_stock_5d_array_table()
-    
-    # SQLite 3차 마이그레이션 자동 실행 (통합 단일 마스터 테이블 구축)
-    from backend.app.db.migration_v3 import run_migration_v3
-    await run_migration_v3()
-
-    # SQLite 4차 마이그레이션 자동 실행 (downloaded_at 컬럼 추가 - 이어받기 기능)
-    from backend.app.db.migration_v4 import run_migration_v4
-    await run_migration_v4()
 
     # 거래일 캐시 초기화
     from backend.app.core.trading_calendar import initialize_trading_calendar_cache
@@ -54,10 +42,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("[웹서버] 필터 요약 캐시 초기 로드 실패: %s", e)
 
-    # 통합설정 테이블 초기화
-    from backend.app.db.models import create_integrated_system_settings_table
-    await create_integrated_system_settings_table()
-
     # 단일 통합설정 마스터 테이블(integrated_system_settings)로부터 1회 로드 완료
     from backend.app.core.settings_file import load_integrated_system_settings
     settings = await load_integrated_system_settings()
@@ -69,13 +53,9 @@ async def lifespan(app: FastAPI):
     state.integrated_system_settings_cache.update(settings)
 
 
-    logger.info("[웹서버] daily_time_scheduler import 직전")
     from backend.app.services.daily_time_scheduler import start_daily_time_scheduler
-    logger.info("[웹서버] daily_time_scheduler import 완료")
     
-    logger.info("[웹서버] engine_service import 직전")
     from backend.app.services.engine_service import start_engine
-    logger.info("[웹서버] engine_service import 완료")
     
     from backend.app.services.telegram_bot import telegram_bot
     from backend.app.services import trade_history
@@ -89,16 +69,12 @@ async def lifespan(app: FastAPI):
 
     # Journal Consumer Task 시작 (Phase 4.2 Persistence Journaling)
     from backend.app.core import journal
-    logger.info("[웹서버] journal.start_consumer_task() 호출 직전")
     journal.start_consumer_task()
-    logger.info("[웹서버] journal.start_consumer_task() 호출 완료")
     logger.info("[웹서버] Journal Consumer Task 시작 완료")
 
     # 엔진 초기화 (설정 → 데이터 로드 → 증권사 연결)
     logger.info("[웹서버] 엔진 초기화 시작")
-    logger.info("[웹서버] start_engine() 호출 직전")
     success = await start_engine(user_id="admin")
-    logger.info("[웹서버] start_engine() 반환 완료, success=%s", success)
     if not success:
         logger.error("[웹서버] 엔진 초기화 실패")
         raise RuntimeError("엔진 초기화 실패")
@@ -115,11 +91,9 @@ async def lifespan(app: FastAPI):
     # 웹 서버가 즉시 기동되어 Health Check 등에 응답할 수 있도록 함
     from backend.app.services.engine_state import state
     state.server_ready_event.set()
-    logger.info("[웹서버] 서버 준비 완료 이벤트 설정 (Fast Boot)")
 
     # 엔진 준비 완료 플래그 즉시 설정 (백그라운드 다운로드와 무관하게 웹서버 기동 완료)
     state.engine_ready_event.set()
-    logger.info("[웹서버] 엔진 준비 완료 이벤트 설정 (비차단)")
 
     # 스케줄러 시작
     await start_daily_time_scheduler()

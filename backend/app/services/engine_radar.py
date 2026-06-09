@@ -9,17 +9,19 @@ import asyncio
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
 from backend.app.services.engine_account_rest import _parse_float_loose
+from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine_radar")
 
 
 # ── 레이더/종목 조회 ─────────────────────────────────────────────────
 
-def get_pending_stocks() -> list:
+def get_subscribed_stocks() -> list:
     """활성 상태의 종목 목록 반환."""
     # _radar_cnsr_order 삭제: state.master_stocks_cache의 "_subscribed" 사용
     result = []
-    for cd, entry in state.master_stocks_cache.items():
+    all_stocks = SectorDataProvider.get_all_stocks()
+    for cd, entry in all_stocks.items():
         if entry.get("_subscribed", False):
             stock = entry.copy()
             stock["status"] = "active"  # _subscribed 키가 있으면 active
@@ -27,25 +29,33 @@ def get_pending_stocks() -> list:
     return result
 
 
-def get_sector_stock_layout() -> list[tuple[str, str]]:
+def get_sector_layout() -> list[tuple[str, str]]:
     """업종 종목 레이아웃 반환."""
     # _sector_stock_layout 제거: state.integrated_system_settings_cache["sector_stock_layout"]로 통합
     return list(state.integrated_system_settings_cache.get("sector_stock_layout", []))
 
 
-def get_avg_amt_5d_map() -> dict[str, int]:
+def get_avg_trade_amount_5d_map() -> dict[str, int]:
     """5일 평균 거래대금 맵 반환."""
-    return {cd: stock.get("avg_5d_trade_amount", 0) for cd, stock in state.master_stocks_cache.items()}
+    all_stocks = SectorDataProvider.get_all_stocks()
+    return {cd: stock.get("avg_5d_trade_amount", 0) for cd, stock in all_stocks.items()}
 
 
-def get_high_5d_cache() -> dict[str, int]:
+def get_high_price_5d_cache() -> dict[str, int]:
     """5일 전고점 캐시 반환."""
-    return {cd: int(stock.get("high_5d_price", 0) or 0) for cd, stock in state.master_stocks_cache.items()}
+    all_stocks = SectorDataProvider.get_all_stocks()
+    return {cd: int(stock.get("high_5d_price", 0) or 0) for cd, stock in all_stocks.items()}
+
+
+def get_program_net_buy_cache() -> dict[str, int]:
+    """프로그램 순매수 캐시 반환."""
+    all_stocks = SectorDataProvider.get_all_stocks()
+    return {cd: int(stock.get("program_net_buy", 0) or 0) for cd, stock in all_stocks.items()}
 
 
 # ── 실시간 데이터 보강 ─────────────────────────────────────────────────
 
-def _overlay_radar_row_with_live_price(row: dict) -> dict:
+def merge_live_price_to_radar_row(row: dict) -> dict:
     """
     REAL 01(FID 10) 캐시로 현재가·거래량·거래대금만 보강.
     등락률·대비·sign·체결강도는 브로커 서버 FID로만 갱신(REAL 01 본문) -- 클라이언트 재계산 없음(브로커 공식 실시간 동기화 가이드).
@@ -74,7 +84,7 @@ async def _apply_real01_volume_amount_to_radar_rows(raw_cd: str, vals: dict, *, 
         return
         
     async with state.shared_lock:
-        entry = state.master_stocks_cache.get(nk)
+        entry = SectorDataProvider.get_stock(nk)
         if not entry:
             return
             
@@ -91,9 +101,11 @@ async def _apply_real01_volume_amount_to_radar_rows(raw_cd: str, vals: dict, *, 
                     entry["sign"] = "2"
                 else:
                     entry["sign"] = "3"
-                entry["change"] = abs(int(float(val11_str.replace("+", "").replace("-", ""))))
+                _chg = int(float(val11_str.replace("+", "").replace("-", "")))
+                entry["change"] = -_chg if val11_str.startswith("-") else _chg
             if "12" in vals:
-                entry["change_rate"] = _parse_float_loose(vals["12"])
+                from backend.app.services.engine_ws_parsing import parse_change_rate_to_percent
+                entry["change_rate"] = parse_change_rate_to_percent(vals["12"])
             if "14" in vals:
                 entry["trade_amount"] = int(_parse_float_loose(vals["14"]))
             if "17" in vals:
@@ -113,16 +125,18 @@ async def _mark_radar_exited(stk_cd: str) -> None:
 
     nk = _normalize_stk_cd_rest(str(stk_cd).strip().lstrip("A"))
     rm: str | None = None
-    if state.master_stocks_cache.get(nk, {}).get("_subscribed", False):
+    if SectorDataProvider.get_stock_field(nk, "_subscribed"):
         rm = nk
     else:
-        for k, entry in state.master_stocks_cache.items():
+        all_stocks = SectorDataProvider.get_all_stocks()
+        for k, entry in all_stocks.items():
             if entry.get("_subscribed", False) and _normalize_stk_cd_rest(str(k)) == nk:
                 rm = k
                 break
     if rm is not None:
-        if rm in state.master_stocks_cache:
-            state.master_stocks_cache[rm].pop("_subscribed", None)
+        if SectorDataProvider.has_stock(rm):
+            entry = SectorDataProvider.get_stock(rm)
+            entry.pop("_subscribed", None)
         if _clear_radar_rest_bootstrap_for_stk_cd:
             await _clear_radar_rest_bootstrap_for_stk_cd(rm)
         # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
@@ -157,7 +171,8 @@ async def _clear_radar_and_ready_memory() -> None:
 
     async with state.shared_lock:
         # _radar_cnsr_order 삭제: state.master_stocks_cache에서 "_subscribed" 제거
-        for entry in state.master_stocks_cache.values():
+        all_stocks = SectorDataProvider.get_all_stocks()
+        for entry in all_stocks.values():
             entry.pop("_subscribed", None)
         # _sector_stock_layout 제거: state.integrated_system_settings_cache["sector_stock_layout"]로 통합
         state.integrated_system_settings_cache["sector_stock_layout"] = []
@@ -183,7 +198,8 @@ async def _tracked_ui_stock_codes() -> set[str]:
             if c:
                 out.add(c)
     # _radar_cnsr_order 삭제: state.master_stocks_cache의 "_subscribed" 사용
-    for k, entry in state.master_stocks_cache.items():
+    all_stocks = SectorDataProvider.get_all_stocks()
+    for k, entry in all_stocks.items():
         if entry.get("_subscribed", False):
             c = _format_broker_reg_stk_cd(str(k))
             if c:

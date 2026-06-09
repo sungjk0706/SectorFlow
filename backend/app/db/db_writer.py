@@ -48,7 +48,6 @@ async def _db_writer_loop() -> None:
     global _running
 
     _running = True
-    logger.info("[DB Writer] 루프 시작")
 
     try:
         while _running:

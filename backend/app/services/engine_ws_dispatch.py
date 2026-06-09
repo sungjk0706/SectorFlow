@@ -224,8 +224,8 @@ def _handle_reg(data: dict) -> None:
 async def _handle_real_01(
     item: dict, vals: dict, raw_type_upper: str, is_0b_tick: bool,
 ) -> None:
-    """0B/01 체결 처리 — Event Bus Publish만 수행 (Phase 1.3+1.4 단계 1.4).
-    
+    """0B/01 체결 처리.
+
     캐시 업데이트는 engine_service._handle_market_tick_event에서 수신 후 처리.
     """
     # LIVE 전환 조건 강화: symbol별 필수 필드 캐시 확인 + 타임아웃
@@ -280,7 +280,8 @@ async def _handle_real_01(
     # _pending_stock_details 제거: pend_key 제거, 빈 dict 사용
     pend = {}
     diff = _ws_fid_int(vals, "11", 0) if _ws_fid_key_present(vals, "11") else 0
-    rate = _parse_ws_fid12_to_percent(_ws_fid_raw(vals, "12")) if _ws_fid_key_present(vals, "12") else 0.0
+    from backend.app.services.engine_ws_parsing import parse_change_rate_to_percent
+    rate = parse_change_rate_to_percent(_ws_fid_raw(vals, "12")) if _ws_fid_key_present(vals, "12") else 0.0
     sign = str(_ws_fid_raw(vals, "25") or "3").strip() if _ws_fid_key_present(vals, "25") else "3"
     sv228 = _ws_fid_raw(vals, "228")
     strength = str(sv228).strip() if sv228 is not None and str(sv228).strip() != "" else "-"
@@ -292,17 +293,7 @@ async def _handle_real_01(
     else:
         _total14 = 0
 
-    # [복구] master_stocks_cache 실시간 틱 업데이트
-    entry = engine_state._master_stocks_cache.get(nk_px)
-    if entry is not None:
-        entry["cur_price"] = last_px
-        entry["change"] = diff
-        entry["change_rate"] = rate
-        if _total14 > 0:
-            entry["trade_amount"] = _total14
-        if strength != "-":
-            entry["strength"] = strength
-
+    # 중복 업데이트 제거: master_stocks_cache는 engine_radar.py._apply_real01_volume_amount_to_radar_rows만 업데이트 (단일 소스 진리)
     # 캐시 업데이트 삭제 (실시간 틱 데이터 저장 제거)
     # REST 캐시 pop 로직 삭제 (캐시가 삭제되었으므로 pop 호출 불필요)
     # _radar_cnsr_order 삭제: 제로-체크 보장 (구독된 종목만 틱 수신)
@@ -367,9 +358,14 @@ def _check_realtime_latency(_ts: int) -> None:
     elapsed = int(time.time() * 1000) - _ts
     if elapsed >= 200:
         logger.error("[체결지연] 처리 시간 %sms → 자동매매 중단 플래그 설정", elapsed)
-        engine_state.state.realtime_latency_exceeded = True
-    elif elapsed >= 50:
-        logger.warning("[체결지연] 처리 시간 %sms → 50ms 초과", elapsed)
+        engine_state.realtime_latency_exceeded = True
+    else:
+        # 지연 회복: 플래그 단일 소유자(이 함수)가 직접 해제 — 원칙 8(플래그 단일 소스)
+        if engine_state.realtime_latency_exceeded:
+            logger.info("[체결지연] 처리 시간 %sms → 지연 회복, 자동매매 재개", elapsed)
+            engine_state.realtime_latency_exceeded = False
+        if elapsed >= 50:
+            logger.warning("[체결지연] 처리 시간 %sms → 50ms 초과", elapsed)
 
 
 async def _handle_real_00(item: dict, vals: dict) -> None:
@@ -458,7 +454,11 @@ async def _handle_real(data: dict) -> None:
                 await _handle_real_00(item, vals)
             elif norm in ("04", "80"):
                 await _handle_real_balance(item, vals)
-            # 📊 연산 데이터 - 압축 고속도로 (시세, 지수, 호가)
+            # 📊 연산 데이터 - type="0B"는 master_stocks_cache 업데이트 직접 수행
+            elif norm == "0B":
+                raw_type_upper = str(msg_type).upper() if msg_type else ""
+                await _handle_real_01(item, vals, raw_type_upper, is_0b_tick=True)
+            # 그 외 데이터는 BackendCoalescing으로 전송 (프론트엔드 전용)
             else:
                 from backend.app.services.backend_coalescing import BackendCoalescing
                 coalescing = BackendCoalescing.get_instance()

@@ -155,6 +155,9 @@ def build_engine_settings_dict(flat: dict) -> dict:
     result["boost_order_ratio_pct"]        = max(-100, min(100, _raw_pct))
     # boost_order_ratio_side는 result에 포함하지 않음
     result["boost_order_ratio_score"]      = max(float(merged.get("boost_order_ratio_score") if merged.get("boost_order_ratio_score") is not None else 1.0), 0)
+    # 프로그램 순매수 가산점
+    result["boost_program_net_buy_on"]     = bool(merged.get("boost_program_net_buy_on"))
+    result["boost_program_net_buy_score"]  = max(float(merged.get("boost_program_net_buy_score") if merged.get("boost_program_net_buy_score") is not None else 1.0), 0)
     # ── 공휴일 자동매매 가드 ────────
     result["holiday_guard_on"]             = bool(merged.get("holiday_guard_on"))
     result["auto_off_by_holiday"]          = bool(merged.get("auto_off_by_holiday"))

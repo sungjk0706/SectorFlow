@@ -37,6 +37,10 @@ let boostOrderScoreInput: ReturnType<typeof createNumInput> | null = null
 let boostOrderControls: HTMLElement | null = null
 let boostOrderRow2: HTMLElement | null = null
 
+let boostProgramToggle: ReturnType<typeof createToggleBtn> | null = null
+let boostProgramScoreInput: ReturnType<typeof createNumInput> | null = null
+let boostProgramControls: HTMLElement | null = null
+
 /* ── 헬퍼 ── */
 function syncAfterSave(): void {
   const latest = settingsMgr?.getSettings()
@@ -81,6 +85,13 @@ function syncFromSettings(s: AppSettings): void {
   }
   if (boostOrderRow2) {
     setDisabled(boostOrderRow2, !orderOn)
+  }
+
+  const programOn = !!r.boost_program_net_buy_on
+  boostProgramToggle?.setOn(programOn)
+  if (boostProgramScoreInput && (!act || !boostProgramScoreInput.el.contains(act))) boostProgramScoreInput.setValue(Number(r.boost_program_net_buy_score) ?? 1.0)
+  if (boostProgramControls) {
+    setDisabled(boostProgramControls, !programOn)
   }
 }
 
@@ -136,6 +147,35 @@ function mount(container: HTMLElement): void {
 
     boostHighScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_high_breakout_score = v; saveHelper!.autoSave('boost_high_breakout_score', v) }, step: 1, name: 'boost_high_breakout_score' })
     controls.appendChild(boostHighScoreInput.el)
+
+    root.appendChild(createSettingRow(labelWrap, controls))
+  }
+
+  // --- 프로그램 순매수 ---
+  {
+    const labelWrap = document.createElement('span')
+    labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
+    boostProgramToggle = createToggleBtn({ on: false, onClick: () => {
+      const next = !vals.boost_program_net_buy_on
+      vals.boost_program_net_buy_on = next
+      boostProgramToggle!.setOn(next)
+      if (boostProgramControls) {
+        setDisabled(boostProgramControls, !next)
+      }
+      saveHelper!.autoSave('boost_program_net_buy_on', next)
+    }})
+    labelWrap.appendChild(boostProgramToggle.el)
+    const label = document.createElement('span')
+    label.textContent = '프로그램 순매수'
+    labelWrap.appendChild(label)
+
+    const controls = document.createElement('span')
+    controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
+    setDisabled(controls, true)
+    boostProgramControls = controls
+
+    boostProgramScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_program_net_buy_score = v; saveHelper!.autoSave('boost_program_net_buy_score', v) }, step: 1, name: 'boost_program_net_buy_score' })
+    controls.appendChild(boostProgramScoreInput.el)
 
     root.appendChild(createSettingRow(labelWrap, controls))
   }
@@ -252,6 +292,7 @@ function unmount(): void {
   }
   boostOrderDualSlider = null
   boostOrderScoreInput = null; boostOrderControls = null; boostOrderRow2 = null
+  boostProgramToggle = null; boostProgramScoreInput = null; boostProgramControls = null
   vals = {}
 }
 

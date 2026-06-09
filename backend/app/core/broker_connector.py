@@ -79,3 +79,11 @@ class BrokerConnector(ABC):
     def is_connected(self) -> bool:
         """연결 상태 확인"""
         ...
+        
+    async def subscribe_dynamic(self, codes: list[str]) -> None:
+        """동적 데이터 구독 등록 (기본 구현: 패스)"""
+        pass
+        
+    async def unsubscribe_dynamic(self, codes: list[str]) -> None:
+        """동적 데이터 구독 해지 (기본 구현: 패스)"""
+        pass

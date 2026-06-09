@@ -14,6 +14,7 @@ from backend.app.services.engine_symbol_utils import (
     get_ws_subscribe_code,
 )
 from backend.app.services.engine_state import state
+from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = logging.getLogger("engine")
 
@@ -218,7 +219,7 @@ async def _unreg_grp(grp_no: str) -> bool:
     # grp_no=4(0B): 등록된 종목 코드를 data에 포함
     if grp_no == "4":
         from backend.app.services.engine_ws import _ws_send_remove_fire_and_forget
-        subscribed_codes = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed", False)}
+        subscribed_codes = {cd for cd, entry in SectorDataProvider.get_all_stocks().items() if entry.get("_subscribed", False)}
         if subscribed_codes:
             stock_list = [get_ws_subscribe_code(cd) for cd in list(subscribed_codes)]
             _CHUNK = 100
@@ -237,8 +238,9 @@ async def _unreg_grp(grp_no: str) -> bool:
                 except Exception as e:
                     logger.warning("[구독] grp_no=%s 청크 %d/%d 오류: %s", grp_no, ci+1, nchunks, e, exc_info=True)
             for cd in subscribed_codes:
-                if cd in state.master_stocks_cache:
-                    state.master_stocks_cache[cd].pop("_subscribed", None)
+                if SectorDataProvider.has_stock(cd):
+                    entry = SectorDataProvider.get_stock(cd)
+                    entry.pop("_subscribed", None)
             return True
 
 
@@ -270,7 +272,7 @@ async def subscribe_sector_stocks_0b() -> None:
     ))
 
     # ── 2) 필터 통과 종목 코드 수집 ──
-    _raw_filter = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_filtered", False)}
+    _raw_filter = {cd for cd, entry in SectorDataProvider.get_all_stocks().items() if entry.get("_filtered", False)}
     if not _raw_filter:
         _raw_filter = {v for t, v in state.integrated_system_settings_cache.get("sector_stock_layout", []) if t == "code" and v}
     filtered_codes: list[str] = list(dict.fromkeys(
@@ -293,39 +295,41 @@ async def subscribe_sector_stocks_0b() -> None:
         filtered_only = filtered_only[:allowed_filtered]
 
     # ── 4) 보유종목 별도 선행 REG ──
-    pos_targets = [cd for cd in pos_codes if not state.master_stocks_cache.get(cd, {}).get("_subscribed", False)]
+    pos_targets = [cd for cd in pos_codes if not SectorDataProvider.get_stock_field(cd, "_subscribed")]
     if pos_targets:
         for cd in pos_targets:
-            if cd in state.master_stocks_cache:
-                state.master_stocks_cache[cd]["_subscribed"] = True
+            if SectorDataProvider.has_stock(cd):
+                await SectorDataProvider.update_stock_field(cd, "_subscribed", True)
         
         ok = await ws.subscribe_stocks(pos_targets)
         if ok:
             logger.info("[구독][보유종목] 완료 -- %d종목 성공", len(pos_targets))
         else:
             for cd in pos_targets:
-                if cd in state.master_stocks_cache:
-                    state.master_stocks_cache[cd].pop("_subscribed", None)
+                if SectorDataProvider.has_stock(cd):
+                    entry = SectorDataProvider.get_stock(cd)
+                    entry.pop("_subscribed", None)
             logger.warning("[구독][보유종목] 실패 -- %d종목 롤백", len(pos_targets))
 
     # ── 5) 필터 통과 종목 누적 REG ──
-    filter_targets = [cd for cd in filtered_only if not state.master_stocks_cache.get(cd, {}).get("_subscribed", False)]
+    filter_targets = [cd for cd in filtered_only if not SectorDataProvider.get_stock_field(cd, "_subscribed")]
     if not filter_targets:
         if not pos_targets:
             logger.debug("[구독][시세] 신규 종목 없음 -- 생략")
         return
 
     for cd in filter_targets:
-        if cd in state.master_stocks_cache:
-            state.master_stocks_cache[cd]["_subscribed"] = True
+        if SectorDataProvider.has_stock(cd):
+            await SectorDataProvider.update_stock_field(cd, "_subscribed", True)
 
     ok = await ws.subscribe_stocks(filter_targets)
     if ok:
         logger.info("[구독][필터] 완료 -- %d종목 성공", len(filter_targets))
     else:
         for cd in filter_targets:
-            if cd in state.master_stocks_cache:
-                state.master_stocks_cache[cd].pop("_subscribed", None)
+            if SectorDataProvider.has_stock(cd):
+                entry = SectorDataProvider.get_stock(cd)
+                entry.pop("_subscribed", None)
         logger.warning("[구독][필터] 실패 -- %d종목 롤백", len(filter_targets))
 
 
@@ -408,22 +412,23 @@ async def subscribe_positions_stocks_realtime() -> None:
     logger.info("[시작] 보유 REG 대상 %d종목: %s", len(norm_list), norm_list)
 
     # 이미 구독 중인 종목 제외
-    new_0b = [cd for cd in norm_list if not state.master_stocks_cache.get(cd, {}).get("_subscribed", False)]
+    new_0b = [cd for cd in norm_list if not SectorDataProvider.get_stock_field(cd, "_subscribed")]
     if not new_0b:
         logger.debug("[구독][보유종목] 전체 이미 구독 중 -- 생략")
         return
 
     for cd in new_0b:
-        if cd in state.master_stocks_cache:
-            state.master_stocks_cache[cd]["_subscribed"] = True
+        if SectorDataProvider.has_stock(cd):
+            await SectorDataProvider.update_stock_field(cd, "_subscribed", True)
 
     ok = await ws.subscribe_stocks(new_0b)
     if ok:
         logger.info("[구독][보유종목] 완료 -- %d종목 성공", len(new_0b))
     else:
         for cd in new_0b:
-            if cd in state.master_stocks_cache:
-                state.master_stocks_cache[cd].pop("_subscribed", None)
+            if SectorDataProvider.has_stock(cd):
+                entry = SectorDataProvider.get_stock(cd)
+                entry.pop("_subscribed", None)
         logger.warning("[구독][보유종목] 실패 -- %d종목 롤백", len(new_0b))
 
 
@@ -450,25 +455,27 @@ async def restore_subscriptions_after_reconnect(broker_id: str) -> None:
         logger.warning("[재연결] %s 구독 복원 생략 — 미연결", broker_id.upper())
         return
 
-    subscribed = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed", False)}
+    subscribed = {cd for cd, entry in SectorDataProvider.get_all_stocks().items() if entry.get("_subscribed", False)}
     if subscribed:
         # 재연결 시 서버 측 구독이 초기화됐으므로 "_subscribed" 키를 제거하고 재등록
         for cd in subscribed:
-            if cd in state.master_stocks_cache:
-                state.master_stocks_cache[cd].pop("_subscribed", None)
+            if SectorDataProvider.has_stock(cd):
+                entry = SectorDataProvider.get_stock(cd)
+                entry.pop("_subscribed", None)
         
         targets_list = list(subscribed)
         for cd in targets_list:
-            if cd in state.master_stocks_cache:
-                state.master_stocks_cache[cd]["_subscribed"] = True
+            if SectorDataProvider.has_stock(cd):
+                await SectorDataProvider.update_stock_field(cd, "_subscribed", True)
         
         ok = await ws.subscribe_stocks(targets_list)
         if ok:
             logger.info("[재연결] %s 구독 복원 완료 — %d종목", broker_id.upper(), len(targets_list))
         else:
             for cd in targets_list:
-                if cd in state.master_stocks_cache:
-                    state.master_stocks_cache[cd].pop("_subscribed", None)
+                if SectorDataProvider.has_stock(cd):
+                    entry = SectorDataProvider.get_stock(cd)
+                    entry.pop("_subscribed", None)
             logger.warning("[재연결] %s 구독 복원 실패", broker_id.upper())
 
     # 데이터(0J) 복원

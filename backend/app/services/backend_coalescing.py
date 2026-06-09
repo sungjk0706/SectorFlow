@@ -121,7 +121,6 @@ class BackendCoalescing:
 
     async def start(self) -> None:
         """Coalescing 시작"""
-        logger.info("[BackendCoalescing] start() 호출됨 - is_running=%s", self.is_running)
         if self.is_running:
             logger.warning("[BackendCoalescing] 이미 실행 중, early return")
             return
@@ -129,7 +128,6 @@ class BackendCoalescing:
         self.is_running = True
         self.last_flush_time = time.time()
         self.flush_task = asyncio.create_task(self._flush_loop())
-        logger.info("[BackendCoalescing] 시작 - 로그 확인용")
 
     async def stop(self) -> None:
         """Coalescing 중지"""
@@ -179,13 +177,8 @@ class BackendCoalescing:
         # Protobuf 직렬화 (바이너리 스트림)
         serialized = self._serialize_events(events)
 
-        # P2-5: tick_queue에 Protobuf 바이너리 전송
-        try:
-            tick_queue = get_tick_queue()
-            tick_queue.put_nowait(serialized)
-            logger.debug(f"[BackendCoalescing] tick_queue 전송: {len(events)} events, {len(serialized)} bytes")
-        except Exception as e:
-            logger.error(f"[BackendCoalescing] tick_queue 전송 실패: {e}", exc_info=True)
+        # P2-5: tick_queue에 전송하던 로직 제거 (pipeline_compute 에러 방지)
+        # kiwoom_connector가 직접 raw 데이터를 tick_queue에 넣으므로 여기서는 프론트엔드로 전송만 담당합니다.
 
         # 모든 WebSocket에 전송
         if self.websocket_connections:

@@ -13,6 +13,7 @@ from datetime import datetime, timezone, timedelta
 
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
+from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine")
 
@@ -338,8 +339,9 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
 
     # 마스터 캐시에서 데이터 유효기간(date) 추출
     _cached_date_str = ""
-    if state.master_stocks_cache:
-        _first_stock = next(iter(state.master_stocks_cache.values()))
+    if SectorDataProvider.get_stock_count() > 0:
+        all_stocks = SectorDataProvider.get_all_stocks()
+        _first_stock = next(iter(all_stocks.values()))
         _cached_date_str = _first_stock.get("date", "")
 
     from backend.app.core.trading_calendar import is_cache_valid
@@ -763,7 +765,6 @@ async def _init_ws_subscribe_state() -> None:
 
         _trigger_reg_pipeline()
     else:
-        logger.info("[타이머] 구독 구간 외 시작")
         # 구독 상태 false + WS 브로드캐스트
         from backend.app.services.ws_subscribe_control import _set_status
         _set_status(quote=False)
@@ -809,7 +810,8 @@ def _trigger_unreg_all() -> None:
 async def _do_unreg_all() -> None:
     """구독 중인 종목 전체 REMOVE 전송 (비동기)."""
     try:
-        subscribed = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed", False)}
+        all_stocks = SectorDataProvider.get_all_stocks()
+        subscribed = {cd for cd, entry in all_stocks.items() if entry.get("_subscribed", False)}
         ws = state.connector_manager or state.kiwoom_connector
         if not ws or not ws.is_connected():
             return
@@ -834,8 +836,9 @@ async def _do_unreg_all() -> None:
 
         # 구독 상태 초기화
         for cd in subscribed:
-            if cd in state.master_stocks_cache:
-                state.master_stocks_cache[cd].pop("_subscribed", None)
+            if SectorDataProvider.has_stock(cd):
+                entry = SectorDataProvider.get_stock(cd)
+                entry.pop("_subscribed", None)
 
         logger.info("[타이머] REMOVE 완료 -- %d종목 구독 해지 (성공=%s)", len(all_codes), ok)
 
@@ -934,6 +937,15 @@ async def _on_midnight() -> None:
             state.krx_remove_done = False
             state.confirmed_done = False
             logger.info("[타이머] 자정 날짜 변경 -- 플래그 초기화 (%s)", state.last_reset_date)
+
+            # 연초(1월 1일)에 거래일 캐시 갱신
+            if now.month == 1 and now.day == 1:
+                try:
+                    from backend.app.core.trading_calendar import refresh_trading_days_cache
+                    await refresh_trading_days_cache()
+                    logger.info("[타이머] 연초 거래일 캐시 갱신 완료")
+                except Exception as e:
+                    logger.warning("[타이머] 연초 거래일 캐시 갱신 실패: %s", e)
 
             from backend.app.services import engine_service
 
@@ -1068,7 +1080,6 @@ async def start_daily_time_scheduler() -> None:
         await _init_ws_subscribe_state()
     except Exception as e:
         logger.warning("[타이머] 타이머 초기 예약 실패: %s", e)
-    logger.info("[타이머] 시작 (이벤트 기반 타이머)")
 
 
 async def stop_daily_time_scheduler() -> None:

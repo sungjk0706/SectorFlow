@@ -178,6 +178,18 @@ class _LsSocket:
             sign = str(body.get("sign", "3")).strip()
             change = int(body.get("change", 0) or 0)
             drate = float(body.get("drate", 0) or 0)
+            
+            # KRX 실시간 체결 틱에서 drate 누락 대비 보정 로직
+            if drate == 0.0 and change > 0 and price > 0:
+                if sign in ("4", "5"):
+                    prev_close = price + change
+                elif sign in ("1", "2"):
+                    prev_close = price - change
+                else:
+                    prev_close = price
+                
+                if prev_close > 0:
+                    drate = round((change / prev_close) * 100, 2)
             open_price = int(body.get("open", 0) or 0)
             high = int(body.get("high", 0) or 0)
             low = int(body.get("low", 0) or 0)
@@ -221,6 +233,44 @@ class _LsSocket:
                     }
                 }]
             }
+        elif tr_cd == "UH1":
+            # 호가잔량 데이터 (통합)
+            raw_shcode = body.get("shcode") or body.get("ex_shcode", "")
+            if not raw_shcode:
+                return None
+            from backend.app.services.engine_symbol_utils import _base_stk_cd
+            shcode = _base_stk_cd(raw_shcode)
+            unt_totofferrem = int(body.get("unt_totofferrem", 0) or 0)
+            unt_totbidrem = int(body.get("unt_totbidrem", 0) or 0)
+            return {
+                "trnm": "REAL",
+                "data": [{
+                    "type": "0D", # 주식호가잔량
+                    "code": shcode,
+                    "values": {
+                        "121": str(unt_totofferrem),  # 총 매도호가잔량
+                        "125": str(unt_totbidrem),    # 총 매수호가잔량
+                    }
+                }]
+            }
+        elif tr_cd == "UPH":
+            # 프로그램순매수 데이터 (금액 tval 기준)
+            raw_shcode = body.get("shcode") or body.get("ex_shcode", "")
+            if not raw_shcode:
+                return None
+            from backend.app.services.engine_symbol_utils import _base_stk_cd
+            shcode = _base_stk_cd(raw_shcode)
+            tval = int(body.get("tval", 0) or 0)
+            return {
+                "trnm": "REAL",
+                "data": [{
+                    "type": "PGM", # 프로그램매매 커스텀 타입
+                    "code": shcode,
+                    "values": {
+                        "tval": str(tval), # 전체순매수금액
+                    }
+                }]
+            }
         elif tr_cd == "IJ_":
             # 지수 데이터 (향후 확장용)
             # 현재는 업종 점수 계산에 US3만 사용하므로 로그만 남김
@@ -231,7 +281,7 @@ class _LsSocket:
             logger.debug("[LS서버소켓] 업종 데이터 수신 (현재 미사용): %s", tr_cd)
             return None
         else:
-            logger.debug("[LS서버소켓] 알 수 없는 TR 코드: %s", tr_cd)
+            # logger.debug("[LS서버소켓] 알 수 없는 TR 코드: %s", tr_cd)  # 로깅 억제
             return None
 
 
@@ -418,8 +468,8 @@ class LsConnector(BrokerConnector):
                 success_all = False
             else:
                 logger.debug("[LS증권연결] 구독 등록: %s", code)
-            # 웹소켓 부하 조절을 위해 아주 미세한 지연 추가
-            await asyncio.sleep(0.01)
+            # 웹소켓 부하 조절을 위해 지연 추가 (0.1초 간격)
+            await asyncio.sleep(0.1)
         return success_all
 
     async def unsubscribe_stocks(self, codes: list[str]) -> bool:
@@ -449,6 +499,75 @@ class LsConnector(BrokerConnector):
                 logger.debug("[LS증권연결] 구독 해지: %s", code)
             await asyncio.sleep(0.01)
         return success_all
+
+    async def subscribe_stocks_tr(self, codes: list[str], tr_cd: str) -> bool:
+        """지정된 TR 코드로 종목 리스트 실시간 구독 등록 (예: UH1, UPH)."""
+        if not self.is_connected() or not self._socket:
+            logger.warning(f"[LS증권연결] {tr_cd} 구독 실패 — 연결 없음")
+            return False
+
+        success_all = True
+        for code in codes:
+            formatted_code = self._format_code(code)
+            payload = {
+                "header": {
+                    "token": self._token,
+                    "tr_type": "3"  # 3: 실시간 시세 등록
+                },
+                "body": {
+                    "tr_cd": tr_cd,
+                    "tr_key": formatted_code
+                }
+            }
+            success = await self._socket.send(payload)
+            if not success:
+                success_all = False
+            else:
+                logger.info(f"[LS증권연결] {tr_cd} 구독 등록: {code}")
+            await asyncio.sleep(0.01)
+        return success_all
+
+    async def unsubscribe_stocks_tr(self, codes: list[str], tr_cd: str) -> bool:
+        """지정된 TR 코드로 종목 리스트 실시간 구독 해지."""
+        if not self.is_connected() or not self._socket:
+            return False
+
+        success_all = True
+        for code in codes:
+            formatted_code = self._format_code(code)
+            payload = {
+                "header": {
+                    "token": self._token,
+                    "tr_type": "4"  # 4: 실시간 시세 해제
+                },
+                "body": {
+                    "tr_cd": tr_cd,
+                    "tr_key": formatted_code
+                }
+            }
+            success = await self._socket.send(payload)
+            if not success:
+                success_all = False
+            else:
+                logger.debug(f"[LS증권연결] {tr_cd} 구독 해지: {code}")
+            await asyncio.sleep(0.01)
+        return success_all
+
+    async def subscribe_dynamic(self, codes: list[str]) -> None:
+        """동적 데이터(호가, 프로그램 매매) 구독 등록"""
+        logger.info("[LS증권연결] subscribe_dynamic 호출 - codes: %s", codes)
+        if not codes:
+            logger.warning("[LS증권연결] subscribe_dynamic - codes 비어있음")
+            return
+        await self.subscribe_stocks_tr(codes, "UH1")
+        await self.subscribe_stocks_tr(codes, "UPH")
+
+    async def unsubscribe_dynamic(self, codes: list[str]) -> None:
+        """동적 데이터 구독 해지"""
+        if not codes:
+            return
+        await self.unsubscribe_stocks_tr(codes, "UH1")
+        await self.unsubscribe_stocks_tr(codes, "UPH")
 
     async def _on_ws_message(self, payload: dict) -> None:
         """_LsSocket 콜백 → 핸들러 직접 호출."""
@@ -564,13 +683,10 @@ class LsConnector(BrokerConnector):
 
     def _format_code(self, code: str) -> str:
         """종목코드 포맷팅 — LS 형식 (U + 6자리 + 공백 3자리)."""
-        code = code.strip().upper().lstrip("A")
-        for suffix in ("_AL", "_NX"):
-            if code.endswith(suffix):
-                code = code[:-len(suffix)]
-                break
-        if len(code) == 6 and code.isdigit():
-            return f"U{code}   "
+        from backend.app.services.engine_symbol_utils import _base_stk_cd
+        base = _base_stk_cd(code)
+        if len(base) == 6 and base.isdigit():
+            return f"U{base}   "
         return code
 
     async def _get_token_async(self) -> str | None:
