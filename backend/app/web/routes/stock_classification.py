@@ -315,7 +315,7 @@ async def trigger_5d_download(_: str = Depends(get_current_user)):
     """수동 5일봉 거래대금,고가 다운로드 실행"""
     try:
         from backend.app.services import engine_service
-        if getattr(engine_service, "_confirmed_refresh_running", False):
+        if getattr(engine_service, "_confirmed_refresh_running_5d", False):
             return {"ok": False, "error": "5일봉 다운로드가 이미 진행 중입니다."}
 
         from backend.app.services.market_close_pipeline import fetch_5d_data_only

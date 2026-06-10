@@ -237,20 +237,20 @@ async def execute_unified_rolling_and_save(
                 change = int(detail.get("change") or 0)
                 change_rate = float(detail.get("change_rate") or 0.0)
 
-                # 5일 롤링 계산
+                # 5일 롤링 계산 (NULL 허용)
                 if nk in existing_map:
                     row = existing_map[nk]
                     new_amts = [today_amt, row["day1_amount"], row["day2_amount"], row["day3_amount"], row["day4_amount"]]
                     new_highs = [today_high, row["day1_high"], row["day2_high"], row["day3_high"], row["day4_high"]]
                 else:
-                    new_amts = [today_amt, 0, 0, 0, 0]
-                    new_highs = [today_high, 0, 0, 0, 0]
+                    new_amts = [today_amt, None, None, None, None]
+                    new_highs = [today_high, None, None, None, None]
 
-                # 메트릭 계산
-                valid_amts = [a for a in new_amts if a > 0]
+                # 메트릭 계산 (NULL 제외)
+                valid_amts = [a for a in new_amts if a is not None and a > 0]
                 avg_5d = sum(valid_amts) // len(valid_amts) if valid_amts else 0
 
-                valid_highs = [h for h in new_highs if h > 0]
+                valid_highs = [h for h in new_highs if h is not None and h > 0]
                 high_5d = max(valid_highs) if valid_highs else 0
 
                 # DB 벌크 파라미터 추가
@@ -1732,17 +1732,18 @@ async def fetch_confirmed_data_only() -> dict:
         es._confirmed_refresh_message = ""
 
 
+
+
 async def fetch_5d_data_only() -> dict:
     """수동 5일봉 거래대금,고가 다운로드 파이프라인.
     
     DB의 master_stocks_table에 등록된 매매적격종목을 대상으로
     개별 종목의 5일 고가 및 거래대금 데이터를 다운로드하여 DB 및 메모리에 저장합니다.
+    execute_unified_rolling_and_save()를 사용하여 순서 보장.
     """
     from backend.app.services import engine_service as es
     from backend.app.core.broker_factory import get_router
     from backend.app.core.trading_calendar import get_kst_today_str, get_current_trading_day_str
-
-    # 단일 소스 진리: _integrated_system_settings_cache 직접 사용
 
     # 중복 실행 방지
     if getattr(es, "_confirmed_refresh_running_5d", False):
@@ -1779,12 +1780,7 @@ async def fetch_5d_data_only() -> dict:
             es._confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
 
-        # ── Step 5: 개별 5일봉 데이터 다운로드 ───────
-        _log.info("[수동 5일봉] Step 5 시작 — 개별 5일봉 다운로드 (%d종목)", total)
-        _broadcast_confirmed_progress(0, total, message=f"5단계: 개별 5일봉 데이터 다운로드 중 (0/{total:,}, 0%)", step=5)
-
-        # stock_5d_array 전체 삭제 (수동 다운로드는 무조건 재다운로드)
-        # master_stocks_table과 데이터 정합성 보장을 위해 전체 삭제 후 재구성
+        # ── stock_5d_array 전체 삭제 (수동 다운로드는 무조건 재다운로드) ─────────
         try:
             from backend.app.db.database import get_db_lock
             async with get_db_lock():
@@ -1794,78 +1790,14 @@ async def fetch_5d_data_only() -> dict:
         except Exception as e:
             _log.warning("[수동 5일봉] 전체 데이터 삭제 실패: %s", e)
 
-        downloaded_codes = set()  # 빈 세트로 초기화 (이어받기 비활성화)
-        # 전체 삭제로 변경했으므로 이어받기 로직 제거
+        # ── 개별 5일봉 데이터 다운로드 ───────────────────────────────────────
+        _log.info("[수동 5일봉] 개별 5일봉 다운로드 시작 (%d종목)", total)
+        _broadcast_confirmed_progress(0, total, message=f"5일봉 다운로드 중 (0/{total:,}, 0%)", step=5)
 
         fetched = 0
         failed = 0
-        skipped = 0
-        
-        # 20종목마다 저장을 위한 임시 버퍼
-        pending_5d_save: dict[str, tuple[list[int], list[int]]] = {}
-        
-        def _compute_avg_from_5d_array(amts: list[int]) -> int:
-            """불완전 배열의 평균 계산 (0 값 제외)"""
-            valid_amts = [a for a in amts if a > 0]
-            if not valid_amts:
-                return 0
-            return sum(valid_amts) // len(valid_amts)
-        
-        async def _save_5d_array_batch(buffer: dict[str, tuple[list[int], list[int]]]) -> None:
-            """5일봉 데이터 배치 저장 (20종목마다 호출)"""
-            if not buffer:
-                return
-            
-            try:
-                from backend.app.db.database import get_db_lock
-                date_str = get_current_trading_day_str()
-                
-                async with get_db_lock():
-                    for cd, (amts_5d, highs_5d) in buffer.items():
-                        # 빈 배열(0개)은 저장하지 않음
-                        if not amts_5d or not highs_5d:
-                            _log.warning("[수동 5일봉] 빈 데이터 — 저장 건너뜀: %s", cd)
-                            continue
-                        
-                        # 있는 배열만큼만 채움 (신규 종목 지원)
-                        day1_amt = amts_5d[0] if len(amts_5d) > 0 else 0
-                        day2_amt = amts_5d[1] if len(amts_5d) > 1 else 0
-                        day3_amt = amts_5d[2] if len(amts_5d) > 2 else 0
-                        day4_amt = amts_5d[3] if len(amts_5d) > 3 else 0
-                        day5_amt = amts_5d[4] if len(amts_5d) > 4 else 0
-                        
-                        day1_high = highs_5d[0] if len(highs_5d) > 0 else 0
-                        day2_high = highs_5d[1] if len(highs_5d) > 1 else 0
-                        day3_high = highs_5d[2] if len(highs_5d) > 2 else 0
-                        day4_high = highs_5d[3] if len(highs_5d) > 3 else 0
-                        day5_high = highs_5d[4] if len(highs_5d) > 4 else 0
-                        
-                        # stock_5d_array에 원본 데이터 저장
-                        await conn.execute("""
-                            INSERT OR REPLACE INTO stock_5d_array
-                            (code, date, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount,
-                             day1_high, day2_high, day3_high, day4_high, day5_high)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            cd, date_str,
-                            day1_amt, day2_amt, day3_amt, day4_amt, day5_amt,
-                            day1_high, day2_high, day3_high, day4_high, day5_high
-                        ))
-                        
-                        # master_stocks_table에 계산값 업데이트
-                        avg5d = _compute_avg_from_5d_array(amts_5d)
-                        high5d = max(highs_5d) if highs_5d else 0
-                        
-                        await conn.execute("""
-                            UPDATE master_stocks_table
-                            SET avg_5d_trade_amount = ?, high_5d_price = ?
-                            WHERE code = ?
-                        """, (avg5d, high5d, cd))
-                    
-                    await conn.commit()
-                _log.info("[수동 5일봉] 배치 저장 완료 — %d종목 (stock_5d_array + master_stocks_table)", len(buffer))
-            except Exception as e:
-                _log.warning("[수동 5일봉] 배치 저장 실패: %s", e, exc_info=True)
+        confirmed_5d = {}
+        qry_dt = get_kst_today_str()
 
         for idx, base_cd in enumerate(all_codes):
             # 중단 요청 확인
@@ -1879,107 +1811,80 @@ async def fetch_5d_data_only() -> dict:
                 continue
 
             try:
-                # 5일치 고가(high)와 거래대금(value) 다운로드
-                qry_dt = get_kst_today_str()
                 res = await _sector.fetch_stock_5day_data(base_cd, qry_dt)
-                amounts_5d = res.get("amts_5d_array") or [] if res else []
-                highs_5d = res.get("highs_5d_array") or [] if res else []
-
-                if amounts_5d and highs_5d and len(amounts_5d) > 0 and len(highs_5d) > 0:
-                    # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed"에 추가
-                    import backend.app.services.engine_state as _st
-                    if nk in _st._master_stocks_cache:
-                        _st._master_stocks_cache[nk]["_subscribed"] = True
-
-                    # 메모리 캐시 제거: stock_5d_array 테이블에 직접 저장
-                    avg5d = _compute_avg_from_5d_array(amounts_5d)
-                    high5d = max(highs_5d)
-
-                    import backend.app.services.engine_state as _st
-                    if nk in _st._master_stocks_cache:
-                        _st._master_stocks_cache[nk]["status"] = "active"
-                        if avg5d > 0:
-                            _st._master_stocks_cache[nk]["avg_5d_trade_amount"] = avg5d
-                        if high5d > 0:
-                            _st._master_stocks_cache[nk]["high_5d_price"] = high5d
-
-                    # 배치 저장 버퍼에 추가
-                    pending_5d_save[nk] = (amounts_5d, highs_5d)
-
-                    fetched += 1
-                    _log.info("[ka10081] 적격종목 5일봉 다운로드 완료 [%d/%d] %s", idx + 1, total, base_cd)
+                if res:
+                    amounts_5d = res.get("amts_5d_array") or []
+                    highs_5d = res.get("highs_5d_array") or []
+                    
+                    if amounts_5d and highs_5d:
+                        confirmed_5d[nk] = {
+                            "amts_5d_array": amounts_5d,
+                            "highs_5d_array": highs_5d,
+                        }
+                        fetched += 1
+                        _log.info("[ka10081] 5일봉 다운로드 완료 [%d/%d] %s", idx + 1, total, base_cd)
+                    else:
+                        failed += 1
+                        _log.warning("[ka10081] 5일봉 데이터 비어있음 [%d/%d] %s", idx + 1, total, base_cd)
                 else:
                     failed += 1
-                    _log.warning("[ka10081] 적격종목 5일봉 데이터 비어있음 [%d/%d] %s", idx + 1, total, base_cd)
+                    _log.warning("[ka10081] 5일봉 API 응답 없음 [%d/%d] %s", idx + 1, total, base_cd)
 
             except Exception as e:
                 failed += 1
-                _log.warning("[ka10081] 적격종목 5일봉 예외 발생 [%d/%d] %s: %s", idx + 1, total, base_cd, e)
+                _log.warning("[ka10081] 5일봉 예외 발생 [%d/%d] %s: %s", idx + 1, total, base_cd, e)
 
-            # 진행률 브로드캐스트 (10종목 단위 스로틀링)
+            # 진행률 브로드캐스트 (10종목 단위)
             if (idx + 1) % 10 == 0 or (idx + 1) == total:
-                pct = int((idx + 1) / total * 100)
-                remaining = total - (idx + 1)
-                eta = remaining * 0.33
+                pct = int((idx + 1) / total * 100) if total else 0
                 _broadcast_confirmed_progress(
                     idx + 1, total,
-                    message=f"5단계: 개별 5일봉 데이터 다운로드 중 ({idx + 1:,}/{total:,}, {pct}%)",
-                    eta_sec=eta,
+                    message=f"5일봉 다운로드 중 ({idx + 1:,}/{total:,}, {pct}%)",
                     step=5
                 )
-
-            # 20종목마다 배치 저장
-            if len(pending_5d_save) >= 20:
-                await _save_5d_array_batch(pending_5d_save)
-                pending_5d_save.clear()
 
             # Rate limiting
             await asyncio.sleep(0.33)
 
-        # 루프 종료 후 남은 버퍼 저장 (중단 시에도 보장)
-        if pending_5d_save:
-            await _save_5d_array_batch(pending_5d_save)
-            pending_5d_save.clear()
+        # ── execute_unified_rolling_and_save()로 단일 트랜잭션 저장 ─────────────
+        if confirmed_5d:
+            _log.info("[수동 5일봉] execute_unified_rolling_and_save() 호출 — %d종목", len(confirmed_5d))
+            
+            # confirmed_5d를 execute_unified_rolling_and_save 포맷으로 변환
+            normalized_confirmed = {}
+            for cd, data in confirmed_5d.items():
+                amts_5d = data.get("amts_5d_array") or []
+                highs_5d = data.get("highs_5d_array") or []
+                
+                # 당일 데이터 (day1)
+                today_amt = amts_5d[0] if len(amts_5d) > 0 and amts_5d[0] is not None else 0
+                today_high = highs_5d[0] if len(highs_5d) > 0 and highs_5d[0] is not None else 0
+                
+                normalized_confirmed[cd] = {
+                    "trade_amount": today_amt,
+                    "high_price": today_high,
+                    "cur_price": 0,  # 5일봉만 다운로드라 확정시세 없음
+                    "change": 0,
+                    "change_rate": 0.0,
+                }
+            
+            await execute_unified_rolling_and_save(es, normalized_confirmed)
+            _log.info("[수동 5일봉] 단일 트랜잭션 저장 완료")
 
         success_rate = (fetched / total * 100) if total else 0
-        _log.info("[수동 5일봉] Step 5 완료 — 성공 %d종목, 실패 %d종목, 건너뜀 %d종목 (%.1f%% 성공)", fetched, failed, skipped, success_rate)
-
-        # 디스크 캐시 저장 (name_map=None 명시)
-        cached = await _save_confirmed_cache(es, name_map=None)
+        _log.info("[수동 5일봉] 완료 — 성공 %d종목, 실패 %d종목 (%.1f%% 성공)", fetched, failed, success_rate)
 
         _broadcast_confirmed_progress(total, total, message=f"✅ 5일봉 다운로드 완료 ({fetched:,}/{total:,})", step=5)
 
-        # 후처리 및 업종순위 재계산
+        # 후처리
         await _run_post_confirmed_pipeline(es)
 
-        # custom_sectors 기반 master_stocks_table.sector 동기화
-        try:
-            from backend.app.core.stock_classification_data import sync_sector_from_custom_sectors
-            await sync_sector_from_custom_sectors()
-        except Exception as _sync_err:
-            _log.warning("[수동 5일봉] custom_sectors 기반 동기화 실패: %s", _sync_err, exc_info=True)
-
-        try:
-            from backend.app.services.engine_service import recompute_sector_summary_now
-            from backend.app.services.engine_account_notify import (
-                notify_desktop_sector_scores,
-                notify_desktop_sector_stocks_refresh,
-            )
-            await recompute_sector_summary_now()
-            notify_desktop_sector_scores(force=True)
-            await notify_desktop_sector_stocks_refresh()
-            _log.info("[수동 5일봉] 업종순위 재계산 + 실시간 화면전송 완료")
-        except Exception as _ws_err:
-            _log.warning("[수동 5일봉] 업종순위 재계산 실패: %s", _ws_err, exc_info=True)
-
-        return {"fetched": fetched, "failed": failed, "cached": cached}
+        return {"fetched": fetched, "failed": failed, "cached": False}
     finally:
         if _kiwoom_token_registered:
             _es_state._broker_tokens.pop("kiwoom", None)
         es._confirmed_refresh_running_5d = False
         es._confirmed_refresh_message = ""
-
-
 
 
 async def _restore_5d_arrays_from_db(es: ModuleType):

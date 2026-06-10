@@ -187,15 +187,17 @@ async def fetch_ka10081_daily_5d_data(
             if str(rows[0][date_key]) < str(rows[-1][date_key]):
                 rows = list(reversed(rows))
 
-        # 최근 5개 추출
+        # 최근 5개 추출 (신규 상장 종목 지원: 부족한 날짜는 None으로 채움)
         recent_5 = rows[:5]
         if len(recent_5) < 5:
-            _log.warning("[ka10081-5d] 데이터 부족 -- %d개 (필요 5개) -- %s", len(recent_5), log_cd)
-            return None
+            _log.info("[ka10081-5d] 데이터 부족 -- %d개 (필요 5개) -- %s (신규상장으로 간주, 부족한 날짜는 NULL)", len(recent_5), log_cd)
+            # 부족한 만큼 None으로 채움 (데이터 없음 구분)
+            while len(recent_5) < 5:
+                recent_5.append(None)
 
-        # 5일 고가/거래대금 추출
-        highs_5d = [_si(r.get("high_pric") or 0) for r in recent_5]
-        amts_5d = [_si(r.get("trde_prica") or 0) for r in recent_5]  # 백만원 단위
+        # 5일 고가/거래대금 추출 (데이터 없으면 None)
+        highs_5d = [_si(r.get("high_pric")) if r is not None else None for r in recent_5]
+        amts_5d = [_si(r.get("trde_prica")) if r is not None else None for r in recent_5]  # 백만원 단위
 
         high_price_5d = max(highs_5d) if highs_5d else 0
 
@@ -258,57 +260,33 @@ async def fetch_ka10081_all_stocks_daily_confirmed(
     if on_progress:
         on_progress(len(result), total)
 
-    pending = set()
-    done_count = len(result)
     downloaded_at_codes: list[str] = []
-
-    async def _handle_done_tasks(done_tasks):
-        nonlocal done_count
-        for t in done_tasks:
-            cd_val = getattr(t, "cd", "")
-            try:
-                detail = t.result()
-            except Exception as e:
-                _log.warning("[ka10081-confirmed] fetch 예외 %s: %s", cd_val, e)
-                detail = None
-
-            if detail:
-                result[cd_val] = detail
-                downloaded_at_codes.append(cd_val)
-            else:
-                failed_codes.append(cd_val)
-
-            done_count += 1
-            cur_done = done_count
-
-            # 화면 로그는 1종목 단위 실시간 출력 (직관성 확보)
-            _pct = int(cur_done / total * 100) if total else 0
-            _log.info("[ka10081] 적격종목 확정시세 다운로드중: %d/%d (%d%%)", cur_done, total, _pct)
-            if on_progress:
-                on_progress(cur_done, total)
-
     remaining_codes = krx_codes
 
-    for cd in remaining_codes:
+    for idx, cd in enumerate(remaining_codes):
         # 중단 요청 확인
         if not getattr(es, "_confirmed_refresh_running_confirmed", True):
             _log.info("[ka10081-confirmed] 중단 요청 수신 — 다운로드 중단")
             break
 
-        task = asyncio.create_task(fetch_ka10081_daily_price(api, cd, qry_dt, _raw_cd=cd))
-        task.cd = cd
-        pending.add(task)
+        try:
+            detail = await fetch_ka10081_daily_price(api, cd, qry_dt, _raw_cd=cd)
+            if detail:
+                result[cd] = detail
+                downloaded_at_codes.append(cd)
+            else:
+                failed_codes.append(cd)
+        except Exception as e:
+            _log.warning("[ka10081-confirmed] fetch 예외 %s: %s", cd, e)
+            failed_codes.append(cd)
+
+        cur_done = len(result)
+        _pct = int(cur_done / total * 100) if total else 0
+        _log.info("[ka10081] 적격종목 확정시세 다운로드중: %d/%d (%d%%)", cur_done, total, _pct)
+        if on_progress:
+            on_progress(cur_done, total)
 
         await asyncio.sleep(interval_sec)
-
-        done, pending = await asyncio.wait(pending, timeout=0)
-        if done:
-            await _handle_done_tasks(done)
-
-    while pending:
-        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-        if done:
-            await _handle_done_tasks(done)
 
     if on_progress:
         on_progress(total, total)
@@ -378,57 +356,33 @@ async def fetch_ka10081_all_stocks_5day(
     if on_progress:
         on_progress(len(result), total)
 
-    pending = set()
-    done_count = len(result)
     downloaded_at_codes: list[str] = []
-
-    async def _handle_done_tasks(done_tasks):
-        nonlocal done_count
-        for t in done_tasks:
-            cd_val = getattr(t, "cd", "")
-            try:
-                detail = t.result()
-            except Exception as e:
-                _log.warning("[ka10081-5d] fetch 예외 %s: %s", cd_val, e)
-                detail = None
-
-            if detail:
-                result[cd_val] = detail
-                downloaded_at_codes.append(cd_val)
-            else:
-                failed_codes.append(cd_val)
-
-            done_count += 1
-            cur_done = done_count
-
-            # 화면 로그는 1종목 단위 실시간 출력 (직관성 확보)
-            _pct = int(cur_done / total * 100) if total else 0
-            _log.info("[ka10081] 적격종목 5일봉 거래대금,고가 다운로드중: %d/%d (%d%%)", cur_done, total, _pct)
-            if on_progress:
-                on_progress(cur_done, total)
-
     remaining_codes = krx_codes
 
-    for cd in remaining_codes:
+    for idx, cd in enumerate(remaining_codes):
         # 중단 요청 확인
         if not getattr(es, "_confirmed_refresh_running_5d", True):
             _log.info("[ka10081] 적격종목 5일봉 다운로드 중단 요청 수신")
             break
 
-        task = asyncio.create_task(fetch_ka10081_daily_5d_data(api, cd, qry_dt, _raw_cd=cd))
-        task.cd = cd
-        pending.add(task)
+        try:
+            detail = await fetch_ka10081_daily_5d_data(api, cd, qry_dt, _raw_cd=cd)
+            if detail:
+                result[cd] = detail
+                downloaded_at_codes.append(cd)
+            else:
+                failed_codes.append(cd)
+        except Exception as e:
+            _log.warning("[ka10081-5d] fetch 예외 %s: %s", cd, e)
+            failed_codes.append(cd)
+
+        cur_done = len(result)
+        _pct = int(cur_done / total * 100) if total else 0
+        _log.info("[ka10081] 적격종목 5일봉 거래대금,고가 다운로드중: %d/%d (%d%%)", cur_done, total, _pct)
+        if on_progress:
+            on_progress(cur_done, total)
 
         await asyncio.sleep(interval_sec)
-
-        done, pending = await asyncio.wait(pending, timeout=0)
-        if done:
-            await _handle_done_tasks(done)
-
-    while pending:
-        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-        if done:
-            await _handle_done_tasks(done)
 
     if on_progress:
         on_progress(total, total)
@@ -472,6 +426,8 @@ async def fetch_ka10099_unified(
         cont_yn = "N"
         next_key = ""
         market_count = 0
+        retry_count = 0
+        max_retries = 3
 
         while True:
             body = {"mrkt_tp": mrkt_tp}
@@ -486,8 +442,14 @@ async def fetch_ka10099_unified(
             )
 
             if not resp:
-                _log.warning("[전종목목록] %s -- 호출 실패, 연속조회 중단", label)
-                break
+                retry_count += 1
+                if retry_count < max_retries:
+                    _log.warning("[전종목목록] %s 예외 (시도=%d): 재시도 예정", label, retry_count)
+                    await asyncio.sleep(2)
+                    continue
+                else:
+                    _log.warning("[전종목목록] %s -- 호출 실패 (최대 재시도 초과), 연속조회 중단", label)
+                    break
 
             try:
                 data = resp.json()
