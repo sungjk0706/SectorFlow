@@ -9,7 +9,7 @@ from typing import Literal
 from backend.app.core.logger import get_logger
 from backend.app.domain.sector_filter import filter_by_avg_amt, group_by_sector
 from backend.app.domain.sector_score import calculate_weighted_scores
-from backend.app.services.sector_data_provider import SectorDataProvider
+from backend.app.services.engine_state import state
 
 logger = get_logger("engine")
 
@@ -59,12 +59,12 @@ async def compute_sector_scores(
 
         for code in codes:
             # master_stocks_cache에 등록된 종목만 대상
-            if not SectorDataProvider.has_stock(code):
+            if code not in state.master_stocks_cache:
                 continue
 
             # 현재가 조회
             cur_price = int(trade_prices.get(code, 0) or 0)
-            detail = SectorDataProvider.get_stock(code)
+            detail = state.master_stocks_cache.get(code, {})
 
             if cur_price <= 0:
                 cur_price = int(detail.get("cur_price", 0) or 0)

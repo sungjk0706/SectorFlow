@@ -355,105 +355,166 @@ function createFixedMode<T extends object>(
         columnWidthsCalculated = true
       }
 
-      for (let i = 0; i < Math.max(rows.length, rowCaches.length); i++) {
-        if (i >= rows.length) {
-          rowCaches[i].style.display = 'none'
-          continue
+      // keyFn 기반 증분 갱신
+      if (options.keyFn) {
+        const keyFn = options.keyFn
+        const newKeyMap = new Map<string, { row: TableRow<T>, index: number }>()
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i]
+          if (isGroupRow(row)) continue
+          const key = keyFn(row as T, i)
+          newKeyMap.set(key, { row, index: i })
         }
 
-        const row = rows[i]
-        const currentIsGroup = isGroupRow(row)
-
-        if (!rowCaches[i]) {
-          const newRow = currentIsGroup ? renderGroupRow(row as GroupRow) : renderDataRow(row as T, i)
-          rowCaches.push(newRow)
-          tbody.appendChild(newRow)
-          continue
+        const oldKeyMap = new Map<string, HTMLElement>()
+        for (let i = 0; i < rowCaches.length; i++) {
+          const rowEl = rowCaches[i]
+          const key = rowEl.dataset.rowKey
+          if (key) oldKeyMap.set(key, rowEl)
         }
 
-        const rowEl = rowCaches[i]
-        rowEl.style.display = ''
-
-        if (currentIsGroup !== wasGroupRow(rowEl)) {
-          const newRow = currentIsGroup ? renderGroupRow(row as GroupRow) : renderDataRow(row as T, i)
-          tbody.replaceChild(newRow, rowEl)
-          rowCaches[i] = newRow
-          continue
+        // 새로운 키 추가
+        for (const [key, { row, index }] of newKeyMap) {
+          if (!oldKeyMap.has(key)) {
+            const newRow = renderDataRow(row as T, index)
+            newRow.dataset.rowKey = key
+            rowCaches.push(newRow)
+            tbody.appendChild(newRow)
+          }
         }
 
-        if (currentIsGroup) {
-          if (row.style) Object.assign(rowEl.style, row.style)
-          const td = rowEl.firstElementChild as HTMLElement
-          if (td) {
-            const newLabel = `📊 ${row.label}`
-            const textNode = td.firstChild
-            if (textNode && textNode.nodeType === Node.TEXT_NODE) {
-              if (textNode.textContent !== newLabel) textNode.textContent = newLabel
+        // 제거된 키 삭제
+        for (const [key, rowEl] of oldKeyMap) {
+          if (!newKeyMap.has(key)) {
+            rowEl.remove()
+            const idx = rowCaches.indexOf(rowEl)
+            if (idx >= 0) rowCaches.splice(idx, 1)
+          }
+        }
+
+        // 기존 행 갱신
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i]
+          if (isGroupRow(row)) continue
+          const key = keyFn(row as T, i)
+          const rowEl = oldKeyMap.get(key)
+          if (rowEl) {
+            rowEl.style.display = ''
+            const dataRow = row as T
+            const rs = rowStyle ? rowStyle(dataRow, i) : undefined
+            if (rs) {
+              Object.assign(rowEl.style, rs)
             } else {
-              td.textContent = newLabel
+              rowEl.style.removeProperty('background-color')
             }
-            if (row.score != null) {
-              let span = td.querySelector('span')
-              const scoreText = `(종합점수 : ${row.score.toFixed(1)})`
-              if (span) {
-                if (span.textContent !== scoreText) span.textContent = scoreText
-                if (span.style.color !== scoreColor(row.score)) span.style.color = scoreColor(row.score)
-              } else {
-                span = document.createElement('span')
-                Object.assign(span.style, { marginLeft: '10px', fontSize: '0.75em', fontWeight: FONT_WEIGHT.normal, color: scoreColor(row.score) })
-                span.textContent = scoreText
-                td.appendChild(span)
-              }
-            } else {
-              const span = td.querySelector('span')
-              if (span) span.remove()
+            if (zebraStriping) {
+               rowEl.style.backgroundColor = (i % 2 === 1) ? '#f9f9f9' : 'transparent'
+            }
+
+            // 셀 내용 갱신
+            const tds = rowEl.children
+            for (let cIdx = 0; cIdx < columns.length; cIdx++) {
+              const cell = tds[cIdx] as HTMLElement
+              if (!cell) continue
+              try {
+                const content = columns[cIdx].render(dataRow, i)
+                const itemKeyStore = '_itemKey' as keyof HTMLElement
+                const key = String(i)
+                const prevItemKey = (cell as any)[itemKeyStore]
+                const isSameItem = prevItemKey === key
+                ;(cell as any)[itemKeyStore] = key
+
+                if (typeof content === 'string') {
+                  const prevKey = '_prevContent' as keyof HTMLElement
+                  const prevContent = (cell as any)[prevKey] as string | undefined
+                  if (cell.textContent !== content) {
+                    cell.textContent = content
+                    const shouldFlash = typeof columns[cIdx].flash === 'function' ? (columns[cIdx].flash as any)() : columns[cIdx].flash
+                    if (shouldFlash && isSameItem && prevContent !== undefined && prevContent !== content) triggerFlash(cell)
+                  }
+                  ;(cell as any)[prevKey] = content
+                } else if (content instanceof HTMLElement) {
+                  const existing = cell.firstElementChild as HTMLElement | null
+                  if (!existing || !existing.isEqualNode(content)) {
+                    while (cell.firstChild) cell.removeChild(cell.firstChild)
+                    cell.appendChild(content)
+                    const shouldFlash = typeof columns[cIdx].flash === 'function' ? (columns[cIdx].flash as any)() : columns[cIdx].flash
+                    if (shouldFlash && isSameItem && existing) triggerFlash(cell)
+                  }
+                }
+              } catch (_) {}
             }
           }
-          continue
         }
+      } else {
+        // 기존 인덱스 기반 갱신
+        for (let i = 0; i < Math.max(rows.length, rowCaches.length); i++) {
+          if (i >= rows.length) {
+            rowCaches[i].style.display = 'none'
+            continue
+          }
 
-        const dataRow = row as T
-        const rs = rowStyle ? rowStyle(dataRow, i) : undefined
-        if (rs) {
-          Object.assign(rowEl.style, rs)
-        } else {
-          rowEl.style.removeProperty('background-color')
-        }
-        if (zebraStriping) {
-           rowEl.style.backgroundColor = (i % 2 === 1) ? '#f9f9f9' : 'transparent'
-        }
-        
-        const tds = rowEl.children
-        for (let cIdx = 0; cIdx < columns.length; cIdx++) {
-          const cell = tds[cIdx] as HTMLElement
-          if (!cell) continue
-          try {
-            const content = columns[cIdx].render(dataRow, i)
-            const itemKeyStore = '_itemKey' as keyof HTMLElement
-            const key = String(i)
-            const prevItemKey = (cell as any)[itemKeyStore]
-            const isSameItem = prevItemKey === key
-            ;(cell as any)[itemKeyStore] = key
+          const row = rows[i]
+          const currentIsGroup = isGroupRow(row)
 
-            if (typeof content === 'string') {
-              const prevKey = '_prevContent' as keyof HTMLElement
-              const prevContent = (cell as any)[prevKey] as string | undefined
-              if (cell.textContent !== content) {
-                cell.textContent = content
-                const shouldFlash = typeof columns[cIdx].flash === 'function' ? (columns[cIdx].flash as any)() : columns[cIdx].flash
-                if (shouldFlash && isSameItem && prevContent !== undefined && prevContent !== content) triggerFlash(cell)
+          if (!rowCaches[i]) {
+            const newRow = currentIsGroup ? renderGroupRow(row as GroupRow) : renderDataRow(row as T, i)
+            rowCaches.push(newRow)
+            tbody.appendChild(newRow)
+            continue
+          }
+
+          const rowEl = rowCaches[i]
+          rowEl.style.display = ''
+
+          if (currentIsGroup !== wasGroupRow(rowEl)) {
+            const newRow = currentIsGroup ? renderGroupRow(row as GroupRow) : renderDataRow(row as T, i)
+            tbody.replaceChild(newRow, rowEl)
+            rowCaches[i] = newRow
+            continue
+          }
+
+          if (currentIsGroup) {
+            if (row.style) Object.assign(rowEl.style, row.style)
+            const td = rowEl.firstElementChild as HTMLElement
+            if (td) {
+              const newLabel = `📊 ${row.label}`
+              const textNode = td.firstChild
+              if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+                if (textNode.textContent !== newLabel) textNode.textContent = newLabel
+              } else {
+                td.textContent = newLabel
               }
-              ;(cell as any)[prevKey] = content
-            } else if (content instanceof HTMLElement) {
-              const existing = cell.firstElementChild as HTMLElement | null
-              if (!existing || !existing.isEqualNode(content)) {
-                while (cell.firstChild) cell.removeChild(cell.firstChild)
-                cell.appendChild(content)
-                const shouldFlash = typeof columns[cIdx].flash === 'function' ? (columns[cIdx].flash as any)() : columns[cIdx].flash
-                if (shouldFlash && isSameItem && existing) triggerFlash(cell)
+              if (row.score != null) {
+                let span = td.querySelector('span')
+                const scoreText = `(종합점수 : ${row.score.toFixed(1)})`
+                if (span) {
+                  if (span.textContent !== scoreText) span.textContent = scoreText
+                  if (span.style.color !== scoreColor(row.score)) span.style.color = scoreColor(row.score)
+                } else {
+                  span = document.createElement('span')
+                  Object.assign(span.style, { marginLeft: '10px', fontSize: '0.75em', fontWeight: FONT_WEIGHT.normal, color: scoreColor(row.score) })
+                  span.textContent = scoreText
+                  td.appendChild(span)
+                }
+              } else {
+                const span = td.querySelector('span')
+                if (span) span.remove()
               }
             }
-          } catch (_) {}
+            continue
+          }
+
+          const dataRow = row as T
+          const rs = rowStyle ? rowStyle(dataRow, i) : undefined
+          if (rs) {
+            Object.assign(rowEl.style, rs)
+          } else {
+            rowEl.style.removeProperty('background-color')
+          }
+          if (zebraStriping) {
+             rowEl.style.backgroundColor = (i % 2 === 1) ? '#f9f9f9' : 'transparent'
+          }
         }
       }
     })

@@ -11,7 +11,6 @@ import time
 from backend.app.core.logger import get_logger
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.services.auto_trading_effective import auto_buy_effective
-from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine_lifecycle")
 
@@ -80,11 +79,14 @@ async def try_sector_buy() -> None:
         if _after_hours and not is_nxt_enabled(s.code):
             continue
         # 쿨다운 체크
-        last_ts = SectorDataProvider.get_stock_field(s.code, "_last_buy_ts") or 0.0
+        from backend.app.services.engine_state import state
+        last_ts = state.master_stocks_cache.get(s.code, {}).get("_last_buy_ts") or 0.0
         if now - last_ts < cooldown:
             continue
 
-        await SectorDataProvider.update_stock_field(s.code, "_last_buy_ts", now)
+        async with state.shared_lock:
+            if s.code in state.master_stocks_cache:
+                state.master_stocks_cache[s.code]["_last_buy_ts"] = now
         
         logger.info("[섹터매수] 매수 시도: %s(%s) 섹터=%s 등락률=%.2f%%",
                     s.name, s.code, s.sector, s.change_rate)

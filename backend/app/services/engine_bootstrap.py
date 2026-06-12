@@ -11,7 +11,6 @@ import asyncio
 
 from backend.app.core.logger import get_logger
 import backend.app.services.engine_state as _st
-from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine")
 
@@ -172,20 +171,14 @@ async def _login_post_pipeline() -> None:
             else:
                 logger.debug("[시작] 파이프라인 -- 실시간 구독 구간 -- REST 잔고 조회 생략 (실시간 수신, 보유 %d종목)", len(_st._positions))
 
-        from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
-        wl_codes: set[str] = set()
-        # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
-        for t, v in _st._integrated_system_settings_cache.get("sector_stock_layout", []):
-            if t != "code":
-                continue
-            wl_codes.add(_format_kiwoom_reg_stk_cd(v))
-        all_stocks = SectorDataProvider.get_all_stocks()
-        stale = {cd for cd, entry in all_stocks.items() if entry.get("_subscribed", False) and cd in wl_codes}
+        # sector_stock_layout 참조 제거: master_stocks_cache._subscribed만으로 구독 상태 초기화
+        all_stocks = _st.state.master_stocks_cache.copy()
+        stale = {cd for cd, entry in all_stocks.items() if entry.get("_subscribed", False)}
         if stale:
             logger.debug("[시작] 새 세션 -- 0B 구독 상태 초기화 %d종목 (강제 재등록)", len(stale))
             for cd in stale:
-                if SectorDataProvider.has_stock(cd):
-                    entry = SectorDataProvider.get_stock(cd)
+                if cd in _st.state.master_stocks_cache:
+                    entry = _st.state.master_stocks_cache[cd]
                     entry.pop("_subscribed", None)
 
         from backend.app.services import engine_account_notify as _account_notify

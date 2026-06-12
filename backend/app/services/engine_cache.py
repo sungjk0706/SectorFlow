@@ -10,7 +10,6 @@ import asyncio
 
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
-from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine")
 
@@ -83,7 +82,9 @@ async def _load_caches_preboot(settings: dict) -> None:
             _cached_high_5d[cd] = high_price
             # 즉시 메모리 반영 (단일 루프로 통합)
             if high_price > 0:
-                await SectorDataProvider.update_stock_field(cd, "high_5d_price", high_price)
+                async with state.shared_lock:
+                    if cd in state.master_stocks_cache:
+                        state.master_stocks_cache[cd]["high_5d_price"] = high_price
 
         # eligible_stocks_cache 로드 제거: master_stocks_table이 단일 소스
 
@@ -102,7 +103,7 @@ async def _load_caches_preboot(settings: dict) -> None:
             logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 미스 -- 백그라운드 갱신 예정")
 
         # ── 시장구분 적재 제거 (master_stocks_cache 사용으로 대체) ──
-        all_stocks = SectorDataProvider.get_all_stocks()
+        all_stocks = state.master_stocks_cache.copy()
         _total_nxt = sum(1 for v in all_stocks.values() if v.get("nxt_enable"))
         logger.debug("[데이터준비] 시장구분(마스터 캐시) 로드 완료 -- %d종목 (NXT %d)", len(all_stocks), _total_nxt)
 

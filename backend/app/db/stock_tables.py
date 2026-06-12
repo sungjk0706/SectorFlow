@@ -47,9 +47,10 @@ async def init_cache_tables():
     # 거래일 캐시 테이블
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS trading_days_cache (
-            id INTEGER PRIMARY KEY,
-            data TEXT,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            year INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            PRIMARY KEY (year, date),
+            CHECK(length(date) = 10 or (year = 0 and length(date) = 8))
         )
     ''')
 

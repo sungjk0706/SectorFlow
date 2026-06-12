@@ -29,6 +29,11 @@ async def lifespan(app: FastAPI):
     from backend.app.services.core_queues import initialize_queues
     initialize_queues()
 
+    # Gateway 루프 시작 (엔진과 독립적으로 실행 - 파이프라인 독립성 보장)
+    from backend.app.pipelines.pipeline_gateway import start_gateway_loop
+    asyncio.create_task(start_gateway_loop())
+    logger.info("[웹서버] Gateway 루프 시작 완료")
+
     # 거래일 캐시 초기화
     from backend.app.core.trading_calendar import initialize_trading_calendar_cache
     await initialize_trading_calendar_cache()

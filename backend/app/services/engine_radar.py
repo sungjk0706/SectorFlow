@@ -9,7 +9,6 @@ import asyncio
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
 from backend.app.services.engine_account_rest import _parse_float_loose
-from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine_radar")
 
@@ -19,8 +18,9 @@ logger = get_logger("engine_radar")
 def get_subscribed_stocks() -> list:
     """활성 상태의 종목 목록 반환."""
     # _radar_cnsr_order 삭제: state.master_stocks_cache의 "_subscribed" 사용
+    from backend.app.services.engine_state import state
     result = []
-    all_stocks = SectorDataProvider.get_all_stocks()
+    all_stocks = state.master_stocks_cache.copy()
     for cd, entry in all_stocks.items():
         if entry.get("_subscribed", False):
             stock = entry.copy()
@@ -37,19 +37,22 @@ def get_sector_layout() -> list[tuple[str, str]]:
 
 def get_avg_trade_amount_5d_map() -> dict[str, int]:
     """5일 평균 거래대금 맵 반환."""
-    all_stocks = SectorDataProvider.get_all_stocks()
+    from backend.app.services.engine_state import state
+    all_stocks = state.master_stocks_cache.copy()
     return {cd: stock.get("avg_5d_trade_amount", 0) for cd, stock in all_stocks.items()}
 
 
 def get_high_price_5d_cache() -> dict[str, int]:
     """5일 전고점 캐시 반환."""
-    all_stocks = SectorDataProvider.get_all_stocks()
+    from backend.app.services.engine_state import state
+    all_stocks = state.master_stocks_cache.copy()
     return {cd: int(stock.get("high_5d_price", 0) or 0) for cd, stock in all_stocks.items()}
 
 
 def get_program_net_buy_cache() -> dict[str, int]:
     """프로그램 순매수 캐시 반환."""
-    all_stocks = SectorDataProvider.get_all_stocks()
+    from backend.app.services.engine_state import state
+    all_stocks = state.master_stocks_cache.copy()
     return {cd: int(stock.get("program_net_buy", 0) or 0) for cd, stock in all_stocks.items()}
 
 
@@ -84,7 +87,7 @@ async def _apply_real01_volume_amount_to_radar_rows(raw_cd: str, vals: dict, *, 
         return
         
     async with state.shared_lock:
-        entry = SectorDataProvider.get_stock(nk)
+        entry = state.master_stocks_cache.get(nk)
         if not entry:
             return
             
@@ -125,17 +128,17 @@ async def _mark_radar_exited(stk_cd: str) -> None:
 
     nk = _normalize_stk_cd_rest(str(stk_cd).strip().lstrip("A"))
     rm: str | None = None
-    if SectorDataProvider.get_stock_field(nk, "_subscribed"):
+    if state.master_stocks_cache.get(nk, {}).get("_subscribed"):
         rm = nk
     else:
-        all_stocks = SectorDataProvider.get_all_stocks()
+        all_stocks = state.master_stocks_cache.copy()
         for k, entry in all_stocks.items():
             if entry.get("_subscribed", False) and _normalize_stk_cd_rest(str(k)) == nk:
                 rm = k
                 break
     if rm is not None:
-        if SectorDataProvider.has_stock(rm):
-            entry = SectorDataProvider.get_stock(rm)
+        if rm in state.master_stocks_cache:
+            entry = state.master_stocks_cache[rm]
             entry.pop("_subscribed", None)
         if _clear_radar_rest_bootstrap_for_stk_cd:
             await _clear_radar_rest_bootstrap_for_stk_cd(rm)
@@ -171,7 +174,7 @@ async def _clear_radar_and_ready_memory() -> None:
 
     async with state.shared_lock:
         # _radar_cnsr_order 삭제: state.master_stocks_cache에서 "_subscribed" 제거
-        all_stocks = SectorDataProvider.get_all_stocks()
+        all_stocks = state.master_stocks_cache.copy()
         for entry in all_stocks.values():
             entry.pop("_subscribed", None)
         # _sector_stock_layout 제거: state.integrated_system_settings_cache["sector_stock_layout"]로 통합
@@ -198,7 +201,7 @@ async def _tracked_ui_stock_codes() -> set[str]:
             if c:
                 out.add(c)
     # _radar_cnsr_order 삭제: state.master_stocks_cache의 "_subscribed" 사용
-    all_stocks = SectorDataProvider.get_all_stocks()
+    all_stocks = state.master_stocks_cache.copy()
     for k, entry in all_stocks.items():
         if entry.get("_subscribed", False):
             c = _format_broker_reg_stk_cd(str(k))

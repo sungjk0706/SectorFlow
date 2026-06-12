@@ -13,7 +13,6 @@ from datetime import datetime, timezone, timedelta
 
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
-from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine")
 
@@ -311,7 +310,7 @@ async def _do_unified_confirmed_fetch() -> None:
         logger.warning("[타이머] 통합 확정 조회 실패 — 플래그 복원: %s", e, exc_info=True)
         try:
             from backend.app.services import engine_service as es2
-            es2._confirmed_refresh_running = False
+            es2._confirmed_refresh_running_confirmed = False
             es2._confirmed_refresh_message = ""
         except Exception as _e:
             logger.warning("[데이터] 플래그 복원 실패: %s", _e, exc_info=True)
@@ -339,8 +338,8 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
 
     # 마스터 캐시에서 데이터 유효기간(date) 추출
     _cached_date_str = ""
-    if SectorDataProvider.get_stock_count() > 0:
-        all_stocks = SectorDataProvider.get_all_stocks()
+    if len(state.master_stocks_cache) > 0:
+        all_stocks = state.master_stocks_cache.copy()
         _first_stock = next(iter(all_stocks.values()))
         _cached_date_str = _first_stock.get("date", "")
 
@@ -814,7 +813,7 @@ def _trigger_unreg_all() -> None:
 async def _do_unreg_all() -> None:
     """구독 중인 종목 전체 REMOVE 전송 (비동기)."""
     try:
-        all_stocks = SectorDataProvider.get_all_stocks()
+        all_stocks = state.master_stocks_cache.copy()
         subscribed = {cd for cd, entry in all_stocks.items() if entry.get("_subscribed", False)}
         ws = state.connector_manager or state.kiwoom_connector
         if not ws or not ws.is_connected():
@@ -840,9 +839,8 @@ async def _do_unreg_all() -> None:
 
         # 구독 상태 초기화
         for cd in subscribed:
-            if SectorDataProvider.has_stock(cd):
-                entry = SectorDataProvider.get_stock(cd)
-                entry.pop("_subscribed", None)
+            if cd in state.master_stocks_cache:
+                state.master_stocks_cache[cd].pop("_subscribed", None)
 
         logger.info("[타이머] REMOVE 완료 -- %d종목 구독 해지 (성공=%s)", len(all_codes), ok)
 

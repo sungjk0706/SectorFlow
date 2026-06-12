@@ -682,11 +682,17 @@ class LsConnector(BrokerConnector):
         self._ws_queue = queue
 
     def _format_code(self, code: str) -> str:
-        """종목코드 포맷팅 — LS 형식 (U + 6자리 + 공백 3자리)."""
+        """종목코드 포맷팅 — LS 형식 (U + 6자리 + 공백 3자리).
+        
+        KRX 표준: 숫자 6자리(005930) 및 알파벳 포함 6자리(0017J0) 모두 지원
+        """
         from backend.app.services.engine_symbol_utils import _base_stk_cd
         base = _base_stk_cd(code)
-        if len(base) == 6 and base.isdigit():
+        
+        # 6자리 코드는 모두 LS 형식으로 변환 (숫자든 알파벳이든)
+        if len(base) == 6:
             return f"U{base}   "
+        
         return code
 
     async def _get_token_async(self) -> str | None:

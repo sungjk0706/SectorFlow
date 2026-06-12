@@ -199,7 +199,9 @@ async def fetch_ka10081_daily_5d_data(
         highs_5d = [_si(r.get("high_pric")) if r is not None else None for r in recent_5]
         amts_5d = [_si(r.get("trde_prica")) if r is not None else None for r in recent_5]  # 백만원 단위
 
-        high_price_5d = max(highs_5d) if highs_5d else 0
+        # NULL-safe 최고가 계산 (신규 상장 종목 지원)
+        valid_highs = [h for h in highs_5d if h is not None]
+        high_price_5d = max(valid_highs) if valid_highs else 0
 
         return {
             "amts_5d_array": amts_5d,

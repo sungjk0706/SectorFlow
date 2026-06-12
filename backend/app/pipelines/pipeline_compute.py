@@ -17,15 +17,35 @@ from types import ModuleType
 
 # 0.3초 배치 재계산을 위한 더티 코드 셋 추가
 _dirty_codes: set[str] = set()
+
+# 수신율 추적 (이벤트 기반)
+_current_receive_rate: dict = {"received": 0, "total": 0, "pct": 0.0}
+_receive_rate_dirty: bool = False
+
+
+async def _send_receive_rate(receive_rate: dict) -> None:
+    """수신율 전송 단일 진입점 (단일 소스 진리 원칙 준수)."""
+    await broadcast_queue.put({
+        "type": "receive-rate",
+        "data": {
+            "pct": receive_rate["pct"],
+            "received": receive_rate["received"],
+            "total": receive_rate["total"]
+        }
+    })
+
 from backend.app.core.logger import get_logger
+from backend.app.services.engine_state import state
 from backend.app.services.core_queues import (
     get_tick_queue,
     get_broadcast_queue,
     get_control_queue,
 )
-from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("pipeline_compute")
+
+# 전역 큐 할당 (메모리 상주)
+broadcast_queue = get_broadcast_queue()
 
 _compute_task: Optional[asyncio.Task] = None
 _sector_recompute_task: Optional[asyncio.Task] = None
@@ -44,6 +64,46 @@ def _has_any_realtime_data(entry: dict) -> bool:
     None이 아닌 값이 존재한다는 것은 실시간 틱 또는 확정 데이터가 수신되었음을 의미.
     """
     return any(entry.get(f) is not None for f in _REALTIME_CHECK_FIELDS)
+
+
+async def _update_receive_rate_on_tick(es: ModuleType) -> None:
+    """틱 수신 시 수신율 증분 갱신 (이벤트 기반).
+
+    폴링 제거: 틱 수신 이벤트마다 수신율 재계산.
+    """
+    global _current_receive_rate, _receive_rate_dirty
+
+    try:
+        inputs = await es.get_sector_summary_inputs()
+        all_codes = inputs.get("all_codes", [])
+        total_count = len(all_codes)
+
+        if total_count == 0:
+            return
+
+        from backend.app.services.engine_state import state
+        received_count = sum(
+            1 for code in all_codes
+            if _has_any_realtime_data(state.master_stocks_cache.get(code, {}))
+        )
+
+        current_pct = received_count / total_count * 100 if total_count > 0 else 0.0
+
+        # 수신율 변경 시에만 dirty 플래그 설정
+        if (_current_receive_rate["received"] != received_count or
+            _current_receive_rate["total"] != total_count or
+            abs(_current_receive_rate["pct"] - current_pct) > 0.1):
+            _current_receive_rate = {"received": received_count, "total": total_count, "pct": current_pct}
+            _receive_rate_dirty = True
+
+    except Exception as e:
+        logger.error("[Compute] 수신율 갱신 예외: %s", e, exc_info=True)
+
+
+def get_current_receive_rate() -> dict:
+    """현재 수신율 반환 (notify_desktop_sector_scores에서 사용)."""
+    global _current_receive_rate
+    return dict(_current_receive_rate)
 
 
 async def start_compute_loop(es: ModuleType) -> None:
@@ -164,8 +224,9 @@ async def _process_control_signal(
             await subscribe_dynamic_data(codes)
             # _subscribed_dynamic 플래그 설정
             for cd in codes:
-                if SectorDataProvider.has_stock(cd):
-                    await SectorDataProvider.update_stock_field(cd, "_subscribed_dynamic", True)
+                if cd in state.master_stocks_cache:
+                    async with state.shared_lock:
+                        state.master_stocks_cache[cd]["_subscribed_dynamic"] = True
         elif signal_type == "DYNAMIC_UNREG":
             from backend.app.services.engine_ws import unsubscribe_dynamic_data
             from backend.app.services.engine_state import state
@@ -173,9 +234,8 @@ async def _process_control_signal(
             await unsubscribe_dynamic_data(codes)
             # _subscribed_dynamic 플래그 제거
             for cd in codes:
-                if SectorDataProvider.has_stock(cd):
-                    entry = SectorDataProvider.get_stock(cd)
-                    entry.pop("_subscribed_dynamic", None)
+                if cd in state.master_stocks_cache:
+                    state.master_stocks_cache[cd].pop("_subscribed_dynamic", None)
         else:
             logger.warning("[Compute] 알 수 없는 제어 신호: %s", signal_type)
 
@@ -352,6 +412,9 @@ async def _handle_real_01_tick(
                 global _dirty_codes
                 _dirty_codes.add(nk)
 
+            # 연산 결과: 수신율 증분 갱신 (이벤트 기반)
+            await _update_receive_rate_on_tick(es)
+
             # 연산 결과: 매수 타점 도달 여부 확인
             # 매수 타점에 도달하면 직접 주문 실행 (trading.py)
             await _check_buy_target_reached(es, broadcast_queue)
@@ -392,7 +455,7 @@ async def _handle_real_0d_tick(
             return
 
         # 매수후보 종목이면 호가잔량비 변경을 프론트에 즉시 전송
-        cache_entry = SectorDataProvider.get_stock(nk)
+        cache_entry = state.master_stocks_cache.get(nk, {})
         if cache_entry.get("_subscribed_dynamic", False):
             cache_entry["order_ratio"] = [bid, ask]
             notify_orderbook_update(nk, bid, ask)
@@ -427,7 +490,7 @@ async def _handle_real_pgm_tick(
             tval = 0
 
         # 매수후보 종목이면 프로그램 순매수 변경을 프론트에 즉시 전송
-        cache_entry = SectorDataProvider.get_stock(nk)
+        cache_entry = state.master_stocks_cache.get(nk, {})
         if cache_entry.get("_subscribed_dynamic", False):
             cache_entry["program_net_buy"] = tval
             notify_program_update(nk, tval)
@@ -438,54 +501,54 @@ async def _handle_real_pgm_tick(
 
 async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Queue) -> None:
     """
-    1초 주기로 돌아가는 업종순위 재계산 백그라운드 루프.
-    현재는 Phase 1(수신율 대기 후 초기 1회 전체 계산) 기능만 수행하고 루프를 종료하여,
-    틱이 들어올 때만 증분 재계산하는 이벤트 기반 방식을 채택합니다.
+    업종순위 재계산 백그라운드 루프 (이벤트 기반).
 
-    Phase 1 (1회): 실시간데이터 필드 수신율 임계값 대기 — 통과 후 Phase 2로 전환 없이 루프 종료
+    Phase 1 (1회): 실시간데이터 필드 수신율 임계값 대기 — 통과 후 Phase 2로 전환
+    Phase 2: 0.3초 배치 재계산 루프 (틱 기반 증분 재계산)
+
+    폴링 제거: Phase 1은 틱 수신 이벤트 기반으로 수신율 체크
     """
     from backend.app.services.engine_sector_confirm import request_sector_recompute
-    global _compute_running
+    global _compute_running, _receive_rate_dirty
     try:
         # Phase 1: 실시간데이터 필드 수신율 임계값 대기 (1회성 스타트업 게이트)
-        while _compute_running:
+        # 이벤트 기반: 틱 수신 시 수신율 갱신, 로그 출력 직후 전송
+        phase1_completed = False
+        while _compute_running and not phase1_completed:
             try:
-                inputs = await es.get_sector_summary_inputs()
-                all_codes = inputs.get("all_codes", [])
-                total_count = len(all_codes)
+                # 수신율 dirty 플래그 확인 (틱 수신 시 설정됨)
+                if _receive_rate_dirty:
+                    threshold_pct = float(es._integrated_system_settings_cache.get("sector_start_threshold_pct", 70.0))
+                    current_pct = _current_receive_rate["pct"]
+                    received_count = _current_receive_rate["received"]
+                    total_count = _current_receive_rate["total"]
 
-                if total_count == 0:
-                    logger.info("[Compute] 업종순위 계산 대기 중 (종목 없음 -- 부트스트랩 대기)")
-                    await asyncio.sleep(1.0)
-                    continue
+                    if total_count == 0:
+                        logger.info("[Compute] 업종순위 계산 대기 중 (종목 없음 -- 부트스트랩 대기)")
+                        await asyncio.sleep(1.0)
+                        continue
 
-                # 실시간데이터 필드(cur_price, change_rate 등) 중 1개라도 None이 아닌 종목 카운트.
-                # cur_price > 0 기준이 아닌 None 여부로 판단:
-                #   - ws_subscribe_start → _reset_realtime_fields()가 모두 None으로 초기화
-                #   - 실시간 틱 수신 또는 장마감 후 확정 데이터 수신 → None이 아닌 값으로 채워짐
-                # 단일 소스 진리: master_stocks_cache 직접 참조
-                from backend.app.services.engine_state import state
-                received_count = sum(
-                    1 for code in all_codes
-                    if _has_any_realtime_data(SectorDataProvider.get_stock(code))
-                )
+                    if received_count == 0:
+                        logger.info("[Compute] 업종순위 계산 대기 중 (실시간 데이터 수신 전 -- 0/%d)", total_count)
+                        await asyncio.sleep(1.0)
+                        continue
 
-                # received_count == 0: 실시간 필드가 초기화된 상태(ws_subscribe_start 직후).
-                # 첫 번째 데이터(틱 또는 확정)가 수신될 때까지 대기.
-                if received_count == 0:
-                    logger.info("[Compute] 업종순위 계산 대기 중 (실시간 데이터 수신 전 -- 0/%d)", total_count)
-                    await asyncio.sleep(1.0)
-                    continue
-
-                threshold_pct = float(es._integrated_system_settings_cache.get("sector_start_threshold_pct", 70.0))
-                current_pct = received_count / total_count * 100
-
-                if current_pct < threshold_pct:
-                    logger.info("[Compute] 업종순위 계산 대기 중 (수신율: %d/%d = %.1f%% < %.1f%%)", received_count, total_count, current_pct, threshold_pct)
-                    await asyncio.sleep(1.0)
+                    if current_pct >= threshold_pct:
+                        logger.info(
+                            "[Compute] 실시간데이터 수신율 임계값 통과 (현재: %.1f%%, 임계값: %.1f%%). 업종순위 계산을 시작합니다.",
+                            current_pct, threshold_pct
+                        )
+                        request_sector_recompute(None)  # 콜드 스타트 1회 전체 재계산
+                        phase1_completed = True
+                    else:
+                        logger.info("[Compute] 업종순위 계산 대기 중 (수신율: %d/%d = %.1f%% < %.1f%%)", received_count, total_count, current_pct, threshold_pct)
+                        # 수신율 전송 (단일 진입점)
+                        await _send_receive_rate(_current_receive_rate)
+                        await asyncio.sleep(1.0)
                 else:
-                    request_sector_recompute(None)  # 콜드 스타트 1회 전체 재계산
-                    break
+                    # 수신율 변경 없음, 짧게 대기
+                    await asyncio.sleep(0.1)
+
             except Exception as e:
                 logger.error("[Compute] 수신율 체크 예외: %s", e, exc_info=True)
                 await asyncio.sleep(1.0)
@@ -494,11 +557,24 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
         while _compute_running:
             await asyncio.sleep(0.3)
             global _dirty_codes
+
+            # 수신율 전송 (receive-rate 이벤트) - 변경 시에만 전송
+            if _receive_rate_dirty:
+                receive_rate = get_current_receive_rate()
+                threshold_pct = float(es._integrated_system_settings_cache.get("sector_start_threshold_pct", 70.0))
+                if receive_rate["pct"] < threshold_pct:
+                    await _send_receive_rate(receive_rate)
+                _receive_rate_dirty = False
+
+            # sector-scores 전송
+            from backend.app.services.engine_account_notify import notify_desktop_sector_scores
+            notify_desktop_sector_scores(force=True)
+            
             if _dirty_codes:
                 # 안전하게 복사 후 클리어
                 codes_to_compute = set(_dirty_codes)
                 _dirty_codes.clear()
-                
+
                 # 재계산 실행
                 for code in codes_to_compute:
                     request_sector_recompute(code)

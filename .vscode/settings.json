@@ -1,4 +1,3 @@
 {
-  "python.defaultInterpreterPath": "/Users/sungjk0706/Desktop/SectorFlow/.venv",
-  "python.pythonPath": "${workspaceFolder}/.venv/bin/python"
+  "python.enabled": false
 }

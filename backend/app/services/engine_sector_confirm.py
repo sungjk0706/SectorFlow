@@ -12,7 +12,6 @@ recompute_sector_for_code(code)는 이벤트 발생 시 호출되며,
 import asyncio
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_radar import get_high_price_5d_cache, get_program_net_buy_cache
-from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine")
 
@@ -267,7 +266,7 @@ async def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
             continue
 
         # 해당 종목의 현재 등락 상태 확인 (master_stocks_cache 직접 참조)
-        detail = SectorDataProvider.get_stock(cd)
+        detail = _es._master_stocks_cache.get(cd, {})
         change_rate = detail.get("change_rate", 0.0)
         curr_rising = change_rate > 0
         
@@ -396,7 +395,7 @@ def sync_dynamic_subscriptions(es, new_buy_targets) -> None:
 
     new_codes = {bt.stock.code for bt in new_buy_targets if bt.stock.guard_pass}
 
-    all_stocks = SectorDataProvider.get_all_stocks()
+    all_stocks = es._master_stocks_cache
     prev_codes = {cd for cd, entry in all_stocks.items() if entry.get("_subscribed_dynamic", False)}
 
     # 신규 구독: 즉시 적용
@@ -442,9 +441,8 @@ def sync_dynamic_subscriptions(es, new_buy_targets) -> None:
 
     # state.master_stocks_cache에 "_subscribed_dynamic" 설정
     for cd in prev_codes:
-        if SectorDataProvider.has_stock(cd):
-            entry = SectorDataProvider.get_stock(cd)
-            entry["_subscribed_dynamic"] = True
+        if cd in es._master_stocks_cache:
+            es._master_stocks_cache[cd]["_subscribed_dynamic"] = True
 
 
 def apply_delayed_unsubscription(es) -> None:
@@ -455,7 +453,7 @@ def apply_delayed_unsubscription(es) -> None:
     from backend.app.services.core_queues import get_control_queue
     import time
 
-    all_stocks = SectorDataProvider.get_all_stocks()
+    all_stocks = es._master_stocks_cache
     current_codes = {cd for cd, entry in all_stocks.items() if entry.get("_subscribed_dynamic", False)}
     to_unreg = _PENDING_UNREG_CODES & current_codes  # 아직 구독 중인 것만
 
@@ -478,8 +476,8 @@ def apply_delayed_unsubscription(es) -> None:
     _PENDING_UNREG_TIMER = None
     # state.master_stocks_cache에서 "_subscribed_dynamic" 및 동적 데이터 완전 제거 (데이터 왜곡 차단)
     for cd in to_unreg:
-        if SectorDataProvider.has_stock(cd):
-            entry = SectorDataProvider.get_stock(cd)
+        if cd in es._master_stocks_cache:
+            entry = es._master_stocks_cache[cd]
             entry.pop("_subscribed_dynamic", None)
             entry.pop("order_ratio", None)
             entry.pop("program_net_buy", None)
