@@ -260,9 +260,47 @@ function mount(container: HTMLElement): void {
   // ② 업종순위
   root.appendChild(createStepLabel('②', '업종순위 : 필터링종목 실시간데이터 수신율(%N)후 계산'))
   thresholdInput = createNumInput({ value: 70, onChange: v => { onNumChange('sector_start_threshold_pct', v) }, step: 1, name: 'sector_start_threshold_pct' })
-  const thresholdRow = createSettingRow('업종순위 계산 수신율', thresholdInput.el)
+
+  // 수신율 표시 요소
+  const receiveRateSpan = document.createElement('span')
+  Object.assign(receiveRateSpan.style, { fontSize: '12px', color: '#2196F3', marginLeft: '8px' })
+  receiveRateSpan.textContent = '(현재: 0%)'
+
+  // 레이블 컨테이너
+  const labelContainer = document.createElement('div')
+  Object.assign(labelContainer.style, { display: 'flex', alignItems: 'center' })
+  const labelText = document.createElement('span')
+  labelText.textContent = '업종순위 계산 수신율'
+  labelContainer.appendChild(labelText)
+  labelContainer.appendChild(receiveRateSpan)
+
+  const thresholdRow = createSettingRow(labelContainer, thresholdInput.el)
   thresholdRow.style.margin = '0 0 12px 0'
   root.appendChild(thresholdRow)
+
+  // 수신율 업데이트 함수 (하이스테리시스 적용)
+  let receiveRateHidden = false
+  function updateReceiveRate(receiveRate: { received: number; total: number; pct: number } | null): void {
+    const threshold = thresholdInput?.getValue() ?? 70
+    const hysteresis = 5 // 하이스테리시스: 5% 이상 떨어져야 다시 표시
+    if (receiveRate) {
+      receiveRateSpan.textContent = `(현재: ${receiveRate.pct.toFixed(1)}%)`
+      // 하이스테리시스 적용: 임계값 도달 후 숨김, 5% 이상 떨어져야 다시 표시
+      if (receiveRate.pct >= threshold) {
+        receiveRateHidden = true
+        receiveRateSpan.style.display = 'none'
+      } else if (receiveRateHidden && receiveRate.pct < threshold - hysteresis) {
+        receiveRateHidden = false
+        receiveRateSpan.style.display = 'inline'
+      } else if (!receiveRateHidden) {
+        receiveRateSpan.style.display = 'inline'
+      }
+    } else {
+      receiveRateSpan.textContent = '(현재: 0%)'
+      receiveRateSpan.style.display = 'inline'
+      receiveRateHidden = false
+    }
+  }
 
   // ③ 업종 컷오프
   root.appendChild(createStepLabel('③', '업종내 종목 상승비율(N%)이하 차단 필터링'))
@@ -420,6 +458,7 @@ function mount(container: HTMLElement): void {
     let prevSectorScores = initHot.sectorScores
     let prevSelectedSector = initUi.selectedSector
     let prevWsSubscribeStatus = initUi.wsSubscribeStatus
+    let prevReceiveRate = initUi.receiveRate
 
     const checkAndRender = () => {
       const state = hotStore.getState()
@@ -427,13 +466,19 @@ function mount(container: HTMLElement): void {
       const scoresChanged = state.sectorScores !== prevSectorScores
       const sectorChanged = uiState.selectedSector !== prevSelectedSector
       const wsStatusChanged = uiState.wsSubscribeStatus !== prevWsSubscribeStatus
+      const receiveRateChanged = uiState.receiveRate !== prevReceiveRate
       prevSectorScores = state.sectorScores
       prevSelectedSector = uiState.selectedSector
       prevWsSubscribeStatus = uiState.wsSubscribeStatus
+      prevReceiveRate = uiState.receiveRate
 
       if (wsStatusChanged) {
         const sub = uiState.wsSubscribeStatus?.quote_subscribed ?? false
         wsBadge?.update(sub, 'kiwoom')
+      }
+
+      if (receiveRateChanged) {
+        updateReceiveRate(uiState.receiveRate)
       }
 
       if (!scoresChanged && !sectorChanged) return

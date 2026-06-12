@@ -310,7 +310,8 @@ function countStocksBySector(): Record<string, number> {
   for (const s of mergedSectors) counts[s] = 0
 
   for (const [, stock] of getAllStocks()) {
-    let sector = stockMoves[stock.code] ?? stock.sector ?? ''
+    let sector = stockMoves[stock.code] ?? stock.sector
+    if (sector === undefined || sector === null) sector = '기타'
     if (sectors[sector]) sector = sectors[sector]
     if (deletedSectors.includes(sector)) sector = '업종명없음'
     if (sector && counts[sector] !== undefined) counts[sector]++
@@ -325,7 +326,8 @@ function getStocksForSector(sectorName: string): Array<{ code: string; name: str
   const result: Array<{ code: string; name: string; market_type?: string; nxt_enable?: boolean }> = []
 
   for (const [, stock] of getAllStocks()) {
-    let sector = stockMoves[stock.code] ?? stock.sector ?? ''
+    let sector = stockMoves[stock.code] ?? stock.sector
+    if (sector === undefined || sector === null) sector = '기타'
     if (sectors[sector]) sector = sectors[sector]
     if (deletedSectors.includes(sector)) sector = '업종명없음'
     if (sector === sectorName) result.push({ code: stock.code, name: stock.name, market_type: stock.market_type, nxt_enable: stock.nxt_enable })
@@ -1063,6 +1065,7 @@ function buildTripleCenter(): void {
     columns: detailColumns,
     emptyText: '종목이 없습니다.',
     stickyHeader: true,
+    keyFn: (row) => row.code,
     rowStyle: (row) => {
       if (highlightStockCode && row.code === highlightStockCode) {
         return { cursor: 'pointer', background: '#fff3cd', transition: 'background 0.3s' }
@@ -1087,19 +1090,16 @@ function buildTripleCenter(): void {
     if (e.button !== 0) return // 좌클릭만 허용
     const tr = (e.target as HTMLElement).closest('tr')
     if (!tr || !selectedSector) return
-    const tbody = detailTableRef?.el.querySelector('tbody')
-    if (!tbody) return
-    const rows = Array.from(tbody.querySelectorAll('tr[data-row-type="data"]'))
-    const idx = rows.indexOf(tr as HTMLTableRowElement)
-    if (idx < 0) return
-    
+    const clickedCode = tr.dataset.rowKey
+    if (!clickedCode) return
+
     // 텍스트 선택 방지
     e.preventDefault()
     isDragging = true
-    
+
     const stocks = getStocksForSector(selectedSector)
-    if (idx >= stocks.length) return
-    const clickedCode = stocks[idx].code
+    const idx = stocks.findIndex(s => s.code === clickedCode)
+    if (idx < 0) return
 
     if (e.shiftKey && anchorRow >= 0) {
       // Shift+클릭: anchorRow ~ idx 범위 선택
@@ -1129,14 +1129,12 @@ function buildTripleCenter(): void {
     if (!isDragging || !selectedSector) return
     const tr = (e.target as HTMLElement).closest('tr')
     if (!tr) return
-    const tbody = detailTableRef?.el.querySelector('tbody')
-    if (!tbody) return
-    const rows = Array.from(tbody.querySelectorAll('tr[data-row-type="data"]'))
-    const idx = rows.indexOf(tr as HTMLTableRowElement)
-    if (idx < 0 || anchorRow < 0) return
-    
+    const clickedCode = tr.dataset.rowKey
+    if (!clickedCode) return
+
     const stocks = getStocksForSector(selectedSector)
-    if (idx >= stocks.length) return
+    const idx = stocks.findIndex(s => s.code === clickedCode)
+    if (idx < 0 || anchorRow < 0) return
 
     selectedStocks.clear()
     const [start, end] = [Math.min(anchorRow, idx), Math.max(anchorRow, idx)]
@@ -1407,10 +1405,10 @@ async function onMoveStock(_e: MouseEvent, targetSector: string): Promise<void> 
     })
     handleMutationResult(lastRes)
 
-    // 서버 응답 기반 업데이트 (델타 전송 원칙 준수)
-    if (lastRes.ok && lastRes.all_stocks) {
+    // 서버 응답 기반 로컬 상태 업데이트 (즉시 피드백 제공)
+    if (lastRes.ok && lastRes.all_stocks && Array.isArray(lastRes.all_stocks)) {
       stockClassificationStore.setState({ allStocks: lastRes.all_stocks })
-      
+
       // stockMoves 업데이트
       const state = stockClassificationStore.getState()
       const newStockMoves = { ...state.stockMoves }
@@ -1418,18 +1416,17 @@ async function onMoveStock(_e: MouseEvent, targetSector: string): Promise<void> 
         newStockMoves[code] = targetSector
       }
       stockClassificationStore.setState({ stockMoves: newStockMoves })
+
+      // 즉시 UI 갱신
+      updateAllInlineMoveButtons()
+      updateMasterPanel()
+      updateCenterPanel()
+      updateRightPanel()
     }
 
     if (moveSource.source === 'staging') {
       clearStaging()
-    } else {
-      selectedStocks.clear()
-      anchorRow = -1
     }
-    updateAllInlineMoveButtons()
-    updateMasterPanel()
-    updateCenterPanel()
-    updateRightPanel()
 
     // 이동 완료 팝업
     showAlertDialog({
@@ -1519,8 +1516,11 @@ function mount(_container: HTMLElement): void {
       if (selectedSector && !state.mergedSectors.includes(selectedSector)) {
         selectedSector = null
       }
+
+      // 데이터 변경 시 선택 상태는 무효화됨 (단방향 데이터 흐름)
       selectedStocks.clear()
       anchorRow = -1
+
       updateMasterPanel()
       updateCenterPanel()
       updateRightPanel()

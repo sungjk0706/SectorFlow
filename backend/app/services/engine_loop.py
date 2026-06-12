@@ -19,7 +19,6 @@ from backend.app.core.trade_mode import is_test_mode
 from backend.app.services.trading import AutoTradeManager
 from backend.app.services.engine_cache import _load_caches_preboot
 from backend.app.services.engine_state import state
-from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine")
 
@@ -131,7 +130,7 @@ async def run_engine_loop() -> None:
     state.connector_manager = None
     state.broker_tokens.clear()
     # _master_stocks_cache에서 "_subscribed" 제거
-    all_stocks = SectorDataProvider.get_all_stocks()
+    all_stocks = state.master_stocks_cache.copy()
     for entry in all_stocks.values():
         entry.pop("_subscribed", None)
     from backend.app.services.engine_state import _notify_reg_ack, _cancel_price_trace_delayed_task
@@ -307,14 +306,12 @@ async def run_engine_loop() -> None:
 
         # ── 백그라운드 태스크로 파이프라인 루프 시작 (Step 7: 중앙 코디네이터 연동) ──
         # 테스트모드와 무관하게 항상 시작 (UI 전송 등 돈과 무관한 기능 실행)
-        # 순서 보장: Ingestion -> Compute -> Gateway
+        # 순서 보장: Ingestion -> Compute
+        # Gateway 루프는 app.py에서 독립적으로 시작 (파이프라인 독립성 보장)
         from backend.app.pipelines.pipeline_compute import start_compute_loop
-        from backend.app.pipelines.pipeline_gateway import start_gateway_loop
         from backend.app.services import engine_service as es
 
         compute_task = asyncio.create_task(start_compute_loop(es))
-
-        gateway_task = asyncio.create_task(start_gateway_loop())
 
         # ── 엔진 종료 대기 (WS 연결/해제는 스케줄러가 관리) ──
         state.engine_stop_event.clear()

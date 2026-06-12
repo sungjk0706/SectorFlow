@@ -18,7 +18,6 @@ import asyncio
 
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
-from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine")
 
@@ -214,7 +213,8 @@ async def cleanup_stale_subscriptions() -> None:
 
     # 서버 측 구독은 다음 REG의 refresh='0'(reset_first=True)이 덮어씀.
     # REMOVE ACK 대기 없이 인메모리 상태만 초기화 — 장외 시간 90초 지연 응답으로 인한 이벤트 오염 방지.
-    all_stocks = SectorDataProvider.get_all_stocks()
+    from backend.app.services.engine_state import state
+    all_stocks = state.master_stocks_cache.copy()
     for entry in all_stocks.values():
         entry.pop("_subscribed", None)
     _set_status(quote=False)

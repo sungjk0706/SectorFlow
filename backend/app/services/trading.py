@@ -162,12 +162,12 @@ class AutoTradeManager:
 
         # ── 등락률 + 거래대금 가드 (설정값 기반) ──────────────────────────────
         # 단일 소스 진리: master_stocks_cache에서 직접 읽기
-        from backend.app.services.sector_data_provider import SectorDataProvider
+        from backend.app.services.engine_state import state
 
         # 등락률 가드
         _rise_limit = float(raw_all.get("buy_block_rise_pct", 7.0))
         _fall_limit = float(raw_all.get("buy_block_fall_pct", 7.0))
-        _change_rate = SectorDataProvider.get_stock_field(stk_cd, "change_rate")
+        _change_rate = state.master_stocks_cache.get(stk_cd, {}).get("change_rate")
         if _change_rate is not None:
             _blocked = False
             _block_reason = ""
@@ -187,7 +187,7 @@ class AutoTradeManager:
         # 체결강도 가드
         _min_strength = float(raw_all.get("buy_min_strength", 0))
         if _min_strength > 0:
-            _strength_raw = SectorDataProvider.get_stock_field(stk_cd, "strength")
+            _strength_raw = state.master_stocks_cache.get(stk_cd, {}).get("strength")
             if _strength_raw is not None and _strength_raw != "-":
                 try:
                     _strength_val = float(_strength_raw)

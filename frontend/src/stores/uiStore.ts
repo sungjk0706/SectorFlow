@@ -49,6 +49,9 @@ export interface UIState {
 
   /* ── 엔진 재시작 완료 상태 ── */
   engineReloadComplete: boolean
+
+  /* ── 수신율 상태 ── */
+  receiveRate: { received: number; total: number; pct: number } | null
 }
 
 const initialState: UIState = {
@@ -71,6 +74,7 @@ const initialState: UIState = {
   sectorScoresDelta: null,
   sectorSummary: null,
   engineReloadComplete: false,
+  receiveRate: null,
 }
 
 export const uiStore = createStore<UIState>(initialState)

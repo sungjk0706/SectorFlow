@@ -11,7 +11,6 @@ import json
 import time
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
-from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine_snapshot")
 
@@ -55,7 +54,7 @@ async def build_initial_snapshot() -> dict:
     scores_list, ranked_count = scores_snapshot if isinstance(scores_snapshot, tuple) else (scores_snapshot, 0)
 
     # 종목수 일치 보장: master_stocks_table 기준
-    total_stocks_count = SectorDataProvider.get_stock_count()
+    total_stocks_count = len(state.master_stocks_cache)
 
     snapshot: dict = {
         "_v":               1,
@@ -169,7 +168,7 @@ async def _reset_realtime_fields() -> None:
         # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_latest_trade_amounts, _latest_trade_prices, _latest_strength)
         # 호가잔량 캐시 삭제로 clear 로직 제거
         # _subscribed_0d_stocks 제거: state.master_stocks_cache에서 "_subscribed_0d" 제거
-        all_stocks = SectorDataProvider.get_all_stocks()
+        all_stocks = state.master_stocks_cache.copy()
         for entry in all_stocks.values():
             entry.pop("_subscribed_0d", None)
             for f in _REALTIME_FIELDS:
@@ -230,7 +229,7 @@ async def _reset_realtime_fields() -> None:
             logger.error("[데이터] DB master_stocks_table 실시간 필드 초기화 실패: %s", db_err, exc_info=True)
     logger.info(
         "[데이터] 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료 -- %d종목, 실시간/REST 저장데이터 전체 클리어",
-        SectorDataProvider.get_stock_count(),
+        len(state.master_stocks_cache),
     )
     await notify_desktop_sector_stocks_refresh()
     _broadcast_account("realtime_reset")
