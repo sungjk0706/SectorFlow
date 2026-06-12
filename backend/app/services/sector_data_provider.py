@@ -215,7 +215,7 @@ def get_sector_scores_snapshot() -> tuple[list[dict], int]:
             "rank": sc.rank,
             "sector": sc.sector,
             "final_score": round(sc.final_score, 1),
-            "total_trade_amount": sc.total_trade_amount,
+            "total_trade_amount": sc.scored_trade_amount,  # 평균 거래대금 (가중치 계산 기반과 일관성 유지)
             "rise_ratio": round(sc.rise_ratio * 100, 1),
             "total": sc.total,
         })

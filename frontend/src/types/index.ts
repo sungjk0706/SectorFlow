@@ -192,7 +192,7 @@ export interface SectorScoreRow {
   rank: number;
   sector: string;
   final_score: number;
-  total_trade_amount: number;
+  total_trade_amount: number;  // 평균 거래대금 (가중치 계산 기반과 일관성 유지)
   rise_ratio: number;
   total: number;
 }
