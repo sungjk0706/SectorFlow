@@ -262,11 +262,10 @@ async def execute_unified_rolling_and_save(
 
                 # master_stocks_table market 정보 조회
                 stk_nm = _nm.get(_base_stk_cd(raw_cd), nk)
-                sector = detail.get("sector", "기타")
 
                 master_bulk_params.append((
                     nk, stk_nm, cur_price, change, change_rate,
-                    today_amt, today_high, avg_5d, high_5d, date_str, sector
+                    today_amt, today_high, avg_5d, high_5d, date_str
                 ))
 
                 # 메모리 캐시 동시 갱신
@@ -285,8 +284,6 @@ async def execute_unified_rolling_and_save(
                     })
                     if stk_nm and stk_nm != nk:
                         entry["name"] = stk_nm
-                    if sector:
-                        entry["sector"] = sector
 
             # 3. 단일 트랜잭션 내 벌크 실행
             # 5일 배열 적재
@@ -313,8 +310,8 @@ async def execute_unified_rolling_and_save(
 
                 await conn.executemany("""
                     INSERT INTO master_stocks_table
-                    (code, name, cur_price, change, change_rate, trade_amount, high_price, avg_5d_trade_amount, high_5d_price, date, sector, market)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (code, name, cur_price, change, change_rate, trade_amount, high_price, avg_5d_trade_amount, high_5d_price, date, market)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(code) DO UPDATE SET
                         name = excluded.name,
                         cur_price = excluded.cur_price,
@@ -325,7 +322,6 @@ async def execute_unified_rolling_and_save(
                         avg_5d_trade_amount = excluded.avg_5d_trade_amount,
                         high_5d_price = excluded.high_5d_price,
                         date = excluded.date,
-                        sector = CASE WHEN master_stocks_table.sector IS NOT NULL AND master_stocks_table.sector != '' AND master_stocks_table.sector != '기타' THEN master_stocks_table.sector ELSE excluded.sector END,
                         market = excluded.market
                 """, updated_params)
 
@@ -602,9 +598,8 @@ async def _apply_confirmed_to_memory(
             from backend.app.services.engine_strategy_core import make_detail
             px = int(detail.get("cur_price") or 0)
             stk_nm = _nm.get(_base_stk_cd(raw_cd), nk)
-            sec = detail.get("sector")
-            if not sec:
-                sec = db_mapping.get(_base_stk_cd(raw_cd)) or "기타"
+            # sector는 DB에서 조회 (custom_sectors 기반 동기화 유지)
+            sec = db_mapping.get(_base_stk_cd(raw_cd)) or "기타"
             entry = make_detail(
                 nk, stk_nm, px,
                 str(detail.get("sign") or "3"),
@@ -1047,19 +1042,43 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
                     f"DELETE FROM master_stocks_table WHERE code NOT IN ({placeholders})",
                     confirmed_codes_list
                 )
-                await _conn.execute(
-                    f"DELETE FROM stock_5d_array WHERE code NOT IN ({placeholders})",
-                    confirmed_codes_list
-                )
-                await _conn.execute(
-                    f"DELETE FROM custom_sectors WHERE stock_code IS NOT NULL AND stock_code NOT IN ({placeholders})",
-                    confirmed_codes_list
-                )
 
-                # 1-1) 신규상장 종목 감지 및 기타 섹터 추가
+                # 2) Step2 필터링 결과 종목 UPSERT (기존 데이터 보존하며 추가)
+                insert_values = [
+                    (r.code, r.name, r.market_code, 1 if r.nxt_enable else 0)
+                    for r in records if r.code in confirmed_codes
+                ]
+                if insert_values:
+                    await _conn.executemany("""
+                        INSERT INTO master_stocks_table (code, name, market, nxt_enable)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(code) DO UPDATE SET
+                            name = excluded.name,
+                            market = excluded.market,
+                            nxt_enable = excluded.nxt_enable
+                    """, insert_values)
+
+                # 3) master_stocks_table 기준으로 stock_5d_array 종목코드 정리
                 cursor = await _conn.execute("SELECT code FROM master_stocks_table")
-                existing_codes = set(row[0] for row in await cursor.fetchall())
-                new_listed_codes = confirmed_codes - existing_codes
+                master_codes = set(row[0] for row in await cursor.fetchall())
+                master_placeholders = ",".join("?" for _ in master_codes)
+                master_codes_list = list(master_codes)
+
+                if master_codes:
+                    await _conn.execute(
+                        f"DELETE FROM stock_5d_array WHERE code NOT IN ({master_placeholders})",
+                        master_codes_list
+                    )
+
+                # 4) master_stocks_table 기준으로 custom_sectors 종목코드 매핑 정리 (업종 보존)
+                if master_codes:
+                    await _conn.execute(
+                        f"DELETE FROM custom_sectors WHERE stock_code IS NOT NULL AND stock_code NOT IN ({master_placeholders})",
+                        master_codes_list
+                    )
+
+                # 5) 신규상장 종목 감지 및 기타 섹터 추가
+                new_listed_codes = confirmed_codes - master_codes
 
                 if new_listed_codes:
                     insert_values = [("기타", code) for code in new_listed_codes]
@@ -1068,23 +1087,14 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
                         insert_values
                     )
 
-            # 2) Step2 필터링 결과 종목 UPSERT (기존 데이터 보존하며 추가)
-            insert_values = [
-                (r.code, r.name, r.market_code, 1 if r.nxt_enable else 0)
-                for r in records if r.code in confirmed_codes
-            ]
-            if insert_values:
-                await _conn.executemany("""
-                    INSERT INTO master_stocks_table (code, name, market, nxt_enable)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(code) DO UPDATE SET
-                        name = excluded.name,
-                        market = excluded.market,
-                        nxt_enable = excluded.nxt_enable
-                """, insert_values)
+                # 6) custom_sectors 기반 master_stocks_table.sector 동기화 (트랜잭션 내)
+                from backend.app.core.stock_classification_data import sync_sector_from_custom_sectors
+                await sync_sector_from_custom_sectors()
+
+                # 7) 단일 commit (모든 DB 작업 원자화)
                 await _conn.commit()
 
-                # 3) 메모리 캐시도 동기화 및 불필요 종목 제거
+                # 8) 메모리 캐시 동기화 및 불필요 종목 제거 (트랜잭션 완료 후)
                 import backend.app.services.engine_state as _st
                 async with es._shared_lock:
                     keys_to_delete = [cd for cd in list(_st._master_stocks_cache.keys()) if cd not in confirmed_codes]
@@ -1180,26 +1190,14 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             await _apply_confirmed_to_memory(es, confirmed, {}, name_map=name_map)
 
         # ── 단일 벌크 트랜잭션으로 5일봉 롤링 및 DB 저장 통합 ──
+        cached = False
         if confirmed:
             _log.info("[타이머] 단일 벌크 트랜잭션으로 5일봉 롤링 및 DB 저장 시작")
             await execute_unified_rolling_and_save(es, confirmed, name_map=name_map)
             _log.info("[타이머] 단일 벌크 트랜잭션 완료")
+            cached = True
 
-        # custom_sectors 기반 master_stocks_table.sector 동기화
-        try:
-            from backend.app.core.stock_classification_data import sync_sector_from_custom_sectors
-            await sync_sector_from_custom_sectors()
-        except Exception as _sync_err:
-            _log.warning("[타이머] custom_sectors 기반 동기화 실패: %s", _sync_err, exc_info=True)
-
-        # 디스크 캐시 저장 (execute_unified_rolling_and_save에서 이미 처리한 종목 제외)
-        cached = await _save_confirmed_cache(es, skip_codes=set(confirmed.keys()) if confirmed else None, eligible_codes=confirmed_codes)
-
-        # 완료 후 진행 파일 삭제
-        if cached:
-            await clear_progress_cache()
-
-        # ── 종목분류 페이지 갱신 브로드캐스트 (캐시 갱신 완료 후 전송) ────────
+        # ── 종목분류 페이지 갱신 브로드캐스트 ────────
         try:
             from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed
             await broadcast_stock_classification_changed()
@@ -1545,13 +1543,7 @@ async def fetch_confirmed_data_only() -> dict:
                 _log.info("[수동 확정시세] Step4 — master_stocks_table 초기화 전 row count: %d", before_count)
                 await _conn.execute("DELETE FROM master_stocks_table")
 
-                # 2) custom_sectors 유령 종목 DELETE (정합성 동기화)
-                await _conn.execute(
-                    f"DELETE FROM custom_sectors WHERE stock_code IS NOT NULL AND stock_code NOT IN ({placeholders})",
-                    confirmed_codes_list
-                )
-
-                # 3) Step2 필터링 결과 종목만 INSERT
+                # 2) Step2 필터링 결과 종목만 INSERT
                 insert_values = [
                     (r.code, r.name, r.market_code, 1 if r.nxt_enable else 0)
                     for r in records if r.code in confirmed_codes
@@ -1561,6 +1553,41 @@ async def fetch_confirmed_data_only() -> dict:
                         "INSERT INTO master_stocks_table (code, name, market, nxt_enable) VALUES (?, ?, ?, ?)",
                         insert_values
                     )
+
+                # 3) master_stocks_table 기준으로 stock_5d_array 종목코드 정리
+                cursor = await _conn.execute("SELECT code FROM master_stocks_table")
+                master_codes = set(row[0] for row in await cursor.fetchall())
+                master_placeholders = ",".join("?" for _ in master_codes)
+                master_codes_list = list(master_codes)
+
+                if master_codes:
+                    await _conn.execute(
+                        f"DELETE FROM stock_5d_array WHERE code NOT IN ({master_placeholders})",
+                        master_codes_list
+                    )
+
+                # 4) master_stocks_table 기준으로 custom_sectors 종목코드 매핑 정리 (업종 보존)
+                if master_codes:
+                    await _conn.execute(
+                        f"DELETE FROM custom_sectors WHERE stock_code IS NOT NULL AND stock_code NOT IN ({master_placeholders})",
+                        master_codes_list
+                    )
+
+                # 5) 신규상장 종목 감지 및 기타 섹터 추가
+                new_listed_codes = confirmed_codes - master_codes
+
+                if new_listed_codes:
+                    insert_values = [("기타", code) for code in new_listed_codes]
+                    await _conn.executemany(
+                        "INSERT INTO custom_sectors (name, stock_code) VALUES (?, ?)",
+                        insert_values
+                    )
+
+                # 6) custom_sectors 기반 master_stocks_table.sector 동기화 (트랜잭션 내)
+                from backend.app.core.stock_classification_data import sync_sector_from_custom_sectors
+                await sync_sector_from_custom_sectors()
+
+                # 7) 단일 commit (모든 DB 작업 원자화)
                 await _conn.commit()
 
             # 3) 실행 후 row count 로그
@@ -1652,19 +1679,14 @@ async def fetch_confirmed_data_only() -> dict:
             await _apply_confirmed_to_memory(es, normalized_confirmed, {}, name_map=name_map)
 
         # ── 단일 벌크 트랜잭션으로 5일봉 롤링 및 DB 저장 통합 ──
+        cached = False
         if confirmed:
             _log.info("[수동 확정시세] 단일 벌크 트랜잭션으로 5일봉 롤링 및 DB 저장 시작")
             await execute_unified_rolling_and_save(es, normalized_confirmed, name_map=name_map)
             _log.info("[수동 확정시세] 단일 벌크 트랜잭션 완료")
+            cached = True
 
-        # 디스크 캐시 저장 (execute_unified_rolling_and_save에서 이미 처리한 종목 제외)
-        cached = await _save_confirmed_cache(es, skip_codes=set(confirmed.keys()) if confirmed else None, eligible_codes=confirmed_codes)
-
-        # 완료 후 진행 파일 삭제
-        if cached:
-            await clear_progress_cache()
-
-        # ── 종목분류 페이지 갱신 브로드캐스트 (캐시 갱신 완료 후 전송) ────────
+        # ── 종목분류 페이지 갱신 브로드캐스트 ────────
         try:
             from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed
             await broadcast_stock_classification_changed()
@@ -1703,13 +1725,6 @@ async def fetch_confirmed_data_only() -> dict:
                     "[수동 확정시세] Step 7 원자적 메모리 교체 완료 — pending=%d종목, avg=%d",
                     len(mapped_pending), len(new_avg),
                 )
-
-        # custom_sectors 기반 master_stocks_table.sector 동기화
-        try:
-            from backend.app.core.stock_classification_data import sync_sector_from_custom_sectors
-            await sync_sector_from_custom_sectors()
-        except Exception as _sync_err:
-            _log.warning("[수동 확정시세] custom_sectors 기반 동기화 실패: %s", _sync_err, exc_info=True)
 
         try:
             from backend.app.services.engine_service import recompute_sector_summary_now
@@ -1846,35 +1861,88 @@ async def fetch_5d_data_only() -> dict:
             # Rate limiting
             await asyncio.sleep(0.33)
 
-        # ── execute_unified_rolling_and_save()로 단일 트랜잭션 저장 ─────────────
+        # ── stock_5d_array 직접 INSERT (5일치 전체 저장) ───────────────────────
         if confirmed_5d:
-            _log.info("[수동 5일봉] execute_unified_rolling_and_save() 호출 — %d종목", len(confirmed_5d))
+            _log.info("[수동 5일봉] stock_5d_array 직접 INSERT — %d종목", len(confirmed_5d))
             
-            # confirmed_5d를 execute_unified_rolling_and_save 포맷으로 변환
-            normalized_confirmed = {}
+            date_str = get_kst_today_str()
+            array_5d_params = []
+            master_update_params = []
+            
             for cd, data in confirmed_5d.items():
                 amts_5d = data.get("amts_5d_array") or []
                 highs_5d = data.get("highs_5d_array") or []
                 
-                # 당일 데이터 (day1)
-                today_amt = amts_5d[0] if len(amts_5d) > 0 and amts_5d[0] is not None else 0
-                today_high = highs_5d[0] if len(highs_5d) > 0 and highs_5d[0] is not None else 0
+                # 5일평균, 5일최고가 계산 (NULL 제외)
+                valid_amts = [a for a in amts_5d if a is not None and a > 0]
+                avg_5d = sum(valid_amts) // len(valid_amts) if valid_amts else 0
                 
-                normalized_confirmed[cd] = {
-                    "trade_amount": today_amt,
-                    "high_price": today_high,
-                    "cur_price": 0,  # 5일봉만 다운로드라 확정시세 없음
-                    "change": 0,
-                    "change_rate": 0.0,
-                }
+                valid_highs = [h for h in highs_5d if h is not None and h > 0]
+                high_5d = max(valid_highs) if valid_highs else 0
+                
+                # stock_5d_array INSERT 파라미터
+                array_5d_params.append((
+                    cd, date_str,
+                    amts_5d[0] if len(amts_5d) > 0 else None,
+                    amts_5d[1] if len(amts_5d) > 1 else None,
+                    amts_5d[2] if len(amts_5d) > 2 else None,
+                    amts_5d[3] if len(amts_5d) > 3 else None,
+                    amts_5d[4] if len(amts_5d) > 4 else None,
+                    highs_5d[0] if len(highs_5d) > 0 else None,
+                    highs_5d[1] if len(highs_5d) > 1 else None,
+                    highs_5d[2] if len(highs_5d) > 2 else None,
+                    highs_5d[3] if len(highs_5d) > 3 else None,
+                    highs_5d[4] if len(highs_5d) > 4 else None,
+                ))
+                
+                # master_stocks_table UPDATE 파라미터
+                master_update_params.append((avg_5d, high_5d, cd))
             
-            await execute_unified_rolling_and_save(es, normalized_confirmed)
-            _log.info("[수동 5일봉] 단일 트랜잭션 저장 완료")
+            # 단일 트랜잭션으로 저장
+            async with get_db_lock():
+                await conn.executemany(
+                    """INSERT OR REPLACE INTO stock_5d_array
+                    (code, date, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount,
+                     day1_high, day2_high, day3_high, day4_high, day5_high)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    array_5d_params
+                )
+                await conn.executemany(
+                    """UPDATE master_stocks_table
+                    SET avg_5d_trade_amount = ?, high_5d_price = ?
+                    WHERE code = ?""",
+                    master_update_params
+                )
+                await conn.commit()
+            
+            _log.info("[수동 5일봉] DB 저장 완료 — %d종목", len(confirmed_5d))
+            
+            # 메모리 캐시 업데이트
+            async with es._shared_lock:
+                for cd, data in confirmed_5d.items():
+                    amts_5d = data.get("amts_5d_array") or []
+                    highs_5d = data.get("highs_5d_array") or []
+                    
+                    valid_amts = [a for a in amts_5d if a is not None and a > 0]
+                    avg_5d = sum(valid_amts) // len(valid_amts) if valid_amts else 0
+                    
+                    valid_highs = [h for h in highs_5d if h is not None and h > 0]
+                    high_5d = max(valid_highs) if valid_highs else 0
+                    
+                    if cd in es._master_stocks_cache:
+                        es._master_stocks_cache[cd]["avg_5d_trade_amount"] = avg_5d
+                        es._master_stocks_cache[cd]["high_5d_price"] = high_5d
+            
+            _log.info("[수동 5일봉] 메모리 캐시 업데이트 완료")
 
         success_rate = (fetched / total * 100) if total else 0
         _log.info("[수동 5일봉] 완료 — 성공 %d종목, 실패 %d종목 (%.1f%% 성공)", fetched, failed, success_rate)
 
         _broadcast_confirmed_progress(total, total, message=f"✅ 5일봉 다운로드 완료 ({fetched:,}/{total:,})", step=5)
+
+        # 종목분류 브로드캐스트 (프론트엔드 자동갱신)
+        from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed
+        await broadcast_stock_classification_changed()
 
         # 후처리
         await _run_post_confirmed_pipeline(es)
