@@ -1,11 +1,60 @@
 # SectorFlow 작업 인계 문서
 
 ## 작업 날짜
-2026-06-12
+2026-06-13
 
 ---
 
-## 최신 작업 (2026-06-12) — 업종순위 페이지 수신율 표시 구현 완료
+## 최신 작업 (2026-06-13) — 5일봉다운로드 후 프론트엔드 자동갱신 해결 완료
+
+### 핵심
+5일봉다운로드 완료 후 프론트엔드 자동갱신 안되는 문제 해결
+broadcast_stock_classification_changed() 호출 추가로 프론트엔드 즉시 반영
+
+### 문제 현상
+- 5일봉다운로드 완료 후 프론트엔드가 자동갱신 안됨
+- 새로고침 후에야 데이터가 표시됨
+- 확정시세다운로드와 동일한 원인
+
+### 원인 분석
+- 확정시세다운로드 후: broadcast_stock_classification_changed() 호출 (982, 1203, 1482, 1692줄)
+- 5일봉다운로드 후: broadcast_stock_classification_changed() 호출 없음
+- market_close_pipeline.py:1944줄에서 _run_post_confirmed_pipeline만 호출
+
+### 해결 방안
+5일봉다운로드 완료 후 broadcast_stock_classification_changed() 호출 추가
+
+### 수정 내용
+- market_close_pipeline.py:1943-1945줄에 broadcast_stock_classification_changed() 호출 추가
+- 5일봉다운로드 완료 후 종목분류 브로드캐스트 (프론트엔드 자동갱신)
+
+### 수정 파일
+- `backend/app/services/market_close_pipeline.py`
+
+### 검증 결과
+- py_compile 문법 검증: 성공
+- 5일봉배열테이블 종목수: 1374종목 (마스터종목테이블과 일치)
+- 5일봉배열 데이터: 5일(day1~day5) 모두 채워짐 (1374종목)
+- 5일평균거래대금, 5일중최고가 계산: 정확함 (삼성전자, SK 하이닉스 검증)
+
+### 아키텍처 원칙 준수
+- 직접 호출 체인 유지: 준수 (EventBus/발행구독 패턴 사용 금지)
+- 단일 소스 진리: 준수 (broadcast_stock_classification_changed가 _master_stocks_cache 기준으로 브로드캐스트)
+- 이벤트 기반 루프: 준수 (DB 업데이트 후 즉시 브로드캐스트)
+- 비동기 I/O: 준수 (async def 호출)
+- 일관성 유지: 준수 (확정시세다운로드와 동일한 패턴)
+
+### 완료 상태
+- 5일봉배열 데이터 삭제 로직 조사: 완료
+- 5일봉다운로드 후 종목수 및 5일봉배열 채워짐 확인: 완료
+- 5일평균거래대금, 5일중최고가 계산 검증: 완료
+- 5일봉다운로드 후 프론트엔드 자동갱신 안되는 원인 조사: 완료
+- 5일봉다운로드 후 broadcast_stock_classification_changed() 호출 추가: 완료
+- git push 완료: 완료
+
+---
+
+## 이전 작업 (2026-06-12) — 업종순위 페이지 수신율 표시 구현 완료
 
 ### 핵심
 업종순위 페이지에 실시간 데이터 수신율을 표시하는 기능 구현 완료
