@@ -51,10 +51,11 @@ _compute_task: Optional[asyncio.Task] = None
 _sector_recompute_task: Optional[asyncio.Task] = None
 _compute_running: bool = False
 
-# 실시간데이터 필드 키 목록 (engine_snapshot._REALTIME_FIELDS와 동일)
+# 업종순위 계산 수신율 체크 필드
+# 업종순위는 상승률과 거래대금만으로 결정되므로 상승률(change_rate)과 거래대금(trade_amount)만 체크
 # ws_subscribe_start 시점에 _reset_realtime_fields()가 이 필드들을 None으로 초기화한다.
 # None이 아닌 값 = 실시간 틱 또는 장마감 후 확정 데이터가 수신된 것을 의미.
-_REALTIME_CHECK_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "strength", "high_price")
+_REALTIME_CHECK_FIELDS = ("change_rate", "trade_amount")
 
 
 def _has_any_realtime_data(entry: dict) -> bool:
@@ -106,6 +107,33 @@ def get_current_receive_rate() -> dict:
     return dict(_current_receive_rate)
 
 
+async def _calculate_receive_rate_from_cache(es: ModuleType) -> None:
+    """DB 로드 후 실시간데이터 필드 상태 기반 수신율 계산 (앱 기동 시 1회)."""
+    global _current_receive_rate, _receive_rate_dirty
+    
+    try:
+        inputs = await es.get_sector_summary_inputs()
+        all_codes = inputs.get("all_codes", [])
+        total_count = len(all_codes)
+        
+        if total_count == 0:
+            return
+        
+        from backend.app.services.engine_state import state
+        received_count = sum(
+            1 for code in all_codes
+            if _has_any_realtime_data(state.master_stocks_cache.get(code, {}))
+        )
+        
+        current_pct = received_count / total_count * 100 if total_count > 0 else 0.0
+        _current_receive_rate = {"received": received_count, "total": total_count, "pct": current_pct}
+        _receive_rate_dirty = True
+        
+        logger.info("[Compute] 앱 기동 시 수신율 계산 완료 -- %d/%d = %.1f%%", received_count, total_count, current_pct)
+    except Exception as e:
+        logger.error("[Compute] 앱 기동 시 수신율 계산 예외: %s", e, exc_info=True)
+
+
 async def start_compute_loop(es: ModuleType) -> None:
     """Compute Engine 루프 시작."""
     global _compute_task, _compute_running, _sector_recompute_task
@@ -115,6 +143,10 @@ async def start_compute_loop(es: ModuleType) -> None:
         return
 
     _compute_running = True
+    
+    # 앱 기동 시 수신율 계산 (DB 로드 후 실시간데이터 필드 상태 기반)
+    await _calculate_receive_rate_from_cache(es)
+    
     _compute_task = asyncio.get_running_loop().create_task(_compute_loop_impl(es))
     _sector_recompute_task = asyncio.get_running_loop().create_task(_sector_recompute_loop_impl(es, get_broadcast_queue()))
     logger.debug("[Compute] 루프 시작")
