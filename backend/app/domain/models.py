@@ -45,7 +45,7 @@ class SectorScore:
     rise_count: int             # 상승 종목 수 (change_rate > 0)
     rise_ratio: float           # 상승 비율 (0.0~1.0)
     avg_change_rate: float      # 평균 등락률 (%)
-    total_trade_amount: int     # 섹터 총 거래대금 (원) — 표시용 (전체 종목 합산)
+    total_trade_amount: int     # 섹터 평균 거래대금 (원) — 표시용 (가중치 계산 기반과 일관성 유지)
     avg_ratio_5d_pct: float     # 섹터 평균 5D거래대금비율 (%)
     rank: int = 0               # 강도 순위 (1=최강)
     stocks: list[StockScore] = field(default_factory=list)
