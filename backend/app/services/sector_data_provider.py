@@ -1,54 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-섹터 데이터 제공자 - master_stocks_cache 접근 제한
+섹터 데이터 제공자 - 업종 요약 계산 관련 함수
 
-단일 소스 진리 원칙: master_stocks_cache는 이 클래스를 통해서만 접근
-Repository 패턴 배제: 접근 제한 방식 사용
+단일 소스 진리 원칙: master_stocks_cache 직접 접근
 """
-from typing import Any
-
-
-class SectorDataProvider:
-    """섹터 데이터 제공자 - master_stocks_cache 접근 제한"""
-    
-    @staticmethod
-    def get_stock(code: str) -> dict:
-        """종목 데이터 조회 (읽기 전용)"""
-        from backend.app.services.engine_state import state
-        return state.master_stocks_cache.get(code, {})
-    
-    @staticmethod
-    def get_all_stocks() -> dict[str, dict]:
-        """전체 종목 데이터 조회 (읽기 전용)"""
-        from backend.app.services.engine_state import state
-        return state.master_stocks_cache.copy()
-    
-    @staticmethod
-    def get_stock_field(code: str, field: str) -> Any:
-        """종목 필드 조회 (읽기 전용)"""
-        from backend.app.services.engine_state import state
-        return state.master_stocks_cache.get(code, {}).get(field)
-    
-    @staticmethod
-    async def update_stock_field(code: str, field: str, value: Any) -> None:
-        """종목 필드 업데이트 (쓰기 전용)"""
-        from backend.app.services.engine_state import state
-        async with state.shared_lock:
-            if code in state.master_stocks_cache:
-                state.master_stocks_cache[code][field] = value
-    
-    @staticmethod
-    def has_stock(code: str) -> bool:
-        """종목 존재 여부 확인 (읽기 전용)"""
-        from backend.app.services.engine_state import state
-        return code in state.master_stocks_cache
-    
-    @staticmethod
-    def get_stock_count() -> int:
-        """전체 종목 수 조회 (읽기 전용)"""
-        from backend.app.services.engine_state import state
-        return len(state.master_stocks_cache)
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 업종 요약 계산 관련 함수
@@ -87,6 +42,7 @@ async def get_sector_stocks() -> list:
     """업종별 종목 시세 테이블용 — _master_stocks_cache 기반 실시간 필터링/정렬."""
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
     from backend.app.core.sector_mapping import get_merged_sector as _get_sector
+    from backend.app.services.engine_state import state
     import backend.app.services.engine_service as _es_ref
 
     # eligible_stocks_cache 제거: master_stocks_table이 단일 소스
@@ -99,9 +55,9 @@ async def get_sector_stocks() -> list:
 
     # 단일 소스 진리: state.master_stocks_cache가 종목 데이터의 단일 소스
     # _filtered_sector_codes 제거: sector_stock_layout 의존성 제거
-    all_stocks = SectorDataProvider.get_all_stocks()
+    all_stocks = state.master_stocks_cache.copy()
     for cd in all_stocks.keys():
-        e = SectorDataProvider.get_stock(cd).copy()
+        e = state.master_stocks_cache.get(cd, {}).copy()
         e["code"] = cd  # master_stocks_cache는 code를 KEY로만 보유 -- 값 dict에 명시 (프론트 stocksToMap/delta 식별용)
         e["status"] = "active"
         # 시세 없는 빈 엔트리 제외
@@ -144,15 +100,15 @@ async def get_buy_targets_sector_stocks() -> list:
     ss = _es_ref._sector_summary_cache
     if not ss:
         return []
-    
+
     # buy_targets와 blocked_targets 통합 (단일 소스 진리: _sector_summary_cache)
     result = []
-    
+
     # buy_targets (guard_pass=True)
     for bt in ss.buy_targets:
         s = bt.stock
         # master_stocks_cache에서 실시간 데이터 병합
-        cache_entry = SectorDataProvider.get_stock(s.code)
+        cache_entry = state.master_stocks_cache.get(s.code, {})
         result.append({
             "code": s.code,
             "name": s.name,
@@ -173,12 +129,12 @@ async def get_buy_targets_sector_stocks() -> list:
             "order_ratio": cache_entry.get("order_ratio"),
             "program_net_buy": cache_entry.get("program_net_buy"),
         })
-    
+
     # blocked_targets (guard_pass=False)
     for bt in ss.blocked_targets:
         s = bt.stock
         # master_stocks_cache에서 실시간 데이터 병합
-        cache_entry = SectorDataProvider.get_stock(s.code)
+        cache_entry = state.master_stocks_cache.get(s.code, {})
         result.append({
             "code": s.code,
             "name": s.name,
@@ -199,7 +155,7 @@ async def get_buy_targets_sector_stocks() -> list:
             "order_ratio": cache_entry.get("order_ratio"),
             "program_net_buy": cache_entry.get("program_net_buy"),
         })
-    
+
     return result
 
 
@@ -210,11 +166,12 @@ async def get_all_sector_stocks() -> list[dict]:
     """
     from backend.app.core.sector_mapping import get_merged_sector
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
+    from backend.app.services.engine_state import state
 
     # 단일 소스 진리: state.master_stocks_cache만 사용 (실시간 구독 상태와 분리)
 
     result: list[dict] = []
-    all_stocks = SectorDataProvider.get_all_stocks()
+    all_stocks = state.master_stocks_cache.copy()
     for cd, entry in all_stocks.items():
         if entry.get("status") != "active":
             continue  # 매매부적격(관리종목, 거래정지, exited 등) 제외
@@ -269,6 +226,7 @@ def get_sector_scores_snapshot() -> tuple[list[dict], int]:
 
 async def recompute_sector_summary_now() -> None:
     """설정 변경 시 즉시 _sector_summary_cache 재계산 (10초 루프 대기 없이)."""
+    from backend.app.services.engine_state import state
     from backend.app.core.logger import get_logger
     logger = get_logger("engine_sector")
     from backend.app.domain.sector_calculator import compute_full_sector_summary
@@ -304,7 +262,7 @@ async def recompute_sector_summary_now() -> None:
 
         # ── 5일평균최소거래대금(N억원) 이상 종목 마킹 ──
         min_avg_amt_eok = float(_es._integrated_system_settings_cache.get("sector_min_trade_amt", 0.0))
-        all_stocks = SectorDataProvider.get_all_stocks()
+        all_stocks = state.master_stocks_cache.copy()
         for cd, entry in all_stocks.items():
             avg5d_million = int(entry.get("avg_5d_trade_amount", 0) or 0)
             avg5d_eok = avg5d_million // 100

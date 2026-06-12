@@ -267,6 +267,12 @@ export function bindWSToStore(
     applyRealtimeState(data as { status: "waiting" | "live" })
   })
 
+  /* ── receive-rate: 수신율 실시간 갱신 ── */
+  pricesClient.onEvent('receive-rate', (data) => {
+    const d = data as { pct: number; received: number; total: number }
+    uiStore.setState({ receiveRate: { pct: d.pct, received: d.received, total: d.total } })
+  })
+
   /* ── sector-scores: 업종순위 실시간 갱신 ── */
   pricesClient.onEvent('sector-scores', (data) => {
     const d = data as {
@@ -283,6 +289,9 @@ export function bindWSToStore(
         ? { delta: true, changed_sectors: d.changed_sectors ?? [], removed_sectors: d.removed_sectors ?? [] }
         : null,
     })
+    // receiveRate (uiStore) 갱신
+    const receiveRate = (d.status as Record<string, unknown>)?.receiveRate as { received: number; total: number; pct: number } | undefined
+    uiStore.setState({ receiveRate: receiveRate ?? null })
   })
 
   /* ── ws-subscribe-status: 구독 상태 실시간 갱신 ── */

@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from backend.app.core import sector_mapping
 from backend.app.core.logger import get_logger
-from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine")
 

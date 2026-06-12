@@ -30,6 +30,7 @@ class NotificationCache:
         self.prev_buy_targets_map = None
         self.positions_code_set = set()
         self.layout_code_set = set()
+        self.prev_receive_rate = None
 
     def clear_all(self):
         """모든 캐시 초기화."""
@@ -41,6 +42,7 @@ class NotificationCache:
         self.prev_buy_targets_map = None
         self.positions_code_set.clear()
         self.layout_code_set.clear()
+        self.prev_receive_rate = None
 
 
 # 전역 인스턴스 1개만 생성
@@ -287,10 +289,18 @@ async def notify_desktop_settings_toggled(changed_keys_dict: dict | None = None)
 
 
 def notify_desktop_sector_scores(*, force: bool = False) -> None:
-    """업종 순위 + 상태만 전송 → WS sector-scores. delta 전송."""
+    """업종 순위 + 상태 + 수신율 전송 → WS sector-scores. delta 전송."""
     from backend.app.services.engine_state import state
     import backend.app.services.engine_service as _es
     scores, ranked_count = _es.get_sector_scores_snapshot()
+
+    # 수신율 가져오기 (pipeline_compute.py에서 이벤트 기반으로 갱신)
+    receive_rate = None
+    try:
+        from backend.app.pipelines.pipeline_compute import get_current_receive_rate
+        receive_rate = get_current_receive_rate()
+    except Exception:
+        pass
 
     # delta 계산: 변경된 섹터만 전송
     if not force and notify_cache.prev_scores:
@@ -307,12 +317,20 @@ def notify_desktop_sector_scores(*, force: bool = False) -> None:
         # 메모리 클리닝: 임시 변수 삭제
         del prev_map, cur_sectors
 
-        if not changed and not removed:
+        # 수신율 변경 감지
+        receive_rate_changed = receive_rate != notify_cache.prev_receive_rate
+
+        if not changed and not removed and not receive_rate_changed:
             return  # 변경 없음 → 전송 생략
 
         payload = {
             "scores": scores,
-            "status": {"total_stocks": len(scores), "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3) or 3), "ranked_sectors_count": ranked_count},
+            "status": {
+                "total_stocks": len(scores),
+                "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3) or 3),
+                "ranked_sectors_count": ranked_count,
+                "receive_rate": receive_rate
+            },
             "delta": True,
             "changed_sectors": [s["sector"] for s in changed],
             "removed_sectors": removed,
@@ -324,11 +342,17 @@ def notify_desktop_sector_scores(*, force: bool = False) -> None:
         # 최초 전송 또는 force → 전체 스냅샷
         payload = {
             "scores": scores,
-            "status": {"total_stocks": len(scores), "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3) or 3), "ranked_sectors_count": ranked_count},
+            "status": {
+                "total_stocks": len(scores),
+                "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3) or 3),
+                "ranked_sectors_count": ranked_count,
+                "receive_rate": receive_rate
+            },
         }
 
     _safe_broadcast("sector-scores", payload)
     notify_cache.prev_scores = scores
+    notify_cache.prev_receive_rate = receive_rate
 
 
 def notify_desktop_sector_refresh(*, force: bool = False) -> None:
@@ -565,7 +589,6 @@ _BUY_TARGET_CMP_KEYS = ("rank", "cur_price", "change_rate", "strength", "trade_a
 async def notify_buy_targets_update() -> None:
     """매수후보 목록 변경 시 delta만 WS로 브로드캐스트한다."""
     import backend.app.services.engine_service as _es
-    from backend.app.services.sector_data_provider import SectorDataProvider
 
     targets = await _es.get_buy_targets_sector_stocks()
 

@@ -34,6 +34,7 @@ _STATE_EVENTS: frozenset[str] = frozenset({
     "snapshot-update",
     "sector-stocks-delta",
     "avg-amt-progress",
+    "receive-rate",
 })
 
 # real-data FID 필터: 프론트엔드에서 사용하는 FID만 전송

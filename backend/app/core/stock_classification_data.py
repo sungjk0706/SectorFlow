@@ -70,25 +70,13 @@ async def rename_sector(old_name: str, new_name: str) -> None:
 
 
 async def create_sector(name: str) -> None:
-    """신규 업종 등록."""
-    name = name.strip()
-    if not name:
-        raise ValueError("업종명은 필수입니다")
-
-    # 1) SQLite DB 업데이트
-    from backend.app.db.database import get_db_connection
-    conn = await get_db_connection()
-    try:
-        await conn.execute("INSERT OR IGNORE INTO custom_sectors (name) VALUES (?)", (name,))
-        await conn.commit()
-    except Exception as e:
-        await conn.rollback()
-        _log.error("[DB업데이트] 업종 생성 실패: %s", e)
-        raise e
-
-    # 2) 인메모리 캐시 업데이트 (새 업종 추가)
-    # 업종 정의만 추가하므로 별도 메모리 캐시 업데이트 불필요
-    # 종목이 매핑될 때 sector 필드가 업데이트됨
+    """신규 업종 등록.
+    
+    custom_sectors 테이블은 stock_code를 기본 키로 사용하므로,
+    업종 정의만 저장하는 방식이 아닌 종목 매핑 시 업종이 자동 생성됨.
+    이 함수는 더 이상 사용되지 않음 (하위 호환성용).
+    """
+    raise NotImplementedError("업종 생성은 종목 매핑(move_stock)을 통해 자동 생성됩니다")
 
 
 async def delete_sector(name: str) -> None:
@@ -122,7 +110,11 @@ async def delete_sector(name: str) -> None:
 
 
 async def move_stock(stock_code: str, target_sector: str) -> None:
-    """종목을 다른 업종으로 이동. DB와 인메모리 캐시를 동시에 업데이트."""
+    """종목을 다른 업종으로 이동. DB와 인메모리 캐시를 동시에 업데이트.
+    
+    custom_sectors 테이블 기본 키: stock_code (단일)
+    한 종목은 하나의 업종만 소속.
+    """
     stock_code = stock_code.strip()
     target_sector = target_sector.strip()
     if not stock_code or not target_sector:
@@ -133,7 +125,8 @@ async def move_stock(stock_code: str, target_sector: str) -> None:
     conn = await get_db_connection()
     try:
         await conn.execute("UPDATE master_stocks_table SET sector = ? WHERE code = ?", (target_sector, stock_code))
-        await conn.execute("INSERT OR REPLACE INTO custom_sectors (name, stock_code) VALUES (?, ?)", (target_sector, stock_code))
+        # stock_code 단일 기본 키이므로 INSERT OR REPLACE로 기존 매핑 교체
+        await conn.execute("INSERT OR REPLACE INTO custom_sectors (stock_code, name) VALUES (?, ?)", (stock_code, target_sector))
         await conn.commit()
     except Exception as e:
         await conn.rollback()
@@ -156,6 +149,7 @@ async def sync_sector_from_custom_sectors() -> None:
     """custom_sectors 테이블을 기준으로 master_stocks_table.sector 동기화.
     
     확정시세 다운로드 후 사용자 커스텀 업종 매핑 복구용.
+    custom_sectors 테이블 기본 키: stock_code (단일)
     """
     from backend.app.db.database import get_db_connection
     import backend.app.services.engine_state as _st
@@ -163,8 +157,8 @@ async def sync_sector_from_custom_sectors() -> None:
     conn = await get_db_connection()
     
     try:
-        # custom_sectors에서 매핑 로드
-        cursor = await conn.execute("SELECT name, stock_code FROM custom_sectors")
+        # custom_sectors에서 매핑 로드 (stock_code, name 순서)
+        cursor = await conn.execute("SELECT stock_code, name FROM custom_sectors")
         rows = await cursor.fetchall()
         
         updated = 0

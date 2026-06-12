@@ -12,7 +12,6 @@ from backend.app.core.logger import get_logger
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.services.buy_order_executor import try_sector_buy
 from backend.app.services.engine_state import state
-from backend.app.services.sector_data_provider import SectorDataProvider
 
 logger = get_logger("engine_lifecycle")
 
@@ -100,7 +99,7 @@ def is_engine_running() -> bool:
 def get_engine_status() -> dict:
     """엔진 상태 반환."""
     # 실시간 구독 종목 수
-    all_stocks = SectorDataProvider.get_all_stocks()
+    all_stocks = state.master_stocks_cache.copy()
     sub_count = sum(1 for entry in all_stocks.values() if entry.get("_subscribed", False))
 
     test_mode = is_test_mode(state.integrated_system_settings_cache)

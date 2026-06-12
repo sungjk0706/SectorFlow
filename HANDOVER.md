@@ -1,197 +1,194 @@
 # SectorFlow 작업 인계 문서
 
 ## 작업 날짜
-2026-06-08
+2026-06-12
 
 ---
 
-## 최신 작업 (2026-06-08) — buyTargets change_rate=0 문제 해결 시도 (미해결)
+## 최신 작업 (2026-06-12) — 업종순위 페이지 수신율 표시 구현 완료
 
 ### 핵심
-buyTargets(added)의 change_rate가 0으로 표시되는 문제 해결 시도
-백엔드 master_stocks_cache 단일 소스 원칙 준수, null/0 구분 표준화
+업종순위 페이지에 실시간 데이터 수신율을 표시하는 기능 구현 완료
+백엔드에서 수신율 계산 및 전송, 프론트엔드에서 수신 및 표시
+
+### 문제 현상 (초기)
+- 프론트엔드 업종순위 페이지에 수신율이 (현재: 0%)로만 표시됨
+- 백엔드 로그에는 수신율이 정상적으로 출력됨 (예: 수신율: 100/156 = 64.1%)
+- 백엔드에서 수신율 계산은 정상 작동 중
+- 백엔드에서 `receive-rate` 이벤트 전송 로그 확인됨 (예: `[Compute] 수신율 변경 감지 전송: 100.0% (156/156)`)
+- 프론트엔드 콘솔에서 `uiStore.getState().receiveRate`가 `null`로 확인됨
+- 프론트엔드 콘솔에 `receive-rate` 이벤트 로그 없음
+
+### 해결 방안
+기존 sector-scores 이벤트를 통한 전송 방식 폐기, broadcast_queue 직접 사용으로 단순화
+
+### 수정 내용
+
+1. **백엔드 pipeline_compute.py 수정**
+   - Phase 1 루프에서 `notify_desktop_sector_scores(force=True)` 호출 제거
+   - `broadcast_queue.put()`을 사용하여 `receive-rate` 이벤트 직접 전송
+   - 포맷: `{"type": "receive-rate", "data": {"pct": current_pct, "received": received_count, "total": total_count}}`
+   - Phase 2 루프에서 수신율 변경 시에만 이벤트 전송 (delta 전송, `_receive_rate_dirty` 플래그 사용)
+   - 백엔드 ws_manager.py에서 `receive-rate`를 `_STATE_EVENTS`에 추가 (상태형 이벤트로 처리)
+   - **수신율 전송 로직 단일화**: `_send_receive_rate()` 함수로 통합
+   - **broadcast_queue 전역 변수 할당**: import 구문 뒤에 `broadcast_queue = get_broadcast_queue()` 추가
+   - **수신율 로그 중복 제거**: `_send_receive_rate()` 함수 내 로그 제거, Phase 1 로그 유지
+   - **Phase 2 수신율 전송 조건 수정**: 임계값 이상 시 전송 중지 (사용자 설정 `sector_start_threshold_pct` 사용)
+   - **Phase 2 루프 시작 로그 제거**: 중복 로그 제거
+
+2. **백엔드 engine_account_notify.py 수정**
+   - 이전 delta 감지 로직 복원 (prev_receive_rate 필드 추가)
+   - 이 수정은 최종 해결책에서 사용되지 않음 (broadcast_queue 직접 사용으로 대체)
+
+3. **프론트엔드 binding.ts 수정**
+   - `receive-rate` 이벤트 핸들러 추가
+   - uiStore에 receiveRate 직접 갱신
+
+4. **프론트엔드 sector-ranking.ts 수정**
+   - 수신율 표시 UI 추가 (파란색 #2196F3)
+   - 임계점 도달 시 라벨 자동 숨김 로직 추가 (하이스테리시스 적용: 5% 이상 떨어져야 다시 표시)
+   - `updateReceiveRate` 함수에 임계점 체크 로직 추가
+
+### 수정 파일
+- `backend/app/pipelines/pipeline_compute.py`
+- `backend/app/services/engine_account_notify.py` (delta 감지 로직 추가, 미사용)
+- `backend/app/web/ws_manager.py` (`receive-rate`를 `_STATE_EVENTS`에 추가)
+- `frontend/src/binding.ts`
+- `frontend/src/pages/sector-ranking.ts`
+
+### 검증 결과
+- py_compile 문법 검증: 성공
+- npm run build: 성공
+- 백엔드 수신율 계산: 완료
+- 백엔드 수신율 전송: 완료 (broadcast_queue 직접 사용, delta 전송)
+- 백엔드 이벤트 타입 등록: 완료 (ws_manager.py _STATE_EVENTS에 추가)
+- 프론트엔드 수신율 수신: 완료
+- 프론트엔드 수신율 표시: 완료
+- 수신율 로그 중복 제거: 완료
+- 프론트엔드 수신율 0% 깜빡거림 해결: 완료
+
+### 아키텍처 원칙 준수
+- 이벤트 기반 루프: 준수 (틱 수신 시 수신율 계산 및 전송)
+- 단일 소스 진리: 준수 (pipeline_compute.py에서 직접 전송)
+- EventBus 금지: 준수 (broadcast_queue 사용)
+- 단순한 로직: 준수 (별도 이벤트 타입 도입, 기존 로직 손상 없음)
+- 트래픽 최적화: 준수 (delta 전송, 변경 시에만 전송)
+- 설정 메모리 상주: 준수 (사용자 설정 `sector_start_threshold_pct` 사용)
+- 중복 제거: 준수 (불필요한 로그 제거)
+
+### 완료 상태
+- 백엔드 수신율 계산: 완료
+- 백엔드 수신율 전송: 완료 (broadcast_queue 직접 사용, delta 전송)
+- 백엔드 이벤트 타입 등록: 완료 (ws_manager.py _STATE_EVENTS에 추가)
+- 프론트엔드 수신율 수신: 완료
+- 프론트엔드 수신율 표시: 완료
+- 수신율 로그 중복 제거: 완료
+- 프론트엔드 수신율 0% 깜빡거림 해결: 완료
+
+---
+
+## 이전 작업 (2026-06-11) — custom_sectors 스키마 변경 완료
+
+### 핵심
+custom_sectors 테이블 기본 키 변경으로 중복 종목코드 문제 근본 해결
+한 종목은 하나의 업종만 소속한다는 비즈니스 로직을 데이터베이스 레벨에서 강제
 
 ### 문제 현상
-- buyTargets(added) 항목의 change_rate가 0으로 표시됨
-- sectorStocks는 정상적인 change_rate 표시
-- 로그 확인 결과 백엔드 master_stocks_cache 자체에 change_rate가 0.0으로 저장되어 있음
-- 실시간 틱 수신 전에 buy-targets-delta가 전송되는 타이밍 문제
+- custom_sectors 테이블에 14개 종목코드가 각각 2개의 업종으로 매핑됨
+- 모든 중복이 "기타" + 다른 업종 조합
+- 원인: 복합 기본 키 (name, stock_code)로 인해 INSERT OR REPLACE가 기존 "기타" 매핑을 삭제하지 않음
 
 ### 수정 내용
 
-1. **백엔드 engine_account_notify.py** (buy-targets-delta 실시간 필드 제거)
-   - added/changed 항목에서 실시간 필드 제거 (cur_price, change, change_rate, strength, trade_amount)
-   - 종목 목록만 전송 (프론트엔드 sectorStocks 단일 소스 원칙 준수)
-   - 비교 키에서 실시간 필드 제외
+1. **기존 중복 데이터 정리**
+   - 14개 중복 종목코드 중 "기타" 업종 삭제
+   - 1개 남은 중복(004830) 수동 정리
+   - 누락된 2개 종목(069960, 131290) "기타"로 추가
 
-2. **프론트엔드 binding.ts** (실시간 필드 sectorStocks에서 가져오기)
-   - changed 항목: sectorStocks에서 실시간 필드 병합
-   - added 항목: sectorStocks에서 실시간 필드 병합
-   - 백엔드 단일 소스 원칙 준수
+2. **테이블 스키마 변경**
+   - 기본 키: (name, stock_code) → stock_code 단일 기본 키
+   - 새 테이블 생성 → 데이터 복사 → 기존 테이블 삭제 → 이름 변경
 
-3. **프론트엔드 hotStore.ts** (applyRealData buyTargets 업데이트 로직 복구)
-   - sectorStocks 업데이트 시 buyTargets도 함께 업데이트
-   - null이 아닐 때만 업데이트 (데이터 없음 표현)
-
-4. **백엔드 kiwoom_stock_rest.py** (change_rate 초기값 null)
-   - 전일종가 계산 실패 시 change_rate를 0.0에서 None으로 변경
-   - null은 '아직 데이터 없음' 표현
-
-5. **프론트엔드 ui-styles.ts** (null/0 구분 표준화)
-   - fmtRate: null이면 '-' 표시, 0이면 '0.00' 표시
-   - createRateCell: null이면 '-' 표시, 0이면 '0.00%' 표시
+3. **코드 수정** (stock_classification_data.py)
+   - create_sector: NotImplementedError (종목 매핑 시 자동 생성)
+   - move_stock: INSERT OR REPLACE 순서 변경 (stock_code, name)
+   - sync_sector_from_custom_sectors: SELECT 순서 변경 (stock_code, name)
 
 ### 수정 파일
-- `backend/app/services/engine_account_notify.py`
-- `frontend/src/binding.ts`
-- `frontend/src/stores/hotStore.ts`
-- `backend/app/core/kiwoom_stock_rest.py`
-- `frontend/src/components/common/ui-styles.ts`
+- `backend/app/core/stock_classification_data.py`
 
 ### 아키텍처 원칙 준수
-- 단일 소스 진리: 백엔드 master_stocks_cache → 프론트엔드 sectorStocks → buyTargets
-- 실시간 데이터처리기반 표준 아키텍처: 모든 소비자가 단일 소스에서 직접 데이터 가져옴
-- null/0 구분: null은 '아직 데이터 없음', 0은 진짜 0%
+- 단일 소스 진리: 한 종목은 하나의 업종만 소속
+- 데이터 무결성: 데이터베이스 레벨에서 중복 방지
+- 비즈니스 로직 반영: 스키마에 비즈니스 로직 반영
 
 ### 검증 결과
-- 백엔드 py_compile: 성공
-- 프론트엔드 npm run build: 성공
+- py_compile 문법 검증: 성공
+- master_stocks_table: 1,373종목
+- stock_5d_array: 1,373종목
+- custom_sectors: 1,373종목
+- 모든 테이블 종목 수 일치
+- 중복 종목코드 없음
 
-### 로그 확인 결과
-```
-[buy-targets-delta] added 종목: 457370, change_rate: 1.36
-[buy-targets-delta] added 종목: 035720, change_rate: 0.0
-[buy-targets-delta] added 종목: 032830, change_rate: 0.0
-...
-```
-- 일부 종목: change_rate가 정상 값
-- 대부분 종목: change_rate가 0.0
-- 백엔드 master_stocks_cache 자체에 change_rate가 0.0으로 저장되어 있음
-
-### 진짜 원인
-- 업종 계산 로직이 실시간 틱 수신 완료 전에 실행됨
-- master_stocks_cache에 실시간 틱 데이터가 아직 도착하지 않음
-- change_rate가 0.0인 종목은 실시간 틱이 아직 수신되지 않은 종목
-
-### 미해결 문제
-- 실시간 틱 수신 완료 후 업종 계산을 실행하도록 타이밍 조정 필요
-- 백엔드에서 실시간 틱 수신 완료를 감지하고 업종 계산을 지연시키는 로직 필요
+### 완료 상태
+- 기존 중복 데이터 정리: 완료
+- 테이블 스키마 변경: 완료
+- 관련 코드 수정: 완료
+- 종목수 일치 확인: 완료
 
 ---
 
-## 이전 작업 (2026-06-08) — 증권사 변경 아키텍처 부합 수정 완료
+## 이전 작업 (2026-06-11) — 확정시세 다운로드 DB 작업 원자화 완료
 
 ### 핵심
-증권사 변경 시 불완전한 핫-리로드 로직을 엔진 재기동으로 대체하여 단일 진입점 보장
-증권사 하드코딩 제거, 아키텍처 원칙 4, 5, 9 준수
+확정시세 다운로드 시 DB 작업을 단일 트랜잭션으로 원자화
+master_stocks_table 기준으로 stock_5d_array, custom_sectors 동기화
+메모리 캐시 증분 갱신 및 프론트엔드 즉시 반영 로직 확인
 
 ### 수정 내용
 
-1. **증권사 변경 시 엔진 재기동 로직 구현** (`engine_service.py`)
-   - 원인: `update_broker_credentials_live()`가 키움증권만 하드코딩되어 있고 불완전한 핫-리로드
-   - 수정: `broker` 변경 시 `stop_engine()` → `start_engine()`으로 엔진 재기동 (단일 진입점 보장, 원칙 5)
-   - 이유: 상태 정리 보장, 테스트 가능성 확보 (원칙 9)
+1. **타이머 확정시세 단일 트랜잭션으로 DB 작업 원자화** (market_close_pipeline.py:1041-1112)
+   - master_stocks_table DELETE/INSERT
+   - stock_5d_array DELETE (master_stocks_table 기준)
+   - custom_sectors DELETE (master_stocks_table 기준)
+   - 신규상장 종목 기타 섹터 추가
+   - sync_sector_from_custom_sectors (트랜잭션 내)
+   - 단일 commit (모든 DB 작업 원자화)
+   - 메모리 캐시 동기화 (트랜잭션 완료 후)
 
-2. **update_broker_credentials_live() 삭제** (`engine_lifecycle.py`)
-   - 원인: 증권사 하드코딩 (키움증권만 처리), 아키텍처 원칙 4 위반
-   - 수정: 함수 전체 삭제 (77줄)
-   - 이유: 엔진 재기동으로 대체, 증권사 하드코딩 제거
+2. **수동 확정시세 단일 트랜잭션으로 DB 작업 원자화** (market_close_pipeline.py:1556-1608)
+   - 동일한 로직 적용
+   - 단일 트랜잭션으로 DB 작업 원자화
 
-3. **on_trade_mode_switched()에서 증권사 이름 제거** (`engine_lifecycle.py`)
-   - 원인: `state.kiwoom_connector` 하드코딩
-   - 수정: `state.connector_manager or state.kiwoom_connector`로 변경 (BrokerRouter 사용)
-   - 이유: 증권사 하드코딩 제거 (원칙 4)
-
-4. **schedule_engine_task() 호출 수정** (`engine_service.py`)
-   - 원인: keyword-only 인자 `context`를 positional로 전달하여 TypeError
-   - 수정: `schedule_engine_task(on_trade_mode_switched(), context="투자모드 전환")`
-   - 이유: 함수 시그니처 준수
-
-5. **engine_service.py에서 update_broker_credentials_live 참조 제거**
-   - 원인: 모듈 레벨 참조 할당이 남아 있어 NameError 발생
-   - 수정: `update_broker_credentials_live = update_broker_credentials_live` 라인 제거
-
-6. **LS서버소켓 US3 체결 데이터 수신 로그 제거** (`ls_connector.py`)
-   - 원인: 실시간 데이터 수신 시 과도한 로그 출력
-   - 수정: 로그 라인 제거
-
-7. **구독신청 간격 수정** (`ls_connector.py`)
-   - 원인: 구독 속도 최적화 필요
-   - 수정: 0.2초 → 0.05초로 변경
+3. **중복 호출 제거**
+   - 타이머 확정시세의 별도 sync_sector_from_custom_sectors 호출 제거
+   - 수동 확정시세의 별도 sync_sector_from_custom_sectors 호출 제거
 
 ### 수정 파일
-- `backend/app/services/engine_service.py`
-- `backend/app/services/engine_lifecycle.py`
-- `backend/app/core/ls_connector.py`
+- `backend/app/services/market_close_pipeline.py`
 
 ### 아키텍처 원칙 준수
-- 원칙 4 (증권사 하드코딩 금지): 준수
-- 원칙 5 (단일 소스 진리): 준수
-- 원칙 9 (테스트모드 동등성): 준수
+- 단일 소스 진리: master_stocks_table 기준으로 stock_5d_array, custom_sectors 동기화
+- 원자성: 단일 트랜잭션으로 DB 작업 원자화
+- 데이터 일치성: 트랜잭션 완료 후 메모리/프론트엔드 갱신
 
 ### 검증 결과
-- `py_compile engine_service.py`: 성공
-- `py_compile engine_lifecycle.py`: 성공
-- `py_compile ls_connector.py`: 성공
+- py_compile 문법 검증: 성공
 
----
-
-## 이전 작업 (2026-06-07)
-
-### 1. trading.py 변수 간소화
-- `_change_rate_for_guard`, `_strength_val` 중간 변수 제거
-- master_stocks_cache에서 직접 읽기로 변경
-- 검증: py_compile, import 성공
-
-### 2. strengths 캐시 제거
-- `strengths` 캐시가 `master_stocks_cache`의 `strength` 필드와 중복
-- 수정 파일: `sector_data_provider.py`, `sector_calculator.py`, `engine_sector_confirm.py`
-- 검증: py_compile, import 성공
-
-### 3. 불필요한 디버그 로그 삭제 (13개 파일)
-- `db_writer.py`, `state_manager.py`, `backend_coalescing.py`, `engine_loop.py`, `core_queues.py`, `app.py`, `engine_cache.py`, `daily_time_scheduler.py`, `pipeline_oms.py`, `engine_sector_confirm.py`, `pipeline_compute.py`, `ws.py`, `settings_file.py`
-- 검증: py_compile, import 성공
-
-### 4. stock_5d_array 중복 저장 수정
-- `INSERT OR REPLACE`로 매일 새 기준일 데이터 추가 시 이전 기준일 데이터 삭제하지 않는 문제 수정
-- 수정 파일: `market_close_pipeline.py` (`_step2_roll_5d_arrays`)
-- 기존 중복 데이터 2,715행 삭제 완료
-
-### 5. stock_5d_array 미래 날짜 저장 수정
-- 공휴일 시 `get_current_trading_day_str()`가 다음 거래일을 반환하여 미래 날짜 저장 문제 수정
-- 수정 파일: `market_close_pipeline.py` (`fetch_5d_data_only`)
-
----
-
-## 이전 작업 (2026-06-06)
-
-### 1. 백엔드 모듈화
-- domain/models.py, stock_filter.py, buy_filter.py 생성 (services/ 이동)
-- domain/sector_score.py, sector_filter.py, sector_calculator.py 생성 (sector_score_analyzer.py 분리)
-- pipelines/ 디렉토리 생성 (pipeline_compute.py, pipeline_oms.py, pipeline_gateway.py 이동)
-- 찌꺼기 제거 완료 (원본 파일 삭제, 미사용 import 정리)
-- 검증: py_compile, 앱 기동 성공
-
-### 2. 종목분류 페이지 업종 변경 시 업종순위 테이블 UI 갱신 수정
-- 원인: `pipeline_compute.py`의 `_handle_sector_recompute()`에서 업종순위 재계산 후 `notify_desktop_sector_scores()` 호출 누락
-- 수정: `broadcast_queue` 직접 전송 제거, `notify_desktop_sector_scores(force=True)` 호출 추가
-- 아키텍처 준수: 단일 진입점 원칙, 직접 호출 체인 유지
-
-### 3. 프로그램 순매수 가산점 로직 추가
-- 기능: 매수설정페이지에서 프로그램 순매수가 양수인 종목에 가산점 부여
-- 수정 파일: `buy-settings.ts`, `settings_defaults.py`, `engine_settings.py`, `buy_filter.py`, `engine_radar.py`, `engine_sector_confirm.py`, `sector_calculator.py`, `engine_service.py`
-- 아키텍처 준수: 단일 진입점 원칙, 직접 호출 체인 유지, 캐시 패턴 일관성
-
----
-
-## 미해결/다음 단계
-1. 실시간 틱 수신 완료 후 업종 계산을 실행하도록 타이밍 조정
-2. 백엔드에서 실시간 틱 수신 완료를 감지하고 업종 계산을 지연시키는 로직 구현
-3. buyTargets change_rate=0 문제 근본 해결
+### 완료 상태
+- 타이머 확정시세 단일 트랜잭션: 완료
+- 수동 확정시세 단일 트랜잭션: 완료
+- 중복 호출 제거: 완료
 
 ---
 
 ## 미해결 문제
-- buyTargets(added)의 change_rate가 0으로 표시되는 문제
-- 백엔드 master_stocks_cache에 실시간 틱 데이터가 아직 도착하지 않은 상태에서 업종 계산 실행
-- 실시간 틱 수신 완료를 감지하는 로직 필요
+
+### 장거래시간 확정시세 다운로드 문제
+- **문제**: 장거래시간에 확정시세 다운로드가 실행되어 업종순위 계산이 멈춤
+- **원인**: 확정시세 다운로드 중에는 master_stocks_cache가 업데이트되지 않아 all_codes가 비어있음
+- **현상**: 업종순위 계산이 "부트스트랩 대기" 로그를 1초마다 출력하며 대기
+- **아키텍처 원칙**: 실시간 파이프라인과 배치 파이프라인은 독립, 상호 간섭 금지
+- **정상 동작**: 장거래시간에는 업종순위 계산이 실시간 데이터로 정상 동작해야 함
+- **해결 방안**: 확정시세 다운로드는 장마감 후에만 실행되도록 시간 가드 추가
+- **우선순위**: 추후 해결
