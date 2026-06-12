@@ -417,7 +417,7 @@ function mount(container: HTMLElement): void {
     ['width:40px;text-align:right;margin-right:12px;', '종목수'],
     ['width:48px;text-align:right;', '종합점수'],
     ['width:64px;text-align:right;', '상승비율'],
-    ['width:72px;text-align:right;', '거래대금(억)'],
+    ['width:72px;text-align:right;', '평균거래(억)'],
   ]
   for (const [css, text] of headerDefs) {
     const sp = document.createElement('span')
