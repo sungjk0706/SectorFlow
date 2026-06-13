@@ -1517,9 +1517,27 @@ function mount(_container: HTMLElement): void {
         selectedSector = null
       }
 
-      // 데이터 변경 시 선택 상태는 무효화됨 (단방향 데이터 흐름)
-      selectedStocks.clear()
-      anchorRow = -1
+      // 데이터 변경 시 이동한 종목만 선택 상태에서 제거 (나머지 선택 유지)
+      const prevStockMoves = prev.stockMoves
+      const newStockMoves = state.stockMoves
+
+      // 이동한 종목 코드 식별 (stockMoves가 변경된 종목)
+      const movedCodes: string[] = []
+      for (const code of selectedStocks) {
+        if (prevStockMoves[code] !== newStockMoves[code]) {
+          movedCodes.push(code)
+        }
+      }
+
+      // 이동한 종목만 선택 상태에서 제거
+      for (const code of movedCodes) {
+        selectedStocks.delete(code)
+      }
+
+      // 모든 종목이 이동한 경우 anchorRow 초기화
+      if (selectedStocks.size === 0) {
+        anchorRow = -1
+      }
 
       updateMasterPanel()
       updateCenterPanel()
