@@ -119,7 +119,7 @@ from backend.app.services.engine_lifecycle import (
     broadcast_engine_status,
     _delayed_resubscribe_stock_after_rate_limit,
 )
-from backend.app.services.buy_order_executor import try_sector_buy
+from backend.app.services.buy_order_executor import evaluate_buy_candidates
 from backend.app.services.engine_snapshot import (
     build_initial_snapshot,
     build_sector_stocks_payload,
@@ -244,7 +244,7 @@ stop_engine = stop_engine
 is_running = is_engine_running
 get_status = get_engine_status
 on_trade_mode_switched = on_trade_mode_switched
-try_sector_buy = try_sector_buy
+evaluate_buy_candidates = evaluate_buy_candidates
 _log = log_message
 _now_kst = get_current_kst_time
 schedule_engine_task = schedule_engine_task

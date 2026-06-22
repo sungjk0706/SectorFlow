@@ -19,7 +19,7 @@ logger = get_logger("engine_lifecycle")
 # 섹터 매수 실행 함수
 # ──────────────────────────────────────────────────────────────────────────────
 
-async def try_sector_buy() -> None:
+async def evaluate_buy_candidates() -> None:
     """
     이벤트 기반 매수 판단 — 실시간 데이터 변경 시 _do_sector_recompute()에서 호출.
     auto_buy_effective(시간 범위 + auto_buy_on + 마스터 스위치) 통과 시 매수 실행.

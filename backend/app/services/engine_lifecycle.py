@@ -10,7 +10,6 @@ import asyncio
 import time
 from backend.app.core.logger import get_logger
 from backend.app.core.trade_mode import is_test_mode
-from backend.app.services.buy_order_executor import try_sector_buy
 from backend.app.services.engine_state import state
 
 logger = get_logger("engine_lifecycle")
@@ -179,7 +178,7 @@ async def on_trade_mode_switched() -> None:
 
 
 # ── 섹터 매수 ─────────────────────────────────────────────────────
-# _try_sector_buy는 buy_order_executor.py로 이전됨
+# evaluate_buy_candidates는 buy_order_executor.py로 이전됨
 
 
 # ── Reconciliation(강제 정산) ───────────────────────────────────────────
