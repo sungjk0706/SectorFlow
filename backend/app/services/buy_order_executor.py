@@ -88,8 +88,8 @@ async def try_sector_buy() -> None:
             if s.code in state.master_stocks_cache:
                 state.master_stocks_cache[s.code]["_last_buy_ts"] = now
         
-        logger.info("[섹터매수] 매수 시도: %s(%s) 섹터=%s 등락률=%.2f%%",
-                    s.name, s.code, s.sector, s.change_rate)
+        logger.info("[섹터매수] 매수 시도: %s(%s) 섹터=%s",
+                    s.name, s.code, s.sector)
         try:
             _price = int(s.cur_price or 0)
             if _price <= 0:

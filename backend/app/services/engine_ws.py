@@ -114,7 +114,7 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
     """
     from backend.app.services.engine_symbol_utils import _format_broker_reg_stk_cd, get_ws_subscribe_code
     
-    stk_cd = str(stk_cd).strip().lstrip("A")
+    stk_cd = str(stk_cd).strip()
     if not stk_cd:
         return
     
@@ -275,7 +275,7 @@ def _item_cd_tracked_radar_or_ready(item_cd: str) -> bool:
     """
     from backend.app.services.engine_symbol_utils import _normalize_stk_cd_rest
 
-    nk = _normalize_stk_cd_rest(str(item_cd).strip().lstrip("A"))
+    nk = _normalize_stk_cd_rest(str(item_cd).strip())
     if not nk or nk == "000000":
         return False
     # _radar_cnsr_order 삭제: state.master_stocks_cache의 "_subscribed" 사용 (제로-체크 보장)

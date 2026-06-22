@@ -30,7 +30,7 @@ async def _get_rest_base() -> str:
 
 def _norm_stk_cd(stk_cd: str) -> str:
     """캐시 키용. 순수 숫자만 6자리로; 비숫자 포함(0120G0)은 숫자만 남기면 001200과 충돌하므로 원문 유지."""
-    s = str(stk_cd).strip().lstrip("A")
+    s = str(stk_cd).strip()
     if not s:
         return ""
     if s.isdigit():
@@ -132,7 +132,7 @@ async def get_account_profit_rate(access_token: str) -> dict:
                 if qty <= 0:
                     continue
                 stock_list.append({
-                    "stk_cd":    str(item.get("stk_cd", "")).strip().lstrip("A"),
+                    "stk_cd":    str(item.get("stk_cd", "")).strip(),
                     "stk_nm":    item.get("stk_nm", ""),
                     "qty":       qty,
                     "buy_price": int(str(item.get("buy_uv", 0)).replace(",", "") or 0),

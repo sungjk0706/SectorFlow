@@ -225,11 +225,15 @@ def get_sector_scores_snapshot() -> tuple[list[dict], int]:
 
 
 async def recompute_sector_summary_now() -> None:
-    """설정 변경 시 즉시 _sector_summary_cache 재계산 (10초 루프 대기 없이)."""
+    """설정 변경 시 즉시 _sector_summary_cache 재계산 (10초 루프 대기 없이).
+
+    매수 시도는 실시간 틱 기반 업종순위 증분 업데이트(_incremental_recompute)에서 수행됨.
+    """
     from backend.app.services.engine_state import state
     from backend.app.core.logger import get_logger
     logger = get_logger("engine_sector")
     from backend.app.domain.sector_calculator import compute_full_sector_summary
+    from backend.app.domain.buy_filter import build_buy_targets_from_settings
     from backend.app.services.engine_sector_confirm import cancel_sector_recompute
     from backend.app.services.engine_lifecycle import is_engine_running
     from backend.app.services.engine_account_notify import notify_desktop_sector_scores, notify_buy_targets_update
@@ -244,18 +248,17 @@ async def recompute_sector_summary_now() -> None:
         trim_change = float(_es._integrated_system_settings_cache.get("sector_trim_change_rate_pct", 0) or 0)
         sector_weights = _es._integrated_system_settings_cache.get("sector_weights") or {}
         logger.info("[업종순위] 재계산 sector_weights: %s", sector_weights)
-        _ss = await compute_full_sector_summary(
+        _sector_summary = await compute_full_sector_summary(
             **await get_sector_summary_inputs(),
-            sort_keys=_es._integrated_system_settings_cache.get("sector_sort_keys") or None,
             min_rise_ratio=float(_es._integrated_system_settings_cache.get("sector_min_rise_ratio_pct", 60.0)) / 100.0,
-            block_rise_pct=float(_es._integrated_system_settings_cache.get("buy_block_rise_pct", 7.0)),
-            block_fall_pct=float(_es._integrated_system_settings_cache.get("buy_block_fall_pct", 7.0)),
-            min_strength=float(_es._integrated_system_settings_cache.get("buy_min_strength", 0)),
             min_avg_amt_eok=float(_es._integrated_system_settings_cache.get("sector_min_trade_amt", 0.0)),
-            max_sectors=int(_es._integrated_system_settings_cache.get("sector_max_targets", 3)),
             sector_weights=_es._integrated_system_settings_cache.get("sector_weights") or {},
             trim_trade_amt_pct=trim_trade,
             trim_change_rate_pct=trim_change,
+        )
+        _ss = build_buy_targets_from_settings(
+            _sector_summary.sectors,
+            _es._integrated_system_settings_cache,
         )
         _es._sector_summary_cache = _ss
         cancel_sector_recompute()

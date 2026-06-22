@@ -234,6 +234,9 @@ class KiwoomConnector(BrokerConnector):
     def is_connected(self) -> bool:
         return self._connected and (self._socket is not None and self._socket.connected)
 
+    def supports_ack(self) -> bool:
+        return True
+
     def is_realtime_enabled(self) -> bool:
         """실시간 연결 ON/OFF 상태 반환 (ws_subscribe_on 설정값)"""
         return self._realtime_enabled
