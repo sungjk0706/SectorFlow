@@ -27,7 +27,7 @@ async def build_initial_snapshot() -> dict:
     import backend.app.services.engine_state as _st
     from backend.app.services.engine_account import (
         get_positions, get_account_snapshot, get_snapshot_history,
-        get_buy_limit_status,
+        get_buy_limit_status, _refresh_account_snapshot_meta,
     )
     from backend.app.services.sector_data_provider import get_sector_scores_snapshot, get_sector_stocks, get_buy_targets_sector_stocks
     from backend.app.services.engine_config import _mask_sensitive_settings
@@ -45,6 +45,7 @@ async def build_initial_snapshot() -> dict:
             return default
 
     _snapshot_t0 = time.perf_counter()
+    await _safe(_refresh_account_snapshot_meta, None)
     positions = await _safe(get_positions, [])
     account_snap = await _safe(get_account_snapshot, {})
 

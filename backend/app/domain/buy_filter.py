@@ -237,3 +237,27 @@ def create_buy_targets(
         blocked_targets=blocked_targets,
         version=_sector_summary_version_counter,
     )
+
+
+def build_buy_targets_from_settings(sector_scores: list, settings: dict) -> object:
+    from backend.app.services.engine_radar import get_high_price_5d_cache, get_orderbook_cache, get_program_net_buy_cache
+
+    return create_buy_targets(
+        sector_scores,
+        sort_keys=settings.get("sector_sort_keys") or None,
+        min_rise_ratio=float(settings.get("sector_min_rise_ratio_pct", 60.0)) / 100.0,
+        block_rise_pct=float(settings.get("buy_block_rise_pct", 7.0)),
+        block_fall_pct=float(settings.get("buy_block_fall_pct", 7.0)),
+        min_strength=float(settings.get("buy_min_strength", 0)),
+        max_sectors=int(settings.get("sector_max_targets", 3)),
+        high_5d_cache=get_high_price_5d_cache(),
+        orderbook_cache=get_orderbook_cache(),
+        program_net_buy_cache=get_program_net_buy_cache(),
+        boost_high_on=bool(settings.get("boost_high_breakout_on", False)),
+        boost_high_score=float(settings.get("boost_high_breakout_score", 1.0)),
+        boost_order_ratio_on=bool(settings.get("boost_order_ratio_on", False)),
+        boost_order_ratio_pct=float(settings.get("boost_order_ratio_pct", 20.0)),
+        boost_order_ratio_score=float(settings.get("boost_order_ratio_score", 1.0)),
+        boost_program_net_buy_on=bool(settings.get("boost_program_net_buy_on", False)),
+        boost_program_net_buy_score=float(settings.get("boost_program_net_buy_score", 1.0)),
+    )

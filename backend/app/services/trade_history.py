@@ -1,16 +1,17 @@
 from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
-체결 이력 저장 모듈 -- 매수/매도 체결 기록을 메모리로 관리.
+체결 이력 저장 모듈 -- 매수/매도 체결 기록을 메모리+SQLite로 관리.
 
 책임:
-  1. record_buy()  -- 매수 체결 기록 (메모리 저장)
-  2. record_sell() -- 매도 체결 기록 (실현손익 자동 계산 후 메모리 저장)
+  1. record_buy()  -- 매수 체결 기록 (메모리 저장 + DB 비동기 저장)
+  2. record_sell() -- 매도 체결 기록 (실현손익 자동 계산 후 메모리+DB 저장)
   3. get_buy_history() / get_sell_history() -- UI 조회용 (메모리 조회)
   4. 일별 요약 (daily_summary) -- 수익현황 탭 좌측 그래프/요약용 (메모리 집계)
   5. 승률 / MDD / 실현손익 집계
 
-참고: 실시간 파이프라인에서 DB 접근 금지. 장마감 후 배치 파이프라인에서 DB 저장.
+영속성: 체결 시 db_writer queue 경유 SQLite 비동기 INSERT.
+        앱 기동 시 _ensure_loaded()에서 SQLite → 메모리 복원.
 """
 
 import asyncio
@@ -25,18 +26,40 @@ logger = logging.getLogger(__name__)
 _buy_history: list[dict] = []
 _sell_history: list[dict] = []
 _history_lock: asyncio.Lock = asyncio.Lock()
-
-
-async def _get_conn() -> None:
-    """No-op - 메모리 전용으로 변경"""
-    pass
+_loaded: bool = False
 
 
 # ── 메모리 초기화 ─────────────────────────────────────────────────────────────
 
 async def _ensure_loaded() -> None:
-    """No-op - 메모리 전용으로 변경"""
-    pass
+    """앱 기동 시 SQLite → 메모리 복원. 최초 1회만 실행."""
+    global _loaded
+    if _loaded:
+        return
+    _loaded = True
+    try:
+        from backend.app.db.database import get_db_connection
+        conn = await get_db_connection()
+        async with conn.execute(
+            "SELECT ts, date, time, side, stk_cd, stk_nm, price, qty,"
+            " total_amt, fee, tax, avg_buy_price, buy_total_amt,"
+            " realized_pnl, pnl_rate, reason, trade_mode"
+            " FROM trades ORDER BY ts DESC"
+        ) as cur:
+            rows = await cur.fetchall()
+        async with _history_lock:
+            for row in rows:
+                rec = dict(row)
+                if rec.get("side") == "BUY":
+                    _buy_history.append(rec)
+                else:
+                    _sell_history.append(rec)
+        logger.info(
+            "[체결이력] DB 복원 완료 — 매수 %d건, 매도 %d건",
+            len(_buy_history), len(_sell_history),
+        )
+    except Exception as e:
+        logger.warning("[체결이력] DB 이력 복원 실패 (신규 설치 시 정상): %s", e)
 
 
 async def _migrate_from_json() -> None:
@@ -44,13 +67,41 @@ async def _migrate_from_json() -> None:
     pass
 
 
+_TRADE_INSERT_SQL = (
+    "INSERT OR IGNORE INTO trades"
+    " (ts, date, time, side, stk_cd, stk_nm, price, qty,"
+    "  total_amt, fee, tax, avg_buy_price, buy_total_amt,"
+    "  realized_pnl, pnl_rate, reason, trade_mode)"
+    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+)
+
+
+def _trade_params(rec: dict) -> tuple:
+    return (
+        rec["ts"], rec["date"], rec["time"], rec["side"],
+        rec["stk_cd"], rec["stk_nm"], rec["price"], rec["qty"],
+        rec["total_amt"], rec["fee"], rec["tax"],
+        rec["avg_buy_price"], rec["buy_total_amt"],
+        rec["realized_pnl"], rec["pnl_rate"],
+        rec["reason"], rec["trade_mode"],
+    )
+
+
 async def _insert_trade(rec: dict) -> None:
-    """메모리에 체결 기록 추가"""
+    """메모리에 체결 기록 추가 + DB에 비동기 저장 (db_writer queue 경유)."""
     async with _history_lock:
         if rec["side"] == "BUY":
             _buy_history.insert(0, rec)
         else:
             _sell_history.insert(0, rec)
+    try:
+        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
+        await execute_db_write(DBWriteOperation(
+            table="trades", operation="INSERT", data=rec,
+            query=_TRADE_INSERT_SQL, params=_trade_params(rec),
+        ))
+    except Exception as e:
+        logger.warning("[체결이력] DB 저장 큐 실패 (메모리 저장은 완료): %s", e)
 
 
 async def _trim_expired() -> None:
@@ -97,12 +148,12 @@ async def _patch_sell_history() -> None:
 
 # ── 날짜 유틸 ──────────────────────────────────────────────────────────────
 
-def _broadcast_sell_append(rec: dict) -> None:
+async def _broadcast_sell_append(rec: dict) -> None:
     """매도 체결 후 단건 + 해당 일자 요약을 브로드캐스트."""
     try:
         from backend.app.web.ws_manager import ws_manager
         trade_mode = rec.get("trade_mode", "test")
-        summary = get_daily_summary(days=20, trade_mode=trade_mode)
+        summary = await get_daily_summary(days=20, trade_mode=trade_mode)
         ws_manager.broadcast("sell-history-append", {"trade": rec, "daily_summary": summary})
     except Exception as e:
         logger.warning("[체결이력] 매도 단건 실시간 화면전송 실패: %s", e)
@@ -151,9 +202,11 @@ def _broadcast_order_filled(fill_data: dict) -> None:
 # ── Lifecycle Management (No-op in SQLite architecture) ────────────────────────
 
 def _reset_global_state() -> None:
-    """전역 변수 초기화 (테스트용)."""
+    """전역 변수 초기화 (비정상 종료 후 재시작 시 잔존 상태 방지)."""
     global _loaded
     _loaded = False
+    _buy_history.clear()
+    _sell_history.clear()
 
 
 def start_consumer_task() -> None:
@@ -286,9 +339,9 @@ async def record_sell(
         stk_nm, stk_cd, qty, f"{price:,}",
         f"{realized_pnl:+,}", f"{fee:,}", f"{tax:,}", reason,
     )
-    # 메모리에 저장
+    # 메모리에 저장 + DB 비동기 저장
     await _insert_trade(rec)
-    _broadcast_sell_append(rec)
+    await _broadcast_sell_append(rec)
     return rec
 
 
@@ -420,6 +473,14 @@ async def clear_history() -> None:
     async with _history_lock:
         _buy_history.clear()
         _sell_history.clear()
+    try:
+        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
+        await execute_db_write(DBWriteOperation(
+            table="trades", operation="DELETE", data={},
+            query="DELETE FROM trades", params=(),
+        ))
+    except Exception as e:
+        logger.warning("[체결이력] DB 전체 삭제 실패: %s", e)
     logger.info("[체결이력] 전체 이력 즉시 초기화 완료")
 
 
@@ -428,6 +489,14 @@ async def clear_test_history() -> None:
     async with _history_lock:
         _buy_history[:] = [r for r in _buy_history if r["trade_mode"] != "test"]
         _sell_history[:] = [r for r in _sell_history if r["trade_mode"] != "test"]
+    try:
+        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
+        await execute_db_write(DBWriteOperation(
+            table="trades", operation="DELETE", data={},
+            query="DELETE FROM trades WHERE trade_mode = 'test'", params=(),
+        ))
+    except Exception as e:
+        logger.warning("[체결이력] DB 테스트 이력 삭제 실패: %s", e)
     logger.info("[체결이력] 테스트 이력 즉시 초기화 완료")
 
 

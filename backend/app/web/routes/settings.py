@@ -71,24 +71,24 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         )
 
         # 1. 가상 보유종목 초기화
-        clear()
+        await clear()
         # 2. 가상 예수금 초기화 (기본예수금으로 리셋)
-        set_virtual_deposit(default_deposit)
+        await set_virtual_deposit(default_deposit)
         # 3. Settlement Engine 초기화 (예수금 리셋 + 미정산 삭제 + 타이머 취소)
-        settlement_engine.reset(default_deposit)
+        await settlement_engine.reset(default_deposit)
         # 4. 테스트 매매 이력 초기화 (실전 이력은 보존)
-        clear_test_history()
+        await clear_test_history()
         # 5. 초기화된 매매 이력 브로드캐스트 → 프론트 테이블 갱신
         from backend.app.services.trade_history import broadcast_history
-        broadcast_history("test")
+        await broadcast_history("test")
         # 7. 보유종목 메모리 리스트 및 캐시 초기화 + 계좌 스냅샷 갱신 + WS account-update 발송
         from backend.app.services import engine_service as es
         from backend.app.services.engine_account_notify import _rebuild_positions_cache, notify_cache
         subscribed_count = sum(1 for entry in es._master_stocks_cache.values() if entry.get("_subscribed", False))
         es.logger.info(
-            "[디버그] 초기화 직전 구독목록 positions=%d subscribed=%d radar=%d layout=%d pos_codes=%d",
+            "[디버그] 초기화 직전 구독목록 positions=%d subscribed=%d layout=%d pos_codes=%d",
             len(es._positions), subscribed_count,
-            len(es._radar_cnsr_order), len(es._integrated_system_settings_cache.get("sector_stock_layout", [])),
+            len(es._integrated_system_settings_cache.get("sector_stock_layout", [])),
             len(notify_cache.positions_code_set),
         )
         async with es._shared_lock:
@@ -102,9 +102,9 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         _rebuild_positions_cache([])
         subscribed_count_after = sum(1 for entry in es._master_stocks_cache.values() if entry.get("_subscribed", False))
         es.logger.info(
-            "[디버그] 초기화 직후 구독목록 positions=%d subscribed=%d radar=%d layout=%d pos_codes=%d",
+            "[디버그] 초기화 직후 구독목록 positions=%d subscribed=%d layout=%d pos_codes=%d",
             len(es._positions), subscribed_count_after,
-            len(es._radar_cnsr_order), len(es._integrated_system_settings_cache.get("sector_stock_layout", [])),
+            len(es._integrated_system_settings_cache.get("sector_stock_layout", [])),
             len(notify_cache.positions_code_set),
         )
         await es._refresh_account_snapshot_meta()
@@ -122,7 +122,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         # buy_targets 메모리 초기화 (매수후보 테이블 동기화)
         if es._sector_summary_cache and hasattr(es._sector_summary_cache, 'buy_targets'):
             es._sector_summary_cache.buy_targets = []
-        es._broadcast_buy_limit_status()
+        await es._broadcast_buy_limit_status()
         # 10. 통합 초기화 완료 신호 (모든 클라이언트 일괄 동기화)
         from backend.app.services.engine_account_notify import _broadcast
         _broadcast("test-data-reset-completed", {"_v": 1})

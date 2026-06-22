@@ -320,6 +320,9 @@ class LsConnector(BrokerConnector):
     def is_connected(self) -> bool:
         return self._connected and (self._socket is not None and self._socket.connected)
 
+    def supports_ack(self) -> bool:
+        return False
+
     def is_realtime_enabled(self) -> bool:
         """실시간 연결 ON/OFF 상태 반환"""
         return self._realtime_enabled

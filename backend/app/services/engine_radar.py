@@ -56,6 +56,21 @@ def get_program_net_buy_cache() -> dict[str, int]:
     return {cd: int(stock.get("program_net_buy", 0) or 0) for cd, stock in all_stocks.items()}
 
 
+def get_orderbook_cache() -> dict[str, tuple[int, int]]:
+    """호가잔량 캐시 반환 — (매수잔량, 매도잔량) 튜플. order_ratio=[bid, ask] 형식에서 변환."""
+    from backend.app.services.engine_state import state
+    all_stocks = state.master_stocks_cache.copy()
+    result: dict[str, tuple[int, int]] = {}
+    for cd, stock in all_stocks.items():
+        ob = stock.get("order_ratio")
+        if ob is not None and len(ob) == 2:
+            try:
+                result[cd] = (int(ob[0]), int(ob[1]))
+            except (TypeError, ValueError):
+                pass
+    return result
+
+
 # ── 실시간 데이터 보강 ─────────────────────────────────────────────────
 
 def merge_live_price_to_radar_row(row: dict) -> dict:
@@ -126,7 +141,7 @@ async def _mark_radar_exited(stk_cd: str) -> None:
     """
     from backend.app.services.engine_symbol_utils import _normalize_stk_cd_rest
 
-    nk = _normalize_stk_cd_rest(str(stk_cd).strip().lstrip("A"))
+    nk = _normalize_stk_cd_rest(str(stk_cd).strip())
     rm: str | None = None
     if state.master_stocks_cache.get(nk, {}).get("_subscribed"):
         rm = nk
@@ -161,7 +176,7 @@ async def _clear_radar_rest_bootstrap_for_stk_cd(stk_cd: str) -> None:
     """모니터링에서 종목이 완전히 빠질 때 -- 다음 등록 시 REST 1회를 다시 허용."""
     from backend.app.services.engine_symbol_utils import _format_broker_reg_stk_cd
 
-    nk = _format_broker_reg_stk_cd(str(stk_cd).strip().lstrip("A"))
+    nk = _format_broker_reg_stk_cd(str(stk_cd).strip())
     if nk:
         # 실시간 틱 데이터 캐시 삭제로 pop 로직 삭제
         # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재

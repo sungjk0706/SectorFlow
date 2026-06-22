@@ -284,11 +284,12 @@ async def run_engine_loop() -> None:
                             connector.set_queue_callback(tick_queue)
                     logger.info("[연결] Connector Queue 콜백 설정 완료 (tick_queue)")
 
-                    await _mgr.connect_all()
+                    # state에 조기 등록 -- 타이머가 None으로 보는 race window 제거
                     state.connector_manager = _mgr
-                    # 하위 호환: 기존 변수에 개별 Connector 할당
                     kiwoom_connector = _mgr.get_connector(broker_nm)
                     state.kiwoom_connector = kiwoom_connector
+
+                    await _mgr.connect_all()
                     logger.info("[연결] 실시간 연결 완료")
                     
                     # LS 증권처럼 비동기 로그인 이벤트가 없는 경우를 위해 명시적 트리거 추가

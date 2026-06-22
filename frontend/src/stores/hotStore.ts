@@ -31,6 +31,16 @@ export function stocksToMap(stocks: SectorStock[]): Record<string, SectorStock> 
   return m
 }
 
+export interface SectorPriceTick {
+  code: string
+  raw_code: string
+  price: number
+  change: number
+  change_rate: number
+  sector: string
+  timestamp: number
+}
+
 export interface HotState {
   /* ── 실시간 데이터 필드 ── */
   account: AccountSnapshot | null
@@ -42,6 +52,8 @@ export interface HotState {
   sellHistory: Record<string, unknown>[]
   buyHistory: Record<string, unknown>[]
   dailySummary: Record<string, unknown>[]
+  /** 현재가 직통 전송 캐시 — 업종순위 페이지 즉시 반영용 */
+  sectorPrices: Record<string, SectorPriceTick>
 }
 
 const initialState: HotState = {
@@ -54,6 +66,7 @@ const initialState: HotState = {
   sellHistory: [],
   buyHistory: [],
   dailySummary: [],
+  sectorPrices: {},
 }
 
 export const hotStore = createStore<HotState>(initialState)
@@ -93,7 +106,7 @@ export function getPositionIndex(stkCd: string): number | undefined {
 
 /* ── account-update: 계좌·보유종목 갱신 (delta 지원) ── */
 export function applyAccountUpdate(data: AccountUpdateEvent): void {
-  // 경량화 페이로드 (수익현황 전용): position_count만 처리
+  // 경량화 페이로드 (수익현황 전용): position_count + changed_positions(최소 필드) 처리
   if ('position_count' in data) {
     const positionCount = (data as { position_count?: number }).position_count ?? 0
     const incomingSnap = data.snapshot
@@ -106,10 +119,51 @@ export function applyAccountUpdate(data: AccountUpdateEvent): void {
       && incomingSnap.total_pnl_rate === prevAccount.total_pnl_rate
       && incomingSnap.accumulated_investment === prevAccount.accumulated_investment
       && incomingSnap.initial_deposit === prevAccount.initial_deposit
-    hotStore.setState({
-      account: snapSame ? prevAccount : (incomingSnap ?? prevAccount),
-      positionCount,
-    })
+
+    // changed_positions (최소 필드) + removed_codes 처리
+    const changed = (data as { changed_positions?: Position[] }).changed_positions
+    const removed = (data as { removed_codes?: string[] }).removed_codes
+
+    if (changed && changed.length > 0 || removed && removed.length > 0) {
+      hotStore.setState((state) => {
+        const positions = [...state.positions]
+        // removed_codes: 역순 splice 제거
+        if (removed && removed.length > 0) {
+          const removedSet = new Set(removed.map(c => normalizeStockCode(c)))
+          const indices: number[] = []
+          for (let i = 0; i < positions.length; i++) {
+            if (removedSet.has(normalizeStockCode(positions[i].stk_cd))) indices.push(i)
+          }
+          for (let i = indices.length - 1; i >= 0; i--) {
+            positions.splice(indices[i], 1)
+          }
+        }
+        // changed_positions: 인덱스 찾아 merge (최소 필드만 덮어쓰고 나머지는 기존 값 유지)
+        if (changed) {
+          for (const pos of changed) {
+            const idx = positions.findIndex(p => normalizeStockCode(p.stk_cd) === normalizeStockCode(pos.stk_cd))
+            if (idx >= 0) {
+              // 최소 필드 병합: 기존 position에 새 값만 덮어쓰기
+              const existing = positions[idx]
+              positions[idx] = { ...existing, ...pos }
+            } else {
+              positions.push(pos)
+            }
+          }
+        }
+        rebuildPositionIndex(positions)
+        return {
+          account: snapSame ? prevAccount : (incomingSnap ?? prevAccount),
+          positions,
+          positionCount,
+        }
+      })
+    } else {
+      hotStore.setState({
+        account: snapSame ? prevAccount : (incomingSnap ?? prevAccount),
+        positionCount,
+      })
+    }
     return
   }
 
@@ -158,6 +212,7 @@ export function applyAccountUpdate(data: AccountUpdateEvent): void {
       return {
         account: snapSame ? prevAccount : (incomingSnap ?? prevAccount),
         positions,
+        positionCount: incomingSnap?.position_count ?? 0,
       }
     })
     return
@@ -353,6 +408,25 @@ export function applyOrderbookUpdate(data: { code: string; bid: number; ask: num
   window.dispatchEvent(new CustomEvent('orderbook-tick', { detail: code }));
 }
 
+/* ── program-update: 매수후보 프로그램순매수 실시간 갱신 ── */
+export function applyProgramUpdate(data: { code: string; net_buy: number }): void {
+  const code = normalizeStockCode(data.code);
+  const { net_buy } = data;
+  if (!code) return;
+  const state = hotStore.getState();
+  const bt = state.buyTargets;
+  const idx = getBuyTargetIndex(code);
+  if (idx === undefined) return;
+  const t = bt[idx];
+  if (t.program_net_buy === net_buy) return;
+
+  // In-place mutation: 배열 복사 없이 직접 요소 수정
+  t.program_net_buy = net_buy;
+
+  // O(1) DOM 갱신을 위해 글로벌 이벤트 발생
+  window.dispatchEvent(new CustomEvent('program-tick', { detail: code }));
+}
+
 /* ── 공통 헬퍼: 지정된 필드를 null로 설정 ── */
 function nullifyFields<T extends object>(
   obj: T,
@@ -418,6 +492,7 @@ export function applyBuyTargetsUpdate(data: { buy_targets: SectorStock[] }): voi
       && p.guard_pass === n.guard_pass && p.reason === n.reason
       && p.boost_score === n.boost_score
       && p.order_ratio?.[0] === n.order_ratio?.[0] && p.order_ratio?.[1] === n.order_ratio?.[1]
+      && p.program_net_buy === n.program_net_buy
       && p.high_5d === n.high_5d
   })
   if (!same) {
@@ -464,6 +539,64 @@ export function applyBuyHistoryUpdate(data: { buy_history: Record<string, unknow
   hotStore.setState({ buyHistory: data.buy_history ?? [] })
 }
 
+/* ── sector-price-tick: 현재가 직통 전송 — 업종순위 페이지 즉시 반영 ── */
+export function applySectorPriceTick(data: SectorPriceTick): void {
+  const code = normalizeStockCode(data.code)
+
+  // 1. sectorPrices 캐시 갱신
+  const sectorPrices = hotStore.getState().sectorPrices
+  const prevTick = sectorPrices[code]
+  if (prevTick && prevTick.timestamp >= data.timestamp) return // 과거 틱 무시
+
+  // 2. sectorStocks In-place Mutation (O(1) DOM 갱신용)
+  const sectorStocks = hotStore.getState().sectorStocks
+  const stock = sectorStocks[code]
+  if (stock) {
+    if (stock.cur_price !== data.price ||
+        stock.change !== data.change ||
+        stock.change_rate !== data.change_rate) {
+      stock.cur_price = data.price
+      stock.change = data.change
+      stock.change_rate = data.change_rate
+      window.dispatchEvent(new CustomEvent('real-data-tick', { detail: code }))
+    }
+  }
+
+  // 3. positions In-place Mutation
+  const positions = hotStore.getState().positions
+  const posIdx = getPositionIndex(code)
+  if (posIdx !== undefined) {
+    const pos = positions[posIdx]
+    if (pos.cur_price !== data.price) {
+      pos.cur_price = data.price
+      const buyAmt = pos.buy_amt ?? pos.buy_amount ?? 0
+      const qty = pos.qty ?? 0
+      pos.eval_amount = data.price * qty
+      pos.pnl_amount = buyAmt > 0 ? (data.price * qty) - buyAmt : 0
+      pos.pnl_rate = buyAmt > 0 ? Math.round(((pos.pnl_amount) / buyAmt) * 10000) / 100 : 0
+    }
+  }
+
+  // 4. buyTargets In-place Mutation
+  const btIdx = getBuyTargetIndex(code)
+  if (btIdx !== undefined) {
+    const bt = hotStore.getState().buyTargets
+    const t = bt[btIdx]
+    if (t.cur_price !== data.price ||
+        t.change !== data.change ||
+        t.change_rate !== data.change_rate) {
+      t.cur_price = data.price
+      t.change = data.change
+      t.change_rate = data.change_rate
+    }
+  }
+
+  // 5. sectorPrices 캐시 저장 (setState로 참조 갱신)
+  hotStore.setState((state) => ({
+    sectorPrices: { ...state.sectorPrices, [code]: data },
+  }))
+}
+
 /* ── initial-snapshot (hotStore): 실시간 데이터 초기화 ── */
 export function applyInitialSnapshotHot(data: Record<string, unknown>): void {
   const stocks = (data.sector_stocks as SectorStock[]) ?? []
@@ -482,6 +615,7 @@ export function applyInitialSnapshotHot(data: Record<string, unknown>): void {
   const newSectorStocks = stocks.length > 0 ? stocksToMap(stocks) : prevSectorStocks
   hotStore.setState({
     account: (data.account as AccountSnapshot) ?? null,
+    positionCount: (data.account as AccountSnapshot)?.position_count || newPositions.length,
     positions: newPositions,
     sectorStocks: newSectorStocks,
     sectorScores: scores,

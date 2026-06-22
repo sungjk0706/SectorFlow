@@ -225,7 +225,6 @@ async def compute_full_sector_summary(
     """
     # SectorSummary import (순환 import 방지)
     from backend.app.domain.models import SectorSummary
-    from backend.app.domain.buy_filter import create_buy_targets
 
     # 1. 섹터 스코어 계산
     sector_scores = await compute_sector_scores(
@@ -251,26 +250,8 @@ async def compute_full_sector_summary(
             sc.rank = 0
         # 표시 순서는 프론트엔드에서 결정 (백엔드는 final_score 기준 정렬 유지)
 
-    # 2. 매수 타겟 큐 생성
-    summary = create_buy_targets(
-        sector_scores,
-        sort_keys=sort_keys,
-        min_rise_ratio=min_rise_ratio,
-        block_rise_pct=block_rise_pct,
-        block_fall_pct=block_fall_pct,
-        min_strength=min_strength,
-        max_sectors=max_sectors,
-        # 가산점 pass-through
-        high_5d_cache=high_5d_cache,
-        orderbook_cache=orderbook_cache,
-        program_net_buy_cache=program_net_buy_cache,
-        boost_high_on=boost_high_on,
-        boost_high_score=boost_high_score,
-        boost_order_ratio_on=boost_order_ratio_on,
-        boost_order_ratio_pct=boost_order_ratio_pct,
-        boost_order_ratio_score=boost_order_ratio_score,
-        boost_program_net_buy_on=boost_program_net_buy_on,
-        boost_program_net_buy_score=boost_program_net_buy_score,
+    return SectorSummary(
+        sectors=sector_scores,
+        buy_targets=[],
+        blocked_targets=[],
     )
-
-    return summary

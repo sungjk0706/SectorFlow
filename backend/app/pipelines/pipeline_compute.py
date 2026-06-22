@@ -585,9 +585,9 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
                 logger.error("[Compute] 수신율 체크 예외: %s", e, exc_info=True)
                 await asyncio.sleep(1.0)
 
-        # Phase 2: 0.3초 배치 재계산 루프
+        # Phase 2: 0.2초 배치 재계산 루프
         while _compute_running:
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.2)
             global _dirty_codes
 
             # 수신율 전송 (receive-rate 이벤트) - 변경 시에만 전송
@@ -627,12 +627,8 @@ async def _check_buy_target_reached(
         broadcast_queue: UI 전송 큐
     """
     # 매수 타점 도달 여부 확인 로직
-    # 실제 매수 판단은 engine_service.try_sector_buy 호출
+    # 매수 후보 종목 UI 업데이트
     try:
-        # 매수 판단 (engine_service.try_sector_buy 이관)
-        await es.try_sector_buy()
-
-        # 매수 타점에 도달하면 직접 주문 실행 (trading.py)
         buy_targets = await es.get_buy_targets_sector_stocks()
         if buy_targets:
             # 매수 후보 종목이 있으면 broadcast_queue에 전송 (UI 업데이트)

@@ -485,6 +485,8 @@ def notify_desktop_account_tabs_refresh() -> None:
 
 def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str | None = None) -> None:
     """체결·잔고·실시간 시세 변경 시 → WS account-update (delta 방식, 페이지별 페이로드 분리)."""
+    # 디버그: snapshot 출력
+    print(f"[DEBUG] broadcast_account_update snapshot: total_buy_amount={snapshot.get('total_buy_amount')}, total_eval_amount={snapshot.get('total_eval_amount')}, total_pnl={snapshot.get('total_pnl')}, total_pnl_rate={snapshot.get('total_pnl_rate')}")
     changed_positions, removed_codes = _compute_position_delta(positions)
     snapshot_changed = not _snap_equal(snapshot, notify_cache.snapshot_sent)
 
@@ -554,7 +556,7 @@ def _build_lightweight_payload_for_profit_overview(snapshot: dict, changed_posit
     """수익현황 페이지용 경량화 페이로드 생성.
 
     - snapshot: total_buy_amount 제거, total_eval_amount, total_pnl, total_pnl_rate 유지
-    - changed_positions: qty만 포함하여 보유종목 수 계산용으로 변환
+    - changed_positions: 보유종목 표시에 필요한 최소 필드(stk_cd, stk_nm, qty, cur_price)만 포함
     """
     # snapshot 필터링
     lightweight_snapshot = {
@@ -567,12 +569,19 @@ def _build_lightweight_payload_for_profit_overview(snapshot: dict, changed_posit
         "total_pnl_rate": snapshot.get("total_pnl_rate"),
     }
 
-    # changed_positions를 position_count로 변환 (qty 합계)
-    position_count = sum(int(p.get("qty", 0) or 0) for p in changed_positions if int(p.get("qty", 0) or 0) > 0)
+    position_count = snapshot.get("position_count", 0)
+
+    # changed_positions: 보유종목 리스트 갱신에 필요한 최소 필드만 추출
+    _MIN_POSITION_KEYS = ("stk_cd", "stk_nm", "qty", "cur_price")
+    lightweight_positions = [
+        {k: p.get(k) for k in _MIN_POSITION_KEYS}
+        for p in changed_positions
+    ]
 
     return {
         "snapshot": lightweight_snapshot,
         "position_count": position_count,
+        "changed_positions": lightweight_positions,
         "removed_codes": removed_codes,
     }
 
@@ -583,7 +592,7 @@ def notify_snapshot_history_update() -> None:
 
 
 # 매수후보 비교 키: 순위·시세·가드 상태 등 변경 감지 대상 필드
-_BUY_TARGET_CMP_KEYS = ("rank", "cur_price", "change_rate", "strength", "trade_amount", "boost_score", "guard_pass", "reason")
+_BUY_TARGET_CMP_KEYS = ("rank", "cur_price", "change_rate", "strength", "trade_amount", "boost_score", "guard_pass", "reason", "order_ratio", "program_net_buy")
 
 
 async def notify_buy_targets_update() -> None:

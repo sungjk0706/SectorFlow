@@ -6,6 +6,7 @@ import {
   applyAccountUpdate,
   applyRealData,
   applyOrderbookUpdate,
+  applyProgramUpdate,
   applyBuyTargetsUpdate,
   applySectorStocksRefresh,
   applyOrderFilled,
@@ -14,6 +15,7 @@ import {
   applyBuyHistoryUpdate,
   applyDailySummaryUpdate,
   applySectorScores,
+  applySectorPriceTick,
   stocksToMap,
   rebuildBuyTargetIndex,
   hotStore,
@@ -45,6 +47,7 @@ import type {
   SectorScoreRow,
   SectorScoresEvent,
 } from './types'
+import type { SectorPriceTick } from './stores/hotStore'
 import { applyStockClassificationChanged } from './stores/stockClassificationStore'
 
 /**
@@ -176,8 +179,16 @@ export function bindWSToStore(
     applyRealData(data as RealDataEvent)
   })
 
+  pricesClient.onEvent('sector-price-tick', (data) => {
+    applySectorPriceTick(data as SectorPriceTick)
+  })
+
   pricesClient.onEvent('orderbook-update', (data) => {
     applyOrderbookUpdate(data as { code: string; bid: number; ask: number })
+  })
+
+  pricesClient.onEvent('program-update', (data) => {
+    applyProgramUpdate(data as { code: string; net_buy: number })
   })
 
   /* ── settings 채널 이벤트 핸들러 ── */

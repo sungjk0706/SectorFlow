@@ -12,10 +12,7 @@ async def get_db_connection() -> aiosqlite.Connection:
 
     if _db_connection is None:
         db_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        if "PYTEST_CURRENT_TEST" in os.environ:
-            db_path = os.path.join(db_dir, "data", "stocks_test.db")
-        else:
-            db_path = os.path.join(db_dir, "data", "stocks.db")
+        db_path = os.path.join(db_dir, "data", "stocks.db")
 
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
 

@@ -92,11 +92,10 @@ def get_stock_market(stk_cd: str) -> str | None:
 
 def _format_broker_reg_stk_cd(stk_cd: str) -> str:
     """
-    브로커 WebSocket REG 의 item 종목코드 -- 공식 예시는 6자리 숫자(선행 0 유지).
-    보유 REST 등에서 'A006910' / '006910' 모두 허용.
-    _AL / _NX 접미사는 제거하고 순수 6자리 반환 (수신 파싱용).
+    브로커 WebSocket REG 의 item 종목코드 -- 서버가 보내는 형식 그대로 사용.
+    _AL / _NX 접미사는 제거하고 순수 종목코드 반환 (수신 파싱용).
     """
-    s = str(stk_cd or "").strip().upper().lstrip("A")
+    s = str(stk_cd or "").strip().upper()
     # _AL / _NX 접미사 제거
     for suffix in ("_AL", "_NX"):
         if s.endswith(suffix):
@@ -111,8 +110,8 @@ _format_kiwoom_reg_stk_cd = _format_broker_reg_stk_cd
 
 
 def _base_stk_cd(stk_cd: str) -> str:
-    """순수 6자리 종목코드 반환 (A 접두사·_AL/_NX 접미사 제거)."""
-    s = str(stk_cd or "").strip().upper().lstrip("A")
+    """순수 종목코드 반환 (_AL/_NX 접미사 제거)."""
+    s = str(stk_cd or "").strip().upper()
     for suffix in ("_AL", "_NX"):
         if s.endswith(suffix):
             s = s[: -len(suffix)]
@@ -136,10 +135,10 @@ def is_nxt_code(stk_cd: str) -> bool:
 
 
 def _normalize_stk_cd_rest(code: str) -> str:
-    """종목코드 정규화 (A 접두사·_AL/_NX 접미사 제거).
+    """종목코드 정규화 (_AL/_NX 접미사 제거).
     알파벳 포함 여부에 따라 처리 분기 (2024년 신규 종목코드 대응).
     """
-    s = str(code).strip().upper().lstrip("A")
+    s = str(code).strip().upper()
     for suffix in ("_AL", "_NX"):
         if s.endswith(suffix):
             s = s[: -len(suffix)]
@@ -229,7 +228,7 @@ def _real_item_stk_cd(item: dict, vals: dict) -> str:
     raw = _parse_real_item_field(item.get("item"))
     if not raw:
         return ""
-    s = str(raw).strip().upper().lstrip("A")
+    s = str(raw).strip().upper()
     if s.isdigit() and len(s) > 6:
         return ""
     return _format_kiwoom_reg_stk_cd(raw)

@@ -532,20 +532,31 @@ async def _on_ws_subscribe_start() -> None:
         _broadcast("market-phase", get_market_phase())
         # ── WS 연결 상태 확인 및 REG 파이프라인 실행 ──
         ws = state.connector_manager or state.kiwoom_connector
-        if ws and ws.is_connected():
-            logger.info("[타이머] 실시간 구독 구간 진입 -- REG 파이프라인 시작")
-            _trigger_reg_pipeline()
+        if ws is not None:
+            # manager가 이미 있음 (engine_loop에서 초기화 중이거나 완료) → 중복 생성 금지
+            if ws.is_connected():
+                logger.info("[타이머] 실시간 구독 구간 진입 -- REG 파이프라인 시작")
+                _trigger_reg_pipeline()
+            else:
+                logger.info("[타이머] 실시간 구독 구간 진입 -- 연결 진행 중, 대기 (연결 완료 후 자동 트리거)")
         else:
             logger.info("[타이머] 실시간 구독 구간 진입 -- 연결되지 않음, 연결 시도")
             try:
                 from backend.app.core.connector_manager import ConnectorManager
                 from backend.app.services.engine_service import _broker_message_handler
+                from backend.app.services.core_queues import get_tick_queue
                 broker_nm = str(state.integrated_system_settings_cache.get("broker", "") or "").lower().strip()
                 _mgr = ConnectorManager()
                 _mgr.set_message_callback(_broker_message_handler)
-                await _mgr.connect_all()
+                # tick_queue 콜백 설정 (engine_loop과 동일하게)
+                tick_queue = get_tick_queue()
+                for connector in _mgr._connectors.values():
+                    if hasattr(connector, 'set_queue_callback'):
+                        connector.set_queue_callback(tick_queue)
+                # state 조기 등록 후 connect (중복 생성 방지)
                 state.connector_manager = _mgr
                 state.kiwoom_connector = _mgr.get_connector(broker_nm)
+                await _mgr.connect_all()
                 logger.info("[타이머] 실시간 연결 완료 -- REG 파이프라인 시작")
                 _trigger_reg_pipeline()
             except Exception as e:

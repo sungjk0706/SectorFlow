@@ -61,6 +61,7 @@ async def _deferred_sector_summary() -> None:
     try:
         # 항상 전체 재계산 수행 (스켈레톤 캐시 모드 제거)
         from backend.app.domain.sector_calculator import compute_full_sector_summary
+        from backend.app.domain.buy_filter import build_buy_targets_from_settings
         from backend.app.services.sector_data_provider import get_sector_summary_inputs
         _inputs = get_sector_summary_inputs()
         if _inputs.get("all_codes"):
@@ -68,18 +69,17 @@ async def _deferred_sector_summary() -> None:
             _trim_trade = float(_st._integrated_system_settings_cache.get("sector_trim_trade_amt_pct", 0) or 0)
             _trim_change = float(_st._integrated_system_settings_cache.get("sector_trim_change_rate_pct", 0) or 0)
             _kwargs = dict(
-                sort_keys=_st._integrated_system_settings_cache.get("sector_sort_keys") or None,
                 min_rise_ratio=float(_st._integrated_system_settings_cache.get("sector_min_rise_ratio_pct", 60.0)) / 100.0,
-                block_rise_pct=float(_st._integrated_system_settings_cache.get("buy_block_rise_pct", 7.0)),
-                block_fall_pct=float(_st._integrated_system_settings_cache.get("buy_block_fall_pct", 7.0)),
-                min_strength=float(_st._integrated_system_settings_cache.get("buy_min_strength", 0)),
                 min_avg_amt_eok=float(_st._integrated_system_settings_cache.get("sector_min_trade_amt", 0.0)),
-                max_sectors=int(_st._integrated_system_settings_cache.get("sector_max_targets", 3)),
                 sector_weights=_st._integrated_system_settings_cache.get("sector_weights") or {},
                 trim_trade_amt_pct=_trim_trade,
                 trim_change_rate_pct=_trim_change,
             )
-            _result = await compute_full_sector_summary(**_inputs, **_kwargs)
+            _sector_summary = await compute_full_sector_summary(**_inputs, **_kwargs)
+            _result = build_buy_targets_from_settings(
+                _sector_summary.sectors,
+                _st._integrated_system_settings_cache,
+            )
             import backend.app.services.engine_service as _es
             _es._sector_summary_cache = _result
             # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음

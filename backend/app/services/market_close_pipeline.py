@@ -20,6 +20,7 @@ from backend.app.services.engine_symbol_utils import (
 )
 from backend.app.services.engine_ws_reg import build_0b_remove_payloads
 from backend.app.core.trading_calendar import get_current_trading_day_str
+from backend.app.services import engine_state as state
 
 _log = get_logger("engine")
 
@@ -122,9 +123,9 @@ async def remove_krx_only_stocks(es: ModuleType) -> dict:
     Returns:
         {"removed": int, "failed": int, "skipped": bool}
     """
-    # WS 미연결 시 스킵
-    ws = getattr(es, "_kiwoom_connector", None)
-    if not ws or not getattr(ws, "is_connected", lambda: False)():
+    # BrokerConnector 추상화 사용
+    ws = state.connector_manager or state.kiwoom_connector
+    if not ws or not ws.is_connected():
         _log.warning("[타이머] KRX 장마감 구독해지 생략 — 실시간 미연결")
         return {"removed": 0, "failed": 0, "skipped": True}
 
@@ -144,10 +145,19 @@ async def remove_krx_only_stocks(es: ModuleType) -> dict:
     failed = 0
     chunk_size = 100
 
+    # 브로커별 ACK 지원 여부 확인
+    supports_ack = ws.supports_ack() if hasattr(ws, 'supports_ack') else True
+
     for ci, payload in enumerate(payloads):
         chunk = krx_codes[ci * chunk_size : (ci + 1) * chunk_size]
         try:
-            ack_ok, rc = await es._ws_send_reg_unreg_and_wait_ack(payload)
+            if supports_ack:
+                # ACK 지원 브로커 (Kiwoom): ACK 대기
+                ack_ok, rc = await es._ws_send_reg_unreg_and_wait_ack(payload)
+            else:
+                # ACK 미지원 브로커 (LS): fire-and-forget
+                ack_ok = await es._ws_send_remove_fire_and_forget(payload)
+                rc = ""
         except Exception as exc:
             _log.warning(
                 "[타이머] KRX 장마감 구독해지 %d/%d 예외: %s",
@@ -158,20 +168,26 @@ async def remove_krx_only_stocks(es: ModuleType) -> dict:
             continue
 
         if ack_ok:
-            # ACK 성공 — _master_stocks_cache에서 "_subscribed" 제거
+            # 성공 — _master_stocks_cache에서 "_subscribed" 제거
             for cd in chunk:
                 if cd in es._master_stocks_cache:
                     es._master_stocks_cache[cd].pop("_subscribed", None)
             removed += len(chunk)
-            _log.info(
-                "[타이머] KRX 장마감 구독해지 %d/%d 완료 — %d종목 (rc=%s)",
-                ci + 1, len(payloads), len(chunk), rc,
-            )
+            if supports_ack:
+                _log.info(
+                    "[타이머] KRX 장마감 구독해지 %d/%d 완료 — %d종목 (rc=%s)",
+                    ci + 1, len(payloads), len(chunk), rc,
+                )
+            else:
+                _log.info(
+                    "[타이머] KRX 장마감 구독해지 %d/%d 완료 — %d종목 (ACK 미지원)",
+                    ci + 1, len(payloads), len(chunk),
+                )
         else:
-            # ACK 타임아웃 — _master_stocks_cache의 "_subscribed" 유지 + 경고
+            # 실패 — _master_stocks_cache의 "_subscribed" 유지 + 경고
             failed += len(chunk)
             _log.warning(
-                "[타이머] KRX 장마감 구독해지 %d/%d ACK 응답없음 — %d종목 유지",
+                "[타이머] KRX 장마감 구독해지 %d/%d 실패 — %d종목 유지",
                 ci + 1, len(payloads), len(chunk),
             )
 
