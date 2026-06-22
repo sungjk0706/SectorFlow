@@ -40,6 +40,33 @@ async def init_cache_tables():
         )
     ''')
 
+    # 체결 이력 테이블
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT NOT NULL,
+            date TEXT NOT NULL,
+            time TEXT NOT NULL,
+            side TEXT NOT NULL,
+            stk_cd TEXT NOT NULL,
+            stk_nm TEXT,
+            price INTEGER,
+            qty INTEGER,
+            total_amt INTEGER,
+            fee INTEGER,
+            tax INTEGER,
+            avg_buy_price INTEGER,
+            buy_total_amt INTEGER,
+            realized_pnl INTEGER,
+            pnl_rate REAL,
+            reason TEXT,
+            trade_mode TEXT NOT NULL
+        )
+    ''')
+    await conn.execute('''
+        CREATE INDEX IF NOT EXISTS idx_trades_date_mode ON trades (date, trade_mode)
+    ''')
+
     # eligible_stocks_cache 테이블 삭제 (master_stocks_table이 단일 소스)
 
     # sector_summary_cache 테이블 삭제 (메모리 캐시로 대체)

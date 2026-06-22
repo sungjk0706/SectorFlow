@@ -351,7 +351,7 @@ def parse_kt00018_balance(
             dep_out = _parse_int_loose(bal.get("prsm_dpst_aset_amt", 0))
 
     for item in bal.get("acnt_evlt_remn_indv_tot", []):
-        stk_cd = str(item.get("stk_cd", "")).strip().lstrip("A")
+        stk_cd = str(item.get("stk_cd", "")).strip()
         if not stk_cd:
             continue
         qty = _parse_int_loose(item.get("rmnd_qty", 0))

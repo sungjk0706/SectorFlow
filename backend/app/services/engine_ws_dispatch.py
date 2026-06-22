@@ -24,6 +24,7 @@ from backend.app.services.engine_account_notify import (
 )
 from backend.app.services.engine_account_rest import (
     apply_last_price_to_positions_inplace,
+    recalc_broker_totals_from_positions,
 )
 import backend.app.services.engine_radar_ops as engine_radar_ops
 from backend.app.services.engine_symbol_utils import (
@@ -309,19 +310,26 @@ async def _handle_real_01(
         is_0b_tick=is_0b_tick,
     )  # lock 불필요 — 순차 처리 + GIL 원자적
         # bid_depth, ask_depth 업데이트 제거 (사용처 없음)
-    # 보유종목 현재가 반영 (메모리만 갱신, 계좌 broadcast 없음 — 체결/잔고 이벤트에서만 전송)
+    # 보유종목 현재가 반영 — 평가손익·수익률 실시간 재계산 + broadcast (0.5s coalescing)
     if is_test_mode(engine_state._integrated_system_settings_cache):
         _price_hit = await dry_run.update_price(nk_px, last_px)
         if _price_hit:
-            _dr_pos = dry_run.get_position(nk_px)
+            _dr_pos = await dry_run.get_position(nk_px)
             if _dr_pos:
                 _dr_pos["change"] = diff
                 _dr_pos["change_rate"] = rate
     else:
         _price_hit = apply_last_price_to_positions_inplace(engine_state._positions, raw_cd_for_bucket, last_px)
+        if _price_hit:
+            engine_state.state.broker_rest_totals = recalc_broker_totals_from_positions(
+                engine_state.state.positions, engine_state.state.broker_rest_totals
+            )
+    if _price_hit:
+        await engine_account._refresh_account_snapshot_meta()
+        engine_account._broadcast_account(reason="price_tick")
     if _price_hit and engine_state._auto_trade and auto_sell_effective(engine_state._integrated_system_settings_cache) and engine_state._access_token:
         if is_test_mode(engine_state._integrated_system_settings_cache):
-            _pos = dry_run.get_position(nk_px)
+            _pos = await dry_run.get_position(nk_px)
             if _pos:
                 await engine_state._auto_trade.check_sell_conditions([_pos], engine_state._integrated_system_settings_cache, engine_state._access_token)
         else:
@@ -350,6 +358,37 @@ async def _handle_real_01(
     # [근본해결] 선택적 전송 제거
     # if _need_sector_tick:
     #     notify_sector_tick_single(...)
+
+    # ── 현재가 직통 전송 (price_pass_through_queue) ──
+    # sector-scores compute 루프(200ms 주기)를 우회하여
+    # 현재가 변동 시점에 즉시 프론트엔드로 전송
+    try:
+        from backend.app.services.core_queues import get_price_pass_through_queue
+        from backend.app.core.sector_mapping import get_merged_sector
+
+        pq = get_price_pass_through_queue()
+        sector = get_merged_sector(raw_cd)
+        price_tick_data = {
+            "code": nk_px,
+            "raw_code": raw_cd,
+            "price": last_px,
+            "change": diff,
+            "change_rate": rate,
+            "sector": sector,
+            "timestamp": int(time.time() * 1000),
+        }
+        try:
+            pq.put_nowait(price_tick_data)
+        except asyncio.QueueFull:
+            # 큐가 가득 찼으면 가장 오래된 데이터를 버리고 재시도
+            try:
+                pq.get_nowait()
+                pq.put_nowait(price_tick_data)
+            except asyncio.QueueEmpty:
+                pass
+    except Exception:
+        pass  # 직통 전송 실패는 치명적 에러가 아님
+
     _check_realtime_latency(_ts)
 
 
@@ -383,6 +422,43 @@ async def _handle_real_00(item: dict, vals: dict) -> None:
 
     # [근본해결] 부분 체결(unex > 0) 포함 모든 체결 발생 시 즉시 계좌 상태 반영
     engine_account._on_fill_after_ws()
+
+    # ── 현재가 직통 전송 (price_pass_through_queue) ──
+    # 체결도 현재가 변동을 동반하므로 동일하게 직통 전송
+    if raw_cd:
+        try:
+            from backend.app.services.core_queues import get_price_pass_through_queue
+            from backend.app.core.sector_mapping import get_merged_sector
+
+            last_px_00 = _parse_fid10_price(vals)
+            if last_px_00 > 0:
+                nk_px_00 = _format_kiwoom_reg_stk_cd(raw_cd)
+                diff_00 = _ws_fid_int(vals, "11", 0) if _ws_fid_key_present(vals, "11") else 0
+                from backend.app.services.engine_ws_parsing import parse_change_rate_to_percent
+                rate_00 = parse_change_rate_to_percent(_ws_fid_raw(vals, "12")) if _ws_fid_key_present(vals, "12") else 0.0
+                sector_00 = get_merged_sector(raw_cd)
+
+                pq = get_price_pass_through_queue()
+                price_tick_data = {
+                    "code": nk_px_00,
+                    "raw_code": raw_cd,
+                    "price": last_px_00,
+                    "change": diff_00,
+                    "change_rate": rate_00,
+                    "sector": sector_00,
+                    "timestamp": int(time.time() * 1000),
+                }
+                try:
+                    pq.put_nowait(price_tick_data)
+                except asyncio.QueueFull:
+                    try:
+                        pq.get_nowait()
+                        pq.put_nowait(price_tick_data)
+                    except asyncio.QueueEmpty:
+                        pass
+        except Exception:
+            pass  # 직통 전송 실패는 치명적 에러가 아님
+
     _check_realtime_latency(_ts)
 
 

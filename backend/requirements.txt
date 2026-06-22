@@ -40,11 +40,5 @@ sse-starlette>=2.0.0
 # JWT Authentication
 python-jose[cryptography]>=3.3.0
 
-# Testing
-hypothesis>=6.100.0
-pytest>=8.0.0
-pytest-asyncio>=1.0.0
-httpx  # TestClient용 (이미 위에 포함)
-
 # Protobuf (실시간 데이터 직렬화)
 protobuf>=7.0.0

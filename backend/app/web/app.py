@@ -25,6 +25,10 @@ async def lifespan(app: FastAPI):
     from backend.app.db.db_writer import start_db_writer
     await start_db_writer()
 
+    # DB 테이블 초기화 (CREATE TABLE IF NOT EXISTS — 기존 테이블 영향 없음)
+    from backend.app.db.stock_tables import init_cache_tables
+    await init_cache_tables()
+
     # 전역 큐 초기화 (엔진 시작 전 보장)
     from backend.app.services.core_queues import initialize_queues
     initialize_queues()
