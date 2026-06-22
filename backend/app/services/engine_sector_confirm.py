@@ -320,7 +320,7 @@ async def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
         _es._sector_summary_cache = ss
 
         # 매수 타겟 변경 감지 및 매수 시도
-        from backend.app.services.buy_order_executor import try_sector_buy
+        from backend.app.services.buy_order_executor import evaluate_buy_candidates
         from backend.app.services.engine_account_notify import notify_buy_targets_update
 
         curr_targets = ss.buy_targets if hasattr(ss, 'buy_targets') else None
@@ -331,7 +331,7 @@ async def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
             await notify_buy_targets_update(ss)
 
             # 매수 시도
-            await try_sector_buy()
+            await evaluate_buy_candidates()
 
     # 웹소켓 난사 방지: 코알레싱 버퍼링 연동
     # 캐시 업데이트만 수행, 백엔드 코알레싱 스케줄러가 주기적으로 통합 발행
