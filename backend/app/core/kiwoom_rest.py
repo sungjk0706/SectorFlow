@@ -71,7 +71,8 @@ class KiwoomRestAPI:
         self.app_secret = (app_secret or "").strip()
         self.base_url = (base_url or KIWOOM_REST_REAL).rstrip("/")
         self._token_info: Optional[TokenInfo] = None
-        self._lock = asyncio.Lock()  # 비동기 Lock — REST 호출 직렬화
+        self._token_lock = asyncio.Lock()   # 토큰 갱신 전용
+        self._client_lock = asyncio.Lock()  # 클라이언트 재생성 전용
         self._client: Optional[httpx.AsyncClient] = None
 
     def __enter__(self) -> "KiwoomRestAPI":
@@ -80,8 +81,37 @@ class KiwoomRestAPI:
     def __exit__(self, *_) -> None:
         pass
 
+    async def __aenter__(self) -> "KiwoomRestAPI":
+        return self
+
+    async def __aexit__(self, *_) -> None:
+        await self._reset_client()
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client and not self._client.is_closed:
+            return self._client
+        async with self._client_lock:
+            if self._client and not self._client.is_closed:
+                return self._client
+            self._client = httpx.AsyncClient(
+                limits=httpx.Limits(
+                    max_keepalive_connections=20,
+                    max_connections=50,
+                    keepalive_expiry=3.0,
+                ),
+            )
+            return self._client
+
+    async def _reset_client(self) -> None:
+        async with self._client_lock:
+            if self._client and not self._client.is_closed:
+                await self._client.aclose()
+            self._client = None
+
     async def _ensure_token(self) -> bool:
-        async with self._lock:
+        if self._token_info and not self._token_info.is_expired_soon():
+            return True
+        async with self._token_lock:
             if self._token_info and not self._token_info.is_expired_soon():
                 return True
             return await self._issue_token()
@@ -147,9 +177,8 @@ class KiwoomRestAPI:
 
         for attempt in range(retries):
             try:
-                if not self._client:
-                    self._client = httpx.AsyncClient(limits=httpx.Limits(max_keepalive_connections=5, max_connections=10))
-                resp = await self._client.post(url, headers=headers, json=payload, timeout=timeout)
+                client = await self._get_client()
+                resp = await client.post(url, headers=headers, json=payload, timeout=timeout)
 
                 if resp.status_code == 429:
                     hit_429 = True
@@ -173,6 +202,7 @@ class KiwoomRestAPI:
 
             except Exception as e:
                 _log.warning("[REST] %s 예외 (시도=%d): %s: %s", tag, attempt + 1, type(e).__name__, str(e))
+                await self._reset_client()
                 if attempt < retries - 1:
                     await asyncio.sleep(2 * (attempt + 1))
                     continue
@@ -202,8 +232,8 @@ class KiwoomRestAPI:
                         attempt + 1, wait_sec,
                     )
                     await asyncio.sleep(wait_sec)
-                async with httpx.AsyncClient() as client:
-                    resp = await client.post(url, headers=headers, json=body, timeout=15)
+                client = await self._get_client()
+                resp = await client.post(url, headers=headers, json=body, timeout=15)
                 data = resp.json() if resp.text else {}
                 if resp.status_code == 429:
                     wait_sec = 10 * (attempt + 1)
@@ -245,7 +275,8 @@ class KiwoomRestAPI:
                 _log.info("[키움증권] 토큰 발급 완료")
                 return True
             except Exception as e:
-                _log.warning("[키움증권] 토큰 요청 예외 (시도=%d): %s", attempt + 1, e)
+                _log.warning("[키움증권] 토큰 요청 예외 (시도=%d): %s: %s", attempt + 1, type(e).__name__, e)
+                await self._reset_client()
                 continue
         _log.warning("[키움증권]  토큰 발급 3회 모두 실패 (429 초과)")
         return False
@@ -256,129 +287,126 @@ class KiwoomRestAPI:
         return self._token_info.token if self._token_info else None
 
     async def get_auth_headers(self, api_id: str) -> Optional[dict]:
-        """비동기 안전 인증 헤더 생성 — Lock 내에서 토큰 확인/갱신 + 헤더 dict 반환을 원자적으로 수행.
+        """비동기 안전 인증 헤더 생성 — 토큰 확인/갱신 + 헤더 dict 반환.
 
         _post_ka10095_chunk() 등 외부 함수에서 api._ensure_token() + api._token_info.token을
         직접 접근하는 대신 이 메서드를 사용하여 토큰 불일치를 원천 차단한다.
         토큰 확보 실패 시 None 반환.
         """
-        async with self._lock:
-            if not await self._ensure_token():
-                return None
-            return {
-                "Content-Type": "application/json;charset=UTF-8",
-                "authorization": f"Bearer {self._token_info.token}",
-                "api-id": api_id,
-                "cont-yn": "N",
-                "next-key": "",
-            }
+        if not await self._ensure_token():
+            return None
+        return {
+            "Content-Type": "application/json;charset=UTF-8",
+            "authorization": f"Bearer {self._token_info.token}",
+            "api-id": api_id,
+            "cont-yn": "N",
+            "next-key": "",
+        }
 
     async def _request(self, api_id: str, body: Optional[dict] = None,
                  cont_yn: str = "N", next_key: str = "") -> Optional[dict]:
-        async with self._lock:
-            if not await self._ensure_token():
-                _log.warning("[키움증권] 요청 건너뜀 -- 유효한 토큰 없음 (api-id=%s)", api_id)
+        if not await self._ensure_token():
+            _log.warning("[키움증권] 요청 건너뜀 -- 유효한 토큰 없음 (api-id=%s)", api_id)
+            return None
+        url = f"{self.base_url}{self.ACCOUNT_URL}"
+        headers = {
+            "Content-Type": "application/json;charset=UTF-8",
+            "authorization": f"Bearer {self._token_info.token}",
+            "api-id": api_id,
+            "cont-yn": cont_yn,
+            "next-key": next_key,
+        }
+        payload = body or {}
+        for attempt in range(3):
+            try:
+                if attempt > 0:
+                    await asyncio.sleep(3 * attempt)
+                client = await self._get_client()
+                resp = await client.post(url, headers=headers, json=payload, timeout=15)
+                if resp.status_code == 429:
+                    wait_sec = 10 * (attempt + 1)
+                    _log.warning(
+                        "[키움증권]  429 요청 과다(api-id=%s) -- %d초 대기 후 재시도 (%d/3)",
+                        api_id, wait_sec, attempt + 1,
+                    )
+                    await asyncio.sleep(wait_sec)
+                    continue
+                if resp.status_code != 200:
+                    _log.warning(
+                        "[키움증권] API 응답 실패 status=%s api-id=%s",
+                        resp.status_code, api_id,
+                    )
+                    return None
+                return resp.json()
+            except Exception as e:
+                _log.warning("[키움증권] 요청 예외 api-id=%s: %s: %s", api_id, type(e).__name__, e)
+                await self._reset_client()
                 return None
-            url = f"{self.base_url}{self.ACCOUNT_URL}"
-            headers = {
-                "Content-Type": "application/json;charset=UTF-8",
-                "authorization": f"Bearer {self._token_info.token}",
-                "api-id": api_id,
-                "cont-yn": cont_yn,
-                "next-key": next_key,
-            }
-            payload = body or {}
-            for attempt in range(3):
+        return None
+
+    async def _paginated_request(self, api_id: str, body: Optional[dict] = None) -> Optional[dict]:
+        """연속조회(cont-yn=Y)를 처리하여 전체 페이지를 합산 반환. 페이지간 0.3초 대기."""
+        if not await self._ensure_token():
+            _log.warning("[키움증권] 연속조회 요청 건너뜀 -- 유효한 토큰 없음 (api-id=%s)", api_id)
+            return None
+        url = f"{self.base_url}{self.ACCOUNT_URL}"
+        base_headers = {
+            "Content-Type": "application/json;charset=UTF-8",
+            "authorization": f"Bearer {self._token_info.token}",
+            "api-id": api_id,
+        }
+        payload = body or {}
+        all_items: list = []
+        cont_yn = "N"
+        next_key = ""
+        result: Optional[dict] = None
+        page = 0
+        while True:
+            if page > 0:
+                await asyncio.sleep(0.3)  # 연속조회 페이지 간 요청 간격
+            page += 1
+            headers = {**base_headers, "cont-yn": cont_yn, "next-key": next_key}
+            retry_429 = 0
+            while True:
                 try:
-                    if attempt > 0:
-                        await asyncio.sleep(3 * attempt)
-                    if not self._client:
-                        self._client = httpx.AsyncClient(limits=httpx.Limits(max_keepalive_connections=5, max_connections=10))
-                    resp = await self._client.post(url, headers=headers, json=payload, timeout=15)
+                    client = await self._get_client()
+                    resp = await client.post(url, headers=headers, json=payload, timeout=15)
                     if resp.status_code == 429:
-                        wait_sec = 10 * (attempt + 1)
+                        retry_429 += 1
+                        wait_sec = 10 * retry_429
                         _log.warning(
-                            "[키움증권]  429 요청 과다(api-id=%s) -- %d초 대기 후 재시도 (%d/3)",
-                            api_id, wait_sec, attempt + 1,
+                            "[키움증권]  429 요청 과다(api-id=%s, page=%d) -- %d초 대기 후 재시도 (%d/3)",
+                            api_id, page, wait_sec, retry_429,
                         )
+                        if retry_429 >= 3:
+                            return result
                         await asyncio.sleep(wait_sec)
                         continue
                     if resp.status_code != 200:
                         _log.warning(
-                            "[키움증권] API 응답 실패 status=%s api-id=%s",
-                            resp.status_code, api_id,
+                            "[키움증권] 연속조회 응답 실패 status=%s api-id=%s page=%d",
+                            resp.status_code, api_id, page,
                         )
-                        return None
-                    return resp.json()
-                except Exception as e:
-                    _log.warning("[키움증권] 요청 예외 api-id=%s: %s", api_id, e)
-                    return None
-            return None
-
-    async def _paginated_request(self, api_id: str, body: Optional[dict] = None) -> Optional[dict]:
-        """연속조회(cont-yn=Y)를 처리하여 전체 페이지를 합산 반환. 페이지간 0.3초 대기."""
-        async with self._lock:
-            if not await self._ensure_token():
-                _log.warning("[키움증권] 연속조회 요청 건너뜀 -- 유효한 토큰 없음 (api-id=%s)", api_id)
-                return None
-            url = f"{self.base_url}{self.ACCOUNT_URL}"
-            base_headers = {
-                "Content-Type": "application/json;charset=UTF-8",
-                "authorization": f"Bearer {self._token_info.token}",
-                "api-id": api_id,
-            }
-            payload = body or {}
-            all_items: list = []
-            cont_yn = "N"
-            next_key = ""
-            result: Optional[dict] = None
-            page = 0
-            while True:
-                if page > 0:
-                    await asyncio.sleep(0.3)  # 연속조회 페이지 간 요청 간격
-                page += 1
-                headers = {**base_headers, "cont-yn": cont_yn, "next-key": next_key}
-                retry_429 = 0
-                while True:
-                    try:
-                        if not self._client:
-                            self._client = httpx.AsyncClient(limits=httpx.Limits(max_keepalive_connections=5, max_connections=10))
-                        resp = await self._client.post(url, headers=headers, json=payload, timeout=15)
-                        if resp.status_code == 429:
-                            retry_429 += 1
-                            wait_sec = 10 * retry_429
-                            _log.warning(
-                                "[키움증권]  429 요청 과다(api-id=%s, page=%d) -- %d초 대기 후 재시도 (%d/3)",
-                                api_id, page, wait_sec, retry_429,
-                            )
-                            if retry_429 >= 3:
-                                return result
-                            await asyncio.sleep(wait_sec)
-                            continue
-                        if resp.status_code != 200:
-                            _log.warning(
-                                "[키움증권] 연속조회 응답 실패 status=%s api-id=%s page=%d",
-                                resp.status_code, api_id, page,
-                            )
-                            return result
-                        data = resp.json()
-                        if result is None:
-                            result = data
-                        items = (data.get("body") or data).get("acnt_evlt_remn_indv_tot", [])
-                        if isinstance(items, list):
-                            all_items.extend(items)
-                        cont_yn = resp.headers.get("cont-yn", "N")
-                        next_key = resp.headers.get("next-key", "")
-                        break
-                    except Exception as e:
-                        _log.warning("[키움증권] 연속조회 요청 예외 api-id=%s page=%d: %s", api_id, page, e)
                         return result
-                if cont_yn != "Y" or not next_key:
+                    data = resp.json()
+                    if result is None:
+                        result = data
+                    items = (data.get("body") or data).get("acnt_evlt_remn_indv_tot", [])
+                    if isinstance(items, list):
+                        all_items.extend(items)
+                    cont_yn = resp.headers.get("cont-yn", "N")
+                    next_key = resp.headers.get("next-key", "")
                     break
-            if result is not None:
-                target = result.get("body") or result
-                target["acnt_evlt_remn_indv_tot"] = all_items
-            return result
+                except Exception as e:
+                    _log.warning("[키움증권] 연속조회 요청 예외 api-id=%s page=%d: %s: %s", api_id, page, type(e).__name__, e)
+                    await self._reset_client()
+                    return result
+            if cont_yn != "Y" or not next_key:
+                break
+        if result is not None:
+            target = result.get("body") or result
+            target["acnt_evlt_remn_indv_tot"] = all_items
+        return result
 
     async def get_account_number(self) -> Optional[str]:
         api_id = getattr(self, "_account_tr_id", self.API_ID_ACCOUNT)

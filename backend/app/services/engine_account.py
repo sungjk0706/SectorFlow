@@ -130,9 +130,16 @@ async def _fetch_account_data(settings: dict) -> dict:
     - deposit -> balance 순차 호출 + 0.5초 간격으로 429 예방
     """
     from backend.app.services.engine_account_rest import parse_kt00001_deposit, parse_kt00018_balance
-    
+
     _EMPTY = {"success": False, "summary": {}, "stock_list": []}
-    _rest_api = state.rest_api
+    # 증권사별 REST API 분리
+    broker = str(settings.get("broker", "") or "").lower().strip()
+    if broker == "kiwoom":
+        _rest_api = state.kiwoom_rest_api
+    elif broker == "ls":
+        _rest_api = state.ls_rest_api
+    else:
+        _rest_api = None
     _get_rest_api_thread_sem = state.rest_api_thread_sem or _get_rest_api_thread_sem()
     
     if _rest_api is None:

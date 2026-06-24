@@ -33,9 +33,12 @@ class KiwoomAuthProvider(AuthProvider):
 
     def __init__(self):
         from backend.app.services.engine_state import state
-        app_key = (state.integrated_system_settings_cache.get("kiwoom_app_key_real") or state.integrated_system_settings_cache.get("kiwoom_app_key") or "").strip()
-        app_secret = (state.integrated_system_settings_cache.get("kiwoom_app_secret_real") or state.integrated_system_settings_cache.get("kiwoom_app_secret") or "").strip()
-        self._rest_api = KiwoomRestAPI(app_key, app_secret)
+        # state.kiwoom_rest_api가 이미 존재하면 재사용 (엔진 루프에서 초기화됨)
+        if state.kiwoom_rest_api is None:
+            app_key = (state.integrated_system_settings_cache.get("kiwoom_app_key_real") or state.integrated_system_settings_cache.get("kiwoom_app_key") or "").strip()
+            app_secret = (state.integrated_system_settings_cache.get("kiwoom_app_secret_real") or state.integrated_system_settings_cache.get("kiwoom_app_secret") or "").strip()
+            state.kiwoom_rest_api = KiwoomRestAPI(app_key, app_secret)
+        self._rest_api = state.kiwoom_rest_api
         self._rest_api._acnt_no = str(
             state.integrated_system_settings_cache.get("kiwoom_account_no_real") or state.integrated_system_settings_cache.get("kiwoom_account_no", "") or ""
         )

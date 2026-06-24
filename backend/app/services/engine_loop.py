@@ -233,16 +233,29 @@ async def run_engine_loop() -> None:
         _auth_provider = router.auth
         if hasattr(_auth_provider, 'rest_api'):
             _is_test = is_test_mode(settings)
-            state.rest_api = _auth_provider.rest_api
-            state.rest_api._acnt_no = str(settings.get(f"{broker_nm}_account_no", "") or "")
-            for spec in state.broker_spec:
-                tr = spec.get("tr_id", "")
-                if tr == "kt00001":
-                    state.rest_api._deposit_tr_id = tr
-                elif tr == "kt00018":
-                    state.rest_api._balance_tr_id = tr
-                elif tr == "ka00001":
-                    state.rest_api._account_tr_id = tr
+            # 증권사별 state 분리
+            if broker_nm == "kiwoom":
+                state.kiwoom_rest_api = _auth_provider.rest_api
+                state.kiwoom_rest_api._acnt_no = str(settings.get(f"{broker_nm}_account_no", "") or "")
+                for spec in state.broker_spec:
+                    tr = spec.get("tr_id", "")
+                    if tr == "kt00001":
+                        state.kiwoom_rest_api._deposit_tr_id = tr
+                    elif tr == "kt00018":
+                        state.kiwoom_rest_api._balance_tr_id = tr
+                    elif tr == "ka00001":
+                        state.kiwoom_rest_api._account_tr_id = tr
+            elif broker_nm == "ls":
+                state.ls_rest_api = _auth_provider.rest_api
+                state.ls_rest_api._acnt_no = str(settings.get(f"{broker_nm}_account_no", "") or "")
+                for spec in state.broker_spec:
+                    tr = spec.get("tr_id", "")
+                    if tr == "kt00001":
+                        state.ls_rest_api._deposit_tr_id = tr
+                    elif tr == "kt00018":
+                        state.ls_rest_api._balance_tr_id = tr
+                    elif tr == "ka00001":
+                        state.ls_rest_api._account_tr_id = tr
             from backend.app.services.engine_service import log_message
             log_message(f"[연결] {broker_nm} 증권사 연결 완료 (테스트모드={_is_test})")
 
@@ -359,7 +372,19 @@ async def run_engine_loop() -> None:
                 await state.kiwoom_connector.disconnect()
         state.connector_manager = None
         state.kiwoom_connector = None
-        state.rest_api = None
+        # 증권사별 REST API 클라이언트 정리
+        if state.kiwoom_rest_api:
+            if hasattr(state.kiwoom_rest_api, '_reset_client'):
+                await state.kiwoom_rest_api._reset_client()
+            elif hasattr(state.kiwoom_rest_api, '_client') and state.kiwoom_rest_api._client:
+                await state.kiwoom_rest_api._client.aclose()
+            state.kiwoom_rest_api = None
+        if state.ls_rest_api:
+            if hasattr(state.ls_rest_api, '_reset_client'):
+                await state.ls_rest_api._reset_client()
+            elif hasattr(state.ls_rest_api, '_client') and state.ls_rest_api._client:
+                await state.ls_rest_api._client.aclose()
+            state.ls_rest_api = None
         state.running = False
         from backend.app.services.engine_service import broadcast_engine_status, log_message, get_current_kst_time
         broadcast_engine_status()
