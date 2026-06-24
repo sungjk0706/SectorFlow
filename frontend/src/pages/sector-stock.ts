@@ -177,13 +177,13 @@ function computeRows(
   for (const sector of orderedSectors) {
     const codes = grouped.get(sector)
     const sectorRank = sortedSectorScores.find(s => s.sector === sector)?.rank ?? 0
-    const dim = sectorRank > maxTargets
+    const dim = sectorRank === 0 || sectorRank > maxTargets
     const score = scoreMap.get(sector)
 
     rows.push({
       type: 'group',
       sector,
-      label: `${sectorRank}. ${sector}`,
+      label: `${sectorRank === 0 ? '❌' : sectorRank}. ${sector}`,
       score,
       dim,
     })

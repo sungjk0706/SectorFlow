@@ -993,12 +993,6 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             except Exception as e:
                 _log.warning("Failed to save filter summary cache: %s", e)
 
-            try:
-                from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed
-                await broadcast_stock_classification_changed()
-            except Exception as e:
-                _log.warning("Failed to broadcast filter summary: %s", e)
-
             filtering_done_event.set()
         except Exception as exc:
             _log.warning("[타이머] Step 2 필터링 실패: %s — filtering_done_event 미발행", exc, exc_info=True)
@@ -1127,6 +1121,13 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
             await _update_layout_cache(es, all_codes, name_map)
             save_done_event.set()
             _log.info("[타이머] Step 4 완료 — 3개 저장데이터 저장 (%d종목)", len(confirmed_codes))
+
+            # 브로드캐스트 (master_stocks_cache 업데이트 후)
+            try:
+                from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed
+                await broadcast_stock_classification_changed()
+            except Exception as e:
+                _log.warning("Failed to broadcast filter summary: %s", e)
         except Exception as exc:
             _log.warning("[타이머] Step 4 저장데이터 저장 실패: %s — save_done_event 미발행", exc, exc_info=True)
             # save_done_event 미발행 → 후속 단계 진행 불가
@@ -1493,12 +1494,6 @@ async def fetch_confirmed_data_only() -> dict:
             except Exception as e:
                 _log.warning("Failed to save filter summary cache: %s", e)
 
-            try:
-                from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed
-                await broadcast_stock_classification_changed()
-            except Exception as e:
-                _log.warning("Failed to broadcast filter summary: %s", e)
-
             filtering_done_event.set()
         except Exception as exc:
             _log.warning("[수동 확정시세] Step 2 필터링 실패: %s", exc, exc_info=True)
@@ -1622,6 +1617,13 @@ async def fetch_confirmed_data_only() -> dict:
             await _update_layout_cache(es, all_codes, name_map)
             save_done_event.set()
             _log.info("[수동 확정시세] Step 4 완료 — 저장데이터 저장 완료 (%d종목)", len(confirmed_codes))
+
+            # 브로드캐스트 (master_stocks_cache 업데이트 후)
+            try:
+                from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed
+                await broadcast_stock_classification_changed()
+            except Exception as e:
+                _log.warning("Failed to broadcast filter summary: %s", e)
         except Exception as exc:
             _log.warning("[수동 확정시세] Step 4 저장데이터 저장 실패: %s", exc, exc_info=True)
             es._confirmed_refresh_running_confirmed = False

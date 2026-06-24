@@ -96,17 +96,19 @@ async def broadcast_stock_classification_changed() -> None:
         _log.warning("[업종관리] 커스텀 업종 목록 조회 실패: %s", e)
 
     # 메모리 캐시에서 all_stocks 조회
-    stocks = {}
+    stocks = []
     filter_summary = ""
     try:
         import backend.app.services.engine_service as es
         import backend.app.services.engine_state as state
         for code, entry in es._master_stocks_cache.items():
-            stocks[code] = {
+            stocks.append({
+                "code": code,
                 "name": entry.get("name", ""),
                 "sector": entry.get("sector", "기타"),
-                "market": entry.get("market", ""),
-            }
+                "market_type": entry.get("market", ""),
+                "nxt_enable": entry.get("nxt_enable", False),
+            })
         filter_summary = getattr(state, "_latest_filter_summary", "")
     except Exception as e:
         _log.warning("[업종관리] all_stocks 조회 실패: %s", e)
