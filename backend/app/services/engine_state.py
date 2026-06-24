@@ -80,7 +80,8 @@ class EngineState:
         self.auto_trade: AutoTradeManager | None = None
         self.integrated_system_settings_cache: dict = {}
         self.broker_spec: list = []
-        self.rest_api: "KiwoomRestAPI | None" = None  # type: ignore[name-defined]
+        self.kiwoom_rest_api: "KiwoomRestAPI | None" = None  # type: ignore[name-defined]
+        self.ls_rest_api: "LsRestAPI | None" = None  # type: ignore[name-defined]
         self.account_snapshot: dict = {}
         self.positions: list = []
         self.snapshot_history: list = []

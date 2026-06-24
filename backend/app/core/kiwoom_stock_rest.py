@@ -56,7 +56,7 @@ async def fetch_ka10081_daily_price(
     stk_cd: str,
     qry_dt: str,
     *,
-    http_timeout: float = 10.0,
+    http_timeout: float = 15.0,
     _raw_cd: str = "",  # 원본 코드 (로그용)
 ) -> Optional[dict]:
     """
@@ -142,7 +142,7 @@ async def fetch_ka10081_daily_5d_data(
     stk_cd: str,
     qry_dt: str,
     *,
-    http_timeout: float = 10.0,
+    http_timeout: float = 15.0,
     _raw_cd: str = "",  # 원본 코드 (로그용)
 ) -> Optional[dict]:
     """
