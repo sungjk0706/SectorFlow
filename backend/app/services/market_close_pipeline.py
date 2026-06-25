@@ -1250,16 +1250,16 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
         else:
             _log.warning("[타이머] cached=False — 메모리 교체 생략 (기존 상태 유지)")
 
-        # ── 4단계: 업종순위 재계산 + WS 브로드캐스트 (화면 자동 갱신) ────────
+        # ── 4단계: WS 브로드캐스트 (화면 자동 갱신) ────────
+        # 순서: sector-stocks-refresh → recompute_sector_summary_now (내부에서 sector-scores + buy-targets 전송)
+        # sectorStocks가 먼저 갱신되어야 buy-targets-delta merge 시 최신 데이터 참조 가능
         try:
             from backend.app.services.engine_service import recompute_sector_summary_now
             from backend.app.services.engine_account_notify import (
-                notify_desktop_sector_scores,
                 notify_desktop_sector_stocks_refresh,
             )
+            await notify_desktop_sector_stocks_refresh(force=True)
             await recompute_sector_summary_now()
-            notify_desktop_sector_scores(force=True)
-            await notify_desktop_sector_stocks_refresh()
             _log.info("[타이머] 확정 조회 후 업종순위 재계산 + 실시간 화면전송 완료")
         except Exception as _ws_err:
             _log.warning("[타이머] 업종순위 재계산 실패: %s", _ws_err, exc_info=True)
@@ -1540,7 +1540,7 @@ async def fetch_confirmed_data_only() -> dict:
 
         try:
             # eligible_stocks_cache 저장 제거: confirmed_codes가 단일 소스
-            # master_stocks_table 스냅샷 구조로 변경: DELETE 후 INSERT
+            # master_stocks_table: 선택적 DELETE + UPSERT (기존 sector 보존)
             from backend.app.db.database import get_db_connection as _get_conn, get_db_lock
             _conn = await _get_conn()
 
@@ -1548,22 +1548,29 @@ async def fetch_confirmed_data_only() -> dict:
             confirmed_codes_list = list(confirmed_codes)
 
             async with get_db_lock():
-                # 1) master_stocks_table 전체 DELETE (실행 전 row count 로그)
+                # 1) 적격 아닌 종목만 DELETE (기존 종목 sector 보존)
                 cursor = await _conn.execute("SELECT COUNT(*) FROM master_stocks_table")
                 before_count = (await cursor.fetchone())[0]
-                _log.info("[수동 확정시세] Step4 — master_stocks_table 초기화 전 row count: %d", before_count)
-                await _conn.execute("DELETE FROM master_stocks_table")
+                _log.info("[수동 확정시세] Step4 — master_stocks_table 변경 전 row count: %d", before_count)
+                await _conn.execute(
+                    f"DELETE FROM master_stocks_table WHERE code NOT IN ({placeholders})",
+                    confirmed_codes_list
+                )
 
-                # 2) Step2 필터링 결과 종목만 INSERT
+                # 2) Step2 필터링 결과 종목 UPSERT (기존 sector 보존)
                 insert_values = [
                     (r.code, r.name, r.market_code, 1 if r.nxt_enable else 0)
                     for r in records if r.code in confirmed_codes
                 ]
                 if insert_values:
-                    await _conn.executemany(
-                        "INSERT INTO master_stocks_table (code, name, market, nxt_enable) VALUES (?, ?, ?, ?)",
-                        insert_values
-                    )
+                    await _conn.executemany("""
+                        INSERT INTO master_stocks_table (code, name, market, nxt_enable)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(code) DO UPDATE SET
+                            name = excluded.name,
+                            market = excluded.market,
+                            nxt_enable = excluded.nxt_enable
+                    """, insert_values)
 
                 # 3) master_stocks_table 기준으로 stock_5d_array 종목코드 정리
                 cursor = await _conn.execute("SELECT code FROM master_stocks_table")
@@ -1747,12 +1754,10 @@ async def fetch_confirmed_data_only() -> dict:
         try:
             from backend.app.services.engine_service import recompute_sector_summary_now
             from backend.app.services.engine_account_notify import (
-                notify_desktop_sector_scores,
                 notify_desktop_sector_stocks_refresh,
             )
+            await notify_desktop_sector_stocks_refresh(force=True)
             await recompute_sector_summary_now()
-            notify_desktop_sector_scores(force=True)
-            await notify_desktop_sector_stocks_refresh()
             _log.info("[수동 확정시세] 업종순위 재계산 + 실시간 화면전송 완료")
         except Exception as _ws_err:
             _log.warning("[수동 확정시세] 업종순위 재계산 실패: %s", _ws_err, exc_info=True)
@@ -1964,6 +1969,20 @@ async def fetch_5d_data_only() -> dict:
 
         # 후처리
         await _run_post_confirmed_pipeline(es)
+
+        # 업종순위 재계산 (내부에서 notify_desktop_sector_scores + notify_buy_targets_update 호출)
+        # 순서: sector-stocks-refresh → recompute_sector_summary_now
+        # sectorStocks가 먼저 갱신되어야 buy-targets-delta merge 시 최신 데이터 참조 가능
+        try:
+            from backend.app.services.engine_service import recompute_sector_summary_now
+            from backend.app.services.engine_account_notify import (
+                notify_desktop_sector_stocks_refresh,
+            )
+            await notify_desktop_sector_stocks_refresh(force=True)
+            await recompute_sector_summary_now()
+            _log.info("[수동 5일봉] 업종순위 재계산 + 실시간 화면전송 완료")
+        except Exception as _ws_err:
+            _log.warning("[수동 5일봉] 업종순위 재계산 실패: %s", _ws_err, exc_info=True)
 
         return {"fetched": fetched, "failed": failed, "cached": False}
     finally:

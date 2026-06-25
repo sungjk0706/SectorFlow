@@ -609,14 +609,9 @@ async def _on_ws_subscribe_end() -> None:
             logger.info("[타이머] WS 소켓 연결 해제 완료")
         from backend.app.services.engine_service import _broadcast_engine_ws
         _broadcast_engine_ws()
-        # ── ws_subscribe_end 도달 → 확정 데이터 다운로드 즉시 트리거 (설계 의도 구현) ──
-        # 실행 조건: ws_subscribe_on=False가 메모리에 반영된 직후 호출
-        #   → fetch_unified_confirmed_data() Step 5의 is_heavy_operation_allowed()가
-        #     is_ws_subscribe_window() = False를 반환 → ka10081 다운로드 허용 보장
-        # 중복 방지: confirmed_done 플래그 및 _confirmed_refresh_running_confirmed 플래그
-        #   → 20:30 고정 타이머 발동 시 이미 완료면 즉시 스킵
-        logger.info("[타이머] 실시간 구독 종료 → 확정 데이터 다운로드 트리거")
-        _fire_unified_confirmed_fetch()
+        # ── 확정 데이터 다운로드는 confirmed_download_time 타이머가 별도 실행 ──
+        # ws_subscribe_end와 confirmed_download_time을 분리하여
+        # 증권사 확정 데이터 준비 시간을 확보 (기본값 20:40)
     except Exception as e:
         logger.warning("[타이머] 실시간 구독 종료 콜백 오류: %s", e, exc_info=True)
 
@@ -628,6 +623,24 @@ def _fire_ws_subscribe_end() -> None:
         loop.create_task(_on_ws_subscribe_end())
     except RuntimeError:
         pass
+
+
+def _fire_confirmed_download() -> None:
+    """call_later 콜백용 동기 래퍼 — confirmed_download_time 도달 시 확정 데이터 다운로드 트리거."""
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(_on_confirmed_download())
+    except RuntimeError:
+        pass
+
+
+async def _on_confirmed_download() -> None:
+    """confirmed_download_time 도달 시 확정 데이터 다운로드 실행."""
+    try:
+        logger.info("[타이머] 확정 시세 다운로드 시각 도달 → 확정 데이터 다운로드 트리거")
+        _fire_unified_confirmed_fetch()
+    except Exception as e:
+        logger.warning("[타이머] 확정 데이터 다운로드 콜백 오류: %s", e, exc_info=True)
 
 
 def _fire_ws_disconnect_only() -> None:
@@ -725,10 +738,19 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
         state.ws_subscribe_timer_handles.append(h)
         logger.debug("[타이머] KRX 장마감 구독해지 (16:01) -- %.0f초 후 예약", delay_krx_snapshot)
 
-    # ★ 통합 확정 조회 타이머 — ws_subscribe_end 시점에 _on_ws_subscribe_end()에서 직접 트리거됨.
-    # (20:30 하드코딩 제거: 사용자 설정 ws_subscribe_end 기준으로 동작)
-    # ws_subscribe_end 이후 앱 기동 시: retry_pipeline_catchup_after_bootstrap()에서 트리거됨.
-    logger.debug("[타이머] 통합 확정 조회 — ws_subscribe_end(%s) 도달 시 자동 트리거 (별도 타이머 없음)", ws_end_str)
+    # ★ 확정 시세 다운로드 타이머 — confirmed_download_time (기본값 20:40)
+    # ws_subscribe_end와 분리된 별도 타이머: 증권사 확정 데이터 준비 시간 확보
+    # 사용자 설정 1순위, 미설정 시 기본값 20:40
+    confirmed_dl_str = str(settings.get("confirmed_download_time") or "20:40")[:5]
+    cd_h, cd_m = _parse_hm(confirmed_dl_str)
+    delay_confirmed = _seconds_until_hm(cd_h, cd_m)
+    if delay_confirmed > 0 and loop:
+        h = loop.call_later(max(delay_confirmed, 1), _fire_confirmed_download)
+        state.ws_subscribe_timer_handles.append(h)
+        logger.debug("[타이머] 확정 시세 다운로드 (%s) -- %.0f초 후 예약", confirmed_dl_str, delay_confirmed)
+    elif delay_confirmed <= 0 and loop:
+        # 이미 다운로드 시간이 지났으면 부트스트랩 catch-up에서 처리
+        logger.debug("[타이머] 확정 시세 다운로드 시간(%s) 이미 경과 — 부트스트랩 catch-up에서 처리", confirmed_dl_str)
 
 
     # ★ 09:00/15:30 고정 폴링 타이머 제거됨 (Task 5.1, 0J REAL 수신 여부로 자동 판단)

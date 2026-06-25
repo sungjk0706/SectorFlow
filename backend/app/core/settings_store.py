@@ -83,6 +83,7 @@ def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
     data: dict[str, Any] = {
         "ws_subscribe_start": str(d.get("ws_subscribe_start") or "07:50").strip(),
         "ws_subscribe_end": str(d.get("ws_subscribe_end") or "20:00").strip(),
+        "confirmed_download_time": str(d.get("confirmed_download_time") or "20:40").strip(),
         "time_scheduler_on": bool(d.get("time_scheduler_on", True)),
         "auto_buy_on": bool(d.get("auto_buy_on", True)),
         "auto_sell_on": bool(d.get("auto_sell_on", True)),
@@ -153,6 +154,7 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
     _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
     _TIME_FIELDS = frozenset({
         "ws_subscribe_start", "ws_subscribe_end",
+        "confirmed_download_time",
         "buy_time_start", "buy_time_end",
         "sell_time_start", "sell_time_end",
     })
