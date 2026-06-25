@@ -58,6 +58,9 @@ let uiFlashToggle: ReturnType<typeof createToggleBtn> | null = null
 let wsSH = '09', wsSM = '00', wsEH = '15', wsEM = '00'
 let wsStartSlot: HTMLElement | null = null
 let wsEndSlot: HTMLElement | null = null
+let confirmedDlSlot: HTMLElement | null = null
+let confirmedDlH = '20', confirmedDlM = '40'
+let savingConfirmedDl = false
 let savingTime = false
 let pendingTimeSave: { startKey: string; endKey: string } | null = null
 
@@ -140,6 +143,24 @@ function scheduleTimeSave(startKey: string, endKey: string): void {
     savingTime = false
   }
   run(startKey, endKey)
+}
+
+function scheduleConfirmedDlSave(): void {
+  if (!settingsMgr) return
+  if (savingConfirmedDl) return
+  savingConfirmedDl = true
+  const run = async (): Promise<void> => {
+    const serverVal = String(vals['confirmed_download_time'] ?? '')
+    const newVal = `${confirmedDlH}:${confirmedDlM}`
+    if (newVal !== serverVal) {
+      const dirty: Record<string, unknown> = { confirmed_download_time: newVal }
+      const res = await settingsMgr!.saveSection(dirty)
+      toastResult(res)
+      if (res.ok) Object.assign(vals, dirty)
+    }
+    savingConfirmedDl = false
+  }
+  run()
 }
 
 /* ── 탭 렌더링 ── */
@@ -735,6 +756,28 @@ function renderApiSettingsTab(container: HTMLElement): void {
   descLabel4.textContent = '실시간 시세 수신 시작/종료 시간'
   container.appendChild(descLabel4)
 
+  // 확정 시세 다운로드 시간
+  const confirmedDlRow = document.createElement('div')
+  confirmedDlRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;'
+  const confirmedDlLabel = document.createElement('span')
+  Object.assign(confirmedDlLabel.style, { minWidth: '110px', fontSize: GS.label, whiteSpace: 'nowrap' })
+  confirmedDlLabel.textContent = '확정 시세 다운로드'
+  confirmedDlRow.appendChild(confirmedDlLabel)
+
+  const [cdh, cdm] = parseHM(String(vals.confirmed_download_time ?? '20:40'))
+  confirmedDlH = cdh; confirmedDlM = cdm
+  confirmedDlSlot = createTimeSlot(confirmedDlH, confirmedDlM, (h, m) => {
+    confirmedDlH = h; confirmedDlM = m; updateTimeSlotDisplay(confirmedDlSlot!, h, m)
+    scheduleConfirmedDlSave()
+  })
+  confirmedDlRow.appendChild(confirmedDlSlot)
+  container.appendChild(confirmedDlRow)
+
+  const descLabel5 = document.createElement('div')
+  Object.assign(descLabel5.style, { fontSize: GS.desc, color: '#888', padding: '0 0 20px', marginTop: '-4px' })
+  descLabel5.textContent = '장마감 후 확정 시세 다운로드 시간 (기본값 20:40)'
+  container.appendChild(descLabel5)
+
   // Step 2B: API 키 보관용 탭 (키움 API / LS API)
   const apiTabBar = document.createElement('div')
   Object.assign(apiTabBar.style, { display: 'flex', gap: '8px', marginBottom: '12px' })
@@ -940,6 +983,11 @@ function syncFromSettings(s: AppSettings | null): void {
     if (wsStartSlot) updateTimeSlotDisplay(wsStartSlot, sh, sm)
     if (wsEndSlot) updateTimeSlotDisplay(wsEndSlot, eh, em)
     updateWsTimeDisabled()
+
+    // 확정 시세 다운로드 시간
+    const [cdh, cdm] = parseHM(String(r.confirmed_download_time ?? '20:40'))
+    confirmedDlH = cdh; confirmedDlM = cdm
+    if (confirmedDlSlot) updateTimeSlotDisplay(confirmedDlSlot, cdh, cdm)
 
     // 자동매수
     autoBuyToggle?.setOn(!!r.auto_buy_on)

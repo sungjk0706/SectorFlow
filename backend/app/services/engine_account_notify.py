@@ -440,14 +440,18 @@ def notify_desktop_buy_radar_only() -> None:
     pass
 
 
-async def notify_desktop_sector_stocks_refresh() -> None:
-    """필터 변경으로 종목 목록이 바뀌었을 때 delta 또는 전체 리스트를 WS로 전송."""
+async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
+    """종목 목록 또는 데이터가 변경되었을 때 delta 또는 전체 리스트를 WS로 전송.
+
+    Args:
+        force: True 시 delta 계산 없이 전체 스냅샷 전송 (확정시세/5일봉 다운로드 등 전 종목 데이터 변경 시).
+    """
     import backend.app.services.engine_service as _es
     stocks = await _es.get_sector_stocks()
     new_codes = {s.get("code", "") for s in stocks if s.get("code", "")}
 
-    if not notify_cache.prev_sector_stock_codes:
-        # 초기 로드: 전체 리스트를 sector-stocks-refresh로 전송
+    if force or not notify_cache.prev_sector_stock_codes:
+        # 전체 리스트를 sector-stocks-refresh로 전송
         _safe_broadcast("sector-stocks-refresh", {"stocks": stocks})
     else:
         added_codes = new_codes - notify_cache.prev_sector_stock_codes
@@ -592,7 +596,7 @@ def notify_snapshot_history_update() -> None:
 
 
 # 매수후보 비교 키: 순위·시세·가드 상태 등 변경 감지 대상 필드
-_BUY_TARGET_CMP_KEYS = ("rank", "cur_price", "change_rate", "strength", "trade_amount", "boost_score", "guard_pass", "reason", "order_ratio", "program_net_buy")
+_BUY_TARGET_CMP_KEYS = ("rank", "cur_price", "change_rate", "strength", "trade_amount", "boost_score", "guard_pass", "reason", "order_ratio", "program_net_buy", "high_5d", "avg_amt_5d")
 
 
 async def notify_buy_targets_update() -> None:
