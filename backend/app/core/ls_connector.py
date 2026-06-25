@@ -452,6 +452,10 @@ class LsConnector(BrokerConnector):
 
         success_all = True
         for code in codes:
+            if not self._socket:
+                logger.warning("[LS증권연결] 구독 중단 — 루프 중 연결 해제됨")
+                success_all = False
+                break
             # LS 종목코드 포맷: U + 6자리 + 공백 3자리
             formatted_code = self._format_code(code)
 
@@ -482,6 +486,10 @@ class LsConnector(BrokerConnector):
 
         success_all = True
         for code in codes:
+            if not self._socket:
+                logger.warning("[LS증권연결] 구독 해지 중단 — 루프 중 연결 해제됨")
+                success_all = False
+                break
             # LS 종목코드 포맷: U + 6자리 + 공백 3자리
             formatted_code = self._format_code(code)
 
@@ -511,6 +519,10 @@ class LsConnector(BrokerConnector):
 
         success_all = True
         for code in codes:
+            if not self._socket:
+                logger.warning(f"[LS증권연결] {tr_cd} 구독 중단 — 루프 중 연결 해제됨")
+                success_all = False
+                break
             formatted_code = self._format_code(code)
             payload = {
                 "header": {
@@ -537,6 +549,10 @@ class LsConnector(BrokerConnector):
 
         success_all = True
         for code in codes:
+            if not self._socket:
+                logger.warning(f"[LS증권연결] {tr_cd} 구독 해지 중단 — 루프 중 연결 해제됨")
+                success_all = False
+                break
             formatted_code = self._format_code(code)
             payload = {
                 "header": {

@@ -365,7 +365,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             pass
 
     # WS 구독 시간/스위치 변경 시 → 즉시 구간 재판정 + 타이머 재예약
-    _WS_SCHEDULE_KEYS = {"ws_subscribe_start", "ws_subscribe_end", "ws_subscribe_on"}
+    _WS_SCHEDULE_KEYS = {"ws_subscribe_start", "ws_subscribe_end", "ws_subscribe_on", "confirmed_download_time"}
     if changed_keys & _WS_SCHEDULE_KEYS:
         try:
             new_settings = get_settings_snapshot()

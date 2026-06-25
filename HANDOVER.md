@@ -21,18 +21,20 @@
   - 프론트엔드 타입 인터페이스와 백엔드 데이터 형식 일치
   - 브로드캐스트 데이터 실시간 처리 가능
   - py_compile 검증 완료
+- 업종순위 페이지 우측 테이블 불투명 처리 문제 근본 해결 완료
+  - rank === 0인 업종 불투명 처리 추가 (sectorRank === 0 || sectorRank > maxTargets)
+  - rank === 0인 업종 라벨을 '0.'에서 '❌'로 변경하여 좌측 테이블과 일관성 확보
+  - npm run build 검증 완료
 
 ## 현재 상태
-- 수정 파일: backend/app/core/kiwoom_rest.py, backend/app/core/kiwoom_stock_rest.py, backend/app/services/engine_loop.py, backend/app/services/market_close_pipeline.py, backend/app/web/routes/stock_classification.py
-- 종목 수 불일치 원인 해결 (broadcast 타이밍 이슈)
-- 데이터 형식 불일치 원인 해결 (딕셔너리 → 배열)
-- 코드 검증 완료 (py_compile 전체 성공)
+- 수정 파일: frontend/src/pages/sector-stock.ts
+- 업종순위 탈락 업종 불투명 처리 및 라벨 표시 문제 해결
+- 좌측/우측 테이블 UI 일관성 확보
+- 코드 검증 완료 (npm run build 성공)
 
 ## 다음 단계
-- 앱 기동 후 런타임 로그 확인 (타임아웃 감소 여부)
-- ka10081/ka10099/au10001 호출 로그 확인
-- 매매적격종목 확정시세 다운로드 후 종목 수 일치 여부 확인
-- 다운로드 완료 후 새로고침 없이 데이터 표시 확인
+- 앱 기동 후 우측 테이블에서 rank === 0인 업종 '❌' 표시 확인
+- 해당 업종 종목 불투명 처리 확인
 
 ## 미해결 문제
 - 없음
