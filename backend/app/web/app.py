@@ -29,6 +29,11 @@ async def lifespan(app: FastAPI):
     from backend.app.db.stock_tables import init_cache_tables
     await init_cache_tables()
 
+    # 거래일 캐시 초기화 (DB에서 메모리 로드, 최초 1회만 exchange_calendars 호출)
+    from backend.app.core.trading_calendar import initialize_trading_calendar_cache
+    await initialize_trading_calendar_cache()
+    logger.info("[웹서버] 거래일 캐시 초기화 완료")
+
     # 전역 큐 초기화 (엔진 시작 전 보장)
     from backend.app.services.core_queues import initialize_queues
     initialize_queues()

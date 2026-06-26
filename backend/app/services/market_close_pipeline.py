@@ -20,7 +20,7 @@ from backend.app.services.engine_symbol_utils import (
 )
 from backend.app.services.engine_ws_reg import build_0b_remove_payloads
 from backend.app.core.trading_calendar import get_current_trading_day_str
-from backend.app.services import engine_state as state
+from backend.app.services.engine_state import state
 
 _log = get_logger("engine")
 

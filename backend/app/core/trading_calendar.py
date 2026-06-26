@@ -1,24 +1,29 @@
 from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
-KRX 거래일 판별 유틸 -- exchange_calendars XKRX 캘린더.
+KRX 거래일 판별 유틸 -- DB 캐시 기반.
 
 사용처:
-- 직전 거래일 계산 (캐시 날짜 태그, REST API qry_dt 등)
+- 직접 거래일 계산 (캐시 날짜 태그, REST API qry_dt 등)
 - 최근 N거래일 목록 생성 (일별 요약 등)
 
 데이터 소스:
-- exchange_calendars XKRX 캘린더 (오프라인, 내장 휴일 데이터)
-- 모듈 레벨 lazy singleton으로 1회 로드 후 메모리 상주
+- exchange_calendars XKRX 캘린더 (연 1회 갱신 시에만 사용, 런타임 블로킹 제거)
+- trading_days_cache SQLite 테이블에 연도별 거래일 저장
+- 앱 기동 시 DB에서 dict[int, set[str]] 메모리 로드 (O(1) 조회)
 """
 
+import logging
 from datetime import date, datetime, timedelta, timezone
 
 from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
 
+_log = logging.getLogger(__name__)
+
 _KST = timezone(timedelta(hours=9))
 
-_xkrx = None
+_trading_days_cache: dict[int, set[str]] = {}
+_cache_initialized: bool = False
 
 __all__ = [
     "_KST",
@@ -32,16 +37,9 @@ __all__ = [
     "get_current_trading_day_str",
     "is_cache_valid",
     "get_recent_trading_days",
+    "initialize_trading_calendar_cache",
+    "refresh_trading_days_for_year",
 ]
-
-
-def _get_xkrx():
-    """XKRX 캘린더 lazy singleton (최초 호출 시 1회 생성, 이후 메모리 상주)."""
-    global _xkrx
-    if _xkrx is None:
-        import exchange_calendars as xcals
-        _xkrx = xcals.get_calendar("XKRX")
-    return _xkrx
 
 
 def _date_to_str(d: date) -> str:
@@ -54,9 +52,83 @@ def _str_to_date(s: str) -> date:
     return datetime.strptime(s, "%Y%m%d").date()
 
 
+async def initialize_trading_calendar_cache() -> None:
+    """앱 기동 시 1회 호출 — DB에서 거래일 캐시 로드.
+    DB에 데이터 없으면 exchange_calendars로 최초 1회 생성 후 DB 저장.
+    """
+    global _trading_days_cache, _cache_initialized
+    if _cache_initialized:
+        return
+    from backend.app.db.stock_tables import load_trading_days_cache, save_trading_days_cache
+
+    db_cache = await load_trading_days_cache()
+    if db_cache is not None:
+        _trading_days_cache = db_cache
+        current_year = datetime.now(_KST).year
+        next_year = current_year + 1
+        if next_year not in _trading_days_cache:
+            _log.info("[trading_calendar] 다음 연도(%d) 캐시 없음 — exchange_calendars로 생성", next_year)
+            new_data = _generate_trading_days_from_xkrx(next_year)
+            _trading_days_cache.update(new_data)
+            await save_trading_days_cache(new_data)
+        _cache_initialized = True
+        _log.info("[trading_calendar] DB 캐시 로드 완료 — %d개 연도", len(_trading_days_cache))
+        return
+
+    _log.info("[trading_calendar] DB 캐시 없음 — exchange_calendars로 최초 생성")
+    current_year = datetime.now(_KST).year
+    _trading_days_cache = _generate_trading_days_from_xkrx(current_year)
+    next_year_data = _generate_trading_days_from_xkrx(current_year + 1)
+    _trading_days_cache.update(next_year_data)
+    await save_trading_days_cache(_trading_days_cache)
+    _cache_initialized = True
+    _log.info("[trading_calendar] 최초 캐시 생성 및 DB 저장 완료 — %d개 연도", len(_trading_days_cache))
+
+
+def _generate_trading_days_from_xkrx(year: int) -> dict[int, set[str]]:
+    """exchange_calendars로 해당 연도의 거래일 set 생성 (동기, 최초 1회 또는 연 1회 갱신 시에만 호출).
+    캘린더 데이터 범위를 초과할 수 있으므로 일자별 is_session으로 안전 생성."""
+    import exchange_calendars as xcals
+    cal = xcals.get_calendar("XKRX")
+    from datetime import date as _date
+    days_set: set[str] = set()
+    d = _date(year, 1, 1)
+    end = _date(year, 12, 31)
+    while d <= end:
+        try:
+            if cal.is_session(d):
+                days_set.add(d.strftime("%Y%m%d"))
+        except Exception:
+            break
+        d += timedelta(days=1)
+    _log.info("[trading_calendar] XKRX에서 %d년 거래일 %d일 생성", year, len(days_set))
+    return {year: days_set}
+
+
+async def refresh_trading_days_for_year(year: int) -> None:
+    """특정 연도의 거래일 캐시를 exchange_calendars로 재생성 후 DB에 저장 (연 1회 갱신용)."""
+    global _trading_days_cache
+    from backend.app.db.stock_tables import save_trading_days_cache
+
+    new_data = _generate_trading_days_from_xkrx(year)
+    _trading_days_cache[year] = new_data[year]
+    await save_trading_days_cache({year: _trading_days_cache[year]})
+    _log.info("[trading_calendar] %d년 거래일 캐시 갱신 완료", year)
+
+
 def is_trading_day(d: date) -> bool:
-    """해당 날짜가 KRX 거래일이면 True (exchange_calendars XKRX 캘린더 직접 조회)."""
-    return _get_xkrx().is_session(d)
+    """해당 날짜가 KRX 거래일이면 True (메모리 캐시 set 조회, O(1)).
+    캐시 미초기화 시 exchange_calendars로 폴백 (동기, 블로킹 발생 가능)."""
+    if not _cache_initialized:
+        _log.warning("[trading_calendar] 캐시 미초기화 — exchange_calendars 폴백 (블로킹)")
+        import exchange_calendars as xcals
+        return xcals.get_calendar("XKRX").is_session(d)
+    year = d.year
+    if year not in _trading_days_cache:
+        _log.warning("[trading_calendar] %d년 캐시 없음 — exchange_calendars 폴백 (블로킹)", year)
+        import exchange_calendars as xcals
+        return xcals.get_calendar("XKRX").is_session(d)
+    return d.strftime("%Y%m%d") in _trading_days_cache[year]
 
 
 def is_trading_day_with_holiday_guard(holiday_guard_on: bool) -> bool:

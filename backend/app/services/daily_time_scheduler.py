@@ -938,6 +938,14 @@ async def _on_midnight() -> None:
             state.confirmed_done = False
             logger.info("[타이머] 자정 날짜 변경 -- 플래그 초기화 (%s)", state.last_reset_date)
 
+            # 연도 변경 시 다음 연도 거래일 캐시 미리 생성 (블로킹 방지)
+            current_year = now.year
+            from backend.app.core.trading_calendar import _trading_days_cache, refresh_trading_days_for_year
+            next_year = current_year + 1
+            if next_year not in _trading_days_cache:
+                logger.info("[타이머] 연도 변경 — %d년 거래일 캐시 생성", next_year)
+                await refresh_trading_days_for_year(next_year)
+
             from backend.app.services import engine_service
 
             # 날짜 변경 시 거래일/시간 기준 자동 ON/OFF 판별
