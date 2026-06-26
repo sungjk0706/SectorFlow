@@ -98,16 +98,29 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   avgAmtChip.style.display = 'none'
   header.appendChild(avgAmtChip)
 
-  // 엔진 상태 칩: 증권사(동적), 테스트/실전모드
+  // 엔진 상태 칩: 증권사(항상 표시, 상태만 갱신), 테스트/실전모드
   const brokerChipsContainer = document.createElement('span')
-  brokerChipsContainer.style.cssText = 'display:none;gap:4px;align-items:center;'
+  brokerChipsContainer.style.cssText = 'display:inline-flex;gap:4px;align-items:center;'
   header.appendChild(brokerChipsContainer)
+
+  // 증권사 칩 미리 생성 (BROKER_LABELS 기반, 상태만 업데이트 — 재생성 금지)
+  const brokerChipRefs: Record<string, { token: HTMLSpanElement; ws: HTMLSpanElement }> = {}
+  for (const brokerId of Object.keys(BROKER_LABELS)) {
+    const label = BROKER_LABELS[brokerId]
+    const tokenChip = createChipEl()
+    applyStatusChip(tokenChip, `${label}증권`, false)
+    brokerChipsContainer.appendChild(tokenChip)
+
+    const wsChip = createChipEl()
+    applyStatusChip(wsChip, `${label}실시간`, false)
+    brokerChipsContainer.appendChild(wsChip)
+
+    brokerChipRefs[brokerId] = { token: tokenChip, ws: wsChip }
+  }
+
   const modeChip = createChipEl()
   modeChip.style.display = 'none'
-  const realtimeStateChip = createChipEl()
-  realtimeStateChip.style.display = 'none'
   header.appendChild(modeChip)
-  header.appendChild(realtimeStateChip)
 
   // KRX / NXT 장 상태 칩
   const krxChip = createChipEl()
@@ -140,7 +153,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   // ── Store 구독 ──
 
   function onStateChange(state: UIState): void {
-    const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings, realtimeStatus } = state
+    const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings } = state
 
     // 장 상태
     applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx)
@@ -273,60 +286,23 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
     }
 
     // 엔진 상태
-    if (status) {
-      const wsOn = settings ? !!settings.ws_subscribe_on : true
+    const wsOn = settings ? !!settings.ws_subscribe_on : true
 
+    if (status) {
       modeChip.style.display = ''
       applyStatusChip(modeChip, status.is_test_mode ? '테스트모드' : '실전모드', undefined, status.is_test_mode ? 'blue' : 'red')
-
-      // broker_statuses 기반 동적 칩 렌더링 (백엔드 상태 그대로 표시)
-      const brokerStatuses = status.broker_statuses ?? {}
-      const brokerIds = Object.keys(brokerStatuses)
-
-      if (brokerIds.length > 0) {
-        // 기존 칩 초기화 후 재생성
-        brokerChipsContainer.innerHTML = ''
-        for (const brokerId of brokerIds) {
-          const bs = brokerStatuses[brokerId]
-          const label = BROKER_LABELS[brokerId] ?? brokerId
-
-          const tokenChip = createChipEl()
-          applyStatusChip(tokenChip, `${label}증권`, bs.token_valid)
-          brokerChipsContainer.appendChild(tokenChip)
-
-          const wsChip = createChipEl()
-          applyStatusChip(wsChip, `${label}실시간`, bs.ws_connected && wsOn)
-          brokerChipsContainer.appendChild(wsChip)
-        }
-        brokerChipsContainer.style.display = 'inline-flex'
-      } else {
-        // broker_statuses 없으면 하위 호환: settings.broker 기반 단일 표시
-        const broker = settings?.broker || 'kiwoom'
-        const brokerLabel = BROKER_LABELS[broker] || broker
-        brokerChipsContainer.innerHTML = ''
-        const tokenChip = createChipEl()
-        applyStatusChip(tokenChip, `${brokerLabel}증권`, status.broker_token_valid)
-        const wsChip = createChipEl()
-        applyStatusChip(wsChip, `${brokerLabel}실시간`, status.broker_connected && wsOn)
-        brokerChipsContainer.appendChild(tokenChip)
-        brokerChipsContainer.appendChild(wsChip)
-        brokerChipsContainer.style.display = 'inline-flex'
-      }
     } else {
       modeChip.style.display = 'none'
-      brokerChipsContainer.style.display = 'none'
     }
 
-    // 실시간 상태 표시줄
-    if (realtimeStatus) {
-      realtimeStateChip.style.display = ''
-      if (realtimeStatus === 'waiting') {
-        applyStatusChip(realtimeStateChip, '🟡 실시간 대기 중', false, 'off')
-      } else if (realtimeStatus === 'live') {
-        applyStatusChip(realtimeStateChip, '🟢 가동 중', true, 'on')
-      }
-    } else {
-      realtimeStateChip.style.display = 'none'
+    // 증권사 칩 상태 업데이트 (미리 생성된 칩 재사용 — 재생성 금지)
+    const brokerStatuses = status?.broker_statuses ?? {}
+    for (const brokerId of Object.keys(brokerChipRefs)) {
+      const refs = brokerChipRefs[brokerId]
+      const bs = brokerStatuses[brokerId]
+      const label = BROKER_LABELS[brokerId]
+      applyStatusChip(refs.token, `${label}증권`, bs?.token_valid ?? false)
+      applyStatusChip(refs.ws, `${label}실시간`, (bs?.ws_connected ?? false) && wsOn)
     }
 
     // 설정 상태

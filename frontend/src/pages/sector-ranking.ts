@@ -278,27 +278,10 @@ function mount(container: HTMLElement): void {
   thresholdRow.style.margin = '0 0 12px 0'
   root.appendChild(thresholdRow)
 
-  // 수신율 업데이트 함수 (하이스테리시스 적용)
-  let receiveRateHidden = false
+  // 수신율 업데이트 함수 — 마지막 수신율을 항상 표시
   function updateReceiveRate(receiveRate: { received: number; total: number; pct: number } | null): void {
-    const threshold = thresholdInput?.getValue() ?? 70
-    const hysteresis = 5 // 하이스테리시스: 5% 이상 떨어져야 다시 표시
     if (receiveRate) {
       receiveRateSpan.textContent = `(현재: ${receiveRate.pct.toFixed(1)}%)`
-      // 하이스테리시스 적용: 임계값 도달 후 숨김, 5% 이상 떨어져야 다시 표시
-      if (receiveRate.pct >= threshold) {
-        receiveRateHidden = true
-        receiveRateSpan.style.display = 'none'
-      } else if (receiveRateHidden && receiveRate.pct < threshold - hysteresis) {
-        receiveRateHidden = false
-        receiveRateSpan.style.display = 'inline'
-      } else if (!receiveRateHidden) {
-        receiveRateSpan.style.display = 'inline'
-      }
-    } else {
-      receiveRateSpan.textContent = '(현재: 0%)'
-      receiveRateSpan.style.display = 'inline'
-      receiveRateHidden = false
     }
   }
 

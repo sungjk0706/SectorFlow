@@ -559,10 +559,7 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
 
             # 수신율 전송 (receive-rate 이벤트) - 변경 시에만 전송
             if _receive_rate_dirty:
-                receive_rate = get_current_receive_rate()
-                threshold_pct = float(es._integrated_system_settings_cache["sector_start_threshold_pct"])
-                if receive_rate["pct"] < threshold_pct:
-                    await _send_receive_rate(receive_rate)
+                await _send_receive_rate(get_current_receive_rate())
                 _receive_rate_dirty = False
 
             # sector-scores 전송
