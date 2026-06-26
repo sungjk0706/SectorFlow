@@ -1,6 +1,21 @@
 # HANDOVER.md
 
 ## 완료 단계
+- 실시간 지연 원인 분석 및 근본 해결 완료
+  - 원인 6: Conflation 50ms 제거 (`engine_account_notify.py`)
+    - `_CONFLATE_MS`, `_conflate_cache`, `_should_conflate()` 함수 전체 제거
+    - `notify_raw_real_data()`에서 conflation 체크 로직 제거
+    - 증권사 틱을 그대로 처리, 동일 가격이라도 거래대금/체결강도 등 다른 FID 변경 시 데이터 손실 방지
+  - 원인 5: `shared_lock` 경합 전면 제거 (16개 파일, 21개 사용처)
+    - `LazyLock` 클래스 정의 제거 (`engine_utils.py`)
+    - `state.shared_lock` 정의 제거 (`engine_state.py`)
+    - `_apply_real01_volume_amount_to_radar_rows`: `async def` → `def`로 변경, lock 제거
+    - `pipeline_compute.py:408`: `await` 제거 (동기 호출로 변경)
+    - `pipeline_compute.py:283`: `recompute_sector_summary_now` 래핑 lock 제거 (유일한 await 포함 지점)
+    - 나머지 18개 동기 사용처 lock 제거 (engine_account, engine_cache, engine_snapshot, engine_ws, engine_ws_reg, buy_order_executor, market_close_pipeline, settings, stock_classification_data)
+    - 근거: asyncio 협력 스케줄링에서 await 없는 동기 코드는 GIL + 협력 스케줄링에 의해 원자적 실행 보장
+  - 검증: `shared_lock`/`LazyLock`/`_should_conflate` 잔여 검색 0건, `py_compile` 16개 파일 전체 성공
+  - 커밋: `e3980f6` — 푸시 완료
 - WS 연결 책임 engine_loop 단일화 완료
   - `engine_state.py` — `ws_window_changed_event` (LazyEvent) 필드 추가
   - `engine_loop.py` — `engine_stop_event.wait()` 제거, `asyncio.wait([stop, change], FIRST_COMPLETED)` 기반 구간 감지 루프 도입
@@ -42,11 +57,17 @@
   - 커밋: `0703968` — 푸시 완료
 
 ## 현재 상태
+- 실시간 지연 근본 해결 완료 (conflation + shared_lock 전면 제거)
 - WS 연결 책임 engine_loop 단일화 완료
 - 거래일 판별은 `exchange_calendars` XKRX 캘린더 직접 호출로 동작 (오프라인, O(1))
 
 ## 다음 단계
 - 별도 작업 없음. 사용자 요청 시 진행.
+- 런타임 검증 권장: `SectorFlow.command` 실행 후 장중 틱 수신 시 실시간 지연 개선 확인
+
+## 미커밋 파일
+- `daily_time_scheduler.py` — 이전 작업 수정사항 (별도 커밋 권장)
+- `stocks.db`, `stocks.db-shm`, `stocks.db-wal` — 런타임 데이터 (커밋 제외)
 
 ## 미해결 문제
 ### 1. exchange_calendars 라이브러리 last_session 한계
