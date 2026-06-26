@@ -11,6 +11,7 @@ import asyncio
 from types import ModuleType
 
 from backend.app.core.logger import get_logger
+from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
 from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
     _format_kiwoom_reg_stk_cd,
@@ -96,7 +97,7 @@ def _get_krx_only_codes(es: ModuleType) -> list[str]:
 
     # 레이아웃 캐시에서 seen에 없는 KRX 단독 종목 추가 (항상 순회)
     # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
-    layout = es._integrated_system_settings_cache.get("sector_stock_layout", [])
+    layout = es._integrated_system_settings_cache["sector_stock_layout"]
     for kind, val in layout:
         if kind == "code":
             base = _base_stk_cd(val)
@@ -666,7 +667,7 @@ async def _run_confirmed_pipeline(
         _log.info("%s 메모리 전체 초기화 완료 — 새 데이터로 교체 시작", tag)
 
         # 스케줄러 토글 체크 (타이머 전용)
-        if check_scheduler and not es._integrated_system_settings_cache.get("scheduler_market_close_on", True):
+        if check_scheduler and not es._integrated_system_settings_cache["scheduler_market_close_on"]:
             _log.info("%s scheduler_market_close_on=OFF — 전체 갱신 생략", tag)
             return {"fetched": 0, "failed": 0, "cached": False, "skipped": True}
 
@@ -823,7 +824,7 @@ async def _run_confirmed_pipeline(
         total = len(all_codes)
         _main_loop = asyncio.get_running_loop()
 
-        ws_subscribe_start = str(es._integrated_system_settings_cache.get("ws_subscribe_start") or "07:50")
+        ws_subscribe_start = str(es._integrated_system_settings_cache["ws_subscribe_start"])
         resume_codes = await load_progress_cache(qry_dt, all_codes, ws_subscribe_start)
         starting_count = len(resume_codes)
 
@@ -985,7 +986,7 @@ async def _update_layout_cache(
 
     # 섹터 순서: 기존 레이아웃의 섹터 순서를 최대한 유지하고 신규 섹터는 뒤에 추가
     # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
-    old_layout: list[tuple[str, str]] = es._integrated_system_settings_cache.get("sector_stock_layout", [])
+    old_layout: list[tuple[str, str]] = es._integrated_system_settings_cache["sector_stock_layout"]
     old_sector_order = list(dict.fromkeys(v for t, v in old_layout if t == "sector"))
 
     new_sectors = [s for s in sector_groups if s not in old_sector_order]

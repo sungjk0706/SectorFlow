@@ -97,7 +97,7 @@ def get_snapshot_history() -> list:
 
 async def get_buy_limit_status() -> dict:
     """매수 한도 상태를 dict로 반환 (프론트 배지용)."""
-    settings = state.integrated_system_settings_cache or {}
+    settings = state.integrated_system_settings_cache
     daily_buy_spent = 0
     if state.auto_trade:
         await state.auto_trade._ensure_daily_buy_counter()

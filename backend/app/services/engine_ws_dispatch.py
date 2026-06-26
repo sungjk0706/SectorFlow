@@ -60,9 +60,9 @@ def _get_wl_codes_cached() -> set[str]:
     """sector_stock_layout → code Set 캐시. 레이아웃 길이가 바뀔 때만 재생성."""
     # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
     global _wl_codes_cache, _wl_codes_layout_len
-    cur_len = len(engine_state._integrated_system_settings_cache.get("sector_stock_layout", []))
+    cur_len = len(engine_state._integrated_system_settings_cache["sector_stock_layout"])
     if cur_len != _wl_codes_layout_len:
-        _wl_codes_cache = {v for t, v in engine_state._integrated_system_settings_cache.get("sector_stock_layout", []) if t == "code"}
+        _wl_codes_cache = {v for t, v in engine_state._integrated_system_settings_cache["sector_stock_layout"] if t == "code"}
         _wl_codes_layout_len = cur_len
     return _wl_codes_cache
 

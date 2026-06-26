@@ -550,7 +550,7 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
             try:
                 # 수신율 dirty 플래그 확인 (틱 수신 시 설정됨)
                 if _receive_rate_dirty:
-                    threshold_pct = float(es._integrated_system_settings_cache.get("sector_start_threshold_pct", 70.0))
+                    threshold_pct = float(es._integrated_system_settings_cache["sector_start_threshold_pct"])
                     current_pct = _current_receive_rate["pct"]
                     received_count = _current_receive_rate["received"]
                     total_count = _current_receive_rate["total"]
@@ -593,7 +593,7 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
             # 수신율 전송 (receive-rate 이벤트) - 변경 시에만 전송
             if _receive_rate_dirty:
                 receive_rate = get_current_receive_rate()
-                threshold_pct = float(es._integrated_system_settings_cache.get("sector_start_threshold_pct", 70.0))
+                threshold_pct = float(es._integrated_system_settings_cache["sector_start_threshold_pct"])
                 if receive_rate["pct"] < threshold_pct:
                     await _send_receive_rate(receive_rate)
                 _receive_rate_dirty = False

@@ -49,7 +49,7 @@ async def _load_caches_preboot(settings: dict) -> None:
             sector_groups[sector].append(code)
 
         # 섹터 순서: 기존 레이아웃의 섹터 순서를 최대한 유지하고 신규 섹터는 뒤에 추가
-        old_layout: list[tuple[str, str]] = state.integrated_system_settings_cache.get("sector_stock_layout", [])
+        old_layout: list[tuple[str, str]] = state.integrated_system_settings_cache["sector_stock_layout"]
         old_sector_order = list(dict.fromkeys(v for t, v in old_layout if t == "sector"))
         new_sectors = [s for s in sector_groups if s not in old_sector_order]
         final_sector_order = [s for s in old_sector_order if s in sector_groups] + new_sectors
@@ -114,9 +114,9 @@ async def _load_caches_preboot(settings: dict) -> None:
 
         # ── 기동 완료 로직 이관 (engine_bootstrap.py _bootstrap_sector_stocks_async에서 이관) ──
         # 테스트모드: Settlement Engine 초기화 (기본값 설정)
-        if (state.integrated_system_settings_cache or {}).get("trade_mode") == "test":
+        if state.integrated_system_settings_cache["trade_mode"] == "test":
             from backend.app.services import settlement_engine
-            initial_deposit = (state.integrated_system_settings_cache or {}).get("initial_deposit", 10_000_000)
+            initial_deposit = state.integrated_system_settings_cache["test_virtual_deposit"]
             settlement_engine.init(initial_deposit)
             logger.debug("[데이터준비] Settlement Engine 초기화 완료 (테스트모드)")
 

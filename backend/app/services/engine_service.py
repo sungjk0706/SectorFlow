@@ -328,7 +328,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
     _VIRTUAL_BALANCE_KEYS = {"test_virtual_balance", "test_virtual_deposit"}
     if changed_keys & _VIRTUAL_BALANCE_KEYS:
         try:
-            _s = state.integrated_system_settings_cache or {}
+            _s = state.integrated_system_settings_cache
             _deposit = int(_s.get("test_virtual_balance", _s.get("test_virtual_deposit", 10_000_000)) or 0)
             await _se.reset(_deposit)
             # 계좌 스냅샷 갱신 + WS account-update 발송
@@ -360,9 +360,9 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             # KiwoomConnector 자동매매 플래그 동기화
             ws = getattr(state.kiwoom_connector, None)
             if ws and "time_scheduler_on" in changed_keys:
-                ws.set_auto_trade_enabled(bool(new_settings.get("time_scheduler_on", True)))
+                ws.set_auto_trade_enabled(bool(new_settings["time_scheduler_on"]))
         except Exception:
-            pass
+            logger.warning("[설정] 자동매매 타이머 재예약 실패", exc_info=True)
 
     # WS 구독 시간/스위치 변경 시 → 즉시 구간 재판정 + 타이머 재예약
     _WS_SCHEDULE_KEYS = {"ws_subscribe_start", "ws_subscribe_end", "ws_subscribe_on", "confirmed_download_time"}
@@ -370,7 +370,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         try:
             new_settings = get_settings_snapshot()
             now_in_window = await _dts.is_ws_subscribe_window(new_settings)
-            was_active = bool(_dts._ws_subscribe_window_active)
+            was_active = bool(state.ws_subscribe_window_active)
 
             # 1) 타이머 재예약 (항상)
             await _dts.schedule_ws_subscribe_timers(new_settings)
@@ -378,8 +378,8 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             # 2) KiwoomConnector 실시간 연결 플래그 업데이트
             ws = getattr(state.kiwoom_connector, None)
             if ws:
-                ws.set_realtime_enabled(bool(new_settings.get("ws_subscribe_on", True)))
-                ws.set_holiday_block_enabled(bool(new_settings.get("holiday_guard_on", True)))
+                ws.set_realtime_enabled(bool(new_settings["ws_subscribe_on"]))
+                ws.set_holiday_block_enabled(bool(new_settings["holiday_guard_on"]))
 
             # 3) 활성→구간밖: 즉시 구독 해제 + WS 끊기 (장마감 후처리 없이)
             if was_active and not now_in_window:
@@ -391,7 +391,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
                 logger.info("[설정] 실시간 구독 구간 변경 → 현재 구간 안 — 즉시 구독 시작")
                 schedule_engine_task(_dts._on_ws_subscribe_start(), "실시간 구독 시작")
         except Exception:
-            pass
+            logger.warning("[설정] 실시간 구독 타이머 재예약 실패", exc_info=True)
 
     # 공휴일 자동 차단 설정 변경 시 KiwoomConnector 플래그 업데이트
     if "holiday_guard_on" in changed_keys:
@@ -399,9 +399,9 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             ws = getattr(state.kiwoom_connector, None)
             if ws:
                 new_settings = get_settings_snapshot()
-                ws.set_holiday_block_enabled(bool(new_settings.get("holiday_guard_on", True)))
+                ws.set_holiday_block_enabled(bool(new_settings["holiday_guard_on"]))
         except Exception:
-            pass
+            logger.warning("[설정] 공휴일 차단 플래그 업데이트 실패", exc_info=True)
 
     # 섹터 정렬/필터 관련 설정 변경 시 업종 점수만 재계산 (종목 시세는 WS delta로만 전송)
     _SECTOR_UI_KEYS = {
@@ -432,7 +432,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
     _ws_changed = changed_keys & _WS_SUBSCRIBE_CONTROL_KEYS
     if _ws_changed:
         try:
-            raw = state.integrated_system_settings_cache or {}
+            raw = state.integrated_system_settings_cache
             for key in _ws_changed:
                 schedule_engine_task(
                     ws_subscribe_control.on_setting_changed(key, bool(raw.get(key)), engine_service),

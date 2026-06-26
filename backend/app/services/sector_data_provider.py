@@ -49,7 +49,7 @@ async def get_sector_stocks() -> list:
     # sector_min_trade_amt 필터링은 _master_stocks_cache의 avg_5d_trade_amount로 수행
 
     # 5일평균거래대금 필터링 (백엔드에서 필터링 수행 - 단일 소스 진리)
-    min_avg_amt_eok = float(_es_ref._integrated_system_settings_cache.get("sector_min_trade_amt", 0.0))
+    min_avg_amt_eok = float(_es_ref._integrated_system_settings_cache["sector_min_trade_amt"])
 
     merged: dict[str, dict] = {}
 
@@ -244,15 +244,15 @@ async def recompute_sector_summary_now() -> None:
         logger.info("[업종순위] 엔진 미실행으로 종료")
         return
     try:
-        trim_trade = float(_es._integrated_system_settings_cache.get("sector_trim_trade_amt_pct", 0) or 0)
-        trim_change = float(_es._integrated_system_settings_cache.get("sector_trim_change_rate_pct", 0) or 0)
-        sector_weights = _es._integrated_system_settings_cache.get("sector_weights") or {}
+        trim_trade = float(_es._integrated_system_settings_cache["sector_trim_trade_amt_pct"])
+        trim_change = float(_es._integrated_system_settings_cache["sector_trim_change_rate_pct"])
+        sector_weights = _es._integrated_system_settings_cache["sector_weights"]
         logger.info("[업종순위] 재계산 sector_weights: %s", sector_weights)
         _sector_summary = await compute_full_sector_summary(
             **await get_sector_summary_inputs(),
-            min_rise_ratio=float(_es._integrated_system_settings_cache.get("sector_min_rise_ratio_pct", 60.0)) / 100.0,
-            min_avg_amt_eok=float(_es._integrated_system_settings_cache.get("sector_min_trade_amt", 0.0)),
-            sector_weights=_es._integrated_system_settings_cache.get("sector_weights") or {},
+            min_rise_ratio=float(_es._integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
+            min_avg_amt_eok=float(_es._integrated_system_settings_cache["sector_min_trade_amt"]),
+            sector_weights=_es._integrated_system_settings_cache["sector_weights"],
             trim_trade_amt_pct=trim_trade,
             trim_change_rate_pct=trim_change,
         )
@@ -264,7 +264,7 @@ async def recompute_sector_summary_now() -> None:
         cancel_sector_recompute()
 
         # ── 5일평균최소거래대금(N억원) 이상 종목 마킹 ──
-        min_avg_amt_eok = float(_es._integrated_system_settings_cache.get("sector_min_trade_amt", 0.0))
+        min_avg_amt_eok = float(_es._integrated_system_settings_cache["sector_min_trade_amt"])
         all_stocks = state.master_stocks_cache.copy()
         for cd, entry in all_stocks.items():
             avg5d_million = int(entry.get("avg_5d_trade_amount", 0) or 0)

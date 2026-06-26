@@ -362,7 +362,7 @@ async def subscribe_account_realtime() -> None:
         # LS증권은 소켓 연결 및 로그인 핸드셰이크 단계에서 계좌등록(tr_type="1")을 수행하므로 키움만 Grp 10 전송
         return
 
-    s = state.integrated_system_settings_cache or {}
+    s = state.integrated_system_settings_cache
     broker_nm = str(s.get("broker", "") or "").lower().strip()
     acnt = str(s.get(f"{broker_nm}_account_no", "") or "").strip()
     if not acnt:

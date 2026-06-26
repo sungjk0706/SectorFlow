@@ -30,9 +30,9 @@ async def start_subscription(
 ):
     """수동 구독 시작. WS 구독 구간 밖이면 400 에러."""
     from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
-    import backend.app.services.engine_service as es
+    from backend.app.services.engine_state import state
 
-    settings = getattr(es, "_settings_cache", None) or {}
+    settings = state.integrated_system_settings_cache
     if not await is_ws_subscribe_window(settings):
         raise HTTPException(status_code=400, detail="WS 구독 구간이 아닙니다")
 

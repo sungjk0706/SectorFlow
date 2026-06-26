@@ -77,7 +77,7 @@ class AutoTradeManager:
         반환값: True=주문 전송 성공, False=가드에 의해 차단/실패
         """
         settings = self._to_trade_settings(self.get_settings_fn())
-        raw_all = self.get_settings_fn() or {}
+        raw_all = self.get_settings_fn()
         await self._ensure_daily_buy_counter()
 
         # ── 실시간 지연 중단 게이트 ────────────────────────────────────────────
@@ -90,7 +90,7 @@ class AutoTradeManager:
             logger.warning("[매수가드] 실시간 지연 체크 실패", exc_info=True)
 
         # 스케줄 자동매매 게이트: force_buy(매수대기 수동 매수) 시에만 우회
-        if not settings.get("is_auto", False) and not force_buy:
+        if not settings["is_auto"] and not force_buy:
             stk_nm = data_manager.get_stock_name(stk_cd, access_token)
             self.log_callback(
                 f" [자동매매 비활성화] {stk_nm}({stk_cd}) 주문 생략 "
@@ -119,8 +119,8 @@ class AutoTradeManager:
 
         # ── 실제 잔고 보유종목 수 기준으로 최대보유종목수 체크 ─────────────
         # 테스트모드: dry_run 가상 잔고 / 실전투자: 키움 실제 잔고
-        max_limit = settings.get("max_limit", 5)
-        base_settings_for_mode = self.get_settings_fn() or {}
+        max_limit = settings["max_limit"]
+        base_settings_for_mode = self.get_settings_fn()
         if is_test_mode(base_settings_for_mode):
             _positions_for_count = await dry_run.get_positions()
         else:
@@ -575,28 +575,28 @@ class AutoTradeManager:
 
     def _to_trade_settings(self, raw: dict) -> dict:
         """engine_settings 형식을 logic_auto_trade 호환 형식으로 변환."""
-        r = raw or {}
-        tp_val = float(r.get("tp_val") or 0)
-        tp_on = bool(r.get("tp_apply", True))
+        r = raw
+        tp_val = float(r["tp_val"])
+        tp_on = bool(r["tp_apply"])
         return {
             "is_auto": auto_buy_effective(r),
             "is_sell_auto": auto_sell_effective(r),
-            "max_limit": int(r.get("max_stock_cnt") or 5),
-            "buy_amt": int(r.get("buy_amt") or 0),
-            "max_daily_total_buy_amt": int(r.get("max_daily_total_buy_amt") or 0),
-            "is_sell_mkt": (r.get("sell_price_type") or "mkt") == "mkt",
-            "sell_offset": int(r.get("sell_offset") or 0),
-            "sell_custom_qty": int(r.get("sell_custom_qty") or 0),
-            "sell_qty_type": r.get("sell_qty_type") or "%",
+            "max_limit": int(r["max_stock_cnt"]),
+            "buy_amt": int(r["buy_amt"]),
+            "max_daily_total_buy_amt": int(r["max_daily_total_buy_amt"]),
+            "is_sell_mkt": r["sell_price_type"] == "mkt",
+            "sell_offset": int(r["sell_offset"]),
+            "sell_custom_qty": int(r["sell_custom_qty"]),
+            "sell_qty_type": r["sell_qty_type"],
             "tp_val": tp_val,
             "tp_apply": tp_on,
             "chk_tp": tp_on and tp_val > 0,
-            "chk_loss": bool(r.get("loss_apply")),
-            "loss_val": float(r.get("loss_val") or 0),
-            "ts_apply": bool(r.get("ts_apply")),
-            "chk_ts": bool(r.get("ts_apply")),
-            "ts_start_val": float(r.get("ts_start_val") or 0),
-            "ts_drop_val": float(r.get("ts_drop_val") or 0),
+            "chk_loss": bool(r["loss_apply"]),
+            "loss_val": float(r["loss_val"]),
+            "ts_apply": bool(r["ts_apply"]),
+            "chk_ts": bool(r["ts_apply"]),
+            "ts_start_val": float(r["ts_start_val"]),
+            "ts_drop_val": float(r["ts_drop_val"]),
         }
 
 # ── 테스트 모드 전용: 매수 후 UI 브로드캐스트 ────────────────────────────────

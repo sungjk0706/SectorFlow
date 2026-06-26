@@ -299,7 +299,7 @@ def sync_sell_overrides() -> None:
     """sell_per_symbol -> AutoTradeManager.ts_overrides 동기화."""
     if not state.auto_trade or not isinstance(state.integrated_system_settings_cache, dict):
         return
-    sp = state.integrated_system_settings_cache.get("sell_per_symbol")
+    sp = state.integrated_system_settings_cache["sell_per_symbol"]
     state.auto_trade.ts_overrides = dict(sp) if isinstance(sp, dict) else {}
 
 

@@ -125,6 +125,6 @@ def check_test_buy_power(price: int, qty: int, daily_spent: int) -> tuple[bool, 
     반환: (ok, reason) -- ok=False이면 매수 거부 사유를 reason에 포함.
     """
     order_amount = price * qty
-    daily_limit = int(state.integrated_system_settings_cache.get("max_daily_total_buy_amt", 0) or 0)
+    daily_limit = int(state.integrated_system_settings_cache["max_daily_total_buy_amt"])
     ok, reason = settlement_engine.check_buy_power(order_amount, daily_limit, daily_spent)
     return ok, reason

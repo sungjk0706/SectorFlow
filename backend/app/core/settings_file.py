@@ -145,11 +145,11 @@ async def load_integrated_system_settings() -> dict:
         return {**DEFAULT_USER_SETTINGS, **DEFAULT_SYSTEM_CONFIG}
 
     for key, default_value in DEFAULT_USER_SETTINGS.items():
-        if key not in db_data:
+        if key not in db_data or db_data[key] is None or db_data[key] == "":
             db_data[key] = default_value
 
     for key, default_value in DEFAULT_SYSTEM_CONFIG.items():
-        if key not in db_data:
+        if key not in db_data or db_data[key] is None or db_data[key] == "":
             db_data[key] = default_value
 
     if "_broker_specs" not in db_data or not db_data["_broker_specs"]:

@@ -35,9 +35,9 @@ class ConnectorManager:
     def _build(self) -> None:
         """단일 소스 진리: state.integrated_system_settings_cache 직접 사용."""
         from backend.app.services.engine_state import state
-        broker_config = state.integrated_system_settings_cache.get("broker_config") or {}
+        broker_config = state.integrated_system_settings_cache["broker_config"]
         ws_val = str(
-            broker_config.get("websocket") or state.integrated_system_settings_cache.get("broker", "kiwoom") or "kiwoom"
+            broker_config.get("websocket") or state.integrated_system_settings_cache["broker"]
         ).lower().strip()
 
         broker_names = [b.strip() for b in ws_val.split(",") if b.strip()]

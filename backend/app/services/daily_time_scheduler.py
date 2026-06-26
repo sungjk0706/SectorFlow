@@ -12,6 +12,7 @@ import gc
 from datetime import datetime, timezone, timedelta
 
 from backend.app.core.logger import get_logger
+from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
 from backend.app.services.engine_state import state
 
 logger = get_logger("engine")
@@ -170,8 +171,10 @@ async def is_ws_subscribe_window(settings: dict | None = None) -> bool:
     if today.weekday() >= 5:
         return False
 
+    if settings is None:
+        settings = state.integrated_system_settings_cache
     if not settings:
-        settings = state.integrated_system_settings_cache or {}
+        raise RuntimeError("settings cache not initialized")
 
     # 공휴일 가드: ON이면 공휴일 차단, OFF면 공휴일에도 허용
     if bool(settings.get("holiday_guard_on", True)):
@@ -182,8 +185,8 @@ async def is_ws_subscribe_window(settings: dict | None = None) -> bool:
     if not bool(settings.get("ws_subscribe_on", True)):
         return False
 
-    ws_start = str(settings.get("ws_subscribe_start") or "07:50")
-    ws_end = str(settings.get("ws_subscribe_end") or "20:00")
+    ws_start = str(settings["ws_subscribe_start"])
+    ws_end = str(settings["ws_subscribe_end"])
 
     sh, sm = _parse_hm(ws_start)
     eh, em = _parse_hm(ws_end)
@@ -200,8 +203,10 @@ async def is_edit_window_open(settings: dict | None = None) -> bool:
     """수정 허용 시간대 판단(업종 커스텀 등).
     허용: NOT is_ws_subscribe_window().
     WS 구독 구간 밖이면 편집 가능 (프론트 computeEditWindowOpenByTime과 동일 기준)."""
+    if settings is None:
+        settings = state.integrated_system_settings_cache
     if not settings:
-        settings = state.integrated_system_settings_cache or {}
+        raise RuntimeError("settings cache not initialized")
     return not await is_ws_subscribe_window(settings)
 
 
@@ -328,9 +333,9 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
     t = _kst_now().hour * 60 + _kst_now().minute
 
     # 사용자 설정의 ws_subscribe_start / ws_subscribe_end 시간 로드
-    _settings = state.integrated_system_settings_cache or {}
-    ws_start = str(_settings.get("ws_subscribe_start") or "07:50")
-    ws_end   = str(_settings.get("ws_subscribe_end")   or "20:00")
+    _settings = state.integrated_system_settings_cache
+    ws_start = str(_settings["ws_subscribe_start"])
+    ws_end   = str(_settings["ws_subscribe_end"])
     sh, sm = _parse_hm(ws_start)
     eh, em = _parse_hm(ws_end)
     ws_start_minutes = sh * 60 + sm
@@ -382,50 +387,41 @@ def _broadcast_market_phase() -> None:
 
 
 async def _apply_auto_toggle_on_startup(settings: dict) -> None:
-    """앱 기동 시 거래일/시간 기준으로 자동매매·WS구독을 자동 ON/OFF.
-    - 거래일 + ws_subscribe_start~end 구간 내 → ON
-    - 비거래일 or 구독 구간 밖 → OFF
+    """앱 기동 시 거래일/시간 기준으로 마스터·WS구독을 자동 ON/OFF.
+    - 거래일 + ws_subscribe_start~end 구간 내 → 마스터/WS ON
+    - 비거래일 or 구독 구간 밖 → 마스터/WS OFF
+    - auto_buy_on/auto_sell_on은 사용자 수동 설정을 존중 (미접근)
     settings.json 저장 + 프론트 알림까지 수행."""
-    from backend.app.core.trading_calendar import is_trading_day, get_kst_today
+    from backend.app.core.trading_calendar import is_trading_day_with_holiday_guard
     from backend.app.core.settings_file import update_settings
 
-    today = get_kst_today()
     holiday_guard = bool(settings.get("holiday_guard_on", True))
-    is_trade_day = is_trading_day(today)
-
-    # 거래일 판별: holiday_guard_on이 OFF면 공휴일도 허용
-    if not holiday_guard:
-        is_trade_day = True
+    is_trade_day = is_trading_day_with_holiday_guard(holiday_guard)
 
     now = _kst_now()
     now_minutes = now.hour * 60 + now.minute
-    ws_start = str(settings.get("ws_subscribe_start") or "07:50")
-    ws_end = str(settings.get("ws_subscribe_end") or "20:00")
+    ws_start = str(settings["ws_subscribe_start"])
+    ws_end = str(settings["ws_subscribe_end"])
     sh, sm = _parse_hm(ws_start)
     eh, em = _parse_hm(ws_end)
     start_total = sh * 60 + sm
     end_total = eh * 60 + em
-    
+
     in_time_window = start_total <= now_minutes <= end_total
 
-    # 시간 구간 판별 + 거래일 판별
     should_be_on = is_trade_day and in_time_window
 
-    # 기동 시각 기준 단순 ON/OFF — 거래일이고 설정된 시간이면 ON, 아니면 OFF
-    on_or_off = should_be_on
     keys = {
-        "time_scheduler_on": on_or_off,
-        "auto_buy_on": on_or_off,
-        "auto_sell_on": on_or_off,
-        "ws_subscribe_on": on_or_off,
+        "time_scheduler_on": should_be_on,
+        "ws_subscribe_on": should_be_on,
         "auto_off_by_holiday": not is_trade_day,
     }
     try:
         await update_settings(keys)
         settings.update(keys)
         logger.debug(
-            "[타이머] 기동 판별 -- 거래일=%s → 자동매매/WS구독 %s",
-            is_trade_day, "ON" if on_or_off else "OFF",
+            "[타이머] 기동 판별 -- 거래일=%s → 마스터/WS구독 %s",
+            is_trade_day, "ON" if should_be_on else "OFF",
         )
         try:
             from backend.app.services.engine_account_notify import (
@@ -447,8 +443,6 @@ async def _restore_from_holiday_flag(settings: dict) -> bool:
         return False
     on_keys = {
         "time_scheduler_on": True,
-        "auto_buy_on": True,
-        "auto_sell_on": True,
         "ws_subscribe_on": True,
         "auto_off_by_holiday": False,
     }
@@ -490,14 +484,12 @@ async def _on_ws_subscribe_start() -> None:
                 return
         # 공휴일 강제 OFF 플래그가 있으면 자동 복원 후 진행
         await _restore_from_holiday_flag(settings)
-        # ★ 구독 시작 시각 도달 → 자동매매·WS구독 4개 키 모두 ON 복원
+        # ★ 구독 시작 시각 도달 → 마스터·WS구독 ON 복원
         #   (_on_ws_subscribe_end 또는 시작 전 기동으로 False가 된 값을 되돌림)
         try:
             from backend.app.core.settings_file import update_settings
             _on_keys = {
                 "time_scheduler_on": True,
-                "auto_buy_on": True,
-                "auto_sell_on": True,
                 "ws_subscribe_on": True,
             }
             await update_settings(_on_keys)
@@ -545,7 +537,7 @@ async def _on_ws_subscribe_start() -> None:
                 from backend.app.core.connector_manager import ConnectorManager
                 from backend.app.services.engine_service import _broker_message_handler
                 from backend.app.services.core_queues import get_tick_queue
-                broker_nm = str(state.integrated_system_settings_cache.get("broker", "") or "").lower().strip()
+                broker_nm = str(state.integrated_system_settings_cache["broker"]).lower().strip()
                 _mgr = ConnectorManager()
                 _mgr.set_message_callback(_broker_message_handler)
                 # tick_queue 콜백 설정 (engine_loop과 동일하게)
@@ -582,13 +574,11 @@ async def _on_ws_subscribe_end() -> None:
         _set_status(quote=False)
         # market-phase WS 브로드캐스트 (구독 종료 시각 기준 상태 반영)
         _broadcast_market_phase()
-        # ── 자동매매·WS구독 토글 OFF 저장 (종료 시각 도달) ──
+        # ── 마스터·WS구독 토글 OFF 저장 (종료 시각 도달) ──
         try:
             from backend.app.core.settings_file import update_settings
             off_keys = {
                 "time_scheduler_on": False,
-                "auto_buy_on": False,
-                "auto_sell_on": False,
                 "ws_subscribe_on": False,
             }
             await update_settings(off_keys)
@@ -689,10 +679,10 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
 
     if not settings:
         # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
-        settings = state.integrated_system_settings_cache or {}
+        settings = state.integrated_system_settings_cache
 
-    ws_start_str = str(settings.get("ws_subscribe_start") or "07:50")[:5]
-    ws_end_str = str(settings.get("ws_subscribe_end") or "20:00")[:5]
+    ws_start_str = str(settings["ws_subscribe_start"])[:5]
+    ws_end_str = str(settings["ws_subscribe_end"])[:5]
 
     # ※ ws_subscribe_on 상태와 무관하게 타이머는 항상 예약한다.
     # 실행 여부는 _on_ws_subscribe_start() 내부에서 판단한다.
@@ -741,7 +731,7 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
     # ★ 확정 시세 다운로드 타이머 — confirmed_download_time (기본값 20:40)
     # ws_subscribe_end와 분리된 별도 타이머: 증권사 확정 데이터 준비 시간 확보
     # 사용자 설정 1순위, 미설정 시 기본값 20:40
-    confirmed_dl_str = str(settings.get("confirmed_download_time") or "20:40")[:5]
+    confirmed_dl_str = str(settings["confirmed_download_time"])[:5]
     cd_h, cd_m = _parse_hm(confirmed_dl_str)
     delay_confirmed = _seconds_until_hm(cd_h, cd_m)
     if delay_confirmed > 0 and loop:
@@ -777,8 +767,7 @@ async def _init_ws_subscribe_state() -> None:
     """
     settings = state.integrated_system_settings_cache
     if not settings or not isinstance(settings, dict):
-        # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
-        settings = state.integrated_system_settings_cache or {}
+        raise RuntimeError("settings cache not initialized")
     in_window = await is_ws_subscribe_window(settings)
     state.ws_subscribe_window_active = in_window
 
@@ -862,7 +851,7 @@ async def _do_unreg_all() -> None:
 
         # 키움증권일 때만 계좌 실시간도 해지 (grp 10)
         if ws.broker_id == "kiwoom":
-            broker_nm = str(state.integrated_system_settings_cache.get("broker", "") or "").lower().strip()
+            broker_nm = str(state.integrated_system_settings_cache["broker"]).lower().strip()
             acnt_no = str(state.integrated_system_settings_cache.get(f"{broker_nm}_account_no", "") or "").strip()
             if acnt_no:
                 await ws.send_message({
@@ -929,9 +918,11 @@ async def schedule_auto_trade_timers(settings: dict | None = None) -> None:
     except RuntimeError:
         return  # 이벤트 루프 없으면 스킵
 
-    if not settings:
+    if settings is None:
         # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
-        settings = state.integrated_system_settings_cache or {}
+        settings = state.integrated_system_settings_cache
+    if not settings:
+        raise RuntimeError("settings cache not initialized")
 
     # ws_subscribe 타이머는 time_scheduler_on과 무관하게 항상 예약 (독립 기능)
     # 매수/매도 타이머만 time_scheduler_on 체크
@@ -940,10 +931,10 @@ async def schedule_auto_trade_timers(settings: dict | None = None) -> None:
 
     # 예약 대상 시각들: 매수 시작/종료, 매도 시작/종료
     time_points = [
-        ("buy_time_start", str(settings.get("buy_time_start") or "09:00")[:5], "매수 구간 진입"),
-        ("buy_time_end", str(settings.get("buy_time_end") or "15:20")[:5], "매수 구간 이탈"),
-        ("sell_time_start", str(settings.get("sell_time_start") or "09:00")[:5], "매도 구간 진입"),
-        ("sell_time_end", str(settings.get("sell_time_end") or "15:20")[:5], "매도 구간 이탈"),
+        ("buy_time_start", str(settings["buy_time_start"])[:5], "매수 구간 진입"),
+        ("buy_time_end", str(settings["buy_time_end"])[:5], "매수 구간 이탈"),
+        ("sell_time_start", str(settings["sell_time_start"])[:5], "매도 구간 진입"),
+        ("sell_time_end", str(settings["sell_time_end"])[:5], "매도 구간 이탈"),
     ]
 
     for key, hm_str, label in time_points:
@@ -975,22 +966,14 @@ async def _on_midnight() -> None:
             state.confirmed_done = False
             logger.info("[타이머] 자정 날짜 변경 -- 플래그 초기화 (%s)", state.last_reset_date)
 
-            # 연초(1월 1일)에 거래일 캐시 갱신
-            if now.month == 1 and now.day == 1:
-                try:
-                    from backend.app.core.trading_calendar import refresh_trading_days_cache
-                    await refresh_trading_days_cache()
-                    logger.info("[타이머] 연초 거래일 캐시 갱신 완료")
-                except Exception as e:
-                    logger.warning("[타이머] 연초 거래일 캐시 갱신 실패: %s", e)
-
             from backend.app.services import engine_service
 
             # 날짜 변경 시 거래일/시간 기준 자동 ON/OFF 판별
             # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
-            settings = state.integrated_system_settings_cache or {}
-            if settings:
-                await _apply_auto_toggle_on_startup(settings)
+            settings = state.integrated_system_settings_cache
+            if not settings:
+                raise RuntimeError("settings cache not initialized")
+            await _apply_auto_toggle_on_startup(settings)
 
             await schedule_auto_trade_timers(settings)
             await schedule_ws_subscribe_timers(settings)
@@ -1054,61 +1037,16 @@ def _apply_detail_to_entry(entry: dict, detail: dict, *, base_nk: str = "") -> N
 # ── 스케줄러 시작/중지 ────────────────────────────────────────────────────────
 
 
-async def _apply_holiday_guard_on_startup(settings: dict | None) -> None:
-    """앱 기동 시 공휴일이면 자동매매/매수/매도/WS구독을 OFF로 저장.
-    사용자가 수동으로 다시 켤 수 있음 (하드코딩 아님)."""
-    if not settings:
-        # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
-        settings = state.integrated_system_settings_cache or {}
-    if not bool(settings.get("holiday_guard_on", True)):
-        return
-
-    from backend.app.core.trading_calendar import is_trading_day, get_kst_today
-    today = get_kst_today()
-    if today.weekday() >= 5 or not is_trading_day(today):
-        off_keys = {
-            "time_scheduler_on": False,
-            "auto_buy_on": False,
-            "auto_sell_on": False,
-            "ws_subscribe_on": False,
-            "auto_off_by_holiday": True,
-        }
-        # 이미 전부 OFF + 플래그 있으면 저장 스킵
-        _already_off = all(not bool(settings.get(k, True)) for k in ("time_scheduler_on", "auto_buy_on", "auto_sell_on", "ws_subscribe_on"))
-        if _already_off and bool(settings.get("auto_off_by_holiday", False)):
-            return
-        try:
-            from backend.app.core.settings_file import update_settings
-            await update_settings(off_keys)
-            # 엔진 메모리 캐시도 즉시 반영
-            settings.update(off_keys)
-            logger.info(
-                "[타이머] 비거래일(%s) -- 자동매매/매수/매도/WS구독 OFF 저장 (auto_off_by_holiday=True)",
-                today.isoformat(),
-            )
-            # WS로 프론트에 변경 알림
-            try:
-                from backend.app.services.engine_account_notify import (
-                    notify_desktop_header_refresh,
-                    notify_desktop_settings_toggled,
-                )
-                notify_desktop_header_refresh()
-                await notify_desktop_settings_toggled()
-            except Exception as e:
-                logger.warning("[데이터] 화면전송 실패: %s", e, exc_info=True)
-        except Exception as e:
-            logger.warning("[타이머] 설정 저장 실패: %s", e)
-
-
 async def start_daily_time_scheduler() -> None:
     """타임스케줄러를 시작하는 함수 -- 이벤트 타이머 초기 예약."""
     # 엔진 기동 시 타이머 초기 예약
     try:
         # ── 기동 시 자동 ON/OFF 판별: 거래일+시간구간이면 ON, 아니면 OFF ──
         # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
-        settings = state.integrated_system_settings_cache or {}
-        if settings:
-            await _apply_auto_toggle_on_startup(settings)
+        settings = state.integrated_system_settings_cache
+        if not settings:
+            raise RuntimeError("settings cache not initialized")
+        await _apply_auto_toggle_on_startup(settings)
 
         await schedule_auto_trade_timers(settings)
         await schedule_ws_subscribe_timers(settings)

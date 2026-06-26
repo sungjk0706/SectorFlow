@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 from backend.app.db.database import get_db_connection
+from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
 
 _log = logging.getLogger(__name__)
 
@@ -70,16 +71,6 @@ async def init_cache_tables():
     # eligible_stocks_cache 테이블 삭제 (master_stocks_table이 단일 소스)
 
     # sector_summary_cache 테이블 삭제 (메모리 캐시로 대체)
-
-    # 거래일 캐시 테이블
-    await conn.execute('''
-        CREATE TABLE IF NOT EXISTS trading_days_cache (
-            year INTEGER NOT NULL,
-            date TEXT NOT NULL,
-            PRIMARY KEY (year, date),
-            CHECK(length(date) = 10 or (year = 0 and length(date) = 8))
-        )
-    ''')
 
     await conn.commit()
     _log.info("SQLite 캐시 테이블 초기화 완료.")
@@ -199,87 +190,6 @@ async def load_test_positions() -> dict | None:
 
 # sector_summary_cache 삭제 (메모리 캐시로 대체)
 
-# ── 거래일 캐시 ───────────────────────────────────────────────────────────
-async def save_trading_days_cache(data: dict) -> None:
-    """거래일 캐시 저장 (현재 연도 및 미래 연도만 저장 - 과거 거래일 불필요)"""
-    try:
-        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
-        from datetime import datetime
-
-        # 현재 연도 확인
-        current_year = datetime.now().year
-
-        # 1. 기존 데이터 삭제 작업 수행
-        op_del = DBWriteOperation(
-            table="trading_days_cache",
-            operation="DELETE",
-            data={},
-            query="DELETE FROM trading_days_cache",
-            params=(),
-        )
-        await execute_db_write(op_del, wait=True)
-
-        # 2. 대량 인서트 파라미터 빌드 (현재 연도 및 미래 연도만)
-        params = []
-        for year_str, dates in data.items():
-            if year_str == "last_updated":
-                # last_updated 메타 데이터는 year=0 으로 지정하여 저장
-                val = str(dates)
-                if len(val) == 8:
-                    val = f"{val[:4]}-{val[4:6]}-{val[6:]}"
-                params.append((0, val))
-            else:
-                year = int(year_str)
-                # 현재 연도 및 미래 연도만 저장
-                if year >= current_year:
-                    for d_str in dates:
-                        # YYYYMMDD -> YYYY-MM-DD
-                        if len(d_str) == 8:
-                            d_formatted = f"{d_str[:4]}-{d_str[4:6]}-{d_str[6:]}"
-                        else:
-                            d_formatted = d_str
-                        params.append((year, d_formatted))
-
-        if params:
-            op_ins = DBWriteOperation(
-                table="trading_days_cache",
-                operation="INSERT_MANY",
-                data={},
-                query="INSERT OR REPLACE INTO trading_days_cache (year, date) VALUES (?, ?)",
-                params=params,
-            )
-            await execute_db_write(op_ins, wait=True)
-    except Exception as e:
-        _log.warning("[trading_days_cache] 저장 실패: %s", e)
-
-async def load_trading_days_cache() -> dict | None:
-    """거래일 캐시 로드 (호환성을 위해 {year_str: list[YYYYMMDD], 'last_updated': YYYYMMDD} 형태로 복원 반환)"""
-    try:
-        conn = await get_db_connection()
-        cursor = await conn.execute("SELECT year, date FROM trading_days_cache")
-        rows = await cursor.fetchall()
-        
-        if not rows:
-            return None
-            
-        result = {}
-        for r in rows:
-            yr = r["year"]
-            dt = r["date"]
-            # YYYY-MM-DD -> YYYYMMDD 로 다시 변환하여 호환성 유지
-            d_clean = dt.replace("-", "")
-            if yr == 0:
-                result["last_updated"] = d_clean
-            else:
-                yr_str = str(yr)
-                if yr_str not in result:
-                    result[yr_str] = []
-                result[yr_str].append(d_clean)
-        return result
-    except Exception as e:
-        _log.warning("[trading_days_cache] 로드 실패: %s", e)
-    return None
-
 
 
 async def create_master_stocks_table():
@@ -348,7 +258,7 @@ async def migrate_add_nxt_enable_column():
         _log.debug("[마이그레이션] nxt_enable 컬럼 이미 존재 - 스킵")
 
 
-async def load_progress_cache(date: str, all_codes: list[str], ws_subscribe_start: str = "07:50") -> set[str]:
+async def load_progress_cache(date: str, all_codes: list[str], ws_subscribe_start: str = DEFAULT_USER_SETTINGS["ws_subscribe_start"]) -> set[str]:
     """master_stocks_table에서 이어받기 완료 종목 로드 (downloaded_at 기반)."""
     try:
         from datetime import datetime, timedelta
