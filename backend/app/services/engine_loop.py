@@ -279,44 +279,9 @@ async def run_engine_loop() -> None:
                 get_settings_fn=_get_settings,
             )
             _sync_sell_overrides_from_settings()
-            from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
-            _should_connect_ws = await is_ws_subscribe_window(settings)
-            if _should_connect_ws:
-                try:
-                    # ConnectorManager 초기화 (다중 증권사 동시 연결 지원)
-                    from backend.app.core.connector_manager import ConnectorManager
-                    _mgr = ConnectorManager()
-                    from backend.app.services.engine_service import _broker_message_handler
-                    _mgr.set_message_callback(_broker_message_handler)
-
-                    # ── Connector Queue 콜백 설정 (Step 1: tick_queue 연결) ────
-                    from backend.app.services.core_queues import get_tick_queue
-                    tick_queue = get_tick_queue()
-                    for connector in _mgr._connectors.values():
-                        if hasattr(connector, 'set_queue_callback'):
-                            connector.set_queue_callback(tick_queue)
-                    logger.info("[연결] Connector Queue 콜백 설정 완료 (tick_queue)")
-
-                    # state에 조기 등록 -- 타이머가 None으로 보는 race window 제거
-                    state.connector_manager = _mgr
-                    kiwoom_connector = _mgr.get_connector(broker_nm)
-                    state.kiwoom_connector = kiwoom_connector
-
-                    await _mgr.connect_all()
-                    logger.info("[연결] 실시간 연결 완료")
-                    
-                    # LS 증권처럼 비동기 로그인 이벤트가 없는 경우를 위해 명시적 트리거 추가
-                    from backend.app.services.daily_time_scheduler import _trigger_reg_pipeline
-                    _trigger_reg_pipeline()
-                except Exception as e:
-                    logger.error("[연결] 실시간 연결 초기화 실패: %s", e, exc_info=True)
-                    state.connector_manager = None
-                    state.kiwoom_connector = None
-            else:
-                logger.info("[연결] 실시간 구독 구간 밖 또는 실시간 연결 OFF — Connector 연결 생략")
 
         from backend.app.services.engine_service import _broadcast_engine_ws
-        _broadcast_engine_ws()  # 엔진 루프 진입 직후 헤더에 즉시 반영
+        _broadcast_engine_ws()
 
         # ── 백그라운드 태스크로 파이프라인 루프 시작 (Step 7: 중앙 코디네이터 연동) ──
         # 테스트모드와 무관하게 항상 시작 (UI 전송 등 돈과 무관한 기능 실행)
@@ -327,9 +292,57 @@ async def run_engine_loop() -> None:
 
         compute_task = asyncio.create_task(start_compute_loop(es))
 
-        # ── 엔진 종료 대기 (WS 연결/해제는 스케줄러가 관리) ──
+        # ── WS 구간 변화 감지 루프 (WS 연결/해제 단일 책임) ──
         state.engine_stop_event.clear()
-        await state.engine_stop_event.wait()
+        from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
+
+        while not state.engine_stop_event.is_set():
+            _settings = state.integrated_system_settings_cache
+            _should_connect_ws = await is_ws_subscribe_window(_settings) if state.access_token else False
+
+            if _should_connect_ws:
+                if state.connector_manager is None:
+                    try:
+                        from backend.app.core.connector_manager import ConnectorManager
+                        from backend.app.services.engine_service import _broker_message_handler
+                        from backend.app.services.core_queues import get_tick_queue
+                        _mgr = ConnectorManager()
+                        _mgr.set_message_callback(_broker_message_handler)
+                        tick_queue = get_tick_queue()
+                        for connector in _mgr._connectors.values():
+                            if hasattr(connector, 'set_queue_callback'):
+                                connector.set_queue_callback(tick_queue)
+                        logger.info("[연결] Connector Queue 콜백 설정 완료 (tick_queue)")
+                        state.connector_manager = _mgr
+                        state.kiwoom_connector = _mgr.get_connector(broker_nm)
+                        await _mgr.connect_all()
+                        logger.info("[연결] 실시간 연결 완료")
+                        _broadcast_engine_ws()
+                    except Exception as e:
+                        logger.error("[연결] 실시간 연결 초기화 실패: %s", e, exc_info=True)
+                        state.connector_manager = None
+                        state.kiwoom_connector = None
+            else:
+                if state.connector_manager is not None:
+                    try:
+                        if hasattr(state.connector_manager, 'disconnect_all'):
+                            await state.connector_manager.disconnect_all()
+                        state.connector_manager = None
+                        state.kiwoom_connector = None
+                        logger.info("[연결] 실시간 연결 해제 완료")
+                        _broadcast_engine_ws()
+                    except Exception as e:
+                        logger.error("[연결] 실시간 연결 해제 실패: %s", e, exc_info=True)
+
+            stop_wait = asyncio.create_task(state.engine_stop_event.wait())
+            change_wait = asyncio.create_task(state.ws_window_changed_event.wait())
+            done, pending = await asyncio.wait(
+                [stop_wait, change_wait],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for p in pending:
+                p.cancel()
+            state.ws_window_changed_event.clear()
 
     except asyncio.CancelledError:
         pass

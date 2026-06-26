@@ -1,6 +1,17 @@
 # HANDOVER.md
 
 ## 완료 단계
+- WS 연결 책임 engine_loop 단일화 완료
+  - `engine_state.py` — `ws_window_changed_event` (LazyEvent) 필드 추가
+  - `engine_loop.py` — `engine_stop_event.wait()` 제거, `asyncio.wait([stop, change], FIRST_COMPLETED)` 기반 구간 감지 루프 도입
+  - `engine_loop.py` — WS 연결/해제 단일 책임: `ConnectorManager` 생성, `connect_all()`, `disconnect_all()` 모두 루프 내에서만 수행
+  - `daily_time_scheduler.py` — `_on_ws_subscribe_start()` WS 연결 코드 제거, `ws_window_changed_event.set()` 추가
+  - `daily_time_scheduler.py` — `_on_ws_subscribe_end()` WS 해제 코드 제거, `ws_window_changed_event.set()` 추가
+  - `daily_time_scheduler.py` — `_ws_disconnect_only()` WS 해제 코드 제거, `ws_window_changed_event.set()` 추가
+  - `daily_time_scheduler.py` — `_init_ws_subscribe_state()` `_trigger_reg_pipeline()` 제거, `ws_window_changed_event.set()` 추가
+  - `engine_loop.py` — `_trigger_reg_pipeline()` 중복 호출 제거 (LS connector 내부 호출 + engine_ws_dispatch.py 로그인 응답 호출로 충분)
+  - 스케줄러 잔류 책임: GC, 설정 ON/OFF 저장, 프론트엔드 통지, 실시간 필드 초기화, 캐시 초기화, `_trigger_unreg_all()`, market-phase 브로드캐스트
+  - 검증: py_compile 3개 파일 성공, 앱 기동 성공, LS WS 연결 + REG 파이프라인 1회 트리거 확인, 프론트엔드 WS 3채널 연결 성공
 - Settings Fallback 리팩토링 완료
   - DEFAULT_USER_SETTINGS를 단일 소스 진리로 확정
   - 28개 파일에서 .get("key", default) or fallback 패턴 → dict["key"] 직접 접근으로 변경
@@ -31,7 +42,7 @@
   - 커밋: `0703968` — 푸시 완료
 
 ## 현재 상태
-- Holiday Guard 리팩토링 + Trading Days DB 캐시 제거 완료, 커밋 푸시 완료
+- WS 연결 책임 engine_loop 단일화 완료
 - 거래일 판별은 `exchange_calendars` XKRX 캘린더 직접 호출로 동작 (오프라인, O(1))
 
 ## 다음 단계
