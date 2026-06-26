@@ -68,6 +68,14 @@ async def init_cache_tables():
         CREATE INDEX IF NOT EXISTS idx_trades_date_mode ON trades (date, trade_mode)
     ''')
 
+    # 거래일 캐시 테이블 (exchange_calendars 연 1회 갱신, 이후 DB에서 메모리 로드)
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS trading_days_cache (
+            year INTEGER PRIMARY KEY,
+            data TEXT NOT NULL
+        )
+    ''')
+
     # eligible_stocks_cache 테이블 삭제 (master_stocks_table이 단일 소스)
 
     # sector_summary_cache 테이블 삭제 (메모리 캐시로 대체)
@@ -343,6 +351,42 @@ async def create_stock_5d_array_table():
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_stock_5d_array_date ON stock_5d_array(date)')
     await conn.commit()
     _log.info("stock_5d_array 테이블 초기화 완료.")
+
+
+# ── 거래일 캐시 ─────────────────────────────────────────────────────────────
+
+async def save_trading_days_cache(cache: dict[int, set[str]]) -> None:
+    """거래일 캐시를 DB에 저장 (연도별 거래일 set)."""
+    try:
+        conn = await get_db_connection()
+        for year, days_set in cache.items():
+            data_json = json.dumps(sorted(days_set))
+            await conn.execute(
+                "INSERT OR REPLACE INTO trading_days_cache (year, data) VALUES (?, ?)",
+                (year, data_json)
+            )
+        await conn.commit()
+        _log.info("[trading_days_cache] DB 저장 완료 — %d개 연도", len(cache))
+    except Exception as e:
+        _log.warning("[trading_days_cache] 저장 실패: %s", e)
+
+
+async def load_trading_days_cache() -> dict[int, set[str]] | None:
+    """DB에서 거래일 캐시 로드. 데이터 없으면 None 반환."""
+    try:
+        conn = await get_db_connection()
+        cursor = await conn.execute("SELECT year, data FROM trading_days_cache")
+        rows = await cursor.fetchall()
+        if not rows:
+            return None
+        result: dict[int, set[str]] = {}
+        for row in rows:
+            result[row["year"]] = set(json.loads(row["data"]))
+        _log.info("[trading_days_cache] DB 로드 완료 — %d개 연도", len(result))
+        return result
+    except Exception as e:
+        _log.warning("[trading_days_cache] 로드 실패: %s", e)
+        return None
 
 
 async def load_master_stocks_table() -> dict[str, dict]:
