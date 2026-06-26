@@ -64,13 +64,21 @@
 - WS 연결 책임 engine_loop 단일화 완료
 - 거래일 판별 DB 캐시 기반으로 복원 — 기동 블로킹 5.8초 → 3ms 개선
 - market_close_pipeline.py engine_state import 버그 수정 완료
+- 실시간 대기 인디케이터 제거 완료
+- 헤더 증권사 칩 항상 표시 개선 완료
 
 ## 다음 단계
 - 별도 작업 없음. 사용자 요청 시 진행.
-- 런타임 검증 권장: `SectorFlow.command` 실행 후 16:01 타이머 콜백 정상 작동 확인
+- 런타임 검증 권장: `SectorFlow.command` 실행 후 헤더 증권사 칩 표시 확인
 
 ## 미커밋 파일
-- 없음 (모든 수정사항 커밋 완료)
+- `frontend/src/layout/header.ts` — 실시간 대기 인디케이터 제거 + 증권사 칩 항상 표시 개선
+- `frontend/src/stores/uiStore.ts` — realtimeStatus 필드 및 applyRealtimeState 함수 제거
+- `frontend/src/binding.ts` — realtime-state 이벤트 리스너 및 import 제거
+- `frontend/src/components/common/ui-styles.ts` — createPriceCell에서 realtimeStatus 파라미터 제거
+- `backend/app/services/engine_state.py` — _set_realtime_state에서 WS 브로드캐스트 제거
+- `frontend/src/pages/sector-ranking.ts` — 수신율 항상 표시로 변경
+- `backend/app/pipelines/pipeline_compute.py` — 임계값 도달 후에도 receive-rate 전송 유지
 
 ## 미해결 문제
 ### 1. exchange_calendars 라이브러리 last_session 한계
