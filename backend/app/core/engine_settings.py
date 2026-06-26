@@ -138,6 +138,8 @@ def build_engine_settings_dict(flat: dict) -> dict:
     # 업종 내 종목 트리밍 비율 (%)
     result["sector_trim_trade_amt_pct"]    = float(merged.get("sector_trim_trade_amt_pct") if merged.get("sector_trim_trade_amt_pct") is not None else 10.0)
     result["sector_trim_change_rate_pct"]  = float(merged.get("sector_trim_change_rate_pct") if merged.get("sector_trim_change_rate_pct") is not None else 10.0)
+    result["sector_start_threshold_pct"]   = float(merged.get("sector_start_threshold_pct") if merged.get("sector_start_threshold_pct") is not None else 70.0)
+    result["sector_buy_cooldown_sec"]      = int(merged.get("sector_buy_cooldown_sec", 90) or 90)
 
     # ── 매수 가산점 설정 ────────
     # 5일 전고가 돌파 가산점
@@ -164,6 +166,8 @@ def build_engine_settings_dict(flat: dict) -> dict:
 
     # ── WS 구독 마스터 스위치 ────────
     result["ws_subscribe_on"]              = bool(merged.get("ws_subscribe_on"))
+    result["confirmed_download_time"]      = str(merged.get("confirmed_download_time", "20:40"))[:5]
+    result["ui_price_flash_on"]            = bool(merged.get("ui_price_flash_on", True))
 
     # ── 장마감 후 스케줄러 토글 ────────
     # DEFAULT_USER_SETTINGS 기본값: True (활성화)
