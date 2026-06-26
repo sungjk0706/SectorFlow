@@ -20,8 +20,7 @@ async def get_account_snapshot() -> dict:
     """계좌 스냅샷 반환."""
     from backend.app.services import settlement_engine
     
-    async with state.shared_lock:
-        snap = dict(state.account_snapshot)
+    snap = dict(state.account_snapshot)
     
     if not snap or "trade_mode" not in snap:
         _is_test = is_test_mode(state.integrated_system_settings_cache)
@@ -50,8 +49,7 @@ async def get_positions() -> list:
     
     if is_test_mode(state.integrated_system_settings_cache):
         return await dry_run.get_positions()
-    async with state.shared_lock:
-        return list(state.positions)
+    return list(state.positions)
 
 
 async def get_total_buy_amount() -> int:
@@ -272,16 +270,14 @@ async def _update_account_memory_inner(settings: dict) -> None:
     else:
         # 수량·매입은 REST 기준
         merged = _merge_positions_from_rest(stock_list)
-        async with state.shared_lock:
-            state.positions = merged
+        state.positions = merged
         _rebuild_positions_cache(merged)
 
     state.account_rest_bootstrapped = True
     
-    async with state.shared_lock:
-        state.account_snapshot["broker"] = broker
-        state.account_snapshot["deposit"] = int(summary.get("deposit", 0) or 0)
-        state.account_snapshot["orderable"] = int(summary.get("orderable", 0) or 0)
+    state.account_snapshot["broker"] = broker
+    state.account_snapshot["deposit"] = int(summary.get("deposit", 0) or 0)
+    state.account_snapshot["orderable"] = int(summary.get("orderable", 0) or 0)
 
     # WS 구독 보강은 _login_post_pipeline / _run_snapshot_and_sell_check 에서 명시적으로 호출.
     # 여기서 호출하면 _account_rest_lock 안에서 _reg_seq_lock 을 잡는 중첩 락 -> 데드락 위험.

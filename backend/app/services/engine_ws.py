@@ -135,8 +135,7 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
         return
 
     if item_cd in state.master_stocks_cache:
-        async with state.shared_lock:
-            state.master_stocks_cache[item_cd]["_subscribed"] = True
+        state.master_stocks_cache[item_cd]["_subscribed"] = True
 
     ok = await ws.subscribe_stocks([item_cd])
     if ok:

@@ -419,11 +419,10 @@ async def _apply_confirmed_to_memory(
             entry["target_price"] = px
             entry["captured_at"] = ""
             entry["reason"] = "확정 데이터 조회"
-            async with es._shared_lock:
-                pending[nk] = entry
-                # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed" 사용
-                if nk in es._master_stocks_cache:
-                    es._master_stocks_cache[nk]["_subscribed"] = True
+            pending[nk] = entry
+            # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed" 사용
+            if nk in es._master_stocks_cache:
+                es._master_stocks_cache[nk]["_subscribed"] = True
             ltp[nk] = px
             amt = int(detail.get("trade_amount") or 0)
             lta[nk] = amt
@@ -789,14 +788,13 @@ async def _run_confirmed_pipeline(
 
                 # 8) 메모리 캐시 동기화
                 import backend.app.services.engine_state as _st
-                async with es._shared_lock:
-                    keys_to_delete = [cd for cd in list(_st._master_stocks_cache.keys()) if cd not in confirmed_codes]
-                    for cd in keys_to_delete:
-                        _st._master_stocks_cache.pop(cd, None)
-                    for r in records:
-                        if r.code in confirmed_codes and r.code in _st._master_stocks_cache:
-                            _st._master_stocks_cache[r.code]["market"] = r.market_code
-                            _st._master_stocks_cache[r.code]["nxt_enable"] = bool(r.nxt_enable)
+                keys_to_delete = [cd for cd in list(_st._master_stocks_cache.keys()) if cd not in confirmed_codes]
+                for cd in keys_to_delete:
+                    _st._master_stocks_cache.pop(cd, None)
+                for r in records:
+                    if r.code in confirmed_codes and r.code in _st._master_stocks_cache:
+                        _st._master_stocks_cache[r.code]["market"] = r.market_code
+                        _st._master_stocks_cache[r.code]["nxt_enable"] = bool(r.nxt_enable)
 
             all_codes = list(confirmed_codes)
             await _update_layout_cache(es, all_codes, name_map)
@@ -892,11 +890,10 @@ async def _run_confirmed_pipeline(
         if cached:
             final_eligible = confirmed_codes
             if final_eligible:
-                async with es._shared_lock:
-                    to_remove = [cd for cd, entry in es._master_stocks_cache.items() if entry.get("_subscribed", False) and cd not in final_eligible]
-                    for cd in to_remove:
-                        if cd in es._master_stocks_cache:
-                            es._master_stocks_cache[cd].pop("_subscribed", None)
+                to_remove = [cd for cd, entry in es._master_stocks_cache.items() if entry.get("_subscribed", False) and cd not in final_eligible]
+                for cd in to_remove:
+                    if cd in es._master_stocks_cache:
+                        es._master_stocks_cache[cd].pop("_subscribed", None)
                 subscribed_count = sum(1 for entry in es._master_stocks_cache.values() if entry.get("_subscribed", False))
                 _log.info("%s Step 6 메모리 교체 완료 — subscribed=%d종목", tag, subscribed_count)
         else:
@@ -1191,20 +1188,19 @@ async def fetch_5d_data_only() -> dict:
             _log.info("[수동 5일봉] DB 저장 완료 — %d종목", len(confirmed_5d))
             
             # 메모리 캐시 업데이트
-            async with es._shared_lock:
-                for cd, data in confirmed_5d.items():
-                    amts_5d = data.get("amts_5d_array") or []
-                    highs_5d = data.get("highs_5d_array") or []
-                    
-                    valid_amts = [a for a in amts_5d if a is not None and a > 0]
-                    avg_5d = sum(valid_amts) // len(valid_amts) if valid_amts else 0
-                    
-                    valid_highs = [h for h in highs_5d if h is not None and h > 0]
-                    high_5d = max(valid_highs) if valid_highs else 0
-                    
-                    if cd in es._master_stocks_cache:
-                        es._master_stocks_cache[cd]["avg_5d_trade_amount"] = avg_5d
-                        es._master_stocks_cache[cd]["high_5d_price"] = high_5d
+            for cd, data in confirmed_5d.items():
+                amts_5d = data.get("amts_5d_array") or []
+                highs_5d = data.get("highs_5d_array") or []
+                
+                valid_amts = [a for a in amts_5d if a is not None and a > 0]
+                avg_5d = sum(valid_amts) // len(valid_amts) if valid_amts else 0
+                
+                valid_highs = [h for h in highs_5d if h is not None and h > 0]
+                high_5d = max(valid_highs) if valid_highs else 0
+                
+                if cd in es._master_stocks_cache:
+                    es._master_stocks_cache[cd]["avg_5d_trade_amount"] = avg_5d
+                    es._master_stocks_cache[cd]["high_5d_price"] = high_5d
             
             _log.info("[수동 5일봉] 메모리 캐시 업데이트 완료")
 

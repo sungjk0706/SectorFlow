@@ -295,8 +295,7 @@ async def subscribe_sector_stocks_0b() -> None:
     if pos_targets:
         for cd in pos_targets:
             if cd in state.master_stocks_cache:
-                async with state.shared_lock:
-                    state.master_stocks_cache[cd]["_subscribed"] = True
+                state.master_stocks_cache[cd]["_subscribed"] = True
 
         ok = await ws.subscribe_stocks(pos_targets)
         if ok:
@@ -317,8 +316,7 @@ async def subscribe_sector_stocks_0b() -> None:
 
     for cd in filter_targets:
         if cd in state.master_stocks_cache:
-            async with state.shared_lock:
-                state.master_stocks_cache[cd]["_subscribed"] = True
+            state.master_stocks_cache[cd]["_subscribed"] = True
 
     ok = await ws.subscribe_stocks(filter_targets)
     if ok:
@@ -416,8 +414,7 @@ async def subscribe_positions_stocks_realtime() -> None:
 
     for cd in new_0b:
         if cd in state.master_stocks_cache:
-            async with state.shared_lock:
-                state.master_stocks_cache[cd]["_subscribed"] = True
+            state.master_stocks_cache[cd]["_subscribed"] = True
 
     ok = await ws.subscribe_stocks(new_0b)
     if ok:
@@ -462,8 +459,7 @@ async def restore_subscriptions_after_reconnect(broker_id: str) -> None:
         targets_list = list(subscribed)
         for cd in targets_list:
             if cd in state.master_stocks_cache:
-                async with state.shared_lock:
-                    state.master_stocks_cache[cd]["_subscribed"] = True
+                state.master_stocks_cache[cd]["_subscribed"] = True
         
         ok = await ws.subscribe_stocks(targets_list)
         if ok:

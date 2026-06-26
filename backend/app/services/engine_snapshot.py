@@ -165,20 +165,29 @@ async def _reset_realtime_fields() -> None:
     # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
     # _pending_stock_details 제거: 루프 제거 (이미 WS 틱 저장 제거됨)
-    async with state.shared_lock:
-        # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_latest_trade_amounts, _latest_trade_prices, _latest_strength)
-        # 호가잔량 캐시 삭제로 clear 로직 제거
-        # _subscribed_0d_stocks 제거: state.master_stocks_cache에서 "_subscribed_0d" 제거
-        all_stocks = state.master_stocks_cache.copy()
-        for entry in all_stocks.values():
-            entry.pop("_subscribed_0d", None)
-            for f in _REALTIME_FIELDS:
-                entry[f] = None
-        # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_rest_radar_quote_cache)
-        # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
-        state.snapshot_history.clear()
-        # 보유종목 실시간 필드 초기화 (전일 종가 혼입 방지)
-        for pos in state.positions:
+    # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_latest_trade_amounts, _latest_trade_prices, _latest_strength)
+    # 호가잔량 캐시 삭제로 clear 로직 제거
+    # _subscribed_0d_stocks 제거: state.master_stocks_cache에서 "_subscribed_0d" 제거
+    all_stocks = state.master_stocks_cache.copy()
+    for entry in all_stocks.values():
+        entry.pop("_subscribed_0d", None)
+        for f in _REALTIME_FIELDS:
+            entry[f] = None
+    # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_rest_radar_quote_cache)
+    # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
+    state.snapshot_history.clear()
+    # 보유종목 실시간 필드 초기화 (전일 종가 혼입 방지)
+    for pos in state.positions:
+        pos["cur_price"] = None
+        pos["change"] = None
+        pos["change_rate"] = None
+        pos["bid_depth"] = None
+        pos["ask_depth"] = None
+        pos["high_price"] = None
+
+    # 테스트모드 가상 보유종목 실시간 필드 초기화
+    if is_test_mode(state.integrated_system_settings_cache):
+        for pos in dry_run._test_positions.values():
             pos["cur_price"] = None
             pos["change"] = None
             pos["change_rate"] = None
@@ -186,35 +195,26 @@ async def _reset_realtime_fields() -> None:
             pos["ask_depth"] = None
             pos["high_price"] = None
 
-        # 테스트모드 가상 보유종목 실시간 필드 초기화
-        if is_test_mode(state.integrated_system_settings_cache):
-            for pos in dry_run._test_positions.values():
-                pos["cur_price"] = None
-                pos["change"] = None
-                pos["change_rate"] = None
-                pos["bid_depth"] = None
-                pos["ask_depth"] = None
-                pos["high_price"] = None
+    # 업종 점수 캐시 초기화 (실시간 데이터 재계산 유도)
+    import backend.app.services.engine_service as _es
+    _es._sector_summary_cache = None
+    # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
+    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
+    # 캡슐화된 notify_cache.clear_all() 호출로 결합성 제거
+    notify_cache.clear_all()
 
-        # 업종 점수 캐시 초기화 (실시간 데이터 재계산 유도)
-        import backend.app.services.engine_service as _es
-        _es._sector_summary_cache = None
-        # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
-        # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
-        # 캡슐화된 notify_cache.clear_all() 호출로 결합성 제거
-        notify_cache.clear_all()
+    # engine_ws_dispatch.py 캐시 초기화 (메모리 누적 방지)
+    try:
+        import backend.app.services.engine_ws_dispatch as _ws_dispatch
+        _ws_dispatch._realtime_required_fields_cache.clear()
+        _ws_dispatch._realtime_first_tick_ts_map.clear()
+    except Exception:
+        pass  # import 실패 시 무시
 
-        # engine_ws_dispatch.py 캐시 초기화 (메모리 누적 방지)
-        try:
-            import backend.app.services.engine_ws_dispatch as _ws_dispatch
-            _ws_dispatch._realtime_required_fields_cache.clear()
-            _ws_dispatch._realtime_first_tick_ts_map.clear()
-        except Exception:
-            pass  # import 실패 시 무시
-
-        # DB master_stocks_table 실시간 필드 초기화 (과거 데이터 혼입 방지)
-        try:
-            from backend.app.db.database import get_db_connection
+    # DB master_stocks_table 실시간 필드 초기화 (과거 데이터 혼입 방지)
+    try:
+        from backend.app.db.database import get_db_connection, get_db_lock
+        async with get_db_lock():
             conn = await get_db_connection()
             await conn.execute("""
                 UPDATE master_stocks_table
@@ -225,9 +225,9 @@ async def _reset_realtime_fields() -> None:
                     high_price = NULL
             """)
             await conn.commit()
-            logger.info("[데이터] DB master_stocks_table 실시간 필드 초기화 완료")
-        except Exception as db_err:
-            logger.error("[데이터] DB master_stocks_table 실시간 필드 초기화 실패: %s", db_err, exc_info=True)
+        logger.info("[데이터] DB master_stocks_table 실시간 필드 초기화 완료")
+    except Exception as db_err:
+        logger.error("[데이터] DB master_stocks_table 실시간 필드 초기화 실패: %s", db_err, exc_info=True)
     logger.info(
         "[데이터] 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료 -- %d종목, 실시간/REST 저장데이터 전체 클리어",
         len(state.master_stocks_cache),

@@ -93,43 +93,42 @@ def merge_live_price_to_radar_row(row: dict) -> dict:
     )
 
 
-async def _apply_real01_volume_amount_to_radar_rows(raw_cd: str, vals: dict, *, is_0b_tick: bool = True) -> None:
+def _apply_real01_volume_amount_to_radar_rows(raw_cd: str, vals: dict, *, is_0b_tick: bool = True) -> None:
     """FID 데이터를 받아 master_stocks_cache의 실시간 필드를 직접 갱신합니다."""
     from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
     
     nk = _format_kiwoom_reg_stk_cd(raw_cd)
     if not nk:
         return
-        
-    async with state.shared_lock:
-        entry = state.master_stocks_cache.get(nk)
-        if not entry:
-            return
-            
-        # 체결 데이터 (0B/01) 처리
-        if is_0b_tick:
-            if "10" in vals:
-                val10_str = str(vals["10"]).replace("+", "")
-                entry["cur_price"] = abs(int(float(val10_str)))
-            if "11" in vals:
-                val11_str = str(vals["11"]).strip()
-                if val11_str.startswith("-"):
-                    entry["sign"] = "5"
-                elif val11_str.startswith("+"):
-                    entry["sign"] = "2"
-                else:
-                    entry["sign"] = "3"
-                _chg = int(float(val11_str.replace("+", "").replace("-", "")))
-                entry["change"] = -_chg if val11_str.startswith("-") else _chg
-            if "12" in vals:
-                from backend.app.services.engine_ws_parsing import parse_change_rate_to_percent
-                entry["change_rate"] = parse_change_rate_to_percent(vals["12"])
-            if "14" in vals:
-                entry["trade_amount"] = int(_parse_float_loose(vals["14"]))
-            if "17" in vals:
-                entry["high_price"] = abs(int(_parse_float_loose(vals["17"])))
-            if "228" in vals:
-                entry["strength"] = str(vals["228"]).strip()
+    
+    entry = state.master_stocks_cache.get(nk)
+    if not entry:
+        return
+    
+    # 체결 데이터 (0B/01) 처리
+    if is_0b_tick:
+        if "10" in vals:
+            val10_str = str(vals["10"]).replace("+", "")
+            entry["cur_price"] = abs(int(float(val10_str)))
+        if "11" in vals:
+            val11_str = str(vals["11"]).strip()
+            if val11_str.startswith("-"):
+                entry["sign"] = "5"
+            elif val11_str.startswith("+"):
+                entry["sign"] = "2"
+            else:
+                entry["sign"] = "3"
+            _chg = int(float(val11_str.replace("+", "").replace("-", "")))
+            entry["change"] = -_chg if val11_str.startswith("-") else _chg
+        if "12" in vals:
+            from backend.app.services.engine_ws_parsing import parse_change_rate_to_percent
+            entry["change_rate"] = parse_change_rate_to_percent(vals["12"])
+        if "14" in vals:
+            entry["trade_amount"] = int(_parse_float_loose(vals["14"]))
+        if "17" in vals:
+            entry["high_price"] = abs(int(_parse_float_loose(vals["17"])))
+        if "228" in vals:
+            entry["strength"] = str(vals["228"]).strip()
 
 
 # ── 레이더 종목 관리 ─────────────────────────────────────────────────
@@ -187,14 +186,13 @@ async def _clear_radar_and_ready_memory() -> None:
     """레이더 및 레디 메모리 초기화."""
     from backend.app.services.engine_account_notify import _rebuild_layout_cache
 
-    async with state.shared_lock:
-        # _radar_cnsr_order 삭제: state.master_stocks_cache에서 "_subscribed" 제거
-        all_stocks = state.master_stocks_cache.copy()
-        for entry in all_stocks.values():
-            entry.pop("_subscribed", None)
-        # _sector_stock_layout 제거: state.integrated_system_settings_cache["sector_stock_layout"]로 통합
-        state.integrated_system_settings_cache["sector_stock_layout"] = []
-        # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_rest_radar_quote_cache)
+    # _radar_cnsr_order 삭제: state.master_stocks_cache에서 "_subscribed" 제거
+    all_stocks = state.master_stocks_cache.copy()
+    for entry in all_stocks.values():
+        entry.pop("_subscribed", None)
+    # _sector_stock_layout 제거: state.integrated_system_settings_cache["sector_stock_layout"]로 통합
+    state.integrated_system_settings_cache["sector_stock_layout"] = []
+    # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_rest_radar_quote_cache)
     _rebuild_layout_cache([])
     state.checked_stocks.clear()
     # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재

@@ -84,9 +84,8 @@ async def evaluate_buy_candidates() -> None:
         if now - last_ts < cooldown:
             continue
 
-        async with state.shared_lock:
-            if s.code in state.master_stocks_cache:
-                state.master_stocks_cache[s.code]["_last_buy_ts"] = now
+        if s.code in state.master_stocks_cache:
+            state.master_stocks_cache[s.code]["_last_buy_ts"] = now
         
         logger.info("[섹터매수] 매수 시도: %s(%s) 섹터=%s",
                     s.name, s.code, s.sector)
