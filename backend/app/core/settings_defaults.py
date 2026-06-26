@@ -12,16 +12,18 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "time_scheduler_on": False,
     "auto_buy_on": False,
     "buy_time_start": "09:00",
-    "buy_time_end": "15:00",
+    "buy_time_end": "15:20",
     "auto_sell_on": False,
     "sell_time_start": "09:00",
-    "sell_time_end": "15:00",
+    "sell_time_end": "15:20",
     "holiday_guard_on": True,
+    "auto_off_by_holiday": False,
     
     # 웹소켓
     "ws_subscribe_on": False,
     "ws_subscribe_start": "09:00",
     "ws_subscribe_end": "15:00",
+    "confirmed_download_time": "20:40",
     
     # UI 설정
     "ui_price_flash_on": True,
@@ -43,9 +45,6 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "broker": "kiwoom",
     
     # 매수 설정
-    "buy_block_rise_pct": 0,
-    "buy_block_fall_pct": 0,
-    "buy_min_strength": 0,
     "max_daily_total_buy_amt": 0,
     "max_stock_cnt": 0,
     "buy_amt": 0,
@@ -66,6 +65,12 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
      "ts_start_val": 0,
      "ts_drop_val": 0,
      
+     # 매도 주문 설정
+     "sell_price_type": "mkt",
+     "sell_offset": 0,
+     "sell_custom_qty": 0,
+     "sell_qty_type": "%",
+
      # 업종순위 설정
      "sector_min_rise_ratio_pct": 60.0,
      "buy_block_rise_pct": 7.0,
@@ -77,6 +82,17 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
      "sector_trim_change_rate_pct": 10.0,
      "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
      "sector_sort_keys": ["score"],
+     "sector_buy_cooldown_sec": 90,
+     "sector_stock_layout": [],
+
+     # 수신율 임계값
+     "sector_start_threshold_pct": 70.0,
+
+     # 종목별 매도 설정
+     "sell_per_symbol": {},
+
+     # 브로커 기능별 매핑
+     "broker_config": {},
 
      # 장마감 후 스케줄러 토글 (기본값 True = 활성화)
      # ws_subscribe_end 도달 시 확정 데이터 다운로드 실행 여부

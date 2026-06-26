@@ -38,10 +38,6 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(start_gateway_loop())
     logger.info("[웹서버] Gateway 루프 시작 완료")
 
-    # 거래일 캐시 초기화
-    from backend.app.core.trading_calendar import initialize_trading_calendar_cache
-    await initialize_trading_calendar_cache()
-
     # 필터 요약 캐시 초기 로드
     try:
         from backend.app.core.sector_stock_cache import load_filter_summary_cache

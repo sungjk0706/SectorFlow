@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 from backend.app.core.encryption import decrypt_value, encrypt_value
+from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
 from backend.app.core.settings_file import load_integrated_system_settings, save_settings
 from backend.app.core import journal as _journal
 from backend.app.services.auto_trading_effective import auto_trading_effective
@@ -81,18 +82,18 @@ def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
     if mode == "mock":
         mode = "test"
     data: dict[str, Any] = {
-        "ws_subscribe_start": str(d.get("ws_subscribe_start") or "07:50").strip(),
-        "ws_subscribe_end": str(d.get("ws_subscribe_end") or "20:00").strip(),
-        "confirmed_download_time": str(d.get("confirmed_download_time") or "20:40").strip(),
-        "time_scheduler_on": bool(d.get("time_scheduler_on", True)),
-        "auto_buy_on": bool(d.get("auto_buy_on", True)),
-        "auto_sell_on": bool(d.get("auto_sell_on", True)),
-        "buy_time_start": str(d.get("buy_time_start") or "09:00").strip(),
-        "buy_time_end": str(d.get("buy_time_end") or "15:20").strip(),
-        "sell_time_start": str(d.get("sell_time_start") or "09:00").strip(),
-        "sell_time_end": str(d.get("sell_time_end") or "15:20").strip(),
+        "ws_subscribe_start": str(d["ws_subscribe_start"]).strip(),
+        "ws_subscribe_end": str(d["ws_subscribe_end"]).strip(),
+        "confirmed_download_time": str(d["confirmed_download_time"]).strip(),
+        "time_scheduler_on": bool(d["time_scheduler_on"]),
+        "auto_buy_on": bool(d["auto_buy_on"]),
+        "auto_sell_on": bool(d["auto_sell_on"]),
+        "buy_time_start": str(d["buy_time_start"]).strip(),
+        "buy_time_end": str(d["buy_time_end"]).strip(),
+        "sell_time_start": str(d["sell_time_start"]).strip(),
+        "sell_time_end": str(d["sell_time_end"]).strip(),
         "telegram_chat_id": str(d.get("telegram_chat_id") or "").strip(),
-        "tele_on": bool(d.get("tele_on", False)),
+        "tele_on": bool(d["tele_on"]),
         "trade_mode": mode,
         "test_mode": mode == "test",
         "mock_mode": mode == "test",   # 하위 호환
@@ -100,7 +101,7 @@ def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
         "kiwoom_account_no": _account_field_or_legacy_flat(
             d, "kiwoom_account_no", legacy_a
         ).strip(),
-        "broker": str(d.get("broker") or "kiwoom").strip(),
+        "broker": str(d["broker"]).strip(),
     }
     tok = str(d.get("telegram_bot_token") or "").strip()
     if tok:
@@ -166,8 +167,7 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
         if v is None:
             continue  # 아무것도 안 함 (기존 값 유지)
         if v == "":
-            # 빈 문자열은 삭제 요청으로 간주
-            current[k] = ""
+            logger.warning("[설정] 필드 %s에 빈 문자열 전달 — 무시 (기존 값 유지)", k)
             continue
         # broker 필드: 허용된 값만 저장
         if k == "broker":

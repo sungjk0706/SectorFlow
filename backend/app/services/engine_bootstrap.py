@@ -66,12 +66,12 @@ async def _deferred_sector_summary() -> None:
         _inputs = get_sector_summary_inputs()
         if _inputs.get("all_codes"):
             # 단일 소스 진리: _integrated_system_settings_cache 직접 사용
-            _trim_trade = float(_st._integrated_system_settings_cache.get("sector_trim_trade_amt_pct", 0) or 0)
-            _trim_change = float(_st._integrated_system_settings_cache.get("sector_trim_change_rate_pct", 0) or 0)
+            _trim_trade = float(_st._integrated_system_settings_cache["sector_trim_trade_amt_pct"])
+            _trim_change = float(_st._integrated_system_settings_cache["sector_trim_change_rate_pct"])
             _kwargs = dict(
-                min_rise_ratio=float(_st._integrated_system_settings_cache.get("sector_min_rise_ratio_pct", 60.0)) / 100.0,
-                min_avg_amt_eok=float(_st._integrated_system_settings_cache.get("sector_min_trade_amt", 0.0)),
-                sector_weights=_st._integrated_system_settings_cache.get("sector_weights") or {},
+                min_rise_ratio=float(_st._integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
+                min_avg_amt_eok=float(_st._integrated_system_settings_cache["sector_min_trade_amt"]),
+                sector_weights=_st._integrated_system_settings_cache["sector_weights"],
                 trim_trade_amt_pct=_trim_trade,
                 trim_change_rate_pct=_trim_change,
             )

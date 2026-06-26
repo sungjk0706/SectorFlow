@@ -32,7 +32,7 @@ def get_subscribed_stocks() -> list:
 def get_sector_layout() -> list[tuple[str, str]]:
     """업종 종목 레이아웃 반환."""
     # _sector_stock_layout 제거: state.integrated_system_settings_cache["sector_stock_layout"]로 통합
-    return list(state.integrated_system_settings_cache.get("sector_stock_layout", []))
+    return list(state.integrated_system_settings_cache["sector_stock_layout"])
 
 
 def get_avg_trade_amount_5d_map() -> dict[str, int]:

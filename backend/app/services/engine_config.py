@@ -26,7 +26,7 @@ def get_settings_snapshot() -> dict:
     if isinstance(state.integrated_system_settings_cache, dict) and state.integrated_system_settings_cache:
         d = dict(state.integrated_system_settings_cache)
     else:
-        d = dict(state.integrated_system_settings_cache or {})
+        d = dict(state.integrated_system_settings_cache)
 
     if "tele_on" not in d:
         d["tele_on"] = bool(d.get("telegram_on", False))
@@ -70,7 +70,7 @@ async def refresh_engine_integrated_system_settings_cache(user_id: str | None = 
     try:
         # ── step 1) 항상 수행: DB → 메모리 캐시 갱신 ──────────────────────────
         # 필터 설정 변경 감지용 -- 갱신 전 값 보존
-        old_min_amt = state.integrated_system_settings_cache.get("sector_min_trade_amt", 0.0) if state.integrated_system_settings_cache else 0.0
+        old_min_amt = state.integrated_system_settings_cache["sector_min_trade_amt"] if state.integrated_system_settings_cache else 0.0
 
         fresh = await get_engine_settings(load_user if load_user else None)
         # 런타임 전용 상태 보존 (build_engine_settings_dict 결과에 없는 캐시 B 전용 런타임 상태)

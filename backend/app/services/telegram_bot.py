@@ -302,11 +302,8 @@ class TelegramBot:
         from backend.app.services import engine_service
         import backend.app.services.engine_state as _st
 
-        flat = _st._integrated_system_settings_cache or {}
-        if key in ("auto_buy_on", "auto_sell_on", "holiday_guard_on"):
-            cur = bool(flat.get(key, True))
-        else:
-            cur = bool(flat.get(key, False))
+        flat = _st._integrated_system_settings_cache
+        cur = bool(flat[key])
         new = not cur
         await update_settings({key: new})
         await engine_service.refresh_engine_integrated_system_settings_cache(None, use_root=True)
@@ -367,9 +364,9 @@ class TelegramBot:
             eng = get_status()
             eng_running = eng.get("running", False)
             flat = await load_integrated_system_settings()
-            t_on = bool(flat.get("time_scheduler_on", False))
-            buy_on = bool(flat.get("auto_buy_on", True))
-            sell_on = bool(flat.get("auto_sell_on", True))
+            t_on = bool(flat["time_scheduler_on"])
+            buy_on = bool(flat["auto_buy_on"])
+            sell_on = bool(flat["auto_sell_on"])
             eff = auto_trading_effective(flat)
             now_str = datetime.now(_KST).strftime("%H:%M:%S")
 
@@ -399,9 +396,9 @@ class TelegramBot:
                 f"⚙️ 매매엔진: {' 가동중' if eng_running else '⏹️ 정지'}\n"
                 f"🔰 자동매매 마스터: {' ON' if t_on else '⏸️ OFF'}\n"
                 f" 자동 매수: {' ON' if buy_on else '⏸️ OFF'}"
-                f" ({flat.get('buy_time_start', '09:00')}~{flat.get('buy_time_end', '15:20')})\n"
+                f" ({flat['buy_time_start']}~{flat['buy_time_end']})\n"
                 f"🏪 자동 매도: {' ON' if sell_on else '⏸️ OFF'}"
-                f" ({flat.get('sell_time_start', '09:00')}~{flat.get('sell_time_end', '15:20')})\n"
+                f" ({flat['sell_time_start']}~{flat['sell_time_end']})\n"
                 f"🤖 지금 자동매매 가능: {' 예' if eff else '⏸️ 아니오'}\n"
                 f"🕐 확인 시각: {now_str} (KST)"
                 f"{acct_lines}"

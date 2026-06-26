@@ -65,7 +65,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         import backend.app.services.engine_state as _st
 
         default_deposit = 10_000_000
-        settings = _st._integrated_system_settings_cache or {}
+        settings = _st._integrated_system_settings_cache
         default_deposit = int(
             settings.get("test_virtual_deposit", default_deposit) or default_deposit
         )
@@ -88,7 +88,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         es.logger.info(
             "[디버그] 초기화 직전 구독목록 positions=%d subscribed=%d layout=%d pos_codes=%d",
             len(es._positions), subscribed_count,
-            len(es._integrated_system_settings_cache.get("sector_stock_layout", [])),
+            len(es._integrated_system_settings_cache["sector_stock_layout"]),
             len(notify_cache.positions_code_set),
         )
         async with es._shared_lock:
@@ -104,7 +104,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         es.logger.info(
             "[디버그] 초기화 직후 구독목록 positions=%d subscribed=%d layout=%d pos_codes=%d",
             len(es._positions), subscribed_count_after,
-            len(es._integrated_system_settings_cache.get("sector_stock_layout", [])),
+            len(es._integrated_system_settings_cache["sector_stock_layout"]),
             len(notify_cache.positions_code_set),
         )
         await es._refresh_account_snapshot_meta()
@@ -132,24 +132,6 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"테스트 데이터 초기화 실패: {e}",
-        )
-
-
-@router.post("/trading-calendar/refresh")
-async def refresh_trading_calendar(_: str = Depends(get_current_user)):
-    """거래일 캐시 수동 갱신 (pykrx)."""
-    try:
-        from backend.app.core.trading_calendar import refresh_trading_days_cache
-
-        await refresh_trading_days_cache()
-
-        return {"ok": True, "message": "거래일 캐시 갱신 완료"}
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"거래일 캐시 갱신 실패: {e}",
         )
 
 

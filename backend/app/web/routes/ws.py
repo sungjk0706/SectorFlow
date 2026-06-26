@@ -125,7 +125,7 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
                 "status": {
                     "total_stocks": len(scores),
                     "max_targets": int(
-                        _integrated_system_settings_cache.get("sector_max_targets", 3) or 3
+                        _integrated_system_settings_cache["sector_max_targets"]
                     ),
                     "ranked_sectors_count": ranked_count,
                 },

@@ -136,10 +136,10 @@ async def _flush_sector_recompute_impl() -> None:
         from backend.app.services.engine_state import state
         inputs = await get_sector_summary_inputs()
         all_codes = inputs["all_codes"]
-        min_avg_amt_eok = float(state.integrated_system_settings_cache.get("sector_min_trade_amt", 0.0))
-        trim_trade = float(state.integrated_system_settings_cache.get("sector_trim_trade_amt_pct", 0) or 0)
-        trim_change = float(state.integrated_system_settings_cache.get("sector_trim_change_rate_pct", 0) or 0)
-        sector_weights = state.integrated_system_settings_cache.get("sector_weights") or {}
+        min_avg_amt_eok = float(state.integrated_system_settings_cache["sector_min_trade_amt"])
+        trim_trade = float(state.integrated_system_settings_cache["sector_trim_trade_amt_pct"])
+        trim_change = float(state.integrated_system_settings_cache["sector_trim_change_rate_pct"])
+        sector_weights = state.integrated_system_settings_cache["sector_weights"]
 
         # dirty 섹터에 속한 종목코드만 필터
         dirty_codes_for_calc = [
@@ -180,7 +180,7 @@ async def _flush_sector_recompute_impl() -> None:
         calculate_weighted_scores(merged, weights=sector_weights)
 
         # 5. 업종 컷오프: 상승비율 미만 업종은 순위 없음(rank=0)
-        min_rise_ratio = float(state.integrated_system_settings_cache.get("sector_min_rise_ratio_pct", 60.0)) / 100.0
+        min_rise_ratio = float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0
         if min_rise_ratio > 0:
             pass_sectors = [sc for sc in merged if sc.rise_ratio >= min_rise_ratio]
             fail_sectors = [sc for sc in merged if sc.rise_ratio < min_rise_ratio]
@@ -295,11 +295,11 @@ async def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
         merged = list(_es._sector_score_index.values())
 
         # 전체 정규화 + 순위 재정렬
-        sector_weights = state.integrated_system_settings_cache.get("sector_weights") or {}
+        sector_weights = state.integrated_system_settings_cache["sector_weights"]
         calculate_weighted_scores(merged, weights=sector_weights)
 
         # 업종 컷오프: 상승비율 미만 업종은 순위 없음(rank=0)
-        min_rise_ratio = float(state.integrated_system_settings_cache.get("sector_min_rise_ratio_pct", 60.0)) / 100.0
+        min_rise_ratio = float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0
         if min_rise_ratio > 0:
             pass_sectors = [sc for sc in merged if sc.rise_ratio >= min_rise_ratio]
             fail_sectors = [sc for sc in merged if sc.rise_ratio < min_rise_ratio]
@@ -359,15 +359,15 @@ async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
     _prev_cache = _es._sector_summary_cache
     prev_targets = _prev_cache.buy_targets if _prev_cache and hasattr(_prev_cache, 'buy_targets') else None
 
-    trim_trade = float(state.integrated_system_settings_cache.get("sector_trim_trade_amt_pct", 0) or 0)
-    trim_change = float(state.integrated_system_settings_cache.get("sector_trim_change_rate_pct", 0) or 0)
+    trim_trade = float(state.integrated_system_settings_cache["sector_trim_trade_amt_pct"])
+    trim_change = float(state.integrated_system_settings_cache["sector_trim_change_rate_pct"])
 
     inputs = await get_sector_summary_inputs()
     sector_summary = await compute_full_sector_summary(
         **inputs,
-        min_rise_ratio=float(state.integrated_system_settings_cache.get("sector_min_rise_ratio_pct", 60.0)) / 100.0,
-        min_avg_amt_eok=float(state.integrated_system_settings_cache.get("sector_min_trade_amt", 0.0)),
-        sector_weights=state.integrated_system_settings_cache.get("sector_weights"),
+        min_rise_ratio=float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
+        min_avg_amt_eok=float(state.integrated_system_settings_cache["sector_min_trade_amt"]),
+        sector_weights=state.integrated_system_settings_cache["sector_weights"],
         trim_trade_amt_pct=trim_trade,
         trim_change_rate_pct=trim_change,
     )

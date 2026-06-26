@@ -222,8 +222,8 @@ async def _load(force_reload: bool = False) -> None:
         logger.warning("[정산엔진] 상태 파일 로드 실패 (기본값 사용): %s", e)
         try:
             import backend.app.services.engine_state as _st
-            s = _st._integrated_system_settings_cache or {}
-            _initial_deposit = int(s.get("test_virtual_deposit", 10_000_000) or 0)
+            s = _st._integrated_system_settings_cache
+            _initial_deposit = int(s["test_virtual_deposit"])
             _accumulated_investment = _initial_deposit
             _orderable = _initial_deposit
         except Exception:
