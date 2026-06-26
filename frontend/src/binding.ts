@@ -30,7 +30,6 @@ import {
   applyAvgAmtProgress,
   applyTestDataResetCompleted,
   applyInitialSnapshotUI,
-  applyRealtimeState,
   applyWsSubscribeStatus,
   applyBuyLimitStatus,
   applyEngineReloadComplete,
@@ -272,10 +271,6 @@ export function bindWSToStore(
 
   pricesClient.onEvent('realtime-reset', () => {
     applyRealtimeReset()
-  })
-
-  pricesClient.onEvent('realtime-state', (data) => {
-    applyRealtimeState(data as { status: "waiting" | "live" })
   })
 
   /* ── receive-rate: 수신율 실시간 갱신 ── */

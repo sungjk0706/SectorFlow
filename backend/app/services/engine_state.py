@@ -137,11 +137,6 @@ def _set_realtime_state(new_state: str) -> None:
     from backend.app.core.logger import get_logger
     logger = get_logger("engine")
     logger.info("[REALTIME_STATE] 상태 변경: %s", new_state)
-    from backend.app.services import engine_account_notify as _account_notify
-    if new_state == "WAITING_FIRST_TICK":
-        _account_notify._broadcast("realtime-state", {"status": "waiting"})
-    elif new_state == "LIVE":
-        _account_notify._broadcast("realtime-state", {"status": "live"})
 
 async def _on_filter_settings_changed() -> None:
     """필터 설정 변경 시 처리 (engine_sector 모듈 위임)."""

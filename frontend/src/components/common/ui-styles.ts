@@ -189,22 +189,12 @@ export function createCodeCell(code: string): HTMLElement {
 }
 
 /** 현재가 셀 (우측정렬, 등락률 기반 색상, 가격 미수신 시 "-") */
-export function createPriceCell(price: number | null | undefined, rate: number, realtimeStatus?: "waiting" | "live" | null): HTMLElement {
+export function createPriceCell(price: number | null | undefined, rate: number): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
   
-  // live 상태에서는 null/undefined 렌더 방지 (이전 값 유지)
   if (price === null || price === undefined) {
-    if (realtimeStatus === "waiting") {
-      cell.textContent = '수신 대기 중...'
-      cell.style.color = '#999'
-      cell.style.fontSize = FONT_SIZE.small
-    } else if (realtimeStatus === "live") {
-      // live 상태에서는 빈값으로 유지 (null 깜빡임 방지)
-      cell.textContent = ''
-    } else {
-      cell.textContent = '-'
-    }
+    cell.textContent = '-'
   } else {
     const span = document.createElement('span')
     span.style.color = rateColor(rate)
@@ -344,8 +334,7 @@ export function makePriceColumn<T>(
       return settings?.ui_price_flash_on !== false
     },
     render: (t) => {
-      const realtimeStatus = uiStore.getState().realtimeStatus
-      return createPriceCell(getPrice(t), getRate(t), realtimeStatus)
+      return createPriceCell(getPrice(t), getRate(t))
     },
   }
 }
