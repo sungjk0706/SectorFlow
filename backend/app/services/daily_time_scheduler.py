@@ -510,9 +510,8 @@ async def _on_ws_subscribe_start() -> None:
         # ── 실시간 필드 초기화 (전일 확정 데이터 제거) ──
         logger.info("[RESET CALL] from _on_ws_subscribe_start")
         logger.info("[타이머] 실시간 구독 시작 -- 실시간 필드 초기화 시작")
-        loop = asyncio.get_running_loop()
         from backend.app.services.engine_service import _reset_realtime_fields
-        loop.create_task(_reset_realtime_fields())
+        await _reset_realtime_fields()
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
         import backend.app.services.engine_account_notify as _an
         _an._prev_scores_cache = []
@@ -663,9 +662,11 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
         state.ws_subscribe_timer_handles.append(h)
         logger.debug("[타이머] 실시간 구독 시작 (%s) -- %.0f초 후 예약", ws_start_str, delay_start)
     elif delay_start <= 0 and delay_end > 0 and loop:
-        # 이미 시작 시간이 지났지만, 종료 시간 전이면 즉시 실행
-        logger.info("[타이머] 실시간 구독 시작 시간 (%s) 이미 경과 -- 즉시 실행 (종료 시간 %s 전)", ws_start_str, ws_end_str)
-        loop.create_task(_on_ws_subscribe_start())
+        # 이미 구독 구간 내 — _init_ws_subscribe_state가 단일 책임으로 처리
+        # 내일 ws_subscribe_start 시각에 타이머 예약 (24시간 후)
+        h = loop.call_later(max(delay_start + 86400, 1), lambda: asyncio.create_task(_on_ws_subscribe_start()))
+        state.ws_subscribe_timer_handles.append(h)
+        logger.debug("[타이머] 실시간 구독 시작 (%s) -- 구독 구간 내 기동, 내일 예약", ws_start_str)
 
     if delay_end > 0 and loop:
         h = loop.call_later(max(delay_end, 1), _fire_ws_subscribe_end)
@@ -736,12 +737,14 @@ async def _init_ws_subscribe_state() -> None:
     state.ws_subscribe_window_active = in_window
 
     if in_window:
+        # 장중 GC 비활성화 (HFT 지연 방지) — _on_ws_subscribe_start와 동일
+        gc.disable()
+        logger.info("[타이머] 장중 GC 비활성화 완료 (HFT 지연 방지)")
         # ── 실시간 필드 초기화 (전일 확정 데이터 제거) ──
         logger.info("[RESET CALL] from _init_ws_subscribe_state")
         logger.info("[타이머] 구독 구간 내 시작 -- 실시간 필드 초기화")
-        loop = asyncio.get_running_loop()
         from backend.app.services.engine_service import _reset_realtime_fields
-        loop.create_task(_reset_realtime_fields())
+        await _reset_realtime_fields()
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
         try:
             import backend.app.services.engine_account_notify as _an
@@ -751,6 +754,10 @@ async def _init_ws_subscribe_state() -> None:
             # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
         except Exception as e:
             logger.warning("[데이터] 캐시 초기화 실패: %s", e, exc_info=True)
+
+        # market-phase WS 브로드캐스트 — _on_ws_subscribe_start와 동일
+        from backend.app.services.engine_account_notify import _broadcast
+        _broadcast("market-phase", get_market_phase())
 
         state.ws_window_changed_event.set()
         logger.info("[타이머] 구독 구간 내 시작 -- engine_loop에 WS 연결 통지")
