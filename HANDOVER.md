@@ -12,56 +12,32 @@
 - 종목 수 불일치 문제 근본 해결 완료
 - 다운로드 완료 후 프론트엔드 새로고침 필요 문제 근본 해결 완료
 - 업종순위 페이지 우측 테이블 불투명 처리 문제 근본 해결 완료
+- Holiday Guard 리팩토링 완료
+  - `is_trading_day_with_holiday_guard()` 중앙화 함수 추가 (trading_calendar.py)
+  - `auto_trading_effective.py _master_on()` → 단일 함수 호출로 교체
+  - `daily_time_scheduler.py` — 개별 토글 존중, 마스터/WS만 ON/OFF, 데드 코드 제거
+  - `settings_defaults.py` — `auto_off_by_holiday: False` 추가
+  - `general-settings.ts` — `shouldForceOff()` 적용 확대 (autoBuy, autoSell, syncFromSettings)
+- Trading Days DB 캐시 제거 완료
+  - `trading_days_cache` DB 테이블, save/load 함수, DDL 전체 제거
+  - `is_trading_day()` → `exchange_calendars` XKRX 캘린더 직접 호출 (`xkrx.is_session()`)로 전환
+  - `_get_xkrx()` lazy singleton 추가 (모듈 레벨 1회 로드, 메모리 상주, 11μs/call, 오프라인)
+  - `initialize_trading_calendar_cache()` — app.py 시작 호출 제거
+  - `refresh_trading_days_cache()` — 함수 및 연초 갱신 블록 제거
+  - `POST /trading-calendar/refresh` API 엔드포인트 제거
+  - SSOT 위반 해결: library 단일 진리 원천 (DB 캐시 + library 2개 → 1개)
+  - 빈 캐시 치명 버그 해결: DB 비어있으면 모든 날짜 False → 항상 정확한 판별
+  - 검증: py_compile 5개 파일 성공, npm run build 성공, 런타임 is_trading_day(get_kst_today()) → True
+  - 커밋: `0703968` — 푸시 완료
 
 ## 현재 상태
-- Settings Fallback 리팩토링 완료 검증됨
-- 새로운 문제 보고: 공휴일 자동매매 차단 토글(holiday_guard_on)이 자동매수/자동매도 토글에 영향을 주는 현상
+- Holiday Guard 리팩토링 + Trading Days DB 캐시 제거 완료, 커밋 푸시 완료
+- 거래일 판별은 `exchange_calendars` XKRX 캘린더 직접 호출로 동작 (오프라인, O(1))
 
 ## 다음 단계
-- 공휴일 자동매매 차단 토글 ↔ 자동매수/자동매도 토글 상호작용 문제 조사 및 수정
+- 별도 작업 없음. 사용자 요청 시 진행.
 
 ## 미해결 문제
-### 1. 공휴일 자동매매 차단 토글이 자동매수/자동매도 토글에 영향
-
-#### 조사 결과 (코드 기반)
-
-**프론트엔드 (`frontend/src/pages/general-settings.ts`):**
-- `shouldForceOff()` (줄 85-87): `!tradingDayLoading && !isTradingDay && !!vals.holiday_guard_on`
-  - 비거래일 + holiday_guard_on ON → true 반환
-- `shouldForceOff()` 적용 위치:
-  - `handleMasterToggle()` (줄 374): 차단 + 다이얼로그 표시 → 마스터 토글 ON 불가
-  - `handleWsToggle()` (줄 399): 차단 + 다이얼로그 표시 → WS 토글 ON 불가
-  - 줄 972: `masterToggle?.setOn(forceOff ? false : ...)` → 시각적 OFF (vals不变)
-  - 줄 974: `wsToggle?.setOn(forceOff ? false : ...)` → 시각적 OFF (vals不变)
-- **자동매수 토글 (줄 259-269): shouldForceOff() 검사 없음** — 자유롭게 토글 가능
-- **자동매도 토글 (줄 298-308): shouldForceOff() 검사 없음** — 자유롭게 토글 가능
-- `updateAutoTradeDisabledStates()` (줄 423-428): holidayToggleRow만 비활성화, autoBuy/autoSell 행은 제어 안 함
-- 줄 993: `autoBuyToggle?.setOn(!!r.auto_buy_on)` — forceOff 미적용
-- 줄 1000: `autoSellToggle?.setOn(!!r.auto_sell_on)` — forceOff 미적용
-
-**백엔드:**
-- `_apply_holiday_guard_on_startup()` (`daily_time_scheduler.py:1064-1110`):
-  - 기동 시 공휴일 + holiday_guard_on ON → time_scheduler_on, auto_buy_on, auto_sell_on, ws_subscribe_on 전부 False로 DB 저장
-  - auto_off_by_holiday 플래그 설정 (DEFAULT_USER_SETTINGS에 없는 키)
-- `_master_on()` (`auto_trading_effective.py:19-30`):
-  - `holiday_guard_on` ON + 비거래일 → False 반환
-  - 마스터가 OFF면 자동매수/매도 실행 안 됨
-
-**문제 요약:**
-1. 공휴일에 자동매수/매도 토글을 ON할 수 있지만, 마스터가 막혀 있어 실제로 동작 안 함 (사용자 혼란)
-2. 줄 972에서 masterToggle을 시각적 OFF로 설정하지만 vals.time_scheduler_on은 업데이트 안 함 (UI/상태 불일치)
-3. 자동매수/매도 토글에 shouldForceOff() 검사나 비활성화 처리가 없음
-4. 정상 거래일에도 문제 발생 가능: _apply_holiday_guard_on_startup이 공휴일에 모든 플래그를 False로 저장했으므로, 다음 거래일에 사용자가 수동으로 다시 켜야 함
-
-**수정 방향 (승인 필요):**
-- 프론트엔드: 자동매수/매도 토글에도 shouldForceOff() 적용 또는 비활성화 처리
-- 프론트엔드: 줄 972/974의 시각적 OFF 시 vals 값도 동기화
-- 백엔드: daily_time_scheduler.py 줄 180, 185, 1072, 1086의 .get() 폴백을 직접 접근으로 변경 (이전 리팩토링에서 누락)
-- auto_off_by_holiday 키를 DEFAULT_USER_SETTINGS에 추가 여부 결정
-
-### 2. daily_time_scheduler.py 잔여 .get() 폴백 (이전 리팩토링에서 누락)
-- 줄 180: `settings.get("holiday_guard_on", True)` → `settings["holiday_guard_on"]`
-- 줄 185: `settings.get("ws_subscribe_on", True)` → `settings["ws_subscribe_on"]`
-- 줄 1072: `settings.get("holiday_guard_on", True)` → `settings["holiday_guard_on"]`
-- 줄 1086: `settings.get(k, True)` → `settings[k]` (time_scheduler_on, auto_buy_on, auto_sell_on, ws_subscribe_on)
-- 줄 1087: `settings.get("auto_off_by_holiday", False)` → DEFAULT_USER_SETTINGS에 auto_off_by_holiday 추가 후 직접 접근
+### 1. exchange_calendars 라이브러리 last_session 한계
+- `xkrx.last_session: 2027-06-25` — 이 날짜 이후 판별 불가
+- 라이브러리 업데이트로 해결 가능 (현재 2026년이므로 당장 문제 없음)
