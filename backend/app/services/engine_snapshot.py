@@ -63,7 +63,7 @@ async def build_initial_snapshot() -> dict:
         "positions":        positions,
         "sector_stocks":    [],  # 분할 전송 — sector-stocks-refresh 이벤트로 별도 전송
         "sector_scores":    scores_list,
-        "sector_status":    {"total_stocks": total_stocks_count, "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3) or 3), "ranked_sectors_count": ranked_count},
+        "sector_status":    {"total_stocks": total_stocks_count, "max_targets": int(state.integrated_system_settings_cache["sector_max_targets"]), "ranked_sectors_count": ranked_count},
         "buy_targets":      await _safe(get_buy_targets_sector_stocks, []),
         "settings":         _mask_sensitive_settings(state.integrated_system_settings_cache),
         "status":           get_engine_status(),
@@ -75,7 +75,7 @@ async def build_initial_snapshot() -> dict:
         "ws_subscribe_status": ws_subscribe_control.get_subscribe_status(),
         "bootstrap_done":   state.bootstrap_event.is_set() if state.bootstrap_event else state.preboot_cache_loaded,
         "market_phase":     get_market_phase(),
-        "broker_config":    state.integrated_system_settings_cache.get("broker_config", {}),
+        "broker_config":    state.integrated_system_settings_cache["broker_config"],
         "avg_amt_refresh":  None,
     }
 

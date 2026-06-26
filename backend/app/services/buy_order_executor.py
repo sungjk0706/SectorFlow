@@ -46,7 +46,7 @@ async def evaluate_buy_candidates() -> None:
         return
 
     # ── 전역 조건 사전 체크 ──────────────────────────────────────────
-    _max_limit = int(state.integrated_system_settings_cache.get("max_stock_cnt", 5) or 5)
+    _max_limit = int(state.integrated_system_settings_cache["max_stock_cnt"])
     if is_test_mode(state.integrated_system_settings_cache):
         _pos_for_cnt = await dry_run.get_positions()
     else:
@@ -55,18 +55,18 @@ async def evaluate_buy_candidates() -> None:
     if _holding_cnt >= _max_limit:
         return
 
-    _buy_amt = int(state.integrated_system_settings_cache.get("buy_amt", 0) or 0)
+    _buy_amt = int(state.integrated_system_settings_cache["buy_amt"])
     if _buy_amt <= 0:
         return
 
-    _max_daily = int(state.integrated_system_settings_cache.get("max_daily_total_buy_amt", 0) or 0)
+    _max_daily = int(state.integrated_system_settings_cache["max_daily_total_buy_amt"])
     if _max_daily > 0:
         _daily_remain = _max_daily - state.auto_trade._daily_buy_spent
         if _daily_remain <= 0:
             return
 
     # ── 종목별 매수 시도 ─────────────────────────────────────────────
-    cooldown = float(state.integrated_system_settings_cache.get("sector_buy_cooldown_sec") or 90)
+    cooldown = float(state.integrated_system_settings_cache["sector_buy_cooldown_sec"])
     now = time.time()
 
     _after_hours = is_krx_after_hours()

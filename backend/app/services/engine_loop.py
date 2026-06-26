@@ -170,11 +170,11 @@ async def run_engine_loop() -> None:
         state.preboot_ready_event.set()
 
         # ── broker/router 생성 (단일 소스 진리: _integrated_system_settings_cache 직접 사용) ──
-        broker_nm: str = str(settings.get("broker", "") or "").lower().strip()
+        broker_nm: str = str(settings["broker"]).lower().strip()
         router = get_router()
 
         # ── API 키 검증: broker_config.websocket 기준 모든 증권사 확인 ──
-        broker_config = settings.get("broker_config") or {}
+        broker_config = settings["broker_config"]
         ws_val = str(broker_config.get("websocket") or broker_nm).lower().strip()
         ws_brokers = [b.strip() for b in ws_val.split(",") if b.strip()]
 

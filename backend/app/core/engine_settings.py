@@ -54,13 +54,13 @@ def build_engine_settings_dict(flat: dict) -> dict:
         # 헤더 상태칩/자동매매 유효성 판정에서 직접 사용
         "auto_buy_on":          bool(merged.get("auto_buy_on")),
         "auto_sell_on":         bool(merged.get("auto_sell_on")),
-        "buy_time_start":       str(merged.get("buy_time_start", "09:00"))[:5],
-        "buy_time_end":         str(merged.get("buy_time_end", "15:00"))[:5],
-        "sell_time_start":      str(merged.get("sell_time_start", "09:00"))[:5],
-        "sell_time_end":        str(merged.get("sell_time_end", "15:00"))[:5],
+        "buy_time_start":       str(merged["buy_time_start"])[:5],
+        "buy_time_end":         str(merged["buy_time_end"])[:5],
+        "sell_time_start":      str(merged["sell_time_start"])[:5],
+        "sell_time_end":        str(merged["sell_time_end"])[:5],
         # WS 구독 스케줄러
-        "ws_subscribe_start":   str(merged.get("ws_subscribe_start", "07:50"))[:5],
-        "ws_subscribe_end":     str(merged.get("ws_subscribe_end", "15:00"))[:5],
+        "ws_subscribe_start":   str(merged["ws_subscribe_start"])[:5],
+        "ws_subscribe_end":     str(merged["ws_subscribe_end"])[:5],
         # 매수 설정 (엔진 내부 필드명)
         "buy_amount":           int(merged.get("buy_amt", 0) or 0),
         "max_stock_count":      int(merged.get("max_stock_cnt", 5) or 5),

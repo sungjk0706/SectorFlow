@@ -65,9 +65,9 @@ class BrokerRouter:
     def _load_specs(self) -> None:
         """단일 소스 진리: state.integrated_system_settings_cache 직접 사용."""
         from backend.app.services.engine_state import state
-        broker_config = state.integrated_system_settings_cache.get("broker_config") or {}
+        broker_config = state.integrated_system_settings_cache["broker_config"]
         default_broker = str(
-            state.integrated_system_settings_cache.get("broker", "") or "ls"
+            state.integrated_system_settings_cache["broker"]
         ).lower().strip()
 
         # 모든 사용 중인 broker의 spec 로드
@@ -96,9 +96,9 @@ class BrokerRouter:
     def _build(self) -> None:
         """단일 소스 진리: state.integrated_system_settings_cache 직접 사용."""
         from backend.app.services.engine_state import state
-        broker_config = state.integrated_system_settings_cache.get("broker_config") or {}
+        broker_config = state.integrated_system_settings_cache["broker_config"]
         default_broker = str(
-            state.integrated_system_settings_cache.get("broker", "") or "ls"
+            state.integrated_system_settings_cache["broker"]
         ).lower().strip()
 
         for feature in FEATURES:

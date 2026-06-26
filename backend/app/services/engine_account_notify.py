@@ -327,7 +327,7 @@ def notify_desktop_sector_scores(*, force: bool = False) -> None:
             "scores": scores,
             "status": {
                 "total_stocks": len(scores),
-                "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3) or 3),
+                "max_targets": int(state.integrated_system_settings_cache["sector_max_targets"]),
                 "ranked_sectors_count": ranked_count,
                 "receive_rate": receive_rate
             },
@@ -344,7 +344,7 @@ def notify_desktop_sector_scores(*, force: bool = False) -> None:
             "scores": scores,
             "status": {
                 "total_stocks": len(scores),
-                "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3) or 3),
+                "max_targets": int(state.integrated_system_settings_cache["sector_max_targets"]),
                 "ranked_sectors_count": ranked_count,
                 "receive_rate": receive_rate
             },

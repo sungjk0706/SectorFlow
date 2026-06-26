@@ -23,7 +23,7 @@ async def _get_rest_base() -> str:
     except Exception:
         logger.warning("[데이터관리] base_url 조회 실패", exc_info=True)
     # 기본값: broker 기반 URL
-    broker_nm = str(state.integrated_system_settings_cache.get("broker", "") or "").lower().strip()
+    broker_nm = str(state.integrated_system_settings_cache["broker"]).lower().strip()
     urls = build_broker_urls(broker_nm)
     return urls.get("rest_base", "")
 
@@ -47,7 +47,7 @@ async def _load_broker_settings() -> dict | None:
         from backend.app.core.encryption import decrypt_value
         import backend.app.services.engine_state as _st
 
-        flat = _st._integrated_system_settings_cache or {}
+        flat = _st._integrated_system_settings_cache
 
         def _dec(v) -> str:
             if not v:
@@ -101,7 +101,7 @@ async def get_account_profit_rate(access_token: str) -> dict:
     try:
         from backend.app.services.engine_state import state
         host = await _get_rest_base()
-        broker_nm = str(state.integrated_system_settings_cache.get("broker", "") or "").lower().strip()
+        broker_nm = str(state.integrated_system_settings_cache["broker"]).lower().strip()
         acnt_no = str(state.integrated_system_settings_cache.get(f"{broker_nm}_account_no", "") or "")
 
         url = f"{host}/api/dostk/acnt"
@@ -196,7 +196,7 @@ async def get_main_account_info(access_token: str) -> list:
 
         from backend.app.services.engine_state import state
         host = await _get_rest_base()
-        broker_nm = str(state.integrated_system_settings_cache.get("broker", "") or "").lower().strip()
+        broker_nm = str(state.integrated_system_settings_cache["broker"]).lower().strip()
         acnt_no = str(state.integrated_system_settings_cache.get(f"{broker_nm}_account_no", "") or "")
 
         url = f"{host}/api/dostk/acnt"
