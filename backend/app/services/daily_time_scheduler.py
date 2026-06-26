@@ -522,37 +522,9 @@ async def _on_ws_subscribe_start() -> None:
         # market-phase WS 브로드캐스트 (WS 구독 시작 = 08:00 또는 09:00 전환 시점)
         from backend.app.services.engine_account_notify import _broadcast
         _broadcast("market-phase", get_market_phase())
-        # ── WS 연결 상태 확인 및 REG 파이프라인 실행 ──
-        ws = state.connector_manager or state.kiwoom_connector
-        if ws is not None:
-            # manager가 이미 있음 (engine_loop에서 초기화 중이거나 완료) → 중복 생성 금지
-            if ws.is_connected():
-                logger.info("[타이머] 실시간 구독 구간 진입 -- REG 파이프라인 시작")
-                _trigger_reg_pipeline()
-            else:
-                logger.info("[타이머] 실시간 구독 구간 진입 -- 연결 진행 중, 대기 (연결 완료 후 자동 트리거)")
-        else:
-            logger.info("[타이머] 실시간 구독 구간 진입 -- 연결되지 않음, 연결 시도")
-            try:
-                from backend.app.core.connector_manager import ConnectorManager
-                from backend.app.services.engine_service import _broker_message_handler
-                from backend.app.services.core_queues import get_tick_queue
-                broker_nm = str(state.integrated_system_settings_cache["broker"]).lower().strip()
-                _mgr = ConnectorManager()
-                _mgr.set_message_callback(_broker_message_handler)
-                # tick_queue 콜백 설정 (engine_loop과 동일하게)
-                tick_queue = get_tick_queue()
-                for connector in _mgr._connectors.values():
-                    if hasattr(connector, 'set_queue_callback'):
-                        connector.set_queue_callback(tick_queue)
-                # state 조기 등록 후 connect (중복 생성 방지)
-                state.connector_manager = _mgr
-                state.kiwoom_connector = _mgr.get_connector(broker_nm)
-                await _mgr.connect_all()
-                logger.info("[타이머] 실시간 연결 완료 -- REG 파이프라인 시작")
-                _trigger_reg_pipeline()
-            except Exception as e:
-                logger.error("[타이머] 실시간 연결 실패: %s", e)
+        # ── WS 연결은 engine_loop의 구간 감지 루프가 담당 → 이벤트 통지 ──
+        state.ws_window_changed_event.set()
+        logger.info("[타이머] 실시간 구독 구간 진입 -- engine_loop에 WS 연결 통지")
     except Exception as e:
         logger.warning("[타이머] 실시간 구독 시작 콜백 오류: %s", e, exc_info=True)
 
@@ -592,13 +564,9 @@ async def _on_ws_subscribe_end() -> None:
             await notify_desktop_settings_toggled()
         except Exception as _e:
             logger.warning("[타이머] 구독 종료 OFF 저장 실패: %s", _e, exc_info=True)
-        # ── WS 연결 해제 ──
-        ws = state.connector_manager or state.kiwoom_connector
-        if ws and ws.is_connected():
-            await ws.disconnect() if hasattr(ws, "disconnect") and not hasattr(ws, "disconnect_all") else await ws.disconnect_all() if hasattr(ws, "disconnect_all") else None
-            logger.info("[타이머] WS 소켓 연결 해제 완료")
-        from backend.app.services.engine_service import _broadcast_engine_ws
-        _broadcast_engine_ws()
+        # ── WS 연결 해제는 engine_loop의 구간 감지 루프가 담당 → 이벤트 통지 ──
+        state.ws_window_changed_event.set()
+        logger.info("[타이머] 실시간 구독 구간 종료 -- engine_loop에 WS 해제 통지")
         # ── 확정 데이터 다운로드는 confirmed_download_time 타이머가 별도 실행 ──
         # ws_subscribe_end와 confirmed_download_time을 분리하여
         # 증권사 확정 데이터 준비 시간을 확보 (기본값 20:40)
@@ -643,19 +611,15 @@ def _fire_ws_disconnect_only() -> None:
 
 
 async def _ws_disconnect_only() -> None:
-    """구독 해제 + WS 연결 해제만 수행 (장마감 후처리 제외)."""
+    """구독 해제 + WS 연결 해제 요청만 수행 (장마감 후처리 제외).
+    실제 WS 연결 해제는 engine_loop의 구간 감지 루프가 담당."""
     try:
         state.ws_subscribe_window_active = False
-        logger.info("[타이머] 구독 구간 변경 -- 구독 해지 + 실시간 연결 해제")
+        logger.info("[타이머] 구독 구간 변경 -- 구독 해지 + engine_loop에 WS 해제 통지")
         _trigger_unreg_all()
         from backend.app.services.ws_subscribe_control import _set_status
         _set_status(quote=False)
-        ws = state.connector_manager or state.kiwoom_connector
-        if ws and ws.is_connected():
-            await ws.disconnect() if hasattr(ws, "disconnect") and not hasattr(ws, "disconnect_all") else await ws.disconnect_all() if hasattr(ws, "disconnect_all") else None
-            logger.info("[타이머] 실시간 소켓 연결 해제 완료")
-        from backend.app.services.engine_service import _broadcast_engine_ws
-        _broadcast_engine_ws()
+        state.ws_window_changed_event.set()
     except Exception as e:
         logger.warning("[타이머] 실시간 구독 해제 오류: %s", e)
 
@@ -788,7 +752,8 @@ async def _init_ws_subscribe_state() -> None:
         except Exception as e:
             logger.warning("[데이터] 캐시 초기화 실패: %s", e, exc_info=True)
 
-        _trigger_reg_pipeline()
+        state.ws_window_changed_event.set()
+        logger.info("[타이머] 구독 구간 내 시작 -- engine_loop에 WS 연결 통지")
     else:
         # 구독 상태 false + WS 브로드캐스트
         from backend.app.services.ws_subscribe_control import _set_status

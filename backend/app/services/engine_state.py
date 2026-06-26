@@ -51,6 +51,7 @@ class EngineState:
         self.preboot_cache_loaded: bool = False
         self.preboot_ready_event = LazyEvent()
         self.engine_stop_event = LazyEvent()
+        self.ws_window_changed_event = LazyEvent()
         self.reg_seq_lock: asyncio.Lock | None = None
         self.reg_ack_event = LazyEvent()
         self.reg_ack_return_code: str = ""
