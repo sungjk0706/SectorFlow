@@ -107,33 +107,6 @@ def get_current_receive_rate() -> dict:
     return dict(_current_receive_rate)
 
 
-async def _calculate_receive_rate_from_cache(es: ModuleType) -> None:
-    """DB 로드 후 실시간데이터 필드 상태 기반 수신율 계산 (앱 기동 시 1회)."""
-    global _current_receive_rate, _receive_rate_dirty
-    
-    try:
-        inputs = await es.get_sector_summary_inputs()
-        all_codes = inputs.get("all_codes", [])
-        total_count = len(all_codes)
-        
-        if total_count == 0:
-            return
-        
-        from backend.app.services.engine_state import state
-        received_count = sum(
-            1 for code in all_codes
-            if _has_any_realtime_data(state.master_stocks_cache.get(code, {}))
-        )
-        
-        current_pct = received_count / total_count * 100 if total_count > 0 else 0.0
-        _current_receive_rate = {"received": received_count, "total": total_count, "pct": current_pct}
-        _receive_rate_dirty = True
-        
-        logger.info("[Compute] 앱 기동 시 수신율 계산 완료 -- %d/%d = %.1f%%", received_count, total_count, current_pct)
-    except Exception as e:
-        logger.error("[Compute] 앱 기동 시 수신율 계산 예외: %s", e, exc_info=True)
-
-
 async def start_compute_loop(es: ModuleType) -> None:
     """Compute Engine 루프 시작."""
     global _compute_task, _compute_running, _sector_recompute_task
@@ -143,10 +116,7 @@ async def start_compute_loop(es: ModuleType) -> None:
         return
 
     _compute_running = True
-    
-    # 앱 기동 시 수신율 계산 (DB 로드 후 실시간데이터 필드 상태 기반)
-    await _calculate_receive_rate_from_cache(es)
-    
+
     _compute_task = asyncio.get_running_loop().create_task(_compute_loop_impl(es))
     _sector_recompute_task = asyncio.get_running_loop().create_task(_sector_recompute_loop_impl(es, get_broadcast_queue()))
     logger.debug("[Compute] 루프 시작")
@@ -257,8 +227,7 @@ async def _process_control_signal(
             # _subscribed_dynamic 플래그 설정
             for cd in codes:
                 if cd in state.master_stocks_cache:
-                    async with state.shared_lock:
-                        state.master_stocks_cache[cd]["_subscribed_dynamic"] = True
+                    state.master_stocks_cache[cd]["_subscribed_dynamic"] = True
         elif signal_type == "DYNAMIC_UNREG":
             from backend.app.services.engine_ws import unsubscribe_dynamic_data
             from backend.app.services.engine_state import state
@@ -309,10 +278,8 @@ async def _handle_sector_recompute(
         broadcast_queue: UI 전송 큐
     """
     try:
-        # _shared_lock 획득하여 race condition 방지
-        async with es._shared_lock:
-            # 업종순위 재계산
-            await es.recompute_sector_summary_now()
+        # 업종순위 재계산
+        await es.recompute_sector_summary_now()
 
         # UI 업데이트 - 단일 진입점 원칙 준수
         from backend.app.services.engine_account_notify import notify_desktop_sector_scores
@@ -435,7 +402,7 @@ async def _handle_real_01_tick(
         if is_0b_tick and any(f in vals for f in ("10", "11", "12", "14", "17", "228")):
             # engine_service._apply_real01_volume_amount_to_radar_rows 호출
             # 전역 변수 접근을 위해 es 모듈 사용
-            await es._apply_real01_volume_amount_to_radar_rows(raw_cd, vals, is_0b_tick=is_0b_tick)
+            es._apply_real01_volume_amount_to_radar_rows(raw_cd, vals, is_0b_tick=is_0b_tick)
 
             # 연산 결과: 틱 수신 시 해당 종목에 대한 업종 점수 증분 재계산 트리거 (이벤트 큐 대신 _dirty_codes에 추가)
             from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd

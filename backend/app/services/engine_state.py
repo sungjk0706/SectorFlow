@@ -9,7 +9,7 @@ import asyncio
 from backend.app.core.kiwoom_connector import KiwoomConnector
 from backend.app.core.kiwoom_providers import KiwoomAuthProvider
 from backend.app.services.trading import AutoTradeManager
-from backend.app.services.engine_utils import LazyLock, LazyEvent
+from backend.app.services.engine_utils import LazyEvent
 from backend.app.services.state_manager import StateManager, OrderStatus
 
 
@@ -39,7 +39,6 @@ class EngineState:
         self.update_account_memory = None
 
         # ── Locks & Events ───────────────────────────────────────────────────────
-        self.shared_lock = LazyLock()
         self.realtime_state: str = "IDLE"
         self.data_ready_event: asyncio.Event = asyncio.Event()
         self.token_ready_event: asyncio.Event = asyncio.Event()

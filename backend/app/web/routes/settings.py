@@ -91,14 +91,13 @@ async def reset_test_data(_: str = Depends(get_current_user)):
             len(es._integrated_system_settings_cache["sector_stock_layout"]),
             len(notify_cache.positions_code_set),
         )
-        async with es._shared_lock:
-            es._positions = []
-            for entry in es._master_stocks_cache.values():
-                entry.pop("_subscribed", None)
-            # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_rest_radar_quote_cache)
-            # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
-            es._snapshot_history.clear()
-            es._checked_stocks.clear()
+        es._positions = []
+        for entry in es._master_stocks_cache.values():
+            entry.pop("_subscribed", None)
+        # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_rest_radar_quote_cache)
+        # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
+        es._snapshot_history.clear()
+        es._checked_stocks.clear()
         _rebuild_positions_cache([])
         subscribed_count_after = sum(1 for entry in es._master_stocks_cache.values() if entry.get("_subscribed", False))
         es.logger.info(

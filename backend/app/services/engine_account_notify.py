@@ -63,45 +63,6 @@ _desktop_settings_toggled_notifier: Callable[[], None] | None = None
 # ── 실시간 데이터 필드 정의 ─────────────────────────────────────────────────
 _TICK_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "strength")
 
-# ── 압축(Conflation) 설정 ───────────────────────────────────────────────────
-# 01/0B(시세) 타입: 동일 종목·동일 가격·50ms 이내 중복 틱 전송 생략
-_CONFLATE_MS = 50
-_conflate_cache: dict[str, dict] = {}  # code -> {"price": int, "ts": int}
-
-
-
-def _should_conflate(item: dict) -> bool:
-    """동일 종목, 동일 가격, 50ms 이내 중복 틱이면 True (전송 생략)."""
-    msg_type = str(item.get("type", ""))
-    norm = msg_type.strip().upper()
-    if norm not in ("01", "0B"):
-        return False
-    vals = item.get("values", {})
-    if not isinstance(vals, dict):
-        return False
-    raw_price = vals.get("10")
-    if raw_price is None:
-        return False
-    try:
-        price = int(str(raw_price).replace(",", "").replace("+", ""))
-    except (ValueError, TypeError):
-        return False
-    raw_code = str(item.get("item") or "").strip()
-    if not raw_code:
-        return False
-    try:
-        from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
-        nk = _format_kiwoom_reg_stk_cd(raw_code)
-    except Exception:
-        logger.warning("[압축] 코드 정규화 실패", exc_info=True)
-        return False
-    now = int(time.time() * 1000)
-    last = _conflate_cache.get(nk)
-    if last is not None and last["price"] == price and (now - last["ts"]) < _CONFLATE_MS:
-        return True
-    _conflate_cache[nk] = {"price": price, "ts": now}
-    return False
-
 # ── Delta 캐시 (notify_cache로 통합됨) ──────────────────────────────────────
 
 
@@ -398,11 +359,8 @@ def notify_raw_real_data(item: dict) -> None:
     """
     키움 실시간 메시지(REAL)를 가공 없이 브로드캐스트.
     프론트에 필요한 종목(섹터+보유+레이아웃)만 전송하여 렌더링 과부하 방지.
-    01/0B 시세 타입은 동일 가격·50ms 이내 중복 틱을 압축(Conflation)하여 전송 생략.
     """
     if not item or not isinstance(item, dict):
-        return
-    if _should_conflate(item):
         return
     vals = item.get("values", {})
     if not isinstance(vals, dict):
@@ -489,8 +447,6 @@ def notify_desktop_account_tabs_refresh() -> None:
 
 def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str | None = None) -> None:
     """체결·잔고·실시간 시세 변경 시 → WS account-update (delta 방식, 페이지별 페이로드 분리)."""
-    # 디버그: snapshot 출력
-    print(f"[DEBUG] broadcast_account_update snapshot: total_buy_amount={snapshot.get('total_buy_amount')}, total_eval_amount={snapshot.get('total_eval_amount')}, total_pnl={snapshot.get('total_pnl')}, total_pnl_rate={snapshot.get('total_pnl_rate')}")
     changed_positions, removed_codes = _compute_position_delta(positions)
     snapshot_changed = not _snap_equal(snapshot, notify_cache.snapshot_sent)
 

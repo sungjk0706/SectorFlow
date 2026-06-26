@@ -36,8 +36,7 @@ async def _load_caches_preboot(settings: dict) -> None:
             raise RuntimeError("master_stocks_table 테이블에 데이터가 없습니다. 장마감 후 다시 시도하세요.")
         
         # 마스터 캐시 저장 (_sector_cache 제거)
-        async with state.shared_lock:
-            state.master_stocks_cache = _cached_snapshot
+        state.master_stocks_cache = _cached_snapshot
 
         # ── 업종 레이아웃 자동 구성 (engine_bootstrap.py에서 이동) ──
         from collections import defaultdict
@@ -82,9 +81,8 @@ async def _load_caches_preboot(settings: dict) -> None:
             _cached_high_5d[cd] = high_price
             # 즉시 메모리 반영 (단일 루프로 통합)
             if high_price > 0:
-                async with state.shared_lock:
-                    if cd in state.master_stocks_cache:
-                        state.master_stocks_cache[cd]["high_5d_price"] = high_price
+                if cd in state.master_stocks_cache:
+                    state.master_stocks_cache[cd]["high_5d_price"] = high_price
 
         # eligible_stocks_cache 로드 제거: master_stocks_table이 단일 소스
 

@@ -174,12 +174,11 @@ async def sync_sector_from_custom_sectors() -> None:
         
         # 메모리 캐시 sector 필드 갱신
         import backend.app.services.engine_service as es
-        async with es._shared_lock:
-            for row in rows:
-                code = row["stock_code"]
-                sector = row["name"]
-                if code in _st._master_stocks_cache:
-                    _st._master_stocks_cache[code]["sector"] = sector
+        for row in rows:
+            code = row["stock_code"]
+            sector = row["name"]
+            if code in _st._master_stocks_cache:
+                _st._master_stocks_cache[code]["sector"] = sector
         
         _log.info("[동기화] 메모리 캐시 sector 필드 갱신 완료 -- %d종목", updated)
     except Exception as e:
