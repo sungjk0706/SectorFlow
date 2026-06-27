@@ -209,45 +209,37 @@ function main(): void {
   // 6. Health Check 후 WS 연결 시작 (현대적 안정성 패턴)
   const token = localStorage.getItem('token') || 'dev-bypass'
   
-  // Health Check 및 재시도 로직
+  // Health Check — localhost 고정 간격 폴링 (지수 백오프 불필요)
   async function waitForServerReady(): Promise<void> {
-    const maxRetries = 20
-    const baseDelay = 500 // 0.5초
+    const maxRetries = 100
+    const retryDelay = 300 // 0.3초 고정 (localhost)
     let retryCount = 0
-    
+
     while (retryCount < maxRetries) {
       try {
         const health = await api.healthCheck()
         console.log('[Health] 상태:', health.status, health.message)
-        
-        if (health.status === 'ready') {
-          console.log('[Health] 서버 준비 완료 - WS 연결 시작')
-          shell.setOverlay(false, '')
-          return
-        } else if (health.status === 'error') {
-          console.error('[Health] 서버 오류 상태:', health.message)
-          // 엔진 오류/정지 상태이더라도 사용자가 설정 화면에 진입하여 수정할 수 있도록 오버레이 해제
+
+        // 서버가 응답하면 즉시 WS 연결 (initializing 상태도 허용)
+        // WS 핸들러가 data_ready_event / bootstrap_event 대기 후 스냅샷 전송
+        if (health.status === 'ready' || health.status === 'initializing' || health.status === 'error') {
+          console.log('[Health] 서버 응답 확인 - WS 연결 시작')
           shell.setOverlay(false, '')
           return
         }
-        
-        // initializing 상태이면 재시도
+
+        // downloading 등 기타 상태: 재시도
         retryCount++
-        const delay = baseDelay * Math.pow(2, Math.min(retryCount - 1, 5)) // 지수 백오프, 최대 16초
-        console.log(`[Health] 초기화 중... ${retryCount}/${maxRetries} (${delay}ms 후 재시도)`)
         shell.setOverlay(true, `서버 준비 중... (${retryCount}/${maxRetries})`)
-        
-        await new Promise(resolve => setTimeout(resolve, delay))
+        await new Promise(resolve => setTimeout(resolve, retryDelay))
       } catch (error) {
         retryCount++
-        const delay = baseDelay * Math.pow(2, Math.min(retryCount - 1, 5))
-        console.error(`[Health] Health Check 실패: ${error}. ${retryCount}/${maxRetries} (${delay}ms 후 재시도)`)
+        console.log(`[Health] 서버 대기 중... ${retryCount}/${maxRetries}`)
         shell.setOverlay(true, `서버 연결 중... (${retryCount}/${maxRetries})`)
-        
-        await new Promise(resolve => setTimeout(resolve, delay))
+        await new Promise(resolve => setTimeout(resolve, retryDelay))
       }
     }
-    
+
     console.error('[Health] 최대 재시도 횟수 초과 - WS 연결 시도')
     shell.setOverlay(true, '서버 준비 시간 초과 - 연결 시도 중')
   }

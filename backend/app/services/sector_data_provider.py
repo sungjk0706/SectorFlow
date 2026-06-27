@@ -278,8 +278,10 @@ async def recompute_sector_summary_now() -> None:
         notify_desktop_sector_scores(force=True)
         await notify_buy_targets_update()
         logger.info("[업종순위] 재계산 완료")
+        _es._sector_summary_ready_event.set()
     except Exception as e:
         logger.warning("[업종순위] 재계산 실패: %s", e, exc_info=True)
+        _es._sector_summary_ready_event.set()
 
 
 async def _on_filter_settings_changed() -> None:

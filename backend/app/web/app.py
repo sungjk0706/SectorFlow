@@ -82,39 +82,38 @@ async def lifespan(app: FastAPI):
     journal.start_consumer_task()
     logger.info("[웹서버] Journal Consumer Task 시작 완료")
 
-    # 엔진 초기화 (설정 → 데이터 로드 → 증권사 연결)
-    logger.info("[웹서버] 엔진 초기화 시작")
-    success = await start_engine(user_id="admin")
-    if not success:
-        logger.error("[웹서버] 엔진 초기화 실패")
-        raise RuntimeError("엔진 초기화 실패")
-    
-    logger.info("[웹서버] 엔진 초기화 성공, backend_coalescing 등록 진입")
-    # Backend Coalescing 싱글톤 등록
-    backend_coalescing = BackendCoalescing.get_instance()
-    await backend_coalescing.start()
-    
-    # WS Manager 싱글톤 등록
-    from backend.app.web.ws_manager import ws_manager
-    
-    # 서버 준비 완료 상태 설정 (클라이언트 요청 수신 가능)
-    # 웹 서버가 즉시 기동되어 Health Check 등에 응답할 수 있도록 함
+    # 서버 준비 완료 — Health endpoint 즉시 응답 (프론트엔드 접속 허용)
     from backend.app.services.engine_state import state
     state.server_ready_event.set()
 
-    # 엔진 준비 완료 플래그 즉시 설정 (백그라운드 다운로드와 무관하게 웹서버 기동 완료)
-    state.engine_ready_event.set()
+    # 엔진 초기화 백그라운드 실행 (프론트엔드 접속과 병렬)
+    # WS 핸들러가 data_ready_event / bootstrap_event 대기 후 스냅샷 전송하므로
+    # 엔진 초기화 완료 전에 프론트엔드 접속해도 데이터는 자동 대기됨
+    logger.info("[웹서버] 엔진 백그라운드 초기화 시작")
+    async def _engine_init_background():
+        try:
+            success = await start_engine(user_id="admin")
+            if not success:
+                logger.error("[웹서버] 엔진 초기화 실패")
+                return
 
-    # 스케줄러 시작
-    await start_daily_time_scheduler()
+            logger.info("[웹서버] 엔진 초기화 성공, backend_coalescing 등록 진입")
+            backend_coalescing = BackendCoalescing.get_instance()
+            await backend_coalescing.start()
 
-    # 텔레그램은 후순위 — 여유 시간 후 시작 (편의 기능, 타이머 제거)
-    async def _start_telegram_lazy():
-        await asyncio.sleep(3.0)  # 브로커·WS 안정화 후 시작
-        telegram_bot.start()
-        logger.info("[웹서버] 텔레그램 폴링 시작 (후순위)")
+            state.engine_ready_event.set()
 
-    asyncio.create_task(_start_telegram_lazy())
+            await start_daily_time_scheduler()
+
+            async def _start_telegram_lazy():
+                await asyncio.sleep(3.0)
+                telegram_bot.start()
+                logger.info("[웹서버] 텔레그램 폴링 시작 (후순위)")
+            asyncio.create_task(_start_telegram_lazy())
+        except Exception as e:
+            logger.error("[웹서버] 엔진 백그라운드 초기화 실패: %s", e, exc_info=True)
+
+    asyncio.create_task(_engine_init_background())
 
     yield
 
