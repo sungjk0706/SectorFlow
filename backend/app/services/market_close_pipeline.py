@@ -857,7 +857,6 @@ async def _run_confirmed_pipeline(
                 conflict_preview = sorted(conflict_codes)[:20]
                 _log.warning("%s ka10099 동일 code 판정 충돌 — %d종목, 예시=%s", tag, len(conflict_codes), conflict_preview)
             _broadcast_confirmed_progress(0, 0, message=f"✅ 2단계 완료: 총 {unique_codes}종목 중 {len(confirmed_codes)}종목 적격 판정", step=2)
-            await asyncio.sleep(1.5)
 
             summary_str = f"전체 {unique_codes}종목(raw {raw_rows}행) → 적격 {len(confirmed_codes)}종목 (제외 {excluded_count}종목, {pct:.1f}%, 중복 {len(duplicate_codes)}종목)"
             if filter_reasons:
