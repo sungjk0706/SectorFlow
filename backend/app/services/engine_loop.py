@@ -152,10 +152,7 @@ async def run_engine_loop() -> None:
     # 계좌 REST Lock 초기화 -- 이전 세션 잠금 상태 초기화
     state.account_rest_lock = None
 
-    # ── 전역 이벤트 버스 (Queues) 초기화 (Step 1: 파이프라인 아키텍처) ────
-    from backend.app.services.core_queues import initialize_queues
-    initialize_queues()
-    logger.info("[엔진] 전역 이벤트 버스 (Queues) 초기화 완료")
+    # 전역 이벤트 버스 (Queues)는 app.py lifespan에서 이미 초기화됨
 
     gateway_task = None
     oms_task = None

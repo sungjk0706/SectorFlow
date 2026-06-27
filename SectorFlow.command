@@ -13,13 +13,23 @@ source .venv/bin/activate
 # ---------------------------------------------------------
 echo "이전 프로세스 정리 중..."
 # 1. 부드러운 종료 요청 (SIGTERM)
-lsof -ti:8000 | xargs kill -15 2>/dev/null
-lsof -ti:5173 | xargs kill -15 2>/dev/null
-# 장부 정리할 시간(2초) 부여
-sleep 2 
-# 2. 그래도 살아있으면 강제 종료 (SIGKILL)
-lsof -ti:8000 | xargs kill -9 2>/dev/null
-lsof -ti:5173 | xargs kill -9 2>/dev/null
+_prev_pids=$(lsof -ti:8000 -ti:5173 2>/dev/null)
+if [ -n "$_prev_pids" ]; then
+    echo "$_prev_pids" | xargs kill -15 2>/dev/null
+    # 프로세스가 실제로 종료될 때까지 대기 (최대 2초)
+    _wait=0
+    while [ $_wait -lt 20 ]; do
+        _alive=$(lsof -ti:8000 -ti:5173 2>/dev/null)
+        if [ -z "$_alive" ]; then
+            break
+        fi
+        sleep 0.1
+        _wait=$((_wait+1))
+    done
+    # 2. 그래도 살아있으면 강제 종료 (SIGKILL)
+    lsof -ti:8000 | xargs kill -9 2>/dev/null
+    lsof -ti:5173 | xargs kill -9 2>/dev/null
+fi
 
 rm -f backend/data/server.lock
 rm -f /tmp/sectorflow.lock
@@ -29,7 +39,7 @@ echo "백엔드 및 프론트엔드 동시 준비 중..."
 .venv/bin/python main.py &
 BACKEND_PID=$!
 
-(cd frontend && npx vite) &
+(cd frontend && npm run dev) &
 FRONTEND_PID=$!
 
 # 양쪽 준비 대기 (병렬, 0.5초 간격)
