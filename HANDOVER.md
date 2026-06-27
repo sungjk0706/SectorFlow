@@ -68,6 +68,20 @@
 - **수정**: `recompute_sector_summary_now()` 정상 완료 후(line 281) 및 예외 시(line 284) `_es._sector_summary_ready_event.set()` 추가. 이 함수는 기동 시(`engine_cache.py:132`)와 설정 변경 시(`engine_service.py:426`)의 공통 경로이므로 단일 수정으로 모든 케이스 해결
 - **검증**: py_compile 성공, 런타임 로그에서 WS 접속 시 `업종 요약정보 생성 대기 중` 미출력 (이벤트 이미 설정됨), 3개 WS 채널 즉시 연결 확인
 
+### 9. 기동 시퀀스 추가 최적화 (완료)
+- **파일**: `SectorFlow.command` (line 15-32, 42)
+  - **원인**: `sleep 2` 고정 대기 — 이전 프로세스가 없어도 무조건 2초 대기
+  - **수정**: 이전 프로세스 존재 시에만 `kill -0` 폴링으로 최대 2초 대기, 없으면 즉시 진행 (~2초 절감)
+  - **원인**: `npx vite` — npx가 매번 vite 바이너리 탐색 (~100-200ms 오버헤드)
+  - **수정**: `npm run dev`로 변경
+- **파일**: `backend/app/services/engine_cache.py` (line 134-141)
+  - **원인**: `retry_pipeline_catchup_after_bootstrap()`을 `await`로 블로킹 — 단절 구간 기동 시 확정 다운로드가 `_load_caches_preboot`를 블로킹
+  - **수정**: `asyncio.create_task()`로 백그라운드화. `data_ready_event`/`bootstrap_event` 이미 `set()` 상태이므로 WS 핸들러 정상 동작
+- **파일**: `backend/app/services/engine_loop.py` (line 155)
+  - **원인**: `initialize_queues()`가 `app.py` lifespan과 `run_engine_loop`에서 중복 호출
+  - **수정**: `run_engine_loop`에서 제거 (app.py에서 이미 초기화됨)
+- **검증**: py_compile 성공, npm run build 성공
+
 ## 현재 상태
 - 모든 수정 완료, py_compile + tsc + build 검증 통과
 - 런타임 확인 완료: Frontend-First 기동 — 백엔드/프론트엔드 병렬 시작, Health 즉시 응답, WS 3채널 즉시 연결 (05:32 기동 로그)
@@ -75,6 +89,8 @@
 - 런타임 검증 필요: 토큰 발급 실패/지연 상황에서 프론트엔드에 DB 데이터가 즉시 표시되는지 확인
 - 런타임 검증 필요: `_login_post_pipeline`이 정상적으로 REST 잔고 조회 ~ WS 구독 등록까지 실행되는지 확인
 - 런타임 검증 필요: Phase 1 Event 기반 수신율 대기가 정상적으로 임계값 통과 후 Phase 2로 전환되는지 확인
+- 런타임 검증 필요: 이전 프로세스 없을 시 sleep 0초로 즉시 시작 확인
+- 런타임 검증 필요: catch-up 백그라운드 실행 시 WS 데이터 전송 정상 확인
 
 ## 다음 단계
 - 평일 거래 시간 기동 후 확인:
