@@ -198,13 +198,14 @@ async def run_engine_loop() -> None:
         # ── 병렬 초기화: 캐시+앱준비 / 토큰 발급 / 브로커 스펙 로드 ──
         _t_parallel_start = time.perf_counter()
 
-        state.broker_spec = await _load_broker_spec_async(broker_nm, settings)
+        # 3개 독립 파이프라인 병렬 실행 — broker_spec은 gather 완료 후 사용
+        async def _load_spec():
+            state.broker_spec = await _load_broker_spec_async(broker_nm, settings)
 
-        # 캐시 로드와 토큰 발급은 독립 파이프라인 — 병렬 실행
-        # 토큰 발급 지연/실패가 DB 기반 데이터 표시를 차단하지 않음
         await asyncio.gather(
             _cache_and_bootstrap(settings),
             _get_all_tokens_async(router),
+            _load_spec(),
         )
 
         # 가상 예수금 로컬 DB 복원 (init()은 _cache_and_bootstrap 내부에서 완료)

@@ -21,6 +21,7 @@ _dirty_codes: set[str] = set()
 # 수신율 추적 (이벤트 기반)
 _current_receive_rate: dict = {"received": 0, "total": 0, "pct": 0.0}
 _receive_rate_dirty: bool = False
+_receive_rate_event: asyncio.Event | None = None
 
 
 async def _send_receive_rate(receive_rate: dict) -> None:
@@ -72,7 +73,7 @@ async def _update_receive_rate_on_tick(es: ModuleType) -> None:
 
     폴링 제거: 틱 수신 이벤트마다 수신율 재계산.
     """
-    global _current_receive_rate, _receive_rate_dirty
+    global _current_receive_rate, _receive_rate_dirty, _receive_rate_event
 
     try:
         inputs = await es.get_sector_summary_inputs()
@@ -96,6 +97,8 @@ async def _update_receive_rate_on_tick(es: ModuleType) -> None:
             abs(_current_receive_rate["pct"] - current_pct) > 0.1):
             _current_receive_rate = {"received": received_count, "total": total_count, "pct": current_pct}
             _receive_rate_dirty = True
+            if _receive_rate_event is not None:
+                _receive_rate_event.set()
 
     except Exception as e:
         logger.error("[Compute] 수신율 갱신 예외: %s", e, exc_info=True)
@@ -508,14 +511,22 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
     폴링 제거: Phase 1은 틱 수신 이벤트 기반으로 수신율 체크
     """
     from backend.app.services.engine_sector_confirm import request_sector_recompute
-    global _compute_running, _receive_rate_dirty
+    global _compute_running, _receive_rate_dirty, _receive_rate_event
+    if _receive_rate_event is None:
+        _receive_rate_event = asyncio.Event()
     try:
         # Phase 1: 실시간데이터 필드 수신율 임계값 대기 (1회성 스타트업 게이트)
-        # 이벤트 기반: 틱 수신 시 수신율 갱신, 로그 출력 직후 전송
+        # 이벤트 기반: 틱 수신 시 _receive_rate_event.set()으로 깨움
         phase1_completed = False
         while _compute_running and not phase1_completed:
             try:
-                # 수신율 dirty 플래그 확인 (틱 수신 시 설정됨)
+                # 이벤트 대기 (틱 수신 시 set됨), 타임아웃 1초로 부트스트랩 전 무한 대기 방지
+                try:
+                    await asyncio.wait_for(_receive_rate_event.wait(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    pass
+                _receive_rate_event.clear()
+
                 if _receive_rate_dirty:
                     threshold_pct = float(es._integrated_system_settings_cache["sector_start_threshold_pct"])
                     current_pct = _current_receive_rate["pct"]
@@ -524,12 +535,10 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
 
                     if total_count == 0:
                         logger.info("[Compute] 업종순위 계산 대기 중 (종목 없음 -- 부트스트랩 대기)")
-                        await asyncio.sleep(1.0)
                         continue
 
                     if received_count == 0:
                         logger.info("[Compute] 업종순위 계산 대기 중 (실시간 데이터 수신 전 -- 0/%d)", total_count)
-                        await asyncio.sleep(1.0)
                         continue
 
                     if current_pct >= threshold_pct:
@@ -543,14 +552,9 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
                         logger.info("[Compute] 업종순위 계산 대기 중 (수신율: %d/%d = %.1f%% < %.1f%%)", received_count, total_count, current_pct, threshold_pct)
                         # 수신율 전송 (단일 진입점)
                         await _send_receive_rate(_current_receive_rate)
-                        await asyncio.sleep(1.0)
-                else:
-                    # 수신율 변경 없음, 짧게 대기
-                    await asyncio.sleep(0.1)
 
             except Exception as e:
                 logger.error("[Compute] 수신율 체크 예외: %s", e, exc_info=True)
-                await asyncio.sleep(1.0)
 
         # Phase 2: 0.2초 배치 재계산 루프
         while _compute_running:
