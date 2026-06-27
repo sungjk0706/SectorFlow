@@ -517,7 +517,6 @@ async def _on_ws_subscribe_start() -> None:
         _an._prev_scores_cache = []
         import backend.app.services.engine_service as _es
         _es._sector_summary_cache = None
-        # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
         # market-phase WS 브로드캐스트 (WS 구독 시작 = 08:00 또는 09:00 전환 시점)
         from backend.app.services.engine_account_notify import _broadcast
         _broadcast("market-phase", get_market_phase())
@@ -751,7 +750,6 @@ async def _init_ws_subscribe_state() -> None:
             _an._prev_scores_cache = []
             import backend.app.services.engine_service as _es
             _es._sector_summary_cache = None
-            # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
         except Exception as e:
             logger.warning("[데이터] 캐시 초기화 실패: %s", e, exc_info=True)
 

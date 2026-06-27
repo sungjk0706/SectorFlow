@@ -105,8 +105,6 @@ async def get_buy_limit_status() -> dict:
 
 async def _broadcast_buy_limit_status() -> None:
     """매수 한도 상태를 WS로 브로드캐스트."""
-    # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
-    # 일일한도 상태 변경 → _sector_summary_cache 무효화로 대체
     from backend.app.services import engine_service
     engine_service._sector_summary_cache = None
 
@@ -316,7 +314,6 @@ async def _update_account_memory_inner(settings: dict) -> None:
 def _merge_positions_from_rest(stock_list: list) -> list:
     """
     REST kt00018 잔고 반영. 수량·매입·종목명은 REST 기준.
-    _pending_stock_details 보강 로직 제거 (첫 틱 전 0 표시는 WS 틱 수신 대기로 해결).
     """
     from backend.app.services.engine_account_rest import merge_positions_from_rest
     return merge_positions_from_rest(stock_list, None)

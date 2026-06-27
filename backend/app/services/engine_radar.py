@@ -31,7 +31,6 @@ def get_subscribed_stocks() -> list:
 
 def get_sector_layout() -> list[tuple[str, str]]:
     """업종 종목 레이아웃 반환."""
-    # _sector_stock_layout 제거: state.integrated_system_settings_cache["sector_stock_layout"]로 통합
     return list(state.integrated_system_settings_cache["sector_stock_layout"])
 
 
@@ -156,18 +155,15 @@ async def _mark_radar_exited(stk_cd: str) -> None:
             entry.pop("_subscribed", None)
         if _clear_radar_rest_bootstrap_for_stk_cd:
             await _clear_radar_rest_bootstrap_for_stk_cd(rm)
-        # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
 
 async def clear_exited_from_radar() -> int:
     """모니터링에서 이탈 종목 전체 삭제. 삭제된 개수 반환."""
-    # _pending_stock_details 제거: _radar_cnsr_order만 관리하므로 삭제 불필요
     return 0
 
 
 async def _drop_rest_radar_quote_for_nk(nk: str) -> None:
     """REAL 체결가가 들어오면 REST 보완 캐시 제거 -- 항상 실시간 우선."""
-    # 실시간 틱 데이터 캐시 삭제로 pop 로직 삭제
     pass
 
 
@@ -177,8 +173,6 @@ async def _clear_radar_rest_bootstrap_for_stk_cd(stk_cd: str) -> None:
 
     nk = _format_broker_reg_stk_cd(str(stk_cd).strip())
     if nk:
-        # 실시간 틱 데이터 캐시 삭제로 pop 로직 삭제
-        # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
         pass
 
 
@@ -190,13 +184,9 @@ async def _clear_radar_and_ready_memory() -> None:
     all_stocks = state.master_stocks_cache.copy()
     for entry in all_stocks.values():
         entry.pop("_subscribed", None)
-    # _sector_stock_layout 제거: state.integrated_system_settings_cache["sector_stock_layout"]로 통합
     state.integrated_system_settings_cache["sector_stock_layout"] = []
-    # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_rest_radar_quote_cache)
     _rebuild_layout_cache([])
     state.checked_stocks.clear()
-    # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
-    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
 
 async def _tracked_ui_stock_codes() -> set[str]:

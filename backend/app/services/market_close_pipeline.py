@@ -103,7 +103,6 @@ def _get_krx_only_codes(es: ModuleType) -> list[str]:
                 result.append(base)
 
     # 레이아웃 캐시에서 seen에 없는 KRX 단독 종목 추가 (항상 순회)
-    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
     layout = es._integrated_system_settings_cache["sector_stock_layout"]
     for kind, val in layout:
         if kind == "code":
@@ -378,10 +377,8 @@ async def _apply_confirmed_to_memory(
         반영된 종목 수.
     """
     _nm = name_map or {}
-    # _pending_stock_details 제거: _master_stocks_cache 사용
     import backend.app.services.engine_state as _st
     pending: dict = _st._master_stocks_cache
-    # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
     ltp: dict = {}
     lta: dict = {}
     lst: dict = {}
@@ -484,8 +481,6 @@ async def _apply_confirmed_to_memory(
         mapped_nm = _nm.get(_base_stk_cd(raw_cd))
         if mapped_nm:
             entry["name"] = mapped_nm
-
-        # ── 5일봉 롤링 갱신 제거: stock_5d_array 테이블에서 직접 읽도록 대체 ──
 
         updated += 1
 
@@ -618,14 +613,13 @@ async def _save_confirmed_cache(
     Returns:
         저장 성공 여부.
     """
-    # _pending_stock_details 제거: _master_stocks_cache 사용
     import backend.app.services.engine_state as _st
     pending: dict = _st._master_stocks_cache
     if not pending:
         _log.warning("[타이머] 저장할 데이터(_master_stocks_cache)가 비어있음 — 데이터 저장 생략")
         return False
 
-    # 종목명 보정 제거: _master_stocks_cache에 이미 name 필드 포함됨
+    # 종목명 보정은 불필요: _master_stocks_cache에 이미 name 필드 포함됨
 
     all_target_codes = set(pending.keys())
     # eligible_codes가 주어지면 confirmed_codes 외 종목 저장 방지 (단일 소스 진리)
@@ -1125,7 +1119,6 @@ async def _update_layout_cache(
     # 전체 종목을 섹터별로 그룹핑 (stock_classification.json 최신 매핑 적용)
     sector_groups: dict[str, list[str]] = {}
     for cd in all_codes:
-        # _pending_stock_details 제거: _master_stocks_cache 사용
         sec = None
         import backend.app.services.engine_state as _st
         entry = _st._master_stocks_cache.get(cd)
@@ -1145,7 +1138,6 @@ async def _update_layout_cache(
         sector_groups[sec].sort()
 
     # 섹터 순서: 기존 레이아웃의 섹터 순서를 최대한 유지하고 신규 섹터는 뒤에 추가
-    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
     old_layout: list[tuple[str, str]] = es._integrated_system_settings_cache["sector_stock_layout"]
     old_sector_order = list(dict.fromkeys(v for t, v in old_layout if t == "sector"))
 
@@ -1159,11 +1151,9 @@ async def _update_layout_cache(
         for cd in sector_groups[sec]:
             new_layout.append(("code", cd))
 
-    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
     es._integrated_system_settings_cache["sector_stock_layout"] = new_layout
     from backend.app.services.engine_account_notify import _rebuild_layout_cache
     _rebuild_layout_cache(new_layout)
-    # sector_layout 캐시 저장 삭제 (master_stocks_table sector 컬럼으로 대체)
     _log.info(
         "[타이머] 레이아웃 저장데이터 완전 재구성 — %d종목, %d업종",
         len(all_codes), len(final_sector_order),

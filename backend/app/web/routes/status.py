@@ -61,7 +61,6 @@ async def debug_sector_stock(code: str):
     from backend.app.services.engine_state import state
     from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
     nk = _format_kiwoom_reg_stk_cd(code.strip())
-    # _pending_stock_details 제거: _master_stocks_cache 사용
     pend = state.master_stocks_cache.get(nk, {})
     in_filter = pend.get("_filtered", False)
     in_subscribed = pend.get("_subscribed", False)

@@ -147,13 +147,11 @@ def _get_daily_summary_for_snapshot() -> list:
 
 # ── 실시간 필드 초기화 ─────────────────────────────────────────────
 
-# _pending_stock_details 제거: bid_depth, ask_depth 제거
 _REALTIME_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "strength", "high_price")
 
 
 async def _reset_realtime_fields() -> None:
     """WS 구독 시작 시 실시간 필드를 None으로 초기화하고 실시간 캐시 3종을 비운다."""
-    # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
     from backend.app.core.trade_mode import is_test_mode
     from backend.app.services import dry_run
     from backend.app.services.engine_account_notify import (
@@ -162,19 +160,12 @@ async def _reset_realtime_fields() -> None:
         _broadcast,
     )
     from backend.app.services.engine_account import _broadcast_account
-    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
-    # _pending_stock_details 제거: 루프 제거 (이미 WS 틱 저장 제거됨)
-    # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_latest_trade_amounts, _latest_trade_prices, _latest_strength)
-    # 호가잔량 캐시 삭제로 clear 로직 제거
-    # _subscribed_0d_stocks 제거: state.master_stocks_cache에서 "_subscribed_0d" 제거
     all_stocks = state.master_stocks_cache.copy()
     for entry in all_stocks.values():
         entry.pop("_subscribed_0d", None)
         for f in _REALTIME_FIELDS:
             entry[f] = None
-    # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_rest_radar_quote_cache)
-    # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
     state.snapshot_history.clear()
     # 보유종목 실시간 필드 초기화 (전일 종가 혼입 방지)
     for pos in state.positions:
@@ -198,8 +189,6 @@ async def _reset_realtime_fields() -> None:
     # 업종 점수 캐시 초기화 (실시간 데이터 재계산 유도)
     import backend.app.services.engine_service as _es
     _es._sector_summary_cache = None
-    # _buy_targets_snapshot_cache 제거: _sector_summary_cache.buy_targets와 중복
-    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
     # 캡슐화된 notify_cache.clear_all() 호출로 결합성 제거
     notify_cache.clear_all()
 
@@ -252,9 +241,6 @@ def _get_realtime_state() -> str:
 
 # ── 기타 헬퍼 ─────────────────────────────────────────────────
 
-# get_buy_targets_snapshot 제거: get_buy_targets_sector_stocks로 대체
-# 매수후보 테이블은 이제 master_stocks_cache 기반 상위 업종 필터링을 사용
-
 
 def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
     """보유 잔고에 있으면 수익률(%), 없으면 None."""
@@ -288,8 +274,7 @@ def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
 
 
 def get_latest_trade_price_for_ui(stk_cd: str) -> int:
-    """REAL 01 체결 캐시 기준 현재가 -- 매수 표 행·시세 정합 검증용."""
-    # 실시간 틱 데이터 캐시 삭제로 인해 항상 0 반환
+    """실시간 틱 데이터 캐시 삭제로 항상 0 반환 -- 매수 표 행·시세 정합 검증용 스텁."""
     return 0
 
 

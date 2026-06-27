@@ -219,7 +219,7 @@ async def compute_full_sector_summary(
 ) -> object:  # SectorSummary (순환 import 방지를 위해 타입 힌트 생략)
     """
     전체 파이프라인 한 번에 실행.
-    engine_service 또는 buy_widget 폴링에서 호출.
+    engine_bootstrap, engine_sector_confirm, sector_data_provider, telegram_bot에서 이벤트 기반 호출.
 
     sector_mapping.get_merged_sector() 기반 커스텀 업종 그룹핑.
     """

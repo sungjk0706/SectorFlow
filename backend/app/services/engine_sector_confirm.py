@@ -36,8 +36,6 @@ def request_sector_recompute(code: str | None = None) -> None:
     logger = logging.getLogger(__name__)
     logger.debug("[업종순위] recompute_sector_for_code 호출: code=%s", code)
 
-    # 엔진 실행 상태 확인 제거: 업종 요약정보는 엔진 실행 상태와 무관하게 생성 (테스트모드 포함)
-
     if code:
         _dirty_codes.add(code)
     else:
@@ -83,7 +81,6 @@ async def _flush_sector_recompute_impl() -> None:
     """
     global _dirty_codes
 
-    # _is_engine_running() 확인 제거: 업종 요약정보는 엔진 실행 상태와 무관하게 생성 (테스트모드 포함)
     if not _dirty_codes:
         return
 
@@ -203,7 +200,6 @@ async def _flush_sector_recompute_impl() -> None:
 
         # 참조 교체 방식으로 캐시 갱신 (R5.6)
         _es._sector_summary_cache = ss
-        # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
         # 업종 점수 delta 전송 (내부에서 변경분만 비교)
         notify_desktop_sector_scores()
@@ -335,7 +331,6 @@ async def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
 
     # 웹소켓 난사 방지: 코알레싱 버퍼링 연동
     # 캐시 업데이트만 수행, 백엔드 코알레싱 스케줄러가 주기적으로 통합 발행
-    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
 
 async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
@@ -378,7 +373,6 @@ async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
 
     # 참조 교체 방식으로 캐시 갱신 (R5.6)
     _es._sector_summary_cache = ss
-    # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
 
     # 업종 점수 delta 전송 (내부에서 변경분만 비교)
     notify_desktop_sector_scores()

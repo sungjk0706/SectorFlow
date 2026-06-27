@@ -129,8 +129,6 @@ from backend.app.services.engine_snapshot import (
     _reset_realtime_fields,
     _set_realtime_state,
     _get_realtime_state,
-    # 실시간 호가잔량 기능 삭제로 import 제거 (_get_orderbook)
-    # get_buy_targets_snapshot 제거: get_buy_targets_sector_stocks로 대체
     get_position_pnl_pct_for_code,
     get_latest_trade_price_for_ui,
     _run_snapshot_and_sell_check,
@@ -235,7 +233,6 @@ get_sector_summary_inputs = get_sector_summary_inputs
 get_sector_stocks = get_sector_stocks
 get_buy_targets_sector_stocks = get_buy_targets_sector_stocks
 get_all_sector_stocks = get_all_sector_stocks
-# _compute_filtered_codes 제거: sector_stock_layout 의존성 제거
 
 # engine_lifecycle
 start_engine = start_engine
@@ -261,8 +258,6 @@ _get_daily_summary_for_snapshot = _get_daily_summary_for_snapshot
 _reset_realtime_fields = _reset_realtime_fields
 _set_realtime_state = _set_realtime_state
 _get_realtime_state = _get_realtime_state
-# 실시간 호가잔량 기능 삭제로 export 제거 (_get_orderbook)
-# get_buy_targets_snapshot 제거: get_buy_targets_sector_stocks로 대체
 get_position_pnl_pct_for_code = get_position_pnl_pct_for_code
 
 

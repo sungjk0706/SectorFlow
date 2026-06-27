@@ -84,8 +84,6 @@ async def _load_caches_preboot(settings: dict) -> None:
                 if cd in state.master_stocks_cache:
                     state.master_stocks_cache[cd]["high_5d_price"] = high_price
 
-        # eligible_stocks_cache 로드 제거: master_stocks_table이 단일 소스
-
         # ── [수정] 기동 시 단건 실시간 구독 신청 루프 및 asyncio.gather 제거 ──
         # 로그인 이후 배치 파이프라인에서 일괄 등록되므로 기동 단계에서는 스킵합니다.
         logger.info("[데이터준비] 선행 캐시 로드 완료 (메모리 반영 및 인덱싱 완료)")
@@ -94,7 +92,6 @@ async def _load_caches_preboot(settings: dict) -> None:
         if _cached_avg is not None and sum(1 for v in _cached_avg.values() if int(v or 0) > 0) < 100:
             logger.info("[데이터준비] stocks DB 5일평균 비정상 -- 백그라운드 갱신 예정")
 
-        # _update_avg_amt_5d 제거: _master_stocks_cache가 단일 소스
         if _cached_avg is not None:
             logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 로드 -- %d종목", len(_cached_avg))
         else:
@@ -104,8 +101,6 @@ async def _load_caches_preboot(settings: dict) -> None:
         all_stocks = state.master_stocks_cache.copy()
         _total_nxt = sum(1 for v in all_stocks.values() if v.get("nxt_enable"))
         logger.debug("[데이터준비] 시장구분(마스터 캐시) 로드 완료 -- %d종목 (NXT %d)", len(all_stocks), _total_nxt)
-
-        # eligible_stocks_cache 적재 제거: master_stocks_table이 단일 소스
 
         # 캐시선행 완료 플래그 — 앱준비 에서 중복 로드 스킵용
         state.preboot_cache_loaded = True
