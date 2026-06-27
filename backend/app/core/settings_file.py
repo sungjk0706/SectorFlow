@@ -111,8 +111,6 @@ _ENCRYPT_FIELDS: frozenset[str] = frozenset({
     "telegram_bot_token",
 })
 
-# 캐시 제거: engine_state._integrated_system_settings_cache를 단일 소스 진리로 사용
-
 
 async def load_integrated_system_settings() -> dict:
     """

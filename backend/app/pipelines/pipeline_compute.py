@@ -69,10 +69,7 @@ def _has_any_realtime_data(entry: dict) -> bool:
 
 
 async def _update_receive_rate_on_tick(es: ModuleType) -> None:
-    """틱 수신 시 수신율 증분 갱신 (이벤트 기반).
-
-    폴링 제거: 틱 수신 이벤트마다 수신율 재계산.
-    """
+    """틱 수신 시 수신율 증분 갱신 (이벤트 기반)."""
     global _current_receive_rate, _receive_rate_dirty, _receive_rate_event
 
     try:
@@ -507,8 +504,6 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
 
     Phase 1 (1회): 실시간데이터 필드 수신율 임계값 대기 — 통과 후 Phase 2로 전환
     Phase 2: 0.3초 배치 재계산 루프 (틱 기반 증분 재계산)
-
-    폴링 제거: Phase 1은 틱 수신 이벤트 기반으로 수신율 체크
     """
     from backend.app.services.engine_sector_confirm import request_sector_recompute
     global _compute_running, _receive_rate_dirty, _receive_rate_event

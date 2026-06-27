@@ -136,16 +136,11 @@ async def run_engine_loop() -> None:
     _notify_reg_ack()
     _cancel_price_trace_delayed_task()
     state.checked_stocks.clear()
-    # _radar_cnsr_order 삭제: clear() 제거
-    # _sector_stock_layout 제거: state.integrated_system_settings_cache["sector_stock_layout"]로 통합
     state.integrated_system_settings_cache["sector_stock_layout"] = []
     from backend.app.services.engine_account_notify import _rebuild_layout_cache
     _rebuild_layout_cache([])
-    # 실시간 틱 데이터 캐시 초기화 삭제 (_rest_radar_quote_cache.clear() 제거)
-    # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
     state.running = True
     state.engine_loop_ref = asyncio.get_running_loop()
-    # 실시간 틱 데이터 캐시 초기화 삭제 (캐시가 삭제되었으므로 초기화 불필요)
     # 캐시선행 플래그 초기화
     state.preboot_cache_loaded = False
     state.preboot_ready_event.clear()

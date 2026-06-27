@@ -94,8 +94,6 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         es._positions = []
         for entry in es._master_stocks_cache.values():
             entry.pop("_subscribed", None)
-        # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_rest_radar_quote_cache)
-        # _rest_radar_rest_once 제거: 읽기 코드 없음, 기능 부재
         es._snapshot_history.clear()
         es._checked_stocks.clear()
         _rebuild_positions_cache([])
@@ -117,7 +115,6 @@ async def reset_test_data(_: str = Depends(get_current_user)):
             es._auto_trade._daily_buy_spent = 0
             es._auto_trade._bought_today = set()
             es._auto_trade._buy_state.clear()
-        # _sector_buy_last_ts 제거: _master_stocks_cache[code]["_last_buy_ts"]로 통합
         # buy_targets 메모리 초기화 (매수후보 테이블 동기화)
         if es._sector_summary_cache and hasattr(es._sector_summary_cache, 'buy_targets'):
             es._sector_summary_cache.buy_targets = []

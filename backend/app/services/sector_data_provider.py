@@ -45,16 +45,12 @@ async def get_sector_stocks() -> list:
     from backend.app.services.engine_state import state
     import backend.app.services.engine_service as _es_ref
 
-    # eligible_stocks_cache 제거: master_stocks_table이 단일 소스
-    # sector_min_trade_amt 필터링은 _master_stocks_cache의 avg_5d_trade_amount로 수행
-
     # 5일평균거래대금 필터링 (백엔드에서 필터링 수행 - 단일 소스 진리)
     min_avg_amt_eok = float(_es_ref._integrated_system_settings_cache["sector_min_trade_amt"])
 
     merged: dict[str, dict] = {}
 
     # 단일 소스 진리: state.master_stocks_cache가 종목 데이터의 단일 소스
-    # _filtered_sector_codes 제거: sector_stock_layout 의존성 제거
     all_stocks = state.master_stocks_cache.copy()
     for cd in all_stocks.keys():
         e = state.master_stocks_cache.get(cd, {}).copy()
@@ -274,7 +270,6 @@ async def recompute_sector_summary_now() -> None:
             else:
                 entry["_filtered"] = True
 
-        # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
         notify_desktop_sector_scores(force=True)
         await notify_buy_targets_update()
         logger.info("[업종순위] 재계산 완료")
@@ -285,10 +280,7 @@ async def recompute_sector_summary_now() -> None:
 
 
 async def _on_filter_settings_changed() -> None:
-    """필터 설정 변경 시 업종순위 재계산 + WS 전송.
-
-    sector_stock_layout 의존성 제거: 단일 소스(_master_stocks_cache) 기반 필터링
-    """
+    """필터 설정 변경 시 업종순위 재계산 + WS 전송."""
     from backend.app.core.logger import get_logger
     logger = get_logger("engine_sector")
     from backend.app.services.engine_account_notify import (

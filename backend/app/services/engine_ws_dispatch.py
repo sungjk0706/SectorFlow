@@ -58,7 +58,6 @@ _realtime_first_tick_ts_map: dict[str, int] = {}  # {symbol: timestamp (ms)}
 
 def _get_wl_codes_cached() -> set[str]:
     """sector_stock_layout → code Set 캐시. 레이아웃 길이가 바뀔 때만 재생성."""
-    # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
     global _wl_codes_cache, _wl_codes_layout_len
     cur_len = len(engine_state._integrated_system_settings_cache["sector_stock_layout"])
     if cur_len != _wl_codes_layout_len:
@@ -278,7 +277,6 @@ async def _handle_real_01(
     _session = parse_fid290_session(vals)
     _exch_label = {"1": "KRX", "2": "NXT"}.get(_exch, "")
     raw_cd_for_bucket = raw_cd
-    # _pending_stock_details 제거: pend_key 제거, 빈 dict 사용
     pend = {}
     diff = _ws_fid_int(vals, "11", 0) if _ws_fid_key_present(vals, "11") else 0
     from backend.app.services.engine_ws_parsing import parse_change_rate_to_percent
@@ -294,10 +292,6 @@ async def _handle_real_01(
     else:
         _total14 = 0
 
-    # 중복 업데이트 제거: master_stocks_cache는 engine_radar.py._apply_real01_volume_amount_to_radar_rows만 업데이트 (단일 소스 진리)
-    # 캐시 업데이트 삭제 (실시간 틱 데이터 저장 제거)
-    # REST 캐시 pop 로직 삭제 (캐시가 삭제되었으므로 pop 호출 불필요)
-    # _radar_cnsr_order 삭제: 제로-체크 보장 (구독된 종목만 틱 수신)
     nk_px_base = _format_kiwoom_reg_stk_cd(_base_stk_cd(raw_cd))
     if is_0b_tick and strength != "-":
         try:
@@ -306,7 +300,7 @@ async def _handle_real_01(
             logger.warning("[체결강도] %s 파싱 실패 strength=%r: %s", nk_px, strength, e)
     engine_radar_ops.apply_real01_volume_amount_to_radar_rows(
         raw_cd_for_bucket, vals, {},  # _latest_trade_amounts 대신 빈 dict 전달
-        {},  # _pending_stock_details 제거: 빈 dict 전달
+        {},  # 빈 dict 전달
         is_0b_tick=is_0b_tick,
     )  # lock 불필요 — 순차 처리 + GIL 원자적
         # bid_depth, ask_depth 업데이트 제거 (사용처 없음)

@@ -54,9 +54,9 @@ def _broadcast_bootstrap_stage(
 async def _deferred_sector_summary() -> None:
     """업종순위 후순위 계산 — _bootstrap_event.set() 이후 비동기 실행.
 
-    compute_full_sector_summary()는 CPU-bound이므로 asyncio.to_thread()로
-    별도 스레드에서 실행하여 이벤트 루프 블로킹을 방지한다.
-    완료 후 _sector_summary_ready_event.set() + WS 3종 전송.
+    compute_full_sector_summary()를 직접 await 호출.
+    _sector_summary_ready_event.set()은 engine_sector_confirm에서 수행 (여기서 제거됨).
+    완료 후 WS 3종 전송.
     """
     try:
         # 항상 전체 재계산 수행 (스켈레톤 캐시 모드 제거)
@@ -82,12 +82,7 @@ async def _deferred_sector_summary() -> None:
             )
             import backend.app.services.engine_service as _es
             _es._sector_summary_cache = _result
-            # _invalidate_sector_stocks_cache 제거: _sector_stocks_cache 삭제로 더 이상 필요 없음
             logger.debug("[시작] 업종순위 후순위 계산 완료 -- %d개 섹터", len(_result.sectors))
-
-            # 영속성 캐시 저장 삭제 (메모리 캐시로 대체)
-
-            # _sector_summary_ready_event.set() 제거: 업종 요약정보 생성 완료 시 engine_sector_confirm에서 설정
 
             # WS broadcast — 이미 연결된 클라이언트에게 전송
             try:
@@ -165,7 +160,6 @@ async def _login_post_pipeline() -> None:
             else:
                 logger.debug("[시작] 파이프라인 -- 실시간 구독 구간 -- REST 잔고 조회 생략 (실시간 수신, 보유 %d종목)", len(_st._positions))
 
-        # sector_stock_layout 참조 제거: master_stocks_cache._subscribed만으로 구독 상태 초기화
         all_stocks = _st.state.master_stocks_cache.copy()
         stale = {cd for cd, entry in all_stocks.items() if entry.get("_subscribed", False)}
         if stale:
