@@ -56,6 +56,7 @@ class KiwoomRestAPI:
     """
 
     TOKEN_URL = "/oauth2/token"
+    REVOKE_URL = "/oauth2/revoke"
     ACCOUNT_URL = "/api/dostk/acnt"
     API_ID_ACCOUNT = "ka00001"
     API_ID_DEPOSIT = "kt00001"
@@ -280,6 +281,31 @@ class KiwoomRestAPI:
                 continue
         _log.warning("[키움증권]  토큰 발급 3회 모두 실패 (429 초과)")
         return False
+
+    async def revoke_token(self) -> bool:
+        """OAuth2 접근 토큰 폐기 (키움 REST API 명세 au10002). 실패해도 예외 전파 안 함."""
+        if not self._token_info or not self._token_info.token:
+            return True
+        token = self._token_info.token
+        url = f"{self.base_url}{self.REVOKE_URL}"
+        headers = {"Content-Type": "application/json;charset=UTF-8"}
+        body = {
+            "appkey": self.app_key,
+            "secretkey": self.app_secret,
+            "token": token,
+        }
+        try:
+            client = await self._get_client()
+            resp = await client.post(url, headers=headers, json=body, timeout=5)
+            if resp.status_code == 200:
+                _log.info("[키움증권] 토큰 폐기 완료 (au10002)")
+            else:
+                _log.warning("[키움증권] 토큰 폐기 실패 status=%s", resp.status_code)
+        except Exception as e:
+            _log.warning("[키움증권] 토큰 폐기 예외: %s: %s", type(e).__name__, e)
+        finally:
+            self._token_info = None
+        return True
 
     async def get_access_token(self) -> Optional[str]:
         if not await self._ensure_token():

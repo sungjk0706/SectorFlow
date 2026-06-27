@@ -45,6 +45,7 @@ class LsRestAPI:
     """
 
     TOKEN_URL = "/oauth2/token"
+    REVOKE_URL = "/oauth2/revoke"
 
     def __init__(
         self,
@@ -177,6 +178,34 @@ class LsRestAPI:
 
         _log.warning(f"[LS증권REST] 토큰 발급 {max_retries}회 모두 실패")
         return False
+
+    async def revoke_token(self) -> bool:
+        """OAuth2 접근 토큰 폐기 (LS증권 REST API 명세). 실패해도 예외 전파 안 함."""
+        if not self._token_info or not self._token_info.access_token:
+            return True
+        token = self._token_info.access_token
+        url = f"{self.base_url}{self.REVOKE_URL}"
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        body = {
+            "appkey": self.app_key,
+            "appsecretkey": self.app_secret,
+            "token": token,
+            "token_type_hint": "access_token",
+        }
+        try:
+            await self.ensure_client()
+            if self._client is None:
+                return True
+            resp = await self._client.post(url, headers=headers, data=body, timeout=5)
+            if resp.status_code == 200:
+                _log.info("[LS증권REST] 토큰 폐기 완료")
+            else:
+                _log.warning("[LS증권REST] 토큰 폐기 실패 status=%s", resp.status_code)
+        except Exception as e:
+            _log.warning("[LS증권REST] 토큰 폐기 예외: %s: %s", type(e).__name__, e)
+        finally:
+            self._token_info = None
+        return True
 
     async def call_api(
         self,
