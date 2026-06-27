@@ -24,44 +24,41 @@ lsof -ti:5173 | xargs kill -9 2>/dev/null
 rm -f backend/data/server.lock
 rm -f /tmp/sectorflow.lock
 
-# 백엔드 실행
+# 백엔드 + 프론트엔드 병렬 실행 (Frontend-First: UI 셸 즉시 렌더링)
+echo "백엔드 및 프론트엔드 동시 준비 중..."
 .venv/bin/python main.py &
 BACKEND_PID=$!
 
-# 백엔드 준비 대기 (포트 체크 방식)
-echo "백엔드 준비 중..."
-MAX_RETRIES=30
+(cd frontend && npx vite) &
+FRONTEND_PID=$!
+
+# 양쪽 준비 대기 (병렬, 0.5초 간격)
+MAX_RETRIES=60
 RETRY=0
+BACKEND_READY=false
+FRONTEND_READY=false
 while [ $RETRY -lt $MAX_RETRIES ]; do
-    if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+    if [ "$BACKEND_READY" = false ] && curl -s http://localhost:8000/health > /dev/null 2>&1; then
         echo "✅ 백엔드 준비 완료"
+        BACKEND_READY=true
+    fi
+    if [ "$FRONTEND_READY" = false ] && curl -s http://localhost:5173 > /dev/null 2>&1; then
+        echo "✅ 프론트엔드 준비 완료"
+        FRONTEND_READY=true
+    fi
+    if [ "$BACKEND_READY" = true ] && [ "$FRONTEND_READY" = true ]; then
         break
     fi
-    sleep 1
+    sleep 0.5
     RETRY=$((RETRY+1))
 done
 
-if [ $RETRY -eq $MAX_RETRIES ]; then
+if [ "$BACKEND_READY" = false ]; then
     echo "⚠️ 백엔드 타임아웃, 그래도 계속 진행..."
 fi
-
-# 프론트엔드 실행
-cd frontend
-npx vite &
-FRONTEND_PID=$!
-cd ..
-
-# 프론트엔드 준비 대기 (포트 체크)
-echo "프론트엔드 준비 중..."
-RETRY=0
-while [ $RETRY -lt $MAX_RETRIES ]; do
-    if curl -s http://localhost:5173 > /dev/null 2>&1; then
-        echo "✅ 프론트엔드 준비 완료"
-        break
-    fi
-    sleep 1
-    RETRY=$((RETRY+1))
-done
+if [ "$FRONTEND_READY" = false ]; then
+    echo "⚠️ 프론트엔드 타임아웃, 그래도 계속 진행..."
+fi
 
 # 브라우저 열기 (Chrome)
 open -a "Google Chrome" http://localhost:5173
