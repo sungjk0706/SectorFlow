@@ -265,7 +265,6 @@ class WSManager:
             # 업종별종목시세 테이블용: layout 종목 + radar 종목
             from backend.app.services.engine_account_notify import notify_cache
             import backend.app.services.engine_service as _es
-            # _pending_stock_details 제거: _master_stocks_cache의 _subscribed 속성 사용
             is_layout = code in notify_cache.layout_code_set
             is_radar = _es._master_stocks_cache.get(code, {}).get("_subscribed", False)
             return is_layout or is_radar
