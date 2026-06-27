@@ -234,6 +234,14 @@ async def fetch_ka10081_all_stocks_daily_confirmed(
 
     # 이어받기: 이미 완료된 종목은 result에 미리 추가
     if resume_codes:
+        # SSOT: resume_codes를 krx_codes(= confirmed_codes) 기준으로 필터링
+        krx_set = set(krx_codes)
+        valid_resume = resume_codes & krx_set
+        invalid_count = len(resume_codes) - len(valid_resume)
+        if invalid_count > 0:
+            _log.warning("[ka10081-confirmed] resume_codes에서 %d개 비적격 종목 제외", invalid_count)
+        resume_codes = valid_resume
+        starting_count = len(resume_codes)
         _log.info("[ka10081-confirmed] 이어받기 -- %d/%d종목부터 계속", starting_count, total)
         conn = await get_db_connection()
         for code in resume_codes:
@@ -266,11 +274,6 @@ async def fetch_ka10081_all_stocks_daily_confirmed(
     remaining_codes = krx_codes
 
     for idx, cd in enumerate(remaining_codes):
-        # 중단 요청 확인
-        if not getattr(es, "_confirmed_refresh_running_confirmed", True):
-            _log.info("[ka10081-confirmed] 중단 요청 수신 — 다운로드 중단")
-            break
-
         try:
             detail = await fetch_ka10081_daily_price(api, cd, qry_dt, _raw_cd=cd)
             if detail:
@@ -362,11 +365,6 @@ async def fetch_ka10081_all_stocks_5day(
     remaining_codes = krx_codes
 
     for idx, cd in enumerate(remaining_codes):
-        # 중단 요청 확인
-        if not getattr(es, "_confirmed_refresh_running_5d", True):
-            _log.info("[ka10081] 적격종목 5일봉 다운로드 중단 요청 수신")
-            break
-
         try:
             detail = await fetch_ka10081_daily_5d_data(api, cd, qry_dt, _raw_cd=cd)
             if detail:

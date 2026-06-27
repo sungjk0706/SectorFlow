@@ -186,7 +186,7 @@ async def get_stock_classification(_: str = Depends(get_current_user)):
         if not filter_summary:
             from backend.app.core.sector_stock_cache import load_filter_summary_cache
             filter_summary = await load_filter_summary_cache()
-            state._latest_filter_summary = filter_summary
+            state.state.latest_filter_summary = filter_summary
     except Exception:
         pass
 
@@ -289,11 +289,11 @@ async def move_stocks(body: MoveStocksRequest, _: str = Depends(get_current_user
 
 @router.post("/trigger-confirmed-download")
 async def trigger_confirmed_download(_: str = Depends(get_current_user)):
-    """수동 매매적격종목 확정시세 다운로드 실행"""
+    """수동 1일봉챠트 시세 다운로드 실행"""
     try:
         from backend.app.services import engine_service
         if getattr(engine_service, "_confirmed_refresh_running", False):
-            return {"ok": False, "error": "확정시세 다운로드가 이미 진행 중입니다."}
+            return {"ok": False, "error": "1일봉챠트 시세 다운로드가 이미 진행 중입니다."}
 
         # _pending_stock_details 제거: clear() 제거
         # _sector_stock_layout 제거: _integrated_system_settings_cache["sector_stock_layout"]로 통합
@@ -303,10 +303,10 @@ async def trigger_confirmed_download(_: str = Depends(get_current_user)):
         # eligible_stocks_cache 제거: master_stocks_table이 단일 소스
         from backend.app.services.market_close_pipeline import fetch_confirmed_data_only
         asyncio.create_task(fetch_confirmed_data_only())
-        _log.info("[업종관리] 수동 매매적격종목 확정시세 다운로드 시작")
+        _log.info("[업종관리] 수동 1일봉챠트 시세 다운로드 시작")
         return {"ok": True}
     except Exception as e:
-        _log.error("[업종관리] 수동 매매적격종목 확정시세 다운로드 실패: %s", e)
+        _log.error("[업종관리] 수동 1일봉챠트 시세 다운로드 실패: %s", e)
         return {"ok": False, "error": str(e)}
 
 

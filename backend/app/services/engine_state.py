@@ -22,6 +22,7 @@ class EngineState:
 
         # ── 엔진 상태 ───────────────────────────────────────────────────────────
         self.running = False
+        self.shutdown_requested: bool = False
         self.connector_manager: "ConnectorManager | None" = None  # type: ignore[name-defined]
         self.kiwoom_connector: KiwoomConnector | None = None
         self.kiwoom_auth_provider: KiwoomAuthProvider | None = None

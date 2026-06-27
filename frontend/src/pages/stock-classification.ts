@@ -62,10 +62,6 @@ let unsubHot: (() => void) | null = null
 
 // UI 참조 — Indicator Bar
 let indicatorLabel: HTMLElement | null = null
-let btnCancel: HTMLElement | null = null
-
-// 중단 버튼 내부 참조 (null 체크 없이 사용)
-let _btnCancelInternal: HTMLElement | null = null
 
 // UI 참조 — Scheduler (moved to sector-scheduler.ui.ts)
 // Staging / Selection 상태
@@ -418,37 +414,20 @@ function buildTripleHeader(): void {
 
   const btn1 = document.createElement('button')
   Object.assign(btn1.style, btnStyle)
-  btn1.textContent = '⬇️ 매매적격종목확정시세 다운로드'
+  btn1.textContent = '⬇️ 1일봉챠트 시세 다운로드'
   btn1.addEventListener('mouseenter', () => btn1.style.background = '#157347')
   btn1.addEventListener('mouseleave', () => btn1.style.background = '#198754')
   btn1.addEventListener('click', () => onTriggerConfirmedDownload())
 
   const btn2 = document.createElement('button')
   Object.assign(btn2.style, btnStyle)
-  btn2.textContent = '⬇️ 5일봉거래대금,고가 다운로드'
+  btn2.textContent = '⬇️ 5일봉챠트 거래대금,고가 다운로드'
   btn2.addEventListener('mouseenter', () => btn2.style.background = '#157347')
   btn2.addEventListener('mouseleave', () => btn2.style.background = '#198754')
   btn2.addEventListener('click', () => onTrigger5dDownload())
 
-  const btnCancelEl = document.createElement('button')
-  Object.assign(btnCancelEl.style, {
-    ...btnStyle,
-    background: '#dc3545',
-    color: '#fff'
-  })
-  btnCancelEl.textContent = '⏹️ 중단'
-  btnCancelEl.addEventListener('mouseenter', () => btnCancelEl.style.background = '#b02a37')
-  btnCancelEl.addEventListener('mouseleave', () => btnCancelEl.style.background = '#dc3545')
-  btnCancelEl.addEventListener('click', () => onCancelDownload())
-  btnCancelEl.style.display = 'none' // 초기에는 숨김
-
-  // 모듈 수준 변수에 할당
-  btnCancel = btnCancelEl
-  _btnCancelInternal = btnCancelEl
-
   buttonContainer.appendChild(btn1)
   buttonContainer.appendChild(btn2)
-  buttonContainer.appendChild(btnCancel)
   indicatorLabel = document.createElement('span')
   Object.assign(indicatorLabel.style, {
     fontSize: FONT_SIZE.body,
@@ -494,7 +473,7 @@ function updateIndicatorBar(): void {
 
 // buildSchedulerCard removed.
 async function onTriggerConfirmedDownload(): Promise<void> {
-  const label = '매매적격종목확정시세 다운로드'
+  const label = '1일봉챠트 시세 다운로드'
   const endpoint = '/api/stock-classification/trigger-confirmed-download'
 
   // 엔진 재시작 완료 확인
@@ -519,18 +498,13 @@ async function onTriggerConfirmedDownload(): Promise<void> {
   try {
     const res = await apiPost<StockClassificationMutationResponse>(endpoint, {})
     handleMutationResult(res)
-    // 중단 버튼 표시
-    if (_btnCancelInternal) {
-      _btnCancelInternal.style.display = ''
-      _btnCancelInternal.dataset.downloadType = 'confirmed'
-    }
   } catch {
     toastResult({ ok: false })
   }
 }
 
 async function onTrigger5dDownload(): Promise<void> {
-  const label = '5일봉거래대금,고가 다운로드'
+  const label = '5일봉챠트 거래대금,고가 다운로드'
   const endpoint = '/api/stock-classification/trigger-5d-download'
 
   // 엔진 재시작 완료 확인
@@ -555,42 +529,8 @@ async function onTrigger5dDownload(): Promise<void> {
   try {
     const res = await apiPost<StockClassificationMutationResponse>(endpoint, {})
     handleMutationResult(res)
-    // 중단 버튼 표시
-    if (_btnCancelInternal) {
-      _btnCancelInternal.style.display = ''
-      _btnCancelInternal.dataset.downloadType = '5d'
-    }
   } catch {
     toastResult({ ok: false })
-  }
-}
-
-async function onCancelDownload(): Promise<void> {
-  const downloadType = _btnCancelInternal?.dataset.downloadType
-  if (!downloadType) {
-    toastResult({ ok: false, error: '다운로드 중인 작업이 없습니다.' })
-    return
-  }
-
-  try {
-    // WS 클라이언트 사용
-    const { wsClient } = await import('../api/ws')
-    if (wsClient.isConnected()) {
-      wsClient.send(JSON.stringify({
-        type: 'cancel-download',
-        download_type: downloadType
-      }))
-      toastResult({ ok: true })
-      // 중단 버튼 숨김
-      if (_btnCancelInternal) {
-        _btnCancelInternal.style.display = 'none'
-        _btnCancelInternal.dataset.downloadType = ''
-      }
-    } else {
-      toastResult({ ok: false, error: 'WebSocket 연결이 없습니다.' })
-    }
-  } catch {
-    toastResult({ ok: false, error: '중단 요청 전송 실패' })
   }
 }
 

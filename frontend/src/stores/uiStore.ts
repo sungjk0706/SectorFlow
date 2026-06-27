@@ -24,7 +24,7 @@ export interface UIState {
   backfilling: boolean
 
   /* ── 백그라운드 진행률 ── */
-  avgAmtProgress: { current: number; total: number; done: boolean; message?: string; eta_sec?: number; status?: string; step?: number } | null
+  avgAmtProgress: { current: number; total: number; done: boolean; message?: string; eta_sec?: number; status?: string; step?: number; failed_count?: number } | null
 
   /* ── 부트스트랩 단계 ── */
   bootstrapStage: { stage_id: number; stage_name: string; total: number; progress?: { current: number; total: number } } | null
@@ -89,7 +89,7 @@ export function setEngineReady(v: boolean): void {
   uiStore.setState({ engineReady: v })
 }
 
-export function applyAvgAmtProgress(data: { current: number; total: number; done: boolean; message?: string; eta_sec?: number; status?: string; step?: number }): void {
+export function applyAvgAmtProgress(data: { current: number; total: number; done: boolean; message?: string; eta_sec?: number; status?: string; step?: number; failed_count?: number }): void {
   if (data.done && (data.status === 'completed' || data.status === 'confirmed')) {
     // 완료: 3초 후 자동 숨김
     uiStore.setState({ avgAmtProgress: data })
