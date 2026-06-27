@@ -132,9 +132,11 @@ async def _load_caches_preboot(settings: dict) -> None:
         await recompute_sector_summary_now()
 
         # 앱준비 완료 → 기동 시 스킵된 장마감 파이프라인 데이터동기화중 재시도
+        # 백그라운드 실행: data_ready_event / bootstrap_event 이미 set() 상태이므로
+        # WS 핸들러가 정상 동작하며, catch-up이 블로킹하지 않음
         try:
             from backend.app.services.daily_time_scheduler import retry_pipeline_catchup_after_bootstrap
-            await retry_pipeline_catchup_after_bootstrap()
+            asyncio.create_task(retry_pipeline_catchup_after_bootstrap())
         except Exception as _catchup_err:
             logger.warning("[데이터준비] 데이터동기화중 재시도 실패(무시): %s", _catchup_err, exc_info=True)
 
