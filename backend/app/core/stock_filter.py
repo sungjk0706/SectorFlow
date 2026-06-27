@@ -43,7 +43,6 @@ _BLOCKED_STATE_KEYWORDS: list[str] = [
     "투자위험",
     "증거금100%",
     "증거금50%",
-    "증거금20%",
 ]
 
 # orderWarning 값별 사유 매핑 ("0" = 정상)
