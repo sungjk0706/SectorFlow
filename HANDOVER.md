@@ -82,6 +82,18 @@
   - **수정**: `run_engine_loop`에서 제거 (app.py에서 이미 초기화됨)
 - **검증**: py_compile 성공, npm run build 성공
 
+### 10. 잘못된 주석 수정 및 코드 묘비 주석 제거 (완료)
+- **잘못된 주석 수정 (3건)**
+  - `engine_bootstrap.py:55-59` — `asyncio.to_thread()`로 실행한다는 docstring → 실제는 직접 `await` 호출. `_sector_summary_ready_event.set()` 제거됨 반영
+  - `sector_calculator.py:222` — `buy_widget 폴링에서 호출` → 존재하지 않는 `buy_widget` 참조 제거, 실제 호출자(engine_bootstrap, engine_sector_confirm, sector_data_provider, telegram_bot) 이벤트 기반 호출로 수정
+  - `engine_snapshot.py:290-292` — `REAL 01 체결 캐시 기준 현재가` → 실제 항상 0 반환하는 스텁으로 수정
+- **코드 묘비 주석 제거 (20개 파일, 65건+)**
+  - 이미 삭제된 함수/변수를 참조하는 `제거:` 계열 주석 전부 제거
+  - `_invalidate_sector_stocks_cache 제거`, `_pending_stock_details 제거`, `_sector_stock_layout 제거`, `get_buy_targets_snapshot 제거`, `_compute_filtered_codes 제거`, `eligible_stocks_cache 제거`, `_buy_targets_snapshot_cache 제거`, `_rest_radar_rest_once 제거`, `폴링 제거`, `실시간 틱 데이터 캐시 삭제` 등
+- **백업 파일 제거**: `backend/app/services/.!56500!engine_loop.py` 삭제
+- **검증**: py_compile 19개 파일 전부 통과, `제거:` 잔여 3건(정상—실제 동작 설명), `buy_widget` 잔여 0건
+- **커밋**: `6116bf6` — 21 files changed, 9 insertions(+), 265 deletions(-)
+
 ## 현재 상태
 - 모든 수정 완료, py_compile + tsc + build 검증 통과
 - 런타임 확인 완료: Frontend-First 기동 — 백엔드/프론트엔드 병렬 시작, Health 즉시 응답, WS 3채널 즉시 연결 (05:32 기동 로그)
@@ -103,3 +115,4 @@
 ## 미해결 문제
 - LS 토큰 폐기 ConnectTimeout: 주말/비거래 시간대 LS증권 API 서버 접근 불가 — 코드 버그 아님, 거래 시간에 재확인 필요
 - 종목수 1359 → 1361 불일치: 별도 조사 필요 (이전 세션 메모리 참고)
+- TODO 주석 7건 (개발 완료 후 토큰 검증 재활성화 시 처리): `deps.py:16`, `ws.py:159`, `ws_orders.py:23`, `ws_settings.py:23`, `client.ts:18,29,40,66`, `risk_manager.py:64`
