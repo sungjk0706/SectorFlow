@@ -792,7 +792,9 @@ async def _run_confirmed_pipeline(
                 for cd in keys_to_delete:
                     _st._master_stocks_cache.pop(cd, None)
                 for r in records:
-                    if r.code in confirmed_codes and r.code in _st._master_stocks_cache:
+                    if r.code in confirmed_codes:
+                        if r.code not in _st._master_stocks_cache:
+                            _st._master_stocks_cache[r.code] = {}
                         _st._master_stocks_cache[r.code]["market"] = r.market_code
                         _st._master_stocks_cache[r.code]["nxt_enable"] = bool(r.nxt_enable)
 

@@ -118,7 +118,6 @@ async def _load_caches_preboot(settings: dict) -> None:
             settlement_engine.init(initial_deposit)
             logger.debug("[데이터준비] Settlement Engine 초기화 완료 (테스트모드)")
 
-        # 업종순위 계산 초기화 제거 (수신율 체크 후 pipeline_compute.py에서 재계산)
         import backend.app.services.engine_account_notify as _an
         _an._prev_scores_cache = []
 
@@ -126,6 +125,11 @@ async def _load_caches_preboot(settings: dict) -> None:
         state.bootstrap_event.set()
 
         state.data_ready_event.set()
+
+        # 업종순위 캐시 초기 계산 — 기동 시 무조건 1회 수행
+        # (WS 구간 내: 이후 _login_post_pipeline이 재계산, WS 구간 외: 유일한 계산 경로)
+        from backend.app.services.sector_data_provider import recompute_sector_summary_now
+        await recompute_sector_summary_now()
 
         # 앱준비 완료 → 기동 시 스킵된 장마감 파이프라인 데이터동기화중 재시도
         try:
