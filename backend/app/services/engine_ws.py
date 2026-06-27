@@ -40,7 +40,6 @@ async def _ws_send_reg_unreg_and_wait_ack(payload: dict) -> tuple[bool, str]:
         
         sent = await _sender.send_message(payload)
         if not sent:
-            await asyncio.sleep(state.REG_POST_ACK_GAP_SEC)
             return False, ""
 
         try:
@@ -53,7 +52,6 @@ async def _ws_send_reg_unreg_and_wait_ack(payload: dict) -> tuple[bool, str]:
                 "[연결] 구독 응답 대기 시간 초과(10s) -- trnm=%s",
                 payload.get("trnm"),
             )
-            await asyncio.sleep(state.REG_POST_ACK_GAP_SEC)
             return False, ""
 
         rc = state.reg_ack_return_code

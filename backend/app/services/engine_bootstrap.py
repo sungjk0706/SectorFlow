@@ -148,10 +148,6 @@ async def _login_post_pipeline() -> None:
             logger.info("[시작] 파이프라인 -- 테스트모드 -- REST 잔고 조회 생략 (가상잔고 사용)")
         elif not _in_ws_window:
             if not _st._account_rest_bootstrapped:
-                for _wait in range(3):
-                    if _st._rest_api is not None:
-                        break
-                    await asyncio.sleep(1.0)
                 logger.info("[시작] 파이프라인 -- REST 잔고 선행 조회 시작")
                 from backend.app.services.engine_service import _update_account_memory
                 await _update_account_memory(_st._integrated_system_settings_cache)
@@ -160,10 +156,6 @@ async def _login_post_pipeline() -> None:
                 logger.info("[시작] 파이프라인 -- 잔고 이미 앱준비 완료 -- 재조회 생략 (보유 %d종목)", len(_st._positions))
         else:
             if not _st._positions and not _st._account_rest_bootstrapped:
-                for _wait in range(3):
-                    if _st._rest_api is not None:
-                        break
-                    await asyncio.sleep(1.0)
                 logger.debug("[시작] 파이프라인 -- 실시간 구독 구간이나 포지션 미적재 -- REST 잔고 1회 조회")
                 from backend.app.services.engine_service import _update_account_memory
                 await _update_account_memory(_st._integrated_system_settings_cache)
