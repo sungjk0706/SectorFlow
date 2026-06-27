@@ -99,8 +99,10 @@ async def _deferred_sector_summary() -> None:
                 from backend.app.web.ws_manager import ws_manager
                 _client_cnt = ws_manager.client_count
                 notify_desktop_sector_scores(force=True)
-                await notify_desktop_sector_stocks_refresh()
-                await notify_buy_targets_update()
+                await asyncio.gather(
+                    notify_desktop_sector_stocks_refresh(),
+                    notify_buy_targets_update(),
+                )
                 logger.debug("[시작] 업종순위 화면전송 완료 (접속화면=%d)", _client_cnt)
             except Exception as e:
                 logger.error("[시작] UI 초기 전송 실패: %s", e, exc_info=True)
