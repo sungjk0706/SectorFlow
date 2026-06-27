@@ -1,5 +1,7 @@
 from __future__ import annotations
+from dataclasses import dataclass, field
 from typing import Optional
+import re
 # -*- coding: utf-8 -*-
 """
 매매 부적격 종목 필터 — ka10099 응답 기반 입구 컷.
@@ -29,14 +31,19 @@ _MARKET_CODE_LABELS: dict[str, str] = {
 # state 필드에서 차단할 키워드 (부분 일치, '|' 구분 복합 상태 대응)
 _BLOCKED_STATE_KEYWORDS: list[str] = [
     "관리종목",
+    "관리(감리)",
+    "감리",
     "거래정지",
     "불성실공시",
-    "상장폐지",
     "상장폐지예고",
+    "상장폐지",
     "정리매매",
+    "단기과열",
     "투자경고",
     "투자위험",
     "증거금100%",
+    "증거금50%",
+    "증거금20%",
 ]
 
 # orderWarning 값별 사유 매핑 ("0" = 정상)
@@ -47,6 +54,158 @@ _ORDER_WARNING_REASONS: dict[str, str] = {
     "4": "투자위험",
     "5": "투자경고",
 }
+
+
+@dataclass
+class StockFilterEvaluation:
+    code: str
+    excluded: bool
+    primary_reason: str = ""
+    reasons: list[str] = field(default_factory=list)
+    state_flags: list[str] = field(default_factory=list)
+    diagnostic_flags: list[str] = field(default_factory=list)
+    parsed_fields: dict[str, str | int | bool | None] = field(default_factory=dict)
+
+
+def _split_state_flags(state_raw: str) -> list[str]:
+    state = str(state_raw or "").strip()
+    if not state or state == "정상":
+        return []
+    parts = [p.strip() for p in re.split(r"[|/,]", state) if p.strip()]
+    return parts or [state]
+
+
+def _positive_int_string(value: object) -> tuple[bool, int | None]:
+    raw = str(value or "").strip()
+    if not raw:
+        return False, None
+    normalized = raw.replace(",", "")
+    if normalized.startswith("+"):
+        normalized = normalized[1:]
+    if not normalized.isdigit():
+        return False, None
+    parsed = int(normalized)
+    return parsed > 0, parsed
+
+
+def _stock_name(item: dict) -> str:
+    return str(item.get("hname") or item.get("stk_nm") or item.get("name") or "").strip()
+
+
+def _preferred_reason(name_raw: str, company_class: str) -> str:
+    clean_name = re.sub(r"\(.*?\)$", "", name_raw).strip()
+    suffixes = ["우선주", "우B", "우C", "우D", "우E", "우F", "우"]
+    for suffix in suffixes:
+        if clean_name.endswith(suffix) and len(clean_name) > len(suffix) + 1:
+            return f"우선주(종목명)-{suffix}"
+    upper_name = clean_name.upper()
+    upper_class = company_class.upper()
+    for keyword in ("PREFERRED", "PRF"):
+        if keyword in upper_name or keyword in upper_class:
+            return f"우선주(영문표기)-{keyword}"
+    if "우선" in company_class:
+        return f"우선주(회사분류)-{company_class}"
+    return ""
+
+
+def evaluate_stock_filter(item: dict, stk_cd: str) -> StockFilterEvaluation:
+    reasons: list[str] = []
+    diagnostic_flags: list[str] = []
+    mc = str(item.get("marketCode") or "").strip()
+    market_name = str(item.get("marketName") or "").strip()
+    ow = str(item.get("orderWarning") or "0").strip()
+    state_raw = str(item.get("state") or "").strip()
+    name_raw = _stock_name(item)
+    company_class = str(item.get("companyClassName") or "").strip()
+    audit = str(item.get("auditInfo") or "").strip()
+    list_count_raw = str(item.get("listCount") or "").strip()
+    last_price_raw = str(item.get("lastPrice") or "").strip()
+    reg_day = str(item.get("regDay") or "").strip()
+    nxt_enable = str(item.get("nxtEnable") or "").strip().upper()
+
+    if mc and mc not in _ALLOWED_MARKET_CODES:
+        label = _MARKET_CODE_LABELS.get(mc, mc)
+        reasons.append(f"marketCode={mc}({label})")
+
+    non_equity_keywords = ["etf", "etn", "elw", "리츠", "reit", "k-otc", "k otc", "kots", "코넥스"]
+    market_name_lower = market_name.lower()
+    name_lower = name_raw.lower()
+    company_class_lower = company_class.lower()
+    for kw in non_equity_keywords:
+        if kw in market_name_lower or kw in name_lower or kw in company_class_lower:
+            reasons.append(f"비주식분류={kw}")
+            break
+
+    if ow != "0":
+        reasons.append(_ORDER_WARNING_REASONS.get(ow, f"orderWarning={ow}"))
+
+    state_flags = _split_state_flags(state_raw)
+    for part in state_flags:
+        for kw in _BLOCKED_STATE_KEYWORDS:
+            if kw in part:
+                reasons.append(f"state={kw}")
+
+    if "스팩" in name_raw or "spac" in name_lower:
+        reasons.append("스팩")
+
+    preferred = _preferred_reason(name_raw, company_class)
+    if preferred:
+        reasons.append(preferred)
+    if stk_cd and stk_cd.isdigit() and stk_cd[-1] != "0" and not preferred:
+        diagnostic_flags.append("우선주의심(코드끝자리)")
+
+    if audit and audit != "정상":
+        reasons.append(f"감리={audit}")
+
+    list_count_ok, list_count_value = _positive_int_string(list_count_raw)
+    if not list_count_ok:
+        reasons.append(f"상장주식수비정상={list_count_raw or 'EMPTY'}")
+
+    last_price_ok, last_price_value = _positive_int_string(last_price_raw)
+    if not last_price_ok:
+        reasons.append(f"전일종가비정상={last_price_raw or 'EMPTY'}")
+
+    if nxt_enable == "N":
+        diagnostic_flags.append("NXT불가")
+
+    if reg_day and len(reg_day) == 8:
+        try:
+            from datetime import datetime, timedelta
+            reg_date = datetime.strptime(reg_day, "%Y%m%d").date()
+            today = get_kst_today()
+            if today - reg_date < timedelta(days=90):
+                import logging
+                _filter_log = logging.getLogger(__name__)
+                days_since_listing = (today - reg_date).days
+                _filter_log.warning("[필터경고] 신규상장 종목: %s (상장 %d일 경과)", stk_cd, days_since_listing)
+                diagnostic_flags.append(f"신규상장={days_since_listing}일")
+        except ValueError:
+            diagnostic_flags.append(f"상장일비정상={reg_day}")
+
+    primary_reason = reasons[0] if reasons else ""
+    return StockFilterEvaluation(
+        code=stk_cd,
+        excluded=bool(reasons),
+        primary_reason=primary_reason,
+        reasons=list(dict.fromkeys(reasons)),
+        state_flags=state_flags,
+        diagnostic_flags=diagnostic_flags,
+        parsed_fields={
+            "marketCode": mc,
+            "marketName": market_name,
+            "orderWarning": ow,
+            "state": state_raw,
+            "name": name_raw,
+            "companyClassName": company_class,
+            "auditInfo": audit,
+            "listCount": list_count_raw,
+            "listCountValue": list_count_value,
+            "lastPrice": last_price_raw,
+            "lastPriceValue": last_price_value,
+            "regDay": reg_day,
+            "nxtEnable": nxt_enable,
+        },
+    )
 
 
 def is_excluded(item: dict, stk_cd: str) -> tuple[bool, str]:
@@ -65,106 +224,8 @@ def is_excluded(item: dict, stk_cd: str) -> tuple[bool, str]:
     (excluded: bool, reason: str)
         excluded=True 이면 매매 부적격. reason 에 사유 문자열.
     """
-    # ── 0) marketCode 화이트리스트 체크 ──────────────────────────────
-    mc = str(item.get("marketCode") or "").strip()
-    if mc and mc not in _ALLOWED_MARKET_CODES:
-        label = _MARKET_CODE_LABELS.get(mc, mc)
-        return True, f"marketCode={mc}({label})"
-
-    # ── 0-1) marketName 비주식 분류 체크 ─────────────────────────────
-    market_name = str(item.get("marketName") or "").strip().lower()
-    non_equity_keywords = ["etf", "etn", "elw", "리츠", "reit", "k-otc", "kots", "코넥스"]
-    for kw in non_equity_keywords:
-        if kw in market_name:
-            return True, f"비주식분류={market_name}"
-
-    # ── 1) orderWarning 체크 ─────────────────────────────────────────
-    ow = str(item.get("orderWarning") or "0").strip()
-    if ow != "0":
-        reason = _ORDER_WARNING_REASONS.get(ow, f"orderWarning={ow}")
-        return True, reason
-
-    # ── 2) state 키워드 체크 (복합 상태 '|' 구분 대응) ────────────────
-    state_raw = str(item.get("state") or "").strip()
-    if state_raw:
-        for part in state_raw.split("|"):
-            part = part.strip()
-            for kw in _BLOCKED_STATE_KEYWORDS:
-                if kw in part:
-                    return True, f"state={part}"
-
-    # ── 3) 스팩(SPAC) 및 우선주 종목명 파싱 ─────────────────────────────────
-    name_raw = str(
-        item.get("hname") or item.get("stk_nm") or item.get("name") or ""
-    ).strip()
-
-    if "스팩" in name_raw:
-        return True, "스팩"
-
-    # ── 4) 우선주 체크 ──────────────────────────────────────────────────
-    # 기존 숫자 6자리 코드인 경우: 끝자리가 0이 아니면 우선주
-    if stk_cd and stk_cd.isdigit() and stk_cd[-1] != "0":
-        return True, "우선주"
-    
-    # ── 2024년부터 도입된 영문 혼용 코드 (단축코드 6번째 자리에 알파벳 혼용 가능)
-    # 이제 K, M, L 등 특정 알파벳이 일반 종목에도 배정될 수 있으므로,
-    # 끝자리 알파벳만으로 우선주를 억울하게 입구컷 당하지 않도록 종목명으로 판별합니다.
-    if stk_cd and not stk_cd.isdigit():
-        import re
-        clean_name = re.sub(r'\(.*?\)$', '', name_raw).strip()
-        suffixes = ["우선주", "우", "우B", "우C", "우D", "우E", "우F"]
-        matched_suffix = None
-        for suffix in suffixes:
-            if clean_name.endswith(suffix):
-                matched_suffix = suffix
-                break
-
-        if matched_suffix:
-            # 우선주 이름은 항상 [회사명] + [우선주접미사] 형태입니다.
-            # 회사명은 최소 2글자 이상이므로, 접미사를 제외한 부분이 최소 2글자 이상이어야 합니다.
-            # 예: "CJ우" -> "CJ" + "우" (길이 3 > 2), "성우" -> "성" + "우" (길이 2 <= 2, 성은 1글자이므로 무시)
-            suffix_len = len(matched_suffix)
-            if len(clean_name) > suffix_len + 1:
-                return True, f"우선주(영문)-{matched_suffix}"
-
-    # ── 4-1) companyClassName 우선주 판별 (코스닥만 존재) ─────────────
-    company_class = str(item.get("companyClassName") or "").strip()
-    if company_class and "우선주" in company_class:
-        return True, f"우선주(회사분류)-{company_class}"
-
-    # ── 5) auditInfo 감리 체크 ───────────────────────────────────────
-    audit = str(item.get("auditInfo") or "").strip()
-    if audit and audit != "정상":
-        return True, f"감리={audit}"
-
-    # ── 6) listCount 비정상값 체크 ─────────────────────────────────────
-    list_count = str(item.get("listCount") or "").strip()
-    if list_count and (list_count == "0000000000000000" or list_count == "0"):
-        return True, f"상장주식수비정상={list_count}"
-
-    # ── 7) lastPrice 비정상값 체크 ────────────────────────────────────
-    last_price = str(item.get("lastPrice") or "").strip()
-    if last_price and (last_price == "00000000" or last_price == "0"):
-        return True, f"전일종가비정상={last_price}"
-
-    # ── 8) regDay 신규상장 체크 (경고 등급) ─────────────────────────────
-    reg_day = str(item.get("regDay") or "").strip()
-    if reg_day and len(reg_day) == 8:
-        try:
-            from datetime import datetime, timedelta
-            reg_date = datetime.strptime(reg_day, "%Y%m%d").date()
-            today = get_kst_today()
-            # 상장 후 3개월 이내
-            if today - reg_date < timedelta(days=90):
-                # 경고 로그만 출력 (차단하지 않음)
-                import logging
-                _filter_log = logging.getLogger(__name__)
-                days_since_listing = (today - reg_date).days
-                _filter_log.warning("[필터경고] 신규상장 종목: %s (상장 %d일 경과)", stk_cd, days_since_listing)
-        except ValueError:
-            pass
-
-    return False, ""
+    result = evaluate_stock_filter(item, stk_cd)
+    return result.excluded, result.primary_reason
 
 
 def is_excluded_with_ka10100(

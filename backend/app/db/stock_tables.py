@@ -300,16 +300,19 @@ async def load_progress_cache(date: str, all_codes: list[str], ws_subscribe_star
         rows = await cursor.fetchall()
         
         completed = {row["code"] for row in rows}
-        
-        # 종목 목록 불일치 확인
-        if completed and set(all_codes) != set(all_codes):
-            # 상장폐지/신규상장 발생 시 이어받기 무시
-            _log.info("[progress_cache] 종목 목록 불일치 (상장폐지/신규상장 발생)")
+
+        # SSOT: completed가 all_codes(= confirmed_codes) 외 코드를 포함하면 이어받기 무시
+        all_codes_set = set(all_codes)
+        if completed and not completed.issubset(all_codes_set):
+            _log.info("[progress_cache] 종목 목록 불일치 (상장폐지/신규상장 발생) — 이어받기 무시")
             return set()
-        
+
+        # SSOT: all_codes 기준으로만 필터링
+        completed = completed & all_codes_set
+
         if completed:
             _log.info("[progress_cache] master_stocks_table 로드 완료 -- %d/%d종목", len(completed), len(all_codes))
-        
+
         return completed
     except Exception as e:
         _log.warning("[progress_cache] master_stocks_table 로드 실패: %s", e)

@@ -44,14 +44,13 @@ async def _cache_and_bootstrap(settings: dict) -> None:
 
 
 async def _get_token_async(router) -> str | None:
-    """동기 토큰 발급을 asyncio.to_thread()로 래핑하여 이벤트 루프 블로킹 방지.
+    """토큰 발급 — async def get_access_token()을 await로 직접 호출.
 
-    router.auth.get_access_token()은 내부에서 self._lock으로 토큰 캐시를 보호하며,
-    requests.post() 동기 HTTP 호출을 수행한다 [출처: kiwoom_rest.py:86-89, 195].
-    실패 시 None 반환 + 경고 로그 (스냅샷 전용 모드) [출처: engine_loop.py:131-133].
+    router.auth.get_access_token()은 async def이며 httpx.AsyncClient로 비동기 HTTP 호출을 수행한다.
+    실패 시 None 반환 + 경고 로그 (스냅샷 전용 모드).
     """
     try:
-        token = await asyncio.to_thread(router.auth.get_access_token)
+        token = await router.auth.get_access_token()
         return token
     except Exception as e:
         logger.warning("[연결] 토큰 발급 예외: %s. 확정데이터 전용 모드로 기동.", e, exc_info=True)
@@ -71,7 +70,7 @@ async def _get_all_tokens_async(router) -> None:
 
     async def _fetch_one(broker_id: str, auth_provider) -> tuple[str, str | None]:
         try:
-            token = await asyncio.to_thread(auth_provider.get_access_token)
+            token = await auth_provider.get_access_token()
             from backend.app.core.broker_registry import BROKER_DISPLAY_NAMES
             disp = BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper())
             logger.info("[연결] %s 토큰 발급 완료", disp)
@@ -200,13 +199,17 @@ async def run_engine_loop() -> None:
         _t_parallel_start = time.perf_counter()
 
         state.broker_spec = await _load_broker_spec_async(broker_nm, settings)
-        await _get_all_tokens_async(router)
-        
-        # 가상 예수금 로컬 DB 복원 (테스트모드 기동 시 주문가능금액 0원 방지)
+
+        # 캐시 로드와 토큰 발급은 독립 파이프라인 — 병렬 실행
+        # 토큰 발급 지연/실패가 DB 기반 데이터 표시를 차단하지 않음
+        await asyncio.gather(
+            _cache_and_bootstrap(settings),
+            _get_all_tokens_async(router),
+        )
+
+        # 가상 예수금 로컬 DB 복원 (init()은 _cache_and_bootstrap 내부에서 완료)
         from backend.app.services import settlement_engine
         await settlement_engine.restore_state()
-
-        await _cache_and_bootstrap(settings)
 
         _t_parallel_end = time.perf_counter()
         logger.info(
@@ -387,17 +390,26 @@ async def run_engine_loop() -> None:
         state.kiwoom_connector = None
         # 증권사별 REST API 클라이언트 정리
         if state.kiwoom_rest_api:
+            try:
+                await state.kiwoom_rest_api.revoke_token()
+            except Exception as e:
+                logger.warning("[엔진] 키움 토큰 폐기 실패: %s", e)
             if hasattr(state.kiwoom_rest_api, '_reset_client'):
                 await state.kiwoom_rest_api._reset_client()
             elif hasattr(state.kiwoom_rest_api, '_client') and state.kiwoom_rest_api._client:
                 await state.kiwoom_rest_api._client.aclose()
             state.kiwoom_rest_api = None
         if state.ls_rest_api:
+            try:
+                await state.ls_rest_api.revoke_token()
+            except Exception as e:
+                logger.warning("[엔진] LS 토큰 폐기 실패: %s", e)
             if hasattr(state.ls_rest_api, '_reset_client'):
                 await state.ls_rest_api._reset_client()
             elif hasattr(state.ls_rest_api, '_client') and state.ls_rest_api._client:
                 await state.ls_rest_api._client.aclose()
             state.ls_rest_api = None
+        state.broker_tokens.clear()
         state.running = False
         from backend.app.services.engine_service import broadcast_engine_status, log_message, get_current_kst_time
         broadcast_engine_status()

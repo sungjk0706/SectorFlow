@@ -209,8 +209,9 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
             break
           case 'partial': {
             progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
-            msg = `전종목 5일 데이터 ${Math.round(progressPct)}%만 있음`
-            bg = '#fffde7'; color = '#f57f17'
+            const failedCount = (avgAmtProgress as Record<string, unknown>).failed_count as number || 0
+            msg = avgAmtProgress.message || `⚠️ 다운로드 부분 완료 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}) — ${failedCount}종목 실패`
+            bg = '#fff3e0'; color = '#e65100'
             break
           }
           case 'cache_deleted':

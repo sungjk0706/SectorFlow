@@ -262,6 +262,11 @@ function main(): void {
     shell.setOverlay(true, '초기화 실패')
   })
 
+  // ── 브라우저 종료 시 백엔드 안전 종료 신호 전송 ──
+  window.addEventListener('beforeunload', () => {
+    navigator.sendBeacon('/api/shutdown')
+  })
+
   // FPS 모니터링 시작
   startFpsMonitor()
 }

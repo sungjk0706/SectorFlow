@@ -196,19 +196,6 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
                 fids = msg.get("fids", [])
                 if isinstance(fids, list):
                     ws_manager.set_subscribed_fids(websocket, fids)
-            elif msg_type == "cancel-download":
-                # 다운로드 중단 요청 처리
-                from backend.app.services import engine_service as es
-                download_type = msg.get("download_type", "")
-                logger.info("[연결] cancel-download 요청 수신: download_type=%s", download_type)
-                if download_type == "confirmed":
-                    es._confirmed_refresh_running_confirmed = False
-                    logger.info("[연결] 확정시세 다운로드 중단 요청 처리 완료 - 플래그=False")
-                elif download_type == "5d":
-                    es._confirmed_refresh_running_5d = False
-                    logger.info("[연결] 5일봉 다운로드 중단 요청 처리 완료 - 플래그=False")
-                else:
-                    logger.warning("[연결] 알 수 없는 download_type: %s", download_type)
     except WebSocketDisconnect:
         pass
     except Exception as e:

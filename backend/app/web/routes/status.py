@@ -2,7 +2,12 @@ from __future__ import annotations
 # -*- coding: utf-8 -*-
 """엔진 상태 라우터 — GET 엔드포인트는 WS initial-snapshot으로 대체됨."""
 
+import asyncio
+import logging
+
 from fastapi import APIRouter, Query
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["status"])
 
@@ -174,3 +179,27 @@ async def debug_orderbook_status(
         "stocks": result,
         "total_subscribed_0d": sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed_0d", False)),
     }
+
+
+@router.post("/shutdown")
+async def shutdown_server():
+    """브라우저 종료 신호 수신 — Graceful Shutdown 예약."""
+    import os
+    import signal
+    from backend.app.services.engine_state import state
+
+    if state.shutdown_requested:
+        return {"ok": True, "message": "이미 종료 진행 중"}
+
+    state.shutdown_requested = True
+    logger.info("[웹서버] 브라우저 종료 신호 수신 — 1초 후 SIGTERM 전송")
+
+    loop = asyncio.get_running_loop()
+
+    def _send_sigterm():
+        logger.info("[웹서버] SIGTERM 전송 — Graceful Shutdown 시작")
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    loop.call_later(1.0, _send_sigterm)
+
+    return {"ok": True, "message": "종료 신호 수신 — 1초 후 Graceful Shutdown 시작"}

@@ -218,7 +218,7 @@ export function bindWSToStore(
   })
 
   settingsClient.onEvent('avg-amt-progress', (data) => {
-    applyAvgAmtProgress(data as { current: number; total: number; done: boolean; message?: string; eta_sec?: number; status?: string; step?: number })
+    applyAvgAmtProgress(data as { current: number; total: number; done: boolean; message?: string; eta_sec?: number; status?: string; step?: number; failed_count?: number })
   })
 
 
@@ -258,7 +258,7 @@ export function bindWSToStore(
   })
 
   pricesClient.onEvent('confirmed-progress', (data) => {
-    applyAvgAmtProgress(data as { current: number; total: number; done: boolean; message?: string; eta_sec?: number; status?: string })
+    applyAvgAmtProgress(data as { current: number; total: number; done: boolean; message?: string; eta_sec?: number; status?: string; failed_count?: number })
   })
 
   pricesClient.onEvent('sell-history-update', (data) => {
