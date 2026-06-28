@@ -94,15 +94,61 @@
 - **검증**: py_compile 19개 파일 전부 통과, `제거:` 잔여 3건(정상—실제 동작 설명), `buy_widget` 잔여 0건
 - **커밋**: `6116bf6` — 21 files changed, 9 insertions(+), 265 deletions(-)
 
+### 11. Kiwoom-specific naming 제거 — 브로커 추상화 정합화 (완료)
+- **함수명 일반화 (engine_ws_parsing.py)**
+  - `_normalize_kiwoom_real_type` → `_normalize_real_type` (정의 + engine_ws_dispatch.py, pipeline_compute.py import)
+  - `_parse_kiwoom_price_scalar` → `_parse_price_scalar` (정의 + 내부 호출처)
+  - `_parse_ws_fid12_to_percent` 별칭 제거 → `parse_change_rate_to_percent` 직접 import (engine_ws_dispatch.py)
+- **Facade 자기 재할당 제거 (engine_service.py)**
+  - `X = X` 형태 self-reassignment 16건 제거, 이름이 다른 실제 별칭 6건만 남김
+- **State 변수 일반화 (engine_state.py + 17개 파일)**
+  - `state.kiwoom_connector` → `state.active_connector` (타입: `BrokerConnector | None`) — 17개 파일 호출처 전부 수정
+  - `state.kiwoom_auth_provider` → `state.active_auth_provider`
+  - `state.kiwoom_rest_api` / `state.ls_rest_api` → `state.broker_rest_apis: dict[str, object]` — engine_loop.py 초기화/정리 로직 dict 기반 통합, engine_account.py/kiwoom_providers.py 참조 수정
+- **Docstring/comment 정리**
+  - engine_service.py "KiwoomConnector" 4건 → "Connector"
+  - engine_ws_parsing.py docstring "키움" 제거
+  - backend_coalescing.py 주석 `kiwoom_connector` → `active_connector`
+- **수정 파일 (19개)**: engine_ws_parsing.py, engine_ws_dispatch.py, pipeline_compute.py, engine_service.py, engine_state.py, engine_ws.py, engine_loop.py, engine_ws_reg.py, engine_lifecycle.py, daily_time_scheduler.py, engine_bootstrap.py, engine_sector_confirm.py, market_close_pipeline.py, ws_subscribe_control.py, engine_strategy_core.py, backend_coalescing.py, engine_account.py, kiwoom_providers.py, status.py
+- **검증**: py_compile 19개 파일 전부 성공 (exit code 0), 잔여 검색 7개 항목 0건 확인
+
+### 12. 이어받기 로직 완전 삭제 + 로그 통일 + 로거 아키텍처 수정 (완료)
+
+#### 12-1. 이어받기 (resume download) 로직 완전 삭제
+- **`kiwoom_stock_rest.py`** — `resume_codes` 파라미터, 이어받기 DB 조회 블록, `starting_count`, `downloaded_at_codes` 추적/DB 업데이트 제거
+- **`market_close_pipeline.py`** — `load_progress_cache` import/호출, `resume_codes`/`starting_count` 변수, 이어받기 로그/WS 메시지 제거
+- **`kiwoom_providers.py`** — `resume_codes` 파라미터 제거 (2개 함수)
+- **`kiwoom_rest.py`** — `resume_codes` 파라미터 제거 (1개 함수)
+- **`custom_sector.py`** — `resume_codes` 파라미터 제거 (2개 함수)
+- **`stock_tables.py`** — `load_progress_cache()`, `clear_progress_cache()` 함수 삭제
+- **검증**: `resume_codes`, `starting_count`, `이어받기`, `downloaded_at_codes`, `load_progress_cache`, `clear_progress_cache`, `downloaded_at` 잔여 0건 확인
+
+#### 12-2. 백엔드 로그 통일 — 프론트엔드 UI 기준
+- **태그 통일**: `[ka10081]` → `[1일봉챠트 시세 다운로드]` / `[5일봉챠트 거래대금,고가 다운로드]` (프론트엔드 버튼 텍스트와 일치)
+- **진행률 로그**: 매 종목 `_log.info` 출력 (프론트엔드 헤더 인디케이터와 동일 단위)
+- **WS 메시지**: 5일봉에 "거래대금,고가" 추가, ✅ 제거, 완료 메시지 포맷 1일봉과 통일
+- **매 종목 INFO 로그 제거 후 복구**: 10% 단위 → 매 종목으로 변경 (개발 단계 일관성 우선)
+- **수정 파일**: `kiwoom_stock_rest.py`, `market_close_pipeline.py`
+
+#### 12-3. 로거 아키텍처 수정 — 주석/코드 불일치 해결 + trading_debug.log 제거
+- **`logger.py`** — `trading.log` 싱크 레벨 `WARNING` → `INFO` (주석에 "INFO 이상"으로 명시되어 있었으나 코드만 WARNING)
+- **`trading_debug.log` 싱크 제거** — `_debug_file_queue`, `_debug_file_sink`, 데몬 스레드 t2 삭제. 3채널 → 2채널(콘솔 + trading.log) 단순화
+- **`trading.log` 싱크 레벨** — `level="INFO"` → `level=log_level` (설정 기반, `LOG_LEVEL=DEBUG` 시 DEBUG 로그도 trading.log에 기록)
+- **보관일/로테이션 주석 정정** — trading.log 1일→2일, trading_debug.log 0일→1일, 50MB→10MB (실제 `_MAX_FILE_SIZE`와 일치)
+- **검증**: py_compile 성공, `trading_debug_*` 파일 삭제
+
 ## 현재 상태
 - 모든 수정 완료, py_compile + tsc + build 검증 통과
 - 런타임 확인 완료: Frontend-First 기동 — 백엔드/프론트엔드 병렬 시작, Health 즉시 응답, WS 3채널 즉시 연결 (05:32 기동 로그)
 - 런타임 확인 완료: 업종 요약정보 대기 해제 — `재계산 완료` 후 WS 접속 시 대기 없이 즉시 연결 (05:32 기동 로그)
+- 런타임 확인 완료: 1일봉 다운로드 매 종목 로그 정상 출력 — `trading_2026-06-28.log`에서 `[1일봉챠트 시세 다운로드] 진행 중: N/1281 (pct%)` 확인 (06:45)
 - 런타임 검증 필요: 토큰 발급 실패/지연 상황에서 프론트엔드에 DB 데이터가 즉시 표시되는지 확인
 - 런타임 검증 필요: `_login_post_pipeline`이 정상적으로 REST 잔고 조회 ~ WS 구독 등록까지 실행되는지 확인
 - 런타임 검증 필요: Phase 1 Event 기반 수신율 대기가 정상적으로 임계값 통과 후 Phase 2로 전환되는지 확인
 - 런타임 검증 필요: 이전 프로세스 없을 시 sleep 0초로 즉시 시작 확인
 - 런타임 검증 필요: catch-up 백그라운드 실행 시 WS 데이터 전송 정상 확인
+- 런타임 검증 필요: `state.active_connector` / `state.broker_rest_apis` dict 기반 브로커 연결·REST API 초기화·정리가 정상 동작하는지 확인
+- 런타임 검증 필요: 5일봉 다운로드 매 종목 로그 정상 출력 확인
 
 ## 다음 단계
 - 평일 거래 시간 기동 후 확인:
@@ -111,8 +157,11 @@
   - Phase 1 수신율 대기 로그가 이벤트 기반으로 정상 출력되는지 확인
   - LS 토큰 폐기 성공 로그 확인 (주말에는 ConnectTimeout 발생)
   - 토큰 발급 지연 시 프론트엔드에 DB 데이터가 즉시 표시되는지 확인
+  - `state.active_connector` / `state.broker_rest_apis` dict 기반 브로커 연결·REST API 초기화·정리가 정상 동작하는지 확인 (단계 11)
+  - 5일봉 다운로드 실행 시 `[5일봉챠트 거래대금,고가 다운로드] 진행 중` 매 종목 로그 확인 (단계 12)
 
 ## 미해결 문제
 - LS 토큰 폐기 ConnectTimeout: 주말/비거래 시간대 LS증권 API 서버 접근 불가 — 코드 버그 아님, 거래 시간에 재확인 필요
 - 종목수 1359 → 1361 불일치: 별도 조사 필요 (이전 세션 메모리 참고)
 - TODO 주석 7건 (개발 완료 후 토큰 검증 재활성화 시 처리): `deps.py:16`, `ws.py:159`, `ws_orders.py:23`, `ws_settings.py:23`, `client.ts:18,29,40,66`, `risk_manager.py:64`
+- 개발 완료 단계 시 매 종목 진행률 로그 축소 검토 (현재 개발 단계: 매 종목 출력, 완성 단계: 필수 로그만)

@@ -178,7 +178,7 @@ class BackendCoalescing:
         serialized = self._serialize_events(events)
 
         # P2-5: tick_queue에 전송하던 로직 제거 (pipeline_compute 에러 방지)
-        # kiwoom_connector가 직접 raw 데이터를 tick_queue에 넣으므로 여기서는 프론트엔드로 전송만 담당합니다.
+        # active_connector가 직접 raw 데이터를 tick_queue에 넣으므로 여기서는 프론트엔드로 전송만 담당합니다.
 
         # 모든 WebSocket에 전송
         if self.websocket_connections:

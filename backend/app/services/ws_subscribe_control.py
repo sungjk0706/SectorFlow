@@ -257,4 +257,4 @@ def _ws_connected() -> bool:
     if state.connector_manager is not None:
         return bool(state.connector_manager.is_connected() and state.login_ok)
     # 하위 호환: 키움 단독
-    return bool(state.kiwoom_connector and state.kiwoom_connector.is_connected() and state.login_ok)
+    return bool(state.active_connector and state.active_connector.is_connected() and state.login_ok)

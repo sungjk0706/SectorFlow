@@ -51,6 +51,7 @@ async def rename_sector(old_name: str, new_name: str) -> None:
     try:
         await conn.execute("UPDATE custom_sectors SET name = ? WHERE name = ?", (new_name, old_name))
         await conn.execute("UPDATE master_stocks_table SET sector = ? WHERE sector = ?", (new_name, old_name))
+        await conn.execute("UPDATE sectors SET name = ? WHERE name = ?", (new_name, old_name))
         await conn.commit()
     except Exception as e:
         await conn.rollback()
@@ -68,17 +69,29 @@ async def rename_sector(old_name: str, new_name: str) -> None:
 
 
 async def create_sector(name: str) -> None:
-    """신규 업종 등록.
-    
-    custom_sectors 테이블은 stock_code를 기본 키로 사용하므로,
-    업종 정의만 저장하는 방식이 아닌 종목 매핑 시 업종이 자동 생성됨.
-    이 함수는 더 이상 사용되지 않음 (하위 호환성용).
-    """
-    raise NotImplementedError("업종 생성은 종목 매핑(move_stock)을 통해 자동 생성됩니다")
+    """신규 업종 등록. sectors 테이블에 업종 정의만 저장."""
+    name = name.strip()
+    if not name:
+        raise ValueError("업종명은 필수입니다")
+
+    from backend.app.db.database import get_db_connection
+    conn = await get_db_connection()
+    try:
+        cursor = await conn.execute("SELECT 1 FROM sectors WHERE name = ?", (name,))
+        if await cursor.fetchone():
+            raise ValueError(f"이미 존재하는 업종명입니다: {name}")
+        await conn.execute("INSERT INTO sectors (name) VALUES (?)", (name,))
+        await conn.commit()
+    except ValueError:
+        raise
+    except Exception as e:
+        await conn.rollback()
+        _log.error("[DB업데이트] 업종 생성 실패: %s", e)
+        raise e
 
 
 async def delete_sector(name: str) -> None:
-    """업종을 삭제한다. 해당 업종의 종목들을 '기타'로 이동."""
+    """업종을 삭제한다. 해당 업종의 종목들을 '미분류'로 이동."""
     name = name.strip()
     if not name:
         raise ValueError("업종명은 필수입니다")
@@ -88,7 +101,8 @@ async def delete_sector(name: str) -> None:
     conn = await get_db_connection()
     try:
         await conn.execute("DELETE FROM custom_sectors WHERE name = ?", (name,))
-        await conn.execute("UPDATE master_stocks_table SET sector = '기타' WHERE sector = ?", (name,))
+        await conn.execute("UPDATE master_stocks_table SET sector = '미분류' WHERE sector = ?", (name,))
+        await conn.execute("DELETE FROM sectors WHERE name = ?", (name,))
         await conn.commit()
     except Exception as e:
         await conn.rollback()
@@ -100,7 +114,7 @@ async def delete_sector(name: str) -> None:
         import backend.app.services.engine_service as es
         for cd, entry in es._master_stocks_cache.items():
             if entry.get("sector") == name:
-                entry["sector"] = "기타"
+                entry["sector"] = "미분류"
     except Exception as e:
         _log.warning("[메모리업데이트] 인메모리 업종 삭제 반영 실패: %s", e)
 
@@ -123,6 +137,8 @@ async def move_stock(stock_code: str, target_sector: str) -> None:
         await conn.execute("UPDATE master_stocks_table SET sector = ? WHERE code = ?", (target_sector, stock_code))
         # stock_code 단일 기본 키이므로 INSERT OR REPLACE로 기존 매핑 교체
         await conn.execute("INSERT OR REPLACE INTO custom_sectors (stock_code, name) VALUES (?, ?)", (stock_code, target_sector))
+        # sectors 테이블에 업종이 없으면 자동 생성 (move_stock 경로로 업종 생성 허용)
+        await conn.execute("INSERT OR IGNORE INTO sectors (name) VALUES (?)", (target_sector,))
         await conn.commit()
     except Exception as e:
         await conn.rollback()

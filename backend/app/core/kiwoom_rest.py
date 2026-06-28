@@ -471,10 +471,9 @@ class KiwoomRestAPI:
         qry_dt: str,
         interval_sec: float = 0.1,
         on_progress: "Callable[[int, int], None] | None" = None,
-        resume_codes: "set[str] | None" = None,
     ) -> dict[str, dict]:
         """전체 종목 ka10081 순차 조회 -- 장외 시간 확정 데이터용."""
-        return await _ka10081_fetch_all(self, krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress, resume_codes=resume_codes)
+        return await _ka10081_fetch_all(self, krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress)
 
     async def fetch_market_stock_name_map(self) -> dict[str, str]:
         """시장 종목명 매핑 조회. {6자리 종목코드: 종목명}."""

@@ -3,9 +3,9 @@ from __future__ import annotations
 """
 Loguru 기반 트레이딩 로거 — 안전한 파일 로깅 포함.
 
-- 콘솔: INFO 이상만 출력 (Windows cp949 환경 UTF-8 강제)
-- trading.log: INFO 이상 (중요 로그만, 일별 분할, 50MB 로테이션, 2일 보관)
-- trading_debug.log: DEBUG 포함 전체 (문제 추적용, 일별 분할, 50MB 로테이션, 1일 보관)
+- 콘솔: LOG_LEVEL 이상 출력 (Windows cp949 환경 UTF-8 강제)
+- trading.log: INFO 이상 (일별 분할, 10MB 로테이션, 2일 보관)
+  LOG_LEVEL=DEBUG 시 DEBUG 로그도 trading.log에 기록됨
 
 파일 로깅 안전 전략:
   loguru enqueue=True → multiprocessing.SimpleQueue → asyncio IOCP 충돌 (크래시)
@@ -33,7 +33,6 @@ _configured = False
 # ── 안전한 파일 쓰기 큐 + 데몬 스레드 ─────────────────────────────────────────
 
 _file_queue: queue.Queue[str | None] = queue.Queue(maxsize=50_000)
-_debug_file_queue: queue.Queue[str | None] = queue.Queue(maxsize=50_000)
 _writer_started = False
 
 
@@ -147,7 +146,7 @@ def _file_writer_loop(q: queue.Queue, base_name: str, keep_days: int) -> None:
 
 
 def _start_file_writers() -> None:
-    """파일 쓰기 데몬 스레드 2개 시작 — INFO용, DEBUG용."""
+    """파일 쓰기 데몬 스레드 시작 — trading.log 단일 파일."""
     global _writer_started
     if _writer_started:
         return
@@ -155,18 +154,11 @@ def _start_file_writers() -> None:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     t1 = threading.Thread(
         target=_file_writer_loop,
-        args=(_file_queue, "trading.log", 1),
+        args=(_file_queue, "trading.log", 2),
         name="log-writer-info",
         daemon=True,
     )
-    t2 = threading.Thread(
-        target=_file_writer_loop,
-        args=(_debug_file_queue, "trading_debug.log", 0),
-        name="log-writer-debug",
-        daemon=True,
-    )
     t1.start()
-    t2.start()
 
 
 # ── loguru 커스텀 싱크 (큐에 넣기만 함, 파일 I/O 없음) ──────────────────────
@@ -181,14 +173,6 @@ def _info_file_sink(message) -> None:
         _file_queue.put_nowait(str(text))
     except queue.Full:
         pass  # 큐 가득 차면 버림 (크래시보다 나음)
-
-
-def _debug_file_sink(message) -> None:
-    """DEBUG 포함 전체 로그를 큐에 넣는다."""
-    try:
-        _debug_file_queue.put_nowait(str(message))
-    except queue.Full:
-        pass
 
 
 # ── InterceptHandler: 표준 logging → loguru 리다이렉트 ────────────────────────
@@ -228,8 +212,8 @@ class InterceptHandler(logging.Handler):
 
 # ── 메인 설정 함수 ────────────────────────────────────────────────────────────
 
-def setup_loguru(log_level: str = "DEBUG") -> None:
-    """앱 기동 시 1회 호출 — 콘솔 + 파일(INFO) + 파일(DEBUG) 3채널 설정."""
+def setup_loguru(log_level: str = "INFO") -> None:
+    """앱 기동 시 1회 호출 — 콘솔 + 파일(trading.log) 2채널 설정."""
     global _configured
     if _configured:
         return
@@ -263,17 +247,10 @@ def setup_loguru(log_level: str = "DEBUG") -> None:
         filter=_inject_kr_level,
     )
 
-    # ── 2. 파일 — WARNING 이상 (trading.log, 일별 분할, 50MB 로테이션, 1일 보관) ────────────
+    # ── 2. 파일 — LOG_LEVEL 이상 (trading.log, 일별 분할, 10MB 로테이션, 2일 보관) ───────
+    #    LOG_LEVEL=DEBUG 시 DEBUG 로그도 trading.log에 기록됨
     _loguru_logger.add(
         _info_file_sink,
-        level="WARNING",
-        format=_FILE_FORMAT,
-        colorize=False,
-    )
-
-    # ── 3. 파일 — DEBUG 전체 (trading_debug.log, 일별 분할, 50MB 로테이션, 1일 보관) ─────
-    _loguru_logger.add(
-        _debug_file_sink,
         level=log_level,
         format=_FILE_FORMAT,
         colorize=False,

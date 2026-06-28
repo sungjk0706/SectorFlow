@@ -47,6 +47,11 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         if _bootstrap_event.is_set():
             await ws_manager.send_to(websocket, "engine-ready", {"_v": 1, "ready": True})
             
+            # 토큰 발급 완료 대기 — broker_statuses에 올바른 token_valid 포함 보장
+            from backend.app.services.engine_state import state as _state
+            if not _state.token_ready_event.is_set():
+                await _state.token_ready_event.wait()
+
             # 엔진 상태 전송 (index-refresh)
             from backend.app.services.engine_lifecycle import get_engine_status
             engine_status = get_engine_status()
@@ -63,14 +68,17 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         filter_summary = ""
         try:
             import backend.app.services.engine_service as es
-            import backend.app.services.engine_state as state
+            import backend.app.services.engine_state as _es
+            from backend.app.core.sector_stock_cache import assemble_filter_summary
             stocks = await es.get_all_sector_stocks()
             if not stocks:
                 # 캐시에서 기존 저장 데이터 우선 표시
                 stocks = await es.get_all_sector_stocks_from_cache()
-            if "기타" in merged:
-                no_sector_count = sum(1 for s in stocks if s["sector"] == "기타")
-            filter_summary = getattr(state, "_latest_filter_summary", "")
+            if "미분류" in merged:
+                no_sector_count = sum(1 for s in stocks if s["sector"] == "미분류")
+            filter_summary = assemble_filter_summary(
+                getattr(_es.state, "latest_filter_summary_meta", ""), len(stocks)
+            )
         except Exception:
             pass
 

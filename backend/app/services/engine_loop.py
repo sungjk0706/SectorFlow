@@ -43,20 +43,6 @@ async def _cache_and_bootstrap(settings: dict) -> None:
         logger.warning("[시작] engine-ready 브로드캐스트 실패", exc_info=True)
 
 
-async def _get_token_async(router) -> str | None:
-    """토큰 발급 — async def get_access_token()을 await로 직접 호출.
-
-    router.auth.get_access_token()은 async def이며 httpx.AsyncClient로 비동기 HTTP 호출을 수행한다.
-    실패 시 None 반환 + 경고 로그 (스냅샷 전용 모드).
-    """
-    try:
-        token = await router.auth.get_access_token()
-        return token
-    except Exception as e:
-        logger.warning("[연결] 토큰 발급 예외: %s. 확정데이터 전용 모드로 기동.", e, exc_info=True)
-        return None
-
-
 async def _get_all_tokens_async(router) -> None:
     """
     broker_config에 등장하는 모든 증권사 토큰을 병렬 발급한다.
@@ -128,13 +114,13 @@ async def run_engine_loop() -> None:
     state.login_ok = False
     state.connector_manager = None
     state.broker_tokens.clear()
+    state.token_ready_event.clear()
     # _master_stocks_cache에서 "_subscribed" 제거
     all_stocks = state.master_stocks_cache.copy()
     for entry in all_stocks.values():
         entry.pop("_subscribed", None)
-    from backend.app.services.engine_state import _notify_reg_ack, _cancel_price_trace_delayed_task
+    from backend.app.services.engine_state import _notify_reg_ack
     _notify_reg_ack()
-    _cancel_price_trace_delayed_task()
     state.checked_stocks.clear()
     state.integrated_system_settings_cache["sector_stock_layout"] = []
     from backend.app.services.engine_account_notify import _rebuild_layout_cache
@@ -200,6 +186,10 @@ async def run_engine_loop() -> None:
             _load_spec(),
         )
 
+        # 토큰 발급 phase 완료 시그널 — WS 유니캐스트가 stale broker_statuses를
+        # 전송하지 않도록 보장 (token_ready_event.wait()에서 대기 중인 태스크가 깨어남)
+        state.token_ready_event.set()
+
         # 가상 예수금 로컬 DB 복원 (init()은 _cache_and_bootstrap 내부에서 완료)
         from backend.app.services import settlement_engine
         await settlement_engine.restore_state()
@@ -230,28 +220,17 @@ async def run_engine_loop() -> None:
         if hasattr(_auth_provider, 'rest_api'):
             _is_test = is_test_mode(settings)
             # 증권사별 state 분리
-            if broker_nm == "kiwoom":
-                state.kiwoom_rest_api = _auth_provider.rest_api
-                state.kiwoom_rest_api._acnt_no = str(settings.get(f"{broker_nm}_account_no", "") or "")
-                for spec in state.broker_spec:
-                    tr = spec.get("tr_id", "")
-                    if tr == "kt00001":
-                        state.kiwoom_rest_api._deposit_tr_id = tr
-                    elif tr == "kt00018":
-                        state.kiwoom_rest_api._balance_tr_id = tr
-                    elif tr == "ka00001":
-                        state.kiwoom_rest_api._account_tr_id = tr
-            elif broker_nm == "ls":
-                state.ls_rest_api = _auth_provider.rest_api
-                state.ls_rest_api._acnt_no = str(settings.get(f"{broker_nm}_account_no", "") or "")
-                for spec in state.broker_spec:
-                    tr = spec.get("tr_id", "")
-                    if tr == "kt00001":
-                        state.ls_rest_api._deposit_tr_id = tr
-                    elif tr == "kt00018":
-                        state.ls_rest_api._balance_tr_id = tr
-                    elif tr == "ka00001":
-                        state.ls_rest_api._account_tr_id = tr
+            _rest_api = _auth_provider.rest_api
+            _rest_api._acnt_no = str(settings.get(f"{broker_nm}_account_no", "") or "")
+            for spec in state.broker_spec:
+                tr = spec.get("tr_id", "")
+                if tr == "kt00001":
+                    _rest_api._deposit_tr_id = tr
+                elif tr == "kt00018":
+                    _rest_api._balance_tr_id = tr
+                elif tr == "ka00001":
+                    _rest_api._account_tr_id = tr
+            state.broker_rest_apis[broker_nm] = _rest_api
             from backend.app.services.engine_service import log_message
             log_message(f"[연결] {broker_nm} 증권사 연결 완료 (테스트모드={_is_test})")
 
@@ -310,21 +289,21 @@ async def run_engine_loop() -> None:
                                 connector.set_queue_callback(tick_queue)
                         logger.info("[연결] Connector Queue 콜백 설정 완료 (tick_queue)")
                         state.connector_manager = _mgr
-                        state.kiwoom_connector = _mgr.get_connector(broker_nm)
+                        state.active_connector = _mgr.get_connector(broker_nm)
                         await _mgr.connect_all()
                         logger.info("[연결] 실시간 연결 완료")
                         _broadcast_engine_ws()
                     except Exception as e:
                         logger.error("[연결] 실시간 연결 초기화 실패: %s", e, exc_info=True)
                         state.connector_manager = None
-                        state.kiwoom_connector = None
+                        state.active_connector = None
             else:
                 if state.connector_manager is not None:
                     try:
                         if hasattr(state.connector_manager, 'disconnect_all'):
                             await state.connector_manager.disconnect_all()
                         state.connector_manager = None
-                        state.kiwoom_connector = None
+                        state.active_connector = None
                         logger.info("[연결] 실시간 연결 해제 완료")
                         _broadcast_engine_ws()
                     except Exception as e:
@@ -377,31 +356,21 @@ async def run_engine_loop() -> None:
         if state.connector_manager:
             await state.connector_manager.disconnect_all()
         else:
-            if state.kiwoom_connector:
-                await state.kiwoom_connector.disconnect()
+            if state.active_connector:
+                await state.active_connector.disconnect()
         state.connector_manager = None
-        state.kiwoom_connector = None
+        state.active_connector = None
         # 증권사별 REST API 클라이언트 정리
-        if state.kiwoom_rest_api:
+        for _broker_id, _rest_api in state.broker_rest_apis.items():
             try:
-                await state.kiwoom_rest_api.revoke_token()
+                await _rest_api.revoke_token()
             except Exception as e:
-                logger.warning("[엔진] 키움 토큰 폐기 실패: %s", e)
-            if hasattr(state.kiwoom_rest_api, '_reset_client'):
-                await state.kiwoom_rest_api._reset_client()
-            elif hasattr(state.kiwoom_rest_api, '_client') and state.kiwoom_rest_api._client:
-                await state.kiwoom_rest_api._client.aclose()
-            state.kiwoom_rest_api = None
-        if state.ls_rest_api:
-            try:
-                await state.ls_rest_api.revoke_token()
-            except Exception as e:
-                logger.warning("[엔진] LS 토큰 폐기 실패: %s", e)
-            if hasattr(state.ls_rest_api, '_reset_client'):
-                await state.ls_rest_api._reset_client()
-            elif hasattr(state.ls_rest_api, '_client') and state.ls_rest_api._client:
-                await state.ls_rest_api._client.aclose()
-            state.ls_rest_api = None
+                logger.warning("[엔진] %s 토큰 폐기 실패: %s", _broker_id, e)
+            if hasattr(_rest_api, '_reset_client'):
+                await _rest_api._reset_client()
+            elif hasattr(_rest_api, '_client') and _rest_api._client:
+                await _rest_api._client.aclose()
+        state.broker_rest_apis.clear()
         state.broker_tokens.clear()
         state.running = False
         from backend.app.services.engine_service import broadcast_engine_status, log_message, get_current_kst_time

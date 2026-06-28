@@ -10,6 +10,7 @@ import asyncio
 import json
 import time
 from backend.app.core.logger import get_logger
+import backend.app.services.engine_state as engine_state
 from backend.app.services.engine_state import state
 
 logger = get_logger("engine_snapshot")
@@ -226,17 +227,7 @@ async def _reset_realtime_fields() -> None:
     _broadcast("realtime-reset", {})
 
     # 실시간 상태를 WAITING_FIRST_TICK으로 설정
-    _set_realtime_state("WAITING_FIRST_TICK")
-
-
-def _set_realtime_state(new_state: str) -> None:
-    """실시간 상태 설정."""
-    state.realtime_state = new_state
-
-
-def _get_realtime_state() -> str:
-    """실시간 상태 반환."""
-    return state.realtime_state or "UNKNOWN"
+    engine_state._set_realtime_state("WAITING_FIRST_TICK")
 
 
 # ── 기타 헬퍼 ─────────────────────────────────────────────────
@@ -244,11 +235,11 @@ def _get_realtime_state() -> str:
 
 def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
     """보유 잔고에 있으면 수익률(%), 없으면 None."""
-    from backend.app.services.engine_symbol_utils import _format_broker_reg_stk_cd
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
     from backend.app.services import dry_run
     from backend.app.core.trade_mode import is_test_mode
     
-    nk = _format_broker_reg_stk_cd(str(stk_cd or "").strip())
+    nk = _base_stk_cd(str(stk_cd or "").strip())
     if not nk:
         return None
     # 테스트모드: dry_run 가상 잔고에서 조회
@@ -261,7 +252,7 @@ def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
                 return 0.0
         return None
     for p in state.positions:
-        pcd = _format_broker_reg_stk_cd(str(p.get("stk_cd", "") or ""))
+        pcd = _base_stk_cd(str(p.get("stk_cd", "") or ""))
         if pcd != nk:
             continue
         if int(p.get("qty", 0) or 0) <= 0:
@@ -271,11 +262,6 @@ def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
         except (TypeError, ValueError):
             return 0.0
     return None
-
-
-def get_latest_trade_price_for_ui(stk_cd: str) -> int:
-    """실시간 틱 데이터 캐시 삭제로 항상 0 반환 -- 매수 표 행·시세 정합 검증용 스텁."""
-    return 0
 
 
 async def _run_snapshot_and_sell_check(force_rest: bool = False) -> None:

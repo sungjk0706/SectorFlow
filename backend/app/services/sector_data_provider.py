@@ -232,7 +232,7 @@ async def recompute_sector_summary_now() -> None:
     from backend.app.domain.buy_filter import build_buy_targets_from_settings
     from backend.app.services.engine_sector_confirm import cancel_sector_recompute
     from backend.app.services.engine_lifecycle import is_engine_running
-    from backend.app.services.engine_account_notify import notify_desktop_sector_scores, notify_buy_targets_update
+    from backend.app.services.engine_account_notify import notify_desktop_sector_scores, notify_buy_targets_update, notify_desktop_sector_stocks_refresh
     import backend.app.services.engine_service as _es
 
     logger.info("[업종순위] recompute_sector_summary_now 진입, is_running=%s", is_engine_running())
@@ -271,6 +271,7 @@ async def recompute_sector_summary_now() -> None:
                 entry["_filtered"] = True
 
         notify_desktop_sector_scores(force=True)
+        await notify_desktop_sector_stocks_refresh(force=True)
         await notify_buy_targets_update()
         logger.info("[업종순위] 재계산 완료")
         _es._sector_summary_ready_event.set()

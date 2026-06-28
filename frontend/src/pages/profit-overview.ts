@@ -119,7 +119,7 @@ export interface PnlSummary {
 }
 
 /** sellHistory에서 날짜 필터 기반 손익 집계 */
-export function aggregatePnl(
+function aggregatePnl(
   sells: Record<string, unknown>[],
   dateFrom?: string,
   dateTo?: string,
@@ -148,7 +148,7 @@ export interface DailyDrilldownRow {
 }
 
 /** sellHistory + buyHistory에서 당월 일별 요약 집계 */
-export function buildMonthlyDrilldown(
+function buildMonthlyDrilldown(
   sells: Record<string, unknown>[],
   buys: Record<string, unknown>[],
   yearMonth: string,

@@ -13,7 +13,7 @@ import time
 from collections.abc import Callable
 
 from backend.app.core.logger import get_logger
-from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+from backend.app.services.engine_symbol_utils import _base_stk_cd
 
 logger = get_logger("engine")
 
@@ -90,7 +90,7 @@ def _rebuild_positions_cache(positions: list) -> None:
     """_positions 리스트로부터 notify_cache.positions_code_set을 재구축한다. 예외 시 이전 캐시 유지."""
     try:
         notify_cache.positions_code_set = {
-            _format_kiwoom_reg_stk_cd(str(p.get("stk_cd", "")))
+            _base_stk_cd(str(p.get("stk_cd", "")))
             for p in positions
             if str(p.get("stk_cd", "")).strip()
         }
@@ -329,7 +329,7 @@ def notify_desktop_trade_price(
     """REAL 체결가 → WS trade-price (확장 필드 포함)."""
     if price <= 0 or not stk_cd:
         return
-    nk = _format_kiwoom_reg_stk_cd(stk_cd)
+    nk = _base_stk_cd(stk_cd)
     payload = {
         "code": nk,
         "price": int(price),
@@ -500,7 +500,7 @@ def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str 
 
     if reason:
         cur_pairs = [
-            (_format_kiwoom_reg_stk_cd(str(p.get("stk_cd", "") or "")), p.get("cur_price"))
+            (_base_stk_cd(str(p.get("stk_cd", "") or "")), p.get("cur_price"))
             for p in positions
             if int(p.get("qty", 0) or 0) > 0
         ]
@@ -608,11 +608,10 @@ async def notify_buy_targets_update() -> None:
 
 
 def broadcast_engine_status_ws(engine_status: dict) -> None:
-    """엔진 상태 변경 시 모든 WS 구독자에게 push."""
+    """엔진 상태 변경 시 모든 WS 구독자에게 push (index-refresh 통일)."""
     if "_v" not in engine_status:
         engine_status["_v"] = 1
-    _safe_broadcast("engine-status", engine_status)
-    notify_desktop_header_refresh()
+    _safe_broadcast("index-refresh", engine_status)
 
 
 def notify_ws_subscribe_status(status: dict) -> None:

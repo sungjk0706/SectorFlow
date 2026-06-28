@@ -54,7 +54,7 @@ def resolve_radar_display_name(stk_cd: str, ws_stk_nm: str, access_token) -> str
 
 def make_detail(stk_cd: str, stk_nm: str, cur_price: int,
                  sign: str, change: int, change_rate: float,
-                 trade_amount: int = 0, strength: str = "-", sector: str = "기타") -> dict:
+                 trade_amount: int = 0, strength: str = "-", sector: str = "미분류") -> dict:
     """대기 종목 상세 딕셔너리 생성 헬퍼."""
     return {
         "code":        stk_cd,
@@ -83,7 +83,7 @@ async def run_snapshot_and_sell_check(force_rest: bool) -> None:
     try:
         from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
         in_window = await is_ws_subscribe_window(state.integrated_system_settings_cache)
-        ws_ok = bool(state.kiwoom_connector and state.kiwoom_connector.is_connected() and state.login_ok)
+        ws_ok = bool(state.active_connector and state.active_connector.is_connected() and state.login_ok)
         # 장중(구독 구간)이면 force_rest여도 REST 생략 -- 실시간 데이터 우선
         if in_window and not force_rest:
             if state.refresh_account_snapshot_meta:
