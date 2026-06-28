@@ -154,12 +154,12 @@ async def fake_send_order(
 
 async def _apply_buy(code: str, qty: int, price: int) -> None:
     """매수 체결 -> 가상 잔고에 추가/증가 + Settlement Engine 예수금 차감."""
-    from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
     
     await _load_positions()
     await settlement_engine.on_buy_fill(price, qty)
     fee = round(price * qty * 0.00015)  # 포지션 추적용 수수료
-    norm_code = _format_kiwoom_reg_stk_cd(code)
+    norm_code = _base_stk_cd(code)
     pos = _test_positions.get(norm_code)
     if pos:
         old_qty = int(pos.get("qty", 0))
@@ -189,10 +189,10 @@ async def _apply_buy(code: str, qty: int, price: int) -> None:
 
 async def _apply_sell(code: str, qty: int, price: int) -> None:
     """매도 체결 -> 가상 잔고에서 차감 + Settlement Engine 매도 정산. 수량 0이면 제거."""
-    from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
     
     await _load_positions()
-    norm_code = _format_kiwoom_reg_stk_cd(code)
+    norm_code = _base_stk_cd(code)
     stk_nm = _test_positions.get(norm_code, {}).get("stk_nm", "")
     await settlement_engine.on_sell_fill(price, qty, norm_code, stk_nm)
     pos = _test_positions.get(norm_code)
@@ -231,10 +231,10 @@ async def update_price(code: str, price: int) -> bool:
     0B 틱 수신 시 호출 -- 가상 잔고의 현재가/수익률 갱신.
     반환: True=가격 변경됨, False=해당 종목 미보유 또는 가격 동일
     """
-    from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
     
     await _load_positions()
-    norm_code = _format_kiwoom_reg_stk_cd(code)
+    norm_code = _base_stk_cd(code)
     pos = _test_positions.get(norm_code)
     if not pos:
         return False
@@ -248,9 +248,9 @@ async def update_price(code: str, price: int) -> bool:
 
 async def set_stock_name(code: str, name: str) -> None:
     """종목명 세팅 (매수 시점에 이름을 모를 수 있으므로 별도 호출)."""
-    from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
     
-    norm_code = _format_kiwoom_reg_stk_cd(code)
+    norm_code = _base_stk_cd(code)
     pos = _test_positions.get(norm_code)
     if pos:
         pos["stk_nm"] = name
@@ -266,18 +266,18 @@ async def get_positions() -> list[dict]:
 
 
 async def get_position(code: str) -> Optional[dict]:
-    from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
     
     await _load_positions()
-    norm_code = _format_kiwoom_reg_stk_cd(code)
+    norm_code = _base_stk_cd(code)
     return _test_positions.get(norm_code)
 
 
 async def has_position(code: str) -> bool:
-    from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
     
     await _load_positions()
-    norm_code = _format_kiwoom_reg_stk_cd(code)
+    norm_code = _base_stk_cd(code)
     pos = _test_positions.get(norm_code)
     return pos is not None and int(pos.get("qty", 0)) > 0
 

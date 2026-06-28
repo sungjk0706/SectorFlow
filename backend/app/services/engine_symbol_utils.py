@@ -6,9 +6,6 @@ from __future__ import annotations
 engine_service에서 분리된 순수 함수만 둔다 (로직·입출력 동일 유지).
 """
 
-# ── 시장 구분 캐시 ────────────────────────────────────────────────────────────
-# master_stocks_cache 로 단일화하여 사용 (기존 market_map 변수 및 관련 로직 제거)
-_market_map_version: int = 0  # set_market_map 호출 시마다 증가 -- UI 갱신 감지용
 
 
 def is_nxt_enabled(stk_cd: str) -> bool:
@@ -57,24 +54,6 @@ def get_ws_subscribe_code(stk_cd: str) -> str:
     return base
 
 
-def set_market_map(new_map: dict[str, str]) -> None:
-    """메모리 마스터 캐시 갱신 및 UI 감지용 버전 업데이트."""
-    global _market_map_version
-    from backend.app.services.engine_state import state
-    for code, market in new_map.items():
-        if code in state.master_stocks_cache:
-            state.master_stocks_cache[code]["market"] = market
-        else:
-            # 새 종목 추가는 state.master_stocks_cache 직접 접근 필요
-            state.master_stocks_cache[code] = {"market": market}
-    _market_map_version += 1
-
-
-def get_market_map_version() -> int:
-    """현재 시장 구분 캐시 버전 반환 -- UI 에서 변경 감지용."""
-    return _market_map_version
-
-
 def get_stock_market(stk_cd: str) -> str | None:
     """
     종목코드 -> 시장 구분 코드 반환.
@@ -88,25 +67,6 @@ def get_stock_market(stk_cd: str) -> str | None:
     return None
 
 
-
-
-def _format_broker_reg_stk_cd(stk_cd: str) -> str:
-    """
-    브로커 WebSocket REG 의 item 종목코드 -- 서버가 보내는 형식 그대로 사용.
-    _AL / _NX 접미사는 제거하고 순수 종목코드 반환 (수신 파싱용).
-    """
-    s = str(stk_cd or "").strip().upper()
-    # _AL / _NX 접미사 제거
-    for suffix in ("_AL", "_NX"):
-        if s.endswith(suffix):
-            s = s[: -len(suffix)]
-            break
-    if s.isdigit():
-        return s.zfill(6)[-6:]
-    return s
-
-# 하위 호환을 위한 별칭
-_format_kiwoom_reg_stk_cd = _format_broker_reg_stk_cd
 
 
 def _base_stk_cd(stk_cd: str) -> str:
@@ -134,24 +94,6 @@ def is_nxt_code(stk_cd: str) -> bool:
     return str(stk_cd or "").strip().upper().endswith("_NX")
 
 
-def _normalize_stk_cd_rest(code: str) -> str:
-    """종목코드 정규화 (_AL/_NX 접미사 제거).
-    알파벳 포함 여부에 따라 처리 분기 (2024년 신규 종목코드 대응).
-    """
-    s = str(code).strip().upper()
-    for suffix in ("_AL", "_NX"):
-        if s.endswith(suffix):
-            s = s[: -len(suffix)]
-            break
-    # 알파벳 포함 여부에 따라 정규화 분기
-    if s.isdigit():
-        # 기존 숫자코드: 6자리 패딩
-        return s.zfill(6)[-6:]
-    else:
-        # 알파벳 코드: 원문 대문자 유지
-        return s
-
-
 def _resolve_bucket_key(raw_cd: str, bucket: dict) -> str | None:
     """
     REAL 수신 종목코드와 레이더/작전 dict 키가 표기만 다를 때(6자리·접두 등) 실제 키 반환.
@@ -160,11 +102,11 @@ def _resolve_bucket_key(raw_cd: str, bucket: dict) -> str | None:
         return None
     if raw_cd in bucket:
         return raw_cd
-    nk = _format_kiwoom_reg_stk_cd(raw_cd)
+    nk = _base_stk_cd(raw_cd)
     if nk in bucket:
         return nk
     for k in bucket:
-        if _format_kiwoom_reg_stk_cd(str(k)) == nk:
+        if _base_stk_cd(str(k)) == nk:
             return str(k)
     return None
 
@@ -189,7 +131,7 @@ def _fid9001_to_stk_cd(vals: dict) -> str:
     v = _dict_get_fid(vals, "9001")
     if v is None or str(v).strip() == "":
         return ""
-    return _format_kiwoom_reg_stk_cd(str(v))
+    return _base_stk_cd(str(v))
 
 
 def _parse_real_item_field(item_field) -> str:
@@ -220,7 +162,7 @@ def _real_item_stk_cd(item: dict, vals: dict) -> str:
     for k in ("jmcode", "stk_cd", "code", "종목코드"):
         alt = item.get(k)
         if alt is not None and str(alt).strip():
-            return _format_kiwoom_reg_stk_cd(str(alt))
+            return _base_stk_cd(str(alt))
     if isinstance(item.get("values"), dict):
         cd = _fid9001_to_stk_cd(item["values"])
         if cd:
@@ -231,4 +173,4 @@ def _real_item_stk_cd(item: dict, vals: dict) -> str:
     s = str(raw).strip().upper()
     if s.isdigit() and len(s) > 6:
         return ""
-    return _format_kiwoom_reg_stk_cd(raw)
+    return _base_stk_cd(raw)

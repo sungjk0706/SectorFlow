@@ -14,7 +14,7 @@ logger = get_logger("engine_ws")
 
 def _ws_live() -> bool:
     """WebSocket 연결 상태 확인."""
-    ws = state.connector_manager or state.kiwoom_connector
+    ws = state.connector_manager or state.active_connector
     return bool(ws and ws.is_connected())
 
 
@@ -33,7 +33,7 @@ async def _ws_send_reg_unreg_and_wait_ack(payload: dict) -> tuple[bool, str]:
             state.reg_ack_event.clear()
         state.reg_ack_return_code = ""
 
-        _sender = state.connector_manager if state.connector_manager and state.connector_manager.is_connected() else state.kiwoom_connector
+        _sender = state.connector_manager if state.connector_manager and state.connector_manager.is_connected() else state.active_connector
         
         if not _sender or not _sender.is_connected():
             return False, ""
@@ -68,7 +68,7 @@ async def _ws_send_remove_fire_and_forget(payload: dict) -> bool:
     REG/UNREG ACK 대기를 막지 않는다.
     다음 REG의 refresh='0'이 서버 구독 상태를 덮어쓰므로 ACK 불필요.
     """
-    _sender = state.connector_manager if state.connector_manager and state.connector_manager.is_connected() else state.kiwoom_connector
+    _sender = state.connector_manager if state.connector_manager and state.connector_manager.is_connected() else state.active_connector
     
     if not _sender or not _sender.is_connected():
         return False
@@ -110,7 +110,7 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
     단건 REG를 보내지 않음 -- 배치가 이미 커버하므로 중복 블로킹 방지.
     시장가 운용으로 호가(02) REG 제거됨 -- 0B는 배치에서 커버.
     """
-    from backend.app.services.engine_symbol_utils import _format_broker_reg_stk_cd, get_ws_subscribe_code
+    from backend.app.services.engine_symbol_utils import _base_stk_cd, get_ws_subscribe_code
     
     stk_cd = str(stk_cd).strip()
     if not stk_cd:
@@ -121,13 +121,13 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
         await state.ws_reg_pipeline_done.wait()
 
     # 배치에서 이미 구독됐으면 단건 불필요 (0B 기준)
-    item_cd = _format_broker_reg_stk_cd(stk_cd)
+    item_cd = _base_stk_cd(stk_cd)
     if state.master_stocks_cache.get(item_cd, {}).get("_subscribed"):
         logger.debug("[데이터] 단건 REG 생략(배치 완료) -- %s", item_cd)
         return
 
     # 배치에 포함되지 않은 신규 모니터링 종목 — 단건 0B REG 전송
-    ws = state.connector_manager or state.kiwoom_connector
+    ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected():
         logger.debug("[데이터] 단건 REG 생략 — WS 미연결/미로그인 %s", item_cd)
         return
@@ -208,7 +208,7 @@ async def _ensure_ws_subscriptions_for_positions() -> None:
     from backend.app.services.engine_account import _refresh_account_snapshot_meta
 
     try:
-        ws = state.connector_manager or state.kiwoom_connector
+        ws = state.connector_manager or state.active_connector
         if not ws or not ws.is_connected() or not state.login_ok:
             return
         if not is_test_mode(state.integrated_system_settings_cache):
@@ -226,7 +226,7 @@ async def _ensure_ws_subscriptions_for_positions() -> None:
 async def _run_sector_reg_pipeline() -> None:
     """실시간 구독 파이프라인 실행."""
     try:
-        ws = state.connector_manager or state.kiwoom_connector
+        ws = state.connector_manager or state.active_connector
         if not ws or not ws.is_connected() or not state.login_ok:
             return
         # 구독 제어 모듈에 위임 (설정 기반 조건부 REG)
@@ -245,7 +245,7 @@ async def _run_sector_reg_pipeline() -> None:
 
 async def _cleanup_stale_ws_subscriptions_on_session_ready() -> None:
     """로그인 직후 1회: 잔존 구독 정리 + 비보유 종목 UNREG 스윕."""
-    ws = state.connector_manager or state.kiwoom_connector
+    ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected():
         return
     
@@ -258,9 +258,9 @@ async def _cleanup_stale_ws_subscriptions_on_session_ready() -> None:
 
 
 def _item_cd_is_position(item_cd: str, pos_keep: set[str]) -> bool:
-    from backend.app.services.engine_symbol_utils import _format_broker_reg_stk_cd
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
     for p in pos_keep:
-        if _format_broker_reg_stk_cd(p) == item_cd:
+        if _base_stk_cd(p) == item_cd:
             return True
     return False
 
@@ -270,9 +270,9 @@ def _item_cd_tracked_radar_or_ready(item_cd: str) -> bool:
     모니터링 pending에 올라간 종목 -- 비보유여도 실시간(REG) 유지해야 HTS와 시세가 맞는다.
     잔고 REST 반영 후 UNREG 스윕 등에서 UNREG 대상에서 제외한다.
     """
-    from backend.app.services.engine_symbol_utils import _normalize_stk_cd_rest
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
 
-    nk = _normalize_stk_cd_rest(str(item_cd).strip())
+    nk = _base_stk_cd(str(item_cd).strip())
     if not nk or nk == "000000":
         return False
     # _radar_cnsr_order 삭제: state.master_stocks_cache의 "_subscribed" 사용 (제로-체크 보장)
@@ -286,7 +286,7 @@ async def _sweep_unreg_subscribed_except_positions_and_tracked() -> int:
 async def subscribe_dynamic_data(codes: list[str]) -> None:
     """동적 데이터(0D, PGM, UH1, UPH 등) 실시간 구독 등록을 커넥터에 위임합니다."""
     from backend.app.services.engine_state import state
-    ws = state.connector_manager or state.kiwoom_connector
+    ws = state.connector_manager or state.active_connector
     logger.info("[동적구독] subscribe_dynamic_data 호출 - codes: %s", codes)
     if not ws or not ws.is_connected() or not state.login_ok:
         logger.warning("[동적구독] 구독 실패 - ws=%s, connected=%s, login_ok=%s", ws, ws.is_connected() if ws else False, state.login_ok)
@@ -298,7 +298,7 @@ async def subscribe_dynamic_data(codes: list[str]) -> None:
 async def unsubscribe_dynamic_data(codes: list[str]) -> None:
     """동적 데이터 실시간 구독 해지를 커넥터에 위임합니다."""
     from backend.app.services.engine_state import state
-    ws = state.connector_manager or state.kiwoom_connector
+    ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected() or not state.login_ok:
         return
     if hasattr(ws, "unsubscribe_dynamic"):

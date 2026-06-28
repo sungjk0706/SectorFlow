@@ -9,6 +9,7 @@ import { CELL_BORDER, FONT_SIZE, FONT_WEIGHT, FONT_FAMILY } from './ui-styles'
 import { computeColumnWidths, type ColumnWidthInput } from './auto-width'
 import { createVirtualScroller } from '../virtual-scroller'
 import { uiStore } from '../../stores/uiStore'
+import { triggerFlash, injectFlashStyle } from './flash-anim'
 
 /* ── ColumnDef<T> 인터페이스 ─────────────────────────────── */
 
@@ -106,36 +107,6 @@ function calcPercentages<T>(
   return computeColumnWidths(inputs, 800).percentages
 }
 
-/** 셀에 노란 플래시 애니메이션 한 번 발동 (중복 발동 시 기존 타이머 정리) */
-function triggerFlash(cell: HTMLElement, duration = 600): void {
-  const key = '_flashTimer' as keyof HTMLElement
-  const prev = (cell as any)[key] as number | undefined
-  if (prev) clearTimeout(prev)
-
-  cell.classList.remove('cell-flash')
-  void cell.offsetWidth // reflow 강제 → 애니메이션 재시작
-  cell.classList.add('cell-flash')
-
-  const timer = setTimeout(() => {
-    cell.classList.remove('cell-flash')
-    ;(cell as any)[key] = undefined
-  }, duration)
-  ;(cell as any)[key] = timer
-}
-
-function injectFlashStyle(wrapper: HTMLElement): void {
-  const style = document.createElement('style')
-  style.textContent = `
-    @keyframes cell-flash {
-      0%   { background-color: rgba(255, 235, 59, 0.45); }
-      100% { background-color: transparent; }
-    }
-    .cell-flash {
-      animation: cell-flash 0.6s ease-out forwards;
-    }
-  `
-  wrapper.appendChild(style)
-}
 
 /* ── createDataTable 팩토리 함수 ──────────────────────── */
 
@@ -514,6 +485,27 @@ function createFixedMode<T extends object>(
           }
           if (zebraStriping) {
              rowEl.style.backgroundColor = (i % 2 === 1) ? '#f9f9f9' : 'transparent'
+          }
+
+          // 셀 내용 갱신 (keyFn 기반 경로와 동일)
+          const tds = rowEl.children
+          for (let cIdx = 0; cIdx < columns.length; cIdx++) {
+            const cell = tds[cIdx] as HTMLElement
+            if (!cell) continue
+            try {
+              const content = columns[cIdx].render(dataRow, i)
+              if (typeof content === 'string') {
+                if (cell.textContent !== content) {
+                  cell.textContent = content
+                }
+              } else if (content instanceof HTMLElement) {
+                const existing = cell.firstElementChild as HTMLElement | null
+                if (!existing || !existing.isEqualNode(content)) {
+                  while (cell.firstChild) cell.removeChild(cell.firstChild)
+                  cell.appendChild(content)
+                }
+              }
+            } catch (_) {}
           }
         }
       }

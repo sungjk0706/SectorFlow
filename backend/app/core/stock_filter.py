@@ -15,7 +15,6 @@ import re
   5. auditInfo ≠ "" AND ≠ "정상" → 감리지정/감리비정상/투자주의환기종목
 """
 
-from backend.app.core.trading_calendar import get_kst_today
 
 # marketCode 화이트리스트 — 코스피("0")와 코스닥("10")만 매매 적격
 _ALLOWED_MARKET_CODES: set[str] = {"0", "10"}
@@ -166,20 +165,6 @@ def evaluate_stock_filter(item: dict, stk_cd: str) -> StockFilterEvaluation:
 
     if nxt_enable == "N":
         diagnostic_flags.append("NXT불가")
-
-    if reg_day and len(reg_day) == 8:
-        try:
-            from datetime import datetime, timedelta
-            reg_date = datetime.strptime(reg_day, "%Y%m%d").date()
-            today = get_kst_today()
-            if today - reg_date < timedelta(days=90):
-                import logging
-                _filter_log = logging.getLogger(__name__)
-                days_since_listing = (today - reg_date).days
-                _filter_log.warning("[필터경고] 신규상장 종목: %s (상장 %d일 경과)", stk_cd, days_since_listing)
-                diagnostic_flags.append(f"신규상장={days_since_listing}일")
-        except ValueError:
-            diagnostic_flags.append(f"상장일비정상={reg_day}")
 
     primary_reason = reasons[0] if reasons else ""
     return StockFilterEvaluation(

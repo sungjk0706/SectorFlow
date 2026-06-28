@@ -80,6 +80,20 @@ async def init_cache_tables():
 
     # sector_summary_cache 테이블 삭제 (메모리 캐시로 대체)
 
+    # 업종 정의 테이블 (빈 업종 생성용 — custom_sectors는 stock_code가 PK이므로 종목 없이 업종 정의 불가)
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS sectors (
+            name TEXT PRIMARY KEY
+        )
+    ''')
+
+    # 기존 종목 파생 업종을 sectors 테이블로 마이그레이션 (idempotent)
+    await conn.execute('''
+        INSERT OR IGNORE INTO sectors (name)
+        SELECT DISTINCT sector FROM master_stocks_table
+        WHERE sector IS NOT NULL AND sector != '' AND sector != '미분류'
+    ''')
+
     await conn.commit()
     _log.info("SQLite 캐시 테이블 초기화 완료.")
 
@@ -266,68 +280,6 @@ async def migrate_add_nxt_enable_column():
         _log.debug("[마이그레이션] nxt_enable 컬럼 이미 존재 - 스킵")
 
 
-async def load_progress_cache(date: str, all_codes: list[str], ws_subscribe_start: str = DEFAULT_USER_SETTINGS["ws_subscribe_start"]) -> set[str]:
-    """master_stocks_table에서 이어받기 완료 종목 로드 (downloaded_at 기반)."""
-    try:
-        from datetime import datetime, timedelta
-        from backend.app.core.trading_calendar import _KST
-        
-        conn = await get_db_connection()
-        
-        # 다음 거래일 계산
-        if _KST:
-            now = datetime.now(_KST)
-        else:
-            now = datetime.now()
-        
-        # ws_subscribe_start 시간 파싱
-        try:
-            parts = str(ws_subscribe_start).strip().split(":")
-            sh, sm = int(parts[0]), int(parts[1])
-        except Exception:
-            sh, sm = 7, 50
-        
-        # 다음 거래일 07:50까지 유효
-        expiry = datetime(now.year, now.month, now.day, sh, sm) + timedelta(days=1)
-        
-        # downloaded_at이 오늘 날짜이고 유효한 종목만 로드
-        cursor = await conn.execute(
-            "SELECT code FROM master_stocks_table "
-            "WHERE date = ? AND downloaded_at IS NOT NULL "
-            "AND datetime(downloaded_at) < datetime(?)",
-            (date, expiry.strftime("%Y-%m-%d %H:%M:%S"))
-        )
-        rows = await cursor.fetchall()
-        
-        completed = {row["code"] for row in rows}
-
-        # SSOT: completed가 all_codes(= confirmed_codes) 외 코드를 포함하면 이어받기 무시
-        all_codes_set = set(all_codes)
-        if completed and not completed.issubset(all_codes_set):
-            _log.info("[progress_cache] 종목 목록 불일치 (상장폐지/신규상장 발생) — 이어받기 무시")
-            return set()
-
-        # SSOT: all_codes 기준으로만 필터링
-        completed = completed & all_codes_set
-
-        if completed:
-            _log.info("[progress_cache] master_stocks_table 로드 완료 -- %d/%d종목", len(completed), len(all_codes))
-
-        return completed
-    except Exception as e:
-        _log.warning("[progress_cache] master_stocks_table 로드 실패: %s", e)
-        return set()
-
-
-async def clear_progress_cache() -> None:
-    """다운로드 완료 후 downloaded_at 컬럼 정리 (선택적 - 필요 시 사용)."""
-    try:
-        # downloaded_at 컬럼은 유지하되, 오래된 데이터만 정리하려면 여기에 로직 추가
-        # 현재는 downloaded_at을 유지하여 이어받기 기능 지원
-        _log.debug("[progress_cache] downloaded_at 컬럼 유지 (이어받기 지원)")
-    except Exception as e:
-        _log.warning("[progress_cache] downloaded_at 정리 실패: %s", e)
-
 # load_stock_name_cache 함수 삭제: 메모리 캐시(_master_stocks_cache)로 단일화
 
 async def create_stock_5d_array_table():
@@ -405,7 +357,7 @@ async def load_master_stocks_table() -> dict[str, dict]:
         result = {}
         for r in rows:
             code = str(r["code"])
-            sector = str(r["sector"] or "기타")
+            sector = str(r["sector"] or "미분류")
             
             result[code] = {
                 "name": str(r["name"] or ""),

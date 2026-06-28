@@ -102,7 +102,7 @@ def get_engine_status() -> dict:
     sub_count = sum(1 for entry in all_stocks.values() if entry.get("_subscribed", False))
 
     test_mode = is_test_mode(state.integrated_system_settings_cache)
-    ws = state.connector_manager or state.kiwoom_connector
+    ws = state.connector_manager or state.active_connector
     conn_ok = bool(ws and ws.is_connected())
 
     # broker별 실제 연결 상태 (state.broker_tokens 기반)
@@ -112,8 +112,8 @@ def get_engine_status() -> dict:
         if state.connector_manager:
             conn = state.connector_manager.get_connector(broker_id)
             ws_connected = bool(conn and conn.is_connected())
-        elif broker_id == "kiwoom" and state.kiwoom_connector:
-            ws_connected = state.kiwoom_connector.is_connected()
+        elif broker_id == "kiwoom" and state.active_connector:
+            ws_connected = state.active_connector.is_connected()
         broker_statuses[broker_id] = {
             "token_valid": bool(token),
             "ws_connected": ws_connected,
@@ -148,7 +148,7 @@ async def on_trade_mode_switched() -> None:
     logger.info("[연결] 투자모드 전환 -> %s (엔진 재기동 없음)", _mode_str)
 
     # BrokerRouter를 통해 현재 연결된 커넥터 확인 (증권사 하드코딩 제거)
-    ws = state.connector_manager or state.kiwoom_connector
+    ws = state.connector_manager or state.active_connector
     if not is_engine_running() or not ws or not ws.is_connected():
         return
 

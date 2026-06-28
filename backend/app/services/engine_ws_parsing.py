@@ -1,7 +1,7 @@
 from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
-키움 WebSocket·REST 페이로드 파싱 -- 전역 엔진 상태 없음.
+WebSocket·REST 페이로드 파싱 -- 전역 엔진 상태 없음.
 
 engine_service에서 분리된 순수 함수만 둔다 (로직·입출력 동일 유지).
 """
@@ -64,9 +64,9 @@ def _ws_fid_int(vals: dict, fid: str, default: int = 0) -> int:
         return default
 
 
-def _normalize_kiwoom_real_type(raw) -> str:
+def _normalize_real_type(raw) -> str:
     """
-    Kiwoom REAL 수신 type 정규화 -- 공식 코드는 01(체결가)·00·04 등.
+    REAL 수신 type 정규화 -- 공식 코드는 01(체결가)·00·04 등.
     REG는 type 0B(주식체결)로 수신 -> 체결가 처리는 01과 동일 경로(아래 0B->01).
     구버전 수신값 0B는 01로 치환한다.
     0J(업종지수) -> "0j" 소문자 보존.
@@ -90,10 +90,10 @@ def _normalize_kiwoom_real_type(raw) -> str:
     return u
 
 
-def _parse_kiwoom_price_scalar(v) -> int:
+def _parse_price_scalar(v) -> int:
     """
     REAL 가격 FID -- '+8010', '-4780', '5,200' 등 부호·콤마 포함 값에서 크기만 추출.
-    (키움은 등락 방향 표시로 FID10 앞에 부호가 붙는 경우가 있어 음수로 파싱되면 절댓값 사용.)
+    (등락 방향 표시로 FID10 앞에 부호가 붙는 경우가 있어 음수로 파싱되면 절댓값 사용.)
     """
     if v is None:
         return 0
@@ -113,7 +113,7 @@ def _parse_kiwoom_price_scalar(v) -> int:
 def _parse_fid10_price(vals: dict) -> int:
     """
     REAL 현재가 -- FID 10 우선, 비어 있으면 27·28(호가) 등 보조.
-    부호는 _parse_kiwoom_price_scalar 에서 제거·절댓값 처리.
+    부호는 _parse_price_scalar 에서 제거·절댓값 처리.
     """
     if not isinstance(vals, dict):
         return 0
@@ -121,7 +121,7 @@ def _parse_fid10_price(vals: dict) -> int:
         raw = _ws_fid_raw(vals, fid)
         if raw is None:
             continue
-        p = _parse_kiwoom_price_scalar(raw)
+        p = _parse_price_scalar(raw)
         if p > 0:
             return p
     return 0
@@ -174,15 +174,6 @@ def parse_change_rate_to_percent(v) -> float:
     if result > 1000.0:
         return 0.0
     return -result if is_neg else result
-
-
-def _parse_ws_fid12_to_percent(v) -> float:
-    """
-    키움 WS FID 12 (등락율) -- API 제공 값 그대로 해석(키움 공식 가이드: 클라이언트 재계산 비권장).
-    정수×1000 스케일(예: 3100 -> 3.10%) 또는 소수 퍼센트(3.15 -> 3.15%).
-    JSON으로 온 11980.0 등 부동소수도 정수 스케일로 처리(문자열의 '.' 분기 사용 금지).
-    """
-    return parse_change_rate_to_percent(v)
 
 
 # ── NXT 관련 FID 파서 ─────────────────────────────────────────────────────────

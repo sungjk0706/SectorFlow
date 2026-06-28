@@ -33,12 +33,14 @@ class KiwoomAuthProvider(AuthProvider):
 
     def __init__(self):
         from backend.app.services.engine_state import state
-        # state.kiwoom_rest_api가 이미 존재하면 재사용 (엔진 루프에서 초기화됨)
-        if state.kiwoom_rest_api is None:
+        # broker_rest_apis에 이미 존재하면 재사용 (엔진 루프에서 초기화됨)
+        _existing = state.broker_rest_apis.get("kiwoom")
+        if _existing is None:
             app_key = (state.integrated_system_settings_cache.get("kiwoom_app_key_real") or state.integrated_system_settings_cache.get("kiwoom_app_key") or "").strip()
             app_secret = (state.integrated_system_settings_cache.get("kiwoom_app_secret_real") or state.integrated_system_settings_cache.get("kiwoom_app_secret") or "").strip()
-            state.kiwoom_rest_api = KiwoomRestAPI(app_key, app_secret)
-        self._rest_api = state.kiwoom_rest_api
+            _existing = KiwoomRestAPI(app_key, app_secret)
+            state.broker_rest_apis["kiwoom"] = _existing
+        self._rest_api = _existing
         self._rest_api._acnt_no = str(
             state.integrated_system_settings_cache.get("kiwoom_account_no_real") or state.integrated_system_settings_cache.get("kiwoom_account_no", "") or ""
         )
@@ -296,14 +298,13 @@ class KiwoomStockProvider:
         qry_dt: str,
         interval_sec: float = 0.33,
         on_progress: "Callable[[int, int], None] | None" = None,
-        resume_codes: "set[str] | None" = None,
     ) -> dict[str, dict]:
         """전체 종목 ka10081 순차 조회 -- 5일봉 데이터 채우기용."""
         if self._rest_api is None:
             return {}
         from backend.app.core.kiwoom_stock_rest import fetch_ka10081_all_stocks_5day
         return await fetch_ka10081_all_stocks_5day(
-            krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress, resume_codes=resume_codes
+            krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress
         )
 
     async def fetch_all_stocks_daily_confirmed(
@@ -312,14 +313,13 @@ class KiwoomStockProvider:
         qry_dt: str,
         interval_sec: float = 0.33,
         on_progress: "Callable[[int, int], None] | None" = None,
-        resume_codes: "set[str] | None" = None,
     ) -> dict[str, dict]:
         """전체 종목 ka10081 순차 조회 -- 확정 시세(1일봉) 데이터 채우기용."""
         if self._rest_api is None:
             return {}
         from backend.app.core.kiwoom_stock_rest import fetch_ka10081_all_stocks_daily_confirmed
         return await fetch_ka10081_all_stocks_daily_confirmed(
-            self._rest_api, krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress, resume_codes=resume_codes
+            self._rest_api, krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress
         )
 
 

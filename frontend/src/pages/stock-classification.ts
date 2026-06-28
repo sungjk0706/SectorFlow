@@ -140,9 +140,9 @@ async function apiPost<T>(path: string, body: Record<string, unknown> = {}): Pro
 /* ── 순수 함수 및 유틸리티 (Task 1) ── */
 
 export function parseBatchInput(input: string): string[] {
-  // 따옴표 제거 후 쉼표, 탭, 줄바꿈, 띄어쓰기 기준으로 분리
+  // 따옴표 제거 후 쉼표, 탭, 줄바꿈, 공백, 괄호 기준으로 분리
   const cleaned = input.replace(/["']/g, '')
-  return cleaned.split(/[\s,]+/).map(t => t.trim()).filter(t => t.length > 0)
+  return cleaned.split(/[\s,()（）]+/).map(t => t.trim()).filter(t => t.length > 0)
 }
 
 /** Task 1.3: 토큰 → 종목코드 매칭. 코드 우선(O(1)), 종목명 차선(O(1)), 미매칭 시 null
@@ -289,7 +289,7 @@ function updateStagingChipSectors(): void {
     const stock = getAllStocks().get(code)
     let sectorName = stockMoves[code] ?? stock?.sector ?? ''
     if (sectors[sectorName]) sectorName = sectors[sectorName]
-    if (deletedSectors.includes(sectorName)) sectorName = '기타'
+    if (deletedSectors.includes(sectorName)) sectorName = '미분류'
     const sectorSpan = chip.querySelector('.chip-sector')
     if (sectorSpan) sectorSpan.textContent = sectorName
   }
@@ -307,7 +307,7 @@ function countStocksBySector(): Record<string, number> {
 
   for (const [, stock] of getAllStocks()) {
     let sector = stockMoves[stock.code] ?? stock.sector
-    if (sector === undefined || sector === null) sector = '기타'
+    if (sector === undefined || sector === null) sector = '미분류'
     if (sectors[sector]) sector = sectors[sector]
     if (deletedSectors.includes(sector)) sector = '업종명없음'
     if (sector && counts[sector] !== undefined) counts[sector]++
@@ -323,7 +323,7 @@ function getStocksForSector(sectorName: string): Array<{ code: string; name: str
 
   for (const [, stock] of getAllStocks()) {
     let sector = stockMoves[stock.code] ?? stock.sector
-    if (sector === undefined || sector === null) sector = '기타'
+    if (sector === undefined || sector === null) sector = '미분류'
     if (sectors[sector]) sector = sectors[sector]
     if (deletedSectors.includes(sector)) sector = '업종명없음'
     if (sector === sectorName) result.push({ code: stock.code, name: stock.name, market_type: stock.market_type, nxt_enable: stock.nxt_enable })
@@ -580,30 +580,32 @@ function buildSectorManageCard(): HTMLElement {
         return
       }
 
-      // Batch_Code_Input 감지: 쉼표나 따옴표 포함 시 배치 모드 (Req 1.5, 1.6, 1.7, 1.8, 1.9)
-      if (/[,"']/.test(query)) {
-        const tokens = parseBatchInput(query)
-        for (const token of tokens) {
-          const code = resolveToken(token)
-          if (code) addToStaging(code)
+      // 통합 파이프라인: 토큰 분리 후 정확 매칭 시도 → 성공 시 Staging 추가, 실패 시 fuzzy 검색
+      const tokens = parseBatchInput(query)
+      const matchedCodes: string[] = []
+      for (const token of tokens) {
+        const code = resolveToken(token)
+        if (code && !matchedCodes.includes(code)) matchedCodes.push(code)
+      }
+
+      if (matchedCodes.length > 0) {
+        for (const code of matchedCodes) {
+          if (!stagingSet.has(code)) addToStaging(code)
         }
-        // 처리 완료 후 검색 입력 비우기 → onSearch('') 트리거로 검색 결과 숨김 + 업종 테이블 복원
         if (searchInputRef) {
           searchInputRef.clear()
-          // clear() triggers onSearch('') which hides results and shows master table
-          // 포커스 유지
           const inputEl = searchInputRef.el.querySelector('input')
           if (inputEl) inputEl.focus()
         }
         return
       }
 
+      // 정확 매칭 실패 → fuzzy 검색 결과 표시
       const q = query.toLowerCase()
       const state = stockClassificationStore.getState()
       const { stockMoves, sectors } = state
       const results: SearchResultRow[] = []
 
-      // 포괄적 검색: 괄호/공백으로 분리된 토큰 중 하나라도 매칭되면 결과에 포함
       const searchTokens = q.split(/[\s()（）]+/).filter(t => t.length > 0)
 
       for (const [, stock] of getAllStocks()) {
@@ -709,7 +711,26 @@ function buildSectorManageCard(): HTMLElement {
     },
     {
       key: 'count', label: '종목수', align: 'center',
-      render: (row) => String(row.stockCount),
+      render: (row) => {
+        if (row.sectorName === '미분류' && row.stockCount > 0) {
+          const badge = document.createElement('span')
+          Object.assign(badge.style, {
+            background: '#dc3545',
+            color: '#fff',
+            borderRadius: '50%',
+            fontSize: FONT_SIZE.chip,
+            minWidth: '18px',
+            height: '18px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: '600',
+          })
+          badge.textContent = String(row.stockCount)
+          return badge
+        }
+        return String(row.stockCount)
+      },
     },
     {
       key: 'actions', label: '작업', align: 'center',
@@ -1345,53 +1366,20 @@ async function onMoveStock(_e: MouseEvent, targetSector: string): Promise<void> 
     })
     handleMutationResult(lastRes)
 
-    // 서버 응답 기반 로컬 상태 업데이트 (즉시 피드백 제공)
+    // 서버 응답 기반 로컬 상태 업데이트 — allStocks + stockMoves 통합 setState (1회 렌더)
     if (lastRes.ok && lastRes.all_stocks && Array.isArray(lastRes.all_stocks)) {
-      stockClassificationStore.setState({ allStocks: lastRes.all_stocks })
-
-      // stockMoves 업데이트
-      const state = stockClassificationStore.getState()
-      const newStockMoves = { ...state.stockMoves }
+      const currentState = stockClassificationStore.getState()
+      const newStockMoves = { ...currentState.stockMoves }
       for (const code of codes) {
         newStockMoves[code] = targetSector
       }
-      stockClassificationStore.setState({ stockMoves: newStockMoves })
-
-      // 즉시 UI 갱신
-      updateAllInlineMoveButtons()
-      updateMasterPanel()
-      updateCenterPanel()
-      updateRightPanel()
+      stockClassificationStore.setState({ allStocks: lastRes.all_stocks, stockMoves: newStockMoves })
     }
 
     if (moveSource.source === 'staging') {
       clearStaging()
     }
-
-    // 이동 완료 팝업
-    showAlertDialog({
-      title: '✅ 이동 완료',
-      message: `${codes.length}개 종목이 "${targetSector}" 업종으로 이동되었습니다.`
-    })
   } catch { toastResult({ ok: false }) }
-}
-
-/* ── 8.7: SSE 델타 갱신 ── */
-
-/** SSE stock-classification-changed 시 getAllStocks() 델타 갱신 */
-function applyStockMovesDelta(prevMoves: Record<string, string>, newMoves: Record<string, string>): void {
-  // Find changed stock moves
-  const changedCodes = new Set<string>()
-  for (const code of Object.keys(newMoves)) {
-    if (prevMoves[code] !== newMoves[code]) changedCodes.add(code)
-  }
-  // Also check removed moves
-  for (const code of Object.keys(prevMoves)) {
-    if (!(code in newMoves)) changedCodes.add(code)
-  }
-
-  // Note: getAllStocks() stores base sector from API. stockMoves override is applied at query time
-  // in countStocksBySector/getStocksForSector. So delta update only needs to re-render.
 }
 
 /* ── 8.0: store의 allStocks로 stockNameIndex 업데이트 ── */
@@ -1441,6 +1429,7 @@ function mount(_container: HTMLElement): void {
       updateCenterPanel()
       updateRightPanel()
       updateStagingChipSectors()
+      updateIndicatorBar()
       return
     }
 
@@ -1448,9 +1437,6 @@ function mount(_container: HTMLElement): void {
       if (state.allStocks !== prev.allStocks) {
         updateStockNameIndex()
       }
-
-      // SSE delta: apply stockMoves changes to allStocks awareness
-      applyStockMovesDelta(prev.stockMoves, state.stockMoves)
 
       // Check if selectedSector still exists
       if (selectedSector && !state.mergedSectors.includes(selectedSector)) {
@@ -1485,7 +1471,7 @@ function mount(_container: HTMLElement): void {
       updateStagingChipSectors()
     }
 
-    if (state.editWindowOpen !== prev.editWindowOpen || state.filter_summary !== prev.filter_summary) {
+    if (state.allStocks !== prev.allStocks || state.editWindowOpen !== prev.editWindowOpen || state.filter_summary !== prev.filter_summary) {
       updateIndicatorBar()
       setControlsDisabled(!state.editWindowOpen)
     }

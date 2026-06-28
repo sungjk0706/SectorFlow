@@ -6,7 +6,7 @@ from __future__ import annotations
 `engine_service` 모듈 전역 dict를 인자로 받아 갱신한다 -- 순환 import 없이 호출부에서 주입.
 """
 
-from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd, _resolve_bucket_key
+from backend.app.services.engine_symbol_utils import _base_stk_cd, _resolve_bucket_key
 
 
 def overlay_radar_row_with_live_price(
@@ -23,7 +23,7 @@ def overlay_radar_row_with_live_price(
     cd = str(out.get("code", "") or "").strip()
     if not cd:
         return out
-    nk = _format_kiwoom_reg_stk_cd(cd)
+    nk = _base_stk_cd(cd)
     lp = latest_trade_prices.get(nk)
     if lp and int(lp) > 0:
         out["cur_price"] = int(lp)
@@ -61,7 +61,7 @@ def apply_real01_volume_amount_to_radar_rows(
     is_0b_tick: bool = True,
 ) -> None:
     """거래대금 캐시가 있으면 행 dict에 패치. 0으로 덮지 않음."""
-    nk = _format_kiwoom_reg_stk_cd(raw_cd)
+    nk = _base_stk_cd(raw_cd)
 
     def _patch_row(ed: dict) -> None:
         cached_amt = latest_trade_amounts.get(nk)
