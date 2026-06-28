@@ -12,7 +12,7 @@ import type { SectorStock } from '../types'
 
 /* ── ColumnDef 배열 (12개 컬럼) ── */
 const COLUMNS: ColumnDef<SectorStock>[] = [
-  { key: 'seq', label: '순번', align: 'center', render: (_t, idx) => createSeqCell(idx + 1) },
+  { key: 'seq', label: '순번', align: 'center', minWidth: 36, maxWidth: 36, render: (_t, idx) => createSeqCell(idx + 1) },
   makeCodeColumn<SectorStock>((t) => t.code),
   createStockNameColumn<SectorStock>(
     (t: SectorStock) => ({
@@ -30,7 +30,6 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
   makeStrengthColumn<SectorStock>((t) => Number(t.strength)),
   {
     key: 'order_ratio', label: '호가잔량비', align: 'right',
-    cellStyle: { fontSize: FONT_SIZE.badge },
     render: (t) => {
       if (!t.order_ratio) return ''
       const [bid, ask] = t.order_ratio
@@ -40,10 +39,10 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
         span.textContent = '100.0%'
         span.style.color = '#888'
       } else if (bid > ask) {
-        span.textContent = `[매수우위] ${((bid / ask) * 100).toFixed(1)}%`
+        span.textContent = `[매수] ${((bid / ask) * 100).toFixed(1)}%`
         span.style.color = '#dc3545'
       } else {
-        span.textContent = `[매도우위] ${((ask / bid) * 100).toFixed(1)}%`
+        span.textContent = `[매도] ${((ask / bid) * 100).toFixed(1)}%`
         span.style.color = '#0d6efd'
       }
       return span
@@ -51,7 +50,6 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
   },
   {
     key: 'program_net_buy', label: '프순매', align: 'right',
-    cellStyle: { fontSize: FONT_SIZE.badge },
     render: (t) => {
       if (t.program_net_buy === undefined || t.program_net_buy === null) return ''
       // tval이 금액(원)이라면 백만 원 단위로 환산, LS증권 대금 포맷을 고려하여 백만 단위로 나눈 후 1자리 소수점 표시
@@ -76,7 +74,6 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
   },
   {
     key: 'boost_score', label: '가산점', align: 'right',
-    cellStyle: { fontSize: FONT_SIZE.badge },
     render: (t) => {
       const bs = Number(t.boost_score) || 0
       return bs > 0 ? bs.toFixed(1) : ''

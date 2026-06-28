@@ -59,34 +59,35 @@ async def _load_positions() -> None:
         logger.warning("[테스트모드] SQLite 로드 실패: %s", e)
 
 
-_pos_save_pending: bool = False
+_pos_save_event: asyncio.Event = asyncio.Event()
 _pos_save_running: bool = False
 _pos_lock = asyncio.Lock()
 
 
 async def _schedule_save_positions() -> None:
     """포지션 파일 저장 예약. 동시 실행 방지 (coalesce)."""
-    global _pos_save_pending, _pos_save_running
+    global _pos_save_running
     async with _pos_lock:
-        _pos_save_pending = True
         if _pos_save_running:
+            _pos_save_event.set()
             return
         _pos_save_running = True
     asyncio.create_task(_coalesced_save_positions())
 
 
 async def _coalesced_save_positions() -> None:
-    """pending 플래그가 True인 동안 반복 저장. 동시 실행 1개 보장."""
-    global _pos_save_pending, _pos_save_running
+    """이벤트 기반 coalescing 저장. 동시 실행 1개 보장."""
+    global _pos_save_running
     try:
         while True:
-            async with _pos_lock:
-                if not _pos_save_pending:
-                    _pos_save_running = False
-                    break
-                _pos_save_pending = False
-                snapshot = dict(_test_positions)
+            snapshot = dict(_test_positions)
             await _save_positions(snapshot)
+            async with _pos_lock:
+                if _pos_save_event.is_set():
+                    _pos_save_event.clear()
+                    continue
+                _pos_save_running = False
+                break
     finally:
         async with _pos_lock:
             _pos_save_running = False

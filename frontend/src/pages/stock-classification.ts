@@ -6,6 +6,7 @@ import { stockClassificationStore, computeEditWindowOpenByTime, type StockClassi
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
+import { api } from '../api/client'
 import { createSettingsManager, type SettingsManager } from '../settings'
 // import { createSettingRow } from '../components/common/setting-row' (removed)
 import { createCardTitleWithContent } from '../components/common/card-title'
@@ -120,21 +121,6 @@ interface SearchResultRow {
   sector: string
   market_type?: string
   nxt_enable?: boolean
-}
-
-/* ── API 헬퍼 ── */
-
-async function apiPost<T>(path: string, body: Record<string, unknown> = {}): Promise<T> {
-  const res = await fetch(path, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('token') || 'dev-bypass'}`,
-    },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
 }
 
 /* ── 순수 함수 및 유틸리티 (Task 1) ── */
@@ -496,7 +482,7 @@ async function onTriggerConfirmedDownload(): Promise<void> {
   if (!result.confirmed) return
 
   try {
-    const res = await apiPost<StockClassificationMutationResponse>(endpoint, {})
+    const res = await api.post<StockClassificationMutationResponse>(endpoint, {})
     handleMutationResult(res)
   } catch {
     toastResult({ ok: false })
@@ -527,7 +513,7 @@ async function onTrigger5dDownload(): Promise<void> {
   if (!result.confirmed) return
 
   try {
-    const res = await apiPost<StockClassificationMutationResponse>(endpoint, {})
+    const res = await api.post<StockClassificationMutationResponse>(endpoint, {})
     handleMutationResult(res)
   } catch {
     toastResult({ ok: false })
@@ -628,7 +614,7 @@ function buildSectorManageCard(): HTMLElement {
   // 검색 결과 테이블
   const searchColumns: ColumnDef<SearchResultRow>[] = [
     {
-      key: 'code', label: '종목코드', align: 'center',
+      key: 'code', label: '종목코드', align: 'center', minWidth: 72, maxWidth: 72,
       cellStyle: { color: '#999', fontSize: FONT_SIZE.small },
       render: (row) => row.code
     },
@@ -853,7 +839,7 @@ async function onRenameSector(oldName: string, e: MouseEvent): Promise<void> {
   const newName = ('value' in result) ? result.value.trim() : ''
   if (!newName || newName === oldName) return
   try {
-    const res = await apiPost<StockClassificationMutationResponse>('/api/stock-classification/rename', { old_name: oldName, new_name: newName })
+    const res = await api.post<StockClassificationMutationResponse>('/api/stock-classification/rename', { old_name: oldName, new_name: newName })
     handleMutationResult(res)
   } catch { toastResult({ ok: false }) }
 }
@@ -870,7 +856,7 @@ async function onDeleteSector(name: string, e: MouseEvent): Promise<void> {
   })
   if (!result.confirmed) return
   try {
-    const res = await apiPost<StockClassificationMutationResponse>('/api/stock-classification/delete', { name })
+    const res = await api.post<StockClassificationMutationResponse>('/api/stock-classification/delete', { name })
     handleMutationResult(res)
   } catch { toastResult({ ok: false }) }
 }
@@ -888,7 +874,7 @@ async function onAddSector(e: MouseEvent): Promise<void> {
   const name = ('value' in result) ? result.value.trim() : ''
   if (!name) return
   try {
-    const res = await apiPost<StockClassificationMutationResponse>('/api/stock-classification/create', { name })
+    const res = await api.post<StockClassificationMutationResponse>('/api/stock-classification/create', { name })
     handleMutationResult(res)
   } catch { toastResult({ ok: false }) }
 }
@@ -1005,7 +991,7 @@ function buildTripleCenter(): void {
   // 종목 테이블 — 체크박스 컬럼 제거, cellStyle 적용
   const detailColumns: ColumnDef<DetailRow>[] = [
     {
-      key: 'code', label: '종목코드', minWidth: 80, align: 'center',
+      key: 'code', label: '종목코드', minWidth: 72, maxWidth: 72, align: 'center',
       cellStyle: { color: '#999', fontSize: FONT_SIZE.small },
       render: (row) => row.code,
     },
@@ -1360,7 +1346,7 @@ async function onMoveStock(_e: MouseEvent, targetSector: string): Promise<void> 
   if (!confirmed) return
 
   try {
-    const lastRes = await apiPost<StockClassificationMutationResponse>('/api/stock-classification/move-stocks', {
+    const lastRes = await api.post<StockClassificationMutationResponse>('/api/stock-classification/move-stocks', {
       stock_codes: codes,
       target_sector: targetSector,
     })

@@ -320,10 +320,10 @@ function mount(container: HTMLElement): void {
   root.appendChild(trimRow)
 
   // ⑤ 점수 가중치
-  const weightLabel = createStepLabel('⑤', '점수 가중치')
+  const weightLabel = createStepLabel('⑤', '')
   const weightDesc = document.createElement('span')
-  Object.assign(weightDesc.style, { fontSize: FONT_SIZE.small, color: '#888', marginLeft: '8px' })
-  weightDesc.textContent = '상승 종목 비율과 평균 거래대금의 중요도를 조절합니다.'
+  Object.assign(weightDesc.style, { fontSize: FONT_SIZE.small, color: '#888' })
+  weightDesc.textContent = '상승 종목 비율과 평균 거래대금의 점수 반영 비중을 조절합니다.'
   weightLabel.appendChild(weightDesc)
   root.appendChild(weightLabel)
   const weightWrap = document.createElement('div')
@@ -351,7 +351,7 @@ function mount(container: HTMLElement): void {
   root.appendChild(weightWrap)
 
   // ⑤ 매수 대상
-  root.appendChild(createStepLabel('⑤', '매수 대상'))
+  root.appendChild(createStepLabel('⑤', '최대 매수 대상 업종수 설정'))
   maxTargetsInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_max_targets', v), step: 1, name: 'sector_max_targets' })
 
   const maxTargetsRow = document.createElement('div')
@@ -364,12 +364,12 @@ function mount(container: HTMLElement): void {
   })
 
   const maxTargetsLabel = document.createElement('span')
-  maxTargetsLabel.textContent = '상위 업종 수'
-  Object.assign(maxTargetsLabel.style, { flex: '1', fontSize: FONT_SIZE.label, color: '#333', display: 'flex', alignItems: 'center' })
+  maxTargetsLabel.textContent = '매수대상 업종수'
+  Object.assign(maxTargetsLabel.style, { flex: '1.5', color: '#333', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' })
 
   maxTargetsStatusEl = document.createElement('span')
   Object.assign(maxTargetsStatusEl.style, {
-    flex: '1.6',
+    flex: '1',
     fontSize: FONT_SIZE.label,
     color: '#888',
     display: 'flex',
@@ -379,7 +379,7 @@ function mount(container: HTMLElement): void {
   })
 
   const rightWrap = document.createElement('div')
-  Object.assign(rightWrap.style, { flex: '1', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' })
+  Object.assign(rightWrap.style, { flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' })
   rightWrap.appendChild(maxTargetsInput.el)
 
   maxTargetsRow.appendChild(maxTargetsLabel)

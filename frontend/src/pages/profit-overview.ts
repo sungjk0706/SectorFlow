@@ -9,6 +9,7 @@ import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, createStockNameColumn, create
 import { ACCOUNT_LABELS_REAL, ACCOUNT_LABELS_TEST } from '../components/common/account-labels'
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
+import { api } from '../api/client'
 
 /* ── 헬퍼 ── */
 
@@ -31,7 +32,7 @@ function buildChartFromDailySummary(summary: Record<string, unknown>[]): { date:
 
 /* ── 매수 컬럼 (7개) ── */
 const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
-  { key: 'no', label: '순번', align: 'center', render: (_, i) => String(i + 1) },
+  { key: 'no', label: '순번', align: 'center', minWidth: 36, maxWidth: 36, render: (_, i) => String(i + 1) },
   { key: 'date', label: '날짜', align: 'center', render: r => { const d = String(r.date ?? ''); return d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d } },
   { key: 'time', label: '시간', align: 'center', render: r => String(r.time ?? '').slice(0, 5) },
   createStockNameColumn<Record<string, unknown>>(
@@ -53,7 +54,7 @@ const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
 
 /* ── 매도 컬럼 (12개) ── */
 const SELL_COLS: ColumnDef<Record<string, unknown>>[] = [
-  { key: 'no', label: '순번', align: 'center', render: (_, i) => String(i + 1) },
+  { key: 'no', label: '순번', align: 'center', minWidth: 36, maxWidth: 36, render: (_, i) => String(i + 1) },
   { key: 'date', label: '날짜', align: 'center', render: r => { const d = String(r.date ?? ''); return d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d } },
   { key: 'time', label: '시간', align: 'center', render: r => String(r.time ?? '').slice(0, 5) },
   createStockNameColumn<Record<string, unknown>>(
@@ -742,15 +743,8 @@ function mount(container: HTMLElement): void {
       try {
         const settings = globalSettingsManager.getSettings()
         const tradeMode = settings?.trade_mode || 'test'
-        const token = localStorage.getItem('token') || 'dev-bypass'
-        const params = new URLSearchParams({ date_from: from, date_to: to, trade_mode: tradeMode })
-        const resp = await fetch(`/api/trade-history/daily-summary?${params}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (resp.ok) {
-          const data = await resp.json()
-          chart?.updateData(buildChartFromDailySummary(data))
-        }
+        const data = await api.getDailySummary(from, to, tradeMode)
+        chart?.updateData(buildChartFromDailySummary(data))
       } catch (err) {
         console.warn('[profit-overview] daily-summary fetch failed:', err)
       }
