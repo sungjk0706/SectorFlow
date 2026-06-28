@@ -88,6 +88,7 @@ echo "============================================"
 # [개선 2] 터미널 종료 시 자식 프로세스 동반 안전 종료 (Trap)
 # ---------------------------------------------------------
 cleanup() {
+    trap - SIGINT SIGTERM EXIT
     echo ""
     echo "🛑 SectorFlow 안전 종료 중... (Graceful Shutdown)"
     kill -15 $BACKEND_PID 2>/dev/null
@@ -101,5 +102,11 @@ cleanup() {
 # SIGINT(Ctrl+C), SIGTERM, EXIT 신호가 오면 cleanup 함수 실행
 trap cleanup SIGINT SIGTERM EXIT
 
-# 백그라운드 프로세스 유지
-wait
+# 백엔드 종료 대기 — 브라우저 닫기 → 백엔드 graceful shutdown → 여기서 반환
+wait $BACKEND_PID
+
+# 정상 종료 경로 — trap 해제 후 프론트엔드 종료
+trap - SIGINT SIGTERM EXIT
+kill -15 $FRONTEND_PID 2>/dev/null
+wait $FRONTEND_PID 2>/dev/null
+exit 0
