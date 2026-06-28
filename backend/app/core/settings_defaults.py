@@ -35,9 +35,6 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     
     # 투자모드
     "trade_mode": "test",
-    "test_mode": True,
-    "mock_mode": True,
-    "mode_real": False,
     "test_virtual_deposit": 10000000,
     "test_virtual_balance": 10000000,
     

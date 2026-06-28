@@ -89,18 +89,13 @@ def _migrate_trade_mode(merged: dict) -> tuple[dict, bool]:
         tm = "test"
         dirty = True
     if tm not in ("test", "real"):
-        merged["trade_mode"] = "test" if bool(merged.get("test_mode", merged.get("mock_mode", True))) else "real"
+        merged["trade_mode"] = "test"
         dirty = True
-    tm = str(merged["trade_mode"])
-    if bool(merged.get("test_mode", False)) != (tm == "test"):
-        merged["test_mode"] = tm == "test"
-        dirty = True
-    if bool(merged.get("mock_mode", True)) != (tm == "test"):
-        merged["mock_mode"] = tm == "test"
-        dirty = True
-    if bool(merged.get("mode_real", False)) != (tm == "real"):
-        merged["mode_real"] = tm == "real"
-        dirty = True
+    # 레거시 파생 변수 제거 (단일 소스: trade_mode만 사용)
+    for legacy_key in ("test_mode", "mock_mode", "mode_real"):
+        if legacy_key in merged:
+            del merged[legacy_key]
+            dirty = True
     return merged, dirty
 
 

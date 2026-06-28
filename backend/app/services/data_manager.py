@@ -66,7 +66,6 @@ async def _load_broker_settings() -> dict | None:
             f"{broker_nm}_app_key":    k,
             f"{broker_nm}_app_secret": s,
             f"{broker_nm}_account_no": a,
-            "test_mode":         tm == "test",
             "trade_mode":        tm,
         }
     except Exception:

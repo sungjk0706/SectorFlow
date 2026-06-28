@@ -62,10 +62,8 @@ export function bindWSToStore(
   /* ── prices 채널 연결 상태 콜백 ── */
   pricesClient.setConnectionCallbacks(
     () => {
-      console.log('[WS] prices 채널 연결됨')
     },
     () => {
-      console.log('[WS] prices 채널 연결 끊김 — 재연결 시도 중…')
     },
   )
 
@@ -120,15 +118,11 @@ export function bindWSToStore(
       }
       if (changed && changed.length > 0) {
         buyTargets = buyTargets === state.buyTargets ? [...buyTargets] : buyTargets
-        console.log('[buy-targets-delta] changed total items:', changed.length)
         for (const item of changed) {
           const idx = buyTargets.findIndex((t: SectorStock) => normalizeStockCode(t.code) === normalizeStockCode(item.code))
-          console.log('[buy-targets-delta] changed item code:', item.code, 'idx:', idx)
           if (idx >= 0) {
             // 아키텍처 원칙 — sectorStocks가 실시간 데이터 단일 소스
             const sectorStock = state.sectorStocks[normalizeStockCode(item.code)]
-            console.log('[buy-targets-delta] sectorStock?.change_rate:', sectorStock?.change_rate)
-            console.log('[buy-targets-delta] item.change_rate:', item.change_rate)
             buyTargets[idx] = {
               ...item,
               cur_price: sectorStock?.cur_price,
@@ -137,7 +131,6 @@ export function bindWSToStore(
               strength: sectorStock?.strength,
               trade_amount: sectorStock?.trade_amount,
             }
-            console.log('[buy-targets-delta] final buyTargets[idx].change_rate:', buyTargets[idx].change_rate)
           }
         }
       }
@@ -145,9 +138,6 @@ export function bindWSToStore(
         // 아키텍처 원칙 — sectorStocks가 실시간 데이터 단일 소스
         const addedWithRealtime = added.map(item => {
           const sectorStock = state.sectorStocks[normalizeStockCode(item.code)]
-          console.log('[buy-targets-delta] added code:', item.code)
-          console.log('[buy-targets-delta] added sectorStock?.change_rate:', sectorStock?.change_rate)
-          console.log('[buy-targets-delta] added item.change_rate:', item.change_rate)
           const result = {
             ...item,
             cur_price: sectorStock?.cur_price,
@@ -156,7 +146,6 @@ export function bindWSToStore(
             strength: sectorStock?.strength,
             trade_amount: sectorStock?.trade_amount,
           }
-          console.log('[buy-targets-delta] added final change_rate:', result.change_rate)
           return result
         })
         buyTargets = buyTargets === state.buyTargets ? [...buyTargets, ...addedWithRealtime] : [...buyTargets, ...addedWithRealtime]
@@ -196,7 +185,6 @@ export function bindWSToStore(
   })
 
   settingsClient.onEvent('engine-reload-complete', () => {
-    console.log('[WS] engine-reload-complete 수신 — 엔진 재시작 완료')
     applyEngineReloadComplete()
   })
 
@@ -208,10 +196,6 @@ export function bindWSToStore(
     applySnapshotUpdate(data as { snapshot_history: SnapshotHistory[] })
   })
 
-
-  settingsClient.onEvent('ws-connection-status', (data) => {
-    console.log('[WS] ws-connection-status 수신:', data)
-  })
 
   settingsClient.onEvent('bootstrap-stage', (data) => {
     applyBootstrapStage(data as { stage_id: number; stage_name: string; total: number; progress?: { current: number; total: number } })
@@ -253,7 +237,6 @@ export function bindWSToStore(
   })
 
   pricesClient.onEvent('engine-ready', () => {
-    console.log('[WS] engine-ready 수신 — 부트스트랩 완료')
     applyEngineReloadComplete()
   })
 

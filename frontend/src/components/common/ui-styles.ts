@@ -306,6 +306,8 @@ export function makeSeqColumn<T>(get: (t: T) => number): ColumnDef<T> {
     key: 'seq',
     label: '순번',
     align: 'center',
+    minWidth: 36,
+    maxWidth: 36,
     render: (t) => createSeqCell(get(t)),
   }
 }
@@ -316,6 +318,8 @@ export function makeCodeColumn<T>(get: (t: T) => string): ColumnDef<T> {
     key: 'code',
     label: '종목코드',
     align: 'center',
+    minWidth: 72,
+    maxWidth: 72,
     render: (t) => createCodeCell(get(t)),
   }
 }

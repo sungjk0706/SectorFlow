@@ -748,7 +748,7 @@ async def _run_confirmed_pipeline(
     es._confirmed_refresh_message = ""
 
     import backend.app.services.engine_state as _es_state
-    _kiwoom_token_registered = False
+    _broker_token_registered = False
 
     try:
         # ── 메모리 전체 초기화 ──
@@ -762,15 +762,17 @@ async def _run_confirmed_pipeline(
             _log.info("%s scheduler_market_close_on=OFF — 전체 갱신 생략", tag)
             return {"fetched": 0, "failed": 0, "cached": False, "skipped": True}
 
-        from backend.app.core.kiwoom_providers import KiwoomStockProvider, KiwoomAuthProvider
-        _kiwoom_auth = KiwoomAuthProvider()
-        _kiwoom_token = await _kiwoom_auth.get_access_token()
-        if _kiwoom_token and "kiwoom" not in _es_state._broker_tokens:
-            _es_state._broker_tokens["kiwoom"] = _kiwoom_token
-            _kiwoom_token_registered = True
+        from backend.app.core.broker_registry import _create_provider
+        _broker_name = str(es._integrated_system_settings_cache.get("broker", "") or "").lower().strip() or "kiwoom"
+        _auth_cache: dict[str, object] = {}
+        _auth_provider = _create_provider("auth", _broker_name, es._integrated_system_settings_cache, _auth_cache)
+        _broker_token = await _auth_provider.get_access_token() if _auth_provider else None
+        if _broker_token and _broker_name not in _es_state._broker_tokens:
+            _es_state._broker_tokens[_broker_name] = _broker_token
+            _broker_token_registered = True
             from backend.app.services.engine_lifecycle import broadcast_engine_status
             broadcast_engine_status()
-        _sector = KiwoomStockProvider(auth_provider=_kiwoom_auth)
+        _sector = _create_provider("stock", _broker_name, es._integrated_system_settings_cache, _auth_cache)
 
         # ── Step 1: ka10099 전종목 리스트 다운로드 ──
         _log.info("%s Step 1 시작 — ka10099 전종목 리스트 다운로드", tag)
@@ -1080,8 +1082,8 @@ async def _run_confirmed_pipeline(
             _log.info("[1일봉챠트 시세 다운로드] 전체 완료 — ka10099: %d종목 | 적격: %d종목 | 1일봉: %d/%d종목", len(all_codes), len(final_eligible) if 'final_eligible' in locals() else 0, fetched, total)
         return {"fetched": fetched, "failed": failed, "cached": cached}
     finally:
-        if _kiwoom_token_registered:
-            _es_state._broker_tokens.pop("kiwoom", None)
+        if _broker_token_registered:
+            _es_state._broker_tokens.pop(_broker_name, None)
             from backend.app.services.engine_lifecycle import broadcast_engine_status
             broadcast_engine_status()
         es._confirmed_refresh_running_confirmed = False
@@ -1203,18 +1205,20 @@ async def fetch_5d_data_only() -> dict:
     es._confirmed_refresh_message = ""
 
     import backend.app.services.engine_state as _es_state
-    _kiwoom_token_registered = False
+    _broker_token_registered = False
 
     try:
-        from backend.app.core.kiwoom_providers import KiwoomStockProvider, KiwoomAuthProvider
-        _kiwoom_auth = KiwoomAuthProvider()
-        _kiwoom_token = await _kiwoom_auth.get_access_token()
-        if _kiwoom_token and "kiwoom" not in _es_state._broker_tokens:
-            _es_state._broker_tokens["kiwoom"] = _kiwoom_token
-            _kiwoom_token_registered = True
+        from backend.app.core.broker_registry import _create_provider
+        _broker_name = str(es._integrated_system_settings_cache.get("broker", "") or "").lower().strip() or "kiwoom"
+        _auth_cache: dict[str, object] = {}
+        _auth_provider = _create_provider("auth", _broker_name, es._integrated_system_settings_cache, _auth_cache)
+        _broker_token = await _auth_provider.get_access_token() if _auth_provider else None
+        if _broker_token and _broker_name not in _es_state._broker_tokens:
+            _es_state._broker_tokens[_broker_name] = _broker_token
+            _broker_token_registered = True
             from backend.app.services.engine_lifecycle import broadcast_engine_status
             broadcast_engine_status()
-        _sector = KiwoomStockProvider(auth_provider=_kiwoom_auth)
+        _sector = _create_provider("stock", _broker_name, es._integrated_system_settings_cache, _auth_cache)
 
         # ── 메모리 캐시에서 매매적격종목 코드 리스트 로드 (SSOT: DB에서만 로드된 캐시 사용) ──
         _log.info("[5일봉챠트 거래대금,고가 다운로드] 매매적격종목 목록 로드 시작")
@@ -1394,8 +1398,8 @@ async def fetch_5d_data_only() -> dict:
 
         return {"fetched": fetched, "failed": failed, "cached": False}
     finally:
-        if _kiwoom_token_registered:
-            _es_state._broker_tokens.pop("kiwoom", None)
+        if _broker_token_registered:
+            _es_state._broker_tokens.pop(_broker_name, None)
             from backend.app.services.engine_lifecycle import broadcast_engine_status
             broadcast_engine_status()
         es._confirmed_refresh_running_5d = False

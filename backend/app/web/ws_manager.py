@@ -122,6 +122,7 @@ class WSManager:
         # 이벤트형: [(event_type, data), ...] — 순서 보장
         self._event_queue: list[tuple[str, dict[str, Any]]] = []
         self._flush_task: asyncio.Task | None = None
+        self._shutdown_timer: asyncio.TimerHandle | None = None
 
     # ------------------------------------------------------------------
     # 클라이언트 등록 / 해제
@@ -130,6 +131,10 @@ class WSManager:
     def register(self, ws: WebSocket) -> None:
         """클라이언트를 _clients set에 추가."""
         self._clients.add(ws)
+        if self._shutdown_timer is not None:
+            self._shutdown_timer.cancel()
+            self._shutdown_timer = None
+            logger.info("[연결] 재연결 감지 — shutdown 타이머 취소")
         logger.debug("[연결] 클라이언트 연결 (총 %d)", len(self._clients))
         # 클라이언트 연결 시점 초기 데이터 전송 (타이밍 문제 해결)
         try:
@@ -143,6 +148,13 @@ class WSManager:
         self._clients.discard(ws)
         self._client_active_page.pop(ws, None)
         self._client_subscribed_fids.pop(ws, None)
+        if not self._clients and self._shutdown_timer is None:
+            try:
+                loop = asyncio.get_running_loop()
+                self._shutdown_timer = loop.call_later(1.0, self._send_sigterm)
+                logger.info("[연결] 전체 WS 끊김 — 1초 후 shutdown 예약 (새로고침 대기)")
+            except RuntimeError:
+                pass
         logger.debug("[연결] 클라이언트 해제 (총 %d)", len(self._clients))
 
     # ------------------------------------------------------------------
@@ -447,6 +459,20 @@ class WSManager:
             logger.warning("[연결] %s 화면전송 실패: %s", event_type, str(e), exc_info=True)
             self.unregister(ws)
 
+    def _send_sigterm(self) -> None:
+        """WS 클라이언트 전체 끊김 후 3초 내 재연결 없으면 백엔드 종료."""
+        import os
+        import signal
+        from backend.app.services.engine_state import state
+        if self._clients:
+            self._shutdown_timer = None
+            return
+        if state.shutdown_requested:
+            return
+        state.shutdown_requested = True
+        logger.info("[연결] 재연결 없음 — SIGTERM 전송 (Graceful Shutdown)")
+        os.kill(os.getpid(), signal.SIGTERM)
+
     # ------------------------------------------------------------------
     # Graceful shutdown
     # ------------------------------------------------------------------
@@ -459,6 +485,9 @@ class WSManager:
             except Exception:
                 logger.debug("[연결] WS 클라이언트 종료 실패", exc_info=True)
         self._clients.clear()
+        if self._shutdown_timer is not None:
+            self._shutdown_timer.cancel()
+            self._shutdown_timer = None
 
     # ------------------------------------------------------------------
     # 초기 데이터 전송 (타이밍 문제 해결)

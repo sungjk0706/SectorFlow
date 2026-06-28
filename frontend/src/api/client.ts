@@ -141,9 +141,12 @@ export const api = {
       body: JSON.stringify({ amount }),
     }),
 
-  post: (path: string, body?: unknown) =>
-    request<{ ok: boolean; message?: string }>(path, {
+  post: <T = { ok: boolean; message?: string }>(path: string, body?: unknown) =>
+    request<T>(path, {
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
     }),
+
+  getDailySummary: (from: string, to: string, tradeMode: string) =>
+    request<Record<string, unknown>[]>(`/api/trade-history/daily-summary?date_from=${from}&date_to=${to}&trade_mode=${tradeMode}`),
 };

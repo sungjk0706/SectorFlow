@@ -78,7 +78,7 @@ def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
     legacy_a = str(d.get("kiwoom_account_no") or "")
     mode = d.get("trade_mode")
     if mode not in ("test", "mock", "real"):
-        mode = "test" if bool(d.get("test_mode", d.get("mock_mode", True))) else "real"
+        mode = "test"
     if mode == "mock":
         mode = "test"
     data: dict[str, Any] = {
@@ -95,9 +95,6 @@ def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
         "telegram_chat_id": str(d.get("telegram_chat_id") or "").strip(),
         "tele_on": bool(d["tele_on"]),
         "trade_mode": mode,
-        "test_mode": mode == "test",
-        "mock_mode": mode == "test",   # 하위 호환
-        "mode_real": mode == "real",
         "kiwoom_account_no": _account_field_or_legacy_flat(
             d, "kiwoom_account_no", legacy_a
         ).strip(),
@@ -196,13 +193,11 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
                     continue
         current[k] = v
 
-    mode_keys = {"trade_mode", "mock_mode", "mode_real"}
+    mode_keys = {"trade_mode"}
     if set(data.keys()) & mode_keys:
         logger.info(
-            "[설정] 투자모드 업데이트 요청: trade_mode=%s mock_mode=%s mode_real=%s keys=%s",
+            "[설정] 투자모드 업데이트 요청: trade_mode=%s keys=%s",
             current.get("trade_mode"),
-            current.get("mock_mode"),
-            current.get("mode_real"),
             sorted(list(set(data.keys()) & mode_keys)),
         )
 

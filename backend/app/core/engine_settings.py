@@ -34,7 +34,6 @@ def build_engine_settings_dict(flat: dict) -> dict:
     merged = {**DEFAULT_USER_SETTINGS, **flat}
 
     tm = effective_trade_mode(merged)
-    _is_test = tm == "test"
 
     def _pick_kiwoom_cred(mode: str) -> tuple[str, str, str]:
         """mode: test | real -- real 키 우선, 없으면 레거시 kiwoom_* 단일 필드."""
@@ -49,7 +48,6 @@ def build_engine_settings_dict(flat: dict) -> dict:
         # 운영 설정
         "broker":               merged.get("broker", "kiwoom"),
         "trade_mode":           tm,
-        "mode_real":            tm == "real",
         "time_scheduler_on":    bool(merged.get("time_scheduler_on")),
         # 헤더 상태칩/자동매매 유효성 판정에서 직접 사용
         "auto_buy_on":          bool(merged.get("auto_buy_on")),
@@ -90,8 +88,6 @@ def build_engine_settings_dict(flat: dict) -> dict:
         "kiwoom_app_key_real":    merged.get("kiwoom_app_key_real") or "",
         "kiwoom_app_secret_real": merged.get("kiwoom_app_secret_real") or "",
         "kiwoom_account_no_real": str(merged.get("kiwoom_account_no_real") or "").strip(),
-        "test_mode":            _is_test,
-        "mock_mode":            _is_test,   # 하위 호환
     }
 
     # 모든 증권사 API 키/시크릿/계좌번호 동적 수집 및 복호화 (real 키 우선)

@@ -413,7 +413,7 @@ function createFixedMode<T extends object>(
                     if (shouldFlash && isSameItem && existing) triggerFlash(cell)
                   }
                 }
-              } catch (_) {}
+              } catch (err) { console.error('[data-table] cell render error:', err) }
             }
           }
         }

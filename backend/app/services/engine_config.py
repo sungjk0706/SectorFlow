@@ -152,7 +152,4 @@ def get_connection_level_keys(broker_nm: str) -> frozenset[str]:
 # 거래 모드 전환 키 -- 엔진 재기동 없이 캐시 갱신 + 계좌 구독 전환만 수행한다.
 TRADE_MODE_KEYS: frozenset[str] = frozenset({
     "trade_mode",
-    "mock_mode",
-    "test_mode",
-    "mode_real",
 })

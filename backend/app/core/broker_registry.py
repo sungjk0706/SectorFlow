@@ -43,6 +43,7 @@ def _lazy_kiwoom_registry() -> dict[str, type]:
         KiwoomAccountProvider,
         KiwoomOrderProvider,
         KiwoomWebSocketProvider,
+        KiwoomStockProvider,
     )
     # sector는 증권사와 무관한 사용자 커스텀 데이터이므로 broker_registry에서 제거
     return {
@@ -50,6 +51,7 @@ def _lazy_kiwoom_registry() -> dict[str, type]:
         "account":   KiwoomAccountProvider,
         "order":     KiwoomOrderProvider,
         "websocket": KiwoomWebSocketProvider,
+        "stock":     KiwoomStockProvider,
     }
 
 
