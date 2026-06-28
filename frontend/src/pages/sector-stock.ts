@@ -100,6 +100,28 @@ function mapRowsToTableRows(rows: RowItem[]): TableRow<DataRowItem>[] {
   })
 }
 
+/* ── KRX 비활성 구간 판정 (NXT-only 거래 시간대) ── */
+
+const KRX_INACTIVE_PHASES = new Set([
+  '장개시전',
+  '장전 동시호가',
+  '장마감',
+  '장후 시간외',
+  '시간외 단일가',
+  '휴장일',
+])
+
+const NXT_ACTIVE_PHASES = new Set([
+  '프리마켓',
+  '메인마켓',
+  '애프터마켓',
+])
+
+function isKrxInactiveWindow(marketPhase: { krx: string; nxt: string }): boolean {
+  return KRX_INACTIVE_PHASES.has(marketPhase.krx)
+    && NXT_ACTIVE_PHASES.has(marketPhase.nxt)
+}
+
 /* ── rows 계산 ── */
 
 function computeRows(
@@ -108,7 +130,8 @@ function computeRows(
   maxTargets: number,
   selectedSector: string | null,
   matchedCodes: Set<string> | null,
-  rowCache: Map<string, { stock: SectorStock; row: DataRowItem }>
+  rowCache: Map<string, { stock: SectorStock; row: DataRowItem }>,
+  marketPhase: { krx: string; nxt: string },
 ): RowItem[] {
   // 업종별 종목 그룹핑
   const grouped = new Map<string, string[]>()
@@ -161,6 +184,7 @@ function computeRows(
   const sectorRankMap = new Map<string, number>()
   for (let i = 0; i < sectorOrder.length; i++) sectorRankMap.set(sectorOrder[i], i + 1)
 
+  const krxInactive = isKrxInactiveWindow(marketPhase)
   const rows: RowItem[] = []
   let stockSeq = 0
 
@@ -189,12 +213,15 @@ function computeRows(
       const stock = stockMap[code]
       if (!stock) continue
 
+      // KRX 비활성 구간: KRX 단독 종목 (nxt_enable !== true) 불투명 처리
+      const stockDim = dim || (krxInactive && !stock.nxt_enable)
+
       // 행 객체 캐시: stock 참조가 같으면 이전 행 재사용
       const cached = rowCache.get(code)
-      if (cached && cached.stock === stock && cached.row.dim === dim && cached.row.seq === stockSeq) {
+      if (cached && cached.stock === stock && cached.row.dim === stockDim && cached.row.seq === stockSeq) {
         rows.push(cached.row)
       } else {
-        const row: DataRowItem = { type: 'data', stock, dim, seq: stockSeq }
+        const row: DataRowItem = { type: 'data', stock, dim: stockDim, seq: stockSeq }
         rowCache.set(code, { stock, row })
         rows.push(row)
       }
@@ -251,7 +278,8 @@ class SectorStockTable extends HTMLElement {
       maxTargets,
       uiState.selectedSector,
       this.currentMatchedCodes,
-      this.rowCache
+      this.rowCache,
+      uiState.marketPhase,
     )
   }
 
@@ -457,6 +485,7 @@ class SectorStockTable extends HTMLElement {
       let prevSelectedSector = initUi.selectedSector
       let prevWsSubscribeStatus = initUi.wsSubscribeStatus
       let prevSettings = initUi.settings
+      let prevMarketPhase = initUi.marketPhase
 
       const checkAndRefresh = () => {
         const state = hotStore.getState()
@@ -466,13 +495,15 @@ class SectorStockTable extends HTMLElement {
           state.sectorScores !== prevSectorScores ||
           uiState.selectedSector !== prevSelectedSector ||
           uiState.wsSubscribeStatus !== prevWsSubscribeStatus ||
-          uiState.settings !== prevSettings
+          uiState.settings !== prevSettings ||
+          uiState.marketPhase !== prevMarketPhase
 
         prevSectorStocks = state.sectorStocks
         prevSectorScores = state.sectorScores
         prevSelectedSector = uiState.selectedSector
         prevWsSubscribeStatus = uiState.wsSubscribeStatus
         prevSettings = uiState.settings
+        prevMarketPhase = uiState.marketPhase
 
         if (!changed) return
 
