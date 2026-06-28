@@ -391,9 +391,8 @@ async def _apply_auto_toggle_on_startup(settings: dict) -> None:
     - 거래일 + ws_subscribe_start~end 구간 내 → 마스터/WS ON
     - 비거래일 or 구독 구간 밖 → 마스터/WS OFF
     - auto_buy_on/auto_sell_on은 사용자 수동 설정을 존중 (미접근)
-    settings.json 저장 + 프론트 알림까지 수행."""
+    메모리 캐시만 갱신 (DB 저장 없음 — 재기동 시 재판별되므로 영속성 불필요)."""
     from backend.app.core.trading_calendar import is_trading_day_with_holiday_guard
-    from backend.app.core.settings_file import update_settings
 
     holiday_guard = bool(settings.get("holiday_guard_on", True))
     is_trade_day = is_trading_day_with_holiday_guard(holiday_guard)
@@ -417,8 +416,9 @@ async def _apply_auto_toggle_on_startup(settings: dict) -> None:
         "auto_off_by_holiday": not is_trade_day,
     }
     try:
-        await update_settings(keys)
         settings.update(keys)
+        from backend.app.services import engine_state as _st
+        _st.state.integrated_system_settings_cache.update(keys)
         logger.debug(
             "[타이머] 기동 판별 -- 거래일=%s → 마스터/WS구독 %s",
             is_trade_day, "ON" if should_be_on else "OFF",
@@ -433,7 +433,7 @@ async def _apply_auto_toggle_on_startup(settings: dict) -> None:
         except Exception as e:
             logger.warning("[데이터] 화면전송 실패: %s", e, exc_info=True)
     except Exception as e:
-        logger.warning("[타이머] 기동 판별 저장 실패: %s", e)
+        logger.warning("[타이머] 기동 판별 갱신 실패: %s", e)
 
 
 async def _restore_from_holiday_flag(settings: dict) -> bool:
@@ -447,9 +447,8 @@ async def _restore_from_holiday_flag(settings: dict) -> bool:
         "auto_off_by_holiday": False,
     }
     try:
-        from backend.app.core.settings_file import update_settings
-        await update_settings(on_keys)
         settings.update(on_keys)
+        state.integrated_system_settings_cache.update(on_keys)
         logger.info("[타이머] 거래일 시작 -- 자동매매/WS구독 자동 복원 (auto_off_by_holiday 해제)")
         try:
             from backend.app.services.engine_account_notify import (
@@ -487,12 +486,10 @@ async def _on_ws_subscribe_start() -> None:
         # ★ 구독 시작 시각 도달 → 마스터·WS구독 ON 복원
         #   (_on_ws_subscribe_end 또는 시작 전 기동으로 False가 된 값을 되돌림)
         try:
-            from backend.app.core.settings_file import update_settings
             _on_keys = {
                 "time_scheduler_on": True,
                 "ws_subscribe_on": True,
             }
-            await update_settings(_on_keys)
             settings.update(_on_keys)
             state.integrated_system_settings_cache.update(_on_keys)
             try:
@@ -546,14 +543,12 @@ async def _on_ws_subscribe_end() -> None:
         _broadcast_market_phase()
         # ── 마스터·WS구독 토글 OFF 저장 (종료 시각 도달) ──
         try:
-            from backend.app.core.settings_file import update_settings
             off_keys = {
                 "time_scheduler_on": False,
                 "ws_subscribe_on": False,
             }
-            await update_settings(off_keys)
             state.integrated_system_settings_cache.update(off_keys)
-            logger.info("[타이머] 구독 종료 시각 도달 -- 자동매매/WS구독 OFF 저장")
+            logger.info("[타이머] 구독 종료 시각 도달 -- 자동매매/WS구독 OFF")
             from backend.app.services.engine_account_notify import (
                 notify_desktop_header_refresh,
                 notify_desktop_settings_toggled,
@@ -768,7 +763,7 @@ async def _init_ws_subscribe_state() -> None:
 def _trigger_reg_pipeline() -> None:
     """로그인 상태면 REG 파이프라인 재실행."""
     try:
-        ws = state.connector_manager or state.kiwoom_connector
+        ws = state.connector_manager or state.active_connector
         if ws and ws.is_connected() and state.login_ok:
             import asyncio
             try:
@@ -790,7 +785,7 @@ def _trigger_unreg_all() -> None:
         logger.info("[타이머] WS 저장데이터 클리어 완료 (캐시 삭제됨)")
 
         import asyncio
-        ws = state.connector_manager or state.kiwoom_connector
+        ws = state.connector_manager or state.active_connector
         if not ws or not ws.is_connected() or not state.login_ok:
             return
         try:
@@ -807,7 +802,7 @@ async def _do_unreg_all() -> None:
     try:
         all_stocks = state.master_stocks_cache.copy()
         subscribed = {cd for cd, entry in all_stocks.items() if entry.get("_subscribed", False)}
-        ws = state.connector_manager or state.kiwoom_connector
+        ws = state.connector_manager or state.active_connector
         if not ws or not ws.is_connected():
             return
 

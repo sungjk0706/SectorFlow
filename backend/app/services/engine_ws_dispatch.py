@@ -29,14 +29,13 @@ from backend.app.services.engine_account_rest import (
 import backend.app.services.engine_radar_ops as engine_radar_ops
 from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
-    _format_kiwoom_reg_stk_cd,
     _real_item_stk_cd,
     _resolve_bucket_key,
 )
 from backend.app.services.engine_ws_parsing import (
-    _normalize_kiwoom_real_type,
+    _normalize_real_type,
     _parse_fid10_price,
-    _parse_ws_fid12_to_percent,
+    parse_change_rate_to_percent,
     _ws_fid_float,
     _ws_fid_int,
     _ws_fid_key_present,
@@ -124,7 +123,7 @@ def _log_real_data_items_preview(data: dict) -> None:
         if not isinstance(item, dict):
             continue
         msg_type = item.get("type")
-        norm = _normalize_kiwoom_real_type(msg_type)
+        norm = _normalize_real_type(msg_type)
         if norm not in ("01", "0j"):
             continue
         iy = item.get("item")
@@ -143,7 +142,6 @@ def _handle_login(data: dict) -> None:
     if str(data.get("return_code", "")) == "0":
         engine_state.state.login_ok = True
         engine_state._notify_reg_ack()
-        engine_state._cancel_price_trace_delayed_task()
         # LOGIN 성공 → 구독 파이프라인 트리거 (구독 구간 내이면 REG 자동 시작)
         try:
             from backend.app.services.daily_time_scheduler import _trigger_reg_pipeline
@@ -196,7 +194,7 @@ def _handle_reg(data: dict) -> None:
                 continue
 
 
-            norm = _format_kiwoom_reg_stk_cd(item_val) if item_val else ""
+            norm = _base_stk_cd(item_val) if item_val else ""
             if not norm:
                 continue
             if rc == "105110":
@@ -232,7 +230,7 @@ async def _handle_real_01(
     if engine_state._get_realtime_state() == "WAITING_FIRST_TICK":
         raw_cd = _real_item_stk_cd(item, vals)
         if raw_cd:
-            nk_px = _format_kiwoom_reg_stk_cd(raw_cd)
+            nk_px = _base_stk_cd(raw_cd)
             
             # symbol별 최초 tick 수신 timestamp 기록
             global _realtime_first_tick_ts_map
@@ -272,19 +270,18 @@ async def _handle_real_01(
     if not raw_cd or last_px <= 0:
         _check_realtime_latency(_ts)
         return
-    nk_px = _format_kiwoom_reg_stk_cd(raw_cd)
+    nk_px = _base_stk_cd(raw_cd)
     _exch = parse_fid9081_exchange(vals)
     _session = parse_fid290_session(vals)
     _exch_label = {"1": "KRX", "2": "NXT"}.get(_exch, "")
     raw_cd_for_bucket = raw_cd
     pend = {}
     diff = _ws_fid_int(vals, "11", 0) if _ws_fid_key_present(vals, "11") else 0
-    from backend.app.services.engine_ws_parsing import parse_change_rate_to_percent
     rate = parse_change_rate_to_percent(_ws_fid_raw(vals, "12")) if _ws_fid_key_present(vals, "12") else 0.0
     sign = str(_ws_fid_raw(vals, "25") or "3").strip() if _ws_fid_key_present(vals, "25") else "3"
     sv228 = _ws_fid_raw(vals, "228")
     strength = str(sv228).strip() if sv228 is not None and str(sv228).strip() != "" else "-"
-    _base_nk_14 = _format_kiwoom_reg_stk_cd(_base_stk_cd(raw_cd_for_bucket))
+    _base_nk_14 = _base_stk_cd(raw_cd_for_bucket)
     if is_0b_tick and _ws_fid_key_present(vals, "14"):
         _amt14 = abs(_ws_fid_int(vals, "14", 0))
         _total14 = _update_trade_amount_fid14(_base_nk_14, _amt14)
@@ -292,7 +289,7 @@ async def _handle_real_01(
     else:
         _total14 = 0
 
-    nk_px_base = _format_kiwoom_reg_stk_cd(_base_stk_cd(raw_cd))
+    nk_px_base = _base_stk_cd(raw_cd)
     if is_0b_tick and strength != "-":
         try:
             _update_strength_buckets(nk_px, float(strength), abs(_ws_fid_int(vals, "13", 0)))
@@ -327,7 +324,7 @@ async def _handle_real_01(
             if _pos:
                 await engine_state._auto_trade.check_sell_conditions([_pos], engine_state._integrated_system_settings_cache, engine_state._access_token)
         else:
-            _matched = [p for p in engine_state._positions if _format_kiwoom_reg_stk_cd(str(p.get("stk_cd", "") or "")) == nk_px]
+            _matched = [p for p in engine_state._positions if _base_stk_cd(str(p.get("stk_cd", "") or "")) == nk_px]
             if _matched:
                 await engine_state._auto_trade.check_sell_conditions(_matched, engine_state._integrated_system_settings_cache, engine_state._access_token)
     if pend_key:
@@ -426,9 +423,8 @@ async def _handle_real_00(item: dict, vals: dict) -> None:
 
             last_px_00 = _parse_fid10_price(vals)
             if last_px_00 > 0:
-                nk_px_00 = _format_kiwoom_reg_stk_cd(raw_cd)
+                nk_px_00 = _base_stk_cd(raw_cd)
                 diff_00 = _ws_fid_int(vals, "11", 0) if _ws_fid_key_present(vals, "11") else 0
-                from backend.app.services.engine_ws_parsing import parse_change_rate_to_percent
                 rate_00 = parse_change_rate_to_percent(_ws_fid_raw(vals, "12")) if _ws_fid_key_present(vals, "12") else 0.0
                 sector_00 = get_merged_sector(raw_cd)
 
@@ -468,7 +464,7 @@ def _handle_real_0d(item: dict, vals: dict) -> None:
     raw_cd = _real_item_stk_cd(item, vals)
     if not raw_cd:
         return
-    nk = _format_kiwoom_reg_stk_cd(raw_cd)
+    nk = _base_stk_cd(raw_cd)
     bid = _ws_fid_int(vals, "125", 0)  # 총 매수호가잔량
     ask = _ws_fid_int(vals, "121", 0)  # 총 매도호가잔량
     if bid < 0 or ask < 0:
@@ -514,7 +510,7 @@ async def _handle_real(data: dict) -> None:
         
         try:
             msg_type = item.get("type")
-            norm = _normalize_kiwoom_real_type(msg_type)
+            norm = _normalize_real_type(msg_type)
             vals = item.get("values", {})
             if not isinstance(vals, dict):
                 vals = {}

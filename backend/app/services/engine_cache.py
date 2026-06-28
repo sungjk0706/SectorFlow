@@ -24,7 +24,7 @@ async def _load_caches_preboot(settings: dict) -> None:
     단일 파이프라인: DB 로드 → 업종 레이아웃 구성 → 5일 메트릭 연산 → 필터링 → 구독.
     """
     try:
-        from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd, _base_stk_cd
+        from backend.app.services.engine_symbol_utils import _base_stk_cd
         from backend.app.services.engine_strategy_core import make_detail
 
         # ── master_stocks_table 로드 ──
@@ -44,7 +44,7 @@ async def _load_caches_preboot(settings: dict) -> None:
 
         sector_groups: defaultdict[str, list[str]] = defaultdict(list)
         for code in _cached_snapshot.keys():
-            sector = _cached_snapshot[code].get("sector", "기타")
+            sector = _cached_snapshot[code].get("sector", "미분류")
             sector_groups[sector].append(code)
 
         # 섹터 순서: 기존 레이아웃의 섹터 순서를 최대한 유지하고 신규 섹터는 뒤에 추가

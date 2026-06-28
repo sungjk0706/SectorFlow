@@ -14,7 +14,7 @@ from backend.app.core.trade_mode import is_test_mode
 from backend.app.core import journal as _journal
 from backend.app.services import dry_run
 from backend.app.services import trade_history
-from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+from backend.app.services.engine_symbol_utils import _base_stk_cd
 from backend.app.services.risk_manager import get_risk_manager
 
 logger = logging.getLogger(__name__)
@@ -336,7 +336,7 @@ class AutoTradeManager:
     async def on_fill_update(
         self, stk_cd: str, side: str, unex_qty: int, access_token: str | None = None
     ) -> None:
-        nk = _format_kiwoom_reg_stk_cd(str(stk_cd or ""))
+        nk = _base_stk_cd(str(stk_cd or ""))
         state = self._buy_state.get(stk_cd, {"last_req_ts": 0.0, "has_open_buy": False})
         state["last_req_ts"] = time.time()
         unex = int(unex_qty) if str(unex_qty).lstrip("-").isdigit() else 0
@@ -405,7 +405,7 @@ class AutoTradeManager:
             else:
                 import backend.app.services.engine_service as _es
                 for _p in _es.get_positions():
-                    if _format_kiwoom_reg_stk_cd(str(_p.get("stk_cd", ""))) == stk_cd:
+                    if _base_stk_cd(str(_p.get("stk_cd", ""))) == stk_cd:
                         _avg_buy = int(_p.get("avg_price", 0))
                         break
         except Exception:
@@ -501,7 +501,7 @@ class AutoTradeManager:
 
         for stock in stock_list:
             s = dict(settings)
-            stk_cd = _format_kiwoom_reg_stk_cd(str(stock.get("stk_cd", "") or ""))
+            stk_cd = _base_stk_cd(str(stock.get("stk_cd", "") or ""))
             stk_nm = stock.get("stk_nm", "")
             if not stk_cd:
                 continue

@@ -70,54 +70,59 @@ async def broadcast_stock_classification_changed() -> None:
 
     merged = await get_merged_all_sectors()
 
-    # 메모리 캐시에서 업종별 종목수 계산
-    sector_counts = {}
-    no_sector_count = 0
-    try:
-        import backend.app.services.engine_service as es
-        for entry in es._master_stocks_cache.values():
-            sector = entry.get("sector", "기타")
-            if sector == "기타":
-                no_sector_count += 1
-            else:
-                sector_counts[sector] = sector_counts.get(sector, 0) + 1
-    except Exception as e:
-        _log.warning("[업종관리] 업종별 종목수 조회 실패: %s", e)
-
-    # 커스텀 업종 목록 (인메모리 캐시에서 조회)
-    custom_sectors = {}
-    try:
-        import backend.app.services.engine_service as es
-        for entry in es._master_stocks_cache.values():
-            sector = entry.get("sector")
-            if sector and sector != "":
-                custom_sectors[sector] = ""
-    except Exception as e:
-        _log.warning("[업종관리] 커스텀 업종 목록 조회 실패: %s", e)
-
-    # 메모리 캐시에서 all_stocks 조회
+    # all_stocks: get_all_sector_stocks() SSOT 함수 사용 (status==active 필터 + get_merged_sector 기반)
     stocks = []
     filter_summary = ""
     try:
-        import backend.app.services.engine_service as es
-        import backend.app.services.engine_state as state
-        for code, entry in es._master_stocks_cache.items():
-            stocks.append({
-                "code": code,
-                "name": entry.get("name", ""),
-                "sector": entry.get("sector", "기타"),
-                "market_type": entry.get("market", ""),
-                "nxt_enable": entry.get("nxt_enable", False),
-            })
-        filter_summary = getattr(state, "_latest_filter_summary", "")
+        from backend.app.services.engine_service import get_all_sector_stocks
+        import backend.app.services.engine_state as _es
+        from backend.app.core.sector_stock_cache import assemble_filter_summary
+        stocks = await get_all_sector_stocks()
+        filter_summary = assemble_filter_summary(
+            getattr(_es.state, "latest_filter_summary_meta", ""), len(stocks)
+        )
     except Exception as e:
         _log.warning("[업종관리] all_stocks 조회 실패: %s", e)
+
+    # all_stocks 결과 기반으로 업종별 종목수 및 미분류 수 계산 (SSOT 일관성)
+    sector_counts = {}
+    no_sector_count = 0
+    for s in stocks:
+        sector = s.get("sector", "미분류")
+        if sector == "미분류":
+            no_sector_count += 1
+        else:
+            sector_counts[sector] = sector_counts.get(sector, 0) + 1
+
+    # 커스텀 업종 목록 (all_stocks 결과 + sectors 테이블에서 추출)
+    custom_sectors = {}
+    for s in stocks:
+        sector = s.get("sector")
+        if sector and sector != "" and sector != "미분류":
+            custom_sectors[sector] = ""
+
+    # stock_moves: custom_sectors 테이블에서 실제 매핑 조회
+    stock_moves = {}
+    try:
+        from backend.app.db.database import get_db_connection
+        conn = await get_db_connection()
+        cursor = await conn.execute("SELECT stock_code, name FROM custom_sectors")
+        rows = await cursor.fetchall()
+        for row in rows:
+            stock_moves[row["stock_code"]] = row["name"]
+        # sectors 테이블에서 빈 업종도 포함
+        cursor = await conn.execute("SELECT name FROM sectors")
+        for row in await cursor.fetchall():
+            if row["name"] not in custom_sectors:
+                custom_sectors[row["name"]] = ""
+    except Exception as e:
+        _log.warning("[업종관리] stock_moves 조회 실패: %s", e)
 
     payload = {
         "_v": 1,
         "custom_data": {
             "sectors": custom_sectors,
-            "stock_moves": {},
+            "stock_moves": stock_moves,
             "deleted_sectors": [],
         },
         "merged_sectors": merged,
@@ -171,22 +176,21 @@ async def get_stock_classification(_: str = Depends(get_current_user)):
     custom = load_custom_data()
     merged = await get_merged_all_sectors()
 
-    # "기타" 소속 종목 수 계산 (broadcast_stock_classification_changed와 동일 로직)
+    # "미분류" 소속 종목 수 계산 (broadcast_stock_classification_changed와 동일 로직)
     no_sector_count = 0
     filter_summary = ""
     try:
         from backend.app.services.engine_service import get_all_sector_stocks
-        import backend.app.services.engine_state as state
+        import backend.app.services.engine_state as _es
+        from backend.app.core.sector_stock_cache import assemble_filter_summary
         stocks = await get_all_sector_stocks()
-        if "기타" in merged:
+        if "미분류" in merged:
             no_sector_count = sum(
-                1 for s in stocks if s["sector"] == "기타"
+                1 for s in stocks if s["sector"] == "미분류"
             )
-        filter_summary = getattr(state, "_latest_filter_summary", "")
-        if not filter_summary:
-            from backend.app.core.sector_stock_cache import load_filter_summary_cache
-            filter_summary = await load_filter_summary_cache()
-            state.state.latest_filter_summary = filter_summary
+        filter_summary = assemble_filter_summary(
+            getattr(_es.state, "latest_filter_summary_meta", ""), len(stocks)
+        )
     except Exception:
         pass
 
@@ -214,7 +218,7 @@ async def rename_sector(body: RenameRequest, _: str = Depends(get_current_user))
         await broadcast_stock_classification_changed()
         await _trigger_recompute()
         return {"ok": True, **await _maybe_warning()}
-    except ValueError as e:
+    except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
@@ -229,7 +233,7 @@ async def create_sector(body: CreateRequest, _: str = Depends(get_current_user))
         await broadcast_stock_classification_changed()
         await _trigger_recompute()
         return {"ok": True, **await _maybe_warning()}
-    except ValueError as e:
+    except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
@@ -244,7 +248,7 @@ async def delete_sector(body: DeleteRequest, _: str = Depends(get_current_user))
         await broadcast_stock_classification_changed()
         await _trigger_recompute()
         return {"ok": True, **await _maybe_warning()}
-    except ValueError as e:
+    except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
@@ -259,7 +263,7 @@ async def move_stock(body: MoveStockRequest, _: str = Depends(get_current_user))
         await broadcast_stock_classification_changed()
         await _trigger_recompute()
         return {"ok": True, **await _maybe_warning()}
-    except ValueError as e:
+    except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
@@ -281,7 +285,7 @@ async def move_stocks(body: MoveStocksRequest, _: str = Depends(get_current_user
         await broadcast_stock_classification_changed()
         await _trigger_recompute()
         return {"ok": True, "all_stocks": stocks, **await _maybe_warning()}
-    except ValueError as e:
+    except Exception as e:
         return {"ok": False, "error": str(e)}
 
 

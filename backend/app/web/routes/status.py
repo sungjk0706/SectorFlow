@@ -59,8 +59,8 @@ async def health_check():
 async def debug_sector_stock(code: str):
     """디버그용: 특정 종목의 실시간 데이터 상태 확인."""
     from backend.app.services.engine_state import state
-    from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
-    nk = _format_kiwoom_reg_stk_cd(code.strip())
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
+    nk = _base_stk_cd(code.strip())
     pend = state.master_stocks_cache.get(nk, {})
     in_filter = pend.get("_filtered", False)
     in_subscribed = pend.get("_subscribed", False)
@@ -92,7 +92,7 @@ async def debug_sector_stock(code: str):
 async def debug_ws_status():
     """디버그용: WS 연결 상태 + 구독 현황 확인."""
     from backend.app.services.engine_state import state
-    ws = state.kiwoom_connector
+    ws = state.active_connector
     return {
         "ws_connected": bool(ws and ws.is_connected()) if ws else False,
         "login_ok": state.login_ok,
@@ -156,12 +156,12 @@ async def debug_orderbook_status(
 ):
     """디버그용: 특정 종목의 호가잔량(0D) 구독 및 수신 상태 확인."""
     from backend.app.services.engine_state import state
-    from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
     from backend.app.services import data_manager
 
     result = {}
     for raw_code in codes:
-        nk = _format_kiwoom_reg_stk_cd(raw_code.strip())
+        nk = _base_stk_cd(raw_code.strip())
         is_subscribed = state.master_stocks_cache.get(nk, {}).get("_subscribed_0d", False)
         # 호가잔량 캐시 삭제로 None 반환
         ob_data = None

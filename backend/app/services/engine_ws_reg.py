@@ -10,7 +10,7 @@ import logging
 import math
 
 from backend.app.services.engine_symbol_utils import (
-    _format_kiwoom_reg_stk_cd,
+    _base_stk_cd,
     get_ws_subscribe_code,
 )
 from backend.app.services.engine_state import state
@@ -211,7 +211,7 @@ async def _unreg_grp(grp_no: str) -> bool:
     Returns:
         True if 성공(또는 등록 항목 없음), False if 실패/타임아웃.
     """
-    ws = state.connector_manager or state.kiwoom_connector
+    ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected() or ws.broker_id != "kiwoom":
         return True
 
@@ -251,7 +251,7 @@ async def subscribe_sector_stocks_0b() -> None:
     Args:
         es: engine_service 모듈 참조
     """
-    ws = state.connector_manager or state.kiwoom_connector
+    ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected() or not state.login_ok:
         return
 
@@ -266,13 +266,13 @@ async def subscribe_sector_stocks_0b() -> None:
         if int(s.get("qty", 0) or 0) > 0 and str(s.get("stk_cd", "")).strip()
     ]
     pos_codes: list[str] = list(dict.fromkeys(
-        _format_kiwoom_reg_stk_cd(cd) for cd in pos_codes_raw if cd
+        _base_stk_cd(cd) for cd in pos_codes_raw if cd
     ))
 
     # ── 2) 필터 통과 종목 코드 수집 ──
     _raw_filter = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_filtered", False)}
     filtered_codes: list[str] = list(dict.fromkeys(
-        _format_kiwoom_reg_stk_cd(cd) for cd in _raw_filter if cd
+        _base_stk_cd(cd) for cd in _raw_filter if cd
     ))
 
     # ── 3) 합산 + 200개 한도 적용 (보유종목 우선) ──
@@ -333,7 +333,7 @@ async def subscribe_index_realtime() -> None:
 
     키움증권만 지원하므로 키움증권일 때만 전송.
     """
-    ws = state.connector_manager or state.kiwoom_connector
+    ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected() or ws.broker_id != "kiwoom":
         return
 
@@ -355,7 +355,7 @@ async def subscribe_account_realtime() -> None:
     Args:
         es: engine_service 모듈 참조
     """
-    ws = state.connector_manager or state.kiwoom_connector
+    ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected() or ws.broker_id != "kiwoom":
         # LS증권은 소켓 연결 및 로그인 핸드셰이크 단계에서 계좌등록(tr_type="1")을 수행하므로 키움만 Grp 10 전송
         return
@@ -384,7 +384,7 @@ async def subscribe_account_realtime() -> None:
 
 async def subscribe_positions_stocks_realtime() -> None:
     """보유 종목 0B REG — 이미 구독된 종목 제외, 누적 등록."""
-    ws = state.connector_manager or state.kiwoom_connector
+    ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected():
         logger.warning("[구독] 종목 구독 생략 -- 미연결")
         return
@@ -403,7 +403,7 @@ async def subscribe_positions_stocks_realtime() -> None:
     if not ordered:
         return
 
-    norm_list = [_format_kiwoom_reg_stk_cd(cd) for cd in ordered]
+    norm_list = [_base_stk_cd(cd) for cd in ordered]
     logger.info("[시작] 보유 REG 대상 %d종목: %s", len(norm_list), norm_list)
 
     # 이미 구독 중인 종목 제외
@@ -444,7 +444,7 @@ async def restore_subscriptions_after_reconnect(broker_id: str) -> None:
         logger.debug("[재연결] %s 로그인 전 — 구독 복원 생략 (LOGIN 후 파이프라인이 처리)", broker_id.upper())
         return
 
-    ws = state.connector_manager or state.kiwoom_connector
+    ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected():
         logger.warning("[재연결] %s 구독 복원 생략 — 미연결", broker_id.upper())
         return

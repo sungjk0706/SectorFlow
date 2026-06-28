@@ -219,98 +219,43 @@ async def fetch_ka10081_all_stocks_daily_confirmed(
     *,
     interval_sec: float = 0.33,
     on_progress: "Callable[[int, int], None] | None" = None,
-    resume_codes: "set[str] | None" = None,
 ) -> dict[str, dict]:
     """
     전체 종목 ka10081 순차 조회 -- 확정시세 전용.
     """
-    from backend.app.db.database import get_db_connection
-    from backend.app.services import engine_service as es
-
     result: dict[str, dict] = {}
     failed_codes: list[str] = []
     total = len(krx_codes)
-    starting_count = len(resume_codes) if resume_codes else 0
-
-    # 이어받기: 이미 완료된 종목은 result에 미리 추가
-    if resume_codes:
-        # SSOT: resume_codes를 krx_codes(= confirmed_codes) 기준으로 필터링
-        krx_set = set(krx_codes)
-        valid_resume = resume_codes & krx_set
-        invalid_count = len(resume_codes) - len(valid_resume)
-        if invalid_count > 0:
-            _log.warning("[ka10081-confirmed] resume_codes에서 %d개 비적격 종목 제외", invalid_count)
-        resume_codes = valid_resume
-        starting_count = len(resume_codes)
-        _log.info("[ka10081-confirmed] 이어받기 -- %d/%d종목부터 계속", starting_count, total)
-        conn = await get_db_connection()
-        for code in resume_codes:
-            cursor = await conn.execute(
-                "SELECT code, name, market, sector, cur_price, change, change_rate, trade_amount, high_price, date "
-                "FROM master_stocks_table WHERE code = ? AND date = ?",
-                (code, qry_dt)
-            )
-            row = await cursor.fetchone()
-            if row:
-                result[code] = {
-                    "code": row["code"],
-                    "name": row["name"],
-                    "market": row["market"],
-                    "sector": row["sector"],
-                    "cur_price": row["cur_price"],
-                    "change": row["change"],
-                    "change_rate": row["change_rate"],
-                    "trade_amount": row["trade_amount"],
-                    "high_price": row["high_price"],
-                    "date": row["date"],
-                }
-        # 다운로드 대상에서 완료된 종목 제외
-        krx_codes = [cd for cd in krx_codes if cd not in resume_codes]
 
     if on_progress:
-        on_progress(len(result), total)
+        on_progress(0, total)
 
-    downloaded_at_codes: list[str] = []
-    remaining_codes = krx_codes
-
-    for idx, cd in enumerate(remaining_codes):
+    for cd in krx_codes:
         try:
             detail = await fetch_ka10081_daily_price(api, cd, qry_dt, _raw_cd=cd)
             if detail:
                 result[cd] = detail
-                downloaded_at_codes.append(cd)
             else:
                 failed_codes.append(cd)
         except Exception as e:
-            _log.warning("[ka10081-confirmed] fetch 예외 %s: %s", cd, e)
+            _log.warning("[1일봉챠트 시세 다운로드] fetch 예외 %s: %s", cd, e)
             failed_codes.append(cd)
 
-        cur_done = len(result)
-        _pct = int(cur_done / total * 100) if total else 0
-        _log.info("[ka10081] 적격종목 확정시세 다운로드중: %d/%d (%d%%)", cur_done, total, _pct)
         if on_progress:
-            on_progress(cur_done, total)
+            on_progress(len(result), total)
+
+        _pct = int(len(result) / total * 100) if total else 0
+        _log.info("[1일봉챠트 시세 다운로드] 진행 중: %d/%d (%d%%)", len(result), total, _pct)
 
         await asyncio.sleep(interval_sec)
 
     if on_progress:
         on_progress(total, total)
 
-    if downloaded_at_codes:
-        try:
-            conn = await get_db_connection()
-            await conn.executemany(
-                "UPDATE master_stocks_table SET downloaded_at = datetime('now') WHERE code = ?",
-                [(cd,) for cd in downloaded_at_codes]
-            )
-            await conn.commit()
-        except Exception as e:
-            _log.warning("[ka10081-confirmed] downloaded_at 배치 업데이트 실패: %s", e)
-
     if failed_codes:
-        _log.warning("[ka10081-confirmed] 실패 종목 %d개: %s", len(failed_codes), failed_codes)
-    _log.info("[ka10081-confirmed] 완료 -- 성공 %d/%d종목, 실패 %d종목 (이어받기 %d종목)",
-              len(result), total, len(failed_codes), starting_count)
+        _log.warning("[1일봉챠트 시세 다운로드] 실패 종목 %d개: %s", len(failed_codes), failed_codes)
+    _log.info("[1일봉챠트 시세 다운로드] 다운로드 완료 — 성공 %d/%d종목, 실패 %d종목",
+              len(result), total, len(failed_codes))
     return result
 
 
@@ -321,87 +266,43 @@ async def fetch_ka10081_all_stocks_5day(
     *,
     interval_sec: float = 0.33,
     on_progress: "Callable[[int, int], None] | None" = None,
-    resume_codes: "set[str] | None" = None,
 ) -> dict[str, dict]:
     """
     전체 종목 ka10081 순차 조회 -- 5일봉 전용.
     """
-    from backend.app.db.database import get_db_connection
-    from backend.app.services import engine_service as es
-
     result: dict[str, dict] = {}
     failed_codes: list[str] = []
     total = len(krx_codes)
-    starting_count = len(resume_codes) if resume_codes else 0
-
-    # 이어받기: 이미 완료된 종목은 result에 미리 추가
-    if resume_codes:
-        _log.info("[ka10081-5d] 이어받기 -- %d/%d종목부터 계속", starting_count, total)
-        conn = await get_db_connection()
-        for code in resume_codes:
-            cursor = await conn.execute(
-                "SELECT code, name, market, sector, avg_5d_trade_amount, high_5d_price, date "
-                "FROM master_stocks_table WHERE code = ? AND date = ?",
-                (code, qry_dt)
-            )
-            row = await cursor.fetchone()
-            if row:
-                result[code] = {
-                    "code": row["code"],
-                    "name": row["name"],
-                    "market": row["market"],
-                    "sector": row["sector"],
-                    "avg_5d_trade_amount": row["avg_5d_trade_amount"],
-                    "high_5d_price": row["high_5d_price"],
-                    "date": row["date"],
-                }
-        # 다운로드 대상에서 완료된 종목 제외
-        krx_codes = [cd for cd in krx_codes if cd not in resume_codes]
 
     if on_progress:
-        on_progress(len(result), total)
+        on_progress(0, total)
 
-    downloaded_at_codes: list[str] = []
-    remaining_codes = krx_codes
-
-    for idx, cd in enumerate(remaining_codes):
+    for cd in krx_codes:
         try:
             detail = await fetch_ka10081_daily_5d_data(api, cd, qry_dt, _raw_cd=cd)
             if detail:
                 result[cd] = detail
-                downloaded_at_codes.append(cd)
             else:
                 failed_codes.append(cd)
         except Exception as e:
-            _log.warning("[ka10081-5d] fetch 예외 %s: %s", cd, e)
+            _log.warning("[5일봉챠트 거래대금,고가 다운로드] fetch 예외 %s: %s", cd, e)
             failed_codes.append(cd)
 
-        cur_done = len(result)
-        _pct = int(cur_done / total * 100) if total else 0
-        _log.info("[ka10081] 적격종목 5일봉 거래대금,고가 다운로드중: %d/%d (%d%%)", cur_done, total, _pct)
         if on_progress:
-            on_progress(cur_done, total)
+            on_progress(len(result), total)
+
+        _pct = int(len(result) / total * 100) if total else 0
+        _log.info("[5일봉챠트 거래대금,고가 다운로드] 진행 중: %d/%d (%d%%)", len(result), total, _pct)
 
         await asyncio.sleep(interval_sec)
 
     if on_progress:
         on_progress(total, total)
 
-    if downloaded_at_codes:
-        try:
-            conn = await get_db_connection()
-            await conn.executemany(
-                "UPDATE master_stocks_table SET downloaded_at = datetime('now') WHERE code = ?",
-                [(cd,) for cd in downloaded_at_codes]
-            )
-            await conn.commit()
-        except Exception as e:
-            _log.warning("[ka10081] 적격종목 5일봉 downloaded_at 배치 업데이트 실패: %s", e)
-
     if failed_codes:
-        _log.warning("[ka10081] 적격종목 5일봉 실패 종목 %d개: %s", len(failed_codes), failed_codes)
-    _log.info("[ka10081] 적격종목 5일봉 다운로드 완료 -- 성공 %d/%d종목, 실패 %d종목 (이어받기 %d종목)",
-              len(result), total, len(failed_codes), starting_count)
+        _log.warning("[5일봉챠트 거래대금,고가 다운로드] 실패 종목 %d개: %s", len(failed_codes), failed_codes)
+    _log.info("[5일봉챠트 거래대금,고가 다운로드] 다운로드 완료 — 성공 %d/%d종목, 실패 %d종목",
+              len(result), total, len(failed_codes))
     return result
 
 

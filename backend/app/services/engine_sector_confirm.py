@@ -403,7 +403,7 @@ def sync_dynamic_subscriptions(es, new_buy_targets) -> None:
     import time
 
     # WS 미연결 → 스킵
-    ws = state.connector_manager or state.kiwoom_connector
+    ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected() or not state.login_ok:
         return
 

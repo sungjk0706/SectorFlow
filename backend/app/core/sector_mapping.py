@@ -21,7 +21,7 @@ async def get_merged_sector(stock_code: str) -> str:
         import backend.app.services.engine_service as es
         entry = es._master_stocks_cache.get(stock_code)
         if entry and "sector" in entry:
-            return entry["sector"] or "기타"
+            return entry["sector"] or "미분류"
     except Exception:
         pass
 
@@ -37,21 +37,22 @@ async def get_merged_sector(stock_code: str) -> str:
     except Exception as e:
         _log.warning("[매핑] get_merged_sector DB 조회 실패 (%s): %s", stock_code, e)
 
-    return "기타"
+    return "미분류"
 
 
 async def get_merged_all_sectors() -> list[str]:
-    """인메모리 캐시(_master_stocks_cache)에서 전체 업종 목록 조회 (정렬)."""
+    """sectors 테이블에서 전체 업종 목록 조회 (정렬). 업종 정의의 SSOT는 sectors 테이블."""
+    sectors = set()
     try:
-        import backend.app.services.engine_service as es
-        sectors = set()
-        for entry in es._master_stocks_cache.values():
-            sector = entry.get("sector")
-            if sector and sector != "":
-                sectors.add(sector)
-        if "기타" not in sectors:
-            sectors.add("기타")
-        return sorted(list(sectors))
+        from backend.app.db.database import get_db_connection
+        conn = await get_db_connection()
+        cursor = await conn.execute("SELECT name FROM sectors")
+        rows = await cursor.fetchall()
+        for row in rows:
+            sectors.add(row["name"])
     except Exception as e:
-        _log.warning("[매핑] get_merged_all_sectors 인메모리 캐시 조회 실패: %s", e)
-        return ["기타"]
+        _log.warning("[매핑] get_merged_all_sectors sectors 테이블 조회 실패: %s", e)
+
+    if "미분류" not in sectors:
+        sectors.add("미분류")
+    return sorted(list(sectors))

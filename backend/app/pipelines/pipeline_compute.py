@@ -152,32 +152,40 @@ async def _compute_loop_impl(es: ModuleType) -> None:
     try:
         while _compute_running:
             try:
-                # ── Control Queue 관문 (Step 6: 컨트롤 플레인 우회 배관 연동) ──
-                # 제어 신호가 있는지 먼저 체크 (get_nowait로 비블로킹 체크)
-                # P0-1: PriorityQueue 전환 - 튜플 언패킹 적용 (우선순위, 데이터)
-                try:
-                    _, _, control_signal = control_queue.get_nowait()
+                # ── tick_queue + control_queue 동시 대기 (asyncio.wait) ──
+                # 어느 큐에든 데이터 도착 시 즉시 깨어남 — 틱 없는 비거래 시간에도 control 신호 처리 가능
+                tick_task = asyncio.ensure_future(tick_queue.get())
+                control_task = asyncio.ensure_future(control_queue.get())
+                done, pending = await asyncio.wait(
+                    {tick_task, control_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                # 미완료 task 정리 (메모리 누수 방지)
+                for t in pending:
+                    t.cancel()
+
+                # control_queue 신호 처리
+                if control_task in done and not control_task.cancelled():
+                    _, _, control_signal = control_task.result()
                     await _process_control_signal(control_signal, es, broadcast_queue)
                     control_queue.task_done()
-                except asyncio.QueueEmpty:
-                    pass  # 제어 신호 없음, 정상 흐름 계속
 
-                # tick_queue에서 데이터 꺼내기 (Python dict 메모리 참조 직통)
-                data = await tick_queue.get()
+                # tick_queue 데이터 처리
+                if tick_task in done and not tick_task.cancelled():
+                    data = tick_task.result()
+                    tick_queue.task_done()
 
-                # data 자체가 딕셔너리(REAL 데이터 등)이므로 직접 전달
-                # 큐에 여러 이벤트가 리스트로 올 경우를 대비한 방어 로직
-                parsed_events = [data] if isinstance(data, dict) else data
+                    # data 자체가 딕셔너리(REAL 데이터 등)이므로 직접 전달
+                    # 큐에 여러 이벤트가 리스트로 올 경우를 대비한 방어 로직
+                    parsed_events = [data] if isinstance(data, dict) else data
 
-                # 파싱된 각 이벤트를 순차적으로 연산 로직에 전달
-                for event in parsed_events:
-                    try:
-                        # 연산 수신 (engine_service의 연산 로직 이관)
-                        await _process_tick_data(event, es, broadcast_queue)
-                    except Exception as e:
-                        logger.error("[Compute] 이벤트 처리 예외 (계속): %s", e, exc_info=True)
-
-                tick_queue.task_done()
+                    # 파싱된 각 이벤트를 순차적으로 연산 로직에 전달
+                    for event in parsed_events:
+                        try:
+                            await _process_tick_data(event, es, broadcast_queue)
+                        except Exception as e:
+                            logger.error("[Compute] 이벤트 처리 예외 (계속): %s", e, exc_info=True)
 
                 # P0-1: 틱 폭주 시 이벤트 루프 고갈 방지 - 협력적 멀티태스킹 (Yielding)
                 await asyncio.sleep(0)
@@ -278,12 +286,8 @@ async def _handle_sector_recompute(
         broadcast_queue: UI 전송 큐
     """
     try:
-        # 업종순위 재계산
+        # 업종순위 재계산 — recompute_sector_summary_now 내부에서 notify_desktop_sector_scores(force=True) 호출됨
         await es.recompute_sector_summary_now()
-
-        # UI 업데이트 - 단일 진입점 원칙 준수
-        from backend.app.services.engine_account_notify import notify_desktop_sector_scores
-        notify_desktop_sector_scores(force=True)
 
         logger.info("[Compute] 업종순위 재계산 완료")
 
@@ -342,8 +346,8 @@ async def _handle_real_tick(
 
             # 틱 타입 확인 및 정규화 (호가잔량 "0d", 체결 "01" 등)
             msg_type = item.get("type")
-            from backend.app.services.engine_ws_parsing import _normalize_kiwoom_real_type
-            norm_type = _normalize_kiwoom_real_type(msg_type)
+            from backend.app.services.engine_ws_parsing import _normalize_real_type
+            norm_type = _normalize_real_type(msg_type)
             
             vals = item.get("values", {})
             if not isinstance(vals, dict):
@@ -380,8 +384,7 @@ async def _handle_real_01_tick(
     """
     # engine_service._apply_real01_volume_amount_to_radar_rows 이관
     try:
-        from backend.app.services.engine_symbol_utils import _real_item_stk_cd
-        from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+        from backend.app.services.engine_symbol_utils import _real_item_stk_cd, _base_stk_cd
 
         raw_cd = _real_item_stk_cd(item, vals)
         if not raw_cd:
@@ -405,8 +408,8 @@ async def _handle_real_01_tick(
             es._apply_real01_volume_amount_to_radar_rows(raw_cd, vals, is_0b_tick=is_0b_tick)
 
             # 연산 결과: 틱 수신 시 해당 종목에 대한 업종 점수 증분 재계산 트리거 (이벤트 큐 대신 _dirty_codes에 추가)
-            from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
-            nk = _format_kiwoom_reg_stk_cd(raw_cd)
+            from backend.app.services.engine_symbol_utils import _base_stk_cd
+            nk = _base_stk_cd(raw_cd)
             if nk:
                 global _dirty_codes
                 _dirty_codes.add(nk)
@@ -437,7 +440,7 @@ async def _handle_real_0d_tick(
         broadcast_queue: UI 전송 큐
     """
     try:
-        from backend.app.services.engine_symbol_utils import _real_item_stk_cd, _format_kiwoom_reg_stk_cd
+        from backend.app.services.engine_symbol_utils import _real_item_stk_cd, _base_stk_cd
         from backend.app.services.engine_ws_dispatch import _ws_fid_int
         from backend.app.services.engine_account_notify import notify_orderbook_update
 
@@ -446,7 +449,7 @@ async def _handle_real_0d_tick(
         if not raw_cd:
             return
 
-        nk = _format_kiwoom_reg_stk_cd(raw_cd)
+        nk = _base_stk_cd(raw_cd)
         bid = _ws_fid_int(vals, "125", 0)  # 총 매수호가잔량
         ask = _ws_fid_int(vals, "121", 0)  # 총 매도호가잔량
 
@@ -473,7 +476,7 @@ async def _handle_real_pgm_tick(
     PGM 프로그램 순매수 틱 처리.
     """
     try:
-        from backend.app.services.engine_symbol_utils import _real_item_stk_cd, _format_kiwoom_reg_stk_cd
+        from backend.app.services.engine_symbol_utils import _real_item_stk_cd, _base_stk_cd
         from backend.app.services.engine_account_notify import notify_program_update
 
         # 종목코드 추출
@@ -481,7 +484,7 @@ async def _handle_real_pgm_tick(
         if not raw_cd:
             return
 
-        nk = _format_kiwoom_reg_stk_cd(raw_cd)
+        nk = _base_stk_cd(raw_cd)
         tval_str = vals.get("tval", "0")
         try:
             tval = int(tval_str)
@@ -561,9 +564,9 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
                 await _send_receive_rate(get_current_receive_rate())
                 _receive_rate_dirty = False
 
-            # sector-scores 전송
+            # sector-scores 전송 (delta — 변경된 섹터만)
             from backend.app.services.engine_account_notify import notify_desktop_sector_scores
-            notify_desktop_sector_scores(force=True)
+            notify_desktop_sector_scores(force=False)
             
             if _dirty_codes:
                 # 안전하게 복사 후 클리어

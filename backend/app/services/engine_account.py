@@ -9,6 +9,7 @@
 import asyncio
 from backend.app.core.logger import get_logger
 from backend.app.core.trade_mode import is_test_mode
+import backend.app.services.engine_state as engine_state
 from backend.app.services.engine_state import state
 
 logger = get_logger("engine_account")
@@ -130,12 +131,7 @@ async def _fetch_account_data(settings: dict) -> dict:
     _EMPTY = {"success": False, "summary": {}, "stock_list": []}
     # 증권사별 REST API 분리
     broker = str(settings.get("broker", "") or "").lower().strip()
-    if broker == "kiwoom":
-        _rest_api = state.kiwoom_rest_api
-    elif broker == "ls":
-        _rest_api = state.ls_rest_api
-    else:
-        _rest_api = None
+    _rest_api = state.broker_rest_apis.get(broker)
     _get_rest_api_thread_sem = state.rest_api_thread_sem or _get_rest_api_thread_sem()
     
     if _rest_api is None:
@@ -214,7 +210,7 @@ async def _update_account_memory(settings: dict) -> None:
     합계는 포지션 합산하지 않고 API 루트 합계만 _broker_rest_totals 에 저장한다.
     Lock으로 동시 호출 직렬화 -- 기동 시 _run_snapshot_and_sell_check + _login_post_pipeline 경쟁 방지.
     """
-    lock = _get_account_rest_lock()
+    lock = engine_state._get_account_rest_lock()
     if lock.locked():
         logger.info("[계좌] REST 조회 중복 요청 -- 선행 조회 완료까지 대기")
     async with lock:
@@ -235,7 +231,7 @@ async def _update_account_memory_inner(settings: dict) -> None:
         recalc_broker_totals_from_positions,
     )
     from backend.app.services.engine_account_notify import _rebuild_positions_cache
-    from backend.app.services.engine_symbol_utils import _format_broker_reg_stk_cd
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
     from backend.app.services import dry_run
     from backend.app.services.engine_ws import _ws_live, _sweep_unreg_subscribed_except_positions_and_tracked
     from backend.app.core.engine_settings import get_engine_settings
@@ -333,7 +329,7 @@ async def _refresh_account_snapshot_meta() -> None:
     """
     from backend.app.services.engine_account_rest import build_account_snapshot_meta
     from backend.app.services import dry_run, settlement_engine
-    from backend.app.services.engine_symbol_utils import _format_broker_reg_stk_cd
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
     from backend.app.services.engine_ws import _ws_live
     
     _is_test = is_test_mode(state.integrated_system_settings_cache)
@@ -377,12 +373,12 @@ async def _apply_last_price_to_positions(stk_cd: str, price: int) -> bool:
         apply_last_price_to_positions_inplace,
         recalc_broker_totals_from_positions,
     )
-    from backend.app.services.engine_symbol_utils import _format_broker_reg_stk_cd
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
     from backend.app.services import dry_run
     
     # 테스트모드: dry_run 가상 잔고에 현재가 반영 (6자리 정규화)
     if is_test_mode(state.integrated_system_settings_cache):
-        nk = _format_broker_reg_stk_cd(str(stk_cd or "").strip())
+        nk = _base_stk_cd(str(stk_cd or "").strip())
         return await dry_run.update_price(nk, price) if nk else False
     
     hit = apply_last_price_to_positions_inplace(state.positions, stk_cd, price)
@@ -522,10 +518,3 @@ async def _position_codes_with_qty() -> set[str]:
         except (TypeError, ValueError):
             continue
     return out
-
-
-def _get_account_rest_lock() -> asyncio.Lock:
-    """계좌 REST 조회 Lock 반환."""
-    if state.account_rest_lock is None:
-        state.account_rest_lock = asyncio.Lock()
-    return state.account_rest_lock

@@ -26,7 +26,6 @@ _STATE_EVENTS: frozenset[str] = frozenset({
     "orderbook-update",
     "index-refresh",
     "account-update",
-    "engine-status",
     "sector-scores",
     "buy-targets-delta",
     "buy-limit-status",
@@ -289,9 +288,9 @@ class WSManager:
             # 캐시가 아직 비어있으면 _positions 직접 조회 (초기화 타이밍 폴백)
             try:
                 import backend.app.services.engine_service as _es
-                from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+                from backend.app.services.engine_symbol_utils import _base_stk_cd
                 return any(
-                    _format_kiwoom_reg_stk_cd(str(p.get("stk_cd", "") or "")) == code
+                    _base_stk_cd(str(p.get("stk_cd", "") or "")) == code
                     for p in _es._positions
                     if int(p.get("qty", 0) or 0) > 0
                 )
@@ -395,9 +394,9 @@ class WSManager:
             try:
                 loop = asyncio.get_running_loop()
                 # 종목 코드 추출 + 정규화 (per-client 필터링용)
-                from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+                from backend.app.services.engine_symbol_utils import _base_stk_cd
                 raw_code = str(data.get("item") or "").strip()
-                code = _format_kiwoom_reg_stk_cd(raw_code) if raw_code else ""
+                code = _base_stk_cd(raw_code) if raw_code else ""
                 # 사전 필터링: 어떤 클라이언트도 이 틱이 필요 없으면 압축·task 생성 생략
                 needed = False
                 for ws in self._clients:

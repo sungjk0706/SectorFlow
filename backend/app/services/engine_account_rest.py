@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd, _real_item_stk_cd
+from backend.app.services.engine_symbol_utils import _base_stk_cd, _real_item_stk_cd
 from backend.app.services.engine_ws_parsing import _parse_fid10_price, _rest_row_float, _rest_row_int
 
 
@@ -38,7 +38,7 @@ def merge_positions_from_rest(
     for r in stock_list:
         if not isinstance(r, dict):
             continue
-        cd = _format_kiwoom_reg_stk_cd(str(r.get("stk_cd", "")).strip())
+        cd = _base_stk_cd(str(r.get("stk_cd", "")).strip())
         if not cd:
             continue
         qty = _rest_row_int(r, "qty", "rmnd_qty")
@@ -172,7 +172,7 @@ def real04_official_apply_position_line(
     # 기존 포지션에서 매칭 시도
     matched = None
     for s in positions:
-        if _format_kiwoom_reg_stk_cd(str(s.get("stk_cd", "") or "")) == raw_cd:
+        if _base_stk_cd(str(s.get("stk_cd", "") or "")) == raw_cd:
             matched = s
             break
 
@@ -281,9 +281,9 @@ def apply_last_price_to_positions_inplace(
     """실시간 체결(REAL 01) -- 체결가 반영 + 평가손익·수익률·평가금액 실시간 재계산. 가격 변경 시에만 True."""
     if price <= 0:
         return False
-    key = _format_kiwoom_reg_stk_cd(stk_cd)
+    key = _base_stk_cd(stk_cd)
     for s in positions:
-        if _format_kiwoom_reg_stk_cd(str(s.get("stk_cd", "") or "")) == key:
+        if _base_stk_cd(str(s.get("stk_cd", "") or "")) == key:
             if int(s.get("cur_price", 0) or 0) == price:
                 return False  # 가격 변경 없음 — 재계산 스킵
             s["cur_price"] = price

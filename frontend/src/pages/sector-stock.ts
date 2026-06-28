@@ -33,16 +33,6 @@ const COLUMNS: ColumnDef<DataRowItem>[] = [
   makeAvgAmountColumn<DataRowItem>((item) => Number(item.stock.avg_amt_5d) || 0),
 ]
 
-/* ── 헬퍼 함수 ── */
-
-export function scoreColor(score: number): string {
-  const t = Math.max(0, Math.min(score, 100)) / 100
-  const r = Math.round(240 + (230 - 240) * t)
-  const g = Math.round(192 + (81 - 192) * t)
-  const b = Math.round(128 + (0 - 128) * t)
-  return `rgb(${r},${g},${b})`
-}
-
 /* ── 행 타입 ── */
 
 interface GroupRowItem {
@@ -88,7 +78,7 @@ export function filterStocksBySector(
   if (!selectedSector) return [...stocks]
   const result: SectorStock[] = []
   for (const s of stocks) {
-    if ((s.sector || '기타') === selectedSector) result.push(s)
+    if ((s.sector || '미분류') === selectedSector) result.push(s)
   }
   return result
 }
@@ -123,7 +113,7 @@ function computeRows(
   // 업종별 종목 그룹핑
   const grouped = new Map<string, string[]>()
   for (const s of Object.values(stockMap)) {
-    const sector = s.sector || '기타'
+    const sector = s.sector || '미분류'
     if (selectedSector && sector !== selectedSector) continue
     if (matchedCodes && !matchedCodes.has(s.code)) continue
 

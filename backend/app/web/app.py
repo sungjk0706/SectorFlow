@@ -43,14 +43,14 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(start_gateway_loop())
     logger.info("[웹서버] Gateway 루프 시작 완료")
 
-    # 필터 요약 캐시 초기 로드
+    # filter_summary_meta 초기 로드 (SSOT: 종목수는 master_stocks_table, 메타만 로드)
     try:
-        from backend.app.core.sector_stock_cache import load_filter_summary_cache
+        from backend.app.core.sector_stock_cache import load_filter_summary_meta_cache
         from backend.app.services.engine_state import state
-        state.latest_filter_summary = await load_filter_summary_cache()
-        logger.info("[웹서버] 필터 요약 캐시 로드 완료: %s", state.latest_filter_summary)
+        state.latest_filter_summary_meta = await load_filter_summary_meta_cache()
+        logger.info("[웹서버] filter_summary_meta 캐시 로드 완료")
     except Exception as e:
-        logger.warning("[웹서버] 필터 요약 캐시 초기 로드 실패: %s", e)
+        logger.warning("[웹서버] filter_summary_meta 캐시 초기 로드 실패: %s", e)
 
     # 단일 통합설정 마스터 테이블(integrated_system_settings)로부터 1회 로드 완료
     from backend.app.core.settings_file import load_integrated_system_settings
@@ -107,8 +107,12 @@ async def lifespan(app: FastAPI):
 
             async def _start_telegram_lazy():
                 await asyncio.sleep(3.0)
-                telegram_bot.start()
-                logger.info("[웹서버] 텔레그램 폴링 시작 (후순위)")
+                _s = state.integrated_system_settings_cache
+                if bool(_s.get("tele_on", False)):
+                    telegram_bot.start()
+                    logger.info("[웹서버] 텔레그램 폴링 시작 (후순위)")
+                else:
+                    logger.info("[웹서버] 텔레그램 OFF — 폴링 시작 안 함")
             asyncio.create_task(_start_telegram_lazy())
         except Exception as e:
             logger.error("[웹서버] 엔진 백그라운드 초기화 실패: %s", e, exc_info=True)
@@ -223,10 +227,10 @@ async def global_exception_handler(request: Request, exc: Exception):
     if current_time - last_alert >= ALERT_COOLDOWN_SECONDS:
         # 5분 이상 지났으면 알림 전송
         from backend.app.services.telegram import send_msg_async
-        from backend.app.core.settings_store import get_settings_async
+        from backend.app.services.engine_config import get_settings_snapshot
 
         try:
-            settings = await get_settings_async()
+            settings = get_settings_snapshot()
             error_msg = f"[SectorFlow 에러 알림]\n에러 타입: {error_type}\n메시지: {str(exc)}\n경로: {request.url.path}"
             await send_msg_async(error_msg, settings, msg_type="error_alert")
             _last_alert_time[error_type] = current_time

@@ -6,8 +6,7 @@
 순환 import 방지: 이 모듈은 다른 engine_*.py를 import하지 않는다.
 """
 import asyncio
-from backend.app.core.kiwoom_connector import KiwoomConnector
-from backend.app.core.kiwoom_providers import KiwoomAuthProvider
+from backend.app.core.broker_connector import BrokerConnector
 from backend.app.services.trading import AutoTradeManager
 from backend.app.services.engine_utils import LazyEvent
 from backend.app.services.state_manager import StateManager, OrderStatus
@@ -24,8 +23,8 @@ class EngineState:
         self.running = False
         self.shutdown_requested: bool = False
         self.connector_manager: "ConnectorManager | None" = None  # type: ignore[name-defined]
-        self.kiwoom_connector: KiwoomConnector | None = None
-        self.kiwoom_auth_provider: KiwoomAuthProvider | None = None
+        self.active_connector: BrokerConnector | None = None
+        self.active_auth_provider: "AuthProvider | None" = None  # type: ignore[name-defined]
         self.broker_tokens: dict[str, str] = {}  # {broker_id: access_token}
         self.engine_task: asyncio.Task | None = None
         self.engine_loop_ref: asyncio.AbstractEventLoop | None = None
@@ -67,6 +66,7 @@ class EngineState:
         self.confirmed_refresh_running_5d: bool = False         # 5일봉 다운로드 전용
         self.confirmed_refresh_message: str = ""
         self.latest_filter_summary: str = ""
+        self.latest_filter_summary_meta: str = ""
         self.master_stocks_cache: dict[str, dict] = {}
 
         # ── 계좌 상태 ───────────────────────────────────────────────────────────
@@ -81,8 +81,7 @@ class EngineState:
         self.auto_trade: AutoTradeManager | None = None
         self.integrated_system_settings_cache: dict = {}
         self.broker_spec: list = []
-        self.kiwoom_rest_api: "KiwoomRestAPI | None" = None  # type: ignore[name-defined]
-        self.ls_rest_api: "LsRestAPI | None" = None  # type: ignore[name-defined]
+        self.broker_rest_apis: dict[str, object] = {}  # {broker_id: RestApi}
         self.account_snapshot: dict = {}
         self.positions: list = []
         self.snapshot_history: list = []
@@ -142,10 +141,6 @@ def _set_realtime_state(new_state: str) -> None:
 async def _on_filter_settings_changed() -> None:
     """필터 설정 변경 시 처리 (engine_sector 모듈 위임)."""
     await state.on_filter_settings_changed()
-
-def _cancel_price_trace_delayed_task() -> None:
-    """호환용 노-op."""
-    pass
 
 def _notify_reg_ack(return_code: str = "") -> None:
     """`engine_ws_dispatch` REG/UNREG 응답 처리 끝에서 호출 -- 순차 전송 대기 해제."""

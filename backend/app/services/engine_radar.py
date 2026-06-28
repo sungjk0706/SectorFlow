@@ -94,9 +94,9 @@ def merge_live_price_to_radar_row(row: dict) -> dict:
 
 def _apply_real01_volume_amount_to_radar_rows(raw_cd: str, vals: dict, *, is_0b_tick: bool = True) -> None:
     """FID 데이터를 받아 master_stocks_cache의 실시간 필드를 직접 갱신합니다."""
-    from backend.app.services.engine_symbol_utils import _format_kiwoom_reg_stk_cd
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
     
-    nk = _format_kiwoom_reg_stk_cd(raw_cd)
+    nk = _base_stk_cd(raw_cd)
     if not nk:
         return
     
@@ -137,16 +137,16 @@ async def _mark_radar_exited(stk_cd: str) -> None:
     레이더 목록에서 종목 제거.
     _radar_cnsr_order 삭제: state.master_stocks_cache에서 "_subscribed" 제거
     """
-    from backend.app.services.engine_symbol_utils import _normalize_stk_cd_rest
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
 
-    nk = _normalize_stk_cd_rest(str(stk_cd).strip())
+    nk = _base_stk_cd(str(stk_cd).strip())
     rm: str | None = None
     if state.master_stocks_cache.get(nk, {}).get("_subscribed"):
         rm = nk
     else:
         all_stocks = state.master_stocks_cache.copy()
         for k, entry in all_stocks.items():
-            if entry.get("_subscribed", False) and _normalize_stk_cd_rest(str(k)) == nk:
+            if entry.get("_subscribed", False) and _base_stk_cd(str(k)) == nk:
                 rm = k
                 break
     if rm is not None:
@@ -169,9 +169,9 @@ async def _drop_rest_radar_quote_for_nk(nk: str) -> None:
 
 async def _clear_radar_rest_bootstrap_for_stk_cd(stk_cd: str) -> None:
     """모니터링에서 종목이 완전히 빠질 때 -- 다음 등록 시 REST 1회를 다시 허용."""
-    from backend.app.services.engine_symbol_utils import _format_broker_reg_stk_cd
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
 
-    nk = _format_broker_reg_stk_cd(str(stk_cd).strip())
+    nk = _base_stk_cd(str(stk_cd).strip())
     if nk:
         pass
 
@@ -192,7 +192,7 @@ async def _clear_radar_and_ready_memory() -> None:
 async def _tracked_ui_stock_codes() -> set[str]:
     """보유·레이더 종목코드(6자리 정규화) -- 시세 표시 대상."""
     from backend.app.services import dry_run
-    from backend.app.services.engine_symbol_utils import _format_broker_reg_stk_cd
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
 
     from backend.app.core.trade_mode import is_test_mode
 
@@ -200,14 +200,14 @@ async def _tracked_ui_stock_codes() -> set[str]:
     pos = await dry_run.get_positions() if is_test_mode(state.integrated_system_settings_cache) else list(state.positions)
     for p in pos:
         if int(p.get("qty", 0) or 0) > 0:
-            c = _format_broker_reg_stk_cd(str(p.get("stk_cd", "") or ""))
+            c = _base_stk_cd(str(p.get("stk_cd", "") or ""))
             if c:
                 out.add(c)
     # _radar_cnsr_order 삭제: state.master_stocks_cache의 "_subscribed" 사용
     all_stocks = state.master_stocks_cache.copy()
     for k, entry in all_stocks.items():
         if entry.get("_subscribed", False):
-            c = _format_broker_reg_stk_cd(str(k))
+            c = _base_stk_cd(str(k))
             if c:
                 out.add(c)
     return out

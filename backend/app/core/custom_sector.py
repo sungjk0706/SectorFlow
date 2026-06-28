@@ -54,7 +54,6 @@ class CustomSector:
         qry_dt: str,
         interval_sec: float = 0.1,
         on_progress: Callable[[int, int], None] | None = None,
-        resume_codes: set[str] | None = None,
     ) -> dict[str, dict]:
         """master_stocks_table에서 전체 종목 일별 확정 시세 조회."""
         try:
@@ -95,7 +94,6 @@ class CustomSector:
         qry_dt: str,
         interval_sec: float = 0.33,
         on_progress: Callable[[int, int], None] | None = None,
-        resume_codes: set[str] | None = None,
     ) -> dict[str, dict]:
         """master_stocks_table에서 5일 평균 거래대금 조회."""
         try:

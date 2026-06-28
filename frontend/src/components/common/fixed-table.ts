@@ -24,25 +24,9 @@ export type TableRow<T> = T | GroupRow
 
 /* ── 셀 스타일 헬퍼 ───────────────────────────────────────── */
 import { CELL_BORDER, FONT_SIZE, FONT_WEIGHT } from './ui-styles'
+import { triggerFlash } from './flash-anim'
 
 const CELL_BASE = `box-sizing:border-box;padding:4px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-right:${CELL_BORDER};`
-
-/** 셀에 노란 플래시 애니메이션 한 번 발동 (중복 발동 시 기존 타이머 정리) */
-function triggerFlash(cell: HTMLElement, duration = 600): void {
-  const key = '_flashTimer' as keyof HTMLElement
-  const prev = (cell as any)[key] as number | undefined
-  if (prev) clearTimeout(prev)
-
-  cell.classList.remove('cell-flash')
-  void cell.offsetWidth // reflow 강제 → 애니메이션 재시작
-  cell.classList.add('cell-flash')
-
-  const timer = setTimeout(() => {
-    cell.classList.remove('cell-flash')
-    ;(cell as any)[key] = undefined
-  }, duration)
-  ;(cell as any)[key] = timer
-}
 
 export function cellStyle(align?: 'left' | 'right' | 'center', _mono = true): string {
   if (align === 'left') return CELL_BASE + 'text-align:left;font-weight:500;color:#111;'
