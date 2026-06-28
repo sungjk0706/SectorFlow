@@ -29,8 +29,15 @@ NXT_AFTERMARKET_END   = (18,  0)  # 18:00
 
 
 def is_nxt_premarket_window() -> bool:
-    """현재 시각이 NXT 프리마켓 구간(08:00~09:00)인지 판단."""
+    """현재 시각이 NXT 프리마켓 구간(08:00~09:00)인지 판단.
+    거래일(평일 + 공휴일 아님) AND 08:00 <= KST < 09:00 → True."""
+    from backend.app.core.trading_calendar import is_trading_day
     now = _kst_now()
+    today = now.date()
+    if today.weekday() >= 5:
+        return False
+    if not is_trading_day(today):
+        return False
     t = now.hour * 60 + now.minute
     s = NXT_PREMARKET_START[0] * 60 + NXT_PREMARKET_START[1]
     e = NXT_PREMARKET_END[0] * 60 + NXT_PREMARKET_END[1]
@@ -44,6 +51,18 @@ def is_nxt_aftermarket_window() -> bool:
     s = NXT_AFTERMARKET_START[0] * 60 + NXT_AFTERMARKET_START[1]
     e = NXT_AFTERMARKET_END[0] * 60 + NXT_AFTERMARKET_END[1]
     return s <= t < e
+
+
+def is_nxt_only_window() -> bool:
+    """현재 시각이 NXT-only 거래 구간인지 판단 (KRX 비활성 + NXT 활성).
+
+    거래일 기준:
+    - NXT 프리마켓(08:00~09:00): KRX 미개시, NXT 거래 가능
+    - NXT 애프터마켓(15:30~20:00): KRX 마감, NXT 거래 가능
+    이 구간에서는 KRX 단독 종목이 틱을 수신하지 못하므로
+    업종 점수 계산 및 수신율에서 제외해야 함.
+    """
+    return is_nxt_premarket_window() or is_krx_after_hours()
 
 
 def get_nxt_trde_tp(base_trde_tp: str = "3") -> str:
@@ -215,6 +234,32 @@ async def is_edit_window_open(settings: dict | None = None) -> bool:
 
 
 
+
+
+async def _on_krx_market_open() -> None:
+    """09:00 KRX 정규장 진입 콜백 — 업종 종합점수 재계산 + WS 브로드캐스트.
+
+    NXT 프리마켓(08:00~09:00)에는 NXT-enabled 종목만 업종 점수에 포함되었으므로,
+    09:00 KRX 정규장 진입 시 전체 종목을 포함하도록 재계산 필요.
+    """
+    try:
+        from backend.app.core.trading_calendar import is_trading_day
+        today = _kst_now().date()
+        if today.weekday() >= 5 or not is_trading_day(today):
+            return
+        logger.info("[타이머] KRX 정규장 진입 (09:00) -- 업종 종합점수 재계산 (NXT-only → 전체 종목)")
+        from backend.app.services.engine_service import recompute_sector_summary_now
+        from backend.app.services.engine_account_notify import (
+            notify_desktop_sector_scores,
+            notify_desktop_sector_stocks_refresh,
+            _broadcast,
+        )
+        await recompute_sector_summary_now()
+        notify_desktop_sector_scores(force=True)
+        await notify_desktop_sector_stocks_refresh()
+        _broadcast("market-phase", get_market_phase())
+    except Exception as e:
+        logger.warning("[타이머] KRX 정규장 진입 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_krx_after_hours_start() -> None:
@@ -666,6 +711,15 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
         h = loop.call_later(max(delay_end, 1), _fire_ws_subscribe_end)
         state.ws_subscribe_timer_handles.append(h)
         logger.debug("[타이머] 실시간 구독 종료 (%s) -- %.0f초 후 예약", ws_end_str, delay_end)
+
+    # ★ 09:00 KRX 정규장 진입 타이머 — NXT-only → 전체 종목 업종 재계산
+    delay_krx_open = _seconds_until_hm(9, 0)
+    if delay_krx_open > 0 and loop:
+        def _krx_open_wrapper() -> None:
+            asyncio.create_task(_on_krx_market_open())
+        h = loop.call_later(max(delay_krx_open, 1), _krx_open_wrapper)
+        state.ws_subscribe_timer_handles.append(h)
+        logger.debug("[타이머] KRX 정규장 진입 (09:00) -- %.0f초 후 예약", delay_krx_open)
 
     # ★ 15:30 KRX 장외 시간대 전환 타이머
     delay_krx_after = _seconds_until_hm(15, 30)

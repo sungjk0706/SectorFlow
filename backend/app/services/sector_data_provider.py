@@ -13,22 +13,31 @@ async def get_sector_summary_inputs() -> dict:
     """업종 요약 계산 입력 데이터 반환.
 
     단일 소스 진리: master_stocks_cache를 직접 참조하므로 스냅샷 제거.
+    NXT-only 구간(08:00~09:00, 15:30~20:00) 거래일에는 NXT-enabled 종목만 포함.
+    정규장(09:00~15:30)에는 전체 종목 포함.
     """
-    from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
-    from backend.app.core.sector_mapping import get_merged_sector as _get_sector
-    import backend.app.services.engine_service as _es_ref
+    from backend.app.services.engine_symbol_utils import is_nxt_enabled as _is_nxt
+    from backend.app.services.daily_time_scheduler import is_nxt_only_window
 
     # 우측테이블의 종목들을 그대로 사용 (단일 소스 진리)
     # get_sector_stocks는 이미 5일평균거래대금 필터링된 종목들만 반환
     sector_stocks_list = await get_sector_stocks()
-    
+
+    # NXT-only 구간(08:00~09:00, 15:30~20:00) 거래일: NXT-enabled 종목만 포함
+    # KRX 단독 종목은 틱 수신 불가하므로 업종 점수 및 수신율에서 제외
+    if is_nxt_only_window():
+        sector_stocks_list = [
+            entry for entry in sector_stocks_list
+            if _is_nxt(entry["code"])
+        ]
+
     # all_codes만 반환 (스냅샷 제거)
     all_codes = [entry["code"] for entry in sector_stocks_list]
-    
+
     # 필터링된 종목만 avg_amt_5d 추출
-    avg_amt_5d = {entry["code"]: int(entry.get("avg_amt_5d", 0) or 0) 
+    avg_amt_5d = {entry["code"]: int(entry.get("avg_amt_5d", 0) or 0)
                   for entry in sector_stocks_list}
-    
+
     return {
         "all_codes": all_codes,  # 우측테이블의 종목만 반환
         "trade_prices": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환

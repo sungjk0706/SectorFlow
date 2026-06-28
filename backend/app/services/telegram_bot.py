@@ -444,7 +444,7 @@ class TelegramBot:
             from backend.app.services import engine_service
             from backend.app.domain.sector_calculator import compute_full_sector_summary
 
-            inputs = engine_service.get_sector_summary_inputs()
+            inputs = await engine_service.get_sector_summary_inputs()
             if not inputs.get("all_codes"):
                 await self._send(token, chat_id, " 종목 데이터가 없습니다. 엔진 가동 후 다시 시도하세요.")
                 return

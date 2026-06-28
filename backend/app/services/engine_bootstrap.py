@@ -63,7 +63,7 @@ async def _deferred_sector_summary() -> None:
         from backend.app.domain.sector_calculator import compute_full_sector_summary
         from backend.app.domain.buy_filter import build_buy_targets_from_settings
         from backend.app.services.sector_data_provider import get_sector_summary_inputs
-        _inputs = get_sector_summary_inputs()
+        _inputs = await get_sector_summary_inputs()
         if _inputs.get("all_codes"):
             # 단일 소스 진리: _integrated_system_settings_cache 직접 사용
             _trim_trade = float(_st._integrated_system_settings_cache["sector_trim_trade_amt_pct"])
