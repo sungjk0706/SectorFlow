@@ -89,9 +89,6 @@ export interface AppSettings {
 
   // 거래 모드
   trade_mode: string;
-  test_mode: boolean;
-  mock_mode: boolean;
-  mode_real: boolean;
 
   // 매수 설정
   buy_amt: number;

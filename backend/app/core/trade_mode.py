@@ -14,8 +14,8 @@ REAL 수신 시 type "0B"는 engine_service._normalize_real_type 에서 "01"과 
 def effective_trade_mode(settings: dict | None) -> str:
     """엔진 캐시 또는 DB에서 로드한 플랫 dict에서 'test' | 'real' 반환.
 
-    하위 호환: 기존 'mock' 값과 'mock_mode' 키도 인식하여
-    자동으로 'test'로 매핑한다.
+    단일 소스: trade_mode 문자열 값만 참조한다.
+    하위 호환: 기존 'mock' 값도 'test'로 매핑한다.
     """
     s = settings or {}
     tm = str(s.get("trade_mode") or "").strip().lower()
@@ -23,10 +23,7 @@ def effective_trade_mode(settings: dict | None) -> str:
         return "real"
     if tm in ("test", "mock"):
         return "test"
-    # 레거시: mock_mode / test_mode 불리언 키
-    if bool(s.get("test_mode", s.get("mock_mode", True))):
-        return "test"
-    return "real"
+    return "test"
 
 
 def is_test_mode(settings: dict | None) -> bool:

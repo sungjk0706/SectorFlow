@@ -12,11 +12,11 @@ import type { Position } from '../types'
 
 const COLUMNS: ColumnDef<Position>[] = [
   {
-    key: 'no', label: '순번', align: 'center',
+    key: 'no', label: '순번', align: 'center', minWidth: 36, maxWidth: 36,
     render: (_p, index) => String(index + 1),
   },
   {
-    key: 'stk_cd', label: '종목코드', align: 'center',
+    key: 'stk_cd', label: '종목코드', align: 'center', minWidth: 72, maxWidth: 72,
     render: (p) => createCodeCell(p.stk_cd || ''),
   },
   createStockNameColumn<Position>(

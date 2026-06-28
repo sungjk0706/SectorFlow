@@ -597,7 +597,7 @@ function handleTradeMode(val: string): void {
         { label: '취소', onClick: () => {} },
         { label: '전환', onClick: async () => {
           vals.trade_mode = 'real'
-          const res = await settingsMgr!.saveSection({ trade_mode: 'real', test_mode: false, mock_mode: false, mode_real: true })
+          const res = await settingsMgr!.saveSection({ trade_mode: 'real' })
           if (!res.ok) vals.trade_mode = 'test'
           syncTradeMode()
         }, variant: 'danger' },
@@ -607,8 +607,7 @@ function handleTradeMode(val: string): void {
   }
 
   vals.trade_mode = val
-  const isReal = val === 'real'
-  settingsMgr?.saveSection({ trade_mode: val, test_mode: !isReal, mock_mode: !isReal, mode_real: isReal }).then(res => {
+  settingsMgr?.saveSection({ trade_mode: val }).then(res => {
     if (!res.ok) vals.trade_mode = 'test'
     syncTradeMode()
   })

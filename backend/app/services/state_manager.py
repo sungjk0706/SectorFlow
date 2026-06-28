@@ -20,12 +20,6 @@ from backend.app.core import journal as _journal
 _log = logging.getLogger(__name__)
 
 
-class BrokerType(Enum):
-    """브로커 타입"""
-    KIWOOM = "kiwoom"
-    LS = "ls"
-
-
 class EventType(Enum):
     """이벤트 타입"""
     ORDER_CREATED = "order_created"
