@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from backend.app.core.broker_providers import UnifiedStockRecord
@@ -13,7 +12,6 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 _MARKET_PATH = "/stock/market-data"
-_CHART_PATH = "/stock/chart"
 _ETC_PATH = "/stock/etc"
 
 _T1404_LABELS: dict[str, str] = {
@@ -297,244 +295,12 @@ async def fetch_ls_all_stocks_unified(api: "LsRestAPI", *, http_timeout: float =
         return []
     ineligible_map = await fetch_ls_ineligible_codes(api)
     if ineligible_map:
-        for record in records:
-            labels = ineligible_map.get(record.code)
-            if labels:
-                state_str = "|".join(dict.fromkeys(labels))
-                record.raw_item["state"] = state_str
-    _log.info("[LS전종목목록] 전종목 반환 — %d종목 (부적격 state 주입 %d종목)", len(records), len(ineligible_map))
+        before = len(records)
+        records = [r for r in records if r.code not in ineligible_map]
+        _log.info(
+            "[LS전종목목록] 부적격 사전필터링 — %d종목 제외 (남은 %d종목)",
+            before - len(records), len(records),
+        )
+    else:
+        _log.info("[LS전종목목록] 전종목 반환 — %d종목 (부적격 없음)", len(records))
     return records
-
-
-def _daily_rows(data: dict) -> list[dict]:
-    for block_name in ("t8451OutBlock1", "t8410OutBlock1"):
-        rows = _items(data, block_name)
-        if rows:
-            return rows
-    return []
-
-
-def _close_value(item: dict) -> int:
-    for key in ("close", "price", "recprice", "jongga"):
-        value = _si(item.get(key))
-        if value > 0:
-            return value
-    return 0
-
-
-def _change_value(item: dict, close_px: int) -> int:
-    for key in ("change", "diff", "signvalue"):
-        raw = _s(item.get(key)).replace(",", "")
-        if raw:
-            try:
-                return int(float(raw))
-            except Exception:
-                pass
-    prev_close = _si(item.get("jnilclose") or item.get("preclose"))
-    if close_px > 0 and prev_close > 0:
-        return close_px - prev_close
-    return 0
-
-
-def _trade_amount(item: dict) -> int:
-    for key in ("value", "trvalue", "trde_prica", "amount"):
-        value = _si(item.get(key))
-        if value > 0:
-            return value
-    return 0
-
-
-def _daily_dict(row: dict) -> dict | None:
-    close_px = _close_value(row)
-    if close_px <= 0:
-        return None
-    change = _change_value(row, close_px)
-    sign = "3"
-    if change > 0:
-        sign = "2"
-    elif change < 0:
-        sign = "5"
-    prev_close = close_px - change
-    change_rate = round((change / prev_close) * 100, 2) if prev_close > 0 else _sf(row.get("diff"))
-    return {
-        "cur_price": close_px,
-        "sign": sign,
-        "change": change,
-        "change_rate": change_rate,
-        "trade_amount": _trade_amount(row),
-        "high_price": _si(row.get("high") or row.get("high_pric")),
-    }
-
-
-async def fetch_ls_daily_price(api: "LsRestAPI", stk_cd: str, qry_dt: str) -> dict | None:
-    code = _code(stk_cd)
-    if not code:
-        return None
-    body = {
-        "t8451InBlock": {
-            "shcode": code,
-            "gubun": "2",
-            "qrycnt": 1,
-            "sdate": qry_dt,
-            "edate": qry_dt,
-            "cts_date": "",
-            "comp_yn": "N",
-            "sujung": "Y",
-            "exchgubun": "K",
-        }
-    }
-    res = await api.call_tr(_CHART_PATH, "t8451", body, timeout=15.0)
-    if not res:
-        return None
-    rows = _daily_rows(res.get("data") or {})
-    if not rows:
-        return None
-    return _daily_dict(rows[0])
-
-
-async def fetch_ls_daily_price_t8410(api: "LsRestAPI", stk_cd: str, qry_dt: str) -> dict | None:
-    code = _code(stk_cd)
-    if not code:
-        return None
-    body = {
-        "t8410InBlock": {
-            "shcode": code,
-            "gubun": "2",
-            "qrycnt": 1,
-            "sdate": qry_dt,
-            "edate": qry_dt,
-            "cts_date": "",
-            "comp_yn": "N",
-            "sujung": "Y",
-        }
-    }
-    res = await api.call_tr(_CHART_PATH, "t8410", body, timeout=15.0)
-    if not res:
-        return None
-    rows = _daily_rows(res.get("data") or {})
-    if not rows:
-        return None
-    return _daily_dict(rows[0])
-
-
-async def fetch_ls_stock_5day_data(api: "LsRestAPI", stk_cd: str, qry_dt: str) -> dict | None:
-    code = _code(stk_cd)
-    if not code:
-        return None
-    body = {
-        "t8451InBlock": {
-            "shcode": code,
-            "gubun": "2",
-            "qrycnt": 5,
-            "sdate": "",
-            "edate": qry_dt,
-            "cts_date": "",
-            "comp_yn": "N",
-            "sujung": "Y",
-            "exchgubun": "K",
-        }
-    }
-    res = await api.call_tr(_CHART_PATH, "t8451", body, timeout=15.0)
-    if not res:
-        return None
-    rows = _daily_rows(res.get("data") or {})[:5]
-    if not rows:
-        return None
-    return {
-        "amts_5d_array": [_trade_amount(row) for row in rows],
-        "highs_5d_array": [_si(row.get("high") or row.get("high_pric")) for row in rows],
-    }
-
-
-async def fetch_ls_stock_5day_data_t8410(api: "LsRestAPI", stk_cd: str, qry_dt: str) -> dict | None:
-    code = _code(stk_cd)
-    if not code:
-        return None
-    body = {
-        "t8410InBlock": {
-            "shcode": code,
-            "gubun": "2",
-            "qrycnt": 5,
-            "sdate": "",
-            "edate": qry_dt,
-            "cts_date": "",
-            "comp_yn": "N",
-            "sujung": "Y",
-        }
-    }
-    res = await api.call_tr(_CHART_PATH, "t8410", body, timeout=15.0)
-    if not res:
-        return None
-    rows = _daily_rows(res.get("data") or {})[:5]
-    if not rows:
-        return None
-    return {
-        "amts_5d_array": [_trade_amount(row) for row in rows],
-        "highs_5d_array": [_si(row.get("high") or row.get("high_pric")) for row in rows],
-    }
-
-
-async def fetch_ls_all_stocks_daily_confirmed(
-    api: "LsRestAPI",
-    krx_codes: list[str],
-    qry_dt: str,
-    interval_sec: float = 1.0,
-    on_progress: Callable[[int, int], None] | None = None,
-) -> dict[str, dict]:
-    result: dict[str, dict] = {}
-    total = len(krx_codes)
-    gap = max(interval_sec, 0.5)
-    for idx, raw_code in enumerate(krx_codes, start=1):
-        code = _code(raw_code)
-        if not code:
-            if on_progress:
-                on_progress(idx, total)
-            continue
-        try:
-            if idx % 2 == 1:
-                data = await fetch_ls_daily_price(api, code, qry_dt)
-            else:
-                data = await fetch_ls_daily_price_t8410(api, code, qry_dt)
-            if data:
-                result[code] = data
-        except Exception as exc:
-            _log.warning("[LS일봉] %s 조회 실패: %s", code, exc)
-        if on_progress:
-            on_progress(idx, total)
-        if idx < total:
-            await asyncio.sleep(gap)
-    _log.info("[LS일봉] 완료 — 요청 %d, 성공 %d (t8451/t8410 교차 호출)", total, len(result))
-    return result
-
-
-async def fetch_ls_all_stocks_5day(
-    api: "LsRestAPI",
-    krx_codes: list[str],
-    qry_dt: str,
-    interval_sec: float = 1.0,
-    on_progress: Callable[[int, int], None] | None = None,
-) -> dict[str, dict]:
-    result: dict[str, dict] = {}
-    total = len(krx_codes)
-    gap = max(interval_sec, 0.5)
-    for idx, raw_code in enumerate(krx_codes, start=1):
-        code = _code(raw_code)
-        if not code:
-            if on_progress:
-                on_progress(idx, total)
-            continue
-        try:
-            if idx % 2 == 1:
-                data = await fetch_ls_stock_5day_data(api, code, qry_dt)
-            else:
-                data = await fetch_ls_stock_5day_data_t8410(api, code, qry_dt)
-            if data:
-                result[code] = data
-        except Exception as exc:
-            _log.warning("[LS5일봉] %s 조회 실패: %s", code, exc)
-        if on_progress:
-            on_progress(idx, total)
-        if idx < total:
-            await asyncio.sleep(gap)
-    _log.info("[LS5일봉] 완료 — 요청 %d, 성공 %d (t8451/t8410 교차 호출)", total, len(result))
-    return result

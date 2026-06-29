@@ -205,11 +205,6 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         await notify_desktop_settings_toggled()
         return
 
-    if "confirmed_data_broker" in changed_keys:
-        notify_desktop_header_refresh()
-        await notify_desktop_settings_toggled()
-        return
-
     # ── 3) 투자모드 전환 → 캐시 갱신 + 계좌 구독 전환 ────────────────────
     if changed_keys & TRADE_MODE_KEYS:
         if is_engine_running():

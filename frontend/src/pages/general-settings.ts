@@ -76,11 +76,9 @@ let depositDisplay: HTMLElement | null = null
 // API 설정 탭 참조
 let apiKeyInputs: Record<string, HTMLInputElement> = {}
 let brokerRadios: Record<string, HTMLInputElement> = {}
-let confirmedDataBrokerRadios: Record<string, HTMLInputElement> = {}
 let activeApiTab: 'kiwoom' | 'ls' = 'kiwoom'
 let apiTabButtons: Record<string, HTMLElement> = {}
 let brokerSaving = false
-let confirmedDataBrokerSaving = false
 
 /* ── 헬퍼 ── */
 function shouldForceOff(): boolean {
@@ -779,35 +777,6 @@ function renderApiSettingsTab(container: HTMLElement): void {
   descLabel5.textContent = '장마감 후 확정 시세 다운로드 시간 (기본값 20:40)'
   container.appendChild(descLabel5)
 
-  const confirmedBrokerRow = document.createElement('div')
-  Object.assign(confirmedBrokerRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' })
-  const confirmedBrokerLabel = document.createElement('span')
-  Object.assign(confirmedBrokerLabel.style, { fontSize: GS.label, whiteSpace: 'nowrap' })
-  confirmedBrokerLabel.textContent = '다운로드 증권사'
-  confirmedBrokerRow.appendChild(confirmedBrokerLabel)
-
-  const confirmedBrokerOptions = document.createElement('div')
-  Object.assign(confirmedBrokerOptions.style, { display: 'flex', alignItems: 'center', gap: '18px' })
-  for (const v of ['kiwoom', 'ls'] as const) {
-    const label = document.createElement('label')
-    label.style.cssText = 'cursor:pointer;display:flex;align-items:center;gap:6px;font-size:' + GS.label
-    const radio = document.createElement('input')
-    radio.type = 'radio'; radio.name = 'confirmed-data-broker'
-    radio.checked = String(vals.confirmed_data_broker || vals.broker || 'kiwoom') === v
-    radio.addEventListener('change', () => handleConfirmedDataBrokerChange(v))
-    confirmedDataBrokerRadios[v] = radio
-    label.appendChild(radio)
-    label.appendChild(document.createTextNode(v === 'kiwoom' ? '키움증권' : 'LS증권'))
-    confirmedBrokerOptions.appendChild(label)
-  }
-  confirmedBrokerRow.appendChild(confirmedBrokerOptions)
-  container.appendChild(confirmedBrokerRow)
-
-  const confirmedBrokerDesc = document.createElement('div')
-  Object.assign(confirmedBrokerDesc.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 20px', marginTop: '-4px' })
-  confirmedBrokerDesc.textContent = '장마감 전종목 목록, 매매부적격 필터링, 1일봉/5일봉 챠트 시세 다운로드에 사용할 증권사입니다. 주문·계좌·실시간 연결과 별도로 적용됩니다.'
-  container.appendChild(confirmedBrokerDesc)
-
   // Step 2B: API 키 보관용 탭 (키움 API / LS API)
   const apiTabBar = document.createElement('div')
   Object.assign(apiTabBar.style, { display: 'flex', gap: '8px', marginBottom: '12px' })
@@ -975,24 +944,7 @@ function handleBrokerChange(val: 'kiwoom' | 'ls'): void {
       vals.broker = prevBroker
     }
     syncBrokerRadios()
-    syncConfirmedDataBrokerRadios()
     brokerSaving = false
-  })
-}
-
-function handleConfirmedDataBrokerChange(val: 'kiwoom' | 'ls'): void {
-  const current = String(vals.confirmed_data_broker || vals.broker || 'kiwoom')
-  if (val === current || confirmedDataBrokerSaving) return
-  confirmedDataBrokerSaving = true
-  const prevBroker = vals.confirmed_data_broker
-  settingsMgr?.saveSection({ confirmed_data_broker: val }).then(res => {
-    if (res.ok) {
-      vals.confirmed_data_broker = val
-    } else {
-      vals.confirmed_data_broker = prevBroker
-    }
-    syncConfirmedDataBrokerRadios()
-    confirmedDataBrokerSaving = false
   })
 }
 
@@ -1000,14 +952,6 @@ function syncBrokerRadios(): void {
   for (const [v, radio] of Object.entries(brokerRadios)) {
     radio.checked = v === vals.broker
     radio.disabled = brokerSaving
-  }
-}
-
-function syncConfirmedDataBrokerRadios(): void {
-  const current = String(vals.confirmed_data_broker || vals.broker || 'kiwoom')
-  for (const [v, radio] of Object.entries(confirmedDataBrokerRadios)) {
-    radio.checked = v === current
-    radio.disabled = confirmedDataBrokerSaving
   }
 }
 
@@ -1092,11 +1036,7 @@ function syncFromSettings(s: AppSettings | null): void {
     if (r.broker !== undefined && vals.broker !== r.broker) {
       vals.broker = r.broker
     }
-    if (r.confirmed_data_broker !== undefined && vals.confirmed_data_broker !== r.confirmed_data_broker) {
-      vals.confirmed_data_broker = r.confirmed_data_broker
-    }
     syncBrokerRadios()
-    syncConfirmedDataBrokerRadios()
   }
 }
 

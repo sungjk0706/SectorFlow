@@ -16,17 +16,12 @@ import logging
 from typing import TYPE_CHECKING
 
 from backend.app.core.broker_providers import AuthProvider
+from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 
 if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
-
-# ── 증권사 표시 이름 ──────────────────────────────────────────────────
-BROKER_DISPLAY_NAMES: dict[str, str] = {
-    "kiwoom": "kiwoom",
-    "ls": "ls",
-}
 
 # ── 동일 증권사 강제 쌍 ───────────────────────────────────────────────
 MUST_SAME_BROKER_PAIRS: list[tuple[str, str]] = [

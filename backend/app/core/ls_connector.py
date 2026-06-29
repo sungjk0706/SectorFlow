@@ -304,10 +304,13 @@ class LsConnector(BrokerConnector):
         self,
         app_key: str,
         app_secret: str,
-        ws_uri: str = "wss://openapi.ls-sec.co.kr:9443/websocket",
+        ws_uri: str = "",
     ):
         self._app_key = app_key
         self._app_secret = app_secret
+        if not ws_uri:
+            from backend.app.core.broker_urls import build_broker_urls
+            ws_uri = build_broker_urls("ls")["ws_uri"]
         self._ws_uri = ws_uri
         self._socket: _LsSocket | None = None
         self._token: str | None = None
@@ -792,8 +795,10 @@ class LsConnector(BrokerConnector):
 def create_ls_connector() -> LsConnector:
     """단일 소스 진리: state.integrated_system_settings_cache 직접 사용."""
     from backend.app.services.engine_state import state
+    from backend.app.core.broker_urls import build_broker_urls
     app_key = state.integrated_system_settings_cache.get("ls_app_key", "").strip()
     app_secret = state.integrated_system_settings_cache.get("ls_app_secret", "").strip()
     if not app_key or not app_secret:
         raise ValueError("LS app_key, app_secret이 설정되지 않았습니다")
-    return LsConnector(app_key=app_key, app_secret=app_secret)
+    ws_uri = build_broker_urls("ls")["ws_uri"]
+    return LsConnector(app_key=app_key, app_secret=app_secret, ws_uri=ws_uri)

@@ -17,7 +17,6 @@ from backend.app.core.broker_providers import (
     WebSocketProvider,
 )
 from backend.app.core.broker_registry import (
-    BROKER_DISPLAY_NAMES,
     MUST_SAME_BROKER_PAIRS,
     PROVIDER_REGISTRY,
     _create_provider,

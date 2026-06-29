@@ -547,7 +547,25 @@ class KiwoomConnector(BrokerConnector):
         return code
 
     async def _get_token_async(self) -> str | None:
-        """토큰 발급 (비동기 래핑)."""
+        """토큰 확보 (비동기) — 기존 KiwoomRestAPI 인스턴스 재사용으로 중복 발급 방지."""
+        from backend.app.services.engine_state import state
+
+        # 1차: broker_rest_apis에서 기존 인스턴스 재사용
+        rest_api = state.broker_rest_apis.get("kiwoom")
+        if rest_api is None:
+            # 2차: router의 auth_cache에서 KiwoomAuthProvider의 rest_api 재사용
+            try:
+                from backend.app.core.broker_factory import get_router
+                auth_provider = get_router()._auth_cache.get("kiwoom")
+                if auth_provider and hasattr(auth_provider, "rest_api"):
+                    rest_api = auth_provider.rest_api
+            except Exception:
+                pass
+
+        if rest_api and hasattr(rest_api, "get_access_token"):
+            return await rest_api.get_access_token()
+
+        # Fallback: 기존 인스턴스 없을 때만 새 발급
         from backend.app.core.kiwoom_rest import KiwoomRestAPI
         api = KiwoomRestAPI(self._app_key, self._app_secret)
         return await api.get_access_token()
