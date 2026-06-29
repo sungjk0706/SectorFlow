@@ -68,6 +68,7 @@ class EngineState:
         self.latest_filter_summary: str = ""
         self.latest_filter_summary_meta: str = ""
         self.master_stocks_cache: dict[str, dict] = {}
+        self.market_phase: dict = {"krx": "", "nxt": ""}
 
         # ── 계좌 상태 ───────────────────────────────────────────────────────────
         self.ws_account_subscribed: bool = False
