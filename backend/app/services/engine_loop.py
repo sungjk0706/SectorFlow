@@ -46,16 +46,40 @@ async def _cache_and_bootstrap(settings: dict) -> None:
 async def _get_all_tokens_async(router) -> None:
     """
     broker_config에 등장하는 모든 증권사 토큰을 병렬 발급한다.
-    router._auth_cache에 이미 모든 증권사 AuthProvider가 등록되어 있다.
+    router._auth_cache에 없는 증권사(stock 전용 등)도 _create_provider로 생성하여 발급.
     발급된 토큰은 state.broker_tokens[broker_id]로 저장한다.
     """
     from backend.app.services.engine_state import state
     auth_cache: dict = getattr(router, "_auth_cache", {})
-    if not auth_cache:
+
+    # broker_config의 모든 증권사 수집 (auth_cache에 없는 stock 증권사 포함)
+    broker_config = state.integrated_system_settings_cache.get("broker_config") or {}
+    all_broker_ids = set(auth_cache.keys())
+    for _feat, _bname in broker_config.items():
+        _bname = str(_bname or "").lower().strip()
+        if _bname:
+            all_broker_ids.add(_bname)
+
+    # API 키가 설정된 증권사만 발급 대상
+    valid_broker_ids = []
+    for bid in all_broker_ids:
+        _key = state.integrated_system_settings_cache.get(f"{bid}_app_key", "")
+        _sec = state.integrated_system_settings_cache.get(f"{bid}_app_secret", "")
+        if _key and _sec:
+            valid_broker_ids.append(bid)
+
+    if not valid_broker_ids:
         return
 
-    async def _fetch_one(broker_id: str, auth_provider) -> tuple[str, str | None]:
+    async def _fetch_one(broker_id: str) -> tuple[str, str | None]:
         try:
+            auth_provider = auth_cache.get(broker_id)
+            if auth_provider is None:
+                from backend.app.core.broker_registry import _create_provider
+                auth_provider = _create_provider(
+                    "auth", broker_id,
+                    state.integrated_system_settings_cache, auth_cache,
+                )
             token = await auth_provider.get_access_token()
             from backend.app.core.broker_registry import BROKER_DISPLAY_NAMES
             disp = BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper())
@@ -66,7 +90,7 @@ async def _get_all_tokens_async(router) -> None:
             return broker_id, None
 
     results = await asyncio.gather(
-        *[_fetch_one(bid, ap) for bid, ap in auth_cache.items()],
+        *[_fetch_one(bid) for bid in valid_broker_ids],
         return_exceptions=True,
     )
 

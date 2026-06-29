@@ -51,10 +51,12 @@ class LsRestAPI:
         self,
         app_key: str,
         app_secret: str,
-        base_url: str = "https://openapi.ls-sec.co.kr:8080",
+        base_url: str = "",
     ):
         self.app_key = (app_key or "").strip()
         self.app_secret = (app_secret or "").strip()
+        if not base_url:
+            base_url = build_broker_urls("ls")["rest_base"]
         self.base_url = (base_url or "").rstrip("/")
         self._token_info: Optional[LsTokenInfo] = None
         self._client: Optional[httpx.AsyncClient] = None
@@ -173,7 +175,6 @@ class LsRestAPI:
             except Exception as e:
                 _log.warning(f"[LS증권REST] 토큰 요청 예외 (시도={attempt+1}): {e}")
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(2 * (attempt + 1))
                     continue
 
         _log.warning(f"[LS증권REST] 토큰 발급 {max_retries}회 모두 실패")
