@@ -47,6 +47,7 @@ interface DataRowItem {
   type: 'data'
   stock: SectorStock
   dim: boolean
+  krxInactive: boolean
   seq: number
 }
 
@@ -213,15 +214,15 @@ function computeRows(
       const stock = stockMap[code]
       if (!stock) continue
 
-      // KRX 비활성 구간: KRX 단독 종목 (nxt_enable !== true) 불투명 처리
-      const stockDim = dim || (krxInactive && !stock.nxt_enable)
+      // KRX 비활성 구간: KRX 단독 종목 (nxt_enable !== true) 배경색 처리
+      const stockKrxInactive = krxInactive && !stock.nxt_enable
 
       // 행 객체 캐시: stock 참조가 같으면 이전 행 재사용
       const cached = rowCache.get(code)
-      if (cached && cached.stock === stock && cached.row.dim === stockDim && cached.row.seq === stockSeq) {
+      if (cached && cached.stock === stock && cached.row.dim === dim && cached.row.krxInactive === stockKrxInactive && cached.row.seq === stockSeq) {
         rows.push(cached.row)
       } else {
-        const row: DataRowItem = { type: 'data', stock, dim: stockDim, seq: stockSeq }
+        const row: DataRowItem = { type: 'data', stock, dim, krxInactive: stockKrxInactive, seq: stockSeq }
         rowCache.set(code, { stock, row })
         rows.push(row)
       }
@@ -452,7 +453,9 @@ class SectorStockTable extends HTMLElement {
       rowHeight: 32,
       rowStyle: (row, _idx) => ({
         opacity: row.dim ? '0.65' : '1',
-        background: this.currentMatchedCodes?.has(row.stock.code) ? '#fff9c4' : '',
+        background: this.currentMatchedCodes?.has(row.stock.code)
+          ? '#fff9c4'
+          : row.krxInactive ? '#f5f5f5' : '',
       }),
     })
 
