@@ -134,6 +134,15 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   krxAlertChip.style.display = 'none'
   header.appendChild(krxAlertChip)
 
+  // KRX / NXT 카운트다운 칩 (장개시/장마감 N초/분 전)
+  const krxCountdownChip = createChipEl()
+  krxCountdownChip.style.display = 'none'
+  header.appendChild(krxCountdownChip)
+
+  const nxtCountdownChip = createChipEl()
+  nxtCountdownChip.style.display = 'none'
+  header.appendChild(nxtCountdownChip)
+
   // 앱준비 진행률 칩
   const bootstrapChip = createChipEl()
   bootstrapChip.style.display = 'none'
@@ -175,6 +184,30 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
       krxAlertChip.textContent = `⚠ ${alert}`
     } else {
       krxAlertChip.style.display = 'none'
+    }
+
+    // KRX 카운트다운 (장개시/장마감 N초/분 전)
+    const krxCountdown = marketPhase.krx_countdown
+    if (krxCountdown) {
+      krxCountdownChip.style.display = ''
+      krxCountdownChip.style.background = `${COLOR.warningBg}`
+      krxCountdownChip.style.color = `${COLOR.warning}`
+      krxCountdownChip.style.border = `1px solid ${COLOR.warning}40`
+      krxCountdownChip.textContent = `⏱ ${krxCountdown}`
+    } else {
+      krxCountdownChip.style.display = 'none'
+    }
+
+    // NXT 카운트다운 (프리마켓/애프터마켓 개시/마감 N초/분 전)
+    const nxtCountdown = marketPhase.nxt_countdown
+    if (nxtCountdown) {
+      nxtCountdownChip.style.display = ''
+      nxtCountdownChip.style.background = `${COLOR.warningBg}`
+      nxtCountdownChip.style.color = `${COLOR.warning}`
+      nxtCountdownChip.style.border = `1px solid ${COLOR.warning}40`
+      nxtCountdownChip.textContent = `⏱ ${nxtCountdown}`
+    } else {
+      nxtCountdownChip.style.display = 'none'
     }
 
     // 앱준비 진행률
