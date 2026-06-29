@@ -33,6 +33,7 @@ async def build_initial_snapshot() -> dict:
     from backend.app.services.sector_data_provider import get_sector_scores_snapshot, get_sector_stocks, get_buy_targets_sector_stocks
     from backend.app.services.engine_config import _mask_sensitive_settings
     from backend.app.services.engine_lifecycle import get_engine_status
+    from backend.app.pipelines.pipeline_compute import get_current_receive_rate
 
     async def _safe(fn, default):
         """getter 호출을 감싸서 실패하면 기본값을 돌려준다."""
@@ -76,6 +77,7 @@ async def build_initial_snapshot() -> dict:
         "ws_subscribe_status": ws_subscribe_control.get_subscribe_status(),
         "bootstrap_done":   state.bootstrap_event.is_set() if state.bootstrap_event else state.preboot_cache_loaded,
         "market_phase":     get_market_phase(),
+        "receive_rate":     get_current_receive_rate(),
         "broker_config":    state.integrated_system_settings_cache["broker_config"],
         "avg_amt_refresh":  None,
     }

@@ -7,8 +7,6 @@ export interface ColDef<T> {
   render: (row: T, idx: number) => string | HTMLElement
   headerStyle?: Partial<CSSStyleDeclaration>
   tdStyle?: Partial<CSSStyleDeclaration>
-  /** 값이 변경되면 셀 배경에 노란 플래시 애니메이션 적용 */
-  flash?: boolean | ((row: T) => boolean)
 }
 
 /* ── 업종 구분 행 (선택) ───────────────────────────────────── */
@@ -24,7 +22,6 @@ export type TableRow<T> = T | GroupRow
 
 /* ── 셀 스타일 헬퍼 ───────────────────────────────────────── */
 import { CELL_BORDER, FONT_SIZE, FONT_WEIGHT } from './ui-styles'
-import { triggerFlash } from './flash-anim'
 
 const CELL_BASE = `box-sizing:border-box;padding:4px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-right:${CELL_BORDER};`
 
@@ -203,33 +200,15 @@ export function createFixedTable<T extends object>(options: FixedTableOptions<T>
       try {
         const content = columns[i].render(row, idx)
         if (typeof content === 'string') {
-          const prevKey = '_prevContent' as keyof HTMLElement
-          const prevContent = (cell as any)[prevKey] as string | undefined
           if (cell.textContent !== content) {
             cell.textContent = content
-            // 실제 변경이 있는 경우에만 플래시 터뜨림
-            const shouldFlash = typeof columns[i].flash === 'function' ? (columns[i].flash as any)(row) : columns[i].flash
-            if (shouldFlash && prevContent !== undefined && prevContent !== content) {
-              triggerFlash(cell)
-            }
           }
-          // 현재 값을 저장
-          ;(cell as any)[prevKey] = content
         } else if (content instanceof HTMLElement) {
-          const prevKey = '_prevContent' as keyof HTMLElement
-          const prevContent = (cell as any)[prevKey] as string | undefined
           const existing = cell.firstElementChild as HTMLElement | null
           if (!existing || existing.outerHTML !== content.outerHTML) {
             cell.textContent = ''
             cell.appendChild(content)
-            // 실제 변경이 있는 경우에만 플래시 터뜨림
-            const shouldFlash = typeof columns[i].flash === 'function' ? (columns[i].flash as any)(row) : columns[i].flash
-            if (shouldFlash && prevContent !== undefined && prevContent !== content.outerHTML) {
-              triggerFlash(cell)
-            }
           }
-          // 현재 값을 저장
-          ;(cell as any)[prevKey] = content.outerHTML
         }
       } catch {
         // 개별 셀 render 예외 시 해당 셀만 건너뛰기

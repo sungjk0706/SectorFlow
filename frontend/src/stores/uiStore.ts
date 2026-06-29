@@ -214,6 +214,7 @@ export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
     backfilling: false,
     engineReady: !!(data.bootstrap_done),
     marketPhase: (data.market_phase as { krx: string; nxt: string }) ?? { krx: 'CLOSED', nxt: 'CLOSED' },
+    receiveRate: (data.receive_rate as { received: number; total: number; pct: number }) ?? null,
     avgAmtProgress: data.avg_amt_refresh ? { current: (data.avg_amt_refresh as Record<string, unknown>).current as number ?? 0, total: (data.avg_amt_refresh as Record<string, unknown>).total as number ?? 0, done: false, status: ((data.avg_amt_refresh as Record<string, unknown>).status as string) || undefined } : data.confirmed_refresh ? { current: 0, total: 0, done: false, message: ((data.confirmed_refresh as Record<string, unknown>).message as string) || '', status: 'confirmed' } : null,
   })
 }

@@ -5,7 +5,6 @@
 
 import type { ColumnDef } from './data-table'
 import { hotStore, normalizeStockCode } from '../../stores/hotStore'
-import { uiStore } from '../../stores/uiStore'
 
 /* ── 폰트 ── */
 
@@ -333,10 +332,6 @@ export function makePriceColumn<T>(
     key: 'cur_price',
     label: '현재가',
     align: 'right',
-    flash: () => {
-      const settings = uiStore.getState().settings
-      return settings?.ui_price_flash_on !== false
-    },
     render: (t) => {
       return createPriceCell(getPrice(t), getRate(t))
     },

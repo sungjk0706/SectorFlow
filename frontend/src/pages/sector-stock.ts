@@ -251,8 +251,8 @@ class SectorStockTable extends HTMLElement {
   private titleBaseSpan: HTMLElement | null = null
   private titleFilterSpan: HTMLElement | null = null
   private titleCountSpan: HTMLElement | null = null
+  private titleWarningSpan: HTMLElement | null = null
   private filterBadge: HTMLElement | null = null
-  private warningDiv: HTMLElement | null = null
   private emptyDiv: HTMLElement | null = null
   private scrollContainer: HTMLElement | null = null
   private _rafId: number | null = null
@@ -317,12 +317,12 @@ class SectorStockTable extends HTMLElement {
     }
 
     // 종목 수 경고
-    if (this.warningDiv) {
+    if (this.titleWarningSpan) {
       if (stockCount > 170) {
-        this.warningDiv.style.display = ''
-        this.warningDiv.textContent = `⚠️ 종목 수가 ${stockCount}개로 170개를 초과했습니다. 실시간 연결이 불안정할 수 있습니다.`
+        this.titleWarningSpan.style.display = ''
+        this.titleWarningSpan.textContent = '⚠️ 170개 초과'
       } else {
-        this.warningDiv.style.display = 'none'
+        this.titleWarningSpan.style.display = 'none'
       }
     }
 
@@ -356,11 +356,15 @@ class SectorStockTable extends HTMLElement {
     this.titleCountSpan = document.createElement('span')
     this.titleCountSpan.style.display = 'none'
 
+    this.titleWarningSpan = document.createElement('span')
+    Object.assign(this.titleWarningSpan.style, { color: '#ffc107', fontWeight: '500', display: 'none', marginLeft: '8px' })
+
     titleContent.appendChild(this.titleBaseSpan)
     titleContent.appendChild(document.createTextNode(' '))
     titleContent.appendChild(this.titleFilterSpan)
     titleContent.appendChild(document.createTextNode(' '))
     titleContent.appendChild(this.titleCountSpan)
+    titleContent.appendChild(this.titleWarningSpan)
 
     this.titleH3 = createCardTitleWithContent(titleContent)
     this.rootEl.appendChild(this.titleH3)
@@ -398,21 +402,7 @@ class SectorStockTable extends HTMLElement {
     this.filterBadge.appendChild(clearBtn)
     this.rootEl.appendChild(this.filterBadge)
 
-    // 3. 종목 수 초과 경고
-    this.warningDiv = document.createElement('div')
-    Object.assign(this.warningDiv.style, {
-      display: 'none',
-      background: '#fff3cd',
-      color: '#856404',
-      border: '1px solid #ffc107',
-      borderRadius: '6px',
-      padding: '6px 12px',
-      marginBottom: '8px',
-      fontSize: FONT_SIZE.badge,
-    })
-    this.rootEl.appendChild(this.warningDiv)
-
-    // 4. 검색 + WS 상태 배지
+    // 3. 검색 + WS 상태 배지
     const searchRow = document.createElement('div')
     Object.assign(searchRow.style, {
       display: 'flex',
@@ -552,8 +542,8 @@ class SectorStockTable extends HTMLElement {
     this.titleBaseSpan = null
     this.titleFilterSpan = null
     this.titleCountSpan = null
+    this.titleWarningSpan = null
     this.filterBadge = null
-    this.warningDiv = null
     this.emptyDiv = null
     this.scrollContainer = null
     this.searchInput = null
