@@ -209,23 +209,14 @@ class AutoTradeManager:
         order_price = 0
         order_type = "시장가"
 
-        # ── RiskManager 게이트 (try-except 삼키기 금지: 검사 실패 시 상위에서 차단) ──
-        # 서킷브레이커(주문 실패 누적 보호)는 테스트/실전 공통.
-        # 예수금·일일손실 한도(돈 I/O)는 실거래 전용 — 원칙 9(테스트모드 동등성: 돈만 가상).
+        # ── RiskManager 게이트 (테스트/실전 공통 — 모드 분기는 RiskManager 내부에서 처리) ──
         risk_mgr = get_risk_manager()
-        if is_test_mode(base_settings_for_mode):
-            if not risk_mgr.circuit_breaker.allow_request():
-                self.log_callback(
-                    f"[리스크차단] {stk_cd} 매수 차단 — Circuit Breaker {risk_mgr.circuit_breaker.get_state()}"
-                )
-                return False
-        else:
-            _allowed, _risk_reason = risk_mgr.check_buy_order_allowed(
-                stk_cd, float(current_price), buy_qty
-            )
-            if not _allowed:
-                self.log_callback(f"[리스크차단] {stk_cd} 매수 차단 — {_risk_reason}")
-                return False
+        _allowed, _risk_reason = await risk_mgr.check_buy_order_allowed(
+            stk_cd, float(current_price), buy_qty
+        )
+        if not _allowed:
+            self.log_callback(f"[리스크차단] {stk_cd} 매수 차단 — {_risk_reason}")
+            return False
 
         self._buy_state[stk_cd] = {"last_req_ts": now, "has_open_buy": True}
         stk_nm = data_manager.get_stock_name(stk_cd, access_token)
@@ -492,7 +483,7 @@ class AutoTradeManager:
         # ── RiskManager Circuit Breaker 체크 ───────────────────────────────────
         try:
             risk_mgr = get_risk_manager()
-            allowed, reason = risk_mgr.check_sell_order_allowed(stk_cd, 0, 0)
+            allowed, reason = risk_mgr.check_sell_order_allowed("", 0, 0)
             if not allowed:
                 self.log_callback(f"[리스크차단] 매도 조건 전체 차단 — {reason}")
                 return

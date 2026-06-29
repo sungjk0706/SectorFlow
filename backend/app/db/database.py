@@ -24,6 +24,7 @@ async def get_db_connection() -> aiosqlite.Connection:
         await _db_connection.execute("PRAGMA synchronous = NORMAL;")
         await _db_connection.execute("PRAGMA cache_size = -64000;")
         await _db_connection.execute("PRAGMA temp_store = MEMORY;")
+        await _db_connection.execute("PRAGMA mmap_size = 268435456;")
 
     return _db_connection
 

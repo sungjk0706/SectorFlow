@@ -19,17 +19,10 @@ logger = get_logger("engine_lifecycle")
 
 async def start_engine(user_id: str = "") -> bool:
     """엔진 시작."""
-    from backend.app.services.state_manager import StateManager
     from backend.app.core.kiwoom_providers import KiwoomAuthProvider
 
     if state.engine_task and not state.engine_task.done():
         return False
-
-    # StateManager 초기화
-    if state.state_manager is None:
-        state.state_manager = StateManager()
-        await state.state_manager.start()
-        logger.info("[엔진] StateManager 초기화 완료")
 
     state.engine_user_id = user_id
     state.running = True

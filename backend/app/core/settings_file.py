@@ -78,6 +78,10 @@ def _migrate_sector_to_industry_index(merged: dict, raw_data: dict) -> tuple[dic
 
 
 def _migrate_broker_config(merged: dict, raw_data: dict) -> tuple[dict, bool]:
+    bc = merged.get("broker_config")
+    if isinstance(bc, dict) and "stock" in bc:
+        bc.pop("stock", None)
+        return merged, True
     return merged, False
 
 
