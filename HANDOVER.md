@@ -170,51 +170,144 @@
 - **아키텍처 원칙**: `state.market_phase`는 오직 `_handle_jif()` (JIF 수신)로만 채워짐 — SSOT 순수성 확보
 - **검증**: py_compile 3개 파일 통과, tsc --noEmit 통과, `_ensure_market_phase`/`_calc_timebased_phase` 잔여 0건
 
+### 16. LS 전종목 다운로드 — 키움 일관성 확보 (방안 B 근본 해결) (완료)
+- **배경**: LS 다운로드가 t1404 완료 후 t1405~ 진행 중 "멈춤"으로 인식. 조사 결과 실제 멈춤이 아닌 42회 순차 API 호출 + asyncio.sleep(1.0) + 429 재시도로 인한 지연. 근본 원인은 LS만 Step 1에서 사전필터링 수행, 키움은 Step 2에 필터링 위임 — 아키텍처 불일치
+- **`ls_stock_rest.py`**:
+  - fetcher 반환형 `set[str]` → `dict[str, list[str]]` (code → state 라벨 목록)
+  - `_T1404_LABELS`, `_T1405_LABELS` 상수 추가 (jongchk → 한국어 라벨 매핑)
+  - t1404 jongchk에 "4"(투자환기) 추가 — 명세서에 있으나 누락되어 있었음
+  - 각 fetcher gubun/jongchk 조합마다 진행 로그 추가 (`[LS부적격목록] t1404 gubun=0 jongchk=1(관리종목) — N종목`)
+  - `fetch_ls_ineligible_codes` 반환형 `set[str]` → `dict[str, list[str]]`, 각 fetcher 시작/완료 로그 추가
+  - `fetch_ls_all_stocks_unified` 사전필터링 제거 → 대신 t1404/t1405/t1410/t1411 결과를 `raw_item["state"]`에 `|` 구분자로 주입. 전종목을 그대로 반환하여 Step 2 `evaluate_stock_filter`가 필터링 수행
+- **`stock_filter.py`**:
+  - `_BLOCKED_STATE_KEYWORDS`에 7개 키워드 추가: `투자유의`, `투자주의`, `투자환기`, `위험예고`, `초저유동성`, `이상급등`, `상장주식수부족`
+  - 키움에도 영향: ka10099 state에上述 키워드 포함 시 기존 통과 → 변경 후 차단
+- **검증**: py_compile 2개 파일 성공, grep 잔여 검색 — `fetch_ls_ineligible_codes`/`fetch_ls_t14XX_codes` 참조가 `ls_stock_rest.py` 내부에만 존재, `fetch_ls_all_stocks_unified` 반환형 `list[UnifiedStockRecord]` 유지로 `ls_providers.py` 영향 없음
+- **런타임 검증 필요**: LS 다운로드 시 Step 1 완료 → Step 2 `evaluate_stock_filter` 정상 동작, 키움 다운로드 시 추가 차단 종목 발생 여부
+
+### 17. t1411 파라미터 수정 — 증거금 40%/100% 필터링 (완료)
+- **파일**: `backend/app/core/ls_stock_rest.py` (line 245-263), `backend/app/core/stock_filter.py` (line 42-62)
+- **수정**: `jkrate` "100"→"1"(100%), "5"(40%) 루프 추가, `jongchk` "0"→"1", `idx` "0"→0(integer), `_T1411_JKRATE_LABELS` 상수 추가, `_BLOCKED_STATE_KEYWORDS`에 "증거금40%" 추가
+- **검증**: py_compile 성공
+
+### 18. t8436 etfgubun → marketCode 매핑 — ETF/ETN 필터링 (완료)
+- **파일**: `backend/app/core/ls_stock_rest.py` (line 96-107)
+- **수정**: `_market_code()`에 `etfgubun` 체크 추가 — "1"→"8"(ETF), "2"→"60"(ETN), 일반은 기존 gubun 매핑 유지
+- **검증**: py_compile 성공
+
+### 19. _call_pages idx 타입 보존 — t1411 연속조회 integer 유지 (완료)
+- **파일**: `backend/app/core/ls_stock_rest.py` (line 148-160)
+- **수정**: `isinstance(cts_raw, str)`으로 타입 판별 — string은 `_s()` 변환, number는 원본 유지
+- **검증**: py_compile 성공
+
+### 20. t8436 spac_gubun 필드 기반 SPAC 필터링 (완료)
+- **파일**: `backend/app/core/ls_stock_rest.py` (line 187-188)
+- **수정**: `spac_gubun="Y"`이고 종목명에 "스팩" 없으면 종목명에 "스팩" 추가 → `stock_filter.py`에서 자동 차단
+- **검증**: py_compile 성공
+
+### 21. LS증권 API 매매 부적격 필터링 전면 조사 (완료 — 보고만)
+- **조사 출처**: GitHub `xorrhks0216/LsApiHelper` specs + 로컬 명세서
+- **매매 부적격 TR 5개**: t1404(관리/불성실/투자유의/투자환기), t1405(투자경고/매매정지/정리매매 등 9종), t1410(초저유동성), t1411(증거금40%/100%), t8436(etfgubun/spac_gubun/gubun)
+- **미활용**: t8436 `bu12gubun`(증권그룹) — 값 매핑 문서 없어 추가 조사 필요
+- **추가 발견**: t1403(신규상장종목조회) — LS 전환 시 regDay 대체 가능
+
+### 22. LS증권 API TPS 테스트 및 다운로드 속도 개선 (완료)
+
+#### 22-1. LS증권 API TPS 제한 테스트 (조사 → 테스트 → 검증)
+- **배경**: LS 다운로드 속도 저하 원인 조사 중 "계정 단위 1 TPS" 가정 확인 필요 — 명세서에는 TR별로 TPS 명시
+- **테스트 스크립트**: `backend/tests/test_ls_tps.py` (테스트 완료 후 삭제)
+- **테스트 결과**:
+  | 테스트 | 내용 | 결과 | 판정 |
+  |--------|------|------|------|
+  | Test 1 | t8451 무딜레이 2회 | 1차 성공, 2차 실패 (IGW00201) | TR별 1 TPS 확정 |
+  | Test 2 | t8436 무딜레이 2회 | 모두 성공 | t8436은 2 TPS 확정 |
+  | Test 3 | t8451 → t8436 교차 무딜레이 | 모두 성공 | TR별 독립 TPS 확정 |
+  | Test 4 | t8451 + t8436 병렬 (gather) | 모두 성공 | 병렬 호출 가능 (이전 "HTTP 500"은 같은 TR 병렬이었음) |
+  | Test 5 | t8451 0.5s 간격 3회 | 3번째 실패 | 1초에 2건까지만 허용 |
+  | Test 6 | t8451 0.3s 간격 3회 | 2번째 실패 | 1초에 2건까지만 허용 |
+- **핵심 결론**: LS증권 API TPS는 **TR별로 독립 적용** (계정 단위 아님)
+  - t8451/t8410 = 1 TPS, t8436 = 2 TPS, 주문 = 10 TPS
+  - 서로 다른 TR은 동시/교차 호출 가능
+  - 같은 TR 1 TPS 위반 시 `IGW00201 "호출 거래건수를 초과하였습니다"` 반환
+
+#### 22-2. Step 1: 부적격목록 4개 TR 동시 실행 (`ls_stock_rest.py:275-291`)
+- **기존**: t1404 → t1405 → t1410 → t1411 순차 실행, 각 호출 후 `asyncio.sleep(1.0)`
+- **변경**: `asyncio.gather`로 4개 TR 동시 실행 (`return_exceptions=True`)
+- **효과**: ~44s → ~26s (가장 긴 t1405의 27회 호출 × 1.0s 기준)
+
+#### 22-3. Step 5: t8451/t8410 교차 호출 (`ls_stock_rest.py:477-507`)
+- **기존**: t8451만 사용, `gap = max(interval_sec, 1.0)` = 1.0s/종목
+- **변경**: 홀수 idx → t8451, 짝수 idx → t8410 교차 호출, `gap = max(interval_sec, 0.5)` = 0.5s/종목
+- **추가 함수**: `fetch_ls_daily_price_t8410` (t8410 기반 1일봉 조회)
+- **효과**: ~21.7분 → ~10.8분 (약 1300종목 기준)
+
+#### 22-4. 5일봉 조회 동일 적용 (`ls_stock_rest.py:510-540`)
+- **기존**: t8451만 사용, `gap = max(interval_sec, 1.0)`
+- **변경**: t8451/t8410 교차 호출, `gap = max(interval_sec, 0.5)`
+- **추가 함수**: `fetch_ls_stock_5day_data_t8410` (t8410 기반 5일봉 조회)
+
+#### 22-5. ETA 계산 수정 (`market_close_pipeline.py:1011`)
+- `eta_sec` 계산을 `(total - cur) * 1.0`에서 `(total - cur) * 0.5`로 변경
+
+#### 예상 소요 시간 비교 (약 1300종목 기준)
+| 단계 | 기존 | 변경 후 |
+|------|------|---------|
+| Step 1 (부적격목록) | ~44s | ~26s |
+| Step 5 (1일봉) | ~21.7분 | ~10.8분 |
+| **총합** | **~22.5분** | **~11.5분** |
+
+- **검증**: py_compile 3개 파일 통과 (`ls_stock_rest.py`, `market_close_pipeline.py`, `ls_providers.py`), import 검증 통과
+- **테스트 스크립트 삭제**: `backend/tests/test_ls_tps.py` 테스트 완료 후 삭제
+
 ## 현재 상태
-- JIF 기반 Market Phase 전환 완료 — Fallback 제거로 SSOT 순수성 확보, py_compile + tsc 검증 통과
-- LS StockProvider 1차 비동기 배선 및 확정시세 다운로드 증권사 분리 완료, py_compile + frontend build + 핵심 스모크 검증 통과
+- **LS 다운로드 속도 개선 완료** — TR별 독립 TPS 기반 교차 호출 + 동시 실행으로 ~22.5분 → ~11.5분 단축
+- **LS 매매 부적격 필터링 1차 완성** — t1404/t1405/t1410/t1411 4개 부적격 TR + t8436 etfgubun/spac_gubun 필드 매핑, py_compile 검증 통과
+- t1411 파라미터 수정 완료 — jkrate "5"(40%)+"1"(100%) 루프, jongchk "1", idx integer, 연속조회 idx 타입 보존
+- t8436 etfgubun → marketCode "8"(ETF)/"60"(ETN) 매핑 완료
+- t8436 spac_gubun="Y" → 종목명 "스팩" 주입으로 필드 기반 SPAC 필터링 완료
+- _call_pages idx 타입 보존 — string 필드는 _s() 변환, number 필드는 원본 유지
+- stock_filter.py _BLOCKED_STATE_KEYWORDS에 "증거금40%" 추가
+- LS 전종목 다운로드 키움 일관성 확보 (방안 B) 완료 — 사전필터링 제거, raw_item state 주입으로 Step 2 통일 필터링
+- JIF 기반 Market Phase 전환 완료 — Fallback 제거로 SSOT 순수성 확보
+- LS StockProvider 1차 비동기 배선 및 확정시세 다운로드 증권사 분리 완료
 - 모든 이전 수정 완료, py_compile + tsc + build 검증 통과
 - 런타임 확인 완료: Frontend-First 기동 — 백엔드/프론트엔드 병렬 시작, Health 즉시 응답, WS 3채널 즉시 연결 (05:32 기동 로그)
 - 런타임 확인 완료: 업종 요약정보 대기 해제 — `재계산 완료` 후 WS 접속 시 대기 없이 즉시 연결 (05:32 기동 로그)
 - 런타임 확인 완료: 1일봉 다운로드 매 종목 로그 정상 출력 — `trading_2026-06-28.log`에서 `[1일봉챠트 시세 다운로드] 진행 중: N/1281 (pct%)` 확인 (06:45)
-- 런타임 검증 필요: 거래일 장중 JIF 수신 시 `is_nxt_only_window()` 정상 동작 확인
-- 런타임 검증 필요: 프론트엔드에서 `market_phase` 빈 문자열 수신 시 장 상태 칩 표시 확인
-- 런타임 검증 필요: 토큰 발급 실패/지연 상황에서 프론트엔드에 DB 데이터가 즉시 표시되는지 확인
-- 런타임 검증 필요: `_login_post_pipeline`이 정상적으로 REST 잔고 조회 ~ WS 구독 등록까지 실행되는지 확인
-- 런타임 검증 필요: Phase 1 Event 기반 수신율 대기가 정상적으로 임계값 통과 후 Phase 2로 전환되는지 확인
-- 런타임 검증 필요: 이전 프로세스 없을 시 sleep 0초로 즉시 시작 확인
-- 런타임 검증 필요: catch-up 백그라운드 실행 시 WS 데이터 전송 정상 확인
-- 런타임 검증 필요: `state.active_connector` / `state.broker_rest_apis` dict 기반 브로커 연결·REST API 초기화·정리가 정상 동작하는지 확인
-- 런타임 검증 필요: 5일봉 다운로드 매 종목 로그 정상 출력 확인
 
 ## 다음 단계
-- 거래일 JIF 런타임 확인:
-  - 장중 JIF 수신 시 `state.market_phase`에 krx/nxt 값 정상 설정 확인
-  - NXT 프리마켓(08:00~09:00) / 애프터마켓(15:30~20:00)에서 `is_nxt_only_window()` True 반환 확인
-  - 정규장(09:00~15:30)에서 `is_nxt_only_window()` False 반환 확인
-  - 프론트엔드 헤더 장 상태 칩이 JIF 수신 값으로 정상 표시되는지 확인
-  - WS 재연결 후 JIF 재구독 성공 시 `state.market_phase` 갱신 확인
-- LS 실제 API 런타임 확인:
-  - 일반설정 → API 설정 → 확정 시세 다운로드 → 다운로드 증권사에서 `LS증권` 선택 후 설정 저장 확인
-  - `broker=kiwoom`, `confirmed_data_broker=ls` 상태에서 실시간/계좌/주문은 키움 유지, 장마감 다운로드만 LS provider 사용 확인
-  - `t8436` 1회 호출 결과의 `t8436OutBlock` 필드명 확인 (`shcode`, `hname`, `gubun`, `jnilclose`/`recprice`)
-  - `t1404/t1405/t1410/t1411` 연속조회 헤더(`tr_cont`, `tr_cont_key`) 실제 반환명 확인
-  - `t8451` 일봉 응답 필드명 확인 (`close`, `high`, `value` 매핑 보정 필요 여부)
-  - 확정시세 다운로드 증권사=`ls` 설정 후 `_sector.fetch_all_stocks()` 실제 반환 종목 수 및 필터 제외 수 확인
-  - LS 1일봉 전종목 다운로드는 1 TPS로 약 21분 소요되므로 실제 실행 전 단건/소량 코드로 먼저 확인
-- 평일 거래 시간 기동 후 확인:
-  - `[시작] 파이프라인 -- REST 잔고 선행 조회 시작` 로그 정상 출력 확인 (이전에는 AttributeError로 스킵됨)
-  - WS 구독 등록이 정상적으로 수행되는지 확인 (이전에는 except에서 스킵됨)
-  - Phase 1 수신율 대기 로그가 이벤트 기반으로 정상 출력되는지 확인
-  - LS 토큰 폐기 성공 로그 확인 (주말에는 ConnectTimeout 발생)
-  - 토큰 발급 지연 시 프론트엔드에 DB 데이터가 즉시 표시되는지 확인
-  - `state.active_connector` / `state.broker_rest_apis` dict 기반 브로커 연결·REST API 초기화·정리가 정상 동작하는지 확인 (단계 11)
-  - 5일봉 다운로드 실행 시 `[5일봉챠트 거래대금,고가 다운로드] 진행 중` 매 종목 로그 확인 (단계 12)
+- **LS 다운로드 속도 개선 런타임 검증 (최우선)**:
+  - Step 1 부적격목록 4개 TR 동시 실행 정상 동작 확인
+  - Step 5 t8451/t8410 교차 호출 시 두 TR 모두 정상 응답 확인
+  - t8410 응답 필드가 t8451과 동일한지 확인 (명세서상 동일 구조)
+  - t8410은 `exchgubun` 없어 NXT 종목 누락 가능 — 확정 파이프라인은 KRX 기준이므로 영향 최소
+  - 0.5s 교차 호출 시 `IGW00201` 오류 발생 여부 확인
+  - 실제 소요 시간 ~11.5분 근접 확인
+  - 5일봉 교차 호출 정상 동작 확인
+- **LS 필터링 런타임 검증**:
+  - t1411 idx integer 정상 전송, jkrate="5"/"1" 각 gubun 조합 조회 확인
+  - t8436 etfgubun="1"(ETF)→"8", "2"(ETN)→"60" 매핑 차단 확인
+  - t8436 spac_gubun="Y" 종목명 "스팩" 주입 차단 확인
+  - Step 2 `evaluate_stock_filter`가 `raw_item["state"]`로 정상 필터링 확인
+  - 키움 다운로드 시 추가 차단 종목 발생 여부
+- **월요일(2026-06-30) 거래일 테스트**:
+  - ka10099 state 핑퐁 여부 확인
+  - 20:40 자동 vs 수동 2차 state 비교 SQL: `SELECT a.code, a.state as s1, b.state as s2 FROM stock_filter_diagnostics a JOIN stock_filter_diagnostics b ON a.code=b.code WHERE a.run_id LIKE '20260630%' AND b.run_id LIKE '20260630%' AND a.run_id < b.run_id AND a.state != b.state`
+- **거래일 JIF 런타임 확인**: market_phase 정상 설정, is_nxt_only_window() 반환값, 프론트엔드 장 상태 칩 표시
+- LS 실제 API 런타임 확인: confirmed_data_broker=ls 설정, t8436/t8451/t8410 필드명 확인
+- 평일 기동 후 확인: REST 잔고 조회, WS 구독, 수신율 대기, 토큰 폐기, 5일봉 로그
 
 ## 미해결 문제
-- WS 재연결 후 JIF 재구독 실패 시 `state.market_phase` stale 데이터 문제: `_on_socket_disconnect`에서 `state.market_phase`를 초기화하지 않음 — 재연결 후 JIF 재구독 실패 시 이전 JIF 값이 남아 있음. 별도 수정 필요 시 승인 요청
+- **LS 다운로드 속도 개선 런타임 검증 미완료**: py_compile만 통과, 실제 파이프라인 실행 시 t8451/t8410 교차 호출 및 4개 TR 동시 실행 정상 동작 확인 필요
+  - t8410 응답이 t8451과 동일한 필드 구조인지 런타임 확인 필요 (명세서상 동일 `OutBlock1` 구조)
+  - t8410은 `exchgubun` 필드 없어 NXT 종목 조회 불가 — 확정 파이프라인은 KRX 기준이므로 영향 최소 예상
+  - 0.5s 교차 호출 시 실제 `IGW00201` 오류 발생 여부 확인 필요
+- **LS 필터링 런타임 검증 미완료**: py_compile만 통과, 실제 LS API 호출 시 t1411 idx integer 전송, etfgubun/spac_gubun 매핑, state 주입 및 Step 2 필터링 동작 확인 필요
+- **키움 `_BLOCKED_STATE_KEYWORDS` 추가 키워드 영향 검증 미완료**: ka10099 state에 "투자유의"/"투자주의"/"투자환기"/"위험예고"/"초저유동성"/"이상급등"/"상장주식수부족"/"증거금40%" 포함 종목이 기존 통과 → 변경 후 차단됨. 종목수 감소 가능성
+- **t8436 `bu12gubun` 미활용**: 증권그룹 코드(예: "01") — 값 매핑이 공식 문서에 없어 추가 조사 필요. 리츠/펀드 등 추가 필터링 가능성
+- **WS 재연결 후 JIF 재구독 실패 시 `state.market_phase` stale 데이터 문제**: `_on_socket_disconnect`에서 `state.market_phase`를 초기화하지 않음 — 재연결 후 JIF 재구독 실패 시 이전 JIF 값이 남아 있음. 별도 수정 필요 시 승인 요청
 - LS StockProvider 실제 API 필드명 검증 필요: 현재 구현은 LsApiHelper 명세 기반이며, 실계정 API 응답에서 `t8436/t8451` 필드명이 다르면 매핑 보정 필요
 - LS 토큰 폐기 ConnectTimeout: 주말/비거래 시간대 LS증권 API 서버 접근 불가 — 코드 버그 아님, 거래 시간에 재확인 필요
-- 종목수 1359 → 1361 불일치: 별도 조사 필요 (이전 세션 메모리 참고)
+- 종목수 1359 → 1361 불일치: 별도 조사 필요 (이전 세션 메모리 참고 — `_apply_confirmed_to_memory`에서 새 엔트리 생성 의심)
 - TODO 주석 7건 (개발 완료 후 토큰 검증 재활성화 시 처리): `deps.py:16`, `ws.py:159`, `ws_orders.py:23`, `ws_settings.py:23`, `client.ts:18,29,40,66`, `risk_manager.py:64`
 - 개발 완료 단계 시 매 종목 진행률 로그 축소 검토 (현재 개발 단계: 매 종목 출력, 완성 단계: 필수 로그만)
