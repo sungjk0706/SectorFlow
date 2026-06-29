@@ -548,6 +548,8 @@ async def handle_ws_data(data: dict) -> None:
         elif trnm == "REAL":
             # REAL 시세는 동기 호출로 즉시 처리 (태스크 큐에 쌓지 않음)
             await _handle_real(data)
+        elif trnm == "JIF":
+            await _handle_jif(data)
     except Exception:
         logger.error("[WS] 메시지 처리 예외 (trnm=%s): %s", data.get("trnm"), data, exc_info=True)
 
@@ -603,4 +605,85 @@ async def stop_consumer_loop() -> None:
             pass
     _consumer_task = None
     logger.info("[Consumer] 루프 정지 완료")
+
+
+# ── JIF (장운영정보) 처리 ──────────────────────────────────────────────────
+
+_JSTATUS_KRX: dict[str, str] = {
+    "11": "장전 동시호가",
+    "21": "정규장", "22": "정규장", "23": "정규장", "24": "정규장", "25": "정규장",
+    "31": "장마감",
+    "41": "장마감", "42": "장마감", "43": "장마감", "44": "장마감",
+    "51": "장후 시간외",
+    "52": "시간외 단일가",
+    "54": "장마감",
+}
+
+_JSTATUS_KRX_ALERT: dict[str, str | None] = {
+    "61": "서킷브레이커 1단계 발동",
+    "62": None,
+    "63": "서킷브레이커 1단계 동시호가 종료",
+    "64": "사이드카 매도 발동",
+    "65": None,
+    "66": "사이드카 매수 발동",
+    "67": None,
+    "68": "서킷브레이커 2단계 발동",
+    "69": "서킷브레이커 3단계 발동",
+    "70": None,
+    "71": "서킷브레이커 2단계 동시호가 종료",
+}
+
+_JSTATUS_NXT: dict[str, str] = {
+    "11": "프리마켓",
+    "55": "프리마켓",
+    "A2": "프리마켓", "A3": "프리마켓", "A4": "프리마켓", "A5": "프리마켓",
+    "C2": "프리마켓", "C3": "프리마켓", "C4": "프리마켓",
+    "57": "휴식",
+    "21": "메인마켓", "22": "메인마켓", "23": "메인마켓", "24": "메인마켓", "25": "메인마켓",
+    "41": "휴식", "42": "휴식", "43": "휴식", "44": "휴식",
+    "56": "애프터마켓",
+    "B2": "애프터마켓", "B3": "애프터마켓", "B4": "애프터마켓", "B5": "애프터마켓",
+    "D2": "애프터마켓", "D3": "애프터마켓", "D4": "애프터마켓",
+    "58": "장마감",
+}
+
+
+async def _handle_jif(data: dict) -> None:
+    """JIF 장운영정보 수신 → market_phase 갱신 + 프론트엔드 브로드캐스트."""
+    jangubun = str(data.get("jangubun", "")).strip()
+    jstatus = str(data.get("jstatus", "")).strip()
+    if not jangubun or not jstatus:
+        return
+
+    mp = engine_state.state.market_phase
+    changed = False
+
+    if jangubun in ("1", "2"):
+        label = _JSTATUS_KRX.get(jstatus)
+        if label:
+            if mp.get("krx") != label:
+                mp["krx"] = label
+                changed = True
+        alert = _JSTATUS_KRX_ALERT.get(jstatus, "__no_change__")
+        if alert != "__no_change__":
+            if mp.get("krx_alert") != alert:
+                mp["krx_alert"] = alert
+                changed = True
+    elif jangubun == "6":
+        label = _JSTATUS_NXT.get(jstatus)
+        if label:
+            if mp.get("nxt") != label:
+                mp["nxt"] = label
+                changed = True
+    else:
+        logger.debug("[JIF] 미처리 jangubun=%s jstatus=%s", jangubun, jstatus)
+        return
+
+    if changed:
+        from backend.app.services.engine_account_notify import _broadcast
+        phase = {"krx": mp.get("krx", ""), "nxt": mp.get("nxt", "")}
+        if mp.get("krx_alert"):
+            phase["krx_alert"] = mp["krx_alert"]
+        _broadcast("market-phase", phase)
+        logger.info("[JIF] 장상태 갱신: jangubun=%s jstatus=%s → %s", jangubun, jstatus, phase)
 

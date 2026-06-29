@@ -201,7 +201,7 @@ async def _reset_realtime_fields() -> None:
         _ws_dispatch._realtime_required_fields_cache.clear()
         _ws_dispatch._realtime_first_tick_ts_map.clear()
     except Exception:
-        pass  # import 실패 시 무시
+        logger.warning("[데이터] ws_dispatch 캐시 초기화 실패", exc_info=True)
 
     # DB master_stocks_table 실시간 필드 초기화 (과거 데이터 혼입 방지)
     try:

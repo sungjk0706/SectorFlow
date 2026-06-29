@@ -100,15 +100,24 @@ def is_krx_after_hours(now: datetime | None = None) -> bool:
 
 def get_market_phase(now: datetime | None = None) -> dict:
     """
-    현재 KRX/NXT 장 상태 반환 (시간대별 상세 상태).
+    현재 KRX/NXT 장 상태 반환.
+    JIF 수신 시 engine_state.market_phase (SSOT) 우선, 미수신 시 시간 기반 fallback.
     반환값: {"krx": 상태문자열, "nxt": 상태문자열}
     """
+    from backend.app.services.engine_state import state
+    mp = state.market_phase
+    if mp.get("krx") and mp.get("nxt"):
+        return {"krx": mp["krx"], "nxt": mp["nxt"]}
+
     from backend.app.core.trading_calendar import is_trading_day
     if now is None:
         now = _kst_now()
     today = now.date()
     if today.weekday() >= 5 or not is_trading_day(today):
-        return {"krx": "휴장일", "nxt": "휴장일"}
+        phase = {"krx": "휴장일", "nxt": "휴장일"}
+        mp["krx"] = phase["krx"]
+        mp["nxt"] = phase["nxt"]
+        return phase
     t = now.hour * 60 + now.minute
     
     # KRX 상태
@@ -141,7 +150,12 @@ def get_market_phase(now: datetime | None = None) -> dict:
     else:  # 20:00~
         nxt_status = "장마감"
     
-    return {"krx": krx_status, "nxt": nxt_status}
+    phase = {"krx": krx_status, "nxt": nxt_status}
+    if not mp.get("krx"):
+        mp["krx"] = krx_status
+    if not mp.get("nxt"):
+        mp["nxt"] = nxt_status
+    return phase
 
 
 async def is_heavy_operation_allowed(now: datetime | None = None) -> bool:

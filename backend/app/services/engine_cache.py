@@ -108,7 +108,8 @@ async def _load_caches_preboot(settings: dict) -> None:
         # ── WS 구독 구간 내 기동 시 실시간 필드 초기화 (DB 로드 이후 실행 보장) ──
         # _init_ws_subscribe_state()와 경쟁하지 않도록 preboot_cache_loaded 플래그로 조정
         from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
-        if await is_ws_subscribe_window(settings):
+        _in_ws_window = await is_ws_subscribe_window(settings)
+        if _in_ws_window:
             from backend.app.services.engine_snapshot import _reset_realtime_fields
             await _reset_realtime_fields()
             logger.info("[데이터준비] WS 구독 구간 — 실시간 필드 초기화 완료 (DB 로드 후)")
@@ -129,10 +130,17 @@ async def _load_caches_preboot(settings: dict) -> None:
 
         state.data_ready_event.set()
 
-        # 업종순위 캐시 초기 계산 — 기동 시 무조건 1회 수행
-        # (WS 구간 내: 이후 _login_post_pipeline이 재계산, WS 구간 외: 유일한 계산 경로)
-        from backend.app.services.sector_data_provider import recompute_sector_summary_now
-        await recompute_sector_summary_now()
+        # 업종순위 캐시 초기 계산
+        # WS 구간 내: _init_ws_subscribe_state가 _sector_summary_cache를 클리어하므로
+        #   1차 계산 결과가 무효화됨. _login_post_pipeline에서 계산하므로 여기서는 스킵.
+        #   UI 블로킹 방지를 위해 sector_summary_ready_event만 set.
+        # WS 구간 외: 유일한 계산 경로이므로 반드시 수행.
+        if _in_ws_window:
+            state.sector_summary_ready_event.set()
+            logger.info("[데이터준비] WS 구독 구간 — 업종순위 계산 스킵 (post-login 파이프라인에서 수행)")
+        else:
+            from backend.app.services.sector_data_provider import recompute_sector_summary_now
+            await recompute_sector_summary_now()
 
         # 앱준비 완료 → 기동 시 스킵된 장마감 파이프라인 데이터동기화중 재시도
         # 백그라운드 실행: data_ready_event / bootstrap_event 이미 set() 상태이므로

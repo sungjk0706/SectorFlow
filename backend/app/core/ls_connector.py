@@ -271,6 +271,16 @@ class _LsSocket:
                     }
                 }]
             }
+        elif tr_cd == "JIF":
+            jangubun = str(body.get("jangubun", "")).strip()
+            jstatus = str(body.get("jstatus", "")).strip()
+            if not jangubun or not jstatus:
+                return None
+            return {
+                "trnm": "JIF",
+                "jangubun": jangubun,
+                "jstatus": jstatus,
+            }
         elif tr_cd == "IJ_":
             # 지수 데이터 (향후 확장용)
             # 현재는 업종 점수 계산에 US3만 사용하므로 로그만 남김
@@ -398,6 +408,11 @@ class LsConnector(BrokerConnector):
                 _trigger_reg_pipeline()
             except Exception:
                 logger.warning("[LS증권연결] _login_ok 설정 및 파이프라인 트리거 실패", exc_info=True)
+            # JIF 장운영정보 구독
+            try:
+                await self.subscribe_jif()
+            except Exception:
+                logger.warning("[LS증권연결] JIF 구독 등록 실패", exc_info=True)
             # 연결 상태 브로드캐스트
             try:
                 from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
@@ -588,6 +603,28 @@ class LsConnector(BrokerConnector):
         await self.unsubscribe_stocks_tr(codes, "UH1")
         await self.unsubscribe_stocks_tr(codes, "UPH")
 
+    async def subscribe_jif(self) -> bool:
+        """장운영정보(JIF) 실시간 구독 등록."""
+        if not self.is_connected() or not self._socket:
+            logger.warning("[LS증권연결] JIF 구독 실패 — 연결 없음")
+            return False
+        payload = {
+            "header": {
+                "token": self._token,
+                "tr_type": "3"
+            },
+            "body": {
+                "tr_cd": "JIF",
+                "tr_key": "0"
+            }
+        }
+        success = await self._socket.send(payload)
+        if success:
+            logger.info("[LS증권연결] JIF 장운영정보 구독 등록 완료")
+        else:
+            logger.warning("[LS증권연결] JIF 구독 등록 실패")
+        return success
+
     async def _on_ws_message(self, payload: dict) -> None:
         """_LsSocket 콜백 → 핸들러 직접 호출."""
         self._received_count += 1
@@ -680,6 +717,11 @@ class LsConnector(BrokerConnector):
                     broadcast_ws_connection_status(True)
                 except Exception:
                     logger.warning("[LS증권연결] 재연결 상태 브로드캐스트 실패", exc_info=True)
+                # JIF 장운영정보 재구독
+                try:
+                    await self.subscribe_jif()
+                except Exception:
+                    logger.warning("[LS증권연결] 재연결 후 JIF 구독 실패", exc_info=True)
                 # 재연결 후 구독 복원은 ConnectorManager가 담당
                 if self._on_reconnect_success:
                     asyncio.get_running_loop().create_task(self._on_reconnect_success(self.broker_id))
@@ -715,7 +757,28 @@ class LsConnector(BrokerConnector):
         return code
 
     async def _get_token_async(self) -> str | None:
-        """토큰 발급 (비동기) - LsRestAPI 직접 호출 (키움과 동일 패턴)."""
+        """토큰 확보 (비동기) — 기존 LsRestAPI 인스턴스 재사용으로 중복 발급 방지."""
+        from backend.app.services.engine_state import state
+
+        # 1차: broker_rest_apis에서 기존 인스턴스 재사용
+        rest_api = state.broker_rest_apis.get("ls")
+        if rest_api is None:
+            # 2차: router의 auth_cache에서 LsAuthProvider의 rest_api 재사용
+            try:
+                from backend.app.core.broker_factory import get_router
+                auth_provider = get_router()._auth_cache.get("ls")
+                if auth_provider and hasattr(auth_provider, "rest_api"):
+                    rest_api = auth_provider.rest_api
+            except Exception:
+                pass
+
+        if rest_api and hasattr(rest_api, "ensure_token"):
+            ok = await rest_api.ensure_token()
+            if ok:
+                return rest_api.get_token()
+            return None
+
+        # Fallback: 기존 인스턴스 없을 때만 새 발급
         from backend.app.core.ls_rest import LsRestAPI
         api = LsRestAPI(self._app_key, self._app_secret)
         ok = await api.ensure_token()

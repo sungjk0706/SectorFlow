@@ -22,6 +22,9 @@ _dirty_codes: set[str] = set()
 _current_receive_rate: dict = {"received": 0, "total": 0, "pct": 0.0}
 _receive_rate_dirty: bool = False
 _receive_rate_event: asyncio.Event | None = None
+# 누적 수신 종목 세트 — _reset_realtime_fields()에 의해 초기화되지 않음
+# 한 번 수신된 종목은 앱 종료까지 수신된 것으로 유지되어 수신율이 0%로 강하하지 않음
+_received_codes: set[str] = set()
 
 
 async def _send_receive_rate(receive_rate: dict) -> None:
@@ -69,8 +72,12 @@ def _has_any_realtime_data(entry: dict) -> bool:
 
 
 async def _update_receive_rate_on_tick(es: ModuleType) -> None:
-    """틱 수신 시 수신율 증분 갱신 (이벤트 기반)."""
-    global _current_receive_rate, _receive_rate_dirty, _receive_rate_event
+    """틱 수신 시 수신율 증분 갱신 (이벤트 기반).
+
+    누적 수신 세트(_received_codes)를 사용하여 _reset_realtime_fields() 후에도
+    한 번 수신된 종목은 수신된 것으로 유지 → 수신율 0% 강하 방지.
+    """
+    global _current_receive_rate, _receive_rate_dirty, _receive_rate_event, _received_codes
 
     try:
         inputs = await es.get_sector_summary_inputs()
@@ -81,11 +88,12 @@ async def _update_receive_rate_on_tick(es: ModuleType) -> None:
             return
 
         from backend.app.services.engine_state import state
-        received_count = sum(
-            1 for code in all_codes
-            if _has_any_realtime_data(state.master_stocks_cache.get(code, {}))
-        )
+        all_codes_set = set(all_codes)
+        for code in all_codes:
+            if _has_any_realtime_data(state.master_stocks_cache.get(code, {})):
+                _received_codes.add(code)
 
+        received_count = len(_received_codes & all_codes_set)
         current_pct = received_count / total_count * 100 if total_count > 0 else 0.0
 
         # 수신율 변경 시에만 dirty 플래그 설정
@@ -313,6 +321,9 @@ async def _process_tick_data(
     trnm = data.get("trnm")
     if trnm == "REAL":
         await _handle_real_tick(data, es, broadcast_queue)
+    elif trnm == "JIF":
+        from backend.app.services.engine_ws_dispatch import handle_ws_data
+        await handle_ws_data(data)
 
 
 async def _handle_real_tick(

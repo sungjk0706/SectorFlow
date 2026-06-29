@@ -259,7 +259,7 @@ export function bindWSToStore(
 
   /* ── market-phase: 장 상태 실시간 갱신 ── */
   pricesClient.onEvent('market-phase', (data) => {
-    applyMarketPhase(data as { krx: string; nxt: string })
+    applyMarketPhase(data as { krx: string; nxt: string; krx_alert?: string | null })
   })
 
   /* ── receive-rate: 수신율 실시간 갱신 ── */
@@ -285,7 +285,7 @@ export function bindWSToStore(
         : null,
     })
     // receiveRate (uiStore) 갱신
-    const receiveRate = (d.status as Record<string, unknown>)?.receiveRate as { received: number; total: number; pct: number } | undefined
+    const receiveRate = (d.status as Record<string, unknown>)?.receive_rate as { received: number; total: number; pct: number } | undefined
     uiStore.setState({ receiveRate: receiveRate ?? null })
   })
 
