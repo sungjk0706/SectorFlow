@@ -4,7 +4,7 @@
  * updateTimeSlotDisplay, createTimeDropdown(+createGridPanel+createFineAdjust), createTimePairInput
  */
 
-import { FONT_SIZE, FONT_WEIGHT } from './ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR } from './ui-styles'
 
 /* ── 상수 ── */
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
@@ -48,10 +48,10 @@ export function createTimeSlot(
     fontSize: FONT_SIZE.label, userSelect: 'none',
   })
   display.innerHTML =
-    `<span style="color:#333;font-weight:500">${hour}</span>` +
-    `<span style="color:#aaa">:</span>` +
-    `<span style="color:#333;font-weight:500">${minute}</span>` +
-    `<span style="font-size:${FONT_SIZE.chip};color:#aaa;margin-left:2px">▼</span>`
+    `<span style="color:${COLOR.neutral};font-weight:500">${hour}</span>` +
+    `<span style="color:${COLOR.muted}">:</span>` +
+    `<span style="color:${COLOR.neutral};font-weight:500">${minute}</span>` +
+    `<span style="font-size:${FONT_SIZE.chip};color:${COLOR.muted};margin-left:2px">▼</span>`
 
   let dropdownEl: HTMLElement | null = null
 
@@ -114,8 +114,8 @@ function createTimeDropdown(
       Object.assign(btn.style, {
         flex: '1', padding: '6px 0', border: 'none', cursor: 'pointer',
         fontSize: FONT_SIZE.badge, fontWeight: FONT_WEIGHT.normal,
-        color: active ? '#1a73e8' : '#999',
-        background: active ? '#e8f0fe' : 'transparent',
+        color: active ? `${COLOR.down}` : `${COLOR.disabled}`,
+        background: active ? `${COLOR.downBg}` : 'transparent',
       })
       btn.textContent = label
     }
@@ -168,8 +168,8 @@ function createGridPanel(
       width: '36px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center',
       border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: FONT_SIZE.badge,
       fontVariantNumeric: 'tabular-nums',
-      background: isActive ? '#1a73e8' : 'transparent',
-      color: isActive ? '#fff' : '#555',
+      background: isActive ? `${COLOR.down}` : 'transparent',
+      color: isActive ? '#fff' : `${COLOR.code}`,
       fontWeight: FONT_WEIGHT.normal,
     })
     btn.textContent = item
@@ -192,7 +192,7 @@ function createFineAdjust(minute: string, onChange: (m: string) => void): HTMLEl
   decBtn.textContent = '−1'
 
   const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: FONT_SIZE.badge, fontWeight: FONT_WEIGHT.normal, color: '#1a73e8', minWidth: '24px', textAlign: 'center' })
+  Object.assign(label.style, { fontSize: FONT_SIZE.badge, fontWeight: FONT_WEIGHT.normal, color: `${COLOR.down}`, minWidth: '24px', textAlign: 'center' })
   label.textContent = minute
 
   const incBtn = document.createElement('button'); incBtn.type = 'button'

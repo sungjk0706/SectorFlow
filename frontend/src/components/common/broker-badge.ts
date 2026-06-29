@@ -1,3 +1,5 @@
+import { COLOR } from './ui-styles'
+
 /** 증권사별 고유 색상 */
 export const BROKER_COLORS: Record<string, string> = {
   kiwoom: '#FF8C00',
@@ -11,7 +13,7 @@ export const BROKER_LABELS: Record<string, string> = {
 }
 
 export function createBrokerBadge(broker: string, onClick?: () => void): HTMLElement {
-  const color = BROKER_COLORS[broker] ?? '#888'
+  const color = BROKER_COLORS[broker] ?? `${COLOR.secondary}`
   const label = BROKER_LABELS[broker] ?? broker
   const clickable = !!onClick
 

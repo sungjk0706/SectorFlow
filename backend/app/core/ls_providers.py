@@ -195,6 +195,66 @@ class LsOrderProvider(OrderProvider):
         return {"success": False, "error": err_msg, "raw_res": res}
 
 
+# ── Stock Provider ─────────────────────────────────────────────────────
+class LsStockProvider:
+    def __init__(self, auth_provider: AuthProvider):
+        self._rest_api = getattr(auth_provider, "rest_api", None)
+
+    async def fetch_all_stocks(
+        self,
+        *,
+        http_timeout: float = 15.0,
+    ) -> list:
+        if self._rest_api is None:
+            return []
+        from backend.app.core.ls_stock_rest import fetch_ls_all_stocks_unified
+        return await fetch_ls_all_stocks_unified(self._rest_api, http_timeout=http_timeout)
+
+    async def fetch_stock_daily_price(
+        self, stk_cd: str, qry_dt: str
+    ) -> dict | None:
+        if self._rest_api is None:
+            return None
+        from backend.app.core.ls_stock_rest import fetch_ls_daily_price
+        return await fetch_ls_daily_price(self._rest_api, stk_cd, qry_dt)
+
+    async def fetch_stock_5day_data(
+        self, stk_cd: str, qry_dt: str
+    ) -> dict | None:
+        if self._rest_api is None:
+            return None
+        from backend.app.core.ls_stock_rest import fetch_ls_stock_5day_data
+        return await fetch_ls_stock_5day_data(self._rest_api, stk_cd, qry_dt)
+
+    async def fetch_all_stocks_5day(
+        self,
+        krx_codes: list[str],
+        qry_dt: str,
+        interval_sec: float = 1.0,
+        on_progress: "Callable[[int, int], None] | None" = None,
+    ) -> dict[str, dict]:
+        if self._rest_api is None:
+            return {}
+        from backend.app.core.ls_stock_rest import fetch_ls_all_stocks_5day
+        return await fetch_ls_all_stocks_5day(
+            self._rest_api, krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress
+        )
+
+    async def fetch_all_stocks_daily_confirmed(
+        self,
+        krx_codes: list[str],
+        qry_dt: str,
+        interval_sec: float = 1.0,
+        on_progress: "Callable[[int, int], None] | None" = None,
+    ) -> dict[str, dict]:
+        if self._rest_api is None:
+            return {}
+        from backend.app.core.ls_stock_rest import fetch_ls_all_stocks_daily_confirmed
+        return await fetch_ls_all_stocks_daily_confirmed(
+            self._rest_api, krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress
+        )
+
+
 # ── WebSocket Provider ────────────────────────────────────────────────
 class LsWebSocketProvider(WebSocketProvider):
     def __init__(self, auth_provider: AuthProvider):

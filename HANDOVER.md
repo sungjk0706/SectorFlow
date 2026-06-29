@@ -14,12 +14,14 @@
 - **파일**: `backend/app/core/ls_rest.py` (line 47-49, 180-210) — `REVOKE_URL` 상수 + `revoke_token()` 메서드
 - **폐기 API 스펙**: 키움 `https://api.kiwoom.com/oauth2/revoke` (JSON), LS `https://openapi.ls-sec.co.kr:8080/oauth2/revoke` (form-urlencoded)
 
-### 3. Graceful Shutdown — 브라우저 종료 시 토큰 폐기 (완료)
+### 3. Graceful Shutdown — WS 단절 기반 자동 종료 (완료)
 - **파일**: `backend/app/services/engine_state.py` (line 24-25) — `shutdown_requested` 플래그 추가
-- **파일**: `backend/app/web/routes/status.py` (line 5-10, 181-205) — `/api/shutdown` 엔드포인트 추가 (sendBeacon 수신 → 1초 후 SIGTERM)
-- **파일**: `frontend/src/main.ts` (line 265-268) — `beforeunload` + `sendBeacon` 핸들러 추가
+- **파일**: `backend/app/web/ws_manager.py` (line 146-157, 462-474) — WS 전체 클라이언트 단절 시 타이머 예약 → 재연결 없으면 SIGTERM 전송
+- **파일**: `backend/app/web/app.py` (line 124-128) — lifespan shutdown 첫 단계에 `ws_manager.close_all()` 배선 (EPIPE 방지)
+- **파일**: `backend/app/web/ws_manager.py` (line 480-484) — `close_all()` 내 `_flush_task` 취소 로직 추가
 - **파일**: `backend/app/services/engine_loop.py` (line 388-409) — `stop_engine()` 내 토큰 폐기 호출 + `broker_tokens.clear()`
-- **검증**: 런타임 로그에서 브라우저 종료 → `/api/shutdown` 수신 → SIGTERM → `stop_engine()` → 토큰 폐기 호출 확인
+- **제거**: `/api/shutdown` 엔드포인트 (dead code — 프론트엔드 호출 0건, 원칙 16 위반)
+- **검증**: py_compile 성공, 런타임 로그에서 WS 단절 → SIGTERM → stop_engine() → 토큰 폐기 확인
 
 ### 4. 토큰 발급 지연이 프론트엔드 데이터 표시를 차단하는 버그 수정 (완료)
 - **파일**: `backend/app/services/engine_loop.py` (line 201-212)
@@ -137,8 +139,28 @@
 - **보관일/로테이션 주석 정정** — trading.log 1일→2일, trading_debug.log 0일→1일, 50MB→10MB (실제 `_MAX_FILE_SIZE`와 일치)
 - **검증**: py_compile 성공, `trading_debug_*` 파일 삭제
 
+### 13. LS StockProvider 비동기 구현 1차 배선 (완료)
+- **`ls_rest.py`** — 기존 `call_api()` 계약 유지, TR 전용 `call_tr()` 추가. `tr_cd`, `tr_cont`, `tr_cont_key` 헤더를 전송하고 응답 body/header/연속조회 키를 반환
+- **`ls_stock_rest.py`** — 신규 파일. `t8436` 전체 종목, `t1404/t1405/t1410/t1411` 부적격 종목 집합, `t8451` 1일봉/5일봉 조회 함수 구현. LS 계정 단위 1 TPS 준수를 위해 per-stock 호출은 `max(interval_sec, 1.0)`로 순차 실행
+- **`ls_providers.py`** — `LsStockProvider` 추가. `KiwoomStockProvider`와 동일한 5개 stock 메서드 제공, `_run_async()` 미사용
+- **`broker_registry.py`** — LS 레지스트리에 `"stock": LsStockProvider` 등록
+- **`stock_filter.py`** — `listCount` 빈 값은 통과, 명시적 비정상 값(`0` 등)은 제외 유지. `lastPrice` 빈 값 제외는 유지
+- **검증**: `py_compile` 성공 (`ls_rest.py`, `ls_stock_rest.py`, `ls_providers.py`, `broker_registry.py`, `stock_filter.py`), 스모크 검증 성공 (`listCount=""` + `lastPrice="1000"` 통과, `listCount="0"` 제외, `_create_provider("stock", "ls", ...)`가 `LsStockProvider` 생성)
+
+### 14. 확정시세 다운로드 증권사 분리 — 하이브리드 아키텍처 보정 (완료)
+- **설정 분리**: `broker`는 실시간/계좌/주문용 주 사용 증권사로 유지, `confirmed_data_broker`는 장마감 전종목 목록·매매부적격 필터링·1일봉/5일봉 챠트 시세 다운로드 전용으로 추가
+- **`settings_defaults.py`** — `confirmed_data_broker: "kiwoom"` 기본값 추가
+- **`settings_store.py`** — `broker`, `confirmed_data_broker` 모두 레지스트리 기반 허용 증권사 검증
+- **`engine_settings.py`** — `confirmed_data_broker`를 엔진 설정에 포함하고 `broker_config.stock`만 `confirmed_data_broker`를 사용하도록 분리. `websocket/order/account/sector/auth`는 기존 `broker` 유지
+- **`engine_service.py`** — `confirmed_data_broker` 변경 시 엔진 재기동 없음. 설정 캐시 갱신 + UI 알림만 수행
+- **`market_close_pipeline.py`** — 1일봉/5일봉 장마감 파이프라인의 stock/auth provider 선택을 `broker_config.stock → confirmed_data_broker → broker` 순으로 변경
+- **`general-settings.ts`** — API 설정 탭의 `확정 시세 다운로드` 시간 설정 아래 `다운로드 증권사` 라디오 추가. 주 사용 증권사와 별도 저장/동기화
+- **`types/index.ts`** — `AppSettings.confirmed_data_broker` 추가
+- **검증**: Python `py_compile` 성공, frontend `npm run build` 성공, 스모크 검증 성공 (`broker=kiwoom`, `confirmed_data_broker=ls`일 때 `broker_config.websocket/order/account=kiwoom`, `broker_config.stock=ls`, stock provider=`LsStockProvider`)
+
 ## 현재 상태
-- 모든 수정 완료, py_compile + tsc + build 검증 통과
+- LS StockProvider 1차 비동기 배선 및 확정시세 다운로드 증권사 분리 완료, py_compile + frontend build + 핵심 스모크 검증 통과
+- 모든 이전 수정 완료, py_compile + tsc + build 검증 통과
 - 런타임 확인 완료: Frontend-First 기동 — 백엔드/프론트엔드 병렬 시작, Health 즉시 응답, WS 3채널 즉시 연결 (05:32 기동 로그)
 - 런타임 확인 완료: 업종 요약정보 대기 해제 — `재계산 완료` 후 WS 접속 시 대기 없이 즉시 연결 (05:32 기동 로그)
 - 런타임 확인 완료: 1일봉 다운로드 매 종목 로그 정상 출력 — `trading_2026-06-28.log`에서 `[1일봉챠트 시세 다운로드] 진행 중: N/1281 (pct%)` 확인 (06:45)
@@ -151,6 +173,14 @@
 - 런타임 검증 필요: 5일봉 다운로드 매 종목 로그 정상 출력 확인
 
 ## 다음 단계
+- LS 실제 API 런타임 확인:
+  - 일반설정 → API 설정 → 확정 시세 다운로드 → 다운로드 증권사에서 `LS증권` 선택 후 설정 저장 확인
+  - `broker=kiwoom`, `confirmed_data_broker=ls` 상태에서 실시간/계좌/주문은 키움 유지, 장마감 다운로드만 LS provider 사용 확인
+  - `t8436` 1회 호출 결과의 `t8436OutBlock` 필드명 확인 (`shcode`, `hname`, `gubun`, `jnilclose`/`recprice`)
+  - `t1404/t1405/t1410/t1411` 연속조회 헤더(`tr_cont`, `tr_cont_key`) 실제 반환명 확인
+  - `t8451` 일봉 응답 필드명 확인 (`close`, `high`, `value` 매핑 보정 필요 여부)
+  - 확정시세 다운로드 증권사=`ls` 설정 후 `_sector.fetch_all_stocks()` 실제 반환 종목 수 및 필터 제외 수 확인
+  - LS 1일봉 전종목 다운로드는 1 TPS로 약 21분 소요되므로 실제 실행 전 단건/소량 코드로 먼저 확인
 - 평일 거래 시간 기동 후 확인:
   - `[시작] 파이프라인 -- REST 잔고 선행 조회 시작` 로그 정상 출력 확인 (이전에는 AttributeError로 스킵됨)
   - WS 구독 등록이 정상적으로 수행되는지 확인 (이전에는 except에서 스킵됨)
@@ -161,6 +191,7 @@
   - 5일봉 다운로드 실행 시 `[5일봉챠트 거래대금,고가 다운로드] 진행 중` 매 종목 로그 확인 (단계 12)
 
 ## 미해결 문제
+- LS StockProvider 실제 API 필드명 검증 필요: 현재 구현은 LsApiHelper 명세 기반이며, 실계정 API 응답에서 `t8436/t8451` 필드명이 다르면 매핑 보정 필요
 - LS 토큰 폐기 ConnectTimeout: 주말/비거래 시간대 LS증권 API 서버 접근 불가 — 코드 버그 아님, 거래 시간에 재확인 필요
 - 종목수 1359 → 1361 불일치: 별도 조사 필요 (이전 세션 메모리 참고)
 - TODO 주석 7건 (개발 완료 후 토큰 검증 재활성화 시 처리): `deps.py:16`, `ws.py:159`, `ws_orders.py:23`, `ws_settings.py:23`, `client.ts:18,29,40,66`, `risk_manager.py:64`
