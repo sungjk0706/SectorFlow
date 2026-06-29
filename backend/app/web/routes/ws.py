@@ -19,7 +19,11 @@ router = APIRouter(prefix="/api/ws", tags=["websocket"])
 
 
 async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> None:
-    """데이터 준비 완료 대기 → 앱준비 완료 대기 → stock-classification-changed 전송 → 업종순위 계산 완료 대기 → initial-snapshot, sector-stocks-refresh, sector-scores, buy-targets-update 순차 유니캐스트."""
+    """데이터 준비 대기 → engine-ready → stock-classification-changed → initial-snapshot → sector-stocks-refresh → sector-scores → buy-targets-update → 토큰 발급 대기 → index-refresh 순차 유니캐스트.
+
+    아키텍처 원칙: 외부 HTTP I/O(토큰 발급)가 UI 렌더링을 블로킹하지 않음.
+    initial-snapshot은 캐시 기반 데이터만 포함하므로 토큰 없이 즉시 전송.
+    index-refresh(broker_statuses 포함)는 토큰 발급 완료 후 전송."""
     try:
         from backend.app.services.engine_service import _data_ready_event
         from backend.app.services.engine_config import get_settings_snapshot
@@ -46,17 +50,6 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         # 엔진 준비 완료 유니캐스트 전송 (engine-ready)
         if _bootstrap_event.is_set():
             await ws_manager.send_to(websocket, "engine-ready", {"_v": 1, "ready": True})
-            
-            # 토큰 발급 완료 대기 — broker_statuses에 올바른 token_valid 포함 보장
-            from backend.app.services.engine_state import state as _state
-            if not _state.token_ready_event.is_set():
-                await _state.token_ready_event.wait()
-
-            # 엔진 상태 전송 (index-refresh)
-            from backend.app.services.engine_lifecycle import get_engine_status
-            engine_status = get_engine_status()
-            engine_status["_v"] = 1
-            await ws_manager.send_to(websocket, "index-refresh", engine_status)
 
         # stock-classification 초기 데이터 전송 (업종순위 계산과 무관하게 독립 전송)
         from backend.app.core.stock_classification_data import load_custom_data
@@ -159,6 +152,20 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
             await ws_manager.send_to(
                 websocket, "buy-targets-update", {"_v": 1, "buy_targets": targets}
             )
+
+        # 토큰 발급 완료 대기 — initial-snapshot 및 비토큰 의존 데이터 전송 후 대기
+        # 아키텍처 원칙: 외부 HTTP I/O(토큰 발급)가 UI 렌더링을 블로킹하지 않음
+        from backend.app.services.engine_state import state as _state
+        if not _state.token_ready_event.is_set():
+            logger.info("[연결] 토큰 발급 대기 중 -- initial-snapshot 전송 완료 후 대기")
+            await _state.token_ready_event.wait()
+            logger.info("[연결] 토큰 발급 완료 -- 엔진 상태 전송")
+
+        # 엔진 상태 전송 (index-refresh) — 토큰 발급 완료 후 broker_statuses 포함
+        from backend.app.services.engine_lifecycle import get_engine_status
+        engine_status = get_engine_status()
+        engine_status["_v"] = 1
+        await ws_manager.send_to(websocket, "index-refresh", engine_status)
     except Exception as e:
         logger.error("[연결] 초기 스냅샷 전송 실패: %s", e, exc_info=True)
 
