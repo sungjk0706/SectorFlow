@@ -52,13 +52,18 @@ async def _get_all_tokens_async(router) -> None:
     from backend.app.services.engine_state import state
     auth_cache: dict = getattr(router, "_auth_cache", {})
 
-    # broker_config의 모든 증권사 수집 (auth_cache에 없는 stock 증권사 포함)
+    # broker_config + confirmed_data_broker의 모든 증권사 수집 (auth_cache에 없는 stock 증권사 포함)
     broker_config = state.integrated_system_settings_cache.get("broker_config") or {}
     all_broker_ids = set(auth_cache.keys())
     for _feat, _bname in broker_config.items():
         _bname = str(_bname or "").lower().strip()
         if _bname:
             all_broker_ids.add(_bname)
+    _confirmed_broker = str(
+        state.integrated_system_settings_cache.get("confirmed_data_broker") or ""
+    ).lower().strip()
+    if _confirmed_broker:
+        all_broker_ids.add(_confirmed_broker)
 
     # API 키가 설정된 증권사만 발급 대상
     valid_broker_ids = []
