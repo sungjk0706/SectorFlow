@@ -167,7 +167,7 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
             logger.warning("[설정] 필드 %s에 빈 문자열 전달 — 무시 (기존 값 유지)", k)
             continue
         # broker 필드: 허용된 값만 저장
-        if k in ("broker", "confirmed_data_broker"):
+        if k == "broker":
             from backend.app.core.broker_registry import PROVIDER_REGISTRY
             broker_val = str(v).strip().lower()
             allowed_brokers = set(PROVIDER_REGISTRY.keys())

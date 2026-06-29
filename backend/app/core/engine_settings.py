@@ -47,7 +47,6 @@ def build_engine_settings_dict(flat: dict) -> dict:
     result: dict = {
         # 운영 설정
         "broker":               merged.get("broker", "kiwoom"),
-        "confirmed_data_broker": merged.get("confirmed_data_broker") or merged.get("broker", "kiwoom"),
         "trade_mode":           tm,
         "time_scheduler_on":    bool(merged.get("time_scheduler_on")),
         # 헤더 상태칩/자동매매 유효성 판정에서 직접 사용
@@ -181,7 +180,7 @@ def build_engine_settings_dict(flat: dict) -> dict:
     # ── 브로커 기능별 매핑 ────────
     def _normalize_broker_config(settings: dict) -> dict:
         broker = settings.get("broker", "kiwoom")
-        stock_broker = settings.get("confirmed_data_broker") or broker
+        stock_broker = "kiwoom"
         return {
             "websocket": broker,
             "order": broker,

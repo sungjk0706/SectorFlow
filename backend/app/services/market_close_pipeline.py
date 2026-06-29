@@ -767,7 +767,6 @@ async def _run_confirmed_pipeline(
         _broker_config = _settings.get("broker_config") if isinstance(_settings.get("broker_config"), dict) else {}
         _broker_name = str(
             _broker_config.get("stock")
-            or _settings.get("confirmed_data_broker")
             or _settings.get("broker")
             or "kiwoom"
         ).lower().strip()
@@ -1220,7 +1219,6 @@ async def fetch_5d_data_only() -> dict:
         _broker_config = _settings.get("broker_config") if isinstance(_settings.get("broker_config"), dict) else {}
         _broker_name = str(
             _broker_config.get("stock")
-            or _settings.get("confirmed_data_broker")
             or _settings.get("broker")
             or "kiwoom"
         ).lower().strip()

@@ -16,6 +16,11 @@ _BROKER_URL_DEFAULTS: dict[str, dict[str, str]] = {
         "ws_uri":     "wss://api.kiwoom.com:10000/api/dostk/websocket",
         "token_path": "/oauth2/token",
     },
+    "ls": {
+        "rest_base":  "https://openapi.ls-sec.co.kr:8080",
+        "ws_uri":     "wss://openapi.ls-sec.co.kr:9443/websocket",
+        "token_path": "/oauth2/token",
+    },
 }
 
 # ── 하위 호환 상수 (기존 import 깨지지 않도록 유지) ───────────────────────
@@ -24,9 +29,10 @@ KIWOOM_WS_URI     = _BROKER_URL_DEFAULTS["kiwoom"]["ws_uri"]
 KIWOOM_TOKEN_PATH = _BROKER_URL_DEFAULTS["kiwoom"]["token_path"]
 KIWOOM_REST_REAL  = KIWOOM_REST_BASE
 
-# ── 증권사별 표시 이름 ────────────────────────────────────────────────────
+# ── 증권사별 표시 이름 (단일 진실 공급원) ────────────────────────────────
 BROKER_DISPLAY_NAMES: dict[str, str] = {
     "kiwoom": "키움증권",
+    "ls":     "LS증권",
 }
 
 
