@@ -29,9 +29,13 @@ def _run_async(coro):
 class LsAuthProvider(AuthProvider):
     def __init__(self):
         from backend.app.services.engine_state import state
-        app_key = (state.integrated_system_settings_cache.get("ls_app_key") or "").strip()
-        app_secret = (state.integrated_system_settings_cache.get("ls_app_secret") or "").strip()
-        self._rest_api = LsRestAPI(app_key, app_secret)
+        _existing = state.broker_rest_apis.get("ls")
+        if _existing is None:
+            app_key = (state.integrated_system_settings_cache.get("ls_app_key") or "").strip()
+            app_secret = (state.integrated_system_settings_cache.get("ls_app_secret") or "").strip()
+            _existing = LsRestAPI(app_key, app_secret)
+            state.broker_rest_apis["ls"] = _existing
+        self._rest_api = _existing
 
     async def get_access_token(self) -> str | None:
         # 토큰 갱신 시도

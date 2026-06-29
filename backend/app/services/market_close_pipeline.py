@@ -1008,7 +1008,7 @@ async def _run_confirmed_pipeline(
 
         def _on_progress(cur: int, tot: int) -> None:
             _pct = int(cur / total * 100) if total > 0 else 0
-            _broadcast_confirmed_progress(cur, total, message=f"1일봉챠트 시세 다운로드 중 ({cur:,}/{total:,}, {_pct}%)", eta_sec=(total - cur) * 1.0, step=5, _loop=_main_loop)
+            _broadcast_confirmed_progress(cur, total, message=f"1일봉챠트 시세 다운로드 중 ({cur:,}/{total:,}, {_pct}%)", eta_sec=(total - cur) * 0.5, step=5, _loop=_main_loop)
 
         try:
             confirmed = await _sector.fetch_all_stocks_daily_confirmed(all_codes, qry_dt, interval_sec=0.33, on_progress=_on_progress)
