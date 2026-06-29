@@ -5,6 +5,7 @@
 import { uiStore } from '../stores/uiStore'
 import type { UIState } from '../stores/uiStore'
 import { BROKER_LABELS } from '../components/common/broker-badge'
+import { COLOR } from '../components/common/ui-styles'
 
 // ── 스타일 상수 ──
 
@@ -13,25 +14,25 @@ const CHIP_STYLE =
 
 const PHASE_STYLE: Record<string, { bg: string; color: string }> = {
   /* 장중(거래 가능) — 초록 */
-  '장전 동시호가': { bg: '#e8f5e9', color: '#2e7d32' },
-  '정규장': { bg: '#e8f5e9', color: '#2e7d32' },
-  '장후 시간외': { bg: '#e8f5e9', color: '#2e7d32' },
-  '시간외 단일가': { bg: '#e8f5e9', color: '#2e7d32' },
-  '프리마켓': { bg: '#e8f5e9', color: '#2e7d32' },
-  '메인마켓': { bg: '#e8f5e9', color: '#2e7d32' },
-  '애프터마켓': { bg: '#e8f5e9', color: '#2e7d32' },
+  '장전 동시호가': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
+  '정규장': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
+  '장후 시간외': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
+  '시간외 단일가': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
+  '프리마켓': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
+  '메인마켓': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
+  '애프터마켓': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
   /* 비장중(휴장/대기/종료) — 회색 */
-  '휴장일': { bg: '#f5f5f5', color: '#9e9e9e' },
-  '장개시전': { bg: '#f5f5f5', color: '#9e9e9e' },
-  '장마감': { bg: '#f5f5f5', color: '#9e9e9e' },
-  '휴식': { bg: '#f5f5f5', color: '#9e9e9e' },
+  '휴장일': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
+  '장개시전': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
+  '장마감': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
+  '휴식': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
 }
 
 const STATUS_THEME = {
-  on: { bg: '#e8f5e9', color: '#2e7d32' },
-  off: { bg: '#f5f5f5', color: '#9e9e9e' },
-  blue: { bg: '#e3f2fd', color: '#1565c0' },
-  red: { bg: '#ffebee', color: '#c62828' },
+  on: { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
+  off: { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
+  blue: { bg: `${COLOR.downBg}`, color: `${COLOR.down}` },
+  red: { bg: `${COLOR.upBg}`, color: `${COLOR.up}` },
 } as const
 
 // ── 인라인 StatusChip 헬퍼 ──
@@ -184,8 +185,8 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
 
       const status = (avgAmtProgress as Record<string, unknown>).status as string || ''
       let msg = avgAmtProgress.message || '' // 백엔드에서 제공한 메시지가 있으면 최우선으로 사용
-      let bg = '#fff3e0'
-      let color = '#e65100'
+      let bg = `${COLOR.warningBg}`
+      let color = `${COLOR.warning}`
       let progressPct = 0
 
       // 백엔드 메시지가 비어있을 때만 하드코딩 템플릿으로 분기
@@ -194,43 +195,43 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
           case 'downloading': {
             progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
             msg = `전종목 5일거래대금/고가 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${Math.round(progressPct)}%)`
-            bg = '#fff3e0'; color = '#e65100'
+            bg = `${COLOR.warningBg}`; color = `${COLOR.warning}`
             break
           }
           case 'completed': {
             progressPct = 100
             msg = '전종목 5일 거래대금,고가 데이터 다운로드 완료'
-            bg = '#e8f5e9'; color = '#2e7d32'
+            bg = `${COLOR.successBg}`; color = `${COLOR.success}`
             break
           }
           case 'failed':
             msg = '전종목 5일 고가 실패'
-            bg = '#ffebee'; color = '#c62828'
+            bg = `${COLOR.upBg}`; color = `${COLOR.up}`
             break
           case 'partial': {
             progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
             const failedCount = (avgAmtProgress as Record<string, unknown>).failed_count as number || 0
             msg = avgAmtProgress.message || `⚠️ 다운로드 부분 완료 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}) — ${failedCount}종목 실패`
-            bg = '#fff3e0'; color = '#e65100'
+            bg = `${COLOR.warningBg}`; color = `${COLOR.warning}`
             break
           }
           case 'cache_deleted':
             msg = '전종목 5일 고가 재계산 중'
-            bg = '#fff3e0'; color = '#e65100'
+            bg = `${COLOR.warningBg}`; color = `${COLOR.warning}`
             progressPct = 100
             break
           case 'token_pending':
             msg = '인증 대기중'
-            bg = '#f5f5f5'; color = '#616161'
+            bg = `${COLOR.neutralBg}`; color = '#616161'
             break
           case 'requested':
             msg = '전종목 5일 데이터 준비 시작'
-            bg = '#e3f2fd'; color = '#1565c0'
+            bg = `${COLOR.downBg}`; color = `${COLOR.down}`
             break
           case 'confirmed': {
             progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
             msg = (avgAmtProgress.total > 0 ? `전종목 확정시세 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${Math.round(progressPct)}%)` : '확정 데이터 갱신 중')
-            bg = '#e3f2fd'; color = '#1565c0'
+            bg = `${COLOR.downBg}`; color = `${COLOR.down}`
             break
           }
           default: {
@@ -245,13 +246,13 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
         // 백엔드에서 메시지가 전달된 경우 적절한 스타일을 설정해 준다
         progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
         if (status === 'completed') {
-          bg = '#e8f5e9'; color = '#2e7d32'
+          bg = `${COLOR.successBg}`; color = `${COLOR.success}`
         } else if (status === 'confirmed') {
-          bg = '#e3f2fd'; color = '#1565c0'
+          bg = `${COLOR.downBg}`; color = `${COLOR.down}`
         } else if (status === 'failed') {
-          bg = '#ffebee'; color = '#c62828'
+          bg = `${COLOR.upBg}`; color = `${COLOR.up}`
         } else {
-          bg = '#fff3e0'; color = '#e65100'
+          bg = `${COLOR.warningBg}`; color = `${COLOR.warning}`
         }
       }
 

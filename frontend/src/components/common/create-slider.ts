@@ -1,4 +1,5 @@
 // frontend/src/components/common/create-slider.ts
+import { COLOR } from './ui-styles'
 // 슬라이더 공통 컴포넌트 — <input type="range"> 팩토리
 
 export interface SliderOptions {
@@ -31,7 +32,7 @@ export function createSlider(opts: SliderOptions = {}): SliderHandle {
   const max = opts.max ?? 100
   const value = opts.value ?? min
   const step = opts.step ?? 1
-  const leftColor = opts.leftColor ?? '#0d6efd'
+  const leftColor = opts.leftColor ?? COLOR.down
   const rightColor = opts.rightColor ?? '#e9ecef'
 
   const el = document.createElement('input')
@@ -75,7 +76,7 @@ export function createSlider(opts: SliderOptions = {}): SliderHandle {
 export interface DualLabelSliderOptions extends SliderOptions {
   leftLabel: (v: number) => string     // e.g. (v) => `업종내 상승비율 ${v}%`
   rightLabel: (v: number) => string    // e.g. (v) => `업종내 거래대금 ${100-v}%`
-  leftColor: string                    // bold color (e.g. '#0d6efd')
+  leftColor: string                    // bold color (e.g. COLOR.down)
   leftColorLight: string               // light color (e.g. '#8bb8f8')
   rightColor: string                   // bold color (e.g. '#fd7e14')
   rightColorLight: string              // light color (e.g. '#fdc89e')

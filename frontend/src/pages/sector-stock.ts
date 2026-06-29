@@ -5,7 +5,7 @@ import { createDataTable, type DataTableApi, type ColumnDef, type GroupRow as Da
 import { hotStore } from '../stores/hotStore'
 import { uiStore, setSelectedSector } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
-import { createStockNameColumn, makeSeqColumn, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, makeAmountColumn, makeAvgAmountColumn, FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
+import { createStockNameColumn, makeSeqColumn, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, makeAmountColumn, makeAvgAmountColumn, FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 import { createCardTitleWithContent } from '../components/common/card-title'
 import { createSearchInput } from '../components/common/search-input'
 import type { SectorStock, SectorScoreRow } from '../types'
@@ -351,13 +351,13 @@ class SectorStockTable extends HTMLElement {
     this.titleBaseSpan.textContent = '업종별 종목 실시간 시세'
 
     this.titleFilterSpan = document.createElement('span')
-    Object.assign(this.titleFilterSpan.style, { color: '#1a73e8', fontWeight: '500', display: 'none' })
+    Object.assign(this.titleFilterSpan.style, { color: COLOR.down, fontWeight: '500', display: 'none' })
 
     this.titleCountSpan = document.createElement('span')
     this.titleCountSpan.style.display = 'none'
 
     this.titleWarningSpan = document.createElement('span')
-    Object.assign(this.titleWarningSpan.style, { color: '#ffc107', fontWeight: '500', display: 'none', marginLeft: '8px' })
+    Object.assign(this.titleWarningSpan.style, { color: COLOR.warning, fontWeight: '500', display: 'none', marginLeft: '8px' })
 
     titleContent.appendChild(this.titleBaseSpan)
     titleContent.appendChild(document.createTextNode(' '))
@@ -377,12 +377,12 @@ class SectorStockTable extends HTMLElement {
       gap: '8px',
       marginBottom: '8px',
       padding: '6px 12px',
-      background: '#e8f0fe',
+      background: COLOR.downBg,
       borderRadius: '6px',
-      border: '1px solid #1a73e8',
+      border: '1px solid ' + COLOR.down,
     })
     const badgeLabel = document.createElement('span')
-    Object.assign(badgeLabel.style, { fontSize: FONT_SIZE.badge, color: '#1a73e8', fontWeight: FONT_WEIGHT.normal })
+    Object.assign(badgeLabel.style, { fontSize: FONT_SIZE.badge, color: COLOR.down, fontWeight: FONT_WEIGHT.normal })
     badgeLabel.className = 'badge-label'
     this.filterBadge.appendChild(badgeLabel)
 
@@ -390,9 +390,9 @@ class SectorStockTable extends HTMLElement {
     Object.assign(clearBtn.style, {
       marginLeft: 'auto',
       background: 'none',
-      border: '1px solid #1a73e8',
+      border: '1px solid ' + COLOR.down,
       borderRadius: '4px',
-      color: '#1a73e8',
+      color: COLOR.down,
       cursor: 'pointer',
       fontSize: FONT_SIZE.badge,
       padding: '2px 8px',
@@ -429,7 +429,7 @@ class SectorStockTable extends HTMLElement {
     this.emptyDiv = document.createElement('div')
     Object.assign(this.emptyDiv.style, {
       display: 'none',
-      color: '#aaa',
+      color: COLOR.muted,
       padding: '20px 0',
       textAlign: 'center',
       fontSize: FONT_SIZE.badge,

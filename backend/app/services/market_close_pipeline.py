@@ -763,25 +763,32 @@ async def _run_confirmed_pipeline(
             return {"fetched": 0, "failed": 0, "cached": False, "skipped": True}
 
         from backend.app.core.broker_registry import _create_provider
-        _broker_name = str(es._integrated_system_settings_cache.get("broker", "") or "").lower().strip() or "kiwoom"
+        _settings = es._integrated_system_settings_cache
+        _broker_config = _settings.get("broker_config") if isinstance(_settings.get("broker_config"), dict) else {}
+        _broker_name = str(
+            _broker_config.get("stock")
+            or _settings.get("confirmed_data_broker")
+            or _settings.get("broker")
+            or "kiwoom"
+        ).lower().strip()
         _auth_cache: dict[str, object] = {}
-        _auth_provider = _create_provider("auth", _broker_name, es._integrated_system_settings_cache, _auth_cache)
+        _auth_provider = _create_provider("auth", _broker_name, _settings, _auth_cache)
         _broker_token = await _auth_provider.get_access_token() if _auth_provider else None
         if _broker_token and _broker_name not in _es_state._broker_tokens:
             _es_state._broker_tokens[_broker_name] = _broker_token
             _broker_token_registered = True
             from backend.app.services.engine_lifecycle import broadcast_engine_status
             broadcast_engine_status()
-        _sector = _create_provider("stock", _broker_name, es._integrated_system_settings_cache, _auth_cache)
+        _sector = _create_provider("stock", _broker_name, _settings, _auth_cache)
 
-        # ── Step 1: ka10099 전종목 리스트 다운로드 ──
-        _log.info("%s Step 1 시작 — ka10099 전종목 리스트 다운로드", tag)
+        # ── Step 1: 전종목 리스트 다운로드 ──
+        _log.info("%s Step 1 시작 — 전종목 리스트 다운로드 (broker=%s)", tag, _broker_name)
         _broadcast_confirmed_progress(0, 0, message="전종목 목록 갱신 중...", step=1)
         try:
             from backend.app.core.broker_providers import UnifiedStockRecord
             records: list[UnifiedStockRecord] = await _sector.fetch_all_stocks()
             if not records:
-                _log.warning("%s ka10099 결과 비어있음 — 중단", tag)
+                _log.warning("%s 전종목 리스트 결과 비어있음 — 중단", tag)
                 return {"fetched": 0, "failed": 0, "cached": False}
             kospi_count = sum(1 for r in records if r.market_code == "0")
             kosdaq_count = sum(1 for r in records if r.market_code == "10")
@@ -1209,16 +1216,24 @@ async def fetch_5d_data_only() -> dict:
 
     try:
         from backend.app.core.broker_registry import _create_provider
-        _broker_name = str(es._integrated_system_settings_cache.get("broker", "") or "").lower().strip() or "kiwoom"
+        _settings = es._integrated_system_settings_cache
+        _broker_config = _settings.get("broker_config") if isinstance(_settings.get("broker_config"), dict) else {}
+        _broker_name = str(
+            _broker_config.get("stock")
+            or _settings.get("confirmed_data_broker")
+            or _settings.get("broker")
+            or "kiwoom"
+        ).lower().strip()
         _auth_cache: dict[str, object] = {}
-        _auth_provider = _create_provider("auth", _broker_name, es._integrated_system_settings_cache, _auth_cache)
+        _auth_provider = _create_provider("auth", _broker_name, _settings, _auth_cache)
         _broker_token = await _auth_provider.get_access_token() if _auth_provider else None
         if _broker_token and _broker_name not in _es_state._broker_tokens:
             _es_state._broker_tokens[_broker_name] = _broker_token
             _broker_token_registered = True
             from backend.app.services.engine_lifecycle import broadcast_engine_status
             broadcast_engine_status()
-        _sector = _create_provider("stock", _broker_name, es._integrated_system_settings_cache, _auth_cache)
+        _sector = _create_provider("stock", _broker_name, _settings, _auth_cache)
+        _log.info("[5일봉챠트 거래대금,고가 다운로드] stock provider broker=%s", _broker_name)
 
         # ── 메모리 캐시에서 매매적격종목 코드 리스트 로드 (SSOT: DB에서만 로드된 캐시 사용) ──
         _log.info("[5일봉챠트 거래대금,고가 다운로드] 매매적격종목 목록 로드 시작")

@@ -155,9 +155,11 @@ def evaluate_stock_filter(item: dict, stk_cd: str) -> StockFilterEvaluation:
     if audit and audit != "정상":
         reasons.append(f"감리={audit}")
 
-    list_count_ok, list_count_value = _positive_int_string(list_count_raw)
-    if not list_count_ok:
-        reasons.append(f"상장주식수비정상={list_count_raw or 'EMPTY'}")
+    list_count_value = None
+    if list_count_raw:
+        list_count_ok, list_count_value = _positive_int_string(list_count_raw)
+        if not list_count_ok:
+            reasons.append(f"상장주식수비정상={list_count_raw}")
 
     last_price_ok, last_price_value = _positive_int_string(last_price_raw)
     if not last_price_ok:

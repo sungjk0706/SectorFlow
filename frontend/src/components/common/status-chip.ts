@@ -1,9 +1,11 @@
+import { COLOR } from './ui-styles'
+
 const THEME = {
-  on:   { bg: '#e8f5e9', color: '#2e7d32' },
-  off:  { bg: '#f5f5f5', color: '#9e9e9e' },
-  blue: { bg: '#e3f2fd', color: '#1565c0' },
-  red:  { bg: '#ffebee', color: '#c62828' },
-  warn: { bg: '#fff3e0', color: '#e65100' },
+  on:   { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
+  off:  { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
+  blue: { bg: `${COLOR.downBg}`, color: `${COLOR.down}` },
+  red:  { bg: `${COLOR.upBg}`, color: `${COLOR.up}` },
+  warn: { bg: `${COLOR.warningBg}`, color: `${COLOR.warning}` },
 } as const
 
 export type ChipVariant = keyof typeof THEME

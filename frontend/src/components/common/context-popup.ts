@@ -1,5 +1,5 @@
 // frontend/src/components/common/context-popup.ts — 마우스 위치 기반 컨텍스트 팝업
-import { FONT_SIZE } from './ui-styles'
+import { FONT_SIZE, COLOR } from './ui-styles'
 
 /* ── 타입 ── */
 
@@ -127,8 +127,8 @@ export function showContextPopup(options: ContextPopupOptions): Promise<ContextP
     const confirmText = options.confirmText ?? '확인'
     const cancelText = options.cancelText ?? '취소'
     const confirmColor = options.type === 'confirm'
-      ? (options.confirmColor ?? '#198754')
-      : '#198754'
+      ? (options.confirmColor ?? `${COLOR.success}`)
+      : `${COLOR.success}`
 
     let inputEl: HTMLInputElement | null = null
     const focusable: HTMLElement[] = []
@@ -154,7 +154,7 @@ export function showContextPopup(options: ContextPopupOptions): Promise<ContextP
       const msgEl = document.createElement('div')
       Object.assign(msgEl.style, {
         fontSize: FONT_SIZE.label,
-        color: '#555',
+        color: `${COLOR.code}`,
         marginBottom: '12px',
         whiteSpace: 'pre-wrap',
       })
