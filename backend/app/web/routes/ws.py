@@ -127,6 +127,7 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         scores_result = get_sector_scores_snapshot()
         scores, ranked_count = scores_result if isinstance(scores_result, tuple) else (scores_result, 0)
         if scores:
+            from backend.app.pipelines.pipeline_compute import get_current_receive_rate
             scores_payload = {
                 "_v": 1,
                 "scores": scores,
@@ -136,6 +137,7 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
                         _integrated_system_settings_cache["sector_max_targets"]
                     ),
                     "ranked_sectors_count": ranked_count,
+                    "receive_rate": get_current_receive_rate(),
                 },
             }
             await ws_manager.send_to(websocket, "sector-scores", scores_payload)

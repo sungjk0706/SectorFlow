@@ -789,10 +789,14 @@ async def _init_ws_subscribe_state() -> None:
         gc.disable()
         logger.info("[타이머] 장중 GC 비활성화 완료 (HFT 지연 방지)")
         # ── 실시간 필드 초기화 (전일 확정 데이터 제거) ──
-        logger.info("[RESET CALL] from _init_ws_subscribe_state")
-        logger.info("[타이머] 구독 구간 내 시작 -- 실시간 필드 초기화")
-        from backend.app.services.engine_service import _reset_realtime_fields
-        await _reset_realtime_fields()
+        # 캐시 로드 전이면 스킵 — engine_cache._load_caches_preboot()에서 DB 로드 후 수행
+        if state.preboot_cache_loaded:
+            logger.info("[RESET CALL] from _init_ws_subscribe_state")
+            logger.info("[타이머] 구독 구간 내 시작 -- 실시간 필드 초기화")
+            from backend.app.services.engine_service import _reset_realtime_fields
+            await _reset_realtime_fields()
+        else:
+            logger.info("[타이머] 구독 구간 내 시작 -- 실시간 필드 초기화는 캐시 로드 후 수행")
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
         try:
             import backend.app.services.engine_account_notify as _an
