@@ -3,6 +3,7 @@
 
 import { createHeader } from './header'
 import { createSidebar } from './sidebar'
+import { COLOR } from '../components/common/ui-styles'
 
 export function createLayoutShell(): {
   el: HTMLElement
@@ -53,11 +54,11 @@ export function createLayoutShell(): {
 
   const overlaySpinner = document.createElement('div')
   overlaySpinner.style.cssText =
-    'width:40px;height:40px;border:4px solid #e0e0e0;border-top:4px solid #1a73e8;border-radius:50%;animation:spin 1s linear infinite;'
+    `width:40px;height:40px;border:4px solid #e0e0e0;border-top:4px solid ${COLOR.down};border-radius:50%;animation:spin 1s linear infinite;`
   overlay.appendChild(overlaySpinner)
 
   const overlayMsg = document.createElement('p')
-  overlayMsg.style.cssText = 'color:#666;font-size:12px;'
+  overlayMsg.style.cssText = `color:${COLOR.tertiary};font-size:12px;`
   overlayMsg.textContent = '로딩 중…'
   overlay.appendChild(overlayMsg)
 

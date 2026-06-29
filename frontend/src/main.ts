@@ -10,6 +10,7 @@ import type { RouteConfig, PageModule } from './router'
 import { initToastContainer } from './components/common/toast'
 import { stockClassificationStore } from './stores/stockClassificationStore'
 import { api } from './api/client'
+import { COLOR } from './components/common/ui-styles'
 // Import sector-stock Web Component to register custom element
 import './pages/sector-stock'
 
@@ -118,10 +119,10 @@ function main(): void {
     
     /* 상승/하락 색상 (HTS 전통) */
     .up, .positive {
-      color: #d32f2f;
+      color: ${COLOR.up};
     }
     .down, .negative {
-      color: #1976d2;
+      color: ${COLOR.down};
     }
     .same, .even {
       color: #1a1a1a;
@@ -130,21 +131,21 @@ function main(): void {
     /* 등락률 기호 (HTS 스타일) */
     .rate-up::before {
       content: "▲";
-      color: #d32f2f;
+      color: ${COLOR.up};
       margin-right: 2px;
     }
     .rate-down::before {
       content: "▼";
-      color: #1976d2;
+      color: ${COLOR.down};
       margin-right: 2px;
     }
     
     /* 음수/양수 구분 */
     .minus {
-      color: #1976d2;
+      color: ${COLOR.down};
     }
     .plus {
-      color: #d32f2f;
+      color: ${COLOR.up};
     }
   `
   document.head.appendChild(htsStyle)
@@ -254,6 +255,13 @@ function main(): void {
     shell.setOverlay(true, '초기화 실패')
   })
 
+  // 브라우저 종료/새로고침 시 WS graceful close — TCP RST (ECONNRESET) 방지
+  window.addEventListener('beforeunload', () => {
+    wsClient.disconnect()
+    wsSettingsClient.disconnect()
+    wsOrdersClient.disconnect()
+  })
+
   // FPS 모니터링 시작
   startFpsMonitor()
 }
@@ -303,7 +311,7 @@ function patchRouterForDualLayout(
     } catch (err) {
       console.error('[Main] settingsCard 로딩 실패:', err)
       shell.leftPanel.innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#d32f2f;font-size:12px;">
+        <div style="display:flex;align-items:center;justify-content:center;height:100%;color:${COLOR.up};font-size:12px;">
           설정 카드를 불러올 수 없습니다
         </div>
       `

@@ -8,7 +8,7 @@ import { createSettingRow, createNumInput, createMoneyInput, createToggleBtn, cr
 import { sectionTitle } from '../components/common/settings-common'
 import { createDualLabelSlider, type DualLabelSliderHandle } from '../components/common/create-slider'
 import { createAutoSaveHelper } from '../utils/settings-save'
-import { setDisabled } from '../components/common/ui-styles'
+import { setDisabled, COLOR } from '../components/common/ui-styles'
 import type { AppSettings } from '../types'
 
 /* ── 모듈 상태 ── */
@@ -224,10 +224,10 @@ function mount(container: HTMLElement): void {
       min: 0, max: 200, value: 120, step: 1,
       leftLabel: (v) => v < 100 ? `매도잔량 +${100 - v}%` : '매도잔량',
       rightLabel: (v) => v > 100 ? `매수잔량 +${v - 100}%` : '매수잔량',
-      leftColor: '#0d6efd',
-      leftColorLight: '#8bb8f8',
-      rightColor: '#dc3545',
-      rightColorLight: '#f1aeb5',
+      leftColor: COLOR.down,
+      leftColorLight: COLOR.downLight,
+      rightColor: COLOR.up,
+      rightColorLight: COLOR.upLight,
       onChange(_v) {
         // live preview only
       },

@@ -37,6 +37,7 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     
     # 증권사 선택
     "broker": "kiwoom",
+    "confirmed_data_broker": "kiwoom",
     
     # 매수 설정
     "max_daily_total_buy_amt": 0,

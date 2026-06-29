@@ -62,12 +62,14 @@ def _lazy_ls_registry() -> dict[str, type]:
         LsAccountProvider,
         LsOrderProvider,
         LsWebSocketProvider,
+        LsStockProvider,
     )
     return {
         "auth":      LsAuthProvider,
         "account":   LsAccountProvider,
         "order":     LsOrderProvider,
         "websocket": LsWebSocketProvider,
+        "stock":     LsStockProvider,
     }
 
 

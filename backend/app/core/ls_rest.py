@@ -271,6 +271,88 @@ class LsRestAPI:
         _log.warning(f"[LS증권REST] {max_retries}회 재시도 모두 실패")
         return None
 
+    async def call_tr(
+        self,
+        path: str,
+        tr_cd: str,
+        body: Optional[dict] = None,
+        *,
+        tr_cont: str = "N",
+        tr_cont_key: str = "",
+        timeout: float = 15.0,
+        max_retries: int = 3,
+    ) -> Optional[dict]:
+        await self.ensure_client()
+        if self._client is None:
+            _log.warning("[LS증권REST] AsyncClient 초기화 안됨")
+            return None
+
+        if not await self.ensure_token():
+            _log.warning("[LS증권REST] 토큰 없음")
+            return None
+
+        url = f"{self.base_url}{path}"
+        headers = {
+            "Content-Type": "application/json;charset=UTF-8",
+            "Authorization": f"Bearer {self._token_info.access_token}",
+            "tr_cd": tr_cd,
+            "tr_cont": tr_cont,
+            "tr_cont_key": tr_cont_key,
+        }
+
+        for attempt in range(max_retries):
+            try:
+                resp = await self._client.post(url, headers=headers, json=body or {}, timeout=timeout)
+                data = resp.json() if resp.text else {}
+
+                if resp.status_code == 429:
+                    wait_sec = 8 * (attempt + 1)
+                    _log.warning(
+                        "[LS증권REST] %s 429 -- %.0f초 대기 후 재시도 (%d/%d)",
+                        tr_cd, wait_sec, attempt + 1, max_retries,
+                    )
+                    await asyncio.sleep(wait_sec)
+                    continue
+
+                if resp.status_code != 200:
+                    _log.info("[LS증권REST] %s HTTP %s - Body: %s", tr_cd, resp.status_code, resp.text)
+                    return None
+
+                rsp_cd = str(data.get("rsp_cd") or "")
+                if rsp_cd and rsp_cd not in ("00000", "00040"):
+                    _log.warning("[LS증권REST] %s 실패: %s - %s", tr_cd, rsp_cd, data.get("rsp_msg", ""))
+                    return {"data": data, "headers": dict(resp.headers), "tr_cont": "N", "tr_cont_key": ""}
+
+                resp_headers = dict(resp.headers)
+                next_cont = (
+                    resp.headers.get("tr_cont")
+                    or resp.headers.get("tr-cont")
+                    or resp.headers.get("cont-yn")
+                    or "N"
+                )
+                next_key = (
+                    resp.headers.get("tr_cont_key")
+                    or resp.headers.get("tr-cont-key")
+                    or resp.headers.get("next-key")
+                    or ""
+                )
+                return {
+                    "data": data,
+                    "headers": resp_headers,
+                    "tr_cont": str(next_cont or "N"),
+                    "tr_cont_key": str(next_key or ""),
+                }
+
+            except Exception as e:
+                _log.warning("[LS증권REST] %s 예외 (시도=%d): %s", tr_cd, attempt + 1, e)
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 * (attempt + 1))
+                    continue
+                return None
+
+        _log.warning("[LS증권REST] %s %d회 재시도 모두 실패", tr_cd, max_retries)
+        return None
+
     # ========== 주문 관련 메서드 ==========
 
     async def buy_order(

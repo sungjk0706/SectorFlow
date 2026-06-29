@@ -11,7 +11,7 @@ import { createDataTable, type ColumnDef } from '../components/common/data-table
 import { api } from '../api/client'
 import { parseHM, sectionTitle, createTimeSlot, updateTimeSlotDisplay } from '../components/common/settings-common'
 import { createTimePairInput, type TimePairInputHandle } from '../components/common/time-pair-input'
-import { FONT_SIZE, FONT_WEIGHT, createDarkInput } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, createDarkInput, COLOR } from '../components/common/ui-styles'
 import { showConfirmDialog, showAlertDialog, showCustomDialog } from '../components/common/dialog'
 import type { AppSettings } from '../types'
 
@@ -76,9 +76,11 @@ let depositDisplay: HTMLElement | null = null
 // API 설정 탭 참조
 let apiKeyInputs: Record<string, HTMLInputElement> = {}
 let brokerRadios: Record<string, HTMLInputElement> = {}
+let confirmedDataBrokerRadios: Record<string, HTMLInputElement> = {}
 let activeApiTab: 'kiwoom' | 'ls' = 'kiwoom'
 let apiTabButtons: Record<string, HTMLElement> = {}
 let brokerSaving = false
+let confirmedDataBrokerSaving = false
 
 /* ── 헬퍼 ── */
 function shouldForceOff(): boolean {
@@ -87,7 +89,7 @@ function shouldForceOff(): boolean {
 
 function createHolidayBadge(): HTMLElement {
   const span = document.createElement('span')
-  Object.assign(span.style, { fontSize: FONT_SIZE.chip, color: '#d32f2f', background: '#ffeaea', borderRadius: '4px', padding: '1px 6px', marginLeft: '6px', fontWeight: FONT_WEIGHT.normal, display: 'none' })
+  Object.assign(span.style, { fontSize: FONT_SIZE.chip, color: COLOR.up, background: COLOR.upBg, borderRadius: '4px', padding: '1px 6px', marginLeft: '6px', fontWeight: FONT_WEIGHT.normal, display: 'none' })
   span.textContent = '비거래일'
   holidayBadgeEls.push(span)
   return span
@@ -109,7 +111,7 @@ function createWsTimePairInput(startKey: string, endKey: string): HTMLElement {
     wsEH = h; wsEM = m; updateTimeSlotDisplay(wsEndSlot!, h, m); scheduleTimeSave(startKey, endKey)
   })
   const tilde = document.createElement('span')
-  Object.assign(tilde.style, { color: '#999', fontSize: FONT_SIZE.badge, margin: '0 2px' })
+  Object.assign(tilde.style, { color: COLOR.disabled, fontSize: FONT_SIZE.badge, margin: '0 2px' })
   tilde.textContent = '~'
   wrap.appendChild(wsStartSlot); wrap.appendChild(tilde); wrap.appendChild(wsEndSlot)
   wsTimePairWrap = wrap
@@ -184,9 +186,9 @@ function renderTabBar(): HTMLElement {
     const isActive = activeTab === tab.id
     Object.assign(btn.style, {
       padding: '8px 16px', cursor: 'pointer', border: 'none', background: 'transparent', fontSize: FONT_SIZE.tab,
-      borderBottom: isActive ? '2px solid #1976d2' : '2px solid transparent',
+      borderBottom: isActive ? '2px solid ' + COLOR.down : '2px solid transparent',
       fontWeight: isActive ? FONT_WEIGHT.normal : FONT_WEIGHT.normal,
-      color: isActive ? '#1976d2' : '#666',
+      color: isActive ? COLOR.down : COLOR.tertiary,
     })
     btn.textContent = tab.label
     btn.addEventListener('click', () => { activeTab = tab.id; refreshUI() })
@@ -258,7 +260,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
   autoBuyToggle = createToggleBtn({ on: false, onClick: async () => {
     if (shouldForceOff()) {
       const p = document.createElement('p')
-      Object.assign(p.style, { margin: '0', fontSize: FONT_SIZE.label, color: '#333' })
+      Object.assign(p.style, { margin: '0', fontSize: FONT_SIZE.label, color: COLOR.neutral })
       p.textContent = '오늘은 KRX 비거래일입니다. 자동매매가 실행되지 않습니다.'
       showCustomDialog({
         title: '거래일이 아닙니다',
@@ -312,7 +314,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
   autoSellToggle = createToggleBtn({ on: false, onClick: async () => {
     if (shouldForceOff()) {
       const p = document.createElement('p')
-      Object.assign(p.style, { margin: '0', fontSize: FONT_SIZE.label, color: '#333' })
+      Object.assign(p.style, { margin: '0', fontSize: FONT_SIZE.label, color: COLOR.neutral })
       p.textContent = '오늘은 KRX 비거래일입니다. 자동매매가 실행되지 않습니다.'
       showCustomDialog({
         title: '거래일이 아닙니다',
@@ -341,7 +343,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
   container.appendChild(autoSellRow)
 
   const descLabel1 = document.createElement('div')
-  Object.assign(descLabel1.style, { fontSize: GS.desc, color: '#888', padding: '0 0 4px', marginTop: '-4px' })
+  Object.assign(descLabel1.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 4px', marginTop: '-4px' })
   descLabel1.textContent = '거래일 설정시간 내에서만 자동 매수/매도 실행'
   container.appendChild(descLabel1)
 
@@ -365,7 +367,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
   container.appendChild(hRow)
 
   const descLabel2 = document.createElement('div')
-  Object.assign(descLabel2.style, { fontSize: GS.desc, color: '#888', padding: '0 0 4px', marginTop: '-4px', paddingLeft: '20px' })
+  Object.assign(descLabel2.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 4px', marginTop: '-4px', paddingLeft: '20px' })
   descLabel2.textContent = 'ON: 공휴일에 자동매매 차단 · OFF: 공휴일에도 허용'
   container.appendChild(descLabel2)
 }
@@ -373,7 +375,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
 function handleMasterToggle(): void {
   if (shouldForceOff()) {
     const p = document.createElement('p')
-    Object.assign(p.style, { margin: '0', fontSize: FONT_SIZE.label, color: '#333' })
+    Object.assign(p.style, { margin: '0', fontSize: FONT_SIZE.label, color: COLOR.neutral })
     p.textContent = '오늘은 KRX 비거래일입니다. 자동매매가 실행되지 않습니다.'
     showCustomDialog({
       title: '거래일이 아닙니다',
@@ -398,7 +400,7 @@ function handleMasterToggle(): void {
 function handleWsToggle(): void {
   if (shouldForceOff()) {
     const p = document.createElement('p')
-    Object.assign(p.style, { margin: '0', fontSize: FONT_SIZE.label, color: '#333' })
+    Object.assign(p.style, { margin: '0', fontSize: FONT_SIZE.label, color: COLOR.neutral })
     p.textContent = '오늘은 KRX 비거래일입니다. 자동매매가 실행되지 않습니다.'
     showCustomDialog({
       title: '거래일이 아닙니다',
@@ -558,8 +560,8 @@ function handleTradeMode(val: string): void {
 
   if (val === 'real') {
     const msg = document.createElement('div')
-    Object.assign(msg.style, { fontSize: FONT_SIZE.label, color: '#555', lineHeight: '1.6' })
-    msg.innerHTML = '실전투자 모드로 전환하시겠습니까?<br><span style="color:#dc3545;font-weight:500">실제 돈으로 매매가 실행됩니다.</span>'
+    Object.assign(msg.style, { fontSize: FONT_SIZE.label, color: COLOR.code, lineHeight: '1.6' })
+    msg.innerHTML = `실전투자 모드로 전환하시겠습니까?<br><span style="color:${COLOR.up};font-weight:500">실제 돈으로 매매가 실행됩니다.</span>`
     showCustomDialog({
       title: '⚠️ 실전투자 모드 전환',
       content: msg,
@@ -645,7 +647,7 @@ function renderTestVirtualSection(): HTMLElement {
 
   // 설명 텍스트
   const hintRow = document.createElement('div')
-  Object.assign(hintRow.style, { fontSize: '11px', color: '#888', padding: '2px 0 8px', textAlign: 'right' })
+  Object.assign(hintRow.style, { fontSize: '11px', color: COLOR.secondary, padding: '2px 0 8px', textAlign: 'right' })
   hintRow.textContent = '누적투자금과 주문가능금액을 입력한 금액으로 변경합니다. 데이터 초기화 시에도 이 금액이 기본값으로 사용됩니다.'
   wrap.appendChild(hintRow)
 
@@ -667,7 +669,7 @@ function renderTestVirtualSection(): HTMLElement {
   resetWrap.style.cssText = 'border-top:1px solid #eee;padding:10px 0;'
   const resetBtn = document.createElement('button')
   resetBtn.type = 'button'
-  Object.assign(resetBtn.style, { padding: '8px 18px', borderRadius: '4px', border: '1px solid #dc3545', background: '#dc3545', color: '#fff', cursor: 'pointer', fontSize: GS.label })
+  Object.assign(resetBtn.style, { padding: '8px 18px', borderRadius: '4px', border: '1px solid ' + COLOR.up, background: COLOR.up, color: '#fff', cursor: 'pointer', fontSize: GS.label })
   resetBtn.textContent = '🔴 테스트 데이터 전체 초기화'
   resetBtn.addEventListener('click', async () => {
     const confirmed = await showConfirmDialog({
@@ -712,7 +714,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   container.appendChild(brokerSection)
 
   const brokerDesc = document.createElement('div')
-  Object.assign(brokerDesc.style, { fontSize: GS.desc, color: '#888', padding: '0 0 20px', marginTop: '-4px', textAlign: 'center' })
+  Object.assign(brokerDesc.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 20px', marginTop: '-4px', textAlign: 'center' })
   brokerDesc.textContent = '선택한 증권사로 시스템 전체 통신망(시세, 계좌, 주문)이 전환됩니다'
   container.appendChild(brokerDesc)
 
@@ -735,7 +737,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   container.appendChild(wsRow)
 
   const descLabel3 = document.createElement('div')
-  Object.assign(descLabel3.style, { fontSize: GS.desc, color: '#888', padding: '0 0 4px', marginTop: '-4px' })
+  Object.assign(descLabel3.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 4px', marginTop: '-4px' })
   descLabel3.textContent = '시세·체결 실시간 수신 ON/OFF'
   container.appendChild(descLabel3)
 
@@ -751,7 +753,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   container.appendChild(wsTimeRow)
 
   const descLabel4 = document.createElement('div')
-  Object.assign(descLabel4.style, { fontSize: GS.desc, color: '#888', padding: '0 0 20px', marginTop: '-4px' })
+  Object.assign(descLabel4.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 20px', marginTop: '-4px' })
   descLabel4.textContent = '실시간 시세 수신 시작/종료 시간'
   container.appendChild(descLabel4)
 
@@ -773,9 +775,38 @@ function renderApiSettingsTab(container: HTMLElement): void {
   container.appendChild(confirmedDlRow)
 
   const descLabel5 = document.createElement('div')
-  Object.assign(descLabel5.style, { fontSize: GS.desc, color: '#888', padding: '0 0 20px', marginTop: '-4px' })
+  Object.assign(descLabel5.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 10px', marginTop: '-4px' })
   descLabel5.textContent = '장마감 후 확정 시세 다운로드 시간 (기본값 20:40)'
   container.appendChild(descLabel5)
+
+  const confirmedBrokerRow = document.createElement('div')
+  Object.assign(confirmedBrokerRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' })
+  const confirmedBrokerLabel = document.createElement('span')
+  Object.assign(confirmedBrokerLabel.style, { fontSize: GS.label, whiteSpace: 'nowrap' })
+  confirmedBrokerLabel.textContent = '다운로드 증권사'
+  confirmedBrokerRow.appendChild(confirmedBrokerLabel)
+
+  const confirmedBrokerOptions = document.createElement('div')
+  Object.assign(confirmedBrokerOptions.style, { display: 'flex', alignItems: 'center', gap: '18px' })
+  for (const v of ['kiwoom', 'ls'] as const) {
+    const label = document.createElement('label')
+    label.style.cssText = 'cursor:pointer;display:flex;align-items:center;gap:6px;font-size:' + GS.label
+    const radio = document.createElement('input')
+    radio.type = 'radio'; radio.name = 'confirmed-data-broker'
+    radio.checked = String(vals.confirmed_data_broker || vals.broker || 'kiwoom') === v
+    radio.addEventListener('change', () => handleConfirmedDataBrokerChange(v))
+    confirmedDataBrokerRadios[v] = radio
+    label.appendChild(radio)
+    label.appendChild(document.createTextNode(v === 'kiwoom' ? '키움증권' : 'LS증권'))
+    confirmedBrokerOptions.appendChild(label)
+  }
+  confirmedBrokerRow.appendChild(confirmedBrokerOptions)
+  container.appendChild(confirmedBrokerRow)
+
+  const confirmedBrokerDesc = document.createElement('div')
+  Object.assign(confirmedBrokerDesc.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 20px', marginTop: '-4px' })
+  confirmedBrokerDesc.textContent = '장마감 전종목 목록, 매매부적격 필터링, 1일봉/5일봉 챠트 시세 다운로드에 사용할 증권사입니다. 주문·계좌·실시간 연결과 별도로 적용됩니다.'
+  container.appendChild(confirmedBrokerDesc)
 
   // Step 2B: API 키 보관용 탭 (키움 API / LS API)
   const apiTabBar = document.createElement('div')
@@ -792,7 +823,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
     const isActive = activeApiTab === tab.id
     Object.assign(btn.style, {
       padding: '6px 12px', cursor: 'pointer', border: '1px solid #ddd', background: isActive ? '#f0f0f0' : '#fff',
-      borderRadius: '4px', fontSize: GS.label, color: isActive ? '#333' : '#666',
+      borderRadius: '4px', fontSize: GS.label, color: isActive ? COLOR.neutral : COLOR.tertiary,
     })
     btn.textContent = tab.label
     btn.addEventListener('click', () => { activeApiTab = tab.id; refreshApiTabContent() })
@@ -849,8 +880,8 @@ function renderApiFields(container: HTMLElement): void {
   saveBtn.type = 'button'
   Object.assign(saveBtn.style, {
     padding: GS.btnPad, borderRadius: '4px',
-    border: '1px solid #FF8C00', background: 'transparent',
-    color: '#FF8C00', cursor: 'pointer', fontSize: GS.label,
+    border: '1px solid ' + COLOR.warning, background: 'transparent',
+    color: COLOR.warning, cursor: 'pointer', fontSize: GS.label,
   })
   saveBtn.textContent = '저장'
   saveBtn.addEventListener('click', async () => {
@@ -885,7 +916,7 @@ function renderApiFields(container: HTMLElement): void {
   calendarRefreshBtn.type = 'button'
   Object.assign(calendarRefreshBtn.style, {
     padding: GS.btnPad, borderRadius: '4px',
-    border: '1px solid #1976d2', background: '#1976d2',
+    border: '1px solid ' + COLOR.down, background: COLOR.down,
     color: '#fff', cursor: 'pointer', fontSize: GS.label,
   })
   calendarRefreshBtn.textContent = '캘린더 동기화 (비상시용)'
@@ -911,7 +942,7 @@ function renderApiFields(container: HTMLElement): void {
   calendarRefreshRow.appendChild(calendarRefreshBtn)
 
   const calendarRefreshDesc = document.createElement('div')
-  Object.assign(calendarRefreshDesc.style, { fontSize: GS.desc, color: '#888', marginTop: '6px' })
+  Object.assign(calendarRefreshDesc.style, { fontSize: GS.desc, color: COLOR.secondary, marginTop: '6px' })
   calendarRefreshDesc.textContent = '비상시용 - 연초 자동 갱신됨'
   calendarRefreshRow.appendChild(calendarRefreshDesc)
 
@@ -926,7 +957,7 @@ function refreshApiTabContent(): void {
       const isActive = id === activeApiTab
       Object.assign(btn.style, {
         background: isActive ? '#f0f0f0' : '#fff',
-        color: isActive ? '#333' : '#666',
+        color: isActive ? COLOR.neutral : COLOR.tertiary,
       })
     }
     renderApiFields(container)
@@ -944,13 +975,39 @@ function handleBrokerChange(val: 'kiwoom' | 'ls'): void {
       vals.broker = prevBroker
     }
     syncBrokerRadios()
+    syncConfirmedDataBrokerRadios()
     brokerSaving = false
+  })
+}
+
+function handleConfirmedDataBrokerChange(val: 'kiwoom' | 'ls'): void {
+  const current = String(vals.confirmed_data_broker || vals.broker || 'kiwoom')
+  if (val === current || confirmedDataBrokerSaving) return
+  confirmedDataBrokerSaving = true
+  const prevBroker = vals.confirmed_data_broker
+  settingsMgr?.saveSection({ confirmed_data_broker: val }).then(res => {
+    if (res.ok) {
+      vals.confirmed_data_broker = val
+    } else {
+      vals.confirmed_data_broker = prevBroker
+    }
+    syncConfirmedDataBrokerRadios()
+    confirmedDataBrokerSaving = false
   })
 }
 
 function syncBrokerRadios(): void {
   for (const [v, radio] of Object.entries(brokerRadios)) {
     radio.checked = v === vals.broker
+    radio.disabled = brokerSaving
+  }
+}
+
+function syncConfirmedDataBrokerRadios(): void {
+  const current = String(vals.confirmed_data_broker || vals.broker || 'kiwoom')
+  for (const [v, radio] of Object.entries(confirmedDataBrokerRadios)) {
+    radio.checked = v === current
+    radio.disabled = confirmedDataBrokerSaving
   }
 }
 
@@ -1035,7 +1092,11 @@ function syncFromSettings(s: AppSettings | null): void {
     if (r.broker !== undefined && vals.broker !== r.broker) {
       vals.broker = r.broker
     }
+    if (r.confirmed_data_broker !== undefined && vals.confirmed_data_broker !== r.confirmed_data_broker) {
+      vals.confirmed_data_broker = r.confirmed_data_broker
+    }
     syncBrokerRadios()
+    syncConfirmedDataBrokerRadios()
   }
 }
 

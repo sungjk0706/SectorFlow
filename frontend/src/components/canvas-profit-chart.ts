@@ -5,7 +5,7 @@
  * - 인터랙티브: 크로스헤어, 툴팁, 막대 클릭 필터링
  */
 
-import { pnlColor, FONT_FAMILY } from './common/ui-styles'
+import { pnlColor, FONT_FAMILY, COLOR } from './common/ui-styles'
 
 // ── 타입 ────────────────────────────────────────────────────
 
@@ -45,12 +45,12 @@ const PADDING = { top: 20, right: 48, bottom: 30, left: 48 }
 const BAR_RADIUS = 3
 const BAR_GAP_RATIO = 0.3
 const COLORS = {
-  profit: ['#ef4444', '#f87171'], // Red -> Light Red (수익: 빨강)
-  loss: ['#3b82f6', '#60a5fa'],   // Blue -> Light Blue (손실: 파랑)
-  equity: '#1976d2',               // Blue for Equity Curve
+  profit: [COLOR.up, COLOR.upLight],
+  loss: [COLOR.down, COLOR.downLight],
+  equity: COLOR.down,
   equityArea: 'rgba(25, 118, 210, 0.08)',
   grid: '#f0f0f0',
-  axis: '#888',
+  axis: COLOR.secondary,
   zeroLine: '#ddd',
   crosshair: 'rgba(0,0,0,0.1)'
 }
@@ -135,12 +135,12 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
   const dateFromInput = document.createElement('input')
   dateFromInput.type = 'date'
   dateFromInput.value = options.dateFrom || monthFirstStr
-  dateFromInput.style.cssText = 'padding:2px 4px;font-size:11px;border:1px solid #eee;border-radius:4px;color:#555;'
+  dateFromInput.style.cssText = `padding:2px 4px;font-size:11px;border:1px solid #eee;border-radius:4px;color:${COLOR.code};`
 
   const dateToInput = document.createElement('input')
   dateToInput.type = 'date'
   dateToInput.value = options.dateTo || todayStr
-  dateToInput.style.cssText = 'padding:2px 4px;font-size:11px;border:1px solid #eee;border-radius:4px;color:#555;'
+  dateToInput.style.cssText = `padding:2px 4px;font-size:11px;border:1px solid #eee;border-radius:4px;color:${COLOR.code};`
 
   const dateSep = document.createElement('span')
   dateSep.textContent = '~'
@@ -396,11 +396,11 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
         tooltip.innerHTML = `
           <div style="font-weight:600;margin-bottom:6px;border-bottom:1px solid #eee;padding-bottom:4px;">${formatDate(d.date)}</div>
           <div style="display:flex;justify-content:space-between;gap:12px;">
-            <span style="color:#666">일별 손익:</span>
+            <span style="color:${COLOR.tertiary}">일별 손익:</span>
             <span style="color:${pColor};font-weight:600">${(d.pnl || 0).toLocaleString()}원</span>
           </div>
           <div style="display:flex;justify-content:space-between;gap:12px;">
-            <span style="color:#666">일별 수익률:</span>
+            <span style="color:${COLOR.tertiary}">일별 수익률:</span>
             <span style="color:${rColor};font-weight:600">${d.rate.toFixed(2)}%</span>
           </div>
         `

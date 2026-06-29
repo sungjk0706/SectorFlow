@@ -5,7 +5,7 @@
 import { createProfitChart, type ProfitChartApi } from '../components/canvas-profit-chart'
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
 import { globalSettingsManager } from '../settings'
-import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, createStockNameColumn, createNumberCell, createPnlCell } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, createStockNameColumn, createNumberCell, createPnlCell, COLOR } from '../components/common/ui-styles'
 import { ACCOUNT_LABELS_REAL, ACCOUNT_LABELS_TEST } from '../components/common/account-labels'
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
@@ -326,9 +326,9 @@ function applyTabStyle(btn: HTMLButtonElement, active: boolean): void {
     cursor: 'pointer',
     border: 'none',
     background: 'transparent',
-    borderBottom: active ? '2px solid #1976d2' : '2px solid transparent',
+    borderBottom: active ? '2px solid ' + COLOR.down : '2px solid transparent',
     fontWeight: active ? FONT_WEIGHT.normal : FONT_WEIGHT.normal,
-    color: active ? '#1976d2' : '#666',
+    color: active ? COLOR.down : COLOR.tertiary,
     fontSize: FONT_SIZE.label,
     textAlign: 'center',
   })
@@ -367,7 +367,7 @@ const DRILLDOWN_COLS: ColumnDef<DailyDrilldownRow>[] = [
   { key: 'date', label: '날짜', align: 'center', render: r => {
     const span = document.createElement('span')
     span.style.cursor = 'pointer'
-    span.style.color = '#1976d2'
+    span.style.color = COLOR.down
     span.style.textDecoration = 'underline'
     span.textContent = r.date.slice(5) // MM-DD
     span.addEventListener('click', () => filterByDate(r.date))
@@ -477,7 +477,7 @@ function showTable(): void {
   if (dummyMsg) dummyMsg.remove()
   if (isDummy) {
     dummyMsg = document.createElement('div')
-    Object.assign(dummyMsg.style, { textAlign: 'center', fontSize: FONT_SIZE.badge, color: '#999', marginTop: '-4px' })
+    Object.assign(dummyMsg.style, { textAlign: 'center', fontSize: FONT_SIZE.badge, color: COLOR.disabled, marginTop: '-4px' })
     dummyMsg.textContent = '거래 체결 시 자동으로 표시됩니다'
     tableViewContainer.appendChild(dummyMsg)
   }
@@ -515,11 +515,11 @@ function mount(container: HTMLElement): void {
   const chartPanel = document.createElement('div')
   Object.assign(chartPanel.style, { flex: '5', minWidth: '0', overflow: 'auto', padding: '0 4px' })
   const chartTitle = document.createElement('div')
-  Object.assign(chartTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.label, fontWeight: 'normal', color: '#1976d2', padding: '6px 0 8px', borderBottom: '1px solid #eee', marginBottom: '8px' })
+  Object.assign(chartTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.label, fontWeight: 'normal', color: COLOR.down, padding: '6px 0 8px', borderBottom: '1px solid #eee', marginBottom: '8px' })
   const chartTitleText = document.createElement('span')
   chartTitleText.textContent = '일별 수익률'
   const retentionLabel = document.createElement('span')
-  Object.assign(retentionLabel.style, { fontSize: '11px', color: '#999', fontWeight: 'normal' })
+  Object.assign(retentionLabel.style, { fontSize: '11px', color: COLOR.disabled, fontWeight: 'normal' })
   retentionLabel.textContent = isTestMode ? '최근 60거래일 데이터' : '최근 5거래일 데이터'
   chartTitle.appendChild(chartTitleText)
   chartTitle.appendChild(retentionLabel)
@@ -537,7 +537,7 @@ function mount(container: HTMLElement): void {
   Object.assign(accountHeader.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #eee', marginBottom: '8px', padding: '6px 0 8px' })
 
   const accountTitle = document.createElement('div')
-  Object.assign(accountTitle.style, { fontSize: FONT_SIZE.label, fontWeight: 'normal', color: '#1976d2' })
+  Object.assign(accountTitle.style, { fontSize: FONT_SIZE.label, fontWeight: 'normal', color: COLOR.down })
   accountTitle.textContent = '계좌 현황'
   accountHeader.appendChild(accountTitle)
 
@@ -610,7 +610,7 @@ function mount(container: HTMLElement): void {
     if (i === 2) totalCard = card
 
     const titleEl = document.createElement('div')
-    Object.assign(titleEl.style, { fontSize: FONT_SIZE.badge, color: '#888', whiteSpace: 'nowrap' })
+    Object.assign(titleEl.style, { fontSize: FONT_SIZE.badge, color: COLOR.secondary, whiteSpace: 'nowrap' })
     titleEl.textContent = CARD_TITLES[i]
 
     const valRow = document.createElement('div')
@@ -621,7 +621,7 @@ function mount(container: HTMLElement): void {
     pnlEl.textContent = fmtWon(0)
 
     const rateEl = document.createElement('span')
-    Object.assign(rateEl.style, { fontSize: FONT_SIZE.label, color: '#333' })
+    Object.assign(rateEl.style, { fontSize: FONT_SIZE.label, color: COLOR.neutral })
     rateEl.textContent = '0.00%'
 
     valRow.appendChild(pnlEl)

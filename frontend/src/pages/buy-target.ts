@@ -7,7 +7,7 @@ import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardHeaderWithMargin } from '../components/common/card-header'
 import { globalSettingsManager } from '../settings'
-import { createStockNameColumn, createSeqCell, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, createNumberCell, FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
+import { createStockNameColumn, createSeqCell, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, createNumberCell, FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 import type { SectorStock } from '../types'
 
 /* ── ColumnDef 배열 (12개 컬럼) ── */
@@ -37,13 +37,13 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
       const span = document.createElement('span')
       if (bid === ask) {
         span.textContent = '100.0%'
-        span.style.color = '#888'
+        span.style.color = COLOR.secondary
       } else if (bid > ask) {
         span.textContent = `[매수] ${((bid / ask) * 100).toFixed(1)}%`
-        span.style.color = '#dc3545'
+        span.style.color = COLOR.up
       } else {
         span.textContent = `[매도] ${((ask / bid) * 100).toFixed(1)}%`
-        span.style.color = '#0d6efd'
+        span.style.color = COLOR.down
       }
       return span
     },
@@ -59,11 +59,11 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
       const formatter = new Intl.NumberFormat('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
       span.textContent = formatter.format(valMillions);
       if (t.program_net_buy > 0) {
-        span.style.color = '#dc3545' // Red for net buy
+        span.style.color = COLOR.up
       } else if (t.program_net_buy < 0) {
-        span.style.color = '#0d6efd' // Blue for net sell
+        span.style.color = COLOR.down
       } else {
-        span.style.color = '#888'
+        span.style.color = COLOR.secondary
       }
       return span
     },
@@ -84,19 +84,19 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
     render: (t) => {
       const span = document.createElement('span')
       span.textContent = t.guard_pass ? '통과' : '차단'
-      span.style.color = t.guard_pass ? '#198754' : '#dc3545'
+      span.style.color = t.guard_pass ? COLOR.success : COLOR.up
       return span
     },
   },
   {
     key: 'reason', label: '원인', align: 'left', minWidth: 60,
-    cellStyle: { color: '#666' },
+    cellStyle: { color: COLOR.tertiary },
     render: (t) => {
       const r = t.reason || ''
       if (r === '보유중' || r === '금일매수') {
         const span = document.createElement('span')
         span.textContent = r
-        span.style.color = '#e65100'
+        span.style.color = COLOR.warning
         span.style.fontWeight = '600'
         return span
       }
@@ -119,8 +119,8 @@ let _mounted = false
 /* ── 한도 배지 렌더링 ── */
 function renderLimitBadge(el: HTMLSpanElement, label: string, cur: number, max: number, unit = '원'): void {
   const hit = max > 0 && cur >= max
-  el.style.background = hit ? '#fdecea' : '#f5f5f5'
-  el.style.color = hit ? '#dc3545' : '#555'
+  el.style.background = hit ? COLOR.upBg : COLOR.neutralBg
+  el.style.color = hit ? COLOR.up : COLOR.code
   el.style.fontWeight = hit ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal
   el.textContent = `${label} ${cur.toLocaleString()}${unit} / ${max > 0 ? max.toLocaleString() + unit : '무제한'}${hit ? ' (한도)' : ''}`
 }
@@ -161,8 +161,8 @@ function updateBadges(): void {
       perStockText += ` (1위 ${topTarget.name} ${qty}주)`
     }
   }
-  badgeEls.perStock.style.background = perStockLimited ? '#fff3e0' : '#f5f5f5'
-  badgeEls.perStock.style.color = perStockLimited ? '#e65100' : '#555'
+  badgeEls.perStock.style.background = perStockLimited ? COLOR.warningBg : COLOR.neutralBg
+  badgeEls.perStock.style.color = perStockLimited ? COLOR.warning : COLOR.code
   badgeEls.perStock.style.fontWeight = perStockLimited ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal
   badgeEls.perStock.textContent = perStockText
 }

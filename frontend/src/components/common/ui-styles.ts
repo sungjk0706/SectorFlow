@@ -37,21 +37,46 @@ export const FONT_WEIGHT = {
   bold: '700',        // 그룹 헤더
 } as const
 
-/* ── 공통 색상 ── */
+/* ── 전역 색상 상수 (단일 소스 진리) ── */
+
+export const COLOR = {
+  up:           '#f44336',  // 상승/양수/매수/위험/에러 (빨강)
+  upLight:      '#ef9a9a',
+  down:         '#1e88e5',  // 하락/음수/매도/정보/활성 (파랑)
+  downLight:    '#90caf9',
+  neutral:      '#333',     // 보합/기본 텍스트
+  success:      '#2e7d32',  // 성공/통과/연결 (초록)
+  successLight: '#a5d6a7',
+  warning:      '#e65100',  // 경고/주의 (주황)
+  warningLight: '#ffcc80',
+  kosdaq:       '#d63384',  // 코스닥 종목명 (핑크)
+  secondary:    '#888',     // 보조 텍스트
+  tertiary:     '#666',     // 약한 보조 텍스트
+  code:         '#555',     // 종목코드
+  disabled:     '#9e9e9e',  // 비활성/오프
+  muted:        '#adb5bd',  // 미달/흐림
+  upBg:         '#ffebee',  // 빨강 배경
+  downBg:       '#e3f2fd',  // 파랑 배경
+  successBg:    '#e8f5e9',  // 초록 배경
+  warningBg:    '#fff3e0',  // 주황 배경
+  neutralBg:    '#f5f5f5',  // 회색 배경
+} as const
+
+/* ── 공통 색상 함수 ── */
 
 /** 등락률 / 대비 / 현재가 색상: 양수 빨강, 음수 파랑, 0 기본 */
 export function rateColor(v: number): string {
-  return v > 0 ? 'red' : v < 0 ? 'blue' : '#333'
+  return v > 0 ? COLOR.up : v < 0 ? COLOR.down : COLOR.neutral
 }
 
-/** 손익 색상: 양수=#dc3545, 음수=#2563eb, 0=#333 */
+/** 손익 색상: 양수=빨강, 음수=파랑, 0=기본 */
 export function pnlColor(v: number): string {
-  return v > 0 ? '#dc3545' : v < 0 ? '#2563eb' : '#333'
+  return v > 0 ? COLOR.up : v < 0 ? COLOR.down : COLOR.neutral
 }
 
 /** 체결강도 색상: 100 미만 파랑, 100 이상 빨강 */
 export function strengthColor(v: number): string {
-  return v >= 100 ? 'red' : 'blue'
+  return v >= 100 ? COLOR.up : COLOR.down
 }
 
 /* ── 기호 ── */
@@ -92,7 +117,7 @@ export function createStockNameCell(
   wrap.style.width = '100%'
 
   const nameSpan = document.createElement('span')
-  if (marketType === '10') nameSpan.style.color = '#d63384'
+  if (marketType === '10') nameSpan.style.color = COLOR.kosdaq
   nameSpan.textContent = name
   wrap.appendChild(nameSpan)
 
@@ -105,7 +130,7 @@ export function createStockNameCell(
       width: '0',
       height: '0',
       borderLeft: '6px solid transparent',
-      borderBottom: '6px solid #dc3545',
+      borderBottom: `6px solid ${COLOR.up}`,
     })
     wrap.appendChild(tri)
   }
@@ -173,7 +198,7 @@ export function createHeaderCell(label: string): HTMLElement {
 export function createSeqCell(seq: number): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'center')
-  cell.style.color = '#666'
+  cell.style.color = COLOR.tertiary
   cell.textContent = String(seq)
   return cell
 }
@@ -182,7 +207,7 @@ export function createSeqCell(seq: number): HTMLElement {
 export function createCodeCell(code: string): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'center')
-  cell.style.color = '#555'
+  cell.style.color = COLOR.code
   cell.textContent = code
   return cell
 }

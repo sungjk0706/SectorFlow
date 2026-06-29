@@ -478,7 +478,10 @@ class WSManager:
     # ------------------------------------------------------------------
 
     async def close_all(self) -> None:
-        """모든 클라이언트 ws.close() + _clients 비우기."""
+        """모든 클라이언트 ws.close() + _clients 비우기 + flush_task 취소."""
+        if self._flush_task is not None and not self._flush_task.done():
+            self._flush_task.cancel()
+            self._flush_task = None
         for ws in set(self._clients):
             try:
                 await ws.close()

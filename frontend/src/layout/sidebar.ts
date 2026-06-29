@@ -1,7 +1,7 @@
 // frontend/src/layout/sidebar.ts
 // 사이드바 네비게이션 — 6개 메뉴 항목, 활성 경로 시각적 강조, 숫자 배지
 
-import { FONT_SIZE } from '../components/common/ui-styles'
+import { FONT_SIZE, COLOR } from '../components/common/ui-styles'
 
 const MENU = [
   { path: '#/sector-ranking', label: '업종순위', icon: '📊' },
@@ -12,8 +12,8 @@ const MENU = [
   { path: '#/general-settings', label: '일반설정', icon: '⚙️' },
 ] as const
 
-const ACTIVE_COLOR = '#2563eb'
-const ACTIVE_BG = '#e8f0fe'
+const ACTIVE_COLOR = COLOR.down
+const ACTIVE_BG = COLOR.downBg
 
 export function createSidebar(onNavigate: (path: string) => void): {
   el: HTMLElement
@@ -40,7 +40,7 @@ export function createSidebar(onNavigate: (path: string) => void): {
     const a = document.createElement('a')
     a.href = m.path
     a.style.cssText =
-      'display:block;padding:14px 0;margin-bottom:4px;text-align:center;text-decoration:none;font-size:13.5px;color:#333;background:transparent;border-left:3px solid transparent;cursor:pointer;font-weight:500;'
+      `display:block;padding:14px 0;margin-bottom:4px;text-align:center;text-decoration:none;font-size:13.5px;color:${COLOR.neutral};background:transparent;border-left:3px solid transparent;cursor:pointer;font-weight:500;`
     a.textContent = `${m.icon} ${m.label}`
     a.addEventListener('click', (e) => {
       e.preventDefault()
@@ -53,7 +53,7 @@ export function createSidebar(onNavigate: (path: string) => void): {
   function setActive(path: string): void {
     for (const [p, a] of items) {
       const isActive = p === path
-      a.style.color = isActive ? ACTIVE_COLOR : '#333'
+      a.style.color = isActive ? ACTIVE_COLOR : COLOR.neutral
       a.style.background = isActive ? ACTIVE_BG : 'transparent'
       a.style.borderLeft = isActive
         ? `3px solid ${ACTIVE_COLOR}`
@@ -71,7 +71,7 @@ export function createSidebar(onNavigate: (path: string) => void): {
       if (!badge) {
         badge = document.createElement('span')
         Object.assign(badge.style, {
-          background: '#dc3545',
+          background: COLOR.up,
           color: '#fff',
           borderRadius: '50%',
           fontSize: FONT_SIZE.chip,

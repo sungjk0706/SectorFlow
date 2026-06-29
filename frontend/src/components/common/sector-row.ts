@@ -1,6 +1,6 @@
 // 공통 업종 행 컴포넌트 — [업종명] [이동 버튼(우측 정렬)]
 
-import { FONT_SIZE, FONT_FAMILY } from './ui-styles'
+import { FONT_SIZE, FONT_FAMILY, COLOR } from './ui-styles'
 
 export interface SectorRowOptions {
   sectorName: string
@@ -48,7 +48,7 @@ export function createSectorRowEl(options: SectorRowOptions): HTMLElement {
     padding: '4px 10px',
     border: 'none',
     borderRadius: '4px',
-    background: '#198754',
+    background: `${COLOR.success}`,
     color: '#fff',
     cursor: 'pointer',
     fontSize: FONT_SIZE.small,

@@ -1,3 +1,5 @@
+import { COLOR } from './ui-styles'
+
 /* ── 공통 너비 상수 ────────────────────────────────────────── */
 export const INPUT_WIDTH = 80
 export const TEXT_INPUT_WIDTH = 220
@@ -119,7 +121,7 @@ export function createSettingField(label: string, unit?: string, child?: HTMLEle
   if (opts?.style) Object.assign(div.style, opts.style)
 
   const labelDiv = document.createElement('div')
-  Object.assign(labelDiv.style, { color: '#555', marginBottom: '4px' })
+  Object.assign(labelDiv.style, { color: `${COLOR.code}`, marginBottom: '4px' })
   labelDiv.textContent = label
   div.appendChild(labelDiv)
 
@@ -128,7 +130,7 @@ export function createSettingField(label: string, unit?: string, child?: HTMLEle
   if (child) row.appendChild(child)
   if (unit) {
     const unitSpan = document.createElement('span')
-    Object.assign(unitSpan.style, { color: '#888' })
+    Object.assign(unitSpan.style, { color: `${COLOR.secondary}` })
     unitSpan.textContent = unit
     row.appendChild(unitSpan)
   }
@@ -294,7 +296,7 @@ export function createToggleBtn(options: {
   btn.appendChild(knob)
 
   function render() {
-    btn.style.background = isOn ? '#198754' : '#6c757d'
+    btn.style.background = isOn ? `${COLOR.success}` : '#6c757d'
     btn.style.cursor = options.disabled ? 'not-allowed' : 'pointer'
     knob.style.left = isOn ? '22px' : '2px'
     btn.setAttribute('aria-pressed', String(isOn))
@@ -327,7 +329,7 @@ export function createToggleBtn(options: {
 /* ── 고정 텍스트 값 (시장가 등) ────────────────────────────── */
 export function createFixedValue(text: string): HTMLElement {
   const span = document.createElement('span')
-  Object.assign(span.style, { color: '#555', fontWeight: 'normal' })
+  Object.assign(span.style, { color: `${COLOR.code}`, fontWeight: 'normal' })
   span.textContent = text
   return span
 }
@@ -366,10 +368,10 @@ export function createWsStatusBadge(options: {
 
   function render(opts: { subscribed: boolean; broker?: string; label?: string }) {
     const hasBroker = opts.subscribed && opts.broker
-    const color = hasBroker ? (brokerColors[opts.broker!] ?? '#198754') : '#adb5bd'
+    const color = hasBroker ? (brokerColors[opts.broker!] ?? `${COLOR.success}`) : `${COLOR.muted}`
 
-    dot.style.background = opts.subscribed ? color : '#adb5bd'
-    labelSpan.style.color = opts.subscribed ? color : '#888'
+    dot.style.background = opts.subscribed ? color : `${COLOR.muted}`
+    labelSpan.style.color = opts.subscribed ? color : `${COLOR.secondary}`
 
     if (opts.subscribed && opts.broker) {
       labelSpan.textContent = opts.label || `[${brokerNames[opts.broker] ?? opts.broker}]실시간`
@@ -378,7 +380,7 @@ export function createWsStatusBadge(options: {
     }
 
     // 배경색은 연결 상태에만 따라 변경 (증권사 무관)
-    wrap.style.background = opts.subscribed ? '#e8f5e9' : '#f5f5f5'
+    wrap.style.background = opts.subscribed ? `${COLOR.successBg}` : `${COLOR.neutralBg}`
   }
 
   render(options)

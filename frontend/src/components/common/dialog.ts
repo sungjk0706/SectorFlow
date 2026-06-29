@@ -1,5 +1,5 @@
 // frontend/src/components/common/dialog.ts — 공통 모달 다이얼로그 시스템 (Facade 패턴)
-import { FONT_SIZE } from './ui-styles'
+import { FONT_SIZE, COLOR } from './ui-styles'
 
 /* ── 공개 타입 ── */
 
@@ -102,7 +102,7 @@ function createTitleElement(title: string): HTMLElement {
     fontSize: '15px',
     fontWeight: '600',
     marginBottom: '12px',
-    color: '#111',
+    color: '#111', // keep — no COLOR constant for near-black
   })
   el.textContent = title
   return el
@@ -112,7 +112,7 @@ function createMessageElement(message: string): HTMLElement {
   const el = document.createElement('div')
   Object.assign(el.style, {
     fontSize: '13px',
-    color: '#555',
+    color: `${COLOR.code}`,
     marginBottom: '20px',
     whiteSpace: 'pre-wrap',
     lineHeight: '1.5',
@@ -131,8 +131,8 @@ function createButton(label: string, variant: DialogAction['variant']): HTMLButt
     padding: '7px 18px',
     borderRadius: '6px',
     border: (isPrimary || isDanger) ? 'none' : '1px solid #ccc',
-    background: isPrimary ? '#1976d2' : isDanger ? '#d32f2f' : '#fff',
-    color: (isPrimary || isDanger) ? '#fff' : '#333',
+    background: isPrimary ? `${COLOR.down}` : isDanger ? `${COLOR.up}` : '#fff',
+    color: (isPrimary || isDanger) ? '#fff' : `${COLOR.neutral}`,
     cursor: 'pointer',
     fontSize: FONT_SIZE.label,
     fontFamily: 'inherit',
@@ -219,7 +219,7 @@ function renderDialog(config: DialogConfig): HTMLElement {
   document.addEventListener('keydown', onKeyDown, true)
   document.body.appendChild(overlay)
 
-  const defaultFocusBtn = buttons.find(b => b.style.background !== '#fff') ?? buttons[0]
+  const defaultFocusBtn = buttons.find(b => b.style.background.includes(COLOR.down) || b.style.background.includes(COLOR.up)) ?? buttons[0]
   if (defaultFocusBtn) defaultFocusBtn.focus()
 
   return overlay

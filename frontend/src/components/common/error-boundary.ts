@@ -1,3 +1,5 @@
+import { COLOR } from './ui-styles'
+
 /**
  * withErrorBoundary — try-catch 래퍼.
  * mountFn 실행 중 에러 발생 시 에러 메시지 + "다시 시도" 버튼 표시.
@@ -32,7 +34,7 @@ function renderError(
   })
 
   const msg = document.createElement('p')
-  Object.assign(msg.style, { color: '#ef4444', fontSize: '14px', marginBottom: '16px' })
+  Object.assign(msg.style, { color: `${COLOR.up}`, fontSize: '14px', marginBottom: '16px' })
   msg.textContent = (err instanceof Error ? err.message : null) || '알 수 없는 오류가 발생했습니다'
 
   const btn = document.createElement('button')
@@ -40,7 +42,7 @@ function renderError(
     padding: '8px 20px',
     fontSize: '13px',
     color: '#fff',
-    backgroundColor: '#3b82f6',
+    backgroundColor: `${COLOR.down}`,
     border: 'none',
     borderRadius: '6px',
     cursor: 'pointer',

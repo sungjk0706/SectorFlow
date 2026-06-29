@@ -16,7 +16,7 @@ import { showAlertDialog } from '../components/common/dialog'
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
 import { createSearchInput } from '../components/common/search-input'
 import { createSectorRowEl } from '../components/common/sector-row'
-import { FONT_SIZE, FONT_FAMILY, FONT_WEIGHT, createStockNameColumn } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_FAMILY, FONT_WEIGHT, createStockNameColumn, COLOR } from '../components/common/ui-styles'
 import type { PageModule } from '../router'
 import type { StockClassificationMutationResponse } from '../types'
 
@@ -183,7 +183,7 @@ export function createChip(code: string): HTMLElement {
   Object.assign(chip.style, {
     display: 'inline-flex', alignItems: 'center', gap: '4px',
     padding: '2px 8px', borderRadius: '12px',
-    background: '#e8f0fe', fontSize: FONT_SIZE.small,
+    background: COLOR.downBg, fontSize: FONT_SIZE.small,
     fontFamily: FONT_FAMILY, cursor: 'default',
   })
 
@@ -193,7 +193,7 @@ export function createChip(code: string): HTMLElement {
 
   const sectorSpan = document.createElement('span')
   sectorSpan.className = 'chip-sector'
-  Object.assign(sectorSpan.style, { color: '#999', fontSize: FONT_SIZE.chip })
+  Object.assign(sectorSpan.style, { color: COLOR.disabled, fontSize: FONT_SIZE.chip })
   sectorSpan.textContent = sectorName
 
   const removeSpan = document.createElement('span')
@@ -207,8 +207,8 @@ export function createChip(code: string): HTMLElement {
   chip.appendChild(removeSpan)
 
   // Hover 강조
-  chip.addEventListener('mouseenter', () => { chip.style.background = '#d0e2fc' })
-  chip.addEventListener('mouseleave', () => { chip.style.background = '#e8f0fe' })
+  chip.addEventListener('mouseenter', () => { chip.style.background = COLOR.downLight })
+  chip.addEventListener('mouseleave', () => { chip.style.background = COLOR.downBg })
 
   return chip
 }
@@ -335,7 +335,7 @@ function setControlsDisabled(disabled: boolean): void {
 }
 
 /* ── 공통: 액션 버튼 ── */
-function actionBtn(text: string, color = '#198754'): HTMLButtonElement {
+function actionBtn(text: string, color: string = COLOR.success): HTMLButtonElement {
   const btn = document.createElement('button')
   btn.setAttribute('data-edit-control', '')
   Object.assign(btn.style, {
@@ -361,7 +361,7 @@ function cardWrap(): HTMLElement {
 /* ── 공통: 설명 레이블 ── */
 function descLabel(text: string): HTMLElement {
   const p = document.createElement('p')
-  Object.assign(p.style, { fontSize: FONT_SIZE.badge, color: '#888', margin: '0 0 10px' })
+  Object.assign(p.style, { fontSize: FONT_SIZE.badge, color: COLOR.secondary, margin: '0 0 10px' })
   p.textContent = text
   return p
 }
@@ -382,7 +382,7 @@ function buildTripleHeader(): void {
   // 버튼 공통 스타일 (크기 및 폰트 축소)
   const btnStyle = {
     padding: '4px 10px', border: 'none', borderRadius: '4px',
-    background: '#198754', color: '#fff', cursor: 'pointer',
+    background: COLOR.success, color: '#fff', cursor: 'pointer',
     fontSize: FONT_SIZE.small, fontFamily: FONT_FAMILY,
     fontWeight: 'normal', whiteSpace: 'nowrap',
     transition: 'background-color 0.2s',
@@ -390,7 +390,7 @@ function buildTripleHeader(): void {
 
   // 설명라벨
   const descLabel = document.createElement('span')
-  Object.assign(descLabel.style, { fontSize: FONT_SIZE.small, color: '#999', whiteSpace: 'nowrap' })
+  Object.assign(descLabel.style, { fontSize: FONT_SIZE.small, color: COLOR.disabled, whiteSpace: 'nowrap' })
   descLabel.textContent = '장마감 후 매매적격종목 확정시세 및 5일봉 거래대금,고가 데이터 저장'
   left.appendChild(descLabel)
 
@@ -402,14 +402,14 @@ function buildTripleHeader(): void {
   Object.assign(btn1.style, btnStyle)
   btn1.textContent = '⬇️ 1일봉챠트 시세 다운로드'
   btn1.addEventListener('mouseenter', () => btn1.style.background = '#157347')
-  btn1.addEventListener('mouseleave', () => btn1.style.background = '#198754')
+  btn1.addEventListener('mouseleave', () => btn1.style.background = COLOR.success)
   btn1.addEventListener('click', (e) => onTriggerConfirmedDownload(e))
 
   const btn2 = document.createElement('button')
   Object.assign(btn2.style, btnStyle)
   btn2.textContent = '⬇️ 5일봉챠트 거래대금,고가 다운로드'
   btn2.addEventListener('mouseenter', () => btn2.style.background = '#157347')
-  btn2.addEventListener('mouseleave', () => btn2.style.background = '#198754')
+  btn2.addEventListener('mouseleave', () => btn2.style.background = COLOR.success)
   btn2.addEventListener('click', (e) => onTrigger5dDownload(e))
 
   buttonContainer.appendChild(btn1)
@@ -417,7 +417,7 @@ function buildTripleHeader(): void {
   indicatorLabel = document.createElement('span')
   Object.assign(indicatorLabel.style, {
     fontSize: FONT_SIZE.body,
-    color: '#6c757d',
+    color: COLOR.tertiary,
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -476,7 +476,7 @@ async function onTriggerConfirmedDownload(e: MouseEvent): Promise<void> {
     title: `${label} 실행`,
     message: `${label}를 지금 수동으로 즉시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`,
     confirmText: '실행',
-    confirmColor: '#198754',
+    confirmColor: COLOR.success,
   })
 
   if (!result.confirmed) return
@@ -507,7 +507,7 @@ async function onTrigger5dDownload(e: MouseEvent): Promise<void> {
     title: `${label} 실행`,
     message: `${label}를 지금 수동으로 즉시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`,
     confirmText: '실행',
-    confirmColor: '#198754',
+    confirmColor: COLOR.success,
   })
 
   if (!result.confirmed) return
@@ -535,10 +535,10 @@ function buildSectorManageCard(): HTMLElement {
   const titleText = document.createElement('span')
   titleText.textContent = '업종 관리'
   statsLabelRef = document.createElement('span')
-  Object.assign(statsLabelRef.style, { fontSize: FONT_SIZE.label, color: '#888', fontWeight: FONT_WEIGHT.normal })
+  Object.assign(statsLabelRef.style, { fontSize: FONT_SIZE.label, color: COLOR.secondary, fontWeight: FONT_WEIGHT.normal })
 
   // 우측 컨테이너: 통계 레이블 + 새 업종 추가 버튼
-  addSectorBtnRef = actionBtn('+ 새 업종 추가', '#0d6efd')
+  addSectorBtnRef = actionBtn('+ 새 업종 추가', COLOR.down)
   Object.assign(addSectorBtnRef.style, { padding: '2px 8px', fontSize: FONT_SIZE.small })
   addSectorBtnRef.addEventListener('click', (e: MouseEvent) => onAddSector(e))
 
@@ -615,7 +615,7 @@ function buildSectorManageCard(): HTMLElement {
   const searchColumns: ColumnDef<SearchResultRow>[] = [
     {
       key: 'code', label: '종목코드', align: 'center', minWidth: 72, maxWidth: 72,
-      cellStyle: { color: '#999', fontSize: FONT_SIZE.small },
+      cellStyle: { color: COLOR.disabled, fontSize: FONT_SIZE.small },
       render: (row) => row.code
     },
     createStockNameColumn<SearchResultRow>(
@@ -701,7 +701,7 @@ function buildSectorManageCard(): HTMLElement {
         if (row.sectorName === '미분류' && row.stockCount > 0) {
           const badge = document.createElement('span')
           Object.assign(badge.style, {
-            background: '#dc3545',
+            background: COLOR.up,
             color: '#fff',
             borderRadius: '50%',
             fontSize: FONT_SIZE.chip,
@@ -723,12 +723,12 @@ function buildSectorManageCard(): HTMLElement {
       render: (row) => {
         const container = document.createElement('div')
         Object.assign(container.style, { display: 'flex', gap: '4px', justifyContent: 'center' })
-        const renameBtn = actionBtn('이름변경', '#6c757d')
+        const renameBtn = actionBtn('이름변경', COLOR.tertiary)
         renameBtn.addEventListener('click', (e: MouseEvent) => {
           e.stopPropagation()
           onRenameSector(row.sectorName, e)
         })
-        const deleteBtn = actionBtn('삭제', '#dc3545')
+        const deleteBtn = actionBtn('삭제', COLOR.up)
         deleteBtn.addEventListener('click', (e: MouseEvent) => {
           e.stopPropagation()
           onDeleteSector(row.sectorName, e)
@@ -747,10 +747,10 @@ function buildSectorManageCard(): HTMLElement {
     rowStyle: (row) => {
       const style: Partial<CSSStyleDeclaration> = { cursor: 'pointer', background: '', borderLeft: '' }
       if (selectedSector === row.sectorName) {
-        style.background = '#e3f2fd'
-        style.borderLeft = '3px solid #1976d2'
+        style.background = COLOR.downBg
+        style.borderLeft = '3px solid ' + COLOR.down
       } else if (row.sectorName === '업종명없음' && row.stockCount > 0) {
-        style.background = '#fff3cd'
+        style.background = COLOR.warningBg
       }
       return style
     },
@@ -852,7 +852,7 @@ async function onDeleteSector(name: string, e: MouseEvent): Promise<void> {
     title: '업종 삭제',
     message: `"${name}" 업종을 삭제하시겠습니까?\n해당 업종의 종목은 미매핑 상태가 됩니다.`,
     confirmText: '삭제',
-    confirmColor: '#dc3545',
+    confirmColor: COLOR.up,
   })
   if (!result.confirmed) return
   try {
@@ -912,9 +912,9 @@ function buildTripleCenter(): void {
   })
 
   stagingCountRef = document.createElement('span')
-  Object.assign(stagingCountRef.style, { fontSize: FONT_SIZE.small, fontWeight: 'normal', color: '#333' })
+  Object.assign(stagingCountRef.style, { fontSize: FONT_SIZE.small, fontWeight: 'normal', color: COLOR.neutral })
 
-  const stagingClearBtn = actionBtn('전체 해제', '#6c757d')
+  const stagingClearBtn = actionBtn('전체 해제', COLOR.tertiary)
   stagingClearBtn.className = 'staging-clear-btn'
   Object.assign(stagingClearBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.small, display: 'none' })
   stagingClearBtn.addEventListener('click', () => clearStaging())
@@ -932,7 +932,7 @@ function buildTripleCenter(): void {
   // Empty state message
   stagingEmptyRef = document.createElement('div')
   Object.assign(stagingEmptyRef.style, {
-    color: '#aaa', fontSize: FONT_SIZE.small, textAlign: 'center', padding: '8px 0',
+    color: COLOR.muted, fontSize: FONT_SIZE.small, textAlign: 'center', padding: '8px 0',
   })
   stagingEmptyRef.textContent = '검색으로 종목을 추가하세요'
   stagingPanelRef.appendChild(stagingEmptyRef)
@@ -950,7 +950,7 @@ function buildTripleCenter(): void {
 
   detailTitleRef = document.createElement('div')
   Object.assign(detailTitleRef.style, {
-    fontSize: FONT_SIZE.title, fontWeight: 'normal', color: '#333',
+    fontSize: FONT_SIZE.title, fontWeight: 'normal', color: COLOR.neutral,
   })
   titleRow.appendChild(detailTitleRef)
 
@@ -958,7 +958,7 @@ function buildTripleCenter(): void {
   const btnGroup = document.createElement('div')
   Object.assign(btnGroup.style, { display: 'flex', gap: '4px' })
 
-  const selectAllBtn = actionBtn('전체 선택', '#0d6efd')
+  const selectAllBtn = actionBtn('전체 선택', COLOR.down)
   Object.assign(selectAllBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.small })
   selectAllBtn.addEventListener('click', () => {
     if (!selectedSector) return
@@ -970,7 +970,7 @@ function buildTripleCenter(): void {
     updateAllInlineMoveButtons()
   })
 
-  const deselectAllBtn = actionBtn('전체 해제', '#6c757d')
+  const deselectAllBtn = actionBtn('전체 해제', COLOR.tertiary)
   Object.assign(deselectAllBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.small })
   deselectAllBtn.addEventListener('click', () => {
     selectedStocks.clear()
@@ -992,7 +992,7 @@ function buildTripleCenter(): void {
   const detailColumns: ColumnDef<DetailRow>[] = [
     {
       key: 'code', label: '종목코드', minWidth: 72, maxWidth: 72, align: 'center',
-      cellStyle: { color: '#999', fontSize: FONT_SIZE.small },
+      cellStyle: { color: COLOR.disabled, fontSize: FONT_SIZE.small },
       render: (row) => row.code,
     },
     createStockNameColumn<DetailRow>(
@@ -1015,10 +1015,10 @@ function buildTripleCenter(): void {
     keyFn: (row) => row.code,
     rowStyle: (row) => {
       if (highlightStockCode && row.code === highlightStockCode) {
-        return { cursor: 'pointer', background: '#fff3cd', transition: 'background 0.3s' }
+        return { cursor: 'pointer', background: COLOR.warningBg, transition: 'background 0.3s' }
       }
       if (selectedStocks.has(row.code)) {
-        return { cursor: 'pointer', background: '#e3f2fd', transition: '' }
+        return { cursor: 'pointer', background: COLOR.downBg, transition: '' }
       }
       return { cursor: 'pointer', background: '', transition: '' }
     },
@@ -1125,7 +1125,7 @@ function updateCenterPanel(): void {
     // Show empty message
     if (!centerEmptyRef) {
       centerEmptyRef = document.createElement('div')
-      Object.assign(centerEmptyRef.style, { color: '#aaa', textAlign: 'center', padding: '40px 0' })
+      Object.assign(centerEmptyRef.style, { color: COLOR.muted, textAlign: 'center', padding: '40px 0' })
       centerEmptyRef.textContent = '좌측에서 업종을 선택하세요'
       centerContentRef.appendChild(centerEmptyRef)
     }
@@ -1175,7 +1175,7 @@ function createSectorRow(sectorName: string): HTMLElement {
         sectorRowMap.get(prev)!.style.background = ''
       }
       if (selectedTargetSector) {
-        row.style.background = '#e3f2fd'
+        row.style.background = COLOR.downBg
       } else {
         row.style.background = ''
       }
@@ -1184,7 +1184,7 @@ function createSectorRow(sectorName: string): HTMLElement {
 
   // hover 시 배경색 (선택 상태가 아닐 때만)
   row.addEventListener('mouseenter', () => {
-    if (selectedTargetSector !== sectorName) row.style.background = '#f5f5f5'
+    if (selectedTargetSector !== sectorName) row.style.background = COLOR.neutralBg
   })
   row.addEventListener('mouseleave', () => {
     if (selectedTargetSector !== sectorName) row.style.background = ''
@@ -1205,7 +1205,7 @@ function buildTripleRight(): void {
   // 제목
   const title = document.createElement('div')
   Object.assign(title.style, {
-    fontSize: FONT_SIZE.title, fontWeight: 'normal', color: '#333', marginBottom: '8px',
+    fontSize: FONT_SIZE.title, fontWeight: 'normal', color: COLOR.neutral, marginBottom: '8px',
   })
   title.textContent = '대상 업종'
   rightContentRef.appendChild(title)
@@ -1289,7 +1289,7 @@ function updateRightPanel(): void {
     }
     if (!rightEmptyRef) {
       rightEmptyRef = document.createElement('div')
-      Object.assign(rightEmptyRef.style, { color: '#aaa', textAlign: 'center', padding: '40px 0' })
+      Object.assign(rightEmptyRef.style, { color: COLOR.muted, textAlign: 'center', padding: '40px 0' })
       rightEmptyRef.textContent = '좌측에서 업종을 선택하세요'
       rightContentRef.appendChild(rightEmptyRef)
     }

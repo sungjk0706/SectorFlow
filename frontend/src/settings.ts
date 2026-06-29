@@ -5,6 +5,7 @@ import { api } from './api/client'
 import type { StoreApi } from './stores/store'
 import type { UIState } from './stores/uiStore'
 import type { AppSettings, SaveResult } from './types'
+import { COLOR } from './components/common/ui-styles'
 
 export const MASKED_VALUE = '***'
 
@@ -121,8 +122,8 @@ export function createGlobalWsBadge(): HTMLElement {
     const state = uiStore.getState()
     const connected = state.wsSubscribeStatus?.quote_subscribed ?? false
     badge.textContent = connected ? 'WS 연결' : 'WS 해제'
-    badge.style.color = connected ? '#2e7d32' : '#d32f2f'
-    badge.style.background = connected ? '#e8f5e9' : '#ffeaea'
+    badge.style.color = connected ? `${COLOR.success}` : `${COLOR.up}`
+    badge.style.background = connected ? `${COLOR.successBg}` : `${COLOR.upBg}`
   }
 
   updateBadge()

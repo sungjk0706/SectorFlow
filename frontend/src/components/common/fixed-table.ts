@@ -21,7 +21,7 @@ export interface GroupRow {
 export type TableRow<T> = T | GroupRow
 
 /* ── 셀 스타일 헬퍼 ───────────────────────────────────────── */
-import { CELL_BORDER, FONT_SIZE, FONT_WEIGHT } from './ui-styles'
+import { CELL_BORDER, FONT_SIZE, FONT_WEIGHT, COLOR } from './ui-styles'
 
 const CELL_BASE = `box-sizing:border-box;padding:4px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-right:${CELL_BORDER};`
 
@@ -116,7 +116,7 @@ export function createFixedTable<T extends object>(options: FixedTableOptions<T>
     const tr = document.createElement('tr')
     const td = document.createElement('td')
     td.colSpan = columns.length
-    Object.assign(td.style, { color: '#aaa', padding: '20px 0', textAlign: 'center' })
+    Object.assign(td.style, { color: `${COLOR.muted}`, padding: '20px 0', textAlign: 'center' })
     td.textContent = emptyText
     tr.appendChild(td)
     tbody.appendChild(tr)
@@ -131,7 +131,7 @@ export function createFixedTable<T extends object>(options: FixedTableOptions<T>
       padding: '10px 0 4px',
       fontWeight: FONT_WEIGHT.normal,
       fontSize: '1.25em',
-      color: '#1a73e8',
+      color: `${COLOR.down}`,
       textAlign: 'center',
     })
     td.textContent = `◆ ${g.label}`

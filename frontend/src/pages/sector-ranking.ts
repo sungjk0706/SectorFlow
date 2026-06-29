@@ -10,7 +10,7 @@ import { createSettingRow, createNumInput, createMoneyInput, createWsStatusBadge
 import { createDualLabelSlider } from '../components/common/create-slider'
 import type { DualLabelSliderHandle } from '../components/common/create-slider'
 import { toDisplayValue, toServerValue } from '../utils/sliderConvert'
-import { FONT_SIZE, FONT_WEIGHT } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 import type { SectorScoreRow, AppSettings } from '../types'
 
 const NUM_KEYS = ['sector_start_threshold_pct', 'sector_min_trade_amt', 'sector_min_rise_ratio_pct', 'sector_max_targets', 'sector_trim_trade_amt_pct', 'sector_trim_change_rate_pct'] as const
@@ -19,9 +19,9 @@ const MAX_ROWS = 60
 /* ── 헬퍼: 단계 라벨 ── */
 function createStepLabel(num: string, text: string): HTMLElement {
   const div = document.createElement('div')
-  Object.assign(div.style, { fontSize: FONT_SIZE.small, color: '#999', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '4px' })
+  Object.assign(div.style, { fontSize: FONT_SIZE.small, color: COLOR.disabled, marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '4px' })
   const badge = document.createElement('span')
-  Object.assign(badge.style, { color: '#0d6efd', fontWeight: FONT_WEIGHT.normal })
+  Object.assign(badge.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.normal })
   badge.textContent = num
   div.appendChild(badge)
   div.appendChild(document.createTextNode(text))
@@ -40,12 +40,12 @@ function updateMaxTargetsStatus(scores: SectorScoreRow[]): void {
 
   const passedLabel = document.createElement('span')
   passedLabel.textContent = '통과'
-  passedLabel.style.color = '#dc3545'
+  passedLabel.style.color = COLOR.up
   maxTargetsStatusEl.appendChild(passedLabel)
 
   const passedVal = document.createElement('span')
   passedVal.textContent = String(passed)
-  passedVal.style.color = '#dc3545'
+  passedVal.style.color = COLOR.up
   passedVal.style.fontWeight = FONT_WEIGHT.bold
   maxTargetsStatusEl.appendChild(passedVal)
 }
@@ -141,12 +141,12 @@ function buildRankingRows(container: HTMLElement): void {
     const info = document.createElement('div')
     info.style.cssText = 'display:flex;align-items:center;margin-bottom:2px;padding:0 2px;'
     const defs = [
-      'width:24px;text-align:right;color:#888;',
+      'width:24px;text-align:right;color:' + COLOR.secondary + ';',
       'flex:1;font-weight:500;padding-left:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
-      'width:40px;text-align:right;color:#1a73e8;margin-right:12px;',
+      'width:40px;text-align:right;color:' + COLOR.down + ';margin-right:12px;',
       'width:48px;text-align:right;',
       'width:64px;text-align:right;',
-      'width:72px;text-align:right;color:#666;',
+      'width:72px;text-align:right;color:' + COLOR.tertiary + ';',
     ]
     for (const css of defs) {
       const sp = document.createElement('span')
@@ -205,10 +205,10 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     const opacity = isUnranked ? '0.4' : (s.rank > maxTargets ? '0.65' : '1')
     const finalScore = s.final_score.toFixed(1)
     const riseRatio = s.rise_ratio.toFixed(1) + '%'
-    const riseColor = s.rise_ratio > 50 ? 'red' : s.rise_ratio < 50 ? 'blue' : '#333'
+    const riseColor = s.rise_ratio > 50 ? COLOR.up : s.rise_ratio < 50 ? COLOR.down : COLOR.neutral
     const tradeAmt = (s.total_trade_amount / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })  // 백만원 → 억단위 (소수점 1자리, 콤마)
     const barWidth = `${Math.min((s.final_score / maxScore) * 100, 100)}%`
-    const barColor = isUnranked ? '#dee2e6' : (s.rank <= maxTargets ? '#0d6efd' : '#adb5bd')
+    const barColor = isUnranked ? '#dee2e6' : (s.rank <= maxTargets ? COLOR.down : COLOR.muted)
 
     if (!prev || !prev.visible) row.style.display = ''
 
@@ -216,8 +216,8 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     if (!prev || prev.opacity !== opacity) row.style.opacity = opacity
     if (!prev || prev.sector !== s.sector) row.dataset.sector = s.sector
     if (!prev || prev.selected !== isSel) {
-      row.style.background = isSel ? '#e8f0fe' : 'transparent'
-      row.style.outline = isSel ? '2px solid #1a73e8' : 'none'
+      row.style.background = isSel ? COLOR.downBg : 'transparent'
+      row.style.outline = isSel ? '2px solid ' + COLOR.down : 'none'
     }
 
     const spans = row.firstElementChild!.children as HTMLCollectionOf<HTMLSpanElement>
@@ -263,7 +263,7 @@ function mount(container: HTMLElement): void {
 
   // 수신율 표시 요소
   const receiveRateSpan = document.createElement('span')
-  Object.assign(receiveRateSpan.style, { fontSize: '12px', color: '#2196F3', marginLeft: '8px' })
+  Object.assign(receiveRateSpan.style, { fontSize: '12px', color: COLOR.down, marginLeft: '8px' })
   receiveRateSpan.textContent = '(현재: 0%)'
 
   // 레이블 컨테이너
@@ -297,7 +297,7 @@ function mount(container: HTMLElement): void {
 
   const leftCol = document.createElement('div')
   const leftLabel = document.createElement('div')
-  Object.assign(leftLabel.style, { color: '#555', marginBottom: '4px' })
+  Object.assign(leftLabel.style, { color: COLOR.code, marginBottom: '4px' })
   leftLabel.textContent = '상승률 상/하위'
   leftCol.appendChild(leftLabel)
   trimChangeRateInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_trim_change_rate_pct', v), step: 1, name: 'sector_trim_change_rate_pct' })
@@ -306,7 +306,7 @@ function mount(container: HTMLElement): void {
   const rightCol = document.createElement('div')
   rightCol.style.textAlign = 'right'
   const rightLabel = document.createElement('div')
-  Object.assign(rightLabel.style, { color: '#555', marginBottom: '4px' })
+  Object.assign(rightLabel.style, { color: COLOR.code, marginBottom: '4px' })
   rightLabel.textContent = '거래대금 상/하위'
   rightCol.appendChild(rightLabel)
   const rightInputWrap = document.createElement('div')
@@ -322,7 +322,7 @@ function mount(container: HTMLElement): void {
   // ⑤ 점수 가중치
   const weightLabel = createStepLabel('⑤', '')
   const weightDesc = document.createElement('span')
-  Object.assign(weightDesc.style, { fontSize: FONT_SIZE.small, color: '#888' })
+  Object.assign(weightDesc.style, { fontSize: FONT_SIZE.small, color: COLOR.secondary })
   weightDesc.textContent = '상승 종목 비율과 평균 거래대금의 점수 반영 비중을 조절합니다.'
   weightLabel.appendChild(weightDesc)
   root.appendChild(weightLabel)
@@ -336,10 +336,10 @@ function mount(container: HTMLElement): void {
     step: 1,
     leftLabel: (v) => `상승 종목 비율 ${100 - v}%`,
     rightLabel: (v) => `평균 거래대금 ${v}%`,
-    leftColor: '#0d6efd',
-    leftColorLight: '#8bb8f8',
-    rightColor: '#fd7e14',
-    rightColorLight: '#fdc89e',
+    leftColor: COLOR.down,
+    leftColorLight: COLOR.downLight,
+    rightColor: COLOR.warning,
+    rightColorLight: COLOR.warningLight,
     onChange(v) {
       currentRiseRatio = v
     },
@@ -365,13 +365,13 @@ function mount(container: HTMLElement): void {
 
   const maxTargetsLabel = document.createElement('span')
   maxTargetsLabel.textContent = '매수대상 업종수'
-  Object.assign(maxTargetsLabel.style, { flex: '1.5', color: '#333', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' })
+  Object.assign(maxTargetsLabel.style, { flex: '1.5', color: COLOR.neutral, display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' })
 
   maxTargetsStatusEl = document.createElement('span')
   Object.assign(maxTargetsStatusEl.style, {
     flex: '1',
     fontSize: FONT_SIZE.label,
-    color: '#888',
+    color: COLOR.secondary,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -393,7 +393,7 @@ function mount(container: HTMLElement): void {
 
   // 헤더 행
   const headerRow = document.createElement('div')
-  Object.assign(headerRow.style, { display: 'flex', alignItems: 'center', fontSize: '11px', color: '#888', marginBottom: '6px', padding: '0 2px' })
+  Object.assign(headerRow.style, { display: 'flex', alignItems: 'center', fontSize: '11px', color: COLOR.secondary, marginBottom: '6px', padding: '0 2px' })
   const headerDefs: [string, string][] = [
     ['width:24px;text-align:right;', '순위'],
     ['flex:1;padding-left:6px;', '업종명'],

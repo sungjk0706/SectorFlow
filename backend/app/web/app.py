@@ -122,6 +122,11 @@ async def lifespan(app: FastAPI):
     yield
 
     # --- shutdown ---
+    # 1. WS 클라이언트 정상 종료 (EPIPE 방지 — close_all이 flush_task 취소 + 모든 ws.close())
+    from backend.app.web.ws_manager import ws_manager
+    await ws_manager.close_all()
+    logger.info("[웹서버] WebSocket 클라이언트 정상 종료 완료")
+
     from backend.app.services.daily_time_scheduler import stop_daily_time_scheduler
     from backend.app.services.engine_service import stop_engine
     from backend.app.services import trade_history
