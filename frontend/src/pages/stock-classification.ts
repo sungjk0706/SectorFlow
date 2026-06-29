@@ -403,14 +403,14 @@ function buildTripleHeader(): void {
   btn1.textContent = '⬇️ 1일봉챠트 시세 다운로드'
   btn1.addEventListener('mouseenter', () => btn1.style.background = '#157347')
   btn1.addEventListener('mouseleave', () => btn1.style.background = '#198754')
-  btn1.addEventListener('click', () => onTriggerConfirmedDownload())
+  btn1.addEventListener('click', (e) => onTriggerConfirmedDownload(e))
 
   const btn2 = document.createElement('button')
   Object.assign(btn2.style, btnStyle)
   btn2.textContent = '⬇️ 5일봉챠트 거래대금,고가 다운로드'
   btn2.addEventListener('mouseenter', () => btn2.style.background = '#157347')
   btn2.addEventListener('mouseleave', () => btn2.style.background = '#198754')
-  btn2.addEventListener('click', () => onTrigger5dDownload())
+  btn2.addEventListener('click', (e) => onTrigger5dDownload(e))
 
   buttonContainer.appendChild(btn1)
   buttonContainer.appendChild(btn2)
@@ -458,7 +458,7 @@ function updateIndicatorBar(): void {
 }
 
 // buildSchedulerCard removed.
-async function onTriggerConfirmedDownload(): Promise<void> {
+async function onTriggerConfirmedDownload(e: MouseEvent): Promise<void> {
   const label = '1일봉챠트 시세 다운로드'
   const endpoint = '/api/stock-classification/trigger-confirmed-download'
 
@@ -471,8 +471,8 @@ async function onTriggerConfirmedDownload(): Promise<void> {
 
   const result = await showContextPopup({
     type: 'confirm',
-    x: window.innerWidth / 2,
-    y: window.innerHeight / 2,
+    x: e.clientX,
+    y: e.clientY,
     title: `${label} 실행`,
     message: `${label}를 지금 수동으로 즉시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`,
     confirmText: '실행',
@@ -489,7 +489,7 @@ async function onTriggerConfirmedDownload(): Promise<void> {
   }
 }
 
-async function onTrigger5dDownload(): Promise<void> {
+async function onTrigger5dDownload(e: MouseEvent): Promise<void> {
   const label = '5일봉챠트 거래대금,고가 다운로드'
   const endpoint = '/api/stock-classification/trigger-5d-download'
 
@@ -502,8 +502,8 @@ async function onTrigger5dDownload(): Promise<void> {
 
   const result = await showContextPopup({
     type: 'confirm',
-    x: window.innerWidth / 2,
-    y: window.innerHeight / 2,
+    x: e.clientX,
+    y: e.clientY,
     title: `${label} 실행`,
     message: `${label}를 지금 수동으로 즉시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`,
     confirmText: '실행',
