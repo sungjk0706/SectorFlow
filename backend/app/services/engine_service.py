@@ -11,7 +11,6 @@ from backend.app.core.logger import get_logger
 from backend.app.services.trading import AutoTradeManager
 from backend.app.services import engine_account_notify as _account_notify
 from backend.app.services.engine_utils import LazyEvent
-from backend.app.services.state_manager import StateManager, OrderStatus
 
 # ── 전역 상태 import (engine_state에서 직접 import) ─────────────────────
 from backend.app.services.engine_state import (

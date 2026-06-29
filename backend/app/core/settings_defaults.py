@@ -50,6 +50,13 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "boost_program_net_buy_on": False,
     "boost_program_net_buy_score": 1.0,
 
+    # 리스크 관리
+    "max_daily_loss_limit": -500000,
+    "max_single_stock_exposure": 20000000,
+    "max_total_exposure_ratio": 0.95,
+    "max_position_size": 0,
+    "rate_limit_per_sec": 3,
+
      # 매도 설정
      "tp_apply": False,
      "tp_val": 0,

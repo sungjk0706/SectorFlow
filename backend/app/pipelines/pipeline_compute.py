@@ -160,28 +160,23 @@ async def _compute_loop_impl(es: ModuleType) -> None:
     try:
         while _compute_running:
             try:
-                # ── tick_queue + control_queue 동시 대기 (asyncio.wait) ──
-                # 어느 큐에든 데이터 도착 시 즉시 깨어남 — 틱 없는 비거래 시간에도 control 신호 처리 가능
-                tick_task = asyncio.ensure_future(tick_queue.get())
-                control_task = asyncio.ensure_future(control_queue.get())
-                done, pending = await asyncio.wait(
-                    {tick_task, control_task},
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
+                # tick_queue 대기 (0.5초 timeout — 틱 없는 시간에도 control 신호 처리)
+                try:
+                    data = await asyncio.wait_for(tick_queue.get(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    data = None
 
-                # 미완료 task 정리 (메모리 누수 방지)
-                for t in pending:
-                    t.cancel()
-
-                # control_queue 신호 처리
-                if control_task in done and not control_task.cancelled():
-                    _, _, control_signal = control_task.result()
+                # control_queue non-blocking 드레인
+                while True:
+                    try:
+                        _, _, control_signal = control_queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
                     await _process_control_signal(control_signal, es, broadcast_queue)
                     control_queue.task_done()
 
                 # tick_queue 데이터 처리
-                if tick_task in done and not tick_task.cancelled():
-                    data = tick_task.result()
+                if data is not None:
                     tick_queue.task_done()
 
                     # data 자체가 딕셔너리(REAL 데이터 등)이므로 직접 전달

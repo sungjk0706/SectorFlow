@@ -558,6 +558,9 @@ async def _on_ws_subscribe_end() -> None:
         gc.enable()
         gc.collect()
         logger.info("[타이머] 장마감 후 GC 정상화 및 메모리 정리 완료")
+
+        from backend.app.core.memory_monitor import log_memory_snapshot
+        log_memory_snapshot("장마감 GC 정리 후")
         from backend.app.services import engine_service
         state.ws_subscribe_window_active = False
         state.confirmed_done = False  # 오후 8시 구독 종료 → 8시 30분 확정 갱신 허용

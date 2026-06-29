@@ -764,12 +764,7 @@ async def _run_confirmed_pipeline(
 
         from backend.app.core.broker_registry import _create_provider
         _settings = es._integrated_system_settings_cache
-        _broker_config = _settings.get("broker_config") if isinstance(_settings.get("broker_config"), dict) else {}
-        _broker_name = str(
-            _broker_config.get("stock")
-            or _settings.get("broker")
-            or "kiwoom"
-        ).lower().strip()
+        _broker_name = "kiwoom"
         _auth_cache: dict[str, object] = {}
         _auth_provider = _create_provider("auth", _broker_name, _settings, _auth_cache)
         _broker_token = await _auth_provider.get_access_token() if _auth_provider else None
@@ -1216,12 +1211,7 @@ async def fetch_5d_data_only() -> dict:
     try:
         from backend.app.core.broker_registry import _create_provider
         _settings = es._integrated_system_settings_cache
-        _broker_config = _settings.get("broker_config") if isinstance(_settings.get("broker_config"), dict) else {}
-        _broker_name = str(
-            _broker_config.get("stock")
-            or _settings.get("broker")
-            or "kiwoom"
-        ).lower().strip()
+        _broker_name = "kiwoom"
         _auth_cache: dict[str, object] = {}
         _auth_provider = _create_provider("auth", _broker_name, _settings, _auth_cache)
         _broker_token = await _auth_provider.get_access_token() if _auth_provider else None

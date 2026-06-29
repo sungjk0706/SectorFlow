@@ -25,9 +25,19 @@ logger = logging.getLogger(__name__)
 
 # ── DB Write Queue ─────────────────────────────────────────────────────────────
 
-_db_write_queue: asyncio.Queue = asyncio.Queue()
+_DB_WRITE_QUEUE_MAXSIZE = 100
+_db_write_queue: asyncio.Queue = asyncio.Queue(maxsize=_DB_WRITE_QUEUE_MAXSIZE)
 _writer_task: asyncio.Task | None = None
 _running: bool = False
+_shutdown_event: asyncio.Event | None = None
+
+
+def _get_shutdown_event() -> asyncio.Event:
+    """shutdown 이벤트 반환 (lazy init)."""
+    global _shutdown_event
+    if _shutdown_event is None:
+        _shutdown_event = asyncio.Event()
+    return _shutdown_event
 
 
 @dataclass
@@ -52,18 +62,25 @@ async def _db_writer_loop() -> None:
     try:
         while _running:
             try:
-                # 큐에서 작업 꺼내기 (타임아웃으로 정기적 체크)
-                op = await asyncio.wait_for(_db_write_queue.get(), timeout=1.0)
+                queue_task = asyncio.ensure_future(_db_write_queue.get())
+                shutdown_task = asyncio.ensure_future(_get_shutdown_event().wait())
+                done, pending = await asyncio.wait(
+                    {queue_task, shutdown_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
 
-                # 작업 처리
-                await _process_operation(op)
+                for t in pending:
+                    t.cancel()
 
-                # 작업 완료 표시
-                _db_write_queue.task_done()
+                if shutdown_task in done and not shutdown_task.cancelled():
+                    _running = False
+                    break
 
-            except asyncio.TimeoutError:
-                # 타임아웃 시 계속 루프
-                continue
+                if queue_task in done and not queue_task.cancelled():
+                    op = queue_task.result()
+                    await _process_operation(op)
+                    _db_write_queue.task_done()
+
             except Exception as e:
                 logger.error("[DB Writer] 작업 처리 실패: %s", e, exc_info=True)
 
@@ -118,6 +135,7 @@ async def start_db_writer() -> None:
         logger.warning("[DB Writer] 이미 실행 중")
         return
 
+    _get_shutdown_event().clear()
     _writer_task = asyncio.create_task(_db_writer_loop())
     logger.info("[DB Writer] 시작됨")
 
@@ -127,6 +145,7 @@ async def stop_db_writer() -> None:
     global _writer_task, _running
 
     _running = False
+    _get_shutdown_event().set()
 
     if _writer_task is not None:
         _writer_task.cancel()
