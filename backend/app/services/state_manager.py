@@ -335,13 +335,13 @@ class StateManager:
             fill_quantity = data.get("fill_quantity")
             fill_price = data.get("fill_price")
             
-            # 체결 이벤트 직접 큐에 추가 (순서 보장을 위해 create_task 제거)
+            # 체결 이벤트 직접 큐에 추가 (순서 보장을 위해 put_nowait 사용)
             event = StateEvent(event_type=EventType.ORDER_FILL, data={
                 "order_id": order_id,
                 "fill_quantity": fill_quantity,
                 "fill_price": fill_price,
             })
-            asyncio.create_task(self._event_queue.put(event))
+            self._event_queue.put_nowait(event)
             _log.info("[StateManager] 저널 재생 - 체결 이벤트 발행: %s %d주", order_id, fill_quantity)
 
         # 저널 재생 실행

@@ -1,0 +1,1096 @@
+# SectorFlow 최종 아키텍처 문서
+
+> 1인 로컬 주식 자동매매 웹앱 — Python 백엔드 + TypeScript 프론트엔드  
+> 단일 asyncio 이벤트 루프 기반 실시간 파이프라인 아키텍처
+
+---
+
+## 1. 시스템 개요
+
+SectorFlow는 한국 주식시장(KRX/NXT)의 실시간 시세를 WebSocket으로 수신하여 업종별 강도를 분석하고, 자동 매수/매도를 실행하는 1인 로컬 자동매매 시스템이다.
+
+**핵심 특징:**
+- 단일 Python 프로세스, 단일 asyncio 이벤트 루프
+- FastAPI 웹서버와 트레이딩 엔진이 동일 루프에서 실행
+- 순수 asyncio.Queue 기반 인프로세스 파이프라인 (Redis 등 외부 브로커 없음)
+- SQLite 단일 커넥션 + WAL 모드 (ORM 없이 직접 SQL)
+- 테스트 모드(가상계좌) / 실전 모드 전환 지원
+- 다중 증권사 지원 (키움, LS etc.) — Broker Router + ConnectorManager
+
+---
+
+## 2. 아키텍처 원칙
+
+| 원칙 | 내용 |
+|------|------|
+| 단일 이벤트 루프 | 모든 I/O는 asyncio 기반, 블로킹 호출 금지 |
+| 단일 SQLite 커넥션 | aiosqlite 1개 연결, asyncio.Lock으로 쓰기 직렬화, WAL 모드 |
+| ORM 금지 | 직접 SQL 작성, db_writer 큐로 쓰기 직렬화 |
+| 이벤트 버스 없음 | Redis/Pub-Sub 없음, asyncio.Queue로 파이프라인 연결 |
+| 실시간/배치 분리 | 실시간 틱 파이프라인과 장마감 배치 파이프라인 엄격 분리 |
+| 단일 소스 진리 (SSOT) | 설정은 `integrated_system_settings_cache` (메모리) → SQLite (영속) |
+| 플래그 단일 소유자 | 각 상태 플래그는 하나의 함수만이 설정/해제 |
+| 테스트모드 동등성 | 테스트/실전 모드는 매매 로직이 동일, 돈 I/O만 가상 |
+| 최소 의존성 | 외부 의존성 최소화, 1인 운영 비용 최소화 |
+
+---
+
+## 3. 기술 스택
+
+### 백엔드 (Python)
+- **언어**: Python 3.12+
+- **웹 프레임워크**: FastAPI + Uvicorn (ASGI)
+- **비동기 DB**: aiosqlite (SQLite WAL mode)
+- **WebSocket**: FastAPI WebSocket (Starlette)
+- **HTTP 클라이언트**: httpx (async)
+- **증권사 연결**: 커스텀 WebSocket Connector (키움, LS)
+- **로깅**: Python logging + 커스텀 configure_app_logging
+- **암호화**: cryptography (API 키 암호화 저장)
+
+### 프론트엔드 (TypeScript)
+- **언어**: TypeScript
+- **빌드**: Vite
+- **상태관리**: Custom Store (Event-driven)
+- **실시간 통신**: Native WebSocket
+- **차트**: Canvas 기반 커스텀 렌더링
+- **가상 스크롤**: 커스텀 virtual-scroller 구현
+
+### 인프라
+- **DB**: SQLite (단일 파일 `backend/data/stocks.db`)
+- **외부 서비스**: Telegram Bot API (알림), exchange_calendars (거래일)
+- **배포**: 로컬 실행 (SectorFlow.command 스크립트)
+
+---
+
+## 4. 프로세스 아키텍처
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    단일 asyncio 이벤트 루프                      │
+│                                                                   │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
+│  │  FastAPI     │  │  Trading     │  │  Time Scheduler      │   │
+│  │  Web Server  │  │  Engine      │  │  (daily_time_sched)  │   │
+│  │  (Uvicorn)   │  │  (engine_*)  │  │  asyncio.call_later  │   │
+│  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘   │
+│         │                 │                      │               │
+│  ┌──────┴───────┐  ┌──────┴──────────────────────┴───────────┐   │
+│  │  WS Manager  │  │          Pipeline Loops                  │   │
+│  │  (ws_manager)│  │  Compute Loop / Gateway Loop             │   │
+│  └──────────────┘  └──────────────────────────────────────────┘   │
+│                                                                   │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐   │
+│  │  DB Writer   │  │  Trade Hist  │  │  Journal Consumer    │   │
+│  │  (직렬화 큐)  │  │  Consumer    │  │  (주문 저널링)        │   │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 기동 순서 (lifespan)
+
+```
+1. configure_app_logging()
+2. start_db_writer()           — DB 쓰기 큐 시작
+3. init_cache_tables()         — CREATE TABLE IF NOT EXISTS
+4. initialize_trading_calendar_cache()  — 거래일 캐시 로드
+5. initialize_queues()         — 4개 코어 큐 생성
+6. start_gateway_loop()        — Gateway 파이프라인 시작 (엔진과 독립)
+7. load_filter_summary_meta_cache()
+8. load_integrated_system_settings()  — SQLite → settings_cache (SSOT)
+9. trade_history.start_consumer_task()
+10. journal.start_consumer_task()
+11. server_ready_event.set()   — Health endpoint 즉시 응답 가능
+12. _engine_init_background()  — 백그라운드 엔진 초기화
+    ├── start_engine()
+    │   ├── _reconciliation_on_startup()  — 보류주문 정산 (실전만)
+    │   └── run_engine_loop()
+    │       ├── _cache_and_bootstrap()    — 캐시 선행 로드
+    │       ├── _get_all_tokens_async()   — 다중 증권사 토큰 병렬 발급
+    │       ├── _load_broker_spec_async() — TR 스펙 로드
+    │       ├── settlement_engine.restore_state()  — 가상잔고 복원
+    │       ├── start_compute_loop()      — Compute 파이프라인 시작
+    │       └── WS 구간 감지 루프         — ConnectorManager 연결/해제
+    ├── BackendCoalescing.start()
+    ├── engine_ready_event.set()
+    └── start_daily_time_scheduler()  — 타이머 스케줄링
+```
+
+### 종료 순서 (shutdown)
+
+```
+1. ws_manager.close_all()           — WS 클라이언트 정상 종료
+2. trade_history.stop_consumer_task()
+3. journal.stop_consumer_task()
+4. telegram_bot.stop_async()
+5. stop_engine()                    — 엔진 루프 + 백그라운드 태스크 취소
+6. stop_daily_time_scheduler()
+7. stop_db_writer()
+8. close_db_connection()
+```
+
+---
+
+## 5. 파이프라인 아키텍처
+
+### 5.1 코어 큐 (4개)
+
+```
+                    ┌────────────────────────────────────────────────┐
+                    │              Broker WebSocket                   │
+                    │    (키움/LS 실시간 시세 수신)                     │
+                    └────────────────┬───────────────────────────────┘
+                                     │
+                                     ▼
+                    ┌────────────────────────────────┐
+                    │   engine_ws_dispatch.py         │
+                    │   (시세 파싱 + 라우팅)            │
+                    └──┬──────────┬──────────┬────────┘
+                       │          │          │
+                       ▼          ▼          ▼
+              ┌────────────┐ ┌────────┐ ┌──────────────────┐
+              │ tick_queue │ │ price  │ │ broadcast_queue  │
+              │ (5000)     │ │ pass_  │ │ (2000)           │
+              │ 드롭 정책   │ │ through│ │ 상태/이벤트 큐    │
+              └─────┬──────┘ │ (4096) │ └────────┬─────────┘
+                    │        └───┬────┘          │
+                    │            │               │
+                    ▼            │               ▼
+              ┌─────────────────┐│   ┌────────────────────┐
+              │ Compute Loop    ││   │ Gateway Loop       │
+              │ (pipeline_      ││   │ (pipeline_gateway) │
+              │  compute.py)    ││   │ broadcast 루프     │
+              │                 ││   │ price_pass 루프    │
+              │ tick + control  ││   └────────┬───────────┘
+              │ 동시 대기        ││            │
+              └────┬────────────┘│            ▼
+                   │             │   ┌────────────────────┐
+                   ▼             │   │  WS Manager        │
+              ┌────────────┐    │   │  (프론트엔드 전송)   │
+              │control_queue│   │   └────────────────────┘
+              │ (500)       │   │
+              │ PriorityQueue│  │
+              └─────────────┘   │
+                                ▼
+                    ┌────────────────────┐
+                    │  Gateway Loop      │
+                    │  price_pass_through│
+                    │  → sector-price-tick│
+                    └────────────────────┘
+```
+
+| 큐 | 크기 | 타입 | 정책 |
+|----|------|------|------|
+| `tick_queue` | 5000 | asyncio.Queue | 드롭 정책 (가득 시 가장 오래된 데이터 버림) |
+| `broadcast_queue` | 2000 | asyncio.Queue | 상태형/이벤트형 구분 |
+| `control_queue` | 500 | asyncio.PriorityQueue | 최우선순위 (설정 변경 등) |
+| `price_pass_through_queue` | 4096 | asyncio.Queue | 현재가 직통 (Compute 우회) |
+
+### 5.2 Compute Loop (`pipeline_compute.py`)
+
+```python
+# 핵심 구조: tick_queue + control_queue 동시 대기
+while _compute_running:
+    tick_task = asyncio.ensure_future(tick_queue.get())
+    control_task = asyncio.ensure_future(control_queue.get())
+    done, pending = await asyncio.wait({tick_task, control_task}, FIRST_COMPLETED)
+    
+    # control 신호 처리 (UPDATE_CONFIG, RECOMPUTE_SECTOR, DYNAMIC_REG/UNREG)
+    # tick 데이터 처리 → _process_tick_data()
+    await asyncio.sleep(0)  # 협력적 양보 (이벤트 루프 고갈 방지)
+```
+
+**별도 루프:** `_sector_recompute_loop` — 10초 주기 디바운스 타이머 기반 업종 재계산
+
+### 5.3 Gateway Loop (`pipeline_gateway.py`)
+
+두 개의 독립적인 소비 루프를 `asyncio.gather`로 동시 실행:
+- `_broadcast_loop`: `broadcast_queue` 소비 → WebSocket 전송 (코알레싱 100ms)
+- `_price_pass_through_loop`: `price_pass_through_queue` 소비 → `sector-price-tick` 이벤트 즉시 전송
+
+---
+
+## 6. 데이터 흐름
+
+### 6.1 실시간 시세 흐름
+
+```
+증권사 WS ──► engine_ws_dispatch.py
+                 ├──► master_stocks_cache 갱신 (메모리)
+                 ├──► tick_queue ──► Compute Loop ──► sector 재계산
+                 ├──► price_pass_through_queue ──► Gateway ──► WS "sector-price-tick"
+                 ├──► broadcast_queue (real-data) ──► WS Manager ──► 프론트엔드
+                 └──► _check_realtime_latency() ──► 200ms 초과 시 자동매매 중단
+```
+
+### 6.2 업종 점수 계산 흐름
+
+```
+tick 이벤트
+    │
+    ▼
+request_sector_recompute(code)  — dirty 코드 등록 + 디바운스 타이머
+    │
+    ▼ (10초 디바운스 또는 즉시)
+_flush_sector_recompute_impl()
+    │
+    ├── 캐시 없음 → _full_recompute()     — 전체 재계산 (콜드 스타트)
+    ├── 스켈레톤 모드 → _skeleton_incremental_update()  — O(1) 델타 연산
+    └── 일반 캐시 → 증분 재계산             — dirty 섹터만 교체
+         │
+         ▼
+    compute_sector_scores()
+         │
+         ▼
+    calculate_weighted_scores()  — min-max 정규화 + 가중치 점수
+         │
+         ▼
+    업종 컷오프 (min_rise_ratio 미만 → rank=0)
+         │
+         ▼
+    build_buy_targets_from_settings()  — 매수 타겟 큐 생성
+         │
+         ▼
+    _sector_summary_cache 갱신 (참조 교체)
+         │
+         ├──► notify_desktop_sector_scores()  — delta 전송
+         ├──► notify_buy_targets_update()
+         └──► evaluate_buy_candidates()  — 매수 시도
+```
+
+### 6.3 매수 주문 흐름
+
+```
+evaluate_buy_candidates()
+    │
+    ├── auto_buy_effective() 게이트 (마스터스위치 + 시간범위 + auto_buy_on)
+    ├── 최대 보유 종목 수 체크
+    ├── 일일 매수 한도 체크
+    │
+    ▼ (종목별 루프)
+execute_buy()
+    │
+    ├── 실시간 지연 게이트 (200ms 초과 시 차단)
+    ├── 자동매매 게이트 (force_buy 시 우회)
+    ├── 중복 매수 차단 (오늘 매수 / 보유 중)
+    ├── 쓰로틀 (30초 내 재신호 차단)
+    ├── 최대 보유 종목 수 체크
+    ├── RiskManager 게이트
+    │   ├── 테스트모드: CircuitBreaker만 체크
+    │   └── 실전: CircuitBreaker + 일일손실한도 + 예수금
+    │
+    ├── 테스트모드: settlement_engine.check_test_buy_power()
+    │
+    ▼ (주문 전송)
+    테스트모드: dry_run.fake_send_order()
+    실전: router.order.send_order()
+         │
+         ├── 성공 → RiskManager.record_success() → 체결이력 기록
+         └── 실패 → RiskManager.record_failure() → CircuitBreaker OPEN 시 마스터 OFF
+```
+
+### 6.4 매도 주문 흐름
+
+```
+check_sell_conditions()  — 스냅샷 루프에서 주기적 호출
+    │
+    ├── 실시간 지연 게이트
+    ├── RiskManager CircuitBreaker 체크
+    │
+    ▼ (종목별)
+    ├── 손절: pnl_rate <= -loss_val
+    ├── 익절: pnl_rate >= tp_val
+    └── T/S: 최고점 대비 하락률 >= ts_drop_val
+         │
+         ▼
+    execute_sell()
+         │
+         ├── 테스트모드: dry_run.fake_send_order()
+         ├── 실전: router.order.send_order()
+         │
+         ├── 성공 → 체결이력 기록 → RiskManager.record_success()
+         └── 실패 → RiskManager.record_failure()
+```
+
+---
+
+## 7. 업종 점수 계산 엔진
+
+### 7.1 데이터 모델
+
+```
+StockScore (종목 단위)
+├── code, name, sector
+├── change_rate, change, cur_price
+├── trade_amount, avg_amt_5d, ratio_5d_pct
+├── strength (체결강도)
+├── market_type, nxt_enable
+├── guard_pass, guard_reason
+└── boost_score (가산점)
+
+SectorScore (업종 단위)
+├── sector, total, rise_count, rise_ratio
+├── avg_change_rate, total_trade_amount
+├── scored_trade_amount (트리밍 후)
+├── scored_rise_ratio (트리밍 후)
+├── final_score (가중치 최종 점수 0~100)
+├── metric_scores (지표별 정규화 점수)
+├── rank (1=최강, 0=순위 없음)
+└── stocks: list[StockScore]
+
+SectorSummary (전체 결과)
+├── sectors: list[SectorScore]  — 강도 순위 정렬
+├── buy_targets: list[BuyTarget]
+├── blocked_targets: list[BuyTarget]
+├── is_skeleton_mode
+└── version
+```
+
+### 7.2 가중치 점수 시스템
+
+**기본 지표 (MetricDef):**
+| 키 | 라벨 | 기본 가중치 | 추출값 |
+|----|------|------------|--------|
+| `total_trade_amount` | 거래대금 | 0.5 | `scored_trade_amount` |
+| `rise_ratio` | 상승종목비율 | 0.5 | `scored_rise_ratio` |
+
+**계산 과정:**
+1. 가중치 정규화 (합 = 1.0, 음수 클램프, 0이면 기본값)
+2. 각 지표별 min-max 정규화 → 0~100 점
+3. `final_score = Σ(normalized_i × weight_i)`
+4. 정렬: `final_score` 내림차순 → `rise_ratio` 내림차순 → 업종명 오름차순 (결정적 정렬)
+5. rank 부여 (1-based)
+
+### 7.3 트리밍 (Trimming)
+
+- **등락률 트리밍** (`trim_change_rate_pct`): 상하위 N% 종목 제외 후 상승비율 계산
+- **거래대금 트리밍** (`trim_trade_amt_pct`): 상하위 N% 종목 제외 후 평균 계산
+- 트리밍 후 값은 `scored_*` 필드에 저장, 표시용은 원본값 유지
+
+### 7.4 필터링
+
+- **1차 필터**: 5일평균거래대금 (`min_avg_amt_eok`) — 업종 그룹핑 전 적용
+- **업종 컷오프**: `min_rise_ratio` 미만 업종은 `rank=0` (매수 대상 제외)
+- **개별 종목 가드**: 상승률 과열(`block_rise_pct`), 하락률 과열(`block_fall_pct`), 체결강도 최소값
+
+### 7.5 증분 연산 모드
+
+| 모드 | 조건 | 동작 |
+|------|------|------|
+| 전체 재계산 | 캐시 없음 (콜드 스타트) | `compute_full_sector_summary()` |
+| 증분 재계산 | 캐시 있음, dirty 섹터만 | dirty 섹터만 재계산 → 병합 → 전체 정규화 |
+| 스켈레톤 증분 | `is_skeleton_mode=True` | O(1) 상태 전환 매트릭스 (rise_count ±1) |
+
+**스켈레톤 델타 연산 (4대 상태 전환):**
+| 이전 → 현재 | 동작 |
+|-------------|------|
+| False → True (상승 전환) | `rise_count += 1` |
+| True → False (하락 전환) | `rise_count -= 1` |
+| False → False | 연산 없음 (O(1) 쇼트 서킷) |
+| True → True | 연산 없음 (O(1) 쇼트 서킷) |
+
+### 7.6 가산점 (Boost Score)
+
+| 가산점 | 조건 | 설정 키 |
+|--------|------|---------|
+| 고가 돌파 | 5일 고가 돌파 시 | `boost_high_breakout_on/score` |
+| 호가 잔량비 | 매수호가/매도호가 비율 | `boost_order_ratio_on/pct/score` |
+| 프로그램 매수 | 프로그램 순매수 | `boost_program_net_buy_on/score` |
+
+---
+
+## 8. 주문 실행 계층
+
+### 8.1 주문 경로 이원화
+
+```
+                    ┌─────────────────────┐
+                    │  AutoTradeManager   │
+                    │  (trading.py)       │
+                    └──────┬──────────────┘
+                           │
+              ┌────────────┴────────────┐
+              │                         │
+     테스트모드                      실전모드
+              │                         │
+     dry_run.fake_send_order()    router.order.send_order()
+     (가상 체결, 지연 시뮬레이션)    (증권사 REST API 주문)
+              │                         │
+     settlement_engine              증권사 서버
+     .on_buy_fill() / .on_sell_fill()
+     (가상 잔고 갱신)
+```
+
+### 8.2 RiskManager (주문 전 관문)
+
+```
+RiskManager
+├── CircuitBreaker
+│   ├── CLOSED → OPEN: 주문 실패 5회 연속
+│   ├── OPEN → HALF_OPEN: 60초 경과
+│   ├── HALF_OPEN → CLOSED: 테스트 주문 성공
+│   └── HALF_OPEN → OPEN: 테스트 주문 실패
+├── 일일 손실 한도 (-500,000원)
+├── 예수금 잔액 검사
+└── 단일 종목 비중 한도 (TODO)
+```
+
+**CircuitBreaker OPEN 시:** 마스터 스위치 강제 OFF + 프론트엔드 브로드캐스트
+
+### 8.3 자동매매 게이트
+
+```
+auto_buy_effective():
+  ├── _master_on(): time_scheduler_on + 공휴일 가드
+  ├── auto_buy_on == True
+  └── _in_time_range(buy_time_start, buy_time_end)
+
+auto_sell_effective():
+  ├── _master_on(): time_scheduler_on + 공휴일 가드
+  ├── auto_sell_on == True
+  └── _in_time_range(sell_time_start, sell_time_end)
+```
+
+### 8.4 매수 쿨다운 및 쓰로틀
+
+| 항목 | 기본값 | 설명 |
+|------|--------|------|
+| `sector_buy_cooldown_sec` | 90초 | 종목별 매수 쿨다운 |
+| `MIN_INTERVAL` | 30초 | 동일 종목 연속 신호 차단 |
+| `_bought_today` | set | 오늘 매수한 종목 재매수 차단 |
+| `max_stock_cnt` | 설정값 | 최대 보유 종목 수 |
+| `max_daily_total_buy_amt` | 설정값 | 일일 최대 매수 금액 |
+
+---
+
+## 9. 정산 엔진 (Settlement Engine)
+
+테스트 모드의 가상 예수금/투자금 관리.
+
+### 9.1 상태
+
+```
+_accumulated_investment  — 누적 투자금 (가상 예수금)
+_orderable               — 주문 가능 금액
+_initial_deposit         — 초기 입금액 (기본 10,000,000원)
+```
+
+### 9.2 주요 함수
+
+| 함수 | 설명 |
+|------|------|
+| `init(deposit)` | 초기 입금, `_accumulated_investment = _orderable = deposit` |
+| `on_buy_fill(price, qty, fee)` | 매수 체결: `_orderable -= (price*qty + fee)` |
+| `on_sell_fill(price, qty, fee, tax)` | 매도 체결: `_orderable += (price*qty - fee - tax)` |
+| `charge(amount)` | 입금: `_accumulated_investment += amount, _orderable += amount` |
+| `get_available_cash()` | 주문 가능 금액 조회 |
+| `reset(deposit)` | 전체 리셋 (사용자 수동) |
+| `save_state()` / `restore_state()` | SQLite 영속화 / 복원 |
+
+### 9.3 영속화
+
+- `settlement_state` 테이블 (id=1 단일 행)
+- `db_writer` 큐 경유 비동기 저장
+- 하위 호환: `deposit` / `available_cash` 구버전 키 처리
+
+---
+
+## 10. Dry Run (테스트 모드 가상 주문)
+
+```
+dry_run.fake_send_order()
+├── 매수: 가상 포지션 생성 (qty, avg_price)
+│   ├── settlement_engine.on_buy_fill()
+│   └── test_positions 테이블 저장
+├── 매도: 가상 포지션 감소/제거
+│   ├── settlement_engine.on_sell_fill()
+│   └── test_positions 테이블 갱신
+└── 0B 틱: cur_price 갱신 → 평가손익 재계산
+```
+
+- 가상 포지션은 메모리 + SQLite `test_positions` 테이블에 영속화
+- 체결 지연 시뮬레이션 (실제 체결 타이밍 모방)
+- 수수료/세금 계산 포함
+
+---
+
+## 11. 데이터베이스 계층
+
+### 11.1 연결 관리
+
+```python
+# database.py
+_db_connection: aiosqlite.Connection  — 단일 커넥션
+_db_lock: asyncio.Lock                — 쓰기 직렬화
+
+# Pragmas
+PRAGMA journal_mode = WAL
+PRAGMA synchronous = NORMAL
+PRAGMA cache_size = -64000  (64MB)
+PRAGMA temp_store = MEMORY
+```
+
+### 11.2 DB Writer (쓰기 직렬화 큐)
+
+```
+비즈니스 로직 ──► execute_db_write(DBWriteOperation) ──► _db_write_queue (100)
+                                                              │
+                                                              ▼
+                                                        _db_writer_loop()
+                                                              │
+                                                        _process_operation()
+                                                              │
+                                                        async with get_db_lock()
+                                                              │
+                                                        conn.execute() + commit()
+```
+
+### 11.3 테이블 스키마
+
+| 테이블 | 용도 |
+|--------|------|
+| `master_stocks_table` | 전체 종목 마스터 (코드, 이름, 업종, 시장, NXT) |
+| `stock_5d_array` | 5일봉 데이터 (거래대금, 고가 등) |
+| `settlement_state` | 정산 엔진 상태 (단일 행) |
+| `test_positions` | 테스트 모드 가상 포지션 |
+| `trades` | 체결 이력 (매수/매도) |
+| `trading_days_cache` | 거래일 캐시 (연 1회 갱신) |
+| `sectors` | 업종 정의 (커스텀 업종명) |
+| `integrated_system_settings` | 통합 설정 (단일 행 SSOT) |
+| `broker_specs` | 증권사 TR 스펙 (role_mappings) |
+| `journal` | 주문 저널 (요청/체결/취소 추적) |
+
+---
+
+## 12. WebSocket 통신 계층
+
+### 12.1 WSManager (프론트엔드 ↔ 백엔드)
+
+```
+WSManager (싱글톤)
+├── _clients: set[WebSocket]           — 연결된 클라이언트
+├── _client_active_page: dict          — per-client 활성 페이지
+├── _client_subscribed_fids: dict      — per-client 구독 FID
+├── _state_queue: dict                 — 상태형 (코알레싱, 최신값만)
+├── _event_queue: list                 — 이벤트형 (순서 보장)
+└── _flush_task                         — 0.1초 주기 배치 전송
+```
+
+**전송 방식:**
+| 타입 | 방식 | 특징 |
+|------|------|------|
+| `real-data` | 즉시 전송 | FID 필터 + zlib 압축, per-client 페이지 필터링 |
+| 상태형 이벤트 | 코알레싱 | `(event_type, code)` 키로 최신값 덮어쓰기 |
+| 이벤트형 | 순서 보장 | `_event_queue`에 순차 누적 |
+| 페이지별 | 타겟 전송 | 활성 페이지 클라이언트에게만 전송 |
+
+**Graceful Shutdown:** 전체 WS 끊김 후 1초 대기 → 재연결 없으면 SIGTERM
+
+### 12.2 주요 이벤트
+
+| 이벤트 | 타입 | 설명 |
+|--------|------|------|
+| `real-data` | 즉시 | 실시간 시세 (FID 압축) |
+| `sector-price-tick` | 즉시 | 현재가 직통 (Compute 우회) |
+| `sector-scores` | 상태형 | 업종 점수 (delta 전송) |
+| `buy-targets-update` | 이벤트형 | 매수 타겟 변경 |
+| `account-update` | 상태형 | 계좌 정보 |
+| `engine-status` | 상태형 | 엔진 상태 |
+| `market-phase` | 이벤트형 | 장 단계 (개장/장중/장마감 etc.) |
+| `circuit_breaker_open` | 이벤트형 | 서킷 브레이커 알림 |
+| `engine-ready` | 이벤트형 | 엔진 준비 완료 |
+| `buy-history-append` | 이벤트형 | 매수 체결 단건 |
+| `sell-history-append` | 이벤트형 | 매도 체결 단건 + 일자 요약 |
+
+---
+
+## 13. 시간 스케줄러 (`daily_time_scheduler.py`)
+
+### 13.1 타이머 기반 트리거
+
+```
+asyncio.call_later() 기반 — 매일 재스케줄링
+
+07:50  _on_ws_subscribe_start()     — WS 구독 시작 + GC 비활성화
+09:00  KRX 개장 감지
+15:30  KRX after hours / NXT aftermarket 시작
+16:01  KRX unsubscribe              — KRX 종목 구독 해제
+18:00  NXT aftermarket 종료
+20:00  _on_ws_subscribe_end()       — WS 구독 종료 + GC 정상화
+20:40  _fire_unified_confirmed_fetch() — 확정 시세 + 5일봉 다운로드
+00:00  _on_midnight()               — 일일 리셋 (거래일 판단, 타이머 재예약)
+```
+
+### 13.2 자동매매 타이머
+
+```
+buy_time_start  — auto_buy_effective() 활성화
+buy_time_end    — auto_buy_effective() 비활성화
+sell_time_start — auto_sell_effective() 활성화
+sell_time_end   — auto_sell_effective() 비활성화
+```
+
+### 13.3 WS 구독 구간 판정
+
+```python
+is_ws_subscribe_window(settings):
+  1. 주말 차단 (weekday >= 5)
+  2. 공휴일 가드: holiday_guard_on → is_trading_day() 체크
+  3. ws_subscribe_on 마스터 스위치 체크
+  4. ws_subscribe_start <= now <= ws_subscribe_end
+```
+
+### 13.4 엔진 루프의 WS 구간 감지
+
+`engine_loop.py`의 메인 루프는 `ws_window_changed_event`를 대기하며:
+- 구간 진입: `ConnectorManager` 생성 + WS 연결 + 종목 구독
+- 구간 종료: WS 연결 해제 + ConnectorManager 정리
+
+---
+
+## 14. 상태 관리 (SSOT)
+
+### 14.1 EngineState (메모리 상주)
+
+```python
+# engine_state.py — 싱글톤
+class EngineState:
+    # 엔진 상태
+    running, login_ok, access_token
+    connector_manager, active_connector
+    broker_tokens: dict[str, str]
+    
+    # 데이터 캐시
+    master_stocks_cache: dict[str, dict]     — 전체 종목 정보 (단일 소스)
+    integrated_system_settings_cache: dict   — 통합 설정 (SSOT)
+    positions: list                          — 보유 종목
+    sector_score_index: dict                 — 업종별 점수 인덱스
+    
+    # 이벤트/락
+    engine_stop_event, ws_window_changed_event
+    data_ready_event, token_ready_event
+    bootstrap_event, sector_summary_ready_event
+    engine_ready_event, server_ready_event
+    
+    # 스케줄러 상태
+    ws_subscribe_window_active: bool | None
+    ws_subscribe_timer_handles: list
+    auto_trade_timer_handles: list
+    midnight_timer_handle
+    
+    # 실시간 상태
+    realtime_latency_exceeded: bool          — 200ms 초과 시 자동매매 중단
+    market_phase: dict                       — KRX/NXT 장 단계
+```
+
+### 14.2 설정 계층
+
+```
+SQLite (integrated_system_settings 테이블)
+    │
+    ▼ load_integrated_system_settings()
+state.integrated_system_settings_cache (메모리 SSOT)
+    │
+    ├── 모든 모듈이 이 캐시를 직접 참조
+    ├── 설정 변경 시: settings.py → DB 저장 → 캐시 갱신 → apply_settings_change()
+    └── apply_settings_change() → 타이머 재예약 / 섹터 재계산 / WS 구간 재판정
+```
+
+---
+
+## 15. 증권사 연결 계층
+
+### 15.1 Broker Router 패턴
+
+```
+broker_factory.py
+    │
+    ├── get_router() → BrokerRouter (싱글톤)
+    │   ├── .auth → AuthProvider (토큰 발급)
+    │   ├── .order → OrderProvider (주문 전송)
+    │   ├── .stock → StockProvider (종목/시세 조회)
+    │   └── .real → RealDataProvider (실시간 데이터)
+    │
+    └── broker_registry.py
+        ├── _create_provider(type, broker_id, settings, auth_cache)
+        └── BROKER_DISPLAY_NAMES
+```
+
+### 15.2 ConnectorManager (다중 증권사 WS)
+
+```
+ConnectorManager
+├── _connectors: dict[str, BrokerConnector]
+│   ├── kiwoom_connector.py  — 키움증권 WS
+│   └── ls_connector.py      — LS증권 WS
+├── connect_all()             — 모든 증권사 WS 연결
+├── disconnect_all()          — 모든 WS 해제
+├── is_connected()            — 연결 상태 확인
+├── set_message_callback()    — 시세 수신 콜백
+└── get_connector(broker_id)  — 특정 증권사 커넥터
+```
+
+### 15.3 지원 증권사
+
+| 증권사 | WS 시세 | REST 주문 | REST 계좌 | TR 스펙 |
+|--------|---------|-----------|-----------|---------|
+| 키움증권 | kiwoom_connector | kiwoom_order | kiwoom_rest | broker_specs DB |
+| LS증권 | ls_connector | ls_rest | ls_rest | broker_specs DB |
+
+---
+
+## 16. 안전장치 요약
+
+| 계층 | 장치 | 임계치 | 동작 |
+|------|------|--------|------|
+| 실시간 지연 | `_check_realtime_latency()` | 200ms | 자동매매 중단 플래그 |
+| 실시간 지연 | 경고 | 50ms | 로그 경고 |
+| 주문 실패 | CircuitBreaker | 5회 연속 | OPEN → 주문 거부 |
+| 주문 복구 | CircuitBreaker | 60초 | HALF_OPEN → 테스트 주문 |
+| 일일 손실 | RiskManager | -500,000원 | 매수 차단 |
+| 예수금 | RiskManager | 주문액 > 잔액 | 매수 차단 |
+| 틱 폭주 | tick_queue 드롭 | 5000개 | 가장 오래된 데이터 버림 |
+| 이벤트 루프 | `asyncio.sleep(0)` | 매 틱 | 협력적 양보 |
+| GC 지연 | `gc.disable()` | WS 구간 중 | HFT 지연 방지 |
+| WS 끊김 | shutdown timer | 1초 | 재연결 없으면 SIGTERM |
+
+---
+
+## 17. 장마감 파이프라인
+
+```
+20:00 _on_ws_subscribe_end()
+  ├── GC 정상화 (gc.enable() + gc.collect())
+  ├── 실시간 구독 전체 해제 (_trigger_unreg_all)
+  ├── time_scheduler_on = False, ws_subscribe_on = False
+  └── WS 연결 해제 (engine_loop에서)
+
+20:40 _fire_unified_confirmed_fetch()
+  ├── 확정 시세 다운로드 (당일 종가)
+  │   ├── 전체 종목 확정 가격/거래대금 DB 저장
+  │   └── master_stocks_cache 확정 데이터 갱신
+  ├── 5일봉 다운로드
+  │   ├── 최근 5거래일 일봉 데이터
+  │   ├── 5일평균거래대금 계산
+  │   ├── high_price (5일 고가) 갱신
+  │   └── stock_5d_array 테이블 저장
+  └── 업종 요약 전체 재계산 (확정 데이터 기반)
+
+00:00 _on_midnight()
+  ├── 일일 리셋 (last_reset_date 갱신)
+  ├── 거래일 판단 → 타이머 재예약
+  └── 체결 이력 만료 레코드 정리
+```
+
+---
+
+## 18. 프론트엔드 아키텍처
+
+### 18.1 페이지 구조
+
+| 페이지 | 파일 | 설명 |
+|--------|------|------|
+| 업종순위 | `sector-ranking.ts` | 업종별 점수/순위 테이블 |
+| 업종별종목 | `sector-stock.ts` | 선택 업종 내 종목 시세 |
+| 매수후보 | `buy-target.ts` | 매수 타겟 + 차단 종목 |
+| 보유종목 | `sell-position.ts` | 보유 종목 + 손익 |
+| 수익현황 | `profit-overview.ts` | 일별 수익 그래프 + 요약 |
+| 매수설정 | `buy-settings.ts` | 매수 관련 설정 |
+| 매도설정 | `sell-settings.ts` | 매도 관련 설정 |
+| 일반설정 | `general-settings.ts` | 증권사/계좌/시간 설정 |
+| 종목분류 | `stock-classification.ts` | 업종 매핑 관리 |
+
+### 18.2 상태 관리
+
+```
+stores/
+├── store.ts               — 글로벌 스토어 (계좌, 엔진상태)
+├── hotStore.ts            — 실시간 시세 핫 스토어 (빈번한 갱신)
+├── uiStore.ts             — UI 상태 (페이지, 모달, 로딩)
+├── stockClassificationStore.ts — 종목 분류 상태
+└── index.ts               — 스토어 집합
+```
+
+### 18.3 통신 계층
+
+```
+api/           — REST API 클라이언트
+binding.ts     — WebSocket 이벤트 바인딩 (이벤트 → 스토어 갱신)
+main.ts        — 앱 진입점, WS 연결 관리
+router.ts      — 해시 기반 라우터
+settings.ts    — 프론트엔드 설정
+```
+
+### 18.4 컴포넌트
+
+```
+components/
+├── canvas-profit-chart.ts  — Canvas 기반 수익 차트
+├── virtual-scroller.ts     — 대량 데이터 가상 스크롤
+└── common/ (19개)          — 공통 UI 컴포넌트
+```
+
+---
+
+## 19. 디렉토리 구조
+
+```
+SectorFlow/
+├── main.py                          — 앱 진입점 (Uvicorn 실행)
+├── ARCHITECTURE.md                  — 본 문서
+├── SectorFlow.command               — macOS 실행 스크립트
+│
+├── backend/
+│   ├── init_db.py                   — DB 스키마 초기화 스크립트
+│   ├── requirements.txt             — Python 의존성
+│   ├── data/
+│   │   ├── stocks.db                — SQLite DB 파일
+│   │   └── broker_specs/            — 증권사 TR 스펙 JSON
+│   ├── protobuf/                    — Protobuf 이벤트 정의
+│   └── app/
+│       ├── config.py                — 앱 설정
+│       ├── core/                    — 핵심 모듈
+│       │   ├── broker_*.py          — 증권사 추상화 (Router, Factory, Registry)
+│       │   ├── kiwoom_*.py          — 키움증권 구현 (Connector, REST, Order)
+│       │   ├── ls_*.py              — LS증권 구현 (Connector, REST)
+│       │   ├── connector_manager.py — 다중 증권사 WS 관리
+│       │   ├── settings_*.py        — 설정 관리 (파일, 스토어, 기본값)
+│       │   ├── sector_mapping.py    — 종목 → 업종 매핑
+│       │   ├── trading_calendar.py  — 거래일 캘린더
+│       │   ├── stock_filter.py      — 종목 필터링
+│       │   ├── journal.py           — 주문 저널링
+│       │   └── encryption.py        — API 키 암호화
+│       ├── domain/                  — 도메인 로직 (순수 계산)
+│       │   ├── models.py            — 데이터 모델 (StockScore, SectorScore etc.)
+│       │   ├── sector_calculator.py — 업종 점수 계산
+│       │   ├── sector_score.py      — 정규화 + 가중치 계산
+│       │   ├── sector_filter.py     — 업종 필터링/그룹핑
+│       │   ├── buy_filter.py        — 매수 타겟 생성 + 가드
+│       │   └── stock_filter.py      — 종목 필터 로직
+│       ├── services/                — 비즈니스 서비스 계층
+│       │   ├── engine_state.py      — 전역 상태 (싱글톤)
+│       │   ├── engine_loop.py       — 엔진 메인 루프
+│       │   ├── engine_lifecycle.py  — 엔진 시작/중지/정산
+│       │   ├── engine_service.py    — 엔진 서비스 (설정 적용, 스냅샷)
+│       │   ├── engine_bootstrap.py  — 부트스트랩 (초기 데이터 로드)
+│       │   ├── engine_cache.py      — 캐시 선행 로드
+│       │   ├── engine_ws.py         — WS 구독 관리
+│       │   ├── engine_ws_dispatch.py— WS 시세 파싱/라우팅
+│       │   ├── engine_ws_reg.py     — WS 종목 구독 등록/해제
+│       │   ├── engine_ws_parsing.py — WS 데이터 파싱
+│       │   ├── engine_sector_confirm.py — 업종 재계산 (증분/스켈레톤)
+│       │   ├── engine_snapshot.py   — 스냅샷 생성
+│       │   ├── engine_account*.py   — 계좌 관리/조회/알림
+│       │   ├── engine_radar*.py     — 레이더 종목 관리
+│       │   ├── engine_strategy_core.py — 매수 전략 코어
+│       │   ├── trading.py           — AutoTradeManager (매수/매도 실행)
+│       │   ├── buy_order_executor.py— 매수 후보 평가/실행
+│       │   ├── dry_run.py           — 테스트 모드 가상 주문
+│       │   ├── settlement_engine.py — 정산 엔진 (가상 잔고)
+│       │   ├── trade_history.py     — 체결 이력 (메모리 + DB)
+│       │   ├── risk_manager.py      — 리스크 관리자
+│       │   ├── circuit_breaker.py   — 서킷 브레이커
+│       │   ├── account_manager.py   — 계좌 관리자
+│       │   ├── daily_time_scheduler.py — 시간 스케줄러
+│       │   ├── market_close_pipeline.py — 장마감 파이프라인
+│       │   ├── sector_data_provider.py — 업종 데이터 제공자
+│       │   ├── core_queues.py       — 전역 큐 정의 (core_queues.py)
+│       │   ├── core_queues.py       — 전역 큐 (4개)
+│       │   ├── backend_coalescing.py— 백엔드 코알레싱
+│       │   ├── auto_trading_effective.py — 자동매매 유효성 판정
+│       │   ├── ws_subscribe_control.py — WS 구독 제어
+│       │   ├── telegram_bot.py      — 텔레그램 봇
+│       │   ├── data_manager.py      — 데이터 매니저 (종목명 etc.)
+│       │   ├── state_manager.py     — 상태 관리자
+│       │   └── notification_worker.py — 알림 워커
+│       ├── pipelines/               — 파이프라인 루프
+│       │   ├── pipeline_compute.py  — Compute 루프 (tick + control)
+│       │   └── pipeline_gateway.py  — Gateway 루프 (broadcast + price)
+│       ├── db/                      — 데이터베이스 계층
+│       │   ├── database.py          — 연결 관리 (단일 커넥션)
+│       │   ├── db_writer.py         — 쓰기 직렬화 큐
+│       │   └── stock_tables.py      — 테이블 정의 + 마이그레이션
+│       └── web/                     — 웹 서버 계층
+│           ├── app.py               — FastAPI 앱 (lifespan)
+│           ├── ws_manager.py        — WebSocket 관리자
+│           ├── auth.py              — 인증
+│           ├── deps.py              — 의존성 주입
+│           ├── middleware.py        — 미들웨어
+│           └── routes/              — REST API + WS 라우트
+│               ├── ws.py            — WebSocket 엔드포인트
+│               ├── ws_orders.py     — 주문 WS
+│               ├── ws_settings.py   — 설정 WS
+│               ├── ws_subscribe.py  — 구독 제어 WS
+│               ├── settings.py      — 설정 REST API
+│               ├── status.py        — 상태 REST API
+│               ├── account.py       — 계좌 REST API
+│               ├── trade.py         — 주문 REST API
+│               ├── settlement.py    — 정산 REST API
+│               ├── market.py        — 시장 정보 REST API
+│               ├── stock_classification.py — 종목 분류 REST API
+│               └── auth.py          — 인증 REST API
+│
+└── frontend/
+    ├── index.html
+    ├── package.json
+    ├── tsconfig.json
+    └── src/
+        ├── main.ts                  — 앱 진입점
+        ├── router.ts                — 해시 라우터
+        ├── binding.ts               — WS 이벤트 바인딩
+        ├── settings.ts              — 프론트엔드 설정
+        ├── api/                     — REST API 클라이언트
+        ├── stores/                  — 상태 관리
+        ├── pages/                   — 페이지 컴포넌트 (9개)
+        ├── components/              — 공통 컴포넌트
+        │   ├── common/ (19개)
+        │   ├── canvas-profit-chart.ts
+        │   └── virtual-scroller.ts
+        ├── layout/                  — 레이아웃 컴포넌트
+        ├── types/                   — TypeScript 타입 정의
+        └── utils/                   — 유틸리티
+```
+
+---
+
+## 20. REST API 엔드포인트
+
+| 라우트 | 파일 | 주요 기능 |
+|--------|------|-----------|
+| `/api/status` | status.py | 엔진 상태, 계좌 정보, 시장 단계 |
+| `/api/settings` | settings.py | 설정 조회/수정 |
+| `/api/account` | account.py | 계좌 잔고 조회 |
+| `/api/trade` | trade.py | 수동 주문 (매수/매도) |
+| `/api/settlement` | settlement.py | 가상 잔고 조회/리셋 |
+| `/api/market` | market.py | 시장 정보, 거래일 |
+| `/api/stock-classification` | stock_classification.py | 업종 매핑 CRUD |
+| `/api/auth` | auth.py | 로그인/토큰 |
+| `/ws/prices` | ws.py | 통합 WebSocket (시세+이벤트) |
+| `/ws/orders` | ws_orders.py | 주문 체결 WebSocket |
+| `/ws/settings` | ws_settings.py | 설정 변경 WebSocket |
+| `/ws/subscribe` | ws_subscribe.py | 구독 제어 WebSocket |
+
+---
+
+## 21. 엔진 생명주기 상태 머신
+
+```
+                    ┌──────────┐
+                    │  IDLE    │
+                    └────┬─────┘
+                         │ start_engine()
+                         ▼
+              ┌──────────────────────┐
+              │  INITIALIZING        │
+              │  (병렬: 캐시로드,     │
+              │   토큰발급, 스펙로드)  │
+              └──────────┬───────────┘
+                         │ gather() 완료
+                         ▼
+              ┌──────────────────────┐
+              │  READY               │
+              │  engine_ready_event  │
+              │  .set()              │
+              └──────────┬───────────┘
+                         │
+              ┌──────────┴───────────┐
+              │                      │
+         WS 구간 진입            WS 구간 밖
+              │                      │
+              ▼                      ▼
+    ┌──────────────────┐    ┌──────────────────┐
+    │  WS_CONNECTED    │    │  WS_DISCONNECTED │
+    │  (실시간 수신)     │    │  (대기/배치)      │
+    └──────────────────┘    └──────────────────┘
+              │                      │
+              └──────────┬───────────┘
+                         │ stop_engine()
+                         ▼
+                    ┌──────────┐
+                    │  STOPPED │
+                    └──────────┘
+```
+
+---
+
+## 22. 코알레싱 (Coalescing) 전략
+
+### 22.1 백엔드 코알레싱 (`BackendCoalescing`)
+
+- 업종 점수/계좌 정보 등 주기적 데이터를 일정 간격으로 버퍼링 후 일괄 전송
+- WebSocket 난사 방지
+- 설정 가능한 버퍼링 간격
+
+### 22.2 WSManager 코알레싱
+
+- **상태형 이벤트**: `(event_type, code)` 키로 최신값 덮어쓰기 — 동일 종목/이벤트는 최신값만 전송
+- **이벤트형 이벤트**: 순서 보장, 누적 전송
+- **flush 루프**: 0.1초 주기 (`_FLUSH_INTERVAL`) 또는 이벤트 도착 즉시
+
+### 22.3 Gateway 코알레싱
+
+- `_COALESCE_MS = 100ms` — 동일 종목 업데이트 병합
+
+---
+
+## 23. 텔레그램 알림
+
+```
+telegram_bot.py
+├── 매수 주문 전송: 🚀 [자동매매] {종목명} {수량}주 매수 주문
+├── 매수 실패: ⚠️ [매수실패] {종목명}({코드}) 주문 전송 실패
+├── 매도 주문 전송: 📤 [자동매매] {종목명} {수량}주 매도 주문
+├── 매도 실패: ⚠️ [매도실패] {종목명}({코드}) 주문 전송 실패
+└── 설정: tele_on 토글로 시작/중지
+```
+
+- `asyncio.to_thread` 기반 비동기 폴링
+- 엔진 기동 후 3초 지연 시작 (후순위)
+
+---
+
+## 24. 저널링 (Journaling)
+
+```
+journal.py
+├── record_order_request()  — 주문 요청 기록
+├── record_order_fill()     — 주문 체결 기록
+├── record_order_cancel()   — 주문 취소 기록
+└── Consumer Task           — 비동기 큐 기반 DB 저장
+```
+
+- 주문 생명주기 추적 (요청 → 체결/취소)
+- `journal` 테이블에 영속화
+- 체결 이력(trade_history)과 별도 추적
+
+---
+
+## 25. reconciliation (시작 정산)
+
+```
+_reconciliation_on_startup()
+├── 테스트모드: 스킵 (가상 주문이므로 불필요)
+└── 실전모드:
+    ├── 로컬 보류 주문 vs 증권사 서버 상태 비교
+    ├── ghost 데이터 정리 (서버에 없는 로컬 주문)
+    ├── 미체결 주문 확인
+    └── 포지션 동기화
+```
+
+---
+
+## 26. 향후 고려사항
+
+| 영역 | 현재 상태 | 개선 방향 |
+|------|-----------|-----------|
+| 단일 종목 비중 한도 | TODO | position_manager 연동 후 구현 |
+| 리스크 임계치 | 하드코딩 | settings DB에서 로드 |
+| 다중 증권사 WS 동시 구독 | ConnectorManager 지원 | 로드밸런싱 최적화 |
+| 프론트엔드 프레임워크 | Vanilla TS | React/Svelte 마이그레이션 검토 |
+| 백업/복구 | 수동 | 자동 백업 스크립트 |
+| 모니터링 | 로그 기반 | Prometheus/Grafana 검토 |
+| 테스트 자동화 | 수동 | pytest 기반 단위/통합 테스트 |
+
+---
+
+*본 문서는 SectorFlow 코드베이스의 실제 구현을 기반으로 작성되었습니다.  
+코드 변경 시 본 문서의 해당 섹션도 함께 갱신해 주세요.*

@@ -9,16 +9,12 @@ import asyncio
 from backend.app.core.broker_connector import BrokerConnector
 from backend.app.services.trading import AutoTradeManager
 from backend.app.services.engine_utils import LazyEvent
-from backend.app.services.state_manager import StateManager, OrderStatus
 
 
 class EngineState:
     """엔진 전역 상태를 관리하는 싱글톤 클래스."""
     
     def __init__(self):
-        # ── StateManager ─────────────────────────────────────────────────────────
-        self.state_manager: StateManager | None = None
-
         # ── 엔진 상태 ───────────────────────────────────────────────────────────
         self.running = False
         self.shutdown_requested: bool = False

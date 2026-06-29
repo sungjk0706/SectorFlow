@@ -75,6 +75,9 @@ def build_engine_settings_dict(flat: dict) -> dict:
         # 리스크
         "rate_limit_per_sec":   int(merged.get("rate_limit_per_sec", 3) or 3),
         "max_position_size":    (lambda raw: 0 if raw is None or raw == "None" or raw == "" else int(raw))(merged.get("max_position_size")),
+        "max_daily_loss_limit": int(merged.get("max_daily_loss_limit", -500000) or -500000),
+        "max_single_stock_exposure": int(merged.get("max_single_stock_exposure", 20000000) or 20000000),
+        "max_total_exposure_ratio": float(merged.get("max_total_exposure_ratio", 0.95) or 0.95),
         # 텔레그램 (복호화)
         "tele_on":              bool(merged.get("tele_on")),
         "telegram_on":          bool(merged.get("tele_on")),
@@ -180,14 +183,12 @@ def build_engine_settings_dict(flat: dict) -> dict:
     # ── 브로커 기능별 매핑 ────────
     def _normalize_broker_config(settings: dict) -> dict:
         broker = settings.get("broker", "kiwoom")
-        stock_broker = "kiwoom"
         return {
             "websocket": broker,
             "order": broker,
             "account": broker,
             "sector": broker,
             "auth": broker,
-            "stock": stock_broker,
         }
 
     result["broker_config"] = _normalize_broker_config(merged)

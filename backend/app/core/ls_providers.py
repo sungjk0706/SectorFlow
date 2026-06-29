@@ -6,15 +6,11 @@ LS증권 Provider 구현체
 
 import asyncio
 import logging
-import time
-from collections.abc import Callable
-from datetime import datetime
 
 from backend.app.core.broker_providers import (
-    AuthProvider, AccountProvider, OrderProvider, WebSocketProvider, UnifiedStockRecord
+    AuthProvider, AccountProvider, OrderProvider, WebSocketProvider
 )
 from backend.app.core.ls_rest import LsRestAPI
-from backend.app.core.trading_calendar import get_kst_today_str
 
 logger = logging.getLogger(__name__)
 
@@ -197,23 +193,6 @@ class LsOrderProvider(OrderProvider):
         
         err_msg = res.get("rsp_msg") if res else "Network Error"
         return {"success": False, "error": err_msg, "raw_res": res}
-
-
-# ── Stock Provider ─────────────────────────────────────────────────────
-class LsStockProvider:
-    def __init__(self, auth_provider: AuthProvider):
-        self._rest_api = getattr(auth_provider, "rest_api", None)
-
-    async def fetch_all_stocks(
-        self,
-        *,
-        http_timeout: float = 15.0,
-    ) -> list:
-        if self._rest_api is None:
-            return []
-        from backend.app.core.ls_stock_rest import fetch_ls_all_stocks_unified
-        return await fetch_ls_all_stocks_unified(self._rest_api, http_timeout=http_timeout)
-
 
 
 # ── WebSocket Provider ────────────────────────────────────────────────

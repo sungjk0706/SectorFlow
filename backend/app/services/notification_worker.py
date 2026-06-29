@@ -18,8 +18,10 @@ class NotificationWorker:
 
     _instance: NotificationWorker | None = None
 
+    _QUEUE_MAXSIZE = 100
+
     def __init__(self) -> None:
-        self._queue: asyncio.Queue = asyncio.Queue()
+        self._queue: asyncio.Queue = asyncio.Queue(maxsize=self._QUEUE_MAXSIZE)
         self._task: asyncio.Task | None = None
         self._running: bool = False
 

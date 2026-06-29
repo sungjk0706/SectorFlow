@@ -19,6 +19,9 @@ async def lifespan(app: FastAPI):
     # --- startup ---
     from backend.app.core.logging_config import configure_app_logging
     configure_app_logging()
+
+    from backend.app.core.memory_monitor import start_memory_monitor
+    start_memory_monitor()
     
 
     # DB Writer 시작
@@ -155,6 +158,10 @@ async def lifespan(app: FastAPI):
     state.engine_ready_event.clear()
     state.server_ready_event.clear()
     logger.info("[웹서버] 엔진 종료 완료")
+
+    from backend.app.core.memory_monitor import log_memory_snapshot, stop_memory_monitor
+    log_memory_snapshot("앱 종료")
+    stop_memory_monitor()
 
 
 app = FastAPI(

@@ -28,6 +28,7 @@ class ConnectorManager:
     def __init__(self) -> None:
         self._connectors: dict[str, BrokerConnector] = {}
         self._callback: Callable | None = None
+        self._sub_codes: dict[str, set[str]] = {}  # {broker_id: {code, ...}}
         self._build()
 
     # ── 생성 ──────────────────────────────────────────────────────────
@@ -162,18 +163,66 @@ class ConnectorManager:
         return False
 
     async def subscribe_stocks(self, codes: list[str]) -> bool:
-        """종목 실시간 구독 라우팅"""
-        for c in self._connectors.values():
-            if c.is_connected() and hasattr(c, "subscribe_stocks"):
-                return await c.subscribe_stocks(codes) # type: ignore
-        return False
+        """종목 실시간 구독 라우팅 — 최소 구독 수 커넥터 우선 분산"""
+        connected = [(bid, c) for bid, c in self._connectors.items()
+                     if c.is_connected() and hasattr(c, "subscribe_stocks")]
+        if not connected:
+            return False
+        if len(connected) == 1:
+            bid, c = connected[0]
+            ok = await c.subscribe_stocks(codes) # type: ignore
+            if ok:
+                self._sub_codes.setdefault(bid, set()).update(codes)
+            return ok
+        connected.sort(key=lambda item: len(self._sub_codes.get(item[0], set())))
+        per_conn = max(1, len(codes) // len(connected))
+        all_ok = True
+        idx = 0
+        for bid, c in connected:
+            chunk = codes[idx:idx + per_conn]
+            idx += per_conn
+            if not chunk:
+                break
+            ok = await c.subscribe_stocks(chunk) # type: ignore
+            if ok:
+                self._sub_codes.setdefault(bid, set()).update(chunk)
+            else:
+                all_ok = False
+        return all_ok
 
     async def unsubscribe_stocks(self, codes: list[str]) -> bool:
-        """종목 실시간 구독 해지 라우팅"""
-        for c in self._connectors.values():
-            if c.is_connected() and hasattr(c, "unsubscribe_stocks"):
-                return await c.unsubscribe_stocks(codes) # type: ignore
-        return False
+        """종목 실시간 구독 해지 라우팅 — 각 코드가 구독된 커넥터로 라우팅"""
+        all_ok = True
+        remaining = set(codes)
+        for bid, c in self._connectors.items():
+            if not remaining:
+                break
+            if not c.is_connected() or not hasattr(c, "unsubscribe_stocks"):
+                continue
+            subbed = self._sub_codes.get(bid, set())
+            to_unsub = list(remaining & subbed)
+            if not to_unsub:
+                continue
+            ok = await c.unsubscribe_stocks(to_unsub) # type: ignore
+            if ok:
+                subbed.difference_update(to_unsub)
+                remaining.difference_update(to_unsub)
+            else:
+                all_ok = False
+        if remaining:
+            for bid, c in self._connectors.items():
+                if not remaining:
+                    break
+                if not c.is_connected() or not hasattr(c, "unsubscribe_stocks"):
+                    continue
+                to_unsub = list(remaining)
+                ok = await c.unsubscribe_stocks(to_unsub) # type: ignore
+                if ok:
+                    remaining.clear()
+                else:
+                    all_ok = False
+                break
+        return all_ok
 
     async def subscribe_account(self) -> bool:
         """계좌 실시간 구독 라우팅"""
@@ -183,12 +232,13 @@ class ConnectorManager:
         return False
 
     async def unsubscribe_all(self) -> bool:
-        """모든 구독 해지 라우팅"""
+        """모든 구독 해지 라우팃"""
         success = False
-        for c in self._connectors.values():
+        for bid, c in self._connectors.items():
             if c.is_connected() and hasattr(c, "unsubscribe_all"):
                 if await c.unsubscribe_all(): # type: ignore
                     success = True
+            self._sub_codes.pop(bid, None)
         return success
 
     async def subscribe_dynamic(self, codes: list[str]) -> None:

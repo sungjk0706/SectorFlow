@@ -89,16 +89,14 @@ async def fetch_ka10081_daily_price(
 
     try:
         data = resp.json()
-        body_data = data.get("body") or data
-        rows = body_data.get("stk_dt_pole_chart_qry") or body_data.get("output") or []
+        rows = data.get("stk_dt_pole_chart_qry") or []
         if not rows or not isinstance(rows, list):
             _log.warning("[ka10081] 실패[데이터없음] 응답행 없음 -- %s (api:%s)", log_cd, api_cd)
             return None
 
         # 내림차순(최신순) 정렬 보장
-        date_key = "stk_bsns_date" if "stk_bsns_date" in rows[0] else "dt" if "dt" in rows[0] else "date"
-        if rows and len(rows) > 1 and date_key in rows[0] and date_key in rows[-1]:
-            if str(rows[0][date_key]) < str(rows[-1][date_key]):
+        if rows and len(rows) > 1 and "dt" in rows[0] and "dt" in rows[-1]:
+            if str(rows[0]["dt"]) < str(rows[-1]["dt"]):
                 rows = list(reversed(rows))
 
         latest = rows[0]
@@ -114,12 +112,8 @@ async def fetch_ka10081_daily_price(
             change_rate = round((change_raw / prev_close_calc) * 100, 2)
         else:
             change_rate = None
-            
-        sign = "3"
-        if change_raw > 0:
-            sign = "2"
-        elif change_raw < 0:
-            sign = "5"
+
+        sign = str(latest.get("pred_pre_sig") or "3").strip()
 
         trade_amt = _si(latest.get("trde_prica") or 0)  # 백만원 단위
         high_price = _si(latest.get("high_pric") or 0)
@@ -162,36 +156,62 @@ async def fetch_ka10081_daily_5d_data(
 
     body = {"stk_cd": api_cd_sor, "base_dt": qry_dt, "upd_stkpc_tp": "1"}
 
-    resp, hit_429 = await api._call_api(
-        url=url,
-        api_id="ka10081",
-        body=body,
-        timeout=http_timeout,
-        label=f"ka10081-5d-{log_cd}",
-    )
+    all_rows: list[dict] = []
+    cont_yn = "N"
+    next_key = ""
 
-    if not resp:
+    while True:
+        resp, hit_429 = await api._call_api(
+            url=url,
+            api_id="ka10081",
+            body=body,
+            timeout=http_timeout,
+            cont_yn=cont_yn,
+            next_key=next_key,
+            label=f"ka10081-5d-{log_cd}",
+        )
+
+        if not resp:
+            break
+
+        try:
+            data = resp.json()
+            page_rows = data.get("stk_dt_pole_chart_qry") or []
+            if not isinstance(page_rows, list):
+                break
+            all_rows.extend(page_rows)
+        except Exception as e:
+            _log.warning("[ka10081-5d] 파싱 예외 %s/%s: %s", log_cd, api_cd, e)
+            break
+
+        if len(all_rows) >= 5:
+            break
+
+        resp_cont_yn = resp.headers.get("cont-yn", "N")
+        resp_next_key = resp.headers.get("next-key", "")
+        if resp_cont_yn == "Y" and resp_next_key:
+            cont_yn = "Y"
+            next_key = resp_next_key
+            await asyncio.sleep(0.3)
+        else:
+            break
+
+    if not all_rows:
+        _log.warning("[ka10081-5d] 실패[데이터없음] 응답행 없음 -- %s (api:%s)", log_cd, api_cd)
         return None
 
     try:
-        data = resp.json()
-        body_data = data.get("body") or data
-        rows = body_data.get("stk_dt_pole_chart_qry") or body_data.get("output") or []
-        if not rows or not isinstance(rows, list):
-            _log.warning("[ka10081-5d] 실패[데이터없음] 응답행 없음 -- %s (api:%s)", log_cd, api_cd)
-            return None
+        rows = all_rows
 
         # 내림차순(최신순) 정렬 보장
-        date_key = "stk_bsns_date" if "stk_bsns_date" in rows[0] else "dt" if "dt" in rows[0] else "date"
-        if rows and len(rows) > 1 and date_key in rows[0] and date_key in rows[-1]:
-            if str(rows[0][date_key]) < str(rows[-1][date_key]):
+        if rows and len(rows) > 1 and "dt" in rows[0] and "dt" in rows[-1]:
+            if str(rows[0]["dt"]) < str(rows[-1]["dt"]):
                 rows = list(reversed(rows))
 
         # 최근 5개 추출 (신규 상장 종목 지원: 부족한 날짜는 None으로 채움)
         recent_5 = rows[:5]
         if len(recent_5) < 5:
             _log.info("[ka10081-5d] 데이터 부족 -- %d개 (필요 5개) -- %s (신규상장으로 간주, 부족한 날짜는 NULL)", len(recent_5), log_cd)
-            # 부족한 만큼 None으로 채움 (데이터 없음 구분)
             while len(recent_5) < 5:
                 recent_5.append(None)
 

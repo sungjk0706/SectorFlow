@@ -275,7 +275,6 @@ async def _handle_real_01(
     _session = parse_fid290_session(vals)
     _exch_label = {"1": "KRX", "2": "NXT"}.get(_exch, "")
     raw_cd_for_bucket = raw_cd
-    pend = {}
     diff = _ws_fid_int(vals, "11", 0) if _ws_fid_key_present(vals, "11") else 0
     rate = parse_change_rate_to_percent(_ws_fid_raw(vals, "12")) if _ws_fid_key_present(vals, "12") else 0.0
     sign = str(_ws_fid_raw(vals, "25") or "3").strip() if _ws_fid_key_present(vals, "25") else "3"
@@ -327,24 +326,19 @@ async def _handle_real_01(
             _matched = [p for p in engine_state._positions if _base_stk_cd(str(p.get("stk_cd", "") or "")) == nk_px]
             if _matched:
                 await engine_state._auto_trade.check_sell_conditions(_matched, engine_state._integrated_system_settings_cache, engine_state._access_token)
-    if pend_key:
-        # notify_desktop_buy_radar_only()
+    _wl_codes = _get_wl_codes_cached()
+    if nk_px in _wl_codes:
+        if is_0b_tick and _ws_fid_key_present(vals, "14"):
+            _amt14_wl = abs(_ws_fid_int(vals, "14", 0))
+            _update_trade_amount_fid14(nk_px, _amt14_wl)
+        if is_0b_tick and _ws_fid_key_present(vals, "228"):
+            sv = _ws_fid_raw(vals, "228")
+            if sv is not None and str(sv).strip():
+                try:
+                    _update_strength_buckets(nk_px, float(str(sv).strip()), abs(_ws_fid_int(vals, "13", 0)))
+                except (ValueError, TypeError) as e:
+                    logger.warning("[체결강도WL] %s 파싱 실패 sv=%r: %s", nk_px, sv, e)
         _need_sector_tick = True
-    else:
-        _wl_codes = _get_wl_codes_cached()
-        if nk_px in _wl_codes:
-            if is_0b_tick and _ws_fid_key_present(vals, "14"):
-                _amt14_wl = abs(_ws_fid_int(vals, "14", 0))
-                _update_trade_amount_fid14(nk_px, _amt14_wl)
-            if is_0b_tick and _ws_fid_key_present(vals, "228"):
-                sv = _ws_fid_raw(vals, "228")
-                if sv is not None and str(sv).strip():
-                    try:
-                        _update_strength_buckets(nk_px, float(str(sv).strip()), abs(_ws_fid_int(vals, "13", 0)))
-                    except (ValueError, TypeError) as e:
-                        logger.warning("[체결강도WL] %s 파싱 실패 sv=%r: %s", nk_px, sv, e)
-            # notify_desktop_buy_radar_only()
-            _need_sector_tick = True
 
     # [근본해결] 선택적 전송 제거
     # if _need_sector_tick:

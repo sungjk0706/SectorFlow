@@ -3,8 +3,11 @@
 SectorFlow — FastAPI 서버 진입점
 실행: 프로젝트 루트에서  python main.py
 """
+import os
 import sys
 from pathlib import Path
+
+os.environ.pop("PYTHONASYNCIODEBUG", None)
 
 ROOT = Path(__file__).resolve().parent
 BACKEND = ROOT / "backend"
@@ -59,6 +62,7 @@ if __name__ == "__main__":
         host="127.0.0.1",
         port=8000,
         log_level="info",
+        loop="uvloop",
         ws_ping_interval=30,
         ws_ping_timeout=10,
     )
