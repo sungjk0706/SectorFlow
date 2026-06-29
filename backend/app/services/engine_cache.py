@@ -105,6 +105,14 @@ async def _load_caches_preboot(settings: dict) -> None:
         # 캐시선행 완료 플래그 — 앱준비 에서 중복 로드 스킵용
         state.preboot_cache_loaded = True
 
+        # ── WS 구독 구간 내 기동 시 실시간 필드 초기화 (DB 로드 이후 실행 보장) ──
+        # _init_ws_subscribe_state()와 경쟁하지 않도록 preboot_cache_loaded 플래그로 조정
+        from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
+        if await is_ws_subscribe_window(settings):
+            from backend.app.services.engine_snapshot import _reset_realtime_fields
+            await _reset_realtime_fields()
+            logger.info("[데이터준비] WS 구독 구간 — 실시간 필드 초기화 완료 (DB 로드 후)")
+
         # ── 기동 완료 로직 이관 (engine_bootstrap.py _bootstrap_sector_stocks_async에서 이관) ──
         # 테스트모드: Settlement Engine 초기화 (기본값 설정)
         if state.integrated_system_settings_cache["trade_mode"] == "test":

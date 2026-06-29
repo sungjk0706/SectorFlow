@@ -33,6 +33,7 @@ import {
   applyWsSubscribeStatus,
   applyBuyLimitStatus,
   applyEngineReloadComplete,
+  applyMarketPhase,
   uiStore,
 } from './stores/uiStore'
 import type {
@@ -254,6 +255,11 @@ export function bindWSToStore(
 
   pricesClient.onEvent('realtime-reset', () => {
     applyRealtimeReset()
+  })
+
+  /* ── market-phase: 장 상태 실시간 갱신 ── */
+  pricesClient.onEvent('market-phase', (data) => {
+    applyMarketPhase(data as { krx: string; nxt: string })
   })
 
   /* ── receive-rate: 수신율 실시간 갱신 ── */

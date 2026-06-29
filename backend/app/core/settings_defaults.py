@@ -25,9 +25,6 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "ws_subscribe_end": "15:00",
     "confirmed_download_time": "20:40",
     
-    # UI 설정
-    "ui_price_flash_on": True,
-    
     # 텔레그램
     "tele_on": False,
     "telegram_chat_id": "",

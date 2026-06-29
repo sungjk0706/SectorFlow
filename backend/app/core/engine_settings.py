@@ -163,7 +163,6 @@ def build_engine_settings_dict(flat: dict) -> dict:
     # ── WS 구독 마스터 스위치 ────────
     result["ws_subscribe_on"]              = bool(merged.get("ws_subscribe_on"))
     result["confirmed_download_time"]      = str(merged.get("confirmed_download_time", "20:40"))[:5]
-    result["ui_price_flash_on"]            = bool(merged.get("ui_price_flash_on", True))
 
     # ── 장마감 후 스케줄러 토글 ────────
     # DEFAULT_USER_SETTINGS 기본값: True (활성화)

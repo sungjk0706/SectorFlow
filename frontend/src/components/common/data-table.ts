@@ -8,8 +8,6 @@
 import { CELL_BORDER, FONT_SIZE, FONT_WEIGHT, FONT_FAMILY } from './ui-styles'
 import { computeColumnWidths, type ColumnWidthInput } from './auto-width'
 import { createVirtualScroller } from '../virtual-scroller'
-import { uiStore } from '../../stores/uiStore'
-import { triggerFlash, injectFlashStyle } from './flash-anim'
 
 /* ── ColumnDef<T> 인터페이스 ─────────────────────────────── */
 
@@ -22,8 +20,6 @@ export interface ColumnDef<T> {
   maxWidth?: number
   headerStyle?: Partial<CSSStyleDeclaration>
   cellStyle?: Partial<CSSStyleDeclaration>
-  /** 값이 변경되면 셀 배경에 노란 플래시 애니메이션 적용 */
-  flash?: boolean | (() => boolean)
 }
 
 /* ── GroupRow, TableRow, Options, Api ───────────────────── */
@@ -150,7 +146,6 @@ function createFixedMode<T extends object>(
 
   const wrapper = document.createElement('div')
   Object.assign(wrapper.style, { border: CELL_BORDER, overflowY: 'auto', height: '100%', flex: '1', minHeight: 0 })
-  injectFlashStyle(wrapper)
 
   const table = document.createElement('table')
   Object.assign(table.style, {
@@ -389,28 +384,16 @@ function createFixedMode<T extends object>(
               if (!cell) continue
               try {
                 const content = columns[cIdx].render(dataRow, i)
-                const itemKeyStore = '_itemKey' as keyof HTMLElement
-                const key = String(i)
-                const prevItemKey = (cell as any)[itemKeyStore]
-                const isSameItem = prevItemKey === key
-                ;(cell as any)[itemKeyStore] = key
 
                 if (typeof content === 'string') {
-                  const prevKey = '_prevContent' as keyof HTMLElement
-                  const prevContent = (cell as any)[prevKey] as string | undefined
                   if (cell.textContent !== content) {
                     cell.textContent = content
-                    const shouldFlash = typeof columns[cIdx].flash === 'function' ? (columns[cIdx].flash as any)() : columns[cIdx].flash
-                    if (shouldFlash && isSameItem && prevContent !== undefined && prevContent !== content) triggerFlash(cell)
                   }
-                  ;(cell as any)[prevKey] = content
                 } else if (content instanceof HTMLElement) {
                   const existing = cell.firstElementChild as HTMLElement | null
                   if (!existing || !existing.isEqualNode(content)) {
                     while (cell.firstChild) cell.removeChild(cell.firstChild)
                     cell.appendChild(content)
-                    const shouldFlash = typeof columns[cIdx].flash === 'function' ? (columns[cIdx].flash as any)() : columns[cIdx].flash
-                    if (shouldFlash && isSameItem && existing) triggerFlash(cell)
                   }
                 }
               } catch (err) { console.error('[data-table] cell render error:', err) }
@@ -555,28 +538,16 @@ function createFixedMode<T extends object>(
       if (!cell) continue
       try {
         const content = columns[cIdx].render(dataRow, idx)
-        const itemKeyStore = '_itemKey' as keyof HTMLElement
-        const cellKey = String(idx)
-        const prevItemKey = (cell as any)[itemKeyStore]
-        const isSameItem = prevItemKey === cellKey
-        ;(cell as any)[itemKeyStore] = cellKey
 
         if (typeof content === 'string') {
-          const prevKey = '_prevContent' as keyof HTMLElement
-          const prevContent = (cell as any)[prevKey] as string | undefined
           if (cell.textContent !== content) {
             cell.textContent = content
-            const shouldFlash = typeof columns[cIdx].flash === 'function' ? (columns[cIdx].flash as any)() : columns[cIdx].flash
-            if (shouldFlash && isSameItem && prevContent !== undefined && prevContent !== content) triggerFlash(cell)
           }
-          ;(cell as any)[prevKey] = content
         } else if (content instanceof HTMLElement) {
           const existing = cell.firstElementChild as HTMLElement | null
           if (!existing || !existing.isEqualNode(content)) {
             while (cell.firstChild) cell.removeChild(cell.firstChild)
             cell.appendChild(content)
-            const shouldFlash = typeof columns[cIdx].flash === 'function' ? (columns[cIdx].flash as any)() : columns[cIdx].flash
-            if (shouldFlash && isSameItem && existing) triggerFlash(cell)
           }
         }
       } catch (_) {}
@@ -615,7 +586,6 @@ function createVirtualScrollMode<T extends object>(
     minHeight: '0',
     overflow: 'hidden',
   })
-  injectFlashStyle(wrapper)
 
   const scrollContainer = document.createElement('div')
   Object.assign(scrollContainer.style, { flex: '1', overflowY: 'auto', scrollbarGutter: 'stable', position: 'relative' })
@@ -672,7 +642,6 @@ function createVirtualScrollMode<T extends object>(
   }
 
   function renderRow(row: TableRow<T>, index: number, rowEl: HTMLElement) {
-    const timerKey = '_rowFlashTimer' as keyof HTMLElement
     const rowKeyStore = '_rowKey' as keyof HTMLElement
 
     const isFirst = rowEl.childElementCount === 0
@@ -681,63 +650,19 @@ function createVirtualScrollMode<T extends object>(
 
     const key = currentIsGroup ? row.key : keyFn(row as T, index)
 
-    const prevRowKey = (rowEl as any)[rowKeyStore]
     ;(rowEl as any)[rowKeyStore] = key
 
     // 공통 스타일 적용
     rowEl.classList.add('data-table-row')
     Object.assign(rowEl.style, { display: 'grid', gridTemplateColumns, borderBottom: '1px solid #e5e7eb' })
 
-    const hasActiveFlash = (rowEl as any)[timerKey] !== undefined
-    if (!hasActiveFlash) {
-      if (zebraStriping && index % 2 === 1) rowEl.style.backgroundColor = '#f9f9f9'
-      else rowEl.style.backgroundColor = 'transparent'
-    }
+    if (zebraStriping && index % 2 === 1) rowEl.style.backgroundColor = '#f9f9f9'
+    else rowEl.style.backgroundColor = 'transparent'
 
     if (!currentIsGroup) {
       const dataRow = row as T
       if ('price' in dataRow) {
         const newPrice = Number((dataRow as any).price)
-        const prevPrice = priceMap.get(key)
-        
-        // ui_price_flash_on 설정 확인 (기본값 ON)
-        // uiStore는 top-level import 대신 필요할 때 동적으로 가져오거나, 
-        // 외부에서 주입받는 것이 좋으나 여기서는 간단히 전역 접근.
-        // 순환 참조 방지를 위해 window.uiStore 등을 쓰거나 (있다면), 
-        // 간단히 uiStore import.
-        
-        if (prevPrice !== undefined && prevPrice !== newPrice && prevRowKey === key) {
-          const settings = uiStore.getState().settings
-          const isFlashOn = settings ? settings.ui_price_flash_on !== false : true
-          
-          if (isFlashOn) {
-            const isUp = newPrice > prevPrice
-            const flashColor = isUp ? 'rgba(255, 59, 48, 0.15)' : 'rgba(0, 122, 255, 0.15)'
-
-            const existingTimer = (rowEl as any)[timerKey]
-            if (existingTimer) clearTimeout(existingTimer)
-
-            rowEl.style.transition = 'none'
-            rowEl.style.backgroundColor = flashColor
-
-            // Force reflow
-            void rowEl.offsetHeight
-
-            rowEl.style.transition = 'background-color 300ms ease-out'
-            rowEl.style.backgroundColor = 'transparent'
-
-            const timer = setTimeout(() => {
-              if (zebraStriping && index % 2 === 1) {
-                rowEl.style.backgroundColor = '#f9f9f9'
-              } else {
-                rowEl.style.backgroundColor = 'transparent'
-              }
-              rowEl.style.transition = ''
-              ;(rowEl as any)[timerKey] = undefined
-            }, 300)
-            ;(rowEl as any)[timerKey] = timer
-          }
-        }
         priceMap.set(key, newPrice)
       }
     }
@@ -869,25 +794,11 @@ function createVirtualScrollMode<T extends object>(
       if (!cell) continue
       try {
         const content = columns[i].render(dataRow, index)
-        const itemKeyStore = '_itemKey' as keyof HTMLElement
-        const prevItemKey = (cell as any)[itemKeyStore]
-        const isSameItem = prevItemKey === key
-        ;(cell as any)[itemKeyStore] = key
 
         if (typeof content === 'string') {
-          // 문자열 셀: textContent 비교 후 변경 시에만 갱신
-          const prevKey = '_prevContent' as keyof HTMLElement
-          const prevContent = (cell as any)[prevKey] as string | undefined
           if (cell.textContent !== content) {
             cell.textContent = content
-            // 실제 변경이 있는 경우에만 플래시 터뜨림
-            const shouldFlash = typeof columns[i].flash === 'function' ? (columns[i].flash as any)() : columns[i].flash
-            if (shouldFlash && isSameItem && prevContent !== undefined && prevContent !== content) {
-              triggerFlash(cell)
-            }
           }
-          // 현재 값을 저장
-          ;(cell as any)[prevKey] = content
         } else if (content instanceof HTMLElement) {
           // HTMLElement 셀: isEqualNode 비교 후 변경 시에만 교체
           const existing = cell.firstElementChild as HTMLElement | null
@@ -896,11 +807,6 @@ function createVirtualScrollMode<T extends object>(
               cell.removeChild(cell.firstChild)
             }
             cell.appendChild(content)
-            // 실제 변경이 있는 경우에만 플래시 터뜨림
-            const shouldFlash = typeof columns[i].flash === 'function' ? (columns[i].flash as any)() : columns[i].flash
-            if (shouldFlash && isSameItem && existing) {
-              triggerFlash(cell)
-            }
           }
         }
       } catch (_) {
