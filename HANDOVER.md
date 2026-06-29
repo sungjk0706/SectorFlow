@@ -158,12 +158,27 @@
 - **`types/index.ts`** — `AppSettings.confirmed_data_broker` 추가
 - **검증**: Python `py_compile` 성공, frontend `npm run build` 성공, 스모크 검증 성공 (`broker=kiwoom`, `confirmed_data_broker=ls`일 때 `broker_config.websocket/order/account=kiwoom`, `broker_config.stock=ls`, stock provider=`LsStockProvider`)
 
+### 15. JIF 기반 Market Phase 전환 — Fallback 제거 (완료)
+- **배경**: 시간 기반 `is_nxt_only_window()` → JIF 기반 `state.market_phase` SSOT 읽기로 전환
+- **`daily_time_scheduler.py`**:
+  - `is_nxt_only_window()` (65-76행): `state.market_phase` (JIF 수신값) 직접 읽기. 빈 값 시 False 반환 — JIF 미수신 = WS 미연결 = 시세 없음 → 필터링 의미 없음
+  - `get_market_phase()` (112-126행): 순수 읽기 함수. `state.market_phase` 복사본 반환, 쓰기 부작용 없음
+  - `_calc_timebased_phase()` 제거: 시간 기반 장 상태 계산 함수 삭제
+  - `_ensure_market_phase()` 제거: fallback 주입 함수 삭제
+  - 타이머 콜백 5곳: `_ensure_market_phase()` 호출 제거 (09:00, 15:30, _broadcast_market_phase, _on_ws_subscribe_start, 구독 구간 내 시작)
+- **`engine_snapshot.py`**: `_ensure_market_phase` import 및 호출 제거
+- **아키텍처 원칙**: `state.market_phase`는 오직 `_handle_jif()` (JIF 수신)로만 채워짐 — SSOT 순수성 확보
+- **검증**: py_compile 3개 파일 통과, tsc --noEmit 통과, `_ensure_market_phase`/`_calc_timebased_phase` 잔여 0건
+
 ## 현재 상태
+- JIF 기반 Market Phase 전환 완료 — Fallback 제거로 SSOT 순수성 확보, py_compile + tsc 검증 통과
 - LS StockProvider 1차 비동기 배선 및 확정시세 다운로드 증권사 분리 완료, py_compile + frontend build + 핵심 스모크 검증 통과
 - 모든 이전 수정 완료, py_compile + tsc + build 검증 통과
 - 런타임 확인 완료: Frontend-First 기동 — 백엔드/프론트엔드 병렬 시작, Health 즉시 응답, WS 3채널 즉시 연결 (05:32 기동 로그)
 - 런타임 확인 완료: 업종 요약정보 대기 해제 — `재계산 완료` 후 WS 접속 시 대기 없이 즉시 연결 (05:32 기동 로그)
 - 런타임 확인 완료: 1일봉 다운로드 매 종목 로그 정상 출력 — `trading_2026-06-28.log`에서 `[1일봉챠트 시세 다운로드] 진행 중: N/1281 (pct%)` 확인 (06:45)
+- 런타임 검증 필요: 거래일 장중 JIF 수신 시 `is_nxt_only_window()` 정상 동작 확인
+- 런타임 검증 필요: 프론트엔드에서 `market_phase` 빈 문자열 수신 시 장 상태 칩 표시 확인
 - 런타임 검증 필요: 토큰 발급 실패/지연 상황에서 프론트엔드에 DB 데이터가 즉시 표시되는지 확인
 - 런타임 검증 필요: `_login_post_pipeline`이 정상적으로 REST 잔고 조회 ~ WS 구독 등록까지 실행되는지 확인
 - 런타임 검증 필요: Phase 1 Event 기반 수신율 대기가 정상적으로 임계값 통과 후 Phase 2로 전환되는지 확인
@@ -173,6 +188,12 @@
 - 런타임 검증 필요: 5일봉 다운로드 매 종목 로그 정상 출력 확인
 
 ## 다음 단계
+- 거래일 JIF 런타임 확인:
+  - 장중 JIF 수신 시 `state.market_phase`에 krx/nxt 값 정상 설정 확인
+  - NXT 프리마켓(08:00~09:00) / 애프터마켓(15:30~20:00)에서 `is_nxt_only_window()` True 반환 확인
+  - 정규장(09:00~15:30)에서 `is_nxt_only_window()` False 반환 확인
+  - 프론트엔드 헤더 장 상태 칩이 JIF 수신 값으로 정상 표시되는지 확인
+  - WS 재연결 후 JIF 재구독 성공 시 `state.market_phase` 갱신 확인
 - LS 실제 API 런타임 확인:
   - 일반설정 → API 설정 → 확정 시세 다운로드 → 다운로드 증권사에서 `LS증권` 선택 후 설정 저장 확인
   - `broker=kiwoom`, `confirmed_data_broker=ls` 상태에서 실시간/계좌/주문은 키움 유지, 장마감 다운로드만 LS provider 사용 확인
@@ -191,6 +212,7 @@
   - 5일봉 다운로드 실행 시 `[5일봉챠트 거래대금,고가 다운로드] 진행 중` 매 종목 로그 확인 (단계 12)
 
 ## 미해결 문제
+- WS 재연결 후 JIF 재구독 실패 시 `state.market_phase` stale 데이터 문제: `_on_socket_disconnect`에서 `state.market_phase`를 초기화하지 않음 — 재연결 후 JIF 재구독 실패 시 이전 JIF 값이 남아 있음. 별도 수정 필요 시 승인 요청
 - LS StockProvider 실제 API 필드명 검증 필요: 현재 구현은 LsApiHelper 명세 기반이며, 실계정 API 응답에서 `t8436/t8451` 필드명이 다르면 매핑 보정 필요
 - LS 토큰 폐기 ConnectTimeout: 주말/비거래 시간대 LS증권 API 서버 접근 불가 — 코드 버그 아님, 거래 시간에 재확인 필요
 - 종목수 1359 → 1361 불일치: 별도 조사 필요 (이전 세션 메모리 참고)
