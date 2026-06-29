@@ -12,7 +12,7 @@ import { createSettingsManager, type SettingsManager } from '../settings'
 import { createCardTitleWithContent } from '../components/common/card-title'
 import { toastResult, showSaveToast } from '../components/common/toast'
 import { showContextPopup, closeContextPopup } from '../components/common/context-popup'
-import { showConfirmDialog, showAlertDialog } from '../components/common/dialog'
+import { showAlertDialog } from '../components/common/dialog'
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
 import { createSearchInput } from '../components/common/search-input'
 import { createSectorRowEl } from '../components/common/sector-row'
@@ -1331,19 +1331,22 @@ export function buildMoveMessage(
   return `${firstName} 외 ${codes.length - 1}개 종목을 ${targetSector} 업종으로 이동하시겠습니까?`
 }
 
-async function onMoveStock(_e: MouseEvent, targetSector: string): Promise<void> {
+async function onMoveStock(e: MouseEvent, targetSector: string): Promise<void> {
   const moveSource = getMoveSource()
   if (!moveSource) return
   const codes = moveSource.codes
 
-  // 이동 전 확인 팝업
-  const confirmed = await showConfirmDialog({
+  // 이동 전 확인 팝업 (마우스 위치 기반 — 전체 화면 오버레이 없음)
+  const result = await showContextPopup({
+    type: 'confirm',
+    x: e.clientX,
+    y: e.clientY,
     title: '종목 이동',
     message: buildMoveMessage(codes, getAllStocks(), targetSector),
     confirmText: '이동',
     cancelText: '취소',
   })
-  if (!confirmed) return
+  if (!result.confirmed) return
 
   try {
     const lastRes = await api.post<StockClassificationMutationResponse>('/api/stock-classification/move-stocks', {
