@@ -611,9 +611,11 @@ async def stop_consumer_loop() -> None:
 
 _JSTATUS_KRX: dict[str, str] = {
     "11": "장전 동시호가",
-    "21": "정규장", "22": "정규장", "23": "정규장", "24": "정규장", "25": "정규장",
-    "31": "장마감",
-    "41": "장마감", "42": "장마감", "43": "장마감", "44": "장마감",
+    "21": "정규장",
+    "22": "장전 동시호가", "23": "장전 동시호가", "24": "장전 동시호가", "25": "장전 동시호가",
+    "31": "장후 동시호가",
+    "41": "장마감",
+    "42": "장후 동시호가", "43": "장후 동시호가", "44": "장후 동시호가",
     "51": "장후 시간외",
     "52": "시간외 단일가",
     "54": "장마감",
@@ -628,7 +630,7 @@ _JSTATUS_KRX_ALERT: dict[str, str | None] = {
     "66": "사이드카 매수 발동",
     "67": None,
     "68": "서킷브레이커 2단계 발동",
-    "69": "서킷브레이커 3단계 발동",
+    "69": "서킷브레이커 3단계 발동, 당일 장종료",
     "70": None,
     "71": "서킷브레이커 2단계 동시호가 종료",
 }
@@ -636,15 +638,43 @@ _JSTATUS_KRX_ALERT: dict[str, str | None] = {
 _JSTATUS_NXT: dict[str, str] = {
     "11": "프리마켓",
     "55": "프리마켓",
-    "A2": "프리마켓", "A3": "프리마켓", "A4": "프리마켓", "A5": "프리마켓",
-    "C2": "프리마켓", "C3": "프리마켓", "C4": "프리마켓",
+    "A2": "프리마켓 대기", "A3": "프리마켓 대기", "A4": "프리마켓 대기", "A5": "프리마켓 대기",
+    "C2": "프리마켓 마감 대기", "C3": "프리마켓 마감 대기", "C4": "프리마켓 마감 대기",
     "57": "휴식",
-    "21": "메인마켓", "22": "메인마켓", "23": "메인마켓", "24": "메인마켓", "25": "메인마켓",
-    "41": "휴식", "42": "휴식", "43": "휴식", "44": "휴식",
+    "21": "메인마켓",
+    "22": "메인마켓 대기", "23": "메인마켓 대기", "24": "메인마켓 대기", "25": "메인마켓 대기",
+    "41": "휴식", "42": "휴식 마감 대기", "43": "휴식 마감 대기", "44": "휴식 마감 대기",
     "56": "애프터마켓",
-    "B2": "애프터마켓", "B3": "애프터마켓", "B4": "애프터마켓", "B5": "애프터마켓",
-    "D2": "애프터마켓", "D3": "애프터마켓", "D4": "애프터마켓",
+    "B2": "애프터마켓 대기", "B3": "애프터마켓 대기", "B4": "애프터마켓 대기", "B5": "애프터마켓 대기",
+    "D2": "애프터마켓 마감 대기", "D3": "애프터마켓 마감 대기", "D4": "애프터마켓 마감 대기",
     "58": "장마감",
+}
+
+_JSTATUS_KRX_COUNTDOWN: dict[str, str] = {
+    "22": "장개시 10초 전",
+    "23": "장개시 1분 전",
+    "24": "장개시 5분 전",
+    "25": "장개시 10분 전",
+    "42": "장마감 10초 전",
+    "43": "장마감 1분 전",
+    "44": "장마감 5분 전",
+}
+
+_JSTATUS_NXT_COUNTDOWN: dict[str, str] = {
+    "A2": "프리마켓 개시 10초 전",
+    "A3": "프리마켓 개시 1분 전",
+    "A4": "프리마켓 개시 5분 전",
+    "A5": "프리마켓 개시 10분 전",
+    "B2": "애프터마켓 개시 10초 전",
+    "B3": "애프터마켓 개시 1분 전",
+    "B4": "애프터마켓 개시 5분 전",
+    "B5": "애프터마켓 개시 10분 전",
+    "C2": "프리마켓 마감 10초 전",
+    "C3": "프리마켓 마감 1분 전",
+    "C4": "프리마켓 마감 5분 전",
+    "D2": "애프터마켓 마감 10초 전",
+    "D3": "애프터마켓 마감 1분 전",
+    "D4": "애프터마켓 마감 5분 전",
 }
 
 
@@ -669,11 +699,29 @@ async def _handle_jif(data: dict) -> None:
             if mp.get("krx_alert") != alert:
                 mp["krx_alert"] = alert
                 changed = True
+        countdown = _JSTATUS_KRX_COUNTDOWN.get(jstatus)
+        if countdown:
+            if mp.get("krx_countdown") != countdown:
+                mp["krx_countdown"] = countdown
+                changed = True
+        else:
+            if mp.get("krx_countdown"):
+                mp["krx_countdown"] = None
+                changed = True
     elif jangubun == "6":
         label = _JSTATUS_NXT.get(jstatus)
         if label:
             if mp.get("nxt") != label:
                 mp["nxt"] = label
+                changed = True
+        countdown = _JSTATUS_NXT_COUNTDOWN.get(jstatus)
+        if countdown:
+            if mp.get("nxt_countdown") != countdown:
+                mp["nxt_countdown"] = countdown
+                changed = True
+        else:
+            if mp.get("nxt_countdown"):
+                mp["nxt_countdown"] = None
                 changed = True
     else:
         logger.debug("[JIF] 미처리 jangubun=%s jstatus=%s", jangubun, jstatus)
@@ -684,6 +732,10 @@ async def _handle_jif(data: dict) -> None:
         phase = {"krx": mp.get("krx", ""), "nxt": mp.get("nxt", "")}
         if mp.get("krx_alert"):
             phase["krx_alert"] = mp["krx_alert"]
+        if mp.get("krx_countdown"):
+            phase["krx_countdown"] = mp["krx_countdown"]
+        if mp.get("nxt_countdown"):
+            phase["nxt_countdown"] = mp["nxt_countdown"]
         _broadcast("market-phase", phase)
         logger.info("[JIF] 장상태 갱신: jangubun=%s jstatus=%s → %s", jangubun, jstatus, phase)
 

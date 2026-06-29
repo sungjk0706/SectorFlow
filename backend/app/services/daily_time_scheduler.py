@@ -107,7 +107,14 @@ def get_market_phase(now: datetime | None = None) -> dict:
     from backend.app.services.engine_state import state
     mp = state.market_phase
     if mp.get("krx") and mp.get("nxt"):
-        return {"krx": mp["krx"], "nxt": mp["nxt"]}
+        phase: dict = {"krx": mp["krx"], "nxt": mp["nxt"]}
+        if mp.get("krx_alert"):
+            phase["krx_alert"] = mp["krx_alert"]
+        if mp.get("krx_countdown"):
+            phase["krx_countdown"] = mp["krx_countdown"]
+        if mp.get("nxt_countdown"):
+            phase["nxt_countdown"] = mp["nxt_countdown"]
+        return phase
 
     from backend.app.core.trading_calendar import is_trading_day
     if now is None:
@@ -594,7 +601,7 @@ async def _on_ws_subscribe_end() -> None:
         state.ws_subscribe_window_active = False
         state.confirmed_done = False  # 오후 8시 구독 종료 → 8시 30분 확정 갱신 허용
         logger.info("[타이머] 실시간 구독 구간 종료 -- 구독 해지 + 실시간 연결 해제")
-        _trigger_unreg_all()
+        await _trigger_unreg_all()
         # 구독 상태 전체 false + WS 브로드캐스트
         from backend.app.services.ws_subscribe_control import _set_status
         _set_status(quote=False)
@@ -668,7 +675,7 @@ async def _ws_disconnect_only() -> None:
     try:
         state.ws_subscribe_window_active = False
         logger.info("[타이머] 구독 구간 변경 -- 구독 해지 + engine_loop에 WS 해제 통지")
-        _trigger_unreg_all()
+        await _trigger_unreg_all()
         from backend.app.services.ws_subscribe_control import _set_status
         _set_status(quote=False)
         state.ws_window_changed_event.set()
@@ -850,21 +857,16 @@ def _trigger_reg_pipeline() -> None:
         logger.warning("[타이머] REG 파이프라인 트리거 오류: %s", e)
 
 
-def _trigger_unreg_all() -> None:
+async def _trigger_unreg_all() -> None:
     """구독 중인 종목 전체 UNREG 전송 + WS 캐시 클리어."""
     try:
         # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_latest_trade_prices, _latest_trade_amounts, _latest_strength)
         logger.info("[타이머] WS 저장데이터 클리어 완료 (캐시 삭제됨)")
 
-        import asyncio
         ws = state.connector_manager or state.active_connector
         if not ws or not ws.is_connected() or not state.login_ok:
             return
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(_do_unreg_all())
-        except RuntimeError:
-            pass
+        await _do_unreg_all()
     except Exception as e:
         logger.warning("[타이머] UNREG 트리거 오류: %s", e)
 
