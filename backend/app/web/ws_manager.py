@@ -123,6 +123,7 @@ class WSManager:
         self._event_queue: list[tuple[str, dict[str, Any]]] = []
         self._flush_task: asyncio.Task | None = None
         self._shutdown_timer: asyncio.TimerHandle | None = None
+        self._flush_event: asyncio.Event = asyncio.Event()
 
     # ------------------------------------------------------------------
     # 클라이언트 등록 / 해제
@@ -205,9 +206,13 @@ class WSManager:
                 pass
 
     async def _flush_loop(self) -> None:
-        """_FLUSH_INTERVAL마다 큐를 비우고 전송."""
+        """이벤트 기반 flush — 메시지 도착 즉시 전송, _FLUSH_INTERVAL은 최대 대기 시간."""
         while True:
-            await asyncio.sleep(_FLUSH_INTERVAL)
+            try:
+                await asyncio.wait_for(self._flush_event.wait(), timeout=_FLUSH_INTERVAL)
+            except asyncio.TimeoutError:
+                pass
+            self._flush_event.clear()
             if not self._clients:
                 self._state_queue.clear()
                 self._event_queue.clear()
@@ -372,6 +377,7 @@ class WSManager:
             self._event_queue.append((event_type, data))
 
         self._ensure_flush_task()
+        self._flush_event.set()
 
         # 페이지별 전송을 위해 _flush를 오버라이드하지 않고,
         # 별도의 페이지별 전송 로직을 추가해야 함
@@ -429,6 +435,7 @@ class WSManager:
             self._state_queue[(event_type, code)] = data
         else:
             self._event_queue.append((event_type, data))
+        self._flush_event.set()
 
     def broadcast_threadsafe(self, event_type: str, data: dict, loop: asyncio.AbstractEventLoop) -> None:
         """스레드풀(asyncio.to_thread) 내부에서 안전하게 호출 가능한 브로드캐스트.

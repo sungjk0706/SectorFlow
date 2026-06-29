@@ -129,6 +129,11 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   header.appendChild(krxChip)
   header.appendChild(nxtChip)
 
+  // KRX 알림 칩 (서킷브레이커/사이드카)
+  const krxAlertChip = createChipEl()
+  krxAlertChip.style.display = 'none'
+  header.appendChild(krxAlertChip)
+
   // 앱준비 진행률 칩
   const bootstrapChip = createChipEl()
   bootstrapChip.style.display = 'none'
@@ -159,6 +164,18 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
     // 장 상태
     applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx)
     applyMarketPhaseChip(nxtChip, 'NXT', marketPhase.nxt)
+
+    // KRX 알림 (서킷브레이커/사이드카)
+    const alert = marketPhase.krx_alert
+    if (alert) {
+      krxAlertChip.style.display = ''
+      krxAlertChip.style.background = `${COLOR.upBg}`
+      krxAlertChip.style.color = `${COLOR.up}`
+      krxAlertChip.style.border = `1px solid ${COLOR.up}40`
+      krxAlertChip.textContent = `⚠ ${alert}`
+    } else {
+      krxAlertChip.style.display = 'none'
+    }
 
     // 앱준비 진행률
     if (bootstrapStage && !engineReady) {
