@@ -160,6 +160,7 @@ async def sync_sector_from_custom_sectors() -> None:
     
     확정시세 다운로드 후 사용자 커스텀 업종 매핑 복구용.
     custom_sectors 테이블 기본 키: stock_code (단일)
+    master_stocks_table에 더 이상 존재하지 않는 종목은 custom_sectors에서도 정리.
     """
     from backend.app.db.database import get_db_connection
     import backend.app.services.engine_state as _st
@@ -171,16 +172,27 @@ async def sync_sector_from_custom_sectors() -> None:
         cursor = await conn.execute("SELECT stock_code, name FROM custom_sectors")
         rows = await cursor.fetchall()
         
+        # master_stocks_table에 존재하는 code 집합 조회
+        cursor = await conn.execute("SELECT code FROM master_stocks_table")
+        master_codes = {row["code"] for row in await cursor.fetchall()}
+        
         updated = 0
+        orphaned = 0
         for row in rows:
+            stock_code = row["stock_code"]
+            if stock_code not in master_codes:
+                # master_stocks_table에 없는 종목 → custom_sectors에서 정리
+                await conn.execute("DELETE FROM custom_sectors WHERE stock_code = ?", (stock_code,))
+                orphaned += 1
+                continue
             await conn.execute(
                 "UPDATE master_stocks_table SET sector = ? WHERE code = ?",
-                (row["name"], row["stock_code"])
+                (row["name"], stock_code)
             )
             updated += 1
         
         await conn.commit()
-        _log.info("[동기화] custom_sectors 기반 master_stocks_table.sector 동기화 완료 -- %d종목", updated)
+        _log.info("[동기화] custom_sectors 기반 master_stocks_table.sector 동기화 완료 -- %d종목, 고아 정리 %d종목", updated, orphaned)
         
         # 메모리 캐시 sector 필드 갱신
         import backend.app.services.engine_service as es
