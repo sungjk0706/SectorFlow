@@ -83,6 +83,14 @@ export interface EngineStatus {
   broker_statuses?: Record<string, { token_valid: boolean; ws_connected: boolean }>;
 }
 
+export interface IndexData {
+  upcode: string;
+  jisu: string;
+  change: string;
+  drate: string;
+  sign: string;
+}
+
 export interface AppSettings {
   // 주 사용 증권사 (Primary Broker)
   broker: string;

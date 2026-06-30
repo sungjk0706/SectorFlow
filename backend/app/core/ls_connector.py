@@ -122,8 +122,11 @@ class _LsSocket:
                 internal_msg = self._convert_ls_to_internal(tr_cd, header, body)
 
                 if internal_msg:
-                    # Producer-Consumer Queue에 투입
-                    if self._queue_callback:
+                    # JIF (장운영정보)는 tick_queue를 우회하고 직접 처리
+                    # Kiwoom 커넥터와 동일한 패턴: JIF는 큐 대기 없이 즉시 핸들러로 전달
+                    if internal_msg.get("trnm") == "JIF":
+                        await self._on_message(internal_msg)
+                    elif self._queue_callback:
                         try:
                             self._queue_callback(internal_msg)  # put_nowait 호출
                         except asyncio.QueueFull:
@@ -282,10 +285,26 @@ class _LsSocket:
                 "jstatus": jstatus,
             }
         elif tr_cd == "IJ_":
-            # 지수 데이터 (향후 확장용)
-            # 현재는 업종 점수 계산에 US3만 사용하므로 로그만 남김
-            logger.debug("[LS서버소켓] 지수 데이터 수신 (현재 미사용): %s", tr_cd)
-            return None
+            upcode = str(body.get("upcode", "")).strip()
+            if not upcode:
+                return None
+            jisu = str(body.get("jisu", "")).strip()
+            change = str(body.get("change", "")).strip()
+            drate = str(body.get("drate", "")).strip()
+            sign = str(body.get("sign", "")).strip()
+            return {
+                "trnm": "REAL",
+                "data": [{
+                    "type": "0J",
+                    "item": upcode,
+                    "values": {
+                        "10": jisu,    # 지수
+                        "11": change,  # 전일대비
+                        "12": drate,   # 등락율
+                        "25": sign,    # 전일대비구분
+                    }
+                }]
+            }
         elif tr_cd == "BM_":
             # 업종 데이터 (향후 확장용)
             logger.debug("[LS서버소켓] 업종 데이터 수신 (현재 미사용): %s", tr_cd)
@@ -416,6 +435,11 @@ class LsConnector(BrokerConnector):
                 await self.subscribe_jif()
             except Exception:
                 logger.warning("[LS증권연결] JIF 구독 등록 실패", exc_info=True)
+            # 업종지수(IJ_) 구독
+            try:
+                await self.subscribe_index()
+            except Exception:
+                logger.warning("[LS증권연결] IJ_ 구독 등록 실패", exc_info=True)
             # 연결 상태 브로드캐스트
             try:
                 from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
@@ -628,6 +652,30 @@ class LsConnector(BrokerConnector):
             logger.warning("[LS증권연결] JIF 구독 등록 실패")
         return success
 
+    async def subscribe_index(self) -> bool:
+        """코스피·코스닥 업종지수(IJ_) 실시간 구독 등록."""
+        if not self.is_connected() or not self._socket:
+            logger.warning("[LS증권연결] IJ_ 구독 실패 — 연결 없음")
+            return False
+        success_all = True
+        for upcode in ("001", "101"):
+            payload = {
+                "header": {
+                    "token": self._token,
+                    "tr_type": "3"
+                },
+                "body": {
+                    "tr_cd": "IJ_",
+                    "tr_key": upcode
+                }
+            }
+            success = await self._socket.send(payload)
+            if success:
+                logger.info("[LS증권연결] IJ_ 업종지수 구독 등록: %s", upcode)
+            else:
+                success_all = False
+        return success_all
+
     async def _on_ws_message(self, payload: dict) -> None:
         """_LsSocket 콜백 → 핸들러 직접 호출."""
         self._received_count += 1
@@ -725,6 +773,11 @@ class LsConnector(BrokerConnector):
                     await self.subscribe_jif()
                 except Exception:
                     logger.warning("[LS증권연결] 재연결 후 JIF 구독 실패", exc_info=True)
+                # 업종지수(IJ_) 재구독
+                try:
+                    await self.subscribe_index()
+                except Exception:
+                    logger.warning("[LS증권연결] 재연결 후 IJ_ 구독 실패", exc_info=True)
                 # 재연결 후 구독 복원은 ConnectorManager가 담당
                 if self._on_reconnect_success:
                     asyncio.get_running_loop().create_task(self._on_reconnect_success(self.broker_id))

@@ -470,6 +470,20 @@ def _handle_real_0d(item: dict, vals: dict) -> None:
         notify_orderbook_update(nk, bid, ask)
 
 
+def _handle_real_0j(item: dict, vals: dict) -> None:
+    """0J 업종지수 처리 — 저장 없이 즉시 프론트엔드에 브로드캐스트 (참고용 시장 현황)."""
+    upcode = str(item.get("item", "") or "").strip()
+    if not upcode:
+        return
+    jisu = str(vals.get("10", "") or "").strip()
+    change = str(vals.get("11", "") or "").strip()
+    drate = str(vals.get("12", "") or "").strip()
+    sign = str(vals.get("25", "") or "").strip()
+    if not jisu:
+        return
+    from backend.app.services.engine_account_notify import notify_index_data
+    notify_index_data(upcode, jisu, change, drate, sign)
+
 
 # ── REAL 타입별 디스패치 테이블 ──────────────────────────────────
 # norm(정규화된 타입) → 핸들러 매핑.  01 타입은 추가 인자가 필요하므로 별도 분기.
@@ -478,6 +492,7 @@ _REAL_DISPATCH: dict[str, Callable] = {
     "04": _handle_real_balance,  # 잔고
     "80": _handle_real_balance,  # 잔고 (04와 동일 핸들러)
     "0d": _handle_real_0d,      # 호가잔량
+    "0j": _handle_real_0j,      # 업종지수
 }
 
 
@@ -518,14 +533,9 @@ async def _handle_real(data: dict) -> None:
             elif norm == "0B":
                 raw_type_upper = str(msg_type).upper() if msg_type else ""
                 await _handle_real_01(item, vals, raw_type_upper, is_0b_tick=True)
-            # 그 외 데이터는 BackendCoalescing으로 전송 (프론트엔드 전용)
-            else:
-                from backend.app.services.backend_coalescing import BackendCoalescing
-                coalescing = BackendCoalescing.get_instance()
-                try:
-                    coalescing.add_raw_data(item)
-                except Exception as e:
-                    logger.error("[REAL] Coalescing 전송 예외 (계속): %s", e, exc_info=True)
+            # 📈 업종지수 - 즉시 브로드캐스트 (저장 없음)
+            elif norm == "0j":
+                _handle_real_0j(item, vals)
         except Exception as e:
             logger.error("[REAL] 항목 처리 예외 (계속): %s", e, exc_info=True)
 
@@ -601,19 +611,9 @@ async def stop_consumer_loop() -> None:
     logger.info("[Consumer] 루프 정지 완료")
 
 
-# ── JIF (장운영정보) 처리 ──────────────────────────────────────────────────
-
-_JSTATUS_KRX: dict[str, str] = {
-    "11": "장전 동시호가",
-    "21": "정규장",
-    "22": "장전 동시호가", "23": "장전 동시호가", "24": "장전 동시호가", "25": "장전 동시호가",
-    "31": "장후 동시호가",
-    "41": "장마감",
-    "42": "장후 동시호가", "43": "장후 동시호가", "44": "장후 동시호가",
-    "51": "장후 시간외",
-    "52": "시간외 단일가",
-    "54": "장마감",
-}
+# ── JIF (장운행정보) 처리 ──────────────────────────────────────────────────
+# market_phase(krx, nxt)는 시간 기반(calc_timebased_market_phase)으로 관리되므로
+# JIF에서는 서킷브레이커/사이드카 alert만 처리한다.
 
 _JSTATUS_KRX_ALERT: dict[str, str | None] = {
     "61": "서킷브레이커 1단계 발동",
@@ -629,107 +629,30 @@ _JSTATUS_KRX_ALERT: dict[str, str | None] = {
     "71": "서킷브레이커 2단계 동시호가 종료",
 }
 
-_JSTATUS_NXT: dict[str, str] = {
-    "11": "프리마켓",
-    "55": "프리마켓",
-    "A2": "프리마켓 대기", "A3": "프리마켓 대기", "A4": "프리마켓 대기", "A5": "프리마켓 대기",
-    "C2": "프리마켓 마감 대기", "C3": "프리마켓 마감 대기", "C4": "프리마켓 마감 대기",
-    "57": "휴식",
-    "21": "메인마켓",
-    "22": "메인마켓 대기", "23": "메인마켓 대기", "24": "메인마켓 대기", "25": "메인마켓 대기",
-    "41": "휴식", "42": "휴식 마감 대기", "43": "휴식 마감 대기", "44": "휴식 마감 대기",
-    "56": "애프터마켓",
-    "B2": "애프터마켓 대기", "B3": "애프터마켓 대기", "B4": "애프터마켓 대기", "B5": "애프터마켓 대기",
-    "D2": "애프터마켓 마감 대기", "D3": "애프터마켓 마감 대기", "D4": "애프터마켓 마감 대기",
-    "58": "장마감",
-}
-
-_JSTATUS_KRX_COUNTDOWN: dict[str, str] = {
-    "22": "장개시 10초 전",
-    "23": "장개시 1분 전",
-    "24": "장개시 5분 전",
-    "25": "장개시 10분 전",
-    "42": "장마감 10초 전",
-    "43": "장마감 1분 전",
-    "44": "장마감 5분 전",
-}
-
-_JSTATUS_NXT_COUNTDOWN: dict[str, str] = {
-    "A2": "프리마켓 개시 10초 전",
-    "A3": "프리마켓 개시 1분 전",
-    "A4": "프리마켓 개시 5분 전",
-    "A5": "프리마켓 개시 10분 전",
-    "B2": "애프터마켓 개시 10초 전",
-    "B3": "애프터마켓 개시 1분 전",
-    "B4": "애프터마켓 개시 5분 전",
-    "B5": "애프터마켓 개시 10분 전",
-    "C2": "프리마켓 마감 10초 전",
-    "C3": "프리마켓 마감 1분 전",
-    "C4": "프리마켓 마감 5분 전",
-    "D2": "애프터마켓 마감 10초 전",
-    "D3": "애프터마켓 마감 1분 전",
-    "D4": "애프터마켓 마감 5분 전",
-}
-
 
 async def _handle_jif(data: dict) -> None:
-    """JIF 장운영정보 수신 → market_phase 갱신 + 프론트엔드 브로드캐스트."""
+    """JIF 장운영정보 수신 → 서킷브레이커/사이드카 alert만 갱신 + 브로드캐스트.
+
+    market_phase(krx, nxt)는 시간 기반으로 관리되므로 JIF에서 수정하지 않는다.
+    """
     jangubun = str(data.get("jangubun", "")).strip()
     jstatus = str(data.get("jstatus", "")).strip()
     if not jangubun or not jstatus:
         return
 
-    mp = engine_state.state.market_phase
-    changed = False
-
-    if jangubun in ("1", "2"):
-        label = _JSTATUS_KRX.get(jstatus)
-        if label:
-            if mp.get("krx") != label:
-                mp["krx"] = label
-                changed = True
-        alert = _JSTATUS_KRX_ALERT.get(jstatus, "__no_change__")
-        if alert != "__no_change__":
-            if mp.get("krx_alert") != alert:
-                mp["krx_alert"] = alert
-                changed = True
-        countdown = _JSTATUS_KRX_COUNTDOWN.get(jstatus)
-        if countdown:
-            if mp.get("krx_countdown") != countdown:
-                mp["krx_countdown"] = countdown
-                changed = True
-        else:
-            if mp.get("krx_countdown"):
-                mp["krx_countdown"] = None
-                changed = True
-    elif jangubun == "6":
-        label = _JSTATUS_NXT.get(jstatus)
-        if label:
-            if mp.get("nxt") != label:
-                mp["nxt"] = label
-                changed = True
-        countdown = _JSTATUS_NXT_COUNTDOWN.get(jstatus)
-        if countdown:
-            if mp.get("nxt_countdown") != countdown:
-                mp["nxt_countdown"] = countdown
-                changed = True
-        else:
-            if mp.get("nxt_countdown"):
-                mp["nxt_countdown"] = None
-                changed = True
-    else:
-        logger.debug("[JIF] 미처리 jangubun=%s jstatus=%s", jangubun, jstatus)
+    if jangubun not in ("1", "2"):
         return
 
-    if changed:
-        from backend.app.services.engine_account_notify import _broadcast
-        phase = {"krx": mp.get("krx", ""), "nxt": mp.get("nxt", "")}
-        if mp.get("krx_alert"):
-            phase["krx_alert"] = mp["krx_alert"]
-        if mp.get("krx_countdown"):
-            phase["krx_countdown"] = mp["krx_countdown"]
-        if mp.get("nxt_countdown"):
-            phase["nxt_countdown"] = mp["nxt_countdown"]
-        _broadcast("market-phase", phase)
-        logger.info("[JIF] 장상태 갱신: jangubun=%s jstatus=%s → %s", jangubun, jstatus, phase)
+    mp = engine_state.state.market_phase
+    alert = _JSTATUS_KRX_ALERT.get(jstatus, "__no_change__")
+    if alert == "__no_change__":
+        return
+
+    if mp.get("krx_alert") == alert:
+        return
+
+    mp["krx_alert"] = alert
+    from backend.app.services.engine_account_notify import _broadcast
+    _broadcast("market-phase", {"krx_alert": alert})
+    logger.info("[JIF] 서킷브레이커/사이드카 alert 갱신: jstatus=%s → %s", jstatus, alert)
 

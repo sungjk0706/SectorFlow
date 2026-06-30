@@ -329,24 +329,22 @@ async def subscribe_sector_stocks_0b() -> None:
 
 
 async def subscribe_index_realtime() -> None:
-    """코스피·코스닥 업종지수(0J) 실시간 구독 등록.
+    """코스피·코스닥 업종지수 실시간 구독 등록.
 
-    키움증권만 지원하므로 키움증권일 때만 전송.
+    커넥터의 subscribe_index() 메서드를 호출 (증권사별 내부 구현에 위임).
     """
     ws = state.connector_manager or state.active_connector
-    if not ws or not ws.is_connected() or ws.broker_id != "kiwoom":
+    if not ws or not ws.is_connected():
         return
 
-    payload = build_index_reg_payload()
     try:
-        from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
-        ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload)
+        ok = await ws.subscribe_index()
         if ok:
-            logger.info("[연결] 업종지수(0J) 구독 완료")
+            logger.info("[연결] 업종지수 구독 완료")
         else:
-            logger.warning("[연결] 업종지수(0J) 구독 응답 시간 초과")
+            logger.warning("[연결] 업종지수 구독 실패")
     except Exception as e:
-        logger.warning("[연결] 업종지수(0J) 구독 실패: %s", e, exc_info=True)
+        logger.warning("[연결] 업종지수 구독 실패: %s", e, exc_info=True)
 
 
 async def subscribe_account_realtime() -> None:

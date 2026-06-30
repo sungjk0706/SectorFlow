@@ -34,6 +34,7 @@ import {
   applyBuyLimitStatus,
   applyEngineReloadComplete,
   applyMarketPhase,
+  applyIndexData,
   uiStore,
 } from './stores/uiStore'
 import type {
@@ -46,6 +47,7 @@ import type {
   RealDataEvent,
   SectorScoreRow,
   SectorScoresEvent,
+  IndexData,
 } from './types'
 import type { SectorPriceTick } from './stores/hotStore'
 import { applyStockClassificationChanged } from './stores/stockClassificationStore'
@@ -193,6 +195,10 @@ export function bindWSToStore(
     applyIndexRefresh(data as EngineStatus)
   })
 
+  settingsClient.onEvent('index-data', (data) => {
+    applyIndexData(data as IndexData)
+  })
+
   settingsClient.onEvent('snapshot-update', (data) => {
     applySnapshotUpdate(data as { snapshot_history: SnapshotHistory[] })
   })
@@ -259,7 +265,7 @@ export function bindWSToStore(
 
   /* ── market-phase: 장 상태 실시간 갱신 ── */
   pricesClient.onEvent('market-phase', (data) => {
-    applyMarketPhase(data as { krx: string; nxt: string; krx_alert?: string | null; krx_countdown?: string | null; nxt_countdown?: string | null })
+    applyMarketPhase(data as Partial<{ krx: string; nxt: string; krx_alert: string | null }>)
   })
 
   /* ── receive-rate: 수신율 실시간 갱신 ── */
