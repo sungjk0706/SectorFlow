@@ -343,18 +343,15 @@ export function applyRealData(item: RealDataEvent): void {
       const strength = sectorStock.strength;
       const amount = sectorStock.trade_amount;
 
-      // null이 아닐 때만 업데이트 (데이터 없음 표현)
-      if (rate !== null && rate !== undefined) {
-        if (!(t.cur_price === price && t.change === change && t.change_rate === rate &&
-              t.strength === strength && t.trade_amount === amount)) {
-          // In-place mutation
-          t.cur_price = price;
-          t.change = change;
-          t.change_rate = rate;
-          t.strength = strength;
-          t.trade_amount = amount;
-          changed = true;
-        }
+      if (!(t.cur_price === price && t.change === change && t.change_rate === rate &&
+            t.strength === strength && t.trade_amount === amount)) {
+        // In-place mutation
+        t.cur_price = price;
+        t.change = change;
+        t.change_rate = rate;
+        t.strength = strength;
+        t.trade_amount = amount;
+        changed = true;
       }
     }
   }
@@ -548,6 +545,8 @@ export function applySectorPriceTick(data: SectorPriceTick): void {
   const prevTick = sectorPrices[code]
   if (prevTick && prevTick.timestamp >= data.timestamp) return // 과거 틱 무시
 
+  let changed = false;
+
   // 2. sectorStocks In-place Mutation (O(1) DOM 갱신용)
   const sectorStocks = hotStore.getState().sectorStocks
   const stock = sectorStocks[code]
@@ -558,7 +557,7 @@ export function applySectorPriceTick(data: SectorPriceTick): void {
       stock.cur_price = data.price
       stock.change = data.change
       stock.change_rate = data.change_rate
-      window.dispatchEvent(new CustomEvent('real-data-tick', { detail: code }))
+      changed = true
     }
   }
 
@@ -588,7 +587,13 @@ export function applySectorPriceTick(data: SectorPriceTick): void {
       t.cur_price = data.price
       t.change = data.change
       t.change_rate = data.change_rate
+      changed = true
     }
+  }
+
+  // 모든 in-place mutation 완료 후 이벤트 발생 (applyRealData와 동일한 패턴)
+  if (changed) {
+    window.dispatchEvent(new CustomEvent('real-data-tick', { detail: code }))
   }
 
   // 5. sectorPrices 캐시 저장 (setState로 참조 갱신)

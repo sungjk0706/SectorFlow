@@ -237,7 +237,7 @@ async def fetch_ka10081_all_stocks_daily_confirmed(
     krx_codes: list[str],
     qry_dt: str,
     *,
-    interval_sec: float = 0.33,
+    interval_sec: float = 0.3,
     on_progress: "Callable[[int, int], None] | None" = None,
 ) -> dict[str, dict]:
     """
@@ -284,7 +284,7 @@ async def fetch_ka10081_all_stocks_5day(
     krx_codes: list[str],
     qry_dt: str,
     *,
-    interval_sec: float = 0.33,
+    interval_sec: float = 0.3,
     on_progress: "Callable[[int, int], None] | None" = None,
 ) -> dict[str, dict]:
     """

@@ -466,7 +466,7 @@ function mount(container: HTMLElement): void {
 
       if (!scoresChanged && !sectorChanged) return
 
-      // rAF coalescing: 이미 예약된 rAF가 있으면 추가 예약하지 않음
+      // rAF 배칭: 이미 예약된 rAF가 있으면 추가 예약하지 않음
       if (rafHandle !== null) return
 
       rafHandle = requestAnimationFrame(() => {

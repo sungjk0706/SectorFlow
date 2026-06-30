@@ -296,7 +296,7 @@ class KiwoomStockProvider:
         self,
         krx_codes: list[str],
         qry_dt: str,
-        interval_sec: float = 0.33,
+        interval_sec: float = 0.3,
         on_progress: "Callable[[int, int], None] | None" = None,
     ) -> dict[str, dict]:
         """전체 종목 ka10081 순차 조회 -- 5일봉 데이터 채우기용."""
@@ -311,7 +311,7 @@ class KiwoomStockProvider:
         self,
         krx_codes: list[str],
         qry_dt: str,
-        interval_sec: float = 0.33,
+        interval_sec: float = 0.3,
         on_progress: "Callable[[int, int], None] | None" = None,
     ) -> dict[str, dict]:
         """전체 종목 ka10081 순차 조회 -- 확정 시세(1일봉) 데이터 채우기용."""

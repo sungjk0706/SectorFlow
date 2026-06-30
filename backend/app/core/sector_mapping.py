@@ -40,6 +40,49 @@ async def get_merged_sector(stock_code: str) -> str:
     return "미분류"
 
 
+async def get_merged_sectors_batch(codes: list[str]) -> dict[str, str]:
+    """종목 코드 리스트 → {code: sector} 배치 반환.
+
+    메모리 캐시에서 일괄 조회하고, 캐시 미스 코드만 단일 DB 쿼리로 해결.
+    1353회 개별 await get_merged_sector() 호출을 1회 await로 대체.
+    """
+    result: dict[str, str] = {}
+    missed: list[str] = []
+
+    for cd in codes:
+        upper_cd = cd.upper()
+        try:
+            import backend.app.services.engine_service as es
+            entry = es._master_stocks_cache.get(upper_cd)
+            if entry and "sector" in entry:
+                result[cd] = entry["sector"] or "미분류"
+                continue
+        except Exception:
+            pass
+        missed.append(upper_cd)
+
+    if missed:
+        from backend.app.db.database import get_db_connection
+        conn = await get_db_connection()
+        try:
+            placeholders = ",".join("?" * len(missed))
+            cursor = await conn.execute(
+                f"SELECT code, sector FROM master_stocks_table WHERE code IN ({placeholders})",
+                missed,
+            )
+            rows = await cursor.fetchall()
+            for row in rows:
+                result[row["code"]] = row["sector"] or "미분류"
+        except Exception as e:
+            _log.warning("[매핑] get_merged_sectors_batch DB 조회 실패: %s", e)
+
+    for cd in codes:
+        if cd not in result:
+            result[cd] = "미분류"
+
+    return result
+
+
 async def get_merged_all_sectors() -> list[str]:
     """sectors 테이블에서 전체 업종 목록 조회 (정렬). 업종 정의의 SSOT는 sectors 테이블."""
     sectors = set()

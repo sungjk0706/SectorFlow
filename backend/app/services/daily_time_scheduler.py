@@ -21,11 +21,21 @@ KST = timezone(timedelta(hours=9))
 
 
 
+# ── KRX 거래 시간대 ─────────────────────────────────────────────────────────
+KRX_PREMARKET_START   = (8,  0)    # 08:00 장전 동시호가 시작
+KRX_REGULAR_START     = (9,  0)    # 09:00 정규장 시작
+KRX_REGULAR_END       = (15, 20)   # 15:20 정규장 종료 → 장후 동시호가
+KRX_AFTER_AUCTION_END = (15, 30)   # 15:30 장후 동시호가 종료 → 장후 시간외
+KRX_AFTER_HOURS_END   = (15, 40)   # 15:40 장후 시간외 종료 → 시간외 단일가
+KRX_SINGLE_PRICE_END  = (16, 0)    # 16:00 시간외 단일가 종료 → 장마감
+
 # ── NXT 거래 시간대 (증권사 공식 답변 기준) ─────────────────────────────────
-NXT_PREMARKET_START  = (8,  0)   # 08:00
-NXT_PREMARKET_END    = (9,  0)   # 09:00
-NXT_AFTERMARKET_START = (15, 30)  # 15:30
-NXT_AFTERMARKET_END   = (18,  0)  # 18:00
+NXT_PREMARKET_START   = (8,  0)    # 08:00 프리마켓 시작
+NXT_PREMARKET_END     = (9,  0)    # 09:00 프리마켓 종료 → 메인마켓
+NXT_MAINMARKET_END    = (15, 20)   # 15:20 메인마켓 종료 → 휴식
+NXT_BREAK_END         = (15, 30)   # 15:30 휴식 종료 → 애프터마켓
+NXT_AFTERMARKET_START = (15, 30)   # 15:30 애프터마켓 시작
+NXT_AFTERMARKET_END   = (20, 0)    # 20:00 애프터마켓 종료 → 장마감
 
 
 def is_nxt_premarket_window() -> bool:
@@ -45,12 +55,63 @@ def is_nxt_premarket_window() -> bool:
 
 
 def is_nxt_aftermarket_window() -> bool:
-    """현재 시각이 NXT 애프터마켓 구간(15:30~18:00)인지 판단."""
+    """현재 시각이 NXT 애프터마켓 구간(15:30~20:00)인지 판단."""
     now = _kst_now()
     t = now.hour * 60 + now.minute
     s = NXT_AFTERMARKET_START[0] * 60 + NXT_AFTERMARKET_START[1]
     e = NXT_AFTERMARKET_END[0] * 60 + NXT_AFTERMARKET_END[1]
     return s <= t < e
+
+
+def calc_timebased_market_phase() -> dict:
+    """현재 KST 시각 기반으로 KRX/NXT 장 상태를 산정하여 반환.
+
+    JIF 미수신 시 fallback으로 사용되며, 거래일 판별 포함.
+    반환: {"krx": str, "nxt": str}
+    """
+    from backend.app.core.trading_calendar import is_trading_day
+
+    now = _kst_now()
+    today = now.date()
+    t = now.hour * 60 + now.minute
+
+    if today.weekday() >= 5 or not is_trading_day(today):
+        return {"krx": "휴장일", "nxt": ""}
+
+    def _m(hm: tuple[int, int]) -> int:
+        return hm[0] * 60 + hm[1]
+
+    # ── KRX ──
+    if t < _m(KRX_PREMARKET_START):
+        krx = "장개시전"
+    elif t < _m(KRX_REGULAR_START):
+        krx = "장전 동시호가"
+    elif t < _m(KRX_REGULAR_END):
+        krx = "정규장"
+    elif t < _m(KRX_AFTER_AUCTION_END):
+        krx = "장후 동시호가"
+    elif t < _m(KRX_AFTER_HOURS_END):
+        krx = "장후 시간외"
+    elif t < _m(KRX_SINGLE_PRICE_END):
+        krx = "시간외 단일가"
+    else:
+        krx = "장마감"
+
+    # ── NXT ──
+    if t < _m(NXT_PREMARKET_START):
+        nxt = ""
+    elif t < _m(NXT_PREMARKET_END):
+        nxt = "프리마켓"
+    elif t < _m(NXT_MAINMARKET_END):
+        nxt = "메인마켓"
+    elif t < _m(NXT_BREAK_END):
+        nxt = "휴식"
+    elif t < _m(NXT_AFTERMARKET_END):
+        nxt = "애프터마켓"
+    else:
+        nxt = "장마감"
+
+    return {"krx": krx, "nxt": nxt}
 
 
 KRX_INACTIVE_PHASES = frozenset({
@@ -66,11 +127,15 @@ def is_nxt_only_window() -> bool:
     """현재 장 상태가 NXT-only 거래 구간인지 판단 (KRX 비활성 + NXT 활성).
 
     SSOT: engine_state.market_phase (JIF 수신값) 기반으로 판단.
-    JIF 미수신 시 False 반환 — 시세도 없으므로 필터링 의미 없음.
+    JIF 미수신 시 calc_timebased_market_phase()로 시간 기반 fallback.
     """
     mp = state.market_phase
     krx = mp.get("krx", "")
     nxt = mp.get("nxt", "")
+    if not krx or not nxt:
+        phase = calc_timebased_market_phase()
+        krx = phase["krx"]
+        nxt = phase["nxt"]
     if not krx or not nxt:
         return False
     return krx in KRX_INACTIVE_PHASES and nxt in NXT_ACTIVE_PHASES
@@ -80,7 +145,7 @@ def get_nxt_trde_tp(base_trde_tp: str = "3") -> str:
     """
     현재 시간대에 맞는 NXT trde_tp 반환.
     - 프리마켓(08:00~09:00): 'P'
-    - 애프터마켓(15:30~18:00): 'U'
+    - 애프터마켓(15:30~20:00): 'U'
     - 정규장: base_trde_tp 그대로 (지정가=1, 시장가=3 -- KRX와 동일)
     """
     if is_nxt_premarket_window():
@@ -113,16 +178,20 @@ def get_market_phase() -> dict:
     """현재 KRX/NXT 장 상태 반환 (순수 읽기).
 
     SSOT: engine_state.market_phase에서 읽어 복사본 반환.
-    JIF 미수신 시 빈 문자열 반환 — 시세도 없으므로 fallback 무의미.
+    JIF 미수신 시 calc_timebased_market_phase()로 시간 기반 fallback.
     """
     mp = state.market_phase
-    phase: dict = {"krx": mp.get("krx", ""), "nxt": mp.get("nxt", "")}
+    krx = mp.get("krx", "")
+    nxt = mp.get("nxt", "")
+    if not krx or not nxt:
+        fallback = calc_timebased_market_phase()
+        if not krx:
+            krx = fallback["krx"]
+        if not nxt:
+            nxt = fallback["nxt"]
+    phase: dict = {"krx": krx, "nxt": nxt}
     if mp.get("krx_alert"):
         phase["krx_alert"] = mp["krx_alert"]
-    if mp.get("krx_countdown"):
-        phase["krx_countdown"] = mp["krx_countdown"]
-    if mp.get("nxt_countdown"):
-        phase["nxt_countdown"] = mp["nxt_countdown"]
     return phase
 
 
@@ -234,81 +303,51 @@ async def _on_krx_market_open() -> None:
         from backend.app.services.engine_account_notify import (
             notify_desktop_sector_scores,
             notify_desktop_sector_stocks_refresh,
-            _broadcast,
         )
         await recompute_sector_summary_now()
         notify_desktop_sector_scores(force=True)
         await notify_desktop_sector_stocks_refresh()
-        _broadcast("market-phase", get_market_phase())
+        _broadcast_market_phase()
     except Exception as e:
         logger.warning("[타이머] KRX 정규장 진입 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_krx_after_hours_start() -> None:
-    """15:30 전환 콜백 — 업종 종합점수 재계산 + WS 브로드캐스트 + market-phase 이벤트 전송.
+    """15:30 전환 콜백 — 업종 종합점수 재계산 + KRX 단독 종목 구독해지 + WS 브로드캐스트.
 
-    NOTE: KRX 장마감 구독해지는 16:01 예약(_on_krx_after_hours_remove)으로 이동됨.
-    시간외 단일가(15:40~16:00) 0B 데이터를 끝까지 수신한 후 해지하기 위함.
+    KRX 정규장 마감(15:30) 시점에 KRX 단독 종목(nxt_enable=False) WS 구독 해지.
+    NXT-enabled 종목은 NXT 거래(20:00까지)가 가능하므로 구독 유지.
     """
     try:
         from backend.app.core.trading_calendar import is_trading_day
         today = _kst_now().date()
         if today.weekday() >= 5 or not is_trading_day(today):
             return
-        logger.info("[타이머] KRX 장외 시간대 진입 (15:30) -- 업종 종합점수 재계산 + 실시간 화면전송")
+        logger.info("[타이머] KRX 장외 시간대 진입 (15:30) -- 업종 종합점수 재계산 + KRX 단독 종목 구독해지")
         from backend.app.services.engine_service import recompute_sector_summary_now
         from backend.app.services.engine_account_notify import (
             notify_desktop_sector_scores,
             notify_desktop_sector_stocks_refresh,
-            _broadcast,
         )
         await recompute_sector_summary_now()
         notify_desktop_sector_scores(force=True)
         await notify_desktop_sector_stocks_refresh()
-        _broadcast("market-phase", get_market_phase())
-    except Exception as e:
-        logger.warning("[타이머] KRX 장외 전환 콜백 오류: %s", e, exc_info=True)
-
-
-def _on_krx_after_hours_remove() -> None:
-    """16:01 예약 — KRX 장마감 구독해지.
-
-    KRX 시간외 단일가 종료(16:00) 직후 실행:
-    KRX 단독 종목(nxt_enable=False) WS 구독 해지 (remove_krx_only_stocks)
-    """
-    try:
-        from backend.app.core.trading_calendar import is_trading_day
-        today = _kst_now().date()
-        if today.weekday() >= 5 or not is_trading_day(today):
-            return
-        if not state.krx_remove_done:
-            state.krx_remove_done = True
-            loop = asyncio.get_running_loop()
-            loop.create_task(_do_krx_after_hours_remove())
-    except Exception as e:
-        logger.warning("[타이머] 16:01 KRX 장마감 구독해지 예약 오류: %s", e, exc_info=True)
-
-
-async def _do_krx_after_hours_remove() -> None:
-    """16:01 비동기 헬퍼 — KRX 장마감 구독해지."""
-    try:
-        from backend.app.core.trading_calendar import is_trading_day
-        today = _kst_now().date()
-        if today.weekday() >= 5 or not is_trading_day(today):
-            return
-        from backend.app.services import engine_service as es
+        _broadcast_market_phase()
 
         # KRX 단독 종목 장마감 구독해지
-        from backend.app.services.market_close_pipeline import remove_krx_only_stocks
-        result = await remove_krx_only_stocks(es)
-        if result.get("skipped"):
-            state.krx_remove_done = False
-            logger.debug("[타이머] KRX 장마감 구독해지 생략 — 플래그 복원 (앱준비 후 재시도 가능)")
-        else:
-            logger.info("[타이머] KRX 장마감 구독해지 완료 — 해지 %d종목, 실패 %d종목", result.get("removed", 0), result.get("failed", 0))
+        if not state.krx_remove_done:
+            state.krx_remove_done = True
+            from backend.app.services import engine_service as es
+            from backend.app.services.market_close_pipeline import remove_krx_only_stocks
+            result = await remove_krx_only_stocks(es)
+            if result.get("skipped"):
+                state.krx_remove_done = False
+                logger.debug("[타이머] KRX 장마감 구독해지 생략 — 플래그 복원 (앱준비 후 재시도 가능)")
+            else:
+                logger.info("[타이머] KRX 장마감 구독해지 완료 — 해지 %d종목, 실패 %d종목", result.get("removed", 0), result.get("failed", 0))
     except Exception as e:
         state.krx_remove_done = False
-        logger.warning("[타이머] KRX 장마감 구독해지 오류 — 플래그 복원: %s", e, exc_info=True)
+        logger.warning("[타이머] KRX 장외 전환 콜백 오류: %s", e, exc_info=True)
 
 
 def _fire_unified_confirmed_fetch() -> None:
@@ -390,6 +429,15 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
             _fire_unified_confirmed_fetch()
             return
         else:
+            confirmed_dl_str = str(_settings["confirmed_download_time"])[:5]
+            cdl_h, cdl_m = _parse_hm(confirmed_dl_str)
+            confirmed_dl_minutes = cdl_h * 60 + cdl_m
+            if t < confirmed_dl_minutes:
+                logger.debug(
+                    "[타이머] 단절 구간 기동 — 저장된 데이터(%s) 유효하지만 확정 다운로드 시각(%s) 이전 — 타이머 대기",
+                    _cached_date_str, confirmed_dl_str
+                )
+                return
             logger.debug("[타이머] 단절 구간 기동 — 저장된 데이터(%s) 유효함 (스킵)", _cached_date_str)
             state.confirmed_done = True
             return
@@ -403,9 +451,16 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
 
 
 def _broadcast_market_phase() -> None:
-    """market-phase WS 이벤트 브로드캐스트 (08:00, 09:00, 20:00 전환 시점)."""
+    """market-phase WS 이벤트 브로드캐스트 (08:00, 09:00, 20:00 전환 시점).
+
+    state.market_phase를 시간 기반 최신값으로 갱신 후 브로드캐스트.
+    SSOT: state.market_phase가 항상 현재 시각 기반 상태를 반영하도록 보장.
+    """
     try:
         from backend.app.services.engine_account_notify import _broadcast
+        fresh = calc_timebased_market_phase()
+        state.market_phase["krx"] = fresh["krx"]
+        state.market_phase["nxt"] = fresh["nxt"]
         phase = get_market_phase()
         _broadcast("market-phase", phase)
         logger.debug("[타이머] market-phase 화면전송: %s", phase)
@@ -542,8 +597,7 @@ async def _on_ws_subscribe_start() -> None:
         import backend.app.services.engine_service as _es
         _es._sector_summary_cache = None
         # market-phase WS 브로드캐스트 (WS 구독 시작 = 08:00 또는 09:00 전환 시점)
-        from backend.app.services.engine_account_notify import _broadcast
-        _broadcast("market-phase", get_market_phase())
+        _broadcast_market_phase()
         # ── WS 연결은 engine_loop의 구간 감지 루프가 담당 → 이벤트 통지 ──
         state.ws_window_changed_event.set()
         logger.info("[타이머] 실시간 구독 구간 진입 -- engine_loop에 WS 연결 통지")
@@ -559,8 +613,10 @@ async def _on_ws_subscribe_end() -> None:
         gc.collect()
         logger.info("[타이머] 장마감 후 GC 정상화 및 메모리 정리 완료")
 
-        from backend.app.core.memory_monitor import log_memory_snapshot
+        from backend.app.core.memory_monitor import start_memory_monitor, log_memory_snapshot, stop_memory_monitor
+        start_memory_monitor()
         log_memory_snapshot("장마감 GC 정리 후")
+        stop_memory_monitor()
         from backend.app.services import engine_service
         state.ws_subscribe_window_active = False
         state.confirmed_done = False  # 오후 8시 구독 종료 → 8시 30분 확정 갱신 허용
@@ -715,16 +771,7 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
         state.ws_subscribe_timer_handles.append(h)
         logger.debug("[타이머] KRX 장외 전환 (15:30) -- %.0f초 후 예약", delay_krx_after)
 
-    # ★ 15:40 KRX 확정 조회 타이머 — 제거됨 (Task 3.1, 16:01 KRX 스냅샷+REMOVE로 교체)
-
     # ★ 20:10 NXT 확정 조회 타이머 — 제거됨 (Task 3.1, 20:30 통합 확정 조회로 교체)
-
-    # ★ 16:01 KRX 장마감 구독해지 타이머
-    delay_krx_snapshot = _seconds_until_hm(16, 1)
-    if delay_krx_snapshot > 0 and loop:
-        h = loop.call_later(max(delay_krx_snapshot, 1), _on_krx_after_hours_remove)
-        state.ws_subscribe_timer_handles.append(h)
-        logger.debug("[타이머] KRX 장마감 구독해지 (16:01) -- %.0f초 후 예약", delay_krx_snapshot)
 
     # ★ 확정 시세 다운로드 타이머 — confirmed_download_time (기본값 20:40)
     # ws_subscribe_end와 분리된 별도 타이머: 증권사 확정 데이터 준비 시간 확보
@@ -745,10 +792,10 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
 
     # ★ market-phase 전환 시점 타이머
     # 08:00 NXT프리, 09:00 KRX정규장, 15:20 NXT메인→휴식, 15:30 KRX정규종료/NXT애프터,
-    # 15:40 KRX시간외종가, 16:00 KRX시간외단일가, 18:00 KRX장마감, 20:00 NXT장마감
+    # 15:40 KRX시간외종가, 16:00 KRX시간외단일가/장마감, 20:00 NXT장마감
     for hm_h, hm_m, label in (
         (8, 0, "08:00"), (9, 0, "09:00"),
-        (15, 20, "15:20"), (15, 30, "15:30"), (15, 40, "15:40"), (16, 0, "16:00"), (18, 0, "18:00"),
+        (15, 20, "15:20"), (15, 30, "15:30"), (15, 40, "15:40"), (16, 0, "16:00"),
         (20, 0, "20:00"),
     ):
         delay_mp = _seconds_until_hm(hm_h, hm_m)
@@ -792,8 +839,7 @@ async def _init_ws_subscribe_state() -> None:
             logger.warning("[데이터] 캐시 초기화 실패: %s", e, exc_info=True)
 
         # market-phase WS 브로드캐스트 — _on_ws_subscribe_start와 동일
-        from backend.app.services.engine_account_notify import _broadcast
-        _broadcast("market-phase", get_market_phase())
+        _broadcast_market_phase()
 
         state.ws_window_changed_event.set()
         logger.info("[타이머] 구독 구간 내 시작 -- engine_loop에 WS 연결 통지")
@@ -1058,6 +1104,12 @@ async def start_daily_time_scheduler() -> None:
         if not settings:
             raise RuntimeError("settings cache not initialized")
         await _apply_auto_toggle_on_startup(settings)
+
+        # ── market_phase 시간 기반 초기화 (JIF 수신 전 fallback) ──
+        phase = calc_timebased_market_phase()
+        state.market_phase["krx"] = phase["krx"]
+        state.market_phase["nxt"] = phase["nxt"]
+        logger.info("[타이머] market_phase 시간 기반 초기화: krx=%s, nxt=%s", phase["krx"], phase["nxt"])
 
         await schedule_auto_trade_timers(settings)
         await schedule_ws_subscribe_timers(settings)

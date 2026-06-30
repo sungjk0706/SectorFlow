@@ -186,7 +186,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   header.appendChild(kosdaqChip)
 
 
-  const spinnerHtml = '<span style="display:inline-block;animation:header-spin 1.2s linear infinite">⏳</span>'
+  const spinnerHtml = '<span style="display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:header-spin 0.8s linear infinite"></span>'
 
   // ── Store 구독 ──
 
@@ -333,9 +333,13 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
       avgAmtChip.style.border = `1px solid ${color}20`
 
       // ETA 표시
-      const isConfirmed = status === 'confirmed'
-      const eta = (!isConfirmed && avgAmtProgress.eta_sec && avgAmtProgress.eta_sec > 0)
-        ? ` · 약 ${avgAmtProgress.eta_sec >= 60 ? Math.ceil(avgAmtProgress.eta_sec / 60) + '분' : Math.ceil(avgAmtProgress.eta_sec) + '초'} 남음`
+      const _etaSec = avgAmtProgress.eta_sec ?? 0
+      const _sec = Math.ceil(_etaSec)
+      const _etaStr = _sec >= 60
+        ? `${Math.floor(_sec / 60)}분 ${_sec % 60}초`
+        : `${_sec}초`
+      const eta = (_etaSec > 0)
+        ? ` · 약 ${_etaStr} 남음`
         : ''
       
       const finalMsg = msg + eta
@@ -346,7 +350,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
         avgAmtChip.innerHTML = `
           <div style="position:absolute;left:0;top:0;height:100%;width:${progressPct}%;background:${fillColor};transition:width 0.3s ease;"></div>
           <span style="position:relative;color:${color};display:flex;align-items:center;gap:4px;z-index:1;">
-            <span style="display:inline-block;animation:header-spin 1.2s linear infinite">⏳</span>
+            <span style="display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:header-spin 0.8s linear infinite"></span>
             ${finalMsg}
           </span>
         `

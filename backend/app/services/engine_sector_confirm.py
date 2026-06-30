@@ -5,7 +5,7 @@ from __future__ import annotations
 
 개별 REAL 체결마다 태스크를 만들지 않는다.
 recompute_sector_for_code(code)는 이벤트 발생 시 호출되며,
-연속 호출은 coalesce되어 1회만 재계산한다.
+연속 호출은 중복 제거되어 1회만 재계산한다.
 구독 갱신은 buy_targets 변경 시 직접 호출된다.
 """
 
@@ -30,7 +30,7 @@ def is_engine_running_internal() -> bool:
 def request_sector_recompute(code: str | None = None) -> None:
     """이벤트 발생 시 즉시 실행.
 
-    실시간 데이터 처리 아키텍처에 부합: 코알레싱 제거로 지연 없이 즉시 실행.
+    실시간 데이터 처리 아키텍처에 부합: 지연 없이 즉시 실행.
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ def request_sector_recompute(code: str | None = None) -> None:
         asyncio.run(_flush_sector_recompute_impl())
         return
 
-    # 즉시 실행 (코알레싱 제거)
+    # 즉시 실행
     loop.create_task(_flush_sector_recompute_impl())
 
 
@@ -119,10 +119,12 @@ async def _flush_sector_recompute_impl() -> None:
             codes_snapshot = set(inputs["all_codes"])
 
         # ── 증분 갱신 ──
-        # 1. dirty 종목 → 해당 섹터 추출
+        # 1. dirty 종목 → 해당 섹터 추출 (배치 조회)
+        codes_list = list(codes_snapshot)
+        sectors_map = await sector_mapping.get_merged_sectors_batch(codes_list)
         dirty_sectors: set[str] = set()
-        for cd in codes_snapshot:
-            sec = await sector_mapping.get_merged_sector(cd)
+        for cd in codes_list:
+            sec = sectors_map.get(cd, "미분류")
             if sec:
                 dirty_sectors.add(sec)
 
@@ -138,10 +140,11 @@ async def _flush_sector_recompute_impl() -> None:
         trim_change = float(state.integrated_system_settings_cache["sector_trim_change_rate_pct"])
         sector_weights = state.integrated_system_settings_cache["sector_weights"]
 
-        # dirty 섹터에 속한 종목코드만 필터
+        # dirty 섹터에 속한 종목코드만 필터 (배치 조회)
+        all_sectors_map = await sector_mapping.get_merged_sectors_batch(all_codes)
         dirty_codes_for_calc = [
             cd for cd in all_codes
-            if await sector_mapping.get_merged_sector(cd) in dirty_sectors
+            if all_sectors_map.get(cd, "미분류") in dirty_sectors
         ]
 
         if dirty_codes_for_calc:
@@ -205,9 +208,11 @@ async def _flush_sector_recompute_impl() -> None:
         notify_desktop_sector_scores()
         await notify_buy_targets_update()
 
-        # buy_targets 변경 시 구독 갱신 직접 호출 (이벤트 기반)
+        # buy_targets 변경 시 구독 갱신 + 매수 시도 (이벤트 기반)
         if are_buy_targets_changed(prev_targets, ss.buy_targets):
             sync_dynamic_subscriptions(_es, ss.buy_targets)
+            from backend.app.services.buy_order_executor import evaluate_buy_candidates
+            await evaluate_buy_candidates()
 
         # 업종 요약정보 생성 완료 이벤트 설정
         _es._sector_summary_ready_event.set()
@@ -237,10 +242,14 @@ async def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
     # 업종 점수 변화 감지를 위한 셋
     changed_sectors = set()
 
+    # 업종 배치 조회 (codes_snapshot은 틱 이벤트 종목 소수)
+    codes_list = list(codes_snapshot)
+    sectors_map = await sector_mapping.get_merged_sectors_batch(codes_list)
+
     # 각 틱 이벤트 종목별 단건 델타 처리 (배치 루프 제거)
-    for cd in codes_snapshot:
+    for cd in codes_list:
         # 해당 종목의 업종 추출
-        sector = await sector_mapping.get_merged_sector(cd)
+        sector = sectors_map.get(cd, "미분류")
         if not sector:
             continue
 
@@ -329,9 +338,6 @@ async def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
             # 매수 시도
             await evaluate_buy_candidates()
 
-    # 웹소켓 난사 방지: 코알레싱 버퍼링 연동
-    # 캐시 업데이트만 수행, 백엔드 코알레싱 스케줄러가 주기적으로 통합 발행
-
 
 async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
     """전체 재계산 (캐시 없을 때 — 콜드 스타트).
@@ -378,9 +384,11 @@ async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
     notify_desktop_sector_scores()
     await notify_buy_targets_update()
 
-    # buy_targets 변경 시 구독 갱신 직접 호출 (이벤트 기반)
+    # buy_targets 변경 시 구독 갱신 + 매수 시도 (이벤트 기반)
     if are_buy_targets_changed(prev_targets, ss.buy_targets):
         sync_dynamic_subscriptions(_es, ss.buy_targets)
+        from backend.app.services.buy_order_executor import evaluate_buy_candidates
+        await evaluate_buy_candidates()
 
     # 업종 요약정보 생성 완료 이벤트 설정
     state.sector_summary_ready_event.set()

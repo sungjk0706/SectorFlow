@@ -451,54 +451,28 @@ async def _on_fill_after_ws() -> None:
 # ── 브로드캐스트 ─────────────────────────────────────────────────────────
 
 def _broadcast_account(reason: str | None = None) -> None:
-    """데이터 갱신 후 UI/WS -- 페이로드 전송은 engine_account_notify.
-    
-    Phase 2 최적화: 0.5초 coalescing 적용 - 테스트모드에서 매수/매도/정산 
-    빈번한 브로드캐스트를 모아서 1회만 전송하여 UI 깜빡임 감소.
-    """
-    from backend.app.services import dry_run
-    from backend.app.services.engine_account_notify import broadcast_account_update
-    
-    # 이유 저장 (마지막 이유만 기록)
-    state.account_broadcast_pending_reason = reason or "coalesced"
-    
-    # 기존 타이머 취소
-    if state.account_broadcast_timer is not None:
-        state.account_broadcast_timer.cancel()
-
-    # 0.5초 후 실제 브로드캐스트
+    """데이터 갱신 후 UI/WS 계좌 브로드캐스트 — 즉시 전송."""
     try:
         loop = asyncio.get_running_loop()
-        state.account_broadcast_timer = loop.call_later(
-            state.ACCOUNT_BROADCAST_COALESCE_SEC,
-            lambda: asyncio.create_task(_apply_delayed_account_broadcast())
-        )
+        loop.create_task(_do_broadcast_account(reason))
     except RuntimeError:
-        # 이벤트 루프 없음 - 즉시 실행 (초기화 시)
-        asyncio.run(_apply_delayed_account_broadcast())
+        asyncio.run(_do_broadcast_account(reason))
 
 
-async def _apply_delayed_account_broadcast() -> None:
-    """0.5초 지연 후 실제 계좌 브로드캐스트 수행."""
+async def _do_broadcast_account(reason: str | None = None) -> None:
+    """계좌 브로드캐스트 수행."""
     from backend.app.services import dry_run
     from backend.app.services.engine_account_notify import broadcast_account_update
-    
-    reason = state.account_broadcast_pending_reason
-    state.account_broadcast_pending_reason = None
-    state.account_broadcast_timer = None
-    
-    if reason is None:
-        return
-    
+
     try:
         pos = await dry_run.get_positions() if is_test_mode(state.integrated_system_settings_cache) else list(state.positions or [])
         broadcast_account_update(
             positions=pos or [],
             snapshot=dict(state.account_snapshot or {}),
-            reason=reason,
+            reason=reason or "update",
         )
     except Exception as e:
-        logger.debug("[계좌브로드캐스트] 지연 전송 실패: %s", e, exc_info=True)
+        logger.debug("[계좌브로드캐스트] 전송 실패: %s", e, exc_info=True)
 
 
 # ── 헬퍼 함수 ─────────────────────────────────────────────────────────

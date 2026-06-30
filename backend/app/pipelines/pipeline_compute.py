@@ -18,10 +18,9 @@ from types import ModuleType
 # 0.3초 배치 재계산을 위한 더티 코드 셋 추가
 _dirty_codes: set[str] = set()
 
-# 수신율 추적 (이벤트 기반)
+# 수신율 추적
 _current_receive_rate: dict = {"received": 0, "total": 0, "pct": 0.0}
 _receive_rate_dirty: bool = False
-_receive_rate_event: asyncio.Event | None = None
 # 누적 수신 종목 세트 — _reset_realtime_fields()에 의해 초기화되지 않음
 # 한 번 수신된 종목은 앱 종료까지 수신된 것으로 유지되어 수신율이 0%로 강하하지 않음
 _received_codes: set[str] = set()
@@ -71,13 +70,12 @@ def _has_any_realtime_data(entry: dict) -> bool:
     return any(entry.get(f) is not None for f in _REALTIME_CHECK_FIELDS)
 
 
-async def _update_receive_rate_on_tick(es: ModuleType) -> None:
-    """틱 수신 시 수신율 증분 갱신 (이벤트 기반).
+async def _calculate_receive_rate(es: ModuleType) -> None:
+    """수신율 계산 (배치 처리 — Phase 1/Phase 2 루프에서 호출).
 
-    누적 수신 세트(_received_codes)를 사용하여 _reset_realtime_fields() 후에도
-    한 번 수신된 종목은 수신된 것으로 유지 → 수신율 0% 강하 방지.
+    _received_codes는 per-tick O(1)으로 추가되므로 여기서는 계산만 수행.
     """
-    global _current_receive_rate, _receive_rate_dirty, _receive_rate_event, _received_codes
+    global _current_receive_rate
 
     try:
         inputs = await es.get_sector_summary_inputs()
@@ -87,26 +85,14 @@ async def _update_receive_rate_on_tick(es: ModuleType) -> None:
         if total_count == 0:
             return
 
-        from backend.app.services.engine_state import state
         all_codes_set = set(all_codes)
-        for code in all_codes:
-            if _has_any_realtime_data(state.master_stocks_cache.get(code, {})):
-                _received_codes.add(code)
-
         received_count = len(_received_codes & all_codes_set)
         current_pct = received_count / total_count * 100 if total_count > 0 else 0.0
 
-        # 수신율 변경 시에만 dirty 플래그 설정
-        if (_current_receive_rate["received"] != received_count or
-            _current_receive_rate["total"] != total_count or
-            abs(_current_receive_rate["pct"] - current_pct) > 0.1):
-            _current_receive_rate = {"received": received_count, "total": total_count, "pct": current_pct}
-            _receive_rate_dirty = True
-            if _receive_rate_event is not None:
-                _receive_rate_event.set()
+        _current_receive_rate = {"received": received_count, "total": total_count, "pct": current_pct}
 
     except Exception as e:
-        logger.error("[Compute] 수신율 갱신 예외: %s", e, exc_info=True)
+        logger.error("[Compute] 수신율 계산 예외: %s", e, exc_info=True)
 
 
 def get_current_receive_rate() -> dict:
@@ -316,9 +302,6 @@ async def _process_tick_data(
     trnm = data.get("trnm")
     if trnm == "REAL":
         await _handle_real_tick(data, es, broadcast_queue)
-    elif trnm == "JIF":
-        from backend.app.services.engine_ws_dispatch import handle_ws_data
-        await handle_ws_data(data)
 
 
 async def _handle_real_tick(
@@ -417,15 +400,10 @@ async def _handle_real_01_tick(
             from backend.app.services.engine_symbol_utils import _base_stk_cd
             nk = _base_stk_cd(raw_cd)
             if nk:
-                global _dirty_codes
+                global _dirty_codes, _received_codes, _receive_rate_dirty
                 _dirty_codes.add(nk)
-
-            # 연산 결과: 수신율 증분 갱신 (이벤트 기반)
-            await _update_receive_rate_on_tick(es)
-
-            # 연산 결과: 매수 타점 도달 여부 확인
-            # 매수 타점에 도달하면 직접 주문 실행 (trading.py)
-            await _check_buy_target_reached(es, broadcast_queue)
+                _received_codes.add(nk)
+                _receive_rate_dirty = True
 
 
     except Exception as e:
@@ -515,23 +493,17 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
     Phase 2: 0.3초 배치 재계산 루프 (틱 기반 증분 재계산)
     """
     from backend.app.services.engine_sector_confirm import request_sector_recompute
-    global _compute_running, _receive_rate_dirty, _receive_rate_event
-    if _receive_rate_event is None:
-        _receive_rate_event = asyncio.Event()
+    global _compute_running, _receive_rate_dirty
     try:
         # Phase 1: 실시간데이터 필드 수신율 임계값 대기 (1회성 스타트업 게이트)
-        # 이벤트 기반: 틱 수신 시 _receive_rate_event.set()으로 깨움
+        # 1초 타임아웃 기반: per-tick 이벤트 set 제거, 스피닝 방지
         phase1_completed = False
         while _compute_running and not phase1_completed:
             try:
-                # 이벤트 대기 (틱 수신 시 set됨), 타임아웃 1초로 부트스트랩 전 무한 대기 방지
-                try:
-                    await asyncio.wait_for(_receive_rate_event.wait(), timeout=1.0)
-                except asyncio.TimeoutError:
-                    pass
-                _receive_rate_event.clear()
+                await asyncio.sleep(1.0)
 
                 if _receive_rate_dirty:
+                    await _calculate_receive_rate(es)
                     threshold_pct = float(es._integrated_system_settings_cache["sector_start_threshold_pct"])
                     current_pct = _current_receive_rate["pct"]
                     received_count = _current_receive_rate["received"]
@@ -565,8 +537,9 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
             await asyncio.sleep(0.2)
             global _dirty_codes
 
-            # 수신율 전송 (receive-rate 이벤트) - 변경 시에만 전송
+            # 수신율 계산 및 전송 (변경 시에만) — per-tick O(n) 계산 제거, 배치 처리
             if _receive_rate_dirty:
+                await _calculate_receive_rate(es)
                 await _send_receive_rate(get_current_receive_rate())
                 _receive_rate_dirty = False
 
@@ -586,28 +559,3 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
     except asyncio.CancelledError:
         logger.info("[Compute] 백그라운드 업종 점수 재계산 루프 취소됨")
 
-
-async def _check_buy_target_reached(
-    es: ModuleType,
-    broadcast_queue: asyncio.Queue,
-) -> None:
-    """
-    매수 타점 도달 여부 확인.
-
-    Args:
-        es: engine_service 모듈
-        broadcast_queue: UI 전송 큐
-    """
-    # 매수 타점 도달 여부 확인 로직
-    # 매수 후보 종목 UI 업데이트
-    try:
-        buy_targets = await es.get_buy_targets_sector_stocks()
-        if buy_targets:
-            # 매수 후보 종목이 있으면 broadcast_queue에 전송 (UI 업데이트)
-            await broadcast_queue.put({
-                "type": "buy-targets-update",
-                "data": {"buy_targets": buy_targets},
-            })
-
-    except Exception as e:
-        logger.error("[Compute] 매수 타점 확인 예외: %s", e, exc_info=True)

@@ -760,7 +760,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   confirmedDlRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;'
   const confirmedDlLabel = document.createElement('span')
   Object.assign(confirmedDlLabel.style, { minWidth: '110px', fontSize: GS.label, whiteSpace: 'nowrap' })
-  confirmedDlLabel.textContent = '확정 시세 다운로드'
+  confirmedDlLabel.textContent = '1일봉챠트 시세 다운로드'
   confirmedDlRow.appendChild(confirmedDlLabel)
 
   const [cdh, cdm] = parseHM(String(vals.confirmed_download_time ?? '20:40'))
@@ -872,50 +872,6 @@ function renderApiFields(container: HTMLElement): void {
   })
   btnRow.appendChild(saveBtn)
   container.appendChild(btnRow)
-
-  // 거래일 캐시 갱신 버튼
-  const calendarRefreshRow = document.createElement('div')
-  Object.assign(calendarRefreshRow.style, { marginTop: '20px', borderTop: '1px solid #eee', paddingTop: '16px' })
-  const calendarRefreshLabel = document.createElement('div')
-  Object.assign(calendarRefreshLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal, marginBottom: '8px' })
-  calendarRefreshLabel.textContent = '거래일 데이터'
-  calendarRefreshRow.appendChild(calendarRefreshLabel)
-
-  const calendarRefreshBtn = document.createElement('button')
-  calendarRefreshBtn.type = 'button'
-  Object.assign(calendarRefreshBtn.style, {
-    padding: GS.btnPad, borderRadius: '4px',
-    border: '1px solid ' + COLOR.down, background: COLOR.down,
-    color: '#fff', cursor: 'pointer', fontSize: GS.label,
-  })
-  calendarRefreshBtn.textContent = '캘린더 동기화 (비상시용)'
-  calendarRefreshBtn.addEventListener('click', async () => {
-    const confirmed = await showConfirmDialog({
-      title: '거래일 캐시 갱신 (비상시용)',
-      message: '비상시용 - 연초 자동 갱신됨. 수동 갱신하시겠습니까?',
-      isDanger: false
-    })
-    if (!confirmed) return
-    try {
-      calendarRefreshBtn.textContent = '갱신 중...'
-      calendarRefreshBtn.setAttribute('disabled', 'true')
-      await api.post('/api/trading-calendar/refresh')
-      showSaveToast('saved')
-    } catch {
-      showSaveToast('error')
-    } finally {
-      calendarRefreshBtn.textContent = '캘린더 동기화 (비상시용)'
-      calendarRefreshBtn.removeAttribute('disabled')
-    }
-  })
-  calendarRefreshRow.appendChild(calendarRefreshBtn)
-
-  const calendarRefreshDesc = document.createElement('div')
-  Object.assign(calendarRefreshDesc.style, { fontSize: GS.desc, color: COLOR.secondary, marginTop: '6px' })
-  calendarRefreshDesc.textContent = '비상시용 - 연초 자동 갱신됨'
-  calendarRefreshRow.appendChild(calendarRefreshDesc)
-
-  container.appendChild(calendarRefreshRow)
 }
 
 function refreshApiTabContent(): void {
