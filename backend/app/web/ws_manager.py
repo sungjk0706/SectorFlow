@@ -1,13 +1,9 @@
 from __future__ import annotations
 # -*- coding: utf-8 -*-
-"""WebSocket 클라이언트 연결 관리 — throttled broadcast.
+"""WebSocket 클라이언트 연결 관리 — 즉시 broadcast.
 
 set[WebSocket] 기반 직접 참조.
-broadcast()는 동기 함수로, 메시지를 큐에 적재하고 0.1초마다 배치 전송한다.
-
-메시지 분류:
-  - 상태형(STATE_EVENTS): 0.1초 내 최신값만 유지 (coalescing)
-  - 이벤트형: 전부 누적 후 순서 보장 전송
+broadcast()는 동기 함수로, 모든 이벤트를 create_task 기반 즉시 전송한다.
 """
 
 import asyncio
@@ -19,23 +15,6 @@ from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
-_FLUSH_INTERVAL = 0.1  # 배치 전송 주기 (초)
-
-_STATE_EVENTS: frozenset[str] = frozenset({
-    "trade-price",
-    "orderbook-update",
-    "index-refresh",
-    "account-update",
-    "sector-scores",
-    "buy-targets-delta",
-    "buy-limit-status",
-    "ws-subscribe-status",
-    "snapshot-update",
-    "sector-stocks-delta",
-    "avg-amt-progress",
-    "receive-rate",
-})
-
 # real-data FID 필터: 프론트엔드에서 사용하는 FID만 전송
 ALLOWED_FIDS: frozenset[str] = frozenset({'10', '11', '12', '14', '228'})
 
@@ -46,12 +25,6 @@ _ENCODING_CACHE_MAX_SIZE = 100
 
 # real-data key shortening 매핑
 _KEY_SHORTEN: dict[str, str] = {"type": "t", "item": "i", "values": "v"}
-
-# buy-target 페이지 필터링용 Set 캐시 (_sector_summary_cache 갱신 시 재구성)
-_buy_target_page_cache_version: int = 0
-_buy_target_page_codes: set[str] = set()
-_blocked_target_page_codes: set[str] = set()
-
 
 def _encode_realdata(data: dict, subscribed_fids: frozenset[str] | None = None) -> tuple[str, None]:
     """real-data 메시지를 FID 필터 + key shorten으로 인코딩.
@@ -109,7 +82,7 @@ def _encode_realdata(data: dict, subscribed_fids: frozenset[str] | None = None) 
 
 
 class WSManager:
-    """WebSocket throttled 연결 관리."""
+    """WebSocket 연결 관리 — 즉시 broadcast."""
 
     def __init__(self) -> None:
         self._clients: set[WebSocket] = set()
@@ -117,13 +90,7 @@ class WSManager:
         self._client_active_page: dict[WebSocket, str] = {}
         # per-client 구독 FID 추적 (미설정 시 ALLOWED_FIDS 사용)
         self._client_subscribed_fids: dict[WebSocket, frozenset[str]] = {}
-        # 상태형: {(event_type, code): data} — 최신값만 유지 (coalescing)
-        self._state_queue: dict[tuple[str, str | None], Any] = {}
-        # 이벤트형: [(event_type, data), ...] — 순서 보장
-        self._event_queue: list[tuple[str, dict[str, Any]]] = []
-        self._flush_task: asyncio.Task | None = None
         self._shutdown_timer: asyncio.TimerHandle | None = None
-        self._flush_event: asyncio.Event = asyncio.Event()
 
     # ------------------------------------------------------------------
     # 클라이언트 등록 / 해제
@@ -174,10 +141,6 @@ class WSManager:
         """현재 활성화된 페이지 집합 반환."""
         return set(self._client_active_page.values())
 
-    def get_clients_by_page(self, page: str) -> set[WebSocket]:
-        """특정 페이지에 활성화된 클라이언트 집합 반환."""
-        return {ws for ws, p in self._client_active_page.items() if p == page}
-
     # ------------------------------------------------------------------
     # Per-client subscribed FID 관리
     # ------------------------------------------------------------------
@@ -193,63 +156,6 @@ class WSManager:
         logger.debug("[구독] 클라이언트 FID 구독 해제")
 
     # ------------------------------------------------------------------
-    # 내부 큐 관리
-    # ------------------------------------------------------------------
-
-    def _ensure_flush_task(self) -> None:
-        """flush 루프 태스크가 없으면 생성."""
-        if self._flush_task is None or self._flush_task.done():
-            try:
-                loop = asyncio.get_running_loop()
-                self._flush_task = loop.create_task(self._flush_loop())
-            except RuntimeError:
-                pass
-
-    async def _flush_loop(self) -> None:
-        """이벤트 기반 flush — 메시지 도착 즉시 전송, _FLUSH_INTERVAL은 최대 대기 시간."""
-        while True:
-            try:
-                await asyncio.wait_for(self._flush_event.wait(), timeout=_FLUSH_INTERVAL)
-            except asyncio.TimeoutError:
-                pass
-            self._flush_event.clear()
-            if not self._clients:
-                self._state_queue.clear()
-                self._event_queue.clear()
-                continue
-            await self._flush()
-
-    async def _flush(self) -> None:
-        """큐에 쌓인 메시지를 모두 전송."""
-        # 이벤트형 먼저 (순서 중요)
-        events = self._event_queue
-        self._event_queue = []
-        # 상태형
-        states = self._state_queue
-        self._state_queue = {}
-
-        batch: list[str] = []
-        for event_type, data in events:
-            batch.append(json.dumps({"event": event_type, "data": self._stamp(data)}, ensure_ascii=False))
-        for (event_type, code), state_data in states.items():
-            batch.append(json.dumps({"event": event_type, "data": self._stamp(state_data)}, ensure_ascii=False))
-
-        if not batch:
-            return
-
-        dead: set[WebSocket] = set()
-        for ws in set(self._clients):
-            for text in batch:
-                try:
-                    await ws.send_text(text)
-                except Exception:
-                    dead.add(ws)
-                    logger.debug("[연결] WS batch 전송 실패 — 클라이언트 제거", exc_info=True)
-                    break
-        for ws in dead:
-            self.unregister(ws)
-
-    # ------------------------------------------------------------------
     # 메시지 전송
     # ------------------------------------------------------------------
 
@@ -260,11 +166,21 @@ class WSManager:
             data["_v"] = 1
         return data
 
-    async def _send_realdata_immediate(self, text: str) -> None:
-        """real-data 즉시 전송 — flush 큐 우회, 수신 즉시 모든 클라이언트에 전달.
+    async def _send_broadcast(self, event_type: str, data: dict) -> None:
+        """모든 클라이언트에게 이벤트 즉시 전송."""
+        message = json.dumps({"event": event_type, "data": self._stamp(data)}, ensure_ascii=False)
+        dead: set[WebSocket] = set()
+        for ws in set(self._clients):
+            try:
+                await ws.send_text(message)
+            except Exception:
+                dead.add(ws)
+                logger.debug("[연결] WS broadcast 전송 실패 — 클라이언트 제거", exc_info=True)
+        for ws in dead:
+            self.unregister(ws)
 
-        text 또는 binary(zlib 압축) 프레임으로 전송.
-        """
+    async def _send_realdata_immediate(self, text: str) -> None:
+        """real-data 즉시 전송 — 수신 즉시 모든 클라이언트에 전달."""
         dead: set[WebSocket] = set()
         for ws in set(self._clients):
             try:
@@ -275,65 +191,17 @@ class WSManager:
         for ws in dead:
             self.unregister(ws)
 
-    def _is_code_relevant_for_page(self, page: str, code: str) -> bool:
-        """페이지별 종목 코드 관련성 판별. 단일 스레드 — 락 불필요."""
-        if page == "sector-ranking":
-            # 업종별종목시세 테이블용: layout 종목 + radar 종목
-            from backend.app.services.engine_account_notify import notify_cache
-            import backend.app.services.engine_service as _es
-            is_layout = code in notify_cache.layout_code_set
-            is_radar = _es._master_stocks_cache.get(code, {}).get("_subscribed", False)
-            return is_layout or is_radar
-        elif page == "buy-target":
-            # 매수후보 종목만 — Set 캐시로 O(1) 조회 (Phase 6D)
-            import backend.app.services.engine_service as _es
-            ss = _es._sector_summary_cache
-            if not ss:
-                return True  # 캐시 미초기화 → 안전 폴백
-            global _buy_target_page_cache_version, _buy_target_page_codes, _blocked_target_page_codes
-            current_version = getattr(ss, "version", 1)
-            if current_version != _buy_target_page_cache_version:
-                _buy_target_page_cache_version = current_version
-                _buy_target_page_codes = {bt.stock.code for bt in ss.buy_targets} if hasattr(ss, "buy_targets") else set()
-                _blocked_target_page_codes = {bt.stock.code for bt in ss.blocked_targets} if hasattr(ss, "blocked_targets") else set()
-            return code in _buy_target_page_codes or code in _blocked_target_page_codes
-        elif page == "sell-position":
-            # 보유종목만 — Set 캐시로 O(1) 조회, 캐시 미초기화 시 _positions 직접 조회 폴백
-            from backend.app.services.engine_account_notify import notify_cache
-            if notify_cache.positions_code_set:
-                return code in notify_cache.positions_code_set
-            # 캐시가 아직 비어있으면 _positions 직접 조회 (초기화 타이밍 폴백)
-            try:
-                import backend.app.services.engine_service as _es
-                from backend.app.services.engine_symbol_utils import _base_stk_cd
-                return any(
-                    _base_stk_cd(str(p.get("stk_cd", "") or "")) == code
-                    for p in _es._positions
-                    if int(p.get("qty", 0) or 0) > 0
-                )
-            except Exception:
-                return True  # 조회 실패 시 안전 폴백 (전송 허용)
-        elif page in ("profit-overview", "settings", "buy-settings", "sell-settings", "general-settings", "stock-classification"):
-            return False  # real-data 전송 안 함
-        # 알 수 없는 페이지 → 전체 전송 (안전 폴백)
-        return True
-
     async def _send_realdata_encoded(self, data: dict, code: str) -> None:
-        """per-client 필터링 적용 real-data 전송 — 클라이언트별 FID 구독 반영.
+        """real-data 전송 — 클라이언트별 FID 구독 반영.
 
         동일한 subscribed_fids를 가진 클라이언트 그룹별로 인코딩을 한 번만 수행하여
-        CPU 부하를 방지한다.
+        CPU 부하를 방지한다. 페이지 필터링은 프론트엔드에서 처리한다 (SSOT 원칙).
         """
         # 클라이언트를 subscribed_fids별로 그룹화
         fids_to_clients: dict[frozenset[str], list[WebSocket]] = {}
         dead: set[WebSocket] = set()
 
         for ws in set(self._clients):
-            # per-client active_page 필터링
-            page = self._client_active_page.get(ws)
-            if page and not self._is_code_relevant_for_page(page, code):
-                continue  # 이 클라이언트에는 전송 생략
-
             # subscribed_fids 그룹화
             subscribed_fids = self._client_subscribed_fids.get(ws)
             if subscribed_fids not in fids_to_clients:
@@ -357,10 +225,9 @@ class WSManager:
             self.unregister(ws)
 
     def broadcast_to_pages(self, event_type: str, data: dict, pages: set[str]) -> None:
-        """특정 페이지에 활성화된 클라이언트에게만 throttled 전송 (동기, await 없음).
+        """특정 페이지에 활성화된 클라이언트에게만 즉시 전송 (동기, await 없음).
 
         pages: 전송 대상 페이지 집합 (예: {"profit-overview", "sell-position"})
-        실시간 무결성 보장을 위해 상태형/이벤트형 구분하여 큐에 적재 후 배치 전송.
         """
         if not self._clients or not pages:
             return
@@ -370,18 +237,6 @@ class WSManager:
         if not target_clients:
             return
 
-        # 상태형/이벤트형 구분하여 큐에 적재
-        if event_type in _STATE_EVENTS:
-            self._state_queue[event_type] = data
-        else:
-            self._event_queue.append((event_type, data))
-
-        self._ensure_flush_task()
-        self._flush_event.set()
-
-        # 페이지별 전송을 위해 _flush를 오버라이드하지 않고,
-        # 별도의 페이지별 전송 로직을 추가해야 함
-        # 간단한 구현을 위해 즉시 전송 방식 사용 (실시간 무결성 우선)
         loop = asyncio.get_running_loop()
         loop.create_task(self._send_to_pages_immediate(event_type, data, target_clients))
 
@@ -399,43 +254,28 @@ class WSManager:
             self.unregister(ws)
 
     def broadcast(self, event_type: str, data: dict) -> None:
-        """모든 클라이언트에 throttled 전송 (동기, await 없음).
+        """모든 클라이언트에 즉시 전송 (동기, await 없음).
 
-        real-data: FID 필터 + key shorten + zlib 압축 후 즉시 전송
-        상태형: _state_queue에 최신값 덮어쓰기 (coalescing)
-        이벤트형: _event_queue에 순서대로 누적
-        0.1초마다 _flush_loop가 일괄 전송.
+        real-data: FID 필터 + key shorten 후 클라이언트별 구독 FID 반영하여 즉시 전송
+        기타 이벤트: create_task로 _send_broadcast 즉시 전송
         """
         if not self._clients:
             return
         if event_type == "real-data":
             try:
                 loop = asyncio.get_running_loop()
-                # 종목 코드 추출 + 정규화 (per-client 필터링용)
                 from backend.app.services.engine_symbol_utils import _base_stk_cd
                 raw_code = str(data.get("item") or "").strip()
                 code = _base_stk_cd(raw_code) if raw_code else ""
-                # 사전 필터링: 어떤 클라이언트도 이 틱이 필요 없으면 압축·task 생성 생략
-                needed = False
-                for ws in self._clients:
-                    page = self._client_active_page.get(ws)
-                    if not page or self._is_code_relevant_for_page(page, code):
-                        needed = True
-                        break
-                if not needed:
-                    return
                 loop.create_task(self._send_realdata_encoded(data, code))
             except RuntimeError:
                 pass
             return
-        self._ensure_flush_task()
-        if event_type in _STATE_EVENTS:
-            # 종목별 코알레싱 적용: 종목 코드가 포함된 데이터는 (이벤트타입, 종목코드) 단위로 덮어쓰기하여 유실 방지
-            code = data.get("code") or data.get("stk_cd") or data.get("item")
-            self._state_queue[(event_type, code)] = data
-        else:
-            self._event_queue.append((event_type, data))
-        self._flush_event.set()
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._send_broadcast(event_type, data))
+        except RuntimeError:
+            pass
 
     def broadcast_threadsafe(self, event_type: str, data: dict, loop: asyncio.AbstractEventLoop) -> None:
         """스레드풀(asyncio.to_thread) 내부에서 안전하게 호출 가능한 브로드캐스트.
@@ -485,10 +325,7 @@ class WSManager:
     # ------------------------------------------------------------------
 
     async def close_all(self) -> None:
-        """모든 클라이언트 ws.close() + _clients 비우기 + flush_task 취소."""
-        if self._flush_task is not None and not self._flush_task.done():
-            self._flush_task.cancel()
-            self._flush_task = None
+        """모든 클라이언트 ws.close() + _clients 비우기."""
         for ws in set(self._clients):
             try:
                 await ws.close()

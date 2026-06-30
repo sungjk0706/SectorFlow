@@ -300,7 +300,7 @@ async def _handle_real_01(
         is_0b_tick=is_0b_tick,
     )  # lock 불필요 — 순차 처리 + GIL 원자적
         # bid_depth, ask_depth 업데이트 제거 (사용처 없음)
-    # 보유종목 현재가 반영 — 평가손익·수익률 실시간 재계산 + broadcast (0.5s coalescing)
+    # 보유종목 현재가 반영 — 평가손익·수익률 실시간 재계산 + broadcast
     if is_test_mode(engine_state._integrated_system_settings_cache):
         _price_hit = await dry_run.update_price(nk_px, last_px)
         if _price_hit:

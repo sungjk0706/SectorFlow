@@ -65,18 +65,18 @@ _pos_lock = asyncio.Lock()
 
 
 async def _schedule_save_positions() -> None:
-    """포지션 파일 저장 예약. 동시 실행 방지 (coalesce)."""
+    """포지션 파일 저장 예약. 동시 실행 방지 (중복 제거)."""
     global _pos_save_running
     async with _pos_lock:
         if _pos_save_running:
             _pos_save_event.set()
             return
         _pos_save_running = True
-    asyncio.create_task(_coalesced_save_positions())
+    asyncio.create_task(_save_positions_worker())
 
 
-async def _coalesced_save_positions() -> None:
-    """이벤트 기반 coalescing 저장. 동시 실행 1개 보장."""
+async def _save_positions_worker() -> None:
+    """이벤트 기반 배칭 저장. 동시 실행 1개 보장."""
     global _pos_save_running
     try:
         while True:

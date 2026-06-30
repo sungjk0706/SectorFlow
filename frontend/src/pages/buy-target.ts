@@ -225,7 +225,7 @@ function mount(container: HTMLElement): void {
   dataTable.updateRows(initialTargets)
   if (emptyEl) emptyEl.style.display = initialTargets.length === 0 ? '' : 'none'
 
-  // Store 구독 — rAF coalescing + reference equality guard
+  // Store 구독 — rAF 배칭 + reference equality guard
   {
     // 마지막 렌더링 시점의 참조 (rAF 콜백에서 갱신)
     let lastRenderedBuyTargets = initState.buyTargets
@@ -245,7 +245,7 @@ function mount(container: HTMLElement): void {
 
       if (!anyChanged) return
 
-      // rAF coalescing: 이미 예약된 rAF가 있으면 추가 예약하지 않음
+      // rAF 배칭: 이미 예약된 rAF가 있으면 추가 예약하지 않음
       // 콜백 실행 시 getState()로 최신 상태를 가져오므로 항상 최신 반영
       if (rafHandle !== null) return
 

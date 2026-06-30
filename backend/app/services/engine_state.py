@@ -90,9 +90,6 @@ class EngineState:
         self.REG_REAL_DEBUG_EXTRA_LOG = False
         self.AVG_AMT_CHUNK_SIZE = 50
         self.INDUSTRY_CHUNK_SIZE = 10
-        self.ACCOUNT_BROADCAST_COALESCE_SEC: float = 0.0
-        self.account_broadcast_pending_reason: str | None = None
-        self.account_broadcast_timer: asyncio.TimerHandle | None = None
 
         # ── 스케줄러 상태 ───────────────────────────────────────────────────────
         self.last_reset_date: str = ""

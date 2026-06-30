@@ -22,7 +22,7 @@ logger = get_logger("core_queues")
 
 
 # ── 큐 크기 설정 ─────────────────────────────────────────────────────────────
-TICK_QUEUE_MAXSIZE = 5000  # 시세 수신 전용 (드롭 정책 적용)
+TICK_QUEUE_MAXSIZE = 20000  # 시세 수신 전용 (드롭 정책 적용)
 BROADCAST_QUEUE_MAXSIZE = 2000  # UI 전송 전용
 CONTROL_QUEUE_MAXSIZE = 500  # 제어 전용 (최우선순위)
 PRICE_PASS_THROUGH_QUEUE_MAXSIZE = 4096  # 현재가 직통 전송 전용
@@ -104,7 +104,7 @@ async def put_tick_with_drop_policy(data: dict) -> None:
         try:
             queue.get_nowait()  # 가장 오래된 데이터 제거
             await queue.put(data)  # 최신 데이터 삽입
-            logger.debug("[core_queues] tick_queue 드롭 발생 - 최신 데이터 유지")
+            logger.warning("[core_queues] tick_queue 드롭 발생 - 최신 데이터 유지")
         except asyncio.QueueEmpty:
             # 경합 조건: 다른 태스크가 이미 데이터를 꺼낸 경우
             await queue.put(data)

@@ -140,7 +140,8 @@ async def _load_caches_preboot(settings: dict) -> None:
             logger.info("[데이터준비] WS 구독 구간 — 업종순위 계산 스킵 (post-login 파이프라인에서 수행)")
         else:
             from backend.app.services.sector_data_provider import recompute_sector_summary_now
-            await recompute_sector_summary_now()
+            asyncio.create_task(recompute_sector_summary_now())
+            logger.info("[데이터준비] 업종순위 계산 백그라운드 실행 (sector_summary_ready_event 대기)")
 
         # 앱준비 완료 → 기동 시 스킵된 장마감 파이프라인 데이터동기화중 재시도
         # 백그라운드 실행: data_ready_event / bootstrap_event 이미 set() 상태이므로

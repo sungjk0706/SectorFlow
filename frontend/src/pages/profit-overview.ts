@@ -206,7 +206,7 @@ let drilldownViewContainer: HTMLDivElement | null = null
 let dummyMsg: HTMLDivElement | null = null
 let unsubAccount: (() => void) | null = null
 
-/* ── rAF coalescing 상태 ── */
+/* ── rAF 배칭 상태 ── */
 let _rafId: number | null = null
 let _mounted = false
 /** 다음 rAF에서 갱신할 필드 그룹 플래그 */
@@ -761,7 +761,7 @@ function mount(container: HTMLElement): void {
   updateSummaryCards()
   showTable()
 
-  // hotStore 구독 — rAF coalescing + selective update
+  // hotStore 구독 — rAF 배칭 + selective update
   let prevSellRef = initState.sellHistory
   let prevBuyRef = initState.buyHistory
   let prevDailySummaryRef = initState.dailySummary
@@ -801,7 +801,7 @@ function mount(container: HTMLElement): void {
       _dirtyChart = true
     }
 
-    // rAF coalescing: 이미 예약된 rAF가 있으면 추가 예약하지 않음
+    // rAF 배칭: 이미 예약된 rAF가 있으면 추가 예약하지 않음
     if (_rafId !== null) return
 
     _rafId = requestAnimationFrame(() => {
