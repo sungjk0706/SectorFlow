@@ -117,7 +117,7 @@ function mount(container: HTMLElement): void {
   const initialPositions = state.positions
   dataTable.updateRows(initialPositions)
 
-  // Store 구독 — reference equality guard + rAF coalescing
+  // Store 구독 — reference equality guard + rAF 배칭
   {
     let prevPositions = state.positions
     let prevSectorStocks = state.sectorStocks
@@ -138,7 +138,7 @@ function mount(container: HTMLElement): void {
 
       // WS 상태 배지는 전역 싱글톤이 자동 업데이트하므로 수동 업데이트 제거
 
-      // rAF coalescing — 프레임당 1회만 갱신 예약
+      // rAF 배칭 — 프레임당 1회만 갱신 예약
       if (_rafId === null) {
         _rafId = requestAnimationFrame(() => {
           _rafId = null

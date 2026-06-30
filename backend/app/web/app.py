@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -17,11 +18,10 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """FastAPI lifespan 이벤트 핸들러."""
     # --- startup ---
+    _t_lifespan_start = time.perf_counter()
     from backend.app.core.logging_config import configure_app_logging
     configure_app_logging()
 
-    from backend.app.core.memory_monitor import start_memory_monitor
-    start_memory_monitor()
     
 
     # DB Writer 시작
@@ -29,13 +29,9 @@ async def lifespan(app: FastAPI):
     await start_db_writer()
 
     # DB 테이블 초기화 (CREATE TABLE IF NOT EXISTS — 기존 테이블 영향 없음)
+    # 다른 DB read가 해당 테이블에 의존할 수 있으므로 가장 먼저 실행
     from backend.app.db.stock_tables import init_cache_tables
     await init_cache_tables()
-
-    # 거래일 캐시 초기화 (DB에서 메모리 로드, 최초 1회만 exchange_calendars 호출)
-    from backend.app.core.trading_calendar import initialize_trading_calendar_cache
-    await initialize_trading_calendar_cache()
-    logger.info("[웹서버] 거래일 캐시 초기화 완료")
 
     # 전역 큐 초기화 (엔진 시작 전 보장)
     from backend.app.services.core_queues import initialize_queues
@@ -46,18 +42,26 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(start_gateway_loop())
     logger.info("[웹서버] Gateway 루프 시작 완료")
 
-    # filter_summary_meta 초기 로드 (SSOT: 종목수는 master_stocks_table, 메타만 로드)
-    try:
-        from backend.app.core.sector_stock_cache import load_filter_summary_meta_cache
-        from backend.app.services.engine_state import state
-        state.latest_filter_summary_meta = await load_filter_summary_meta_cache()
-        logger.info("[웹서버] filter_summary_meta 캐시 로드 완료")
-    except Exception as e:
-        logger.warning("[웹서버] filter_summary_meta 캐시 초기 로드 실패: %s", e)
-
-    # 단일 통합설정 마스터 테이블(integrated_system_settings)로부터 1회 로드 완료
+    # ── 3개 독립 DB read 작업 병렬 실행 (순차 대기 시간 제거) ──
+    from backend.app.core.trading_calendar import initialize_trading_calendar_cache
+    from backend.app.core.sector_stock_cache import load_filter_summary_meta_cache
     from backend.app.core.settings_file import load_integrated_system_settings
-    settings = await load_integrated_system_settings()
+    from backend.app.services.engine_state import state
+
+    async def _load_filter_summary_meta():
+        try:
+            state.latest_filter_summary_meta = await load_filter_summary_meta_cache()
+            logger.info("[웹서버] filter_summary_meta 캐시 로드 완료")
+        except Exception as e:
+            logger.warning("[웹서버] filter_summary_meta 캐시 초기 로드 실패: %s", e)
+
+    _trading_cal_task, _filter_meta_task, _settings_task = await asyncio.gather(
+        initialize_trading_calendar_cache(),
+        _load_filter_summary_meta(),
+        load_integrated_system_settings(),
+    )
+    logger.info("[웹서버] 거래일 캐시 초기화 완료")
+    settings = _settings_task
 
 
     # state.integrated_system_settings_cache 초기화 (단일 소스 진리 보장)
@@ -72,7 +76,6 @@ async def lifespan(app: FastAPI):
     
     from backend.app.services.telegram_bot import telegram_bot
     from backend.app.services import trade_history
-    from backend.app.services.backend_coalescing import BackendCoalescing
     import backend.app.services.engine_service as _es
 
     # 체결 이력 Consumer Task 시작 (비동기 I/O 백그라운드 처리)
@@ -100,11 +103,8 @@ async def lifespan(app: FastAPI):
                 logger.error("[웹서버] 엔진 초기화 실패")
                 return
 
-            logger.info("[웹서버] 엔진 초기화 성공, backend_coalescing 등록 진입")
-            backend_coalescing = BackendCoalescing.get_instance()
-            await backend_coalescing.start()
-
             state.engine_ready_event.set()
+            logger.info("[웹서버] [앱시작] lifespan 총 기동시간 -- %.0fms", (time.perf_counter() - _t_lifespan_start) * 1000)
 
             await start_daily_time_scheduler()
 
@@ -159,9 +159,6 @@ async def lifespan(app: FastAPI):
     state.server_ready_event.clear()
     logger.info("[웹서버] 엔진 종료 완료")
 
-    from backend.app.core.memory_monitor import log_memory_snapshot, stop_memory_monitor
-    log_memory_snapshot("앱 종료")
-    stop_memory_monitor()
 
 
 app = FastAPI(

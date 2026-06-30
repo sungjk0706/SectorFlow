@@ -42,12 +42,14 @@ async def group_by_sector(
     """
     업종별 종목 그룹핑.
 
-    - sector_mapping.get_merged_sector()로 종목코드 → 커스텀 업종 매핑
+    - sector_mapping.get_merged_sectors_batch()로 종목코드 → 커스텀 업종 일괄 매핑
     - 빈 문자열 반환 종목은 스킵 (미매핑 종목 제외)
     """
+    sectors_map = await sector_mapping.get_merged_sectors_batch(codes)
+
     sector_groups: dict[str, list[str]] = {}
     for code in codes:
-        sector_name = await sector_mapping.get_merged_sector(code)
+        sector_name = sectors_map.get(code, "미분류")
         if not sector_name:
             continue  # 미매핑 종목 제외
         if sector_name not in sector_groups:

@@ -999,13 +999,18 @@ async def _run_confirmed_pipeline(
         _main_loop = asyncio.get_running_loop()
 
         _broadcast_confirmed_progress(0, total, message=f"1일봉챠트 시세 다운로드 중 (0/{total:,}, 0%)", step=5)
+        _dl_start = time.monotonic()
 
         def _on_progress(cur: int, tot: int) -> None:
             _pct = int(cur / total * 100) if total > 0 else 0
-            _broadcast_confirmed_progress(cur, total, message=f"1일봉챠트 시세 다운로드 중 ({cur:,}/{total:,}, {_pct}%)", eta_sec=(total - cur) * 0.5, step=5, _loop=_main_loop)
+            _eta = 0
+            if cur > 0:
+                _elapsed = time.monotonic() - _dl_start
+                _eta = _elapsed / cur * (total - cur)
+            _broadcast_confirmed_progress(cur, total, message=f"1일봉챠트 시세 다운로드 중 ({cur:,}/{total:,}, {_pct}%)", eta_sec=_eta, step=5, _loop=_main_loop)
 
         try:
-            confirmed = await _sector.fetch_all_stocks_daily_confirmed(all_codes, qry_dt, interval_sec=0.33, on_progress=_on_progress)
+            confirmed = await _sector.fetch_all_stocks_daily_confirmed(all_codes, qry_dt, interval_sec=0.3, on_progress=_on_progress)
         except Exception as exc:
             _log.warning("[1일봉챠트 시세 다운로드] 전종목 조회 실패: %s", exc, exc_info=True)
             confirmed = {}
@@ -1250,6 +1255,7 @@ async def fetch_5d_data_only() -> dict:
         # ── 개별 5일봉 데이터 다운로드 ───────────────────────────────────────
         _log.info("[5일봉챠트 거래대금,고가 다운로드] 다운로드 시작 (%d종목)", total)
         _broadcast_confirmed_progress(0, total, message=f"5일봉챠트 거래대금,고가 다운로드 중 (0/{total:,}, 0%)", step=5)
+        _dl_start = time.monotonic()
 
         fetched = 0
         failed = 0
@@ -1287,15 +1293,20 @@ async def fetch_5d_data_only() -> dict:
 
             # 진행률 브로드캐스트 (매 종목)
             pct = int((idx + 1) / total * 100) if total else 0
+            _eta = 0
+            if (idx + 1) > 0:
+                _elapsed = time.monotonic() - _dl_start
+                _eta = _elapsed / (idx + 1) * (total - (idx + 1))
             _broadcast_confirmed_progress(
                 idx + 1, total,
                 message=f"5일봉챠트 거래대금,고가 다운로드 중 ({idx + 1:,}/{total:,}, {pct}%)",
+                eta_sec=_eta,
                 step=5
             )
             _log.info("[5일봉챠트 거래대금,고가 다운로드] 진행 중: %d/%d (%d%%)", idx + 1, total, pct)
 
             # Rate limiting
-            await asyncio.sleep(0.33)
+            await asyncio.sleep(0.3)
 
         # ── stock_5d_array 직접 INSERT (5일치 전체 저장) ───────────────────────
         if confirmed_5d:

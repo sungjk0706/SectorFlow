@@ -92,7 +92,7 @@ class CustomSector:
         self,
         krx_codes: list[str],
         qry_dt: str,
-        interval_sec: float = 0.33,
+        interval_sec: float = 0.3,
         on_progress: Callable[[int, int], None] | None = None,
     ) -> dict[str, dict]:
         """master_stocks_table에서 5일 평균 거래대금 조회."""
