@@ -515,81 +515,21 @@ async def _save_filter_diagnostics_snapshot(
     duplicate_codes: set[str],
 ) -> None:
     try:
-        from backend.app.db.database import get_db_connection, get_db_lock
-        conn = await get_db_connection()
-        rows = []
-        for record, evaluation in evaluations:
-            parsed = getattr(evaluation, "parsed_fields", {}) or {}
-            rows.append((
-                run_id,
-                record.code,
-                record.name,
-                parsed.get("marketCode", ""),
-                parsed.get("marketName", ""),
-                parsed.get("orderWarning", ""),
-                parsed.get("state", ""),
-                json.dumps(getattr(evaluation, "state_flags", []), ensure_ascii=False),
-                parsed.get("auditInfo", ""),
-                parsed.get("listCount", ""),
-                parsed.get("lastPrice", ""),
-                parsed.get("regDay", ""),
-                parsed.get("companyClassName", ""),
-                parsed.get("nxtEnable", ""),
-                1 if getattr(evaluation, "excluded", False) else 0,
-                getattr(evaluation, "primary_reason", ""),
-                json.dumps(getattr(evaluation, "reasons", []), ensure_ascii=False),
-                json.dumps(getattr(evaluation, "diagnostic_flags", []), ensure_ascii=False),
-                1 if record.code in duplicate_codes else 0,
-                1 if record.code in final_excluded_codes else 0,
-            ))
-        async with get_db_lock():
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS stock_filter_diagnostics (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    run_id TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    code TEXT NOT NULL,
-                    name TEXT,
-                    market_code TEXT,
-                    market_name TEXT,
-                    order_warning TEXT,
-                    state TEXT,
-                    state_flags TEXT,
-                    audit_info TEXT,
-                    list_count TEXT,
-                    last_price TEXT,
-                    reg_day TEXT,
-                    company_class_name TEXT,
-                    nxt_enable TEXT,
-                    row_excluded INTEGER,
-                    primary_reason TEXT,
-                    all_reasons TEXT,
-                    diagnostic_flags TEXT,
-                    duplicate_code INTEGER,
-                    final_code_excluded INTEGER
-                )
-            """)
-            await conn.executemany("""
-                INSERT INTO stock_filter_diagnostics (
-                    run_id, code, name, market_code, market_name, order_warning, state,
-                    state_flags, audit_info, list_count, last_price, reg_day,
-                    company_class_name, nxt_enable, row_excluded, primary_reason,
-                    all_reasons, diagnostic_flags, duplicate_code, final_code_excluded
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, rows)
-            await conn.execute("""
-                DELETE FROM stock_filter_diagnostics
-                WHERE run_id NOT IN (
-                    SELECT run_id FROM stock_filter_diagnostics
-                    GROUP BY run_id
-                    ORDER BY MAX(created_at) DESC
-                    LIMIT 10
-                )
-            """)
-            await conn.commit()
-        _log.info("[필터진단] 스냅샷 저장 완료 -- run_id=%s, rows=%d", run_id, len(rows))
+        excluded_count = sum(1 for _, ev in evaluations if getattr(ev, "excluded", False))
+        total_count = len(evaluations)
+        _log.info(
+            "[필터진단] run_id=%s, total=%d, excluded=%d, duplicate=%d, final_excluded=%d",
+            run_id, total_count, excluded_count, len(duplicate_codes), len(final_excluded_codes),
+        )
+        if final_excluded_codes:
+            reason_counts: dict[str, int] = {}
+            for _, ev in evaluations:
+                if getattr(ev, "excluded", False):
+                    reason = getattr(ev, "primary_reason", "부적격")
+                    reason_counts[reason] = reason_counts.get(reason, 0) + 1
+            _log.info("[필터진단] 제외 사유별 집계: %s", reason_counts)
     except Exception as exc:
-        _log.warning("[필터진단] 스냅샷 저장 실패: %s", exc, exc_info=True)
+        _log.warning("[필터진단] 로그 출력 실패: %s", exc, exc_info=True)
 
 
 async def _save_confirmed_cache(
@@ -922,6 +862,8 @@ async def _run_confirmed_pipeline(
                     if master_codes:
                         await _conn.execute(f"DELETE FROM stock_5d_array WHERE code NOT IN ({master_placeholders})", master_codes_list)
                     # 4) filter_summary_meta를 같은 트랜잭션에 저장 (SSOT: 종목수는 master_stocks_table, 메타만 저장)
+                    # system_state_cache 테이블은 sector_stock_cache._init_cache_table()에서도 생성됨.
+                    # 여기서는 트랜잭션 내에서 보장하기 위해 IF NOT EXISTS로 재생성 (중복 생성 무해)
                     await _conn.execute("""
                         CREATE TABLE IF NOT EXISTS system_state_cache (
                             key TEXT PRIMARY KEY,

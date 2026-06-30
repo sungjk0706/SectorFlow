@@ -80,6 +80,24 @@ async def init_cache_tables():
 
     # sector_summary_cache 테이블 삭제 (메모리 캐시로 대체)
 
+    # 커스텀 업종 매핑 테이블 (종목 → 업종 원본 매핑)
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS custom_sectors (
+            stock_code TEXT PRIMARY KEY,
+            name TEXT NOT NULL
+        )
+    ''')
+
+    # 통합 시스템 설정 테이블 (단일 사용자 설정 저장)
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS integrated_system_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            value_type TEXT NOT NULL DEFAULT 'string',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     # 업종 정의 테이블 (빈 업종 생성용 — custom_sectors는 stock_code가 PK이므로 종목 없이 업종 정의 불가)
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS sectors (
@@ -224,13 +242,13 @@ async def create_master_stocks_table():
             name TEXT NOT NULL,
             market TEXT,
             sector TEXT,
-            cur_price REAL,
-            change REAL,
+            cur_price INTEGER,
+            change INTEGER,
             change_rate REAL,
-            trade_amount REAL,  -- 백만원 단위
-            high_price REAL,
+            trade_amount INTEGER,  -- 백만원 단위
+            high_price INTEGER,
             avg_5d_trade_amount INTEGER,  -- 백만원 단위
-            high_5d_price REAL,
+            high_5d_price INTEGER,
             date TEXT,
             nxt_enable INTEGER DEFAULT 0
         )
@@ -256,7 +274,7 @@ async def migrate_add_high_price_column():
     column_names = {col["name"] for col in columns}
     
     if "high_price" not in column_names:
-        await conn.execute("ALTER TABLE master_stocks_table ADD COLUMN high_price REAL")
+        await conn.execute("ALTER TABLE master_stocks_table ADD COLUMN high_price INTEGER")
         await conn.commit()
         _log.info("[마이그레이션] master_stocks_table에 high_price 컬럼 추가 완료")
     else:
@@ -289,16 +307,16 @@ async def create_stock_5d_array_table():
         CREATE TABLE IF NOT EXISTS stock_5d_array (
             code TEXT,
             date TEXT,
-            day1_amount REAL,  -- 백만원 단위
-            day2_amount REAL,  -- 백만원 단위
-            day3_amount REAL,  -- 백만원 단위
-            day4_amount REAL,  -- 백만원 단위
-            day5_amount REAL,  -- 백만원 단위
-            day1_high REAL,
-            day2_high REAL,
-            day3_high REAL,
-            day4_high REAL,
-            day5_high REAL,
+            day1_amount INTEGER,  -- 백만원 단위
+            day2_amount INTEGER,  -- 백만원 단위
+            day3_amount INTEGER,  -- 백만원 단위
+            day4_amount INTEGER,  -- 백만원 단위
+            day5_amount INTEGER,  -- 백만원 단위
+            day1_high INTEGER,
+            day2_high INTEGER,
+            day3_high INTEGER,
+            day4_high INTEGER,
+            day5_high INTEGER,
             PRIMARY KEY (code, date)
         )
     ''')
