@@ -427,6 +427,21 @@ class KiwoomConnector(BrokerConnector):
             except RuntimeError:
                 pass
 
+    async def subscribe_index(self) -> bool:
+        """코스피·코스닥 업종지수(0J) 실시간 구독 등록."""
+        if not self.is_connected() or not self._socket:
+            logger.warning("[증권사연결] 0J 구독 실패 — 연결 없음")
+            return False
+        from backend.app.services.engine_ws_reg import build_index_reg_payload
+        from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
+        payload = build_index_reg_payload()
+        ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload)
+        if ok:
+            logger.info("[증권사연결] 업종지수(0J) 구독 완료")
+        else:
+            logger.warning("[증권사연결] 업종지수(0J) 구독 응답 시간 초과")
+        return ok
+
     async def _on_ws_message(self, payload: dict) -> None:
         """_KiwoomSocket 콜백 → 핸들러 직접 호출."""
         self._received_count += 1

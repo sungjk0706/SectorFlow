@@ -92,3 +92,7 @@ class BrokerConnector(ABC):
     async def unsubscribe_dynamic(self, codes: list[str]) -> None:
         """동적 데이터 구독 해지 (기본 구현: 패스)"""
         pass
+
+    async def subscribe_index(self) -> bool:
+        """업종지수 실시간 구독 등록 (기본 구현: 미지원)"""
+        return False

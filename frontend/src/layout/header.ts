@@ -4,6 +4,7 @@
 
 import { uiStore } from '../stores/uiStore'
 import type { UIState } from '../stores/uiStore'
+import type { IndexData } from '../types'
 import { BROKER_LABELS } from '../components/common/broker-badge'
 import { COLOR } from '../components/common/ui-styles'
 
@@ -63,6 +64,29 @@ function applyMarketPhaseChip(el: HTMLSpanElement, market: string, phase: string
   el.style.color = s.color
   el.style.border = `1px solid ${s.color}20`
   el.textContent = `${market} ${phase}`
+}
+
+const INDEX_LABELS: Record<string, string> = {
+  '001': '코스피',
+  '101': '코스닥',
+}
+
+function applyIndexChip(el: HTMLSpanElement, data: IndexData): void {
+  const label = INDEX_LABELS[data.upcode] || data.upcode
+  const sign = data.sign
+  let bg = `${COLOR.neutralBg}`
+  let color = `${COLOR.neutral}`
+  let prefix = ''
+  if (sign === '1' || sign === '2') {
+    bg = `${COLOR.upBg}`; color = `${COLOR.up}`; prefix = '+'
+  } else if (sign === '4' || sign === '5') {
+    bg = `${COLOR.downBg}`; color = `${COLOR.down}`; prefix = '-'
+  }
+  el.style.background = bg
+  el.style.color = color
+  el.style.border = `1px solid ${color}20`
+  const drateStr = data.drate ? `${prefix}${data.drate}%` : ''
+  el.textContent = `${label} ${drateStr} ${data.jisu}`
 }
 
 
@@ -134,15 +158,6 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   krxAlertChip.style.display = 'none'
   header.appendChild(krxAlertChip)
 
-  // KRX / NXT 카운트다운 칩 (장개시/장마감 N초/분 전)
-  const krxCountdownChip = createChipEl()
-  krxCountdownChip.style.display = 'none'
-  header.appendChild(krxCountdownChip)
-
-  const nxtCountdownChip = createChipEl()
-  nxtCountdownChip.style.display = 'none'
-  header.appendChild(nxtCountdownChip)
-
   // 앱준비 진행률 칩
   const bootstrapChip = createChipEl()
   bootstrapChip.style.display = 'none'
@@ -162,17 +177,46 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   header.appendChild(autoSellChip)
   header.appendChild(teleChip)
 
+  // 업종지수 칩 (헤더 최우측)
+  const kospiChip = createChipEl()
+  const kosdaqChip = createChipEl()
+  kospiChip.style.display = 'none'
+  kosdaqChip.style.display = 'none'
+  header.appendChild(kospiChip)
+  header.appendChild(kosdaqChip)
+
 
   const spinnerHtml = '<span style="display:inline-block;animation:header-spin 1.2s linear infinite">⏳</span>'
 
   // ── Store 구독 ──
 
   function onStateChange(state: UIState): void {
-    const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings } = state
+    const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings, indexData } = state
 
     // 장 상태
     applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx)
     applyMarketPhaseChip(nxtChip, 'NXT', marketPhase.nxt)
+
+    // 업종지수 실시간
+    if (indexData) {
+      const kospi = indexData['001']
+      const kosdaq = indexData['101']
+      if (kospi) {
+        kospiChip.style.display = ''
+        applyIndexChip(kospiChip, kospi)
+      } else {
+        kospiChip.style.display = 'none'
+      }
+      if (kosdaq) {
+        kosdaqChip.style.display = ''
+        applyIndexChip(kosdaqChip, kosdaq)
+      } else {
+        kosdaqChip.style.display = 'none'
+      }
+    } else {
+      kospiChip.style.display = 'none'
+      kosdaqChip.style.display = 'none'
+    }
 
     // KRX 알림 (서킷브레이커/사이드카)
     const alert = marketPhase.krx_alert
@@ -184,30 +228,6 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
       krxAlertChip.textContent = `⚠ ${alert}`
     } else {
       krxAlertChip.style.display = 'none'
-    }
-
-    // KRX 카운트다운 (장개시/장마감 N초/분 전)
-    const krxCountdown = marketPhase.krx_countdown
-    if (krxCountdown) {
-      krxCountdownChip.style.display = ''
-      krxCountdownChip.style.background = `${COLOR.warningBg}`
-      krxCountdownChip.style.color = `${COLOR.warning}`
-      krxCountdownChip.style.border = `1px solid ${COLOR.warning}40`
-      krxCountdownChip.textContent = `⏱ ${krxCountdown}`
-    } else {
-      krxCountdownChip.style.display = 'none'
-    }
-
-    // NXT 카운트다운 (프리마켓/애프터마켓 개시/마감 N초/분 전)
-    const nxtCountdown = marketPhase.nxt_countdown
-    if (nxtCountdown) {
-      nxtCountdownChip.style.display = ''
-      nxtCountdownChip.style.background = `${COLOR.warningBg}`
-      nxtCountdownChip.style.color = `${COLOR.warning}`
-      nxtCountdownChip.style.border = `1px solid ${COLOR.warning}40`
-      nxtCountdownChip.textContent = `⏱ ${nxtCountdown}`
-    } else {
-      nxtCountdownChip.style.display = 'none'
     }
 
     // 앱준비 진행률

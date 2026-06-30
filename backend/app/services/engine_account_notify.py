@@ -30,6 +30,7 @@ class NotificationCache:
         self.prev_buy_targets_map = None
         self.positions_code_set = set()
         self.layout_code_set = set()
+        self.buy_targets_code_set = set()
         self.prev_receive_rate = None
 
     def clear_all(self):
@@ -42,6 +43,7 @@ class NotificationCache:
         self.prev_buy_targets_map = None
         self.positions_code_set.clear()
         self.layout_code_set.clear()
+        self.buy_targets_code_set.clear()
         self.prev_receive_rate = None
 
 
@@ -234,6 +236,17 @@ def notify_desktop_header_refresh() -> None:
     _safe_broadcast("index-refresh", payload)
 
 
+def notify_index_data(upcode: str, jisu: str, change: str, drate: str, sign: str) -> None:
+    """업종지수 실시간 데이터 → WS index-data 브로드캐스트 (저장 없이 pass-through)."""
+    _safe_broadcast("index-data", {
+        "upcode": upcode,
+        "jisu": jisu,
+        "change": change,
+        "drate": drate,
+        "sign": sign,
+    })
+
+
 async def notify_desktop_settings_toggled(changed_keys_dict: dict | None = None) -> None:
     """텔레그램 등 외부에서 설정 토글 변경 시 → WS settings-changed (증분 전송 지원)."""
     if changed_keys_dict:
@@ -349,6 +362,8 @@ def _is_relevant_code(nk: str) -> bool:
         if nk in notify_cache.positions_code_set:
             return True
         if nk in notify_cache.layout_code_set:
+            return True
+        if nk in notify_cache.buy_targets_code_set:
             return True
     except Exception as e:
         logger.error("[필터] 종목 %s 판별 실패: %s", nk, e, exc_info=True)
@@ -567,6 +582,10 @@ async def notify_buy_targets_update() -> None:
         code = t.get("code", "")
         if code:
             cur_map[code] = t
+
+    # buy_targets_code_set 갱신 (_is_relevant_code 필터링용)
+    notify_cache.buy_targets_code_set.clear()
+    notify_cache.buy_targets_code_set.update(cur_map.keys())
 
     # 초기 상태 (캐시 없음): 전체 리스트 전송
     if notify_cache.prev_buy_targets_map is None:

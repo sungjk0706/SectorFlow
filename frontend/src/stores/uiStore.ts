@@ -6,6 +6,7 @@ import type {
   AppSettings,
   EngineStatus,
   SnapshotHistory,
+  IndexData,
 } from '../types'
 
 export interface UIState {
@@ -30,7 +31,7 @@ export interface UIState {
   bootstrapStage: { stage_id: number; stage_name: string; total: number; progress?: { current: number; total: number } } | null
 
   /* ── 장 상태 ── */
-  marketPhase: { krx: string; nxt: string; krx_alert?: string | null; krx_countdown?: string | null; nxt_countdown?: string | null }
+  marketPhase: { krx: string; nxt: string; krx_alert?: string | null }
 
   /* ── 매수 한도 상태 ── */
   buyLimitStatus: { daily_buy_spent: number }
@@ -49,6 +50,9 @@ export interface UIState {
 
   /* ── 수신율 상태 ── */
   receiveRate: { received: number; total: number; pct: number } | null
+
+  /* ── 업종지수 실시간 (참고용, 저장 없음) ── */
+  indexData: Record<string, IndexData> | null
 }
 
 const initialState: UIState = {
@@ -64,13 +68,14 @@ const initialState: UIState = {
   backfilling: false,
   avgAmtProgress: null,
   bootstrapStage: null,
-  marketPhase: { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null, krx_countdown: null, nxt_countdown: null },
+  marketPhase: { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null },
   buyLimitStatus: { daily_buy_spent: 0 },
   wsSubscribeStatus: { index_subscribed: false, quote_subscribed: false },
   sectorScoresDelta: null,
   sectorSummary: null,
   engineReloadComplete: false,
   receiveRate: null,
+  indexData: null,
 }
 
 export const uiStore = createStore<UIState>(initialState)
@@ -128,7 +133,7 @@ export function applySettingsChanged(data: AppSettings | { delta: boolean; chang
 /* ── index-refresh: 엔진 상태 + 장 상태 갱신 ── */
 export function applyIndexRefresh(data: EngineStatus): void {
   const patch: Partial<UIState> = { status: data }
-  const mp = (data as unknown as Record<string, unknown>).market_phase as { krx: string; nxt: string; krx_alert?: string | null; krx_countdown?: string | null; nxt_countdown?: string | null } | undefined
+  const mp = (data as unknown as Record<string, unknown>).market_phase as { krx: string; nxt: string; krx_alert?: string | null } | undefined
   if (mp) patch.marketPhase = mp
   uiStore.setState(patch)
 }
@@ -189,8 +194,17 @@ export function applyWsConnectionStatus(data: { connected: boolean }): void {
 }
 
 /* ── market-phase: 장 상태 갱신 ── */
-export function applyMarketPhase(data: { krx: string; nxt: string; krx_alert?: string | null; krx_countdown?: string | null; nxt_countdown?: string | null }): void {
-  uiStore.setState({ marketPhase: data })
+export function applyMarketPhase(data: Partial<{ krx: string; nxt: string; krx_alert: string | null }>): void {
+  const prev = uiStore.getState().marketPhase
+  uiStore.setState({ marketPhase: { ...prev, ...data } })
+}
+
+/* ── index-data: 업종지수 실시간 갱신 (참고용) ── */
+export function applyIndexData(data: IndexData): void {
+  uiStore.setState((state) => {
+    const prev = state.indexData ?? {}
+    return { indexData: { ...prev, [data.upcode]: data } }
+  })
 }
 
 /* ── selectedSector: 토글 ── */
@@ -213,7 +227,7 @@ export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
     initialized: true,
     backfilling: false,
     engineReady: !!(data.bootstrap_done),
-    marketPhase: (data.market_phase as { krx: string; nxt: string; krx_alert?: string | null; krx_countdown?: string | null; nxt_countdown?: string | null }) ?? { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null, krx_countdown: null, nxt_countdown: null },
+    marketPhase: (data.market_phase as { krx: string; nxt: string; krx_alert?: string | null }) ?? { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null },
     receiveRate: (data.receive_rate as { received: number; total: number; pct: number }) ?? null,
     avgAmtProgress: data.avg_amt_refresh ? { current: (data.avg_amt_refresh as Record<string, unknown>).current as number ?? 0, total: (data.avg_amt_refresh as Record<string, unknown>).total as number ?? 0, done: false, status: ((data.avg_amt_refresh as Record<string, unknown>).status as string) || undefined } : data.confirmed_refresh ? { current: 0, total: 0, done: false, message: ((data.confirmed_refresh as Record<string, unknown>).message as string) || '', status: 'confirmed' } : null,
   })
