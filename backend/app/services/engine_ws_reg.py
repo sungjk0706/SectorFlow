@@ -335,6 +335,11 @@ async def subscribe_index_realtime() -> None:
     """
     ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected():
+        logger.warning("[연결] 업종지수 구독 스킵 — WS 미연결")
+        return
+
+    if not hasattr(ws, "subscribe_index"):
+        logger.warning("[연결] 업종지수 구독 스킵 — 커넥터에 subscribe_index() 없음")
         return
 
     try:

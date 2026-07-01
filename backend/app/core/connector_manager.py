@@ -231,6 +231,13 @@ class ConnectorManager:
                 return await c.subscribe_account() # type: ignore
         return False
 
+    async def subscribe_index(self) -> bool:
+        """업종지수(0J) 실시간 구독 라우팅"""
+        for c in self._connectors.values():
+            if c.is_connected() and hasattr(c, "subscribe_index"):
+                return await c.subscribe_index() # type: ignore
+        return False
+
     async def unsubscribe_all(self) -> bool:
         """모든 구독 해지 라우팃"""
         success = False

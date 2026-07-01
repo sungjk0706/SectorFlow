@@ -348,12 +348,30 @@ async def _handle_real_tick(
             # 0D 호가 처리 (호가 잔량 테이블)
             elif norm_type == "0d":
                 await _handle_real_0d_tick(item, vals, es, broadcast_queue)
+            # 0J 업종지수 처리 (즉시 브로드캐스트, 저장 없음)
+            elif norm_type == "0j":
+                _handle_real_0j_tick(item, vals)
             # PGM 프로그램 순매수 처리 (커스텀 타입)
             elif norm_type == "PGM":
                 await _handle_real_pgm_tick(item, vals, es, broadcast_queue)
 
     except Exception as e:
         logger.error("[Compute] REAL 틱 처리 예외: %s", e, exc_info=True)
+
+
+def _handle_real_0j_tick(item: dict, vals: dict) -> None:
+    """0J 업종지수 틱 처리 — 저장 없이 즉시 프론트엔드에 브로드캐스트."""
+    upcode = str(item.get("item", "") or "").strip()
+    if not upcode:
+        return
+    jisu = str(vals.get("10", "") or "").strip()
+    change = str(vals.get("11", "") or "").strip()
+    drate = str(vals.get("12", "") or "").strip()
+    sign = str(vals.get("25", "") or "").strip()
+    if not jisu:
+        return
+    from backend.app.services.engine_account_notify import notify_index_data
+    notify_index_data(upcode, jisu, change, drate, sign)
 
 
 async def _handle_real_01_tick(

@@ -366,6 +366,10 @@ async def _refresh_account_snapshot_meta() -> None:
     
     state.account_snapshot = snap
 
+    logger.info("[DEBUG _refresh_account_snapshot_meta] pos_count=%d total_buy=%s total_eval=%s total_pnl=%s total_pnl_rate=%s",
+                len(pos), snap.get("total_buy_amount"), snap.get("total_eval_amount"),
+                snap.get("total_pnl"), snap.get("total_pnl_rate"))
+
 
 async def _apply_last_price_to_positions(stk_cd: str, price: int) -> bool:
     """실시간 체결(REAL 01) -- 체결가 반영 + 평가손익·수익률·평가금액 실시간 재계산. 보유에 반영되면 True."""

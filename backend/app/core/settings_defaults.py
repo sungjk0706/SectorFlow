@@ -28,7 +28,8 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     # 텔레그램
     "tele_on": False,
     "telegram_chat_id": "",
-    "telegram_bot_token": "",
+    "telegram_bot_token_test": "",
+    "telegram_bot_token_real": "",
     
     # 투자모드
     "trade_mode": "test",

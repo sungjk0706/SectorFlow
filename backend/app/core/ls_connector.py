@@ -658,7 +658,7 @@ class LsConnector(BrokerConnector):
             logger.warning("[LS증권연결] IJ_ 구독 실패 — 연결 없음")
             return False
         success_all = True
-        for upcode in ("001", "101"):
+        for upcode in ("001", "301"):
             payload = {
                 "header": {
                     "token": self._token,

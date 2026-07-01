@@ -84,11 +84,12 @@ export interface EngineStatus {
 }
 
 export interface IndexData {
-  upcode: string;
-  jisu: string;
-  change: string;
-  drate: string;
-  sign: string;
+  upcode?: string;
+  jisu?: string;
+  change?: string;
+  drate?: string;
+  sign?: string;
+  broker_statuses?: Record<string, { token_valid: boolean; ws_connected: boolean }>;
 }
 
 export interface AppSettings {
@@ -144,7 +145,8 @@ export interface AppSettings {
   // 텔레그램
   tele_on: boolean;
   telegram_chat_id: string;
-  telegram_bot_token: string;
+  telegram_bot_token_test: string;
+  telegram_bot_token_real: string;
 
   // 키움 API
   kiwoom_app_key: string;

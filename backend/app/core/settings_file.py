@@ -103,11 +103,25 @@ def _migrate_trade_mode(merged: dict) -> tuple[dict, bool]:
     return merged, dirty
 
 
+def _migrate_telegram_token_split(merged: dict) -> tuple[dict, bool]:
+    """레거시 telegram_bot_token을 telegram_bot_token_test/real로 분리."""
+    dirty = False
+    legacy = merged.get("telegram_bot_token")
+    if legacy and not merged.get("telegram_bot_token_test") and not merged.get("telegram_bot_token_real"):
+        merged["telegram_bot_token_test"] = legacy
+        merged["telegram_bot_token_real"] = legacy
+        dirty = True
+    if "telegram_bot_token" in merged:
+        del merged["telegram_bot_token"]
+        dirty = True
+    return merged, dirty
+
+
 # 암호화 필드 목록 (단일 정의)
 _ENCRYPT_FIELDS: frozenset[str] = frozenset({
     "kiwoom_app_key", "kiwoom_app_secret",
     "ls_app_key", "ls_app_secret",
-    "telegram_bot_token",
+    "telegram_bot_token_test", "telegram_bot_token_real",
 })
 
 
@@ -171,8 +185,9 @@ async def load_integrated_system_settings() -> dict:
     merged, dirty_sw = _migrate_sector_weights(merged, db_data)
     merged, dirty_si = _migrate_sector_to_industry_index(merged, db_data)
     merged, dirty_bc = _migrate_broker_config(merged, db_data)
+    merged, dirty_tg = _migrate_telegram_token_split(merged)
 
-    dirty = dirty or dirty_tm or dirty_tr or dirty_sw or dirty_si or dirty_bc
+    dirty = dirty or dirty_tm or dirty_tr or dirty_sw or dirty_si or dirty_bc or dirty_tg
     if dirty:
         await save_settings(merged)
 

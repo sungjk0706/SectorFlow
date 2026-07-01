@@ -13,7 +13,7 @@ export const MASKED_VALUE = '***'
 export const MASKED_FIELDS = new Set([
   'kiwoom_app_key', 'kiwoom_app_secret',
   'ls_app_key', 'ls_app_secret',
-  'telegram_bot_token',
+  'telegram_bot_token_test', 'telegram_bot_token_real',
 ])
 
 /** 원본과 비교해 변경된 키-값만 추출 (마스킹 필드 자동 제외) */

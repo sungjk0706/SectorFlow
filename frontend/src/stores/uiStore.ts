@@ -199,11 +199,20 @@ export function applyMarketPhase(data: Partial<{ krx: string; nxt: string; krx_a
   uiStore.setState({ marketPhase: { ...prev, ...data } })
 }
 
-/* ── index-data: 업종지수 실시간 갱신 (참고용) ── */
+/* ── index-data: 업종지수 실시간 갱신 + broker_statuses 갱신 ── */
 export function applyIndexData(data: IndexData): void {
   uiStore.setState((state) => {
-    const prev = state.indexData ?? {}
-    return { indexData: { ...prev, [data.upcode]: data } }
+    const patch: Partial<UIState> = {}
+    if (data.upcode) {
+      const prev = state.indexData ?? {}
+      patch.indexData = { ...prev, [data.upcode]: data }
+    }
+    if (data.broker_statuses) {
+      patch.status = state.status
+        ? { ...state.status, broker_statuses: data.broker_statuses }
+        : { broker_statuses: data.broker_statuses } as EngineStatus
+    }
+    return patch
   })
 }
 

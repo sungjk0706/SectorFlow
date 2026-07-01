@@ -38,12 +38,15 @@ async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_
         from backend.app.services import engine_service
 
         data = {field_name: body["value"]}
-        changed_keys = {field_name}
-        await apply_settings_updates(data)
+        changed_keys = await apply_settings_updates(data)
 
         # 엔진 인메모리 캐시 동기화 및 후처리 실행 (services 레이어로 직접 명시 호출)
         if engine_service.is_running():
-            await engine_service.apply_settings_change(changed_keys)
+            if changed_keys:
+                await engine_service.apply_settings_change(changed_keys)
+        else:
+            from backend.app.core.sector_stock_cache import save_pending_settings
+            await save_pending_settings(changed_keys)
 
         return {"ok": True}
     except Exception as e:

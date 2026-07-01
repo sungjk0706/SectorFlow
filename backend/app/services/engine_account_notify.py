@@ -229,21 +229,27 @@ def init_sent_caches(sector_stocks: list[dict], positions: list[dict], snapshot:
 # ── 알림 함수 (WebSocket 브로드캐스트) ─────────────────────────────────────────────
 
 def notify_desktop_header_refresh() -> None:
-    """엔진 상태(connected, login_ok 등) 변경 시 헤더 갱신 → WS index-refresh."""
-    import backend.app.services.engine_service as _es
-    payload = _es.get_status()
+    """엔진 상태(connected, login_ok 등) 변경 시 헤더 갱신 → WS index-data."""
+    from backend.app.services.engine_lifecycle import get_engine_status
+    payload = get_engine_status()
     payload["_v"] = 1
-    _safe_broadcast("index-refresh", payload)
+    _safe_broadcast("index-data", payload)
 
 
 def notify_index_data(upcode: str, jisu: str, change: str, drate: str, sign: str) -> None:
-    """업종지수 실시간 데이터 → WS index-data 브로드캐스트 (저장 없이 pass-through)."""
+    """업종지수 실시간 데이터 → WS index-data 브로드캐스트 (저장 없이 pass-through).
+
+    broker_statuses를 항상 포함하여 프론트엔드 헤더 칩 상태를 갱신한다.
+    """
+    from backend.app.services.engine_lifecycle import get_engine_status
+    broker_statuses = get_engine_status().get("broker_statuses", {})
     _safe_broadcast("index-data", {
         "upcode": upcode,
         "jisu": jisu,
         "change": change,
         "drate": drate,
         "sign": sign,
+        "broker_statuses": broker_statuses,
     })
 
 
@@ -454,16 +460,21 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
 
 def notify_desktop_account_tabs_refresh() -> None:
     """계좌 탭(보유/미체결/수익/거래내역) 전환 시 1회 전체 새로고침 → WS account-tabs-refresh."""
-    import backend.app.services.engine_service as _es
-    payload = _es.get_status()
+    from backend.app.services.engine_lifecycle import get_engine_status
+    payload = get_engine_status()
     payload["_v"] = 1
-    _safe_broadcast("index-refresh", payload)
+    _safe_broadcast("index-data", payload)
 
 
 def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str | None = None) -> None:
     """체결·잔고·실시간 시세 변경 시 → WS account-update (delta 방식, 페이지별 페이로드 분리)."""
     changed_positions, removed_codes = _compute_position_delta(positions)
     snapshot_changed = not _snap_equal(snapshot, notify_cache.snapshot_sent)
+
+    logger.info("[DEBUG broadcast_account_update] reason=%s snapshot_changed=%s changed_pos=%d removed=%d | snap total_pnl=%s prev total_pnl=%s snap total_pnl_rate=%s prev total_pnl_rate=%s",
+                reason, snapshot_changed, len(changed_positions), len(removed_codes),
+                snapshot.get("total_pnl"), notify_cache.snapshot_sent.get("total_pnl"),
+                snapshot.get("total_pnl_rate"), notify_cache.snapshot_sent.get("total_pnl_rate"))
 
     if not changed_positions and not removed_codes and not snapshot_changed:
         return
@@ -474,6 +485,8 @@ def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str 
     active_pages = ws_manager.get_active_pages()
     profit_overview_active = "profit-overview" in active_pages
     sell_position_active = "sell-position" in active_pages
+
+    logger.info("[DEBUG broadcast_account_update] active_pages=%s profit_overview=%s sell_position=%s", active_pages, profit_overview_active, sell_position_active)
 
     # 수익현황 페이지만 활성: 경량화 페이로드 전송
     if profit_overview_active and not sell_position_active:
@@ -547,7 +560,7 @@ def _build_lightweight_payload_for_profit_overview(snapshot: dict, changed_posit
     position_count = snapshot.get("position_count", 0)
 
     # changed_positions: 보유종목 리스트 갱신에 필요한 최소 필드만 추출
-    _MIN_POSITION_KEYS = ("stk_cd", "stk_nm", "qty", "cur_price")
+    _MIN_POSITION_KEYS = ("stk_cd", "stk_nm", "qty", "cur_price", "pnl_amount", "pnl_rate", "eval_amount")
     lightweight_positions = [
         {k: p.get(k) for k in _MIN_POSITION_KEYS}
         for p in changed_positions
@@ -627,10 +640,10 @@ async def notify_buy_targets_update() -> None:
 
 
 def broadcast_engine_status_ws(engine_status: dict) -> None:
-    """엔진 상태 변경 시 모든 WS 구독자에게 push (index-refresh 통일)."""
+    """엔진 상태 변경 시 모든 WS 구독자에게 push (index-data 통일)."""
     if "_v" not in engine_status:
         engine_status["_v"] = 1
-    _safe_broadcast("index-refresh", engine_status)
+    _safe_broadcast("index-data", engine_status)
 
 
 def notify_ws_subscribe_status(status: dict) -> None:

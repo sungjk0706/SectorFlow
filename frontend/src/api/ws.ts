@@ -239,16 +239,26 @@ export const wsClient = new WSClient('prices')
 export const wsSettingsClient = new WSClient('settings')
 export const wsOrdersClient = new WSClient('orders')
 
+/** 현재 활성 페이지 추적 — WS (재)연결 시 재전송용 */
+let _currentPage: string | null = null
+
 /** 현재 페이지 활성 알림 → 백엔드 per-client 필터링 */
 export function notifyPageActive(page: string): void {
+  _currentPage = page
   wsClient.send(JSON.stringify({ type: 'page-active', page }))
   wsSettingsClient.send(JSON.stringify({ type: 'page-active', page }))
 }
 
 /** 현재 페이지 비활성 알림 → 백엔드 per-client 필터링 해제 */
 export function notifyPageInactive(page: string): void {
+  if (_currentPage === page) _currentPage = null
   wsClient.send(JSON.stringify({ type: 'page-inactive', page }))
   wsSettingsClient.send(JSON.stringify({ type: 'page-inactive', page }))
+}
+
+/** 현재 활성 페이지 반환 — WS (재)연결 시 page-active 재전송용 */
+export function getCurrentPage(): string | null {
+  return _currentPage
 }
 
 /** FID 구독 설정 → 백엔드 per-client FID 필터링 */
