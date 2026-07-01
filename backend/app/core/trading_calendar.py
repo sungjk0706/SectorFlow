@@ -35,10 +35,10 @@ __all__ = [
     "get_kst_today_str",
     "get_current_trading_day",
     "get_current_trading_day_str",
-    "is_cache_valid",
     "get_recent_trading_days",
     "initialize_trading_calendar_cache",
     "refresh_trading_days_for_year",
+    "has_trading_days_for_year",
 ]
 
 
@@ -117,18 +117,20 @@ async def refresh_trading_days_for_year(year: int) -> None:
 
 
 def is_trading_day(d: date) -> bool:
-    """해당 날짜가 KRX 거래일이면 True (메모리 캐시 set 조회, O(1)).
-    캐시 미초기화 시 exchange_calendars로 폴백 (동기, 블로킹 발생 가능)."""
+    """해당 날짜가 KRX 거래일이면 True (메모리 캐시 set 조회, O(1))."""
     if not _cache_initialized:
-        _log.warning("[trading_calendar] 캐시 미초기화 — exchange_calendars 폴백 (블로킹)")
-        import exchange_calendars as xcals
-        return xcals.get_calendar("XKRX").is_session(d)
+        _log.error("[trading_calendar] 캐시 미초기화 — initialize_trading_calendar_cache()가 호출되지 않음")
+        raise RuntimeError("trading calendar cache not initialized")
     year = d.year
     if year not in _trading_days_cache:
-        _log.warning("[trading_calendar] %d년 캐시 없음 — exchange_calendars 폴백 (블로킹)", year)
-        import exchange_calendars as xcals
-        return xcals.get_calendar("XKRX").is_session(d)
+        _log.error("[trading_calendar] %d년 캐시 없음 — refresh_trading_days_for_year() 필요", year)
+        raise KeyError(f"trading days cache missing for year {year}")
     return d.strftime("%Y%m%d") in _trading_days_cache[year]
+
+
+def has_trading_days_for_year(year: int) -> bool:
+    """해당 연도의 거래일 캐시가 메모리에 존재하는지 확인."""
+    return year in _trading_days_cache
 
 
 def is_trading_day_with_holiday_guard(holiday_guard_on: bool) -> bool:
@@ -221,39 +223,6 @@ def get_current_trading_day() -> date:
 def get_current_trading_day_str() -> str:
     """현재 거래일 YYYYMMDD 문자열."""
     return get_current_trading_day().strftime("%Y%m%d")
-
-
-def is_cache_valid(cached_date_str: str, ws_subscribe_start: str = DEFAULT_USER_SETTINGS["ws_subscribe_start"]) -> bool:
-    """
-    확정 데이터 캐시 유효성 판정 (공통 함수).
-
-    규칙: 캐시 날짜의 다음 거래일 실시간 연결시작 시간(ws_subscribe_start, 기본값 09:00)까지 유효.
-
-    예시:
-      - 월 캐시 → 화 09:00까지 유효
-      - 금 캐시 → 월 09:00까지 유효 (주말 건너뜀)
-      - 연휴 전날 캐시 → 연휴 후 첫 거래일 09:00까지 유효
-    """
-    if not cached_date_str:
-        return False
-    try:
-        cached_date = _str_to_date(cached_date_str)
-        next_biz = _next_trading_day(cached_date)
-        now = datetime.now(_KST)
-
-        try:
-            parts = str(ws_subscribe_start).strip().split(":")
-            sh, sm = int(parts[0]), int(parts[1])
-        except Exception:
-            sh, sm = 9, 0
-
-        expiry = datetime(
-            next_biz.year, next_biz.month, next_biz.day,
-            sh, sm, tzinfo=_KST,
-        )
-        return now < expiry
-    except (ValueError, TypeError):
-        return False
 
 
 def get_recent_trading_days(days: int, from_date: date | None = None) -> list[date]:

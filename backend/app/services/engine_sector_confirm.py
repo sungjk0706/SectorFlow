@@ -28,28 +28,15 @@ def is_engine_running_internal() -> bool:
 
 
 def request_sector_recompute(code: str | None = None) -> None:
-    """이벤트 발생 시 즉시 실행.
+    """종목을 dirty로 마킹. 실제 재계산은 배치 루프에서 단일 호출.
 
-    실시간 데이터 처리 아키텍처에 부합: 지연 없이 즉시 실행.
+    SSOT: _dirty_codes는 이 모듈에서만 관리.
+    create_task 분리 금지 — 재계산은 호출자가 await로 직접 실행.
     """
-    import logging
-    logger = logging.getLogger(__name__)
-    logger.debug("[업종순위] recompute_sector_for_code 호출: code=%s", code)
-
     if code:
         _dirty_codes.add(code)
     else:
         _dirty_codes.add("__ALL__")
-
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        # 이벤트 루프 없음(테스트 등) — 즉시 실행 폴백
-        asyncio.run(_flush_sector_recompute_impl())
-        return
-
-    # 즉시 실행
-    loop.create_task(_flush_sector_recompute_impl())
 
 
 def has_dirty_sectors() -> bool:

@@ -355,7 +355,7 @@ async def load_trading_days_cache() -> dict[int, set[str]] | None:
         result: dict[int, set[str]] = {}
         for row in rows:
             result[row["year"]] = set(json.loads(row["data"]))
-        _log.info("[trading_days_cache] DB 로드 완료 — %d개 연도", len(result))
+        _log.debug("[trading_days_cache] DB 로드 완료 — %d개 연도", len(result))
         return result
     except Exception as e:
         _log.warning("[trading_days_cache] 로드 실패: %s", e)

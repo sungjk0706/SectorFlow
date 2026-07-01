@@ -84,6 +84,24 @@ export function filterStocksBySector(
   return result
 }
 
+/* ── 업종명 검색 필터링 ── */
+
+export function filterSectorsByName(
+  stocks: Record<string, SectorStock>,
+  query: string,
+): Set<string> | null {
+  const q = query.trim().toLowerCase()
+  if (!q) return null
+  const sectors = new Set<string>()
+  for (const s of Object.values(stocks)) {
+    const sector = (s.sector || '미분류').toLowerCase()
+    if (sector.includes(q)) {
+      sectors.add(s.sector || '미분류')
+    }
+  }
+  return sectors
+}
+
 /* ── RowItem → TableRow<DataRowItem> 매핑 ── */
 
 function mapRowsToTableRows(rows: RowItem[]): TableRow<DataRowItem>[] {
@@ -131,6 +149,7 @@ function computeRows(
   maxTargets: number,
   selectedSector: string | null,
   matchedCodes: Set<string> | null,
+  matchedSectors: Set<string> | null,
   rowCache: Map<string, { stock: SectorStock; row: DataRowItem }>,
   marketPhase: { krx: string; nxt: string },
 ): RowItem[] {
@@ -139,6 +158,7 @@ function computeRows(
   for (const s of Object.values(stockMap)) {
     const sector = s.sector || '미분류'
     if (selectedSector && sector !== selectedSector) continue
+    if (matchedSectors && !matchedSectors.has(sector)) continue
     if (matchedCodes && !matchedCodes.has(s.code)) continue
 
     // 5일평균거래대금 필터링은 백엔드에서 수행 (단일 소스 진리)
@@ -157,14 +177,14 @@ function computeRows(
   })
   const sectorOrder = sortedSectorScores.map(s => s.sector)
   // selectedSector 또는 검색 모드: 빈 배열로 시작
-  const orderedSectors = (selectedSector || matchedCodes) ? [] : [...sectorOrder]
+  const orderedSectors = (selectedSector || matchedCodes || matchedSectors) ? [] : [...sectorOrder]
 
   if (selectedSector) {
     if (grouped.has(selectedSector)) {
       orderedSectors.push(selectedSector)
     }
-  } else if (matchedCodes) {
-    // 검색 모드: 검색된 종목이 속한 업종만 표시
+  } else if (matchedCodes || matchedSectors) {
+    // 검색 모드: 검색된 종목 또는 업종에 해당하는 업종만 표시
     for (const sector of grouped.keys()) {
       if (!orderedSectors.includes(sector)) {
         orderedSectors.push(sector)
@@ -242,8 +262,11 @@ class SectorStockTable extends HTMLElement {
   private unsubStore: (() => void) | null = null
   private unsubUi: (() => void) | null = null
   private searchInput: ReturnType<typeof createSearchInput> | null = null
+  private sectorSearchInput: ReturnType<typeof createSearchInput> | null = null
   private searchTerm = ''
+  private sectorSearchTerm = ''
   private currentMatchedCodes: Set<string> | null = null
+  private currentMatchedSectors: Set<string> | null = null
   private rowCache = new Map<string, { stock: SectorStock; row: DataRowItem }>()
   private onRealDataTick: ((e: Event) => void) | null = null
 
@@ -270,6 +293,7 @@ class SectorStockTable extends HTMLElement {
     const state = hotStore.getState()
     const uiState = uiStore.getState()
     this.currentMatchedCodes = filterStocksBySearch(Object.values(state.sectorStocks), this.searchTerm)
+    this.currentMatchedSectors = filterSectorsByName(state.sectorStocks, this.sectorSearchTerm)
     const maxTargets = Number(uiState.settings?.sector_max_targets) || 10
     // 5일평균거래대금 필터링은 백엔드에서 수행 (단일 소스 진리)
 
@@ -279,6 +303,7 @@ class SectorStockTable extends HTMLElement {
       maxTargets,
       uiState.selectedSector,
       this.currentMatchedCodes,
+      this.currentMatchedSectors,
       this.rowCache,
       uiState.marketPhase,
     )
@@ -339,7 +364,9 @@ class SectorStockTable extends HTMLElement {
   connectedCallback(): void {
     this._mounted = true
     this.searchTerm = ''
+    this.sectorSearchTerm = ''
     this.currentMatchedCodes = null
+    this.currentMatchedSectors = null
     this.rowCache = new Map()
     notifyPageActive('sector-ranking')
 
@@ -403,26 +430,83 @@ class SectorStockTable extends HTMLElement {
     this.filterBadge.appendChild(clearBtn)
     this.rootEl.appendChild(this.filterBadge)
 
-    // 3. 검색 + WS 상태 배지
+    // 3. 검색 입력란 (좌: 종목명/코드, 우: 업종명)
     const searchRow = document.createElement('div')
     Object.assign(searchRow.style, {
       display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
       gap: '12px',
       marginBottom: '4px',
     })
+
+    // 좌측: 종목명/코드 검색 (파란색 라벨)
+    const stockSearchWrapper = document.createElement('div')
+    Object.assign(stockSearchWrapper.style, {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '2px',
+    })
+    const stockLabel = document.createElement('span')
+    Object.assign(stockLabel.style, {
+      fontSize: FONT_SIZE.section,
+      color: COLOR.down,
+      fontWeight: FONT_WEIGHT.normal,
+      textAlign: 'center',
+    })
+    stockLabel.textContent = '종목명 / 코드'
+    stockSearchWrapper.appendChild(stockLabel)
 
     this.searchInput = createSearchInput({
       placeholder: '종목명 / 코드 검색',
       width: '220px',
       onSearch: (query) => {
         this.searchTerm = query
+        if (query) {
+          setSelectedSector(null)
+          if (this.sectorSearchInput) this.sectorSearchInput.clear()
+          this.sectorSearchTerm = ''
+        }
         this.refreshRows()
       },
     })
-    searchRow.appendChild(this.searchInput.el)
+    this.searchInput.el.style.marginBottom = '0'
+    stockSearchWrapper.appendChild(this.searchInput.el)
+    searchRow.appendChild(stockSearchWrapper)
 
+    // 우측: 업종명 검색 (주황색 라벨)
+    const sectorSearchWrapper = document.createElement('div')
+    Object.assign(sectorSearchWrapper.style, {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '2px',
+    })
+    const sectorLabel = document.createElement('span')
+    Object.assign(sectorLabel.style, {
+      fontSize: FONT_SIZE.section,
+      color: COLOR.warning,
+      fontWeight: FONT_WEIGHT.normal,
+      textAlign: 'center',
+    })
+    sectorLabel.textContent = '업종명'
+    sectorSearchWrapper.appendChild(sectorLabel)
+
+    this.sectorSearchInput = createSearchInput({
+      placeholder: '업종명 검색',
+      width: '220px',
+      onSearch: (query) => {
+        this.sectorSearchTerm = query
+        if (query) {
+          setSelectedSector(null)
+          if (this.searchInput) this.searchInput.clear()
+          this.searchTerm = ''
+        }
+        this.refreshRows()
+      },
+    })
+    this.sectorSearchInput.el.style.marginBottom = '0'
+    sectorSearchWrapper.appendChild(this.sectorSearchInput.el)
+    searchRow.appendChild(sectorSearchWrapper)
 
     this.rootEl.appendChild(searchRow)
 
@@ -491,14 +575,20 @@ class SectorStockTable extends HTMLElement {
           uiState.settings !== prevSettings ||
           uiState.marketPhase !== prevMarketPhase
 
+        if (!changed) return
+
+        // selectedSector가 좌측 패널에서 변경된 경우: 양쪽 검색 입력란 초기화
+        if (uiState.selectedSector !== prevSelectedSector) {
+          if (this.searchInput) { this.searchInput.clear(); this.searchTerm = '' }
+          if (this.sectorSearchInput) { this.sectorSearchInput.clear(); this.sectorSearchTerm = '' }
+        }
+
         prevSectorStocks = state.sectorStocks
         prevSectorScores = state.sectorScores
         prevSelectedSector = uiState.selectedSector
         prevWsSubscribeStatus = uiState.wsSubscribeStatus
         prevSettings = uiState.settings
         prevMarketPhase = uiState.marketPhase
-
-        if (!changed) return
 
         if (this._rafId === null) {
           this._rafId = requestAnimationFrame(() => {
@@ -550,10 +640,13 @@ class SectorStockTable extends HTMLElement {
     this.emptyDiv = null
     this.scrollContainer = null
     this.searchInput = null
+    this.sectorSearchInput = null
     this.rowCache.clear()
     this.rowCache = new Map()
     this.currentMatchedCodes = null
+    this.currentMatchedSectors = null
     this.searchTerm = ''
+    this.sectorSearchTerm = ''
   }
 }
 

@@ -243,8 +243,8 @@ async def _broadcast_delta() -> None:
         from backend.app.core.trade_mode import is_test_mode
         if is_test_mode(es.state.integrated_system_settings_cache):
             await es._refresh_account_snapshot_meta()
-            es._broadcast_account(reason="settlement_delta")
+            await es._broadcast_account(reason="settlement_delta")
     except Exception as e:
-        logger.debug(
+        logger.warning(
             "[정산엔진] 브로드캐스트 실패 (엔진 미기동 가능): %s", e,
         )

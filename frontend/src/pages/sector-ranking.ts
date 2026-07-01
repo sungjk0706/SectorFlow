@@ -114,7 +114,7 @@ function updateSliderUI(): void {
 function syncFromSettings(s: AppSettings): void {
   if (saving) return
   for (const k of NUM_KEYS) {
-    const newValue = (s as Record<string, unknown>)[k];
+    const newValue = s[k];
     currentVals[k] = newValue !== undefined ? Number(newValue) : currentVals[k];
   }
   const w = s.sector_weights || {}

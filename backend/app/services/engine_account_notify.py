@@ -471,11 +471,6 @@ def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str 
     changed_positions, removed_codes = _compute_position_delta(positions)
     snapshot_changed = not _snap_equal(snapshot, notify_cache.snapshot_sent)
 
-    logger.info("[DEBUG broadcast_account_update] reason=%s snapshot_changed=%s changed_pos=%d removed=%d | snap total_pnl=%s prev total_pnl=%s snap total_pnl_rate=%s prev total_pnl_rate=%s",
-                reason, snapshot_changed, len(changed_positions), len(removed_codes),
-                snapshot.get("total_pnl"), notify_cache.snapshot_sent.get("total_pnl"),
-                snapshot.get("total_pnl_rate"), notify_cache.snapshot_sent.get("total_pnl_rate"))
-
     if not changed_positions and not removed_codes and not snapshot_changed:
         return
 
@@ -485,8 +480,6 @@ def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str 
     active_pages = ws_manager.get_active_pages()
     profit_overview_active = "profit-overview" in active_pages
     sell_position_active = "sell-position" in active_pages
-
-    logger.info("[DEBUG broadcast_account_update] active_pages=%s profit_overview=%s sell_position=%s", active_pages, profit_overview_active, sell_position_active)
 
     # 수익현황 페이지만 활성: 경량화 페이로드 전송
     if profit_overview_active and not sell_position_active:

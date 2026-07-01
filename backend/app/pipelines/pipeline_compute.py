@@ -15,12 +15,13 @@ import asyncio
 import time
 from types import ModuleType
 
-# 0.3초 배치 재계산을 위한 더티 코드 셋 추가
-_dirty_codes: set[str] = set()
-
 # 수신율 추적
 _current_receive_rate: dict = {"received": 0, "total": 0, "pct": 0.0}
 _receive_rate_dirty: bool = False
+
+# ── LIVE 전환 조건 강화: symbol별 필수 필드 캐시 ──
+_realtime_required_fields_cache: dict[str, dict] = {}
+_realtime_first_tick_ts_map: dict[str, int] = {}
 # 누적 수신 종목 세트 — _reset_realtime_fields()에 의해 초기화되지 않음
 # 한 번 수신된 종목은 앱 종료까지 수신된 것으로 유지되어 수신율이 0%로 강하하지 않음
 _received_codes: set[str] = set()
@@ -389,43 +390,133 @@ async def _handle_real_01_tick(
         es: engine_service 모듈
         broadcast_queue: UI 전송 큐
     """
-    # engine_service._apply_real01_volume_amount_to_radar_rows 이관
+    global _received_codes, _receive_rate_dirty
+    global _realtime_first_tick_ts_map, _realtime_required_fields_cache
+
+    _ts = int(time.time() * 1000)
     try:
         from backend.app.services.engine_symbol_utils import _real_item_stk_cd, _base_stk_cd
+        from backend.app.services.engine_ws_parsing import (
+            _parse_fid10_price,
+            parse_change_rate_to_percent,
+            _ws_fid_int,
+            _ws_fid_key_present,
+            _ws_fid_raw,
+        )
+        from backend.app.services.engine_state import _get_realtime_state, _set_realtime_state
+        from backend.app.services.auto_trading_effective import auto_sell_effective
+        from backend.app.core.trade_mode import is_test_mode
+        from backend.app.services import dry_run
+        from backend.app.services.engine_account_rest import (
+            apply_last_price_to_positions_inplace,
+            recalc_broker_totals_from_positions,
+        )
+        from backend.app.services import engine_account
 
         raw_cd = _real_item_stk_cd(item, vals)
         if not raw_cd:
             return
 
-        # UI 프론트엔드로 RAW 틱 데이터 브로드캐스트 (Gateway 파이프라인으로 전송)
+        nk_px = _base_stk_cd(raw_cd)
+        last_px = _parse_fid10_price(vals)
+        is_0b_tick = str(item.get("type", "")).strip().upper() in ("0B", "01")
+
+        if not nk_px or last_px <= 0:
+            _check_realtime_latency(_ts)
+            return
+
+        # ── 1. WAITING_FIRST_TICK → LIVE 상태 전환 ──
+        if _get_realtime_state() == "WAITING_FIRST_TICK":
+            if nk_px not in _realtime_first_tick_ts_map:
+                _realtime_first_tick_ts_map[nk_px] = int(time.time() * 1000)
+            if nk_px not in _realtime_required_fields_cache:
+                _realtime_required_fields_cache[nk_px] = {"price": False, "change": False, "volume": False}
+            if last_px > 0:
+                _realtime_required_fields_cache[nk_px]["price"] = True
+            if _ws_fid_key_present(vals, "11"):
+                _realtime_required_fields_cache[nk_px]["change"] = True
+            if is_0b_tick and _ws_fid_key_present(vals, "14"):
+                _realtime_required_fields_cache[nk_px]["volume"] = True
+            required = _realtime_required_fields_cache[nk_px]
+            current_ts = int(time.time() * 1000)
+            elapsed = current_ts - _realtime_first_tick_ts_map[nk_px]
+            if (required["price"] and required["change"] and required["volume"]) or (elapsed > 1000):
+                _set_realtime_state("LIVE")
+                _realtime_required_fields_cache.clear()
+                _realtime_first_tick_ts_map.clear()
+
+        # ── 2. UI 프론트엔드로 RAW 틱 데이터 브로드캐스트 ──
         item["item"] = raw_cd
-        import time
-        item["_ts"] = int(time.time() * 1000)
+        item["_ts"] = _ts
         try:
             broadcast_queue.put_nowait({"type": "real-data", "data": item})
         except asyncio.QueueFull:
             pass
 
-        # 현재가/등락률/대비/거래대금/고가/체결강도 FID 중 하나라도 있으면 캐시 갱신 (단일 소스 진리)
-        # 기존 "14" in vals 조건은 FID 14(거래대금)가 없는 틱에서 change_rate 갱신이 누락되는 버그를 유발했음.
-        is_0b_tick = str(item.get("type", "")).strip().upper() in ("0B", "01")
+        # ── 3. 레이더 행 갱신 + 업종 점수 증분 재계산 트리거 ──
         if is_0b_tick and any(f in vals for f in ("10", "11", "12", "14", "17", "228")):
-            # engine_service._apply_real01_volume_amount_to_radar_rows 호출
-            # 전역 변수 접근을 위해 es 모듈 사용
             es._apply_real01_volume_amount_to_radar_rows(raw_cd, vals, is_0b_tick=is_0b_tick)
-
-            # 연산 결과: 틱 수신 시 해당 종목에 대한 업종 점수 증분 재계산 트리거 (이벤트 큐 대신 _dirty_codes에 추가)
-            from backend.app.services.engine_symbol_utils import _base_stk_cd
-            nk = _base_stk_cd(raw_cd)
-            if nk:
-                global _dirty_codes, _received_codes, _receive_rate_dirty
-                _dirty_codes.add(nk)
-                _received_codes.add(nk)
+            if nk_px:
+                from backend.app.services.engine_sector_confirm import request_sector_recompute
+                request_sector_recompute(nk_px)
+                _received_codes.add(nk_px)
                 _receive_rate_dirty = True
 
+        # ── 4. 보유종목 현재가 반영 — 평가손익·수익률 실시간 재계산 ──
+        diff = _ws_fid_int(vals, "11", 0) if _ws_fid_key_present(vals, "11") else 0
+        rate = parse_change_rate_to_percent(_ws_fid_raw(vals, "12")) if _ws_fid_key_present(vals, "12") else 0.0
+        _price_hit = False
+        if is_test_mode(state.integrated_system_settings_cache):
+            _price_hit = await dry_run.update_price(nk_px, last_px)
+            if _price_hit:
+                _dr_pos = await dry_run.get_position(nk_px)
+                if _dr_pos:
+                    _dr_pos["change"] = diff
+                    _dr_pos["change_rate"] = rate
+        else:
+            _price_hit = apply_last_price_to_positions_inplace(state.positions, raw_cd, last_px)
+            if _price_hit:
+                state.broker_rest_totals = recalc_broker_totals_from_positions(
+                    state.positions, state.broker_rest_totals
+                )
+
+        # ── 5. 계좌 스냅샷 갱신 + 브로드캐스트 ──
+        if _price_hit:
+            await engine_account._refresh_account_snapshot_meta()
+            await engine_account._broadcast_account(reason="price_tick")
+
+        # ── 6. 자동매도 조건 체크 ──
+        if _price_hit and state.auto_trade and auto_sell_effective(state.integrated_system_settings_cache) and state.access_token:
+            if is_test_mode(state.integrated_system_settings_cache):
+                _pos = await dry_run.get_position(nk_px)
+                if _pos:
+                    await state.auto_trade.check_sell_conditions([_pos], state.integrated_system_settings_cache, state.access_token)
+            else:
+                _matched = [p for p in state.positions if _base_stk_cd(str(p.get("stk_cd", "") or "")) == nk_px]
+                if _matched:
+                    await state.auto_trade.check_sell_conditions(_matched, state.integrated_system_settings_cache, state.access_token)
+
+        # ── 7. 지연 측정 ──
+        _check_realtime_latency(_ts)
 
     except Exception as e:
         logger.error("[Compute] 0B/01 틱 처리 예외: %s", e, exc_info=True)
+
+
+def _check_realtime_latency(_ts: int) -> None:
+    """실시간 체결 처리 지연 측정 — 50ms 경고, 200ms 초과 시 자동매매 중단 플래그."""
+    elapsed = int(time.time() * 1000) - _ts
+    if elapsed >= 200:
+        logger.error("[체결지연] 처리 시간 %sms → 자동매매 중단 플래그 설정", elapsed)
+        state.realtime_latency_exceeded = True
+    else:
+        if state.realtime_latency_exceeded:
+            logger.info("[체결지연] 처리 시간 %sms → 지연 회복, 자동매매 재개", elapsed)
+            state.realtime_latency_exceeded = False
+        if elapsed >= 50:
+            logger.warning("[체결지연] 처리 시간 %sms → 50ms 초과", elapsed)
+
+
 async def _handle_real_0d_tick(
     item: dict,
     vals: dict,
@@ -508,7 +599,7 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
     업종순위 재계산 백그라운드 루프 (이벤트 기반).
 
     Phase 1 (1회): 실시간데이터 필드 수신율 임계값 대기 — 통과 후 Phase 2로 전환
-    Phase 2: 0.3초 배치 재계산 루프 (틱 기반 증분 재계산)
+    Phase 2: 0.2초 배치 재계산 루프 (틱 기반 증분 재계산)
     """
     from backend.app.services.engine_sector_confirm import request_sector_recompute
     global _compute_running, _receive_rate_dirty
@@ -551,9 +642,9 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
                 logger.error("[Compute] 수신율 체크 예외: %s", e, exc_info=True)
 
         # Phase 2: 0.2초 배치 재계산 루프
+        from backend.app.services.engine_sector_confirm import has_dirty_sectors, _flush_sector_recompute_impl
         while _compute_running:
             await asyncio.sleep(0.2)
-            global _dirty_codes
 
             # 수신율 계산 및 전송 (변경 시에만) — per-tick O(n) 계산 제거, 배치 처리
             if _receive_rate_dirty:
@@ -564,15 +655,9 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
             # sector-scores 전송 (delta — 변경된 섹터만)
             from backend.app.services.engine_account_notify import notify_desktop_sector_scores
             notify_desktop_sector_scores(force=False)
-            
-            if _dirty_codes:
-                # 안전하게 복사 후 클리어
-                codes_to_compute = set(_dirty_codes)
-                _dirty_codes.clear()
 
-                # 재계산 실행
-                for code in codes_to_compute:
-                    request_sector_recompute(code)
+            if has_dirty_sectors():
+                await _flush_sector_recompute_impl()
 
     except asyncio.CancelledError:
         logger.info("[Compute] 백그라운드 업종 점수 재계산 루프 취소됨")

@@ -457,7 +457,7 @@ class AutoTradeManager:
 
         # 테스트 모드: dry_run이 이미 가상 잔고를 갱신했으므로 UI 브로드캐스트만 트리거
         if is_test_mode(base_settings):
-            _dryrun_post_sell_broadcast(stk_cd, stk_nm, base_settings)
+            await _dryrun_post_sell_broadcast(stk_cd, stk_nm, base_settings)
 
         # ── RiskManager 성공 보고 ─────────────────────────────────────────────
         try:
@@ -601,13 +601,13 @@ async def _dryrun_post_buy_broadcast(stk_cd: str, stk_nm: str) -> None:
     try:
         from backend.app.services import engine_service as es
         await es._refresh_account_snapshot_meta()
-        es._broadcast_account(reason="dryrun_buy")
+        await es._broadcast_account(reason="dryrun_buy")
         logger.info("[테스트모드] 매수 후 UI 갱신 완료 -- %s(%s)", stk_nm, stk_cd)
     except Exception as e:
         logger.warning("[테스트모드] 매수 후 UI 갱신 실패: %s", e, exc_info=True)
 
 
-def _dryrun_post_sell_broadcast(stk_cd: str, stk_nm: str, settings: dict) -> None:
+async def _dryrun_post_sell_broadcast(stk_cd: str, stk_nm: str, settings: dict) -> None:
     """테스트모드 매도 후 UI 잔고 브로드캐스트."""
     try:
         from backend.app.services import engine_service as es
@@ -620,7 +620,7 @@ def _dryrun_post_sell_broadcast(stk_cd: str, stk_nm: str, settings: dict) -> Non
             if sold_out:
                 logger.info("[테스트모드] 매도 체결 확인 -- 차단 해제: %s", sold_out)
 
-        es._broadcast_account(reason="dryrun_sell")
+        await es._broadcast_account(reason="dryrun_sell")
         logger.info("[테스트모드] 매도 후 UI 갱신 완료 -- %s(%s)", stk_nm, stk_cd)
     except Exception as e:
         logger.warning("[테스트모드] 매도 후 UI 갱신 실패: %s", e, exc_info=True)
