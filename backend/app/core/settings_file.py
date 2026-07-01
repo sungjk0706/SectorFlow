@@ -179,6 +179,7 @@ async def load_integrated_system_settings() -> dict:
                     logger.warning("[설정] broker_specs 로드 실패 (%s): %s", spec_file, e)
 
     merged = {**db_data}
+    _keys_before = set(merged.keys())
     merged, dirty = _migrate_legacy_auto_trade_on(merged)
     merged, dirty_tm = _migrate_trade_mode(merged)
     merged, dirty_tr = _migrate_time_range_split(merged)
@@ -189,7 +190,8 @@ async def load_integrated_system_settings() -> dict:
 
     dirty = dirty or dirty_tm or dirty_tr or dirty_sw or dirty_si or dirty_bc or dirty_tg
     if dirty:
-        await save_settings(merged)
+        _legacy_keys = list(_keys_before - set(merged.keys()))
+        await save_settings(merged, delete_keys=_legacy_keys or None)
 
     from backend.app.core.encryption import decrypt_value
     for f in _ENCRYPT_FIELDS:
@@ -227,9 +229,10 @@ def _parse_value(value: str, value_type: str) -> Any:
         return value
 
 
-async def save_settings(data: dict) -> None:
+async def save_settings(data: dict, delete_keys: list[str] | None = None) -> None:
     """SQLite 데이터베이스 integrated_system_settings 테이블에 저장.
-    암호화 필드가 평문인 경우 자동 암호화 후 저장 (engine_state 캐시에서 온 복호화값 대응)."""
+    암호화 필드가 평문인 경우 자동 암호화 후 저장 (engine_state 캐시에서 온 복호화값 대응).
+    delete_keys: 마이그레이션으로 제거된 레거시 키 목록 — 같은 트랜잭션 내에서 DELETE 처리."""
     from backend.app.db.database import get_db_connection, get_db_lock
     from backend.app.core.encryption import encrypt_value
 
@@ -237,6 +240,15 @@ async def save_settings(data: dict) -> None:
         conn = await get_db_connection()
         try:
             await conn.execute("BEGIN TRANSACTION")
+
+            # 마이그레이션으로 제거된 레거시 키 DELETE (INSERT OR REPLACE는 삭제하지 않으므로)
+            if delete_keys:
+                placeholders = ",".join("?" * len(delete_keys))
+                await conn.execute(
+                    f"DELETE FROM integrated_system_settings WHERE key IN ({placeholders})",
+                    delete_keys,
+                )
+                logger.info("[설정] 레거시 키 %d개 DB에서 삭제: %s", len(delete_keys), delete_keys)
 
             # 벌크 파라미터 수집
             bulk_params = []

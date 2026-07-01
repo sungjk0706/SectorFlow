@@ -168,7 +168,7 @@ async def on_trade_mode_switched() -> None:
 
     # 모드 전환 후 계좌 스냅샷 즉시 갱신
     await _refresh_account_snapshot_meta()
-    _broadcast_account(reason="trade_mode_switch")
+    await _broadcast_account(reason="trade_mode_switch")
 
     # 엔진 상태 브로드캐스트 (프론트엔드 헤더 테스트모드 표시 갱신)
     broadcast_engine_status()

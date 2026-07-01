@@ -108,7 +108,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
             len(notify_cache.positions_code_set),
         )
         await es._refresh_account_snapshot_meta()
-        es._broadcast_account(reason="test_data_reset")
+        await es._broadcast_account(reason="test_data_reset")
         es.logger.info("[엔진] 보유종목, 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료")
         # 8. 수익 이력 초기화 WS 브로드캐스트
         from backend.app.services.engine_account_notify import notify_snapshot_history_update

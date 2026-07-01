@@ -424,33 +424,39 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
         _first_stock = next(iter(all_stocks.values()))
         _cached_date_str = _first_stock.get("date", "")
 
-    from backend.app.core.trading_calendar import is_cache_valid
-    _master_cache_ok = is_cache_valid(_cached_date_str, ws_subscribe_start=ws_start)
+    from backend.app.core.trading_calendar import get_current_trading_day_str
+    _current_trading_day = get_current_trading_day_str()
+    _cache_is_today = (_cached_date_str == _current_trading_day)
 
     # ── 판단: 단절 구간 (ws_subscribe_end ~ 다음날 ws_subscribe_start) ──
     unified_past = t > ws_end_minutes or t < ws_start_minutes
 
     if unified_past:
-        if not _master_cache_ok and not state.confirmed_done:
+        confirmed_dl_str = str(_settings["confirmed_download_time"])[:5]
+        cdl_h, cdl_m = _parse_hm(confirmed_dl_str)
+        confirmed_dl_minutes = cdl_h * 60 + cdl_m
+
+        if t < confirmed_dl_minutes:
             logger.info(
-                "[타이머] 단절 구간 기동 — 저장된 데이터(%s) 만료됨 → 확정 데이터 자동 다운로드 트리거",
-                _cached_date_str or "없음"
+                "[타이머] 단절 구간 기동 — 확정 다운로드 시각(%s) 이전 — 타이머 대기 (캐시=%s, 현재 거래일=%s)",
+                confirmed_dl_str, _cached_date_str, _current_trading_day
+            )
+            return
+
+        if not _cache_is_today and not state.confirmed_done:
+            logger.info(
+                "[타이머] 단절 구간 기동 — 캐시 날짜(%s) ≠ 현재 거래일(%s) → 확정 데이터 자동 다운로드 트리거",
+                _cached_date_str or "없음", _current_trading_day
             )
             _fire_unified_confirmed_fetch()
             return
-        else:
-            confirmed_dl_str = str(_settings["confirmed_download_time"])[:5]
-            cdl_h, cdl_m = _parse_hm(confirmed_dl_str)
-            confirmed_dl_minutes = cdl_h * 60 + cdl_m
-            if t < confirmed_dl_minutes:
-                logger.debug(
-                    "[타이머] 단절 구간 기동 — 저장된 데이터(%s) 유효하지만 확정 다운로드 시각(%s) 이전 — 타이머 대기",
-                    _cached_date_str, confirmed_dl_str
-                )
-                return
-            logger.debug("[타이머] 단절 구간 기동 — 저장된 데이터(%s) 유효함 (스킵)", _cached_date_str)
-            state.confirmed_done = True
-            return
+
+        logger.info(
+            "[타이머] 단절 구간 기동 — 캐시(%s) = 현재 거래일(%s) 확정 다운로드 시각 경과 (스킵)",
+            _cached_date_str, _current_trading_day
+        )
+        state.confirmed_done = True
+        return
     else:
         # 실시간 연결 구간 (ws_subscribe_start ~ ws_subscribe_end)
         # 이 구간에서는 실시간 틱 데이터가 캐시를 채우므로 확정 다운로드를 하지 않음
@@ -1027,9 +1033,9 @@ async def _on_midnight() -> None:
 
             # 연도 변경 시 다음 연도 거래일 캐시 미리 생성 (블로킹 방지)
             current_year = now.year
-            from backend.app.core.trading_calendar import _trading_days_cache, refresh_trading_days_for_year
+            from backend.app.core.trading_calendar import has_trading_days_for_year, refresh_trading_days_for_year
             next_year = current_year + 1
-            if next_year not in _trading_days_cache:
+            if not has_trading_days_for_year(next_year):
                 logger.info("[타이머] 연도 변경 — %d년 거래일 캐시 생성", next_year)
                 await refresh_trading_days_for_year(next_year)
 
@@ -1044,8 +1050,8 @@ async def _on_midnight() -> None:
 
             await schedule_auto_trade_timers(settings)
             await schedule_ws_subscribe_timers(settings)
-            # 다음날 자정 타이머도 재예약
-            schedule_midnight_timer()
+        # 다음날 자정 타이머 재예약 (날짜 변경 여부와 무관하게 항상 수행)
+        schedule_midnight_timer()
     except Exception as e:
         logger.warning("[타이머] 자정 콜백 오류: %s", e)
 
@@ -1120,6 +1126,8 @@ async def start_daily_time_scheduler() -> None:
         state.market_phase["krx"] = phase["krx"]
         state.market_phase["nxt"] = phase["nxt"]
         logger.info("[타이머] market_phase 시간 기반 초기화: krx=%s, nxt=%s", phase["krx"], phase["nxt"])
+
+        state.last_reset_date = _kst_now().strftime("%Y%m%d")
 
         await schedule_auto_trade_timers(settings)
         await schedule_ws_subscribe_timers(settings)
