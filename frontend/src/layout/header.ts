@@ -68,25 +68,31 @@ function applyMarketPhaseChip(el: HTMLSpanElement, market: string, phase: string
 
 const INDEX_LABELS: Record<string, string> = {
   '001': '코스피',
-  '101': '코스닥',
+  '301': '코스닥',
 }
 
 function applyIndexChip(el: HTMLSpanElement, data: IndexData): void {
-  const label = INDEX_LABELS[data.upcode] || data.upcode
-  const sign = data.sign
+  const upcode = data.upcode ?? ''
+  const label = INDEX_LABELS[upcode] || upcode
+  const sign = data.sign ?? ''
   let bg = `${COLOR.neutralBg}`
   let color = `${COLOR.neutral}`
   let prefix = ''
   if (sign === '1' || sign === '2') {
     bg = `${COLOR.upBg}`; color = `${COLOR.up}`; prefix = '+'
   } else if (sign === '4' || sign === '5') {
-    bg = `${COLOR.downBg}`; color = `${COLOR.down}`; prefix = '-'
+    bg = `${COLOR.downBg}`; color = `${COLOR.down}`
   }
   el.style.background = bg
-  el.style.color = color
   el.style.border = `1px solid ${color}20`
-  const drateStr = data.drate ? `${prefix}${data.drate}%` : ''
-  el.textContent = `${label} ${drateStr} ${data.jisu}`
+  // drate에 이미 부호가 있으면 prefix 추가하지 않음 (이중 마이너스 방지)
+  const rawDrate = data.drate ?? ''
+  const hasSign = rawDrate.startsWith('-') || rawDrate.startsWith('+')
+  const drateStr = rawDrate ? `${hasSign ? '' : prefix}${rawDrate}%` : '--'
+  const jisuStr = data.jisu ?? '--'
+  // 라벨은 검정색, 등락률/지수만 색상 적용
+  const arrow = sign === '1' || sign === '2' ? '▲' : sign === '4' || sign === '5' ? '▼' : '－'
+  el.innerHTML = `<span style="color:${color};font-weight:700;">${arrow}</span> <span style="color:#333;font-weight:700;">${label}</span><span style="color:${color};margin-left:6px;">${jisuStr}</span><span style="color:${color};margin-left:4px;">${drateStr}</span>`
 }
 
 
@@ -114,9 +120,19 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
 
   // 로고
   const logo = document.createElement('strong')
-  logo.style.marginRight = 'auto'
+  logo.style.marginRight = '4px'
   logo.textContent = '🌊 SectorFlow'
   header.appendChild(logo)
+
+  // 투자모드 칩 (로고 바로 우측, 독립적 위치 — 시각적 우선순위)
+  const modeChip = createChipEl()
+  modeChip.style.display = 'none'
+  modeChip.style.marginRight = 'auto'
+  modeChip.style.marginLeft = '12px'
+  modeChip.style.fontSize = '12px'
+  modeChip.style.padding = '4px 12px'
+  modeChip.style.fontWeight = '700'
+  header.appendChild(modeChip)
 
   // 백그라운드 데이터 갱신 칩
   const avgAmtChip = createChipEl()
@@ -142,10 +158,6 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
 
     brokerChipRefs[brokerId] = { token: tokenChip, ws: wsChip }
   }
-
-  const modeChip = createChipEl()
-  modeChip.style.display = 'none'
-  header.appendChild(modeChip)
 
   // KRX / NXT 장 상태 칩
   const krxChip = createChipEl()
@@ -197,26 +209,13 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
     applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx)
     applyMarketPhaseChip(nxtChip, 'NXT', marketPhase.nxt)
 
-    // 업종지수 실시간
-    if (indexData) {
-      const kospi = indexData['001']
-      const kosdaq = indexData['101']
-      if (kospi) {
-        kospiChip.style.display = ''
-        applyIndexChip(kospiChip, kospi)
-      } else {
-        kospiChip.style.display = 'none'
-      }
-      if (kosdaq) {
-        kosdaqChip.style.display = ''
-        applyIndexChip(kosdaqChip, kosdaq)
-      } else {
-        kosdaqChip.style.display = 'none'
-      }
-    } else {
-      kospiChip.style.display = 'none'
-      kosdaqChip.style.display = 'none'
-    }
+    // 업종지수 실시간 — 칩은 항상 표시, 데이터 없으면 placeholder
+    const kospi = indexData?.['001']
+    const kosdaq = indexData?.['301']
+    kospiChip.style.display = ''
+    kosdaqChip.style.display = ''
+    applyIndexChip(kospiChip, kospi ?? { upcode: '001' })
+    applyIndexChip(kosdaqChip, kosdaq ?? { upcode: '301' })
 
     // KRX 알림 (서킷브레이커/사이드카)
     const alert = marketPhase.krx_alert

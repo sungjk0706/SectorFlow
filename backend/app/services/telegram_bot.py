@@ -140,23 +140,24 @@ class TelegramBot:
             for profile_key, flat in iter_merged_settings_profiles():
                 if not flat.get("tele_on"):
                     continue
-                raw_token = flat.get("telegram_bot_token") or ""
-                if str(raw_token).startswith("gAAAA"):
-                    token = (decrypt_value(raw_token) or "").strip()
-                else:
-                    token = str(raw_token).strip()
                 chat_raw = str(flat.get("telegram_chat_id") or "").strip()
-                if not token or not chat_raw:
+                if not chat_raw:
                     continue
-                if token in seen_tokens:
-                    continue
-                seen_tokens.add(token)
-                rows.append({
-                    "telegram_bot_token": token,
-                    "telegram_chat_id":   _normalize_chat_id(chat_raw),
-                    "telegram_on":        True,
-                    "_profile":           profile_key,
-                })
+                for token_field in ("telegram_bot_token_test", "telegram_bot_token_real"):
+                    raw_token = flat.get(token_field) or ""
+                    if str(raw_token).startswith("gAAAA"):
+                        token = (decrypt_value(raw_token) or "").strip()
+                    else:
+                        token = str(raw_token).strip()
+                    if not token or token in seen_tokens:
+                        continue
+                    seen_tokens.add(token)
+                    rows.append({
+                        "telegram_bot_token": token,
+                        "telegram_chat_id":   _normalize_chat_id(chat_raw),
+                        "telegram_on":        True,
+                        "_profile":           profile_key,
+                    })
             return rows
         except Exception as exc:
             logger.debug("[텔레그램] 설정 조회 실패: %s", exc)

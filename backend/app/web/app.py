@@ -7,7 +7,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -310,6 +310,8 @@ if _FRONTEND_DIST.is_dir():
     @app.get("/{full_path:path}")
     async def spa_fallback(full_path: str):
         """API 경로가 아닌 모든 요청 → React index.html 반환 (SPA 라우팅)."""
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
         file_path = _FRONTEND_DIST / full_path
         if file_path.is_file():
             return FileResponse(str(file_path))

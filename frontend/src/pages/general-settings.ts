@@ -456,8 +456,8 @@ function renderTelegramTab(container: HTMLElement): void {
   container.appendChild(teleRow)
 
   // 채팅 ID / 봇 토큰
-  const STR_KEYS = ['telegram_chat_id', 'telegram_bot_token'] as const
-  const LABELS: Record<string, string> = { telegram_chat_id: '채팅 ID', telegram_bot_token: '봇 토큰' }
+  const STR_KEYS = ['telegram_chat_id', 'telegram_bot_token_test', 'telegram_bot_token_real'] as const
+  const LABELS: Record<string, string> = { telegram_chat_id: '채팅 ID', telegram_bot_token_test: '테스트 봇 토큰', telegram_bot_token_real: '실전 봇 토큰' }
 
   for (const k of STR_KEYS) {
     const row = document.createElement('div')
@@ -963,7 +963,7 @@ function syncFromSettings(s: AppSettings | null): void {
   {
     const act = document.activeElement
     teleToggle?.setOn(!!r.tele_on)
-    for (const k of ['telegram_chat_id', 'telegram_bot_token']) {
+    for (const k of ['telegram_chat_id', 'telegram_bot_token_test', 'telegram_bot_token_real']) {
       if (teleInputs[k]) {
         if (!act || !teleInputs[k].contains(act)) {
           teleInputs[k].value = String(r[k] || '')

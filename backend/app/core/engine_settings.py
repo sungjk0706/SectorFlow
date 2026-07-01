@@ -81,7 +81,8 @@ def build_engine_settings_dict(flat: dict) -> dict:
         # 텔레그램 (복호화)
         "tele_on":              bool(merged.get("tele_on")),
         "telegram_on":          bool(merged.get("tele_on")),
-        "telegram_bot_token":   _dec(merged.get("telegram_bot_token")),
+        "telegram_bot_token_test": _dec(merged.get("telegram_bot_token_test")),
+        "telegram_bot_token_real": _dec(merged.get("telegram_bot_token_real")),
         "telegram_chat_id":     merged.get("telegram_chat_id"),
         # 키움 자격증명 -- trade_mode에 맞는 키·계좌(모드별 필드 없으면 레거시 단일 필드)
         "kiwoom_app_key":       k_woom,
