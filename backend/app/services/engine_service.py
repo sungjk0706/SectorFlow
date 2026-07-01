@@ -236,7 +236,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             await _se.reset(_deposit)
             # 계좌 스냅샷 갱신 + WS account-update 발송
             await _refresh_account_snapshot_meta()
-            _broadcast_account(reason="virtual_balance_changed")
+            await _broadcast_account(reason="virtual_balance_changed")
         except Exception:
             logger.warning("[설정] 가상 예수금 동기화 실패", exc_info=True)
 

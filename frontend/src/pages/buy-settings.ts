@@ -52,7 +52,7 @@ function syncAfterSave(): void {
 /* ── 설정 동기화 ── */
 function syncFromSettings(s: AppSettings): void {
   if (boostOrderDualSlider && boostOrderDualSlider.isInteracting) return
-  const r = s as unknown as Record<string, unknown>
+  const r = s as Record<string, unknown>
   vals = { ...r }
 
   const act = document.activeElement

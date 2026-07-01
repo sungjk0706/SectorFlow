@@ -323,9 +323,9 @@ def _apply_broker_totals_from_summary(summary: dict) -> None:
 
 async def _refresh_account_snapshot_meta() -> None:
     """
-    스냅샷 시각·보유종목수·가격소스만 갱신.
-    총평가·총손익·총매입·총수익률은 _broker_rest_totals만 사용(REST kt00018 또는 REAL 04 공식 FID 932~934) -- 포지션 합산 없음.
-    테스트모드: 가상 예수금을 deposit/orderable에 반영.
+    스냅샷 시각·보유종목수·가격소스 갱신.
+    실전모드: 총평가·총손익·총매입·총수익률은 _broker_rest_totals(REST kt00018 또는 REAL 04 공식 FID 932~934) 사용.
+    테스트모드: positions 합산으로 totals 구성 + 가상 예수금 반영.
     """
     from backend.app.services.engine_account_rest import build_account_snapshot_meta
     from backend.app.services import dry_run, settlement_engine
@@ -366,9 +366,6 @@ async def _refresh_account_snapshot_meta() -> None:
     
     state.account_snapshot = snap
 
-    logger.info("[DEBUG _refresh_account_snapshot_meta] pos_count=%d total_buy=%s total_eval=%s total_pnl=%s total_pnl_rate=%s",
-                len(pos), snap.get("total_buy_amount"), snap.get("total_eval_amount"),
-                snap.get("total_pnl"), snap.get("total_pnl_rate"))
 
 
 async def _apply_last_price_to_positions(stk_cd: str, price: int) -> bool:
@@ -454,17 +451,8 @@ async def _on_fill_after_ws() -> None:
 
 # ── 브로드캐스트 ─────────────────────────────────────────────────────────
 
-def _broadcast_account(reason: str | None = None) -> None:
-    """데이터 갱신 후 UI/WS 계좌 브로드캐스트 — 즉시 전송."""
-    try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(_do_broadcast_account(reason))
-    except RuntimeError:
-        asyncio.run(_do_broadcast_account(reason))
-
-
-async def _do_broadcast_account(reason: str | None = None) -> None:
-    """계좌 브로드캐스트 수행."""
+async def _broadcast_account(reason: str | None = None) -> None:
+    """데이터 갱신 후 UI/WS 계좌 브로드캐스트 — 직접 await 호출."""
     from backend.app.services import dry_run
     from backend.app.services.engine_account_notify import broadcast_account_update
 
@@ -476,7 +464,7 @@ async def _do_broadcast_account(reason: str | None = None) -> None:
             reason=reason or "update",
         )
     except Exception as e:
-        logger.debug("[계좌브로드캐스트] 전송 실패: %s", e, exc_info=True)
+        logger.warning("[계좌브로드캐스트] 전송 실패: %s", e, exc_info=True)
 
 
 # ── 헬퍼 함수 ─────────────────────────────────────────────────────────

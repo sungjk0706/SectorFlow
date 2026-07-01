@@ -120,11 +120,6 @@ export function applyAccountUpdate(data: AccountUpdateEvent): void {
       && incomingSnap.accumulated_investment === prevAccount.accumulated_investment
       && incomingSnap.initial_deposit === prevAccount.initial_deposit
 
-    console.log('[DEBUG applyAccountUpdate] incoming total_pnl:', incomingSnap?.total_pnl, 'prev total_pnl:', prevAccount?.total_pnl)
-    console.log('[DEBUG applyAccountUpdate] incoming total_pnl_rate:', incomingSnap?.total_pnl_rate, 'prev total_pnl_rate:', prevAccount?.total_pnl_rate)
-    console.log('[DEBUG applyAccountUpdate] incoming total_eval_amount:', incomingSnap?.total_eval_amount, 'prev total_eval_amount:', prevAccount?.total_eval_amount)
-    console.log('[DEBUG applyAccountUpdate] snapSame:', snapSame)
-
     // changed_positions (최소 필드) + removed_codes 처리
     const changed = (data as { changed_positions?: Position[] }).changed_positions
     const removed = (data as { removed_codes?: string[] }).removed_codes

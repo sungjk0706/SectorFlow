@@ -137,10 +137,23 @@ export interface AppSettings {
   sector_min_trade_amt: number;
   sector_weights: Record<string, number>;
   sector_max_targets: number;
+  sector_start_threshold_pct: number;
+  sector_trim_trade_amt_pct: number;
+  sector_trim_change_rate_pct: number;
 
   // 매수 차단
   buy_block_rise_pct: number;
   buy_block_fall_pct: number;
+  buy_min_strength: number;
+
+  // 매수 가산점
+  boost_high_breakout_on: boolean;
+  boost_high_breakout_score: number;
+  boost_order_ratio_on: boolean;
+  boost_order_ratio_pct: number;
+  boost_order_ratio_score: number;
+  boost_program_net_buy_on: boolean;
+  boost_program_net_buy_score: number;
 
   // 텔레그램
   tele_on: boolean;

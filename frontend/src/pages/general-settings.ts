@@ -914,7 +914,7 @@ function syncBrokerRadios(): void {
 /* ── 설정 동기화 ── */
 function syncFromSettings(s: AppSettings | null): void {
   if (!s) return
-  const r = s as unknown as Record<string, unknown>
+  const r = s as Record<string, unknown>
   // 전체 복사 대신 변경된 키만 업데이트
   for (const k of Object.keys(r)) {
     if (vals[k] !== r[k]) {
@@ -1022,7 +1022,7 @@ function mount(container: HTMLElement): void {
   // 초기 설정 로드
   const initial = settingsMgr.getSettings()
   if (initial) {
-    vals = { ...(initial as unknown as Record<string, unknown>) }
+    vals = { ...(initial as Record<string, unknown>) }
   }
 
   // 모든 탭 패널 사전 렌더링 (display: none으로 숨김)
