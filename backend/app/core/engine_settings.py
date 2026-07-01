@@ -128,7 +128,7 @@ def build_engine_settings_dict(flat: dict) -> dict:
     # 기존 설정에서 foreign_net / institution_net 제거 마이그레이션
     result["sector_sort_keys"] = [k for k in result["sector_sort_keys"] if k not in ("foreign_net", "institution_net")]
     result["sector_rank_primary"]         = str(merged.get("sector_rank_primary") or "rise_ratio")
-    result["sector_weights"]              = merged.get("sector_weights") or {"total_trade_amount": 0.5, "rise_ratio": 0.5}
+    result["sector_weights"]              = merged.get("sector_weights") or {"rise_ratio": 0.5, "avg_change_rate": 0.5}
     result["sector_max_targets"]          = int(merged.get("sector_max_targets", 3) or 3)
     result["sector_min_rise_ratio_pct"]   = float(merged.get("sector_min_rise_ratio_pct", 60.0) or 60.0)
     result["sector_min_trade_amt"]        = float(merged.get("sector_min_trade_amt", 0.0) or 0.0)

@@ -139,6 +139,7 @@ async def compute_sector_scores(
         # ── 점수 계산용: 트리밍 후 값 ────────────────────────────────────────
         # ── 등락률 트리밍: 상하위 N% 종목 제외 후 상승비율 계산 ──
         _trim_cr_pct = max(trim_change_rate_pct, 0.0)
+        _cr_trimmed: list | None = None
         if _trim_cr_pct > 0 and len(filtered_stocks) > 0:
             _n = len(filtered_stocks)
             _trim_cnt = round(_n * _trim_cr_pct / 100)
@@ -153,6 +154,11 @@ async def compute_sector_scores(
         else:
             scored_rise_ratio = raw_rise_ratio
         avg_cr = sum(s.change_rate for s in filtered_stocks) / len(filtered_stocks) if len(filtered_stocks) > 0 else 0.0
+        # ── 트리밍 후 평균 등락률 계산 (점수 계산용) ──
+        if _cr_trimmed is not None:
+            scored_avg_cr = sum(s.change_rate for s in _cr_trimmed) / len(_cr_trimmed) if len(_cr_trimmed) > 0 else 0.0
+        else:
+            scored_avg_cr = avg_cr
         # ── 거래대금 트리밍: 상하위 N% 종목 제외 후 평균 계산 ──
         _trim_ta_pct = max(trim_trade_amt_pct, 0.0)
         if _trim_ta_pct > 0 and len(filtered_stocks) > 0:
@@ -179,6 +185,7 @@ async def compute_sector_scores(
             stocks=filtered_stocks,
             scored_trade_amount=scored_ta,
             scored_rise_ratio=scored_rise_ratio,
+            scored_avg_change_rate=scored_avg_cr,
         ))
 
     # 가중치 기반 점수 계산 + 정렬 + 순위 부여

@@ -7,9 +7,6 @@ import { createSettingsManager } from '../settings'
 import { createAutoSaveHelper, type AutoSaveHelper } from '../utils/settings-save'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingRow, createNumInput, createMoneyInput, createWsStatusBadge } from '../components/common/setting-row'
-import { createDualLabelSlider } from '../components/common/create-slider'
-import type { DualLabelSliderHandle } from '../components/common/create-slider'
-import { toDisplayValue, toServerValue } from '../utils/sliderConvert'
 import { FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 import type { SectorScoreRow, AppSettings } from '../types'
 
@@ -69,18 +66,15 @@ let trimTradeAmtInput: ReturnType<typeof createNumInput> | null = null
 let minRiseRatioInput: ReturnType<typeof createNumInput> | null = null
 let maxTargetsInput: ReturnType<typeof createNumInput> | null = null
 let maxTargetsStatusEl: HTMLSpanElement | null = null
-let dualSlider: DualLabelSliderHandle | null = null
-
 // 현재 값 추적
 let currentVals: Record<string, number> = {}
-let currentRiseRatio = 50
 
 // 업종 순위 행 DOM 참조
 let rankRows: HTMLDivElement[] = []
 // 행별 이전 렌더 값 캐시 (델타 갱신용)
 interface RowCache {
   rank: number; sector: string; total: number; finalScore: string
-  riseRatio: string; riseColor: string; tradeAmt: string
+  riseRatio: string; riseColor: string; avgChangeRate: string
   barWidth: string; barColor: string; opacity: string; selected: boolean; visible: boolean
 }
 let rowCaches: (RowCache | null)[] = []
@@ -98,28 +92,12 @@ async function onNumChange(key: string, value: number): Promise<void> {
   }
 }
 
-async function saveWeightsNow(ratio: number): Promise<void> {
-  const serverWeights = { rise_ratio: toServerValue(100 - ratio), total_trade_amount: toServerValue(ratio) }
-  if (autoSaveHelper) {
-    await autoSaveHelper.saveImmediate({ sector_weights: serverWeights })
-  }
-}
-
-function updateSliderUI(): void {
-  if (dualSlider && !dualSlider.isInteracting && dualSlider.getValue() !== currentRiseRatio) {
-    dualSlider.setValue(currentRiseRatio)
-  }
-}
-
 function syncFromSettings(s: AppSettings): void {
   if (saving) return
   for (const k of NUM_KEYS) {
     const newValue = s[k];
     currentVals[k] = newValue !== undefined ? Number(newValue) : currentVals[k];
   }
-  const w = s.sector_weights || {}
-  const tradeAmtVal = w.total_trade_amount !== undefined ? Number(w.total_trade_amount) : 0.5
-  currentRiseRatio = toDisplayValue(tradeAmtVal)
   // focus 뺏김 방지 — 현재 포커스된 input은 업데이트 제외
   const act = document.activeElement
   if (thresholdInput && (!act || !thresholdInput.el.contains(act))) thresholdInput.setValue(currentVals.sector_start_threshold_pct ?? 70)
@@ -128,7 +106,6 @@ function syncFromSettings(s: AppSettings): void {
   if (trimTradeAmtInput && (!act || !trimTradeAmtInput.el.contains(act))) trimTradeAmtInput.setValue(currentVals.sector_trim_trade_amt_pct ?? 0)
   if (minRiseRatioInput && (!act || !minRiseRatioInput.el.contains(act))) minRiseRatioInput.setValue(currentVals.sector_min_rise_ratio_pct ?? 0)
   if (maxTargetsInput && (!act || !maxTargetsInput.el.contains(act))) maxTargetsInput.setValue(currentVals.sector_max_targets ?? 0)
-  updateSliderUI()
 }
 
 
@@ -193,7 +170,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     if (i >= sortedScores.length) {
       if (!rowCaches[i] || rowCaches[i]!.visible) {
         row.style.display = 'none'
-        rowCaches[i] = { rank: -1, sector: '', total: 0, finalScore: '', riseRatio: '', riseColor: '', tradeAmt: '', barWidth: '', barColor: '', opacity: '', selected: false, visible: false }
+        rowCaches[i] = { rank: -1, sector: '', total: 0, finalScore: '', riseRatio: '', riseColor: '', avgChangeRate: '', barWidth: '', barColor: '', opacity: '', selected: false, visible: false }
       }
       continue
     }
@@ -206,7 +183,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     const finalScore = s.final_score.toFixed(1)
     const riseRatio = s.rise_ratio.toFixed(1) + '%'
     const riseColor = s.rise_ratio > 50 ? COLOR.up : s.rise_ratio < 50 ? COLOR.down : COLOR.neutral
-    const tradeAmt = (s.total_trade_amount / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })  // 백만원 → 억단위 (소수점 1자리, 콤마)
+    const avgChangeRate = s.avg_change_rate.toFixed(2) + '%'
     const barWidth = `${Math.min((s.final_score / maxScore) * 100, 100)}%`
     const barColor = isUnranked ? '#dee2e6' : (s.rank <= maxTargets ? COLOR.down : COLOR.muted)
 
@@ -227,14 +204,14 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     if (!prev || prev.finalScore !== finalScore) spans[3].textContent = finalScore
     if (!prev || prev.riseRatio !== riseRatio) spans[4].textContent = riseRatio
     if (!prev || prev.riseColor !== riseColor) spans[4].style.color = riseColor
-    if (!prev || prev.tradeAmt !== tradeAmt) spans[5].textContent = tradeAmt
+    if (!prev || prev.avgChangeRate !== avgChangeRate) spans[5].textContent = avgChangeRate
 
     const bar = row.lastElementChild!.firstElementChild as HTMLDivElement
     if (!prev || prev.barWidth !== barWidth) bar.style.width = barWidth
     if (!prev || prev.barColor !== barColor) bar.style.background = barColor
 
     // 캐시 갱신
-    rowCaches[i] = { rank: s.rank, sector: s.sector, total: s.total, finalScore, riseRatio, riseColor, tradeAmt, barWidth, barColor, opacity, selected: isSel, visible: true }
+    rowCaches[i] = { rank: s.rank, sector: s.sector, total: s.total, finalScore, riseRatio, riseColor, avgChangeRate, barWidth, barColor, opacity, selected: isSel, visible: true }
   }
 }
 
@@ -245,7 +222,6 @@ function mount(container: HTMLElement): void {
   settingsMgr = createSettingsManager(uiStore)
   autoSaveHelper = createAutoSaveHelper(settingsMgr)
   currentVals = {}
-  currentRiseRatio = 50
   rankRows = []
   rowCaches = []
   saving = false
@@ -319,37 +295,6 @@ function mount(container: HTMLElement): void {
   trimRow.appendChild(rightCol)
   root.appendChild(trimRow)
 
-  // ⑤ 점수 가중치
-  const weightLabel = createStepLabel('⑤', '')
-  const weightDesc = document.createElement('span')
-  Object.assign(weightDesc.style, { fontSize: FONT_SIZE.small, color: COLOR.secondary })
-  weightDesc.textContent = '상승 종목 비율과 평균 거래대금의 점수 반영 비중을 조절합니다.'
-  weightLabel.appendChild(weightDesc)
-  root.appendChild(weightLabel)
-  const weightWrap = document.createElement('div')
-  Object.assign(weightWrap.style, { marginBottom: '8px', marginTop: '4px' })
-
-  dualSlider = createDualLabelSlider({
-    min: 0,
-    max: 100,
-    value: currentRiseRatio,
-    step: 1,
-    leftLabel: (v) => `상승 종목 비율 ${100 - v}%`,
-    rightLabel: (v) => `평균 거래대금 ${v}%`,
-    leftColor: COLOR.down,
-    leftColorLight: COLOR.downLight,
-    rightColor: COLOR.warning,
-    rightColorLight: COLOR.warningLight,
-    onChange(v) {
-      currentRiseRatio = v
-    },
-    onCommit(v) {
-      saveWeightsNow(v)
-    },
-  })
-  weightWrap.appendChild(dualSlider.el)
-  root.appendChild(weightWrap)
-
   // ⑤ 매수 대상
   root.appendChild(createStepLabel('⑤', '최대 매수 대상 업종수 설정'))
   maxTargetsInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_max_targets', v), step: 1, name: 'sector_max_targets' })
@@ -400,7 +345,7 @@ function mount(container: HTMLElement): void {
     ['width:40px;text-align:right;margin-right:12px;', '종목수'],
     ['width:48px;text-align:right;', '종합점수'],
     ['width:64px;text-align:right;', '상승비율'],
-    ['width:72px;text-align:right;', '평균거래(억)'],
+    ['width:72px;text-align:right;', '평균등락률'],
   ]
   for (const [css, text] of headerDefs) {
     const sp = document.createElement('span')
@@ -420,7 +365,6 @@ function mount(container: HTMLElement): void {
   // 설정 초기 동기화
   const initialSettings = settingsMgr.getSettings()
   if (initialSettings) syncFromSettings(initialSettings)
-  updateSliderUI()
 
   // 설정 변경 구독 — 사용자 입력에 의한 설정 동기화 + 순위 리스트 갱신
   unsubSettings = settingsMgr.subscribe(() => {
@@ -509,10 +453,6 @@ function unmount(): void {
   minRiseRatioInput = null
   maxTargetsInput = null
   maxTargetsStatusEl = null
-  if (dualSlider && typeof dualSlider.destroy === 'function') {
-    dualSlider.destroy()
-  }
-  dualSlider = null
   wsBadge = null
   rankRows = []
   rowCaches = []
