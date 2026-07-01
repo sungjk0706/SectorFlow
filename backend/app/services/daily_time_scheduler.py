@@ -66,8 +66,25 @@ def is_nxt_aftermarket_window() -> bool:
 def calc_timebased_market_phase() -> dict:
     """현재 KST 시각 기반으로 KRX/NXT 장 상태를 산정하여 반환.
 
-    JIF 미수신 시 fallback으로 사용되며, 거래일 판별 포함.
+    market_phase의 SSOT로 사용되며, 거래일 판별 포함.
     반환: {"krx": str, "nxt": str}
+
+    시간대별 상태 정의:
+      KRX:
+        00:00~08:00  장개시전
+        08:00~09:00  장전 동시호가
+        09:00~15:20  정규장
+        15:20~15:30  장후 동시호가
+        15:30~15:40  장후 시간외
+        15:40~16:00  시간외 단일가
+        16:00~24:00  장마감
+      NXT:
+        00:00~08:00  장개시전
+        08:00~09:00  프리마켓
+        09:00~15:20  메인마켓
+        15:20~15:30  휴식
+        15:30~20:00  애프터마켓
+        20:00~24:00  장마감
     """
     from backend.app.core.trading_calendar import is_trading_day
 
@@ -76,7 +93,7 @@ def calc_timebased_market_phase() -> dict:
     t = now.hour * 60 + now.minute
 
     if today.weekday() >= 5 or not is_trading_day(today):
-        return {"krx": "휴장일", "nxt": ""}
+        return {"krx": "휴장일", "nxt": "휴장일"}
 
     def _m(hm: tuple[int, int]) -> int:
         return hm[0] * 60 + hm[1]
@@ -99,7 +116,7 @@ def calc_timebased_market_phase() -> dict:
 
     # ── NXT ──
     if t < _m(NXT_PREMARKET_START):
-        nxt = ""
+        nxt = "장개시전"
     elif t < _m(NXT_PREMARKET_END):
         nxt = "프리마켓"
     elif t < _m(NXT_MAINMARKET_END):
@@ -126,17 +143,14 @@ NXT_ACTIVE_PHASES = frozenset({
 def is_nxt_only_window() -> bool:
     """현재 장 상태가 NXT-only 거래 구간인지 판단 (KRX 비활성 + NXT 활성).
 
-    SSOT: engine_state.market_phase (JIF 수신값) 기반으로 판단.
-    JIF 미수신 시 calc_timebased_market_phase()로 시간 기반 fallback.
+    SSOT: engine_state.market_phase에서 읽어 판단.
+    market_phase는 시간 기반 스케줄러가 갱신하므로 빈 문자열이면 안 됨.
     """
     mp = state.market_phase
     krx = mp.get("krx", "")
     nxt = mp.get("nxt", "")
     if not krx or not nxt:
-        phase = calc_timebased_market_phase()
-        krx = phase["krx"]
-        nxt = phase["nxt"]
-    if not krx or not nxt:
+        logger.error("[is_nxt_only_window] market_phase에 빈 문자열 감지: krx=%r, nxt=%r — 시간 기반 초기화가 누락되었을 수 있음", krx, nxt)
         return False
     return krx in KRX_INACTIVE_PHASES and nxt in NXT_ACTIVE_PHASES
 
@@ -178,17 +192,13 @@ def get_market_phase() -> dict:
     """현재 KRX/NXT 장 상태 반환 (순수 읽기).
 
     SSOT: engine_state.market_phase에서 읽어 복사본 반환.
-    JIF 미수신 시 calc_timebased_market_phase()로 시간 기반 fallback.
+    market_phase는 시간 기반 스케줄러가 갱신하므로 빈 문자열이면 안 됨.
     """
     mp = state.market_phase
     krx = mp.get("krx", "")
     nxt = mp.get("nxt", "")
     if not krx or not nxt:
-        fallback = calc_timebased_market_phase()
-        if not krx:
-            krx = fallback["krx"]
-        if not nxt:
-            nxt = fallback["nxt"]
+        logger.error("[get_market_phase] market_phase에 빈 문자열 감지: krx=%r, nxt=%r — 시간 기반 초기화가 누락되었을 수 있음", krx, nxt)
     phase: dict = {"krx": krx, "nxt": nxt}
     if mp.get("krx_alert"):
         phase["krx_alert"] = mp["krx_alert"]
@@ -1105,7 +1115,7 @@ async def start_daily_time_scheduler() -> None:
             raise RuntimeError("settings cache not initialized")
         await _apply_auto_toggle_on_startup(settings)
 
-        # ── market_phase 시간 기반 초기화 (JIF 수신 전 fallback) ──
+        # ── market_phase 시간 기반 초기화 (SSOT) ──
         phase = calc_timebased_market_phase()
         state.market_phase["krx"] = phase["krx"]
         state.market_phase["nxt"] = phase["nxt"]

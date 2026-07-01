@@ -2,6 +2,7 @@
 // WS 채널 분리: prices(시세), settings(설정/진행률), orders(체결)
 
 import type { WSClient } from './api/ws'
+import { getCurrentPage } from './api/ws'
 import {
   applyAccountUpdate,
   applyRealData,
@@ -24,7 +25,6 @@ import {
 } from './stores/hotStore'
 import {
   applySettingsChanged,
-  applyIndexRefresh,
   applySnapshotUpdate,
   applyBootstrapStage,
   applyAvgAmtProgress,
@@ -40,7 +40,6 @@ import {
 import type {
   AccountUpdateEvent,
   AppSettings,
-  EngineStatus,
   SnapshotHistory,
   SectorStock,
   StockClassificationChangedEvent,
@@ -65,6 +64,8 @@ export function bindWSToStore(
   /* ── prices 채널 연결 상태 콜백 ── */
   pricesClient.setConnectionCallbacks(
     () => {
+      const page = getCurrentPage()
+      if (page) pricesClient.send(JSON.stringify({ type: 'page-active', page }))
     },
     () => {
     },
@@ -182,6 +183,16 @@ export function bindWSToStore(
     applyProgramUpdate(data as { code: string; net_buy: number })
   })
 
+  /* ── settings 채널 연결 상태 콜백 ── */
+  settingsClient.setConnectionCallbacks(
+    () => {
+      const page = getCurrentPage()
+      if (page) settingsClient.send(JSON.stringify({ type: 'page-active', page }))
+    },
+    () => {
+    },
+  )
+
   /* ── settings 채널 이벤트 핸들러 ── */
   settingsClient.onEvent('settings-changed', (data) => {
     applySettingsChanged(data as AppSettings)
@@ -189,10 +200,6 @@ export function bindWSToStore(
 
   settingsClient.onEvent('engine-reload-complete', () => {
     applyEngineReloadComplete()
-  })
-
-  settingsClient.onEvent('index-refresh', (data) => {
-    applyIndexRefresh(data as EngineStatus)
   })
 
   settingsClient.onEvent('index-data', (data) => {

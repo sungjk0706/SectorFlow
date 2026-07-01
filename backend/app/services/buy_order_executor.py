@@ -87,12 +87,12 @@ async def evaluate_buy_candidates() -> None:
         if s.code in state.master_stocks_cache:
             state.master_stocks_cache[s.code]["_last_buy_ts"] = now
         
-        logger.info("[섹터매수] 매수 시도: %s(%s) 섹터=%s",
+        logger.info("[종목매수] 매수 시도: %s(%s) 섹터=%s",
                     s.name, s.code, s.sector)
         try:
             _price = int(s.cur_price or 0)
             if _price <= 0:
-                logger.debug("[섹터매수] %s 실시간 시세 없음 -- 생략", s.code)
+                logger.debug("[종목매수] %s 실시간 시세 없음 -- 생략", s.code)
                 continue
             _ordered = await state.auto_trade.execute_buy(
                 s.code, float(_price), state.checked_stocks, state.access_token,
@@ -100,7 +100,7 @@ async def evaluate_buy_candidates() -> None:
                 reason=f"업종자동매수 업종={s.sector}",
             )
             if _ordered:
-                logger.info("[섹터매수] 매수 주문 전송: %s(%s)", s.name, s.code)
+                logger.info("[종목매수] 매수 주문 전송: %s(%s)", s.name, s.code)
                 _holding_cnt += 1
                 if _holding_cnt >= _max_limit:
                     break
@@ -108,4 +108,4 @@ async def evaluate_buy_candidates() -> None:
                 if _max_daily > 0 and state.auto_trade._daily_buy_spent >= _max_daily:
                     break
         except Exception as e:
-            logger.warning("[섹터매수] execute_buy 오류 %s: %s", s.code, e, exc_info=True)
+            logger.warning("[종목매수] execute_buy 오류 %s: %s", s.code, e, exc_info=True)

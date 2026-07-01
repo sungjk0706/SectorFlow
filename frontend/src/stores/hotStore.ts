@@ -120,6 +120,11 @@ export function applyAccountUpdate(data: AccountUpdateEvent): void {
       && incomingSnap.accumulated_investment === prevAccount.accumulated_investment
       && incomingSnap.initial_deposit === prevAccount.initial_deposit
 
+    console.log('[DEBUG applyAccountUpdate] incoming total_pnl:', incomingSnap?.total_pnl, 'prev total_pnl:', prevAccount?.total_pnl)
+    console.log('[DEBUG applyAccountUpdate] incoming total_pnl_rate:', incomingSnap?.total_pnl_rate, 'prev total_pnl_rate:', prevAccount?.total_pnl_rate)
+    console.log('[DEBUG applyAccountUpdate] incoming total_eval_amount:', incomingSnap?.total_eval_amount, 'prev total_eval_amount:', prevAccount?.total_eval_amount)
+    console.log('[DEBUG applyAccountUpdate] snapSame:', snapSame)
+
     // changed_positions (최소 필드) + removed_codes 처리
     const changed = (data as { changed_positions?: Position[] }).changed_positions
     const removed = (data as { removed_codes?: string[] }).removed_codes
@@ -356,24 +361,13 @@ export function applyRealData(item: RealDataEvent): void {
     }
   }
 
-  // positions
+  // positions — cur_price만 갱신 (PnL/eval은 백엔드 account-update가 SSOT)
   const positions = state.positions;
   const posIdx = getPositionIndex(code);
   if (posIdx !== undefined) {
     const pos = positions[posIdx];
-    const buyAmt = pos.buy_amt ?? pos.buy_amount ?? 0;
-    const qty = pos.qty ?? 0;
-    const evalAmount = price * qty;
-    const pnlAmount = buyAmt > 0 ? evalAmount - buyAmt : 0;
-    const pnlRate = buyAmt > 0 ? Math.round((pnlAmount / buyAmt) * 10000) / 100 : 0;
-    
-    if (pos.cur_price !== price || pos.eval_amount !== evalAmount ||
-        pos.pnl_amount !== pnlAmount || pos.pnl_rate !== pnlRate) {
-      // In-place mutation
+    if (pos.cur_price !== price) {
       pos.cur_price = price;
-      pos.eval_amount = evalAmount;
-      pos.pnl_amount = pnlAmount;
-      pos.pnl_rate = pnlRate;
       changed = true;
     }
   }
@@ -561,18 +555,13 @@ export function applySectorPriceTick(data: SectorPriceTick): void {
     }
   }
 
-  // 3. positions In-place Mutation
+  // 3. positions In-place Mutation — cur_price만 갱신 (PnL/eval은 백엔드 account-update가 SSOT)
   const positions = hotStore.getState().positions
   const posIdx = getPositionIndex(code)
   if (posIdx !== undefined) {
     const pos = positions[posIdx]
     if (pos.cur_price !== data.price) {
       pos.cur_price = data.price
-      const buyAmt = pos.buy_amt ?? pos.buy_amount ?? 0
-      const qty = pos.qty ?? 0
-      pos.eval_amount = data.price * qty
-      pos.pnl_amount = buyAmt > 0 ? (data.price * qty) - buyAmt : 0
-      pos.pnl_rate = buyAmt > 0 ? Math.round(((pos.pnl_amount) / buyAmt) * 10000) / 100 : 0
     }
   }
 
@@ -611,6 +600,15 @@ export function applyInitialSnapshotHot(data: Record<string, unknown>): void {
     code: normalizeStockCode(t.code)
   }))
   const newPositions = (data.positions as Position[]) ?? []
+  const accountSnap = (data.account as AccountSnapshot) ?? null
+  console.log('[DEBUG applyInitialSnapshotHot] account total_pnl:', accountSnap?.total_pnl, 'total_pnl_rate:', accountSnap?.total_pnl_rate, 'total_eval_amount:', accountSnap?.total_eval_amount, 'total_buy_amount:', accountSnap?.total_buy_amount)
+  console.log('[DEBUG applyInitialSnapshotHot] positions count:', newPositions.length)
+  if (newPositions.length > 0) {
+    const sumBuy = newPositions.reduce((s, p) => s + (p.buy_amt || 0), 0)
+    const sumEval = newPositions.reduce((s, p) => s + (p.eval_amt || 0), 0)
+    const sumPnl = newPositions.reduce((s, p) => s + (p.pnl_amount || 0), 0)
+    console.log('[DEBUG applyInitialSnapshotHot] positions sum: buy=', sumBuy, 'eval=', sumEval, 'pnl=', sumPnl)
+  }
   rebuildBuyTargetIndex(newBuyTargets)
   rebuildPositionIndex(newPositions)
   // sector_stocks는 설계상 initial-snapshot에서 빈 배열로 전송됨 (engine_snapshot.py 참조).
@@ -619,8 +617,8 @@ export function applyInitialSnapshotHot(data: Record<string, unknown>): void {
   const prevSectorStocks = hotStore.getState().sectorStocks
   const newSectorStocks = stocks.length > 0 ? stocksToMap(stocks) : prevSectorStocks
   hotStore.setState({
-    account: (data.account as AccountSnapshot) ?? null,
-    positionCount: (data.account as AccountSnapshot)?.position_count || newPositions.length,
+    account: accountSnap,
+    positionCount: accountSnap?.position_count || newPositions.length,
     positions: newPositions,
     sectorStocks: newSectorStocks,
     sectorScores: scores,

@@ -113,7 +113,7 @@ async def reload_engine_settings() -> None:
 # ── 민감 정보 마스킹 ─────────────────────────────────────────────────
 
 _SENSITIVE_SETTINGS_KEYS: frozenset[str] = frozenset({
-    "telegram_bot_token",
+    "telegram_bot_token_test", "telegram_bot_token_real",
 })
 
 

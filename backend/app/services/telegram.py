@@ -9,27 +9,24 @@ from backend.app.core.trade_mode import is_test_mode
 
 logger = logging.getLogger(__name__)
 
-# 테스트모드 메시지 접두사
-_TEST_PREFIX = "[테스트모드] "
 
-
-def _prefix_if_test(message: str, settings: dict | None) -> str:
-    """테스트모드면 메시지 앞에 [테스트모드] 접두사 추가."""
-    if settings and is_test_mode(settings) and not message.startswith(_TEST_PREFIX):
-        return f"{_TEST_PREFIX}{message}"
-    return message
+def _select_token(settings: dict | None) -> str:
+    """trade_mode에 따라 테스트/실전 봇 토큰 선택 (채널 분리)."""
+    settings = settings or {}
+    if is_test_mode(settings):
+        return (settings.get("telegram_bot_token_test") or "").strip()
+    return (settings.get("telegram_bot_token_real") or "").strip()
 
 
 def send_msg(message: str, settings: dict | None = None) -> bool:
     """
-    텔레그램 메시지 전송 (동기). settings에 telegram_bot_token, telegram_chat_id 필요.
+    텔레그램 메시지 전송 (동기). settings에 telegram_bot_token_test/real, telegram_chat_id 필요.
     tele_on 이 True 일 때만 전송.
     """
     settings = settings or {}
     if not settings.get("tele_on", False):
         return False
-    message = _prefix_if_test(message, settings)
-    token   = (settings.get("telegram_bot_token") or "").strip()
+    token   = _select_token(settings)
     chat_id = (settings.get("telegram_chat_id") or "").strip()
     if not token or not chat_id:
         return False
@@ -51,9 +48,7 @@ async def send_msg_async(message: str, settings: dict | None = None, msg_type: s
     settings = settings or {}
     if not settings.get("tele_on", False):
         return False
-    message = _prefix_if_test(message, settings)
-
-    token   = (settings.get("telegram_bot_token") or "").strip()
+    token   = _select_token(settings)
     chat_id = (settings.get("telegram_chat_id") or "").strip()
     if not token or not chat_id:
         return False

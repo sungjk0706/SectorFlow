@@ -63,7 +63,7 @@ def decrypt_value(cipher: str) -> str | None:
 # 암호화 대상 필드
 SENSITIVE_KEYS = frozenset({
     "kiwoom_app_key", "kiwoom_app_secret",
-    "telegram_bot_token",
+    "telegram_bot_token_test", "telegram_bot_token_real",
     "admin_password",
 })
 

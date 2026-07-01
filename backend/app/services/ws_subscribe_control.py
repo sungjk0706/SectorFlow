@@ -193,6 +193,12 @@ async def run_conditional_reg_pipeline() -> None:
         except Exception as e:
             logger.warning("[구독제어] 실시간시세 자동 구독 실패: %s", e, exc_info=True)
 
+        try:
+            await engine_ws_reg.subscribe_index_realtime()
+            logger.info("[구독제어] 업종지수(0J) 자동 구독 완료")
+        except Exception as e:
+            logger.warning("[구독제어] 업종지수 자동 구독 실패: %s", e, exc_info=True)
+
         # 실전모드에서 구독 시작했으면 계좌 구독 보장
         await _ensure_account_subscription()
 

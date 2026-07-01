@@ -33,7 +33,7 @@ def _schedule_settings_task(coro, context: str) -> None:
 
 def get_encrypt_fields(broker_nm: str) -> frozenset[str]:
     """모든 증권사의 암호화 필드 목록을 반환 (단일 소스 진리 준수)."""
-    base_fields = {"telegram_bot_token"}
+    base_fields = {"telegram_bot_token_test", "telegram_bot_token_real"}
     # 모든 증권사의 암호화 필드 포함
     broker_fields = {
         "kiwoom_app_key", "kiwoom_app_secret",
@@ -100,9 +100,10 @@ def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
         ).strip(),
         "broker": str(d["broker"]).strip(),
     }
-    tok = str(d.get("telegram_bot_token") or "").strip()
-    if tok:
-        data["telegram_bot_token"] = tok
+    for tok_field in ("telegram_bot_token_test", "telegram_bot_token_real"):
+        tok = str(d.get(tok_field) or "").strip()
+        if tok:
+            data[tok_field] = tok
     # 키움 레거시 호환 제거 (단일 소스 진리 준수)
     rk = str(d.get("kiwoom_app_key") or "")
     rs = str(d.get("kiwoom_app_secret") or "")
@@ -146,7 +147,7 @@ def changed_keys_general_save(before_editing: dict, new_payload: dict) -> set[st
     }
 
 
-async def apply_settings_updates(data: dict, username: str = "admin", profile: str | None = None) -> None:
+async def apply_settings_updates(data: dict, username: str = "admin", profile: str | None = None) -> set[str]:
     """업데이트 데이터를 SQLite integrated_system_settings 테이블에 병합 저장."""
     import re
     _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
@@ -231,9 +232,6 @@ async def build_masked_settings_dict(username: str = "admin", profile: str | Non
             masked[f] = "***"
         elif v:
             masked[f] = "***"
-
-    if masked.get("telegram_bot_token"):
-        masked["telegram_bot_token"] = "***"
 
     masked["id"] = display_id
     masked["profile_name"] = display_id

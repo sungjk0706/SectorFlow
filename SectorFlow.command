@@ -48,7 +48,7 @@ RETRY=0
 BACKEND_READY=false
 FRONTEND_READY=false
 while [ $RETRY -lt $MAX_RETRIES ]; do
-    if [ "$BACKEND_READY" = false ] && curl -s http://localhost:8000/health > /dev/null 2>&1; then
+    if [ "$BACKEND_READY" = false ] && curl -s http://localhost:8000/api/health > /dev/null 2>&1; then
         echo "✅ 백엔드 준비 완료"
         BACKEND_READY=true
     fi

@@ -64,3 +64,75 @@ def assemble_filter_summary(meta_json: str, stock_count: int) -> str:
     except Exception as e:
         _log.error("[filter_summary] meta 조립 실패: %s", e)
         return ""
+
+
+# ── Pending Settings Changes ──────────────────────────────────────────
+
+_PENDING_KEY = "pending_settings_changes"
+
+
+async def save_pending_settings(changed_keys: set[str]) -> None:
+    """엔진 미실행 시 변경된 설정 키를 system_state_cache에 저장."""
+    if not changed_keys:
+        return
+    await _init_cache_table()
+    conn = await get_db_connection()
+    try:
+        async with get_db_lock():
+            cursor = await conn.execute(
+                "SELECT value FROM system_state_cache WHERE key = ?",
+                (_PENDING_KEY,)
+            )
+            row = await cursor.fetchone()
+            existing: set[str] = set()
+            if row:
+                try:
+                    existing = set(json.loads(row["value"]))
+                except Exception:
+                    existing = set()
+            merged = existing | changed_keys
+            await conn.execute(
+                "INSERT OR REPLACE INTO system_state_cache (key, value) VALUES (?, ?)",
+                (_PENDING_KEY, json.dumps(sorted(merged)))
+            )
+            await conn.commit()
+        _log.info("[Pending] 설정 변경 보류 저장: %s", sorted(merged))
+    except Exception as e:
+        _log.error("[Pending] 설정 변경 보류 저장 실패: %s", e)
+
+
+async def load_pending_settings() -> set[str]:
+    """엔진 기동 시 보류된 설정 변경 키 조회."""
+    await _init_cache_table()
+    conn = await get_db_connection()
+    try:
+        cursor = await conn.execute(
+            "SELECT value FROM system_state_cache WHERE key = ?",
+            (_PENDING_KEY,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return set()
+        try:
+            return set(json.loads(row["value"]))
+        except Exception:
+            return set()
+    except Exception as e:
+        _log.error("[Pending] 보류 설정 로드 실패: %s", e)
+        return set()
+
+
+async def clear_pending_settings() -> None:
+    """엔진 기동 시 보류 설정 적용 완료 후 삭제."""
+    await _init_cache_table()
+    conn = await get_db_connection()
+    try:
+        async with get_db_lock():
+            await conn.execute(
+                "DELETE FROM system_state_cache WHERE key = ?",
+                (_PENDING_KEY,)
+            )
+            await conn.commit()
+        _log.info("[Pending] 보류 설정 변경 삭제 완료")
+    except Exception as e:
+        _log.error("[Pending] 보류 설정 삭제 실패: %s", e)
