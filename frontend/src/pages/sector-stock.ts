@@ -23,13 +23,13 @@ const COLUMNS: ColumnDef<DataRowItem>[] = [
     })
   ),
   makePriceColumn<DataRowItem>(
-    (item) => Number(item.stock.cur_price) || 0,
-    (item) => Number(item.stock.change_rate) || 0,
+    (item) => item.stock.cur_price != null ? Number(item.stock.cur_price) : null,
+    (item) => item.stock.change_rate != null ? Number(item.stock.change_rate) : null,
   ),
-  makeChangeColumn<DataRowItem>((item) => Number(item.stock.change) || 0),
-  makeRateColumn<DataRowItem>((item) => Number(item.stock.change_rate) || 0),
-  makeStrengthColumn<DataRowItem>((item) => parseFloat(String(item.stock.strength ?? '')) || 0),
-  makeAmountColumn<DataRowItem>((item) => Number(item.stock.trade_amount) || 0),
+  makeChangeColumn<DataRowItem>((item) => item.stock.change != null ? Number(item.stock.change) : null),
+  makeRateColumn<DataRowItem>((item) => item.stock.change_rate != null ? Number(item.stock.change_rate) : null),
+  makeStrengthColumn<DataRowItem>((item) => item.stock.strength != null ? parseFloat(String(item.stock.strength)) : null),
+  makeAmountColumn<DataRowItem>((item) => item.stock.trade_amount != null ? Number(item.stock.trade_amount) : null),
   makeAvgAmountColumn<DataRowItem>((item) => Number(item.stock.avg_amt_5d) || 0),
 ]
 

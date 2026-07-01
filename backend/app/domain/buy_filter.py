@@ -25,7 +25,8 @@ def calculate_boost_score(
     boost_program_net_buy_on: bool = False,
     boost_program_net_buy_score: float = 1.0,
 ) -> float:
-    """종목 가산점 합계 계산. 항상 >= 0.0 반환."""
+    """종목 가산점 합계 계산. 항상 >= 0.0 반환.
+    """
     score = 0.0
 
     # 1. 5일 전고가 돌파
@@ -174,6 +175,10 @@ def create_buy_targets(
     _obc = orderbook_cache or {}
     _pnb = program_net_buy_cache or {}
     for s, _ in all_stocks:
+        # Guard→Boost 최적화: Guard 미통과 종목은 Boost 계산 스킵
+        if not s.guard_pass:
+            s.boost_score = 0.0
+            continue
         s.boost_score = calculate_boost_score(
             s,
             high_5d_cache=_h5d,

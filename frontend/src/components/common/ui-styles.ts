@@ -65,7 +65,8 @@ export const COLOR = {
 /* ── 공통 색상 함수 ── */
 
 /** 등락률 / 대비 / 현재가 색상: 양수 빨강, 음수 파랑, 0 기본 */
-export function rateColor(v: number): string {
+export function rateColor(v: number | null | undefined): string {
+  if (v === null || v === undefined) return COLOR.neutral
   return v > 0 ? COLOR.up : v < 0 ? COLOR.down : COLOR.neutral
 }
 
@@ -213,7 +214,7 @@ export function createCodeCell(code: string): HTMLElement {
 }
 
 /** 현재가 셀 (우측정렬, 등락률 기반 색상, 가격 미수신 시 "-") */
-export function createPriceCell(price: number | null | undefined, rate: number): HTMLElement {
+export function createPriceCell(price: number | null | undefined, rate: number | null | undefined): HTMLElement {
   const cell = document.createElement('div')
   applyCell(cell, 'right')
   
@@ -229,7 +230,13 @@ export function createPriceCell(price: number | null | undefined, rate: number):
 }
 
 /** 대비 셀 (매수설정 페이지 스타일과 동일하게 통일) */
-export function createChangeCell(change: number): HTMLElement {
+export function createChangeCell(change: number | null | undefined): HTMLElement {
+  if (change === null || change === undefined) {
+    const cell = document.createElement('div')
+    applyCell(cell, 'right')
+    cell.textContent = '-'
+    return cell
+  }
   if (change === 0) {
     const cell = document.createElement('div')
     applyCell(cell, 'right')
@@ -351,7 +358,7 @@ export function makeCodeColumn<T>(get: (t: T) => string): ColumnDef<T> {
 /** 현재가 컬럼 */
 export function makePriceColumn<T>(
   getPrice: (t: T) => number | null | undefined,
-  getRate: (t: T) => number,
+  getRate: (t: T) => number | null | undefined,
 ): ColumnDef<T> {
   return {
     key: 'cur_price',
@@ -364,7 +371,7 @@ export function makePriceColumn<T>(
 }
 
 /** 대비 컬럼 */
-export function makeChangeColumn<T>(get: (t: T) => number): ColumnDef<T> {
+export function makeChangeColumn<T>(get: (t: T) => number | null | undefined): ColumnDef<T> {
   return {
     key: 'change',
     label: '대비',

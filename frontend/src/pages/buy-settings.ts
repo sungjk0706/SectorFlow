@@ -41,6 +41,7 @@ let boostProgramToggle: ReturnType<typeof createToggleBtn> | null = null
 let boostProgramScoreInput: ReturnType<typeof createNumInput> | null = null
 let boostProgramControls: HTMLElement | null = null
 
+
 /* ── 헬퍼 ── */
 function syncAfterSave(): void {
   const latest = settingsMgr?.getSettings()
@@ -93,6 +94,7 @@ function syncFromSettings(s: AppSettings): void {
   if (boostProgramControls) {
     setDisabled(boostProgramControls, !programOn)
   }
+
 }
 
 /* ── mount ── */

@@ -614,7 +614,7 @@ async def _dryrun_post_sell_broadcast(stk_cd: str, stk_nm: str, settings: dict) 
 
         # 가상 잔고에서 매도 완료된 종목 -- _recent_sells 차단 해제
         if es._auto_trade:
-            dry_codes = dry_run.position_codes()
+            dry_codes = await dry_run.position_codes()
             sold_out = set(es._auto_trade._recent_sells) - dry_codes
             es._auto_trade._recent_sells -= sold_out
             if sold_out:

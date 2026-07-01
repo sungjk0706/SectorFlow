@@ -14,20 +14,35 @@ logger = logging.getLogger(__name__)
 def migrate_rank_primary_to_weights(sector_rank_primary: str) -> dict[str, float]:
     """기존 sector_rank_primary 값을 가중치로 변환."""
     if sector_rank_primary == "total_trade_amount":
-        return {"total_trade_amount": 0.7, "rise_ratio": 0.3}
+        return {"avg_change_rate": 0.5, "rise_ratio": 0.5}
     if sector_rank_primary == "rise_ratio":
-        return {"rise_ratio": 0.7, "total_trade_amount": 0.3}
-    return {"total_trade_amount": 0.5, "rise_ratio": 0.5}
+        return {"rise_ratio": 0.5, "avg_change_rate": 0.5}
+    return {"rise_ratio": 0.5, "avg_change_rate": 0.5}
 
 
 def _migrate_sector_weights(merged: dict, raw_data: dict) -> tuple[dict, bool]:
-    if "sector_weights" in raw_data:
-        return merged, False
-    rank_primary = raw_data.get("sector_rank_primary")
-    if rank_primary:
-        merged["sector_weights"] = migrate_rank_primary_to_weights(rank_primary)
-        return merged, True
-    return merged, False
+    dirty = False
+    # 1. sector_weights가 없고 sector_rank_primary가 있으면 변환
+    if "sector_weights" not in raw_data:
+        rank_primary = raw_data.get("sector_rank_primary")
+        if rank_primary:
+            merged["sector_weights"] = migrate_rank_primary_to_weights(rank_primary)
+            dirty = True
+    else:
+        # 2. sector_weights에 total_trade_amount 또는 trade_amount 키가 있으면 avg_change_rate로 마이그레이션
+        sw = merged.get("sector_weights")
+        if isinstance(sw, dict):
+            old_keys = {"total_trade_amount", "trade_amount"}
+            if any(k in sw for k in old_keys):
+                new_sw = {}
+                for k, v in sw.items():
+                    if k in old_keys:
+                        new_sw["avg_change_rate"] = v
+                    else:
+                        new_sw[k] = v
+                merged["sector_weights"] = new_sw
+                dirty = True
+    return merged, dirty
 
 
 def _migrate_legacy_auto_trade_on(merged: dict) -> tuple[dict, bool]:
