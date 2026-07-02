@@ -160,7 +160,6 @@ async def record_settings_change(changed_keys: set[str], before: dict, after: di
             "after": after,
         }
     )
-    logger.debug("[Journal] 설정 변경 기록 - 키: %s", changed_keys)
 
 
 async def record_order_request(
@@ -185,7 +184,6 @@ async def record_order_request(
             "status": "pending",
         }
     )
-    logger.debug("[Journal] 주문 요청 기록 - %s %s %d주", order_id, side, quantity)
 
 
 async def record_fill_event(
@@ -209,7 +207,6 @@ async def record_fill_event(
             "trade_mode": trade_mode,
         }
     )
-    logger.debug("[Journal] 체결 이벤트 기록 - %s %d주 @%s", order_id, fill_quantity, fill_price)
 
 
 # ── OMS 전용 메서드 ─────────────────────────────────────────────────────────
@@ -240,7 +237,6 @@ async def oms_update_order_status(order_id: str, status: str) -> None:
                     data = row["data"]
                     if data.get("order_id") == order_id:
                         data["status"] = status
-                        logger.debug("[Journal] 주문 상태 업데이트 - order_id=%s, status=%s", order_id, status)
                         return
     except Exception as e:
         logger.error("[Journal] 주문 상태 업데이트 실패: %s", e, exc_info=True)

@@ -24,7 +24,7 @@ async def ws_orders(websocket: WebSocket, token: str = Query(...)):
     username = "dev"
 
     await websocket.accept()
-    ws_manager.register(websocket)
+    await ws_manager.register(websocket)
     logger.info(
         "[연결] 체결채널 연결 (user=%s, 총 %d)", username, ws_manager.client_count
     )

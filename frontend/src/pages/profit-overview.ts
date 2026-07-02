@@ -111,6 +111,12 @@ const DUMMY_SELL: Record<string, unknown>[] = [
   { date: '2026-04-14', time: '10:30:00', stk_nm: 'SK하이닉스', avg_buy_price: 185000, price: 183000, qty: 50, buy_total_amt: 9251388, total_amt: 9130327, realized_pnl: -121061, pnl_rate: -1.31, fee: 1373, tax: 18300 },
 ]
 
+/** 로컬 시간 기준 오늘 날짜 (YYYY-MM-DD). UTC 시차 문제 방지. */
+function getLocalToday(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
 /* ── 요약 카드 집계 (순수 함수) ── */
 
 export interface PnlSummary {
@@ -242,7 +248,7 @@ function renderAccountVals(): void {
   const isTestMode = settings?.trade_mode === 'test'
 
   // 당일 매수/매도금액은 체결 이력에서 직접 집계
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getLocalToday()
   const todayBuyAmt = buyHistory
     .filter(r => String(r.date ?? '') === today)
     .reduce((s, r) => s + Number(r.total_amt ?? 0), 0)
@@ -347,15 +353,21 @@ function updateTabLabels(): void {
 
 /* ── 요약 카드 갱신 ── */
 function updateSummaryCards(): void {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getLocalToday()
   const yearMonth = today.slice(0, 7)
 
-  const dayS = aggregatePnl(sellHistory, today, today)
+  // 당일 손익: dailySummary에서 오늘 날짜 entry 조회 (SSOT — 백엔드 집계값 사용)
+  const dailySummary = hotStore.getState().dailySummary
+  const todayEntry = dailySummary.find(r => String(r.date ?? '') === today)
+  const dayPnl = todayEntry ? Number(todayEntry.realized_pnl ?? 0) : 0
+  const dayRate = todayEntry ? Number(todayEntry.pnl_rate ?? 0) : 0
+
+  // 당월/누적 손익: sellHistory 기반 집계
   const monS = aggregatePnl(sellHistory, yearMonth + '-01', yearMonth + '-31')
   const allS = aggregatePnl(sellHistory)
 
-  if (todayPnlEl) { todayPnlEl.textContent = fmtWon(dayS.pnl); todayPnlEl.style.color = pnlColor(dayS.pnl) }
-  if (todayRateEl) { todayRateEl.textContent = `${dayS.rate.toFixed(2)}%`; todayRateEl.style.color = pnlColor(dayS.pnl) }
+  if (todayPnlEl) { todayPnlEl.textContent = fmtWon(dayPnl); todayPnlEl.style.color = pnlColor(dayPnl) }
+  if (todayRateEl) { todayRateEl.textContent = `${dayRate.toFixed(2)}%`; todayRateEl.style.color = pnlColor(dayPnl) }
   if (monthPnlEl) { monthPnlEl.textContent = fmtWon(monS.pnl); monthPnlEl.style.color = pnlColor(monS.pnl) }
   if (monthRateEl) { monthRateEl.textContent = `${monS.rate.toFixed(2)}%`; monthRateEl.style.color = pnlColor(monS.pnl) }
   if (totalPnlEl) { totalPnlEl.textContent = fmtWon(allS.pnl); totalPnlEl.style.color = pnlColor(allS.pnl) }
@@ -410,7 +422,7 @@ function showDrilldown(): void {
     drilldownViewContainer.appendChild(drilldownTable.el)
   }
 
-  const yearMonth = new Date().toISOString().slice(0, 7)
+  const yearMonth = getLocalToday().slice(0, 7)
   const rows = buildMonthlyDrilldown(sellHistory, buyHistory, yearMonth)
   drilldownTable.updateRows(rows)
 }
@@ -697,7 +709,7 @@ function mount(container: HTMLElement): void {
   if (todayCard) {
     todayCard.addEventListener('click', () => {
       drilldownActive = false
-      dateFilter = new Date().toISOString().slice(0, 10)
+      dateFilter = getLocalToday()
       if (tabRow) tabRow.style.display = 'flex'
       showTable()
     })
@@ -756,7 +768,7 @@ function mount(container: HTMLElement): void {
   sellHistory = initState.sellHistory
   buyHistory = initState.buyHistory
   // 초기화면: 당일 내역 표시
-  dateFilter = new Date().toISOString().slice(0, 10)
+  dateFilter = getLocalToday()
   updateTabLabels()
   updateSummaryCards()
   showTable()
@@ -828,6 +840,7 @@ function mount(container: HTMLElement): void {
 
       if (_dirtyChart) {
         _dirtyChart = false
+        updateSummaryCards()
         const latest = hotStore.getState()
         const settings = globalSettingsManager.getSettings()
         const tradeModeChanged = settings?.trade_mode !== prevTradeMode

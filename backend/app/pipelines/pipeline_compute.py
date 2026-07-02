@@ -261,7 +261,7 @@ async def _handle_config_update(
     
     # 설정(투자모드, 증권사 등) 변경에 따라 Header 상태 갱신
     from backend.app.services.engine_account_notify import notify_desktop_header_refresh
-    notify_desktop_header_refresh()
+    await notify_desktop_header_refresh()
 
 
 async def _handle_sector_recompute(
@@ -351,7 +351,7 @@ async def _handle_real_tick(
                 await _handle_real_0d_tick(item, vals, es, broadcast_queue)
             # 0J 업종지수 처리 (즉시 브로드캐스트, 저장 없음)
             elif norm_type == "0j":
-                _handle_real_0j_tick(item, vals)
+                await _handle_real_0j_tick(item, vals)
             # PGM 프로그램 순매수 처리 (커스텀 타입)
             elif norm_type == "PGM":
                 await _handle_real_pgm_tick(item, vals, es, broadcast_queue)
@@ -360,7 +360,7 @@ async def _handle_real_tick(
         logger.error("[Compute] REAL 틱 처리 예외: %s", e, exc_info=True)
 
 
-def _handle_real_0j_tick(item: dict, vals: dict) -> None:
+async def _handle_real_0j_tick(item: dict, vals: dict) -> None:
     """0J 업종지수 틱 처리 — 저장 없이 즉시 프론트엔드에 브로드캐스트."""
     upcode = str(item.get("item", "") or "").strip()
     if not upcode:
@@ -372,7 +372,7 @@ def _handle_real_0j_tick(item: dict, vals: dict) -> None:
     if not jisu:
         return
     from backend.app.services.engine_account_notify import notify_index_data
-    notify_index_data(upcode, jisu, change, drate, sign)
+    await notify_index_data(upcode, jisu, change, drate, sign)
 
 
 async def _handle_real_01_tick(
@@ -451,7 +451,7 @@ async def _handle_real_01_tick(
         try:
             broadcast_queue.put_nowait({"type": "real-data", "data": item})
         except asyncio.QueueFull:
-            pass
+            logger.warning("[Compute] broadcast_queue 가득 참 — UI 데이터 드롭 (code=%s)", raw_cd)
 
         # ── 3. 레이더 행 갱신 + 업종 점수 증분 재계산 트리거 ──
         if is_0b_tick and any(f in vals for f in ("10", "11", "12", "14", "17", "228")):
@@ -553,7 +553,7 @@ async def _handle_real_0d_tick(
         cache_entry = state.master_stocks_cache.get(nk, {})
         if cache_entry.get("_subscribed_dynamic", False):
             cache_entry["order_ratio"] = [bid, ask]
-            notify_orderbook_update(nk, bid, ask)
+            await notify_orderbook_update(nk, bid, ask)
 
     except Exception as e:
         logger.error("[Compute] 0D 틱 처리 예외: %s", e, exc_info=True)
@@ -588,7 +588,7 @@ async def _handle_real_pgm_tick(
         cache_entry = state.master_stocks_cache.get(nk, {})
         if cache_entry.get("_subscribed_dynamic", False):
             cache_entry["program_net_buy"] = tval
-            notify_program_update(nk, tval)
+            await notify_program_update(nk, tval)
 
     except Exception as e:
         logger.error("[Compute] PGM 틱 처리 예외: %s", e, exc_info=True)
@@ -619,11 +619,9 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
                     total_count = _current_receive_rate["total"]
 
                     if total_count == 0:
-                        logger.info("[Compute] 업종순위 계산 대기 중 (종목 없음 -- 부트스트랩 대기)")
                         continue
 
                     if received_count == 0:
-                        logger.info("[Compute] 업종순위 계산 대기 중 (실시간 데이터 수신 전 -- 0/%d)", total_count)
                         continue
 
                     if current_pct >= threshold_pct:
@@ -634,7 +632,6 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
                         request_sector_recompute(None)  # 콜드 스타트 1회 전체 재계산
                         phase1_completed = True
                     else:
-                        logger.info("[Compute] 업종순위 계산 대기 중 (수신율: %d/%d = %.1f%% < %.1f%%)", received_count, total_count, current_pct, threshold_pct)
                         # 수신율 전송 (단일 진입점)
                         await _send_receive_rate(_current_receive_rate)
 
@@ -654,7 +651,7 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
 
             # sector-scores 전송 (delta — 변경된 섹터만)
             from backend.app.services.engine_account_notify import notify_desktop_sector_scores
-            notify_desktop_sector_scores(force=False)
+            await notify_desktop_sector_scores(force=False)
 
             if has_dirty_sectors():
                 await _flush_sector_recompute_impl()

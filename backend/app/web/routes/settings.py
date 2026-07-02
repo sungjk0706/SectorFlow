@@ -112,7 +112,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         es.logger.info("[엔진] 보유종목, 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료")
         # 8. 수익 이력 초기화 WS 브로드캐스트
         from backend.app.services.engine_account_notify import notify_snapshot_history_update
-        notify_snapshot_history_update()
+        await notify_snapshot_history_update()
         # 9. 일일매수 누적 인메모리 상태 리셋 + 매수 쿨다운/쓰로틀 기록 초기화 + WS buy-limit-status 발송
         if es._auto_trade:
             es._auto_trade._daily_buy_spent = 0
@@ -124,7 +124,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         await es._broadcast_buy_limit_status()
         # 10. 통합 초기화 완료 신호 (모든 클라이언트 일괄 동기화)
         from backend.app.services.engine_account_notify import _broadcast
-        _broadcast("test-data-reset-completed", {"_v": 1})
+        await _broadcast("test-data-reset-completed", {"_v": 1})
 
         return {"ok": True, "message": "테스트 데이터 전체 초기화 완료"}
     except Exception as e:

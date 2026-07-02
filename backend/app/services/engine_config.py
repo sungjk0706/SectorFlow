@@ -106,7 +106,7 @@ async def reload_engine_settings() -> None:
     
     # 엔진 재시작 완료 후 engine-reload-complete 이벤트 전송
     from backend.app.services.engine_account_notify import _broadcast
-    _broadcast("engine-reload-complete", {"status": "complete"})
+    await _broadcast("engine-reload-complete", {"status": "complete"})
     logger.info("[설정] 엔진 재시작 완료 -> engine-reload-complete 전송")
 
 

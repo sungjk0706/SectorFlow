@@ -56,17 +56,17 @@ class AccountProvider(ABC):
     """계좌 조회: 예수금, 잔고, 보유종목."""
 
     @abstractmethod
-    def get_account_number(self) -> str | None:
+    async def get_account_number(self) -> str | None:
         """계좌번호 조회."""
         ...
 
     @abstractmethod
-    def get_deposit_detail(self, acnt_no: str = "") -> dict | None:
+    async def get_deposit_detail(self, acnt_no: str = "") -> dict | None:
         """예수금 상세 조회."""
         ...
 
     @abstractmethod
-    def get_account_balance(self, acnt_no: str = "") -> dict:
+    async def get_account_balance(self, acnt_no: str = "") -> dict:
         """
         계좌 잔고 통합 조회 -- 공통 표준 반환 구조.
 
@@ -86,7 +86,7 @@ class AccountProvider(ABC):
         ...
 
     @abstractmethod
-    def get_balance_detail(
+    async def get_balance_detail(
         self, qry_tp: str = "1", dmst_stex_tp: str = "KRX"
     ) -> dict | None:
         """계좌평가잔고내역 조회 (연속조회 포함)."""

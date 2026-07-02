@@ -183,7 +183,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
     import backend.app.services.engine_state as _st
 
     if not changed_keys:
-        notify_desktop_header_refresh()
+        await notify_desktop_header_refresh()
         return
 
     # ── 1) RAM 캐시 갱신 — PATCH 저장 직후 DB 최신값을 캐시에 반영 ──────────────
@@ -199,7 +199,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             logger.info("[설정] broker 변경 감지 -> 엔진 재기동 (단일 진입점 보장)")
             await stop_engine()
             await start_engine()
-        notify_desktop_header_refresh()
+        await notify_desktop_header_refresh()
         await notify_desktop_settings_toggled()
         return
 
@@ -208,12 +208,12 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         if is_engine_running():
             schedule_engine_task(on_trade_mode_switched(), context="투자모드 전환")
             logger.info("[설정] 투자모드 전환 감지 -> 저장데이터 갱신 + 계좌 구독 전환 (엔진 재기동 없음)")
-        notify_desktop_header_refresh()
+        await notify_desktop_header_refresh()
         await notify_desktop_settings_toggled()
         return
 
     # ── 4) 일반 설정 변경 (증분 브로드캐스트 전송) ────────────────────────
-    notify_desktop_header_refresh()
+    await notify_desktop_header_refresh()
     
     changed_dict = {}
     try:
@@ -328,7 +328,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             schedule_engine_task(
                 recompute_sector_summary_now(), context="섹터 설정 변경"
             )
-        notify_desktop_sector_scores(force=True)
+        await notify_desktop_sector_scores(force=True)
 
     # WS 구독 제어 설정 변경 시 즉시 반영 (구독 시작/해지)
     _WS_SUBSCRIBE_CONTROL_KEYS = {"index_auto_subscribe", "quote_auto_subscribe"}

@@ -84,7 +84,7 @@ def get_price_pass_through_queue() -> asyncio.Queue:
 
 
 # ── Tick Queue 드롭 정책 (무손실 최신화) ─────────────────────────────────────────
-async def put_tick_with_drop_policy(data: dict) -> None:
+def put_tick_with_drop_policy(data: dict) -> None:
     """
     tick_queue에 데이터 삽입 - 드롭 정책 적용.
 
@@ -98,16 +98,14 @@ async def put_tick_with_drop_policy(data: dict) -> None:
     queue = get_tick_queue()
 
     try:
-        await queue.put(data)
+        queue.put_nowait(data)
     except asyncio.QueueFull:
-        # 큐가 가득 찼으면 가장 오래된 데이터 버리고 최신 데이터 밀어넣기
         try:
-            queue.get_nowait()  # 가장 오래된 데이터 제거
-            await queue.put(data)  # 최신 데이터 삽입
+            queue.get_nowait()
+            queue.put_nowait(data)
             logger.warning("[core_queues] tick_queue 드롭 발생 - 최신 데이터 유지")
         except asyncio.QueueEmpty:
-            # 경합 조건: 다른 태스크가 이미 데이터를 꺼낸 경우
-            await queue.put(data)
+            queue.put_nowait(data)
 
 
 def clear_all_queues() -> None:

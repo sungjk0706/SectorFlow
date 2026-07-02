@@ -36,7 +36,7 @@ async def start_engine(user_id: str = "") -> bool:
     # 엔진 미실행 중 변경된 설정이 있으면 기동 시 반영
     await _apply_pending_settings_on_startup()
 
-    broadcast_engine_status()
+    await broadcast_engine_status()
     return True
 
 
@@ -171,7 +171,7 @@ async def on_trade_mode_switched() -> None:
     await _broadcast_account(reason="trade_mode_switch")
 
     # 엔진 상태 브로드캐스트 (프론트엔드 헤더 테스트모드 표시 갱신)
-    broadcast_engine_status()
+    await broadcast_engine_status()
 
 
 # ── 섹터 매수 ─────────────────────────────────────────────────────
@@ -233,14 +233,14 @@ async def _reconciliation_on_startup() -> None:
         logger.info("[Reconciliation] 원장 대조 완료 - 유령 데이터 정리")
 
         # 4. UI에 Reconciliation 완료 알림 전송
-        _broadcast("reconciliation_complete", {
+        await _broadcast("reconciliation_complete", {
             "status": "success",
             "message": f"기동 시 원장 대조 완료 - {pending_count}건 Pending 처리",
         })
 
     except Exception as e:
         logger.error("[Reconciliation] 예외: %s", e, exc_info=True)
-        _broadcast("reconciliation_complete", {
+        await _broadcast("reconciliation_complete", {
             "status": "failed",
             "message": f"원장 대조 실패: {str(e)}",
         })
@@ -317,10 +317,10 @@ def sync_sell_overrides() -> None:
     state.auto_trade.ts_overrides = dict(sp) if isinstance(sp, dict) else {}
 
 
-def broadcast_engine_status() -> None:
+async def broadcast_engine_status() -> None:
     """엔진 상태 dict 를 WS 구독자에게 전달."""
     from backend.app.services.engine_account_notify import broadcast_engine_status_ws
-    broadcast_engine_status_ws(get_engine_status())
+    await broadcast_engine_status_ws(get_engine_status())
 
 
 async def _delayed_resubscribe_stock_after_rate_limit(norm_cd: str) -> None:

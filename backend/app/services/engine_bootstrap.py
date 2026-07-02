@@ -28,7 +28,7 @@ BOOTSTRAP_STAGES = [
 ]
 
 
-def _broadcast_bootstrap_stage(
+async def _broadcast_bootstrap_stage(
     stage_id: int, stage_name: str,
     progress: dict | None = None,
 ) -> None:
@@ -43,7 +43,7 @@ def _broadcast_bootstrap_stage(
         }
         if progress is not None:
             payload["progress"] = progress
-        ws_manager.broadcast("bootstrap-stage", payload)
+        await ws_manager.broadcast("bootstrap-stage", payload)
     except Exception as e:
         logger.warning("[시작] stage 브로드캐스트 실패 %s: %s", stage_name, e, exc_info=True)
 
@@ -93,7 +93,7 @@ async def _deferred_sector_summary() -> None:
                 )
                 from backend.app.web.ws_manager import ws_manager
                 _client_cnt = ws_manager.client_count
-                notify_desktop_sector_scores(force=True)
+                await notify_desktop_sector_scores(force=True)
                 await asyncio.gather(
                     notify_desktop_sector_stocks_refresh(),
                     notify_buy_targets_update(),
@@ -114,11 +114,11 @@ async def _notify_close_data_ui() -> None:
     try:
         from backend.app.services import engine_account_notify as _account_notify
         try:
-            _account_notify.notify_desktop_buy_radar_only()
+            await _account_notify.notify_desktop_buy_radar_only()
         except Exception as e:
             logger.warning("[시작] 매수후보 갱신 실패: %s", e, exc_info=True)
         try:
-            _account_notify.notify_desktop_sector_refresh()
+            await _account_notify.notify_desktop_sector_refresh()
             logger.debug("[시작][장외갱신] 섹터 분석 패널 갱신 트리거")
         except Exception as e:
             logger.warning("[시작] 섹터 갱신 실패: %s", e, exc_info=True)
@@ -181,11 +181,11 @@ async def _login_post_pipeline() -> None:
                 await es._run_sector_reg_pipeline()
                 await es._ensure_ws_subscriptions_for_positions()
 
-            _account_notify.notify_desktop_sector_refresh()
+            await _account_notify.notify_desktop_sector_refresh()
             await _account_notify.notify_desktop_sector_stocks_refresh()
         else:
             _st._ws_reg_pipeline_done.set()
-            _account_notify.notify_desktop_sector_refresh(force=True)
+            await _account_notify.notify_desktop_sector_refresh(force=True)
             await _account_notify.notify_desktop_sector_stocks_refresh()
     except Exception as _e:
         logger.error("[시작] 로그인 후 파이프라인 예외: %s", _e, exc_info=True)

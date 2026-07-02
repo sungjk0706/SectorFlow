@@ -261,7 +261,7 @@ class AutoTradeManager:
                     from backend.app.services.engine_account_notify import _broadcast
                     state.auto_trade = False
                     state.integrated_system_settings_cache["auto_trade_on"] = False
-                    _broadcast("circuit_breaker_open", {
+                    await _broadcast("circuit_breaker_open", {
                         "message": "Circuit Breaker OPEN - 마스터 스위치 강제 OFF",
                     })
                     logger.error("[CircuitBreaker] OPEN 상태 - 마스터 스위치 강제 OFF")
@@ -311,7 +311,7 @@ class AutoTradeManager:
         # ── 매수 한도 상태 WS 브로드캐스트 ──────────────────────────────────
         try:
             import backend.app.services.engine_service as _es_limit
-            _es_limit._broadcast_buy_limit_status()
+            await _es_limit._broadcast_buy_limit_status()
         except Exception:
             logger.warning("[매수] 매수한도 브로드캐스트 실패", exc_info=True)
 
@@ -359,7 +359,7 @@ class AutoTradeManager:
         if is_test_mode(self.get_settings_fn()):
             cur = await dry_run.get_position(nk)
             if cur:
-                logger.debug("[테스트모드] on_fill_update side=%s code=%s unex=%s", side, nk, unex)
+                pass
 
     async def execute_sell(
         self,
@@ -424,7 +424,7 @@ class AutoTradeManager:
                     from backend.app.services.engine_account_notify import _broadcast
                     state.auto_trade = False
                     state.integrated_system_settings_cache["auto_trade_on"] = False
-                    _broadcast("circuit_breaker_open", {
+                    await _broadcast("circuit_breaker_open", {
                         "message": "Circuit Breaker OPEN - 마스터 스위치 강제 OFF",
                     })
                     logger.error("[CircuitBreaker] OPEN 상태 - 마스터 스위치 강제 OFF")

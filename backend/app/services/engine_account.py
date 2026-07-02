@@ -111,7 +111,7 @@ async def _broadcast_buy_limit_status() -> None:
 
     try:
         from backend.app.services.engine_account_notify import _broadcast, notify_buy_targets_update
-        _broadcast("buy-limit-status", await get_buy_limit_status())
+        await _broadcast("buy-limit-status", await get_buy_limit_status())
         await notify_buy_targets_update()
     except Exception as e:
         logger.warning("[연결] 매수한도 화면전송 실패: %s", e, exc_info=True)
@@ -458,7 +458,7 @@ async def _broadcast_account(reason: str | None = None) -> None:
 
     try:
         pos = await dry_run.get_positions() if is_test_mode(state.integrated_system_settings_cache) else list(state.positions or [])
-        broadcast_account_update(
+        await broadcast_account_update(
             positions=pos or [],
             snapshot=dict(state.account_snapshot or {}),
             reason=reason or "update",

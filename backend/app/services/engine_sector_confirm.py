@@ -192,7 +192,7 @@ async def _flush_sector_recompute_impl() -> None:
         _es._sector_summary_cache = ss
 
         # 업종 점수 delta 전송 (내부에서 변경분만 비교)
-        notify_desktop_sector_scores()
+        await notify_desktop_sector_scores()
         await notify_buy_targets_update()
 
         # buy_targets 변경 시 구독 갱신 + 매수 시도 (이벤트 기반)
@@ -368,7 +368,7 @@ async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
     _es._sector_summary_cache = ss
 
     # 업종 점수 delta 전송 (내부에서 변경분만 비교)
-    notify_desktop_sector_scores()
+    await notify_desktop_sector_scores()
     await notify_buy_targets_update()
 
     # buy_targets 변경 시 구독 갱신 + 매수 시도 (이벤트 기반)

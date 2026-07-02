@@ -187,12 +187,12 @@ class _KiwoomSocket:
                     if not self._stop_event.is_set():
                         logger.warning("[서버소켓] 연결 끊김 (%s) — 수신 종료", err_name)
                         if self._on_disconnect:
-                            asyncio.get_running_loop().create_task(self._on_disconnect())
+                            await self._on_disconnect()
                     break
                 else:
                     if not self._stop_event.is_set():
                         logger.warning("[서버소켓] 수신 오류(계속): %s", e, exc_info=True)
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.1)
 
         logger.info("[서버소켓] 수신 종료")
 
@@ -223,7 +223,7 @@ class KiwoomConnector(BrokerConnector):
         self._realtime_enabled: bool = True  # 실시간 연결 ON/OFF 플래그 (ws_subscribe_on)
         self._auto_trade_enabled: bool = True  # 자동매매 ON/OFF 플래그 (time_scheduler_on)
         self._holiday_block_enabled: bool = True  # 공휴일 자동 차단 ON/OFF (holiday_guard_on)
-        self._reconnect_task: asyncio.Task | None = None
+        self._reconnecting: bool = False
         self._stop_reconnect: bool = False
         self._ws_queue: asyncio.Queue | None = None  # Producer-Consumer Queue
 
@@ -314,13 +314,6 @@ class KiwoomConnector(BrokerConnector):
     async def disconnect(self) -> None:
         """수신루프 중단 + WebSocket 종료. 재연결 루프도 중단."""
         self._stop_reconnect = True
-        if self._reconnect_task and not self._reconnect_task.done():
-            self._reconnect_task.cancel()
-            try:
-                await self._reconnect_task
-            except asyncio.CancelledError:
-                pass
-            self._reconnect_task = None
         if self._lock is None:
             self._lock = asyncio.Lock()
         async with self._lock:
@@ -403,11 +396,9 @@ class KiwoomConnector(BrokerConnector):
 
         for payload in payloads:
             try:
-                import asyncio
-                loop = asyncio.get_running_loop()
-                loop.create_task(_ws_send_reg_unreg_and_wait_ack(payload))
+                await _ws_send_reg_unreg_and_wait_ack(payload)
             except RuntimeError:
-                pass
+                logger.warning("[증권사연결] subscribe_dynamic — 이벤트 루프 없음", exc_info=True)
 
     async def unsubscribe_dynamic(self, codes: list[str]) -> None:
         """동적 데이터 구독 해지 (Kiwoom 0D 일괄 해지)."""
@@ -421,11 +412,9 @@ class KiwoomConnector(BrokerConnector):
 
         for payload in payloads:
             try:
-                import asyncio
-                loop = asyncio.get_running_loop()
-                loop.create_task(_ws_send_reg_unreg_and_wait_ack(payload))
+                await _ws_send_reg_unreg_and_wait_ack(payload)
             except RuntimeError:
-                pass
+                logger.warning("[증권사연결] unsubscribe_dynamic — 이벤트 루프 없음", exc_info=True)
 
     async def subscribe_index(self) -> bool:
         """코스피·코스닥 업종지수(0J) 실시간 구독 등록."""
@@ -466,9 +455,13 @@ class KiwoomConnector(BrokerConnector):
             broadcast_ws_connection_status(False)
         except Exception:
             logger.warning("[증권사연결] 연결 끊김 상태 브로드캐스트 실패", exc_info=True)
-        if self._reconnect_task and not self._reconnect_task.done():
+        if self._reconnecting:
             return
-        self._reconnect_task = asyncio.get_running_loop().create_task(self._reconnect_loop())
+        self._reconnecting = True
+        try:
+            await self._reconnect_loop()
+        finally:
+            self._reconnecting = False
 
     async def _reconnect_loop(self) -> None:
         """지수 백오프 재연결 루프 (1→2→4→8→16→32초, 최대 10회)."""
@@ -520,12 +513,15 @@ class KiwoomConnector(BrokerConnector):
                 logger.info("[증권사연결] 재연결 성공 (시도 %d회)", attempt)
                 # 재연결 성공 후 큐 클리어 (과거 데이터 제거)
                 if self._ws_queue is not None:
+                    cleared = 0
                     while not self._ws_queue.empty():
                         try:
                             self._ws_queue.get_nowait()
+                            cleared += 1
                         except asyncio.QueueEmpty:
                             break
-                    logger.info("[증권사연결] 재연결 후 큐 클리어 완료")
+                    if cleared > 0:
+                        logger.warning("[증권사연결] 재연결 후 큐 클리어 — %d건 틱 폐기 (재연결 전 과거 데이터 제거)", cleared)
                 try:
                     from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
                     broadcast_ws_connection_status(True)
@@ -533,7 +529,7 @@ class KiwoomConnector(BrokerConnector):
                     logger.warning("[증권사연결] 재연결 상태 브로드캐스트 실패", exc_info=True)
                 # 재연결 후 구독 복원은 ConnectorManager가 담당
                 if self._on_reconnect_success:
-                    asyncio.get_running_loop().create_task(self._on_reconnect_success(self.broker_id))
+                    await self._on_reconnect_success(self.broker_id)
                 return
             except Exception as e:
                 logger.warning("[증권사연결] 재연결 %d회 실패: %s", attempt, e, exc_info=True)
@@ -574,8 +570,8 @@ class KiwoomConnector(BrokerConnector):
                 auth_provider = get_router()._auth_cache.get("kiwoom")
                 if auth_provider and hasattr(auth_provider, "rest_api"):
                     rest_api = auth_provider.rest_api
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[키움커넥터] router auth_cache에서 rest_api 조회 실패: %s", e)
 
         if rest_api and hasattr(rest_api, "get_access_token"):
             return await rest_api.get_access_token()

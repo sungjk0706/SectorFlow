@@ -233,7 +233,6 @@ async def _unreg_grp(grp_no: str) -> bool:
                 }
                 try:
                     await _ws_send_remove_fire_and_forget(payload)
-                    logger.debug("[구독] grp_no=%s 청크 %d/%d 전송 완료 (%d종목)", grp_no, ci+1, nchunks, len(chunk))
                 except Exception as e:
                     logger.warning("[구독] grp_no=%s 청크 %d/%d 오류: %s", grp_no, ci+1, nchunks, e, exc_info=True)
             for cd in subscribed_codes:
@@ -310,8 +309,6 @@ async def subscribe_sector_stocks_0b() -> None:
     # ── 5) 필터 통과 종목 누적 REG ──
     filter_targets = [cd for cd in filtered_only if not state.master_stocks_cache.get(cd, {}).get("_subscribed")]
     if not filter_targets:
-        if not pos_targets:
-            logger.debug("[구독][시세] 신규 종목 없음 -- 생략")
         return
 
     for cd in filter_targets:
@@ -412,7 +409,6 @@ async def subscribe_positions_stocks_realtime() -> None:
     # 이미 구독 중인 종목 제외
     new_0b = [cd for cd in norm_list if not state.master_stocks_cache.get(cd, {}).get("_subscribed")]
     if not new_0b:
-        logger.debug("[구독][보유종목] 전체 이미 구독 중 -- 생략")
         return
 
     for cd in new_0b:

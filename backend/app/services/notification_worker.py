@@ -45,8 +45,8 @@ class NotificationWorker:
         if not self._task or self._task.done():
             try:
                 self.start()
-            except RuntimeError:
-                pass
+            except RuntimeError as e:
+                logger.warning("[NotificationWorker] 자동 시작 실패 (이벤트 루프 없음): %s", e)
         try:
             self._queue.put_nowait(msg)
         except asyncio.QueueFull:

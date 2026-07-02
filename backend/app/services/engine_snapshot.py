@@ -226,7 +226,7 @@ async def _reset_realtime_fields() -> None:
     )
     await notify_desktop_sector_stocks_refresh()
     await _broadcast_account("realtime_reset")
-    _broadcast("realtime-reset", {})
+    await _broadcast("realtime-reset", {})
 
     # 실시간 상태를 WAITING_FIRST_TICK으로 설정
     engine_state._set_realtime_state("WAITING_FIRST_TICK")

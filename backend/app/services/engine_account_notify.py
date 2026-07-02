@@ -69,19 +69,19 @@ _TICK_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "strength"
 
 
 # ── WS 브로드캐스트 헬퍼 (lazy import로 순환 임포트 방지) ──────────────────
-def _broadcast(event_type: str, data: dict) -> None:
-    """ws_manager.broadcast() 래퍼. 동기 함수 — await 불필요."""
+async def _broadcast(event_type: str, data: dict) -> None:
+    """ws_manager.broadcast() 래퍼."""
     from backend.app.web.ws_manager import ws_manager
     if "_v" not in data:
         data["_v"] = 1
-    ws_manager.broadcast(event_type, data)
+    await ws_manager.broadcast(event_type, data)
 
 
-def _safe_broadcast(event_type: str, payload: dict | None) -> None:
+async def _safe_broadcast(event_type: str, payload: dict | None) -> None:
     """안전한 브로드캐스트 전송 (예외 처리 통합)"""
     if payload is not None:
         try:
-            _broadcast(event_type, payload)
+            await _broadcast(event_type, payload)
         except Exception as e:
             logger.warning(f"[데이터] {event_type} 화면전송 실패: {e}", exc_info=True)
 
@@ -228,22 +228,22 @@ def init_sent_caches(sector_stocks: list[dict], positions: list[dict], snapshot:
 
 # ── 알림 함수 (WebSocket 브로드캐스트) ─────────────────────────────────────────────
 
-def notify_desktop_header_refresh() -> None:
+async def notify_desktop_header_refresh() -> None:
     """엔진 상태(connected, login_ok 등) 변경 시 헤더 갱신 → WS index-data."""
     from backend.app.services.engine_lifecycle import get_engine_status
     payload = get_engine_status()
     payload["_v"] = 1
-    _safe_broadcast("index-data", payload)
+    await _safe_broadcast("index-data", payload)
 
 
-def notify_index_data(upcode: str, jisu: str, change: str, drate: str, sign: str) -> None:
+async def notify_index_data(upcode: str, jisu: str, change: str, drate: str, sign: str) -> None:
     """업종지수 실시간 데이터 → WS index-data 브로드캐스트 (저장 없이 pass-through).
 
     broker_statuses를 항상 포함하여 프론트엔드 헤더 칩 상태를 갱신한다.
     """
     from backend.app.services.engine_lifecycle import get_engine_status
     broker_statuses = get_engine_status().get("broker_statuses", {})
-    _safe_broadcast("index-data", {
+    await _safe_broadcast("index-data", {
         "upcode": upcode,
         "jisu": jisu,
         "change": change,
@@ -265,10 +265,10 @@ async def notify_desktop_settings_toggled(changed_keys_dict: dict | None = None)
         import backend.app.services.engine_service as _es
         payload = _es.get_settings_snapshot()
         payload["_v"] = 1
-    _safe_broadcast("settings-changed", payload)
+    await _safe_broadcast("settings-changed", payload)
 
 
-def notify_desktop_sector_scores(*, force: bool = False) -> None:
+async def notify_desktop_sector_scores(*, force: bool = False) -> None:
     """업종 순위 + 상태 + 수신율 전송 → WS sector-scores. delta 전송."""
     from backend.app.services.engine_state import state
     import backend.app.services.engine_service as _es
@@ -279,8 +279,8 @@ def notify_desktop_sector_scores(*, force: bool = False) -> None:
     try:
         from backend.app.pipelines.pipeline_compute import get_current_receive_rate
         receive_rate = get_current_receive_rate()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[데이터] 수신율 조회 실패 (None으로 진행): %s", e)
 
     # delta 계산: 변경된 섹터만 전송
     if not force and notify_cache.prev_scores:
@@ -330,17 +330,17 @@ def notify_desktop_sector_scores(*, force: bool = False) -> None:
             },
         }
 
-    _safe_broadcast("sector-scores", payload)
+    await _safe_broadcast("sector-scores", payload)
     notify_cache.prev_scores = scores
     notify_cache.prev_receive_rate = receive_rate
 
 
-def notify_desktop_sector_refresh(*, force: bool = False) -> None:
+async def notify_desktop_sector_refresh(*, force: bool = False) -> None:
     """sector-scores 전송 (sector-tick 제거 — real-data로 대체됨, Phase 6-C)."""
-    notify_desktop_sector_scores(force=force)
+    await notify_desktop_sector_scores(force=force)
 
 
-def notify_desktop_trade_price(
+async def notify_desktop_trade_price(
     stk_cd: str, price: int,
     change: int = 0, change_rate: float = 0.0,
     strength: str = "-", trade_amount: int = 0,
@@ -357,7 +357,7 @@ def notify_desktop_trade_price(
         "strength": str(strength),
         "trade_amount": int(trade_amount),
     }
-    _safe_broadcast("trade-price", payload)
+    await _safe_broadcast("trade-price", payload)
 
 
 def _is_relevant_code(nk: str) -> bool:
@@ -376,7 +376,7 @@ def _is_relevant_code(nk: str) -> bool:
     return False
 
 
-def notify_raw_real_data(item: dict) -> None:
+async def notify_raw_real_data(item: dict) -> None:
     """
     키움 실시간 메시지(REAL)를 가공 없이 브로드캐스트.
     프론트에 필요한 종목(섹터+보유+레이아웃)만 전송하여 렌더링 과부하 방지.
@@ -403,16 +403,16 @@ def notify_raw_real_data(item: dict) -> None:
     item["item"] = nk
     
     item["_ts"] = int(time.time() * 1000)
-    _safe_broadcast("real-data", item)
+    await _safe_broadcast("real-data", item)
 
 
-def notify_orderbook_update(code: str, bid: int, ask: int) -> None:
+async def notify_orderbook_update(code: str, bid: int, ask: int) -> None:
     """매수후보 종목의 호가잔량 변경 시 프론트에 즉시 전송 (이벤트 기반)."""
     payload = {"code": code, "bid": bid, "ask": ask}
-    _safe_broadcast("orderbook-update", payload)
+    await _safe_broadcast("orderbook-update", payload)
 
 
-def notify_desktop_buy_radar_only() -> None:
+async def notify_desktop_buy_radar_only() -> None:
     """레이더 종목 변경 알림 — no-op.
     레이더 데이터는 account-update 이벤트에 radar_stocks로 포함되어 전송된다.
     매 틱마다 호출되므로 빈 이벤트도 보내지 않는다 (큐 과부하 방지)."""
@@ -431,7 +431,7 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
 
     if force or not notify_cache.prev_sector_stock_codes:
         # 전체 리스트를 sector-stocks-refresh로 전송
-        _safe_broadcast("sector-stocks-refresh", {"stocks": stocks})
+        await _safe_broadcast("sector-stocks-refresh", {"stocks": stocks})
     else:
         added_codes = new_codes - notify_cache.prev_sector_stock_codes
         removed_codes = notify_cache.prev_sector_stock_codes - new_codes
@@ -442,7 +442,7 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
         # added: 전체 상세 정보 포함
         added_stocks = [s for s in stocks if s.get("code", "") in added_codes]
         # removed: 코드 리스트만
-        _safe_broadcast("sector-stocks-delta", {
+        await _safe_broadcast("sector-stocks-delta", {
             "added": added_stocks,
             "removed": list(removed_codes),
         })
@@ -458,15 +458,15 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
             notify_cache.prev_sent[code] = {}
 
 
-def notify_desktop_account_tabs_refresh() -> None:
+async def notify_desktop_account_tabs_refresh() -> None:
     """계좌 탭(보유/미체결/수익/거래내역) 전환 시 1회 전체 새로고침 → WS account-tabs-refresh."""
     from backend.app.services.engine_lifecycle import get_engine_status
     payload = get_engine_status()
     payload["_v"] = 1
-    _safe_broadcast("index-data", payload)
+    await _safe_broadcast("index-data", payload)
 
 
-def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str | None = None) -> None:
+async def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str | None = None) -> None:
     """체결·잔고·실시간 시세 변경 시 → WS account-update (delta 방식, 페이지별 페이로드 분리)."""
     changed_positions, removed_codes = _compute_position_delta(positions)
     snapshot_changed = not _snap_equal(snapshot, notify_cache.snapshot_sent)
@@ -485,7 +485,7 @@ def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str 
     if profit_overview_active and not sell_position_active:
         lightweight_payload = _build_lightweight_payload_for_profit_overview(snapshot, changed_positions, removed_codes)
         try:
-            ws_manager.broadcast_to_pages("account-update", lightweight_payload, {"profit-overview"})
+            await ws_manager.broadcast_to_pages("account-update", lightweight_payload, {"profit-overview"})
         except Exception as e:
             logger.warning("[연결] 수익현황 경량화 페이로드 전송 실패: %s", e, exc_info=True)
     # sell-position 페이지 활성 또는 두 페이지 모두 활성: 전체 페이로드 전송
@@ -503,11 +503,11 @@ def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str 
 
         if target_pages:
             try:
-                ws_manager.broadcast_to_pages("account-update", payload, target_pages)
+                await ws_manager.broadcast_to_pages("account-update", payload, target_pages)
             except Exception as e:
                 logger.warning("[연결] 계좌 화면전송 실패: %s", e, exc_info=True)
         else:
-            _safe_broadcast("account-update", payload)
+            await _safe_broadcast("account-update", payload)
 
     # 캐시 갱신
     notify_cache.snapshot_sent = dict(snapshot)
@@ -519,7 +519,7 @@ def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str 
     # notify_cache.positions_code_set 동기화 — real-data 필터링용 O(1) Set 캐시
     _rebuild_positions_cache(positions)
 
-    if reason:
+    if reason and reason != "price_tick":
         cur_pairs = [
             (_base_stk_cd(str(p.get("stk_cd", "") or "")), p.get("cur_price"))
             for p in positions
@@ -567,7 +567,7 @@ def _build_lightweight_payload_for_profit_overview(snapshot: dict, changed_posit
     }
 
 
-def notify_snapshot_history_update() -> None:
+async def notify_snapshot_history_update() -> None:
     """수익 이력 WS 브로드캐스트 — 프론트엔드 미사용으로 no-op."""
     pass
 
@@ -596,7 +596,7 @@ async def notify_buy_targets_update() -> None:
     # 초기 상태 (캐시 없음): 전체 리스트 전송
     if notify_cache.prev_buy_targets_map is None:
         notify_cache.prev_buy_targets_map = cur_map
-        _safe_broadcast("buy-targets-update", {"buy_targets": targets})
+        await _safe_broadcast("buy-targets-update", {"buy_targets": targets})
         return
 
     # delta 계산
@@ -629,23 +629,23 @@ async def notify_buy_targets_update() -> None:
         return  # 변경 없음 → 전송 생략
 
     notify_cache.prev_buy_targets_map = cur_map
-    _safe_broadcast("buy-targets-delta", {"added": added, "removed": removed, "changed": changed})
+    await _safe_broadcast("buy-targets-delta", {"added": added, "removed": removed, "changed": changed})
 
 
-def broadcast_engine_status_ws(engine_status: dict) -> None:
+async def broadcast_engine_status_ws(engine_status: dict) -> None:
     """엔진 상태 변경 시 모든 WS 구독자에게 push (index-data 통일)."""
     if "_v" not in engine_status:
         engine_status["_v"] = 1
-    _safe_broadcast("index-data", engine_status)
+    await _safe_broadcast("index-data", engine_status)
 
 
-def notify_ws_subscribe_status(status: dict) -> None:
+async def notify_ws_subscribe_status(status: dict) -> None:
     """WS 구독 상태 변경 시 WS 브로드캐스트. ws_subscribe_control._set_status()에서 사용."""
     payload = {"_v": 1, **status}
-    _safe_broadcast("ws-subscribe-status", payload)
+    await _safe_broadcast("ws-subscribe-status", payload)
 
 
-def notify_program_update(code: str, net_buy: int) -> None:
+async def notify_program_update(code: str, net_buy: int) -> None:
     """프로그램 순매수 변경 시 WS로 브로드캐스트."""
     payload = {"code": code, "net_buy": net_buy}
-    _safe_broadcast("program-update", payload)
+    await _safe_broadcast("program-update", payload)

@@ -18,6 +18,7 @@ import asyncio
 
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
+from backend.app.services.engine_lifecycle import schedule_engine_task
 
 logger = get_logger("engine")
 
@@ -60,10 +61,10 @@ def _set_status(
 
     if changed:
         from backend.app.services.engine_account_notify import _broadcast
-        _broadcast("ws-subscribe-status", {
+        schedule_engine_task(_broadcast("ws-subscribe-status", {
             "_v": 1,
             "quote_subscribed": state.quote_subscribed,
-        })
+        }), context="ws-subscribe-status 브로드캐스트")
 
 
 def broadcast_ws_connection_status(connected: bool) -> None:
@@ -72,12 +73,11 @@ def broadcast_ws_connection_status(connected: bool) -> None:
         return  # 상태 변경 없음 → 전송 생략
     state.ws_connection_status = connected
     from backend.app.services.engine_account_notify import _broadcast
-    _broadcast("ws-connection-status", {
+    schedule_engine_task(_broadcast("ws-connection-status", {
         "_v": 1,
         "connected": connected,
         "timestamp": asyncio.get_event_loop().time(),
-    })
-    logger.debug("[구독제어] WS 연결 상태 화면전송: %s", connected)
+    }), context="ws-connection-status 브로드캐스트")
 
 
 # ---------------------------------------------------------------------------
@@ -236,7 +236,6 @@ async def on_setting_changed(key: str, value: bool) -> None:
 
     WS 구독 구간 밖이면 설정만 저장 (구독 변경 없음).
     """
-    logger.debug("[구독제어] 설정 변경 수신 %s=%s", key, value)
     from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
 
     settings = state.integrated_system_settings_cache

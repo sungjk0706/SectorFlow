@@ -137,7 +137,7 @@ async def _send_price_tick_to_frontend(data: dict) -> None:
             "timestamp": data.get("timestamp"),
             "_v": 1,
         }
-        ws_manager.broadcast("sector-price-tick", payload)
+        await ws_manager.broadcast("sector-price-tick", payload)
 
     except Exception as e:
         logger.error("[Gateway] sector-price-tick 전송 예외: %s", e, exc_info=True)
@@ -175,7 +175,7 @@ async def _send_to_websocket(event_type: str, data: dict) -> None:
         if "_v" not in data:
             data["_v"] = 1
 
-        ws_manager.broadcast(event_type, data)
+        await ws_manager.broadcast(event_type, data)
 
     except Exception as e:
         logger.error("[Gateway] WebSocket 전송 예외: %s", e, exc_info=True)
