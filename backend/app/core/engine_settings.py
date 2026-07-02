@@ -112,6 +112,7 @@ def build_engine_settings_dict(flat: dict) -> dict:
     # logic_auto_trade / AutoTradeManager 호환 키 (merged 필드명 그대로)
     # _to_trade_settings()가 merged 키를 직접 참조하므로 반드시 원본 키명으로 포함해야 한다.
     result["buy_amt"] = int(merged.get("buy_amt", 0) or 0)
+    result["max_daily_total_buy_on"] = bool(merged.get("max_daily_total_buy_on", False))
     result["max_daily_total_buy_amt"] = int(merged.get("max_daily_total_buy_amt", 0) or 0)
     result["max_stock_cnt"] = int(merged.get("max_stock_cnt", 5) or 5)
     result["tp_val"] = float(merged.get("tp_val") or 0)

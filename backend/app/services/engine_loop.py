@@ -320,7 +320,10 @@ async def run_engine_loop() -> None:
                         state.connector_manager = _mgr
                         state.active_connector = _mgr.get_connector(broker_nm)
                         await _mgr.connect_all()
-                        logger.info("[연결] 실시간 연결 완료")
+                        if _mgr.is_connected():
+                            logger.info("[연결] 실시간 연결 완료")
+                        else:
+                            logger.warning("[연결] 실시간 연결 실패 — 재연결 루프 기동 중")
                         await _broadcast_engine_ws()
                     except Exception as e:
                         logger.error("[연결] 실시간 연결 초기화 실패: %s", e, exc_info=True)

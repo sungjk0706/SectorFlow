@@ -40,9 +40,12 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "broker": "kiwoom",
     
     # 매수 설정
+    "max_daily_total_buy_on": False,
     "max_daily_total_buy_amt": 0,
     "max_stock_cnt": 0,
     "buy_amt": 0,
+    "rebuy_block_on": True,
+    "rebuy_block_period": "today",
     "boost_high_breakout_on": False,
     "boost_high_breakout_score": 1.0,
     "boost_order_ratio_on": False,

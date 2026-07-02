@@ -425,6 +425,14 @@ async def _apply_balance_realtime(item: dict, vals: dict) -> None:
     if state.update_account_memory:
         state.update_account_memory()
 
+    # ── State Gate 회복: 실전모드 잔고 업데이트 시 매수 재평가 ──
+    try:
+        from backend.app.services.buy_order_executor import _cash_insufficient, evaluate_buy_candidates
+        if _cash_insufficient:
+            await evaluate_buy_candidates()
+    except Exception:
+        pass
+
 
 async def _on_fill_after_ws() -> None:
     """주문체결(00) 완료 직후 -- REST 없이 메모리·매도조건만 갱신."""

@@ -14,6 +14,10 @@ from backend.app.services.auto_trading_effective import auto_buy_effective
 
 logger = get_logger("engine_lifecycle")
 
+# ── State Gate: 주문가능 금액 부족 시 evaluate_buy_candidates 호출 차단 ──
+# 매도 체결 / 잔고 업데이트 이벤트에서 해제 후 재호출.
+_cash_insufficient: bool = False
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 섹터 매수 실행 함수
@@ -25,6 +29,7 @@ async def evaluate_buy_candidates() -> None:
     auto_buy_effective(시간 범위 + auto_buy_on + 마스터 스위치) 통과 시 매수 실행.
     쿨다운: sector_buy_cooldown_sec(기본 90초).
     """
+    global _cash_insufficient
     from backend.app.services import dry_run
     from backend.app.services.daily_time_scheduler import is_krx_after_hours
     from backend.app.services.engine_symbol_utils import is_nxt_enabled
@@ -60,7 +65,8 @@ async def evaluate_buy_candidates() -> None:
         return
 
     _max_daily = int(state.integrated_system_settings_cache["max_daily_total_buy_amt"])
-    if _max_daily > 0:
+    _max_daily_on = bool(state.integrated_system_settings_cache.get("max_daily_total_buy_on", False))
+    if _max_daily_on and _max_daily > 0:
         _daily_remain = _max_daily - state.auto_trade._daily_buy_spent
         if _daily_remain <= 0:
             return
@@ -76,10 +82,11 @@ async def evaluate_buy_candidates() -> None:
         _effective_buy_amt = min(_buy_amt, _daily_remain)
     else:
         _effective_buy_amt = _buy_amt
-    if _available < _effective_buy_amt:
-        logger.info("[종목매수] 주문가능 금액 부족 — 매수 시도 중단 (주문가능 금액: %s원, 매수단위: %s원)",
-                    f"{_available:,}", f"{_effective_buy_amt:,}")
+    if _available <= 0:
+        _cash_insufficient = True
+        logger.info("[종목매수] 주문가능 금액 0원 — 매수 시도 중단 (State Gate OPEN)")
         return
+    _cash_insufficient = False
 
     # ── 종목별 매수 시도 ─────────────────────────────────────────────
     cooldown = float(state.integrated_system_settings_cache["sector_buy_cooldown_sec"])

@@ -150,7 +150,7 @@ def _get_daily_summary_for_snapshot() -> list:
 
 # ── 실시간 필드 초기화 ─────────────────────────────────────────────
 
-_REALTIME_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "strength", "high_price")
+_REALTIME_FIELDS = ("cur_price", "change", "change_rate", "trade_amount", "strength")
 
 
 async def _reset_realtime_fields() -> None:
@@ -177,7 +177,6 @@ async def _reset_realtime_fields() -> None:
         pos["change_rate"] = None
         pos["bid_depth"] = None
         pos["ask_depth"] = None
-        pos["high_price"] = None
 
     # 테스트모드 가상 보유종목 실시간 필드 초기화
     if is_test_mode(state.integrated_system_settings_cache):
@@ -187,7 +186,6 @@ async def _reset_realtime_fields() -> None:
             pos["change_rate"] = None
             pos["bid_depth"] = None
             pos["ask_depth"] = None
-            pos["high_price"] = None
 
     # 업종 점수 캐시 초기화 (실시간 데이터 재계산 유도)
     import backend.app.services.engine_service as _es
@@ -213,8 +211,7 @@ async def _reset_realtime_fields() -> None:
                 SET cur_price = NULL,
                     change = NULL,
                     change_rate = NULL,
-                    trade_amount = NULL,
-                    high_price = NULL
+                    trade_amount = NULL
             """)
             await conn.commit()
         logger.info("[데이터] DB master_stocks_table 실시간 필드 초기화 완료")

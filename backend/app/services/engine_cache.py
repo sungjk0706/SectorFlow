@@ -76,13 +76,13 @@ async def _load_caches_preboot(settings: dict) -> None:
         for cd, detail in _cached_snapshot.items():
             # 단일 소스 진리: 백만원 단위 그대로 저장
             avg_amt = int(detail.get("avg_5d_trade_amount") or 0)
-            high_price = int(detail.get("high_price") or 0)
+            high_5d = int(detail.get("high_5d_price") or 0)
             _cached_avg[cd] = avg_amt
-            _cached_high_5d[cd] = high_price
+            _cached_high_5d[cd] = high_5d
             # 즉시 메모리 반영 (단일 루프로 통합)
-            if high_price > 0:
+            if high_5d > 0:
                 if cd in state.master_stocks_cache:
-                    state.master_stocks_cache[cd]["high_5d_price"] = high_price
+                    state.master_stocks_cache[cd]["high_5d_price"] = high_5d
 
         # ── [수정] 기동 시 단건 실시간 구독 신청 루프 및 asyncio.gather 제거 ──
         # 로그인 이후 배치 파이프라인에서 일괄 등록되므로 기동 단계에서는 스킵합니다.

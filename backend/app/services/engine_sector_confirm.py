@@ -198,8 +198,9 @@ async def _flush_sector_recompute_impl() -> None:
         # buy_targets 변경 시 구독 갱신 + 매수 시도 (이벤트 기반)
         if are_buy_targets_changed(prev_targets, ss.buy_targets):
             sync_dynamic_subscriptions(_es, ss.buy_targets)
-            from backend.app.services.buy_order_executor import evaluate_buy_candidates
-            await evaluate_buy_candidates()
+            from backend.app.services.buy_order_executor import evaluate_buy_candidates, _cash_insufficient
+            if not _cash_insufficient:
+                await evaluate_buy_candidates()
 
         # 업종 요약정보 생성 완료 이벤트 설정
         _es._sector_summary_ready_event.set()
@@ -322,8 +323,10 @@ async def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
             # 프론트엔드에 매수 타겟 변경 알림
             await notify_buy_targets_update(ss)
 
-            # 매수 시도
-            await evaluate_buy_candidates()
+            # 매수 시도 (State Gate: 주문가능 금액 부족 시 skip)
+            from backend.app.services.buy_order_executor import _cash_insufficient
+            if not _cash_insufficient:
+                await evaluate_buy_candidates()
 
 
 async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:

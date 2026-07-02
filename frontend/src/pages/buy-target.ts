@@ -137,7 +137,8 @@ function updateBadges(): void {
   const state = hotStore.getState()
   const uiState = uiStore.getState()
   const settings = globalSettingsManager.getSettings()
-  const maxDaily = settings?.max_daily_total_buy_amt ?? 0
+  const maxDailyOn = !!settings?.max_daily_total_buy_on
+  const maxDaily = (maxDailyOn ? (settings?.max_daily_total_buy_amt ?? 0) : 0)
   const maxStock = settings?.max_stock_cnt ?? 5
   const buyAmtPerStock = settings?.buy_amt ?? 0
   const holdingCnt = state.positions.filter(p => (p.qty ?? 0) > 0).length

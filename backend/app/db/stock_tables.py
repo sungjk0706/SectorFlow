@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import sqlite3
 from backend.app.db.database import get_db_connection
 from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
 
@@ -84,7 +85,8 @@ async def init_cache_tables():
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS custom_sectors (
             stock_code TEXT PRIMARY KEY,
-            name TEXT NOT NULL
+            name TEXT NOT NULL,
+            hidden INTEGER DEFAULT 0
         )
     ''')
 
@@ -246,7 +248,6 @@ async def create_master_stocks_table():
             change INTEGER,
             change_rate REAL,
             trade_amount INTEGER,  -- 백만원 단위
-            high_price INTEGER,
             avg_5d_trade_amount INTEGER,  -- 백만원 단위
             high_5d_price INTEGER,
             date TEXT,
@@ -264,21 +265,51 @@ async def create_master_stocks_table():
     _log.info("master_stocks_table 테이블 초기화 완료.")
 
 
-async def migrate_add_high_price_column():
-    """기존 master_stocks_table에 high_price 컬럼 추가 (마이그레이션)"""
+async def migrate_drop_high_price_column():
+    """기존 master_stocks_table에서 high_price 컬럼 제거 (마이그레이션)"""
     conn = await get_db_connection()
-    
+
     # 컬럼 존재 여부 확인
     cursor = await conn.execute("PRAGMA table_info(master_stocks_table)")
     columns = await cursor.fetchall()
     column_names = {col["name"] for col in columns}
-    
-    if "high_price" not in column_names:
-        await conn.execute("ALTER TABLE master_stocks_table ADD COLUMN high_price INTEGER")
+
+    if "high_price" in column_names:
+        # SQLite는 ALTER TABLE DROP COLUMN을 지원하지 않으므로 테이블 재생성 방식 사용
+        await conn.execute("""
+            CREATE TABLE _master_stocks_table_tmp AS
+            SELECT code, name, market, sector, cur_price, change, change_rate,
+                   trade_amount, avg_5d_trade_amount, high_5d_price, date, nxt_enable
+            FROM master_stocks_table
+        """)
+        await conn.execute("DROP TABLE master_stocks_table")
+        await conn.execute("ALTER TABLE _master_stocks_table_tmp RENAME TO master_stocks_table")
+        # 인덱스 재생성
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_market ON master_stocks_table(market)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_date ON master_stocks_table(date)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_avg_5d ON master_stocks_table(avg_5d_trade_amount)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_sector ON master_stocks_table(sector)')
         await conn.commit()
-        _log.info("[마이그레이션] master_stocks_table에 high_price 컬럼 추가 완료")
+        _log.info("[마이그레이션] master_stocks_table에서 high_price 컬럼 제거 완료")
     else:
         pass
+
+
+async def migrate_add_hidden_to_custom_sectors():
+    """기존 custom_sectors에 hidden 컬럼 추가 (마이그레이션).
+    앱 기동 시마다 1회 실행하여 구 버전 DB에서도 hidden 컬럼이 보장되도록 한다."""
+    conn = await get_db_connection()
+
+    cursor = await conn.execute("PRAGMA table_info(custom_sectors)")
+    columns = await cursor.fetchall()
+    column_names = {col["name"] for col in columns}
+
+    if "hidden" not in column_names:
+        await conn.execute("ALTER TABLE custom_sectors ADD COLUMN hidden INTEGER DEFAULT 0")
+        await conn.commit()
+        _log.info("[마이그레이션] custom_sectors에 hidden 컬럼 추가 완료")
+    else:
+        _log.debug("[마이그레이션] custom_sectors hidden 컬럼 이미 존재 - 스킵")
 
 
 async def migrate_add_nxt_enable_column():
@@ -305,7 +336,7 @@ async def create_stock_5d_array_table():
     conn = await get_db_connection()
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS stock_5d_array (
-            code TEXT,
+            code TEXT PRIMARY KEY,
             date TEXT,
             day1_amount INTEGER,  -- 백만원 단위
             day2_amount INTEGER,  -- 백만원 단위
@@ -316,14 +347,35 @@ async def create_stock_5d_array_table():
             day2_high INTEGER,
             day3_high INTEGER,
             day4_high INTEGER,
-            day5_high INTEGER,
-            PRIMARY KEY (code, date)
+            day5_high INTEGER
         )
     ''')
-    await conn.execute('CREATE INDEX IF NOT EXISTS idx_stock_5d_array_code ON stock_5d_array(code)')
-    await conn.execute('CREATE INDEX IF NOT EXISTS idx_stock_5d_array_date ON stock_5d_array(date)')
     await conn.commit()
     _log.info("stock_5d_array 테이블 초기화 완료.")
+
+
+async def migrate_stock_5d_array_pk():
+    """기존 (code, date) PK → code 단일 PK 마이그레이션"""
+    conn = await get_db_connection()
+    cursor = await conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='stock_5d_array'")
+    row = await cursor.fetchone()
+    if row is None:
+        return
+    schema_sql = row["sql"] if isinstance(row, sqlite3.Row) or hasattr(row, "__getitem__") else row[0]
+    if "PRIMARY KEY (code, date)" not in schema_sql:
+        _log.debug("[마이그레이션] stock_5d_array PK 이미 code 단일 — 스킵")
+        return
+    _log.info("[마이그레이션] stock_5d_array PK (code, date) → code 단일 변경 시작")
+    await conn.execute('CREATE TABLE IF NOT EXISTS stock_5d_array_new (code TEXT PRIMARY KEY, date TEXT, day1_amount INTEGER, day2_amount INTEGER, day3_amount INTEGER, day4_amount INTEGER, day5_amount INTEGER, day1_high INTEGER, day2_high INTEGER, day3_high INTEGER, day4_high INTEGER, day5_high INTEGER)')
+    await conn.execute('''INSERT OR REPLACE INTO stock_5d_array_new (code, date, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount, day1_high, day2_high, day3_high, day4_high, day5_high)
+        SELECT code, date, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount, day1_high, day2_high, day3_high, day4_high, day5_high
+        FROM stock_5d_array
+        WHERE (code, date) IN (SELECT code, MAX(date) FROM stock_5d_array GROUP BY code)
+    ''')
+    await conn.execute('DROP TABLE stock_5d_array')
+    await conn.execute('ALTER TABLE stock_5d_array_new RENAME TO stock_5d_array')
+    await conn.commit()
+    _log.info("[마이그레이션] stock_5d_array PK 변경 완료 — 종목당 최신 1행만 유지")
 
 
 # ── 거래일 캐시 ─────────────────────────────────────────────────────────────
@@ -367,7 +419,7 @@ async def load_master_stocks_table() -> dict[str, dict]:
     try:
         conn = await get_db_connection()
         cursor = await conn.execute("""
-            SELECT code, name, market, sector, cur_price, change, change_rate, trade_amount, avg_5d_trade_amount, high_5d_price, date, nxt_enable
+            SELECT code, name, market, sector, avg_5d_trade_amount, high_5d_price, date, nxt_enable
             FROM master_stocks_table
         """)
         rows = await cursor.fetchall()
@@ -381,13 +433,13 @@ async def load_master_stocks_table() -> dict[str, dict]:
                 "name": str(r["name"] or ""),
                 "market": str(r["market"] or ""),
                 "nxt_enable": bool(r["nxt_enable"] or 0),
-                "cur_price": float(r["cur_price"] or 0),
-                "change": float(r["change"] or 0),
-                "change_rate": float(r["change_rate"] or 0),
-                "sign": "3",  # 체결강도가 DB에 영구저장되지 않으므로 기본값 3(보합)으로 설정
-                "trade_amount": float(r["trade_amount"] or 0),
+                "cur_price": 0,
+                "change": 0,
+                "change_rate": 0.0,
+                "sign": "3",
+                "trade_amount": 0,
                 "avg_5d_trade_amount": int(r["avg_5d_trade_amount"] or 0),
-                "high_price": float(r["high_5d_price"] or 0),
+                "high_5d_price": float(r["high_5d_price"] or 0),
                 "date": str(r["date"] or ""),
                 "volume": 0,
                 "sector": sector,

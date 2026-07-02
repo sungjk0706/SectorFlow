@@ -101,8 +101,11 @@ export interface AppSettings {
 
   // 매수 설정
   buy_amt: number;
+  max_daily_total_buy_on: boolean;
   max_daily_total_buy_amt: number;
   max_stock_cnt: number;
+  rebuy_block_on: boolean;
+  rebuy_block_period: string;
 
   // 매도 설정
   tp_val: number;
