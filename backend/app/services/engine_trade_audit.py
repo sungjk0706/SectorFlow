@@ -16,6 +16,7 @@ logger = get_logger("engine")
 
 _AUDIT_KEYS = (
     "buy_amt",
+    "max_daily_total_buy_on",
     "max_daily_total_buy_amt",
     "max_stock_cnt",
     "auto_buy_on",

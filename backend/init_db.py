@@ -23,11 +23,12 @@ async def init_all_tables():
     from backend.app.db.stock_tables import (
         init_cache_tables,
         create_stock_5d_array_table,
+        migrate_stock_5d_array_pk,
         create_master_stocks_table,
-        migrate_add_high_price_column,
+        migrate_drop_high_price_column,
         migrate_add_nxt_enable_column,
     )
-    from backend.app.db.database import get_db_connection
+    from backend.app.db.database import get_db_connection, close_db_connection
 
     print("[init_db] 데이터베이스 테이블 초기화 시작...")
 
@@ -39,23 +40,26 @@ async def init_all_tables():
     await init_cache_tables()
     print("[init_db] 캐시 테이블 초기화 완료")
 
-    # stock_5d_array 테이블 초기화
+    # stock_5d_array 테이블 초기화 + 마이그레이션
     await create_stock_5d_array_table()
+    await migrate_stock_5d_array_pk()
     print("[init_db] stock_5d_array 테이블 초기화 완료")
 
     # master_stocks_table 초기화
     await create_master_stocks_table()
     print("[init_db] master_stocks_table 초기화 완료")
 
-    # 마이그레이션: high_price 컬럼
-    await migrate_add_high_price_column()
-    print("[init_db] high_price 컬럼 마이그레이션 완료")
+    # 마이그레이션: high_price 컬럼 제거
+    await migrate_drop_high_price_column()
+    print("[init_db] high_price 컬럼 제거 마이그레이션 완료")
 
     # 마이그레이션: nxt_enable 컬럼
     await migrate_add_nxt_enable_column()
     print("[init_db] nxt_enable 컬럼 마이그레이션 완료")
 
     print("[init_db] 모든 테이블 초기화 완료")
+
+    await close_db_connection()
 
 
 if __name__ == "__main__":

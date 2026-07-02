@@ -45,27 +45,42 @@ class AutoTradeManager:
         # ────────────────────────────────────────────────────────────────────────
         self._recent_sells: set = set()  # 매도 주문 전송 완료 종목 -- 체결/실패 확인까지 재주문 차단
         self._buy_state: dict = {}
-        self._daily_buy_date: str = datetime.now().strftime("%Y-%m-%d")
+        self._daily_buy_date: str = ""
         self._daily_buy_spent = 0
-        self._bought_today = set()
+        self._bought_today: dict[str, float] = {}  # stk_cd -> buy timestamp
+        self._symbol_daily_buy_spent: dict[str, int] = {}
 
-    async def _restore_daily_buy_state(self) -> tuple[int, set]:
-        """기동 시 trade_history에서 오늘 매수 합계 + 매수 종목 set 복원."""
+    async def _restore_daily_buy_state(self) -> tuple[int, dict[str, float], dict[str, int]]:
+        """기동 시 trade_history에서 오늘 매수 합계 + 매수 종목 timestamp dict + 종목당 누적 매수금액 복원."""
         try:
             rows = await trade_history.get_buy_history(today_only=True)
-            spent = sum(int(r.get("total_amt", 0) or 0) for r in rows)
-            codes = {str(r.get("stk_cd", "")).strip() for r in rows if r.get("stk_cd")}
-            codes.discard("")
-            return spent, codes
+            spent = sum(int(r.get("price", 0) or 0) * int(r.get("qty", 0) or 0) for r in rows)
+            bought_today: dict[str, float] = {}
+            symbol_spent: dict[str, int] = {}
+            for r in rows:
+                cd = str(r.get("stk_cd", "")).strip()
+                if cd:
+                    symbol_spent[cd] = symbol_spent.get(cd, 0) + int(r.get("price", 0) or 0) * int(r.get("qty", 0) or 0)
+                    ts_str = r.get("ts") or r.get("date", "")
+                    try:
+                        ts_dt = datetime.fromisoformat(ts_str)
+                        bought_today[cd] = ts_dt.timestamp()
+                    except (ValueError, TypeError):
+                        bought_today[cd] = time.time()
+            return spent, bought_today, symbol_spent
         except Exception:
             logger.warning("[매매] 일일 매수 상태 복원 실패", exc_info=True)
-            return 0, set()
+            return 0, {}, {}
 
     async def _ensure_daily_buy_counter(self) -> None:
         today = datetime.now().strftime("%Y-%m-%d")
         if self._daily_buy_date != today:
             self._daily_buy_date = today
-            self._daily_buy_spent, self._bought_today = await self._restore_daily_buy_state()
+            self._daily_buy_spent, self._bought_today, self._symbol_daily_buy_spent = await self._restore_daily_buy_state()  # type: ignore
+            logger.info(
+                "[일일매수] 상태 복원 완료 — 날짜=%s 누적매수=%s원 종목수=%d",
+                today, f"{self._daily_buy_spent:,}", len(self._bought_today),
+            )
 
     async def execute_buy(self, stk_cd: str, current_price: float, checked_stocks: set,
                     access_token: str, force_buy: bool = False, reason: str = "") -> bool:
@@ -97,12 +112,28 @@ class AutoTradeManager:
                 f"(force_buy={force_buy}, source=auto_signal)"
             )
             return False
-        if stk_cd in self._bought_today:
-            self.log_callback(f" [매수차단] {stk_cd} 오늘 이미 매수한 종목입니다.")
-            return False
         if stk_cd in checked_stocks:
             self.log_callback(f" [매수차단] {stk_cd} 이미 보유/감시 중인 종목입니다.")
             return False
+
+        # ── 재매수 차단 (설정 기반: ON/OFF + 차단 기간) ──────────────────────
+        rebuy_block_on = bool(settings.get("rebuy_block_on", True))
+        if rebuy_block_on:
+            rebuy_period = str(settings.get("rebuy_block_period", "today"))
+            last_buy_ts = self._bought_today.get(stk_cd)
+            if last_buy_ts is not None:
+                if rebuy_period == "today":
+                    self.log_callback(f" [매수차단] {stk_cd} 오늘 이미 매수한 종목입니다.")
+                    return False
+                else:
+                    _period_hours = float(rebuy_period.rstrip("h")) if rebuy_period.endswith("h") else 24.0
+                    _elapsed = time.time() - last_buy_ts
+                    if _elapsed < _period_hours * 3600:
+                        _remain_min = int((_period_hours * 3600 - _elapsed) / 60)
+                        self.log_callback(
+                            f" [매수차단] {stk_cd} 재매수 차단 중 (남은 {_remain_min}분 / 차단 {_period_hours:.0f}시간)"
+                        )
+                        return False
 
         state = self._buy_state.get(stk_cd, {"last_req_ts": 0.0, "has_open_buy": False})
         last_ts = float(state.get("last_req_ts", 0) or 0)
@@ -144,17 +175,26 @@ class AutoTradeManager:
         if buy_amt <= 0:
             return False
         max_daily_total = int(settings.get("max_daily_total_buy_amt", 0) or 0)
+        max_daily_on = bool(settings.get("max_daily_total_buy_on", False))
+        # ── 종목당 일일 누적 매수금액 한도 체크 (buy_amt = 종목당 일일 최대 매수금액) ──
+        symbol_spent = self._symbol_daily_buy_spent.get(stk_cd, 0)
+        symbol_remain = max(0, int(buy_amt) - symbol_spent)
+        if symbol_remain <= 0:
+            self.log_callback(
+                f"[종목당한도] {stk_cd} 차단. 종목누적 {symbol_spent:,}원 / 한도 {int(buy_amt):,}원"
+            )
+            return False
         # 일일 한도 내에서 실제 사용 가능 금액 계산 (잔여 한도가 종목당 한도보다 적으면 잔여 한도만큼만 매수)
-        if max_daily_total > 0:
+        if max_daily_on and max_daily_total > 0:
             daily_remain = max(0, max_daily_total - self._daily_buy_spent)
             if daily_remain <= 0:
                 self.log_callback(
                     f"[일일매수한도] {stk_cd} 차단. 잔여 0원 / 한도 {max_daily_total:,}원"
                 )
                 return False
-            effective_buy_amt = min(int(buy_amt), daily_remain)
+            effective_buy_amt = min(symbol_remain, daily_remain)
         else:
-            effective_buy_amt = int(buy_amt)
+            effective_buy_amt = symbol_remain
 
         if current_price <= 0:
             self.log_callback(f"[매수제한] {stk_cd} 서버 현재가 미수신(<=0). 주문 차단.")
@@ -200,7 +240,14 @@ class AutoTradeManager:
                 except (ValueError, TypeError):
                     pass
 
-        buy_qty = effective_buy_amt // int(current_price)
+        # ── 주문가능 금액 내에서 최대한 매수 (buy_amt는 한도, 의무 지출액 아님) ──
+        if is_test_mode(raw_all):
+            from backend.app.services.settlement_engine import get_available_cash
+            _orderable = get_available_cash()
+        else:
+            _orderable = get_risk_manager().account_manager.get_withdrawable_deposit()
+        _max_available = min(effective_buy_amt, _orderable)
+        buy_qty = _max_available // int(current_price)
         if buy_qty <= 0:
             return False
 
@@ -284,6 +331,12 @@ class AutoTradeManager:
         fill_price = int(order_price) if order_price > 0 else int(current_price)
         spent = int(buy_qty * fill_price)
         self._daily_buy_spent += max(0, spent)
+        self._symbol_daily_buy_spent[stk_cd] = self._symbol_daily_buy_spent.get(stk_cd, 0) + max(0, spent)
+
+        # ── 매수 성공 즉시 _bought_today 반영 (테스트/실전 공통 — 원칙 18 동등성) ──
+        if stk_cd not in self._bought_today:
+            self._bought_today[stk_cd] = time.time()
+            self.log_callback(f"[매수기억] {stk_nm} 주문 성공! 금일 매수 이력 저장 완료.")
 
         # ── 체결 이력 기록 ────────────────────────────────────────────────────
         _buy_reason = reason or "자동매수"
@@ -334,14 +387,12 @@ class AutoTradeManager:
 
         if str(side) == "1" and unex == 0:
             state["has_open_buy"] = False
-            if stk_cd not in self._bought_today:
-                self._bought_today.add(stk_cd)
-                stk_nm = data_manager.get_stock_name(stk_cd, access_token)
-                self.log_callback(f"[매수기억] {stk_nm} 체결 확인! 금일 매수 이력 저장 완료.")
-                _fire_and_forget_telegram(
-                    f"✅ [매수체결] {stk_nm}({stk_cd}) 매수 체결 완료!",
-                    self.get_settings_fn(),
-                )
+            stk_nm = data_manager.get_stock_name(stk_cd, access_token)
+            self.log_callback(f"[매수체결] {stk_nm} 체결 확인!")
+            _fire_and_forget_telegram(
+                f"✅ [매수체결] {stk_nm}({stk_cd}) 매수 체결 완료!",
+                self.get_settings_fn(),
+            )
         elif str(side) == "2" and unex == 0:
             # 매도 체결 완료 -- 재매도 차단 해제
             self._recent_sells.discard(nk)
@@ -574,7 +625,10 @@ class AutoTradeManager:
             "is_sell_auto": auto_sell_effective(r),
             "max_limit": int(r["max_stock_cnt"]),
             "buy_amt": int(r["buy_amt"]),
+            "max_daily_total_buy_on": bool(r.get("max_daily_total_buy_on", False)),
             "max_daily_total_buy_amt": int(r["max_daily_total_buy_amt"]),
+            "rebuy_block_on": bool(r.get("rebuy_block_on", True)),
+            "rebuy_block_period": str(r.get("rebuy_block_period", "today")),
             "is_sell_mkt": r["sell_price_type"] == "mkt",
             "sell_offset": int(r["sell_offset"]),
             "sell_custom_qty": int(r["sell_custom_qty"]),

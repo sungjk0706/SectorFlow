@@ -216,7 +216,7 @@ async def execute_unified_rolling_and_save(
 
     Args:
         es: engine_service 모듈 참조
-        confirmed: {종목코드: {cur_price, change, change_rate, trade_amount, high_price}}
+        confirmed: {종목코드: {cur_price, change, change_rate, trade_amount, high_price, high_5d_price}}
         name_map: {6자리 종목코드: 종목명} — 종목명 보정용
 
     Returns:
@@ -232,13 +232,12 @@ async def execute_unified_rolling_and_save(
         conn = await get_db_connection()
 
         try:
-            # 1. 기존 5일 배열 일괄 로드 (1회 조회)
+            # 1. 기존 5일 배열 일괄 로드 (1회 조회) — PK=code이므로 종목당 1행
             cursor = await conn.execute("""
                 SELECT code, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount,
                        day1_high, day2_high, day3_high, day4_high, day5_high
                 FROM stock_5d_array
-                WHERE date = (SELECT MAX(date) FROM stock_5d_array WHERE date < ?)
-            """, (date_str,))
+            """)
             existing_rows = await cursor.fetchall()
             existing_map = {r["code"]: r for r in existing_rows}
 
@@ -286,7 +285,7 @@ async def execute_unified_rolling_and_save(
 
                 master_bulk_params.append((
                     nk, stk_nm, cur_price, change, change_rate,
-                    today_amt, today_high, avg_5d, high_5d, date_str
+                    today_amt, avg_5d, high_5d, date_str
                 ))
 
                 # 메모리 캐시 동시 갱신
@@ -297,7 +296,6 @@ async def execute_unified_rolling_and_save(
                         "change": change,
                         "change_rate": change_rate,
                         "trade_amount": today_amt,
-                        "high_price": today_high,
                         "avg_5d_trade_amount": avg_5d,
                         "high_5d_price": high_5d,
                         "date": date_str,
@@ -331,15 +329,14 @@ async def execute_unified_rolling_and_save(
 
                 await conn.executemany("""
                     INSERT INTO master_stocks_table
-                    (code, name, cur_price, change, change_rate, trade_amount, high_price, avg_5d_trade_amount, high_5d_price, date, market)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (code, name, cur_price, change, change_rate, trade_amount, avg_5d_trade_amount, high_5d_price, date, market)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(code) DO UPDATE SET
                         name = excluded.name,
                         cur_price = excluded.cur_price,
                         change = excluded.change,
                         change_rate = excluded.change_rate,
                         trade_amount = excluded.trade_amount,
-                        high_price = excluded.high_price,
                         avg_5d_trade_amount = excluded.avg_5d_trade_amount,
                         high_5d_price = excluded.high_5d_price,
                         date = excluded.date,
@@ -461,10 +458,6 @@ async def _apply_confirmed_to_memory(
         amt = int(detail.get("trade_amount") or 0)
         entry["trade_amount"] = amt
         lta[nk] = amt
-
-        # high_price
-        hp = int(detail.get("high_price") or 0)
-        entry["high_price"] = hp
 
         # strength (from separate dict)
         str_val = strength.get(raw_cd) or strength.get(nk)
@@ -614,15 +607,12 @@ async def _save_confirmed_cache(
                     else:
                         stk_nm = cd
 
-                # 당일 고가 추출 (pending detail 또는 cur_price)
-                today_high = detail.get("high_price") or detail.get("cur_price") or 0
-
                 # 1) master_stocks_table에 저장 (UPSERT 적용 - 기존 사용자 커스텀 업종 보존)
                 await conn.execute("""
                     INSERT INTO master_stocks_table
                     (code, name, market, sector, cur_price, change, change_rate,
-                     trade_amount, high_price, avg_5d_trade_amount, high_5d_price, date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     trade_amount, avg_5d_trade_amount, high_5d_price, date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(code) DO UPDATE SET
                         name = excluded.name,
                         market = excluded.market,
@@ -631,7 +621,6 @@ async def _save_confirmed_cache(
                         change = excluded.change,
                         change_rate = excluded.change_rate,
                         trade_amount = excluded.trade_amount,
-                        high_price = excluded.high_price,
                         avg_5d_trade_amount = excluded.avg_5d_trade_amount,
                         high_5d_price = excluded.high_5d_price,
                         date = excluded.date
@@ -644,7 +633,6 @@ async def _save_confirmed_cache(
                     detail.get("change", 0),
                     detail.get("change_rate", 0.0),
                     detail.get("trade_amount", 0),
-                    today_high,
                     detail.get("avg_5d_trade_amount", 0),
                     detail.get("high_5d_price", 0),
                     date_str
@@ -895,7 +883,6 @@ async def _run_confirmed_pipeline(
                                 "change_rate": 0.0,
                                 "sign": "3",
                                 "trade_amount": 0,
-                                "high_price": 0,
                                 "avg_5d_trade_amount": 0,
                                 "high_5d_price": 0,
                                 "date": "",

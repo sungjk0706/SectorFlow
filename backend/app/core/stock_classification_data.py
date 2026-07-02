@@ -160,7 +160,8 @@ async def sync_sector_from_custom_sectors() -> None:
     
     확정시세 다운로드 후 사용자 커스텀 업종 매핑 복구용.
     custom_sectors 테이블 기본 키: stock_code (단일)
-    master_stocks_table에 더 이상 존재하지 않는 종목은 custom_sectors에서도 정리.
+    master_stocks_table에 더 이상 존재하지 않는 종목은 custom_sectors에서 hidden = 1로 숨김 처리.
+    재상장 등으로 master_stocks_table에 다시 추가되면 hidden = 0으로 자동 복원.
     """
     from backend.app.db.database import get_db_connection
     import backend.app.services.engine_state as _st
@@ -168,9 +169,13 @@ async def sync_sector_from_custom_sectors() -> None:
     conn = await get_db_connection()
     
     try:
-        # custom_sectors에서 매핑 로드 (stock_code, name 순서)
-        cursor = await conn.execute("SELECT stock_code, name FROM custom_sectors")
+        # custom_sectors에서 매핑 로드 (hidden = 0인 활성 매핑만)
+        cursor = await conn.execute("SELECT stock_code, name FROM custom_sectors WHERE hidden = 0")
         rows = await cursor.fetchall()
+        
+        # hidden = 1인 숨김 종목도 로드 (재상장 시 복원 대상)
+        cursor = await conn.execute("SELECT stock_code, name FROM custom_sectors WHERE hidden = 1")
+        hidden_rows = await cursor.fetchall()
         
         # master_stocks_table에 존재하는 code 집합 조회
         cursor = await conn.execute("SELECT code FROM master_stocks_table")
@@ -178,11 +183,12 @@ async def sync_sector_from_custom_sectors() -> None:
         
         updated = 0
         orphaned = 0
+        restored = 0
         for row in rows:
             stock_code = row["stock_code"]
             if stock_code not in master_codes:
-                # master_stocks_table에 없는 종목 → custom_sectors에서 정리
-                await conn.execute("DELETE FROM custom_sectors WHERE stock_code = ?", (stock_code,))
+                # master_stocks_table에 없는 종목 → hidden = 1로 숨김 처리 (삭제하지 않음)
+                await conn.execute("UPDATE custom_sectors SET hidden = 1 WHERE stock_code = ?", (stock_code,))
                 orphaned += 1
                 continue
             await conn.execute(
@@ -191,16 +197,32 @@ async def sync_sector_from_custom_sectors() -> None:
             )
             updated += 1
         
-        await conn.commit()
-        _log.info("[동기화] custom_sectors 기반 master_stocks_table.sector 동기화 완료 -- %d종목, 고아 정리 %d종목", updated, orphaned)
+        # 숨김 종목 중 master_stocks_table에 다시 존재하게 된 종목 복원
+        for row in hidden_rows:
+            stock_code = row["stock_code"]
+            if stock_code in master_codes:
+                await conn.execute("UPDATE custom_sectors SET hidden = 0 WHERE stock_code = ?", (stock_code,))
+                await conn.execute(
+                    "UPDATE master_stocks_table SET sector = ? WHERE code = ?",
+                    (row["name"], stock_code)
+                )
+                restored += 1
+                updated += 1
         
-        # 메모리 캐시 sector 필드 갱신
+        await conn.commit()
+        _log.info("[동기화] custom_sectors 기반 master_stocks_table.sector 동기화 완료 -- %d종목, 숨김 %d종목, 복원 %d종목", updated, orphaned, restored)
+        
+        # 메모리 캐시 sector 필드 갱신 (활성 + 복원 종목 모두 포함)
         import backend.app.services.engine_service as es
         for row in rows:
             code = row["stock_code"]
             sector = row["name"]
             if code in _st._master_stocks_cache:
                 _st._master_stocks_cache[code]["sector"] = sector
+        for row in hidden_rows:
+            code = row["stock_code"]
+            if code in master_codes and code in _st._master_stocks_cache:
+                _st._master_stocks_cache[code]["sector"] = row["name"]
         
         _log.info("[동기화] 메모리 캐시 sector 필드 갱신 완료 -- %d종목", updated)
     except Exception as e:

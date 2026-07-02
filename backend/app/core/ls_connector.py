@@ -400,7 +400,12 @@ class LsConnector(BrokerConnector):
                 on_disconnect=self._on_socket_disconnect,
                 queue_callback=queue_callback,
             )
-            await self._socket.connect()
+            try:
+                await self._socket.connect()
+            except Exception:
+                logger.error("[LS증권연결] 초기 WebSocket 연결 실패 — 재연결 루프 기동", exc_info=True)
+                asyncio.get_running_loop().create_task(self._on_socket_disconnect())
+                raise
             self._connected = True
             logger.info("[LS증권연결] 연결 완료")
             try:

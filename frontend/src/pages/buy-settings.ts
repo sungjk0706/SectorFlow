@@ -22,6 +22,7 @@ let vals: Record<string, unknown> = {}
 let riseInput: ReturnType<typeof createNumInput> | null = null
 let fallInput: ReturnType<typeof createNumInput> | null = null
 let strengthInput: ReturnType<typeof createNumInput> | null = null
+let maxDailyToggle: ReturnType<typeof createToggleBtn> | null = null
 let maxDailyInput: ReturnType<typeof createMoneyInput> | null = null
 let maxStockCntInput: ReturnType<typeof createNumInput> | null = null
 let buyAmtInput: ReturnType<typeof createMoneyInput> | null = null
@@ -40,6 +41,11 @@ let boostOrderRow2: HTMLElement | null = null
 let boostProgramToggle: ReturnType<typeof createToggleBtn> | null = null
 let boostProgramScoreInput: ReturnType<typeof createNumInput> | null = null
 let boostProgramControls: HTMLElement | null = null
+
+// 재매수 차단 UI 참조
+let rebuyBlockToggle: ReturnType<typeof createToggleBtn> | null = null
+let rebuyBlockSelect: HTMLSelectElement | null = null
+let rebuyBlockControls: HTMLElement | null = null
 
 
 /* ── 헬퍼 ── */
@@ -64,7 +70,10 @@ function syncFromSettings(s: AppSettings): void {
   if (strengthInput && (!act || !strengthInput.el.contains(act))) strengthInput.setValue(Number(r.buy_min_strength) || 0)
 
   // 매수 금액
+  const dailyOn = !!r.max_daily_total_buy_on
+  maxDailyToggle?.setOn(dailyOn)
   if (maxDailyInput && (!act || !maxDailyInput.el.contains(act))) maxDailyInput.setValue(Number(r.max_daily_total_buy_amt) || 0)
+  if (maxDailyInput) setDisabled(maxDailyInput.el, !dailyOn)
   if (maxStockCntInput && (!act || !maxStockCntInput.el.contains(act))) maxStockCntInput.setValue(Number(r.max_stock_cnt) || 0)
   if (buyAmtInput && (!act || !buyAmtInput.el.contains(act))) buyAmtInput.setValue(Number(r.buy_amt) || 0)
 
@@ -93,6 +102,16 @@ function syncFromSettings(s: AppSettings): void {
   if (boostProgramScoreInput && (!act || !boostProgramScoreInput.el.contains(act))) boostProgramScoreInput.setValue(Number(r.boost_program_net_buy_score) ?? 1.0)
   if (boostProgramControls) {
     setDisabled(boostProgramControls, !programOn)
+  }
+
+  // 재매수 차단
+  const rebuyOn = r.rebuy_block_on !== undefined ? !!r.rebuy_block_on : true
+  rebuyBlockToggle?.setOn(rebuyOn)
+  if (rebuyBlockSelect && (!act || !rebuyBlockSelect.contains(act))) {
+    rebuyBlockSelect.value = String(r.rebuy_block_period ?? 'today')
+  }
+  if (rebuyBlockControls) {
+    setDisabled(rebuyBlockControls, !rebuyOn)
   }
 
 }
@@ -255,9 +274,24 @@ function mount(container: HTMLElement): void {
   // 매수 주문 유형 (시장가 고정)
   root.appendChild(createSettingRow('매수 주문 유형', createFixedValue('시장가')))
 
-  // 일일 최대 매수 금액
+  // 일일 최대 매수 금액 (토글 + 금액 입력)
   maxDailyInput = createMoneyInput({ value: 0, onChange: v => { vals.max_daily_total_buy_amt = v; saveHelper!.autoSave('max_daily_total_buy_amt', v) }, name: 'max_daily_total_buy_amt' })
-  root.appendChild(createSettingRow('일일 최대 매수 금액', maxDailyInput.el))
+  {
+    const labelWrap = document.createElement('span')
+    labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
+    maxDailyToggle = createToggleBtn({ on: false, onClick: () => {
+      const next = !maxDailyToggle!.isOn()
+      vals.max_daily_total_buy_on = next
+      maxDailyToggle!.setOn(next)
+      if (maxDailyInput) setDisabled(maxDailyInput.el, !next)
+      saveHelper!.autoSave('max_daily_total_buy_on', next)
+    }})
+    labelWrap.appendChild(maxDailyToggle.el)
+    const label = document.createElement('span')
+    label.textContent = '일일 최대 매수 금액'
+    labelWrap.appendChild(label)
+    root.appendChild(createSettingRow(labelWrap, maxDailyInput.el))
+  }
 
   // 최대 동시 보유 종목 수
   maxStockCntInput = createNumInput({ value: 0, onChange: v => { vals.max_stock_cnt = v; saveHelper!.autoSave('max_stock_cnt', v) }, name: 'max_stock_cnt' })
@@ -266,6 +300,56 @@ function mount(container: HTMLElement): void {
   // 종목당 일일 최대 매수 금액
   buyAmtInput = createMoneyInput({ value: 0, onChange: v => { vals.buy_amt = v; saveHelper!.autoSave('buy_amt', v) }, name: 'buy_amt' })
   root.appendChild(createSettingRow('종목당 일일 최대 매수 금액', buyAmtInput.el))
+
+  // ── 재매수 차단 섹션 ──
+  root.appendChild(sectionTitle('재매수 차단'))
+
+  // 재매수 차단 ON/OFF + 차단 기간 select
+  {
+    const labelWrap = document.createElement('span')
+    labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
+    rebuyBlockToggle = createToggleBtn({ on: true, onClick: () => {
+      const next = !(vals.rebuy_block_on !== false)
+      vals.rebuy_block_on = next
+      rebuyBlockToggle!.setOn(next)
+      if (rebuyBlockControls) {
+        setDisabled(rebuyBlockControls, !next)
+      }
+      saveHelper!.autoSave('rebuy_block_on', next)
+    }})
+    labelWrap.appendChild(rebuyBlockToggle.el)
+    const label = document.createElement('span')
+    label.textContent = '재매수 차단'
+    labelWrap.appendChild(label)
+
+    const controls = document.createElement('span')
+    controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
+    rebuyBlockControls = controls
+
+    rebuyBlockSelect = document.createElement('select')
+    rebuyBlockSelect.style.cssText = 'padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:13px;'
+    const periods: [string, string][] = [
+      ['today', '당일'],
+      ['1h', '1시간'],
+      ['3h', '3시간'],
+      ['6h', '6시간'],
+      ['12h', '12시간'],
+      ['24h', '24시간'],
+    ]
+    for (const [val, label] of periods) {
+      const opt = document.createElement('option')
+      opt.value = val
+      opt.textContent = label
+      rebuyBlockSelect.appendChild(opt)
+    }
+    rebuyBlockSelect.addEventListener('change', () => {
+      vals.rebuy_block_period = rebuyBlockSelect!.value
+      saveHelper!.autoSave('rebuy_block_period', rebuyBlockSelect!.value)
+    })
+    controls.appendChild(rebuyBlockSelect)
+
+    root.appendChild(createSettingRow(labelWrap, controls))
+  }
 
   container.appendChild(root)
 
@@ -286,7 +370,7 @@ function unmount(): void {
   if (saveHelper) { saveHelper.destroy(); saveHelper = null }
   if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }
   riseInput = null; fallInput = null; strengthInput = null
-  maxDailyInput = null; maxStockCntInput = null; buyAmtInput = null
+  maxDailyToggle = null; maxDailyInput = null; maxStockCntInput = null; buyAmtInput = null
   boostHighToggle = null; boostHighScoreInput = null; boostHighControls = null
   boostOrderToggle = null
   if (boostOrderDualSlider && typeof boostOrderDualSlider.destroy === 'function') {
@@ -295,6 +379,7 @@ function unmount(): void {
   boostOrderDualSlider = null
   boostOrderScoreInput = null; boostOrderControls = null; boostOrderRow2 = null
   boostProgramToggle = null; boostProgramScoreInput = null; boostProgramControls = null
+  rebuyBlockToggle = null; rebuyBlockSelect = null; rebuyBlockControls = null
   vals = {}
 }
 

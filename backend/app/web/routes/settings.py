@@ -116,7 +116,8 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         # 9. 일일매수 누적 인메모리 상태 리셋 + 매수 쿨다운/쓰로틀 기록 초기화 + WS buy-limit-status 발송
         if es._auto_trade:
             es._auto_trade._daily_buy_spent = 0
-            es._auto_trade._bought_today = set()
+            es._auto_trade._bought_today = {}
+            es._auto_trade._symbol_daily_buy_spent = {}
             es._auto_trade._buy_state.clear()
         # buy_targets 메모리 초기화 (매수후보 테이블 동기화)
         if es._sector_summary_cache and hasattr(es._sector_summary_cache, 'buy_targets'):

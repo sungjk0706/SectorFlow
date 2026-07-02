@@ -106,7 +106,7 @@ async def broadcast_stock_classification_changed() -> None:
     try:
         from backend.app.db.database import get_db_connection
         conn = await get_db_connection()
-        cursor = await conn.execute("SELECT stock_code, name FROM custom_sectors")
+        cursor = await conn.execute("SELECT stock_code, name FROM custom_sectors WHERE hidden = 0")
         rows = await cursor.fetchall()
         for row in rows:
             stock_moves[row["stock_code"]] = row["name"]

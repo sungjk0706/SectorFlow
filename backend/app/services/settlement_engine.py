@@ -116,6 +116,15 @@ async def on_sell_fill(price: int, qty: int, stk_cd: str, stk_nm: str) -> int:
     _orderable += net_proceeds
     await _persist()
     await _broadcast_delta()
+
+    # ── State Gate 회복: 매도 체결로 주문가능 금액 증가 시 매수 재평가 ──
+    try:
+        from backend.app.services.buy_order_executor import _cash_insufficient, evaluate_buy_candidates
+        if _cash_insufficient:
+            await evaluate_buy_candidates()
+    except Exception:
+        pass
+
     return _orderable
 
 

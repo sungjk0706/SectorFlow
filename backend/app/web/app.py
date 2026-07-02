@@ -30,8 +30,9 @@ async def lifespan(app: FastAPI):
 
     # DB 테이블 초기화 (CREATE TABLE IF NOT EXISTS — 기존 테이블 영향 없음)
     # 다른 DB read가 해당 테이블에 의존할 수 있으므로 가장 먼저 실행
-    from backend.app.db.stock_tables import init_cache_tables
+    from backend.app.db.stock_tables import init_cache_tables, migrate_add_hidden_to_custom_sectors
     await init_cache_tables()
+    await migrate_add_hidden_to_custom_sectors()
 
     # 전역 큐 초기화 (엔진 시작 전 보장)
     from backend.app.services.core_queues import initialize_queues

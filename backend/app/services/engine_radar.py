@@ -124,8 +124,6 @@ def _apply_real01_volume_amount_to_radar_rows(raw_cd: str, vals: dict, *, is_0b_
             entry["change_rate"] = parse_change_rate_to_percent(vals["12"])
         if "14" in vals:
             entry["trade_amount"] = int(_parse_float_loose(vals["14"]))
-        if "17" in vals:
-            entry["high_price"] = abs(int(_parse_float_loose(vals["17"])))
         if "228" in vals:
             entry["strength"] = str(vals["228"]).strip()
 

@@ -294,7 +294,8 @@ class WSManager:
             self.unregister(ws)
 
     def _send_sigterm(self) -> None:
-        """WS 클라이언트 전체 끊김 후 3초 내 재연결 없으면 백엔드 종료."""
+        """WS 클라이언트 전체 끊김 후 1초 내 재연결 없으면 백엔드 종료.
+        단, 브로커 재연결 루프 진행 중에는 종료하지 않고 타이머만 리셋."""
         import os
         import signal
         from backend.app.services.engine_state import state
@@ -302,6 +303,10 @@ class WSManager:
             self._shutdown_timer = None
             return
         if state.shutdown_requested:
+            return
+        if state.connector_manager is not None and not state.connector_manager.is_connected():
+            self._shutdown_timer = None
+            logger.info("[연결] 브로커 재연결 중 — shutdown 보류")
             return
         state.shutdown_requested = True
         logger.info("[연결] 재연결 없음 — SIGTERM 전송 (Graceful Shutdown)")
