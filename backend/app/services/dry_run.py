@@ -72,7 +72,8 @@ async def _schedule_save_positions() -> None:
             _pos_save_event.set()
             return
         _pos_save_running = True
-    asyncio.create_task(_save_positions_worker())
+    _task = asyncio.create_task(_save_positions_worker())
+    _task.add_done_callback(lambda t: logger.warning("[테스트모드] 포지션 저장 태스크 실패: %s", t.exception()) if t.exception() else None)
 
 
 async def _save_positions_worker() -> None:

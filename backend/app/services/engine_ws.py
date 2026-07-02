@@ -123,13 +123,11 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
     # 배치에서 이미 구독됐으면 단건 불필요 (0B 기준)
     item_cd = _base_stk_cd(stk_cd)
     if state.master_stocks_cache.get(item_cd, {}).get("_subscribed"):
-        logger.debug("[데이터] 단건 REG 생략(배치 완료) -- %s", item_cd)
         return
 
     # 배치에 포함되지 않은 신규 모니터링 종목 — 단건 0B REG 전송
     ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected():
-        logger.debug("[데이터] 단건 REG 생략 — WS 미연결/미로그인 %s", item_cd)
         return
 
     if item_cd in state.master_stocks_cache:
@@ -137,7 +135,7 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
 
     ok = await ws.subscribe_stocks([item_cd])
     if ok:
-        logger.debug("[데이터] 단건 0B REG 완료 -- %s", item_cd)
+        pass
     else:
         if item_cd in state.master_stocks_cache:
             state.master_stocks_cache[item_cd].pop("_subscribed", None)

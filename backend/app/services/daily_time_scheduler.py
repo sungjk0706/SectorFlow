@@ -14,6 +14,7 @@ from datetime import datetime, timezone, timedelta
 from backend.app.core.logger import get_logger
 from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
 from backend.app.services.engine_state import state
+from backend.app.services.engine_lifecycle import schedule_engine_task
 
 logger = get_logger("engine")
 
@@ -315,7 +316,7 @@ async def _on_krx_market_open() -> None:
             notify_desktop_sector_stocks_refresh,
         )
         await recompute_sector_summary_now()
-        notify_desktop_sector_scores(force=True)
+        await notify_desktop_sector_scores(force=True)
         await notify_desktop_sector_stocks_refresh()
         _broadcast_market_phase()
     except Exception as e:
@@ -340,7 +341,7 @@ async def _on_krx_after_hours_start() -> None:
             notify_desktop_sector_stocks_refresh,
         )
         await recompute_sector_summary_now()
-        notify_desktop_sector_scores(force=True)
+        await notify_desktop_sector_scores(force=True)
         await notify_desktop_sector_stocks_refresh()
         _broadcast_market_phase()
 
@@ -369,11 +370,9 @@ def _fire_unified_confirmed_fetch() -> None:
     """
     try:
         if state.confirmed_done:
-            logger.debug("[타이머] 통합 확정 조회 이미 완료 — 생략")
             return
         state.confirmed_done = True
-        loop = asyncio.get_running_loop()
-        loop.create_task(_do_unified_confirmed_fetch())
+        schedule_engine_task(_do_unified_confirmed_fetch(), context="통합 확정 조회")
     except Exception as e:
         logger.warning("[타이머] 통합 확정 조회 시작 오류: %s", e, exc_info=True)
 
@@ -478,8 +477,7 @@ def _broadcast_market_phase() -> None:
         state.market_phase["krx"] = fresh["krx"]
         state.market_phase["nxt"] = fresh["nxt"]
         phase = get_market_phase()
-        _broadcast("market-phase", phase)
-        logger.debug("[타이머] market-phase 화면전송: %s", phase)
+        schedule_engine_task(_broadcast("market-phase", phase), context="market-phase 브로드캐스트")
     except Exception as e:
         logger.warning("[타이머] market-phase 화면전송 오류: %s", e, exc_info=True)
 
@@ -526,7 +524,7 @@ async def _apply_auto_toggle_on_startup(settings: dict) -> None:
                 notify_desktop_header_refresh,
                 notify_desktop_settings_toggled,
             )
-            notify_desktop_header_refresh()
+            await notify_desktop_header_refresh()
             await notify_desktop_settings_toggled()
         except Exception as e:
             logger.warning("[데이터] 화면전송 실패: %s", e, exc_info=True)
@@ -553,7 +551,7 @@ async def _restore_from_holiday_flag(settings: dict) -> bool:
                 notify_desktop_header_refresh,
                 notify_desktop_settings_toggled,
             )
-            notify_desktop_header_refresh()
+            await notify_desktop_header_refresh()
             await notify_desktop_settings_toggled()
         except Exception as e:
             logger.warning("[데이터] 화면전송 실패: %s", e, exc_info=True)
@@ -595,7 +593,7 @@ async def _on_ws_subscribe_start() -> None:
                     notify_desktop_header_refresh,
                     notify_desktop_settings_toggled,
                 )
-                notify_desktop_header_refresh()
+                await notify_desktop_header_refresh()
                 await notify_desktop_settings_toggled()
             except Exception as e:
                 logger.warning("[데이터] 화면전송 실패: %s", e, exc_info=True)
@@ -655,7 +653,7 @@ async def _on_ws_subscribe_end() -> None:
                 notify_desktop_header_refresh,
                 notify_desktop_settings_toggled,
             )
-            notify_desktop_header_refresh()
+            await notify_desktop_header_refresh()
             await notify_desktop_settings_toggled()
         except Exception as _e:
             logger.warning("[타이머] 구독 종료 OFF 저장 실패: %s", _e, exc_info=True)
@@ -671,20 +669,12 @@ async def _on_ws_subscribe_end() -> None:
 
 def _fire_ws_subscribe_end() -> None:
     """call_later 콜백용 동기 래퍼 -- 비동기 _on_ws_subscribe_end()를 태스크로 감싸서 실행하는 함수."""
-    try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(_on_ws_subscribe_end())
-    except RuntimeError:
-        pass
+    schedule_engine_task(_on_ws_subscribe_end(), context="실시간 구독 종료")
 
 
 def _fire_confirmed_download() -> None:
     """call_later 콜백용 동기 래퍼 — confirmed_download_time 도달 시 확정 데이터 다운로드 트리거."""
-    try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(_on_confirmed_download())
-    except RuntimeError:
-        pass
+    schedule_engine_task(_on_confirmed_download(), context="확정 데이터 다운로드")
 
 
 async def _on_confirmed_download() -> None:
@@ -698,11 +688,7 @@ async def _on_confirmed_download() -> None:
 
 def _fire_ws_disconnect_only() -> None:
     """설정 변경으로 인한 구독 해제 전용 — 구독 해제 + WS 끊기만 수행, 장마감 후처리(갱신/캐시저장) 없음."""
-    try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(_ws_disconnect_only())
-    except RuntimeError:
-        pass
+    schedule_engine_task(_ws_disconnect_only(), context="WS 구독 해제 전용")
 
 
 async def _ws_disconnect_only() -> None:
@@ -754,13 +740,13 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
     delay_end = _seconds_until_hm(eh, em)
 
     if delay_start > 0 and loop:
-        h = loop.call_later(max(delay_start, 1), lambda: asyncio.create_task(_on_ws_subscribe_start()))
+        h = loop.call_later(max(delay_start, 1), lambda: schedule_engine_task(_on_ws_subscribe_start(), context="실시간 구독 시작"))
         state.ws_subscribe_timer_handles.append(h)
         logger.debug("[타이머] 실시간 구독 시작 (%s) -- %.0f초 후 예약", ws_start_str, delay_start)
     elif delay_start <= 0 and delay_end > 0 and loop:
         # 이미 구독 구간 내 — _init_ws_subscribe_state가 단일 책임으로 처리
         # 내일 ws_subscribe_start 시각에 타이머 예약 (24시간 후)
-        h = loop.call_later(max(delay_start + 86400, 1), lambda: asyncio.create_task(_on_ws_subscribe_start()))
+        h = loop.call_later(max(delay_start + 86400, 1), lambda: schedule_engine_task(_on_ws_subscribe_start(), context="실시간 구독 시작(내일)"))
         state.ws_subscribe_timer_handles.append(h)
         logger.debug("[타이머] 실시간 구독 시작 (%s) -- 구독 구간 내 기동, 내일 예약", ws_start_str)
 
@@ -773,7 +759,7 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
     delay_krx_open = _seconds_until_hm(9, 0)
     if delay_krx_open > 0 and loop:
         def _krx_open_wrapper() -> None:
-            asyncio.create_task(_on_krx_market_open())
+            schedule_engine_task(_on_krx_market_open(), context="KRX 정규장 진입")
         h = loop.call_later(max(delay_krx_open, 1), _krx_open_wrapper)
         state.ws_subscribe_timer_handles.append(h)
         logger.debug("[타이머] KRX 정규장 진입 (09:00) -- %.0f초 후 예약", delay_krx_open)
@@ -782,7 +768,7 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
     delay_krx_after = _seconds_until_hm(15, 30)
     if delay_krx_after > 0 and loop:
         def _krx_after_wrapper() -> None:
-            asyncio.create_task(_on_krx_after_hours_start())
+            schedule_engine_task(_on_krx_after_hours_start(), context="KRX 장외 전환")
         h = loop.call_later(max(delay_krx_after, 1), _krx_after_wrapper)
         state.ws_subscribe_timer_handles.append(h)
         logger.debug("[타이머] KRX 장외 전환 (15:30) -- %.0f초 후 예약", delay_krx_after)
@@ -871,12 +857,8 @@ def _trigger_reg_pipeline() -> None:
         ws = state.connector_manager or state.active_connector
         if ws and ws.is_connected() and state.login_ok:
             import asyncio
-            try:
-                loop = asyncio.get_running_loop()
-                from backend.app.services.engine_bootstrap import _login_post_pipeline
-                loop.create_task(_login_post_pipeline())
-            except RuntimeError:
-                pass
+            from backend.app.services.engine_bootstrap import _login_post_pipeline
+            schedule_engine_task(_login_post_pipeline(), context="REG 파이프라인 재실행")
         else:
             logger.info("[타이머] 구독 구간 진입 -- WS 미연결 상태, 연결 후 자동 구독됨")
     except Exception as e:
@@ -958,9 +940,8 @@ async def _on_auto_trade_transition(label: str) -> None:
         )
         logger.info("[타이머] 자동매매 시간 전환 -- %s", label)
         # 엔진 설정 캐시 갱신 (메모리만, 디스크 I/O 없음)
-        loop = asyncio.get_running_loop()
-        loop.create_task(engine_service.refresh_engine_integrated_system_settings_cache(None, use_root=True))
-        notify_desktop_header_refresh()
+        schedule_engine_task(engine_service.refresh_engine_integrated_system_settings_cache(None, use_root=True), context="설정 캐시 갱신")
+        await notify_desktop_header_refresh()
         await notify_desktop_settings_toggled()
     except Exception as e:
         logger.warning("[타이머] 자동매매 전환 콜백 오류: %s", e)
@@ -1009,7 +990,7 @@ async def schedule_auto_trade_timers(settings: dict | None = None) -> None:
             continue  # 이미 지난 시각은 스킵
         if delay < 1:
             delay = 1  # 최소 1초 (즉시 실행 방지)
-        handle = loop.call_later(delay, lambda: loop.create_task(_on_auto_trade_transition(label)))
+        handle = loop.call_later(delay, lambda: schedule_engine_task(_on_auto_trade_transition(label), context=f"자동매매 전환({label})"))
         state.auto_trade_timer_handles.append(handle)
         logger.debug(
             "[타이머] %s (%s) -- %.0f초 후 예약",
@@ -1071,7 +1052,7 @@ def schedule_midnight_timer() -> None:
     if delay <= 0:
         # 이미 자정 지남 → 다음날 자정까지 (24시간 + delay)
         delay += 86400
-    state.midnight_timer_handle = loop.call_later(max(delay, 1), lambda: loop.create_task(_on_midnight()))
+    state.midnight_timer_handle = loop.call_later(max(delay, 1), lambda: schedule_engine_task(_on_midnight(), context="자정 날짜 변경"))
     logger.debug("[타이머] 자정 타이머 -- %.0f초 후 예약", delay)
 
 

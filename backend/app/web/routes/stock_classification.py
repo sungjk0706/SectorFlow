@@ -137,7 +137,7 @@ async def broadcast_stock_classification_changed() -> None:
         if not q.full():
             q.put_nowait({"type": "stock-classification-changed", "data": payload})
     except Exception:
-        ws_manager.broadcast("stock-classification-changed", payload)
+        await ws_manager.broadcast("stock-classification-changed", payload)
 
 
 
@@ -191,8 +191,8 @@ async def get_stock_classification(_: str = Depends(get_current_user)):
         filter_summary = assemble_filter_summary(
             getattr(_es.state, "latest_filter_summary_meta", ""), len(stocks)
         )
-    except Exception:
-        pass
+    except Exception as e:
+        _log.warning("[업종관리] filter_summary 생성 실패: %s", e, exc_info=True)
 
     return {
         "custom_data": {
@@ -303,7 +303,8 @@ async def trigger_confirmed_download(_: str = Depends(get_current_user)):
         from backend.app.services.engine_account_notify import _rebuild_layout_cache
         _rebuild_layout_cache([])
         from backend.app.services.market_close_pipeline import fetch_confirmed_data_only
-        asyncio.create_task(fetch_confirmed_data_only())
+        _task = asyncio.create_task(fetch_confirmed_data_only())
+        _task.add_done_callback(lambda t: _log.warning("[업종관리] 1일봉챠트 다운로드 태스크 실패: %s", t.exception()) if t.exception() else None)
         _log.info("[업종관리] 수동 1일봉챠트 시세 다운로드 시작")
         return {"ok": True}
     except Exception as e:
@@ -322,7 +323,8 @@ async def trigger_5d_download(_: str = Depends(get_current_user)):
             return {"ok": False, "error": "5일봉 다운로드가 이미 진행 중입니다."}
 
         from backend.app.services.market_close_pipeline import fetch_5d_data_only
-        asyncio.create_task(fetch_5d_data_only())
+        _task = asyncio.create_task(fetch_5d_data_only())
+        _task.add_done_callback(lambda t: _log.warning("[업종관리] 5일봉 다운로드 태스크 실패: %s", t.exception()) if t.exception() else None)
         _log.info("[업종관리] 수동 5일봉 거래대금,고가 다운로드 시작")
         return {"ok": True}
     except Exception as e:

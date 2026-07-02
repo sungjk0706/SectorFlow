@@ -22,8 +22,8 @@ async def get_merged_sector(stock_code: str) -> str:
         entry = es._master_stocks_cache.get(stock_code)
         if entry and "sector" in entry:
             return entry["sector"] or "미분류"
-    except Exception:
-        pass
+    except Exception as e:
+        _log.warning("[업종매핑] 인메모리 캐시 조회 실패: %s", e)
 
     # 2) SQLite DB에서 조회
     from backend.app.db.database import get_db_connection
@@ -57,8 +57,8 @@ async def get_merged_sectors_batch(codes: list[str]) -> dict[str, str]:
             if entry and "sector" in entry:
                 result[cd] = entry["sector"] or "미분류"
                 continue
-        except Exception:
-            pass
+        except Exception as e:
+            _log.warning("[매핑] 인메모리 캐시 배치 조회 실패 (%s): %s", upper_cd, e)
         missed.append(upper_cd)
 
     if missed:

@@ -39,7 +39,8 @@ async def lifespan(app: FastAPI):
 
     # Gateway 루프 시작 (엔진과 독립적으로 실행 - 파이프라인 독립성 보장)
     from backend.app.pipelines.pipeline_gateway import start_gateway_loop
-    asyncio.create_task(start_gateway_loop())
+    _gateway_task = asyncio.create_task(start_gateway_loop())
+    _gateway_task.add_done_callback(lambda t: logger.warning("[웹서버] Gateway 루프 태스크 실패: %s", t.exception()) if t.exception() else None)
     logger.info("[웹서버] Gateway 루프 시작 완료")
 
     # ── 3개 독립 DB read 작업 병렬 실행 (순차 대기 시간 제거) ──
@@ -116,11 +117,13 @@ async def lifespan(app: FastAPI):
                     logger.info("[웹서버] 텔레그램 폴링 시작 (후순위)")
                 else:
                     logger.info("[웹서버] 텔레그램 OFF — 폴링 시작 안 함")
-            asyncio.create_task(_start_telegram_lazy())
+            _tg_task = asyncio.create_task(_start_telegram_lazy())
+            _tg_task.add_done_callback(lambda t: logger.warning("[웹서버] 텔레그램 지연시작 태스크 실패: %s", t.exception()) if t.exception() else None)
         except Exception as e:
             logger.error("[웹서버] 엔진 백그라운드 초기화 실패: %s", e, exc_info=True)
 
-    asyncio.create_task(_engine_init_background())
+    _engine_init_task = asyncio.create_task(_engine_init_background())
+    _engine_init_task.add_done_callback(lambda t: logger.warning("[웹서버] 엔진 초기화 태스크 실패: %s", t.exception()) if t.exception() else None)
 
     yield
 

@@ -37,7 +37,7 @@ async def _cache_and_bootstrap(settings: dict) -> None:
     # 앱준비 완료 여부와 상관없이 engine-ready 전송
     try:
         from backend.app.web.ws_manager import ws_manager
-        ws_manager.broadcast("engine-ready", {"_v": 1, "ready": True})
+        await ws_manager.broadcast("engine-ready", {"_v": 1, "ready": True})
         logger.info("[시작] 데이터준비 완료 -- 실시간 준비됨")
     except Exception:
         logger.warning("[시작] engine-ready 브로드캐스트 실패", exc_info=True)
@@ -197,7 +197,7 @@ async def run_engine_loop() -> None:
         if not valid_brokers:
             from backend.app.services.engine_service import log_message, broadcast_engine_status
             log_message(f" [시작] 유효한 API 키가 없습니다. 일반설정에서 증권사 API 키를 입력하세요.")
-            broadcast_engine_status()
+            await broadcast_engine_status()
             # 엔진 중단하지 않고 계속 진행 (테스트모드/스냅샷 전용 모드 허용)
 
         # REST/토큰 발급은 기준 증권사(broker_nm) 기준 유지
@@ -285,7 +285,7 @@ async def run_engine_loop() -> None:
             _sync_sell_overrides_from_settings()
 
         from backend.app.services.engine_service import _broadcast_engine_ws
-        _broadcast_engine_ws()
+        await _broadcast_engine_ws()
 
         # ── 백그라운드 태스크로 파이프라인 루프 시작 (Step 7: 중앙 코디네이터 연동) ──
         # 테스트모드와 무관하게 항상 시작 (UI 전송 등 돈과 무관한 기능 실행)
@@ -321,7 +321,7 @@ async def run_engine_loop() -> None:
                         state.active_connector = _mgr.get_connector(broker_nm)
                         await _mgr.connect_all()
                         logger.info("[연결] 실시간 연결 완료")
-                        _broadcast_engine_ws()
+                        await _broadcast_engine_ws()
                     except Exception as e:
                         logger.error("[연결] 실시간 연결 초기화 실패: %s", e, exc_info=True)
                         state.connector_manager = None
@@ -334,7 +334,7 @@ async def run_engine_loop() -> None:
                         state.connector_manager = None
                         state.active_connector = None
                         logger.info("[연결] 실시간 연결 해제 완료")
-                        _broadcast_engine_ws()
+                        await _broadcast_engine_ws()
                     except Exception as e:
                         logger.error("[연결] 실시간 연결 해제 실패: %s", e, exc_info=True)
 
@@ -403,5 +403,5 @@ async def run_engine_loop() -> None:
         state.broker_tokens.clear()
         state.running = False
         from backend.app.services.engine_service import broadcast_engine_status, log_message, get_current_kst_time
-        broadcast_engine_status()
+        await broadcast_engine_status()
         log_message(f"[시작] 정지됨 ({get_current_kst_time()})")

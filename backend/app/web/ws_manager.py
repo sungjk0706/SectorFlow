@@ -3,7 +3,7 @@ from __future__ import annotations
 """WebSocket 클라이언트 연결 관리 — 즉시 broadcast.
 
 set[WebSocket] 기반 직접 참조.
-broadcast()는 동기 함수로, 모든 이벤트를 create_task 기반 즉시 전송한다.
+broadcast()는 async 함수로, 모든 이벤트를 await 기반 직접 전송한다.
 """
 
 import asyncio
@@ -96,7 +96,7 @@ class WSManager:
     # 클라이언트 등록 / 해제
     # ------------------------------------------------------------------
 
-    def register(self, ws: WebSocket) -> None:
+    async def register(self, ws: WebSocket) -> None:
         """클라이언트를 _clients set에 추가."""
         self._clients.add(ws)
         if self._shutdown_timer is not None:
@@ -105,11 +105,7 @@ class WSManager:
             logger.info("[연결] 재연결 감지 — shutdown 타이머 취소")
         logger.debug("[연결] 클라이언트 연결 (총 %d)", len(self._clients))
         # 클라이언트 연결 시점 초기 데이터 전송 (타이밍 문제 해결)
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self._send_initial_data_on_connect(ws))
-        except RuntimeError:
-            pass
+        await self._send_initial_data_on_connect(ws)
 
     def unregister(self, ws: WebSocket) -> None:
         """클라이언트를 _clients set에서 제거."""
@@ -122,7 +118,7 @@ class WSManager:
                 self._shutdown_timer = loop.call_later(1.0, self._send_sigterm)
                 logger.info("[연결] 전체 WS 끊김 — 1초 후 shutdown 예약 (새로고침 대기)")
             except RuntimeError:
-                pass
+                logger.warning("[WS] shutdown 타이머 예약 실패 — 이벤트 루프 없음", exc_info=True)
         logger.debug("[연결] 클라이언트 해제 (총 %d)", len(self._clients))
 
     # ------------------------------------------------------------------
@@ -224,8 +220,8 @@ class WSManager:
         for ws in dead:
             self.unregister(ws)
 
-    def broadcast_to_pages(self, event_type: str, data: dict, pages: set[str]) -> None:
-        """특정 페이지에 활성화된 클라이언트에게만 즉시 전송 (동기, await 없음).
+    async def broadcast_to_pages(self, event_type: str, data: dict, pages: set[str]) -> None:
+        """특정 페이지에 활성화된 클라이언트에게만 즉시 전송.
 
         pages: 전송 대상 페이지 집합 (예: {"profit-overview", "sell-position"})
         """
@@ -237,8 +233,7 @@ class WSManager:
         if not target_clients:
             return
 
-        loop = asyncio.get_running_loop()
-        loop.create_task(self._send_to_pages_immediate(event_type, data, target_clients))
+        await self._send_to_pages_immediate(event_type, data, target_clients)
 
     async def _send_to_pages_immediate(self, event_type: str, data: dict, target_clients: set[WebSocket]) -> None:
         """특정 클라이언트 집합에 즉시 전송."""
@@ -253,39 +248,31 @@ class WSManager:
         for ws in dead:
             self.unregister(ws)
 
-    def broadcast(self, event_type: str, data: dict) -> None:
-        """모든 클라이언트에 즉시 전송 (동기, await 없음).
+    async def broadcast(self, event_type: str, data: dict) -> None:
+        """모든 클라이언트에 즉시 전송.
 
         real-data: FID 필터 + key shorten 후 클라이언트별 구독 FID 반영하여 즉시 전송
-        기타 이벤트: create_task로 _send_broadcast 즉시 전송
+        기타 이벤트: _send_broadcast 즉시 전송
         """
         if not self._clients:
             return
         if event_type == "real-data":
-            try:
-                loop = asyncio.get_running_loop()
-                from backend.app.services.engine_symbol_utils import _base_stk_cd
-                raw_code = str(data.get("item") or "").strip()
-                code = _base_stk_cd(raw_code) if raw_code else ""
-                loop.create_task(self._send_realdata_encoded(data, code))
-            except RuntimeError:
-                pass
+            from backend.app.services.engine_symbol_utils import _base_stk_cd
+            raw_code = str(data.get("item") or "").strip()
+            code = _base_stk_cd(raw_code) if raw_code else ""
+            await self._send_realdata_encoded(data, code)
             return
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self._send_broadcast(event_type, data))
-        except RuntimeError:
-            pass
+        await self._send_broadcast(event_type, data)
 
     def broadcast_threadsafe(self, event_type: str, data: dict, loop: asyncio.AbstractEventLoop) -> None:
         """스레드풀(asyncio.to_thread) 내부에서 안전하게 호출 가능한 브로드캐스트.
 
-        call_soon_threadsafe()로 메인 이벤트 루프에 coroutine을 예약하므로
+        run_coroutine_threadsafe()로 메인 이벤트 루프에 coroutine을 예약하므로
         이벤트 루프가 없는 스레드에서도 RuntimeError 없이 동작한다.
         """
         if not self._clients:
             return
-        loop.call_soon_threadsafe(self.broadcast, event_type, dict(data))
+        asyncio.run_coroutine_threadsafe(self.broadcast(event_type, data), loop)
 
     async def _send(self, ws: WebSocket, text: str) -> None:
         """단일 클라이언트 전송. 실패 시 해당 클라이언트만 제거."""

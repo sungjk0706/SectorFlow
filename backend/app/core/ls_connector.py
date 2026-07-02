@@ -150,12 +150,12 @@ class _LsSocket:
                     if not self._stop_event.is_set():
                         logger.warning("[LS서버소켓] 연결 끊김 (%s) — 수신 종료", err_name)
                         if self._on_disconnect:
-                            asyncio.get_running_loop().create_task(self._on_disconnect())
+                            await self._on_disconnect()
                     break
                 else:
                     if not self._stop_event.is_set():
                         logger.warning("[LS서버소켓] 수신 오류(계속): %s", e, exc_info=True)
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.1)
 
         logger.info("[LS서버소켓] 수신 종료")
 
@@ -173,36 +173,29 @@ class _LsSocket:
             if not shcode:
                 return None
 
-            # LS에서 받은 데이터는 문자열이므로 숫자로 변환 (엔진 호환성을 위해 값 추출 시 정규화)
             price = int(body.get("price", 0) or 0)
-            volume = int(body.get("volume", 0) or 0)
             value = int(body.get("value", 0) or 0)
-            chetime = str(body.get("chetime", "")).strip()
             sign = str(body.get("sign", "3")).strip()
             change = int(body.get("change", 0) or 0)
             drate = float(body.get("drate", 0) or 0)
-            
-            # KRX 실시간 체결 틱에서 drate 누락 대비 보정 로직
+
             if drate == 0.0 and change > 0 and price > 0:
+                logger.warning("[LS US3] drate 누락 — 서버 데이터 품질 이슈. code=%s sign=%s change=%d price=%d", shcode, sign, change, price)
                 if sign in ("4", "5"):
                     prev_close = price + change
                 elif sign in ("1", "2"):
                     prev_close = price - change
                 else:
                     prev_close = price
-                
+
                 if prev_close > 0:
                     drate = round((change / prev_close) * 100, 2)
-            open_price = int(body.get("open", 0) or 0)
+
             high = int(body.get("high", 0) or 0)
-            low = int(body.get("low", 0) or 0)
-            cvolume = int(body.get("cvolume", 0) or 0)
-            cgubun = str(body.get("cgubun", "")).strip()
             offerho = int(body.get("offerho", 0) or 0)
             bidho = int(body.get("bidho", 0) or 0)
             cpower = float(body.get("cpower", 0) or 0.0)
 
-            # 부호 적용 (키움 포맷)
             sign_char = ""
             if sign in ("4", "5"):
                 sign_char = "-"
@@ -213,26 +206,20 @@ class _LsSocket:
             change_str = f"{sign_char}{change}" if sign_char else str(change)
             drate_str = f"{sign_char}{drate}" if sign_char else str(drate)
 
-            # 내부 형식 (키움 REAL과 완벽 호환되도록 type, values 래핑 및 FID 매핑)
             return {
                 "trnm": "REAL",
                 "data": [{
-                    "type": "0B", # 주식 체결
+                    "type": "0B",
                     "code": shcode,
                     "values": {
-                        "10": price_str,       # 현재가
-                        "11": change_str,      # 전일대비
-                        "12": drate_str,       # 등락률
-                        "13": str(cvolume),    # 거래량(당일체결량)
-                        "14": str(value),      # 누적거래대금(백만원)
-                        "15": str(volume),     # 누적거래량
-                        "16": str(open_price), # 시가
-                        "17": str(high),       # 고가
-                        "18": str(low),        # 저가
-                        "20": chetime,         # 체결시간
-                        "27": str(offerho),    # 최우선매도호가
-                        "28": str(bidho),      # 최우선매수호가
-                        "228": str(cpower),    # 체결강도
+                        "10": price_str,
+                        "11": change_str,
+                        "12": drate_str,
+                        "14": str(value),
+                        "17": str(high),
+                        "27": str(offerho),
+                        "28": str(bidho),
+                        "228": str(cpower),
                     }
                 }]
             }
@@ -305,10 +292,6 @@ class _LsSocket:
                     }
                 }]
             }
-        elif tr_cd == "BM_":
-            # 업종 데이터 (향후 확장용)
-            logger.debug("[LS서버소켓] 업종 데이터 수신 (현재 미사용): %s", tr_cd)
-            return None
         else:
             # logger.debug("[LS서버소켓] 알 수 없는 TR 코드: %s", tr_cd)  # 로깅 억제
             return None
@@ -341,7 +324,7 @@ class LsConnector(BrokerConnector):
         self._realtime_enabled: bool = True  # 실시간 연결 ON/OFF 플래그
         self._auto_trade_enabled: bool = True  # 자동매매 ON/OFF 플래그
         self._holiday_block_enabled: bool = True  # 공휴일 자동 차단 ON/OFF
-        self._reconnect_task: asyncio.Task | None = None
+        self._reconnecting: bool = False
         self._stop_reconnect: bool = False
         self._ws_queue: asyncio.Queue | None = None  # Producer-Consumer Queue
 
@@ -405,7 +388,7 @@ class LsConnector(BrokerConnector):
                         try:
                             self._ws_queue.get_nowait()
                             self._ws_queue.put_nowait(msg)
-                            logger.debug("[LS증권연결] tick_queue 드롭 발생 - 최신 데이터 유지")
+                            logger.warning("[LS증권연결] tick_queue 드롭 발생 - 최신 데이터 유지")
                         except asyncio.QueueEmpty:
                             self._ws_queue.put_nowait(msg)
                 queue_callback = _queue_put_with_drop
@@ -450,13 +433,6 @@ class LsConnector(BrokerConnector):
     async def disconnect(self) -> None:
         """수신루프 중단 + WebSocket 종료. 재연결 루프도 중단."""
         self._stop_reconnect = True
-        if self._reconnect_task and not self._reconnect_task.done():
-            self._reconnect_task.cancel()
-            try:
-                await self._reconnect_task
-            except asyncio.CancelledError:
-                pass
-            self._reconnect_task = None
         if self._lock is None:
             self._lock = asyncio.Lock()
         async with self._lock:
@@ -515,10 +491,7 @@ class LsConnector(BrokerConnector):
             success = await self._socket.send(payload)
             if not success:
                 success_all = False
-            else:
-                logger.debug("[LS증권연결] 구독 등록: %s", code)
-            # 웹소켓 부하 조절을 위해 지연 추가 (0.1초 간격)
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.01)
         return success_all
 
     async def unsubscribe_stocks(self, codes: list[str]) -> bool:
@@ -548,9 +521,7 @@ class LsConnector(BrokerConnector):
             success = await self._socket.send(payload)
             if not success:
                 success_all = False
-            else:
-                logger.debug("[LS증권연결] 구독 해지: %s", code)
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0)
         return success_all
 
     async def subscribe_stocks_tr(self, codes: list[str], tr_cd: str) -> bool:
@@ -581,7 +552,7 @@ class LsConnector(BrokerConnector):
                 success_all = False
             else:
                 logger.info(f"[LS증권연결] {tr_cd} 구독 등록: {code}")
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0)
         return success_all
 
     async def unsubscribe_stocks_tr(self, codes: list[str], tr_cd: str) -> bool:
@@ -609,9 +580,7 @@ class LsConnector(BrokerConnector):
             success = await self._socket.send(payload)
             if not success:
                 success_all = False
-            else:
-                logger.debug(f"[LS증권연결] {tr_cd} 구독 해지: {code}")
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0)
         return success_all
 
     async def subscribe_dynamic(self, codes: list[str]) -> None:
@@ -700,9 +669,13 @@ class LsConnector(BrokerConnector):
             broadcast_ws_connection_status(False)
         except Exception:
             logger.warning("[LS증권연결] 연결 끊김 상태 브로드캐스트 실패", exc_info=True)
-        if self._reconnect_task and not self._reconnect_task.done():
+        if self._reconnecting:
             return
-        self._reconnect_task = asyncio.get_running_loop().create_task(self._reconnect_loop())
+        self._reconnecting = True
+        try:
+            await self._reconnect_loop()
+        finally:
+            self._reconnecting = False
 
     async def _reconnect_loop(self) -> None:
         """지수 백오프 재연결 루프 (1→2→4→8→16→32초, 최대 10회)."""
@@ -735,7 +708,7 @@ class LsConnector(BrokerConnector):
                                 try:
                                     self._ws_queue.get_nowait()
                                     self._ws_queue.put_nowait(msg)
-                                    logger.debug("[LS증권연결] tick_queue 드롭 발생 (재연결) - 최신 데이터 유지")
+                                    logger.warning("[LS증권연결] tick_queue 드롭 발생 (재연결) - 최신 데이터 유지")
                                 except asyncio.QueueEmpty:
                                     self._ws_queue.put_nowait(msg)
                         queue_callback = _queue_put_with_drop
@@ -752,17 +725,20 @@ class LsConnector(BrokerConnector):
                     try:
                         from backend.app.services.engine_state import state
                         state.login_ok = True
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("[LS증권연결] login_ok 설정 실패: %s", e)
                 logger.info("[LS증권연결] 재연결 성공 (시도 %d회)", attempt)
                 # 재연결 성공 후 큐 클리어 (과거 데이터 제거)
                 if self._ws_queue is not None:
+                    cleared = 0
                     while not self._ws_queue.empty():
                         try:
                             self._ws_queue.get_nowait()
+                            cleared += 1
                         except asyncio.QueueEmpty:
                             break
-                    logger.info("[LS증권연결] 재연결 후 큐 클리어 완료")
+                    if cleared > 0:
+                        logger.warning("[LS증권연결] 재연결 후 큐 클리어 — %d건 틱 폐기 (재연결 전 과거 데이터 제거)", cleared)
                 try:
                     from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
                     broadcast_ws_connection_status(True)
@@ -780,7 +756,7 @@ class LsConnector(BrokerConnector):
                     logger.warning("[LS증권연결] 재연결 후 IJ_ 구독 실패", exc_info=True)
                 # 재연결 후 구독 복원은 ConnectorManager가 담당
                 if self._on_reconnect_success:
-                    asyncio.get_running_loop().create_task(self._on_reconnect_success(self.broker_id))
+                    await self._on_reconnect_success(self.broker_id)
                 return
             except Exception as e:
                 logger.warning("[LS증권연결] 재연결 %d회 실패: %s", attempt, e, exc_info=True)
@@ -825,8 +801,8 @@ class LsConnector(BrokerConnector):
                 auth_provider = get_router()._auth_cache.get("ls")
                 if auth_provider and hasattr(auth_provider, "rest_api"):
                     rest_api = auth_provider.rest_api
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[LS커넥터] router auth_cache에서 rest_api 조회 실패: %s", e)
 
         if rest_api and hasattr(rest_api, "ensure_token"):
             ok = await rest_api.ensure_token()

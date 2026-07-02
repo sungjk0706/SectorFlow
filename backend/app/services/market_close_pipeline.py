@@ -712,7 +712,7 @@ async def _run_confirmed_pipeline(
             _es_state._broker_tokens[_broker_name] = _broker_token
             _broker_token_registered = True
             from backend.app.services.engine_lifecycle import broadcast_engine_status
-            broadcast_engine_status()
+            await broadcast_engine_status()
         _sector = _create_provider("stock", _broker_name, _settings, _auth_cache)
 
         # ── Step 1: 전종목 리스트 다운로드 ──
@@ -1033,7 +1033,7 @@ async def _run_confirmed_pipeline(
         if _broker_token_registered:
             _es_state._broker_tokens.pop(_broker_name, None)
             from backend.app.services.engine_lifecycle import broadcast_engine_status
-            broadcast_engine_status()
+            await broadcast_engine_status()
         es._confirmed_refresh_running_confirmed = False
         es._confirmed_refresh_message = ""
 
@@ -1166,7 +1166,7 @@ async def fetch_5d_data_only() -> dict:
             _es_state._broker_tokens[_broker_name] = _broker_token
             _broker_token_registered = True
             from backend.app.services.engine_lifecycle import broadcast_engine_status
-            broadcast_engine_status()
+            await broadcast_engine_status()
         _sector = _create_provider("stock", _broker_name, _settings, _auth_cache)
         _log.info("[5일봉챠트 거래대금,고가 다운로드] stock provider broker=%s", _broker_name)
 
@@ -1357,6 +1357,6 @@ async def fetch_5d_data_only() -> dict:
         if _broker_token_registered:
             _es_state._broker_tokens.pop(_broker_name, None)
             from backend.app.services.engine_lifecycle import broadcast_engine_status
-            broadcast_engine_status()
+            await broadcast_engine_status()
         es._confirmed_refresh_running_5d = False
         es._confirmed_refresh_message = ""

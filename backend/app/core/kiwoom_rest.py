@@ -124,8 +124,8 @@ class KiwoomRestAPI:
             router = get_router()
             if router:
                 return router.get_spec(role_key, feature=feature)
-        except Exception:
-            pass
+        except Exception as e:
+            _log.warning("[키움REST] get_spec 조회 실패 (role=%s, feature=%s): %s", role_key, feature, e)
         return None
 
     # ── 공통 REST 호출 (429 adaptive backoff) ────────────────────────────────

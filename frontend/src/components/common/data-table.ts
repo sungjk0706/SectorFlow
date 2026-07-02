@@ -268,7 +268,7 @@ function createFixedMode<T extends object>(
         } else if (content instanceof HTMLElement) {
           td.appendChild(content)
         }
-      } catch (_) {}
+      } catch (e) { console.error('[DataTable] cell render error', e) }
       tr.appendChild(td)
     }
     return tr
@@ -488,7 +488,7 @@ function createFixedMode<T extends object>(
                   cell.appendChild(content)
                 }
               }
-            } catch (_) {}
+            } catch (e) { console.error('[DataTable] cell render error', e) }
           }
         }
       }
@@ -550,7 +550,7 @@ function createFixedMode<T extends object>(
             cell.appendChild(content)
           }
         }
-      } catch (_) {}
+      } catch (e) { console.error('[DataTable] cell render error', e) }
     }
   }
 
@@ -732,9 +732,7 @@ function createVirtualScrollMode<T extends object>(
           const content = c.render(dataRow, index)
           if (typeof content === 'string') cell.textContent = content
           else if (content instanceof HTMLElement) cell.appendChild(content)
-        } catch (_) {
-          // 개별 셀 render 예외 시 해당 셀만 건너뛰기
-        }
+        } catch (e) { console.error('[DataTable] cell render error', e) }
         rowEl.appendChild(cell)
       }
 
@@ -809,9 +807,7 @@ function createVirtualScrollMode<T extends object>(
             cell.appendChild(content)
           }
         }
-      } catch (_) {
-        // 개별 셀 render 예외 시 해당 셀만 건너뛰고 기존 DOM 유지
-      }
+      } catch (e) { console.error('[DataTable] cell render error', e) }
     }
 
   }

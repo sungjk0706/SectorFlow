@@ -107,7 +107,7 @@ def _log_ws_trnm_json_detail(trnm: str, data: dict) -> None:
         if total_len > max_len:
             s = s[:max_len] + f"... (truncated, total {total_len} chars)"
     except Exception as e:
-        pass
+        logger.warning("[로그] 문자열 truncation 실패: %s", e)
 
 
 def _log_real_data_items_preview(data: dict) -> None:
@@ -205,9 +205,10 @@ def _handle_reg(data: dict) -> None:
                     norm,
                 )
                 try:
-                    asyncio.get_running_loop().create_task(
+                    _resub_task = asyncio.get_running_loop().create_task(
                         engine_lifecycle._delayed_resubscribe_stock_after_rate_limit(norm)
                     )
+                    _resub_task.add_done_callback(lambda t: logger.warning("[재구독] 지연 재구독 태스크 실패: %s", t.exception()) if t.exception() else None)
                 except RuntimeError as e:
                     logger.warning("[재구독] 루프 미실행 %s: %s", norm, e)
             elif rc not in ("0", "00", ""):
@@ -293,9 +294,9 @@ async def _handle_real_00(item: dict, vals: dict) -> None:
                         pq.get_nowait()
                         pq.put_nowait(price_tick_data)
                     except asyncio.QueueEmpty:
-                        pass
-        except Exception:
-            pass  # 직통 전송 실패는 치명적 에러가 아님
+                        pq.put_nowait(price_tick_data)
+        except Exception as e:
+            logger.warning("[WS] price_pass_through 전송 실패 (code=%s): %s", raw_cd, e)
 
     _check_realtime_latency(_ts)
 
@@ -307,7 +308,7 @@ async def _handle_real_balance(item: dict, vals: dict) -> None:
     await engine_account._apply_balance_realtime(item, item)
 
 
-def _handle_real_0d(item: dict, vals: dict) -> None:
+async def _handle_real_0d(item: dict, vals: dict) -> None:
     """0D 호가잔량 처리 — 매수잔량(FID 125)·매도잔량(FID 121) 캐시 갱신 + 매수후보 실시간 반영."""
     raw_cd = _real_item_stk_cd(item, vals)
     if not raw_cd:
@@ -321,10 +322,10 @@ def _handle_real_0d(item: dict, vals: dict) -> None:
     # 매수후보 종목이면 호가잔량비 변경을 프론트에 즉시 전송 (이벤트 기반)
     if engine_state._master_stocks_cache.get(nk, {}).get("_subscribed_0d", False):
         from backend.app.services.engine_account_notify import notify_orderbook_update
-        notify_orderbook_update(nk, bid, ask)
+        await notify_orderbook_update(nk, bid, ask)
 
 
-def _handle_real_0j(item: dict, vals: dict) -> None:
+async def _handle_real_0j(item: dict, vals: dict) -> None:
     """0J 업종지수 처리 — 저장 없이 즉시 프론트엔드에 브로드캐스트 (참고용 시장 현황)."""
     upcode = str(item.get("item", "") or "").strip()
     if not upcode:
@@ -336,7 +337,7 @@ def _handle_real_0j(item: dict, vals: dict) -> None:
     if not jisu:
         return
     from backend.app.services.engine_account_notify import notify_index_data
-    notify_index_data(upcode, jisu, change, drate, sign)
+    await notify_index_data(upcode, jisu, change, drate, sign)
 
 
 # ── REAL 타입별 디스패치 테이블 ──────────────────────────────────
@@ -369,7 +370,7 @@ async def _handle_real(data: dict) -> None:
             continue
         
         # 무가공 Raw 데이터 즉시 전송 (MTS 무결성 보장)
-        notify_raw_real_data(item)
+        await notify_raw_real_data(item)
         
         try:
             msg_type = item.get("type")
@@ -389,7 +390,7 @@ async def _handle_real(data: dict) -> None:
                 await _handle_real_01(item, vals, raw_type_upper, is_0b_tick=True)
             # 📈 업종지수 - 즉시 브로드캐스트 (저장 없음)
             elif norm == "0j":
-                _handle_real_0j(item, vals)
+                await _handle_real_0j(item, vals)
         except Exception as e:
             logger.error("[REAL] 항목 처리 예외 (계속): %s", e, exc_info=True)
 
@@ -507,6 +508,6 @@ async def _handle_jif(data: dict) -> None:
 
     mp["krx_alert"] = alert
     from backend.app.services.engine_account_notify import _broadcast
-    _broadcast("market-phase", {"krx_alert": alert})
+    await _broadcast("market-phase", {"krx_alert": alert})
     logger.info("[JIF] 서킷브레이커/사이드카 alert 갱신: jstatus=%s → %s", jstatus, alert)
 

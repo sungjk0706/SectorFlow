@@ -56,8 +56,8 @@ def _rotate_old_logs(pattern: str, keep_days: int) -> None:
             m = date_re.search(f.name)
             if m and m.group(1) < cutoff:
                 f.unlink(missing_ok=True)
-    except Exception:
-        pass
+    except Exception as e:
+        sys.stderr.write(f"[logger] _rotate_old_logs 실패: {e}\n")
 
 
 def _get_daily_log_path(base_name: str) -> Path:
@@ -103,8 +103,8 @@ def _file_writer_loop(q: queue.Queue, base_name: str, keep_days: int) -> None:
                 if fh is not None:
                     try:
                         fh.close()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        sys.stderr.write(f"[logger] 파일 핸들 close 실패 (날짜 변경): {e}\n")
                 current_date = today
                 part = 0
                 fh = _open_part()
@@ -128,21 +128,21 @@ def _file_writer_loop(q: queue.Queue, base_name: str, keep_days: int) -> None:
                         fh = _open_part()
                         if fh is None:
                             continue
-                except Exception:
-                    pass
+                except Exception as e:
+                    sys.stderr.write(f"[logger] 파일 크기 체크/로테이션 실패: {e}\n")
 
             if fh is not None:
                 try:
                     fh.write(msg)
                     fh.flush()
-                except Exception:
-                    pass
+                except Exception as e:
+                    sys.stderr.write(f"[logger] 파일 쓰기 실패: {e}\n")
     finally:
         if fh is not None:
             try:
                 fh.close()
-            except Exception:
-                pass
+            except Exception as e:
+                sys.stderr.write(f"[logger] 파일 핸들 close 실패 (finally): {e}\n")
 
 
 def _start_file_writers() -> None:

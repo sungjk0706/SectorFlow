@@ -111,7 +111,7 @@ export class WSClient {
 
     ws.onmessage = (e: MessageEvent) => {
       if (e.data instanceof ArrayBuffer) {
-        // binary frame: zlib decompress → JSON parse → key expand
+        // binary frame: Protobuf decode → key expand
         this._handleBinaryFrame(e.data)
       } else {
         // text frame: JSON parse → key expand (real-data만)

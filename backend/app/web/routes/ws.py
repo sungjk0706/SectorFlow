@@ -72,8 +72,8 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
             filter_summary = assemble_filter_summary(
                 getattr(_es.state, "latest_filter_summary_meta", ""), len(stocks)
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[연결] 초기 스냅샷 데이터 준비 실패: %s", e, exc_info=True)
 
         stock_classification_payload = {
             "_v": 1,
@@ -173,7 +173,7 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
     username = "dev"
 
     await websocket.accept()
-    ws_manager.register(websocket)
+    await ws_manager.register(websocket)
     logger.info(
         "[연결] 접속화면 연결 (user=%s, 총 %d)", username, ws_manager.client_count
     )

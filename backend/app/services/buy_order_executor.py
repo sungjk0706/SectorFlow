@@ -65,6 +65,22 @@ async def evaluate_buy_candidates() -> None:
         if _daily_remain <= 0:
             return
 
+    # ── 주문가능 금액 사전 체크 (매수 시도 전 조기 차단) ────────────────
+    if is_test_mode(state.integrated_system_settings_cache):
+        from backend.app.services.settlement_engine import get_available_cash
+        _available = get_available_cash()
+    else:
+        from backend.app.services.risk_manager import get_risk_manager
+        _available = get_risk_manager().account_manager.get_withdrawable_deposit()
+    if _max_daily > 0:
+        _effective_buy_amt = min(_buy_amt, _daily_remain)
+    else:
+        _effective_buy_amt = _buy_amt
+    if _available < _effective_buy_amt:
+        logger.info("[종목매수] 주문가능 금액 부족 — 매수 시도 중단 (주문가능 금액: %s원, 매수단위: %s원)",
+                    f"{_available:,}", f"{_effective_buy_amt:,}")
+        return
+
     # ── 종목별 매수 시도 ─────────────────────────────────────────────
     cooldown = float(state.integrated_system_settings_cache["sector_buy_cooldown_sec"])
     now = time.time()
@@ -92,7 +108,6 @@ async def evaluate_buy_candidates() -> None:
         try:
             _price = int(s.cur_price or 0)
             if _price <= 0:
-                logger.debug("[종목매수] %s 실시간 시세 없음 -- 생략", s.code)
                 continue
             _ordered = await state.auto_trade.execute_buy(
                 s.code, float(_price), state.checked_stocks, state.access_token,

@@ -4,7 +4,6 @@ from __future__ import annotations
 LS증권 Provider 구현체
 """
 
-import asyncio
 import logging
 
 from backend.app.core.broker_providers import (
@@ -13,13 +12,6 @@ from backend.app.core.broker_providers import (
 from backend.app.core.ls_rest import LsRestAPI
 
 logger = logging.getLogger(__name__)
-
-def _run_async(coro):
-    """비동기 함수를 동기적으로 실행하기 위한 헬퍼. 
-    (to_thread 로 호출된 별도 스레드에서만 사용해야 함)
-    참고: AuthProvider/OrderProvider는 async def이나, AccountProvider는 여전히 동기 def이므로
-    LsAccountProvider에서 이 함수를 사용함."""
-    return asyncio.run(coro)
 
 # ── Auth Provider ─────────────────────────────────────────────────────
 class LsAuthProvider(AuthProvider):
@@ -59,26 +51,26 @@ class LsAccountProvider(AccountProvider):
         self._rest_api = getattr(auth_provider, "rest_api", None)
         self._acnt_no = str(state.integrated_system_settings_cache.get("ls_account_no", "") or "")
 
-    def get_account_number(self) -> str | None:
+    async def get_account_number(self) -> str | None:
         return self._acnt_no
 
-    def get_deposit_detail(self, acnt_no: str = "") -> dict | None:
+    async def get_deposit_detail(self, acnt_no: str = "") -> dict | None:
         if not self._rest_api:
             return None
-        res = _run_async(self._rest_api.get_balance(cts_expcode=""))
+        res = await self._rest_api.get_balance(cts_expcode="")
         if not res or res.get("rsp_cd") not in ("00040", "00000"):
             return res
         return res
 
-    def get_balance_detail(self, qry_tp: str = "1", dmst_stex_tp: str = "KRX") -> dict | None:
+    async def get_balance_detail(self, qry_tp: str = "1", dmst_stex_tp: str = "KRX") -> dict | None:
         if not self._rest_api:
             return None
-        res = _run_async(self._rest_api.get_balance(cts_expcode=""))
+        res = await self._rest_api.get_balance(cts_expcode="")
         if not res or res.get("rsp_cd") not in ("00040", "00000"):
             return res
         return res
 
-    def get_account_balance(self, acnt_no: str = "") -> dict:
+    async def get_account_balance(self, acnt_no: str = "") -> dict:
         _empty: dict = {
             "success": False,
             "summary": {
@@ -90,7 +82,7 @@ class LsAccountProvider(AccountProvider):
         if not self._rest_api:
             return _empty
 
-        res = _run_async(self._rest_api.get_balance(cts_expcode=""))
+        res = await self._rest_api.get_balance(cts_expcode="")
         if not res or res.get("rsp_cd") not in ("00040", "00000"):
             logger.warning("[LS증권] 잔고 조회 실패: %s", res.get("rsp_msg") if res else "No Response")
             return _empty

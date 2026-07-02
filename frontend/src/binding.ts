@@ -103,9 +103,7 @@ export function bindWSToStore(
       }
       if (added && added.length > 0) {
         const addedMap = stocksToMap(added)
-        sectorStocks = sectorStocks === state.sectorStocks
-          ? { ...sectorStocks, ...addedMap }
-          : { ...sectorStocks, ...addedMap }
+        sectorStocks = { ...sectorStocks, ...addedMap }
       }
       if (sectorStocks === state.sectorStocks) return state
       return { sectorStocks }

@@ -164,6 +164,46 @@
 
 ---
 
+## 금지 패턴 (확정)
+
+> 본 항목은 실제 코드에서 발견·수정된 아키텍처 위반 사례를 명시적으로 기록하여,
+> 동일한 문제가 재발하지 않도록 방지하는 것을 목적으로 한다.
+
+### 1. asyncio.run() 사용 금지
+- **위반 사례**: `ls_providers.py`에서 `_run_async()`로 새 이벤트 루프 생성
+- **관련 원칙**: 원칙 1 (단일 asyncio 이벤트 루프), 원칙 2 (모든 I/O는 async def)
+- **이유**: 단일 이벤트 루프 원칙 위반 — 새 이벤트 루프 생성은 기존 루프와 충돌, 예외 추적 불가
+- **대체**: `async def`로 선언하고 `await` 직접 호출
+
+### 2. create_task 무분별한 분리 금지
+- **위반 사례**: `engine_cache.py`, `dry_run.py`에서 `done_callback` 없는 fire-and-forget `create_task`
+- **관련 원칙**: 원칙 5 (직접 호출 체인 유지), 원칙 14 (멀티스레드 남용 금지)
+- **이유**: 예외 추적 불가, 호출 체인 단절 — 태스크 실패 시 조용히 사라짐
+- **대체**: `schedule_engine_task()` 사용 (내부적으로 `add_done_callback`으로 예외 로깅) 또는 `add_done_callback()` 직접 추가
+
+### 3. except Exception: pass 금지
+- **위반 사례**: 9개 파일에서 예외를 조용히 삼킴 (`except Exception: pass`)
+- **관련 원칙**: 원칙 20 (폴백 금지 — 근본 원인 해결 방해)
+- **이유**: 오류 은폐, 디버깅 불가 — 예외가 발생했는지조차 알 수 없음
+- **대체**: `logger.warning()`으로 예외 로깅 — `except Exception as e: logger.warning("...", e, exc_info=True)`
+
+### 4. async 함수 호출 시 await 누락 금지
+- **위반 사례**: `_broadcast()`가 `async def`로 선언되었으나 호출부에 `await` 누락 (10개 파일, 12개 호출소)
+- **관련 원칙**: 원칙 2 (모든 I/O는 async def), 원칙 5 (직접 호출 체인 유지), 원칙 19 (런타임 검증 게이트)
+- **이유**: `RuntimeWarning: coroutine was never awaited` 발생, 코루틴이 GC되어 실제 전송 실패
+- **대체**: 
+  - `async def` 함수 내에서는 `await _broadcast(...)` 
+  - 동기 함수 내에서는 `schedule_engine_task(_broadcast(...), context="...")`로 래핑
+- **검증 방법**: `python -W error::RuntimeWarning main.py`로 기동 시 RuntimeWarning을 에러로 승격하여 검증
+
+### 5. no-op/dead code 방치 금지
+- **위반 사례**: `notify_snapshot_history_update`, `notify_desktop_buy_radar_only` 등 호출되지 않는 함수 방치
+- **관련 원칙**: 원칙 16 ("구현 = 살아있는 경로에 배선됨")
+- **이유**: 아키텍처 문서와 실제 코드 불일치 — 호출 안 되는 함수는 존재하지 않는 것과 같음
+- **대체**: 사용하지 않는 함수는 삭제하거나, 명시적으로 `# DEPRECATED: ...` 주석으로 표시
+
+---
+
 ## 아키텍처 타당성 검증
 
 ### 1인 로컬 자동매매 시스템 최적성 분석
@@ -1298,7 +1338,11 @@ python main.py
 - 전체 리스트 순회 후 교체 → 인덱스/키 직접 접근으로 교체
 - 매 틱마다 전체 데이터 재조회 → 변경분만 처리
 - `threading.Thread()` 신규 생성 → 기존 이벤트 루프 활용
-- `asyncio.create_task()` 무분별한 분리 → 호출 체인 유지
+- `asyncio.create_task()` 무분별한 분리 → `schedule_engine_task()` 사용 또는 `add_done_callback()` 추가
+- `asyncio.run()` → 절대 사용 금지 (단일 이벤트 루프 원칙 위반)
+- `except Exception: pass` → `logger.warning()`으로 예외 로깅
+- async 함수 호출 시 `await` 누락 → 반드시 `await` 사용 또는 `schedule_engine_task()`로 래핑
+- no-op/dead code 방치 → 사용하지 않는 함수는 삭제 또는 명시적 DEPRECATED 표시
 - Queue에 무한 쌓기 → 처리 속도 > 수신 속도 보장 필수
 
 #### TypeScript 프론트엔드 금지

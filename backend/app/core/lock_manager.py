@@ -129,8 +129,8 @@ def read_lock_pid(lock_path: Path) -> int | None:
             content = lock_path.read_text(encoding="utf-8").strip()
             if content.isdigit():
                 return int(content)
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[중복실행방지] PID 파일 읽기 실패: %s", e)
     return None
 
 

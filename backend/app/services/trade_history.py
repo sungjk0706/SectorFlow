@@ -154,16 +154,16 @@ async def _broadcast_sell_append(rec: dict) -> None:
         from backend.app.web.ws_manager import ws_manager
         trade_mode = rec.get("trade_mode", "test")
         summary = await get_daily_summary(days=20, trade_mode=trade_mode)
-        ws_manager.broadcast("sell-history-append", {"trade": rec, "daily_summary": summary})
+        await ws_manager.broadcast("sell-history-append", {"trade": rec, "daily_summary": summary})
     except Exception as e:
         logger.warning("[체결이력] 매도 단건 실시간 화면전송 실패: %s", e)
 
 
-def _broadcast_buy_append(rec: dict) -> None:
+async def _broadcast_buy_append(rec: dict) -> None:
     """매수 체결 후 단건 브로드캐스트."""
     try:
         from backend.app.web.ws_manager import ws_manager
-        ws_manager.broadcast("buy-history-append", {"trade": rec})
+        await ws_manager.broadcast("buy-history-append", {"trade": rec})
     except Exception as e:
         logger.warning("[체결이력] 매수 단건 실시간 화면전송 실패: %s", e)
 
@@ -173,9 +173,9 @@ async def _broadcast_full_sell_history(trade_mode: str) -> None:
     try:
         from backend.app.web.ws_manager import ws_manager
         rows = await get_sell_history(trade_mode=trade_mode)
-        ws_manager.broadcast("sell-history-update", {"sell_history": rows})
+        await ws_manager.broadcast("sell-history-update", {"sell_history": rows})
         summary = await get_daily_summary(days=20, trade_mode=trade_mode)
-        ws_manager.broadcast("daily-summary-update", {"daily_summary": summary})
+        await ws_manager.broadcast("daily-summary-update", {"daily_summary": summary})
     except Exception as e:
         logger.warning("[체결이력] 매도 내역 실시간 화면전송 실패: %s", e)
 
@@ -185,16 +185,16 @@ async def _broadcast_full_buy_history(trade_mode: str) -> None:
     try:
         from backend.app.web.ws_manager import ws_manager
         rows = await get_buy_history(trade_mode=trade_mode)
-        ws_manager.broadcast("buy-history-update", {"buy_history": rows})
+        await ws_manager.broadcast("buy-history-update", {"buy_history": rows})
     except Exception as e:
         logger.warning("[체결이력] 매수 내역 실시간 화면전송 실패: %s", e)
 
 
-def _broadcast_order_filled(fill_data: dict) -> None:
+async def _broadcast_order_filled(fill_data: dict) -> None:
     """체결 이벤트 발행 -- 거래내역 테이블 즉시 갱신용."""
     try:
         from backend.app.web.ws_manager import ws_manager
-        ws_manager.broadcast("order-filled", fill_data)
+        await ws_manager.broadcast("order-filled", fill_data)
     except Exception as e:
         logger.warning("[체결이력] 체결 이벤트 실시간 화면전송 실패: %s", e)
 
@@ -264,7 +264,7 @@ async def record_buy(
     )
     # 메모리에 저장
     await _insert_trade(rec)
-    _broadcast_buy_append(rec)
+    await _broadcast_buy_append(rec)
     return rec
 
 

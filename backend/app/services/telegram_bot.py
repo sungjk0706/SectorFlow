@@ -312,7 +312,7 @@ class TelegramBot:
             notify_desktop_header_refresh,
             notify_desktop_settings_toggled,
         )
-        notify_desktop_header_refresh()
+        await notify_desktop_header_refresh()
         await notify_desktop_settings_toggled()
         logger.info("[텔레그램] 설정 %s -> %s (%s)", key, new, label)
         return new

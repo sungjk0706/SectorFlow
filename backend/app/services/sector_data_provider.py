@@ -279,7 +279,7 @@ async def recompute_sector_summary_now() -> None:
             else:
                 entry.pop("_filtered", None)
 
-        notify_desktop_sector_scores(force=True)
+        await notify_desktop_sector_scores(force=True)
         await notify_desktop_sector_stocks_refresh(force=True)
         await notify_buy_targets_update()
         logger.info("[업종순위] 재계산 완료")
@@ -311,7 +311,7 @@ async def _on_filter_settings_changed() -> None:
     except Exception:
         logger.warning("[데이터] 업종목록 화면전송 실패", exc_info=True)
     try:
-        notify_desktop_sector_scores(force=True)
+        await notify_desktop_sector_scores(force=True)
     except Exception:
         logger.warning("[데이터] 업종점수 화면전송 실패", exc_info=True)
     try:

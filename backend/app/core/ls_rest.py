@@ -84,8 +84,8 @@ class LsRestAPI:
                 if self._client and not self._client.is_closed:
                     if getattr(self, '_loop', None) and getattr(self, '_loop').is_running():
                         await self._client.aclose()
-            except Exception:
-                pass
+            except Exception as e:
+                _log.warning("[LS증권REST] 이전 클라이언트 정리 실패: %s", e)
             
             self._client = httpx.AsyncClient()
             self._loop = current_loop

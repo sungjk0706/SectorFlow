@@ -557,6 +557,7 @@ export function applySectorPriceTick(data: SectorPriceTick): void {
     const pos = positions[posIdx]
     if (pos.cur_price !== data.price) {
       pos.cur_price = data.price
+      changed = true
     }
   }
 

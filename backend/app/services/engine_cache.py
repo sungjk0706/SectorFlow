@@ -140,7 +140,8 @@ async def _load_caches_preboot(settings: dict) -> None:
             logger.info("[데이터준비] WS 구독 구간 — 업종순위 계산 스킵 (post-login 파이프라인에서 수행)")
         else:
             from backend.app.services.sector_data_provider import recompute_sector_summary_now
-            asyncio.create_task(recompute_sector_summary_now())
+            _task = asyncio.create_task(recompute_sector_summary_now())
+            _task.add_done_callback(lambda t: logger.warning("[데이터준비] 업종순위 계산 태스크 실패: %s", t.exception()) if t.exception() else None)
             logger.info("[데이터준비] 업종순위 계산 백그라운드 실행 (sector_summary_ready_event 대기)")
 
         # 앱준비 완료 → 기동 시 스킵된 장마감 파이프라인 데이터동기화중 재시도
@@ -148,7 +149,8 @@ async def _load_caches_preboot(settings: dict) -> None:
         # WS 핸들러가 정상 동작하며, catch-up이 블로킹하지 않음
         try:
             from backend.app.services.daily_time_scheduler import retry_pipeline_catchup_after_bootstrap
-            asyncio.create_task(retry_pipeline_catchup_after_bootstrap())
+            _task2 = asyncio.create_task(retry_pipeline_catchup_after_bootstrap())
+            _task2.add_done_callback(lambda t: logger.warning("[데이터준비] 데이터동기화중 재시도 태스크 실패: %s", t.exception()) if t.exception() else None)
         except Exception as _catchup_err:
             logger.warning("[데이터준비] 데이터동기화중 재시도 실패(무시): %s", _catchup_err, exc_info=True)
 
