@@ -105,7 +105,6 @@ function mount(container: HTMLElement): void {
     keyFn: (p) => p.stk_cd || String(p.stk_nm),
     emptyText: '보유종목이 없습니다.',
     stickyHeader: true,
-    zebraStriping: true,
   })
 
   scrollContainer.appendChild(dataTable.el)

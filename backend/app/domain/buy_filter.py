@@ -24,6 +24,10 @@ def calculate_boost_score(
     boost_order_ratio_score: float = 1.0,
     boost_program_net_buy_on: bool = False,
     boost_program_net_buy_score: float = 1.0,
+    # ── 거래대금 순위 가산점 ──
+    trade_amount_rank: int = -1,  # 0 = 매수후보 내 거래대금 1위, -1 = 순위 밖/보유 제외
+    boost_trade_amount_rank_on: bool = False,
+    boost_trade_amount_rank_score: float = 1.0,
 ) -> float:
     """종목 가산점 합계 계산. 항상 >= 0.0 반환.
     """
@@ -55,6 +59,10 @@ def calculate_boost_score(
         net_buy = program_net_buy_cache.get(stock.code, 0)
         if net_buy > 0:
             score += boost_program_net_buy_score
+
+    # 4. 거래대금 순위 (매수후보 내 보유 제외 후 거래대금 상위 1종목)
+    if boost_trade_amount_rank_on and trade_amount_rank == 0:
+        score += boost_trade_amount_rank_score
 
     return max(score, 0.0)
 
@@ -122,6 +130,10 @@ def create_buy_targets(
     boost_order_ratio_score: float = 1.0,
     boost_program_net_buy_on: bool = False,
     boost_program_net_buy_score: float = 1.0,
+    # ── 거래대금 순위 가산점 ──
+    held_codes: set[str] | None = None,
+    boost_trade_amount_rank_on: bool = False,
+    boost_trade_amount_rank_score: float = 1.0,
 ) -> object:  # SectorSummary
     """
     섹터 스코어 -> 매수 타겟 큐 생성.
@@ -174,10 +186,21 @@ def create_buy_targets(
     _h5d = high_5d_cache or {}
     _obc = orderbook_cache or {}
     _pnb = program_net_buy_cache or {}
+    _held = held_codes or set()
+
+    # ── 거래대금 순위 계산: 보유 종목 제외, Guard 통과 종목만 대상 ──
+    _trade_amount_rank_map: dict[str, int] = {}
+    if boost_trade_amount_rank_on:
+        _eligible = [s for s, _ in all_stocks if s.guard_pass and s.code not in _held]
+        _eligible.sort(key=lambda st: float(st.trade_amount), reverse=True)
+        for i, st in enumerate(_eligible):
+            _trade_amount_rank_map[st.code] = i  # 0 = 1위
+
     for s, _ in all_stocks:
         # Guard→Boost 최적화: Guard 미통과 종목은 Boost 계산 스킵
         if not s.guard_pass:
             s.boost_score = 0.0
+            s.trade_amount_rank = -1
             continue
         s.boost_score = calculate_boost_score(
             s,
@@ -191,7 +214,11 @@ def create_buy_targets(
             boost_order_ratio_score=boost_order_ratio_score,
             boost_program_net_buy_on=boost_program_net_buy_on,
             boost_program_net_buy_score=boost_program_net_buy_score,
+            trade_amount_rank=_trade_amount_rank_map.get(s.code, -1),
+            boost_trade_amount_rank_on=boost_trade_amount_rank_on,
+            boost_trade_amount_rank_score=boost_trade_amount_rank_score,
         )
+        s.trade_amount_rank = _trade_amount_rank_map.get(s.code, -1)
 
     def _sort_value(s, key: Literal["strength", "change_rate", "trade_amount"]) -> float:
         if key == "strength":
@@ -244,7 +271,12 @@ def create_buy_targets(
     )
 
 
-def build_buy_targets_from_settings(sector_scores: list, settings: dict) -> object:
+def build_buy_targets_from_settings(
+    sector_scores: list,
+    settings: dict,
+    *,
+    held_codes: set[str] | None = None,
+) -> object:
     from backend.app.services.engine_radar import get_high_price_5d_cache, get_orderbook_cache, get_program_net_buy_cache
 
     return create_buy_targets(
@@ -265,4 +297,7 @@ def build_buy_targets_from_settings(sector_scores: list, settings: dict) -> obje
         boost_order_ratio_score=float(settings.get("boost_order_ratio_score", 1.0)),
         boost_program_net_buy_on=bool(settings.get("boost_program_net_buy_on", False)),
         boost_program_net_buy_score=float(settings.get("boost_program_net_buy_score", 1.0)),
+        held_codes=held_codes,
+        boost_trade_amount_rank_on=bool(settings.get("boost_trade_amount_rank_on", False)),
+        boost_trade_amount_rank_score=float(settings.get("boost_trade_amount_rank_score", 1.0)),
     )

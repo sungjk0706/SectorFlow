@@ -76,9 +76,12 @@ async def _deferred_sector_summary() -> None:
                 trim_change_rate_pct=_trim_change,
             )
             _sector_summary = await compute_full_sector_summary(**_inputs, **_kwargs)
+            from backend.app.services.engine_symbol_utils import _base_stk_cd
+            _held_codes = {_base_stk_cd(cd) for cd in _st.checked_stocks}
             _result = build_buy_targets_from_settings(
                 _sector_summary.sectors,
                 _st._integrated_system_settings_cache,
+                held_codes=_held_codes,
             )
             import backend.app.services.engine_service as _es
             _es._sector_summary_cache = _result

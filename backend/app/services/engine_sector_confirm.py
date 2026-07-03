@@ -183,9 +183,12 @@ async def _flush_sector_recompute_impl() -> None:
         # buy_targets 변경 감지를 위해 이전 값 저장
         prev_targets = existing.buy_targets if hasattr(existing, 'buy_targets') else None
 
+        from backend.app.services.engine_symbol_utils import _base_stk_cd
+        _held = {_base_stk_cd(cd) for cd in state.checked_stocks}
         ss = build_buy_targets_from_settings(
             merged,
             state.integrated_system_settings_cache,
+            held_codes=_held,
         )
 
         # 참조 교체 방식으로 캐시 갱신 (R5.6)
@@ -304,9 +307,12 @@ async def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
                 sc.rank = 0
 
         # 매수 타겟 큐 재생성
+        from backend.app.services.engine_symbol_utils import _base_stk_cd
+        _held = {_base_stk_cd(cd) for cd in state.checked_stocks}
         ss = build_buy_targets_from_settings(
             merged,
             state.integrated_system_settings_cache,
+            held_codes=_held,
         )
 
         # 참조 교체 방식으로 캐시 갱신
@@ -362,9 +368,12 @@ async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
         trim_trade_amt_pct=trim_trade,
         trim_change_rate_pct=trim_change,
     )
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
+    _held = {_base_stk_cd(cd) for cd in state.checked_stocks}
     ss = build_buy_targets_from_settings(
         sector_summary.sectors,
         state.integrated_system_settings_cache,
+        held_codes=_held,
     )
 
     # 참조 교체 방식으로 캐시 갱신 (R5.6)

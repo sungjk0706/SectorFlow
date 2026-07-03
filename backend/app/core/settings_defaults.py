@@ -53,6 +53,8 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "boost_order_ratio_score": 1.0,
     "boost_program_net_buy_on": False,
     "boost_program_net_buy_score": 1.0,
+    "boost_trade_amount_rank_on": False,
+    "boost_trade_amount_rank_score": 1.0,
 
     # 리스크 관리
     "max_daily_loss_limit": -500000,

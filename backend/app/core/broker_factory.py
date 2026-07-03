@@ -3,16 +3,13 @@ from __future__ import annotations
 """
 브로커 팩토리
 
-- get_broker(settings): 하위 호환 — 기존 코드가 호출하는 곳에서 동작
-- get_router(settings): 하이브리드 — 기능별 Provider 매핑 라우터 반환
+- get_router(): 하이브리드 — 기능별 Provider 매핑 라우터 반환
 - reset_router(): 설정 변경 시 라우터 재생성
 """
 
 from typing import TYPE_CHECKING
 
-from backend.app.core.broker_interface import BrokerInterface
 from backend.app.core.logger import get_logger
-from backend.app.core.trade_mode import effective_trade_mode, is_test_mode
 
 if TYPE_CHECKING:
     from backend.app.core.broker_router import BrokerRouter
@@ -40,37 +37,6 @@ def reset_router() -> None:
     """설정 변경 시 라우터 캐시 초기화. 다음 get_router() 호출 시 재생성."""
     global _router_cache
     _router_cache = None
-
-
-def get_broker(settings: dict) -> BrokerInterface:
-    """하위 호환: 기존 코드가 get_broker()를 호출하는 곳에서 동작."""
-    from backend.app.core.kiwoom_broker import KiwoomBroker
-    from backend.app.core.ls_broker import LsBroker
-
-    broker_name = str(settings.get("broker", "") or "").lower().strip()
-
-    if broker_name == "ls":
-        tm = effective_trade_mode(settings)
-        logger.info(
-            "[증권사설정] ls (trade_mode=%s, is_test=%s)",
-            tm,
-            is_test_mode(settings),
-        )
-        return LsBroker(settings)
-    else:
-        if broker_name not in ("kiwoom", ""):
-            logger.warning(
-                "[증권사설정] 지원 증권사: kiwoom, ls. 증권사=%r -> kiwoom 사용",
-                broker_name,
-            )
-        tm = effective_trade_mode(settings)
-        logger.info(
-            "[증권사설정] %s (trade_mode=%s, is_test=%s)",
-            broker_name,
-            tm,
-            is_test_mode(settings),
-        )
-        return KiwoomBroker(settings)
 
 
 def create_connector(settings: dict):
