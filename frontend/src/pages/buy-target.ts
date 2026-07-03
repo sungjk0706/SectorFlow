@@ -7,10 +7,10 @@ import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardHeaderWithMargin } from '../components/common/card-header'
 import { globalSettingsManager } from '../settings'
-import { createStockNameColumn, createSeqCell, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, createNumberCell, FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import { createStockNameColumn, createSeqCell, makeCodeColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, createAmountCell, createPriceCell, createNumberCell, FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 import type { SectorStock } from '../types'
 
-/* ── ColumnDef 배열 (12개 컬럼) ── */
+/* ── ColumnDef 배열 (13개 컬럼) ── */
 const COLUMNS: ColumnDef<SectorStock>[] = [
   { key: 'seq', label: '순번', align: 'center', minWidth: 36, maxWidth: 36, render: (_t, idx) => createSeqCell(idx + 1) },
   makeCodeColumn<SectorStock>((t) => t.code),
@@ -21,13 +21,29 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
       nxt_enable: t.nxt_enable
     })
   ),
-  makePriceColumn<SectorStock>(
-    (t) => Number(t.cur_price) || 0,
-    (t) => Number(t.change_rate) || 0,
-  ),
+  {
+    key: 'cur_price', label: '현재가', align: 'right',
+    render: (t) => {
+      const cell = createPriceCell(Number(t.cur_price) || 0, Number(t.change_rate) || 0)
+      if (t.high_5d && t.high_5d > 0 && Number(t.cur_price) > t.high_5d) {
+        cell.style.backgroundColor = COLOR.successBg
+      }
+      return cell
+    },
+  },
   makeChangeColumn<SectorStock>((t) => Number(t.change) || 0),
   makeRateColumn<SectorStock>((t) => Number(t.change_rate) || 0),
   makeStrengthColumn<SectorStock>((t) => Number(t.strength)),
+  {
+    key: 'trade_amount', label: '거래대금(억)', align: 'right',
+    render: (t) => {
+      const cell = createAmountCell(Number(t.trade_amount) || 0)
+      if (t.trade_amount_rank === 0) {
+        cell.style.backgroundColor = COLOR.successBg
+      }
+      return cell
+    },
+  },
   {
     key: 'order_ratio', label: '호가잔량비', align: 'right',
     render: (t) => {

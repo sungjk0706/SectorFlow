@@ -161,6 +161,9 @@ def build_engine_settings_dict(flat: dict) -> dict:
     # 프로그램 순매수 가산점
     result["boost_program_net_buy_on"]     = bool(merged.get("boost_program_net_buy_on"))
     result["boost_program_net_buy_score"]  = max(float(merged.get("boost_program_net_buy_score") if merged.get("boost_program_net_buy_score") is not None else 1.0), 0)
+    # 거래대금 순위 가산점
+    result["boost_trade_amount_rank_on"]   = bool(merged.get("boost_trade_amount_rank_on"))
+    result["boost_trade_amount_rank_score"] = max(float(merged.get("boost_trade_amount_rank_score") if merged.get("boost_trade_amount_rank_score") is not None else 1.0), 0)
     # ── 공휴일 자동매매 가드 ────────
     result["holiday_guard_on"]             = bool(merged.get("holiday_guard_on"))
     result["auto_off_by_holiday"]          = bool(merged.get("auto_off_by_holiday"))

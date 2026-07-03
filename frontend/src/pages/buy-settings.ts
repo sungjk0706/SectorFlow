@@ -6,9 +6,8 @@ import { uiStore } from '../stores/uiStore'
 import { createSettingsManager, type SettingsManager } from '../settings'
 import { createSettingRow, createNumInput, createMoneyInput, createToggleBtn, createFixedValue } from '../components/common/setting-row'
 import { sectionTitle } from '../components/common/settings-common'
-import { createDualLabelSlider, type DualLabelSliderHandle } from '../components/common/create-slider'
 import { createAutoSaveHelper } from '../utils/settings-save'
-import { setDisabled, COLOR } from '../components/common/ui-styles'
+import { setDisabled } from '../components/common/ui-styles'
 import type { AppSettings } from '../types'
 
 /* ── 모듈 상태 ── */
@@ -33,14 +32,16 @@ let boostHighScoreInput: ReturnType<typeof createNumInput> | null = null
 let boostHighControls: HTMLElement | null = null
 
 let boostOrderToggle: ReturnType<typeof createToggleBtn> | null = null
-let boostOrderDualSlider: DualLabelSliderHandle | null = null
 let boostOrderScoreInput: ReturnType<typeof createNumInput> | null = null
 let boostOrderControls: HTMLElement | null = null
-let boostOrderRow2: HTMLElement | null = null
 
 let boostProgramToggle: ReturnType<typeof createToggleBtn> | null = null
 let boostProgramScoreInput: ReturnType<typeof createNumInput> | null = null
 let boostProgramControls: HTMLElement | null = null
+
+let boostTradeAmountToggle: ReturnType<typeof createToggleBtn> | null = null
+let boostTradeAmountScoreInput: ReturnType<typeof createNumInput> | null = null
+let boostTradeAmountControls: HTMLElement | null = null
 
 // 재매수 차단 UI 참조
 let rebuyBlockToggle: ReturnType<typeof createToggleBtn> | null = null
@@ -58,7 +59,6 @@ function syncAfterSave(): void {
 
 /* ── 설정 동기화 ── */
 function syncFromSettings(s: AppSettings): void {
-  if (boostOrderDualSlider && boostOrderDualSlider.isInteracting) return
   const r = s as Record<string, unknown>
   vals = { ...r }
 
@@ -87,14 +87,9 @@ function syncFromSettings(s: AppSettings): void {
 
   const orderOn = !!r.boost_order_ratio_on
   boostOrderToggle?.setOn(orderOn)
-  const signedPct = Number(r.boost_order_ratio_pct ?? 20)
-  boostOrderDualSlider?.setValue(signedPct + 100)
   boostOrderScoreInput?.setValue(Number(r.boost_order_ratio_score) ?? 1.0)
   if (boostOrderControls) {
     setDisabled(boostOrderControls, !orderOn)
-  }
-  if (boostOrderRow2) {
-    setDisabled(boostOrderRow2, !orderOn)
   }
 
   const programOn = !!r.boost_program_net_buy_on
@@ -102,6 +97,13 @@ function syncFromSettings(s: AppSettings): void {
   if (boostProgramScoreInput && (!act || !boostProgramScoreInput.el.contains(act))) boostProgramScoreInput.setValue(Number(r.boost_program_net_buy_score) ?? 1.0)
   if (boostProgramControls) {
     setDisabled(boostProgramControls, !programOn)
+  }
+
+  const tradeAmountOn = !!r.boost_trade_amount_rank_on
+  boostTradeAmountToggle?.setOn(tradeAmountOn)
+  if (boostTradeAmountScoreInput && (!act || !boostTradeAmountScoreInput.el.contains(act))) boostTradeAmountScoreInput.setValue(Number(r.boost_trade_amount_rank_score) ?? 1.0)
+  if (boostTradeAmountControls) {
+    setDisabled(boostTradeAmountControls, !tradeAmountOn)
   }
 
   // 재매수 차단
@@ -201,6 +203,35 @@ function mount(container: HTMLElement): void {
     root.appendChild(createSettingRow(labelWrap, controls))
   }
 
+  // --- 거래대금 순위 ---
+  {
+    const labelWrap = document.createElement('span')
+    labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
+    boostTradeAmountToggle = createToggleBtn({ on: false, onClick: () => {
+      const next = !vals.boost_trade_amount_rank_on
+      vals.boost_trade_amount_rank_on = next
+      boostTradeAmountToggle!.setOn(next)
+      if (boostTradeAmountControls) {
+        setDisabled(boostTradeAmountControls, !next)
+      }
+      saveHelper!.autoSave('boost_trade_amount_rank_on', next)
+    }})
+    labelWrap.appendChild(boostTradeAmountToggle.el)
+    const label = document.createElement('span')
+    label.textContent = '거래대금 순위 (보유제외)'
+    labelWrap.appendChild(label)
+
+    const controls = document.createElement('span')
+    controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
+    setDisabled(controls, true)
+    boostTradeAmountControls = controls
+
+    boostTradeAmountScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_trade_amount_rank_score = v; saveHelper!.autoSave('boost_trade_amount_rank_score', v) }, step: 1, name: 'boost_trade_amount_rank_score' })
+    controls.appendChild(boostTradeAmountScoreInput.el)
+
+    root.appendChild(createSettingRow(labelWrap, controls))
+  }
+
   // --- 매수/매도호가 잔량비율 ---
   {
     const block = document.createElement('div')
@@ -215,9 +246,6 @@ function mount(container: HTMLElement): void {
       boostOrderToggle!.setOn(next)
       if (boostOrderControls) {
         setDisabled(boostOrderControls, !next)
-      }
-      if (boostOrderRow2) {
-        setDisabled(boostOrderRow2, !next)
       }
       saveHelper!.autoSave('boost_order_ratio_on', next)
     }})
@@ -240,31 +268,6 @@ function mount(container: HTMLElement): void {
     row1.appendChild(row1Controls)
     block.appendChild(row1)
 
-    // Row 2: dual label slider
-    boostOrderDualSlider = createDualLabelSlider({
-      min: 0, max: 200, value: 120, step: 1,
-      leftLabel: (v) => v < 100 ? `매도잔량 +${100 - v}%` : '매도잔량',
-      rightLabel: (v) => v > 100 ? `매수잔량 +${v - 100}%` : '매수잔량',
-      leftColor: COLOR.down,
-      leftColorLight: COLOR.downLight,
-      rightColor: COLOR.up,
-      rightColorLight: COLOR.upLight,
-      onChange(_v) {
-        // live preview only
-      },
-      onCommit(v) {
-        vals.boost_order_ratio_pct = v - 100
-        saveHelper!.autoSave('boost_order_ratio_pct', v - 100)
-      },
-    })
-
-    const row2 = document.createElement('div')
-    Object.assign(row2.style, { padding: '0 0 6px' })
-    row2.appendChild(boostOrderDualSlider.el)
-    setDisabled(row2, true)
-    boostOrderRow2 = row2
-
-    block.appendChild(row2)
     root.appendChild(block)
   }
 
@@ -373,12 +376,9 @@ function unmount(): void {
   maxDailyToggle = null; maxDailyInput = null; maxStockCntInput = null; buyAmtInput = null
   boostHighToggle = null; boostHighScoreInput = null; boostHighControls = null
   boostOrderToggle = null
-  if (boostOrderDualSlider && typeof boostOrderDualSlider.destroy === 'function') {
-    boostOrderDualSlider.destroy()
-  }
-  boostOrderDualSlider = null
-  boostOrderScoreInput = null; boostOrderControls = null; boostOrderRow2 = null
+  boostOrderScoreInput = null; boostOrderControls = null
   boostProgramToggle = null; boostProgramScoreInput = null; boostProgramControls = null
+  boostTradeAmountToggle = null; boostTradeAmountScoreInput = null; boostTradeAmountControls = null
   rebuyBlockToggle = null; rebuyBlockSelect = null; rebuyBlockControls = null
   vals = {}
 }

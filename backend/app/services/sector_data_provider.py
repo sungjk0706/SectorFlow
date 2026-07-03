@@ -133,6 +133,7 @@ async def get_buy_targets_sector_stocks() -> list:
             "guard_pass": s.guard_pass,
             "reason": bt.reason,
             "boost_score": s.boost_score,
+            "trade_amount_rank": s.trade_amount_rank,
             "high_5d": int(cache_entry.get("high_5d_price", 0) or 0),
             "order_ratio": cache_entry.get("order_ratio"),
             "program_net_buy": cache_entry.get("program_net_buy"),
@@ -159,6 +160,7 @@ async def get_buy_targets_sector_stocks() -> list:
             "guard_pass": s.guard_pass,
             "reason": bt.reason,
             "boost_score": s.boost_score,
+            "trade_amount_rank": s.trade_amount_rank,
             "high_5d": int(cache_entry.get("high_5d_price", 0) or 0),
             "order_ratio": cache_entry.get("order_ratio"),
             "program_net_buy": cache_entry.get("program_net_buy"),
@@ -263,9 +265,12 @@ async def recompute_sector_summary_now() -> None:
             trim_trade_amt_pct=trim_trade,
             trim_change_rate_pct=trim_change,
         )
+        from backend.app.services.engine_symbol_utils import _base_stk_cd
+        _held = {_base_stk_cd(cd) for cd in state.checked_stocks}
         _ss = build_buy_targets_from_settings(
             _sector_summary.sectors,
             _es._integrated_system_settings_cache,
+            held_codes=_held,
         )
         _es._sector_summary_cache = _ss
         cancel_sector_recompute()
