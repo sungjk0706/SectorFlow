@@ -5,7 +5,7 @@
 import { createProfitChart, type ProfitChartApi } from '../components/canvas-profit-chart'
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
 import { globalSettingsManager } from '../settings'
-import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, createStockNameColumn, createNumberCell, createPnlCell, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, createStockNameColumn, createCodeCell, createNumberCell, createPnlCell, COLOR } from '../components/common/ui-styles'
 import { ACCOUNT_LABELS_REAL, ACCOUNT_LABELS_TEST } from '../components/common/account-labels'
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
@@ -33,8 +33,8 @@ function buildChartFromDailySummary(summary: Record<string, unknown>[]): { date:
 /* ── 매수 컬럼 (7개) ── */
 const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
   { key: 'no', label: '순번', align: 'center', minWidth: 36, maxWidth: 36, render: (_, i) => String(i + 1) },
-  { key: 'date', label: '날짜', align: 'center', render: r => { const d = String(r.date ?? ''); return d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d } },
-  { key: 'time', label: '시간', align: 'center', render: r => String(r.time ?? '').slice(0, 5) },
+  { key: 'datetime', label: '일시', align: 'center', minWidth: 80, render: r => { const d = String(r.date ?? ''); const t = String(r.time ?? ''); const dd = d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d; return dd + (t ? ' ' + t : '') } },
+  { key: 'stk_cd', label: '코드', align: 'center', minWidth: 72, maxWidth: 72, render: r => createCodeCell(String(r.stk_cd ?? '')) },
   createStockNameColumn<Record<string, unknown>>(
     (r: Record<string, unknown>) => {
       const state = hotStore.getState()
@@ -55,8 +55,8 @@ const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
 /* ── 매도 컬럼 (12개) ── */
 const SELL_COLS: ColumnDef<Record<string, unknown>>[] = [
   { key: 'no', label: '순번', align: 'center', minWidth: 36, maxWidth: 36, render: (_, i) => String(i + 1) },
-  { key: 'date', label: '날짜', align: 'center', render: r => { const d = String(r.date ?? ''); return d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d } },
-  { key: 'time', label: '시간', align: 'center', render: r => String(r.time ?? '').slice(0, 5) },
+  { key: 'datetime', label: '일시', align: 'center', minWidth: 80, render: r => { const d = String(r.date ?? ''); const t = String(r.time ?? ''); const dd = d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d; return dd + (t ? ' ' + t : '') } },
+  { key: 'stk_cd', label: '코드', align: 'center', minWidth: 72, maxWidth: 72, render: r => createCodeCell(String(r.stk_cd ?? '')) },
   createStockNameColumn<Record<string, unknown>>(
     (r: Record<string, unknown>) => {
       const state = hotStore.getState()
@@ -102,13 +102,13 @@ const SELL_COLS: ColumnDef<Record<string, unknown>>[] = [
 
 /* ── 더미 데이터 ── */
 const DUMMY_BUY: Record<string, unknown>[] = [
-  { date: '2026-04-14', time: '09:15:00', stk_nm: '삼성전자', price: 70000, qty: 100, total_amt: 7001050, fee: 1050 },
-  { date: '2026-04-14', time: '09:22:00', stk_nm: 'SK하이닉스', price: 185000, qty: 50, total_amt: 9251388, fee: 1388 },
+  { date: '2026-04-14', time: '09:15:00', stk_cd: '005930', stk_nm: '삼성전자', price: 70000, qty: 100, total_amt: 7001050, fee: 1050 },
+  { date: '2026-04-14', time: '09:22:00', stk_cd: '000660', stk_nm: 'SK하이닉스', price: 185000, qty: 50, total_amt: 9251388, fee: 1388 },
 ]
 
 const DUMMY_SELL: Record<string, unknown>[] = [
-  { date: '2026-04-14', time: '10:05:00', stk_nm: '삼성전자', avg_buy_price: 70000, price: 71500, qty: 100, buy_total_amt: 7001050, total_amt: 7134627, realized_pnl: 133577, pnl_rate: 1.91, fee: 1073, tax: 14300 },
-  { date: '2026-04-14', time: '10:30:00', stk_nm: 'SK하이닉스', avg_buy_price: 185000, price: 183000, qty: 50, buy_total_amt: 9251388, total_amt: 9130327, realized_pnl: -121061, pnl_rate: -1.31, fee: 1373, tax: 18300 },
+  { date: '2026-04-14', time: '10:05:00', stk_cd: '005930', stk_nm: '삼성전자', avg_buy_price: 70000, price: 71500, qty: 100, buy_total_amt: 7001050, total_amt: 7134627, realized_pnl: 133577, pnl_rate: 1.91, fee: 1073, tax: 14300 },
+  { date: '2026-04-14', time: '10:30:00', stk_cd: '000660', stk_nm: 'SK하이닉스', avg_buy_price: 185000, price: 183000, qty: 50, buy_total_amt: 9251388, total_amt: 9130327, realized_pnl: -121061, pnl_rate: -1.31, fee: 1373, tax: 18300 },
 ]
 
 /** 로컬 시간 기준 오늘 날짜 (YYYY-MM-DD). UTC 시차 문제 방지. */
@@ -195,8 +195,8 @@ type LowerTab = 'buy' | 'sell'
 let chart: ProfitChartApi | null = null
 let accountValRefs: HTMLSpanElement[] = []
 let testAccountValRefs: HTMLSpanElement[] = []
-let holdingCountLabel: HTMLSpanElement | null = null
-let holdingCountLabelTest: HTMLSpanElement | null = null
+let holdingCountSpan: HTMLSpanElement | null = null
+let holdingCountSpanTest: HTMLSpanElement | null = null
 let realAccountContainer: HTMLDivElement | null = null
 let testAccountContainer: HTMLDivElement | null = null
 let buyHistory: Record<string, unknown>[] = []
@@ -282,7 +282,7 @@ function renderAccountVals(): void {
     tv[2].textContent = `${todayBuyAmt.toLocaleString()}원`
     tv[3].textContent = `${todaySellAmt.toLocaleString()}원`
     tv[4].textContent = `${evalTotal.toLocaleString()}원`
-    if (holdingCountLabelTest) holdingCountLabelTest.textContent = `보유주식 평가금액 (${positionCount}종목)`
+    if (holdingCountSpanTest) holdingCountSpanTest.textContent = String(positionCount)
     const evalSign = evalPnl > 0 ? '+' : ''
     const evalColor = pnlColor(evalPnl)
     tv[5].textContent = `${evalSign}${evalPnl.toLocaleString()}원`
@@ -307,7 +307,7 @@ function renderAccountVals(): void {
     rv[2].textContent = `${todayBuyAmt.toLocaleString()}원`
     rv[3].textContent = `${todaySellAmt.toLocaleString()}원`
     rv[4].textContent = `${evalTotal.toLocaleString()}원`
-    if (holdingCountLabel) holdingCountLabel.textContent = `보유주식 평가금액 (${positionCount}종목)`
+    if (holdingCountSpan) holdingCountSpan.textContent = String(positionCount)
     const evalSign = evalPnl > 0 ? '+' : ''
     const evalColor = pnlColor(evalPnl)
     rv[5].textContent = `${evalSign}${evalPnl.toLocaleString()}원`
@@ -567,8 +567,17 @@ function mount(container: HTMLElement): void {
       row.style.backgroundColor = '#f9f9f9'
     }
     const label = document.createElement('span')
-    label.textContent = ACCOUNT_LABELS_REAL[i]
-    if (i === 4) holdingCountLabel = label
+    if (i === 4) {
+      label.appendChild(document.createTextNode('보유주식 평가금액 ('))
+      const cntSpan = document.createElement('span')
+      cntSpan.style.color = COLOR.down
+      cntSpan.style.fontWeight = 'bold'
+      label.appendChild(cntSpan)
+      label.appendChild(document.createTextNode('종목)'))
+      holdingCountSpan = cntSpan
+    } else {
+      label.textContent = ACCOUNT_LABELS_REAL[i]
+    }
     const val = document.createElement('span')
     Object.assign(val.style, { textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })
     row.appendChild(label)
@@ -588,8 +597,17 @@ function mount(container: HTMLElement): void {
       row.style.backgroundColor = '#f9f9f9'
     }
     const label = document.createElement('span')
-    label.textContent = ACCOUNT_LABELS_TEST[i]
-    if (i === 4) holdingCountLabelTest = label
+    if (i === 4) {
+      label.appendChild(document.createTextNode('보유주식 평가금액 ('))
+      const cntSpan = document.createElement('span')
+      cntSpan.style.color = COLOR.down
+      cntSpan.style.fontWeight = 'bold'
+      label.appendChild(cntSpan)
+      label.appendChild(document.createTextNode('종목)'))
+      holdingCountSpanTest = cntSpan
+    } else {
+      label.textContent = ACCOUNT_LABELS_TEST[i]
+    }
     const val = document.createElement('span')
     Object.assign(val.style, { textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })
     row.appendChild(label)
@@ -893,8 +911,8 @@ function unmount(): void {
   tabRow = null
   accountValRefs = []
   testAccountValRefs = []
-  holdingCountLabel = null
-  holdingCountLabelTest = null
+  holdingCountSpan = null
+  holdingCountSpanTest = null
   realAccountContainer = null
   testAccountContainer = null
   buyHistory = []
