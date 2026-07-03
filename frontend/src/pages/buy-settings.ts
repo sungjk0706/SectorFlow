@@ -269,7 +269,7 @@ function mount(container: HTMLElement): void {
   }
 
   // ── 매수 금액 섹션 ──
-  root.appendChild(sectionTitle('매수 한도'))
+  root.appendChild(sectionTitle('매수 금액 한도'))
 
   // 매수 주문 유형 (시장가 고정)
   root.appendChild(createSettingRow('매수 주문 유형', createFixedValue('시장가')))
@@ -288,7 +288,7 @@ function mount(container: HTMLElement): void {
     }})
     labelWrap.appendChild(maxDailyToggle.el)
     const label = document.createElement('span')
-    label.textContent = '일일 최대 매수 금액'
+    label.textContent = '전체 일일 최대 매수 금액'
     labelWrap.appendChild(label)
     root.appendChild(createSettingRow(labelWrap, maxDailyInput.el))
   }
@@ -297,12 +297,12 @@ function mount(container: HTMLElement): void {
   maxStockCntInput = createNumInput({ value: 0, onChange: v => { vals.max_stock_cnt = v; saveHelper!.autoSave('max_stock_cnt', v) }, name: 'max_stock_cnt' })
   root.appendChild(createSettingRow('최대 동시 보유 종목 수', maxStockCntInput.el))
 
+  // ── 동일 종목 재매수 제어 섹션 ──
+  root.appendChild(sectionTitle('동일 종목 재매수 제어'))
+
   // 종목당 일일 최대 매수 금액
   buyAmtInput = createMoneyInput({ value: 0, onChange: v => { vals.buy_amt = v; saveHelper!.autoSave('buy_amt', v) }, name: 'buy_amt' })
   root.appendChild(createSettingRow('종목당 일일 최대 매수 금액', buyAmtInput.el))
-
-  // ── 재매수 차단 섹션 ──
-  root.appendChild(sectionTitle('재매수 차단'))
 
   // 재매수 차단 ON/OFF + 차단 기간 select
   {
@@ -319,7 +319,7 @@ function mount(container: HTMLElement): void {
     }})
     labelWrap.appendChild(rebuyBlockToggle.el)
     const label = document.createElement('span')
-    label.textContent = '재매수 차단'
+    label.textContent = '재매수 차단 활성화'
     labelWrap.appendChild(label)
 
     const controls = document.createElement('span')
