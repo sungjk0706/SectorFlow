@@ -110,6 +110,7 @@ let dataTable: DataTableApi<SectorStock> | null = null
 let badgeEls: { daily: HTMLSpanElement; holding: HTMLSpanElement; perStock: HTMLSpanElement } | null = null
 let emptyEl: HTMLElement | null = null
 let unsubTargets: (() => void) | null = null
+let unsubUiStore: (() => void) | null = null
 let rafHandle: number | null = null
 let onRealDataTick: ((e: Event) => void) | null = null
 let onOrderbookTick: ((e: Event) => void) | null = null
@@ -119,10 +120,54 @@ let _mounted = false
 /* ── 한도 배지 렌더링 ── */
 function renderLimitBadge(el: HTMLSpanElement, label: string, cur: number, max: number, unit = '원'): void {
   const hit = max > 0 && cur >= max
-  el.style.background = hit ? COLOR.upBg : COLOR.neutralBg
-  el.style.color = hit ? COLOR.up : COLOR.code
-  el.style.fontWeight = hit ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal
-  el.textContent = `${label} ${cur.toLocaleString()}${unit} / ${max > 0 ? max.toLocaleString() + unit : '무제한'}${hit ? ' (한도)' : ''}`
+  const near = max > 0 && cur >= max * 0.8 && cur < max
+  el.style.background = hit ? COLOR.upBg : near ? COLOR.warningBg : COLOR.neutralBg
+  el.style.fontWeight = (hit || near) ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal
+  el.textContent = ''
+
+  const labelSpan = document.createElement('span')
+  labelSpan.style.color = COLOR.code
+  labelSpan.textContent = `${label} `
+  el.appendChild(labelSpan)
+
+  const curSpan = document.createElement('span')
+  curSpan.style.color = COLOR.up
+  curSpan.textContent = cur.toLocaleString()
+  el.appendChild(curSpan)
+
+  const curUnitSpan = document.createElement('span')
+  curUnitSpan.style.color = COLOR.code
+  curUnitSpan.textContent = unit
+  el.appendChild(curUnitSpan)
+
+  const sepSpan = document.createElement('span')
+  sepSpan.style.color = COLOR.code
+  sepSpan.textContent = ' / '
+  el.appendChild(sepSpan)
+
+  const maxSpan = document.createElement('span')
+  maxSpan.style.color = COLOR.up
+  maxSpan.textContent = max > 0 ? max.toLocaleString() : '무제한'
+  el.appendChild(maxSpan)
+
+  if (max > 0) {
+    const maxUnitSpan = document.createElement('span')
+    maxUnitSpan.style.color = COLOR.code
+    maxUnitSpan.textContent = unit
+    el.appendChild(maxUnitSpan)
+  }
+
+  if (hit) {
+    const hitSpan = document.createElement('span')
+    hitSpan.style.color = COLOR.up
+    hitSpan.textContent = ' (한도)'
+    el.appendChild(hitSpan)
+  } else if (near) {
+    const nearSpan = document.createElement('span')
+    nearSpan.style.color = COLOR.warning
+    nearSpan.textContent = ' (근접)'
+    el.appendChild(nearSpan)
+  }
 }
 
 function createBadgeSpan(): HTMLSpanElement {
@@ -144,28 +189,69 @@ function updateBadges(): void {
   const holdingCnt = state.positions.filter(p => (p.qty ?? 0) > 0).length
   const dailySpent = uiState.buyLimitStatus.daily_buy_spent
 
-  renderLimitBadge(badgeEls.daily, '💰 일일 최대 매수 금액', dailySpent, maxDaily)
+  renderLimitBadge(badgeEls.daily, '💰 일일 매수 금액 (수수료 제외)', dailySpent, maxDaily)
   renderLimitBadge(badgeEls.holding, '📦 동시 보유 종목 최대', holdingCnt, maxStock, '종목')
 
   // 종목당 일일 최대 매수 금액: 1순위 통과 종목 기준 매수 가능 수량 표시
   const dailyRemain = maxDaily > 0 ? Math.max(0, maxDaily - dailySpent) : Infinity
   const effectiveBuyAmt = buyAmtPerStock > 0 ? Math.min(buyAmtPerStock, dailyRemain) : 0
-  const topTarget = state.buyTargets.find(t => t.guard_pass && t.reason === '')
-  let perStockText = `🏷️ 종목당 매수 최대 금액 ${buyAmtPerStock > 0 ? buyAmtPerStock.toLocaleString() + '원' : '미설정'}`
+  const topTarget = [...state.buyTargets].sort((a, b) => {
+    if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
+    return (a.rank ?? 999999) - (b.rank ?? 999999)
+  }).find(t => t.guard_pass && t.reason === '')
   let perStockLimited = false
+  let qty = 0
   if (topTarget && effectiveBuyAmt > 0 && topTarget.cur_price > 0) {
-    const qty = Math.floor(effectiveBuyAmt / topTarget.cur_price)
+    qty = Math.floor(effectiveBuyAmt / topTarget.cur_price)
     if (dailyRemain < buyAmtPerStock) {
-      perStockText += ` (1위 ${topTarget.name} ${qty}주 ⚠️)`
       perStockLimited = true
-    } else {
-      perStockText += ` (1위 ${topTarget.name} ${qty}주)`
     }
   }
-  badgeEls.perStock.style.background = perStockLimited ? COLOR.warningBg : COLOR.neutralBg
-  badgeEls.perStock.style.color = perStockLimited ? COLOR.warning : COLOR.code
-  badgeEls.perStock.style.fontWeight = perStockLimited ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal
-  badgeEls.perStock.textContent = perStockText
+
+  const psHit = maxDaily > 0 && dailySpent >= maxDaily
+  const psNear = perStockLimited && !psHit
+  badgeEls.perStock.style.background = psHit ? COLOR.upBg : psNear ? COLOR.warningBg : COLOR.neutralBg
+  badgeEls.perStock.style.fontWeight = (psHit || psNear) ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal
+  badgeEls.perStock.textContent = ''
+
+  const psLabel = document.createElement('span')
+  psLabel.style.color = COLOR.code
+  psLabel.textContent = '🏷️ 종목당 매수 최대 금액 '
+  badgeEls.perStock.appendChild(psLabel)
+
+  if (buyAmtPerStock > 0) {
+    const psAmt = document.createElement('span')
+    psAmt.style.color = COLOR.up
+    psAmt.textContent = buyAmtPerStock.toLocaleString()
+    badgeEls.perStock.appendChild(psAmt)
+
+    const psUnit = document.createElement('span')
+    psUnit.style.color = COLOR.code
+    psUnit.textContent = '원'
+    badgeEls.perStock.appendChild(psUnit)
+  } else {
+    const psNa = document.createElement('span')
+    psNa.style.color = COLOR.code
+    psNa.textContent = '미설정'
+    badgeEls.perStock.appendChild(psNa)
+  }
+
+  if (topTarget && effectiveBuyAmt > 0 && topTarget.cur_price > 0) {
+    const psInfo = document.createElement('span')
+    psInfo.style.color = COLOR.code
+    psInfo.textContent = ` (1위 ${topTarget.name} `
+    badgeEls.perStock.appendChild(psInfo)
+
+    const psQty = document.createElement('span')
+    psQty.style.color = COLOR.up
+    psQty.textContent = String(qty)
+    badgeEls.perStock.appendChild(psQty)
+
+    const psQtyUnit = document.createElement('span')
+    psQtyUnit.style.color = COLOR.code
+    psQtyUnit.textContent = psHit ? '주 (한도))' : psNear ? '주 ⚠️)' : '주)'
+    badgeEls.perStock.appendChild(psQtyUnit)
+  }
 }
 
 /* ── mount ── */
@@ -227,60 +313,63 @@ function mount(container: HTMLElement): void {
   if (emptyEl) emptyEl.style.display = initialTargets.length === 0 ? '' : 'none'
 
   // Store 구독 — rAF 배칭 + reference equality guard
-  {
-    // 마지막 렌더링 시점의 참조 (rAF 콜백에서 갱신)
-    let lastRenderedBuyTargets = initState.buyTargets
-    let lastRenderedPositions = initState.positions
-    let lastRenderedSettings = globalSettingsManager.getSettings()
-    const initUiState = uiStore.getState()
-    let lastRenderedBuyLimitStatus = initUiState.buyLimitStatus
+  // 마지막 렌더링 시점의 참조 (rAF 콜백에서 갱신)
+  let lastRenderedBuyTargets = initState.buyTargets
+  let lastRenderedPositions = initState.positions
+  let lastRenderedSettings = globalSettingsManager.getSettings()
+  const initUiState = uiStore.getState()
+  let lastRenderedBuyLimitStatus = initUiState.buyLimitStatus
 
-    unsubTargets = hotStore.subscribe((state) => {
-      const uiState = uiStore.getState()
-      // 해당 필드 중 하나라도 변경되었는지 확인
-      const anyChanged =
-        state.buyTargets !== lastRenderedBuyTargets ||
-        state.positions !== lastRenderedPositions ||
+  function scheduleRender(): void {
+    const hotState = hotStore.getState()
+    const uiState = uiStore.getState()
+    const anyChanged =
+      hotState.buyTargets !== lastRenderedBuyTargets ||
+      hotState.positions !== lastRenderedPositions ||
+      globalSettingsManager.getSettings() !== lastRenderedSettings ||
+      uiState.buyLimitStatus !== lastRenderedBuyLimitStatus
+
+    if (!anyChanged) return
+
+    // rAF 배칭: 이미 예약된 rAF가 있으면 추가 예약하지 않음
+    // 콜백 실행 시 getState()로 최신 상태를 가져오므로 항상 최신 반영
+    if (rafHandle !== null) return
+
+    rafHandle = requestAnimationFrame(() => {
+      rafHandle = null
+      if (!_mounted) return
+      const latest = hotStore.getState()
+      const latestUi = uiStore.getState()
+
+      // buyTargets 참조 동일 시 sort + updateRows 생략
+      const targetsChanged = latest.buyTargets !== lastRenderedBuyTargets
+      if (targetsChanged) {
+        lastRenderedBuyTargets = latest.buyTargets
+        const targets = [...latest.buyTargets].sort((a, b) => {
+          if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
+          return (a.rank ?? 999999) - (b.rank ?? 999999)
+        })
+        dataTable?.updateRows(targets)
+        if (emptyEl) emptyEl.style.display = targets.length === 0 ? '' : 'none'
+      }
+
+      // buyTargets / positions / settings / buyLimitStatus 변경 시 배지 업데이트
+      if (
+        targetsChanged ||
+        latest.positions !== lastRenderedPositions ||
         globalSettingsManager.getSettings() !== lastRenderedSettings ||
-        uiState.buyLimitStatus !== lastRenderedBuyLimitStatus
-
-      if (!anyChanged) return
-
-      // rAF 배칭: 이미 예약된 rAF가 있으면 추가 예약하지 않음
-      // 콜백 실행 시 getState()로 최신 상태를 가져오므로 항상 최신 반영
-      if (rafHandle !== null) return
-
-      rafHandle = requestAnimationFrame(() => {
-        rafHandle = null
-        if (!_mounted) return
-        const latest = hotStore.getState()
-        const latestUi = uiStore.getState()
-
-        // buyTargets 참조 동일 시 sort + updateRows 생략
-        if (latest.buyTargets !== lastRenderedBuyTargets) {
-          lastRenderedBuyTargets = latest.buyTargets
-          const targets = [...latest.buyTargets].sort((a, b) => {
-            if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
-            return (a.rank ?? 999999) - (b.rank ?? 999999)
-          })
-          dataTable?.updateRows(targets)
-          if (emptyEl) emptyEl.style.display = targets.length === 0 ? '' : 'none'
-        }
-
-        // positions 또는 settings 또는 buyLimitStatus 변경 시 배지 업데이트
-        if (
-          latest.positions !== lastRenderedPositions ||
-          globalSettingsManager.getSettings() !== lastRenderedSettings ||
-          latestUi.buyLimitStatus !== lastRenderedBuyLimitStatus
-        ) {
-          lastRenderedPositions = latest.positions
-          lastRenderedSettings = globalSettingsManager.getSettings()
-          lastRenderedBuyLimitStatus = latestUi.buyLimitStatus
-          updateBadges()
-        }
-      })
+        latestUi.buyLimitStatus !== lastRenderedBuyLimitStatus
+      ) {
+        lastRenderedPositions = latest.positions
+        lastRenderedSettings = globalSettingsManager.getSettings()
+        lastRenderedBuyLimitStatus = latestUi.buyLimitStatus
+        updateBadges()
+      }
     })
   }
+
+  unsubTargets = hotStore.subscribe(() => scheduleRender())
+  unsubUiStore = uiStore.subscribe(() => scheduleRender())
 
   // O(1) 초저지연 DOM 갱신 이벤트 리스너
   onRealDataTick = (e: Event) => {
@@ -326,6 +415,7 @@ function unmount(): void {
   }
   if (rafHandle !== null) { cancelAnimationFrame(rafHandle); rafHandle = null }
   if (unsubTargets) { unsubTargets(); unsubTargets = null }
+  if (unsubUiStore) { unsubUiStore(); unsubUiStore = null }
   if (dataTable) { dataTable.destroy(); dataTable = null }
   badgeEls = null
   emptyEl = null

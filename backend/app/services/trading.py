@@ -351,6 +351,15 @@ class AutoTradeManager:
         # ── 매수 성공 즉시 _checked_stocks 반영 -- 다음 매수 신호에서 한도 초과 차단 ──
         checked_stocks.add(stk_cd)
 
+        # ── 매수 한도 상태 WS 브로드캐스트 (account-update보다 선행) ────────
+        # buy-limit-status가 먼저 전송되어 uiStore.buyLimitStatus가 갱신된 후,
+        # account-update가 hotStore를 갱신할 때 updateBadges()가 최신 daily_buy_spent 사용
+        try:
+            import backend.app.services.engine_service as _es_limit
+            await _es_limit._broadcast_buy_limit_status()
+        except Exception:
+            logger.warning("[매수] 매수한도 브로드캐스트 실패", exc_info=True)
+
         # ── 테스트모드: 매수 후 UI 즉시 갱신 (매도탭 보유종목 카드 반영) ──────
         if is_test_mode(base_settings):
             await _dryrun_post_buy_broadcast(stk_cd, stk_nm)
@@ -361,13 +370,6 @@ class AutoTradeManager:
             f"[{t_str}] [매수주문] {stk_nm} | {order_type} | {buy_qty:,}주 | 단가: {fmt_price}원 | "
             f"일일누적매수 {self._daily_buy_spent:,}원"
         )
-
-        # ── 매수 한도 상태 WS 브로드캐스트 ──────────────────────────────────
-        try:
-            import backend.app.services.engine_service as _es_limit
-            await _es_limit._broadcast_buy_limit_status()
-        except Exception:
-            logger.warning("[매수] 매수한도 브로드캐스트 실패", exc_info=True)
 
         # ── RiskManager 성공 보고 ─────────────────────────────────────────────
         try:
