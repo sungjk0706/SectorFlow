@@ -319,14 +319,17 @@ class SectorStockTable extends HTMLElement {
   private updateUI(rows: RowItem[]): void {
     const state = hotStore.getState()
     const uiState = uiStore.getState()
-    const stockCount = Object.keys(state.sectorStocks).length
+    const stocks = Object.values(state.sectorStocks)
+    const stockCount = stocks.length
+    const krxCount = stocks.filter(s => !s.nxt_enable).length
+    const nxtCount = stocks.filter(s => s.nxt_enable).length
     const minTradeAmt = uiState.settings?.sector_min_trade_amt ?? 0
 
     // 타이틀 갱신 — CSS display 토글 + textContent 갱신 (innerHTML 파괴 금지)
     if (this.titleFilterSpan && this.titleCountSpan) {
       this.titleFilterSpan.textContent = `5일평균최소거래대금(${minTradeAmt})억`
       this.titleFilterSpan.style.display = ''
-      this.titleCountSpan.textContent = `(${stockCount}종목)`
+      this.titleCountSpan.textContent = `(합계:${stockCount}종목 KRX:${krxCount}종목 NXT:${nxtCount}종목)`
       this.titleCountSpan.style.display = ''
     }
 

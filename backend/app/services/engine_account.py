@@ -106,9 +106,6 @@ async def get_buy_limit_status() -> dict:
 
 async def _broadcast_buy_limit_status() -> None:
     """매수 한도 상태를 WS로 브로드캐스트."""
-    from backend.app.services import engine_service
-    engine_service._sector_summary_cache = None
-
     try:
         from backend.app.services.engine_account_notify import _broadcast, notify_buy_targets_update
         await _broadcast("buy-limit-status", await get_buy_limit_status())
