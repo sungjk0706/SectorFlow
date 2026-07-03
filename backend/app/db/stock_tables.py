@@ -265,34 +265,106 @@ async def create_master_stocks_table():
     _log.info("master_stocks_table 테이블 초기화 완료.")
 
 
-async def migrate_drop_high_price_column():
-    """기존 master_stocks_table에서 high_price 컬럼 제거 (마이그레이션)"""
+async def migrate_master_stocks_table_pk():
+    """master_stocks_table의 code 컬럼 PRIMARY KEY 복구 (초기 1회 마이그레이션).
+
+    과거 CREATE TABLE AS SELECT 또는 제약조건 없는 생성으로 인해
+    code 컬럼의 PRIMARY KEY가 소실된 경우 복구한다.
+    """
     conn = await get_db_connection()
 
-    # 컬럼 존재 여부 확인
+    cursor = await conn.execute("PRAGMA table_info(master_stocks_table)")
+    columns = await cursor.fetchall()
+    if not columns:
+        _log.info("[마이그레이션] master_stocks_table 없음 — skip PK migration")
+        return
+
+    code_col = next((col for col in columns if col["name"] == "code"), None)
+    if code_col and code_col["pk"] >= 1:
+        return
+
+    _log.warning("[마이그레이션] master_stocks_table code 컬럼 PK 소실 — 재생성 시작")
+
+    await conn.execute("""
+        CREATE TABLE _master_stocks_table_pk_tmp (
+            code TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            market TEXT,
+            sector TEXT,
+            cur_price INTEGER,
+            change INTEGER,
+            change_rate REAL,
+            trade_amount INTEGER,
+            avg_5d_trade_amount INTEGER,
+            high_5d_price INTEGER,
+            date TEXT,
+            nxt_enable INTEGER DEFAULT 0
+        )
+    """)
+    await conn.execute("""
+        INSERT INTO _master_stocks_table_pk_tmp
+            (code, name, market, sector, cur_price, change, change_rate,
+             trade_amount, avg_5d_trade_amount, high_5d_price, date, nxt_enable)
+        SELECT code, name, market, sector, cur_price, change, change_rate,
+               trade_amount, avg_5d_trade_amount, high_5d_price, date, nxt_enable
+        FROM master_stocks_table
+    """)
+    await conn.execute("DROP TABLE master_stocks_table")
+    await conn.execute("ALTER TABLE _master_stocks_table_pk_tmp RENAME TO master_stocks_table")
+
+    await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_market ON master_stocks_table(market)')
+    await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_date ON master_stocks_table(date)')
+    await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_avg_5d ON master_stocks_table(avg_5d_trade_amount)')
+    await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_sector ON master_stocks_table(sector)')
+    await conn.commit()
+    _log.info("[마이그레이션] master_stocks_table code PRIMARY KEY 복구 완료")
+
+
+async def migrate_drop_high_price_column():
+    """기존 master_stocks_table에서 high_price 컬럼 제거 (마이그레이션).
+
+    CREATE TABLE AS SELECT 대신 명시적 스키마 + INSERT INTO SELECT를 사용하여
+    PRIMARY KEY 등 제약조건이 보존되도록 한다.
+    """
+    conn = await get_db_connection()
+
     cursor = await conn.execute("PRAGMA table_info(master_stocks_table)")
     columns = await cursor.fetchall()
     column_names = {col["name"] for col in columns}
 
     if "high_price" in column_names:
-        # SQLite는 ALTER TABLE DROP COLUMN을 지원하지 않으므로 테이블 재생성 방식 사용
         await conn.execute("""
-            CREATE TABLE _master_stocks_table_tmp AS
+            CREATE TABLE _master_stocks_table_tmp (
+                code TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                market TEXT,
+                sector TEXT,
+                cur_price INTEGER,
+                change INTEGER,
+                change_rate REAL,
+                trade_amount INTEGER,
+                avg_5d_trade_amount INTEGER,
+                high_5d_price INTEGER,
+                date TEXT,
+                nxt_enable INTEGER DEFAULT 0
+            )
+        """)
+        await conn.execute("""
+            INSERT INTO _master_stocks_table_tmp
+                (code, name, market, sector, cur_price, change, change_rate,
+                 trade_amount, avg_5d_trade_amount, high_5d_price, date, nxt_enable)
             SELECT code, name, market, sector, cur_price, change, change_rate,
                    trade_amount, avg_5d_trade_amount, high_5d_price, date, nxt_enable
             FROM master_stocks_table
         """)
         await conn.execute("DROP TABLE master_stocks_table")
         await conn.execute("ALTER TABLE _master_stocks_table_tmp RENAME TO master_stocks_table")
-        # 인덱스 재생성
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_market ON master_stocks_table(market)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_date ON master_stocks_table(date)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_avg_5d ON master_stocks_table(avg_5d_trade_amount)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_sector ON master_stocks_table(sector)')
         await conn.commit()
         _log.info("[마이그레이션] master_stocks_table에서 high_price 컬럼 제거 완료")
-    else:
-        pass
 
 
 async def migrate_add_hidden_to_custom_sectors():
