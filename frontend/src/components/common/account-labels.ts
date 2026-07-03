@@ -6,7 +6,7 @@
 export const ACCOUNT_LABELS_REAL = [
   '예수금',
   '주문가능 금액',
-  '오늘 매수 금액',
+  '오늘 매수 금액 (수수료 포함)',
   '오늘 매도 금액',
   '보유주식 평가 금액',
   '보유주식 평가 손익금',
@@ -18,7 +18,7 @@ export const ACCOUNT_LABELS_REAL = [
 export const ACCOUNT_LABELS_TEST = [
   '누적 투자금',
   '주문가능 금액',
-  '오늘 매수 금액',
+  '오늘 매수 금액 (수수료 포함)',
   '오늘 매도 금액',
   '보유주식 평가 금액',
   '보유주식 평가 손익금',

@@ -284,6 +284,12 @@ async def run_engine_loop() -> None:
             )
             _sync_sell_overrides_from_settings()
 
+        from backend.app.services.engine_account import _broadcast_buy_limit_status
+        try:
+            await _broadcast_buy_limit_status()
+        except Exception:
+            logger.warning("[시작] 매수한도 브로드캐스트 실패", exc_info=True)
+
         from backend.app.services.engine_service import _broadcast_engine_ws
         await _broadcast_engine_ws()
 
