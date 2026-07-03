@@ -34,7 +34,7 @@ function buildChartFromDailySummary(summary: Record<string, unknown>[]): { date:
 const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
   { key: 'no', label: '순번', align: 'center', minWidth: 36, maxWidth: 36, render: (_, i) => String(i + 1) },
   { key: 'datetime', label: '일시', align: 'center', minWidth: 80, render: r => { const d = String(r.date ?? ''); const t = String(r.time ?? ''); const dd = d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d; return dd + (t ? ' ' + t : '') } },
-  { key: 'stk_cd', label: '코드', align: 'center', minWidth: 72, maxWidth: 72, render: r => createCodeCell(String(r.stk_cd ?? '')) },
+  { key: 'stk_cd', label: '종목코드', align: 'center', minWidth: 72, maxWidth: 72, render: r => createCodeCell(String(r.stk_cd ?? '')) },
   createStockNameColumn<Record<string, unknown>>(
     (r: Record<string, unknown>) => {
       const state = hotStore.getState()
@@ -56,7 +56,7 @@ const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
 const SELL_COLS: ColumnDef<Record<string, unknown>>[] = [
   { key: 'no', label: '순번', align: 'center', minWidth: 36, maxWidth: 36, render: (_, i) => String(i + 1) },
   { key: 'datetime', label: '일시', align: 'center', minWidth: 80, render: r => { const d = String(r.date ?? ''); const t = String(r.time ?? ''); const dd = d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d; return dd + (t ? ' ' + t : '') } },
-  { key: 'stk_cd', label: '코드', align: 'center', minWidth: 72, maxWidth: 72, render: r => createCodeCell(String(r.stk_cd ?? '')) },
+  { key: 'stk_cd', label: '종목코드', align: 'center', minWidth: 72, maxWidth: 72, render: r => createCodeCell(String(r.stk_cd ?? '')) },
   createStockNameColumn<Record<string, unknown>>(
     (r: Record<string, unknown>) => {
       const state = hotStore.getState()
