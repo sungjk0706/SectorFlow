@@ -232,6 +232,11 @@ function renderAutoTradeTab(container: HTMLElement): void {
   masterRow.appendChild(masterRight)
   container.appendChild(masterRow)
 
+  const masterDesc = document.createElement('div')
+  Object.assign(masterDesc.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 4px', marginTop: '-4px' })
+  masterDesc.textContent = '자동매매(매수/매도) 마스터 스위치 — OFF면 모든 매매 중단'
+  container.appendChild(masterDesc)
+
   // 자동매수 행
   const autoBuyRow = document.createElement('div')
   Object.assign(autoBuyRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px' })
@@ -736,7 +741,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
 
   const descLabel3 = document.createElement('div')
   Object.assign(descLabel3.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 4px', marginTop: '-4px' })
-  descLabel3.textContent = '시세·체결 실시간 수신 ON/OFF'
+  descLabel3.textContent = '실시간 데이터 자동 연결 스위치 — OFF면 수동 연결만 가능'
   container.appendChild(descLabel3)
 
   // 실시간 연결 시간

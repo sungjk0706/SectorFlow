@@ -484,11 +484,16 @@ _JSTATUS_KRX_ALERT: dict[str, str | None] = {
     "71": "서킷브레이커 2단계 동시호가 종료",
 }
 
+_KRX_CB_ACTIVATION_CODES: set[str] = {"61", "64", "66", "68", "69"}
+_KRX_CB_RELEASE_CODES: set[str] = {"63", "71"}
+
 
 async def _handle_jif(data: dict) -> None:
-    """JIF 장운영정보 수신 → 서킷브레이커/사이드카 alert만 갱신 + 브로드캐스트.
+    """JIF 장운영정보 수신 → 서킷브레이커/사이드카 alert 갱신 + 자동매매 임시중단/재개 + 브로드캐스트.
 
     market_phase(krx, nxt)는 시간 기반으로 관리되므로 JIF에서 수정하지 않는다.
+    KRX CB 발동 시 krx_circuit_breaker_active=True → 자동매매 임시 중단.
+    KRX CB 해제 시 krx_circuit_breaker_active=False → 자동매매 자동 재개.
     """
     jangubun = str(data.get("jangubun", "")).strip()
     jstatus = str(data.get("jstatus", "")).strip()
@@ -510,4 +515,31 @@ async def _handle_jif(data: dict) -> None:
     from backend.app.services.engine_account_notify import _broadcast
     await _broadcast("market-phase", {"krx_alert": alert})
     logger.info("[JIF] 서킷브레이커/사이드카 alert 갱신: jstatus=%s → %s", jstatus, alert)
+
+    if jstatus in _KRX_CB_ACTIVATION_CODES:
+        if not engine_state.state.krx_circuit_breaker_active:
+            engine_state.state.krx_circuit_breaker_active = True
+            logger.warning("[KRX-CB] 서킷브레이커/사이드카 발동 — 자동매매 임시 중단 (jstatus=%s)", jstatus)
+            _notify_krx_cb_telegram(f"🛑 [KRX] {alert} — 자동매매 임시 중단", engine_state.state.integrated_system_settings_cache)
+            await _broadcast("krx-circuit-breaker", {"active": True, "alert": alert})
+
+    elif jstatus in _KRX_CB_RELEASE_CODES:
+        if engine_state.state.krx_circuit_breaker_active:
+            engine_state.state.krx_circuit_breaker_active = False
+            logger.info("[KRX-CB] 서킷브레이커/사이드카 해제 — 자동매매 자동 재개 (jstatus=%s)", jstatus)
+            _notify_krx_cb_telegram(f"✅ [KRX] {alert} — 자동매매 자동 재개", engine_state.state.integrated_system_settings_cache)
+            await _broadcast("krx-circuit-breaker", {"active": False, "alert": alert})
+
+
+def _notify_krx_cb_telegram(message: str, settings: dict | None) -> None:
+    """KRX CB 알림을 NotificationWorker 큐로 전송. 예외 격리."""
+    try:
+        from backend.app.services.notification_worker import NotificationWorker
+        NotificationWorker.get_instance().enqueue({
+            "type": "telegram",
+            "message": message,
+            "settings": settings,
+        })
+    except Exception as e:
+        logger.warning("[KRX-CB] 텔레그램 알림 실패: %s", e, exc_info=True)
 

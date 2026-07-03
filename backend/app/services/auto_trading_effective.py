@@ -17,13 +17,17 @@ KST = timezone(timedelta(hours=9))
 
 
 def _master_on(flat: dict[str, Any] | None) -> bool:
-    """마스터 스위치(time_scheduler_on) 체크. holiday_guard_on이면 공휴일 차단."""
+    """마스터 스위치(time_scheduler_on) 체크. holiday_guard_on이면 공휴일 차단.
+    KRX 서킷브레이커/사이드카 발동 중이면 임시 차단."""
     if not flat:
         return False
     if not bool(flat["time_scheduler_on"]):
         return False
     from backend.app.core.trading_calendar import is_trading_day_with_holiday_guard
     if not is_trading_day_with_holiday_guard(bool(flat["holiday_guard_on"])):
+        return False
+    from backend.app.services.engine_state import state
+    if state.krx_circuit_breaker_active:
         return False
     return True
 
