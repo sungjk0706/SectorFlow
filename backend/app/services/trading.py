@@ -305,12 +305,13 @@ class AutoTradeManager:
                 # CircuitBreaker OPEN 시 마스터 스위치 강제 OFF
                 if risk_mgr.circuit_breaker.get_state() == "OPEN":
                     from backend.app.services.engine_state import state
-                    from backend.app.services.engine_account_notify import _broadcast
-                    state.auto_trade = False
-                    state.integrated_system_settings_cache["auto_trade_on"] = False
+                    from backend.app.services.engine_account_notify import _broadcast, notify_desktop_header_refresh, notify_desktop_settings_toggled
+                    state.integrated_system_settings_cache["time_scheduler_on"] = False
                     await _broadcast("circuit_breaker_open", {
                         "message": "Circuit Breaker OPEN - 마스터 스위치 강제 OFF",
                     })
+                    await notify_desktop_header_refresh()
+                    await notify_desktop_settings_toggled({"time_scheduler_on": False})
                     logger.error("[CircuitBreaker] OPEN 상태 - 마스터 스위치 강제 OFF")
             except Exception:
                 logger.warning("[매수] RiskManager 실패 보고 실패", exc_info=True)
@@ -371,7 +372,12 @@ class AutoTradeManager:
         # ── RiskManager 성공 보고 ─────────────────────────────────────────────
         try:
             risk_mgr = get_risk_manager()
+            prev_state = risk_mgr.circuit_breaker.get_state()
             risk_mgr.record_order_success()
+            new_state = risk_mgr.circuit_breaker.get_state()
+            if prev_state == "HALF_OPEN" and new_state == "CLOSED":
+                logger.info("[CircuitBreaker] OMS 복구 완료 — HALF_OPEN → CLOSED")
+                _fire_and_forget_telegram("✅ [OMS] 서킷브레이커 복구 완료 — 주문 정상 작동 재개", self.get_settings_fn())
         except Exception:
             logger.warning("[매수] RiskManager 성공 보고 실패", exc_info=True)
 
@@ -472,12 +478,13 @@ class AutoTradeManager:
                 # CircuitBreaker OPEN 시 마스터 스위치 강제 OFF
                 if risk_mgr.circuit_breaker.get_state() == "OPEN":
                     from backend.app.services.engine_state import state
-                    from backend.app.services.engine_account_notify import _broadcast
-                    state.auto_trade = False
-                    state.integrated_system_settings_cache["auto_trade_on"] = False
+                    from backend.app.services.engine_account_notify import _broadcast, notify_desktop_header_refresh, notify_desktop_settings_toggled
+                    state.integrated_system_settings_cache["time_scheduler_on"] = False
                     await _broadcast("circuit_breaker_open", {
                         "message": "Circuit Breaker OPEN - 마스터 스위치 강제 OFF",
                     })
+                    await notify_desktop_header_refresh()
+                    await notify_desktop_settings_toggled({"time_scheduler_on": False})
                     logger.error("[CircuitBreaker] OPEN 상태 - 마스터 스위치 강제 OFF")
             except Exception:
                 logger.warning("[매도] RiskManager 실패 보고 실패", exc_info=True)
@@ -513,7 +520,12 @@ class AutoTradeManager:
         # ── RiskManager 성공 보고 ─────────────────────────────────────────────
         try:
             risk_mgr = get_risk_manager()
+            prev_state = risk_mgr.circuit_breaker.get_state()
             risk_mgr.record_order_success()
+            new_state = risk_mgr.circuit_breaker.get_state()
+            if prev_state == "HALF_OPEN" and new_state == "CLOSED":
+                logger.info("[CircuitBreaker] OMS 복구 완료 — HALF_OPEN → CLOSED")
+                _fire_and_forget_telegram("✅ [OMS] 서킷브레이커 복구 완료 — 주문 정상 작동 재개", self.get_settings_fn())
         except Exception:
             logger.warning("[매도] RiskManager 성공 보고 실패", exc_info=True)
 
