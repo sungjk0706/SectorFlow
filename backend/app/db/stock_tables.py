@@ -491,7 +491,8 @@ async def load_master_stocks_table() -> dict[str, dict]:
     try:
         conn = await get_db_connection()
         cursor = await conn.execute("""
-            SELECT code, name, market, sector, avg_5d_trade_amount, high_5d_price, date, nxt_enable
+            SELECT code, name, market, sector, cur_price, change, change_rate,
+                   trade_amount, avg_5d_trade_amount, high_5d_price, date, nxt_enable
             FROM master_stocks_table
         """)
         rows = await cursor.fetchall()
@@ -505,11 +506,11 @@ async def load_master_stocks_table() -> dict[str, dict]:
                 "name": str(r["name"] or ""),
                 "market": str(r["market"] or ""),
                 "nxt_enable": bool(r["nxt_enable"] or 0),
-                "cur_price": 0,
-                "change": 0,
-                "change_rate": 0.0,
+                "cur_price": int(r["cur_price"] or 0),
+                "change": int(r["change"] or 0),
+                "change_rate": float(r["change_rate"] or 0.0),
                 "sign": "3",
-                "trade_amount": 0,
+                "trade_amount": int(r["trade_amount"] or 0),
                 "avg_5d_trade_amount": int(r["avg_5d_trade_amount"] or 0),
                 "high_5d_price": float(r["high_5d_price"] or 0),
                 "date": str(r["date"] or ""),
