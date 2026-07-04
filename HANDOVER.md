@@ -147,34 +147,26 @@
 
 ## 다음 단계
 
-### 1순위: 앱 기동 후 런타임 에러 확인 (사용자가 직접 실행)
-- `SectorFlow.command` 재실행 후 아래 항목 확인:
-  - WS 초기 스냅샷 전송 성공 (`initial-snapshot`, `sector-stocks-refresh`, `sector-scores`, `buy-targets` 이벤트)
-  - `ImportError` / `AttributeError` 미발생
-  - 프론트엔드 화면에 데이터 정상 표시 (업종순위, 매수후보, 계좌현황)
-- **발생 시 대응**: `engine_service.py` 파사드에 누락된 re-export 추가. 확인 방법: 에러 메시지의 함수명을 grep으로 원본 모듈에서 찾은 후 import 블록에 추가.
+### 1순위: pytest hang 해결 (코드 수정 필요)
+- **원인**: `engine_state.py:45-46`에서 `asyncio.Event()`를 `EngineState.__init__` 시점에 즉시 생성. 모듈 로드 시점의 이벤트 루프에 영구 바인딩됨. pytest-asyncio는 각 테스트마다 새 루프 생성 → 루프 불일치로 teardown 단계에서 hang.
+- **해결 방안**: `data_ready_event`와 `token_ready_event`를 `LazyEvent` 패턴으로 전환 (`engine_utils.py:9-32` 참조). 수정 범위: `engine_state.py:45-46` 2줄.
+- **검증**: `pytest backend/tests/test_sector_calculator.py` — 31개 테스트 hang 없이 통과해야 함. `pytest --tb=short` 전체 실행 시 57개 테스트 통과해야 함.
+- **관련 파일**: `engine_state.py:45-46`, `engine_utils.py:9-32`, `pytest.ini`, `backend/tests/`
 
-### 2순위: 장중 런타임 검증 (09:00~15:30 KRX / 09:00~20:00 NXT)
-1. **실시간 PnL 업데이트 확인**:
-   - `[Compute]` 로그에서 0B/01 틱 처리 확인
-   - `REALTIME_STATE`가 `WAITING_FIRST_TICK` → `LIVE`로 전환되는지 확인
-   - `reason=price_tick` 브로드캐스트 발생 확인
-   - `_handle_real_01 사망 경로 호출` warning 로그가 **출력되지 않는지** 확인
-   - 프론트엔드 Profit Overview에서 `total_pnl`/`total_pnl_rate` 실시간 변경 확인
-2. **업종지수 실시간 데이터 수신 확인**: 헤더에 코스피/코스닥 지수 표시 확인. LS IJ_ `upcode` 필드값 "001"/"101" 확인.
-3. **매수 시도 로그 확인**: `[섹터매수] 매수 시도: ...` 로그 확인.
-4. **실시간 데이터 동기화 확인**: 업종순위 페이지와 매수설정 페이지 dual layout에서 같은 종목 시세 동일 표시 확인.
-5. **`accumulated_investment` 유실 문제 검토**: `build_account_snapshot_meta` 반환값에 추가 필요 여부 결정 (미해결).
-6. **텔레그램 채널 분리 확인**: 테스트/실전 봇 토큰 2개 입력 필드 표시 및 각각 전송 확인.
-7. **Pending Changes 확인**: 엔진 미실행 시 설정 변경 → 엔진 시작 시 `[Pending]` 로그 확인.
-8. **레거시 토큰 마이그레이션 확인**: 기존 `telegram_bot_token` 자동 분리 확인.
+### 2순위: 토큰 검증 재활성화 (TODO 주석 8건)
+- **대상**: `deps.py:13`, `ws.py:164`, `ws_orders.py:18`, `ws_settings.py:18`, `client.ts:18,29,40,69`
+- **조건**: 개발 완료 후 재활성화
 
-### 3순위: 도구 인프라 남은 사항 (정적 분석 경고 수정)
-1. **ruff 0건 달성 (2026-07-04 완료)**: F401, F821, F841, E402 전면 수정. `.venv/bin/ruff check backend/app/` — 0건. 완료.
-2. **mypy 0건 달성 (2026-07-04 완료)**: 에러 0건. 완료.
-3. **eslint 0건 달성 (2026-07-04 완료)**: `RequestInit`, `HTMLCollectionOf` → `globalThis.` 접두사, `no-constant-binary-expression`, `no-empty`, `@typescript-eslint/no-namespace` 수정. 완료.
-4. **sector_calculator.py 파이프라인 테스트 (2026-07-04 작성, hang 미해결)**: 31개 테스트 작성. `compute_sector_scores` + `compute_full_sector_summary` 전체 커버. `test_sector_calculator.py` 실행 시 hang 발생 (원인: `engine_state.py:45-46`의 `asyncio.Event()` 즉시 생성 vs pytest-asyncio per-test 루프 불일치). 해결 방안: `LazyEvent` 패턴 전환.
-5. **Vitest 프론트엔드 테스트 (2026-07-04 완료)**: 4개 파일 46개 테스트 작성. `sliderConvert`, `resolveRoute`, `extractDirty`, `createStore` 커버. 완료.
+### 3순위: 종목수 불일치 (런타임 확인 필요)
+- **대상**: `_apply_confirmed_to_memory`(`market_close_pipeline.py:357`)에서 새 엔트리 생성 의심
+- **조건**: 장중 런타임 확인 필요 (우선순위 낮음)
+
+### 완료된 항목 (참고용)
+- **앱 기동 확인 (완료)**: WS 초기 스냅샷 전송 성공, `ImportError` 미발생, 프론트엔드 데이터 정상 표시 확인됨
+- **정적 분석 (완료)**: ruff 0건, mypy 0건, eslint 0 errors (23 warnings)
+- **Vitest (완료)**: 4개 파일 46개 테스트 작성, `npm run build` 성공
+- **ARCHITECTURE.md 스켈레톤 불일치 (완료)**: 7건 수정, 잔여 검색 0건 (2026-07-05)
+- **장중 런타임 검증 (대기)**: 실시간 PnL, 업종지수, 매수 시도, 데이터 동기화, 텔레그램 분리, Pending Changes, 레거시 마이그레이션 — 장중 사용자 직접 확인 필요
 
 ## 미해결 문제
 - **pytest 전체 실행 시 hang (2026-07-05 발견, 원인 특정 완료)**: `pytest --tb=short` 전체 실행 시 무한 대기 발생. 개별 파일 실행 시 `test_settings_file.py` 9 passed (0.59s), `test_sector_score.py` 17 passed (0.72s) 정상 종료. **`test_sector_calculator.py` 단독 실행 시 10초 초과 hang 발생**.
