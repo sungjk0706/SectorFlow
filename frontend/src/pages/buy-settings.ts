@@ -329,7 +329,7 @@ function mount(container: HTMLElement): void {
     }})
     labelWrap.appendChild(buyIntervalToggle.el)
     const label = document.createElement('span')
-    label.textContent = '매수 주문 간격 활성화'
+    label.textContent = '매수 주문 간격 활성화 (분)'
     labelWrap.appendChild(label)
 
     const controls = document.createElement('span')
@@ -339,10 +339,6 @@ function mount(container: HTMLElement): void {
 
     buyIntervalInput = createNumInput({ value: 0, onChange: v => { vals.buy_interval_min = v; saveHelper!.autoSave('buy_interval_min', v) }, step: 1, name: 'buy_interval_min' })
     controls.appendChild(buyIntervalInput.el)
-    const unit = document.createElement('span')
-    unit.textContent = '분'
-    unit.style.cssText = 'font-size:13px;color:#666;'
-    controls.appendChild(unit)
 
     root.appendChild(createSettingRow(labelWrap, controls))
   }
