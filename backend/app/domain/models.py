@@ -53,7 +53,6 @@ class SectorScore:
     # ── 점수 계산용 (트리밍/필터 후 값) ──
     scored_trade_amount: int = 0        # 가중치 점수 계산에 사용되는 거래대금 평균 (원)
     scored_rise_ratio: float = 0.0      # 가중치 점수 계산에 사용되는 상승비율
-    scored_avg_change_rate: float = 0.0  # 가중치 점수 계산에 사용되는 평균등락률
     # ── 신규 필드: 가중치 점수 시스템 ──
     final_score: float = 0.0                          # 가중치 최종 점수 (0.0~100.0)
     metric_scores: dict[str, float] = field(default_factory=dict)  # 지표별 정규화 점수
@@ -94,15 +93,15 @@ class MetricDef:
 
 DEFAULT_METRICS: list[MetricDef] = [
     MetricDef(
-        key="rise_ratio",
-        label="상승종목비율",
-        extract=lambda sc: sc.scored_rise_ratio,
+        key="total_trade_amount",
+        label="거래대금",
+        extract=lambda sc: float(sc.scored_trade_amount),
         default_weight=0.5,
     ),
     MetricDef(
-        key="avg_change_rate",
-        label="평균등락률",
-        extract=lambda sc: sc.scored_avg_change_rate,
+        key="rise_ratio",
+        label="상승종목비율",
+        extract=lambda sc: sc.scored_rise_ratio,
         default_weight=0.5,
     ),
 ]
@@ -121,11 +120,11 @@ _SORT_LABEL: dict[SortKey, str] = {
 }
 
 # 업종 순위 1차 정렬 기준
-SectorRankPrimary = Literal["rise_ratio", "avg_change_rate"]
+SectorRankPrimary = Literal["rise_ratio", "total_trade_amount"]
 
 _SECTOR_RANK_LABEL: dict[SectorRankPrimary, str] = {
-    "rise_ratio":        "상승비율",
-    "avg_change_rate":   "평균등락률",
+    "rise_ratio":          "상승비율",
+    "total_trade_amount":  "총거래대금",
 }
 
 DEFAULT_SECTOR_RANK_PRIMARY: SectorRankPrimary = "rise_ratio"
