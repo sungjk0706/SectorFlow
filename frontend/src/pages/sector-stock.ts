@@ -275,7 +275,6 @@ class SectorStockTable extends HTMLElement {
   private titleBaseSpan: HTMLElement | null = null
   private titleFilterSpan: HTMLElement | null = null
   private titleCountSpan: HTMLElement | null = null
-  private titleWarningSpan: HTMLElement | null = null
   private filterBadge: HTMLElement | null = null
   private emptyDiv: HTMLElement | null = null
   private scrollContainer: HTMLElement | null = null
@@ -345,17 +344,6 @@ class SectorStockTable extends HTMLElement {
       }
     }
 
-    // 종목 수 경고
-    if (this.titleWarningSpan) {
-      if (stockCount > 170) {
-        this.titleWarningSpan.style.display = ''
-        this.titleWarningSpan.textContent = '⚠️ 170개 초과'
-      } else {
-        this.titleWarningSpan.style.display = 'none'
-      }
-    }
-
-
     // 빈 상태 / 스크롤 영역 표시 토글
     const hasRows = rows.length > 0
     if (this.emptyDiv) this.emptyDiv.style.display = hasRows ? 'none' : ''
@@ -387,15 +375,11 @@ class SectorStockTable extends HTMLElement {
     this.titleCountSpan = document.createElement('span')
     this.titleCountSpan.style.display = 'none'
 
-    this.titleWarningSpan = document.createElement('span')
-    Object.assign(this.titleWarningSpan.style, { color: COLOR.warning, fontWeight: '500', display: 'none', marginLeft: '8px' })
-
     titleContent.appendChild(this.titleBaseSpan)
     titleContent.appendChild(document.createTextNode(' '))
     titleContent.appendChild(this.titleFilterSpan)
     titleContent.appendChild(document.createTextNode(' '))
     titleContent.appendChild(this.titleCountSpan)
-    titleContent.appendChild(this.titleWarningSpan)
 
     this.titleH3 = createCardTitleWithContent(titleContent)
     this.rootEl.appendChild(this.titleH3)
@@ -640,7 +624,6 @@ class SectorStockTable extends HTMLElement {
     this.titleBaseSpan = null
     this.titleFilterSpan = null
     this.titleCountSpan = null
-    this.titleWarningSpan = null
     this.filterBadge = null
     this.emptyDiv = null
     this.scrollContainer = null
