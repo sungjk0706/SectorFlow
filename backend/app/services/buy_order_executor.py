@@ -24,7 +24,7 @@ async def evaluate_buy_candidates() -> None:
     """
     이벤트 기반 매수 판단 — 실시간 데이터 변경 시 _do_sector_recompute()에서 호출.
     auto_buy_effective(시간 범위 + auto_buy_on + 마스터 스위치) 통과 시 매수 실행.
-    쿨다운: sector_buy_cooldown_sec(기본 90초).
+    매수후보 테이블 1순위 종목만 매수, buy_interval_on 시 사용자 설정 간격 대기.
     """
     global _cash_insufficient
     from backend.app.services import dry_run
@@ -85,10 +85,16 @@ async def evaluate_buy_candidates() -> None:
         return
     _cash_insufficient = False
 
-    # ── 종목별 매수 시도 ─────────────────────────────────────────────
-    cooldown = float(state.integrated_system_settings_cache["sector_buy_cooldown_sec"])
-    now = time.time()
+    # ── 전체 매수 간격 게이트 (토글 ON 시) ──────────────────────────
+    _buy_interval_on = bool(state.integrated_system_settings_cache.get("buy_interval_on", False))
+    if _buy_interval_on:
+        _buy_interval_min = int(state.integrated_system_settings_cache.get("buy_interval_min", 0) or 0)
+        if _buy_interval_min > 0:
+            _now_check = time.time()
+            if _now_check - state._last_global_buy_ts < _buy_interval_min * 60:
+                return
 
+    # ── 1순위 종목만 매수 시도 ───────────────────────────────────────
     _after_hours = is_krx_after_hours()
 
     for bt in ss.buy_targets:
@@ -98,21 +104,13 @@ async def evaluate_buy_candidates() -> None:
         # 장외 시간 KRX 단독 종목 매수 차단
         if _after_hours and not is_nxt_enabled(s.code):
             continue
-        # 쿨다운 체크
-        from backend.app.services.engine_state import state
-        last_ts = state.master_stocks_cache.get(s.code, {}).get("_last_buy_ts") or 0.0
-        if now - last_ts < cooldown:
-            continue
 
-        if s.code in state.master_stocks_cache:
-            state.master_stocks_cache[s.code]["_last_buy_ts"] = now
-        
         logger.info("[종목매수] 매수 시도: %s(%s) 섹터=%s",
                     s.name, s.code, s.sector)
         try:
             _price = int(s.cur_price or 0)
             if _price <= 0:
-                continue
+                break
             _ordered = await state.auto_trade.execute_buy(
                 s.code, float(_price), state.checked_stocks, state.access_token or "",
                 force_buy=False,
@@ -120,6 +118,8 @@ async def evaluate_buy_candidates() -> None:
             )
             if _ordered:
                 logger.info("[종목매수] 매수 주문 전송: %s(%s)", s.name, s.code)
+                if _buy_interval_on:
+                    state._last_global_buy_ts = time.time()
                 _holding_cnt += 1
                 if _holding_cnt >= _max_limit:
                     break
@@ -128,3 +128,5 @@ async def evaluate_buy_candidates() -> None:
                     break
         except Exception as e:
             logger.warning("[종목매수] execute_buy 오류 %s: %s", s.code, e, exc_info=True)
+        # 1순위 종목 1종목만 시도 후 종료
+        break

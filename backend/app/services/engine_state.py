@@ -73,6 +73,9 @@ class EngineState:
         self.market_phase: dict = {"krx": "장개시전", "nxt": "장개시전"}
         self.krx_circuit_breaker_active: bool = False
 
+        # ── 매수 주문 간격 (전체 매수 간격 타이머) ───────────────────────────
+        self._last_global_buy_ts: float = 0.0
+
         # ── 계좌 상태 ───────────────────────────────────────────────────────────
         self.ws_account_subscribed: bool = False
         self.ws_connection_status: bool = False

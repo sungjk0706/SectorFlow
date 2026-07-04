@@ -89,8 +89,11 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
      "sector_trim_change_rate_pct": 10.0,
      "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
      "sector_sort_keys": ["score"],
-     "sector_buy_cooldown_sec": 90,
      "sector_stock_layout": [],
+
+     # 매수 주문 간격 (1순위 종목만 매수 후 사용자 설정 간격 대기)
+     "buy_interval_on": False,
+     "buy_interval_min": 0,
 
      # 수신율 임계값
      "sector_start_threshold_pct": 70.0,
