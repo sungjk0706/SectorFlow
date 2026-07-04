@@ -1,18 +1,14 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """WebSocket 통합 엔드포인트 — 모든 이벤트를 단일 채널로 전송.
 
 fire-and-forget broadcast는 WSManager가 담당하며,
 이 엔드포인트는 연결 관리 + initial snapshot + ping-pong만 처리한다."""
-
+from __future__ import annotations
 import asyncio
 import json
 import logging
-
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
-
 from backend.app.web.ws_manager import ws_manager
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ws", tags=["websocket"])

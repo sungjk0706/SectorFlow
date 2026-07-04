@@ -1,14 +1,10 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 매수 파이프라인 핵심 로직: 시장가 즉시 매수, 모니터링 종목 등록, 스냅샷·매도 검사, WS 연결 시도.
 
 engine_service 모듈의 전역 상태에 get_state/set_state로 접근한다.
 """
-
-import asyncio
-from datetime import datetime
-
+from __future__ import annotations
 from backend.app.core.logger import get_logger
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.services import data_manager
@@ -16,7 +12,6 @@ from backend.app.services import dry_run
 from backend.app.services import settlement_engine
 from backend.app.services.auto_trading_effective import auto_sell_effective
 from backend.app.services.engine_state import state
-
 logger = get_logger("engine")
 
 

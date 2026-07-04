@@ -43,7 +43,10 @@ export function forceLogout(): void {
   // window.location.href = '/';
 }
 
-interface RequestOptions extends RequestInit {
+interface RequestOptions {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
   pageContext?: string;
 }
 

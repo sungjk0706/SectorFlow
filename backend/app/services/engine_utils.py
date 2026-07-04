@@ -1,14 +1,11 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 엔진 유틸리티 클래스 모듈.
 
 LazyEvent 등 엔진 전역에서 사용하는 유틸리티 클래스.
 """
-
+from __future__ import annotations
 import asyncio
-
-
 class LazyEvent:
     """지연 초기화 Event.
 

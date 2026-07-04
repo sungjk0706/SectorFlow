@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 주문체결(00) 직후 후속 처리 -- 지연·스냅샷·브로드캐스트·매도조건 검사.
@@ -6,10 +5,9 @@ from __future__ import annotations
 엔진 전역·AutoTradeManager 는 콜백으로만 연결한다 (로직 불변·순서 유지).
 테스트모드(dry-run)에서는 REST 잔고 조회를 건너뛰고 인메모리 잔고만 사용.
 """
-
+from __future__ import annotations
 import logging
 from collections.abc import Callable
-
 logger = logging.getLogger(__name__)
 
 

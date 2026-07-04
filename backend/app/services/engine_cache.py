@@ -1,16 +1,13 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 엔진 캐시 오케스트레이션.
 
 순환 import 방지: `import backend.app.services.engine_state as _st` 로 상태 접근.
 """
-
+from __future__ import annotations
 import asyncio
-
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
-
 logger = get_logger("engine")
 
 # 구독 동시성 상한 (앱 기동 시 일회성 구독 준비)
@@ -24,8 +21,6 @@ async def _load_caches_preboot(settings: dict) -> None:
     단일 파이프라인: DB 로드 → 업종 레이아웃 구성 → 5일 메트릭 연산 → 필터링 → 구독.
     """
     try:
-        from backend.app.services.engine_symbol_utils import _base_stk_cd
-        from backend.app.services.engine_strategy_core import make_detail
 
         # ── master_stocks_table 로드 ──
         from backend.app.db.stock_tables import load_master_stocks_table
@@ -122,8 +117,8 @@ async def _load_caches_preboot(settings: dict) -> None:
             settlement_engine.init(initial_deposit)
             logger.debug("[데이터준비] Settlement Engine 초기화 완료 (테스트모드)")
 
-        import backend.app.services.engine_account_notify as _an
-        _an._prev_scores_cache = []
+        from backend.app.services.engine_account_notify import notify_cache
+        notify_cache.prev_scores = []
 
         # 기동 완료 플래그 설정
         state.bootstrap_event.set()

@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 Kiwoom Connector — 키움증권 WebSocket 커넥터
@@ -6,15 +5,13 @@ Kiwoom Connector — 키움증권 WebSocket 커넥터
 ws_client.py 완전 대체: _KiwoomSocket 내부 클래스에 수신루프/큐/송신 통합.
 크로스 플랫폼: Windows, macOS, Linux
 """
-
+from __future__ import annotations
 import asyncio
 import copy
 import json
 import logging
-from typing import Callable, Optional
-
+from typing import Any, Callable, Optional
 from backend.app.core.broker_connector import BrokerConnector
-
 logger = logging.getLogger(__name__)
 
 try:
@@ -43,7 +40,7 @@ class _KiwoomSocket:
         self._on_message = on_message          # async callable (폴백)
         self._on_disconnect = on_disconnect    # 연결 끊김 시 호출 (재연결 트리거)
         self._queue_callback = queue_callback  # Producer 콜백 (asyncio.Queue.put_nowait)
-        self._ws = None                        # websockets connection
+        self._ws: Any = None                        # websockets connection
         self.connected = False
         self._stop_event = asyncio.Event()
         self._recv_task: asyncio.Task | None = None
@@ -279,19 +276,20 @@ class KiwoomConnector(BrokerConnector):
             # Queue 콜백 래퍼 (Step 2: 드롭 정책 적용)
             queue_callback = None
             if self._ws_queue is not None:
+                _q = self._ws_queue
                 def _queue_put_with_drop(msg: dict) -> None:
                     """Step 2: 드롭 정책 적용 - 큐 가득 찼을 때 가장 오래된 데이터 버리고 최신 데이터 삽입."""
                     try:
-                        self._ws_queue.put_nowait(msg)
+                        _q.put_nowait(msg)
                     except asyncio.QueueFull:
                         # 큐가 가득 찼으면 가장 오래된 데이터 버리고 최신 데이터 삽입
                         try:
-                            self._ws_queue.get_nowait()  # 가장 오래된 데이터 제거
-                            self._ws_queue.put_nowait(msg)  # 최신 데이터 삽입
+                            _q.get_nowait()  # 가장 오래된 데이터 제거
+                            _q.put_nowait(msg)  # 최신 데이터 삽입
                             logger.debug("[증권사연결] tick_queue 드롭 발생 - 최신 데이터 유지")
                         except asyncio.QueueEmpty:
                             # 경합 조건: 다른 태스크가 이미 데이터를 꺼낸 경우
-                            self._ws_queue.put_nowait(msg)
+                            _q.put_nowait(msg)
                 queue_callback = _queue_put_with_drop
 
             self._socket = _KiwoomSocket(
@@ -491,19 +489,20 @@ class KiwoomConnector(BrokerConnector):
                     # Queue 콜백 래퍼 (Step 2: 재연결 시도 - 드롭 정책 적용)
                     queue_callback = None
                     if self._ws_queue is not None:
+                        _q = self._ws_queue
                         def _queue_put_with_drop(msg: dict) -> None:
                             """Step 2: 드롭 정책 적용 - 재연결 시도."""
                             try:
-                                self._ws_queue.put_nowait(msg)
+                                _q.put_nowait(msg)
                             except asyncio.QueueFull:
                                 # 큐가 가득 찼으면 가장 오래된 데이터 버리고 최신 데이터 삽입
                                 try:
-                                    self._ws_queue.get_nowait()  # 가장 오래된 데이터 제거
-                                    self._ws_queue.put_nowait(msg)  # 최신 데이터 삽입
+                                    _q.get_nowait()  # 가장 오래된 데이터 제거
+                                    _q.put_nowait(msg)  # 최신 데이터 삽입
                                     logger.debug("[증권사연결] tick_queue 드롭 발생 (재연결) - 최신 데이터 유지")
                                 except asyncio.QueueEmpty:
                                     # 경합 조건: 다른 태스크가 이미 데이터를 꺼낸 경우
-                                    self._ws_queue.put_nowait(msg)
+                                    _q.put_nowait(msg)
                         queue_callback = _queue_put_with_drop
 
                     self._socket = _KiwoomSocket(

@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 LS증권 Connector — LS증권 WebSocket 커넥터
@@ -10,15 +9,13 @@ LS증권 Connector — LS증권 WebSocket 커넥터
 - 재연결 루프 (지수 백오프)
 - LS WebSocket 메시지 → 내부 형식 변환
 """
-
+from __future__ import annotations
 import asyncio
-import copy
 import json
 import logging
 from collections.abc import Callable
-
+from typing import Any
 from backend.app.core.broker_connector import BrokerConnector
-
 logger = logging.getLogger(__name__)
 
 try:
@@ -45,7 +42,7 @@ class _LsSocket:
         self._on_message = on_message          # async callable (폴백)
         self._on_disconnect = on_disconnect    # 연결 끊김 시 호출 (재연결 트리거)
         self._queue_callback = queue_callback  # Producer 콜백 (asyncio.Queue.put_nowait)
-        self._ws = None                        # websockets connection
+        self._ws: Any = None                        # websockets connection
         self.connected = False
         self._stop_event = asyncio.Event()
         self._recv_task: asyncio.Task | None = None
@@ -276,8 +273,8 @@ class _LsSocket:
             if not upcode:
                 return None
             jisu = str(body.get("jisu", "")).strip()
-            change = str(body.get("change", "")).strip()
-            drate = str(body.get("drate", "")).strip()
+            change_str = str(body.get("change", "")).strip()
+            drate_str = str(body.get("drate", "")).strip()
             sign = str(body.get("sign", "")).strip()
             return {
                 "trnm": "REAL",
@@ -286,8 +283,8 @@ class _LsSocket:
                     "item": upcode,
                     "values": {
                         "10": jisu,    # 지수
-                        "11": change,  # 전일대비
-                        "12": drate,   # 등락율
+                        "11": change_str,  # 전일대비
+                        "12": drate_str,   # 등락율
                         "25": sign,    # 전일대비구분
                     }
                 }]
@@ -380,17 +377,18 @@ class LsConnector(BrokerConnector):
             # Queue 콜백 래퍼 (드롭 정책 적용)
             queue_callback = None
             if self._ws_queue is not None:
+                _q = self._ws_queue
                 def _queue_put_with_drop(msg: dict) -> None:
                     """드롭 정책 적용 - 큐 가득 찼을 때 가장 오래된 데이터 버리고 최신 데이터 삽입."""
                     try:
-                        self._ws_queue.put_nowait(msg)
+                        _q.put_nowait(msg)
                     except asyncio.QueueFull:
                         try:
-                            self._ws_queue.get_nowait()
-                            self._ws_queue.put_nowait(msg)
+                            _q.get_nowait()
+                            _q.put_nowait(msg)
                             logger.warning("[LS증권연결] tick_queue 드롭 발생 - 최신 데이터 유지")
                         except asyncio.QueueEmpty:
-                            self._ws_queue.put_nowait(msg)
+                            _q.put_nowait(msg)
                 queue_callback = _queue_put_with_drop
 
             self._socket = _LsSocket(
@@ -705,17 +703,18 @@ class LsConnector(BrokerConnector):
                     # Queue 콜백 래퍼 (재연결 시도 - 드롭 정책 적용)
                     queue_callback = None
                     if self._ws_queue is not None:
+                        _q = self._ws_queue
                         def _queue_put_with_drop(msg: dict) -> None:
                             """드롭 정책 적용 - 재연결 시도."""
                             try:
-                                self._ws_queue.put_nowait(msg)
+                                _q.put_nowait(msg)
                             except asyncio.QueueFull:
                                 try:
-                                    self._ws_queue.get_nowait()
-                                    self._ws_queue.put_nowait(msg)
+                                    _q.get_nowait()
+                                    _q.put_nowait(msg)
                                     logger.warning("[LS증권연결] tick_queue 드롭 발생 (재연결) - 최신 데이터 유지")
                                 except asyncio.QueueEmpty:
-                                    self._ws_queue.put_nowait(msg)
+                                    _q.put_nowait(msg)
                         queue_callback = _queue_put_with_drop
 
                     self._socket = _LsSocket(

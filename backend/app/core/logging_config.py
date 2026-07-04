@@ -1,12 +1,9 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 앱 기동 시 1회 호출 -- loguru 기반 로깅 초기화.
 """
-
+from __future__ import annotations
 from typing import Any
-
-
 def parse_log_level(raw: Any) -> str:
     valid = {"CRITICAL", "ERROR", "WARNING", "WARN", "INFO", "DEBUG"}
     s = str(raw or "INFO").strip().upper()

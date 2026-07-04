@@ -1,17 +1,14 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 민감 설정 암호화 (cryptography Fernet)
 API 키, 비밀번호 등 -> DB 저장 시 암호화
 """
+from __future__ import annotations
 import base64
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-
 from backend.app.config import get_settings
-
-
 def _get_fernet() -> Fernet | None:
     """ENCRYPTION_KEY에서 Fernet 인스턴스 생성"""
     key = get_settings().ENCRYPTION_KEY

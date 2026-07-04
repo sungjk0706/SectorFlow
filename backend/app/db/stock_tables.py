@@ -1,9 +1,7 @@
-import asyncio
 import json
 import logging
 import sqlite3
 from backend.app.db.database import get_db_connection
-from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
 
 _log = logging.getLogger(__name__)
 
@@ -163,7 +161,6 @@ async def load_settlement_state() -> dict | None:
 async def save_test_positions(data: dict) -> None:
     """테스트 포지션 저장 (개별 컬럼)"""
     try:
-        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
         conn = await get_db_connection()
         
         # 기존 데이터 삭제

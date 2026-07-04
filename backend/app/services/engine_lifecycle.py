@@ -7,7 +7,7 @@
 - 섹터 매수 실행
 """
 import asyncio
-import time
+from typing import Any, Coroutine
 from backend.app.core.logger import get_logger
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.services.engine_state import state
@@ -19,7 +19,6 @@ logger = get_logger("engine_lifecycle")
 
 async def start_engine(user_id: str = "") -> bool:
     """엔진 시작."""
-    from backend.app.core.kiwoom_providers import KiwoomAuthProvider
 
     if state.engine_task and not state.engine_task.done():
         return False
@@ -155,11 +154,11 @@ async def on_trade_mode_switched() -> None:
         await _unreg_grp("10")
         logger.info("[구독] 테스트모드 전환 -- 계좌 실시간 구독(grp_no=10) 해제 완료")
         # Settlement Engine: 파일에서 상태 복원 + 만료 항목 정리 + 타이머 재스케줄
-        settlement_engine.restore_state()
+        await settlement_engine.restore_state()
         logger.info("[시작] 테스트모드 전환 -- Settlement Engine 상태 복원 완료")
     else:
         # 테스트→실전: Settlement Engine 상태 저장 + 타이머 취소
-        settlement_engine.save_state()
+        await settlement_engine.save_state()
         logger.info("[시작] 실전모드 전환 -- Settlement Engine 상태 저장 완료")
         # 테스트→실전: 계좌 실시간 구독(00/04) + 보유종목 실시간(0B) 등록
         await _subscribe_account_realtime()
@@ -276,7 +275,7 @@ def get_current_kst_time() -> str:
     return datetime.now().strftime("%H:%M:%S")
 
 
-def schedule_engine_task(coro: asyncio.coroutines, *, context: str) -> bool:
+def schedule_engine_task(coro: Coroutine[Any, Any, Any], *, context: str) -> bool:
     """
     엔진 이벤트 루프에 코루틴을 안전하게 스케줄한다.
     UI 스레드(이벤트 루프 없음)에서 호출되는 경우 call_soon_threadsafe를 사용한다.

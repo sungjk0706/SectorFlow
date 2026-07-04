@@ -6,9 +6,15 @@
 순환 import 방지: 이 모듈은 다른 engine_*.py를 import하지 않는다.
 """
 import asyncio
+from typing import Any, TYPE_CHECKING
 from backend.app.core.broker_connector import BrokerConnector
 from backend.app.services.trading import AutoTradeManager
 from backend.app.services.engine_utils import LazyEvent
+
+if TYPE_CHECKING:
+    from backend.app.core.connector_manager import ConnectorManager
+    from backend.app.core.broker_providers import AuthProvider
+    from backend.app.domain.models import SectorScore
 
 
 class EngineState:
@@ -79,7 +85,7 @@ class EngineState:
         self.auto_trade: AutoTradeManager | None = None
         self.integrated_system_settings_cache: dict = {}
         self.broker_spec: list = []
-        self.broker_rest_apis: dict[str, object] = {}  # {broker_id: RestApi}
+        self.broker_rest_apis: dict[str, Any] = {}  # {broker_id: RestApi}
         self.account_snapshot: dict = {}
         self.positions: list = []
         self.snapshot_history: list = []

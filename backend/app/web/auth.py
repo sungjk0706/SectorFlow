@@ -1,15 +1,11 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """JWT 토큰 생성/검증 모듈."""
-
+from __future__ import annotations
 import os
 import logging
 from datetime import datetime, timedelta, timezone
-
 from jose import JWTError, jwt
-
 from backend.app.config import get_settings
-
 logger = logging.getLogger(__name__)
 
 ALGORITHM = "HS256"

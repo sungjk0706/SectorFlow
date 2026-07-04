@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 BrokerRouter — 기능별 Provider 매핑 중앙 라우터.
@@ -7,9 +6,8 @@ BrokerRouter — 기능별 Provider 매핑 중앙 라우터.
 - 동일 증권사의 Provider는 AuthProvider 인스턴스 공유
 - validate()로 설정 검증, summary()로 로그 출력
 """
-
+from __future__ import annotations
 import logging
-
 from backend.app.core.broker_providers import (
     AccountProvider,
     AuthProvider,
@@ -158,8 +156,8 @@ class BrokerRouter:
             secret = state.integrated_system_settings_cache.get(f"{broker_name}_app_secret")
             if not key or not secret:
                 messages.append(
-                    f"증권사 API 키가 설정되지 않았습니다. "
-                    f"일반설정에서 입력하세요."
+                    "증권사 API 키가 설정되지 않았습니다. "
+                    "일반설정에서 입력하세요."
                 )
 
         # 동일 증권사 강제 쌍 검증
@@ -179,7 +177,6 @@ class BrokerRouter:
         """[브로커] 시세=설정됨, 계좌=설정됨, ... 형식 로그 문자열."""
         parts: list[str] = []
         for feature in FEATURES:
-            broker_name = self._broker_map.get(feature, "")
             display_feature = _FEATURE_DISPLAY.get(feature, feature)
             parts.append(f"{display_feature}=설정됨")
         return "[증권사] " + ", ".join(parts)
@@ -259,10 +256,10 @@ class BrokerRouter:
                     )
                     continue
                 # API 키 존재 확인
-                key = _integrated_system_settings_cache.get(f"{broker_name}_app_key")
-                secret = _integrated_system_settings_cache.get(f"{broker_name}_app_secret")
+                key = state.integrated_system_settings_cache.get(f"{broker_name}_app_key")
+                secret = state.integrated_system_settings_cache.get(f"{broker_name}_app_secret")
                 if not key or not secret:
-                    messages.append(f"증권사 API 키가 설정되지 않았습니다")
+                    messages.append("증권사 API 키가 설정되지 않았습니다")
 
         # 매매 페이지: order 증권사 확인
         trading_config = page_overrides.get("trading") or {}
@@ -270,3 +267,20 @@ class BrokerRouter:
             pass  # order만 사용
 
         return messages
+
+    def get_spec(self, role_key: str, feature: str | None = None) -> str | None:
+        """role_key에 해당하는 spec(TR ID 등) 조회.
+
+        feature가 주어지면 해당 기능의 broker_name을 사용,
+        아니면 _broker_map의 첫 번째 broker를 사용.
+        """
+        broker_name = None
+        if feature and feature in self._broker_map:
+            broker_name = self._broker_map[feature]
+        elif self._broker_map:
+            broker_name = next(iter(self._broker_map.values()))
+        if not broker_name:
+            return None
+        role_mappings = self._specs.get(broker_name, {})
+        val = role_mappings.get(role_key)
+        return str(val) if val is not None else None

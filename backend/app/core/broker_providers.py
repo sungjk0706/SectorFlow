@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 브로커 Provider 서브 인터페이스 (ABC)
@@ -12,14 +11,9 @@ from __future__ import annotations
 엔진/서비스 코드는 이 인터페이스만 참조하여 증권사 독립적으로 동작.
 BrokerRouter가 설정 기반으로 기능별 Provider 구현체를 매핑한다.
 """
-
+from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from collections.abc import Callable
-
-
-# ── 공통 데이터 구조체 ───────────────────────────────────────────────
-
 @dataclass(frozen=True)
 class UnifiedStockRecord:
     """통합 종목 파싱 결과 — 종목코드·종목명·시장구분을 한꺼번에 보관."""

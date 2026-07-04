@@ -1,17 +1,31 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """FastAPI 웹 서버 — 엔진과 동일한 asyncio 이벤트 루프에서 실행."""
-
+from __future__ import annotations
 import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
-
-from fastapi import FastAPI, HTTPException
+from pathlib import Path
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
-
-
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response as StarletteResponse
+from backend.app.web.routes.auth import router as auth_router
+from backend.app.web.routes.account import router as account_router
+from backend.app.web.routes.market import router as market_router
+from backend.app.web.routes.status import router as status_router
+from backend.app.web.routes.settings import router as settings_router
+from backend.app.web.routes.ws import router as ws_router
+from backend.app.web.routes.ws_settings import router as ws_settings_router
+from backend.app.web.routes.ws_orders import router as ws_orders_router
+from backend.app.web.routes.trade import router as trade_router
+from backend.app.web.routes.ws_subscribe import router as ws_subscribe_router
+from backend.app.web.routes.stock_classification import router as stock_classification_router
+from backend.app.web.routes.settlement import router as settlement_router
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
@@ -69,7 +83,6 @@ async def lifespan(app: FastAPI):
 
 
     # state.integrated_system_settings_cache 초기화 (단일 소스 진리 보장)
-    from backend.app.services.engine_state import state
     state.integrated_system_settings_cache.clear()
     state.integrated_system_settings_cache.update(settings)
 
@@ -80,7 +93,6 @@ async def lifespan(app: FastAPI):
     
     from backend.app.services.telegram_bot import telegram_bot
     from backend.app.services import trade_history
-    import backend.app.services.engine_service as _es
 
     # 체결 이력 Consumer Task 시작 (비동기 I/O 백그라운드 처리)
     # 모듈 전역 변수 초기화 (비정상 종료 후 재시작 시 잔존 상태 방지)
@@ -190,17 +202,6 @@ app.add_middleware(
 # (미들웨어는 WebSocket/WS/CORS와 충돌 위험이 있으므로 사용하지 않음)
 
 # --- 라우터 등록 ---
-from backend.app.web.routes.auth import router as auth_router
-from backend.app.web.routes.account import router as account_router
-from backend.app.web.routes.market import router as market_router
-from backend.app.web.routes.status import router as status_router
-from backend.app.web.routes.settings import router as settings_router
-from backend.app.web.routes.ws import router as ws_router
-from backend.app.web.routes.ws_settings import router as ws_settings_router
-from backend.app.web.routes.ws_orders import router as ws_orders_router
-from backend.app.web.routes.trade import router as trade_router
-from backend.app.web.routes.ws_subscribe import router as ws_subscribe_router
-
 app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(market_router)
@@ -211,19 +212,12 @@ app.include_router(settings_router)
 app.include_router(ws_router)
 app.include_router(trade_router)
 app.include_router(ws_subscribe_router)
-
-from backend.app.web.routes.stock_classification import router as stock_classification_router
 app.include_router(stock_classification_router)
-
-from backend.app.web.routes.settlement import router as settlement_router
 app.include_router(settlement_router)
 
 
 
 # --- 전역 예외 핸들러 ---
-from fastapi import Request
-from fastapi.responses import JSONResponse
-import time
 
 # P1-3: 중복 알림 차단 (5분 제한)
 _last_alert_time: dict[str, float] = {}
@@ -262,9 +256,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # --- 캐시 제어 미들웨어 ---
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request as StarletteRequest
-from starlette.responses import Response as StarletteResponse
 
 
 class CacheControlMiddleware(BaseHTTPMiddleware):
@@ -304,9 +295,6 @@ app.add_middleware(CacheControlMiddleware)
 
 
 # --- 정적 파일 서빙 (React 빌드 결과물) ---
-from pathlib import Path
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 
 _FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "dist"
 

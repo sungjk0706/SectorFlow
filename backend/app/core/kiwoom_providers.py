@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 키움증권 Provider 구현체
@@ -10,12 +9,10 @@ from __future__ import annotations
   - KiwoomStockProvider     : kiwoom_stock_rest + kiwoom_daily_avg_volume 캡슐화
   - KiwoomWebSocketProvider : broker_urls 기반 WS URI 제공
 """
-
+from __future__ import annotations
 import asyncio
 import logging
-from backend.app.core.trade_mode import is_test_mode
 from typing import Callable, Optional
-
 from backend.app.core.broker_providers import (
     AccountProvider,
     AuthProvider,
@@ -304,7 +301,7 @@ class KiwoomStockProvider:
             return {}
         from backend.app.core.kiwoom_stock_rest import fetch_ka10081_all_stocks_5day
         return await fetch_ka10081_all_stocks_5day(
-            krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress
+            self._rest_api, krx_codes, qry_dt, interval_sec=interval_sec, on_progress=on_progress
         )
 
     async def fetch_all_stocks_daily_confirmed(

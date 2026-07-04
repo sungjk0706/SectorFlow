@@ -7,7 +7,6 @@
 - 실시간 필드 초기화
 """
 import asyncio
-import json
 import time
 from backend.app.core.logger import get_logger
 import backend.app.services.engine_state as engine_state
@@ -25,12 +24,11 @@ async def build_initial_snapshot() -> dict:
     """
     from backend.app.services import ws_subscribe_control
     from backend.app.services.daily_time_scheduler import get_market_phase
-    import backend.app.services.engine_state as _st
     from backend.app.services.engine_account import (
         get_positions, get_account_snapshot, get_snapshot_history,
         get_buy_limit_status, _refresh_account_snapshot_meta,
     )
-    from backend.app.services.sector_data_provider import get_sector_scores_snapshot, get_sector_stocks, get_buy_targets_sector_stocks
+    from backend.app.services.sector_data_provider import get_sector_scores_snapshot, get_buy_targets_sector_stocks
     from backend.app.services.engine_config import _mask_sensitive_settings
     from backend.app.services.engine_lifecycle import get_engine_status
     from backend.app.pipelines.pipeline_compute import get_current_receive_rate
@@ -89,11 +87,6 @@ async def build_initial_snapshot() -> dict:
     except Exception as e:
         logger.warning("[데이터] delta 저장데이터 초기화 실패: %s", e, exc_info=True)
 
-    try:
-        payload_bytes = len(json.dumps(snapshot, ensure_ascii=False).encode("utf-8"))
-    except Exception as exc:
-        logger.warning("[데이터] 크기 측정 실패: %s", exc, exc_info=True)
-
     return snapshot
 
 
@@ -129,23 +122,23 @@ def _filter_stock_fields(stocks: list[dict]) -> list[dict]:
     return [{k: v for k, v in s.items() if k in _SNAPSHOT_STOCK_FIELDS} for s in stocks]
 
 
-def _get_trade_history_for_snapshot(side: str) -> list:
+async def _get_trade_history_for_snapshot(side: str) -> list:
     """initial-snapshot용 체결 이력 반환. 현재 trade_mode 기준 필터."""
     from backend.app.services import trade_history
     from backend.app.services.engine_account import get_trade_mode
     
     mode = get_trade_mode()
     if side == "sell":
-        return trade_history.get_sell_history(trade_mode=mode)
-    return trade_history.get_buy_history(trade_mode=mode)
+        return await trade_history.get_sell_history(trade_mode=mode)
+    return await trade_history.get_buy_history(trade_mode=mode)
 
 
-def _get_daily_summary_for_snapshot() -> list:
+async def _get_daily_summary_for_snapshot() -> list:
     """initial-snapshot용 20거래일 일별 요약 반환."""
     from backend.app.services import trade_history
     from backend.app.services.engine_account import get_trade_mode
     
-    return trade_history.get_daily_summary(days=20, trade_mode=get_trade_mode())
+    return await trade_history.get_daily_summary(days=20, trade_mode=get_trade_mode())
 
 
 # ── 실시간 필드 초기화 ─────────────────────────────────────────────
@@ -232,7 +225,7 @@ async def _reset_realtime_fields() -> None:
 # ── 기타 헬퍼 ─────────────────────────────────────────────────
 
 
-def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
+async def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
     """보유 잔고에 있으면 수익률(%), 없으면 None."""
     from backend.app.services.engine_symbol_utils import _base_stk_cd
     from backend.app.services import dry_run
@@ -243,7 +236,7 @@ def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
         return None
     # 테스트모드: dry_run 가상 잔고에서 조회
     if is_test_mode(state.integrated_system_settings_cache):
-        pos = dry_run.get_position(nk)
+        pos = await dry_run.get_position(nk)
         if pos and int(pos.get("qty", 0) or 0) > 0:
             try:
                 return float(pos.get("pnl_rate") or 0.0)
@@ -272,4 +265,4 @@ async def _run_snapshot_and_sell_check(force_rest: bool = False) -> None:
     """
     from backend.app.services import engine_strategy_core
     
-    await engine_strategy_core.run_snapshot_and_sell_check(force_rest, None)
+    await engine_strategy_core.run_snapshot_and_sell_check(force_rest)

@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 업종분류 커스텀 데이터 관리 모듈.
@@ -6,10 +5,9 @@ from __future__ import annotations
 기존 JSON 파일 저장을 중단하고, 모든 업종 분류 데이터를 SQLite 데이터베이스(stocks.db)의 
 stocks 및 sectors 테이블에서 직접 조회 및 업데이트하도록 개선.
 """
-
+from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
-
 _log = logging.getLogger(__name__)
 
 
@@ -213,7 +211,6 @@ async def sync_sector_from_custom_sectors() -> None:
         _log.info("[동기화] custom_sectors 기반 master_stocks_table.sector 동기화 완료 -- %d종목, 숨김 %d종목, 복원 %d종목", updated, orphaned, restored)
         
         # 메모리 캐시 sector 필드 갱신 (활성 + 복원 종목 모두 포함)
-        import backend.app.services.engine_service as es
         for row in rows:
             code = row["stock_code"]
             sector = row["name"]

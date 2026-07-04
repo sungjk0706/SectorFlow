@@ -1,14 +1,12 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 키움 WebSocket REG/UNREG 구독 관리 — 순수 함수 + async 구독 함수.
 
 engine_service.py에서 분리된 REG 구독 로직.
 """
-
+from __future__ import annotations
 import logging
 import math
-
 from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
     get_ws_subscribe_code,
@@ -239,6 +237,7 @@ async def _unreg_grp(grp_no: str) -> bool:
                 if cd in state.master_stocks_cache:
                     state.master_stocks_cache[cd].pop("_subscribed", None)
             return True
+    return True
 
 
 async def subscribe_sector_stocks_0b() -> None:

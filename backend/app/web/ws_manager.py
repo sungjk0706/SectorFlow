@@ -1,25 +1,22 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """WebSocket 클라이언트 연결 관리 — 즉시 broadcast.
 
 set[WebSocket] 기반 직접 참조.
 broadcast()는 async 함수로, 모든 이벤트를 await 기반 직접 전송한다.
 """
-
+from __future__ import annotations
 import asyncio
 import json
 import logging
 from typing import Any
-
+from collections import OrderedDict
 from fastapi import WebSocket
-
 logger = logging.getLogger(__name__)
 
 # real-data FID 필터: 프론트엔드에서 사용하는 FID만 전송
 ALLOWED_FIDS: frozenset[str] = frozenset({'10', '11', '12', '14', '228'})
 
 # 인코딩 캐시: (data_hash, fids_tuple) -> (text, binary)
-from collections import OrderedDict
 _encoding_cache: OrderedDict[tuple[str, tuple[str, ...]], tuple[str, None]] = OrderedDict()
 _ENCODING_CACHE_MAX_SIZE = 100
 
@@ -39,10 +36,9 @@ def _encode_realdata(data: dict, subscribed_fids: frozenset[str] | None = None) 
     # FID 필터링: values에서 구독된 FID만 유지
     target_fids = subscribed_fids if subscribed_fids is not None else ALLOWED_FIDS
     values = data.get("values")
+    filtered_values: Any = values
     if isinstance(values, dict):
         filtered_values = {k: v for k, v in values.items() if k in target_fids}
-    else:
-        filtered_values = values
 
     # 캐시 키 생성: data 해시 + fids 튜플
     import hashlib
@@ -71,7 +67,6 @@ def _encode_realdata(data: dict, subscribed_fids: frozenset[str] | None = None) 
         shortened["_v"] = 1
 
     payload = json.dumps({"event": "real-data", "data": shortened}, ensure_ascii=False)
-    payload_bytes = payload.encode("utf-8")
 
     # 캐시 저장 (LRU)
     _encoding_cache[cache_key] = (payload, None)
@@ -200,6 +195,8 @@ class WSManager:
         for ws in set(self._clients):
             # subscribed_fids 그룹화
             subscribed_fids = self._client_subscribed_fids.get(ws)
+            if subscribed_fids is None:
+                continue
             if subscribed_fids not in fids_to_clients:
                 fids_to_clients[subscribed_fids] = []
             fids_to_clients[subscribed_fids].append(ws)

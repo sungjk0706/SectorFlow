@@ -1,20 +1,13 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 섹터 관련 데이터 모델.
 
 순환 import 방지를 위해 dataclass와 상수를 별도 파일로 분리.
 """
-
+from __future__ import annotations
 from dataclasses import dataclass, field
 from collections.abc import Callable
 from typing import Literal
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 데이터 클래스
-# ──────────────────────────────────────────────────────────────────────────────
-
 @dataclass
 class StockScore:
     """섹터 내 개별 종목 스코어."""

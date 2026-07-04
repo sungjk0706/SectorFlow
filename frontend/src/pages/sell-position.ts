@@ -146,6 +146,7 @@ function mount(container: HTMLElement): void {
           dataTable?.updateRows(latest.positions)
         })
       } else {
+        // 보유 종목 없음
       }
     })
   }

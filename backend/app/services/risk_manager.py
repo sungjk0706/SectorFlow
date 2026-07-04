@@ -1,5 +1,3 @@
-from __future__ import annotations
-from typing import Optional
 # -*- coding: utf-8 -*-
 """
 Risk Management Layer - 주문 전 리스크 통제
@@ -12,14 +10,13 @@ Risk Management Layer - 주문 전 리스크 통제
 
 OMS(Order Management System)로 들어가기 전 필수 관문(Gateway) 역할을 수행합니다.
 """
-
+from __future__ import annotations
+from typing import Optional
 import logging
-
 from backend.app.services.circuit_breaker import get_circuit_breaker
 from backend.app.services.account_manager import AccountManager
 from backend.app.services.trade_history import get_total_realized_pnl
 from backend.app.core.trade_mode import is_test_mode
-
 logger = logging.getLogger(__name__)
 
 

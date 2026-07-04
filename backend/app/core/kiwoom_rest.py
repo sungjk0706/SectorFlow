@@ -1,19 +1,16 @@
-from __future__ import annotations
-from typing import Optional
 # -*- coding: utf-8 -*-
 """
 키움증권 REST API 통신 클래스 (64비트 호환)
 - 순수 HTTP/JSON (httpx.AsyncClient 사용, OCX/COM 미사용)
 - OAuth2 client_credentials: App Key, App Secret -> Access Token
 """
-
+from __future__ import annotations
+from typing import Callable, Optional
 import asyncio
 import logging
 import time
 from dataclasses import dataclass
-
 import httpx
-
 from backend.app.core.broker_urls import build_broker_urls, KIWOOM_REST_REAL
 from backend.app.core.kiwoom_stock_rest import (
     fetch_ka10081_daily_price as _ka10081_fetch_single,
@@ -75,6 +72,7 @@ class KiwoomRestAPI:
         self._token_lock = asyncio.Lock()   # 토큰 갱신 전용
         self._client_lock = asyncio.Lock()  # 클라이언트 재생성 전용
         self._client: Optional[httpx.AsyncClient] = None
+        self._acnt_no: str = ""
 
     def __enter__(self) -> "KiwoomRestAPI":
         return self
@@ -150,7 +148,7 @@ class KiwoomRestAPI:
         cont_yn: str = "N",
         next_key: str = "",
         label: str = "",
-    ) -> tuple[httpx.Optional[Response], bool]:
+    ) -> tuple[Optional[httpx.Response], bool]:
         """범용 키움 REST POST 호출 — 429 exponential backoff + adaptive delay.
 
         반환: (Optional[Response], hit_429: bool)
@@ -167,6 +165,7 @@ class KiwoomRestAPI:
             _log.warning("[REST] %s 토큰 없음 -- 생략", tag)
             return None, False
 
+        assert self._token_info is not None
         headers = {
             "Content-Type": "application/json;charset=UTF-8",
             "authorization": f"Bearer {self._token_info.token}",
@@ -321,6 +320,7 @@ class KiwoomRestAPI:
         """
         if not await self._ensure_token():
             return None
+        assert self._token_info is not None
         return {
             "Content-Type": "application/json;charset=UTF-8",
             "authorization": f"Bearer {self._token_info.token}",
@@ -334,6 +334,7 @@ class KiwoomRestAPI:
         if not await self._ensure_token():
             _log.warning("[키움증권] 요청 건너뜀 -- 유효한 토큰 없음 (api-id=%s)", api_id)
             return None
+        assert self._token_info is not None
         url = f"{self.base_url}{self.ACCOUNT_URL}"
         headers = {
             "Content-Type": "application/json;charset=UTF-8",
@@ -375,6 +376,7 @@ class KiwoomRestAPI:
         if not await self._ensure_token():
             _log.warning("[키움증권] 연속조회 요청 건너뜀 -- 유효한 토큰 없음 (api-id=%s)", api_id)
             return None
+        assert self._token_info is not None
         url = f"{self.base_url}{self.ACCOUNT_URL}"
         base_headers = {
             "Content-Type": "application/json;charset=UTF-8",
@@ -477,7 +479,7 @@ class KiwoomRestAPI:
 
     async def fetch_market_stock_name_map(self) -> dict[str, str]:
         """시장 종목명 매핑 조회. {6자리 종목코드: 종목명}."""
-        return await _market_stock_name_map(self)
+        raise NotImplementedError("fetch_market_stock_name_map is not implemented")
 
     async def fetch_ka20001_index(self, mrkt_tp: str, inds_cd: str) -> Optional[dict]:
         """ka20001 -- 업종현재가요청. 지수(현재가·등락률) + 상승/하락 종목수.

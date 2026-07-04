@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 time_scheduler_on(마스터 스위치) + 매수/매도 개별 시간 범위 + auto_buy_on / auto_sell_on.
@@ -9,10 +8,9 @@ v2: 작동시간을 매수/매도 각각 분리.
     - sell_time_start / sell_time_end (매도 작동시간)
     - time_scheduler_on 은 마스터 스위치로 유지.
 """
-
+from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 from typing import Any
-
 KST = timezone(timedelta(hours=9))
 
 
@@ -58,6 +56,7 @@ def auto_buy_effective(flat: dict[str, Any] | None, now: datetime | None = None)
     """마스터 ON + 자동 매수 ON + 매수 작동시간 범위 안."""
     if not _master_on(flat):
         return False
+    assert flat is not None
     if not bool(flat["auto_buy_on"]):
         return False
     return _in_time_range(flat, "buy_time_start", "buy_time_end", now)
@@ -67,6 +66,7 @@ def auto_sell_effective(flat: dict[str, Any] | None, now: datetime | None = None
     """마스터 ON + 자동 매도 ON + 매도 작동시간 범위 안."""
     if not _master_on(flat):
         return False
+    assert flat is not None
     if not bool(flat["auto_sell_on"]):
         return False
     return _in_time_range(flat, "sell_time_start", "sell_time_end", now)

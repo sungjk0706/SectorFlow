@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 브로커 Provider 레지스트리
@@ -11,13 +10,10 @@ _create_provider() 팩토리 함수:
   - AuthProvider는 증권사당 1개만 생성 (토큰 공유)
   - 다른 Provider는 auth_provider 주입 받음
 """
-
+from __future__ import annotations
 import logging
-from typing import TYPE_CHECKING
-
+from typing import Any, Callable, TYPE_CHECKING
 from backend.app.core.broker_providers import AuthProvider
-from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
-
 if TYPE_CHECKING:
     pass
 
@@ -101,7 +97,7 @@ PROVIDER_REGISTRY: dict[str, dict[str, type]] = _LazyRegistry()
 # ── Connector 레지스트리 ───────────────────────────────────────────────
 # 증권사별 create_connector 함수 매핑
 
-def _lazy_kiwoom_connector_registry() -> dict[str, callable]:
+def _lazy_kiwoom_connector_registry() -> dict[str, Callable]:
     """순환 import 방지: 최초 접근 시 키움 Connector 팩토리 로드."""
     from backend.app.core.kiwoom_connector import create_kiwoom_connector
     return {
@@ -109,7 +105,7 @@ def _lazy_kiwoom_connector_registry() -> dict[str, callable]:
     }
 
 
-def _lazy_ls_connector_registry() -> dict[str, callable]:
+def _lazy_ls_connector_registry() -> dict[str, Callable]:
     """순환 import 방지: 최초 접근 시 LS Connector 팩토리 로드."""
     from backend.app.core.ls_connector import create_ls_connector
     return {
@@ -144,7 +140,7 @@ class _LazyConnectorRegistry(dict):
         return super().keys()
 
 
-CONNECTOR_REGISTRY: dict[str, dict[str, callable]] = _LazyConnectorRegistry()
+CONNECTOR_REGISTRY: dict[str, dict[str, Callable]] = _LazyConnectorRegistry()
 
 
 def _create_provider(
@@ -152,7 +148,7 @@ def _create_provider(
     broker_name: str,
     settings: dict,
     auth_cache: dict[str, AuthProvider],
-) -> object:
+) -> Any:
     """
     레지스트리에서 Provider 클래스를 찾아 인스턴스 생성.
 

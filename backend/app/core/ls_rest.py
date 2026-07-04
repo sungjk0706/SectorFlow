@@ -1,5 +1,3 @@
-from __future__ import annotations
-from typing import Optional
 # -*- coding: utf-8 -*-
 """
 LS증권 REST API 통신 클래스
@@ -7,16 +5,14 @@ LS증권 REST API 통신 클래스
 - OAuth2 토큰 관리
 - 주문 실행 (매수, 매도, 정정, 취소)
 """
-
+from __future__ import annotations
+from typing import Optional
 import asyncio
 import logging
 import time
 from dataclasses import dataclass
-
 import httpx
-
 from backend.app.core.broker_urls import build_broker_urls
-
 _log = logging.getLogger(__name__)
 
 
@@ -101,6 +97,7 @@ class LsRestAPI:
             self._lock = asyncio.Lock()
             self._lock_loop = current_loop
 
+        assert self._lock is not None
         async with self._lock:
             if self._token_info and not self._token_info.is_expired():
                 return True
@@ -234,6 +231,7 @@ class LsRestAPI:
             _log.warning("[LS증권REST] 토큰 없음")
             return None
 
+        assert self._token_info is not None
         default_headers = {
             "Content-Type": "application/json;charset=UTF-8",
             "Authorization": f"Bearer {self._token_info.access_token}",
@@ -292,6 +290,7 @@ class LsRestAPI:
             _log.warning("[LS증권REST] 토큰 없음")
             return None
 
+        assert self._token_info is not None
         url = f"{self.base_url}{path}"
         headers = {
             "Content-Type": "application/json;charset=UTF-8",
@@ -392,6 +391,7 @@ class LsRestAPI:
             _log.warning("[LS증권REST] 토큰 없음")
             return None
 
+        assert self._token_info is not None
         url = f"{self.base_url}/stock/order"
         headers = {
             "Content-Type": "application/json; charset=UTF-8",
@@ -496,6 +496,7 @@ class LsRestAPI:
             _log.warning("[LS증권REST] 토큰 없음")
             return None
 
+        assert self._token_info is not None
         url = f"{self.base_url}/stock/order"
         headers = {
             "Content-Type": "application/json; charset=UTF-8",

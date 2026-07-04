@@ -1,5 +1,3 @@
-from __future__ import annotations
-from typing import Optional
 # -*- coding: utf-8 -*-
 """
 전역 이벤트 버스 (Queues) - 파이프라인 아키텍처 핵심 배관
@@ -13,11 +11,10 @@ HTS급 실시간 처리를 위한 5개 코어 큐:
 
 외부 브로커(Redis 등) 미사용 - 순수 asyncio.Queue 기반 프로세스 내 배관.
 """
-
+from __future__ import annotations
+from typing import Optional
 import asyncio
-
 from backend.app.core.logger import get_logger
-
 logger = get_logger("core_queues")
 
 

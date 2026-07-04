@@ -1,11 +1,8 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """설정 라우터 — RESTful 아키텍처 (GET 조회, PATCH 개별 수정)."""
-
+from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
-
 from backend.app.web.deps import get_current_user
-
 router = APIRouter(prefix="/api", tags=["settings"])
 
 

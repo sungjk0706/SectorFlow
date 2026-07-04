@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 섹터 재계산 — 이벤트 기반 증분 갱신.
@@ -8,10 +7,9 @@ recompute_sector_for_code(code)는 이벤트 발생 시 호출되며,
 연속 호출은 중복 제거되어 1회만 재계산한다.
 구독 갱신은 buy_targets 변경 시 직접 호출된다.
 """
-
+from __future__ import annotations
 import asyncio
 from backend.app.core.logger import get_logger
-
 logger = get_logger("engine")
 
 _dirty_codes: set[str] = set()
@@ -222,13 +220,9 @@ async def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
     단일 소스 진리: master_stocks_cache를 직접 참조.
     """
     from backend.app.core import sector_mapping
-    from backend.app.services.engine_service import get_sector_summary_inputs
     from backend.app.services.engine_state import state
     from backend.app.domain.buy_filter import build_buy_targets_from_settings
     from backend.app.domain.sector_score import calculate_weighted_scores
-
-    # 실시간 틱 데이터 기반 단건 델타 연산
-    inputs = await get_sector_summary_inputs()
 
     # 업종 점수 변화 감지를 위한 셋
     changed_sectors = set()
@@ -327,7 +321,7 @@ async def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
         # 매수 타겟이 변경된 경우에만 매수 시도 수행
         if curr_targets != prev_targets:
             # 프론트엔드에 매수 타겟 변경 알림
-            await notify_buy_targets_update(ss)
+            await notify_buy_targets_update()
 
             # 매수 시도 (State Gate: 주문가능 금액 부족 시 skip)
             from backend.app.services.buy_order_executor import _cash_insufficient
@@ -340,9 +334,6 @@ async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
 
     비동기 함수. 순수 계산 + 알림 + 이벤트 발행만 수행.
     """
-    import logging
-    logger = logging.getLogger(__name__)
-    
     from backend.app.services.engine_service import get_sector_summary_inputs
     from backend.app.domain.sector_calculator import compute_full_sector_summary
     from backend.app.domain.buy_filter import build_buy_targets_from_settings
@@ -470,7 +461,6 @@ def apply_delayed_unsubscription(es) -> None:
     """30초 후 실제 해지 적용."""
     global _PENDING_UNREG_CODES, _PENDING_UNREG_TIMER
 
-    from backend.app.services.engine_state import state
     from backend.app.services.core_queues import get_control_queue
     import time
 

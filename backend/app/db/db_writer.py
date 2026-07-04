@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 DB Writer - 단일 쓰기 직렬화
@@ -13,14 +12,12 @@ DB Writer - 단일 쓰기 직렬화
   - aiosqlite 단일 커넥션 공유
   - asyncio.Lock으로 쓰기 구간 보호
 """
-
+from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Any
-
 from backend.app.db.database import get_db_connection, get_db_lock
-
 logger = logging.getLogger(__name__)
 
 # ── DB Write Queue ─────────────────────────────────────────────────────────────
