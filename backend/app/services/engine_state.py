@@ -42,8 +42,8 @@ class EngineState:
 
         # ── Locks & Events ───────────────────────────────────────────────────────
         self.realtime_state: str = "IDLE"
-        self.data_ready_event: asyncio.Event = asyncio.Event()
-        self.token_ready_event: asyncio.Event = asyncio.Event()
+        self.data_ready_event: LazyEvent = LazyEvent()
+        self.token_ready_event: LazyEvent = LazyEvent()
         self.ws_reg_pipeline_done = LazyEvent()
         self.bootstrap_event = LazyEvent()
         self.sector_summary_ready_event = LazyEvent()

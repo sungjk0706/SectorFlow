@@ -14,6 +14,7 @@ import logging
 from backend.app.core.settings_file import load_integrated_system_settings, update_settings
 from backend.app.services import settlement_engine
 from backend.app.db.stock_tables import load_test_positions, save_test_positions
+from backend.app.services.engine_utils import LazyEvent, LazyLock
 logger = logging.getLogger(__name__)
 
 # ── 가상 잔고 (파일 영속) ───────────────────────────────────────────────────
@@ -54,9 +55,9 @@ async def _load_positions() -> None:
         logger.warning("[테스트모드] SQLite 로드 실패: %s", e)
 
 
-_pos_save_event: asyncio.Event = asyncio.Event()
+_pos_save_event: LazyEvent = LazyEvent()
 _pos_save_running: bool = False
-_pos_lock = asyncio.Lock()
+_pos_lock: LazyLock = LazyLock()
 
 
 async def _schedule_save_positions() -> None:

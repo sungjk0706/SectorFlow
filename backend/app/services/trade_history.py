@@ -17,12 +17,13 @@ import asyncio
 import logging
 from datetime import datetime, date
 from typing import Optional
+from backend.app.services.engine_utils import LazyLock
 logger = logging.getLogger(__name__)
 
 # ── 메모리 저장소 ─────────────────────────────────────────────────────────────
 _buy_history: list[dict] = []
 _sell_history: list[dict] = []
-_history_lock: asyncio.Lock = asyncio.Lock()
+_history_lock: LazyLock = LazyLock()
 _loaded: bool = False
 
 RETENTION_TRADING_DAYS_TEST: int = 30
