@@ -261,6 +261,48 @@ export function createMoneyInput(options: {
   return { el: wrap as HTMLElement, setValue, getValue }
 }
 
+/* ── 드롭다운 셀렉트 (공통 스타일) ─────────────────────────── */
+export function createSelect(options: {
+  items: { value: string; label: string }[]
+  value: string
+  onChange: (v: string) => void
+  name?: string
+  width?: string
+}) {
+  const select = document.createElement('select')
+  if (options.name) select.setAttribute('data-name', options.name)
+  Object.assign(select.style, {
+    width: options.width ?? '121px',
+    padding: '4px 8px',
+    borderRadius: '4px',
+    border: '1px solid #ccc',
+    fontSize: '13px',
+    boxSizing: 'border-box',
+  })
+  for (const item of options.items) {
+    const opt = document.createElement('option')
+    opt.value = item.value
+    opt.textContent = item.label
+    select.appendChild(opt)
+  }
+  select.value = options.value
+
+  select.addEventListener('change', () => {
+    options.onChange(select.value)
+  })
+
+  function setValue(v: string) {
+    if (document.activeElement === select) return
+    select.value = v
+  }
+
+  function getValue(): string {
+    return select.value
+  }
+
+  return { el: select as HTMLSelectElement, setValue, getValue }
+}
+
 /* ── ON/OFF 토글 버튼 ──────────────────────────────────────── */
 export function createToggleBtn(options: {
   on: boolean
