@@ -328,7 +328,7 @@ class SectorStockTable extends HTMLElement {
     if (this.titleFilterSpan && this.titleCountSpan) {
       this.titleFilterSpan.textContent = `5일평균최소거래대금(${minTradeAmt})억`
       this.titleFilterSpan.style.display = ''
-      this.titleCountSpan.textContent = `(합계:${stockCount}종목 KRX:${krxCount}종목 NXT:${nxtCount}종목)`
+      this.titleCountSpan.textContent = `합계:${stockCount}종목 KRX:${krxCount}종목 NXT:${nxtCount}종목`
       this.titleCountSpan.style.display = ''
     }
 
@@ -365,20 +365,27 @@ class SectorStockTable extends HTMLElement {
     Object.assign(this.rootEl.style, { display: 'flex', flexDirection: 'column', height: '100%', contain: 'content' })
 
     // 1. 카드 타이틀 — DOM 요소 1회 생성 (이후 textContent/display만 갱신)
+    // grid 3-column: 좌측(제목) | 중앙(필터조건) | 우측(종목수 요약)
     const titleContent = document.createElement('span')
+    Object.assign(titleContent.style, {
+      display: 'grid',
+      gridTemplateColumns: '1fr auto 1fr',
+      width: '100%',
+      alignItems: 'center',
+    })
+
     this.titleBaseSpan = document.createElement('span')
     this.titleBaseSpan.textContent = '업종별 종목 실시간 시세'
+    this.titleBaseSpan.style.textAlign = 'left'
 
     this.titleFilterSpan = document.createElement('span')
-    Object.assign(this.titleFilterSpan.style, { color: COLOR.down, fontWeight: '500', display: 'none' })
+    Object.assign(this.titleFilterSpan.style, { color: COLOR.down, fontWeight: '500', textAlign: 'center', display: 'none' })
 
     this.titleCountSpan = document.createElement('span')
-    this.titleCountSpan.style.display = 'none'
+    Object.assign(this.titleCountSpan.style, { textAlign: 'right', display: 'none' })
 
     titleContent.appendChild(this.titleBaseSpan)
-    titleContent.appendChild(document.createTextNode(' '))
     titleContent.appendChild(this.titleFilterSpan)
-    titleContent.appendChild(document.createTextNode(' '))
     titleContent.appendChild(this.titleCountSpan)
 
     this.titleH3 = createCardTitleWithContent(titleContent)
