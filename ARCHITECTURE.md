@@ -502,7 +502,6 @@ request_sector_recompute(code)  — dirty 코드 등록 + 디바운스 타이머
 _flush_sector_recompute_impl()
     │
     ├── 캐시 없음 → _full_recompute()     — 전체 재계산 (콜드 스타트)
-    ├── 스켈레톤 모드 → _skeleton_incremental_update()  — O(1) 델타 연산
     └── 일반 캐시 → 증분 재계산             — dirty 섹터만 교체
          │
          ▼
@@ -609,7 +608,6 @@ SectorSummary (전체 결과)
 ├── sectors: list[SectorScore]  — 강도 순위 정렬
 ├── buy_targets: list[BuyTarget]
 ├── blocked_targets: list[BuyTarget]
-├── is_skeleton_mode
 └── version
 ```
 
@@ -646,15 +644,6 @@ SectorSummary (전체 결과)
 |------|------|------|
 | 전체 재계산 | 캐시 없음 (콜드 스타트) | `compute_full_sector_summary()` |
 | 증분 재계산 | 캐시 있음, dirty 섹터만 | dirty 섹터만 재계산 → 병합 → 전체 정규화 |
-| 스켈레톤 증분 | `is_skeleton_mode=True` | O(1) 상태 전환 매트릭스 (rise_count ±1) |
-
-**스켈레톤 델타 연산 (4대 상태 전환):**
-| 이전 → 현재 | 동작 |
-|-------------|------|
-| False → True (상승 전환) | `rise_count += 1` |
-| True → False (하락 전환) | `rise_count -= 1` |
-| False → False | 연산 없음 (O(1) 쇼트 서킷) |
-| True → True | 연산 없음 (O(1) 쇼트 서킷) |
 
 ### 6.6 가산점 (Boost Score)
 
@@ -1146,7 +1135,7 @@ SectorFlow/
 │       │   ├── engine_ws_dispatch.py— WS 시세 파싱/라우팅
 │       │   ├── engine_ws_reg.py     — WS 종목 구독 등록/해제
 │       │   ├── engine_ws_parsing.py — WS 데이터 파싱
-│       │   ├── engine_sector_confirm.py — 업종 재계산 (증분/스켈레톤)
+│       │   ├── engine_sector_confirm.py — 업종 재계산 (증분)
 │       │   ├── engine_snapshot.py   — 스냅샷 생성
 │       │   ├── engine_account*.py   — 계좌 관리/조회/알림
 │       │   ├── engine_radar*.py     — 레이더 종목 관리
@@ -1442,14 +1431,6 @@ PRAGMA mmap_size = 268435456
 
 **효과**: HFT 파이썬 엔진 지연 방지
 
-### 4.4 스켈레톤 증분 연산
-
-**문제**: 매 틱마다 전체 업종 재계산 → O(n) 연산
-
-**해결**: 상태 전환 매트릭스 (rise_count ±1) → O(1) 연산
-
-**효과**: 실시간 업종 점수 갱신 지연 획기적 감소
-
 ---
 
 ## 5. 문제해결 체크리스트
@@ -1677,7 +1658,6 @@ PRAGMA mmap_size = 268435456
 ### 최근 결정 사항
 
 - **JIF bypass**: 0B 틱(현재가)에서 JIF(장중전체) 데이터 우회로 직통 전송 (지연 감소)
-- **Per-tick 제거**: per-tick O(n) 연산 제거 → 스켈레톤 증분 연산 도입
 - **Queue sizing**: tick_queue 5000, broadcast_queue 2000, control_queue 500, price_pass_through_queue 4096
 - **mmap_size**: 256MB로 설정 (대용량 캐시)
 - **GC control**: WS 구간 중 비활성화, 장중/장마감 후 수동 호출

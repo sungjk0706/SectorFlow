@@ -72,13 +72,20 @@
     - `frontend/src/types/index.ts` — `namespace` 선언을 `interface` + `export type`으로 변경 (@typescript-eslint/no-namespace)
   - **검증**: `npx eslint src/` — 0 errors, `npm run build` — 성공
 
-- 2026-07-04: sector_calculator.py 파이프라인 테스트 커버리지 확대 — pytest 57 passed (기존 26 + 신규 31)
+- 2026-07-04: sector_calculator.py 파이프라인 테스트 커버리지 확대 — 31개 테스트 작성 (실행 시 hang 발생)
   - **신규 파일**: `backend/tests/test_sector_calculator.py` — 31개 테스트
   - **커버 범위**: `compute_sector_scores` + `compute_full_sector_summary` 전체 파이프라인
     - 빈 입력, 단일/다중 업종, 데이터 우선순위, 평균거래대금 필터링, min-max 트리밍, 비율 계산, 체결강도 파싱, 가중치 효과, 요약 계산
   - **테스트 방식**: `state.master_stocks_cache` 직접 조작으로 DB 의존성 제거, pytest fixture로 캐시 백업/복원
-  - **추가 파일**: `conftest.py` (프로젝트 루트) — pytest 모듈 발견용 빈 파일
-  - **검증**: `pytest backend/tests/ -v` — 57 passed
+  - **추가 파일**: `conftest.py` (프로젝트 루트) — pytest 모듈 발견용 빈 파일 (이후 삭제됨)
+  - **검증**: `pytest --collect-only` 57개 정상 수집(0.29s). `test_settings_file.py` 9 passed, `test_sector_score.py` 17 passed. **`test_sector_calculator.py` 31개 테스트 실행 시 hang 발생** (원인: `engine_state.py:45-46`의 `asyncio.Event()` 즉시 생성 vs pytest-asyncio per-test 루프 불일치)
+
+- 2026-07-05: `is_skeleton_mode` dead code 전면 제거 — py_compile 검증 완료, pytest hang 발견 (코드 수정 자체는 정상)
+  - **수정 1: `models.py` 필드 제거** — `SectorSummary` dataclass에서 `is_skeleton_mode: bool = False` 필드 제거. (`backend/app/domain/models.py:69`)
+  - **수정 2: `engine_sector_confirm.py` 조건문 제거** — `if existing.is_skeleton_mode:` 블록 및 `_skeleton_incremental_update()` 호출 + return 제거. 항상 False인 dead branch. (`backend/app/services/engine_sector_confirm.py:94-98`)
+  - **수정 3: `engine_sector_confirm.py` 함수 전체 제거** — `_skeleton_incremental_update()` 함수 전체 제거. 유일한 호출처가 제거되어 완전한 dead code. (`backend/app/services/engine_sector_confirm.py:207-325`)
+  - **검증**: 잔여 문자열 검색 0건, `py_compile` 성공. **주의**: `pytest backend/tests/test_sector_calculator.py` 실행 시 hang 발생 (원인: `engine_state.py:45-46`의 `asyncio.Event()` 즉시 생성 vs pytest-asyncio per-test 루프 불일치). 코드 수정 자체는 정상이나 테스트 실행 환경 문제로 인해 31 passed 검증 불가.
+  - **아키텍처 부합**: 원칙 16(구현 = 살아있는 경로에 배선됨), 원칙 10(SSOT), 원칙 20(폴백 금지), 원칙 17(플래그 단일 소스)
 
 - 2026-07-04: Vitest 설치 및 프론트엔드 핵심 유틸 단위 테스트 — 46 passed, `npm run build` 검증 통과
   - **설치**: `vitest@^3.2.6`, `jsdom` (devDependencies)
@@ -90,8 +97,39 @@
   - **수정**: `frontend/tsconfig.json` — `include`에 `"tests"` 추가 (테스트 파일 타입 검사 범위 포함)
   - **검증**: `npx vitest --run` — 46 passed (4 files), `npm run build` — 성공
 
+- 2026-07-05: AI 메모리 최적화 — user_rules 통합 및 중복 제거 완료
+  - **user_rules (user_global) 업데이트**: 기존 "문제해결 참고서"만 있던 user_rules에 프로젝트 개요, 아키텍처 불변 원칙 20개 요약, 핵심 워크룰 8개, 금지 패턴(Python/TypeScript/공통), 시장 정보, 세션 시작 체크리스트, 테스트 점검 프로세스 통합. 새 세션 시작 시 코딩 AI 에이전트가 프로젝트 맥락을 자동 인지
+  - **Memory 2 (3993bd1d) 업데이트**: "문제해결 참고서" 섹션 삭제 (user_rules에 통합으로 중복 제거), `[협업/문서화]` 섹션 → `[Git 관리]`로 재분류 (1인 개발에 맞지 않는 협업 규칙 제거, CHANGELOG/API 문서화 삭제, 커밋 메시지 규칙만 유지)
+  - **Memory 4 (d2bb739f) 삭제**: "테스트 실행 및 점검 프로세스"가 user_rules에 통합되어 완전 중복 → 삭제
+  - **현재 메모리 구성**: user_global (항상 로드, 프로젝트 가이드+문제해결), Memory 1 (아키텍처 상세), Memory 2 (실행 가이드 상세), Memory 3 (업종순위 로직 변경 계획)
+
+- 2026-07-05: ARCHITECTURE.md 스켈레톤 구현 기법 7건 문서-코드 불일치 수정 — 잔여 검색 0건
+  - **수정 내용**: `is_skeleton_mode` dead code 전면 제거(2026-07-05) 후 ARCHITECTURE.md 미동기화 7건 수정. 구체적 구현 기법은 ARCHITECTURE.md(설계도)에서 제거하고 HANDOVER.md(작업 일지)에서 관리.
+  - **수정 파일**: `ARCHITECTURE.md` 7개 위치:
+    - line 505: 파이프라인 다이어그램에서 `스켈레톤 모드 → _skeleton_incremental_update()` 행 제거
+    - line 612: SectorSummary 구조도에서 `├── is_skeleton_mode` 행 제거
+    - line 649: 증분 연산 모드 표에서 `스켈레톤 증분` 행 제거
+    - line 651-657: 스켈레톤 델타 연산 (4대 상태 전환) 표 전체 제거
+    - line 1149: 모듈 설명 `업종 재계산 (증분/스켈레톤)` → `업종 재계산 (증분)` 수정
+    - line 1445-1451: `### 4.4 스켈레톤 증분 연산` 섹션 전체 제거
+    - line 1680: 변경 로그에서 `Per-tick 제거: → 스켈레톤 증분 연산 도입` 행 제거
+  - **검증**: ARCHITECTURE.md 내 `skeleton|스켈레톤|is_skeleton_mode|_skeleton_incremental_update` 검색 0건. `backend/app` 전체 동일 검색 0건 (주석 1건은 정상). frontend 프로젝트 코드 0건.
+  - **아키텍처 부합**: 원칙 16(구현 = 살아있는 경로에 배선됨), 원칙 10(SSOT), 원칙 20(폴백 금지), 원칙 17(플래그 단일 소스)
+
+- 2026-07-05: 루트 폴더 구조 정리 — 불필요 파일/폴더 7개 삭제, requirements.txt 단일화, 빌드 산물 정리
+  - **삭제 파일/폴더 (7개)**:
+    - `ARCHITECTURE.md.backup` — 과거 백업 파일, 코드/문서 참조 없음
+    - `conftest.py` (루트) — 0바이트 빈 파일, pytest.ini가 testpaths 지정하여 불필요
+    - `memory_monitor_log.txt` — 2026-07-03 1회성 로그, 코드 참조 없음
+    - `backend/protobuf/` (event.proto + event_pb2.py) — 앱 코드에서 import 없음
+    - `backend/scripts/` — 원본 소스 없음, pyc만 잔류
+    - `requirements.txt` (루트) — `pip freeze` 일회성 출력, SSOT 위반 → `backend/requirements.txt`로 단일화
+  - **수정 파일**: `backend/requirements.txt` — protobuf 줄 제거 (사용처 없음)
+  - **빌드 산물 정리**: `.DS_Store` 3개, `frontend/dist/`, `frontend/tsconfig.tsbuildinfo`
+  - **검증**: py_compile main.py ✅, tsc --noEmit ✅, pytest 개별 파일 26 passed (test_settings_file.py 9 + test_sector_score.py 17), test_sector_calculator.py hang 발생, vitest 46 passed ✅
+
 ## 현재 상태
-- **2026-07-04 22:30 기준**: ruff 0건, mypy 0건, eslint 0건 달성. pytest 57 passed, vitest 46 passed. 총 103개 테스트 통과. 앱 기동 성공 (ImportError 해결), WS 초기 스냅샷 전송까지 확인됨
+- **2026-07-05 01:44 기준**: ARCHITECTURE.md 스켈레톤 불일치 7건 수정 완료. ruff 0건, mypy 0건, eslint 0 errors (23 warnings). pytest 개별 파일 26 passed (test_settings_file.py 9 + test_sector_score.py 17), test_sector_calculator.py hang 발생 (미해결), vitest 46 passed. **pytest 전체 실행 시 hang 문제 발생 (미해결)**
   - 앱 기동 로그 정상: `[시작] 데이터준비 완료`, `[업종순위] 재계산 완료`, `[시작] 기동 완료`, `Application startup complete`
   - WS 연결 성공: prices, settings, orders 3개 채널 연결 확인
   - **해결된 에러**: `ImportError: cannot import name 'build_initial_snapshot'` → re-export 추가로 해결
@@ -135,22 +173,21 @@
 1. **ruff 0건 달성 (2026-07-04 완료)**: F401, F821, F841, E402 전면 수정. `.venv/bin/ruff check backend/app/` — 0건. 완료.
 2. **mypy 0건 달성 (2026-07-04 완료)**: 에러 0건. 완료.
 3. **eslint 0건 달성 (2026-07-04 완료)**: `RequestInit`, `HTMLCollectionOf` → `globalThis.` 접두사, `no-constant-binary-expression`, `no-empty`, `@typescript-eslint/no-namespace` 수정. 완료.
-4. **sector_calculator.py 파이프라인 테스트 (2026-07-04 완료)**: 31개 테스트 추가. `compute_sector_scores` + `compute_full_sector_summary` 전체 커버. 완료.
+4. **sector_calculator.py 파이프라인 테스트 (2026-07-04 작성, hang 미해결)**: 31개 테스트 작성. `compute_sector_scores` + `compute_full_sector_summary` 전체 커버. `test_sector_calculator.py` 실행 시 hang 발생 (원인: `engine_state.py:45-46`의 `asyncio.Event()` 즉시 생성 vs pytest-asyncio per-test 루프 불일치). 해결 방안: `LazyEvent` 패턴 전환.
 5. **Vitest 프론트엔드 테스트 (2026-07-04 완료)**: 4개 파일 46개 테스트 작성. `sliderConvert`, `resolveRoute`, `extractDirty`, `createStore` 커버. 완료.
 
-### 4순위: 업종순위 로직 변경 계획서 진행 (`.windsurf/workflows/sector-ranking-logic-change.md`)
-- **승인 완료 8가지**: rise_ratio + avg_change_rate (50:50 고정), 슬라이더 제거, 거래대금 컬럼 교체, 체결강도 가드 유지, ratio_5d_pct 신규 가산점, 두 단계 분리, Boost Reason 저장, Guard→Boost 최적화
-- **구성**: Part A (A-1 ~ A-6, 8개 파일), Part B (B-1 ~ B-3, 5개 파일), 7단계 통합 검증
-- **다음**: A-1단계부터 순차 진행. 각 단계 완료 시 계획서 진행 상태 업데이트.
-
 ## 미해결 문제
-- **`is_skeleton_mode` 항상 False (dead code)**: `models.py:76`에서 `is_skeleton_mode: bool = False` 기본값 설정. `engine_sector_confirm.py:97-100`에서 체크 및 `_skeleton_incremental_update()` 호출. `is_skeleton_mode`를 `True`로 설정하는 코드 없음 → `_skeleton_incremental_update()` 경로는 절대 실행되지 않음. 스켈레톤 모드가 의도된 용도인지 아키텍처 재검토 필요. 현재는 일반 증분 재계산 경로가 정상 동작하므로 기능에 영향 없음.
-- **TODO 주석 8건 (토큰 검증 재활성화)**: `deps.py:16`, `ws.py:168`, `ws_orders.py:22`, `ws_settings.py:22`, `client.ts:18,29,40,69`. 모두 "개발 완료 후 토큰 검증 재활성화" 관련.
+- **pytest 전체 실행 시 hang (2026-07-05 발견, 원인 특정 완료)**: `pytest --tb=short` 전체 실행 시 무한 대기 발생. 개별 파일 실행 시 `test_settings_file.py` 9 passed (0.59s), `test_sector_score.py` 17 passed (0.72s) 정상 종료. **`test_sector_calculator.py` 단독 실행 시 10초 초과 hang 발생**.
+  - **원인 특정 완료 (2026-07-05 01:15 코드 기반 확인)**: `engine_state.py:45-46`에서 `asyncio.Event()`를 `EngineState.__init__` 시점에 즉시 생성. 모듈 로드 시점의 이벤트 루프에 영구 바인딩됨. pytest-asyncio 1.4.0 (`asyncio_mode=auto`, `asyncio_default_test_loop_scope=function`)은 각 테스트마다 새 루프 생성 → 루프 불일치로 teardown 단계에서 hang. `test_settings_file.py`와 `test_sector_score.py`는 `engine_state`를 import하지 않아 hang 미발생.
+  - **해결 방안**: `data_ready_event`와 `token_ready_event`를 `LazyEvent` 패턴으로 전환 (`engine_utils.py:9-32` 참조). 수정 범위: `engine_state.py:45-46` 2줄.
+  - `pytest --collect-only` 실행 결과: 57개 정상 수집 (0.29s) — 수집 단계 hang 아님
+  - `pytest -x --timeout=10` 실행 불가: pytest-timeout 플러그인 미설치
+  - `pytest --asyncio-mode=auto` 설정과 pytest-asyncio 버전(1.4.0) 호환성 확인: 루프 스코프 불일치가 원인
+  - 루트 `conftest.py` 삭제 영향 확인: `pytest.ini`의 `testpaths = backend/tests`로 대체 정상
+  - 관련 파일: `pytest.ini`, `backend/tests/`, `backend/tests/__init__.py`, `backend/app/services/engine_state.py:45-46`
+- **TODO 주석 8건 (토큰 검증 재활성화)**: `deps.py:13`, `ws.py:164`, `ws_orders.py:18`, `ws_settings.py:18`, `client.ts:18,29,40,69`. 모두 "개발 완료 후 토큰 검증 재활성화" 관련. (라인 번호 2026-07-05 코드 기반 재확인)
 - **종목수 불일치**: `_apply_confirmed_to_memory`(`market_close_pipeline.py:357`)에서 새 엔트리 생성 의심. 런타임 확인 필요 (우선순위 낮음).
-- **ARCHITECTURE.md 문서-코드 불일치 3건**:
-  - **4.4 스켈레톤 증분 연산** (line 1445-1451): 스켈레톤 증분 연산을 구현된 최적화로 기재하나, 실제 `is_skeleton_mode`가 항상 `False`이므로 dead code. 문서에서 제거 또는 "미구현" 표기 필요.
-  - **4.5 섹션** (line 1400-1406): 정리 완료 — ARCHITECTURE.md에서 섹션 4.5 제거 및 코드에서 관련 참조 전면 제거 완료.
-  - **변경 로그** (line 1680): "스켈레톤 증분 연산 도입"으로 기재되어 있으나 실제 dead code이므로 문서-코드 불일치.
+- **ARCHITECTURE.md 문서-코드 불일치 (2026-07-05 해결 완료)**: 스켈레톤 구현 기법 7건 불일치 수정 완료. 잔여 검색 0건. 상세 내용은 완료 단계 참조.
 
 ## 개선 필요 영역 (코드 기반 확인)
 
@@ -178,9 +215,9 @@
 - **영향**: DB 손상 시 복구 불가
 - **관련 파일**: `SectorFlow.command`, `backend/app/db/database.py`
 
-### 6. 테스트 자동화 인프라 구축 완료 (2026-07-04)
-- **현상**: pytest + Vitest 기반 단위 테스트 인프라 구축 완료. 총 103개 테스트 통과.
-  - **Python backend**: `test_sector_score.py` (17개), `test_settings_file.py` (9개), `test_sector_calculator.py` (31개) — pytest 57 passed
+### 6. 테스트 자동화 인프라 구축 (2026-07-04, 부분 미해결)
+- **현상**: pytest + Vitest 기반 단위 테스트 인프라 구축. 총 72 passed, 31 hang.
+  - **Python backend**: `test_sector_score.py` (17개 passed), `test_settings_file.py` (9개 passed) — pytest 26 passed. `test_sector_calculator.py` (31개) — hang 발생 (미해결)
   - **TypeScript frontend**: `sliderConvert.test.ts` (11개), `router.test.ts` (11개), `settings.test.ts` (14개), `store.test.ts` (10개) — vitest 46 passed
 - **위치**: `backend/tests/`, `frontend/tests/`, `pytest.ini`, `frontend/vitest.config.ts`
 - **남은 사항**: 프론트엔드 컴포넌트/UI 테스트 (jsdom 환경 활용), 백엔드 통합 테스트 (DB 의존성 포함)
