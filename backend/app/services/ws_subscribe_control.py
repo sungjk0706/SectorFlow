@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 WS 구독 제어 모듈 — 지수(0J), 실시간시세(0B) 독립 제어.
@@ -13,13 +12,11 @@ grp_no 매핑:
 | 4   | 종목 시세    | 0B   |
 | 10  | 계좌         | 00, 04 |
 """
-
+from __future__ import annotations
 import asyncio
-
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
 from backend.app.services.engine_lifecycle import schedule_engine_task
-
 logger = get_logger("engine")
 
 # ── 인메모리 상태 ──────────────────────────────────────────────────────────

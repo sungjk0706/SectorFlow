@@ -1,5 +1,3 @@
-from __future__ import annotations
-from typing import Optional
 # -*- coding: utf-8 -*-
 """
 Dry-Run 모듈 -- 테스트모드 전용 가상 체결 엔진 + 영속 잔고.
@@ -9,16 +7,13 @@ Dry-Run 모듈 -- 테스트모드 전용 가상 체결 엔진 + 영속 잔고.
   2. _test_positions     -- 가상 잔고 (SQLite test_positions 테이블에 영속)
   3. update_price()      -- 0B 틱으로 가상 잔고 현재가/수익률 갱신
 """
-
+from __future__ import annotations
+from typing import Optional
 import asyncio
-import json
 import logging
-from pathlib import Path
-
 from backend.app.core.settings_file import load_integrated_system_settings, update_settings
 from backend.app.services import settlement_engine
 from backend.app.db.stock_tables import load_test_positions, save_test_positions
-
 logger = logging.getLogger(__name__)
 
 # ── 가상 잔고 (파일 영속) ───────────────────────────────────────────────────
@@ -330,13 +325,13 @@ async def set_virtual_deposit(amount: int) -> None:
 async def reset_virtual_balance() -> None:
     """현재 가상 예수금 잔액을 설정값(초기값)으로 리셋 (Settlement Engine 위임)."""
     deposit = await get_virtual_deposit_setting()
-    settlement_engine.reset(deposit)
+    await settlement_engine.reset(deposit)
     await update_settings({"test_virtual_balance": deposit})
     logger.info("[테스트모드] 가상 예수금 잔액 초기화: %s원", f"{deposit:,}")
 
 
-def charge_virtual_balance(amount: int) -> int:
+async def charge_virtual_balance(amount: int) -> int:
     """가상 예수금 충전 (Settlement Engine 위임). 반환: 충전 후 잔액."""
-    result = settlement_engine.charge(amount)
+    result = await settlement_engine.charge(amount)
     logger.info("[테스트모드] 가상 예수금 충전 %s원 -> 잔액 %s원", f"{amount:,}", f"{result:,}")
     return result

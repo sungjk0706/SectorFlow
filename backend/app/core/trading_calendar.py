@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 KRX 거래일 판별 유틸 -- DB 캐시 기반.
@@ -12,12 +11,9 @@ KRX 거래일 판별 유틸 -- DB 캐시 기반.
 - trading_days_cache SQLite 테이블에 연도별 거래일 저장
 - 앱 기동 시 DB에서 dict[int, set[str]] 메모리 로드 (O(1) 조회)
 """
-
+from __future__ import annotations
 import logging
 from datetime import date, datetime, timedelta, timezone
-
-from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
-
 _log = logging.getLogger(__name__)
 
 _KST = timezone(timedelta(hours=9))

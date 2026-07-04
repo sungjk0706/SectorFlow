@@ -1,16 +1,14 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 섹터 계산기 - 섹터 점수 계산 및 통합 진입점.
 """
-
+from __future__ import annotations
 from typing import Literal
-
 from backend.app.core.logger import get_logger
+from backend.app.domain.models import SectorSummary
 from backend.app.domain.sector_filter import filter_by_avg_amt, group_by_sector
 from backend.app.domain.sector_score import calculate_weighted_scores
 from backend.app.services.engine_state import state
-
 logger = get_logger("engine")
 
 
@@ -216,16 +214,13 @@ async def compute_full_sector_summary(
     boost_order_ratio_score: float = 1.0,
     boost_program_net_buy_on: bool = False,
     boost_program_net_buy_score: float = 1.0,
-) -> object:  # SectorSummary (순환 import 방지를 위해 타입 힌트 생략)
+) -> SectorSummary:
     """
     전체 파이프라인 한 번에 실행.
     engine_bootstrap, engine_sector_confirm, sector_data_provider, telegram_bot에서 이벤트 기반 호출.
 
     sector_mapping.get_merged_sector() 기반 커스텀 업종 그룹핑.
     """
-    # SectorSummary import (순환 import 방지)
-    from backend.app.domain.models import SectorSummary
-
     # 1. 섹터 스코어 계산
     sector_scores = await compute_sector_scores(
         all_codes,

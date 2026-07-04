@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 Broker Connector — 추상 브로커 커넥터 인터페이스
@@ -8,13 +7,11 @@ Broker Connector — 추상 브로커 커넥터 인터페이스
   - 폴링 방식: receive() 메서드 구현
   - 콜백 방식: set_message_callback() 지원
 """
-
+from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from collections.abc import Callable
-
-
 class DataPriority(Enum):
     """데이터 우선순위"""
     CRITICAL = auto()   # 체결, 잔고
@@ -96,3 +93,27 @@ class BrokerConnector(ABC):
     async def subscribe_index(self) -> bool:
         """업종지수 실시간 구독 등록 (기본 구현: 미지원)"""
         return False
+
+    async def subscribe_stocks(self, codes: list[str]) -> bool:
+        """종목 리스트 실시간 구독 등록 (기본 구현: 미지원)"""
+        return False
+
+    async def unsubscribe_stocks(self, codes: list[str]) -> bool:
+        """종목 리스트 실시간 구독 해지 (기본 구현: 미지원)"""
+        return False
+
+    async def send_message(self, payload: dict) -> bool:
+        """WebSocket 송신 API (기본 구현: 미지원)"""
+        return False
+
+    def set_auto_trade_enabled(self, enabled: bool) -> None:
+        """자동매매 ON/OFF 설정 (기본 구현: 패스)"""
+        pass
+
+    def set_realtime_enabled(self, enabled: bool) -> None:
+        """실시간 연결 ON/OFF 설정 (기본 구현: 패스)"""
+        pass
+
+    def set_holiday_block_enabled(self, enabled: bool) -> None:
+        """공휴일 자동 차단 ON/OFF 설정 (기본 구현: 패스)"""
+        pass

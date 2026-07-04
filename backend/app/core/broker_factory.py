@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 브로커 팩토리
@@ -6,11 +5,9 @@ from __future__ import annotations
 - get_router(): 하이브리드 — 기능별 Provider 매핑 라우터 반환
 - reset_router(): 설정 변경 시 라우터 재생성
 """
-
+from __future__ import annotations
 from typing import TYPE_CHECKING
-
 from backend.app.core.logger import get_logger
-
 if TYPE_CHECKING:
     from backend.app.core.broker_router import BrokerRouter
 

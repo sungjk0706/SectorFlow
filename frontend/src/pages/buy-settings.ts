@@ -80,28 +80,28 @@ function syncFromSettings(s: AppSettings): void {
   // 매수 가산점
   const highOn = !!r.boost_high_breakout_on
   boostHighToggle?.setOn(highOn)
-  if (boostHighScoreInput && (!act || !boostHighScoreInput.el.contains(act))) boostHighScoreInput.setValue(Number(r.boost_high_breakout_score) ?? 1.0)
+  if (boostHighScoreInput && (!act || !boostHighScoreInput.el.contains(act))) boostHighScoreInput.setValue(Number(r.boost_high_breakout_score) || 1.0)
   if (boostHighControls) {
     setDisabled(boostHighControls, !highOn)
   }
 
   const orderOn = !!r.boost_order_ratio_on
   boostOrderToggle?.setOn(orderOn)
-  boostOrderScoreInput?.setValue(Number(r.boost_order_ratio_score) ?? 1.0)
+  boostOrderScoreInput?.setValue(Number(r.boost_order_ratio_score) || 1.0)
   if (boostOrderControls) {
     setDisabled(boostOrderControls, !orderOn)
   }
 
   const programOn = !!r.boost_program_net_buy_on
   boostProgramToggle?.setOn(programOn)
-  if (boostProgramScoreInput && (!act || !boostProgramScoreInput.el.contains(act))) boostProgramScoreInput.setValue(Number(r.boost_program_net_buy_score) ?? 1.0)
+  if (boostProgramScoreInput && (!act || !boostProgramScoreInput.el.contains(act))) boostProgramScoreInput.setValue(Number(r.boost_program_net_buy_score) || 1.0)
   if (boostProgramControls) {
     setDisabled(boostProgramControls, !programOn)
   }
 
   const tradeAmountOn = !!r.boost_trade_amount_rank_on
   boostTradeAmountToggle?.setOn(tradeAmountOn)
-  if (boostTradeAmountScoreInput && (!act || !boostTradeAmountScoreInput.el.contains(act))) boostTradeAmountScoreInput.setValue(Number(r.boost_trade_amount_rank_score) ?? 1.0)
+  if (boostTradeAmountScoreInput && (!act || !boostTradeAmountScoreInput.el.contains(act))) boostTradeAmountScoreInput.setValue(Number(r.boost_trade_amount_rank_score) || 1.0)
   if (boostTradeAmountControls) {
     setDisabled(boostTradeAmountControls, !tradeAmountOn)
   }

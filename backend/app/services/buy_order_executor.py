@@ -1,17 +1,14 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 매수 주문 실행기 - 섹터 매수 판단 및 실행 로직.
 
 engine_lifecycle.py에서 섹터 매수 관련 함수를 분리.
 """
-
+from __future__ import annotations
 import time
-
 from backend.app.core.logger import get_logger
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.services.auto_trading_effective import auto_buy_effective
-
 logger = get_logger("engine_lifecycle")
 
 # ── State Gate: 주문가능 금액 부족 시 evaluate_buy_candidates 호출 차단 ──
@@ -117,7 +114,7 @@ async def evaluate_buy_candidates() -> None:
             if _price <= 0:
                 continue
             _ordered = await state.auto_trade.execute_buy(
-                s.code, float(_price), state.checked_stocks, state.access_token,
+                s.code, float(_price), state.checked_stocks, state.access_token or "",
                 force_buy=False,
                 reason=f"업종자동매수 업종={s.sector}",
             )

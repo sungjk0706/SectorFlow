@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """업종분류 커스텀 REST API 라우터.
 
@@ -11,16 +10,13 @@ from __future__ import annotations
   POST /api/stock-classification/move-stocks — 종목 이동 (배치)
   POST /api/stock-classification/delete-cache — 캐시 삭제
 """
-
+from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-
 from backend.app.web.deps import get_current_user
-
 _log = logging.getLogger(__name__)
 
 
@@ -85,7 +81,7 @@ async def broadcast_stock_classification_changed() -> None:
         _log.warning("[업종관리] all_stocks 조회 실패: %s", e)
 
     # all_stocks 결과 기반으로 업종별 종목수 및 미분류 수 계산 (SSOT 일관성)
-    sector_counts = {}
+    sector_counts: dict[str, int] = {}
     no_sector_count = 0
     for s in stocks:
         sector = s.get("sector", "미분류")

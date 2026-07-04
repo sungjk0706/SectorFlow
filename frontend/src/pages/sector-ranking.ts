@@ -220,7 +220,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
       row.style.outline = isSel ? '2px solid ' + COLOR.down : 'none'
     }
 
-    const spans = row.firstElementChild!.children as HTMLCollectionOf<HTMLSpanElement>
+    const spans = Array.from(row.firstElementChild!.children) as HTMLSpanElement[]
     if (!prev || prev.rank !== s.rank) spans[0].textContent = s.rank === 0 ? '❌' : String(s.rank)
     if (!prev || prev.sector !== s.sector) spans[1].textContent = s.sector
     if (!prev || prev.total !== s.total) spans[2].textContent = String(s.total || '')

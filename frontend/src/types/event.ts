@@ -4,6 +4,7 @@
  * source: event.proto
  * git: https://github.com/thesayyn/protoc-gen-ts */
 import * as pb_1 from "google-protobuf";
+/* eslint-disable @typescript-eslint/no-namespace */
 export namespace event {
     export class Event extends pb_1.Message {
         #one_of_decls: number[][] = [];

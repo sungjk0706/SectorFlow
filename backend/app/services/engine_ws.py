@@ -110,7 +110,7 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
     단건 REG를 보내지 않음 -- 배치가 이미 커버하므로 중복 블로킹 방지.
     시장가 운용으로 호가(02) REG 제거됨 -- 0B는 배치에서 커버.
     """
-    from backend.app.services.engine_symbol_utils import _base_stk_cd, get_ws_subscribe_code
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
     
     stk_cd = str(stk_cd).strip()
     if not stk_cd:
@@ -237,7 +237,7 @@ async def _run_sector_reg_pipeline() -> None:
             state.ws_reg_pipeline_done.set()
         logger.info("[시작] 실시간 구독 준비 완료 -- 단건 구독 허용")
         from backend.app.services.engine_account import _refresh_account_snapshot_meta
-        if _ws_live() and _refresh_account_snapshot_meta:
+        if _ws_live():
             await _refresh_account_snapshot_meta()
 
 
@@ -274,7 +274,7 @@ def _item_cd_tracked_radar_or_ready(item_cd: str) -> bool:
     if not nk or nk == "000000":
         return False
     # _radar_cnsr_order 삭제: state.master_stocks_cache의 "_subscribed" 사용 (제로-체크 보장)
-    return state.master_stocks_cache.get(nk, {}).get("_subscribed")
+    return bool(state.master_stocks_cache.get(nk, {}).get("_subscribed"))
 
 
 async def _sweep_unreg_subscribed_except_positions_and_tracked() -> int:

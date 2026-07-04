@@ -1,17 +1,13 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 계좌·포지션 REST(kt00001/kt00018) 병합 및 스냅샷 메타 계산 -- 엔진 전역을 직접 두지 않는다.
 
 상태(_positions 등)는 호출부(engine_service)가 인자로 넘기고, 여기서는 동일 입력에 동일 출력만 보장한다.
 """
-
+from __future__ import annotations
 from datetime import datetime, timezone
-
 from backend.app.services.engine_symbol_utils import _base_stk_cd, _real_item_stk_cd
 from backend.app.services.engine_ws_parsing import _parse_fid10_price, _rest_row_float, _rest_row_int
-
-
 def _parse_int_loose(v) -> int:
     try:
         return int(str(v).replace(",", "") or 0)

@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 엔진 asyncio 메인 루프 -- 설정·브로커·WS 초기 연결.
@@ -6,20 +5,16 @@ from __future__ import annotations
 `engine_service` 모듈 객체 `es`로 전역 상태를 읽고 갱신한다.
 WS 연결/해제는 스케줄러(daily_time_scheduler)가 전적으로 관리한다.
 """
-
+from __future__ import annotations
 import asyncio
-import json
 import time
-from pathlib import Path
-
 from backend.app.core.broker_factory import get_router
-from backend.app.core.engine_settings import get_engine_settings
+from backend.app.core.broker_providers import AuthProvider
 from backend.app.core.logger import get_logger
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.services.trading import AutoTradeManager
 from backend.app.services.engine_cache import _load_caches_preboot
 from backend.app.services.engine_state import state
-
 logger = get_logger("engine")
 
 
@@ -49,8 +44,7 @@ async def _get_all_tokens_async(router) -> None:
     router._auth_cache에 없는 증권사(stock 전용 등)도 _create_provider로 생성하여 발급.
     발급된 토큰은 state.broker_tokens[broker_id]로 저장한다.
     """
-    from backend.app.services.engine_state import state
-    auth_cache: dict = getattr(router, "_auth_cache", {})
+    auth_cache: dict[str, AuthProvider] = getattr(router, "_auth_cache", {})
 
     # broker_config + confirmed_data_broker의 모든 증권사 수집 (auth_cache에 없는 stock 증권사 포함)
     broker_config = state.integrated_system_settings_cache.get("broker_config") or {}
@@ -85,8 +79,9 @@ async def _get_all_tokens_async(router) -> None:
                     "auth", broker_id,
                     state.integrated_system_settings_cache, auth_cache,
                 )
+            assert auth_provider is not None
             token = await auth_provider.get_access_token()
-            from backend.app.core.broker_registry import BROKER_DISPLAY_NAMES
+            from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
             disp = BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper())
             logger.info("[연결] %s 토큰 발급 완료", disp)
             return broker_id, token
@@ -136,7 +131,6 @@ async def _load_broker_spec_async(broker_nm: str, settings: dict) -> list:
 
 
 async def run_engine_loop() -> None:
-    from backend.app.services.engine_state import state
 
     _t0 = time.perf_counter()
 
@@ -192,11 +186,11 @@ async def run_engine_loop() -> None:
                 valid_brokers.append(_bk)
             else:
                 from backend.app.services.engine_service import log_message
-                log_message(f" [시작] 증권사 API 키가 설정되지 않았습니다. 일반설정에서 입력하세요.")
+                log_message(" [시작] 증권사 API 키가 설정되지 않았습니다. 일반설정에서 입력하세요.")
 
         if not valid_brokers:
             from backend.app.services.engine_service import log_message, broadcast_engine_status
-            log_message(f" [시작] 유효한 API 키가 없습니다. 일반설정에서 증권사 API 키를 입력하세요.")
+            log_message(" [시작] 유효한 API 키가 없습니다. 일반설정에서 증권사 API 키를 입력하세요.")
             await broadcast_engine_status()
             # 엔진 중단하지 않고 계속 진행 (테스트모드/스냅샷 전용 모드 허용)
 
@@ -241,7 +235,7 @@ async def run_engine_loop() -> None:
             state.access_token = token
         else:
             from backend.app.services.engine_service import log_message
-            log_message(f" [연결] 증권사 토큰 발급 실패. 스냅샷 전용 모드로 기동.")
+            log_message(" [연결] 증권사 토큰 발급 실패. 스냅샷 전용 모드로 기동.")
             state.access_token = None
 
         # ── 계좌 조회용 REST = Router의 AuthProvider에서 REST 실시간 인스턴스 공유 ──

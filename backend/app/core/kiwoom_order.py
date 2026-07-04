@@ -1,15 +1,12 @@
-from typing import Optional
 # -*- coding: utf-8 -*-
 """
 키움 주문 API - 매수/매도/정정/취소, 미체결조회
 legacy_pc_engine/api_order.py 이식 (Settings 기반)
 """
+from typing import Optional
 import asyncio
 import httpx
-
 from backend.app.core.broker_urls import build_broker_urls
-
-
 async def _send_request(url: str, headers: dict, params: dict, max_retries: int = 3, delay: float = 1.0) -> Optional[httpx.Response]:
     import logging
     _log = logging.getLogger(__name__)

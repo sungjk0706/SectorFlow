@@ -1,12 +1,9 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """거래내역 라우터 — 매수/매도 체결 이력 조회."""
-
+from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
-
 from backend.app.web.deps import get_current_user
 from backend.app.services.trade_history import get_buy_history, get_sell_history, get_daily_summary
-
 router = APIRouter(prefix="/api/trade-history", tags=["trade-history"])
 
 

@@ -1,11 +1,8 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """엔진 상태 라우터 — GET 엔드포인트는 WS initial-snapshot으로 대체됨."""
-
+from __future__ import annotations
 import logging
-
 from fastapi import APIRouter, Query
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["status"])
@@ -14,7 +11,6 @@ router = APIRouter(prefix="/api", tags=["status"])
 @router.get("/health")
 async def health_check():
     """서버 준비 상태 확인 - 현대적 안정성 패턴."""
-    from backend.app.services import engine_service as es
     from backend.app.services.engine_state import state
 
     # 상태 확인
@@ -162,8 +158,6 @@ async def debug_orderbook_status(
     for raw_code in codes:
         nk = _base_stk_cd(raw_code.strip())
         is_subscribed = state.master_stocks_cache.get(nk, {}).get("_subscribed_0d", False)
-        # 호가잔량 캐시 삭제로 None 반환
-        ob_data = None
         stock_name = data_manager.get_stock_name(nk)
 
         result[nk] = {

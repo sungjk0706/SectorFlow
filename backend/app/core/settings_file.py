@@ -3,7 +3,6 @@
 설정 데이터베이스(SQLite) 읽기/쓰기 헬퍼.
 단일 사용자 모드: SQLite의 integrated_system_settings 단일 테이블 사용.
 """
-import asyncio
 import json
 import logging
 from typing import Any
@@ -194,10 +193,10 @@ async def load_integrated_system_settings() -> dict:
         await save_settings(merged, delete_keys=_legacy_keys or None)
 
     from backend.app.core.encryption import decrypt_value
-    for f in _ENCRYPT_FIELDS:
-        v = merged.get(f)
+    for enc_field in _ENCRYPT_FIELDS:
+        v = merged.get(enc_field)
         if v and str(v).startswith("gAAAA"):
-            merged[f] = decrypt_value(v) or ""
+            merged[enc_field] = decrypt_value(v) or ""
 
     return dict(merged)
 
@@ -316,5 +315,18 @@ async def update_settings(updates: dict) -> dict:
     current.update({k: v for k, v in updates.items() if v is not None or k in current})
     await save_settings(current)
     return current
+
+
+def iter_merged_settings_profiles() -> list[tuple[str, dict]]:
+    """모든 설정 프로필을 순회 (단일 사용자 모드: 루트 설정만 반환).
+
+    telegram_bot.py에서 tele_on=True인 프로필을 찾기 위해 사용.
+    """
+    import asyncio as _asyncio
+    loop = _asyncio.get_event_loop()
+    if loop.is_running():
+        raise RuntimeError("동기 컨텍스트에서 호출 필요 — load_integrated_system_settings는 async")
+    flat = loop.run_until_complete(load_integrated_system_settings())
+    return [("root", flat)]
 
 

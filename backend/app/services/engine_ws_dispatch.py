@@ -1,47 +1,31 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 WebSocket 수신 `trnm` 분기 -- `engine_service._handle_ws_data` 본문을 위임.
 engine_state에서 직접 상태를 참조하여 순환 import 없이 모듈 전역 상태를 갱신한다.
 """
-
+from __future__ import annotations
 import asyncio
 import json
 import time
-
 import backend.app.services.engine_state as engine_state
 from backend.app.services import engine_account
 from backend.app.services import engine_lifecycle
-from types import ModuleType
 from collections.abc import Callable
-
 from backend.app.core.logger import get_logger
-from backend.app.services.auto_trading_effective import auto_sell_effective
-from backend.app.core.trade_mode import is_test_mode
-from backend.app.services import dry_run
 from backend.app.services.engine_account_notify import (
     notify_raw_real_data,
 )
-from backend.app.services.engine_account_rest import (
-    apply_last_price_to_positions_inplace,
-    recalc_broker_totals_from_positions,
-)
-import backend.app.services.engine_radar_ops as engine_radar_ops
 from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
     _real_item_stk_cd,
-    _resolve_bucket_key,
 )
 from backend.app.services.engine_ws_parsing import (
     _normalize_real_type,
     _parse_fid10_price,
     parse_change_rate_to_percent,
-    _ws_fid_float,
     _ws_fid_int,
     _ws_fid_key_present,
     _ws_fid_raw,
-    parse_fid9081_exchange,
-    parse_fid290_session,
 )
 
 logger = get_logger("engine")
@@ -126,16 +110,6 @@ def _log_real_data_items_preview(data: dict) -> None:
         norm = _normalize_real_type(msg_type)
         if norm not in ("01", "0j"):
             continue
-        iy = item.get("item")
-        vals = item.get("values", {})
-        if not isinstance(vals, dict):
-            vals = {}
-        keys = list(vals.keys())[:48]
-        sample = {k: vals[k] for k in keys}
-        try:
-            sample_s = json.dumps(sample, ensure_ascii=False)
-        except Exception:
-            sample_s = str(sample)
 
 
 def _handle_login(data: dict) -> None:
@@ -183,13 +157,9 @@ def _handle_reg(data: dict) -> None:
     rc = str(d.get("return_code", "")).strip()
     trnm = str(d.get("trnm", "REG") or "REG")
     rows = _reg_data_rows(d)
-    msg = str(d.get("return_msg", ""))[:160]
     try:
-        ok_rc = rc in ("0", "00", "")
         for row in rows:
             item_val = _reg_response_item_val(row)
-            typ = row.get("type")
-            grp = row.get("grp_no")
             if trnm in ("UNREG", "REMOVE"):
                 continue
 
@@ -261,7 +231,7 @@ async def _handle_real_00(item: dict, vals: dict) -> None:
         await engine_state._auto_trade.on_fill_update(raw_cd, side, unex, engine_state._access_token)
 
     # [근본해결] 부분 체결(unex > 0) 포함 모든 체결 발생 시 즉시 계좌 상태 반영
-    engine_account._on_fill_after_ws()
+    await engine_account._on_fill_after_ws()
 
     # ── 현재가 직통 전송 (price_pass_through_queue) ──
     # 체결도 현재가 변동을 동반하므로 동일하게 직통 전송

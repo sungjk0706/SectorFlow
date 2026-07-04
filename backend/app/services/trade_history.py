@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 체결 이력 저장 모듈 -- 매수/매도 체결 기록을 메모리+SQLite로 관리.
@@ -13,13 +12,11 @@ from __future__ import annotations
 영속성: 체결 시 db_writer queue 경유 SQLite 비동기 INSERT.
         앱 기동 시 _ensure_loaded()에서 SQLite → 메모리 복원.
 """
-
+from __future__ import annotations
 import asyncio
-import json
 import logging
 from datetime import datetime, date
 from typing import Optional
-
 logger = logging.getLogger(__name__)
 
 # ── 메모리 저장소 ─────────────────────────────────────────────────────────────
@@ -27,6 +24,9 @@ _buy_history: list[dict] = []
 _sell_history: list[dict] = []
 _history_lock: asyncio.Lock = asyncio.Lock()
 _loaded: bool = False
+
+RETENTION_TRADING_DAYS_TEST: int = 30
+RETENTION_TRADING_DAYS_REAL: int = 90
 
 
 # ── 메모리 초기화 ─────────────────────────────────────────────────────────────

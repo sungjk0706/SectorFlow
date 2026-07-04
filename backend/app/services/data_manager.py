@@ -3,7 +3,6 @@
 계좌 수익률, 종목명 조회
 종목명: 로컬 stock_name_cache.json (장마감 파이프라인에서 갱신)
 """
-import asyncio
 import httpx
 from backend.app.core.logger import get_logger
 from backend.app.core.trade_mode import effective_trade_mode
@@ -53,7 +52,7 @@ async def _load_broker_settings() -> dict | None:
             if not v:
                 return ""
             s = str(v)
-            return decrypt_value(s) if s.startswith("gAAAA") else s
+            return decrypt_value(s) or "" if s.startswith("gAAAA") else s
 
         tm = effective_trade_mode(flat)
         broker_nm = str(flat.get("broker", "") or "").lower().strip()

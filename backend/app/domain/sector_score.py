@@ -1,13 +1,9 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 섹터 점수 계산 - 정규화 및 가중치 계산 로직.
 """
-
-from typing import Literal
-
+from __future__ import annotations
 from backend.app.core.logger import get_logger
-
 logger = get_logger("engine")
 
 

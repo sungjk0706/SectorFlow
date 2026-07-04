@@ -1,5 +1,3 @@
-from __future__ import annotations
-from typing import Optional
 # -*- coding: utf-8 -*-
 """
 초고속 연산 엔진 (Compute Engine) - 파이프라인 아키텍처 Step 3
@@ -10,12 +8,24 @@ tick_queue에서 데이터를 꺼내어 연산 수행:
 - 매수/매도 타점 도달 여부 판단
 - 결과를 broadcast_queue로 전송
 """
-
+from __future__ import annotations
+from typing import Optional
 import asyncio
 import time
 from types import ModuleType
+from backend.app.core.logger import get_logger
+from backend.app.services.engine_state import state
+from backend.app.services.core_queues import (
+    get_tick_queue,
+    get_broadcast_queue,
+    get_control_queue,
+)
 
-# 수신율 추적
+logger = get_logger("pipeline_compute")
+
+# 전역 큐 할당 (메모리 상주)
+broadcast_queue = get_broadcast_queue()
+
 _current_receive_rate: dict = {"received": 0, "total": 0, "pct": 0.0}
 _receive_rate_dirty: bool = False
 
@@ -37,19 +47,6 @@ async def _send_receive_rate(receive_rate: dict) -> None:
             "total": receive_rate["total"]
         }
     })
-
-from backend.app.core.logger import get_logger
-from backend.app.services.engine_state import state
-from backend.app.services.core_queues import (
-    get_tick_queue,
-    get_broadcast_queue,
-    get_control_queue,
-)
-
-logger = get_logger("pipeline_compute")
-
-# 전역 큐 할당 (메모리 상주)
-broadcast_queue = get_broadcast_queue()
 
 _compute_task: Optional[asyncio.Task] = None
 _sector_recompute_task: Optional[asyncio.Task] = None

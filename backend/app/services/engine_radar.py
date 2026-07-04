@@ -5,7 +5,8 @@
 - 종목 상태 관리
 - 실시간 데이터 보강
 """
-import asyncio
+from typing import Any
+
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
 from backend.app.services.engine_account_rest import _parse_float_loose
@@ -83,9 +84,9 @@ def merge_live_price_to_radar_row(row: dict) -> dict:
     from backend.app.services import engine_radar_ops
 
     # 실시간 틱 데이터 캐시 읽기 로직 삭제 (캐시가 삭제되었으므로 빈 dict 반환)
-    tp = {}
-    ta = {}
-    rc = {}
+    tp: dict[str, Any] = {}
+    ta: dict[str, Any] = {}
+    rc: dict[str, Any] = {}
 
     return engine_radar_ops.overlay_radar_row_with_live_price(
         row, tp, ta, rc,
@@ -151,8 +152,7 @@ async def _mark_radar_exited(stk_cd: str) -> None:
         if rm in state.master_stocks_cache:
             entry = state.master_stocks_cache[rm]
             entry.pop("_subscribed", None)
-        if _clear_radar_rest_bootstrap_for_stk_cd:
-            await _clear_radar_rest_bootstrap_for_stk_cd(rm)
+        await _clear_radar_rest_bootstrap_for_stk_cd(rm)
 
 
 async def clear_exited_from_radar() -> int:

@@ -1,16 +1,10 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 매수 후보 필터 - 매수 타겟 생성 및 가드 필터링 로직.
 """
-
+from __future__ import annotations
 from typing import Literal
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 가산점 계산 함수
-# ──────────────────────────────────────────────────────────────────────────────
-
+from backend.app.domain.models import SectorSummary
 def calculate_boost_score(
     stock,  # StockScore 타입 (순환 import 방지를 위해 타입 힌트 생략)
     *,
@@ -134,7 +128,7 @@ def create_buy_targets(
     held_codes: set[str] | None = None,
     boost_trade_amount_rank_on: bool = False,
     boost_trade_amount_rank_score: float = 1.0,
-) -> object:  # SectorSummary
+) -> SectorSummary:
     """
     섹터 스코어 -> 매수 타겟 큐 생성.
 
@@ -151,7 +145,7 @@ def create_buy_targets(
     # dataclass import
     from backend.app.domain.models import BuyTarget
 
-    effective_keys = list(sort_keys) if sort_keys else ["change_rate"]
+    effective_keys: list[Literal["strength", "change_rate", "trade_amount"]] = list(sort_keys) if sort_keys else ["change_rate"]
 
     buy_targets: list = []
     blocked_targets: list = []
@@ -276,7 +270,7 @@ def build_buy_targets_from_settings(
     settings: dict,
     *,
     held_codes: set[str] | None = None,
-) -> object:
+) -> SectorSummary:
     from backend.app.services.engine_radar import get_high_price_5d_cache, get_orderbook_cache, get_program_net_buy_cache
 
     return create_buy_targets(

@@ -11,9 +11,16 @@
     "test": "vitest --run"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/google-protobuf": "^3.15.12",
+    "@typescript-eslint/eslint-plugin": "^8.62.1",
+    "@typescript-eslint/parser": "^8.62.1",
+    "eslint": "^10.6.0",
+    "globals": "^17.7.0",
+    "jsdom": "^29.1.1",
     "typescript": "^5.5.4",
-    "vite": "^5.4.2"
+    "vite": "^5.4.2",
+    "vitest": "^3.2.6"
   },
   "dependencies": {
     "google-protobuf": "^4.0.2"

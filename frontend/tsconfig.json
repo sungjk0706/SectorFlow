@@ -16,6 +16,6 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src"],
+  "include": ["src", "tests"],
   "exclude": ["src/__tests__"]
 }

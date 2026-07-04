@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 Persistence Journaling - 메모리 기반 저널링
@@ -14,15 +13,13 @@ Persistence Journaling - 메모리 기반 저널링
   - 순서 보장 (리스트 순서)
   - 장마감 후 배치 파이프라인에서 DB 저장
 """
-
+from __future__ import annotations
 import asyncio
-import json
 import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
-
+from typing import Any, Callable
 logger = logging.getLogger(__name__)
 
 # ── 메모리 저장소 ─────────────────────────────────────────────────────────────
@@ -257,9 +254,9 @@ _next_seq = oms_get_next_seq
 # ── Public API - 재생 ─────────────────────────────────────────────────────────
 
 async def replay_journal(
-    settings_change_handler: callable | None = None,
-    order_request_handler: callable | None = None,
-    fill_event_handler: callable | None = None,
+    settings_change_handler: Callable | None = None,
+    order_request_handler: Callable | None = None,
+    fill_event_handler: Callable | None = None,
 ) -> int:
     """저널 재생"""
     entries = await _read_all_entries()
@@ -297,26 +294,27 @@ async def get_journal_stats() -> dict[str, Any]:
     """저널 통계 조회"""
     entries = await _read_all_entries()
 
-    stats = {
-        "total_entries": len(entries),
-        "settings_changes": 0,
-        "order_requests": 0,
-        "fill_events": 0,
-        "oldest_timestamp": None,
-        "newest_timestamp": None,
-    }
+    settings_changes = 0
+    order_requests = 0
+    fill_events = 0
 
     if entries:
-        stats["oldest_timestamp"] = entries[0].timestamp
-        stats["newest_timestamp"] = entries[-1].timestamp
-
         for entry in entries:
             if entry.event_type == JournalEventType.SETTINGS_CHANGE:
-                stats["settings_changes"] += 1
+                settings_changes += 1
             elif entry.event_type == JournalEventType.ORDER_REQUEST:
-                stats["order_requests"] += 1
+                order_requests += 1
             elif entry.event_type == JournalEventType.FILL_EVENT:
-                stats["fill_events"] += 1
+                fill_events += 1
+
+    stats: dict[str, int | float | None] = {
+        "total_entries": len(entries),
+        "settings_changes": settings_changes,
+        "order_requests": order_requests,
+        "fill_events": fill_events,
+        "oldest_timestamp": entries[0].timestamp if entries else None,
+        "newest_timestamp": entries[-1].timestamp if entries else None,
+    }
 
     return stats
 

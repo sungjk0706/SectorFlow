@@ -1,11 +1,8 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """정산 엔진 라우터 — 충전."""
-
+from __future__ import annotations
 from fastapi import APIRouter, Depends
-
 from backend.app.web.deps import get_current_user
-
 router = APIRouter(prefix="/api/settlement", tags=["settlement"])
 
 

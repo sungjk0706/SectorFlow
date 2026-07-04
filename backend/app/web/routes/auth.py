@@ -1,12 +1,9 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """인증 라우터 — 로그인 + JWT 토큰 발급."""
-
+from __future__ import annotations
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
-
 from backend.app.web.auth import authenticate_user, create_access_token
-
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 

@@ -11,7 +11,7 @@ from backend.app.core.trade_mode import effective_trade_mode
 from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
 
 
-async def get_engine_settings(user_id: str = None, profile: str = "default") -> dict:
+async def get_engine_settings(user_id: str | None = None, profile: str = "default") -> dict:
     """
     SQLite integrated_system_settings 테이블 로드 후 복호화 dict 반환.
     user_id / profile 인자는 호환용으로 무시됨.
@@ -133,37 +133,48 @@ def build_engine_settings_dict(flat: dict) -> dict:
     result["sector_max_targets"]          = int(merged.get("sector_max_targets", 3) or 3)
     result["sector_min_rise_ratio_pct"]   = float(merged.get("sector_min_rise_ratio_pct", 60.0) or 60.0)
     result["sector_min_trade_amt"]        = float(merged.get("sector_min_trade_amt", 0.0) or 0.0)
-    result["buy_block_rise_pct"]          = float(merged.get("buy_block_rise_pct") if merged.get("buy_block_rise_pct") is not None else 7.0)
-    result["buy_block_fall_pct"]          = float(merged.get("buy_block_fall_pct") if merged.get("buy_block_fall_pct") is not None else 7.0)
-    result["buy_min_strength"]            = float(merged.get("buy_min_strength") if merged.get("buy_min_strength") is not None else 0)
+    _v = merged.get("buy_block_rise_pct")
+    result["buy_block_rise_pct"]          = float(_v if _v is not None else 7.0)
+    _v = merged.get("buy_block_fall_pct")
+    result["buy_block_fall_pct"]          = float(_v if _v is not None else 7.0)
+    _v = merged.get("buy_min_strength")
+    result["buy_min_strength"]            = float(_v if _v is not None else 0)
     # 업종 내 종목 트리밍 비율 (%)
-    result["sector_trim_trade_amt_pct"]    = float(merged.get("sector_trim_trade_amt_pct") if merged.get("sector_trim_trade_amt_pct") is not None else 10.0)
-    result["sector_trim_change_rate_pct"]  = float(merged.get("sector_trim_change_rate_pct") if merged.get("sector_trim_change_rate_pct") is not None else 10.0)
-    result["sector_start_threshold_pct"]   = float(merged.get("sector_start_threshold_pct") if merged.get("sector_start_threshold_pct") is not None else 70.0)
+    _v = merged.get("sector_trim_trade_amt_pct")
+    result["sector_trim_trade_amt_pct"]    = float(_v if _v is not None else 10.0)
+    _v = merged.get("sector_trim_change_rate_pct")
+    result["sector_trim_change_rate_pct"]  = float(_v if _v is not None else 10.0)
+    _v = merged.get("sector_start_threshold_pct")
+    result["sector_start_threshold_pct"]   = float(_v if _v is not None else 70.0)
     result["sector_buy_cooldown_sec"]      = int(merged.get("sector_buy_cooldown_sec", 90) or 90)
 
     # ── 매수 가산점 설정 ────────
     # 5일 전고가 돌파 가산점
     result["boost_high_breakout_on"]       = bool(merged.get("boost_high_breakout_on"))
-    result["boost_high_breakout_score"]    = max(float(merged.get("boost_high_breakout_score") if merged.get("boost_high_breakout_score") is not None else 1.0), 0)
+    _v = merged.get("boost_high_breakout_score")
+    result["boost_high_breakout_score"]    = max(float(_v if _v is not None else 1.0), 0)
     # 잔량비율 가산점
     result["boost_order_ratio_on"]         = bool(merged.get("boost_order_ratio_on"))
     # 레거시 마이그레이션: boost_order_ratio_side 키가 존재하면 부호 변환
     _legacy_side = merged.get("boost_order_ratio_side")
-    _raw_pct = int(float(merged.get("boost_order_ratio_pct") if merged.get("boost_order_ratio_pct") is not None else 20))
+    _v = merged.get("boost_order_ratio_pct")
+    _raw_pct = int(float(_v if _v is not None else 20))
     if _legacy_side is not None:
         _side = str(_legacy_side).strip().lower()
         _abs = abs(_raw_pct)
         _raw_pct = -_abs if _side == "sell" else _abs
     result["boost_order_ratio_pct"]        = max(-100, min(100, _raw_pct))
     # boost_order_ratio_side는 result에 포함하지 않음
-    result["boost_order_ratio_score"]      = max(float(merged.get("boost_order_ratio_score") if merged.get("boost_order_ratio_score") is not None else 1.0), 0)
+    _v = merged.get("boost_order_ratio_score")
+    result["boost_order_ratio_score"]      = max(float(_v if _v is not None else 1.0), 0)
     # 프로그램 순매수 가산점
     result["boost_program_net_buy_on"]     = bool(merged.get("boost_program_net_buy_on"))
-    result["boost_program_net_buy_score"]  = max(float(merged.get("boost_program_net_buy_score") if merged.get("boost_program_net_buy_score") is not None else 1.0), 0)
+    _v = merged.get("boost_program_net_buy_score")
+    result["boost_program_net_buy_score"]  = max(float(_v if _v is not None else 1.0), 0)
     # 거래대금 순위 가산점
     result["boost_trade_amount_rank_on"]   = bool(merged.get("boost_trade_amount_rank_on"))
-    result["boost_trade_amount_rank_score"] = max(float(merged.get("boost_trade_amount_rank_score") if merged.get("boost_trade_amount_rank_score") is not None else 1.0), 0)
+    _v = merged.get("boost_trade_amount_rank_score")
+    result["boost_trade_amount_rank_score"] = max(float(_v if _v is not None else 1.0), 0)
     # ── 공휴일 자동매매 가드 ────────
     result["holiday_guard_on"]             = bool(merged.get("holiday_guard_on"))
     result["auto_off_by_holiday"]          = bool(merged.get("auto_off_by_holiday"))

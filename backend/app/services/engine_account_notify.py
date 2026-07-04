@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 계좌·엔진 상태 변경 알림 -- WebSocket 브로드캐스트 기반.
@@ -8,13 +7,11 @@ from __future__ import annotations
 
 델타 비교만으로 전송 여부를 결정한다 — 변경 있으면 즉시 전송, 변경 없으면 생략.
 """
-
+from __future__ import annotations
 import time
 from collections.abc import Callable
-
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_symbol_utils import _base_stk_cd
-
 logger = get_logger("engine")
 
 
@@ -363,7 +360,6 @@ async def notify_desktop_trade_price(
 def _is_relevant_code(nk: str) -> bool:
     """프론트에서 실제 사용하는 종목 코드인지 판별 (섹터+보유+레이아웃). set O(1) 조회."""
     try:
-        import backend.app.services.engine_service as _es
         # _radar_cnsr_order 삭제: 제로-체크 보장 (구독된 종목만 틱 수신)
         if nk in notify_cache.positions_code_set:
             return True

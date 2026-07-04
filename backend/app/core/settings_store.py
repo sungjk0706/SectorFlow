@@ -1,19 +1,15 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 설정(SQLite DB) 읽기·저장·엔진 동기화 -- HTTP 레이어 없이 데스크톱/UI에서 직접 사용.
 """
-
+from __future__ import annotations
 import asyncio
 import logging
 from typing import Any
-
 from backend.app.core.encryption import decrypt_value, encrypt_value
-from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
 from backend.app.core.settings_file import load_integrated_system_settings, save_settings
 from backend.app.core import journal as _journal
 from backend.app.services.auto_trading_effective import auto_trading_effective
-
 logger = logging.getLogger(__name__)
 
 
@@ -73,8 +69,6 @@ def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
     일반설정 저장 버튼이 보내는 payload와 동일한 규칙으로 dict를 구성한다.
     load_integrated_system_settings_for_editing() 스냅샷과 현재 위젯 payload를 비교할 때 사용.
     """
-    legacy_k = str(d.get("kiwoom_app_key") or "")
-    legacy_s = str(d.get("kiwoom_app_secret") or "")
     legacy_a = str(d.get("kiwoom_account_no") or "")
     mode = d.get("trade_mode")
     if mode not in ("test", "mock", "real"):

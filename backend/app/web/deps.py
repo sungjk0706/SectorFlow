@@ -1,11 +1,8 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """FastAPI 의존성 주입 — 인증된 사용자 추출."""
-
+from __future__ import annotations
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 

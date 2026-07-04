@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 SQLite DB 및 인메모리 기반 종목 → 업종 매핑 모듈.
@@ -6,9 +5,8 @@ SQLite DB 및 인메모리 기반 종목 → 업종 매핑 모듈.
 기존 stock_classification.json 의존성을 제거하고,
 SQLite 데이터베이스(stocks 및 sectors 테이블) 또는 인메모리 캐시를 단일 진실 공급원으로 사용.
 """
-
+from __future__ import annotations
 import logging
-
 _log = logging.getLogger(__name__)
 
 

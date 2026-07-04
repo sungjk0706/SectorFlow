@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 엔진 부트스트랩 흐름.
@@ -6,12 +5,10 @@ from __future__ import annotations
 순환 import 방지: `import backend.app.services.engine_state as _st` 로 상태 접근.
 engine_service의 함수가 필요하면 lazy import (`from backend.app.services import engine_service`).
 """
-
+from __future__ import annotations
 import asyncio
-
 from backend.app.core.logger import get_logger
 import backend.app.services.engine_state as _st
-
 logger = get_logger("engine")
 
 # 구독 동시성 상한 (앱 기동 시 일회성 구독 준비)

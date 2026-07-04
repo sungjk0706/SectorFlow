@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 Loguru 기반 트레이딩 로거 — 안전한 파일 로깅 포함.
@@ -13,7 +12,7 @@ Loguru 기반 트레이딩 로거 — 안전한 파일 로깅 포함.
   → 해결: 표준 queue.Queue + 전용 데몬 스레드로 파일 쓰기 분리.
      asyncio 이벤트 루프와 완전 독립, OS 파이프 미사용, IOCP 충돌 없음.
 """
-
+from __future__ import annotations
 import io
 import logging
 import queue
@@ -21,9 +20,7 @@ import sys
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
-
 from loguru import logger as _loguru_logger
-
 LOG_DIR = Path(__file__).resolve().parents[2] / "logs"
 LOG_FILE = LOG_DIR / "trading.log"
 
@@ -76,11 +73,11 @@ def _file_writer_loop(q: queue.Queue, base_name: str, keep_days: int) -> None:
     fh = None
     log_path: Path | None = None
     part = 0  # 현재 파트 번호 (0 = 기본)
+    stem = base_name.replace(".log", "")
 
     def _open_part() -> io.TextIOWrapper | None:
         """현재 part 번호에 맞는 파일 핸들을 연다."""
         nonlocal log_path
-        stem = base_name.replace(".log", "")
         today = datetime.now().strftime("%Y-%m-%d")
         suffix = f".{part}" if part > 0 else ""
         log_path = LOG_DIR / f"{stem}_{today}{suffix}.log"

@@ -1,5 +1,3 @@
-from __future__ import annotations
-from typing import Optional
 # -*- coding: utf-8 -*-
 """
 UI 브로드캐스터 (Gateway Pipeline) - 파이프라인 아키텍처 Step 5
@@ -12,12 +10,11 @@ Gateway 루프는 broadcast_queue를 지속적으로 컨슘하여,
 
 모든 이벤트는 ws_manager.broadcast를 통해 즉시 전송.
 """
-
+from __future__ import annotations
+from typing import Optional
 import asyncio
-
 from backend.app.core.logger import get_logger
 from backend.app.services.core_queues import get_broadcast_queue
-
 logger = get_logger("pipeline_gateway")
 
 _gateway_task: Optional[asyncio.Task] = None
@@ -155,6 +152,8 @@ async def _process_broadcast(data: dict) -> None:
     try:
         event_type = data.get("type")
         payload = data.get("data", {})
+        if event_type is None:
+            return
         await _send_to_websocket(event_type, payload)
 
     except Exception as e:

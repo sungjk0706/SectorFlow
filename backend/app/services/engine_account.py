@@ -10,7 +10,7 @@ import asyncio
 from backend.app.core.logger import get_logger
 from backend.app.core.trade_mode import is_test_mode
 import backend.app.services.engine_state as engine_state
-from backend.app.services.engine_state import state
+from backend.app.services.engine_state import state, _get_rest_api_thread_sem as _ensure_rest_api_thread_sem
 
 logger = get_logger("engine_account")
 
@@ -80,11 +80,11 @@ async def get_total_pnl() -> int:
     return int(state.broker_rest_totals.get("total_pnl", 0) or 0)
 
 
-def get_total_pnl_rate() -> float:
+async def get_total_pnl_rate() -> float:
     """총 수익률 반환."""
     if is_test_mode(state.integrated_system_settings_cache):
-        total_buy = get_total_buy_amount()
-        total_pnl = get_total_pnl()
+        total_buy = await get_total_buy_amount()
+        total_pnl = await get_total_pnl()
         return round((total_pnl / total_buy) * 100, 2) if total_buy > 0 else 0.0
     return float(state.broker_rest_totals.get("total_rate", 0.0) or 0.0)
 
@@ -96,7 +96,6 @@ def get_snapshot_history() -> list:
 
 async def get_buy_limit_status() -> dict:
     """매수 한도 상태를 dict로 반환 (프론트 배지용)."""
-    settings = state.integrated_system_settings_cache
     daily_buy_spent = 0
     if state.auto_trade:
         await state.auto_trade._ensure_daily_buy_counter()
@@ -129,14 +128,14 @@ async def _fetch_account_data(settings: dict) -> dict:
     # 증권사별 REST API 분리
     broker = str(settings.get("broker", "") or "").lower().strip()
     _rest_api = state.broker_rest_apis.get(broker)
-    _get_rest_api_thread_sem = state.rest_api_thread_sem or _get_rest_api_thread_sem()
+    _rest_api_thread_sem = state.rest_api_thread_sem or _ensure_rest_api_thread_sem()
     
     if _rest_api is None:
         logger.warning("[계좌] _rest_api 없음 -- 엔진 기동 완료 전 호출. 계좌 조회 건너뜀.")
         return _EMPTY
 
     # ── 토큰 유효성 먼저 확인 ─────────────────────────────────────────────
-    async with _get_rest_api_thread_sem:
+    async with _rest_api_thread_sem:
         token_ok = await _rest_api._ensure_token()
     if not token_ok:
         logger.warning(
@@ -156,10 +155,10 @@ async def _fetch_account_data(settings: dict) -> dict:
 
     # ── deposit -> (0.5초 대기) -> balance 순차 호출로 429 예방 ─────────────
     try:
-        async with _get_rest_api_thread_sem:
+        async with _rest_api_thread_sem:
             deposit_raw = await _rest_api.get_deposit_detail(acnt_no)
         await asyncio.sleep(0.5)
-        async with _get_rest_api_thread_sem:
+        async with _rest_api_thread_sem:
             balance_raw = await _rest_api.get_balance_detail()
     except Exception as e:
         logger.warning("[계좌] API 호출 예외: %s", e, exc_info=True)
@@ -220,16 +219,7 @@ async def _update_account_memory(settings: dict) -> None:
 
 async def _update_account_memory_inner(settings: dict) -> None:
     """_update_account_memory 실제 구현 (Lock 내부에서 호출)."""
-    from backend.app.services.engine_account_rest import (
-        apply_last_price_to_positions_inplace,
-        broker_totals_from_summary,
-        build_account_snapshot_meta,
-        merge_positions_from_rest,
-        recalc_broker_totals_from_positions,
-    )
     from backend.app.services.engine_account_notify import _rebuild_positions_cache
-    from backend.app.services.engine_symbol_utils import _base_stk_cd
-    from backend.app.services import dry_run
     from backend.app.services.engine_ws import _ws_live, _sweep_unreg_subscribed_except_positions_and_tracked
     from backend.app.core.engine_settings import get_engine_settings
 
@@ -272,7 +262,7 @@ async def _update_account_memory_inner(settings: dict) -> None:
 
     # WS 구독 보강은 _login_post_pipeline / _run_snapshot_and_sell_check 에서 명시적으로 호출.
     # 여기서 호출하면 _account_rest_lock 안에서 _reg_seq_lock 을 잡는 중첩 락 -> 데드락 위험.
-    if _ws_live and _ws_live():
+    if _ws_live():
         try:
             n_unreg = await _sweep_unreg_subscribed_except_positions_and_tracked()
             if n_unreg:
@@ -309,7 +299,7 @@ def _merge_positions_from_rest(stock_list: list) -> list:
     REST kt00018 잔고 반영. 수량·매입·종목명은 REST 기준.
     """
     from backend.app.services.engine_account_rest import merge_positions_from_rest
-    return merge_positions_from_rest(stock_list, None)
+    return merge_positions_from_rest(stock_list, {})
 
 
 def _apply_broker_totals_from_summary(summary: dict) -> None:
@@ -326,7 +316,6 @@ async def _refresh_account_snapshot_meta() -> None:
     """
     from backend.app.services.engine_account_rest import build_account_snapshot_meta
     from backend.app.services import dry_run, settlement_engine
-    from backend.app.services.engine_symbol_utils import _base_stk_cd
     from backend.app.services.engine_ws import _ws_live
     
     _is_test = is_test_mode(state.integrated_system_settings_cache)
@@ -352,12 +341,12 @@ async def _refresh_account_snapshot_meta() -> None:
             "total_rate": total_rate,
         }
         snap = build_account_snapshot_meta(
-            state.account_snapshot, test_totals, pos, _ws_live() if _ws_live else False,
+            state.account_snapshot, test_totals, pos, _ws_live(),
             trade_mode="test",
         )
     else:
         snap = build_account_snapshot_meta(
-            state.account_snapshot, state.broker_rest_totals, pos, _ws_live() if _ws_live else False,
+            state.account_snapshot, state.broker_rest_totals, pos, _ws_live(),
             trade_mode="real",
         )
     
@@ -401,7 +390,7 @@ async def _apply_balance_realtime(item: dict, vals: dict) -> None:
     if _real04_is_stock_item(item):
         # 종목 단위 레코드 -- 보유수량·매입단가·평가손익 등 갱신
         _prev_len = len(state.positions)
-        real04_official_apply_position_line(item, vals, state.positions, None)
+        real04_official_apply_position_line(item, vals, state.positions, {})
         if len(state.positions) != _prev_len:
             _rebuild_positions_cache(state.positions)
     else:
@@ -448,8 +437,7 @@ async def _on_fill_after_ws() -> None:
     run_after_order_fill_ws(
         0.0,
         state.refresh_account_snapshot_meta,
-        lambda reason=None: state.update_account_memory() if state.update_account_memory else None,
-        _sell_if_applicable,
+        lambda: state.update_account_memory(),
         is_dry_run=is_test_mode(state.integrated_system_settings_cache),
     )
 

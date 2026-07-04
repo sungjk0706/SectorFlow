@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 개별종목시세 REST API -- ka10086(일별주가).
@@ -6,16 +5,12 @@ from __future__ import annotations
 - ka10086: 장마감 후 확정 종가·등락률·거래대금 조회 (종목별 개별 POST)
 - 실시간: 엔진 WebSocket REG·REAL(REST 반복 폴링 아님).
 """
-
+from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional
-
-import httpx
-
 from backend.app.core.broker_providers import UnifiedStockRecord
-
 if TYPE_CHECKING:
     from backend.app.core.kiwoom_rest import KiwoomRestAPI
 
@@ -209,7 +204,7 @@ async def fetch_ka10081_daily_5d_data(
                 rows = list(reversed(rows))
 
         # 최근 5개 추출 (신규 상장 종목 지원: 부족한 날짜는 None으로 채움)
-        recent_5 = rows[:5]
+        recent_5: list[dict | None] = list(rows[:5])
         if len(recent_5) < 5:
             _log.info("[ka10081-5d] 데이터 부족 -- %d개 (필요 5개) -- %s (신규상장으로 간주, 부족한 날짜는 NULL)", len(recent_5), log_cd)
             while len(recent_5) < 5:
@@ -218,10 +213,6 @@ async def fetch_ka10081_daily_5d_data(
         # 5일 고가/거래대금 추출 (데이터 없으면 None)
         highs_5d = [_si(r.get("high_pric")) if r is not None else None for r in recent_5]
         amts_5d = [_si(r.get("trde_prica")) if r is not None else None for r in recent_5]  # 백만원 단위
-
-        # NULL-safe 최고가 계산 (신규 상장 종목 지원)
-        valid_highs = [h for h in highs_5d if h is not None]
-        high_price_5d = max(valid_highs) if valid_highs else 0
 
         return {
             "amts_5d_array": amts_5d,

@@ -1,4 +1,3 @@
-from __future__ import annotations
 # -*- coding: utf-8 -*-
 """
 장마감 후 데이터 캐시 파이프라인 — 핵심 로직.
@@ -6,14 +5,14 @@ from __future__ import annotations
 KRX/NXT 장마감 후 WS 구독 해지 → REST 확정 데이터 조회 → 캐시 저장.
 daily_time_scheduler.py 타이머 콜백에서 호출된다.
 """
-
+from __future__ import annotations
 import asyncio
-import json
 import time
-from types import ModuleType
-
+from typing import TYPE_CHECKING, Any
 from backend.app.core.logger import get_logger
-from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
+from backend.app.core.broker_providers import AuthProvider
+if TYPE_CHECKING:
+    from backend.app.core.stock_filter import StockFilterEvaluation
 from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
     is_nxt_enabled,
@@ -37,7 +36,6 @@ def _broadcast_confirmed_progress(
     _loop가 없는 경우(async context 직접 호출): broadcast() 사용.
     """
     try:
-        from backend.app.web.ws_manager import ws_manager
         payload = {
             "_v": 1,
             "current": current,
@@ -73,7 +71,7 @@ def _broadcast_confirmed_progress(
 # 종목 분류 헬퍼
 # ---------------------------------------------------------------------------
 
-def _get_krx_only_codes(es: ModuleType) -> list[str]:
+def _get_krx_only_codes(es: Any) -> list[str]:
     """_master_stocks_cache에서 KRX 단독 종목(nxt_enable=False)만 추출.
 
     Args:
@@ -119,7 +117,7 @@ def _get_krx_only_codes(es: ModuleType) -> list[str]:
 # KRX 단독 종목 REMOVE
 # ---------------------------------------------------------------------------
 
-async def remove_krx_only_stocks(es: ModuleType) -> dict:
+async def remove_krx_only_stocks(es: Any) -> dict:
     """KRX 단독 종목(nxt_enable=False)만 선택적 REMOVE.
 
     Args:
@@ -208,7 +206,7 @@ async def remove_krx_only_stocks(es: ModuleType) -> dict:
 # ---------------------------------------------------------------------------
 
 async def execute_unified_rolling_and_save(
-    es: ModuleType,
+    es: Any,
     confirmed: dict[str, dict],
     name_map: dict[str, str] | None = None,
 ) -> bool:
@@ -354,7 +352,7 @@ async def execute_unified_rolling_and_save(
 
 
 async def _apply_confirmed_to_memory(
-    es: ModuleType,
+    es: Any,
     confirmed: dict[str, dict],
     strength: dict[str, float],
     name_map: dict[str, str] | None = None,
@@ -484,7 +482,7 @@ async def _apply_confirmed_to_memory(
 # 확정 후 v2 캐시 롤링 파이프라인 (daily_time_scheduler.py에서 이동)
 # ---------------------------------------------------------------------------
 
-async def _run_post_confirmed_pipeline(es: ModuleType, eligible_codes: set[str] | None = None) -> None:
+async def _run_post_confirmed_pipeline(es: Any, eligible_codes: set[str] | None = None) -> None:
     """
     ka10081 도입으로 5일 거래대금 및 최고가를 즉시 추출하므로,
     기존의 복잡한 v2 캐시 롤링 갱신 로직은 제거되었습니다.
@@ -503,7 +501,7 @@ async def _run_post_confirmed_pipeline(es: ModuleType, eligible_codes: set[str] 
 
 async def _save_filter_diagnostics_snapshot(
     run_id: str,
-    evaluations: list[tuple[object, object]],
+    evaluations: list[tuple[object, StockFilterEvaluation]],
     final_excluded_codes: set[str],
     duplicate_codes: set[str],
 ) -> None:
@@ -526,7 +524,7 @@ async def _save_filter_diagnostics_snapshot(
 
 
 async def _save_confirmed_cache(
-    es: ModuleType,
+    es: Any,
     skip_codes: set[str] | None = None,
     name_map: dict[str, str] | None = None,
     eligible_codes: set[str] | None = None,
@@ -656,7 +654,7 @@ async def _save_confirmed_cache(
 # ---------------------------------------------------------------------------
 
 async def _run_confirmed_pipeline(
-    es: ModuleType,
+    es: Any,
     tag: str,
     *,
     check_scheduler: bool = False,
@@ -693,7 +691,7 @@ async def _run_confirmed_pipeline(
         from backend.app.core.broker_registry import _create_provider
         _settings = es._integrated_system_settings_cache
         _broker_name = "kiwoom"
-        _auth_cache: dict[str, object] = {}
+        _auth_cache: dict[str, AuthProvider] = {}
         _auth_provider = _create_provider("auth", _broker_name, _settings, _auth_cache)
         _broker_token = await _auth_provider.get_access_token() if _auth_provider else None
         if _broker_token and _broker_name not in _es_state._broker_tokens:
@@ -729,8 +727,8 @@ async def _run_confirmed_pipeline(
             all_reason_counts: dict[str, int] = {}
             state_flag_counts: dict[str, int] = {}
             diagnostic_counts: dict[str, int] = {}
-            code_groups: dict[str, list[tuple[object, object]]] = {}
-            row_evaluations: list[tuple[object, object]] = []
+            code_groups: dict[str, list[tuple[object, StockFilterEvaluation]]] = {}
+            row_evaluations: list[tuple[object, StockFilterEvaluation]] = []
             from backend.app.core.stock_filter import evaluate_stock_filter
             for r in records:
                 evaluation = evaluate_stock_filter(r.raw_item, r.code)
@@ -932,7 +930,7 @@ async def _run_confirmed_pipeline(
 
         def _on_progress(cur: int, tot: int) -> None:
             _pct = int(cur / total * 100) if total > 0 else 0
-            _eta = 0
+            _eta: float = 0
             if cur > 0:
                 _elapsed = time.monotonic() - _dl_start
                 _eta = _elapsed / cur * (total - cur)
@@ -1029,7 +1027,7 @@ async def _run_confirmed_pipeline(
 # 통합 확정 데이터 조회 (20:30)
 # ---------------------------------------------------------------------------
 
-async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
+async def fetch_unified_confirmed_data(es: Any) -> dict:
     """20:30 타이머 통합 확정 조회 — _run_confirmed_pipeline 위임."""
     return await _run_confirmed_pipeline(es, "[타이머]", check_scheduler=True, check_time_guard=True)
 
@@ -1039,7 +1037,7 @@ async def fetch_unified_confirmed_data(es: ModuleType) -> dict:
 # ---------------------------------------------------------------------------
 
 async def _update_layout_cache(
-    es: ModuleType,
+    es: Any,
     all_codes: list[str],
     name_map: dict[str, str],
 ) -> None:
@@ -1129,8 +1127,7 @@ async def fetch_5d_data_only() -> dict:
     execute_unified_rolling_and_save()를 사용하여 순서 보장.
     """
     from backend.app.services import engine_service as es
-    from backend.app.core.broker_factory import get_router
-    from backend.app.core.trading_calendar import get_kst_today_str, get_current_trading_day_str
+    from backend.app.core.trading_calendar import get_kst_today_str
 
     # 중복 실행 방지
     if getattr(es, "_confirmed_refresh_running_5d", False):
@@ -1146,7 +1143,7 @@ async def fetch_5d_data_only() -> dict:
         from backend.app.core.broker_registry import _create_provider
         _settings = es._integrated_system_settings_cache
         _broker_name = "kiwoom"
-        _auth_cache: dict[str, object] = {}
+        _auth_cache: dict[str, AuthProvider] = {}
         _auth_provider = _create_provider("auth", _broker_name, _settings, _auth_cache)
         _broker_token = await _auth_provider.get_access_token() if _auth_provider else None
         if _broker_token and _broker_name not in _es_state._broker_tokens:
@@ -1222,7 +1219,7 @@ async def fetch_5d_data_only() -> dict:
 
             # 진행률 브로드캐스트 (매 종목)
             pct = int((idx + 1) / total * 100) if total else 0
-            _eta = 0
+            _eta: float = 0
             if (idx + 1) > 0:
                 _elapsed = time.monotonic() - _dl_start
                 _eta = _elapsed / (idx + 1) * (total - (idx + 1))

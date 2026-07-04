@@ -4,77 +4,23 @@
 - 전역 상태 변수는 engine_state.py에 저장
 - 분리된 모듈 함수 재내보내기
 """
-import asyncio
-import sys
-import time
 from backend.app.core.logger import get_logger
-from backend.app.services.trading import AutoTradeManager
+from backend.app.domain.models import SectorSummary
 from backend.app.services import engine_account_notify as _account_notify
-from backend.app.services.engine_utils import LazyEvent
-
-# ── 전역 상태 import (engine_state에서 직접 import) ─────────────────────
 from backend.app.services.engine_state import (
     state,
-    _get_rest_api_thread_sem,
-    _get_account_rest_lock,
-    _get_realtime_state,
-    _set_realtime_state,
-)
-
-# ── 업종 요약 캐시 (단일 소스 진리) ───────────────────────────────────────
-_sector_summary_cache: "SectorSummary | None" = None  # type: ignore[name-defined]
-
-# ── 분리된 모듈 import ─────────────────────────────────────────────────
-from backend.app.services.engine_ws import (
-    _ws_send_reg_unreg_and_wait_ack,
-    _ws_send_remove_fire_and_forget,
-    _broker_message_handler,
-    _handle_ws_data,
-    _subscribe_stock_realtime_when_ready,
-    _subscribe_account_realtime,
-    _log_reg_stock_chunk,
-    _subscribe_positions_stocks_realtime,
-    _subscribe_radar_stocks_realtime,
-    _subscribe_all_tracked_stocks_realtime,
-    _item_cd_is_position,
-    _item_cd_tracked_radar_or_ready,
-    _sweep_unreg_subscribed_except_positions_and_tracked,
-    _cleanup_stale_ws_subscriptions_on_session_ready,
-    _subscribe_sector_stocks_0b,
-    _ensure_ws_subscriptions_for_positions,
-    _run_sector_reg_pipeline,
 )
 from backend.app.services.engine_account import (
-    get_account_snapshot,
-    get_trade_mode,
-    get_positions,
-    get_total_buy_amount,
-    get_total_eval_amount,
-    get_total_pnl,
-    get_total_pnl_rate,
-    get_snapshot_history,
-    get_buy_limit_status,
-    _broadcast_buy_limit_status,
-    _fetch_account_data,
-    _update_account_memory,
-    _update_account_memory_inner,
-    _merge_positions_from_rest,
-    _apply_broker_totals_from_summary,
     _refresh_account_snapshot_meta,
-    _apply_last_price_to_positions,
-    _apply_balance_realtime,
-    _on_fill_after_ws,
     _broadcast_account,
-    _position_codes_with_qty,
+    _update_account_memory,  # noqa: F401  -- facade re-export
 )
 from backend.app.services.engine_config import (
-    _get_settings,
     get_settings_snapshot,
     refresh_engine_integrated_system_settings_cache,
-    reload_engine_settings,
     _mask_sensitive_settings,
-    get_connection_level_keys,
     TRADE_MODE_KEYS,
+    _get_settings,  # noqa: F401  -- facade re-export
 )
 from backend.app.services.engine_radar import (
     get_subscribed_stocks,
@@ -83,27 +29,16 @@ from backend.app.services.engine_radar import (
     get_avg_trade_amount_5d_map,
     get_high_price_5d_cache,
     merge_live_price_to_radar_row,
-    _apply_real01_volume_amount_to_radar_rows,
-    _mark_radar_exited,
-    clear_exited_from_radar,
-    _drop_rest_radar_quote_for_nk,
-    _clear_radar_rest_bootstrap_for_stk_cd,
-    _clear_radar_and_ready_memory,
-    _tracked_ui_stock_codes,
 )
 from backend.app.services.sector_data_provider import (
-    get_sector_scores_snapshot,
-    get_sector_summary_inputs,
-    get_sector_stocks,
-    get_buy_targets_sector_stocks,
-    get_all_sector_stocks,
     recompute_sector_summary_now,
-    _on_filter_settings_changed as _sector_on_filter_settings_changed,
+    get_sector_stocks,  # noqa: F401  -- facade re-export
+    get_buy_targets_sector_stocks,  # noqa: F401  -- facade re-export
+    get_all_sector_stocks,  # noqa: F401  -- facade re-export
+    get_sector_scores_snapshot,  # noqa: F401  -- facade re-export
+    get_sector_summary_inputs,  # noqa: F401  -- facade re-export
 )
 from backend.app.services.engine_lifecycle import (
-    start_engine,
-    _engine_loop,
-    stop_engine,
     is_engine_running,
     get_engine_status,
     on_trade_mode_switched,
@@ -112,19 +47,25 @@ from backend.app.services.engine_lifecycle import (
     schedule_engine_task,
     sync_sell_overrides,
     broadcast_engine_status,
-    _delayed_resubscribe_stock_after_rate_limit,
+    start_engine,  # noqa: F401  -- facade re-export
+    stop_engine,  # noqa: F401  -- facade re-export
 )
-from backend.app.services.buy_order_executor import evaluate_buy_candidates
 from backend.app.services.engine_snapshot import (
-    build_initial_snapshot,
-    build_sector_stocks_payload,
-    _filter_stock_fields,
-    _get_trade_history_for_snapshot,
-    _get_daily_summary_for_snapshot,
-    _reset_realtime_fields,
-    get_position_pnl_pct_for_code,
     _run_snapshot_and_sell_check,
+    build_initial_snapshot,  # noqa: F401  -- facade re-export
+    build_sector_stocks_payload,  # noqa: F401  -- facade re-export
 )
+from backend.app.services.engine_ws import (
+    _broker_message_handler,  # noqa: F401  -- facade re-export
+)
+
+# ── 업종 요약 캐시 (단일 소스 진리) ───────────────────────────────────────
+_sector_summary_cache: SectorSummary | None = None
+
+# ── 확정 데이터 조회 상태 ─────────────────────────────────────────────────
+_confirmed_refresh_running_confirmed: bool = False
+_confirmed_refresh_running_5d: bool = False
+_confirmed_refresh_message: str = ""
 
 # ── engine_account_notify 재내보내기 ────────────────────────────────────
 broadcast_account_update = _account_notify.broadcast_account_update
@@ -176,11 +117,9 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         notify_desktop_sector_scores,
         notify_desktop_settings_toggled,
     )
-    from backend.app.services.engine_config import _mask_sensitive_settings
     from backend.app.services import settlement_engine as _se
     from backend.app.services import daily_time_scheduler as _dts
     from backend.app.services import ws_subscribe_control
-    import backend.app.services.engine_state as _st
 
     if not changed_keys:
         await notify_desktop_header_refresh()
@@ -189,7 +128,6 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
     # ── 1) RAM 캐시 갱신 — PATCH 저장 직후 DB 최신값을 캐시에 반영 ──────────────
     # [핵심] DB 저장 후 브로드캐스트 전에 반드시 캐시를 갱신해야 최신 값이 전송됨.
     # refresh_engine_integrated_system_settings_cache는 엔진 실행 여부와 무관하게 캐시를 갱신함.
-    from backend.app.services.engine_config import refresh_engine_integrated_system_settings_cache
     await refresh_engine_integrated_system_settings_cache(None, use_root=True)
 
     # ── 2) broker 변경 → 엔진 재기동 (단일 진입점 보장) ───────────────────────
@@ -292,7 +230,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             # 4) 비활성→구간안: 즉시 WS 연결 + 구독 시작
             elif not was_active and now_in_window:
                 logger.info("[설정] 실시간 구독 구간 변경 → 현재 구간 안 — 즉시 구독 시작")
-                schedule_engine_task(_dts._on_ws_subscribe_start(), "실시간 구독 시작")
+                schedule_engine_task(_dts._on_ws_subscribe_start(), context="실시간 구독 시작")
         except Exception:
             logger.warning("[설정] 실시간 구독 타이머 재예약 실패", exc_info=True)
 
@@ -339,8 +277,8 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             raw = state.integrated_system_settings_cache
             for key in _ws_changed:
                 schedule_engine_task(
-                    ws_subscribe_control.on_setting_changed(key, bool(raw.get(key)), engine_service),
-                    f"WS 구독 제어 설정 반영({key})",
+                    ws_subscribe_control.on_setting_changed(key, bool(raw.get(key))),
+                    context=f"WS 구독 제어 설정 반영({key})",
                 )
         except Exception:
             logger.warning("[설정] ws_subscribe_control 설정 변경 반영 실패", exc_info=True)

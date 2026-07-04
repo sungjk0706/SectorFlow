@@ -166,7 +166,7 @@ export function createNumInput(options: {
   } as Partial<CSSStyleDeclaration>)
 
   input.addEventListener('input', () => {
-    const raw = input.value.replace(/[^0-9.\-]/g, '')
+    const raw = input.value.replace(/[^0-9.-]/g, '')
     currentValue = Number(raw) || 0
     options.onChange(currentValue)
   })
