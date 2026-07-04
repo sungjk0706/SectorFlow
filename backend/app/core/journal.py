@@ -20,11 +20,12 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
+from backend.app.services.engine_utils import LazyLock
 logger = logging.getLogger(__name__)
 
 # ── 메모리 저장소 ─────────────────────────────────────────────────────────────
 _journal_entries: list[dict] = []
-_journal_lock: asyncio.Lock = asyncio.Lock()
+_journal_lock: LazyLock = LazyLock()
 
 
 # ── Journal Event Types ──────────────────────────────────────────────────────

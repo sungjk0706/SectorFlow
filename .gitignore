@@ -50,7 +50,7 @@ data/*.lock
 data/*.cache
 backend/data/server.lock
 backend/data/*.json
-*.log
+# *.log  # Temporarily commented for log access investigation
 .env
 .env.local
 

@@ -1,9 +1,10 @@
 import asyncio
 import os
 import aiosqlite
+from backend.app.services.engine_utils import LazyLock
 
 _db_connection: aiosqlite.Connection | None = None
-_db_lock: asyncio.Lock = asyncio.Lock()
+_db_lock: LazyLock = LazyLock()
 
 
 async def get_db_connection() -> aiosqlite.Connection:
@@ -38,6 +39,6 @@ async def close_db_connection() -> None:
         _db_connection = None
 
 
-def get_db_lock() -> asyncio.Lock:
+def get_db_lock() -> LazyLock:
     """DB 쓰기 Lock 반환"""
     return _db_lock
