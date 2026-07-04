@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { showAlertDialog, showConfirmDialog, showCustomDialog } from '../../src/components/common/dialog'
 
 beforeEach(() => {
@@ -123,7 +123,7 @@ describe('showCustomDialog', () => {
   it('calls action onClick when button is clicked', () => {
     const content = document.createElement('div')
     let clicked = false
-    const overlay = showCustomDialog({
+    showCustomDialog({
       title: '커스텀',
       content,
       actions: [{ label: '실행', onClick: () => { clicked = true } }],
