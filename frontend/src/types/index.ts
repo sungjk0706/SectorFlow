@@ -108,6 +108,10 @@ export interface AppSettings {
   rebuy_block_on: boolean;
   rebuy_block_period: string;
 
+  // 매수 주문 간격 (1순위 종목만 매수 후 사용자 설정 간격 대기)
+  buy_interval_on: boolean;
+  buy_interval_min: number;
+
   // 매도 설정
   tp_val: number;
   tp_unit: string;

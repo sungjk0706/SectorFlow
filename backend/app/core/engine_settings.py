@@ -146,7 +146,10 @@ def build_engine_settings_dict(flat: dict) -> dict:
     result["sector_trim_change_rate_pct"]  = float(_v if _v is not None else 10.0)
     _v = merged.get("sector_start_threshold_pct")
     result["sector_start_threshold_pct"]   = float(_v if _v is not None else 70.0)
-    result["sector_buy_cooldown_sec"]      = int(merged.get("sector_buy_cooldown_sec", 90) or 90)
+
+    # ── 매수 주문 간격 (1순위 종목만 매수 후 사용자 설정 간격 대기) ────────
+    result["buy_interval_on"]              = bool(merged.get("buy_interval_on", False))
+    result["buy_interval_min"]             = int(merged.get("buy_interval_min", 0) or 0)
 
     # ── 매수 가산점 설정 ────────
     # 5일 전고가 돌파 가산점

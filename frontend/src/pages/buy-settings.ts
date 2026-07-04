@@ -48,6 +48,11 @@ let rebuyBlockToggle: ReturnType<typeof createToggleBtn> | null = null
 let rebuyBlockSelect: HTMLSelectElement | null = null
 let rebuyBlockControls: HTMLElement | null = null
 
+// 매수 주문 간격 UI 참조
+let buyIntervalToggle: ReturnType<typeof createToggleBtn> | null = null
+let buyIntervalInput: ReturnType<typeof createNumInput> | null = null
+let buyIntervalControls: HTMLElement | null = null
+
 
 /* ── 헬퍼 ── */
 function syncAfterSave(): void {
@@ -114,6 +119,14 @@ function syncFromSettings(s: AppSettings): void {
   }
   if (rebuyBlockControls) {
     setDisabled(rebuyBlockControls, !rebuyOn)
+  }
+
+  // 매수 주문 간격
+  const intervalOn = !!r.buy_interval_on
+  buyIntervalToggle?.setOn(intervalOn)
+  if (buyIntervalInput && (!act || !buyIntervalInput.el.contains(act))) buyIntervalInput.setValue(Number(r.buy_interval_min) || 0)
+  if (buyIntervalControls) {
+    setDisabled(buyIntervalControls, !intervalOn)
   }
 
 }
@@ -300,6 +313,40 @@ function mount(container: HTMLElement): void {
   maxStockCntInput = createNumInput({ value: 0, onChange: v => { vals.max_stock_cnt = v; saveHelper!.autoSave('max_stock_cnt', v) }, name: 'max_stock_cnt' })
   root.appendChild(createSettingRow('최대 동시 보유 종목 수', maxStockCntInput.el))
 
+  // ── 매수 주문 간격 섹션 ──
+  root.appendChild(sectionTitle('매수 주문 간격'))
+  {
+    const labelWrap = document.createElement('span')
+    labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
+    buyIntervalToggle = createToggleBtn({ on: false, onClick: () => {
+      const next = !buyIntervalToggle!.isOn()
+      vals.buy_interval_on = next
+      buyIntervalToggle!.setOn(next)
+      if (buyIntervalControls) {
+        setDisabled(buyIntervalControls, !next)
+      }
+      saveHelper!.autoSave('buy_interval_on', next)
+    }})
+    labelWrap.appendChild(buyIntervalToggle.el)
+    const label = document.createElement('span')
+    label.textContent = '매수 주문 간격 활성화'
+    labelWrap.appendChild(label)
+
+    const controls = document.createElement('span')
+    controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
+    setDisabled(controls, true)
+    buyIntervalControls = controls
+
+    buyIntervalInput = createNumInput({ value: 0, onChange: v => { vals.buy_interval_min = v; saveHelper!.autoSave('buy_interval_min', v) }, step: 1, name: 'buy_interval_min' })
+    controls.appendChild(buyIntervalInput.el)
+    const unit = document.createElement('span')
+    unit.textContent = '분'
+    unit.style.cssText = 'font-size:13px;color:#666;'
+    controls.appendChild(unit)
+
+    root.appendChild(createSettingRow(labelWrap, controls))
+  }
+
   // ── 동일 종목 재매수 제어 섹션 ──
   root.appendChild(sectionTitle('동일 종목 재매수 제어'))
 
@@ -380,6 +427,7 @@ function unmount(): void {
   boostProgramToggle = null; boostProgramScoreInput = null; boostProgramControls = null
   boostTradeAmountToggle = null; boostTradeAmountScoreInput = null; boostTradeAmountControls = null
   rebuyBlockToggle = null; rebuyBlockSelect = null; rebuyBlockControls = null
+  buyIntervalToggle = null; buyIntervalInput = null; buyIntervalControls = null
   vals = {}
 }
 
