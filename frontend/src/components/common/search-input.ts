@@ -6,6 +6,7 @@ export interface SearchInputOptions {
   placeholder?: string
   onSearch: (query: string) => void
   width?: string
+  borderColor?: string
 }
 
 export function createSearchInput(options: SearchInputOptions): {
@@ -13,7 +14,7 @@ export function createSearchInput(options: SearchInputOptions): {
   getValue(): string
   clear(): void
 } {
-  const { placeholder = '종목명 또는 코드 검색', onSearch, width = '100%' } = options
+  const { placeholder = '종목명 또는 코드 검색', onSearch, width = '100%', borderColor = '#ccc' } = options
 
   const wrapper = document.createElement('div')
   Object.assign(wrapper.style, {
@@ -30,7 +31,7 @@ export function createSearchInput(options: SearchInputOptions): {
     boxSizing: 'border-box',
     padding: '4px 26px 4px 26px',
     fontSize: FONT_SIZE.body,
-    border: '1px solid #ccc',
+    border: `1px solid ${borderColor}`,
     borderRadius: '4px',
     outline: 'none',
   })

@@ -463,6 +463,7 @@ class SectorStockTable extends HTMLElement {
     this.searchInput = createSearchInput({
       placeholder: '종목명 / 코드 검색',
       width: '220px',
+      borderColor: COLOR.down,
       onSearch: (query) => {
         this.searchTerm = query
         if (query) {
@@ -497,6 +498,7 @@ class SectorStockTable extends HTMLElement {
     this.sectorSearchInput = createSearchInput({
       placeholder: '업종명 검색',
       width: '220px',
+      borderColor: COLOR.warning,
       onSearch: (query) => {
         this.sectorSearchTerm = query
         if (query) {
