@@ -1,0 +1,63 @@
+주식주문거부
+SC4
+-
+
+요청
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+token
+접근토큰
+String
+Y
+1000
+Access Token을 설정하기 위한 Header Parameter
+tr_type
+거래 Type
+String
+Y
+1
+1: 계좌등록, 2: 계좌해제, 3: 실시간 시세 등록, 4: 실시간 시세 해제
+Body
+Element
+한글명
+type
+Required
+Length
+Description
+tr_cd
+거래 CD
+String
+Y
+3
+LS증권 거래코드
+tr_key
+단축코드
+String
+N
+8
+단축코드 6자리 또는 8자리 (단건, 연속), (계좌등록/해제 일 경우 필수값 아님)
+응답
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+tr_cd
+거래 CD
+String
+Y
+3
+LS증권 거래코드
+Body
+
+Example
+Request
+
+Response

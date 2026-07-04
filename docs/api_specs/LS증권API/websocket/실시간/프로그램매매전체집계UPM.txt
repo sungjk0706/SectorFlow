@@ -1,0 +1,130 @@
+주식
+API 가이드
+주식
+WEBSOCKET [주식] 실시간 시세
+기본정보
+Method	POST
+운영 도메인	wss://openapi.ls-sec.co.kr:9443
+모의투자 도메인	wss://openapi.ls-sec.co.kr:29443
+URL	/websocket
+Format	JSON
+Content-Type	application/json; charset=UTF-8
+Description	주식 주문현황 및 시세, 투자정보를 실시간으로 확인할 수 있습니다.
+
+(통합)프로그램매매전체집계	UPM	-	
+요청
+Header
+Element	한글명	type	Required	Length	Description
+token	접근토큰	String	Y	1000	Access Token을 설정하기 위한 Header Parameter
+tr_type	거래 Type	String	Y	1	1: 계좌등록, 2: 계좌해제, 3: 실시간 시세 등록, 4: 실시간 시세 해제
+Body
+Element	한글명	type	Required	Length	Description
+tr_cd	거래 CD	String	Y	3	LS증권 거래코드
+tr_key	단축코드	String	N	2	'U' + 구분값
+U0:코스피
+U1:코스닥
+응답
+Header
+Element	한글명	type	Required	Length	Description
+tr_cd	거래 CD	String	Y	3	LS증권 거래코드
+Body
+Element	한글명	type	Required	Length	Description
+time	수신시간	String	Y	6	
+cdhrem	차익매도호가잔량	Number	Y	6	
+cshrem	차익매수호가잔량	Number	Y	6	
+bdhrem	비차익매도호가잔량	Number	Y	6	
+bshrem	비차익매수호가잔량	Number	Y	6	
+cdhvolume	차익매도호가수량	Number	Y	6	
+cshvolume	차익매수호가수량	Number	Y	6	
+bdhvolume	비차익매도호가수량	Number	Y	6	
+bshvolume	비차익매수호가수량	Number	Y	6	
+cdwvolume	차익매도위탁체결수량	Number	Y	6	
+cdjvolume	차익매도자기체결수량	Number	Y	6	
+cswvolume	차익매수위탁체결수량	Number	Y	6	
+csjvolume	차익매수자기체결수량	Number	Y	6	
+cwvol	차익위탁순매수수량	Number	Y	6	
+cjvol	차익자기순매수수량	Number	Y	6	
+bdwvolume	비차익매도위탁체결수량	Number	Y	6	
+bdjvolume	비차익매도자기체결수량	Number	Y	6	
+bswvolume	비차익매수위탁체결수량	Number	Y	6	
+bsjvolume	비차익매수자기체결수량	Number	Y	6	
+bwvol	비차익위탁순매수수량	Number	Y	6	
+bjvol	비차익자기순매수수량	Number	Y	6	
+dwvolume	전체매도위탁체결수량	Number	Y	6	
+swvolume	전체매수위탁체결수량	Number	Y	6	
+전체매도자기체결수량	전체위탁순매수수량	Number	Y	6	
+sjvolume	전체매수자기체결수량	Number	Y	6	
+jvol	전체자기순매수수량	Number	Y	6	
+cdwvalue	차익매도위탁체결금액	Number	Y	8	
+cdjvalue	차익매도자기체결금액	Number	Y	8	
+cswvalue	차익매수위탁체결금액	Number	Y	8	
+csjvalue	차익매수자기체결금액	Number	Y	8	
+cwval	차익위탁순매수금액	Number	Y	8	
+cjval	차익자기순매수금액	Number	Y	8	
+bdwvalue	비차익매도위탁체결금액	Number	Y	8	
+bdjvalue	비차익매도자기체결금액	Number	Y	8	
+bswvalue	비차익매수위탁체결금액	Number	Y	8	
+bsjvalue	비차익매수자기체결금액	Number	Y	8	
+bwval	비차익위탁순매수금액	Number	Y	8	
+bjval	비차익자기순매수금액	Number	Y	8	
+dwvalue	전체매도위탁체결금액	Number	Y	8	
+swvalue	전체매수위탁체결금액	Number	Y	8	
+wval	전체위탁순매수금액	Number	Y	8	
+djvalue	전체매도자기체결금액	Number	Y	8	
+sjvalue	전체매수자기체결금액	Number	Y	8	
+jval	전체자기순매수금액	Number	Y	8	
+k200jisu	KOSPI200지수	Number	Y	6.2	
+k200sign	KOSPI200전일대비구분	String	Y	1	
+change	KOSPI200전일대비	Number	Y	4.2	
+k200basis	KOSPI200베이시스	Number	Y	4.2	
+cdvolume	차익매도체결수량합계	Number	Y	6	
+csvolume	차익매수체결수량합계	Number	Y	6	
+cvol	차익순매수수량합계	Number	Y	6	
+bdvolume	비차익매도체결수량합계	Number	Y	6	
+bsvolume	비차익매수체결수량합계	Number	Y	6	
+bvol	비차익순매수수량합계	Number	Y	6	
+tdvolume	전체매도체결수량합계	Number	Y	6	
+tsvolume	전체매수체결수량합계	Number	Y	6	
+tvol	전체순매수수량합계	Number	Y	6	
+cdvalue	차익매도체결금액합계	Number	Y	8	
+csvalue	차익매수체결금액합계	Number	Y	8	
+cval	차익순매수금액합계	Number	Y	8	
+bdvalue	비차익매도체결금액합계	Number	Y	8	
+bsvalue	비차익매수체결금액합계	Number	Y	8	
+bval	비차익순매수금액합계	Number	Y	8	
+tdvalue	전체매도체결금액합계	Number	Y	8	
+tsvalue	전체매수체결금액합계	Number	Y	8	
+tval	전체순매수금액합계	Number	Y	8	
+p_cdvolcha	차익매도체결수량직전대비	Number	Y	6	
+p_csvolcha	차익매수체결수량직전대비	Number	Y	6	
+p_cvolcha	차익순매수수량직전대비	Number	Y	6	
+p_bdvolcha	비차익매도체결수량직전대비	Number	Y	6	
+p_bsvolcha	비차익매수체결수량직전대비	Number	Y	6	
+p_bvolcha	비차익순매수수량직전대비	Number	Y	6	
+p_tdvolcha	전체매도체결수량직전대비	Number	Y	6	
+p_tsvolcha	전체매수체결수량직전대비	Number	Y	6	
+p_tvolcha	전체순매수수량직전대비	Number	Y	6	
+p_cdvalcha	차익매도체결금액직전대비	Number	Y	8	
+p_csvalcha	차익매수체결금액직전대비	Number	Y	8	
+p_cvalcha	차익순매수금액직전대비	Number	Y	8	
+p_bdvalcha	비차익매도체결금액직전대비	Number	Y	8	
+p_bsvalcha	비차익매수체결금액직전대비	Number	Y	8	
+p_bvalcha	비차익순매수금액직전대비	Number	Y	8	
+p_tdvalcha	전체매도체결금액직전대비	Number	Y	8	
+p_tsvalcha	전체매수체결금액직전대비	Number	Y	8	
+p_tvalcha	전체순매수금액직전대비	Number	Y	8	
+gubun	구분값	String	Y	1	
+ex_gubun	거래소별구분값	String	Y	2	
+Example
+Request
+{
+ "header": {
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJ0b2tlbiIsImF1ZCI6Ijg4N2UxYTA3LWQ5MjgtNDU0YS1hZTZjLTE0YWVkMjRkMjk3NiIsIm5iZiI6MTc0Mjk0MzMyNywiZ3JhbnRfdHlwZSI6IkNsaWVudCIsImlzcyI6InVub2d3IiwiZXhwIjoxNzQzMDI2Mzk5LCJpYXQiOjE3NDI5NDMzMjcsImp0aSI6IlBTUFphQmp2S3V6V3VjeGlvYzhib21jdmsxY0U3cUs2V2JubSJ9.GL_79eY2ogehy-Eqv2XoEvljvoM5TUSLIKripBfi3Oq6k1SGgsGk7njfk3kbb1YO8",
+  "tr_type": "3"
+ },
+ "body": {
+  "tr_cd": "UPM",
+  "tr_key": "01"
+ }
+}
+Response

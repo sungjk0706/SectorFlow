@@ -1,0 +1,422 @@
+REST [주식] 주문
+기본정보
+Method
+POST
+Domain
+https://openapi.ls-sec.co.kr:8080
+URL
+/stock/order
+Format
+JSON
+Content-Type
+application/json; charset=UTF-8
+Description
+주문과 관련된 서비스를 확인할 수 있습니다.
+TR명
+TR코드
+초당 전송 건수
+
+현물주문
+CSPAT00601
+10
+현물정정주문
+CSPAT00701
+3
+현물취소주문
+CSPAT00801
+3
+요청
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+content-type
+컨텐츠타입
+String
+Y
+100
+LS증권 제공 API를 호출하기 위한 Request Body 데이터 포맷으로 "application/json; charset=utf-8 설정"
+authorization
+접근토큰
+String
+Y
+1000
+OAuth 토큰이 필요한 API 경우 발급한 Access Token을 설정하기 위한 Request Heaeder Parameter
+tr_cd
+거래 CD
+String
+Y
+10
+LS증권 거래코드
+tr_cont
+연속 거래 여부
+String
+Y
+1
+연속거래 여부
+Y:연속○
+N:연속×
+tr_cont_key
+연속 거래 Key
+String
+Y
+18
+연속일 경우 그전에 내려온 연속키 값 올림
+mac_address
+MAC 주소
+String
+Y
+12
+법인인 경우 필수 세팅
+Body
+Element
+한글명
+type
+Required
+Length
+Description
+CSPAT00801InBlock1
+CSPAT00801InBlock1
+Object
+Y
+-
+
+  -OrgOrdNo
+원주문번호
+Number
+Y
+10
+
+  -IsuNo
+종목번호
+String
+Y
+12
+주식 : 종목코드 or A+종목코드(모의투자는 A+종목코드)
+ELW : J+종목코드
+ETN : Q+종목코드
+  -OrdQty
+주문수량
+Number
+Y
+16
+
+응답
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+content-type
+컨텐츠타입
+String
+Y
+100
+LS증권 제공 API를 호출하기 위한 Request Body 데이터 포맷으로 "application/json; charset=utf-8 설정"
+tr_cd
+거래 CD
+String
+Y
+10
+LS증권 거래코드
+tr_cont
+연속 거래 여부
+String
+Y
+1
+연속거래 여부
+Y:연속○
+N:연속×
+tr_cont_key
+연속 거래 Key
+String
+Y
+18
+연속일 경우 그전에 내려온 연속키 값 올림
+Body
+Element
+한글명
+type
+Required
+Length
+Description
+CSPAT00801OutBlock1
+CSPAT00801OutBlock1
+Object
+Y
+-
+
+  -RecCnt
+레코드갯수
+Number
+Y
+5
+
+  -OrgOrdNo
+원주문번호
+Number
+Y
+10
+
+  -AcntNo
+계좌번호
+String
+Y
+20
+
+  -InptPwd
+입력비밀번호
+String
+Y
+8
+
+  -IsuNo
+종목번호
+String
+Y
+12
+
+  -OrdQty
+주문수량
+Number
+Y
+16
+
+  -CommdaCode
+통신매체코드
+String
+Y
+2
+
+  -GrpId
+그룹ID
+String
+Y
+20
+
+  -StrtgCode
+전략코드
+String
+Y
+6
+
+  -OrdSeqNo
+주문회차
+Number
+Y
+10
+
+  -PtflNo
+포트폴리오번호
+Number
+Y
+10
+
+  -BskNo
+바스켓번호
+Number
+Y
+10
+
+  -TrchNo
+트렌치번호
+Number
+Y
+10
+
+  -ItemNo
+아이템번호
+Number
+Y
+10
+
+CSPAT00801OutBlock2
+CSPAT00801OutBlock2
+Object
+Y
+-
+
+  -RecCnt
+레코드갯수
+Number
+Y
+5
+
+  -OrdNo
+주문번호
+Number
+Y
+10
+
+  -PrntOrdNo
+모주문번호
+Number
+Y
+10
+
+  -OrdTime
+주문시각
+String
+Y
+9
+
+  -OrdMktCode
+주문시장코드
+String
+Y
+2
+
+  -OrdPtnCode
+주문유형코드
+String
+Y
+2
+
+  -ShtnIsuNo
+단축종목번호
+String
+Y
+9
+
+  -PrgmOrdprcPtnCode
+프로그램호가유형코드
+String
+Y
+2
+
+  -StslOrdprcTpCode
+공매도호가구분
+String
+Y
+1
+
+  -StslAbleYn
+공매도가능여부
+String
+Y
+1
+
+  -MgntrnCode
+신용거래코드
+String
+Y
+3
+
+  -LoanDt
+대출일
+String
+Y
+8
+
+  -CvrgOrdTp
+반대매매주문구분
+String
+Y
+1
+
+  -LpYn
+유동성공급자여부
+String
+Y
+1
+
+  -MgempNo
+관리사원번호
+String
+Y
+9
+
+  -BnsTpCode
+매매구분
+String
+Y
+1
+
+  -SpareOrdNo
+예비주문번호
+Number
+Y
+10
+
+  -CvrgSeqno
+반대매매일련번호
+Number
+Y
+10
+
+  -RsvOrdNo
+예약주문번호
+Number
+Y
+10
+
+  -AcntNm
+계좌명
+String
+Y
+40
+
+  -IsuNm
+종목명
+String
+Y
+40
+
+Example
+Request
+{
+  "CSPAT00801InBlock1" : {
+    "OrgOrdNo" : 171011,
+    "IsuNo" : "A005930",
+    "OrdQty" : 1
+  }
+}
+Response
+{
+    "rsp_cd": "00156",
+    "CSPAT00801OutBlock2": {
+        "MgntrnCode": "000",
+        "BnsTpCode": "2",
+        "CvrgSeqno": 0,
+        "MgempNo": "999999106",
+        "SpareOrdNo": 0,
+        "OrdNo": 84006,
+        "PrntOrdNo": 84005,
+        "PrgmOrdprcPtnCode": "00",
+        "OrdMktCode": "10",
+        "IsuNm": "삼성전자",
+        "ShtnIsuNo": "A005930",
+        "RecCnt": 1,
+        "OrdTime": "133018980",
+        "StslAbleYn": "0",
+        "AcntNm": "우우돌",
+        "StslOrdprcTpCode": "0",
+        "LoanDt": "00000000",
+        "RsvOrdNo": 0,
+        "OrdPtnCode": "02",
+        "LpYn": "0",
+        "CvrgOrdTp": "0"
+    },
+    "CSPAT00801OutBlock1": {
+        "InptPwd": "********",
+        "TrchNo": 0,
+        "OrgOrdNo": 84005,
+        "BskNo": 0,
+        "StrtgCode": "",
+        "OrdQty": 1,
+        "CommdaCode": "40",
+        "RecCnt": 1,
+        "IsuNo": "A005930",
+        "OrdSeqNo": 0,
+        "ItemNo": 0,
+        "AcntNo": "20011132702",
+        "PtflNo": 0,
+        "GrpId": ""
+    },
+    "rsp_msg": "취소주문이 완료되었습니다."
+}

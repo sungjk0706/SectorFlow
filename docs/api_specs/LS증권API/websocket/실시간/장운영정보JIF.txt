@@ -1,0 +1,191 @@
+기타
+	1	
+	2	API 가이드
+	3	기타
+WEBSOCKET [기타] 실시간 시세
+기본정보
+Method
+POST
+운영 도메인
+wss://openapi.ls-sec.co.kr:9443
+모의투자 도메인
+wss://openapi.ls-sec.co.kr:29443
+URL
+/websocket
+Format
+JSON
+Content-Type
+application/json; charset=UTF-8
+Description
+장운영정보 등 기타 정보를 실시간으로 확인할 수 있습니다.
+TR명
+TR코드
+초당 전송 건수
+
+장운영정보
+JIF
+-
+
+요청
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+token
+접근토큰
+String
+Y
+1000
+Access Token을 설정하기 위한 Header Parameter
+tr_type
+거래 Type
+String
+Y
+1
+1: 계좌등록, 2: 계좌해제, 3: 실시간 시세 등록, 4: 실시간 시세 해제
+Body
+Element
+한글명
+type
+Required
+Length
+Description
+tr_cd
+거래 CD
+String
+Y
+3
+LS증권 거래코드
+tr_key
+단축코드
+String
+N
+8
+단축코드 6자리 또는 8자리 (단건, 연속), (계좌등록/해제 일 경우 필수값 아님)
+응답
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+tr_cd
+거래 CD
+String
+Y
+3
+LS증권 거래코드
+Body
+Element
+한글명
+type
+Required
+Length
+Description
+jangubun
+장구분
+String
+Y
+1
+1:코스피
+2:코스닥
+5:선물/옵션
+6:NXT전용
+8:KRX야간파생
+9:미국주식
+A:중국주식오전
+B:중국주식오후
+C:홍콩주식오전
+D:홍콩주식오후
+E:일본주식오전
+F:일본주식오후
+jstatus
+장상태
+String
+Y
+2
+공통사용
+11:장전동시호가개시
+21:장시작
+22:장개시10초전
+23:장개시1분전
+24:장개시5분전
+25:장개시10분전
+31:장후동시호가개시
+41:장마감
+42:장마감10초전
+43:장마감1분전
+44:장마감5분전
+51:시간외종가매매개시
+52:시간외종가매매종료,시간외단일가매매개시
+53:사용안함
+54:시간외단일가매매종료
+55:프리마켓 개시
+A2:프리마켓 장개시,10초전
+A3:프리마켓 장개시,1분전
+A4:프리마켓 장개시,5분전
+A5:프리마켓 장개시,10분전
+56:에프터마켓 개시
+B2:에프터마켓 장개시,10초전
+B3:에프터마켓 장개시,1분전
+B4:에프터마켓 장개시,5분전
+B5:에프터마켓 장개시,10분전
+57:프리마켓 마감
+C2:프리마켓 장마감,10초전
+C3:프리마켓 장마감,1분전
+C4:프리마켓 장마감,5분전
+58:에프터마켓 마감
+D2:에프터마켓 장마감,10초전
+D3:에프터마켓 장마감,1분전
+D4:에프터마켓 장마감,5분전
+KOSPI / KOSDAQ (jangubun 1,2 인 경우)
+61:서킷브레이크1단계발동
+62:서킷브레이크1단계해제,호가접수개시
+63:서킷브레이크1단계,동시호가종료
+64:사이드카 매도발동
+65:사이드카 매도해제
+66:사이드카 매수발동
+67:사이드카 매수해제
+68:서킷브레이크2단계발동
+69:서킷브레이크3단계발동,당일 장종료
+70:서킷브레이크2단계해제,호가접수개시
+71:서킷브레이크2단계,동시호가종료
+선물/옵션 (jangubun 5인 경우)
+61:코스피관련파생상품,당일 장종료
+62:서킷브레이크 해제,호가접수개시
+63:서킷브레이크, 장중동시마감
+70:2단계상한가,5분 후 확대 예정
+71:2단계하한가,5분 후 확대 예정
+72:3단계상한가,5분 후 확대 예정
+73:3단계하한가,5분 후 확대 예정
+74:2단계상한가,확대 적용
+75:2단계하한가,확대 적용
+76:3단계상한가,확대 적용
+77:3단계하한가,확대 적용
+Example
+Request
+{
+ "header": {
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJ0b2tlbiIsImF1ZCI6IjY2NDVmOGU0LTRkYzEtNDk4ZS05MjEzLTJlYTU5YjNmYjk2MyIsIm5iZiI6MTY4NjY5NjA3MCwiZ3JhbnRfdHlwZSI6IkNsaWVudCIsImlzcyI6InVub2d3IiwiZXhwIjoxNjg2NzgyNDcwLCJpYXQiOjE2ODY2OTYwNzAsImp0aSI6IlBTRU1CcWF5Q1N6QmxnTjZ3SlRkUTV5dkRNdjllWjlNZWJ2UCJ9.0roE4en_J2M3PDFr8xrZK4l0pw4uz5-kIc7I_w-E2gXlfMvIdIYqTn3LH_kr-V_iOhiOU-dLRrRbbavzNHJX3Q",
+  "tr_type": "3"
+ },
+ "body": {
+  "tr_cd": "JIF",
+  "tr_key": "0"
+ }
+}
+Response
+{
+ "header": {
+  "tr_cd": "JIF",
+  "tr_key": "0"
+ },
+ "body": {
+  "jangubun": "C",
+  "jstatus": "21"
+ }
+}

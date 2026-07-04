@@ -1,0 +1,394 @@
+REST [주식] 계좌
+기본정보
+Method
+POST
+Domain
+https://openapi.ls-sec.co.kr:8080
+URL
+/stock/accno
+Format
+JSON
+Content-Type
+application/json; charset=UTF-8
+Description
+계좌별 거래내역 및 잔고 등 계좌에 관련된 서비스를 확인할 수 있습니다.
+TR명
+TR코드
+초당 전송 건수
+
+계좌 거래내역
+CDPCQ04700
+1
+계좌별신용한도조회
+CSPAQ00600
+1
+현물계좌예수금 주문가능금액 총평가 조회
+CSPAQ12200
+1
+BEP단가조회
+CSPAQ12300
+1
+현물계좌 주문체결내역 조회(API)
+CSPAQ13700
+1
+현물계좌예수금 주문가능금액 총평가2
+CSPAQ22200
+1
+현물계좌증거금률별주문가능수량조회
+CSPBQ00200
+1
+주식계좌 기간별수익률 상세
+FOCCQ33600
+1
+주식당일매매일지/수수료
+t0150
+2
+요청
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+content-type
+컨텐츠타입
+String
+Y
+100
+LS증권 제공 API를 호출하기 위한 Request Body 데이터 포맷으로 "application/json; charset=utf-8 설정"
+authorization
+접근토큰
+String
+Y
+1000
+OAuth 토큰이 필요한 API 경우 발급한 Access Token을 설정하기 위한 Request Heaeder Parameter
+tr_cd
+거래 CD
+String
+Y
+10
+LS증권 거래코드
+tr_cont
+연속 거래 여부
+String
+Y
+1
+연속거래 여부
+Y:연속○
+N:연속×
+tr_cont_key
+연속 거래 Key
+String
+Y
+18
+연속일 경우 그전에 내려온 연속키 값 올림
+mac_address
+MAC 주소
+String
+Y
+12
+법인인 경우 필수 세팅
+Body
+Element
+한글명
+type
+Required
+Length
+Description
+t0150InBlock
+t0150InBlock
+Object
+Y
+-
+
+  -cts_medosu
+CTS_매매구분
+String
+Y
+1
+연속조회시 OutBlock의 동일필드 입력
+  -cts_expcode
+CTS_종목번호
+String
+Y
+12
+연속조회시 OutBlock의 동일필드 입력
+  -cts_price
+CTS_단가
+String
+Y
+9
+연속조회시 OutBlock의 동일필드 입력
+  -cts_middiv
+CTS_매체
+String
+Y
+2
+연속조회시 OutBlock의 동일필드 입력
+응답
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+content-type
+컨텐츠타입
+String
+Y
+100
+LS증권 제공 API를 호출하기 위한 Request Body 데이터 포맷으로 "application/json; charset=utf-8 설정"
+tr_cd
+거래 CD
+String
+Y
+10
+LS증권 거래코드
+tr_cont
+연속 거래 여부
+String
+Y
+1
+연속거래 여부
+Y:연속○
+N:연속×
+tr_cont_key
+연속 거래 Key
+String
+Y
+18
+연속일 경우 그전에 내려온 연속키 값 올림
+Body
+Element
+한글명
+type
+Required
+Length
+Description
+t0150OutBlock
+t0150OutBlock
+Object
+Y
+-
+
+  -mdqty
+매도수량
+Number
+Y
+9
+
+  -mdamt
+매도약정금액
+Number
+Y
+18
+
+  -mdfee
+매도수수료
+Number
+Y
+18
+
+  -mdtax
+매도거래세
+Number
+Y
+18
+
+  -mdargtax
+매도농특세
+Number
+Y
+18
+
+  -tmdtax
+매도제비용합
+Number
+Y
+18
+
+  -mdadjamt
+매도정산금액
+Number
+Y
+18
+
+  -msqty
+매수수량
+Number
+Y
+9
+
+  -msamt
+매수약정금액
+Number
+Y
+18
+
+  -msfee
+매수수수료
+Number
+Y
+18
+
+  -tmstax
+매수제비용합
+Number
+Y
+18
+
+  -msadjamt
+매수정산금액
+Number
+Y
+18
+
+  -tqty
+합계수량
+Number
+Y
+9
+
+  -tamt
+합계약정금액
+Number
+Y
+18
+
+  -tfee
+합계수수료
+Number
+Y
+18
+
+  -tottax
+합계거래세
+Number
+Y
+18
+
+  -targtax
+합계농특세
+Number
+Y
+18
+
+  -ttax
+합계제비용합
+Number
+Y
+18
+
+  -tadjamt
+합계정산금액
+Number
+Y
+18
+
+  -cts_medosu
+CTS_매매구분
+String
+Y
+1
+
+  -cts_expcode
+CTS_종목번호
+String
+Y
+12
+
+  -cts_price
+CTS_단가
+String
+Y
+9
+
+  -cts_middiv
+CTS_매체
+String
+Y
+2
+
+t0150OutBlock1
+t0150OutBlock1
+Object Array
+Y
+-
+
+  -medosu
+매매구분
+String
+Y
+10
+
+  -expcode
+종목번호
+String
+Y
+12
+
+  -qty
+수량
+Number
+Y
+9
+
+  -price
+단가
+Number
+Y
+9
+
+  -amt
+약정금액
+Number
+Y
+18
+
+  -fee
+수수료
+Number
+Y
+18
+
+  -tax
+거래세
+Number
+Y
+18
+
+  -argtax
+농특세
+Number
+Y
+18
+
+  -adjamt
+정산금액
+Number
+Y
+18
+
+  -middiv
+매체
+String
+Y
+20
+
+Example
+Request
+{
+  "t0150InBlock": {
+    "cts_medosu": "1",
+    "cts_expcode": "1",
+    "cts_price": "1",
+    "cts_middiv": "1"
+  }
+}
+Response
+{
+  "rsp_cd": "00000",
+  "rsp_msg": "조회가 완료되었습니다."
+}

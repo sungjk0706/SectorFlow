@@ -1,0 +1,1001 @@
+주식주문접수
+SC0
+-
+
+요청
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+token
+접근토큰
+String
+Y
+1000
+Access Token을 설정하기 위한 Header Parameter
+tr_type
+거래 Type
+String
+Y
+1
+1: 계좌등록, 2: 계좌해제, 3: 실시간 시세 등록, 4: 실시간 시세 해제
+Body
+Element
+한글명
+type
+Required
+Length
+Description
+tr_cd
+거래 CD
+String
+Y
+3
+LS증권 거래코드
+tr_key
+단축코드
+String
+N
+8
+단축코드 6자리 또는 8자리 (단건, 연속), (계좌등록/해제 일 경우 필수값 아님)
+응답
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+tr_cd
+거래 CD
+String
+Y
+3
+LS증권 거래코드
+Body
+Element
+한글명
+type
+Required
+Length
+Description
+lineseq
+라인일련번호
+String
+Y
+10
+
+accno
+Push키
+String
+Y
+11
+
+user
+조작자ID
+String
+Y
+8
+
+len
+헤더길이
+String
+Y
+6
+
+gubun
+헤더구분
+String
+Y
+1
+
+compress
+압축구분
+String
+Y
+1
+
+encrypt
+암호구분
+String
+Y
+1
+
+offset
+공통시작지점
+String
+Y
+3
+
+trcode
+TRCODE
+String
+Y
+8
+SONAT000:신규주문
+SONAT001:정정주문
+SONAT002:취소주문
+SONAS100:체결확인
+compid
+이용사번호
+String
+Y
+3
+
+userid
+사용자ID
+String
+Y
+16
+
+media
+접속매체
+String
+Y
+2
+
+ifid
+I/F일련번호
+String
+Y
+3
+
+seq
+전문일련번호
+String
+Y
+9
+
+trid
+TR추적ID
+String
+Y
+16
+
+pubip
+공인IP
+String
+Y
+12
+
+prvip
+사설IP
+String
+Y
+12
+
+pcbpno
+처리지점번호
+String
+Y
+3
+
+bpno
+지점번호
+String
+Y
+3
+
+termno
+단말번호
+String
+Y
+8
+
+lang
+언어구분
+String
+Y
+1
+
+proctm
+AP처리시간
+String
+Y
+9
+
+msgcode
+메세지코드
+String
+Y
+4
+
+outgu
+메세지출력구분
+String
+Y
+1
+
+compreq
+압축요청구분
+String
+Y
+1
+
+funckey
+기능키
+String
+Y
+4
+
+reqcnt
+요청레코드개수
+String
+Y
+4
+
+filler
+예비영역
+String
+Y
+6
+
+cont
+연속구분
+String
+Y
+1
+
+contkey
+연속키값
+String
+Y
+18
+
+varlen
+가변시스템길이
+String
+Y
+2
+
+varhdlen
+가변해더길이
+String
+Y
+2
+
+varmsglen
+가변메시지길이
+String
+Y
+2
+
+trsrc
+조회발원지
+String
+Y
+1
+
+eventid
+I/F이벤트ID
+String
+Y
+4
+
+ifinfo
+I/F정보
+String
+Y
+4
+
+filler1
+예비영역
+String
+Y
+41
+
+ordchegb
+주문체결구분
+String
+Y
+2
+01:주문
+02:정정
+03:취소
+11:체결
+12:정정확인
+13:취소확인
+14:거부
+A1:접수중
+AC:접수완료
+marketgb
+시장구분
+String
+Y
+2
+00:비상장
+10:코스피
+11:채권
+19:장외시장
+20:코스닥
+23:코넥스
+30:프리보드
+61:동경거래소
+62:JASDAQ
+ordgb
+주문구분
+String
+Y
+2
+01:현금매도
+02:현금매수
+03:신용매도
+04:신용매수
+05:저축매도
+06:저축매수
+07:상품매도(대차)
+09:상품매도
+10:상품매수
+11:선물대용매도(일반)
+12:선물대용매도(반대)
+13:현금매도(프)
+14:현금매수(프)
+15:현금매수(유가)
+16:현금매수(정리)
+17:상품매도(대차.프)
+19:상품매도(프)
+20:상품매수(프)
+30:장외매매
+orgordno
+원주문번호
+String
+Y
+10
+
+accno1
+계좌번호
+String
+Y
+11
+
+accno2
+계좌번호
+String
+Y
+9
+
+passwd
+비밀번호
+String
+Y
+8
+
+expcode
+종목번호
+String
+Y
+12
+표준코드 12자리
+shtcode
+단축종목번호
+String
+Y
+9
+주식은 단축코드 앞에 A포함 7자리
+ELW는 단촉코드 앞에 J포함 7자리
+hname
+종목명
+String
+Y
+40
+
+ordqty
+주문수량
+String
+Y
+16
+
+ordprice
+주문가격
+String
+Y
+13
+
+hogagb
+주문조건
+String
+Y
+1
+0:없음
+1:IOC
+2:FOK
+etfhogagb
+호가유형코드
+String
+Y
+2
+00:지정가
+03:시장가
+05:조건부지정가
+06:최유리지정가
+07:최우선지정가
+09:자사주
+10:매입인도(일반)
+13:시장가 (IOC)
+16:최유리지정가 (IOC)
+18:사용안함
+20:지정가(임의)
+23:시장가(임의)
+26:최유리지정가 (FOK)
+41:부분충족(프리보드)
+42:전량충족(프리보드)
+51:장중대량
+52:장중바스켓
+61:장개시전시간외
+62:사용안함
+63:경매매
+66:장전시간외경쟁대량
+67:장개시전시간외대량
+68:장개시전시간외바스켓
+69:장개시전시간외자사주
+71:신고대량전장시가
+72:사용안함
+73:신고대량종가
+76:장중경쟁대량
+77:장중대량
+78:장중바스켓
+79:사용안함
+80:매입인도(당일)
+81:시간외종가
+82:시간외단일가
+87:시간외대량
+88:바스켓주문
+89:시간외자사주
+91:자사주스톡옵션
+A1:stop order
+pgmtype
+프로그램호가구분
+String
+Y
+2
+00:일반
+01:지수차익
+02:지수비차익
+03:주식차익
+04:ETF차익(비차익제외)
+05:ETF설정(비차익제외)
+06:ETF차익(비차익)
+07:ETF설정(비차익)
+08:DR차익
+09:ELW LP헷지
+10:ETF LP헷지
+11:주식옵션 LP헷지
+12:장외파생상품헷지
+gmhogagb
+공매도호가구분
+String
+Y
+1
+0:일반
+1:차입주식매도
+2:기타공매도
+gmhogayn
+공매도가능여부
+String
+Y
+1
+0:일반
+1:공매도
+singb
+신용구분
+String
+Y
+3
+000:보통
+001:유통융자신규
+003:자기융자신규
+005:유통대주신규
+007:자기대주신규
+011:미사용
+070:매도대금담보융자신규
+080:예탁주식담보융자신규
+082:예탁채권담보융자신규
+101:유통융자상환
+103:자기융자상환
+105:유통대주상환
+107:자기대주상환
+111:유통융자전액상환
+113:자기융자전액상환
+170:매도대금담보융자상환
+180:예탁주식담보융자상환
+182:예탁채권담보융자상환
+188:담보대출전액상환
+201:유통융자현금상환
+203:자기융자현금상환
+205:유통대주현물상환
+207:자기대주현물상환
+280:예탁주식담보융자현금상환
+282:예탁채권담보융자현금상환
+301:유통융자현금상환취소
+303:자기융자현금상환취소
+305:유통대주현물상환취소
+307:자기대주현물상환취소
+loandt
+대출일
+String
+Y
+8
+
+cvrgordtp
+반대매매주문구분
+String
+Y
+1
+0:일반
+1:자동반대매매
+2:지점반대매매
+3:예비주문에대한 본주문
+strtgcode
+전략코드
+String
+Y
+6
+
+groupid
+그룹ID
+String
+Y
+20
+
+ordseqno
+주문회차
+String
+Y
+10
+
+prtno
+포트폴리오번호
+String
+Y
+10
+
+basketno
+바스켓번호
+String
+Y
+10
+
+trchno
+트렌치번호
+String
+Y
+10
+
+itemno
+아아템번호
+String
+Y
+10
+
+brwmgmyn
+차입구분
+String
+Y
+1
+
+mbrno
+회원사번호
+String
+Y
+3
+
+procgb
+처리구분
+String
+Y
+1
+
+admbrchno
+관리지점번호
+String
+Y
+3
+
+futaccno
+선물계좌번호
+String
+Y
+20
+
+futmarketgb
+선물상품구분
+String
+Y
+1
+
+tongsingb
+통신매체구분
+String
+Y
+2
+
+lpgb
+유동성공급자구분
+String
+Y
+1
+0:해당없음
+1:유동성공급자
+dummy
+DUMMY
+String
+Y
+20
+
+ordno
+주문번호
+String
+Y
+10
+
+ordtm
+주문시각
+String
+Y
+9
+
+prntordno
+모주문번호
+String
+Y
+10
+
+mgempno
+관리사원번호
+String
+Y
+9
+
+orgordundrqty
+원주문미체결수량
+String
+Y
+16
+
+orgordmdfyqty
+원주문정정수량
+String
+Y
+16
+
+ordordcancelqty
+원주문취소수량
+String
+Y
+16
+
+nmcpysndno
+비회원사송신번호
+String
+Y
+10
+
+ordamt
+주문금액
+String
+Y
+16
+
+bnstp
+매매구분
+String
+Y
+1
+1:매도
+2:매수
+spareordno
+예비주문번호
+String
+Y
+10
+
+cvrgseqno
+반대매매일련번호
+String
+Y
+10
+
+rsvordno
+예약주문번호
+String
+Y
+10
+
+mtordseqno
+복수주문일련번호
+String
+Y
+10
+
+spareordqty
+예비주문수량
+String
+Y
+16
+
+orduserid
+주문사원번호
+String
+Y
+16
+
+spotordqty
+실물주문수량
+String
+Y
+16
+
+ordruseqty
+재사용주문수량
+String
+Y
+16
+
+mnyordamt
+현금주문금액
+String
+Y
+16
+
+ordsubstamt
+주문대용금액
+String
+Y
+16
+
+ruseordamt
+재사용주문금액
+String
+Y
+16
+
+ordcmsnamt
+수수료주문금액
+String
+Y
+16
+
+crdtuseamt
+사용신용담보재사용금
+String
+Y
+16
+
+secbalqty
+잔고수량
+String
+Y
+16
+실서버 데이터 미제공 필드
+spotordableqty
+실물가능수량
+String
+Y
+16
+실서버 데이터 미제공 필드
+ordableruseqty
+재사용가능수량(매도)
+String
+Y
+16
+실서버 데이터 미제공 필드
+flctqty
+변동수량
+String
+Y
+16
+
+secbalqtyd2
+잔고수량(D2)
+String
+Y
+16
+실서버 데이터 미제공 필드
+sellableqty
+매도주문가능수량
+String
+Y
+16
+실서버 데이터 미제공 필드
+unercsellordqty
+미체결매도주문수량
+String
+Y
+16
+실서버 데이터 미제공 필드
+avrpchsprc
+평균매입가
+String
+Y
+13
+실서버 데이터 미제공 필드
+pchsamt
+매입금액
+String
+Y
+16
+실서버 데이터 미제공 필드
+deposit
+예수금
+String
+Y
+16
+
+substamt
+대용금
+String
+Y
+16
+
+csgnmnymgn
+위탁증거금현금
+String
+Y
+16
+
+csgnsubstmgn
+위탁증거금대용
+String
+Y
+16
+
+crdtpldgruseamt
+신용담보재사용금
+String
+Y
+16
+
+ordablemny
+주문가능현금
+String
+Y
+16
+
+ordablesubstamt
+주문가능대용
+String
+Y
+16
+
+ruseableamt
+재사용가능금액
+String
+Y
+16
+
+Example
+Request
+{
+ "header": {
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJ0b2tlbiIsImF1ZCI6IjY2NDVmOGU0LTRkYzEtNDk4ZS05MjEzLTJlYTU5YjNmYjk2MyIsIm5iZiI6MTY4NjY5NjA3MCwiZ3JhbnRfdHlwZSI6IkNsaWVudCIsImlzcyI6InVub2d3IiwiZXhwIjoxNjg2NzgyNDcwLCJpYXQiOjE2ODY2OTYwNzAsImp0aSI6IlBTRU1CcWF5Q1N6QmxnTjZ3SlRkUTV5dkRNdjllWjlNZWJ2UCJ9.0roE4en_J2M3PDFr8xrZK4l0pw4uz5-kIc7I_w-E2gXlfMvIdIYqTn3LH_kr-V_iOhiOU-dLRrRbbavzNHJX3Q",
+  "tr_type": "1"
+ },
+ "body": {
+  "tr_cd": "SC0",
+  "tr_key": ""
+ }
+}
+Response
+{
+ "header": {
+  "tr_cd": "SC0"
+ },
+ "body": {
+  "trchno": "0",
+  "spareordqty": "0",
+  "trcode": "SONAT000",
+  "userid": "hdkrggg4",
+  "dummy": "",
+  "len": "1053",
+  "loandt": "00000000",
+  "orgordmdfyqty": "0",
+  "avrpchsprc": ".00",
+  "cont": "N",
+  "hname": "삼성전자",
+  "pgmtype": "0",
+  "compress": "0",
+  "ordprice": "60000",
+  "procgb": "0",
+  "unercsellordqty": "0",
+  "ruseableamt": "0",
+  "ordgb": "02",
+  "gubun": "B",
+  "trid": "2000095635771500",
+  "flctqty": "0",
+  "varmsglen": "0",
+  "ordno": "86382",
+  "passwd": "********",
+  "singb": "000",
+  "gmhogayn": "0",
+  "ordruseqty": "0",
+  "deposit": "79759964",
+  "trsrc": "L",
+  "gmhogagb": "0",
+  "reqcnt": " ",
+  "accno1": "20011132702",
+  "strtgcode": "",
+  "ordchegb": "01",
+  "ordtm": "095636020",
+  "orduserid": "hdkrggg4",
+  "ordseqno": "0",
+  "ordablesubstamt": "244160",
+  "pchsamt": "0",
+  "encrypt": "0",
+  "accno2": "",
+  "shtcode": "A005930",
+  "contkey": "0",
+  "brwmgmyn": "0",
+  "seq": "000000154",
+  "mtordseqno": "0",
+  "lineseq": "200000001",
+  "tongsingb": "40",
+  "varlen": "50",
+  "lpgb": "0",
+  "rsvordno": "0",
+  "spotordqty": "0",
+  "cvrgseqno": "0",
+  "filler": "",
+  "hogagb": "0",
+  "secbalqty": "0",
+  "expcode": "KR7005930003",
+  "prntordno": "86382",
+  "ordablemny": "79459964",
+  "pubip": "010130001138",
+  "prvip": "",
+  "funckey": "C",
+  "accno": "20011132702",
+  "compreq": "0",
+  "orgordundrqty": "0",
+  "ruseordamt": "0",
+  "crdtpldgruseamt": " ",
+  "ordordcancelqty": "0",
+  "ordamt": "120000",
+  "spareordno": "0",
+  "termno": "",
+  "etfhogagb": "00",
+  "bpno": "106",
+  "substamt": "244160",
+  "mgempno": "999999106",
+  "csgnsubstmgn": "0",
+  "offset": "212",
+  "sellableqty": "0",
+  "groupid": "",
+  "varhdlen": "0",
+  "mnyordamt": "120000",
+  "itemno": "0",
+  "prtno": "0",
+  "marketgb": "10",
+  "ifinfo": "",
+  "ordableruseqty": "0",
+  "crdtuseamt": "0",
+  "ordcmsnamt": "0",
+  "secbalqtyd2": "0",
+  "eventid": "",
+  "csgnmnymgn": "300000",
+  "pcbpno": "000",
+  "orgordno": "0",
+  "basketno": "0",
+  "ifid": "000",
+  "media": "HT",
+  "filler1": "",
+  "mbrno": "63",
+  "proctm": "95636020",
+  "ordsubstamt": "0",
+  "lang": "K",
+  "spotordableqty": "0",
+  "cvrgordtp": "0",
+  "ordqty": "2",
+  "outgu": "",
+  "msgcode": "0040",
+  "futaccno": "00000000000000000000",
+  "futmarketgb": "0",
+  "admbrchno": "106",
+  "comid": "063",
+  "bnstp": "2",
+  "user": "hdkrggg4",
+  "nmcpysndno": "0"
+ }
+}

@@ -1,0 +1,224 @@
+주식
+API 가이드
+주식
+WEBSOCKET [주식] 실시간 시세
+기본정보
+Method	POST
+운영 도메인	wss://openapi.ls-sec.co.kr:9443
+모의투자 도메인	wss://openapi.ls-sec.co.kr:29443
+URL	/websocket
+Format	JSON
+Content-Type	application/json; charset=UTF-8
+Description	주식 주문현황 및 시세, 투자정보를 실시간으로 확인할 수 있습니다.
+
+(통합)시간대별투자자매매추이	UBT	-	
+요청
+Header
+Element	한글명	type	Required	Length	Description
+token	접근토큰	String	Y	1000	Access Token을 설정하기 위한 Header Parameter
+tr_type	거래 Type	String	Y	1	1: 계좌등록, 2: 계좌해제, 3: 실시간 시세 등록, 4: 실시간 시세 해제
+Body
+Element	한글명	type	Required	Length	Description
+tr_cd	거래 CD	String	Y	3	LS증권 거래코드
+tr_key	단축코드	String	N	4	U + 업종코드
+응답
+Header
+Element	한글명	type	Required	Length	Description
+tr_cd	거래 CD	String	Y	3	LS증권 거래코드
+Body
+Element	한글명	type	Required	Length	Description
+tjjtime	수신시간	String	Y	8	
+tjjcode1	투자자코드1(개인)	String	Y	4	
+msvolume1	매수거래량1	Number	Y	8	
+mdvolume1	매도거래량1	Number	Y	8	
+msvol1	거래량순매수1	Number	Y	8	
+msvalue1	매수거래대금1	Number	Y	6	
+mdvalue1	매도거래대금1	Number	Y	6	
+msval1	거래대금순매수1	Number	Y	6	
+tjjcode2	투자자코드2(외국인)	String	Y	4	
+msvolume2	매수거래량2	Number	Y	8	
+mdvolume2	매도거래량2	Number	Y	8	
+msvol2	거래량순매수2	Number	Y	8	
+msvalue2	매수거래대금2	Number	Y	6	
+mdvalue2	매도거래대금2	Number	Y	6	
+msval2	거래대금순매수2	Number	Y	6	
+tjjcode3	투자자코드3(기관계)	String	Y	4	
+msvolume3	매수거래량3	Number	Y	8	
+mdvolume3	매도거래량3	Number	Y	8	
+msvol3	거래량순매수3	Number	Y	8	
+msvalue3	매수거래대금3	Number	Y	6	
+mdvalue3	매도거래대금3	Number	Y	6	
+msval3	거래대금순매수3	Number	Y	-	
+tjjcode4	투자자코드4(증권)	String	Y	4	
+msvolume4	매수거래량4	Number	Y	8	
+mdvolume4	매도거래량4	Number	Y	8	
+msvol4	거래량순매수4	Number	Y	8	
+msvalue4	매수거래대금4	Number	Y	6	
+mdvalue4	매도거래대금4	Number	Y	6	
+msval4	거래대금순매수4	Number	Y	6	
+tjjcode5	투자자코드5(투신)	String	Y	4	
+msvolume5	매수거래량5	Number	Y	8	
+mdvolume5	매도거래량5	Number	Y	8	
+msvol5	거래량순매수5	Number	Y	8	
+msvalue5	매수거래대금5	Number	Y	6	
+mdvalue5	매도거래대금5	Number	Y	6	
+msval5	거래대금순매수5	Number	Y	6	
+tjjcode6	투자자코드6(은행)	String	Y	4	
+msvolume6	매수거래량6	Number	Y	8	
+mdvolume6	매도거래량6	Number	Y	8	
+msvol6	거래량순매수6	Number	Y	8	
+msvalue6	매수거래대금6	Number	Y	6	
+mdvalue6	매도거래대금6	Number	Y	6	
+msval6	거래대금순매수6	Number	Y	6	
+tjjcode7	투자자코드7(보험)	String	Y	4	
+msvolume7	매수거래량7	Number	Y	8	
+mdvolume7	매도거래량7	Number	Y	8	
+msvol7	거래량순매수7	Number	Y	8	
+msvalue7	매수거래대금7	Number	Y	6	
+mdvalue7	매도거래대금7	Number	Y	6	
+msval7	거래대금순매수7	Number	Y	6	
+tjjcode8	투자자코드8(종금)	String	Y	4	
+msvolume8	매수거래량8	Number	Y	8	
+mdvolume8	매도거래량8	Number	Y	8	
+msvol8	거래량순매수8	Number	Y	8	
+msvalue8	매수거래대금8	Number	Y	6	
+mdvalue8	매도거래대금8	Number	Y	6	
+msval8	거래대금순매수8	Number	Y	6	
+tjjcode9	투자자코드9(기금)	String	Y	4	
+msvolume9	매수거래량9	Number	Y	8	
+mdvolume9	매도거래량9	Number	Y	8	
+msvol9	거래량순매수9	Number	Y	8	
+msvalue9	매수거래대금9	Number	Y	6	
+mdvalue9	매도거래대금9	Number	Y	6	
+msval9	거래대금순매수9	Number	Y	6	
+tjjcode10	투자자코드10(선물업자)	String	Y	4	
+msvolume10	매수거래량10	Number	Y	8	
+mdvolume10	매도거래량10	Number	Y	8	
+msvol10	거래량순매수10	Number	Y	8	
+msvalue10	매수거래대금10	Number	Y	6	
+mdvalue10	매도거래대금10	Number	Y	6	
+msval10	거래대금순매수10	Number	Y	6	
+tjjcode11	투자자코드11(기타)	String	Y	4	
+msvolume11	매수거래량11	Number	Y	8	
+mdvolume11	매도거래량11	Number	Y	8	
+msvol11	거래량순매수11	Number	Y	8	
+msvalue11	매수거래대금11	Number	Y	6	
+mdvalue11	매도거래대금11	Number	Y	6	
+msval11	거래대금순매수11	Number	Y	6	
+upcode	업종코드	String	Y	3	
+tjjcode0	투자자코드0(사모펀드)	String	Y	4	
+msvolume0	매수거래량0	String	Y	8	
+mdvolume0	매도거래량0	Number	Y	8	
+msvol0	거래량순매수0	Number	Y	8	
+msvalue0	매수거래대금0	Number	Y	6	
+mdvalue0	매도거래대금0	Number	Y	6	
+msval0	거래대금순매수0	Number	Y	6	
+ex_upcode	거래소별업종코드	String	Y	4	
+Example
+Request
+{
+ "header": {
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJ0b2tlbiIsImF1ZCI6ImNkMzdiY2FmLTUwMjAtNGY2Yy1hYzM3LTcxY2JhZjc2MGE2OCIsIm5iZiI6MTc0Mjg2MTM0OSwiZ3JhbnRfdHlwZSI6IkNsaWVudCIsImlzcyI6InVub2d3IiwiZXhwIjoxNzQyOTQwMDAwLCJpYXQiOjE3NDI4NjEzNDksImp0aSI6IlBTVXJIa0pWaWVRMzhMREN5NkVVNUpCNWlmV1gzRDhwRlBKcSJ9.KpX1lQQIs4W2HdQIHdJDuJ1AWaYH69soejsKkJFv_8bF4jnlocMJsushvYbesrs2BM2evkz7",
+  "tr_type": "3"
+ },
+ "body": {
+  "tr_cd": "UBT",
+  "tr_key": "U001"
+ }
+}
+Response
+{
+    "header": {
+        "tr_cd": "UBT",
+        "tr_key": "U001"
+    },
+    "body": {
+        "mdvalue0": "1344",
+        "mdvalue1": "55426",
+        "msvolume8": "474",
+        "msvolume9": "13560",
+        "msvolume4": "10244",
+        "mdvalue6": "78",
+        "msvolume5": "2663",
+        "mdvalue7": "566",
+        "msvolume6": "82",
+        "mdvalue8": "87",
+        "msvolume7": "809",
+        "mdvalue9": "9457",
+        "mdvalue2": "25515",
+        "msvolume0": "1410",
+        "msvolume1": "342538",
+        "mdvalue3": "16752",
+        "msvolume2": "85505",
+        "mdvalue4": "3649",
+        "msvolume3": "29246",
+        "mdvalue5": "1568",
+        "mdvolume0": "2589",
+        "mdvolume9": "14896",
+        "mdvolume3": "30145",
+        "mdvolume4": "7630",
+        "mdvolume1": "338330",
+        "mdvolume2": "89719",
+        "mdvolume7": "1125",
+        "mdvolume8": "738",
+        "mdvolume5": "3000",
+        "mdvolume6": "164",
+        "msvalue1": "54772",
+        "msvalue2": "24751",
+        "msvalue0": "907",
+        "msvalue5": "1490",
+        "msvalue6": "55",
+        "msvalue3": "17448",
+        "msvol11": "905",
+        "msvalue4": "4945",
+        "msvol10": "0",
+        "msvalue9": "9262",
+        "mdvalue11": "770",
+        "msvalue7": "499",
+        "msvalue8": "287",
+        "mdvalue10": "0",
+        "tjjtime": "16460001",
+        "tjjcode0": "0000",
+        "tjjcode10": "0011",
+        "msvolume10": "0",
+        "tjjcode11": "0007",
+        "tjjcode6": "0004",
+        "msval6": "-23",
+        "tjjcode5": "0003",
+        "msval5": "-78",
+        "msval4": "1296",
+        "tjjcode8": "0005",
+        "msval3": "697",
+        "tjjcode7": "0002",
+        "tjjcode2": "0017",
+        "tjjcode1": "0008",
+        "msval9": "-196",
+        "tjjcode4": "0001",
+        "msval8": "200",
+        "tjjcode3": "0018",
+        "msval7": "-66",
+        "msval2": "-764",
+        "msval1": "-655",
+        "tjjcode9": "0006",
+        "mdvolume10": "0",
+        "msval0": "-437",
+        "mdvolume11": "3275",
+        "msvol9": "-1335",
+        "msvol5": "-337",
+        "msvol6": "-82",
+        "msvol7": "-316",
+        "msvol8": "-264",
+        "msvol1": "4208",
+        "ex_upcode": "U001",
+        "msvol2": "-4214",
+        "msvol3": "-899",
+        "msval11": "722",
+        "msvol4": "2614",
+        "msval10": "0",
+        "msvol0": "-1178",
+        "msvolume11": "4179",
+        "msvalue10": "0",
+        "msvalue11": "1492",
+        "upcode": "001"
+    }
+}

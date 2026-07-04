@@ -1,0 +1,280 @@
+주식
+	1	
+	2	API 가이드
+	3	주식
+WEBSOCKET [주식] 실시간 시세
+기본정보
+Method
+POST
+운영 도메인
+wss://openapi.ls-sec.co.kr:9443
+모의투자 도메인
+wss://openapi.ls-sec.co.kr:29443
+URL
+/websocket
+Format
+JSON
+Content-Type
+application/json; charset=UTF-8
+Description
+주식 주문현황 및 시세, 투자정보를 실시간으로 확인할 수 있습니다.
+지수
+IJ_
+-
+
+요청
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+token
+접근토큰
+String
+Y
+1000
+Access Token을 설정하기 위한 Header Parameter
+tr_type
+거래 Type
+String
+Y
+1
+1: 계좌등록, 2: 계좌해제, 3: 실시간 시세 등록, 4: 실시간 시세 해제
+Body
+Element
+한글명
+type
+Required
+Length
+Description
+tr_cd
+거래 CD
+String
+Y
+3
+LS증권 거래코드
+tr_key
+단축코드
+String
+N
+8
+단축코드 6자리 또는 8자리 (단건, 연속), (계좌등록/해제 일 경우 필수값 아님)
+응답
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+tr_cd
+거래 CD
+String
+Y
+3
+LS증권 거래코드
+Body
+Element
+한글명
+type
+Required
+Length
+Description
+time
+시간
+String
+Y
+6
+
+jisu
+지수
+String
+Y
+8.2
+
+sign
+전일대비구분
+String
+Y
+1
+
+change
+전일비
+String
+Y
+8.2
+
+drate
+등락율
+String
+Y
+6.2
+
+cvolume
+체결량
+String
+Y
+8
+
+volume
+거래량
+String
+Y
+8
+
+value
+거래대금
+String
+Y
+8
+
+upjo
+상한종목수
+String
+Y
+4
+
+highjo
+상승종목수
+String
+Y
+4
+
+unchgjo
+보합종목수
+String
+Y
+4
+
+lowjo
+하락종목수
+String
+Y
+4
+
+downjo
+하한종목수
+String
+Y
+4
+
+upjrate
+상승종목비율
+String
+Y
+6.2
+
+openjisu
+시가지수
+String
+Y
+8.2
+
+opentime
+시가시간
+String
+Y
+6
+
+highjisu
+고가지수
+String
+Y
+8.2
+
+hightime
+고가시간
+String
+Y
+6
+
+lowjisu
+저가지수
+String
+Y
+8.2
+
+lowtime
+저가시간
+String
+Y
+6
+
+frgsvolume
+외인순매수수량
+String
+Y
+8
+
+orgsvolume
+기관순매수수량
+String
+Y
+8
+
+frgsvalue
+외인순매수금액
+String
+Y
+10
+
+orgsvalue
+기관순매수금액
+String
+Y
+10
+
+upcode
+업종코드
+String
+Y
+3
+
+Example
+Request
+{
+ "header": {
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJ0b2tlbiIsImF1ZCI6IjY2NDVmOGU0LTRkYzEtNDk4ZS05MjEzLTJlYTU5YjNmYjk2MyIsIm5iZiI6MTY4NjY5NjA3MCwiZ3JhbnRfdHlwZSI6IkNsaWVudCIsImlzcyI6InVub2d3IiwiZXhwIjoxNjg2NzgyNDcwLCJpYXQiOjE2ODY2OTYwNzAsImp0aSI6IlBTRU1CcWF5Q1N6QmxnTjZ3SlRkUTV5dkRNdjllWjlNZWJ2UCJ9.0roE4en_J2M3PDFr8xrZK4l0pw4uz5-kIc7I_w-E2gXlfMvIdIYqTn3LH_kr-V_iOhiOU-dLRrRbbavzNHJX3Q",
+  "tr_type": "3"
+ },
+ "body": {
+  "tr_cd": "IJ_",
+  "tr_key": "001"
+ }
+}
+Response
+{
+ "header": {
+  "tr_cd": "IJ_",
+  "tr_key": "001"
+ },
+ "body": {
+  "sign": "2",
+  "cvolume": "1280",
+  "jisu": "2638.79",
+  "highjisu": "2642.86",
+  "upjo": "0",
+  "highjo": "400",
+  "value": "846176",
+  "openjisu": "2640.81",
+  "downjo": "0",
+  "change": "0.84",
+  "orgsvolume": "-585",
+  "frgsvalue": "-39050",
+  "upjrate": "42.11",
+  "opentime": "090030",
+  "lowtime": "090040",
+  "volume": "46314",
+  "drate": "0.03",
+  "hightime": "090320",
+  "upcode": "001",
+  "time": "090510",
+  "unchgjo": "140",
+  "lowjisu": "2638.17",
+  "lowjo": "410",
+  "frgsvolume": "-3336",
+  "orgsvalue": "-33117"
+ }
+}

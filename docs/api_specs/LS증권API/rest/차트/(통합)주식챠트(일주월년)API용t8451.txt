@@ -1,0 +1,225 @@
+(통합)주식챠트(일주월년) API용	t8451	1	
+요청
+Header
+Element	한글명	type	Required	Length	Description
+type	컨텐츠타입	String	Y	100	LS증권 제공 API를 호출하기 위한 Request Body 데이터 포맷으로 "application/json; charset=utf-8 설정"
+authorization	접근토큰	String	Y	1000	OAuth 토큰이 필요한 API 경우 발급한 Access Token을 설정하기 위한 Request Heaeder Parameter
+tr_cd	거래 CD	String	Y	10	LS증권 거래코드
+tr_cont	연속 거래 여부	String	Y	1	연속거래 여부
+Y:연속○
+N:연속×
+tr_cont_key	연속 거래 Key	String	Y	18	연속일 경우 그전에 내려온 연속키 값 올림
+mac_address	MAC 주소	String	Y	12	법인인 경우 필수 세팅
+Body
+Element	한글명	type	Required	Length	Description
+t8451InBlock	t8451InBlock	Object	Y	-	
+  -shcode	단축코드	String	Y	6	
+  -gubun	주기구분(2:일3:주4:월5:년)	String	Y	1	
+  -qrycnt	요청건수(최대:500)	Number	Y	4	
+  -sdate	시작일자	String	Y	8	
+  -edate	종료일자	String	Y	8	
+  -cts_date	연속일자	String	Y	8	
+  -comp_yn	압축여부(N:비압축)	String	Y	1	N:비압축
+OPEN API 압축 미제공
+  -sujung	수정주가여부(Y:적용N:비적용)	String	Y	1	
+  -exchgubun	거래소구분코드	String	Y	1	K: KRX
+N: NXT
+U:통합
+그외 입력값은 KRX로 처리
+응답
+Header
+Element	한글명	type	Required	Length	Description
+content-type	컨텐츠타입	String	Y	100	LS증권 제공 API를 호출하기 위한 Request Body 데이터 포맷으로 "application/json; charset=utf-8 설정"
+tr_cd	거래 CD	String	Y	10	LS증권 거래코드
+tr_cont	연속 거래 여부	String	Y	1	연속거래 여부
+Y:연속○
+N:연속×
+tr_cont_key	연속 거래 Key	String	Y	18	연속일 경우 그전에 내려온 연속키 값 올림
+Body
+Element	한글명	type	Required	Length	Description
+t8451OutBlock	단축코드t8451OutBlock	Object	Y	-	
+  -shcode	단축코드	String	Y	6	
+  -jisiga	전일시가	Number	Y	8	
+  -jihigh	전일고가	Number	Y	-	
+  -jilow	전일저가	Number	Y	8	
+  -jiclose	전일종가	Number	Y	8	
+  -jivolume	전일거래량	Number	Y	12	
+  -disiga	당일시가	Number	Y	8	
+  -dihigh	당일고가	Number	Y	8	
+  -dilow	당일저가	Number	Y	8	
+  -diclose	당일종가	Number	Y	8	
+  -highend	상한가	Number	Y	8	
+  -lowend	하한가	Number	Y	8	
+  -cts_date	연속일자	String	Y	8	
+  -s_time	장시작시간(HHMMSS)	String	Y	6	
+  -e_time	장종료시간(HHMMSS)	String	Y	6	
+  -dshmin	동시호가처리시간(MM:분)	String	Y	2	
+  -rec_count	레코드카운트	Number	Y	7	
+  -svi_uplmtprice	정적VI상한가	Number	Y	8	
+  -svi_dnlmtprice	정적VI하한가	Number	Y	8	
+  -nxt_fm_s_time	NXT프리마켓장시작시간(HHMMSS)	String	Y	6	
+  -nxt_fm_e_time	NXT프리마켓장종료시간(HHMMSS)	String	Y	6	
+  -nxt_fm_dshmin	NXT프리마켓동시호가처리시간(MM:분)	String	Y	2	
+  -nxt_am_s_time	NXT에프터마켓장시작시간(HHMMSS)	String	Y	6	
+  -nxt_am_e_time	NXT에프터마켓장종료시간(HHMMSS)	String	Y	6	
+  -nxt_am_dshmin	NXT에프터마켓동시호가처리시간(MM:분)	String	Y	2	
+t8451OutBlock1	t8451OutBlock1	Object Array	Y	-	
+  -date	날짜	String	Y	8	
+  -open	시가	Number	Y	12	
+  -high	고가	Number	Y	12	
+  -low	저가	Number	Y	12	
+  -close	종가	Number	Y	12	
+  -jdiff_vol	거래량	Number	Y	12	
+  -value	거래대금	Number	Y	12	
+  -jongchk	수정구분	Number	Y	13	
+  -rate	수정비율	Number	Y	6.2	
+  -pricechk	수정주가반영항목	Number	Y	13	
+  -ratevalue	수정비율반영거래대금	Number	Y	12	
+  -sign	종가등락구분(1:상한2:상승3:보합4:하한5:하락주식일만사용)	String	Y	1	1:상한2:상승3:보합4:하한5:하락주식일만사용
+Example
+Request
+{
+  "t8451InBlock" : {
+    "shcode" : "010950",
+    "gubun" : "2",
+    "qrycnt" : 10,
+    "sdate" : "",
+    "edate" : "99999999",
+    "cts_date" : "",
+    "comp_yn" : "N",
+    "sujung" : "N",
+    "exchgubun" : "N"
+  }
+}
+Response
+{
+	"t8451OutBlock": {
+		"shcode": "010950",
+		"jisiga": 62200,
+		"jihigh": 62200,
+		"jilow": 59700,
+		"jiclose": 60500,
+		"jivolume": 55839,
+		"disiga": 60400,
+		"dihigh": 62700,
+		"dilow": 60300,
+		"diclose": 60600,
+		"highend": 78200,
+		"lowend": 42200,
+		"cts_date": "",
+		"s_time": "090000",
+		"e_time": "152000",
+		"dshmin": "00",
+		"rec_count": 7,
+		"svi_uplmtprice": 66300,
+		"svi_dnlmtprice": 54100,
+		"nxt_fm_s_time": "080000",
+		"nxt_fm_e_time": "085000",
+		"nxt_fm_dshmin": "00",
+		"nxt_am_s_time": "154000",
+		"nxt_am_e_time": "200000",
+		"nxt_am_dshmin": "00"
+	},
+	"t8451OutBlock1": [
+		{
+			"date": "20250304",
+			"open": 57100,
+			"high": 57350,
+			"low": 55800,
+			"close": 56000,
+			"jdiff_vol": 14583,
+			"value": 817,
+			"jongchk": 0,
+			"rate": "0.00",
+			"pricechk": 0,
+			"ratevalue": 0,
+			"sign": "5"
+		},
+		{
+			"date": "20250305",
+			"open": 55700,
+			"high": 57200,
+			"low": 55500,
+			"close": 57200,
+			"jdiff_vol": 17087,
+			"value": 971,
+			"jongchk": 0,
+			"rate": "0.00",
+			"pricechk": 0,
+			"ratevalue": 0,
+			"sign": "2"
+		},
+		{
+			"date": "20250306",
+			"open": 57400,
+			"high": 58500,
+			"low": 56500,
+			"close": 57100,
+			"jdiff_vol": 12561,
+			"value": 715,
+			"jongchk": 0,
+			"rate": "0.00",
+			"pricechk": 0,
+			"ratevalue": 0,
+			"sign": "2"
+		},
+		{
+			"date": "20250307",
+			"open": 57100,
+			"high": 57400,
+			"low": 56500,
+			"close": 57400,
+			"jdiff_vol": 15994,
+			"value": 914,
+			"jongchk": 0,
+			"rate": "0.00",
+			"pricechk": 0,
+			"ratevalue": 0,
+			"sign": "2"
+		},
+		{
+			"date": "20250310",
+			"open": 57400,
+			"high": 62300,
+			"low": 57400,
+			"close": 61800,
+			"jdiff_vol": 168115,
+			"value": 10209,
+			"jongchk": 0,
+			"rate": "0.00",
+			"pricechk": 0,
+			"ratevalue": 0,
+			"sign": "2"
+		},
+		{
+			"date": "20250311",
+			"open": 62200,
+			"high": 62200,
+			"low": 59700,
+			"close": 60500,
+			"jdiff_vol": 55839,
+			"value": 3374,
+			"jongchk": 0,
+			"rate": "0.00",
+			"pricechk": 0,
+			"ratevalue": 0,
+			"sign": "5"
+		},
+		{
+			"date": "20250312",
+			"open": 60400,
+			"high": 62700,
+			"low": 60300,
+			"close": 60600,
+			"jdiff_vol": 26988,
+			"value": 1651,
+			"jongchk": 0,
+			"rate": "0.00",
+			"pricechk": 0,
+			"ratevalue": 0,
+			"sign": "2"
+		}
+	],
+	"rsp_cd": "00000",
+	"rsp_msg": "정상적으로 조회가 완료되었습니다."
+}

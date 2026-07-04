@@ -1,0 +1,104 @@
+WEBSOCKET [주식] 실시간 시세
+기본정보
+Method	POST
+운영 도메인	wss://openapi.ls-sec.co.kr:9443
+모의투자 도메인	wss://openapi.ls-sec.co.kr:29443
+URL	/websocket
+Format	JSON
+Content-Type	application/json; charset=UTF-8
+Description	주식 주문현황 및 시세, 투자정보를 실시간으로 확인할 수 있습니다.
+
+(통합)체결	US3	-	
+요청
+Header
+Element	한글명	type	Required	Length	Description
+token	접근토큰	String	Y	1000	Access Token을 설정하기 위한 Header Parameter
+tr_type	거래 Type	String	Y	1	1: 계좌등록, 2: 계좌해제, 3: 실시간 시세 등록, 4: 실시간 시세 해제
+Body
+Element	한글명	type	Required	Length	Description
+tr_cd	거래 CD	String	Y	3	LS증권 거래코드
+tr_key	단축코드	String	Y	10	단축코드 7자리 + 공백 3자리
+응답
+Header
+Element	한글명	type	Required	Length	Description
+tr_cd	거래CD	String	Y	3	LS증권 거래코드
+Body
+Element	한글명	type	Required	Length	Description
+chetime	체결시간	String	Y	6	
+sign	전일대비구분	String	Y	1	
+change	전일대비	Number	Y	8	
+drate	등락율	Number	Y	6.2	
+price	현재가	Number	Y	8	
+opentime	시가시간	Number	Y	6	
+open	시가	Number	Y	8	
+hightime	고가시간	String	Y	6	
+high	고가	Number	Y	8	
+lowtime	저가시간	String	Y	6	
+low	저가	Number	Y	8	
+cgubun	체결구분	String	Y	1	+ : 매수
+- : 매도
+cvolume	체결량	Number	Y	8	
+volume	누적거래량	Number	Y	12	
+value	누적거래대금	Number	Y	12	
+mdvolume	매도누적체결량	Number	Y	12	
+mdchecnt	매도누적체결건수	Number	Y	8	
+msvolume	매수누적체결량	Number	Y	12	
+mschecnt	매수누적체결건수	Number	Y	8	
+cpower	체결강도	Number	Y	9.2	
+w_avrg	가중평균가	Number	Y	8	
+offerho	매도호가	Number	Y	8	
+bidho	매수호가	Number	Y	8	
+status	장정보	String	Y	2	
+jnilvolume	전일동시간대거래량	Number	Y	12	
+shcode	단축코드	String	Y	9	
+exchname	거래소명	String	Y	3	KRX, NXT
+ex_shcode	거래소별단축코드	Number	Y	10	
+Example
+Request
+{
+ "header": {
+  "token": "접근토큰",
+  "tr_type": "3"
+ },
+ "body": {
+  "tr_cd": "US3",
+  "tr_key": "U005930   "
+ }
+}
+Response
+{
+    "header": {
+        "tr_cd": "US3",
+        "tr_key": "U005930   "
+    },
+    "body": {
+        "mdchecnt": "42958",
+        "sign": "2",
+        "mschecnt": "63407",
+        "mdvolume": "7156641",
+        "w_avrg": "56184",
+        "cpower": "107.51",
+        "offerho": "56200",
+        "cvolume": "40",
+        "high": "56700",
+        "bidho": "56100",
+        "low": "55500",
+        "price": "56100",
+        "cgubun": "-",
+        "value": "926807",
+        "change": "900",
+        "shcode": "005930",
+        "chetime": "162202",
+        "ex_shcode": "U005930",
+        "opentime": "080000",
+        "lowtime": "080000",
+        "volume": "16495969",
+        "drate": "1.63",
+        "hightime": "080000",
+        "jnilvolume": "16817478",
+        "msvolume": "7694447",
+        "exchname": "NXT",
+        "open": "55500",
+        "status": "00"
+    }
+}
