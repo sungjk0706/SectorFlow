@@ -66,7 +66,6 @@ class SectorSummary:
     sectors: list[SectorScore]          # 강도 순위 정렬
     buy_targets: list[BuyTarget]        # 매수 타겟 큐 (가드 통과 종목만)
     blocked_targets: list[BuyTarget]    # 가드 차단 종목 (UI 표시용)
-    is_skeleton_mode: bool = False     # 스켈레톤 캐시 모드 여부 (실시간 틱 기반 증분 연산용)
     version: int = 1                    # 버전 관리 필드 (캐시 갱신 감지용)
 
 

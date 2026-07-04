@@ -91,12 +91,6 @@ async def _flush_sector_recompute_impl() -> None:
             await _full_recompute(_es, codes_snapshot)
             return
 
-        # 스켈레톤 캐시 모드 감지 (is_skeleton_mode 플래그 기반)
-        if existing.is_skeleton_mode:
-            # 스켈레톤 캐시인 경우 실시간 틱 기반 증분 연산 수행
-            await _skeleton_incremental_update(_es, codes_snapshot)
-            return
-
         # __ALL__ 플래그 + 캐시 존재 → 전체 종목(all_codes)를 dirty로 취급하여 증분 경로 사용
         # _master_stocks_cache의 "_subscribed" 대신 all_codes 사용: 업종 요약정보는 실시간 구독 상태와 무관하게 전체 종목 기준으로 계산
         if "__ALL__" in codes_snapshot:
@@ -208,125 +202,6 @@ async def _flush_sector_recompute_impl() -> None:
 
     except Exception as e:
         logger.warning("[섹터재계산] 증분 재계산 오류: %s", e, exc_info=True)
-
-
-async def _skeleton_incremental_update(_es, codes_snapshot: set[str]) -> None:
-    """스켈레톤 캐치 상태에서 실시간 틱 기반 단건 델타 연산 수행.
-
-    이벤트 주도형 구조: 틱 이벤트가 인입된 단일 종목의 등락 상태 변화만 델타로 처리.
-    분모(Total)는 선행 고정되어 있으므로 분자(Rise Count)만 증분 패치.
-    4대 틱 등락 상태 전환(State Transition) 매트릭스 적용.
-    메모리 상의 _sector_summary_cache를 직접 갱신(In-place Update).
-    단일 소스 진리: master_stocks_cache를 직접 참조.
-    """
-    from backend.app.core import sector_mapping
-    from backend.app.services.engine_state import state
-    from backend.app.domain.buy_filter import build_buy_targets_from_settings
-    from backend.app.domain.sector_score import calculate_weighted_scores
-
-    # 업종 점수 변화 감지를 위한 셋
-    changed_sectors = set()
-
-    # 업종 배치 조회 (codes_snapshot은 틱 이벤트 종목 소수)
-    codes_list = list(codes_snapshot)
-    sectors_map = await sector_mapping.get_merged_sectors_batch(codes_list)
-
-    # 각 틱 이벤트 종목별 단건 델타 처리 (배치 루프 제거)
-    for cd in codes_list:
-        # 해당 종목의 업종 추출
-        sector = sectors_map.get(cd, "미분류")
-        if not sector:
-            continue
-
-        # 해당 종목의 현재 등락 상태 확인 (master_stocks_cache 직접 참조)
-        detail = _es._master_stocks_cache.get(cd, {})
-        change_rate = detail.get("change_rate", 0.0)
-        curr_rising = change_rate > 0
-
-        # 이전 상태 조회 (초기값은 False)
-        prev_rising = _es._master_stocks_cache.get(cd, {}).get("_rising", False)
-
-        # 4대 틱 등락 상태 전환(State Transition) 매트릭스
-        # False -> True: 상승 전환, rise_count += 1
-        # True -> False: 하락 전환, rise_count -= 1
-        # False -> False 또는 True -> True: 상태 유지, 연산 없음 (O(1) 쇼트 서킷)
-        if not prev_rising and curr_rising:
-            # 상승 전환
-            sc = _es._sector_score_index.get(sector)
-            if sc:
-                sc.rise_count += 1
-                sc.rise_ratio = sc.rise_count / sc.total if sc.total > 0 else 0.0
-                changed_sectors.add(sector)
-        elif prev_rising and not curr_rising:
-            # 하락 전환
-            sc = _es._sector_score_index.get(sector)
-            if sc:
-                sc.rise_count = max(0, sc.rise_count - 1)
-                sc.rise_ratio = sc.rise_count / sc.total if sc.total > 0 else 0.0
-                changed_sectors.add(sector)
-        else:
-            # 상태 유지 (False->False 또는 True->True): 연산 없음, 즉시 continue
-            pass
-
-        # 현재 상태를 다음 틱을 위해 업데이트
-        if cd in _es._master_stocks_cache:
-            _es._master_stocks_cache[cd]["_rising"] = curr_rising
-
-    # 업종 점수가 변화한 경우에만 매수 타겟 재생성 및 매수 시도 수행
-    if changed_sectors:
-        existing = _es._sector_summary_cache
-        if not existing:
-            return
-
-        # buy_targets 변경 감지를 위해 이전 값 저장
-        prev_targets = existing.buy_targets if hasattr(existing, 'buy_targets') else None
-
-        # 전체 섹터 스코어 리스트 재구성 (업종 점수 변화 반영)
-        merged = list(_es._sector_score_index.values())
-
-        # 전체 정규화 + 순위 재정렬
-        sector_weights = state.integrated_system_settings_cache["sector_weights"]
-        calculate_weighted_scores(merged, weights=sector_weights)
-
-        # 업종 컷오프: 상승비율 미만 업종은 순위 없음(rank=0)
-        min_rise_ratio = float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0
-        if min_rise_ratio > 0:
-            pass_sectors = [sc for sc in merged if sc.rise_ratio >= min_rise_ratio]
-            fail_sectors = [sc for sc in merged if sc.rise_ratio < min_rise_ratio]
-            # pass 그룹에만 순위 부여 (1부터)
-            for i, sc in enumerate(pass_sectors):
-                sc.rank = i + 1
-            # fail 그룹은 순위 없음 (0)
-            for sc in fail_sectors:
-                sc.rank = 0
-
-        # 매수 타겟 큐 재생성
-        from backend.app.services.engine_symbol_utils import _base_stk_cd
-        _held = {_base_stk_cd(cd) for cd in state.checked_stocks}
-        ss = build_buy_targets_from_settings(
-            merged,
-            state.integrated_system_settings_cache,
-            held_codes=_held,
-        )
-
-        # 참조 교체 방식으로 캐시 갱신
-        _es._sector_summary_cache = ss
-
-        # 매수 타겟 변경 감지 및 매수 시도
-        from backend.app.services.buy_order_executor import evaluate_buy_candidates
-        from backend.app.services.engine_account_notify import notify_buy_targets_update
-
-        curr_targets = ss.buy_targets if hasattr(ss, 'buy_targets') else None
-
-        # 매수 타겟이 변경된 경우에만 매수 시도 수행
-        if curr_targets != prev_targets:
-            # 프론트엔드에 매수 타겟 변경 알림
-            await notify_buy_targets_update()
-
-            # 매수 시도 (State Gate: 주문가능 금액 부족 시 skip)
-            from backend.app.services.buy_order_executor import _cash_insufficient
-            if not _cash_insufficient:
-                await evaluate_buy_candidates()
 
 
 async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
