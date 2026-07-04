@@ -4,7 +4,7 @@
 
 import { uiStore } from '../stores/uiStore'
 import { createSettingsManager, type SettingsManager } from '../settings'
-import { createSettingRow, createNumInput, createMoneyInput, createToggleBtn, createFixedValue } from '../components/common/setting-row'
+import { createSettingRow, createNumInput, createMoneyInput, createToggleBtn, createFixedValue, createSelect } from '../components/common/setting-row'
 import { sectionTitle } from '../components/common/settings-common'
 import { createAutoSaveHelper } from '../utils/settings-save'
 import { setDisabled } from '../components/common/ui-styles'
@@ -45,7 +45,7 @@ let boostTradeAmountControls: HTMLElement | null = null
 
 // 재매수 차단 UI 참조
 let rebuyBlockToggle: ReturnType<typeof createToggleBtn> | null = null
-let rebuyBlockSelect: HTMLSelectElement | null = null
+let rebuyBlockSelect: ReturnType<typeof createSelect> | null = null
 let rebuyBlockControls: HTMLElement | null = null
 
 // 매수 주문 간격 UI 참조
@@ -114,8 +114,8 @@ function syncFromSettings(s: AppSettings): void {
   // 재매수 차단
   const rebuyOn = r.rebuy_block_on !== undefined ? !!r.rebuy_block_on : true
   rebuyBlockToggle?.setOn(rebuyOn)
-  if (rebuyBlockSelect && (!act || !rebuyBlockSelect.contains(act))) {
-    rebuyBlockSelect.value = String(r.rebuy_block_period ?? 'today')
+  if (rebuyBlockSelect && (!act || !rebuyBlockSelect.el.contains(act))) {
+    rebuyBlockSelect.setValue(String(r.rebuy_block_period ?? 'today'))
   }
   if (rebuyBlockControls) {
     setDisabled(rebuyBlockControls, !rebuyOn)
@@ -372,27 +372,20 @@ function mount(container: HTMLElement): void {
     controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
     rebuyBlockControls = controls
 
-    rebuyBlockSelect = document.createElement('select')
-    rebuyBlockSelect.style.cssText = 'padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:13px;'
-    const periods: [string, string][] = [
-      ['today', '당일'],
-      ['1h', '1시간'],
-      ['3h', '3시간'],
-      ['6h', '6시간'],
-      ['12h', '12시간'],
-      ['24h', '24시간'],
-    ]
-    for (const [val, label] of periods) {
-      const opt = document.createElement('option')
-      opt.value = val
-      opt.textContent = label
-      rebuyBlockSelect.appendChild(opt)
-    }
-    rebuyBlockSelect.addEventListener('change', () => {
-      vals.rebuy_block_period = rebuyBlockSelect!.value
-      saveHelper!.autoSave('rebuy_block_period', rebuyBlockSelect!.value)
+    rebuyBlockSelect = createSelect({
+      items: [
+        { value: 'today', label: '당일' },
+        { value: '1h', label: '1시간' },
+        { value: '3h', label: '3시간' },
+        { value: '6h', label: '6시간' },
+        { value: '12h', label: '12시간' },
+        { value: '24h', label: '24시간' },
+      ],
+      value: String(vals.rebuy_block_period ?? 'today'),
+      onChange: v => { vals.rebuy_block_period = v; saveHelper!.autoSave('rebuy_block_period', v) },
+      name: 'rebuy_block_period',
     })
-    controls.appendChild(rebuyBlockSelect)
+    controls.appendChild(rebuyBlockSelect.el)
 
     root.appendChild(createSettingRow(labelWrap, controls))
   }
