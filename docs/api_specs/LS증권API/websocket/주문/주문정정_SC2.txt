@@ -1,0 +1,209 @@
+주식주문정정
+SC2
+-
+
+요청
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+token
+접근토큰
+String
+Y
+1000
+Access Token을 설정하기 위한 Header Parameter
+tr_type
+거래 Type
+String
+Y
+1
+1: 계좌등록, 2: 계좌해제, 3: 실시간 시세 등록, 4: 실시간 시세 해제
+Body
+Element
+한글명
+type
+Required
+Length
+Description
+tr_cd
+거래 CD
+String
+Y
+3
+LS증권 거래코드
+tr_key
+단축코드
+String
+N
+8
+단축코드 6자리 또는 8자리 (단건, 연속), (계좌등록/해제 일 경우 필수값 아님)
+응답
+Header
+Element
+한글명
+type
+Required
+Length
+Description
+tr_cd
+거래 CD
+String
+Y
+3
+LS증권 거래코드
+Body
+
+Example
+Request
+{
+ "header": {
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJ0b2tlbiIsImF1ZCI6IjY2NDVmOGU0LTRkYzEtNDk4ZS05MjEzLTJlYTU5YjNmYjk2MyIsIm5iZiI6MTY4NjY5NjA3MCwiZ3JhbnRfdHlwZSI6IkNsaWVudCIsImlzcyI6InVub2d3IiwiZXhwIjoxNjg2NzgyNDcwLCJpYXQiOjE2ODY2OTYwNzAsImp0aSI6IlBTRU1CcWF5Q1N6QmxnTjZ3SlRkUTV5dkRNdjllWjlNZWJ2UCJ9.0roE4en_J2M3PDFr8xrZK4l0pw4uz5-kIc7I_w-E2gXlfMvIdIYqTn3LH_kr-V_iOhiOU-dLRrRbbavzNHJX3Q",
+  "tr_type": "1"
+ },
+ "body": {
+  "tr_cd": "SC2",
+  "tr_key": ""
+ }
+}
+Response
+{
+ "header": {
+  "tr_cd": "SC2"
+ },
+ "body": {
+  "grpId": "A1100000000000000000",
+  "trchno": "0",
+  "trtzxLevytp": "0",
+  "ordtrxptncode": "6",
+  "acntnm": "우우돌",
+  "trcode": "SONAS100",
+  "userid": "hdkrggg4",
+  "agrgbrnno": "106",
+  "regmktcode": "10",
+  "len": "1294",
+  "opdrtnno": "0",
+  "orgordmdfyqty": "1",
+  "avrpchsprc": "0",
+  "exectime": "100045203",
+  "cont": "N",
+  "mnymgnrat": "1.000",
+  "mdfycnfqty": "1",
+  "orgordcancqty": "0",
+  "compress": "0",
+  "execprc": "0",
+  "mdfycnfprc": "70000",
+  "unercsellordqty": "0",
+  "cmsnamtexecamt": "0",
+  "ruseableamt": "0",
+  "gubun": "B",
+  "trid": "2000100045171824",
+  "flctqty": "0",
+  "execno": "0",
+  "lptp": "0",
+  "varmsglen": "0",
+  "ordno": "86383",
+  "futsmkttp": "",
+  "crdtexecamt": "0",
+  "deposit": "79759964",
+  "frgrunqno": "000000",
+  "crdayruseexecval": "0",
+  "trsrc": "L",
+  "ordacntno": "20011132702",
+  "reqcnt": " ",
+  "shtnIsuno": "A005930",
+  "accno1": "20011132702",
+  "strtgcode": "",
+  "ordseqno": "0",
+  "Isunm": "삼성전자",
+  "ordablesubstamt": "244160",
+  "encrypt": "0",
+  "Isuno": "KR7005930003",
+  "accno2": "",
+  "contkey": "0",
+  "Loandt": "00000000",
+  "seq": "000000172",
+  "lineseq": "200000004",
+  "varlen": "50",
+  "orduserId": "hdkrggg4",
+  "mgmtbrnno": "106",
+  "rjtqty": "0",
+  "ordprcptncode": "00",
+  "stdIsuno": "KR7005930003",
+  "pchsant": "0",
+  "filler": "",
+  "secbalqty": "0",
+  "ordxctptncode": "12",
+  "canccnfqty": "0",
+  "ordablemny": "79449964",
+  "pubip": "010130001138",
+  "prvip": "",
+  "funckey": "C",
+  "accno": "20011132702",
+  "compreq": "0",
+  "crdtpldgruseamt": "0",
+  "ordamt": "70000",
+  "termno": "",
+  "crdtpldgexecamt": "0",
+  "ordcndi": "0",
+  "rmndLoanamt": "0",
+  "bpno": "106",
+  "substamt": "244160",
+  "mgempno": "999999106",
+  "csgnsubstmgn": "0",
+  "offset": "212",
+  "rcptexectime": "100045203",
+  "sellableqty": "0",
+  "spotexecqty": "0",
+  "varhdlen": "0",
+  "substmgnrat": ".0000000",
+  "ordavrexecprc": "0",
+  "itemno": "0",
+  "mgntrncode": "000",
+  "nsavtrdqty": "0",
+  "ifinfo": "",
+  "ordableruseqty": "0",
+  "ptflno": "0",
+  "secbalqtyd2": "0",
+  "brwmgmtYn": "0",
+  "eventid": "",
+  "csgnmnymgn": "310000",
+  "pcbpno": "000",
+  "orgordno": "86382",
+  "ifid": "000",
+  "media": "HT",
+  "mtiordseqno": "0",
+  "filler1": "",
+  "orgordunercqty": "0",
+  "mbrnmbrno": "0",
+  "futsLnkbrnno": "",
+  "commdacode": "40",
+  "stslexecqty": "0",
+  "proctm": "100045203",
+  "bfstdIsuno": "KR7005930003",
+  "futsLnkacntno": "",
+  "lang": "K",
+  "unercqty": "1",
+  "execqty": "0",
+  "adduptp": "40",
+  "bskno": "0",
+  "spotordableqty": "0",
+  "ubstexecamt": "0",
+  "cvrgordtp": "0",
+  "ordqty": "1",
+  "mnyexecamt": "0",
+  "outgu": "1",
+  "msgcode": "9999",
+  "ordtrdptncode": "00",
+  "ordmktcode": "10",
+  "ordptncode": "02",
+  "prdayruseexecval": "0",
+  "comid": "063",
+  "bnstp": "2",
+  "user": "hdkrggg4",
+  "ordprc": "70000"
+ }
+}
