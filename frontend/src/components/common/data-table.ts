@@ -9,6 +9,14 @@ import { CELL_BORDER, FONT_SIZE, FONT_WEIGHT, FONT_FAMILY } from './ui-styles'
 import { computeColumnWidths, type ColumnWidthInput } from './auto-width'
 import { createVirtualScroller } from '../virtual-scroller'
 
+interface CellWithPrevContent extends HTMLElement {
+  _prevContent?: string
+}
+
+interface RowWithKey extends HTMLElement {
+  _rowKey?: string
+}
+
 /* ── ColumnDef<T> 인터페이스 ─────────────────────────────── */
 
 export interface ColumnDef<T> {
@@ -264,7 +272,7 @@ function createFixedMode<T extends object>(
         const content = c.render(row, idx)
         if (typeof content === 'string') {
           td.textContent = content
-          ;(td as any)._prevContent = content
+          ;(td as CellWithPrevContent)._prevContent = content
         } else if (content instanceof HTMLElement) {
           td.appendChild(content)
         }
@@ -642,15 +650,13 @@ function createVirtualScrollMode<T extends object>(
   }
 
   function renderRow(row: TableRow<T>, index: number, rowEl: HTMLElement) {
-    const rowKeyStore = '_rowKey' as keyof HTMLElement
-
     const isFirst = rowEl.childElementCount === 0
     const currentIsGroup = isGroupRow(row)
     const prevWasGroup = wasGroupRow(rowEl)
 
     const key = currentIsGroup ? row.key : keyFn(row as T, index)
 
-    ;(rowEl as any)[rowKeyStore] = key
+    ;(rowEl as RowWithKey)._rowKey = key
 
     // 공통 스타일 적용
     rowEl.classList.add('data-table-row')
@@ -662,7 +668,7 @@ function createVirtualScrollMode<T extends object>(
     if (!currentIsGroup) {
       const dataRow = row as T
       if ('price' in dataRow) {
-        const newPrice = Number((dataRow as any).price)
+        const newPrice = Number((dataRow as T & { price: unknown }).price)
         priceMap.set(key, newPrice)
       }
     }

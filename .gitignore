@@ -57,6 +57,8 @@ backend/data/*.json
 # Test artifacts
 test-results/
 coverage/
+.coverage
+.coverage.*
 
 # Virtual environments
 

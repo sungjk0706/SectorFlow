@@ -419,14 +419,15 @@ function nullifyFields<T extends object>(
   fields: string[]
 ): T {
   let changed = false
-  const result: any = { ...obj }
+  const result = { ...obj } as Record<string, unknown>
   for (const f of fields) {
-    if ((obj as any)[f] !== null && (obj as any)[f] !== undefined) {
+    const current = (obj as Record<string, unknown>)[f]
+    if (current !== null && current !== undefined) {
       changed = true
       result[f] = null
     }
   }
-  return changed ? result : obj
+  return changed ? (result as T) : obj
 }
 
 /* ── realtime-reset: 실시간 필드 일괄 초기화 ── */

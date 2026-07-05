@@ -88,8 +88,12 @@ const routes: RouteConfig[] = [
 
 // ── 앱 초기화 ──
 
+declare global {
+  interface Window { uiStore: typeof uiStore }
+}
+
 function main(): void {
-  (window as any).uiStore = uiStore
+  window.uiStore = uiStore
   // 0. 전역 스타일 적용 (HTS 금융 표준 - ui-styles.ts 표준 준수)
   Object.assign(document.body.style, {
     fontFamily: "Tahoma, '굴림', Gulim, sans-serif",
