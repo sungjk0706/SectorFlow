@@ -44,9 +44,9 @@ async def _load_broker_settings() -> dict | None:
     """
     try:
         from backend.app.core.encryption import decrypt_value
-        import backend.app.services.engine_state as _st
+        from backend.app.services.engine_state import state
 
-        flat = _st._integrated_system_settings_cache
+        flat = state.integrated_system_settings_cache
 
         def _dec(v) -> str:
             if not v:
