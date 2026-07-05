@@ -53,10 +53,9 @@ async def get_sector_stocks() -> list:
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
     from backend.app.core.sector_mapping import get_merged_sectors_batch
     from backend.app.services.engine_state import state
-    import backend.app.services.engine_service as _es_ref
 
     # 5일평균거래대금 필터링 (백엔드에서 필터링 수행 - 단일 소스 진리)
-    min_avg_amt_eok = float(_es_ref._integrated_system_settings_cache["sector_min_trade_amt"])
+    min_avg_amt_eok = float(state.integrated_system_settings_cache["sector_min_trade_amt"])
 
     merged: dict[str, dict] = {}
 

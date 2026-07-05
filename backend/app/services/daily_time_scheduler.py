@@ -597,7 +597,7 @@ async def _on_ws_subscribe_start() -> None:
         # ── 실시간 필드 초기화 (전일 확정 데이터 제거) ──
         logger.info("[RESET CALL] from _on_ws_subscribe_start")
         logger.info("[타이머] 실시간 구독 시작 -- 실시간 필드 초기화 시작")
-        from backend.app.services.engine_service import _reset_realtime_fields
+        from backend.app.services.engine_snapshot import _reset_realtime_fields
         await _reset_realtime_fields()
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
         from backend.app.services.engine_account_notify import notify_cache
@@ -819,7 +819,7 @@ async def _init_ws_subscribe_state() -> None:
         if state.preboot_cache_loaded:
             logger.info("[RESET CALL] from _init_ws_subscribe_state")
             logger.info("[타이머] 구독 구간 내 시작 -- 실시간 필드 초기화")
-            from backend.app.services.engine_service import _reset_realtime_fields
+            from backend.app.services.engine_snapshot import _reset_realtime_fields
             await _reset_realtime_fields()
         else:
             logger.info("[타이머] 구독 구간 내 시작 -- 실시간 필드 초기화는 캐시 로드 후 수행")
