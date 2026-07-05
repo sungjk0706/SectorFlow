@@ -261,21 +261,6 @@ function renderAutoTradeTab(container: HTMLElement): void {
   })
   buyTimeHandle = buyHandle
   autoBuyToggle = createToggleBtn({ on: false, onClick: async () => {
-    if (shouldForceOff()) {
-      const p = document.createElement('p')
-      Object.assign(p.style, { margin: '0', fontSize: FONT_SIZE.label, color: COLOR.neutral })
-      p.textContent = '오늘은 KRX 비거래일입니다. 자동매매가 실행되지 않습니다.'
-      showCustomDialog({
-        title: '거래일이 아닙니다',
-        content: p,
-        actions: [
-          { label: '확인', onClick: () => {
-            settingsMgr?.saveSection({ auto_buy_on: true, holiday_guard_on: false }).then(r => toastResult(r))
-          }, variant: 'primary' },
-        ]
-      })
-      return
-    }
     const next = !vals.auto_buy_on
     vals.auto_buy_on = next; autoBuyToggle!.setOn(next)
     if (buyTimeHandle) buyTimeHandle.setEnabled(next)
@@ -315,21 +300,6 @@ function renderAutoTradeTab(container: HTMLElement): void {
   })
   sellTimeHandle = sellHandle
   autoSellToggle = createToggleBtn({ on: false, onClick: async () => {
-    if (shouldForceOff()) {
-      const p = document.createElement('p')
-      Object.assign(p.style, { margin: '0', fontSize: FONT_SIZE.label, color: COLOR.neutral })
-      p.textContent = '오늘은 KRX 비거래일입니다. 자동매매가 실행되지 않습니다.'
-      showCustomDialog({
-        title: '거래일이 아닙니다',
-        content: p,
-        actions: [
-          { label: '확인', onClick: () => {
-            settingsMgr?.saveSection({ auto_sell_on: true, holiday_guard_on: false }).then(r => toastResult(r))
-          }, variant: 'primary' },
-        ]
-      })
-      return
-    }
     const next = !vals.auto_sell_on
     vals.auto_sell_on = next; autoSellToggle!.setOn(next)
     if (sellTimeHandle) sellTimeHandle.setEnabled(next)
@@ -376,21 +346,6 @@ function renderAutoTradeTab(container: HTMLElement): void {
 }
 
 function handleMasterToggle(): void {
-  if (shouldForceOff()) {
-    const p = document.createElement('p')
-    Object.assign(p.style, { margin: '0', fontSize: FONT_SIZE.label, color: COLOR.neutral })
-    p.textContent = '오늘은 KRX 비거래일입니다. 자동매매가 실행되지 않습니다.'
-    showCustomDialog({
-      title: '거래일이 아닙니다',
-      content: p,
-      actions: [
-        { label: '확인', onClick: () => {
-          settingsMgr?.saveSection({ time_scheduler_on: true, holiday_guard_on: false }).then(r => toastResult(r))
-        }, variant: 'primary' },
-      ]
-    })
-    return
-  }
   const next = !vals.time_scheduler_on
   vals.time_scheduler_on = next; masterToggle?.setOn(next)
   updateAutoTradeDisabledStates()
@@ -401,21 +356,6 @@ function handleMasterToggle(): void {
 }
 
 function handleWsToggle(): void {
-  if (shouldForceOff()) {
-    const p = document.createElement('p')
-    Object.assign(p.style, { margin: '0', fontSize: FONT_SIZE.label, color: COLOR.neutral })
-    p.textContent = '오늘은 KRX 비거래일입니다. 자동매매가 실행되지 않습니다.'
-    showCustomDialog({
-      title: '거래일이 아닙니다',
-      content: p,
-      actions: [
-        { label: '확인', onClick: () => {
-          settingsMgr?.saveSection({ ws_subscribe_on: true, holiday_guard_on: false }).then(r => toastResult(r))
-        }, variant: 'primary' },
-      ]
-    })
-    return
-  }
   const next = !vals.ws_subscribe_on
   vals.ws_subscribe_on = next; wsToggle?.setOn(next)
   updateWsTimeDisabled()
@@ -929,10 +869,9 @@ function syncFromSettings(s: AppSettings | null): void {
 
   // 자동매매 탭 (항상 DOM에 존재)
   {
-    const forceOff = shouldForceOff()
-    masterToggle?.setOn(forceOff ? false : !!r.time_scheduler_on)
+    masterToggle?.setOn(!!r.time_scheduler_on)
     holidayToggle?.setOn(!!r.holiday_guard_on)
-    wsToggle?.setOn(forceOff ? false : !!r.ws_subscribe_on)
+    wsToggle?.setOn(!!r.ws_subscribe_on)
     updateHolidayBadges()
     updateAutoTradeDisabledStates()
 
@@ -950,17 +889,17 @@ function syncFromSettings(s: AppSettings | null): void {
     if (confirmedDlSlot) updateTimeSlotDisplay(confirmedDlSlot, cdh, cdm)
 
     // 자동매수
-    autoBuyToggle?.setOn(forceOff ? false : !!r.auto_buy_on)
+    autoBuyToggle?.setOn(!!r.auto_buy_on)
     if (buyTimeHandle) {
       buyTimeHandle.setValue(String(r.buy_time_start ?? '09:00'), String(r.buy_time_end ?? '15:00'))
-      buyTimeHandle.setEnabled(forceOff ? false : !!r.auto_buy_on)
+      buyTimeHandle.setEnabled(shouldForceOff() ? false : !!r.auto_buy_on)
     }
 
     // 자동매도
-    autoSellToggle?.setOn(forceOff ? false : !!r.auto_sell_on)
+    autoSellToggle?.setOn(!!r.auto_sell_on)
     if (sellTimeHandle) {
       sellTimeHandle.setValue(String(r.sell_time_start ?? '09:00'), String(r.sell_time_end ?? '15:00'))
-      sellTimeHandle.setEnabled(forceOff ? false : !!r.auto_sell_on)
+      sellTimeHandle.setEnabled(shouldForceOff() ? false : !!r.auto_sell_on)
     }
   }
 
