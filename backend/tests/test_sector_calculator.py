@@ -7,6 +7,7 @@ mock 없이 state.master_stocks_cache 직접 주입으로 DB 의존성 회피.
 from __future__ import annotations
 
 import pytest
+from unittest.mock import patch, AsyncMock
 
 from backend.app.services.engine_state import state
 from backend.app.domain.sector_calculator import (
@@ -50,6 +51,15 @@ def cache():
     yield state.master_stocks_cache
     state.master_stocks_cache.clear()
     state.master_stocks_cache.update(orig)
+
+
+@pytest.fixture(autouse=True)
+def _mock_db_connection():
+    """get_db_connection을 mock하여 실제 DB 접근 차단 — 개별 테스트 실행 시 hang 방지."""
+    mock_conn = AsyncMock()
+    mock_conn.execute = AsyncMock(side_effect=Exception("DB not available in unit test"))
+    with patch("backend.app.db.database.get_db_connection", new=AsyncMock(return_value=mock_conn)):
+        yield
 
 
 # ── 공통 테스트 데이터 ─────────────────────────────────────────────────────────
