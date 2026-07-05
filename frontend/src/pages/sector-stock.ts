@@ -218,7 +218,7 @@ function computeRows(
     rows.push({
       type: 'group',
       sector,
-      label: `${sectorRank === 0 ? '❌' : sectorRank}. ${sector}`,
+      label: `${sectorRankMap.get(sector) ?? 0}. ${sector}`,
       score,
       dim,
     })

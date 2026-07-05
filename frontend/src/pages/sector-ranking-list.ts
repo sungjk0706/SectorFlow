@@ -135,7 +135,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     }
 
     const spans = Array.from(row.firstElementChild!.children) as HTMLSpanElement[]
-    if (!prev || prev.rank !== s.rank) spans[0].textContent = String(s.rank)
+    if (!prev || prev.rank !== i + 1) spans[0].textContent = String(i + 1)
     if (!prev || prev.sector !== s.sector) spans[1].textContent = s.sector
     if (!prev || prev.total !== s.total) spans[2].textContent = String(s.total || '')
     if (!prev || prev.finalScore !== finalScore) spans[3].textContent = finalScore
@@ -147,7 +147,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     if (!prev || prev.barWidth !== barWidth) bar.style.width = barWidth
     if (!prev || prev.barColor !== barColor) bar.style.background = barColor
 
-    rowCaches[i] = { rank: s.rank, sector: s.sector, total: s.total, finalScore, riseRatio, riseColor, tradeAmt, barWidth, barColor, opacity, selected: isSel, visible: true }
+    rowCaches[i] = { rank: i + 1, sector: s.sector, total: s.total, finalScore, riseRatio, riseColor, tradeAmt, barWidth, barColor, opacity, selected: isSel, visible: true }
   }
 }
 
