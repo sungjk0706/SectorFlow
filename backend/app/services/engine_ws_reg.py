@@ -256,7 +256,7 @@ async def subscribe_sector_stocks_0b() -> None:
     _WS_0B_LIMIT = 200
 
     # ── 1) 보유종목 코드 수집 (최우선) ──
-    from backend.app.services.engine_service import get_positions
+    from backend.app.services.engine_account import get_positions
     positions = await get_positions()
     pos_codes_raw = [
         str(s.get("stk_cd", "")).strip()
@@ -391,7 +391,7 @@ async def subscribe_positions_stocks_realtime() -> None:
         logger.warning("[구독] 종목 구독 생략 -- 로그인 전. 로그인 응답 후 재시도됨.")
         return
 
-    from backend.app.services.engine_service import get_positions
+    from backend.app.services.engine_account import get_positions
     ordered: list[str] = []
     positions = await get_positions()
     for s in positions:

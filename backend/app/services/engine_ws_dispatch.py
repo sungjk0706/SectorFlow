@@ -208,12 +208,12 @@ def _check_realtime_latency(_ts: int) -> None:
     elapsed = int(time.time() * 1000) - _ts
     if elapsed >= 200:
         logger.error("[체결지연] 처리 시간 %sms → 자동매매 중단 플래그 설정", elapsed)
-        engine_state.realtime_latency_exceeded = True
+        state.realtime_latency_exceeded = True
     else:
-        # 지연 회복: 플래그 단일 소유자(이 함수)가 직접 해제 — 원칙 8(플래그 단일 소스)
-        if engine_state.realtime_latency_exceeded:
+        # 지연 회복: 플래그 단일 소유자(이 함수)가 직접 해제 — 원칙 17(플래그 단일 소스)
+        if state.realtime_latency_exceeded:
             logger.info("[체결지연] 처리 시간 %sms → 지연 회복, 자동매매 재개", elapsed)
-            engine_state.realtime_latency_exceeded = False
+            state.realtime_latency_exceeded = False
         if elapsed >= 50:
             logger.warning("[체결지연] 처리 시간 %sms → 50ms 초과", elapsed)
 
