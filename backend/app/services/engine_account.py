@@ -423,23 +423,18 @@ async def _apply_balance_realtime(item: dict, vals: dict) -> None:
 async def _on_fill_after_ws() -> None:
     """주문체결(00) 완료 직후 -- REST 없이 메모리·매도조건만 갱신."""
     from backend.app.services.auto_trading_effective import auto_sell_effective
-    from backend.app.services.engine_ws_fill_followup import run_after_order_fill_ws
     from backend.app.services import dry_run
 
-    async def _sell_if_applicable() -> None:
-        if is_test_mode(state.integrated_system_settings_cache):
-            pos = await dry_run.get_positions()
-        else:
-            pos = state.positions
-        if pos and state.auto_trade and auto_sell_effective(state.integrated_system_settings_cache) and state.access_token:
-            await state.auto_trade.check_sell_conditions(pos, state.integrated_system_settings_cache, state.access_token)
+    # 1. 계좌 스냅샷 갱신
+    await _refresh_account_snapshot_meta()
 
-    run_after_order_fill_ws(
-        0.0,
-        state.refresh_account_snapshot_meta,
-        lambda: state.update_account_memory(),
-        is_dry_run=is_test_mode(state.integrated_system_settings_cache),
-    )
+    # 2. 매도 조건 검사
+    if is_test_mode(state.integrated_system_settings_cache):
+        pos = await dry_run.get_positions()
+    else:
+        pos = state.positions
+    if pos and state.auto_trade and auto_sell_effective(state.integrated_system_settings_cache) and state.access_token:
+        await state.auto_trade.check_sell_conditions(pos, state.integrated_system_settings_cache, state.access_token)
 
 
 # ── 브로드캐스트 ─────────────────────────────────────────────────────────
