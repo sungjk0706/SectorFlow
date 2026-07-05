@@ -272,8 +272,11 @@ function renderAutoTradeTab(container: HTMLElement): void {
     }
   }})
   autoBuyRight.appendChild(buyTpWrap)
-  autoBuyRight.appendChild(createHolidayBadge())
-  autoBuyRight.appendChild(autoBuyToggle.el)
+  const buyToggleWrap = document.createElement('span')
+  buyToggleWrap.style.cssText = 'display:flex;align-items:center;'
+  buyToggleWrap.appendChild(createHolidayBadge())
+  buyToggleWrap.appendChild(autoBuyToggle.el)
+  autoBuyRight.appendChild(buyToggleWrap)
   autoBuyRow.appendChild(autoBuyRight)
   container.appendChild(autoBuyRow)
 
@@ -312,8 +315,11 @@ function renderAutoTradeTab(container: HTMLElement): void {
     }
   }})
   autoSellRight.appendChild(sellTpWrap)
-  autoSellRight.appendChild(createHolidayBadge())
-  autoSellRight.appendChild(autoSellToggle.el)
+  const sellToggleWrap = document.createElement('span')
+  sellToggleWrap.style.cssText = 'display:flex;align-items:center;'
+  sellToggleWrap.appendChild(createHolidayBadge())
+  sellToggleWrap.appendChild(autoSellToggle.el)
+  autoSellRight.appendChild(sellToggleWrap)
   autoSellRow.appendChild(autoSellRight)
   container.appendChild(autoSellRow)
 
