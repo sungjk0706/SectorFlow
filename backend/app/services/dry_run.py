@@ -110,32 +110,20 @@ async def fake_send_order(
     price: int = 0,
     trde_tp: str = "3",
 ) -> dict:
-    """
-    키움 send_order()와 동일한 반환 구조.
-    0.1초 후 무조건 성공 응답 + 가상 잔고 반영.
-    """
-    await asyncio.sleep(FAKE_FILL_DELAY)
-
+    """키움 send_order()와 동일한 반환 구조. 주문 접수만 (체결은 fake_fill_event에서)."""
     order_no = _next_fake_order_no()
     fill_price = price if price > 0 else _estimate_market_price(code)
-
     side = order_type.upper()
-    if side == "BUY":
-        await _apply_buy(code, qty, fill_price)
-    elif side == "SELL":
-        await _apply_sell(code, qty, fill_price)
-
     logger.info(
-        "[테스트모드] %s %s %d주 @%s -> 가상체결 ord_no=%s",
+        "[테스트모드] %s 주문 접수 %s %d주 @%s ord_no=%s",
         side, code, qty, f"{fill_price:,}" if fill_price else "시장가", order_no,
     )
-
     return {
         "success": True,
-        "msg": "[테스트모드] 가상 체결 완료",
+        "msg": "[테스트모드] 가상 주문 접수 완료",
         "data": {
             "rt_cd": "0",
-            "msg1": "[테스트모드] 가상 체결 완료",
+            "msg1": "[테스트모드] 가상 주문 접수 완료",
             "output": {
                 "ord_no": order_no,
                 "stk_cd": str(code),
@@ -146,6 +134,48 @@ async def fake_send_order(
     }
 
 
+async def fake_fill_event(
+    order_type: str,
+    code: str,
+    qty: int,
+    price: int,
+    stk_nm: str = "",
+) -> None:
+    """
+    테스트모드 가상 체결 이벤트 — 실전 WS "00" 이벤트와 동일한 downstream 호출 체인.
+    1. _apply_buy/_apply_sell (포지션 + Settlement Engine)
+    2. on_fill_update (has_open_buy 해제, _recent_sells 해제, 로그/텔레그램)
+    3. _on_fill_after_ws (계좌 갱신, 매도 조건 검사)
+    """
+    from backend.app.services.engine_state import state
+    from backend.app.services import engine_account
+
+    await asyncio.sleep(FAKE_FILL_DELAY)
+
+    side = order_type.upper()
+    fill_price = price if price > 0 else _estimate_market_price(code)
+
+    # 1. 가상 체결 (포지션 + Settlement Engine)
+    if side == "BUY":
+        await _apply_buy(code, qty, fill_price)
+        if stk_nm:
+            await set_stock_name(code, stk_nm)
+    elif side == "SELL":
+        await _apply_sell(code, qty, fill_price)
+
+    logger.info(
+        "[테스트모드] 가상 체결 완료 %s %s %d주 @%s",
+        side, code, qty, f"{fill_price:,}" if fill_price else "시장가",
+    )
+
+    # 2. on_fill_update (실전 _handle_real_00과 동일)
+    #    side: "1"=매수, "2"=매도, unex=0 (전량 체결)
+    ws_side = "1" if side == "BUY" else "2"
+    if state.auto_trade:
+        await state.auto_trade.on_fill_update(code, ws_side, 0, state.access_token)
+
+    # 3. _on_fill_after_ws (실전 _handle_real_00과 동일)
+    await engine_account._on_fill_after_ws()
 
 
 # ── 2. 인메모리 잔고 관리 ───────────────────────────────────────────────────

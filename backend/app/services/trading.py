@@ -3,6 +3,7 @@
 자동매매 실행 / 매도조건 판단
 legacy_pc_engine/logic_auto_trade.py 이식 (설정은 get_settings_fn, PyQt5 제거)
 """
+import asyncio
 import time
 import logging
 from datetime import datetime
@@ -360,9 +361,15 @@ class AutoTradeManager:
         except Exception:
             logger.warning("[매수] 매수한도 브로드캐스트 실패", exc_info=True)
 
-        # ── 테스트모드: 매수 후 UI 즉시 갱신 (매도탭 보유종목 카드 반영) ──────
+        # ── 테스트모드: 가상 체결 이벤트 예약 (실전 WS "00"과 동일한 downstream) ──
         if is_test_mode(base_settings):
-            await _dryrun_post_buy_broadcast(stk_cd, stk_nm)
+            _dry_fill_price = int(order_price) if order_price > 0 else int(current_price)
+            _fill_task = asyncio.create_task(
+                dry_run.fake_fill_event("BUY", stk_cd, buy_qty, _dry_fill_price, stk_nm)
+            )
+            _fill_task.add_done_callback(
+                lambda t: logger.error("[테스트모드] fake_fill_event(BUY) 실패: %s", t.exception(), exc_info=t.exception()) if t.exception() else None
+            )
 
         t_str = datetime.now().strftime("%H:%M:%S")
         fmt_price = f"{fill_price:,}"
@@ -413,12 +420,6 @@ class AutoTradeManager:
         elif str(side) in ("3", "4"):
             state["has_open_buy"] = False
         self._buy_state[stk_cd] = state
-
-        # 테스트모드: WS 체결 콜백 수신 시 dry_run 잔고 현재가 동기화
-        if is_test_mode(self.get_settings_fn()):
-            cur = await dry_run.get_position(nk)
-            if cur:
-                pass
 
     async def execute_sell(
         self,
@@ -515,9 +516,15 @@ class AutoTradeManager:
             pnl_rate=pnl_rate, trade_mode=_mode,
         )
 
-        # 테스트 모드: dry_run이 이미 가상 잔고를 갱신했으므로 UI 브로드캐스트만 트리거
+        # ── 테스트모드: 가상 체결 이벤트 예약 (실전 WS "00"과 동일한 downstream) ──
         if is_test_mode(base_settings):
-            await _dryrun_post_sell_broadcast(stk_cd, stk_nm, base_settings)
+            _dry_sell_price = int(order_price) if order_price > 0 else int(cur_price)
+            _fill_task = asyncio.create_task(
+                dry_run.fake_fill_event("SELL", stk_cd, qty, _dry_sell_price, stk_nm)
+            )
+            _fill_task.add_done_callback(
+                lambda t: logger.error("[테스트모드] fake_fill_event(SELL) 실패: %s", t.exception(), exc_info=t.exception()) if t.exception() else None
+            )
 
         # ── RiskManager 성공 보고 ─────────────────────────────────────────────
         try:
@@ -658,38 +665,3 @@ class AutoTradeManager:
             "ts_drop_val": float(r["ts_drop_val"]),
         }
 
-# ── 테스트 모드 전용: 매수 후 UI 브로드캐스트 ────────────────────────────────
-# dry_run 모듈이 가상 잔고를 이미 갱신했으므로, UI 갱신만 트리거.
-
-_DRYRUN_BUY_BROADCAST_DELAY: float = 0.15
-
-
-async def _dryrun_post_buy_broadcast(stk_cd: str, stk_nm: str) -> None:
-    """테스트모드 매수 후 UI 잔고 브로드캐스트 -- 매도탭 보유종목 카드 즉시 반영."""
-    try:
-        from backend.app.services import engine_service as es
-        await es._refresh_account_snapshot_meta()
-        await es._broadcast_account(reason="dryrun_buy")
-        logger.info("[테스트모드] 매수 후 UI 갱신 완료 -- %s(%s)", stk_nm, stk_cd)
-    except Exception as e:
-        logger.warning("[테스트모드] 매수 후 UI 갱신 실패: %s", e, exc_info=True)
-
-
-async def _dryrun_post_sell_broadcast(stk_cd: str, stk_nm: str, settings: dict) -> None:
-    """테스트모드 매도 후 UI 잔고 브로드캐스트."""
-    try:
-        from backend.app.services import engine_service as es
-        from backend.app.services.engine_state import state
-
-        # 가상 잔고에서 매도 완료된 종목 -- _recent_sells 차단 해제
-        if state.auto_trade:
-            dry_codes = await dry_run.position_codes()
-            sold_out = set(state.auto_trade._recent_sells) - dry_codes
-            state.auto_trade._recent_sells -= sold_out
-            if sold_out:
-                logger.info("[테스트모드] 매도 체결 확인 -- 차단 해제: %s", sold_out)
-
-        await es._broadcast_account(reason="dryrun_sell")
-        logger.info("[테스트모드] 매도 후 UI 갱신 완료 -- %s(%s)", stk_nm, stk_cd)
-    except Exception as e:
-        logger.warning("[테스트모드] 매도 후 UI 갱신 실패: %s", e, exc_info=True)
