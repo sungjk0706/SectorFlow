@@ -603,8 +603,7 @@ async def _on_ws_subscribe_start() -> None:
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
         from backend.app.services.engine_account_notify import notify_cache
         notify_cache.prev_scores = []
-        import backend.app.services.engine_service as _es
-        _es._sector_summary_cache = None
+        state.sector_summary_cache = None
         # market-phase WS 브로드캐스트 (WS 구독 시작 = 08:00 또는 09:00 전환 시점)
         _broadcast_market_phase()
         # ── WS 연결은 engine_loop의 구간 감지 루프가 담당 → 이벤트 통지 ──
@@ -829,8 +828,7 @@ async def _init_ws_subscribe_state() -> None:
         try:
             from backend.app.services.engine_account_notify import notify_cache
             notify_cache.prev_scores = []
-            import backend.app.services.engine_service as _es
-            _es._sector_summary_cache = None
+            state.sector_summary_cache = None
         except Exception as e:
             logger.warning("[데이터] 캐시 초기화 실패: %s", e, exc_info=True)
 

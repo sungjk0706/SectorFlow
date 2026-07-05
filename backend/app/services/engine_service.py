@@ -5,7 +5,6 @@
 - 분리된 모듈 함수 재내보내기
 """
 from backend.app.core.logger import get_logger
-from backend.app.domain.models import SectorSummary
 from backend.app.services import engine_account_notify as _account_notify
 from backend.app.services.engine_state import (
     state,
@@ -59,9 +58,6 @@ from backend.app.services.engine_snapshot import (
 from backend.app.services.engine_ws import (
     _broker_message_handler,  # noqa: F401  -- facade re-export
 )
-
-# ── 업종 요약 캐시 (단일 소스 진리) ───────────────────────────────────────
-_sector_summary_cache: SectorSummary | None = None
 
 # ── 확정 데이터 조회 상태 ─────────────────────────────────────────────────
 _confirmed_refresh_running_confirmed: bool = False

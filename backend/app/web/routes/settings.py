@@ -135,8 +135,8 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         # 매수 주문 간격 타이머 리셋
         es.state._last_global_buy_ts = 0.0
         # buy_targets 메모리 초기화 (매수후보 테이블 동기화)
-        if es._sector_summary_cache and hasattr(es._sector_summary_cache, 'buy_targets'):
-            es._sector_summary_cache.buy_targets = []
+        if es.state.sector_summary_cache and hasattr(es.state.sector_summary_cache, 'buy_targets'):
+            es.state.sector_summary_cache.buy_targets = []
         await es._broadcast_buy_limit_status()
         # 10. 통합 초기화 완료 신호 (모든 클라이언트 일괄 동기화)
         from backend.app.services.engine_account_notify import _broadcast

@@ -10,6 +10,7 @@ recompute_sector_for_code(code)는 이벤트 발생 시 호출되며,
 from __future__ import annotations
 import asyncio
 from backend.app.core.logger import get_logger
+from backend.app.services.engine_state import state
 logger = get_logger("engine")
 
 _dirty_codes: set[str] = set()
@@ -84,7 +85,7 @@ async def _flush_sector_recompute_impl() -> None:
         )
         from backend.app.core import sector_mapping
 
-        existing = _es._sector_summary_cache
+        existing = state.sector_summary_cache
 
         # 캐시 없음(콜드 스타트) → 전체 재계산 1회 (이후 증분 모드 전환)
         if not existing:
@@ -111,7 +112,6 @@ async def _flush_sector_recompute_impl() -> None:
             return
 
         # 2. 해당 섹터의 종목만 재계산
-        from backend.app.services.engine_state import state
         inputs = await get_sector_summary_inputs()
         all_codes = inputs["all_codes"]
         min_avg_amt_eok = float(state.integrated_system_settings_cache["sector_min_trade_amt"])
@@ -184,7 +184,7 @@ async def _flush_sector_recompute_impl() -> None:
         )
 
         # 참조 교체 방식으로 캐시 갱신 (R5.6)
-        _es._sector_summary_cache = ss
+        state.sector_summary_cache = ss
 
         # 업종 점수 delta 전송 (내부에서 변경분만 비교)
         await notify_desktop_sector_scores()
@@ -216,10 +216,8 @@ async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
         notify_desktop_sector_scores,
         notify_buy_targets_update,
     )
-    from backend.app.services.engine_state import state
-
     # buy_targets 변경 감지를 위해 이전 값 저장
-    _prev_cache = _es._sector_summary_cache
+    _prev_cache = state.sector_summary_cache
     prev_targets = _prev_cache.buy_targets if _prev_cache and hasattr(_prev_cache, 'buy_targets') else None
 
     trim_trade = float(state.integrated_system_settings_cache["sector_trim_trade_amt_pct"])
@@ -243,7 +241,7 @@ async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
     )
 
     # 참조 교체 방식으로 캐시 갱신 (R5.6)
-    _es._sector_summary_cache = ss
+    state.sector_summary_cache = ss
 
     # 업종 점수 delta 전송 (내부에서 변경분만 비교)
     await notify_desktop_sector_scores()
