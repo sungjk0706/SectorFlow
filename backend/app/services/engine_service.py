@@ -13,6 +13,7 @@ from backend.app.services.engine_state import (
 from backend.app.services.engine_account import (
     _refresh_account_snapshot_meta,
     _broadcast_account,
+    _broadcast_buy_limit_status,  # noqa: F401  -- facade re-export
     _update_account_memory,  # noqa: F401  -- facade re-export
 )
 from backend.app.services.engine_config import (

@@ -355,8 +355,8 @@ class AutoTradeManager:
         # buy-limit-status가 먼저 전송되어 uiStore.buyLimitStatus가 갱신된 후,
         # account-update가 hotStore를 갱신할 때 updateBadges()가 최신 daily_buy_spent 사용
         try:
-            import backend.app.services.engine_service as _es_limit
-            await _es_limit._broadcast_buy_limit_status()
+            from backend.app.services.engine_account import _broadcast_buy_limit_status
+            await _broadcast_buy_limit_status()
         except Exception:
             logger.warning("[매수] 매수한도 브로드캐스트 실패", exc_info=True)
 
