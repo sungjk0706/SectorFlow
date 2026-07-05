@@ -1,22 +1,19 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-06: Priority 3 테스트 커버리지 80%+ 달성 — 5개 파일 테스트 작성**
-  - `test_data_manager.py`: 96% (136줄, 6 miss)
-  - `test_pipeline_gateway.py`: 87% (86줄, 11 miss)
-  - `test_pipeline_compute.py`: 92% (344줄, 26 miss) — start/stop loop, _compute_loop_impl, _handle_real_01_tick, _sector_recompute_loop_impl 포함
-  - `test_daily_time_scheduler.py`: 90% (601줄, 59 miss)
-  - `test_market_close_pipeline.py`: 86% (712줄, 98 miss)
-  - 전체 1016 passed in 36.76s, 통합 커버리지 89% (1879줄 중 200 miss)
+- **2026-07-06: `_run_confirmed_pipeline` 리팩토링 — 7개 step 함수 추출**
+  - `market_close_pipeline.py`: `_run_confirmed_pipeline` (365줄) → 7개 step 함수 + orchestrator (약 350줄) 분리
+  - 추출 함수: `_step1_fetch_all_stocks`, `_step2_filter_eligible`, `_step3_parse_confirmed`, `_step4_save_to_db_and_cache`, `_step5_download_daily_confirmed`, `_step7_recompute_and_broadcast`
+  - 회귀 검증: `test_market_close_pipeline.py` 52 passed in 5.49s, py_compile OK
 
 ## 현재 상태
-- **백엔드**: pytest 1016 passed in 36.76s — hang 없이 전체 완료
-- **커버리지**: Priority 3 5개 파일 전부 80%+ 달성 (89% 평균)
+- **백엔드**: `test_market_close_pipeline.py` 52 passed in 5.49s, py_compile OK
+- **리팩토링**: `_run_confirmed_pipeline` 7개 step 함수 분리 완료
 - **프론트엔드**: tsc passed, vitest 109 passed, eslint 0 warnings (0 errors)
-- **Git**: 커밋 푸시 완료 (d2e9977)
+- **Git**: 커밋 필요 (리팩토링 미커밋)
 
 ## 다음 단계
-- **market_close_pipeline.py 리팩토링**: `_run_confirmed_pipeline` 추출 — 테스트 86% 커버리지 기반으로 진행 가능
+- **리팩토링 후 전체 테스트 회귀**: `pytest backend/tests/ -v --timeout=30` 전체 실행 확인
 - **브라우저 런타임 검증 (대기)**: 테스트모드 매수/매도 시 체결가 로그에서 슬리피지 적용 확인
 - **WS 구독 분산 최적화 (대기)**: `ConnectorManager` 구현됨, 구독 분산 미구현
 - **테스트 커버리지 개선**: Priority 4 이상 진행
