@@ -20,10 +20,14 @@ def _ws_live() -> bool:
 
 # ── REG/UNREG/REMOVE 전송 ─────────────────────────────────────────────────
 
-async def _ws_send_reg_unreg_and_wait_ack(payload: dict) -> tuple[bool, str]:
+async def _ws_send_reg_unreg_and_wait_ack(payload: dict, *, sender=None) -> tuple[bool, str]:
     """
     브로커 공식: REG/UNREG 1건 전송 후 응답(ACK, return_code 포함) 수신까지 대기한 뒤 다음 전송.
     Returns (True, return_code) if ACK 수신, (False, "") if 타임아웃(응답 없음).
+
+    Args:
+        payload: 전송할 REG/UNREG 페이로드.
+        sender: 송신할 커넥터 (BrokerConnector). None이면 state에서 자동 해결.
     """
     if state.reg_seq_lock is None:
         state.reg_seq_lock = asyncio.Lock()
@@ -33,11 +37,13 @@ async def _ws_send_reg_unreg_and_wait_ack(payload: dict) -> tuple[bool, str]:
             state.reg_ack_event.clear()
         state.reg_ack_return_code = ""
 
-        _sender = state.connector_manager if state.connector_manager and state.connector_manager.is_connected() else state.active_connector
-        
+        _sender = sender if sender is not None else (
+            state.connector_manager if state.connector_manager and state.connector_manager.is_connected() else state.active_connector
+        )
+
         if not _sender or not _sender.is_connected():
             return False, ""
-        
+
         sent = await _sender.send_message(payload)
         if not sent:
             return False, ""
@@ -61,18 +67,24 @@ async def _ws_send_reg_unreg_and_wait_ack(payload: dict) -> tuple[bool, str]:
 
 
 
-async def _ws_send_remove_fire_and_forget(payload: dict) -> bool:
+async def _ws_send_remove_fire_and_forget(payload: dict, *, sender=None) -> bool:
     """REMOVE 페이로드를 ACK 대기 없이 즉시 전송한다.
 
     _reg_seq_lock을 획득하지 않으므로 서버 측 90초 지연 응답이
     REG/UNREG ACK 대기를 막지 않는다.
     다음 REG의 refresh='0'이 서버 구독 상태를 덮어쓰므로 ACK 불필요.
+
+    Args:
+        payload: 전송할 REMOVE 페이로드.
+        sender: 송신할 커넥터 (BrokerConnector). None이면 state에서 자동 해결.
     """
-    _sender = state.connector_manager if state.connector_manager and state.connector_manager.is_connected() else state.active_connector
-    
+    _sender = sender if sender is not None else (
+        state.connector_manager if state.connector_manager and state.connector_manager.is_connected() else state.active_connector
+    )
+
     if not _sender or not _sender.is_connected():
         return False
-    
+
     sent = await _sender.send_message(payload)
     if not sent:
         logger.warning("[연결] 구독해지 전송 실패 grp_no=%s", payload.get("grp_no"))

@@ -120,8 +120,11 @@ async def remove_krx_only_stocks() -> dict:
     Returns:
         {"removed": int, "failed": int, "skipped": bool}
     """
-    # BrokerConnector 추상화 사용
-    ws = state.connector_manager or state.active_connector
+    # 0B REMOVE 페이로드는 키움 규격이므로 kiwoom 커넥터를 직접 조회
+    cm = state.connector_manager
+    ws = cm.get_connector("kiwoom") if cm else None
+    if not ws or not ws.is_connected():
+        ws = state.active_connector
     if not ws or not ws.is_connected():
         _log.warning("[타이머] KRX 장마감 구독해지 생략 — 실시간 미연결")
         return {"removed": 0, "failed": 0, "skipped": True}
@@ -151,11 +154,11 @@ async def remove_krx_only_stocks() -> dict:
             if supports_ack:
                 # ACK 지원 브로커 (Kiwoom): ACK 대기
                 from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
-                ack_ok, rc = await _ws_send_reg_unreg_and_wait_ack(payload)
+                ack_ok, rc = await _ws_send_reg_unreg_and_wait_ack(payload, sender=ws)
             else:
                 # ACK 미지원 브로커 (LS): fire-and-forget
                 from backend.app.services.engine_ws import _ws_send_remove_fire_and_forget
-                ack_ok = await _ws_send_remove_fire_and_forget(payload)
+                ack_ok = await _ws_send_remove_fire_and_forget(payload, sender=ws)
                 rc = ""
         except Exception as exc:
             _log.warning(

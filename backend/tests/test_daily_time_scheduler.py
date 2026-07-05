@@ -792,11 +792,13 @@ class TestDoUnregAll:
     async def test_unsubscribes_stocks(self):
         mock_ws = MagicMock()
         mock_ws.is_connected.return_value = True
-        mock_ws.unsubscribe_stocks = AsyncMock(return_value=True)
         mock_ws.send_message = AsyncMock()
-        mock_ws.broker_id = "kiwoom"
+        mock_cm = MagicMock()
+        mock_cm.is_connected.return_value = True
+        mock_cm.unsubscribe_stocks = AsyncMock(return_value=True)
+        mock_cm.get_connector.return_value = mock_ws
         mock_state = MagicMock()
-        mock_state.connector_manager = mock_ws
+        mock_state.connector_manager = mock_cm
         mock_state.active_connector = None
         mock_state.master_stocks_cache = {
             "005930": {"_subscribed": True},
@@ -807,8 +809,8 @@ class TestDoUnregAll:
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.ws_subscribe_control._set_status"):
             await _do_unreg_all()
-            mock_ws.unsubscribe_stocks.assert_awaited_once()
-            args = mock_ws.unsubscribe_stocks.call_args.args[0]
+            mock_cm.unsubscribe_stocks.assert_awaited_once()
+            args = mock_cm.unsubscribe_stocks.call_args.args[0]
             assert "005930" in args
             assert "000660" in args
             assert "035420" not in args

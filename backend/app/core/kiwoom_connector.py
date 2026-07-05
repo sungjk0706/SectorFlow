@@ -352,7 +352,7 @@ class KiwoomConnector(BrokerConnector):
 
         success_all = True
         for payload in payloads:
-            ok, rc = await _ws_send_reg_unreg_and_wait_ack(payload)
+            ok, rc = await _ws_send_reg_unreg_and_wait_ack(payload, sender=self)
             if not ok or str(rc) != "0":
                 success_all = False
         return success_all
@@ -371,7 +371,7 @@ class KiwoomConnector(BrokerConnector):
 
         success_all = True
         for payload in payloads:
-            ok = await _ws_send_remove_fire_and_forget(payload)
+            ok = await _ws_send_remove_fire_and_forget(payload, sender=self)
             if not ok:
                 success_all = False
         return success_all
@@ -389,7 +389,7 @@ class KiwoomConnector(BrokerConnector):
 
         for payload in payloads:
             try:
-                await _ws_send_reg_unreg_and_wait_ack(payload)
+                await _ws_send_reg_unreg_and_wait_ack(payload, sender=self)
             except RuntimeError:
                 logger.warning("[증권사연결] subscribe_dynamic — 이벤트 루프 없음", exc_info=True)
 
@@ -405,7 +405,7 @@ class KiwoomConnector(BrokerConnector):
 
         for payload in payloads:
             try:
-                await _ws_send_reg_unreg_and_wait_ack(payload)
+                await _ws_send_reg_unreg_and_wait_ack(payload, sender=self)
             except RuntimeError:
                 logger.warning("[증권사연결] unsubscribe_dynamic — 이벤트 루프 없음", exc_info=True)
 
@@ -417,7 +417,7 @@ class KiwoomConnector(BrokerConnector):
         from backend.app.services.engine_ws_reg import build_index_reg_payload
         from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
         payload = build_index_reg_payload()
-        ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload)
+        ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload, sender=self)
         if ok:
             logger.info("[증권사연결] 업종지수(0J) 구독 완료")
         else:

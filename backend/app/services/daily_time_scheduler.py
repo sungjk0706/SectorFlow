@@ -803,12 +803,14 @@ async def _do_unreg_all() -> None:
         # Broker Abstraction: subscribe_stocks / unsubscribe_stocks 추상 API 사용
         ok = await ws.unsubscribe_stocks(all_codes)
 
-        # 키움증권일 때만 계좌 실시간도 해지 (grp 10)
-        if ws.broker_id == "kiwoom":
+        # 키움증권일 때만 계좌 실시간도 해지 (grp 10) — kiwoom 커넥터 직접 조회
+        cm = state.connector_manager
+        kiwoom_conn = cm.get_connector("kiwoom") if cm else None
+        if kiwoom_conn and kiwoom_conn.is_connected():
             broker_nm = str(state.integrated_system_settings_cache["broker"]).lower().strip()
             acnt_no = str(state.integrated_system_settings_cache.get(f"{broker_nm}_account_no", "") or "").strip()
             if acnt_no:
-                await ws.send_message({
+                await kiwoom_conn.send_message({
                     "trnm": "REMOVE", "grp_no": "10", "refresh": "0",
                     "data": [{"item": [""], "type": ["00", "04"]}],
                 })

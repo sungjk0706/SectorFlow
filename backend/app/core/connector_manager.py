@@ -175,8 +175,11 @@ class ConnectorManager:
         per_conn = max(1, len(codes) // len(connected))
         all_ok = True
         idx = 0
-        for bid, c in connected:
-            chunk = codes[idx:idx + per_conn]
+        for i, (bid, c) in enumerate(connected):
+            if i == len(connected) - 1:
+                chunk = codes[idx:]
+            else:
+                chunk = codes[idx:idx + per_conn]
             idx += per_conn
             if not chunk:
                 break
@@ -222,17 +225,25 @@ class ConnectorManager:
         return all_ok
 
     async def subscribe_account(self) -> bool:
-        """계좌 실시간 구독 라우팅"""
+        """계좌 실시간 구독 라우팅 — subscribe_account() 구현 커넥터에 위임"""
         for c in self._connectors.values():
             if c.is_connected() and hasattr(c, "subscribe_account"):
                 return await c.subscribe_account() # type: ignore
         return False
 
     async def subscribe_index(self) -> bool:
-        """업종지수(0J) 실시간 구독 라우팅"""
+        """업종지수 실시간 구독 라우팅 — subscribe_index() 구현 커넥터에 위임"""
         for c in self._connectors.values():
             if c.is_connected() and hasattr(c, "subscribe_index"):
                 return await c.subscribe_index() # type: ignore
+        return False
+
+    def supports_ack(self) -> bool:
+        """ACK 지원 여부 — 연결된 커넥터 중 하나라도 ACK 지원하면 True."""
+        for c in self._connectors.values():
+            if c.is_connected() and hasattr(c, "supports_ack"):
+                if c.supports_ack(): # type: ignore
+                    return True
         return False
 
     async def unsubscribe_all(self) -> bool:
