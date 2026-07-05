@@ -1,0 +1,369 @@
+"""buy_order_executor.py 단위 테스트 — 매수 주문 실행 경로 검증.
+
+evaluate_buy_candidates의 게이트 체크, 매수 시도, State Gate 동작을 검증.
+engine_state 및 관련 모듈은 mock로 격리.
+"""
+from __future__ import annotations
+
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from backend.app.services import buy_order_executor
+from backend.app.services.buy_order_executor import evaluate_buy_candidates
+from backend.app.domain.models import StockScore, SectorScore, SectorSummary, BuyTarget
+
+
+# ── 헬퍼 ──────────────────────────────────────────────────────────────────────
+
+def _stock(code="005930", guard_pass=True, cur_price=70000, sector="반도체", name="삼성전자", nxt_enable=False):
+    s = StockScore(
+        code=code, name=name, sector=sector,
+        change_rate=1.0, trade_amount=1_000_000_000,
+        avg_amt_5d=40, ratio_5d_pct=10.0, strength=100.0,
+        cur_price=cur_price, change=700, market_type="0", nxt_enable=nxt_enable,
+        guard_pass=guard_pass,
+    )
+    return s
+
+
+def _sector_summary(stocks=None, buy_targets=None):
+    if stocks is None:
+        stocks = [_stock()]
+    if buy_targets is None:
+        buy_targets = [BuyTarget(rank=1, sector_rank=1, stock=stocks[0])]
+    return SectorSummary(
+        sectors=[],
+        buy_targets=buy_targets,
+        blocked_targets=[],
+        version=1,
+    )
+
+
+def _default_settings(**overrides):
+    s = {
+        "test_mode_on": True,
+        "max_stock_cnt": 5,
+        "buy_amt": 1_000_000,
+        "max_daily_total_buy_amt": 0,
+        "max_daily_total_buy_on": False,
+        "buy_interval_on": False,
+        "buy_interval_min": 0,
+        "time_scheduler_on": True,
+        "auto_buy_on": True,
+        "buy_time_start": "09:00",
+        "buy_time_end": "15:30",
+    }
+    s.update(overrides)
+    return s
+
+
+# ── 픽스처 ─────────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def fresh_state():
+    """engine_state.state mock — 각 테스트마다 초기화."""
+    mock_state = MagicMock()
+    mock_state.running = True
+    mock_state.auto_trade = MagicMock()
+    mock_state.auto_trade.execute_buy = AsyncMock(return_value=True)
+    mock_state.auto_trade._daily_buy_spent = 0
+    mock_state.auto_trade._ensure_daily_buy_counter = AsyncMock()
+    mock_state.sector_summary_cache = _sector_summary()
+    mock_state.integrated_system_settings_cache = _default_settings()
+    mock_state.checked_stocks = set()
+    mock_state.access_token = "test_token"
+    mock_state._last_global_buy_ts = 0.0
+    return mock_state
+
+
+@pytest.fixture
+def reset_cash_gate():
+    """_cash_insufficient 플래그 초기화."""
+    buy_order_executor._cash_insufficient = False
+    yield
+    buy_order_executor._cash_insufficient = False
+
+
+# ── 조기 반환 게이트 ───────────────────────────────────────────────────────────
+
+class TestEarlyReturnGates:
+    @pytest.mark.asyncio
+    async def test_not_running_returns_early(self, fresh_state, reset_cash_gate):
+        fresh_state.running = False
+        with patch("backend.app.services.engine_state.state", fresh_state):
+            await evaluate_buy_candidates()
+        # auto_trade.execute_buy should not be called
+        fresh_state.auto_trade.execute_buy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_auto_trade_returns_early(self, fresh_state, reset_cash_gate):
+        fresh_state.auto_trade = None
+        with patch("backend.app.services.engine_state.state", fresh_state):
+            await evaluate_buy_candidates()
+
+    @pytest.mark.asyncio
+    async def test_no_sector_summary_returns_early(self, fresh_state, reset_cash_gate):
+        fresh_state.sector_summary_cache = None
+        with patch("backend.app.services.engine_state.state", fresh_state):
+            await evaluate_buy_candidates()
+
+    @pytest.mark.asyncio
+    async def test_empty_buy_targets_returns_early(self, fresh_state, reset_cash_gate):
+        fresh_state.sector_summary_cache = SectorSummary(
+            sectors=[], buy_targets=[], blocked_targets=[], version=1,
+        )
+        with patch("backend.app.services.engine_state.state", fresh_state):
+            await evaluate_buy_candidates()
+
+    @pytest.mark.asyncio
+    async def test_auto_buy_not_effective_returns_early(self, fresh_state, reset_cash_gate):
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=False):
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_holding_count_exceeds_max_returns_early(self, fresh_state, reset_cash_gate):
+        fresh_state.integrated_system_settings_cache = _default_settings(max_stock_cnt=1)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[{"qty": 1}, {"qty": 2}]):
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_buy_amt_zero_returns_early(self, fresh_state, reset_cash_gate):
+        fresh_state.integrated_system_settings_cache = _default_settings(buy_amt=0)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]):
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_daily_limit_exceeded_returns_early(self, fresh_state, reset_cash_gate):
+        fresh_state.integrated_system_settings_cache = _default_settings(
+            max_daily_total_buy_on=True, max_daily_total_buy_amt=5_000_000,
+        )
+        fresh_state.auto_trade._daily_buy_spent = 5_000_000
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]):
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_not_called()
+
+
+# ── State Gate (주문가능 금액 부족) ────────────────────────────────────────────
+
+class TestCashInsufficientGate:
+    @pytest.mark.asyncio
+    async def test_zero_cash_sets_gate_and_returns(self, fresh_state, reset_cash_gate):
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=0):
+            await evaluate_buy_candidates()
+        assert buy_order_executor._cash_insufficient is True
+        fresh_state.auto_trade.execute_buy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_positive_cash_clears_gate(self, fresh_state, reset_cash_gate):
+        buy_order_executor._cash_insufficient = True
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            await evaluate_buy_candidates()
+        assert buy_order_executor._cash_insufficient is False
+
+
+# ── 매수 간격 게이트 ───────────────────────────────────────────────────────────
+
+class TestBuyIntervalGate:
+    @pytest.mark.asyncio
+    async def test_buy_interval_blocks_within_period(self, fresh_state, reset_cash_gate):
+        import time as _time
+        fresh_state.integrated_system_settings_cache = _default_settings(
+            buy_interval_on=True, buy_interval_min=5,
+        )
+        fresh_state._last_global_buy_ts = _time.time()
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000):
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_buy_interval_passes_after_period(self, fresh_state, reset_cash_gate):
+        import time as _time
+        fresh_state.integrated_system_settings_cache = _default_settings(
+            buy_interval_on=True, buy_interval_min=1,
+        )
+        fresh_state._last_global_buy_ts = _time.time() - 120  # 2분 전
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_awaited_once()
+
+
+# ── 매수 실행 경로 ─────────────────────────────────────────────────────────────
+
+class TestBuyExecution:
+    @pytest.mark.asyncio
+    async def test_calls_execute_buy_for_first_target(self, fresh_state, reset_cash_gate):
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=True)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_skips_guard_failed_stock(self, fresh_state, reset_cash_gate):
+        s_blocked = _stock(code="A001", guard_pass=False)
+        s_pass = _stock(code="A002", guard_pass=True)
+        fresh_state.sector_summary_cache = SectorSummary(
+            sectors=[],
+            buy_targets=[
+                BuyTarget(rank=1, sector_rank=1, stock=s_blocked),
+                BuyTarget(rank=2, sector_rank=1, stock=s_pass),
+            ],
+            blocked_targets=[],
+            version=1,
+        )
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=True)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            await evaluate_buy_candidates()
+        # Should only call execute_buy for A002 (guard_pass=True), not A001
+        call_args = fresh_state.auto_trade.execute_buy.call_args
+        assert call_args.args[0] == "A002"
+
+    @pytest.mark.asyncio
+    async def test_after_hours_blocks_non_nxt_stock(self, fresh_state, reset_cash_gate):
+        s = _stock(code="A001", nxt_enable=False)
+        fresh_state.sector_summary_cache = _sector_summary(
+            stocks=[s],
+            buy_targets=[BuyTarget(rank=1, sector_rank=1, stock=s)],
+        )
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=True)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=True), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_after_hours_allows_nxt_stock(self, fresh_state, reset_cash_gate):
+        s = _stock(code="A001", nxt_enable=True)
+        fresh_state.sector_summary_cache = _sector_summary(
+            stocks=[s],
+            buy_targets=[BuyTarget(rank=1, sector_rank=1, stock=s)],
+        )
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=True)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=True), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=True):
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_zero_price_breaks_loop(self, fresh_state, reset_cash_gate):
+        s = _stock(code="A001", cur_price=0)
+        fresh_state.sector_summary_cache = _sector_summary(
+            stocks=[s],
+            buy_targets=[BuyTarget(rank=1, sector_rank=1, stock=s)],
+        )
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=True)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_execute_buy_exception_does_not_crash(self, fresh_state, reset_cash_gate):
+        fresh_state.auto_trade.execute_buy = AsyncMock(side_effect=Exception("test error"))
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            # Should not raise
+            await evaluate_buy_candidates()
+
+    @pytest.mark.asyncio
+    async def test_only_first_target_attempted(self, fresh_state, reset_cash_gate):
+        s1 = _stock(code="A001")
+        s2 = _stock(code="A002")
+        fresh_state.sector_summary_cache = SectorSummary(
+            sectors=[],
+            buy_targets=[
+                BuyTarget(rank=1, sector_rank=1, stock=s1),
+                BuyTarget(rank=2, sector_rank=1, stock=s2),
+            ],
+            blocked_targets=[],
+            version=1,
+        )
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=True)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            await evaluate_buy_candidates()
+        # Only 1 call (first target), then break
+        assert fresh_state.auto_trade.execute_buy.await_count == 1
