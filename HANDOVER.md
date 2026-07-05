@@ -13,7 +13,7 @@
 - **백엔드**: pytest 1016 passed in 36.76s — hang 없이 전체 완료
 - **커버리지**: Priority 3 5개 파일 전부 80%+ 달성 (89% 평균)
 - **프론트엔드**: tsc passed, vitest 109 passed, eslint 0 warnings (0 errors)
-- **Git**: 커밋 필요
+- **Git**: 커밋 푸시 완료 (d2e9977)
 
 ## 다음 단계
 - **market_close_pipeline.py 리팩토링**: `_run_confirmed_pipeline` 추출 — 테스트 86% 커버리지 기반으로 진행 가능
