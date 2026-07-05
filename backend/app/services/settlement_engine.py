@@ -243,13 +243,14 @@ async def _load(force_reload: bool = False) -> None:
 # ── 브로드캐스트 ────────────────────────────────────────────────────────────
 
 async def _broadcast_delta() -> None:
-    """계좌 변경 브로드캐스트. engine_service의 account-update 메커니즘 사용."""
+    """계좌 변경 브로드캐스트. engine_account의 account-update 메커니즘 사용."""
     try:
-        from backend.app.services import engine_service as es
+        from backend.app.services.engine_state import state
+        from backend.app.services.engine_account import _refresh_account_snapshot_meta, _broadcast_account
         from backend.app.core.trade_mode import is_test_mode
-        if is_test_mode(es.state.integrated_system_settings_cache):
-            await es._refresh_account_snapshot_meta()
-            await es._broadcast_account(reason="settlement_delta")
+        if is_test_mode(state.integrated_system_settings_cache):
+            await _refresh_account_snapshot_meta()
+            await _broadcast_account(reason="settlement_delta")
     except Exception as e:
         logger.warning(
             "[정산엔진] 브로드캐스트 실패 (엔진 미기동 가능): %s", e,

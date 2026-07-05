@@ -259,8 +259,8 @@ async def notify_desktop_settings_toggled(changed_keys_dict: dict | None = None)
             "changed": changed_keys_dict
         }
     else:
-        import backend.app.services.engine_service as _es
-        payload = _es.get_settings_snapshot()
+        from backend.app.services.engine_config import get_settings_snapshot
+        payload = get_settings_snapshot()
         payload["_v"] = 1
     await _safe_broadcast("settings-changed", payload)
 
@@ -268,8 +268,8 @@ async def notify_desktop_settings_toggled(changed_keys_dict: dict | None = None)
 async def notify_desktop_sector_scores(*, force: bool = False) -> None:
     """업종 순위 + 상태 + 수신율 전송 → WS sector-scores. delta 전송."""
     from backend.app.services.engine_state import state
-    import backend.app.services.engine_service as _es
-    scores, ranked_count = _es.get_sector_scores_snapshot()
+    from backend.app.services.sector_data_provider import get_sector_scores_snapshot
+    scores, ranked_count = get_sector_scores_snapshot()
 
     # 수신율 가져오기 (pipeline_compute.py에서 이벤트 기반으로 갱신)
     receive_rate = None
@@ -421,8 +421,8 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
     Args:
         force: True 시 delta 계산 없이 전체 스냅샷 전송 (확정시세/5일봉 다운로드 등 전 종목 데이터 변경 시).
     """
-    import backend.app.services.engine_service as _es
-    stocks = await _es.get_sector_stocks()
+    from backend.app.services.sector_data_provider import get_sector_stocks
+    stocks = await get_sector_stocks()
     new_codes = {s.get("code", "") for s in stocks if s.get("code", "")}
 
     if force or not notify_cache.prev_sector_stock_codes:
@@ -574,9 +574,9 @@ _BUY_TARGET_CMP_KEYS = ("rank", "cur_price", "change_rate", "strength", "trade_a
 
 async def notify_buy_targets_update() -> None:
     """매수후보 목록 변경 시 delta만 WS로 브로드캐스트한다."""
-    import backend.app.services.engine_service as _es
+    from backend.app.services.sector_data_provider import get_buy_targets_sector_stocks
 
-    targets = await _es.get_buy_targets_sector_stocks()
+    targets = await get_buy_targets_sector_stocks()
 
     # 현재 타겟을 code→dict 매핑으로 변환
     cur_map: dict[str, dict] = {}

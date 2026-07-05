@@ -32,15 +32,16 @@ async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_
             )
 
         from backend.app.core.settings_store import apply_settings_updates
-        from backend.app.services import engine_service
+        from backend.app.services.engine_lifecycle import is_engine_running
+        from backend.app.services.engine_service import apply_settings_change
 
         data = {field_name: body["value"]}
         changed_keys = await apply_settings_updates(data)
 
         # 엔진 인메모리 캐시 동기화 및 후처리 실행 (services 레이어로 직접 명시 호출)
-        if engine_service.is_running():
+        if is_engine_running():
             if changed_keys:
-                await engine_service.apply_settings_change(changed_keys)
+                await apply_settings_change(changed_keys)
         else:
             from backend.app.core.sector_stock_cache import save_pending_settings
             await save_pending_settings(changed_keys)
@@ -98,11 +99,13 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         from backend.app.services.trade_history import broadcast_history
         await broadcast_history("test")
         # 7. 보유종목 메모리 리스트 및 캐시 초기화 + 계좌 스냅샷 갱신 + WS account-update 발송
-        from backend.app.services import engine_service as es
+        from backend.app.core.logger import get_logger as _get_logger
         from backend.app.services.engine_state import state
         from backend.app.services.engine_account_notify import _rebuild_positions_cache, notify_cache
+        from backend.app.services.engine_account import _refresh_account_snapshot_meta, _broadcast_account, _broadcast_buy_limit_status
+        _logger = _get_logger("engine")
         subscribed_count = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
-        es.logger.info(
+        _logger.info(
             "[디버그] 초기화 직전 구독목록 positions=%d subscribed=%d layout=%d pos_codes=%d",
             len(state.positions), subscribed_count,
             len(state.integrated_system_settings_cache["sector_stock_layout"]),
@@ -115,15 +118,15 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         state.checked_stocks.clear()
         _rebuild_positions_cache([])
         subscribed_count_after = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
-        es.logger.info(
+        _logger.info(
             "[디버그] 초기화 직후 구독목록 positions=%d subscribed=%d layout=%d pos_codes=%d",
             len(state.positions), subscribed_count_after,
             len(state.integrated_system_settings_cache["sector_stock_layout"]),
             len(notify_cache.positions_code_set),
         )
-        await es._refresh_account_snapshot_meta()
-        await es._broadcast_account(reason="test_data_reset")
-        es.logger.info("[엔진] 보유종목, 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료")
+        await _refresh_account_snapshot_meta()
+        await _broadcast_account(reason="test_data_reset")
+        _logger.info("[엔진] 보유종목, 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료")
         # 8. 수익 이력 초기화 WS 브로드캐스트
         from backend.app.services.engine_account_notify import notify_snapshot_history_update
         await notify_snapshot_history_update()
@@ -138,7 +141,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         # buy_targets 메모리 초기화 (매수후보 테이블 동기화)
         if state.sector_summary_cache and hasattr(state.sector_summary_cache, 'buy_targets'):
             state.sector_summary_cache.buy_targets = []
-        await es._broadcast_buy_limit_status()
+        await _broadcast_buy_limit_status()
         # 10. 통합 초기화 완료 신호 (모든 클라이언트 일괄 동기화)
         from backend.app.services.engine_account_notify import _broadcast
         await _broadcast("test-data-reset-completed", {"_v": 1})

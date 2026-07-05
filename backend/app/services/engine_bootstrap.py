@@ -3,7 +3,7 @@
 엔진 부트스트랩 흐름.
 
 순환 import 방지: `import backend.app.services.engine_state as _st` 로 상태 접근.
-engine_service의 함수가 필요하면 lazy import (`from backend.app.services import engine_service`).
+각 전문 모듈에서 직접 lazy import.
 """
 from __future__ import annotations
 import asyncio
@@ -131,7 +131,7 @@ async def _notify_close_data_ui() -> None:
 
 async def _login_post_pipeline() -> None:
     """LOGIN 성공 후: 잔고 조회 -> 보유종목 REG -> WS 구독 등록."""
-    from backend.app.services import engine_service as es
+    from backend.app.services.sector_data_provider import recompute_sector_summary_now
     state.ws_reg_pipeline_done.clear()
     logger.info("[시작] 로그인 후 파이프라인 진입")
     try:
@@ -147,7 +147,7 @@ async def _login_post_pipeline() -> None:
         elif not _in_ws_window:
             if not state.account_rest_bootstrapped:
                 logger.info("[시작] 파이프라인 -- REST 잔고 선행 조회 시작")
-                from backend.app.services.engine_service import _update_account_memory
+                from backend.app.services.engine_account import _update_account_memory
                 await _update_account_memory(state.integrated_system_settings_cache)
                 logger.info("[시작] 파이프라인 -- REST 잔고 선행 조회 완료 (보유 %d종목)", len(state.positions))
             else:
@@ -155,7 +155,7 @@ async def _login_post_pipeline() -> None:
         else:
             if not state.positions and not state.account_rest_bootstrapped:
                 logger.debug("[시작] 파이프라인 -- 실시간 구독 구간이나 포지션 미적재 -- REST 잔고 1회 조회")
-                from backend.app.services.engine_service import _update_account_memory
+                from backend.app.services.engine_account import _update_account_memory
                 await _update_account_memory(state.integrated_system_settings_cache)
                 logger.debug("[시작] 파이프라인 -- REST 잔고 1회 조회 완료 (보유 %d종목)", len(state.positions))
             else:
@@ -178,7 +178,7 @@ async def _login_post_pipeline() -> None:
             ws = state.connector_manager or state.active_connector
             if ws and ws.is_connected():
                 # 실시간 구독 전 종목 필터링 상태(_filtered)를 최신화하기 위해 1회 재계산
-                await es.recompute_sector_summary_now()
+                await recompute_sector_summary_now()
                 from backend.app.services.engine_ws import _run_sector_reg_pipeline, _ensure_ws_subscriptions_for_positions
                 await _run_sector_reg_pipeline()
                 await _ensure_ws_subscriptions_for_positions()

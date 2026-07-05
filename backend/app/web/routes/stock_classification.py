@@ -70,7 +70,7 @@ async def broadcast_stock_classification_changed() -> None:
     stocks = []
     filter_summary = ""
     try:
-        from backend.app.services.engine_service import get_all_sector_stocks
+        from backend.app.services.sector_data_provider import get_all_sector_stocks
         import backend.app.services.engine_state as _es
         from backend.app.core.sector_stock_cache import assemble_filter_summary
         stocks = await get_all_sector_stocks()
@@ -158,7 +158,7 @@ async def _trigger_recompute() -> None:
 @router.get("/all-stocks")
 async def get_all_stocks(_: str = Depends(get_current_user)):
     """전체 종목(매매부적격 제외) 조회 — 업종분류 페이지 전용."""
-    from backend.app.services.engine_service import get_all_sector_stocks
+    from backend.app.services.sector_data_provider import get_all_sector_stocks
     stocks = await get_all_sector_stocks()
     return {"stocks": stocks}
 
@@ -176,7 +176,7 @@ async def get_stock_classification(_: str = Depends(get_current_user)):
     no_sector_count = 0
     filter_summary = ""
     try:
-        from backend.app.services.engine_service import get_all_sector_stocks
+        from backend.app.services.sector_data_provider import get_all_sector_stocks
         import backend.app.services.engine_state as _es
         from backend.app.core.sector_stock_cache import assemble_filter_summary
         stocks = await get_all_sector_stocks()
@@ -270,7 +270,7 @@ async def move_stocks(body: MoveStocksRequest, _: str = Depends(get_current_user
     """종목 배치 업종 이동 — WS 이벤트 + 재계산 1회만 발생."""
     try:
         from backend.app.core.stock_classification_data import move_stock as _move
-        from backend.app.services.engine_service import get_all_sector_stocks
+        from backend.app.services.sector_data_provider import get_all_sector_stocks
         
         for code in body.stock_codes:
             await _move(code, body.target_sector)

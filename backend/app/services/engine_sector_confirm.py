@@ -74,7 +74,6 @@ async def _flush_sector_recompute_impl() -> None:
     _dirty_codes.clear()
 
     try:
-        import backend.app.services.engine_service as _es
         from backend.app.services.sector_data_provider import get_sector_summary_inputs
         from backend.app.domain.buy_filter import build_buy_targets_from_settings
         from backend.app.domain.sector_calculator import compute_sector_scores
@@ -89,7 +88,7 @@ async def _flush_sector_recompute_impl() -> None:
 
         # 캐시 없음(콜드 스타트) → 전체 재계산 1회 (이후 증분 모드 전환)
         if not existing:
-            await _full_recompute(_es, codes_snapshot)
+            await _full_recompute(codes_snapshot)
             return
 
         # __ALL__ 플래그 + 캐시 존재 → 전체 종목(all_codes)를 dirty로 취급하여 증분 경로 사용
@@ -192,7 +191,7 @@ async def _flush_sector_recompute_impl() -> None:
 
         # buy_targets 변경 시 구독 갱신 + 매수 시도 (이벤트 기반)
         if are_buy_targets_changed(prev_targets, ss.buy_targets):
-            sync_dynamic_subscriptions(_es, ss.buy_targets)
+            sync_dynamic_subscriptions(ss.buy_targets)
             from backend.app.services.buy_order_executor import evaluate_buy_candidates, _cash_insufficient
             if not _cash_insufficient:
                 await evaluate_buy_candidates()
@@ -204,12 +203,12 @@ async def _flush_sector_recompute_impl() -> None:
         logger.warning("[섹터재계산] 증분 재계산 오류: %s", e, exc_info=True)
 
 
-async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
+async def _full_recompute(codes_snapshot: set[str] | None = None) -> None:
     """전체 재계산 (캐시 없을 때 — 콜드 스타트).
 
     비동기 함수. 순수 계산 + 알림 + 이벤트 발행만 수행.
     """
-    from backend.app.services.engine_service import get_sector_summary_inputs
+    from backend.app.services.sector_data_provider import get_sector_summary_inputs
     from backend.app.domain.sector_calculator import compute_full_sector_summary
     from backend.app.domain.buy_filter import build_buy_targets_from_settings
     from backend.app.services.engine_account_notify import (
@@ -249,7 +248,7 @@ async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
 
     # buy_targets 변경 시 구독 갱신 + 매수 시도 (이벤트 기반)
     if are_buy_targets_changed(prev_targets, ss.buy_targets):
-        sync_dynamic_subscriptions(_es, ss.buy_targets)
+        sync_dynamic_subscriptions(ss.buy_targets)
         from backend.app.services.buy_order_executor import evaluate_buy_candidates
         await evaluate_buy_candidates()
 
@@ -260,7 +259,7 @@ async def _full_recompute(_es, codes_snapshot: set[str] | None = None) -> None:
 # ── 0D 구독 delta 갱신 ────────────────────────────────────────────────────
 
 
-def sync_dynamic_subscriptions(es, new_buy_targets) -> None:
+def sync_dynamic_subscriptions(new_buy_targets) -> None:
     """buy_targets 변경 시 동적 구독 delta 갱신 (해지 지연 적용).
 
     신규 구독은 즉시, 해지는 30초 지연 후 적용.
@@ -318,8 +317,7 @@ def sync_dynamic_subscriptions(es, new_buy_targets) -> None:
             loop = asyncio.get_running_loop()
             _PENDING_UNREG_TIMER = loop.call_later(
                 _UNREG_DELAY_SEC,
-                apply_delayed_unsubscription,
-                es
+                apply_delayed_unsubscription
             )
         except RuntimeError:
             pass
@@ -330,7 +328,7 @@ def sync_dynamic_subscriptions(es, new_buy_targets) -> None:
             state.master_stocks_cache[cd]["_subscribed_dynamic"] = True
 
 
-def apply_delayed_unsubscription(es) -> None:
+def apply_delayed_unsubscription() -> None:
     """30초 후 실제 해지 적용."""
     global _PENDING_UNREG_CODES, _PENDING_UNREG_TIMER
 

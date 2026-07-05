@@ -1,105 +1,30 @@
 # -*- coding: utf-8 -*-
 """
-자동매매 엔진 오케스트레이터 (메모리 전용 버전) - 파사드 모듈
-- 전역 상태 변수는 engine_state.py에 저장
-- 분리된 모듈 함수 재내보내기
+설정 변경 동기화 — apply_settings_change 단일 함수 유지.
+파사드 재내보내기는 제거됨. 각 모듈에서 직접 import할 것.
 """
 from backend.app.core.logger import get_logger
-from backend.app.services import engine_account_notify as _account_notify
-from backend.app.services.engine_state import (
-    state,
-)
+from backend.app.services.engine_state import state
 from backend.app.services.engine_account import (
     _refresh_account_snapshot_meta,
     _broadcast_account,
-    _broadcast_buy_limit_status,  # noqa: F401  -- facade re-export
-    _update_account_memory,  # noqa: F401  -- facade re-export
 )
 from backend.app.services.engine_config import (
     get_settings_snapshot,
     refresh_engine_integrated_system_settings_cache,
     _mask_sensitive_settings,
     TRADE_MODE_KEYS,
-    _get_settings,  # noqa: F401  -- facade re-export
-)
-from backend.app.services.engine_radar import (
-    get_subscribed_stocks,
-    get_sector_layout,
-    # get_avg_amt_5d_map 유지: _master_stocks_cache에서 직접 추출
-    get_avg_trade_amount_5d_map,
-    get_high_price_5d_cache,
-    merge_live_price_to_radar_row,
-)
-from backend.app.services.sector_data_provider import (
-    recompute_sector_summary_now,
-    get_sector_stocks,  # noqa: F401  -- facade re-export
-    get_buy_targets_sector_stocks,  # noqa: F401  -- facade re-export
-    get_all_sector_stocks,  # noqa: F401  -- facade re-export
-    get_sector_scores_snapshot,  # noqa: F401  -- facade re-export
-    get_sector_summary_inputs,  # noqa: F401  -- facade re-export
 )
 from backend.app.services.engine_lifecycle import (
     is_engine_running,
-    get_engine_status,
-    on_trade_mode_switched,
-    log_message,
-    get_current_kst_time,
     schedule_engine_task,
-    sync_sell_overrides,
-    broadcast_engine_status,
-    start_engine,  # noqa: F401  -- facade re-export
-    stop_engine,  # noqa: F401  -- facade re-export
+    on_trade_mode_switched,
 )
-from backend.app.services.engine_snapshot import (
-    _run_snapshot_and_sell_check,
-    build_initial_snapshot,  # noqa: F401  -- facade re-export
-    build_sector_stocks_payload,  # noqa: F401  -- facade re-export
+from backend.app.services.sector_data_provider import (
+    recompute_sector_summary_now,
 )
-from backend.app.services.engine_ws import (
-    _broker_message_handler,  # noqa: F401  -- facade re-export
-)
-
-# ── engine_account_notify 재내보내기 ────────────────────────────────────
-broadcast_account_update = _account_notify.broadcast_account_update
-broadcast_engine_status_ws = _account_notify.broadcast_engine_status_ws
-notify_desktop_trade_price = _account_notify.notify_desktop_trade_price
-register_account_ws_queue = _account_notify.register_account_ws_queue
-register_desktop_buy_radar_notifier = _account_notify.register_desktop_buy_radar_notifier
-register_desktop_account_tabs_refresh = _account_notify.register_desktop_account_tabs_refresh
-register_desktop_header_refresh_notifier = _account_notify.register_desktop_header_refresh_notifier
-register_desktop_trade_price_notifier = _account_notify.register_desktop_trade_price_notifier
-notify_desktop_account_tabs_refresh = _account_notify.notify_desktop_account_tabs_refresh
-notify_desktop_buy_radar_only = _account_notify.notify_desktop_buy_radar_only
-register_engine_ws_queue = _account_notify.register_engine_ws_queue
-unregister_account_ws_queue = _account_notify.unregister_account_ws_queue
-unregister_engine_ws_queue = _account_notify.unregister_engine_ws_queue
-register_desktop_index_notifier = _account_notify.register_desktop_index_notifier
-register_desktop_sector_notifier = _account_notify.register_desktop_sector_notifier
-notify_desktop_sector_refresh = _account_notify.notify_desktop_sector_refresh
-notify_desktop_sector_scores = _account_notify.notify_desktop_sector_scores
-register_desktop_settings_toggled_notifier = _account_notify.register_desktop_settings_toggled_notifier
-notify_desktop_settings_toggled = _account_notify.notify_desktop_settings_toggled
-notify_snapshot_history_update = _account_notify.notify_snapshot_history_update
-notify_buy_targets_update = _account_notify.notify_buy_targets_update
-notify_desktop_sector_stocks_refresh = _account_notify.notify_desktop_sector_stocks_refresh
 
 logger = get_logger("engine")
-
-# ── 재내보내기 (Facade Pattern) ─────────────────────────────────────────
-# engine_radar (이름이 다른 별칭만 명시)
-get_pending_stocks = get_subscribed_stocks
-get_sector_stock_layout = get_sector_layout
-get_avg_amt_5d_map = get_avg_trade_amount_5d_map
-get_high_5d_cache = get_high_price_5d_cache
-_overlay_radar_row_with_live_price = merge_live_price_to_radar_row
-
-# engine_lifecycle (이름이 다른 별칭만 명시)
-is_running = is_engine_running
-get_status = get_engine_status
-_log = log_message
-_now_kst = get_current_kst_time
-_sync_sell_overrides_from_settings = sync_sell_overrides
-_broadcast_engine_ws = broadcast_engine_status
 
 
 async def apply_settings_change(changed_keys: set[str]) -> None:
@@ -277,5 +202,4 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
                 logger.info("[설정] tele_on=OFF → 텔레그램 폴링 종료")
         except Exception:
             logger.warning("[설정] 텔레그램 폴링 토글 실패", exc_info=True)
-_run_snapshot_and_sell_check = _run_snapshot_and_sell_check
 

@@ -297,14 +297,14 @@ class TelegramBot:
     ) -> bool:
         """현재값 반전 후 저장. 새 값 반환."""
         from backend.app.core.settings_file import update_settings
-        from backend.app.services import engine_service
+        from backend.app.services.engine_config import refresh_engine_integrated_system_settings_cache
         from backend.app.services.engine_state import state
 
         flat = state.integrated_system_settings_cache
         cur = bool(flat[key])
         new = not cur
         await update_settings({key: new})
-        await engine_service.refresh_engine_integrated_system_settings_cache(None, use_root=True)
+        await refresh_engine_integrated_system_settings_cache(None, use_root=True)
         from backend.app.services.engine_account_notify import (
             notify_desktop_header_refresh,
             notify_desktop_settings_toggled,
@@ -356,11 +356,11 @@ class TelegramBot:
 
     async def _cmd_status_full(self, token: str, chat_id: str, profile: str | None = None):
         try:
-            from backend.app.services.engine_service import get_status
+            from backend.app.services.engine_lifecycle import get_engine_status
             from backend.app.services.engine_account import get_account_snapshot
             from backend.app.core.settings_file import load_integrated_system_settings
 
-            eng = get_status()
+            eng = get_engine_status()
             eng_running = eng.get("running", False)
             flat = await load_integrated_system_settings()
             t_on = bool(flat["time_scheduler_on"])
@@ -440,10 +440,10 @@ class TelegramBot:
     async def _cmd_sector(self, token: str, chat_id: str) -> None:
         """섹터 강도 상위/하위 요약."""
         try:
-            from backend.app.services import engine_service
+            from backend.app.services.sector_data_provider import get_sector_summary_inputs
             from backend.app.domain.sector_calculator import compute_full_sector_summary
 
-            inputs = await engine_service.get_sector_summary_inputs()
+            inputs = await get_sector_summary_inputs()
             if not inputs.get("all_codes"):
                 await self._send(token, chat_id, " 종목 데이터가 없습니다. 엔진 가동 후 다시 시도하세요.")
                 return
@@ -489,9 +489,9 @@ class TelegramBot:
     async def _cmd_buy_candidates(self, token: str, chat_id: str) -> None:
         """매수후보 1~10순위 전송."""
         try:
-            from backend.app.services import engine_service
+            from backend.app.services.sector_data_provider import get_buy_targets_sector_stocks
 
-            targets = await engine_service.get_buy_targets_sector_stocks()
+            targets = await get_buy_targets_sector_stocks()
             now_str = datetime.now(_KST).strftime("%H:%M")
 
             if not targets:
