@@ -10,15 +10,16 @@
 ## 현재 상태
 - **빌드**: 백엔드 py_compile OK
 - **테스트**: pytest 108 passed, 0 failed
-- **정적 분석**: ruff all checks passed, mypy attr-defined 에러 0개 (라이브러리 stubs 누락 1개 별도)
-- **Git**: 커밋 미수행 (사용자 확인 필요)
+- **정적 분석**: ruff all checks passed, mypy attr-defined 에러 0개
+- **Git**: `beca1f4` 커밋 푸시 완료
 
 ## 다음 단계
 - **브라우저 런타임 검증 (대기)**: 테스트모드 매수/매도 시 체결가 로그에서 슬리피지 적용 확인 (예: 70,000원 매수 → 70,100원 체결)
 - **WS 구독 분산 최적화 (대기)**: `ConnectorManager` 구현됨, 구독 분산 미구현
 
 ## 미해결 문제
-- 없음
+- **mypy `exchange_calendars` 라이브러리 stubs 누락 (1개)**: `trading_calendar.py:86` — `exchange_calendars` 패키지에 py.typed marker 또는 type stubs 없음. mypy `--explicit-package-bases` 실행 시 `[import-untyped]` 에러 발생. 다음 세션에서 조사 필요
+  - 조사 순서: ① `exchange_calendars` 패키지 설치 여부 및 버전 확인 ② `types-exchange-calendars` 또는 커뮤니티 stubs 존재 여부 확인 ③ 없으면 mypy 설정에 `ignore_missing_imports = True` 또는 해당 줄에 `# type: ignore[import-untyped]` 적용 검토
 
 ## 개선 필요 영역
 - **파사드 임포트 정리 (선택적)**: `engine_service.py`가 다수 모듈에서 함수를 재내보내기(facade) 하고 있음. 직접 import로 변경하면 순환 import 위험 없이 코드 명확성 향상 가능. 현재는 정상 동작하므로 우선순위 낮음
