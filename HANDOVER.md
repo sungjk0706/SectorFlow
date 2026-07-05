@@ -1,22 +1,25 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-06: pytest hang 근본 해결 — 3개 파일 5개 원인 제거**
-  - `test_engine_ws.py`: 실제 `asyncio.Lock`/`asyncio.Event`/`asyncio.wait_for` → 전부 mock 교체, `test_not_logged_in`의 `_ws_live` mock 누락 수정, `subscribe_dynamic_data`/`unsubscribe_dynamic_data`의 `engine_state.state` 이중 patch
-  - `test_trading.py`: `_fire_and_forget_telegram` autouse patch (NotificationWorker 백그라운드 태스크 생성 차단), `asyncio.create_task` mock (fake_fill_event 태스크 차단)
-  - `test_sector_calculator.py`: `get_db_connection` autouse mock (sector_mapping DB 쿼리 hang 차단)
-  - `conftest.py`: async fixture 제거, sleep patch 제거 — 최소 캐시 리셋 fixture만 유지
-  - `pytest.ini`: `timeout_method = signal`로 변경 (asyncio C-level wait interrupt 가능)
+- **2026-07-06: Priority 3 테스트 커버리지 80%+ 달성 — 5개 파일 테스트 작성**
+  - `test_data_manager.py`: 96% (136줄, 6 miss)
+  - `test_pipeline_gateway.py`: 87% (86줄, 11 miss)
+  - `test_pipeline_compute.py`: 92% (344줄, 26 miss) — start/stop loop, _compute_loop_impl, _handle_real_01_tick, _sector_recompute_loop_impl 포함
+  - `test_daily_time_scheduler.py`: 90% (601줄, 59 miss)
+  - `test_market_close_pipeline.py`: 86% (712줄, 98 miss)
+  - 전체 1016 passed in 36.76s, 통합 커버리지 89% (1879줄 중 200 miss)
 
 ## 현재 상태
-- **백엔드**: pytest 719 passed in 12.85s — hang 없이 전체 완료
+- **백엔드**: pytest 1016 passed in 36.76s — hang 없이 전체 완료
+- **커버리지**: Priority 3 5개 파일 전부 80%+ 달성 (89% 평균)
 - **프론트엔드**: tsc passed, vitest 109 passed, eslint 0 warnings (0 errors)
-- **Git**: 커밋 푸시 완료 (241f59f)
+- **Git**: 커밋 필요
 
 ## 다음 단계
+- **market_close_pipeline.py 리팩토링**: `_run_confirmed_pipeline` 추출 — 테스트 86% 커버리지 기반으로 진행 가능
 - **브라우저 런타임 검증 (대기)**: 테스트모드 매수/매도 시 체결가 로그에서 슬리피지 적용 확인
 - **WS 구독 분산 최적화 (대기)**: `ConnectorManager` 구현됨, 구독 분산 미구현
-- **테스트 커버리지 개선**: Priority 2 이상 진행
+- **테스트 커버리지 개선**: Priority 4 이상 진행
 
 ## 미해결 문제
 - 없음
@@ -89,10 +92,12 @@ python -m pytest backend/tests/[파일명] -v --timeout=15 --timeout-method=sign
 - `test_engine_ws_reg.py` ✅, `test_engine_account.py` ✅, `test_engine_account_notify.py` ✅
 - `test_engine_account_rest.py` ✅, `test_engine_symbol_utils.py` ✅
 
-#### Priority 3 — 파이프라인/스케줄러 (0% 커버, 중기)
-- `market_close_pipeline.py` (712줄, 0%), `pipeline_compute.py` (344줄, 0%)
-- `pipeline_gateway.py` (86줄, 0%), `daily_time_scheduler.py` (601줄, 0%)
-- `data_manager.py` (136줄, 14%)
+#### Priority 3 — 파이프라인/스케줄러 (완료)
+- `market_close_pipeline.py` (712줄, 86%) ✅
+- `pipeline_compute.py` (344줄, 92%) ✅
+- `pipeline_gateway.py` (86줄, 87%) ✅
+- `daily_time_scheduler.py` (601줄, 90%) ✅
+- `data_manager.py` (136줄, 96%) ✅
 
 #### Priority 4 — 브로커 커넥터 (0% 커버, 장기)
 - `kiwoom_connector.py`, `kiwoom_rest.py`, `kiwoom_order.py`, `kiwoom_providers.py`, `kiwoom_stock_rest.py`
