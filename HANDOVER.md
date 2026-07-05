@@ -10,7 +10,7 @@
 - **백엔드**: `test_market_close_pipeline.py` 52 passed in 5.49s, py_compile OK
 - **리팩토링**: `_run_confirmed_pipeline` 7개 step 함수 분리 완료
 - **프론트엔드**: tsc passed, vitest 109 passed, eslint 0 warnings (0 errors)
-- **Git**: 커밋 필요 (리팩토링 미커밋)
+- **Git**: 커밋 푸시 완료 (b33cd7c)
 
 ## 다음 단계
 - **리팩토링 후 전체 테스트 회귀**: `pytest backend/tests/ -v --timeout=30` 전체 실행 확인
