@@ -248,7 +248,8 @@ class AutoTradeManager:
         else:
             _orderable = get_risk_manager().account_manager.get_withdrawable_deposit()
         _max_available = min(effective_buy_amt, _orderable)
-        buy_qty = _max_available // int(current_price)
+        _est_buy_price = dry_run.estimate_fill_price(int(current_price), "BUY") if is_test_mode(raw_all) else int(current_price)
+        buy_qty = _max_available // _est_buy_price
         if buy_qty <= 0:
             return False
 
@@ -278,6 +279,7 @@ class AutoTradeManager:
         if is_test_mode(base_settings):
             from backend.app.services.engine_strategy_core import check_test_buy_power
             _check_price = int(order_price) if order_price > 0 else int(current_price)
+            _check_price = dry_run.estimate_fill_price(_check_price, "BUY")
             ok, reason = check_test_buy_power(
                 _check_price, buy_qty, self._daily_buy_spent,
             )
@@ -331,6 +333,8 @@ class AutoTradeManager:
         )
 
         fill_price = int(order_price) if order_price > 0 else int(current_price)
+        if is_test_mode(base_settings):
+            fill_price = dry_run.estimate_fill_price(fill_price, "BUY")
         spent = int(buy_qty * fill_price)
         self._daily_buy_spent += max(0, spent)
         self._symbol_daily_buy_spent[stk_cd] = self._symbol_daily_buy_spent.get(stk_cd, 0) + max(0, spent)
@@ -509,6 +513,8 @@ class AutoTradeManager:
 
         # ── 체결 이력 기록 ────────────────────────────────────────────────────
         _sell_price = int(order_price) if order_price > 0 else int(cur_price)
+        if _mode == "test":
+            _sell_price = dry_run.estimate_fill_price(_sell_price, "SELL")
         await trade_history.record_sell(
             stk_cd=stk_cd, stk_nm=stk_nm,
             price=_sell_price, qty=qty,
