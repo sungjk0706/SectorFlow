@@ -1,16 +1,16 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-05: 테스트 데이터 전체 초기화 실패 근본 해결**
-  - `engine_service.py:13-18`: `_broadcast_buy_limit_status` import 누락 추가 — `reset_test_data` 핸들러에서 `es._broadcast_buy_limit_status()` 호출 시 `AttributeError` 발생이 근본 원인
-  - `settings.py:94,120`: `es._positions = []` → `es.state.positions = []`, `es._last_global_buy_ts = 0.0` → `es.state._last_global_buy_ts = 0.0` (원칙 10 SSOT 위반 수정)
-  - `trading.py:357-359`: `engine_service` 경유 `_broadcast_buy_limit_status()` → `engine_account` 직접 import로 변경 (원칙 16 살아있는 경로 배선)
-  - 검증: `py_compile` 3개 파일 OK, `pytest` 79 passed
+- **2026-07-05: 재매수 차단 토글 ON→OFF 초기화 근본 원인 제거**
+  - `settings.ts:72-76`: `saveSection()` API 성공 후 로컬 store에 저장값 반영 (기존: WS 이벤트로만 갱신 → `onSync()`가 stale 값으로 토글 덮어쓰기)
+  - `settings.py:47-62`: 엔진 미실행 시 `refresh_engine_integrated_system_settings_cache` + `notify_desktop_settings_toggled` WS 브로드캐스트 추가 (기존: `save_pending_settings`만 호출 → WS 누락)
+  - `buy-settings.ts`: 5개 토글 `autoSave` → `saveImmediate` 전환 (sell-settings와 패턴 일치화)
+  - 검증: `npm run build` OK (51 modules), `py_compile` OK
 
 ## 현재 상태
-- **빌드**: `py_compile` 3개 파일 OK (engine_service.py, settings.py, trading.py)
-- **테스트**: 백엔드 79 passed, 프론트엔드 109 tests passed (이전 검증)
-- **앱 기동**: 런타임 확인 필요 — 테스트 데이터 초기화 버튼 정상 동작 여부 사용자 직접 확인 필요
+- **빌드**: 프론트엔드 `npm run build` OK, 백엔드 `py_compile` OK
+- **테스트**: 런타임 테스트 미실행 (이전 세션: 백엔드 79 passed, 프론트엔드 109 passed)
+- **앱 기동**: 토글 ON/OFF 유지 여부 사용자 직접 확인 필요
 
 ## 다음 단계
 - **장중 런타임 검증 (대기)**: 실시간 PnL, 업종지수, 매수 시도, 데이터 동기화, 텔레그램 분리, Pending Changes, 레거시 마이그레이션 — 장중 사용자 직접 확인 필요
