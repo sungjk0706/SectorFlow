@@ -116,7 +116,10 @@ function mount(container: HTMLElement): void {
 
   const receiveRateSpan = document.createElement('span')
   Object.assign(receiveRateSpan.style, { fontSize: '12px', color: COLOR.down, marginLeft: '8px' })
-  receiveRateSpan.textContent = '(현재: 0%)'
+  const _initialRate = uiStore.getState().receiveRate
+  receiveRateSpan.textContent = _initialRate
+    ? `(현재: ${_initialRate.pct.toFixed(1)}%)`
+    : '(현재: 0%)'
 
   const labelContainer = document.createElement('div')
   Object.assign(labelContainer.style, { display: 'flex', alignItems: 'center' })
