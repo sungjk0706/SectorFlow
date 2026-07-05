@@ -356,7 +356,8 @@ class TelegramBot:
 
     async def _cmd_status_full(self, token: str, chat_id: str, profile: str | None = None):
         try:
-            from backend.app.services.engine_service import get_status, get_account_snapshot
+            from backend.app.services.engine_service import get_status
+            from backend.app.services.engine_account import get_account_snapshot
             from backend.app.core.settings_file import load_integrated_system_settings
 
             eng = get_status()
@@ -368,7 +369,7 @@ class TelegramBot:
             eff = auto_trading_effective(flat)
             now_str = datetime.now(_KST).strftime("%H:%M:%S")
 
-            snap = get_account_snapshot()
+            snap = await get_account_snapshot()
             acct_lines = ""
             if snap:
                 deposit    = snap.get("deposit", 0) or 0
@@ -407,9 +408,9 @@ class TelegramBot:
 
     async def _cmd_account(self, token: str, chat_id: str):
         try:
-            from backend.app.services.engine_service import get_account_snapshot
+            from backend.app.services.engine_account import get_account_snapshot
 
-            snap = get_account_snapshot()
+            snap = await get_account_snapshot()
             if not snap:
                 await self._send(token, chat_id, " 계좌 데이터가 없습니다.\n엔진이 실행 중인지 확인하세요.")
                 return
