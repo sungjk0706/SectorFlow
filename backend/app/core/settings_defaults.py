@@ -16,8 +16,6 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "auto_sell_on": False,
     "sell_time_start": "09:00",
     "sell_time_end": "15:20",
-    "holiday_guard_on": True,
-    
     # 웹소켓
     "ws_subscribe_on": False,
     "ws_subscribe_start": "09:00",

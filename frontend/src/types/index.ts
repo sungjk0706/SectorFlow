@@ -185,7 +185,6 @@ export interface AppSettings {
   auto_buy_on: boolean;
   auto_sell_on: boolean;
   time_scheduler_on: boolean;
-  holiday_guard_on: boolean;
 
   // 스케줄러 제어
   scheduler_market_close_on: boolean;
