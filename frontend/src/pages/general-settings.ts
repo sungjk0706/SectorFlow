@@ -25,6 +25,9 @@ const GS = {
   rowPad: '10px 0', // 행 상하 패딩
   inputPad: '6px 10px', // 입력박스 패딩
   btnPad: '6px 20px',   // 저장/액션 버튼 패딩
+  rowBorder: '1px solid #eee',    // 설정 행 구분선
+  descPad: '0 0 4px',             // 설명 텍스트 패딩
+  saveMargin: '12px 0 0',         // 저장 버튼 상단 마진
 } as const
 
 /* ── 모듈 상태 ── */
@@ -216,7 +219,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
 
   // 마스터 토글
   const masterRow = document.createElement('div')
-  Object.assign(masterRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad })
+  Object.assign(masterRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
   const masterLabel = document.createElement('span')
   Object.assign(masterLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
   masterLabel.textContent = '자동매매'
@@ -231,13 +234,13 @@ function renderAutoTradeTab(container: HTMLElement): void {
   container.appendChild(masterRow)
 
   const masterDesc = document.createElement('div')
-  Object.assign(masterDesc.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 4px', marginTop: '-4px' })
+  Object.assign(masterDesc.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px' })
   masterDesc.textContent = '자동매매(매수/매도) 마스터 스위치 — OFF면 모든 매매 중단'
   container.appendChild(masterDesc)
 
   // 자동매수 행
   const autoBuyRow = document.createElement('div')
-  Object.assign(autoBuyRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px' })
+  Object.assign(autoBuyRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
   const autoBuyLabel = document.createElement('span')
   Object.assign(autoBuyLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
   autoBuyLabel.textContent = '자동매수'
@@ -280,7 +283,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
 
   // 자동매도 행
   const autoSellRow = document.createElement('div')
-  Object.assign(autoSellRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px' })
+  Object.assign(autoSellRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
   const autoSellLabel = document.createElement('span')
   Object.assign(autoSellLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
   autoSellLabel.textContent = '자동매도'
@@ -322,12 +325,12 @@ function renderAutoTradeTab(container: HTMLElement): void {
   container.appendChild(autoSellRow)
 
   const descLabel1 = document.createElement('div')
-  Object.assign(descLabel1.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 4px', marginTop: '-4px' })
+  Object.assign(descLabel1.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px' })
   descLabel1.textContent = '거래일 설정시간 내에서만 자동 매수/매도 실행'
   container.appendChild(descLabel1)
 
   const descLabel2 = document.createElement('div')
-  Object.assign(descLabel2.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 4px', marginTop: '-4px', paddingLeft: '20px' })
+  Object.assign(descLabel2.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px' })
   descLabel2.textContent = '공휴일·주말에는 자동매매가 항상 차단됩니다'
   container.appendChild(descLabel2)
 }
@@ -365,7 +368,7 @@ function renderTelegramTab(container: HTMLElement): void {
 
   // tele_on 토글
   const teleRow = document.createElement('div')
-  Object.assign(teleRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad })
+  Object.assign(teleRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
   const teleLabel = document.createElement('span')
   Object.assign(teleLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
   teleLabel.textContent = '텔레그램 알림'
@@ -385,9 +388,9 @@ function renderTelegramTab(container: HTMLElement): void {
 
   for (const k of STR_KEYS) {
     const row = document.createElement('div')
-    Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: '1px solid #eee' })
+    Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
     const lbl = document.createElement('span')
-    Object.assign(lbl.style, { fontSize: GS.label })
+    Object.assign(lbl.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
     lbl.textContent = LABELS[k]
     row.appendChild(lbl)
     const input = document.createElement('input')
@@ -402,7 +405,7 @@ function renderTelegramTab(container: HTMLElement): void {
 
   // 저장 버튼
   const saveRow = document.createElement('div')
-  Object.assign(saveRow.style, { marginTop: '12px', textAlign: 'right' })
+  Object.assign(saveRow.style, { margin: GS.saveMargin, textAlign: 'right' })
   const saveBtn = document.createElement('button')
   saveBtn.type = 'button'
   Object.assign(saveBtn.style, { padding: GS.btnPad, borderRadius: '6px', border: '1px solid #ccc', cursor: 'pointer', fontSize: GS.label })
@@ -452,7 +455,7 @@ function renderAccountTab(container: HTMLElement): void {
 
   // 투자모드 선택 (중앙정렬)
   tradeModeSection = document.createElement('div')
-  Object.assign(tradeModeSection.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: GS.rowPad, borderBottom: '1px solid #f0f0f0', gap: '24px' })
+  Object.assign(tradeModeSection.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder, gap: '24px' })
 
   for (const v of ['test', 'real'] as const) {
     const label = document.createElement('label')
@@ -528,7 +531,7 @@ function renderTestVirtualSection(): HTMLElement {
 
   // 금액 입력 + 투자금충전
   const inputRow = document.createElement('div')
-  inputRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;'
+  Object.assign(inputRow.style, { display: 'flex', alignItems: 'center', gap: '8px', padding: GS.rowPad })
   const inputLabel = document.createElement('span')
   Object.assign(inputLabel.style, { fontSize: GS.label, whiteSpace: 'nowrap' })
   inputLabel.textContent = '금액입력(원):'
@@ -555,7 +558,7 @@ function renderTestVirtualSection(): HTMLElement {
 
   // 기본예수금으로 저장 버튼
   const saveRow = document.createElement('div')
-  saveRow.style.cssText = 'display:flex;justify-content:flex-end;padding:4px 0 10px;'
+  Object.assign(saveRow.style, { display: 'flex', justifyContent: 'flex-end', margin: GS.saveMargin })
   const saveDepositBtn = document.createElement('button')
   saveDepositBtn.type = 'button'
   Object.assign(saveDepositBtn.style, { padding: '7px 16px', borderRadius: '4px', border: '1px solid #ccc', background: '#f8f9fa', cursor: 'pointer', fontSize: GS.label })
@@ -569,16 +572,16 @@ function renderTestVirtualSection(): HTMLElement {
 
   // 설명 텍스트
   const hintRow = document.createElement('div')
-  Object.assign(hintRow.style, { fontSize: '11px', color: COLOR.secondary, padding: '2px 0 8px', textAlign: 'right' })
+  Object.assign(hintRow.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px' })
   hintRow.textContent = '누적투자금과 주문가능금액을 입력한 금액으로 변경합니다. 데이터 초기화 시에도 이 금액이 기본값으로 사용됩니다.'
   wrap.appendChild(hintRow)
 
   // 읽기전용 표시
   const infoWrap = document.createElement('div')
-  infoWrap.style.cssText = 'border-top:1px solid #eee;padding:8px 0;'
+  Object.assign(infoWrap.style, { borderTop: '1px solid #eee', padding: GS.rowPad })
 
   const depRow = document.createElement('div')
-  depRow.style.cssText = `display:flex;justify-content:space-between;align-items:center;padding:8px 0;font-size:${GS.label};`
+  Object.assign(depRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, fontSize: GS.label })
   depRow.innerHTML = '<span>기본투자금</span>'
   depositDisplay = document.createElement('span')
   depositDisplay.textContent = `${(Number(vals.test_virtual_deposit) || 0).toLocaleString()}원`
@@ -588,7 +591,7 @@ function renderTestVirtualSection(): HTMLElement {
 
   // 전체 초기화
   const resetWrap = document.createElement('div')
-  resetWrap.style.cssText = 'border-top:1px solid #eee;padding:10px 0;'
+  Object.assign(resetWrap.style, { borderTop: '1px solid #eee', padding: GS.rowPad })
   const resetBtn = document.createElement('button')
   resetBtn.type = 'button'
   Object.assign(resetBtn.style, { padding: '8px 18px', borderRadius: '4px', border: '1px solid ' + COLOR.up, background: COLOR.up, color: '#fff', cursor: 'pointer', fontSize: GS.label })
@@ -619,7 +622,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   // Step 2A: 주 사용 증권사 선택 (통신망 전환)
   container.appendChild(sectionTitle('주 사용 증권사'))
   const brokerSection = document.createElement('div')
-  Object.assign(brokerSection.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: GS.rowPad, borderBottom: '1px solid #f0f0f0', gap: '24px' })
+  Object.assign(brokerSection.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder, gap: '24px' })
 
   for (const v of ['kiwoom', 'ls'] as const) {
     const label = document.createElement('label')
@@ -636,7 +639,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   container.appendChild(brokerSection)
 
   const brokerDesc = document.createElement('div')
-  Object.assign(brokerDesc.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 20px', marginTop: '-4px', textAlign: 'center' })
+  Object.assign(brokerDesc.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px', textAlign: 'center' })
   brokerDesc.textContent = '선택한 증권사로 시스템 전체 통신망(시세, 계좌, 주문)이 전환됩니다'
   container.appendChild(brokerDesc)
 
@@ -644,7 +647,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
 
   // 실시간 연결
   const wsRow = document.createElement('div')
-  Object.assign(wsRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad })
+  Object.assign(wsRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
   const wsLabel = document.createElement('span')
   Object.assign(wsLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
   wsLabel.textContent = '실시간 연결'
@@ -659,31 +662,34 @@ function renderApiSettingsTab(container: HTMLElement): void {
   container.appendChild(wsRow)
 
   const descLabel3 = document.createElement('div')
-  Object.assign(descLabel3.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 4px', marginTop: '-4px' })
+  Object.assign(descLabel3.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px' })
   descLabel3.textContent = '실시간 데이터 자동 연결 스위치 — OFF면 수동 연결만 가능'
   container.appendChild(descLabel3)
 
   // 실시간 연결 시간
   const wsTimeRow = document.createElement('div')
-  wsTimeRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;'
+  Object.assign(wsTimeRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
   const wsTimeLabel = document.createElement('span')
-  Object.assign(wsTimeLabel.style, { minWidth: '110px', fontSize: GS.label, whiteSpace: 'nowrap' })
+  Object.assign(wsTimeLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal, whiteSpace: 'nowrap' })
   wsTimeLabel.textContent = '실시간 연결 시간'
   wsTimeRow.appendChild(wsTimeLabel)
-  wsTimeRow.appendChild(createWsTimePairInput('ws_subscribe_start', 'ws_subscribe_end'))
-  wsTimeRow.appendChild(createHolidayBadge())
+  const wsTimeRight = document.createElement('span')
+  wsTimeRight.style.cssText = 'display:flex;align-items:center;gap:8px;'
+  wsTimeRight.appendChild(createWsTimePairInput('ws_subscribe_start', 'ws_subscribe_end'))
+  wsTimeRight.appendChild(createHolidayBadge())
+  wsTimeRow.appendChild(wsTimeRight)
   container.appendChild(wsTimeRow)
 
   const descLabel4 = document.createElement('div')
-  Object.assign(descLabel4.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 20px', marginTop: '-4px' })
+  Object.assign(descLabel4.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px' })
   descLabel4.textContent = '실시간 시세 수신 시작/종료 시간'
   container.appendChild(descLabel4)
 
   // 확정 시세 다운로드 시간
   const confirmedDlRow = document.createElement('div')
-  confirmedDlRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;'
+  Object.assign(confirmedDlRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
   const confirmedDlLabel = document.createElement('span')
-  Object.assign(confirmedDlLabel.style, { minWidth: '110px', fontSize: GS.label, whiteSpace: 'nowrap' })
+  Object.assign(confirmedDlLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal, whiteSpace: 'nowrap' })
   confirmedDlLabel.textContent = '1일봉챠트 시세 다운로드'
   confirmedDlRow.appendChild(confirmedDlLabel)
 
@@ -697,7 +703,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   container.appendChild(confirmedDlRow)
 
   const descLabel5 = document.createElement('div')
-  Object.assign(descLabel5.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 10px', marginTop: '-4px' })
+  Object.assign(descLabel5.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px' })
   descLabel5.textContent = '장마감 후 확정 시세 다운로드 시간 (기본값 20:40)'
   container.appendChild(descLabel5)
 
@@ -754,9 +760,9 @@ function renderApiFields(container: HTMLElement): void {
 
   for (const field of fields) {
     const row = document.createElement('div')
-    Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: '1px solid #eee' })
+    Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
     const lbl = document.createElement('span')
-    Object.assign(lbl.style, { fontSize: GS.label, flex: '1' })
+    Object.assign(lbl.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal, flex: '1' })
     lbl.textContent = field.label
     row.appendChild(lbl)
 
@@ -768,7 +774,7 @@ function renderApiFields(container: HTMLElement): void {
   }
 
   const btnRow = document.createElement('div')
-  Object.assign(btnRow.style, { textAlign: 'right', marginTop: '10px' })
+  Object.assign(btnRow.style, { textAlign: 'right', margin: GS.saveMargin })
   const saveBtn = document.createElement('button')
   saveBtn.type = 'button'
   Object.assign(saveBtn.style, {
