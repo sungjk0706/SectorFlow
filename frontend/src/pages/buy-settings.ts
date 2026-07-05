@@ -8,6 +8,7 @@ import { initSettingsPage, startSettingsSubscription, destroySettingsPage } from
 import type { AutoSaveHelper } from '../utils/settings-save'
 import type { SettingsManager } from '../settings'
 import { setDisabled } from '../components/common/ui-styles'
+import { createCardTitle } from '../components/common/card-title'
 import type { AppSettings } from '../types'
 
 /* ── 모듈 상태 ── */
@@ -167,6 +168,7 @@ function mount(container: HTMLElement): void {
 
   const root = document.createElement('div')
 
+  root.appendChild(createCardTitle('매수설정'))
 
   // ── 매수 조건 섹션 ──
   root.appendChild(sectionTitle('매수 차단'))

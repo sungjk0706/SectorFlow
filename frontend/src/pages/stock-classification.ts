@@ -550,7 +550,6 @@ function buildSectorManageCard(): HTMLElement {
   titleContainer.appendChild(titleText)
   titleContainer.appendChild(titleRightContainer)
   const sectorManageTitle = createCardTitleWithContent(titleContainer)
-  sectorManageTitle.style.fontSize = FONT_SIZE.section
   card.appendChild(sectorManageTitle)
 
   card.appendChild(descLabel('업종명을 변경하거나, 새 업종을 만들거나, 불필요한 업종을 삭제할 수 있습니다'))

@@ -9,6 +9,7 @@ import { createDualLabelSlider } from '../components/common/create-slider'
 import type { DualLabelSliderHandle } from '../components/common/create-slider'
 import { toDisplayValue, toServerValue } from '../utils/sliderConvert'
 import { FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import { createCardTitle } from '../components/common/card-title'
 import type { AppSettings } from '../types'
 import type { PageModule } from '../router'
 
@@ -101,6 +102,8 @@ function mount(container: HTMLElement): void {
   saving = false
 
   const root = document.createElement('div')
+
+  root.appendChild(createCardTitle('업종순위 설정'))
 
   // ① 종목 필터
   root.appendChild(createStepLabel('①', '5일 평균 거래대금(N억) 이하 차단 필터링'))

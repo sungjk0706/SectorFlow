@@ -6,6 +6,8 @@ import { createProfitChart, type ProfitChartApi } from '../components/canvas-pro
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
 import { globalSettingsManager } from '../settings'
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, createStockNameColumn, createCodeCell, createNumberCell, createPnlCell, COLOR } from '../components/common/ui-styles'
+import { createCardTitle } from '../components/common/card-title'
+import { sectionTitle } from '../components/common/settings-common'
 import { ACCOUNT_LABELS_REAL, ACCOUNT_LABELS_TEST } from '../components/common/account-labels'
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
@@ -510,6 +512,8 @@ function mount(container: HTMLElement): void {
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
+  root.appendChild(createCardTitle('수익현황'))
+
   const settings = globalSettingsManager.getSettings()
   const isTestMode = settings?.trade_mode === 'test'
 
@@ -527,7 +531,7 @@ function mount(container: HTMLElement): void {
   const chartPanel = document.createElement('div')
   Object.assign(chartPanel.style, { flex: '5', minWidth: '0', overflow: 'auto', padding: '0 4px' })
   const chartTitle = document.createElement('div')
-  Object.assign(chartTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.label, fontWeight: 'normal', color: COLOR.down, padding: '6px 0 8px', borderBottom: '1px solid #eee', marginBottom: '8px' })
+  Object.assign(chartTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal, color: COLOR.down, padding: '10px 0 6px', borderBottom: '2px solid #eee', marginBottom: '8px' })
   const chartTitleText = document.createElement('span')
   chartTitleText.textContent = '일별 수익률'
   const retentionLabel = document.createElement('span')
@@ -544,14 +548,9 @@ function mount(container: HTMLElement): void {
   const accountPanel = document.createElement('div')
   Object.assign(accountPanel.style, { flex: '5', minWidth: '0', overflow: 'auto', padding: '0 4px' })
 
-  // 계좌현황 헤더: 타이틀 + 상태 뱃지
-  const accountHeader = document.createElement('div')
-  Object.assign(accountHeader.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #eee', marginBottom: '8px', padding: '6px 0 8px' })
-
-  const accountTitle = document.createElement('div')
-  Object.assign(accountTitle.style, { fontSize: FONT_SIZE.label, fontWeight: 'normal', color: COLOR.down })
-  accountTitle.textContent = '계좌 현황'
-  accountHeader.appendChild(accountTitle)
+  // 계좌현황 헤더
+  const accountHeader = sectionTitle('계좌 현황')
+  accountHeader.style.color = COLOR.down
 
   accountPanel.appendChild(accountHeader)
 

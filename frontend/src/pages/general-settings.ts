@@ -13,6 +13,7 @@ import { parseHM, sectionTitle, createTimeSlot, updateTimeSlotDisplay } from '..
 import { createTimePairInput, type TimePairInputHandle } from '../components/common/time-pair-input'
 import { FONT_SIZE, FONT_WEIGHT, createDarkInput, COLOR } from '../components/common/ui-styles'
 import { showConfirmDialog, showAlertDialog, showCustomDialog } from '../components/common/dialog'
+import { createCardTitle } from '../components/common/card-title'
 import type { AppSettings } from '../types'
 
 type TabId = 'auto-trade' | 'telegram' | 'account-manage' | 'api-settings'
@@ -934,6 +935,8 @@ function mount(container: HTMLElement): void {
   tradingDayLoading = true
 
   rootEl = document.createElement('div')
+
+  rootEl.appendChild(createCardTitle('일반설정'))
 
   // 탭 바
   tabBar = renderTabBar()

@@ -4,6 +4,7 @@
 import { hotStore } from '../stores/hotStore'
 import { uiStore, setSelectedSector } from '../stores/uiStore'
 import { FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import { createCardTitle } from '../components/common/card-title'
 import { getMaxTargetsStatusEl } from './sector-settings'
 import type { SectorScoreRow } from '../types'
 import type { PageModule } from '../router'
@@ -134,7 +135,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     }
 
     const spans = Array.from(row.firstElementChild!.children) as HTMLSpanElement[]
-    if (!prev || prev.rank !== s.rank) spans[0].textContent = s.rank === 0 ? '❌' : String(s.rank)
+    if (!prev || prev.rank !== s.rank) spans[0].textContent = String(s.rank)
     if (!prev || prev.sector !== s.sector) spans[1].textContent = s.sector
     if (!prev || prev.total !== s.total) spans[2].textContent = String(s.total || '')
     if (!prev || prev.finalScore !== finalScore) spans[3].textContent = finalScore
@@ -157,6 +158,8 @@ function mount(container: HTMLElement): void {
   rowCaches = []
 
   const root = document.createElement('div')
+
+  root.appendChild(createCardTitle('업종순위'))
 
   // 헤더 행
   const headerRow = document.createElement('div')
