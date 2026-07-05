@@ -99,16 +99,13 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         await ws_manager.send_to(websocket, "sector-stocks-refresh", stocks_payload)
 
         # sector-scores 전송
-        from backend.app.services.engine_service import (
-            _integrated_system_settings_cache,
-            get_sector_scores_snapshot,
-            _sector_summary_ready_event,
-        )
+        from backend.app.services.engine_service import get_sector_scores_snapshot
+        from backend.app.services.engine_state import state
 
         # 업종 요약정보 생성 완료 대기 (테스트모드 포함)
-        if not _sector_summary_ready_event.is_set():
+        if not state.sector_summary_ready_event.is_set():
             logger.info("[연결] 업종 요약정보 생성 대기 중")
-            await _sector_summary_ready_event.wait()
+            await state.sector_summary_ready_event.wait()
             logger.info("[연결] 업종 요약정보 생성 완료")
 
         scores_result = get_sector_scores_snapshot()
@@ -121,7 +118,7 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
                 "status": {
                     "total_stocks": len(scores),
                     "max_targets": int(
-                        _integrated_system_settings_cache["sector_max_targets"]
+                        state.integrated_system_settings_cache["sector_max_targets"]
                     ),
                     "ranked_sectors_count": ranked_count,
                     "receive_rate": get_current_receive_rate(),
@@ -129,8 +126,6 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
             }
             await ws_manager.send_to(websocket, "sector-scores", scores_payload)
         else:
-            from backend.app.services.engine_state import state
-
             if state.sector_summary_cache is None:
                 logger.info(
                     "[연결] 업종점수 미전송 -- 업종 요약정보 없음"
