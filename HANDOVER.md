@@ -15,7 +15,7 @@
 - **빌드**: 프론트엔드 `npm run build` OK (6.36s), 백엔드 `py_compile` OK
 - **테스트**: `pytest` 90 passed (6.83s)
 - **앱 기동**: 런타임 검증 미수행 (원칙 19 — 사용자 직접 확인 필요)
-- **Git**: `8bef287` push 완료 (origin/main 동기화됨)
+- **Git**: `5f6d7fc` push 완료 (origin/main 동기화됨)
 
 ## 다음 단계
 - **비거래일 런타임 검증 (대기)**: `SectorFlow.command` 기동 후 비거래일에 토글이 사용자 설정값 유지하는지, 배지 정상 동작하는지 확인 — 사용자 직접 확인 필요
