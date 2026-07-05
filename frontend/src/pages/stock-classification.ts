@@ -32,7 +32,7 @@ function handleMutationResult(res: StockClassificationMutationResponse): void {
 
 /* ── 모듈 상태 ── */
 // allStocks는 stockClassificationStore.getState().allStocks에서 파생되는 헬퍼 (캐싱)
-let cachedSectorStocksRef: any = null;
+let cachedSectorStocksRef: StockClassificationState['allStocks'] | null = null;
 let cachedAllStocksMap: Map<string, { code: string; name: string; sector: string; market_type?: string; nxt_enable?: boolean }> = new Map();
 
 function getAllStocks(): Map<string, { code: string; name: string; sector: string; market_type?: string; nxt_enable?: boolean }> {

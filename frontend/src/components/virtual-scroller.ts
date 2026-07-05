@@ -12,6 +12,10 @@
 
 // ── 인터페이스 ──────────────────────────────────────────────
 
+interface CellWithPrevContent extends HTMLElement {
+  _prevContent?: string
+}
+
 export interface VirtualScrollerOptions<T> {
   container: HTMLElement
   items: T[]
@@ -250,7 +254,7 @@ export function createVirtualScroller<T>(
       const cells = el.children
       for (let i = 0; i < cells.length; i++) {
         const cell = cells[i] as HTMLElement
-        ;(cell as any)['_prevContent'] = undefined
+        ;(cell as CellWithPrevContent)['_prevContent'] = undefined
       }
       return el
     }

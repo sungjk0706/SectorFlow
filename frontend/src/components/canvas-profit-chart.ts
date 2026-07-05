@@ -441,7 +441,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
     return rows
   }
 
-  const RO = (window as any).ResizeObserver ? new (window as any).ResizeObserver(() => render()) : null
+  const RO = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => render()) : null
   if (RO) RO.observe(canvasWrap)
 
   render()

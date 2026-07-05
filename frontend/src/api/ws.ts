@@ -58,7 +58,7 @@ function decodeProtobufEvents(buffer: ArrayBuffer): { event: string; data: unkno
   return events
 }
 
-type EventHandler<T = any> = (data: T) => void
+type EventHandler<T = unknown> = (data: T) => void
 
 export class WSClient {
   private ws: WebSocket | null = null
@@ -199,9 +199,9 @@ export class WSClient {
     if (list) list.forEach(h => h(data))
   }
 
-  onEvent<T = any>(type: string, handler: EventHandler<T>): void {
-    const list = (this.handlers.get(type) || []) as EventHandler<any>[]
-    list.push(handler)
+  onEvent<T = unknown>(type: string, handler: EventHandler<T>): void {
+    const list = this.handlers.get(type) || []
+    list.push(handler as EventHandler)
     this.handlers.set(type, list)
   }
 
