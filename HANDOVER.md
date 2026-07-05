@@ -11,7 +11,7 @@
 ## 현재 상태
 - **백엔드**: pytest 719 passed in 12.85s — hang 없이 전체 완료
 - **프론트엔드**: tsc passed, vitest 109 passed, eslint 0 warnings (0 errors)
-- **Git**: 커밋 필요 (hang fix 3개 파일 + conftest.py + pytest.ini)
+- **Git**: 커밋 푸시 완료 (241f59f)
 
 ## 다음 단계
 - **브라우저 런타임 검증 (대기)**: 테스트모드 매수/매도 시 체결가 로그에서 슬리피지 적용 확인
