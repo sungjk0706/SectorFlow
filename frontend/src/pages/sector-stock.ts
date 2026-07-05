@@ -274,7 +274,11 @@ class SectorStockTable extends HTMLElement {
   private titleH3: HTMLElement | null = null
   private titleBaseSpan: HTMLElement | null = null
   private titleFilterSpan: HTMLElement | null = null
+  private titleFilterNumSpan: HTMLElement | null = null
   private titleCountSpan: HTMLElement | null = null
+  private titleTotalNumSpan: HTMLElement | null = null
+  private titleKrxNumSpan: HTMLElement | null = null
+  private titleNxtNumSpan: HTMLElement | null = null
   private filterBadge: HTMLElement | null = null
   private emptyDiv: HTMLElement | null = null
   private scrollContainer: HTMLElement | null = null
@@ -324,11 +328,13 @@ class SectorStockTable extends HTMLElement {
     const nxtCount = stocks.filter(s => s.nxt_enable).length
     const minTradeAmt = uiState.settings?.sector_min_trade_amt ?? 0
 
-    // 타이틀 갱신 — CSS display 토글 + textContent 갱신 (innerHTML 파괴 금지)
+    // 타이틀 갱신 — CSS display 토글 + 숫자 span textContent만 갱신 (innerHTML 파괴 금지)
     if (this.titleFilterSpan && this.titleCountSpan) {
-      this.titleFilterSpan.textContent = `5일평균최소거래대금(${minTradeAmt})억`
+      if (this.titleFilterNumSpan) this.titleFilterNumSpan.textContent = String(minTradeAmt)
       this.titleFilterSpan.style.display = ''
-      this.titleCountSpan.textContent = `합계:${stockCount}종목 KRX:${krxCount}종목 NXT:${nxtCount}종목`
+      if (this.titleTotalNumSpan) this.titleTotalNumSpan.textContent = String(stockCount)
+      if (this.titleKrxNumSpan) this.titleKrxNumSpan.textContent = String(krxCount)
+      if (this.titleNxtNumSpan) this.titleNxtNumSpan.textContent = String(nxtCount)
       this.titleCountSpan.style.display = ''
     }
 
@@ -374,15 +380,43 @@ class SectorStockTable extends HTMLElement {
       alignItems: 'center',
     })
 
+    // 좌측: 5일평균최소거래대금 라벨 — 라벨 텍스트(tertiary) + 숫자(neutral, semibold) 분리
     this.titleFilterSpan = document.createElement('span')
-    Object.assign(this.titleFilterSpan.style, { color: COLOR.down, fontWeight: '500', textAlign: 'left', display: 'none' })
+    Object.assign(this.titleFilterSpan.style, {
+      color: COLOR.tertiary, fontWeight: FONT_WEIGHT.medium,
+      fontSize: FONT_SIZE.label, textAlign: 'left', display: 'none',
+    })
+    this.titleFilterSpan.textContent = '5일평균최소거래대금('
+    this.titleFilterNumSpan = document.createElement('span')
+    Object.assign(this.titleFilterNumSpan.style, { color: COLOR.neutral, fontWeight: FONT_WEIGHT.semibold })
+    this.titleFilterSpan.appendChild(this.titleFilterNumSpan)
+    const filterSuffix = document.createElement('span')
+    filterSuffix.textContent = ')억'
+    this.titleFilterSpan.appendChild(filterSuffix)
 
     this.titleBaseSpan = document.createElement('span')
     this.titleBaseSpan.textContent = '업종별 종목 실시간 시세'
     Object.assign(this.titleBaseSpan.style, { textAlign: 'center', fontWeight: '600' })
 
+    // 우측: 종목수 요약 — 라벨 텍스트(tertiary) + 숫자(neutral, semibold) 분리
     this.titleCountSpan = document.createElement('span')
-    Object.assign(this.titleCountSpan.style, { textAlign: 'right', display: 'none' })
+    Object.assign(this.titleCountSpan.style, {
+      color: COLOR.tertiary, fontWeight: FONT_WEIGHT.medium,
+      fontSize: FONT_SIZE.label, textAlign: 'right', display: 'none',
+    })
+    this.titleCountSpan.textContent = '합계:'
+    this.titleTotalNumSpan = document.createElement('span')
+    Object.assign(this.titleTotalNumSpan.style, { color: COLOR.neutral, fontWeight: FONT_WEIGHT.semibold })
+    this.titleCountSpan.appendChild(this.titleTotalNumSpan)
+    this.titleCountSpan.appendChild(document.createTextNode('종목 KRX:'))
+    this.titleKrxNumSpan = document.createElement('span')
+    Object.assign(this.titleKrxNumSpan.style, { color: COLOR.neutral, fontWeight: FONT_WEIGHT.semibold })
+    this.titleCountSpan.appendChild(this.titleKrxNumSpan)
+    this.titleCountSpan.appendChild(document.createTextNode('종목 NXT:'))
+    this.titleNxtNumSpan = document.createElement('span')
+    Object.assign(this.titleNxtNumSpan.style, { color: COLOR.neutral, fontWeight: FONT_WEIGHT.semibold })
+    this.titleCountSpan.appendChild(this.titleNxtNumSpan)
+    this.titleCountSpan.appendChild(document.createTextNode('종목'))
 
     titleContent.appendChild(this.titleFilterSpan)
     titleContent.appendChild(this.titleBaseSpan)
