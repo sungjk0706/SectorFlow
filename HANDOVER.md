@@ -11,7 +11,7 @@
 - **빌드**: 백엔드 py_compile OK
 - **테스트**: pytest 108 passed, 0 failed
 - **정적 분석**: mypy 106 files 0 errors (import-untyped 0, attr-defined 0), ruff 기존 F401 11건 (수정과 무관)
-- **Git**: 미커밋
+- **Git**: `01ba130` 커밋 푸시 완료
 
 ## 다음 단계
 - **브라우저 런타임 검증 (대기)**: 테스트모드 매수/매도 시 체결가 로그에서 슬리피지 적용 확인 (예: 70,000원 매수 → 70,100원 체결)
