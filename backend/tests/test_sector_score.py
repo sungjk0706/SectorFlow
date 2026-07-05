@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from backend.app.domain.models import SectorScore, DEFAULT_METRICS
+from backend.app.domain.models import SectorScore
 from backend.app.domain.sector_score import (
     normalize_metric_value,
     normalize_weight_values,
