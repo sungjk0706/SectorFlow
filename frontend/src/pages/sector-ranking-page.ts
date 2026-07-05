@@ -25,7 +25,7 @@ function mount(_container: HTMLElement): void {
   // tripleHeader 사용 안함 (sector-ranking은 헤더 불필요)
   shell.tripleHeader.style.display = 'none'
 
-  // flex 비율 설정: 좌·중앙 동일 너비, 우측 2배
+  // flex 비율 설정: 좌·중앙 동일 너비, 우측 3배
   shell.tripleLeft.style.flex = '1'
   shell.tripleCenter.style.flex = '1'
   shell.tripleRight.style.flex = '3'
