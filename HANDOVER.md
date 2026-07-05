@@ -8,7 +8,7 @@
 ## 현재 상태
 - **백엔드**: pytest 277 passed in 6.89s, pytest-timeout 15s + thread method 적용
 - **프론트엔드**: tsc passed, vitest 109 passed, eslint 0 warnings (0 errors)
-- **Git**: 커밋 필요
+- **Git**: 커밋 푸시 완료 (731270f)
 
 ## 다음 단계
 - **브라우저 런타임 검증 (대기)**: 테스트모드 매수/매도 시 체결가 로그에서 슬리피지 적용 확인 (예: 70,000원 매수 → 70,100원 체결)
