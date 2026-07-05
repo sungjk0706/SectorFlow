@@ -39,3 +39,4 @@ sse-starlette>=2.0.0
 
 # JWT Authentication
 python-jose[cryptography]>=3.3.0
+types-python-jose>=3.3.0
