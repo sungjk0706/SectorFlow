@@ -1,20 +1,16 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-05: engine_service.py 파사드 패턴 완전 제거 + rate_limit_per_sec 설정값 제거**
-  - `engine_service.py`: 모든 재내보내기 제거, `apply_settings_change` 단일 함수만 유지
-  - 17개 파일의 `engine_service` import → 원본 모듈 직접 import로 변경:
-    - `engine_loop.py`, `engine_bootstrap.py`, `engine_lifecycle.py`, `engine_account_notify.py`, `engine_sector_confirm.py`, `sector_data_provider.py`, `market_close_pipeline.py`, `daily_time_scheduler.py`, `settlement_engine.py`, `telegram_bot.py`, `pipeline_compute.py`, `ws_manager.py`, `web/app.py`, `web/routes/ws.py`, `web/routes/settings.py`, `web/routes/status.py`, `web/routes/stock_classification.py`
-  - `pipeline_compute.py`: `es: ModuleType` 파라미터 제거, `ModuleType` import 제거
-  - `market_close_pipeline.py`: `es: Any` 파라미터 제거, `Any` import 제거
-  - `rate_limit_per_sec`: `settings_defaults.py`, `engine_settings.py`에서 설정값 제거 (원칙 16 위반 해결)
-  - 검증: mypy 106 files 0 errors, pytest 108 passed, npm run build OK
+- **2026-07-06: 업종순위 우측 패널 라벨 스타일 통일 및 숫자 강조 분리**
+  - `frontend/src/pages/sector-stock.ts`: 좌측(5일평균최소거래대금)·우측(합계 종목수) 라벨 스타일 통일
+  - 라벨 텍스트: `COLOR.tertiary`(#666) + `FONT_WEIGHT.medium`(500) + `FONT_SIZE.label`(12px)
+  - 숫자값: 별도 span 분리 → `COLOR.neutral`(#333) + `FONT_WEIGHT.semibold`(600)로 굵기 대비 강조
+  - `updateUI`: textContent 전체 교체 → 숫자 span만 개별 textContent 갱신 (delta 갱신)
+  - 검증: npm run build OK
 
 ## 현재 상태
-- **빌드**: 백엔드 py_compile OK, 프론트엔드 npm run build OK
-- **테스트**: pytest 108 passed, 0 failed
-- **정적 분석**: mypy 106 files 0 errors
-- **Git**: `eb76265` 커밋 푸시 완료
+- **빌드**: 프론트엔드 npm run build OK
+- **Git**: `9f2639d` 커밋 푸시 완료
 
 ## 다음 단계
 - **브라우저 런타임 검증 (대기)**: 테스트모드 매수/매도 시 체결가 로그에서 슬리피지 적용 확인 (예: 70,000원 매수 → 70,100원 체결)
