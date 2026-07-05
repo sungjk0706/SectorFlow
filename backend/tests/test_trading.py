@@ -16,9 +16,11 @@ from backend.app.services.trading import AutoTradeManager
 def _patch_trading_calendar():
     """is_trading_day가 캐시 미초기화 RuntimeError를 발생시키지 않도록 mock.
     auto_buy_effective / auto_sell_effective가 _master_on → is_trading_day를 호출하기 때문.
+    _fire_and_forget_telegram도 mock하여 NotificationWorker 백그라운드 태스크 생성 차단.
     """
     with patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
-         patch("backend.app.services.engine_state.state") as mock_state:
+         patch("backend.app.services.engine_state.state") as mock_state, \
+         patch("backend.app.services.trading._fire_and_forget_telegram"):
         mock_state.krx_circuit_breaker_active = False
         yield
 
@@ -169,12 +171,17 @@ class TestExecuteBuyGates:
              patch("backend.app.services.dry_run.fake_fill_event", new_callable=AsyncMock), \
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock):
+             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
+             patch("backend.app.services.trading.asyncio.create_task") as mock_create_task, \
+             patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
             mock_state.master_stocks_cache = {}
             mock_rm.return_value.circuit_breaker.get_state.return_value = "CLOSED"
             mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
+            mock_task = MagicMock()
+            mock_task.add_done_callback = MagicMock()
+            mock_create_task.return_value = mock_task
             result = await mgr.execute_buy("005930", 70000, set(), "token")
         assert result is True
 
