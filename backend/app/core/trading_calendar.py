@@ -24,7 +24,6 @@ _cache_initialized: bool = False
 __all__ = [
     "_KST",
     "is_trading_day",
-    "is_trading_day_with_holiday_guard",
     "get_previous_trading_day",
     "get_previous_trading_day_str",
     "get_kst_today",
@@ -127,13 +126,6 @@ def is_trading_day(d: date) -> bool:
 def has_trading_days_for_year(year: int) -> bool:
     """해당 연도의 거래일 캐시가 메모리에 존재하는지 확인."""
     return year in _trading_days_cache
-
-
-def is_trading_day_with_holiday_guard(holiday_guard_on: bool) -> bool:
-    """holiday_guard_on=True면 실제 거래일만, False면 항상 True."""
-    if not holiday_guard_on:
-        return True
-    return is_trading_day(get_kst_today())
 
 
 def get_previous_trading_day(from_date: date | None = None) -> date:

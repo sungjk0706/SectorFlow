@@ -240,7 +240,7 @@ async def is_ws_subscribe_window(settings: dict | None = None) -> bool:
     구독 구간 = ws_subscribe_start ~ ws_subscribe_end (사용자 설정, 기본값 07:50~20:00)
     settings 미전달 시 settings.json에서 직접 읽음.
     """
-    # ── 영업일 판단: 주말은 항상 차단, 공휴일은 holiday_guard_on 설정에 따라 ──
+    # ── 영업일 판단: 주말·공휴일 항상 차단 ──
     from backend.app.core.trading_calendar import is_trading_day
     now = _kst_now()
     today = now.date()
@@ -253,10 +253,9 @@ async def is_ws_subscribe_window(settings: dict | None = None) -> bool:
     if not settings:
         raise RuntimeError("settings cache not initialized")
 
-    # 공휴일 가드: ON이면 공휴일 차단, OFF면 공휴일에도 허용
-    if bool(settings.get("holiday_guard_on", True)):
-        if not is_trading_day(today):
-            return False
+    # 공휴일 차단
+    if not is_trading_day(today):
+        return False
 
     # WS 구독 마스터 스위치: OFF면 구독 차단
     if not bool(settings.get("ws_subscribe_on", True)):
@@ -481,10 +480,9 @@ async def _apply_auto_toggle_on_startup(settings: dict) -> None:
     """앱 기동/자정 시 거래일 판별 — 설정값은 사용자만 쓰고, 실행 제어는 런타임 게이트가 담당.
     ws_subscribe_on 등 설정값을 강제 변경하지 않음 (원칙 10 SSOT, 원칙 20 폴백 금지).
     거래일 판별 결과를 로깅하고 UI 갱신 알림만 수행."""
-    from backend.app.core.trading_calendar import is_trading_day_with_holiday_guard
+    from backend.app.core.trading_calendar import is_trading_day, get_kst_today
 
-    holiday_guard = bool(settings.get("holiday_guard_on", True))
-    is_trade_day = is_trading_day_with_holiday_guard(holiday_guard)
+    is_trade_day = is_trading_day(get_kst_today())
 
     now = _kst_now()
     now_minutes = now.hour * 60 + now.minute
@@ -524,11 +522,8 @@ async def _on_ws_subscribe_start() -> None:
         if today.weekday() >= 5:
             return
         settings = state.integrated_system_settings_cache
-        if bool(settings.get("holiday_guard_on", True)):
-            if not is_trading_day(today):
-                return
-        # 공휴일 강제 OFF 플래그가 있으면 자동 복원 후 진행
-        # → 제거: 강제 OFF를 안 하므로 복원도 불필요 (원칙 10 SSOT, 원칙 20 폴백 금지)
+        if not is_trading_day(today):
+            return
         # ws_subscribe_on=False면 사용자 수동 모드 — 자동 연결 스킵
         if not bool(settings.get("ws_subscribe_on", False)):
             logger.info("[타이머] ws_subscribe_on=False — 자동 연결 스킵 (수동 모드)")

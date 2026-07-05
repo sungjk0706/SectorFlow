@@ -266,8 +266,6 @@ class TelegramBot:
             await self._cmd_buy_candidates(token, chat_id)
         elif cmd in ("수익", "profit"):
             await self._cmd_profit_discontinued(token, chat_id)
-        elif cmd in ("휴일", "holiday"):
-            await self._cmd_toggle_holiday(token, chat_id, profile)
         elif cmd in ("도움말", "help"):
             await self._cmd_help(token, chat_id)
         elif cmd == "start":
@@ -288,7 +286,6 @@ class TelegramBot:
             "잔고  -- 계좌 현황만\n"
             "업종  -- 업종 분석 상위/하위 요약\n"
             "후보  -- 매수후보 1~10순위\n"
-            "휴일  -- 공휴일 자동매매 차단 ON/OFF (토글)\n"
             "도움말 -- 이 메시지"
         )
         await self._send(token, chat_id, text)
@@ -528,11 +525,6 @@ class TelegramBot:
             "ℹ️ 체결 이력 기반 당일 실현 손익 집계는 제거되었습니다.\n"
             "증권사 앱/HTS에서 당일 실현을 확인하거나 잔고·상태를 참고하세요.",
         )
-
-    async def _cmd_toggle_holiday(self, token: str, chat_id: str, profile: str | None = None):
-        new = await self._toggle_setting_bool("holiday_guard_on", "공휴일 자동매매")
-        status = "ON (공휴일 차단)" if new else "OFF (공휴일 허용)"
-        await self._send(token, chat_id, f"📅 공휴일 자동매매: <b>{status}</b>")
 
 
 telegram_bot = TelegramBot()

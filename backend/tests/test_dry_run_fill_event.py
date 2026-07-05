@@ -36,7 +36,6 @@ def _noop_sync(*args, **kwargs) -> None:
 _TEST_SETTINGS = {
     "trade_mode": "test",
     "time_scheduler_on": False,
-    "holiday_guard_on": False,
 }
 _TEST_CODE = "005930"
 _TEST_NM = "삼성전자"

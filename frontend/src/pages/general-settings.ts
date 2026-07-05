@@ -47,11 +47,9 @@ let autoBuyToggle: ReturnType<typeof createToggleBtn> | null = null
 let buyTimeHandle: TimePairInputHandle | null = null
 let autoSellToggle: ReturnType<typeof createToggleBtn> | null = null
 let sellTimeHandle: TimePairInputHandle | null = null
-let holidayToggle: ReturnType<typeof createToggleBtn> | null = null
 let wsToggle: ReturnType<typeof createToggleBtn> | null = null
 let wsTimePairWrap: HTMLElement | null = null
 let holidayBadgeEls: HTMLElement[] = []
-let holidayToggleRow: HTMLElement | null = null
 
 // TimePairInput
 let wsSH = '09', wsSM = '00', wsEH = '15', wsEM = '00'
@@ -82,7 +80,7 @@ let brokerSaving = false
 
 /* ── 헬퍼 ── */
 function shouldForceOff(): boolean {
-  return !tradingDayLoading && !isTradingDay && !!vals.holiday_guard_on
+  return !tradingDayLoading && !isTradingDay
 }
 
 function createHolidayBadge(): HTMLElement {
@@ -328,38 +326,18 @@ function renderAutoTradeTab(container: HTMLElement): void {
   descLabel1.textContent = '거래일 설정시간 내에서만 자동 매수/매도 실행'
   container.appendChild(descLabel1)
 
-  // 공휴일 자동매매 차단
-  const hRow = document.createElement('div')
-  Object.assign(hRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px' })
-  const hLabel = document.createElement('span')
-  Object.assign(hLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  hLabel.textContent = '공휴일 자동매매 차단'
-  hRow.appendChild(hLabel)
-  holidayToggle = createToggleBtn({ on: false, onClick: async () => {
-    const next = !vals.holiday_guard_on
-    vals.holiday_guard_on = next; holidayToggle!.setOn(next)
-    const res = await settingsMgr!.saveSection({ holiday_guard_on: next })
-    toastResult(res)
-    updateHolidayBadges()
-    updateAutoTradeDisabledStates()
-  }})
-  hRow.appendChild(holidayToggle.el)
-  holidayToggleRow = hRow
-  container.appendChild(hRow)
-
   const descLabel2 = document.createElement('div')
   Object.assign(descLabel2.style, { fontSize: GS.desc, color: COLOR.secondary, padding: '0 0 4px', marginTop: '-4px', paddingLeft: '20px' })
-  descLabel2.textContent = 'ON: 공휴일에 자동매매 차단 · OFF: 공휴일에도 허용'
+  descLabel2.textContent = '공휴일·주말에는 자동매매가 항상 차단됩니다'
   container.appendChild(descLabel2)
 }
 
 function handleMasterToggle(): void {
   const next = !vals.time_scheduler_on
   vals.time_scheduler_on = next; masterToggle?.setOn(next)
-  updateAutoTradeDisabledStates()
   settingsMgr?.saveSection({ time_scheduler_on: next }).then(r => {
     toastResult(r)
-    if (!r.ok) { vals.time_scheduler_on = !next; masterToggle?.setOn(!next); updateAutoTradeDisabledStates() }
+    if (!r.ok) { vals.time_scheduler_on = !next; masterToggle?.setOn(!next) }
   })
 }
 
@@ -371,13 +349,6 @@ function handleWsToggle(): void {
     toastResult(r)
     if (!r.ok) { vals.ws_subscribe_on = !next; wsToggle?.setOn(!next); updateWsTimeDisabled() }
   })
-}
-
-function updateAutoTradeDisabledStates(): void {
-  if (holidayToggleRow) {
-    holidayToggleRow.style.opacity = vals.time_scheduler_on ? '1' : '0.45'
-    holidayToggleRow.style.pointerEvents = vals.time_scheduler_on ? 'auto' : 'none'
-  }
 }
 
 function updateWsTimeDisabled(): void {
@@ -878,10 +849,8 @@ function syncFromSettings(s: AppSettings | null): void {
   // 자동매매 탭 (항상 DOM에 존재)
   {
     masterToggle?.setOn(!!r.time_scheduler_on)
-    holidayToggle?.setOn(!!r.holiday_guard_on)
     wsToggle?.setOn(!!r.ws_subscribe_on)
     updateHolidayBadges()
-    updateAutoTradeDisabledStates()
 
     // TimePairInput
     const [sh, sm] = parseHM(String(r.ws_subscribe_start ?? ''))
@@ -1029,11 +998,9 @@ function unmount(): void {
   buyTimeHandle = null
   autoSellToggle = null
   sellTimeHandle = null
-  holidayToggle = null
   wsToggle = null
   wsTimePairWrap = null
   holidayBadgeEls = []
-  holidayToggleRow = null
   teleToggle = null
   teleInputs = {}
   tradeModeSection = null
