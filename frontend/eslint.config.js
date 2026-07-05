@@ -25,6 +25,15 @@ export default [
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'warn',
       'no-console': 'off',
+      'no-undef': 'off',
+    },
+  },
+  {
+    files: ['vite.config.ts', 'vitest.setup.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
     },
   },
   {
