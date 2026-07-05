@@ -365,27 +365,27 @@ class SectorStockTable extends HTMLElement {
     Object.assign(this.rootEl.style, { display: 'flex', flexDirection: 'column', height: '100%', contain: 'content' })
 
     // 1. 카드 타이틀 — DOM 요소 1회 생성 (이후 textContent/display만 갱신)
-    // grid 3-column: 좌측(제목) | 중앙(필터조건) | 우측(종목수 요약)
+    // grid 3-column: 좌측(필터조건) | 중앙(제목) | 우측(종목수 요약)
     const titleContent = document.createElement('span')
     Object.assign(titleContent.style, {
       display: 'grid',
-      gridTemplateColumns: '1fr auto 1fr',
+      gridTemplateColumns: '1fr 1fr 1fr',
       width: '100%',
       alignItems: 'center',
     })
 
+    this.titleFilterSpan = document.createElement('span')
+    Object.assign(this.titleFilterSpan.style, { color: COLOR.down, fontWeight: '500', textAlign: 'left', display: 'none' })
+
     this.titleBaseSpan = document.createElement('span')
     this.titleBaseSpan.textContent = '업종별 종목 실시간 시세'
-    this.titleBaseSpan.style.textAlign = 'left'
-
-    this.titleFilterSpan = document.createElement('span')
-    Object.assign(this.titleFilterSpan.style, { color: COLOR.down, fontWeight: '500', textAlign: 'center', display: 'none' })
+    Object.assign(this.titleBaseSpan.style, { textAlign: 'center', fontWeight: '600' })
 
     this.titleCountSpan = document.createElement('span')
     Object.assign(this.titleCountSpan.style, { textAlign: 'right', display: 'none' })
 
-    titleContent.appendChild(this.titleBaseSpan)
     titleContent.appendChild(this.titleFilterSpan)
+    titleContent.appendChild(this.titleBaseSpan)
     titleContent.appendChild(this.titleCountSpan)
 
     this.titleH3 = createCardTitleWithContent(titleContent)
