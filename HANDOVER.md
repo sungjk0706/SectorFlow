@@ -17,7 +17,12 @@
 - **테스트 커버리지 개선**: Priority 4 이상 진행
 
 ## 미해결 문제
-- 없음
+- **백엔드 테스트 워닝 15개 (기능 영향 없음, 테스트 코드 원인)**
+  - 모두 `RuntimeWarning: coroutine '...' was never awaited` 계열 — 테스트에서 async 함수 호출 후 coroutine이 await되지 않고 GC됨
+  - **A. `AsyncMockMixin._execute_mock_call` (7개)**: `test_pipeline_compute` 1, `test_pipeline_gateway` 4, `test_risk_manager` 1, `test_trading` 1 — AsyncMock 호출 결과 coroutine이 await되지 않음 (mock 설정 이슈)
+  - **B. `test_daily_time_scheduler` 특정 코루틴 (6개)**: `_do_unified_confirmed_fetch`, `_broadcast`, `_on_ws_subscribe_end`, `_on_confirmed_download`, `_ws_disconnect_only`, `_login_post_pipeline` — fire-and-forget 패턴의 async 함수가 테스트 종료 시 미처리 상태로 GC
+  - **C. `test_pipeline_compute` 루프 코루틴 (2개)**: `_compute_loop_impl`, `_sector_recompute_loop_impl` — 백그라운드 루프 코루틴이 테스트 종료 시 미처리
+  - **영향도**: 프로덕션 코드에 영향 없음. 테스트 mock/이벤트 루프 정리 시점 문제. 필요 시 각 테스트에서 coroutine 정리(cleanup) 추가로 해결 가능
 
 ## 테스트 실행 원칙 (필수 준수)
 
