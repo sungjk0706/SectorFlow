@@ -154,11 +154,3 @@ def _notify_reg_ack(return_code: str = "") -> None:
         state.reg_ack_event.set()
 
 
-# ── 모듈 수준 동적 속성 위임 (호환성 유지 - PEP 562) ─────────────────────
-def __getattr__(name: str):
-    if name.startswith('_'):
-        clean_name = name[1:]
-        if hasattr(state, clean_name):
-            return getattr(state, clean_name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
