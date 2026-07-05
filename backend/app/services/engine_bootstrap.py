@@ -134,7 +134,8 @@ async def _login_post_pipeline() -> None:
     _st._ws_reg_pipeline_done.clear()
     logger.info("[시작] 로그인 후 파이프라인 진입")
     try:
-        await es._cleanup_stale_ws_subscriptions_on_session_ready()
+        from backend.app.services.engine_ws import _cleanup_stale_ws_subscriptions_on_session_ready
+        await _cleanup_stale_ws_subscriptions_on_session_ready()
 
         from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
         from backend.app.core.trade_mode import is_test_mode
@@ -177,8 +178,9 @@ async def _login_post_pipeline() -> None:
             if ws and ws.is_connected():
                 # 실시간 구독 전 종목 필터링 상태(_filtered)를 최신화하기 위해 1회 재계산
                 await es.recompute_sector_summary_now()
-                await es._run_sector_reg_pipeline()
-                await es._ensure_ws_subscriptions_for_positions()
+                from backend.app.services.engine_ws import _run_sector_reg_pipeline, _ensure_ws_subscriptions_for_positions
+                await _run_sector_reg_pipeline()
+                await _ensure_ws_subscriptions_for_positions()
 
             await _account_notify.notify_desktop_sector_refresh()
             await _account_notify.notify_desktop_sector_stocks_refresh()
@@ -191,9 +193,9 @@ async def _login_post_pipeline() -> None:
 
 
 async def _run_sector_reg_pipeline() -> None:
-    """REG 파이프라인 -- engine_service에서 위임."""
-    from backend.app.services import engine_service as es
-    await es._run_sector_reg_pipeline()
+    """REG 파이프라인 -- engine_ws에서 직접 호출."""
+    from backend.app.services.engine_ws import _run_sector_reg_pipeline as _reg
+    await _reg()
 
 
 

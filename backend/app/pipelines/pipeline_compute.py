@@ -452,7 +452,8 @@ async def _handle_real_01_tick(
 
         # ── 3. 레이더 행 갱신 + 업종 점수 증분 재계산 트리거 ──
         if is_0b_tick and any(f in vals for f in ("10", "11", "12", "14", "17", "228")):
-            es._apply_real01_volume_amount_to_radar_rows(raw_cd, vals, is_0b_tick=is_0b_tick)
+            from backend.app.services.engine_radar import _apply_real01_volume_amount_to_radar_rows
+            _apply_real01_volume_amount_to_radar_rows(raw_cd, vals, is_0b_tick=is_0b_tick)
             if nk_px:
                 from backend.app.services.engine_sector_confirm import request_sector_recompute
                 request_sector_recompute(nk_px)
