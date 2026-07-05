@@ -272,6 +272,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
     }
   }})
   autoBuyRight.appendChild(buyTpWrap)
+  autoBuyRight.appendChild(createHolidayBadge())
   autoBuyRight.appendChild(autoBuyToggle.el)
   autoBuyRow.appendChild(autoBuyRight)
   container.appendChild(autoBuyRow)
@@ -311,6 +312,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
     }
   }})
   autoSellRight.appendChild(sellTpWrap)
+  autoSellRight.appendChild(createHolidayBadge())
   autoSellRight.appendChild(autoSellToggle.el)
   autoSellRow.appendChild(autoSellRight)
   container.appendChild(autoSellRow)
@@ -374,7 +376,7 @@ function updateAutoTradeDisabledStates(): void {
 
 function updateWsTimeDisabled(): void {
   if (wsTimePairWrap) {
-    const disabled = shouldForceOff() || !vals.ws_subscribe_on
+    const disabled = !vals.ws_subscribe_on
     wsTimePairWrap.style.opacity = disabled ? '0.5' : '1'
     wsTimePairWrap.style.pointerEvents = disabled ? 'none' : 'auto'
   }
@@ -892,14 +894,14 @@ function syncFromSettings(s: AppSettings | null): void {
     autoBuyToggle?.setOn(!!r.auto_buy_on)
     if (buyTimeHandle) {
       buyTimeHandle.setValue(String(r.buy_time_start ?? '09:00'), String(r.buy_time_end ?? '15:00'))
-      buyTimeHandle.setEnabled(shouldForceOff() ? false : !!r.auto_buy_on)
+      buyTimeHandle.setEnabled(!!r.auto_buy_on)
     }
 
     // 자동매도
     autoSellToggle?.setOn(!!r.auto_sell_on)
     if (sellTimeHandle) {
       sellTimeHandle.setValue(String(r.sell_time_start ?? '09:00'), String(r.sell_time_end ?? '15:00'))
-      sellTimeHandle.setEnabled(shouldForceOff() ? false : !!r.auto_sell_on)
+      sellTimeHandle.setEnabled(!!r.auto_sell_on)
     }
   }
 

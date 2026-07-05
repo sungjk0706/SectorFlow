@@ -320,7 +320,6 @@ class LsConnector(BrokerConnector):
         self._received_count = 0
         self._realtime_enabled: bool = True  # 실시간 연결 ON/OFF 플래그
         self._auto_trade_enabled: bool = True  # 자동매매 ON/OFF 플래그
-        self._holiday_block_enabled: bool = True  # 공휴일 자동 차단 ON/OFF
         self._reconnecting: bool = False
         self._stop_reconnect: bool = False
         self._ws_queue: asyncio.Queue | None = None  # Producer-Consumer Queue
@@ -352,15 +351,6 @@ class LsConnector(BrokerConnector):
         """자동매매 ON/OFF 설정."""
         self._auto_trade_enabled = enabled
         logger.info("[LS증권연결] 자동매매 설정 변경: %s", enabled)
-
-    def is_holiday_block_enabled(self) -> bool:
-        """공휴일 자동 차단 ON/OFF 상태 반환"""
-        return self._holiday_block_enabled
-
-    def set_holiday_block_enabled(self, enabled: bool) -> None:
-        """공휴일 자동 차단 ON/OFF 설정."""
-        self._holiday_block_enabled = enabled
-        logger.info("[LS증권연결] 공휴일 자동 차단 설정 변경: %s", enabled)
 
     async def connect(self) -> None:
         """토큰 발급 + WebSocket 연결 + 수신루프 기동."""

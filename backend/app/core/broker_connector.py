@@ -113,7 +113,3 @@ class BrokerConnector(ABC):
     def set_realtime_enabled(self, enabled: bool) -> None:
         """실시간 연결 ON/OFF 설정 (기본 구현: 패스)"""
         pass
-
-    def set_holiday_block_enabled(self, enabled: bool) -> None:
-        """공휴일 자동 차단 ON/OFF 설정 (기본 구현: 패스)"""
-        pass

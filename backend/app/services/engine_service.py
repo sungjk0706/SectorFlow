@@ -212,7 +212,6 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             ws = state.active_connector
             if ws:
                 ws.set_realtime_enabled(bool(new_settings["ws_subscribe_on"]))
-                ws.set_holiday_block_enabled(bool(new_settings["holiday_guard_on"]))
 
             # 3) 활성→구간밖: 즉시 구독 해제 + WS 끊기 (장마감 후처리 없이)
             if was_active and not now_in_window:
@@ -225,16 +224,6 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
                 schedule_engine_task(_dts._on_ws_subscribe_start(), context="실시간 구독 시작")
         except Exception:
             logger.warning("[설정] 실시간 구독 타이머 재예약 실패", exc_info=True)
-
-    # 공휴일 자동 차단 설정 변경 시 Connector 플래그 업데이트
-    if "holiday_guard_on" in changed_keys:
-        try:
-            ws = state.active_connector
-            if ws:
-                new_settings = get_settings_snapshot()
-                ws.set_holiday_block_enabled(bool(new_settings["holiday_guard_on"]))
-        except Exception:
-            logger.warning("[설정] 공휴일 차단 플래그 업데이트 실패", exc_info=True)
 
     # 섹터 정렬/필터 관련 설정 변경 시 업종 점수만 재계산 (종목 시세는 WS delta로만 전송)
     _SECTOR_UI_KEYS = {
