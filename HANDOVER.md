@@ -1,19 +1,19 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-05: `holiday_guard_on` 사용자 토글 제거 — 공휴일 차단 항상 활성화**
-  - `is_trading_day_with_holiday_guard()` 제거, 모든 호출부 `is_trading_day()` 직접 호출로 변경
-  - 백엔드: `trading_calendar.py`, `auto_trading_effective.py`, `daily_time_scheduler.py`(3곳), `engine_settings.py`, `settings_defaults.py`, `telegram_bot.py`(/휴일 명령어 제거), `test_dry_run_fill_event.py`
-  - 프론트엔드: `general-settings.ts`(토글 행 제거, 배지는 유지), `types/index.ts`(타입 제거)
-  - 커밋 `5e0fb93` 푸시 완료
+- **2026-07-05: 전 페이지 타이틀 라벨 통일**
+  - 업종순위 3패널: `sector-settings.ts`(업종순위 설정), `sector-ranking-list.ts`(업종순위), `sector-stock.ts`(우측 grid 재배치: 좌측 필터 | 중앙 제목 | 우측 종목수)
+  - `buy-settings.ts`(매수설정), `sell-settings.ts`(매도설정), `general-settings.ts`(일반설정), `profit-overview.ts`(수익현황 + 섹션 타이틀 sectionTitle로 통일)
+  - `stock-classification.ts`: fontSize 오버라이드 제거 (15px 통일)
+  - 페이지 타이틀: `createCardTitle`(15px), 섹션 타이틀: `sectionTitle`(14px) 계층 통일
+  - 커밋 `478a1a6` 푸시 완료
 
 ## 현재 상태
-- **빌드**: 프론트엔드 `npm run build` OK (3.18s), `tsc --noEmit` OK, 백엔드 `py_compile` 7개 파일 OK
-- **잔여 참조**: `holiday_guard`, `is_trading_day_with_holiday_guard`, `holidayToggle` — 모두 0건
-- **Git**: `5e0fb93` 커밋 푸시 완료
+- **빌드**: 프론트엔드 `npm run build` OK (tsc + vite, 3.79s)
+- **Git**: `478a1a6` 커밋 푸시 완료
 
 ## 다음 단계
-- **브라우저 런타임 검증 (대기)**: 일반설정 자동매매 탭에서 공휴일 토글 행 사라지고 설명 문구만 표시 확인, 비거래일 배지 정상 동작 확인
+- **브라우저 런타임 검증 (대기)**: 각 페이지 타이틀 표시 위치·크기 일관성 확인
 - **장중 런타임 검증 (대기)**: 테스트모드 주문/체결 시퀀스 확인
 - **WS 구독 분산 최적화 (대기)**: `ConnectorManager` 구현됨, 구독 분산 미구현
 
