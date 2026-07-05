@@ -1,6 +1,11 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-06: 업종순위 표시 수정 — X 이모지 제거, 모든 업종 순위 표시**
+  - `sector-ranking-list.ts:138,150`: 백엔드 rank 대신 정렬 순번(i+1) 표시, rowCaches 동기화
+  - `sector-stock.ts:221`: ❌ 제거, dead code `sectorRankMap` 활성화하여 정렬 순번 표시
+  - 정렬/불투명도/dim/바 색상 로직은 유지 (탈락/제외 업종 불투명 처리 유지)
+  - 빌드 검증: `npm run build` 성공 (tsc 0 errors, vite 53 modules)
 - **2026-07-06: WS 구독 분산 최적화 — sender 파라미터 라우팅 수정**
   - `engine_ws.py`: `_ws_send_reg_unreg_and_wait_ack`, `_ws_send_remove_fire_and_forget`에 `sender` 파라미터 추가
   - `kiwoom_connector.py`: 5개 메서드에서 `sender=self` 전달
@@ -9,17 +14,13 @@
   - `market_close_pipeline.py`: `remove_krx_only_stocks`에서 kiwoom 커넥터 직접 조회 후 sender 전달
   - `daily_time_scheduler.py`: `_do_unreg_all`에서 `ws.broker_id` 체크 대신 kiwoom 커넥터 직접 조회
   - 테스트: `test_market_close_pipeline.py`, `test_daily_time_scheduler.py` mock 패턴 업데이트
-- **2026-07-06: 테스트 hang 자동 감지 원칙 수립**
-  - HANDOVER.md 섹션 2 강화: 10초마다 자동 체크, hang 시 즉시 강제 종료, 원인 자동 분석
-  - 메모리 "SectorFlow 문제해결 참고서" 동기화
 
 ## 현재 상태
-- **백엔드**: `pytest backend/tests/` 1016 passed, 13 warnings in 8.32s
-- **프론트엔드**: vitest 109 passed, tsc 0 errors, eslint 0 errors (직전 세션 기준)
-- **Git**: 미커밋 — WS 구독 분산 수정분 + 테스트 수정분 + HANDOVER.md 업데이트
+- **백엔드**: `pytest backend/tests/` 1016 passed, 13 warnings in 8.32s (직전 세션 기준)
+- **프론트엔드**: `npm run build` 성공 (tsc 0 errors, vite 53 modules), vitest 109 passed (직전 세션 기준)
+- **Git**: 미커밋 — 업종순위 표시 수정분 (커밋 예정)
 
 ## 다음 단계
-- **Git 커밋**: WS 구독 분산 수정분 + 테스트 수정분 + HANDOVER.md
 - **브라우저 런타임 검증 (대기)**: 테스트모드 매수/매도 시 체결가 로그에서 슬리피지 적용 확인
 - **테스트 커버리지 개선**: Priority 4 이상 진행
 
