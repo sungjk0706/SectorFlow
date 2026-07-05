@@ -87,11 +87,11 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         subscribed_count = sum(1 for entry in es._master_stocks_cache.values() if entry.get("_subscribed", False))
         es.logger.info(
             "[디버그] 초기화 직전 구독목록 positions=%d subscribed=%d layout=%d pos_codes=%d",
-            len(es._positions), subscribed_count,
+            len(es.state.positions), subscribed_count,
             len(es._integrated_system_settings_cache["sector_stock_layout"]),
             len(notify_cache.positions_code_set),
         )
-        es._positions = []
+        es.state.positions = []
         for entry in es._master_stocks_cache.values():
             entry.pop("_subscribed", None)
         es._snapshot_history.clear()
@@ -100,7 +100,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         subscribed_count_after = sum(1 for entry in es._master_stocks_cache.values() if entry.get("_subscribed", False))
         es.logger.info(
             "[디버그] 초기화 직후 구독목록 positions=%d subscribed=%d layout=%d pos_codes=%d",
-            len(es._positions), subscribed_count_after,
+            len(es.state.positions), subscribed_count_after,
             len(es._integrated_system_settings_cache["sector_stock_layout"]),
             len(notify_cache.positions_code_set),
         )
@@ -117,7 +117,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
             es._auto_trade._symbol_daily_buy_spent = {}
             es._auto_trade._buy_state.clear()
         # 매수 주문 간격 타이머 리셋
-        es._last_global_buy_ts = 0.0
+        es.state._last_global_buy_ts = 0.0
         # buy_targets 메모리 초기화 (매수후보 테이블 동기화)
         if es._sector_summary_cache and hasattr(es._sector_summary_cache, 'buy_targets'):
             es._sector_summary_cache.buy_targets = []
