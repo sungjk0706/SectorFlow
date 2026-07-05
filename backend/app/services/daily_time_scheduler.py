@@ -478,11 +478,9 @@ def _broadcast_market_phase() -> None:
 
 
 async def _apply_auto_toggle_on_startup(settings: dict) -> None:
-    """앱 기동 시 거래일/시간 기준으로 마스터·WS구독을 자동 ON/OFF.
-    - 거래일 + ws_subscribe_start~end 구간 내 → 마스터/WS ON
-    - 비거래일 or 구독 구간 밖 → 마스터/WS OFF
-    - auto_buy_on/auto_sell_on은 사용자 수동 설정을 존중 (미접근)
-    메모리 캐시만 갱신 (DB 저장 없음 — 재기동 시 재판별되므로 영속성 불필요)."""
+    """앱 기동/자정 시 거래일 판별 — 설정값은 사용자만 쓰고, 실행 제어는 런타임 게이트가 담당.
+    ws_subscribe_on 등 설정값을 강제 변경하지 않음 (원칙 10 SSOT, 원칙 20 폴백 금지).
+    거래일 판별 결과를 로깅하고 UI 갱신 알림만 수행."""
     from backend.app.core.trading_calendar import is_trading_day_with_holiday_guard
 
     holiday_guard = bool(settings.get("holiday_guard_on", True))
@@ -499,59 +497,19 @@ async def _apply_auto_toggle_on_startup(settings: dict) -> None:
 
     in_time_window = start_total <= now_minutes <= end_total
 
-    should_be_on = is_trade_day and in_time_window
-
-    keys = {
-        "ws_subscribe_on": should_be_on,
-        "auto_off_by_holiday": not is_trade_day,
-    }
+    logger.debug(
+        "[타이머] 기동 판별 -- 거래일=%s, 시간구간내=%s (설정값 미변경)",
+        is_trade_day, in_time_window,
+    )
     try:
-        settings.update(keys)
-        from backend.app.services import engine_state as _st
-        _st.state.integrated_system_settings_cache.update(keys)
-        logger.debug(
-            "[타이머] 기동 판별 -- 거래일=%s → WS구독 %s",
-            is_trade_day, "ON" if should_be_on else "OFF",
+        from backend.app.services.engine_account_notify import (
+            notify_desktop_header_refresh,
+            notify_desktop_settings_toggled,
         )
-        try:
-            from backend.app.services.engine_account_notify import (
-                notify_desktop_header_refresh,
-                notify_desktop_settings_toggled,
-            )
-            await notify_desktop_header_refresh()
-            await notify_desktop_settings_toggled()
-        except Exception as e:
-            logger.warning("[데이터] 화면전송 실패: %s", e, exc_info=True)
+        await notify_desktop_header_refresh()
+        await notify_desktop_settings_toggled()
     except Exception as e:
-        logger.warning("[타이머] 기동 판별 갱신 실패: %s", e)
-
-
-async def _restore_from_holiday_flag(settings: dict) -> bool:
-    """auto_off_by_holiday 플래그가 있으면 자동매매/WS구독을 ON으로 복원하고 플래그 삭제.
-    복원이 실행되면 True 반환."""
-    if not bool(settings.get("auto_off_by_holiday", False)):
-        return False
-    on_keys = {
-        "ws_subscribe_on": True,
-        "auto_off_by_holiday": False,
-    }
-    try:
-        settings.update(on_keys)
-        state.integrated_system_settings_cache.update(on_keys)
-        logger.info("[타이머] 거래일 시작 -- WS구독 자동 복원 (auto_off_by_holiday 해제)")
-        try:
-            from backend.app.services.engine_account_notify import (
-                notify_desktop_header_refresh,
-                notify_desktop_settings_toggled,
-            )
-            await notify_desktop_header_refresh()
-            await notify_desktop_settings_toggled()
-        except Exception as e:
-            logger.warning("[데이터] 화면전송 실패: %s", e, exc_info=True)
-        return True
-    except Exception as e:
-        logger.warning("[타이머] 자동 복원 실패: %s", e)
-        return False
+        logger.warning("[데이터] 화면전송 실패: %s", e, exc_info=True)
 
 
 async def _on_ws_subscribe_start() -> None:
@@ -570,29 +528,11 @@ async def _on_ws_subscribe_start() -> None:
             if not is_trading_day(today):
                 return
         # 공휴일 강제 OFF 플래그가 있으면 자동 복원 후 진행
-        await _restore_from_holiday_flag(settings)
-        # ★ 구독 시작 시각 도달 → WS구독 ON 복원
-        #   ws_subscribe_on이 False면 사용자 수동 모드 — 자동 연결 스킵
+        # → 제거: 강제 OFF를 안 하므로 복원도 불필요 (원칙 10 SSOT, 원칙 20 폴백 금지)
+        # ws_subscribe_on=False면 사용자 수동 모드 — 자동 연결 스킵
         if not bool(settings.get("ws_subscribe_on", False)):
             logger.info("[타이머] ws_subscribe_on=False — 자동 연결 스킵 (수동 모드)")
             return
-        try:
-            _on_keys = {
-                "ws_subscribe_on": True,
-            }
-            settings.update(_on_keys)
-            state.integrated_system_settings_cache.update(_on_keys)
-            try:
-                from backend.app.services.engine_account_notify import (
-                    notify_desktop_header_refresh,
-                    notify_desktop_settings_toggled,
-                )
-                await notify_desktop_header_refresh()
-                await notify_desktop_settings_toggled()
-            except Exception as e:
-                logger.warning("[데이터] 화면전송 실패: %s", e, exc_info=True)
-        except Exception as _e:
-            logger.warning("[타이머] WS구독 ON 복원 실패: %_e")
         state.ws_subscribe_window_active = True
         # ── 실시간 필드 초기화 (전일 확정 데이터 제거) ──
         logger.info("[RESET CALL] from _on_ws_subscribe_start")
@@ -633,22 +573,6 @@ async def _on_ws_subscribe_end() -> None:
         _set_status(quote=False)
         # market-phase WS 브로드캐스트 (구독 종료 시각 기준 상태 반영)
         _broadcast_market_phase()
-        # ── WS구독 토글 OFF 저장 (종료 시각 도달) ──
-        #   (time_scheduler_on은 사용자 수동 제어 — 스케줄러가 건드리지 않음)
-        try:
-            off_keys = {
-                "ws_subscribe_on": False,
-            }
-            state.integrated_system_settings_cache.update(off_keys)
-            logger.info("[타이머] 구독 종료 시각 도달 -- WS구독 OFF")
-            from backend.app.services.engine_account_notify import (
-                notify_desktop_header_refresh,
-                notify_desktop_settings_toggled,
-            )
-            await notify_desktop_header_refresh()
-            await notify_desktop_settings_toggled()
-        except Exception as _e:
-            logger.warning("[타이머] 구독 종료 OFF 저장 실패: %s", _e, exc_info=True)
         # ── WS 연결 해제는 engine_loop의 구간 감지 루프가 담당 → 이벤트 통지 ──
         state.ws_window_changed_event.set()
         logger.info("[타이머] 실시간 구독 구간 종료 -- engine_loop에 WS 해제 통지")
