@@ -301,9 +301,9 @@ class TelegramBot:
         """현재값 반전 후 저장. 새 값 반환."""
         from backend.app.core.settings_file import update_settings
         from backend.app.services import engine_service
-        import backend.app.services.engine_state as _st
+        from backend.app.services.engine_state import state
 
-        flat = _st._integrated_system_settings_cache
+        flat = state.integrated_system_settings_cache
         cur = bool(flat[key])
         new = not cur
         await update_settings({key: new})

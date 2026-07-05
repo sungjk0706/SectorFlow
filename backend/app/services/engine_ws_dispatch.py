@@ -8,6 +8,7 @@ import asyncio
 import json
 import time
 import backend.app.services.engine_state as engine_state
+from backend.app.services.engine_state import state
 from backend.app.services import engine_account
 from backend.app.services import engine_lifecycle
 from collections.abc import Callable
@@ -42,9 +43,9 @@ _realtime_first_tick_ts_map: dict[str, int] = {}  # {symbol: timestamp (ms)}
 def _get_wl_codes_cached() -> set[str]:
     """sector_stock_layout → code Set 캐시. 레이아웃 길이가 바뀔 때만 재생성."""
     global _wl_codes_cache, _wl_codes_layout_len
-    cur_len = len(engine_state._integrated_system_settings_cache["sector_stock_layout"])
+    cur_len = len(state.integrated_system_settings_cache["sector_stock_layout"])
     if cur_len != _wl_codes_layout_len:
-        _wl_codes_cache = {v for t, v in engine_state._integrated_system_settings_cache["sector_stock_layout"] if t == "code"}
+        _wl_codes_cache = {v for t, v in state.integrated_system_settings_cache["sector_stock_layout"] if t == "code"}
         _wl_codes_layout_len = cur_len
     return _wl_codes_cache
 
@@ -114,7 +115,7 @@ def _log_real_data_items_preview(data: dict) -> None:
 
 def _handle_login(data: dict) -> None:
     if str(data.get("return_code", "")) == "0":
-        engine_state.state.login_ok = True
+        state.login_ok = True
         engine_state._notify_reg_ack()
         # LOGIN 성공 → 구독 파이프라인 트리거 (구독 구간 내이면 REG 자동 시작)
         try:
@@ -168,8 +169,8 @@ def _handle_reg(data: dict) -> None:
             if not norm:
                 continue
             if rc == "105110":
-                if norm in engine_state._master_stocks_cache:
-                    engine_state._master_stocks_cache[norm].pop("_subscribed", None)
+                if norm in state.master_stocks_cache:
+                    state.master_stocks_cache[norm].pop("_subscribed", None)
                 logger.warning(
                     "[WS] REG 응답 건수한도(105110) -- 즉시 재시도하지 않음 item=%s (응답 본문 기준)",
                     norm,
@@ -182,9 +183,9 @@ def _handle_reg(data: dict) -> None:
                 except RuntimeError as e:
                     logger.warning("[재구독] 루프 미실행 %s: %s", norm, e)
             elif rc not in ("0", "00", ""):
-                if norm in engine_state._master_stocks_cache:
-                    engine_state._master_stocks_cache[norm].pop("_subscribed", None)
-        if engine_state._REG_REAL_DEBUG_EXTRA_LOG and rows:
+                if norm in state.master_stocks_cache:
+                    state.master_stocks_cache[norm].pop("_subscribed", None)
+        if state.REG_REAL_DEBUG_EXTRA_LOG and rows:
             _log_ws_trnm_json_detail(trnm, d if d else {"_raw": data})
     finally:
         engine_state._notify_reg_ack(return_code=rc)
@@ -227,8 +228,8 @@ async def _handle_real_00(item: dict, vals: dict) -> None:
     except (ValueError, TypeError) as e:
         logger.warning("[미체결] %s 파싱 실패 902=%r: %s", raw_cd, vals.get("902"), e)
         unex = 0
-    if engine_state._auto_trade:
-        await engine_state._auto_trade.on_fill_update(raw_cd, side, unex, engine_state._access_token)
+    if state.auto_trade:
+        await state.auto_trade.on_fill_update(raw_cd, side, unex, state.access_token)
 
     # [근본해결] 부분 체결(unex > 0) 포함 모든 체결 발생 시 즉시 계좌 상태 반영
     await engine_account._on_fill_after_ws()
@@ -290,7 +291,7 @@ async def _handle_real_0d(item: dict, vals: dict) -> None:
         return
     # 호가잔량 캐시 삭제로 저장 로직 제거
     # 매수후보 종목이면 호가잔량비 변경을 프론트에 즉시 전송 (이벤트 기반)
-    if engine_state._master_stocks_cache.get(nk, {}).get("_subscribed_0d", False):
+    if state.master_stocks_cache.get(nk, {}).get("_subscribed_0d", False):
         from backend.app.services.engine_account_notify import notify_orderbook_update
         await notify_orderbook_update(nk, bid, ask)
 
@@ -323,7 +324,7 @@ _REAL_DISPATCH: dict[str, Callable] = {
 
 async def _handle_real(data: dict) -> None:
     """REAL 메시지 수신 — 데이터 타입별 분기 처리 (돈 데이터 즉시 우회, 연산 데이터 압축)."""
-    if engine_state._REG_REAL_DEBUG_EXTRA_LOG:
+    if state.REG_REAL_DEBUG_EXTRA_LOG:
         _log_ws_trnm_json_detail("REAL", data if isinstance(data, dict) else {"_raw": data})
         _log_real_data_items_preview(data if isinstance(data, dict) else {})
     
