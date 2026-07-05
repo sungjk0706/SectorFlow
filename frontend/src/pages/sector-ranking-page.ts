@@ -3,6 +3,7 @@
 // 좌측: 설정 (sector-settings), 중앙: 업종순위 (sector-ranking-list), 우측: 종목시세 (sector-stock-table)
 
 import { shell } from '../main'
+import { SETTINGS_PANEL_WIDTH } from '../layout/shell'
 import sectorSettings from './sector-settings'
 import sectorRankingList from './sector-ranking-list'
 import type { PageModule } from '../router'
@@ -11,6 +12,7 @@ import type { PageModule } from '../router'
 const DEFAULT_TRIPLE_LEFT_FLEX = '4'
 const DEFAULT_TRIPLE_CENTER_FLEX = '3'
 const DEFAULT_TRIPLE_RIGHT_FLEX = '3'
+const DEFAULT_TRIPLE_LEFT_PADDING = '16px'
 
 let stockTableEl: HTMLElement | null = null
 
@@ -25,8 +27,12 @@ function mount(_container: HTMLElement): void {
   // tripleHeader 사용 안함 (sector-ranking은 헤더 불필요)
   shell.tripleHeader.style.display = 'none'
 
-  // flex 비율 설정: 좌·중앙 동일 너비, 우측 3배
-  shell.tripleLeft.style.flex = '1'
+  // 좌측 패널: leftPanel(dual)과 동일 스타일 — SETTINGS_PANEL_WIDTH 상수 사용
+  shell.tripleLeft.style.flex = `0 0 ${SETTINGS_PANEL_WIDTH}px`
+  shell.tripleLeft.style.width = `${SETTINGS_PANEL_WIDTH}px`
+  shell.tripleLeft.style.minWidth = `${SETTINGS_PANEL_WIDTH}px`
+  shell.tripleLeft.style.padding = '8px'
+  // 중앙·우측: 남은 공간 분할 (1:3)
   shell.tripleCenter.style.flex = '1'
   shell.tripleRight.style.flex = '3'
 
@@ -61,8 +67,11 @@ function unmount(): void {
   while (shell.tripleCenter.firstChild) shell.tripleCenter.removeChild(shell.tripleCenter.firstChild)
   while (shell.tripleRight.firstChild) shell.tripleRight.removeChild(shell.tripleRight.firstChild)
 
-  // flex 기본값 복원 (stock-classification용)
+  // tripleLeft 스타일 복원 (stock-classification용)
   shell.tripleLeft.style.flex = DEFAULT_TRIPLE_LEFT_FLEX
+  shell.tripleLeft.style.width = ''
+  shell.tripleLeft.style.minWidth = ''
+  shell.tripleLeft.style.padding = DEFAULT_TRIPLE_LEFT_PADDING
   shell.tripleCenter.style.flex = DEFAULT_TRIPLE_CENTER_FLEX
   shell.tripleRight.style.flex = DEFAULT_TRIPLE_RIGHT_FLEX
 
