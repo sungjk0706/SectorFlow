@@ -1,21 +1,24 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-05: 설정값과 런타임 게이트 분리 — 비거래일 토글 강제 OFF 제거**
-  - `general-settings.ts`: syncFromSettings 토글 forceOff 제거, handleWsToggle/handleMasterToggle/autoBuyToggle/autoSellToggle shouldForceOff 다이얼로그 제거
-  - `daily_time_scheduler.py`: `_apply_auto_toggle_on_startup` ws_subscribe_on 강제 변경 제거, `_on_ws_subscribe_end` ws_subscribe_on=False 제거, `_on_ws_subscribe_start` ws_subscribe_on=True 제거, `_restore_from_holiday_flag` 함수 전체 제거
-  - 런타임 게이트 유지: `is_ws_subscribe_window()`, `_on_ws_subscribe_start` 스킵, `auto_trading_effective._master_on()`
-  - 원칙 10 (SSOT), 원칙 20 (폴백 금지) 부합
+- **2026-07-05: shouldForceOff() 잔류 제거 + 죽은 코드 정리 (원칙 16 위반)**
+  - `general-settings.ts`: `shouldForceOff()` 적용 3곳 제거 — `updateWsTimeDisabled`(377줄), `buyTimeHandle.setEnabled`(895줄), `sellTimeHandle.setEnabled`(902줄). 배지 표시용 `updateHolidayBadges`는 유지
+  - `settings_defaults.py`: `auto_off_by_holiday` 기본값 제거 (어디에서도 사용 안 함)
+  - `engine_settings.py`: `auto_off_by_holiday` 로드 제거
+  - `kiwoom_connector.py`/`ls_connector.py`: `_holiday_block_enabled` 필드, `is_holiday_block_enabled()`, `set_holiday_block_enabled()` 제거
+  - `broker_connector.py`: `set_holiday_block_enabled()` 기본 구현 제거
+  - `engine_service.py`: `ws.set_holiday_block_enabled()` 호출 2곳 제거 (215줄, 229-237줄 블록)
+  - `general-settings.ts`: 자동매수/매도 TimePairInput 다음 비거래일 배지 추가 (275, 315줄) — API 설정 탭과 일관성
+  - 원칙 10 (SSOT), 원칙 16 (구현 배선), 원칙 20 (폴백 금지) 부합
 
 ## 현재 상태
-- **빌드**: 프론트엔드 `npm run build` OK (3.79s), 백엔드 `py_compile` OK
-- **테스트**: `pytest` 90 passed (이전 세션), 이번 수정 테스트 미실행
+- **빌드**: 프론트엔드 `npm run build` OK (6.36s), 백엔드 `py_compile` OK
+- **테스트**: `pytest` 90 passed (6.83s)
 - **앱 기동**: 런타임 검증 미수행 (원칙 19 — 사용자 직접 확인 필요)
-- **Git**: `3f1f109` push 완료 (origin/main 동기화됨)
+- **Git**: 커밋 미수행
 
 ## 다음 단계
-- **일반설정 자동매매 탭 동일 문제 조사 (대기)**: 이번 수정에서 API 설정 탭의 토글 강제 OFF를 제거했으나, 자동매매 탭의 `time_scheduler_on` 토글도 동일한 패턴(`forceOff ? false`)으로 강제 OFF되어 있었음. 이미 이번 수정에서 함께 제거했으나, 자동매매 탭에 추가적인 강제 OFF 경로나 다이얼로그가 있는지 독립 조사 필요 — `general-settings.ts` 자동매매 탭 렌더링 로직, `handleMasterToggle` 외 다른 핸들러 확인
-- **비거래일 런타임 검증 (대기)**: `SectorFlow.command` 기동 후 비거래일에 토글이 사용자 설정값 유지하는지, 배지/시간 비활성화 정상 동작하는지 확인 — 사용자 직접 확인 필요
+- **비거래일 런타임 검증 (대기)**: `SectorFlow.command` 기동 후 비거래일에 토글이 사용자 설정값 유지하는지, 배지 정상 동작하는지 확인 — 사용자 직접 확인 필요
 - **장중 런타임 검증 (대기)**: 테스트모드 주문/체결 시퀀스, `has_open_buy` 상태, `_recent_sells` 처리, 텔레그램 알림 정상 동작 확인 — 장중 사용자 직접 확인 필요
 - **WS 구독 분산 최적화 (대기)**: `ConnectorManager` 구현됨, 구독 분산 미구현 — `connector_manager.py`, `engine_ws_reg.py`
 - **파사드 임포트 정리 (선택적)**: `engine_service.py`의 재내보내기 함수들을 직접 import로 변경. 현재 동작에는 문제 없으나 코드 명확성 향상 목적
