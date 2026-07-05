@@ -209,8 +209,9 @@ async def _unreg_grp(grp_no: str) -> bool:
     Returns:
         True if 성공(또는 등록 항목 없음), False if 실패/타임아웃.
     """
-    ws = state.connector_manager or state.active_connector
-    if not ws or not ws.is_connected() or ws.broker_id != "kiwoom":
+    cm = state.connector_manager
+    kiwoom_conn = cm.get_connector("kiwoom") if cm else None
+    if not kiwoom_conn or not kiwoom_conn.is_connected():
         return True
 
     # grp_no=4(0B): 등록된 종목 코드를 data에 포함
@@ -230,7 +231,7 @@ async def _unreg_grp(grp_no: str) -> bool:
                     "data":    [{"item": chunk, "type": ["0B"]}],
                 }
                 try:
-                    await _ws_send_remove_fire_and_forget(payload)
+                    await _ws_send_remove_fire_and_forget(payload, sender=kiwoom_conn)
                 except Exception as e:
                     logger.warning("[구독] grp_no=%s 청크 %d/%d 오류: %s", grp_no, ci+1, nchunks, e, exc_info=True)
             for cd in subscribed_codes:
@@ -354,8 +355,9 @@ async def subscribe_account_realtime() -> None:
     Args:
         es: engine_service 모듈 참조
     """
-    ws = state.connector_manager or state.active_connector
-    if not ws or not ws.is_connected() or ws.broker_id != "kiwoom":
+    cm = state.connector_manager
+    kiwoom_conn = cm.get_connector("kiwoom") if cm else None
+    if not kiwoom_conn or not kiwoom_conn.is_connected():
         # LS증권은 소켓 연결 및 로그인 핸드셰이크 단계에서 계좌등록(tr_type="1")을 수행하므로 키움만 Grp 10 전송
         return
 
@@ -368,7 +370,7 @@ async def subscribe_account_realtime() -> None:
     payload = build_account_reg_payload()
     try:
         from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
-        ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload)
+        ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload, sender=kiwoom_conn)
         if ok:
             state.ws_account_subscribed = True
             logger.info(

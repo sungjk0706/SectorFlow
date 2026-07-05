@@ -1,19 +1,26 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-06: 전체 테스트 회귀 + eslint 설정 수정**
-  - 백엔드: `pytest backend/tests/` 1016 passed, 13 warnings in 11.41s
-  - 프론트엔드: vitest 109 passed, tsc 0 errors, eslint 0 errors
-  - eslint 수정: `eslint.config.js`에 Node.js globals 추가 (`vite.config.ts`, `vitest.setup.ts`), TypeScript 파일 `no-undef` 비활성화 (@typescript-eslint 권장)
+- **2026-07-06: WS 구독 분산 최적화 — sender 파라미터 라우팅 수정**
+  - `engine_ws.py`: `_ws_send_reg_unreg_and_wait_ack`, `_ws_send_remove_fire_and_forget`에 `sender` 파라미터 추가
+  - `kiwoom_connector.py`: 5개 메서드에서 `sender=self` 전달
+  - `connector_manager.py`: `subscribe_stocks` 나머지 유실 수정, `supports_ack` 추가
+  - `engine_ws_reg.py`: `_unreg_grp`, `subscribe_account_realtime`에서 kiwoom 커넥터 직접 조회
+  - `market_close_pipeline.py`: `remove_krx_only_stocks`에서 kiwoom 커넥터 직접 조회 후 sender 전달
+  - `daily_time_scheduler.py`: `_do_unreg_all`에서 `ws.broker_id` 체크 대신 kiwoom 커넥터 직접 조회
+  - 테스트: `test_market_close_pipeline.py`, `test_daily_time_scheduler.py` mock 패턴 업데이트
+- **2026-07-06: 테스트 hang 자동 감지 원칙 수립**
+  - HANDOVER.md 섹션 2 강화: 10초마다 자동 체크, hang 시 즉시 강제 종료, 원인 자동 분석
+  - 메모리 "SectorFlow 문제해결 참고서" 동기화
 
 ## 현재 상태
-- **백엔드**: `pytest backend/tests/` 1016 passed, 13 warnings in 11.41s
-- **프론트엔드**: vitest 109 passed, tsc 0 errors, eslint 0 errors
-- **Git**: 커밋 푸시 완료 (b33cd7c) — eslint 수정 미커밋
+- **백엔드**: `pytest backend/tests/` 1016 passed, 13 warnings in 8.32s
+- **프론트엔드**: vitest 109 passed, tsc 0 errors, eslint 0 errors (직전 세션 기준)
+- **Git**: 미커밋 — WS 구독 분산 수정분 + 테스트 수정분 + HANDOVER.md 업데이트
 
 ## 다음 단계
+- **Git 커밋**: WS 구독 분산 수정분 + 테스트 수정분 + HANDOVER.md
 - **브라우저 런타임 검증 (대기)**: 테스트모드 매수/매도 시 체결가 로그에서 슬리피지 적용 확인
-- **WS 구독 분산 최적화 (대기)**: `ConnectorManager` 구현됨, 구독 분산 미구현
 - **테스트 커버리지 개선**: Priority 4 이상 진행
 
 ## 미해결 문제
@@ -33,12 +40,14 @@ python -m pytest backend/tests/[파일명] -v --timeout=15 --timeout-method=sign
 - `timeout_method = signal` 필수 — `thread` 방식은 asyncio C-level wait를 interrupt하지 못해 hang 시 프로세스가 영구 블록됨
 - `pytest.ini`에 전역 설정되어 있으므로 CLI에서 생략 가능
 
-### 2. 자동 hang 체크 원칙
-- 테스트 실행 후 10초 이상 로그/출력이 없으면 hang으로 간주
-- hang 감지 시 즉시 프로세스 강제 종료 (`proc.kill()`)
-- hang 발생 시 자동으로 원인 분석 시작
-- 정상: "✅ N passed in N.Ns"
-- hang: "❌ 10초 이상 응답 없음 - 강제 종료 및 원인 분석 시작"
+### 2. 자동 hang 체크 원칙 (에이전트 필수 강제 — 수동 개입 금지)
+- **a. 10초마다 진행 상태 자동 체크**: 테스트 실행 후 `command_status`로 주기적 확인
+- **b. 10초 이상 로그/출력 멈추면 즉시 hang 간주**: 대기 없이 강제 종료 결정
+- **c. hang 감지 시 즉시 프로세스 강제 종료**: SIGTERM/Ctrl+C로 프로세스 종료
+- **d. hang 원인 자동 분석**: 종료 후 로그/코드 분석하여 원인 보고
+- **e. 위 모든 과정은 에이전트가 자동 수행**: 사용자 확인 대기 금지, 수동 개입 금지
+- 정상 완료: "✅ N passed in N.Ns"
+- hang 감지: "❌ 10초 이상 응답 없음 — 강제 종료 및 원인 분석 시작"
 
 ### 3. 테스트 hang 방지 코딩 원칙 (근본 원인별)
 
