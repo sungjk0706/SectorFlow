@@ -290,13 +290,3 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             logger.warning("[설정] 텔레그램 폴링 토글 실패", exc_info=True)
 _run_snapshot_and_sell_check = _run_snapshot_and_sell_check
 
-
-# ── 모듈 수준 동적 속성 위임 (호환성 유지 - PEP 562) ─────────────────────
-def __getattr__(name: str):
-    if name.startswith('_'):
-        clean_name = name[1:]
-        from backend.app.services.engine_state import state
-        if hasattr(state, clean_name):
-            return getattr(state, clean_name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
