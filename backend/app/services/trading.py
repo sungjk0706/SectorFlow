@@ -679,12 +679,13 @@ async def _dryrun_post_sell_broadcast(stk_cd: str, stk_nm: str, settings: dict) 
     """테스트모드 매도 후 UI 잔고 브로드캐스트."""
     try:
         from backend.app.services import engine_service as es
+        from backend.app.services.engine_state import state
 
         # 가상 잔고에서 매도 완료된 종목 -- _recent_sells 차단 해제
-        if es._auto_trade:
+        if state.auto_trade:
             dry_codes = await dry_run.position_codes()
-            sold_out = set(es._auto_trade._recent_sells) - dry_codes
-            es._auto_trade._recent_sells -= sold_out
+            sold_out = set(state.auto_trade._recent_sells) - dry_codes
+            state.auto_trade._recent_sells -= sold_out
             if sold_out:
                 logger.info("[테스트모드] 매도 체결 확인 -- 차단 해제: %s", sold_out)
 

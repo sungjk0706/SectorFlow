@@ -85,7 +85,7 @@ def _get_krx_only_codes(es: Any) -> list[str]:
 
     sources: list[set | dict | list] = []
     # _master_stocks_cache의 "_subscribed" 사용
-    subscribed_codes = {cd for cd, entry in es._master_stocks_cache.items() if entry.get("_subscribed", False)}
+    subscribed_codes = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed", False)}
     if subscribed_codes:
         sources.append(subscribed_codes)
     # _radar_cnsr_order 삭제
@@ -100,7 +100,7 @@ def _get_krx_only_codes(es: Any) -> list[str]:
                 result.append(base)
 
     # 레이아웃 캐시에서 seen에 없는 KRX 단독 종목 추가 (항상 순회)
-    layout = es._integrated_system_settings_cache["sector_stock_layout"]
+    layout = state.integrated_system_settings_cache["sector_stock_layout"]
     for kind, val in layout:
         if kind == "code":
             base = _base_stk_cd(val)
@@ -175,8 +175,8 @@ async def remove_krx_only_stocks(es: Any) -> dict:
         if ack_ok:
             # 성공 — _master_stocks_cache에서 "_subscribed" 제거
             for cd in chunk:
-                if cd in es._master_stocks_cache:
-                    es._master_stocks_cache[cd].pop("_subscribed", None)
+                if cd in state.master_stocks_cache:
+                    state.master_stocks_cache[cd].pop("_subscribed", None)
             removed += len(chunk)
             if supports_ack:
                 _log.info(
@@ -426,8 +426,8 @@ async def _apply_confirmed_to_memory(
             entry["reason"] = "확정 데이터 조회"
             pending[nk] = entry
             # _radar_cnsr_order 삭제: _master_stocks_cache의 "_subscribed" 사용
-            if nk in es._master_stocks_cache:
-                es._master_stocks_cache[nk]["_subscribed"] = True
+            if nk in state.master_stocks_cache:
+                state.master_stocks_cache[nk]["_subscribed"] = True
             ltp[nk] = px
             amt = int(detail.get("trade_amount") or 0)
             lta[nk] = amt
@@ -680,18 +680,18 @@ async def _run_confirmed_pipeline(
 
     try:
         # ── 메모리 전체 초기화 ──
-        es._integrated_system_settings_cache["sector_stock_layout"] = []
+        state.integrated_system_settings_cache["sector_stock_layout"] = []
         from backend.app.services.engine_account_notify import _rebuild_layout_cache
         _rebuild_layout_cache([])
         _log.info("%s 메모리 전체 초기화 완료 — 새 데이터로 교체 시작", tag)
 
         # 스케줄러 토글 체크 (타이머 전용)
-        if check_scheduler and not es._integrated_system_settings_cache["scheduler_market_close_on"]:
+        if check_scheduler and not state.integrated_system_settings_cache["scheduler_market_close_on"]:
             _log.info("%s scheduler_market_close_on=OFF — 전체 갱신 생략", tag)
             return {"fetched": 0, "failed": 0, "cached": False, "skipped": True}
 
         from backend.app.core.broker_registry import _create_provider
-        _settings = es._integrated_system_settings_cache
+        _settings = state.integrated_system_settings_cache
         _broker_name = "kiwoom"
         _auth_cache: dict[str, AuthProvider] = {}
         _auth_provider = _create_provider("auth", _broker_name, _settings, _auth_cache)
@@ -994,11 +994,11 @@ async def _run_confirmed_pipeline(
         if cached:
             final_eligible = confirmed_codes
             if final_eligible:
-                to_remove = [cd for cd, entry in es._master_stocks_cache.items() if entry.get("_subscribed", False) and cd not in final_eligible]
+                to_remove = [cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed", False) and cd not in final_eligible]
                 for cd in to_remove:
-                    if cd in es._master_stocks_cache:
-                        es._master_stocks_cache[cd].pop("_subscribed", None)
-                subscribed_count = sum(1 for entry in es._master_stocks_cache.values() if entry.get("_subscribed", False))
+                    if cd in state.master_stocks_cache:
+                        state.master_stocks_cache[cd].pop("_subscribed", None)
+                subscribed_count = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
                 _log.info("%s Step 6 메모리 교체 완료 — subscribed=%d종목", tag, subscribed_count)
         else:
             _log.warning("%s cached=False — 메모리 교체 생략", tag)
@@ -1087,7 +1087,7 @@ async def _update_layout_cache(
         sector_groups[sec].sort()
 
     # 섹터 순서: 기존 레이아웃의 섹터 순서를 최대한 유지하고 신규 섹터는 뒤에 추가
-    old_layout: list[tuple[str, str]] = es._integrated_system_settings_cache["sector_stock_layout"]
+    old_layout: list[tuple[str, str]] = state.integrated_system_settings_cache["sector_stock_layout"]
     old_sector_order = list(dict.fromkeys(v for t, v in old_layout if t == "sector"))
 
     new_sectors = [s for s in sector_groups if s not in old_sector_order]
@@ -1100,7 +1100,7 @@ async def _update_layout_cache(
         for cd in sector_groups[sec]:
             new_layout.append(("code", cd))
 
-    es._integrated_system_settings_cache["sector_stock_layout"] = new_layout
+    state.integrated_system_settings_cache["sector_stock_layout"] = new_layout
     from backend.app.services.engine_account_notify import _rebuild_layout_cache
     _rebuild_layout_cache(new_layout)
     _log.info(
@@ -1143,7 +1143,7 @@ async def fetch_5d_data_only() -> dict:
 
     try:
         from backend.app.core.broker_registry import _create_provider
-        _settings = es._integrated_system_settings_cache
+        _settings = state.integrated_system_settings_cache
         _broker_name = "kiwoom"
         _auth_cache: dict[str, AuthProvider] = {}
         _auth_provider = _create_provider("auth", _broker_name, _settings, _auth_cache)
@@ -1303,9 +1303,9 @@ async def fetch_5d_data_only() -> dict:
                 valid_highs = [h for h in highs_5d if h is not None and h > 0]
                 high_5d = max(valid_highs) if valid_highs else 0
                 
-                if cd in es._master_stocks_cache:
-                    es._master_stocks_cache[cd]["avg_5d_trade_amount"] = avg_5d
-                    es._master_stocks_cache[cd]["high_5d_price"] = high_5d
+                if cd in state.master_stocks_cache:
+                    state.master_stocks_cache[cd]["avg_5d_trade_amount"] = avg_5d
+                    state.master_stocks_cache[cd]["high_5d_price"] = high_5d
             
             _log.info("[5일봉챠트 거래대금,고가 다운로드] 메모리 캐시 업데이트 완료")
 

@@ -611,7 +611,7 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
 
                 if _receive_rate_dirty:
                     await _calculate_receive_rate(es)
-                    threshold_pct = float(es._integrated_system_settings_cache["sector_start_threshold_pct"])
+                    threshold_pct = float(state.integrated_system_settings_cache["sector_start_threshold_pct"])
                     current_pct = _current_receive_rate["pct"]
                     received_count = _current_receive_rate["received"]
                     total_count = _current_receive_rate["total"]
