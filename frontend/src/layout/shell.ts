@@ -5,6 +5,8 @@ import { createHeader } from './header'
 import { createSidebar } from './sidebar'
 import { COLOR } from '../components/common/ui-styles'
 
+export const SETTINGS_PANEL_WIDTH = 340
+
 export function createLayoutShell(): {
   el: HTMLElement
   contentArea: HTMLElement
@@ -76,7 +78,7 @@ export function createLayoutShell(): {
   // ── 좌측 패널 (dual 레이아웃 시 설정 카드) ──
   const leftPanel = document.createElement('div')
   leftPanel.style.cssText =
-    'width:340px;min-width:340px;border-right:1px solid #ddd;overflow-y:auto;scrollbar-gutter:stable;padding:8px;outline:none;display:none;'
+    `width:${SETTINGS_PANEL_WIDTH}px;min-width:${SETTINGS_PANEL_WIDTH}px;border-right:1px solid #ddd;overflow-y:auto;padding:8px;outline:none;display:none;`
 
   // ── 우측 패널 (dual 레이아웃 시 데이터 영역) ──
   const rightPanel = document.createElement('div')
