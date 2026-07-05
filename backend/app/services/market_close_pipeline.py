@@ -156,10 +156,12 @@ async def remove_krx_only_stocks(es: Any) -> dict:
         try:
             if supports_ack:
                 # ACK 지원 브로커 (Kiwoom): ACK 대기
-                ack_ok, rc = await es._ws_send_reg_unreg_and_wait_ack(payload)
+                from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
+                ack_ok, rc = await _ws_send_reg_unreg_and_wait_ack(payload)
             else:
                 # ACK 미지원 브로커 (LS): fire-and-forget
-                ack_ok = await es._ws_send_remove_fire_and_forget(payload)
+                from backend.app.services.engine_ws import _ws_send_remove_fire_and_forget
+                ack_ok = await _ws_send_remove_fire_and_forget(payload)
                 rc = ""
         except Exception as exc:
             _log.warning(
