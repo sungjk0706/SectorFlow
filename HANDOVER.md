@@ -1,19 +1,19 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-05: 업종순위 페이지 flex 너비 조정 검토 → 기존 유지**
-  - `1:1:4` 시도 → 우측 테이블 컬럼(체결강도, 거래대금, 5일평균) 과도한 너비 확대 확인 → `1:1:3` 복원
-  - 결론: 현재 `1:1:3` 비율 유지 (좌 20%, 중앙 20%, 우측 60%)
+- **2026-07-05: `holiday_guard_on` 사용자 토글 제거 — 공휴일 차단 항상 활성화**
+  - `is_trading_day_with_holiday_guard()` 제거, 모든 호출부 `is_trading_day()` 직접 호출로 변경
+  - 백엔드: `trading_calendar.py`, `auto_trading_effective.py`, `daily_time_scheduler.py`(3곳), `engine_settings.py`, `settings_defaults.py`, `telegram_bot.py`(/휴일 명령어 제거), `test_dry_run_fill_event.py`
+  - 프론트엔드: `general-settings.ts`(토글 행 제거, 배지는 유지), `types/index.ts`(타입 제거)
+  - 커밋 `5e0fb93` 푸시 완료
 
 ## 현재 상태
-- **빌드**: 프론트엔드 `npm run build` OK (2.61s), 백엔드 미변경
-- **테스트**: 프론트엔드 테스트 미실행 (기존 테스트에 sector-ranking 직접 참조 없음 확인됨)
-- **앱 기동**: 사용자 확인 — 3컬럼 렌더링 OK, flex 비율 `1:1:3` 유지 확정
-- **Git**: 커밋 미수행 (대기 중)
+- **빌드**: 프론트엔드 `npm run build` OK (3.18s), `tsc --noEmit` OK, 백엔드 `py_compile` 7개 파일 OK
+- **잔여 참조**: `holiday_guard`, `is_trading_day_with_holiday_guard`, `holidayToggle` — 모두 0건
+- **Git**: `5e0fb93` 커밋 푸시 완료
 
 ## 다음 단계
-- **브라우저 런타임 검증 (대기)**: 업종 순위 클릭 → 종목 테이블 필터링, 설정 변경 → 순위 갱신, stock-classification 왕복 시 잔류물 없음 확인 — 사용자 직접 확인 필요
-- **비거래일 런타임 검증 (대기)**: `SectorFlow.command` 기동 후 비거래일 토글/배지 확인
+- **브라우저 런타임 검증 (대기)**: 일반설정 자동매매 탭에서 공휴일 토글 행 사라지고 설명 문구만 표시 확인, 비거래일 배지 정상 동작 확인
 - **장중 런타임 검증 (대기)**: 테스트모드 주문/체결 시퀀스 확인
 - **WS 구독 분산 최적화 (대기)**: `ConnectorManager` 구현됨, 구독 분산 미구현
 
