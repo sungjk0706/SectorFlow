@@ -70,7 +70,7 @@ function createBoostScoreSection(
     vals[toggleKey] = next
     toggle.setOn(next)
     setDisabled(controls, !next)
-    helper.autoSave(toggleKey, next)
+    helper.saveImmediate({ [toggleKey]: next })
   }})
   labelWrap.appendChild(toggle.el)
   const label = document.createElement('span')
@@ -219,7 +219,7 @@ function mount(container: HTMLElement): void {
       if (boostOrderControls) {
         setDisabled(boostOrderControls, !next)
       }
-      saveHelper!.autoSave('boost_order_ratio_on', next)
+      saveHelper!.saveImmediate({ boost_order_ratio_on: next })
     }})
     labelWrap.appendChild(boostOrderToggle.el)
     const label = document.createElement('span')
@@ -259,7 +259,7 @@ function mount(container: HTMLElement): void {
       vals.max_daily_total_buy_on = next
       maxDailyToggle!.setOn(next)
       if (maxDailyInput) setDisabled(maxDailyInput.el, !next)
-      saveHelper!.autoSave('max_daily_total_buy_on', next)
+      saveHelper!.saveImmediate({ max_daily_total_buy_on: next })
     }})
     labelWrap.appendChild(maxDailyToggle.el)
     const label = document.createElement('span')
@@ -284,7 +284,7 @@ function mount(container: HTMLElement): void {
       if (buyIntervalControls) {
         setDisabled(buyIntervalControls, !next)
       }
-      saveHelper!.autoSave('buy_interval_on', next)
+      saveHelper!.saveImmediate({ buy_interval_on: next })
     }})
     labelWrap.appendChild(buyIntervalToggle.el)
     const label = document.createElement('span')
@@ -320,7 +320,7 @@ function mount(container: HTMLElement): void {
       if (rebuyBlockControls) {
         setDisabled(rebuyBlockControls, !next)
       }
-      saveHelper!.autoSave('rebuy_block_on', next)
+      saveHelper!.saveImmediate({ rebuy_block_on: next })
     }})
     labelWrap.appendChild(rebuyBlockToggle.el)
     const label = document.createElement('span')

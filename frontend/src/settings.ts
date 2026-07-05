@@ -69,7 +69,11 @@ export function createSettingsManager(store: StoreApi<UIState> = uiStore): Setti
       for (const [key, value] of Object.entries(data)) {
         await api.patchSettingField(key, value)
       }
-      // 로컬 즉시 업데이트 제거 - WS settings-changed 이벤트로만 갱신
+      // API 저장 성공 → 로컬 store 반영 (WS settings-changed는 외부 변경 감지용으로 보조)
+      const current = store.getState().settings
+      if (current) {
+        store.setState({ settings: { ...current, ...data } })
+      }
       return { ok: true }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '저장 실패'
