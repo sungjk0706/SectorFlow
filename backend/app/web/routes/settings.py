@@ -44,6 +44,22 @@ async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_
         else:
             from backend.app.core.sector_stock_cache import save_pending_settings
             await save_pending_settings(changed_keys)
+            # 엔진 미실행 시에도 캐시 갱신 + WS settings-changed 브로드캐스트
+            from backend.app.services.engine_config import refresh_engine_integrated_system_settings_cache
+            from backend.app.services.engine_account_notify import notify_desktop_settings_toggled
+            await refresh_engine_integrated_system_settings_cache(None, use_root=True)
+            changed_dict = {}
+            try:
+                from backend.app.services.engine_config import _mask_sensitive_settings
+                from backend.app.services.engine_state import state
+                display_settings = dict(state.integrated_system_settings_cache)
+                masked_settings = _mask_sensitive_settings(display_settings)
+                for k in changed_keys:
+                    if k in masked_settings:
+                        changed_dict[k] = masked_settings[k]
+            except Exception:
+                pass
+            await notify_desktop_settings_toggled(changed_dict)
 
         return {"ok": True}
     except Exception as e:
