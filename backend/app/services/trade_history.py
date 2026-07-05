@@ -13,7 +13,6 @@
         앱 기동 시 _ensure_loaded()에서 SQLite → 메모리 복원.
 """
 from __future__ import annotations
-import asyncio
 import logging
 from datetime import datetime, date
 from typing import Optional

@@ -14,7 +14,6 @@ Persistence Journaling - 메모리 기반 저널링
   - 장마감 후 배치 파이프라인에서 DB 저장
 """
 from __future__ import annotations
-import asyncio
 import logging
 import time
 from dataclasses import dataclass

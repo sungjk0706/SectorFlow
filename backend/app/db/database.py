@@ -1,4 +1,3 @@
-import asyncio
 import os
 import aiosqlite
 from backend.app.services.engine_utils import LazyLock

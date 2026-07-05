@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import pytest
 import aiosqlite
-from unittest.mock import patch, AsyncMock
 
 from backend.app.db import database
 from backend.app.services.engine_state import state

@@ -2,18 +2,18 @@
 // 매수설정 카드 — Vanilla TS PageModule
 // BuySettingsCard.tsx + BuySettingsSection.tsx + BuyBlockSection.tsx + QuickToggle + TimePairInput 통합
 
-import { uiStore } from '../stores/uiStore'
-import { createSettingsManager, type SettingsManager } from '../settings'
 import { createSettingRow, createNumInput, createMoneyInput, createToggleBtn, createFixedValue, createSelect } from '../components/common/setting-row'
 import { sectionTitle } from '../components/common/settings-common'
-import { createAutoSaveHelper } from '../utils/settings-save'
+import { initSettingsPage, startSettingsSubscription, destroySettingsPage } from '../utils/settings-page'
+import type { AutoSaveHelper } from '../utils/settings-save'
+import type { SettingsManager } from '../settings'
 import { setDisabled } from '../components/common/ui-styles'
 import type { AppSettings } from '../types'
 
 /* ── 모듈 상태 ── */
 let settingsMgr: SettingsManager | null = null
 let unsubSettings: (() => void) | null = null
-let saveHelper: ReturnType<typeof createAutoSaveHelper> | null = null
+let saveHelper: AutoSaveHelper | null = null
 // 현재 값 추적
 let vals: Record<string, unknown> = {}
 
@@ -54,13 +54,40 @@ let buyIntervalInput: ReturnType<typeof createNumInput> | null = null
 let buyIntervalControls: HTMLElement | null = null
 
 
-/* ── 헬퍼 ── */
-function syncAfterSave(): void {
-  const latest = settingsMgr?.getSettings()
-  if (latest) {
-    syncFromSettings(latest)
-  }
+/* ── 부스트 가산점 섹션 헬퍼 (토글 + 라벨 + 스코어 입력) ── */
+function createBoostScoreSection(
+  root: HTMLElement,
+  labelText: string,
+  toggleKey: string,
+  scoreKey: string,
+  vals: Record<string, unknown>,
+  helper: AutoSaveHelper,
+): { toggle: ReturnType<typeof createToggleBtn>; scoreInput: ReturnType<typeof createNumInput>; controls: HTMLElement } {
+  const labelWrap = document.createElement('span')
+  labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
+  const toggle = createToggleBtn({ on: false, onClick: () => {
+    const next = !vals[toggleKey]
+    vals[toggleKey] = next
+    toggle.setOn(next)
+    setDisabled(controls, !next)
+    helper.autoSave(toggleKey, next)
+  }})
+  labelWrap.appendChild(toggle.el)
+  const label = document.createElement('span')
+  label.textContent = labelText
+  labelWrap.appendChild(label)
+
+  const controls = document.createElement('span')
+  controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
+  setDisabled(controls, true)
+
+  const scoreInput = createNumInput({ value: 1.0, onChange: v => { vals[scoreKey] = v; helper.autoSave(scoreKey, v) }, step: 1, name: scoreKey })
+  controls.appendChild(scoreInput.el)
+
+  root.appendChild(createSettingRow(labelWrap, controls))
+  return { toggle, scoreInput, controls }
 }
+
 
 /* ── 설정 동기화 ── */
 function syncFromSettings(s: AppSettings): void {
@@ -112,7 +139,7 @@ function syncFromSettings(s: AppSettings): void {
   }
 
   // 재매수 차단
-  const rebuyOn = r.rebuy_block_on !== undefined ? !!r.rebuy_block_on : true
+  const rebuyOn = !!r.rebuy_block_on
   rebuyBlockToggle?.setOn(rebuyOn)
   if (rebuyBlockSelect && (!act || !rebuyBlockSelect.el.contains(act))) {
     rebuyBlockSelect.setValue(String(r.rebuy_block_period ?? 'today'))
@@ -133,8 +160,9 @@ function syncFromSettings(s: AppSettings): void {
 
 /* ── mount ── */
 function mount(container: HTMLElement): void {
-  settingsMgr = createSettingsManager(uiStore)
-  saveHelper = createAutoSaveHelper(settingsMgr, syncAfterSave)
+  const ctx = initSettingsPage(syncFromSettings)
+  settingsMgr = ctx.settingsMgr
+  saveHelper = ctx.saveHelper
   vals = {}
 
   const root = document.createElement('div')
@@ -160,89 +188,20 @@ function mount(container: HTMLElement): void {
 
   // --- 5일 고가 돌파 ---
   {
-    const labelWrap = document.createElement('span')
-    labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
-    boostHighToggle = createToggleBtn({ on: false, onClick: () => {
-      const next = !vals.boost_high_breakout_on
-      vals.boost_high_breakout_on = next
-      boostHighToggle!.setOn(next)
-      if (boostHighControls) {
-        setDisabled(boostHighControls, !next)
-      }
-      saveHelper!.autoSave('boost_high_breakout_on', next)
-    }})
-    labelWrap.appendChild(boostHighToggle.el)
-    const label = document.createElement('span')
-    label.textContent = '5일 고가 돌파'
-    labelWrap.appendChild(label)
-
-    const controls = document.createElement('span')
-    controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
-    setDisabled(controls, true)
-    boostHighControls = controls
-
-    boostHighScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_high_breakout_score = v; saveHelper!.autoSave('boost_high_breakout_score', v) }, step: 1, name: 'boost_high_breakout_score' })
-    controls.appendChild(boostHighScoreInput.el)
-
-    root.appendChild(createSettingRow(labelWrap, controls))
+    const r = createBoostScoreSection(root, '5일 고가 돌파', 'boost_high_breakout_on', 'boost_high_breakout_score', vals, saveHelper!)
+    boostHighToggle = r.toggle; boostHighScoreInput = r.scoreInput; boostHighControls = r.controls
   }
 
   // --- 프로그램 순매수 ---
   {
-    const labelWrap = document.createElement('span')
-    labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
-    boostProgramToggle = createToggleBtn({ on: false, onClick: () => {
-      const next = !vals.boost_program_net_buy_on
-      vals.boost_program_net_buy_on = next
-      boostProgramToggle!.setOn(next)
-      if (boostProgramControls) {
-        setDisabled(boostProgramControls, !next)
-      }
-      saveHelper!.autoSave('boost_program_net_buy_on', next)
-    }})
-    labelWrap.appendChild(boostProgramToggle.el)
-    const label = document.createElement('span')
-    label.textContent = '프로그램 순매수'
-    labelWrap.appendChild(label)
-
-    const controls = document.createElement('span')
-    controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
-    setDisabled(controls, true)
-    boostProgramControls = controls
-
-    boostProgramScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_program_net_buy_score = v; saveHelper!.autoSave('boost_program_net_buy_score', v) }, step: 1, name: 'boost_program_net_buy_score' })
-    controls.appendChild(boostProgramScoreInput.el)
-
-    root.appendChild(createSettingRow(labelWrap, controls))
+    const r = createBoostScoreSection(root, '프로그램 순매수', 'boost_program_net_buy_on', 'boost_program_net_buy_score', vals, saveHelper!)
+    boostProgramToggle = r.toggle; boostProgramScoreInput = r.scoreInput; boostProgramControls = r.controls
   }
 
   // --- 거래대금 순위 ---
   {
-    const labelWrap = document.createElement('span')
-    labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
-    boostTradeAmountToggle = createToggleBtn({ on: false, onClick: () => {
-      const next = !vals.boost_trade_amount_rank_on
-      vals.boost_trade_amount_rank_on = next
-      boostTradeAmountToggle!.setOn(next)
-      if (boostTradeAmountControls) {
-        setDisabled(boostTradeAmountControls, !next)
-      }
-      saveHelper!.autoSave('boost_trade_amount_rank_on', next)
-    }})
-    labelWrap.appendChild(boostTradeAmountToggle.el)
-    const label = document.createElement('span')
-    label.textContent = '거래대금 순위 (보유제외)'
-    labelWrap.appendChild(label)
-
-    const controls = document.createElement('span')
-    controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
-    setDisabled(controls, true)
-    boostTradeAmountControls = controls
-
-    boostTradeAmountScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_trade_amount_rank_score = v; saveHelper!.autoSave('boost_trade_amount_rank_score', v) }, step: 1, name: 'boost_trade_amount_rank_score' })
-    controls.appendChild(boostTradeAmountScoreInput.el)
-
-    root.appendChild(createSettingRow(labelWrap, controls))
+    const r = createBoostScoreSection(root, '거래대금 순위 (보유제외)', 'boost_trade_amount_rank_on', 'boost_trade_amount_rank_score', vals, saveHelper!)
+    boostTradeAmountToggle = r.toggle; boostTradeAmountScoreInput = r.scoreInput; boostTradeAmountControls = r.controls
   }
 
   // --- 매수/매도호가 잔량비율 ---
@@ -355,7 +314,7 @@ function mount(container: HTMLElement): void {
     const labelWrap = document.createElement('span')
     labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
     rebuyBlockToggle = createToggleBtn({ on: true, onClick: () => {
-      const next = !(vals.rebuy_block_on !== false)
+      const next = !vals.rebuy_block_on
       vals.rebuy_block_on = next
       rebuyBlockToggle!.setOn(next)
       if (rebuyBlockControls) {
@@ -392,22 +351,14 @@ function mount(container: HTMLElement): void {
 
   container.appendChild(root)
 
-  // 초기 설정 동기화
-  const initial = settingsMgr.getSettings()
-  if (initial) syncFromSettings(initial)
-
-  // 설정 변경 구독
-  unsubSettings = settingsMgr.subscribe(() => {
-    const s = settingsMgr?.getSettings()
-    if (s) syncFromSettings(s)
-  })
+  // 초기 설정 동기화 + 구독
+  unsubSettings = startSettingsSubscription(settingsMgr, syncFromSettings)
 }
 
 /* ── unmount ── */
 function unmount(): void {
-  if (unsubSettings) { unsubSettings(); unsubSettings = null }
-  if (saveHelper) { saveHelper.destroy(); saveHelper = null }
-  if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }
+  destroySettingsPage(unsubSettings, saveHelper, settingsMgr)
+  unsubSettings = null; saveHelper = null; settingsMgr = null
   riseInput = null; fallInput = null; strengthInput = null
   maxDailyToggle = null; maxDailyInput = null; maxStockCntInput = null; buyAmtInput = null
   boostHighToggle = null; boostHighScoreInput = null; boostHighControls = null
