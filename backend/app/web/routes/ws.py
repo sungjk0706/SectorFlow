@@ -21,7 +21,7 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
     initial-snapshot은 캐시 기반 데이터만 포함하므로 토큰 없이 즉시 전송.
     index-data(broker_statuses 포함)는 token_ready와 무관하게 즉시 전송."""
     try:
-        from backend.app.services.engine_service import _data_ready_event
+        from backend.app.services.engine_state import state
         from backend.app.services.engine_config import get_settings_snapshot
 
         settings = get_settings_snapshot()
@@ -29,22 +29,20 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
 
         # 이벤트 구동 방식: 데이터 준비 완료 시 즉시 전송 (타임아웃/폴링 제거)
         # 테스트모드와 실전모드 동일하게 데이터 준비 대기 (앱 기동 준비는 돈과 무관)
-        if not _data_ready_event.is_set():
+        if not state.data_ready_event.is_set():
             logger.info("[연결] 데이터 준비 대기 중 -- 초기 스냅샷 전송 지연")
-            await _data_ready_event.wait()
+            await state.data_ready_event.wait()
             logger.info("[연결] 데이터 준비 완료 -- 초기 스냅샷 전송 시작")
 
         # 앱준비 완료 대기 (이벤트 구동)
         # 테스트모드와 실전모드 동일하게 앱준비 대기 (앱 기동 준비는 돈과 무관)
-        from backend.app.services.engine_service import _bootstrap_event
-
-        if not _bootstrap_event.is_set():
+        if not state.bootstrap_event.is_set():
             logger.info("[연결] 앱준비 대기 중 -- 초기 스냅샷 전송 지연")
-            await _bootstrap_event.wait()
+            await state.bootstrap_event.wait()
             logger.info("[연결] 앱준비 완료 -- 초기 스냅샷 전송 시작")
 
         # 엔진 준비 완료 유니캐스트 전송 (engine-ready)
-        if _bootstrap_event.is_set():
+        if state.bootstrap_event.is_set():
             await ws_manager.send_to(websocket, "engine-ready", {"_v": 1, "ready": True})
 
         # stock-classification 초기 데이터 전송 (업종순위 계산과 무관하게 독립 전송)
