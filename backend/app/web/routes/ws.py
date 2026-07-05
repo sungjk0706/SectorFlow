@@ -58,9 +58,6 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
             import backend.app.services.engine_state as _es
             from backend.app.core.sector_stock_cache import assemble_filter_summary
             stocks = await es.get_all_sector_stocks()
-            if not stocks:
-                # 캐시에서 기존 저장 데이터 우선 표시
-                stocks = await es.get_all_sector_stocks_from_cache()
             if "미분류" in merged:
                 no_sector_count = sum(1 for s in stocks if s["sector"] == "미분류")
             filter_summary = assemble_filter_summary(
