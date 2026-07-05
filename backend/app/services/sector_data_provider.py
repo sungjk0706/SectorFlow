@@ -4,6 +4,7 @@
 
 단일 소스 진리 원칙: master_stocks_cache 직접 접근
 """
+from backend.app.services.engine_state import state
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 업종 요약 계산 관련 함수
@@ -89,8 +90,7 @@ async def get_sector_stocks() -> list:
 
     # 업종 분석 순위 기준 정렬
     sector_order: dict[str, int] = {}
-    import backend.app.services.engine_service as _es_ref2
-    ss = _es_ref2._sector_summary_cache
+    ss = state.sector_summary_cache
     if ss:
         for sc in ss.sectors:
             sector_order[sc.sector] = sc.rank
@@ -103,9 +103,7 @@ async def get_sector_stocks() -> list:
 
 async def get_buy_targets_sector_stocks() -> list:
     """매수후보 테이블용 — _sector_summary_cache.buy_targets + blocked_targets 반환 (guard_pass 필드 포함)."""
-    import backend.app.services.engine_service as _es_ref
-    from backend.app.services.engine_state import state
-    ss = _es_ref._sector_summary_cache
+    ss = state.sector_summary_cache
     if not ss:
         return []
 
@@ -210,10 +208,7 @@ def get_sector_scores_snapshot() -> tuple[list[dict], int]:
     - scores_list: 전체 업종 목록 (rank=0 포함)
     - ranked_sectors_count: 순위 있는 업종 수 (rank > 0)
     """
-    # 로컬 바인딩(_sector_summary_cache)은 engine_state import 시점에 고정되어 업데이트 안 됨
-    # engine_service._sector_summary_cache가 engine_sector_confirm이 업데이트하는 단일 소스
-    import backend.app.services.engine_service as _es_ref
-    ss = _es_ref._sector_summary_cache
+    ss = state.sector_summary_cache
     if not ss:
         return [], 0
     out: list[dict] = []
@@ -272,7 +267,7 @@ async def recompute_sector_summary_now() -> None:
             _es._integrated_system_settings_cache,
             held_codes=_held,
         )
-        _es._sector_summary_cache = _ss
+        state.sector_summary_cache = _ss
         cancel_sector_recompute()
 
         # ── 5일평균최소거래대금(N억원) 이상 종목 마킹 ──

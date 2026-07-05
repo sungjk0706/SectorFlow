@@ -181,8 +181,7 @@ async def _reset_realtime_fields() -> None:
             pos["ask_depth"] = None
 
     # 업종 점수 캐시 초기화 (실시간 데이터 재계산 유도)
-    import backend.app.services.engine_service as _es
-    _es._sector_summary_cache = None
+    state.sector_summary_cache = None
     # 캡슐화된 notify_cache.clear_all() 호출로 결합성 제거
     notify_cache.clear_all()
 

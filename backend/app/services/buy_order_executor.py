@@ -30,7 +30,6 @@ async def evaluate_buy_candidates() -> None:
     from backend.app.services import dry_run
     from backend.app.services.daily_time_scheduler import is_krx_after_hours
     from backend.app.services.engine_symbol_utils import is_nxt_enabled
-    from backend.app.services.engine_service import _sector_summary_cache
     from backend.app.services.engine_state import state
 
     if not state.running:
@@ -39,7 +38,7 @@ async def evaluate_buy_candidates() -> None:
     if not state.auto_trade:
         return
 
-    ss = _sector_summary_cache
+    ss = state.sector_summary_cache
     if not ss or not ss.buy_targets:
         return
 

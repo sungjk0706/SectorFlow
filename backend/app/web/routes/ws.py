@@ -131,9 +131,9 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
             }
             await ws_manager.send_to(websocket, "sector-scores", scores_payload)
         else:
-            from backend.app.services import engine_service as _es_check
+            from backend.app.services.engine_state import state
 
-            if _es_check._sector_summary_cache is None:
+            if state.sector_summary_cache is None:
                 logger.info(
                     "[연결] 업종점수 미전송 -- 업종 요약정보 없음"
                 )

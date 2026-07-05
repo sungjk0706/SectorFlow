@@ -80,8 +80,7 @@ async def _deferred_sector_summary() -> None:
                 _st._integrated_system_settings_cache,
                 held_codes=_held_codes,
             )
-            import backend.app.services.engine_service as _es
-            _es._sector_summary_cache = _result
+            _st.state.sector_summary_cache = _result
             logger.debug("[시작] 업종순위 후순위 계산 완료 -- %d개 섹터", len(_result.sectors))
 
             # WS broadcast — 이미 연결된 클라이언트에게 전송

@@ -14,7 +14,7 @@ from backend.app.services.engine_utils import LazyEvent
 if TYPE_CHECKING:
     from backend.app.core.connector_manager import ConnectorManager
     from backend.app.core.broker_providers import AuthProvider
-    from backend.app.domain.models import SectorScore
+    from backend.app.domain.models import SectorScore, SectorSummary
 
 
 class EngineState:
@@ -62,6 +62,7 @@ class EngineState:
         # ── 데이터 캐시 ────────────────────────────────────────────────────────
         self.MIN_CACHE_LIFETIME_SEC: float = 1.0
         self.buy_targets_cache_ref: object | None = None
+        self.sector_summary_cache: "SectorSummary | None" = None  # type: ignore[name-defined]
         self.sector_score_index: dict[str, "SectorScore"] = {}  # type: ignore[name-defined]
         self.confirmed_refresh_running: bool = False
         self.confirmed_refresh_running_confirmed: bool = False  # 확정시세 다운로드 전용
