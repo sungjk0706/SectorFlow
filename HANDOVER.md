@@ -1,27 +1,26 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-05: shouldForceOff() 잔류 제거 + 죽은 코드 정리 (원칙 16 위반)**
-  - `general-settings.ts`: `shouldForceOff()` 적용 3곳 제거 — `updateWsTimeDisabled`(377줄), `buyTimeHandle.setEnabled`(895줄), `sellTimeHandle.setEnabled`(902줄). 배지 표시용 `updateHolidayBadges`는 유지
-  - `settings_defaults.py`: `auto_off_by_holiday` 기본값 제거 (어디에서도 사용 안 함)
-  - `engine_settings.py`: `auto_off_by_holiday` 로드 제거
-  - `kiwoom_connector.py`/`ls_connector.py`: `_holiday_block_enabled` 필드, `is_holiday_block_enabled()`, `set_holiday_block_enabled()` 제거
-  - `broker_connector.py`: `set_holiday_block_enabled()` 기본 구현 제거
-  - `engine_service.py`: `ws.set_holiday_block_enabled()` 호출 2곳 제거 (215줄, 229-237줄 블록)
-  - `general-settings.ts`: 자동매수/매도 TimePairInput 다음 비거래일 배지 추가 (275, 315줄) — API 설정 탭과 일관성
-  - 원칙 10 (SSOT), 원칙 16 (구현 배선), 원칙 20 (폴백 금지) 부합
+- **2026-07-05: 업종순위 페이지 triple 레이아웃 전환 (2컬럼 → 3컬럼)**
+  - 신규 파일: `sector-settings.ts` (설정 입력만 담당), `sector-ranking-list.ts` (업종 순위 리스트만 담당), `sector-ranking-page.ts` (코디네이터 — 3패널 조율)
+  - 삭제: `sector-ranking.ts` (기존 통합 파일)
+  - 수정: `main.ts:55-59` — 라우트 `dual` → `triple`, `settingsCard` 제거, 코디네이터 로드
+  - 패턴: `stock-classification.ts` 코디네이터 패턴과 동일 — 단일 PageModule이 `shell.tripleLeft/Center/Right`에 직접 빌드
+  - flex 비율: `1:1:3` (좌 20%, 중앙 20%, 우측 60%) — 우측 테이블 컬럼 너비 확보
+  - 원칙 10 (SSOT): `maxTargets`를 `uiStore.settings`에서 직접 읽음, 원칙 5 (직접 호출): store 구독만 사용
 
 ## 현재 상태
-- **빌드**: 프론트엔드 `npm run build` OK (6.36s), 백엔드 `py_compile` OK
-- **테스트**: `pytest` 90 passed (6.83s)
-- **앱 기동**: 런타임 검증 미수행 (원칙 19 — 사용자 직접 확인 필요)
-- **Git**: `5f6d7fc` push 완료 (origin/main 동기화됨)
+- **빌드**: 프론트엔드 `npm run build` OK (3.55s), 백엔드 미변경
+- **테스트**: 프론트엔드 테스트 미실행 (기존 테스트에 sector-ranking 직접 참조 없음 확인됨)
+- **앱 기동**: 사용자 확인 — 3컬럼 렌더링 OK, 우측 테이블 컬럼 너비 개선 확인됨
+- **Git**: 커밋 미수행 (대기 중)
 
 ## 다음 단계
-- **비거래일 런타임 검증 (대기)**: `SectorFlow.command` 기동 후 비거래일에 토글이 사용자 설정값 유지하는지, 배지 정상 동작하는지 확인 — 사용자 직접 확인 필요
-- **장중 런타임 검증 (대기)**: 테스트모드 주문/체결 시퀀스, `has_open_buy` 상태, `_recent_sells` 처리, 텔레그램 알림 정상 동작 확인 — 장중 사용자 직접 확인 필요
-- **WS 구독 분산 최적화 (대기)**: `ConnectorManager` 구현됨, 구독 분산 미구현 — `connector_manager.py`, `engine_ws_reg.py`
-- **파사드 임포트 정리 (선택적)**: `engine_service.py`의 재내보내기 함수들을 직접 import로 변경. 현재 동작에는 문제 없으나 코드 명확성 향상 목적
+- **중앙 패널 너비 축소 검토 (대기)**: `1:0.7:3` 또는 `2:1:4` 비율로 중앙 업종순위 패널 축소 — 사용자 승인 대기
+- **브라우저 런타임 검증 (대기)**: 업종 순위 클릭 → 종목 테이블 필터링, 설정 변경 → 순위 갱신, stock-classification 왕복 시 잔류물 없음 확인 — 사용자 직접 확인 필요
+- **비거래일 런타임 검증 (대기)**: `SectorFlow.command` 기동 후 비거래일 토글/배지 확인
+- **장중 런타임 검증 (대기)**: 테스트모드 주문/체결 시퀀스 확인
+- **WS 구독 분산 최적화 (대기)**: `ConnectorManager` 구현됨, 구독 분산 미구현
 
 ## 미해결 문제
 - 없음

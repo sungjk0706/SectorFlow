@@ -54,9 +54,8 @@ export const shell = createLayoutShell()
 const routes: RouteConfig[] = [
   {
     path: '#/sector-ranking',
-    layout: 'dual',
-    load: () => Promise.resolve({ tagName: 'sector-stock-table' }),
-    settingsCard: () => import('./pages/sector-ranking').then(m => m.default),
+    layout: 'triple',
+    load: () => import('./pages/sector-ranking-page').then(m => m.default),
   },
   {
     path: '#/buy-settings',
