@@ -667,11 +667,11 @@ async def _run_confirmed_pipeline(
     """
     from backend.app.core.trading_calendar import get_kst_today_str
 
-    if getattr(es, "_confirmed_refresh_running_confirmed", False):
+    if state.confirmed_refresh_running_confirmed:
         _log.info("%s 확정 조회 이미 진행 중 — 생략", tag)
         return {"fetched": 0, "failed": 0, "cached": False, "skipped": True}
-    es._confirmed_refresh_running_confirmed = True
-    es._confirmed_refresh_message = ""
+    state.confirmed_refresh_running_confirmed = True
+    state.confirmed_refresh_message = ""
 
     import backend.app.services.engine_state as _es_state
     _broker_token_registered = False
@@ -1019,8 +1019,8 @@ async def _run_confirmed_pipeline(
             _es_state._broker_tokens.pop(_broker_name, None)
             from backend.app.services.engine_lifecycle import broadcast_engine_status
             await broadcast_engine_status()
-        es._confirmed_refresh_running_confirmed = False
-        es._confirmed_refresh_message = ""
+        state.confirmed_refresh_running_confirmed = False
+        state.confirmed_refresh_message = ""
 
 
 # ---------------------------------------------------------------------------
@@ -1130,11 +1130,11 @@ async def fetch_5d_data_only() -> dict:
     from backend.app.core.trading_calendar import get_kst_today_str
 
     # 중복 실행 방지
-    if getattr(es, "_confirmed_refresh_running_5d", False):
+    if state.confirmed_refresh_running_5d:
         _log.info("[5일봉챠트 거래대금,고가 다운로드] 다운로드 이미 진행 중 — 생략")
         return {"fetched": 0, "failed": 0, "cached": False, "skipped": True}
-    es._confirmed_refresh_running_5d = True
-    es._confirmed_refresh_message = ""
+    state.confirmed_refresh_running_5d = True
+    state.confirmed_refresh_message = ""
 
     import backend.app.services.engine_state as _es_state
     _broker_token_registered = False
@@ -1163,8 +1163,8 @@ async def fetch_5d_data_only() -> dict:
         _log.info("[5일봉챠트 거래대금,고가 다운로드] 대상 적격 종목 수: %d", total)
         if total == 0:
             _log.warning("[5일봉챠트 거래대금,고가 다운로드] 대상 종목 없음 — 중단")
-            es._confirmed_refresh_running_5d = False
-            es._confirmed_refresh_message = ""
+            state.confirmed_refresh_running_5d = False
+            state.confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
 
         # ── stock_5d_array 전체 삭제 (수동 다운로드는 무조건 재다운로드) ─────────
@@ -1342,5 +1342,5 @@ async def fetch_5d_data_only() -> dict:
             _es_state._broker_tokens.pop(_broker_name, None)
             from backend.app.services.engine_lifecycle import broadcast_engine_status
             await broadcast_engine_status()
-        es._confirmed_refresh_running_5d = False
-        es._confirmed_refresh_message = ""
+        state.confirmed_refresh_running_5d = False
+        state.confirmed_refresh_message = ""

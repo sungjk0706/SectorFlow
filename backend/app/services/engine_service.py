@@ -59,11 +59,6 @@ from backend.app.services.engine_ws import (
     _broker_message_handler,  # noqa: F401  -- facade re-export
 )
 
-# ── 확정 데이터 조회 상태 ─────────────────────────────────────────────────
-_confirmed_refresh_running_confirmed: bool = False
-_confirmed_refresh_running_5d: bool = False
-_confirmed_refresh_message: str = ""
-
 # ── engine_account_notify 재내보내기 ────────────────────────────────────
 broadcast_account_update = _account_notify.broadcast_account_update
 broadcast_engine_status_ws = _account_notify.broadcast_engine_status_ws

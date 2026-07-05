@@ -385,9 +385,8 @@ async def _do_unified_confirmed_fetch() -> None:
         state.confirmed_done = False
         logger.warning("[타이머] 통합 확정 조회 실패 — 플래그 복원: %s", e, exc_info=True)
         try:
-            from backend.app.services import engine_service as es2
-            es2._confirmed_refresh_running_confirmed = False
-            es2._confirmed_refresh_message = ""
+            state.confirmed_refresh_running_confirmed = False
+            state.confirmed_refresh_message = ""
         except Exception as _e:
             logger.warning("[데이터] 플래그 복원 실패: %s", _e, exc_info=True)
 
