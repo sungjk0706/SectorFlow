@@ -100,6 +100,45 @@ def _next_fake_order_no() -> str:
 
 FAKE_FILL_DELAY: float = 0.1  # 초
 
+# ── 호가단위 / 슬리피지 ──────────────────────────────────────────────────────
+
+SLIPPAGE_TICKS: int = 1  # 시장가 주문 슬리피지 (틱 단위)
+
+_TICK_TABLE: tuple[tuple[int, int], ...] = (
+    (2_000, 1),
+    (5_000, 5),
+    (20_000, 10),
+    (50_000, 50),
+    (200_000, 100),
+    (999_999_999, 500),
+)
+
+
+def _tick_size(price: int) -> int:
+    """한국 증시 호가단위 (가격대별 틱 사이즈)."""
+    for threshold, tick in _TICK_TABLE:
+        if price < threshold:
+            return tick
+    return 500
+
+
+def _apply_slippage(price: int, side: str, ticks: int = SLIPPAGE_TICKS) -> int:
+    """시장가 주문 슬리피지 적용. 매수: +N틱, 매도: -N틱. price <= 0이면 그대로 반환."""
+    if price <= 0:
+        return price
+    tick = _tick_size(price)
+    if side.upper() == "BUY":
+        return price + tick * ticks
+    return max(tick, price - tick * ticks)
+
+
+def estimate_fill_price(price: int, side: str) -> int:
+    """테스트모드 시장가 주문 예상 체결가 (슬리피지 적용).
+
+    trading.py에서 주문 전 수량/예수금 계산에 사용 — fake_fill_event 내부 슬리피지와 동일 로직.
+    """
+    return _apply_slippage(price, side)
+
 
 async def fake_send_order(
     settings: dict,
@@ -154,6 +193,7 @@ async def fake_fill_event(
 
     side = order_type.upper()
     fill_price = price if price > 0 else _estimate_market_price(code)
+    fill_price = _apply_slippage(fill_price, side)
 
     # 1. 가상 체결 (포지션 + Settlement Engine)
     if side == "BUY":
