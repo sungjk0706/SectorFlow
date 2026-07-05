@@ -10,18 +10,18 @@
 - **빌드**: 백엔드 py_compile OK
 - **테스트**: pytest 108 passed, 0 failed
 - **정적 분석**: ruff all checks passed
-- **Git**: `ff5753a` 커밋 (슬리피지), mypy 수정 미커밋
+- **Git**: `ac7e45d` 커밋 푸시 완료
 
 ## 다음 단계
 - **브라우저 런타임 검증 (대기)**: 테스트모드 매수/매도 시 체결가 로그에서 슬리피지 적용 확인 (예: 70,000원 매수 → 70,100원 체결)
 - **WS 구독 분산 최적화 (대기)**: `ConnectorManager` 구현됨, 구독 분산 미구현
 
 ## 미해결 문제
-- **mypy 잔여 에러 4개 (기존 코드)**: `--explicit-package-bases` 옵션 시 2개 파일에서 4개 에러
-  - `telegram_bot.py:359,410`: `engine_service.get_account_snapshot` 속성 없음 `[attr-defined]`
-  - `trading.py:161`: 모듈에 `_positions` 속성 없음 `[attr-defined]`
-  - `trading.py:462`: 모듈에 `get_positions` 속성 없음 `[attr-defined]`
-  - 조사 필요: 파사드 재내보내기 누락 또는 직접 import 필요
+- **mypy 잔여 에러 4개 (기존 코드)**: `--explicit-package-bases` 옵션 시 2개 파일에서 4개 에러. 다음 세션에서 조사 후 해결 필요
+  - `telegram_bot.py:359,410`: `engine_service.get_account_snapshot` 속성 없음 `[attr-defined]` — 파사드 재내보내기 누락 또는 직접 import 필요
+  - `trading.py:161`: 모듈에 `_positions` 속성 없음 `[attr-defined]` — `engine_account._positions` 또는 `state.positions` 참조 경로 확인 필요
+  - `trading.py:462`: 모듈에 `get_positions` 속성 없음 `[attr-defined]` — `engine_service` 파사드에 `get_positions` 재내보내기 없음. `engine_account`에서 직접 import 필요 (본 세션 `engine_ws_reg.py` 수정과 동일 패턴)
+  - 조사 순서: ① 해당 라인의 import 문 확인 ② `engine_service.py` 파사드 재내보내기 존재 여부 ③ `engine_account.py`에 실제 정의 존재 여부 ④ 직접 import로 근본 해결
 
 ## 개선 필요 영역
 - **파사드 임포트 정리 (선택적)**: `engine_service.py`가 다수 모듈에서 함수를 재내보내기(facade) 하고 있음. 직접 import로 변경하면 순환 import 위험 없이 코드 명확성 향상 가능. 현재는 정상 동작하므로 우선순위 낮음
