@@ -236,7 +236,6 @@ let monthRateEl: HTMLSpanElement | null = null
 let totalPnlEl: HTMLSpanElement | null = null
 let totalRateEl: HTMLSpanElement | null = null
 /** 카드 참조 */
-// eslint-disable-next-line prefer-const
 let monthCard: HTMLDivElement | null = null
 let todayCard: HTMLDivElement | null = null
 let totalCard: HTMLDivElement | null = null

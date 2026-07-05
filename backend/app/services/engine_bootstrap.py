@@ -8,7 +8,6 @@
 from __future__ import annotations
 import asyncio
 from backend.app.core.logger import get_logger
-import backend.app.services.engine_state as _st
 from backend.app.services.engine_state import state
 logger = get_logger("engine")
 

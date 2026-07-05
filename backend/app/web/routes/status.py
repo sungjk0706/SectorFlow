@@ -105,7 +105,6 @@ async def debug_ws_status():
 @router.post("/debug/trigger-confirmed")
 async def debug_trigger_confirmed():
     """디버그용: 통합 확정 조회 수동 트리거 (캐시 재생성)."""
-    from backend.app.services.engine_state import state
     from backend.app.services.market_close_pipeline import fetch_unified_confirmed_data
     try:
         result = await fetch_unified_confirmed_data()

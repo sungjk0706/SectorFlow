@@ -396,7 +396,7 @@ class TestComputeSectorScoresWeights:
         local_avg = {"A001": 5000, "A002": 4000, "B001": 1000, "B002": 800}
         local_codes = ["A001", "A002", "B001", "B002"]
         _populate_cache(cache, high_amt_low_rise)
-        result_default = await compute_sector_scores(
+        await compute_sector_scores(
             local_codes, trade_prices={}, trade_amounts={}, avg_amt_5d=local_avg,
         )
         result_weighted_amt = await compute_sector_scores(

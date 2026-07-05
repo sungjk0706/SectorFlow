@@ -215,7 +215,6 @@ async def execute_unified_rolling_and_save(
         저장 성공 여부.
     """
     from backend.app.db.database import get_db_connection, get_db_lock
-    import backend.app.services.engine_state as _st
 
     date_str = get_current_trading_day_str()
     _nm = name_map or {}
@@ -363,7 +362,6 @@ async def _apply_confirmed_to_memory(
         반영된 종목 수.
     """
     _nm = name_map or {}
-    import backend.app.services.engine_state as _st
     pending: dict = state.master_stocks_cache
     ltp: dict = {}
     lta: dict = {}
@@ -533,7 +531,6 @@ async def _save_confirmed_cache(
     Returns:
         저장 성공 여부.
     """
-    import backend.app.services.engine_state as _st
     pending: dict = state.master_stocks_cache
     if not pending:
         _log.warning("[타이머] 저장할 데이터(_master_stocks_cache)가 비어있음 — 데이터 저장 생략")
@@ -662,7 +659,6 @@ async def _run_confirmed_pipeline(
     state.confirmed_refresh_running_confirmed = True
     state.confirmed_refresh_message = ""
 
-    import backend.app.services.engine_state as _es_state
     _broker_token_registered = False
 
     try:
@@ -854,7 +850,6 @@ async def _run_confirmed_pipeline(
                     await _conn.commit()
 
                 # 8) 메모리 캐시 동기화 — confirmed_codes 전체 보장 생성 (SSOT: cache = confirmed_codes)
-                import backend.app.services.engine_state as _st
                 keys_to_delete = [cd for cd in list(state.master_stocks_cache.keys()) if cd not in confirmed_codes]
                 for cd in keys_to_delete:
                     state.master_stocks_cache.pop(cd, None)
@@ -1055,7 +1050,6 @@ async def _update_layout_cache(
     sector_groups: dict[str, list[str]] = {}
     for cd in all_codes:
         sec = None
-        import backend.app.services.engine_state as _st
         entry = state.master_stocks_cache.get(cd)
         if entry and "sector" in entry:
             sec = entry["sector"]
@@ -1122,7 +1116,6 @@ async def fetch_5d_data_only() -> dict:
     state.confirmed_refresh_running_5d = True
     state.confirmed_refresh_message = ""
 
-    import backend.app.services.engine_state as _es_state
     _broker_token_registered = False
 
     try:
@@ -1142,7 +1135,6 @@ async def fetch_5d_data_only() -> dict:
 
         # ── 메모리 캐시에서 매매적격종목 코드 리스트 로드 (SSOT: DB에서만 로드된 캐시 사용) ──
         _log.info("[5일봉챠트 거래대금,고가 다운로드] 매매적격종목 목록 로드 시작")
-        import backend.app.services.engine_state as _st
         all_codes = [cd for cd, entry in state.master_stocks_cache.items() if entry.get("status") == "active"]
         total = len(all_codes)
         

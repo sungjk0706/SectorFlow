@@ -232,7 +232,7 @@ function main(): void {
         retryCount++
         shell.setOverlay(true, `서버 준비 중... (${retryCount}/${maxRetries})`)
         await new Promise(resolve => setTimeout(resolve, retryDelay))
-      } catch (error) {
+      } catch {
         retryCount++
         console.log(`[Health] 서버 대기 중... ${retryCount}/${maxRetries}`)
         shell.setOverlay(true, `서버 연결 중... (${retryCount}/${maxRetries})`)
