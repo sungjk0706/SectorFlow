@@ -152,16 +152,8 @@ class AutoTradeManager:
         # ── 실제 잔고 보유종목 수 기준으로 최대보유종목수 체크 ─────────────
         # 테스트모드: dry_run 가상 잔고 / 실전투자: 키움 실제 잔고
         max_limit = settings["max_limit"]
-        base_settings_for_mode = self.get_settings_fn()
-        if is_test_mode(base_settings_for_mode):
-            _positions_for_count = await dry_run.get_positions()
-        else:
-            try:
-                import backend.app.services.engine_service as _es_pos
-                _positions_for_count = _es_pos._positions
-            except Exception:
-                logger.warning("[매매] 보유 종목 수 조회 실패", exc_info=True)
-                _positions_for_count = []
+        from backend.app.services.engine_account import get_positions as _get_positions
+        _positions_for_count = await _get_positions()
         holding_count = sum(
             1 for p in _positions_for_count
             if int(p.get("qty", 0)) > 0
@@ -458,8 +450,8 @@ class AutoTradeManager:
                 _pos = await dry_run.get_position(stk_cd)
                 _avg_buy = int(_pos.get("avg_price", 0)) if _pos else 0
             else:
-                import backend.app.services.engine_service as _es
-                for _p in _es.get_positions():
+                from backend.app.services.engine_account import get_positions as _get_positions
+                for _p in await _get_positions():
                     if _base_stk_cd(str(_p.get("stk_cd", ""))) == stk_cd:
                         _avg_buy = int(_p.get("avg_price", 0))
                         break
