@@ -333,8 +333,8 @@ class WSManager:
         """클라이언트 연결 시점 초기 데이터 전송."""
         try:
             # buy-targets 초기 데이터 전송
-            import backend.app.services.engine_service as _es
-            targets = await _es.get_buy_targets_sector_stocks()
+            from backend.app.services.sector_data_provider import get_buy_targets_sector_stocks
+            targets = await get_buy_targets_sector_stocks()
             if targets:
                 data = {"buy_targets": targets, "_v": 1}
                 message = json.dumps({"event": "buy-targets-update", "data": data}, ensure_ascii=False)

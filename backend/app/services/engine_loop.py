@@ -2,7 +2,7 @@
 """
 엔진 asyncio 메인 루프 -- 설정·브로커·WS 초기 연결.
 
-`engine_service` 모듈 객체 `es`로 전역 상태를 읽고 갱신한다.
+`engine_state` 및 각 전문 모듈에서 직접 import하여 전역 상태를 읽고 갱신한다.
 WS 연결/해제는 스케줄러(daily_time_scheduler)가 전적으로 관리한다.
 """
 from __future__ import annotations
@@ -185,11 +185,11 @@ async def run_engine_loop() -> None:
             if _key and _sec:
                 valid_brokers.append(_bk)
             else:
-                from backend.app.services.engine_service import log_message
+                from backend.app.services.engine_lifecycle import log_message
                 log_message(" [시작] 증권사 API 키가 설정되지 않았습니다. 일반설정에서 입력하세요.")
 
         if not valid_brokers:
-            from backend.app.services.engine_service import log_message, broadcast_engine_status
+            from backend.app.services.engine_lifecycle import log_message, broadcast_engine_status
             log_message(" [시작] 유효한 API 키가 없습니다. 일반설정에서 증권사 API 키를 입력하세요.")
             await broadcast_engine_status()
             # 엔진 중단하지 않고 계속 진행 (테스트모드/스냅샷 전용 모드 허용)
@@ -226,7 +226,7 @@ async def run_engine_loop() -> None:
         # ── broker_spec 결과 반영 ──
         if isinstance(state.broker_spec, list):
             acnt_no = settings.get(f"{broker_nm}_account_no", "")
-            from backend.app.services.engine_service import log_message
+            from backend.app.services.engine_lifecycle import log_message
             log_message(f"[시작] 설정로딩 -- TR {len(state.broker_spec)}개, 계좌: {acnt_no or '미설정'}")
 
         # ── token 결과 반영 ──
@@ -234,7 +234,7 @@ async def run_engine_loop() -> None:
         if token:
             state.access_token = token
         else:
-            from backend.app.services.engine_service import log_message
+            from backend.app.services.engine_lifecycle import log_message
             log_message(" [연결] 증권사 토큰 발급 실패. 스냅샷 전용 모드로 기동.")
             state.access_token = None
 
@@ -254,7 +254,7 @@ async def run_engine_loop() -> None:
                 elif tr == "ka00001":
                     _rest_api._account_tr_id = tr
             state.broker_rest_apis[broker_nm] = _rest_api
-            from backend.app.services.engine_service import log_message
+            from backend.app.services.engine_lifecycle import log_message
             log_message(f"[연결] {broker_nm} 증권사 연결 완료 (테스트모드={_is_test})")
 
 
@@ -271,7 +271,8 @@ async def run_engine_loop() -> None:
         logger.info("[시작] 기동 완료 -- %s %s / 계좌: %s%s", _broker_str, _mode_str, _acnt_disp, _real_warn)
 
         if state.access_token:
-            from backend.app.services.engine_service import log_message, _get_settings, _sync_sell_overrides_from_settings
+            from backend.app.services.engine_lifecycle import log_message, sync_sell_overrides as _sync_sell_overrides_from_settings
+            from backend.app.services.engine_config import _get_settings
             state.auto_trade = AutoTradeManager(
                 log_callback=log_message,
                 get_settings_fn=_get_settings,
@@ -284,7 +285,7 @@ async def run_engine_loop() -> None:
         except Exception:
             logger.warning("[시작] 매수한도 브로드캐스트 실패", exc_info=True)
 
-        from backend.app.services.engine_service import _broadcast_engine_ws
+        from backend.app.services.engine_lifecycle import broadcast_engine_status as _broadcast_engine_ws
         await _broadcast_engine_ws()
 
         # ── 백그라운드 태스크로 파이프라인 루프 시작 (Step 7: 중앙 코디네이터 연동) ──
@@ -292,9 +293,8 @@ async def run_engine_loop() -> None:
         # 순서 보장: Ingestion -> Compute
         # Gateway 루프는 app.py에서 독립적으로 시작 (파이프라인 독립성 보장)
         from backend.app.pipelines.pipeline_compute import start_compute_loop
-        from backend.app.services import engine_service as es
 
-        compute_task = asyncio.create_task(start_compute_loop(es))
+        compute_task = asyncio.create_task(start_compute_loop())
 
         # ── WS 구간 변화 감지 루프 (WS 연결/해제 단일 책임) ──
         state.engine_stop_event.clear()
@@ -308,7 +308,7 @@ async def run_engine_loop() -> None:
                 if state.connector_manager is None:
                     try:
                         from backend.app.core.connector_manager import ConnectorManager
-                        from backend.app.services.engine_service import _broker_message_handler
+                        from backend.app.services.engine_ws import _broker_message_handler
                         from backend.app.services.core_queues import get_tick_queue
                         _mgr = ConnectorManager()
                         _mgr.set_message_callback(_broker_message_handler)
@@ -354,7 +354,7 @@ async def run_engine_loop() -> None:
     except asyncio.CancelledError:
         pass
     except Exception as e:
-        from backend.app.services.engine_service import log_message
+        from backend.app.services.engine_lifecycle import log_message
         log_message(f" [시작] 예외: {e}")
         logger.warning("[시작] 엔진 루프 예외", exc_info=True)
     finally:
@@ -405,6 +405,6 @@ async def run_engine_loop() -> None:
         state.broker_rest_apis.clear()
         state.broker_tokens.clear()
         state.running = False
-        from backend.app.services.engine_service import broadcast_engine_status, log_message, get_current_kst_time
+        from backend.app.services.engine_lifecycle import broadcast_engine_status, log_message, get_current_kst_time
         await broadcast_engine_status()
         log_message(f"[시작] 정지됨 ({get_current_kst_time()})")

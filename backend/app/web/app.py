@@ -89,7 +89,7 @@ async def lifespan(app: FastAPI):
 
     from backend.app.services.daily_time_scheduler import start_daily_time_scheduler
     
-    from backend.app.services.engine_service import start_engine
+    from backend.app.services.engine_lifecycle import start_engine
     
     from backend.app.services.telegram_bot import telegram_bot
     from backend.app.services import trade_history
@@ -149,7 +149,7 @@ async def lifespan(app: FastAPI):
     logger.info("[웹서버] WebSocket 클라이언트 정상 종료 완료")
 
     from backend.app.services.daily_time_scheduler import stop_daily_time_scheduler
-    from backend.app.services.engine_service import stop_engine
+    from backend.app.services.engine_lifecycle import stop_engine
     from backend.app.services import trade_history
 
     # 체결 이력 Consumer Task 종료 (Graceful Shutdown - 큐에 남은 데이터 모두 저장)

@@ -248,14 +248,14 @@ async def _reconciliation_on_startup() -> None:
 async def _apply_pending_settings_on_startup() -> None:
     """엔진 미실행 중 변경된 설정이 있으면 기동 시 반영."""
     from backend.app.core.sector_stock_cache import load_pending_settings, clear_pending_settings
-    from backend.app.services import engine_service
+    from backend.app.services.engine_service import apply_settings_change
 
     try:
         pending = await load_pending_settings()
         if not pending:
             return
         logger.info("[Pending] 엔진 기동 시 보류 설정 변경 적용: %s", sorted(pending))
-        await engine_service.apply_settings_change(pending)
+        await apply_settings_change(pending)
         await clear_pending_settings()
         logger.info("[Pending] 보류 설정 변경 적용 완료")
     except Exception as e:

@@ -305,7 +305,7 @@ async def _on_krx_market_open() -> None:
         if today.weekday() >= 5 or not is_trading_day(today):
             return
         logger.info("[타이머] KRX 정규장 진입 (09:00) -- 업종 종합점수 재계산 (NXT-only → 전체 종목)")
-        from backend.app.services.engine_service import recompute_sector_summary_now
+        from backend.app.services.sector_data_provider import recompute_sector_summary_now
         from backend.app.services.engine_account_notify import (
             notify_desktop_sector_scores,
             notify_desktop_sector_stocks_refresh,
@@ -330,7 +330,7 @@ async def _on_krx_after_hours_start() -> None:
         if today.weekday() >= 5 or not is_trading_day(today):
             return
         logger.info("[타이머] KRX 장외 시간대 진입 (15:30) -- 업종 종합점수 재계산 + KRX 단독 종목 구독해지")
-        from backend.app.services.engine_service import recompute_sector_summary_now
+        from backend.app.services.sector_data_provider import recompute_sector_summary_now
         from backend.app.services.engine_account_notify import (
             notify_desktop_sector_scores,
             notify_desktop_sector_stocks_refresh,
@@ -343,9 +343,8 @@ async def _on_krx_after_hours_start() -> None:
         # KRX 단독 종목 장마감 구독해지
         if not state.krx_remove_done:
             state.krx_remove_done = True
-            from backend.app.services import engine_service as es
             from backend.app.services.market_close_pipeline import remove_krx_only_stocks
-            result = await remove_krx_only_stocks(es)
+            result = await remove_krx_only_stocks()
             if result.get("skipped"):
                 state.krx_remove_done = False
                 logger.debug("[타이머] KRX 장마감 구독해지 생략 — 플래그 복원 (앱준비 후 재시도 가능)")
@@ -375,9 +374,8 @@ def _fire_unified_confirmed_fetch() -> None:
 async def _do_unified_confirmed_fetch() -> None:
     """통합 확정 조회 비동기 헬퍼."""
     try:
-        from backend.app.services import engine_service as es
         from backend.app.services.market_close_pipeline import fetch_unified_confirmed_data
-        await fetch_unified_confirmed_data(es)
+        await fetch_unified_confirmed_data()
         state.confirmed_done = True
         logger.info("[타이머] 통합 확정 조회 완료")
     except Exception as e:
@@ -842,14 +840,14 @@ def _seconds_until_hm(h: int, m: int) -> float:
 async def _on_auto_trade_transition(label: str) -> None:
     """매수/매도 시간 구간 진입/이탈 시 1회 실행되는 콜백."""
     try:
-        from backend.app.services import engine_service
+        from backend.app.services.engine_config import refresh_engine_integrated_system_settings_cache
         from backend.app.services.engine_account_notify import (
             notify_desktop_header_refresh,
             notify_desktop_settings_toggled,
         )
         logger.info("[타이머] 자동매매 시간 전환 -- %s", label)
         # 엔진 설정 캐시 갱신 (메모리만, 디스크 I/O 없음)
-        schedule_engine_task(engine_service.refresh_engine_integrated_system_settings_cache(None, use_root=True), context="설정 캐시 갱신")
+        schedule_engine_task(refresh_engine_integrated_system_settings_cache(None, use_root=True), context="설정 캐시 갱신")
         await notify_desktop_header_refresh()
         await notify_desktop_settings_toggled()
     except Exception as e:

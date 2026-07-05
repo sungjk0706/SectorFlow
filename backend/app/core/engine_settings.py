@@ -73,7 +73,6 @@ def build_engine_settings_dict(flat: dict) -> dict:
         "sell_qty_type":        merged.get("sell_qty_type", "%"),
         "sell_custom_qty":      int(merged.get("sell_custom_qty", 0) or 0),
         # 리스크
-        "rate_limit_per_sec":   int(merged.get("rate_limit_per_sec", 3) or 3),
         "max_position_size":    (lambda raw: 0 if raw is None or raw == "None" or raw == "" else int(raw))(merged.get("max_position_size")),
         "max_daily_loss_limit": int(merged.get("max_daily_loss_limit", -500000) or -500000),
         "max_single_stock_exposure": int(merged.get("max_single_stock_exposure", 20000000) or 20000000),

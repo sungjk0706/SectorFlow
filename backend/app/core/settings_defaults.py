@@ -58,7 +58,6 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "max_single_stock_exposure": 20000000,
     "max_total_exposure_ratio": 0.95,
     "max_position_size": 0,
-    "rate_limit_per_sec": 3,
 
      # 매도 설정
      "tp_apply": False,

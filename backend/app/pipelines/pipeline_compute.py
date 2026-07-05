@@ -12,7 +12,6 @@ from __future__ import annotations
 from typing import Optional
 import asyncio
 import time
-from types import ModuleType
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
 from backend.app.services.core_queues import (
@@ -68,7 +67,7 @@ def _has_any_realtime_data(entry: dict) -> bool:
     return any(entry.get(f) is not None for f in _REALTIME_CHECK_FIELDS)
 
 
-async def _calculate_receive_rate(es: ModuleType) -> None:
+async def _calculate_receive_rate() -> None:
     """수신율 계산 (배치 처리 — Phase 1/Phase 2 루프에서 호출).
 
     _received_codes는 per-tick O(1)으로 추가되므로 여기서는 계산만 수행.
@@ -76,7 +75,8 @@ async def _calculate_receive_rate(es: ModuleType) -> None:
     global _current_receive_rate
 
     try:
-        inputs = await es.get_sector_summary_inputs()
+        from backend.app.services.sector_data_provider import get_sector_summary_inputs
+        inputs = await get_sector_summary_inputs()
         all_codes = inputs.get("all_codes", [])
         total_count = len(all_codes)
 
@@ -99,7 +99,7 @@ def get_current_receive_rate() -> dict:
     return dict(_current_receive_rate)
 
 
-async def start_compute_loop(es: ModuleType) -> None:
+async def start_compute_loop() -> None:
     """Compute Engine 루프 시작."""
     global _compute_task, _compute_running, _sector_recompute_task
 
@@ -109,8 +109,8 @@ async def start_compute_loop(es: ModuleType) -> None:
 
     _compute_running = True
 
-    _compute_task = asyncio.get_running_loop().create_task(_compute_loop_impl(es))
-    _sector_recompute_task = asyncio.get_running_loop().create_task(_sector_recompute_loop_impl(es, get_broadcast_queue()))
+    _compute_task = asyncio.get_running_loop().create_task(_compute_loop_impl())
+    _sector_recompute_task = asyncio.get_running_loop().create_task(_sector_recompute_loop_impl(get_broadcast_queue()))
     logger.debug("[Compute] 루프 시작")
 
 
@@ -134,7 +134,7 @@ async def stop_compute_loop() -> None:
     logger.debug("[Compute] 루프 종료")
 
 
-async def _compute_loop_impl(es: ModuleType) -> None:
+async def _compute_loop_impl() -> None:
     """Compute Engine 루프 구현."""
     global _compute_running
     tick_queue = get_tick_queue()
@@ -156,7 +156,7 @@ async def _compute_loop_impl(es: ModuleType) -> None:
                         _, _, control_signal = control_queue.get_nowait()
                     except asyncio.QueueEmpty:
                         break
-                    await _process_control_signal(control_signal, es, broadcast_queue)
+                    await _process_control_signal(control_signal, broadcast_queue)
                     control_queue.task_done()
 
                 # tick_queue 데이터 처리
@@ -170,7 +170,7 @@ async def _compute_loop_impl(es: ModuleType) -> None:
                     # 파싱된 각 이벤트를 순차적으로 연산 로직에 전달
                     for event in parsed_events:
                         try:
-                            await _process_tick_data(event, es, broadcast_queue)
+                            await _process_tick_data(event, broadcast_queue)
                         except Exception as e:
                             logger.error("[Compute] 이벤트 처리 예외 (계속): %s", e, exc_info=True)
 
@@ -187,7 +187,6 @@ async def _compute_loop_impl(es: ModuleType) -> None:
 
 async def _process_control_signal(
     signal: dict,
-    es: ModuleType,
     broadcast_queue: asyncio.Queue,
 ) -> None:
     """
@@ -195,7 +194,6 @@ async def _process_control_signal(
 
     Args:
         signal: 제어 신호 (dict)
-        es: engine_service 모듈
         broadcast_queue: UI 전송 큐
     """
     try:
@@ -204,10 +202,10 @@ async def _process_control_signal(
 
         if signal_type == "UPDATE_CONFIG":
             # 설정 변경 신호 처리
-            await _handle_config_update(payload, es, broadcast_queue)
+            await _handle_config_update(payload, broadcast_queue)
         elif signal_type == "RECOMPUTE_SECTOR":
             # 업종순위 재계산 신호 처리
-            await _handle_sector_recompute(es, broadcast_queue)
+            await _handle_sector_recompute(broadcast_queue)
         elif signal_type == "sector_recompute":
             # 실시간 틱 기반 업종순위 개별 종목 증분 업데이트 신호 처리
             code = signal.get("code")
@@ -241,7 +239,6 @@ async def _process_control_signal(
 
 async def _handle_config_update(
     payload: dict,
-    es: ModuleType,
     broadcast_queue: asyncio.Queue,
 ) -> None:
     """
@@ -249,7 +246,6 @@ async def _handle_config_update(
 
     Args:
         payload: 설정 변경 데이터
-        es: engine_service 모듈
         broadcast_queue: UI 전송 큐
     """
     # 캐시 직접 업데이트 제거 - 단일 소스 진리 원칙 준수
@@ -262,19 +258,18 @@ async def _handle_config_update(
 
 
 async def _handle_sector_recompute(
-    es: ModuleType,
     broadcast_queue: asyncio.Queue,
 ) -> None:
     """
     업종순위 재계산 처리.
 
     Args:
-        es: engine_service 모듈
         broadcast_queue: UI 전송 큐
     """
     try:
         # 업종순위 재계산 — recompute_sector_summary_now 내부에서 notify_desktop_sector_scores(force=True) 호출됨
-        await es.recompute_sector_summary_now()
+        from backend.app.services.sector_data_provider import recompute_sector_summary_now
+        await recompute_sector_summary_now()
 
         logger.info("[Compute] 업종순위 재계산 완료")
 
@@ -284,7 +279,6 @@ async def _handle_sector_recompute(
 
 async def _process_tick_data(
     data: dict,
-    es: ModuleType,
     broadcast_queue: asyncio.Queue,
 ) -> None:
     """
@@ -292,19 +286,17 @@ async def _process_tick_data(
 
     Args:
         data: 틱 데이터 (dict)
-        es: engine_service 모듈 (전역 상태 접근용)
         broadcast_queue: UI 전송 큐
     """
     # Step 3: engine_service의 연산 로직 이관
     # 1. 틱 데이터 파싱 및 캐시 업데이트
     trnm = data.get("trnm")
     if trnm == "REAL":
-        await _handle_real_tick(data, es, broadcast_queue)
+        await _handle_real_tick(data, broadcast_queue)
 
 
 async def _handle_real_tick(
     data: dict,
-    es: ModuleType,
     broadcast_queue: asyncio.Queue,
 ) -> None:
     """
@@ -312,7 +304,6 @@ async def _handle_real_tick(
 
     Args:
         data: REAL 틱 데이터
-        es: engine_service 모듈
         broadcast_queue: UI 전송 큐
     """
     # engine_service._apply_real01_volume_amount_to_radar_rows 이관
@@ -342,16 +333,16 @@ async def _handle_real_tick(
 
             # 0B/01 체결 처리 (주식 현재가)
             if norm_type == "01":
-                await _handle_real_01_tick(item, vals, es, broadcast_queue)
+                await _handle_real_01_tick(item, vals, broadcast_queue)
             # 0D 호가 처리 (호가 잔량 테이블)
             elif norm_type == "0d":
-                await _handle_real_0d_tick(item, vals, es, broadcast_queue)
+                await _handle_real_0d_tick(item, vals, broadcast_queue)
             # 0J 업종지수 처리 (즉시 브로드캐스트, 저장 없음)
             elif norm_type == "0j":
                 await _handle_real_0j_tick(item, vals)
             # PGM 프로그램 순매수 처리 (커스텀 타입)
             elif norm_type == "PGM":
-                await _handle_real_pgm_tick(item, vals, es, broadcast_queue)
+                await _handle_real_pgm_tick(item, vals, broadcast_queue)
 
     except Exception as e:
         logger.error("[Compute] REAL 틱 처리 예외: %s", e, exc_info=True)
@@ -375,7 +366,6 @@ async def _handle_real_0j_tick(item: dict, vals: dict) -> None:
 async def _handle_real_01_tick(
     item: dict,
     vals: dict,
-    es: ModuleType,
     broadcast_queue: asyncio.Queue,
 ) -> None:
     """
@@ -384,7 +374,6 @@ async def _handle_real_01_tick(
     Args:
         item: 틱 아이템
         vals: 틱 값
-        es: engine_service 모듈
         broadcast_queue: UI 전송 큐
     """
     global _received_codes, _receive_rate_dirty
@@ -518,7 +507,6 @@ def _check_realtime_latency(_ts: int) -> None:
 async def _handle_real_0d_tick(
     item: dict,
     vals: dict,
-    es: ModuleType,
     broadcast_queue: asyncio.Queue,
 ) -> None:
     """
@@ -527,7 +515,6 @@ async def _handle_real_0d_tick(
     Args:
         item: 틱 아이템
         vals: 틱 값
-        es: engine_service 모듈
         broadcast_queue: UI 전송 큐
     """
     try:
@@ -560,7 +547,6 @@ async def _handle_real_0d_tick(
 async def _handle_real_pgm_tick(
     item: dict,
     vals: dict,
-    es: ModuleType,
     broadcast_queue: asyncio.Queue,
 ) -> None:
     """
@@ -592,7 +578,7 @@ async def _handle_real_pgm_tick(
         logger.error("[Compute] PGM 틱 처리 예외: %s", e, exc_info=True)
 
 
-async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Queue) -> None:
+async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
     """
     업종순위 재계산 백그라운드 루프 (이벤트 기반).
 
@@ -610,7 +596,7 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
                 await asyncio.sleep(1.0)
 
                 if _receive_rate_dirty:
-                    await _calculate_receive_rate(es)
+                    await _calculate_receive_rate()
                     threshold_pct = float(state.integrated_system_settings_cache["sector_start_threshold_pct"])
                     current_pct = _current_receive_rate["pct"]
                     received_count = _current_receive_rate["received"]
@@ -643,7 +629,7 @@ async def _sector_recompute_loop_impl(es: ModuleType, broadcast_queue: asyncio.Q
 
             # 수신율 계산 및 전송 (변경 시에만) — per-tick O(n) 계산 제거, 배치 처리
             if _receive_rate_dirty:
-                await _calculate_receive_rate(es)
+                await _calculate_receive_rate()
                 await _send_receive_rate(get_current_receive_rate())
                 _receive_rate_dirty = False
 

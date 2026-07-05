@@ -8,7 +8,7 @@ daily_time_scheduler.py 타이머 콜백에서 호출된다.
 from __future__ import annotations
 import asyncio
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from backend.app.core.logger import get_logger
 from backend.app.core.broker_providers import AuthProvider
 if TYPE_CHECKING:
@@ -71,11 +71,8 @@ def _broadcast_confirmed_progress(
 # 종목 분류 헬퍼
 # ---------------------------------------------------------------------------
 
-def _get_krx_only_codes(es: Any) -> list[str]:
+def _get_krx_only_codes() -> list[str]:
     """_master_stocks_cache에서 KRX 단독 종목(nxt_enable=False)만 추출.
-
-    Args:
-        es: engine_service 모듈 참조
 
     Returns:
         6자리 정규화된 KRX 단독 종목코드 리스트 (중복 없음).
@@ -117,11 +114,8 @@ def _get_krx_only_codes(es: Any) -> list[str]:
 # KRX 단독 종목 REMOVE
 # ---------------------------------------------------------------------------
 
-async def remove_krx_only_stocks(es: Any) -> dict:
+async def remove_krx_only_stocks() -> dict:
     """KRX 단독 종목(nxt_enable=False)만 선택적 REMOVE.
-
-    Args:
-        es: engine_service 모듈 참조
 
     Returns:
         {"removed": int, "failed": int, "skipped": bool}
@@ -132,7 +126,7 @@ async def remove_krx_only_stocks(es: Any) -> dict:
         _log.warning("[타이머] KRX 장마감 구독해지 생략 — 실시간 미연결")
         return {"removed": 0, "failed": 0, "skipped": True}
 
-    krx_codes = _get_krx_only_codes(es)
+    krx_codes = _get_krx_only_codes()
     if not krx_codes:
         _log.info("[타이머] KRX 장마감 구독해지 대상 없음")
         return {"removed": 0, "failed": 0, "skipped": False}
@@ -208,14 +202,12 @@ async def remove_krx_only_stocks(es: Any) -> dict:
 # ---------------------------------------------------------------------------
 
 async def execute_unified_rolling_and_save(
-    es: Any,
     confirmed: dict[str, dict],
     name_map: dict[str, str] | None = None,
 ) -> bool:
     """모든 정산 데이터를 메모리에서 연산 후 단일 트랜잭션으로 DB 및 메모리에 저장.
 
     Args:
-        es: engine_service 모듈 참조
         confirmed: {종목코드: {cur_price, change, change_rate, trade_amount, high_price, high_5d_price}}
         name_map: {6자리 종목코드: 종목명} — 종목명 보정용
 
@@ -354,7 +346,6 @@ async def execute_unified_rolling_and_save(
 
 
 async def _apply_confirmed_to_memory(
-    es: Any,
     confirmed: dict[str, dict],
     strength: dict[str, float],
     name_map: dict[str, str] | None = None,
@@ -363,7 +354,6 @@ async def _apply_confirmed_to_memory(
     """확정 데이터를 메모리 캐시에 반영. 0값은 기존 데이터를 덮지 않음.
 
     Args:
-        es: engine_service 모듈 참조
         confirmed: {종목코드: {cur_price, change, change_rate, sign, volume, trade_amount, prev_close}}
         strength: {종목코드: 체결강도 float}
         name_map: {6자리 종목코드: 종목명} — ka10099에서 조회한 매핑. 있으면 모든 엔트리 종목명 갱신.
@@ -484,14 +474,14 @@ async def _apply_confirmed_to_memory(
 # 확정 후 v2 캐시 롤링 파이프라인 (daily_time_scheduler.py에서 이동)
 # ---------------------------------------------------------------------------
 
-async def _run_post_confirmed_pipeline(es: Any, eligible_codes: set[str] | None = None) -> None:
+async def _run_post_confirmed_pipeline(eligible_codes: set[str] | None = None) -> None:
     """
     ka10081 도입으로 5일 거래대금 및 최고가를 즉시 추출하므로,
     기존의 복잡한 v2 캐시 롤링 갱신 로직은 제거되었습니다.
     단순히 최종 스냅샷 및 캐시를 저장합니다.
     """
     try:
-        await _save_confirmed_cache(es, eligible_codes=eligible_codes)
+        await _save_confirmed_cache(eligible_codes=eligible_codes)
         _log.info("[타이머] post-confirmed 파이프라인 완료 (롤링 로직 생략)")
     except Exception as exc:
         _log.warning("[타이머] post-confirmed 파이프라인 오류: %s", exc, exc_info=True)
@@ -526,7 +516,6 @@ async def _save_filter_diagnostics_snapshot(
 
 
 async def _save_confirmed_cache(
-    es: Any,
     skip_codes: set[str] | None = None,
     name_map: dict[str, str] | None = None,
     eligible_codes: set[str] | None = None,
@@ -538,7 +527,6 @@ async def _save_confirmed_cache(
     eligible_codes가 주어지면 해당 종목만 저장 (confirmed_codes 기반 단일 소스 진리).
 
     Args:
-        es: engine_service 모듈 참조
         skip_codes: execute_unified_rolling_and_save에서 이미 처리한 종목 코드 집합
         eligible_codes: 매매적격 종목 코드 집합 (이 외 종목은 저장하지 않음)
 
@@ -656,7 +644,6 @@ async def _save_confirmed_cache(
 # ---------------------------------------------------------------------------
 
 async def _run_confirmed_pipeline(
-    es: Any,
     tag: str,
     *,
     check_scheduler: bool = False,
@@ -902,7 +889,7 @@ async def _run_confirmed_pipeline(
             state.latest_filter_summary_meta = filter_summary_meta
 
             all_codes = list(confirmed_codes)
-            await _update_layout_cache(es, all_codes, name_map)
+            await _update_layout_cache(all_codes, name_map)
             _log.info("%s Step 4 완료 — 저장 완료 (%d종목)", tag, len(confirmed_codes))
 
             try:
@@ -964,13 +951,13 @@ async def _run_confirmed_pipeline(
                     "change_rate": val.get("rate") or val.get("change_rate") or 0.0,
                     "sign": val.get("sign") or "3",
                 }
-            await _apply_confirmed_to_memory(es, normalized_confirmed, {}, name_map=name_map, confirmed_codes=confirmed_codes)
+            await _apply_confirmed_to_memory(normalized_confirmed, {}, name_map=name_map, confirmed_codes=confirmed_codes)
 
         # ── 단일 벌크 트랜잭션: 5일봉 롤링 및 DB 저장 ──
         cached = False
         if confirmed:
             _log.info("%s 단일 벌크 트랜잭션 시작", tag)
-            await execute_unified_rolling_and_save(es, normalized_confirmed, name_map=name_map)
+            await execute_unified_rolling_and_save(normalized_confirmed, name_map=name_map)
             _log.info("%s 단일 벌크 트랜잭션 완료", tag)
             cached = True
 
@@ -990,7 +977,7 @@ async def _run_confirmed_pipeline(
 
         # ── 후처리 ──
         _broadcast_confirmed_progress(total, total, message="5일 거래대금 계산 중...", step=5)
-        await _run_post_confirmed_pipeline(es, eligible_codes=confirmed_codes)
+        await _run_post_confirmed_pipeline(eligible_codes=confirmed_codes)
         if cached:
             final_eligible = confirmed_codes
             if final_eligible:
@@ -1005,7 +992,7 @@ async def _run_confirmed_pipeline(
 
         # ── Step 7: 업종순위 재계산 + WS 브로드캐스트 ──
         try:
-            from backend.app.services.engine_service import recompute_sector_summary_now
+            from backend.app.services.sector_data_provider import recompute_sector_summary_now
             from backend.app.services.engine_account_notify import notify_desktop_sector_stocks_refresh
             await notify_desktop_sector_stocks_refresh(force=True)
             await recompute_sector_summary_now()
@@ -1029,9 +1016,9 @@ async def _run_confirmed_pipeline(
 # 통합 확정 데이터 조회 (20:30)
 # ---------------------------------------------------------------------------
 
-async def fetch_unified_confirmed_data(es: Any) -> dict:
+async def fetch_unified_confirmed_data() -> dict:
     """20:30 타이머 통합 확정 조회 — _run_confirmed_pipeline 위임."""
-    return await _run_confirmed_pipeline(es, "[타이머]", check_scheduler=True, check_time_guard=True)
+    return await _run_confirmed_pipeline("[타이머]", check_scheduler=True, check_time_guard=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1039,7 +1026,6 @@ async def fetch_unified_confirmed_data(es: Any) -> dict:
 # ---------------------------------------------------------------------------
 
 async def _update_layout_cache(
-    es: Any,
     all_codes: list[str],
     name_map: dict[str, str],
 ) -> None:
@@ -1115,8 +1101,7 @@ async def _update_layout_cache(
 
 async def fetch_confirmed_data_only() -> dict:
     """수동 매매적격종목 1일봉챠트 시세 다운로드 파이프라인 — _run_confirmed_pipeline 위임."""
-    from backend.app.services import engine_service as es
-    return await _run_confirmed_pipeline(es, "[수동 확정시세]")
+    return await _run_confirmed_pipeline("[수동 확정시세]")
 
 
 
@@ -1128,7 +1113,6 @@ async def fetch_5d_data_only() -> dict:
     개별 종목의 5일 고가 및 거래대금 데이터를 다운로드하여 DB 및 메모리에 저장합니다.
     execute_unified_rolling_and_save()를 사용하여 순서 보장.
     """
-    from backend.app.services import engine_service as es
     from backend.app.core.trading_calendar import get_kst_today_str
 
     # 중복 실행 방지
@@ -1322,13 +1306,13 @@ async def fetch_5d_data_only() -> dict:
         await broadcast_stock_classification_changed()
 
         # 후처리
-        await _run_post_confirmed_pipeline(es, eligible_codes=set(all_codes))
+        await _run_post_confirmed_pipeline(eligible_codes=set(all_codes))
 
         # 업종순위 재계산 (내부에서 notify_desktop_sector_scores + notify_buy_targets_update 호출)
         # 순서: sector-stocks-refresh → recompute_sector_summary_now
         # sectorStocks가 먼저 갱신되어야 buy-targets-delta merge 시 최신 데이터 참조 가능
         try:
-            from backend.app.services.engine_service import recompute_sector_summary_now
+            from backend.app.services.sector_data_provider import recompute_sector_summary_now
             from backend.app.services.engine_account_notify import (
                 notify_desktop_sector_stocks_refresh,
             )

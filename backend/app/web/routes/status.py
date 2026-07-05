@@ -108,7 +108,7 @@ async def debug_trigger_confirmed():
     from backend.app.services.engine_state import state
     from backend.app.services.market_close_pipeline import fetch_unified_confirmed_data
     try:
-        result = await fetch_unified_confirmed_data(state)
+        result = await fetch_unified_confirmed_data()
         return {"status": "ok", "result": result}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -117,8 +117,8 @@ async def debug_trigger_confirmed():
 @router.get("/debug/sector-refresh-sample")
 async def debug_sector_refresh_sample():
     """디버그용: sector-refresh WS 이벤트와 동일한 데이터를 직접 반환."""
-    from backend.app.services import engine_service as es
-    stocks = await es.get_sector_stocks()
+    from backend.app.services.sector_data_provider import get_sector_stocks
+    stocks = await get_sector_stocks()
     status = {}  # 확정 개념 제거됨
     # 삼성전자, SK하이닉스 찾기
     sample = {}

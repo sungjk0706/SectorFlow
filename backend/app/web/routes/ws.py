@@ -54,10 +54,10 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         no_sector_count = 0
         filter_summary = ""
         try:
-            import backend.app.services.engine_service as es
+            from backend.app.services.sector_data_provider import get_all_sector_stocks
             import backend.app.services.engine_state as _es
             from backend.app.core.sector_stock_cache import assemble_filter_summary
-            stocks = await es.get_all_sector_stocks()
+            stocks = await get_all_sector_stocks()
             if "미분류" in merged:
                 no_sector_count = sum(1 for s in stocks if s["sector"] == "미분류")
             filter_summary = assemble_filter_summary(
@@ -84,19 +84,19 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         # 업종순위 계산은 백그라운드 태스크로 실행되며, 완료 시 WS로 전송됨
 
         # initial-snapshot 전송 (업종순위 계산 완료와 무관하게 즉시 전송)
-        from backend.app.services.engine_service import build_initial_snapshot
+        from backend.app.services.engine_snapshot import build_initial_snapshot
 
         snapshot = await build_initial_snapshot()
         await ws_manager.send_to(websocket, "initial-snapshot", snapshot)
 
         # sector-stocks-refresh 전송
-        from backend.app.services.engine_service import build_sector_stocks_payload
+        from backend.app.services.engine_snapshot import build_sector_stocks_payload
 
         stocks_payload = await build_sector_stocks_payload()
         await ws_manager.send_to(websocket, "sector-stocks-refresh", stocks_payload)
 
         # sector-scores 전송
-        from backend.app.services.engine_service import get_sector_scores_snapshot
+        from backend.app.services.sector_data_provider import get_sector_scores_snapshot
         from backend.app.services.engine_state import state
 
         # 업종 요약정보 생성 완료 대기 (테스트모드 포함)
@@ -131,7 +131,7 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
                 logger.info("[연결] 업종점수 미전송 -- 종목 없음 (정상)")
 
         # buy-targets 전송 (initial-snapshot에 이미 포함되어 있으나, WS delta 메커니즘을 위해 별도 전송)
-        from backend.app.services.engine_service import get_buy_targets_sector_stocks
+        from backend.app.services.sector_data_provider import get_buy_targets_sector_stocks
 
         targets = await get_buy_targets_sector_stocks()
         if targets:
