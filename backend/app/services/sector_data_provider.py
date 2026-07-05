@@ -247,16 +247,16 @@ async def recompute_sector_summary_now() -> None:
         logger.info("[업종순위] 엔진 미실행으로 종료")
         return
     try:
-        trim_trade = float(_es._integrated_system_settings_cache["sector_trim_trade_amt_pct"])
-        trim_change = float(_es._integrated_system_settings_cache["sector_trim_change_rate_pct"])
-        sector_weights = _es._integrated_system_settings_cache["sector_weights"]
+        trim_trade = float(state.integrated_system_settings_cache["sector_trim_trade_amt_pct"])
+        trim_change = float(state.integrated_system_settings_cache["sector_trim_change_rate_pct"])
+        sector_weights = state.integrated_system_settings_cache["sector_weights"]
         logger.info("[업종순위] 재계산 sector_weights: %s", sector_weights)
         _inputs = await get_sector_summary_inputs()
         _sector_summary = await compute_full_sector_summary(
             **_inputs,
-            min_rise_ratio=float(_es._integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
-            min_avg_amt_eok=float(_es._integrated_system_settings_cache["sector_min_trade_amt"]),
-            sector_weights=_es._integrated_system_settings_cache["sector_weights"],
+            min_rise_ratio=float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
+            min_avg_amt_eok=float(state.integrated_system_settings_cache["sector_min_trade_amt"]),
+            sector_weights=state.integrated_system_settings_cache["sector_weights"],
             trim_trade_amt_pct=trim_trade,
             trim_change_rate_pct=trim_change,
         )
@@ -264,7 +264,7 @@ async def recompute_sector_summary_now() -> None:
         _held = {_base_stk_cd(cd) for cd in state.checked_stocks}
         _ss = build_buy_targets_from_settings(
             _sector_summary.sectors,
-            _es._integrated_system_settings_cache,
+            state.integrated_system_settings_cache,
             held_codes=_held,
         )
         state.sector_summary_cache = _ss
@@ -283,10 +283,10 @@ async def recompute_sector_summary_now() -> None:
         await notify_desktop_sector_stocks_refresh(force=True)
         await notify_buy_targets_update()
         logger.info("[업종순위] 재계산 완료")
-        _es._sector_summary_ready_event.set()
+        state.sector_summary_ready_event.set()
     except Exception as e:
         logger.warning("[업종순위] 재계산 실패: %s", e, exc_info=True)
-        _es._sector_summary_ready_event.set()
+        state.sector_summary_ready_event.set()
 
 
 async def _on_filter_settings_changed() -> None:

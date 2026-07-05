@@ -16,8 +16,8 @@ async def get_merged_sector(stock_code: str) -> str:
 
     # 1) 인메모리 캐시에서 조회 (_master_stocks_cache)
     try:
-        import backend.app.services.engine_service as es
-        entry = es._master_stocks_cache.get(stock_code)
+        from backend.app.services.engine_state import state
+        entry = state.master_stocks_cache.get(stock_code)
         if entry and "sector" in entry:
             return entry["sector"] or "미분류"
     except Exception as e:
@@ -50,8 +50,8 @@ async def get_merged_sectors_batch(codes: list[str]) -> dict[str, str]:
     for cd in codes:
         upper_cd = cd.upper()
         try:
-            import backend.app.services.engine_service as es
-            entry = es._master_stocks_cache.get(upper_cd)
+            from backend.app.services.engine_state import state
+            entry = state.master_stocks_cache.get(upper_cd)
             if entry and "sector" in entry:
                 result[cd] = entry["sector"] or "미분류"
                 continue

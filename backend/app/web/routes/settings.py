@@ -99,25 +99,26 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         await broadcast_history("test")
         # 7. 보유종목 메모리 리스트 및 캐시 초기화 + 계좌 스냅샷 갱신 + WS account-update 발송
         from backend.app.services import engine_service as es
+        from backend.app.services.engine_state import state
         from backend.app.services.engine_account_notify import _rebuild_positions_cache, notify_cache
-        subscribed_count = sum(1 for entry in es._master_stocks_cache.values() if entry.get("_subscribed", False))
+        subscribed_count = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
         es.logger.info(
             "[디버그] 초기화 직전 구독목록 positions=%d subscribed=%d layout=%d pos_codes=%d",
-            len(es.state.positions), subscribed_count,
-            len(es._integrated_system_settings_cache["sector_stock_layout"]),
+            len(state.positions), subscribed_count,
+            len(state.integrated_system_settings_cache["sector_stock_layout"]),
             len(notify_cache.positions_code_set),
         )
-        es.state.positions = []
-        for entry in es._master_stocks_cache.values():
+        state.positions = []
+        for entry in state.master_stocks_cache.values():
             entry.pop("_subscribed", None)
-        es._snapshot_history.clear()
-        es._checked_stocks.clear()
+        state.snapshot_history.clear()
+        state.checked_stocks.clear()
         _rebuild_positions_cache([])
-        subscribed_count_after = sum(1 for entry in es._master_stocks_cache.values() if entry.get("_subscribed", False))
+        subscribed_count_after = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
         es.logger.info(
             "[디버그] 초기화 직후 구독목록 positions=%d subscribed=%d layout=%d pos_codes=%d",
-            len(es.state.positions), subscribed_count_after,
-            len(es._integrated_system_settings_cache["sector_stock_layout"]),
+            len(state.positions), subscribed_count_after,
+            len(state.integrated_system_settings_cache["sector_stock_layout"]),
             len(notify_cache.positions_code_set),
         )
         await es._refresh_account_snapshot_meta()
@@ -127,16 +128,16 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         from backend.app.services.engine_account_notify import notify_snapshot_history_update
         await notify_snapshot_history_update()
         # 9. 일일매수 누적 인메모리 상태 리셋 + 매수 쿨다운/쓰로틀 기록 초기화 + WS buy-limit-status 발송
-        if es._auto_trade:
-            es._auto_trade._daily_buy_spent = 0
-            es._auto_trade._bought_today = {}
-            es._auto_trade._symbol_daily_buy_spent = {}
-            es._auto_trade._buy_state.clear()
+        if state.auto_trade:
+            state.auto_trade._daily_buy_spent = 0
+            state.auto_trade._bought_today = {}
+            state.auto_trade._symbol_daily_buy_spent = {}
+            state.auto_trade._buy_state.clear()
         # 매수 주문 간격 타이머 리셋
-        es.state._last_global_buy_ts = 0.0
+        state._last_global_buy_ts = 0.0
         # buy_targets 메모리 초기화 (매수후보 테이블 동기화)
-        if es.state.sector_summary_cache and hasattr(es.state.sector_summary_cache, 'buy_targets'):
-            es.state.sector_summary_cache.buy_targets = []
+        if state.sector_summary_cache and hasattr(state.sector_summary_cache, 'buy_targets'):
+            state.sector_summary_cache.buy_targets = []
         await es._broadcast_buy_limit_status()
         # 10. 통합 초기화 완료 신호 (모든 클라이언트 일괄 동기화)
         from backend.app.services.engine_account_notify import _broadcast

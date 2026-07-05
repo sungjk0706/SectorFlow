@@ -198,7 +198,7 @@ async def _flush_sector_recompute_impl() -> None:
                 await evaluate_buy_candidates()
 
         # 업종 요약정보 생성 완료 이벤트 설정
-        _es._sector_summary_ready_event.set()
+        state.sector_summary_ready_event.set()
 
     except Exception as e:
         logger.warning("[섹터재계산] 증분 재계산 오류: %s", e, exc_info=True)
@@ -280,7 +280,7 @@ def sync_dynamic_subscriptions(es, new_buy_targets) -> None:
 
     new_codes = {bt.stock.code for bt in new_buy_targets if bt.stock.guard_pass}
 
-    all_stocks = es._master_stocks_cache
+    all_stocks = state.master_stocks_cache
     prev_codes = {cd for cd, entry in all_stocks.items() if entry.get("_subscribed_dynamic", False)}
 
     # 신규 구독: 즉시 적용
@@ -326,8 +326,8 @@ def sync_dynamic_subscriptions(es, new_buy_targets) -> None:
 
     # state.master_stocks_cache에 "_subscribed_dynamic" 설정
     for cd in prev_codes:
-        if cd in es._master_stocks_cache:
-            es._master_stocks_cache[cd]["_subscribed_dynamic"] = True
+        if cd in state.master_stocks_cache:
+            state.master_stocks_cache[cd]["_subscribed_dynamic"] = True
 
 
 def apply_delayed_unsubscription(es) -> None:
@@ -337,7 +337,7 @@ def apply_delayed_unsubscription(es) -> None:
     from backend.app.services.core_queues import get_control_queue
     import time
 
-    all_stocks = es._master_stocks_cache
+    all_stocks = state.master_stocks_cache
     current_codes = {cd for cd, entry in all_stocks.items() if entry.get("_subscribed_dynamic", False)}
     to_unreg = _PENDING_UNREG_CODES & current_codes  # 아직 구독 중인 것만
 
@@ -360,8 +360,8 @@ def apply_delayed_unsubscription(es) -> None:
     _PENDING_UNREG_TIMER = None
     # state.master_stocks_cache에서 "_subscribed_dynamic" 및 동적 데이터 완전 제거 (데이터 왜곡 차단)
     for cd in to_unreg:
-        if cd in es._master_stocks_cache:
-            entry = es._master_stocks_cache[cd]
+        if cd in state.master_stocks_cache:
+            entry = state.master_stocks_cache[cd]
             entry.pop("_subscribed_dynamic", None)
             entry.pop("order_ratio", None)
             entry.pop("program_net_buy", None)
