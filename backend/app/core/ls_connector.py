@@ -94,13 +94,19 @@ class _LsSocket:
         return True
 
     async def _recv_loop(self) -> None:
-        """WebSocket 수신루프 — 메시지 파싱, LS → 내부 형식 변환, 연결 끊김 감지."""
+        """WebSocket 수신루프 — PING 처리, 메시지 파싱, LS → 내부 형식 변환, 연결 끊김 감지."""
         logger.info("[LS서버소켓] 수신 시작")
         while not self._stop_event.is_set():
             try:
                 raw = await self._ws.recv()
 
-                # JSON 파싱
+                # 1. 문자열 PING
+                if isinstance(raw, str) and raw.strip().upper() == "PING":
+                    await self._ws.send(raw)
+                    logger.debug("[LS서버소켓] PING 응답(문자)")
+                    continue
+
+                # 2. JSON 파싱
                 try:
                     msg = json.loads(raw)
                 except (json.JSONDecodeError, TypeError):
@@ -108,6 +114,13 @@ class _LsSocket:
                     continue
 
                 if isinstance(msg, list):
+                    continue
+
+                # 3. JSON PING
+                trnm = msg.get("trnm", "")
+                if trnm.upper() == "PING":
+                    await self._ws.send(raw)
+                    logger.debug("[LS서버소켓] PING 응답(JSON)")
                     continue
 
                 # LS 메시지 구조: {header: {tr_cd, tr_key}, body: {...}}
