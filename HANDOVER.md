@@ -1,25 +1,28 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-06: 백엔드 테스트 워닝 13건 근본 해결 — RuntimeWarning 0건 달성**
-  - 원인: fire-and-forget 패턴의 코루틴이 mock에 전달 후 미처리 상태로 GC → `RuntimeWarning: coroutine was never awaited`
-  - `test_daily_time_scheduler.py`: `_close_coro` 헬퍼 추가, `schedule_engine_task` mock 7개에 `side_effect=_close_coro` 적용
-  - `test_pipeline_compute.py`: `_close_coro` 헬퍼 추가, `mock_loop.create_task` post-call cleanup, `asyncio.wait_for` mock에 `side_effect=_close_coro` 적용
-  - `test_pipeline_gateway.py`: `_close_coro` + `_close_coro_then_raise` 헬퍼 추가, `asyncio.gather` mock 2개 + `mock_loop.create_task` post-call cleanup 적용
-  - `test_trading.py`: `_close_coro` 헬퍼 추가, `asyncio.create_task` mock에 `side_effect=_close_coro` 적용
-  - 검증: `pytest backend/tests/` 1016 passed, **0 warnings** in 25.87s
+- **2026-07-06: 업종순위 페이지 우측 패널 실시간 데이터 미표시 근본 해결 — real-data 이벤트 전송 버그 수정**
+  - 문제: 업종순위 페이지 우측 패널(업종별 실시간 시세 테이블)에 실시간 데이터(현재가, 등락률, 거래대금 등)가 전혀 표시되지 않음
+  - 원인: `ws_manager.py::_send_realdata_encoded`에서 `subscribed_fids is None`인 클라이언트를 `continue`로 스킵 → `real-data` 이벤트가 프론트엔드에 도달하지 않음. 프론트엔드 `subscribeFids()` 함수가 정의만 되고 호출되지 않아 모든 클라이언트가 FID 구독 없는 상태
+  - 해결: `ws_manager.py:197` — `subscribed_fids is None` 스킵 제거, `ALLOWED_FIDS`를 기본값으로 사용. `_encode_realdata`의 기존 동작(None → ALLOWED_FIDS)과 일관성 유지
+  - tick_queue 최적화와 무관한 사전 존재 버그 (git diff로 확인)
+  - 테스트: `test_engine_ws.py` 53 passed, `test_engine_ws_dispatch.py` + `test_engine_account_notify.py` 109 passed, `test_pipeline_compute.py` + `test_pipeline_gateway.py` 97 passed, 전체 989 passed (test_trading.py 제외)
+
+- **2026-07-06: tick_queue 드롭 근본 해결 — Compute 루프 배치 처리 최적화** (이전 세션)
+  - 배치 드레인(500개) + 계좌 브로드캐스트 디바운스 + 동일 종목 틱 코얼레싱 적용
 
 ## 현재 상태
-- **백엔드**: `pytest backend/tests/` 1016 passed, **0 warnings** in 25.87s
-- **프론트엔드**: `npm run build` 성공 (tsc 0 errors, vite 53 modules), vitest 109 passed (직전 세션 기준)
-- **Git**: 커밋 푸시 완료 (df8e237)
+- **백엔드**: 989 passed (test_trading.py 제외, 사전 존재 hang). `ws_manager.py` real-data 전송 수정 + `pipeline_compute.py` tick_queue 최적화 커밋 완료
+- **프론트엔드**: `npm run build` 성공 (tsc 0 errors, vite 53 modules)
+- **Git**: 2건 커밋 푸시 완료 (9afe7da: tick_queue 최적화, f4b6758: real-data 전송 버그 수정)
 
 ## 다음 단계
-- **브라우저 런타임 검증 (대기)**: 테스트모드 매수/매도 시 체결가 로그에서 슬리피지 적용 확인
+- **브라우저 런타임 검증 (대기)**: 업종순위 페이지 우측 패널 실시간 데이터 표시 확인, tick_queue 드롭 감소 확인
+- **test_trading.py hang 해결**: `test_rebuy_block_disabled` — 사전 존재 이슈
 - **테스트 커버리지 개선**: Priority 4 이상 진행
 
 ## 미해결 문제
-- 없음
+- **test_trading.py hang**: `TestExecuteBuyGates::test_rebuy_block_disabled` — `execute_buy` 내 `await` 호출 중 mock 누락 추정. 25개 테스트 파일 중 유일한 hang
 
 ## 테스트 실행 원칙 (필수 준수)
 
@@ -84,7 +87,7 @@ python -m pytest backend/tests/[파일명] -v --timeout=15 --timeout-method=sign
 
 #### Priority 1 — 매매 핵심 로직 (완료)
 - `test_buy_filter.py` ✅, `test_circuit_breaker.py` ✅, `test_settlement_engine.py` ✅
-- `test_risk_manager.py` ✅, `test_buy_order_executor.py` ✅, `test_trading.py` ✅
+- `test_risk_manager.py` ✅, `test_buy_order_executor.py` ✅, `test_trading.py` ⚠️ HANG (`test_rebuy_block_disabled` — 사전 존재 이슈, `pipeline_compute.py`와 무관)
 
 #### Priority 2 — 엔진/WS 계층 (완료)
 - `test_engine_ws.py` ✅, `test_engine_ws_dispatch.py` ✅, `test_engine_ws_parsing.py` ✅
@@ -93,7 +96,7 @@ python -m pytest backend/tests/[파일명] -v --timeout=15 --timeout-method=sign
 
 #### Priority 3 — 파이프라인/스케줄러 (완료)
 - `market_close_pipeline.py` (712줄, 86%) ✅
-- `pipeline_compute.py` (344줄, 92%) ✅
+- `pipeline_compute.py` (655줄, 92%) ✅ — 배치 드레인 + 코얼레싱 + 계좌 디바운스 추가 (2026-07-06)
 - `pipeline_gateway.py` (86줄, 87%) ✅
 - `daily_time_scheduler.py` (601줄, 90%) ✅
 - `data_manager.py` (136줄, 96%) ✅
