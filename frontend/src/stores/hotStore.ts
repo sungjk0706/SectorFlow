@@ -629,14 +629,6 @@ export function applyInitialSnapshotHot(data: Record<string, unknown>): void {
   }))
   const newPositions = (data.positions as Position[]) ?? []
   const accountSnap = (data.account as AccountSnapshot) ?? null
-  console.log('[DEBUG applyInitialSnapshotHot] account total_pnl:', accountSnap?.total_pnl, 'total_pnl_rate:', accountSnap?.total_pnl_rate, 'total_eval_amount:', accountSnap?.total_eval_amount, 'total_buy_amount:', accountSnap?.total_buy_amount)
-  console.log('[DEBUG applyInitialSnapshotHot] positions count:', newPositions.length)
-  if (newPositions.length > 0) {
-    const sumBuy = newPositions.reduce((s, p) => s + (p.buy_amt || 0), 0)
-    const sumEval = newPositions.reduce((s, p) => s + (p.eval_amt || 0), 0)
-    const sumPnl = newPositions.reduce((s, p) => s + (p.pnl_amount || 0), 0)
-    console.log('[DEBUG applyInitialSnapshotHot] positions sum: buy=', sumBuy, 'eval=', sumEval, 'pnl=', sumPnl)
-  }
   rebuildBuyTargetIndex(newBuyTargets)
   rebuildPositionIndex(newPositions)
   // sector_stocks는 설계상 initial-snapshot에서 빈 배열로 전송됨 (engine_snapshot.py 참조).
