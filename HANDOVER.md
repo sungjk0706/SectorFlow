@@ -1,27 +1,23 @@
 # HANDOVER — SectorFlow
 
 ## 직적 완료 작업
-- **2026-07-06: 백엔드 로그 메시지 전역 표준화**
-  - `logger.*` 호출의 접두사를 7개 카테고리로 통일: `[연결]`, `[구독]`, `[구동]`, `[매매]`, `[시스템]`, `[타이머]`, `[증권사설정]`
-  - 영어 클래스명 제거: `CircuitBreaker`→서킷브레이커, `RiskManager`→[매매], `BrokerRouter`→[증권사설정]
-  - 불필요 접두사 통폐합: `[시작]`/`[엔진]`→[구동], `[데이터]`/`[캐시]`/`[필터]`/`[정규화]`→[시스템], `[종목매수]`→[매매], `[종목명]`→[시스템]
-  - 수정 파일 (11개): `trading.py`, `circuit_breaker.py`, `risk_manager.py`, `buy_order_executor.py`, `engine_strategy_core.py`, `engine_account_notify.py`, `engine_bootstrap.py`, `engine_loop.py`, `engine_snapshot.py`, `sector_data_provider.py`, `market_close_pipeline.py`, `broker_router.py`
-  - 검증: 11개 파일 `py_compile` 성공, `grep_search`로 기존 접두사 잔여 0건 확인
+- **2026-07-06: LS증권 WebSocket 연결 안정성 개선 + 재매수 차단 런타임 검증**
+  - `ls_connector.py` 수정: `open_timeout=10`→`20`, `ping_interval=20` 추가, 재연결 최대 10회→20회
+  - 3-way 비교 분석(명세서 vs LsApiHelper vs SectorFlow) 기반 개선
+  - 런타임 검증: 수정 후 1회 차 연결 성공 (이전 6회 실패 후 7회 차 성공 → 0회 실패)
+  - 재매수 차단 런타임 검증 완료: `_bought_today` 7종목 복원 후 `evaluate_buy_candidates()` 사전 체크로 `매수차단` 로그 0건 확인 (이전 30+건 → 0건)
 
 ## 현재 상태
-- **백엔드**: 로그 메시지 전역 표준화 완료. 11개 파일 `py_compile` 성공
+- **백엔드**: `ls_connector.py` 수정 후 `py_compile` 성공, 런타임 정상 동작 중 (13:26 기동)
 - **프론트엔드**: `npm run build` 성공 (tsc 0 errors, vite 53 modules)
-- **Git**: 이번 세션 수정 11개 파일 미커밋
-- **런타임**: 미확인 (이번 세션은 로그 메시지 텍스트 변경만, 런타임 동작 변경 없음)
+- **Git**: 미커밋 (로그 표준화 11개 파일 + `ls_connector.py` 1개)
+- **런타임**: 백엔드 기동 중, LS WebSocket 연결 성공, 데이터 수신 + 매매 로직 정상 동작
 
 ## 다음 단계
-- **로그 표준화 수정 11개 파일 git 커밋**: `trading.py`, `circuit_breaker.py`, `risk_manager.py`, `buy_order_executor.py`, `engine_strategy_core.py`, `engine_account_notify.py`, `engine_bootstrap.py`, `engine_loop.py`, `engine_snapshot.py`, `sector_data_provider.py`, `market_close_pipeline.py`, `broker_router.py`
-- **재매수 차단 런타임 검증**: `buy_order_executor.py` `_bought_today` 사전 체크 후 런타임 로그 확인 (이전 세션에서 미완료)
+- **git 커밋**: 로그 표준화 11개 파일 + `ls_connector.py` WebSocket 안정성 개선
 - **test_trading.py hang 해결**: `test_rebuy_block_disabled` — 사전 존재 이슈
 
 ## 미해결 문제
-- **재매수 차단 런타임 검증 미완료**: `buy_order_executor.py` `_bought_today` 사전 체크 코드는 작성 + 테스트 통공했으나, 런타임 로그에서 161390 반복 매수 시도 로그가 제거되었는지 확인 못함
-- **LS증권 WebSocket `open_timeout=10` 검토**: 초기 연결 시 `timed out during handshake` 1~5회 실패 후 성공하는 패턴 확인됨
 - **test_trading.py hang**: `TestExecuteBuyGates::test_rebuy_block_disabled` — 사전 존재 이슈
 
 ## 테스트 실행 원칙 (필수 준수)

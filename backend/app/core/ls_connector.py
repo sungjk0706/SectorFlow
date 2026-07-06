@@ -54,7 +54,7 @@ class _LsSocket:
         if not websockets:
             raise RuntimeError("websockets 패키지가 없습니다.")
         logger.info("[연결] LS증권 서버 연결 시도: %s", self._uri)
-        self._ws = await websockets.connect(self._uri, open_timeout=10)
+        self._ws = await websockets.connect(self._uri, open_timeout=20, ping_interval=20)
         self.connected = True
         logger.info("[연결] LS증권 서버 연결 완료")
         self._stop_event.clear()
@@ -679,13 +679,13 @@ class LsConnector(BrokerConnector):
             self._reconnecting = False
 
     async def _reconnect_loop(self) -> None:
-        """지수 백오프 재연결 루프 (1→2→4→8→16→32초, 최대 10회)."""
-        delays = [1, 2, 4, 8, 16, 32, 32, 32, 32, 32]
+        """지수 백오프 재연결 루프 (1→2→4→8→16→32초, 최대 20회)."""
+        delays = [1, 2, 4, 8, 16, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32]
         for attempt, delay in enumerate(delays, start=1):
             if self._stop_reconnect:
                 logger.info("[연결] 재연결 중단 (종료 신호)")
                 return
-            logger.info("[연결] 재연결 시도 %d/10 — %d초 후", attempt, delay)
+            logger.info("[연결] 재연결 시도 %d/20 — %d초 후", attempt, delay)
             await asyncio.sleep(delay)
             if self._stop_reconnect:
                 return
@@ -758,7 +758,7 @@ class LsConnector(BrokerConnector):
                 return
             except Exception as e:
                 logger.warning("[연결] 재연결 %d회 실패: %s", attempt, e)
-        logger.error("[연결] 최대 재연결 횟수(10회) 초과 — 포기", exc_info=True)
+        logger.error("[연결] 최대 재연결 횟수(20회) 초과 — 포기", exc_info=True)
 
     def set_reconnect_success_callback(self, callback: Callable) -> None:
         """재연결 성공 시 호출될 콜백 설정 (ConnectorManager가 구독 복원에 사용)."""

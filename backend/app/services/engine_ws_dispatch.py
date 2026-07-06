@@ -35,10 +35,6 @@ logger = get_logger("engine")
 _wl_codes_cache: set[str] = set()
 _wl_codes_layout_len: int = -1
 
-# ── LIVE 전환 조건 강화: symbol별 필수 필드 캐시 ──
-_realtime_required_fields_cache: dict[str, dict] = {}  # {symbol: {"price": bool, "change": bool, "volume": bool}}
-_realtime_first_tick_ts_map: dict[str, int] = {}  # {symbol: timestamp (ms)}
-
 
 def _get_wl_codes_cached() -> set[str]:
     """sector_stock_layout → code Set 캐시. 레이아웃 길이가 바뀔 때만 재생성."""

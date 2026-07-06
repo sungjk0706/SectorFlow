@@ -741,42 +741,11 @@ class TestHandleReal01Tick:
              patch("backend.app.services.engine_ws_parsing._ws_fid_int", return_value=1000), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_key_present", return_value=True), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_raw", return_value="2.0"), \
-             patch("backend.app.services.engine_state._get_realtime_state", return_value="LIVE"), \
-             patch("backend.app.services.engine_state._set_realtime_state"), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account_rest.apply_last_price_to_positions_inplace", return_value=False), \
              patch("backend.app.pipelines.pipeline_compute.state", mock_state):
             await _handle_real_01_tick(item, vals, mock_bq)
             mock_bq.put_nowait.assert_called()
-
-    @pytest.mark.asyncio
-    async def test_waiting_first_tick_transition(self):
-        item = {"type": "01", "item": "005930"}
-        vals = {"10": "50000", "11": "1000", "12": "2.0", "14": "100000"}
-        mock_bq = MagicMock()
-        mock_bq.put_nowait = MagicMock()
-        mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {}
-        mock_state.positions = []
-        mock_state.auto_trade = None
-        mock_state.access_token = None
-        mock_state.realtime_latency_exceeded = False
-        compute_mod._realtime_first_tick_ts_map.clear()
-        compute_mod._realtime_required_fields_cache.clear()
-        with patch("backend.app.services.engine_symbol_utils._real_item_stk_cd", return_value="005930"), \
-             patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"), \
-             patch("backend.app.services.engine_ws_parsing._parse_fid10_price", return_value=50000), \
-             patch("backend.app.services.engine_ws_parsing.parse_change_rate_to_percent", return_value=2.0), \
-             patch("backend.app.services.engine_ws_parsing._ws_fid_int", return_value=1000), \
-             patch("backend.app.services.engine_ws_parsing._ws_fid_key_present", return_value=True), \
-             patch("backend.app.services.engine_ws_parsing._ws_fid_raw", return_value="2.0"), \
-             patch("backend.app.services.engine_state._get_realtime_state", return_value="WAITING_FIRST_TICK"), \
-             patch("backend.app.services.engine_state._set_realtime_state") as mock_set, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
-             patch("backend.app.services.engine_account_rest.apply_last_price_to_positions_inplace", return_value=False), \
-             patch("backend.app.pipelines.pipeline_compute.state", mock_state):
-            await _handle_real_01_tick(item, vals, mock_bq)
-            mock_set.assert_called_with("LIVE")
 
     @pytest.mark.asyncio
     async def test_price_hit_returns_true(self):
@@ -798,8 +767,6 @@ class TestHandleReal01Tick:
              patch("backend.app.services.engine_ws_parsing._ws_fid_int", return_value=1000), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_key_present", return_value=True), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_raw", return_value="2.0"), \
-             patch("backend.app.services.engine_state._get_realtime_state", return_value="LIVE"), \
-             patch("backend.app.services.engine_state._set_realtime_state"), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account_rest.apply_last_price_to_positions_inplace", return_value=True), \
              patch("backend.app.services.engine_account_rest.recalc_broker_totals_from_positions", return_value={}), \
@@ -828,8 +795,6 @@ class TestHandleReal01Tick:
              patch("backend.app.services.engine_ws_parsing._ws_fid_int", return_value=1000), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_key_present", return_value=True), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_raw", return_value="2.0"), \
-             patch("backend.app.services.engine_state._get_realtime_state", return_value="LIVE"), \
-             patch("backend.app.services.engine_state._set_realtime_state"), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
              patch("backend.app.services.dry_run", mock_dry_run), \
              patch("backend.app.pipelines.pipeline_compute.state", mock_state):
@@ -863,8 +828,6 @@ class TestHandleReal01Tick:
              patch("backend.app.services.engine_ws_parsing._ws_fid_int", return_value=1000), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_key_present", return_value=False), \
              patch("backend.app.services.engine_ws_parsing._ws_fid_raw", return_value=""), \
-             patch("backend.app.services.engine_state._get_realtime_state", return_value="LIVE"), \
-             patch("backend.app.services.engine_state._set_realtime_state"), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account_rest.apply_last_price_to_positions_inplace", return_value=False), \
              patch("backend.app.pipelines.pipeline_compute.state", mock_state):

@@ -41,7 +41,6 @@ class EngineState:
         self.update_account_memory = None
 
         # ── Locks & Events ───────────────────────────────────────────────────────
-        self.realtime_state: str = "IDLE"
         self.data_ready_event: LazyEvent = LazyEvent()
         self.token_ready_event: LazyEvent = LazyEvent()
         self.ws_reg_pipeline_done = LazyEvent()
@@ -131,17 +130,6 @@ def _get_account_rest_lock() -> asyncio.Lock:
     if state.account_rest_lock is None:
         state.account_rest_lock = asyncio.Lock()
     return state.account_rest_lock
-
-def _get_realtime_state() -> str:
-    return state.realtime_state
-
-def _set_realtime_state(new_state: str) -> None:
-    if state.realtime_state == new_state:
-        return
-    state.realtime_state = new_state
-    from backend.app.core.logger import get_logger
-    logger = get_logger("engine")
-    logger.info("[REALTIME_STATE] 상태 변경: %s", new_state)
 
 async def _on_filter_settings_changed() -> None:
     """필터 설정 변경 시 처리 (engine_sector 모듈 위임)."""
