@@ -123,6 +123,96 @@ _ENCRYPT_FIELDS: frozenset[str] = frozenset({
     "telegram_bot_token_test", "telegram_bot_token_real",
 })
 
+# 마이그레이션 1회 실행 플래그 — 최초 load_integrated_system_settings() 성공 후 True
+_migrations_completed: bool = False
+
+
+async def load_selected_settings(keys: set[str]) -> dict:
+    """지정된 키만 DB에서 로드 (마이그레이션/기본값/브로커스펙 스킵).
+    암호화 필드는 복호화하여 반환. 증분 저장 경로에서 사용."""
+    if not keys:
+        return {}
+
+    from backend.app.db.database import get_db_connection
+
+    result: dict = {}
+    try:
+        conn = await get_db_connection()
+        placeholders = ",".join("?" * len(keys))
+        cursor = await conn.execute(
+            f"SELECT key, value, value_type FROM integrated_system_settings WHERE key IN ({placeholders})",
+            list(keys),
+        )
+        rows = await cursor.fetchall()
+        for row in rows:
+            key = row["key"]
+            if key.startswith("_broker_specs:") or key.startswith("broker_specs:"):
+                continue
+            result[key] = _parse_value(row["value"], row["value_type"])
+    except Exception as e:
+        logger.error("[설정] load_selected_settings 실패 (keys=%s): %s", keys, e)
+
+    from backend.app.core.encryption import decrypt_value
+    for enc_field in _ENCRYPT_FIELDS:
+        v = result.get(enc_field)
+        if v and str(v).startswith("gAAAA"):
+            result[enc_field] = decrypt_value(v) or ""
+
+    return result
+
+
+async def save_selected_settings(data: dict) -> None:
+    """지정된 키만 DB에 저장 (전체 설정 덮어쓰기 없이 증분 저장).
+    암호화 필드는 평문인 경우 자동 암호화."""
+    if not data:
+        return
+
+    from backend.app.db.database import get_db_connection, get_db_lock
+    from backend.app.core.encryption import encrypt_value
+
+    bulk_params: list[tuple[str, str, str]] = []
+
+    for k, v in data.items():
+        if v is None:
+            continue
+        if k.startswith("_broker_specs:") or k.startswith("broker_specs:"):
+            continue
+        if k in _ENCRYPT_FIELDS and v and not str(v).startswith("gAAAA"):
+            enc = encrypt_value(str(v))
+            if enc:
+                v = enc
+        if isinstance(v, bool):
+            value_type = "boolean"
+            val_str = str(v)
+        elif isinstance(v, (int, float)):
+            value_type = "number"
+            val_str = str(v)
+        elif isinstance(v, (dict, list)):
+            value_type = "json"
+            val_str = json.dumps(v, ensure_ascii=False)
+        else:
+            value_type = "string"
+            val_str = str(v)
+        bulk_params.append((k, val_str, value_type))
+
+    if not bulk_params:
+        return
+
+    async with get_db_lock():
+        conn = await get_db_connection()
+        try:
+            await conn.execute("BEGIN TRANSACTION")
+            await conn.executemany(
+                "INSERT OR REPLACE INTO integrated_system_settings (key, value, value_type, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                bulk_params,
+            )
+            await conn.commit()
+            logger.info("[설정] 증분 저장 완료 -- %d개 필드", len(bulk_params))
+        except Exception as e:
+            await conn.rollback()
+            logger.error("[설정] 증분 저장 실패: %s", e, exc_info=True)
+            raise
+
 
 async def load_integrated_system_settings() -> dict:
     """
@@ -177,6 +267,18 @@ async def load_integrated_system_settings() -> dict:
                 except Exception as e:
                     logger.warning("[설정] broker_specs 로드 실패 (%s): %s", spec_file, e)
 
+    global _migrations_completed
+
+    if _migrations_completed:
+        # 마이그레이션 이미 완료 — 스킵하고 복호화만 수행
+        merged = {**db_data}
+        from backend.app.core.encryption import decrypt_value
+        for enc_field in _ENCRYPT_FIELDS:
+            v = merged.get(enc_field)
+            if v and str(v).startswith("gAAAA"):
+                merged[enc_field] = decrypt_value(v) or ""
+        return dict(merged)
+
     merged = {**db_data}
     _keys_before = set(merged.keys())
     merged, dirty = _migrate_legacy_auto_trade_on(merged)
@@ -191,6 +293,8 @@ async def load_integrated_system_settings() -> dict:
     if dirty:
         _legacy_keys = list(_keys_before - set(merged.keys()))
         await save_settings(merged, delete_keys=_legacy_keys or None)
+
+    _migrations_completed = True
 
     from backend.app.core.encryption import decrypt_value
     for enc_field in _ENCRYPT_FIELDS:
@@ -310,10 +414,14 @@ async def save_settings(data: dict, delete_keys: list[str] | None = None) -> Non
 
 
 async def update_settings(updates: dict) -> dict:
-    """기존 설정에 업데이트를 병합하여 DB 저장. 캐시는 save_settings()에서 자동 무효화."""
+    """기존 설정에 업데이트를 병합하여 DB 저장.
+    전체 로드/저장 대신 변경된 필드만 증분 저장."""
+    to_save = {k: v for k, v in updates.items() if v is not None}
+    if to_save:
+        await save_selected_settings(to_save)
+    # 반환용: 기존 전체 설정 + 업데이트 병합
     current = await load_integrated_system_settings()
     current.update({k: v for k, v in updates.items() if v is not None or k in current})
-    await save_settings(current)
     return current
 
 

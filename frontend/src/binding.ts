@@ -282,7 +282,8 @@ export function bindWSToStore(
   /* ── sector-scores: 업종순위 실시간 갱신 ── */
   pricesClient.onEvent('sector-scores', (data) => {
     const d = data as {
-      scores: SectorScoreRow[]
+      scores?: SectorScoreRow[]
+      changed_scores?: SectorScoreRow[]
       delta?: boolean
       changed_sectors?: string[]
       removed_sectors?: string[]

@@ -488,9 +488,40 @@ export function applyBuyTargetsUpdate(data: { buy_targets: SectorStock[] }): voi
   }
 }
 
-/* ── sector-scores: 업종 점수·상태 갱신 (내용 비교) ── */
+/* ── sector-scores: 업종 점수·상태 갱신 (delta 머지) ── */
 export function applySectorScores(data: SectorScoresEvent): void {
-  hotStore.setState({ sectorScores: data.scores }); // 백엔드가 연산한 완성본을 그대로 사용
+  if (data.delta && data.changed_scores) {
+    // delta 모드: changed_scores를 기존 배열에 머지, removed_sectors 제거
+    const current = hotStore.getState().sectorScores
+    const removedSet = new Set(data.removed_sectors ?? [])
+    const changedMap = new Map<string, SectorScoreRow>()
+    for (const s of data.changed_scores) {
+      changedMap.set(s.sector, s)
+    }
+    // 기존 배열에서 removed 제거 + changed 교체
+    const merged: SectorScoreRow[] = []
+    const seen = new Set<string>()
+    for (const s of current) {
+      if (removedSet.has(s.sector)) continue
+      const changed = changedMap.get(s.sector)
+      if (changed) {
+        merged.push(changed)
+        seen.add(s.sector)
+      } else {
+        merged.push(s)
+      }
+    }
+    // 기존에 없던 새 섹터 추가
+    for (const s of data.changed_scores) {
+      if (!seen.has(s.sector)) {
+        merged.push(s)
+      }
+    }
+    hotStore.setState({ sectorScores: merged })
+  } else if (data.scores) {
+    // 전체 스냅샷: 전체 교체
+    hotStore.setState({ sectorScores: data.scores })
+  }
 }
 
 /* ── sector-stocks-refresh: 필터 변경 시 종목 목록 교체 ── */

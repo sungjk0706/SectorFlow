@@ -243,7 +243,8 @@ export interface TradePriceEvent {
 }
 
 export interface SectorScoresEvent {
-  scores: SectorScoreRow[];
+  scores?: SectorScoreRow[];
+  changed_scores?: SectorScoreRow[];
   status: SectorStatus;
   delta?: boolean;
   changed_sectors?: string[];

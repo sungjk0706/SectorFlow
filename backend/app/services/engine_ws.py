@@ -174,8 +174,7 @@ async def _subscribe_positions_stocks_realtime() -> None:
     from backend.app.services import engine_ws_reg, ws_subscribe_control
     await engine_ws_reg.subscribe_positions_stocks_realtime()
     # REG 실행 후 인메모리 상태 동기화
-    all_stocks = state.master_stocks_cache.copy()
-    if any(entry.get("_subscribed", False) for entry in all_stocks.values()):
+    if any(entry.get("_subscribed", False) for entry in state.master_stocks_cache.values()):
         ws_subscribe_control._set_status(quote=True)
 
 

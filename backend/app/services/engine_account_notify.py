@@ -301,7 +301,7 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
             return  # 변경 없음 → 전송 생략
 
         payload = {
-            "scores": scores,
+            "changed_scores": changed,
             "status": {
                 "total_stocks": len(scores),
                 "max_targets": int(state.integrated_system_settings_cache["sector_max_targets"]),

@@ -18,3 +18,8 @@ def _reset_global_caches():
         notify_cache.clear_all()
     except Exception:
         pass
+    try:
+        from backend.app.core import settings_file
+        settings_file._migrations_completed = False
+    except Exception:
+        pass

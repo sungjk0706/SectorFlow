@@ -136,8 +136,7 @@ async def run_engine_loop() -> None:
     state.broker_tokens.clear()
     state.token_ready_event.clear()
     # _master_stocks_cache에서 "_subscribed" 제거
-    all_stocks = state.master_stocks_cache.copy()
-    for entry in all_stocks.values():
+    for entry in state.master_stocks_cache.values():
         entry.pop("_subscribed", None)
     from backend.app.services.engine_state import _notify_reg_ack
     _notify_reg_ack()
