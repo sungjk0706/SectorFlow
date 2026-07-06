@@ -391,7 +391,7 @@ class LsConnector(BrokerConnector):
             try:
                 await self._socket.connect()
             except Exception:
-                logger.error("[LS증권연결] 초기 WebSocket 연결 실패 — 재연결 루프 기동", exc_info=True)
+                logger.error("[LS증권연결] 초기 WebSocket 연결 실패 — 재연결 루프 기동")
                 asyncio.get_running_loop().create_task(self._on_socket_disconnect())
                 raise
             self._connected = True
@@ -753,8 +753,8 @@ class LsConnector(BrokerConnector):
                     await self._on_reconnect_success(self.broker_id)
                 return
             except Exception as e:
-                logger.warning("[LS증권연결] 재연결 %d회 실패: %s", attempt, e, exc_info=True)
-        logger.error("[LS증권연결] 최대 재연결 횟수(10회) 초과 — 포기")
+                logger.warning("[LS증권연결] 재연결 %d회 실패: %s", attempt, e)
+        logger.error("[LS증권연결] 최대 재연결 횟수(10회) 초과 — 포기", exc_info=True)
 
     def set_reconnect_success_callback(self, callback: Callable) -> None:
         """재연결 성공 시 호출될 콜백 설정 (ConnectorManager가 구독 복원에 사용)."""
