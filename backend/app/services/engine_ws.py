@@ -54,10 +54,7 @@ async def _ws_send_reg_unreg_and_wait_ack(payload: dict, *, sender=None) -> tupl
         except asyncio.TimeoutError:
             if state.reg_ack_event:
                 state.reg_ack_event.clear()
-            logger.warning(
-                "[연결] 구독 응답 대기 시간 초과(10s) -- trnm=%s",
-                payload.get("trnm"),
-            )
+            logger.warning("[구독] 구독 응답 대기 시간 초과(10초) -- trnm=%s", payload.get("trnm"))
             return False, ""
 
         rc = state.reg_ack_return_code
@@ -87,7 +84,7 @@ async def _ws_send_remove_fire_and_forget(payload: dict, *, sender=None) -> bool
 
     sent = await _sender.send_message(payload)
     if not sent:
-        logger.warning("[연결] 구독해지 전송 실패 grp_no=%s", payload.get("grp_no"))
+        logger.warning("[구독] 구독해지 전송 실패 (그룹=%s)", payload.get("grp_no"))
     return sent
 
 
@@ -151,7 +148,7 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
     else:
         if item_cd in state.master_stocks_cache:
             state.master_stocks_cache[item_cd].pop("_subscribed", None)
-        logger.warning("[데이터] 단건 0B REG 실패 -- %s", item_cd)
+        logger.warning("[구독] 단건 종목 구독 실패 -- %s", item_cd)
 
 
 async def _subscribe_account_realtime() -> None:
@@ -162,7 +159,7 @@ async def _subscribe_account_realtime() -> None:
 
 def _log_reg_stock_chunk(scope: str, start_ord: int, end_ord: int, ca: int, cs: int, cf: int) -> None:
     logger.info(
-        "[구독등록] %s %d~%d번 처리 완료 -- 서버 응답 성공 %d건, 이미구독 생략 %d건, 실패·미전송 %d건",
+        "[구독] %s %d~%d번 처리 완료 -- 성공 %d건, 이미구독 생략 %d건, 실패 %d건",
         scope,
         start_ord,
         end_ord,
@@ -224,10 +221,10 @@ async def _ensure_ws_subscriptions_for_positions() -> None:
         if not is_test_mode(state.integrated_system_settings_cache):
             await _subscribe_account_realtime()
         else:
-            logger.info("[구독] 테스트모드 -- 계좌 실시간 구독(00/04) 생략")
+            logger.info("[구독] 테스트모드 -- 계좌 실시간 구독 생략")
         await _subscribe_positions_stocks_realtime()
     except Exception as e:
-        logger.warning("[연결] 실시간 구독 전송 실패함: %s", e, exc_info=True)
+        logger.warning("[구독] 실시간 구독 전송 실패: %s", e, exc_info=True)
     finally:
         if _ws_live():
             await _refresh_account_snapshot_meta()
@@ -243,11 +240,11 @@ async def _run_sector_reg_pipeline() -> None:
         from backend.app.services import ws_subscribe_control
         await ws_subscribe_control.run_conditional_reg_pipeline()
     except Exception as e:
-        logger.warning("[시작] 실시간 구독 파이프라인 실패: %s", e, exc_info=True)
+        logger.warning("[구동] 실시간 구독 파이프라인 실패: %s", e, exc_info=True)
     finally:
         if state.ws_reg_pipeline_done:
             state.ws_reg_pipeline_done.set()
-        logger.info("[시작] 실시간 구독 준비 완료 -- 단건 구독 허용")
+        logger.info("[구동] 실시간 구독 준비 완료 -- 단건 구독 허용")
         from backend.app.services.engine_account import _refresh_account_snapshot_meta
         if _ws_live():
             await _refresh_account_snapshot_meta()
@@ -297,9 +294,9 @@ async def subscribe_dynamic_data(codes: list[str]) -> None:
     """동적 데이터(0D, PGM, UH1, UPH 등) 실시간 구독 등록을 커넥터에 위임합니다."""
     from backend.app.services.engine_state import state
     ws = state.connector_manager or state.active_connector
-    logger.info("[동적구독] subscribe_dynamic_data 호출 - codes: %s", codes)
+    logger.info("[구독] 호가·프로그램매매 구독 시작 -- 종목: %s", codes)
     if not ws or not ws.is_connected() or not state.login_ok:
-        logger.warning("[동적구독] 구독 실패 - ws=%s, connected=%s, login_ok=%s", ws, ws.is_connected() if ws else False, state.login_ok)
+        logger.warning("[구독] 호가·프로그램매매 구독 실패 -- 연결=%s, 로그인=%s", ws.is_connected() if ws else False, state.login_ok)
         return
     if hasattr(ws, "subscribe_dynamic"):
         await ws.subscribe_dynamic(codes)

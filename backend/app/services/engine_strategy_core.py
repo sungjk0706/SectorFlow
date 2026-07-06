@@ -35,7 +35,7 @@ def resolve_radar_display_name(stk_cd: str, ws_stk_nm: str, access_token) -> str
     try:
         rest_nm = (data_manager.get_stock_name(stk_cd, access_token) or "").strip()
     except Exception as e:
-        logger.warning("[종목명] REST 조회 실패 %s: %s", stk_cd, e)
+        logger.warning("[시스템] 종목명 REST 조회 실패 %s: %s", stk_cd, e)
         rest_nm = ""
 
     if hint and hint != stk_cd:
@@ -110,7 +110,7 @@ async def run_snapshot_and_sell_check(force_rest: bool) -> None:
         if _sell_positions and state.auto_trade and auto_sell_effective(state.integrated_system_settings_cache) and state.access_token:
             await state.auto_trade.check_sell_conditions(_sell_positions, state.integrated_system_settings_cache, state.access_token)
     except Exception as e:
-        logger.warning("[데이터] 처리 중 오류: %s", e)
+        logger.warning("[시스템] 처리 중 오류: %s", e)
 
 
 def check_test_buy_power(price: int, qty: int, daily_spent: int) -> tuple[bool, str]:

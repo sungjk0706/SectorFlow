@@ -301,18 +301,18 @@ async def _on_filter_settings_changed() -> None:
     try:
         await recompute_sector_summary_now()
     except Exception as e:
-        logger.warning("[시작][필터변경] 업종순위 재계산 실패: %s", e, exc_info=True)
+        logger.warning("[구동] 필터 변경 — 업종순위 재계산 실패: %s", e, exc_info=True)
 
     # ── WS 3종 전송 ──
     try:
         await notify_desktop_sector_stocks_refresh()
     except Exception:
-        logger.warning("[데이터] 업종목록 화면전송 실패", exc_info=True)
+        logger.warning("[시스템] 업종목록 화면 전송 실패", exc_info=True)
     try:
         await notify_desktop_sector_scores(force=True)
     except Exception:
-        logger.warning("[데이터] 업종점수 화면전송 실패", exc_info=True)
+        logger.warning("[시스템] 업종점수 화면 전송 실패", exc_info=True)
     try:
         await notify_buy_targets_update()
     except Exception:
-        logger.warning("[데이터] 매수후보 화면전송 실패", exc_info=True)
+        logger.warning("[시스템] 매수후보 화면 전송 실패", exc_info=True)

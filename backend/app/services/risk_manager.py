@@ -53,7 +53,7 @@ class RiskManager:
         trade_mode = "test" if is_test_mode(cache) else "real"
         today_pnl = await get_total_realized_pnl(today_only=True, trade_mode=trade_mode)
         if today_pnl <= self.max_daily_loss_limit:
-            logger.warning("[RiskManager] 일일 손실 한도 초과: 현재 %s, 한도 %s", f"{today_pnl:,}", f"{self.max_daily_loss_limit:,}")
+            logger.warning("[매매] 일일 손실 한도 초과: 현재 %s, 한도 %s", f"{today_pnl:,}", f"{self.max_daily_loss_limit:,}")
             return False, "일일 손실 한도 초과"
 
         order_amount = price * qty
@@ -65,7 +65,7 @@ class RiskManager:
         else:
             withdrawable = self.account_manager.get_withdrawable_deposit()
         if order_amount > withdrawable:
-            logger.warning("[RiskManager] 예수금 부족: 주문액 %s, 출금가능액 %s", f"{order_amount:,}", f"{withdrawable:,}")
+            logger.warning("[매매] 예수금 부족: 주문액 %s, 출금가능액 %s", f"{order_amount:,}", f"{withdrawable:,}")
             return False, "예수금 잔고 부족"
 
         # 4. 단일 종목 비중 한도 검사 (모드 분기 — 돈 I/O)
@@ -85,7 +85,7 @@ class RiskManager:
                     break
         total_after_buy = existing_position_amount + order_amount
         if self.max_single_stock_exposure > 0 and total_after_buy > self.max_single_stock_exposure:
-            logger.warning("[RiskManager] 단일 종목 비중 초과: %s 기존 %s + 주문 %s = %s, 한도 %s",
+            logger.warning("[매매] 단일 종목 비중 초과: %s 기존 %s + 주문 %s = %s, 한도 %s",
                            stk_cd, f"{existing_position_amount:,}", f"{order_amount:,}", f"{total_after_buy:,}", f"{self.max_single_stock_exposure:,}")
             return False, f"단일 종목 비중 한도 초과 ({stk_cd})"
 

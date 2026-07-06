@@ -64,7 +64,7 @@ def _broadcast_confirmed_progress(
             if not q.full():
                 q.put_nowait(data)
     except Exception as exc:
-        _log.warning("[데이터] 브로드캐스트 실패: %s", exc, exc_info=True)
+        _log.warning("[시스템] 브로드캐스트 실패: %s", exc, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
