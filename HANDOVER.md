@@ -1,27 +1,28 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-06: 업종순위 페이지 우측 패널 실시간 데이터 미표시 근본 해결 — real-data 이벤트 전송 버그 수정**
-  - 문제: 업종순위 페이지 우측 패널(업종별 실시간 시세 테이블)에 실시간 데이터(현재가, 등락률, 거래대금 등)가 전혀 표시되지 않음
-  - 원인: `ws_manager.py::_send_realdata_encoded`에서 `subscribed_fids is None`인 클라이언트를 `continue`로 스킵 → `real-data` 이벤트가 프론트엔드에 도달하지 않음. 프론트엔드 `subscribeFids()` 함수가 정의만 되고 호출되지 않아 모든 클라이언트가 FID 구독 없는 상태
-  - 해결: `ws_manager.py:197` — `subscribed_fids is None` 스킵 제거, `ALLOWED_FIDS`를 기본값으로 사용. `_encode_realdata`의 기존 동작(None → ALLOWED_FIDS)과 일관성 유지
-  - tick_queue 최적화와 무관한 사전 존재 버그 (git diff로 확인)
-  - 테스트: `test_engine_ws.py` 53 passed, `test_engine_ws_dispatch.py` + `test_engine_account_notify.py` 109 passed, `test_pipeline_compute.py` + `test_pipeline_gateway.py` 97 passed, 전체 989 passed (test_trading.py 제외)
-
-- **2026-07-06: tick_queue 드롭 근본 해결 — Compute 루프 배치 처리 최적화** (이전 세션)
-  - 배치 드레인(500개) + 계좌 브로드캐스트 디바운스 + 동일 종목 틱 코얼레싱 적용
+- **2026-07-06: WebSocket 예외 Traceback 중복 출력 제거 (SSOT 부합)**
+  - 문제: `TimeoutError` 1개당 최대 12개 Traceback이 출력되는 로그 폭발 현상
+  - 원인: `LsConnector.connect()`가 예외를 잡아 `exc_info=True` 로그 + `raise` 재전파를 동시에 수행 → `ConnectorManager`에서 2차 Traceback 출력. 재연결 루프도 매 시도마다 `exc_info=True`로 10개 Traceback 추가 생성. 최종 실패 지점은 오히려 `exc_info` 누락
+  - 해결: `ls_connector.py` 3개 지점 + `kiwoom_connector.py` 3개 지점 수정
+    - 초기 연결 실패: `exc_info=True` 제거 (ConnectorManager에서 Traceback 출력)
+    - 재연결 루프 실패: `exc_info=True` 제거 (일시적 재시도는 WARNING 메시지만)
+    - 최종 실패(10/10 초과): `exc_info=True` 추가 (디버깅 정보 필요)
+  - 검증: `py_compile` 양 파일 성공, grep으로 6개 수정 지점 정상 적용 확인
+  - 효과: 총 Traceback 수 최대 12개 → 2개 (83% 감소)
 
 ## 현재 상태
-- **백엔드**: 989 passed (test_trading.py 제외, 사전 존재 hang). `ws_manager.py` real-data 전송 수정 + `pipeline_compute.py` tick_queue 최적화 커밋 완료
+- **백엔드**: 989 passed (test_trading.py 제외, 사전 존재 hang). WebSocket Traceback 중복 출력 수정 커밋 완료
 - **프론트엔드**: `npm run build` 성공 (tsc 0 errors, vite 53 modules)
-- **Git**: 2건 커밋 푸시 완료 (9afe7da: tick_queue 최적화, f4b6758: real-data 전송 버그 수정)
+- **Git**: `9300ab8` 커밋 푸시 완료 (fix: WebSocket 예외 Traceback 중복 출력 제거)
+- **런타임**: 앱 기동 후 LS WebSocket 연결 성공 (최대 3회 시도), 업종순위 페이지 데이터 표시 확인됨. 단, **됐다 안됐다 하는 간헐적 현상 존재**
 
 ## 다음 단계
-- **브라우저 런타임 검증 (대기)**: 업종순위 페이지 우측 패널 실시간 데이터 표시 확인, tick_queue 드롭 감소 확인
 - **test_trading.py hang 해결**: `test_rebuy_block_disabled` — 사전 존재 이슈
 - **테스트 커버리지 개선**: Priority 4 이상 진행
 
 ## 미해결 문제
+- **LS증권 WebSocket 간헐적 연결/데이터 수신 불안정**: 기동 시마다 연결 타임아웃(10초) 1~2회 발생 후 성공하는 현상. `open_timeout=10`은 LS 서버 핸드셰이크에 충분한 시간 (키움증권도 동일값 사용). TimeoutError 자체는 일시적 서버/네트워크 문제. 데이터 수신이 됐다 안됐다 하는 현상 관찰됨 — 추후 면밀 조사 필요 (재연결 시 `_trigger_reg_pipeline()` 누락, 핸드셰이크 타이밍, 구독 등록 시점 등)
 - **test_trading.py hang**: `TestExecuteBuyGates::test_rebuy_block_disabled` — `execute_buy` 내 `await` 호출 중 mock 누락 추정. 25개 테스트 파일 중 유일한 hang
 
 ## 테스트 실행 원칙 (필수 준수)
