@@ -1,20 +1,21 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-06: LS WebSocket 핸드셰이크 타임아웃 분석 + ping_timeout 명시적 설정**
-  - `ls_connector.py:57` — `websockets.connect()` 호출에 `ping_timeout=20` 명시적 추가 (라이브러리 기본값 의존 제거)
-  - 분석 보고: LS증권 명세서와 코드 비교 — URL, 메시지 포맷, tr_key 포맷, PING 처리 모두 명세서 일치
-  - "timed out during handshake" 원인: LS증권 서버 측 TCP 연결 수락 지연 (로그상 4회 연속 정확히 20초 타임아웃 후 5회째 0.1초 성공 패턴 확인)
-  - 검증: py_compile 성공, pytest 115 passed (test_engine_symbol_utils + test_buy_filter)
+- **2026-07-06: LS증권 명세서 vs 코드 차이점 수정**
+  - `broker_urls.py:22` — 모의투자 도메인 `ws_uri_paper` 추가 (`wss://openapi.ls-sec.co.kr:29443/websocket`)
+  - `ls_connector.py:594-645` — 계좌등록 `register_account(tr_type=1)`, 계좌해제 `unregister_account(tr_type=2)` 메서드 추가
+  - `ls_connector.py:57` — `compression` 파라미터 삭제 (명세서에 규격 없음)
+  - 검증: py_compile 성공, pytest 988 passed (test_trading.py 제외)
+  - 커밋: `a7b4ad1` — `feat(ls): add paper trading domain, account register/unregister, align WS options with spec`
 
 ## 현재 상태
-- **백엔드**: py_compile 성공 (ls_connector.py)
+- **백엔드**: py_compile 성공 (broker_urls.py, ls_connector.py)
 - **프론트엔드**: 변경 없음
-- **Git**: 미커밋 (수정 1건 대기)
-- **런타임**: 백엔드 미기동
+- **Git**: `a7b4ad1` push 완료 (main)
+- **런타임**: 백엔드 미기동 — 앱 기동 후 LS WebSocket 연결 정상 확인 필요
 
 ## 다음 단계
-- 없음
+- 앱 기동 후 LS WebSocket 연결 정상 확인 (`[연결] LS증권 서버 연결 완료` 로그)
 
 ## 미해결 문제
 - **test_trading.py hang**: `TestExecuteBuyGates::test_rebuy_block_disabled` — 사전 존재 이슈
