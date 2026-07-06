@@ -1,18 +1,15 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-06: 설정 증분 저장 + 업종순위 delta 전송 + master_stocks_cache 복사 최적화**
-  - P1: `settings_file.py` — `_migrations_completed` 플래그로 마이그레이션 1회 실행, `load_selected_settings`/`save_selected_settings` 증분 로드/저장
-  - P1: `settings_store.py` — `apply_settings_updates` 증분 필드별 로드/저장 방식으로 변경
-  - P2: `engine_account_notify.py` — delta 모드 시 `changed_scores`만 전송, `hotStore.ts`/`binding.ts`/`types/index.ts` 프론트엔드 delta 머지 지원
-  - P3: 프론트엔드 중복 정렬 분석 — `sector-ranking-list.ts`의 rank=0 분리 정렬은 중복 아님 (백엔드가 rank=0을 정렬 순서에 반영하지 않음)
-  - P4: `master_stocks_cache.copy()` 16개소 제거 — 단일 asyncio 스레드이므로 shallow copy 불필요 (10개 파일)
-  - 검증: py_compile 10파일 성공, pytest 1015 passed in 6.96s, 잔존 `.copy()` 0건
+- **2026-07-06: 프론트엔드 디버그 로그 완전 제거**
+  - `main.ts` — FPS 통계 debug 로그(주석+if+console.debug), Health 상태 로그, 서버 응답 확인 로그 삭제 (6줄)
+  - `hotStore.ts` — `applyInitialSnapshotHot` debug 로그 3건 + 디버그 전용 if 블록(sumBuy/sumEval/sumPnl reduce 계산) 삭제 (8줄)
+  - 검증: `npm run build` 성공 (tsc + vite, 2.57s), 잔여 `console.debug` 0건
 
 ## 현재 상태
-- **백엔드**: `py_compile` 성공, `pytest` 1015 passed in 6.96s
-- **프론트엔드**: tsc 빌드 성공 (이전 세션)
-- **Git**: 미커밋 (P1~P4 변경사항 대기)
+- **백엔드**: 변경 없음 (이전 상태 유지 — py_compile 성공, pytest 1015 passed)
+- **프론트엔드**: `npm run build` 성공 (tsc + vite, 2.57s)
+- **Git**: 커밋 `1250b9c` push 완료 (main → main)
 - **런타임**: 백엔드 미기동
 
 ## 다음 단계
