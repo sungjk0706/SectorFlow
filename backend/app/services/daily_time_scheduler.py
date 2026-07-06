@@ -411,8 +411,7 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
     # 마스터 캐시에서 데이터 유효기간(date) 추출
     _cached_date_str = ""
     if len(state.master_stocks_cache) > 0:
-        all_stocks = state.master_stocks_cache.copy()
-        _first_stock = next(iter(all_stocks.values()))
+        _first_stock = next(iter(state.master_stocks_cache.values()))
         _cached_date_str = _first_stock.get("date", "")
 
     from backend.app.core.trading_calendar import get_current_trading_day_str
@@ -785,8 +784,7 @@ async def _trigger_unreg_all() -> None:
 async def _do_unreg_all() -> None:
     """구독 중인 종목 전체 REMOVE 전송 (비동기)."""
     try:
-        all_stocks = state.master_stocks_cache.copy()
-        subscribed = {cd for cd, entry in all_stocks.items() if entry.get("_subscribed", False)}
+        subscribed = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed", False)}
         ws = state.connector_manager or state.active_connector
         if not ws or not ws.is_connected():
             return

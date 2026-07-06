@@ -60,11 +60,10 @@ async def get_sector_stocks() -> list:
     merged: dict[str, dict] = {}
 
     # 단일 소스 진리: state.master_stocks_cache가 종목 데이터의 단일 소스
-    all_stocks = state.master_stocks_cache.copy()
 
     # 1차 필터링: 시세/이름 없는 엔트리 제거 + 5일평균거래대금 필터링
     valid_codes: list[str] = []
-    for cd in all_stocks.keys():
+    for cd in state.master_stocks_cache:
         e = state.master_stocks_cache.get(cd, {}).copy()
         e["code"] = cd
         e["status"] = "active"
@@ -177,9 +176,8 @@ async def get_all_sector_stocks() -> list[dict]:
 
     # 단일 소스 진리: state.master_stocks_cache만 사용 (실시간 구독 상태와 분리)
 
-    all_stocks = state.master_stocks_cache.copy()
     valid_codes: list[str] = []
-    for cd, entry in all_stocks.items():
+    for cd, entry in state.master_stocks_cache.items():
         if entry.get("status") != "active":
             continue
         valid_codes.append(cd)
@@ -189,7 +187,7 @@ async def get_all_sector_stocks() -> list[dict]:
 
     result: list[dict] = []
     for cd in valid_codes:
-        entry = all_stocks[cd]
+        entry = state.master_stocks_cache[cd]
         result.append({
             "code": cd,
             "name": entry.get("name", ""),

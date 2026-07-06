@@ -93,9 +93,8 @@ async def _load_caches_preboot(settings: dict) -> None:
             logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 미스 -- 백그라운드 갱신 예정")
 
         # ── 시장구분 적재 제거 (master_stocks_cache 사용으로 대체) ──
-        all_stocks = state.master_stocks_cache.copy()
-        _total_nxt = sum(1 for v in all_stocks.values() if v.get("nxt_enable"))
-        logger.debug("[데이터준비] 시장구분(마스터 캐시) 로드 완료 -- %d종목 (NXT %d)", len(all_stocks), _total_nxt)
+        _total_nxt = sum(1 for v in state.master_stocks_cache.values() if v.get("nxt_enable"))
+        logger.debug("[데이터준비] 시장구분(마스터 캐시) 로드 완료 -- %d종목 (NXT %d)", len(state.master_stocks_cache), _total_nxt)
 
         # 캐시선행 완료 플래그 — 앱준비 에서 중복 로드 스킵용
         state.preboot_cache_loaded = True

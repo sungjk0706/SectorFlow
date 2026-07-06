@@ -217,8 +217,7 @@ async def cleanup_stale_subscriptions() -> None:
     # 서버 측 구독은 다음 REG의 refresh='0'(reset_first=True)이 덮어씀.
     # REMOVE ACK 대기 없이 인메모리 상태만 초기화 — 장외 시간 90초 지연 응답으로 인한 이벤트 오염 방지.
     from backend.app.services.engine_state import state
-    all_stocks = state.master_stocks_cache.copy()
-    for entry in all_stocks.values():
+    for entry in state.master_stocks_cache.values():
         entry.pop("_subscribed", None)
     _set_status(quote=False)
     logger.debug("[구독제어] 잔존 구독 정리 완료 — 전체 OFF (인메모리 초기화, 서버 측은 다음 REG refresh=0으로 덮어씀)")

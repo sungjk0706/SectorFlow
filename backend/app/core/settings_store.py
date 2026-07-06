@@ -7,7 +7,12 @@ import asyncio
 import logging
 from typing import Any
 from backend.app.core.encryption import decrypt_value, encrypt_value
-from backend.app.core.settings_file import load_integrated_system_settings, save_settings
+from backend.app.core.settings_file import (
+    load_integrated_system_settings,
+    load_selected_settings,
+    save_selected_settings,
+    save_settings,
+)
 from backend.app.core import journal as _journal
 from backend.app.services.auto_trading_effective import auto_trading_effective
 logger = logging.getLogger(__name__)
@@ -142,7 +147,8 @@ def changed_keys_general_save(before_editing: dict, new_payload: dict) -> set[st
 
 
 async def apply_settings_updates(data: dict, username: str = "admin", profile: str | None = None) -> set[str]:
-    """업데이트 데이터를 SQLite integrated_system_settings 테이블에 병합 저장."""
+    """업데이트 데이터를 SQLite integrated_system_settings 테이블에 증분 저장.
+    전체 설정 로드/저장 대신 변경된 필드만 로드/저장."""
     import re
     _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
     _TIME_FIELDS = frozenset({
@@ -152,12 +158,20 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
         "sell_time_start", "sell_time_end",
     })
 
-    current = await load_integrated_system_settings()
-    before_snapshot = dict(current)  # 저널링용 before 상태 캡처
+    # 변경 대상 키 + broker 키만 SELECT (전체 로드 대신 증분 로드)
+    select_keys = set(data.keys()) | {"broker"}
+    before = await load_selected_settings(select_keys)
+
+    # 검증 + 저장할 값 준비
+    to_save: dict = {}
+    after: dict = {}
+
+    # broker_nm 추출 (암호화 필드 판정용)
+    broker_nm = str(before.get("broker", "") or "").lower().strip()
 
     for k, v in data.items():
         if v is None:
-            continue  # 아무것도 안 함 (기존 값 유지)
+            continue
         if v == "":
             logger.warning("[설정] 필드 %s에 빈 문자열 전달 — 무시 (기존 값 유지)", k)
             continue
@@ -168,7 +182,9 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
             allowed_brokers = set(PROVIDER_REGISTRY.keys())
             if broker_val not in allowed_brokers:
                 raise ValueError(f"지원하지 않는 증권사: {v} (허용된 값: {sorted(allowed_brokers)})")
-            current[k] = broker_val
+            to_save[k] = broker_val
+            after[k] = broker_val
+            broker_nm = broker_val
             continue
         # 시간 필드: HH:MM 형식이 아니면 무시 (입력 중간 상태 방어)
         if k in _TIME_FIELDS:
@@ -178,37 +194,41 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
                 continue
         if k in ("sell_per_symbol",) and isinstance(v, dict):
             v = normalize_symbol_override_map(v)
-        broker_nm = str(current.get("broker", "") or "").lower().strip()
         encrypt_fields = get_encrypt_fields(broker_nm)
         if k in encrypt_fields and v and v != "***":
             if not str(v).startswith("gAAAA"):
                 enc = encrypt_value(str(v))
                 if enc:
-                    current[k] = enc
+                    to_save[k] = enc
+                    after[k] = enc
                     continue
-        current[k] = v
+        to_save[k] = v
+        after[k] = v
 
     mode_keys = {"trade_mode"}
     if set(data.keys()) & mode_keys:
         logger.info(
             "[설정] 투자모드 업데이트 요청: trade_mode=%s keys=%s",
-            current.get("trade_mode"),
+            after.get("trade_mode", before.get("trade_mode")),
             sorted(list(set(data.keys()) & mode_keys)),
         )
 
-    await save_settings(current)
-    
+    # 증분 저장 (전체 설정 덮어쓰기 없이 변경된 필드만 저장)
+    await save_selected_settings(to_save)
+
     # 저널링: 변경된 키 추적
     changed_keys = set()
     for k in data.keys():
-        if k in before_snapshot and before_snapshot[k] != current.get(k):
+        if k in before and before[k] != after.get(k):
             changed_keys.add(k)
-        elif k not in before_snapshot:
+        elif k not in before and k in after:
             changed_keys.add(k)
-    
+
     if changed_keys:
-        await _journal.record_settings_change(changed_keys, before_snapshot, dict(current))
-    
+        journal_before = {k: before.get(k) for k in changed_keys if k in before}
+        journal_after = {k: after.get(k) for k in changed_keys}
+        await _journal.record_settings_change(changed_keys, journal_before, journal_after)
+
     return changed_keys
 
 

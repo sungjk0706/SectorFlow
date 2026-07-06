@@ -157,8 +157,7 @@ async def _reset_realtime_fields() -> None:
     )
     from backend.app.services.engine_account import _broadcast_account
 
-    all_stocks = state.master_stocks_cache.copy()
-    for entry in all_stocks.values():
+    for entry in state.master_stocks_cache.values():
         entry.pop("_subscribed_0d", None)
         for f in _REALTIME_FIELDS:
             entry[f] = None

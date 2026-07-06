@@ -94,8 +94,7 @@ def is_engine_running() -> bool:
 def get_engine_status() -> dict:
     """엔진 상태 반환."""
     # 실시간 구독 종목 수
-    all_stocks = state.master_stocks_cache.copy()
-    sub_count = sum(1 for entry in all_stocks.values() if entry.get("_subscribed", False))
+    sub_count = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
 
     test_mode = is_test_mode(state.integrated_system_settings_cache)
     ws = state.connector_manager or state.active_connector

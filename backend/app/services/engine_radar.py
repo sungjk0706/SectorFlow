@@ -21,8 +21,7 @@ def get_subscribed_stocks() -> list:
     # _radar_cnsr_order 삭제: state.master_stocks_cache의 "_subscribed" 사용
     from backend.app.services.engine_state import state
     result = []
-    all_stocks = state.master_stocks_cache.copy()
-    for cd, entry in all_stocks.items():
+    for cd, entry in state.master_stocks_cache.items():
         if entry.get("_subscribed", False):
             stock = entry.copy()
             stock["status"] = "active"  # _subscribed 키가 있으면 active
@@ -38,30 +37,26 @@ def get_sector_layout() -> list[tuple[str, str]]:
 def get_avg_trade_amount_5d_map() -> dict[str, int]:
     """5일 평균 거래대금 맵 반환."""
     from backend.app.services.engine_state import state
-    all_stocks = state.master_stocks_cache.copy()
-    return {cd: stock.get("avg_5d_trade_amount", 0) for cd, stock in all_stocks.items()}
+    return {cd: stock.get("avg_5d_trade_amount", 0) for cd, stock in state.master_stocks_cache.items()}
 
 
 def get_high_price_5d_cache() -> dict[str, int]:
     """5일 전고점 캐시 반환."""
     from backend.app.services.engine_state import state
-    all_stocks = state.master_stocks_cache.copy()
-    return {cd: int(stock.get("high_5d_price", 0) or 0) for cd, stock in all_stocks.items()}
+    return {cd: int(stock.get("high_5d_price", 0) or 0) for cd, stock in state.master_stocks_cache.items()}
 
 
 def get_program_net_buy_cache() -> dict[str, int]:
     """프로그램 순매수 캐시 반환."""
     from backend.app.services.engine_state import state
-    all_stocks = state.master_stocks_cache.copy()
-    return {cd: int(stock.get("program_net_buy", 0) or 0) for cd, stock in all_stocks.items()}
+    return {cd: int(stock.get("program_net_buy", 0) or 0) for cd, stock in state.master_stocks_cache.items()}
 
 
 def get_orderbook_cache() -> dict[str, tuple[int, int]]:
     """호가잔량 캐시 반환 — (매수잔량, 매도잔량) 튜플. order_ratio=[bid, ask] 형식에서 변환."""
     from backend.app.services.engine_state import state
-    all_stocks = state.master_stocks_cache.copy()
     result: dict[str, tuple[int, int]] = {}
-    for cd, stock in all_stocks.items():
+    for cd, stock in state.master_stocks_cache.items():
         ob = stock.get("order_ratio")
         if ob is not None and len(ob) == 2:
             try:
@@ -143,8 +138,7 @@ async def _mark_radar_exited(stk_cd: str) -> None:
     if state.master_stocks_cache.get(nk, {}).get("_subscribed"):
         rm = nk
     else:
-        all_stocks = state.master_stocks_cache.copy()
-        for k, entry in all_stocks.items():
+        for k, entry in state.master_stocks_cache.items():
             if entry.get("_subscribed", False) and _base_stk_cd(str(k)) == nk:
                 rm = k
                 break
@@ -179,8 +173,7 @@ async def _clear_radar_and_ready_memory() -> None:
     from backend.app.services.engine_account_notify import _rebuild_layout_cache
 
     # _radar_cnsr_order 삭제: state.master_stocks_cache에서 "_subscribed" 제거
-    all_stocks = state.master_stocks_cache.copy()
-    for entry in all_stocks.values():
+    for entry in state.master_stocks_cache.values():
         entry.pop("_subscribed", None)
     state.integrated_system_settings_cache["sector_stock_layout"] = []
     _rebuild_layout_cache([])
@@ -202,8 +195,7 @@ async def _tracked_ui_stock_codes() -> set[str]:
             if c:
                 out.add(c)
     # _radar_cnsr_order 삭제: state.master_stocks_cache의 "_subscribed" 사용
-    all_stocks = state.master_stocks_cache.copy()
-    for k, entry in all_stocks.items():
+    for k, entry in state.master_stocks_cache.items():
         if entry.get("_subscribed", False):
             c = _base_stk_cd(str(k))
             if c:

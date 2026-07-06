@@ -160,8 +160,7 @@ async def _login_post_pipeline() -> None:
             else:
                 logger.debug("[구동] 파이프라인 — 실시간 구독 구간 — REST 잔고 조회 생략 (실시간 수신, 보유 %d종목)", len(state.positions))
 
-        all_stocks = state.master_stocks_cache.copy()
-        stale = {cd for cd, entry in all_stocks.items() if entry.get("_subscribed", False)}
+        stale = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed", False)}
         if stale:
             logger.debug("[구동] 새 세션 — 0B 구독 상태 초기화 %d종목 (강제 재등록)", len(stale))
             for cd in stale:

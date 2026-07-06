@@ -1,21 +1,19 @@
 # HANDOVER — SectorFlow
 
-## 직적 완료 작업
-- **2026-07-06: REALTIME_STATE 미사용 추적 로직 완전 제거**
-  - `engine_state.py`: `realtime_state` 필드, `_get/_set_realtime_state()` 제거
-  - `pipeline_compute.py`: WAITING_FIRST_TICK→LIVE 전환 블록, 캐시 변수, global 선언 제거, 섹션 번호 재넘버링
-  - `engine_snapshot.py`: `_set_realtime_state` 호출 및 ws_dispatch 캐시 초기화 블록 제거
-  - `engine_ws_dispatch.py`: 미사용 캐시 변수 제거
-  - `test_pipeline_compute.py`: `test_waiting_first_tick_transition` 삭제, 5개 테스트 patch 정리
-  - 분석 근거: 게이트가 아닌 단순 상태 추적기 (return/continue 없음), 다운스트림 소비자 없음, `last_px<=0` 체크가 이미 보호
-  - 검증: grep 0건, py_compile 5파일 성공, pytest 75 passed in 3.14s
-  - 커밋: `bd17a58` — `refactor: remove unused REALTIME_STATE tracking logic`
+## 직전 완료 작업
+- **2026-07-06: 설정 증분 저장 + 업종순위 delta 전송 + master_stocks_cache 복사 최적화**
+  - P1: `settings_file.py` — `_migrations_completed` 플래그로 마이그레이션 1회 실행, `load_selected_settings`/`save_selected_settings` 증분 로드/저장
+  - P1: `settings_store.py` — `apply_settings_updates` 증분 필드별 로드/저장 방식으로 변경
+  - P2: `engine_account_notify.py` — delta 모드 시 `changed_scores`만 전송, `hotStore.ts`/`binding.ts`/`types/index.ts` 프론트엔드 delta 머지 지원
+  - P3: 프론트엔드 중복 정렬 분석 — `sector-ranking-list.ts`의 rank=0 분리 정렬은 중복 아님 (백엔드가 rank=0을 정렬 순서에 반영하지 않음)
+  - P4: `master_stocks_cache.copy()` 16개소 제거 — 단일 asyncio 스레드이므로 shallow copy 불필요 (10개 파일)
+  - 검증: py_compile 10파일 성공, pytest 1015 passed in 6.96s, 잔존 `.copy()` 0건
 
 ## 현재 상태
-- **백엔드**: `py_compile` 성공, `test_pipeline_compute.py` 75 passed
-- **프론트엔드**: 변경 없음
-- **Git**: `bd17a58` push 완료 (main)
-- **런타임**: 백엔드 미기동 (이전 세션 13:30 종료)
+- **백엔드**: `py_compile` 성공, `pytest` 1015 passed in 6.96s
+- **프론트엔드**: tsc 빌드 성공 (이전 세션)
+- **Git**: 미커밋 (P1~P4 변경사항 대기)
+- **런타임**: 백엔드 미기동
 
 ## 다음 단계
 - 없음
