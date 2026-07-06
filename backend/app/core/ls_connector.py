@@ -397,7 +397,7 @@ class LsConnector(BrokerConnector):
             try:
                 await self._socket.connect()
             except Exception:
-                logger.error("[연결] 초기 연결 실패 — 재연결 시작")
+                logger.warning("[연결] 초기 연결 실패 — 재연결 시작")
                 asyncio.get_running_loop().create_task(self._on_socket_disconnect())
                 raise
             self._connected = True
