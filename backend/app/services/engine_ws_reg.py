@@ -233,7 +233,7 @@ async def _unreg_grp(grp_no: str) -> bool:
                 try:
                     await _ws_send_remove_fire_and_forget(payload, sender=kiwoom_conn)
                 except Exception as e:
-                    logger.warning("[구독] grp_no=%s 청크 %d/%d 오류: %s", grp_no, ci+1, nchunks, e, exc_info=True)
+                    logger.warning("[구독] 구독해지 청크 %d/%d 오류: %s", ci+1, nchunks, e, exc_info=True)
             for cd in subscribed_codes:
                 if cd in state.master_stocks_cache:
                     state.master_stocks_cache[cd].pop("_subscribed", None)
@@ -282,7 +282,7 @@ async def subscribe_sector_stocks_0b() -> None:
     if total_raw > _WS_0B_LIMIT:
         allowed_filtered = max(0, _WS_0B_LIMIT - len(pos_codes))
         logger.warning(
-            "[구독][시세] 한도 초과 -- 보유 %d + 필터 %d = %d > %d, "
+            "[구독] 구독 한도 초과 -- 보유 %d + 필터 %d = %d > %d, "
             "보유종목 우선 등록, 필터 통과 종목 %d개만 등록",
             len(pos_codes), len(filtered_only), total_raw,
             _WS_0B_LIMIT, allowed_filtered,
@@ -298,13 +298,13 @@ async def subscribe_sector_stocks_0b() -> None:
 
         ok = await ws.subscribe_stocks(pos_targets)
         if ok:
-            logger.info("[구독][보유종목] 완료 -- %d종목 성공", len(pos_targets))
+            logger.info("[구독] 보유종목 구독 완료 -- %d종목", len(pos_targets))
         else:
             for cd in pos_targets:
                 if cd in state.master_stocks_cache:
                     entry = state.master_stocks_cache[cd]
                     entry.pop("_subscribed", None)
-            logger.warning("[구독][보유종목] 실패 -- %d종목 롤백", len(pos_targets))
+            logger.warning("[구독] 보유종목 구독 실패 -- %d종목 롤백", len(pos_targets))
 
     # ── 5) 필터 통과 종목 누적 REG ──
     filter_targets = [cd for cd in filtered_only if not state.master_stocks_cache.get(cd, {}).get("_subscribed")]
@@ -317,12 +317,12 @@ async def subscribe_sector_stocks_0b() -> None:
 
     ok = await ws.subscribe_stocks(filter_targets)
     if ok:
-        logger.info("[구독][필터] 완료 -- %d종목 성공", len(filter_targets))
+        logger.info("[구독] 필터 종목 구독 완료 -- %d종목", len(filter_targets))
     else:
         for cd in filter_targets:
             if cd in state.master_stocks_cache:
                 state.master_stocks_cache[cd].pop("_subscribed", None)
-        logger.warning("[구독][필터] 실패 -- %d종목 롤백", len(filter_targets))
+        logger.warning("[구독] 필터 종목 구독 실패 -- %d종목 롤백", len(filter_targets))
 
 
 async def subscribe_index_realtime() -> None:
@@ -332,21 +332,21 @@ async def subscribe_index_realtime() -> None:
     """
     ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected():
-        logger.warning("[연결] 업종지수 구독 스킵 — WS 미연결")
+        logger.warning("[구독] 업종지수 구독 생략 — 연결 없음")
         return
 
     if not hasattr(ws, "subscribe_index"):
-        logger.warning("[연결] 업종지수 구독 스킵 — 커넥터에 subscribe_index() 없음")
+        logger.warning("[구독] 업종지수 구독 생략 — 커넥터 미지원")
         return
 
     try:
         ok = await ws.subscribe_index()
         if ok:
-            logger.info("[연결] 업종지수 구독 완료")
+            logger.info("[구독] 업종지수 구독 완료")
         else:
-            logger.warning("[연결] 업종지수 구독 실패")
+            logger.warning("[구독] 업종지수 구독 실패")
     except Exception as e:
-        logger.warning("[연결] 업종지수 구독 실패: %s", e, exc_info=True)
+        logger.warning("[구독] 업종지수 구독 실패: %s", e, exc_info=True)
 
 
 async def subscribe_account_realtime() -> None:
@@ -365,7 +365,7 @@ async def subscribe_account_realtime() -> None:
     broker_nm = str(s.get("broker", "") or "").lower().strip()
     acnt = str(s.get(f"{broker_nm}_account_no", "") or "").strip()
     if not acnt:
-        logger.warning("[연결] 계좌번호 미설정 -- 구독 요청은 빈값으로 전송")
+        logger.warning("[계좌] 계좌번호 미설정 -- 구독 요청은 빈값으로 전송")
 
     payload = build_account_reg_payload()
     try:
@@ -374,23 +374,23 @@ async def subscribe_account_realtime() -> None:
         if ok:
             state.ws_account_subscribed = True
             logger.info(
-                "[연결] 계좌 구독 완료 -- 계좌설정=%s",
+                "[계좌] 계좌 구독 완료 -- 계좌설정=%s",
                 "Y" if acnt else "N",
             )
         else:
-            logger.warning("[연결] 계좌 구독 응답 시간 초과")
+            logger.warning("[계좌] 계좌 구독 응답 시간 초과")
     except Exception as e:
-        logger.warning("[연결] 계좌 구독 실패: %s", e, exc_info=True)
+        logger.warning("[계좌] 계좌 구독 실패: %s", e, exc_info=True)
 
 
 async def subscribe_positions_stocks_realtime() -> None:
     """보유 종목 0B REG — 이미 구독된 종목 제외, 누적 등록."""
     ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected():
-        logger.warning("[구독] 종목 구독 생략 -- 미연결")
+        logger.warning("[구독] 보유종목 구독 생략 — 연결 없음")
         return
     if not state.login_ok:
-        logger.warning("[구독] 종목 구독 생략 -- 로그인 전. 로그인 응답 후 재시도됨.")
+        logger.warning("[구독] 보유종목 구독 생략 — 로그인 전 (로그인 후 재시도)")
         return
 
     from backend.app.services.engine_account import get_positions
@@ -405,7 +405,7 @@ async def subscribe_positions_stocks_realtime() -> None:
         return
 
     norm_list = [_base_stk_cd(cd) for cd in ordered]
-    logger.info("[시작] 보유 REG 대상 %d종목: %s", len(norm_list), norm_list)
+    logger.info("[구독] 보유종목 구독 대상 %d종목: %s", len(norm_list), norm_list)
 
     # 이미 구독 중인 종목 제외
     new_0b = [cd for cd in norm_list if not state.master_stocks_cache.get(cd, {}).get("_subscribed")]
@@ -418,12 +418,12 @@ async def subscribe_positions_stocks_realtime() -> None:
 
     ok = await ws.subscribe_stocks(new_0b)
     if ok:
-        logger.info("[구독][보유종목] 완료 -- %d종목 성공", len(new_0b))
+        logger.info("[구독] 보유종목 구독 완료 -- %d종목", len(new_0b))
     else:
         for cd in new_0b:
             if cd in state.master_stocks_cache:
                 state.master_stocks_cache[cd].pop("_subscribed", None)
-        logger.warning("[구독][보유종목] 실패 -- %d종목 롤백", len(new_0b))
+        logger.warning("[구독] 보유종목 구독 실패 -- %d종목 롤백", len(new_0b))
 
 
 # ---------------------------------------------------------------------------
@@ -441,12 +441,12 @@ async def restore_subscriptions_after_reconnect(broker_id: str) -> None:
         broker_id: 재연결된 증권사 ID
     """
     if not state.login_ok or False:
-        logger.debug("[재연결] %s 로그인 전 — 구독 복원 생략 (LOGIN 후 파이프라인이 처리)", broker_id.upper())
+        logger.debug("[연결] %s 로그인 전 — 구독 복원 생략 (로그인 후 파이프라인이 처리)", broker_id.upper())
         return
 
     ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected():
-        logger.warning("[재연결] %s 구독 복원 생략 — 미연결", broker_id.upper())
+        logger.warning("[연결] %s 구독 복원 생략 — 연결 없음", broker_id.upper())
         return
 
     subscribed = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed", False)}
@@ -463,23 +463,23 @@ async def restore_subscriptions_after_reconnect(broker_id: str) -> None:
         
         ok = await ws.subscribe_stocks(targets_list)
         if ok:
-            logger.info("[재연결] %s 구독 복원 완료 — %d종목", broker_id.upper(), len(targets_list))
+            logger.info("[연결] %s 구독 복원 완료 — %d종목", broker_id.upper(), len(targets_list))
         else:
             for cd in targets_list:
                 if cd in state.master_stocks_cache:
                     state.master_stocks_cache[cd].pop("_subscribed", None)
-            logger.warning("[재연결] %s 구독 복원 실패", broker_id.upper())
+            logger.warning("[연결] %s 구독 복원 실패", broker_id.upper())
 
     # 데이터(0J) 복원
     try:
         await subscribe_index_realtime()
-        logger.info("[연결] %s 데이터(0J) 구독 복원 완료", broker_id.upper())
+        logger.info("[구독] %s 업종지수 구독 복원 완료", broker_id.upper())
     except Exception as e:
-        logger.warning("[재연결] %s 데이터 구독 복원 실패: %s", broker_id.upper(), e, exc_info=True)
+        logger.warning("[구독] %s 업종지수 구독 복원 실패: %s", broker_id.upper(), e, exc_info=True)
 
     # 계좌(00/04) 복원
     try:
         await subscribe_account_realtime()
-        logger.info("[연결] %s 계좌 구독 복원 완료", broker_id.upper())
+        logger.info("[계좌] %s 계좌 구독 복원 완료", broker_id.upper())
     except Exception as e:
-        logger.warning("[재연결] %s 계좌 구독 복원 실패: %s", broker_id.upper(), e, exc_info=True)
+        logger.warning("[계좌] %s 계좌 구독 복원 실패: %s", broker_id.upper(), e, exc_info=True)

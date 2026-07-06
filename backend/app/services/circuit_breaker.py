@@ -41,7 +41,7 @@ class CircuitBreaker:
         self.failure_count += 1
         self.last_failure_time = time.time()
         logger.warning(
-            "[CircuitBreaker] 주문 실패 기록 - failure_count=%d, threshold=%d",
+            "[매매] 서킷브레이커 주문 실패 기록 — failure_count=%d, threshold=%d",
             self.failure_count,
             self.failure_threshold,
         )
@@ -49,7 +49,7 @@ class CircuitBreaker:
         if self.failure_count >= self.failure_threshold:
             self.state = "OPEN"
             logger.error(
-                "[CircuitBreaker] 상태 전이: CLOSED → OPEN (실패 %d회 누적)",
+                "[매매] 서킷브레이커 상태 전이: CLOSED → OPEN (실패 %d회 누적)",
                 self.failure_count,
             )
 
@@ -58,7 +58,7 @@ class CircuitBreaker:
         self.failure_count = 0
         if self.state == "HALF_OPEN":
             self.state = "CLOSED"
-            logger.info("[CircuitBreaker] 상태 전이: HALF_OPEN → CLOSED (복구 완료)")
+            logger.info("[매매] 서킷브레이커 상태 전이: HALF_OPEN → CLOSED (복구 완료)")
 
     def allow_request(self) -> bool:
         """
@@ -74,7 +74,7 @@ class CircuitBreaker:
                 if time.time() - self.last_failure_time >= self.recovery_timeout:
                     self.state = "HALF_OPEN"
                     logger.info(
-                        "[CircuitBreaker] 상태 전이: OPEN → HALF_OPEN (복구 시도)"
+                        "[매매] 서킷브레이커 상태 전이: OPEN → HALF_OPEN (복구 시도)"
                     )
                     return True
             return False
@@ -91,7 +91,7 @@ class CircuitBreaker:
         self.state = "CLOSED"
         self.failure_count = 0
         self.last_failure_time = None
-        logger.info("[CircuitBreaker] 초기화 완료")
+        logger.info("[매매] 서킷브레이커 초기화 완료")
 
 
 # 전역 인스턴스 (OMS 루프에서 공유)

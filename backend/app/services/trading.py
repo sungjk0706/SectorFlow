@@ -70,7 +70,7 @@ class AutoTradeManager:
                         bought_today[cd] = time.time()
             return spent, bought_today, symbol_spent
         except Exception:
-            logger.warning("[매매] 일일 매수 상태 복원 실패", exc_info=True)
+            logger.warning("[매매] 일일 매수 상태 복원 실패: %s", exc_info=True)
             return 0, {}, {}
 
     async def _ensure_daily_buy_counter(self) -> None:
@@ -79,7 +79,7 @@ class AutoTradeManager:
             self._daily_buy_date = today
             self._daily_buy_spent, self._bought_today, self._symbol_daily_buy_spent = await self._restore_daily_buy_state()  # type: ignore
             logger.info(
-                "[일일매수] 상태 복원 완료 — 날짜=%s 누적매수=%s원 종목수=%d",
+                "[매매] 일일 매수 상태 복원 — 날짜=%s 누적매수=%s원 종목수=%d",
                 today, f"{self._daily_buy_spent:,}", len(self._bought_today),
             )
 
@@ -103,7 +103,7 @@ class AutoTradeManager:
                 self.log_callback(f"[실시간지연] {stk_cd} 매수 차단 — WS 지연 200ms 초과")
                 return False
         except Exception:
-            logger.warning("[매수가드] 실시간 지연 체크 실패", exc_info=True)
+            logger.warning("[매매] 실시간 지연 체크 실패", exc_info=True)
 
         # 스케줄 자동매매 게이트: force_buy(매수대기 수동 매수) 시에만 우회
         if not settings["is_auto"] and not force_buy:
@@ -276,7 +276,7 @@ class AutoTradeManager:
                 _check_price, buy_qty, self._daily_buy_spent,
             )
             if not ok:
-                logger.info("[전략] 매수 거부: %s (%s)", stk_cd, reason)
+                logger.info("[매매] 매수 거부: %s (%s)", stk_cd, reason)
                 self._buy_state[stk_cd]["has_open_buy"] = False
                 return False
 
@@ -307,9 +307,9 @@ class AutoTradeManager:
                     })
                     await notify_desktop_header_refresh()
                     await notify_desktop_settings_toggled({"time_scheduler_on": False})
-                    logger.error("[CircuitBreaker] OPEN 상태 - 마스터 스위치 강제 OFF")
+                    logger.error("[매매] 서킷브레이커 OPEN — 자동매매 마스터 스위치 강제 OFF")
             except Exception:
-                logger.warning("[매수] RiskManager 실패 보고 실패", exc_info=True)
+                logger.warning("[매매] 리스크 관리자 실패 보고 실패", exc_info=True)
             return False
 
         # ── 저널링: 주문 요청 기록 ─────────────────────────────────────────────
@@ -355,7 +355,7 @@ class AutoTradeManager:
             from backend.app.services.engine_account import _broadcast_buy_limit_status
             await _broadcast_buy_limit_status()
         except Exception:
-            logger.warning("[매수] 매수한도 브로드캐스트 실패", exc_info=True)
+            logger.warning("[매매] 매수 한도 브로드캐스트 실패", exc_info=True)
 
         # ── 테스트모드: 가상 체결 이벤트 예약 (실전 WS "00"과 동일한 downstream) ──
         if is_test_mode(base_settings):
@@ -364,7 +364,7 @@ class AutoTradeManager:
                 dry_run.fake_fill_event("BUY", stk_cd, buy_qty, _dry_fill_price, stk_nm)
             )
             _fill_task.add_done_callback(
-                lambda t: logger.error("[테스트모드] fake_fill_event(BUY) 실패: %s", t.exception(), exc_info=t.exception()) if t.exception() else None
+                lambda t: logger.error("[매매] 가상 체결 이벤트(BUY) 실패: %s", t.exception(), exc_info=t.exception()) if t.exception() else None
             )
 
         t_str = datetime.now().strftime("%H:%M:%S")
@@ -381,10 +381,10 @@ class AutoTradeManager:
             risk_mgr.record_order_success()
             new_state = risk_mgr.circuit_breaker.get_state()
             if prev_state == "HALF_OPEN" and new_state == "CLOSED":
-                logger.info("[CircuitBreaker] OMS 복구 완료 — HALF_OPEN → CLOSED")
+                logger.info("[매매] 서킷브레이커 복구 완료 — HALF_OPEN → CLOSED")
                 _fire_and_forget_telegram("✅ [OMS] 서킷브레이커 복구 완료 — 주문 정상 작동 재개", self.get_settings_fn())
         except Exception:
-            logger.warning("[매수] RiskManager 성공 보고 실패", exc_info=True)
+            logger.warning("[매매] 리스크 관리자 성공 보고 실패", exc_info=True)
 
         return True
 
@@ -456,7 +456,7 @@ class AutoTradeManager:
                         _avg_buy = int(_p.get("avg_price", 0))
                         break
         except Exception:
-            logger.warning("[매도] 평균매수가 조회 실패", exc_info=True)
+            logger.warning("[매매] 평균 매수가 조회 실패", exc_info=True)
 
         # ── 테스트모드 가드: 테스트모드면 실전 서버에 절대 주문 안 보냄 ─────────
         if is_test_mode(base_settings):
@@ -484,9 +484,9 @@ class AutoTradeManager:
                     })
                     await notify_desktop_header_refresh()
                     await notify_desktop_settings_toggled({"time_scheduler_on": False})
-                    logger.error("[CircuitBreaker] OPEN 상태 - 마스터 스위치 강제 OFF")
+                    logger.error("[매매] 서킷브레이커 OPEN — 자동매매 마스터 스위치 강제 OFF")
             except Exception:
-                logger.warning("[매도] RiskManager 실패 보고 실패", exc_info=True)
+                logger.warning("[매매] 리스크 관리자 실패 보고 실패", exc_info=True)
             return
 
         # ── 저널링: 주문 요청 기록 ─────────────────────────────────────────────
@@ -521,7 +521,7 @@ class AutoTradeManager:
                 dry_run.fake_fill_event("SELL", stk_cd, qty, _dry_sell_price, stk_nm)
             )
             _fill_task.add_done_callback(
-                lambda t: logger.error("[테스트모드] fake_fill_event(SELL) 실패: %s", t.exception(), exc_info=t.exception()) if t.exception() else None
+                lambda t: logger.error("[매매] 가상 체결 이벤트(SELL) 실패: %s", t.exception(), exc_info=t.exception()) if t.exception() else None
             )
 
         # ── RiskManager 성공 보고 ─────────────────────────────────────────────
@@ -531,10 +531,10 @@ class AutoTradeManager:
             risk_mgr.record_order_success()
             new_state = risk_mgr.circuit_breaker.get_state()
             if prev_state == "HALF_OPEN" and new_state == "CLOSED":
-                logger.info("[CircuitBreaker] OMS 복구 완료 — HALF_OPEN → CLOSED")
+                logger.info("[매매] 서킷브레이커 복구 완료 — HALF_OPEN → CLOSED")
                 _fire_and_forget_telegram("✅ [OMS] 서킷브레이커 복구 완료 — 주문 정상 작동 재개", self.get_settings_fn())
         except Exception:
-            logger.warning("[매도] RiskManager 성공 보고 실패", exc_info=True)
+            logger.warning("[매매] 리스크 관리자 성공 보고 실패", exc_info=True)
 
     async def check_sell_conditions(self, stock_list: list, base_settings: dict, access_token: str) -> None:
         settings = self._to_trade_settings(base_settings)
@@ -548,7 +548,7 @@ class AutoTradeManager:
                 self.log_callback("[실시간지연] 매도 조건 전체 차단 — WS 지연 200ms 초과")
                 return
         except Exception:
-            logger.warning("[매도가드] 실시간 지연 체크 실패", exc_info=True)
+            logger.warning("[매매] 실시간 지연 체크 실패", exc_info=True)
 
         # ── RiskManager Circuit Breaker 체크 ───────────────────────────────────
         try:
@@ -558,7 +558,7 @@ class AutoTradeManager:
                 self.log_callback(f"[리스크차단] 매도 조건 전체 차단 — {reason}")
                 return
         except Exception:
-            logger.warning("[매도가드] RiskManager 체크 실패", exc_info=True)
+            logger.warning("[매매] 리스크 관리자 체크 실패", exc_info=True)
 
         for stock in stock_list:
             s = dict(settings)
@@ -612,7 +612,7 @@ class AutoTradeManager:
                     try:
                         await self.execute_sell(stk_cd, cur_price, stk_nm, "손절 발동", sell_qty, pnl_rate, s, base_settings, access_token)
                     except Exception:
-                        logger.error("[매도] 손절 실행 실패", exc_info=True)
+                        logger.error("[매매] 손절 실행 실패", exc_info=True)
                     continue
 
             if s.get("chk_tp", False):
@@ -622,7 +622,7 @@ class AutoTradeManager:
                     try:
                         await self.execute_sell(stk_cd, cur_price, stk_nm, "익절 발동", sell_qty, pnl_rate, s, base_settings, access_token)
                     except Exception:
-                        logger.error("[매도] 익절 실행 실패", exc_info=True)
+                        logger.error("[매매] 익절 실행 실패", exc_info=True)
                     continue
 
             if s.get("chk_ts", False):

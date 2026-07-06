@@ -80,7 +80,7 @@ async def evaluate_buy_candidates() -> None:
         _effective_buy_amt = _buy_amt
     if _available <= 0:
         _cash_insufficient = True
-        logger.info("[종목매수] 주문가능 금액 0원 — 매수 시도 중단 (State Gate OPEN)")
+        logger.info("[매매] 주문가능 금액 0원 — 매수 시도 중단")
         return
     _cash_insufficient = False
 
@@ -104,7 +104,12 @@ async def evaluate_buy_candidates() -> None:
         if _after_hours and not is_nxt_enabled(s.code):
             continue
 
-        logger.info("[종목매수] 매수 시도: %s(%s) 섹터=%s",
+        # 재매수 차단 사전 체크 — execute_buy 불필요 호출 + 로그 노이즈 제거
+        _rebuy_block_on = bool(state.integrated_system_settings_cache.get("rebuy_block_on", True))
+        if _rebuy_block_on and s.code in state.auto_trade._bought_today:
+            continue
+
+        logger.info("[매매] 매수 시도: %s(%s) 섹터=%s",
                     s.name, s.code, s.sector)
         try:
             _price = int(s.cur_price or 0)
@@ -116,7 +121,7 @@ async def evaluate_buy_candidates() -> None:
                 reason=f"업종자동매수 업종={s.sector}",
             )
             if _ordered:
-                logger.info("[종목매수] 매수 주문 전송: %s(%s)", s.name, s.code)
+                logger.info("[매매] 매수 주문 전송: %s(%s)", s.name, s.code)
                 if _buy_interval_on:
                     state._last_global_buy_ts = time.time()
                 _holding_cnt += 1
@@ -126,6 +131,6 @@ async def evaluate_buy_candidates() -> None:
                 if _max_daily > 0 and state.auto_trade._daily_buy_spent >= _max_daily:
                     break
         except Exception as e:
-            logger.warning("[종목매수] execute_buy 오류 %s: %s", s.code, e, exc_info=True)
+            logger.warning("[매매] 매수 실행 오류 %s: %s", s.code, e, exc_info=True)
         # 1순위 종목 1종목만 시도 후 종료
         break

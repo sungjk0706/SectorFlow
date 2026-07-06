@@ -80,7 +80,7 @@ async def _safe_broadcast(event_type: str, payload: dict | None) -> None:
         try:
             await _broadcast(event_type, payload)
         except Exception as e:
-            logger.warning(f"[데이터] {event_type} 화면전송 실패: {e}", exc_info=True)
+            logger.warning(f"[시스템] {event_type} 화면 전송 실패: {e}", exc_info=True)
 
 
 # ── Set 캐시 재구축 함수 ─────────────────────────────────────────────────────
@@ -94,7 +94,7 @@ def _rebuild_positions_cache(positions: list) -> None:
             if str(p.get("stk_cd", "")).strip()
         }
     except Exception:
-        logger.warning("[캐시] positions_code_set 재구축 실패 (이전 캐시 유지)", exc_info=True)
+        logger.warning("[시스템] 보유종목 캐시 재구축 실패 (이전 캐시 유지)", exc_info=True)
 
 
 def _rebuild_layout_cache(layout: list) -> None:
@@ -104,7 +104,7 @@ def _rebuild_layout_cache(layout: list) -> None:
         notify_cache.layout_code_set.clear()
         notify_cache.layout_code_set.update({v for t, v in layout if t == "code" and v})
     except Exception:
-        logger.warning("[캐시] layout_code_set 재구축 실패 (이전 캐시 유지)", exc_info=True)
+        logger.warning("[시스템] 레이아웃 캐시 재구축 실패 (이전 캐시 유지)", exc_info=True)
 
 
 
@@ -277,7 +277,7 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
         from backend.app.pipelines.pipeline_compute import get_current_receive_rate
         receive_rate = get_current_receive_rate()
     except Exception as e:
-        logger.warning("[데이터] 수신율 조회 실패 (None으로 진행): %s", e)
+        logger.warning("[시스템] 수신율 조회 실패 (None으로 진행): %s", e)
 
     # delta 계산: 변경된 섹터만 전송
     if not force and notify_cache.prev_scores:
@@ -368,7 +368,7 @@ def _is_relevant_code(nk: str) -> bool:
         if nk in notify_cache.buy_targets_code_set:
             return True
     except Exception as e:
-        logger.error("[필터] 종목 %s 판별 실패: %s", nk, e, exc_info=True)
+        logger.error("[시스템] 종목 %s 판별 실패: %s", nk, e, exc_info=True)
     return False
 
 
@@ -392,7 +392,7 @@ async def notify_raw_real_data(item: dict) -> None:
         if not _is_relevant_code(nk):
             return
     except Exception as e:
-        logger.error("[정규화] 종목코드 추출 실패: %s", e, exc_info=True)
+        logger.error("[시스템] 종목코드 추출 실패: %s", e, exc_info=True)
         return
             
     # [수정] 프론트엔드 및 ws_manager가 정상 작동할 수 있도록 원본 코드를 정규화된 코드로 교체
@@ -483,7 +483,7 @@ async def broadcast_account_update(positions: list[dict], snapshot: dict, reason
         try:
             await ws_manager.broadcast_to_pages("account-update", lightweight_payload, {"profit-overview"})
         except Exception as e:
-            logger.warning("[연결] 수익현황 경량화 페이로드 전송 실패: %s", e, exc_info=True)
+            logger.warning("[시스템] 수익현황 경량화 페이로드 전송 실패: %s", e, exc_info=True)
     # sell-position 페이지 활성 또는 두 페이지 모두 활성: 전체 페이로드 전송
     else:
         payload = {
@@ -501,7 +501,7 @@ async def broadcast_account_update(positions: list[dict], snapshot: dict, reason
             try:
                 await ws_manager.broadcast_to_pages("account-update", payload, target_pages)
             except Exception as e:
-                logger.warning("[연결] 계좌 화면전송 실패: %s", e, exc_info=True)
+                logger.warning("[시스템] 계좌 화면 전송 실패: %s", e, exc_info=True)
         else:
             await _safe_broadcast("account-update", payload)
 
@@ -515,14 +515,14 @@ async def broadcast_account_update(positions: list[dict], snapshot: dict, reason
     # notify_cache.positions_code_set 동기화 — real-data 필터링용 O(1) Set 캐시
     _rebuild_positions_cache(positions)
 
-    if reason and reason != "price_tick":
+    if reason and not reason.startswith("price_tick"):
         cur_pairs = [
             (_base_stk_cd(str(p.get("stk_cd", "") or "")), p.get("cur_price"))
             for p in positions
             if int(p.get("qty", 0) or 0) > 0
         ]
         logger.info(
-            "[연결] 계좌화면전송 사유=%s 총평가=%s 보유현재가=%s changed=%d removed=%d profit-overview=%s sell-position=%s",
+            "[시스템] 계좌 화면 전송 사유=%s 총평가=%s 보유현재가=%s changed=%d removed=%d profit-overview=%s sell-position=%s",
             reason, snapshot.get("total_eval"), cur_pairs,
             len(changed_positions), len(removed_codes),
             profit_overview_active, sell_position_active,

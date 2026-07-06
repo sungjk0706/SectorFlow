@@ -147,7 +147,7 @@ def is_nxt_only_window() -> bool:
     krx = mp.get("krx", "")
     nxt = mp.get("nxt", "")
     if not krx or not nxt:
-        logger.error("[is_nxt_only_window] market_phase에 빈 문자열 감지: krx=%r, nxt=%r — 시간 기반 초기화가 누락되었을 수 있음", krx, nxt)
+        logger.error("[시스템] 장 상태 빈 문자열 감지: krx=%r, nxt=%r — 시간 기반 초기화 누락 가능", krx, nxt)
         return False
     return krx in KRX_INACTIVE_PHASES and nxt in NXT_ACTIVE_PHASES
 
@@ -195,7 +195,7 @@ def get_market_phase() -> dict:
     krx = mp.get("krx", "")
     nxt = mp.get("nxt", "")
     if not krx or not nxt:
-        logger.error("[get_market_phase] market_phase에 빈 문자열 감지: krx=%r, nxt=%r — 시간 기반 초기화가 누락되었을 수 있음", krx, nxt)
+        logger.error("[시스템] 장 상태 빈 문자열 감지: krx=%r, nxt=%r — 시간 기반 초기화 누락 가능", krx, nxt)
     phase: dict = {"krx": krx, "nxt": nxt}
     if mp.get("krx_alert"):
         phase["krx_alert"] = mp["krx_alert"]
@@ -385,7 +385,7 @@ async def _do_unified_confirmed_fetch() -> None:
             state.confirmed_refresh_running_confirmed = False
             state.confirmed_refresh_message = ""
         except Exception as _e:
-            logger.warning("[데이터] 플래그 복원 실패: %s", _e, exc_info=True)
+            logger.warning("[시스템] 플래그 복원 실패: %s", _e, exc_info=True)
 
 
 async def retry_pipeline_catchup_after_bootstrap() -> None:
@@ -471,7 +471,7 @@ def _broadcast_market_phase() -> None:
         phase = get_market_phase()
         schedule_engine_task(_broadcast("market-phase", phase), context="market-phase 브로드캐스트")
     except Exception as e:
-        logger.warning("[타이머] market-phase 화면전송 오류: %s", e, exc_info=True)
+        logger.warning("[타이머] 장 상태 화면 전송 오류: %s", e, exc_info=True)
 
 
 async def _apply_auto_toggle_on_startup(settings: dict) -> None:
@@ -505,7 +505,7 @@ async def _apply_auto_toggle_on_startup(settings: dict) -> None:
         await notify_desktop_header_refresh()
         await notify_desktop_settings_toggled()
     except Exception as e:
-        logger.warning("[데이터] 화면전송 실패: %s", e, exc_info=True)
+        logger.warning("[시스템] 화면 전송 실패: %s", e, exc_info=True)
 
 
 async def _on_ws_subscribe_start() -> None:
@@ -513,23 +513,20 @@ async def _on_ws_subscribe_start() -> None:
     try:
         # 장중 GC 비활성화 (HFT 지연 방지)
         gc.disable()
-        logger.info("[타이머] 장중 GC 비활성화 완료 (HFT 지연 방지)")
+        logger.info("[타이머] 장중 메모리 정리 비활성화 (실시간 처리 지연 방지)")
         from backend.app.core.trading_calendar import is_trading_day
         today = _kst_now().date()
-        # 주말/공휴일이면 스킵
         if today.weekday() >= 5:
             return
         settings = state.integrated_system_settings_cache
         if not is_trading_day(today):
             return
-        # ws_subscribe_on=False면 사용자 수동 모드 — 자동 연결 스킵
         if not bool(settings.get("ws_subscribe_on", False)):
-            logger.info("[타이머] ws_subscribe_on=False — 자동 연결 스킵 (수동 모드)")
+            logger.info("[타이머] 실시간 구독 자동 연결 생략 (수동 모드)")
             return
         state.ws_subscribe_window_active = True
         # ── 실시간 필드 초기화 (전일 확정 데이터 제거) ──
-        logger.info("[RESET CALL] from _on_ws_subscribe_start")
-        logger.info("[타이머] 실시간 구독 시작 -- 실시간 필드 초기화 시작")
+        logger.info("[타이머] 실시간 필드 초기화 시작")
         from backend.app.services.engine_snapshot import _reset_realtime_fields
         await _reset_realtime_fields()
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
@@ -538,9 +535,9 @@ async def _on_ws_subscribe_start() -> None:
         state.sector_summary_cache = None
         # market-phase WS 브로드캐스트 (WS 구독 시작 = 08:00 또는 09:00 전환 시점)
         _broadcast_market_phase()
-        # ── WS 연결은 engine_loop의 구간 감지 루프가 담당 → 이벤트 통지 ──
+        # ── WS 연결은 엔진 루프의 구간 감지가 담당 → 이벤트 통지 ──
         state.ws_window_changed_event.set()
-        logger.info("[타이머] 실시간 구독 구간 진입 -- engine_loop에 WS 연결 통지")
+        logger.info("[타이머] 실시간 구독 구간 진입 — 엔진 루프에 연결 통지")
     except Exception as e:
         logger.warning("[타이머] 실시간 구독 시작 콜백 오류: %s", e, exc_info=True)
 
@@ -551,7 +548,7 @@ async def _on_ws_subscribe_end() -> None:
         # 장마감 후 GC 정상화 및 메모리 정리
         gc.enable()
         gc.collect()
-        logger.info("[타이머] 장마감 후 GC 정상화 및 메모리 정리 완료")
+        logger.info("[타이머] 장마감 후 메모리 정리 정상화 완료")
 
         from backend.app.core.memory_monitor import start_memory_monitor, log_memory_snapshot, stop_memory_monitor
         start_memory_monitor()
@@ -559,16 +556,16 @@ async def _on_ws_subscribe_end() -> None:
         stop_memory_monitor()
         state.ws_subscribe_window_active = False
         state.confirmed_done = False  # 오후 8시 구독 종료 → 8시 30분 확정 갱신 허용
-        logger.info("[타이머] 실시간 구독 구간 종료 -- 구독 해지 + 실시간 연결 해제")
+        logger.info("[타이머] 실시간 구독 구간 종료 — 구독 해지 + 연결 해제")
         await _trigger_unreg_all()
         # 구독 상태 전체 false + WS 브로드캐스트
         from backend.app.services.ws_subscribe_control import _set_status
         _set_status(quote=False)
         # market-phase WS 브로드캐스트 (구독 종료 시각 기준 상태 반영)
         _broadcast_market_phase()
-        # ── WS 연결 해제는 engine_loop의 구간 감지 루프가 담당 → 이벤트 통지 ──
+        # ── WS 연결 해제는 엔진 루프의 구간 감지가 담당 → 이벤트 통지 ──
         state.ws_window_changed_event.set()
-        logger.info("[타이머] 실시간 구독 구간 종료 -- engine_loop에 WS 해제 통지")
+        logger.info("[타이머] 실시간 구독 구간 종료 — 엔진 루프에 해제 통지")
         # ── 확정 데이터 다운로드는 confirmed_download_time 타이머가 별도 실행 ──
         # ws_subscribe_end와 confirmed_download_time을 분리하여
         # 증권사 확정 데이터 준비 시간을 확보 (기본값 20:40)
@@ -602,10 +599,10 @@ def _fire_ws_disconnect_only() -> None:
 
 async def _ws_disconnect_only() -> None:
     """구독 해제 + WS 연결 해제 요청만 수행 (장마감 후처리 제외).
-    실제 WS 연결 해제는 engine_loop의 구간 감지 루프가 담당."""
+    실제 WS 연결 해제는 엔진 루프의 구간 감지가 담당."""
     try:
         state.ws_subscribe_window_active = False
-        logger.info("[타이머] 구독 구간 변경 -- 구독 해지 + engine_loop에 WS 해제 통지")
+        logger.info("[타이머] 구독 구간 변경 — 구독 해지 + 엔진 루프에 해제 통지")
         await _trigger_unreg_all()
         from backend.app.services.ws_subscribe_control import _set_status
         _set_status(quote=False)
@@ -713,7 +710,7 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
         if delay_mp > 0 and loop:
             h = loop.call_later(max(delay_mp, 1), _broadcast_market_phase)
             state.ws_subscribe_timer_handles.append(h)
-            logger.debug("[타이머] market-phase 전환 (%s) -- %.0f초 후 예약", label, delay_mp)
+            logger.debug("[타이머] 장 상태 전환 (%s) -- %.0f초 후 예약", label, delay_mp)
 
 
 async def _init_ws_subscribe_state() -> None:
@@ -730,29 +727,28 @@ async def _init_ws_subscribe_state() -> None:
     if in_window:
         # 장중 GC 비활성화 (HFT 지연 방지) — _on_ws_subscribe_start와 동일
         gc.disable()
-        logger.info("[타이머] 장중 GC 비활성화 완료 (HFT 지연 방지)")
+        logger.info("[타이머] 장중 메모리 정리 비활성화 (실시간 처리 지연 방지)")
         # ── 실시간 필드 초기화 (전일 확정 데이터 제거) ──
         # 캐시 로드 전이면 스킵 — engine_cache._load_caches_preboot()에서 DB 로드 후 수행
         if state.preboot_cache_loaded:
-            logger.info("[RESET CALL] from _init_ws_subscribe_state")
-            logger.info("[타이머] 구독 구간 내 시작 -- 실시간 필드 초기화")
+            logger.info("[타이머] 구독 구간 내 시작 — 실시간 필드 초기화")
             from backend.app.services.engine_snapshot import _reset_realtime_fields
             await _reset_realtime_fields()
         else:
-            logger.info("[타이머] 구독 구간 내 시작 -- 실시간 필드 초기화는 캐시 로드 후 수행")
+            logger.info("[타이머] 구독 구간 내 시작 — 실시간 필드 초기화는 캐시 로드 후 수행")
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
         try:
             from backend.app.services.engine_account_notify import notify_cache
             notify_cache.prev_scores = []
             state.sector_summary_cache = None
         except Exception as e:
-            logger.warning("[데이터] 캐시 초기화 실패: %s", e, exc_info=True)
+            logger.warning("[시스템] 캐시 초기화 실패: %s", e, exc_info=True)
 
         # market-phase WS 브로드캐스트 — _on_ws_subscribe_start와 동일
         _broadcast_market_phase()
 
         state.ws_window_changed_event.set()
-        logger.info("[타이머] 구독 구간 내 시작 -- engine_loop에 WS 연결 통지")
+        logger.info("[타이머] 구독 구간 내 시작 — 엔진 루프에 연결 통지")
     else:
         # 구독 상태 false + WS 브로드캐스트
         from backend.app.services.ws_subscribe_control import _set_status
@@ -767,7 +763,7 @@ def _trigger_reg_pipeline() -> None:
             from backend.app.services.engine_bootstrap import _login_post_pipeline
             schedule_engine_task(_login_post_pipeline(), context="REG 파이프라인 재실행")
         else:
-            logger.info("[타이머] 구독 구간 진입 -- WS 미연결 상태, 연결 후 자동 구독됨")
+            logger.info("[타이머] 구독 구간 진입 — 연결 없음, 연결 후 자동 구독됨")
     except Exception as e:
         logger.warning("[타이머] REG 파이프라인 트리거 오류: %s", e)
 
@@ -776,14 +772,14 @@ async def _trigger_unreg_all() -> None:
     """구독 중인 종목 전체 UNREG 전송 + WS 캐시 클리어."""
     try:
         # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_latest_trade_prices, _latest_trade_amounts, _latest_strength)
-        logger.info("[타이머] WS 저장데이터 클리어 완료 (캐시 삭제됨)")
+        logger.info("[타이머] 캐시 데이터 삭제 완료")
 
         ws = state.connector_manager or state.active_connector
         if not ws or not ws.is_connected() or not state.login_ok:
             return
         await _do_unreg_all()
     except Exception as e:
-        logger.warning("[타이머] UNREG 트리거 오류: %s", e)
+        logger.warning("[타이머] 구독 해지 오류: %s", e)
 
 
 async def _do_unreg_all() -> None:
@@ -797,7 +793,7 @@ async def _do_unreg_all() -> None:
 
         all_codes = list(subscribed)
         if not all_codes:
-            logger.info("[타이머] REMOVE 대상 없음 -- 이미 구독 없음")
+            logger.info("[타이머] 구독 해지 대상 없음 — 이미 구독 없음")
             return
 
         # Broker Abstraction: subscribe_stocks / unsubscribe_stocks 추상 API 사용
@@ -820,13 +816,13 @@ async def _do_unreg_all() -> None:
             if cd in state.master_stocks_cache:
                 state.master_stocks_cache[cd].pop("_subscribed", None)
 
-        logger.info("[타이머] REMOVE 완료 -- %d종목 구독 해지 (성공=%s)", len(all_codes), ok)
+        logger.info("[타이머] 구독 해지 완료 -- %d종목 (성공=%s)", len(all_codes), ok)
 
         # ws_subscribe_control 상태 동기화 — 구독 해지 완료
         from backend.app.services import ws_subscribe_control
         ws_subscribe_control._set_status(quote=False)
     except Exception as e:
-        logger.warning("[타이머] REMOVE 전송 오류: %s", e)
+        logger.warning("[타이머] 구독 해지 전송 오류: %s", e)
 
 
 # ── call_later 기반 매수/매도 시간 전환 타이머 ─────────────────────────────────
@@ -1014,7 +1010,7 @@ async def start_daily_time_scheduler() -> None:
         phase = calc_timebased_market_phase()
         state.market_phase["krx"] = phase["krx"]
         state.market_phase["nxt"] = phase["nxt"]
-        logger.info("[타이머] market_phase 시간 기반 초기화: krx=%s, nxt=%s", phase["krx"], phase["nxt"])
+        logger.info("[타이머] 장 상태 초기화: KRX=%s, NXT=%s", phase["krx"], phase["nxt"])
 
         state.last_reset_date = _kst_now().strftime("%Y%m%d")
 

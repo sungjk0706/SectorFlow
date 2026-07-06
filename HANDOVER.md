@@ -1,25 +1,28 @@
 # HANDOVER — SectorFlow
 
-## 직전 완료 작업
-- **2026-07-06: LS WebSocket _recv_loop PING 응답 처리 추가**
-  - 문제: LS증권 WebSocket 간헐적 연결 종료/끊김
-  - 원인: `ls_connector.py` `_recv_loop`가 애플리케이션 레벨 PING 메시지를 전혀 처리하지 않음. Kiwoom은 문자열/JSON PING 모두 응답하지만 LS는 미처리 → 서버 PING에 응답 못 함 → 서버가 연결 종료
-  - 해결: `ls_connector.py:96-170` `_recv_loop`에 문자열 PING(`raw.strip().upper()=="PING"`) 및 JSON PING(`trnm=="PING"`) 응답 로직 추가. Kiwoom `kiwoom_connector.py:113-135`와 동일 패턴
-  - 검증: import 성공, 앱 기동 후 LS WS 연결 성공, 실시간 데이터 수신 정상, 잔존 프로세스 0건 확인
+## 직적 완료 작업
+- **2026-07-06: 백엔드 로그 메시지 전역 표준화**
+  - `logger.*` 호출의 접두사를 7개 카테고리로 통일: `[연결]`, `[구독]`, `[구동]`, `[매매]`, `[시스템]`, `[타이머]`, `[증권사설정]`
+  - 영어 클래스명 제거: `CircuitBreaker`→서킷브레이커, `RiskManager`→[매매], `BrokerRouter`→[증권사설정]
+  - 불필요 접두사 통폐합: `[시작]`/`[엔진]`→[구동], `[데이터]`/`[캐시]`/`[필터]`/`[정규화]`→[시스템], `[종목매수]`→[매매], `[종목명]`→[시스템]
+  - 수정 파일 (11개): `trading.py`, `circuit_breaker.py`, `risk_manager.py`, `buy_order_executor.py`, `engine_strategy_core.py`, `engine_account_notify.py`, `engine_bootstrap.py`, `engine_loop.py`, `engine_snapshot.py`, `sector_data_provider.py`, `market_close_pipeline.py`, `broker_router.py`
+  - 검증: 11개 파일 `py_compile` 성공, `grep_search`로 기존 접두사 잔여 0건 확인
 
 ## 현재 상태
-- **백엔드**: 989 passed (test_trading.py 제외, 사전 존재 hang). LS WebSocket PING 응답 처리 추가
+- **백엔드**: 로그 메시지 전역 표준화 완료. 11개 파일 `py_compile` 성공
 - **프론트엔드**: `npm run build` 성공 (tsc 0 errors, vite 53 modules)
-- **Git**: `430f103` 커밋 푸시 완료 (fix: LS WebSocket _recv_loop PING 응답 처리 추가)
-- **런타임**: 앱 기동 후 LS WS 연결 성공, 실시간 데이터 수신 정상. PING 처리 효과는 장기 모니터링 필요
+- **Git**: 이번 세션 수정 11개 파일 미커밋
+- **런타임**: 미확인 (이번 세션은 로그 메시지 텍스트 변경만, 런타임 동작 변경 없음)
 
 ## 다음 단계
+- **로그 표준화 수정 11개 파일 git 커밋**: `trading.py`, `circuit_breaker.py`, `risk_manager.py`, `buy_order_executor.py`, `engine_strategy_core.py`, `engine_account_notify.py`, `engine_bootstrap.py`, `engine_loop.py`, `engine_snapshot.py`, `sector_data_provider.py`, `market_close_pipeline.py`, `broker_router.py`
+- **재매수 차단 런타임 검증**: `buy_order_executor.py` `_bought_today` 사전 체크 후 런타임 로그 확인 (이전 세션에서 미완료)
 - **test_trading.py hang 해결**: `test_rebuy_block_disabled` — 사전 존재 이슈
-- **테스트 커버리지 개선**: Priority 4 이상 진행
 
 ## 미해결 문제
-- **LS증권 WebSocket `open_timeout=10` 검토**: PING 응답 처리 추가로 연결 종료 빈도 감소 기대. 단, 초기 연결 시 `timed out during handshake` 3회 연속 실패 후 성공하는 패턴이 로그에서 확인됨. `open_timeout` 10→20초 또는 30초 조정은 추후 검토 (Kiwoom도 동일값 사용 중이므로 우선순위 낮음)
-- **test_trading.py hang**: `TestExecuteBuyGates::test_rebuy_block_disabled` — `execute_buy` 내 `await` 호출 중 mock 누락 추정. 25개 테스트 파일 중 유일한 hang
+- **재매수 차단 런타임 검증 미완료**: `buy_order_executor.py` `_bought_today` 사전 체크 코드는 작성 + 테스트 통공했으나, 런타임 로그에서 161390 반복 매수 시도 로그가 제거되었는지 확인 못함
+- **LS증권 WebSocket `open_timeout=10` 검토**: 초기 연결 시 `timed out during handshake` 1~5회 실패 후 성공하는 패턴 확인됨
+- **test_trading.py hang**: `TestExecuteBuyGates::test_rebuy_block_disabled` — 사전 존재 이슈
 
 ## 테스트 실행 원칙 (필수 준수)
 
