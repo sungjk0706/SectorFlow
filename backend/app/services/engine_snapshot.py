@@ -185,14 +185,6 @@ async def _reset_realtime_fields() -> None:
     # 캡슐화된 notify_cache.clear_all() 호출로 결합성 제거
     notify_cache.clear_all()
 
-    # engine_ws_dispatch.py 캐시 초기화 (메모리 누적 방지)
-    try:
-        import backend.app.services.engine_ws_dispatch as _ws_dispatch
-        _ws_dispatch._realtime_required_fields_cache.clear()
-        _ws_dispatch._realtime_first_tick_ts_map.clear()
-    except Exception:
-        logger.warning("[시스템] ws_dispatch 캐시 초기화 실패", exc_info=True)
-
     # DB master_stocks_table 실시간 필드 초기화 (과거 데이터 혼입 방지)
     try:
         from backend.app.db.database import get_db_connection, get_db_lock
@@ -216,9 +208,6 @@ async def _reset_realtime_fields() -> None:
     await notify_desktop_sector_stocks_refresh()
     await _broadcast_account("realtime_reset")
     await _broadcast("realtime-reset", {})
-
-    # 실시간 상태를 WAITING_FIRST_TICK으로 설정
-    engine_state._set_realtime_state("WAITING_FIRST_TICK")
 
 
 # ── 기타 헬퍼 ─────────────────────────────────────────────────

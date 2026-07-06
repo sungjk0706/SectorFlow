@@ -28,9 +28,6 @@ broadcast_queue = get_broadcast_queue()
 _current_receive_rate: dict = {"received": 0, "total": 0, "pct": 0.0}
 _receive_rate_dirty: bool = False
 
-# ── LIVE 전환 조건 강화: symbol별 필수 필드 캐시 ──
-_realtime_required_fields_cache: dict[str, dict] = {}
-_realtime_first_tick_ts_map: dict[str, int] = {}
 # 누적 수신 종목 세트 — _reset_realtime_fields()에 의해 초기화되지 않음
 # 한 번 수신된 종목은 앱 종료까지 수신된 것으로 유지되어 수신율이 0%로 강하하지 않음
 _received_codes: set[str] = set()
@@ -470,7 +467,6 @@ async def _handle_real_01_tick(
         True if 보유종목 가격 갱신 발생 (계좌 브로드캐스트 필요), False otherwise.
     """
     global _received_codes, _receive_rate_dirty
-    global _realtime_first_tick_ts_map, _realtime_required_fields_cache
 
     _price_hit = False
     _ts = int(time.time() * 1000)
@@ -483,7 +479,6 @@ async def _handle_real_01_tick(
             _ws_fid_key_present,
             _ws_fid_raw,
         )
-        from backend.app.services.engine_state import _get_realtime_state, _set_realtime_state
         from backend.app.services.auto_trading_effective import auto_sell_effective
         from backend.app.core.trade_mode import is_test_mode
         from backend.app.services import dry_run
@@ -503,27 +498,7 @@ async def _handle_real_01_tick(
             _check_realtime_latency(_ts)
             return False
 
-        # ── 1. WAITING_FIRST_TICK → LIVE 상태 전환 ──
-        if _get_realtime_state() == "WAITING_FIRST_TICK":
-            if nk_px not in _realtime_first_tick_ts_map:
-                _realtime_first_tick_ts_map[nk_px] = int(time.time() * 1000)
-            if nk_px not in _realtime_required_fields_cache:
-                _realtime_required_fields_cache[nk_px] = {"price": False, "change": False, "volume": False}
-            if last_px > 0:
-                _realtime_required_fields_cache[nk_px]["price"] = True
-            if _ws_fid_key_present(vals, "11"):
-                _realtime_required_fields_cache[nk_px]["change"] = True
-            if is_0b_tick and _ws_fid_key_present(vals, "14"):
-                _realtime_required_fields_cache[nk_px]["volume"] = True
-            required = _realtime_required_fields_cache[nk_px]
-            current_ts = int(time.time() * 1000)
-            elapsed = current_ts - _realtime_first_tick_ts_map[nk_px]
-            if (required["price"] and required["change"] and required["volume"]) or (elapsed > 1000):
-                _set_realtime_state("LIVE")
-                _realtime_required_fields_cache.clear()
-                _realtime_first_tick_ts_map.clear()
-
-        # ── 2. UI 프론트엔드로 RAW 틱 데이터 브로드캐스트 ──
+        # ── 1. UI 프론트엔드로 RAW 틱 데이터 브로드캐스트 ──
         item["item"] = raw_cd
         item["_ts"] = _ts
         try:
@@ -531,7 +506,7 @@ async def _handle_real_01_tick(
         except asyncio.QueueFull:
             logger.warning("[Compute] broadcast_queue 가득 참 — UI 데이터 드롭 (code=%s)", raw_cd)
 
-        # ── 3. 레이더 행 갱신 + 업종 점수 증분 재계산 트리거 ──
+        # ── 2. 레이더 행 갱신 + 업종 점수 증분 재계산 트리거 ──
         if is_0b_tick and any(f in vals for f in ("10", "11", "12", "14", "17", "228")):
             from backend.app.services.engine_radar import _apply_real01_volume_amount_to_radar_rows
             _apply_real01_volume_amount_to_radar_rows(raw_cd, vals, is_0b_tick=is_0b_tick)
@@ -541,7 +516,7 @@ async def _handle_real_01_tick(
                 _received_codes.add(nk_px)
                 _receive_rate_dirty = True
 
-        # ── 4. 보유종목 현재가 반영 — 평가손익·수익률 실시간 재계산 ──
+        # ── 3. 보유종목 현재가 반영 — 평가손익·수익률 실시간 재계산 ──
         diff = _ws_fid_int(vals, "11", 0) if _ws_fid_key_present(vals, "11") else 0
         rate = parse_change_rate_to_percent(_ws_fid_raw(vals, "12")) if _ws_fid_key_present(vals, "12") else 0.0
         _price_hit = False
@@ -559,7 +534,7 @@ async def _handle_real_01_tick(
                     state.positions, state.broker_rest_totals
                 )
 
-        # ── 6. 자동매도 조건 체크 ──
+        # ── 4. 자동매도 조건 체크 ──
         if _price_hit and state.auto_trade and auto_sell_effective(state.integrated_system_settings_cache) and state.access_token:
             if is_test_mode(state.integrated_system_settings_cache):
                 _pos = await dry_run.get_position(nk_px)
@@ -570,7 +545,7 @@ async def _handle_real_01_tick(
                 if _matched:
                     await state.auto_trade.check_sell_conditions(_matched, state.integrated_system_settings_cache, state.access_token)
 
-        # ── 7. 지연 측정 ──
+        # ── 5. 지연 측정 ──
         _check_realtime_latency(_ts)
 
     except Exception as e:
