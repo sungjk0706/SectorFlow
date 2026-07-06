@@ -586,6 +586,7 @@ class TestComputeLoopImpl:
         mock_tick_q = MagicMock()
         mock_tick_q.get = AsyncMock(return_value={"trnm": "REAL", "data": {"type": "01", "values": {}}})
         mock_tick_q.task_done = MagicMock()
+        mock_tick_q.get_nowait = MagicMock(side_effect=asyncio.QueueEmpty())
         mock_bq = MagicMock()
         mock_bq.put_nowait = MagicMock()
         mock_control_q = MagicMock()
@@ -635,6 +636,7 @@ class TestComputeLoopImpl:
         compute_mod._compute_running = True
         mock_tick_q = MagicMock()
         mock_tick_q.task_done = MagicMock()
+        mock_tick_q.get_nowait = MagicMock(side_effect=asyncio.QueueEmpty())
         mock_bq = MagicMock()
         mock_control_q = MagicMock()
         mock_control_q.get_nowait = MagicMock(side_effect=asyncio.QueueEmpty())
@@ -777,7 +779,7 @@ class TestHandleReal01Tick:
             mock_set.assert_called_with("LIVE")
 
     @pytest.mark.asyncio
-    async def test_price_hit_triggers_account_refresh(self):
+    async def test_price_hit_returns_true(self):
         item = {"type": "01", "item": "005930"}
         vals = {"10": "50000", "11": "1000", "12": "2.0"}
         mock_bq = MagicMock()
@@ -801,10 +803,9 @@ class TestHandleReal01Tick:
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account_rest.apply_last_price_to_positions_inplace", return_value=True), \
              patch("backend.app.services.engine_account_rest.recalc_broker_totals_from_positions", return_value={}), \
-             patch("backend.app.services.engine_account._refresh_account_snapshot_meta", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_account._broadcast_account", new_callable=AsyncMock), \
              patch("backend.app.pipelines.pipeline_compute.state", mock_state):
-            await _handle_real_01_tick(item, vals, mock_bq)
+            result = await _handle_real_01_tick(item, vals, mock_bq)
+            assert result is True
 
     @pytest.mark.asyncio
     async def test_test_mode_price_hit(self):
@@ -831,10 +832,9 @@ class TestHandleReal01Tick:
              patch("backend.app.services.engine_state._set_realtime_state"), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
              patch("backend.app.services.dry_run", mock_dry_run), \
-             patch("backend.app.services.engine_account._refresh_account_snapshot_meta", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_account._broadcast_account", new_callable=AsyncMock), \
              patch("backend.app.pipelines.pipeline_compute.state", mock_state):
-            await _handle_real_01_tick(item, vals, mock_bq)
+            result = await _handle_real_01_tick(item, vals, mock_bq)
+            assert result is True
             mock_dry_run.update_price.assert_awaited_once()
 
     @pytest.mark.asyncio
