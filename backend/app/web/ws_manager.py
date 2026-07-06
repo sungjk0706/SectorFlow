@@ -193,10 +193,8 @@ class WSManager:
         dead: set[WebSocket] = set()
 
         for ws in set(self._clients):
-            # subscribed_fids 그룹화
-            subscribed_fids = self._client_subscribed_fids.get(ws)
-            if subscribed_fids is None:
-                continue
+            # subscribed_fids 그룹화 — None이면 ALLOWED_FIDS(기본값) 그룹에 포함
+            subscribed_fids = self._client_subscribed_fids.get(ws) or ALLOWED_FIDS
             if subscribed_fids not in fids_to_clients:
                 fids_to_clients[subscribed_fids] = []
             fids_to_clients[subscribed_fids].append(ws)
