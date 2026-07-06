@@ -96,7 +96,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     if (a.rank === 0 && b.rank === 0) return b.final_score - a.final_score
     if (a.rank === 0) return 1
     if (b.rank === 0) return -1
-    return b.final_score - a.final_score
+    return a.rank - b.rank
   })
 
   const maxScore = sortedScores.length > 0 ? Math.max(...sortedScores.map(s => s.final_score), 1) : 1

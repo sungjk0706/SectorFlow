@@ -1,21 +1,19 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-06: LS증권 명세서 vs 코드 차이점 수정**
-  - `broker_urls.py:22` — 모의투자 도메인 `ws_uri_paper` 추가 (`wss://openapi.ls-sec.co.kr:29443/websocket`)
-  - `ls_connector.py:594-645` — 계좌등록 `register_account(tr_type=1)`, 계좌해제 `unregister_account(tr_type=2)` 메서드 추가
-  - `ls_connector.py:57` — `compression` 파라미터 삭제 (명세서에 규격 없음)
-  - 검증: py_compile 성공, pytest 988 passed (test_trading.py 제외)
-  - 커밋: `a7b4ad1` — `feat(ls): add paper trading domain, account register/unregister, align WS options with spec`
+- **2026-07-07: 업종순위 테이블 동점자 구간 opacity 불일치 수정**
+  - `frontend/src/pages/sector-ranking-list.ts:99` — 정렬 기준을 `b.final_score - a.final_score` → `a.rank - b.rank`로 변경
+  - 원인: 프론트엔드가 백엔드 rank(SSOT)를 무시하고 final_score만으로 재정렬하여, 동점자 구간에서 표시 순서와 백엔드 rank가 불일치 → 잘못된 업종에 opacity 적용
+  - 검증: `npm run build` 성공 (tsc + vite, 0 errors)
 
 ## 현재 상태
-- **백엔드**: py_compile 성공 (broker_urls.py, ls_connector.py)
-- **프론트엔드**: 변경 없음
-- **Git**: `a7b4ad1` push 완료 (main)
-- **런타임**: 백엔드 미기동 — 앱 기동 후 LS WebSocket 연결 정상 확인 필요
+- **백엔드**: 변경 없음
+- **프론트엔드**: `npm run build` 성공 (sector-ranking-list.ts 1줄 수정)
+- **Git**: 커밋/푸시 대기
+- **런타임**: 백엔드 미기동
 
 ## 다음 단계
-- 앱 기동 후 LS WebSocket 연결 정상 확인 (`[연결] LS증권 서버 연결 완료` 로그)
+- 브라우저에서 동점자 구간 opacity 일치 확인 (사용자 직접 확인 필요)
 
 ## 미해결 문제
 - **test_trading.py hang**: `TestExecuteBuyGates::test_rebuy_block_disabled` — 사전 존재 이슈
