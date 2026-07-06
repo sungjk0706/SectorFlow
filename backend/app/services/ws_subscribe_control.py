@@ -177,7 +177,6 @@ async def run_conditional_reg_pipeline() -> None:
     settings = state.integrated_system_settings_cache
 
     if not await is_ws_subscribe_window(settings):
-        logger.debug("[구독제어] 실시간 구독 구간 외 — REG 파이프라인 생략")
         return
 
     async with _get_lock():
@@ -245,7 +244,7 @@ async def on_setting_changed(key: str, value: bool) -> None:
 
     if key == "quote_auto_subscribe":
         # 토글 제거 — 구독은 엔진이 자동 관리. 수동 해지 차단.
-        logger.debug("[구독제어] quote_auto_subscribe 변경 무시 (엔진 자동 관리)")
+        pass
 
 
 # ---------------------------------------------------------------------------

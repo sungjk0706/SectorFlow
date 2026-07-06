@@ -198,7 +198,6 @@ async def _load(force_reload: bool = False) -> None:
 
     # 이미 로드되어 있고 강제 재로드가 아니면 스킵
     if _loaded and not force_reload:
-        logger.debug("[정산엔진] 이미 로드됨 - 스킵")
         return
 
     try:

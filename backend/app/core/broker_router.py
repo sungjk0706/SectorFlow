@@ -84,7 +84,6 @@ class BrokerRouter:
                 spec_data = preloaded_specs[broker_name]
                 if isinstance(spec_data, dict):
                     self._specs[broker_name] = spec_data.get("role_mappings", {})
-                    logger.debug("[증권사설정] %s spec 로드 완료 (settings)", broker_name)
                 else:
                     logger.warning("[증권사설정] %s spec 형식 오류: %s (기대: dict)", broker_name, type(spec_data))
             else:

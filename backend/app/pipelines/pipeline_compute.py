@@ -108,7 +108,6 @@ async def start_compute_loop() -> None:
 
     _compute_task = asyncio.get_running_loop().create_task(_compute_loop_impl())
     _sector_recompute_task = asyncio.get_running_loop().create_task(_sector_recompute_loop_impl(get_broadcast_queue()))
-    logger.debug("[Compute] 루프 시작")
 
 
 async def stop_compute_loop() -> None:
@@ -128,7 +127,6 @@ async def stop_compute_loop() -> None:
             await _compute_task
         except asyncio.CancelledError:
             pass
-    logger.debug("[Compute] 루프 종료")
 
 
 _BATCH_MAX = 500
@@ -258,7 +256,6 @@ async def _compute_loop_impl() -> None:
                 logger.error("[Compute] 처리 예외 (계속): %s", e, exc_info=True)
     finally:
         _compute_running = False
-        logger.debug("[Compute] 루프 종료")
 
 
 async def _process_control_signal(
