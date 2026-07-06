@@ -54,7 +54,7 @@ class _LsSocket:
         if not websockets:
             raise RuntimeError("websockets 패키지가 없습니다.")
         logger.info("[연결] LS증권 서버 연결 시도: %s", self._uri)
-        self._ws = await websockets.connect(self._uri, open_timeout=20, ping_interval=20)
+        self._ws = await websockets.connect(self._uri, open_timeout=20, ping_interval=20, ping_timeout=20)
         self.connected = True
         logger.info("[연결] LS증권 서버 연결 완료")
         self._stop_event.clear()
@@ -590,6 +590,59 @@ class LsConnector(BrokerConnector):
             return
         await self.unsubscribe_stocks_tr(codes, "UH1")
         await self.unsubscribe_stocks_tr(codes, "UPH")
+
+    async def register_account(self, tr_cd: str = "SC0") -> bool:
+        """계좌등록 (LS WebSocket: tr_type=1).
+
+        명세서: header {token, tr_type="1"}, body {tr_cd, tr_key=""}
+        tr_key는 계좌등록/해제 시 필수값 아님 (명세서: Required=N).
+        주문 관련 TR 코드: SC0(접수), SC1(체결), SC2(정정), SC3(취소), SC4(거부).
+        """
+        if not self.is_connected() or not self._socket:
+            logger.warning("[계좌] 계좌등록 실패 — 연결 없음 (tr_cd=%s)", tr_cd)
+            return False
+        payload = {
+            "header": {
+                "token": self._token,
+                "tr_type": "1"  # 1: 계좌등록
+            },
+            "body": {
+                "tr_cd": tr_cd,
+                "tr_key": ""
+            }
+        }
+        success = await self._socket.send(payload)
+        if success:
+            logger.info("[계좌] 계좌등록 완료 (tr_cd=%s)", tr_cd)
+        else:
+            logger.warning("[계좌] 계좌등록 실패 (tr_cd=%s)", tr_cd)
+        return success
+
+    async def unregister_account(self, tr_cd: str = "SC0") -> bool:
+        """계좌해제 (LS WebSocket: tr_type=2).
+
+        명세서: header {token, tr_type="2"}, body {tr_cd, tr_key=""}
+        tr_key는 계좌등록/해제 시 필수값 아님 (명세서: Required=N).
+        """
+        if not self.is_connected() or not self._socket:
+            logger.warning("[계좌] 계좌해제 실패 — 연결 없음 (tr_cd=%s)", tr_cd)
+            return False
+        payload = {
+            "header": {
+                "token": self._token,
+                "tr_type": "2"  # 2: 계좌해제
+            },
+            "body": {
+                "tr_cd": tr_cd,
+                "tr_key": ""
+            }
+        }
+        success = await self._socket.send(payload)
+        if success:
+            logger.info("[계좌] 계좌해제 완료 (tr_cd=%s)", tr_cd)
+        else:
+            logger.warning("[계좌] 계좌해제 실패 (tr_cd=%s)", tr_cd)
+        return success
 
     async def subscribe_jif(self) -> bool:
         """장운영정보(JIF) 실시간 구독 등록."""

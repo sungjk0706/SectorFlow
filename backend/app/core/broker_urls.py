@@ -17,9 +17,10 @@ _BROKER_URL_DEFAULTS: dict[str, dict[str, str]] = {
         "token_path": "/oauth2/token",
     },
     "ls": {
-        "rest_base":  "https://openapi.ls-sec.co.kr:8080",
-        "ws_uri":     "wss://openapi.ls-sec.co.kr:9443/websocket",
-        "token_path": "/oauth2/token",
+        "rest_base":    "https://openapi.ls-sec.co.kr:8080",
+        "ws_uri":       "wss://openapi.ls-sec.co.kr:9443/websocket",
+        "ws_uri_paper": "wss://openapi.ls-sec.co.kr:29443/websocket",
+        "token_path":   "/oauth2/token",
     },
 }
 
@@ -68,8 +69,14 @@ def build_broker_urls(broker: str, settings: dict | None = None) -> dict:
     ws_uri     = urls["ws_uri"]
     token_path = urls.get("token_path", "/oauth2/token")
 
-    return {
+    result: dict[str, str] = {
         "rest_base": rest_base,
         "ws_uri":    ws_uri,
         "token_url": rest_base + token_path,
     }
+
+    ws_uri_paper = urls.get("ws_uri_paper")
+    if ws_uri_paper:
+        result["ws_uri_paper"] = ws_uri_paper
+
+    return result
