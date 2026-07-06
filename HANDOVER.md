@@ -9,7 +9,7 @@
 ## 현재 상태
 - **백엔드**: py_compile 성공, pytest 988 passed (test_trading.py 제외)
 - **프론트엔드**: 변경 없음 (이전 상태 유지 — `npm run build` 성공)
-- **Git**: 커밋 진행 중
+- **Git**: 커밋 `780601e` push 완료 (main → main)
 - **런타임**: 백엔드 미기동
 
 ## 다음 단계
