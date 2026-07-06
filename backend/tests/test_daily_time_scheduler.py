@@ -12,7 +12,15 @@ import asyncio
 import gc
 from datetime import datetime, timezone, timedelta
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, DEFAULT, MagicMock, patch
+
+def _close_coro(*args, **kwargs):
+    """schedule_engine_task mock에 전달된 코루틴을 close하여 RuntimeWarning 방지."""
+    for arg in args:
+        if asyncio.iscoroutine(arg):
+            arg.close()
+    return DEFAULT
+
 
 from backend.app.services.daily_time_scheduler import (
     KST,
@@ -429,7 +437,7 @@ class TestFireUnifiedConfirmedFetch:
         mock_state = MagicMock()
         mock_state.confirmed_done = False
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.schedule_engine_task") as mock_sched:
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _fire_unified_confirmed_fetch()
             mock_sched.assert_called_once()
             assert mock_state.confirmed_done is True
@@ -473,7 +481,7 @@ class TestBroadcastMarketPhase:
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
-             patch("backend.app.services.daily_time_scheduler.schedule_engine_task") as mock_sched:
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _broadcast_market_phase()
             assert mock_state.market_phase["krx"] == "정규장"
             assert mock_state.market_phase["nxt"] == "메인마켓"
@@ -629,17 +637,17 @@ class TestOnWsSubscribeEnd:
 
 class TestFireWrappers:
     def test_fire_ws_subscribe_end_schedules(self):
-        with patch("backend.app.services.daily_time_scheduler.schedule_engine_task") as mock_sched:
+        with patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _fire_ws_subscribe_end()
             mock_sched.assert_called_once()
 
     def test_fire_confirmed_download_schedules(self):
-        with patch("backend.app.services.daily_time_scheduler.schedule_engine_task") as mock_sched:
+        with patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _fire_confirmed_download()
             mock_sched.assert_called_once()
 
     def test_fire_ws_disconnect_only_schedules(self):
-        with patch("backend.app.services.daily_time_scheduler.schedule_engine_task") as mock_sched:
+        with patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _fire_ws_disconnect_only()
             mock_sched.assert_called_once()
 
@@ -731,7 +739,7 @@ class TestTriggerRegPipeline:
         mock_state.active_connector = None
         mock_state.login_ok = True
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.schedule_engine_task") as mock_sched:
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _trigger_reg_pipeline()
             mock_sched.assert_called_once()
 
@@ -834,7 +842,7 @@ class TestOnAutoTradeTransition:
         with patch("backend.app.services.engine_config.refresh_engine_integrated_system_settings_cache", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account_notify.notify_desktop_header_refresh", new_callable=AsyncMock) as mock_header, \
              patch("backend.app.services.engine_account_notify.notify_desktop_settings_toggled", new_callable=AsyncMock) as mock_toggle, \
-             patch("backend.app.services.engine_lifecycle.schedule_engine_task"):
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro):
             await _on_auto_trade_transition("매수 구간 진입")
             mock_header.assert_awaited_once()
             mock_toggle.assert_awaited_once()

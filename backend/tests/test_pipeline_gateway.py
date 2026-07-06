@@ -9,7 +9,25 @@ from __future__ import annotations
 
 import asyncio
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, DEFAULT, MagicMock, patch
+
+
+def _close_coro(*args, **kwargs):
+    """mock에 전달된 코루틴을 close하여 RuntimeWarning 방지."""
+    for arg in args:
+        if asyncio.iscoroutine(arg):
+            arg.close()
+    return DEFAULT
+
+
+def _close_coro_then_raise(exc):
+    """코루틴을 close한 후 exc를 발생시키는 side_effect 팩토리."""
+    def _fn(*args, **kwargs):
+        for arg in args:
+            if asyncio.iscoroutine(arg):
+                arg.close()
+        raise exc
+    return _fn
 
 from backend.app.pipelines.pipeline_gateway import (
     _process_broadcast,
@@ -239,7 +257,7 @@ class TestGatewayLoopImpl:
     async def test_gathers_two_loops(self):
         with patch("backend.app.pipelines.pipeline_gateway._broadcast_loop", new_callable=AsyncMock) as mock_b, \
              patch("backend.app.pipelines.pipeline_gateway._price_pass_through_loop", new_callable=AsyncMock) as mock_p, \
-             patch("backend.app.pipelines.pipeline_gateway.asyncio.gather", new_callable=AsyncMock) as mock_gather:
+             patch("backend.app.pipelines.pipeline_gateway.asyncio.gather", new_callable=AsyncMock, side_effect=_close_coro) as mock_gather:
             mock_gather.return_value = None
             await _gateway_loop_impl()
             mock_gather.assert_awaited_once()
@@ -251,7 +269,7 @@ class TestGatewayLoopImpl:
     async def test_finally_sets_running_false(self):
         with patch("backend.app.pipelines.pipeline_gateway._broadcast_loop", new_callable=AsyncMock), \
              patch("backend.app.pipelines.pipeline_gateway._price_pass_through_loop", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_gateway.asyncio.gather", new_callable=AsyncMock, side_effect=Exception("test")):
+             patch("backend.app.pipelines.pipeline_gateway.asyncio.gather", new_callable=AsyncMock, side_effect=_close_coro_then_raise(Exception("test"))):
             import backend.app.pipelines.pipeline_gateway as gw_mod
             old = gw_mod._gateway_running
             try:
@@ -282,6 +300,10 @@ class TestStartStopGatewayLoop:
             with patch("asyncio.get_running_loop", return_value=mock_loop), \
                  patch("backend.app.pipelines.pipeline_gateway._gateway_loop_impl", new_callable=AsyncMock):
                 await start_gateway_loop()
+                for call in mock_loop.create_task.call_args_list:
+                    for arg in call.args:
+                        if asyncio.iscoroutine(arg):
+                            arg.close()
                 assert gw_mod._gateway_running is True
                 assert gw_mod._gateway_task is mock_task
         finally:
