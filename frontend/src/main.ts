@@ -34,10 +34,6 @@ function startFpsMonitor(): void {
       } else {
         lowFpsStreak = 0
       }
-      // 5초마다 한 번씩 INFO 수준으로 출력 (콘솔 과부하 방지)
-      if (Math.round(now / 1000) % 5 === 0) {
-        console.log(`[통계] FPS=${fps}`)
-      }
       frameCount = 0
       lastTime = now
     }
@@ -222,12 +218,10 @@ function main(): void {
     while (retryCount < maxRetries) {
       try {
         const health = await api.healthCheck()
-        console.log('[Health] 상태:', health.status, health.message)
 
         // 서버가 응답하면 즉시 WS 연결 (initializing 상태도 허용)
         // WS 핸들러가 data_ready_event / bootstrap_event 대기 후 스냅샷 전송
         if (health.status === 'ready' || health.status === 'initializing' || health.status === 'error') {
-          console.log('[Health] 서버 응답 확인 - WS 연결 시작')
           shell.setOverlay(false, '')
           return
         }
