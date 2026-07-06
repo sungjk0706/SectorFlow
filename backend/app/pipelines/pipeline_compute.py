@@ -134,6 +134,64 @@ async def stop_compute_loop() -> None:
     logger.debug("[Compute] 루프 종료")
 
 
+_BATCH_MAX = 500
+
+
+def _coalesce_batch(batch: list) -> list:
+    """배치 내 동일 종목 01 틱 코얼레싱 — 최신 데이터만 유지.
+
+    01(체결) 타입 틱은 동일 종목코드에 대해 최신 1개만 처리.
+    0d, 0j, PGM 등 다른 타입은 모두 유지.
+    """
+    from backend.app.services.engine_ws_parsing import _normalize_real_type
+
+    _latest_01_by_code: dict[str, dict] = {}
+    other_queue_items: list[dict] = []
+
+    for queue_item in batch:
+        if not isinstance(queue_item, dict):
+            other_queue_items.append(queue_item)
+            continue
+
+        trnm = queue_item.get("trnm")
+        if trnm != "REAL":
+            other_queue_items.append(queue_item)
+            continue
+
+        real_data = queue_item.get("data")
+        if isinstance(real_data, list):
+            items = real_data
+        elif isinstance(real_data, dict):
+            items = [real_data]
+        else:
+            items = []
+
+        remaining_items = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            msg_type = item.get("type")
+            norm_type = _normalize_real_type(msg_type)
+
+            if norm_type == "01":
+                code = str(item.get("code") or item.get("item") or "").strip()
+                if code:
+                    _latest_01_by_code[code] = item
+                else:
+                    remaining_items.append(item)
+            else:
+                remaining_items.append(item)
+
+        if remaining_items:
+            other_queue_items.append({"trnm": "REAL", "data": remaining_items})
+
+    result = other_queue_items
+    if _latest_01_by_code:
+        result.append({"trnm": "REAL", "data": list(_latest_01_by_code.values())})
+
+    return result
+
+
 async def _compute_loop_impl() -> None:
     """Compute Engine 루프 구현."""
     global _compute_running
@@ -163,16 +221,37 @@ async def _compute_loop_impl() -> None:
                 if data is not None:
                     tick_queue.task_done()
 
-                    # data 자체가 딕셔너리(REAL 데이터 등)이므로 직접 전달
-                    # 큐에 여러 이벤트가 리스트로 올 경우를 대비한 방어 로직
-                    parsed_events = [data] if isinstance(data, dict) else data
-
-                    # 파싱된 각 이벤트를 순차적으로 연산 로직에 전달
-                    for event in parsed_events:
+                    # 배치 드레인: 큐에 남은 데이터를 한 번에 꺼냄 (이벤트 루프 yield 최소화)
+                    batch = [data]
+                    while len(batch) < _BATCH_MAX:
                         try:
-                            await _process_tick_data(event, broadcast_queue)
+                            item = tick_queue.get_nowait()
+                            batch.append(item)
+                            tick_queue.task_done()
+                        except asyncio.QueueEmpty:
+                            break
+
+                    # 동일 종목 01 틱 코얼레싱 — 최신 데이터만 유지
+                    coalesced = _coalesce_batch(batch)
+
+                    # 배치 처리 + 계좌 브로드캐스트 디바운스
+                    _account_broadcast_dirty = False
+                    for event in coalesced:
+                        try:
+                            _hit = await _process_tick_data(event, broadcast_queue)
+                            if _hit:
+                                _account_broadcast_dirty = True
                         except Exception as e:
                             logger.error("[Compute] 이벤트 처리 예외 (계속): %s", e, exc_info=True)
+
+                    # 배치 후 계좌 브로드캐스트 1회 실행
+                    if _account_broadcast_dirty:
+                        try:
+                            from backend.app.services import engine_account
+                            await engine_account._refresh_account_snapshot_meta()
+                            await engine_account._broadcast_account(reason="price_tick_batch")
+                        except Exception as e:
+                            logger.error("[Compute] 배치 계좌 브로드캐스트 실패: %s", e, exc_info=True)
 
                 # P0-1: 틱 폭주 시 이벤트 루프 고갈 방지 - 협력적 멀티태스킹 (Yielding)
                 await asyncio.sleep(0)
@@ -280,32 +359,40 @@ async def _handle_sector_recompute(
 async def _process_tick_data(
     data: dict,
     broadcast_queue: asyncio.Queue,
-) -> None:
+) -> bool:
     """
     틱 데이터 처리 - 연산 로직 이관.
 
     Args:
         data: 틱 데이터 (dict)
         broadcast_queue: UI 전송 큐
+
+    Returns:
+        True if 보유종목 가격 갱신 발생 (계좌 브로드캐스트 필요), False otherwise.
     """
     # Step 3: engine_service의 연산 로직 이관
     # 1. 틱 데이터 파싱 및 캐시 업데이트
     trnm = data.get("trnm")
     if trnm == "REAL":
-        await _handle_real_tick(data, broadcast_queue)
+        return await _handle_real_tick(data, broadcast_queue)
+    return False
 
 
 async def _handle_real_tick(
     data: dict,
     broadcast_queue: asyncio.Queue,
-) -> None:
+) -> bool:
     """
     REAL 틱 데이터 처리.
 
     Args:
         data: REAL 틱 데이터
         broadcast_queue: UI 전송 큐
+
+    Returns:
+        True if 보유종목 가격 갱신 발생 (계좌 브로드캐스트 필요), False otherwise.
     """
+    _account_dirty = False
     # engine_service._apply_real01_volume_amount_to_radar_rows 이관
     # 실제 연산 로직은 engine_service 모듈의 전역 변수에 접근하여 수행
     try:
@@ -333,7 +420,9 @@ async def _handle_real_tick(
 
             # 0B/01 체결 처리 (주식 현재가)
             if norm_type == "01":
-                await _handle_real_01_tick(item, vals, broadcast_queue)
+                _hit = await _handle_real_01_tick(item, vals, broadcast_queue)
+                if _hit:
+                    _account_dirty = True
             # 0D 호가 처리 (호가 잔량 테이블)
             elif norm_type == "0d":
                 await _handle_real_0d_tick(item, vals, broadcast_queue)
@@ -346,6 +435,7 @@ async def _handle_real_tick(
 
     except Exception as e:
         logger.error("[Compute] REAL 틱 처리 예외: %s", e, exc_info=True)
+    return _account_dirty
 
 
 async def _handle_real_0j_tick(item: dict, vals: dict) -> None:
@@ -367,7 +457,7 @@ async def _handle_real_01_tick(
     item: dict,
     vals: dict,
     broadcast_queue: asyncio.Queue,
-) -> None:
+) -> bool:
     """
     0B/01 체결 틱 처리.
 
@@ -375,10 +465,14 @@ async def _handle_real_01_tick(
         item: 틱 아이템
         vals: 틱 값
         broadcast_queue: UI 전송 큐
+
+    Returns:
+        True if 보유종목 가격 갱신 발생 (계좌 브로드캐스트 필요), False otherwise.
     """
     global _received_codes, _receive_rate_dirty
     global _realtime_first_tick_ts_map, _realtime_required_fields_cache
 
+    _price_hit = False
     _ts = int(time.time() * 1000)
     try:
         from backend.app.services.engine_symbol_utils import _real_item_stk_cd, _base_stk_cd
@@ -397,11 +491,9 @@ async def _handle_real_01_tick(
             apply_last_price_to_positions_inplace,
             recalc_broker_totals_from_positions,
         )
-        from backend.app.services import engine_account
-
         raw_cd = _real_item_stk_cd(item, vals)
         if not raw_cd:
-            return
+            return False
 
         nk_px = _base_stk_cd(raw_cd)
         last_px = _parse_fid10_price(vals)
@@ -409,7 +501,7 @@ async def _handle_real_01_tick(
 
         if not nk_px or last_px <= 0:
             _check_realtime_latency(_ts)
-            return
+            return False
 
         # ── 1. WAITING_FIRST_TICK → LIVE 상태 전환 ──
         if _get_realtime_state() == "WAITING_FIRST_TICK":
@@ -467,11 +559,6 @@ async def _handle_real_01_tick(
                     state.positions, state.broker_rest_totals
                 )
 
-        # ── 5. 계좌 스냅샷 갱신 + 브로드캐스트 ──
-        if _price_hit:
-            await engine_account._refresh_account_snapshot_meta()
-            await engine_account._broadcast_account(reason="price_tick")
-
         # ── 6. 자동매도 조건 체크 ──
         if _price_hit and state.auto_trade and auto_sell_effective(state.integrated_system_settings_cache) and state.access_token:
             if is_test_mode(state.integrated_system_settings_cache):
@@ -488,6 +575,7 @@ async def _handle_real_01_tick(
 
     except Exception as e:
         logger.error("[Compute] 0B/01 틱 처리 예외: %s", e, exc_info=True)
+    return _price_hit
 
 
 def _check_realtime_latency(_ts: int) -> None:
