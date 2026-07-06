@@ -11,7 +11,7 @@
 ## 현재 상태
 - **백엔드**: py_compile 성공 (telegram_bot.py, settings.py, settings_file.py)
 - **프론트엔드**: 변경 없음
-- **Git**: 미커밋
+- **Git**: 커밋 `a4bfba9` push 완료 (main → main)
 - **런타임**: 백엔드 미기동
 
 ## 다음 단계
