@@ -1,22 +1,16 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-06: 업종순위 표시 수정 — X 이모지 제거, 모든 업종 순위 표시**
-  - `sector-ranking-list.ts:138,150`: 백엔드 rank 대신 정렬 순번(i+1) 표시, rowCaches 동기화
-  - `sector-stock.ts:221`: ❌ 제거, dead code `sectorRankMap` 활성화하여 정렬 순번 표시
-  - 정렬/불투명도/dim/바 색상 로직은 유지 (탈락/제외 업종 불투명 처리 유지)
-  - 빌드 검증: `npm run build` 성공 (tsc 0 errors, vite 53 modules)
-- **2026-07-06: WS 구독 분산 최적화 — sender 파라미터 라우팅 수정**
-  - `engine_ws.py`: `_ws_send_reg_unreg_and_wait_ack`, `_ws_send_remove_fire_and_forget`에 `sender` 파라미터 추가
-  - `kiwoom_connector.py`: 5개 메서드에서 `sender=self` 전달
-  - `connector_manager.py`: `subscribe_stocks` 나머지 유실 수정, `supports_ack` 추가
-  - `engine_ws_reg.py`: `_unreg_grp`, `subscribe_account_realtime`에서 kiwoom 커넥터 직접 조회
-  - `market_close_pipeline.py`: `remove_krx_only_stocks`에서 kiwoom 커넥터 직접 조회 후 sender 전달
-  - `daily_time_scheduler.py`: `_do_unreg_all`에서 `ws.broker_id` 체크 대신 kiwoom 커넥터 직접 조회
-  - 테스트: `test_market_close_pipeline.py`, `test_daily_time_scheduler.py` mock 패턴 업데이트
+- **2026-07-06: 백엔드 테스트 워닝 13건 근본 해결 — RuntimeWarning 0건 달성**
+  - 원인: fire-and-forget 패턴의 코루틴이 mock에 전달 후 미처리 상태로 GC → `RuntimeWarning: coroutine was never awaited`
+  - `test_daily_time_scheduler.py`: `_close_coro` 헬퍼 추가, `schedule_engine_task` mock 7개에 `side_effect=_close_coro` 적용
+  - `test_pipeline_compute.py`: `_close_coro` 헬퍼 추가, `mock_loop.create_task` post-call cleanup, `asyncio.wait_for` mock에 `side_effect=_close_coro` 적용
+  - `test_pipeline_gateway.py`: `_close_coro` + `_close_coro_then_raise` 헬퍼 추가, `asyncio.gather` mock 2개 + `mock_loop.create_task` post-call cleanup 적용
+  - `test_trading.py`: `_close_coro` 헬퍼 추가, `asyncio.create_task` mock에 `side_effect=_close_coro` 적용
+  - 검증: `pytest backend/tests/` 1016 passed, **0 warnings** in 25.87s
 
 ## 현재 상태
-- **백엔드**: `pytest backend/tests/` 1016 passed, 13 warnings in 8.32s (직전 세션 기준)
+- **백엔드**: `pytest backend/tests/` 1016 passed, **0 warnings** in 25.87s
 - **프론트엔드**: `npm run build` 성공 (tsc 0 errors, vite 53 modules), vitest 109 passed (직전 세션 기준)
 - **Git**: 커밋 푸시 완료 (08f6e0f)
 
@@ -25,12 +19,7 @@
 - **테스트 커버리지 개선**: Priority 4 이상 진행
 
 ## 미해결 문제
-- **백엔드 테스트 워닝 15개 (기능 영향 없음, 테스트 코드 원인)**
-  - 모두 `RuntimeWarning: coroutine '...' was never awaited` 계열 — 테스트에서 async 함수 호출 후 coroutine이 await되지 않고 GC됨
-  - **A. `AsyncMockMixin._execute_mock_call` (7개)**: `test_pipeline_compute` 1, `test_pipeline_gateway` 4, `test_risk_manager` 1, `test_trading` 1 — AsyncMock 호출 결과 coroutine이 await되지 않음 (mock 설정 이슈)
-  - **B. `test_daily_time_scheduler` 특정 코루틴 (6개)**: `_do_unified_confirmed_fetch`, `_broadcast`, `_on_ws_subscribe_end`, `_on_confirmed_download`, `_ws_disconnect_only`, `_login_post_pipeline` — fire-and-forget 패턴의 async 함수가 테스트 종료 시 미처리 상태로 GC
-  - **C. `test_pipeline_compute` 루프 코루틴 (2개)**: `_compute_loop_impl`, `_sector_recompute_loop_impl` — 백그라운드 루프 코루틴이 테스트 종료 시 미처리
-  - **영향도**: 프로덕션 코드에 영향 없음. 테스트 mock/이벤트 루프 정리 시점 문제. 필요 시 각 테스트에서 coroutine 정리(cleanup) 추가로 해결 가능
+- 없음
 
 ## 테스트 실행 원칙 (필수 준수)
 

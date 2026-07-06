@@ -10,7 +10,15 @@ from __future__ import annotations
 import asyncio
 import time
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, DEFAULT, MagicMock, patch
+
+def _close_coro(*args, **kwargs):
+    """mock에 전달된 코루틴을 close하여 RuntimeWarning 방지."""
+    for arg in args:
+        if asyncio.iscoroutine(arg):
+            arg.close()
+    return DEFAULT
+
 
 # Initialize queues before importing pipeline_compute (module-level get_broadcast_queue call)
 from backend.app.services.core_queues import initialize_queues
@@ -509,6 +517,10 @@ class TestStartComputeLoop:
         mock_loop.create_task.side_effect = [mock_task1, mock_task2]
         with patch("asyncio.get_running_loop", return_value=mock_loop):
             await start_compute_loop()
+            for call in mock_loop.create_task.call_args_list:
+                for arg in call.args:
+                    if asyncio.iscoroutine(arg):
+                        arg.close()
             assert compute_mod._compute_running is True
             assert compute_mod._compute_task is mock_task1
             assert compute_mod._sector_recompute_task is mock_task2
@@ -591,7 +603,7 @@ class TestComputeLoopImpl:
              patch("backend.app.pipelines.pipeline_compute.get_control_queue", return_value=mock_control_q), \
              patch("backend.app.pipelines.pipeline_compute._process_tick_data", new_callable=AsyncMock, side_effect=_stop_after_one), \
              patch("asyncio.sleep", new_callable=AsyncMock), \
-             patch("asyncio.wait_for", new_callable=AsyncMock, return_value={"trnm": "REAL", "data": {"type": "01", "values": {}}}):
+             patch("asyncio.wait_for", new_callable=AsyncMock, return_value={"trnm": "REAL", "data": {"type": "01", "values": {}}}, side_effect=_close_coro):
             await _compute_loop_impl()
             assert compute_mod._compute_running is False
 

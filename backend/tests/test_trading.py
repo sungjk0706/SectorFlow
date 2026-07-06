@@ -7,7 +7,16 @@ from __future__ import annotations
 
 import pytest
 import time as _time
-from unittest.mock import AsyncMock, MagicMock, patch
+import asyncio
+from unittest.mock import AsyncMock, DEFAULT, MagicMock, patch
+
+
+def _close_coro(*args, **kwargs):
+    """mock에 전달된 코루틴을 close하여 RuntimeWarning 방지."""
+    for arg in args:
+        if asyncio.iscoroutine(arg):
+            arg.close()
+    return DEFAULT
 
 from backend.app.services.trading import AutoTradeManager
 
@@ -172,7 +181,7 @@ class TestExecuteBuyGates:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.trading.asyncio.create_task") as mock_create_task, \
+             patch("backend.app.services.trading.asyncio.create_task", side_effect=_close_coro) as mock_create_task, \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
