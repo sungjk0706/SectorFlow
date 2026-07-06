@@ -1,21 +1,24 @@
 # HANDOVER — SectorFlow
 
 ## 직적 완료 작업
-- **2026-07-06: LS증권 WebSocket 연결 안정성 개선 + 재매수 차단 런타임 검증**
-  - `ls_connector.py` 수정: `open_timeout=10`→`20`, `ping_interval=20` 추가, 재연결 최대 10회→20회
-  - 3-way 비교 분석(명세서 vs LsApiHelper vs SectorFlow) 기반 개선
-  - 런타임 검증: 수정 후 1회 차 연결 성공 (이전 6회 실패 후 7회 차 성공 → 0회 실패)
-  - 재매수 차단 런타임 검증 완료: `_bought_today` 7종목 복원 후 `evaluate_buy_candidates()` 사전 체크로 `매수차단` 로그 0건 확인 (이전 30+건 → 0건)
+- **2026-07-06: REALTIME_STATE 미사용 추적 로직 완전 제거**
+  - `engine_state.py`: `realtime_state` 필드, `_get/_set_realtime_state()` 제거
+  - `pipeline_compute.py`: WAITING_FIRST_TICK→LIVE 전환 블록, 캐시 변수, global 선언 제거, 섹션 번호 재넘버링
+  - `engine_snapshot.py`: `_set_realtime_state` 호출 및 ws_dispatch 캐시 초기화 블록 제거
+  - `engine_ws_dispatch.py`: 미사용 캐시 변수 제거
+  - `test_pipeline_compute.py`: `test_waiting_first_tick_transition` 삭제, 5개 테스트 patch 정리
+  - 분석 근거: 게이트가 아닌 단순 상태 추적기 (return/continue 없음), 다운스트림 소비자 없음, `last_px<=0` 체크가 이미 보호
+  - 검증: grep 0건, py_compile 5파일 성공, pytest 75 passed in 3.14s
+  - 커밋: `bd17a58` — `refactor: remove unused REALTIME_STATE tracking logic`
 
 ## 현재 상태
-- **백엔드**: `ls_connector.py` 수정 후 `py_compile` 성공, 런타임 정상 동작 중 (13:26 기동)
-- **프론트엔드**: `npm run build` 성공 (tsc 0 errors, vite 53 modules)
-- **Git**: 미커밋 (로그 표준화 11개 파일 + `ls_connector.py` 1개)
-- **런타임**: 백엔드 기동 중, LS WebSocket 연결 성공, 데이터 수신 + 매매 로직 정상 동작
+- **백엔드**: `py_compile` 성공, `test_pipeline_compute.py` 75 passed
+- **프론트엔드**: 변경 없음
+- **Git**: `bd17a58` push 완료 (main)
+- **런타임**: 백엔드 미기동 (이전 세션 13:30 종료)
 
 ## 다음 단계
-- **git 커밋**: 로그 표준화 11개 파일 + `ls_connector.py` WebSocket 안정성 개선
-- **test_trading.py hang 해결**: `test_rebuy_block_disabled` — 사전 존재 이슈
+- 없음
 
 ## 미해결 문제
 - **test_trading.py hang**: `TestExecuteBuyGates::test_rebuy_block_disabled` — 사전 존재 이슈
