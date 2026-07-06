@@ -62,6 +62,15 @@ async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_
                 pass
             await notify_desktop_settings_toggled(changed_dict)
 
+            # tele_on은 엔진 실행 여부와 무관하게 폴링 태스크에 즉시 반영 (원칙 17)
+            if "tele_on" in changed_keys:
+                from backend.app.services.telegram_bot import telegram_bot
+                _tele_on = bool(state.integrated_system_settings_cache.get("tele_on", False))
+                if _tele_on:
+                    telegram_bot.start()
+                else:
+                    await telegram_bot.stop_async()
+
         return {"ok": True}
     except Exception as e:
         import traceback
