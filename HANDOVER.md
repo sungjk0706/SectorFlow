@@ -12,7 +12,7 @@
 ## 현재 상태
 - **백엔드**: `pytest backend/tests/` 1016 passed, **0 warnings** in 25.87s
 - **프론트엔드**: `npm run build` 성공 (tsc 0 errors, vite 53 modules), vitest 109 passed (직전 세션 기준)
-- **Git**: 커밋 푸시 완료 (08f6e0f)
+- **Git**: 커밋 푸시 완료 (df8e237)
 
 ## 다음 단계
 - **브라우저 런타임 검증 (대기)**: 테스트모드 매수/매도 시 체결가 로그에서 슬리피지 적용 확인
