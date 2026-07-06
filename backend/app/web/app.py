@@ -246,8 +246,6 @@ async def global_exception_handler(request: Request, exc: Exception):
             logger.info("[웹서버] 텔레그램 에러 알림 전송 완료 - error_type=%s", error_type)
         except Exception as e:
             logger.warning("[웹서버] 텔레그램 알림 전송 실패: %s", e)
-    else:
-        logger.debug("[웹서버] 텔레그램 알림 스킵 (쿨다운 중) - error_type=%s", error_type)
 
     return JSONResponse(
         status_code=500,

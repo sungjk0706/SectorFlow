@@ -110,7 +110,6 @@ async def _process_operation(op: DBWriteOperation) -> None:
                 return
 
             await conn.commit()
-            logger.debug("[DB Writer] 작업 완료 - table=%s, operation=%s", op.table, op.operation)
             if op.future and not op.future.done():
                 op.future.set_result(None)
 
@@ -163,7 +162,6 @@ async def stop_db_writer() -> None:
 async def enqueue_db_write(op: DBWriteOperation) -> None:
     """DB 쓰기 작업을 큐에 추가"""
     await _db_write_queue.put(op)
-    logger.debug("[DB Writer] 작업 큐에 추가 - table=%s, operation=%s", op.table, op.operation)
 
 
 async def execute_db_write(op: DBWriteOperation, wait: bool = False) -> Any:

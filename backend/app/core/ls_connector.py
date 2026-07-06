@@ -87,12 +87,6 @@ class _LsSocket:
             return False
         msg = json.dumps(payload, ensure_ascii=False)
         await self._ws.send(msg)
-        tr_cd = payload.get("body", {}).get("tr_cd", "")
-        tr_type = payload.get("header", {}).get("tr_type", "")
-        if tr_type in ("3", "4"):
-            logger.debug("[연결] ▶ %s 전송 (tr_type=%s)", tr_cd, tr_type)
-        else:
-            logger.debug("[연결] ▶ 전송: %s", msg[:300])
         return True
 
     async def _recv_loop(self) -> None:
@@ -105,7 +99,6 @@ class _LsSocket:
                 # 1. 문자열 PING
                 if isinstance(raw, str) and raw.strip().upper() == "PING":
                     await self._ws.send(raw)
-                    logger.debug("[연결] PING 응답 (문자)")
                     continue
 
                 # 2. JSON 파싱
@@ -122,7 +115,6 @@ class _LsSocket:
                 trnm = msg.get("trnm", "")
                 if trnm.upper() == "PING":
                     await self._ws.send(raw)
-                    logger.debug("[연결] PING 응답 (JSON)")
                     continue
 
                 # LS 메시지 구조: {header: {tr_cd, tr_key}, body: {...}}
@@ -305,7 +297,6 @@ class _LsSocket:
                 }]
             }
         else:
-            # logger.debug("[LS서버소켓] 알 수 없는 TR 코드: %s", tr_cd)  # 로깅 억제
             return None
 
 

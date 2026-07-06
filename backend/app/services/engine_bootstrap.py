@@ -153,12 +153,8 @@ async def _login_post_pipeline() -> None:
                 logger.info("[구동] 파이프라인 — 잔고 이미 앱준비 완료 — 재조회 생략 (보유 %d종목)", len(state.positions))
         else:
             if not state.positions and not state.account_rest_bootstrapped:
-                logger.debug("[구동] 파이프라인 — 실시간 구독 구간이나 포지션 미적재 — REST 잔고 1회 조회")
                 from backend.app.services.engine_account import _update_account_memory
                 await _update_account_memory(state.integrated_system_settings_cache)
-                logger.debug("[구동] 파이프라인 — REST 잔고 1회 조회 완료 (보유 %d종목)", len(state.positions))
-            else:
-                logger.debug("[구동] 파이프라인 — 실시간 구독 구간 — REST 잔고 조회 생략 (실시간 수신, 보유 %d종목)", len(state.positions))
 
         stale = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed", False)}
         if stale:

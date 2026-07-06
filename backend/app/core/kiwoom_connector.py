@@ -7,7 +7,6 @@ ws_client.py 완전 대체: _KiwoomSocket 내부 클래스에 수신루프/큐/�
 """
 from __future__ import annotations
 import asyncio
-import copy
 import json
 import logging
 from typing import Any, Callable, Optional
@@ -84,23 +83,10 @@ class _KiwoomSocket:
             return False
         msg = json.dumps(payload, ensure_ascii=False)
         await self._ws.send(msg)
-        trnm = payload.get("trnm", "")
-        if trnm in ("REG", "UNREG", "REMOVE"):
-            logger.debug("[서버소켓] ▶ %s 전송", trnm)
-        else:
-            logger.debug("[서버소켓] ▶ 전송: %s", msg[:300])
         return True
 
     async def _raw_send(self, payload: dict) -> None:
         """내부 전용 송신 (연결 체크 없음)."""
-        try:
-            obj = copy.copy(payload)
-            if isinstance(obj.get("token"), str):
-                t = obj["token"]
-                obj["token"] = f"{t[:4]}…<마스킹됨>" if len(t) > 8 else "***"
-            logger.debug("[서버소켓] ▶ 전송: %s", json.dumps(obj, ensure_ascii=False)[:300])
-        except Exception:
-            logger.warning("[서버소켓] 토큰 마스킹 실패", exc_info=True)
         await self._ws.send(json.dumps(payload, ensure_ascii=False))
 
     async def _recv_loop(self) -> None:
@@ -113,7 +99,6 @@ class _KiwoomSocket:
                 # 1. 문자열 PING
                 if isinstance(raw, str) and raw.strip().upper() == "PING":
                     await self._ws.send(raw)
-                    logger.debug("[서버소켓] PING 응답(문자)")
                     continue
 
                 # 2. JSON 파싱
@@ -131,7 +116,6 @@ class _KiwoomSocket:
                 # 3. JSON PING
                 if trnm.upper() == "PING":
                     await self._ws.send(raw)
-                    logger.debug("[서버소켓] PING 응답(JSON)")
                     continue
 
                 # 4. LOGIN 응답
@@ -166,8 +150,6 @@ class _KiwoomSocket:
                     logger.info("[서버소켓] ◄ %s — 결과코드=%s 항목=%d건", trnm, rc, cnt)
                 elif trnm == "SYSTEM":
                     logger.warning("[서버소켓] ◄ 서버 강제종료 신호: %s", raw[:300])
-                else:
-                    logger.debug("[서버소켓] ◄ trnm=%s", trnm)
 
                 # 7. 비-REAL 콜백 (REG ACK 등)
                 await self._on_message(msg)

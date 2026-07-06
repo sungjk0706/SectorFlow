@@ -1,15 +1,15 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-06: 프론트엔드 디버그 로그 완전 제거**
-  - `main.ts` — FPS 통계 debug 로그(주석+if+console.debug), Health 상태 로그, 서버 응답 확인 로그 삭제 (6줄)
-  - `hotStore.ts` — `applyInitialSnapshotHot` debug 로그 3건 + 디버그 전용 if 블록(sumBuy/sumEval/sumPnl reduce 계산) 삭제 (8줄)
-  - 검증: `npm run build` 성공 (tsc + vite, 2.57s), 잔여 `console.debug` 0건
+- **2026-07-06: 백엔드 디버그 로그 제거 (29건)**
+  - 11개 파일에서 `logger.debug()` 28건 + 주석 처리된 로그 1건 삭제
+  - `engine_bootstrap.py` 3건, `ws_subscribe_control.py` 2건, `settlement_engine.py` 1건, `db_writer.py` 2건, `pipeline_compute.py` 3건, `broker_router.py` 1건, `kiwoom_connector.py` 6건(+ `copy` import 제거, `_raw_send` 데드 코드 정리), `ls_connector.py` 5건, `ws_manager.py` 4건, `app.py` 1건, `engine_ws_reg.py` 1건(+ `or False` 제거)
+  - 검증: py_compile 11개 파일 성공, 잔여 `logger.debug` 35건(보유 권장), 주석 로그 0건, pytest 988 passed (10.38s)
 
 ## 현재 상태
-- **백엔드**: 변경 없음 (이전 상태 유지 — py_compile 성공, pytest 1015 passed)
-- **프론트엔드**: `npm run build` 성공 (tsc + vite, 2.57s)
-- **Git**: 커밋 `1250b9c` push 완료 (main → main)
+- **백엔드**: py_compile 성공, pytest 988 passed (test_trading.py 제외)
+- **프론트엔드**: 변경 없음 (이전 상태 유지 — `npm run build` 성공)
+- **Git**: 커밋 진행 중
 - **런타임**: 백엔드 미기동
 
 ## 다음 단계

@@ -139,12 +139,10 @@ class WSManager:
     def set_subscribed_fids(self, ws: WebSocket, fids: list[str]) -> None:
         """클라이언트의 구독 FID 설정."""
         self._client_subscribed_fids[ws] = frozenset(fids)
-        logger.debug("[구독] 클라이언트 FID 구독 설정: %s", fids)
 
     def clear_subscribed_fids(self, ws: WebSocket) -> None:
         """클라이언트의 구독 FID 해제 (기본 ALLOWED_FIDS 사용)."""
         self._client_subscribed_fids.pop(ws, None)
-        logger.debug("[구독] 클라이언트 FID 구독 해제")
 
     # ------------------------------------------------------------------
     # 메시지 전송
@@ -283,7 +281,6 @@ class WSManager:
         text = json.dumps({"event": event_type, "data": stamped}, ensure_ascii=False)
         try:
             await ws.send_text(text)
-            logger.debug("[연결] %s 화면전송 완료 (size=%d bytes)", event_type, len(text))
         except Exception as e:
             logger.warning("[연결] %s 화면전송 실패: %s", event_type, str(e), exc_info=True)
             self.unregister(ws)
@@ -337,7 +334,6 @@ class WSManager:
                 data = {"buy_targets": targets, "_v": 1}
                 message = json.dumps({"event": "buy-targets-update", "data": data}, ensure_ascii=False)
                 await ws.send_text(message)
-                logger.debug("[연결] buy-targets 초기 데이터 전송 완료 (size=%d bytes)", len(message))
         except Exception as e:
             logger.warning("[연결] 초기 데이터 전송 실패: %s", e, exc_info=True)
 

@@ -440,8 +440,7 @@ async def restore_subscriptions_after_reconnect(broker_id: str) -> None:
         es: engine_service 모듈 참조
         broker_id: 재연결된 증권사 ID
     """
-    if not state.login_ok or False:
-        logger.debug("[연결] %s 로그인 전 — 구독 복원 생략 (로그인 후 파이프라인이 처리)", broker_id.upper())
+    if not state.login_ok:
         return
 
     ws = state.connector_manager or state.active_connector
