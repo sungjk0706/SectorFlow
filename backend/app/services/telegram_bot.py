@@ -119,49 +119,43 @@ class TelegramBot:
             except Exception as exc:
                 had_error = True
                 logger.error("[텔레그램] 루프 오류: %s", _mask_telegram_url(str(exc)))
-            # 실패 즉시 0초 재시도는 로그 폭주를 유발하므로 항상 최소 간격을 둔다.
             if not tasks:
-                await asyncio.sleep(5)
-            else:
-                await asyncio.sleep(2 if had_error else 1)
+                self._running = False
+                logger.info("[텔레그램] 활성 설정 없음 — 폴링 자동 종료")
+                break
+            if had_error:
+                await asyncio.sleep(2)
 
     def _fetch_enabled_settings(self) -> list[dict]:
-        """
-        tele_on=True 인 모든 설정 소스(루트 settings.json + data/<사용자>/settings.json)에서 수집.
-        UI는 로그인 사용자 프로필에만 저장하므로 사용자 파일을 반드시 포함해야 원격 명령이 동작한다.
-        """
-        try:
-            from backend.app.core.settings_file import iter_merged_settings_profiles
-            from backend.app.core.encryption import decrypt_value
+        """state.integrated_system_settings_cache에서 직접 조회 (원칙 13: 메모리 상주)."""
+        from backend.app.services.engine_state import state
+        from backend.app.core.encryption import decrypt_value
 
-            rows: list[dict] = []
-            seen_tokens: set[str] = set()
-
-            for profile_key, flat in iter_merged_settings_profiles():
-                if not flat.get("tele_on"):
-                    continue
-                chat_raw = str(flat.get("telegram_chat_id") or "").strip()
-                if not chat_raw:
-                    continue
-                for token_field in ("telegram_bot_token_test", "telegram_bot_token_real"):
-                    raw_token = flat.get(token_field) or ""
-                    if str(raw_token).startswith("gAAAA"):
-                        token = (decrypt_value(raw_token) or "").strip()
-                    else:
-                        token = str(raw_token).strip()
-                    if not token or token in seen_tokens:
-                        continue
-                    seen_tokens.add(token)
-                    rows.append({
-                        "telegram_bot_token": token,
-                        "telegram_chat_id":   _normalize_chat_id(chat_raw),
-                        "telegram_on":        True,
-                        "_profile":           profile_key,
-                    })
-            return rows
-        except Exception as exc:
-            logger.debug("[텔레그램] 설정 조회 실패: %s", exc)
+        flat = state.integrated_system_settings_cache
+        if not flat.get("tele_on"):
             return []
+        chat_raw = str(flat.get("telegram_chat_id") or "").strip()
+        if not chat_raw:
+            return []
+
+        rows: list[dict] = []
+        seen_tokens: set[str] = set()
+        for token_field in ("telegram_bot_token_test", "telegram_bot_token_real"):
+            raw_token = flat.get(token_field) or ""
+            if str(raw_token).startswith("gAAAA"):
+                token = (decrypt_value(raw_token) or "").strip()
+            else:
+                token = str(raw_token).strip()
+            if not token or token in seen_tokens:
+                continue
+            seen_tokens.add(token)
+            rows.append({
+                "telegram_bot_token": token,
+                "telegram_chat_id":   _normalize_chat_id(chat_raw),
+                "telegram_on":        True,
+                "_profile":           "root",
+            })
+        return rows
 
     async def _poll_one(self, row: dict):
         token         = (row.get("telegram_bot_token") or "").strip()
