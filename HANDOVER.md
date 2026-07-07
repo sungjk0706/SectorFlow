@@ -1,16 +1,17 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 수익현황 페이지 수익률 불일치 + 매도가 컬럼 색상 수정**
-  - `trade_history.py:443` — `get_daily_summary`에서 `buy_history.total_amt`를 `buy_total`에 중복 합산하는 라인 제거 (SSOT — `sell_history.buy_total_amt`만 사용)
-  - `profit-overview.ts:8,74-81` — 매도가 컬럼 render를 `createPnlCell(sell)`에서 `realized_pnl` 기준 `pnlColor`로 변경, unused `createPnlCell` import 제거, `fmtComma` import 추가
-  - `test_trade_history.py` — 회귀 테스트 2건 추가 (중복 합산 방지, 매도 없는 날 pnl_rate=0 검증)
-  - 검증: pytest 2 passed, npm run build 성공 (tsc + vite)
+- **2026-07-07: 업종순위 우측패널 검색 라벨 인라인 배치 + 코스피/코스닥 종목수 추가**
+  - `sector-stock.ts:471-537` — 검색 라벨을 상단(column)에서 좌측 인라인(row) 배치로 변경, input width 220px→180px
+  - `sector-stock.ts:384` — 타이틀 그리드 비율 `1fr/1fr/1fr` → `1.8fr/1fr/1.5fr` 조정
+  - `sector-stock.ts:402-406` — 합계:N종목을 좌측 열(5일평균최소거래대금 옆)으로 이동
+  - `sector-stock.ts:418` — 우측 열을 KRX/NXT(1행) + 코스피/코스닥(2행) 구조로 변경
+  - `sector-stock.ts:282-283,331-332,342-343,687-688` — `market_type` 필드 기반 코스피/코스닥 카운트 추가
+  - 검증: npm run build 성공 (tsc + vite, 53 modules, 5.12s)
 
 ## 현재 상태
-- **백엔드**: `trade_history.py` 수정 (buy_total 중복 합산 제거), `test_trade_history.py` 신규 추가
-- **프론트엔드**: `profit-overview.ts` 수정 (매도가 컬럼 색상 realized_pnl 기준 변경)
-- **Git**: 커밋 `dbdc60b` 푸시 완료 (origin/main)
+- **프론트엔드**: `sector-stock.ts` 수정 (검색 라벨 인라인 배치, 코스피/코스닥 종목수 추가, 타이틀 레이아웃 재구성)
+- **Git**: 커밋 `2be714e` 푸시 완료 (origin/main)
 - **런타임**: 백엔드 미기동
 
 ## 다음 단계
