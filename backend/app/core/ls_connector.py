@@ -483,7 +483,7 @@ class LsConnector(BrokerConnector):
             success = await self._socket.send(payload)
             if not success:
                 success_all = False
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0)
         return success_all
 
     async def unsubscribe_stocks(self, codes: list[str]) -> bool:
