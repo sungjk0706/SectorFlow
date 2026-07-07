@@ -1,24 +1,18 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 종목상세 페이지 Step 2-3 — Frontend API 클라이언트 + 페이지 컴포넌트**
-  - `frontend/src/api/client.ts`: `getStockDetail5d` 함수 추가
-  - `frontend/src/pages/stock-detail.ts` (신규): 12컬럼 테이블, 검색 하이라이트/dim, PageModule 구현
-  - `docs/stock-detail-page-plan.md` (신규): 구현 계획서
-  - 검증: `npm run build` 통과 (56 modules, 0 errors)
-  - Git: `b5d5671` 커밋 (push 미수행)
+- **2026-07-07: 종목상세 페이지 Step 4 — 라우트 + 사이드바 등록**
+  - `frontend/src/main.ts`: routes 배열에 `#/stock-detail` 항목 추가 (layout: full)
+  - `frontend/src/layout/sidebar.ts`: MENU 배열에 `종목상세` 항목 추가 (separator 포함)
+  - 검증: `npm run build` 통과 (57 modules, 0 errors)
 
 ## 현재 상태
 - **백엔드**: stock_detail 라우터 추가 완료 (Step 1)
-- **프론트엔드**: API 클라이언트 + 페이지 컴포넌트 완료 (Step 2-3), build 통과
-- **Git**: `b5d5671` 커밋 — push 미수행
+- **프론트엔드**: API 클라이언트 + 페이지 컴포넌트 + 라우트/사이드바 등록 완료 (Step 2-4), build 통과
+- **Git**: 모든 커밋 push 완료
 
 ## 다음 단계
-- **종목상세 페이지 Step 4: 라우트 + 사이드바 등록** (계획서: `docs/stock-detail-page-plan.md:162-183`)
-  - `frontend/src/main.ts`: routes 배열에 `#/stock-detail` 항목 추가 (`#/stock-classification` 뒤, `#/general-settings` 앞)
-  - `frontend/src/layout/sidebar.ts`: MENU 배열에 `종목상세` 항목 추가 (separator 포함)
-  - 검증: `npm run build` + 브라우저 사이드바 메뉴 표시 확인
-  - 완료 후 `git push` 수행 필요 (미push 커밋 `b5d5671` 포함)
+- 브라우저에서 사이드바 `🔍 종목상세` 메뉴 표시 및 페이지 진입 확인 (사용자 직접 확인)
 
 ## 미해결 문제
 - 없음
