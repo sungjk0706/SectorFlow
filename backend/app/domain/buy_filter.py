@@ -184,10 +184,20 @@ def create_buy_targets(
     _held = held_codes or set()
     _bought_today = bought_today_codes or set()
 
-    # ── 거래대금 순위 계산: 보유 종목 제외, Guard 통과 종목만 대상 ──
+    # ── 보유/금일매수 종목: 기술적 가드 통과 후 매수 불가 재분류 ──
+    # guard_pass=False → blocked_targets 로 이동, UI 제한 컬럼 "차단" 표시
+    for s, _ in all_stocks:
+        if s.guard_pass and s.code in _held:
+            s.guard_pass = False
+            s.guard_reason = "보유중"
+        elif s.guard_pass and s.code in _bought_today:
+            s.guard_pass = False
+            s.guard_reason = "금일매수"
+
+    # ── 거래대금 순위 계산: Guard 통과 종목만 대상 (보유/금일매수는 이미 guard_pass=False) ──
     _trade_amount_rank_map: dict[str, int] = {}
     if boost_trade_amount_rank_on:
-        _eligible = [s for s, _ in all_stocks if s.guard_pass and s.code not in _held]
+        _eligible = [s for s, _ in all_stocks if s.guard_pass]
         _eligible.sort(key=lambda st: float(st.trade_amount), reverse=True)
         for i, st in enumerate(_eligible):
             _trade_amount_rank_map[st.code] = i  # 0 = 1위
@@ -227,8 +237,7 @@ def create_buy_targets(
     def _proximity_key(pair) -> tuple:
         s, sc = pair
         is_blocked = 0 if s.guard_pass else 1
-        is_restricted = 1 if (s.guard_pass and (s.code in _held or s.code in _bought_today)) else 0
-        return (is_blocked, is_restricted, -s.boost_score) + tuple(-_sort_value(s, k) for k in effective_keys)
+        return (is_blocked, -s.boost_score) + tuple(-_sort_value(s, k) for k in effective_keys)
 
     all_stocks.sort(key=_proximity_key)
 
@@ -245,17 +254,11 @@ def create_buy_targets(
             blocked_targets.append(target)
             blocked_rank += 1
         else:
-            if stock.code in _held:
-                pass_reason = "보유중"
-            elif stock.code in _bought_today:
-                pass_reason = "금일매수"
-            else:
-                pass_reason = ""
             target = BuyTarget(
                 rank=pass_rank,
                 sector_rank=sc.rank,
                 stock=stock,
-                reason=pass_reason,
+                reason="",
             )
             buy_targets.append(target)
             pass_rank += 1

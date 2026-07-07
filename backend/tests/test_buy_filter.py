@@ -500,9 +500,10 @@ class TestCreateBuyTargets:
             held_codes={"A002"},
             boost_trade_amount_rank_on=True,
         )
-        stock_map = {t.stock.code: t.stock for t in result.buy_targets}
-        assert stock_map["A001"].trade_amount_rank == 0
-        assert stock_map["A002"].trade_amount_rank == -1
+        buy_map = {t.stock.code: t.stock for t in result.buy_targets}
+        blocked_map = {t.stock.code: t.stock for t in result.blocked_targets}
+        assert buy_map["A001"].trade_amount_rank == 0
+        assert blocked_map["A002"].trade_amount_rank == -1
 
     def test_blocked_stock_boost_score_zero(self):
         s1 = _stock(code="A001", change_rate=10.0, cur_price=75000)
@@ -523,27 +524,29 @@ class TestCreateBuyTargets:
         assert isinstance(result, SectorSummary)
         assert result.sectors == [sc]
 
-    def test_held_stock_sorted_after_normal_candidates(self):
+    def test_held_stock_goes_to_blocked_targets(self):
         s_normal = _stock(code="A001", change_rate=1.0)
         s_held = _stock(code="A002", change_rate=5.0)
         sc = _sector(rank=1, stocks=[s_held, s_normal])
         result = create_buy_targets([sc], held_codes={"A002"}, sort_keys=["change_rate"])
-        codes = [t.stock.code for t in result.buy_targets]
-        assert codes == ["A001", "A002"]
+        assert [t.stock.code for t in result.buy_targets] == ["A001"]
         assert result.buy_targets[0].reason == ""
-        assert result.buy_targets[1].reason == "보유중"
+        assert [t.stock.code for t in result.blocked_targets] == ["A002"]
+        assert result.blocked_targets[0].reason == "보유중"
+        assert result.blocked_targets[0].stock.guard_pass is False
 
-    def test_bought_today_sorted_after_normal_candidates(self):
+    def test_bought_today_goes_to_blocked_targets(self):
         s_normal = _stock(code="A001", change_rate=1.0)
         s_bought = _stock(code="A002", change_rate=5.0)
         sc = _sector(rank=1, stocks=[s_bought, s_normal])
         result = create_buy_targets([sc], bought_today_codes={"A002"}, sort_keys=["change_rate"])
-        codes = [t.stock.code for t in result.buy_targets]
-        assert codes == ["A001", "A002"]
+        assert [t.stock.code for t in result.buy_targets] == ["A001"]
         assert result.buy_targets[0].reason == ""
-        assert result.buy_targets[1].reason == "금일매수"
+        assert [t.stock.code for t in result.blocked_targets] == ["A002"]
+        assert result.blocked_targets[0].reason == "금일매수"
+        assert result.blocked_targets[0].stock.guard_pass is False
 
-    def test_restricted_stocks_before_blocked_stocks(self):
+    def test_held_and_blocked_both_in_blocked_targets(self):
         s_normal = _stock(code="A001", change_rate=1.0)
         s_held = _stock(code="A002", change_rate=5.0)
         s_blocked = _stock(code="A003", change_rate=10.0)
@@ -551,17 +554,17 @@ class TestCreateBuyTargets:
         result = create_buy_targets(
             [sc], held_codes={"A002"}, block_rise_pct=7.0, sort_keys=["change_rate"],
         )
-        buy_codes = [t.stock.code for t in result.buy_targets]
+        assert [t.stock.code for t in result.buy_targets] == ["A001"]
         blocked_codes = [t.stock.code for t in result.blocked_targets]
-        assert buy_codes == ["A001", "A002"]
-        assert blocked_codes == ["A003"]
+        assert "A002" in blocked_codes
+        assert "A003" in blocked_codes
 
-    def test_held_rank_higher_than_normal_but_sorted_after(self):
+    def test_held_stock_blocked_even_with_high_change_rate(self):
         s_normal = _stock(code="A001", change_rate=1.0)
         s_held = _stock(code="A002", change_rate=9.0)
         sc = _sector(rank=1, stocks=[s_held, s_normal])
         result = create_buy_targets([sc], held_codes={"A002"}, block_rise_pct=10.0, sort_keys=["change_rate"])
         assert result.buy_targets[0].stock.code == "A001"
         assert result.buy_targets[0].rank == 1
-        assert result.buy_targets[1].stock.code == "A002"
-        assert result.buy_targets[1].rank == 2
+        assert [t.stock.code for t in result.blocked_targets] == ["A002"]
+        assert result.blocked_targets[0].reason == "보유중"
