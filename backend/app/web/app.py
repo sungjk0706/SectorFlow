@@ -26,6 +26,7 @@ from backend.app.web.routes.trade import router as trade_router
 from backend.app.web.routes.ws_subscribe import router as ws_subscribe_router
 from backend.app.web.routes.stock_classification import router as stock_classification_router
 from backend.app.web.routes.settlement import router as settlement_router
+from backend.app.web.routes.stock_detail import router as stock_detail_router
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
@@ -214,6 +215,7 @@ app.include_router(trade_router)
 app.include_router(ws_subscribe_router)
 app.include_router(stock_classification_router)
 app.include_router(settlement_router)
+app.include_router(stock_detail_router)
 
 
 
