@@ -1,8 +1,9 @@
 // frontend/src/pages/profit-overview.ts
 // 수익현황 페이지 — Vanilla TS PageModule
-// 요약 대시보드: 일별 수익률 차트 + 일별 거래건수 차트(좌) + 계좌 현황(우) + 상세 분석 보기 버튼
+// 요약 대시보드: 일별 수익률 차트(좌상) + 업종별 수익 도넛 차트(좌하) + 계좌 현황(우) + 상세 분석 보기 버튼
 
 import { createProfitChart, type ProfitChartApi } from '../components/canvas-profit-chart'
+import { createSectorDonut, type SectorDonutApi, type SectorDonutRow } from '../components/canvas-sector-donut'
 import { globalSettingsManager } from '../settings'
 import { FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
@@ -23,7 +24,7 @@ const ROW_CSS = `display:flex;justify-content:space-between;padding:10px 4px;bor
 
 /* ── 모듈 변수 ── */
 let chart: ProfitChartApi | null = null
-let volumeChart: ProfitChartApi | null = null
+let donutChart: SectorDonutApi | null = null
 let accountValRefs: HTMLSpanElement[] = []
 let testAccountValRefs: HTMLSpanElement[] = []
 let holdingCountSpan: HTMLSpanElement | null = null
@@ -61,14 +62,15 @@ function renderAccountVals(): void {
   renderAccountValsShared(params)
 }
 
-/* ── volume 차트 데이터 빌드 ── */
-function buildVolumeChartData(summary: Record<string, unknown>[]): { date: string; pnl: number | null; rate: number }[] {
-  return summary.map(r => {
-    const raw = String(r.date ?? '')
-    const sellCount = Number(r.sell_count ?? 0)
-    if (sellCount === 0) return { date: raw, pnl: null, rate: 0 }
-    return { date: raw, pnl: sellCount, rate: Number(r.pnl_rate ?? 0) }
-  })
+/* ── 도넛 차트 데이터 빌드 (sellHistory → 업종별 손익 집계) ── */
+function buildSectorDonutData(sells: Record<string, unknown>[]): SectorDonutRow[] {
+  const map = new Map<string, number>()
+  for (const r of sells) {
+    const sector = String(r.sector ?? '미분류')
+    const pnl = Number(r.realized_pnl ?? 0)
+    map.set(sector, (map.get(sector) ?? 0) + pnl)
+  }
+  return Array.from(map.entries()).map(([sector, pnl]) => ({ sector, pnl }))
 }
 
 /* ── mount ── */
@@ -118,21 +120,21 @@ function mount(container: HTMLElement): void {
   Object.assign(chartContainer.style, { height: '100%' })
   chartPanel.appendChild(chartContainer)
 
-  // 좌측 하단: 일별 거래건수 + 수익률 차트
-  const volumePanel = document.createElement('div')
-  Object.assign(volumePanel.style, { flex: '1', minWidth: '0', overflow: 'hidden', padding: '0 4px' })
-  const volumeTitle = document.createElement('div')
-  Object.assign(volumeTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal, color: COLOR.down, padding: '10px 0 6px', borderBottom: '2px solid #eee', marginBottom: '8px' })
-  const volumeTitleText = document.createElement('span')
-  volumeTitleText.textContent = '일별 거래건수 + 수익률'
-  volumeTitle.appendChild(volumeTitleText)
-  volumePanel.appendChild(volumeTitle)
-  const volumeChartContainer = document.createElement('div')
-  Object.assign(volumeChartContainer.style, { height: '100%' })
-  volumePanel.appendChild(volumeChartContainer)
+  // 좌측 하단: 업종별 수익 도넛 차트
+  const donutPanel = document.createElement('div')
+  Object.assign(donutPanel.style, { flex: '1', minWidth: '0', overflow: 'hidden', padding: '0 4px' })
+  const donutTitle = document.createElement('div')
+  Object.assign(donutTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal, color: COLOR.down, padding: '10px 0 6px', borderBottom: '2px solid #eee', marginBottom: '8px' })
+  const donutTitleText = document.createElement('span')
+  donutTitleText.textContent = '업종별 수익 분포'
+  donutTitle.appendChild(donutTitleText)
+  donutPanel.appendChild(donutTitle)
+  const donutChartContainer = document.createElement('div')
+  Object.assign(donutChartContainer.style, { height: '100%' })
+  donutPanel.appendChild(donutChartContainer)
 
   leftColumn.appendChild(chartPanel)
-  leftColumn.appendChild(volumePanel)
+  leftColumn.appendChild(donutPanel)
 
   // 우측: 계좌 현황 테이블
   const accountPanel = document.createElement('div')
@@ -238,21 +240,17 @@ function mount(container: HTMLElement): void {
         const tradeMode = settings?.trade_mode || 'test'
         const data = await api.getDailySummary(from, to, tradeMode)
         chart?.updateData(buildChartFromDailySummary(data))
-        volumeChart?.updateData(buildVolumeChartData(data))
+        donutChart?.updateData(buildSectorDonutData(hotStore.getState().sellHistory))
       } catch (err) {
         console.warn('[profit-overview] daily-summary fetch failed:', err)
       }
     },
   })
 
-  // 차트 생성 — 일별 거래건수 + 수익률
-  volumeChart = createProfitChart({
-    container: volumeChartContainer,
-    data: buildVolumeChartData(hotStore.getState().dailySummary),
-    mode: 'volume',
-    onBarClick: () => {
-      location.hash = '#/profit-detail'
-    },
+  // 차트 생성 — 업종별 수익 도넛
+  donutChart = createSectorDonut({
+    container: donutChartContainer,
+    data: buildSectorDonutData(hotStore.getState().sellHistory),
   })
 
   // 초기 데이터 반영
@@ -316,7 +314,7 @@ function mount(container: HTMLElement): void {
         const settings = globalSettingsManager.getSettings()
         const tradeModeChanged = settings?.trade_mode !== prevTradeMode
         chart?.updateData(buildChartFromDailySummary(latest.dailySummary))
-        volumeChart?.updateData(buildVolumeChartData(latest.dailySummary))
+        donutChart?.updateData(buildSectorDonutData(latest.sellHistory))
         if (tradeModeChanged) {
           prevTradeMode = settings?.trade_mode
           const isTest = settings?.trade_mode === 'test'
@@ -344,7 +342,7 @@ function unmount(): void {
   _dirtyChart = false
   if (unsubStore) { unsubStore(); unsubStore = null }
   if (chart) { chart.destroy(); chart = null }
-  if (volumeChart) { volumeChart.destroy(); volumeChart = null }
+  if (donutChart) { donutChart.destroy(); donutChart = null }
   accountValRefs = []
   testAccountValRefs = []
   holdingCountSpan = null

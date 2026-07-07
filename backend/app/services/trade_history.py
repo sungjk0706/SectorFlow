@@ -41,10 +41,13 @@ async def _ensure_loaded() -> None:
         from backend.app.db.database import get_db_connection
         conn = await get_db_connection()
         async with conn.execute(
-            "SELECT ts, date, time, side, stk_cd, stk_nm, price, qty,"
-            " total_amt, fee, tax, avg_buy_price, buy_total_amt,"
-            " realized_pnl, pnl_rate, reason, trade_mode"
-            " FROM trades ORDER BY ts DESC"
+            "SELECT t.ts, t.date, t.time, t.side, t.stk_cd, t.stk_nm, t.price, t.qty,"
+            " t.total_amt, t.fee, t.tax, t.avg_buy_price, t.buy_total_amt,"
+            " t.realized_pnl, t.pnl_rate, t.reason, t.trade_mode,"
+            " cs.name AS sector"
+            " FROM trades t"
+            " LEFT JOIN custom_sectors cs ON t.stk_cd = cs.stock_code"
+            " ORDER BY t.ts DESC"
         ) as cur:
             rows = await cur.fetchall()
         async with _history_lock:
@@ -299,6 +302,8 @@ async def record_sell(
     """
     await _ensure_loaded()
     now = datetime.now()
+    # sector 조회 (custom_sectors 테이블에서 단일 소스 진리)
+    sector = await _lookup_sector(stk_cd)
     # 안전장치: avg_buy_price가 0이면 유령 데이터 혼입 방지를 위해 실현손익 계산 건너뜀
     if avg_buy_price <= 0:
         logger.warning("[체결이력] 외부에서 전달된 평균매입가(avg_buy_price)가 0 이하입니다. 유령 데이터 혼입 방지를 위해 실현손익 계산을 건너뜁니다.")
@@ -333,6 +338,7 @@ async def record_sell(
         "tax": tax,
         "reason": reason,
         "trade_mode": trade_mode,
+        "sector": sector,
     }
     logger.info(
         "[체결이력] 매도 기록 -- %s(%s) %d주 @%s 실현손익=%s 수수료=%s 세금=%s %s",
@@ -343,6 +349,22 @@ async def record_sell(
     await _insert_trade(rec)
     await _broadcast_sell_append(rec)
     return rec
+
+
+async def _lookup_sector(stk_cd: str) -> str:
+    """custom_sectors 테이블에서 종목코드로 업종명 조회. 매칭 안 되면 '미분류'."""
+    try:
+        from backend.app.db.database import get_db_connection
+        conn = await get_db_connection()
+        async with conn.execute(
+            "SELECT name FROM custom_sectors WHERE stock_code = ?", (stk_cd,)
+        ) as cur:
+            row = await cur.fetchone()
+        if row:
+            return str(row["name"])
+    except Exception as e:
+        logger.warning("[체결이력] sector 조회 실패 (%s): %s", stk_cd, e)
+    return "미분류"
 
 
 # ── 조회 API ─────────────────────────────────────────────────────────────────
