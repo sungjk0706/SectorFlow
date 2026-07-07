@@ -1,25 +1,25 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 수익현황 분리 Step 2 — API 클라이언트 확장 (client.ts + trade.py)**
-  - `backend/app/web/routes/trade.py`: `/buy`, `/sell` 라우트에 `date_from`, `date_to` Query 파라미터 추가 (서비스 계층은 이미 지원)
-  - `frontend/src/api/client.ts`: `getBuyHistory`/`getSellHistory`에 `dateFrom`, `dateTo` 선택적 파라미터 추가, `URLSearchParams` 기반
-  - 계획서 오류 수정: "백엔드 변경 불필요" → 실제로는 라우트에 파라미터 누락되어 있었음
-  - 검증: `npm run typecheck` + `npm run build` 통과, `pytest test_trade_history.py` 2 passed, `py_compile` OK
+- **2026-07-07: 수익현황 분리 Step 4 — profit-detail.ts 신규 생성**
+  - `canvas-profit-chart.ts`: `height` 옵션 추가 (기본값 220, 기존 호출자 영향 없음)
+  - `profit-detail.ts` 신규 생성: 전체 너비 차트(300px) + 요약 카드 3개 + 계좌현황 + 가상 스크롤 거래내역 + 날짜 필터 input
+  - 공통 모듈 재사용: `profit-shared.ts`의 `BUY_COLS`/`SELL_COLS`/`aggregatePnl`/`renderAccountVals`/`buildChartFromDailySummary`/`DUMMY_*`
+  - hotStore 구독 + rAF 배칭 (profit-overview와 동일 패턴)
+  - 검증: `npm run typecheck` 통과, `npm run build` 통과
 
 ## 현재 상태
 - **프론트엔드**: typecheck 통과, build 통과
-- **백엔드**: py_compile OK, test_trade_history 2 passed
-- **Git**: 커밋 `c56d9ca` 푸시 완료 (origin/main)
+- **백엔드**: 변동 없음
+- **Git**: 미커밋 (승인 대기)
 - **런타임**: 미기동
 
 ## 다음 단계
-- **수익현황 분리 Step 3: 기존 profit-overview.ts 리팩터링**
-  - 계획서: `docs/profit-detail-refactor-plan.md` Step 3 참조
-  - 대상: `frontend/src/pages/profit-overview.ts`
-  - 변경: `profit-shared.ts` import로 교체, 기존 렌더링/rAF/store 구독 유지
-  - 검증: `npm run typecheck` + `npm run build` + 브라우저 `#/profit-overview` 확인
-  - 의존성: Step 1 완료 필수 (완료됨)
+- **수익현황 분리 Step 5+6: 라우팅 추가 + 사이드바 메뉴 추가**
+  - 계획서: `docs/profit-detail-refactor-plan.md` Step 5, 6 참조
+  - 대상: `frontend/src/main.ts` (라우트 등록), `frontend/src/layout/sidebar.ts` (메뉴 추가)
+  - 검증: `npm run typecheck` + `npm run build` + 브라우저 `#/profit-detail` 접근 확인
+  - 의존성: Step 4 완료 필수 (완료됨)
 
 ## 미해결 문제
 - 없음
