@@ -1,23 +1,24 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 수익현황 차트 단위/수익률 표시 일관성 통일**
-  - `canvas-sector-donut.ts`: `formatWon` 제거 → `fmtWon` 통일 (SSOT), `SectorDonutRow`에 `rate`, `buyTotal` 추가, 중앙 라벨 "총 손익" → "누적 손익" + 누적 수익률 표시, 범례/툴팁에 수익률 추가
-  - `canvas-profit-chart.ts`: 툴팁 금액 포맷을 `fmtWon`으로 통일 (Y축은 만/억 약식 유지)
-  - `profit-shared.ts`: `SectorPnlGroup`에 `rate` 추가, `buildSectorStockPnl`에서 업종별 수익률 계산
-  - `profit-overview.ts`: `buildSectorDonutData`에 `rate`, `buyTotal` 계산 추가, 업종 헤더에 수익률 표시
-  - 검증: npm run build 성공 (56 modules, 0 errors)
+- **2026-07-07: 종목상세 페이지 Step 2-3 — Frontend API 클라이언트 + 페이지 컴포넌트**
+  - `frontend/src/api/client.ts`: `getStockDetail5d` 함수 추가
+  - `frontend/src/pages/stock-detail.ts` (신규): 12컬럼 테이블, 검색 하이라이트/dim, PageModule 구현
+  - `docs/stock-detail-page-plan.md` (신규): 구현 계획서
+  - 검증: `npm run build` 통과 (56 modules, 0 errors)
+  - Git: `b5d5671` 커밋 (push 미수행)
 
 ## 현재 상태
-- **프론트엔드**: build 통과 (56 modules, 5.48s)
-- **Git**: `0d9f002` push 완료 (origin/main)
+- **백엔드**: stock_detail 라우터 추가 완료 (Step 1)
+- **프론트엔드**: API 클라이언트 + 페이지 컴포넌트 완료 (Step 2-3), build 통과
+- **Git**: `b5d5671` 커밋 — push 미수행
 
 ## 다음 단계
-- **종목상세 페이지 신규 구현** (계획서: `docs/stock-detail-page-plan.md`)
-  - Step 1: Backend API 엔드포인트 추가 (`stock_5d_array` + `master_stocks_table` JOIN 조회)
-  - Step 2: Frontend API 클라이언트 함수 추가
-  - Step 3: Frontend 페이지 컴포넌트 추가 (`createDataTable` 기반 12컬럼 테이블)
-  - Step 4: 라우트 + 사이드바 등록
+- **종목상세 페이지 Step 4: 라우트 + 사이드바 등록** (계획서: `docs/stock-detail-page-plan.md:162-183`)
+  - `frontend/src/main.ts`: routes 배열에 `#/stock-detail` 항목 추가 (`#/stock-classification` 뒤, `#/general-settings` 앞)
+  - `frontend/src/layout/sidebar.ts`: MENU 배열에 `종목상세` 항목 추가 (separator 포함)
+  - 검증: `npm run build` + 브라우저 사이드바 메뉴 표시 확인
+  - 완료 후 `git push` 수행 필요 (미push 커밋 `b5d5671` 포함)
 
 ## 미해결 문제
 - 없음
