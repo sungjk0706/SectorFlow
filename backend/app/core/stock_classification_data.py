@@ -77,7 +77,7 @@ async def rename_sector(old_name: str, new_name: str) -> None:
         from backend.app.services.engine_state import state
         for cd, entry in state.master_stocks_cache.items():
             if entry.get("sector") == old_name:
-                entry["sector"] = new_name
+                update_sector_in_cache(cd, new_name)
     except Exception as e:
         _log.warning("[메모리업데이트] 인메모리 업종명 변경 실패: %s", e)
 
@@ -128,7 +128,7 @@ async def delete_sector(name: str) -> None:
         from backend.app.services.engine_state import state
         for cd, entry in state.master_stocks_cache.items():
             if entry.get("sector") == name:
-                entry["sector"] = "미분류"
+                update_sector_in_cache(cd, "미분류")
     except Exception as e:
         _log.warning("[메모리업데이트] 인메모리 업종 삭제 반영 실패: %s", e)
 

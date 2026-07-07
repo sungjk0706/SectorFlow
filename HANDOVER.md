@@ -1,21 +1,19 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-08: sector 캐시 캡슐화 Step 1-2 완료**
-  - `stock_classification_data.py`: `update_sector_in_cache()` 단일 진입점 추가 (`:35-48`)
-  - `move_stock()` 캐시 직접 쓰기 → `update_sector_in_cache()` 호출로 교체 (`:162-166`)
-  - 커밋: `1574f08`
-  - 검증: py_compile OK, pytest 1023 passed
+- **2026-07-08: sector 캐시 캡슐화 Step 3 완료**
+  - `stock_classification_data.py`: `rename_sector()` 캐시 직접 쓰기 → `update_sector_in_cache()` 호출로 교체 (`:80`)
+  - `delete_sector()` 캐시 직접 쓰기 → `update_sector_in_cache()` 호출로 교체 (`:131`)
+  - 검증: py_compile OK, pytest 1023 passed, 잔여 직접 쓰기 0건 (Step 4 대상 2건 제외)
 
 ## 현재 상태
-- **백엔드**: `stock_classification_data.py` 2곳 수정 완료 (Step 1-2)
+- **백엔드**: `stock_classification_data.py` 4곳 수정 완료 (Step 1-3)
 - **프론트엔드**: 변경 없음
-- **Git**: `1574f08` 커밋 완료, push 대기
+- **Git**: `c53a929` 커밋 완료, push 대기
 
 ## 다음 단계
-- **sector 캐시 캡슐화 Step 3**: `rename_sector()` + `delete_sector()` 캡슐화 적용 (loop)
-  - 계획서: `docs/sector-cache-encapsulation-plan.md` Step 3 참조
 - **sector 캐시 캡슐화 Step 4**: `sync_sector_from_custom_sectors()` 캡슐화 적용 (loop)
+  - 계획서: `docs/sector-cache-encapsulation-plan.md` Step 4 참조
 - **sector 캐시 캡슐화 Step 5**: 빌드 검증 + 테스트 + 브라우저 확인
 
 ## 미해결 문제
