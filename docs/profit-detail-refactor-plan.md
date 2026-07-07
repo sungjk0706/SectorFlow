@@ -34,11 +34,11 @@
 | Step 2 | API 클라이언트 확장 (client.ts + trade.py) | 완료 | 세션 2 |
 | Step 3 | 기존 profit-overview.ts 리팩터링 (import 교체) | 완료 | 세션 1 |
 | Step 4 | profit-detail.ts 신규 생성 (초안) | 완료 | 세션 2 |
-| Step 4-a | profit-detail.ts 구조 수정 (요약카드/계좌 제거, 드릴다운/종목필터/통계 추가) | 진행 중 | 세션 3 |
-| Step 4-b | profit-overview.ts 구조 수정 (거래내역/드릴다운 제거, 상세보기 버튼 추가) | 대기 | 세션 3 |
-| Step 5 | 라우팅 추가 (main.ts) | 대기 | 세션 4 |
-| Step 6 | 사이드바 메뉴 추가 (sidebar.ts) | 대기 | 세션 4 |
-| Step 7 | 요약 페이지 이동 버튼 + 차트 클릭 시 detail 이동 | 대기 | 세션 4 |
+| Step 4-a | profit-detail.ts 구조 수정 (요약카드/계좌 제거, 드릴다운/종목필터/통계 추가) | 완료 | 세션 3 |
+| Step 4-b | profit-overview.ts 구조 수정 (거래내역/드릴다운 제거, 상세보기 버튼 추가) | 완료 | 세션 3 |
+| Step 5 | 라우팅 추가 (main.ts) | 완료 | 세션 4 |
+| Step 6 | 사이드바 메뉴 추가 (sidebar.ts) | 완료 | 세션 4 |
+| Step 7 | 요약 페이지 이동 버튼 + 차트 클릭 시 detail 이동 | 완료 | 세션 4 |
 
 ---
 
@@ -181,8 +181,8 @@
 |------|------|------|------|------|
 | 세션 1 | Step 1 + 3 | 공통 모듈 분리 + import 교체 | typecheck + build | 완료 |
 | 세션 2 | Step 2 + 4 | API 확장 + detail 초안 생성 | typecheck + build | 완료 |
-| 세션 3 | Step 4-a + 4-b | 페이지 역할 분리 수정 | typecheck + build + 브라우저 | 사용자 승인 |
-| 세션 4 | Step 5 + 6 + 7 | 라우팅 + 사이드바 + 이동 연결 | 브라우저 확인 | 사용자 승인 |
+| 세션 3 | Step 4-a + 4-b | 페이지 역할 분리 수정 | typecheck + build + 브라우저 | 완료 |
+| 세션 4 | Step 5 + 6 + 7 | 라우팅 + 사이드바 + 이동 연결 | 브라우저 확인 | 완료 |
 
 ---
 

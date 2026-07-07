@@ -1,18 +1,15 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 수익 페이지 역할 분리 — overview 요약/대시보드, detail 상세/분석**
-  - `profit-overview.ts`: 거래내역 테이블, 드릴다운, 탭 버튼 제거, "상세 분석 보기 →" 버튼 추가
-  - `profit-detail.ts`: 요약카드, 계좌현황 제거, 드릴다운/종목필터/통계 추가
-  - `main.ts`: `#/profit-detail` 라우트 등록
-  - `sidebar.ts`: 수익상세 메뉴 추가
-  - 검증: `tsc --noEmit` 통과, `npm run build` 통과
-  - Git: `2dc0b83` 커밋 및 push 완료
+- **2026-07-07: 수익 페이지 리팩터링 누락분 보완 — 요약카드 클릭 → detail 이동**
+  - `profit-overview.ts`: 요약카드 3개(당일/당월/누적)에 `cursor:pointer` + click 이벤트 추가 → `#/profit-detail` 이동
+  - 계획서(`profit-detail-refactor-plan.md`) 상태표 전체 완료로 업데이트
+  - 검증: `npm run build` (tsc + vite) 통과
 
 ## 현재 상태
 - **프론트엔드**: typecheck 통과, build 통과
 - **백엔드**: 변동 없음
-- **Git**: `2dc0b83` push 완료 (origin/main)
+- **Git**: `b5ea10d` push 완료 (origin/main)
 - **런타임**: 미기동
 
 ## 다음 단계
