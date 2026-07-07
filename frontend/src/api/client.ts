@@ -164,4 +164,23 @@ export const api = {
 
   getDailySummary: (from: string, to: string, tradeMode: string) =>
     request<Record<string, unknown>[]>(`/api/trade-history/daily-summary?date_from=${from}&date_to=${to}&trade_mode=${tradeMode}`),
+
+  getStockDetail5d: () =>
+    request<{
+      date: string;
+      items: Array<{
+        code: string;
+        name: string;
+        day1_amount: number | null;
+        day2_amount: number | null;
+        day3_amount: number | null;
+        day4_amount: number | null;
+        day5_amount: number | null;
+        day1_high: number | null;
+        day2_high: number | null;
+        day3_high: number | null;
+        day4_high: number | null;
+        day5_high: number | null;
+      }>;
+    }>('/api/stock-detail/5d-array'),
 };
