@@ -2,30 +2,29 @@
 // 수익 상세 페이지 — Vanilla TS PageModule
 // 차트(크게) + 드릴다운 + 날짜/종목 필터 + 전체 거래내역(가상 스크롤) + 통계 정보
 
-import { createProfitChart, type ProfitChartApi } from '../components/canvas-profit-chart'
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
-import { globalSettingsManager } from '../settings'
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import { hotStore } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
-import { api } from '../api/client'
 import {
   BUY_COLS,
   SELL_COLS,
   DUMMY_BUY,
   DUMMY_SELL,
   type DailyDrilldownRow,
+  type SummaryCardEls,
   getLocalToday,
   buildMonthlyDrilldown,
-  buildChartFromDailySummary,
   createDrilldownCols,
+  createSummaryCards,
+  updateSummaryCards,
 } from './profit-shared'
 
 /* ── 모듈 변수 ── */
 type LowerTab = 'buy' | 'sell'
 
-let chart: ProfitChartApi | null = null
+let summaryCardEls: SummaryCardEls | null = null
 let buyHistory: Record<string, unknown>[] = []
 let sellHistory: Record<string, unknown>[] = []
 let activeTab: LowerTab = 'sell'
@@ -43,7 +42,7 @@ let dummyMsg: HTMLDivElement | null = null
 let unsubStore: (() => void) | null = null
 
 /* ── 드릴다운 상태 ── */
-let drilldownActive = false
+let drilldownActive = true
 let drilldownTable: DataTableApi<DailyDrilldownRow> | null = null
 let drilldownCols: ColumnDef<DailyDrilldownRow>[] = []
 let tabRow: HTMLDivElement | null = null
@@ -60,7 +59,7 @@ let statAvgRateEl: HTMLSpanElement | null = null
 let _rafId: number | null = null
 let _mounted = false
 let _dirtyHistory = false
-let _dirtyChart = false
+let _dirtySummary = false
 let _dirtySectorStocks = false
 
 /* ── 탭 버튼 스타일 ── */
@@ -139,6 +138,19 @@ function filterByDate(date: string): void {
 
   if (dateFromInput) dateFromInput.value = date
   if (dateToInput) dateToInput.value = date
+
+  if (tabRow) tabRow.style.display = 'flex'
+
+  showTable()
+  updateTabLabels()
+}
+
+/* ── 날짜 범위 필터 ── */
+function filterByDateRange(from: string, to: string): void {
+  drilldownActive = false
+
+  if (dateFromInput) dateFromInput.value = from
+  if (dateToInput) dateToInput.value = to
 
   if (tabRow) tabRow.style.display = 'flex'
 
@@ -238,35 +250,34 @@ function mount(container: HTMLElement): void {
   buyHistory = []
   sellHistory = []
   activeTab = 'sell'
-  drilldownActive = false
+  drilldownActive = true
 
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
   root.appendChild(createCardTitle('수익 상세'))
 
-  const settings = globalSettingsManager.getSettings()
-  const isTestMode = settings?.trade_mode === 'test'
+  /* ── 상단: 요약 카드 3개 ── */
+  const todayStr = getLocalToday()
+  const monthStart = todayStr.slice(0, 8) + '01'
+  const monthEnd = todayStr.slice(0, 8) + '31'
 
-  /* ── 상단: 전체 너비 차트 (300px) ── */
-  const chartPanel = document.createElement('div')
-  Object.assign(chartPanel.style, { flex: 'none', borderBottom: '1px solid #ddd', overflow: 'hidden', padding: '0 4px' })
+  const summaryRow = document.createElement('div')
+  Object.assign(summaryRow.style, { display: 'flex', gap: '8px', padding: '8px 4px', flex: 'none', borderBottom: '1px solid #ddd' })
 
-  const chartTitle = document.createElement('div')
-  Object.assign(chartTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal, color: COLOR.down, padding: '10px 0 6px', borderBottom: '2px solid #eee', marginBottom: '8px' })
-  const chartTitleText = document.createElement('span')
-  chartTitleText.textContent = '일별 수익률'
-  const retentionLabel = document.createElement('span')
-  Object.assign(retentionLabel.style, { fontSize: '11px', color: COLOR.disabled, fontWeight: 'normal' })
-  retentionLabel.textContent = isTestMode ? '최근 60거래일 데이터' : '최근 5거래일 데이터'
-  chartTitle.appendChild(chartTitleText)
-  chartTitle.appendChild(retentionLabel)
-  chartPanel.appendChild(chartTitle)
+  summaryCardEls = createSummaryCards(summaryRow, {
+    onTodayClick: () => filterByDate(todayStr),
+    onMonthClick: () => filterByDateRange(monthStart, monthEnd),
+    onTotalClick: () => {
+      if (dateFromInput) dateFromInput.value = ''
+      if (dateToInput) dateToInput.value = ''
+      drilldownActive = false
+      showTable()
+      updateTabLabels()
+    },
+  })
 
-  const chartContainer = document.createElement('div')
-  chartPanel.appendChild(chartContainer)
-
-  root.appendChild(chartPanel)
+  root.appendChild(summaryRow)
 
   /* ── 하단: 필터 + 드릴다운/거래내역 + 통계 ── */
   const lower = document.createElement('div')
@@ -283,8 +294,6 @@ function mount(container: HTMLElement): void {
 
   dateFromInput = document.createElement('input')
   dateFromInput.type = 'date'
-  const todayStr = getLocalToday()
-  const monthStart = todayStr.slice(0, 8) + '01'
   dateFromInput.value = monthStart
   Object.assign(dateFromInput.style, { padding: '2px 4px', fontSize: FONT_SIZE.label, border: '1px solid #eee', borderRadius: '4px', color: COLOR.code })
   filterRow.appendChild(dateFromInput)
@@ -432,51 +441,29 @@ function mount(container: HTMLElement): void {
   dateFromInput.addEventListener('change', () => { showTable(); updateTabLabels() })
   dateToInput.addEventListener('change', () => { showTable(); updateTabLabels() })
 
-  // 차트 생성
-  chart = createProfitChart({
-    container: chartContainer,
-    height: 300,
-    data: buildChartFromDailySummary(hotStore.getState().dailySummary),
-    onBarClick: (date: string) => {
-      if (dateFromInput) dateFromInput.value = date
-      if (dateToInput) dateToInput.value = date
-      drilldownActive = false
-      showTable()
-      updateTabLabels()
-    },
-    onDateRangeChange: async (from: string, to: string) => {
-      try {
-        const settings = globalSettingsManager.getSettings()
-        const tradeMode = settings?.trade_mode || 'test'
-        const data = await api.getDailySummary(from, to, tradeMode)
-        chart?.updateData(buildChartFromDailySummary(data))
-      } catch (err) {
-        console.warn('[profit-detail] daily-summary fetch failed:', err)
-      }
-    },
-  })
-
   // 초기 데이터 반영
   const initState = hotStore.getState()
   sellHistory = initState.sellHistory
   buyHistory = initState.buyHistory
   updateTabLabels()
-  showTable()
+  showDrilldown()
+  if (summaryCardEls) {
+    updateSummaryCards(sellHistory, initState.dailySummary, summaryCardEls)
+  }
 
   // hotStore 구독 — rAF 배칭 + selective update
   let prevSellRef = initState.sellHistory
   let prevBuyRef = initState.buyHistory
   let prevDailySummaryRef = initState.dailySummary
-  let prevTradeMode = globalSettingsManager.getSettings()?.trade_mode
   let prevSectorStocksRef = initState.sectorStocks
   _mounted = true
 
   unsubStore = hotStore.subscribe((curr) => {
     const historyChanged = curr.sellHistory !== prevSellRef || curr.buyHistory !== prevBuyRef
-    const chartChanged = curr.dailySummary !== prevDailySummaryRef || globalSettingsManager.getSettings()?.trade_mode !== prevTradeMode
+    const summaryChanged = curr.dailySummary !== prevDailySummaryRef
     const sectorStocksChanged = curr.sectorStocks !== prevSectorStocksRef
 
-    if (!historyChanged && !chartChanged && !sectorStocksChanged) return
+    if (!historyChanged && !summaryChanged && !sectorStocksChanged) return
 
     if (historyChanged) {
       prevSellRef = curr.sellHistory
@@ -485,10 +472,9 @@ function mount(container: HTMLElement): void {
       buyHistory = curr.buyHistory
       _dirtyHistory = true
     }
-    if (chartChanged) {
+    if (summaryChanged) {
       prevDailySummaryRef = curr.dailySummary
-      prevTradeMode = globalSettingsManager.getSettings()?.trade_mode
-      _dirtyChart = true
+      _dirtySummary = true
     }
     if (sectorStocksChanged) {
       prevSectorStocksRef = curr.sectorStocks
@@ -509,18 +495,15 @@ function mount(container: HTMLElement): void {
           showTable()
         }
         updateTabLabels()
+        if (summaryCardEls) {
+          updateSummaryCards(sellHistory, hotStore.getState().dailySummary, summaryCardEls)
+        }
       }
 
-      if (_dirtyChart) {
-        _dirtyChart = false
-        const latest = hotStore.getState()
-        const settings = globalSettingsManager.getSettings()
-        const tradeModeChanged = settings?.trade_mode !== prevTradeMode
-        chart?.updateData(buildChartFromDailySummary(latest.dailySummary))
-        if (tradeModeChanged) {
-          prevTradeMode = settings?.trade_mode
-          const isTest = settings?.trade_mode === 'test'
-          retentionLabel.textContent = isTest ? '최근 60거래일 데이터' : '최근 5거래일 데이터'
+      if (_dirtySummary) {
+        _dirtySummary = false
+        if (summaryCardEls) {
+          updateSummaryCards(sellHistory, hotStore.getState().dailySummary, summaryCardEls)
         }
       }
 
@@ -542,10 +525,9 @@ function unmount(): void {
   notifyPageInactive('profit-detail')
   if (_rafId !== null) { cancelAnimationFrame(_rafId); _rafId = null }
   _dirtyHistory = false
-  _dirtyChart = false
+  _dirtySummary = false
   _dirtySectorStocks = false
   if (unsubStore) { unsubStore(); unsubStore = null }
-  if (chart) { chart.destroy(); chart = null }
   if (sellTable) { sellTable.destroy(); sellTable = null }
   if (buyTable) { buyTable.destroy(); buyTable = null }
   if (drilldownTable) { drilldownTable.destroy(); drilldownTable = null }
@@ -569,6 +551,7 @@ function unmount(): void {
   statPnlEl = null
   statWinRateEl = null
   statAvgRateEl = null
+  summaryCardEls = null
 }
 
 export default { mount, unmount }
