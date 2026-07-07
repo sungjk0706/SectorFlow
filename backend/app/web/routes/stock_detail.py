@@ -30,7 +30,9 @@ async def get_stock_detail_5d_array(_: str = Depends(get_current_user)):
             a.date,
             a.day1_amount, a.day2_amount, a.day3_amount, a.day4_amount, a.day5_amount,
             a.day1_high,   a.day2_high,   a.day3_high,   a.day4_high,   a.day5_high,
-            m.name
+            m.name,
+            m.market AS market_type,
+            m.nxt_enable
         FROM stock_5d_array a
         LEFT JOIN master_stocks_table m ON a.code = m.code
         ORDER BY a.code
@@ -47,6 +49,8 @@ async def get_stock_detail_5d_array(_: str = Depends(get_current_user)):
             {
                 "code": row["code"],
                 "name": row["name"] or "",
+                "market_type": row["market_type"] if row["market_type"] is not None else "",
+                "nxt_enable": bool(row["nxt_enable"] or 0),
                 "day1_amount": row["day1_amount"],
                 "day2_amount": row["day2_amount"],
                 "day3_amount": row["day3_amount"],
