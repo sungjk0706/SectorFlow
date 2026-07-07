@@ -78,10 +78,12 @@ def fresh_state():
 
 @pytest.fixture
 def reset_cash_gate():
-    """_cash_insufficient 플래그 초기화."""
+    """_cash_insufficient 플래그 및 스냅샷 초기화."""
     buy_order_executor._cash_insufficient = False
+    buy_order_executor._last_global_snapshot = None
     yield
     buy_order_executor._cash_insufficient = False
+    buy_order_executor._last_global_snapshot = None
 
 
 # ── 조기 반환 게이트 ───────────────────────────────────────────────────────────
@@ -367,3 +369,147 @@ class TestBuyExecution:
             await evaluate_buy_candidates()
         # Only 1 call (first target), then break
         assert fresh_state.auto_trade.execute_buy.await_count == 1
+
+
+# ── 전역 조건 스냅샷 캐싱 ──────────────────────────────────────────────────────
+
+class TestGlobalSnapshotCache:
+    """전역 조건 스냅샷: 조건 변화 없으면 매수 시도 스킵, 무효화 시 재허용."""
+
+    @pytest.mark.asyncio
+    async def test_second_call_with_same_conditions_skipped(self, fresh_state, reset_cash_gate):
+        """동일 전역 조건으로 두 번째 호출 시 execute_buy 호출되지 않음."""
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=False)
+        patches = [
+            patch("backend.app.services.engine_state.state", fresh_state),
+            patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True),
+            patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True),
+            patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                  return_value=[]),
+            patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
+            patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False),
+            patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            # 1차 호출 — 매수 시도 발생 (execute_buy 반환 False = 차단)
+            await evaluate_buy_candidates()
+            assert fresh_state.auto_trade.execute_buy.await_count == 1
+
+            # execute_buy mock 리셋
+            fresh_state.auto_trade.execute_buy.reset_mock()
+
+            # 2차 호출 — 동일 조건 → 스킵
+            await evaluate_buy_candidates()
+            assert fresh_state.auto_trade.execute_buy.await_count == 0
+        finally:
+            for p in patches:
+                p.stop()
+
+    @pytest.mark.asyncio
+    async def test_invalidate_allows_re_evaluation(self, fresh_state, reset_cash_gate):
+        """invalidate_buy_snapshot 호출 후에는 매수 재시도 허용."""
+        patches = [
+            patch("backend.app.services.engine_state.state", fresh_state),
+            patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True),
+            patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True),
+            patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                  return_value=[]),
+            patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
+            patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False),
+            patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            # 1차 호출 — 매수 시도
+            await evaluate_buy_candidates()
+            assert fresh_state.auto_trade.execute_buy.await_count == 1
+
+            fresh_state.auto_trade.execute_buy.reset_mock()
+
+            # 스냅샷 무효화
+            buy_order_executor.invalidate_buy_snapshot()
+
+            # 2차 호출 — 무효화 후 재허용
+            await evaluate_buy_candidates()
+            assert fresh_state.auto_trade.execute_buy.await_count == 1
+        finally:
+            for p in patches:
+                p.stop()
+
+    @pytest.mark.asyncio
+    async def test_different_top_code_allows_re_evaluation(self, fresh_state, reset_cash_gate):
+        """1순위 종목이 변경되면 스냅샷이 달라져 매수 재시도 허용."""
+        s1 = _stock(code="A001")
+        fresh_state.sector_summary_cache = _sector_summary(
+            stocks=[s1],
+            buy_targets=[BuyTarget(rank=1, sector_rank=1, stock=s1)],
+        )
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=True)
+        patches = [
+            patch("backend.app.services.engine_state.state", fresh_state),
+            patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True),
+            patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True),
+            patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                  return_value=[]),
+            patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
+            patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False),
+            patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            # 1차 호출 — A001 매수 시도
+            await evaluate_buy_candidates()
+            assert fresh_state.auto_trade.execute_buy.await_count == 1
+
+            fresh_state.auto_trade.execute_buy.reset_mock()
+
+            # 1순위 종목 변경: A001 → A002
+            s2 = _stock(code="A002")
+            fresh_state.sector_summary_cache = _sector_summary(
+                stocks=[s2],
+                buy_targets=[BuyTarget(rank=1, sector_rank=1, stock=s2)],
+            )
+
+            # 2차 호출 — top_code 변경 → 스냅샷 상이 → 매수 시도
+            await evaluate_buy_candidates()
+            assert fresh_state.auto_trade.execute_buy.await_count == 1
+        finally:
+            for p in patches:
+                p.stop()
+
+    @pytest.mark.asyncio
+    async def test_successful_buy_invalidates_snapshot(self, fresh_state, reset_cash_gate):
+        """매수 성공 후 스냅샷이 무효화되어 다음 호출 시 재시도 허용."""
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=True)
+        patches = [
+            patch("backend.app.services.engine_state.state", fresh_state),
+            patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True),
+            patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True),
+            patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                  return_value=[]),
+            patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
+            patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False),
+            patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            # 1차 호출 — 매수 성공
+            await evaluate_buy_candidates()
+            assert fresh_state.auto_trade.execute_buy.await_count == 1
+
+            # 매수 성공 후 스냅샷이 무효화되었는지 확인
+            assert buy_order_executor._last_global_snapshot is None
+
+            fresh_state.auto_trade.execute_buy.reset_mock()
+
+            # 2차 호출 — 스냅샷 무효화 상태 → 재시도
+            await evaluate_buy_candidates()
+            assert fresh_state.auto_trade.execute_buy.await_count == 1
+        finally:
+            for p in patches:
+                p.stop()

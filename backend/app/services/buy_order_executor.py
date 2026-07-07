@@ -15,6 +15,15 @@ logger = get_logger("engine_lifecycle")
 # 매도 체결 / 잔고 업데이트 이벤트에서 해제 후 재호출.
 _cash_insufficient: bool = False
 
+# ── 전역 조건 스냅샷: 조건 변화 없으면 매수 시도 스킵 (원칙 11 이벤트 기반) ──
+_last_global_snapshot: dict | None = None
+
+
+def invalidate_buy_snapshot() -> None:
+    """전역 조건 스냅샷 무효화 — 매수 성공/설정 변경/잔고 회복 시 호출."""
+    global _last_global_snapshot
+    _last_global_snapshot = None
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 섹터 매수 실행 함수
@@ -62,6 +71,7 @@ async def evaluate_buy_candidates() -> None:
 
     _max_daily = int(state.integrated_system_settings_cache["max_daily_total_buy_amt"])
     _max_daily_on = bool(state.integrated_system_settings_cache.get("max_daily_total_buy_on", False))
+    _daily_remain: int | None = None
     if _max_daily_on and _max_daily > 0:
         _daily_remain = _max_daily - state.auto_trade._daily_buy_spent
         if _daily_remain <= 0:
@@ -74,7 +84,7 @@ async def evaluate_buy_candidates() -> None:
     else:
         from backend.app.services.risk_manager import get_risk_manager
         _available = get_risk_manager().account_manager.get_withdrawable_deposit()
-    if _max_daily > 0:
+    if _max_daily_on and _max_daily > 0 and _daily_remain is not None:
         _effective_buy_amt = min(_buy_amt, _daily_remain)
     else:
         _effective_buy_amt = _buy_amt
@@ -93,9 +103,41 @@ async def evaluate_buy_candidates() -> None:
             if _now_check - state._last_global_buy_ts < _buy_interval_min * 60:
                 return
 
-    # ── 1순위 종목만 매수 시도 ───────────────────────────────────────
+    # ── 전역 조건 스냅샷: 변화 없으면 매수 시도 스킵 (원칙 11 이벤트 기반) ──
     _after_hours = is_krx_after_hours()
+    _rebuy_block_on = bool(state.integrated_system_settings_cache.get("rebuy_block_on", True))
 
+    _top_code: str | None = None
+    _top_rebuy_blocked = False
+    for bt in ss.buy_targets:
+        s = bt.stock
+        if not s.guard_pass:
+            continue
+        if _after_hours and not is_nxt_enabled(s.code):
+            continue
+        if _rebuy_block_on and s.code in state.auto_trade._bought_today:
+            _top_code = s.code
+            _top_rebuy_blocked = True
+            break
+        _top_code = s.code
+        break
+
+    _current_snapshot = {
+        "top_code": _top_code,
+        "holding_cnt": _holding_cnt,
+        "daily_remain": _daily_remain if (_max_daily_on and _max_daily > 0) else None,
+        "buy_amt": _buy_amt,
+        "max_limit": _max_limit,
+        "available_cash": _available,
+        "rebuy_blocked": _top_rebuy_blocked,
+    }
+
+    global _last_global_snapshot
+    if _current_snapshot == _last_global_snapshot:
+        return
+    _last_global_snapshot = _current_snapshot
+
+    # ── 1순위 종목만 매수 시도 ───────────────────────────────────────
     for bt in ss.buy_targets:
         s = bt.stock
         if not s.guard_pass:
@@ -105,7 +147,6 @@ async def evaluate_buy_candidates() -> None:
             continue
 
         # 재매수 차단 사전 체크 — execute_buy 불필요 호출 + 로그 노이즈 제거
-        _rebuy_block_on = bool(state.integrated_system_settings_cache.get("rebuy_block_on", True))
         if _rebuy_block_on and s.code in state.auto_trade._bought_today:
             continue
 
@@ -122,6 +163,7 @@ async def evaluate_buy_candidates() -> None:
             )
             if _ordered:
                 logger.info("[매매] 매수 주문 전송: %s(%s)", s.name, s.code)
+                invalidate_buy_snapshot()
                 if _buy_interval_on:
                     state._last_global_buy_ts = time.time()
                 _holding_cnt += 1

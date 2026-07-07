@@ -203,3 +203,10 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         except Exception:
             logger.warning("[설정] 텔레그램 폴링 토글 실패", exc_info=True)
 
+    # ── 매수 조건 스냅샷 무효화 — 설정 변경 시 매수 재평가 허용 ──
+    try:
+        from backend.app.services.buy_order_executor import invalidate_buy_snapshot
+        invalidate_buy_snapshot()
+    except Exception:
+        pass
+

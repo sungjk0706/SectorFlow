@@ -413,8 +413,9 @@ async def _apply_balance_realtime(item: dict, vals: dict) -> None:
 
     # ── State Gate 회복: 실전모드 잔고 업데이트 시 매수 재평가 ──
     try:
-        from backend.app.services.buy_order_executor import _cash_insufficient, evaluate_buy_candidates
+        from backend.app.services.buy_order_executor import _cash_insufficient, evaluate_buy_candidates, invalidate_buy_snapshot
         if _cash_insufficient:
+            invalidate_buy_snapshot()
             await evaluate_buy_candidates()
     except Exception:
         pass
