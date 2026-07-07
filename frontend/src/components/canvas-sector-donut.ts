@@ -31,15 +31,32 @@ export interface SectorDonutApi {
 
 const PADDING = 20
 
-// 도넛 색상 팔레트 — 수익/손실 계열
-const PROFIT_COLORS = [
+// 도넛 색상 팔레트 — 수익/손실 계열 (외부 재사용을 위해 export)
+export const PROFIT_COLORS = [
   '#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5',
   '#2196f3', '#00bcd4', '#009688', '#4caf50', '#8bc34a',
 ]
-const LOSS_COLORS = [
+export const LOSS_COLORS = [
   '#1e88e5', '#03a9f4', '#00acc1', '#5c6bc0', '#7986cb',
   '#42a5f5', '#26c6da', '#66bb6a', '#9ccc65', '#80cbc4',
 ]
+
+// ── 색상 할당 공유 함수 ────────────────────────────────────
+// 도넛 차트와 종목 리스트가 동일한 색상 매핑을 사용하도록 분리
+// 입력: 절대값 내림차순 정렬된 SectorDonutRow[]
+// 출력: sector → color 맵
+export function assignSectorColors(rows: SectorDonutRow[]): Map<string, string> {
+  const colorMap = new Map<string, string>()
+  let profitIdx = 0
+  let lossIdx = 0
+  for (const r of rows) {
+    const isProfit = r.pnl >= 0
+    const palette = isProfit ? PROFIT_COLORS : LOSS_COLORS
+    const color = palette[isProfit ? profitIdx++ : lossIdx++ % palette.length]
+    colorMap.set(r.sector, color)
+  }
+  return colorMap
+}
 
 // ── 유틸 ────────────────────────────────────────────────────
 
@@ -138,15 +155,9 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
     const totalAbs = processed.reduce((s, r) => s + Math.abs(r.pnl), 0)
     if (totalAbs === 0) return
 
-    // 세그먼트 색상 할당
-    let profitIdx = 0
-    let lossIdx = 0
-    const segments = processed.map((r) => {
-      const isProfit = r.pnl >= 0
-      const palette = isProfit ? PROFIT_COLORS : LOSS_COLORS
-      const color = palette[isProfit ? profitIdx++ : lossIdx++ % palette.length]
-      return { row: r, color }
-    })
+    // 세그먼트 색상 할당 (공유 함수 사용)
+    const colorMap = assignSectorColors(processed)
+    const segments = processed.map((r) => ({ row: r, color: colorMap.get(r.sector) ?? '#999' }))
     currentSegments = segments
 
     // 도넛 세그먼트 그리기
