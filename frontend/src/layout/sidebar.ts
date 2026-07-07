@@ -8,6 +8,7 @@ const MENU = [
   { path: '#/buy-settings', label: '매수설정', icon: '💰' },
   { path: '#/sell-settings', label: '매도설정', icon: '📉' },
   { path: '#/profit-overview', label: '수익현황', icon: '📈' },
+  { path: '#/profit-detail', label: '수익상세', icon: '📋' },
   { path: '#/stock-classification', label: '종목분류', icon: '🏷️', separator: true },
   { path: '#/general-settings', label: '일반설정', icon: '⚙️' },
 ] as const

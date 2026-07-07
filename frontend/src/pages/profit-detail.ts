@@ -1,14 +1,12 @@
 // frontend/src/pages/profit-detail.ts
 // 수익 상세 페이지 — Vanilla TS PageModule
-// profit-overview에서 차트/요약/계좌를 재사용하되, 전체 거래내역(가상 스크롤 + 날짜 필터)에 집중
+// 차트(크게) + 드릴다운 + 날짜/종목 필터 + 전체 거래내역(가상 스크롤) + 통계 정보
 
 import { createProfitChart, type ProfitChartApi } from '../components/canvas-profit-chart'
-import { createDataTable, type DataTableApi } from '../components/common/data-table'
+import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
 import { globalSettingsManager } from '../settings'
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
-import { sectionTitle } from '../components/common/settings-common'
-import { ACCOUNT_LABELS_REAL, ACCOUNT_LABELS_TEST } from '../components/common/account-labels'
 import { hotStore } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { api } from '../api/client'
@@ -17,27 +15,17 @@ import {
   SELL_COLS,
   DUMMY_BUY,
   DUMMY_SELL,
+  type DailyDrilldownRow,
   getLocalToday,
-  aggregatePnl,
+  buildMonthlyDrilldown,
   buildChartFromDailySummary,
-  renderAccountVals as renderAccountValsShared,
-  type AccountValsParams,
+  createDrilldownCols,
 } from './profit-shared'
-
-/* ── 헬퍼 ── */
-
-const ROW_CSS = `display:flex;justify-content:space-between;padding:7px 4px;border-bottom:1px solid #f0f0f0;font-size:${FONT_SIZE.label};`
 
 /* ── 모듈 변수 ── */
 type LowerTab = 'buy' | 'sell'
 
 let chart: ProfitChartApi | null = null
-let accountValRefs: HTMLSpanElement[] = []
-let testAccountValRefs: HTMLSpanElement[] = []
-let holdingCountSpan: HTMLSpanElement | null = null
-let holdingCountSpanTest: HTMLSpanElement | null = null
-let realAccountContainer: HTMLDivElement | null = null
-let testAccountContainer: HTMLDivElement | null = null
 let buyHistory: Record<string, unknown>[] = []
 let sellHistory: Record<string, unknown>[] = []
 let activeTab: LowerTab = 'sell'
@@ -46,46 +34,34 @@ let buyTable: DataTableApi<Record<string, unknown>> | null = null
 let sellTabBtn: HTMLButtonElement | null = null
 let buyTabBtn: HTMLButtonElement | null = null
 let tableContainer: HTMLDivElement | null = null
+let tableViewContainer: HTMLDivElement | null = null
+let drilldownViewContainer: HTMLDivElement | null = null
 let dateFromInput: HTMLInputElement | null = null
 let dateToInput: HTMLInputElement | null = null
+let stockFilterInput: HTMLInputElement | null = null
 let dummyMsg: HTMLDivElement | null = null
-let unsubAccount: (() => void) | null = null
+let unsubStore: (() => void) | null = null
+
+/* ── 드릴다운 상태 ── */
+let drilldownActive = false
+let drilldownTable: DataTableApi<DailyDrilldownRow> | null = null
+let drilldownCols: ColumnDef<DailyDrilldownRow>[] = []
+let tabRow: HTMLDivElement | null = null
+
+/* ── 통계 정보 DOM 참조 ── */
+let statCountEl: HTMLSpanElement | null = null
+let statBuyAmtEl: HTMLSpanElement | null = null
+let statSellAmtEl: HTMLSpanElement | null = null
+let statPnlEl: HTMLSpanElement | null = null
+let statWinRateEl: HTMLSpanElement | null = null
+let statAvgRateEl: HTMLSpanElement | null = null
 
 /* ── rAF 배칭 상태 ── */
 let _rafId: number | null = null
 let _mounted = false
-let _dirtyAccount = false
 let _dirtyHistory = false
 let _dirtyChart = false
 let _dirtySectorStocks = false
-
-/* ── 요약 카드 DOM 참조 ── */
-let todayPnlEl: HTMLSpanElement | null = null
-let todayRateEl: HTMLSpanElement | null = null
-let monthPnlEl: HTMLSpanElement | null = null
-let monthRateEl: HTMLSpanElement | null = null
-let totalPnlEl: HTMLSpanElement | null = null
-let totalRateEl: HTMLSpanElement | null = null
-
-/* ── 계좌 현황 렌더 (shared 순수 함수 래핑) ── */
-function renderAccountVals(): void {
-  const state = hotStore.getState()
-  const settings = globalSettingsManager.getSettings()
-  const params: AccountValsParams = {
-    account: state.account,
-    positionCount: state.positionCount ?? 0,
-    isTestMode: settings?.trade_mode === 'test',
-    buyHistory,
-    sellHistory,
-    realAccountContainer,
-    testAccountContainer,
-    accountValRefs,
-    testAccountValRefs,
-    holdingCountSpan,
-    holdingCountSpanTest,
-  }
-  renderAccountValsShared(params)
-}
 
 /* ── 탭 버튼 스타일 ── */
 function applyTabStyle(btn: HTMLButtonElement, active: boolean): void {
@@ -107,8 +83,9 @@ function applyTabStyle(btn: HTMLButtonElement, active: boolean): void {
 function updateTabLabels(): void {
   const dateFrom = dateFromInput?.value || ''
   const dateTo = dateToInput?.value || ''
-  const filteredSells = filterRows(sellHistory, dateFrom, dateTo)
-  const filteredBuys = filterRows(buyHistory, dateFrom, dateTo)
+  const stockQuery = stockFilterInput?.value.trim() || ''
+  const filteredSells = filterRows(sellHistory, dateFrom, dateTo, stockQuery || undefined)
+  const filteredBuys = filterRows(buyHistory, dateFrom, dateTo, stockQuery || undefined)
   if (sellTabBtn) {
     sellTabBtn.textContent = `매도 내역 (${filteredSells.length}건)`
   }
@@ -117,49 +94,100 @@ function updateTabLabels(): void {
   }
 }
 
-/* ── 날짜 필터 ── */
-function filterRows(rows: Record<string, unknown>[], dateFrom: string, dateTo: string): Record<string, unknown>[] {
-  if (!dateFrom && !dateTo) return rows
+/* ── 날짜 + 종목 필터 ── */
+function filterRows(rows: Record<string, unknown>[], dateFrom: string, dateTo: string, stockQuery?: string): Record<string, unknown>[] {
   return rows.filter(r => {
     const d = String(r.date ?? '')
     if (dateFrom && d < dateFrom) return false
     if (dateTo && d > dateTo) return false
+    if (stockQuery) {
+      const code = String(r.stk_cd ?? '')
+      const name = String(r.stk_nm ?? '')
+      if (!code.includes(stockQuery) && !name.includes(stockQuery)) return false
+    }
     return true
   })
 }
 
-/* ── 요약 카드 갱신 ── */
-function updateSummaryCards(): void {
-  const today = getLocalToday()
-  const yearMonth = today.slice(0, 7)
+/* ── 드릴다운 테이블 표시 ── */
+function showDrilldown(): void {
+  if (!tableViewContainer || !drilldownViewContainer) return
 
-  const dailySummary = hotStore.getState().dailySummary
-  const todayEntry = dailySummary.find(r => String(r.date ?? '') === today)
-  const dayPnl = todayEntry ? Number(todayEntry.realized_pnl ?? 0) : 0
-  const dayRate = todayEntry ? Number(todayEntry.pnl_rate ?? 0) : 0
+  tableViewContainer.style.display = 'none'
+  drilldownViewContainer.style.display = ''
 
-  const monS = aggregatePnl(sellHistory, yearMonth + '-01', yearMonth + '-31')
-  const allS = aggregatePnl(sellHistory)
+  if (tabRow) tabRow.style.display = 'none'
 
-  if (todayPnlEl) { todayPnlEl.textContent = fmtWon(dayPnl); todayPnlEl.style.color = pnlColor(dayPnl) }
-  if (todayRateEl) { todayRateEl.textContent = `${dayRate.toFixed(2)}%`; todayRateEl.style.color = pnlColor(dayPnl) }
-  if (monthPnlEl) { monthPnlEl.textContent = fmtWon(monS.pnl); monthPnlEl.style.color = pnlColor(monS.pnl) }
-  if (monthRateEl) { monthRateEl.textContent = `${monS.rate.toFixed(2)}%`; monthRateEl.style.color = pnlColor(monS.pnl) }
-  if (totalPnlEl) { totalPnlEl.textContent = fmtWon(allS.pnl); totalPnlEl.style.color = pnlColor(allS.pnl) }
-  if (totalRateEl) { totalRateEl.textContent = `${allS.rate.toFixed(2)}%`; totalRateEl.style.color = pnlColor(allS.pnl) }
+  if (!drilldownTable) {
+    drilldownCols = createDrilldownCols(filterByDate)
+    drilldownTable = createDataTable<DailyDrilldownRow>({
+      columns: drilldownCols,
+      emptyText: '당월 거래 내역이 없습니다.',
+      zebraStriping: true,
+    })
+    drilldownViewContainer.appendChild(drilldownTable.el)
+  }
+
+  const yearMonth = getLocalToday().slice(0, 7)
+  const rows = buildMonthlyDrilldown(sellHistory, buyHistory, yearMonth)
+  drilldownTable.updateRows(rows)
+}
+
+/* ── 드릴다운 날짜 클릭 → 거래내역 필터 ── */
+function filterByDate(date: string): void {
+  drilldownActive = false
+
+  if (dateFromInput) dateFromInput.value = date
+  if (dateToInput) dateToInput.value = date
+
+  if (tabRow) tabRow.style.display = 'flex'
+
+  showTable()
+  updateTabLabels()
+}
+
+/* ── 통계 정보 갱신 ── */
+function updateStatistics(): void {
+  const dateFrom = dateFromInput?.value || ''
+  const dateTo = dateToInput?.value || ''
+  const stockQuery = stockFilterInput?.value.trim() || ''
+  const filteredSells = filterRows(sellHistory, dateFrom, dateTo, stockQuery || undefined)
+  const filteredBuys = filterRows(buyHistory, dateFrom, dateTo, stockQuery || undefined)
+
+  const sellCount = filteredSells.length
+  const buyCount = filteredBuys.length
+  const buyAmt = filteredBuys.reduce((s, r) => s + Number(r.total_amt ?? 0), 0)
+  const sellAmt = filteredSells.reduce((s, r) => s + Number(r.total_amt ?? 0), 0)
+  const pnl = filteredSells.reduce((s, r) => s + Number(r.realized_pnl ?? 0), 0)
+  const winCount = filteredSells.filter(r => Number(r.realized_pnl ?? 0) > 0).length
+  const winRate = sellCount > 0 ? Math.round(winCount / sellCount * 10000) / 100 : 0
+  const avgRate = sellCount > 0 ? Math.round(filteredSells.reduce((s, r) => s + Number(r.pnl_rate ?? 0), 0) / sellCount * 100) / 100 : 0
+
+  if (statCountEl) statCountEl.textContent = `매도 ${sellCount}건 / 매수 ${buyCount}건`
+  if (statBuyAmtEl) { statBuyAmtEl.textContent = fmtWon(buyAmt); statBuyAmtEl.style.color = COLOR.secondary }
+  if (statSellAmtEl) { statSellAmtEl.textContent = fmtWon(sellAmt); statSellAmtEl.style.color = COLOR.secondary }
+  if (statPnlEl) { statPnlEl.textContent = fmtWon(pnl); statPnlEl.style.color = pnlColor(pnl) }
+  if (statWinRateEl) { statWinRateEl.textContent = `${winRate.toFixed(2)}%`; statWinRateEl.style.color = pnlColor(winRate) }
+  if (statAvgRateEl) { statAvgRateEl.textContent = `${avgRate > 0 ? '+' : ''}${avgRate.toFixed(2)}%`; statAvgRateEl.style.color = pnlColor(avgRate) }
 }
 
 /* ── 테이블 표시 ── */
 function showTable(): void {
-  if (!tableContainer) return
+  if (!tableViewContainer || !drilldownViewContainer) return
+
+  tableViewContainer.style.display = ''
+  drilldownViewContainer.style.display = 'none'
+
+  if (tabRow) tabRow.style.display = 'flex'
 
   const dateFrom = dateFromInput?.value || ''
   const dateTo = dateToInput?.value || ''
+  const stockQuery = stockFilterInput?.value.trim() || ''
   const isSell = activeTab === 'sell'
   let rows = isSell ? sellHistory : buyHistory
-  rows = filterRows(rows, dateFrom, dateTo)
+  rows = filterRows(rows, dateFrom, dateTo, stockQuery || undefined)
 
-  const isDummy = rows.length === 0 && !dateFrom && !dateTo
+  const isDummy = rows.length === 0 && !dateFrom && !dateTo && !stockQuery
   const displayRows = isDummy ? (isSell ? DUMMY_SELL : DUMMY_BUY) : rows
 
   if (!sellTable) {
@@ -170,7 +198,7 @@ function showTable(): void {
       emptyText: '매도 내역이 없습니다.',
       zebraStriping: true,
     })
-    tableContainer.appendChild(sellTable.el)
+    tableViewContainer.appendChild(sellTable.el)
   }
 
   if (!buyTable) {
@@ -181,7 +209,7 @@ function showTable(): void {
       emptyText: '매수 내역이 없습니다.',
       zebraStriping: true,
     })
-    tableContainer.appendChild(buyTable.el)
+    tableViewContainer.appendChild(buyTable.el)
   }
 
   sellTable.el.style.display = isSell ? '' : 'none'
@@ -195,11 +223,13 @@ function showTable(): void {
     dummyMsg = document.createElement('div')
     Object.assign(dummyMsg.style, { textAlign: 'center', fontSize: FONT_SIZE.badge, color: COLOR.disabled, marginTop: '-4px' })
     dummyMsg.textContent = '거래 체결 시 자동으로 표시됩니다'
-    tableContainer.appendChild(dummyMsg)
+    tableViewContainer.appendChild(dummyMsg)
   }
 
   if (sellTabBtn) applyTabStyle(sellTabBtn, activeTab === 'sell')
   if (buyTabBtn) applyTabStyle(buyTabBtn, activeTab === 'buy')
+
+  updateStatistics()
 }
 
 /* ── mount ── */
@@ -208,7 +238,7 @@ function mount(container: HTMLElement): void {
   buyHistory = []
   sellHistory = []
   activeTab = 'sell'
-  accountValRefs = []
+  drilldownActive = false
 
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
@@ -238,122 +268,13 @@ function mount(container: HTMLElement): void {
 
   root.appendChild(chartPanel)
 
-  /* ── 요약 카드 3개 ── */
-  const summaryRow = document.createElement('div')
-  Object.assign(summaryRow.style, { display: 'flex', gap: '8px', padding: '8px 4px' })
-
-  const CARD_STYLE = `flex:1;background:#fafafa;border:1px solid #eee;border-radius:6px;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;`
-  const CARD_TITLES = ['당일 손익', '당월 손익', '누적 손익']
-
-  const pnlEls: HTMLSpanElement[] = []
-  const rateEls: HTMLSpanElement[] = []
-
-  for (let i = 0; i < 3; i++) {
-    const card = document.createElement('div')
-    card.style.cssText = CARD_STYLE
-
-    const titleEl = document.createElement('div')
-    Object.assign(titleEl.style, { fontSize: FONT_SIZE.badge, color: COLOR.secondary, whiteSpace: 'nowrap' })
-    titleEl.textContent = CARD_TITLES[i]
-
-    const valRow = document.createElement('div')
-    Object.assign(valRow.style, { display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', gap: '6px' })
-
-    const pnlEl = document.createElement('span')
-    Object.assign(pnlEl.style, { fontSize: FONT_SIZE.section, fontWeight: 'normal' })
-    pnlEl.textContent = fmtWon(0)
-
-    const rateEl = document.createElement('span')
-    Object.assign(rateEl.style, { fontSize: FONT_SIZE.label, color: COLOR.neutral })
-    rateEl.textContent = '0.00%'
-
-    valRow.appendChild(pnlEl)
-    valRow.appendChild(rateEl)
-    card.appendChild(titleEl)
-    card.appendChild(valRow)
-    summaryRow.appendChild(card)
-
-    pnlEls.push(pnlEl)
-    rateEls.push(rateEl)
-  }
-
-  todayPnlEl = pnlEls[0]; todayRateEl = rateEls[0]
-  monthPnlEl = pnlEls[1]; monthRateEl = rateEls[1]
-  totalPnlEl = pnlEls[2]; totalRateEl = rateEls[2]
-
-  root.appendChild(summaryRow)
-
-  /* ── 계좌 현황 ── */
-  const accountPanel = document.createElement('div')
-  Object.assign(accountPanel.style, { flex: 'none', borderBottom: '1px solid #ddd', padding: '0 4px' })
-
-  const accountHeader = sectionTitle('계좌 현황')
-  accountHeader.style.color = COLOR.down
-  accountPanel.appendChild(accountHeader)
-
-  realAccountContainer = document.createElement('div')
-  realAccountContainer.style.display = isTestMode ? 'none' : ''
-  for (let i = 0; i < ACCOUNT_LABELS_REAL.length; i++) {
-    const row = document.createElement('div')
-    row.style.cssText = ROW_CSS
-    if (i % 2 === 1) row.style.backgroundColor = '#f9f9f9'
-    const label = document.createElement('span')
-    if (i === 4) {
-      label.appendChild(document.createTextNode('보유주식 평가금액 ('))
-      const cntSpan = document.createElement('span')
-      cntSpan.style.color = COLOR.down
-      cntSpan.style.fontWeight = 'bold'
-      label.appendChild(cntSpan)
-      label.appendChild(document.createTextNode('종목)'))
-      holdingCountSpan = cntSpan
-    } else {
-      label.textContent = ACCOUNT_LABELS_REAL[i]
-    }
-    const val = document.createElement('span')
-    Object.assign(val.style, { textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })
-    row.appendChild(label)
-    row.appendChild(val)
-    realAccountContainer.appendChild(row)
-    accountValRefs.push(val)
-  }
-  accountPanel.appendChild(realAccountContainer)
-
-  testAccountContainer = document.createElement('div')
-  testAccountContainer.style.display = isTestMode ? '' : 'none'
-  for (let i = 0; i < ACCOUNT_LABELS_TEST.length; i++) {
-    const row = document.createElement('div')
-    row.style.cssText = ROW_CSS
-    if (i % 2 === 1) row.style.backgroundColor = '#f9f9f9'
-    const label = document.createElement('span')
-    if (i === 4) {
-      label.appendChild(document.createTextNode('보유주식 평가금액 ('))
-      const cntSpan = document.createElement('span')
-      cntSpan.style.color = COLOR.down
-      cntSpan.style.fontWeight = 'bold'
-      label.appendChild(cntSpan)
-      label.appendChild(document.createTextNode('종목)'))
-      holdingCountSpanTest = cntSpan
-    } else {
-      label.textContent = ACCOUNT_LABELS_TEST[i]
-    }
-    const val = document.createElement('span')
-    Object.assign(val.style, { textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })
-    row.appendChild(label)
-    row.appendChild(val)
-    testAccountContainer.appendChild(row)
-    testAccountValRefs.push(val)
-  }
-  accountPanel.appendChild(testAccountContainer)
-
-  root.appendChild(accountPanel)
-
-  /* ── 하단: 날짜 필터 + 거래내역 (가상 스크롤) ── */
+  /* ── 하단: 필터 + 드릴다운/거래내역 + 통계 ── */
   const lower = document.createElement('div')
   Object.assign(lower.style, { flex: '1', overflow: 'auto', display: 'flex', flexDirection: 'column' })
 
-  // 날짜 필터 행
+  // 필터 행 (날짜 + 종목 + 드릴다운 토글)
   const filterRow = document.createElement('div')
-  Object.assign(filterRow.style, { display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 4px', borderBottom: '1px solid #eee' })
+  Object.assign(filterRow.style, { display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 4px', borderBottom: '1px solid #eee', flexWrap: 'wrap' })
 
   const filterLabel = document.createElement('span')
   Object.assign(filterLabel.style, { fontSize: FONT_SIZE.label, color: COLOR.secondary, whiteSpace: 'nowrap' })
@@ -391,16 +312,51 @@ function mount(container: HTMLElement): void {
   })
   filterRow.appendChild(clearBtn)
 
+  // 종목 필터
+  const stockSep = document.createElement('span')
+  stockSep.textContent = '|'
+  stockSep.style.color = '#ccc'
+  filterRow.appendChild(stockSep)
+
+  const stockLabel = document.createElement('span')
+  Object.assign(stockLabel.style, { fontSize: FONT_SIZE.label, color: COLOR.secondary, whiteSpace: 'nowrap' })
+  stockLabel.textContent = '종목:'
+  filterRow.appendChild(stockLabel)
+
+  stockFilterInput = document.createElement('input')
+  stockFilterInput.type = 'text'
+  stockFilterInput.placeholder = '종목명/코드'
+  Object.assign(stockFilterInput.style, { padding: '2px 4px', fontSize: FONT_SIZE.label, border: '1px solid #eee', borderRadius: '4px', color: COLOR.code, width: '100px' })
+  stockFilterInput.addEventListener('input', () => { showTable(); updateTabLabels() })
+  filterRow.appendChild(stockFilterInput)
+
+  // 드릴다운 토글 버튼
+  const drilldownBtn = document.createElement('button')
+  Object.assign(drilldownBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.label, border: '1px solid #eee', borderRadius: '4px', background: '#fff', cursor: 'pointer', color: COLOR.secondary, marginLeft: 'auto' })
+  drilldownBtn.textContent = '당월 일별 요약'
+  drilldownBtn.addEventListener('click', (e) => {
+    drilldownActive = !drilldownActive
+    if (drilldownActive) {
+      showDrilldown()
+    } else {
+      showTable()
+      updateTabLabels()
+    }
+    ;(e.target as HTMLElement).blur()
+  })
+  filterRow.appendChild(drilldownBtn)
+
   lower.appendChild(filterRow)
 
   // 탭 헤더
-  const tabRow = document.createElement('div')
+  tabRow = document.createElement('div')
   Object.assign(tabRow.style, { display: 'flex', borderBottom: '1px solid #eee', marginBottom: '8px' })
 
   sellTabBtn = document.createElement('button')
   applyTabStyle(sellTabBtn, true)
   sellTabBtn.addEventListener('click', (e) => {
     activeTab = 'sell'
+    drilldownActive = false
     showTable()
     updateTabLabels()
     ;(e.target as HTMLElement).blur()
@@ -410,6 +366,7 @@ function mount(container: HTMLElement): void {
   applyTabStyle(buyTabBtn, false)
   buyTabBtn.addEventListener('click', (e) => {
     activeTab = 'buy'
+    drilldownActive = false
     showTable()
     updateTabLabels()
     ;(e.target as HTMLElement).blur()
@@ -419,10 +376,54 @@ function mount(container: HTMLElement): void {
   tabRow.appendChild(buyTabBtn)
   lower.appendChild(tabRow)
 
-  // 테이블 컨테이너
+  // 테이블 컨테이너 (테이블 뷰 + 드릴다운 뷰)
   tableContainer = document.createElement('div')
   Object.assign(tableContainer.style, { flex: '1', padding: '0 4px', overflow: 'auto' })
+
+  tableViewContainer = document.createElement('div')
+  drilldownViewContainer = document.createElement('div')
+  drilldownViewContainer.style.display = 'none'
+
+  tableContainer.appendChild(tableViewContainer)
+  tableContainer.appendChild(drilldownViewContainer)
+
   lower.appendChild(tableContainer)
+
+  // 통계 정보 행
+  const statRow = document.createElement('div')
+  Object.assign(statRow.style, { display: 'flex', gap: '8px', padding: '6px 4px', borderTop: '1px solid #eee', flex: 'none' })
+
+  const STAT_STYLE = `flex:1;background:#fafafa;border:1px solid #eee;border-radius:4px;padding:4px 8px;display:flex;flex-direction:column;align-items:center;gap:2px;`
+  const STAT_LABELS = ['총 건수', '매수금액', '매도금액', '실현손익', '승률', '평균 수익률']
+  const statEls: HTMLSpanElement[] = []
+
+  for (let i = 0; i < 6; i++) {
+    const stat = document.createElement('div')
+    stat.style.cssText = STAT_STYLE
+
+    const labelEl = document.createElement('span')
+    Object.assign(labelEl.style, { fontSize: '11px', color: COLOR.secondary })
+    labelEl.textContent = STAT_LABELS[i]
+
+    const valEl = document.createElement('span')
+    Object.assign(valEl.style, { fontSize: FONT_SIZE.label, fontWeight: 'normal' })
+    valEl.textContent = '-'
+
+    stat.appendChild(labelEl)
+    stat.appendChild(valEl)
+    statRow.appendChild(stat)
+
+    statEls.push(valEl)
+  }
+
+  statCountEl = statEls[0]
+  statBuyAmtEl = statEls[1]
+  statSellAmtEl = statEls[2]
+  statPnlEl = statEls[3]
+  statWinRateEl = statEls[4]
+  statAvgRateEl = statEls[5]
+
+  lower.appendChild(statRow)
 
   root.appendChild(lower)
   container.appendChild(root)
@@ -439,6 +440,7 @@ function mount(container: HTMLElement): void {
     onBarClick: (date: string) => {
       if (dateFromInput) dateFromInput.value = date
       if (dateToInput) dateToInput.value = date
+      drilldownActive = false
       showTable()
       updateTabLabels()
     },
@@ -459,33 +461,23 @@ function mount(container: HTMLElement): void {
   sellHistory = initState.sellHistory
   buyHistory = initState.buyHistory
   updateTabLabels()
-  updateSummaryCards()
   showTable()
 
   // hotStore 구독 — rAF 배칭 + selective update
   let prevSellRef = initState.sellHistory
   let prevBuyRef = initState.buyHistory
   let prevDailySummaryRef = initState.dailySummary
-  let prevAccountRef = initState.account
   let prevTradeMode = globalSettingsManager.getSettings()?.trade_mode
-  let prevPositionsRef = initState.positions
   let prevSectorStocksRef = initState.sectorStocks
   _mounted = true
 
-  unsubAccount = hotStore.subscribe((curr) => {
-    const accountChanged = curr.account !== prevAccountRef || curr.positions !== prevPositionsRef || curr.sectorStocks !== prevSectorStocksRef
+  unsubStore = hotStore.subscribe((curr) => {
     const historyChanged = curr.sellHistory !== prevSellRef || curr.buyHistory !== prevBuyRef
     const chartChanged = curr.dailySummary !== prevDailySummaryRef || globalSettingsManager.getSettings()?.trade_mode !== prevTradeMode
+    const sectorStocksChanged = curr.sectorStocks !== prevSectorStocksRef
 
-    if (!accountChanged && !historyChanged && !chartChanged) return
+    if (!historyChanged && !chartChanged && !sectorStocksChanged) return
 
-    if (accountChanged) {
-      prevAccountRef = curr.account
-      prevPositionsRef = curr.positions
-      prevSectorStocksRef = curr.sectorStocks
-      _dirtyAccount = true
-      _dirtySectorStocks = true
-    }
     if (historyChanged) {
       prevSellRef = curr.sellHistory
       prevBuyRef = curr.buyHistory
@@ -498,6 +490,10 @@ function mount(container: HTMLElement): void {
       prevTradeMode = globalSettingsManager.getSettings()?.trade_mode
       _dirtyChart = true
     }
+    if (sectorStocksChanged) {
+      prevSectorStocksRef = curr.sectorStocks
+      _dirtySectorStocks = true
+    }
 
     if (_rafId !== null) return
 
@@ -505,22 +501,18 @@ function mount(container: HTMLElement): void {
       _rafId = null
       if (!_mounted) return
 
-      if (_dirtyAccount) {
-        _dirtyAccount = false
-        renderAccountVals()
-      }
-
       if (_dirtyHistory) {
         _dirtyHistory = false
-        showTable()
-        updateSummaryCards()
+        if (drilldownActive) {
+          showDrilldown()
+        } else {
+          showTable()
+        }
         updateTabLabels()
-        renderAccountVals()
       }
 
       if (_dirtyChart) {
         _dirtyChart = false
-        updateSummaryCards()
         const latest = hotStore.getState()
         const settings = globalSettingsManager.getSettings()
         const tradeModeChanged = settings?.trade_mode !== prevTradeMode
@@ -529,22 +521,19 @@ function mount(container: HTMLElement): void {
           prevTradeMode = settings?.trade_mode
           const isTest = settings?.trade_mode === 'test'
           retentionLabel.textContent = isTest ? '최근 60거래일 데이터' : '최근 5거래일 데이터'
-          if (realAccountContainer && testAccountContainer) {
-            realAccountContainer.style.display = isTest ? 'none' : ''
-            testAccountContainer.style.display = isTest ? '' : 'none'
-          }
-          renderAccountVals()
         }
       }
 
       if (_dirtySectorStocks) {
         _dirtySectorStocks = false
-        showTable()
+        if (drilldownActive) {
+          showDrilldown()
+        } else {
+          showTable()
+        }
       }
     })
   })
-
-  renderAccountVals()
 }
 
 /* ── unmount ── */
@@ -552,31 +541,34 @@ function unmount(): void {
   _mounted = false
   notifyPageInactive('profit-detail')
   if (_rafId !== null) { cancelAnimationFrame(_rafId); _rafId = null }
-  _dirtyAccount = false
   _dirtyHistory = false
   _dirtyChart = false
   _dirtySectorStocks = false
-  if (unsubAccount) { unsubAccount(); unsubAccount = null }
+  if (unsubStore) { unsubStore(); unsubStore = null }
   if (chart) { chart.destroy(); chart = null }
   if (sellTable) { sellTable.destroy(); sellTable = null }
   if (buyTable) { buyTable.destroy(); buyTable = null }
-  accountValRefs = []
-  testAccountValRefs = []
-  holdingCountSpan = null
-  holdingCountSpanTest = null
-  realAccountContainer = null
-  testAccountContainer = null
+  if (drilldownTable) { drilldownTable.destroy(); drilldownTable = null }
+  drilldownActive = false
+  drilldownCols = []
+  tabRow = null
   buyHistory = []
   sellHistory = []
   sellTabBtn = null
   buyTabBtn = null
   tableContainer = null
+  tableViewContainer = null
+  drilldownViewContainer = null
   dateFromInput = null
   dateToInput = null
+  stockFilterInput = null
   dummyMsg = null
-  todayPnlEl = null; todayRateEl = null
-  monthPnlEl = null; monthRateEl = null
-  totalPnlEl = null; totalRateEl = null
+  statCountEl = null
+  statBuyAmtEl = null
+  statSellAmtEl = null
+  statPnlEl = null
+  statWinRateEl = null
+  statAvgRateEl = null
 }
 
 export default { mount, unmount }
