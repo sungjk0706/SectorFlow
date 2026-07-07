@@ -129,8 +129,24 @@ function mount(container: HTMLElement): void {
   labelContainer.appendChild(receiveRateSpan)
 
   const thresholdRow = createSettingRow(labelContainer, thresholdInput.el)
-  thresholdRow.style.margin = '0 0 12px 0'
+  thresholdRow.style.margin = '0'
+  thresholdRow.style.borderBottom = 'none'
   root.appendChild(thresholdRow)
+
+  // 수신/미수신 종목수 표시 행
+  const receiveCountRow = document.createElement('div')
+  Object.assign(receiveCountRow.style, {
+    fontSize: FONT_SIZE.small,
+    color: COLOR.secondary,
+    textAlign: 'right',
+    padding: '2px 0 6px 0',
+    borderBottom: '1px solid #eee',
+    marginBottom: '12px',
+  })
+  receiveCountRow.textContent = _initialRate
+    ? `수신: ${_initialRate.received}종목 / 미수신: ${_initialRate.total - _initialRate.received}종목`
+    : ''
+  root.appendChild(receiveCountRow)
 
   // ③ 업종 컷오프
   root.appendChild(createStepLabel('③', '업종내 종목 상승비율(N%)이하 차단 필터링'))
@@ -257,6 +273,7 @@ function mount(container: HTMLElement): void {
       prevReceiveRate = uiState.receiveRate
       if (uiState.receiveRate) {
         receiveRateSpan.textContent = `(현재: ${uiState.receiveRate.pct.toFixed(1)}%)`
+        receiveCountRow.textContent = `수신: ${uiState.receiveRate.received}종목 / 미수신: ${uiState.receiveRate.total - uiState.receiveRate.received}종목`
       }
     }
   })
