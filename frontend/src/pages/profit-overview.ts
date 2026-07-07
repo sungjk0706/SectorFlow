@@ -92,8 +92,13 @@ function renderSectorStockPnl(): void {
     Object.assign(sectorPnl.style, { fontSize: FONT_SIZE.label, fontWeight: FONT_WEIGHT.normal, color: pnlColor(group.pnl) })
     const sign = group.pnl >= 0 ? '+' : ''
     sectorPnl.textContent = `${sign}${fmtWon(group.pnl)}`
+    const sectorRate = document.createElement('span')
+    Object.assign(sectorRate.style, { fontSize: FONT_SIZE.label, fontWeight: FONT_WEIGHT.normal, color: pnlColor(group.rate), marginLeft: '8px' })
+    const rateSign = group.rate >= 0 ? '+' : ''
+    sectorRate.textContent = `${rateSign}${group.rate.toFixed(2)}%`
     header.appendChild(sectorName)
     header.appendChild(sectorPnl)
+    header.appendChild(sectorRate)
     sectorStockListContainer.appendChild(header)
 
     // 종목 행
@@ -134,15 +139,22 @@ function renderSectorStockPnl(): void {
   }
 }
 
-/* ── 도넛 차트 데이터 빌드 (sellHistory → 업종별 손익 집계) ── */
+/* ── 도넛 차트 데이터 빌드 (sellHistory → 업종별 손익 + 수익률 집계) ── */
 function buildSectorDonutData(sells: Record<string, unknown>[]): SectorDonutRow[] {
-  const map = new Map<string, number>()
+  const pnlMap = new Map<string, number>()
+  const buyTotalMap = new Map<string, number>()
   for (const r of sells) {
     const sector = String(r.sector ?? '미분류')
     const pnl = Number(r.realized_pnl ?? 0)
-    map.set(sector, (map.get(sector) ?? 0) + pnl)
+    const buyTotal = Number(r.buy_total_amt ?? 0)
+    pnlMap.set(sector, (pnlMap.get(sector) ?? 0) + pnl)
+    buyTotalMap.set(sector, (buyTotalMap.get(sector) ?? 0) + buyTotal)
   }
-  return Array.from(map.entries()).map(([sector, pnl]) => ({ sector, pnl }))
+  return Array.from(pnlMap.entries()).map(([sector, pnl]) => {
+    const buyTotal = buyTotalMap.get(sector) ?? 0
+    const rate = buyTotal > 0 ? Math.round(pnl / buyTotal * 10000) / 100 : 0
+    return { sector, pnl, rate, buyTotal }
+  })
 }
 
 /* ── mount ── */

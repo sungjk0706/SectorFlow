@@ -22,6 +22,7 @@ export interface SectorPnlGroup {
   sector: string
   color: string
   pnl: number
+  rate: number
   stocks: SectorStockPnl[]
 }
 
@@ -142,12 +143,15 @@ export function updateSummaryCards(
 export function buildSectorStockPnl(
   sells: Record<string, unknown>[],
 ): SectorPnlGroup[] {
-  // 1. 업종별 손익 집계 (도넛 차트와 동일 로직)
+  // 1. 업종별 손익 및 매수금액 집계 (도넛 차트와 동일 로직)
   const sectorPnlMap = new Map<string, number>()
+  const sectorBuyTotalMap = new Map<string, number>()
   for (const r of sells) {
     const sector = String(r.sector ?? '미분류')
     const pnl = Number(r.realized_pnl ?? 0)
+    const buyTotal = Number(r.buy_total_amt ?? 0)
     sectorPnlMap.set(sector, (sectorPnlMap.get(sector) ?? 0) + pnl)
+    sectorBuyTotalMap.set(sector, (sectorBuyTotalMap.get(sector) ?? 0) + buyTotal)
   }
 
   // 2. 절대값 내림차순 정렬 (도넛 차트 processData와 동일)
@@ -204,10 +208,13 @@ export function buildSectorStockPnl(
       }
     }
     stocks.sort((a, b) => Math.abs(b.realized_pnl) - Math.abs(a.realized_pnl))
+    const sectorBuyTotal = sectorBuyTotalMap.get(sector) ?? 0
+    const sectorRate = sectorBuyTotal > 0 ? Math.round(pnl / sectorBuyTotal * 10000) / 100 : 0
     return {
       sector,
       color: colorMap.get(sector) ?? '#999',
       pnl,
+      rate: sectorRate,
       stocks,
     }
   })

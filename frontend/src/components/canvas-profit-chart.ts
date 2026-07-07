@@ -5,7 +5,7 @@
  * - 인터랙티브: 크로스헤어, 툴팁, 막대 클릭 필터링
  */
 
-import { pnlColor, FONT_FAMILY, COLOR } from './common/ui-styles'
+import { pnlColor, FONT_FAMILY, COLOR, fmtWon } from './common/ui-styles'
 
 // ── 타입 ────────────────────────────────────────────────────
 
@@ -414,7 +414,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
         const barLabel = mode === 'volume' ? '거래 건수:' : '일별 손익:'
         const barValue = mode === 'volume'
           ? `${d.pnl || 0}건`
-          : `${(d.pnl || 0).toLocaleString()}원`
+          : `${(d.pnl || 0) >= 0 ? '+' : ''}${fmtWon(d.pnl || 0)}`
         const lineLabel = mode === 'volume' ? '수익률:' : '일별 수익률:'
         const lineValue = `${d.rate.toFixed(2)}%`
         tooltip.innerHTML = `
