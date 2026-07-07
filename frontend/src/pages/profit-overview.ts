@@ -1,10 +1,10 @@
 // frontend/src/pages/profit-overview.ts
 // 수익현황 페이지 — Vanilla TS PageModule
-// 요약 대시보드: 차트(작게) + 요약 카드 3개 + 계좌 현황 + 상세 분석 보기 버튼
+// 요약 대시보드: 일별 수익률 차트 + 일별 거래건수 차트(좌) + 계좌 현황(우) + 상세 분석 보기 버튼
 
 import { createProfitChart, type ProfitChartApi } from '../components/canvas-profit-chart'
 import { globalSettingsManager } from '../settings'
-import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import { sectionTitle } from '../components/common/settings-common'
 import { ACCOUNT_LABELS_REAL, ACCOUNT_LABELS_TEST } from '../components/common/account-labels'
@@ -12,8 +12,6 @@ import { hotStore } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { api } from '../api/client'
 import {
-  getLocalToday,
-  aggregatePnl,
   buildChartFromDailySummary,
   renderAccountVals as renderAccountValsShared,
   type AccountValsParams,
@@ -21,10 +19,11 @@ import {
 
 /* ── 헬퍼 ── */
 
-const ROW_CSS = `display:flex;justify-content:space-between;padding:7px 4px;border-bottom:1px solid #f0f0f0;font-size:${FONT_SIZE.label};`
+const ROW_CSS = `display:flex;justify-content:space-between;padding:10px 4px;border-bottom:1px solid #f0f0f0;font-size:${FONT_SIZE.body};`
 
 /* ── 모듈 변수 ── */
 let chart: ProfitChartApi | null = null
+let volumeChart: ProfitChartApi | null = null
 let accountValRefs: HTMLSpanElement[] = []
 let testAccountValRefs: HTMLSpanElement[] = []
 let holdingCountSpan: HTMLSpanElement | null = null
@@ -41,14 +40,6 @@ let _mounted = false
 let _dirtyAccount = false
 let _dirtyHistory = false
 let _dirtyChart = false
-
-/* ── 요약 카드 DOM 참조 ── */
-let todayPnlEl: HTMLSpanElement | null = null
-let todayRateEl: HTMLSpanElement | null = null
-let monthPnlEl: HTMLSpanElement | null = null
-let monthRateEl: HTMLSpanElement | null = null
-let totalPnlEl: HTMLSpanElement | null = null
-let totalRateEl: HTMLSpanElement | null = null
 
 /* ── 계좌 현황 렌더 (shared 순수 함수 래핑) ── */
 function renderAccountVals(): void {
@@ -70,25 +61,14 @@ function renderAccountVals(): void {
   renderAccountValsShared(params)
 }
 
-/* ── 요약 카드 갱신 ── */
-function updateSummaryCards(): void {
-  const today = getLocalToday()
-  const yearMonth = today.slice(0, 7)
-
-  const dailySummary = hotStore.getState().dailySummary
-  const todayEntry = dailySummary.find(r => String(r.date ?? '') === today)
-  const dayPnl = todayEntry ? Number(todayEntry.realized_pnl ?? 0) : 0
-  const dayRate = todayEntry ? Number(todayEntry.pnl_rate ?? 0) : 0
-
-  const monS = aggregatePnl(sellHistory, yearMonth + '-01', yearMonth + '-31')
-  const allS = aggregatePnl(sellHistory)
-
-  if (todayPnlEl) { todayPnlEl.textContent = fmtWon(dayPnl); todayPnlEl.style.color = pnlColor(dayPnl) }
-  if (todayRateEl) { todayRateEl.textContent = `${dayRate.toFixed(2)}%`; todayRateEl.style.color = pnlColor(dayPnl) }
-  if (monthPnlEl) { monthPnlEl.textContent = fmtWon(monS.pnl); monthPnlEl.style.color = pnlColor(monS.pnl) }
-  if (monthRateEl) { monthRateEl.textContent = `${monS.rate.toFixed(2)}%`; monthRateEl.style.color = pnlColor(monS.pnl) }
-  if (totalPnlEl) { totalPnlEl.textContent = fmtWon(allS.pnl); totalPnlEl.style.color = pnlColor(allS.pnl) }
-  if (totalRateEl) { totalRateEl.textContent = `${allS.rate.toFixed(2)}%`; totalRateEl.style.color = pnlColor(allS.pnl) }
+/* ── volume 차트 데이터 빌드 ── */
+function buildVolumeChartData(summary: Record<string, unknown>[]): { date: string; pnl: number | null; rate: number }[] {
+  return summary.map(r => {
+    const raw = String(r.date ?? '')
+    const sellCount = Number(r.sell_count ?? 0)
+    if (sellCount === 0) return { date: raw, pnl: null, rate: 0 }
+    return { date: raw, pnl: sellCount, rate: Number(r.pnl_rate ?? 0) }
+  })
 }
 
 /* ── mount ── */
@@ -106,19 +86,23 @@ function mount(container: HTMLElement): void {
   const settings = globalSettingsManager.getSettings()
   const isTestMode = settings?.trade_mode === 'test'
 
-  /* ── 상단 (자연스러운 높이) ── */
+  /* ── 상단 (남은 공간 채우기) ── */
   const upper = document.createElement('div')
   Object.assign(upper.style, {
-    flex: 'none',
+    flex: '1',
     borderBottom: '1px solid #ddd',
     overflow: 'hidden',
     display: 'flex',
     gap: '8px',
   })
 
-  // 우 50%: 일별 수익률 차트
+  // 좌측 컬럼: 차트 2개 세로 배치
+  const leftColumn = document.createElement('div')
+  Object.assign(leftColumn.style, { flex: '5', minWidth: '0', display: 'flex', flexDirection: 'column', gap: '4px' })
+
+  // 좌측 상단: 일별 수익률 차트
   const chartPanel = document.createElement('div')
-  Object.assign(chartPanel.style, { flex: '5', minWidth: '0', overflow: 'auto', padding: '0 4px' })
+  Object.assign(chartPanel.style, { flex: '1', minWidth: '0', overflow: 'hidden', padding: '0 4px' })
   const chartTitle = document.createElement('div')
   Object.assign(chartTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal, color: COLOR.down, padding: '10px 0 6px', borderBottom: '2px solid #eee', marginBottom: '8px' })
   const chartTitleText = document.createElement('span')
@@ -131,11 +115,28 @@ function mount(container: HTMLElement): void {
   chartPanel.appendChild(chartTitle)
 
   const chartContainer = document.createElement('div')
+  Object.assign(chartContainer.style, { height: '100%' })
   chartPanel.appendChild(chartContainer)
 
-  // 좌 50%: 계좌 현황 테이블
+  // 좌측 하단: 일별 거래건수 + 수익률 차트
+  const volumePanel = document.createElement('div')
+  Object.assign(volumePanel.style, { flex: '1', minWidth: '0', overflow: 'hidden', padding: '0 4px' })
+  const volumeTitle = document.createElement('div')
+  Object.assign(volumeTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal, color: COLOR.down, padding: '10px 0 6px', borderBottom: '2px solid #eee', marginBottom: '8px' })
+  const volumeTitleText = document.createElement('span')
+  volumeTitleText.textContent = '일별 거래건수 + 수익률'
+  volumeTitle.appendChild(volumeTitleText)
+  volumePanel.appendChild(volumeTitle)
+  const volumeChartContainer = document.createElement('div')
+  Object.assign(volumeChartContainer.style, { height: '100%' })
+  volumePanel.appendChild(volumeChartContainer)
+
+  leftColumn.appendChild(chartPanel)
+  leftColumn.appendChild(volumePanel)
+
+  // 우측: 계좌 현황 테이블
   const accountPanel = document.createElement('div')
-  Object.assign(accountPanel.style, { flex: '5', minWidth: '0', overflow: 'auto', padding: '0 4px' })
+  Object.assign(accountPanel.style, { flex: '5', minWidth: '0', overflow: 'auto', padding: '0 4px', display: 'flex', flexDirection: 'column' })
 
   const accountHeader = sectionTitle('계좌 현황')
   accountHeader.style.color = COLOR.down
@@ -161,7 +162,7 @@ function mount(container: HTMLElement): void {
       label.textContent = ACCOUNT_LABELS_REAL[i]
     }
     const val = document.createElement('span')
-    Object.assign(val.style, { textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })
+    Object.assign(val.style, { textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: FONT_SIZE.body })
     row.appendChild(label)
     row.appendChild(val)
     realAccountContainer.appendChild(row)
@@ -189,7 +190,7 @@ function mount(container: HTMLElement): void {
       label.textContent = ACCOUNT_LABELS_TEST[i]
     }
     const val = document.createElement('span')
-    Object.assign(val.style, { textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })
+    Object.assign(val.style, { textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: FONT_SIZE.body })
     row.appendChild(label)
     row.appendChild(val)
     testAccountContainer.appendChild(row)
@@ -197,61 +198,13 @@ function mount(container: HTMLElement): void {
   }
   accountPanel.appendChild(testAccountContainer)
 
-  upper.appendChild(chartPanel)
+  upper.appendChild(leftColumn)
   upper.appendChild(accountPanel)
   root.appendChild(upper)
 
-  /* ── 요약 카드 3개 ── */
-  const summaryRow = document.createElement('div')
-  Object.assign(summaryRow.style, { display: 'flex', gap: '8px', padding: '8px 4px' })
-
-  const CARD_STYLE = `flex:1;background:#fafafa;border:1px solid #eee;border-radius:6px;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;`
-  const CARD_TITLES = ['당일 손익', '당월 손익', '누적 손익']
-
-  const pnlEls: HTMLSpanElement[] = []
-  const rateEls: HTMLSpanElement[] = []
-
-  for (let i = 0; i < 3; i++) {
-    const card = document.createElement('div')
-    card.style.cssText = CARD_STYLE
-    card.addEventListener('click', () => {
-      location.hash = '#/profit-detail'
-    })
-
-    const titleEl = document.createElement('div')
-    Object.assign(titleEl.style, { fontSize: FONT_SIZE.badge, color: COLOR.secondary, whiteSpace: 'nowrap' })
-    titleEl.textContent = CARD_TITLES[i]
-
-    const valRow = document.createElement('div')
-    Object.assign(valRow.style, { display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', gap: '6px' })
-
-    const pnlEl = document.createElement('span')
-    Object.assign(pnlEl.style, { fontSize: FONT_SIZE.section, fontWeight: 'normal' })
-    pnlEl.textContent = fmtWon(0)
-
-    const rateEl = document.createElement('span')
-    Object.assign(rateEl.style, { fontSize: FONT_SIZE.label, color: COLOR.neutral })
-    rateEl.textContent = '0.00%'
-
-    valRow.appendChild(pnlEl)
-    valRow.appendChild(rateEl)
-    card.appendChild(titleEl)
-    card.appendChild(valRow)
-    summaryRow.appendChild(card)
-
-    pnlEls.push(pnlEl)
-    rateEls.push(rateEl)
-  }
-
-  todayPnlEl = pnlEls[0]; todayRateEl = rateEls[0]
-  monthPnlEl = pnlEls[1]; monthRateEl = rateEls[1]
-  totalPnlEl = pnlEls[2]; totalRateEl = rateEls[2]
-
-  root.appendChild(summaryRow)
-
   /* ── 하단: 상세 분석 보기 버튼 ── */
   const lower = document.createElement('div')
-  Object.assign(lower.style, { flex: '1', overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' })
+  Object.assign(lower.style, { flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 0' })
 
   const detailBtn = document.createElement('button')
   Object.assign(detailBtn.style, {
@@ -272,7 +225,7 @@ function mount(container: HTMLElement): void {
   root.appendChild(lower)
   container.appendChild(root)
 
-  // 차트 생성
+  // 차트 생성 — 일별 수익률
   chart = createProfitChart({
     container: chartContainer,
     data: buildChartFromDailySummary(hotStore.getState().dailySummary),
@@ -285,9 +238,20 @@ function mount(container: HTMLElement): void {
         const tradeMode = settings?.trade_mode || 'test'
         const data = await api.getDailySummary(from, to, tradeMode)
         chart?.updateData(buildChartFromDailySummary(data))
+        volumeChart?.updateData(buildVolumeChartData(data))
       } catch (err) {
         console.warn('[profit-overview] daily-summary fetch failed:', err)
       }
+    },
+  })
+
+  // 차트 생성 — 일별 거래건수 + 수익률
+  volumeChart = createProfitChart({
+    container: volumeChartContainer,
+    data: buildVolumeChartData(hotStore.getState().dailySummary),
+    mode: 'volume',
+    onBarClick: () => {
+      location.hash = '#/profit-detail'
     },
   })
 
@@ -295,7 +259,6 @@ function mount(container: HTMLElement): void {
   const initState = hotStore.getState()
   sellHistory = initState.sellHistory
   buyHistory = initState.buyHistory
-  updateSummaryCards()
 
   // hotStore 구독 — rAF 배칭 + selective update
   let prevSellRef = initState.sellHistory
@@ -344,17 +307,16 @@ function mount(container: HTMLElement): void {
 
       if (_dirtyHistory) {
         _dirtyHistory = false
-        updateSummaryCards()
         renderAccountVals()
       }
 
       if (_dirtyChart) {
         _dirtyChart = false
-        updateSummaryCards()
         const latest = hotStore.getState()
         const settings = globalSettingsManager.getSettings()
         const tradeModeChanged = settings?.trade_mode !== prevTradeMode
         chart?.updateData(buildChartFromDailySummary(latest.dailySummary))
+        volumeChart?.updateData(buildVolumeChartData(latest.dailySummary))
         if (tradeModeChanged) {
           prevTradeMode = settings?.trade_mode
           const isTest = settings?.trade_mode === 'test'
@@ -382,6 +344,7 @@ function unmount(): void {
   _dirtyChart = false
   if (unsubStore) { unsubStore(); unsubStore = null }
   if (chart) { chart.destroy(); chart = null }
+  if (volumeChart) { volumeChart.destroy(); volumeChart = null }
   accountValRefs = []
   testAccountValRefs = []
   holdingCountSpan = null
@@ -390,9 +353,6 @@ function unmount(): void {
   testAccountContainer = null
   buyHistory = []
   sellHistory = []
-  todayPnlEl = null; todayRateEl = null
-  monthPnlEl = null; monthRateEl = null
-  totalPnlEl = null; totalRateEl = null
 }
 
 export default { mount, unmount }
