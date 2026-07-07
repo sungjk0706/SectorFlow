@@ -1,25 +1,22 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 수익현황 분리 Step 4 — profit-detail.ts 신규 생성**
-  - `canvas-profit-chart.ts`: `height` 옵션 추가 (기본값 220, 기존 호출자 영향 없음)
-  - `profit-detail.ts` 신규 생성: 전체 너비 차트(300px) + 요약 카드 3개 + 계좌현황 + 가상 스크롤 거래내역 + 날짜 필터 input
-  - 공통 모듈 재사용: `profit-shared.ts`의 `BUY_COLS`/`SELL_COLS`/`aggregatePnl`/`renderAccountVals`/`buildChartFromDailySummary`/`DUMMY_*`
-  - hotStore 구독 + rAF 배칭 (profit-overview와 동일 패턴)
-  - 검증: `npm run typecheck` 통과, `npm run build` 통과
+- **2026-07-07: 수익 페이지 역할 분리 — overview 요약/대시보드, detail 상세/분석**
+  - `profit-overview.ts`: 거래내역 테이블, 드릴다운, 탭 버튼 제거, "상세 분석 보기 →" 버튼 추가
+  - `profit-detail.ts`: 요약카드, 계좌현황 제거, 드릴다운/종목필터/통계 추가
+  - `main.ts`: `#/profit-detail` 라우트 등록
+  - `sidebar.ts`: 수익상세 메뉴 추가
+  - 검증: `tsc --noEmit` 통과, `npm run build` 통과
+  - Git: `2dc0b83` 커밋 및 push 완료
 
 ## 현재 상태
 - **프론트엔드**: typecheck 통과, build 통과
 - **백엔드**: 변동 없음
-- **Git**: 미커밋 (승인 대기)
+- **Git**: `2dc0b83` push 완료 (origin/main)
 - **런타임**: 미기동
 
 ## 다음 단계
-- **수익현황 분리 Step 5+6: 라우팅 추가 + 사이드바 메뉴 추가**
-  - 계획서: `docs/profit-detail-refactor-plan.md` Step 5, 6 참조
-  - 대상: `frontend/src/main.ts` (라우트 등록), `frontend/src/layout/sidebar.ts` (메뉴 추가)
-  - 검증: `npm run typecheck` + `npm run build` + 브라우저 `#/profit-detail` 접근 확인
-  - 의존성: Step 4 완료 필수 (완료됨)
+- 브라우저에서 `#/profit-overview` → `#/profit-detail` 이동 및 화면 확인 필요
 
 ## 미해결 문제
 - 없음
