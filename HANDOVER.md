@@ -1,29 +1,20 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: Step 4 — profit-detail.ts 구조 재조정**
-  - 차트 패널 DOM/인스턴스/import 전부 제거 (`createProfitChart`, `ProfitChartApi`, `buildChartFromDailySummary`, `globalSettingsManager`, `api`)
-  - 요약카드 3개 추가 (`createSummaryCards`/`updateSummaryCards` 공통 함수 사용)
-  - 요약카드 클릭 → `filterByDate`(당일)/`filterByDateRange`(당월)/필터해제(누적) 연동
-  - `filterByDateRange` 헬퍼 함수 추가
-  - `drilldownActive` 초기값 `false`→`true`, mount 시 `showDrilldown()` 우선 호출
-  - `_dirtyChart`→`_dirtySummary` 변경, rAF 핸들러 갱신
-  - 검증: typecheck 통과, build 성공 (55 modules, 989ms), 잔여 차트 문자열 0건
-
-- **2026-07-07: Step 3 — profit-overview.ts 구조 재조정**
-  - 요약카드 3개 DOM/로직/변수 완전 제거, 레이아웃 2행×1열(좌)+1열(우) 구조, 신규 volume 차트 추가
+- **2026-07-07: 수익현황 하단 차트 업종별 수익 도넛으로 교체**
+  - 백엔드: `trade_history.py` `_ensure_loaded()` 쿼리에 `custom_sectors` LEFT JOIN 추가, `_lookup_sector()` 헬퍼 추가, `record_sell()`에 sector 필드 포함
+  - 프론트엔드: `canvas-sector-donut.ts` 신규 Canvas 2D 도넛 차트 컴포넌트 생성 (호버 툴팁, 범례, 빈 상태 처리)
+  - 프론트엔드: `profit-overview.ts` volume 막대 차트 → 업종별 수익 도넛 차트 교체
+  - 검증: tsc, vite build (56 modules, 2.74s), eslint, py_compile 전부 통과
 
 ## 현재 상태
-- **프론트엔드**: typecheck 통과, build 통과 (55 modules, 989ms)
-- **백엔드**: 변동 없음
-- **Git**: `1add729` push 완료 (origin/main)
-- **런타임**: 미기동
+- **프론트엔드**: typecheck 통과, build 통과 (56 modules, 2.74s)
+- **백엔드**: `trade_history.py` sector 조회 추가 (custom_sectors JOIN)
+- **Git**: `0a683e1` push 완료 (origin/main)
+- **런타임**: dev server 기동 중 (localhost:5174)
 
 ## 다음 단계
-- **Step 5: 빌드 검증 + 브라우저 확인**
-  - 계획서: `docs/profit-restructure-plan.md` Step 5 참조
-  - 의존성: Step 1~4 완료 (충족)
-  - 검증 항목: typecheck + build + lint + 브라우저 `#/profit-overview` 및 `#/profit-detail` 확인
+- 브라우저에서 `#/profit-overview` 도넛 차트 실제 렌더링 확인 (매도 데이터 있을 때/없을 때)
 
 ## 미해결 문제
 - 없음
