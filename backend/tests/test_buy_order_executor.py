@@ -67,6 +67,7 @@ def fresh_state():
     mock_state.auto_trade = MagicMock()
     mock_state.auto_trade.execute_buy = AsyncMock(return_value=True)
     mock_state.auto_trade._daily_buy_spent = 0
+    mock_state.auto_trade._bought_today = {}
     mock_state.auto_trade._ensure_daily_buy_counter = AsyncMock()
     mock_state.sector_summary_cache = _sector_summary()
     mock_state.integrated_system_settings_cache = _default_settings()
@@ -474,9 +475,97 @@ class TestGlobalSnapshotCache:
                 buy_targets=[BuyTarget(rank=1, sector_rank=1, stock=s2)],
             )
 
-            # 2차 호출 — top_code 변경 → 스냅샷 상이 → 매수 시도
+            # 2차 호출 — buyable_codes 변경 → 스냅샷 상이 → 매수 시도
             await evaluate_buy_candidates()
             assert fresh_state.auto_trade.execute_buy.await_count == 1
+        finally:
+            for p in patches:
+                p.stop()
+
+    @pytest.mark.asyncio
+    async def test_same_buyable_codes_different_order_skips(self, fresh_state, reset_cash_gate):
+        """동일 매수 가능 종목 집합의 정렬 순서만 바뀐 경우 스킵."""
+        s1 = _stock(code="A001")
+        s2 = _stock(code="A002")
+        fresh_state.sector_summary_cache = SectorSummary(
+            sectors=[],
+            buy_targets=[
+                BuyTarget(rank=1, sector_rank=1, stock=s1),
+                BuyTarget(rank=2, sector_rank=1, stock=s2),
+            ],
+            blocked_targets=[],
+            version=1,
+        )
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=False)
+        patches = [
+            patch("backend.app.services.engine_state.state", fresh_state),
+            patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True),
+            patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True),
+            patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                  return_value=[]),
+            patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
+            patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False),
+            patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            # 1차 호출 — A001 1순위, 매수 시도 (execute_buy False = 차단)
+            await evaluate_buy_candidates()
+            assert fresh_state.auto_trade.execute_buy.await_count == 1
+
+            fresh_state.auto_trade.execute_buy.reset_mock()
+
+            # 정렬 순서만 변경: A002 → A001 (buyable_codes는 동일)
+            fresh_state.sector_summary_cache = SectorSummary(
+                sectors=[],
+                buy_targets=[
+                    BuyTarget(rank=1, sector_rank=1, stock=s2),
+                    BuyTarget(rank=2, sector_rank=1, stock=s1),
+                ],
+                blocked_targets=[],
+                version=1,
+            )
+
+            # 2차 호출 — buyable_codes 동일 → 스냅샷 일치 → 스킵
+            await evaluate_buy_candidates()
+            assert fresh_state.auto_trade.execute_buy.await_count == 0
+        finally:
+            for p in patches:
+                p.stop()
+
+    @pytest.mark.asyncio
+    async def test_all_stocks_rebuy_blocked_skips_buy(self, fresh_state, reset_cash_gate):
+        """전체 guard_pass 종목이 재매수 차단된 경우 매수 시도 없음."""
+        s1 = _stock(code="A001")
+        s2 = _stock(code="A002")
+        fresh_state.sector_summary_cache = SectorSummary(
+            sectors=[],
+            buy_targets=[
+                BuyTarget(rank=1, sector_rank=1, stock=s1),
+                BuyTarget(rank=2, sector_rank=1, stock=s2),
+            ],
+            blocked_targets=[],
+            version=1,
+        )
+        fresh_state.auto_trade._bought_today = {"A001": 1.0, "A002": 2.0}
+        fresh_state.integrated_system_settings_cache = _default_settings(rebuy_block_on=True)
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=True)
+        patches = [
+            patch("backend.app.services.engine_state.state", fresh_state),
+            patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True),
+            patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True),
+            patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                  return_value=[]),
+            patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
+            patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False),
+            patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            await evaluate_buy_candidates()
+            fresh_state.auto_trade.execute_buy.assert_not_called()
         finally:
             for p in patches:
                 p.stop()

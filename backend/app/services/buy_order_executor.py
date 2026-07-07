@@ -107,8 +107,7 @@ async def evaluate_buy_candidates() -> None:
     _after_hours = is_krx_after_hours()
     _rebuy_block_on = bool(state.integrated_system_settings_cache.get("rebuy_block_on", True))
 
-    _top_code: str | None = None
-    _top_rebuy_blocked = False
+    _buyable_codes: list[str] = []
     for bt in ss.buy_targets:
         s = bt.stock
         if not s.guard_pass:
@@ -116,20 +115,16 @@ async def evaluate_buy_candidates() -> None:
         if _after_hours and not is_nxt_enabled(s.code):
             continue
         if _rebuy_block_on and s.code in state.auto_trade._bought_today:
-            _top_code = s.code
-            _top_rebuy_blocked = True
-            break
-        _top_code = s.code
-        break
+            continue
+        _buyable_codes.append(s.code)
 
     _current_snapshot = {
-        "top_code": _top_code,
+        "buyable_codes": tuple(sorted(_buyable_codes)),
         "holding_cnt": _holding_cnt,
         "daily_remain": _daily_remain if (_max_daily_on and _max_daily > 0) else None,
         "buy_amt": _buy_amt,
         "max_limit": _max_limit,
         "available_cash": _available,
-        "rebuy_blocked": _top_rebuy_blocked,
     }
 
     global _last_global_snapshot
