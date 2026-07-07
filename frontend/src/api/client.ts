@@ -171,6 +171,8 @@ export const api = {
       items: Array<{
         code: string;
         name: string;
+        market_type: string;
+        nxt_enable: boolean;
         day1_amount: number | null;
         day2_amount: number | null;
         day3_amount: number | null;
