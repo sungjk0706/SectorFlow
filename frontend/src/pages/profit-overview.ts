@@ -205,7 +205,7 @@ function mount(container: HTMLElement): void {
   const summaryRow = document.createElement('div')
   Object.assign(summaryRow.style, { display: 'flex', gap: '8px', padding: '8px 4px' })
 
-  const CARD_STYLE = `flex:1;background:#fafafa;border:1px solid #eee;border-radius:6px;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;`
+  const CARD_STYLE = `flex:1;background:#fafafa;border:1px solid #eee;border-radius:6px;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;`
   const CARD_TITLES = ['당일 손익', '당월 손익', '누적 손익']
 
   const pnlEls: HTMLSpanElement[] = []
@@ -214,6 +214,9 @@ function mount(container: HTMLElement): void {
   for (let i = 0; i < 3; i++) {
     const card = document.createElement('div')
     card.style.cssText = CARD_STYLE
+    card.addEventListener('click', () => {
+      location.hash = '#/profit-detail'
+    })
 
     const titleEl = document.createElement('div')
     Object.assign(titleEl.style, { fontSize: FONT_SIZE.badge, color: COLOR.secondary, whiteSpace: 'nowrap' })
