@@ -1,16 +1,16 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 구독해지 후 프론트엔드 갱신 지연 근본 해결**
-  - `engine_sector_confirm.py:375-378` — `apply_delayed_unsubscription` 종료 후 `schedule_engine_task(notify_buy_targets_update())` 추가
-  - 근본 원인: 30초 타이머 만료 후 `master_stocks_cache`에서 동적 데이터 제거 시 `notify_buy_targets_update`를 호출하지 않아, dirty 섹터 없으면 화면 갱신 무한정 지연
-  - 해결: `schedule_engine_task` 패턴으로 async `notify_buy_targets_update` 스케줄 (기존 `daily_time_scheduler.py` 동일 패턴)
-  - 검증: `test_engine_ws_dispatch.py` 66 passed, `test_pipeline_compute.py` 75 passed, py_compile OK, import OK
+- **2026-07-07: 30초 구독해지 타이머 리셋 누적 근본 해결**
+  - `engine_sector_confirm.py:18-23, 312-332, 340-398` — 단일 공유 타이머 → 종목별 독립 타이머 + call_soon 일괄 처리
+  - 근본 원인: 단일 `_PENDING_UNREG_TIMER`를 모든 해지 대상이 공유, 새 대상 추가 시 `cancel()` + `call_later()`로 타이머 리셋 → 기존 대기 종목의 대기 시간이 30초 초과
+  - 해결: `_PENDING_UNREG_TIMERS: dict[str, TimerHandle]`로 종목별 독립 타이머 관리, 타이머 만료 시 `_UNREG_READY_CODES`에 누적 후 `call_soon(_flush_unreg_batch)`으로 일괄 처리 (DYNAMIC_UNREG 1건 + notify 1회 보장)
+  - 검증: `test_engine_ws_dispatch.py` 66 passed, `test_pipeline_compute.py` 75 passed, `test_engine_ws.py` 53 passed, py_compile OK, import OK
 
 ## 현재 상태
-- **백엔드**: `engine_sector_confirm.py` 수정 (1파일, +4줄)
+- **백엔드**: `engine_sector_confirm.py` 수정 (1파일, 타이머 구조 전면 교체)
 - **프론트엔드**: 변경 없음
-- **Git**: 커밋 미수행 (수정 후 커밋 대기)
+- **Git**: 커밋 전 (수정 미커밋)
 - **런타임**: 백엔드 미기동
 
 ## 다음 단계
@@ -18,7 +18,6 @@
 
 ## 미해결 문제
 - **test_trading.py hang**: `TestExecuteBuyGates::test_rebuy_block_disabled` — 사전 존재 이슈
-- **30초 구독해지 타이머 리셋 누적**: `engine_sector_confirm.py:322-323` — 새 해지 대상 추가 시 타이머 리셋으로 인해 변동성 큰 장중 실제 대기 시간이 30초 초과 가능. 사용자가 10~20초 단축을 제안했으나, 타이머 리셋 메커니즘으로 인해 단축 효과가 제한적. 30초 유지 권장 상태
 
 ## 테스트 실행 원칙 (필수 준수)
 

@@ -16,8 +16,10 @@ logger = get_logger("engine")
 _dirty_codes: set[str] = set()
 
 # 0D 구독 해지 지연 관리 (guard_pass 경계값 진동 방지)
-_PENDING_UNREG_CODES: set[str] = set()  # 해지 대기 중인 종목 코드
-_PENDING_UNREG_TIMER: asyncio.TimerHandle | None = None  # 해지 타이머
+# 종목별 독립 타이머 — 각 종목이 정확히 _UNREG_DELAY_SEC 후 해지됨 (리셋 누적 방지)
+_PENDING_UNREG_TIMERS: dict[str, asyncio.TimerHandle] = dict()  # 종목별 해지 타이머
+_UNREG_READY_CODES: set[str] = set()  # 타이머 만료된 종목 대기실
+_UNREG_BATCH_PENDING: bool = False  # 일괄 처리 call_soon 예약 플래그
 _UNREG_DELAY_SEC: float = 30.0  # 해지 지연 시간 (30초)
 
 
@@ -274,10 +276,10 @@ def sync_dynamic_subscriptions(new_buy_targets) -> None:
     guard_pass 경계값 진동으로 인한 빈번한 REG/REMOVE 반복을 방지한다.
     특정 증권사에 종속되지 않도록 DYNAMIC_REG 이벤트를 제어 큐로 발행한다.
     """
-    global _PENDING_UNREG_CODES, _PENDING_UNREG_TIMER
+    global _PENDING_UNREG_TIMERS
 
     from backend.app.services.engine_state import state
-    from backend.app.services.core_queues import get_control_queue
+    from backend.app.services.core_queue import get_control_queue
     import time
 
     # WS 미연결 → 스킵
@@ -307,28 +309,27 @@ def sync_dynamic_subscriptions(new_buy_targets) -> None:
             logger.warning("[동적구독] 신규 등록 이벤트 큐 발행 실패: %s", e)
         prev_codes = prev_codes | to_reg  # 임시로 추가
 
-    # 해지 대상: 지연 적용
+    # 해지 대상: 종목별 독립 타이머 설정 (기존 타이머 건드리지 않음 — 리셋 누적 방지)
     new_unreg_candidates = prev_codes - new_codes
     if new_unreg_candidates:
-        _PENDING_UNREG_CODES.update(new_unreg_candidates)
-
-    # 복귀한 종목은 해지 취소
-    returned_codes = _PENDING_UNREG_CODES & new_codes
-    if returned_codes:
-        _PENDING_UNREG_CODES -= returned_codes
-
-    # 해지 타이머 설정/재설정
-    if _PENDING_UNREG_CODES:
-        if _PENDING_UNREG_TIMER is not None:
-            _PENDING_UNREG_TIMER.cancel()
         try:
             loop = asyncio.get_running_loop()
-            _PENDING_UNREG_TIMER = loop.call_later(
-                _UNREG_DELAY_SEC,
-                apply_delayed_unsubscription
-            )
         except RuntimeError:
-            pass
+            loop = None
+        for code in new_unreg_candidates:
+            if code not in _PENDING_UNREG_TIMERS and loop:
+                _PENDING_UNREG_TIMERS[code] = loop.call_later(
+                    _UNREG_DELAY_SEC,
+                    _on_unreg_timer,
+                    code,
+                )
+
+    # 복귀한 종목: 해당 종목 타이머만 취소
+    returned_codes = set(_PENDING_UNREG_TIMERS.keys()) & new_codes
+    for code in returned_codes:
+        timer = _PENDING_UNREG_TIMERS.pop(code, None)
+        if timer:
+            timer.cancel()
 
     # state.master_stocks_cache에 "_subscribed_dynamic" 설정
     for cd in prev_codes:
@@ -336,16 +337,38 @@ def sync_dynamic_subscriptions(new_buy_targets) -> None:
             state.master_stocks_cache[cd]["_subscribed_dynamic"] = True
 
 
-def apply_delayed_unsubscription() -> None:
-    """30초 후 실제 해지 적용."""
-    global _PENDING_UNREG_CODES, _PENDING_UNREG_TIMER
+def _on_unreg_timer(code: str) -> None:
+    """종목별 타이머 만료 콜백 — ready set에 추가 후 call_soon으로 일괄 처리 예약."""
+    global _UNREG_BATCH_PENDING
+    _PENDING_UNREG_TIMERS.pop(code, None)
+    _UNREG_READY_CODES.add(code)
+    if not _UNREG_BATCH_PENDING:
+        _UNREG_BATCH_PENDING = True
+        try:
+            loop = asyncio.get_running_loop()
+            loop.call_soon(_flush_unreg_batch)
+        except RuntimeError:
+            _UNREG_BATCH_PENDING = False
+            _UNREG_READY_CODES.clear()
+            logger.warning("[동적구독] 타이머 만료 시 이벤트 루프 없음 — 해지 스킵")
 
-    from backend.app.services.core_queues import get_control_queue
+
+def _flush_unreg_batch() -> None:
+    """타이머 만료된 종목들을 일괄 해지 (DYNAMIC_UNREG 1건 + notify 1회)."""
+    global _UNREG_BATCH_PENDING
+    _UNREG_BATCH_PENDING = False
+
+    codes = set(_UNREG_READY_CODES)
+    _UNREG_READY_CODES.clear()
+    if not codes:
+        return
+
+    from backend.app.services.core_queue import get_control_queue
     import time
 
     all_stocks = state.master_stocks_cache
     current_codes = {cd for cd, entry in all_stocks.items() if entry.get("_subscribed_dynamic", False)}
-    to_unreg = _PENDING_UNREG_CODES & current_codes  # 아직 구독 중인 것만
+    to_unreg = codes & current_codes  # 아직 구독 중인 것만
 
     if to_unreg:
         logger.info("[동적구독] 지연 해지 적용 %d종목", len(to_unreg))
@@ -360,10 +383,7 @@ def apply_delayed_unsubscription() -> None:
             get_control_queue().put_nowait((1, time.time(), payload))
         except Exception as e:
             logger.warning("[동적구독] 지연 해지 이벤트 큐 발행 실패: %s", e)
-        current_codes -= to_unreg
 
-    _PENDING_UNREG_CODES.clear()
-    _PENDING_UNREG_TIMER = None
     # state.master_stocks_cache에서 "_subscribed_dynamic" 및 동적 데이터 완전 제거 (데이터 왜곡 차단)
     for cd in to_unreg:
         if cd in state.master_stocks_cache:
