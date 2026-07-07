@@ -1,25 +1,26 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 보유/금일매수 종목 guard_pass=False 재분류 — UI 제한 컬럼 차단 표시**
-  - `buy_filter.py:187-195` — `check_stock_guards` 통과 후 보유/금일매수 종목을 `guard_pass=False`로 재분류 → `blocked_targets`로 이동
-  - `buy_filter.py:237-240` — `_proximity_key` `is_restricted` dead code 제거
-  - `buy_filter.py:256-264` — `pass_reason` 분기 dead code 제거, 통과 종목은 `reason=""`
-  - `buy_filter.py:200` — `trade_amount_rank` 계산에서 `s.code not in _held` 중복 조건 제거
-  - `test_buy_filter.py` — 5개 테스트 케이스 업데이트 (blocked_targets 검증)
-  - 검증: `test_buy_filter.py` 51 passed in 0.22s
+- **2026-07-07: 동적 구독 로직 정밀 검증 + 데드코드 삭제**
+  - `engine_ws_dispatch.py` — `_handle_real_0d`, `_REAL_DISPATCH`, consumer loop 3종(`start/stop/_impl`), `_consumer_task`/`_consumer_running`, `Callable` import 제거 (82줄)
+  - `engine_snapshot.py:161` — `_subscribed_0d` pop 제거 (플래그가 프로덕션에서 True로 설정되는 곳 없음)
+  - `status.py` — `debug_orderbook_status` 엔드포인트 + `Query` import 제거 (30줄)
+  - `test_engine_ws_dispatch.py` — `TestHandleReal0d` 클래스 4개 테스트 + `_handle_real_0d` import 제거 (38줄)
+  - 검증: `test_engine_ws_dispatch.py` 66 passed, `test_pipeline_compute.py` 75 passed, import OK
 
 ## 현재 상태
-- **백엔드**: `buy_filter.py`, `test_buy_filter.py` 수정 (2파일, +35/-29)
-- **프론트엔드**: 변경 없음 (`guard_pass` 기반 UI 렌더링 자동 반영)
-- **Git**: 커밋 `1a38535` 푸시 완료 (origin/main)
+- **백엔드**: `engine_ws_dispatch.py`, `engine_snapshot.py`, `status.py`, `test_engine_ws_dispatch.py` 수정 (4파일, -150줄)
+- **프론트엔드**: 변경 없음
+- **Git**: 커밋 `226dd96` 푸시 완료 (origin/main)
 - **런타임**: 백엔드 미기동
 
 ## 다음 단계
-- 브라우저에서 보유/금일매수 종목의 제한 컬럼이 "차단"으로 표시되는지 확인 (사용자 직접 확인 필요)
+- 없음
 
 ## 미해결 문제
 - **test_trading.py hang**: `TestExecuteBuyGates::test_rebuy_block_disabled` — 사전 존재 이슈
+- **30초 구독해지 타이머 리셋 누적**: `engine_sector_confirm.py:322-323` — 새 해지 대상 추가 시 타이머 리셋으로 인해 변동성 큰 장중 실제 대기 시간이 30초 초과 가능. 사용자가 10~20초 단축을 제안했으나, 타이머 리셋 메커니즘으로 인해 단축 효과가 제한적. 30초 유지 권장 상태
+- **구독해지 후 프론트엔드 갱신 지연**: `apply_delayed_unsubscription`이 `notify_buy_targets_update`를 직접 호출하지 않음. 다음 섹터 재계산 주기(0.2s)에서 갱신되나, dirty 섹터 없을 경우 지연 가능
 
 ## 테스트 실행 원칙 (필수 준수)
 
