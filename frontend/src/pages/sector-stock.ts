@@ -6,7 +6,7 @@ import { hotStore } from '../stores/hotStore'
 import { uiStore, setSelectedSector } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createStockNameColumn, makeSeqColumn, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, makeAmountColumn, makeAvgAmountColumn, FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
-import { createCardTitleWithContent } from '../components/common/card-title'
+import { createCardTitle } from '../components/common/card-title'
 import { createSearchInput } from '../components/common/search-input'
 import type { SectorStock, SectorScoreRow } from '../types'
 
@@ -272,10 +272,7 @@ class SectorStockTable extends HTMLElement {
 
   // DOM 참조
   private titleH3: HTMLElement | null = null
-  private titleBaseSpan: HTMLElement | null = null
-  private titleFilterSpan: HTMLElement | null = null
   private titleFilterNumSpan: HTMLElement | null = null
-  private titleCountSpan: HTMLElement | null = null
   private titleTotalNumSpan: HTMLElement | null = null
   private titleKrxNumSpan: HTMLElement | null = null
   private titleNxtNumSpan: HTMLElement | null = null
@@ -332,17 +329,13 @@ class SectorStockTable extends HTMLElement {
     const kosdaqCount = stocks.filter(s => s.market_type === '10').length
     const minTradeAmt = uiState.settings?.sector_min_trade_amt ?? 0
 
-    // 타이틀 갱신 — CSS display 토글 + 숫자 span textContent만 갱신 (innerHTML 파괴 금지)
-    if (this.titleFilterSpan && this.titleCountSpan) {
-      if (this.titleFilterNumSpan) this.titleFilterNumSpan.textContent = String(minTradeAmt)
-      this.titleFilterSpan.style.display = ''
-      if (this.titleTotalNumSpan) this.titleTotalNumSpan.textContent = String(stockCount)
-      if (this.titleKrxNumSpan) this.titleKrxNumSpan.textContent = String(krxCount)
-      if (this.titleNxtNumSpan) this.titleNxtNumSpan.textContent = String(nxtCount)
-      if (this.titleKospiNumSpan) this.titleKospiNumSpan.textContent = String(kospiCount)
-      if (this.titleKosdaqNumSpan) this.titleKosdaqNumSpan.textContent = String(kosdaqCount)
-      this.titleCountSpan.style.display = ''
-    }
+    // summaryBar 갱신 — 숫자 span textContent만 갱신 (innerHTML 파괴 금지)
+    if (this.titleFilterNumSpan) this.titleFilterNumSpan.textContent = String(minTradeAmt)
+    if (this.titleTotalNumSpan) this.titleTotalNumSpan.textContent = String(stockCount)
+    if (this.titleKrxNumSpan) this.titleKrxNumSpan.textContent = String(krxCount)
+    if (this.titleNxtNumSpan) this.titleNxtNumSpan.textContent = String(nxtCount)
+    if (this.titleKospiNumSpan) this.titleKospiNumSpan.textContent = String(kospiCount)
+    if (this.titleKosdaqNumSpan) this.titleKosdaqNumSpan.textContent = String(kosdaqCount)
 
     // 업종 필터 배지
     if (this.filterBadge) {
@@ -376,72 +369,125 @@ class SectorStockTable extends HTMLElement {
     this.rootEl = document.createElement('div')
     Object.assign(this.rootEl.style, { display: 'flex', flexDirection: 'column', height: '100%', contain: 'content' })
 
-    // 1. 카드 타이틀 — DOM 요소 1회 생성 (이후 textContent/display만 갱신)
-    // grid 3-column: 좌측(필터조건) | 중앙(제목) | 우측(종목수 요약)
-    const titleContent = document.createElement('span')
-    Object.assign(titleContent.style, {
-      display: 'grid',
-      gridTemplateColumns: '1.8fr 1fr 1.5fr',
-      width: '100%',
-      alignItems: 'center',
-    })
-
-    // 좌측: 5일평균최소거래대금 라벨 — 라벨 텍스트(tertiary) + 숫자(neutral, semibold) 분리
-    this.titleFilterSpan = document.createElement('span')
-    Object.assign(this.titleFilterSpan.style, {
-      color: COLOR.tertiary, fontWeight: FONT_WEIGHT.medium,
-      fontSize: FONT_SIZE.label, textAlign: 'left', display: 'none',
-    })
-    this.titleFilterSpan.textContent = '5일평균최소거래대금('
-    this.titleFilterNumSpan = document.createElement('span')
-    Object.assign(this.titleFilterNumSpan.style, { color: COLOR.neutral, fontWeight: FONT_WEIGHT.semibold })
-    this.titleFilterSpan.appendChild(this.titleFilterNumSpan)
-    const filterSuffix = document.createElement('span')
-    filterSuffix.textContent = ')억'
-    this.titleFilterSpan.appendChild(filterSuffix)
-    this.titleFilterSpan.appendChild(document.createTextNode(' 합계:'))
-    this.titleTotalNumSpan = document.createElement('span')
-    Object.assign(this.titleTotalNumSpan.style, { color: COLOR.neutral, fontWeight: FONT_WEIGHT.semibold })
-    this.titleFilterSpan.appendChild(this.titleTotalNumSpan)
-    this.titleFilterSpan.appendChild(document.createTextNode('종목'))
-
-    this.titleBaseSpan = document.createElement('span')
-    this.titleBaseSpan.textContent = '업종별 종목 실시간 시세'
-    Object.assign(this.titleBaseSpan.style, { textAlign: 'center', fontWeight: '600' })
-
-    // 우측: 종목수 요약 — 라벨 텍스트(tertiary) + 숫자(neutral, semibold) 분리
-    this.titleCountSpan = document.createElement('span')
-    Object.assign(this.titleCountSpan.style, {
-      color: COLOR.tertiary, fontWeight: FONT_WEIGHT.medium,
-      fontSize: FONT_SIZE.label, textAlign: 'right', display: 'none',
-    })
-    this.titleCountSpan.textContent = 'KRX:'
-    this.titleKrxNumSpan = document.createElement('span')
-    Object.assign(this.titleKrxNumSpan.style, { color: COLOR.neutral, fontWeight: FONT_WEIGHT.semibold })
-    this.titleCountSpan.appendChild(this.titleKrxNumSpan)
-    this.titleCountSpan.appendChild(document.createTextNode('종목 NXT:'))
-    this.titleNxtNumSpan = document.createElement('span')
-    Object.assign(this.titleNxtNumSpan.style, { color: COLOR.neutral, fontWeight: FONT_WEIGHT.semibold })
-    this.titleCountSpan.appendChild(this.titleNxtNumSpan)
-    this.titleCountSpan.appendChild(document.createTextNode('종목'))
-    // 2행: 코스피/코스닥 구분
-    this.titleCountSpan.appendChild(document.createElement('br'))
-    this.titleCountSpan.appendChild(document.createTextNode('코스피:'))
-    this.titleKospiNumSpan = document.createElement('span')
-    Object.assign(this.titleKospiNumSpan.style, { color: COLOR.neutral, fontWeight: FONT_WEIGHT.semibold })
-    this.titleCountSpan.appendChild(this.titleKospiNumSpan)
-    this.titleCountSpan.appendChild(document.createTextNode('종목 코스닥:'))
-    this.titleKosdaqNumSpan = document.createElement('span')
-    Object.assign(this.titleKosdaqNumSpan.style, { color: COLOR.neutral, fontWeight: FONT_WEIGHT.semibold })
-    this.titleCountSpan.appendChild(this.titleKosdaqNumSpan)
-    this.titleCountSpan.appendChild(document.createTextNode('종목'))
-
-    titleContent.appendChild(this.titleFilterSpan)
-    titleContent.appendChild(this.titleBaseSpan)
-    titleContent.appendChild(this.titleCountSpan)
-
-    this.titleH3 = createCardTitleWithContent(titleContent)
+    // 1. 카드 타이틀 — 좌측 정렬 (다른 패널과 동일)
+    this.titleH3 = createCardTitle('업종별 종목 실시간 시세')
     this.rootEl.appendChild(this.titleH3)
+
+    // 1-1. 합계 정보 바 — 타이틀 하단 중앙 정렬 (stock-detail.ts 패턴과 동일)
+    const summaryBar = document.createElement('div')
+    Object.assign(summaryBar.style, {
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: '2px',
+      marginBottom: '8px',
+      flexShrink: '0',
+      fontSize: FONT_SIZE.label,
+      fontWeight: FONT_WEIGHT.normal,
+    })
+
+    // Row 1: 5일평균거래대금(N)억 — 중앙 정렬
+    const filterRow = document.createElement('div')
+    Object.assign(filterRow.style, { display: 'flex', alignItems: 'center', gap: '2px' })
+    const filterLabel = document.createElement('span')
+    Object.assign(filterLabel.style, { color: COLOR.neutral })
+    filterLabel.textContent = '5일평균거래대금('
+    filterRow.appendChild(filterLabel)
+    this.titleFilterNumSpan = document.createElement('span')
+    Object.assign(this.titleFilterNumSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
+    filterRow.appendChild(this.titleFilterNumSpan)
+    const filterSuffix = document.createElement('span')
+    Object.assign(filterSuffix.style, { color: COLOR.neutral })
+    filterSuffix.textContent = ')억'
+    filterRow.appendChild(filterSuffix)
+    summaryBar.appendChild(filterRow)
+
+    // Row 2: 합계 KRX NXT▲ 코스피 코스닥 — 중앙 정렬
+    const countRow = document.createElement('div')
+    Object.assign(countRow.style, { display: 'flex', alignItems: 'center', gap: '4px' })
+
+    // 합계
+    const totalLabel = document.createElement('span')
+    Object.assign(totalLabel.style, { color: COLOR.neutral })
+    totalLabel.textContent = '합계:'
+    countRow.appendChild(totalLabel)
+    this.titleTotalNumSpan = document.createElement('span')
+    Object.assign(this.titleTotalNumSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
+    countRow.appendChild(this.titleTotalNumSpan)
+    const totalSuffix = document.createElement('span')
+    Object.assign(totalSuffix.style, { color: COLOR.neutral })
+    totalSuffix.textContent = '종목'
+    countRow.appendChild(totalSuffix)
+
+    // KRX
+    const krxLabel = document.createElement('span')
+    Object.assign(krxLabel.style, { color: COLOR.neutral })
+    krxLabel.textContent = ' KRX:'
+    countRow.appendChild(krxLabel)
+    this.titleKrxNumSpan = document.createElement('span')
+    Object.assign(this.titleKrxNumSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
+    countRow.appendChild(this.titleKrxNumSpan)
+    const krxSuffix = document.createElement('span')
+    Object.assign(krxSuffix.style, { color: COLOR.neutral })
+    krxSuffix.textContent = '종목'
+    countRow.appendChild(krxSuffix)
+
+    // NXT (빨강 라벨 + 삼각이모지)
+    const nxtLabel = document.createElement('span')
+    Object.assign(nxtLabel.style, { color: COLOR.up })
+    nxtLabel.textContent = ' NXT'
+    countRow.appendChild(nxtLabel)
+    const nxtTri = document.createElement('span')
+    Object.assign(nxtTri.style, {
+      display: 'inline-block',
+      width: '0',
+      height: '0',
+      borderLeft: '5px solid transparent',
+      borderBottom: `5px solid ${COLOR.up}`,
+      marginRight: '3px',
+      verticalAlign: 'middle',
+    })
+    countRow.appendChild(nxtTri)
+    const nxtColon = document.createElement('span')
+    Object.assign(nxtColon.style, { color: COLOR.up })
+    nxtColon.textContent = ':'
+    countRow.appendChild(nxtColon)
+    this.titleNxtNumSpan = document.createElement('span')
+    Object.assign(this.titleNxtNumSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
+    countRow.appendChild(this.titleNxtNumSpan)
+    const nxtSuffix = document.createElement('span')
+    Object.assign(nxtSuffix.style, { color: COLOR.neutral })
+    nxtSuffix.textContent = '종목'
+    countRow.appendChild(nxtSuffix)
+
+    // 코스피
+    const kospiLabel = document.createElement('span')
+    Object.assign(kospiLabel.style, { color: COLOR.neutral })
+    kospiLabel.textContent = ' 코스피:'
+    countRow.appendChild(kospiLabel)
+    this.titleKospiNumSpan = document.createElement('span')
+    Object.assign(this.titleKospiNumSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
+    countRow.appendChild(this.titleKospiNumSpan)
+    const kospiSuffix = document.createElement('span')
+    Object.assign(kospiSuffix.style, { color: COLOR.neutral })
+    kospiSuffix.textContent = '종목'
+    countRow.appendChild(kospiSuffix)
+
+    // 코스닥 (자주색 라벨)
+    const kosdaqLabel = document.createElement('span')
+    Object.assign(kosdaqLabel.style, { color: COLOR.kosdaq })
+    kosdaqLabel.textContent = ' 코스닥:'
+    countRow.appendChild(kosdaqLabel)
+    this.titleKosdaqNumSpan = document.createElement('span')
+    Object.assign(this.titleKosdaqNumSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
+    countRow.appendChild(this.titleKosdaqNumSpan)
+    const kosdaqSuffix = document.createElement('span')
+    Object.assign(kosdaqSuffix.style, { color: COLOR.neutral })
+    kosdaqSuffix.textContent = '종목'
+    countRow.appendChild(kosdaqSuffix)
+
+    summaryBar.appendChild(countRow)
+    this.rootEl.appendChild(summaryBar)
 
     // 2. 선택된 업종 필터 배지
     this.filterBadge = document.createElement('div')
@@ -682,9 +728,6 @@ class SectorStockTable extends HTMLElement {
     if (this.rootEl && this.rootEl.parentNode) this.rootEl.parentNode.removeChild(this.rootEl)
     this.rootEl = null
     this.titleH3 = null
-    this.titleBaseSpan = null
-    this.titleFilterSpan = null
-    this.titleCountSpan = null
     this.titleKospiNumSpan = null
     this.titleKosdaqNumSpan = null
     this.filterBadge = null
