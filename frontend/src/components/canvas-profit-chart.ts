@@ -23,6 +23,7 @@ interface DisplayRow extends ProfitChartRow {
 export interface ProfitChartOptions {
   container: HTMLElement
   data: ProfitChartRow[]
+  mode?: 'pnl' | 'volume'
   maxBars?: number
   height?: number
   onBarClick?: (date: string) => void
@@ -48,6 +49,7 @@ const BAR_GAP_RATIO = 0.3
 const COLORS = {
   profit: [COLOR.up, COLOR.upLight],
   loss: [COLOR.down, COLOR.downLight],
+  volume: [COLOR.down, COLOR.downLight],
   equity: COLOR.down,
   equityArea: 'rgba(25, 118, 210, 0.08)',
   grid: '#f0f0f0',
@@ -68,6 +70,14 @@ function formatAmountWon(value: number): string {
   if (abs >= 100000000) return `${(value / 100000000).toFixed(1)}억`
   if (abs >= 10000) return `${Math.round(value / 10000)}만`
   return String(value)
+}
+
+function formatCount(value: number): string {
+  return String(Math.round(value))
+}
+
+function formatPercent(value: number): string {
+  return `${value.toFixed(1)}%`
 }
 
 /** 그리드 눈금을 위한 적절한 간격 계산 */
@@ -94,13 +104,16 @@ function computeYTicks(minVal: number, maxVal: number): number[] {
 // ── 메인 팩토리 ──────────────────────────────────────────────
 
 export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
-  const { container, maxBars = 30, height = CHART_HEIGHT } = options
+  const { container, mode = 'pnl', maxBars = 30, height = CHART_HEIGHT } = options
   
   let isSample = false
   let displayData: DisplayRow[] = []
 
   // ── 데이터 처리 (누적 합계 계산) ──────────────────────────
   function processData(rows: ProfitChartRow[]): DisplayRow[] {
+    if (mode === 'volume') {
+      return rows.map(r => ({ ...r, cumulative: r.rate }))
+    }
     let cumulative = 0
     return rows.map(r => {
       cumulative += (r.pnl || 0)
@@ -273,7 +286,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
       const bH = Math.max(Math.abs(bBottom - bTop), 2)
       
       const grad = ctx.createLinearGradient(x, bTop, x, bBottom)
-      const colors = isPos ? COLORS.profit : COLORS.loss
+      const colors = mode === 'volume' ? COLORS.volume : (isPos ? COLORS.profit : COLORS.loss)
       grad.addColorStop(0, colors[0])
       grad.addColorStop(1, colors[1])
       
@@ -307,28 +320,32 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
       ctx.stroke()
       ctx.shadowBlur = 0
 
-      // 라인 하단 채우기
-      ctx.lineTo(plotR - barW_total / 2, plotB)
-      ctx.lineTo(plotL + barW_total / 2, plotB)
-      ctx.fillStyle = COLORS.equityArea
-      ctx.fill()
+      // 라인 하단 채우기 (pnl 모드만 — volume 모드는 일별 수익률이므로 영역 채우기 생략)
+      if (mode === 'pnl') {
+        ctx.lineTo(plotR - barW_total / 2, plotB)
+        ctx.lineTo(plotL + barW_total / 2, plotB)
+        ctx.fillStyle = COLORS.equityArea
+        ctx.fill()
+      }
     }
 
     // ── 축 텍스트 ───────────────────────────────────────────
     ctx.font = `10px ${FONT_FAMILY}`
     ctx.fillStyle = COLORS.axis
     
-    // Y축 Left (Daily)
+    // Y축 Left (Daily / Volume)
     ctx.textAlign = 'right'
     ctx.textBaseline = 'middle'
+    const leftFmt = mode === 'volume' ? formatCount : formatAmountWon
     pTicks.forEach(v => {
-      ctx.fillText(formatAmountWon(v), plotL - 8, pToY(v))
+      ctx.fillText(leftFmt(v), plotL - 8, pToY(v))
     })
 
-    // Y축 Right (Equity)
+    // Y축 Right (Equity / Rate)
     ctx.textAlign = 'left'
+    const rightFmt = mode === 'volume' ? formatPercent : formatAmountWon
     cTicks.forEach(v => {
-      ctx.fillText(formatAmountWon(v), plotR + 8, cToY(v))
+      ctx.fillText(rightFmt(v), plotR + 8, cToY(v))
     })
 
     // X축 (MM/DD)
@@ -394,15 +411,21 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
         const pColor = pnlColor(d.pnl || 0)
         const rColor = pnlColor(d.rate)
         tooltip.style.display = 'block'
+        const barLabel = mode === 'volume' ? '거래 건수:' : '일별 손익:'
+        const barValue = mode === 'volume'
+          ? `${d.pnl || 0}건`
+          : `${(d.pnl || 0).toLocaleString()}원`
+        const lineLabel = mode === 'volume' ? '수익률:' : '일별 수익률:'
+        const lineValue = `${d.rate.toFixed(2)}%`
         tooltip.innerHTML = `
           <div style="font-weight:600;margin-bottom:6px;border-bottom:1px solid #eee;padding-bottom:4px;">${formatDate(d.date)}</div>
           <div style="display:flex;justify-content:space-between;gap:12px;">
-            <span style="color:${COLOR.tertiary}">일별 손익:</span>
-            <span style="color:${pColor};font-weight:600">${(d.pnl || 0).toLocaleString()}원</span>
+            <span style="color:${COLOR.tertiary}">${barLabel}</span>
+            <span style="color:${pColor};font-weight:600">${barValue}</span>
           </div>
           <div style="display:flex;justify-content:space-between;gap:12px;">
-            <span style="color:${COLOR.tertiary}">일별 수익률:</span>
-            <span style="color:${rColor};font-weight:600">${d.rate.toFixed(2)}%</span>
+            <span style="color:${COLOR.tertiary}">${lineLabel}</span>
+            <span style="color:${rColor};font-weight:600">${lineValue}</span>
           </div>
         `
         const tw = tooltip.offsetWidth
@@ -427,6 +450,18 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
   function generateDummyData(): ProfitChartRow[] {
     const rows: ProfitChartRow[] = []
     const now = new Date()
+    if (mode === 'volume') {
+      for (let i = 0; i < 20; i++) {
+        const d = new Date(now)
+        d.setDate(d.getDate() - (19 - i))
+        rows.push({
+          date: d.toISOString().slice(0, 10),
+          pnl: Math.floor(Math.random() * 8) + 1,
+          rate: +((Math.random() - 0.4) * 5).toFixed(2)
+        })
+      }
+      return rows
+    }
     let trend = 0
     for (let i = 0; i < 20; i++) {
       const d = new Date(now)
