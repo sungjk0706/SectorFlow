@@ -1,17 +1,16 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 전역 조건 스냅샷 캐싱으로 불필요한 반복 매수 시도 제거**
-  - `buy_order_executor.py:18-25, 105-137, 165` — `_last_global_snapshot`으로 전역 조건 변화 감지, 동일 시 스킵
-  - `engine_account.py:416-418`, `settlement_engine.py:119-121`, `engine_service.py:206-211` — 무효화 호출 추가
-  - 근본 원인: `guard_pass` 진동으로 `buy_targets` 변경 시 `evaluate_buy_candidates` 반복 호출, 전역 조건 변화 감지 메커니즘 부재
-  - 해결: 매수후보 1위 종목 코드, 보유종목 수, 일일잔여금액, 주문가능금액 등 스냅샷 비교 → 동일 시 조기 반환, 매수 성공/설정 변경/잔고 회복 시 `invalidate_buy_snapshot()` 무효화
-  - 검증: `test_buy_order_executor.py` 23 passed (기존 19 + 신규 4), py_compile 5파일 OK
+- **2026-07-07: 수익현황 페이지 수익률 불일치 + 매도가 컬럼 색상 수정**
+  - `trade_history.py:443` — `get_daily_summary`에서 `buy_history.total_amt`를 `buy_total`에 중복 합산하는 라인 제거 (SSOT — `sell_history.buy_total_amt`만 사용)
+  - `profit-overview.ts:8,74-81` — 매도가 컬럼 render를 `createPnlCell(sell)`에서 `realized_pnl` 기준 `pnlColor`로 변경, unused `createPnlCell` import 제거, `fmtComma` import 추가
+  - `test_trade_history.py` — 회귀 테스트 2건 추가 (중복 합산 방지, 매도 없는 날 pnl_rate=0 검증)
+  - 검증: pytest 2 passed, npm run build 성공 (tsc + vite)
 
 ## 현재 상태
-- **백엔드**: `buy_order_executor.py`, `engine_account.py`, `settlement_engine.py`, `engine_service.py` 수정 (4파일, 스냅샷 캐싱 로직 추가)
-- **프론트엔드**: 변경 없음
-- **Git**: 커밋 `cce0a74` 푸시 완료 (origin/main)
+- **백엔드**: `trade_history.py` 수정 (buy_total 중복 합산 제거), `test_trade_history.py` 신규 추가
+- **프론트엔드**: `profit-overview.ts` 수정 (매도가 컬럼 색상 realized_pnl 기준 변경)
+- **Git**: 커밋 `dbdc60b` 푸시 완료 (origin/main)
 - **런타임**: 백엔드 미기동
 
 ## 다음 단계
@@ -106,5 +105,5 @@ python -m pytest backend/tests/[파일명] -v --timeout=15 --timeout-method=sign
 - `app.py`, `ws.py`, `ws_manager.py`, `settings.py`, `stock_classification.py`, `status.py`
 
 #### Priority 6 — 유틸/기타 (0% 커버, 장기)
-- `telegram.py`, `telegram_bot.py`, `trade_history.py`, `dry_run.py`
+- `telegram.py`, `telegram_bot.py`, `trade_history.py` (회귀 테스트 2건 추가), `dry_run.py`
 - `journal.py`, `logger.py`, `encryption.py`, `sector_mapping.py`
