@@ -372,6 +372,10 @@ def apply_delayed_unsubscription() -> None:
             entry.pop("order_ratio", None)
             entry.pop("program_net_buy", None)
 
+    if to_unreg:
+        from backend.app.services.engine_lifecycle import schedule_engine_task
+        from backend.app.services.engine_account_notify import notify_buy_targets_update
+        schedule_engine_task(notify_buy_targets_update(), context="구독해지 후 매수후보 갱신")
 
 
 # ── 호환용 ────────────────────────────────────────────────────────────────

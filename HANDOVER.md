@@ -1,17 +1,16 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 동적 구독 로직 정밀 검증 + 데드코드 삭제**
-  - `engine_ws_dispatch.py` — `_handle_real_0d`, `_REAL_DISPATCH`, consumer loop 3종(`start/stop/_impl`), `_consumer_task`/`_consumer_running`, `Callable` import 제거 (82줄)
-  - `engine_snapshot.py:161` — `_subscribed_0d` pop 제거 (플래그가 프로덕션에서 True로 설정되는 곳 없음)
-  - `status.py` — `debug_orderbook_status` 엔드포인트 + `Query` import 제거 (30줄)
-  - `test_engine_ws_dispatch.py` — `TestHandleReal0d` 클래스 4개 테스트 + `_handle_real_0d` import 제거 (38줄)
-  - 검증: `test_engine_ws_dispatch.py` 66 passed, `test_pipeline_compute.py` 75 passed, import OK
+- **2026-07-07: 구독해지 후 프론트엔드 갱신 지연 근본 해결**
+  - `engine_sector_confirm.py:375-378` — `apply_delayed_unsubscription` 종료 후 `schedule_engine_task(notify_buy_targets_update())` 추가
+  - 근본 원인: 30초 타이머 만료 후 `master_stocks_cache`에서 동적 데이터 제거 시 `notify_buy_targets_update`를 호출하지 않아, dirty 섹터 없으면 화면 갱신 무한정 지연
+  - 해결: `schedule_engine_task` 패턴으로 async `notify_buy_targets_update` 스케줄 (기존 `daily_time_scheduler.py` 동일 패턴)
+  - 검증: `test_engine_ws_dispatch.py` 66 passed, `test_pipeline_compute.py` 75 passed, py_compile OK, import OK
 
 ## 현재 상태
-- **백엔드**: `engine_ws_dispatch.py`, `engine_snapshot.py`, `status.py`, `test_engine_ws_dispatch.py` 수정 (4파일, -150줄)
+- **백엔드**: `engine_sector_confirm.py` 수정 (1파일, +4줄)
 - **프론트엔드**: 변경 없음
-- **Git**: 커밋 `226dd96` 푸시 완료 (origin/main)
+- **Git**: 커밋 미수행 (수정 후 커밋 대기)
 - **런타임**: 백엔드 미기동
 
 ## 다음 단계
@@ -20,7 +19,6 @@
 ## 미해결 문제
 - **test_trading.py hang**: `TestExecuteBuyGates::test_rebuy_block_disabled` — 사전 존재 이슈
 - **30초 구독해지 타이머 리셋 누적**: `engine_sector_confirm.py:322-323` — 새 해지 대상 추가 시 타이머 리셋으로 인해 변동성 큰 장중 실제 대기 시간이 30초 초과 가능. 사용자가 10~20초 단축을 제안했으나, 타이머 리셋 메커니즘으로 인해 단축 효과가 제한적. 30초 유지 권장 상태
-- **구독해지 후 프론트엔드 갱신 지연**: `apply_delayed_unsubscription`이 `notify_buy_targets_update`를 직접 호출하지 않음. 다음 섹터 재계산 주기(0.2s)에서 갱신되나, dirty 섹터 없을 경우 지연 가능
 
 ## 테스트 실행 원칙 (필수 준수)
 
