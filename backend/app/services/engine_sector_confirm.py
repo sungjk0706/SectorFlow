@@ -279,7 +279,7 @@ def sync_dynamic_subscriptions(new_buy_targets) -> None:
     global _PENDING_UNREG_TIMERS
 
     from backend.app.services.engine_state import state
-    from backend.app.services.core_queue import get_control_queue
+    from backend.app.services.core_queues import get_control_queue
     import time
 
     # WS 미연결 → 스킵
@@ -363,7 +363,7 @@ def _flush_unreg_batch() -> None:
     if not codes:
         return
 
-    from backend.app.services.core_queue import get_control_queue
+    from backend.app.services.core_queues import get_control_queue
     import time
 
     all_stocks = state.master_stocks_cache
