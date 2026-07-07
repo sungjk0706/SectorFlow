@@ -5,7 +5,7 @@
 import { createProfitChart, type ProfitChartApi } from '../components/canvas-profit-chart'
 import { createSectorDonut, type SectorDonutApi, type SectorDonutRow } from '../components/canvas-sector-donut'
 import { globalSettingsManager } from '../settings'
-import { FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR, pnlColor, fmtWon } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import { sectionTitle } from '../components/common/settings-common'
 import { ACCOUNT_LABELS_REAL, ACCOUNT_LABELS_TEST } from '../components/common/account-labels'
@@ -15,6 +15,7 @@ import { api } from '../api/client'
 import {
   buildChartFromDailySummary,
   renderAccountVals as renderAccountValsShared,
+  buildSectorStockPnl,
   type AccountValsParams,
 } from './profit-shared'
 
@@ -31,6 +32,7 @@ let holdingCountSpan: HTMLSpanElement | null = null
 let holdingCountSpanTest: HTMLSpanElement | null = null
 let realAccountContainer: HTMLDivElement | null = null
 let testAccountContainer: HTMLDivElement | null = null
+let sectorStockListContainer: HTMLDivElement | null = null
 let buyHistory: Record<string, unknown>[] = []
 let sellHistory: Record<string, unknown>[] = []
 let unsubStore: (() => void) | null = null
@@ -60,6 +62,76 @@ function renderAccountVals(): void {
     holdingCountSpanTest,
   }
   renderAccountValsShared(params)
+}
+
+/* ── 업종별 종목 수익 렌더 ── */
+function renderSectorStockPnl(): void {
+  if (!sectorStockListContainer) return
+  const groups = buildSectorStockPnl(sellHistory)
+  sectorStockListContainer.innerHTML = ''
+
+  if (groups.length === 0) {
+    const empty = document.createElement('div')
+    Object.assign(empty.style, { padding: '20px 4px', textAlign: 'center', color: COLOR.disabled, fontSize: FONT_SIZE.label })
+    empty.textContent = '매도 체결 내역이 없습니다'
+    sectorStockListContainer.appendChild(empty)
+    return
+  }
+
+  for (const group of groups) {
+    // 업종 헤더
+    const header = document.createElement('div')
+    Object.assign(header.style, {
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '8px 4px 4px', borderBottom: '2px solid #eee', marginTop: '8px',
+    })
+    const sectorName = document.createElement('span')
+    Object.assign(sectorName.style, { fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.semibold, color: group.color })
+    sectorName.textContent = group.sector
+    const sectorPnl = document.createElement('span')
+    Object.assign(sectorPnl.style, { fontSize: FONT_SIZE.label, fontWeight: FONT_WEIGHT.normal, color: pnlColor(group.pnl) })
+    const sign = group.pnl >= 0 ? '+' : ''
+    sectorPnl.textContent = `${sign}${fmtWon(group.pnl)}`
+    header.appendChild(sectorName)
+    header.appendChild(sectorPnl)
+    sectorStockListContainer.appendChild(header)
+
+    // 종목 행
+    for (const stock of group.stocks) {
+      const row = document.createElement('div')
+      Object.assign(row.style, {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 4px 6px 12px', borderBottom: '1px solid #f5f5f5',
+      })
+      // 종목명
+      const nameEl = document.createElement('span')
+      Object.assign(nameEl.style, { flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: FONT_SIZE.body, fontWeight: FONT_WEIGHT.medium })
+      nameEl.textContent = stock.stk_nm
+
+      // 수익금
+      const pnlEl = document.createElement('span')
+      Object.assign(pnlEl.style, { flex: 'none', width: '90px', textAlign: 'right', fontSize: FONT_SIZE.body, color: pnlColor(stock.realized_pnl) })
+      const pnlSign = stock.realized_pnl >= 0 ? '+' : ''
+      pnlEl.textContent = `${pnlSign}${stock.realized_pnl.toLocaleString()}원`
+
+      // 수익률
+      const rateEl = document.createElement('span')
+      Object.assign(rateEl.style, { flex: 'none', width: '60px', textAlign: 'right', fontSize: FONT_SIZE.body, color: pnlColor(stock.pnl_rate) })
+      const rateSign = stock.pnl_rate >= 0 ? '+' : ''
+      rateEl.textContent = `${rateSign}${stock.pnl_rate.toFixed(2)}%`
+
+      // 매도수량
+      const qtyEl = document.createElement('span')
+      Object.assign(qtyEl.style, { flex: 'none', width: '55px', textAlign: 'right', fontSize: FONT_SIZE.small, color: COLOR.secondary })
+      qtyEl.textContent = `매도 ${stock.qty}주`
+
+      row.appendChild(nameEl)
+      row.appendChild(pnlEl)
+      row.appendChild(rateEl)
+      row.appendChild(qtyEl)
+      sectorStockListContainer.appendChild(row)
+    }
+  }
 }
 
 /* ── 도넛 차트 데이터 빌드 (sellHistory → 업종별 손익 집계) ── */
@@ -200,6 +272,16 @@ function mount(container: HTMLElement): void {
   }
   accountPanel.appendChild(testAccountContainer)
 
+  // 업종별 종목 수익 섹션
+  const stockListHeader = sectionTitle('업종별 종목 수익')
+  stockListHeader.style.color = COLOR.down
+  stockListHeader.style.marginTop = '12px'
+  accountPanel.appendChild(stockListHeader)
+
+  sectorStockListContainer = document.createElement('div')
+  Object.assign(sectorStockListContainer.style, { flex: '1', minHeight: '0' })
+  accountPanel.appendChild(sectorStockListContainer)
+
   upper.appendChild(leftColumn)
   upper.appendChild(accountPanel)
   root.appendChild(upper)
@@ -306,6 +388,7 @@ function mount(container: HTMLElement): void {
       if (_dirtyHistory) {
         _dirtyHistory = false
         renderAccountVals()
+        renderSectorStockPnl()
       }
 
       if (_dirtyChart) {
@@ -315,6 +398,7 @@ function mount(container: HTMLElement): void {
         const tradeModeChanged = settings?.trade_mode !== prevTradeMode
         chart?.updateData(buildChartFromDailySummary(latest.dailySummary))
         donutChart?.updateData(buildSectorDonutData(latest.sellHistory))
+        renderSectorStockPnl()
         if (tradeModeChanged) {
           prevTradeMode = settings?.trade_mode
           const isTest = settings?.trade_mode === 'test'
@@ -330,6 +414,7 @@ function mount(container: HTMLElement): void {
   })
 
   renderAccountVals()
+  renderSectorStockPnl()
 }
 
 /* ── unmount ── */
@@ -349,6 +434,7 @@ function unmount(): void {
   holdingCountSpanTest = null
   realAccountContainer = null
   testAccountContainer = null
+  sectorStockListContainer = null
   buyHistory = []
   sellHistory = []
 }

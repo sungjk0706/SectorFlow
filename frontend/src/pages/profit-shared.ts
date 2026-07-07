@@ -5,8 +5,25 @@ import type { ColumnDef } from '../components/common/data-table'
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, fmtComma, createStockNameColumn, createCodeCell, createNumberCell, COLOR } from '../components/common/ui-styles'
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import type { AccountSnapshot } from '../types'
+import type { SectorDonutRow } from '../components/canvas-sector-donut'
+import { assignSectorColors } from '../components/canvas-sector-donut'
 
 /* ── 타입 정의 ── */
+
+export interface SectorStockPnl {
+  stk_cd: string
+  stk_nm: string
+  realized_pnl: number
+  pnl_rate: number
+  qty: number
+}
+
+export interface SectorPnlGroup {
+  sector: string
+  color: string
+  pnl: number
+  stocks: SectorStockPnl[]
+}
 
 export interface PnlSummary {
   pnl: number       // 실현손익 합계
@@ -115,6 +132,85 @@ export function updateSummaryCards(
   els.totalPnlEl.style.color = pnlColor(allS.pnl)
   els.totalRateEl.textContent = `${allS.rate.toFixed(2)}%`
   els.totalRateEl.style.color = pnlColor(allS.pnl)
+}
+
+/** sellHistory → 업종별 종목 수익 집계 (도넛 차트 색상 동기화)
+ *  1. sellHistory를 업종별로 그룹화
+ *  2. 동일 종목(stk_cd)의 여러 매도 기록을 합산
+ *  3. 도넛 차트와 동일한 절대값 내림차순 정렬 + 색상 할당
+ */
+export function buildSectorStockPnl(
+  sells: Record<string, unknown>[],
+): SectorPnlGroup[] {
+  // 1. 업종별 손익 집계 (도넛 차트와 동일 로직)
+  const sectorPnlMap = new Map<string, number>()
+  for (const r of sells) {
+    const sector = String(r.sector ?? '미분류')
+    const pnl = Number(r.realized_pnl ?? 0)
+    sectorPnlMap.set(sector, (sectorPnlMap.get(sector) ?? 0) + pnl)
+  }
+
+  // 2. 절대값 내림차순 정렬 (도넛 차트 processData와 동일)
+  const donutRows: SectorDonutRow[] = Array.from(sectorPnlMap.entries())
+    .map(([sector, pnl]) => ({ sector, pnl }))
+    .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl))
+
+  // 3. 색상 할당 (공유 함수 사용 — SSOT)
+  const colorMap = assignSectorColors(donutRows)
+
+  // 4. 종목별 집계: 동일 stk_cd의 매도 기록 합산
+  const stockMap = new Map<string, { stk_nm: string; realized_pnl: number; pnl_rate: number; qty: number; buy_total: number }>()
+  for (const r of sells) {
+    const sector = String(r.sector ?? '미분류')
+    const stkCd = String(r.stk_cd ?? '')
+    const key = sector + '\0' + stkCd
+    const pnl = Number(r.realized_pnl ?? 0)
+    const qty = Number(r.qty ?? 0)
+    const buyTotal = Number(r.buy_total_amt ?? 0)
+    const existing = stockMap.get(key)
+    if (existing) {
+      existing.realized_pnl += pnl
+      existing.qty += qty
+      existing.buy_total += buyTotal
+    } else {
+      stockMap.set(key, {
+        stk_nm: String(r.stk_nm ?? ''),
+        realized_pnl: pnl,
+        pnl_rate: 0,
+        qty,
+        buy_total: buyTotal,
+      })
+    }
+  }
+
+  // 5. pnl_rate 계산 (합산된 기준)
+  for (const v of stockMap.values()) {
+    v.pnl_rate = v.buy_total > 0 ? Math.round(v.realized_pnl / v.buy_total * 10000) / 100 : 0
+  }
+
+  // 6. 업종별 그룹 조립
+  return donutRows.map(({ sector, pnl }) => {
+    const stocks: SectorStockPnl[] = []
+    for (const [key, v] of stockMap) {
+      const [sec] = key.split('\0')
+      if (sec === sector) {
+        stocks.push({
+          stk_cd: key.split('\0')[1] ?? '',
+          stk_nm: v.stk_nm,
+          realized_pnl: v.realized_pnl,
+          pnl_rate: v.pnl_rate,
+          qty: v.qty,
+        })
+      }
+    }
+    stocks.sort((a, b) => Math.abs(b.realized_pnl) - Math.abs(a.realized_pnl))
+    return {
+      sector,
+      color: colorMap.get(sector) ?? '#999',
+      pnl,
+      stocks,
+    }
+  })
 }
 
 /* ── 순수 함수 ── */
@@ -302,8 +398,8 @@ export const DUMMY_BUY: Record<string, unknown>[] = [
 ]
 
 export const DUMMY_SELL: Record<string, unknown>[] = [
-  { date: '2026-04-14', time: '10:05:00', stk_cd: '005930', stk_nm: '삼성전자', avg_buy_price: 70000, price: 71500, qty: 100, buy_total_amt: 7001050, total_amt: 7134627, realized_pnl: 133577, pnl_rate: 1.91, fee: 1073, tax: 14300 },
-  { date: '2026-04-14', time: '10:30:00', stk_cd: '000660', stk_nm: 'SK하이닉스', avg_buy_price: 185000, price: 183000, qty: 50, buy_total_amt: 9251388, total_amt: 9130327, realized_pnl: -121061, pnl_rate: -1.31, fee: 1373, tax: 18300 },
+  { date: '2026-04-14', time: '10:05:00', stk_cd: '005930', stk_nm: '삼성전자', avg_buy_price: 70000, price: 71500, qty: 100, buy_total_amt: 7001050, total_amt: 7134627, realized_pnl: 133577, pnl_rate: 1.91, fee: 1073, tax: 14300, sector: '반도체/IDM' },
+  { date: '2026-04-14', time: '10:30:00', stk_cd: '000660', stk_nm: 'SK하이닉스', avg_buy_price: 185000, price: 183000, qty: 50, buy_total_amt: 9251388, total_amt: 9130327, realized_pnl: -121061, pnl_rate: -1.31, fee: 1373, tax: 18300, sector: '반도체/IDM' },
 ]
 
 /* ── 계좌 현황 렌더 (순수 함수 — 매개변수 기반) ── */
