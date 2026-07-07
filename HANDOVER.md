@@ -1,18 +1,23 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 수익현황 우측 패널에 업종별 종목 수익 섹션 추가**
-  - `canvas-sector-donut.ts`: PROFIT_COLORS/LOSS_COLORS export, `assignSectorColors()` 공유 함수 분리 (SSOT), render() 내부 로직을 공유 함수 호출로 교체
-  - `profit-shared.ts`: `buildSectorStockPnl()` 함수 + `SectorStockPnl`/`SectorPnlGroup` 타입 추가, `DUMMY_SELL`에 `sector` 필드 추가
-  - `profit-overview.ts`: `renderSectorStockPnl()` 렌더 함수, `accountPanel` 내 "업종별 종목 수익" 섹션 DOM 추가, rAF 배칭에 종목 리스트 갱신 연동, unmount 정리
-  - 검증: npm run build 성공 (56 modules, 6.33s)
+- **2026-07-07: 수익현황 차트 단위/수익률 표시 일관성 통일**
+  - `canvas-sector-donut.ts`: `formatWon` 제거 → `fmtWon` 통일 (SSOT), `SectorDonutRow`에 `rate`, `buyTotal` 추가, 중앙 라벨 "총 손익" → "누적 손익" + 누적 수익률 표시, 범례/툴팁에 수익률 추가
+  - `canvas-profit-chart.ts`: 툴팁 금액 포맷을 `fmtWon`으로 통일 (Y축은 만/억 약식 유지)
+  - `profit-shared.ts`: `SectorPnlGroup`에 `rate` 추가, `buildSectorStockPnl`에서 업종별 수익률 계산
+  - `profit-overview.ts`: `buildSectorDonutData`에 `rate`, `buyTotal` 계산 추가, 업종 헤더에 수익률 표시
+  - 검증: npm run build 성공 (56 modules, 0 errors)
 
 ## 현재 상태
-- **프론트엔드**: build 통과 (56 modules, 6.33s)
-- **Git**: `0318fc1` push 완료 (origin/main)
+- **프론트엔드**: build 통과 (56 modules, 5.48s)
+- **Git**: `0d9f002` push 완료 (origin/main)
 
 ## 다음 단계
-- 없음
+- **종목상세 페이지 신규 구현** (계획서: `docs/stock-detail-page-plan.md`)
+  - Step 1: Backend API 엔드포인트 추가 (`stock_5d_array` + `master_stocks_table` JOIN 조회)
+  - Step 2: Frontend API 클라이언트 함수 추가
+  - Step 3: Frontend 페이지 컴포넌트 추가 (`createDataTable` 기반 12컬럼 테이블)
+  - Step 4: 라우트 + 사이드바 등록
 
 ## 미해결 문제
 - 없음
