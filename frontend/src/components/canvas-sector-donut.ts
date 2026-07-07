@@ -29,7 +29,6 @@ export interface SectorDonutApi {
 
 // ── 상수 ────────────────────────────────────────────────────
 
-const DONUT_HEIGHT = 220
 const PADDING = 20
 
 // 도넛 색상 팔레트 — 수익/손실 계열
@@ -54,18 +53,22 @@ function formatWon(value: number): string {
 // ── 메인 팩토리 ──────────────────────────────────────────────
 
 export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
-  const { container, height = DONUT_HEIGHT } = options
+  const { container } = options
 
   let data: SectorDonutRow[] = []
   let hoveredIdx: number | null = null
 
   // ── DOM 구조 ──────────────────────────────────────────────
   const wrapper = document.createElement('div')
-  wrapper.style.cssText = 'position:relative;width:100%;height:100%;'
+  wrapper.style.cssText = 'position:relative;width:100%;height:100%;display:flex;gap:8px;'
 
   const canvasWrap = document.createElement('div')
-  canvasWrap.style.cssText = `position:relative;width:100%;height:${height}px;background:#fff;overflow:hidden;`
+  canvasWrap.style.cssText = 'position:relative;flex:1;min-width:0;height:100%;background:#fff;overflow:hidden;'
   wrapper.appendChild(canvasWrap)
+
+  const legendWrap = document.createElement('div')
+  legendWrap.style.cssText = 'flex:none;width:auto;max-width:45%;height:100%;overflow-y:auto;padding:4px 0;'
+  wrapper.appendChild(legendWrap)
 
   const canvas = document.createElement('canvas')
   canvas.style.cssText = 'display:block;width:100%;height:100%;'
@@ -90,6 +93,7 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
   const ctx = canvas.getContext('2d')
   let cw = 0, ch = 0
   let segmentRects: { startAngle: number; endAngle: number; row: SectorDonutRow; color: string }[] = []
+  let currentSegments: { row: SectorDonutRow; color: string }[] = []
 
   // ── 데이터 처리 ──────────────────────────────────────────
   function processData(rows: SectorDonutRow[]): SectorDonutRow[] {
@@ -143,6 +147,7 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
       const color = palette[isProfit ? profitIdx++ : lossIdx++ % palette.length]
       return { row: r, color }
     })
+    currentSegments = segments
 
     // 도넛 세그먼트 그리기
     let startAngle = -Math.PI / 2
@@ -186,22 +191,46 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
     ctx.font = `bold 16px ${FONT_FAMILY}`
     ctx.fillText(formatWon(totalPnl), cx, cy + 12)
 
-    // 범례 — 하단
-    const legendY = ch - PADDING + 4
-    if (legendY < ch) {
-      ctx.font = `10px ${FONT_FAMILY}`
-      ctx.textAlign = 'left'
-      ctx.textBaseline = 'top'
-      const legendItems = segments.slice(0, 5)
-      let legendX = PADDING
-      for (const seg of legendItems) {
-        ctx.fillStyle = seg.color
-        ctx.fillRect(legendX, legendY, 8, 8)
-        ctx.fillStyle = COLOR.tertiary
-        const label = seg.row.sector.length > 6 ? seg.row.sector.slice(0, 6) + '…' : seg.row.sector
-        ctx.fillText(label, legendX + 12, legendY - 1)
-        legendX += ctx.measureText(label).width + 28
-      }
+  }
+
+  // ── DOM 범례 렌더 ────────────────────────────────────────
+  function renderLegend() {
+    legendWrap.innerHTML = ''
+    if (currentSegments.length === 0) return
+    for (let i = 0; i < currentSegments.length; i++) {
+      const seg = currentSegments[i]
+      const isProfit = seg.row.pnl >= 0
+      const item = document.createElement('div')
+      item.style.cssText = `display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;border-radius:4px;${hoveredIdx === i ? 'background:#f0f0f0;' : ''}`
+      const dot = document.createElement('span')
+      dot.style.cssText = `flex:none;width:8px;height:8px;border-radius:50%;background:${seg.color};`
+      const label = document.createElement('span')
+      label.style.cssText = 'flex:1;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+      label.textContent = seg.row.sector
+      const val = document.createElement('span')
+      val.style.cssText = `flex:none;font-size:11px;font-weight:600;color:${isProfit ? COLOR.up : COLOR.down};`
+      val.textContent = `${seg.row.pnl >= 0 ? '+' : ''}${formatWon(seg.row.pnl)}`
+      item.appendChild(dot)
+      item.appendChild(label)
+      item.appendChild(val)
+      item.addEventListener('mouseenter', () => {
+        hoveredIdx = i
+        render()
+        renderLegendHighlight()
+      })
+      item.addEventListener('mouseleave', () => {
+        hoveredIdx = null
+        render()
+        renderLegendHighlight()
+      })
+      legendWrap.appendChild(item)
+    }
+  }
+
+  function renderLegendHighlight() {
+    const items = legendWrap.children
+    for (let i = 0; i < items.length; i++) {
+      ;(items[i] as HTMLElement).style.background = hoveredIdx === i ? '#f0f0f0' : ''
     }
   }
 
@@ -237,6 +266,7 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
     if (newHit !== hoveredIdx) {
       hoveredIdx = newHit
       render()
+      renderLegendHighlight()
       if (hoveredIdx !== null) {
         const seg = segmentRects[hoveredIdx]
         const isProfit = seg.row.pnl >= 0
@@ -260,7 +290,7 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
   }
 
   canvas.addEventListener('mousemove', onMove)
-  canvas.addEventListener('mouseleave', () => { hoveredIdx = null; render(); tooltip.style.display = 'none' })
+  canvas.addEventListener('mouseleave', () => { hoveredIdx = null; render(); renderLegendHighlight(); tooltip.style.display = 'none' })
 
   const RO = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => render()) : null
   if (RO) RO.observe(canvasWrap)
@@ -268,12 +298,14 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
   // 초기 렌더
   data = options.data
   render()
+  renderLegend()
 
   return {
     el: wrapper,
     updateData(newData: SectorDonutRow[]) {
       data = newData
       render()
+      renderLegend()
     },
     resize() { render() },
     destroy() {
