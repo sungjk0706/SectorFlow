@@ -2,7 +2,7 @@
 // 수익현황 페이지 공통 모듈 — profit-overview.ts와 profit-detail.ts가 공유하는 로직
 
 import type { ColumnDef } from '../components/common/data-table'
-import { pnlColor, fmtWon, fmtComma, createStockNameColumn, createCodeCell, createNumberCell, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, fmtComma, createStockNameColumn, createCodeCell, createNumberCell, COLOR } from '../components/common/ui-styles'
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import type { AccountSnapshot } from '../types'
 
@@ -21,6 +21,100 @@ export interface DailyDrilldownRow {
   pnl: number
   buyTotal: number
   rate: number
+}
+
+/* ── 요약 카드 공통 함수 ── */
+
+export interface SummaryCardEls {
+  todayPnlEl: HTMLSpanElement
+  todayRateEl: HTMLSpanElement
+  monthPnlEl: HTMLSpanElement
+  monthRateEl: HTMLSpanElement
+  totalPnlEl: HTMLSpanElement
+  totalRateEl: HTMLSpanElement
+}
+
+export interface SummaryCardCallbacks {
+  onTodayClick?: () => void
+  onMonthClick?: () => void
+  onTotalClick?: () => void
+}
+
+/** 요약 카드 3개(당일/당월/누적 손익) DOM 생성, 클릭 콜백 주입, 요소 참조 반환 */
+export function createSummaryCards(container: HTMLElement, callbacks: SummaryCardCallbacks = {}): SummaryCardEls {
+  const CARD_STYLE = `flex:1;background:#fafafa;border:1px solid #eee;border-radius:6px;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;`
+  const CARD_TITLES = ['당일 손익', '당월 손익', '누적 손익']
+  const clickHandlers = [callbacks.onTodayClick, callbacks.onMonthClick, callbacks.onTotalClick]
+
+  const pnlEls: HTMLSpanElement[] = []
+  const rateEls: HTMLSpanElement[] = []
+
+  for (let i = 0; i < 3; i++) {
+    const card = document.createElement('div')
+    card.style.cssText = CARD_STYLE
+    const handler = clickHandlers[i]
+    if (handler) card.addEventListener('click', handler)
+
+    const titleEl = document.createElement('div')
+    Object.assign(titleEl.style, { fontSize: FONT_SIZE.badge, color: COLOR.secondary, whiteSpace: 'nowrap' })
+    titleEl.textContent = CARD_TITLES[i]
+
+    const valRow = document.createElement('div')
+    Object.assign(valRow.style, { display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', gap: '6px' })
+
+    const pnlEl = document.createElement('span')
+    Object.assign(pnlEl.style, { fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal })
+    pnlEl.textContent = fmtWon(0)
+
+    const rateEl = document.createElement('span')
+    Object.assign(rateEl.style, { fontSize: FONT_SIZE.label, color: COLOR.neutral })
+    rateEl.textContent = '0.00%'
+
+    valRow.appendChild(pnlEl)
+    valRow.appendChild(rateEl)
+    card.appendChild(titleEl)
+    card.appendChild(valRow)
+    container.appendChild(card)
+
+    pnlEls.push(pnlEl)
+    rateEls.push(rateEl)
+  }
+
+  return {
+    todayPnlEl: pnlEls[0], todayRateEl: rateEls[0],
+    monthPnlEl: pnlEls[1], monthRateEl: rateEls[1],
+    totalPnlEl: pnlEls[2], totalRateEl: rateEls[2],
+  }
+}
+
+/** 당일/당월/누적 손익 계산 및 요약 카드 DOM 갱신 */
+export function updateSummaryCards(
+  sellHistory: Record<string, unknown>[],
+  dailySummary: Record<string, unknown>[],
+  els: SummaryCardEls,
+): void {
+  const today = getLocalToday()
+  const yearMonth = today.slice(0, 7)
+
+  const todayEntry = dailySummary.find(r => String(r.date ?? '') === today)
+  const dayPnl = todayEntry ? Number(todayEntry.realized_pnl ?? 0) : 0
+  const dayRate = todayEntry ? Number(todayEntry.pnl_rate ?? 0) : 0
+
+  const monS = aggregatePnl(sellHistory, yearMonth + '-01', yearMonth + '-31')
+  const allS = aggregatePnl(sellHistory)
+
+  els.todayPnlEl.textContent = fmtWon(dayPnl)
+  els.todayPnlEl.style.color = pnlColor(dayPnl)
+  els.todayRateEl.textContent = `${dayRate.toFixed(2)}%`
+  els.todayRateEl.style.color = pnlColor(dayPnl)
+  els.monthPnlEl.textContent = fmtWon(monS.pnl)
+  els.monthPnlEl.style.color = pnlColor(monS.pnl)
+  els.monthRateEl.textContent = `${monS.rate.toFixed(2)}%`
+  els.monthRateEl.style.color = pnlColor(monS.pnl)
+  els.totalPnlEl.textContent = fmtWon(allS.pnl)
+  els.totalPnlEl.style.color = pnlColor(allS.pnl)
+  els.totalRateEl.textContent = `${allS.rate.toFixed(2)}%`
+  els.totalRateEl.style.color = pnlColor(allS.pnl)
 }
 
 /* ── 순수 함수 ── */

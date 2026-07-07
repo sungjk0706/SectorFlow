@@ -56,8 +56,8 @@ Step 진행 전 반드시 다음 사항을 코드 기반으로 조사한다:
 
 | 단계 | 내용 | 상태 | 세션 |
 |------|------|------|------|
-| Step 1 | canvas-profit-chart.ts 확장 (mode 옵션) | 대기 | - |
-| Step 2 | profit-shared.ts 확장 (요약카드 공통 함수) | 대기 | - |
+| Step 1 | canvas-profit-chart.ts 확장 (mode 옵션) | 완료 | 세션 1 |
+| Step 2 | profit-shared.ts 확장 (요약카드 공통 함수) | 완료 | 세션 1 |
 | Step 3 | profit-overview.ts 구조 재조정 | 대기 | - |
 | Step 4 | profit-detail.ts 구조 재조정 | 대기 | - |
 | Step 5 | 빌드 검증 + 브라우저 확인 | 대기 | - |

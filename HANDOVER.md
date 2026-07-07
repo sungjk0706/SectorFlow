@@ -1,19 +1,26 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 수익 페이지 리팩터링 누락분 보완 — 요약카드 클릭 → detail 이동**
-  - `profit-overview.ts`: 요약카드 3개(당일/당월/누적)에 `cursor:pointer` + click 이벤트 추가 → `#/profit-detail` 이동
-  - 계획서(`profit-detail-refactor-plan.md`) 상태표 전체 완료로 업데이트
-  - 검증: `npm run build` (tsc + vite) 통과
+- **2026-07-07: Step 2 — profit-shared.ts 요약카드 공통 함수 추가**
+  - `SummaryCardEls`, `SummaryCardCallbacks` 인터페이스 추가
+  - `createSummaryCards(container, callbacks)`: 카드 3개 DOM 생성, 클릭 콜백 주입
+  - `updateSummaryCards(sellHistory, dailySummary, els)`: 당일/당월/누적 손익 계산 및 갱신
+  - 기존 `profit-overview.ts` 로직은 이번 Step에서 변경 없음 (Step 3에서 교체)
+  - 검증: typecheck 통과, build 성공 (55 modules, 8.01s)
+  - 커밋: 진행 예정
 
 ## 현재 상태
-- **프론트엔드**: typecheck 통과, build 통과
+- **프론트엔드**: typecheck 통과, build 통과 (55 modules, 8.01s)
 - **백엔드**: 변동 없음
-- **Git**: `b5ea10d` push 완료 (origin/main)
+- **Git**: Step 2 커밋 대기
 - **런타임**: 미기동
 
 ## 다음 단계
-- 브라우저에서 `#/profit-overview` → `#/profit-detail` 이동 및 화면 확인 필요
+- **Step 3: `profit-overview.ts` 구조 재조정**
+  - 계획서: `docs/profit-restructure-plan.md` Step 3 참조
+  - 요약카드 제거, 레이아웃 2행×1열(좌) + 1열(우) 구조, 신규 volume 차트 추가
+  - 의존성: Step 1, Step 2 완료 (충족)
+  - 사전조사 → 보고 → 승인 → 진행 순서 준수
 
 ## 미해결 문제
 - 없음
