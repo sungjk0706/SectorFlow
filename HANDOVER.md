@@ -1,21 +1,22 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 매수후보 정렬 3-tier 구조화 + 콜드 스타트 금일매수 누락 수정**
-  - `buy_filter.py:227-231` — `_proximity_key`에 `is_restricted` 추가: 일반 후보 → 보유중/금일매수 → 가드 미통과 순 정렬
-  - `engine_sector_confirm.py:239-248` — `_full_recompute`에 `bought_today_codes` 누락 수정 (나머지 3개 호출처와 패턴 통일)
-  - `test_buy_filter.py` — 3-tier 정렬 검증 테스트 4개 추가
-  - 검증: `test_buy_filter.py` 51 passed in 1.21s
+- **2026-07-07: 보유/금일매수 종목 guard_pass=False 재분류 — UI 제한 컬럼 차단 표시**
+  - `buy_filter.py:187-195` — `check_stock_guards` 통과 후 보유/금일매수 종목을 `guard_pass=False`로 재분류 → `blocked_targets`로 이동
+  - `buy_filter.py:237-240` — `_proximity_key` `is_restricted` dead code 제거
+  - `buy_filter.py:256-264` — `pass_reason` 분기 dead code 제거, 통과 종목은 `reason=""`
+  - `buy_filter.py:200` — `trade_amount_rank` 계산에서 `s.code not in _held` 중복 조건 제거
+  - `test_buy_filter.py` — 5개 테스트 케이스 업데이트 (blocked_targets 검증)
+  - 검증: `test_buy_filter.py` 51 passed in 0.22s
 
 ## 현재 상태
-- **백엔드**: `buy_filter.py`, `engine_sector_confirm.py` 수정 (2파일, +5/-1)
-- **프론트엔드**: 변경 없음 (기존 정렬/렌더링 로직으로 3-tier 자동 반영)
-- **Git**: 미커밋
+- **백엔드**: `buy_filter.py`, `test_buy_filter.py` 수정 (2파일, +35/-29)
+- **프론트엔드**: 변경 없음 (`guard_pass` 기반 UI 렌더링 자동 반영)
+- **Git**: 커밋 `1a38535` 푸시 완료 (origin/main)
 - **런타임**: 백엔드 미기동
 
 ## 다음 단계
-- 브라우저에서 보유 종목이 일반 매수후보 아래에 표시되는지 확인 (사용자 직접 확인 필요)
-- 콜드 스타트 후 "금일매수" 표시 정상 표시 확인
+- 브라우저에서 보유/금일매수 종목의 제한 컬럼이 "차단"으로 표시되는지 확인 (사용자 직접 확인 필요)
 
 ## 미해결 문제
 - **test_trading.py hang**: `TestExecuteBuyGates::test_rebuy_block_disabled` — 사전 존재 이슈
