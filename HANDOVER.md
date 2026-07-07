@@ -1,19 +1,22 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-08: 종목상세 페이지 순번/합계/스타일 추가**
-  - `backend/app/web/routes/stock_detail.py`: SQL에 `m.market AS market_type`, `m.nxt_enable` 추가, 응답 JSON에 포함
-  - `frontend/src/api/client.ts`: `getStockDetail5d` 반환 타입에 `market_type`, `nxt_enable` 추가
-  - `frontend/src/pages/stock-detail.ts`: 순번 컬럼(`createSeqCell`), `createStockNameColumn` 적용(코스닥 색상+NXT 삼각이모지), 합계 정보 바 추가(정적 라벨 neutral/동적 숫자 down(파랑)/NXT 라벨 up(빨강)+삼각이모지/코스닥 라벨 kosdaq)
-  - 검증: `npm run build` 통과, `npx vitest run` 109 passed
+- **2026-07-08: sector 캐시 캡슐화 Step 1-2 완료**
+  - `stock_classification_data.py`: `update_sector_in_cache()` 단일 진입점 추가 (`:35-48`)
+  - `move_stock()` 캐시 직접 쓰기 → `update_sector_in_cache()` 호출로 교체 (`:162-166`)
+  - 커밋: `1574f08`
+  - 검증: py_compile OK, pytest 1023 passed
 
 ## 현재 상태
-- **백엔드**: stock_detail 라우터 정상 동작 (market_type, nxt_enable 포함)
-- **프론트엔드**: 종목상세 페이지 순번/합계/스타일 구현 완료, build 통과
-- **Git**: 커밋 완료 (02a7370), push 완료
+- **백엔드**: `stock_classification_data.py` 2곳 수정 완료 (Step 1-2)
+- **프론트엔드**: 변경 없음
+- **Git**: `1574f08` 커밋 완료, push 대기
 
 ## 다음 단계
-- 없음
+- **sector 캐시 캡슐화 Step 3**: `rename_sector()` + `delete_sector()` 캡슐화 적용 (loop)
+  - 계획서: `docs/sector-cache-encapsulation-plan.md` Step 3 참조
+- **sector 캐시 캡슐화 Step 4**: `sync_sector_from_custom_sectors()` 캡슐화 적용 (loop)
+- **sector 캐시 캡슐화 Step 5**: 빌드 검증 + 테스트 + 브라우저 확인
 
 ## 미해결 문제
 - 없음
