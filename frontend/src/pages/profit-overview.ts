@@ -5,7 +5,7 @@
 import { createProfitChart, type ProfitChartApi } from '../components/canvas-profit-chart'
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
 import { globalSettingsManager } from '../settings'
-import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, createStockNameColumn, createCodeCell, createNumberCell, createPnlCell, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, fmtComma, createStockNameColumn, createCodeCell, createNumberCell, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import { sectionTitle } from '../components/common/settings-common'
 import { ACCOUNT_LABELS_REAL, ACCOUNT_LABELS_TEST } from '../components/common/account-labels'
@@ -73,7 +73,11 @@ const SELL_COLS: ColumnDef<Record<string, unknown>>[] = [
   { key: 'avg_buy_price', label: '매수가', align: 'right', render: r => createNumberCell(Number(r.avg_buy_price ?? 0)) },
   { key: 'price', label: '매도가', align: 'right', render: r => {
     const sell = Number(r.price ?? 0)
-    return createPnlCell(sell)
+    const pnl = Number(r.realized_pnl ?? 0)
+    const span = document.createElement('span')
+    span.style.color = pnlColor(pnl)
+    span.textContent = fmtComma(sell)
+    return span
   }},
   { key: 'qty', label: '수량', align: 'right', render: r => createNumberCell(Number(r.qty ?? 0)) },
   { key: 'buy_total_amt', label: '매수금액', align: 'right', render: r => fmtWon(Number(r.buy_total_amt ?? 0)) },
