@@ -11,7 +11,6 @@ import backend.app.services.engine_state as engine_state
 from backend.app.services.engine_state import state
 from backend.app.services import engine_account
 from backend.app.services import engine_lifecycle
-from collections.abc import Callable
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_account_notify import (
     notify_raw_real_data,
@@ -275,23 +274,6 @@ async def _handle_real_balance(item: dict, vals: dict) -> None:
     await engine_account._apply_balance_realtime(item, item)
 
 
-async def _handle_real_0d(item: dict, vals: dict) -> None:
-    """0D 호가잔량 처리 — 매수잔량(FID 125)·매도잔량(FID 121) 캐시 갱신 + 매수후보 실시간 반영."""
-    raw_cd = _real_item_stk_cd(item, vals)
-    if not raw_cd:
-        return
-    nk = _base_stk_cd(raw_cd)
-    bid = _ws_fid_int(vals, "125", 0)  # 총 매수호가잔량
-    ask = _ws_fid_int(vals, "121", 0)  # 총 매도호가잔량
-    if bid < 0 or ask < 0:
-        return
-    # 호가잔량 캐시 삭제로 저장 로직 제거
-    # 매수후보 종목이면 호가잔량비 변경을 프론트에 즉시 전송 (이벤트 기반)
-    if state.master_stocks_cache.get(nk, {}).get("_subscribed_0d", False):
-        from backend.app.services.engine_account_notify import notify_orderbook_update
-        await notify_orderbook_update(nk, bid, ask)
-
-
 async def _handle_real_0j(item: dict, vals: dict) -> None:
     """0J 업종지수 처리 — 저장 없이 즉시 프론트엔드에 브로드캐스트 (참고용 시장 현황)."""
     upcode = str(item.get("item", "") or "").strip()
@@ -305,17 +287,6 @@ async def _handle_real_0j(item: dict, vals: dict) -> None:
         return
     from backend.app.services.engine_account_notify import notify_index_data
     await notify_index_data(upcode, jisu, change, drate, sign)
-
-
-# ── REAL 타입별 디스패치 테이블 ──────────────────────────────────
-# norm(정규화된 타입) → 핸들러 매핑.  01 타입은 추가 인자가 필요하므로 별도 분기.
-_REAL_DISPATCH: dict[str, Callable] = {
-    "00": _handle_real_00,      # 주문체결
-    "04": _handle_real_balance,  # 잔고
-    "80": _handle_real_balance,  # 잔고 (04와 동일 핸들러)
-    "0d": _handle_real_0d,      # 호가잔량
-    "0j": _handle_real_0j,      # 업종지수
-}
 
 
 async def _handle_real(data: dict) -> None:
@@ -378,59 +349,6 @@ async def handle_ws_data(data: dict) -> None:
             await _handle_jif(data)
     except Exception:
         logger.error("[WS] 메시지 처리 예외 (trnm=%s): %s", data.get("trnm"), data, exc_info=True)
-
-
-# ── Consumer 루프 (asyncio.Queue 기반) ──────────────────────────────────────
-
-_consumer_task: asyncio.Task | None = None
-_consumer_running: bool = False
-
-
-async def start_consumer_loop(queue: asyncio.Queue) -> None:
-    """Consumer 루프 — 큐에서 데이터를 꺼내 handle_ws_data()로 전달."""
-    global _consumer_task, _consumer_running
-
-    if _consumer_running:
-        logger.warning("[Consumer] 이미 실행 중")
-        return
-
-    _consumer_running = True
-    _consumer_task = asyncio.get_running_loop().create_task(_consumer_loop_impl(queue))
-    logger.info("[Consumer] 루프 시작")
-
-
-async def _consumer_loop_impl(queue: asyncio.Queue) -> None:
-    """Consumer 루프 구현."""
-    global _consumer_running
-    try:
-        while _consumer_running:
-            try:
-                data = await queue.get()
-                # 기존 방식 유지 (하위 호환)
-                await handle_ws_data(data)
-                queue.task_done()
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error("[Consumer] 처리 예외 (계속): %s", e, exc_info=True)
-    finally:
-        _consumer_running = False
-        logger.info("[Consumer] 루프 종료")
-
-
-async def stop_consumer_loop() -> None:
-    """Consumer 루프 종료."""
-    global _consumer_running, _consumer_task
-
-    _consumer_running = False
-    if _consumer_task and not _consumer_task.done():
-        _consumer_task.cancel()
-        try:
-            await _consumer_task
-        except asyncio.CancelledError:
-            pass
-    _consumer_task = None
-    logger.info("[Consumer] 루프 정지 완료")
 
 
 # ── JIF (장운행정보) 처리 ──────────────────────────────────────────────────
