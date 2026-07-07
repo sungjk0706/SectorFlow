@@ -172,7 +172,7 @@ class TestExecuteBuyGates:
              patch("backend.app.services.trading.is_test_mode", return_value=True), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
              patch("backend.app.services.dry_run.estimate_fill_price", return_value=70000), \
-             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm, \
              patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"), \
              patch("backend.app.services.engine_strategy_core.check_test_buy_power", return_value=(True, "")), \
              patch("backend.app.services.dry_run.fake_send_order", new_callable=AsyncMock, return_value={"success": True, "order_id": "test1"}), \
