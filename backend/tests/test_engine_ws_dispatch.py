@@ -23,7 +23,6 @@ from backend.app.services.engine_ws_dispatch import (
     _handle_real_01,
     _handle_real_00,
     _handle_real_balance,
-    _handle_real_0d,
     _handle_real_0j,
     _handle_real,
     handle_ws_data,
@@ -286,43 +285,6 @@ class TestHandleReal0j:
         with patch("backend.app.services.engine_account_notify.notify_index_data", new_callable=AsyncMock) as mock_notify:
             item = {"item": "001", "values": {"10": ""}}
             await _handle_real_0j(item, item["values"])
-            mock_notify.assert_not_awaited()
-
-
-# ── _handle_real_0d ────────────────────────────────────────────────────────────────
-
-class TestHandleReal0d:
-    @pytest.mark.asyncio
-    async def test_no_code_skipped(self):
-        with patch("backend.app.services.engine_account_notify.notify_orderbook_update", new_callable=AsyncMock) as mock_notify:
-            await _handle_real_0d({"item": ""}, {})
-            mock_notify.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_subscribed_sends_update(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state, \
-             patch("backend.app.services.engine_account_notify.notify_orderbook_update", new_callable=AsyncMock) as mock_notify:
-            mock_state.master_stocks_cache = {"005930": {"_subscribed_0d": True}}
-            item = {"item": "005930", "values": {"125": "1000", "121": "2000"}}
-            await _handle_real_0d(item, item["values"])
-            mock_notify.assert_awaited_once_with("005930", 1000, 2000)
-
-    @pytest.mark.asyncio
-    async def test_not_subscribed_no_update(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state, \
-             patch("backend.app.services.engine_account_notify.notify_orderbook_update", new_callable=AsyncMock) as mock_notify:
-            mock_state.master_stocks_cache = {"005930": {"_subscribed_0d": False}}
-            item = {"item": "005930", "values": {"125": "1000", "121": "2000"}}
-            await _handle_real_0d(item, item["values"])
-            mock_notify.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_negative_bid_skipped(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state, \
-             patch("backend.app.services.engine_account_notify.notify_orderbook_update", new_callable=AsyncMock) as mock_notify:
-            mock_state.master_stocks_cache = {"005930": {"_subscribed_0d": True}}
-            item = {"item": "005930", "values": {"125": "-1", "121": "2000"}}
-            await _handle_real_0d(item, item["values"])
             mock_notify.assert_not_awaited()
 
 

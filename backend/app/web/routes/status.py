@@ -2,7 +2,7 @@
 """엔진 상태 라우터 — GET 엔드포인트는 WS initial-snapshot으로 대체됨."""
 from __future__ import annotations
 import logging
-from fastapi import APIRouter, Query
+from fastapi import APIRouter
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["status"])
@@ -141,32 +141,4 @@ async def debug_sector_refresh_sample():
         "sample_005930": sample.get("005930", "NOT_FOUND"),
         "sample_000660": sample.get("000660", "NOT_FOUND"),
         "ws_client_count": ws_manager.client_count,
-    }
-
-
-@router.get("/debug/orderbook-status")
-async def debug_orderbook_status(
-    codes: list[str] = Query(default=[], description="확인할 종목코드 리스트 (예: 068270,298380)"),
-):
-    """디버그용: 특정 종목의 호가잔량(0D) 구독 및 수신 상태 확인."""
-    from backend.app.services.engine_state import state
-    from backend.app.services.engine_symbol_utils import _base_stk_cd
-    from backend.app.services import data_manager
-
-    result = {}
-    for raw_code in codes:
-        nk = _base_stk_cd(raw_code.strip())
-        is_subscribed = state.master_stocks_cache.get(nk, {}).get("_subscribed_0d", False)
-        stock_name = data_manager.get_stock_name(nk)
-
-        result[nk] = {
-            "name": stock_name,
-            "subscribed_0d": is_subscribed,
-            "orderbook_cached": False,
-            "orderbook_data": None,
-        }
-
-    return {
-        "stocks": result,
-        "total_subscribed_0d": sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed_0d", False)),
     }
