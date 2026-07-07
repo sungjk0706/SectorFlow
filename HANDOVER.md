@@ -1,22 +1,21 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 매수후보 원인 컬럼에 보유중/금일매수 표시 누락 수정**
-  - `buy_filter.py:246-252` — guard 통과 종목의 reason에 `held_codes` → "보유중", `bought_today_codes` → "금일매수" 설정
-  - `buy_filter.py:129,280,303` — `bought_today_codes` 파라미터 추가 (create_buy_targets + build_buy_targets_from_settings)
-  - `engine_bootstrap.py:78-85`, `engine_sector_confirm.py:179-186`, `sector_data_provider.py:261-268` — 호출 시 `state.auto_trade._bought_today` 전달
-  - 원인: `create_buy_targets()`에서 guard 통과 종목의 reason을 항상 빈 문자열로 설정 → 프론트엔드가 "보유중"/"금일매수" 스타일링을 준비해놨으나 백엔드가 값을 보내지 않음
-  - 검증: `test_buy_filter.py` 47 passed, `py_compile` 4파일 OK, grep 확인 완료
+- **2026-07-07: 매수후보 정렬 3-tier 구조화 + 콜드 스타트 금일매수 누락 수정**
+  - `buy_filter.py:227-231` — `_proximity_key`에 `is_restricted` 추가: 일반 후보 → 보유중/금일매수 → 가드 미통과 순 정렬
+  - `engine_sector_confirm.py:239-248` — `_full_recompute`에 `bought_today_codes` 누락 수정 (나머지 3개 호출처와 패턴 통일)
+  - `test_buy_filter.py` — 3-tier 정렬 검증 테스트 4개 추가
+  - 검증: `test_buy_filter.py` 51 passed in 1.21s
 
 ## 현재 상태
-- **백엔드**: `buy_filter.py`, `engine_bootstrap.py`, `engine_sector_confirm.py`, `sector_data_provider.py` 수정 (4파일, +22/-1)
-- **프론트엔드**: 변경 없음 (이미 "보유중"/"금일매수" 렌더링 준비 완료)
-- **Git**: 커밋 `5427f8d` 푸시 완료 (origin/main)
+- **백엔드**: `buy_filter.py`, `engine_sector_confirm.py` 수정 (2파일, +5/-1)
+- **프론트엔드**: 변경 없음 (기존 정렬/렌더링 로직으로 3-tier 자동 반영)
+- **Git**: 미커밋
 - **런타임**: 백엔드 미기동
 
 ## 다음 단계
-- 브라우저에서 보유 종목의 매수후보 "원인" 컬럼에 "보유중" 표시 확인 (사용자 직접 확인 필요)
-- 매수 체결 후 "금일매수" 표시 확인
+- 브라우저에서 보유 종목이 일반 매수후보 아래에 표시되는지 확인 (사용자 직접 확인 필요)
+- 콜드 스타트 후 "금일매수" 표시 정상 표시 확인
 
 ## 미해결 문제
 - **test_trading.py hang**: `TestExecuteBuyGates::test_rebuy_block_disabled` — 사전 존재 이슈

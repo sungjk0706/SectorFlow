@@ -227,7 +227,8 @@ def create_buy_targets(
     def _proximity_key(pair) -> tuple:
         s, sc = pair
         is_blocked = 0 if s.guard_pass else 1
-        return (is_blocked, -s.boost_score) + tuple(-_sort_value(s, k) for k in effective_keys)
+        is_restricted = 1 if (s.guard_pass and (s.code in _held or s.code in _bought_today)) else 0
+        return (is_blocked, is_restricted, -s.boost_score) + tuple(-_sort_value(s, k) for k in effective_keys)
 
     all_stocks.sort(key=_proximity_key)
 
