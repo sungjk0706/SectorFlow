@@ -440,7 +440,6 @@ async def get_daily_summary(
                     continue
                 if rec["date"] == d:
                     buy_count += 1
-                    buy_total += rec["total_amt"] or 0
             for rec in _sell_history:
                 if trade_mode is not None and rec["trade_mode"] != trade_mode:
                     continue
