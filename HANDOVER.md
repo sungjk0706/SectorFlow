@@ -1,19 +1,22 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 업종순위 테이블 동점자 구간 opacity 불일치 수정**
-  - `frontend/src/pages/sector-ranking-list.ts:99` — 정렬 기준을 `b.final_score - a.final_score` → `a.rank - b.rank`로 변경
-  - 원인: 프론트엔드가 백엔드 rank(SSOT)를 무시하고 final_score만으로 재정렬하여, 동점자 구간에서 표시 순서와 백엔드 rank가 불일치 → 잘못된 업종에 opacity 적용
-  - 검증: `npm run build` 성공 (tsc + vite, 0 errors)
+- **2026-07-07: 매수후보 원인 컬럼에 보유중/금일매수 표시 누락 수정**
+  - `buy_filter.py:246-252` — guard 통과 종목의 reason에 `held_codes` → "보유중", `bought_today_codes` → "금일매수" 설정
+  - `buy_filter.py:129,280,303` — `bought_today_codes` 파라미터 추가 (create_buy_targets + build_buy_targets_from_settings)
+  - `engine_bootstrap.py:78-85`, `engine_sector_confirm.py:179-186`, `sector_data_provider.py:261-268` — 호출 시 `state.auto_trade._bought_today` 전달
+  - 원인: `create_buy_targets()`에서 guard 통과 종목의 reason을 항상 빈 문자열로 설정 → 프론트엔드가 "보유중"/"금일매수" 스타일링을 준비해놨으나 백엔드가 값을 보내지 않음
+  - 검증: `test_buy_filter.py` 47 passed, `py_compile` 4파일 OK, grep 확인 완료
 
 ## 현재 상태
-- **백엔드**: 변경 없음
-- **프론트엔드**: `npm run build` 성공 (sector-ranking-list.ts 1줄 수정)
-- **Git**: 커밋/푸시 대기
+- **백엔드**: `buy_filter.py`, `engine_bootstrap.py`, `engine_sector_confirm.py`, `sector_data_provider.py` 수정 (4파일, +22/-1)
+- **프론트엔드**: 변경 없음 (이미 "보유중"/"금일매수" 렌더링 준비 완료)
+- **Git**: 커밋 `5427f8d` 푸시 완료 (origin/main)
 - **런타임**: 백엔드 미기동
 
 ## 다음 단계
-- 브라우저에서 동점자 구간 opacity 일치 확인 (사용자 직접 확인 필요)
+- 브라우저에서 보유 종목의 매수후보 "원인" 컬럼에 "보유중" 표시 확인 (사용자 직접 확인 필요)
+- 매수 체결 후 "금일매수" 표시 확인
 
 ## 미해결 문제
 - **test_trading.py hang**: `TestExecuteBuyGates::test_rebuy_block_disabled` — 사전 존재 이슈
