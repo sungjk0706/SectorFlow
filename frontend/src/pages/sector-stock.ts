@@ -279,6 +279,8 @@ class SectorStockTable extends HTMLElement {
   private titleTotalNumSpan: HTMLElement | null = null
   private titleKrxNumSpan: HTMLElement | null = null
   private titleNxtNumSpan: HTMLElement | null = null
+  private titleKospiNumSpan: HTMLElement | null = null
+  private titleKosdaqNumSpan: HTMLElement | null = null
   private filterBadge: HTMLElement | null = null
   private emptyDiv: HTMLElement | null = null
   private scrollContainer: HTMLElement | null = null
@@ -326,6 +328,8 @@ class SectorStockTable extends HTMLElement {
     const stockCount = stocks.length
     const krxCount = stocks.filter(s => !s.nxt_enable).length
     const nxtCount = stocks.filter(s => s.nxt_enable).length
+    const kospiCount = stocks.filter(s => s.market_type === '0').length
+    const kosdaqCount = stocks.filter(s => s.market_type === '10').length
     const minTradeAmt = uiState.settings?.sector_min_trade_amt ?? 0
 
     // 타이틀 갱신 — CSS display 토글 + 숫자 span textContent만 갱신 (innerHTML 파괴 금지)
@@ -335,6 +339,8 @@ class SectorStockTable extends HTMLElement {
       if (this.titleTotalNumSpan) this.titleTotalNumSpan.textContent = String(stockCount)
       if (this.titleKrxNumSpan) this.titleKrxNumSpan.textContent = String(krxCount)
       if (this.titleNxtNumSpan) this.titleNxtNumSpan.textContent = String(nxtCount)
+      if (this.titleKospiNumSpan) this.titleKospiNumSpan.textContent = String(kospiCount)
+      if (this.titleKosdaqNumSpan) this.titleKosdaqNumSpan.textContent = String(kosdaqCount)
       this.titleCountSpan.style.display = ''
     }
 
@@ -375,7 +381,7 @@ class SectorStockTable extends HTMLElement {
     const titleContent = document.createElement('span')
     Object.assign(titleContent.style, {
       display: 'grid',
-      gridTemplateColumns: '1fr 1fr 1fr',
+      gridTemplateColumns: '1.8fr 1fr 1.5fr',
       width: '100%',
       alignItems: 'center',
     })
@@ -393,6 +399,11 @@ class SectorStockTable extends HTMLElement {
     const filterSuffix = document.createElement('span')
     filterSuffix.textContent = ')억'
     this.titleFilterSpan.appendChild(filterSuffix)
+    this.titleFilterSpan.appendChild(document.createTextNode(' 합계:'))
+    this.titleTotalNumSpan = document.createElement('span')
+    Object.assign(this.titleTotalNumSpan.style, { color: COLOR.neutral, fontWeight: FONT_WEIGHT.semibold })
+    this.titleFilterSpan.appendChild(this.titleTotalNumSpan)
+    this.titleFilterSpan.appendChild(document.createTextNode('종목'))
 
     this.titleBaseSpan = document.createElement('span')
     this.titleBaseSpan.textContent = '업종별 종목 실시간 시세'
@@ -404,11 +415,7 @@ class SectorStockTable extends HTMLElement {
       color: COLOR.tertiary, fontWeight: FONT_WEIGHT.medium,
       fontSize: FONT_SIZE.label, textAlign: 'right', display: 'none',
     })
-    this.titleCountSpan.textContent = '합계:'
-    this.titleTotalNumSpan = document.createElement('span')
-    Object.assign(this.titleTotalNumSpan.style, { color: COLOR.neutral, fontWeight: FONT_WEIGHT.semibold })
-    this.titleCountSpan.appendChild(this.titleTotalNumSpan)
-    this.titleCountSpan.appendChild(document.createTextNode('종목 KRX:'))
+    this.titleCountSpan.textContent = 'KRX:'
     this.titleKrxNumSpan = document.createElement('span')
     Object.assign(this.titleKrxNumSpan.style, { color: COLOR.neutral, fontWeight: FONT_WEIGHT.semibold })
     this.titleCountSpan.appendChild(this.titleKrxNumSpan)
@@ -416,6 +423,17 @@ class SectorStockTable extends HTMLElement {
     this.titleNxtNumSpan = document.createElement('span')
     Object.assign(this.titleNxtNumSpan.style, { color: COLOR.neutral, fontWeight: FONT_WEIGHT.semibold })
     this.titleCountSpan.appendChild(this.titleNxtNumSpan)
+    this.titleCountSpan.appendChild(document.createTextNode('종목'))
+    // 2행: 코스피/코스닥 구분
+    this.titleCountSpan.appendChild(document.createElement('br'))
+    this.titleCountSpan.appendChild(document.createTextNode('코스피:'))
+    this.titleKospiNumSpan = document.createElement('span')
+    Object.assign(this.titleKospiNumSpan.style, { color: COLOR.neutral, fontWeight: FONT_WEIGHT.semibold })
+    this.titleCountSpan.appendChild(this.titleKospiNumSpan)
+    this.titleCountSpan.appendChild(document.createTextNode('종목 코스닥:'))
+    this.titleKosdaqNumSpan = document.createElement('span')
+    Object.assign(this.titleKosdaqNumSpan.style, { color: COLOR.neutral, fontWeight: FONT_WEIGHT.semibold })
+    this.titleCountSpan.appendChild(this.titleKosdaqNumSpan)
     this.titleCountSpan.appendChild(document.createTextNode('종목'))
 
     titleContent.appendChild(this.titleFilterSpan)
@@ -468,26 +486,27 @@ class SectorStockTable extends HTMLElement {
       marginBottom: '4px',
     })
 
-    // 좌측: 종목명/코드 검색 (파란색 라벨)
+    // 좌측: 종목명/코드 검색 (파란색 라벨 — 인라인 배치)
     const stockSearchWrapper = document.createElement('div')
     Object.assign(stockSearchWrapper.style, {
       display: 'flex',
-      flexDirection: 'column',
-      gap: '2px',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: '4px',
     })
     const stockLabel = document.createElement('span')
     Object.assign(stockLabel.style, {
       fontSize: FONT_SIZE.section,
       color: COLOR.down,
       fontWeight: FONT_WEIGHT.normal,
-      textAlign: 'center',
+      whiteSpace: 'nowrap',
     })
     stockLabel.textContent = '종목명 / 코드'
     stockSearchWrapper.appendChild(stockLabel)
 
     this.searchInput = createSearchInput({
       placeholder: '종목명 / 코드 검색',
-      width: '220px',
+      width: '180px',
       borderColor: COLOR.down,
       onSearch: (query) => {
         this.searchTerm = query
@@ -503,26 +522,27 @@ class SectorStockTable extends HTMLElement {
     stockSearchWrapper.appendChild(this.searchInput.el)
     searchRow.appendChild(stockSearchWrapper)
 
-    // 우측: 업종명 검색 (주황색 라벨)
+    // 우측: 업종명 검색 (주황색 라벨 — 인라인 배치)
     const sectorSearchWrapper = document.createElement('div')
     Object.assign(sectorSearchWrapper.style, {
       display: 'flex',
-      flexDirection: 'column',
-      gap: '2px',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: '4px',
     })
     const sectorLabel = document.createElement('span')
     Object.assign(sectorLabel.style, {
       fontSize: FONT_SIZE.section,
       color: COLOR.warning,
       fontWeight: FONT_WEIGHT.normal,
-      textAlign: 'center',
+      whiteSpace: 'nowrap',
     })
     sectorLabel.textContent = '업종명'
     sectorSearchWrapper.appendChild(sectorLabel)
 
     this.sectorSearchInput = createSearchInput({
       placeholder: '업종명 검색',
-      width: '220px',
+      width: '180px',
       borderColor: COLOR.warning,
       onSearch: (query) => {
         this.sectorSearchTerm = query
@@ -665,6 +685,8 @@ class SectorStockTable extends HTMLElement {
     this.titleBaseSpan = null
     this.titleFilterSpan = null
     this.titleCountSpan = null
+    this.titleKospiNumSpan = null
+    this.titleKosdaqNumSpan = null
     this.filterBadge = null
     this.emptyDiv = null
     this.scrollContainer = null
