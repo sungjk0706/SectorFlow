@@ -23,3 +23,15 @@ def _reset_global_caches():
         settings_file._migrations_completed = False
     except Exception:
         pass
+    try:
+        from backend.app.services import trade_history
+        trade_history._loaded = False
+    except Exception:
+        pass
+    try:
+        import asyncio
+        from backend.app.db.database import _db_connection, close_db_connection
+        if _db_connection is not None:
+            asyncio.run(close_db_connection())
+    except Exception:
+        pass
