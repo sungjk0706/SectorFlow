@@ -258,10 +258,14 @@ async def recompute_sector_summary_now() -> None:
         )
         from backend.app.services.engine_symbol_utils import _base_stk_cd
         _held = {_base_stk_cd(cd) for cd in state.checked_stocks}
+        _bought_today: set[str] = set()
+        if state.auto_trade is not None:
+            _bought_today = set(state.auto_trade._bought_today.keys())
         _ss = build_buy_targets_from_settings(
             _sector_summary.sectors,
             state.integrated_system_settings_cache,
             held_codes=_held,
+            bought_today_codes=_bought_today,
         )
         state.sector_summary_cache = _ss
         cancel_sector_recompute()
