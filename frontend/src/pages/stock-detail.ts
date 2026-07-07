@@ -78,25 +78,15 @@ const columns: ColumnDef<StockDetail5dItem>[] = [
 
 function applySearchFilter(): void {
   if (!tableRef) return
-  const q = searchQuery.toLowerCase()
+  const q = searchQuery.trim().toLowerCase()
   if (!q) {
     tableRef.updateRows(allItems)
     return
   }
-  const matched = allItems.filter(
-    (item) => item.code.toLowerCase().includes(q) || item.name.toLowerCase().includes(q),
+  const filtered = allItems.filter(
+    (item) => item.code.toLowerCase().includes(q) || item.name.toLowerCase().includes(q)
   )
-  tableRef.updateRows(matched)
-}
-
-function rowStyle(row: StockDetail5dItem): Partial<CSSStyleDeclaration> | undefined {
-  if (!searchQuery) return undefined
-  const q = searchQuery.toLowerCase()
-  const isMatch = row.code.toLowerCase().includes(q) || row.name.toLowerCase().includes(q)
-  if (isMatch) {
-    return { background: COLOR.warningBg }
-  }
-  return { opacity: '0.4' }
+  tableRef.updateRows(filtered)
 }
 
 function mount(container: HTMLElement): void {
@@ -148,7 +138,6 @@ function mount(container: HTMLElement): void {
     keyFn: (row) => row.code,
     stickyHeader: true,
     emptyText: '데이터가 없습니다.',
-    rowStyle,
     zebraStriping: true,
   })
   Object.assign(tableRef.el.style, { flex: '1', minHeight: '0' })
