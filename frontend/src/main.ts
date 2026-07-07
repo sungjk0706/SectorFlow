@@ -71,6 +71,11 @@ const routes: RouteConfig[] = [
     load: () => import('./pages/profit-overview').then(m => m.default),
   },
   {
+    path: '#/profit-detail',
+    layout: 'full',
+    load: () => import('./pages/profit-detail').then(m => m.default),
+  },
+  {
     path: '#/stock-classification',
     layout: 'triple',
     load: () => import('./pages/stock-classification').then(m => m.default),
