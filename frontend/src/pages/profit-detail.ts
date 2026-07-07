@@ -46,6 +46,10 @@ let drilldownActive = true
 let drilldownTable: DataTableApi<DailyDrilldownRow> | null = null
 let drilldownCols: ColumnDef<DailyDrilldownRow>[] = []
 let tabRow: HTMLDivElement | null = null
+let drilldownBtnEl: HTMLButtonElement | null = null
+
+type SelectedView = 'today' | 'month' | 'total' | 'drilldown' | null
+let selectedView: SelectedView = null
 
 /* ── 통계 정보 DOM 참조 ── */
 let statCountEl: HTMLSpanElement | null = null
@@ -61,6 +65,30 @@ let _mounted = false
 let _dirtyHistory = false
 let _dirtySummary = false
 let _dirtySectorStocks = false
+
+/* ── 요약 카드 선택 스타일 ── */
+function applyCardStyle(card: HTMLDivElement, active: boolean): void {
+  Object.assign(card.style, {
+    border: active ? '2px solid ' + COLOR.down : '1px solid #eee',
+    background: active ? COLOR.downBg : '#fafafa',
+  })
+}
+
+function updateCardSelection(): void {
+  if (!summaryCardEls) return
+  applyCardStyle(summaryCardEls.todayCard, selectedView === 'today')
+  applyCardStyle(summaryCardEls.monthCard, selectedView === 'month')
+  applyCardStyle(summaryCardEls.totalCard, selectedView === 'total')
+}
+
+function updateDrilldownBtnStyle(active: boolean): void {
+  if (!drilldownBtnEl) return
+  Object.assign(drilldownBtnEl.style, {
+    border: active ? '2px solid ' + COLOR.down : '1px solid #eee',
+    background: active ? COLOR.downBg : '#fff',
+    color: active ? COLOR.down : COLOR.secondary,
+  })
+}
 
 /* ── 탭 버튼 스타일 ── */
 function applyTabStyle(btn: HTMLButtonElement, active: boolean): void {
@@ -266,9 +294,22 @@ function mount(container: HTMLElement): void {
   Object.assign(summaryRow.style, { display: 'flex', gap: '8px', padding: '8px 4px', flex: 'none', borderBottom: '1px solid #ddd' })
 
   summaryCardEls = createSummaryCards(summaryRow, {
-    onTodayClick: () => filterByDate(todayStr),
-    onMonthClick: () => filterByDateRange(monthStart, monthEnd),
+    onTodayClick: () => {
+      selectedView = 'today'
+      updateCardSelection()
+      updateDrilldownBtnStyle(false)
+      filterByDate(todayStr)
+    },
+    onMonthClick: () => {
+      selectedView = 'month'
+      updateCardSelection()
+      updateDrilldownBtnStyle(false)
+      filterByDateRange(monthStart, monthEnd)
+    },
     onTotalClick: () => {
+      selectedView = 'total'
+      updateCardSelection()
+      updateDrilldownBtnStyle(false)
       if (dateFromInput) dateFromInput.value = ''
       if (dateToInput) dateToInput.value = ''
       drilldownActive = false
@@ -313,8 +354,12 @@ function mount(container: HTMLElement): void {
   Object.assign(clearBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.label, border: '1px solid #eee', borderRadius: '4px', background: '#fff', cursor: 'pointer', color: COLOR.secondary })
   clearBtn.textContent = '전체'
   clearBtn.addEventListener('click', (e) => {
+    selectedView = 'total'
+    updateCardSelection()
+    updateDrilldownBtnStyle(false)
     if (dateFromInput) dateFromInput.value = ''
     if (dateToInput) dateToInput.value = ''
+    drilldownActive = false
     showTable()
     updateTabLabels()
     ;(e.target as HTMLElement).blur()
@@ -340,20 +385,26 @@ function mount(container: HTMLElement): void {
   filterRow.appendChild(stockFilterInput)
 
   // 드릴다운 토글 버튼
-  const drilldownBtn = document.createElement('button')
-  Object.assign(drilldownBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.label, border: '1px solid #eee', borderRadius: '4px', background: '#fff', cursor: 'pointer', color: COLOR.secondary, marginLeft: 'auto' })
-  drilldownBtn.textContent = '당월 일별 요약'
-  drilldownBtn.addEventListener('click', (e) => {
+  drilldownBtnEl = document.createElement('button')
+  Object.assign(drilldownBtnEl.style, { padding: '2px 8px', fontSize: FONT_SIZE.label, border: '1px solid #eee', borderRadius: '4px', background: '#fff', cursor: 'pointer', color: COLOR.secondary, marginLeft: 'auto' })
+  drilldownBtnEl.textContent = '당월 일별 요약'
+  drilldownBtnEl.addEventListener('click', (e) => {
     drilldownActive = !drilldownActive
     if (drilldownActive) {
+      selectedView = 'drilldown'
+      updateCardSelection()
+      updateDrilldownBtnStyle(true)
       showDrilldown()
     } else {
+      selectedView = null
+      updateCardSelection()
+      updateDrilldownBtnStyle(false)
       showTable()
       updateTabLabels()
     }
     ;(e.target as HTMLElement).blur()
   })
-  filterRow.appendChild(drilldownBtn)
+  filterRow.appendChild(drilldownBtnEl)
 
   lower.appendChild(filterRow)
 
@@ -438,15 +489,29 @@ function mount(container: HTMLElement): void {
   container.appendChild(root)
 
   // 날짜 필터 변경 이벤트
-  dateFromInput.addEventListener('change', () => { showTable(); updateTabLabels() })
-  dateToInput.addEventListener('change', () => { showTable(); updateTabLabels() })
+  dateFromInput.addEventListener('change', () => {
+    selectedView = null
+    updateCardSelection()
+    updateDrilldownBtnStyle(false)
+    showTable()
+    updateTabLabels()
+  })
+  dateToInput.addEventListener('change', () => {
+    selectedView = null
+    updateCardSelection()
+    updateDrilldownBtnStyle(false)
+    showTable()
+    updateTabLabels()
+  })
 
   // 초기 데이터 반영
   const initState = hotStore.getState()
   sellHistory = initState.sellHistory
   buyHistory = initState.buyHistory
   updateTabLabels()
-  showDrilldown()
+  selectedView = 'today'
+  updateCardSelection()
+  filterByDate(todayStr)
   if (summaryCardEls) {
     updateSummaryCards(sellHistory, initState.dailySummary, summaryCardEls)
   }
@@ -533,6 +598,8 @@ function unmount(): void {
   if (drilldownTable) { drilldownTable.destroy(); drilldownTable = null }
   drilldownActive = false
   drilldownCols = []
+  drilldownBtnEl = null
+  selectedView = null
   tabRow = null
   buyHistory = []
   sellHistory = []

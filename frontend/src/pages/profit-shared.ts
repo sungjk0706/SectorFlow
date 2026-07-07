@@ -50,6 +50,9 @@ export interface SummaryCardEls {
   monthRateEl: HTMLSpanElement
   totalPnlEl: HTMLSpanElement
   totalRateEl: HTMLSpanElement
+  todayCard: HTMLDivElement
+  monthCard: HTMLDivElement
+  totalCard: HTMLDivElement
 }
 
 export interface SummaryCardCallbacks {
@@ -66,12 +69,14 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
 
   const pnlEls: HTMLSpanElement[] = []
   const rateEls: HTMLSpanElement[] = []
+  const cardEls: HTMLDivElement[] = []
 
   for (let i = 0; i < 3; i++) {
     const card = document.createElement('div')
     card.style.cssText = CARD_STYLE
     const handler = clickHandlers[i]
     if (handler) card.addEventListener('click', handler)
+    cardEls.push(card)
 
     const titleEl = document.createElement('div')
     Object.assign(titleEl.style, { fontSize: FONT_SIZE.badge, color: COLOR.secondary, whiteSpace: 'nowrap' })
@@ -102,6 +107,7 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
     todayPnlEl: pnlEls[0], todayRateEl: rateEls[0],
     monthPnlEl: pnlEls[1], monthRateEl: rateEls[1],
     totalPnlEl: pnlEls[2], totalRateEl: rateEls[2],
+    todayCard: cardEls[0], monthCard: cardEls[1], totalCard: cardEls[2],
   }
 }
 
