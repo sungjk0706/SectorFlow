@@ -122,7 +122,7 @@ function mount(container: HTMLElement): void {
 
   // 좌측 하단: 업종별 수익 도넛 차트
   const donutPanel = document.createElement('div')
-  Object.assign(donutPanel.style, { flex: '1', minWidth: '0', overflow: 'hidden', padding: '0 4px' })
+  Object.assign(donutPanel.style, { flex: '1', minWidth: '0', overflow: 'hidden', padding: '0 4px', display: 'flex', flexDirection: 'column' })
   const donutTitle = document.createElement('div')
   Object.assign(donutTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal, color: COLOR.down, padding: '10px 0 6px', borderBottom: '2px solid #eee', marginBottom: '8px' })
   const donutTitleText = document.createElement('span')
@@ -130,7 +130,7 @@ function mount(container: HTMLElement): void {
   donutTitle.appendChild(donutTitleText)
   donutPanel.appendChild(donutTitle)
   const donutChartContainer = document.createElement('div')
-  Object.assign(donutChartContainer.style, { height: '100%' })
+  Object.assign(donutChartContainer.style, { flex: '1', minHeight: '0' })
   donutPanel.appendChild(donutChartContainer)
 
   leftColumn.appendChild(chartPanel)
