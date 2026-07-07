@@ -1,15 +1,16 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 종목상세 페이지 검색 필터링 구현**
-  - `frontend/src/pages/stock-detail.ts`: `applySearchFilter`에 실제 필터링 로직 추가 (검색어 기준 code/name 매치 필터링), `rowStyle` 함수 제거 (필터링 후 하이라이트/딤 불필요)
-  - 근본 원인: 이전 세션에서 필터링을 제거하고 rowStyle 기반 시각 구분만 구현하여 사용자 기대(검색어와 일치하는 종목만 표시) 미충족
+- **2026-07-08: 종목상세 페이지 순번/합계/스타일 추가**
+  - `backend/app/web/routes/stock_detail.py`: SQL에 `m.market AS market_type`, `m.nxt_enable` 추가, 응답 JSON에 포함
+  - `frontend/src/api/client.ts`: `getStockDetail5d` 반환 타입에 `market_type`, `nxt_enable` 추가
+  - `frontend/src/pages/stock-detail.ts`: 순번 컬럼(`createSeqCell`), `createStockNameColumn` 적용(코스닥 색상+NXT 삼각이모지), 합계 정보 바 추가(정적 라벨 neutral/동적 숫자 down(파랑)/NXT 라벨 up(빨강)+삼각이모지/코스닥 라벨 kosdaq)
   - 검증: `npm run build` 통과, `npx vitest run` 109 passed
 
 ## 현재 상태
-- **백엔드**: stock_detail 라우터 정상 동작
-- **프론트엔드**: 종목상세 페이지 검색 필터링 구현 완료, build 통과
-- **Git**: 커밋 완료 (618fb9f)
+- **백엔드**: stock_detail 라우터 정상 동작 (market_type, nxt_enable 포함)
+- **프론트엔드**: 종목상세 페이지 순번/합계/스타일 구현 완료, build 통과
+- **Git**: 커밋 완료 (02a7370), push 완료
 
 ## 다음 단계
 - 없음
