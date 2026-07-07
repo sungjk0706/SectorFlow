@@ -1,20 +1,18 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 수익현황 하단 차트 업종별 수익 도넛으로 교체**
-  - 백엔드: `trade_history.py` `_ensure_loaded()` 쿼리에 `custom_sectors` LEFT JOIN 추가, `_lookup_sector()` 헬퍼 추가, `record_sell()`에 sector 필드 포함
-  - 프론트엔드: `canvas-sector-donut.ts` 신규 Canvas 2D 도넛 차트 컴포넌트 생성 (호버 툴팁, 범례, 빈 상태 처리)
-  - 프론트엔드: `profit-overview.ts` volume 막대 차트 → 업종별 수익 도넛 차트 교체
-  - 검증: tsc, vite build (56 modules, 2.74s), eslint, py_compile 전부 통과
+- **2026-07-07: 수익현황 우측 패널에 업종별 종목 수익 섹션 추가**
+  - `canvas-sector-donut.ts`: PROFIT_COLORS/LOSS_COLORS export, `assignSectorColors()` 공유 함수 분리 (SSOT), render() 내부 로직을 공유 함수 호출로 교체
+  - `profit-shared.ts`: `buildSectorStockPnl()` 함수 + `SectorStockPnl`/`SectorPnlGroup` 타입 추가, `DUMMY_SELL`에 `sector` 필드 추가
+  - `profit-overview.ts`: `renderSectorStockPnl()` 렌더 함수, `accountPanel` 내 "업종별 종목 수익" 섹션 DOM 추가, rAF 배칭에 종목 리스트 갱신 연동, unmount 정리
+  - 검증: npm run build 성공 (56 modules, 6.33s)
 
 ## 현재 상태
-- **프론트엔드**: typecheck 통과, build 통과 (56 modules, 2.74s)
-- **백엔드**: `trade_history.py` sector 조회 추가 (custom_sectors JOIN)
-- **Git**: `0a683e1` push 완료 (origin/main)
-- **런타임**: dev server 기동 중 (localhost:5174)
+- **프론트엔드**: build 통과 (56 modules, 6.33s)
+- **Git**: `0318fc1` push 완료 (origin/main)
 
 ## 다음 단계
-- 브라우저에서 `#/profit-overview` 도넛 차트 실제 렌더링 확인 (매도 데이터 있을 때/없을 때)
+- 없음
 
 ## 미해결 문제
 - 없음
