@@ -1,18 +1,18 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 종목상세 페이지 Step 4 — 라우트 + 사이드바 등록**
-  - `frontend/src/main.ts`: routes 배열에 `#/stock-detail` 항목 추가 (layout: full)
-  - `frontend/src/layout/sidebar.ts`: MENU 배열에 `종목상세` 항목 추가 (separator 포함)
-  - 검증: `npm run build` 통과 (57 modules, 0 errors)
+- **2026-07-07: 종목상세 페이지 검색 필터링 구현**
+  - `frontend/src/pages/stock-detail.ts`: `applySearchFilter`에 실제 필터링 로직 추가 (검색어 기준 code/name 매치 필터링), `rowStyle` 함수 제거 (필터링 후 하이라이트/딤 불필요)
+  - 근본 원인: 이전 세션에서 필터링을 제거하고 rowStyle 기반 시각 구분만 구현하여 사용자 기대(검색어와 일치하는 종목만 표시) 미충족
+  - 검증: `npm run build` 통과, `npx vitest run` 109 passed
 
 ## 현재 상태
-- **백엔드**: stock_detail 라우터 추가 완료 (Step 1)
-- **프론트엔드**: API 클라이언트 + 페이지 컴포넌트 + 라우트/사이드바 등록 완료 (Step 2-4), build 통과
-- **Git**: 모든 커밋 push 완료
+- **백엔드**: stock_detail 라우터 정상 동작
+- **프론트엔드**: 종목상세 페이지 검색 필터링 구현 완료, build 통과
+- **Git**: 커밋 완료 (618fb9f)
 
 ## 다음 단계
-- 브라우저에서 사이드바 `🔍 종목상세` 메뉴 표시 및 페이지 진입 확인 (사용자 직접 확인)
+- 없음
 
 ## 미해결 문제
 - 없음
