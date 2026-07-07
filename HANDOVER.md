@@ -1,26 +1,25 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 수익현황 분리 Step 1 — 공통 모듈 분리 (profit-shared.ts)**
-  - `frontend/src/pages/profit-shared.ts` 신규 생성 (273줄)
-  - 추출: `PnlSummary`, `DailyDrilldownRow`, `AccountValsParams` (타입), `getLocalToday`, `aggregatePnl`, `buildMonthlyDrilldown`, `buildChartFromDailySummary` (순수 함수), `BUY_COLS`, `SELL_COLS`, `createDrilldownCols` (컬럼), `DUMMY_BUY`, `DUMMY_SELL` (더미), `renderAccountVals` (순수 함수화 — 매개변수 주입)
-  - `profit-overview.ts`: 935줄 → 683줄 (-252줄), import로 교체
-  - `DRILLDOWN_COLS` → `createDrilldownCols(onDateClick)` 팩토리 패턴 (페이지固有 콜백 결합 분리)
-  - 검증: `npm run typecheck` + `npm run build` 통과
+- **2026-07-07: 수익현황 분리 Step 2 — API 클라이언트 확장 (client.ts + trade.py)**
+  - `backend/app/web/routes/trade.py`: `/buy`, `/sell` 라우트에 `date_from`, `date_to` Query 파라미터 추가 (서비스 계층은 이미 지원)
+  - `frontend/src/api/client.ts`: `getBuyHistory`/`getSellHistory`에 `dateFrom`, `dateTo` 선택적 파라미터 추가, `URLSearchParams` 기반
+  - 계획서 오류 수정: "백엔드 변경 불필요" → 실제로는 라우트에 파라미터 누락되어 있었음
+  - 검증: `npm run typecheck` + `npm run build` 통과, `pytest test_trade_history.py` 2 passed, `py_compile` OK
 
 ## 현재 상태
 - **프론트엔드**: typecheck 통과, build 통과
-- **Git**: 커밋 `1c7deab` 푸시 완료 (origin/main)
+- **백엔드**: py_compile OK, test_trade_history 2 passed
+- **Git**: 커밋 전 (승인 대기)
 - **런타임**: 미기동
 
 ## 다음 단계
-- **수익현황 분리 Step 2: API 클라이언트 확장 (client.ts)**
-  - 계획서: `docs/profit-detail-refactor-plan.md` Step 2 참조
-  - 대상: `frontend/src/api/client.ts`
-  - 변경: `getBuyHistory(tradeMode?, dateFrom?, dateTo?)`, `getSellHistory(tradeMode?, dateFrom?, dateTo?)` — 선택적 파라미터 추가
-  - 백엔드: 변경 불필요 (이미 `date_from`, `date_to` 파라미터 지원 — `trade.py:14-16`)
-  - 검증: `npm run typecheck` + `npm run build`
-  - 의존성: 없음 (Step 1과 독립)
+- **수익현황 분리 Step 3: 기존 profit-overview.ts 리팩터링**
+  - 계획서: `docs/profit-detail-refactor-plan.md` Step 3 참조
+  - 대상: `frontend/src/pages/profit-overview.ts`
+  - 변경: `profit-shared.ts` import로 교체, 기존 렌더링/rAF/store 구독 유지
+  - 검증: `npm run typecheck` + `npm run build` + 브라우저 `#/profit-overview` 확인
+  - 의존성: Step 1 완료 필수 (완료됨)
 
 ## 미해결 문제
 - 없음

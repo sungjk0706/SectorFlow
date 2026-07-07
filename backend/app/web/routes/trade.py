@@ -10,19 +10,23 @@ router = APIRouter(prefix="/api/trade-history", tags=["trade-history"])
 @router.get("/buy")
 async def buy_history(
     today_only: bool = Query(False),
+    date_from: str = Query(""),
+    date_to: str = Query(""),
     trade_mode: str | None = Query(None),
     _: str = Depends(get_current_user),
 ):
-    return get_buy_history(today_only=today_only, trade_mode=trade_mode)
+    return get_buy_history(today_only=today_only, date_from=date_from, date_to=date_to, trade_mode=trade_mode)
 
 
 @router.get("/sell")
 async def sell_history(
     today_only: bool = Query(False),
+    date_from: str = Query(""),
+    date_to: str = Query(""),
     trade_mode: str | None = Query(None),
     _: str = Depends(get_current_user),
 ):
-    return get_sell_history(today_only=today_only, trade_mode=trade_mode)
+    return get_sell_history(today_only=today_only, date_from=date_from, date_to=date_to, trade_mode=trade_mode)
 
 
 @router.get("/daily-summary")

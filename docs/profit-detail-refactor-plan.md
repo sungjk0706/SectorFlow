@@ -11,8 +11,8 @@
 
 | 단계 | 내용 | 상태 | 세션 |
 |------|------|------|------|
-| Step 1 | 공통 모듈 분리 (profit-shared.ts) | 대기 | 세션 1 |
-| Step 2 | API 클라이언트 확장 (client.ts) | 대기 | 세션 2 |
+| Step 1 | 공통 모듈 분리 (profit-shared.ts) | 완료 | 세션 1 |
+| Step 2 | API 클라이언트 확장 (client.ts + trade.py) | 완료 | 세션 2 |
 | Step 3 | 기존 profit-overview.ts 리팩터링 | 대기 | 세션 3 |
 | Step 4 | 새 profit-detail.ts 생성 | 대기 | 세션 4 |
 | Step 5 | 라우팅 추가 (main.ts) | 대기 | 세션 5 |
@@ -48,8 +48,8 @@
   - `getBuyHistory(tradeMode?, dateFrom?, dateTo?)` → 선택적 파라미터
   - `getSellHistory(tradeMode?, dateFrom?, dateTo?)` → 선택적 파라미터
   - `URLSearchParams` 사용으로 기존 호출 호환성 유지
-- **백엔드:** 변경 불필요 (이미 `date_from`, `date_to` 파라미터 지원 — `trade.py:14-16`)
-- **검증:** `npm run type-check` + `npm run build`
+- **백엔드:** `trade.py` 라우트에 `date_from`, `date_to` Query 파라미터 추가 (서비스 계층 `trade_history.py`는 이미 지원했으나 라우트에 누락되어 있었음)
+- **검증:** `npm run typecheck` + `npm run build` + `pytest test_trade_history.py`
 - **의존성:** 없음 (Step 1과 독립)
 
 ---
@@ -152,7 +152,7 @@
 |------|-----------|
 | 원칙 10 (SSOT) | 공통 로직이 `profit-shared.ts` 단일 모듈에서 관리, `hotStore` 단일 데이터 소스 재사용 |
 | 원칙 11 (이벤트 기반) | 기존 WS 이벤트 구독 유지, 폴링 없음 |
-| 원칙 16 (살아있는 경로) | 백엔드 API가 이미 파라미터 지원, 실제 실행 경로에 배선 |
+| 원칙 16 (살아있는 경로) | 서비스 계층의 기존 기능을 라우트에 배선하여 실제 실행 경로에 연결 |
 | 원칙 20 (폴백 금지) | 새로운 폴백 분기 없이 기존 데이터 구조 그대로 활용 |
 
 ---
@@ -170,4 +170,4 @@
 | `router.ts` | 변경 없음 | 자동 지원 |
 | `binding.ts` | 변경 없음 | WS 이벤트 기존 유지 |
 | `hotStore.ts` | 변경 없음 | 데이터 소스 유지 |
-| 백엔드 전체 | 변경 없음 | API 이미 파라미터 지원 |
+| `backend/app/web/routes/trade.py` | 수정 (파라미터 추가) | `/buy`, `/sell` 라우트에 `date_from`, `date_to` 추가, 기존 호출 호환 |

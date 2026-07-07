@@ -102,11 +102,23 @@ export const api = {
       method: 'POST',
     }),
 
-  getBuyHistory: (tradeMode?: string) =>
-    request<Record<string, unknown>[]>(`/api/trade-history/buy${tradeMode ? `?trade_mode=${tradeMode}` : ''}`),
+  getBuyHistory: (tradeMode?: string, dateFrom?: string, dateTo?: string) => {
+    const params = new URLSearchParams();
+    if (tradeMode) params.set('trade_mode', tradeMode);
+    if (dateFrom) params.set('date_from', dateFrom);
+    if (dateTo) params.set('date_to', dateTo);
+    const qs = params.toString();
+    return request<Record<string, unknown>[]>(`/api/trade-history/buy${qs ? `?${qs}` : ''}`);
+  },
 
-  getSellHistory: (tradeMode?: string) =>
-    request<Record<string, unknown>[]>(`/api/trade-history/sell${tradeMode ? `?trade_mode=${tradeMode}` : ''}`),
+  getSellHistory: (tradeMode?: string, dateFrom?: string, dateTo?: string) => {
+    const params = new URLSearchParams();
+    if (tradeMode) params.set('trade_mode', tradeMode);
+    if (dateFrom) params.set('date_from', dateFrom);
+    if (dateTo) params.set('date_to', dateTo);
+    const qs = params.toString();
+    return request<Record<string, unknown>[]>(`/api/trade-history/sell${qs ? `?${qs}` : ''}`);
+  },
 
   wsSubscribeStart: (group: 'industry' | 'index' | 'quote') =>
     request<{ ok: boolean; status: { index_subscribed: boolean; quote_subscribed: boolean }; message?: string }>('/api/ws-subscribe/start', {
