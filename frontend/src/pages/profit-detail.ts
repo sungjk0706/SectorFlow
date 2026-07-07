@@ -207,7 +207,7 @@ function updateStatistics(): void {
   if (statBuyAmtEl) { statBuyAmtEl.textContent = fmtWon(buyAmt); statBuyAmtEl.style.color = COLOR.secondary }
   if (statSellAmtEl) { statSellAmtEl.textContent = fmtWon(sellAmt); statSellAmtEl.style.color = COLOR.secondary }
   if (statPnlEl) { statPnlEl.textContent = fmtWon(pnl); statPnlEl.style.color = pnlColor(pnl) }
-  if (statWinRateEl) { statWinRateEl.textContent = `${winRate.toFixed(2)}%`; statWinRateEl.style.color = pnlColor(winRate) }
+  if (statWinRateEl) { statWinRateEl.textContent = `${winRate.toFixed(2)}%`; statWinRateEl.style.color = COLOR.secondary }
   if (statAvgRateEl) { statAvgRateEl.textContent = `${avgRate > 0 ? '+' : ''}${avgRate.toFixed(2)}%`; statAvgRateEl.style.color = pnlColor(avgRate) }
 }
 

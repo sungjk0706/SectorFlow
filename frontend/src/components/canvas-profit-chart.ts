@@ -166,7 +166,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
   wrapper.appendChild(dateHeader)
 
   dateFromInput.addEventListener('change', () => options.onDateRangeChange?.(dateFromInput.value, dateToInput.value))
-  dateToInput.addEventListener('change', () => options.onDateRangeChange?.(dateToInput.value, dateToInput.value))
+  dateToInput.addEventListener('change', () => options.onDateRangeChange?.(dateFromInput.value, dateToInput.value))
 
   const canvasWrap = document.createElement('div')
   canvasWrap.style.cssText = `position:relative;width:100%;height:${height}px;background:#fff;overflow:hidden;`
