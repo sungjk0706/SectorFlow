@@ -1,25 +1,27 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-07: Step 3 — profit-overview.ts 구조 재조정**
+  - 요약카드 3개 DOM/로직/변수 완전 제거, 미사용 import 제거 (`aggregatePnl`, `getLocalToday`, `pnlColor`, `fmtWon`)
+  - 레이아웃 재구성: `upper`(flex:1) → `leftColumn`(flex:5, column: pnl 차트 + volume 차트) + `accountPanel`(flex:5)
+  - 신규 volume 차트 인스턴스 추가 (`mode: 'volume'`, `buildVolumeChartData` 헬퍼, `dailySummary` 기반)
+  - 계좌현황 글씨 크기 12px→13px, padding 7px→10px, 값 span `fontSize: FONT_SIZE.body` 추가
+  - `lower` flex:1 → flex:none 변경 (버튼 자연 높이)
+  - 검증: typecheck 통과, build 성공 (55 modules, 3.96s), 잔여 요약카드 문자열 0건
+
 - **2026-07-07: Step 2 — profit-shared.ts 요약카드 공통 함수 추가**
-  - `SummaryCardEls`, `SummaryCardCallbacks` 인터페이스 추가
-  - `createSummaryCards(container, callbacks)`: 카드 3개 DOM 생성, 클릭 콜백 주입
-  - `updateSummaryCards(sellHistory, dailySummary, els)`: 당일/당월/누적 손익 계산 및 갱신
-  - 기존 `profit-overview.ts` 로직은 이번 Step에서 변경 없음 (Step 3에서 교체)
-  - 검증: typecheck 통과, build 성공 (55 modules, 8.01s)
-  - 커밋: `694b396` push 완료
+  - `createSummaryCards`, `updateSummaryCards` 공통 함수 추가 (커밋 `694b396`)
 
 ## 현재 상태
-- **프론트엔드**: typecheck 통과, build 통과 (55 modules, 8.01s)
+- **프론트엔드**: typecheck 통과, build 통과 (55 modules, 3.96s)
 - **백엔드**: 변동 없음
-- **Git**: `694b396` push 완료 (origin/main)
+- **Git**: Step 3 커밋 예정
 - **런타임**: 미기동
 
 ## 다음 단계
-- **Step 3: `profit-overview.ts` 구조 재조정**
-  - 계획서: `docs/profit-restructure-plan.md` Step 3 참조
-  - 요약카드 제거, 레이아웃 2행×1열(좌) + 1열(우) 구조, 신규 volume 차트 추가
-  - 의존성: Step 1, Step 2 완료 (충족)
+- **Step 4: `profit-detail.ts` 구조 재조정**
+  - 계획서: `docs/profit-restructure-plan.md` Step 4 참조
+  - 의존성: Step 1, 2, 3 완료 (충족)
   - 사전조사 → 보고 → 승인 → 진행 순서 준수
 
 ## 미해결 문제
