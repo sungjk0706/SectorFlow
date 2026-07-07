@@ -103,7 +103,7 @@ def update_sector_in_cache(code: str, sector: str) -> None:
 | Step 1 | `update_sector_in_cache()` 함수 추가 | 완료 | 2026-07-08 |
 | Step 2 | `move_stock()` 캡슐화 적용 (단건, 가장 단순) | 완료 | 2026-07-08 |
 | Step 3 | `rename_sector()` + `delete_sector()` 캡슐화 적용 (loop) | 완료 | 2026-07-08 |
-| Step 4 | `sync_sector_from_custom_sectors()` 캡슐화 적용 (loop) | 대기 | - |
+| Step 4 | `sync_sector_from_custom_sectors()` 캡슐화 적용 (loop) | 완료 | 2026-07-08 |
 | Step 5 | 빌드 검증 + 테스트 + 브라우저 확인 | 대기 | - |
 
 ---

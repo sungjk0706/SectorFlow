@@ -227,12 +227,11 @@ async def sync_sector_from_custom_sectors() -> None:
         for row in rows:
             code = row["stock_code"]
             sector = row["name"]
-            if code in state.master_stocks_cache:
-                state.master_stocks_cache[code]["sector"] = sector
+            update_sector_in_cache(code, sector)
         for row in hidden_rows:
             code = row["stock_code"]
-            if code in master_codes and code in state.master_stocks_cache:
-                state.master_stocks_cache[code]["sector"] = row["name"]
+            if code in master_codes:
+                update_sector_in_cache(code, row["name"])
         
         _log.info("[동기화] 메모리 캐시 sector 필드 갱신 완료 -- %d종목", updated)
     except Exception as e:
