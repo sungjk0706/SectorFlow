@@ -104,7 +104,7 @@ def update_sector_in_cache(code: str, sector: str) -> None:
 | Step 2 | `move_stock()` 캡슐화 적용 (단건, 가장 단순) | 완료 | 2026-07-08 |
 | Step 3 | `rename_sector()` + `delete_sector()` 캡슐화 적용 (loop) | 완료 | 2026-07-08 |
 | Step 4 | `sync_sector_from_custom_sectors()` 캡슐화 적용 (loop) | 완료 | 2026-07-08 |
-| Step 5 | 빌드 검증 + 테스트 + 브라우저 확인 | 대기 | - |
+| Step 5 | 빌드 검증 + 테스트 + 브라우저 확인 | 완료 | 2026-07-08 |
 
 ---
 
@@ -344,11 +344,11 @@ def update_sector_in_cache(code: str, sector: str) -> None:
 
 ## 완료 기준
 
-- [ ] `update_sector_in_cache()` 함수가 `stock_classification_data.py`에 존재
-- [ ] 4개 함수(`rename_sector`, `delete_sector`, `move_stock`, `sync_sector_from_custom_sectors`)의 캐시 쓰기가 전부 `update_sector_in_cache()` 호출로 교체됨
-- [ ] `state.master_stocks_cache[...]["sector"] =` 직접 할당이 `update_sector_in_cache()` 내부 1곳에만 존재
-- [ ] `py_compile` 통과
-- [ ] `pytest` 기존 테스트 전부 통과
-- [ ] `npm run build` 통과
+- [x] `update_sector_in_cache()` 함수가 `stock_classification_data.py`에 존재
+- [x] 4개 함수(`rename_sector`, `delete_sector`, `move_stock`, `sync_sector_from_custom_sectors`)의 캐시 쓰기가 전부 `update_sector_in_cache()` 호출로 교체됨
+- [x] `state.master_stocks_cache[...]["sector"] =` 직접 할당이 `update_sector_in_cache()` 내부 1곳에만 존재
+- [x] `py_compile` 통과
+- [x] `pytest` 기존 테스트 전부 통과 (1023 passed)
+- [x] `npm run build` 통과
 - [ ] 브라우저에서 종목분류 페이지 정상 동작 (사용자 확인)
-- [ ] 각 Step 완료 시 커밋 + HANDOVER.md 업데이트
+- [x] 각 Step 완료 시 커밋 + HANDOVER.md 업데이트

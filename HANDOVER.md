@@ -1,19 +1,20 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-08: sector 캐시 캡슐화 Step 4 완료**
-  - `stock_classification_data.py`: `sync_sector_from_custom_sectors()` 캐시 직접 쓰기 → `update_sector_in_cache()` 호출로 교체 (`:226-234`)
-  - `if code in state.master_stocks_cache` 체크 제거 — `update_sector_in_cache()` 내부에서 처리
-  - 검증: py_compile OK, pytest 1023 passed, `entry["sector"] =` 단일 진입점 1곳만 존재
+- **2026-07-08: sector 캐시 캡슐화 Step 1-5 전체 완료**
+  - `stock_classification_data.py`: `update_sector_in_cache()` 단일 진입점 추가 + 4개 함수 캡슐화 적용
+  - 캡슐화 대상: `move_stock()`, `rename_sector()`, `delete_sector()`, `sync_sector_from_custom_sectors()`
+  - 검증: py_compile OK, pytest 1023 passed, npm run build OK, `entry["sector"] =` 단일 진입점 1곳만 존재
+  - 브라우저 확인: 사용자 직접 확인 필요 (종목 이동/업종명 변경/업종 삭제/업종 순위 재계산)
 
 ## 현재 상태
-- **백엔드**: `stock_classification_data.py` 5곳 수정 완료 (Step 1-4)
-- **프론트엔드**: 변경 없음
-- **Git**: `42ac264` 커밋 완료, push 대기
+- **백엔드**: sector 캐시 캡슐화 리팩토링 전체 완료 (Step 1-5)
+- **프론트엔드**: 변경 없음, 빌드 OK
+- **Git**: `ae2bfbb` 커밋 완료, push 대기
 
 ## 다음 단계
-- **sector 캐시 캡슐화 Step 5**: 빌드 검증 + 테스트 + 브라우저 확인
-  - 계획서: `docs/sector-cache-encapsulation-plan.md` Step 5 참조
+- 브라우저 확인: 종목분류 페이지에서 종목 이동/업종명 변경/업종 삭제/업종 순위 재계산 정상 동작 확인 (사용자)
+- push: `ae2bfbb` 커밋 push 대기
 
 ## 미해결 문제
 - 없음
