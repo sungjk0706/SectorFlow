@@ -522,3 +522,46 @@ class TestCreateBuyTargets:
         result = create_buy_targets([sc])
         assert isinstance(result, SectorSummary)
         assert result.sectors == [sc]
+
+    def test_held_stock_sorted_after_normal_candidates(self):
+        s_normal = _stock(code="A001", change_rate=1.0)
+        s_held = _stock(code="A002", change_rate=5.0)
+        sc = _sector(rank=1, stocks=[s_held, s_normal])
+        result = create_buy_targets([sc], held_codes={"A002"}, sort_keys=["change_rate"])
+        codes = [t.stock.code for t in result.buy_targets]
+        assert codes == ["A001", "A002"]
+        assert result.buy_targets[0].reason == ""
+        assert result.buy_targets[1].reason == "보유중"
+
+    def test_bought_today_sorted_after_normal_candidates(self):
+        s_normal = _stock(code="A001", change_rate=1.0)
+        s_bought = _stock(code="A002", change_rate=5.0)
+        sc = _sector(rank=1, stocks=[s_bought, s_normal])
+        result = create_buy_targets([sc], bought_today_codes={"A002"}, sort_keys=["change_rate"])
+        codes = [t.stock.code for t in result.buy_targets]
+        assert codes == ["A001", "A002"]
+        assert result.buy_targets[0].reason == ""
+        assert result.buy_targets[1].reason == "금일매수"
+
+    def test_restricted_stocks_before_blocked_stocks(self):
+        s_normal = _stock(code="A001", change_rate=1.0)
+        s_held = _stock(code="A002", change_rate=5.0)
+        s_blocked = _stock(code="A003", change_rate=10.0)
+        sc = _sector(rank=1, stocks=[s_blocked, s_held, s_normal])
+        result = create_buy_targets(
+            [sc], held_codes={"A002"}, block_rise_pct=7.0, sort_keys=["change_rate"],
+        )
+        buy_codes = [t.stock.code for t in result.buy_targets]
+        blocked_codes = [t.stock.code for t in result.blocked_targets]
+        assert buy_codes == ["A001", "A002"]
+        assert blocked_codes == ["A003"]
+
+    def test_held_rank_higher_than_normal_but_sorted_after(self):
+        s_normal = _stock(code="A001", change_rate=1.0)
+        s_held = _stock(code="A002", change_rate=9.0)
+        sc = _sector(rank=1, stocks=[s_held, s_normal])
+        result = create_buy_targets([sc], held_codes={"A002"}, block_rise_pct=10.0, sort_keys=["change_rate"])
+        assert result.buy_targets[0].stock.code == "A001"
+        assert result.buy_targets[0].rank == 1
+        assert result.buy_targets[1].stock.code == "A002"
+        assert result.buy_targets[1].rank == 2
