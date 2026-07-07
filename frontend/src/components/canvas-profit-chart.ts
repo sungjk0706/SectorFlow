@@ -24,6 +24,7 @@ export interface ProfitChartOptions {
   container: HTMLElement
   data: ProfitChartRow[]
   maxBars?: number
+  height?: number
   onBarClick?: (date: string) => void
   onDateRangeChange?: (from: string, to: string) => void
   dateFrom?: string
@@ -93,7 +94,7 @@ function computeYTicks(minVal: number, maxVal: number): number[] {
 // ── 메인 팩토리 ──────────────────────────────────────────────
 
 export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
-  const { container, maxBars = 30 } = options
+  const { container, maxBars = 30, height = CHART_HEIGHT } = options
   
   let isSample = false
   let displayData: DisplayRow[] = []
@@ -155,7 +156,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
   dateToInput.addEventListener('change', () => options.onDateRangeChange?.(dateToInput.value, dateToInput.value))
 
   const canvasWrap = document.createElement('div')
-  canvasWrap.style.cssText = `position:relative;width:100%;height:${CHART_HEIGHT}px;background:#fff;overflow:hidden;`
+  canvasWrap.style.cssText = `position:relative;width:100%;height:${height}px;background:#fff;overflow:hidden;`
   wrapper.appendChild(canvasWrap)
 
   const canvas = document.createElement('canvas')
