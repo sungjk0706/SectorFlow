@@ -7,12 +7,12 @@
   - `updateSummaryCards(sellHistory, dailySummary, els)`: 당일/당월/누적 손익 계산 및 갱신
   - 기존 `profit-overview.ts` 로직은 이번 Step에서 변경 없음 (Step 3에서 교체)
   - 검증: typecheck 통과, build 성공 (55 modules, 8.01s)
-  - 커밋: 진행 예정
+  - 커밋: `694b396` push 완료
 
 ## 현재 상태
 - **프론트엔드**: typecheck 통과, build 통과 (55 modules, 8.01s)
 - **백엔드**: 변동 없음
-- **Git**: Step 2 커밋 대기
+- **Git**: `694b396` push 완료 (origin/main)
 - **런타임**: 미기동
 
 ## 다음 단계
