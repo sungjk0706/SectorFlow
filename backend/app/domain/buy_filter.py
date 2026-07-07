@@ -126,6 +126,7 @@ def create_buy_targets(
     boost_program_net_buy_score: float = 1.0,
     # ── 거래대금 순위 가산점 ──
     held_codes: set[str] | None = None,
+    bought_today_codes: set[str] | None = None,
     boost_trade_amount_rank_on: bool = False,
     boost_trade_amount_rank_score: float = 1.0,
 ) -> SectorSummary:
@@ -181,6 +182,7 @@ def create_buy_targets(
     _obc = orderbook_cache or {}
     _pnb = program_net_buy_cache or {}
     _held = held_codes or set()
+    _bought_today = bought_today_codes or set()
 
     # ── 거래대금 순위 계산: 보유 종목 제외, Guard 통과 종목만 대상 ──
     _trade_amount_rank_map: dict[str, int] = {}
@@ -242,7 +244,12 @@ def create_buy_targets(
             blocked_targets.append(target)
             blocked_rank += 1
         else:
-            pass_reason = ""
+            if stock.code in _held:
+                pass_reason = "보유중"
+            elif stock.code in _bought_today:
+                pass_reason = "금일매수"
+            else:
+                pass_reason = ""
             target = BuyTarget(
                 rank=pass_rank,
                 sector_rank=sc.rank,
@@ -270,6 +277,7 @@ def build_buy_targets_from_settings(
     settings: dict,
     *,
     held_codes: set[str] | None = None,
+    bought_today_codes: set[str] | None = None,
 ) -> SectorSummary:
     from backend.app.services.engine_radar import get_high_price_5d_cache, get_orderbook_cache, get_program_net_buy_cache
 
@@ -292,6 +300,7 @@ def build_buy_targets_from_settings(
         boost_program_net_buy_on=bool(settings.get("boost_program_net_buy_on", False)),
         boost_program_net_buy_score=float(settings.get("boost_program_net_buy_score", 1.0)),
         held_codes=held_codes,
+        bought_today_codes=bought_today_codes,
         boost_trade_amount_rank_on=bool(settings.get("boost_trade_amount_rank_on", False)),
         boost_trade_amount_rank_score=float(settings.get("boost_trade_amount_rank_score", 1.0)),
     )

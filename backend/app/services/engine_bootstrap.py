@@ -75,10 +75,14 @@ async def _deferred_sector_summary() -> None:
             _sector_summary = await compute_full_sector_summary(**_inputs, **_kwargs)
             from backend.app.services.engine_symbol_utils import _base_stk_cd
             _held_codes = {_base_stk_cd(cd) for cd in state.checked_stocks}
+            _bought_today: set[str] = set()
+            if state.auto_trade is not None:
+                _bought_today = set(state.auto_trade._bought_today.keys())
             _result = build_buy_targets_from_settings(
                 _sector_summary.sectors,
                 state.integrated_system_settings_cache,
                 held_codes=_held_codes,
+                bought_today_codes=_bought_today,
             )
             state.sector_summary_cache = _result
             logger.debug("[구동] 업종순위 후순위 계산 완료 -- %d개 섹터", len(_result.sectors))

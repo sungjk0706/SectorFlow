@@ -176,10 +176,14 @@ async def _flush_sector_recompute_impl() -> None:
 
         from backend.app.services.engine_symbol_utils import _base_stk_cd
         _held = {_base_stk_cd(cd) for cd in state.checked_stocks}
+        _bought_today: set[str] = set()
+        if state.auto_trade is not None:
+            _bought_today = set(state.auto_trade._bought_today.keys())
         ss = build_buy_targets_from_settings(
             merged,
             state.integrated_system_settings_cache,
             held_codes=_held,
+            bought_today_codes=_bought_today,
         )
 
         # 참조 교체 방식으로 캐시 갱신 (R5.6)
