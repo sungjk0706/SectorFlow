@@ -1,24 +1,21 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 업종순위 우측패널 검색 라벨 인라인 배치 + 코스피/코스닥 종목수 추가**
-  - `sector-stock.ts:471-537` — 검색 라벨을 상단(column)에서 좌측 인라인(row) 배치로 변경, input width 220px→180px
-  - `sector-stock.ts:384` — 타이틀 그리드 비율 `1fr/1fr/1fr` → `1.8fr/1fr/1.5fr` 조정
-  - `sector-stock.ts:402-406` — 합계:N종목을 좌측 열(5일평균최소거래대금 옆)으로 이동
-  - `sector-stock.ts:418` — 우측 열을 KRX/NXT(1행) + 코스피/코스닥(2행) 구조로 변경
-  - `sector-stock.ts:282-283,331-332,342-343,687-688` — `market_type` 필드 기반 코스피/코스닥 카운트 추가
-  - 검증: npm run build 성공 (tsc + vite, 53 modules, 5.12s)
+- **2026-07-07: test_trading.py 프로세스 종료 hang 근본 해결**
+  - `test_trading.py:175` — patch 대상 `risk_manager.get_risk_manager` → `trading.get_risk_manager` 수정 (from import 바인딩 불일치)
+  - `conftest.py:26-37` — aiosqlite `close_db_connection()` 정리 + `trade_history._loaded` 리셋 추가 (방어층)
+  - 검증: 27 passed in 3.58s, exit code 0, hang 없음
 
 ## 현재 상태
-- **프론트엔드**: `sector-stock.ts` 수정 (검색 라벨 인라인 배치, 코스피/코스닥 종목수 추가, 타이틀 레이아웃 재구성)
-- **Git**: 커밋 `2be714e` 푸시 완료 (origin/main)
+- **백엔드 테스트**: `test_trading.py` 27 passed, hang 없음
+- **Git**: 커밋 `a4fa031` 푸시 완료 (origin/main)
 - **런타임**: 백엔드 미기동
 
 ## 다음 단계
 - 없음
 
 ## 미해결 문제
-- **test_trading.py hang**: `TestExecuteBuyGates::test_rebuy_block_disabled` — 사전 존재 이슈
+- 없음
 
 ## 테스트 실행 원칙 (필수 준수)
 
@@ -83,7 +80,7 @@ python -m pytest backend/tests/[파일명] -v --timeout=15 --timeout-method=sign
 
 #### Priority 1 — 매매 핵심 로직 (완료)
 - `test_buy_filter.py` ✅, `test_circuit_breaker.py` ✅, `test_settlement_engine.py` ✅
-- `test_risk_manager.py` ✅, `test_buy_order_executor.py` ✅, `test_trading.py` ⚠️ HANG (`test_rebuy_block_disabled` — 사전 존재 이슈, `pipeline_compute.py`와 무관)
+- `test_risk_manager.py` ✅, `test_buy_order_executor.py` ✅, `test_trading.py` ✅ (hang 해결 — 커밋 `a4fa031`)
 
 #### Priority 2 — 엔진/WS 계층 (완료)
 - `test_engine_ws.py` ✅, `test_engine_ws_dispatch.py` ✅, `test_engine_ws_parsing.py` ✅
