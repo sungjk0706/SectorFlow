@@ -1,16 +1,17 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: 30초 구독해지 타이머 리셋 누적 근본 해결**
-  - `engine_sector_confirm.py:18-23, 312-332, 340-398` — 단일 공유 타이머 → 종목별 독립 타이머 + call_soon 일괄 처리
-  - 근본 원인: 단일 `_PENDING_UNREG_TIMER`를 모든 해지 대상이 공유, 새 대상 추가 시 `cancel()` + `call_later()`로 타이머 리셋 → 기존 대기 종목의 대기 시간이 30초 초과
-  - 해결: `_PENDING_UNREG_TIMERS: dict[str, TimerHandle]`로 종목별 독립 타이머 관리, 타이머 만료 시 `_UNREG_READY_CODES`에 누적 후 `call_soon(_flush_unreg_batch)`으로 일괄 처리 (DYNAMIC_UNREG 1건 + notify 1회 보장)
-  - 검증: `test_engine_ws_dispatch.py` 66 passed, `test_pipeline_compute.py` 75 passed, `test_engine_ws.py` 53 passed, py_compile OK, import OK
+- **2026-07-07: 전역 조건 스냅샷 캐싱으로 불필요한 반복 매수 시도 제거**
+  - `buy_order_executor.py:18-25, 105-137, 165` — `_last_global_snapshot`으로 전역 조건 변화 감지, 동일 시 스킵
+  - `engine_account.py:416-418`, `settlement_engine.py:119-121`, `engine_service.py:206-211` — 무효화 호출 추가
+  - 근본 원인: `guard_pass` 진동으로 `buy_targets` 변경 시 `evaluate_buy_candidates` 반복 호출, 전역 조건 변화 감지 메커니즘 부재
+  - 해결: 매수후보 1위 종목 코드, 보유종목 수, 일일잔여금액, 주문가능금액 등 스냅샷 비교 → 동일 시 조기 반환, 매수 성공/설정 변경/잔고 회복 시 `invalidate_buy_snapshot()` 무효화
+  - 검증: `test_buy_order_executor.py` 23 passed (기존 19 + 신규 4), py_compile 5파일 OK
 
 ## 현재 상태
-- **백엔드**: `engine_sector_confirm.py` 수정 (1파일, 타이머 구조 전면 교체)
+- **백엔드**: `buy_order_executor.py`, `engine_account.py`, `settlement_engine.py`, `engine_service.py` 수정 (4파일, 스냅샷 캐싱 로직 추가)
 - **프론트엔드**: 변경 없음
-- **Git**: 커밋 `8ef8c88` 푸시 완료 (origin/main)
+- **Git**: 커밋 `cce0a74` 푸시 완료 (origin/main)
 - **런타임**: 백엔드 미기동
 
 ## 다음 단계
