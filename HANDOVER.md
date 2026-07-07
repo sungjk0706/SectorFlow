@@ -10,7 +10,7 @@
 ## 현재 상태
 - **프론트엔드**: typecheck 통과, build 통과
 - **백엔드**: py_compile OK, test_trade_history 2 passed
-- **Git**: 커밋 전 (승인 대기)
+- **Git**: 커밋 `c56d9ca` 푸시 완료 (origin/main)
 - **런타임**: 미기동
 
 ## 다음 단계
