@@ -1,18 +1,18 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-07: test_trading.py 프로세스 종료 hang 근본 해결**
-  - `test_trading.py:175` — patch 대상 `risk_manager.get_risk_manager` → `trading.get_risk_manager` 수정 (from import 바인딩 불일치)
-  - `conftest.py:26-37` — aiosqlite `close_db_connection()` 정리 + `trade_history._loaded` 리셋 추가 (방어층)
-  - 검증: 27 passed in 3.58s, exit code 0, hang 없음
+- **2026-07-07: 매수 시도 반복 차단 — 스냅샷 기준 top_code → buyable_codes 교체**
+  - `buy_order_executor.py:110-128` — 스냅샷 필드 `top_code`(단일 종목) + `rebuy_blocked` → `buyable_codes`(매수 가능 종목 정렬 튜플)로 교체
+  - `test_buy_order_executor.py` — `_bought_today={}` fixture 추가, 신규 테스트 2개 추가 (동일 집합 정렬 순서 변경 스킵, 전체 rebuy-blocked 스킵)
+  - 검증: test_buy_order_executor 25 passed, test_trading 26 passed (1 deselected), import OK
 
 ## 현재 상태
-- **백엔드 테스트**: `test_trading.py` 27 passed, hang 없음
-- **Git**: 커밋 `a4fa031` 푸시 완료 (origin/main)
+- **백엔드 테스트**: `test_buy_order_executor.py` 25 passed, `test_trading.py` 26 passed (1 deselected)
+- **Git**: 커밋 `e1faada` 푸시 완료 (origin/main)
 - **런타임**: 백엔드 미기동
 
 ## 다음 단계
-- 없음
+- 장중 실환경 검증: "매수 시도" 로그가 동일 종목 집합 내 정렬 순서 변경 시 반복되지 않는지 확인
 
 ## 미해결 문제
 - 없음
