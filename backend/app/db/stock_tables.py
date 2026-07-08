@@ -306,7 +306,7 @@ async def migrate_master_stocks_table_pk():
                trade_amount, avg_5d_trade_amount, high_5d_price, date, nxt_enable
         FROM master_stocks_table
     """)
-    await conn.execute("DROP TABLE master_stocks_table")
+    await conn.execute("ALTER TABLE master_stocks_table RENAME TO _master_stocks_table_old")
     await conn.execute("ALTER TABLE _master_stocks_table_pk_tmp RENAME TO master_stocks_table")
 
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_market ON master_stocks_table(market)')
@@ -314,54 +314,11 @@ async def migrate_master_stocks_table_pk():
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_avg_5d ON master_stocks_table(avg_5d_trade_amount)')
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_sector ON master_stocks_table(sector)')
     await conn.commit()
-    logger.info("[데이터] master_stocks_table code PRIMARY KEY 복구 완료")
+    logger.info("[데이터] master_stocks_table code PRIMARY KEY 복구 완료 — 백업 테이블 삭제 진행")
 
-
-async def migrate_drop_high_price_column():
-    """기존 master_stocks_table에서 high_price 컬럼 제거 (마이그레이션).
-
-    CREATE TABLE AS SELECT 대신 명시적 스키마 + INSERT INTO SELECT를 사용하여
-    PRIMARY KEY 등 제약조건이 보존되도록 한다.
-    """
-    conn = await get_db_connection()
-
-    cursor = await conn.execute("PRAGMA table_info(master_stocks_table)")
-    columns = await cursor.fetchall()
-    column_names = {col["name"] for col in columns}
-
-    if "high_price" in column_names:
-        await conn.execute("""
-            CREATE TABLE _master_stocks_table_tmp (
-                code TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                market TEXT,
-                sector TEXT,
-                cur_price INTEGER,
-                change INTEGER,
-                change_rate REAL,
-                trade_amount INTEGER,
-                avg_5d_trade_amount INTEGER,
-                high_5d_price INTEGER,
-                date TEXT,
-                nxt_enable INTEGER DEFAULT 0
-            )
-        """)
-        await conn.execute("""
-            INSERT INTO _master_stocks_table_tmp
-                (code, name, market, sector, cur_price, change, change_rate,
-                 trade_amount, avg_5d_trade_amount, high_5d_price, date, nxt_enable)
-            SELECT code, name, market, sector, cur_price, change, change_rate,
-                   trade_amount, avg_5d_trade_amount, high_5d_price, date, nxt_enable
-            FROM master_stocks_table
-        """)
-        await conn.execute("DROP TABLE master_stocks_table")
-        await conn.execute("ALTER TABLE _master_stocks_table_tmp RENAME TO master_stocks_table")
-        await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_market ON master_stocks_table(market)')
-        await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_date ON master_stocks_table(date)')
-        await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_avg_5d ON master_stocks_table(avg_5d_trade_amount)')
-        await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_sector ON master_stocks_table(sector)')
-        await conn.commit()
-        logger.info("[데이터] master_stocks_table에서 high_price 컬럼 제거 완료")
+    await conn.execute("DROP TABLE _master_stocks_table_old")
+    await conn.commit()
+    logger.info("[데이터] master_stocks_table 마이그레이션 백업 테이블 삭제 완료")
 
 
 async def migrate_add_hidden_to_custom_sectors():
@@ -421,30 +378,6 @@ async def create_stock_5d_array_table():
     ''')
     await conn.commit()
     logger.info("stock_5d_array 테이블 초기화 완료.")
-
-
-async def migrate_stock_5d_array_pk():
-    """기존 (code, date) PK → code 단일 PK 마이그레이션"""
-    conn = await get_db_connection()
-    cursor = await conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='stock_5d_array'")
-    row = await cursor.fetchone()
-    if row is None:
-        return
-    schema_sql = row["sql"] if isinstance(row, sqlite3.Row) or hasattr(row, "__getitem__") else row[0]
-    if "PRIMARY KEY (code, date)" not in schema_sql:
-        logger.debug("[데이터] stock_5d_array PK 이미 code 단일 — 스킵")
-        return
-    logger.info("[데이터] stock_5d_array PK (code, date) → code 단일 변경 시작")
-    await conn.execute('CREATE TABLE IF NOT EXISTS stock_5d_array_new (code TEXT PRIMARY KEY, date TEXT, day1_amount INTEGER, day2_amount INTEGER, day3_amount INTEGER, day4_amount INTEGER, day5_amount INTEGER, day1_high INTEGER, day2_high INTEGER, day3_high INTEGER, day4_high INTEGER, day5_high INTEGER)')
-    await conn.execute('''INSERT OR REPLACE INTO stock_5d_array_new (code, date, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount, day1_high, day2_high, day3_high, day4_high, day5_high)
-        SELECT code, date, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount, day1_high, day2_high, day3_high, day4_high, day5_high
-        FROM stock_5d_array
-        WHERE (code, date) IN (SELECT code, MAX(date) FROM stock_5d_array GROUP BY code)
-    ''')
-    await conn.execute('DROP TABLE stock_5d_array')
-    await conn.execute('ALTER TABLE stock_5d_array_new RENAME TO stock_5d_array')
-    await conn.commit()
-    logger.info("[데이터] stock_5d_array PK 변경 완료 — 종목당 최신 1행만 유지")
 
 
 # ── 거래일 캐시 ─────────────────────────────────────────────────────────────
