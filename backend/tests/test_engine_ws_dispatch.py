@@ -14,17 +14,13 @@ from backend.app.services.engine_ws_dispatch import (
     _update_trade_amount_fid14,
     _update_strength_buckets,
     _log_ws_trnm_json_detail,
-    _log_real_data_items_preview,
     _handle_login,
     _reg_response_item_val,
     _reg_data_rows,
     _handle_reg,
     _check_realtime_latency,
-    _handle_real_01,
     _handle_real_00,
     _handle_real_balance,
-    _handle_real_0j,
-    _handle_real,
     handle_ws_data,
     _handle_jif,
     _JSTATUS_KRX_ALERT,
@@ -102,25 +98,6 @@ class TestLogWsTrnmJsonDetail:
 
     def test_non_serializable(self):
         _log_ws_trnm_json_detail("REAL", {"obj": object()})
-
-
-# ── _log_real_data_items_preview ──────────────────────────────────────────────────
-
-class TestLogRealDataItemsPreview:
-    def test_list_data(self):
-        _log_real_data_items_preview({"data": [{"type": "0B", "values": {"10": "80000"}}]})
-
-    def test_dict_data(self):
-        _log_real_data_items_preview({"data": {"type": "0j", "values": {"10": "2500"}}})
-
-    def test_non_list_non_dict(self):
-        _log_real_data_items_preview({"data": "string"})
-
-    def test_no_data_key(self):
-        _log_real_data_items_preview({})
-
-    def test_non_dict_item(self):
-        _log_real_data_items_preview({"data": ["not_dict"]})
 
 
 # ── _handle_login ──────────────────────────────────────────────────────────────────
@@ -256,38 +233,6 @@ class TestCheckRealtimeLatency:
             assert mock_state.realtime_latency_exceeded is False
 
 
-# ── _handle_real_01 (dead path) ────────────────────────────────────────────────────
-
-class TestHandleReal01:
-    @pytest.mark.asyncio
-    async def test_logs_warning(self):
-        await _handle_real_01({}, {}, "0B", True)
-
-
-# ── _handle_real_0j ────────────────────────────────────────────────────────────────
-
-class TestHandleReal0j:
-    @pytest.mark.asyncio
-    async def test_valid_data(self):
-        with patch("backend.app.services.engine_account_notify.notify_index_data", new_callable=AsyncMock) as mock_notify:
-            item = {"item": "001", "values": {"10": "2500", "11": "+10", "12": "0.4", "25": "2"}}
-            await _handle_real_0j(item, item["values"])
-            mock_notify.assert_awaited_once_with("001", "2500", "+10", "0.4", "2")
-
-    @pytest.mark.asyncio
-    async def test_empty_upcode(self):
-        with patch("backend.app.services.engine_account_notify.notify_index_data", new_callable=AsyncMock) as mock_notify:
-            await _handle_real_0j({"item": ""}, {})
-            mock_notify.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_empty_jisu(self):
-        with patch("backend.app.services.engine_account_notify.notify_index_data", new_callable=AsyncMock) as mock_notify:
-            item = {"item": "001", "values": {"10": ""}}
-            await _handle_real_0j(item, item["values"])
-            mock_notify.assert_not_awaited()
-
-
 # ── handle_ws_data ──────────────────────────────────────────────────────────────────
 
 class TestHandleWsData:
@@ -316,12 +261,6 @@ class TestHandleWsData:
             mock_reg.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_real(self):
-        with patch("backend.app.services.engine_ws_dispatch._handle_real", new_callable=AsyncMock) as mock_real:
-            await handle_ws_data({"trnm": "REAL", "data": []})
-            mock_real.assert_awaited_once()
-
-    @pytest.mark.asyncio
     async def test_jif(self):
         with patch("backend.app.services.engine_ws_dispatch._handle_jif", new_callable=AsyncMock) as mock_jif:
             await handle_ws_data({"trnm": "JIF", "jangubun": "1", "jstatus": "61"})
@@ -339,46 +278,6 @@ class TestHandleWsData:
     async def test_exception_handled(self):
         with patch("backend.app.services.engine_ws_dispatch._handle_login", side_effect=RuntimeError("test")):
             await handle_ws_data({"trnm": "LOGIN"})
-
-
-# ── _handle_real ────────────────────────────────────────────────────────────────────
-
-class TestHandleReal:
-    @pytest.mark.asyncio
-    async def test_empty_data(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state:
-            mock_state.REG_REAL_DEBUG_EXTRA_LOG = False
-            await _handle_real({"data": []})
-
-    @pytest.mark.asyncio
-    async def test_non_dict_data(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state:
-            mock_state.REG_REAL_DEBUG_EXTRA_LOG = False
-            await _handle_real({"data": "string"})
-
-    @pytest.mark.asyncio
-    async def test_missing_data(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state:
-            mock_state.REG_REAL_DEBUG_EXTRA_LOG = False
-            await _handle_real({})
-
-    @pytest.mark.asyncio
-    async def test_dict_data(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state, \
-             patch("backend.app.services.engine_ws_dispatch.notify_raw_real_data", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_ws_dispatch._handle_real_0j", new_callable=AsyncMock) as mock_0j:
-            mock_state.REG_REAL_DEBUG_EXTRA_LOG = False
-            item = {"type": "0J", "item": "001", "values": {"10": "2500"}}
-            await _handle_real({"data": item})
-            mock_0j.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_non_dict_item_skipped(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state, \
-             patch("backend.app.services.engine_ws_dispatch.notify_raw_real_data", new_callable=AsyncMock) as mock_raw:
-            mock_state.REG_REAL_DEBUG_EXTRA_LOG = False
-            await _handle_real({"data": ["not_dict"]})
-            mock_raw.assert_not_awaited()
 
 
 # ── _handle_jif ────────────────────────────────────────────────────────────────────

@@ -132,14 +132,7 @@ class _KiwoomSocket:
 
                 # 5. REAL → 큐에 투입 (Producer)
                 if trnm == "REAL":
-                    if self._queue_callback:
-                        try:
-                            self._queue_callback(msg)  # put_nowait 호출
-                        except asyncio.QueueFull:
-                            logger.warning("[서버소켓] 큐 가득 참 — REAL 데이터 드롭: %s", msg.get("trnm"))
-                    else:
-                        # 폴백: 기존 방식 유지
-                        await self._on_message(msg)
+                    self._queue_callback(msg)
                     continue
 
                 # 6. REG/UNREG/REMOVE/SYSTEM 등
