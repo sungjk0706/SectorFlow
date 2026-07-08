@@ -1,24 +1,18 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-08: 백엔드 로깅 시스템 통일 — 11단계 리팩토링 (68개 파일)**
-  - `logger.py`: `get_logger()` deprecated 처리 (DeprecationWarning)
-  - 26개 파일: `get_logger("...")` → `logging.getLogger(__name__)`
-  - 13개 파일: `_log` → `logger` 변수명 통일
-  - `sector_data_provider.py`: 함수 내부 로거 생성 제거
-  - `pipeline_compute.py`: `_check_realtime_latency` 중복 제거, `engine_ws_dispatch`에서 import
-  - services/db/core/pipelines/domain/web: 로그 프리픽스 14개 카테고리 통일 (`[매매]`, `[연결]`, `[데이터]`, `[업종]`, `[알림]`, `[연산]`, `[스케줄]` 등)
-  - 용어 통일: 섹터→업종, 매수후보→매수 후보
-  - `trading.py`: `AutoTradeManager` `log_callback` 파라미터/속성 제거, `self.log_callback(f"...")` → `logger.info("...", args)` (%s 스타일)
-  - `engine_loop.py`: `log_callback=log_message` 인자 제거
-  - `test_trading.py`, `test_dry_run_fill_event.py`: `log_callback` 인자 제거
-  - 검증: grep 잔여 0건, py_compile 통과, pytest 1013 passed, 런타임 인스턴스화 OK
-  - 커밋: `23fd49f`
+- **2026-07-08: 동기 파일 I/O를 aiofiles로 비동기 전환 (원칙 2 준수)**
+  - `logger.py`: `_async_file_writer_loop` 내 `open/write/flush/close/exists/stat/unlink/mkdir` → `aiofiles` + `asyncio.to_thread` 전환, `setup_loguru`/`_start_file_writers`/`_rotate_old_logs`를 `async def`로 전환
+  - `settings_file.py`: broker_specs 로딩의 `open/exists/glob` → `aiofiles` + `asyncio.to_thread` 전환
+  - `telegram.py`: 동기 `send_msg()` 함수 삭제 (죽은 코드, 원칙 16)
+  - `logging_config.py`: `configure_app_logging()` → `async def`
+  - `app.py`: `configure_app_logging()` 호출에 `await` 추가
+  - 검증: ruff pass, py_compile pass, pytest 1013 passed, 런타임 35초 정상 동작, 로그 정상 기록, Traceback/RuntimeWarning 없음, grep 잔존 동기 `open()` 없음
 
 ## 현재 상태
-- **백엔드**: 로깅 시스템 통일 완료 — `get_logger` deprecated, `_log`→`logger`, `log_callback`→`logger.info`, 프리픽스/용어 표준화 (68개 파일)
+- **백엔드**: 원칙 2(모든 I/O는 async def) 준수 — 동기 파일 I/O 전면 제거, aiofiles 기반 비동기 파일 I/O
 - **프론트엔드**: 변경 없음
-- **Git**: `23fd49f` push 완료
+- **Git**: `48859ef` push 완료
 
 ## 다음 단계
 - 체결지연 50ms 초과 WARNING 원인 조사 (런타임 기동 중 발생, 13:26~)
