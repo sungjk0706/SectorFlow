@@ -1,25 +1,24 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-08: type 00/04/80 REAL 메시지 silent drop 치명적 결함 해결**
-  - `pipeline_compute.py`: `_handle_real_tick`에 type "00"(주문체결)/"04"/"80"(잔고) 분기 추가 → `_handle_real_00`, `_handle_real_balance` 호출
-  - `kiwoom_connector.py`: `_recv_loop` 폴백 경로(`else: await self._on_message(msg)`) 제거 (원칙 20 폴백 금지)
-  - `engine_ws_dispatch.py`: 사망 경로 정리 — `_handle_real`, `_handle_real_01`, `_handle_real_0j`, `_log_real_data_items_preview` 삭제, `handle_ws_data` REAL 분기 제거 (원칙 16 살아있는 경로)
-  - `engine_ws.py`: `_broker_message_handler`에서 "REAL" 제거 (tick_queue로 직행하므로 도달 불가)
-  - 근본 원인: REAL 메시지가 `tick_queue`로 직행하지만 `_handle_real_tick`에 "00"/"04"/"80" 분기가 없어 silent drop. 테스트모드에서는 `fake_fill_event`가 우회 호출하여 은폐
-  - 검증: py_compile 4파일 OK, pytest 1013 passed, 런타임 기동 13:24 에러 0건, 수신율 91.4% 정상
-
-- **2026-07-08: 단일 asyncio 이벤트 루프 원칙 준수 — threading.Thread 제거 + asyncio.get_event_loop() 제거**
-  - `logger.py`: `threading.Thread` + `queue.Queue` → `asyncio.create_task` + `asyncio.Queue` 전환, `stop_file_writers()` 추가
-  - `ws_subscribe_control.py:77`: `asyncio.get_event_loop().time()` → `time.time()` (Python 3.12+ RuntimeError 위험 제거)
-  - `app.py:176-179`: shutdown 시 `stop_file_writers()` 호출 추가
-  - 근본 원인: 원칙 1(단일 루프), 원칙 14(멀티스레드 남용 금지) 위반
-  - 검증: py_compile 3파일 OK, pytest 1024 passed, 런타임 기동 로그 에러 0건
+- **2026-07-08: 백엔드 로깅 시스템 통일 — 11단계 리팩토링 (68개 파일)**
+  - `logger.py`: `get_logger()` deprecated 처리 (DeprecationWarning)
+  - 26개 파일: `get_logger("...")` → `logging.getLogger(__name__)`
+  - 13개 파일: `_log` → `logger` 변수명 통일
+  - `sector_data_provider.py`: 함수 내부 로거 생성 제거
+  - `pipeline_compute.py`: `_check_realtime_latency` 중복 제거, `engine_ws_dispatch`에서 import
+  - services/db/core/pipelines/domain/web: 로그 프리픽스 14개 카테고리 통일 (`[매매]`, `[연결]`, `[데이터]`, `[업종]`, `[알림]`, `[연산]`, `[스케줄]` 등)
+  - 용어 통일: 섹터→업종, 매수후보→매수 후보
+  - `trading.py`: `AutoTradeManager` `log_callback` 파라미터/속성 제거, `self.log_callback(f"...")` → `logger.info("...", args)` (%s 스타일)
+  - `engine_loop.py`: `log_callback=log_message` 인자 제거
+  - `test_trading.py`, `test_dry_run_fill_event.py`: `log_callback` 인자 제거
+  - 검증: grep 잔여 0건, py_compile 통과, pytest 1013 passed, 런타임 인스턴스화 OK
+  - 커밋: `23fd49f`
 
 ## 현재 상태
-- **백엔드**: type 00/04/80 REAL 메시지 silent drop 결함 해결, 단일 asyncio 이벤트 루프 원칙 준수
+- **백엔드**: 로깅 시스템 통일 완료 — `get_logger` deprecated, `_log`→`logger`, `log_callback`→`logger.info`, 프리픽스/용어 표준화 (68개 파일)
 - **프론트엔드**: 변경 없음
-- **Git**: `d5778ac` push 완료
+- **Git**: `23fd49f` push 완료
 
 ## 다음 단계
 - 체결지연 50ms 초과 WARNING 원인 조사 (런타임 기동 중 발생, 13:26~)
