@@ -23,6 +23,38 @@ import {
 
 const ROW_CSS = `display:flex;justify-content:space-between;padding:10px 4px;border-bottom:1px solid #f0f0f0;font-size:${FONT_SIZE.body};`
 
+/* ── 날짜 범위 localStorage 영속화 ── */
+const PROFIT_DATE_KEY = 'sf_profit_date_range'
+
+function loadProfitDateRange(): { from: string; to: string } | null {
+  try {
+    const raw = localStorage.getItem(PROFIT_DATE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { from?: string; to?: string }
+    if (parsed.from && parsed.to && /^\d{4}-\d{2}-\d{2}$/.test(parsed.from) && /^\d{4}-\d{2}-\d{2}$/.test(parsed.to) && parsed.from <= parsed.to) {
+      return { from: parsed.from, to: parsed.to }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function saveProfitDateRange(from: string, to: string): void {
+  try {
+    localStorage.setItem(PROFIT_DATE_KEY, JSON.stringify({ from, to }))
+  } catch {
+    // localStorage 접근 불가 시 무시 (private mode 등)
+  }
+}
+
+function defaultDateRange(): { from: string; to: string } {
+  const now = new Date()
+  const from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  const to = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return { from, to }
+}
+
 /* ── 모듈 변수 ── */
 let chart: ProfitChartApi | null = null
 let donutChart: SectorDonutApi | null = null
@@ -341,6 +373,16 @@ function mount(container: HTMLElement): void {
   root.appendChild(lower)
   container.appendChild(root)
 
+  // 날짜 범위 초기화 — localStorage 로드 후 hotStore에 보장 (차트 생성 전 실행)
+  const saved = loadProfitDateRange()
+  if (saved) {
+    hotStore.setState({ profitDateFrom: saved.from, profitDateTo: saved.to })
+  } else if (!hotStore.getState().profitDateFrom || !hotStore.getState().profitDateTo) {
+    const { from, to } = defaultDateRange()
+    hotStore.setState({ profitDateFrom: from, profitDateTo: to })
+    saveProfitDateRange(from, to)
+  }
+
   // 차트 생성 — 일별 수익률
   const { profitDateFrom: storedFrom, profitDateTo: storedTo } = hotStore.getState()
   chart = createProfitChart({
@@ -355,11 +397,22 @@ function mount(container: HTMLElement): void {
         const data = await api.getDailySummary(from, to, tradeMode)
         chart?.updateData(buildChartFromDailySummary(data))
         hotStore.setState({ profitDateFrom: from, profitDateTo: to, dailySummary: data })
+        saveProfitDateRange(from, to)
         refreshFilteredViews()
       } catch (err) {
         console.error('[profit-overview] daily-summary fetch failed:', err)
       }
     },
+  })
+
+  // 초기 차트 데이터 — 저장된 날짜 범위로 API 조회하여 필터링된 데이터 반영
+  const initSettings = globalSettingsManager.getSettings()
+  const initTradeMode = initSettings?.trade_mode || 'test'
+  api.getDailySummary(storedFrom, storedTo, initTradeMode).then(data => {
+    chart?.updateData(buildChartFromDailySummary(data))
+    hotStore.setState({ dailySummary: data })
+  }).catch(err => {
+    console.error('[profit-overview] initial daily-summary fetch failed:', err)
   })
 
   // 차트 생성 — 업종별 수익 도넛
@@ -372,14 +425,8 @@ function mount(container: HTMLElement): void {
   const initState = hotStore.getState()
   sellHistory = initState.sellHistory
   buyHistory = initState.buyHistory
-  const storedDates = hotStore.getState()
-  if (!storedDates.profitDateFrom || !storedDates.profitDateTo) {
-    const now = new Date()
-    const from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-    const to = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-    hotStore.setState({ profitDateFrom: from, profitDateTo: to })
-  }
-  filteredSellHistory = filterSellHistoryByDate(sellHistory, hotStore.getState().profitDateFrom, hotStore.getState().profitDateTo)
+  filteredSellHistory = filterSellHistoryByDate(sellHistory, initState.profitDateFrom, initState.profitDateTo)
+  refreshFilteredViews()
 
   // hotStore 구독 — rAF 배칭 + selective update
   let prevSellRef = initState.sellHistory
@@ -456,7 +503,6 @@ function mount(container: HTMLElement): void {
   })
 
   renderAccountVals()
-  renderSectorStockPnl()
 }
 
 /* ── unmount ── */
