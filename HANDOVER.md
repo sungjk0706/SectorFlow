@@ -1,24 +1,23 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-08: checked_stocks 제거, positions 기반 SSOT 일원화**
-  - `engine_account.py`: `get_held_codes()` 추가 — positions/dry_run에서 직접 파생
-  - `engine_bootstrap.py`, `engine_sector_confirm.py`, `sector_data_provider.py`: held_codes 파생을 `get_held_codes()`로 교체
-  - `trading.py`: `execute_buy`에서 `checked_stocks` 파라미터/guard/add 제거
-  - `buy_order_executor.py`: `state.checked_stocks` 인자 제거
-  - `engine_state.py`: `checked_stocks` 필드 제거
-  - `engine_loop.py`, `engine_radar.py`, `settings.py`: `checked_stocks.clear()` 제거
-  - `engine_strategy_core.py`, `engine_snapshot.py`: dead code (`run_snapshot_and_sell_check`) 제거
-  - `test_trading.py`, `test_buy_order_executor.py`: 테스트 수정
-  - 검증: py_compile 14파일 OK, test_buy_order_executor 25 passed, test_trading 26 passed
+- **2026-07-08: SSOT 위반 3건 해결 — 암호화 필드·계좌 스냅샷·dead field**
+  - `settings_store.py`: `get_encrypt_fields()` 제거, `_ENCRYPT_FIELDS` 단일 소스 import (중복 정의 해소)
+  - `risk_manager.py`: `AccountManager` 의존성 제거, `state.account_snapshot["orderable"]` 직접 조회
+  - `account_manager.py`: 파일 삭제 (갱신 호출처 0건, 항상 빈 dict — dead code)
+  - `engine_state.py`: `buy_targets_cache_ref`, `sector_score_index` dead field 제거
+  - `test_risk_manager.py`: AccountManager mock → state.account_snapshot mock 교체
+  - `data-table.ts`: zebra striping 적용 순서 수정 (rowStyle 전 선적용)
+  - 검증: py_compile OK, test_risk_manager 19p, test_trading 26p, test_buy_order_executor 25p, test_settings_file_integration 15p
 
 ## 현재 상태
-- **백엔드**: checked_stocks 완전 제거, positions 기반 SSOT 구조
-- **프론트엔드**: 변경 없음
-- **Git**: `11ba545` push 완료
+- **백엔드**: SSOT 위반 3건 해결 완료 (암호화 필드 단일화, 계좌 스냅샷 통합, dead field 제거)
+- **프론트엔드**: data-table zebra striping 순서 수정
+- **Git**: `8f7f1a3` push 완료
 
 ## 다음 단계
 - 브라우저 확인: 테스트모드에서 매수→매도 후 매수후보 테이블 "보유중" 표시가 즉시 사라지는지 확인 (사용자)
+- 앱 기동 후 설정 저장 / 실전 계좌 조회 / 매수 주문 정상 동작 확인 (사용자)
 
 ## 미해결 문제
 - 없음
