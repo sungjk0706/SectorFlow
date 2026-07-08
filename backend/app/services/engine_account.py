@@ -7,12 +7,12 @@
 - 브로드캐스트
 """
 import asyncio
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.core.trade_mode import is_test_mode
 import backend.app.services.engine_state as engine_state
 from backend.app.services.engine_state import state, _get_rest_api_thread_sem as _ensure_rest_api_thread_sem
 
-logger = get_logger("engine_account")
+logger = logging.getLogger(__name__)
 
 
 # ── 계좌 스냅샷/잔고 조회 ─────────────────────────────────────────────────
@@ -453,7 +453,7 @@ async def _broadcast_account(reason: str | None = None) -> None:
             reason=reason or "update",
         )
     except Exception as e:
-        logger.warning("[계좌브로드캐스트] 전송 실패: %s", e, exc_info=True)
+        logger.warning("[계좌] 전송 실패: %s", e, exc_info=True)
 
 
 # ── 헬퍼 함수 ─────────────────────────────────────────────────────────

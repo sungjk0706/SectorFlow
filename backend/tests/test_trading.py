@@ -70,7 +70,6 @@ def _raw_settings(**overrides):
 
 def _make_manager(settings=None):
     mgr = AutoTradeManager(
-        log_callback=lambda msg: None,
         get_settings_fn=lambda: settings if settings is not None else _raw_settings(),
     )
     # _ensure_daily_buy_counter가 trade_history.get_buy_history → aiosqlite.connect

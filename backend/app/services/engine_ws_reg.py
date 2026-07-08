@@ -13,7 +13,7 @@ from backend.app.services.engine_symbol_utils import (
 )
 from backend.app.services.engine_state import state
 
-logger = logging.getLogger("engine")
+logger = logging.getLogger(__name__)
 
 
 def build_0b_reg_payloads(

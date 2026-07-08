@@ -137,7 +137,7 @@ async def charge(amount: int) -> int:
     _orderable += amount
     await _persist()
     await _broadcast_delta()
-    logger.info("[정산엔진] 충전 %s원 -> 누적투자금 %s원 / 주문가능 %s원", f"{amount:,}", f"{_accumulated_investment:,}", f"{_orderable:,}")
+    logger.info("[정산] 충전 %s원 -> 누적투자금 %s원 / 주문가능 %s원", f"{amount:,}", f"{_accumulated_investment:,}", f"{_orderable:,}")
     return _orderable
 
 
@@ -161,7 +161,7 @@ async def reset(initial_deposit: int) -> None:
     _initial_deposit = initial_deposit
     await _persist()
     await _broadcast_delta()
-    logger.info("[정산엔진] 리셋 완료 -- 초기투자금: %s원", f"{initial_deposit:,}")
+    logger.info("[정산] 리셋 완료 -- 초기투자금: %s원", f"{initial_deposit:,}")
 
 
 async def save_state() -> None:
@@ -186,7 +186,7 @@ async def _persist() -> None:
     try:
         await save_settlement_state(data)
     except Exception as e:
-        logger.warning("[정산엔진] 상태 저장 실패: %s", e)
+        logger.warning("[정산] 상태 저장 실패: %s", e)
 
 
 async def _load(force_reload: bool = False) -> None:
@@ -221,11 +221,11 @@ async def _load(force_reload: bool = False) -> None:
             _orderable = _accumulated_investment
         _loaded = True
         logger.info(
-            "[정산엔진] 상태 복원 완료 -- 누적투자금: %s원 / 주문가능: %s원",
+            "[정산] 상태 복원 완료 -- 누적투자금: %s원 / 주문가능: %s원",
             f"{_accumulated_investment:,}", f"{_orderable:,}",
         )
     except Exception as e:
-        logger.warning("[정산엔진] 상태 파일 로드 실패 (기본값 사용): %s", e)
+        logger.warning("[정산] 상태 파일 로드 실패 (기본값 사용): %s", e)
         try:
             from backend.app.services.engine_state import state
             s = state.integrated_system_settings_cache
@@ -237,7 +237,7 @@ async def _load(force_reload: bool = False) -> None:
             _orderable = _initial_deposit
         _loaded = True
         await _persist()
-        logger.info("[정산엔진] 초기값 SQLite 저장 완료 -- 주문가능: %s원", f"{_orderable:,}")
+        logger.info("[정산] 초기값 SQLite 저장 완료 -- 주문가능: %s원", f"{_orderable:,}")
 
 
 # ── 브로드캐스트 ────────────────────────────────────────────────────────────
@@ -253,5 +253,5 @@ async def _broadcast_delta() -> None:
             await _broadcast_account(reason="settlement_delta")
     except Exception as e:
         logger.warning(
-            "[정산엔진] 브로드캐스트 실패 (엔진 미기동 가능): %s", e,
+            "[정산] 브로드캐스트 실패 (엔진 미기동 가능): %s", e,
         )

@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-섹터 계산기 - 섹터 점수 계산 및 통합 진입점.
+업종 계산기 - 업종 점수 계산 및 통합 진입점.
 """
 from __future__ import annotations
 from typing import Literal
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.domain.models import SectorSummary
 from backend.app.domain.sector_filter import filter_by_avg_amt, group_by_sector
 from backend.app.domain.sector_score import calculate_weighted_scores
 from backend.app.services.engine_state import state
-logger = get_logger("engine")
+logger = logging.getLogger(__name__)
 
 
 async def compute_sector_scores(
@@ -24,7 +24,7 @@ async def compute_sector_scores(
     trim_change_rate_pct: float = 0.0,     # 업종 내 종목 등락률 트리밍 비율 (%)
 ) -> list:  # list[SectorScore]
     """
-    섹터별 강도 스코어 계산.
+    업종별 강도 스코어 계산.
 
     단일 소스 진리: master_stocks_cache를 직접 참조.
 
@@ -47,7 +47,7 @@ async def compute_sector_scores(
     # ── 1차 필터: 5일평균거래대금 (업종 그룹핑 전 적용 - 단일 소스 진리) ──
     filtered_codes = await filter_by_avg_amt(all_codes, avg_amt_5d, min_avg_amt_eok)
 
-    # 섹터별 종목 그룹핑 — Custom_Data > Auto_Mapping 우선순위 적용
+    # 업종별 종목 그룹핑 — Custom_Data > Auto_Mapping 우선순위 적용
     sector_groups = await group_by_sector(filtered_codes)
 
     sector_scores: list = []
@@ -119,7 +119,7 @@ async def compute_sector_scores(
         if not stocks:
             continue
 
-        # ── 5일평균거래대금 필터: 업종강도 계산 + 매수후보 모두 적용 ─────────
+        # ── 5일평균거래대금 필터: 업종강도 계산 + 매수 후보 모두 적용 ─────────
         if min_avg_amt_eok > 0:
             filtered_stocks = [s for s in stocks if s.avg_amt_5d >= min_avg_amt_eok]
         else:
@@ -221,7 +221,7 @@ async def compute_full_sector_summary(
 
     sector_mapping.get_merged_sector() 기반 커스텀 업종 그룹핑.
     """
-    # 1. 섹터 스코어 계산
+    # 1. 업종 스코어 계산
     sector_scores = await compute_sector_scores(
         all_codes,
         trade_prices=trade_prices,

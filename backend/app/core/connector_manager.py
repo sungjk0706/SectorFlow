@@ -44,12 +44,12 @@ class ConnectorManager:
             try:
                 connector = self._create_single(broker_name)
                 self._connectors[broker_name] = connector
-                logger.info("[ConnectorManager] %s Connector 생성 완료", broker_name.upper())
+                logger.info("[연결] %s Connector 생성 완료", broker_name.upper())
             except ValueError as e:
-                logger.warning("[ConnectorManager] %s Connector 생성 실패 (설정 확인 필요): %s", broker_name.upper(), e, exc_info=True)
+                logger.warning("[연결] %s Connector 생성 실패 (설정 확인 필요): %s", broker_name.upper(), e, exc_info=True)
 
         if not self._connectors:
-            logger.warning("[ConnectorManager] 생성된 Connector 없음 — broker_config.websocket=%r", ws_val)
+            logger.warning("[연결] 생성된 Connector 없음 — broker_config.websocket=%r", ws_val)
 
     @staticmethod
     def _create_single(broker_name: str) -> BrokerConnector:
@@ -85,7 +85,7 @@ class ConnectorManager:
     async def connect_all(self) -> None:
         """모든 Connector를 병렬로 연결한다."""
         if not self._connectors:
-            logger.warning("[ConnectorManager] 연결할 Connector 없음")
+            logger.warning("[연결] 연결할 Connector 없음")
             return
 
         # 재연결 성공 시 구독 복원 콜백 등록
@@ -94,9 +94,9 @@ class ConnectorManager:
         async def _connect_one(broker_name: str, connector: BrokerConnector) -> None:
             try:
                 await connector.connect()
-                logger.info("[ConnectorManager] %s 연결 완료", broker_name.upper())
+                logger.info("[연결] %s 연결 완료", broker_name.upper())
             except Exception as e:
-                logger.warning("[ConnectorManager] %s 연결 실패: %s", broker_name.upper(), e)
+                logger.warning("[연결] %s 연결 실패: %s", broker_name.upper(), e)
 
         await asyncio.gather(
             *[_connect_one(name, conn) for name, conn in self._connectors.items()],
@@ -105,12 +105,12 @@ class ConnectorManager:
 
     async def _on_reconnect_success(self, broker_id: str) -> None:
         """재연결 성공 후 구독 복원 — _master_stocks_cache의 "_subscribed" 키 기준으로 REG 재전송."""
-        logger.info("[ConnectorManager] %s 재연결 성공 — 구독 복원 시작", broker_id.upper())
+        logger.info("[연결] %s 재연결 성공 — 구독 복원 시작", broker_id.upper())
         try:
             from backend.app.services import engine_ws_reg as _reg
             await _reg.restore_subscriptions_after_reconnect(broker_id)
         except Exception as e:
-            logger.error("[ConnectorManager] %s 구독 복원 실패: %s", broker_id.upper(), e, exc_info=True)
+            logger.error("[연결] %s 구독 복원 실패: %s", broker_id.upper(), e, exc_info=True)
 
     async def disconnect_all(self) -> None:
         """모든 Connector를 병렬로 해제한다."""
@@ -120,9 +120,9 @@ class ConnectorManager:
         async def _disconnect_one(broker_name: str, connector: BrokerConnector) -> None:
             try:
                 await connector.disconnect()
-                logger.info("[ConnectorManager] %s 연결 해제 완료", broker_name.upper())
+                logger.info("[연결] %s 연결 해제 완료", broker_name.upper())
             except Exception as e:
-                logger.warning("[ConnectorManager] %s 연결 해제 실패: %s", broker_name.upper(), e, exc_info=True)
+                logger.warning("[연결] %s 연결 해제 실패: %s", broker_name.upper(), e, exc_info=True)
 
         await asyncio.gather(
             *[_disconnect_one(name, conn) for name, conn in self._connectors.items()],

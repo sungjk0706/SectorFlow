@@ -14,7 +14,7 @@ KRX 거래일 판별 유틸 -- DB 캐시 기반.
 from __future__ import annotations
 import logging
 from datetime import date, datetime, timedelta, timezone
-_log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 _KST = timezone(timedelta(hours=9))
 
@@ -62,22 +62,22 @@ async def initialize_trading_calendar_cache() -> None:
         current_year = datetime.now(_KST).year
         next_year = current_year + 1
         if next_year not in _trading_days_cache:
-            _log.info("[trading_calendar] 다음 연도(%d) 캐시 없음 — exchange_calendars로 생성", next_year)
+            logger.info("[스케줄] 다음 연도(%d) 캐시 없음 — exchange_calendars로 생성", next_year)
             new_data = _generate_trading_days_from_xkrx(next_year)
             _trading_days_cache.update(new_data)
             await save_trading_days_cache(new_data)
         _cache_initialized = True
-        _log.info("[trading_calendar] DB 캐시 로드 완료 — %d개 연도", len(_trading_days_cache))
+        logger.info("[스케줄] DB 캐시 로드 완료 — %d개 연도", len(_trading_days_cache))
         return
 
-    _log.info("[trading_calendar] DB 캐시 없음 — exchange_calendars로 최초 생성")
+    logger.info("[스케줄] DB 캐시 없음 — exchange_calendars로 최초 생성")
     current_year = datetime.now(_KST).year
     _trading_days_cache = _generate_trading_days_from_xkrx(current_year)
     next_year_data = _generate_trading_days_from_xkrx(current_year + 1)
     _trading_days_cache.update(next_year_data)
     await save_trading_days_cache(_trading_days_cache)
     _cache_initialized = True
-    _log.info("[trading_calendar] 최초 캐시 생성 및 DB 저장 완료 — %d개 연도", len(_trading_days_cache))
+    logger.info("[스케줄] 최초 캐시 생성 및 DB 저장 완료 — %d개 연도", len(_trading_days_cache))
 
 
 def _generate_trading_days_from_xkrx(year: int) -> dict[int, set[str]]:
@@ -96,7 +96,7 @@ def _generate_trading_days_from_xkrx(year: int) -> dict[int, set[str]]:
         except Exception:
             break
         d += timedelta(days=1)
-    _log.info("[trading_calendar] XKRX에서 %d년 거래일 %d일 생성", year, len(days_set))
+    logger.info("[스케줄] XKRX에서 %d년 거래일 %d일 생성", year, len(days_set))
     return {year: days_set}
 
 
@@ -108,17 +108,17 @@ async def refresh_trading_days_for_year(year: int) -> None:
     new_data = _generate_trading_days_from_xkrx(year)
     _trading_days_cache[year] = new_data[year]
     await save_trading_days_cache({year: _trading_days_cache[year]})
-    _log.info("[trading_calendar] %d년 거래일 캐시 갱신 완료", year)
+    logger.info("[스케줄] %d년 거래일 캐시 갱신 완료", year)
 
 
 def is_trading_day(d: date) -> bool:
     """해당 날짜가 KRX 거래일이면 True (메모리 캐시 set 조회, O(1))."""
     if not _cache_initialized:
-        _log.error("[trading_calendar] 캐시 미초기화 — initialize_trading_calendar_cache()가 호출되지 않음")
+        logger.error("[스케줄] 캐시 미초기화 — initialize_trading_calendar_cache()가 호출되지 않음")
         raise RuntimeError("trading calendar cache not initialized")
     year = d.year
     if year not in _trading_days_cache:
-        _log.error("[trading_calendar] %d년 캐시 없음 — refresh_trading_days_for_year() 필요", year)
+        logger.error("[스케줄] %d년 캐시 없음 — refresh_trading_days_for_year() 필요", year)
         raise KeyError(f"trading days cache missing for year {year}")
     return d.strftime("%Y%m%d") in _trading_days_cache[year]
 

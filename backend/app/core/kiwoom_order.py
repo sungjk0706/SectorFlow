@@ -9,18 +9,18 @@ import httpx
 from backend.app.core.broker_urls import build_broker_urls
 async def _send_request(url: str, headers: dict, params: dict, max_retries: int = 3, delay: float = 1.0) -> Optional[httpx.Response]:
     import logging
-    _log = logging.getLogger(__name__)
+    logger = logging.getLogger(__name__)
     for attempt in range(max_retries):
         try:
             async with httpx.AsyncClient() as client:
                 r = await client.post(url, headers=headers, json=params, timeout=5)
                 if r.status_code == 200:
                     return r
-                _log.warning("[주문API] HTTP %s (시도=%d/%d) url=%s", r.status_code, attempt + 1, max_retries, url)
+                logger.warning("[매매] HTTP %s (시도=%d/%d) url=%s", r.status_code, attempt + 1, max_retries, url)
         except Exception as e:
-            _log.warning("[주문API] 통신 예외 (시도=%d/%d): %s", attempt + 1, max_retries, e)
+            logger.warning("[매매] 통신 예외 (시도=%d/%d): %s", attempt + 1, max_retries, e)
         await asyncio.sleep(delay)
-    _log.error("[주문API] %d회 재시도 모두 실패 url=%s", max_retries, url)
+    logger.error("[매매] %d회 재시도 모두 실패 url=%s", max_retries, url)
     return None
 
 

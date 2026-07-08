@@ -4,10 +4,10 @@
 종목명: 로컬 stock_name_cache.json (장마감 파이프라인에서 갱신)
 """
 import httpx
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.core.trade_mode import effective_trade_mode
 
-logger = get_logger("data_manager")
+logger = logging.getLogger(__name__)
 
 
 async def _get_rest_base() -> str:
@@ -20,7 +20,7 @@ async def _get_rest_base() -> str:
         if hasattr(auth, "rest_api") and hasattr(auth.rest_api, "base_url"):
             return auth.rest_api.base_url
     except Exception:
-        logger.warning("[데이터관리] base_url 조회 실패", exc_info=True)
+        logger.warning("[데이터] base_url 조회 실패", exc_info=True)
     # 기본값: broker 기반 URL
     broker_nm = str(state.integrated_system_settings_cache["broker"]).lower().strip()
     urls = build_broker_urls(broker_nm)
@@ -116,7 +116,7 @@ async def get_account_profit_rate(access_token: str) -> dict:
             resp = await client.post(url, headers=headers, json=body or None, timeout=10)
         
         if resp.status_code != 200:
-            logger.debug("[데이터관리] kt00018 실패함: %s", resp.status_code)
+            logger.debug("[데이터] kt00018 실패함: %s", resp.status_code)
             return _empty
 
         data = resp.json()
@@ -172,7 +172,7 @@ async def get_account_profit_rate(access_token: str) -> dict:
         }
 
     except Exception as e:
-        logger.debug("[데이터관리] 계좌수익률 조회 예외: %s", e)
+        logger.debug("[데이터] 계좌수익률 조회 예외: %s", e)
         return _empty
 
 
@@ -217,7 +217,7 @@ async def get_main_account_info(access_token: str) -> list:
         body_data = data.get("body") or data
 
         if int(str(body_data.get("return_code", 0)).replace(",", "") or 0) != 0:
-            logger.debug("[데이터관리] kt00001 오류 메시지: %s", body_data.get("return_msg", ""))
+            logger.debug("[데이터] kt00001 오류 메시지: %s", body_data.get("return_msg", ""))
             return _fallback
 
         def _n(v) -> str:
@@ -233,5 +233,5 @@ async def get_main_account_info(access_token: str) -> list:
         return [deposit, orderable, withdrawable, "0", "0.00%"]
 
     except Exception as e:
-        logger.debug("[데이터관리] 메인계좌정보 조회 예외: %s", e)
+        logger.debug("[데이터] 메인계좌정보 조회 예외: %s", e)
         return _fallback

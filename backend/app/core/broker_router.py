@@ -85,9 +85,9 @@ class BrokerRouter:
                 if isinstance(spec_data, dict):
                     self._specs[broker_name] = spec_data.get("role_mappings", {})
                 else:
-                    logger.warning("[증권사설정] %s spec 형식 오류: %s (기대: dict)", broker_name, type(spec_data))
+                    logger.warning("[설정] %s spec 형식 오류: %s (기대: dict)", broker_name, type(spec_data))
             else:
-                logger.warning("[증권사설정] %s spec 없음 (settings)", broker_name)
+                logger.warning("[설정] %s spec 없음 (settings)", broker_name)
 
     def _build(self) -> None:
         """단일 소스 진리: state.integrated_system_settings_cache 직접 사용."""
@@ -110,7 +110,7 @@ class BrokerRouter:
                 self._broker_map[feature] = broker_name
             else:
                 # broker 비어있음 → 기본 브로커로 폴백
-                logger.warning("[증권사설정] broker 비어있음 — %s 폴백", default_broker)
+                logger.warning("[설정] broker 비어있음 — %s 폴백", default_broker)
                 self._providers[feature] = _create_provider(
                     feature, default_broker, state.integrated_system_settings_cache, self._auth_cache
                 )
@@ -218,7 +218,7 @@ class BrokerRouter:
             self._page_providers[cache_key] = provider
             return provider
         except ValueError as e:
-            logger.warning("[증권사설정] 페이지 오버라이드 폴백: %s", e)
+            logger.warning("[설정] 페이지 오버라이드 폴백: %s", e)
             return self._providers[feature]
 
     def invalidate_page(self, page: str | None = None) -> None:

@@ -167,7 +167,7 @@ class TestOnFillUpdateCalledInTestMode:
         """fake_fill_event BUY 후 has_open_buy가 False로 해제되는지 확인."""
         # AutoTradeManager mock 설정
         from backend.app.services.trading import AutoTradeManager
-        mgr = AutoTradeManager(log_callback=lambda msg: None, get_settings_fn=lambda: _TEST_SETTINGS)
+        mgr = AutoTradeManager(get_settings_fn=lambda: _TEST_SETTINGS)
         mgr._buy_state[_TEST_CODE] = {"last_req_ts": 0.0, "has_open_buy": True}
         state.auto_trade = mgr
 
@@ -179,7 +179,7 @@ class TestOnFillUpdateCalledInTestMode:
     async def test_on_fill_update_sell_releases_recent_sells(self):
         """fake_fill_event SELL 후 _recent_sells에서 discard되는지 확인."""
         from backend.app.services.trading import AutoTradeManager
-        mgr = AutoTradeManager(log_callback=lambda msg: None, get_settings_fn=lambda: _TEST_SETTINGS)
+        mgr = AutoTradeManager(get_settings_fn=lambda: _TEST_SETTINGS)
         mgr._recent_sells.add(_TEST_CODE)
         state.auto_trade = mgr
 

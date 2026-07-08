@@ -2,7 +2,7 @@ import json
 import logging
 from backend.app.db.database import get_db_connection, get_db_lock
 
-_log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 async def _init_cache_table() -> None:
     conn = await get_db_connection()
@@ -27,9 +27,9 @@ async def save_filter_summary_meta_cache(meta_json: str) -> None:
                 ("filter_summary_meta", meta_json)
             )
             await conn.commit()
-        _log.info("[캐시저장] filter_summary_meta DB 저장 완료")
+        logger.info("[데이터] filter_summary_meta DB 저장 완료")
     except Exception as e:
-        _log.error("[캐시저장] filter_summary_meta DB 저장 실패: %s", e)
+        logger.error("[데이터] filter_summary_meta DB 저장 실패: %s", e)
 
 async def load_filter_summary_meta_cache() -> str:
     """DB에서 filter_summary 메타데이터 JSON 로드"""
@@ -43,7 +43,7 @@ async def load_filter_summary_meta_cache() -> str:
         row = await cursor.fetchone()
         return row["value"] if row else ""
     except Exception as e:
-        _log.error("[캐시로드] filter_summary_meta 로드 실패: %s", e)
+        logger.error("[데이터] filter_summary_meta 로드 실패: %s", e)
         return ""
 
 def assemble_filter_summary(meta_json: str, stock_count: int) -> str:
@@ -62,7 +62,7 @@ def assemble_filter_summary(meta_json: str, stock_count: int) -> str:
             result += " | 주요 부적격: " + ", ".join(reason_strs)
         return result
     except Exception as e:
-        _log.error("[filter_summary] meta 조립 실패: %s", e)
+        logger.error("[시스템] meta 조립 실패: %s", e)
         return ""
 
 
@@ -96,9 +96,9 @@ async def save_pending_settings(changed_keys: set[str]) -> None:
                 (_PENDING_KEY, json.dumps(sorted(merged)))
             )
             await conn.commit()
-        _log.info("[Pending] 설정 변경 보류 저장: %s", sorted(merged))
+        logger.info("[연산] 설정 변경 보류 저장: %s", sorted(merged))
     except Exception as e:
-        _log.error("[Pending] 설정 변경 보류 저장 실패: %s", e)
+        logger.error("[연산] 설정 변경 보류 저장 실패: %s", e)
 
 
 async def load_pending_settings() -> set[str]:
@@ -118,7 +118,7 @@ async def load_pending_settings() -> set[str]:
         except Exception:
             return set()
     except Exception as e:
-        _log.error("[Pending] 보류 설정 로드 실패: %s", e)
+        logger.error("[연산] 보류 설정 로드 실패: %s", e)
         return set()
 
 
@@ -133,6 +133,6 @@ async def clear_pending_settings() -> None:
                 (_PENDING_KEY,)
             )
             await conn.commit()
-        _log.info("[Pending] 보류 설정 변경 삭제 완료")
+        logger.info("[연산] 보류 설정 변경 삭제 완료")
     except Exception as e:
-        _log.error("[Pending] 보류 설정 삭제 실패: %s", e)
+        logger.error("[연산] 보류 설정 삭제 실패: %s", e)

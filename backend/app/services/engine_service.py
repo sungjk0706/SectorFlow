@@ -3,7 +3,7 @@
 설정 변경 동기화 — apply_settings_change 단일 함수 유지.
 파사드 재내보내기는 제거됨. 각 모듈에서 직접 import할 것.
 """
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.services.engine_state import state
 from backend.app.services.engine_account import (
     _refresh_account_snapshot_meta,
@@ -24,7 +24,7 @@ from backend.app.services.sector_data_provider import (
     recompute_sector_summary_now,
 )
 
-logger = get_logger("engine")
+logger = logging.getLogger(__name__)
 
 
 async def apply_settings_change(changed_keys: set[str]) -> None:
@@ -153,7 +153,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         except Exception:
             logger.warning("[설정] 실시간 구독 타이머 재예약 실패", exc_info=True)
 
-    # 섹터 정렬/필터 관련 설정 변경 시 업종 점수만 재계산 (종목 시세는 WS delta로만 전송)
+    # 업종 정렬/필터 관련 설정 변경 시 업종 점수만 재계산 (종목 시세는 WS delta로만 전송)
     _SECTOR_UI_KEYS = {
         "sector_sort_keys", "sector_rank_primary", "sector_weights",
         "sector_min_rise_ratio_pct", "sector_min_trade_amt",
@@ -174,7 +174,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
                     state.on_filter_settings_changed(), context="필터 설정 변경"
                 )
             schedule_engine_task(
-                recompute_sector_summary_now(), context="섹터 설정 변경"
+                recompute_sector_summary_now(), context="업종 설정 변경"
             )
         await notify_desktop_sector_scores(force=True)
 

@@ -36,7 +36,7 @@ def send_msg(message: str, settings: dict | None = None) -> bool:
         res = httpx.post(url, data=params, timeout=5)
         return res.status_code == 200
     except Exception as e:
-        logger.warning("[텔레그램] 메시지 동기 전송 실패: %s", e, exc_info=True)
+        logger.warning("[알림] 메시지 동기 전송 실패: %s", e, exc_info=True)
         return False
 
 
@@ -60,5 +60,5 @@ async def send_msg_async(message: str, settings: dict | None = None, msg_type: s
             res = await client.post(url, data=params)
         return res.status_code == 200
     except Exception as e:
-        logger.debug(f"[텔레그램] 메시지 전송 실패함: {e}")
+        logger.debug(f"[알림] 메시지 전송 실패함: {e}")
         return False

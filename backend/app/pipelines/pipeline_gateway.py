@@ -13,9 +13,9 @@ Gateway 루프는 broadcast_queue를 지속적으로 컨슘하여,
 from __future__ import annotations
 from typing import Optional
 import asyncio
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.services.core_queues import get_broadcast_queue
-logger = get_logger("pipeline_gateway")
+logger = logging.getLogger(__name__)
 
 _gateway_task: Optional[asyncio.Task] = None
 _gateway_running: bool = False
@@ -25,12 +25,12 @@ async def start_gateway_loop() -> None:
     global _gateway_task, _gateway_running
 
     if _gateway_running:
-        logger.warning("[Gateway] 이미 실행 중")
+        logger.warning("[연결] 이미 실행 중")
         return
 
     _gateway_running = True
     _gateway_task = asyncio.get_running_loop().create_task(_gateway_loop_impl())
-    logger.info("[Gateway] 루프 시작")
+    logger.info("[연결] 루프 시작")
 
 
 async def stop_gateway_loop() -> None:
@@ -44,7 +44,7 @@ async def stop_gateway_loop() -> None:
             await _gateway_task
         except asyncio.CancelledError:
             pass
-    logger.info("[Gateway] 루프 종료")
+    logger.info("[연결] 루프 종료")
 
 
 async def _gateway_loop_impl() -> None:
@@ -59,7 +59,7 @@ async def _gateway_loop_impl() -> None:
         )
     finally:
         _gateway_running = False
-        logger.info("[Gateway] 루프 종료")
+        logger.info("[연결] 루프 종료")
 
 
 async def _broadcast_loop() -> None:
@@ -78,7 +78,7 @@ async def _broadcast_loop() -> None:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("[Gateway] broadcast 루프 예외 (계속): %s", e, exc_info=True)
+                logger.error("[연결] broadcast 루프 예외 (계속): %s", e, exc_info=True)
     except asyncio.CancelledError:
         pass
 
@@ -92,7 +92,7 @@ async def _price_pass_through_loop() -> None:
         from backend.app.services.core_queues import get_price_pass_through_queue
         pq = get_price_pass_through_queue()
     except Exception as e:
-        logger.error("[Gateway] price_pass_through_queue 접근 실패: %s", e)
+        logger.error("[연결] price_pass_through_queue 접근 실패: %s", e)
         return
 
     try:
@@ -107,7 +107,7 @@ async def _price_pass_through_loop() -> None:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("[Gateway] price_pass_through 루프 예외 (계속): %s", e, exc_info=True)
+                logger.error("[연결] price_pass_through 루프 예외 (계속): %s", e, exc_info=True)
     except asyncio.CancelledError:
         pass
 
@@ -137,7 +137,7 @@ async def _send_price_tick_to_frontend(data: dict) -> None:
         await ws_manager.broadcast("sector-price-tick", payload)
 
     except Exception as e:
-        logger.error("[Gateway] sector-price-tick 전송 예외: %s", e, exc_info=True)
+        logger.error("[연결] sector-price-tick 전송 예외: %s", e, exc_info=True)
 
 
 async def _process_broadcast(data: dict) -> None:
@@ -157,7 +157,7 @@ async def _process_broadcast(data: dict) -> None:
         await _send_to_websocket(event_type, payload)
 
     except Exception as e:
-        logger.error("[Gateway] 브로드캐스트 처리 예외: %s", e, exc_info=True)
+        logger.error("[연결] 브로드캐스트 처리 예외: %s", e, exc_info=True)
 
 
 async def _send_to_websocket(event_type: str, data: dict) -> None:
@@ -177,4 +177,4 @@ async def _send_to_websocket(event_type: str, data: dict) -> None:
         await ws_manager.broadcast(event_type, data)
 
     except Exception as e:
-        logger.error("[Gateway] WebSocket 전송 예외: %s", e, exc_info=True)
+        logger.error("[연결] WebSocket 전송 예외: %s", e, exc_info=True)

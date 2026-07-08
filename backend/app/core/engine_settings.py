@@ -123,7 +123,7 @@ def build_engine_settings_dict(flat: dict) -> dict:
     result["ts_drop_val"] = float(merged.get("ts_drop_val", 0) or 0)
     result["sell_per_symbol"] = merged.get("sell_per_symbol") or {}
 
-    # ── 섹터 매수가드 설정 (매수설정 카드 ↔ 엔진 동기화) ────────
+    # ── 업종 매수가드 설정 (매수설정 카드 ↔ 엔진 동기화) ────────
     result["sector_sort_keys"]            = merged.get("sector_sort_keys") or ["score"]
     # 기존 설정에서 foreign_net / institution_net 제거 마이그레이션
     result["sector_sort_keys"] = [k for k in result["sector_sort_keys"] if k not in ("foreign_net", "institution_net")]

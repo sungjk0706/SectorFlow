@@ -37,7 +37,7 @@ async def _save_positions(data: dict[str, dict] | None = None) -> None:
     try:
         await save_test_positions(to_save)
     except Exception as e:
-        logger.warning("[테스트모드] SQLite 저장 실패: %s", e)
+        logger.warning("[매매] SQLite 저장 실패: %s", e)
 
 
 async def _load_positions() -> None:
@@ -50,9 +50,9 @@ async def _load_positions() -> None:
         data = await load_test_positions()
         if isinstance(data, dict):
             _test_positions.update(data)
-            logger.info("[테스트모드] SQLite 복원 -- %d종목", len(_test_positions))
+            logger.info("[매매] SQLite 복원 -- %d종목", len(_test_positions))
     except Exception as e:
-        logger.warning("[테스트모드] SQLite 로드 실패: %s", e)
+        logger.warning("[매매] SQLite 로드 실패: %s", e)
 
 
 _pos_save_event: LazyEvent = LazyEvent()
@@ -69,7 +69,7 @@ async def _schedule_save_positions() -> None:
             return
         _pos_save_running = True
     _task = asyncio.create_task(_save_positions_worker())
-    _task.add_done_callback(lambda t: logger.warning("[테스트모드] 포지션 저장 태스크 실패: %s", t.exception()) if t.exception() else None)
+    _task.add_done_callback(lambda t: logger.warning("[매매] 포지션 저장 태스크 실패: %s", t.exception()) if t.exception() else None)
 
 
 async def _save_positions_worker() -> None:
@@ -154,15 +154,15 @@ async def fake_send_order(
     fill_price = price if price > 0 else _estimate_market_price(code)
     side = order_type.upper()
     logger.info(
-        "[테스트모드] %s 주문 접수 %s %d주 @%s ord_no=%s",
+        "[매매] %s 주문 접수 %s %d주 @%s ord_no=%s",
         side, code, qty, f"{fill_price:,}" if fill_price else "시장가", order_no,
     )
     return {
         "success": True,
-        "msg": "[테스트모드] 가상 주문 접수 완료",
+        "msg": "[매매] 가상 주문 접수 완료",
         "data": {
             "rt_cd": "0",
-            "msg1": "[테스트모드] 가상 주문 접수 완료",
+            "msg1": "[매매] 가상 주문 접수 완료",
             "output": {
                 "ord_no": order_no,
                 "stk_cd": str(code),
@@ -204,7 +204,7 @@ async def fake_fill_event(
         await _apply_sell(code, qty, fill_price)
 
     logger.info(
-        "[테스트모드] 가상 체결 완료 %s %s %d주 @%s",
+        "[매매] 가상 체결 완료 %s %s %d주 @%s",
         side, code, qty, f"{fill_price:,}" if fill_price else "시장가",
     )
 
@@ -265,7 +265,7 @@ async def _apply_sell(code: str, qty: int, price: int) -> None:
     await settlement_engine.on_sell_fill(price, qty, norm_code, stk_nm)
     pos = _test_positions.get(norm_code)
     if not pos:
-        logger.warning("[테스트모드] 매도 요청했으나 가상 잔고에 %s 없음", norm_code)
+        logger.warning("[매매] 매도 요청했으나 가상 잔고에 %s 없음", norm_code)
         return
     old_qty = int(pos.get("qty", 0))
     new_qty = max(0, old_qty - qty)
@@ -390,7 +390,7 @@ async def set_virtual_deposit(amount: int) -> None:
         "test_virtual_deposit": amount,
         "test_virtual_balance": amount,
     })
-    logger.info("[테스트모드] 가상 예수금 설정: %s원", f"{amount:,}")
+    logger.info("[매매] 가상 예수금 설정: %s원", f"{amount:,}")
 
 
 async def reset_virtual_balance() -> None:
@@ -398,11 +398,11 @@ async def reset_virtual_balance() -> None:
     deposit = await get_virtual_deposit_setting()
     await settlement_engine.reset(deposit)
     await update_settings({"test_virtual_balance": deposit})
-    logger.info("[테스트모드] 가상 예수금 잔액 초기화: %s원", f"{deposit:,}")
+    logger.info("[매매] 가상 예수금 잔액 초기화: %s원", f"{deposit:,}")
 
 
 async def charge_virtual_balance(amount: int) -> int:
     """가상 예수금 충전 (Settlement Engine 위임). 반환: 충전 후 잔액."""
     result = await settlement_engine.charge(amount)
-    logger.info("[테스트모드] 가상 예수금 충전 %s원 -> 잔액 %s원", f"{amount:,}", f"{result:,}")
+    logger.info("[매매] 가상 예수금 충전 %s원 -> 잔액 %s원", f"{amount:,}", f"{result:,}")
     return result

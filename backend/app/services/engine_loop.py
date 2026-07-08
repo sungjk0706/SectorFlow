@@ -10,12 +10,12 @@ import asyncio
 import time
 from backend.app.core.broker_factory import get_router
 from backend.app.core.broker_providers import AuthProvider
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.services.trading import AutoTradeManager
 from backend.app.services.engine_cache import _load_caches_preboot
 from backend.app.services.engine_state import state
-logger = get_logger("engine")
+logger = logging.getLogger(__name__)
 
 
 async def _cache_and_bootstrap(settings: dict) -> None:
@@ -33,9 +33,9 @@ async def _cache_and_bootstrap(settings: dict) -> None:
     try:
         from backend.app.web.ws_manager import ws_manager
         await ws_manager.broadcast("engine-ready", {"_v": 1, "ready": True})
-        logger.info("[구동] 데이터 준비 완료 — 실시간 준비됨")
+        logger.info("[연산] 데이터 준비 완료 — 실시간 준비됨")
     except Exception:
-        logger.warning("[구동] 엔진 준비 브로드캐스트 실패", exc_info=True)
+        logger.warning("[연산] 엔진 준비 브로드캐스트 실패", exc_info=True)
 
 
 async def _get_all_tokens_async(router) -> None:
@@ -116,14 +116,14 @@ async def _load_broker_spec_async(broker_nm: str, settings: dict) -> list:
                 if isinstance(role_mappings, dict):
                     return list(role_mappings.values())  # dict → list 변환
                 else:
-                    logger.warning("[구동] role_mappings 형식 오류: %s (기대: dict)", type(role_mappings))
+                    logger.warning("[연산] role_mappings 형식 오류: %s (기대: dict)", type(role_mappings))
                     return []
             else:
-                logger.warning("[구동] broker_specs 형식 오류: %s (기대: dict)", type(spec))
+                logger.warning("[연산] broker_specs 형식 오류: %s (기대: dict)", type(spec))
                 return []
         return []
     except Exception as e:
-        logger.warning("[구동] 증권사 스펙 로드 실패: %s", e, exc_info=True)
+        logger.warning("[연산] 증권사 스펙 로드 실패: %s", e, exc_info=True)
         return []
 
 
@@ -214,7 +214,7 @@ async def run_engine_loop() -> None:
 
         _t_parallel_end = time.perf_counter()
         logger.info(
-            "[구동] 준비 완료 — %.0fms",
+            "[연산] 준비 완료 — %.0fms",
             (_t_parallel_end - _t_parallel_start) * 1000,
         )
 
@@ -222,7 +222,7 @@ async def run_engine_loop() -> None:
         if isinstance(state.broker_spec, list):
             acnt_no = settings.get(f"{broker_nm}_account_no", "")
             from backend.app.services.engine_lifecycle import log_message
-            log_message(f"[구동] 설정 로딩 — TR {len(state.broker_spec)}개, 계좌: {acnt_no or '미설정'}")
+            log_message(f"[연산] 설정 로딩 — TR {len(state.broker_spec)}개, 계좌: {acnt_no or '미설정'}")
 
         # ── token 결과 반영 ──
         token = state.broker_tokens.get(broker_nm)
@@ -263,13 +263,12 @@ async def run_engine_loop() -> None:
         )
         _acnt_disp     = (_acnt_raw[:4] + "****") if len(_acnt_raw) >= 4 else _acnt_raw
         _real_warn     = " ★ 실제 자금 투입 ★" if not _is_test_flag else ""
-        logger.info("[구동] 기동 완료 — %s %s / 계좌: %s%s", _broker_str, _mode_str, _acnt_disp, _real_warn)
+        logger.info("[연산] 기동 완료 — %s %s / 계좌: %s%s", _broker_str, _mode_str, _acnt_disp, _real_warn)
 
         if state.access_token:
-            from backend.app.services.engine_lifecycle import log_message, sync_sell_overrides as _sync_sell_overrides_from_settings
+            from backend.app.services.engine_lifecycle import sync_sell_overrides as _sync_sell_overrides_from_settings
             from backend.app.services.engine_config import _get_settings
             state.auto_trade = AutoTradeManager(
-                log_callback=log_message,
                 get_settings_fn=_get_settings,
             )
             _sync_sell_overrides_from_settings()
@@ -278,7 +277,7 @@ async def run_engine_loop() -> None:
         try:
             await _broadcast_buy_limit_status()
         except Exception:
-            logger.warning("[구동] 매수 한도 브로드캐스트 실패", exc_info=True)
+            logger.warning("[연산] 매수 한도 브로드캐스트 실패", exc_info=True)
 
         from backend.app.services.engine_lifecycle import broadcast_engine_status as _broadcast_engine_ws
         await _broadcast_engine_ws()
@@ -351,7 +350,7 @@ async def run_engine_loop() -> None:
     except Exception as e:
         from backend.app.services.engine_lifecycle import log_message
         log_message(f" [구동] 예외: {e}")
-        logger.warning("[구동] 엔진 루프 예외", exc_info=True)
+        logger.warning("[연산] 엔진 루프 예외", exc_info=True)
     finally:
         # ── 백그라운드 태스크 종료 (Step 7: 중앙 코디네이터 연동) ───────────────
         if gateway_task:
@@ -377,7 +376,7 @@ async def run_engine_loop() -> None:
         except asyncio.CancelledError:
             pass
 
-        logger.info("[구동] 백그라운드 태스크 종료 완료")
+        logger.info("[연산] 백그라운드 태스크 종료 완료")
 
         # ── Event Bus 종료 ───────────────────────────────────────────────────
         if state.connector_manager:
@@ -392,7 +391,7 @@ async def run_engine_loop() -> None:
             try:
                 await _rest_api.revoke_token()
             except Exception as e:
-                logger.warning("[구동] %s 토큰 폐기 실패: %s", _broker_id, e)
+                logger.warning("[연산] %s 토큰 폐기 실패: %s", _broker_id, e)
             if hasattr(_rest_api, '_reset_client'):
                 await _rest_api._reset_client()
             elif hasattr(_rest_api, '_client') and _rest_api._client:
@@ -402,4 +401,4 @@ async def run_engine_loop() -> None:
         state.running = False
         from backend.app.services.engine_lifecycle import broadcast_engine_status, log_message, get_current_kst_time
         await broadcast_engine_status()
-        log_message(f"[구동] 정지됨 ({get_current_kst_time()})")
+        log_message(f"[연산] 정지됨 ({get_current_kst_time()})")

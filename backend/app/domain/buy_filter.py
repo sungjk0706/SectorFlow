@@ -19,7 +19,7 @@ def calculate_boost_score(
     boost_program_net_buy_on: bool = False,
     boost_program_net_buy_score: float = 1.0,
     # ── 거래대금 순위 가산점 ──
-    trade_amount_rank: int = -1,  # 0 = 매수후보 내 거래대금 1위, -1 = 순위 밖/보유 제외
+    trade_amount_rank: int = -1,  # 0 = 매수 후보 내 거래대금 1위, -1 = 순위 밖/보유 제외
     boost_trade_amount_rank_on: bool = False,
     boost_trade_amount_rank_score: float = 1.0,
 ) -> float:
@@ -54,7 +54,7 @@ def calculate_boost_score(
         if net_buy > 0:
             score += boost_program_net_buy_score
 
-    # 4. 거래대금 순위 (매수후보 내 보유 제외 후 거래대금 상위 1종목)
+    # 4. 거래대금 순위 (매수 후보 내 보유 제외 후 거래대금 상위 1종목)
     if boost_trade_amount_rank_on and trade_amount_rank == 0:
         score += boost_trade_amount_rank_score
 
@@ -131,9 +131,9 @@ def create_buy_targets(
     boost_trade_amount_rank_score: float = 1.0,
 ) -> SectorSummary:
     """
-    섹터 스코어 -> 매수 타겟 큐 생성.
+    업종 스코어 -> 매수 타겟 큐 생성.
 
-    상위 max_sectors 개 섹터에 속한 종목을 모두 큐에 포함.
+    상위 max_sectors 개 업종에 속한 종목을 모두 큐에 포함.
     순위 = '설정값에 가까운 정도' (부합 여부와 무관).
     개별 종목 가드(상승률/하락률) 미통과 -> blocked_targets (UI 표시용).
     지수 가드 발동 시 전체 blocked_targets.
@@ -152,7 +152,7 @@ def create_buy_targets(
     blocked_targets: list = []
     sector_count = 0
 
-    # 모든 섹터 종목을 하나의 풀로 모은 뒤 '설정값에 가까운 순서'로 정렬
+    # 모든 업종 종목을 하나의 풀로 모은 뒤 '설정값에 가까운 순서'로 정렬
     all_stocks: list = []
 
     for sc in sector_scores:

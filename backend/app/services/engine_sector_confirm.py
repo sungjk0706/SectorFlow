@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-섹터 재계산 — 이벤트 기반 증분 갱신.
+업종 재계산 — 이벤트 기반 증분 갱신.
 
 개별 REAL 체결마다 태스크를 만들지 않는다.
 recompute_sector_for_code(code)는 이벤트 발생 시 호출되며,
@@ -9,9 +9,9 @@ recompute_sector_for_code(code)는 이벤트 발생 시 호출되며,
 """
 from __future__ import annotations
 import asyncio
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.services.engine_state import state
-logger = get_logger("engine")
+logger = logging.getLogger(__name__)
 
 _dirty_codes: set[str] = set()
 
@@ -63,7 +63,7 @@ def are_buy_targets_changed(prev_targets, new_targets) -> bool:
 
 
 async def _flush_sector_recompute_impl() -> None:
-    """dirty 종목의 섹터만 증분 재계산. 캐시 없으면 전체 재계산.
+    """dirty 종목의 업종만 증분 재계산. 캐시 없으면 전체 재계산.
 
     비동기 함수. 순수 계산 + 알림 + 구독 갱신만 수행.
     """
@@ -100,7 +100,7 @@ async def _flush_sector_recompute_impl() -> None:
             codes_snapshot = set(inputs["all_codes"])
 
         # ── 증분 갱신 ──
-        # 1. dirty 종목 → 해당 섹터 추출 (배치 조회)
+        # 1. dirty 종목 → 해당 업종 추출 (배치 조회)
         codes_list = list(codes_snapshot)
         sectors_map = await sector_mapping.get_merged_sectors_batch(codes_list)
         dirty_sectors: set[str] = set()
@@ -112,7 +112,7 @@ async def _flush_sector_recompute_impl() -> None:
         if not dirty_sectors:
             return
 
-        # 2. 해당 섹터의 종목만 재계산
+        # 2. 해당 업종의 종목만 재계산
         inputs = await get_sector_summary_inputs()
         all_codes = inputs["all_codes"]
         min_avg_amt_eok = float(state.integrated_system_settings_cache["sector_min_trade_amt"])
@@ -120,7 +120,7 @@ async def _flush_sector_recompute_impl() -> None:
         trim_change = float(state.integrated_system_settings_cache["sector_trim_change_rate_pct"])
         sector_weights = state.integrated_system_settings_cache["sector_weights"]
 
-        # dirty 섹터에 속한 종목코드만 필터 (배치 조회)
+        # dirty 업종에 속한 종목코드만 필터 (배치 조회)
         all_sectors_map = await sector_mapping.get_merged_sectors_batch(all_codes)
         dirty_codes_for_calc = [
             cd for cd in all_codes
@@ -142,17 +142,17 @@ async def _flush_sector_recompute_impl() -> None:
         else:
             new_map = {}
 
-        # 3. 기존 캐시의 섹터 목록에서 dirty 섹터만 교체
+        # 3. 기존 캐시의 업종 목록에서 dirty 업종만 교체
         merged: list = []
         for sc in existing.sectors:
             if sc.sector in dirty_sectors:
                 replacement = new_map.pop(sc.sector, None)
                 if replacement:
                     merged.append(replacement)
-                # else: 섹터가 사라진 경우 (종목 전부 필터됨) → 제외
+                # else: 업종가 사라진 경우 (종목 전부 필터됨) → 제외
             else:
                 merged.append(sc)
-        # 새로 생긴 섹터 추가 (기존에 없던 섹터)
+        # 새로 생긴 업종 추가 (기존에 없던 업종)
         for sc in new_map.values():
             merged.append(sc)
 
@@ -206,7 +206,7 @@ async def _flush_sector_recompute_impl() -> None:
         state.sector_summary_ready_event.set()
 
     except Exception as e:
-        logger.warning("[섹터재계산] 증분 재계산 오류: %s", e, exc_info=True)
+        logger.warning("[업종] 증분 재계산 오류: %s", e, exc_info=True)
 
 
 async def _full_recompute(codes_snapshot: set[str] | None = None) -> None:
@@ -295,7 +295,7 @@ def sync_dynamic_subscriptions(new_buy_targets) -> None:
     # 신규 구독: 즉시 적용
     to_reg = new_codes - prev_codes
     if to_reg:
-        logger.info("[동적구독] 신규 등록 %d종목", len(to_reg))
+        logger.info("[구독] 신규 등록 %d종목", len(to_reg))
         payload = {
             "type": "DYNAMIC_REG",
             "payload": {
@@ -306,7 +306,7 @@ def sync_dynamic_subscriptions(new_buy_targets) -> None:
         try:
             get_control_queue().put_nowait((1, time.time(), payload))
         except Exception as e:
-            logger.warning("[동적구독] 신규 등록 이벤트 큐 발행 실패: %s", e)
+            logger.warning("[구독] 신규 등록 이벤트 큐 발행 실패: %s", e)
         prev_codes = prev_codes | to_reg  # 임시로 추가
 
     # 해지 대상: 종목별 독립 타이머 설정 (기존 타이머 건드리지 않음 — 리셋 누적 방지)
@@ -350,7 +350,7 @@ def _on_unreg_timer(code: str) -> None:
         except RuntimeError:
             _UNREG_BATCH_PENDING = False
             _UNREG_READY_CODES.clear()
-            logger.warning("[동적구독] 타이머 만료 시 이벤트 루프 없음 — 해지 스킵")
+            logger.warning("[구독] 타이머 만료 시 이벤트 루프 없음 — 해지 스킵")
 
 
 def _flush_unreg_batch() -> None:
@@ -371,7 +371,7 @@ def _flush_unreg_batch() -> None:
     to_unreg = codes & current_codes  # 아직 구독 중인 것만
 
     if to_unreg:
-        logger.info("[동적구독] 지연 해지 적용 %d종목", len(to_unreg))
+        logger.info("[구독] 지연 해지 적용 %d종목", len(to_unreg))
         payload = {
             "type": "DYNAMIC_UNREG",
             "payload": {
@@ -382,7 +382,7 @@ def _flush_unreg_batch() -> None:
         try:
             get_control_queue().put_nowait((1, time.time(), payload))
         except Exception as e:
-            logger.warning("[동적구독] 지연 해지 이벤트 큐 발행 실패: %s", e)
+            logger.warning("[구독] 지연 해지 이벤트 큐 발행 실패: %s", e)
 
     # state.master_stocks_cache에서 "_subscribed_dynamic" 및 동적 데이터 완전 제거 (데이터 왜곡 차단)
     for cd in to_unreg:
@@ -395,7 +395,7 @@ def _flush_unreg_batch() -> None:
     if to_unreg:
         from backend.app.services.engine_lifecycle import schedule_engine_task
         from backend.app.services.engine_account_notify import notify_buy_targets_update
-        schedule_engine_task(notify_buy_targets_update(), context="구독해지 후 매수후보 갱신")
+        schedule_engine_task(notify_buy_targets_update(), context="구독해지 후 매수 후보 갱신")
 
 
 # ── 호환용 ────────────────────────────────────────────────────────────────

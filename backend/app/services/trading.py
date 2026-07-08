@@ -31,15 +31,14 @@ def _fire_and_forget_telegram(message: str, settings: dict | None) -> None:
             "settings": settings,
         })
     except Exception as e:
-        logger.warning("[텔레그램] 알림 큐 등록 실패: %s", e, exc_info=True)
+        logger.warning("[알림] 알림 큐 등록 실패: %s", e, exc_info=True)
 
 
 class AutoTradeManager:
     """자동매매 관리 - get_settings_fn으로 매번 최신 설정 로드."""
 
-    def __init__(self, log_callback, get_settings_fn=None):
+    def __init__(self, get_settings_fn=None):
         self.highest_prices: dict = {}
-        self.log_callback = log_callback
         self.get_settings_fn = get_settings_fn or (lambda: {})
         # ── 종목별 매도 설정 오버라이드 (기존 로직 유지) ────────────────────────
         self.ts_overrides: dict = {}
@@ -100,7 +99,7 @@ class AutoTradeManager:
         try:
             from backend.app.services.engine_state import state as engine_state
             if engine_state.realtime_latency_exceeded:
-                self.log_callback(f"[실시간지연] {stk_cd} 매수 차단 — WS 지연 200ms 초과")
+                logger.info("[매매] [실시간지연] %s 매수 차단 — WS 지연 200ms 초과", stk_cd)
                 return False
         except Exception:
             logger.warning("[매매] 실시간 지연 체크 실패", exc_info=True)
@@ -108,10 +107,7 @@ class AutoTradeManager:
         # 스케줄 자동매매 게이트: force_buy(매수대기 수동 매수) 시에만 우회
         if not settings["is_auto"] and not force_buy:
             stk_nm = data_manager.get_stock_name(stk_cd, access_token)
-            self.log_callback(
-                f" [자동매매 비활성화] {stk_nm}({stk_cd}) 주문 생략 "
-                f"(force_buy={force_buy}, source=auto_signal)"
-            )
+            logger.info("[매매] [자동매매 비활성화] %s(%s) 주문 생략 (force_buy=%s, source=auto_signal)", stk_nm, stk_cd, force_buy)
             return False
         # ── 재매수 차단 (설정 기반: ON/OFF + 차단 기간) ──────────────────────
         rebuy_block_on = bool(settings.get("rebuy_block_on", True))
@@ -120,16 +116,14 @@ class AutoTradeManager:
             last_buy_ts = self._bought_today.get(stk_cd)
             if last_buy_ts is not None:
                 if rebuy_period == "today":
-                    self.log_callback(f" [매수차단] {stk_cd} 오늘 이미 매수한 종목입니다.")
+                    logger.info("[매매] [매수차단] %s 오늘 이미 매수한 종목입니다.", stk_cd)
                     return False
                 else:
                     _period_hours = float(rebuy_period.rstrip("h")) if rebuy_period.endswith("h") else 24.0
                     _elapsed = time.time() - last_buy_ts
                     if _elapsed < _period_hours * 3600:
                         _remain_min = int((_period_hours * 3600 - _elapsed) / 60)
-                        self.log_callback(
-                            f" [매수차단] {stk_cd} 재매수 차단 중 (남은 {_remain_min}분 / 차단 {_period_hours:.0f}시간)"
-                        )
+                        logger.info("[매매] [매수차단] %s 재매수 차단 중 (남은 %d분 / 차단 %.0f시간)", stk_cd, _remain_min, _period_hours)
                         return False
 
         state = self._buy_state.get(stk_cd, {"last_req_ts": 0.0, "has_open_buy": False})
@@ -139,10 +133,10 @@ class AutoTradeManager:
         MIN_INTERVAL = 30.0
 
         if has_open_buy:
-            self.log_callback(f"[매수차단] {stk_cd} 매수 주문이 이미 처리 중입니다.")
+            logger.info("[매매] [매수차단] %s 매수 주문이 이미 처리 중입니다.", stk_cd)
             return False
         if now - last_ts < MIN_INTERVAL:
-            self.log_callback(f"[매수쓰로틀] {stk_cd} 연속 신호 감지. 차단.")
+            logger.info("[매매] [매수쓰로틀] %s 연속 신호 감지. 차단.", stk_cd)
             return False
 
         # ── 실제 잔고 보유종목 수 기준으로 최대보유종목수 체크 ─────────────
@@ -155,9 +149,7 @@ class AutoTradeManager:
             if int(p.get("qty", 0)) > 0
         )
         if holding_count >= max_limit:
-            self.log_callback(
-                f"[매수제한] 잔고 보유종목 {holding_count}종목 ≥ 최대 {max_limit}종목. {stk_cd} 매수 차단."
-            )
+            logger.info("[매매] [매수제한] 잔고 보유종목 %d종목 ≥ 최대 %d종목. %s 매수 차단.", holding_count, max_limit, stk_cd)
             return False
 
         buy_amt = settings.get("buy_amt", 0)
@@ -169,24 +161,20 @@ class AutoTradeManager:
         symbol_spent = self._symbol_daily_buy_spent.get(stk_cd, 0)
         symbol_remain = max(0, int(buy_amt) - symbol_spent)
         if symbol_remain <= 0:
-            self.log_callback(
-                f"[종목당한도] {stk_cd} 차단. 종목누적 {symbol_spent:,}원 / 한도 {int(buy_amt):,}원"
-            )
+            logger.info("[매매] [종목당한도] %s 차단. 종목누적 %s원 / 한도 %s원", stk_cd, f"{symbol_spent:,}", f"{int(buy_amt):,}")
             return False
         # 일일 한도 내에서 실제 사용 가능 금액 계산 (잔여 한도가 종목당 한도보다 적으면 잔여 한도만큼만 매수)
         if max_daily_on and max_daily_total > 0:
             daily_remain = max(0, max_daily_total - self._daily_buy_spent)
             if daily_remain <= 0:
-                self.log_callback(
-                    f"[일일매수한도] {stk_cd} 차단. 잔여 0원 / 한도 {max_daily_total:,}원"
-                )
+                logger.info("[매매] [일일매수한도] %s 차단. 잔여 0원 / 한도 %s원", stk_cd, f"{max_daily_total:,}")
                 return False
             effective_buy_amt = min(symbol_remain, daily_remain)
         else:
             effective_buy_amt = symbol_remain
 
         if current_price <= 0:
-            self.log_callback(f"[매수제한] {stk_cd} 서버 현재가 미수신(<=0). 주문 차단.")
+            logger.info("[매매] [매수제한] %s 서버 현재가 미수신(<=0). 주문 차단.", stk_cd)
             return False
 
         # ── 등락률 + 거래대금 가드 (설정값 기반) ──────────────────────────────
@@ -208,9 +196,7 @@ class AutoTradeManager:
                 _block_reason = f"하락률 {abs(_change_rate):.1f}%"
             if _blocked:
                 stk_nm_g = data_manager.get_stock_name(stk_cd, access_token)
-                self.log_callback(
-                    f"[등락률가드] {stk_nm_g}({stk_cd}) 등락률 {_block_reason} -- 매수 차단"
-                )
+                logger.info("[매매] [등락률가드] %s(%s) 등락률 %s -- 매수 차단", stk_nm_g, stk_cd, _block_reason)
                 return False
 
         # 체결강도 가드
@@ -222,9 +208,7 @@ class AutoTradeManager:
                     _strength_val = float(_strength_raw)
                     if _strength_val < _min_strength:
                         stk_nm_s = data_manager.get_stock_name(stk_cd, access_token)
-                        self.log_callback(
-                            f"[체결강도가드] {stk_nm_s}({stk_cd}) 체결강도 {_strength_val:.0f} < {_min_strength:.0f} -- 매수 차단"
-                        )
+                        logger.info("[매매] [체결강도가드] %s(%s) 체결강도 %.0f < %.0f -- 매수 차단", stk_nm_s, stk_cd, _strength_val, _min_strength)
                         return False
                 except (ValueError, TypeError):
                     pass
@@ -252,13 +236,13 @@ class AutoTradeManager:
             stk_cd, float(current_price), buy_qty
         )
         if not _allowed:
-            self.log_callback(f"[리스크차단] {stk_cd} 매수 차단 — {_risk_reason}")
+            logger.info("[매매] [리스크차단] %s 매수 차단 — %s", stk_cd, _risk_reason)
             return False
 
         self._buy_state[stk_cd] = {"last_req_ts": now, "has_open_buy": True}
         stk_nm = data_manager.get_stock_name(stk_cd, access_token)
 
-        self.log_callback(f"[매수주문] {stk_nm}({stk_cd}) 매수신호 감지. {order_type} {buy_qty}주 주문전송.")
+        logger.info("[매매] [매수주문] %s(%s) 매수신호 감지. %s %d주 주문전송.", stk_nm, stk_cd, order_type, buy_qty)
         _fire_and_forget_telegram(f"🚀 [자동매매] {stk_nm} {buy_qty}주 매수 주문 전송 완료.", self.get_settings_fn())
 
         base_settings = self.get_settings_fn()
@@ -288,7 +272,7 @@ class AutoTradeManager:
 
         if not (res and res.get("success")):
             self._buy_state[stk_cd]["has_open_buy"] = False
-            self.log_callback(f" [매수실패] {stk_nm} 주문 전송 실패. 잠금 해제.")
+            logger.info("[매매] [매수실패] %s 주문 전송 실패. 잠금 해제.", stk_nm)
             _fire_and_forget_telegram(f"⚠️ [매수실패] {stk_nm}({stk_cd}) 주문 전송 실패. 잠금 해제.", base_settings)
             try:
                 risk_mgr = get_risk_manager()
@@ -330,7 +314,7 @@ class AutoTradeManager:
         # ── 매수 성공 즉시 _bought_today 반영 (테스트/실전 공통 — 원칙 18 동등성) ──
         if stk_cd not in self._bought_today:
             self._bought_today[stk_cd] = time.time()
-            self.log_callback(f"[매수기억] {stk_nm} 주문 성공! 금일 매수 이력 저장 완료.")
+            logger.info("[매매] [매수기억] %s 주문 성공! 금일 매수 이력 저장 완료.", stk_nm)
 
         # ── 체결 이력 기록 ────────────────────────────────────────────────────
         _buy_reason = reason or "자동매수"
@@ -362,9 +346,9 @@ class AutoTradeManager:
 
         t_str = datetime.now().strftime("%H:%M:%S")
         fmt_price = f"{fill_price:,}"
-        self.log_callback(
-            f"[{t_str}] [매수주문] {stk_nm} | {order_type} | {buy_qty:,}주 | 단가: {fmt_price}원 | "
-            f"일일누적매수 {self._daily_buy_spent:,}원"
+        logger.info(
+            "[매매] [%s] [매수주문] %s | %s | %s주 | 단가: %s원 | 일일누적매수 %s원",
+            t_str, stk_nm, order_type, f"{buy_qty:,}", fmt_price, f"{self._daily_buy_spent:,}",
         )
 
         # ── RiskManager 성공 보고 ─────────────────────────────────────────────
@@ -392,7 +376,7 @@ class AutoTradeManager:
         if str(side) == "1" and unex == 0:
             state["has_open_buy"] = False
             stk_nm = data_manager.get_stock_name(stk_cd, access_token)
-            self.log_callback(f"[매수체결] {stk_nm} 체결 확인!")
+            logger.info("[매매] [매수체결] %s 체결 확인!", stk_nm)
             _fire_and_forget_telegram(
                 f"✅ [매수체결] {stk_nm}({stk_cd}) 매수 체결 완료!",
                 self.get_settings_fn(),
@@ -401,7 +385,7 @@ class AutoTradeManager:
             # 매도 체결 완료 -- 재매도 차단 해제
             self._recent_sells.discard(nk)
             stk_nm = data_manager.get_stock_name(stk_cd, access_token)
-            self.log_callback(f"[매도체결] {stk_nm}({stk_cd}) 매도 체결 완료!")
+            logger.info("[매매] [매도체결] %s(%s) 매도 체결 완료!", stk_nm, stk_cd)
             _fire_and_forget_telegram(
                 f"💰 [매도체결] {stk_nm}({stk_cd}) 매도 체결 완료!",
                 self.get_settings_fn(),
@@ -428,7 +412,7 @@ class AutoTradeManager:
         # 시장가 단일 운용
         order_type = "시장가"
 
-        self.log_callback(f"[매도주문] {stk_nm} {reason}. {order_type} {qty}주 (단가: 시장가)")
+        logger.info("[매매] [매도주문] %s %s. %s %d주 (단가: 시장가)", stk_nm, reason, order_type, qty)
         _fire_and_forget_telegram(f"[자동매매] {stk_nm}({stk_cd}) {reason} 발동! {qty}주 매도 전송.", base_settings)
 
         trde_tp = "3"
@@ -462,7 +446,7 @@ class AutoTradeManager:
 
         if not result.get("success"):
             self._recent_sells.discard(stk_cd)
-            self.log_callback(f"[매도] {stk_nm} 주문 전송 실패: {result.get('msg', '알 수 없음')}")
+            logger.info("[매매] [매도] %s 주문 전송 실패: %s", stk_nm, result.get('msg', '알 수 없음'))
             _fire_and_forget_telegram(f"⚠️ [매도실패] {stk_nm}({stk_cd}) 주문 전송 실패: {result.get('msg', '알 수 없음')}", base_settings)
             try:
                 risk_mgr = get_risk_manager()
@@ -494,7 +478,7 @@ class AutoTradeManager:
         )
 
         t_str = datetime.now().strftime("%H:%M:%S")
-        self.log_callback(f"[{t_str}] [매도주문] {stk_nm} | {reason} | {order_type} | {qty:,}주 | 평가손익: {pnl_rate}%")
+        logger.info("[매매] [%s] [매도주문] %s | %s | %s | %s주 | 평가손익: %s%%", t_str, stk_nm, reason, order_type, f"{qty:,}", pnl_rate)
 
         # ── 체결 이력 기록 ────────────────────────────────────────────────────
         _sell_price = int(order_price) if order_price > 0 else int(cur_price)
@@ -538,7 +522,7 @@ class AutoTradeManager:
         try:
             from backend.app.services.engine_state import state as engine_state
             if engine_state.realtime_latency_exceeded:
-                self.log_callback("[실시간지연] 매도 조건 전체 차단 — WS 지연 200ms 초과")
+                logger.info("[매매] [실시간지연] 매도 조건 전체 차단 — WS 지연 200ms 초과")
                 return
         except Exception:
             logger.warning("[매매] 실시간 지연 체크 실패", exc_info=True)
@@ -548,7 +532,7 @@ class AutoTradeManager:
             risk_mgr = get_risk_manager()
             allowed, reason = risk_mgr.check_sell_order_allowed("", 0, 0)
             if not allowed:
-                self.log_callback(f"[리스크차단] 매도 조건 전체 차단 — {reason}")
+                logger.info("[매매] [리스크차단] 매도 조건 전체 차단 — %s", reason)
                 return
         except Exception:
             logger.warning("[매매] 리스크 관리자 체크 실패", exc_info=True)

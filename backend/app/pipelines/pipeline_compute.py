@@ -12,15 +12,16 @@ from __future__ import annotations
 from typing import Optional
 import asyncio
 import time
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.services.engine_state import state
+from backend.app.services.engine_ws_dispatch import _check_realtime_latency
 from backend.app.services.core_queues import (
     get_tick_queue,
     get_broadcast_queue,
     get_control_queue,
 )
 
-logger = get_logger("pipeline_compute")
+logger = logging.getLogger(__name__)
 
 # 전역 큐 할당 (메모리 상주)
 broadcast_queue = get_broadcast_queue()
@@ -87,7 +88,7 @@ async def _calculate_receive_rate() -> None:
         _current_receive_rate = {"received": received_count, "total": total_count, "pct": current_pct}
 
     except Exception as e:
-        logger.error("[Compute] 수신율 계산 예외: %s", e, exc_info=True)
+        logger.error("[연산] 수신율 계산 예외: %s", e, exc_info=True)
 
 
 def get_current_receive_rate() -> dict:
@@ -101,7 +102,7 @@ async def start_compute_loop() -> None:
     global _compute_task, _compute_running, _sector_recompute_task
 
     if _compute_running:
-        logger.warning("[Compute] 이미 실행 중")
+        logger.warning("[연산] 이미 실행 중")
         return
 
     _compute_running = True
@@ -237,7 +238,7 @@ async def _compute_loop_impl() -> None:
                             if _hit:
                                 _account_broadcast_dirty = True
                         except Exception as e:
-                            logger.error("[Compute] 이벤트 처리 예외 (계속): %s", e, exc_info=True)
+                            logger.error("[연산] 이벤트 처리 예외 (계속): %s", e, exc_info=True)
 
                     # 배치 후 계좌 브로드캐스트 1회 실행
                     if _account_broadcast_dirty:
@@ -246,14 +247,14 @@ async def _compute_loop_impl() -> None:
                             await engine_account._refresh_account_snapshot_meta()
                             await engine_account._broadcast_account(reason="price_tick_batch")
                         except Exception as e:
-                            logger.error("[Compute] 배치 계좌 브로드캐스트 실패: %s", e, exc_info=True)
+                            logger.error("[연산] 배치 계좌 브로드캐스트 실패: %s", e, exc_info=True)
 
                 # P0-1: 틱 폭주 시 이벤트 루프 고갈 방지 - 협력적 멀티태스킹 (Yielding)
                 await asyncio.sleep(0)
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("[Compute] 처리 예외 (계속): %s", e, exc_info=True)
+                logger.error("[연산] 처리 예외 (계속): %s", e, exc_info=True)
     finally:
         _compute_running = False
 
@@ -304,10 +305,10 @@ async def _process_control_signal(
                 if cd in state.master_stocks_cache:
                     state.master_stocks_cache[cd].pop("_subscribed_dynamic", None)
         else:
-            logger.warning("[Compute] 알 수 없는 제어 신호: %s", signal_type)
+            logger.warning("[연산] 알 수 없는 제어 신호: %s", signal_type)
 
     except Exception as e:
-        logger.error("[Compute] 제어 신호 처리 예외: %s", e, exc_info=True)
+        logger.error("[연산] 제어 신호 처리 예외: %s", e, exc_info=True)
 
 
 async def _handle_config_update(
@@ -323,7 +324,7 @@ async def _handle_config_update(
     """
     # 캐시 직접 업데이트 제거 - 단일 소스 진리 원칙 준수
     # DB에서 캐시 갱신은 settings.py → apply_settings_change → refresh_engine_integrated_system_settings_cache 경로만 사용
-    logger.info("[Compute] 설정 변경 처리 - 캐시 업데이트는 settings.py에서 DB 로드로 수행됨")
+    logger.info("[연산] 설정 변경 처리 - 캐시 업데이트는 settings.py에서 DB 로드로 수행됨")
     
     # 설정(투자모드, 증권사 등) 변경에 따라 Header 상태 갱신
     from backend.app.services.engine_account_notify import notify_desktop_header_refresh
@@ -344,10 +345,10 @@ async def _handle_sector_recompute(
         from backend.app.services.sector_data_provider import recompute_sector_summary_now
         await recompute_sector_summary_now()
 
-        logger.info("[Compute] 업종순위 재계산 완료")
+        logger.info("[연산] 업종순위 재계산 완료")
 
     except Exception as e:
-        logger.error("[Compute] 업종순위 재계산 예외: %s", e, exc_info=True)
+        logger.error("[연산] 업종순위 재계산 예외: %s", e, exc_info=True)
 
 
 async def _process_tick_data(
@@ -436,7 +437,7 @@ async def _handle_real_tick(
                 await _handle_real_pgm_tick(item, vals, broadcast_queue)
 
     except Exception as e:
-        logger.error("[Compute] REAL 틱 처리 예외: %s", e, exc_info=True)
+        logger.error("[연산] REAL 틱 처리 예외: %s", e, exc_info=True)
     return _account_dirty
 
 
@@ -509,7 +510,7 @@ async def _handle_real_01_tick(
         try:
             broadcast_queue.put_nowait({"type": "real-data", "data": item})
         except asyncio.QueueFull:
-            logger.warning("[Compute] broadcast_queue 가득 참 — UI 데이터 드롭 (code=%s)", raw_cd)
+            logger.warning("[연산] broadcast_queue 가득 참 — UI 데이터 드롭 (code=%s)", raw_cd)
 
         # ── 2. 레이더 행 갱신 + 업종 점수 증분 재계산 트리거 ──
         if is_0b_tick and any(f in vals for f in ("10", "11", "12", "14", "17", "228")):
@@ -554,22 +555,8 @@ async def _handle_real_01_tick(
         _check_realtime_latency(_ts)
 
     except Exception as e:
-        logger.error("[Compute] 0B/01 틱 처리 예외: %s", e, exc_info=True)
+        logger.error("[연산] 0B/01 틱 처리 예외: %s", e, exc_info=True)
     return _price_hit
-
-
-def _check_realtime_latency(_ts: int) -> None:
-    """실시간 체결 처리 지연 측정 — 50ms 경고, 200ms 초과 시 자동매매 중단 플래그."""
-    elapsed = int(time.time() * 1000) - _ts
-    if elapsed >= 200:
-        logger.error("[체결지연] 처리 시간 %sms → 자동매매 중단 플래그 설정", elapsed)
-        state.realtime_latency_exceeded = True
-    else:
-        if state.realtime_latency_exceeded:
-            logger.info("[체결지연] 처리 시간 %sms → 지연 회복, 자동매매 재개", elapsed)
-            state.realtime_latency_exceeded = False
-        if elapsed >= 50:
-            logger.warning("[체결지연] 처리 시간 %sms → 50ms 초과", elapsed)
 
 
 async def _handle_real_0d_tick(
@@ -602,14 +589,14 @@ async def _handle_real_0d_tick(
         if bid < 0 or ask < 0:
             return
 
-        # 매수후보 종목이면 호가잔량비 변경을 프론트에 즉시 전송
+        # 매수 후보 종목이면 호가잔량비 변경을 프론트에 즉시 전송
         cache_entry = state.master_stocks_cache.get(nk, {})
         if cache_entry.get("_subscribed_dynamic", False):
             cache_entry["order_ratio"] = [bid, ask]
             await notify_orderbook_update(nk, bid, ask)
 
     except Exception as e:
-        logger.error("[Compute] 0D 틱 처리 예외: %s", e, exc_info=True)
+        logger.error("[연산] 0D 틱 처리 예외: %s", e, exc_info=True)
 
 
 async def _handle_real_pgm_tick(
@@ -636,14 +623,14 @@ async def _handle_real_pgm_tick(
         except ValueError:
             tval = 0
 
-        # 매수후보 종목이면 프로그램 순매수 변경을 프론트에 즉시 전송
+        # 매수 후보 종목이면 프로그램 순매수 변경을 프론트에 즉시 전송
         cache_entry = state.master_stocks_cache.get(nk, {})
         if cache_entry.get("_subscribed_dynamic", False):
             cache_entry["program_net_buy"] = tval
             await notify_program_update(nk, tval)
 
     except Exception as e:
-        logger.error("[Compute] PGM 틱 처리 예외: %s", e, exc_info=True)
+        logger.error("[연산] PGM 틱 처리 예외: %s", e, exc_info=True)
 
 
 async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
@@ -678,7 +665,7 @@ async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
 
                     if current_pct >= threshold_pct:
                         logger.info(
-                            "[Compute] 실시간데이터 수신율 임계값 통과 (현재: %.1f%%, 임계값: %.1f%%). 업종순위 계산을 시작합니다.",
+                            "[연산] 실시간데이터 수신율 임계값 통과 (현재: %.1f%%, 임계값: %.1f%%). 업종순위 계산을 시작합니다.",
                             current_pct, threshold_pct
                         )
                         request_sector_recompute(None)  # 콜드 스타트 1회 전체 재계산
@@ -688,7 +675,7 @@ async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
                         await _send_receive_rate(_current_receive_rate)
 
             except Exception as e:
-                logger.error("[Compute] 수신율 체크 예외: %s", e, exc_info=True)
+                logger.error("[연산] 수신율 체크 예외: %s", e, exc_info=True)
 
         # Phase 2: 0.2초 배치 재계산 루프
         from backend.app.services.engine_sector_confirm import has_dirty_sectors, _flush_sector_recompute_impl
@@ -701,7 +688,7 @@ async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
                 await _send_receive_rate(get_current_receive_rate())
                 _receive_rate_dirty = False
 
-            # sector-scores 전송 (delta — 변경된 섹터만)
+            # sector-scores 전송 (delta — 변경된 업종만)
             from backend.app.services.engine_account_notify import notify_desktop_sector_scores
             await notify_desktop_sector_scores(force=False)
 
@@ -709,5 +696,5 @@ async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
                 await _flush_sector_recompute_impl()
 
     except asyncio.CancelledError:
-        logger.info("[Compute] 백그라운드 업종 점수 재계산 루프 취소됨")
+        logger.info("[연산] 백그라운드 업종 점수 재계산 루프 취소됨")
 

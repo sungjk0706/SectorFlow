@@ -108,11 +108,11 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         from backend.app.services.trade_history import broadcast_history
         await broadcast_history("test")
         # 7. 보유종목 메모리 리스트 및 캐시 초기화 + 계좌 스냅샷 갱신 + WS account-update 발송
-        from backend.app.core.logger import get_logger as _get_logger
+        import logging
         from backend.app.services.engine_state import state
         from backend.app.services.engine_account_notify import _rebuild_positions_cache, notify_cache
         from backend.app.services.engine_account import _refresh_account_snapshot_meta, _broadcast_account, _broadcast_buy_limit_status
-        _logger = _get_logger("engine")
+        _logger = logging.getLogger(__name__)
         subscribed_count = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
         _logger.info(
             "[디버그] 초기화 직전 구독목록 positions=%d subscribed=%d layout=%d pos_codes=%d",
@@ -134,7 +134,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         )
         await _refresh_account_snapshot_meta()
         await _broadcast_account(reason="test_data_reset")
-        _logger.info("[엔진] 보유종목, 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료")
+        _logger.info("[연산] 보유종목, 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료")
         # 8. 수익 이력 초기화 WS 브로드캐스트
         from backend.app.services.engine_account_notify import notify_snapshot_history_update
         await notify_snapshot_history_update()
@@ -146,7 +146,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
             state.auto_trade._buy_state.clear()
         # 매수 주문 간격 타이머 리셋
         state._last_global_buy_ts = 0.0
-        # buy_targets 메모리 초기화 (매수후보 테이블 동기화)
+        # buy_targets 메모리 초기화 (매수 후보 테이블 동기화)
         if state.sector_summary_cache and hasattr(state.sector_summary_cache, 'buy_targets'):
             state.sector_summary_cache.buy_targets = []
         await _broadcast_buy_limit_status()

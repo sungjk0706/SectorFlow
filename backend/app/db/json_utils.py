@@ -18,7 +18,7 @@ def encode_json_field(value: Any) -> str:
     try:
         return json.dumps(value, ensure_ascii=False)
     except Exception as e:
-        logger.error("[json_utils] encode 실패: %s", e)
+        logger.error("[시스템] encode 실패: %s", e)
         raise
 
 
@@ -41,20 +41,20 @@ def decode_json_field(text: str | None, expected_type: type = dict) -> Any:
     if text is None or text == "":
         # None이나 빈 문자열인 경우 즉시 예외 발생 (silent fallback 금지)
         raise ValueError(
-            f"[json_utils] JSON 데이터가 None 또는 빈 문자열입니다. "
+            f"[시스템] JSON 데이터가 None 또는 빈 문자열입니다. "
             f"기대 타입: {expected_type.__name__}"
         )
     
     try:
         decoded = json.loads(text)
     except json.JSONDecodeError as e:
-        logger.error("[json_utils] JSON 파싱 실패: %s (text=%s)", e, text[:100])
+        logger.error("[시스템] JSON 파싱 실패: %s (text=%s)", e, text[:100])
         raise
     
     # 타입 검증
     if not isinstance(decoded, expected_type):
         raise ValueError(
-            f"[json_utils] 타입 불일치: 기대 {expected_type.__name__}, "
+            f"[시스템] 타입 불일치: 기대 {expected_type.__name__}, "
             f"실제 {type(decoded).__name__} (value={decoded})"
         )
     

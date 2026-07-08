@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-섹터 점수 계산 - 정규화 및 가중치 계산 로직.
+업종 점수 계산 - 정규화 및 가중치 계산 로직.
 """
 from __future__ import annotations
-from backend.app.core.logger import get_logger
-logger = get_logger("engine")
+import logging
+logger = logging.getLogger(__name__)
 
 
 def normalize_metric_value(

@@ -113,7 +113,7 @@ class WSManager:
                 self._shutdown_timer = loop.call_later(1.0, self._send_sigterm)
                 logger.info("[연결] 전체 WS 끊김 — 1초 후 shutdown 예약 (새로고침 대기)")
             except RuntimeError:
-                logger.warning("[WS] shutdown 타이머 예약 실패 — 이벤트 루프 없음", exc_info=True)
+                logger.warning("[연결] shutdown 타이머 예약 실패 — 이벤트 루프 없음", exc_info=True)
         logger.debug("[연결] 클라이언트 해제 (총 %d)", len(self._clients))
 
     # ------------------------------------------------------------------
