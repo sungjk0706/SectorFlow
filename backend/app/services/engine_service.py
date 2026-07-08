@@ -49,10 +49,13 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
 
     # ── 2) broker 변경 → 엔진 재기동 (단일 진입점 보장) ───────────────────────
     if "broker" in changed_keys:
+        from backend.app.core.broker_factory import reset_router
+        reset_router()
         if is_engine_running():
-            from backend.app.services.engine_lifecycle import stop_engine, start_engine
+            from backend.app.services.engine_lifecycle import stop_engine, start_engine, reset_broker_session_state
             logger.info("[설정] broker 변경 감지 -> 엔진 재기동 (단일 진입점 보장)")
             await stop_engine()
+            reset_broker_session_state()
             await start_engine()
         await notify_desktop_header_refresh()
         await notify_desktop_settings_toggled()

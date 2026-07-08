@@ -641,7 +641,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
 
   const brokerDesc = document.createElement('div')
   Object.assign(brokerDesc.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px', textAlign: 'center' })
-  brokerDesc.textContent = '선택한 증권사로 시스템 전체 통신망(시세, 계좌, 주문)이 전환됩니다'
+  brokerDesc.textContent = '선택한 증권사로 시스템 전체 통신망(시세, 계좌, 주문)이 전환됩니다. 엔진이 재기동되어 실시간 연결이 잠시 끊깁니다.'
   container.appendChild(brokerDesc)
 
   container.appendChild(sectionTitle('실시간 데이터 통신'))
