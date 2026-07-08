@@ -12,6 +12,7 @@ from backend.app.core.settings_file import (
     load_selected_settings,
     save_selected_settings,
     save_settings,
+    _ENCRYPT_FIELDS as ENCRYPT_FIELDS,
 )
 from backend.app.core import journal as _journal
 from backend.app.services.auto_trading_effective import auto_trading_effective
@@ -30,17 +31,6 @@ def _schedule_settings_task(coro, context: str) -> None:
             logger.warning("[설정] %s 태스크 실패", context, exc_info=True)
 
     task.add_done_callback(_log_task_error)
-
-
-def get_encrypt_fields(broker_nm: str) -> frozenset[str]:
-    """모든 증권사의 암호화 필드 목록을 반환 (단일 소스 진리 준수)."""
-    base_fields = {"telegram_bot_token_test", "telegram_bot_token_real"}
-    # 모든 증권사의 암호화 필드 포함
-    broker_fields = {
-        "kiwoom_app_key", "kiwoom_app_secret",
-        "ls_app_key", "ls_app_secret",
-    }
-    return frozenset(base_fields | broker_fields)
 
 
 def normalize_stk_cd_key(code: str) -> str:
@@ -166,9 +156,6 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
     to_save: dict = {}
     after: dict = {}
 
-    # broker_nm 추출 (암호화 필드 판정용)
-    broker_nm = str(before.get("broker", "") or "").lower().strip()
-
     for k, v in data.items():
         if v is None:
             continue
@@ -184,7 +171,6 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
                 raise ValueError(f"지원하지 않는 증권사: {v} (허용된 값: {sorted(allowed_brokers)})")
             to_save[k] = broker_val
             after[k] = broker_val
-            broker_nm = broker_val
             continue
         # 시간 필드: HH:MM 형식이 아니면 무시 (입력 중간 상태 방어)
         if k in _TIME_FIELDS:
@@ -194,8 +180,7 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
                 continue
         if k in ("sell_per_symbol",) and isinstance(v, dict):
             v = normalize_symbol_override_map(v)
-        encrypt_fields = get_encrypt_fields(broker_nm)
-        if k in encrypt_fields and v and v != "***":
+        if k in ENCRYPT_FIELDS and v and v != "***":
             if not str(v).startswith("gAAAA"):
                 enc = encrypt_value(str(v))
                 if enc:
@@ -238,9 +223,7 @@ async def build_masked_settings_dict(username: str = "admin", profile: str | Non
     display_id = "root"
     masked = dict(flat)
 
-    broker_nm = str(flat.get("broker", "") or "").lower().strip()
-    encrypt_fields = get_encrypt_fields(broker_nm)
-    for f in encrypt_fields:
+    for f in ENCRYPT_FIELDS:
         v = masked.get(f)
         if v and str(v).startswith("gAAAA"):
             masked[f] = "***"
@@ -261,9 +244,7 @@ async def load_integrated_system_settings_for_editing() -> dict:
     """
     flat = await load_integrated_system_settings()
     out = dict(flat)
-    broker_nm = str(flat.get("broker", "") or "").lower().strip()
-    encrypt_fields = get_encrypt_fields(broker_nm)
-    for f in encrypt_fields:
+    for f in ENCRYPT_FIELDS:
         v = out.get(f)
         if v and str(v).startswith("gAAAA"):
             out[f] = decrypt_value(v) or ""

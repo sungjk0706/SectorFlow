@@ -59,9 +59,7 @@ class EngineState:
 
         # ── 데이터 캐시 ────────────────────────────────────────────────────────
         self.MIN_CACHE_LIFETIME_SEC: float = 1.0
-        self.buy_targets_cache_ref: object | None = None
         self.sector_summary_cache: "SectorSummary | None" = None  # type: ignore[name-defined]
-        self.sector_score_index: dict[str, "SectorScore"] = {}  # type: ignore[name-defined]
         self.confirmed_refresh_running: bool = False
         self.confirmed_refresh_running_confirmed: bool = False  # 확정시세 다운로드 전용
         self.confirmed_refresh_running_5d: bool = False         # 5일봉 다운로드 전용
