@@ -1,19 +1,24 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-08: sector 캐시 캡슐화 Step 1-5 전체 완료**
-  - `stock_classification_data.py`: `update_sector_in_cache()` 단일 진입점 추가 + 4개 함수 캡슐화 적용
-  - 캡슐화 대상: `move_stock()`, `rename_sector()`, `delete_sector()`, `sync_sector_from_custom_sectors()`
-  - 검증: py_compile OK, pytest 1023 passed, npm run build OK, `entry["sector"] =` 단일 진입점 1곳만 존재
-  - 브라우저 확인: 사용자 직접 확인 필요 (종목 이동/업종명 변경/업종 삭제/업종 순위 재계산)
+- **2026-07-08: checked_stocks 제거, positions 기반 SSOT 일원화**
+  - `engine_account.py`: `get_held_codes()` 추가 — positions/dry_run에서 직접 파생
+  - `engine_bootstrap.py`, `engine_sector_confirm.py`, `sector_data_provider.py`: held_codes 파생을 `get_held_codes()`로 교체
+  - `trading.py`: `execute_buy`에서 `checked_stocks` 파라미터/guard/add 제거
+  - `buy_order_executor.py`: `state.checked_stocks` 인자 제거
+  - `engine_state.py`: `checked_stocks` 필드 제거
+  - `engine_loop.py`, `engine_radar.py`, `settings.py`: `checked_stocks.clear()` 제거
+  - `engine_strategy_core.py`, `engine_snapshot.py`: dead code (`run_snapshot_and_sell_check`) 제거
+  - `test_trading.py`, `test_buy_order_executor.py`: 테스트 수정
+  - 검증: py_compile 14파일 OK, test_buy_order_executor 25 passed, test_trading 26 passed
 
 ## 현재 상태
-- **백엔드**: sector 캐시 캡슐화 리팩토링 전체 완료 (Step 1-5)
-- **프론트엔드**: 변경 없음, 빌드 OK
-- **Git**: `7524547` push 완료
+- **백엔드**: checked_stocks 완전 제거, positions 기반 SSOT 구조
+- **프론트엔드**: 변경 없음
+- **Git**: `11ba545` push 완료
 
 ## 다음 단계
-- 브라우저 확인: 종목분류 페이지에서 종목 이동/업종명 변경/업종 삭제/업종 순위 재계산 정상 동작 확인 (사용자)
+- 브라우저 확인: 테스트모드에서 매수→매도 후 매수후보 테이블 "보유중" 표시가 즉시 사라지는지 확인 (사용자)
 
 ## 미해결 문제
 - 없음
