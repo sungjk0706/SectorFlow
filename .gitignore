@@ -49,11 +49,18 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
+# Git filter-repo backup
+.git-orig-backup/
+
+# Large binary docs
+docs/api_specs/**/*.pdf
+
 # Project specific
 data/*.lock
 data/*.cache
 backend/data/server.lock
 backend/data/*.json
+!backend/data/broker_specs/*.json
 # *.log  # Temporarily commented for log access investigation
 .env
 .env.local

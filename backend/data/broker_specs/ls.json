@@ -1,0 +1,113 @@
+{
+  "broker": "ls",
+  "role_mappings": {
+    "token": {
+      "id": "ls-auth-token",
+      "broker": "ls",
+      "spec_name": "token",
+      "category": "auth",
+      "method": "POST",
+      "path": "/oauth2/token",
+      "tr_id": "token",
+      "description": "OAuth2 토큰 발급",
+      "active": true,
+      "created_at": "2026-05-28T00:00:00.000000+00:00"
+    },
+    "t8436": {
+      "id": "ls-t8436",
+      "broker": "ls",
+      "spec_name": "t8436",
+      "category": "sector",
+      "method": "POST",
+      "path": "/stock/etc",
+      "tr_id": "t8436",
+      "description": "주식종목조회",
+      "active": true,
+      "created_at": "2026-05-28T00:00:00.000000+00:00"
+    },
+    "t9945": {
+      "id": "ls-t9945",
+      "broker": "ls",
+      "spec_name": "t9945",
+      "category": "sector",
+      "method": "POST",
+      "path": "/stock/market-data",
+      "tr_id": "t9945",
+      "description": "주식마스터조회",
+      "active": true,
+      "created_at": "2026-05-28T00:00:00.000000+00:00"
+    },
+    "t8451": {
+      "id": "ls-t8451",
+      "broker": "ls",
+      "spec_name": "t8451",
+      "category": "sector",
+      "method": "POST",
+      "path": "/stock/chart",
+      "tr_id": "t8451",
+      "description": "주식챠트(일봉)",
+      "active": true,
+      "created_at": "2026-05-28T00:00:00.000000+00:00"
+    },
+    "t1404": {
+      "id": "ls-t1404",
+      "broker": "ls",
+      "spec_name": "t1404",
+      "category": "sector",
+      "method": "POST",
+      "path": "/stock/market-data",
+      "tr_id": "t1404",
+      "description": "관리/불성실/투자유의조회",
+      "active": true,
+      "created_at": "2026-05-28T00:00:00.000000+00:00"
+    },
+    "t1405": {
+      "id": "ls-t1405",
+      "broker": "ls",
+      "spec_name": "t1405",
+      "category": "sector",
+      "method": "POST",
+      "path": "/stock/market-data",
+      "tr_id": "t1405",
+      "description": "투자경고/매매정지/정리매매조회",
+      "active": true,
+      "created_at": "2026-05-28T00:00:00.000000+00:00"
+    },
+    "t1410": {
+      "id": "ls-t1410",
+      "broker": "ls",
+      "spec_name": "t1410",
+      "category": "sector",
+      "method": "POST",
+      "path": "/stock/market-data",
+      "tr_id": "t1410",
+      "description": "초저유동성조회",
+      "active": true,
+      "created_at": "2026-05-28T00:00:00.000000+00:00"
+    },
+    "CSPAT00601": {
+      "id": "ls-cspat00601",
+      "broker": "ls",
+      "spec_name": "CSPAT00601",
+      "category": "order",
+      "method": "POST",
+      "path": "/stock/order",
+      "tr_id": "CSPAT00601",
+      "description": "주식현물주문",
+      "active": true,
+      "created_at": "2026-05-28T00:00:00.000000+00:00"
+    },
+    "t0424": {
+      "id": "ls-t0424",
+      "broker": "ls",
+      "spec_name": "t0424",
+      "category": "account",
+      "method": "POST",
+      "path": "/stock/accno",
+      "tr_id": "t0424",
+      "description": "주식잔고2",
+      "active": true,
+      "created_at": "2026-05-28T00:00:00.000000+00:00"
+    }
+  }
+}
