@@ -70,8 +70,8 @@ if [ "$FRONTEND_READY" = false ]; then
     echo "⚠️ 프론트엔드 타임아웃, 그래도 계속 진행..."
 fi
 
-# 브라우저 열기 (Chrome)
-open -a "Google Chrome" http://localhost:5173
+# 브라우저 열기 (Safari)
+open -a "Safari" http://localhost:5173
 
 echo ""
 echo "============================================"

@@ -33,11 +33,13 @@ const COLUMNS: ColumnDef<Position>[] = [
   {
     key: 'cur_price', label: '현재가', align: 'right',
     render: (p) => {
+      const sectorStock = hotStore.getState().sectorStocks[normalizeStockCode(p.stk_cd)]
+      const curPrice = sectorStock?.cur_price
+      if (curPrice == null) return createPriceCell(null, null)
       const buyPrice = p.buy_price ?? p.avg_price ?? 0
-      const curPrice = p.cur_price ?? 0
-      const diff = curPrice - buyPrice
+      const diff = Number(curPrice) - buyPrice
       const rate = buyPrice > 0 ? (diff / buyPrice) * 100 : 0
-      return createPriceCell(curPrice, rate)
+      return createPriceCell(Number(curPrice), rate)
     },
   },
   {
