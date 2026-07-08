@@ -1,19 +1,19 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-08: 수익현황 차트 날짜 변경 미반영 + 페이지 전환 후 날짜 초기화 해결**
-  - `trade.py:18,29,40`: `async def` 라우트 3개에 `await` 누락 — coroutine 객체 반환으로 API 응답 실패가 근본 원인
-  - `profit-overview.ts`: `console.warn` → `console.error` 로 변경 (폴백 금지 원칙, 에러 즉시 인지)
-  - `hotStore.ts`: `profitDateFrom`/`profitDateTo` 필드 추가 (이전 세션에서 이미 적용됨)
-  - 검증: py_compile OK, trade 관련 39p passed, npm run build OK
+- **2026-07-08: 차단 원인 우선순위 SSOT 위반 해결 — 전역 조건(보유중/금일매수) 우선 표시**
+  - `buy_filter.py:189-195`: `guard_pass` 전제조건 제거 — 전역 조건이 개별 가드(상승률/하락률/체결강도)보다 항상 우선하도록 수정
+  - 근본 원인: UI 표시(`buy_filter.py`)는 개별 가드 우선, 실행 게이트(`trading.py:117-133`)는 전역 조건 우선 — SSOT 원칙 10 위반
+  - `test_buy_filter.py`: 회귀 테스트 2개 추가 (`test_held_takes_priority_over_rise_guard`, `test_bought_today_takes_priority_over_fall_guard`)
+  - 검증: 53 passed in 1.54s
 
 ## 현재 상태
-- **백엔드**: `trade.py` 3개 라우트 `await` 추가 완료
-- **프론트엔드**: `profit-overview.ts` 에러 로그 강화, `hotStore.ts` 날짜 범위 SSOT 적용
-- **Git**: `844f386` push 완료
+- **백엔드**: `buy_filter.py` 전역 조건 우선화 완료
+- **프론트엔드**: 변경 없음 (기존 `buy-target.ts` 렌더 로직 그대로 작동)
+- **Git**: 커밋 대기
 
 ## 다음 단계
-- 브라우저 확인: 수익현황 페이지에서 날짜를 오늘로 변경 시 막대 1개 표시, 페이지 전환 후 복귀 시 날짜 유지 (사용자)
+- 없음
 
 ## 미해결 문제
 - 없음

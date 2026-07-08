@@ -568,3 +568,17 @@ class TestCreateBuyTargets:
         assert result.buy_targets[0].rank == 1
         assert [t.stock.code for t in result.blocked_targets] == ["A002"]
         assert result.blocked_targets[0].reason == "보유중"
+
+    def test_held_takes_priority_over_rise_guard(self):
+        """전역 조건(보유중)이 개별 가드(상승률)보다 우선 — SSOT: trading.py 실행 게이트와 동일 순서."""
+        s_held = _stock(code="A002", change_rate=10.0)
+        sc = _sector(rank=1, stocks=[s_held])
+        result = create_buy_targets([sc], held_codes={"A002"}, block_rise_pct=7.0)
+        assert result.blocked_targets[0].reason == "보유중"
+
+    def test_bought_today_takes_priority_over_fall_guard(self):
+        """전역 조건(금일매수)이 개별 가드(하락률)보다 우선."""
+        s_bought = _stock(code="A003", change_rate=-10.0)
+        sc = _sector(rank=1, stocks=[s_bought])
+        result = create_buy_targets([sc], bought_today_codes={"A003"}, block_fall_pct=7.0)
+        assert result.blocked_targets[0].reason == "금일매수"
