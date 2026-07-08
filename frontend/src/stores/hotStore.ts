@@ -52,6 +52,9 @@ export interface HotState {
   sellHistory: Record<string, unknown>[]
   buyHistory: Record<string, unknown>[]
   dailySummary: Record<string, unknown>[]
+  /** 수익현황 페이지 날짜 범위 (SSOT — 페이지 전환 후에도 유지) */
+  profitDateFrom: string
+  profitDateTo: string
   /** 현재가 직통 전송 캐시 — 업종순위 페이지 즉시 반영용 */
   sectorPrices: Record<string, SectorPriceTick>
 }
@@ -66,6 +69,8 @@ const initialState: HotState = {
   sellHistory: [],
   buyHistory: [],
   dailySummary: [],
+  profitDateFrom: '',
+  profitDateTo: '',
   sectorPrices: {},
 }
 

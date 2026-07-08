@@ -36,8 +36,6 @@ let sectorStockListContainer: HTMLDivElement | null = null
 let buyHistory: Record<string, unknown>[] = []
 let sellHistory: Record<string, unknown>[] = []
 let filteredSellHistory: Record<string, unknown>[] = []
-let dateRangeFrom = ''
-let dateRangeTo = ''
 let unsubStore: (() => void) | null = null
 
 /* ── rAF 배칭 상태 ── */
@@ -172,7 +170,8 @@ function filterSellHistoryByDate(rows: Record<string, unknown>[], from: string, 
 
 /* ── 필터된 뷰 데이터 갱신: 도넛 차트 + 업종별 종목 수익 동시 업데이트 ── */
 function refreshFilteredViews(): void {
-  filteredSellHistory = filterSellHistoryByDate(sellHistory, dateRangeFrom, dateRangeTo)
+  const { profitDateFrom, profitDateTo } = hotStore.getState()
+  filteredSellHistory = filterSellHistoryByDate(sellHistory, profitDateFrom, profitDateTo)
   donutChart?.updateData(buildSectorDonutData(filteredSellHistory))
   renderSectorStockPnl()
 }
@@ -342,9 +341,12 @@ function mount(container: HTMLElement): void {
   container.appendChild(root)
 
   // 차트 생성 — 일별 수익률
+  const { profitDateFrom: storedFrom, profitDateTo: storedTo } = hotStore.getState()
   chart = createProfitChart({
     container: chartContainer,
     data: buildChartFromDailySummary(hotStore.getState().dailySummary),
+    dateFrom: storedFrom,
+    dateTo: storedTo,
     onBarClick: () => {
       location.hash = '#/profit-detail'
     },
@@ -354,11 +356,10 @@ function mount(container: HTMLElement): void {
         const tradeMode = settings?.trade_mode || 'test'
         const data = await api.getDailySummary(from, to, tradeMode)
         chart?.updateData(buildChartFromDailySummary(data))
-        dateRangeFrom = from
-        dateRangeTo = to
+        hotStore.setState({ profitDateFrom: from, profitDateTo: to, dailySummary: data })
         refreshFilteredViews()
       } catch (err) {
-        console.warn('[profit-overview] daily-summary fetch failed:', err)
+        console.error('[profit-overview] daily-summary fetch failed:', err)
       }
     },
   })
@@ -373,10 +374,14 @@ function mount(container: HTMLElement): void {
   const initState = hotStore.getState()
   sellHistory = initState.sellHistory
   buyHistory = initState.buyHistory
-  const now = new Date()
-  dateRangeFrom = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-  dateRangeTo = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  filteredSellHistory = filterSellHistoryByDate(sellHistory, dateRangeFrom, dateRangeTo)
+  const storedDates = hotStore.getState()
+  if (!storedDates.profitDateFrom || !storedDates.profitDateTo) {
+    const now = new Date()
+    const from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+    const to = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    hotStore.setState({ profitDateFrom: from, profitDateTo: to })
+  }
+  filteredSellHistory = filterSellHistoryByDate(sellHistory, hotStore.getState().profitDateFrom, hotStore.getState().profitDateTo)
 
   // hotStore 구독 — rAF 배칭 + selective update
   let prevSellRef = initState.sellHistory
@@ -434,7 +439,9 @@ function mount(container: HTMLElement): void {
         const latest = hotStore.getState()
         const settings = globalSettingsManager.getSettings()
         const tradeModeChanged = settings?.trade_mode !== prevTradeMode
-        chart?.updateData(buildChartFromDailySummary(latest.dailySummary))
+        if (tradeModeChanged) {
+          chart?.updateData(buildChartFromDailySummary(latest.dailySummary))
+        }
         refreshFilteredViews()
         if (tradeModeChanged) {
           prevTradeMode = settings?.trade_mode
@@ -475,8 +482,6 @@ function unmount(): void {
   buyHistory = []
   sellHistory = []
   filteredSellHistory = []
-  dateRangeFrom = ''
-  dateRangeTo = ''
 }
 
 export default { mount, unmount }

@@ -15,7 +15,7 @@ async def buy_history(
     trade_mode: str | None = Query(None),
     _: str = Depends(get_current_user),
 ):
-    return get_buy_history(today_only=today_only, date_from=date_from, date_to=date_to, trade_mode=trade_mode)
+    return await get_buy_history(today_only=today_only, date_from=date_from, date_to=date_to, trade_mode=trade_mode)
 
 
 @router.get("/sell")
@@ -26,7 +26,7 @@ async def sell_history(
     trade_mode: str | None = Query(None),
     _: str = Depends(get_current_user),
 ):
-    return get_sell_history(today_only=today_only, date_from=date_from, date_to=date_to, trade_mode=trade_mode)
+    return await get_sell_history(today_only=today_only, date_from=date_from, date_to=date_to, trade_mode=trade_mode)
 
 
 @router.get("/daily-summary")
@@ -37,4 +37,4 @@ async def daily_summary(
     trade_mode: str | None = Query(None),
     _: str = Depends(get_current_user),
 ):
-    return get_daily_summary(days=days, date_from=date_from, date_to=date_to, trade_mode=trade_mode)
+    return await get_daily_summary(days=days, date_from=date_from, date_to=date_to, trade_mode=trade_mode)
