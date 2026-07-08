@@ -24,20 +24,20 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
   {
     key: 'cur_price', label: '현재가', align: 'right',
     render: (t) => {
-      const cell = createPriceCell(Number(t.cur_price) || 0, Number(t.change_rate) || 0)
-      if (t.high_5d && t.high_5d > 0 && Number(t.cur_price) > t.high_5d) {
+      const cell = createPriceCell(t.cur_price != null ? Number(t.cur_price) : null, t.change_rate != null ? Number(t.change_rate) : null)
+      if (t.high_5d && t.high_5d > 0 && t.cur_price != null && Number(t.cur_price) > t.high_5d) {
         cell.style.backgroundColor = COLOR.successBg
       }
       return cell
     },
   },
-  makeChangeColumn<SectorStock>((t) => Number(t.change) || 0),
-  makeRateColumn<SectorStock>((t) => Number(t.change_rate) || 0),
-  makeStrengthColumn<SectorStock>((t) => Number(t.strength)),
+  makeChangeColumn<SectorStock>((t) => t.change != null ? Number(t.change) : null),
+  makeRateColumn<SectorStock>((t) => t.change_rate != null ? Number(t.change_rate) : null),
+  makeStrengthColumn<SectorStock>((t) => t.strength != null ? parseFloat(String(t.strength)) : null),
   {
     key: 'trade_amount', label: '거래대금(억)', align: 'right',
     render: (t) => {
-      const cell = createAmountCell(Number(t.trade_amount) || 0)
+      const cell = createAmountCell(t.trade_amount != null ? Number(t.trade_amount) : null)
       if (t.trade_amount_rank === 0) {
         cell.style.backgroundColor = COLOR.successBg
       }
