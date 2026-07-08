@@ -1,17 +1,17 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-08: 증권사 변경 시 엔진 완전 재초기화 — BrokerRouter 캐시 무효화 + 세션 상태 초기화**
-  - `engine_service.py:50-62`: broker 변경 시 `reset_router()` + `reset_broker_session_state()` 호출 추가
-  - `engine_lifecycle.py:89-118`: `reset_broker_session_state()` 함수 추가 — 구독 플래그, 계좌 데이터, Events 일괄 초기화
-  - `general-settings.ts:644`: 엔진 재기동 안내 문구 추가
-  - 근본 원인: broker 변경 시 `stop_engine`/`start_engine` 수행했으나 BrokerRouter 캐시 무효화 누락 + 구독/계좌/Event 플래그 미초기화로 이전 증권사 세션 잔존
-  - 검증: py_compile OK, tsc OK, npm run build OK, LS→키움 변경 로그 확인 — 새 증권사 토큰/커넥터/구독 정상 동작
+- **2026-07-08: 단일 asyncio 이벤트 루프 원칙 준수 — threading.Thread 제거 + asyncio.get_event_loop() 제거**
+  - `logger.py`: `threading.Thread` + `queue.Queue` → `asyncio.create_task` + `asyncio.Queue` 전환, `stop_file_writers()` 추가
+  - `ws_subscribe_control.py:77`: `asyncio.get_event_loop().time()` → `time.time()` (Python 3.12+ RuntimeError 위험 제거)
+  - `app.py:176-179`: shutdown 시 `stop_file_writers()` 호출 추가
+  - 근본 원인: 원칙 1(단일 루프), 원칙 14(멀티스레드 남용 금지) 위반
+  - 검증: py_compile 3파일 OK, pytest 1024 passed, 런타임 기동 로그 에러 0건
 
 ## 현재 상태
-- **백엔드**: 증권사 변경 시 엔진 완전 재초기화 (BrokerRouter 캐시 무효화 + 세션 상태 초기화)
-- **프론트엔드**: `general-settings.ts` 증권사 변경 안내 문구 보강
-- **Git**: `7d390ac` push 완료
+- **백엔드**: 단일 asyncio 이벤트 루프 원칙 준수 — threading.Thread 제거, asyncio.Queue 기반 파일 로깅
+- **프론트엔드**: 변경 없음
+- **Git**: `459e0ca` push 완료
 
 ## 다음 단계
 - 없음
