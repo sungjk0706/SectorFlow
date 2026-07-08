@@ -4,6 +4,7 @@
 # Local configuration
 .python-version
 .windsurf/
+HANDOVER.md
 
 # Python
 __pycache__/
