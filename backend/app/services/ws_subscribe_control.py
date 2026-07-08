@@ -14,6 +14,7 @@ grp_no 매핑:
 """
 from __future__ import annotations
 import asyncio
+import time
 from backend.app.core.logger import get_logger
 from backend.app.services.engine_state import state
 from backend.app.services.engine_lifecycle import schedule_engine_task
@@ -73,7 +74,7 @@ def broadcast_ws_connection_status(connected: bool) -> None:
     schedule_engine_task(_broadcast("ws-connection-status", {
         "_v": 1,
         "connected": connected,
-        "timestamp": asyncio.get_event_loop().time(),
+        "timestamp": time.time(),
     }), context="ws-connection-status 브로드캐스트")
 
 
