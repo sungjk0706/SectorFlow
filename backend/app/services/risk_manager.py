@@ -14,7 +14,6 @@ from __future__ import annotations
 from typing import Optional
 import logging
 from backend.app.services.circuit_breaker import get_circuit_breaker
-from backend.app.services.account_manager import AccountManager
 from backend.app.services.trade_history import get_total_realized_pnl
 from backend.app.core.trade_mode import is_test_mode
 logger = logging.getLogger(__name__)
@@ -23,9 +22,8 @@ logger = logging.getLogger(__name__)
 class RiskManager:
     """통합 리스크 관리자"""
 
-    def __init__(self, account_manager: AccountManager):
+    def __init__(self):
         self.circuit_breaker = get_circuit_breaker()
-        self.account_manager = account_manager
         self._sync_thresholds()
 
     def _sync_thresholds(self) -> None:
@@ -63,7 +61,7 @@ class RiskManager:
             from backend.app.services.settlement_engine import get_available_cash
             withdrawable = get_available_cash()
         else:
-            withdrawable = self.account_manager.get_withdrawable_deposit()
+            withdrawable = int(engine_state.account_snapshot.get("orderable", 0) or 0)
         if order_amount > withdrawable:
             logger.warning("[매매] 예수금 부족: 주문액 %s, 출금가능액 %s", f"{order_amount:,}", f"{withdrawable:,}")
             return False, "예수금 잔고 부족"
@@ -113,11 +111,8 @@ class RiskManager:
 # 싱글톤 인스턴스
 _risk_manager: Optional[RiskManager] = None
 
-def get_risk_manager(account_manager: Optional[AccountManager] = None) -> RiskManager:
+def get_risk_manager() -> RiskManager:
     global _risk_manager
     if _risk_manager is None:
-        if account_manager is None:
-            # 기본 AccountManager 인스턴스 생성 (또는 DI 컨테이너에서 주입)
-            account_manager = AccountManager()
-        _risk_manager = RiskManager(account_manager)
+        _risk_manager = RiskManager()
     return _risk_manager

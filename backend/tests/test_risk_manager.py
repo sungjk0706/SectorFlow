@@ -2,7 +2,7 @@
 
 RiskManager의 check_buy_order_allowed, check_sell_order_allowed,
 record_order_success/failure 로직을 검증.
-CircuitBreaker, AccountManager, trade_history, engine_state는 mock로 격리.
+CircuitBreaker, trade_history, engine_state는 mock로 격리.
 """
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.app.services.risk_manager import RiskManager
 from backend.app.services.circuit_breaker import CircuitBreaker
-from backend.app.services.account_manager import AccountManager
 
 
 # ── 픽스처 ─────────────────────────────────────────────────────────────────────
@@ -24,18 +23,10 @@ def mock_circuit_breaker():
 
 
 @pytest.fixture
-def mock_account_manager():
-    am = MagicMock(spec=AccountManager)
-    am.get_withdrawable_deposit.return_value = 100_000_000
-    return am
-
-
-@pytest.fixture
-def risk_manager(mock_circuit_breaker, mock_account_manager):
+def risk_manager(mock_circuit_breaker):
     """RiskManager 인스턴스 생성 — engine_state 설정 캐시 mock."""
     rm = RiskManager.__new__(RiskManager)
     rm.circuit_breaker = mock_circuit_breaker
-    rm.account_manager = mock_account_manager
     rm.max_daily_loss_limit = -500_000
     rm.max_single_stock_exposure = 20_000_000
     rm.max_total_exposure_ratio = 0.95
@@ -56,10 +47,9 @@ def settings_cache():
 # ── _sync_thresholds ───────────────────────────────────────────────────────────
 
 class TestSyncThresholds:
-    def test_sync_reads_from_engine_state(self, mock_account_manager):
+    def test_sync_reads_from_engine_state(self):
         rm = RiskManager.__new__(RiskManager)
         rm.circuit_breaker = CircuitBreaker()
-        rm.account_manager = mock_account_manager
 
         mock_cache = {
             "max_daily_loss_limit": -1_000_000,
@@ -74,10 +64,9 @@ class TestSyncThresholds:
         assert rm.max_single_stock_exposure == 30_000_000
         assert rm.max_total_exposure_ratio == 0.8
 
-    def test_sync_defaults_when_keys_missing(self, mock_account_manager):
+    def test_sync_defaults_when_keys_missing(self):
         rm = RiskManager.__new__(RiskManager)
         rm.circuit_breaker = CircuitBreaker()
-        rm.account_manager = mock_account_manager
 
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.integrated_system_settings_cache = {}
@@ -97,6 +86,7 @@ class TestCheckBuyOrderAllowed:
              patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0):
             mock_state.integrated_system_settings_cache = settings_cache
+            mock_state.account_snapshot = {"orderable": 100_000_000}
             mock_state.positions = []
             allowed, reason = await risk_manager.check_buy_order_allowed("005930", 70_000, 10)
         assert allowed is True
@@ -142,17 +132,18 @@ class TestCheckBuyOrderAllowed:
              patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=-499_999):
             mock_state.integrated_system_settings_cache = settings_cache
+            mock_state.account_snapshot = {"orderable": 100_000_000}
             mock_state.positions = []
             allowed, reason = await risk_manager.check_buy_order_allowed("005930", 70_000, 10)
         assert allowed is True
 
     @pytest.mark.asyncio
     async def test_insufficient_deposit_blocks(self, risk_manager, settings_cache):
-        risk_manager.account_manager.get_withdrawable_deposit.return_value = 500_000
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0):
             mock_state.integrated_system_settings_cache = settings_cache
+            mock_state.account_snapshot = {"orderable": 500_000}
             mock_state.positions = []
             allowed, reason = await risk_manager.check_buy_order_allowed("005930", 70_000, 10)
         assert allowed is False
@@ -166,6 +157,7 @@ class TestCheckBuyOrderAllowed:
              patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0):
             mock_state.integrated_system_settings_cache = settings_cache
+            mock_state.account_snapshot = {"orderable": 100_000_000}
             mock_state.positions = [{"stk_cd": "005930", "buy_amount": 19_500_000}]
             allowed, reason = await risk_manager.check_buy_order_allowed("005930", 70_000, 10)
         assert allowed is False
@@ -179,6 +171,7 @@ class TestCheckBuyOrderAllowed:
              patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=0), \
              patch.object(risk_manager, "_sync_thresholds", lambda: None):
             mock_state.integrated_system_settings_cache = settings_cache
+            mock_state.account_snapshot = {"orderable": 100_000_000}
             mock_state.positions = [{"stk_cd": "005930", "buy_amount": 999_999_999}]
             allowed, reason = await risk_manager.check_buy_order_allowed("005930", 70_000, 10)
         assert allowed is True
