@@ -489,22 +489,6 @@ async def get_daily_summary(
     return result
 
 
-async def clear_history() -> None:
-    """전체 이력 즉시 초기화 (비동기적 수행)."""
-    async with _history_lock:
-        _buy_history.clear()
-        _sell_history.clear()
-    try:
-        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
-        await execute_db_write(DBWriteOperation(
-            table="trades", operation="DELETE", data={},
-            query="DELETE FROM trades", params=(),
-        ))
-    except Exception as e:
-        logger.warning("[정산] DB 전체 삭제 실패: %s", e)
-    logger.info("[정산] 전체 이력 즉시 초기화 완료")
-
-
 async def clear_test_history() -> None:
     """테스트모드(trade_mode=='test') 이력만 즉시 삭제 (비동기적 수행). 실전 이력은 보존."""
     async with _history_lock:
