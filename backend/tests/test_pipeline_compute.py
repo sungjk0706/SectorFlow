@@ -327,6 +327,33 @@ class TestHandleRealTick:
             mock_pgm.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_type_00_calls_handle_real_00(self):
+        mock_bq = AsyncMock()
+        data = {"data": {"type": "00", "values": {"90001": "005930"}}}
+        with patch("backend.app.services.engine_ws_dispatch._handle_real_00", new_callable=AsyncMock) as mock_00, \
+             patch("backend.app.services.engine_ws_parsing._normalize_real_type", return_value="00"):
+            await _handle_real_tick(data, mock_bq)
+            mock_00.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_type_04_calls_handle_real_balance(self):
+        mock_bq = AsyncMock()
+        data = {"data": {"type": "04", "values": {"90001": "005930"}}}
+        with patch("backend.app.services.engine_ws_dispatch._handle_real_balance", new_callable=AsyncMock) as mock_bal, \
+             patch("backend.app.services.engine_ws_parsing._normalize_real_type", return_value="04"):
+            await _handle_real_tick(data, mock_bq)
+            mock_bal.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_type_80_calls_handle_real_balance(self):
+        mock_bq = AsyncMock()
+        data = {"data": {"type": "80", "values": {"90001": "005930"}}}
+        with patch("backend.app.services.engine_ws_dispatch._handle_real_balance", new_callable=AsyncMock) as mock_bal, \
+             patch("backend.app.services.engine_ws_parsing._normalize_real_type", return_value="80"):
+            await _handle_real_tick(data, mock_bq)
+            mock_bal.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_exception_does_not_raise(self):
         mock_bq = AsyncMock()
         data = {"data": None}

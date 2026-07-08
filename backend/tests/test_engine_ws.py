@@ -222,8 +222,14 @@ class TestBrokerMessageHandler:
     @pytest.mark.asyncio
     async def test_valid_trnm(self):
         with patch("backend.app.services.engine_ws._handle_ws_data", new_callable=AsyncMock) as mock_handle:
-            await _broker_message_handler({"trnm": "REAL", "data": []})
+            await _broker_message_handler({"trnm": "LOGIN", "return_code": "0"})
             mock_handle.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_real_not_forwarded(self):
+        with patch("backend.app.services.engine_ws._handle_ws_data", new_callable=AsyncMock) as mock_handle:
+            await _broker_message_handler({"trnm": "REAL", "data": []})
+            mock_handle.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_unknown_trnm(self):

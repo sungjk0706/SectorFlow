@@ -99,7 +99,7 @@ async def _broker_message_handler(payload: dict) -> None:
     if not isinstance(payload, dict):
         return
     trnm = payload.get("trnm", "")
-    if trnm in ("REAL", "LOGIN", "REG", "UNREG", "REMOVE", "JIF"):
+    if trnm in ("LOGIN", "REG", "UNREG", "REMOVE", "JIF"):
         await _handle_ws_data(payload)
 
 

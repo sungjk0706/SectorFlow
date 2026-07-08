@@ -12,15 +12,11 @@ from backend.app.services.engine_state import state
 from backend.app.services import engine_account
 from backend.app.services import engine_lifecycle
 from backend.app.core.logger import get_logger
-from backend.app.services.engine_account_notify import (
-    notify_raw_real_data,
-)
 from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
     _real_item_stk_cd,
 )
 from backend.app.services.engine_ws_parsing import (
-    _normalize_real_type,
     _parse_fid10_price,
     parse_change_rate_to_percent,
     _ws_fid_int,
@@ -89,23 +85,6 @@ def _log_ws_trnm_json_detail(trnm: str, data: dict) -> None:
     except Exception as e:
         logger.warning("[로그] 문자열 truncation 실패: %s", e)
 
-
-def _log_real_data_items_preview(data: dict) -> None:
-    """REAL data 배열에서 type 01·02만 골라 item·FID 키/값 샘플을 INFO로 출력."""
-    real_data = data.get("data")
-    if isinstance(real_data, list):
-        items = real_data
-    elif isinstance(real_data, dict):
-        items = [real_data]
-    else:
-        items = []
-    for idx, item in enumerate(items):
-        if not isinstance(item, dict):
-            continue
-        msg_type = item.get("type")
-        norm = _normalize_real_type(msg_type)
-        if norm not in ("01", "0j"):
-            continue
 
 
 def _handle_login(data: dict) -> None:
@@ -186,18 +165,6 @@ def _handle_reg(data: dict) -> None:
         engine_state._notify_reg_ack(return_code=rc)
 
 
-async def _handle_real_01(
-    item: dict, vals: dict, raw_type_upper: str, is_0b_tick: bool,
-) -> None:
-    """0B/01 체결 처리 — 사망 경로 (폐기됨).
-
-    REAL 메시지는 kiwoom_connector.py에서 tick_queue로 직행하며
-    handle_ws_data → _handle_real 경로로 들어오지 않음.
-    모든 체결 틱 처리는 pipeline_compute.py._handle_real_01_tick에서 수행.
-    """
-    logger.warning("[WS] _handle_real_01 사망 경로 호출 — pipeline_compute.py로 이관됨")
-
-
 def _check_realtime_latency(_ts: int) -> None:
     """실시간 체결 처리 지연 측정 — 50ms 경고, 200ms 초과 시 자동매매 중단 플래그."""
     elapsed = int(time.time() * 1000) - _ts
@@ -274,67 +241,8 @@ async def _handle_real_balance(item: dict, vals: dict) -> None:
     await engine_account._apply_balance_realtime(item, item)
 
 
-async def _handle_real_0j(item: dict, vals: dict) -> None:
-    """0J 업종지수 처리 — 저장 없이 즉시 프론트엔드에 브로드캐스트 (참고용 시장 현황)."""
-    upcode = str(item.get("item", "") or "").strip()
-    if not upcode:
-        return
-    jisu = str(vals.get("10", "") or "").strip()
-    change = str(vals.get("11", "") or "").strip()
-    drate = str(vals.get("12", "") or "").strip()
-    sign = str(vals.get("25", "") or "").strip()
-    if not jisu:
-        return
-    from backend.app.services.engine_account_notify import notify_index_data
-    await notify_index_data(upcode, jisu, change, drate, sign)
-
-
-async def _handle_real(data: dict) -> None:
-    """REAL 메시지 수신 — 데이터 타입별 분기 처리 (돈 데이터 즉시 우회, 연산 데이터 압축)."""
-    if state.REG_REAL_DEBUG_EXTRA_LOG:
-        _log_ws_trnm_json_detail("REAL", data if isinstance(data, dict) else {"_raw": data})
-        _log_real_data_items_preview(data if isinstance(data, dict) else {})
-    
-    real_data = data.get("data")
-    if isinstance(real_data, list):
-        items = real_data
-    elif isinstance(real_data, dict):
-        items = [real_data]
-    else:
-        items = []
-    
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        
-        # 무가공 Raw 데이터 즉시 전송 (MTS 무결성 보장)
-        await notify_raw_real_data(item)
-        
-        try:
-            msg_type = item.get("type")
-            norm = _normalize_real_type(msg_type)
-            vals = item.get("values", {})
-            if not isinstance(vals, dict):
-                vals = {}
-            
-            # 💰 돈 데이터 - 즉시 우회 (체결, 잔고)
-            if norm == "00":
-                await _handle_real_00(item, vals)
-            elif norm in ("04", "80"):
-                await _handle_real_balance(item, vals)
-            # 📊 연산 데이터 - type="0B"는 master_stocks_cache 업데이트 직접 수행
-            elif norm == "0B":
-                raw_type_upper = str(msg_type).upper() if msg_type else ""
-                await _handle_real_01(item, vals, raw_type_upper, is_0b_tick=True)
-            # 📈 업종지수 - 즉시 브로드캐스트 (저장 없음)
-            elif norm == "0j":
-                await _handle_real_0j(item, vals)
-        except Exception as e:
-            logger.error("[REAL] 항목 처리 예외 (계속): %s", e, exc_info=True)
-
-
 async def handle_ws_data(data: dict) -> None:
-    """비동기 호출 — LOGIN/REG는 직접 처리, REAL은 직접 동기 호출."""
+    """비동기 호출 — LOGIN/REG/JIF 처리. REAL은 tick_queue → pipeline_compute에서 처리."""
     try:
         trnm = data.get("trnm")
         if trnm == "LOGIN":
@@ -342,9 +250,6 @@ async def handle_ws_data(data: dict) -> None:
         elif trnm in ("REG", "UNREG", "REMOVE"):
             _handle_reg(data)
             return
-        elif trnm == "REAL":
-            # REAL 시세는 동기 호출로 즉시 처리 (태스크 큐에 쌓지 않음)
-            await _handle_real(data)
         elif trnm == "JIF":
             await _handle_jif(data)
     except Exception:

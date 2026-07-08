@@ -417,6 +417,14 @@ async def _handle_real_tick(
                 _hit = await _handle_real_01_tick(item, vals, broadcast_queue)
                 if _hit:
                     _account_dirty = True
+            # 00 주문체결 처리 (자동매매 체결 콜백 + 잔고 갱신)
+            elif norm_type == "00":
+                from backend.app.services.engine_ws_dispatch import _handle_real_00
+                await _handle_real_00(item, vals)
+            # 04/80 잔고 처리 (실시간 잔고 변동 반영)
+            elif norm_type in ("04", "80"):
+                from backend.app.services.engine_ws_dispatch import _handle_real_balance
+                await _handle_real_balance(item, vals)
             # 0D 호가 처리 (호가 잔량 테이블)
             elif norm_type == "0d":
                 await _handle_real_0d_tick(item, vals, broadcast_queue)
