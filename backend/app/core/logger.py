@@ -9,15 +9,14 @@ Loguru 기반 트레이딩 로거 — 안전한 파일 로깅 포함.
 파일 로깅 안전 전략:
   loguru enqueue=True → multiprocessing.SimpleQueue → asyncio IOCP 충돌 (크래시)
   loguru enqueue=False → 멀티스레드 동시 _file_sink.write → access violation
-  → 해결: 표준 queue.Queue + 전용 데몬 스레드로 파일 쓰기 분리.
-     asyncio 이벤트 루프와 완전 독립, OS 파이프 미사용, IOCP 충돌 없음.
+  → 해결: asyncio.Queue + 단일 이벤트 루프 내 전용 태스크로 파일 쓰기.
+     call_soon_threadsafe로 스레드 안전 큐 적재, 단일 루프 원칙 준수.
 """
 from __future__ import annotations
+import asyncio
 import io
 import logging
-import queue
 import sys
-import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from loguru import logger as _loguru_logger
@@ -27,10 +26,19 @@ LOG_FILE = LOG_DIR / "trading.log"
 _configured = False
 
 
-# ── 안전한 파일 쓰기 큐 + 데몬 스레드 ─────────────────────────────────────────
+# ── 안전한 파일 쓰기 큐 + asyncio 태스크 ──────────────────────────────────────
 
-_file_queue: queue.Queue[str | None] = queue.Queue(maxsize=50_000)
-_writer_started = False
+_file_queue: asyncio.Queue[str | None] | None = None
+_writer_task: asyncio.Task | None = None
+_loop_ref: asyncio.AbstractEventLoop | None = None
+
+
+def _get_file_queue() -> asyncio.Queue[str | None]:
+    """asyncio.Queue 지연 초기화 — 단일 이벤트 루프 내에서 생성."""
+    global _file_queue
+    if _file_queue is None:
+        _file_queue = asyncio.Queue(maxsize=50_000)
+    return _file_queue
 
 
 _MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB — 파일 크기 제한
@@ -64,10 +72,10 @@ def _get_daily_log_path(base_name: str) -> Path:
     return LOG_DIR / f"{stem}_{today}.log"
 
 
-def _file_writer_loop(q: queue.Queue, base_name: str, keep_days: int) -> None:
-    """전용 데몬 스레드 — 큐에서 로그 메시지를 꺼내 파일에 쓴다.
+async def _async_file_writer_loop(base_name: str, keep_days: int) -> None:
+    """단일 asyncio 이벤트 루프 내 파일 쓰기 태스크 — 큐에서 로그 메시지를 꺼내 파일에 쓴다.
 
-    50MB 초과 시 .1, .2 … 로 로테이션하고 오래된 파일은 자동 삭제.
+    10MB 초과 시 .1, .2 … 로 로테이션하고 오래된 파일은 자동 삭제.
     """
     current_date = ""
     fh = None
@@ -89,8 +97,8 @@ def _file_writer_loop(q: queue.Queue, base_name: str, keep_days: int) -> None:
     try:
         while True:
             try:
-                msg = q.get(timeout=2.0)
-            except queue.Empty:
+                msg = await asyncio.wait_for(_get_file_queue().get(), timeout=2.0)
+            except asyncio.TimeoutError:
                 continue
             if msg is None:  # 종료 신호
                 break
@@ -134,6 +142,8 @@ def _file_writer_loop(q: queue.Queue, base_name: str, keep_days: int) -> None:
                     fh.flush()
                 except Exception as e:
                     sys.stderr.write(f"[logger] 파일 쓰기 실패: {e}\n")
+    except asyncio.CancelledError:
+        pass
     finally:
         if fh is not None:
             try:
@@ -143,19 +153,26 @@ def _file_writer_loop(q: queue.Queue, base_name: str, keep_days: int) -> None:
 
 
 def _start_file_writers() -> None:
-    """파일 쓰기 데몬 스레드 시작 — trading.log 단일 파일."""
-    global _writer_started
-    if _writer_started:
+    """파일 쓰기 asyncio 태스크 시작 — setup_loguru()에서 호출 (이벤트 루프 실행 중)."""
+    global _writer_task, _loop_ref
+    if _writer_task is not None and not _writer_task.done():
         return
-    _writer_started = True
+    _loop_ref = asyncio.get_running_loop()
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    t1 = threading.Thread(
-        target=_file_writer_loop,
-        args=(_file_queue, "trading.log", 2),
-        name="log-writer-info",
-        daemon=True,
-    )
-    t1.start()
+    _writer_task = asyncio.create_task(_async_file_writer_loop("trading.log", 2))
+
+
+async def stop_file_writers() -> None:
+    """파일 쓰기 태스크 정지 — 앱 종료 시 호출."""
+    global _writer_task
+    q = _get_file_queue()
+    await q.put(None)  # 종료 신호
+    if _writer_task is not None:
+        try:
+            await asyncio.wait_for(_writer_task, timeout=5.0)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            _writer_task.cancel()
+        _writer_task = None
 
 
 # ── loguru 커스텀 싱크 (큐에 넣기만 함, 파일 I/O 없음) ──────────────────────
@@ -164,12 +181,22 @@ _FILE_FORMAT = "{time:YYYY-MM-DD HH:mm:ss.SSS} [{level: <8}] {name}: {message}\n
 
 
 def _info_file_sink(message) -> None:
-    """INFO 이상 로그를 큐에 넣는다 — 실제 파일 쓰기는 데몬 스레드가 담당."""
+    """INFO 이상 로그를 asyncio.Queue에 적재 — 실제 파일 쓰기는 asyncio 태스크가 담당.
+
+    loguru sink는 어떤 스레드에서도 호출될 수 있으므로 call_soon_threadsafe로
+    메인 이벤트 루프에 큐 적재를 예약한다.
+    """
     try:
-        text = message  # loguru Message 객체는 str()로 변환됨
-        _file_queue.put_nowait(str(text))
-    except queue.Full:
-        pass  # 큐 가득 차면 버림 (크래시보다 나음)
+        if _loop_ref is not None and not _loop_ref.is_closed():
+            q = _get_file_queue()
+            def _safe_put(msg=str(message)):
+                try:
+                    q.put_nowait(msg)
+                except asyncio.QueueFull:
+                    pass
+            _loop_ref.call_soon_threadsafe(_safe_put)
+    except RuntimeError:
+        pass  # 루프가 닫혀 있음 — 로그 버림
 
 
 # ── InterceptHandler: 표준 logging → loguru 리다이렉트 ────────────────────────
@@ -253,7 +280,7 @@ def setup_loguru(log_level: str = "INFO") -> None:
         colorize=False,
     )
 
-    # 파일 쓰기 데몬 스레드 시작
+    # 파일 쓰기 asyncio 태스크 시작
     _start_file_writers()
 
     # ── 표준 logging → loguru 인터셉트 ────────────────────────────────────

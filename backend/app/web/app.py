@@ -172,6 +172,11 @@ async def lifespan(app: FastAPI):
     await stop_db_writer()
     await close_db_connection()
     logger.info("[웹서버] DB Writer 및 DB 커넥션 정리 완료")
+
+    # 파일 로거 태스크 정지
+    from backend.app.core.logger import stop_file_writers
+    await stop_file_writers()
+    logger.info("[웹서버] 파일 로거 태스크 정지 완료")
     
     # 상태 이벤트 정리
     state.engine_ready_event.clear()
