@@ -249,9 +249,9 @@ function createFixedMode<T extends object>(
   function renderDataRow(row: T, idx: number): HTMLElement {
     const tr = document.createElement('tr')
     tr.setAttribute('data-row-type', 'data')
+    if (zebraStriping && idx % 2 === 1) tr.style.backgroundColor = '#f9f9f9'
     const rs = rowStyle ? rowStyle(row, idx) : undefined
     if (rs) Object.assign(tr.style, rs)
-    if (zebraStriping && idx % 2 === 1) tr.style.backgroundColor = '#f9f9f9'
     for (let i = 0; i < columns.length; i++) {
       const c = columns[i]
       const td = document.createElement('td')
@@ -375,14 +375,16 @@ function createFixedMode<T extends object>(
           if (rowEl) {
             rowEl.style.display = ''
             const dataRow = row as T
+            if (zebraStriping) {
+               rowEl.style.backgroundColor = (i % 2 === 1) ? '#f9f9f9' : 'transparent'
+            }
             const rs = rowStyle ? rowStyle(dataRow, i) : undefined
             if (rs) {
               Object.assign(rowEl.style, rs)
             } else {
+              rowEl.style.removeProperty('background')
               rowEl.style.removeProperty('background-color')
-            }
-            if (zebraStriping) {
-               rowEl.style.backgroundColor = (i % 2 === 1) ? '#f9f9f9' : 'transparent'
+              rowEl.style.removeProperty('opacity')
             }
 
             // 셀 내용 갱신
@@ -468,14 +470,16 @@ function createFixedMode<T extends object>(
           }
 
           const dataRow = row as T
+          if (zebraStriping) {
+             rowEl.style.backgroundColor = (i % 2 === 1) ? '#f9f9f9' : 'transparent'
+          }
           const rs = rowStyle ? rowStyle(dataRow, i) : undefined
           if (rs) {
             Object.assign(rowEl.style, rs)
           } else {
+            rowEl.style.removeProperty('background')
             rowEl.style.removeProperty('background-color')
-          }
-          if (zebraStriping) {
-             rowEl.style.backgroundColor = (i % 2 === 1) ? '#f9f9f9' : 'transparent'
+            rowEl.style.removeProperty('opacity')
           }
 
           // 셀 내용 갱신 (keyFn 기반 경로와 동일)
@@ -530,14 +534,16 @@ function createFixedMode<T extends object>(
     if (!rowEl || rowEl.style.display === 'none') return
 
     const dataRow = currentRows[idx] as T
+    if (zebraStriping) {
+       rowEl.style.backgroundColor = (idx % 2 === 1) ? '#f9f9f9' : 'transparent'
+    }
     const rs = rowStyle ? rowStyle(dataRow, idx) : undefined
     if (rs) {
       Object.assign(rowEl.style, rs)
     } else {
+      rowEl.style.removeProperty('background')
       rowEl.style.removeProperty('background-color')
-    }
-    if (zebraStriping) {
-       rowEl.style.backgroundColor = (idx % 2 === 1) ? '#f9f9f9' : 'transparent'
+      rowEl.style.removeProperty('opacity')
     }
     
     const tds = rowEl.children
