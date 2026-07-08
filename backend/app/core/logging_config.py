@@ -10,10 +10,10 @@ def parse_log_level(raw: Any) -> str:
     return s if s in valid else "INFO"
 
 
-def configure_app_logging() -> str:
+async def configure_app_logging() -> str:
     from backend.app.config import get_settings
     from backend.app.core.logger import setup_loguru
 
     level = parse_log_level(get_settings().LOG_LEVEL)
-    setup_loguru(log_level=level)
+    await setup_loguru(log_level=level)
     return level
