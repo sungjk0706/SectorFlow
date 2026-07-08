@@ -1,16 +1,17 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-08: 차단 원인 우선순위 SSOT 위반 해결 — 전역 조건(보유중/금일매수) 우선 표시**
-  - `buy_filter.py:189-195`: `guard_pass` 전제조건 제거 — 전역 조건이 개별 가드(상승률/하락률/체결강도)보다 항상 우선하도록 수정
-  - 근본 원인: UI 표시(`buy_filter.py`)는 개별 가드 우선, 실행 게이트(`trading.py:117-133`)는 전역 조건 우선 — SSOT 원칙 10 위반
-  - `test_buy_filter.py`: 회귀 테스트 2개 추가 (`test_held_takes_priority_over_rise_guard`, `test_bought_today_takes_priority_over_fall_guard`)
-  - 검증: 53 passed in 1.54s
+- **2026-07-08: 증권사 변경 시 엔진 완전 재초기화 — BrokerRouter 캐시 무효화 + 세션 상태 초기화**
+  - `engine_service.py:50-62`: broker 변경 시 `reset_router()` + `reset_broker_session_state()` 호출 추가
+  - `engine_lifecycle.py:89-118`: `reset_broker_session_state()` 함수 추가 — 구독 플래그, 계좌 데이터, Events 일괄 초기화
+  - `general-settings.ts:644`: 엔진 재기동 안내 문구 추가
+  - 근본 원인: broker 변경 시 `stop_engine`/`start_engine` 수행했으나 BrokerRouter 캐시 무효화 누락 + 구독/계좌/Event 플래그 미초기화로 이전 증권사 세션 잔존
+  - 검증: py_compile OK, tsc OK, npm run build OK, LS→키움 변경 로그 확인 — 새 증권사 토큰/커넥터/구독 정상 동작
 
 ## 현재 상태
-- **백엔드**: `buy_filter.py` 전역 조건 우선화 완료
-- **프론트엔드**: 변경 없음 (기존 `buy-target.ts` 렌더 로직 그대로 작동)
-- **Git**: 커밋 대기
+- **백엔드**: 증권사 변경 시 엔진 완전 재초기화 (BrokerRouter 캐시 무효화 + 세션 상태 초기화)
+- **프론트엔드**: `general-settings.ts` 증권사 변경 안내 문구 보강
+- **Git**: 커밋 예정
 
 ## 다음 단계
 - 없음

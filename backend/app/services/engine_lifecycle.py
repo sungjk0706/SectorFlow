@@ -86,6 +86,38 @@ async def stop_engine() -> None:
     # (포지션·예수금은 사용자가 직접 초기화할 때만 리셋)
 
 
+def reset_broker_session_state() -> None:
+    """broker 변경 시 이전 증권사 세션 상태를 완전히 초기화한다.
+
+    stop_engine() 이후, start_engine() 이전에 호출된다.
+    일반 엔진 중지 시에는 호출되지 않는다 (포지션 등 사용자 데이터 보존).
+
+    원칙 10 (SSOT): 이전 증권사 데이터를 완전히 제거하여 새 증권사 데이터가 단일 진실 원천이 됨.
+    원칙 17 (플래그 단일 소스): 모든 증권사 세션 플래그를 단일 함수에서 일괄 초기화.
+    원칙 11 (이벤트 기반): Events를 clear하여 새 증권사 기동 시 대기 상태로 복원.
+    """
+    # 구독 상태 플래그
+    state.ws_account_subscribed = False
+    state.quote_subscribed = False
+    state.ws_connection_status = False
+    state.account_rest_bootstrapped = False
+    state.login_ok = False
+    state.access_token = None
+
+    # 계좌 데이터 (이전 증권사 데이터 무효화)
+    state.account_snapshot = {}
+    state.broker_rest_totals = {"total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_rate": 0.0}
+    state.positions = []
+    state.snapshot_history = []
+    state.auto_trade = None
+
+    # Events (새 증권사 기동 시 재설정될 때까지 대기 상태로 복원)
+    state.data_ready_event.clear()
+    state.bootstrap_event.clear()
+    state.sector_summary_ready_event.clear()
+    state.ws_reg_pipeline_done.clear()
+
+
 def is_engine_running() -> bool:
     """엔진이 현재 가동 중인지 확인한다."""
     return state.running and state.engine_task is not None and not state.engine_task.done()
