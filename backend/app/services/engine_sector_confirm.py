@@ -176,8 +176,8 @@ async def _flush_sector_recompute_impl() -> None:
         # buy_targets 변경 감지를 위해 이전 값 저장
         prev_targets = existing.buy_targets if hasattr(existing, 'buy_targets') else None
 
-        from backend.app.services.engine_symbol_utils import _base_stk_cd
-        _held = {_base_stk_cd(cd) for cd in state.checked_stocks}
+        from backend.app.services import engine_account
+        _held = await engine_account.get_held_codes()
         _bought_today: set[str] = set()
         if state.auto_trade is not None:
             _bought_today = set(state.auto_trade._bought_today.keys())
@@ -237,8 +237,8 @@ async def _full_recompute(codes_snapshot: set[str] | None = None) -> None:
         trim_trade_amt_pct=trim_trade,
         trim_change_rate_pct=trim_change,
     )
-    from backend.app.services.engine_symbol_utils import _base_stk_cd
-    _held = {_base_stk_cd(cd) for cd in state.checked_stocks}
+    from backend.app.services import engine_account
+    _held = await engine_account.get_held_codes()
     _bought_today: set[str] = set()
     if state.auto_trade is not None:
         _bought_today = set(state.auto_trade._bought_today.keys())

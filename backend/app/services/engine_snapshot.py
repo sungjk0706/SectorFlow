@@ -240,15 +240,3 @@ async def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
         except (TypeError, ValueError):
             return 0.0
     return None
-
-
-async def _run_snapshot_and_sell_check(force_rest: bool = False) -> None:
-    """
-    매도 조건 검사 + (선택) REST 부트스트랩.
-    - force_rest=True: 수동 동기화·엔진 최초 기동 -- kt00001/18 (예수금·수량·매입).
-    - 부트스트랩 전 또는 WS 미연결: REST 조회.
-    - WS 연결·부트스트랩 완료 후 force_rest=False: REST 생략, 스냅샷 메타만 갱신(합계는 마지막 REST 유지).
-    """
-    from backend.app.services import engine_strategy_core
-    
-    await engine_strategy_core.run_snapshot_and_sell_check(force_rest)

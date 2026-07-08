@@ -32,7 +32,6 @@ class EngineState:
         self.engine_loop_ref: asyncio.AbstractEventLoop | None = None
         self.access_token: str | None = None
         self.login_ok = False
-        self.checked_stocks: set = set()
         self.engine_user_id: str = ""
         self.last_ws_limit_warn_ts: float = 0.0
         self.realtime_latency_exceeded: bool = False

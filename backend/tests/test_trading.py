@@ -129,17 +129,7 @@ class TestExecuteBuyGates:
         mgr = _make_manager(_raw_settings(time_scheduler_on=False))
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.realtime_latency_exceeded = False
-            result = await mgr.execute_buy("005930", 70000, set(), "token")
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_already_checked_stock_returns_false(self):
-        mgr = _make_manager()
-        checked = {"005930"}
-        with patch("backend.app.services.engine_state.state") as mock_state:
-            mock_state.realtime_latency_exceeded = False
-            mock_state.integrated_system_settings_cache = _raw_settings()
-            result = await mgr.execute_buy("005930", 70000, checked, "token")
+            result = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
 
     @pytest.mark.asyncio
@@ -149,7 +139,7 @@ class TestExecuteBuyGates:
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings()
-            result = await mgr.execute_buy("005930", 70000, set(), "token")
+            result = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
 
     @pytest.mark.asyncio
@@ -159,7 +149,7 @@ class TestExecuteBuyGates:
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_period="2h")
-            result = await mgr.execute_buy("005930", 70000, set(), "token")
+            result = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
 
     @pytest.mark.asyncio
@@ -191,7 +181,7 @@ class TestExecuteBuyGates:
             mock_task = MagicMock()
             mock_task.add_done_callback = MagicMock()
             mock_create_task.return_value = mock_task
-            result = await mgr.execute_buy("005930", 70000, set(), "token")
+            result = await mgr.execute_buy("005930", 70000, "token")
         assert result is True
 
     @pytest.mark.asyncio
@@ -201,7 +191,7 @@ class TestExecuteBuyGates:
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings()
-            result = await mgr.execute_buy("005930", 70000, set(), "token")
+            result = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
 
     @pytest.mark.asyncio
@@ -211,7 +201,7 @@ class TestExecuteBuyGates:
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings()
-            result = await mgr.execute_buy("005930", 70000, set(), "token")
+            result = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
 
     @pytest.mark.asyncio
@@ -223,7 +213,7 @@ class TestExecuteBuyGates:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings()
-            result = await mgr.execute_buy("005930", 0, set(), "token")
+            result = await mgr.execute_buy("005930", 0, "token")
         assert result is False
 
     @pytest.mark.asyncio
@@ -235,7 +225,7 @@ class TestExecuteBuyGates:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(buy_amt=0)
-            result = await mgr.execute_buy("005930", 70000, set(), "token")
+            result = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
 
     @pytest.mark.asyncio
@@ -249,7 +239,7 @@ class TestExecuteBuyGates:
                    return_value=[{"qty": 1}]):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(max_stock_cnt=1)
-            result = await mgr.execute_buy("005930", 70000, set(), "token")
+            result = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
 
 

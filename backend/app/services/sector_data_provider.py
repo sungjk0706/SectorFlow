@@ -256,8 +256,8 @@ async def recompute_sector_summary_now() -> None:
             trim_trade_amt_pct=trim_trade,
             trim_change_rate_pct=trim_change,
         )
-        from backend.app.services.engine_symbol_utils import _base_stk_cd
-        _held = {_base_stk_cd(cd) for cd in state.checked_stocks}
+        from backend.app.services import engine_account
+        _held = await engine_account.get_held_codes()
         _bought_today: set[str] = set()
         if state.auto_trade is not None:
             _bought_today = set(state.auto_trade._bought_today.keys())

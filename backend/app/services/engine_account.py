@@ -458,6 +458,24 @@ async def _broadcast_account(reason: str | None = None) -> None:
 
 # ── 헬퍼 함수 ─────────────────────────────────────────────────────────
 
+async def get_held_codes() -> set[str]:
+    """보유 종목 코드 집합 (정규화 6자리). SSOT: positions/dry_run에서 직접 파생."""
+    from backend.app.services.engine_symbol_utils import _base_stk_cd
+    from backend.app.services import dry_run
+
+    if is_test_mode(state.integrated_system_settings_cache):
+        return {_base_stk_cd(cd) for cd in await dry_run.position_codes()}
+    out: set[str] = set()
+    for s in list(state.positions):
+        try:
+            cd = str(s.get("stk_cd", "")).strip()
+            if cd and int(s.get("qty", 0) or 0) > 0:
+                out.add(_base_stk_cd(cd))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 async def _position_codes_with_qty() -> set[str]:
     """보유 수량이 있는 종목 코드(레이더·작전 REG 해제 시 유지 대상)."""
     from backend.app.services import dry_run
