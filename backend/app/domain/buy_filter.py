@@ -184,13 +184,13 @@ def create_buy_targets(
     _held = held_codes or set()
     _bought_today = bought_today_codes or set()
 
-    # ── 보유/금일매수 종목: 기술적 가드 통과 후 매수 불가 재분류 ──
+    # ── 보유/금일매수 종목: 전역 조건이 기술적 가드보다 우선 (SSOT: trading.py 실행 게이트와 동일 순서) ──
     # guard_pass=False → blocked_targets 로 이동, UI 제한 컬럼 "차단" 표시
     for s, _ in all_stocks:
-        if s.guard_pass and s.code in _held:
+        if s.code in _held:
             s.guard_pass = False
             s.guard_reason = "보유중"
-        elif s.guard_pass and s.code in _bought_today:
+        elif s.code in _bought_today:
             s.guard_pass = False
             s.guard_reason = "금일매수"
 
