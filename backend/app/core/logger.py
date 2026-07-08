@@ -19,6 +19,8 @@ import logging
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+
+import aiofiles
 from loguru import logger as _loguru_logger
 LOG_DIR = Path(__file__).resolve().parents[2] / "logs"
 LOG_FILE = LOG_DIR / "trading.log"
@@ -45,7 +47,7 @@ _MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB — 파일 크기 제한
 _BACKUP_COUNT = 5  # 최대 5개 파일 보관
 
 
-def _rotate_old_logs(pattern: str, keep_days: int) -> None:
+async def _rotate_old_logs(pattern: str, keep_days: int) -> None:
     """오래된 로그 파일 자동 삭제 — 파일명의 날짜 기준으로 keep_days일 이전 파일 제거.
 
     파일명 형식: trading_2026-04-28.log, trading_debug_2026-04-28.1.log
@@ -55,12 +57,13 @@ def _rotate_old_logs(pattern: str, keep_days: int) -> None:
     try:
         cutoff = (datetime.now() - timedelta(days=keep_days)).strftime("%Y-%m-%d")
         date_re = re.compile(r"(\d{4}-\d{2}-\d{2})")
-        for f in LOG_DIR.glob(pattern):
-            if not f.is_file():
+        files = await asyncio.to_thread(lambda: list(LOG_DIR.glob(pattern)))
+        for f in files:
+            if not await asyncio.to_thread(f.is_file):
                 continue
             m = date_re.search(f.name)
             if m and m.group(1) < cutoff:
-                f.unlink(missing_ok=True)
+                await asyncio.to_thread(f.unlink, missing_ok=True)
     except Exception as e:
         sys.stderr.write(f"[logger] _rotate_old_logs 실패: {e}\n")
 
@@ -83,14 +86,14 @@ async def _async_file_writer_loop(base_name: str, keep_days: int) -> None:
     part = 0  # 현재 파트 번호 (0 = 기본)
     stem = base_name.replace(".log", "")
 
-    def _open_part() -> io.TextIOWrapper | None:
+    async def _open_part():
         """현재 part 번호에 맞는 파일 핸들을 연다."""
         nonlocal log_path
         today = datetime.now().strftime("%Y-%m-%d")
         suffix = f".{part}" if part > 0 else ""
         log_path = LOG_DIR / f"{stem}_{today}{suffix}.log"
         try:
-            return open(log_path, "a", encoding="utf-8", buffering=1)
+            return await aiofiles.open(log_path, "a", encoding="utf-8", buffering=1)
         except Exception:
             return None
 
@@ -107,30 +110,31 @@ async def _async_file_writer_loop(base_name: str, keep_days: int) -> None:
                 # 날짜 변경 → 파일 교체 + 오래된 파일 정리
                 if fh is not None:
                     try:
-                        fh.close()
+                        await fh.close()
                     except Exception as e:
                         sys.stderr.write(f"[logger] 파일 핸들 close 실패 (날짜 변경): {e}\n")
                 current_date = today
                 part = 0
-                fh = _open_part()
+                fh = await _open_part()
                 if fh is None:
                     continue
-                _rotate_old_logs(f"{base_name.replace('.log', '')}_*.log", keep_days)
+                await _rotate_old_logs(f"{base_name.replace('.log', '')}_*.log", keep_days)
 
             # 크기 초과 → 다음 파트로 로테이션
-            if log_path is not None and log_path.exists():
+            if log_path is not None and await asyncio.to_thread(log_path.exists):
                 try:
-                    if log_path.stat().st_size >= _MAX_FILE_SIZE:
+                    stat_size = await asyncio.to_thread(lambda: log_path.stat().st_size)
+                    if stat_size >= _MAX_FILE_SIZE:
                         if fh is not None:
-                            fh.close()
+                            await fh.close()
                         part += 1
                         # _BACKUP_COUNT 초과 시 가장 오래된 파일 삭제
                         if part > _BACKUP_COUNT:
                             oldest_part = part - _BACKUP_COUNT - 1
                             oldest_suffix = f".{oldest_part}" if oldest_part > 0 else ""
                             oldest_path = LOG_DIR / f"{stem}_{today}{oldest_suffix}.log"
-                            oldest_path.unlink(missing_ok=True)
-                        fh = _open_part()
+                            await asyncio.to_thread(oldest_path.unlink, missing_ok=True)
+                        fh = await _open_part()
                         if fh is None:
                             continue
                 except Exception as e:
@@ -138,8 +142,8 @@ async def _async_file_writer_loop(base_name: str, keep_days: int) -> None:
 
             if fh is not None:
                 try:
-                    fh.write(msg)
-                    fh.flush()
+                    await fh.write(msg)
+                    await fh.flush()
                 except Exception as e:
                     sys.stderr.write(f"[logger] 파일 쓰기 실패: {e}\n")
     except asyncio.CancelledError:
@@ -147,18 +151,18 @@ async def _async_file_writer_loop(base_name: str, keep_days: int) -> None:
     finally:
         if fh is not None:
             try:
-                fh.close()
+                await fh.close()
             except Exception as e:
                 sys.stderr.write(f"[logger] 파일 핸들 close 실패 (finally): {e}\n")
 
 
-def _start_file_writers() -> None:
+async def _start_file_writers() -> None:
     """파일 쓰기 asyncio 태스크 시작 — setup_loguru()에서 호출 (이벤트 루프 실행 중)."""
     global _writer_task, _loop_ref
     if _writer_task is not None and not _writer_task.done():
         return
     _loop_ref = asyncio.get_running_loop()
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(LOG_DIR.mkdir, parents=True, exist_ok=True)
     _writer_task = asyncio.create_task(_async_file_writer_loop("trading.log", 2))
 
 
@@ -236,14 +240,14 @@ class InterceptHandler(logging.Handler):
 
 # ── 메인 설정 함수 ────────────────────────────────────────────────────────────
 
-def setup_loguru(log_level: str = "INFO") -> None:
+async def setup_loguru(log_level: str = "INFO") -> None:
     """앱 기동 시 1회 호출 — 콘솔 + 파일(trading.log) 2채널 설정."""
     global _configured
     if _configured:
         return
     _configured = True
 
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(LOG_DIR.mkdir, parents=True, exist_ok=True)
 
     _loguru_logger.remove()  # 기본 핸들러 제거
 
@@ -281,7 +285,7 @@ def setup_loguru(log_level: str = "INFO") -> None:
     )
 
     # 파일 쓰기 asyncio 태스크 시작
-    _start_file_writers()
+    await _start_file_writers()
 
     # ── 표준 logging → loguru 인터셉트 ────────────────────────────────────
     logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)

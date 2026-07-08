@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
     # --- startup ---
     _t_lifespan_start = time.perf_counter()
     from backend.app.core.logging_config import configure_app_logging
-    configure_app_logging()
+    await configure_app_logging()
 
     
 

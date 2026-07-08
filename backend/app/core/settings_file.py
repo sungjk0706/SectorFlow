@@ -3,9 +3,13 @@
 설정 데이터베이스(SQLite) 읽기/쓰기 헬퍼.
 단일 사용자 모드: SQLite의 integrated_system_settings 단일 테이블 사용.
 """
+import asyncio
 import json
 import logging
+from pathlib import Path
 from typing import Any
+
+import aiofiles
 
 logger = logging.getLogger(__name__)
 
@@ -253,15 +257,16 @@ async def load_integrated_system_settings() -> dict:
             db_data[key] = default_value
 
     if "_broker_specs" not in db_data or not db_data["_broker_specs"]:
-        from pathlib import Path
         broker_specs_dir = Path(__file__).parent.parent.parent / "data" / "broker_specs"
-        if broker_specs_dir.exists():
+        if await asyncio.to_thread(broker_specs_dir.exists):
             db_data["_broker_specs"] = {}
-            for spec_file in broker_specs_dir.glob("*.json"):
+            spec_files = await asyncio.to_thread(lambda: list(broker_specs_dir.glob("*.json")))
+            for spec_file in spec_files:
                 broker_name = spec_file.stem
                 try:
-                    with open(spec_file, "r", encoding="utf-8") as f:
-                        spec_data = json.load(f)
+                    async with aiofiles.open(spec_file, mode="r", encoding="utf-8") as f:
+                        content = await f.read()
+                    spec_data = json.loads(content)
                     db_data["_broker_specs"][broker_name] = spec_data
                     logger.info("[설정] broker_specs 초기화: %s", broker_name)
                 except Exception as e:
