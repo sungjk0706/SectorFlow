@@ -83,7 +83,7 @@ class AutoTradeManager:
                 today, f"{self._daily_buy_spent:,}", len(self._bought_today),
             )
 
-    async def execute_buy(self, stk_cd: str, current_price: float, checked_stocks: set,
+    async def execute_buy(self, stk_cd: str, current_price: float,
                     access_token: str, force_buy: bool = False, reason: str = "") -> bool:
         """
         매수 주문 실행.
@@ -113,10 +113,6 @@ class AutoTradeManager:
                 f"(force_buy={force_buy}, source=auto_signal)"
             )
             return False
-        if stk_cd in checked_stocks:
-            self.log_callback(f" [매수차단] {stk_cd} 이미 보유/감시 중인 종목입니다.")
-            return False
-
         # ── 재매수 차단 (설정 기반: ON/OFF + 차단 기간) ──────────────────────
         rebuy_block_on = bool(settings.get("rebuy_block_on", True))
         if rebuy_block_on:
@@ -344,9 +340,6 @@ class AutoTradeManager:
             price=fill_price, qty=buy_qty,
             reason=_buy_reason, trade_mode=_mode,
         )
-
-        # ── 매수 성공 즉시 _checked_stocks 반영 -- 다음 매수 신호에서 한도 초과 차단 ──
-        checked_stocks.add(stk_cd)
 
         # ── 매수 한도 상태 WS 브로드캐스트 (account-update보다 선행) ────────
         # buy-limit-status가 먼저 전송되어 uiStore.buyLimitStatus가 갱신된 후,

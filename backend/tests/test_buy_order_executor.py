@@ -71,7 +71,6 @@ def fresh_state():
     mock_state.auto_trade._ensure_daily_buy_counter = AsyncMock()
     mock_state.sector_summary_cache = _sector_summary()
     mock_state.integrated_system_settings_cache = _default_settings()
-    mock_state.checked_stocks = set()
     mock_state.access_token = "test_token"
     mock_state._last_global_buy_ts = 0.0
     return mock_state

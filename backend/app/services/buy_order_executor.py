@@ -152,7 +152,7 @@ async def evaluate_buy_candidates() -> None:
             if _price <= 0:
                 break
             _ordered = await state.auto_trade.execute_buy(
-                s.code, float(_price), state.checked_stocks, state.access_token or "",
+                s.code, float(_price), state.access_token or "",
                 force_buy=False,
                 reason=f"업종자동매수 업종={s.sector}",
             )

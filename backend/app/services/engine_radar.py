@@ -177,7 +177,6 @@ async def _clear_radar_and_ready_memory() -> None:
         entry.pop("_subscribed", None)
     state.integrated_system_settings_cache["sector_stock_layout"] = []
     _rebuild_layout_cache([])
-    state.checked_stocks.clear()
 
 
 async def _tracked_ui_stock_codes() -> set[str]:

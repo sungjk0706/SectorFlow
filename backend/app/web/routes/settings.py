@@ -124,7 +124,6 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         for entry in state.master_stocks_cache.values():
             entry.pop("_subscribed", None)
         state.snapshot_history.clear()
-        state.checked_stocks.clear()
         _rebuild_positions_cache([])
         subscribed_count_after = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
         _logger.info(

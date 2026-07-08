@@ -140,7 +140,6 @@ async def run_engine_loop() -> None:
         entry.pop("_subscribed", None)
     from backend.app.services.engine_state import _notify_reg_ack
     _notify_reg_ack()
-    state.checked_stocks.clear()
     state.integrated_system_settings_cache["sector_stock_layout"] = []
     from backend.app.services.engine_account_notify import _rebuild_layout_cache
     _rebuild_layout_cache([])

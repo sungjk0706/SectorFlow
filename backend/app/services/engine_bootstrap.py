@@ -73,8 +73,8 @@ async def _deferred_sector_summary() -> None:
                 trim_change_rate_pct=_trim_change,
             )
             _sector_summary = await compute_full_sector_summary(**_inputs, **_kwargs)
-            from backend.app.services.engine_symbol_utils import _base_stk_cd
-            _held_codes = {_base_stk_cd(cd) for cd in state.checked_stocks}
+            from backend.app.services import engine_account
+            _held_codes = await engine_account.get_held_codes()
             _bought_today: set[str] = set()
             if state.auto_trade is not None:
                 _bought_today = set(state.auto_trade._bought_today.keys())
