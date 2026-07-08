@@ -2,7 +2,7 @@
  * Canvas 2D API 기반 프리미엄 수익 현황 차트
  * - 막대: 일별 실현손익 (Daily PnL)
  * - 라인: 누적 실현손익 (Cumulative PnL / Equity Curve)
- * - 인터랙티브: 크로스헤어, 툴팁, 막대 클릭 필터링
+ * - 인터랙티브: 크로스헤어, 툴팁
  */
 
 import { pnlColor, FONT_FAMILY, COLOR, fmtWon } from './common/ui-styles'
@@ -26,7 +26,6 @@ export interface ProfitChartOptions {
   mode?: 'pnl' | 'volume'
   maxBars?: number
   height?: number
-  onBarClick?: (date: string) => void
   onDateRangeChange?: (from: string, to: string) => void
   dateFrom?: string
   dateTo?: string
@@ -441,12 +440,6 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
 
   canvas.addEventListener('mousemove', onMove)
   canvas.addEventListener('mouseleave', () => { hitIdx = null; render(); tooltip.style.display = 'none' })
-  canvas.addEventListener('click', () => {
-    if (hitIdx !== null && displayData[hitIdx].pnl !== null) {
-      options.onBarClick?.(displayData[hitIdx].date)
-    }
-  })
-
   function generateDummyData(): ProfitChartRow[] {
     const rows: ProfitChartRow[] = []
     const now = new Date()

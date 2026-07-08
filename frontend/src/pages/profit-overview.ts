@@ -325,11 +325,12 @@ function mount(container: HTMLElement): void {
   Object.assign(detailBtn.style, {
     padding: '10px 24px',
     fontSize: FONT_SIZE.label,
+    fontWeight: FONT_WEIGHT.semibold,
     border: '1px solid #ddd',
     borderRadius: '6px',
     background: '#fafafa',
     cursor: 'pointer',
-    color: COLOR.secondary,
+    color: COLOR.down,
   })
   detailBtn.textContent = '상세 분석 보기 →'
   detailBtn.addEventListener('click', () => {
@@ -347,9 +348,6 @@ function mount(container: HTMLElement): void {
     data: buildChartFromDailySummary(hotStore.getState().dailySummary),
     dateFrom: storedFrom,
     dateTo: storedTo,
-    onBarClick: () => {
-      location.hash = '#/profit-detail'
-    },
     onDateRangeChange: async (from: string, to: string) => {
       try {
         const settings = globalSettingsManager.getSettings()
