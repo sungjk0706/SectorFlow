@@ -1,6 +1,14 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-08: type 00/04/80 REAL 메시지 silent drop 치명적 결함 해결**
+  - `pipeline_compute.py`: `_handle_real_tick`에 type "00"(주문체결)/"04"/"80"(잔고) 분기 추가 → `_handle_real_00`, `_handle_real_balance` 호출
+  - `kiwoom_connector.py`: `_recv_loop` 폴백 경로(`else: await self._on_message(msg)`) 제거 (원칙 20 폴백 금지)
+  - `engine_ws_dispatch.py`: 사망 경로 정리 — `_handle_real`, `_handle_real_01`, `_handle_real_0j`, `_log_real_data_items_preview` 삭제, `handle_ws_data` REAL 분기 제거 (원칙 16 살아있는 경로)
+  - `engine_ws.py`: `_broker_message_handler`에서 "REAL" 제거 (tick_queue로 직행하므로 도달 불가)
+  - 근본 원인: REAL 메시지가 `tick_queue`로 직행하지만 `_handle_real_tick`에 "00"/"04"/"80" 분기가 없어 silent drop. 테스트모드에서는 `fake_fill_event`가 우회 호출하여 은폐
+  - 검증: py_compile 4파일 OK, pytest 1013 passed, 런타임 기동 13:24 에러 0건, 수신율 91.4% 정상
+
 - **2026-07-08: 단일 asyncio 이벤트 루프 원칙 준수 — threading.Thread 제거 + asyncio.get_event_loop() 제거**
   - `logger.py`: `threading.Thread` + `queue.Queue` → `asyncio.create_task` + `asyncio.Queue` 전환, `stop_file_writers()` 추가
   - `ws_subscribe_control.py:77`: `asyncio.get_event_loop().time()` → `time.time()` (Python 3.12+ RuntimeError 위험 제거)
@@ -9,19 +17,26 @@
   - 검증: py_compile 3파일 OK, pytest 1024 passed, 런타임 기동 로그 에러 0건
 
 ## 현재 상태
-- **백엔드**: 단일 asyncio 이벤트 루프 원칙 준수 — threading.Thread 제거, asyncio.Queue 기반 파일 로깅
+- **백엔드**: type 00/04/80 REAL 메시지 silent drop 결함 해결, 단일 asyncio 이벤트 루프 원칙 준수
 - **프론트엔드**: 변경 없음
-- **Git**: `459e0ca` push 완료
+- **Git**: `d5778ac` push 완료
 
 ## 다음 단계
-- 체결지연 50ms 초과 WARNING 3건 원인 조사 (런타임 기동 중 발생, 12:37~12:39)
+- 체결지연 50ms 초과 WARNING 원인 조사 (런타임 기동 중 발생, 13:26~)
+  - 13:26:08~22 — 50~143ms 지연 7건 (200ms 초과 없음)
+  - 조사 필요: `_handle_real_01_tick` await 체인 프로파일링, `check_sell_conditions`/`_refresh_account_snapshot_meta`/`broadcast_account_update` 지연 기여도 측정
 
 ## 미해결 문제
-- **체결지연 50ms 초과 WARNING 3건** (2026-07-08 12:37~12:39 런타임 기동 중 발생)
-  - `trading_2026-07-08.log:9187` — 12:37:44 처리 시간 66ms
-  - `trading_2026-07-08.log:9191` — 12:39:45 처리 시간 52ms
-  - `trading_2026-07-08.log:9193` — 12:39:49 처리 시간 62ms
-  - 조사 필요: 처리 경로 추적, 지연 발생 위치 식별, 원칙 7(블로킹=지연) 위반 여부 확인
+- **체결지연 50ms 초과 WARNING 7건** (2026-07-08 13:26~ 런타임 기동 중 발생)
+  - `trading_2026-07-08.log:9597` — 13:26:08 처리 시간 73ms
+  - `trading_2026-07-08.log:9599` — 13:26:11 처리 시간 78ms
+  - `trading_2026-07-08.log:9601` — 13:26:15 처리 시간 67ms
+  - `trading_2026-07-08.log:9603` — 13:26:17 처리 시간 143ms
+  - `trading_2026-07-08.log:9605` — 13:26:19 처리 시간 55ms
+  - `trading_2026-07-08.log:9607` — 13:26:19 처리 시간 97ms
+  - `trading_2026-07-08.log:9609` — 13:26:22 처리 시간 50ms
+  - 200ms 초과 없음 — 자동매매 중단 플래그 미발생
+  - 조사 필요: `_handle_real_01_tick` await 체인 프로파일링, 지연 발생 위치 식별
 
 ## 테스트 실행 원칙 (필수 준수)
 
