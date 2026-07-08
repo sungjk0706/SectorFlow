@@ -462,7 +462,7 @@ function mount(container: HTMLElement): void {
     stat.style.cssText = STAT_STYLE
 
     const labelEl = document.createElement('span')
-    Object.assign(labelEl.style, { fontSize: '11px', color: COLOR.secondary })
+    Object.assign(labelEl.style, { fontSize: FONT_SIZE.label, color: COLOR.secondary })
     labelEl.textContent = STAT_LABELS[i]
 
     const valEl = document.createElement('span')

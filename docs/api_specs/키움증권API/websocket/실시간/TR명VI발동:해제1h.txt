@@ -1,0 +1,60 @@
+국내주식
+WEBSOCKET
+실시간시세
+
+기본 정보
+※ 1h (VI발동/해제)
+VI발동 및 해제 정보를 수신합니다.
+Method	POST
+운영 도메인	wss://api.kiwoom.com:10000
+모의투자 도메인	wss://mockapi.kiwoom.com:10000(KRX만 지원가능)
+URL	/api/dostk/websocket
+Format	JSON
+Content-Type	application/json;charset=UTF-8
+다른 TR 확인하기
+TR명
+VI발동/해제
+1h
+요청
+Body
+Element	한글명	type	Required	Length	Description
+trnm	서비스명	String	Y	10	REG : 등록 , REMOVE : 해지
+grp_no	그룹번호	String	Y	4	
+refresh	기존등록유지여부	String	Y	1	등록(REG)시
+0:기존유지안함 1:기존유지(Default)
+0일경우 기존등록한 item/type은 해지, 1일경우 기존등록한 item/type 유지
+해지(REMOVE)시 값 불필요
+data	실시간 등록 리스트	LIST			
+- item	실시간 등록 요소	String[ ]	N	100	거래소별 종목코드, 업종코드 (KRX:039490,NXT:039490_NX,SOR:039490_AL)
+- type	실시간 항목	String[ ]	Y	2	TR 명(0A,0B....)
+응답
+Body
+Element	한글명	type	Required	Length	Description
+return_code	결과코드	int	N		통신결과에대한 코드
+(등록,해지요청시에만 값 전송 0:정상,1:오류 , 데이터 실시간 수신시 미전송)
+return_msg	결과메시지	String	N		통신결과에대한메시지
+trnm	서비스명	String	N		등록,해지요청시 요청값 반환 , 실시간수신시 REAL 반환
+data	실시간 등록리스트	LIST	N		
+- type	실시간항목	String	N		TR 명(0A,0B....)
+- name	실시간 항목명	String	N		
+- item	실시간 등록 요소	String	N		종목코드
+- values	실시간 값 리스트	LIST	N		
+- - 9001	종목코드	String	N		
+- - 302	종목명	String	N		
+- - 13	누적거래량	String	N		단위: 1주
+- - 14	누적거래대금	String	N		단위: 백만원
+- - 9068	VI발동구분	String	N		
+- - 9008	KOSPI,KOSDAQ,전체구분	String	N		
+- - 9075	장전구분	String	N		
+- - 1221	VI발동가격	String	N		단위: 원
+- - 1223	매매체결처리시각	String	N		HHmmss
+- - 1224	VI해제시각	String	N		HHmmss
+- - 1225	VI적용구분	String	N		정적/동적/동적+정적
+- - 1236	기준가격 정적	String	N		계약,주
+- - 1237	기준가격 동적	String	N		
+- - 1238	괴리율 정적	String	N		
+- - 1239	괴리율 동적	String	N		
+- - 1489	VI발동가 등락율	String	N		
+- - 1490	VI발동횟수	String	N		
+- - 9069	발동방향구분	String	N		
+- - 1279	Extra Item	String	N		
