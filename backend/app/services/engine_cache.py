@@ -6,9 +6,9 @@
 """
 from __future__ import annotations
 import asyncio
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.services.engine_state import state
-logger = get_logger("engine")
+logger = logging.getLogger(__name__)
 
 # 구독 동시성 상한 (앱 기동 시 일회성 구독 준비)
 _subscribe_semaphore = asyncio.Semaphore(50)
@@ -42,7 +42,7 @@ async def _load_caches_preboot(settings: dict) -> None:
             sector = _cached_snapshot[code].get("sector", "미분류")
             sector_groups[sector].append(code)
 
-        # 섹터 순서: 기존 레이아웃의 섹터 순서를 최대한 유지하고 신규 섹터는 뒤에 추가
+        # 업종 순서: 기존 레이아웃의 업종 순서를 최대한 유지하고 신규 업종는 뒤에 추가
         old_layout: list[tuple[str, str]] = state.integrated_system_settings_cache["sector_stock_layout"]
         old_sector_order = list(dict.fromkeys(v for t, v in old_layout if t == "sector"))
         new_sectors = [s for s in sector_groups if s not in old_sector_order]
@@ -59,7 +59,7 @@ async def _load_caches_preboot(settings: dict) -> None:
         from backend.app.services.engine_account_notify import _rebuild_layout_cache
         _rebuild_layout_cache(auto_layout)
         logger.debug(
-            "[데이터준비] 업종 매핑 기반 자동 구성 -- %d종목 / %d섹터",
+            "[데이터] 업종 매핑 기반 자동 구성 -- %d종목 / %d업종",
             sum(1 for t, _ in auto_layout if t == "code"),
             len(sector_groups),
         )
@@ -81,20 +81,20 @@ async def _load_caches_preboot(settings: dict) -> None:
 
         # ── [수정] 기동 시 단건 실시간 구독 신청 루프 및 asyncio.gather 제거 ──
         # 로그인 이후 배치 파이프라인에서 일괄 등록되므로 기동 단계에서는 스킵합니다.
-        logger.info("[데이터준비] 선행 캐시 로드 완료 (메모리 반영 및 인덱싱 완료)")
+        logger.info("[데이터] 선행 캐시 로드 완료 (메모리 반영 및 인덱싱 완료)")
 
         # ── 5일 평균 + 5일 전고점 적재 ──
         if _cached_avg is not None and sum(1 for v in _cached_avg.values() if int(v or 0) > 0) < 100:
-            logger.info("[데이터준비] stocks DB 5일평균 비정상 -- 백그라운드 갱신 예정")
+            logger.info("[데이터] stocks DB 5일평균 비정상 -- 백그라운드 갱신 예정")
 
         if _cached_avg is not None:
-            logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 로드 -- %d종목", len(_cached_avg))
+            logger.debug("[데이터] 5일거래대금평균/고가 저장데이터 로드 -- %d종목", len(_cached_avg))
         else:
-            logger.debug("[데이터준비] 5일거래대금평균/고가 저장데이터 미스 -- 백그라운드 갱신 예정")
+            logger.debug("[데이터] 5일거래대금평균/고가 저장데이터 미스 -- 백그라운드 갱신 예정")
 
         # ── 시장구분 적재 제거 (master_stocks_cache 사용으로 대체) ──
         _total_nxt = sum(1 for v in state.master_stocks_cache.values() if v.get("nxt_enable"))
-        logger.debug("[데이터준비] 시장구분(마스터 캐시) 로드 완료 -- %d종목 (NXT %d)", len(state.master_stocks_cache), _total_nxt)
+        logger.debug("[데이터] 시장구분(마스터 캐시) 로드 완료 -- %d종목 (NXT %d)", len(state.master_stocks_cache), _total_nxt)
 
         # 캐시선행 완료 플래그 — 앱준비 에서 중복 로드 스킵용
         state.preboot_cache_loaded = True
@@ -106,7 +106,7 @@ async def _load_caches_preboot(settings: dict) -> None:
         if _in_ws_window:
             from backend.app.services.engine_snapshot import _reset_realtime_fields
             await _reset_realtime_fields()
-            logger.info("[데이터준비] WS 구독 구간 — 실시간 필드 초기화 완료 (DB 로드 후)")
+            logger.info("[데이터] WS 구독 구간 — 실시간 필드 초기화 완료 (DB 로드 후)")
 
         # ── 기동 완료 로직 이관 (engine_bootstrap.py _bootstrap_sector_stocks_async에서 이관) ──
         # 테스트모드: Settlement Engine 초기화 (기본값 설정)
@@ -114,7 +114,7 @@ async def _load_caches_preboot(settings: dict) -> None:
             from backend.app.services import settlement_engine
             initial_deposit = state.integrated_system_settings_cache["test_virtual_deposit"]
             settlement_engine.init(initial_deposit)
-            logger.debug("[데이터준비] Settlement Engine 초기화 완료 (테스트모드)")
+            logger.debug("[데이터] Settlement Engine 초기화 완료 (테스트모드)")
 
         from backend.app.services.engine_account_notify import notify_cache
         notify_cache.prev_scores = []
@@ -131,12 +131,12 @@ async def _load_caches_preboot(settings: dict) -> None:
         # WS 구간 외: 유일한 계산 경로이므로 반드시 수행.
         if _in_ws_window:
             state.sector_summary_ready_event.set()
-            logger.info("[데이터준비] WS 구독 구간 — 업종순위 계산 스킵 (post-login 파이프라인에서 수행)")
+            logger.info("[데이터] WS 구독 구간 — 업종순위 계산 스킵 (post-login 파이프라인에서 수행)")
         else:
             from backend.app.services.sector_data_provider import recompute_sector_summary_now
             _task = asyncio.create_task(recompute_sector_summary_now())
-            _task.add_done_callback(lambda t: logger.warning("[데이터준비] 업종순위 계산 태스크 실패: %s", t.exception()) if t.exception() else None)
-            logger.info("[데이터준비] 업종순위 계산 백그라운드 실행 (sector_summary_ready_event 대기)")
+            _task.add_done_callback(lambda t: logger.warning("[데이터] 업종순위 계산 태스크 실패: %s", t.exception()) if t.exception() else None)
+            logger.info("[데이터] 업종순위 계산 백그라운드 실행 (sector_summary_ready_event 대기)")
 
         # 앱준비 완료 → 기동 시 스킵된 장마감 파이프라인 데이터동기화중 재시도
         # 백그라운드 실행: data_ready_event / bootstrap_event 이미 set() 상태이므로
@@ -144,9 +144,9 @@ async def _load_caches_preboot(settings: dict) -> None:
         try:
             from backend.app.services.daily_time_scheduler import retry_pipeline_catchup_after_bootstrap
             _task2 = asyncio.create_task(retry_pipeline_catchup_after_bootstrap())
-            _task2.add_done_callback(lambda t: logger.warning("[데이터준비] 데이터동기화중 재시도 태스크 실패: %s", t.exception()) if t.exception() else None)
+            _task2.add_done_callback(lambda t: logger.warning("[데이터] 데이터동기화중 재시도 태스크 실패: %s", t.exception()) if t.exception() else None)
         except Exception as _catchup_err:
-            logger.warning("[데이터준비] 데이터동기화중 재시도 실패(무시): %s", _catchup_err, exc_info=True)
+            logger.warning("[데이터] 데이터동기화중 재시도 실패(무시): %s", _catchup_err, exc_info=True)
 
     except Exception as _cache_err:
-        logger.info("[데이터준비] 저장데이터 로드 실패 (무시, 기존 흐름으로 진행): %s", _cache_err)
+        logger.info("[데이터] 저장데이터 로드 실패 (무시, 기존 흐름으로 진행): %s", _cache_err)

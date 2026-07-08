@@ -8,11 +8,11 @@
 """
 import asyncio
 import time
-from backend.app.core.logger import get_logger
+import logging
 import backend.app.services.engine_state as engine_state
 from backend.app.services.engine_state import state
 
-logger = get_logger("engine_snapshot")
+logger = logging.getLogger(__name__)
 
 
 # ── 스냅샷 생성 ─────────────────────────────────────────────────────

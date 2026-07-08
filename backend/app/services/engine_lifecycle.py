@@ -4,15 +4,15 @@
 - 엔진 시작/중지
 - 엔진 상태 조회
 - 거래 모드 전환
-- 섹터 매수 실행
+- 업종 매수 실행
 """
 import asyncio
 from typing import Any, Coroutine
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.services.engine_state import state
 
-logger = get_logger("engine_lifecycle")
+logger = logging.getLogger(__name__)
 
 
 # ── 엔진 라이프사이클 ─────────────────────────────────────────────────
@@ -45,9 +45,9 @@ async def _engine_loop() -> None:
     
     try:
         await engine_loop.run_engine_loop()
-        logger.info("[구동] 엔진 루프 완료")
+        logger.info("[연산] 엔진 루프 완료")
     except Exception as e:
-        logger.error("[구동] 엔진 루프 오류: %s", e, exc_info=True)
+        logger.error("[연산] 엔진 루프 오류: %s", e, exc_info=True)
 
 
 async def stop_engine() -> None:
@@ -76,11 +76,11 @@ async def stop_engine() -> None:
     bg_names = ("daily_time_scheduler",)
     bg_tasks = [t for t in all_tasks if any(n in (t.get_name() or "") for n in bg_names)]
     if bg_tasks:
-        logger.info("[구동] 백그라운드 태스크 %d개 취소 중...", len(bg_tasks))
+        logger.info("[연산] 백그라운드 태스크 %d개 취소 중...", len(bg_tasks))
         for t in bg_tasks:
             t.cancel()
         await asyncio.gather(*bg_tasks, return_exceptions=True)
-        logger.info("[구동] 백그라운드 태스크 취소 완료")
+        logger.info("[연산] 백그라운드 태스크 취소 완료")
 
     # 테스트모드 가상 잔고: 엔진 중지 시 초기화하지 않음
     # (포지션·예수금은 사용자가 직접 초기화할 때만 리셋)
@@ -172,7 +172,7 @@ async def on_trade_mode_switched() -> None:
 
     _new_test = is_test_mode(state.integrated_system_settings_cache)
     _mode_str = "테스트모드" if _new_test else "실전투자"
-    logger.info("[구동] 투자모드 전환 -> %s (엔진 재기동 없음)", _mode_str)
+    logger.info("[연산] 투자모드 전환 -> %s (엔진 재기동 없음)", _mode_str)
 
     # BrokerRouter를 통해 현재 연결된 커넥터 확인 (증권사 하드코딩 제거)
     ws = state.connector_manager or state.active_connector
@@ -186,11 +186,11 @@ async def on_trade_mode_switched() -> None:
         logger.info("[구독] 테스트모드 전환 -- 계좌 실시간 구독 해제 완료")
         # Settlement Engine: 파일에서 상태 복원 + 만료 항목 정리 + 타이머 재스케줄
         await settlement_engine.restore_state()
-        logger.info("[구동] 테스트모드 전환 -- 정산 엔진 상태 복원 완료")
+        logger.info("[연산] 테스트모드 전환 -- 정산 엔진 상태 복원 완료")
     else:
         # 테스트→실전: Settlement Engine 상태 저장 + 타이머 취소
         await settlement_engine.save_state()
-        logger.info("[구동] 실전모드 전환 -- 정산 엔진 상태 저장 완료")
+        logger.info("[연산] 실전모드 전환 -- 정산 엔진 상태 저장 완료")
         # 테스트→실전: 계좌 실시간 구독(00/04) + 보유종목 실시간(0B) 등록
         await _subscribe_account_realtime()
         await _subscribe_positions_stocks_realtime()
@@ -204,7 +204,7 @@ async def on_trade_mode_switched() -> None:
     await broadcast_engine_status()
 
 
-# ── 섹터 매수 ─────────────────────────────────────────────────────
+# ── 업종 매수 ─────────────────────────────────────────────────────
 # evaluate_buy_candidates는 buy_order_executor.py로 이전됨
 
 
@@ -229,7 +229,7 @@ async def _reconciliation_on_startup() -> None:
     try:
         # 테스트모드는 가상잔고이므로 대조 스킵 (원칙 9: 돈 I/O 차이)
         if is_test_mode(state.integrated_system_settings_cache):
-            logger.info("[구동] 테스트모드 - 가상잔고이므로 원장 대조 생략")
+            logger.info("[연산] 테스트모드 - 가상잔고이므로 원장 대조 생략")
             return
 
         # 1. 로컬 장부에서 Pending 상태인 주문 조회
@@ -238,29 +238,29 @@ async def _reconciliation_on_startup() -> None:
 
         if pending_count == 0:
             # Pending 건수가 0건이면 불필요한 네트워크 호출 없이 즉시 엔진 가동
-            logger.info("[구동] 미처리 주문 없음 - 즉시 엔진 가동")
+            logger.info("[연산] 미처리 주문 없음 - 즉시 엔진 가동")
             return
 
         # 2. Pending 데이터가 존재하면 서버 원장 조회
-        logger.info("[구동] 미처리 주문 %d건 - 서버 원장 조회 시작", pending_count)
+        logger.info("[연산] 미처리 주문 %d건 - 서버 원장 조회 시작", pending_count)
 
         access_token = state.access_token
 
         if not access_token:
-            logger.warning("[구동] 원장 대조 실패 - 토큰 없음")
+            logger.warning("[연산] 원장 대조 실패 - 토큰 없음")
             return
 
         # 실제 체결 내역 조회
         balance_raw = await get_account_profit_rate(access_token)
         if not balance_raw:
-            logger.warning("[구동] 원장 대조 실패 - 체결 내역 조회 실패")
+            logger.warning("[연산] 원장 대조 실패 - 체결 내역 조회 실패")
             return
 
         # 3. 서버 원장과 로컬 Pending 리스트 대조
         # 서버에서 받아온 진짜 주문/체결 내역과 로컬의 Pending 리스트를 대조
         # 유령 데이터를 즉시 정리
         # (실제 구현은 서버 응답의 order_id와 로컬 Pending order_id 비교)
-        logger.info("[구동] 원장 대조 완료 - 유령 데이터 정리")
+        logger.info("[연산] 원장 대조 완료 - 유령 데이터 정리")
 
         # 4. UI에 Reconciliation 완료 알림 전송
         await _broadcast("reconciliation_complete", {
@@ -269,7 +269,7 @@ async def _reconciliation_on_startup() -> None:
         })
 
     except Exception as e:
-        logger.error("[구동] 원장 대조 오류: %s", e, exc_info=True)
+        logger.error("[연산] 원장 대조 오류: %s", e, exc_info=True)
         await _broadcast("reconciliation_complete", {
             "status": "failed",
             "message": f"원장 대조 실패: {str(e)}",
@@ -285,12 +285,12 @@ async def _apply_pending_settings_on_startup() -> None:
         pending = await load_pending_settings()
         if not pending:
             return
-        logger.info("[구동] 엔진 기동 시 보류 설정 변경 적용: %s", sorted(pending))
+        logger.info("[연산] 엔진 기동 시 보류 설정 변경 적용: %s", sorted(pending))
         await apply_settings_change(pending)
         await clear_pending_settings()
-        logger.info("[구동] 보류 설정 변경 적용 완료")
+        logger.info("[연산] 보류 설정 변경 적용 완료")
     except Exception as e:
-        logger.error("[구동] 보류 설정 변경 적용 실패: %s", e, exc_info=True)
+        logger.error("[연산] 보류 설정 변경 적용 실패: %s", e, exc_info=True)
 
 
 # ── 헬퍼 함수 ─────────────────────────────────────────────────

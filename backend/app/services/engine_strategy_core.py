@@ -5,11 +5,11 @@
 engine_service 모듈의 전역 상태에 get_state/set_state로 접근한다.
 """
 from __future__ import annotations
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.services import data_manager
 from backend.app.services import settlement_engine
 from backend.app.services.engine_state import state
-logger = get_logger("engine")
+logger = logging.getLogger(__name__)
 
 
 def _is_placeholder_stock_name(nm: str) -> bool:

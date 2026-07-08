@@ -11,7 +11,7 @@ import backend.app.services.engine_state as engine_state
 from backend.app.services.engine_state import state
 from backend.app.services import engine_account
 from backend.app.services import engine_lifecycle
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
     _real_item_stk_cd,
@@ -24,7 +24,7 @@ from backend.app.services.engine_ws_parsing import (
     _ws_fid_raw,
 )
 
-logger = get_logger("engine")
+logger = logging.getLogger(__name__)
 
 # ── _wl_codes 캐시 (매 틱마다 Set 재생성 방지) ──
 _wl_codes_cache: set[str] = set()
@@ -83,7 +83,7 @@ def _log_ws_trnm_json_detail(trnm: str, data: dict) -> None:
         if total_len > max_len:
             s = s[:max_len] + f"... (truncated, total {total_len} chars)"
     except Exception as e:
-        logger.warning("[로그] 문자열 truncation 실패: %s", e)
+        logger.warning("[시스템] 문자열 truncation 실패: %s", e)
 
 
 
@@ -146,16 +146,16 @@ def _handle_reg(data: dict) -> None:
                 if norm in state.master_stocks_cache:
                     state.master_stocks_cache[norm].pop("_subscribed", None)
                 logger.warning(
-                    "[WS] REG 응답 건수한도(105110) -- 즉시 재시도하지 않음 item=%s (응답 본문 기준)",
+                    "[연결] REG 응답 건수한도(105110) -- 즉시 재시도하지 않음 item=%s (응답 본문 기준)",
                     norm,
                 )
                 try:
                     _resub_task = asyncio.get_running_loop().create_task(
                         engine_lifecycle._delayed_resubscribe_stock_after_rate_limit(norm)
                     )
-                    _resub_task.add_done_callback(lambda t: logger.warning("[재구독] 지연 재구독 태스크 실패: %s", t.exception()) if t.exception() else None)
+                    _resub_task.add_done_callback(lambda t: logger.warning("[구독] 지연 재구독 태스크 실패: %s", t.exception()) if t.exception() else None)
                 except RuntimeError as e:
-                    logger.warning("[재구독] 루프 미실행 %s: %s", norm, e)
+                    logger.warning("[구독] 루프 미실행 %s: %s", norm, e)
             elif rc not in ("0", "00", ""):
                 if norm in state.master_stocks_cache:
                     state.master_stocks_cache[norm].pop("_subscribed", None)
@@ -188,7 +188,7 @@ async def _handle_real_00(item: dict, vals: dict) -> None:
     try:
         unex = int(str(vals.get("902", "0")).replace(",", "").replace("+", "") or 0)
     except (ValueError, TypeError) as e:
-        logger.warning("[미체결] %s 파싱 실패 902=%r: %s", raw_cd, vals.get("902"), e)
+        logger.warning("[매매] %s 파싱 실패 902=%r: %s", raw_cd, vals.get("902"), e)
         unex = 0
     if state.auto_trade:
         await state.auto_trade.on_fill_update(raw_cd, side, unex, state.access_token)
@@ -229,7 +229,7 @@ async def _handle_real_00(item: dict, vals: dict) -> None:
                     except asyncio.QueueEmpty:
                         pq.put_nowait(price_tick_data)
         except Exception as e:
-            logger.warning("[WS] price_pass_through 전송 실패 (code=%s): %s", raw_cd, e)
+            logger.warning("[연결] price_pass_through 전송 실패 (code=%s): %s", raw_cd, e)
 
     _check_realtime_latency(_ts)
 
@@ -253,7 +253,7 @@ async def handle_ws_data(data: dict) -> None:
         elif trnm == "JIF":
             await _handle_jif(data)
     except Exception:
-        logger.error("[WS] 메시지 처리 예외 (trnm=%s): %s", data.get("trnm"), data, exc_info=True)
+        logger.error("[연결] 메시지 처리 예외 (trnm=%s): %s", data.get("trnm"), data, exc_info=True)
 
 
 # ── JIF (장운행정보) 처리 ──────────────────────────────────────────────────
@@ -304,19 +304,19 @@ async def _handle_jif(data: dict) -> None:
     mp["krx_alert"] = alert
     from backend.app.services.engine_account_notify import _broadcast
     await _broadcast("market-phase", {"krx_alert": alert})
-    logger.info("[JIF] 서킷브레이커/사이드카 alert 갱신: jstatus=%s → %s", jstatus, alert)
+    logger.info("[연결] 서킷브레이커/사이드카 alert 갱신: jstatus=%s → %s", jstatus, alert)
 
     if jstatus in _KRX_CB_ACTIVATION_CODES:
         if not engine_state.state.krx_circuit_breaker_active:
             engine_state.state.krx_circuit_breaker_active = True
-            logger.warning("[KRX-CB] 서킷브레이커/사이드카 발동 — 자동매매 임시 중단 (jstatus=%s)", jstatus)
+            logger.warning("[구독] 서킷브레이커/사이드카 발동 — 자동매매 임시 중단 (jstatus=%s)", jstatus)
             _notify_krx_cb_telegram(f"🛑 [KRX] {alert} — 자동매매 임시 중단", engine_state.state.integrated_system_settings_cache)
             await _broadcast("krx-circuit-breaker", {"active": True, "alert": alert})
 
     elif jstatus in _KRX_CB_RELEASE_CODES:
         if engine_state.state.krx_circuit_breaker_active:
             engine_state.state.krx_circuit_breaker_active = False
-            logger.info("[KRX-CB] 서킷브레이커/사이드카 해제 — 자동매매 자동 재개 (jstatus=%s)", jstatus)
+            logger.info("[구독] 서킷브레이커/사이드카 해제 — 자동매매 자동 재개 (jstatus=%s)", jstatus)
             _notify_krx_cb_telegram(f"✅ [KRX] {alert} — 자동매매 자동 재개", engine_state.state.integrated_system_settings_cache)
             await _broadcast("krx-circuit-breaker", {"active": False, "alert": alert})
 
@@ -331,5 +331,5 @@ def _notify_krx_cb_telegram(message: str, settings: dict | None) -> None:
             "settings": settings,
         })
     except Exception as e:
-        logger.warning("[KRX-CB] 텔레그램 알림 실패: %s", e, exc_info=True)
+        logger.warning("[구독] 텔레그램 알림 실패: %s", e, exc_info=True)
 

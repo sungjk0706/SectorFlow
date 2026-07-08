@@ -493,7 +493,7 @@ class TestCheckRealtimeLatency:
     def test_under_50ms_no_flag(self):
         mock_state = MagicMock()
         mock_state.realtime_latency_exceeded = False
-        with patch("backend.app.pipelines.pipeline_compute.state", mock_state):
+        with patch("backend.app.services.engine_ws_dispatch.state", mock_state):
             _check_realtime_latency(int(time.time() * 1000))
             assert mock_state.realtime_latency_exceeded is False
 
@@ -501,14 +501,14 @@ class TestCheckRealtimeLatency:
         mock_state = MagicMock()
         mock_state.realtime_latency_exceeded = False
         old_ts = int(time.time() * 1000) - 250
-        with patch("backend.app.pipelines.pipeline_compute.state", mock_state):
+        with patch("backend.app.services.engine_ws_dispatch.state", mock_state):
             _check_realtime_latency(old_ts)
             assert mock_state.realtime_latency_exceeded is True
 
     def test_recovery_clears_flag(self):
         mock_state = MagicMock()
         mock_state.realtime_latency_exceeded = True
-        with patch("backend.app.pipelines.pipeline_compute.state", mock_state):
+        with patch("backend.app.services.engine_ws_dispatch.state", mock_state):
             _check_realtime_latency(int(time.time() * 1000))
             assert mock_state.realtime_latency_exceeded is False
 
@@ -516,7 +516,7 @@ class TestCheckRealtimeLatency:
         mock_state = MagicMock()
         mock_state.realtime_latency_exceeded = False
         old_ts = int(time.time() * 1000) - 60
-        with patch("backend.app.pipelines.pipeline_compute.state", mock_state):
+        with patch("backend.app.services.engine_ws_dispatch.state", mock_state):
             _check_realtime_latency(old_ts)
             assert mock_state.realtime_latency_exceeded is False
 

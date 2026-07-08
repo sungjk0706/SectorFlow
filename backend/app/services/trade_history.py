@@ -58,11 +58,11 @@ async def _ensure_loaded() -> None:
                 else:
                     _sell_history.append(rec)
         logger.info(
-            "[체결이력] DB 복원 완료 — 매수 %d건, 매도 %d건",
+            "[정산] DB 복원 완료 — 매수 %d건, 매도 %d건",
             len(_buy_history), len(_sell_history),
         )
     except Exception as e:
-        logger.warning("[체결이력] DB 이력 복원 실패 (신규 설치 시 정상): %s", e)
+        logger.warning("[정산] DB 이력 복원 실패 (신규 설치 시 정상): %s", e)
 
 
 async def _migrate_from_json() -> None:
@@ -104,7 +104,7 @@ async def _insert_trade(rec: dict) -> None:
             query=_TRADE_INSERT_SQL, params=_trade_params(rec),
         ))
     except Exception as e:
-        logger.warning("[체결이력] DB 저장 큐 실패 (메모리 저장은 완료): %s", e)
+        logger.warning("[정산] DB 저장 큐 실패 (메모리 저장은 완료): %s", e)
 
 
 async def _trim_expired() -> None:
@@ -120,9 +120,9 @@ async def _trim_expired() -> None:
             _sell_history[:] = [r for r in _sell_history if not (r["trade_mode"] == "test" and r["date"] < test_cutoff)]
             _sell_history[:] = [r for r in _sell_history if not (r["trade_mode"] == "real" and r["date"] < real_cutoff)]
 
-        logger.info("[체결이력] 만료 레코드 정리 완료")
+        logger.info("[정산] 만료 레코드 정리 완료")
     except Exception as e:
-        logger.error("[체결이력] 만료 레코드 정리 실패: %s", e)
+        logger.error("[정산] 만료 레코드 정리 실패: %s", e)
 
 
 async def _patch_sell_history() -> None:
@@ -144,9 +144,9 @@ async def _patch_sell_history() -> None:
                     patched += 1
 
         if patched > 0:
-            logger.info("[체결이력] 매도 %d건 실현손익 보정 완료", patched)
+            logger.info("[정산] 매도 %d건 실현손익 보정 완료", patched)
     except Exception as e:
-        logger.error("[체결이력] 기존 매도건 보정 중 오류: %s", e)
+        logger.error("[정산] 기존 매도건 보정 중 오류: %s", e)
 
 
 # ── 날짜 유틸 ──────────────────────────────────────────────────────────────
@@ -159,7 +159,7 @@ async def _broadcast_sell_append(rec: dict) -> None:
         summary = await get_daily_summary(days=20, trade_mode=trade_mode)
         await ws_manager.broadcast("sell-history-append", {"trade": rec, "daily_summary": summary})
     except Exception as e:
-        logger.warning("[체결이력] 매도 단건 실시간 화면전송 실패: %s", e)
+        logger.warning("[정산] 매도 단건 실시간 화면전송 실패: %s", e)
 
 
 async def _broadcast_buy_append(rec: dict) -> None:
@@ -168,7 +168,7 @@ async def _broadcast_buy_append(rec: dict) -> None:
         from backend.app.web.ws_manager import ws_manager
         await ws_manager.broadcast("buy-history-append", {"trade": rec})
     except Exception as e:
-        logger.warning("[체결이력] 매수 단건 실시간 화면전송 실패: %s", e)
+        logger.warning("[정산] 매수 단건 실시간 화면전송 실패: %s", e)
 
 
 async def _broadcast_full_sell_history(trade_mode: str) -> None:
@@ -180,7 +180,7 @@ async def _broadcast_full_sell_history(trade_mode: str) -> None:
         summary = await get_daily_summary(days=20, trade_mode=trade_mode)
         await ws_manager.broadcast("daily-summary-update", {"daily_summary": summary})
     except Exception as e:
-        logger.warning("[체결이력] 매도 내역 실시간 화면전송 실패: %s", e)
+        logger.warning("[정산] 매도 내역 실시간 화면전송 실패: %s", e)
 
 
 async def _broadcast_full_buy_history(trade_mode: str) -> None:
@@ -190,7 +190,7 @@ async def _broadcast_full_buy_history(trade_mode: str) -> None:
         rows = await get_buy_history(trade_mode=trade_mode)
         await ws_manager.broadcast("buy-history-update", {"buy_history": rows})
     except Exception as e:
-        logger.warning("[체결이력] 매수 내역 실시간 화면전송 실패: %s", e)
+        logger.warning("[정산] 매수 내역 실시간 화면전송 실패: %s", e)
 
 
 async def _broadcast_order_filled(fill_data: dict) -> None:
@@ -199,7 +199,7 @@ async def _broadcast_order_filled(fill_data: dict) -> None:
         from backend.app.web.ws_manager import ws_manager
         await ws_manager.broadcast("order-filled", fill_data)
     except Exception as e:
-        logger.warning("[체결이력] 체결 이벤트 실시간 화면전송 실패: %s", e)
+        logger.warning("[정산] 체결 이벤트 실시간 화면전송 실패: %s", e)
 
 
 # ── Lifecycle Management (No-op in SQLite architecture) ────────────────────────
@@ -262,7 +262,7 @@ async def record_buy(
         "trade_mode": trade_mode,
     }
     logger.info(
-        "[체결이력] 매수 기록 -- %s(%s) %d주 @%s 수수료=%s %s",
+        "[정산] 매수 기록 -- %s(%s) %d주 @%s 수수료=%s %s",
         stk_nm, stk_cd, qty, f"{price:,}", f"{fee:,}", reason,
     )
     # 메모리에 저장
@@ -306,7 +306,7 @@ async def record_sell(
     sector = await _lookup_sector(stk_cd)
     # 안전장치: avg_buy_price가 0이면 유령 데이터 혼입 방지를 위해 실현손익 계산 건너뜀
     if avg_buy_price <= 0:
-        logger.warning("[체결이력] 외부에서 전달된 평균매입가(avg_buy_price)가 0 이하입니다. 유령 데이터 혼입 방지를 위해 실현손익 계산을 건너뜁니다.")
+        logger.warning("[정산] 외부에서 전달된 평균매입가(avg_buy_price)가 0 이하입니다. 유령 데이터 혼입 방지를 위해 실현손익 계산을 건너뜁니다.")
         # realized_pnl 및 pnl_rate를 0으로 처리 (이후 코드에서 avg_buy_price > 0 체크로 안전하게 처리됨)
     total_amt = price * qty
     # 테스트모드: 수수료 0.015%, 세금 0.20%
@@ -341,7 +341,7 @@ async def record_sell(
         "sector": sector,
     }
     logger.info(
-        "[체결이력] 매도 기록 -- %s(%s) %d주 @%s 실현손익=%s 수수료=%s 세금=%s %s",
+        "[정산] 매도 기록 -- %s(%s) %d주 @%s 실현손익=%s 수수료=%s 세금=%s %s",
         stk_nm, stk_cd, qty, f"{price:,}",
         f"{realized_pnl:+,}", f"{fee:,}", f"{tax:,}", reason,
     )
@@ -363,7 +363,7 @@ async def _lookup_sector(stk_cd: str) -> str:
         if row:
             return str(row["name"])
     except Exception as e:
-        logger.warning("[체결이력] sector 조회 실패 (%s): %s", stk_cd, e)
+        logger.warning("[정산] sector 조회 실패 (%s): %s", stk_cd, e)
     return "미분류"
 
 
@@ -501,8 +501,8 @@ async def clear_history() -> None:
             query="DELETE FROM trades", params=(),
         ))
     except Exception as e:
-        logger.warning("[체결이력] DB 전체 삭제 실패: %s", e)
-    logger.info("[체결이력] 전체 이력 즉시 초기화 완료")
+        logger.warning("[정산] DB 전체 삭제 실패: %s", e)
+    logger.info("[정산] 전체 이력 즉시 초기화 완료")
 
 
 async def clear_test_history() -> None:
@@ -517,8 +517,8 @@ async def clear_test_history() -> None:
             query="DELETE FROM trades WHERE trade_mode = 'test'", params=(),
         ))
     except Exception as e:
-        logger.warning("[체결이력] DB 테스트 이력 삭제 실패: %s", e)
-    logger.info("[체결이력] 테스트 이력 즉시 초기화 완료")
+        logger.warning("[정산] DB 테스트 이력 삭제 실패: %s", e)
+    logger.info("[정산] 테스트 이력 즉시 초기화 완료")
 
 
 async def broadcast_history(trade_mode: str) -> None:

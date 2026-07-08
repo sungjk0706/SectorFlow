@@ -8,7 +8,7 @@ import logging
 from fastapi import APIRouter, Depends
 from backend.app.web.deps import get_current_user
 
-_log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/stock-detail", tags=["stock-detail"])
 

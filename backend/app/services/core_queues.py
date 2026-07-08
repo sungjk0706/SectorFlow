@@ -14,8 +14,8 @@ HTS급 실시간 처리를 위한 5개 코어 큐:
 from __future__ import annotations
 from typing import Optional
 import asyncio
-from backend.app.core.logger import get_logger
-logger = get_logger("core_queues")
+import logging
+logger = logging.getLogger(__name__)
 
 
 # ── 큐 크기 설정 ─────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ def initialize_queues() -> None:
     _price_pass_through_queue = asyncio.Queue(maxsize=PRICE_PASS_THROUGH_QUEUE_MAXSIZE)
 
     logger.info(
-        "[core_queues] 초기화 완료 - "
+        "[시스템] 초기화 완료 - "
         f"tick={TICK_QUEUE_MAXSIZE}, "
         f"broadcast={BROADCAST_QUEUE_MAXSIZE}, control={CONTROL_QUEUE_MAXSIZE}, "
         f"price_pass_through={PRICE_PASS_THROUGH_QUEUE_MAXSIZE}"
@@ -100,7 +100,7 @@ def put_tick_with_drop_policy(data: dict) -> None:
         try:
             queue.get_nowait()
             queue.put_nowait(data)
-            logger.warning("[core_queues] tick_queue 드롭 발생 - 최신 데이터 유지")
+            logger.warning("[시스템] tick_queue 드롭 발생 - 최신 데이터 유지")
         except asyncio.QueueEmpty:
             queue.put_nowait(data)
 
@@ -125,4 +125,4 @@ def clear_all_queues() -> None:
         while not _price_pass_through_queue.empty():
             _price_pass_through_queue.get_nowait()
 
-    logger.info("[core_queues] 모든 큐 비우기 완료")
+    logger.info("[시스템] 모든 큐 비우기 완료")

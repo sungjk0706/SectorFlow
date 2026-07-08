@@ -300,5 +300,11 @@ def setup_loguru(log_level: str = "INFO") -> None:
 
 
 def get_logger(name: str = "sectorflow") -> logging.Logger:
-    """기존 코드 호환용 — 표준 logging.Logger 반환 (loguru로 인터셉트됨)."""
+    """[Deprecated] logging.getLogger(__name__) 사용할 것 — loguru로 인터셉트됨."""
+    import warnings
+    warnings.warn(
+        "get_logger() is deprecated. Use logging.getLogger(__name__) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return logging.getLogger(name)

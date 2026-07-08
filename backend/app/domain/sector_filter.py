@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-섹터 필터 - 5일평균거래대금 필터링 및 업종별 종목 그룹핑 로직.
+업종 필터 - 5일평균거래대금 필터링 및 업종별 종목 그룹핑 로직.
 """
 from __future__ import annotations
 from backend.app.core import sector_mapping
-from backend.app.core.logger import get_logger
-logger = get_logger("engine")
+import logging
+logger = logging.getLogger(__name__)
 
 
 async def filter_by_avg_amt(

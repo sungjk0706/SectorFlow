@@ -3,7 +3,7 @@ import logging
 import sqlite3
 from backend.app.db.database import get_db_connection
 
-_log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 async def init_cache_tables():
     """캐시용 테이블들을 생성합니다."""
@@ -113,7 +113,7 @@ async def init_cache_tables():
     ''')
 
     await conn.commit()
-    _log.info("SQLite 캐시 테이블 초기화 완료.")
+    logger.info("SQLite 캐시 테이블 초기화 완료.")
 
 # ── 정산 상태 ─────────────────────────────────────────────────────────────
 async def save_settlement_state(data: dict) -> None:
@@ -135,7 +135,7 @@ async def save_settlement_state(data: dict) -> None:
         )
         await execute_db_write(op, wait=True)
     except Exception as e:
-        _log.warning("[settlement_state] 저장 실패: %s", e)
+        logger.warning("[시스템] 저장 실패: %s", e)
 
 async def load_settlement_state() -> dict | None:
     """정산 상태 로드"""
@@ -151,7 +151,7 @@ async def load_settlement_state() -> dict | None:
                 "initial_deposit": row["initial_deposit"],
             }
     except Exception as e:
-        _log.warning("[settlement_state] 로드 실패: %s", e)
+        logger.warning("[시스템] 로드 실패: %s", e)
     return None
 
 
@@ -188,7 +188,7 @@ async def save_test_positions(data: dict) -> None:
         
         await conn.commit()
     except Exception as e:
-        _log.warning("[test_positions] 저장 실패: %s", e)
+        logger.warning("[시스템] 저장 실패: %s", e)
 
 async def load_test_positions() -> dict | None:
     """테스트 포지션 로드 (개별 컬럼)"""
@@ -221,7 +221,7 @@ async def load_test_positions() -> dict | None:
         
         return result
     except Exception as e:
-        _log.warning("[test_positions] 로드 실패: %s", e)
+        logger.warning("[시스템] 로드 실패: %s", e)
     return None
 
 
@@ -259,7 +259,7 @@ async def create_master_stocks_table():
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_sector ON master_stocks_table(sector)')
 
     await conn.commit()
-    _log.info("master_stocks_table 테이블 초기화 완료.")
+    logger.info("master_stocks_table 테이블 초기화 완료.")
 
 
 async def migrate_master_stocks_table_pk():
@@ -273,14 +273,14 @@ async def migrate_master_stocks_table_pk():
     cursor = await conn.execute("PRAGMA table_info(master_stocks_table)")
     columns = await cursor.fetchall()
     if not columns:
-        _log.info("[마이그레이션] master_stocks_table 없음 — skip PK migration")
+        logger.info("[데이터] master_stocks_table 없음 — skip PK migration")
         return
 
     code_col = next((col for col in columns if col["name"] == "code"), None)
     if code_col and code_col["pk"] >= 1:
         return
 
-    _log.warning("[마이그레이션] master_stocks_table code 컬럼 PK 소실 — 재생성 시작")
+    logger.warning("[데이터] master_stocks_table code 컬럼 PK 소실 — 재생성 시작")
 
     await conn.execute("""
         CREATE TABLE _master_stocks_table_pk_tmp (
@@ -314,7 +314,7 @@ async def migrate_master_stocks_table_pk():
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_avg_5d ON master_stocks_table(avg_5d_trade_amount)')
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_sector ON master_stocks_table(sector)')
     await conn.commit()
-    _log.info("[마이그레이션] master_stocks_table code PRIMARY KEY 복구 완료")
+    logger.info("[데이터] master_stocks_table code PRIMARY KEY 복구 완료")
 
 
 async def migrate_drop_high_price_column():
@@ -361,7 +361,7 @@ async def migrate_drop_high_price_column():
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_avg_5d ON master_stocks_table(avg_5d_trade_amount)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_sector ON master_stocks_table(sector)')
         await conn.commit()
-        _log.info("[마이그레이션] master_stocks_table에서 high_price 컬럼 제거 완료")
+        logger.info("[데이터] master_stocks_table에서 high_price 컬럼 제거 완료")
 
 
 async def migrate_add_hidden_to_custom_sectors():
@@ -376,9 +376,9 @@ async def migrate_add_hidden_to_custom_sectors():
     if "hidden" not in column_names:
         await conn.execute("ALTER TABLE custom_sectors ADD COLUMN hidden INTEGER DEFAULT 0")
         await conn.commit()
-        _log.info("[마이그레이션] custom_sectors에 hidden 컬럼 추가 완료")
+        logger.info("[데이터] custom_sectors에 hidden 컬럼 추가 완료")
     else:
-        _log.debug("[마이그레이션] custom_sectors hidden 컬럼 이미 존재 - 스킵")
+        logger.debug("[데이터] custom_sectors hidden 컬럼 이미 존재 - 스킵")
 
 
 async def migrate_add_nxt_enable_column():
@@ -393,9 +393,9 @@ async def migrate_add_nxt_enable_column():
     if "nxt_enable" not in column_names:
         await conn.execute("ALTER TABLE master_stocks_table ADD COLUMN nxt_enable INTEGER DEFAULT 0")
         await conn.commit()
-        _log.info("[마이그레이션] master_stocks_table에 nxt_enable 컬럼 추가 완료")
+        logger.info("[데이터] master_stocks_table에 nxt_enable 컬럼 추가 완료")
     else:
-        _log.debug("[마이그레이션] nxt_enable 컬럼 이미 존재 - 스킵")
+        logger.debug("[데이터] nxt_enable 컬럼 이미 존재 - 스킵")
 
 
 # load_stock_name_cache 함수 삭제: 메모리 캐시(_master_stocks_cache)로 단일화
@@ -420,7 +420,7 @@ async def create_stock_5d_array_table():
         )
     ''')
     await conn.commit()
-    _log.info("stock_5d_array 테이블 초기화 완료.")
+    logger.info("stock_5d_array 테이블 초기화 완료.")
 
 
 async def migrate_stock_5d_array_pk():
@@ -432,9 +432,9 @@ async def migrate_stock_5d_array_pk():
         return
     schema_sql = row["sql"] if isinstance(row, sqlite3.Row) or hasattr(row, "__getitem__") else row[0]
     if "PRIMARY KEY (code, date)" not in schema_sql:
-        _log.debug("[마이그레이션] stock_5d_array PK 이미 code 단일 — 스킵")
+        logger.debug("[데이터] stock_5d_array PK 이미 code 단일 — 스킵")
         return
-    _log.info("[마이그레이션] stock_5d_array PK (code, date) → code 단일 변경 시작")
+    logger.info("[데이터] stock_5d_array PK (code, date) → code 단일 변경 시작")
     await conn.execute('CREATE TABLE IF NOT EXISTS stock_5d_array_new (code TEXT PRIMARY KEY, date TEXT, day1_amount INTEGER, day2_amount INTEGER, day3_amount INTEGER, day4_amount INTEGER, day5_amount INTEGER, day1_high INTEGER, day2_high INTEGER, day3_high INTEGER, day4_high INTEGER, day5_high INTEGER)')
     await conn.execute('''INSERT OR REPLACE INTO stock_5d_array_new (code, date, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount, day1_high, day2_high, day3_high, day4_high, day5_high)
         SELECT code, date, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount, day1_high, day2_high, day3_high, day4_high, day5_high
@@ -444,7 +444,7 @@ async def migrate_stock_5d_array_pk():
     await conn.execute('DROP TABLE stock_5d_array')
     await conn.execute('ALTER TABLE stock_5d_array_new RENAME TO stock_5d_array')
     await conn.commit()
-    _log.info("[마이그레이션] stock_5d_array PK 변경 완료 — 종목당 최신 1행만 유지")
+    logger.info("[데이터] stock_5d_array PK 변경 완료 — 종목당 최신 1행만 유지")
 
 
 # ── 거래일 캐시 ─────────────────────────────────────────────────────────────
@@ -460,9 +460,9 @@ async def save_trading_days_cache(cache: dict[int, set[str]]) -> None:
                 (year, data_json)
             )
         await conn.commit()
-        _log.info("[trading_days_cache] DB 저장 완료 — %d개 연도", len(cache))
+        logger.info("[스케줄] DB 저장 완료 — %d개 연도", len(cache))
     except Exception as e:
-        _log.warning("[trading_days_cache] 저장 실패: %s", e)
+        logger.warning("[스케줄] 저장 실패: %s", e)
 
 
 async def load_trading_days_cache() -> dict[int, set[str]] | None:
@@ -476,10 +476,10 @@ async def load_trading_days_cache() -> dict[int, set[str]] | None:
         result: dict[int, set[str]] = {}
         for row in rows:
             result[row["year"]] = set(json.loads(row["data"]))
-        _log.debug("[trading_days_cache] DB 로드 완료 — %d개 연도", len(result))
+        logger.debug("[스케줄] DB 로드 완료 — %d개 연도", len(result))
         return result
     except Exception as e:
-        _log.warning("[trading_days_cache] 로드 실패: %s", e)
+        logger.warning("[스케줄] 로드 실패: %s", e)
         return None
 
 
@@ -515,10 +515,10 @@ async def load_master_stocks_table() -> dict[str, dict]:
                 "sector": sector,
                 "status": "active"
             }
-        _log.info("[master_stocks_table] 로드 완료 -- %d종목", len(result))
+        logger.info("[데이터] 로드 완료 -- %d종목", len(result))
         return result
     except Exception as e:
-        _log.warning("[master_stocks_table] 로드 실패: %s", e)
+        logger.warning("[데이터] 로드 실패: %s", e)
         return {}
 
 

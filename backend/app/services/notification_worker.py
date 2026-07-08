@@ -36,7 +36,7 @@ class NotificationWorker:
             return
         self._running = True
         self._task = asyncio.create_task(self._consume_loop())
-        logger.info("[NotificationWorker] 워커 태스크 시작")
+        logger.info("[알림] 워커 태스크 시작")
 
     def enqueue(self, msg: dict) -> None:
         """큐에 메시지 추가 (논블로킹). 워커 미시작이면 자동 시작."""
@@ -44,11 +44,11 @@ class NotificationWorker:
             try:
                 self.start()
             except RuntimeError as e:
-                logger.warning("[NotificationWorker] 자동 시작 실패 (이벤트 루프 없음): %s", e)
+                logger.warning("[알림] 자동 시작 실패 (이벤트 루프 없음): %s", e)
         try:
             self._queue.put_nowait(msg)
         except asyncio.QueueFull:
-            logger.warning("[NotificationWorker] 큐 가득 참 -- 메시지 드롭: %s", msg.get("type"))
+            logger.warning("[알림] 큐 가득 참 -- 메시지 드롭: %s", msg.get("type"))
 
     async def _consume_loop(self) -> None:
         """큐 소비 루프. 예외 격리."""
@@ -60,7 +60,7 @@ class NotificationWorker:
             try:
                 await self._handle(msg)
             except Exception as e:
-                logger.warning("[NotificationWorker] 처리 실패 (계속): %s", e)
+                logger.warning("[알림] 처리 실패 (계속): %s", e)
             finally:
                 self._queue.task_done()
 
@@ -73,24 +73,24 @@ class NotificationWorker:
                 msg["message"], settings=msg.get("settings"),
             )
         else:
-            logger.warning("[NotificationWorker] 알 수 없는 메시지 타입: %s", msg_type)
+            logger.warning("[알림] 알 수 없는 메시지 타입: %s", msg_type)
 
     async def shutdown(self) -> None:
         """큐 잔여 항목 처리 후 종료 (graceful shutdown)."""
         self._running = False
         if not self._queue.empty():
-            logger.info("[NotificationWorker] 종료 대기 -- 큐 잔량 %d건", self._queue.qsize())
+            logger.info("[알림] 종료 대기 -- 큐 잔량 %d건", self._queue.qsize())
             try:
                 await asyncio.wait_for(self._queue.join(), timeout=10.0)
             except asyncio.TimeoutError:
-                logger.warning("[NotificationWorker] 종료 타임아웃 -- 큐 잔량 %d건 드롭", self._queue.qsize())
+                logger.warning("[알림] 종료 타임아웃 -- 큐 잔량 %d건 드롭", self._queue.qsize())
         if self._task and not self._task.done():
             self._task.cancel()
             try:
                 await self._task
             except asyncio.CancelledError:
                 pass
-        logger.info("[NotificationWorker] 워커 종료 완료")
+        logger.info("[알림] 워커 종료 완료")
 
     @classmethod
     def reset_instance(cls) -> None:

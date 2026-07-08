@@ -7,11 +7,11 @@
 """
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from backend.app.core.logger import get_logger
+import logging
 if TYPE_CHECKING:
     from backend.app.core.broker_router import BrokerRouter
 
-logger = get_logger("broker_factory")
+logger = logging.getLogger(__name__)
 
 _router_cache: "BrokerRouter | None" = None
 
@@ -26,7 +26,7 @@ def get_router() -> "BrokerRouter":
         logger.info(_router_cache.summary())
         warnings = _router_cache.validate()
         for w in warnings:
-            logger.warning("[증권사설정] %s", w)
+            logger.warning("[설정] %s", w)
     return _router_cache
 
 
@@ -41,7 +41,7 @@ def create_connector(settings: dict):
     from backend.app.core.broker_registry import CONNECTOR_REGISTRY
 
     broker_name = str(settings.get("broker", "") or "").lower().strip()
-    logger.info("[증권사설정] %s 연결 준비", broker_name)
+    logger.info("[설정] %s 연결 준비", broker_name)
 
     connector_registry = CONNECTOR_REGISTRY.get(broker_name)
     if not connector_registry:

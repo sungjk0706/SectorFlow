@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-섹터 데이터 제공자 - 업종 요약 계산 관련 함수
+업종 데이터 제공자 - 업종 요약 계산 관련 함수
 
 단일 소스 진리 원칙: master_stocks_cache 직접 접근
 """
+import logging
 from backend.app.services.engine_state import state
+
+logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 업종 요약 계산 관련 함수
@@ -100,7 +103,7 @@ async def get_sector_stocks() -> list:
 
 
 async def get_buy_targets_sector_stocks() -> list:
-    """매수후보 테이블용 — _sector_summary_cache.buy_targets + blocked_targets 반환 (guard_pass 필드 포함)."""
+    """매수 후보 테이블용 — _sector_summary_cache.buy_targets + blocked_targets 반환 (guard_pass 필드 포함)."""
     ss = state.sector_summary_cache
     if not ss:
         return []
@@ -229,24 +232,21 @@ async def recompute_sector_summary_now() -> None:
 
     매수 시도는 실시간 틱 기반 업종순위 증분 업데이트(_incremental_recompute)에서 수행됨.
     """
-    from backend.app.services.engine_state import state
-    from backend.app.core.logger import get_logger
-    logger = get_logger("engine_sector")
     from backend.app.domain.sector_calculator import compute_full_sector_summary
     from backend.app.domain.buy_filter import build_buy_targets_from_settings
     from backend.app.services.engine_sector_confirm import cancel_sector_recompute
     from backend.app.services.engine_lifecycle import is_engine_running
     from backend.app.services.engine_account_notify import notify_desktop_sector_scores, notify_buy_targets_update, notify_desktop_sector_stocks_refresh
 
-    logger.info("[업종순위] recompute_sector_summary_now 진입, is_running=%s", is_engine_running())
+    logger.info("[업종] recompute_sector_summary_now 진입, is_running=%s", is_engine_running())
     if not is_engine_running():
-        logger.info("[업종순위] 엔진 미실행으로 종료")
+        logger.info("[업종] 엔진 미실행으로 종료")
         return
     try:
         trim_trade = float(state.integrated_system_settings_cache["sector_trim_trade_amt_pct"])
         trim_change = float(state.integrated_system_settings_cache["sector_trim_change_rate_pct"])
         sector_weights = state.integrated_system_settings_cache["sector_weights"]
-        logger.info("[업종순위] 재계산 sector_weights: %s", sector_weights)
+        logger.info("[업종] 재계산 sector_weights: %s", sector_weights)
         _inputs = await get_sector_summary_inputs()
         _sector_summary = await compute_full_sector_summary(
             **_inputs,
@@ -282,28 +282,26 @@ async def recompute_sector_summary_now() -> None:
         await notify_desktop_sector_scores(force=True)
         await notify_desktop_sector_stocks_refresh(force=True)
         await notify_buy_targets_update()
-        logger.info("[업종순위] 재계산 완료")
+        logger.info("[업종] 재계산 완료")
         state.sector_summary_ready_event.set()
     except Exception as e:
-        logger.warning("[업종순위] 재계산 실패: %s", e, exc_info=True)
+        logger.warning("[업종] 재계산 실패: %s", e, exc_info=True)
         state.sector_summary_ready_event.set()
 
 
 async def _on_filter_settings_changed() -> None:
     """필터 설정 변경 시 업종순위 재계산 + WS 전송."""
-    from backend.app.core.logger import get_logger
-    logger = get_logger("engine_sector")
     from backend.app.services.engine_account_notify import (
         notify_desktop_sector_stocks_refresh,
         notify_desktop_sector_scores,
         notify_buy_targets_update,
     )
 
-    # ── 업종순위 + 매수후보 재계산 ──
+    # ── 업종순위 + 매수 후보 재계산 ──
     try:
         await recompute_sector_summary_now()
     except Exception as e:
-        logger.warning("[구동] 필터 변경 — 업종순위 재계산 실패: %s", e, exc_info=True)
+        logger.warning("[연산] 필터 변경 — 업종순위 재계산 실패: %s", e, exc_info=True)
 
     # ── WS 3종 전송 ──
     try:
@@ -317,4 +315,4 @@ async def _on_filter_settings_changed() -> None:
     try:
         await notify_buy_targets_update()
     except Exception:
-        logger.warning("[시스템] 매수후보 화면 전송 실패", exc_info=True)
+        logger.warning("[시스템] 매수 후보 화면 전송 실패", exc_info=True)

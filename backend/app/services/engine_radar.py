@@ -7,11 +7,11 @@
 """
 from typing import Any
 
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.services.engine_state import state
 from backend.app.services.engine_account_rest import _parse_float_loose
 
-logger = get_logger("engine_radar")
+logger = logging.getLogger(__name__)
 
 
 # ── 레이더/종목 조회 ─────────────────────────────────────────────────

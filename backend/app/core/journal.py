@@ -91,7 +91,7 @@ async def _append_entry(event_type: Any, timestamp: float | None = None, data: d
                 "data": evt_data
             })
     except Exception as e:
-        logger.error("[Journal] 메모리 쓰기 실패: %s", e, exc_info=True)
+        logger.error("[연산] 메모리 쓰기 실패: %s", e, exc_info=True)
 
     return seq
 
@@ -112,9 +112,9 @@ async def _read_all_entries() -> list[JournalEntry]:
                         data=row["data"],
                     ))
                 except Exception as e:
-                    logger.warning("[Journal] 엔트리 파싱 실패 (id=%s): %s", row["id"], e)
+                    logger.warning("[연산] 엔트리 파싱 실패 (id=%s): %s", row["id"], e)
     except Exception as e:
-        logger.error("[Journal] 메모리 읽기 실패: %s", e, exc_info=True)
+        logger.error("[연산] 메모리 읽기 실패: %s", e, exc_info=True)
     return entries
 
 
@@ -127,9 +127,9 @@ async def _perform_compaction() -> None:
                 cutoff_index = len(_journal_entries) - 1000
                 removed = _journal_entries[:cutoff_index]
                 _journal_entries[:] = _journal_entries[cutoff_index:]
-                logger.info("[Journal] Compaction 완료 - %d개 이전 엔트리 삭제됨", len(removed))
+                logger.info("[연산] Compaction 완료 - %d개 이전 엔트리 삭제됨", len(removed))
     except Exception as e:
-        logger.error("[Journal] Compaction 실패: %s", e, exc_info=True)
+        logger.error("[연산] Compaction 실패: %s", e, exc_info=True)
 
 
 # ── Lifecycle Management (No-op in SQLite) ───────────────────────────────────
@@ -220,7 +220,7 @@ async def oms_get_pending_orders() -> list[dict]:
                     if data.get("status") == "pending":
                         pending.append(data)
     except Exception as e:
-        logger.error("[Journal] Pending 주문 조회 실패: %s", e, exc_info=True)
+        logger.error("[연산] Pending 주문 조회 실패: %s", e, exc_info=True)
     return pending
 
 
@@ -236,7 +236,7 @@ async def oms_update_order_status(order_id: str, status: str) -> None:
                         data["status"] = status
                         return
     except Exception as e:
-        logger.error("[Journal] 주문 상태 업데이트 실패: %s", e, exc_info=True)
+        logger.error("[연산] 주문 상태 업데이트 실패: %s", e, exc_info=True)
 
 
 async def oms_get_next_seq() -> int:
@@ -272,10 +272,10 @@ async def replay_journal(
                 fill_event_handler(entry)
             replayed_count += 1
         except Exception as e:
-            logger.error("[Journal] 엔트리 재생 실패 (seq=%d): %s", entry.seq, e, exc_info=True)
+            logger.error("[연산] 엔트리 재생 실패 (seq=%d): %s", entry.seq, e, exc_info=True)
             continue
 
-    logger.info("[Journal] 저널 재생 완료 - %d/%d 엔트리 재생됨", replayed_count, len(entries))
+    logger.info("[연산] 저널 재생 완료 - %d/%d 엔트리 재생됨", replayed_count, len(entries))
     return replayed_count
 
 
@@ -285,9 +285,9 @@ async def clear_journal() -> None:
     try:
         async with _journal_lock:
             _journal_entries.clear()
-        logger.info("[Journal] 저널 초기화 완료")
+        logger.info("[연산] 저널 초기화 완료")
     except Exception as e:
-        logger.error("[Journal] 저널 초기화 실패: %s", e, exc_info=True)
+        logger.error("[연산] 저널 초기화 실패: %s", e, exc_info=True)
 
 
 async def get_journal_stats() -> dict[str, Any]:

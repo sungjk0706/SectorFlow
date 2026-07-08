@@ -15,10 +15,10 @@ grp_no 매핑:
 from __future__ import annotations
 import asyncio
 import time
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.services.engine_state import state
 from backend.app.services.engine_lifecycle import schedule_engine_task
-logger = get_logger("engine")
+logger = logging.getLogger(__name__)
 
 # ── 인메모리 상태 ──────────────────────────────────────────────────────────
 # 상태는 engine_state.py의 state에 통합 관리 (단일 소스 진리)
@@ -98,9 +98,9 @@ async def _ensure_account_subscription() -> None:
     from backend.app.services import engine_ws_reg
     try:
         await engine_ws_reg.subscribe_account_realtime()
-        logger.info("[구독제어] 실전모드 — 계좌(grp 10) 구독 보장 완료")
+        logger.info("[구독] 실전모드 — 계좌(grp 10) 구독 보장 완료")
     except Exception as e:
-        logger.warning("[구독제어] 계좌 구독 보장 실패: %s", e, exc_info=True)
+        logger.warning("[구독] 계좌 구독 보장 실패: %s", e, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -126,10 +126,10 @@ async def start_quote() -> dict:
             await engine_ws_reg.subscribe_sector_stocks_0b()
             _set_status(quote=True)
             await _ensure_account_subscription()
-            logger.info("[구독제어] 실시간시세(0B, grp 4) 구독 시작 완료")
+            logger.info("[구독] 실시간시세(0B, grp 4) 구독 시작 완료")
             return {"ok": True, "status": get_subscribe_status()}
         except Exception as e:
-            logger.warning("[구독제어] 실시간시세 구독 시작 실패: %s", e, exc_info=True)
+            logger.warning("[구독] 실시간시세 구독 시작 실패: %s", e, exc_info=True)
             return {"ok": False, "message": str(e)}
 
 
@@ -159,7 +159,7 @@ async def stop_quote() -> dict:
         from backend.app.services.engine_ws_reg import _unreg_grp
         await _unreg_grp("4")
         _set_status(quote=False)
-        logger.info("[구독제어] 실시간시세(0B, grp 4) UNREG 완료")
+        logger.info("[구독] 실시간시세(0B, grp 4) UNREG 완료")
         return {"ok": True, "status": get_subscribe_status()}
 
 
@@ -186,15 +186,15 @@ async def run_conditional_reg_pipeline() -> None:
         try:
             await engine_ws_reg.subscribe_sector_stocks_0b()
             _set_status(quote=True)
-            logger.info("[구독제어] 실시간시세(0B) 자동 구독 완료")
+            logger.info("[구독] 실시간시세(0B) 자동 구독 완료")
         except Exception as e:
-            logger.warning("[구독제어] 실시간시세 자동 구독 실패: %s", e, exc_info=True)
+            logger.warning("[구독] 실시간시세 자동 구독 실패: %s", e, exc_info=True)
 
         try:
             await engine_ws_reg.subscribe_index_realtime()
-            logger.info("[구독제어] 업종지수(0J) 자동 구독 완료")
+            logger.info("[구독] 업종지수(0J) 자동 구독 완료")
         except Exception as e:
-            logger.warning("[구독제어] 업종지수 자동 구독 실패: %s", e, exc_info=True)
+            logger.warning("[구독] 업종지수 자동 구독 실패: %s", e, exc_info=True)
 
         # 실전모드에서 구독 시작했으면 계좌 구독 보장
         await _ensure_account_subscription()
@@ -211,7 +211,7 @@ async def cleanup_stale_subscriptions() -> None:
     WS 미연결 시 스킵 + warning 로그.
     """
     if not _ws_connected():
-        logger.warning("[구독제어] 잔존 구독 정리 생략 — 실시간 미연결")
+        logger.warning("[구독] 잔존 구독 정리 생략 — 실시간 미연결")
         return
 
     # 서버 측 구독은 다음 REG의 refresh='0'(reset_first=True)이 덮어씀.
@@ -220,7 +220,7 @@ async def cleanup_stale_subscriptions() -> None:
     for entry in state.master_stocks_cache.values():
         entry.pop("_subscribed", None)
     _set_status(quote=False)
-    logger.debug("[구독제어] 잔존 구독 정리 완료 — 전체 OFF (인메모리 초기화, 서버 측은 다음 REG refresh=0으로 덮어씀)")
+    logger.debug("[구독] 잔존 구독 정리 완료 — 전체 OFF (인메모리 초기화, 서버 측은 다음 REG refresh=0으로 덮어씀)")
 
 
 # ---------------------------------------------------------------------------
@@ -238,7 +238,7 @@ async def on_setting_changed(key: str, value: bool) -> None:
 
     if not await is_ws_subscribe_window(settings):
         logger.info(
-            "[구독제어] 설정 변경 %s=%s — 실시간 구독 구간 외, 구독 변경 없음",
+            "[구독] 설정 변경 %s=%s — 실시간 구독 구간 외, 구독 변경 없음",
             key, value,
         )
         return

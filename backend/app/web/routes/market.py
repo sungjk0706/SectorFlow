@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""시세/섹터/레이더/매수후보 라우터 — GET 엔드포인트는 WS initial-snapshot으로 대체됨."""
+"""시세/업종/레이더/매수 후보 라우터 — GET 엔드포인트는 WS initial-snapshot으로 대체됨."""
 from __future__ import annotations
 from fastapi import APIRouter, Depends
 from backend.app.core.trading_calendar import is_trading_day, get_kst_today

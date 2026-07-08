@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-섹터 관련 데이터 모델.
+업종 관련 데이터 모델.
 
 순환 import 방지를 위해 dataclass와 상수를 별도 파일로 분리.
 """
@@ -10,7 +10,7 @@ from collections.abc import Callable
 from typing import Literal
 @dataclass
 class StockScore:
-    """섹터 내 개별 종목 스코어."""
+    """업종 내 개별 종목 스코어."""
     code: str
     name: str
     sector: str
@@ -28,19 +28,19 @@ class StockScore:
     guard_reason: str = ""      # 차단 사유 (빈 문자열 = 통과)
     # 가산점
     boost_score: float = 0.0    # 가산점 합계 (>= 0.0)
-    trade_amount_rank: int = -1 # 매수후보 간 거래대금 순위 (0=1위, -1=미산정/비활성)
+    trade_amount_rank: int = -1 # 매수 후보 간 거래대금 순위 (0=1위, -1=미산정/비활성)
 
 
 @dataclass
 class SectorScore:
-    """섹터 단위 강도 스코어."""
+    """업종 단위 강도 스코어."""
     sector: str
-    total: int                  # 섹터 내 종목 수 (현재가 있는 종목만)
+    total: int                  # 업종 내 종목 수 (현재가 있는 종목만)
     rise_count: int             # 상승 종목 수 (change_rate > 0)
     rise_ratio: float           # 상승 비율 (0.0~1.0)
     avg_change_rate: float      # 평균 등락률 (%)
-    total_trade_amount: int     # 섹터 평균 거래대금 (원) — 표시용 (가중치 계산 기반과 일관성 유지)
-    avg_ratio_5d_pct: float     # 섹터 평균 5D거래대금비율 (%)
+    total_trade_amount: int     # 업종 평균 거래대금 (원) — 표시용 (가중치 계산 기반과 일관성 유지)
+    avg_ratio_5d_pct: float     # 업종 평균 5D거래대금비율 (%)
     rank: int = 0               # 강도 순위 (1=최강)
     stocks: list[StockScore] = field(default_factory=list)
     # ── 점수 계산용 (트리밍/필터 후 값) ──
@@ -55,14 +55,14 @@ class SectorScore:
 class BuyTarget:
     """매수 타겟 큐 항목."""
     rank: int                   # 전체 우선순위
-    sector_rank: int            # 섹터 순위
+    sector_rank: int            # 업종 순위
     stock: StockScore
     reason: str = ""            # 타겟 선정 이유 요약
 
 
 @dataclass
 class SectorSummary:
-    """섹터 스코어링 전체 결과 -- UI·엔진 양쪽에 전달."""
+    """업종 스코어링 전체 결과 -- UI·엔진 양쪽에 전달."""
     sectors: list[SectorScore]          # 강도 순위 정렬
     buy_targets: list[BuyTarget]        # 매수 타겟 큐 (가드 통과 종목만)
     blocked_targets: list[BuyTarget]    # 가드 차단 종목 (UI 표시용)

@@ -10,9 +10,9 @@
 from __future__ import annotations
 import time
 from collections.abc import Callable
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.services.engine_symbol_utils import _base_stk_cd
-logger = get_logger("engine")
+logger = logging.getLogger(__name__)
 
 
 # ── NotificationCache: 알림 레이어 델타 캐시 통합 클래스 ─────────────────────────
@@ -279,7 +279,7 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
     except Exception as e:
         logger.warning("[시스템] 수신율 조회 실패 (None으로 진행): %s", e)
 
-    # delta 계산: 변경된 섹터만 전송
+    # delta 계산: 변경된 업종만 전송
     if not force and notify_cache.prev_scores:
         prev_map = {s["sector"]: s for s in notify_cache.prev_scores}
         changed = []
@@ -287,7 +287,7 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
             prev = prev_map.get(s["sector"])
             if prev is None or s != prev:
                 changed.append(s)
-        # 삭제된 섹터 감지 (이전에 있었는데 지금 없는 경우)
+        # 삭제된 업종 감지 (이전에 있었는데 지금 없는 경우)
         cur_sectors = {s["sector"] for s in scores}
         removed = [s["sector"] for s in notify_cache.prev_scores if s["sector"] not in cur_sectors]
 
@@ -358,7 +358,7 @@ async def notify_desktop_trade_price(
 
 
 def _is_relevant_code(nk: str) -> bool:
-    """프론트에서 실제 사용하는 종목 코드인지 판별 (섹터+보유+레이아웃). set O(1) 조회."""
+    """프론트에서 실제 사용하는 종목 코드인지 판별 (업종+보유+레이아웃). set O(1) 조회."""
     try:
         # _radar_cnsr_order 삭제: 제로-체크 보장 (구독된 종목만 틱 수신)
         if nk in notify_cache.positions_code_set:
@@ -375,7 +375,7 @@ def _is_relevant_code(nk: str) -> bool:
 async def notify_raw_real_data(item: dict) -> None:
     """
     키움 실시간 메시지(REAL)를 가공 없이 브로드캐스트.
-    프론트에 필요한 종목(섹터+보유+레이아웃)만 전송하여 렌더링 과부하 방지.
+    프론트에 필요한 종목(업종+보유+레이아웃)만 전송하여 렌더링 과부하 방지.
     """
     if not item or not isinstance(item, dict):
         return
@@ -403,7 +403,7 @@ async def notify_raw_real_data(item: dict) -> None:
 
 
 async def notify_orderbook_update(code: str, bid: int, ask: int) -> None:
-    """매수후보 종목의 호가잔량 변경 시 프론트에 즉시 전송 (이벤트 기반)."""
+    """매수 후보 종목의 호가잔량 변경 시 프론트에 즉시 전송 (이벤트 기반)."""
     payload = {"code": code, "bid": bid, "ask": ask}
     await _safe_broadcast("orderbook-update", payload)
 
@@ -568,12 +568,12 @@ async def notify_snapshot_history_update() -> None:
     pass
 
 
-# 매수후보 비교 키: 순위·시세·가드 상태 등 변경 감지 대상 필드
+# 매수 후보 비교 키: 순위·시세·가드 상태 등 변경 감지 대상 필드
 _BUY_TARGET_CMP_KEYS = ("rank", "cur_price", "change_rate", "strength", "trade_amount", "boost_score", "guard_pass", "reason", "order_ratio", "program_net_buy", "high_5d", "avg_amt_5d")
 
 
 async def notify_buy_targets_update() -> None:
-    """매수후보 목록 변경 시 delta만 WS로 브로드캐스트한다."""
+    """매수 후보 목록 변경 시 delta만 WS로 브로드캐스트한다."""
     from backend.app.services.sector_data_provider import get_buy_targets_sector_stocks
 
     targets = await get_buy_targets_sector_stocks()

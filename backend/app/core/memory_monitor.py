@@ -21,7 +21,7 @@ def start_memory_monitor() -> None:
         return
     tracemalloc.start(25)
     _started = True
-    logger.info("[메모리] tracemalloc 시작 — 할당 추적 활성화 (frames=25)")
+    logger.info("[시스템] tracemalloc 시작 — 할당 추적 활성화 (frames=25)")
 
 
 def log_memory_snapshot(label: str = "") -> None:
@@ -35,10 +35,10 @@ def log_memory_snapshot(label: str = "") -> None:
     top_stats = snapshot.statistics("lineno")
 
     total = sum(s.size for s in top_stats)
-    logger.info("[메모리] %s — 총 할당: %.1f MB", label or "스냅샷", total / 1024 / 1024)
+    logger.info("[시스템] %s — 총 할당: %.1f MB", label or "스냅샷", total / 1024 / 1024)
 
     for stat in top_stats[:10]:
-        logger.info("[메모리]   %s: %.1f KB (%d blocks)",
+        logger.info("[시스템]   %s: %.1f KB (%d blocks)",
                      stat.traceback, stat.size / 1024, stat.count)
 
 
@@ -49,4 +49,4 @@ def stop_memory_monitor() -> None:
         return
     tracemalloc.stop()
     _started = False
-    logger.info("[메모리] tracemalloc 종료")
+    logger.info("[시스템] tracemalloc 종료")

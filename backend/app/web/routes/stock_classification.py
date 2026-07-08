@@ -17,7 +17,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from backend.app.web.deps import get_current_user
-_log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 async def _maybe_warning() -> dict:
@@ -78,7 +78,7 @@ async def broadcast_stock_classification_changed() -> None:
             getattr(_es.state, "latest_filter_summary_meta", ""), len(stocks)
         )
     except Exception as e:
-        _log.warning("[업종관리] all_stocks 조회 실패: %s", e)
+        logger.warning("[업종] all_stocks 조회 실패: %s", e)
 
     # all_stocks 결과 기반으로 업종별 종목수 및 미분류 수 계산 (SSOT 일관성)
     sector_counts: dict[str, int] = {}
@@ -112,7 +112,7 @@ async def broadcast_stock_classification_changed() -> None:
             if row["name"] not in custom_sectors:
                 custom_sectors[row["name"]] = ""
     except Exception as e:
-        _log.warning("[업종관리] stock_moves 조회 실패: %s", e)
+        logger.warning("[업종] stock_moves 조회 실패: %s", e)
 
     payload = {
         "_v": 1,
@@ -150,7 +150,7 @@ async def _trigger_recompute() -> None:
             "payload": {},
         }))
     except Exception as e:
-        _log.warning("[업종관리] 업종순위 재계산 신호 전송 실패: %s", e)
+        logger.warning("[업종] 업종순위 재계산 신호 전송 실패: %s", e)
 
 
 # ── GET /api/stock-classification ───────────────────────────────────────────
@@ -188,7 +188,7 @@ async def get_stock_classification(_: str = Depends(get_current_user)):
             getattr(_es.state, "latest_filter_summary_meta", ""), len(stocks)
         )
     except Exception as e:
-        _log.warning("[업종관리] filter_summary 생성 실패: %s", e, exc_info=True)
+        logger.warning("[업종] filter_summary 생성 실패: %s", e, exc_info=True)
 
     return {
         "custom_data": {
@@ -300,11 +300,11 @@ async def trigger_confirmed_download(_: str = Depends(get_current_user)):
         _rebuild_layout_cache([])
         from backend.app.services.market_close_pipeline import fetch_confirmed_data_only
         _task = asyncio.create_task(fetch_confirmed_data_only())
-        _task.add_done_callback(lambda t: _log.warning("[업종관리] 1일봉챠트 다운로드 태스크 실패: %s", t.exception()) if t.exception() else None)
-        _log.info("[업종관리] 수동 1일봉챠트 시세 다운로드 시작")
+        _task.add_done_callback(lambda t: logger.warning("[업종] 1일봉챠트 다운로드 태스크 실패: %s", t.exception()) if t.exception() else None)
+        logger.info("[업종] 수동 1일봉챠트 시세 다운로드 시작")
         return {"ok": True}
     except Exception as e:
-        _log.error("[업종관리] 수동 1일봉챠트 시세 다운로드 실패: %s", e)
+        logger.error("[업종] 수동 1일봉챠트 시세 다운로드 실패: %s", e)
         return {"ok": False, "error": str(e)}
 
 
@@ -320,11 +320,11 @@ async def trigger_5d_download(_: str = Depends(get_current_user)):
 
         from backend.app.services.market_close_pipeline import fetch_5d_data_only
         _task = asyncio.create_task(fetch_5d_data_only())
-        _task.add_done_callback(lambda t: _log.warning("[업종관리] 5일봉 다운로드 태스크 실패: %s", t.exception()) if t.exception() else None)
-        _log.info("[업종관리] 수동 5일봉 거래대금,고가 다운로드 시작")
+        _task.add_done_callback(lambda t: logger.warning("[업종] 5일봉 다운로드 태스크 실패: %s", t.exception()) if t.exception() else None)
+        logger.info("[업종] 수동 5일봉 거래대금,고가 다운로드 시작")
         return {"ok": True}
     except Exception as e:
-        _log.error("[업종관리] 수동 5일봉 거래대금,고가 다운로드 실패: %s", e)
+        logger.error("[업종] 수동 5일봉 거래대금,고가 다운로드 실패: %s", e)
         return {"ok": False, "error": str(e)}
 
 

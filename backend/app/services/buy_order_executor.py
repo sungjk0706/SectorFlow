@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-매수 주문 실행기 - 섹터 매수 판단 및 실행 로직.
+매수 주문 실행기 - 업종 매수 판단 및 실행 로직.
 
-engine_lifecycle.py에서 섹터 매수 관련 함수를 분리.
+engine_lifecycle.py에서 업종 매수 관련 함수를 분리.
 """
 from __future__ import annotations
 import time
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.services.auto_trading_effective import auto_buy_effective
-logger = get_logger("engine_lifecycle")
+logger = logging.getLogger(__name__)
 
 # ── State Gate: 주문가능 금액 부족 시 evaluate_buy_candidates 호출 차단 ──
 # 매도 체결 / 잔고 업데이트 이벤트에서 해제 후 재호출.
@@ -26,14 +26,14 @@ def invalidate_buy_snapshot() -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 섹터 매수 실행 함수
+# 업종 매수 실행 함수
 # ──────────────────────────────────────────────────────────────────────────────
 
 async def evaluate_buy_candidates() -> None:
     """
     이벤트 기반 매수 판단 — 실시간 데이터 변경 시 _do_sector_recompute()에서 호출.
     auto_buy_effective(시간 범위 + auto_buy_on + 마스터 스위치) 통과 시 매수 실행.
-    매수후보 테이블 1순위 종목만 매수, buy_interval_on 시 사용자 설정 간격 대기.
+    매수 후보 테이블 1순위 종목만 매수, buy_interval_on 시 사용자 설정 간격 대기.
     """
     global _cash_insufficient
     from backend.app.services import dry_run
@@ -145,7 +145,7 @@ async def evaluate_buy_candidates() -> None:
         if _rebuy_block_on and s.code in state.auto_trade._bought_today:
             continue
 
-        logger.info("[매매] 매수 시도: %s(%s) 섹터=%s",
+        logger.info("[매매] 매수 시도: %s(%s) 업종=%s",
                     s.name, s.code, s.sector)
         try:
             _price = int(s.cur_price or 0)

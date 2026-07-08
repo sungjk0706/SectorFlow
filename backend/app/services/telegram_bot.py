@@ -69,7 +69,7 @@ class TelegramBot:
             return
         self._running = True
         self._task = asyncio.create_task(self._poll_loop())
-        logger.info("[텔레그램] 폴링 시작")
+        logger.info("[알림] 폴링 시작")
 
     async def stop_async(self) -> None:
         """폴링 태스크가 httpx 대기 중이어도 취소·종료를 기다린다(데스크톱 종료 시 잔류 방지)."""
@@ -83,7 +83,7 @@ class TelegramBot:
                 pass
         self._task = None
         self._last_poll_ok_mon = None
-        logger.info("[텔레그램] 폴링 종료")
+        logger.info("[알림] 폴링 종료")
 
     def stop(self) -> None:
         """비동기 루프 밖에서 취소만 할 때. 엔진 종료 경로는 stop_async 를 사용한다."""
@@ -91,7 +91,7 @@ class TelegramBot:
         if self._task and not self._task.done():
             self._task.cancel()
         self._last_poll_ok_mon = None
-        logger.info("[텔레그램] 폴링 종료(취소만, await 없음)")
+        logger.info("[알림] 폴링 종료(취소만, await 없음)")
 
     def get_poll_ok_age_sec(self) -> float | None:
         """마지막 getUpdates 성공(HTTP 200·ok) 이후 경과 초. 없으면 None."""
@@ -118,10 +118,10 @@ class TelegramBot:
                 break
             except Exception as exc:
                 had_error = True
-                logger.error("[텔레그램] 루프 오류: %s", _mask_telegram_url(str(exc)))
+                logger.error("[알림] 루프 오류: %s", _mask_telegram_url(str(exc)))
             if not tasks:
                 self._running = False
-                logger.info("[텔레그램] 활성 설정 없음 — 폴링 자동 종료")
+                logger.info("[알림] 활성 설정 없음 — 폴링 자동 종료")
                 break
             if had_error:
                 await asyncio.sleep(2)
@@ -176,7 +176,7 @@ class TelegramBot:
             masked = _mask_telegram_url(str(exc))
             # Python 종료 시점의 atexit 등록 예외는 복구 불가 상태에 가까워 루프를 중단한다.
             if isinstance(exc, RuntimeError) and "atexit" in str(exc).lower():
-                logger.warning("[텔레그램] 런타임 종료 감지로 폴링 중단: %s", masked)
+                logger.warning("[알림] 런타임 종료 감지로 폴링 중단: %s", masked)
                 self._running = False
                 return
             now = time.monotonic()
@@ -185,7 +185,7 @@ class TelegramBot:
                 or self._last_poll_err_mon is None
                 or (now - self._last_poll_err_mon) >= 10.0
             ):
-                logger.debug("[텔레그램] 업데이트 조회 실패: %s", masked)
+                logger.debug("[알림] 업데이트 조회 실패: %s", masked)
                 self._last_poll_err_msg = masked
                 self._last_poll_err_mon = now
             return
@@ -207,7 +207,7 @@ class TelegramBot:
             raw_chat = (msg.get("chat") or {}).get("id")
             sender_id = _normalize_chat_id(str(raw_chat) if raw_chat is not None else "")
             if sender_id != allowed_chat:
-                logger.warning("[텔레그램] 비승인 채팅 ID %s (허용: %s)", sender_id, allowed_chat)
+                logger.warning("[알림] 비승인 채팅 ID %s (허용: %s)", sender_id, allowed_chat)
                 continue
 
             text = (msg.get("text") or "").strip()
@@ -224,7 +224,7 @@ class TelegramBot:
                     data={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
                 )
         except Exception as exc:
-            logger.debug(f"[텔레그램] 메시지 전송 오류: {exc}")
+            logger.debug(f"[알림] 메시지 전송 오류: {exc}")
 
     # ── 명령어 라우터 ─────────────────────────────────────────────────────────
 
@@ -254,7 +254,7 @@ class TelegramBot:
             await self._cmd_account(token, chat_id)
         elif cmd in ("계좌", "account"):
             await self._cmd_account(token, chat_id)
-        elif cmd in ("업종", "섹터", "sector"):
+        elif cmd in ("업종", "업종", "sector"):
             await self._cmd_sector(token, chat_id)
         elif cmd in ("후보", "candidate"):
             await self._cmd_buy_candidates(token, chat_id)
@@ -279,7 +279,7 @@ class TelegramBot:
             "상태  -- 스케줄·스위치 + 지금 자동매매 가능 여부 + 계좌 요약\n"
             "잔고  -- 계좌 현황만\n"
             "업종  -- 업종 분석 상위/하위 요약\n"
-            "후보  -- 매수후보 1~10순위\n"
+            "후보  -- 매수 후보 1~10순위\n"
             "도움말 -- 이 메시지"
         )
         await self._send(token, chat_id, text)
@@ -305,7 +305,7 @@ class TelegramBot:
         )
         await notify_desktop_header_refresh()
         await notify_desktop_settings_toggled()
-        logger.info("[텔레그램] 설정 %s -> %s (%s)", key, new, label)
+        logger.info("[알림] 설정 %s -> %s (%s)", key, new, label)
         return new
 
     async def _cmd_toggle_auto_master(self, token: str, chat_id: str, profile: str | None = None):
@@ -432,7 +432,7 @@ class TelegramBot:
             await self._send(token, chat_id, f" 계좌 조회 오류: {str(exc)[:120]}")
 
     async def _cmd_sector(self, token: str, chat_id: str) -> None:
-        """섹터 강도 상위/하위 요약."""
+        """업종 강도 상위/하위 요약."""
         try:
             from backend.app.services.sector_data_provider import get_sector_summary_inputs
             from backend.app.domain.sector_calculator import compute_full_sector_summary
@@ -481,7 +481,7 @@ class TelegramBot:
             await self._send(token, chat_id, f" 업종 조회 오류: {str(exc)[:120]}")
 
     async def _cmd_buy_candidates(self, token: str, chat_id: str) -> None:
-        """매수후보 1~10순위 전송."""
+        """매수 후보 1~10순위 전송."""
         try:
             from backend.app.services.sector_data_provider import get_buy_targets_sector_stocks
 
@@ -489,10 +489,10 @@ class TelegramBot:
             now_str = datetime.now(_KST).strftime("%H:%M")
 
             if not targets:
-                await self._send(token, chat_id, f"🎯 매수후보 ({now_str})\n후보 없음")
+                await self._send(token, chat_id, f"🎯 매수 후보 ({now_str})\n후보 없음")
                 return
 
-            lines = [f"🎯 <b>매수후보 TOP {len(targets)}</b> ({now_str})\n"]
+            lines = [f"🎯 <b>매수 후보 TOP {len(targets)}</b> ({now_str})\n"]
             for t in targets:
                 rate = t["change_rate"]
                 sign = "▲" if rate > 0 else ("▼" if rate < 0 else "━")
@@ -511,7 +511,7 @@ class TelegramBot:
 
             await self._send(token, chat_id, "\n".join(lines))
         except Exception as exc:
-            await self._send(token, chat_id, f"⚠ 매수후보 조회 오류: {str(exc)[:120]}")
+            await self._send(token, chat_id, f"⚠ 매수 후보 조회 오류: {str(exc)[:120]}")
 
     async def _cmd_profit_discontinued(self, token: str, chat_id: str) -> None:
         await self._send(

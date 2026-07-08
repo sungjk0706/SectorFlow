@@ -79,13 +79,13 @@ async def _db_writer_loop() -> None:
                     _db_write_queue.task_done()
 
             except Exception as e:
-                logger.error("[DB Writer] 작업 처리 실패: %s", e, exc_info=True)
+                logger.error("[데이터] 작업 처리 실패: %s", e, exc_info=True)
 
     except asyncio.CancelledError:
-        logger.info("[DB Writer] 루프 취소됨")
+        logger.info("[데이터] 루프 취소됨")
     finally:
         _running = False
-        logger.info("[DB Writer] 루프 종료")
+        logger.info("[데이터] 루프 종료")
 
 
 async def _process_operation(op: DBWriteOperation) -> None:
@@ -104,7 +104,7 @@ async def _process_operation(op: DBWriteOperation) -> None:
                     await conn.execute(op.query, op.params)
             else:
                 # 기본 테이블 작업 (확장 가능)
-                logger.warning("[DB Writer] 사용자 정의 쿼리 없음 - 작업 스킵: %s", op.table)
+                logger.warning("[데이터] 사용자 정의 쿼리 없음 - 작업 스킵: %s", op.table)
                 if op.future and not op.future.done():
                     op.future.set_result(None)
                 return
@@ -115,7 +115,7 @@ async def _process_operation(op: DBWriteOperation) -> None:
 
         except Exception as e:
             await conn.rollback()
-            logger.error("[DB Writer] 작업 실패 - table=%s, operation=%s: %s", op.table, op.operation, e, exc_info=True)
+            logger.error("[데이터] 작업 실패 - table=%s, operation=%s: %s", op.table, op.operation, e, exc_info=True)
             if op.future and not op.future.done():
                 op.future.set_exception(e)
             raise
@@ -128,12 +128,12 @@ async def start_db_writer() -> None:
     global _writer_task
 
     if _writer_task is not None and not _writer_task.done():
-        logger.warning("[DB Writer] 이미 실행 중")
+        logger.warning("[데이터] 이미 실행 중")
         return
 
     _get_shutdown_event().clear()
     _writer_task = asyncio.create_task(_db_writer_loop())
-    logger.info("[DB Writer] 시작됨")
+    logger.info("[데이터] 시작됨")
 
 
 async def stop_db_writer() -> None:
@@ -156,7 +156,7 @@ async def stop_db_writer() -> None:
         _db_write_queue.get_nowait()
         _db_write_queue.task_done()
 
-    logger.info("[DB Writer] 정지됨")
+    logger.info("[데이터] 정지됨")
 
 
 async def enqueue_db_write(op: DBWriteOperation) -> None:

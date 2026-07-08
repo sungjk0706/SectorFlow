@@ -6,11 +6,11 @@
 - 민감 정보 마스킹
 - 연결 레벨 설정 키
 """
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.core.engine_settings import get_engine_settings
 from backend.app.services.engine_state import state
 
-logger = get_logger("engine_config")
+logger = logging.getLogger(__name__)
 
 
 # ── 설정 조회 ─────────────────────────────────────────────────────────

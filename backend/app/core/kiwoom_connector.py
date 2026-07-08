@@ -48,10 +48,10 @@ class _KiwoomSocket:
         """서버 연결 + LOGIN 전송 + 수신루프/워커 기동."""
         if not websockets:
             raise RuntimeError("websockets 패키지가 없습니다.")
-        logger.info("[서버소켓] 연결 시도: %s", self._uri)
+        logger.info("[시스템] 연결 시도: %s", self._uri)
         self._ws = await websockets.connect(self._uri, open_timeout=10)
         self.connected = True
-        logger.info("[서버소켓] 연결 완료 — 로그인 전송")
+        logger.info("[시스템] 연결 완료 — 로그인 전송")
         await self._raw_send({"trnm": "LOGIN", "token": self._token})
         self._stop_event.clear()
         self._recv_task = asyncio.get_running_loop().create_task(self._recv_loop())
@@ -71,15 +71,15 @@ class _KiwoomSocket:
             try:
                 await asyncio.wait_for(self._ws.close(), timeout=5.0)
             except Exception:
-                logger.warning("[서버소켓] 소켓 종료 실패", exc_info=True)
+                logger.warning("[시스템] 소켓 종료 실패", exc_info=True)
             self._ws = None
-        logger.info("[서버소켓] 연결 종료")
+        logger.info("[시스템] 연결 종료")
 
     async def send(self, payload: dict) -> bool:
         """REG/UNREG 등 페이로드 송신. 연결 없으면 False."""
         if not self.connected or not self._ws:
             trnm = payload.get("trnm", "?")
-            logger.warning("[서버소켓] 전송 생략 — 연결 없음 (trnm=%s)", trnm)
+            logger.warning("[시스템] 전송 생략 — 연결 없음 (trnm=%s)", trnm)
             return False
         msg = json.dumps(payload, ensure_ascii=False)
         await self._ws.send(msg)
@@ -91,7 +91,7 @@ class _KiwoomSocket:
 
     async def _recv_loop(self) -> None:
         """WebSocket 수신루프 — PING 처리, LOGIN 응답, REAL 큐 투입, 연결 끊김 감지."""
-        logger.info("[서버소켓] 수신 시작")
+        logger.info("[시스템] 수신 시작")
         while not self._stop_event.is_set():
             try:
                 raw = await self._ws.recv()
@@ -105,7 +105,7 @@ class _KiwoomSocket:
                 try:
                     msg = json.loads(raw)
                 except (json.JSONDecodeError, TypeError):
-                    logger.warning("[서버소켓] 메시지 해석 실패(무시): %s", raw[:80])
+                    logger.warning("[시스템] 메시지 해석 실패(무시): %s", raw[:80])
                     continue
 
                 if isinstance(msg, list):
@@ -123,10 +123,10 @@ class _KiwoomSocket:
                     rc = msg.get("return_code", -1)
                     if str(rc) != "0":
                         err = msg.get("return_msg", "원인 불명")
-                        logger.error("[서버소켓] 로그인 실패: %s (code=%s)", err, rc)
+                        logger.error("[시스템] 로그인 실패: %s (code=%s)", err, rc)
                         self.connected = False
                         return
-                    logger.info("[서버소켓] 로그인 성공")
+                    logger.info("[시스템] 로그인 성공")
                     await self._on_message(msg)
                     continue
 
@@ -140,9 +140,9 @@ class _KiwoomSocket:
                     rc = msg.get("return_code", "?")
                     d = msg.get("data", [])
                     cnt = len(d) if isinstance(d, list) else (1 if d else 0)
-                    logger.info("[서버소켓] ◄ %s — 결과코드=%s 항목=%d건", trnm, rc, cnt)
+                    logger.info("[시스템] ◄ %s — 결과코드=%s 항목=%d건", trnm, rc, cnt)
                 elif trnm == "SYSTEM":
-                    logger.warning("[서버소켓] ◄ 서버 강제종료 신호: %s", raw[:300])
+                    logger.warning("[시스템] ◄ 서버 강제종료 신호: %s", raw[:300])
 
                 # 7. 비-REAL 콜백 (REG ACK 등)
                 await self._on_message(msg)
@@ -157,16 +157,16 @@ class _KiwoomSocket:
                 if is_closed:
                     self.connected = False
                     if not self._stop_event.is_set():
-                        logger.warning("[서버소켓] 연결 끊김 (%s) — 수신 종료", err_name)
+                        logger.warning("[시스템] 연결 끊김 (%s) — 수신 종료", err_name)
                         if self._on_disconnect:
                             await self._on_disconnect()
                     break
                 else:
                     if not self._stop_event.is_set():
-                        logger.warning("[서버소켓] 수신 오류(계속): %s", e, exc_info=True)
+                        logger.warning("[시스템] 수신 오류(계속): %s", e, exc_info=True)
                     await asyncio.sleep(0.1)
 
-        logger.info("[서버소켓] 수신 종료")
+        logger.info("[시스템] 수신 종료")
 
 
 
@@ -215,7 +215,7 @@ class KiwoomConnector(BrokerConnector):
     def set_realtime_enabled(self, enabled: bool) -> None:
         """실시간 연결 ON/OFF 설정. OFF시 연결되어 있으면 데이터 수신은 계속되지만 로직에서 차단 가능."""
         self._realtime_enabled = enabled
-        logger.info("[증권사연결] 실시간 연결 설정 변경: %s", enabled)
+        logger.info("[연결] 실시간 연결 설정 변경: %s", enabled)
 
     def is_auto_trade_enabled(self) -> bool:
         """자동매매 ON/OFF 상태 반환 (time_scheduler_on 설정값)"""
@@ -224,7 +224,7 @@ class KiwoomConnector(BrokerConnector):
     def set_auto_trade_enabled(self, enabled: bool) -> None:
         """자동매매 ON/OFF 설정."""
         self._auto_trade_enabled = enabled
-        logger.info("[증권사연결] 자동매매 설정 변경: %s", enabled)
+        logger.info("[연결] 자동매매 설정 변경: %s", enabled)
 
     async def connect(self) -> None:
         """토큰 발급 + WebSocket 연결 + 수신루프 기동."""
@@ -251,7 +251,7 @@ class KiwoomConnector(BrokerConnector):
                         try:
                             _q.get_nowait()  # 가장 오래된 데이터 제거
                             _q.put_nowait(msg)  # 최신 데이터 삽입
-                            logger.debug("[증권사연결] tick_queue 드롭 발생 - 최신 데이터 유지")
+                            logger.debug("[연결] tick_queue 드롭 발생 - 최신 데이터 유지")
                         except asyncio.QueueEmpty:
                             # 경합 조건: 다른 태스크가 이미 데이터를 꺼낸 경우
                             _q.put_nowait(msg)
@@ -267,17 +267,17 @@ class KiwoomConnector(BrokerConnector):
             try:
                 await self._socket.connect()
             except Exception:
-                logger.error("[증권사연결] 초기 WebSocket 연결 실패 — 재연결 루프 기동")
+                logger.error("[연결] 초기 WebSocket 연결 실패 — 재연결 루프 기동")
                 asyncio.get_running_loop().create_task(self._on_socket_disconnect())
                 raise
             self._connected = True
-            logger.info("[증권사연결] 연결 완료")
+            logger.info("[연결] 연결 완료")
             # 연결 상태 브로드캐스트
             try:
                 from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
                 broadcast_ws_connection_status(True)
             except Exception:
-                logger.warning("[증권사연결] 연결 상태 브로드캐스트 실패", exc_info=True)
+                logger.warning("[연결] 연결 상태 브로드캐스트 실패", exc_info=True)
 
     async def disconnect(self) -> None:
         """수신루프 중단 + WebSocket 종료. 재연결 루프도 중단."""
@@ -289,13 +289,13 @@ class KiwoomConnector(BrokerConnector):
             if self._socket:
                 await self._socket.disconnect()
                 self._socket = None
-            logger.info("[증권사연결] 연결 종료")
+            logger.info("[연결] 연결 종료")
             # 연결 해제 상태 브로드캐스트
             try:
                 from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
                 broadcast_ws_connection_status(False)
             except Exception:
-                logger.warning("[증권사연결] 연결 해제 상태 브로드캐스트 실패", exc_info=True)
+                logger.warning("[연결] 연결 해제 상태 브로드캐스트 실패", exc_info=True)
 
     async def send_message(self, payload: dict) -> bool:
         """engine_service._ws_send_reg_unreg_and_wait_ack용 송신 API."""
@@ -314,7 +314,7 @@ class KiwoomConnector(BrokerConnector):
     async def subscribe_stocks(self, codes: list[str]) -> bool:
         """종목 리스트 실시간 구독 등록 (Kiwoom WebSocket: 벌크 청크 조립 후 ACK 대기)."""
         if not self.is_connected() or not self._socket:
-            logger.warning("[증권사연결] 구독 실패 — 연결 없음")
+            logger.warning("[연결] 구독 실패 — 연결 없음")
             return False
 
         from backend.app.services.engine_ws_reg import build_0b_reg_payloads
@@ -354,7 +354,7 @@ class KiwoomConnector(BrokerConnector):
     async def subscribe_dynamic(self, codes: list[str]) -> None:
         """동적 데이터 구독 (Kiwoom 0D 일괄 등록)."""
         if not self.is_connected() or not self._socket:
-            logger.warning("[증권사연결] 동적 구독 실패 — 연결 없음")
+            logger.warning("[연결] 동적 구독 실패 — 연결 없음")
             return
 
         from backend.app.services.engine_ws_reg import build_0d_reg_payloads
@@ -366,7 +366,7 @@ class KiwoomConnector(BrokerConnector):
             try:
                 await _ws_send_reg_unreg_and_wait_ack(payload, sender=self)
             except RuntimeError:
-                logger.warning("[증권사연결] subscribe_dynamic — 이벤트 루프 없음", exc_info=True)
+                logger.warning("[연결] subscribe_dynamic — 이벤트 루프 없음", exc_info=True)
 
     async def unsubscribe_dynamic(self, codes: list[str]) -> None:
         """동적 데이터 구독 해지 (Kiwoom 0D 일괄 해지)."""
@@ -382,21 +382,21 @@ class KiwoomConnector(BrokerConnector):
             try:
                 await _ws_send_reg_unreg_and_wait_ack(payload, sender=self)
             except RuntimeError:
-                logger.warning("[증권사연결] unsubscribe_dynamic — 이벤트 루프 없음", exc_info=True)
+                logger.warning("[연결] unsubscribe_dynamic — 이벤트 루프 없음", exc_info=True)
 
     async def subscribe_index(self) -> bool:
         """코스피·코스닥 업종지수(0J) 실시간 구독 등록."""
         if not self.is_connected() or not self._socket:
-            logger.warning("[증권사연결] 0J 구독 실패 — 연결 없음")
+            logger.warning("[연결] 0J 구독 실패 — 연결 없음")
             return False
         from backend.app.services.engine_ws_reg import build_index_reg_payload
         from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
         payload = build_index_reg_payload()
         ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload, sender=self)
         if ok:
-            logger.info("[증권사연결] 업종지수(0J) 구독 완료")
+            logger.info("[연결] 업종지수(0J) 구독 완료")
         else:
-            logger.warning("[증권사연결] 업종지수(0J) 구독 응답 시간 초과")
+            logger.warning("[연결] 업종지수(0J) 구독 응답 시간 초과")
         return ok
 
     async def _on_ws_message(self, payload: dict) -> None:
@@ -417,12 +417,12 @@ class KiwoomConnector(BrokerConnector):
             from backend.app.services.engine_state import state
             state.login_ok = False
         except Exception:
-            logger.warning("[증권사연결] _login_ok 초기화 실패", exc_info=True)
+            logger.warning("[연결] _login_ok 초기화 실패", exc_info=True)
         try:
             from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
             broadcast_ws_connection_status(False)
         except Exception:
-            logger.warning("[증권사연결] 연결 끊김 상태 브로드캐스트 실패", exc_info=True)
+            logger.warning("[연결] 연결 끊김 상태 브로드캐스트 실패", exc_info=True)
         if self._reconnecting:
             return
         self._reconnecting = True
@@ -436,16 +436,16 @@ class KiwoomConnector(BrokerConnector):
         delays = [1, 2, 4, 8, 16, 32, 32, 32, 32, 32]
         for attempt, delay in enumerate(delays, start=1):
             if self._stop_reconnect:
-                logger.info("[증권사연결] 재연결 중단 (stop 신호)")
+                logger.info("[연결] 재연결 중단 (stop 신호)")
                 return
-            logger.info("[증권사연결] 재연결 시도 %d/10 — %d초 후", attempt, delay)
+            logger.info("[연결] 재연결 시도 %d/10 — %d초 후", attempt, delay)
             await asyncio.sleep(delay)
             if self._stop_reconnect:
                 return
             try:
                 token = await self._get_token_async()
                 if not token:
-                    logger.warning("[증권사연결] 재연결 %d회: 토큰 발급 실패", attempt)
+                    logger.warning("[연결] 재연결 %d회: 토큰 발급 실패", attempt)
                     continue
                 self._token = token
                 if self._lock is None:
@@ -464,7 +464,7 @@ class KiwoomConnector(BrokerConnector):
                                 try:
                                     _q.get_nowait()  # 가장 오래된 데이터 제거
                                     _q.put_nowait(msg)  # 최신 데이터 삽입
-                                    logger.debug("[증권사연결] tick_queue 드롭 발생 (재연결) - 최신 데이터 유지")
+                                    logger.debug("[연결] tick_queue 드롭 발생 (재연결) - 최신 데이터 유지")
                                 except asyncio.QueueEmpty:
                                     # 경합 조건: 다른 태스크가 이미 데이터를 꺼낸 경우
                                     _q.put_nowait(msg)
@@ -479,7 +479,7 @@ class KiwoomConnector(BrokerConnector):
                     )
                     await self._socket.connect()
                     self._connected = True
-                logger.info("[증권사연결] 재연결 성공 (시도 %d회)", attempt)
+                logger.info("[연결] 재연결 성공 (시도 %d회)", attempt)
                 # 재연결 성공 후 큐 클리어 (과거 데이터 제거)
                 if self._ws_queue is not None:
                     cleared = 0
@@ -490,19 +490,19 @@ class KiwoomConnector(BrokerConnector):
                         except asyncio.QueueEmpty:
                             break
                     if cleared > 0:
-                        logger.warning("[증권사연결] 재연결 후 큐 클리어 — %d건 틱 폐기 (재연결 전 과거 데이터 제거)", cleared)
+                        logger.warning("[연결] 재연결 후 큐 클리어 — %d건 틱 폐기 (재연결 전 과거 데이터 제거)", cleared)
                 try:
                     from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
                     broadcast_ws_connection_status(True)
                 except Exception:
-                    logger.warning("[증권사연결] 재연결 상태 브로드캐스트 실패", exc_info=True)
+                    logger.warning("[연결] 재연결 상태 브로드캐스트 실패", exc_info=True)
                 # 재연결 후 구독 복원은 ConnectorManager가 담당
                 if self._on_reconnect_success:
                     await self._on_reconnect_success(self.broker_id)
                 return
             except Exception as e:
-                logger.warning("[증권사연결] 재연결 %d회 실패: %s", attempt, e)
-        logger.error("[증권사연결] 최대 재연결 횟수(10회) 초과 — 포기", exc_info=True)
+                logger.warning("[연결] 재연결 %d회 실패: %s", attempt, e)
+        logger.error("[연결] 최대 재연결 횟수(10회) 초과 — 포기", exc_info=True)
 
     def set_reconnect_success_callback(self, callback: Callable) -> None:
         """재연결 성공 시 호출될 콜백 설정 (ConnectorManager가 구독 복원에 사용)."""
@@ -540,7 +540,7 @@ class KiwoomConnector(BrokerConnector):
                 if auth_provider and hasattr(auth_provider, "rest_api"):
                     rest_api = auth_provider.rest_api
             except Exception as e:
-                logger.warning("[키움커넥터] router auth_cache에서 rest_api 조회 실패: %s", e)
+                logger.warning("[연결] router auth_cache에서 rest_api 조회 실패: %s", e)
 
         if rest_api and hasattr(rest_api, "get_access_token"):
             return await rest_api.get_access_token()

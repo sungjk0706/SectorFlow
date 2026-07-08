@@ -6,10 +6,10 @@ WebSocket 구독 관련 모듈
 - 브로커 메시지 핸들러
 """
 import asyncio
-from backend.app.core.logger import get_logger
+import logging
 from backend.app.services.engine_state import state
 
-logger = get_logger("engine_ws")
+logger = logging.getLogger(__name__)
 
 
 def _ws_live() -> bool:
@@ -239,11 +239,11 @@ async def _run_sector_reg_pipeline() -> None:
         from backend.app.services import ws_subscribe_control
         await ws_subscribe_control.run_conditional_reg_pipeline()
     except Exception as e:
-        logger.warning("[구동] 실시간 구독 파이프라인 실패: %s", e, exc_info=True)
+        logger.warning("[연산] 실시간 구독 파이프라인 실패: %s", e, exc_info=True)
     finally:
         if state.ws_reg_pipeline_done:
             state.ws_reg_pipeline_done.set()
-        logger.info("[구동] 실시간 구독 준비 완료 -- 단건 구독 허용")
+        logger.info("[연산] 실시간 구독 준비 완료 -- 단건 구독 허용")
         from backend.app.services.engine_account import _refresh_account_snapshot_meta
         if _ws_live():
             await _refresh_account_snapshot_meta()
