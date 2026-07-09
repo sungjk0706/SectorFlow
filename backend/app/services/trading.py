@@ -214,11 +214,7 @@ class AutoTradeManager:
                     pass
 
         # ── 주문가능 금액 내에서 최대한 매수 (buy_amt는 한도, 의무 지출액 아님) ──
-        if is_test_mode(raw_all):
-            from backend.app.services.settlement_engine import get_available_cash
-            _orderable = get_available_cash()
-        else:
-            _orderable = get_risk_manager().account_manager.get_withdrawable_deposit()
+        _orderable = get_risk_manager().get_withdrawable_deposit()
         _max_available = min(effective_buy_amt, _orderable)
         _est_buy_price = dry_run.estimate_fill_price(int(current_price), "BUY") if is_test_mode(raw_all) else int(current_price)
         buy_qty = _max_available // _est_buy_price
