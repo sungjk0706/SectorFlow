@@ -1,6 +1,13 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-10: 차트 툴팁 하단 잘림 수정 — positionTooltip 공통 함수 추출**
+  - 문제: 수익현황 페이지 일별 수익률 막대차트에서 막대 하단 호버 시 툴팁이 `canvasWrap`(overflow:hidden) 경계를 벗어나 잘림
+  - 근본 원인: 툴팁 위치 계산이 `tooltip.offsetHeight`를 고려하지 않아 하단 경계 초과
+  - 추가 발견: X축 좌측 넘침 미처리 버그, 두 차트 컴포넌트에 동일 코드 중복 (SSOT 위반)
+  - 수정: `ui-styles.ts`에 `positionTooltip()` 공통 함수 추가 (양축 경계 클램핑), `canvas-profit-chart.ts`/`canvas-sector-donut.ts` 중복 코드를 공통 함수 호출로 교체
+  - 검증: `npm run build` 통과 (tsc + vite, exit code 0)
+  - 커밋: `e77ea70` push 완료
 - **2026-07-10: 유령 매도 기록(id=144) 삭제 및 수익 통계 정정**
   - 내용: `trades` 테이블에서 005930 유령 매도 1건 삭제 (BUY 기록 없는 SELL 10주 @279,500, avg_buy_price=70,100)
   - 영향: `trade_history.py` 집계 함수만 영향 (test 모드 총 실현손익 +1,215,065→-872,821 정정, 2026-07-09 daily sell=21→20, pnl=+1,391,531→-696,355)
@@ -16,8 +23,8 @@
 
 ## 현재 상태
 - **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료
-- **프론트엔드**: 더미 데이터 삭제 완료, `npm run build` 통과
-- **Git**: 커밋 `5fdb6e9` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, architecture_principles.md, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
+- **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, `npm run build` 통과
+- **Git**: 커밋 `e77ea70` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, architecture_principles.md, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
 
 ## 다음 단계
 - **1순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
