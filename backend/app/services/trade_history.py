@@ -457,11 +457,15 @@ async def get_daily_summary(
             sell_count = 0
             realized_pnl = 0
             buy_total = 0
+            buy_fee = 0
+            sell_fee = 0
+            sell_tax = 0
             for rec in _buy_history:
                 if trade_mode is not None and rec["trade_mode"] != trade_mode:
                     continue
                 if rec["date"] == d:
                     buy_count += 1
+                    buy_fee += rec.get("fee") or 0
             for rec in _sell_history:
                 if trade_mode is not None and rec["trade_mode"] != trade_mode:
                     continue
@@ -469,12 +473,17 @@ async def get_daily_summary(
                     sell_count += 1
                     realized_pnl += rec["realized_pnl"] or 0
                     buy_total += rec["buy_total_amt"] or 0
+                    sell_fee += rec.get("fee") or 0
+                    sell_tax += rec.get("tax") or 0
             daily_map[d] = {
                 "date": d,
                 "buy_count": buy_count,
                 "sell_count": sell_count,
                 "realized_pnl": realized_pnl,
-                "pnl_rate": round(realized_pnl / buy_total * 100, 2) if buy_total > 0 else 0.0
+                "pnl_rate": round(realized_pnl / buy_total * 100, 2) if buy_total > 0 else 0.0,
+                "buy_fee": buy_fee,
+                "sell_fee": sell_fee,
+                "tax": sell_tax,
             }
 
     result = []
@@ -485,6 +494,9 @@ async def get_daily_summary(
             "sell_count": 0,
             "realized_pnl": 0,
             "pnl_rate": 0.0,
+            "buy_fee": 0,
+            "sell_fee": 0,
+            "tax": 0,
         }))
     return result
 

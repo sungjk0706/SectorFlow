@@ -288,14 +288,17 @@ export function buildMonthlyDrilldown(
 }
 
 /** 일별 요약 → 차트 데이터 변환. 매도 없는 날(sell_count=0)은 pnl=null로 표시 → 막대 안 그림 */
-export function buildChartFromDailySummary(summary: Record<string, unknown>[]): { date: string; pnl: number | null; rate: number }[] {
+export function buildChartFromDailySummary(summary: Record<string, unknown>[]): { date: string; pnl: number | null; rate: number; buyFee: number; sellFee: number; tax: number }[] {
   const rows = summary.map(r => {
     const raw = String(r.date ?? '')
     const sellCount = Number(r.sell_count ?? 0)
-    if (sellCount === 0) return { date: raw, pnl: null, rate: 0 }
+    if (sellCount === 0) return { date: raw, pnl: null, rate: 0, buyFee: 0, sellFee: 0, tax: 0 }
     const pnl = Number(r.realized_pnl ?? 0)
     const rate = Number(r.pnl_rate ?? 0)
-    return { date: raw, pnl, rate }
+    const buyFee = Number(r.buy_fee ?? 0)
+    const sellFee = Number(r.sell_fee ?? 0)
+    const tax = Number(r.tax ?? 0)
+    return { date: raw, pnl, rate, buyFee, sellFee, tax }
   })
   // X축: 왼쪽=과거, 오른쪽=최신
   return rows
@@ -443,6 +446,14 @@ export function renderAccountVals(params: AccountValsParams): void {
     .filter(r => String(r.date ?? '') === today)
     .reduce((s, r) => s + Number(r.total_amt ?? 0), 0)
 
+  // 당일/누적 수수료·세금 집계 (buyHistory.fee + sellHistory.fee + sellHistory.tax)
+  const todayFeeTax =
+    buyHistory.filter(r => String(r.date ?? '') === today).reduce((s, r) => s + Number(r.fee ?? 0), 0) +
+    sellHistory.filter(r => String(r.date ?? '') === today).reduce((s, r) => s + Number(r.fee ?? 0) + Number(r.tax ?? 0), 0)
+  const cumFeeTax =
+    buyHistory.reduce((s, r) => s + Number(r.fee ?? 0), 0) +
+    sellHistory.reduce((s, r) => s + Number(r.fee ?? 0) + Number(r.tax ?? 0), 0)
+
   // 보유주식 평가금액/평가손익/수익률: 백엔드가 실시간 계산하여 전송한 account 값 직접 사용
   const evalTotal = a?.total_eval_amount ?? 0
   const evalPnl = a?.total_pnl ?? 0
@@ -458,9 +469,9 @@ export function renderAccountVals(params: AccountValsParams): void {
   }
 
   if (isTestMode) {
-    // 테스트모드: 9행 (누적투자금, 주문가능금액, 오늘매수, 오늘매도, 보유평가금액, 보유평가손익, 보유평가수익률, 누적손익, 누적수익률)
+    // 테스트모드: 11행 (누적투자금, 주문가능금액, 오늘매수, 오늘매도, 보유평가금액, 보유평가손익, 보유평가수익률, 오늘수수료/세금, 누적수수료/세금, 누적손익, 누적수익률)
     const tv = params.testAccountValRefs
-    if (tv.length < 9) return
+    if (tv.length < 11) return
     const accumulatedInvestment = a?.accumulated_investment ?? a?.initial_deposit ?? 0
     const orderable = a?.orderable ?? 0
     tv[0].textContent = `${accumulatedInvestment.toLocaleString()}원`
@@ -476,16 +487,18 @@ export function renderAccountVals(params: AccountValsParams): void {
     const evalRateSign = evalRate > 0 ? '+' : ''
     tv[6].textContent = `${evalRateSign}${evalRate.toFixed(2)}%`
     tv[6].style.color = evalColor
+    tv[7].textContent = `${todayFeeTax.toLocaleString()}원`
+    tv[8].textContent = `${cumFeeTax.toLocaleString()}원`
     const cumSign = cumPnl.pnl > 0 ? '+' : ''
     const cumColor = pnlColor(cumPnl.pnl)
-    tv[7].textContent = `${cumSign}${cumPnl.pnl.toLocaleString()}원`
-    tv[7].style.color = cumColor
-    tv[8].textContent = `${cumSign}${cumPnl.rate.toFixed(2)}%`
-    tv[8].style.color = cumColor
+    tv[9].textContent = `${cumSign}${cumPnl.pnl.toLocaleString()}원`
+    tv[9].style.color = cumColor
+    tv[10].textContent = `${cumSign}${cumPnl.rate.toFixed(2)}%`
+    tv[10].style.color = cumColor
   } else {
-    // 실전모드: 9행 (예수금, 주문가능금액, 오늘매수, 오늘매도, 보유평가금액, 보유평가손익, 보유평가수익률, 누적손익, 누적수익률)
+    // 실전모드: 11행 (예수금, 주문가능금액, 오늘매수, 오늘매도, 보유평가금액, 보유평가손익, 보유평가수익률, 오늘수수료/세금, 누적수수료/세금, 누적손익, 누적수익률)
     const rv = params.accountValRefs
-    if (rv.length < 9) return
+    if (rv.length < 11) return
     const deposit = a?.deposit ?? 0
     const orderable = a?.orderable ?? Math.max(0, deposit - todayBuyAmt)
     rv[0].textContent = `${deposit.toLocaleString()}원`
@@ -501,11 +514,13 @@ export function renderAccountVals(params: AccountValsParams): void {
     const evalRateSign = evalRate > 0 ? '+' : ''
     rv[6].textContent = `${evalRateSign}${evalRate.toFixed(2)}%`
     rv[6].style.color = evalColor
+    rv[7].textContent = `${todayFeeTax.toLocaleString()}원`
+    rv[8].textContent = `${cumFeeTax.toLocaleString()}원`
     const cumSign = cumPnl.pnl > 0 ? '+' : ''
     const cumColor = pnlColor(cumPnl.pnl)
-    rv[7].textContent = `${cumSign}${cumPnl.pnl.toLocaleString()}원`
-    rv[7].style.color = cumColor
-    rv[8].textContent = `${cumSign}${cumPnl.rate.toFixed(2)}%`
-    rv[8].style.color = cumColor
+    rv[9].textContent = `${cumSign}${cumPnl.pnl.toLocaleString()}원`
+    rv[9].style.color = cumColor
+    rv[10].textContent = `${cumSign}${cumPnl.rate.toFixed(2)}%`
+    rv[10].style.color = cumColor
   }
 }

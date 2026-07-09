@@ -130,3 +130,104 @@ async def test_daily_summary_no_sell_zero_rate():
     assert today_entry["sell_count"] == 0
     assert today_entry["realized_pnl"] == 0
     assert today_entry["pnl_rate"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_daily_summary_fee_tax_aggregation():
+    """get_daily_summary가 buy_fee, sell_fee, tax를 정확히 집계해야 함."""
+    from backend.app.services import trade_history
+
+    today = "2026-07-08"
+    buy_fee = 105
+    sell_total = 690000
+    sell_fee = round(sell_total * 0.00015)  # 104
+    sell_tax = round(sell_total * 0.002)    # 1380
+    buy_total = 700000 + buy_fee             # 700105
+
+    trade_history._buy_history.append({
+        "ts": f"{today}T09:10:00",
+        "date": today,
+        "time": "09:10:00",
+        "side": "BUY",
+        "stk_cd": "005930",
+        "stk_nm": "삼성전자",
+        "price": 70000,
+        "qty": 10,
+        "total_amt": 700105,
+        "fee": buy_fee,
+        "tax": 0,
+        "avg_buy_price": 0,
+        "buy_total_amt": 0,
+        "realized_pnl": 0,
+        "pnl_rate": 0.0,
+        "reason": "테스트",
+        "trade_mode": "test",
+    })
+    trade_history._sell_history.append({
+        "ts": f"{today}T10:00:00",
+        "date": today,
+        "time": "10:00:00",
+        "side": "SELL",
+        "stk_cd": "005930",
+        "stk_nm": "삼성전자",
+        "price": 69000,
+        "qty": 10,
+        "total_amt": sell_total - sell_fee - sell_tax,
+        "fee": sell_fee,
+        "tax": sell_tax,
+        "avg_buy_price": 70000,
+        "buy_total_amt": buy_total,
+        "realized_pnl": -11589,
+        "pnl_rate": -1.66,
+        "reason": "손절",
+        "trade_mode": "test",
+    })
+
+    with patch("backend.app.services.trade_history._history_lock"):
+        result = await trade_history.get_daily_summary(
+            date_from=today, date_to=today, trade_mode="test"
+        )
+
+    entry = [r for r in result if r["date"] == today][0]
+    assert entry["buy_fee"] == buy_fee
+    assert entry["sell_fee"] == sell_fee
+    assert entry["tax"] == sell_tax
+
+
+@pytest.mark.asyncio
+async def test_daily_summary_no_sell_zero_fee_tax():
+    """매도가 없는 날: buy_fee만 집계되고 sell_fee/tax는 0이어야 함."""
+    from backend.app.services import trade_history
+
+    today = "2026-07-08"
+    buy_fee = 105
+
+    trade_history._buy_history.append({
+        "ts": f"{today}T09:10:00",
+        "date": today,
+        "time": "09:10:00",
+        "side": "BUY",
+        "stk_cd": "005930",
+        "stk_nm": "삼성전자",
+        "price": 70000,
+        "qty": 10,
+        "total_amt": 700105,
+        "fee": buy_fee,
+        "tax": 0,
+        "avg_buy_price": 0,
+        "buy_total_amt": 0,
+        "realized_pnl": 0,
+        "pnl_rate": 0.0,
+        "reason": "테스트",
+        "trade_mode": "test",
+    })
+
+    with patch("backend.app.services.trade_history._history_lock"):
+        result = await trade_history.get_daily_summary(
+            date_from=today, date_to=today, trade_mode="test"
+        )
+
+    entry = [r for r in result if r["date"] == today][0]
+    assert entry["buy_fee"] == buy_fee
+    assert entry["sell_fee"] == 0
+    assert entry["tax"] == 0

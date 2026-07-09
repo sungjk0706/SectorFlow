@@ -13,6 +13,9 @@ export interface ProfitChartRow {
   date: string
   pnl: number | null
   rate: number
+  buyFee?: number
+  sellFee?: number
+  tax?: number
 }
 
 // 내부에서 누적 합계가 포함된 확장 타입
@@ -416,6 +419,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
           : `${(d.pnl || 0) >= 0 ? '+' : ''}${fmtWon(d.pnl || 0)}`
         const lineLabel = mode === 'volume' ? '수익률:' : '일별 수익률:'
         const lineValue = `${d.rate.toFixed(2)}%`
+        const feeTotal = (d.buyFee ?? 0) + (d.sellFee ?? 0) + (d.tax ?? 0)
         tooltip.innerHTML = `
           <div style="font-weight:600;margin-bottom:6px;border-bottom:1px solid #eee;padding-bottom:4px;">${formatDate(d.date)}</div>
           <div style="display:flex;justify-content:space-between;gap:12px;">
@@ -426,6 +430,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
             <span style="color:${COLOR.tertiary}">${lineLabel}</span>
             <span style="color:${rColor};font-weight:600">${lineValue}</span>
           </div>
+          ${feeTotal > 0 ? `<div style="display:flex;justify-content:space-between;gap:12px;border-top:1px solid #eee;margin-top:4px;padding-top:4px;"><span style="color:${COLOR.tertiary}">수수료/세금</span><span style="color:${COLOR.neutral};font-weight:600">${fmtWon(feeTotal)}</span></div>` : ''}
         `
         const tw = tooltip.offsetWidth
         let tx = mx + 15
