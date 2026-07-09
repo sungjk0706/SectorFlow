@@ -407,17 +407,6 @@ export function createDrilldownCols(onDateClick: (date: string) => void): Column
   ]
 }
 
-/* ── 더미 데이터 ── */
-export const DUMMY_BUY: Record<string, unknown>[] = [
-  { date: '2026-04-14', time: '09:15:00', stk_cd: '005930', stk_nm: '삼성전자', price: 70000, qty: 100, total_amt: 7001050, fee: 1050 },
-  { date: '2026-04-14', time: '09:22:00', stk_cd: '000660', stk_nm: 'SK하이닉스', price: 185000, qty: 50, total_amt: 9251388, fee: 1388 },
-]
-
-export const DUMMY_SELL: Record<string, unknown>[] = [
-  { date: '2026-04-14', time: '10:05:00', stk_cd: '005930', stk_nm: '삼성전자', avg_buy_price: 70000, price: 71500, qty: 100, buy_total_amt: 7001050, total_amt: 7134627, realized_pnl: 133577, pnl_rate: 1.91, fee: 1073, tax: 14300, sector: '반도체/IDM' },
-  { date: '2026-04-14', time: '10:30:00', stk_cd: '000660', stk_nm: 'SK하이닉스', avg_buy_price: 185000, price: 183000, qty: 50, buy_total_amt: 9251388, total_amt: 9130327, realized_pnl: -121061, pnl_rate: -1.31, fee: 1373, tax: 18300, sector: '반도체/IDM' },
-]
-
 /* ── 계좌 현황 렌더 (순수 함수 — 매개변수 기반) ── */
 
 export interface AccountValsParams {
