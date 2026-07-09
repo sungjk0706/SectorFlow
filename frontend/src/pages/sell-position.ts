@@ -45,7 +45,11 @@ const COLUMNS: ColumnDef<Position>[] = [
   {
     key: 'pnl', label: '평가손익', align: 'right',
     render: (p) => {
-      const pnl = p.pnl_amount ?? 0
+      const sectorStock = hotStore.getState().sectorStocks[normalizeStockCode(p.stk_cd)]
+      const curPrice = sectorStock?.cur_price ?? p.cur_price
+      const buyPrice = p.buy_price ?? p.avg_price ?? 0
+      const qty = p.qty ?? 0
+      const pnl = (Number(curPrice) - buyPrice) * qty
       const span = document.createElement('span')
       span.style.color = rateColor(pnl)
       span.textContent = fmtComma(pnl)
@@ -55,7 +59,10 @@ const COLUMNS: ColumnDef<Position>[] = [
   {
     key: 'rate', label: '수익률', align: 'right',
     render: (p) => {
-      const rate = p.pnl_rate ?? 0
+      const sectorStock = hotStore.getState().sectorStocks[normalizeStockCode(p.stk_cd)]
+      const curPrice = sectorStock?.cur_price ?? p.cur_price
+      const buyPrice = p.buy_price ?? p.avg_price ?? 0
+      const rate = buyPrice > 0 ? ((Number(curPrice) - buyPrice) / buyPrice) * 100 : 0
       const span = document.createElement('span')
       span.style.color = rateColor(rate)
       span.textContent = fmtRate(rate) + '%'
