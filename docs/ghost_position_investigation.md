@@ -381,3 +381,33 @@
 
 - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적은 별도 세션에서 진행
 - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석 필요
+
+---
+
+## 유령 매도 기록 삭제 (2026-07-10)
+
+### 대상
+- `trades` 테이블 id=144: 2026-07-09 15:52:19 SELL 005930 10주 @279,500, avg_buy_price=70,100, realized_pnl=+2,087,886
+- 대응하는 BUY 기록 없음 → 유령 포지션에서 비롯된 매도 기록
+
+### 영향 분석 결과
+- `test_positions`: 005930 없음 (영향 없음, deprecated 테이블)
+- `settlement_state`: updated_at=06:59:40, 유령 매도(15:52) 반영 안 됨 (영향 없음)
+- `build_positions_from_trades("test")`: BUY 6→SELL 6=0주, id=144 SELL 10→position not found→skip (영향 없음)
+- `trade_history.py` 집계 함수만 영향: `get_total_realized_pnl()`, `get_daily_summary()` 왜곡
+
+### 삭제 결과
+
+| 항목 | 삭제 전 | 삭제 후 |
+|---|---|---|
+| trades 005930 | 3건 (BUY 1, SELL 2) | 2건 (BUY 1, SELL 1 정상) |
+| test 모드 매도 건수 | 34건 | 33건 |
+| test 모드 총 실현손익 | +1,215,065 (왜곡) | -872,821 (정상) |
+| 2026-07-09 daily summary | sell=21, pnl=+1,391,531 | sell=20, pnl=-696,355 |
+| 백엔드 기동 복원 | 매수 36건, 매도 34건 | 매수 36건, 매도 33건 |
+
+### 검증
+- 백엔드 기동 정상 (Traceback/RuntimeWarning 없음, 기동시간 1953ms)
+- API `/api/trade-history/sell` 응답에서 id=144 유령 매도 미표시 확인
+- API `/api/trade-history/daily-summary` 응답에서 2026-07-09 실현손익 -696,355원 정상 확인
+- 잔존 프로세스 0건
