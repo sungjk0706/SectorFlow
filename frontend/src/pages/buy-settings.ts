@@ -7,7 +7,8 @@ import { sectionTitle } from '../components/common/settings-common'
 import { initSettingsPage, startSettingsSubscription, destroySettingsPage } from '../utils/settings-page'
 import type { AutoSaveHelper } from '../utils/settings-save'
 import type { SettingsManager } from '../settings'
-import { setDisabled } from '../components/common/ui-styles'
+import { setDisabled, COLOR } from '../components/common/ui-styles'
+import { createDualLabelSlider, type DualLabelSliderHandle } from '../components/common/create-slider'
 import { createCardTitle } from '../components/common/card-title'
 import type { AppSettings } from '../types'
 
@@ -33,8 +34,10 @@ let boostHighScoreInput: ReturnType<typeof createNumInput> | null = null
 let boostHighControls: HTMLElement | null = null
 
 let boostOrderToggle: ReturnType<typeof createToggleBtn> | null = null
+let boostOrderDualSlider: DualLabelSliderHandle | null = null
 let boostOrderScoreInput: ReturnType<typeof createNumInput> | null = null
 let boostOrderControls: HTMLElement | null = null
+let boostOrderRow2: HTMLElement | null = null
 
 let boostProgramToggle: ReturnType<typeof createToggleBtn> | null = null
 let boostProgramScoreInput: ReturnType<typeof createNumInput> | null = null
@@ -92,6 +95,7 @@ function createBoostScoreSection(
 
 /* ── 설정 동기화 ── */
 function syncFromSettings(s: AppSettings): void {
+  if (boostOrderDualSlider && boostOrderDualSlider.isInteracting) return
   const r = s as Record<string, unknown>
   vals = { ...r }
 
@@ -120,9 +124,14 @@ function syncFromSettings(s: AppSettings): void {
 
   const orderOn = !!r.boost_order_ratio_on
   boostOrderToggle?.setOn(orderOn)
+  const signedPct = Number(r.boost_order_ratio_pct ?? 20)
+  boostOrderDualSlider?.setValue(signedPct + 100)
   boostOrderScoreInput?.setValue(Number(r.boost_order_ratio_score) || 1.0)
   if (boostOrderControls) {
     setDisabled(boostOrderControls, !orderOn)
+  }
+  if (boostOrderRow2) {
+    setDisabled(boostOrderRow2, !orderOn)
   }
 
   const programOn = !!r.boost_program_net_buy_on
@@ -221,6 +230,9 @@ function mount(container: HTMLElement): void {
       if (boostOrderControls) {
         setDisabled(boostOrderControls, !next)
       }
+      if (boostOrderRow2) {
+        setDisabled(boostOrderRow2, !next)
+      }
       saveHelper!.saveImmediate({ boost_order_ratio_on: next })
     }})
     labelWrap.appendChild(boostOrderToggle.el)
@@ -242,6 +254,31 @@ function mount(container: HTMLElement): void {
     row1.appendChild(row1Controls)
     block.appendChild(row1)
 
+    // Row 2: dual label slider
+    boostOrderDualSlider = createDualLabelSlider({
+      min: 0, max: 200, value: 120, step: 1,
+      leftLabel: (v) => v < 100 ? `매도잔량 +${100 - v}%` : '매도잔량',
+      rightLabel: (v) => v > 100 ? `매수잔량 +${v - 100}%` : '매수잔량',
+      leftColor: COLOR.down,
+      leftColorLight: COLOR.downLight,
+      rightColor: COLOR.up,
+      rightColorLight: COLOR.upLight,
+      onChange(_v) {
+        // live preview only
+      },
+      onCommit(v) {
+        vals.boost_order_ratio_pct = v - 100
+        saveHelper!.autoSave('boost_order_ratio_pct', v - 100)
+      },
+    })
+
+    const row2 = document.createElement('div')
+    Object.assign(row2.style, { padding: '0 0 6px' })
+    row2.appendChild(boostOrderDualSlider.el)
+    setDisabled(row2, true)
+    boostOrderRow2 = row2
+
+    block.appendChild(row2)
     root.appendChild(block)
   }
 
@@ -365,7 +402,11 @@ function unmount(): void {
   maxDailyToggle = null; maxDailyInput = null; maxStockCntInput = null; buyAmtInput = null
   boostHighToggle = null; boostHighScoreInput = null; boostHighControls = null
   boostOrderToggle = null
-  boostOrderScoreInput = null; boostOrderControls = null
+  if (boostOrderDualSlider && typeof boostOrderDualSlider.destroy === 'function') {
+    boostOrderDualSlider.destroy()
+  }
+  boostOrderDualSlider = null
+  boostOrderScoreInput = null; boostOrderControls = null; boostOrderRow2 = null
   boostProgramToggle = null; boostProgramScoreInput = null; boostProgramControls = null
   boostTradeAmountToggle = null; boostTradeAmountScoreInput = null; boostTradeAmountControls = null
   rebuyBlockToggle = null; rebuyBlockSelect = null; rebuyBlockControls = null
