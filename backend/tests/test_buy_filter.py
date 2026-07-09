@@ -145,6 +145,21 @@ class TestCheckStockGuards:
         assert result.guard_pass is False
         assert result.guard_reason == "상승률"
 
+    def test_block_rise_pct_zero_disables_check(self):
+        stock = _stock(change_rate=10.0)
+        result = check_stock_guards(stock, block_rise_pct=0.0)
+        assert result.guard_pass is True
+
+    def test_block_fall_pct_zero_disables_check(self):
+        stock = _stock(change_rate=-5.0)
+        result = check_stock_guards(stock, block_fall_pct=0.0)
+        assert result.guard_pass is True
+
+    def test_block_fall_pct_zero_passes_zero_change_rate(self):
+        stock = _stock(change_rate=0.0)
+        result = check_stock_guards(stock, block_fall_pct=0.0)
+        assert result.guard_pass is True
+
     def test_mutates_stock_in_place(self):
         stock = _stock(change_rate=10.0)
         result = check_stock_guards(stock, block_rise_pct=7.0)
