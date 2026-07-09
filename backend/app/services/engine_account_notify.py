@@ -304,7 +304,7 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
             "changed_scores": changed,
             "status": {
                 "total_stocks": len(scores),
-                "max_targets": int(state.integrated_system_settings_cache["sector_max_targets"]),
+                "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3)),
                 "ranked_sectors_count": ranked_count,
                 "receive_rate": receive_rate
             },
@@ -321,7 +321,7 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
             "scores": scores,
             "status": {
                 "total_stocks": len(scores),
-                "max_targets": int(state.integrated_system_settings_cache["sector_max_targets"]),
+                "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3)),
                 "ranked_sectors_count": ranked_count,
                 "receive_rate": receive_rate
             },

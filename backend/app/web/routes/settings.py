@@ -3,7 +3,9 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from backend.app.web.deps import get_current_user
+import logging
 router = APIRouter(prefix="/api", tags=["settings"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/settings")
@@ -72,9 +74,12 @@ async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_
                     await telegram_bot.stop_async()
 
         return {"ok": True}
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
+        logger.error("[설정] PATCH %s 실패: %s", field_name, e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"유효하지 않은 설정값: {e}",
