@@ -569,7 +569,7 @@ async def notify_snapshot_history_update() -> None:
 
 
 # 매수 후보 비교 키: 순위·시세·가드 상태 등 변경 감지 대상 필드
-_BUY_TARGET_CMP_KEYS = ("rank", "cur_price", "change_rate", "strength", "trade_amount", "boost_score", "guard_pass", "reason", "order_ratio", "program_net_buy", "high_5d", "avg_amt_5d", "trade_amount_rank")
+_BUY_TARGET_CMP_KEYS = ("rank", "cur_price", "change_rate", "strength", "trade_amount", "boost_score", "guard_pass", "reason", "order_ratio", "program_net_buy", "high_5d", "avg_amt_5d")
 
 
 async def notify_buy_targets_update() -> None:
@@ -604,7 +604,7 @@ async def notify_buy_targets_update() -> None:
     for c in cur_codes - prev_codes:
         item = cur_map[c].copy()
         # 실시간 필드 제거: 프론트엔드 sectorStocks 단일 소스
-        for key in ['cur_price', 'change', 'change_rate', 'strength', 'trade_amount']:
+        for key in ['cur_price', 'change', 'change_rate', 'strength', 'trade_amount', 'trade_amount_rank']:
             item.pop(key, None)
         added.append(item)
     removed = list(prev_codes - cur_codes)
@@ -613,7 +613,7 @@ async def notify_buy_targets_update() -> None:
     for code in cur_codes & prev_codes:
         cur_t = cur_map[code].copy()
         # 실시간 필드 제거: 프론트엔드 sectorStocks 단일 소스
-        for key in ['cur_price', 'change', 'change_rate', 'strength', 'trade_amount']:
+        for key in ['cur_price', 'change', 'change_rate', 'strength', 'trade_amount', 'trade_amount_rank']:
             cur_t.pop(key, None)
         prev_t = notify_cache.prev_buy_targets_map[code]
         # 비교 키에서 실시간 필드 제외
