@@ -5,7 +5,7 @@
  * - 인터랙티브: 크로스헤어, 툴팁
  */
 
-import { pnlColor, FONT_FAMILY, COLOR, fmtWon } from './common/ui-styles'
+import { pnlColor, FONT_FAMILY, COLOR, fmtWon, positionTooltip } from './common/ui-styles'
 
 // ── 타입 ────────────────────────────────────────────────────
 
@@ -432,11 +432,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
           </div>
           ${feeTotal > 0 ? `<div style="display:flex;justify-content:space-between;gap:12px;border-top:1px solid #eee;margin-top:4px;padding-top:4px;"><span style="color:${COLOR.tertiary}">수수료/세금</span><span style="color:${COLOR.neutral};font-weight:600">${fmtWon(feeTotal)}</span></div>` : ''}
         `
-        const tw = tooltip.offsetWidth
-        let tx = mx + 15
-        if (tx + tw > cw) tx = mx - tw - 15
-        tooltip.style.left = `${tx}px`
-        tooltip.style.top = `${Math.max(10, my - 40)}px`
+        positionTooltip(tooltip, mx, my, cw, ch)
       } else {
         tooltip.style.display = 'none'
       }

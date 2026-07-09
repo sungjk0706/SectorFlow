@@ -105,6 +105,42 @@ export function fmtWon(v: number): string {
   return `${v.toLocaleString()}원`
 }
 
+/**
+ * Canvas 차트 툴팁 위치 보정 — overflow:hidden 컨테이너 내에서
+ * 툴팁이 완전히 보이도록 양축(X/Y) 경계 클램핑.
+ *
+ * X축: 마우스 우측 우선 → 우측 넘침 시 좌측 → 좌측 넘침 시 경계 정렬
+ * Y축: 마우스 상단 우선 → 하단 넘침 시 상단 이동 → 상단 넘침 시 경계 정렬
+ *
+ * @param tooltip 툴팁 요소 (display:block 상태에서 호출해야 offsetWidth/Height 유효)
+ * @param mx      마우스 X (컨테이너 기준)
+ * @param my      마우스 Y (컨테이너 기준)
+ * @param cw      컨테이너 너비
+ * @param ch      컨테이너 높이
+ */
+export function positionTooltip(
+  tooltip: HTMLElement,
+  mx: number, my: number,
+  cw: number, ch: number,
+): void {
+  const tw = tooltip.offsetWidth
+  const th = tooltip.offsetHeight
+  const MARGIN = 4
+
+  // X축: 우측 우선, 넘침 시 좌측, 좌측도 넘침 시 좌측 경계
+  let tx = mx + 15
+  if (tx + tw > cw) tx = mx - tw - 15
+  if (tx < 0) tx = MARGIN
+
+  // Y축: 상단 우선, 하단 넘침 시 상단으로, 상단 넘침 시 상단 경계
+  let ty = my - 40
+  if (ty + th > ch) ty = ch - th - MARGIN
+  if (ty < 0) ty = MARGIN
+
+  tooltip.style.left = `${tx}px`
+  tooltip.style.top = `${ty}px`
+}
+
 /* ── 종목명 셀 ── */
 
 export function createStockNameCell(
