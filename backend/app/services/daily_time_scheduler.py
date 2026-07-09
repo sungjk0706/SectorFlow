@@ -294,35 +294,37 @@ async def is_edit_window_open(settings: dict | None = None) -> bool:
 
 
 async def _on_krx_market_open() -> None:
-    """09:00 KRX 정규장 진입 콜백 — 업종 종합점수 재계산 + WS 브로드캐스트.
+    """09:00 KRX 정규장 진입 콜백 — 업종 종합점수 재계산 + KRX 단독 종목 재구독.
 
     NXT 프리마켓(08:00~09:00)에는 NXT-enabled 종목만 업종 점수에 포함되었으므로,
     09:00 KRX 정규장 진입 시 전체 종목을 포함하도록 재계산 필요.
+    또한 15:30에 구독해지된 KRX 단독 종목을 재구독하여 실시간 시세를 수신한다.
+    recompute_sector_summary_now() 내부에서 notify 3종이 이미 호출되므로 중복 호출을 제거한다.
+    _broadcast_market_phase()는 market-phase 타이머 배열(line 710)에서 동일 시각에 호출된다.
     """
     try:
         from backend.app.core.trading_calendar import is_trading_day
         today = _kst_now().date()
         if today.weekday() >= 5 or not is_trading_day(today):
             return
-        logger.info("[스케줄] KRX 정규장 진입 (09:00) -- 업종 종합점수 재계산 (NXT-only → 전체 종목)")
+        logger.info("[스케줄] KRX 정규장 진입 (09:00) -- 업종 종합점수 재계산 + KRX 단독 종목 재구독")
         from backend.app.services.sector_data_provider import recompute_sector_summary_now
-        from backend.app.services.engine_account_notify import (
-            notify_desktop_sector_scores,
-            notify_desktop_sector_stocks_refresh,
-        )
         await recompute_sector_summary_now()
-        await notify_desktop_sector_scores(force=True)
-        await notify_desktop_sector_stocks_refresh()
-        _broadcast_market_phase()
+
+        # KRX 단독 종목 재구독 (15:30 구독해지 복원)
+        from backend.app.services.engine_ws_reg import subscribe_sector_stocks_0b
+        await subscribe_sector_stocks_0b()
     except Exception as e:
         logger.warning("[스케줄] KRX 정규장 진입 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_krx_after_hours_start() -> None:
-    """15:30 전환 콜백 — 업종 종합점수 재계산 + KRX 단독 종목 구독해지 + WS 브로드캐스트.
+    """15:30 전환 콜백 — 업종 종합점수 재계산 + KRX 단독 종목 구독해지.
 
     KRX 정규장 마감(15:30) 시점에 KRX 단독 종목(nxt_enable=False) WS 구독 해지.
     NXT-enabled 종목은 NXT 거래(20:00까지)가 가능하므로 구독 유지.
+    recompute_sector_summary_now() 내부에서 notify 3종이 이미 호출되므로 중복 호출을 제거한다.
+    _broadcast_market_phase()는 market-phase 타이머 배열(line 710)에서 동일 시각에 호출된다.
     """
     try:
         from backend.app.core.trading_calendar import is_trading_day
@@ -331,14 +333,7 @@ async def _on_krx_after_hours_start() -> None:
             return
         logger.info("[스케줄] KRX 장외 시간대 진입 (15:30) -- 업종 종합점수 재계산 + KRX 단독 종목 구독해지")
         from backend.app.services.sector_data_provider import recompute_sector_summary_now
-        from backend.app.services.engine_account_notify import (
-            notify_desktop_sector_scores,
-            notify_desktop_sector_stocks_refresh,
-        )
         await recompute_sector_summary_now()
-        await notify_desktop_sector_scores(force=True)
-        await notify_desktop_sector_stocks_refresh()
-        _broadcast_market_phase()
 
         # KRX 단독 종목 장마감 구독해지
         if not state.krx_remove_done:

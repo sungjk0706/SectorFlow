@@ -1,6 +1,6 @@
 """engine_symbol_utils.py 단위 테스트 — 종목코드 정규화 및 REAL item 해석 순수 함수 검증.
 
-state 의존 함수(is_nxt_enabled, filter_krx_only_stocks, get_ws_subscribe_code, get_stock_market)는
+state 의존 함수(is_nxt_enabled, get_ws_subscribe_code, get_stock_market)는
 state.master_stocks_cache를 mock하여 검증.
 """
 from __future__ import annotations
@@ -17,7 +17,6 @@ from backend.app.services.engine_symbol_utils import (
     _parse_real_item_field,
     _real_item_stk_cd,
     is_nxt_enabled,
-    filter_krx_only_stocks,
     get_ws_subscribe_code,
     get_stock_market,
 )
@@ -251,23 +250,6 @@ class TestIsNxtEnabled:
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.master_stocks_cache = {"005930": {"nxt_enable": True}}
             assert is_nxt_enabled("") is False
-
-
-# ── filter_krx_only_stocks (state mock) ────────────────────────────────────────────
-
-class TestFilterKrxOnlyStocks:
-    def test_after_hours_false_returns_all(self):
-        result = filter_krx_only_stocks(["005930", "000660"], is_after_hours=False)
-        assert result == ["005930", "000660"]
-
-    def test_after_hours_true_filters_krx_only(self):
-        with patch("backend.app.services.engine_state.state") as mock_state:
-            mock_state.master_stocks_cache = {
-                "005930": {"nxt_enable": True},
-                "000660": {"nxt_enable": False},
-            }
-            result = filter_krx_only_stocks(["005930", "000660"], is_after_hours=True)
-            assert result == ["005930"]
 
 
 # ── get_ws_subscribe_code (state mock) ──────────────────────────────────────────────

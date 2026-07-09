@@ -511,15 +511,14 @@ class TestOnKrxMarketOpen:
                 mock_recompute.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_trading_day_recomputes(self):
+    async def test_trading_day_recomputes_and_resubscribes(self):
         with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock) as mock_recompute, \
-             patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new_callable=AsyncMock), \
-             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
+             patch("backend.app.services.engine_ws_reg.subscribe_sector_stocks_0b", new_callable=AsyncMock) as mock_subscribe:
             await _on_krx_market_open()
             mock_recompute.assert_awaited_once()
+            mock_subscribe.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_exception_does_not_raise(self):
@@ -546,9 +545,6 @@ class TestOnKrxAfterHoursStart:
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 30)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new_callable=AsyncMock), \
-             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"), \
              patch("backend.app.services.market_close_pipeline.remove_krx_only_stocks", new_callable=AsyncMock, return_value={"removed": 5, "failed": 0}):
             await _on_krx_after_hours_start()
             assert mock_state.krx_remove_done is True
@@ -561,9 +557,6 @@ class TestOnKrxAfterHoursStart:
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 30)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new_callable=AsyncMock), \
-             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"), \
              patch("backend.app.services.market_close_pipeline.remove_krx_only_stocks", new_callable=AsyncMock, return_value={"skipped": True}):
             await _on_krx_after_hours_start()
             assert mock_state.krx_remove_done is False
