@@ -285,7 +285,7 @@ function mount(container: HTMLElement): void {
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
-  // 헤더: 제목 (좌) + 검색 입력란 (우)
+  // 헤더: 제목
   const headerRow = document.createElement('div')
   Object.assign(headerRow.style, {
     display: 'flex',
@@ -294,18 +294,6 @@ function mount(container: HTMLElement): void {
     marginBottom: '4px',
   })
   headerRow.appendChild(createCardTitle('매수후보'))
-
-  searchInput = createSearchInput({
-    placeholder: '종목명 / 코드 검색',
-    width: '180px',
-    borderColor: COLOR.down,
-    onSearch: (query) => {
-      searchTerm = query
-      scheduleRender()
-    },
-  })
-  searchInput.el.style.marginBottom = '0'
-  headerRow.appendChild(searchInput.el)
   root.appendChild(headerRow)
 
   // 한도 배지 행
@@ -319,6 +307,21 @@ function mount(container: HTMLElement): void {
   badgeRow.appendChild(holdingSpan)
   badgeEls = { orderable: orderableSpan, daily: dailySpan, holding: holdingSpan }
   root.appendChild(badgeRow)
+
+  // 검색 입력란 — 테이블 바로 우측 상단 (배지행 아래, 스크롤 컨테이너 위)
+  searchInput = createSearchInput({
+    placeholder: '종목명 / 코드 검색',
+    width: '180px',
+    borderColor: COLOR.down,
+    onSearch: (query) => {
+      searchTerm = query
+      scheduleRender()
+    },
+  })
+  searchInput.el.style.marginBottom = '0'
+  searchInput.el.style.marginLeft = 'auto'
+  searchInput.el.style.display = 'block'
+  root.appendChild(searchInput.el)
 
   // 스크롤 컨테이너
   const scrollContainer = document.createElement('div')
