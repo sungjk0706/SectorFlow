@@ -1,6 +1,14 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-10: 매수후보 페이지 검색 입력란 위치 재조정 — 좌측 상단, 주문가능금액 배지 하단**
+  - 목적: 매수후보 테이블 검색 입력란의 위치를 업종순위 페이지(sector-stock.ts)와 동일한 좌측 상단으로 통일 — 사용자 제안 반영
+  - 위치 조정: `searchInput`을 `root`에 직접 추가하지 않고 `searchRow` 컨테이너에 배치, `marginLeft: auto` 제거 → 좌측 정렬
+  - 라벨 추가: `종목명 / 코드` 텍스트 라벨 추가 (`FONT_SIZE.section`, `COLOR.down`) — `sector-stock.ts` 패턴 재사용
+  - 여백: `searchInput` wrapper `marginBottom`을 `0`으로 조정, `searchRow`의 `marginBottom`을 `4px`로 유지 — 테이블과 4px 간격 유지
+  - 변경 파일: `frontend/src/pages/buy-target.ts` 1개 (프론트엔드 only, 백엔드/WS 변경 불필요)
+  - 검증: `npm run typecheck` 통과, `npm run test` 109 passed, `npx eslint src/pages/buy-target.ts` 통과
+  - 커밋: `d4b3d40` push 완료
 - **2026-07-10: 매수후보 페이지 검색 입력란 추가 — 종목명/코드 실시간 필터링 + 위치 조정**
   - 목적: 매수후보 테이블에서 특정 종목 빠른 검색 — 업종순위 페이지 sector-stock.ts와 동일 UX 통일
   - 추가: `createSearchInput` 공통 컴포넌트로 검색 입력란 배치 (파란색 라벨 `COLOR.down`, width 180px)
@@ -48,8 +56,8 @@
 
 ## 현재 상태
 - **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료
-- **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지 추가 완료, 매수후보 페이지 검색 입력란 추가 완료, `npm run build` 통과
-- **Git**: 커밋 `c3ae109` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, .devin/workflows/*, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
+- **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지 추가 완료, 매수후보 페이지 검색 입력란 추가·좌측 정렬 완료, `npm run build` 통과
+- **Git**: 커밋 `d4b3d40` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, .devin/workflows/*, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
 
 ## 다음 단계
 - **1순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
