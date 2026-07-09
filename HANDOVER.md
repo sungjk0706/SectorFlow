@@ -1,18 +1,20 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-10: 매수후보 페이지 검색 입력란 추가 — 종목명/코드 실시간 필터링**
+- **2026-07-10: 매수후보 페이지 검색 입력란 추가 — 종목명/코드 실시간 필터링 + 위치 조정**
   - 목적: 매수후보 테이블에서 특정 종목 빠른 검색 — 업종순위 페이지 sector-stock.ts와 동일 UX 통일
-  - 추가: `createSearchInput` 공통 컴포넌트로 헤더 우측에 검색 입력란 배치 (파란색 라벨 `COLOR.down`, width 180px)
+  - 추가: `createSearchInput` 공통 컴포넌트로 검색 입력란 배치 (파란색 라벨 `COLOR.down`, width 180px)
   - 재사용: `filterStocksBySearch`를 `sector-stock.ts`에서 import (SSOT 원칙 준수 — 중복 구현 회피)
   - 수정: `scheduleRender()`에 `searchTerm !== lastRenderedSearchTerm` 변경 감지 추가 (기존 reference equality guard로 인해 검색어만 바뀌면 updateRows가 스킵되는 문제 해결)
   - 수정: 초기 렌더링 및 rAF 콜백에 `filterStocksBySearch` 필터링 적용 → 기존 sort 로직 유지
   - 분기: 빈 상태 메시지 — 검색어 유무에 따라 `'${query}' 검색 결과가 없습니다.` / `매수후보가 없습니다.` 분기
   - 설계 결정: 배지(주문가능금액/일일매수한도/동시보유)는 전체 `buyTargets` 기준 유지 — 검색 결과에 영향받지 않음 (혼란 방지)
   - 안전성: `updateItemByKey` 이벤트 리스너 유지 — 필터링 제외 종목 tick은 `activeRows.get(key)` undefined로 자동 no-op
+  - 위치 조정: 검색 입력란을 배지행 아래, 스크롤 컨테이너(테이블) 바로 위로 이동 (`marginLeft: auto` 우측 정렬) — 테이블 우측 상단과 인접하도록 시인성 개선
+  - 여백 통일: 검색입력란 `marginBottom` 0px → 4px (headerRow와 동일 간격으로 요소 간 여백 일관성 확보)
   - 변경 파일: `frontend/src/pages/buy-target.ts` 1개 (프론트엔드 only, 백엔드/WS 변경 불필요)
   - 검증: `npm run build` 통과 (tsc + vite, exit code 0), 순환 참조 없음 확인, 타입 호환성 확인
-  - 커밋: `e51b156` push 완료
+  - 커밋: `e51b156` (최초 구현) → `a0617c6` (위치 조정) → `c3ae109` (여백 통일) push 완료
 - **2026-07-10: 매수후보 페이지 주문가능금액 배지 추가 — 1위 종목 매수 가능 수량 통합**
   - 목적: "왜 매수가 안 되지?" UX 해소 — 아키텍처 원칙 21 (User Transparency)
   - 추가: `renderOrderableBadge()` — `hotStore.account.orderable` 실시간 표시 + 1위 통과 종목 매수 가능 수량 통합
@@ -47,7 +49,7 @@
 ## 현재 상태
 - **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료
 - **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지 추가 완료, 매수후보 페이지 검색 입력란 추가 완료, `npm run build` 통과
-- **Git**: 커밋 `e51b156` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, .devin/workflows/*, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
+- **Git**: 커밋 `c3ae109` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, .devin/workflows/*, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
 
 ## 다음 단계
 - **1순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
