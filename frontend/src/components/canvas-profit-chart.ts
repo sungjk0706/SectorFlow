@@ -126,14 +126,8 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
   // 데이터 갱신 로직 (초기화 및 updateData 공용)
   function refreshInternal(newData: ProfitChartRow[]) {
     const dataSlice = newData.slice(-maxBars)
-    const hasVisibleBar = dataSlice.some(d => d.pnl !== null && d.pnl !== 0)
-    isSample = dataSlice.length === 0 || !hasVisibleBar
-    
-    if (isSample) {
-      displayData = processData(generateDummyData())
-    } else {
-      displayData = processData(dataSlice)
-    }
+    isSample = dataSlice.length === 0 || dataSlice.every(d => d.pnl === null)
+    displayData = isSample ? [] : processData(dataSlice)
     render()
   }
 
@@ -189,7 +183,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
 
   const overlay = document.createElement('div')
   overlay.style.cssText = 'position:absolute;top:55%;left:50%;transform:translate(-50%,-50%);color:rgba(0,0,0,0.2);font-size:12px;pointer-events:none;'
-  overlay.textContent = '거래 내역이 없습니다 (샘플 데이터)'
+  overlay.textContent = '거래 내역이 없습니다'
   canvasWrap.appendChild(overlay)
 
   container.appendChild(wrapper)
@@ -441,35 +435,6 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
 
   canvas.addEventListener('mousemove', onMove)
   canvas.addEventListener('mouseleave', () => { hitIdx = null; render(); tooltip.style.display = 'none' })
-  function generateDummyData(): ProfitChartRow[] {
-    const rows: ProfitChartRow[] = []
-    const now = new Date()
-    if (mode === 'volume') {
-      for (let i = 0; i < 20; i++) {
-        const d = new Date(now)
-        d.setDate(d.getDate() - (19 - i))
-        rows.push({
-          date: d.toISOString().slice(0, 10),
-          pnl: Math.floor(Math.random() * 8) + 1,
-          rate: +((Math.random() - 0.4) * 5).toFixed(2)
-        })
-      }
-      return rows
-    }
-    let trend = 0
-    for (let i = 0; i < 20; i++) {
-      const d = new Date(now)
-      d.setDate(d.getDate() - (19 - i))
-      const pnl = Math.round((Math.random() - 0.35) * 1200000 + trend)
-      trend += 20000
-      rows.push({
-        date: d.toISOString().slice(0, 10),
-        pnl,
-        rate: +(Math.random() * 4).toFixed(2)
-      })
-    }
-    return rows
-  }
 
   const RO = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => render()) : null
   if (RO) RO.observe(canvasWrap)

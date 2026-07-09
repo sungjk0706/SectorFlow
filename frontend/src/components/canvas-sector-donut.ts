@@ -139,7 +139,11 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
 
     overlay.style.display = hasData ? 'none' : ''
 
-    if (!hasData) return
+    if (!hasData) {
+      currentSegments = []
+      segmentRects = []
+      return
+    }
 
     const cx = cw / 2
     const cy = ch / 2
@@ -148,7 +152,11 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
 
     // 전체 절대값 합
     const totalAbs = processed.reduce((s, r) => s + Math.abs(r.pnl), 0)
-    if (totalAbs === 0) return
+    if (totalAbs === 0) {
+      currentSegments = []
+      segmentRects = []
+      return
+    }
 
     // 세그먼트 색상 할당 (공유 함수 사용)
     const colorMap = assignSectorColors(processed)

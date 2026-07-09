@@ -1,6 +1,15 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-10: 수익현황 페이지 빈 데이터 차트/도넛 stale state 근본 수정 — 더미 데이터 생성 로직 완전 제거 + currentSegments 초기화**
+  - 문제: 날짜 범위에 매도 데이터가 없어도 일별 수익률 차트에 더미 막대/라인이 표시되고, 업종별 수익 분포 도넛 우측 범례에 이전 데이터가 잔류
+  - 원인: `canvas-profit-chart.ts`의 `generateDummyData()` 폴백 (원칙 20 위반), `canvas-sector-donut.ts`의 `render()`에서 `currentSegments` 미초기화 (원칙 22 위반)
+  - `canvas-profit-chart.ts`: `generateDummyData()` 29줄 삭제, `refreshInternal()` 더미 분기 제거 + `hasVisibleBar` 판정을 `pnl !== null && pnl !== 0`에서 `pnl === null`로 수정 (손익 0원 정상 매도 폴백 버그 제거), overlay 텍스트 "(샘플 데이터)" 제거
+  - `canvas-sector-donut.ts`: `render()`의 `!hasData` 분기와 `totalAbs === 0` 분기에 `currentSegments = []`, `segmentRects = []` 초기화 추가
+  - `profit-overview.ts`: `initState`/`filteredSellHistory` 할당을 `createSectorDonut` 전으로 이동, 도넛 초기 data를 `filteredSellHistory`로 변경 (초기 전체 데이터 렌더링 → 덮어쓰기 깜빡임 방지)
+  - 아키텍처: 원칙 10 (SSOT — 더미 제2 소스 제거), 원칙 20 (폴백 금지), 원칙 21 (사용자 투명성 — "샘플 데이터" 표시 제거), 원칙 22 (데이터 정합성 — 파이프라인 단계 간 currentSegments 일관성)
+  - 검증: tsc 타입체크 통과, vite build 통과 (57 모듈), vitest 109/109 통과
+  - 커밋: (이번 커밋)
 - **2026-07-10: 보유종목 테이블 매수일자 컬럼 추가 — trade_history SSOT → WS → hotStore → UI 전체 파이프라인**
   - 목적: 매도설정 페이지 보유종목 테이블에 매수일자 표시 — 당일 매수 빨강, 과거 회색 조건부 스타일링
   - 백엔드: `trade_history.py` `build_positions_from_trades()` buy_date 파생 + `get_earliest_buy_date()` 헬퍼 추가 (실전모드 REST 보완용)
@@ -18,7 +27,7 @@
 
 ## 현재 상태
 - **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료, 보유종목 buy_date 파생·브로드캐스트 구현 완료
-- **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지·검색 입력란 추가 완료, 보유종목 테이블 매수일자 컬럼 추가 완료, `npm run build` 통과
+- **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지·검색 입력란 추가 완료, 보유종목 테이블 매수일자 컬럼 추가 완료, 수익현황 페이지 빈 데이터 차트/도넛 stale state 근본 수정 완료 (더미 데이터 생성 로직 완전 제거 + currentSegments 초기화), `npm run build` 통과
 - **Git**: 커밋 `77d1d3c` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, .devin/workflows/*, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
 
 ## 다음 단계
