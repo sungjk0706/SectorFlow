@@ -31,6 +31,7 @@ export interface Position {
   pnl_rate: number;
   market_type?: string;
   nxt_enable?: boolean;
+  buy_date?: string;
   sectorStock?: SectorStock;
 }
 

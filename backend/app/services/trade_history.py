@@ -556,6 +556,7 @@ async def build_positions_from_trades(trade_mode: str) -> dict[str, dict]:
                     "eval_amt": price * qty,
                     "pnl_amount": -(fee),
                     "pnl_rate": 0.0,
+                    "buy_date": rec.get("date", ""),
                 }
         for rec in _sell_history:
             if rec.get("trade_mode") != trade_mode:
@@ -573,6 +574,18 @@ async def build_positions_from_trades(trade_mode: str) -> dict[str, dict]:
                 pos["qty"] = new_qty
                 pos["total_fee"] = int(pos.get("total_fee", 0) * new_qty / old_qty) if old_qty > 0 else 0
     return positions
+
+
+async def get_earliest_buy_date(stk_cd: str, trade_mode: str) -> str:
+    """해당 종목의 최초 매수일 조회. SSOT: _buy_history에서 파생."""
+    await _ensure_loaded()
+    async with _history_lock:
+        for rec in _buy_history:
+            if rec.get("trade_mode") != trade_mode:
+                continue
+            if rec["stk_cd"] == stk_cd:
+                return rec.get("date", "")
+    return ""
 
 
 async def close_db_connection() -> None:

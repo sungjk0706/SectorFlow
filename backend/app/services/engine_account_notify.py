@@ -175,7 +175,7 @@ def unregister_engine_ws_queue(q) -> None:
 
 
 # Position delta 비교 키: 프론트엔드가 실제 사용하는 필드만 비교
-_POSITION_CMP_KEYS = ("stk_cd", "stk_nm", "qty", "buy_price", "avg_price", "cur_price", "pnl_amount", "pnl_rate")
+_POSITION_CMP_KEYS = ("stk_cd", "stk_nm", "qty", "buy_price", "avg_price", "cur_price", "pnl_amount", "pnl_rate", "buy_date")
 
 # Snapshot delta 비교 키: 프론트엔드가 실제 사용하는 필드만 비교
 _SNAPSHOT_CMP_KEYS = ("deposit", "orderable", "accumulated_investment",
@@ -549,7 +549,7 @@ def _build_lightweight_payload_for_profit_overview(snapshot: dict, changed_posit
     position_count = snapshot.get("position_count", 0)
 
     # changed_positions: 보유종목 리스트 갱신에 필요한 최소 필드만 추출
-    _MIN_POSITION_KEYS = ("stk_cd", "stk_nm", "qty", "cur_price", "pnl_amount", "pnl_rate", "eval_amount")
+    _MIN_POSITION_KEYS = ("stk_cd", "stk_nm", "qty", "cur_price", "pnl_amount", "pnl_rate", "eval_amount", "buy_date")
     lightweight_positions = [
         {k: p.get(k) for k in _MIN_POSITION_KEYS}
         for p in changed_positions
