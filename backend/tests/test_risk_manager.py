@@ -62,6 +62,7 @@ class TestSyncThresholds:
             rm._sync_thresholds()
 
         assert rm.max_daily_loss_limit == -1_000_000
+        assert rm.daily_loss_limit == -1_000_000
         assert rm.max_single_stock_exposure == 30_000_000
         assert rm.max_total_exposure_ratio == 0.8
 
@@ -74,8 +75,38 @@ class TestSyncThresholds:
             rm._sync_thresholds()
 
         assert rm.max_daily_loss_limit == -500_000
+        assert rm.daily_loss_limit == -500_000
         assert rm.max_single_stock_exposure == 20_000_000
         assert rm.max_total_exposure_ratio == 0.95
+
+
+# ── get_withdrawable_deposit ──────────────────────────────────────────────────
+
+class TestGetWithdrawableDeposit:
+    def test_test_mode_returns_settlement_engine_cash(self, risk_manager, settings_cache):
+        settings_cache["test_mode_on"] = True
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.risk_manager.is_test_mode", return_value=True), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=5_000_000):
+            mock_state.integrated_system_settings_cache = settings_cache
+            result = risk_manager.get_withdrawable_deposit()
+        assert result == 5_000_000
+
+    def test_real_mode_returns_account_snapshot_orderable(self, risk_manager, settings_cache):
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.risk_manager.is_test_mode", return_value=False):
+            mock_state.integrated_system_settings_cache = settings_cache
+            mock_state.account_snapshot = {"orderable": 80_000_000}
+            result = risk_manager.get_withdrawable_deposit()
+        assert result == 80_000_000
+
+    def test_real_mode_returns_zero_when_orderable_missing(self, risk_manager, settings_cache):
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.risk_manager.is_test_mode", return_value=False):
+            mock_state.integrated_system_settings_cache = settings_cache
+            mock_state.account_snapshot = {}
+            result = risk_manager.get_withdrawable_deposit()
+        assert result == 0
 
 
 # ── check_buy_order_allowed ────────────────────────────────────────────────────
