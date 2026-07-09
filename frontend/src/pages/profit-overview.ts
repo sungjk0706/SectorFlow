@@ -415,17 +415,18 @@ function mount(container: HTMLElement): void {
     console.error('[profit-overview] initial daily-summary fetch failed:', err)
   })
 
-  // 차트 생성 — 업종별 수익 도넛
-  donutChart = createSectorDonut({
-    container: donutChartContainer,
-    data: buildSectorDonutData(hotStore.getState().sellHistory),
-  })
-
-  // 초기 데이터 반영
+  // 초기 데이터 반영 — 도넛 차트 생성 전 filteredSellHistory 선할당
   const initState = hotStore.getState()
   sellHistory = initState.sellHistory
   buyHistory = initState.buyHistory
   filteredSellHistory = filterSellHistoryByDate(sellHistory, initState.profitDateFrom, initState.profitDateTo)
+
+  // 차트 생성 — 업종별 수익 도넛 (필터링된 데이터로 초기 생성)
+  donutChart = createSectorDonut({
+    container: donutChartContainer,
+    data: buildSectorDonutData(filteredSellHistory),
+  })
+
   refreshFilteredViews()
 
   // hotStore 구독 — rAF 배칭 + selective update
