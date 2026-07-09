@@ -28,6 +28,7 @@ def risk_manager(mock_circuit_breaker):
     rm = RiskManager.__new__(RiskManager)
     rm.circuit_breaker = mock_circuit_breaker
     rm.max_daily_loss_limit = -500_000
+    rm.daily_loss_limit = -500_000
     rm.max_single_stock_exposure = 20_000_000
     rm.max_total_exposure_ratio = 0.95
     return rm

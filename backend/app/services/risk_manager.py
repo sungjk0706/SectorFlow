@@ -31,6 +31,9 @@ class RiskManager:
         from backend.app.services.engine_state import state as engine_state
         cache = engine_state.integrated_system_settings_cache
         self.max_daily_loss_limit = int(cache.get("max_daily_loss_limit", -500000) or -500000)
+        self.daily_loss_limit = int(
+            cache.get("daily_loss_limit", self.max_daily_loss_limit) or self.max_daily_loss_limit
+        )
         self.max_single_stock_exposure = int(cache.get("max_single_stock_exposure", 20000000) or 20000000)
         self.max_total_exposure_ratio = float(cache.get("max_total_exposure_ratio", 0.95) or 0.95)
 
@@ -50,18 +53,14 @@ class RiskManager:
         cache = engine_state.integrated_system_settings_cache
         trade_mode = "test" if is_test_mode(cache) else "real"
         today_pnl = await get_total_realized_pnl(today_only=True, trade_mode=trade_mode)
-        if today_pnl <= self.max_daily_loss_limit:
-            logger.warning("[매매] 일일 손실 한도 초과: 현재 %s, 한도 %s", f"{today_pnl:,}", f"{self.max_daily_loss_limit:,}")
+        if today_pnl <= self.daily_loss_limit:
+            logger.warning("[매매] 일일 손실 한도 초과: 현재 %s, 한도 %s", f"{today_pnl:,}", f"{self.daily_loss_limit:,}")
             return False, "일일 손실 한도 초과"
 
         order_amount = price * qty
 
         # 3. 예수금 잔액 검사 (모드 분기 — 돈 I/O)
-        if is_test_mode(cache):
-            from backend.app.services.settlement_engine import get_available_cash
-            withdrawable = get_available_cash()
-        else:
-            withdrawable = int(engine_state.account_snapshot.get("orderable", 0) or 0)
+        withdrawable = self.get_withdrawable_deposit()
         if order_amount > withdrawable:
             logger.warning("[매매] 예수금 부족: 주문액 %s, 출금가능액 %s", f"{order_amount:,}", f"{withdrawable:,}")
             return False, "예수금 잔고 부족"
@@ -88,6 +87,19 @@ class RiskManager:
             return False, f"단일 종목 비중 한도 초과 ({stk_cd})"
 
         return True, "승인"
+
+    def get_withdrawable_deposit(self) -> int:
+        """주문 가능한 예수금/가용금액을 모드에 따라 반환.
+
+        - 테스트모드: settlement_engine.get_available_cash()
+        - 실전모드: account_snapshot['orderable']
+        """
+        from backend.app.services.engine_state import state as engine_state
+        cache = engine_state.integrated_system_settings_cache
+        if is_test_mode(cache):
+            from backend.app.services.settlement_engine import get_available_cash
+            return get_available_cash()
+        return int(engine_state.account_snapshot.get("orderable", 0) or 0)
 
     def check_sell_order_allowed(self, stk_cd: str, price: float, qty: int) -> tuple[bool, str]:
         """
