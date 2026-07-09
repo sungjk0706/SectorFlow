@@ -79,11 +79,11 @@ def check_stock_guards(
     min_strength: 체결강도 최소 기준 (0=미적용)
     (5일평균거래대금 필터는 업종분석 단계에서 1차 처리됨 — 여기서 중복 체크하지 않음)
     """
-    if stock.change_rate >= block_rise_pct:
+    if block_rise_pct > 0 and stock.change_rate >= block_rise_pct:
         stock.guard_pass = False
         stock.guard_reason = "상승률"
         return stock
-    if stock.change_rate <= -block_fall_pct:
+    if block_fall_pct > 0 and stock.change_rate <= -block_fall_pct:
         stock.guard_pass = False
         stock.guard_reason = "하락률"
         return stock
