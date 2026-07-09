@@ -238,7 +238,7 @@ async def _apply_buy(code: str, qty: int, price: int) -> None:
         pos["qty"] = new_qty
         pos["avg_price"] = new_avg
         pos["total_fee"] = old_fee + fee
-        pos["buy_amt"] = new_avg * new_qty + pos["total_fee"]
+        _recalc_pnl(pos)
     else:
         _test_positions[norm_code] = {
             "stk_cd": norm_code,
@@ -273,9 +273,7 @@ async def _apply_sell(code: str, qty: int, price: int) -> None:
         _test_positions.pop(norm_code, None)
     else:
         pos["qty"] = new_qty
-        avg = int(pos.get("avg_price", 0))
-        pos["buy_amt"] = avg * new_qty
-        pos["eval_amt"] = int(pos.get("cur_price") or avg) * new_qty
+        pos["total_fee"] = int(pos.get("total_fee", 0) * new_qty / old_qty) if old_qty > 0 else 0
         _recalc_pnl(pos)
     await _schedule_save_positions()
 
