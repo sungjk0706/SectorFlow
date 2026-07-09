@@ -308,7 +308,25 @@ function mount(container: HTMLElement): void {
   badgeEls = { orderable: orderableSpan, daily: dailySpan, holding: holdingSpan }
   root.appendChild(badgeRow)
 
-  // 검색 입력란 — 테이블 바로 우측 상단 (배지행 아래, 스크롤 컨테이너 위)
+  // 검색 입력란 — 테이블 좌측 상단, 주문가능금액 배지 하단 (업종별 종목 시세와 동일한 패턴)
+  const searchRow = document.createElement('div')
+  Object.assign(searchRow.style, {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    marginBottom: '4px',
+  })
+
+  const searchLabel = document.createElement('span')
+  Object.assign(searchLabel.style, {
+    fontSize: FONT_SIZE.section,
+    color: COLOR.down,
+    fontWeight: FONT_WEIGHT.normal,
+    whiteSpace: 'nowrap',
+  })
+  searchLabel.textContent = '종목명 / 코드'
+  searchRow.appendChild(searchLabel)
+
   searchInput = createSearchInput({
     placeholder: '종목명 / 코드 검색',
     width: '180px',
@@ -318,10 +336,9 @@ function mount(container: HTMLElement): void {
       scheduleRender()
     },
   })
-  searchInput.el.style.marginBottom = '4px'
-  searchInput.el.style.marginLeft = 'auto'
-  searchInput.el.style.display = 'block'
-  root.appendChild(searchInput.el)
+  searchInput.el.style.marginBottom = '0'
+  searchRow.appendChild(searchInput.el)
+  root.appendChild(searchRow)
 
   // 스크롤 컨테이너
   const scrollContainer = document.createElement('div')
