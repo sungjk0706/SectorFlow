@@ -176,6 +176,7 @@ class TestExecuteBuyGates:
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
             mock_state.master_stocks_cache = {}
             mock_rm.return_value.circuit_breaker.get_state.return_value = "CLOSED"
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
             mock_task = MagicMock()
             mock_task.add_done_callback = MagicMock()
