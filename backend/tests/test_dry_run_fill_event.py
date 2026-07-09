@@ -16,6 +16,11 @@ from __future__ import annotations
 import asyncio
 import pytest
 
+from backend.app.core.constants import (
+    BUY_COMMISSION,
+    SELL_COMMISSION,
+    SECURITIES_TAX,
+)
 from backend.app.services import dry_run
 from backend.app.services import settlement_engine
 from backend.app.services.engine_state import state
@@ -65,7 +70,7 @@ async def _setup_test_env(monkeypatch):
 
     # ── 인메모리 상태 초기화 ──
     dry_run._test_positions.clear()
-    # init()은 _loaded=False일 때만 기본값 설정하므로, 직접 변수 설정
+    # _loaded=False일 때 _load()가 기본값/설정값으로 초기화; 테스트에서는 직접 변수 설정
     settlement_engine._accumulated_investment = 10_000_000
     settlement_engine._orderable = 10_000_000
     settlement_engine._initial_deposit = 10_000_000
@@ -129,7 +134,7 @@ class TestFakeFillEventBuy:
 
         after_cash = settlement_engine.get_orderable()
         _fill = dry_run.estimate_fill_price(_TEST_PRICE, "BUY")
-        expected_cost = _fill * _TEST_QTY + round(_fill * _TEST_QTY * settlement_engine.BUY_COMMISSION)
+        expected_cost = _fill * _TEST_QTY + round(_fill * _TEST_QTY * BUY_COMMISSION)
         assert after_cash == original_cash - expected_cost, \
             f"예수금 차감 불일치: expected={original_cash - expected_cost}, actual={after_cash}"
 
@@ -336,7 +341,7 @@ class TestFakeFillEventSlippage:
         # 매도 체결가 = 71,000 - 100 (틱) = 70,900
         expected_sell_price = dry_run.estimate_fill_price(sell_raw_price, "SELL")
         gross = expected_sell_price * _TEST_QTY
-        net_proceeds = gross - round(gross * settlement_engine.SECURITIES_TAX) - round(gross * settlement_engine.SELL_COMMISSION)
+        net_proceeds = gross - round(gross * SECURITIES_TAX) - round(gross * SELL_COMMISSION)
         expected_cash = cash_after_buy + net_proceeds
         assert cash_after_sell == expected_cash, \
             f"매도 체결가 슬리피지 미반영: expected_cash={expected_cash}, actual={cash_after_sell}"

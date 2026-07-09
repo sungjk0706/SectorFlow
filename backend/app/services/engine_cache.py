@@ -109,12 +109,12 @@ async def _load_caches_preboot(settings: dict) -> None:
             logger.info("[데이터] WS 구독 구간 — 실시간 필드 초기화 완료 (DB 로드 후)")
 
         # ── 기동 완료 로직 이관 (engine_bootstrap.py _bootstrap_sector_stocks_async에서 이관) ──
-        # 테스트모드: Settlement Engine 초기화 (기본값 설정)
+        # 테스트모드: Settlement Engine 상태 복원 (설정 test_virtual_deposit 우선, DB 없으면 초기화)
         if state.integrated_system_settings_cache["trade_mode"] == "test":
             from backend.app.services import settlement_engine
             initial_deposit = state.integrated_system_settings_cache["test_virtual_deposit"]
-            settlement_engine.init(initial_deposit)
-            logger.debug("[데이터] Settlement Engine 초기화 완료 (테스트모드)")
+            await settlement_engine.restore_state(initial_deposit=initial_deposit)
+            logger.debug("[데이터] Settlement Engine 상태 복원 완료 (테스트모드)")
 
         from backend.app.services.engine_account_notify import notify_cache
         notify_cache.prev_scores = []
