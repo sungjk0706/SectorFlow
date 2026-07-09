@@ -117,6 +117,7 @@ def create_buy_targets(
     high_5d_cache: dict[str, int] | None = None,
     orderbook_cache: dict[str, tuple[int, int]] | None = None,
     program_net_buy_cache: dict[str, int] | None = None,
+    trade_amount_cache: dict[str, int] | None = None,
     boost_high_on: bool = False,
     boost_high_score: float = 1.0,
     boost_order_ratio_on: bool = False,
@@ -197,6 +198,11 @@ def create_buy_targets(
     # ── 거래대금 순위 계산: Guard 통과 종목만 대상 (보유/금일매수는 이미 guard_pass=False) ──
     _trade_amount_rank_map: dict[str, int] = {}
     if boost_trade_amount_rank_on:
+        # 실시간 거래대금으로 StockScore.trade_amount 갱신 — 증분 재계산 시 비-dirty 업종의 stale 값 방지
+        _ta_cache = trade_amount_cache or {}
+        for s, _ in all_stocks:
+            if s.guard_pass and s.code in _ta_cache:
+                s.trade_amount = _ta_cache[s.code]
         _eligible = [s for s, _ in all_stocks if s.guard_pass]
         _eligible.sort(key=lambda st: float(st.trade_amount), reverse=True)
         for i, st in enumerate(_eligible):
@@ -283,7 +289,7 @@ def build_buy_targets_from_settings(
     held_codes: set[str] | None = None,
     bought_today_codes: set[str] | None = None,
 ) -> SectorSummary:
-    from backend.app.services.engine_radar import get_high_price_5d_cache, get_orderbook_cache, get_program_net_buy_cache
+    from backend.app.services.engine_radar import get_high_price_5d_cache, get_orderbook_cache, get_program_net_buy_cache, get_trade_amount_cache
 
     return create_buy_targets(
         sector_scores,
@@ -296,6 +302,7 @@ def build_buy_targets_from_settings(
         high_5d_cache=get_high_price_5d_cache(),
         orderbook_cache=get_orderbook_cache(),
         program_net_buy_cache=get_program_net_buy_cache(),
+        trade_amount_cache=get_trade_amount_cache(),
         boost_high_on=bool(settings.get("boost_high_breakout_on", False)),
         boost_high_score=float(settings.get("boost_high_breakout_score", 1.0)),
         boost_order_ratio_on=bool(settings.get("boost_order_ratio_on", False)),
