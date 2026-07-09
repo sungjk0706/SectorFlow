@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Optional
 import asyncio
 import logging
+from datetime import datetime
 from backend.app.core.settings_file import load_integrated_system_settings, update_settings
 from backend.app.services import settlement_engine
 logger = logging.getLogger(__name__)
@@ -194,6 +195,7 @@ async def _apply_buy(code: str, qty: int, price: int) -> None:
         pos["total_fee"] = old_fee + fee
         _recalc_pnl(pos)
     else:
+        _today = datetime.now().strftime("%Y-%m-%d")
         _test_positions[norm_code] = {
             "stk_cd": norm_code,
             "stk_nm": "",       # 외부에서 set_stock_name()으로 채움
@@ -205,6 +207,7 @@ async def _apply_buy(code: str, qty: int, price: int) -> None:
             "eval_amt": price * qty,
             "pnl_amount": -(fee),
             "pnl_rate": 0.0,
+            "buy_date": _today,
         }
 
 async def _apply_sell(code: str, qty: int, price: int) -> None:

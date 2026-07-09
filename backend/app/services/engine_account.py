@@ -447,6 +447,15 @@ async def _broadcast_account(reason: str | None = None) -> None:
 
     try:
         pos = await dry_run.get_positions() if is_test_mode(state.integrated_system_settings_cache) else list(state.positions or [])
+        # 실전모드: REST API가 buy_date를 제공하지 않으므로 trade_history SSOT에서 주입
+        if not is_test_mode(state.integrated_system_settings_cache) and pos:
+            from backend.app.services import trade_history
+            for p in pos:
+                if not p.get("buy_date"):
+                    cd = str(p.get("stk_cd", "")).strip()
+                    buy_date = await trade_history.get_earliest_buy_date(cd, "real")
+                    if buy_date:
+                        p["buy_date"] = buy_date
         await broadcast_account_update(
             positions=pos or [],
             snapshot=dict(state.account_snapshot or {}),

@@ -7,7 +7,7 @@ import { createDataTable, type DataTableApi, type ColumnDef } from '../component
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardHeaderWithMargin } from '../components/common/card-header'
-import { rateColor, fmtComma, fmtRate, createCodeCell, createStockNameColumn, createNumberCell, createPriceCell } from '../components/common/ui-styles'
+import { rateColor, fmtComma, fmtRate, createCodeCell, createStockNameColumn, createNumberCell, createPriceCell, COLOR } from '../components/common/ui-styles'
 import type { Position } from '../types'
 
 const COLUMNS: ColumnDef<Position>[] = [
@@ -43,6 +43,14 @@ const COLUMNS: ColumnDef<Position>[] = [
     },
   },
   {
+    key: 'buy_price', label: '매수가', align: 'right',
+    render: (p) => createNumberCell(p.buy_price ?? p.avg_price ?? 0),
+  },
+  {
+    key: 'buy_amt', label: '매수금액', align: 'right',
+    render: (p) => createNumberCell(p.buy_amt ?? 0),
+  },
+  {
     key: 'pnl', label: '평가손익', align: 'right',
     render: (p) => {
       const sectorStock = hotStore.getState().sectorStocks[normalizeStockCode(p.stk_cd)]
@@ -70,16 +78,19 @@ const COLUMNS: ColumnDef<Position>[] = [
     },
   },
   {
-    key: 'buy_price', label: '매수가', align: 'right',
-    render: (p) => createNumberCell(p.buy_price ?? p.avg_price ?? 0),
-  },
-  {
     key: 'qty', label: '수량', align: 'right',
     render: (p) => createNumberCell(p.qty ?? 0),
   },
   {
-    key: 'buy_amt', label: '매수금액', align: 'right',
-    render: (p) => createNumberCell(p.buy_amt ?? 0),
+    key: 'buy_date', label: '매수일자', align: 'center', minWidth: 80, maxWidth: 80,
+    render: (p) => {
+      const span = document.createElement('span')
+      span.textContent = p.buy_date || ''
+      const today = new Date()
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      span.style.color = p.buy_date === todayStr ? COLOR.up : COLOR.secondary
+      return span
+    },
   },
 ]
 
