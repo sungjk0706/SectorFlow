@@ -219,7 +219,7 @@ async def _reconciliation_on_startup() -> None:
     서버에서 받아온 진짜 주문/체결 내역과 로컬의 Pending 리스트를 대조하여 유령 데이터 정리.
     Pending 건수가 0건이면 불필요한 네트워크 호출 없이 즉시 엔진 가동.
 
-    테스트모드는 가상잔고이므로 대조 스킵 (원칙 9: 돈 I/O 차이).
+    테스트모드는 trades 기반으로 포지션 복원 (test_positions 테이블 미사용).
     """
     from backend.app.core.trade_mode import is_test_mode
     from backend.app.core.journal import oms_get_pending_orders
@@ -227,9 +227,11 @@ async def _reconciliation_on_startup() -> None:
     from backend.app.services.engine_account_notify import _broadcast
 
     try:
-        # 테스트모드는 가상잔고이므로 대조 스킵 (원칙 9: 돈 I/O 차이)
+        # 테스트모드: trades 기반 포지션 복원 (test_positions 테이블 미사용)
         if is_test_mode(state.integrated_system_settings_cache):
-            logger.info("[연산] 테스트모드 - 가상잔고이므로 원장 대조 생략")
+            logger.info("[연산] 테스트모드 - trades 기반 포지션 복원")
+            from backend.app.services import dry_run
+            await dry_run._load_positions()
             return
 
         # 1. 로컬 장부에서 Pending 상태인 주문 조회

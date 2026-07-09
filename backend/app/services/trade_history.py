@@ -523,6 +523,58 @@ async def broadcast_history(trade_mode: str) -> None:
     await _broadcast_full_sell_history(trade_mode)
 
 
+async def build_positions_from_trades(trade_mode: str) -> dict[str, dict]:
+    """trades 이력에서 보유 포지션을 파생. SSOT: trades가 유일한 포지션 진실 원천."""
+    await _ensure_loaded()
+    positions: dict[str, dict] = {}
+    async with _history_lock:
+        for rec in _buy_history:
+            if rec.get("trade_mode") != trade_mode:
+                continue
+            cd = rec["stk_cd"]
+            qty = int(rec["qty"])
+            price = int(rec["price"])
+            fee = int(rec.get("fee", 0))
+            pos = positions.get(cd)
+            if pos:
+                old_qty = int(pos["qty"])
+                old_avg = int(pos["avg_price"])
+                old_fee = int(pos.get("total_fee", 0))
+                new_qty = old_qty + qty
+                pos["qty"] = new_qty
+                pos["avg_price"] = ((old_avg * old_qty) + (price * qty)) // new_qty if new_qty > 0 else price
+                pos["total_fee"] = old_fee + fee
+            else:
+                positions[cd] = {
+                    "stk_cd": cd,
+                    "stk_nm": rec.get("stk_nm", ""),
+                    "qty": qty,
+                    "avg_price": price,
+                    "cur_price": price,
+                    "total_fee": fee,
+                    "buy_amt": price * qty + fee,
+                    "eval_amt": price * qty,
+                    "pnl_amount": -(fee),
+                    "pnl_rate": 0.0,
+                }
+        for rec in _sell_history:
+            if rec.get("trade_mode") != trade_mode:
+                continue
+            cd = rec["stk_cd"]
+            pos = positions.get(cd)
+            if not pos:
+                continue
+            sell_qty = int(rec["qty"])
+            old_qty = int(pos["qty"])
+            new_qty = max(0, old_qty - sell_qty)
+            if new_qty == 0:
+                positions.pop(cd, None)
+            else:
+                pos["qty"] = new_qty
+                pos["total_fee"] = int(pos.get("total_fee", 0) * new_qty / old_qty) if old_qty > 0 else 0
+    return positions
+
+
 async def close_db_connection() -> None:
     """No-op - 메모리 전용으로 변경"""
     pass

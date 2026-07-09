@@ -101,14 +101,14 @@ async def reset_test_data(_: str = Depends(get_current_user)):
             settings.get("test_virtual_deposit", default_deposit) or default_deposit
         )
 
-        # 1. 가상 보유종목 초기화
-        await clear()
-        # 2. 가상 예수금 초기화 (기본예수금으로 리셋)
-        await set_virtual_deposit(default_deposit)
-        # 3. Settlement Engine 초기화 (예수금 리셋 + 미정산 삭제 + 타이머 취소)
-        await settlement_engine.reset(default_deposit)
-        # 4. 테스트 매매 이력 초기화 (실전 이력은 보존)
+        # 1. 테스트 매매 이력 초기화 (실전 이력은 보존) — trades가 SSOT이므로 먼저 삭제
         await clear_test_history()
+        # 2. 가상 보유종목 메모리 초기화 (trades 삭제 후이므로 빈 상태로 복원됨)
+        await clear()
+        # 3. 가상 예수금 초기화 (기본예수금으로 리셋)
+        await set_virtual_deposit(default_deposit)
+        # 4. Settlement Engine 초기화 (예수금 리셋 + 미정산 삭제 + 타이머 취소)
+        await settlement_engine.reset(default_deposit)
         # 5. 초기화된 매매 이력 브로드캐스트 → 프론트 테이블 갱신
         from backend.app.services.trade_history import broadcast_history
         await broadcast_history("test")

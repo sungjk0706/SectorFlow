@@ -4,7 +4,7 @@ Dry-Run 모듈 -- 테스트모드 전용 가상 체결 엔진 + 영속 잔고.
 
 책임:
   1. fake_send_order()  -- 키움 send_order 응답과 동일한 구조의 가짜 체결 반환
-  2. _test_positions     -- 가상 잔고 (SQLite test_positions 테이블에 영속)
+  2. _test_positions     -- 가상 잔고 (trades 테이블 기반 파생, 인메모리 캐시)
   3. update_price()      -- 0B 틱으로 가상 잔고 현재가/수익률 갱신
 """
 from __future__ import annotations
@@ -13,11 +13,9 @@ import asyncio
 import logging
 from backend.app.core.settings_file import load_integrated_system_settings, update_settings
 from backend.app.services import settlement_engine
-from backend.app.db.stock_tables import load_test_positions, save_test_positions
-from backend.app.services.engine_utils import LazyEvent, LazyLock
 logger = logging.getLogger(__name__)
 
-# ── 가상 잔고 (파일 영속) ───────────────────────────────────────────────────
+# ── 가상 잔고 (trades 기반 인메모리 캐시) ───────────────────────────────────
 # key: stk_cd (서버 수신 형식 그대로), value: dict (kt00018 응답 필드와 동일 구조)
 _test_positions: dict[str, dict] = {}
 _positions_loaded: bool = False
@@ -31,63 +29,19 @@ _fake_order_seq: int = 9_000_000
 
 # ── 포지션 파일 저장/로드 ────────────────────────────────────────────────────
 
-async def _save_positions(data: dict[str, dict] | None = None) -> None:
-    """가상 포지션을 SQLite KV 스토어에 저장. data가 주어지면 스냅샷을 저장."""
-    to_save = data if data is not None else _test_positions
-    try:
-        await save_test_positions(to_save)
-    except Exception as e:
-        logger.warning("[매매] SQLite 저장 실패: %s", e)
-
-
 async def _load_positions() -> None:
-    """SQLite KV 스토어에서 가상 포지션 복원."""
+    """trades 테이블 기반으로 가상 포지션 복원. SSOT: trades가 유일한 진실 원천."""
     global _positions_loaded
     if _positions_loaded:
         return
     _positions_loaded = True
     try:
-        data = await load_test_positions()
-        if isinstance(data, dict):
-            _test_positions.update(data)
-            logger.info("[매매] SQLite 복원 -- %d종목", len(_test_positions))
+        from backend.app.services import trade_history
+        computed = await trade_history.build_positions_from_trades("test")
+        _test_positions.update(computed)
+        logger.info("[매매] trades 복원 -- %d종목", len(_test_positions))
     except Exception as e:
-        logger.warning("[매매] SQLite 로드 실패: %s", e)
-
-
-_pos_save_event: LazyEvent = LazyEvent()
-_pos_save_running: bool = False
-_pos_lock: LazyLock = LazyLock()
-
-
-async def _schedule_save_positions() -> None:
-    """포지션 파일 저장 예약. 동시 실행 방지 (중복 제거)."""
-    global _pos_save_running
-    async with _pos_lock:
-        if _pos_save_running:
-            _pos_save_event.set()
-            return
-        _pos_save_running = True
-    _task = asyncio.create_task(_save_positions_worker())
-    _task.add_done_callback(lambda t: logger.warning("[매매] 포지션 저장 태스크 실패: %s", t.exception()) if t.exception() else None)
-
-
-async def _save_positions_worker() -> None:
-    """이벤트 기반 배칭 저장. 동시 실행 1개 보장."""
-    global _pos_save_running
-    try:
-        while True:
-            snapshot = dict(_test_positions)
-            await _save_positions(snapshot)
-            async with _pos_lock:
-                if _pos_save_event.is_set():
-                    _pos_save_event.clear()
-                    continue
-                _pos_save_running = False
-                break
-    finally:
-        async with _pos_lock:
-            _pos_save_running = False
+        logger.warning("[매매] trades 포지션 복원 실패: %s", e)
 
 
 def _next_fake_order_no() -> str:
@@ -252,8 +206,6 @@ async def _apply_buy(code: str, qty: int, price: int) -> None:
             "pnl_amount": -(fee),
             "pnl_rate": 0.0,
         }
-    await _schedule_save_positions()
-
 
 async def _apply_sell(code: str, qty: int, price: int) -> None:
     """매도 체결 -> 가상 잔고에서 차감 + Settlement Engine 매도 정산. 수량 0이면 제거."""
@@ -275,8 +227,6 @@ async def _apply_sell(code: str, qty: int, price: int) -> None:
         pos["qty"] = new_qty
         pos["total_fee"] = int(pos.get("total_fee", 0) * new_qty / old_qty) if old_qty > 0 else 0
         _recalc_pnl(pos)
-    await _schedule_save_positions()
-
 
 def _recalc_pnl(pos: dict) -> None:
     """현재가 기준 손익 재계산 (매수금액=수수료 포함)."""
@@ -320,7 +270,6 @@ async def set_stock_name(code: str, name: str) -> None:
     pos = _test_positions.get(norm_code)
     if pos:
         pos["stk_nm"] = name
-        await _schedule_save_positions()
 
 
 # ── 4. 조회 헬퍼 ────────────────────────────────────────────────────────────
@@ -358,7 +307,6 @@ async def clear() -> None:
     global _positions_loaded
     _test_positions.clear()
     _positions_loaded = True
-    await _schedule_save_positions()
 
 
 def _estimate_market_price(code: str) -> int:

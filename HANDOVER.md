@@ -1,41 +1,45 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-09: Settlement Engine 리팩토링 — constants 추출, init→_load 통합**
-  - `backend/app/core/constants.py` 신규 생성 (`_KST`, `BUY_COMMISSION`, `SELL_COMMISSION`, `SECURITIES_TAX`)
-  - `settlement_engine.py`: `init()` 제거, `_load()`에 초기화 로직 통합, `restore_state(initial_deposit)` 연결
-  - `engine_cache.py:113-117`: 기동 시 `restore_state(initial_deposit=settings["test_virtual_deposit"])` 호출 추가
-  - `engine_loop.py:211`: 중복 `restore_state` 호출 제거 (engine_cache로 이관)
-  - 테스트: `test_settlement_engine.py`, `test_dry_run_fill_event.py` — constants import, `init` 테스트→`_load` 테스트 교체
-  - 검증: pytest 1020 passed, 런타임 기동 정상 (`[정산] 상태 복원 완료` 로그 확인)
-  - 커밋: `3f783af` — `refactor: settlement_engine constants 추출 및 init→_load 통합`
+- **2026-07-10: 유령 포지션 재발 방지 예방 조치 구현**
+  - 내용: `_test_positions`와 `trade_history` 독립적 영속화 문제를 SSOT 원칙으로 해결
+  - 수정: 7개 파일 (stock_tables.py, trade_history.py, dry_run.py, trading.py, engine_lifecycle.py, settings.py, test_dry_run_fill_event.py)
+  - 핵심: `test_positions` 테이블 제거, `trades` 기반 포지션 파생, `execute_sell()` 런타임 가드 추가
+  - 검증: pytest 105 passed in 17.31s
+  - 상세 기록: `docs/ghost_position_investigation.md` "예방 조치 구현 기록" 섹션
+- **2026-07-09: boost_order_ratio_pct 422 오류 근본 해결**
+  - 현상: 매수설정 페이지 매수/매도호가잔량비율 슬라이더 변경 시 `API error: 422` 발생, 값 저장 안 됨
+  - 근본 원인: `engine_service.py:179` try/except 없는 직접 await + `engine_config.py:94` silent fallback + `settings.py:75` catch-all 422 변환
+  - 수정: 4개 파일 (engine_service.py, engine_config.py, settings.py, engine_account_notify.py)
+  - 신규 테스트: `test_settings_boost_order_ratio.py` (5 tests)
+  - 검증: pytest 1025 passed, 런타임 기동 정상 (614ms, Traceback 없음)
+  - 커밋: `17fc6fa` — `fix: boost_order_ratio_pct 422 오류 해결`
 
 ## 현재 상태
-- **백엔드**: Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료
+- **백엔드**: 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료
 - **프론트엔드**: 더미 데이터 삭제 완료, `npm run build` 통과
-- **Git**: 커밋 `3f783af` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, architecture_principles.md, risk_manager_refactor_megaplan.md는 미커밋)
+- **Git**: 커밋 `17fc6fa` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, architecture_principles.md, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
 
 ## 다음 단계
-- **1순위: 유령 포지션 재발 방지 (승인 후 진행)**:
-  - 방안 A: `_load_positions()`에 trades 이력 교차 검증 추가 (`dry_run.py:46-55`)
-  - shutdown 시퀀스 보완: `SectorFlow.command:19` SIGTERM 대기 2초→5초 연장
-- **2순위: 브라우저 실제 화면 확인** — 장중에 매수후보 테이블에서 SK하이닉스(000660) 하이라이트 깜빡임 없는지 확인
+- **1순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
+  - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
+  - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
+  - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
+- **2순위: 브라우저 실제 화면 확인** — 장중에 매수후보 테이블에서 SK하이닉스(000660) 하이라이트 깜빡임 없는지 확인 + 매수/매도호가잔량비율 슬라이더 422 미발생 확인
 - **3순위: exchange_calendars 교체 검토** — pandas(70MB)+numpy(33MB) 등 간접 의존성 약 112MB 절감 가능
 
 ## 미해결 문제
-- **유령 포지션 005930 (avg_price=70,100) — 3중 검증 완료, 일부 원인 미상**
-  - 현상: 07-09 15:52 앱 재시작 시 삼성전자 10주 @70,100원이 갑자기 복원됨
-  - 15:52:19 자동 익절 매도되어 실현손익 +2,087,886원 기록
-  - 확인된 사실 (3중 검증 완료):
-    - 코드 정상 경로로는 70,100원 포지션 생성 불가
-    - "외부 요인에 의한 DB 직접 삽입" 결론은 타당
-  - 미해결 사항 (다음 세션 조사 필요):
-    1. 70,100원 값의 출처 (코드/로그/trades 어디에도 BUY 기록 없음)
-    2. 14:32~15:52 80분 공백 시간 동안 DB를 조작한 주체
-    3. shutdown 시퀀스가 `stop_db_writer()` 도달 전 중단된 원인 (`app.py:172` 이후 로그 미출력)
-  - 수정해야 할 부분 (승인 후 진행):
-    1. 방안 A: `_load_positions()`에 trades 이력 교차 검증 추가 (재발 방지)
-    2. shutdown 시퀀스 보완: SIGTERM 대기 시간 2초→5초 연장
+- **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결, 재발 방지 조치 완료**
+  - 상세 조사 기록: `docs/ghost_position_investigation.md`
+  - 재발 방지 조치 (2026-07-10 구현): `test_positions` 테이블 제거, `trades` 기반 SSOT 전환, `execute_sell()` 런타임 가드
+  - 근본 원인 미해결: 과거 005930 유령 포지션의 정확한 발생 시점 및 경로는 미추적
+  - 미조사 항목 (`docs/ghost_position_investigation.md` [A]~[I] 참조):
+    - [A] 14:00 shutdown 시 DB close 누락 확인 (app.py shutdown 로그 유무)
+    - [C] WAL 파일 상태 확인 (`ls -la backend/data/stocks.db-wal`)
+    - [D] 14:24 "database is locked" 에러 원인 — 단일 연결인데 왜 lock?
+    - [G] 외부 프로세스에 의한 DB 직접 조작 가능성 (14:32~15:52 공백 시간)
+    - [H] 70,100 값의 출처 역산 — 07-09 005930 매수 체결가들로 평균가 계산 불가 확인
+    - [I] WAL checkpoint 타이밍 이슈 — 이전 데이터 복원 가능성
 - **체결지연 50ms 초과 WARNING 7건** (2026-07-08 13:26~ 런타임 기동 중 발생)
   - `trading_2026-07-08.log:9597~9609` — 50~143ms 지연 7건 (200ms 초과 없음)
   - 조사 필요: `_handle_real_01_tick` await 체인 프로파일링, 지연 발생 위치 식별
