@@ -1,22 +1,30 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-09: trade_amount_rank delta 전송 제거 + 프론트엔드 재계산 (플리커링 근본 해결)**
-  - **근본 원인 (2차)**: `engine_account_notify.py:572` `_BUY_TARGET_CMP_KEYS`에 `trade_amount_rank` 포함 → 실시간 거래대금 변동에 따라 순위가 매번 변경 → delta 전송 → 프론트엔드 `buy-targets-delta` 핸들러가 `trade_amount_rank` 값을 덮어쓰며 하이라이트 셀이 깜빡임
-  - **수정 (백엔드)**: `engine_account_notify.py:572` `_BUY_TARGET_CMP_KEYS`에서 `trade_amount_rank` 제거, `:607,:616` added/changed 항목 pop에 `trade_amount_rank` 추가
-  - **수정 (프론트엔드)**: `hotStore.ts:110-120` `recalcTradeAmountRank()` 함수 추가 (백엔드 `buy_filter.py:206-209` 동일 로직), `applyBuyTargetsUpdate`에서 `trade_amount_rank` 비교 제거 + 재계산, `applyRealData`에서 거래대금 변경 시 재계산 + rank-0 변경 시 추가 tick 발생, `binding.ts:157` delta 핸들러에 `recalcTradeAmountRank` 호출 추가
-  - 검증: pytest 39 passed, typecheck 통과, build 성공, 런타임 기동 정상 (에러/Traceback 없음)
-  - **아키텍처 부합**: 원칙 10 (SSOT) — `trade_amount_rank`는 실시간 파생값이므로 백엔드가 아닌 프론트엔드에서 `sectorStocks.trade_amount` 기반으로 재계산, 원칙 16 (살아있는 경로) — `applyRealData`, `applyBuyTargetsUpdate`, `buy-targets-delta` 핸들러 모두 실제 실행 경로
+- **2026-07-09: RiskManager 리팩토링 Phase 1 Step 1~5 완료 — account_manager AttributeError 근본 해결**
+  - **Step 1**: `risk_manager.py` `daily_loss_limit` alias + `get_withdrawable_deposit()` 메서드 추가 — 커밋 `6a4f1e1`
+  - **Step 2**: `trading.py:217-221` `account_manager` 호출 → `get_withdrawable_deposit()` 교체 — 커밋 `16f739b`
+  - **Step 3**: `buy_order_executor.py:81-86` 동일 교체 — 커밋 `96d9dde`
+  - **Step 4**: `test_risk_manager.py` 테스트 보강 (22개) — 커밋 `74d25bc`
+  - **Step 5**: 전체 회귀 1020 passed + 런타임 기동 정상 (에러/Traceback 없음)
+  - **아키텍처 부합**: 원칙 10 (SSOT), 원칙 16 (살아있는 경로), 원칙 18 (모드 분기 최소화), 원칙 20 (폴백 금지)
 
 ## 현재 상태
-- **백엔드**: `buy_filter.py` check_stock_guards 수정, `engine_account_notify.py` `_BUY_TARGET_CMP_KEYS`에서 `trade_amount_rank` 제거 + delta payload에서 제거
-- **프론트엔드**: `hotStore.ts` `recalcTradeAmountRank()` 추가, `applyBuyTargetsUpdate`/`applyRealData` 수정, `binding.ts` delta 핸들러에 재계산 호출 추가
-- **검증**: pytest 39 passed (test_engine_account_notify.py), typecheck 통과, build 성공, 런타임 기동 정상
-- **Git**: 커밋 대기
+- **백엔드**: RiskManager 리팩토링 Phase 1 완료 — `account_manager` 호출 전면 제거, `get_withdrawable_deposit()` SSOT 통일
+- **테스트**: pytest 1020 passed (전체 회귀)
+- **런타임**: 기동 정상, 에러/Traceback 없음, 잔존 프로세스 0개
+- **Git**: 커밋 `6a4f1e1`, `16f739b`, `96d9dde`, `74d25bc` 완료
 
 ## 다음 단계
-- **1순위: 브라우저 실제 화면 확인** — 장중에 매수후보 테이블에서 SK하이닉스(000660) 하이라이트 깜빡임 없는지 확인
-- **2순위: exchange_calendars 교체 검토** — pandas(70MB)+numpy(33MB) 등 간접 의존성 약 112MB 절감 가능
+- **RiskManager 리팩토링 Phase 1 진행 중** — 단계별 계획서: `risk_manager_refactor_steps.md` (프로젝트 루트)
+  - **Step 1 (완료)**: `risk_manager.py`에 `get_withdrawable_deposit()` 추가 + `daily_loss_limit` alias 정의 — 커밋 `6a4f1e1`
+  - **Step 2 (완료)**: `trading.py:217-221` `account_manager` 호출부 교체 — 커밋 `16f739b`
+  - **Step 3 (완료)**: `buy_order_executor.py:81-86` `account_manager` 호출부 교체 — 커밋 `96d9dde`
+  - **Step 4 (완료)**: `test_risk_manager.py` 테스트 보강 — 커밋 `74d25bc`
+  - **Step 5 (완료)**: 런타임 기동 검증 + 전체 회귀 테스트 — 1020 passed, 기동 정상
+  - **Phase 1 완료**
+- **2순위: 브라우저 실제 화면 확인** — 장중에 매수후보 테이블에서 SK하이닉스(000660) 하이라이트 깜빡임 없는지 확인
+- **3순위: exchange_calendars 교체 검토** — pandas(70MB)+numpy(33MB) 등 간접 의존성 약 112MB 절감 가능
 
 ## 미해결 문제
 - **체결지연 50ms 초과 WARNING 7건** (2026-07-08 13:26~ 런타임 기동 중 발생)
