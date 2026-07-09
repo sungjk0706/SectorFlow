@@ -176,7 +176,10 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             schedule_engine_task(
                 recompute_sector_summary_now(), context="업종 설정 변경"
             )
-        await notify_desktop_sector_scores(force=True)
+        try:
+            await notify_desktop_sector_scores(force=True)
+        except Exception as e:
+            logger.warning("[설정] 업종 점수 브로드캐스트 실패: %s", e, exc_info=True)
 
     # WS 구독 제어 설정 변경 시 즉시 반영 (구독 시작/해지)
     _WS_SUBSCRIBE_CONTROL_KEYS = {"index_auto_subscribe", "quote_auto_subscribe"}

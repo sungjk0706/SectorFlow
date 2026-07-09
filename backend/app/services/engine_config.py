@@ -92,7 +92,8 @@ async def refresh_engine_integrated_system_settings_cache(user_id: str | None = 
                 logger.info("[설정] sector_min_trade_amt 변경: %.0f억 → %.0f억", old_min_amt, new_min_amt)
                 await state.on_filter_settings_changed()
     except Exception as e:
-        logger.warning("[설정] 설정 캐시 갱신 실패: %s", e, exc_info=True)
+        logger.error("[설정] 설정 캐시 갱신 실패: %s", e, exc_info=True)
+        raise
 
 
 async def reload_engine_settings() -> None:
