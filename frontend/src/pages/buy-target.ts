@@ -318,7 +318,7 @@ function mount(container: HTMLElement): void {
       scheduleRender()
     },
   })
-  searchInput.el.style.marginBottom = '0'
+  searchInput.el.style.marginBottom = '4px'
   searchInput.el.style.marginLeft = 'auto'
   searchInput.el.style.display = 'block'
   root.appendChild(searchInput.el)
