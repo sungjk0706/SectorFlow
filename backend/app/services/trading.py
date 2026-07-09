@@ -420,8 +420,20 @@ class AutoTradeManager:
         _avg_buy = 0
         try:
             if _mode == "test":
-                _pos = await dry_run.get_position(stk_cd)
-                _avg_buy = int(_pos.get("avg_price", 0)) if _pos else 0
+                from backend.app.services import trade_history
+                _computed = await trade_history.build_positions_from_trades("test")
+                _computed_pos = _computed.get(_base_stk_cd(stk_cd))
+                if not _computed_pos or int(_computed_pos.get("qty", 0)) < qty:
+                    logger.critical(
+                        "[매매] trades 기준 포지션 없음/수량 부족 — %s 매도 중단 (유령 포지션 차단)",
+                        stk_cd,
+                    )
+                    _fire_and_forget_telegram(
+                        f"⚠️ [매도중단] {stk_nm}({stk_cd}) trades에 매수 기록 없음 — 유령 포지션 의심",
+                        base_settings,
+                    )
+                    return
+                _avg_buy = int(_computed_pos.get("avg_price", 0))
             else:
                 from backend.app.services.engine_account import get_positions as _get_positions
                 for _p in await _get_positions():

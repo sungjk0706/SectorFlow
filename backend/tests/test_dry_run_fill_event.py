@@ -8,7 +8,7 @@
 
 주의: DB Writer(db_writer.py)가 시작되지 않은 테스트 환경에서는
 execute_db_write(wait=True)가 Future를 영원히 resolve하지 못해 무한 대기 발생.
-따라서 settlement_engine._persist, _broadcast_delta, dry_run._schedule_save_positions를
+따라서 settlement_engine._persist, _broadcast_delta, trade_history._ensure_loaded를
 no-op으로 패치하여 DB I/O 경로를 차단한다.
 """
 from __future__ import annotations
@@ -56,8 +56,9 @@ async def _setup_test_env(monkeypatch):
     monkeypatch.setattr(settlement_engine, "_persist", _noop_async)
     # 2. settlement_engine._broadcast_delta → engine_service import 시도 (테스트 환경 미기동)
     monkeypatch.setattr(settlement_engine, "_broadcast_delta", _noop_async)
-    # 3. dry_run._schedule_save_positions → 백그라운드 태스크 생성 + DB I/O
-    monkeypatch.setattr(dry_run, "_schedule_save_positions", _noop_async)
+    # 3. trade_history._ensure_loaded → DB I/O 차단 (build_positions_from_trades 호출 시)
+    from backend.app.services import trade_history
+    monkeypatch.setattr(trade_history, "_ensure_loaded", _noop_async)
     # 4. trading._fire_and_forget_telegram → NotificationWorker 큐가 다른 이벤트 루프에 바인딩되어 RuntimeError
     import backend.app.services.trading as trading_mod
     monkeypatch.setattr(trading_mod, "_fire_and_forget_telegram", _noop_sync)
