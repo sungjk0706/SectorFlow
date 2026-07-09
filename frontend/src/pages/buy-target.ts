@@ -123,7 +123,7 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
 
 /* ── 모듈 변수 ── */
 let dataTable: DataTableApi<SectorStock> | null = null
-let badgeEls: { daily: HTMLSpanElement; holding: HTMLSpanElement; perStock: HTMLSpanElement } | null = null
+let badgeEls: { orderable: HTMLSpanElement; daily: HTMLSpanElement; holding: HTMLSpanElement } | null = null
 let emptyEl: HTMLElement | null = null
 let unsubTargets: (() => void) | null = null
 let unsubUiStore: (() => void) | null = null
@@ -192,6 +192,53 @@ function createBadgeSpan(): HTMLSpanElement {
   return span
 }
 
+/* ── 주문가능금액 배지 렌더링 — 1위 종목 매수 가능 수량 통합 ── */
+function renderOrderableBadge(el: HTMLSpanElement, orderable: number, topName: string, qty: number): void {
+  const insufficient = orderable <= 0
+  const cannotBuy = !insufficient && topName !== '' && qty <= 0
+  const warn = insufficient || cannotBuy
+  el.style.background = warn ? COLOR.upBg : COLOR.neutralBg
+  el.style.fontWeight = warn ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal
+  el.textContent = ''
+
+  const labelSpan = document.createElement('span')
+  labelSpan.style.color = COLOR.code
+  labelSpan.textContent = '💳 주문가능금액 '
+  el.appendChild(labelSpan)
+
+  const valSpan = document.createElement('span')
+  valSpan.style.color = COLOR.up
+  valSpan.textContent = orderable.toLocaleString()
+  el.appendChild(valSpan)
+
+  const unitSpan = document.createElement('span')
+  unitSpan.style.color = COLOR.code
+  unitSpan.textContent = '원'
+  el.appendChild(unitSpan)
+
+  if (topName !== '') {
+    const info = document.createElement('span')
+    info.style.color = COLOR.code
+    info.textContent = ` (1위 ${topName} `
+    el.appendChild(info)
+
+    const qtySpan = document.createElement('span')
+    qtySpan.style.color = COLOR.up
+    qtySpan.textContent = String(qty)
+    el.appendChild(qtySpan)
+
+    const qtyUnit = document.createElement('span')
+    qtyUnit.style.color = COLOR.code
+    qtyUnit.textContent = warn ? '주 ⚠️ 매수 불가)' : '주)'
+    el.appendChild(qtyUnit)
+  } else if (insufficient) {
+    const tag = document.createElement('span')
+    tag.style.color = COLOR.up
+    tag.textContent = ' (매수 불가)'
+    el.appendChild(tag)
+  }
+}
+
 /* ── 배지 행 업데이트 ── */
 function updateBadges(): void {
   if (!badgeEls) return
@@ -204,70 +251,26 @@ function updateBadges(): void {
   const buyAmtPerStock = settings?.buy_amt ?? 0
   const holdingCnt = state.positions.filter(p => (p.qty ?? 0) > 0).length
   const dailySpent = uiState.buyLimitStatus.daily_buy_spent
+  const orderable = state.account?.orderable ?? 0
 
-  renderLimitBadge(badgeEls.daily, '💰 일일 매수 금액 (수수료 제외)', dailySpent, maxDaily)
-  renderLimitBadge(badgeEls.holding, '📦 동시 보유 종목 최대', holdingCnt, maxStock, '종목')
-
-  // 종목당 일일 최대 매수 금액: 1순위 통과 종목 기준 매수 가능 수량 표시
-  const dailyRemain = maxDaily > 0 ? Math.max(0, maxDaily - dailySpent) : Infinity
-  const effectiveBuyAmt = buyAmtPerStock > 0 ? Math.min(buyAmtPerStock, dailyRemain) : 0
+  // 1순위 통과 종목 — 주문가능금액 배지의 1위 종목 매수 가능 수량 계산용
   const topTarget = [...state.buyTargets].sort((a, b) => {
     if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
     return (a.rank ?? 999999) - (b.rank ?? 999999)
   }).find(t => t.guard_pass && t.reason === '')
-  let perStockLimited = false
+
+  // 백엔드 trading.py:217-220 과 동일 — min(buy_amt, dailyRemain, orderable)
+  const dailyRemain = maxDaily > 0 ? Math.max(0, maxDaily - dailySpent) : Infinity
+  const effectiveBuyAmt = buyAmtPerStock > 0 ? Math.min(buyAmtPerStock, dailyRemain, orderable) : 0
   let qty = 0
   if (topTarget && effectiveBuyAmt > 0 && topTarget.cur_price > 0) {
     qty = Math.floor(effectiveBuyAmt / topTarget.cur_price)
-    if (dailyRemain < buyAmtPerStock) {
-      perStockLimited = true
-    }
   }
+  const topName = topTarget?.name ?? ''
 
-  const psHit = maxDaily > 0 && dailySpent >= maxDaily
-  const psNear = perStockLimited && !psHit
-  badgeEls.perStock.style.background = psHit ? COLOR.upBg : psNear ? COLOR.warningBg : COLOR.neutralBg
-  badgeEls.perStock.style.fontWeight = (psHit || psNear) ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal
-  badgeEls.perStock.textContent = ''
-
-  const psLabel = document.createElement('span')
-  psLabel.style.color = COLOR.code
-  psLabel.textContent = '🏷️ 종목당 매수 최대 금액 '
-  badgeEls.perStock.appendChild(psLabel)
-
-  if (buyAmtPerStock > 0) {
-    const psAmt = document.createElement('span')
-    psAmt.style.color = COLOR.up
-    psAmt.textContent = buyAmtPerStock.toLocaleString()
-    badgeEls.perStock.appendChild(psAmt)
-
-    const psUnit = document.createElement('span')
-    psUnit.style.color = COLOR.code
-    psUnit.textContent = '원'
-    badgeEls.perStock.appendChild(psUnit)
-  } else {
-    const psNa = document.createElement('span')
-    psNa.style.color = COLOR.code
-    psNa.textContent = '미설정'
-    badgeEls.perStock.appendChild(psNa)
-  }
-
-  if (topTarget && effectiveBuyAmt > 0 && topTarget.cur_price > 0) {
-    const psInfo = document.createElement('span')
-    psInfo.style.color = COLOR.code
-    psInfo.textContent = ` (1위 ${topTarget.name} `
-    badgeEls.perStock.appendChild(psInfo)
-
-    const psQty = document.createElement('span')
-    psQty.style.color = COLOR.up
-    psQty.textContent = String(qty)
-    badgeEls.perStock.appendChild(psQty)
-
-    const psQtyUnit = document.createElement('span')
-    psQtyUnit.style.color = COLOR.code
-    psQtyUnit.textContent = psHit ? '주 (한도))' : psNear ? '주 ⚠️)' : '주)'
-    badgeEls.perStock.appendChild(psQtyUnit)
-  }
+  renderOrderableBadge(badgeEls.orderable, orderable, topName, qty)
+  renderLimitBadge(badgeEls.daily, '💰 일일 매수 금액 (수수료 제외)', dailySpent, maxDaily)
+  renderLimitBadge(badgeEls.holding, '📦 동시 보유 종목 최대', holdingCnt, maxStock, '종목')
 }
 
 /* ── mount ── */
@@ -285,13 +288,13 @@ function mount(container: HTMLElement): void {
   // 한도 배지 행
   const badgeRow = document.createElement('div')
   Object.assign(badgeRow.style, { marginBottom: '6px', lineHeight: '2' })
+  const orderableSpan = createBadgeSpan()
   const dailySpan = createBadgeSpan()
   const holdingSpan = createBadgeSpan()
-  const perStockSpan = createBadgeSpan()
+  badgeRow.appendChild(orderableSpan)
   badgeRow.appendChild(dailySpan)
   badgeRow.appendChild(holdingSpan)
-  badgeRow.appendChild(perStockSpan)
-  badgeEls = { daily: dailySpan, holding: holdingSpan, perStock: perStockSpan }
+  badgeEls = { orderable: orderableSpan, daily: dailySpan, holding: holdingSpan }
   root.appendChild(badgeRow)
 
   // 스크롤 컨테이너
@@ -332,6 +335,7 @@ function mount(container: HTMLElement): void {
   // 마지막 렌더링 시점의 참조 (rAF 콜백에서 갱신)
   let lastRenderedBuyTargets = initState.buyTargets
   let lastRenderedPositions = initState.positions
+  let lastRenderedAccount = initState.account
   let lastRenderedSettings = globalSettingsManager.getSettings()
   const initUiState = uiStore.getState()
   let lastRenderedBuyLimitStatus = initUiState.buyLimitStatus
@@ -342,6 +346,7 @@ function mount(container: HTMLElement): void {
     const anyChanged =
       hotState.buyTargets !== lastRenderedBuyTargets ||
       hotState.positions !== lastRenderedPositions ||
+      hotState.account !== lastRenderedAccount ||
       globalSettingsManager.getSettings() !== lastRenderedSettings ||
       uiState.buyLimitStatus !== lastRenderedBuyLimitStatus
 
@@ -369,14 +374,16 @@ function mount(container: HTMLElement): void {
         if (emptyEl) emptyEl.style.display = targets.length === 0 ? '' : 'none'
       }
 
-      // buyTargets / positions / settings / buyLimitStatus 변경 시 배지 업데이트
+      // buyTargets / positions / account / settings / buyLimitStatus 변경 시 배지 업데이트
       if (
         targetsChanged ||
         latest.positions !== lastRenderedPositions ||
+        latest.account !== lastRenderedAccount ||
         globalSettingsManager.getSettings() !== lastRenderedSettings ||
         latestUi.buyLimitStatus !== lastRenderedBuyLimitStatus
       ) {
         lastRenderedPositions = latest.positions
+        lastRenderedAccount = latest.account
         lastRenderedSettings = globalSettingsManager.getSettings()
         lastRenderedBuyLimitStatus = latestUi.buyLimitStatus
         updateBadges()
