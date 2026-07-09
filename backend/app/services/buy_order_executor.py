@@ -78,12 +78,8 @@ async def evaluate_buy_candidates() -> None:
             return
 
     # ── 주문가능 금액 사전 체크 (매수 시도 전 조기 차단) ────────────────
-    if is_test_mode(state.integrated_system_settings_cache):
-        from backend.app.services.settlement_engine import get_available_cash
-        _available = get_available_cash()
-    else:
-        from backend.app.services.risk_manager import get_risk_manager
-        _available = get_risk_manager().account_manager.get_withdrawable_deposit()
+    from backend.app.services.risk_manager import get_risk_manager
+    _available = get_risk_manager().get_withdrawable_deposit()
     if _max_daily_on and _max_daily > 0 and _daily_remain is not None:
         _effective_buy_amt = min(_buy_amt, _daily_remain)
     else:
