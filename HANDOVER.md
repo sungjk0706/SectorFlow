@@ -1,63 +1,25 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-10: 보유종목 테이블 매수일자 컬럼 추가 — trade_history SSOT → WS → hotStore → UI 전체 파이프라인**
+  - 목적: 매도설정 페이지 보유종목 테이블에 매수일자 표시 — 당일 매수 빨강, 과거 회색 조건부 스타일링
+  - 백엔드: `trade_history.py` `build_positions_from_trades()` buy_date 파생 + `get_earliest_buy_date()` 헬퍼 추가 (실전모드 REST 보완용)
+  - 백엔드: `dry_run.py` `_apply_buy()` 신규 position에 buy_date 추가, `engine_account.py` `_broadcast_account()` 실전모드 buy_date 주입
+  - 백엔드: `engine_account_notify.py` `_POSITION_CMP_KEYS`, `_MIN_POSITION_KEYS`에 buy_date 추가
+  - 프론트엔드: `types/index.ts` Position에 `buy_date?: string` 추가, `sell-position.ts` 매수일자 컬럼 추가 + 컬럼 순서 조정
+  - 컬럼 순서: 순번→종목코드→종목명→현재가→매수가→매수금액→평가손익→수익률→수량→매수일자
+  - 아키텍처: 원칙 10 (SSOT — trade_history date 필드에서 파생), 원칙 18 (테스트모드 동등성), 원칙 20 (폴백 금지), 원칙 22 (파생 데이터 모델)
+  - 검증: py_compile 4파일 성공, tsc --noEmit 성공, vite build 성공, 런타임 기동 정상 (966ms, 에러 없음), test_dry_run_fill_event 29 passed
+  - 커밋: `77d1d3c` push 완료
 - **2026-07-10: 매수후보 페이지 검색 입력란 위치 재조정 — 좌측 상단, 주문가능금액 배지 하단**
-  - 목적: 매수후보 테이블 검색 입력란의 위치를 업종순위 페이지(sector-stock.ts)와 동일한 좌측 상단으로 통일 — 사용자 제안 반영
-  - 위치 조정: `searchInput`을 `root`에 직접 추가하지 않고 `searchRow` 컨테이너에 배치, `marginLeft: auto` 제거 → 좌측 정렬
-  - 라벨 추가: `종목명 / 코드` 텍스트 라벨 추가 (`FONT_SIZE.section`, `COLOR.down`) — `sector-stock.ts` 패턴 재사용
-  - 여백: `searchInput` wrapper `marginBottom`을 `0`으로 조정, `searchRow`의 `marginBottom`을 `4px`로 유지 — 테이블과 4px 간격 유지
-  - 변경 파일: `frontend/src/pages/buy-target.ts` 1개 (프론트엔드 only, 백엔드/WS 변경 불필요)
-  - 검증: `npm run typecheck` 통과, `npm run test` 109 passed, `npx eslint src/pages/buy-target.ts` 통과
+  - 변경 파일: `frontend/src/pages/buy-target.ts` 1개
+  - 검증: `npm run typecheck` 통과, `npm run test` 109 passed
   - 커밋: `d4b3d40` push 완료
-- **2026-07-10: 매수후보 페이지 검색 입력란 추가 — 종목명/코드 실시간 필터링 + 위치 조정**
-  - 목적: 매수후보 테이블에서 특정 종목 빠른 검색 — 업종순위 페이지 sector-stock.ts와 동일 UX 통일
-  - 추가: `createSearchInput` 공통 컴포넌트로 검색 입력란 배치 (파란색 라벨 `COLOR.down`, width 180px)
-  - 재사용: `filterStocksBySearch`를 `sector-stock.ts`에서 import (SSOT 원칙 준수 — 중복 구현 회피)
-  - 수정: `scheduleRender()`에 `searchTerm !== lastRenderedSearchTerm` 변경 감지 추가 (기존 reference equality guard로 인해 검색어만 바뀌면 updateRows가 스킵되는 문제 해결)
-  - 수정: 초기 렌더링 및 rAF 콜백에 `filterStocksBySearch` 필터링 적용 → 기존 sort 로직 유지
-  - 분기: 빈 상태 메시지 — 검색어 유무에 따라 `'${query}' 검색 결과가 없습니다.` / `매수후보가 없습니다.` 분기
-  - 설계 결정: 배지(주문가능금액/일일매수한도/동시보유)는 전체 `buyTargets` 기준 유지 — 검색 결과에 영향받지 않음 (혼란 방지)
-  - 안전성: `updateItemByKey` 이벤트 리스너 유지 — 필터링 제외 종목 tick은 `activeRows.get(key)` undefined로 자동 no-op
-  - 위치 조정: 검색 입력란을 배지행 아래, 스크롤 컨테이너(테이블) 바로 위로 이동 (`marginLeft: auto` 우측 정렬) — 테이블 우측 상단과 인접하도록 시인성 개선
-  - 여백 통일: 검색입력란 `marginBottom` 0px → 4px (headerRow와 동일 간격으로 요소 간 여백 일관성 확보)
-  - 변경 파일: `frontend/src/pages/buy-target.ts` 1개 (프론트엔드 only, 백엔드/WS 변경 불필요)
-  - 검증: `npm run build` 통과 (tsc + vite, exit code 0), 순환 참조 없음 확인, 타입 호환성 확인
-  - 커밋: `e51b156` (최초 구현) → `a0617c6` (위치 조정) → `c3ae109` (여백 통일) push 완료
-- **2026-07-10: 매수후보 페이지 주문가능금액 배지 추가 — 1위 종목 매수 가능 수량 통합**
-  - 목적: "왜 매수가 안 되지?" UX 해소 — 아키텍처 원칙 21 (User Transparency)
-  - 추가: `renderOrderableBadge()` — `hotStore.account.orderable` 실시간 표시 + 1위 통과 종목 매수 가능 수량 통합
-    - 예: `💳 주문가능금액 2,037,794원 (1위 삼성전자 7주)`
-    - `orderable <= 0` 또는 1위 종목 1주 미달 시 빨간 배지 + `⚠️ 매수 불가` 경고
-  - 수정: `effectiveBuyAmt` 계산에 `orderable` 반영 — `min(buy_amt, dailyRemain, orderable)` (백엔드 `trading.py:217-220`과 정합)
-  - 수정: `scheduleRender()`에 `account` 참조 변경 감지 추가 (기존: buyTargets/positions/settings/buyLimitStatus만 감시)
-  - 제거: perStock 배지 (종목당 매수 최대 금액) — 매수설정 패널에서 확인 가능하므로 중복 제거
-  - 변경 파일: `frontend/src/pages/buy-target.ts` 1개 (프론트엔드 only, 백엔드/WS 변경 불필요 — account-update 이벤트 이미 buy-target 페이지에 전송됨)
-  - 검증: `npm run build` 통과 (tsc + vite, exit code 0)
-  - 커밋: `08256ec` push 완료
-- **2026-07-10: 차트 툴팁 하단 잘림 수정 — positionTooltip 공통 함수 추출**
-  - 문제: 수익현황 페이지 일별 수익률 막대차트에서 막대 하단 호버 시 툴팁이 `canvasWrap`(overflow:hidden) 경계를 벗어나 잘림
-  - 근본 원인: 툴팁 위치 계산이 `tooltip.offsetHeight`를 고려하지 않아 하단 경계 초과
-  - 추가 발견: X축 좌측 넘침 미처리 버그, 두 차트 컴포넌트에 동일 코드 중복 (SSOT 위반)
-  - 수정: `ui-styles.ts`에 `positionTooltip()` 공통 함수 추가 (양축 경계 클램핑), `canvas-profit-chart.ts`/`canvas-sector-donut.ts` 중복 코드를 공통 함수 호출로 교체
-  - 검증: `npm run build` 통과 (tsc + vite, exit code 0)
-  - 커밋: `e77ea70` push 완료
-- **2026-07-10: 유령 매도 기록(id=144) 삭제 및 수익 통계 정정**
-  - 내용: `trades` 테이블에서 005930 유령 매도 1건 삭제 (BUY 기록 없는 SELL 10주 @279,500, avg_buy_price=70,100)
-  - 영향: `trade_history.py` 집계 함수만 영향 (test 모드 총 실현손익 +1,215,065→-872,821 정정, 2026-07-09 daily sell=21→20, pnl=+1,391,531→-696,355)
-  - 무영향: `settlement_state`, `test_positions`, `build_positions_from_trades` 모두 독립
-  - 검증: 백엔드 기동 정상 (매도 34→33건 복원), API 응답에서 유령 매도 미표시 확인, 잔존 프로세스 0건
-  - 상세 기록: `docs/ghost_position_investigation.md` "유령 매도 기록 삭제" 섹션
-- **2026-07-10: 유령 포지션 재발 방지 예방 조치 구현**
-  - 내용: `_test_positions`와 `trade_history` 독립적 영속화 문제를 SSOT 원칙으로 해결
-  - 수정: 7개 파일 (stock_tables.py, trade_history.py, dry_run.py, trading.py, engine_lifecycle.py, settings.py, test_dry_run_fill_event.py)
-  - 핵심: `test_positions` 테이블 제거, `trades` 기반 포지션 파생, `execute_sell()` 런타임 가드 추가
-  - 검증: pytest 105 passed in 17.31s
-  - 상세 기록: `docs/ghost_position_investigation.md` "예방 조치 구현 기록" 섹션
 
 ## 현재 상태
-- **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료
-- **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지 추가 완료, 매수후보 페이지 검색 입력란 추가·좌측 정렬 완료, `npm run build` 통과
-- **Git**: 커밋 `d4b3d40` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, .devin/workflows/*, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
+- **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료, 보유종목 buy_date 파생·브로드캐스트 구현 완료
+- **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지·검색 입력란 추가 완료, 보유종목 테이블 매수일자 컬럼 추가 완료, `npm run build` 통과
+- **Git**: 커밋 `77d1d3c` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, .devin/workflows/*, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
 
 ## 다음 단계
 - **1순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
