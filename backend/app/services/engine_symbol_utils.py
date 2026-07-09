@@ -21,25 +21,6 @@ def is_nxt_enabled(stk_cd: str) -> bool:
     return False
 
 
-def filter_krx_only_stocks(
-    codes: list[str],
-    *,
-    is_after_hours: bool | None = None,
-) -> list[str]:
-    """
-    KRX 장외 시간대에 KRX 단독 종목을 제외한 종목 코드 리스트 반환.
-    - is_after_hours=None → is_krx_after_hours() 자동 호출
-    - is_after_hours=True → KRX 단독 종목 제외
-    - is_after_hours=False → 원본 그대로 반환
-    """
-    if is_after_hours is None:
-        from backend.app.services.daily_time_scheduler import is_krx_after_hours
-        is_after_hours = is_krx_after_hours()
-    if not is_after_hours:
-        return codes
-    return [cd for cd in codes if is_nxt_enabled(cd)]
-
-
 def get_ws_subscribe_code(stk_cd: str) -> str:
     """
     웹소켓 구독 시 사용할 종목코드 반환.

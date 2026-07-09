@@ -290,29 +290,11 @@ async def recompute_sector_summary_now() -> None:
 
 
 async def _on_filter_settings_changed() -> None:
-    """필터 설정 변경 시 업종순위 재계산 + WS 전송."""
-    from backend.app.services.engine_account_notify import (
-        notify_desktop_sector_stocks_refresh,
-        notify_desktop_sector_scores,
-        notify_buy_targets_update,
-    )
+    """필터 설정 변경 시 업종순위 재계산 + WS 전송.
 
-    # ── 업종순위 + 매수 후보 재계산 ──
+    recompute_sector_summary_now() 내부에서 notify 3종이 이미 호출되므로 중복 호출을 제거한다.
+    """
     try:
         await recompute_sector_summary_now()
     except Exception as e:
         logger.warning("[연산] 필터 변경 — 업종순위 재계산 실패: %s", e, exc_info=True)
-
-    # ── WS 3종 전송 ──
-    try:
-        await notify_desktop_sector_stocks_refresh()
-    except Exception:
-        logger.warning("[시스템] 업종목록 화면 전송 실패", exc_info=True)
-    try:
-        await notify_desktop_sector_scores(force=True)
-    except Exception:
-        logger.warning("[시스템] 업종점수 화면 전송 실패", exc_info=True)
-    try:
-        await notify_buy_targets_update()
-    except Exception:
-        logger.warning("[시스템] 매수 후보 화면 전송 실패", exc_info=True)
