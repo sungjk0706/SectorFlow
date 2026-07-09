@@ -10,8 +10,6 @@ import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import {
   BUY_COLS,
   SELL_COLS,
-  DUMMY_BUY,
-  DUMMY_SELL,
   type DailyDrilldownRow,
   type SummaryCardEls,
   getLocalToday,
@@ -38,7 +36,6 @@ let drilldownViewContainer: HTMLDivElement | null = null
 let dateFromInput: HTMLInputElement | null = null
 let dateToInput: HTMLInputElement | null = null
 let stockFilterInput: HTMLInputElement | null = null
-let dummyMsg: HTMLDivElement | null = null
 let unsubStore: (() => void) | null = null
 
 /* ── 드릴다운 상태 ── */
@@ -227,8 +224,7 @@ function showTable(): void {
   let rows = isSell ? sellHistory : buyHistory
   rows = filterRows(rows, dateFrom, dateTo, stockQuery || undefined)
 
-  const isDummy = rows.length === 0 && !dateFrom && !dateTo && !stockQuery
-  const displayRows = isDummy ? (isSell ? DUMMY_SELL : DUMMY_BUY) : rows
+  const displayRows = rows
 
   if (!sellTable) {
     sellTable = createDataTable<Record<string, unknown>>({
@@ -257,14 +253,6 @@ function showTable(): void {
 
   const activeTbl = isSell ? sellTable : buyTable
   activeTbl.updateRows(displayRows)
-
-  if (dummyMsg) dummyMsg.remove()
-  if (isDummy) {
-    dummyMsg = document.createElement('div')
-    Object.assign(dummyMsg.style, { textAlign: 'center', fontSize: FONT_SIZE.badge, color: COLOR.disabled, marginTop: '-4px' })
-    dummyMsg.textContent = '거래 체결 시 자동으로 표시됩니다'
-    tableViewContainer.appendChild(dummyMsg)
-  }
 
   if (sellTabBtn) applyTabStyle(sellTabBtn, activeTab === 'sell')
   if (buyTabBtn) applyTabStyle(buyTabBtn, activeTab === 'buy')
@@ -611,7 +599,6 @@ function unmount(): void {
   dateFromInput = null
   dateToInput = null
   stockFilterInput = null
-  dummyMsg = null
   statCountEl = null
   statBuyAmtEl = null
   statSellAmtEl = null

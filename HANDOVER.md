@@ -1,32 +1,32 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-09: RiskManager 리팩토링 Phase 1 Step 1~5 완료 — account_manager AttributeError 근본 해결**
-  - **Step 1**: `risk_manager.py` `daily_loss_limit` alias + `get_withdrawable_deposit()` 메서드 추가 — 커밋 `6a4f1e1`
-  - **Step 2**: `trading.py:217-221` `account_manager` 호출 → `get_withdrawable_deposit()` 교체 — 커밋 `16f739b`
-  - **Step 3**: `buy_order_executor.py:81-86` 동일 교체 — 커밋 `96d9dde`
-  - **Step 4**: `test_risk_manager.py` 테스트 보강 (22개) — 커밋 `74d25bc`
-  - **Step 5**: 전체 회귀 1020 passed + 런타임 기동 정상 (에러/Traceback 없음)
-  - **아키텍처 부합**: 원칙 10 (SSOT), 원칙 16 (살아있는 경로), 원칙 18 (모드 분기 최소화), 원칙 20 (폴백 금지)
+- **2026-07-09: 프론트엔드 더미 데이터 삭제 — DUMMY_BUY/DUMMY_SELL 제거**
+  - `profit-shared.ts:411-419` — `DUMMY_BUY`, `DUMMY_SELL` 상수 삭제
+  - `profit-detail.ts` — import 제거, `isDummy`/`dummyMsg` 관련 로직 제거
+  - `npm run build` 통과 (tsc + vite build 성공)
+  - 잔여 참조 0건 확인 (grep 검색 완료)
 
 ## 현재 상태
-- **백엔드**: RiskManager 리팩토링 Phase 1 완료 — `account_manager` 호출 전면 제거, `get_withdrawable_deposit()` SSOT 통일
-- **테스트**: pytest 1020 passed (전체 회귀)
-- **런타임**: 기동 정상, 에러/Traceback 없음, 잔존 프로세스 0개
-- **Git**: 커밋 `6a4f1e1`, `16f739b`, `96d9dde`, `74d25bc` 완료
+- **백엔드**: RiskManager 리팩토링 Phase 1 완료
+- **프론트엔드**: 더미 데이터 삭제 완료, `npm run build` 통과
+- **Git**: 더미 데이터 삭제 커밋 대기
 
 ## 다음 단계
-- **RiskManager 리팩토링 Phase 1 진행 중** — 단계별 계획서: `risk_manager_refactor_steps.md` (프로젝트 루트)
-  - **Step 1 (완료)**: `risk_manager.py`에 `get_withdrawable_deposit()` 추가 + `daily_loss_limit` alias 정의 — 커밋 `6a4f1e1`
-  - **Step 2 (완료)**: `trading.py:217-221` `account_manager` 호출부 교체 — 커밋 `16f739b`
-  - **Step 3 (완료)**: `buy_order_executor.py:81-86` `account_manager` 호출부 교체 — 커밋 `96d9dde`
-  - **Step 4 (완료)**: `test_risk_manager.py` 테스트 보강 — 커밋 `74d25bc`
-  - **Step 5 (완료)**: 런타임 기동 검증 + 전체 회귀 테스트 — 1020 passed, 기동 정상
-  - **Phase 1 완료**
+- **유령 포지션 근본 원인 조사 (최우선)**:
+  - 07-09 15:52에 `test_positions` 테이블에 005930(10주, avg_price=70,100)이 삽입된 경로 추적 필요
+  - 더미 데이터(avg_buy_price=70,000)와 유령 포지션(avg_price=70,100)의 값 차이 확인 필요
+  - `save_test_positions()` 호출 경로 전체 재추적 필요
+  - 14:32 앱 종료~15:52 앱 시작 사이 DB에 직접 INSERT된 경로 식별
 - **2순위: 브라우저 실제 화면 확인** — 장중에 매수후보 테이블에서 SK하이닉스(000660) 하이라이트 깜빡임 없는지 확인
 - **3순위: exchange_calendars 교체 검토** — pandas(70MB)+numpy(33MB) 등 간접 의존성 약 112MB 절감 가능
 
 ## 미해결 문제
+- **유령 포지션 005930 (avg_price=70,100) 원인 미상**
+  - 07-09 08:03 BUY 6주 → 10:53 SELL 6주(전량 매도) → 15:52 SELL 10주(유령 포지션)
+  - 12:08~14:02 모든 SQLite 복원 0종목 (DB 비어 있었음)
+  - 14:32 종료~15:52 시작 사이 외부에서 DB에 INSERT된 것으로 추정
+  - `trades` 테이블 id=144: 15:52 SELL 10주 avg_buy=70,100 기록됨
 - **체결지연 50ms 초과 WARNING 7건** (2026-07-08 13:26~ 런타임 기동 중 발생)
   - `trading_2026-07-08.log:9597~9609` — 50~143ms 지연 7건 (200ms 초과 없음)
   - 조사 필요: `_handle_real_01_tick` await 체인 프로파일링, 지연 발생 위치 식별
