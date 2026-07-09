@@ -483,6 +483,7 @@ export function applyBuyTargetsUpdate(data: { buy_targets: SectorStock[] }): voi
       && p.strength === n.strength
       && p.guard_pass === n.guard_pass && p.reason === n.reason
       && p.boost_score === n.boost_score
+      && p.trade_amount_rank === n.trade_amount_rank
       && p.order_ratio?.[0] === n.order_ratio?.[0] && p.order_ratio?.[1] === n.order_ratio?.[1]
       && p.program_net_buy === n.program_net_buy
       && p.high_5d === n.high_5d

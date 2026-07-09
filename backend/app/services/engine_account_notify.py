@@ -569,7 +569,7 @@ async def notify_snapshot_history_update() -> None:
 
 
 # 매수 후보 비교 키: 순위·시세·가드 상태 등 변경 감지 대상 필드
-_BUY_TARGET_CMP_KEYS = ("rank", "cur_price", "change_rate", "strength", "trade_amount", "boost_score", "guard_pass", "reason", "order_ratio", "program_net_buy", "high_5d", "avg_amt_5d")
+_BUY_TARGET_CMP_KEYS = ("rank", "cur_price", "change_rate", "strength", "trade_amount", "boost_score", "guard_pass", "reason", "order_ratio", "program_net_buy", "high_5d", "avg_amt_5d", "trade_amount_rank")
 
 
 async def notify_buy_targets_update() -> None:
