@@ -107,6 +107,18 @@ export function getPositionIndex(stkCd: string): number | undefined {
   return _positionIndexCache.get(normalizeStockCode(stkCd))
 }
 
+/* ── trade_amount_rank 재계산 (백엔드 buy_filter.py:206-209와 동일 로직) ── */
+export function recalcTradeAmountRank(targets: SectorStock[]): void {
+  const eligible = targets.filter(t => t.guard_pass)
+  eligible.sort((a, b) => (b.trade_amount ?? 0) - (a.trade_amount ?? 0))
+  for (let i = 0; i < eligible.length; i++) {
+    eligible[i].trade_amount_rank = i
+  }
+  for (const t of targets) {
+    if (!t.guard_pass) t.trade_amount_rank = -1
+  }
+}
+
 /* ── 실시간 데이터 액션 함수 ── */
 
 /* ── account-update: 계좌·보유종목 갱신 (delta 지원) ── */
@@ -350,13 +362,25 @@ export function applyRealData(item: RealDataEvent): void {
 
       if (!(t.cur_price === price && t.change === change && t.change_rate === rate &&
             t.strength === strength && t.trade_amount === amount)) {
+        const oldRank0 = bt.find(x => x.trade_amount_rank === 0)?.code
         // In-place mutation
         t.cur_price = price;
         t.change = change;
         t.change_rate = rate;
         t.strength = strength;
         t.trade_amount = amount;
+        recalcTradeAmountRank(bt)
+        const newRank0 = bt.find(x => x.trade_amount_rank === 0)?.code
         changed = true;
+        // rank-0가 변경된 경우 기존/신규 rank-0 종목의 셀도 갱신
+        if (oldRank0 !== newRank0) {
+          if (oldRank0 && oldRank0 !== code) {
+            window.dispatchEvent(new CustomEvent('real-data-tick', { detail: oldRank0 }))
+          }
+          if (newRank0 && newRank0 !== code) {
+            window.dispatchEvent(new CustomEvent('real-data-tick', { detail: newRank0 }))
+          }
+        }
       }
     }
   }
@@ -483,12 +507,12 @@ export function applyBuyTargetsUpdate(data: { buy_targets: SectorStock[] }): voi
       && p.strength === n.strength
       && p.guard_pass === n.guard_pass && p.reason === n.reason
       && p.boost_score === n.boost_score
-      && p.trade_amount_rank === n.trade_amount_rank
       && p.order_ratio?.[0] === n.order_ratio?.[0] && p.order_ratio?.[1] === n.order_ratio?.[1]
       && p.program_net_buy === n.program_net_buy
       && p.high_5d === n.high_5d
   })
   if (!same) {
+    recalcTradeAmountRank(incoming)
     rebuildBuyTargetIndex(incoming)
     hotStore.setState({ buyTargets: incoming })
   }
