@@ -505,6 +505,22 @@ class TestCreateBuyTargets:
         assert buy_map["A001"].trade_amount_rank == 0
         assert blocked_map["A002"].trade_amount_rank == -1
 
+    def test_trade_amount_cache_overrides_stale_stockscore(self):
+        # StockScore has stale trade_amount (A001 > A002),
+        # but trade_amount_cache has real-time values (A002 > A001).
+        # Rank must be based on cache, not stale StockScore.
+        s1 = _stock(code="A001", trade_amount=9_000_000)
+        s2 = _stock(code="A002", trade_amount=1_000_000)
+        sc = _sector(rank=1, stocks=[s1, s2])
+        result = create_buy_targets(
+            [sc],
+            boost_trade_amount_rank_on=True,
+            trade_amount_cache={"A001": 1_000_000, "A002": 9_000_000},
+        )
+        stock_map = {t.stock.code: t.stock for t in result.buy_targets}
+        assert stock_map["A002"].trade_amount_rank == 0
+        assert stock_map["A001"].trade_amount_rank == 1
+
     def test_blocked_stock_boost_score_zero(self):
         s1 = _stock(code="A001", change_rate=10.0, cur_price=75000)
         sc = _sector(rank=1, stocks=[s1])

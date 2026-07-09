@@ -40,6 +40,12 @@ def get_avg_trade_amount_5d_map() -> dict[str, int]:
     return {cd: stock.get("avg_5d_trade_amount", 0) for cd, stock in state.master_stocks_cache.items()}
 
 
+def get_trade_amount_cache() -> dict[str, int]:
+    """실시간 거래대금 캐시 반환 (master_stocks_cache 기반, 백만원 단위)."""
+    from backend.app.services.engine_state import state
+    return {cd: int(stock.get("trade_amount", 0) or 0) for cd, stock in state.master_stocks_cache.items()}
+
+
 def get_high_price_5d_cache() -> dict[str, int]:
     """5일 전고점 캐시 반환."""
     from backend.app.services.engine_state import state
