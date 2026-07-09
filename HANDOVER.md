@@ -1,6 +1,17 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-10: 매수후보 페이지 주문가능금액 배지 추가 — 1위 종목 매수 가능 수량 통합**
+  - 목적: "왜 매수가 안 되지?" UX 해소 — 아키텍처 원칙 21 (User Transparency)
+  - 추가: `renderOrderableBadge()` — `hotStore.account.orderable` 실시간 표시 + 1위 통과 종목 매수 가능 수량 통합
+    - 예: `💳 주문가능금액 2,037,794원 (1위 삼성전자 7주)`
+    - `orderable <= 0` 또는 1위 종목 1주 미달 시 빨간 배지 + `⚠️ 매수 불가` 경고
+  - 수정: `effectiveBuyAmt` 계산에 `orderable` 반영 — `min(buy_amt, dailyRemain, orderable)` (백엔드 `trading.py:217-220`과 정합)
+  - 수정: `scheduleRender()`에 `account` 참조 변경 감지 추가 (기존: buyTargets/positions/settings/buyLimitStatus만 감시)
+  - 제거: perStock 배지 (종목당 매수 최대 금액) — 매수설정 패널에서 확인 가능하므로 중복 제거
+  - 변경 파일: `frontend/src/pages/buy-target.ts` 1개 (프론트엔드 only, 백엔드/WS 변경 불필요 — account-update 이벤트 이미 buy-target 페이지에 전송됨)
+  - 검증: `npm run build` 통과 (tsc + vite, exit code 0)
+  - 커밋: `08256ec` push 완료
 - **2026-07-10: 차트 툴팁 하단 잘림 수정 — positionTooltip 공통 함수 추출**
   - 문제: 수익현황 페이지 일별 수익률 막대차트에서 막대 하단 호버 시 툴팁이 `canvasWrap`(overflow:hidden) 경계를 벗어나 잘림
   - 근본 원인: 툴팁 위치 계산이 `tooltip.offsetHeight`를 고려하지 않아 하단 경계 초과
@@ -23,8 +34,8 @@
 
 ## 현재 상태
 - **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료
-- **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, `npm run build` 통과
-- **Git**: 커밋 `e77ea70` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, architecture_principles.md, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
+- **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지 추가 완료, `npm run build` 통과
+- **Git**: 커밋 `08256ec` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, architecture_principles.md, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
 
 ## 다음 단계
 - **1순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
