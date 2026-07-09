@@ -1,24 +1,23 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-10: 유령 매도 기록(id=144) 삭제 및 수익 통계 정정**
+  - 내용: `trades` 테이블에서 005930 유령 매도 1건 삭제 (BUY 기록 없는 SELL 10주 @279,500, avg_buy_price=70,100)
+  - 영향: `trade_history.py` 집계 함수만 영향 (test 모드 총 실현손익 +1,215,065→-872,821 정정, 2026-07-09 daily sell=21→20, pnl=+1,391,531→-696,355)
+  - 무영향: `settlement_state`, `test_positions`, `build_positions_from_trades` 모두 독립
+  - 검증: 백엔드 기동 정상 (매도 34→33건 복원), API 응답에서 유령 매도 미표시 확인, 잔존 프로세스 0건
+  - 상세 기록: `docs/ghost_position_investigation.md` "유령 매도 기록 삭제" 섹션
 - **2026-07-10: 유령 포지션 재발 방지 예방 조치 구현**
   - 내용: `_test_positions`와 `trade_history` 독립적 영속화 문제를 SSOT 원칙으로 해결
   - 수정: 7개 파일 (stock_tables.py, trade_history.py, dry_run.py, trading.py, engine_lifecycle.py, settings.py, test_dry_run_fill_event.py)
   - 핵심: `test_positions` 테이블 제거, `trades` 기반 포지션 파생, `execute_sell()` 런타임 가드 추가
   - 검증: pytest 105 passed in 17.31s
   - 상세 기록: `docs/ghost_position_investigation.md` "예방 조치 구현 기록" 섹션
-- **2026-07-09: boost_order_ratio_pct 422 오류 근본 해결**
-  - 현상: 매수설정 페이지 매수/매도호가잔량비율 슬라이더 변경 시 `API error: 422` 발생, 값 저장 안 됨
-  - 근본 원인: `engine_service.py:179` try/except 없는 직접 await + `engine_config.py:94` silent fallback + `settings.py:75` catch-all 422 변환
-  - 수정: 4개 파일 (engine_service.py, engine_config.py, settings.py, engine_account_notify.py)
-  - 신규 테스트: `test_settings_boost_order_ratio.py` (5 tests)
-  - 검증: pytest 1025 passed, 런타임 기동 정상 (614ms, Traceback 없음)
-  - 커밋: `17fc6fa` — `fix: boost_order_ratio_pct 422 오류 해결`
 
 ## 현재 상태
-- **백엔드**: 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료
+- **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료
 - **프론트엔드**: 더미 데이터 삭제 완료, `npm run build` 통과
-- **Git**: 커밋 `17fc6fa` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, architecture_principles.md, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
+- **Git**: 커밋 `5fdb6e9` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, architecture_principles.md, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
 
 ## 다음 단계
 - **1순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
@@ -29,9 +28,10 @@
 - **3순위: exchange_calendars 교체 검토** — pandas(70MB)+numpy(33MB) 등 간접 의존성 약 112MB 절감 가능
 
 ## 미해결 문제
-- **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결, 재발 방지 조치 완료**
+- **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결, 재발 방지 조치 + 유령 매도 기록 삭제 완료**
   - 상세 조사 기록: `docs/ghost_position_investigation.md`
   - 재발 방지 조치 (2026-07-10 구현): `test_positions` 테이블 제거, `trades` 기반 SSOT 전환, `execute_sell()` 런타임 가드
+  - 유령 매도 기록 삭제 (2026-07-10): `trades` id=144 삭제, 수익 통계 정정 완료
   - 근본 원인 미해결: 과거 005930 유령 포지션의 정확한 발생 시점 및 경로는 미추적
   - 미조사 항목 (`docs/ghost_position_investigation.md` [A]~[I] 참조):
     - [A] 14:00 shutdown 시 DB close 누락 확인 (app.py shutdown 로그 유무)
