@@ -9,12 +9,13 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, patch
 
-from backend.app.services import settlement_engine
-from backend.app.services.settlement_engine import (
+from backend.app.core.constants import (
     BUY_COMMISSION,
     SELL_COMMISSION,
     SECURITIES_TAX,
-    init,
+)
+from backend.app.services import settlement_engine
+from backend.app.services.settlement_engine import (
     get_available_cash,
     get_accumulated_investment,
     get_orderable,
@@ -53,26 +54,47 @@ def fresh_engine():
     settlement_engine._initial_deposit = orig_init
 
 
-# ── init ───────────────────────────────────────────────────────────────────────
+# ── _load (init 기능 통합) ─────────────────────────────────────────────────────
 
-class TestInit:
-    def test_init_sets_initial_deposit(self, fresh_engine):
-        init(5_000_000)
-        assert get_initial_deposit() == 5_000_000
-
-    def test_init_sets_defaults_when_not_loaded(self, fresh_engine):
+class TestLoad:
+    @pytest.mark.asyncio
+    async def test_load_initializes_when_not_loaded(self, fresh_engine):
         settlement_engine._loaded = False
-        init(5_000_000)
+        settlement_engine._accumulated_investment = 0
+        settlement_engine._orderable = 0
+        with patch("backend.app.services.settlement_engine.load_settlement_state",
+                   new_callable=AsyncMock, return_value=None):
+            await settlement_engine._load(initial_deposit=5_000_000)
+        assert get_initial_deposit() == 5_000_000
         assert settlement_engine._accumulated_investment == 5_000_000
         assert settlement_engine._orderable == 5_000_000
-        assert settlement_engine._loaded is False  # init does not set _loaded
+        assert settlement_engine._loaded is True
 
-    def test_init_does_not_overwrite_when_already_loaded(self, fresh_engine):
+    @pytest.mark.asyncio
+    async def test_load_skips_when_already_loaded(self, fresh_engine):
+        settlement_engine._loaded = True
         settlement_engine._accumulated_investment = 3_000_000
         settlement_engine._orderable = 2_000_000
-        init(5_000_000)
+        with patch("backend.app.services.settlement_engine.load_settlement_state",
+                   new_callable=AsyncMock) as mock_load:
+            await settlement_engine._load(initial_deposit=5_000_000)
+        mock_load.assert_not_awaited()
         assert settlement_engine._accumulated_investment == 3_000_000
         assert settlement_engine._orderable == 2_000_000
+
+    @pytest.mark.asyncio
+    async def test_load_uses_settings_when_no_initial_deposit(self, fresh_engine):
+        settlement_engine._loaded = False
+        settlement_engine._accumulated_investment = 0
+        settlement_engine._orderable = 0
+        with patch("backend.app.services.settlement_engine.load_settlement_state",
+                   new_callable=AsyncMock, return_value=None), \
+             patch("backend.app.services.engine_state.state") as mock_state:
+            mock_state.integrated_system_settings_cache = {"test_virtual_deposit": 7_000_000}
+            await settlement_engine._load()
+        assert get_initial_deposit() == 7_000_000
+        assert settlement_engine._accumulated_investment == 7_000_000
+        assert settlement_engine._orderable == 7_000_000
 
 
 # ── getters ────────────────────────────────────────────────────────────────────
