@@ -1010,6 +1010,9 @@ async def start_daily_time_scheduler() -> None:
         state.market_phase["nxt"] = phase["nxt"]
         logger.info("[스케줄] 장 상태 초기화: KRX=%s, NXT=%s", phase["krx"], phase["nxt"])
 
+        # 기동 시 현재 장 상태 즉시 브로드캐스트 (WS 구독 창과 무관)
+        _broadcast_market_phase()
+
         state.last_reset_date = _kst_now().strftime("%Y%m%d")
 
         await schedule_auto_trade_timers(settings)

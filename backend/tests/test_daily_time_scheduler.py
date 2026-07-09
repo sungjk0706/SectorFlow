@@ -1007,10 +1007,12 @@ class TestStartDailyTimeScheduler:
              patch("backend.app.services.daily_time_scheduler.schedule_auto_trade_timers", new_callable=AsyncMock), \
              patch("backend.app.services.daily_time_scheduler.schedule_ws_subscribe_timers", new_callable=AsyncMock), \
              patch("backend.app.services.daily_time_scheduler.schedule_midnight_timer"), \
-             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock):
+             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock), \
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase") as mock_broadcast:
             await start_daily_time_scheduler()
             assert mock_state.market_phase["krx"] == "정규장"
             assert mock_state.market_phase["nxt"] == "메인마켓"
+            mock_broadcast.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_empty_settings_logs_warning(self):
