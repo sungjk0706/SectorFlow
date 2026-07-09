@@ -5,9 +5,11 @@ import { createDataTable, type DataTableApi, type ColumnDef } from '../component
 import { hotStore } from '../stores/hotStore'
 import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
-import { createCardHeaderWithMargin } from '../components/common/card-header'
+import { createCardTitle } from '../components/common/card-title'
+import { createSearchInput } from '../components/common/search-input'
 import { globalSettingsManager } from '../settings'
 import { createStockNameColumn, createSeqCell, makeCodeColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, createAmountCell, createPriceCell, createNumberCell, FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import { filterStocksBySearch } from './sector-stock'
 import type { SectorStock } from '../types'
 
 /* ── ColumnDef 배열 (13개 컬럼) ── */
@@ -125,6 +127,8 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
 let dataTable: DataTableApi<SectorStock> | null = null
 let badgeEls: { orderable: HTMLSpanElement; daily: HTMLSpanElement; holding: HTMLSpanElement } | null = null
 let emptyEl: HTMLElement | null = null
+let searchInput: ReturnType<typeof createSearchInput> | null = null
+let searchTerm = ''
 let unsubTargets: (() => void) | null = null
 let unsubUiStore: (() => void) | null = null
 let rafHandle: number | null = null
@@ -281,8 +285,27 @@ function mount(container: HTMLElement): void {
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
-  // 헤더: 제목
-  const headerRow = createCardHeaderWithMargin('매수후보', undefined, '4px')
+  // 헤더: 제목 (좌) + 검색 입력란 (우)
+  const headerRow = document.createElement('div')
+  Object.assign(headerRow.style, {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: '4px',
+  })
+  headerRow.appendChild(createCardTitle('매수후보'))
+
+  searchInput = createSearchInput({
+    placeholder: '종목명 / 코드 검색',
+    width: '180px',
+    borderColor: COLOR.down,
+    onSearch: (query) => {
+      searchTerm = query
+      scheduleRender()
+    },
+  })
+  searchInput.el.style.marginBottom = '0'
+  headerRow.appendChild(searchInput.el)
   root.appendChild(headerRow)
 
   // 한도 배지 행
@@ -321,19 +344,26 @@ function mount(container: HTMLElement): void {
   root.appendChild(scrollContainer)
   container.appendChild(root)
 
-  // 초기 데이터
-  const initialTargets = [...initState.buyTargets].sort((a, b) => {
-    if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
-    return (a.rank ?? 999999) - (b.rank ?? 999999)
-  })
+  // 초기 데이터 — 검색 필터링 적용 (SSOT: filterStocksBySearch 재사용)
+  const initialMatched = filterStocksBySearch(initState.buyTargets, searchTerm)
+  const initialTargets = [...initState.buyTargets]
+    .filter(t => !initialMatched || initialMatched.has(t.code))
+    .sort((a, b) => {
+      if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
+      return (a.rank ?? 999999) - (b.rank ?? 999999)
+    })
   updateBadges()
 
   dataTable.updateRows(initialTargets)
-  if (emptyEl) emptyEl.style.display = initialTargets.length === 0 ? '' : 'none'
+  if (emptyEl) {
+    emptyEl.style.display = initialTargets.length === 0 ? '' : 'none'
+    emptyEl.textContent = searchTerm ? `'${searchTerm}' 검색 결과가 없습니다.` : '매수후보가 없습니다.'
+  }
 
   // Store 구독 — rAF 배칭 + reference equality guard
   // 마지막 렌더링 시점의 참조 (rAF 콜백에서 갱신)
   let lastRenderedBuyTargets = initState.buyTargets
+  let lastRenderedSearchTerm = searchTerm
   let lastRenderedPositions = initState.positions
   let lastRenderedAccount = initState.account
   let lastRenderedSettings = globalSettingsManager.getSettings()
@@ -348,7 +378,8 @@ function mount(container: HTMLElement): void {
       hotState.positions !== lastRenderedPositions ||
       hotState.account !== lastRenderedAccount ||
       globalSettingsManager.getSettings() !== lastRenderedSettings ||
-      uiState.buyLimitStatus !== lastRenderedBuyLimitStatus
+      uiState.buyLimitStatus !== lastRenderedBuyLimitStatus ||
+      searchTerm !== lastRenderedSearchTerm
 
     if (!anyChanged) return
 
@@ -362,16 +393,25 @@ function mount(container: HTMLElement): void {
       const latest = hotStore.getState()
       const latestUi = uiStore.getState()
 
-      // buyTargets 참조 동일 시 sort + updateRows 생략
+      // buyTargets 참조 또는 검색어 변경 시 필터링 + sort + updateRows
       const targetsChanged = latest.buyTargets !== lastRenderedBuyTargets
-      if (targetsChanged) {
+      const searchChanged = searchTerm !== lastRenderedSearchTerm
+      if (targetsChanged || searchChanged) {
         lastRenderedBuyTargets = latest.buyTargets
-        const targets = [...latest.buyTargets].sort((a, b) => {
-          if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
-          return (a.rank ?? 999999) - (b.rank ?? 999999)
-        })
+        lastRenderedSearchTerm = searchTerm
+        // 필터링 (SSOT: filterStocksBySearch 재사용) → 정렬
+        const matchedCodes = filterStocksBySearch(latest.buyTargets, searchTerm)
+        const targets = [...latest.buyTargets]
+          .filter(t => !matchedCodes || matchedCodes.has(t.code))
+          .sort((a, b) => {
+            if (a.guard_pass !== b.guard_pass) return a.guard_pass ? -1 : 1
+            return (a.rank ?? 999999) - (b.rank ?? 999999)
+          })
         dataTable?.updateRows(targets)
-        if (emptyEl) emptyEl.style.display = targets.length === 0 ? '' : 'none'
+        if (emptyEl) {
+          emptyEl.style.display = targets.length === 0 ? '' : 'none'
+          emptyEl.textContent = searchTerm ? `'${searchTerm}' 검색 결과가 없습니다.` : '매수후보가 없습니다.'
+        }
       }
 
       // buyTargets / positions / account / settings / buyLimitStatus 변경 시 배지 업데이트
@@ -442,6 +482,8 @@ function unmount(): void {
   if (dataTable) { dataTable.destroy(); dataTable = null }
   badgeEls = null
   emptyEl = null
+  searchInput = null
+  searchTerm = ''
 }
 
 export default { mount, unmount }
