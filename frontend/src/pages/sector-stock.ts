@@ -533,26 +533,10 @@ class SectorStockTable extends HTMLElement {
     })
 
     // 좌측: 종목명/코드 검색 (파란색 라벨 — 인라인 배치)
-    const stockSearchWrapper = document.createElement('div')
-    Object.assign(stockSearchWrapper.style, {
-      display: 'flex',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: '4px',
-    })
-    const stockLabel = document.createElement('span')
-    Object.assign(stockLabel.style, {
-      fontSize: FONT_SIZE.section,
-      color: COLOR.down,
-      fontWeight: FONT_WEIGHT.normal,
-      whiteSpace: 'nowrap',
-    })
-    stockLabel.textContent = '종목명 / 코드'
-    stockSearchWrapper.appendChild(stockLabel)
-
     this.searchInput = createSearchInput({
+      label: '종목명 / 코드',
+      labelColor: COLOR.down,
       placeholder: '종목명 / 코드 검색',
-      width: '180px',
       borderColor: COLOR.down,
       onSearch: (query) => {
         this.searchTerm = query
@@ -564,31 +548,13 @@ class SectorStockTable extends HTMLElement {
         this.refreshRows()
       },
     })
-    this.searchInput.el.style.marginBottom = '0'
-    stockSearchWrapper.appendChild(this.searchInput.el)
-    searchRow.appendChild(stockSearchWrapper)
+    searchRow.appendChild(this.searchInput.el)
 
     // 우측: 업종명 검색 (주황색 라벨 — 인라인 배치)
-    const sectorSearchWrapper = document.createElement('div')
-    Object.assign(sectorSearchWrapper.style, {
-      display: 'flex',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: '4px',
-    })
-    const sectorLabel = document.createElement('span')
-    Object.assign(sectorLabel.style, {
-      fontSize: FONT_SIZE.section,
-      color: COLOR.warning,
-      fontWeight: FONT_WEIGHT.normal,
-      whiteSpace: 'nowrap',
-    })
-    sectorLabel.textContent = '업종명'
-    sectorSearchWrapper.appendChild(sectorLabel)
-
     this.sectorSearchInput = createSearchInput({
+      label: '업종명',
+      labelColor: COLOR.warning,
       placeholder: '업종명 검색',
-      width: '180px',
       borderColor: COLOR.warning,
       onSearch: (query) => {
         this.sectorSearchTerm = query
@@ -600,9 +566,7 @@ class SectorStockTable extends HTMLElement {
         this.refreshRows()
       },
     })
-    this.sectorSearchInput.el.style.marginBottom = '0'
-    sectorSearchWrapper.appendChild(this.sectorSearchInput.el)
-    searchRow.appendChild(sectorSearchWrapper)
+    searchRow.appendChild(this.sectorSearchInput.el)
 
     this.rootEl.appendChild(searchRow)
 

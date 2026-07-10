@@ -556,7 +556,11 @@ function buildSectorManageCard(): HTMLElement {
 
   // ── 종목 검색 UI ──
   searchInputRef = createSearchInput({
+    label: '종목명 / 코드',
+    labelColor: COLOR.down,
     placeholder: '종목명 또는 코드 검색',
+    width: '100%',
+    borderColor: COLOR.down,
     onSearch: (query) => {
       if (!searchResultTableRef || !masterTableRef) return
       if (!query) {
@@ -1211,7 +1215,11 @@ function buildTripleRight(): void {
 
   // 업종 검색란
   const targetSearchInput = createSearchInput({
+    label: '업종 검색',
+    labelColor: COLOR.warning,
     placeholder: '업종 검색',
+    width: '100%',
+    borderColor: COLOR.warning,
     onSearch: (query) => {
       const q = query.toLowerCase()
       for (const [name, row] of sectorRowMap) {

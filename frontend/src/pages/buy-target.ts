@@ -317,26 +317,16 @@ function mount(container: HTMLElement): void {
     marginBottom: '4px',
   })
 
-  const searchLabel = document.createElement('span')
-  Object.assign(searchLabel.style, {
-    fontSize: FONT_SIZE.section,
-    color: COLOR.down,
-    fontWeight: FONT_WEIGHT.normal,
-    whiteSpace: 'nowrap',
-  })
-  searchLabel.textContent = '종목명 / 코드'
-  searchRow.appendChild(searchLabel)
-
   searchInput = createSearchInput({
+    label: '종목명 / 코드',
+    labelColor: COLOR.down,
     placeholder: '종목명 / 코드 검색',
-    width: '180px',
     borderColor: COLOR.down,
     onSearch: (query) => {
       searchTerm = query
       scheduleRender()
     },
   })
-  searchInput.el.style.marginBottom = '0'
   searchRow.appendChild(searchInput.el)
   root.appendChild(searchRow)
 
