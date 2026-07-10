@@ -201,6 +201,10 @@ export interface AppSettings {
   [key: string]: unknown;
 }
 
+// sector_max_targets 프론트엔드 fallback 기본값
+// 백엔드 settings_defaults.py의 기본값(3)과 동일 — SSOT
+export const DEFAULT_SECTOR_MAX_TARGETS = 3;
+
 export interface SaveResult {
   ok: boolean;
   error?: string;
