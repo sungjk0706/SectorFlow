@@ -4,38 +4,30 @@
 - 없음
 
 ## 진행 중 작업 (다음 세션에서 이어서 진행)
-- **0% 커버리지 모듈 3개 테스트 추가 (broker_router, engine_cache, engine_loop)**
-  - 0% 모듈 7개 중 4개 완료, 3개 남음
-  - `broker_router.py` (149 stmts) — 의존성: broker_registry, broker_providers, engine_state
-  - `engine_cache.py` (78 stmts) — async, DB 로드 (_load_caches_preboot), 다수 import
-  - `engine_loop.py` (263 stmts) — 메인 루프, 가장 복잡, 의존성 다수
-  - 주의: 3개 모두 의존성이 많아 신중한 mock 설계 필요
+- 없음 — 0% 커버리지 모듈 7개 전부 완료
 
 ## 직전 완료 작업
-- **2026-07-11: 0% 커버리지 모듈 4개 단위 테스트 83건 추가 (커밋 `be7b278`)**
-  - `test_engine_ws_fill_followup.py` 7건 — 0% → 100%
-  - `test_engine_radar_ops.py` 28건 — 0% → 100%
-  - `test_notification_worker.py` 25건 — 0% → 85.19% (consume_loop 미커버)
-  - `test_lock_manager.py` 23건 — 0% → 68.09% (Windows 경로, signal 핸들러 미커버)
-  - 검증: 83 passed, 전체 회귀 2329 passed (7.84s)
+- **2026-07-11: 0% 커버리지 모듈 3개 단위 테스트 107건 추가 (커밋 `f5262e9`, `99a6ad9`, `78d549f`)**
+  - `test_engine_cache.py` 19건 — `_load_caches_preboot` DB 로드/WS 구간 분기/테스트모드 settlement/catchup 예외
+  - `test_broker_router.py` 51건 — BrokerRouter `_load_specs`/`_build`/properties/`validate`/`summary`/`get_provider`/`invalidate_page`/`validate_page_overrides`/`get_spec`
+  - `test_engine_loop.py` 37건 — `_cache_and_bootstrap`/`_get_all_tokens_async`/`_load_broker_spec_async`/`run_engine_loop` (초기화/토큰/REST API/AutoTradeManager/계좌번호 마스킹/CancelledError/finally 정리)
+  - 주요 기술: `_AwaitableMock` (`__await__` 지원 MagicMock), `MagicMock(spec=AuthProvider)` (rest_api 스킵), `sys.modules` mock 주입 (pipeline_compute import 실패 방지)
+  - 검증: 107 passed, 전체 회귀 2436 passed (8.54s)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치 — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가 — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: `be7b278` (0% 모듈 4개 테스트 83건) — 커밋 완료 (push 미수행)
-- **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 4개 완료 — 백엔드 2329 passed, 프론트엔드 112 passed (실행 시점 기준)
-  - 커버리지 측정 환경 구축 완료 — 전체 65.87% → 재측정 필요 (83건 추가 후 상승 예상)
-  - 0% 모듈 4개 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%)
-  - 0% 모듈 3개 남음: broker_router, engine_cache, engine_loop
+- **Git**: `78d549f` (0% 모듈 3개 테스트 107건) — 커밋 완료 (push 미수행)
+- **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 전부 완료 — 백엔드 2436 passed, 프론트엔드 112 passed (실행 시점 기준)
+  - 커버리지 측정 환경 구축 완료 — 전체 65.87% → 재측정 필요 (190건 추가 후 상승 예상)
+  - 0% 모듈 7개 전부 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
   - 커버리지 실행 명령어: `python -m pytest backend/tests --cov=backend --cov-report=term-missing --cov-report=html --timeout=15 --timeout-method=signal`
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 
 ## 다음 단계
-- **1순위: 남은 0% 커버리지 모듈 3개 테스트 추가**:
-  - `broker_router.py` (149 stmts) — 의존성: broker_registry, broker_providers, engine_state
-  - `engine_cache.py` (78 stmts) — async, DB 로드, 다수 import
-  - `engine_loop.py` (263 stmts) — 메인 루프, 가장 복잡
-  - 이어서 10%대 모듈: `engine_settings.py`(5.17%), `sector_data_provider.py`(5.88%), `settings_store.py`(8.15%), `engine_bootstrap.py`(9.02%), `stock_classification_data.py`(9.19%), `engine_sector_confirm.py`(9.51%), `engine_snapshot.py`(9.80%), `stock_tables.py`(10.53%), `stock_filter.py`(13.33%)
+- **1순위: 10%대 커버리지 모듈 테스트 추가**:
+  - `engine_settings.py`(5.17%), `sector_data_provider.py`(5.88%), `settings_store.py`(8.15%), `engine_bootstrap.py`(9.02%), `stock_classification_data.py`(9.19%), `engine_sector_confirm.py`(9.51%), `engine_snapshot.py`(9.80%), `stock_tables.py`(10.53%), `stock_filter.py`(13.33%)
+  - 커버리지 재측정 후 0% 모듈 7개 해결로 인한 상승분 확인 권장
 - **2순위: 유령 포지션 005930 근본 원인 조사 (후순위)**:
   - 여러 차례 시도했으나 원인 식별이 어려워 후순위로 변경
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
