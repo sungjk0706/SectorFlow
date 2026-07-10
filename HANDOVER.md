@@ -9,8 +9,9 @@
   - 2단계 완료: 함수명 변경 (`_restore_daily_buy_state` → `_load_daily_buy_state`, `restore_state` → `load_state`)
   - C-1단계 완료: 구두점 "->" → "—" 통일 7건
   - E단계 완료: `engine_config.py` 로그 메시지 vs 실제 동작 불일치 수정 (백엔드 3건 + 프론트엔드 6건)
-  - **C단계 잔여: C-2 `--` → "—" 통일 (79건)** — `—`(em dash)가 158건으로 표준이나 `--`(double hyphen) 79건 혼용
-    - 범위가 크므로 파일별로 세션 분할 권장 (아래 "다음 단계"의 C-2-1 ~ C-2-3 참조)
+  - **C단계 잔여: C-2 `--` → "—" 통일** — C-2-1 완료 (26건), 잔여 C-2-2 + C-2-3 (약 53건)
+    - C-2-1 완료: settlement_engine(7), engine_lifecycle(6), engine_cache(5), dry_run(8) = 26건
+    - engine_service.py는 `--` 매치 0건으로 제외됨
   - **B단계**: 부적절한 로그 레벨 1건
     - `engine_cache.py:152` — `logger.info` → `logger.warning` ("저장데이터 로드 실패"를 INFO로 로깅)
   - **A단계**: silent 예외 처리 5건 (`except Exception: pass` → `logger.warning` 추가)
@@ -24,50 +25,43 @@
     - `settlement_engine.py:219` — "상태 파일 로드 실패 (기본값 사용)"
 
 ## 직전 완료 작업
-- **2026-07-11: E단계 — `engine_config.py` 로그 메시지 vs 실제 동작 불일치 수정**
-  - `reload_engine_settings()` 함수 (99-110행) — 엔진 stop/start 없이 설정 재로드만 수행하는데 "엔진 재기동/재시작"으로 출력되던 문제
-  - **사전 조사**: `reload_engine_settings()` caller 추적 — 코드베이스에 caller 0건 (데드 코드 상태)
-  - **백엔드 3건**: `engine_config.py:105` (로그), 107 (주석), 110 (로그) — "엔진 재기동/재시작" → "설정 재로드"
-  - **프론트엔드 6건**: `uiStore.ts:48, 141` (주석), `stock-classification.ts:464, 467, 495, 498` (주석 2 + 사용자 메시지 2)
-  - **이벤트명/상태명**: `engine-reload-complete`, `engineReloadComplete` — "reload" 단어가 정확하므로 변경 안 함
-  - **추가 발견**: `engineReloadComplete` 상태는 `engine-reload-complete` 외에 `engine-ready` 이벤트에 의해서도 설정됨 (의도적 재사용)
-  - 검증: py_compile 통과, npm run build 통과 (595ms), 런타임 기동 정상 (에러/Traceback 없음), 잔존 프로세스 0건
-  - 잔여 "엔진 재기동/재시작" 8건 확인: 부정문("없이/없음") 4건 정확, broker 변경 시 실제 재기동 2건 정확, `daily_time_scheduler.py` 2건은 별개 문제 (초기 기동 시에도 "재기동" 표현)
-  - **커밋**: `768f085` (2단계 + C단계 + E단계 통합 커밋)
+- **2026-07-11: C-2-1 — `--` → "—" 통일 (1차, 26건)**
+  - 대상: settlement_engine(7건), engine_lifecycle(6건), engine_cache(5건), dry_run(8건)
+  - engine_service.py는 `--` 매치 0건으로 제외
+  - 로그 vs 동작 불일치: 없음 (정밀 검증 완료)
+  - 검증: py_compile 4개 통과, 런타임 기동 정상 (`—` 로그 출력 확인), 잔존 프로세스 0건
+  - **커밋**: `5d175d9`
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치 — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가 — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: `768f085` (백엔드 로그 정합성 개선 — 함수명 변경 + 구두점 통일 + 로그 메시지 vs 동작 불일치 수정) — push 완료
+- **Git**: `5d175d9` (백엔드 로그 구두점 통일 — `--` → `—` C-2-1, 26건) — push 미수행
 - **테스트 커버리지**: Stage 1~9 완료 — 백엔드 2138 passed, 프론트엔드 112 passed (실행 시점 기준)
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 
 ## 다음 단계
-- **1순위: C-2-1 — `--` → "—" 통일 (1차: settlement_engine, engine_lifecycle, engine_cache, engine_service, dry_run) (1세션)**:
-  - 각 파일의 `--` 사용 로그를 `—`로 변경 후 **주변 코드 맥락 정밀 검증** (로그 vs 실제 동작 불일치 여부)
-  - 검증: py_compile + 런타임 기동
-- **2순위: C-2-2 — `--` → "—" 통일 (2차: daily_time_scheduler, market_close_pipeline, engine_ws, engine_ws_reg) (1세션)**:
+- **1순위: C-2-2 — `--` → "—" 통일 (2차: daily_time_scheduler, market_close_pipeline, engine_ws, engine_ws_reg) (1세션)**:
   - 동일 방식 — 로그 변경 + 코드 맥락 정밀 검증
   - 검증: py_compile + 런타임 기동
-- **3순위: C-2-3 — `--` → "—" 통일 (3차: ws.py, engine_account, stock_tables, app.py, settings_file, notification_worker, engine_ws_fill_followup, engine_bootstrap, stock_classification_data, kiwoom_stock_rest, trading.py) (1세션)**:
+- **2순위: C-2-3 — `--` → "—" 통일 (3차: ws.py, engine_account, stock_tables, app.py, settings_file, notification_worker, engine_ws_fill_followup, engine_bootstrap, stock_classification_data, kiwoom_stock_rest, trading.py) (1세션)**:
   - 동일 방식 — 로그 변경 + 코드 맥락 정밀 검증
   - 검증: py_compile + 런타임 기동
-- **4순위: B단계 — 부적절한 로그 레벨 (1세션)**:
+- **3순위: B단계 — 부적절한 로그 레벨 (1세션)**:
   - `engine_cache.py:152` — `logger.info` → `logger.warning` ("저장데이터 로드 실패"를 INFO로 로깅)
   - 검증: py_compile + 런타임 기동
-- **5순위: A단계 — silent 예외 처리 5건 (1세션)**:
+- **4순위: A단계 — silent 예외 처리 5건 (1세션)**:
   - `settlement_engine.py:110-111, 228-229`, `trade_history.py:109-110, 228-229, 530-531`
   - `except Exception: pass` → `logger.warning("...", exc_info=True)` 추가
   - 각 예외 블록의 의도(silent 허용 vs 버그)를 코드 맥락에서 판단 후 수정
   - 검증: py_compile + 런타임 기동 + 관련 테스트 파일 실행
-- **6순위: D단계 — 영구 저장소 실패 로그 레벨 검토 (1세션)**:
+- **5순위: D단계 — 영구 저장소 실패 로그 레벨 검토 (1세션)**:
   - `settlement_engine.py:176, 219` — `logger.warning` → `logger.error` 검토
   - 검증: py_compile + 런타임 기동
-- **7순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
+- **6순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
   - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
-- **8순위: 테스트 커버리지 다음 Stage 대상 선정 (사용자와 논의)**:
+- **7순위: 테스트 커버리지 다음 Stage 대상 선정 (사용자와 논의)**:
   - Stage 1~9 완료 — 전체 2138 passed (P1~P6 우선순위별 진행 완료)
   - 남은 미진행 파일: `telegram_bot.py` (P6)
   - 다음 Stage 대상 파일 선정 필요
