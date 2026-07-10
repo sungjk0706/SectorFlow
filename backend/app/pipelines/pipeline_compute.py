@@ -33,6 +33,42 @@ _receive_rate_dirty: bool = False
 # 한 번 수신된 종목은 앱 종료까지 수신된 것으로 유지되어 수신율이 0%로 강하하지 않음
 _received_codes: set[str] = set()
 
+# ── 업종순위 수신율 임계값 게이트 (단일 소스 진리) ──
+# WS 구독 구간 진입 시 False로 리셋 → Phase 1 루프에서 임계값 통과 시 True로 전환.
+# 비-WS 구간(확정 데이터 기반)은 기본값 True로 항상 허용.
+# notify_desktop_sector_scores() 및 초기 스냅샷 전송이 이 플래그를 참조하여
+# 임계값 미달 시 sector-scores 프론트엔드 전송을 차단함.
+_sector_threshold_passed: bool = True
+
+
+def is_sector_threshold_passed() -> bool:
+    """업종순위 수신율 임계값 통과 여부 (단일 소스 진리).
+
+    WS 구독 구간 내에서는 Phase 1 루프가 임계값 도달 시 True로 전환.
+    비-WS 구간에서는 항상 True (확정 데이터 기반이므로 수신율 게이트 불필요).
+    """
+    return _sector_threshold_passed
+
+
+def reset_sector_threshold() -> None:
+    """임계값 게이트 리셋 — WS 구독 시작 시 호출.
+
+    _on_ws_subscribe_start() / _init_ws_subscribe_state()에서 호출되어
+    새 구독 세션 시작 시 임계값 게이트를 활성화함.
+    """
+    global _sector_threshold_passed
+    _sector_threshold_passed = False
+
+
+def mark_sector_threshold_passed() -> None:
+    """임계값 통과 표시 — Phase 1 통과 또는 WS 구독 종료 시 호출.
+
+    Phase 1 루프에서 임계값 도달 시 호출되어 이후 sector-scores 전송을 허용함.
+    _on_ws_subscribe_end()에서도 호출되어 장마감 후 확정 데이터 기반 전송을 허용함.
+    """
+    global _sector_threshold_passed
+    _sector_threshold_passed = True
+
 
 async def _send_receive_rate(receive_rate: dict) -> None:
     """수신율 전송 단일 진입점 (단일 소스 진리 원칙 준수)."""
@@ -668,6 +704,7 @@ async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
                             "[연산] 실시간데이터 수신율 임계값 통과 (현재: %.1f%%, 임계값: %.1f%%). 업종순위 계산을 시작합니다.",
                             current_pct, threshold_pct
                         )
+                        mark_sector_threshold_passed()
                         request_sector_recompute(None)  # 콜드 스타트 1회 전체 재계산
                         phase1_completed = True
                     else:

@@ -45,6 +45,9 @@ from backend.app.pipelines.pipeline_compute import (
     stop_compute_loop,
     _compute_loop_impl,
     _sector_recompute_loop_impl,
+    is_sector_threshold_passed,
+    reset_sector_threshold,
+    mark_sector_threshold_passed,
 )
 import backend.app.pipelines.pipeline_compute as compute_mod
 
@@ -1048,3 +1051,140 @@ class TestSectorRecomputeLoopImpl:
         with patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_raise_cancel):
             await _sector_recompute_loop_impl(mock_bq)
         compute_mod._compute_running = False
+
+
+# ── 수신율 임계값 게이트 (SSOT 플래그) ─────────────────────────────────────────
+
+class TestSectorThresholdGate:
+    """is_sector_threshold_passed / reset_sector_threshold / mark_sector_threshold_passed 검증."""
+
+    def setup_method(self):
+        """각 테스트 전 플래그를 기본값(True)로 복원."""
+        compute_mod._sector_threshold_passed = True
+
+    def teardown_method(self):
+        """각 테스트 후 플래그를 기본값(True)로 복원."""
+        compute_mod._sector_threshold_passed = True
+
+    def test_default_is_passed(self):
+        """비-WS 구간 기본값: 임계값 통과 상태(True)."""
+        assert is_sector_threshold_passed() is True
+
+    def test_reset_sets_false(self):
+        """reset_sector_threshold() → False 전환."""
+        reset_sector_threshold()
+        assert is_sector_threshold_passed() is False
+
+    def test_mark_sets_true(self):
+        """mark_sector_threshold_passed() → True 전환."""
+        reset_sector_threshold()
+        assert is_sector_threshold_passed() is False
+        mark_sector_threshold_passed()
+        assert is_sector_threshold_passed() is True
+
+    @pytest.mark.asyncio
+    async def test_phase1_marks_threshold_passed(self):
+        """Phase 1 임계값 통과 시 mark_sector_threshold_passed() 호출 검증."""
+        compute_mod._compute_running = True
+        compute_mod._receive_rate_dirty = True
+        compute_mod._received_codes = {"005930", "000660"}
+        compute_mod._sector_threshold_passed = False
+        compute_mod._current_receive_rate = {"received": 8, "total": 10, "pct": 80.0}
+        mock_bq = MagicMock()
+
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"sector_start_threshold_pct": 50.0}
+
+        sleep_count = 0
+        async def _sleep_mock(seconds):
+            nonlocal sleep_count
+            sleep_count += 1
+            if sleep_count >= 3:
+                compute_mod._compute_running = False
+
+        with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
+             patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
+             patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
+             patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={"received": 8, "total": 10, "pct": 80.0}), \
+             patch("backend.app.services.engine_sector_confirm.request_sector_recompute"), \
+             patch("backend.app.services.engine_sector_confirm.has_dirty_sectors", return_value=False), \
+             patch("backend.app.services.engine_sector_confirm._flush_sector_recompute_impl", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new_callable=AsyncMock), \
+             patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
+            await _sector_recompute_loop_impl(mock_bq)
+
+        # Phase 1 통과 후 플래그가 True로 전환되었는지 검증
+        assert is_sector_threshold_passed() is True
+        compute_mod._compute_running = False
+        compute_mod._receive_rate_dirty = False
+        compute_mod._current_receive_rate = {"received": 0, "total": 0, "pct": 0.0}
+
+    @pytest.mark.asyncio
+    async def test_phase1_below_threshold_keeps_gate_false(self):
+        """Phase 1 임계값 미달 시 플래그가 False로 유지됨 검증."""
+        compute_mod._compute_running = True
+        compute_mod._receive_rate_dirty = True
+        compute_mod._current_receive_rate = {"received": 3, "total": 10, "pct": 30.0}
+        compute_mod._sector_threshold_passed = False
+        mock_bq = MagicMock()
+
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"sector_start_threshold_pct": 80.0}
+
+        sleep_count = 0
+        async def _sleep_mock(seconds):
+            nonlocal sleep_count
+            sleep_count += 1
+            if sleep_count >= 2:
+                compute_mod._compute_running = False
+
+        with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
+             patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
+             patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
+             patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
+            await _sector_recompute_loop_impl(mock_bq)
+
+        # 임계값 미달 → 플래그가 False로 유지
+        assert is_sector_threshold_passed() is False
+        compute_mod._compute_running = False
+        compute_mod._receive_rate_dirty = False
+        compute_mod._current_receive_rate = {"received": 0, "total": 0, "pct": 0.0}
+
+
+# ── notify_desktop_sector_scores 게이트 ────────────────────────────────────────
+
+class TestNotifySectorScoresGate:
+    """notify_desktop_sector_scores() 임계값 게이트 동작 검증."""
+
+    def setup_method(self):
+        compute_mod._sector_threshold_passed = True
+
+    def teardown_method(self):
+        compute_mod._sector_threshold_passed = True
+
+    @pytest.mark.asyncio
+    async def test_gate_blocks_when_threshold_not_passed(self):
+        """임계값 미통과 시 notify_desktop_sector_scores() 전송 스킵."""
+        from backend.app.services.engine_account_notify import notify_desktop_sector_scores, notify_cache
+        compute_mod._sector_threshold_passed = False
+        notify_cache.prev_scores = [{"sector": "반도체"}]
+
+        with patch("backend.app.services.sector_data_provider.get_sector_scores_snapshot") as mock_snapshot:
+            await notify_desktop_sector_scores(force=True)
+            mock_snapshot.assert_not_called()
+
+        # delta 비교 캐시가 클리어되었는지 검증
+        assert notify_cache.prev_scores == []
+
+    @pytest.mark.asyncio
+    async def test_gate_allows_when_threshold_passed(self):
+        """임계값 통과 시 notify_desktop_sector_scores() 정상 전송."""
+        from backend.app.services.engine_account_notify import notify_desktop_sector_scores
+        compute_mod._sector_threshold_passed = True
+
+        mock_scores = [{"sector": "반도체", "rank": 1, "final_score": 90.0}]
+        with patch("backend.app.services.sector_data_provider.get_sector_scores_snapshot", return_value=(mock_scores, 1)), \
+             patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_broadcast, \
+             patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={"received": 8, "total": 10, "pct": 80.0}):
+            await notify_desktop_sector_scores(force=True)
+            mock_broadcast.assert_awaited_once()

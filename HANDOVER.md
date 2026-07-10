@@ -16,6 +16,18 @@
   3. 매수후보 테이블 모든 종목(통과/차단 무관)은 이미 0B 실시간 데이터 수신 중 — 0D/PGM만 guard_pass 기반
 
 ## 직전 완료 작업
+- **2026-07-10: 업종순위 수신율 임계값 우회 버그 수정 — SSOT 게이트로 5개 우회 경로 차단**
+  - 목적: 사용자가 설정한 수신율 임계값(`sector_start_threshold_pct`)에 도달하기 전에 업종순위가 프론트엔드에 표시되는 버그. Phase 1 루프의 지역 변수 게이트만으로는 5개 외부 경로가 임계값 체크 없이 sector-scores를 전송했음
+  - 근본 원인: `_sector_recompute_loop_impl` Phase 1의 `phase1_completed` 지역 변수가 임계값 통과 상태의 유일한 게이트. 외부 5개 경로(`_login_post_pipeline`, `apply_settings_change`, `_on_krx_market_open`, `_on_krx_after_hours_start`, `_send_initial_snapshot_delayed`)가 `recompute_sector_summary_now()` → `notify_desktop_sector_scores(force=True)` 또는 `ws_manager.send_to()`로 임계값과 무관하게 sector-scores 브로드캐스트
+  - 수정: `_sector_threshold_passed` 전역 SSOT 플래그 + 3개 함수(`is_sector_threshold_passed` / `reset_sector_threshold` / `mark_sector_threshold_passed`) 추가
+    - `pipeline_compute.py`: SSOT 플래그 + 함수 정의, Phase 1 통과 시점에 `mark_sector_threshold_passed()` 호출
+    - `daily_time_scheduler.py`: `_on_ws_subscribe_start()` / `_init_ws_subscribe_state()` WS 구간 진입 시 `reset_sector_threshold()`, `_on_ws_subscribe_end()` / `_ws_disconnect_only()` 구간 종료 시 `mark_sector_threshold_passed()` 호출
+    - `engine_account_notify.py`: `notify_desktop_sector_scores()` 진입부에 게이트 추가 — 미통과 시 `prev_scores` 클리어 후 return (임계값 통과 후 첫 전송이 전체 스냅샷이 되도록 보장)
+    - `ws.py`: 초기 스냅샷 sector-scores 전송 블록에 동일 게이트 추가
+  - 영향: WS 구독 구간 내 임계값 미달 시 sector-scores 전송 차단, 비-WS 구간은 기본값 True로 기존 동작 유지, 내부 계산(`recompute_sector_summary_now`)은 수행되므로 `_filtered` 플래그/구독 파이프라인 정상 동작, 수신율 표시(`receive-rate` 이벤트)는 영향 없음
+  - 검증: 신규 테스트 7개(`TestSectorThresholdGate` 5 + `TestNotifySectorScoresGate` 2) 통과, 기존 테스트 1077개 전체 통과, 프론트엔드 빌드 성공, 런타임 기동 검증 완료
+  - 테스트 파일: `test_daily_time_scheduler.py`에 `initialize_queues()` 추가 (lazy import of pipeline_compute 시 모듈 레벨 `get_broadcast_queue()` 호출 대응)
+  - 커밋: (이번 커밋)
 - **2026-07-10: exchange_calendars 교체 — korean_lunar_calendar 기반 직접 구현 (~109MB 절감 + 제헌절 버그 수정)**
   - 목적: exchange_calendars가 pandas(70MB)+numpy(33MB) 등 ~109MB 의존성을 끌어오는데, 코드베이스에서 사용처는 `trading_calendar.py`의 `_generate_trading_days_from_xkrx()` 1곳만. 연 1회 캐시 생성 시에만 사용하므로 경량화 필요
   - 추가 발견: exchange_calendars XKRX 캘린더가 제헌절(7/17, 2026년부터 공휴일 재지정)을 반영하지 않는 버그 확인 — DB 캐시에 2026년 7/17이 거래일로 잘못 등록되어 있었음 (246일 → 정상 245일)
