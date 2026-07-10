@@ -29,7 +29,7 @@
     - `ls_providers.py`: `LsAccountProvider.__init__`은 `.strip()` 호출 없음 (`str(... or "")`만) — 테스트를 실제 동작에 맞게 수정 (공백 보존)
     - `connector_manager.py`: `_create_single`은 `@staticmethod` → `patch("...ConnectorManager._create_single", staticmethod(...))` 패턴 사용; `{"kiwoom": {}}`는 falsy라 `if not connector_registry`에서 걸림 → truthy dict `{"other_key": "value"}` 사용하여 `create_connector` 미존재 케이스 테스트
   - 검증: 전체 1672 passed, 0 failed (기존 1549 + 신규 123), regression 없음, 런타임 기동 정상 (142ms 부트, 에러 없음, 잔존 프로세스 0건)
-  - 커밋: (이번 커밋)
+  - 커밋: `b746b69`
 
 - **2026-07-10: 테스트 커버리지 확장 Stage 6 (P5-c) — 대형 Web 라우트 3개 파일, 신규 140건, 전체 1549건 통과**
   - 목적: 테스트 커버리지 Stage 6 — 대형 Web 라우트 `ws_manager.py`(351줄) + `stock_classification.py`(330줄) + `app.py`(317줄) 단위 테스트 작성
