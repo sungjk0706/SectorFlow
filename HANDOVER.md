@@ -16,11 +16,22 @@
   3. 매수후보 테이블 모든 종목(통과/차단 무관)은 이미 0B 실시간 데이터 수신 중 — 0D/PGM만 guard_pass 기반
 
 ## 진행 중 작업 (다음 세션에서 이어서 진행)
-- **Stage 9 (P4-c) 부분 진행 — `kiwoom_stock_rest.py` 완료, 2개 파일 남음**
-  - 완료: `test_kiwoom_stock_rest.py` (74건) — 커밋 미수행
-  - 남음: `kiwoom_connector.py`(563줄) + `kiwoom_providers.py`(337줄)
+- **테스트 커버리지 Stage 9 (P4-c) 완료 — 다음 Stage 미정**
+  - Stage 9 완료: `kiwoom_stock_rest.py` + `kiwoom_connector.py` + `kiwoom_providers.py` (총 216건)
+  - 전체 2138건 통과 중
+  - 다음: 새로운 Stage 대상 파일 선정 필요 (사용자와 논의)
 
 ## 직전 완료 작업
+- **2026-07-11: 테스트 커버리지 Stage 9 완료 (P4-c) — `kiwoom_connector.py` + `kiwoom_providers.py`, 신규 142건, 전체 2138건 통과**
+  - 목적: 테스트 커버리지 Stage 9 나머지 2개 파일 — `kiwoom_connector.py`(563줄) + `kiwoom_providers.py`(337줄) 단위 테스트 작성
+  - **`test_kiwoom_connector.py` (82건)**: `_KiwoomSocket` `__init__` 2건 (파라미터 저장/기본값), `connect` 3건 (성공+LOGIN 전송/websockets 없음 RuntimeError/stop_event clear), `disconnect` 3건 (정상 종료/recv_task 완료/ws.close 실패), `send` 3건 (성공/연결없음/소켓없음), `_recv_loop` 12건 (문자열 PING/JSON PING/list 스킵/LOGIN 성공 on_message/LOGIN 실패 connected False/REAL 큐콜백/REG on_message/SYSTEM on_message/ConnectionClosed on_disconnect/ConnectionClosed no on_disconnect/비연결오류 계속/JSON디코드 스킵/stop_event 설정 시 on_disconnect 미호출), `KiwoomConnector` `__init__`/속성 8건 (파라미터/broker_id/is_connected False/True/socket 미연결/supports_ack/realtime get+set/auto_trade get+set), `connect` 4건 (성공/이미연결/토큰실패 ConnectionError/소켓실패 재연결), `disconnect` 2건 (정상/소켓없음), `send_message` 2건 (성공/소켓없음), subscribe 호환 2건 (subscribe/unsubscribe 위임), `subscribe_stocks` 4건 (성공/미연결/다중 payload/부분실패), `unsubscribe_stocks` 3건 (성공/미연결/부분실패), `subscribe_dynamic`/`unsubscribe_dynamic` 6건 (성공/미연결/RuntimeError 처리 각), `subscribe_index` 3건 (성공/미연결/ACK 실패), `_on_ws_message` 3건 (async callback/sync callback/no callback), `_on_socket_disconnect` 3건 (stop_reconnect 차단/정상 재연결/이미 재연결 중), `_reconnect_loop` 2건 (stop 신호 즉시 종료/토큰 실패 후 계속), callback 3건 (reconnect_success/message/queue), `_format_code` 6건 (6자리 숫자/6자리 알파벳/A 접두사 제거/비6자리/_AL 접미사 보존/대소문자), `_get_token_async` 4건 (broker_rest_apis 재사용/auth_cache 경로/새 KiwoomRestAPI fallback/전체 실패), `create_kiwoom_connector` 3건 (성공/real 크리덴셜 선호/크리덴셜 없음 ValueError)
+  - **`test_kiwoom_providers.py` (60건)**: `KiwoomAuthProvider` 12건 (신규 생성/캐시 재사용/캐시 저장, app_key/secret 전달/real 선호/strip/누락, acnt_no 설정/real 선호, get_access_token 위임/ensure_token 위임, broker_name, rest_api property), `KiwoomAccountProvider` 11건 (init acnt_no 추출/누락/no_auth/rest_api 추출, get_account_number 성공/no_rest_api, get_deposit_detail 성공/기본 acnt_no/no_rest_api/acnt_no 설정, get_balance_detail 성공/params/no_rest_api), `get_account_balance` 12건 (no_rest_api/토큰 실패/예수금 None/return_code nonzero/성공+stock_list/zero_qty 필터/종목 없음/balance None/A 접두사 제거/빈 stk_cd 스킵/콤마 파싱/d2_entra fallback/balance return_code nonzero), `KiwoomOrderProvider` 4건 (init auth/no_auth, send_order 위임/기본 파라미터), `KiwoomStockProvider` 13건 (init auth/no_auth/잘못된 타입 TypeError, fetch_all_stocks no_rest_api/위임, fetch_stock_daily_price no_rest_api/위임, fetch_stock_5day_data no_rest_api/위임, fetch_all_stocks_5day no_rest_api/위임, fetch_all_stocks_daily_confirmed no_rest_api/위임), `KiwoomWebSocketProvider` 4건 (init auth/no_auth, get_ws_uri 반환/kiwoom 호출)
+  - 수정 중 이슈:
+    - `KiwoomStockProvider.__init__` `isinstance(auth_provider, KiwoomAuthProvider)` 검사 → `MagicMock(spec=KiwoomAuthProvider)` 패턴 사용
+    - `_KiwoomSocket._recv_loop` stop_event 설정 후 ConnectionClosed 시 `on_disconnect` 미호출 → `side_effect` 함수에서 recv 중 stop_event 설정하는 패턴
+  - 검증: 전체 2138 passed, 0 failed (기존 1996 + 신규 142), regression 없음, 런타임 기동 정상 (105ms 부트, 에러 없음, 잔존 프로세스 0건)
+  - 커밋: `3471980`
+
 - **2026-07-11: 테스트 커버리지 Stage 9 부분 (P4-c-1) — `kiwoom_stock_rest.py`, 신규 74건, 전체 1996건 통과**
   - 목적: 테스트 커버리지 Stage 9 첫 번째 파일 — `kiwoom_stock_rest.py`(430줄) 단위 테스트 작성
   - **`test_kiwoom_stock_rest.py` (74건)**: `_si` 10건 (정상int/str/콤마/플러스/빈값/대시/음수절대값/float/None/예외), `_si_signed` 9건 (정상/음수부호보존/콤마/플러스/빈값/대시/None/예외/float), `_pct` 6건 (정상/퍼센트제거/콤마/빈값/None/예외), `fetch_ka10081_daily_price` 14건 (정상/오름차순reversed/내림차순유지/resp None/빈rows/비list/종가0/등락률계산/prev_close 0→None/파싱예외/숫자코드패딩/알파벳코드/_raw_cd label/sign 기본값), `fetch_ka10081_daily_5d_data` 10건 (정상5개/오름차순reversed/신규상장3개패딩/resp None/빈rows/비list/파싱예외/연속조회2페이지/연속조회중단/정확히5개), `fetch_ka10081_all_stocks_daily_confirmed` 5건 (정상/빈리스트/일부실패/on_progress/예외continue), `fetch_ka10081_all_stocks_5day` 5건 (정상/빈리스트/일부실패/on_progress/예외continue), `fetch_ka10099_unified` 15건 (정상/연속조회2페이지/재시도3회/재시도초과/빈list/비dict항목/빈코드/알파벳코드 lstrip("A")/종목명파싱 3키/nxtEnable Y/N/코스닥/파싱예외/짧은코드패딩/raw_item 보존)
