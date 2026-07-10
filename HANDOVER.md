@@ -7,16 +7,18 @@
 - 없음
 
 ## 직전 완료 작업
-- **2026-07-11: 매수후보 테이블 상단 배지 폰트 크기 11px→13px 가독성 개선**
-  - 수정: `buy-target.ts` 207행 — `createBadgeSpan()` 함수에서 `FONT_SIZE.badge`(11px) → `FONT_SIZE.body`(13px) 변경, padding `3px 10px` → `4px 12px` 조정
-  - 전역 상수 `FONT_SIZE.badge`는 15개 파일에서 사용 중이므로 로컬 수정만 진행 (사이드 이펙트 없음)
-  - `.gitignore`에 DB 백업 파일 패턴 추가 (`*.db.bak.*`, `*.db-shm.bak.*`, `*.db-wal.bak.*`)
-  - 검증: `npm run typecheck` 통과, `npm run build` 통과
+- **2026-07-11: 매도설정 보유종목 테이블 상단에 평가금액/손익/수익률 요약 배지 추가**
+  - 수정: `sell-position.ts` — 보유종목 테이블 상단에 3개 배지 (보유주식 평가금액, 평가손익, 수익률) 1행 가로 배치
+  - 매수후보 테이블 상단 배지 스타일과 통일 (FONT_SIZE.body 13px, COLOR.neutralBg 배경, padding 4px 12px, borderRadius 4px)
+  - hotStore account 데이터 (`total_eval_amount`, `total_pnl`, `total_pnl_rate`, `positionCount`)로 실시간 갱신 — 백엔드 변경 불필요
+  - 평가금액은 검정색(COLOR.neutral), 손익/수익률은 pnlColor로 빨강/파랑 적용
+  - 검증: `npm run typecheck` 통과, `npm run build` 통과, `npm test` 112/112 통과
+  - 커밋: `9dfc6e2`
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치 — 모두 코드 확인 완료 (git history 참조)
-- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대 — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: `01f99fb` (가상 스크롤 플래시 억제), `acb1034` (비거래일 배지 정렬 + 업종순위 라벨 가독성), `dbedbb1` (HANDOVER 업데이트) — 모두 push 완료 예정
+- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가 — 모두 코드 확인 완료, `npm run build` 통과
+- **Git**: `9dfc6e2` (매도설정 보유종목 요약 배지 추가) — push 완료
 - **테스트 커버리지**: Stage 1~9 완료 — 백엔드 2138 passed, 프론트엔드 112 passed (실행 시점 기준)
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 
