@@ -172,7 +172,7 @@ async def on_trade_mode_switched() -> None:
 
     _new_test = is_test_mode(state.integrated_system_settings_cache)
     _mode_str = "테스트모드" if _new_test else "실전투자"
-    logger.info("[연산] 투자모드 전환 -> %s (엔진 재기동 없음)", _mode_str)
+    logger.info("[연산] 투자모드 전환 — %s (엔진 재기동 없음)", _mode_str)
 
     # BrokerRouter를 통해 현재 연결된 커넥터 확인 (증권사 하드코딩 제거)
     ws = state.connector_manager or state.active_connector
@@ -184,8 +184,9 @@ async def on_trade_mode_switched() -> None:
         from backend.app.services.engine_ws_reg import _unreg_grp
         await _unreg_grp("10")
         logger.info("[구독] 테스트모드 전환 -- 계좌 실시간 구독 해제 완료")
-        # Settlement Engine: 파일에서 상태 복원 + 만료 항목 정리 + 타이머 재스케줄
-        await settlement_engine.restore_state()
+        # Settlement Engine: 상태 로드 (모드 전환 시 복원 목적) + 만료 항목 정리 + 타이머 재스케줄
+        # load_state는 기동 시(로드)와 모드 전환 시(복원) 양쪽에 사용되는 dual-purpose 함수
+        await settlement_engine.load_state()
         logger.info("[연산] 테스트모드 전환 -- 정산 엔진 상태 복원 완료")
     else:
         # 테스트→실전: Settlement Engine 상태 저장 + 타이머 취소

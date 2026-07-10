@@ -45,7 +45,7 @@ export interface UIState {
   /* ── 업종 요약 ── */
   sectorSummary: Record<string, unknown> | null
 
-  /* ── 엔진 재시작 완료 상태 ── */
+  /* ── 설정 재로드 완료 상태 ── */
   engineReloadComplete: boolean
 
   /* ── 수신율 상태 ── */
@@ -138,7 +138,7 @@ export function applyIndexRefresh(data: EngineStatus): void {
   uiStore.setState(patch)
 }
 
-/* ── engine-reload-complete: 엔진 재시작 완료 ── */
+/* ── engine-reload-complete: 설정 재로드 완료 ── */
 export function applyEngineReloadComplete(): void {
   uiStore.setState({ engineReloadComplete: true })
 }

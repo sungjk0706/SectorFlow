@@ -208,7 +208,7 @@ async def run_engine_loop() -> None:
         # 전송하지 않도록 보장 (token_ready_event.wait()에서 대기 중인 태스크가 깨어남)
         state.token_ready_event.set()
 
-        # 가상 예수금 로드는 _cache_and_bootstrap(→ engine_cache)에서 restore_state로 수행
+        # 가상 예수금 로드는 _cache_and_bootstrap(→ engine_cache)에서 load_state로 수행
 
         _t_parallel_end = time.perf_counter()
         logger.info(
