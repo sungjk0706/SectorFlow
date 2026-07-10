@@ -17,8 +17,8 @@ python-dotenv==1.0.0
 # Encryption (민감 필드)
 cryptography==42.0.0
 
-# KRX 거래일 판별 (exchange_calendars)
-exchange_calendars>=4.0.0
+# KRX 거래일 판별 (korean_lunar_calendar — 음력→양력 변환)
+korean-lunar-calendar>=0.3.1
 
 # Excel parsing (broker specs)
 openpyxl>=3.1.0
