@@ -338,7 +338,7 @@ async def execute_unified_rolling_and_save(
                 """, updated_params)
 
             await conn.commit()
-            logger.info("[데이터] 저장 완료 -- stock_5d_array: %d종목, master_stocks_table: %d종목", len(array_5d_bulk_params), len(master_bulk_params))
+            logger.info("[데이터] 저장 완료 — stock_5d_array: %d종목, master_stocks_table: %d종목", len(array_5d_bulk_params), len(master_bulk_params))
             return True
 
         except Exception as e:
@@ -467,7 +467,7 @@ async def _apply_confirmed_to_memory(
 
         updated += 1
 
-    logger.info("[스케줄] 확정 데이터 메모리 반영 -- %d종목", updated)
+    logger.info("[스케줄] 확정 데이터 메모리 반영 — %d종목", updated)
     return updated
 
 
@@ -558,7 +558,7 @@ async def _save_confirmed_cache(
     try:
         # DB 저장 전 avg_5d 유효성 체크
         if sum(1 for stock in pending.values() if int(stock.get("avg_5d_trade_amount", 0) or 0) > 0) < 100:
-            logger.warning("[스케줄] DB 저장 전 avg_5d_trade_amount 비정상 -- 백그라운드 갱신 예정")
+            logger.warning("[스케줄] DB 저장 전 avg_5d_trade_amount 비정상 — 백그라운드 갱신 예정")
 
         # ── master_stocks_table 저장 (Phase 1.2) ──
         try:
@@ -627,7 +627,7 @@ async def _save_confirmed_cache(
                 ))
 
             await conn.commit()
-            logger.info("[스케줄] master_stocks_table 통합 저장 완료 -- %d종목 (date=%s, skip=%d)", len(all_target_codes), date_str, len(_skip))
+            logger.info("[스케줄] master_stocks_table 통합 저장 완료 — %d종목 (date=%s, skip=%d)", len(all_target_codes), date_str, len(_skip))
         except Exception as e:
             if 'conn' in locals():
                 await conn.rollback()
