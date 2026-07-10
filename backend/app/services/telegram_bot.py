@@ -305,7 +305,7 @@ class TelegramBot:
         )
         await notify_desktop_header_refresh()
         await notify_desktop_settings_toggled()
-        logger.info("[알림] 설정 %s -> %s (%s)", key, new, label)
+        logger.info("[알림] 설정 %s — %s (%s)", key, new, label)
         return new
 
     async def _cmd_toggle_auto_master(self, token: str, chat_id: str, profile: str | None = None):

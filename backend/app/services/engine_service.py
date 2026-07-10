@@ -53,7 +53,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         reset_router()
         if is_engine_running():
             from backend.app.services.engine_lifecycle import stop_engine, start_engine, reset_broker_session_state
-            logger.info("[설정] broker 변경 감지 -> 엔진 재기동 (단일 진입점 보장)")
+            logger.info("[설정] broker 변경 감지 — 엔진 재기동 (단일 진입점 보장)")
             await stop_engine()
             reset_broker_session_state()
             await start_engine()
@@ -65,7 +65,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
     if changed_keys & TRADE_MODE_KEYS:
         if is_engine_running():
             schedule_engine_task(on_trade_mode_switched(), context="투자모드 전환")
-            logger.info("[설정] 투자모드 전환 감지 -> 저장데이터 갱신 + 계좌 구독 전환 (엔진 재기동 없음)")
+            logger.info("[설정] 투자모드 전환 감지 — 저장데이터 갱신 + 계좌 구독 전환 (엔진 재기동 없음)")
         await notify_desktop_header_refresh()
         await notify_desktop_settings_toggled()
         return

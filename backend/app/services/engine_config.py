@@ -102,12 +102,12 @@ async def reload_engine_settings() -> None:
     # broker 설정 변경 시 BrokerRouter 캐시 초기화
     from backend.app.core.broker_factory import reset_router
     reset_router()
-    logger.info("[설정] 엔진 재기동 -> BrokerRouter 캐시 초기화")
-    
-    # 엔진 재시작 완료 후 engine-reload-complete 이벤트 전송
+    logger.info("[설정] 설정 재로드 — BrokerRouter 캐시 초기화")
+
+    # 설정 재로드 완료 후 engine-reload-complete 이벤트 전송
     from backend.app.services.engine_account_notify import _broadcast
     await _broadcast("engine-reload-complete", {"status": "complete"})
-    logger.info("[설정] 엔진 재시작 완료 -> engine-reload-complete 전송")
+    logger.info("[설정] 설정 재로드 완료 — engine-reload-complete 전송")
 
 
 # ── 민감 정보 마스킹 ─────────────────────────────────────────────────

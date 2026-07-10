@@ -124,7 +124,7 @@ async def charge(amount: int) -> int:
     _orderable += amount
     await _persist()
     await _broadcast_delta()
-    logger.info("[정산] 충전 %s원 -> 누적투자금 %s원 / 주문가능 %s원", f"{amount:,}", f"{_accumulated_investment:,}", f"{_orderable:,}")
+    logger.info("[정산] 충전 %s원 — 누적투자금 %s원 / 주문가능 %s원", f"{amount:,}", f"{_accumulated_investment:,}", f"{_orderable:,}")
     return _orderable
 
 
@@ -156,7 +156,7 @@ async def save_state() -> None:
     await _persist()
 
 
-async def restore_state(initial_deposit: int | None = None) -> None:
+async def load_state(initial_deposit: int | None = None) -> None:
     """SQLite에서 상태 로드 (기동 시 및 모드 전환 시 호출)."""
     await _load(force_reload=True, initial_deposit=initial_deposit)
 

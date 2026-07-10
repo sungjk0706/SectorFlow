@@ -461,10 +461,10 @@ async function onTriggerConfirmedDownload(e: MouseEvent): Promise<void> {
   const label = '1일봉챠트 시세 다운로드'
   const endpoint = '/api/stock-classification/trigger-confirmed-download'
 
-  // 엔진 재시작 완료 확인
+  // 설정 재로드 완료 확인
   const { engineReloadComplete } = uiStore.getState()
   if (!engineReloadComplete) {
-    toastResult({ ok: false, error: '엔진 재시작이 완료되지 않았습니다. 잠시 후 다시 시도하세요.' })
+    toastResult({ ok: false, error: '설정 재로드가 완료되지 않았습니다. 잠시 후 다시 시도하세요.' })
     return
   }
 
@@ -492,10 +492,10 @@ async function onTrigger5dDownload(e: MouseEvent): Promise<void> {
   const label = '5일봉챠트 거래대금,고가 다운로드'
   const endpoint = '/api/stock-classification/trigger-5d-download'
 
-  // 엔진 재시작 완료 확인
+  // 설정 재로드 완료 확인
   const { engineReloadComplete } = uiStore.getState()
   if (!engineReloadComplete) {
-    toastResult({ ok: false, error: '엔진 재시작이 완료되지 않았습니다. 잠시 후 다시 시도하세요.' })
+    toastResult({ ok: false, error: '설정 재로드가 완료되지 않았습니다. 잠시 후 다시 시도하세요.' })
     return
   }
 

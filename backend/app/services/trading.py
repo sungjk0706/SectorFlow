@@ -50,7 +50,7 @@ class AutoTradeManager:
         self._bought_today: dict[str, float] = {}  # stk_cd -> buy timestamp
         self._symbol_daily_buy_spent: dict[str, int] = {}
 
-    async def _restore_daily_buy_state(self) -> tuple[int, dict[str, float], dict[str, int]]:
+    async def _load_daily_buy_state(self) -> tuple[int, dict[str, float], dict[str, int]]:
         """기동 시 trade_history에서 오늘 매수 합계 + 매수 종목 timestamp dict + 종목당 누적 매수금액 로드."""
         try:
             rows = await trade_history.get_buy_history(today_only=True)
@@ -76,7 +76,7 @@ class AutoTradeManager:
         today = datetime.now().strftime("%Y-%m-%d")
         if self._daily_buy_date != today:
             self._daily_buy_date = today
-            self._daily_buy_spent, self._bought_today, self._symbol_daily_buy_spent = await self._restore_daily_buy_state()  # type: ignore
+            self._daily_buy_spent, self._bought_today, self._symbol_daily_buy_spent = await self._load_daily_buy_state()  # type: ignore
             logger.info(
                 "[매매] 일일 매수 상태 로드 — 날짜=%s 누적매수=%s원 종목수=%d",
                 today, f"{self._daily_buy_spent:,}", len(self._bought_today),

@@ -350,5 +350,5 @@ async def reset_virtual_balance() -> None:
 async def charge_virtual_balance(amount: int) -> int:
     """가상 예수금 충전 (Settlement Engine 위임). 반환: 충전 후 잔액."""
     result = await settlement_engine.charge(amount)
-    logger.info("[매매] 가상 예수금 충전 %s원 -> 잔액 %s원", f"{amount:,}", f"{result:,}")
+    logger.info("[매매] 가상 예수금 충전 %s원 — 잔액 %s원", f"{amount:,}", f"{result:,}")
     return result

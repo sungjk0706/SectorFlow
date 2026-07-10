@@ -113,7 +113,7 @@ async def _load_caches_preboot(settings: dict) -> None:
         if state.integrated_system_settings_cache["trade_mode"] == "test":
             from backend.app.services import settlement_engine
             initial_deposit = state.integrated_system_settings_cache["test_virtual_deposit"]
-            await settlement_engine.restore_state(initial_deposit=initial_deposit)
+            await settlement_engine.load_state(initial_deposit=initial_deposit)
             logger.debug("[데이터] Settlement Engine 상태 로드 완료 (테스트모드)")
 
         from backend.app.services.engine_account_notify import notify_cache
