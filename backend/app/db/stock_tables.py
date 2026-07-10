@@ -50,7 +50,7 @@ async def init_cache_tables():
         CREATE INDEX IF NOT EXISTS idx_trades_date_mode ON trades (date, trade_mode)
     ''')
 
-    # 거래일 캐시 테이블 (exchange_calendars 연 1회 갱신, 이후 DB에서 메모리 로드)
+    # 거래일 캐시 테이블 (korean_lunar_calendar 기반 연 1회 갱신, 이후 DB에서 메모리 로드)
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS trading_days_cache (
             year INTEGER PRIMARY KEY,

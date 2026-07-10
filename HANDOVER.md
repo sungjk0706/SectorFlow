@@ -1,6 +1,41 @@
 # HANDOVER — SectorFlow
 
+## 추후 논의 필요 (미결정)
+
+### 업종순위 구독 정책 개선 검토 (2026-07-10)
+- **상태**: 분석 완료, 구현 미결정 — 추후 재논의 예정
+- **현재 구독 구조 (코드 확인 완료)**:
+  - 0B(현재가/대비/등락률/거래대금/체결강도): `_filtered=True`(거래대금 필터 통과) 종목 + 보유종목, 200종목 한도 (`engine_ws_reg.py:257`). 매수후보 테이블 전체 종목(통과/차단 무관) 이미 수신 중
+  - 0D/PGM(호가잔량비/프순매): `guard_pass=True` 종목만, 30초 지연 해지 (`engine_sector_confirm.py:290,23`). 차단 종목은 5일고가/거래대금 가산점만 부여, 잔량비/프순매 가산점 제외 (`buy_filter.py:221,224`)
+  - 업종 순위: `sector_max_targets`(상위 N개) + `sector_min_rise_ratio_pct`(상승비율 미만 rank=0) — 상승비율 미만 업종은 순위에서 제외일 뿐 구독 해지 아님 (`engine_sector_confirm.py:162-172`)
+- **제안 1 (매수후보 0D/PGM 구독 확대)**: `guard_pass` 조건 제거 → 통과/차단 전체 0D/PGM 구독. 수정 2곳: `engine_sector_confirm.py:290`, `buy_filter.py:221,224`. 세션 증가량은 실제 통과/차단 비율 로그 확인 필요
+- **제안 2 (sector_max_targets 제거, 상승비율 자동 필터링)**: 상승비율 컷오프는 이미 구현됨. max_targets 제거 시 강세장 업종 수 폭증 → 0B 200한도 압박. max_targets를 상한선으로 유지 권장
+- **정정 사항 (사용자 피드백)**:
+  1. 상승비율 미만 업종은 순위 제외 로직이지 구독 해지가 아님 — 0B는 `_filtered` 기반이므로 rank=0 업종도 0B 유지
+  2. 재매수차단 OFF 시 금일매수 종목도 매수 후보 유효 → "보유중/금일매수 구독 제외"는 `rebuy_block_on` 설정과 충돌. 단, `buy_filter.py:194`는 `rebuy_block_on` 설정과 무관하게 항상 금일매수를 차단 처리함 — 이 자체가 별개 모순
+  3. 매수후보 테이블 모든 종목(통과/차단 무관)은 이미 0B 실시간 데이터 수신 중 — 0D/PGM만 guard_pass 기반
+
 ## 직전 완료 작업
+- **2026-07-10: exchange_calendars 교체 — korean_lunar_calendar 기반 직접 구현 (~109MB 절감 + 제헌절 버그 수정)**
+  - 목적: exchange_calendars가 pandas(70MB)+numpy(33MB) 등 ~109MB 의존성을 끌어오는데, 코드베이스에서 사용처는 `trading_calendar.py`의 `_generate_trading_days_from_xkrx()` 1곳만. 연 1회 캐시 생성 시에만 사용하므로 경량화 필요
+  - 추가 발견: exchange_calendars XKRX 캘린더가 제헌절(7/17, 2026년부터 공휴일 재지정)을 반영하지 않는 버그 확인 — DB 캐시에 2026년 7/17이 거래일로 잘못 등록되어 있었음 (246일 → 정상 245일)
+  - `trading_calendar.py`: `_generate_trading_days_from_xkrx()` 제거 → `_generate_trading_days()` + `_compute_holidays()` 직접 구현
+    - 고정 양력 휴일 9종: 신정, 삼일절, 근로자의날, 어린이날, 현충일, 광복절, 개천절, 한글날, 크리스마스
+    - 제헌절: 2026년부터 공휴일 재지정 반영 (exchange_calendars는 2007년 end_date로 누락)
+    - 음력 휴일 3종: 설날(3일), 추석(3일), 부처님오신날 — `korean_lunar_calendar`로 음력→양력 변환
+    - 대체 공휴일: 2021년 확대 규칙 (설날/추석=일요일만, 어린이날/삼일절/광복절/개천절/한글날/부처님오신날=토/일요일, 제헌절=2026~)
+    - KRX 전용 연말 휴일: Dec 31 (주말 시 직전 금요일)
+    - 임시 공휴일/선거일: `_MANUAL_HOLIDAYS` dict 수동 관리 (2024: 국회의원선거/국군의날, 2025: 임시공휴일/대통령선거)
+  - `requirements.txt`: `exchange_calendars>=4.0.0` 제거 → `korean-lunar-calendar>=0.3.1` 명시 추가
+  - `mypy.ini`: `[mypy-exchange_calendars]` 섹션 제거
+  - `stock_tables.py`: 주석 "exchange_calendars 연 1회 갱신" → "korean_lunar_calendar 기반 연 1회 갱신"
+  - `ARCHITECTURE.md`: 인프라 섹션 "exchange_calendars (거래일)" → "korean_lunar_calendar (음력→양력 변환, KRX 거래일 계산)"
+  - venv: exchange_calendars, pandas, numpy, pyluach, toolz, tzdata 6개 패키지 uninstall — site-packages 195MB → 86MB (109MB 절감)
+  - DB 캐시 재생성: 2026년 245일(제헌절 수정), 2027년 247일. 백업: `stocks.db.bak.20260710_171552`
+  - 검증: 2024-2025년 휴일 exchange_calendars와 100% 일치, 2026년은 제헌절 1일 추가(정확), pytest 1070/1070 통과 (신규 45건 포함)
+  - 테스트: `test_trading_calendar.py` 신규 — 2024-2027년 휴일/거래일 수/대체공휴일/제헌절/임시공휴일/엣지케이스 45건
+  - 임시 공휴일 관리: 새 선거일/임시공휴일 발생 시 `_MANUAL_HOLIDAYS` dict에 날짜 추가 후 `refresh_trading_days_for_year()` 호출
+  - 커밋: (이번 커밋)
 - **2026-07-10: 5일고가 돌파 표시 분리 — 현재가 필드 배경 → ▲ 아이콘(좌측) + 5일고가 필드 초록 배경**
   - 목적: 매수후보 페이지에서 5일고가 돌파 종목의 현재가 셀에 초록 배경(`COLOR.successBg`)이 표시되는데, 실시간 시세 변경 시 노란 플래시 효과(`composite: 'replace'`)가 같은 셀 배경에 겹쳐 초록→노랑→투명→초록 깜빡임 발생. 두 시각적 효과의 충돌 제거
   - 근본 원인: `buy-target.ts`의 `cur_price` 컬럼이 `flash: true`이면서 동시에 5일고가 돌파 시 배경색 적용. `data-table.ts`의 `triggerFlash`가 `composite: 'replace'`로 동작하여 인라인 배경색을 무시하고 keyframe 값으로 대체
@@ -118,7 +153,7 @@
   - 커밋: `d4b3d40` push 완료
 
 ## 현재 상태
-- **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료, 보유종목 buy_date 파생·브로드캐스트 구현 완료
+- **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료, 보유종목 buy_date 파생·브로드캐스트 구현 완료, exchange_calendars 교체 완료 (korean_lunar_calendar 기반 직접 구현, ~109MB 절감, 제헌절 버그 수정)
 - **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지·검색 입력란 추가 완료, 보유종목 테이블 매수일자 컬럼 추가 완료, 수익현황 페이지 빈 데이터 차트/도넛 stale state 근본 수정 완료, 프론트엔드 색상 체계 통일 완료 (하드코딩 ~190곳 COLOR 상수화 + secondary→tertiary 통합), 검색 입력란 공통 컴포넌트 통일 완료 (5페이지 7개 인스턴스 + label/compact 옵션 + 포커스 언더라인 + placeholder 색상), `npm run build` 통과
 - **Git**: 커밋 `a2ea0cf` push 완료 (검색 입력란 통일 작업은 미커밋)
 
@@ -128,7 +163,6 @@
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
   - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
 - **2순위: 브라우저 실제 화면 확인** — 장중에 매수후보 테이블에서 SK하이닉스(000660) 하이라이트 깜빡임 없는지 확인 + 매수/매도호가잔량비율 슬라이더 422 미발생 확인
-- **3순위: exchange_calendars 교체 검토** — pandas(70MB)+numpy(33MB) 등 간접 의존성 약 112MB 절감 가능
 
 ## 미해결 문제
 - **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결, 재발 방지 조치 + 유령 매도 기록 삭제 완료**
