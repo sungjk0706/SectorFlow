@@ -7,22 +7,27 @@
 - 없음
 
 ## 직전 완료 작업
-- **2026-07-11: telegram_bot.py 단위 테스트 108건 추가 (P6) (커밋 `933f9e6`)**
-  - `backend/tests/test_telegram_bot.py` 신규 파일 (1301줄)
-  - 순수 함수(15), 초기화/상태(3), start/stop/stop_async(14), _fetch_enabled_settings(9),
-    _poll_one(10), _handle_command 라우터(22), 명령어 핸들러(35) = 총 108건
-  - 검증: 108 passed (1.58s), 전체 회귀 2246 passed (9.62s)
+- **2026-07-11: 테스트 커버리지 측정 환경 구축 (커밋 `b0bf2c3`)**
+  - `.coveragerc` 신규 파일 — source=backend, branch coverage, omit tests/__init__/venv/frontend
+  - `.gitignore` — `htmlcov/` 추가
+  - 커버리지 측정: 전체 65.87% (Stmt 13,276 / Miss 4,277 / Branch 4,142 / BrPart 389)
+  - 100% 파일 12개, 0% 파일 7개 (broker_router, lock_manager, engine_cache, engine_loop, engine_radar_ops, engine_ws_fill_followup, notification_worker)
+  - 검증: 2246 passed, HTML 리포트 `htmlcov/index.html` 생성 확인
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치 — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가 — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: `f4107a2` (HANDOVER 우선순위 재조정) + `933f9e6` (telegram_bot.py 테스트 108건) — push 완료
+- **Git**: `b0bf2c3` (커버리지 측정 환경 구축) — 커밋 완료 (push 미수행)
 - **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) 완료 — 백엔드 2246 passed, 프론트엔드 112 passed (실행 시점 기준)
+  - 커버리지 측정 환경 구축 완료 — 전체 65.87%, 100% 파일 12개, 0% 파일 7개
+  - 커버리지 실행 명령어: `python -m pytest backend/tests --cov=backend --cov-report=term-missing --cov-report=html --timeout=15 --timeout-method=signal`
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 
 ## 다음 단계
-- **1순위: 테스트 커버리지 측정 환경 구축**:
-  - `.coveragerc` 설정 등 커버리지 측정 인프라 구성
+- **1순위: 낮은 커버리지 모듈 테스트 추가**:
+  - 0% 모듈 7개: `broker_router.py`, `lock_manager.py`, `engine_cache.py`, `engine_loop.py`, `engine_radar_ops.py`, `engine_ws_fill_followup.py`, `notification_worker.py`
+  - 10%대 모듈: `engine_settings.py`(5.17%), `sector_data_provider.py`(5.88%), `settings_store.py`(8.15%), `engine_bootstrap.py`(9.02%), `stock_classification_data.py`(9.19%), `engine_sector_confirm.py`(9.51%), `engine_snapshot.py`(9.80%), `stock_tables.py`(10.53%), `stock_filter.py`(13.33%)
+  - 우선순위: 0% 모듈부터 순차적으로 테스트 작성
 - **2순위: 유령 포지션 005930 근본 원인 조사 (후순위)**:
   - 여러 차례 시도했으나 원인 식별이 어려워 후순위로 변경
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
