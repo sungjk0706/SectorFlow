@@ -1,6 +1,16 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-10: 검색 결과 강조 방식 통일 — 4페이지 outline: 2px solid COLOR.down 일원화 + COLOR.highlight 상수 삭제 + dead code 정리**
+  - 목적: 검색어 입력 시 검색된 행 강조 방식이 페이지마다 불일치 (sector-stock=노랑 배경, buy-target/stock-detail=강조 없음, stock-classification=dead code) → `outline: 2px solid COLOR.down`(#1e88e5, 파랑)로 전 페이지 통일
+  - `sector-stock.ts`: `background: COLOR.highlight`(노랑 배경) → `outline: 2px solid COLOR.down`(파랑 테두리)로 변경, 비매칭 행 `outline: 'none'` 처리
+  - `buy-target.ts`: `rowStyle` 추가 — `searchTerm` 있을 때 모든 표시 행(=매칭 행)에 `outline: 2px solid COLOR.down` 적용, 없을 때 `outline: 'none'`
+  - `stock-detail.ts`: `rowStyle` 추가 — `searchQuery` 있을 때 모든 표시 행에 `outline: 2px solid COLOR.down` 적용, zebraStriping과 충돌 없음
+  - `stock-classification.ts`: `highlightStockCode` dead code 정리 (3곳) — 변수 선언(line 87), null 할당(line 778/1515), rowStyle 분기(line 1019-1021) 제거. `highlightStockCode`는 한 번도 non-null 값이 할당된 적 없었음
+  - `ui-styles.ts`: `COLOR.highlight`(#fff9c4, 노랑) 상수 삭제 — 사용처 0건 확인 후 제거
+  - outline 선택 이유: `<tr>` 요소에서 `border`는 box model에 추가되어 레이아웃 시프트 발생, `outline`은 box model 외부에 그려져 레이아웃 영향 없음. `sector-ranking-list.ts` 업종 선택 강조와 동일 패턴
+  - 검증: tsc 타입체크 0 에러, vite build 통과 (58 모듈 712ms), `COLOR.highlight` grep 0건, `highlightStockCode` grep 0건
+  - 커밋: (이번 커밋)
 - **2026-07-10: 기간 선택 박스 공통 컴포넌트 신규 생성 + 수익현황/수익상세 일원화 + 검색입력창 라벨/placeholder 일관성 통일**
   - 목적: 수익현황/수익상세 페이지의 기간 선택 박스가 인라인 하드코딩(2곳)으로 스타일 분산 + 크기 너무 작음(padding 2px 4px, font 11px) → 공통 컴포넌트 생성 후 일원화 + 크기 증가
   - `date-range-input.ts` (신규): `createDateRangeInput({ from, to, label, compact, onChange })` API, 반환 `{ el, getValue(), setValue() }`, 기본 크기 padding 6px 8px / fontSize 13px / minWidth 120px, compact 모드 padding 4px 6px / fontSize 12px / minWidth 100px, `~` 구분자 + 시작/종료 date input 한 쌍, change 이벤트 → onChange 콜백

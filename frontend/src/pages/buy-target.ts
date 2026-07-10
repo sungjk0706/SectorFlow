@@ -342,6 +342,9 @@ function mount(container: HTMLElement): void {
     emptyText: '매수후보가 없습니다.',
     stickyHeader: true,
     rowHeight: 32,
+    rowStyle: (_row, _idx) => searchTerm
+      ? { outline: `2px solid ${COLOR.down}` }
+      : { outline: 'none' },
   })
 
   // 빈 상태 메시지 (DataTable 외부 — 기존 동작 유지)

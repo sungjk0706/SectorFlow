@@ -230,6 +230,9 @@ function mount(container: HTMLElement): void {
     stickyHeader: true,
     emptyText: '데이터가 없습니다.',
     zebraStriping: true,
+    rowStyle: (_row, _idx) => searchQuery
+      ? { outline: `2px solid ${COLOR.down}` }
+      : { outline: 'none' },
   })
   Object.assign(tableRef.el.style, { flex: '1', minHeight: '0' })
   root.appendChild(tableRef.el)

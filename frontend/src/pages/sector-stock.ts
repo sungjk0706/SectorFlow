@@ -597,9 +597,10 @@ class SectorStockTable extends HTMLElement {
       rowHeight: 32,
       rowStyle: (row, _idx) => ({
         opacity: row.dim ? '0.65' : '1',
-        background: this.currentMatchedCodes?.has(row.stock.code)
-          ? COLOR.highlight
-          : row.krxInactive ? COLOR.inactiveBg : '',
+        background: row.krxInactive ? COLOR.inactiveBg : '',
+        outline: this.currentMatchedCodes?.has(row.stock.code)
+          ? `2px solid ${COLOR.down}`
+          : 'none',
       }),
     })
 
