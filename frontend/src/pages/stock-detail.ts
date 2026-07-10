@@ -148,7 +148,10 @@ function mount(container: HTMLElement): void {
   Object.assign(searchWrapper.style, { flex: '1', maxWidth: '400px' })
 
   searchInputRef = createSearchInput({
+    label: '종목명 / 코드',
+    labelColor: COLOR.down,
     placeholder: '종목명 또는 코드 검색',
+    borderColor: COLOR.down,
     onSearch: (query) => {
       searchQuery = query
       applySearchFilter()

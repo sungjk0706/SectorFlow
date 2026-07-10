@@ -5,6 +5,7 @@
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
+import { createSearchInput } from '../components/common/search-input'
 import { hotStore } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import {
@@ -35,7 +36,7 @@ let tableViewContainer: HTMLDivElement | null = null
 let drilldownViewContainer: HTMLDivElement | null = null
 let dateFromInput: HTMLInputElement | null = null
 let dateToInput: HTMLInputElement | null = null
-let stockFilterInput: HTMLInputElement | null = null
+let stockFilterInput: ReturnType<typeof createSearchInput> | null = null
 let unsubStore: (() => void) | null = null
 
 /* ── 드릴다운 상태 ── */
@@ -107,7 +108,7 @@ function applyTabStyle(btn: HTMLButtonElement, active: boolean): void {
 function updateTabLabels(): void {
   const dateFrom = dateFromInput?.value || ''
   const dateTo = dateToInput?.value || ''
-  const stockQuery = stockFilterInput?.value.trim() || ''
+  const stockQuery = stockFilterInput?.getValue() || ''
   const filteredSells = filterRows(sellHistory, dateFrom, dateTo, stockQuery || undefined)
   const filteredBuys = filterRows(buyHistory, dateFrom, dateTo, stockQuery || undefined)
   if (sellTabBtn) {
@@ -187,7 +188,7 @@ function filterByDateRange(from: string, to: string): void {
 function updateStatistics(): void {
   const dateFrom = dateFromInput?.value || ''
   const dateTo = dateToInput?.value || ''
-  const stockQuery = stockFilterInput?.value.trim() || ''
+  const stockQuery = stockFilterInput?.getValue() || ''
   const filteredSells = filterRows(sellHistory, dateFrom, dateTo, stockQuery || undefined)
   const filteredBuys = filterRows(buyHistory, dateFrom, dateTo, stockQuery || undefined)
 
@@ -219,7 +220,7 @@ function showTable(): void {
 
   const dateFrom = dateFromInput?.value || ''
   const dateTo = dateToInput?.value || ''
-  const stockQuery = stockFilterInput?.value.trim() || ''
+  const stockQuery = stockFilterInput?.getValue() || ''
   const isSell = activeTab === 'sell'
   let rows = isSell ? sellHistory : buyHistory
   rows = filterRows(rows, dateFrom, dateTo, stockQuery || undefined)
@@ -360,17 +361,15 @@ function mount(container: HTMLElement): void {
   stockSep.style.color = COLOR.border
   filterRow.appendChild(stockSep)
 
-  const stockLabel = document.createElement('span')
-  Object.assign(stockLabel.style, { fontSize: FONT_SIZE.label, color: COLOR.tertiary, whiteSpace: 'nowrap' })
-  stockLabel.textContent = '종목:'
-  filterRow.appendChild(stockLabel)
-
-  stockFilterInput = document.createElement('input')
-  stockFilterInput.type = 'text'
-  stockFilterInput.placeholder = '종목명/코드'
-  Object.assign(stockFilterInput.style, { padding: '2px 4px', fontSize: FONT_SIZE.label, border: '1px solid ' + COLOR.borderLight, borderRadius: '4px', color: COLOR.code, width: '100px' })
-  stockFilterInput.addEventListener('input', () => { showTable(); updateTabLabels() })
-  filterRow.appendChild(stockFilterInput)
+  stockFilterInput = createSearchInput({
+    label: '종목명 / 코드',
+    labelColor: COLOR.down,
+    placeholder: '종목명/코드',
+    borderColor: COLOR.down,
+    compact: true,
+    onSearch: () => { showTable(); updateTabLabels() },
+  })
+  filterRow.appendChild(stockFilterInput.el)
 
   // 드릴다운 토글 버튼
   drilldownBtnEl = document.createElement('button')

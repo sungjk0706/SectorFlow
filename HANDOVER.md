@@ -1,6 +1,18 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-10: 검색 입력란 전수조사 및 공통 컴포넌트 통일 — 5페이지 7개 인스턴스 일원화 + label/compact 옵션 + 포커스 언더라인 + placeholder 색상**
+  - 목적: 각 페이지가 검색 입력란의 라벨/색상/스타일을 자체 구현하여 7개 검색란 스타일 분산 → 공통 컴포넌트 `search-input.ts`에 기능 내장 후 전 페이지 통일
+  - `search-input.ts`: `label`/`labelColor`/`compact` 옵션 추가, `width` 기본값 `100%`→`180px`, input에 `sf-search-input` 클래스 추가, 텍스트 색상 `COLOR.code` 명시, 포커스 언더라인 강조 (`boxShadow: inset 0 -2px 0 borderColor`, HTS 스타일), compact 모드(아이콘/클리어버튼 off, padding 2px 4px, fontSize 12px), 라벨 폰트 `FONT_SIZE.section`(14px) 통일
+  - `index.html`: `.sf-search-input::placeholder { color: #9e9e9e; }` CSS 추가 (COLOR.disabled 통일 — JS inline style로는 ::placeholder 설정 불가)
+  - `sector-stock.ts`: 자체 라벨 span 2개(stockSearchWrapper/sectorSearchWrapper) 제거, 컴포넌트 `label` 옵션 사용 (종목명/코드 파랑, 업종명 주황), width 180px 기본값 적용
+  - `stock-classification.ts`: 종목 검색(파랑 라벨+border, width 100%), 대상업종 검색(주황 라벨+border, width 100%) 추가
+  - `stock-detail.ts`: 라벨 "종목명 / 코드" + 파랑 border + width 180px 통일 (검색란은 line 150에 이미 존재, 스타일 통일 작업)
+  - `buy-target.ts`: 자체 라벨 span 제거, 컴포넌트 `label` 옵션 사용
+  - `profit-detail.ts`: stockFilterInput을 `createSearchInput` compact 모드로 교체, `.value.trim()`→`.getValue()` (3곳), 자체 "종목:" 라벨 제거, width 180px 통일
+  - 색상 구분 (검색 대상별): 종목명/코드=🔵COLOR.down(파랑), 업종/섹터=🟠COLOR.warning(주황)
+  - 검증: tsc 타입체크 0 에러, vite build 통과 (57 모듈), vitest 109/109 통과
+  - 커밋: (이번 커밋)
 - **2026-07-10: 프론트엔드 색상 체계 통일 — 하드코딩 색상 ~190곳 COLOR 상수로 일원화 + secondary→tertiary 통합**
   - 목적: 28개 파일에 분산된 하드코딩 색상(~190곳)을 `ui-styles.ts` COLOR 상수로 통일, `secondary`(#888)를 `tertiary`(#666)로 통합하여 라벨/설명문 색상 일원화
   - `ui-styles.ts`: COLOR 상수 16개 추가 — `white`, `groupHeader`, `border`/`borderDark`/`borderLight`/`borderGrid`/`borderRow`, `zebra`/`surfaceLight`/`hoverBg`/`surface`/`highlight`/`inactiveBg`/`toggleOff`; `secondary` 제거; `CELL_BORDER`·cellStyle·disabled option 하드코딩 교체
@@ -53,8 +65,8 @@
 
 ## 현재 상태
 - **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료, 보유종목 buy_date 파생·브로드캐스트 구현 완료
-- **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지·검색 입력란 추가 완료, 보유종목 테이블 매수일자 컬럼 추가 완료, 수익현황 페이지 빈 데이터 차트/도넛 stale state 근본 수정 완료, 프론트엔드 색상 체계 통일 완료 (하드코딩 ~190곳 COLOR 상수화 + secondary→tertiary 통합), `npm run build` 통과
-- **Git**: 커밋 `0bf3167` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, .devin/workflows/*, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
+- **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지·검색 입력란 추가 완료, 보유종목 테이블 매수일자 컬럼 추가 완료, 수익현황 페이지 빈 데이터 차트/도넛 stale state 근본 수정 완료, 프론트엔드 색상 체계 통일 완료 (하드코딩 ~190곳 COLOR 상수화 + secondary→tertiary 통합), 검색 입력란 공통 컴포넌트 통일 완료 (5페이지 7개 인스턴스 + label/compact 옵션 + 포커스 언더라인 + placeholder 색상), `npm run build` 통과
+- **Git**: 커밋 `a2ea0cf` push 완료 (검색 입력란 통일 작업은 미커밋)
 
 ## 다음 단계
 - **1순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
