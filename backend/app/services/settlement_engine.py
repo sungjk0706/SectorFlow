@@ -107,8 +107,8 @@ async def on_sell_fill(price: int, qty: int, stk_cd: str, stk_nm: str) -> int:
         if _cash_insufficient:
             invalidate_buy_snapshot()
             await evaluate_buy_candidates()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[정산] State Gate 회복 실패 (매도 정산은 완료): %s", e, exc_info=True)
 
     return _orderable
 
@@ -225,8 +225,8 @@ async def _load(force_reload: bool = False, initial_deposit: int | None = None) 
                 from backend.app.services.engine_state import state
                 s = state.integrated_system_settings_cache
                 _initial_deposit = int(s["test_virtual_deposit"])
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[정산] test_virtual_deposit 설정 로드 실패 (기본값 사용): %s", e, exc_info=True)
         _accumulated_investment = _initial_deposit
         _orderable = _initial_deposit
         _loaded = True
