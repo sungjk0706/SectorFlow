@@ -231,7 +231,7 @@ async def _reconciliation_on_startup() -> None:
         if is_test_mode(state.integrated_system_settings_cache):
             logger.info("[연산] 테스트모드 - trades 기반 포지션 복원")
             from backend.app.services import dry_run
-            await dry_run._load_positions()
+            await dry_run._refresh_positions_if_dirty()
             return
 
         # 1. 로컬 장부에서 Pending 상태인 주문 조회

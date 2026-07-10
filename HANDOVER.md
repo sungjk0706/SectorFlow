@@ -1,6 +1,22 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-10: 수익상세/매도설정 페이지 데이터 정합성 근본 수정 + 매수일자 최초 매수일 표시 + 매수일자 색상 변경**
+  - 문제 1: 수익상세 페이지(매수 8건/매도 6건)와 매도설정 페이지(보유종목 5종목) 간 데이터 불일치
+  - 원인 1: `trade_history._buy_history/_sell_history`(수익상세 원천)와 `dry_run._test_positions`(보유종목 원천)가 이중 상태로 관리, `record_buy/record_sell`(동기)과 `_apply_buy/_apply_sell`(비동기 0.1초 후)이 원자적으로 결합되지 않아 diverge
+  - 수정 1 (SSOT 일원화): `dry_run._test_positions`를 파생 캐시로 격하 — `_positions_dirty` 플래그 추가, `_load_positions()` → `_refresh_positions_if_dirty()`로 변경 (dirty 시 `build_positions_from_trades()`로 재구축, cur_price/stk_nm 등 비파생 필드 보존)
+  - 수정 1: `_apply_buy/_apply_sell`에서 `_test_positions` 직접 수정 제거, `settlement_engine`만 갱신
+  - 수정 1: `trade_history._insert_trade()`/`clear_test_history()`/`_reset_global_state()`에서 `dry_run._positions_dirty = True` 설정 (캐시 무효화)
+  - 수정 1: `engine_lifecycle.py` `_load_positions()` → `_refresh_positions_if_dirty()` 교체
+  - 문제 2: 보유종목 매수일자가 모두 오늘로 표시됨 (최초 매수일이 아님)
+  - 원인 2: `build_positions_from_trades()`가 `_buy_history`(DESC 정렬)를 순회하며 첫 발견 매수의 date를 buy_date로 설정 — DESC이므로 첫 발견 = 최근 매수일. 이후 더 오래된 매수를 만나도 buy_date 갱신 안 함. `get_earliest_buy_date()`도 같은 버그
+  - 수정 2: `build_positions_from_trades()` `if pos:` 분기에 `buy_date` 최초 매수일 추적 로직 추가 (문자열 비교 `rec_date < pos["buy_date"]`)
+  - 수정 2: `get_earliest_buy_date()`를 전체 순회하며 최소 date 추적하도록 수정
+  - 문제 3: 매수일자 컬럼 색상 — 당일 빨강(강조), 과거 회색
+  - 수정 3: `sell-position.ts` 매수일자 컬럼 색상 변경 — 당일=`COLOR.neutral`(#333, 기본 텍스트), 과거=`COLOR.disabled`(#9e9e9e, 연한 회색)
+  - 데이터 검증: 5종목(161390/000990/066570/000270/035420) 모두 2026-07-10 매수, 매도 기록 없음 → buy_date=오늘이 정확함. 전체 44건 매수/39건 매도, 잔여 5종목 정합
+  - 검증: 런타임 시작 정상 (에러 없음), 백엔드 테스트 1025 passed, 프론트엔드 build 성공
+  - 커밋: (이번 커밋)
 - **2026-07-10: 수익현황 페이지 빈 데이터 차트/도넛 stale state 근본 수정 — 더미 데이터 생성 로직 완전 제거 + currentSegments 초기화**
   - 문제: 날짜 범위에 매도 데이터가 없어도 일별 수익률 차트에 더미 막대/라인이 표시되고, 업종별 수익 분포 도넛 우측 범례에 이전 데이터가 잔류
   - 원인: `canvas-profit-chart.ts`의 `generateDummyData()` 폴백 (원칙 20 위반), `canvas-sector-donut.ts`의 `render()`에서 `currentSegments` 미초기화 (원칙 22 위반)
@@ -31,6 +47,10 @@
 - **Git**: 커밋 `77d1d3c` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, .devin/workflows/*, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
 
 ## 다음 단계
+- **프론트엔드 색상 체계 통일 (별도 세션)**:
+  - 하드코딩 색상 26곳 → COLOR 상수로 통일 (`#aaa`→`disabled`, `#999`→`disabled`, `#111`→`neutral` 등)
+  - `secondary`(#888)/`tertiary`(#666) 용도 정리 — 빈 상태 색상을 `disabled`로 통일, 라벨/설명문은 `tertiary`로 통일
+  - 조사 완료: `frontend/src/components/common/ui-styles.ts` COLOR 상수 21개, 사용 364곳 매핑 완료
 - **1순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석

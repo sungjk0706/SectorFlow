@@ -91,12 +91,23 @@ def _trade_params(rec: dict) -> tuple:
 
 
 async def _insert_trade(rec: dict) -> None:
-    """메모리에 체결 기록 추가 + DB에 비동기 저장 (db_writer queue 경유)."""
+    """메모리에 체결 기록 추가 + DB에 비동기 저장 (db_writer queue 경유).
+
+    메모리 추가 후 dry_run._positions_dirty=True로 설정하여
+    _test_positions 캐시가 다음 조회 시 build_positions_from_trades로 재구축되도록 한다.
+    (SSOT: trade_history가 유일한 진실 원천, _test_positions는 파생 캐시)
+    """
     async with _history_lock:
         if rec["side"] == "BUY":
             _buy_history.insert(0, rec)
         else:
             _sell_history.insert(0, rec)
+    # dry_run 포지션 캐시 무효화 (순환 참조 방지: 지연 import)
+    try:
+        from backend.app.services import dry_run
+        dry_run._positions_dirty = True
+    except Exception:
+        pass
     try:
         from backend.app.db.db_writer import execute_db_write, DBWriteOperation
         await execute_db_write(DBWriteOperation(
@@ -210,6 +221,12 @@ def _reset_global_state() -> None:
     _loaded = False
     _buy_history.clear()
     _sell_history.clear()
+    # dry_run 포지션 캐시 무효화
+    try:
+        from backend.app.services import dry_run
+        dry_run._positions_dirty = True
+    except Exception:
+        pass
 
 
 def start_consumer_task() -> None:
@@ -506,6 +523,12 @@ async def clear_test_history() -> None:
     async with _history_lock:
         _buy_history[:] = [r for r in _buy_history if r["trade_mode"] != "test"]
         _sell_history[:] = [r for r in _sell_history if r["trade_mode"] != "test"]
+    # dry_run 포지션 캐시 무횜화
+    try:
+        from backend.app.services import dry_run
+        dry_run._positions_dirty = True
+    except Exception:
+        pass
     try:
         from backend.app.db.db_writer import execute_db_write, DBWriteOperation
         await execute_db_write(DBWriteOperation(
@@ -544,6 +567,10 @@ async def build_positions_from_trades(trade_mode: str) -> dict[str, dict]:
                 pos["qty"] = new_qty
                 pos["avg_price"] = ((old_avg * old_qty) + (price * qty)) // new_qty if new_qty > 0 else price
                 pos["total_fee"] = old_fee + fee
+                # buy_date를 최초 매수일로 추적 (_buy_history는 DESC 정렬이므로 더 오래된 date가 나중에 옴)
+                rec_date = rec.get("date", "")
+                if rec_date and (not pos.get("buy_date") or rec_date < pos["buy_date"]):
+                    pos["buy_date"] = rec_date
             else:
                 positions[cd] = {
                     "stk_cd": cd,
@@ -577,15 +604,21 @@ async def build_positions_from_trades(trade_mode: str) -> dict[str, dict]:
 
 
 async def get_earliest_buy_date(stk_cd: str, trade_mode: str) -> str:
-    """해당 종목의 최초 매수일 조회. SSOT: _buy_history에서 파생."""
+    """해당 종목의 최초 매수일 조회. SSOT: _buy_history에서 파생.
+
+    _buy_history는 DESC 정렬(최신순)이므로 전체 순회하며 최소 date를 추적한다.
+    """
     await _ensure_loaded()
     async with _history_lock:
+        earliest = ""
         for rec in _buy_history:
             if rec.get("trade_mode") != trade_mode:
                 continue
             if rec["stk_cd"] == stk_cd:
-                return rec.get("date", "")
-    return ""
+                d = rec.get("date", "")
+                if d and (not earliest or d < earliest):
+                    earliest = d
+        return earliest
 
 
 async def close_db_connection() -> None:

@@ -23,6 +23,7 @@ from backend.app.core.constants import (
 )
 from backend.app.services import dry_run
 from backend.app.services import settlement_engine
+from backend.app.services import trade_history
 from backend.app.services.engine_state import state
 
 
@@ -34,6 +35,33 @@ async def _noop_async(*args, **kwargs) -> None:
 
 def _noop_sync(*args, **kwargs) -> None:
     pass
+
+
+# ── 프로덕션 흐름 헬퍼: record_buy/record_sell → fake_fill_event ────────────
+# 프로덕션에서는 trading.execute_buy가 record_buy를 먼저 호출한 후
+# fake_fill_event를 비동기 태스크로 실행한다.
+# SSOT 아키텍처에서 포지션은 record_buy → 캐시 무효화 → get_positions() 시
+# build_positions_from_trades로 재구축되므로, record_buy가 선행되어야 한다.
+
+async def _do_buy(code: str, qty: int, price: int, stk_nm: str = "") -> None:
+    """프로덕션 매수 흐름: record_buy(슬리피지 적용가) → fake_fill_event."""
+    fill_price = dry_run.estimate_fill_price(price, "BUY")
+    await trade_history.record_buy(
+        stk_cd=code, stk_nm=stk_nm, price=fill_price, qty=qty,
+        reason="test", trade_mode="test",
+    )
+    await dry_run.fake_fill_event("BUY", code, qty, price, stk_nm)
+
+
+async def _do_sell(code: str, qty: int, price: int, stk_nm: str = "") -> None:
+    """프로덕션 매도 흐름: record_sell(슬리피지 적용가) → fake_fill_event."""
+    fill_price = dry_run.estimate_fill_price(price, "SELL")
+    await trade_history.record_sell(
+        stk_cd=code, stk_nm=stk_nm, price=fill_price, qty=qty,
+        avg_buy_price=dry_run.estimate_fill_price(_TEST_PRICE, "BUY"),
+        reason="test", trade_mode="test",
+    )
+    await dry_run.fake_fill_event("SELL", code, qty, price, stk_nm)
 
 
 # ── 픽스처 ───────────────────────────────────────────────────────────────────
@@ -57,20 +85,22 @@ async def _setup_test_env(monkeypatch):
     # 2. settlement_engine._broadcast_delta → engine_service import 시도 (테스트 환경 미기동)
     monkeypatch.setattr(settlement_engine, "_broadcast_delta", _noop_async)
     # 3. trade_history._ensure_loaded → DB I/O 차단 (build_positions_from_trades 호출 시)
-    from backend.app.services import trade_history
     monkeypatch.setattr(trade_history, "_ensure_loaded", _noop_async)
     # 4. trading._fire_and_forget_telegram → NotificationWorker 큐가 다른 이벤트 루프에 바인딩되어 RuntimeError
     import backend.app.services.trading as trading_mod
     monkeypatch.setattr(trading_mod, "_fire_and_forget_telegram", _noop_sync)
 
     # ── DB 로드 스킵 ──
-    # _positions_loaded = True → _load_positions()가 DB 조회하지 않고 즉시 return
+    # _positions_loaded=True + _positions_dirty=False → _refresh_positions_if_dirty()가 재구축 스킵
     dry_run._positions_loaded = True
+    dry_run._positions_dirty = False
     # settlement_engine._loaded = True → _load()가 DB 조회하지 않고 즉시 return
     settlement_engine._loaded = True
 
     # ── 인메모리 상태 초기화 ──
     dry_run._test_positions.clear()
+    trade_history._buy_history.clear()
+    trade_history._sell_history.clear()
     # _loaded=False일 때 _load()가 기본값/설정값으로 초기화; 테스트에서는 직접 변수 설정
     settlement_engine._accumulated_investment = 10_000_000
     settlement_engine._orderable = 10_000_000
@@ -85,6 +115,8 @@ async def _setup_test_env(monkeypatch):
 
     # ── 정리 ──
     dry_run._test_positions.clear()
+    trade_history._buy_history.clear()
+    trade_history._sell_history.clear()
     state.auto_trade = orig_auto_trade
     state.access_token = None
 
@@ -119,7 +151,7 @@ class TestFakeFillEventBuy:
 
     async def test_fake_fill_event_buy_creates_position(self):
         """fake_fill_event("BUY", ...) 호출 후 포지션 생성 확인."""
-        await dry_run.fake_fill_event("BUY", _TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
+        await _do_buy(_TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
 
         pos = await dry_run.get_position(_TEST_CODE)
         assert pos is not None, "fake_fill_event BUY 후 포지션이 생성되어야 함"
@@ -131,7 +163,7 @@ class TestFakeFillEventBuy:
     async def test_fake_fill_event_buy_deducts_cash(self):
         """fake_fill_event("BUY", ...) 후 Settlement Engine 예수금 차감 확인."""
         original_cash = settlement_engine.get_orderable()
-        await dry_run.fake_fill_event("BUY", _TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
+        await _do_buy(_TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
 
         after_cash = settlement_engine.get_orderable()
         _fill = dry_run.estimate_fill_price(_TEST_PRICE, "BUY")
@@ -146,9 +178,9 @@ class TestFakeFillEventSell:
     async def test_fake_fill_event_sell_removes_position(self):
         """fake_fill_event("SELL", ...) 후 포지션 삭제 확인."""
         # 선매수
-        await dry_run.fake_fill_event("BUY", _TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
+        await _do_buy(_TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
         # 매도
-        await dry_run.fake_fill_event("SELL", _TEST_CODE, _TEST_QTY, _TEST_PRICE + 1_000)
+        await _do_sell(_TEST_CODE, _TEST_QTY, _TEST_PRICE + 1_000, _TEST_NM)
 
         pos = await dry_run.get_position(_TEST_CODE)
         assert pos is None, "fake_fill_event SELL 후 포지션이 삭제되어야 함 (수량 0)"
@@ -156,11 +188,11 @@ class TestFakeFillEventSell:
     async def test_fake_fill_event_sell_adds_cash(self):
         """fake_fill_event("SELL", ...) 후 Settlement Engine 예수금 증가 확인."""
         # 선매수
-        await dry_run.fake_fill_event("BUY", _TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
+        await _do_buy(_TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
         cash_after_buy = settlement_engine.get_orderable()
         # 매도
         sell_price = _TEST_PRICE + 1_000
-        await dry_run.fake_fill_event("SELL", _TEST_CODE, _TEST_QTY, sell_price)
+        await _do_sell(_TEST_CODE, _TEST_QTY, sell_price, _TEST_NM)
 
         cash_after_sell = settlement_engine.get_orderable()
         assert cash_after_sell > cash_after_buy, "매도 후 예수금이 증가해야 함"
@@ -177,7 +209,7 @@ class TestOnFillUpdateCalledInTestMode:
         mgr._buy_state[_TEST_CODE] = {"last_req_ts": 0.0, "has_open_buy": True}
         state.auto_trade = mgr
 
-        await dry_run.fake_fill_event("BUY", _TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
+        await _do_buy(_TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
 
         assert mgr._buy_state[_TEST_CODE]["has_open_buy"] is False, \
             "fake_fill_event BUY 후 has_open_buy가 False로 해제되어야 함"
@@ -190,9 +222,9 @@ class TestOnFillUpdateCalledInTestMode:
         state.auto_trade = mgr
 
         # 선매수 (포지션 생성)
-        await dry_run.fake_fill_event("BUY", _TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
+        await _do_buy(_TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
         # 매도
-        await dry_run.fake_fill_event("SELL", _TEST_CODE, _TEST_QTY, _TEST_PRICE + 1_000)
+        await _do_sell(_TEST_CODE, _TEST_QTY, _TEST_PRICE + 1_000, _TEST_NM)
 
         assert _TEST_CODE not in mgr._recent_sells, \
             "fake_fill_event SELL 후 _recent_sells에서 해제되어야 함 (잔고 기반 폴백 없음)"
@@ -235,7 +267,7 @@ class TestOnFillAfterWsWorksInTestMode:
         """fake_fill_event BUY → _on_fill_after_ws 정상 실행 확인."""
         from backend.app.services.engine_account import _on_fill_after_ws
 
-        await dry_run.fake_fill_event("BUY", _TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
+        await _do_buy(_TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
 
         # _on_fill_after_ws 직접 호출 — TypeError 없이 실행되어야 함
         try:
@@ -318,7 +350,7 @@ class TestFakeFillEventSlippage:
 
     async def test_buy_fill_price_includes_slippage(self):
         """매수 체결가가 슬리피지 적용 후 가격과 일치하는지 확인."""
-        await dry_run.fake_fill_event("BUY", _TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
+        await _do_buy(_TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
 
         pos = await dry_run.get_position(_TEST_CODE)
         assert pos is not None
@@ -329,12 +361,12 @@ class TestFakeFillEventSlippage:
     async def test_sell_fill_price_includes_slippage(self):
         """매도 체결가가 슬리피지 적용 후 가격과 일치하는지 확인 (예수금 증가량으로 간접 검증)."""
         # 선매수 (슬리피지 적용된 가격으로 포지션 생성)
-        await dry_run.fake_fill_event("BUY", _TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
+        await _do_buy(_TEST_CODE, _TEST_QTY, _TEST_PRICE, _TEST_NM)
         cash_after_buy = settlement_engine.get_orderable()
 
         # 매도 (슬리피지 적용된 가격으로 예수금 증가)
         sell_raw_price = _TEST_PRICE + 1_000  # 71,000
-        await dry_run.fake_fill_event("SELL", _TEST_CODE, _TEST_QTY, sell_raw_price)
+        await _do_sell(_TEST_CODE, _TEST_QTY, sell_raw_price, _TEST_NM)
 
         cash_after_sell = settlement_engine.get_orderable()
         assert cash_after_sell > cash_after_buy, "매도 후 예수금이 증가해야 함"
