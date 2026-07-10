@@ -88,7 +88,7 @@ const COLUMNS: ColumnDef<Position>[] = [
       span.textContent = p.buy_date || ''
       const today = new Date()
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-      span.style.color = p.buy_date === todayStr ? COLOR.up : COLOR.secondary
+      span.style.color = p.buy_date === todayStr ? COLOR.neutral : COLOR.disabled
       return span
     },
   },

@@ -16,10 +16,15 @@ from backend.app.core.settings_file import load_integrated_system_settings, upda
 from backend.app.services import settlement_engine
 logger = logging.getLogger(__name__)
 
-# ── 가상 잔고 (trades 기반 인메모리 캐시) ───────────────────────────────────
+# ── 가상 잔고 (trades 기반 파생 캐시 — SSOT: trade_history) ────────────────
 # key: stk_cd (서버 수신 형식 그대로), value: dict (kt00018 응답 필드와 동일 구조)
+# _test_positions는 trade_history.build_positions_from_trades()의 파생 캐시이다.
+# record_buy/record_sell이 _insert_trade에서 _positions_dirty=True로 설정하면,
+# 다음 get_positions() 호출 시 build_positions_from_trades()로 재구축된다.
+# cur_price/stk_nm 등 비파생 필드는 재구축 시 기존 캐시에서 보존된다.
 _test_positions: dict[str, dict] = {}
 _positions_loaded: bool = False
+_positions_dirty: bool = True   # 최초 로드 필요
 
 # 가짜 주문번호 시퀀스
 _fake_order_seq: int = 9_000_000
@@ -28,21 +33,39 @@ _fake_order_seq: int = 9_000_000
 # Settlement Engine으로 위임 (settlement_engine.py)
 
 
-# ── 포지션 파일 저장/로드 ────────────────────────────────────────────────────
+# ── 포지션 캐시 재구축 ──────────────────────────────────────────────────────
 
-async def _load_positions() -> None:
-    """trades 테이블 기반으로 가상 포지션 복원. SSOT: trades가 유일한 진실 원천."""
-    global _positions_loaded
-    if _positions_loaded:
+async def _refresh_positions_if_dirty() -> None:
+    """_positions_dirty가 True면 trade_history.build_positions_from_trades()로 재구축.
+
+    SSOT: trade_history._buy_history/_sell_history가 유일한 진실 원천.
+    _test_positions는 파생 캐시이며, record_buy/record_sell 후 무효화된다.
+    재구축 시 cur_price/stk_nm 등 비파생 필드는 기존 캐시에서 보존된다.
+    """
+    global _positions_loaded, _positions_dirty
+    if _positions_loaded and not _positions_dirty:
         return
     _positions_loaded = True
+    _positions_dirty = False
     try:
         from backend.app.services import trade_history
         computed = await trade_history.build_positions_from_trades("test")
+        # 비파생 필드 보존: cur_price, change, change_rate, bid_depth, ask_depth, stk_nm
+        _preserve_fields = ("cur_price", "change", "change_rate", "bid_depth", "ask_depth")
+        for cd, new_pos in computed.items():
+            old = _test_positions.get(cd)
+            if old:
+                for f in _preserve_fields:
+                    if old.get(f) is not None:
+                        new_pos[f] = old[f]
+                # stk_nm: 기존 캐시에 있고 새 값이 비어있으면 보존
+                if old.get("stk_nm") and not new_pos.get("stk_nm"):
+                    new_pos["stk_nm"] = old["stk_nm"]
+        _test_positions.clear()
         _test_positions.update(computed)
-        logger.info("[매매] trades 복원 -- %d종목", len(_test_positions))
+        logger.info("[매매] 포지션 캐시 재구축 -- %d종목", len(_test_positions))
     except Exception as e:
-        logger.warning("[매매] trades 포지션 복원 실패: %s", e)
+        logger.warning("[매매] 포지션 캐시 재구축 실패: %s", e)
 
 
 def _next_fake_order_no() -> str:
@@ -176,60 +199,24 @@ async def fake_fill_event(
 # ── 2. 인메모리 잔고 관리 ───────────────────────────────────────────────────
 
 async def _apply_buy(code: str, qty: int, price: int) -> None:
-    """매수 체결 -> 가상 잔고에 추가/증가 + Settlement Engine 예수금 차감."""
-    from backend.app.services.engine_symbol_utils import _base_stk_cd
-    
-    await _load_positions()
+    """매수 체결 -> Settlement Engine 예수금 차감만 수행.
+
+    _test_positions는 record_buy → 캐시 무효화 → get_positions() 시
+    build_positions_from_trades()로 재구축되므로 여기서 직접 수정하지 않는다.
+    """
     await settlement_engine.on_buy_fill(price, qty)
-    fee = round(price * qty * 0.00015)  # 포지션 추적용 수수료
-    norm_code = _base_stk_cd(code)
-    pos = _test_positions.get(norm_code)
-    if pos:
-        old_qty = int(pos.get("qty", 0))
-        old_avg = int(pos.get("avg_price", 0))
-        old_fee = int(pos.get("total_fee", 0))
-        new_qty = old_qty + qty
-        new_avg = ((old_avg * old_qty) + (price * qty)) // new_qty if new_qty > 0 else price
-        pos["qty"] = new_qty
-        pos["avg_price"] = new_avg
-        pos["total_fee"] = old_fee + fee
-        _recalc_pnl(pos)
-    else:
-        _today = datetime.now().strftime("%Y-%m-%d")
-        _test_positions[norm_code] = {
-            "stk_cd": norm_code,
-            "stk_nm": "",       # 외부에서 set_stock_name()으로 채움
-            "qty": qty,
-            "avg_price": price,
-            "cur_price": price,
-            "total_fee": fee,
-            "buy_amt": price * qty + fee,
-            "eval_amt": price * qty,
-            "pnl_amount": -(fee),
-            "pnl_rate": 0.0,
-            "buy_date": _today,
-        }
 
 async def _apply_sell(code: str, qty: int, price: int) -> None:
-    """매도 체결 -> 가상 잔고에서 차감 + Settlement Engine 매도 정산. 수량 0이면 제거."""
+    """매도 체결 -> Settlement Engine 매도 정산만 수행.
+
+    _test_positions는 record_sell → 캐시 무효화 → get_positions() 시
+    build_positions_from_trades()로 재구축되므로 여기서 직접 수정하지 않는다.
+    """
     from backend.app.services.engine_symbol_utils import _base_stk_cd
-    
-    await _load_positions()
     norm_code = _base_stk_cd(code)
+    await _refresh_positions_if_dirty()
     stk_nm = _test_positions.get(norm_code, {}).get("stk_nm", "")
     await settlement_engine.on_sell_fill(price, qty, norm_code, stk_nm)
-    pos = _test_positions.get(norm_code)
-    if not pos:
-        logger.warning("[매매] 매도 요청했으나 가상 잔고에 %s 없음", norm_code)
-        return
-    old_qty = int(pos.get("qty", 0))
-    new_qty = max(0, old_qty - qty)
-    if new_qty == 0:
-        _test_positions.pop(norm_code, None)
-    else:
-        pos["qty"] = new_qty
-        pos["total_fee"] = int(pos.get("total_fee", 0) * new_qty / old_qty) if old_qty > 0 else 0
-        _recalc_pnl(pos)
 
 def _recalc_pnl(pos: dict) -> None:
     """현재가 기준 손익 재계산 (매수금액=수수료 포함)."""
@@ -251,8 +238,8 @@ async def update_price(code: str, price: int) -> bool:
     반환: True=가격 변경됨, False=해당 종목 미보유 또는 가격 동일
     """
     from backend.app.services.engine_symbol_utils import _base_stk_cd
-    
-    await _load_positions()
+
+    await _refresh_positions_if_dirty()
     norm_code = _base_stk_cd(code)
     pos = _test_positions.get(norm_code)
     if not pos:
@@ -266,9 +253,15 @@ async def update_price(code: str, price: int) -> bool:
 
 
 async def set_stock_name(code: str, name: str) -> None:
-    """종목명 세팅 (매수 시점에 이름을 모를 수 있으므로 별도 호출)."""
+    """종목명 세팅 (매수 시점에 이름을 모를 수 있으므로 별도 호출).
+
+    build_positions_from_trades가 _buy_history에서 stk_nm을 가져오므로,
+    record_buy에 stk_nm이 정확히 전달되면 이 함수는 보조 역할만 한다.
+    캐시 재구축 후에도 stk_nm이 보존되도록 _refresh_positions_if_dirty에서 처리한다.
+    """
     from backend.app.services.engine_symbol_utils import _base_stk_cd
-    
+
+    await _refresh_positions_if_dirty()
     norm_code = _base_stk_cd(code)
     pos = _test_positions.get(norm_code)
     if pos:
@@ -278,38 +271,42 @@ async def set_stock_name(code: str, name: str) -> None:
 # ── 4. 조회 헬퍼 ────────────────────────────────────────────────────────────
 
 async def get_positions() -> list[dict]:
-    """engine_service가 잔고 목록으로 사용할 수 있는 리스트 반환."""
-    await _load_positions()
+    """engine_service가 잔고 목록으로 사용할 수 있는 리스트 반환.
+
+    _positions_dirty가 True면 build_positions_from_trades로 재구축 후 반환.
+    """
+    await _refresh_positions_if_dirty()
     return list(_test_positions.values())
 
 
 async def get_position(code: str) -> Optional[dict]:
     from backend.app.services.engine_symbol_utils import _base_stk_cd
-    
-    await _load_positions()
+
+    await _refresh_positions_if_dirty()
     norm_code = _base_stk_cd(code)
     return _test_positions.get(norm_code)
 
 
 async def has_position(code: str) -> bool:
     from backend.app.services.engine_symbol_utils import _base_stk_cd
-    
-    await _load_positions()
+
+    await _refresh_positions_if_dirty()
     norm_code = _base_stk_cd(code)
     pos = _test_positions.get(norm_code)
     return pos is not None and int(pos.get("qty", 0)) > 0
 
 
 async def position_codes() -> set[str]:
-    await _load_positions()
+    await _refresh_positions_if_dirty()
     return {cd for cd, p in _test_positions.items() if int(p.get("qty", 0)) > 0}
 
 
 async def clear() -> None:
     """가상 포지션만 초기화 (예수금은 건드리지 않음 -- 사용자 직접 초기화만 허용)."""
-    global _positions_loaded
+    global _positions_loaded, _positions_dirty
     _test_positions.clear()
     _positions_loaded = True
+    _positions_dirty = False
 
 
 def _estimate_market_price(code: str) -> int:
