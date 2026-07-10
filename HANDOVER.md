@@ -25,34 +25,36 @@
     - `trade_history.py:228` — _reset_global_state() 내 동일 패턴
     - `trade_history.py:530` — clear_test_history() 내 동일 패턴
     - 검증: py_compile 2개 통과, 런타임 기동 정상, 테스트 106 passed (0.42s), 잔존 프로세스 0건
-  - **검토 권장 (D단계, 별도)**: 영구 저장소 실패를 `logger.warning` → `logger.error` 검토
-    - `settlement_engine.py:176` — "상태 저장 실패"
-    - `settlement_engine.py:219` — "상태 파일 로드 실패 (기본값 사용)"
+  - **D단계 완료: 영구 저장소 실패 로그 레벨 승격 + 데드 코드 제거 4건** — 커밋 `39db2b9`
+    - `settlement_engine.py:173` — `_persist()` 데드 코드 try/except 제거 (save_settlement_state 내부에서 예외 삼킴)
+    - `settlement_engine.py:216` — 상태 로드 실패 `logger.warning` → `logger.error` + `exc_info=True`
+    - `stock_tables.py:121` — 저장 실패 `logger.warning` → `logger.error` + `exc_info=True`
+    - `stock_tables.py:137` — 로드 실패 `logger.warning` → `logger.error` + `exc_info=True`
+    - 검증: py_compile 2개 통과, 런타임 기동 정상, 잔존 프로세스 0건
 
 ## 직전 완료 작업
+- **2026-07-11: D단계 — 영구 저장소 실패 로그 레벨 승격 + 데드 코드 제거 4건 (커밋 `39db2b9`)**
+  - `settlement_engine.py:173, 216` + `stock_tables.py:121, 137`
+  - `_persist()` 데드 코드 try/except 제거 + 3건 `logger.warning` → `logger.error` + `exc_info=True`
+  - 검증: py_compile 2개 통과, 런타임 기동 정상, 잔존 프로세스 0건
 - **2026-07-11: A단계 — silent 예외 처리 5건 수정 (커밋 `9cd7e60`)**
   - `settlement_engine.py:110, 228` + `trade_history.py:109, 228, 530`
   - `except Exception: pass` → `except Exception as e: logger.warning("...", exc_info=True)`
   - 검증: py_compile 2개 통과, 런타임 기동 정상, 테스트 106 passed, 잔존 프로세스 0건
-- **2026-07-11: B단계 — 부적절한 로그 레벨 수정 2건 (커밋 `2ed1c6f`)**
-  - `engine_cache.py:88, 152` — INFO → WARNING
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치 — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가 — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: `5d175d9` (C-2-1) + `82032e1` (C-2-2) + `9b5d60d` (C-2-3) + `2ed1c6f` (B단계) + `9cd7e60` (A단계) — push 미수행
+- **Git**: `5d175d9` (C-2-1) + `82032e1` (C-2-2) + `9b5d60d` (C-2-3) + `2ed1c6f` (B단계) + `9cd7e60` (A단계) + `39db2b9` (D단계) — push 완료
 - **테스트 커버리지**: Stage 1~9 완료 — 백엔드 2138 passed, 프론트엔드 112 passed (실행 시점 기준)
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 
 ## 다음 단계
-- **1순위: D단계 — 영구 저장소 실패 로그 레벨 검토 (1세션)**:
-  - `settlement_engine.py:176, 219` — `logger.warning` → `logger.error` 검토
-  - 검증: py_compile + 런타임 기동
-- **2순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
+- **1순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
   - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
-- **3순위: 테스트 커버리지 다음 Stage 대상 선정 (사용자와 논의)**:
+- **2순위: 테스트 커버리지 다음 Stage 대상 선정 (사용자와 논의)**:
   - Stage 1~9 완료 — 전체 2138 passed (P1~P6 우선순위별 진행 완료)
   - 남은 미진행 파일: `telegram_bot.py` (P6)
   - 다음 Stage 대상 파일 선정 필요
