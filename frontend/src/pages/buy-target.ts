@@ -28,7 +28,13 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
     render: (t) => {
       const cell = createPriceCell(t.cur_price != null ? Number(t.cur_price) : null, t.change_rate != null ? Number(t.change_rate) : null)
       if (t.high_5d && t.high_5d > 0 && t.cur_price != null && Number(t.cur_price) > t.high_5d) {
-        cell.style.backgroundColor = COLOR.successBg
+        cell.style.justifyContent = 'space-between'
+        const icon = document.createElement('span')
+        icon.textContent = '▲'
+        icon.style.color = COLOR.up
+        icon.style.fontSize = FONT_SIZE.body
+        icon.style.fontWeight = FONT_WEIGHT.bold
+        cell.insertBefore(icon, cell.firstChild)
       }
       return cell
     },
@@ -88,7 +94,13 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
   },
   {
     key: 'high_5d', label: '5일고가', align: 'right',
-    render: (t) => createNumberCell(Number(t.high_5d) || 0),
+    render: (t) => {
+      const cell = createNumberCell(Number(t.high_5d) || 0)
+      if (t.high_5d && t.high_5d > 0 && t.cur_price != null && Number(t.cur_price) > t.high_5d) {
+        cell.style.backgroundColor = COLOR.successBg
+      }
+      return cell
+    },
   },
   {
     key: 'boost_score', label: '가산점', align: 'right',
