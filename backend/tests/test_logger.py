@@ -1,0 +1,239 @@
+"""logger.py 단위 테스트 — 로거 설정 + 파일 라이터 + InterceptHandler 검증.
+
+_get_file_queue: asyncio.Queue 지연 초기화
+_get_daily_log_path: 일별 로그 파일 경로
+_rotate_old_logs: 오래된 로그 파일 삭제
+_info_file_sink: 큐 적재 싱크
+InterceptHandler: 표준 logging → loguru 리다이렉트
+setup_loguru: 메인 설정 (이벤트 루프 + 파일 I/O mock)
+stop_file_writers: 태스크 정지
+get_logger: deprecated 경고
+
+주의: 실제 asyncio.Queue / create_task / 파일 I/O 사용 금지 (hang 방지).
+"""
+from __future__ import annotations
+
+import asyncio
+import io
+import logging
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from backend.app.core import logger as logger_mod
+from backend.app.core.logger import (
+    LOG_DIR,
+    LOG_FILE,
+    _MAX_FILE_SIZE,
+    _BACKUP_COUNT,
+    _get_file_queue,
+    _get_daily_log_path,
+    _info_file_sink,
+    InterceptHandler,
+    get_logger,
+)
+
+
+# ── 상수 ──────────────────────────────────────────────────────────────────────────
+
+class TestConstants:
+    def test_log_dir_path(self):
+        assert LOG_DIR.name == "logs"
+
+    def test_log_file_path(self):
+        assert LOG_FILE.name == "trading.log"
+        assert LOG_FILE.parent == LOG_DIR
+
+    def test_max_file_size_10mb(self):
+        assert _MAX_FILE_SIZE == 10 * 1024 * 1024
+
+    def test_backup_count_5(self):
+        assert _BACKUP_COUNT == 5
+
+
+# ── _get_file_queue ───────────────────────────────────────────────────────────────
+
+class TestGetFileQueue:
+    def test_returns_queue(self):
+        # 이미 초기화되어 있을 수 있으므로 현재 상태 확인
+        q = _get_file_queue()
+        assert q is not None
+        assert hasattr(q, "put_nowait")
+        assert hasattr(q, "get")
+
+    def test_returns_same_instance(self):
+        q1 = _get_file_queue()
+        q2 = _get_file_queue()
+        assert q1 is q2
+
+
+# ── _get_daily_log_path ───────────────────────────────────────────────────────────
+
+class TestGetDailyLogPath:
+    def test_returns_correct_format(self):
+        path = _get_daily_log_path("trading.log")
+        today = datetime.now().strftime("%Y-%m-%d")
+        assert path.name == f"trading_{today}.log"
+        assert path.parent == LOG_DIR
+
+    def test_strips_log_extension(self):
+        path = _get_daily_log_path("debug.log")
+        today = datetime.now().strftime("%Y-%m-%d")
+        assert path.name == f"debug_{today}.log"
+
+    def test_returns_path_object(self):
+        path = _get_daily_log_path("trading.log")
+        assert isinstance(path, Path)
+
+
+# ── _info_file_sink ────────────────────────────────────────────────────────────────
+
+class TestInfoFileSink:
+    def test_no_loop_does_nothing(self):
+        with patch.object(logger_mod, "_loop_ref", None):
+            # 예외 발생하지 않아야 함
+            _info_file_sink(MagicMock())
+
+    def test_closed_loop_does_nothing(self):
+        mock_loop = MagicMock()
+        mock_loop.is_closed.return_value = True
+        with patch.object(logger_mod, "_loop_ref", mock_loop):
+            _info_file_sink(MagicMock())
+        mock_loop.call_soon_threadsafe.assert_not_called()
+
+    def test_open_loop_schedules_put(self):
+        mock_queue = MagicMock()
+        mock_loop = MagicMock()
+        mock_loop.is_closed.return_value = False
+        with (
+            patch.object(logger_mod, "_loop_ref", mock_loop),
+            patch.object(logger_mod, "_get_file_queue", return_value=mock_queue),
+        ):
+            _info_file_sink(MagicMock())
+        mock_loop.call_soon_threadsafe.assert_called_once()
+
+    def test_runtime_error_suppressed(self):
+        mock_loop = MagicMock()
+        mock_loop.is_closed.return_value = False
+        mock_loop.call_soon_threadsafe.side_effect = RuntimeError("loop closed")
+        with (
+            patch.object(logger_mod, "_loop_ref", mock_loop),
+            patch.object(logger_mod, "_get_file_queue", return_value=MagicMock()),
+        ):
+            # 예외 발생하지 않아야 함
+            _info_file_sink(MagicMock())
+
+
+# ── InterceptHandler ───────────────────────────────────────────────────────────────
+
+class TestInterceptHandler:
+    def test_ws_msg_map_contains_connection_messages(self):
+        assert "connection open" in InterceptHandler._WS_MSG_MAP
+        assert "connection closed" in InterceptHandler._WS_MSG_MAP
+        assert "연결 닫힘" in InterceptHandler._WS_MSG_MAP
+
+    def test_ws_msg_map_values_are_korean(self):
+        assert InterceptHandler._WS_MSG_MAP["connection open"] == "[연결] 성공"
+        assert InterceptHandler._WS_MSG_MAP["connection closed"] == "[연결] 종료"
+
+    def test_emit_does_not_raise(self):
+        handler = InterceptHandler()
+        record = logging.LogRecord(
+            name="test", level=logging.INFO, pathname=__file__, lineno=1,
+            msg="test message", args=(), exc_info=None,
+        )
+        # loguru로 리다이렉트되므로 예외 없이 완료되어야 함
+        handler.emit(record)
+
+
+# ── _rotate_old_logs ───────────────────────────────────────────────────────────────
+
+class TestRotateOldLogs:
+    @pytest.mark.asyncio
+    async def test_no_files_no_error(self):
+        with patch.object(logger_mod, "LOG_DIR", MagicMock()):
+            mock_dir = MagicMock()
+            mock_dir.glob.return_value = []
+            with patch("asyncio.to_thread", new=AsyncMock(side_effect=lambda f, *a, **kw: f())):
+                # LOG_DIR.glob을 호출하는 람다가 반환되므로 빈 리스트 처리
+                with patch.object(logger_mod, "LOG_DIR", mock_dir):
+                    await logger_mod._rotate_old_logs("trading_*.log", 2)
+
+    @pytest.mark.asyncio
+    async def test_exception_does_not_raise(self):
+        with patch("asyncio.to_thread", AsyncMock(side_effect=Exception("io error"))):
+            await logger_mod._rotate_old_logs("trading_*.log", 2)
+
+
+# ── stop_file_writers ──────────────────────────────────────────────────────────────
+
+class TestStopFileWriters:
+    @pytest.mark.asyncio
+    async def test_no_task_does_nothing(self):
+        mock_queue = AsyncMock()
+        with (
+            patch.object(logger_mod, "_writer_task", None),
+            patch.object(logger_mod, "_get_file_queue", return_value=mock_queue),
+        ):
+            await logger_mod.stop_file_writers()
+        mock_queue.put.assert_called_once_with(None)
+
+    @pytest.mark.asyncio
+    async def test_sends_stop_signal(self):
+        mock_queue = AsyncMock()
+        mock_task = AsyncMock()
+        mock_task.done.return_value = False
+        with (
+            patch.object(logger_mod, "_writer_task", mock_task),
+            patch.object(logger_mod, "_get_file_queue", return_value=mock_queue),
+            patch("asyncio.wait_for", AsyncMock()),
+        ):
+            await logger_mod.stop_file_writers()
+        mock_queue.put.assert_called_once_with(None)
+
+
+# ── get_logger ─────────────────────────────────────────────────────────────────────
+
+class TestGetLogger:
+    def test_returns_logger(self):
+        with pytest.warns(DeprecationWarning):
+            log = get_logger("test_logger")
+        assert isinstance(log, logging.Logger)
+        assert log.name == "test_logger"
+
+    def test_default_name(self):
+        with pytest.warns(DeprecationWarning):
+            log = get_logger()
+        assert log.name == "sectorflow"
+
+
+# ── setup_loguru ───────────────────────────────────────────────────────────────────
+
+class TestSetupLoguru:
+    @pytest.mark.asyncio
+    async def test_already_configured_returns_early(self):
+        with patch.object(logger_mod, "_configured", True):
+            await logger_mod.setup_loguru()
+        # _configured가 True이면 아무 작업 없이 return
+
+    @pytest.mark.asyncio
+    async def test_sets_configured_flag(self):
+        original = logger_mod._configured
+        logger_mod._configured = False
+        try:
+            mock_stdout_wrapper = MagicMock()
+            with (
+                patch("asyncio.to_thread", AsyncMock()),
+                patch("backend.app.core.logger._start_file_writers", AsyncMock()),
+                patch("loguru.logger.remove"),
+                patch("loguru.logger.add"),
+                patch("logging.basicConfig"),
+                patch("backend.app.core.logger.io.TextIOWrapper", return_value=mock_stdout_wrapper),
+            ):
+                await logger_mod.setup_loguru("DEBUG")
+            assert logger_mod._configured is True
+        finally:
+            logger_mod._configured = original

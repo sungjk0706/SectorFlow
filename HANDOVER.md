@@ -16,6 +16,36 @@
   3. 매수후보 테이블 모든 종목(통과/차단 무관)은 이미 0B 실시간 데이터 수신 중 — 0D/PGM만 guard_pass 기반
 
 ## 직전 완료 작업
+- **2026-07-10: settlement.py await 누락 버그 수정 + 테스트 커버리지 Stage 5 (P5-b) — 신규 38건, 전체 1409건 통과**
+  - **settlement.py await 누락 버그 수정**: `settlement.py:16`에서 `settlement_engine.charge(amount)`를 `await` 없이 호출 (async 함수 동기 호출 → coroutine 반환) → `await settlement_engine.charge(amount)` 수정. 기존 테스트 2건 AsyncMock + 실제 반환값 검증으로 수정
+  - **Stage 5 (P5-b): 중형 Web 라우트 — `status.py`(144줄) + `settings.py`(169줄) + `ws.py`(207줄) — 신규 38건**
+    - `test_web_routes.py` 신규 27건 (기존 23 → 50): `TestHealthCheck` 4건 (ready/downloading/initializing/ready-no-engine), `TestDebugSectorStock` 3건 (필터됨/미필터/존재안함), `TestDebugWsStatus` 2건 (연결됨/미연결), `TestDebugTriggerConfirmed` 2건 (성공/예외), `TestDebugSectorRefreshSample` 2건 (샘플있음/없음), `TestStatusRouter` 2건, `TestGetSettings` 2건 (정상/500), `TestPatchSettingField` 6건 (value누락400/엔진실행apply/빈changes스킵/미실행save_pending/tele_on_start/tele_off_stop), `TestResetTestData` 2건 (정상/500), `TestSettingsRouter` 2건
+    - `test_web_ws_routes.py` 신규 11건 (기존 37 → 48): `TestSendInitialSnapshotDelayed` 4건 (전체시퀀스/임계값미달스킵/buy-targets전송/예외로깅), `TestWsPrices` 5건 (ping→pong/page-active/page-inactive/subscribe-fids/WebSocketDisconnect), `TestWsRouter` 2건
+    - 수정 중 이슈: `pipeline_compute.py` lazy import 시 `get_broadcast_queue()` 미초기화 RuntimeError → `initialize_queues()` 사전 호출 추가 (`test_daily_time_scheduler.py` / `test_pipeline_compute.py`와 동일 패턴); `asyncio.create_task` mock 코루틴 미close RuntimeWarning → `side_effect=lambda coro: (coro.close(), mock_task)[1]` 패턴으로 해결
+  - 검증: 전체 1409 passed, 0 failed (기존 1371 + 신규 38), regression 없음, 런타임 기동 정상 (118ms 부트, 에러 없음, 잔존 프로세스 0건)
+  - 커밋: (이번 커밋)
+- **2026-07-10: 테스트 커버리지 확장 Stage 1~4 (P6-a~c, P5-a) — 신규 294건, 전체 1371건 통과**
+  - 목적: 테스트 커버리지 14% → 확장. P6(유틸/기타) → P5(Web) → P4(브로커) 순서, 소그룹 단위(2~3파일) 진행
+  - **Stage 1 (P6-a): `encryption.py`(87줄) + `sector_mapping.py`(99줄) + `telegram.py`(43줄) — 신규 76건**
+    - `test_encryption.py` (34건): `_get_fernet` 6건, `encrypt_value` 5건, `decrypt_value` 6건, roundtrip 2건, `SENSITIVE_KEYS` 4건, `encrypt_sensitive` 5건, `decrypt_sensitive` 5건, full roundtrip 1건
+    - `test_sector_mapping.py` (22건): `get_merged_sector` 9건 (캐시 hit/miss/예외), `get_merged_sectors_batch` 8건 (일괄 조회/DB 폴백), `get_merged_all_sectors` 5건 (정렬/중복/빈 DB)
+    - `test_telegram.py` (20건): `_select_token` 8건 (test/real 모드), `send_msg_async` 12건 (tele_on 게이트/토큰 누락/httpx 전송/예외)
+    - 수정 중 이슈: `test_sector_mapping.py` 최초 5건 실패 — `conn.cursor()` / `conn.execute()`가 `await`되는데 `MagicMock`은 `await` 불가 → `AsyncMock(return_value=mock_cursor)`로 교체
+  - **Stage 2 (P6-b): `journal.py`(324줄) + `logger.py`(314줄) — 신규 62건**
+    - `test_journal.py` (38건): `JournalEventType` 2건, `JournalEntry` 1건, no-op 함수 6건, `_append_entry` 4건, `_read_all_entries` 3건, `_perform_compaction` 2건, `record_*` 3건, OMS API 8건, `replay_journal` 5건, `clear_journal` 2건, `get_journal_stats` 2건
+    - `test_logger.py` (24건): 상수 4건, `_get_file_queue` 2건, `_get_daily_log_path` 3건, `_info_file_sink` 4건, `InterceptHandler` 3건, `_rotate_old_logs` 2건, `stop_file_writers` 2건, `get_logger` 2건, `setup_loguru` 2건
+    - 수정 중 이슈: `replay_journal` 핸들러 예외 시 `replayed_count` 증가 안 함 → assertion `count == 0`으로 수정; `setup_loguru` 테스트가 `TextIOWrapper` 실제 생성하여 pytest cleanup I/O 에러 → `io.TextIOWrapper` mock 대체
+  - **Stage 3 (P6-c): `trade_history.py`(626줄) + `dry_run.py`(354줄) — 신규 96건**
+    - `test_trade_history.py` (66건 신규, 기존 4건 유지 = 70건): `_ensure_loaded` 3건, `_insert_trade` 4건, `_trim_expired` 3건, `_patch_sell_history` 3건, `_trade_params` 1건, `_migrate_from_json` 1건, `record_buy` 4건, `record_sell` 5건, `_calc_avg_buy_price` 3건, `_lookup_sector` 3건, `get_buy/sell_history` 5건, `get_total_realized_pnl` 3건, `get_daily_summary` 확장 4건, `clear_test_history` 3건, `build_positions_from_trades` 6건, `get_earliest_buy_date` 3건, `_reset_global_state` 2건, `start/stop_consumer_task` 2건, 브로드캐스트 6건, `broadcast_history` 1건, `close_db_connection` 1건
+    - `test_dry_run.py` (30건 신규): `_refresh_positions_if_dirty` 3건, `_next_fake_order_no` 2건, `_estimate_market_price` 2건, `update_price` 4건, `set_stock_name` 2건, `get_positions/get_position` 3건, `has_position/position_codes` 3건, `clear` 1건, `_recalc_pnl` 2건, 가상 예수금 5건, `_apply_buy/_apply_sell` 3건
+    - 수정 중 이슈: `execute_db_write` / `get_db_connection` lazy import → 소스 모듈에서 패치 (`backend.app.db.db_writer.execute_db_write`, `backend.app.db.database.get_db_connection`); `conn.execute()` async context manager → `MagicMock` + `AsyncMock.__aenter__.return_value` 조합; `_recalc_pnl`이 `buy_amt` 재계산 → `avg_price=0, total_fee=0` 설정으로 `buy_amt=0` 유도
+  - **Stage 4 (P5-a): 소형 Web 라우트 7개 — 신규 60건**
+    - `test_web_routes.py` (23건): `account.py` 라우터 검증 2건, `market.py` `get_trading_day` 3건 + 라우터 2건, `settlement.py` `charge_settlement` 5건 + 라우터 2건, `auth.py` `login` 4건 + 모델 3건 + 라우터 2건
+    - `test_web_ws_routes.py` (37건): `deps.py` `get_current_user` 2건, `ws_orders.py` ping/pong/invalid JSON/disconnect/unregister/register 7건 + 라우터 2건, `ws_settings.py` ping/pong/page-active/page-inactive/empty page/disconnect/unregister/invalid JSON 8건 + 라우터 2건, `ws_subscribe.py` `SubscribeGroup` 3건 + `SubscribeRequest` 2건 + `start_subscription` 5건 + `stop_subscription` 6건 + 라우터 2건
+    - 발견된 버그: `settlement.py:16`에서 `settlement_engine.charge(amount)` 호출 시 `await` 누락 (async 함수를 동기 호출) — 테스트에서 coroutine 반환 확인, 별도 수정 필요
+    - `account.py`는 라우터만 있고 엔드포인트 없음 (WS initial-snapshot으로 대체) — 라우터 설정 검증만
+  - 검증: 전체 1371 passed, 0 failed (기존 1077 + 신규 294), regression 없음
+  - 커밋: 미커밋 (모든 Stage 완료 후 일괄 커밋 예정)
 - **2026-07-10: 업종순위 수신율 임계값 우회 버그 수정 — SSOT 게이트로 5개 우회 경로 차단**
   - 목적: 사용자가 설정한 수신율 임계값(`sector_start_threshold_pct`)에 도달하기 전에 업종순위가 프론트엔드에 표시되는 버그. Phase 1 루프의 지역 변수 게이트만으로는 5개 외부 경로가 임계값 체크 없이 sector-scores를 전송했음
   - 근본 원인: `_sector_recompute_loop_impl` Phase 1의 `phase1_completed` 지역 변수가 임계값 통과 상태의 유일한 게이트. 외부 5개 경로(`_login_post_pipeline`, `apply_settings_change`, `_on_krx_market_open`, `_on_krx_after_hours_start`, `_send_initial_snapshot_delayed`)가 `recompute_sector_summary_now()` → `notify_desktop_sector_scores(force=True)` 또는 `ws_manager.send_to()`로 임계값과 무관하게 sector-scores 브로드캐스트
@@ -167,14 +197,25 @@
 ## 현재 상태
 - **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료, 보유종목 buy_date 파생·브로드캐스트 구현 완료, exchange_calendars 교체 완료 (korean_lunar_calendar 기반 직접 구현, ~109MB 절감, 제헌절 버그 수정)
 - **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지·검색 입력란 추가 완료, 보유종목 테이블 매수일자 컬럼 추가 완료, 수익현황 페이지 빈 데이터 차트/도넛 stale state 근본 수정 완료, 프론트엔드 색상 체계 통일 완료 (하드코딩 ~190곳 COLOR 상수화 + secondary→tertiary 통합), 검색 입력란 공통 컴포넌트 통일 완료 (5페이지 7개 인스턴스 + label/compact 옵션 + 포커스 언더라인 + placeholder 색상), `npm run build` 통과
-- **Git**: 커밋 `b111496` push 완료 (exchange_calendars 교체)
+- **Git**: 커밋 `b111496` push 완료 (exchange_calendars 교체). 테스트 커버리지 Stage 1~5 + settlement.py await 수정은 (이번 커밋)으로 push 예정
+- **테스트 커버리지**: Stage 1~5 완료 — 신규 332건 (encryption 34 + sector_mapping 22 + telegram 20 + journal 38 + logger 24 + trade_history 66 + dry_run 30 + web_routes 50 + web_ws_routes 48), 전체 1409 passed
+- **settlement.py await 누락 버그**: 수정 완료 (`await settlement_engine.charge(amount)`)
 
 ## 다음 단계
 - **1순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
   - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
-- **2순위: 브라우저 실제 화면 확인** — 장중에 매수후보 테이블에서 SK하이닉스(000660) 하이라이트 깜빡임 없는지 확인 + 매수/매도호가잔량비율 슬라이더 422 미발생 확인
+- **2순위: 테스트 커버리지 확장 — P6→P5→P4 순서, 소그룹 단위(2~3파일) 진행**:
+  - **Stage 1 (P6-a)** ✅ 완료: `encryption.py`(87줄) + `sector_mapping.py`(99줄) + `telegram.py`(43줄) — 76건
+  - **Stage 2 (P6-b)** ✅ 완료: `journal.py`(324줄) + `logger.py`(314줄) — 62건
+  - **Stage 3 (P6-c)** ✅ 완료: `trade_history.py`(626줄) + `dry_run.py`(354줄) — 96건
+  - **Stage 4 (P5-a)** ✅ 완료: 소형 Web 라우트 7개 (`account.py` + `market.py` + `settlement.py` + `auth.py` + `deps.py` + `ws_orders.py` + `ws_settings.py` + `ws_subscribe.py`) — 60건
+  - **Stage 5 (P5-b)** ✅ 완료: 중형 Web 라우트 — `status.py`(144) + `settings.py`(169) + `ws.py`(207) — 38건 (settlement.py await 버그 수정 포함)
+  - **Stage 6 (P5-c)** ⏳ 다음: 대형 Web 라우트 — `ws_manager.py`(351) + `stock_classification.py`(330) + `app.py`(317)
+  - **Stage 7 (P4-a)**: 소형 브로커 — `kiwoom_order.py`(93) + `ls_providers.py`(195) + `connector_manager.py`(269)
+  - **Stage 8 (P4-b)**: 중형 브로커 — `kiwoom_providers.py`(337) + `kiwoom_stock_rest.py`(430)
+  - **Stage 9 (P4-c)**: 대형 브로커 — `kiwoom_connector.py`(563) + `ls_rest.py`(635) + `kiwoom_rest.py`(653) + `ls_connector.py`(875)
 
 ## 미해결 문제
 - **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결, 재발 방지 조치 + 유령 매도 기록 삭제 완료**
