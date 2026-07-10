@@ -295,7 +295,8 @@ class TestEnsureLoaded:
         mock_conn.execute.return_value = mock_cm
         with patch("backend.app.db.database.get_db_connection", return_value=mock_conn):
             with patch("backend.app.services.trade_history._history_lock"):
-                await trade_history._ensure_loaded()
+                with patch("backend.app.services.trade_history._trim_expired", new_callable=AsyncMock):
+                    await trade_history._ensure_loaded()
         assert trade_history._loaded is True
 
     async def test_already_loaded_skips_db(self):
@@ -368,23 +369,25 @@ class TestInsertTrade:
 # ── _trim_expired ─────────────────────────────────────────────────────────────
 
 class TestTrimExpired:
-    """_trim_expired: 모드별 보관 기한 초과 레코드 제거."""
+    """_trim_expired: 모드별 보관 기한 초과 레코드 제거 (메모리 + DB)."""
 
-    async def test_test_mode_30_days_expired(self):
+    async def test_test_mode_125_days_expired(self):
         from backend.app.services import trade_history
         trade_history._buy_history.clear()
         trade_history._sell_history.clear()
-        old_rec = _make_buy_rec(date="2026-05-01", trade_mode="test")
+        old_rec = _make_buy_rec(date="2025-12-01", trade_mode="test")
         recent_rec = _make_buy_rec(date="2026-07-08", trade_mode="test")
         trade_history._buy_history.extend([old_rec, recent_rec])
         with patch("backend.app.services.trade_history._history_lock"):
             with patch("backend.app.core.trading_calendar.get_recent_trading_days") as mock_days:
-                from datetime import date as d
-                mock_days.return_value = [d(2026, 6, 8)]
-                await trade_history._trim_expired()
+                with patch("backend.app.db.db_writer.execute_db_write", new_callable=AsyncMock) as mock_db:
+                    from datetime import date as d
+                    mock_days.return_value = [d(2026, 3, 1)]
+                    await trade_history._trim_expired()
         dates = [r["date"] for r in trade_history._buy_history]
         assert "2026-07-08" in dates
-        assert "2026-05-01" not in dates
+        assert "2025-12-01" not in dates
+        assert mock_db.call_count == 2  # test + real DB 삭제
 
     async def test_real_mode_90_days_preserved(self):
         from backend.app.services import trade_history
@@ -393,9 +396,10 @@ class TestTrimExpired:
         trade_history._buy_history.append(real_rec)
         with patch("backend.app.services.trade_history._history_lock"):
             with patch("backend.app.core.trading_calendar.get_recent_trading_days") as mock_days:
-                from datetime import date as d
-                mock_days.return_value = [d(2026, 4, 1)]
-                await trade_history._trim_expired()
+                with patch("backend.app.db.db_writer.execute_db_write", new_callable=AsyncMock):
+                    from datetime import date as d
+                    mock_days.return_value = [d(2026, 4, 1)]
+                    await trade_history._trim_expired()
         assert real_rec in trade_history._buy_history
 
     async def test_trim_exception_logged(self):
