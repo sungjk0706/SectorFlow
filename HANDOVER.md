@@ -1,6 +1,16 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-10: 5일고가 돌파 표시 분리 — 현재가 필드 배경 → ▲ 아이콘(좌측) + 5일고가 필드 초록 배경**
+  - 목적: 매수후보 페이지에서 5일고가 돌파 종목의 현재가 셀에 초록 배경(`COLOR.successBg`)이 표시되는데, 실시간 시세 변경 시 노란 플래시 효과(`composite: 'replace'`)가 같은 셀 배경에 겹쳐 초록→노랑→투명→초록 깜빡임 발생. 두 시각적 효과의 충돌 제거
+  - 근본 원인: `buy-target.ts`의 `cur_price` 컬럼이 `flash: true`이면서 동시에 5일고가 돌파 시 배경색 적용. `data-table.ts`의 `triggerFlash`가 `composite: 'replace'`로 동작하여 인라인 배경색을 무시하고 keyframe 값으로 대체
+  - `buy-target.ts cur_price 컬럼 (26-41줄)`: 초록 배경 제거. 돌파 시 `justifyContent`를 `space-between`으로 변경하여 ▲ 아이콘을 셀 좌측 끝에, 가격 숫자를 우측 끝에 배치. 아이콘: `COLOR.up`(빨강 #f44336), `FONT_SIZE.body`(13px), `FONT_WEIGHT.bold`(700). HTS 표준 기호 ▲(U+25B2) 사용 — `ui-styles.ts`의 `changeArrow` 함수와 동일 기호
+  - `buy-target.ts high_5d 컬럼 (95-104줄)`: `createNumberCell` 반환 셀에 돌파 시 `COLOR.successBg` 배경 적용. `flash` 미적용 컬럼이므로 플래시 충돌 없음
+  - `createPriceCell` 미수정 → `sell-position.ts`, `sector-stock.ts` 영향 없음
+  - `data-table.ts` 미수정 → 플래시 로직 변동 없음
+  - HTS 참고: 키움 영웅문 차트에서 신고가 돌파 시 ▲ 화살표 표시. 시세표에서는 별도 컬럼/배지로 분리. TradingView/Trading Dashboard Kit도 가격 플래시와 돌파 신호를 서로 다른 시각적 요소로 분리하는 공통 패턴
+  - 검증: tsc 타입체크 0 에러, vite build 통과 (58 모듈 1.76s)
+  - 커밋: (이번 커밋)
 - **2026-07-10: 현재가 플래시 효과 복원 — Web Animations API + 일반설정 ON/OFF 토글**
   - 목적: 과거 3차례 구현/제거된 현재가 플래시 효과와 ON/OFF 토글 UI를 Web Animations API 기반으로 복원. reflow 강제/setTimeout/class 관리 없이 부하 거의 0으로 실시간 가격 변동 시각화
   - 히스토리 조사: 1차(행 단위 빨강/파랑, 5cba9e3에서 제거), 2차(셀 단위 노랑, 17a779d에서 추가), 3차(flash-anim.ts 모듈 분리 + 토글, 864c385에서 리팩토링 → 3e6da0c에서 제거). 세 번 모두 기능 자체 버그/성능 문제가 아닌 부수적 코드 정리로 제거됨
