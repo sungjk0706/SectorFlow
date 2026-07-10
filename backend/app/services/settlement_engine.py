@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Settlement Engine -- 테스트모드 전용 누적투자금/주문가능금액 관리.
+Settlement Engine — 테스트모드 전용 누적투자금/주문가능금액 관리.
 
 책임:
-  1. _accumulated_investment (누적투자금) 관리 -- 초기투자금 + 충전금액, 매수/매도 시 불변
-  2. _orderable (주문가능금액) 관리 -- 매수 시 차감, 매도/충전 시 증가
+  1. _accumulated_investment (누적투자금) 관리 — 초기투자금 + 충전금액, 매수/매도 시 불변
+  2. _orderable (주문가능금액) 관리 — 매수 시 차감, 매도/충전 시 증가
   3. SQLite kv_store 영속화 (settlement_state 키)
 
 누적투자금 vs 주문가능금액:
@@ -36,7 +36,7 @@ _initial_deposit: int = 10_000_000
 # ── 기본 getters ────────────────────────────────────────────────────────────
 
 def get_available_cash() -> int:
-    """주문가능금액 반환 (하위 호환 -- orderable과 동일)."""
+    """주문가능금액 반환 (하위 호환 — orderable과 동일)."""
     return _orderable
 
 
@@ -148,7 +148,7 @@ async def reset(initial_deposit: int) -> None:
     _initial_deposit = initial_deposit
     await _persist()
     await _broadcast_delta()
-    logger.info("[정산] 리셋 완료 -- 초기투자금: %s원", f"{initial_deposit:,}")
+    logger.info("[정산] 리셋 완료 — 초기투자금: %s원", f"{initial_deposit:,}")
 
 
 async def save_state() -> None:
@@ -212,7 +212,7 @@ async def _load(force_reload: bool = False, initial_deposit: int | None = None) 
             _orderable = _accumulated_investment
         _loaded = True
         logger.info(
-            "[정산] 상태 로드 완료 -- 누적투자금: %s원 / 주문가능: %s원",
+            "[정산] 상태 로드 완료 — 누적투자금: %s원 / 주문가능: %s원",
             f"{_accumulated_investment:,}", f"{_orderable:,}",
         )
     except Exception as e:
@@ -231,7 +231,7 @@ async def _load(force_reload: bool = False, initial_deposit: int | None = None) 
         _orderable = _initial_deposit
         _loaded = True
         await _persist()
-        logger.info("[정산] 초기값 SQLite 저장 완료 -- 주문가능: %s원", f"{_orderable:,}")
+        logger.info("[정산] 초기값 SQLite 저장 완료 — 주문가능: %s원", f"{_orderable:,}")
 
 
 # ── 브로드캐스트 ────────────────────────────────────────────────────────────
