@@ -4,45 +4,70 @@
 - 없음
 
 ## 진행 중 작업 (다음 세션에서 이어서 진행)
-- **백엔드 로그 메시지 "복원" → "로드/구축" 수정: 2단계 (함수명 변경) 대기 중**
-  - 1단계 완료 (이번 세션): 로그 메시지 + docstring/주석 16건 수정 — 아래 "직전 완료 작업" 참조
-  - 2단계 (후속 세션): 함수명 변경 — `_restore_daily_buy_state()` → `_load_daily_buy_state()` (`trading.py:53`), `restore_state()` → `load_state()` (`settlement_engine.py:159`)
-    - 주의: `restore_state()`는 기동 시(로드)와 모드 전환 시(복원) 모두 호출되는 dual-purpose 함수
-    - 모드 전환 호출처: `engine_lifecycle.py:188` — 이쪽은 "복원"이 맞으므로 함수 분리 또는 호출처 주석으로 맥락 명시 필요
-    - 호출처 추적 필수: `restore_state` 검색 후 모든 caller 확인
+- **백엔드 로그 아키텍처 점검 후속 — 세션별 단위 작업 (로그+코드 정밀 검증)**
+  - 점검 완료: 런타임 기동 로그 + 코드베이스 886건 logger 호출 분석 (3개 병렬 에이전트)
+  - 2단계 완료: 함수명 변경 (`_restore_daily_buy_state` → `_load_daily_buy_state`, `restore_state` → `load_state`)
+  - C-1단계 완료: 구두점 "->" → "—" 통일 7건
+  - E단계 완료: `engine_config.py` 로그 메시지 vs 실제 동작 불일치 수정 (백엔드 3건 + 프론트엔드 6건)
+  - **C단계 잔여: C-2 `--` → "—" 통일 (79건)** — `—`(em dash)가 158건으로 표준이나 `--`(double hyphen) 79건 혼용
+    - 범위가 크므로 파일별로 세션 분할 권장 (아래 "다음 단계"의 C-2-1 ~ C-2-3 참조)
+  - **B단계**: 부적절한 로그 레벨 1건
+    - `engine_cache.py:152` — `logger.info` → `logger.warning` ("저장데이터 로드 실패"를 INFO로 로깅)
+  - **A단계**: silent 예외 처리 5건 (`except Exception: pass` → `logger.warning` 추가)
+    - `settlement_engine.py:110-111` — State Gate 회복 실패 silent pass
+    - `settlement_engine.py:228-229` — test_virtual_deposit 로드 실패 silent pass
+    - `trade_history.py:109-110` — dry_run 포지션 캐시 무효화 실패 silent pass
+    - `trade_history.py:228-229` — 동일 (이력 초기화 후)
+    - `trade_history.py:530-531` — 동일 (테스트모드 데이터 삭제 후)
+  - **검토 권장 (D단계, 별도)**: 영구 저장소 실패를 `logger.warning` → `logger.error` 검토
+    - `settlement_engine.py:176` — "상태 저장 실패"
+    - `settlement_engine.py:219` — "상태 파일 로드 실패 (기본값 사용)"
 
 ## 직전 완료 작업
-- **2026-07-11: 백엔드 로그 메시지 "복원" → "로드/구축" 수정 (1단계: 로그+주석)**
-  - 문제: 앱 기동 시 DB→메모리 로드 작업에 "복원(restore)"이라는 단어가 사용되어 실제 동작과 불일치
-  - 수정 파일 7개 + 테스트 파일 1개:
-    - `trade_history.py` — 로그 2건 + docstring 2건: "DB 복원" → "체결 이력 로드"
-    - `settlement_engine.py` — 로그 1건 + docstring 3건: "상태 복원" → "상태 로드"
-    - `engine_lifecycle.py` — 로그 1건 + docstring/주석 2건: "포지션 복원" → "포지션 구축"
-    - `engine_cache.py` — 로그 1건 + 주석 1건: "상태 복원" → "상태 로드"
-    - `trading.py` — 로그 2건 + docstring 1건: "매수 상태 복원" → "매수 상태 로드"
-    - `engine_loop.py` — 주석 1건: "예수금 복원" → "예수금 로드"
-    - `test_trade_history.py` — docstring 1건: "메모리 복원" → "메모리 로드"
-  - 수정하지 않은 "복원" (적절한 사용): 재연결 후 구독 복원, 플래그 복원, 모드 전환 시 상태 복원, 재상장 종목 복원 등 39건
-  - 검증: 런타임 기동 (`main.py` 15s) — 로그에서 "로드"/"구축" 출력 확인, 잔여 프로세스 없음
-  - 커밋: `43699ac`
+- **2026-07-11: E단계 — `engine_config.py` 로그 메시지 vs 실제 동작 불일치 수정**
+  - `reload_engine_settings()` 함수 (99-110행) — 엔진 stop/start 없이 설정 재로드만 수행하는데 "엔진 재기동/재시작"으로 출력되던 문제
+  - **사전 조사**: `reload_engine_settings()` caller 추적 — 코드베이스에 caller 0건 (데드 코드 상태)
+  - **백엔드 3건**: `engine_config.py:105` (로그), 107 (주석), 110 (로그) — "엔진 재기동/재시작" → "설정 재로드"
+  - **프론트엔드 6건**: `uiStore.ts:48, 141` (주석), `stock-classification.ts:464, 467, 495, 498` (주석 2 + 사용자 메시지 2)
+  - **이벤트명/상태명**: `engine-reload-complete`, `engineReloadComplete` — "reload" 단어가 정확하므로 변경 안 함
+  - **추가 발견**: `engineReloadComplete` 상태는 `engine-reload-complete` 외에 `engine-ready` 이벤트에 의해서도 설정됨 (의도적 재사용)
+  - 검증: py_compile 통과, npm run build 통과 (595ms), 런타임 기동 정상 (에러/Traceback 없음), 잔존 프로세스 0건
+  - 잔여 "엔진 재기동/재시작" 8건 확인: 부정문("없이/없음") 4건 정확, broker 변경 시 실제 재기동 2건 정확, `daily_time_scheduler.py` 2건은 별개 문제 (초기 기동 시에도 "재기동" 표현)
+  - **커밋**: `768f085` (2단계 + C단계 + E단계 통합 커밋)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치 — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가 — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: `9dfc6e2` (매도설정 보유종목 요약 배지 추가) — push 완료
+- **Git**: `768f085` (백엔드 로그 정합성 개선 — 함수명 변경 + 구두점 통일 + 로그 메시지 vs 동작 불일치 수정) — push 완료
 - **테스트 커버리지**: Stage 1~9 완료 — 백엔드 2138 passed, 프론트엔드 112 passed (실행 시점 기준)
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 
 ## 다음 단계
-- **1순위: 백엔드 로그 메시지 "복원" → "로드/구축" 수정 2단계 (함수명 변경)**:
-  - `_restore_daily_buy_state()` → `_load_daily_buy_state()` (`trading.py:53`)
-  - `restore_state()` → `load_state()` (`settlement_engine.py:159`) — dual-purpose 함수이므로 모드 전환 호출처(`engine_lifecycle.py:188`) 맥락 처리 필요
-  - 모든 caller 추적 후 일괄 변경, 테스트 통과 확인
-- **2순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
+- **1순위: C-2-1 — `--` → "—" 통일 (1차: settlement_engine, engine_lifecycle, engine_cache, engine_service, dry_run) (1세션)**:
+  - 각 파일의 `--` 사용 로그를 `—`로 변경 후 **주변 코드 맥락 정밀 검증** (로그 vs 실제 동작 불일치 여부)
+  - 검증: py_compile + 런타임 기동
+- **2순위: C-2-2 — `--` → "—" 통일 (2차: daily_time_scheduler, market_close_pipeline, engine_ws, engine_ws_reg) (1세션)**:
+  - 동일 방식 — 로그 변경 + 코드 맥락 정밀 검증
+  - 검증: py_compile + 런타임 기동
+- **3순위: C-2-3 — `--` → "—" 통일 (3차: ws.py, engine_account, stock_tables, app.py, settings_file, notification_worker, engine_ws_fill_followup, engine_bootstrap, stock_classification_data, kiwoom_stock_rest, trading.py) (1세션)**:
+  - 동일 방식 — 로그 변경 + 코드 맥락 정밀 검증
+  - 검증: py_compile + 런타임 기동
+- **4순위: B단계 — 부적절한 로그 레벨 (1세션)**:
+  - `engine_cache.py:152` — `logger.info` → `logger.warning` ("저장데이터 로드 실패"를 INFO로 로깅)
+  - 검증: py_compile + 런타임 기동
+- **5순위: A단계 — silent 예외 처리 5건 (1세션)**:
+  - `settlement_engine.py:110-111, 228-229`, `trade_history.py:109-110, 228-229, 530-531`
+  - `except Exception: pass` → `logger.warning("...", exc_info=True)` 추가
+  - 각 예외 블록의 의도(silent 허용 vs 버그)를 코드 맥락에서 판단 후 수정
+  - 검증: py_compile + 런타임 기동 + 관련 테스트 파일 실행
+- **6순위: D단계 — 영구 저장소 실패 로그 레벨 검토 (1세션)**:
+  - `settlement_engine.py:176, 219` — `logger.warning` → `logger.error` 검토
+  - 검증: py_compile + 런타임 기동
+- **7순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
   - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
-- **2순위: 테스트 커버리지 다음 Stage 대상 선정 (사용자와 논의)**:
+- **8순위: 테스트 커버리지 다음 Stage 대상 선정 (사용자와 논의)**:
   - Stage 1~9 완료 — 전체 2138 passed (P1~P6 우선순위별 진행 완료)
   - 남은 미진행 파일: `telegram_bot.py` (P6)
   - 다음 Stage 대상 파일 선정 필요
