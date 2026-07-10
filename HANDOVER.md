@@ -16,6 +16,21 @@
   3. 매수후보 테이블 모든 종목(통과/차단 무관)은 이미 0B 실시간 데이터 수신 중 — 0D/PGM만 guard_pass 기반
 
 ## 직전 완료 작업
+- **2026-07-10: 테스트 커버리지 확장 Stage 6 (P5-c) — 대형 Web 라우트 3개 파일, 신규 140건, 전체 1549건 통과**
+  - 목적: 테스트 커버리지 Stage 6 — 대형 Web 라우트 `ws_manager.py`(351줄) + `stock_classification.py`(330줄) + `app.py`(317줄) 단위 테스트 작성
+  - **`test_web_ws_manager.py` (75건)**: `_encode_realdata` 13건 (FID 필터링 default/custom, key shortening t/i/v, `_v` 스탬프 추가/보존, 캐시 hit/miss/LRU eviction/different-fids, values 비-dict/missing, non-shortened key 보존, binary None), `WSManager` 62건 (init 2, register 4, unregister 6, active_page 5, subscribed_fids 3, `_stamp` 3, `_send_broadcast` 3, `_send_realdata_immediate` 2, `_send_realdata_encoded` 4, `broadcast_to_pages` 5, `broadcast` 4, `broadcast_threadsafe` 2, `send_to` 2, `_send` 2, `_send_sigterm` 4, `close_all` 4, `_send_initial_data_on_connect` 3, `client_count` 2)
+  - **`test_web_stock_classification.py` (42건)**: Pydantic 모델 5종 8건 (RenameRequest/CreateRequest/DeleteRequest/MoveStockRequest/MoveStocksRequest 필수필드/생성/missing), `_maybe_warning` 2건 (WS구간/비구간), `broadcast_stock_classification_changed` 5건 (정상/all_stocks예외/queue미초기화fallback/DB예외/no_sector_count), `_trigger_recompute` 2건 (정상/예외), `get_all_stocks` 1건, `get_stock_classification` 3건 (정상/filter_summary예외/no_sector_count계산), `rename_sector` 3건 (성공/with_warning/실패), `create_sector` 2건, `delete_sector` 2건, `move_stock` 2건, `move_stocks` 2건 (배치 성공/실패), `trigger_confirmed_download` 3건 (성공/이미진행중/예외), `trigger_5d_download` 3건, 라우터 검증 2건
+  - **`test_web_app.py` (23건)**: `lifespan` startup 3건 (완료/server_ready_set/engine_init_failure), `lifespan` shutdown 4건 (close_all/trade_history+journal/db_writer+close_db/state_events_clear), `global_exception_handler` 5건 (첫에러전송/쿨다운차단/쿨다운만료/텔레그램실패/타입독립), `CacheControlMiddleware` 4건 (API/assets/HTML/ws), app 라우터 등록 4건 (FastAPI/라우터수/title/version), `spa_fallback` 3건 (API 404/정적파일/SPA index)
+  - 수정 중 이슈:
+    - `core_queue` → `core_queues` 모듈명 수정 (3개 파일 전체) — 기존 `test_web_ws_routes.py`는 이미 `core_queues` 사용 중이었으나 신규 파일에서 오타
+    - `_base_stk_cd` lazy import → `ws_manager` 모듈에 없음 → `engine_symbol_utils` 소스 모듈에서 patch
+    - `asyncio.create_task` coroutine 누수 RuntimeWarning → `side_effect=lambda coro: (coro.close(), mock_task)[1]` 패턴 (기존 Stage 5와 동일)
+    - `asyncio.gather` coroutine 누수 → `AsyncMock(side_effect=lambda *coros: [c.close() for c in coros if hasattr(c, 'close')] and (None, None, {}))` 패턴
+    - `telegram_bot.stop_async` → MagicMock은 `await` 불가 → AsyncMock 설정
+    - `state` 속성 접근 예외 테스트 → `side_effect=Exception`은 속성 접근 시 작동하지 않음 → `RaisingState` class `__getattr__` 예외 발생
+    - `lifespan` shutdown 단계 lazy import 20+개 → `_lifespan_patches()` 헬퍼 함수로 일괄 patch 관리 (start/stop 패턴)
+  - 검증: 전체 1549 passed, 0 failed (기존 1409 + 신규 140), regression 없음, 런타임 기동 정상 (135ms 부트, 에러 없음, 잔존 프로세스 0건)
+  - 커밋: (이번 커밋)
 - **2026-07-10: settlement.py await 누락 버그 수정 + 테스트 커버리지 Stage 5 (P5-b) — 신규 38건, 전체 1409건 통과**
   - **settlement.py await 누락 버그 수정**: `settlement.py:16`에서 `settlement_engine.charge(amount)`를 `await` 없이 호출 (async 함수 동기 호출 → coroutine 반환) → `await settlement_engine.charge(amount)` 수정. 기존 테스트 2건 AsyncMock + 실제 반환값 검증으로 수정
   - **Stage 5 (P5-b): 중형 Web 라우트 — `status.py`(144줄) + `settings.py`(169줄) + `ws.py`(207줄) — 신규 38건**
@@ -197,8 +212,8 @@
 ## 현재 상태
 - **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료, 보유종목 buy_date 파생·브로드캐스트 구현 완료, exchange_calendars 교체 완료 (korean_lunar_calendar 기반 직접 구현, ~109MB 절감, 제헌절 버그 수정)
 - **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지·검색 입력란 추가 완료, 보유종목 테이블 매수일자 컬럼 추가 완료, 수익현황 페이지 빈 데이터 차트/도넛 stale state 근본 수정 완료, 프론트엔드 색상 체계 통일 완료 (하드코딩 ~190곳 COLOR 상수화 + secondary→tertiary 통합), 검색 입력란 공통 컴포넌트 통일 완료 (5페이지 7개 인스턴스 + label/compact 옵션 + 포커스 언더라인 + placeholder 색상), `npm run build` 통과
-- **Git**: 커밋 `b111496` push 완료 (exchange_calendars 교체). 커밋 `413cb6f` push 완료 (settlement.py await 수정 + 테스트 커버리지 Stage 1~5)
-- **테스트 커버리지**: Stage 1~5 완료 — 신규 332건 (encryption 34 + sector_mapping 22 + telegram 20 + journal 38 + logger 24 + trade_history 66 + dry_run 30 + web_routes 50 + web_ws_routes 48), 전체 1409 passed
+- **Git**: 커밋 `413cb6f` push 완료 (settlement.py await 수정 + 테스트 커버리지 Stage 1~5). 커밋 (이번 커밋) push 예정 (테스트 커버리지 Stage 6)
+- **테스트 커버리지**: Stage 1~6 완료 — 신규 472건 (encryption 34 + sector_mapping 22 + telegram 20 + journal 38 + logger 24 + trade_history 66 + dry_run 30 + web_routes 50 + web_ws_routes 48 + ws_manager 75 + stock_classification 42 + web_app 23), 전체 1549 passed
 - **settlement.py await 누락 버그**: 수정 완료 (`await settlement_engine.charge(amount)`)
 
 ## 다음 단계
@@ -212,8 +227,8 @@
   - **Stage 3 (P6-c)** ✅ 완료: `trade_history.py`(626줄) + `dry_run.py`(354줄) — 96건
   - **Stage 4 (P5-a)** ✅ 완료: 소형 Web 라우트 7개 (`account.py` + `market.py` + `settlement.py` + `auth.py` + `deps.py` + `ws_orders.py` + `ws_settings.py` + `ws_subscribe.py`) — 60건
   - **Stage 5 (P5-b)** ✅ 완료: 중형 Web 라우트 — `status.py`(144) + `settings.py`(169) + `ws.py`(207) — 38건 (settlement.py await 버그 수정 포함)
-  - **Stage 6 (P5-c)** ⏳ 다음: 대형 Web 라우트 — `ws_manager.py`(351) + `stock_classification.py`(330) + `app.py`(317)
-  - **Stage 7 (P4-a)**: 소형 브로커 — `kiwoom_order.py`(93) + `ls_providers.py`(195) + `connector_manager.py`(269)
+  - **Stage 6 (P5-c)** ✅ 완료: 대형 Web 라우트 — `ws_manager.py`(351) + `stock_classification.py`(330) + `app.py`(317) — 140건
+  - **Stage 7 (P4-a)** ⏳ 다음: 소형 브로커 — `kiwoom_order.py`(93) + `ls_providers.py`(195) + `connector_manager.py`(269)
   - **Stage 8 (P4-b)**: 중형 브로커 — `kiwoom_providers.py`(337) + `kiwoom_stock_rest.py`(430)
   - **Stage 9 (P4-c)**: 대형 브로커 — `kiwoom_connector.py`(563) + `ls_rest.py`(635) + `kiwoom_rest.py`(653) + `ls_connector.py`(875)
 
