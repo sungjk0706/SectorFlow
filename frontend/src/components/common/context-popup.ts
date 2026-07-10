@@ -106,7 +106,7 @@ export function showContextPopup(options: ContextPopupOptions): Promise<ContextP
       maxWidth: '320px',
       borderRadius: '8px',
       boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-      background: '#fff',
+      background: COLOR.white,
       padding: '12px',
       fontFamily: 'inherit',
       boxSizing: 'border-box',
@@ -118,7 +118,7 @@ export function showContextPopup(options: ContextPopupOptions): Promise<ContextP
       fontWeight: 'normal',
       fontSize: FONT_SIZE.body,
       marginBottom: '8px',
-      color: '#222',
+      color: COLOR.neutral,
     })
     titleEl.textContent = options.title
     popup.appendChild(titleEl)
@@ -141,7 +141,7 @@ export function showContextPopup(options: ContextPopupOptions): Promise<ContextP
       Object.assign(inputEl.style, {
         width: '100%',
         padding: '6px 8px',
-        border: '1px solid #ccc',
+        border: '1px solid ' + COLOR.border,
         borderRadius: '4px',
         fontSize: FONT_SIZE.body,
         marginBottom: '12px',
@@ -176,7 +176,7 @@ export function showContextPopup(options: ContextPopupOptions): Promise<ContextP
       padding: '5px 14px',
       border: 'none',
       borderRadius: '4px',
-      color: '#fff',
+      color: COLOR.white,
       background: confirmColor,
       cursor: 'pointer',
       fontSize: FONT_SIZE.label,
@@ -196,8 +196,8 @@ export function showContextPopup(options: ContextPopupOptions): Promise<ContextP
       padding: '5px 14px',
       border: 'none',
       borderRadius: '4px',
-      color: '#fff',
-      background: '#6c757d',
+      color: COLOR.white,
+      background: COLOR.toggleOff,
       cursor: 'pointer',
       fontSize: FONT_SIZE.label,
       fontFamily: 'inherit',

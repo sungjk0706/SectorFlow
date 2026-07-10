@@ -72,7 +72,7 @@ function showSpinner(container: HTMLElement): HTMLElement {
   spinner.style.cssText =
     'display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:16px;min-height:200px;'
   spinner.innerHTML = `
-    <div style="width:40px;height:40px;border:4px solid #e0e0e0;border-top:4px solid ${COLOR.down};border-radius:50%;animation:spin 1s linear infinite"></div>
+    <div style="width:40px;height:40px;border:4px solid ${COLOR.inactiveBg};border-top:4px solid ${COLOR.down};border-radius:50%;animation:spin 1s linear infinite"></div>
     <p style="color:${COLOR.tertiary};font-size:12px">로딩 중…</p>
     <style>@keyframes spin { to { transform: rotate(360deg) } }</style>
   `
@@ -201,7 +201,7 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
       contentEl.innerHTML = `
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:16px;min-height:200px;">
           <p style="color:${COLOR.up};font-size:13px">페이지를 불러올 수 없습니다</p>
-          <button style="padding:8px 16px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer"
+          <button style="padding:8px 16px;border:1px solid ${COLOR.border};border-radius:4px;background:${COLOR.white};cursor:pointer"
                   onclick="location.reload()">다시 시도</button>
         </div>
       `

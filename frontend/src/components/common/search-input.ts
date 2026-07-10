@@ -1,6 +1,6 @@
 // 공통 검색 입력 컴포넌트 — 이벤트 기반, 디바운스 없음 (워크룰 준수)
 
-import { FONT_SIZE } from './ui-styles'
+import { COLOR, FONT_SIZE } from './ui-styles'
 
 export interface SearchInputOptions {
   placeholder?: string
@@ -14,7 +14,7 @@ export function createSearchInput(options: SearchInputOptions): {
   getValue(): string
   clear(): void
 } {
-  const { placeholder = '종목명 또는 코드 검색', onSearch, width = '100%', borderColor = '#ccc' } = options
+  const { placeholder = '종목명 또는 코드 검색', onSearch, width = '100%', borderColor = COLOR.border } = options
 
   const wrapper = document.createElement('div')
   Object.assign(wrapper.style, {
@@ -44,7 +44,7 @@ export function createSearchInput(options: SearchInputOptions): {
     top: '50%',
     transform: 'translateY(-50%)',
     fontSize: '13px',
-    color: '#999',
+    color: COLOR.disabled,
     pointerEvents: 'none',
   })
   icon.textContent = '🔍'
@@ -57,7 +57,7 @@ export function createSearchInput(options: SearchInputOptions): {
     top: '50%',
     transform: 'translateY(-50%)',
     fontSize: '14px',
-    color: '#999',
+    color: COLOR.disabled,
     cursor: 'pointer',
     display: 'none',
     lineHeight: '1',

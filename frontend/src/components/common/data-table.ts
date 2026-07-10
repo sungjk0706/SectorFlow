@@ -5,7 +5,7 @@
  * 하나의 인터페이스로 통합한다.
  */
 
-import { CELL_BORDER, FONT_SIZE, FONT_WEIGHT, FONT_FAMILY } from './ui-styles'
+import { CELL_BORDER, COLOR, FONT_SIZE, FONT_WEIGHT, FONT_FAMILY } from './ui-styles'
 import { computeColumnWidths, type ColumnWidthInput } from './auto-width'
 import { createVirtualScroller } from '../virtual-scroller'
 
@@ -175,7 +175,7 @@ function createFixedMode<T extends object>(
 
   const thead = document.createElement('thead')
   if (stickyHeader) {
-    Object.assign(thead.style, { position: 'sticky', top: '0', background: '#fff', zIndex: '2' })
+    Object.assign(thead.style, { position: 'sticky', top: '0', background: COLOR.white, zIndex: '2' })
   }
   const headerTr = document.createElement('tr')
   for (let i = 0; i < columns.length; i++) {
@@ -189,9 +189,9 @@ function createFixedMode<T extends object>(
       fontWeight: FONT_WEIGHT.normal,
       whiteSpace: 'nowrap',
       overflow: 'hidden',
-      background: '#fff',
-      borderRight: i < columns.length - 1 ? '1px solid #d0d0d0' : 'none',
-      borderBottom: '2px solid #ddd',
+      background: COLOR.white,
+      borderRight: i < columns.length - 1 ? `1px solid ${COLOR.borderGrid}` : 'none',
+      borderBottom: `2px solid ${COLOR.borderDark}`,
     })
     if (c.headerStyle) Object.assign(th.style, c.headerStyle)
     th.textContent = c.label
@@ -208,7 +208,7 @@ function createFixedMode<T extends object>(
   const emptyTr = document.createElement('tr')
   const emptyTd = document.createElement('td')
   emptyTd.colSpan = columns.length
-  Object.assign(emptyTd.style, { color: '#aaa', padding: '20px 0', textAlign: 'center' })
+  Object.assign(emptyTd.style, { color: COLOR.disabled, padding: '20px 0', textAlign: 'center' })
   emptyTd.textContent = emptyText
   emptyTr.appendChild(emptyTd)
   tbody.appendChild(emptyTr)
@@ -227,7 +227,7 @@ function createFixedMode<T extends object>(
       padding: '10px 0 4px',
       fontWeight: FONT_WEIGHT.normal,
       fontSize: FONT_SIZE.group,
-      color: '#1a237e',
+      color: COLOR.groupHeader,
       textAlign: 'center',
     })
     td.textContent = `📊 ${g.label}`
@@ -249,7 +249,7 @@ function createFixedMode<T extends object>(
   function renderDataRow(row: T, idx: number): HTMLElement {
     const tr = document.createElement('tr')
     tr.setAttribute('data-row-type', 'data')
-    if (zebraStriping && idx % 2 === 1) tr.style.backgroundColor = '#f9f9f9'
+    if (zebraStriping && idx % 2 === 1) tr.style.backgroundColor = COLOR.zebra
     const rs = rowStyle ? rowStyle(row, idx) : undefined
     if (rs) Object.assign(tr.style, rs)
     for (let i = 0; i < columns.length; i++) {
@@ -264,8 +264,8 @@ function createFixedMode<T extends object>(
         fontSize: FONT_SIZE.body,
         fontFamily: FONT_FAMILY,
         textAlign: c.align,
-        borderRight: i < columns.length - 1 ? '1px solid #d0d0d0' : 'none',
-        borderBottom: '1px solid #e5e7eb',
+        borderRight: i < columns.length - 1 ? `1px solid ${COLOR.borderGrid}` : 'none',
+        borderBottom: `1px solid ${COLOR.borderRow}`,
       })
       if (c.cellStyle) Object.assign(td.style, c.cellStyle)
       try {
@@ -376,7 +376,7 @@ function createFixedMode<T extends object>(
             rowEl.style.display = ''
             const dataRow = row as T
             if (zebraStriping) {
-               rowEl.style.backgroundColor = (i % 2 === 1) ? '#f9f9f9' : 'transparent'
+               rowEl.style.backgroundColor = (i % 2 === 1) ? COLOR.zebra : 'transparent'
             }
             const rs = rowStyle ? rowStyle(dataRow, i) : undefined
             if (rs) {
@@ -471,7 +471,7 @@ function createFixedMode<T extends object>(
 
           const dataRow = row as T
           if (zebraStriping) {
-             rowEl.style.backgroundColor = (i % 2 === 1) ? '#f9f9f9' : 'transparent'
+             rowEl.style.backgroundColor = (i % 2 === 1) ? COLOR.zebra : 'transparent'
           }
           const rs = rowStyle ? rowStyle(dataRow, i) : undefined
           if (rs) {
@@ -535,7 +535,7 @@ function createFixedMode<T extends object>(
 
     const dataRow = currentRows[idx] as T
     if (zebraStriping) {
-       rowEl.style.backgroundColor = (idx % 2 === 1) ? '#f9f9f9' : 'transparent'
+       rowEl.style.backgroundColor = (idx % 2 === 1) ? COLOR.zebra : 'transparent'
     }
     const rs = rowStyle ? rowStyle(dataRow, idx) : undefined
     if (rs) {
@@ -606,7 +606,7 @@ function createVirtualScrollMode<T extends object>(
   wrapper.appendChild(scrollContainer)
 
   const headerDiv = document.createElement('div')
-  Object.assign(headerDiv.style, { display: 'grid', borderBottom: '2px solid #ddd', background: '#fff', flexShrink: '0' })
+  Object.assign(headerDiv.style, { display: 'grid', borderBottom: `2px solid ${COLOR.borderDark}`, background: COLOR.white, flexShrink: '0' })
   if (stickyHeader) Object.assign(headerDiv.style, { position: 'sticky', top: '0', zIndex: '2' })
   for (let i = 0; i < columns.length; i++) {
     const c = columns[i]
@@ -621,8 +621,8 @@ function createVirtualScrollMode<T extends object>(
       fontWeight: FONT_WEIGHT.normal,
       whiteSpace: 'nowrap',
       overflow: 'hidden',
-      borderLeft: i > 0 ? '1px solid #d0d0d0' : 'none',
-      background: '#fff',
+      borderLeft: i > 0 ? `1px solid ${COLOR.borderGrid}` : 'none',
+      background: COLOR.white,
     })
     if (c.headerStyle) Object.assign(cell.style, c.headerStyle)
     cell.textContent = c.label
@@ -631,7 +631,7 @@ function createVirtualScrollMode<T extends object>(
   scrollContainer.appendChild(headerDiv)
 
   const emptyDiv = document.createElement('div')
-  Object.assign(emptyDiv.style, { color: '#aaa', padding: '20px 0', textAlign: 'center', display: 'none' })
+  Object.assign(emptyDiv.style, { color: COLOR.disabled, padding: '20px 0', textAlign: 'center', display: 'none' })
   emptyDiv.textContent = emptyText
   scrollContainer.appendChild(emptyDiv)
 
@@ -666,9 +666,9 @@ function createVirtualScrollMode<T extends object>(
 
     // 공통 스타일 적용
     rowEl.classList.add('data-table-row')
-    Object.assign(rowEl.style, { display: 'grid', gridTemplateColumns, borderBottom: '1px solid #e5e7eb' })
+    Object.assign(rowEl.style, { display: 'grid', gridTemplateColumns, borderBottom: `1px solid ${COLOR.borderRow}` })
 
-    if (zebraStriping && index % 2 === 1) rowEl.style.backgroundColor = '#f9f9f9'
+    if (zebraStriping && index % 2 === 1) rowEl.style.backgroundColor = COLOR.zebra
     else rowEl.style.backgroundColor = 'transparent'
 
     if (!currentIsGroup) {
@@ -696,7 +696,7 @@ function createVirtualScrollMode<T extends object>(
           justifyContent: 'flex-start',
           fontWeight: FONT_WEIGHT.normal,
           fontSize: FONT_SIZE.group,
-          color: '#1a237e',
+          color: COLOR.groupHeader,
           padding: '10px 0 4px',
         })
         if (row.style) Object.assign(rowEl.style, row.style)
@@ -737,7 +737,7 @@ function createVirtualScrollMode<T extends object>(
           alignItems: 'center',
           minWidth: '0',
           justifyContent: c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start',
-          borderLeft: i > 0 ? '1px solid #d0d0d0' : 'none',
+          borderLeft: i > 0 ? `1px solid ${COLOR.borderGrid}` : 'none',
         })
         if (c.cellStyle) Object.assign(cell.style, c.cellStyle)
         try {

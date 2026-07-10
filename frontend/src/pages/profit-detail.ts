@@ -66,8 +66,8 @@ let _dirtySectorStocks = false
 /* ── 요약 카드 선택 스타일 ── */
 function applyCardStyle(card: HTMLDivElement, active: boolean): void {
   Object.assign(card.style, {
-    border: active ? '2px solid ' + COLOR.down : '1px solid #eee',
-    background: active ? COLOR.downBg : '#fafafa',
+    border: active ? '2px solid ' + COLOR.down : '1px solid ' + COLOR.borderLight,
+    background: active ? COLOR.downBg : COLOR.surfaceLight,
   })
 }
 
@@ -81,9 +81,9 @@ function updateCardSelection(): void {
 function updateDrilldownBtnStyle(active: boolean): void {
   if (!drilldownBtnEl) return
   Object.assign(drilldownBtnEl.style, {
-    border: active ? '2px solid ' + COLOR.down : '1px solid #eee',
-    background: active ? COLOR.downBg : '#fff',
-    color: active ? COLOR.down : COLOR.secondary,
+    border: active ? '2px solid ' + COLOR.down : '1px solid ' + COLOR.borderLight,
+    background: active ? COLOR.downBg : COLOR.white,
+    color: active ? COLOR.down : COLOR.tertiary,
   })
 }
 
@@ -201,10 +201,10 @@ function updateStatistics(): void {
   const avgRate = sellCount > 0 ? Math.round(filteredSells.reduce((s, r) => s + Number(r.pnl_rate ?? 0), 0) / sellCount * 100) / 100 : 0
 
   if (statCountEl) statCountEl.textContent = `매도 ${sellCount}건 / 매수 ${buyCount}건`
-  if (statBuyAmtEl) { statBuyAmtEl.textContent = fmtWon(buyAmt); statBuyAmtEl.style.color = COLOR.secondary }
-  if (statSellAmtEl) { statSellAmtEl.textContent = fmtWon(sellAmt); statSellAmtEl.style.color = COLOR.secondary }
+  if (statBuyAmtEl) { statBuyAmtEl.textContent = fmtWon(buyAmt); statBuyAmtEl.style.color = COLOR.tertiary }
+  if (statSellAmtEl) { statSellAmtEl.textContent = fmtWon(sellAmt); statSellAmtEl.style.color = COLOR.tertiary }
   if (statPnlEl) { statPnlEl.textContent = fmtWon(pnl); statPnlEl.style.color = pnlColor(pnl) }
-  if (statWinRateEl) { statWinRateEl.textContent = `${winRate.toFixed(2)}%`; statWinRateEl.style.color = COLOR.secondary }
+  if (statWinRateEl) { statWinRateEl.textContent = `${winRate.toFixed(2)}%`; statWinRateEl.style.color = COLOR.tertiary }
   if (statAvgRateEl) { statAvgRateEl.textContent = `${avgRate > 0 ? '+' : ''}${avgRate.toFixed(2)}%`; statAvgRateEl.style.color = pnlColor(avgRate) }
 }
 
@@ -279,7 +279,7 @@ function mount(container: HTMLElement): void {
   const monthEnd = todayStr.slice(0, 8) + '31'
 
   const summaryRow = document.createElement('div')
-  Object.assign(summaryRow.style, { display: 'flex', gap: '8px', padding: '8px 4px', flex: 'none', borderBottom: '1px solid #ddd' })
+  Object.assign(summaryRow.style, { display: 'flex', gap: '8px', padding: '8px 4px', flex: 'none', borderBottom: '1px solid ' + COLOR.borderDark })
 
   summaryCardEls = createSummaryCards(summaryRow, {
     onTodayClick: () => {
@@ -314,32 +314,32 @@ function mount(container: HTMLElement): void {
 
   // 필터 행 (날짜 + 종목 + 드릴다운 토글)
   const filterRow = document.createElement('div')
-  Object.assign(filterRow.style, { display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 4px', borderBottom: '1px solid #eee', flexWrap: 'wrap' })
+  Object.assign(filterRow.style, { display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 4px', borderBottom: '1px solid ' + COLOR.borderLight, flexWrap: 'wrap' })
 
   const filterLabel = document.createElement('span')
-  Object.assign(filterLabel.style, { fontSize: FONT_SIZE.label, color: COLOR.secondary, whiteSpace: 'nowrap' })
+  Object.assign(filterLabel.style, { fontSize: FONT_SIZE.label, color: COLOR.tertiary, whiteSpace: 'nowrap' })
   filterLabel.textContent = '기간:'
   filterRow.appendChild(filterLabel)
 
   dateFromInput = document.createElement('input')
   dateFromInput.type = 'date'
   dateFromInput.value = monthStart
-  Object.assign(dateFromInput.style, { padding: '2px 4px', fontSize: FONT_SIZE.label, border: '1px solid #eee', borderRadius: '4px', color: COLOR.code })
+  Object.assign(dateFromInput.style, { padding: '2px 4px', fontSize: FONT_SIZE.label, border: '1px solid ' + COLOR.borderLight, borderRadius: '4px', color: COLOR.code })
   filterRow.appendChild(dateFromInput)
 
   const dateSep = document.createElement('span')
   dateSep.textContent = '~'
-  dateSep.style.color = '#ccc'
+  dateSep.style.color = COLOR.border
   filterRow.appendChild(dateSep)
 
   dateToInput = document.createElement('input')
   dateToInput.type = 'date'
   dateToInput.value = todayStr
-  Object.assign(dateToInput.style, { padding: '2px 4px', fontSize: FONT_SIZE.label, border: '1px solid #eee', borderRadius: '4px', color: COLOR.code })
+  Object.assign(dateToInput.style, { padding: '2px 4px', fontSize: FONT_SIZE.label, border: '1px solid ' + COLOR.borderLight, borderRadius: '4px', color: COLOR.code })
   filterRow.appendChild(dateToInput)
 
   const clearBtn = document.createElement('button')
-  Object.assign(clearBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.label, border: '1px solid #eee', borderRadius: '4px', background: '#fff', cursor: 'pointer', color: COLOR.secondary })
+  Object.assign(clearBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.label, border: '1px solid ' + COLOR.borderLight, borderRadius: '4px', background: COLOR.white, cursor: 'pointer', color: COLOR.tertiary })
   clearBtn.textContent = '전체'
   clearBtn.addEventListener('click', (e) => {
     selectedView = 'total'
@@ -357,24 +357,24 @@ function mount(container: HTMLElement): void {
   // 종목 필터
   const stockSep = document.createElement('span')
   stockSep.textContent = '|'
-  stockSep.style.color = '#ccc'
+  stockSep.style.color = COLOR.border
   filterRow.appendChild(stockSep)
 
   const stockLabel = document.createElement('span')
-  Object.assign(stockLabel.style, { fontSize: FONT_SIZE.label, color: COLOR.secondary, whiteSpace: 'nowrap' })
+  Object.assign(stockLabel.style, { fontSize: FONT_SIZE.label, color: COLOR.tertiary, whiteSpace: 'nowrap' })
   stockLabel.textContent = '종목:'
   filterRow.appendChild(stockLabel)
 
   stockFilterInput = document.createElement('input')
   stockFilterInput.type = 'text'
   stockFilterInput.placeholder = '종목명/코드'
-  Object.assign(stockFilterInput.style, { padding: '2px 4px', fontSize: FONT_SIZE.label, border: '1px solid #eee', borderRadius: '4px', color: COLOR.code, width: '100px' })
+  Object.assign(stockFilterInput.style, { padding: '2px 4px', fontSize: FONT_SIZE.label, border: '1px solid ' + COLOR.borderLight, borderRadius: '4px', color: COLOR.code, width: '100px' })
   stockFilterInput.addEventListener('input', () => { showTable(); updateTabLabels() })
   filterRow.appendChild(stockFilterInput)
 
   // 드릴다운 토글 버튼
   drilldownBtnEl = document.createElement('button')
-  Object.assign(drilldownBtnEl.style, { padding: '2px 8px', fontSize: FONT_SIZE.label, border: '1px solid #eee', borderRadius: '4px', background: '#fff', cursor: 'pointer', color: COLOR.secondary, marginLeft: 'auto' })
+  Object.assign(drilldownBtnEl.style, { padding: '2px 8px', fontSize: FONT_SIZE.label, border: '1px solid ' + COLOR.borderLight, borderRadius: '4px', background: COLOR.white, cursor: 'pointer', color: COLOR.tertiary, marginLeft: 'auto' })
   drilldownBtnEl.textContent = '당월 일별 요약'
   drilldownBtnEl.addEventListener('click', (e) => {
     drilldownActive = !drilldownActive
@@ -398,7 +398,7 @@ function mount(container: HTMLElement): void {
 
   // 탭 헤더
   tabRow = document.createElement('div')
-  Object.assign(tabRow.style, { display: 'flex', borderBottom: '1px solid #eee', marginBottom: '8px' })
+  Object.assign(tabRow.style, { display: 'flex', borderBottom: '1px solid ' + COLOR.borderLight, marginBottom: '8px' })
 
   sellTabBtn = document.createElement('button')
   applyTabStyle(sellTabBtn, true)
@@ -439,9 +439,9 @@ function mount(container: HTMLElement): void {
 
   // 통계 정보 행
   const statRow = document.createElement('div')
-  Object.assign(statRow.style, { display: 'flex', gap: '8px', padding: '6px 4px', borderTop: '1px solid #eee', flex: 'none' })
+  Object.assign(statRow.style, { display: 'flex', gap: '8px', padding: '6px 4px', borderTop: '1px solid ' + COLOR.borderLight, flex: 'none' })
 
-  const STAT_STYLE = `flex:1;background:#fafafa;border:1px solid #eee;border-radius:4px;padding:4px 8px;display:flex;flex-direction:column;align-items:center;gap:2px;`
+  const STAT_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:4px;padding:4px 8px;display:flex;flex-direction:column;align-items:center;gap:2px;`
   const STAT_LABELS = ['총 건수', '매수금액', '매도금액', '실현손익', '승률', '평균 수익률']
   const statEls: HTMLSpanElement[] = []
 
@@ -450,7 +450,7 @@ function mount(container: HTMLElement): void {
     stat.style.cssText = STAT_STYLE
 
     const labelEl = document.createElement('span')
-    Object.assign(labelEl.style, { fontSize: FONT_SIZE.label, color: COLOR.secondary })
+    Object.assign(labelEl.style, { fontSize: FONT_SIZE.label, color: COLOR.tertiary })
     labelEl.textContent = STAT_LABELS[i]
 
     const valEl = document.createElement('span')

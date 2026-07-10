@@ -13,7 +13,7 @@ export const BROKER_LABELS: Record<string, string> = {
 }
 
 export function createBrokerBadge(broker: string, onClick?: () => void): HTMLElement {
-  const color = BROKER_COLORS[broker] ?? `${COLOR.secondary}`
+  const color = BROKER_COLORS[broker] ?? `${COLOR.tertiary}`
   const label = BROKER_LABELS[broker] ?? broker
   const clickable = !!onClick
 
@@ -25,7 +25,7 @@ export function createBrokerBadge(broker: string, onClick?: () => void): HTMLEle
     borderRadius: '10px',
     fontSize: '0.7em',
     fontWeight: 'normal',
-    color: '#fff',
+    color: COLOR.white,
     backgroundColor: color,
     cursor: clickable ? 'pointer' : 'default',
     userSelect: 'none',

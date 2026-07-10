@@ -1,6 +1,16 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-10: 프론트엔드 색상 체계 통일 — 하드코딩 색상 ~190곳 COLOR 상수로 일원화 + secondary→tertiary 통합**
+  - 목적: 28개 파일에 분산된 하드코딩 색상(~190곳)을 `ui-styles.ts` COLOR 상수로 통일, `secondary`(#888)를 `tertiary`(#666)로 통합하여 라벨/설명문 색상 일원화
+  - `ui-styles.ts`: COLOR 상수 16개 추가 — `white`, `groupHeader`, `border`/`borderDark`/`borderLight`/`borderGrid`/`borderRow`, `zebra`/`surfaceLight`/`hoverBg`/`surface`/`highlight`/`inactiveBg`/`toggleOff`; `secondary` 제거; `CELL_BORDER`·cellStyle·disabled option 하드코딩 교체
+  - `secondary`→`tertiary` 일괄 교체: 12개 파일 33곳 (sed 일괄 처리)
+  - 하드코딩 색상 교체: 28개 파일 ~190곳 — 텍스트(`#aaa`→disabled, `#999`→disabled, `#111`→neutral, `#222`→neutral, `#666`→tertiary, `#1a1a1a`→neutral, `#333`→neutral, `#616161`→tertiary, `#1a237e`→groupHeader, `#fff`→white), 보더(`#ccc`→border, `#ddd`→borderDark, `#eee`→borderLight, `#d0d0d0`→borderGrid, `#e5e7eb`→borderRow, `#f5f5f5`→neutralBg, `#f0f0f0`→hoverBg, `#e0e0e0`→inactiveBg, `#d0d5dd`→borderGrid), 배경(`#f9f9f9`→zebra, `#fafafa`→surfaceLight, `#f8f9fa`/`#f8f8f8`/`#f7f8fa`→surface, `#fff9c4`→highlight, `#6c757d`→toggleOff, `#dee2e6`→inactiveBg)
+  - cssText/template literal 문자열 내 `#xxx`도 `${COLOR.xxx}` 형식으로 교체 (sidebar, shell, header, router, canvas-sector-donut, canvas-profit-chart, profit-overview, profit-detail, profit-shared, sector-ranking-list, settings-common)
+  - 제외 (도메인 특화): 차트 팔레트 20색, 점수 색상 3종(#e67e22/#2c3e50/#7f8c8d), 브로커 브랜드(#FF8C00/#DC143C), 슬라이더(#0d6efd/#e9ecef), 다크테마(DARK_FIELD_STYLE #1e1e1e/#555/#ddd), 부트스트랩 칩(#f3e5f5/#6a1b9a), success hover(#157347)
+  - 아키텍처: 원칙 10 (SSOT — 색상 단일 소스 진리), 원칙 22 (파생 데이터 모델 — 보더/배경 계층화)
+  - 검증: tsc 타입체크 0 에러, vite build 통과 (57 모듈 1.97s), vitest 109/109 통과, grep 재검색 — `COLOR.secondary` 0건, 비제외 하드코딩 색상 0건
+  - 커밋: (이번 커밋)
 - **2026-07-10: 수익상세/매도설정 페이지 데이터 정합성 근본 수정 + 매수일자 최초 매수일 표시 + 매수일자 색상 변경**
   - 문제 1: 수익상세 페이지(매수 8건/매도 6건)와 매도설정 페이지(보유종목 5종목) 간 데이터 불일치
   - 원인 1: `trade_history._buy_history/_sell_history`(수익상세 원천)와 `dry_run._test_positions`(보유종목 원천)가 이중 상태로 관리, `record_buy/record_sell`(동기)과 `_apply_buy/_apply_sell`(비동기 0.1초 후)이 원자적으로 결합되지 않아 diverge
@@ -43,14 +53,10 @@
 
 ## 현재 상태
 - **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료, 보유종목 buy_date 파생·브로드캐스트 구현 완료
-- **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지·검색 입력란 추가 완료, 보유종목 테이블 매수일자 컬럼 추가 완료, 수익현황 페이지 빈 데이터 차트/도넛 stale state 근본 수정 완료 (더미 데이터 생성 로직 완전 제거 + currentSegments 초기화), `npm run build` 통과
-- **Git**: 커밋 `77d1d3c` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, .devin/workflows/*, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
+- **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지·검색 입력란 추가 완료, 보유종목 테이블 매수일자 컬럼 추가 완료, 수익현황 페이지 빈 데이터 차트/도넛 stale state 근본 수정 완료, 프론트엔드 색상 체계 통일 완료 (하드코딩 ~190곳 COLOR 상수화 + secondary→tertiary 통합), `npm run build` 통과
+- **Git**: 커밋 `0bf3167` push 완료 (관련 없는 변경사항 ARCHITECTURE.md, .devin/workflows/*, risk_manager_refactor_megaplan.md, fix-plan-boost-order-ratio-422.md는 미커밋)
 
 ## 다음 단계
-- **프론트엔드 색상 체계 통일 (별도 세션)**:
-  - 하드코딩 색상 26곳 → COLOR 상수로 통일 (`#aaa`→`disabled`, `#999`→`disabled`, `#111`→`neutral` 등)
-  - `secondary`(#888)/`tertiary`(#666) 용도 정리 — 빈 상태 색상을 `disabled`로 통일, 라벨/설명문은 `tertiary`로 통일
-  - 조사 완료: `frontend/src/components/common/ui-styles.ts` COLOR 상수 21개, 사용 364곳 매핑 완료
 - **1순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석

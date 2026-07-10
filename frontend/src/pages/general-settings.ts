@@ -26,7 +26,7 @@ const GS = {
   rowPad: '10px 0', // 행 상하 패딩
   inputPad: '6px 10px', // 입력박스 패딩
   btnPad: '6px 20px',   // 저장/액션 버튼 패딩
-  rowBorder: '1px solid #eee',    // 설정 행 구분선
+  rowBorder: '1px solid ' + COLOR.borderLight,    // 설정 행 구분선
   descPad: '0 0 4px',             // 설명 텍스트 패딩
   saveMargin: '12px 0 0',         // 저장 버튼 상단 마진
 } as const
@@ -167,7 +167,7 @@ function scheduleConfirmedDlSave(): void {
 /* ── 탭 렌더링 ── */
 function renderTabBar(): HTMLElement {
   const bar = document.createElement('div')
-  Object.assign(bar.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #ddd', marginBottom: '12px' })
+  Object.assign(bar.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid ' + COLOR.borderDark, marginBottom: '12px' })
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'auto-trade', label: '자동매매' },
@@ -235,7 +235,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
   container.appendChild(masterRow)
 
   const masterDesc = document.createElement('div')
-  Object.assign(masterDesc.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px' })
+  Object.assign(masterDesc.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px' })
   masterDesc.textContent = '자동매매(매수/매도) 마스터 스위치 — OFF면 모든 매매 중단'
   container.appendChild(masterDesc)
 
@@ -326,12 +326,12 @@ function renderAutoTradeTab(container: HTMLElement): void {
   container.appendChild(autoSellRow)
 
   const descLabel1 = document.createElement('div')
-  Object.assign(descLabel1.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px' })
+  Object.assign(descLabel1.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px' })
   descLabel1.textContent = '거래일 설정시간 내에서만 자동 매수/매도 실행'
   container.appendChild(descLabel1)
 
   const descLabel2 = document.createElement('div')
-  Object.assign(descLabel2.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px' })
+  Object.assign(descLabel2.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px' })
   descLabel2.textContent = '공휴일·주말에는 자동매매가 항상 차단됩니다'
   container.appendChild(descLabel2)
 }
@@ -397,7 +397,7 @@ function renderTelegramTab(container: HTMLElement): void {
     const input = document.createElement('input')
     input.type = MASKED_FIELDS.has(k) ? 'password' : 'text'
     input.value = String(vals[k] || '')
-    Object.assign(input.style, { width: `${TEXT_INPUT_WIDTH}px`, padding: GS.inputPad, borderRadius: '4px', border: '1px solid #ccc', fontSize: GS.input })
+    Object.assign(input.style, { width: `${TEXT_INPUT_WIDTH}px`, padding: GS.inputPad, borderRadius: '4px', border: '1px solid ' + COLOR.border, fontSize: GS.input })
     input.addEventListener('input', () => { teleInputs[k] = input })
     teleInputs[k] = input
     row.appendChild(input)
@@ -409,7 +409,7 @@ function renderTelegramTab(container: HTMLElement): void {
   Object.assign(saveRow.style, { margin: GS.saveMargin, textAlign: 'right' })
   const saveBtn = document.createElement('button')
   saveBtn.type = 'button'
-  Object.assign(saveBtn.style, { padding: GS.btnPad, borderRadius: '6px', border: '1px solid #ccc', cursor: 'pointer', fontSize: GS.label })
+  Object.assign(saveBtn.style, { padding: GS.btnPad, borderRadius: '6px', border: '1px solid ' + COLOR.border, cursor: 'pointer', fontSize: GS.label })
   saveBtn.textContent = '저장'
   saveBtn.addEventListener('click', async () => {
     const orig: Record<string, unknown> = {}
@@ -543,7 +543,7 @@ function renderTestVirtualSection(): HTMLElement {
 
   const chargeBtn = document.createElement('button')
   chargeBtn.type = 'button'
-  Object.assign(chargeBtn.style, { padding: '7px 12px', borderRadius: '4px', border: '1px solid #ccc', background: '#f8f9fa', cursor: 'pointer', fontSize: GS.label })
+  Object.assign(chargeBtn.style, { padding: '7px 12px', borderRadius: '4px', border: '1px solid ' + COLOR.border, background: COLOR.surface, cursor: 'pointer', fontSize: GS.label })
   chargeBtn.textContent = '투자금충전'
   chargeBtn.addEventListener('click', async () => {
     if (inputAmount <= 0) return
@@ -562,7 +562,7 @@ function renderTestVirtualSection(): HTMLElement {
   Object.assign(saveRow.style, { display: 'flex', justifyContent: 'flex-end', margin: GS.saveMargin })
   const saveDepositBtn = document.createElement('button')
   saveDepositBtn.type = 'button'
-  Object.assign(saveDepositBtn.style, { padding: '7px 16px', borderRadius: '4px', border: '1px solid #ccc', background: '#f8f9fa', cursor: 'pointer', fontSize: GS.label })
+  Object.assign(saveDepositBtn.style, { padding: '7px 16px', borderRadius: '4px', border: '1px solid ' + COLOR.border, background: COLOR.surface, cursor: 'pointer', fontSize: GS.label })
   saveDepositBtn.textContent = '투자금 변경'
   saveDepositBtn.addEventListener('click', async () => {
     const res = await settingsMgr!.saveSection({ test_virtual_deposit: inputAmount, test_virtual_balance: inputAmount })
@@ -573,13 +573,13 @@ function renderTestVirtualSection(): HTMLElement {
 
   // 설명 텍스트
   const hintRow = document.createElement('div')
-  Object.assign(hintRow.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px' })
+  Object.assign(hintRow.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px' })
   hintRow.textContent = '누적투자금과 주문가능금액을 입력한 금액으로 변경합니다. 데이터 초기화 시에도 이 금액이 기본값으로 사용됩니다.'
   wrap.appendChild(hintRow)
 
   // 읽기전용 표시
   const infoWrap = document.createElement('div')
-  Object.assign(infoWrap.style, { borderTop: '1px solid #eee', padding: GS.rowPad })
+  Object.assign(infoWrap.style, { borderTop: '1px solid ' + COLOR.borderLight, padding: GS.rowPad })
 
   const depRow = document.createElement('div')
   Object.assign(depRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, fontSize: GS.label })
@@ -592,10 +592,10 @@ function renderTestVirtualSection(): HTMLElement {
 
   // 전체 초기화
   const resetWrap = document.createElement('div')
-  Object.assign(resetWrap.style, { borderTop: '1px solid #eee', padding: GS.rowPad })
+  Object.assign(resetWrap.style, { borderTop: '1px solid ' + COLOR.borderLight, padding: GS.rowPad })
   const resetBtn = document.createElement('button')
   resetBtn.type = 'button'
-  Object.assign(resetBtn.style, { padding: '8px 18px', borderRadius: '4px', border: '1px solid ' + COLOR.up, background: COLOR.up, color: '#fff', cursor: 'pointer', fontSize: GS.label })
+  Object.assign(resetBtn.style, { padding: '8px 18px', borderRadius: '4px', border: '1px solid ' + COLOR.up, background: COLOR.up, color: COLOR.white, cursor: 'pointer', fontSize: GS.label })
   resetBtn.textContent = '🔴 테스트 데이터 전체 초기화'
   resetBtn.addEventListener('click', async () => {
     const confirmed = await showConfirmDialog({
@@ -640,7 +640,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   container.appendChild(brokerSection)
 
   const brokerDesc = document.createElement('div')
-  Object.assign(brokerDesc.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px', textAlign: 'center' })
+  Object.assign(brokerDesc.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px', textAlign: 'center' })
   brokerDesc.textContent = '선택한 증권사로 시스템 전체 통신망(시세, 계좌, 주문)이 전환됩니다. 엔진이 재기동되어 실시간 연결이 잠시 끊깁니다.'
   container.appendChild(brokerDesc)
 
@@ -663,7 +663,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   container.appendChild(wsRow)
 
   const descLabel3 = document.createElement('div')
-  Object.assign(descLabel3.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px' })
+  Object.assign(descLabel3.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px' })
   descLabel3.textContent = '실시간 데이터 자동 연결 스위치 — OFF면 수동 연결만 가능'
   container.appendChild(descLabel3)
 
@@ -682,7 +682,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   container.appendChild(wsTimeRow)
 
   const descLabel4 = document.createElement('div')
-  Object.assign(descLabel4.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px' })
+  Object.assign(descLabel4.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px' })
   descLabel4.textContent = '실시간 시세 수신 시작/종료 시간'
   container.appendChild(descLabel4)
 
@@ -704,7 +704,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   container.appendChild(confirmedDlRow)
 
   const descLabel5 = document.createElement('div')
-  Object.assign(descLabel5.style, { fontSize: GS.desc, color: COLOR.secondary, padding: GS.descPad, marginTop: '-4px' })
+  Object.assign(descLabel5.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px' })
   descLabel5.textContent = '장마감 후 확정 시세 다운로드 시간 (기본값 20:40)'
   container.appendChild(descLabel5)
 
@@ -722,7 +722,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
     btn.type = 'button'
     const isActive = activeApiTab === tab.id
     Object.assign(btn.style, {
-      padding: '6px 12px', cursor: 'pointer', border: '1px solid #ddd', background: isActive ? '#f0f0f0' : '#fff',
+      padding: '6px 12px', cursor: 'pointer', border: '1px solid ' + COLOR.borderDark, background: isActive ? COLOR.hoverBg : COLOR.white,
       borderRadius: '4px', fontSize: GS.label, color: isActive ? COLOR.neutral : COLOR.tertiary,
     })
     btn.textContent = tab.label
@@ -812,7 +812,7 @@ function refreshApiTabContent(): void {
     for (const [id, btn] of Object.entries(apiTabButtons)) {
       const isActive = id === activeApiTab
       Object.assign(btn.style, {
-        background: isActive ? '#f0f0f0' : '#fff',
+        background: isActive ? COLOR.hoverBg : COLOR.white,
         color: isActive ? COLOR.neutral : COLOR.tertiary,
       })
     }

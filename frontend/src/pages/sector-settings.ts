@@ -137,10 +137,10 @@ function mount(container: HTMLElement): void {
   const receiveCountRow = document.createElement('div')
   Object.assign(receiveCountRow.style, {
     fontSize: FONT_SIZE.small,
-    color: COLOR.secondary,
+    color: COLOR.tertiary,
     textAlign: 'right',
     padding: '2px 0 6px 0',
-    borderBottom: '1px solid #eee',
+    borderBottom: '1px solid ' + COLOR.borderLight,
     marginBottom: '12px',
   })
   receiveCountRow.textContent = _initialRate
@@ -156,7 +156,7 @@ function mount(container: HTMLElement): void {
   // ④ 극단값 제외
   root.appendChild(createStepLabel('④', '상하위(N%) 종목 제외후 가중치 계산'))
   const trimRow = document.createElement('div')
-  Object.assign(trimRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', borderBottom: '1px solid #eee' })
+  Object.assign(trimRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', borderBottom: '1px solid ' + COLOR.borderLight })
 
   const leftCol = document.createElement('div')
   const leftLabel = document.createElement('div')
@@ -185,7 +185,7 @@ function mount(container: HTMLElement): void {
   // ⑤ 점수 가중치
   const weightLabel = createStepLabel('⑤', '')
   const weightDesc = document.createElement('span')
-  Object.assign(weightDesc.style, { fontSize: FONT_SIZE.small, color: COLOR.secondary })
+  Object.assign(weightDesc.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary })
   weightDesc.textContent = '상승 종목 비율과 평균 거래대금의 점수 반영 비중을 조절합니다.'
   weightLabel.appendChild(weightDesc)
   root.appendChild(weightLabel)
@@ -223,7 +223,7 @@ function mount(container: HTMLElement): void {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '6px 0',
-    borderBottom: '1px solid #eee',
+    borderBottom: '1px solid ' + COLOR.borderLight,
   })
 
   const maxTargetsLabel = document.createElement('span')
@@ -234,7 +234,7 @@ function mount(container: HTMLElement): void {
   Object.assign(maxTargetsStatusEl.style, {
     flex: '1',
     fontSize: FONT_SIZE.label,
-    color: COLOR.secondary,
+    color: COLOR.tertiary,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

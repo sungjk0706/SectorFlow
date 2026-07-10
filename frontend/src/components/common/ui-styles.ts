@@ -50,16 +50,31 @@ export const COLOR = {
   warning:      '#e65100',  // 경고/주의 (주황)
   warningLight: '#ffcc80',
   kosdaq:       '#d63384',  // 코스닥 종목명 (핑크)
-  secondary:    '#888',     // 보조 텍스트
-  tertiary:     '#666',     // 약한 보조 텍스트
+  tertiary:     '#666',     // 라벨/설명문 (보조 텍스트)
   code:         '#555',     // 종목코드
-  disabled:     '#9e9e9e',  // 비활성/오프
+  disabled:     '#9e9e9e',  // 빈 상태/비활성/오프
   muted:        '#adb5bd',  // 미달/흐림
+  white:        '#fff',     // 흰색 텍스트/배경 (컬러 배경 위 텍스트)
+  groupHeader:  '#1a237e',  // 업종 그룹 헤더 (다크 인디고)
+  // ── 보더 ──
+  border:       '#ccc',     // 기본 보더
+  borderDark:   '#ddd',     // 진한 보더 (섹션/헤더 구분선)
+  borderLight:  '#eee',     // 연한 보더
+  borderGrid:   '#d0d0d0',  // 그리드 셀 보더
+  borderRow:    '#e5e7eb',  // 행 보더
+  // ── 배경 ──
   upBg:         '#ffebee',  // 빨강 배경
   downBg:       '#e3f2fd',  // 파랑 배경
   successBg:    '#e8f5e9',  // 초록 배경
   warningBg:    '#fff3e0',  // 주황 배경
   neutralBg:    '#f5f5f5',  // 회색 배경
+  zebra:        '#f9f9f9',  // 제브라 스트라이핑
+  surfaceLight: '#fafafa',  // 연한 서피스
+  hoverBg:      '#f0f0f0',  // 호버/활성 배경
+  surface:      '#f8f9fa',  // 서피스 (사이드바/버튼)
+  highlight:    '#fff9c4',  // 하이라이트 (노랑)
+  inactiveBg:   '#e0e0e0',  // 비활성 배경
+  toggleOff:    '#6c757d',  // 토글 OFF
 } as const
 
 /* ── 공통 색상 함수 ── */
@@ -177,7 +192,7 @@ export function createStockNameCell(
 
 /* ── 공통 셀 border ── */
 
-export const CELL_BORDER = '1px solid #ccc'
+export const CELL_BORDER = `1px solid ${COLOR.border}`
 const CELL_PADDING = '4px 6px'
 
 /* ── 행 높이 ── */
@@ -467,7 +482,7 @@ export function createStockNameColumn<T extends object>(
     label: '종목명',
     align: 'left',
     minWidth: 80,
-    cellStyle: { fontWeight: 'normal', color: '#111' },
+    cellStyle: { fontWeight: 'normal', color: COLOR.neutral },
     render: (item: T) => {
       const lookup = fallbackLookup(item)
       return createStockNameCell(lookup.name, lookup.market_type, lookup.nxt_enable)
@@ -485,7 +500,7 @@ export function createStockNameColumnWithSectorLookup<T extends object>(
     label: '종목명',
     align: 'left',
     minWidth: 80,
-    cellStyle: { fontWeight: 'normal', color: '#111' },
+    cellStyle: { fontWeight: 'normal', color: COLOR.neutral },
     render: (item: T) => {
       const name = String(item[nameKey] || '')
       const code = String(item[codeKey] || '')
@@ -538,7 +553,7 @@ export function createDarkSelect(options: { value: string; label: string; disabl
     const o = document.createElement('option')
     o.value = opt.value
     o.textContent = opt.label
-    if (opt.disabled) { o.disabled = true; o.style.color = '#666' }
+    if (opt.disabled) { o.disabled = true; o.style.color = COLOR.tertiary }
     el.appendChild(o)
   }
   el.value = value

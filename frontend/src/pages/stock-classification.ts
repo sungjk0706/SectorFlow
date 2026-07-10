@@ -340,7 +340,7 @@ function actionBtn(text: string, color: string = COLOR.success): HTMLButtonEleme
   btn.setAttribute('data-edit-control', '')
   Object.assign(btn.style, {
     padding: '4px 10px', border: 'none', borderRadius: '4px',
-    background: color, color: '#fff', cursor: 'pointer',
+    background: color, color: COLOR.white, cursor: 'pointer',
     fontSize: FONT_SIZE.small, fontFamily: FONT_FAMILY,
     flexShrink: '0', whiteSpace: 'nowrap',
   })
@@ -352,7 +352,7 @@ function actionBtn(text: string, color: string = COLOR.success): HTMLButtonEleme
 function cardWrap(): HTMLElement {
   const div = document.createElement('div')
   Object.assign(div.style, {
-    background: '#fff', border: '1px solid #ddd', borderRadius: '8px',
+    background: COLOR.white, border: '1px solid ' + COLOR.borderDark, borderRadius: '8px',
     padding: '16px', marginBottom: '12px',
   })
   return div
@@ -361,7 +361,7 @@ function cardWrap(): HTMLElement {
 /* ── 공통: 설명 레이블 ── */
 function descLabel(text: string): HTMLElement {
   const p = document.createElement('p')
-  Object.assign(p.style, { fontSize: FONT_SIZE.badge, color: COLOR.secondary, margin: '0 0 10px' })
+  Object.assign(p.style, { fontSize: FONT_SIZE.badge, color: COLOR.tertiary, margin: '0 0 10px' })
   p.textContent = text
   return p
 }
@@ -382,7 +382,7 @@ function buildTripleHeader(): void {
   // 버튼 공통 스타일 (크기 및 폰트 축소)
   const btnStyle = {
     padding: '4px 10px', border: 'none', borderRadius: '4px',
-    background: COLOR.success, color: '#fff', cursor: 'pointer',
+    background: COLOR.success, color: COLOR.white, cursor: 'pointer',
     fontSize: FONT_SIZE.small, fontFamily: FONT_FAMILY,
     fontWeight: 'normal', whiteSpace: 'nowrap',
     transition: 'background-color 0.2s',
@@ -535,7 +535,7 @@ function buildSectorManageCard(): HTMLElement {
   const titleText = document.createElement('span')
   titleText.textContent = '업종 관리'
   statsLabelRef = document.createElement('span')
-  Object.assign(statsLabelRef.style, { fontSize: FONT_SIZE.label, color: COLOR.secondary, fontWeight: FONT_WEIGHT.normal })
+  Object.assign(statsLabelRef.style, { fontSize: FONT_SIZE.label, color: COLOR.tertiary, fontWeight: FONT_WEIGHT.normal })
 
   // 우측 컨테이너: 통계 레이블 + 새 업종 추가 버튼
   addSectorBtnRef = actionBtn('+ 새 업종 추가', COLOR.down)
@@ -630,7 +630,7 @@ function buildSectorManageCard(): HTMLElement {
     ),
     {
       key: 'sector', label: '소속업종', align: 'left',
-      cellStyle: { fontWeight: 'normal', color: '#111' },
+      cellStyle: { fontWeight: 'normal', color: COLOR.neutral },
       render: (row) => row.sector
     },
   ]
@@ -689,7 +689,7 @@ function buildSectorManageCard(): HTMLElement {
   const masterColumns: ColumnDef<MasterRow>[] = [
     {
       key: 'name', label: '업종명', align: 'left',
-      cellStyle: { fontWeight: 'normal', color: '#111' },
+      cellStyle: { fontWeight: 'normal', color: COLOR.neutral },
       render: (row) => {
         return row.sectorName
       },
@@ -701,7 +701,7 @@ function buildSectorManageCard(): HTMLElement {
           const badge = document.createElement('span')
           Object.assign(badge.style, {
             background: COLOR.up,
-            color: '#fff',
+            color: COLOR.white,
             borderRadius: '50%',
             fontSize: FONT_SIZE.chip,
             minWidth: '18px',
@@ -901,7 +901,7 @@ function buildTripleCenter(): void {
   stagingPanelRef = document.createElement('div')
   Object.assign(stagingPanelRef.style, {
     padding: '8px 12px', marginBottom: '8px',
-    border: '1px solid #e0e0e0', borderRadius: '6px', background: '#fafafa',
+    border: '1px solid ' + COLOR.inactiveBg, borderRadius: '6px', background: COLOR.surfaceLight,
   })
 
   // Header row: count label + "전체 해제" button

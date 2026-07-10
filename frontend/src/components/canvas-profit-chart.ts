@@ -54,9 +54,9 @@ const COLORS = {
   volume: [COLOR.down, COLOR.downLight],
   equity: COLOR.down,
   equityArea: 'rgba(25, 118, 210, 0.08)',
-  grid: '#f0f0f0',
-  axis: COLOR.secondary,
-  zeroLine: '#ddd',
+  grid: COLOR.hoverBg,
+  axis: COLOR.tertiary,
+  zeroLine: COLOR.borderDark,
   crosshair: 'rgba(0,0,0,0.1)'
 }
 
@@ -145,16 +145,16 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
   const dateFromInput = document.createElement('input')
   dateFromInput.type = 'date'
   dateFromInput.value = options.dateFrom || monthFirstStr
-  dateFromInput.style.cssText = `padding:2px 4px;font-size:11px;border:1px solid #eee;border-radius:4px;color:${COLOR.code};`
+  dateFromInput.style.cssText = `padding:2px 4px;font-size:11px;border:1px solid ${COLOR.borderLight};border-radius:4px;color:${COLOR.code};`
 
   const dateToInput = document.createElement('input')
   dateToInput.type = 'date'
   dateToInput.value = options.dateTo || todayStr
-  dateToInput.style.cssText = `padding:2px 4px;font-size:11px;border:1px solid #eee;border-radius:4px;color:${COLOR.code};`
+  dateToInput.style.cssText = `padding:2px 4px;font-size:11px;border:1px solid ${COLOR.borderLight};border-radius:4px;color:${COLOR.code};`
 
   const dateSep = document.createElement('span')
   dateSep.textContent = '~'
-  dateSep.style.color = '#ccc'
+  dateSep.style.color = COLOR.border
 
   dateHeader.appendChild(dateFromInput)
   dateHeader.appendChild(dateSep)
@@ -165,7 +165,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
   dateToInput.addEventListener('change', () => options.onDateRangeChange?.(dateFromInput.value, dateToInput.value))
 
   const canvasWrap = document.createElement('div')
-  canvasWrap.style.cssText = `position:relative;width:100%;height:${height}px;background:#fff;overflow:hidden;`
+  canvasWrap.style.cssText = `position:relative;width:100%;height:${height}px;background:${COLOR.white};overflow:hidden;`
   wrapper.appendChild(canvasWrap)
 
   const canvas = document.createElement('canvas')
@@ -175,7 +175,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
   const tooltip = document.createElement('div')
   tooltip.style.cssText = [
     'position:absolute;display:none;pointer-events:none;z-index:10;',
-    'background:rgba(255,255,255,0.98);border:1px solid #eee;border-radius:8px;',
+    `background:rgba(255,255,255,0.98);border:1px solid ${COLOR.borderLight};border-radius:8px;`,
     'padding:10px 14px;font-size:11px;box-shadow:0 4px 15px rgba(0,0,0,0.08);',
     'min-width:120px;line-height:1.5;'
   ].join('')
@@ -368,7 +368,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
       ctx.arc(point.x, point.y, 4, 0, Math.PI * 2)
       ctx.fillStyle = COLORS.equity
       ctx.fill()
-      ctx.strokeStyle = '#fff'
+      ctx.strokeStyle = COLOR.white
       ctx.lineWidth = 2
       ctx.stroke()
     }
@@ -415,7 +415,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
         const lineValue = `${d.rate.toFixed(2)}%`
         const feeTotal = (d.buyFee ?? 0) + (d.sellFee ?? 0) + (d.tax ?? 0)
         tooltip.innerHTML = `
-          <div style="font-weight:600;margin-bottom:6px;border-bottom:1px solid #eee;padding-bottom:4px;">${formatDate(d.date)}</div>
+          <div style="font-weight:600;margin-bottom:6px;border-bottom:1px solid ${COLOR.borderLight};padding-bottom:4px;">${formatDate(d.date)}</div>
           <div style="display:flex;justify-content:space-between;gap:12px;">
             <span style="color:${COLOR.tertiary}">${barLabel}</span>
             <span style="color:${pColor};font-weight:600">${barValue}</span>
@@ -424,7 +424,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
             <span style="color:${COLOR.tertiary}">${lineLabel}</span>
             <span style="color:${rColor};font-weight:600">${lineValue}</span>
           </div>
-          ${feeTotal > 0 ? `<div style="display:flex;justify-content:space-between;gap:12px;border-top:1px solid #eee;margin-top:4px;padding-top:4px;"><span style="color:${COLOR.tertiary}">수수료/세금</span><span style="color:${COLOR.neutral};font-weight:600">${fmtWon(feeTotal)}</span></div>` : ''}
+          ${feeTotal > 0 ? `<div style="display:flex;justify-content:space-between;gap:12px;border-top:1px solid ${COLOR.borderLight};margin-top:4px;padding-top:4px;"><span style="color:${COLOR.tertiary}">수수료/세금</span><span style="color:${COLOR.neutral};font-weight:600">${fmtWon(feeTotal)}</span></div>` : ''}
         `
         positionTooltip(tooltip, mx, my, cw, ch)
       } else {

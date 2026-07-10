@@ -24,7 +24,7 @@ export function createSidebar(onNavigate: (path: string) => void): {
 } {
   const nav = document.createElement('nav')
   nav.style.cssText =
-    'width:120px;min-width:120px;background:#f8f9fa;border-right:1px solid #ddd;display:flex;flex-direction:column;padding:12px 0;'
+    `width:120px;min-width:120px;background:${COLOR.surface};border-right:1px solid ${COLOR.borderDark};display:flex;flex-direction:column;padding:12px 0;`
 
 
 
@@ -35,7 +35,7 @@ export function createSidebar(onNavigate: (path: string) => void): {
     // separator가 있으면 hr 삽입
     if ('separator' in m && m.separator) {
       const hr = document.createElement('hr')
-      hr.style.cssText = 'margin:8px 12px;border:none;border-top:1px solid #ddd;'
+      hr.style.cssText = `margin:8px 12px;border:none;border-top:1px solid ${COLOR.borderDark};`
       nav.appendChild(hr)
     }
 
@@ -74,7 +74,7 @@ export function createSidebar(onNavigate: (path: string) => void): {
         badge = document.createElement('span')
         Object.assign(badge.style, {
           background: COLOR.up,
-          color: '#fff',
+          color: COLOR.white,
           borderRadius: '50%',
           fontSize: FONT_SIZE.chip,
           minWidth: '18px',

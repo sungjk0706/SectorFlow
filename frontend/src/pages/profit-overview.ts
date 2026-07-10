@@ -21,7 +21,7 @@ import {
 
 /* ── 헬퍼 ── */
 
-const ROW_CSS = `display:flex;justify-content:space-between;padding:10px 4px;border-bottom:1px solid #f0f0f0;font-size:${FONT_SIZE.body};`
+const ROW_CSS = `display:flex;justify-content:space-between;padding:10px 4px;border-bottom:1px solid ${COLOR.hoverBg};font-size:${FONT_SIZE.body};`
 
 /* ── 날짜 범위 localStorage 영속화 ── */
 const PROFIT_DATE_KEY = 'sf_profit_date_range'
@@ -116,7 +116,7 @@ function renderSectorStockPnl(): void {
     const header = document.createElement('div')
     Object.assign(header.style, {
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '8px 4px 4px', borderBottom: '2px solid #eee', marginTop: '8px',
+      padding: '8px 4px 4px', borderBottom: '2px solid ' + COLOR.borderLight, marginTop: '8px',
     })
     const sectorName = document.createElement('span')
     Object.assign(sectorName.style, { fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.semibold, color: group.color })
@@ -139,7 +139,7 @@ function renderSectorStockPnl(): void {
       const row = document.createElement('div')
       Object.assign(row.style, {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '6px 4px 6px 12px', borderBottom: '1px solid #f5f5f5',
+        padding: '6px 4px 6px 12px', borderBottom: '1px solid ' + COLOR.neutralBg,
       })
       // 종목명
       const nameEl = document.createElement('span')
@@ -160,7 +160,7 @@ function renderSectorStockPnl(): void {
 
       // 매도수량
       const qtyEl = document.createElement('span')
-      Object.assign(qtyEl.style, { flex: 'none', width: '55px', textAlign: 'right', fontSize: FONT_SIZE.small, color: COLOR.secondary })
+      Object.assign(qtyEl.style, { flex: 'none', width: '55px', textAlign: 'right', fontSize: FONT_SIZE.small, color: COLOR.tertiary })
       qtyEl.textContent = `매도 ${stock.qty}주`
 
       row.appendChild(nameEl)
@@ -227,7 +227,7 @@ function mount(container: HTMLElement): void {
   const upper = document.createElement('div')
   Object.assign(upper.style, {
     flex: '1',
-    borderBottom: '1px solid #ddd',
+    borderBottom: '1px solid ' + COLOR.borderDark,
     overflow: 'hidden',
     display: 'flex',
     gap: '8px',
@@ -241,7 +241,7 @@ function mount(container: HTMLElement): void {
   const chartPanel = document.createElement('div')
   Object.assign(chartPanel.style, { flex: '1', minWidth: '0', overflow: 'hidden', padding: '0 4px' })
   const chartTitle = document.createElement('div')
-  Object.assign(chartTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal, color: COLOR.down, padding: '10px 0 6px', borderBottom: '2px solid #eee', marginBottom: '8px' })
+  Object.assign(chartTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal, color: COLOR.down, padding: '10px 0 6px', borderBottom: '2px solid ' + COLOR.borderLight, marginBottom: '8px' })
   const chartTitleText = document.createElement('span')
   chartTitleText.textContent = '일별 수익률'
   const retentionLabel = document.createElement('span')
@@ -259,7 +259,7 @@ function mount(container: HTMLElement): void {
   const donutPanel = document.createElement('div')
   Object.assign(donutPanel.style, { flex: '1', minWidth: '0', overflow: 'hidden', padding: '0 4px', display: 'flex', flexDirection: 'column' })
   const donutTitle = document.createElement('div')
-  Object.assign(donutTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal, color: COLOR.down, padding: '10px 0 6px', borderBottom: '2px solid #eee', marginBottom: '8px' })
+  Object.assign(donutTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal, color: COLOR.down, padding: '10px 0 6px', borderBottom: '2px solid ' + COLOR.borderLight, marginBottom: '8px' })
   const donutTitleText = document.createElement('span')
   donutTitleText.textContent = '업종별 수익 분포'
   donutTitle.appendChild(donutTitleText)
@@ -285,7 +285,7 @@ function mount(container: HTMLElement): void {
   for (let i = 0; i < ACCOUNT_LABELS_REAL.length; i++) {
     const row = document.createElement('div')
     row.style.cssText = ROW_CSS
-    if (i % 2 === 1) row.style.backgroundColor = '#f9f9f9'
+    if (i % 2 === 1) row.style.backgroundColor = COLOR.zebra
     const label = document.createElement('span')
     if (i === 4) {
       label.appendChild(document.createTextNode('보유주식 평가금액 ('))
@@ -313,7 +313,7 @@ function mount(container: HTMLElement): void {
   for (let i = 0; i < ACCOUNT_LABELS_TEST.length; i++) {
     const row = document.createElement('div')
     row.style.cssText = ROW_CSS
-    if (i % 2 === 1) row.style.backgroundColor = '#f9f9f9'
+    if (i % 2 === 1) row.style.backgroundColor = COLOR.zebra
     const label = document.createElement('span')
     if (i === 4) {
       label.appendChild(document.createTextNode('보유주식 평가금액 ('))
@@ -358,9 +358,9 @@ function mount(container: HTMLElement): void {
     padding: '10px 24px',
     fontSize: FONT_SIZE.label,
     fontWeight: FONT_WEIGHT.semibold,
-    border: '1px solid #ddd',
+    border: '1px solid ' + COLOR.borderDark,
     borderRadius: '6px',
-    background: '#fafafa',
+    background: COLOR.surfaceLight,
     cursor: 'pointer',
     color: COLOR.down,
   })

@@ -92,7 +92,7 @@ function applyIndexChip(el: HTMLSpanElement, data: IndexData): void {
   const jisuStr = data.jisu ?? '--'
   // 라벨은 검정색, 등락률/지수만 색상 적용
   const arrow = sign === '1' || sign === '2' ? '▲' : sign === '4' || sign === '5' ? '▼' : '－'
-  el.innerHTML = `<span style="color:${color};font-weight:700;">${arrow}</span> <span style="color:#333;font-weight:700;">${label}</span><span style="color:${color};margin-left:6px;">${jisuStr}</span><span style="color:${color};margin-left:4px;">${drateStr}</span>`
+  el.innerHTML = `<span style="color:${color};font-weight:700;">${arrow}</span> <span style="color:${COLOR.neutral};font-weight:700;">${label}</span><span style="color:${color};margin-left:6px;">${jisuStr}</span><span style="color:${color};margin-left:4px;">${drateStr}</span>`
 }
 
 
@@ -116,7 +116,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
 
   const header = document.createElement('header')
   header.style.cssText =
-    'box-sizing:border-box;padding:4px 16px;border-bottom:1px solid #ddd;display:flex;gap:8px;align-items:center;flex-wrap:nowrap;flex-shrink:0;height:40px;min-height:40px;max-height:40px;overflow-x:auto;overflow-y:hidden;'
+    `box-sizing:border-box;padding:4px 16px;border-bottom:1px solid ${COLOR.borderDark};display:flex;gap:8px;align-items:center;flex-wrap:nowrap;flex-shrink:0;height:40px;min-height:40px;max-height:40px;overflow-x:auto;overflow-y:hidden;`
 
   // 로고
   const logo = document.createElement('strong')
@@ -291,7 +291,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
             break
           case 'token_pending':
             msg = '인증 대기중'
-            bg = `${COLOR.neutralBg}`; color = '#616161'
+            bg = `${COLOR.neutralBg}`; color = COLOR.tertiary
             break
           case 'requested':
             msg = '전종목 5일 데이터 준비 시작'

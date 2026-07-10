@@ -218,7 +218,7 @@ function mount(container: HTMLElement): void {
   // --- 매수/매도호가 잔량비율 ---
   {
     const block = document.createElement('div')
-    block.style.borderBottom = '1px solid #eee'
+    block.style.borderBottom = '1px solid ' + COLOR.borderLight
 
     // Row 1: toggle + label | 가산점 + input
     const labelWrap = document.createElement('span')
