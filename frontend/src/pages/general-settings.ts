@@ -677,8 +677,8 @@ function renderApiSettingsTab(container: HTMLElement): void {
   wsTimeRow.appendChild(wsTimeLabel)
   const wsTimeRight = document.createElement('span')
   wsTimeRight.style.cssText = 'display:flex;align-items:center;gap:8px;'
-  wsTimeRight.appendChild(createWsTimePairInput('ws_subscribe_start', 'ws_subscribe_end'))
   wsTimeRight.appendChild(createHolidayBadge())
+  wsTimeRight.appendChild(createWsTimePairInput('ws_subscribe_start', 'ws_subscribe_end'))
   wsTimeRow.appendChild(wsTimeRight)
   container.appendChild(wsTimeRow)
 

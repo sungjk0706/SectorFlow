@@ -1,42 +1,27 @@
 # HANDOVER — SectorFlow
 
 ## 추후 논의 필요 (미결정)
-
-### 업종순위 구독 정책 개선 검토 (2026-07-10)
-- **상태**: 분석 완료, 구현 미결정 — 추후 재논의 예정
-- **현재 구독 구조 (코드 확인 완료)**:
-  - 0B(현재가/대비/등락률/거래대금/체결강도): `_filtered=True`(거래대금 필터 통과) 종목 + 보유종목, 200종목 한도 (`engine_ws_reg.py:257`). 매수후보 테이블 전체 종목(통과/차단 무관) 이미 수신 중
-  - 0D/PGM(호가잔량비/프순매): `guard_pass=True` 종목만, 30초 지연 해지 (`engine_sector_confirm.py:290,23`). 차단 종목은 5일고가/거래대금 가산점만 부여, 잔량비/프순매 가산점 제외 (`buy_filter.py:221,224`)
-  - 업종 순위: `sector_max_targets`(상위 N개) + `sector_min_rise_ratio_pct`(상승비율 미만 rank=0) — 상승비율 미만 업종은 순위에서 제외일 뿐 구독 해지 아님 (`engine_sector_confirm.py:162-172`)
-- **제안 1 (매수후보 0D/PGM 구독 확대)**: `guard_pass` 조건 제거 → 통과/차단 전체 0D/PGM 구독. 수정 2곳: `engine_sector_confirm.py:290`, `buy_filter.py:221,224`. 세션 증가량은 실제 통과/차단 비율 로그 확인 필요
-- **제안 2 (sector_max_targets 제거, 상승비율 자동 필터링)**: 상승비율 컷오프는 이미 구현됨. max_targets 제거 시 강세장 업종 수 폭증 → 0B 200한도 압박. max_targets를 상한선으로 유지 권장
-- **정정 사항 (사용자 피드백)**:
-  1. 상승비율 미만 업종은 순위 제외 로직이지 구독 해지가 아님 — 0B는 `_filtered` 기반이므로 rank=0 업종도 0B 유지
-  2. 재매수차단 OFF 시 금일매수 종목도 매수 후보 유효 → "보유중/금일매수 구독 제외"는 `rebuy_block_on` 설정과 충돌. 단, `buy_filter.py:194`는 `rebuy_block_on` 설정과 무관하게 항상 금일매수를 차단 처리함 — 이 자체가 별개 모순
-  3. 매수후보 테이블 모든 종목(통과/차단 무관)은 이미 0B 실시간 데이터 수신 중 — 0D/PGM만 guard_pass 기반
+- 없음
 
 ## 진행 중 작업 (다음 세션에서 이어서 진행)
 - 없음
 
 ## 직전 완료 작업
+- **2026-07-11: 일반설정 비거래일 배지 위치 수정 + 업종순위 요약 라벨 가독성 개선**
+  - 수정 1: `general-settings.ts` 680행 — 실시간 연결 시간 행에서 비거래일 배지를 시간 입력란 우측→좌측으로 이동. `appendChild` 순서 교체 (배지→시간입력란). 아래 행(1일봉챠트 시세 다운로드)과 시간 입력란 정렬. 다른 4곳(232/280/323/660행)은 이미 배지 좌측 패턴이므로 수정 불필요 확인
+  - 수정 2: `sector-stock.ts` 389~487행 — 업종별 종목 실시간 시세 테이블 상단 요약 라벨 가독성 개선
+    - Row 1 `5일평균거래대금(N)억`: fontSize 12px→14px(FONT_SIZE.section), "5일평균거래대금"과 "(N)억" 사이 8px 여백 (filterLabel.marginRight + 별도 span 분리)
+    - Row 2 종목 수 라벨: countRow gap 4px→2px, 각 카테고리 라벨(KRX/NXT/코스피/코스닥)에 marginLeft:14px 추가, 선행 공백 제거 → 카테고리 간 16px 여백으로 즉각적 식별 가능
+  - 검증: `npm run typecheck` 통과, `npm run build` 통과
 - **2026-07-11: 가상 스크롤 행 재활용 시 플래시 효과 억제 — 스크롤 시 노란색 플래시 미발생**
-  - 문제: 업종순위 페이지 업종별 종목 실시간 시세 테이블에서 스크롤 시, 실시간 데이터가 수신되지 않는 시간임에도 현재가 셀에 노란색 플래시 효과가 나타남
-  - 원인: `data-table.ts` 가상 스크롤 모드 `renderRow`에서 행 DOM 요소가 풀에서 다른 종목으로 재활용될 때(스크롤)와 같은 종목의 데이터가 갱신될 때(가격 변동)를 구분하지 않고 `triggerFlash` 호출 — `_rowKey`를 저장했지만 이전 키와 비교하지 않고 덮어씀
-  - 수정: `renderRow`에서 `_rowKey` 덮어쓰기 전에 이전 키와 비교하여 `keyChanged` 플래그 계산, `triggerFlash` 호출 조건에 `&& !keyChanged` 추가 — 행 재활용 시 플래시 억제, 같은 키 데이터 변경 시 플래시 유지, 최초 렌더링 시 `isFirst` 경로에서 플래시 코드 도달 안 함
-  - 영향: `sector-stock.ts`(업종별 종목 실시간 시세), `buy-target.ts`(매수후보) — 가상 스크롤 + flash 컬럼 사용 페이지. `sell-position.ts`(고정 모드), `profit-detail.ts`(flash 컬럼 없음)는 영향 없음
-  - 수정 파일: `frontend/src/components/common/data-table.ts` (line 682-690 keyChanged 로직, line 835/845 triggerFlash 조건), `frontend/tests/components/data-table.ui.test.ts` (신규 3건 — 같은 키 변경 시 플래시 발생, 행 재활용 시 억제, 스크롤 후 같은 키 변경 시 정상 발생)
-  - 검증: `npm run typecheck` 통과, `npm run build` 통과, `npx vitest run` 112 passed (기존 109 + 신규 3)
   - 커밋: `01f99fb` push 완료
 
-- **2026-07-11: 테스트 커버리지 Stage 9 완료 (P4-c) — `kiwoom_connector.py` + `kiwoom_providers.py`, 신규 142건, 전체 2138건 통과**
-  - 커밋: `3471980` push 완료
-
 ## 현재 상태
-- **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료, 보유종목 buy_date 파생·브로드캐스트 구현 완료, exchange_calendars 교체 완료 (korean_lunar_calendar 기반 직접 구현, ~109MB 절감, 제헌절 버그 수정)
-- **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지·검색 입력란 추가 완료, 보유종목 테이블 매수일자 컬럼 추가 완료, 수익현황 페이지 빈 데이터 차트/도넛 stale state 근본 수정 완료, 프론트엔드 색상 체계 통일 완료 (하드코딩 ~190곳 COLOR 상수화 + secondary→tertiary 통합), 검색 입력란 공통 컴포넌트 통일 완료 (5페이지 7개 인스턴스 + label/compact 옵션 + 포커스 언더라인 + placeholder 색상), 가상 스크롤 행 재활용 시 플래시 효과 억제 완료 (스크롤 시 노란색 플래시 미발생), `npm run build` 통과
-- **Git**: 커밋 `413cb6f` (Stage 1~5), `00fc3f5` (Stage 6), `b746b69` (Stage 7), `13ad817` (Stage 8), `56cebd5` (Stage 9-1), `3471980` (Stage 9 완료), `01f99fb` (가상 스크롤 플래시 억제) — 모두 push 완료
-- **테스트 커버리지**: Stage 1~9 완료 — 전체 2138 passed, 0 failed. 프론트엔드 112 passed. 다음 Stage 대상 파일 선정 필요 (사용자와 논의)
-- **settlement.py await 누락 버그**: 수정 완료 (`await settlement_engine.charge(amount)`)
+- **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치 — 모두 코드 확인 완료 (git history 참조)
+- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선 — 모두 코드 확인 완료, `npm run build` 통과
+- **Git**: `01f99fb` (가상 스크롤 플래시 억제), `7241da0` (비거래일 배지 정렬 + 업종순위 라벨 가독성) — `01f99fb` push 완료, `7241da0` push 대기
+- **테스트 커버리지**: Stage 1~9 완료 — 백엔드 2138 passed, 프론트엔드 112 passed (실행 시점 기준)
+- **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 
 ## 다음 단계
 - **1순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
@@ -49,10 +34,13 @@
   - 다음 Stage 대상 파일 선정 필요
 
 ## 미해결 문제
-- **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결, 재발 방지 조치 + 유령 매도 기록 삭제 완료**
-  - 상세 조사 기록: `docs/ghost_position_investigation.md`
-  - 재발 방지 조치 (2026-07-10 구현): `test_positions` 테이블 제거, `trades` 기반 SSOT 전환, `execute_sell()` 런타임 가드
-  - 유령 매도 기록 삭제 (2026-07-10): `trades` id=144 삭제, 수익 통계 정정 완료
+- **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결**
+  - 상세 조사 기록: `docs/ghost_position_investigation.md` ([A]~[I] 미조사 항목)
+  - 재발 방지 조치 (2026-07-10, 코드 확인 완료):
+    - `test_positions` 테이블 제거 — `stock_tables.py:141`, DB 저장 로직 전체 제거
+    - `trades` 기반 SSOT 전환 — `dry_run.py:38-68`, `trade_history.py:549`
+    - `execute_sell()` 런타임 가드 — `trading.py:418-436` (유령 포지션 차단 + Telegram 알림)
+  - 유령 매도 기록 삭제 (2026-07-10): `trades` id=144 수동 삭제, 수익 통계 정정 완료
   - 근본 원인 미해결: 과거 005930 유령 포지션의 정확한 발생 시점 및 경로는 미추적
   - 미조사 항목 (`docs/ghost_position_investigation.md` [A]~[I] 참조):
     - [A] 14:00 shutdown 시 DB close 누락 확인 (app.py shutdown 로그 유무)
@@ -61,9 +49,6 @@
     - [G] 외부 프로세스에 의한 DB 직접 조작 가능성 (14:32~15:52 공백 시간)
     - [H] 70,100 값의 출처 역산 — 07-09 005930 매수 체결가들로 평균가 계산 불가 확인
     - [I] WAL checkpoint 타이밍 이슈 — 이전 데이터 복원 가능성
-- **체결지연 50ms 초과 WARNING 7건** (2026-07-08 13:26~ 런타임 기동 중 발생)
-  - `trading_2026-07-08.log:9597~9609` — 50~143ms 지연 7건 (200ms 초과 없음)
-  - 조사 필요: `_handle_real_01_tick` await 체인 프로파일링, 지연 발생 위치 식별
 
 ## 테스트 실행 원칙 (필수 준수)
 
@@ -112,48 +97,3 @@ python -m pytest backend/tests/[파일명] -v --timeout=15 --timeout-method=sign
 ### 4. run_command 사용 시
 - `Blocking: false` + `WaitMsBeforeAsync: 20000` — hang 감지 시 명령 취소 가능
 - 또는 subprocess + `proc.wait(timeout=N)` + `proc.kill()` 패턴 사용
-
-## 개선 필요 영역 — 테스트 커버리지
-
-### 현재 커버리지: 14% (13,833줄 중 1,981줄 커버)
-
-### 고커버리지 영역 (유지)
-- `sector_score.py` 100%, `models.py` 100%, `settings_defaults.py` 100%
-- `sector_calculator.py` 97%, `sector_filter.py` 96%
-- `test_dry_run_fill_event.py` 95%, `test_sector_calculator.py` 100%
-- `database.py` 88%, `engine_state.py` 82%, `trade_mode.py` 79%
-- `settings_file.py` 70%, `engine_utils.py` 68%
-
-### 테스트 부족 영역 (우선순위별)
-
-#### Priority 1 — 매매 핵심 로직 (완료)
-- `test_buy_filter.py` ✅, `test_circuit_breaker.py` ✅, `test_settlement_engine.py` ✅
-- `test_risk_manager.py` ✅, `test_buy_order_executor.py` ✅, `test_trading.py` ✅ (hang 해결 — 커밋 `a4fa031`)
-
-#### Priority 2 — 엔진/WS 계층 (완료)
-- `test_engine_ws.py` ✅, `test_engine_ws_dispatch.py` ✅, `test_engine_ws_parsing.py` ✅
-- `test_engine_ws_reg.py` ✅, `test_engine_account.py` ✅, `test_engine_account_notify.py` ✅
-- `test_engine_account_rest.py` ✅, `test_engine_symbol_utils.py` ✅
-
-#### Priority 3 — 파이프라인/스케줄러 (완료)
-- `market_close_pipeline.py` (712줄, 86%) ✅
-- `pipeline_compute.py` (655줄, 92%) ✅ — 배치 드레인 + 코얼레싱 + 계좌 디바운스 추가 (2026-07-06)
-- `pipeline_gateway.py` (86줄, 87%) ✅
-- `daily_time_scheduler.py` (601줄, 90%) ✅
-- `data_manager.py` (136줄, 96%) ✅
-
-#### Priority 4 — 브로커 커넥터 (Stage 7·8·9 완료)
-- `kiwoom_order.py` ✅, `kiwoom_rest.py` ✅, `kiwoom_providers.py` ✅, `kiwoom_stock_rest.py` ✅, `kiwoom_connector.py` ✅
-- `ls_connector.py` ✅, `ls_rest.py` ✅, `ls_providers.py` ✅
-- `connector_manager.py` ✅
-
-#### Priority 5 — Web 라우트 (Stage 4~6 완료)
-- `account.py` ✅, `market.py` ✅, `settlement.py` ✅, `auth.py` ✅, `deps.py` ✅, `ws_orders.py` ✅, `ws_settings.py` ✅, `ws_subscribe.py` ✅
-- `status.py` ✅, `settings.py` ✅, `ws.py` ✅
-- `ws_manager.py` ✅, `stock_classification.py` ✅, `app.py` ✅
-
-#### Priority 6 — 유틸/기타 (Stage 1~3 완료)
-- `encryption.py` ✅, `sector_mapping.py` ✅, `telegram.py` ✅
-- `journal.py` ✅, `logger.py` ✅
-- `trade_history.py` ✅, `dry_run.py` ✅
-- `telegram_bot.py` ❌ (미진행)
