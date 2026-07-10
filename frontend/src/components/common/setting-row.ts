@@ -27,7 +27,7 @@ function applyInputBase(el: HTMLInputElement, extraStyle?: Partial<CSSStyleDecla
     width: `${INPUT_WIDTH}px`,
     padding: '4px 8px',
     borderRadius: '4px',
-    border: '1px solid #ccc',
+    border: '1px solid ' + COLOR.border,
     textAlign: 'right',
     fontSize: '13px',
     overflow: 'hidden',
@@ -44,8 +44,8 @@ function applySpinBtn(btn: HTMLButtonElement) {
     justifyContent: 'center',
     width: '22px',
     height: '50%',
-    border: '1px solid #ccc',
-    background: '#f8f8f8',
+    border: '1px solid ' + COLOR.border,
+    background: COLOR.surface,
     cursor: 'pointer',
     fontSize: '8px',
     lineHeight: '1',
@@ -91,7 +91,7 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: '6px 0',
-    borderBottom: '1px solid #eee',
+    borderBottom: '1px solid ' + COLOR.borderLight,
   })
   if (opts?.disabled) {
     div.style.opacity = '0.4'
@@ -130,7 +130,7 @@ export function createSettingField(label: string, unit?: string, child?: HTMLEle
   if (child) row.appendChild(child)
   if (unit) {
     const unitSpan = document.createElement('span')
-    Object.assign(unitSpan.style, { color: `${COLOR.secondary}` })
+    Object.assign(unitSpan.style, { color: `${COLOR.tertiary}` })
     unitSpan.textContent = unit
     row.appendChild(unitSpan)
   }
@@ -275,7 +275,7 @@ export function createSelect(options: {
     width: options.width ?? '121px',
     padding: '4px 8px',
     borderRadius: '4px',
-    border: '1px solid #ccc',
+    border: '1px solid ' + COLOR.border,
     fontSize: '13px',
     boxSizing: 'border-box',
   })
@@ -331,14 +331,14 @@ export function createToggleBtn(options: {
     width: '20px',
     height: '20px',
     borderRadius: '50%',
-    background: '#fff',
+    background: COLOR.white,
     boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
     transition: 'left 0.2s',
   })
   btn.appendChild(knob)
 
   function render() {
-    btn.style.background = isOn ? `${COLOR.success}` : '#6c757d'
+    btn.style.background = isOn ? `${COLOR.success}` : COLOR.toggleOff
     btn.style.cursor = options.disabled ? 'not-allowed' : 'pointer'
     knob.style.left = isOn ? '22px' : '2px'
     btn.setAttribute('aria-pressed', String(isOn))
@@ -413,7 +413,7 @@ export function createWsStatusBadge(options: {
     const color = hasBroker ? (brokerColors[opts.broker!] ?? `${COLOR.success}`) : `${COLOR.muted}`
 
     dot.style.background = opts.subscribed ? color : `${COLOR.muted}`
-    labelSpan.style.color = opts.subscribed ? color : `${COLOR.secondary}`
+    labelSpan.style.color = opts.subscribed ? color : `${COLOR.tertiary}`
 
     if (opts.subscribed && opts.broker) {
       labelSpan.textContent = opts.label || `[${brokerNames[opts.broker] ?? opts.broker}]실시간`

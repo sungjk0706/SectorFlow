@@ -58,7 +58,7 @@ function buildRankingRows(container: HTMLElement): void {
     const info = document.createElement('div')
     info.style.cssText = 'display:flex;align-items:center;margin-bottom:2px;padding:0 2px;'
     const defs = [
-      'width:24px;text-align:right;color:' + COLOR.secondary + ';',
+      'width:24px;text-align:right;color:' + COLOR.tertiary + ';',
       'flex:1;font-weight:500;padding-left:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
       'width:40px;text-align:right;color:' + COLOR.down + ';margin-right:12px;',
       'width:48px;text-align:right;',
@@ -73,7 +73,7 @@ function buildRankingRows(container: HTMLElement): void {
     row.appendChild(info)
 
     const barOuter = document.createElement('div')
-    barOuter.style.cssText = 'height:5px;background:#eee;border-radius:3px;overflow:hidden;'
+    barOuter.style.cssText = `height:5px;background:${COLOR.borderLight};border-radius:3px;overflow:hidden;`
     const barInner = document.createElement('div')
     barInner.style.cssText = 'height:100%;border-radius:3px;width:0%;'
     barOuter.appendChild(barInner)
@@ -123,7 +123,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     const riseColor = s.rise_ratio > 50 ? COLOR.up : s.rise_ratio < 50 ? COLOR.down : COLOR.neutral
     const tradeAmt = (s.total_trade_amount / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
     const barWidth = `${Math.min((s.final_score / maxScore) * 100, 100)}%`
-    const barColor = isUnranked ? '#dee2e6' : (s.rank <= maxTargets ? COLOR.down : COLOR.muted)
+    const barColor = isUnranked ? COLOR.inactiveBg : (s.rank <= maxTargets ? COLOR.down : COLOR.muted)
 
     if (!prev || !prev.visible) row.style.display = ''
 
@@ -163,7 +163,7 @@ function mount(container: HTMLElement): void {
 
   // 헤더 행
   const headerRow = document.createElement('div')
-  Object.assign(headerRow.style, { display: 'flex', alignItems: 'center', fontSize: '11px', color: COLOR.secondary, marginBottom: '6px', padding: '0 2px' })
+  Object.assign(headerRow.style, { display: 'flex', alignItems: 'center', fontSize: '11px', color: COLOR.tertiary, marginBottom: '6px', padding: '0 2px' })
   const headerDefs: [string, string][] = [
     ['width:24px;text-align:right;', '순위'],
     ['flex:1;padding-left:6px;', '업종명'],

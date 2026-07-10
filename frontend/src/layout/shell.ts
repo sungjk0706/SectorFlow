@@ -56,7 +56,7 @@ export function createLayoutShell(): {
 
   const overlaySpinner = document.createElement('div')
   overlaySpinner.style.cssText =
-    `width:40px;height:40px;border:4px solid #e0e0e0;border-top:4px solid ${COLOR.down};border-radius:50%;animation:spin 1s linear infinite;`
+    `width:40px;height:40px;border:4px solid ${COLOR.inactiveBg};border-top:4px solid ${COLOR.down};border-radius:50%;animation:spin 1s linear infinite;`
   overlay.appendChild(overlaySpinner)
 
   const overlayMsg = document.createElement('p')
@@ -78,7 +78,7 @@ export function createLayoutShell(): {
   // ── 좌측 패널 (dual 레이아웃 시 설정 카드) ──
   const leftPanel = document.createElement('div')
   leftPanel.style.cssText =
-    `width:${SETTINGS_PANEL_WIDTH}px;min-width:${SETTINGS_PANEL_WIDTH}px;border-right:1px solid #ddd;overflow-y:auto;padding:8px;outline:none;display:none;`
+    `width:${SETTINGS_PANEL_WIDTH}px;min-width:${SETTINGS_PANEL_WIDTH}px;border-right:1px solid ${COLOR.borderDark};overflow-y:auto;padding:8px;outline:none;display:none;`
 
   // ── 우측 패널 (dual 레이아웃 시 데이터 영역) ──
   const rightPanel = document.createElement('div')
@@ -88,16 +88,16 @@ export function createLayoutShell(): {
   // ── Triple 레이아웃 요소 (3컬럼 모드) ──
   const tripleHeader = document.createElement('div')
   tripleHeader.style.cssText =
-    'display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #ddd;display:none;'
+    `display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid ${COLOR.borderDark};display:none;`
 
   const tripleContainer = document.createElement('div')
   tripleContainer.style.cssText = 'display:flex;flex:1;min-height:0;display:none;'
 
   const tripleLeft = document.createElement('div')
-  tripleLeft.style.cssText = 'flex:4;overflow-y:auto;padding:16px;border-right:1px solid #ddd;'
+  tripleLeft.style.cssText = `flex:4;overflow-y:auto;padding:16px;border-right:1px solid ${COLOR.borderDark};`
 
   const tripleCenter = document.createElement('div')
-  tripleCenter.style.cssText = 'flex:3;overflow-y:auto;padding:16px;border-right:1px solid #ddd;'
+  tripleCenter.style.cssText = `flex:3;overflow-y:auto;padding:16px;border-right:1px solid ${COLOR.borderDark};`
 
   const tripleRight = document.createElement('div')
   tripleRight.style.cssText = 'flex:3;overflow-y:auto;padding:16px;'

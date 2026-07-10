@@ -136,7 +136,7 @@ function mount(container: HTMLElement): void {
   const dateLabel = document.createElement('span')
   Object.assign(dateLabel.style, {
     fontSize: FONT_SIZE.label,
-    color: COLOR.secondary,
+    color: COLOR.tertiary,
     fontWeight: FONT_WEIGHT.normal,
     flexShrink: '0',
     whiteSpace: 'nowrap',

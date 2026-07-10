@@ -105,8 +105,8 @@ function main(): void {
     fontFamily: "Tahoma, '굴림', Gulim, sans-serif",
     fontSize: '13px',
     fontWeight: 'normal',
-    color: '#1a1a1a',
-    backgroundColor: '#ffffff',
+    color: COLOR.neutral,
+    backgroundColor: COLOR.white,
     lineHeight: '1.4',
   })
 
@@ -134,7 +134,7 @@ function main(): void {
       color: ${COLOR.down};
     }
     .same, .even {
-      color: #1a1a1a;
+      color: ${COLOR.neutral};
     }
     
     /* 등락률 기호 (HTS 스타일) */

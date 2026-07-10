@@ -63,7 +63,7 @@ export interface SummaryCardCallbacks {
 
 /** 요약 카드 3개(당일/당월/누적 손익) DOM 생성, 클릭 콜백 주입, 요소 참조 반환 */
 export function createSummaryCards(container: HTMLElement, callbacks: SummaryCardCallbacks = {}): SummaryCardEls {
-  const CARD_STYLE = `flex:1;background:#fafafa;border:1px solid #eee;border-radius:6px;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;`
+  const CARD_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:6px;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;`
   const CARD_TITLES = ['당일 손익', '당월 손익', '누적 손익']
   const clickHandlers = [callbacks.onTodayClick, callbacks.onMonthClick, callbacks.onTotalClick]
 
@@ -79,7 +79,7 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
     cardEls.push(card)
 
     const titleEl = document.createElement('div')
-    Object.assign(titleEl.style, { fontSize: FONT_SIZE.badge, color: COLOR.secondary, whiteSpace: 'nowrap' })
+    Object.assign(titleEl.style, { fontSize: FONT_SIZE.badge, color: COLOR.tertiary, whiteSpace: 'nowrap' })
     titleEl.textContent = CARD_TITLES[i]
 
     const valRow = document.createElement('div')
@@ -218,7 +218,7 @@ export function buildSectorStockPnl(
     const sectorRate = sectorBuyTotal > 0 ? Math.round(pnl / sectorBuyTotal * 10000) / 100 : 0
     return {
       sector,
-      color: colorMap.get(sector) ?? '#999',
+      color: colorMap.get(sector) ?? COLOR.disabled,
       pnl,
       rate: sectorRate,
       stocks,

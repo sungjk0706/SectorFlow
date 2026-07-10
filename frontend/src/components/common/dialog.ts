@@ -69,7 +69,7 @@ function ensureDialogKeyframes() {
 
 function applyBoxStyle(box: HTMLElement) {
   Object.assign(box.style, {
-    background: '#fff',
+    background: COLOR.white,
     borderRadius: '12px',
     padding: '20px 24px',
     minWidth: '280px',
@@ -102,7 +102,7 @@ function createTitleElement(title: string): HTMLElement {
     fontSize: '15px',
     fontWeight: '600',
     marginBottom: '12px',
-    color: '#111', // keep — no COLOR constant for near-black
+    color: COLOR.neutral, // keep — no COLOR constant for near-black
   })
   el.textContent = title
   return el
@@ -130,9 +130,9 @@ function createButton(label: string, variant: DialogAction['variant']): HTMLButt
   Object.assign(btn.style, {
     padding: '7px 18px',
     borderRadius: '6px',
-    border: (isPrimary || isDanger) ? 'none' : '1px solid #ccc',
-    background: isPrimary ? `${COLOR.down}` : isDanger ? `${COLOR.up}` : '#fff',
-    color: (isPrimary || isDanger) ? '#fff' : `${COLOR.neutral}`,
+    border: (isPrimary || isDanger) ? 'none' : '1px solid ' + COLOR.border,
+    background: isPrimary ? `${COLOR.down}` : isDanger ? `${COLOR.up}` : COLOR.white,
+    color: (isPrimary || isDanger) ? COLOR.white : `${COLOR.neutral}`,
     cursor: 'pointer',
     fontSize: FONT_SIZE.label,
     fontFamily: 'inherit',

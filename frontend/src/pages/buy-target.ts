@@ -55,7 +55,7 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
       const span = document.createElement('span')
       if (bid === ask) {
         span.textContent = '100.0%'
-        span.style.color = COLOR.secondary
+        span.style.color = COLOR.tertiary
       } else if (bid > ask) {
         span.textContent = `[매수] ${((bid / ask) * 100).toFixed(1)}%`
         span.style.color = COLOR.up
@@ -81,7 +81,7 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
       } else if (t.program_net_buy < 0) {
         span.style.color = COLOR.down
       } else {
-        span.style.color = COLOR.secondary
+        span.style.color = COLOR.tertiary
       }
       return span
     },
@@ -356,7 +356,7 @@ function mount(container: HTMLElement): void {
 
   // 빈 상태 메시지 (DataTable 외부 — 기존 동작 유지)
   emptyEl = document.createElement('div')
-  Object.assign(emptyEl.style, { color: '#aaa', padding: '20px 0', textAlign: 'center', fontSize: FONT_SIZE.badge, display: 'none' })
+  Object.assign(emptyEl.style, { color: COLOR.disabled, padding: '20px 0', textAlign: 'center', fontSize: FONT_SIZE.badge, display: 'none' })
   emptyEl.textContent = '매수후보가 없습니다.'
 
   scrollContainer.appendChild(dataTable.el)

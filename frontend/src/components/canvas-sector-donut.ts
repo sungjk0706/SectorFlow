@@ -73,7 +73,7 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
   wrapper.style.cssText = 'position:relative;width:100%;height:100%;display:flex;gap:8px;'
 
   const canvasWrap = document.createElement('div')
-  canvasWrap.style.cssText = 'position:relative;flex:1;min-width:0;height:100%;background:#fff;overflow:hidden;'
+  canvasWrap.style.cssText = `position:relative;flex:1;min-width:0;height:100%;background:${COLOR.white};overflow:hidden;`
   wrapper.appendChild(canvasWrap)
 
   const legendWrap = document.createElement('div')
@@ -87,7 +87,7 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
   const tooltip = document.createElement('div')
   tooltip.style.cssText = [
     'position:absolute;display:none;pointer-events:none;z-index:10;',
-    'background:rgba(255,255,255,0.98);border:1px solid #eee;border-radius:8px;',
+    `background:rgba(255,255,255,0.98);border:1px solid ${COLOR.borderLight};border-radius:8px;`,
     'padding:10px 14px;font-size:11px;box-shadow:0 4px 15px rgba(0,0,0,0.08);',
     'min-width:120px;line-height:1.5;',
   ].join('')
@@ -160,7 +160,7 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
 
     // 세그먼트 색상 할당 (공유 함수 사용)
     const colorMap = assignSectorColors(processed)
-    const segments = processed.map((r) => ({ row: r, color: colorMap.get(r.sector) ?? '#999' }))
+    const segments = processed.map((r) => ({ row: r, color: colorMap.get(r.sector) ?? COLOR.disabled }))
     currentSegments = segments
 
     // 도넛 세그먼트 그리기
@@ -220,7 +220,7 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
       const seg = currentSegments[i]
       const isProfit = seg.row.pnl >= 0
       const item = document.createElement('div')
-      item.style.cssText = `display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;border-radius:4px;${hoveredIdx === i ? 'background:#f0f0f0;' : ''}`
+      item.style.cssText = `display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;border-radius:4px;${hoveredIdx === i ? `background:${COLOR.hoverBg};` : ''}`
       const dot = document.createElement('span')
       dot.style.cssText = `flex:none;width:8px;height:8px;border-radius:50%;background:${seg.color};`
       const label = document.createElement('span')
@@ -256,7 +256,7 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
   function renderLegendHighlight() {
     const items = legendWrap.children
     for (let i = 0; i < items.length; i++) {
-      ;(items[i] as HTMLElement).style.background = hoveredIdx === i ? '#f0f0f0' : ''
+      ;(items[i] as HTMLElement).style.background = hoveredIdx === i ? COLOR.hoverBg : ''
     }
   }
 
@@ -298,7 +298,7 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
         const isProfit = seg.row.pnl >= 0
         tooltip.style.display = 'block'
         tooltip.innerHTML = `
-          <div style="font-weight:600;margin-bottom:6px;border-bottom:1px solid #eee;padding-bottom:4px;">${seg.row.sector}</div>
+          <div style="font-weight:600;margin-bottom:6px;border-bottom:1px solid ${COLOR.borderLight};padding-bottom:4px;">${seg.row.sector}</div>
           <div style="display:flex;justify-content:space-between;gap:12px;">
             <span style="color:${COLOR.tertiary}">실현손익</span>
             <span style="color:${isProfit ? COLOR.up : COLOR.down};font-weight:600">${seg.row.pnl >= 0 ? '+' : ''}${fmtWon(seg.row.pnl)}</span>

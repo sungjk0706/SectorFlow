@@ -1,6 +1,6 @@
 // frontend/src/components/common/time-pair-input.ts
 import { parseHM, createTimeSlot, updateTimeSlotDisplay } from './settings-common'
-import { FONT_SIZE } from './ui-styles'
+import { COLOR, FONT_SIZE } from './ui-styles'
 
 export interface TimePairInputHandle {
   getValue: () => { start: string; end: string }
@@ -35,7 +35,7 @@ export function createTimePairInput(
     })
 
     const tilde = document.createElement('span')
-    Object.assign(tilde.style, { color: '#999', fontSize: FONT_SIZE.badge, margin: '0 2px' })
+    Object.assign(tilde.style, { color: COLOR.disabled, fontSize: FONT_SIZE.badge, margin: '0 2px' })
     tilde.textContent = '~'
 
     wrap.appendChild(startSlot)

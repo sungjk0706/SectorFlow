@@ -23,7 +23,7 @@ export function sectionTitle(text: string): HTMLElement {
     fontWeight: FONT_WEIGHT.normal,
     fontSize: FONT_SIZE.section,
     padding: '10px 0 6px',
-    borderBottom: '2px solid #eee',
+    borderBottom: '2px solid ' + COLOR.borderLight,
     marginBottom: '8px',
   })
   div.textContent = text
@@ -43,7 +43,7 @@ export function createTimeSlot(
   const display = document.createElement('span')
   Object.assign(display.style, {
     display: 'inline-flex', alignItems: 'center', gap: '1px',
-    background: '#f7f8fa', border: '1px solid #e0e0e0', borderRadius: '6px',
+    background: COLOR.surface, border: '1px solid ' + COLOR.inactiveBg, borderRadius: '6px',
     padding: '4px 8px', cursor: 'pointer', fontVariantNumeric: 'tabular-nums',
     fontSize: FONT_SIZE.label, userSelect: 'none',
   })
@@ -94,7 +94,7 @@ function createTimeDropdown(
     top: `${rect.bottom + 4}px`,
     left: `${rect.left}px`,
     zIndex: '10000',
-    background: '#fff', border: '1px solid #d0d5dd', borderRadius: '8px',
+    background: COLOR.white, border: '1px solid ' + COLOR.borderGrid, borderRadius: '8px',
     boxShadow: '0 4px 16px rgba(0,0,0,0.12)', width: '240px',
   })
 
@@ -102,7 +102,7 @@ function createTimeDropdown(
   let curH = hour, curM = minute
 
   const tabBar = document.createElement('div')
-  tabBar.style.cssText = 'display:flex;border-bottom:1px solid #eee;'
+  tabBar.style.cssText = `display:flex;border-bottom:1px solid ${COLOR.borderLight};`
   const hourTab = document.createElement('button'); hourTab.type = 'button'
   const minTab = document.createElement('button'); minTab.type = 'button'
 
@@ -169,11 +169,11 @@ function createGridPanel(
       border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: FONT_SIZE.badge,
       fontVariantNumeric: 'tabular-nums',
       background: isActive ? `${COLOR.down}` : 'transparent',
-      color: isActive ? '#fff' : `${COLOR.code}`,
+      color: isActive ? COLOR.white : `${COLOR.code}`,
       fontWeight: FONT_WEIGHT.normal,
     })
     btn.textContent = item
-    btn.addEventListener('mouseenter', () => { if (item !== value) btn.style.background = '#f0f0f0' })
+    btn.addEventListener('mouseenter', () => { if (item !== value) btn.style.background = COLOR.hoverBg })
     btn.addEventListener('mouseleave', () => { if (item !== value) btn.style.background = 'transparent' })
     btn.addEventListener('click', () => onChange(item))
     grid.appendChild(btn)
@@ -185,10 +185,10 @@ function createGridPanel(
 function createFineAdjust(minute: string, onChange: (m: string) => void): HTMLElement {
   let m = parseInt(minute, 10)
   const wrap = document.createElement('div')
-  Object.assign(wrap.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '4px 0', borderTop: '1px solid #eee' })
+  Object.assign(wrap.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '4px 0', borderTop: '1px solid ' + COLOR.borderLight })
 
   const decBtn = document.createElement('button'); decBtn.type = 'button'
-  Object.assign(decBtn.style, { width: '28px', height: '24px', border: '1px solid #ddd', borderRadius: '4px', background: '#f8f8f8', cursor: 'pointer', fontSize: FONT_SIZE.badge })
+  Object.assign(decBtn.style, { width: '28px', height: '24px', border: '1px solid ' + COLOR.borderDark, borderRadius: '4px', background: COLOR.surface, cursor: 'pointer', fontSize: FONT_SIZE.badge })
   decBtn.textContent = '−1'
 
   const label = document.createElement('span')
@@ -196,7 +196,7 @@ function createFineAdjust(minute: string, onChange: (m: string) => void): HTMLEl
   label.textContent = minute
 
   const incBtn = document.createElement('button'); incBtn.type = 'button'
-  Object.assign(incBtn.style, { width: '28px', height: '24px', border: '1px solid #ddd', borderRadius: '4px', background: '#f8f8f8', cursor: 'pointer', fontSize: FONT_SIZE.badge })
+  Object.assign(incBtn.style, { width: '28px', height: '24px', border: '1px solid ' + COLOR.borderDark, borderRadius: '4px', background: COLOR.surface, cursor: 'pointer', fontSize: FONT_SIZE.badge })
   incBtn.textContent = '+1'
 
   decBtn.addEventListener('click', () => { m = Math.max(0, m - 1); const s = String(m).padStart(2, '0'); label.textContent = s; onChange(s) })
