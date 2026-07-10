@@ -191,6 +191,9 @@ export interface AppSettings {
   scheduler_market_close_on: boolean;
   scheduler_5d_download_on: boolean;
 
+  // UI 설정
+  ui_price_flash_on: boolean;
+
   // 기타
   auto_trading_effective: boolean;
   auto_buy_effective: boolean;
