@@ -35,7 +35,7 @@
   - 검증: 2024-2025년 휴일 exchange_calendars와 100% 일치, 2026년은 제헌절 1일 추가(정확), pytest 1070/1070 통과 (신규 45건 포함)
   - 테스트: `test_trading_calendar.py` 신규 — 2024-2027년 휴일/거래일 수/대체공휴일/제헌절/임시공휴일/엣지케이스 45건
   - 임시 공휴일 관리: 새 선거일/임시공휴일 발생 시 `_MANUAL_HOLIDAYS` dict에 날짜 추가 후 `refresh_trading_days_for_year()` 호출
-  - 커밋: (이번 커밋)
+  - 커밋: `b111496` push 완료
 - **2026-07-10: 5일고가 돌파 표시 분리 — 현재가 필드 배경 → ▲ 아이콘(좌측) + 5일고가 필드 초록 배경**
   - 목적: 매수후보 페이지에서 5일고가 돌파 종목의 현재가 셀에 초록 배경(`COLOR.successBg`)이 표시되는데, 실시간 시세 변경 시 노란 플래시 효과(`composite: 'replace'`)가 같은 셀 배경에 겹쳐 초록→노랑→투명→초록 깜빡임 발생. 두 시각적 효과의 충돌 제거
   - 근본 원인: `buy-target.ts`의 `cur_price` 컬럼이 `flash: true`이면서 동시에 5일고가 돌파 시 배경색 적용. `data-table.ts`의 `triggerFlash`가 `composite: 'replace'`로 동작하여 인라인 배경색을 무시하고 keyframe 값으로 대체
@@ -155,7 +155,7 @@
 ## 현재 상태
 - **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료, 보유종목 buy_date 파생·브로드캐스트 구현 완료, exchange_calendars 교체 완료 (korean_lunar_calendar 기반 직접 구현, ~109MB 절감, 제헌절 버그 수정)
 - **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지·검색 입력란 추가 완료, 보유종목 테이블 매수일자 컬럼 추가 완료, 수익현황 페이지 빈 데이터 차트/도넛 stale state 근본 수정 완료, 프론트엔드 색상 체계 통일 완료 (하드코딩 ~190곳 COLOR 상수화 + secondary→tertiary 통합), 검색 입력란 공통 컴포넌트 통일 완료 (5페이지 7개 인스턴스 + label/compact 옵션 + 포커스 언더라인 + placeholder 색상), `npm run build` 통과
-- **Git**: 커밋 `a2ea0cf` push 완료 (검색 입력란 통일 작업은 미커밋)
+- **Git**: 커밋 `b111496` push 완료 (exchange_calendars 교체)
 
 ## 다음 단계
 - **1순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
