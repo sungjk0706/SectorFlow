@@ -118,7 +118,7 @@ async def save_settlement_state(data: dict) -> None:
         )
         await execute_db_write(op, wait=True)
     except Exception as e:
-        logger.warning("[시스템] 저장 실패: %s", e)
+        logger.error("[시스템] 저장 실패: %s", e, exc_info=True)
 
 async def load_settlement_state() -> dict | None:
     """정산 상태 로드"""
@@ -134,7 +134,7 @@ async def load_settlement_state() -> dict | None:
                 "initial_deposit": row["initial_deposit"],
             }
     except Exception as e:
-        logger.warning("[시스템] 로드 실패: %s", e)
+        logger.error("[시스템] 로드 실패: %s", e, exc_info=True)
     return None
 
 

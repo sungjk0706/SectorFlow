@@ -170,10 +170,7 @@ async def _persist() -> None:
         "orderable": _orderable,
         "initial_deposit": _initial_deposit,
     }
-    try:
-        await save_settlement_state(data)
-    except Exception as e:
-        logger.warning("[정산] 상태 저장 실패: %s", e)
+    await save_settlement_state(data)
 
 
 async def _load(force_reload: bool = False, initial_deposit: int | None = None) -> None:
@@ -216,7 +213,7 @@ async def _load(force_reload: bool = False, initial_deposit: int | None = None) 
             f"{_accumulated_investment:,}", f"{_orderable:,}",
         )
     except Exception as e:
-        logger.warning("[정산] 상태 파일 로드 실패 (기본값 사용): %s", e)
+        logger.error("[정산] 상태 파일 로드 실패 (기본값 사용): %s", e, exc_info=True)
         # initial_deposit: 인자 우선, 다음 settings, 마지막 기본값
         if initial_deposit is not None and initial_deposit > 0:
             _initial_deposit = initial_deposit
