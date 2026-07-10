@@ -157,7 +157,7 @@ def get_nxt_trde_tp(base_trde_tp: str = "3") -> str:
     현재 시간대에 맞는 NXT trde_tp 반환.
     - 프리마켓(08:00~09:00): 'P'
     - 애프터마켓(15:30~20:00): 'U'
-    - 정규장: base_trde_tp 그대로 (지정가=1, 시장가=3 -- KRX와 동일)
+    - 정규장: base_trde_tp 그대로 (지정가=1, 시장가=3 — KRX와 동일)
     """
     if is_nxt_premarket_window():
         return "P"
@@ -307,7 +307,7 @@ async def _on_krx_market_open() -> None:
         today = _kst_now().date()
         if today.weekday() >= 5 or not is_trading_day(today):
             return
-        logger.info("[스케줄] KRX 정규장 진입 (09:00) -- 업종 종합점수 재계산 + KRX 단독 종목 재구독")
+        logger.info("[스케줄] KRX 정규장 진입 (09:00) — 업종 종합점수 재계산 + KRX 단독 종목 재구독")
         from backend.app.services.sector_data_provider import recompute_sector_summary_now
         await recompute_sector_summary_now()
 
@@ -331,7 +331,7 @@ async def _on_krx_after_hours_start() -> None:
         today = _kst_now().date()
         if today.weekday() >= 5 or not is_trading_day(today):
             return
-        logger.info("[스케줄] KRX 장외 시간대 진입 (15:30) -- 업종 종합점수 재계산 + KRX 단독 종목 구독해지")
+        logger.info("[스케줄] KRX 장외 시간대 진입 (15:30) — 업종 종합점수 재계산 + KRX 단독 종목 구독해지")
         from backend.app.services.sector_data_provider import recompute_sector_summary_now
         await recompute_sector_summary_now()
 
@@ -488,7 +488,7 @@ async def _apply_auto_toggle_on_startup(settings: dict) -> None:
     in_time_window = start_total <= now_minutes <= end_total
 
     logger.debug(
-        "[스케줄] 기동 판별 -- 거래일=%s, 시간구간내=%s (설정값 미변경)",
+        "[스케줄] 기동 판별 — 거래일=%s, 시간구간내=%s (설정값 미변경)",
         is_trade_day, in_time_window,
     )
     try:
@@ -503,7 +503,7 @@ async def _apply_auto_toggle_on_startup(settings: dict) -> None:
 
 
 async def _on_ws_subscribe_start() -> None:
-    """WS 구독 시작 시각이 되면 자동 실행 -- WS 연결 + 실시간 데이터 수신을 시작하는 함수."""
+    """WS 구독 시작 시각이 되면 자동 실행 — WS 연결 + 실시간 데이터 수신을 시작하는 함수."""
     try:
         # 장중 GC 비활성화 (HFT 지연 방지)
         gc.disable()
@@ -540,7 +540,7 @@ async def _on_ws_subscribe_start() -> None:
 
 
 async def _on_ws_subscribe_end() -> None:
-    """WS 구독 종료 시각이 되면 자동 실행 -- 실시간 수신 중단 + WS 연결 해제 + 업종 재계산을 순서대로 하는 함수."""
+    """WS 구독 종료 시각이 되면 자동 실행 — 실시간 수신 중단 + WS 연결 해제 + 업종 재계산을 순서대로 하는 함수."""
     try:
         # 장마감 후 GC 정상화 및 메모리 정리
         gc.enable()
@@ -574,7 +574,7 @@ async def _on_ws_subscribe_end() -> None:
 
 
 def _fire_ws_subscribe_end() -> None:
-    """call_later 콜백용 동기 래퍼 -- 비동기 _on_ws_subscribe_end()를 태스크로 감싸서 실행하는 함수."""
+    """call_later 콜백용 동기 래퍼 — 비동기 _on_ws_subscribe_end()를 태스크로 감싸서 실행하는 함수."""
     schedule_engine_task(_on_ws_subscribe_end(), context="실시간 구독 종료")
 
 
@@ -651,18 +651,18 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
     if delay_start > 0 and loop:
         h = loop.call_later(max(delay_start, 1), lambda: schedule_engine_task(_on_ws_subscribe_start(), context="실시간 구독 시작"))
         state.ws_subscribe_timer_handles.append(h)
-        logger.debug("[스케줄] 실시간 구독 시작 (%s) -- %.0f초 후 예약", ws_start_str, delay_start)
+        logger.debug("[스케줄] 실시간 구독 시작 (%s) — %.0f초 후 예약", ws_start_str, delay_start)
     elif delay_start <= 0 and delay_end > 0 and loop:
         # 이미 구독 구간 내 — _init_ws_subscribe_state가 단일 책임으로 처리
         # 내일 ws_subscribe_start 시각에 타이머 예약 (24시간 후)
         h = loop.call_later(max(delay_start + 86400, 1), lambda: schedule_engine_task(_on_ws_subscribe_start(), context="실시간 구독 시작(내일)"))
         state.ws_subscribe_timer_handles.append(h)
-        logger.debug("[스케줄] 실시간 구독 시작 (%s) -- 구독 구간 내 기동, 내일 예약", ws_start_str)
+        logger.debug("[스케줄] 실시간 구독 시작 (%s) — 구독 구간 내 기동, 내일 예약", ws_start_str)
 
     if delay_end > 0 and loop:
         h = loop.call_later(max(delay_end, 1), _fire_ws_subscribe_end)
         state.ws_subscribe_timer_handles.append(h)
-        logger.debug("[스케줄] 실시간 구독 종료 (%s) -- %.0f초 후 예약", ws_end_str, delay_end)
+        logger.debug("[스케줄] 실시간 구독 종료 (%s) — %.0f초 후 예약", ws_end_str, delay_end)
 
     # ★ 09:00 KRX 정규장 진입 타이머 — NXT-only → 전체 종목 업종 재계산
     delay_krx_open = _seconds_until_hm(9, 0)
@@ -671,7 +671,7 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
             schedule_engine_task(_on_krx_market_open(), context="KRX 정규장 진입")
         h = loop.call_later(max(delay_krx_open, 1), _krx_open_wrapper)
         state.ws_subscribe_timer_handles.append(h)
-        logger.debug("[스케줄] KRX 정규장 진입 (09:00) -- %.0f초 후 예약", delay_krx_open)
+        logger.debug("[스케줄] KRX 정규장 진입 (09:00) — %.0f초 후 예약", delay_krx_open)
 
     # ★ 15:30 KRX 장외 시간대 전환 타이머
     delay_krx_after = _seconds_until_hm(15, 30)
@@ -680,7 +680,7 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
             schedule_engine_task(_on_krx_after_hours_start(), context="KRX 장외 전환")
         h = loop.call_later(max(delay_krx_after, 1), _krx_after_wrapper)
         state.ws_subscribe_timer_handles.append(h)
-        logger.debug("[스케줄] KRX 장외 전환 (15:30) -- %.0f초 후 예약", delay_krx_after)
+        logger.debug("[스케줄] KRX 장외 전환 (15:30) — %.0f초 후 예약", delay_krx_after)
 
     # ★ 20:10 NXT 확정 조회 타이머 — 제거됨 (Task 3.1, 20:30 통합 확정 조회로 교체)
 
@@ -693,7 +693,7 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
     if delay_confirmed > 0 and loop:
         h = loop.call_later(max(delay_confirmed, 1), _fire_confirmed_download)
         state.ws_subscribe_timer_handles.append(h)
-        logger.debug("[스케줄] 확정 시세 다운로드 (%s) -- %.0f초 후 예약", confirmed_dl_str, delay_confirmed)
+        logger.debug("[스케줄] 확정 시세 다운로드 (%s) — %.0f초 후 예약", confirmed_dl_str, delay_confirmed)
     elif delay_confirmed <= 0 and loop:
         # 이미 다운로드 시간이 지났으면 부트스트랩 catch-up에서 처리
         logger.debug("[스케줄] 확정 시세 다운로드 시간(%s) 이미 경과 — 부트스트랩 catch-up에서 처리", confirmed_dl_str)
@@ -713,7 +713,7 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
         if delay_mp > 0 and loop:
             h = loop.call_later(max(delay_mp, 1), _broadcast_market_phase)
             state.ws_subscribe_timer_handles.append(h)
-            logger.debug("[스케줄] 장 상태 전환 (%s) -- %.0f초 후 예약", label, delay_mp)
+            logger.debug("[스케줄] 장 상태 전환 (%s) — %.0f초 후 예약", label, delay_mp)
 
 
 async def _init_ws_subscribe_state() -> None:
@@ -825,7 +825,7 @@ async def _do_unreg_all() -> None:
             if cd in state.master_stocks_cache:
                 state.master_stocks_cache[cd].pop("_subscribed", None)
 
-        logger.info("[스케줄] 구독 해지 완료 -- %d종목 (성공=%s)", len(all_codes), ok)
+        logger.info("[스케줄] 구독 해지 완료 — %d종목 (성공=%s)", len(all_codes), ok)
 
         # ws_subscribe_control 상태 동기화 — 구독 해지 완료
         from backend.app.services import ws_subscribe_control
@@ -852,7 +852,7 @@ async def _on_auto_trade_transition(label: str) -> None:
             notify_desktop_header_refresh,
             notify_desktop_settings_toggled,
         )
-        logger.info("[스케줄] 자동매매 시간 전환 -- %s", label)
+        logger.info("[스케줄] 자동매매 시간 전환 — %s", label)
         # 엔진 설정 캐시 갱신 (메모리만, 디스크 I/O 없음)
         schedule_engine_task(refresh_engine_integrated_system_settings_cache(None, use_root=True), context="설정 캐시 갱신")
         await notify_desktop_header_refresh()
@@ -907,7 +907,7 @@ async def schedule_auto_trade_timers(settings: dict | None = None) -> None:
         handle = loop.call_later(delay, lambda: schedule_engine_task(_on_auto_trade_transition(label), context=f"자동매매 전환({label})"))
         state.auto_trade_timer_handles.append(handle)
         logger.debug(
-            "[스케줄] %s (%s) -- %.0f초 후 예약",
+            "[스케줄] %s (%s) — %.0f초 후 예약",
             label, hm_str, delay,
         )
 
@@ -916,7 +916,7 @@ async def schedule_auto_trade_timers(settings: dict | None = None) -> None:
 
 
 async def _on_midnight() -> None:
-    """자정(00:00)이 되면 자동 실행 -- 갱신 플래그를 초기화하고 당일 타이머를 새로 예약하는 함수."""
+    """자정(00:00)이 되면 자동 실행 — 갱신 플래그를 초기화하고 당일 타이머를 새로 예약하는 함수."""
     try:
         now = _kst_now()
 
@@ -924,7 +924,7 @@ async def _on_midnight() -> None:
             state.last_reset_date = now.strftime("%Y%m%d")
             state.krx_remove_done = False
             state.confirmed_done = False
-            logger.info("[스케줄] 자정 날짜 변경 -- 플래그 초기화 (%s)", state.last_reset_date)
+            logger.info("[스케줄] 자정 날짜 변경 — 플래그 초기화 (%s)", state.last_reset_date)
 
             # 연도 변경 시 다음 연도 거래일 캐시 미리 생성 (블로킹 방지)
             current_year = now.year
@@ -966,13 +966,13 @@ def schedule_midnight_timer() -> None:
         # 이미 자정 지남 → 다음날 자정까지 (24시간 + delay)
         delay += 86400
     state.midnight_timer_handle = loop.call_later(max(delay, 1), lambda: schedule_engine_task(_on_midnight(), context="자정 날짜 변경"))
-    logger.debug("[스케줄] 자정 타이머 -- %.0f초 후 예약", delay)
+    logger.debug("[스케줄] 자정 타이머 — %.0f초 후 예약", delay)
 
 
 # ── ka10001 확정 데이터 갱신 ─────────────────────────────────────────────────
 
 def _freeze_krx_amt29_baseline() -> None:
-    pass  # KRX 단독 구조에서는 freeze 불필요 -- 호환성 유지용 stub
+    pass  # KRX 단독 구조에서는 freeze 불필요 — 호환성 유지용 stub
 
 
 def _apply_detail_to_entry(entry: dict, detail: dict, *, base_nk: str = "") -> None:
@@ -1005,7 +1005,7 @@ def _apply_detail_to_entry(entry: dict, detail: dict, *, base_nk: str = "") -> N
 
 
 async def start_daily_time_scheduler() -> None:
-    """타임스케줄러를 시작하는 함수 -- 이벤트 타이머 초기 예약."""
+    """타임스케줄러를 시작하는 함수 — 이벤트 타이머 초기 예약."""
     # 엔진 기동 시 타이머 초기 예약
     try:
         # ── 기동 시 자동 ON/OFF 판별: 거래일+시간구간이면 ON, 아니면 OFF ──
@@ -1036,7 +1036,7 @@ async def start_daily_time_scheduler() -> None:
 
 
 async def stop_daily_time_scheduler() -> None:
-    """타임스케줄러를 중지하는 함수 -- 모든 타이머 취소."""
+    """타임스케줄러를 중지하는 함수 — 모든 타이머 취소."""
     # 모든 타이머 취소
     for handle in state.auto_trade_timer_handles:
         handle.cancel()

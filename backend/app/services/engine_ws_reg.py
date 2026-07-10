@@ -282,7 +282,7 @@ async def subscribe_sector_stocks_0b() -> None:
     if total_raw > _WS_0B_LIMIT:
         allowed_filtered = max(0, _WS_0B_LIMIT - len(pos_codes))
         logger.warning(
-            "[구독] 구독 한도 초과 -- 보유 %d + 필터 %d = %d > %d, "
+            "[구독] 구독 한도 초과 — 보유 %d + 필터 %d = %d > %d, "
             "보유종목 우선 등록, 필터 통과 종목 %d개만 등록",
             len(pos_codes), len(filtered_only), total_raw,
             _WS_0B_LIMIT, allowed_filtered,
@@ -298,13 +298,13 @@ async def subscribe_sector_stocks_0b() -> None:
 
         ok = await ws.subscribe_stocks(pos_targets)
         if ok:
-            logger.info("[구독] 보유종목 구독 완료 -- %d종목", len(pos_targets))
+            logger.info("[구독] 보유종목 구독 완료 — %d종목", len(pos_targets))
         else:
             for cd in pos_targets:
                 if cd in state.master_stocks_cache:
                     entry = state.master_stocks_cache[cd]
                     entry.pop("_subscribed", None)
-            logger.warning("[구독] 보유종목 구독 실패 -- %d종목 롤백", len(pos_targets))
+            logger.warning("[구독] 보유종목 구독 실패 — %d종목 롤백", len(pos_targets))
 
     # ── 5) 필터 통과 종목 누적 REG ──
     filter_targets = [cd for cd in filtered_only if not state.master_stocks_cache.get(cd, {}).get("_subscribed")]
@@ -317,12 +317,12 @@ async def subscribe_sector_stocks_0b() -> None:
 
     ok = await ws.subscribe_stocks(filter_targets)
     if ok:
-        logger.info("[구독] 필터 종목 구독 완료 -- %d종목", len(filter_targets))
+        logger.info("[구독] 필터 종목 구독 완료 — %d종목", len(filter_targets))
     else:
         for cd in filter_targets:
             if cd in state.master_stocks_cache:
                 state.master_stocks_cache[cd].pop("_subscribed", None)
-        logger.warning("[구독] 필터 종목 구독 실패 -- %d종목 롤백", len(filter_targets))
+        logger.warning("[구독] 필터 종목 구독 실패 — %d종목 롤백", len(filter_targets))
 
 
 async def subscribe_index_realtime() -> None:
@@ -365,7 +365,7 @@ async def subscribe_account_realtime() -> None:
     broker_nm = str(s.get("broker", "") or "").lower().strip()
     acnt = str(s.get(f"{broker_nm}_account_no", "") or "").strip()
     if not acnt:
-        logger.warning("[계좌] 계좌번호 미설정 -- 구독 요청은 빈값으로 전송")
+        logger.warning("[계좌] 계좌번호 미설정 — 구독 요청은 빈값으로 전송")
 
     payload = build_account_reg_payload()
     try:
@@ -374,7 +374,7 @@ async def subscribe_account_realtime() -> None:
         if ok:
             state.ws_account_subscribed = True
             logger.info(
-                "[계좌] 계좌 구독 완료 -- 계좌설정=%s",
+                "[계좌] 계좌 구독 완료 — 계좌설정=%s",
                 "Y" if acnt else "N",
             )
         else:
@@ -418,12 +418,12 @@ async def subscribe_positions_stocks_realtime() -> None:
 
     ok = await ws.subscribe_stocks(new_0b)
     if ok:
-        logger.info("[구독] 보유종목 구독 완료 -- %d종목", len(new_0b))
+        logger.info("[구독] 보유종목 구독 완료 — %d종목", len(new_0b))
     else:
         for cd in new_0b:
             if cd in state.master_stocks_cache:
                 state.master_stocks_cache[cd].pop("_subscribed", None)
-        logger.warning("[구독] 보유종목 구독 실패 -- %d종목 롤백", len(new_0b))
+        logger.warning("[구독] 보유종목 구독 실패 — %d종목 롤백", len(new_0b))
 
 
 # ---------------------------------------------------------------------------

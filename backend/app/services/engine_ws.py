@@ -54,7 +54,7 @@ async def _ws_send_reg_unreg_and_wait_ack(payload: dict, *, sender=None) -> tupl
         except asyncio.TimeoutError:
             if state.reg_ack_event:
                 state.reg_ack_event.clear()
-            logger.warning("[구독] 구독 응답 대기 시간 초과(10초) -- trnm=%s", payload.get("trnm"))
+            logger.warning("[구독] 구독 응답 대기 시간 초과(10초) — trnm=%s", payload.get("trnm"))
             return False, ""
 
         rc = state.reg_ack_return_code
@@ -104,7 +104,7 @@ async def _broker_message_handler(payload: dict) -> None:
 
 
 async def _handle_ws_data(data: dict) -> None:
-    """WebSocket `data` 페이로드 처리 -- 본문은 `engine_ws_dispatch`에 위임."""
+    """WebSocket `data` 페이로드 처리 — 본문은 `engine_ws_dispatch`에 위임."""
     from backend.app.services import engine_ws_dispatch
     await engine_ws_dispatch.handle_ws_data(data)
 
@@ -116,8 +116,8 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
     모니터링 등록 시점이 LOGIN 이전이면 REG가 무력화될 수 있어,
     WS 연결·로그인 성공 후 REG를 보내도록 짧게 재시도한다.
     기동 시 배치 파이프라인(_run_sector_reg_pipeline) 완료 전에는
-    단건 REG를 보내지 않음 -- 배치가 이미 커버하므로 중복 블로킹 방지.
-    시장가 운용으로 호가(02) REG 제거됨 -- 0B는 배치에서 커버.
+    단건 REG를 보내지 않음 — 배치가 이미 커버하므로 중복 블로킹 방지.
+    시장가 운용으로 호가(02) REG 제거됨 — 0B는 배치에서 커버.
     """
     from backend.app.services.engine_symbol_utils import _base_stk_cd
     
@@ -148,7 +148,7 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
     else:
         if item_cd in state.master_stocks_cache:
             state.master_stocks_cache[item_cd].pop("_subscribed", None)
-        logger.warning("[구독] 단건 종목 구독 실패 -- %s", item_cd)
+        logger.warning("[구독] 단건 종목 구독 실패 — %s", item_cd)
 
 
 async def _subscribe_account_realtime() -> None:
@@ -159,7 +159,7 @@ async def _subscribe_account_realtime() -> None:
 
 def _log_reg_stock_chunk(scope: str, start_ord: int, end_ord: int, ca: int, cs: int, cf: int) -> None:
     logger.info(
-        "[구독] %s %d~%d번 처리 완료 -- 성공 %d건, 이미구독 생략 %d건, 실패 %d건",
+        "[구독] %s %d~%d번 처리 완료 — 성공 %d건, 이미구독 생략 %d건, 실패 %d건",
         scope,
         start_ord,
         end_ord,
@@ -180,14 +180,14 @@ async def _subscribe_positions_stocks_realtime() -> None:
 
 async def _subscribe_radar_stocks_realtime() -> None:
     """
-    레이더 종목 REG -- 시장가 운용으로 호가(02) 불필요, 제거됨.
+    레이더 종목 REG — 시장가 운용으로 호가(02) 불필요, 제거됨.
     0B는 _subscribe_sector_stocks_0b 에서 이미 커버됨.
     """
     pass
 
 
 async def _subscribe_all_tracked_stocks_realtime() -> None:
-    """보유 + 레이더 -- 조건 전환 등 전체 재동기화 시에만."""
+    """보유 + 레이더 — 조건 전환 등 전체 재동기화 시에만."""
     await _subscribe_positions_stocks_realtime()
     await _subscribe_radar_stocks_realtime()
 
@@ -220,7 +220,7 @@ async def _ensure_ws_subscriptions_for_positions() -> None:
         if not is_test_mode(state.integrated_system_settings_cache):
             await _subscribe_account_realtime()
         else:
-            logger.info("[구독] 테스트모드 -- 계좌 실시간 구독 생략")
+            logger.info("[구독] 테스트모드 — 계좌 실시간 구독 생략")
         await _subscribe_positions_stocks_realtime()
     except Exception as e:
         logger.warning("[구독] 실시간 구독 전송 실패: %s", e, exc_info=True)
@@ -243,7 +243,7 @@ async def _run_sector_reg_pipeline() -> None:
     finally:
         if state.ws_reg_pipeline_done:
             state.ws_reg_pipeline_done.set()
-        logger.info("[연산] 실시간 구독 준비 완료 -- 단건 구독 허용")
+        logger.info("[연산] 실시간 구독 준비 완료 — 단건 구독 허용")
         from backend.app.services.engine_account import _refresh_account_snapshot_meta
         if _ws_live():
             await _refresh_account_snapshot_meta()
@@ -273,7 +273,7 @@ def _item_cd_is_position(item_cd: str, pos_keep: set[str]) -> bool:
 
 def _item_cd_tracked_radar_or_ready(item_cd: str) -> bool:
     """
-    모니터링 pending에 올라간 종목 -- 비보유여도 실시간(REG) 유지해야 HTS와 시세가 맞는다.
+    모니터링 pending에 올라간 종목 — 비보유여도 실시간(REG) 유지해야 HTS와 시세가 맞는다.
     잔고 REST 반영 후 UNREG 스윕 등에서 UNREG 대상에서 제외한다.
     """
     from backend.app.services.engine_symbol_utils import _base_stk_cd
@@ -286,16 +286,16 @@ def _item_cd_tracked_radar_or_ready(item_cd: str) -> bool:
 
 
 async def _sweep_unreg_subscribed_except_positions_and_tracked() -> int:
-    """비보유·비추적 종목 정리 -- 시장가 운용으로 호가(02) 제거됨, 현재 no-op."""
+    """비보유·비추적 종목 정리 — 시장가 운용으로 호가(02) 제거됨, 현재 no-op."""
     return 0
 
 async def subscribe_dynamic_data(codes: list[str]) -> None:
     """동적 데이터(0D, PGM, UH1, UPH 등) 실시간 구독 등록을 커넥터에 위임합니다."""
     from backend.app.services.engine_state import state
     ws = state.connector_manager or state.active_connector
-    logger.info("[구독] 호가·프로그램매매 구독 시작 -- 종목: %s", codes)
+    logger.info("[구독] 호가·프로그램매매 구독 시작 — 종목: %s", codes)
     if not ws or not ws.is_connected() or not state.login_ok:
-        logger.warning("[구독] 호가·프로그램매매 구독 실패 -- 연결=%s, 로그인=%s", ws.is_connected() if ws else False, state.login_ok)
+        logger.warning("[구독] 호가·프로그램매매 구독 실패 — 연결=%s, 로그인=%s", ws.is_connected() if ws else False, state.login_ok)
         return
     if hasattr(ws, "subscribe_dynamic"):
         await ws.subscribe_dynamic(codes)
