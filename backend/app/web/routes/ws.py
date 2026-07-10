@@ -30,16 +30,16 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         # 이벤트 구동 방식: 데이터 준비 완료 시 즉시 전송 (타임아웃/폴링 제거)
         # 테스트모드와 실전모드 동일하게 데이터 준비 대기 (앱 기동 준비는 돈과 무관)
         if not state.data_ready_event.is_set():
-            logger.info("[연결] 데이터 준비 대기 중 -- 초기 스냅샷 전송 지연")
+            logger.info("[연결] 데이터 준비 대기 중 — 초기 스냅샷 전송 지연")
             await state.data_ready_event.wait()
-            logger.info("[연결] 데이터 준비 완료 -- 초기 스냅샷 전송 시작")
+            logger.info("[연결] 데이터 준비 완료 — 초기 스냅샷 전송 시작")
 
         # 앱준비 완료 대기 (이벤트 구동)
         # 테스트모드와 실전모드 동일하게 앱준비 대기 (앱 기동 준비는 돈과 무관)
         if not state.bootstrap_event.is_set():
-            logger.info("[연결] 앱준비 대기 중 -- 초기 스냅샷 전송 지연")
+            logger.info("[연결] 앱준비 대기 중 — 초기 스냅샷 전송 지연")
             await state.bootstrap_event.wait()
-            logger.info("[연결] 앱준비 완료 -- 초기 스냅샷 전송 시작")
+            logger.info("[연결] 앱준비 완료 — 초기 스냅샷 전송 시작")
 
         # 엔진 준비 완료 유니캐스트 전송 (engine-ready)
         if state.bootstrap_event.is_set():
@@ -108,7 +108,7 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
         # ── 수신율 임계값 게이트 — WS 구독 구간 내 임계값 미달 시 sector-scores 전송 차단 ──
         from backend.app.pipelines.pipeline_compute import is_sector_threshold_passed
         if not is_sector_threshold_passed():
-            logger.info("[연결] 업종점수 미전송 -- 수신율 임계값 미달")
+            logger.info("[연결] 업종점수 미전송 — 수신율 임계값 미달")
         else:
             scores_result = get_sector_scores_snapshot()
             scores, ranked_count = scores_result if isinstance(scores_result, tuple) else (scores_result, 0)
@@ -130,10 +130,10 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
             else:
                 if state.sector_summary_cache is None:
                     logger.info(
-                        "[연결] 업종점수 미전송 -- 업종 요약정보 없음"
+                        "[연결] 업종점수 미전송 — 업종 요약정보 없음"
                     )
                 else:
-                    logger.info("[연결] 업종점수 미전송 -- 종목 없음 (정상)")
+                    logger.info("[연결] 업종점수 미전송 — 종목 없음 (정상)")
 
         # buy-targets 전송 (initial-snapshot에 이미 포함되어 있으나, WS delta 메커니즘을 위해 별도 전송)
         from backend.app.services.sector_data_provider import get_buy_targets_sector_stocks

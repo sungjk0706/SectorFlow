@@ -85,7 +85,7 @@ async def _deferred_sector_summary() -> None:
                 bought_today_codes=_bought_today,
             )
             state.sector_summary_cache = _result
-            logger.debug("[연산] 업종순위 후순위 계산 완료 -- %d개 업종", len(_result.sectors))
+            logger.debug("[연산] 업종순위 후순위 계산 완료 — %d개 업종", len(_result.sectors))
 
             # WS broadcast — 이미 연결된 클라이언트에게 전송
             try:
@@ -113,7 +113,7 @@ async def _deferred_sector_summary() -> None:
 
 
 async def _notify_close_data_ui() -> None:
-    """장외 확정 데이터 갱신 -- UI 알림 트리거."""
+    """장외 확정 데이터 갱신 — UI 알림 트리거."""
     try:
         from backend.app.services import engine_account_notify as _account_notify
         try:
@@ -192,7 +192,7 @@ async def _login_post_pipeline() -> None:
 
 
 async def _run_sector_reg_pipeline() -> None:
-    """REG 파이프라인 -- engine_ws에서 직접 호출."""
+    """REG 파이프라인 — engine_ws에서 직접 호출."""
     from backend.app.services.engine_ws import _run_sector_reg_pipeline as _reg
     await _reg()
 

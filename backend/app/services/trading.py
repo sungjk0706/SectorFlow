@@ -43,7 +43,7 @@ class AutoTradeManager:
         # ── 종목별 매도 설정 오버라이드 (기존 로직 유지) ────────────────────────
         self.ts_overrides: dict = {}
         # ────────────────────────────────────────────────────────────────────────
-        self._recent_sells: set = set()  # 매도 주문 전송 완료 종목 -- 체결/실패 확인까지 재주문 차단
+        self._recent_sells: set = set()  # 매도 주문 전송 완료 종목 — 체결/실패 확인까지 재주문 차단
         self._buy_state: dict = {}
         self._daily_buy_date: str = ""
         self._daily_buy_spent = 0
@@ -196,7 +196,7 @@ class AutoTradeManager:
                 _block_reason = f"하락률 {abs(_change_rate):.1f}%"
             if _blocked:
                 stk_nm_g = data_manager.get_stock_name(stk_cd, access_token)
-                logger.info("[매매] [등락률가드] %s(%s) 등락률 %s -- 매수 차단", stk_nm_g, stk_cd, _block_reason)
+                logger.info("[매매] [등락률가드] %s(%s) 등락률 %s — 매수 차단", stk_nm_g, stk_cd, _block_reason)
                 return False
 
         # 체결강도 가드
@@ -208,7 +208,7 @@ class AutoTradeManager:
                     _strength_val = float(_strength_raw)
                     if _strength_val < _min_strength:
                         stk_nm_s = data_manager.get_stock_name(stk_cd, access_token)
-                        logger.info("[매매] [체결강도가드] %s(%s) 체결강도 %.0f < %.0f -- 매수 차단", stk_nm_s, stk_cd, _strength_val, _min_strength)
+                        logger.info("[매매] [체결강도가드] %s(%s) 체결강도 %.0f < %.0f — 매수 차단", stk_nm_s, stk_cd, _strength_val, _min_strength)
                         return False
                 except (ValueError, TypeError):
                     pass
@@ -378,7 +378,7 @@ class AutoTradeManager:
                 self.get_settings_fn(),
             )
         elif str(side) == "2" and unex == 0:
-            # 매도 체결 완료 -- 재매도 차단 해제
+            # 매도 체결 완료 — 재매도 차단 해제
             self._recent_sells.discard(nk)
             stk_nm = data_manager.get_stock_name(stk_cd, access_token)
             logger.info("[매매] [매도체결] %s(%s) 매도 체결 완료!", stk_nm, stk_cd)
@@ -551,7 +551,7 @@ class AutoTradeManager:
             stk_nm = stock.get("stk_nm", "")
             if not stk_cd:
                 continue
-            # 매도 주문 전송 완료 종목 -- 재주문 차단
+            # 매도 주문 전송 완료 종목 — 재주문 차단
             if stk_cd in self._recent_sells:
                 continue
 

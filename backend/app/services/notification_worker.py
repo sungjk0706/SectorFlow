@@ -48,7 +48,7 @@ class NotificationWorker:
         try:
             self._queue.put_nowait(msg)
         except asyncio.QueueFull:
-            logger.warning("[알림] 큐 가득 참 -- 메시지 드롭: %s", msg.get("type"))
+            logger.warning("[알림] 큐 가득 참 — 메시지 드롭: %s", msg.get("type"))
 
     async def _consume_loop(self) -> None:
         """큐 소비 루프. 예외 격리."""
@@ -79,11 +79,11 @@ class NotificationWorker:
         """큐 잔여 항목 처리 후 종료 (graceful shutdown)."""
         self._running = False
         if not self._queue.empty():
-            logger.info("[알림] 종료 대기 -- 큐 잔량 %d건", self._queue.qsize())
+            logger.info("[알림] 종료 대기 — 큐 잔량 %d건", self._queue.qsize())
             try:
                 await asyncio.wait_for(self._queue.join(), timeout=10.0)
             except asyncio.TimeoutError:
-                logger.warning("[알림] 종료 타임아웃 -- 큐 잔량 %d건 드롭", self._queue.qsize())
+                logger.warning("[알림] 종료 타임아웃 — 큐 잔량 %d건 드롭", self._queue.qsize())
         if self._task and not self._task.done():
             self._task.cancel()
             try:
