@@ -25,7 +25,7 @@ _sell_history: list[dict] = []
 _history_lock: LazyLock = LazyLock()
 _loaded: bool = False
 
-RETENTION_TRADING_DAYS_TEST: int = 30
+RETENTION_TRADING_DAYS_TEST: int = 125
 RETENTION_TRADING_DAYS_REAL: int = 90
 
 
@@ -61,6 +61,7 @@ async def _ensure_loaded() -> None:
             "[정산] 체결 이력 로드 완료 — 매수 %d건, 매도 %d건",
             len(_buy_history), len(_sell_history),
         )
+        await _trim_expired()
     except Exception as e:
         logger.warning("[정산] 체결 이력 로드 실패 (신규 설치 시 정상): %s", e)
 
@@ -119,7 +120,7 @@ async def _insert_trade(rec: dict) -> None:
 
 
 async def _trim_expired() -> None:
-    """보관 기한 초과 레코드 제거. 모드별 독립 적용."""
+    """보관 기한 초과 레코드 제거. 모드별 독립 적용. 메모리 + DB 동시 정리."""
     try:
         from backend.app.core.trading_calendar import get_recent_trading_days
         test_cutoff = get_recent_trading_days(RETENTION_TRADING_DAYS_TEST)[0].isoformat()
@@ -131,7 +132,23 @@ async def _trim_expired() -> None:
             _sell_history[:] = [r for r in _sell_history if not (r["trade_mode"] == "test" and r["date"] < test_cutoff)]
             _sell_history[:] = [r for r in _sell_history if not (r["trade_mode"] == "real" and r["date"] < real_cutoff)]
 
-        logger.info("[정산] 만료 레코드 정리 완료")
+        # DB 레벨 정리 — 메모리와 동일한 cutoff 기준
+        from backend.app.db.db_writer import execute_db_write, DBWriteOperation
+        await execute_db_write(DBWriteOperation(
+            table="trades", operation="DELETE", data={},
+            query="DELETE FROM trades WHERE trade_mode = 'test' AND date < ?",
+            params=(test_cutoff,),
+        ))
+        await execute_db_write(DBWriteOperation(
+            table="trades", operation="DELETE", data={},
+            query="DELETE FROM trades WHERE trade_mode = 'real' AND date < ?",
+            params=(real_cutoff,),
+        ))
+
+        logger.info(
+            "[정산] 만료 레코드 정리 완료 — test cutoff=%s, real cutoff=%s",
+            test_cutoff, real_cutoff,
+        )
     except Exception as e:
         logger.error("[정산] 만료 레코드 정리 실패: %s", e)
 
