@@ -16,9 +16,19 @@
   3. 매수후보 테이블 모든 종목(통과/차단 무관)은 이미 0B 실시간 데이터 수신 중 — 0D/PGM만 guard_pass 기반
 
 ## 진행 중 작업 (다음 세션에서 이어서 진행)
-- 없음
+- **Stage 9 (P4-c) 부분 진행 — `kiwoom_stock_rest.py` 완료, 2개 파일 남음**
+  - 완료: `test_kiwoom_stock_rest.py` (74건) — 커밋 미수행
+  - 남음: `kiwoom_connector.py`(563줄) + `kiwoom_providers.py`(337줄)
 
 ## 직전 완료 작업
+- **2026-07-11: 테스트 커버리지 Stage 9 부분 (P4-c-1) — `kiwoom_stock_rest.py`, 신규 74건, 전체 1996건 통과**
+  - 목적: 테스트 커버리지 Stage 9 첫 번째 파일 — `kiwoom_stock_rest.py`(430줄) 단위 테스트 작성
+  - **`test_kiwoom_stock_rest.py` (74건)**: `_si` 10건 (정상int/str/콤마/플러스/빈값/대시/음수절대값/float/None/예외), `_si_signed` 9건 (정상/음수부호보존/콤마/플러스/빈값/대시/None/예외/float), `_pct` 6건 (정상/퍼센트제거/콤마/빈값/None/예외), `fetch_ka10081_daily_price` 14건 (정상/오름차순reversed/내림차순유지/resp None/빈rows/비list/종가0/등락률계산/prev_close 0→None/파싱예외/숫자코드패딩/알파벳코드/_raw_cd label/sign 기본값), `fetch_ka10081_daily_5d_data` 10건 (정상5개/오름차순reversed/신규상장3개패딩/resp None/빈rows/비list/파싱예외/연속조회2페이지/연속조회중단/정확히5개), `fetch_ka10081_all_stocks_daily_confirmed` 5건 (정상/빈리스트/일부실패/on_progress/예외continue), `fetch_ka10081_all_stocks_5day` 5건 (정상/빈리스트/일부실패/on_progress/예외continue), `fetch_ka10099_unified` 15건 (정상/연속조회2페이지/재시도3회/재시도초과/빈list/비dict항목/빈코드/알파벳코드 lstrip("A")/종목명파싱 3키/nxtEnable Y/N/코스닥/파싱예외/짧은코드패딩/raw_item 보존)
+  - 수정 중 이슈:
+    - `fetch_ka10099_unified` `lstrip("A")`: "ABCDEF" → "BCDEF" (kiwoom_stock_rest.py:373) — 테스트 assertion을 실제 동작에 맞게 수정
+  - 검증: 전체 1996 passed, 0 failed (기존 1922 + 신규 74), regression 없음, 런타임 기동 정상 (142ms 부트, 에러 없음, 잔존 프로세스 0건)
+  - 커밋: `56cebd5`
+
 - **2026-07-11: 테스트 커버리지 Stage 8 (P4-b) — 대형 브로커 통신 3개 파일, 신규 250건, 전체 1922건 통과**
   - 목적: 테스트 커버리지 Stage 8 — 대형 브로커 통신 `ls_connector.py`(875줄) + `kiwoom_rest.py`(653줄) + `ls_rest.py`(635줄) 단위 테스트 작성
   - **`test_ls_connector.py` (102건)**: `_LsSocket` `__init__` 2건 (파라미터 저장/기본값), `connect` 3건 (성공/websockets 없음 RuntimeError/stop_event clear), `disconnect` 3건 (정상 종료/recv_task 완료/ws.close 실패), `send` 3건 (성공/연결없음/소켓없음), `_recv_loop` 9건 (문자열 PING/JSON PING/list 스킵/JIF 직접 콜백/queue_callback/fallback on_message/ConnectionClosed→on_disconnect/ConnectionClosed no on_disconnect/non-connection-error 계속/json-decode-error 스킵), `_convert_ls_to_internal` 16건 (빈 body/unknown tr_cd/US3 정상+no shcode+drate 보정+sign 4/5 음수+sign 3 무부호/UH1 정상+no shcode+ex_shcode fallback/UPH 정상+no shcode/JIF 정상+빈 jangubun/IJ_ 정상+no upcode), `LsConnector` `__init__`/속성 6건 (파라미터/기본 ws_uri/broker_id/is_connected 2건/supports_ack), 설정 4건 (realtime/auto_trade 각 get/set), `connect` 4건 (성공/이미 연결됨/토큰 실패 ConnectionError/소켓 연결 실패→재연결), `disconnect` 2건 (정상/no socket), `send_message` 2건 (성공/no socket), subscribe 호환 2건 (subscribe/unsubscribe 위임), `subscribe_stocks`/`unsubscribe_stocks` 6건 (성공/연결없음/다건/일부실패/unsubscribe 성공+연결없음), `subscribe_stocks_tr`/`unsubscribe_stocks_tr` 4건 (성공+연결없음 각), `subscribe_dynamic`/`unsubscribe_dynamic` 4건 (성공/빈 codes 각), `register_account`/`unregister_account` 5건 (성공/연결없음/기본 tr_cd/unregister 성공+연결없음), `subscribe_jif`/`subscribe_index` 4건 (jif 성공+연결없음/index 성공+연결없음+일부실패), `_on_ws_message` 3건 (async callback/sync callback/no callback), `_on_socket_disconnect` 3건 (stop_reconnect 차단/정상 재연결 루프/이미 재연결 중), `_reconnect_loop` 2건 (stop 신호 즉시 종료/토큰 실패 후 계속), callback 3건 (reconnect_success/message/queue), `_format_code` 3건 (6자리 숫자/6자리 알파벳/비6자리), `_get_token_async` 4건 (broker_rest_apis 재사용/auth_cache 경로/새 LsRestAPI fallback/전체 실패), `create_ls_connector` 2건 (성공/크리덴셜 없음 ValueError)
@@ -241,8 +251,8 @@
 ## 현재 상태
 - **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료, 보유종목 buy_date 파생·브로드캐스트 구현 완료, exchange_calendars 교체 완료 (korean_lunar_calendar 기반 직접 구현, ~109MB 절감, 제헌절 버그 수정)
 - **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지·검색 입력란 추가 완료, 보유종목 테이블 매수일자 컬럼 추가 완료, 수익현황 페이지 빈 데이터 차트/도넛 stale state 근본 수정 완료, 프론트엔드 색상 체계 통일 완료 (하드코딩 ~190곳 COLOR 상수화 + secondary→tertiary 통합), 검색 입력란 공통 컴포넌트 통일 완료 (5페이지 7개 인스턴스 + label/compact 옵션 + 포커스 언더라인 + placeholder 색상), `npm run build` 통과
-- **Git**: 커밋 `413cb6f` push 완료 (settlement.py await 수정 + 테스트 커버리지 Stage 1~5). 커밋 `00fc3f5` push 완료 (테스트 커버리지 Stage 6)
-- **테스트 커버리지**: Stage 1~6 완료 — 신규 472건 (encryption 34 + sector_mapping 22 + telegram 20 + journal 38 + logger 24 + trade_history 66 + dry_run 30 + web_routes 50 + web_ws_routes 48 + ws_manager 75 + stock_classification 42 + web_app 23), 전체 1549 passed. **Stage 7 (P4-a) 진행 중** — 계획 승인 + 코드 조사 완료, 파일 작성 0건 (상단 "진행 중 작업" 섹션 참조)
+- **Git**: 커밋 `413cb6f` push 완료 (settlement.py await 수정 + 테스트 커버리지 Stage 1~5). 커밋 `00fc3f5` push 완료 (테스트 커버리지 Stage 6). 커밋 `b746b69` (Stage 7). 커밋 `13ad817` (Stage 8)
+- **테스트 커버리지**: Stage 1~8 완료 + Stage 9 부분 진행 — 전체 1996 passed (기존 1922 + Stage 9-1 74). **Stage 9 (P4-c) 진행 중** — `kiwoom_stock_rest.py` ✅ 완료, `kiwoom_connector.py` + `kiwoom_providers.py` 2개 파일 남음
 - **settlement.py await 누락 버그**: 수정 완료 (`await settlement_engine.charge(amount)`)
 
 ## 다음 단계
@@ -257,9 +267,9 @@
   - **Stage 4 (P5-a)** ✅ 완료: 소형 Web 라우트 7개 (`account.py` + `market.py` + `settlement.py` + `auth.py` + `deps.py` + `ws_orders.py` + `ws_settings.py` + `ws_subscribe.py`) — 60건
   - **Stage 5 (P5-b)** ✅ 완료: 중형 Web 라우트 — `status.py`(144) + `settings.py`(169) + `ws.py`(207) — 38건 (settlement.py await 버그 수정 포함)
   - **Stage 6 (P5-c)** ✅ 완료: 대형 Web 라우트 — `ws_manager.py`(351) + `stock_classification.py`(330) + `app.py`(317) — 140건
-  - **Stage 7 (P4-a)** ⏳ 진행 중 (계획 승인 + 코드 조사 완료, 파일 작성 0건 — 상단 "진행 중 작업" 섹션 참조): 소형 브로커 — `kiwoom_order.py`(93) + `ls_providers.py`(195) + `connector_manager.py`(269)
-  - **Stage 8 (P4-b)**: 중형 브로커 — `kiwoom_providers.py`(337) + `kiwoom_stock_rest.py`(430)
-  - **Stage 9 (P4-c)**: 대형 브로커 — `kiwoom_connector.py`(563) + `ls_rest.py`(635) + `kiwoom_rest.py`(653) + `ls_connector.py`(875)
+  - **Stage 7 (P4-a)** ✅ 완료: 소형 브로커 — `kiwoom_order.py`(93) + `ls_providers.py`(195) + `connector_manager.py`(269) — 123건 (커밋 `b746b69`)
+  - **Stage 8 (P4-b)** ✅ 완료: 대형 브로커 통신 — `ls_connector.py`(875) + `kiwoom_rest.py`(653) + `ls_rest.py`(635) — 250건 (커밋 `13ad817`)
+  - **Stage 9 (P4-c)** ⏳ 진행 중: `kiwoom_stock_rest.py`(430) ✅ 74건 완료, 남음 `kiwoom_connector.py`(563) + `kiwoom_providers.py`(337)
 
 ## 미해결 문제
 - **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결, 재발 방지 조치 + 유령 매도 기록 삭제 완료**
@@ -355,14 +365,18 @@ python -m pytest backend/tests/[파일명] -v --timeout=15 --timeout-method=sign
 - `daily_time_scheduler.py` (601줄, 90%) ✅
 - `data_manager.py` (136줄, 96%) ✅
 
-#### Priority 4 — 브로커 커넥터 (0% 커버, 장기)
-- `kiwoom_connector.py`, `kiwoom_rest.py`, `kiwoom_order.py`, `kiwoom_providers.py`, `kiwoom_stock_rest.py`
-- `ls_connector.py`, `ls_rest.py`, `ls_providers.py`
-- `connector_manager.py`
+#### Priority 4 — 브로커 커넥터 (Stage 7·8 완료, Stage 9 진행 중)
+- `kiwoom_order.py` ✅, `kiwoom_rest.py` ✅, `kiwoom_providers.py` ❌, `kiwoom_stock_rest.py` ✅, `kiwoom_connector.py` ❌
+- `ls_connector.py` ✅, `ls_rest.py` ✅, `ls_providers.py` ✅
+- `connector_manager.py` ✅
 
-#### Priority 5 — Web 라우트 (0% 커버, 장기)
-- `app.py`, `ws.py`, `ws_manager.py`, `settings.py`, `stock_classification.py`, `status.py`
+#### Priority 5 — Web 라우트 (Stage 4~6 완료)
+- `account.py` ✅, `market.py` ✅, `settlement.py` ✅, `auth.py` ✅, `deps.py` ✅, `ws_orders.py` ✅, `ws_settings.py` ✅, `ws_subscribe.py` ✅
+- `status.py` ✅, `settings.py` ✅, `ws.py` ✅
+- `ws_manager.py` ✅, `stock_classification.py` ✅, `app.py` ✅
 
-#### Priority 6 — 유틸/기타 (0% 커버, 장기)
-- `telegram.py`, `telegram_bot.py`, `trade_history.py` (회귀 테스트 2건 추가), `dry_run.py`
-- `journal.py`, `logger.py`, `encryption.py`, `sector_mapping.py`
+#### Priority 6 — 유틸/기타 (Stage 1~3 완료)
+- `encryption.py` ✅, `sector_mapping.py` ✅, `telegram.py` ✅
+- `journal.py` ✅, `logger.py` ✅
+- `trade_history.py` ✅, `dry_run.py` ✅
+- `telegram_bot.py` ❌ (미진행)
