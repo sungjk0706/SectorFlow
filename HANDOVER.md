@@ -19,7 +19,7 @@
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치 — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선 — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: `01f99fb` (가상 스크롤 플래시 억제), `7241da0` (비거래일 배지 정렬 + 업종순위 라벨 가독성) — `01f99fb` push 완료, `7241da0` push 대기
+- **Git**: `01f99fb` (가상 스크롤 플래시 억제), `acb1034` (비거래일 배지 정렬 + 업종순위 라벨 가독성) — `01f99fb` push 완료, `acb1034` push 대기
 - **테스트 커버리지**: Stage 1~9 완료 — 백엔드 2138 passed, 프론트엔드 112 passed (실행 시점 기준)
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 
