@@ -107,15 +107,11 @@ export function getPositionIndex(stkCd: string): number | undefined {
   return _positionIndexCache.get(normalizeStockCode(stkCd))
 }
 
-/* ── trade_amount_rank 재계산 (백엔드 buy_filter.py:206-209와 동일 로직) ── */
+/* ── trade_amount_rank 재계산 (백엔드 buy_filter.py와 동일 로직: 전체 종목 대상) ── */
 export function recalcTradeAmountRank(targets: SectorStock[]): void {
-  const eligible = targets.filter(t => t.guard_pass)
-  eligible.sort((a, b) => (b.trade_amount ?? 0) - (a.trade_amount ?? 0))
-  for (let i = 0; i < eligible.length; i++) {
-    eligible[i].trade_amount_rank = i
-  }
-  for (const t of targets) {
-    if (!t.guard_pass) t.trade_amount_rank = -1
+  const sorted = [...targets].sort((a, b) => (b.trade_amount ?? 0) - (a.trade_amount ?? 0))
+  for (let i = 0; i < sorted.length; i++) {
+    sorted[i].trade_amount_rank = i
   }
 }
 

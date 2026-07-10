@@ -1,6 +1,16 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-10: 매수후보 거래대금 가산점 비교 범위 확대 — 통과 종목만 → 전체 종목(통과+차단) + 차단 종목 5일고가 가산점 부여**
+  - 목적: 거래대금 가산점이 통과 종목끼리만 상대비교되어 종목 수가 적을 때 가산점 왜곡 가능 → 매수후보 테이블 전체 종목(통과/차단 무관)으로 비교 범위 확대
+  - `buy_filter.py:198-209`: 거래대금 순위 계산에서 `guard_pass` 필터 제거 → `all_stocks` 전체로 순위 계산 (보유/금일매수 종목도 포함)
+  - `buy_filter.py:211-230`: 차단 종목 가산점 스킵 로직 제거 → 차단 종목도 `calculate_boost_score` 호출. 잔량비(`boost_order_ratio_on and not _is_blocked`), 프순매(`boost_program_net_buy_on and not _is_blocked`)는 구독 세션 제한으로 통과 종목만 유지. 5일고가(`boost_high_on`)와 거래대금(`boost_trade_amount_rank_on`)은 차단 종목에게도 부여
+  - `hotStore.ts:111-118`: `recalcTradeAmountRank`에서 `guard_pass` 필터 제거 → 전체 `targets`로 순위 계산 (백엔드와 동일 로직)
+  - `buy_filter.py:57`: 주석 "매수 후보 내 보유 제외 후" → "매수후보 테이블 전체 종목 중"으로 수정
+  - `test_buy_filter.py`: 2개 테스트 업데이트 — `test_trade_amount_rank_excludes_held_codes` → `test_trade_amount_rank_includes_held_codes` (보유 종목이 전체 1위면 rank 0), `test_blocked_stock_boost_score_zero` → `test_blocked_stock_receives_high_breakout_boost` (차단 종목 5일고가 돌파 시 가산점 5.0 부여 확인)
+  - 정렬 영향 없음: `is_blocked`가 정렬 1순위이므로 차단 종목은 항상 통과 종목 뒤, 가산점이 매수 우선순위에 영향 주지 않음
+  - 검증: pytest 57/57 통과, vite build 통공 (1.03s), 백엔드 런타임 기동 정상 (업종 재계산/구독 완료, 에러 없음)
+  - 커밋: (이번 커밋)
 - **2026-07-10: 검색 결과 강조 방식 통일 — 4페이지 outline: 2px solid COLOR.down 일원화 + COLOR.highlight 상수 삭제 + dead code 정리**
   - 목적: 검색어 입력 시 검색된 행 강조 방식이 페이지마다 불일치 (sector-stock=노랑 배경, buy-target/stock-detail=강조 없음, stock-classification=dead code) → `outline: 2px solid COLOR.down`(#1e88e5, 파랑)로 전 페이지 통일
   - `sector-stock.ts`: `background: COLOR.highlight`(노랑 배경) → `outline: 2px solid COLOR.down`(파랑 테두리)로 변경, 비매칭 행 `outline: 'none'` 처리

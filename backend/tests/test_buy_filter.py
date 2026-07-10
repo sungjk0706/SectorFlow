@@ -506,7 +506,8 @@ class TestCreateBuyTargets:
         assert stock_map["A003"].trade_amount_rank == 1
         assert stock_map["A001"].trade_amount_rank == 2
 
-    def test_trade_amount_rank_excludes_held_codes(self):
+    def test_trade_amount_rank_includes_held_codes(self):
+        # 보유 종목도 매수후보 테이블 전체 종목 대상 순위에 포함 (통과/차단 무관)
         s1 = _stock(code="A001", trade_amount=1_000_000)
         s2 = _stock(code="A002", trade_amount=5_000_000)
         sc = _sector(rank=1, stocks=[s1, s2])
@@ -517,8 +518,10 @@ class TestCreateBuyTargets:
         )
         buy_map = {t.stock.code: t.stock for t in result.buy_targets}
         blocked_map = {t.stock.code: t.stock for t in result.blocked_targets}
-        assert buy_map["A001"].trade_amount_rank == 0
-        assert blocked_map["A002"].trade_amount_rank == -1
+        # A002(보유, 거래대금 5M)가 전체 1위 → rank 0
+        assert blocked_map["A002"].trade_amount_rank == 0
+        # A001(통과, 거래대금 1M)는 전체 2위 → rank 1
+        assert buy_map["A001"].trade_amount_rank == 1
 
     def test_trade_amount_cache_overrides_stale_stockscore(self):
         # StockScore has stale trade_amount (A001 > A002),
@@ -536,7 +539,8 @@ class TestCreateBuyTargets:
         assert stock_map["A002"].trade_amount_rank == 0
         assert stock_map["A001"].trade_amount_rank == 1
 
-    def test_blocked_stock_boost_score_zero(self):
+    def test_blocked_stock_receives_high_breakout_boost(self):
+        # 차단 종목도 5일고가 + 거래대금 가산점은 부여받음 (잔량비/프순매는 구독 세션 제한으로 제외)
         s1 = _stock(code="A001", change_rate=10.0, cur_price=75000)
         sc = _sector(rank=1, stocks=[s1])
         result = create_buy_targets(
@@ -546,7 +550,8 @@ class TestCreateBuyTargets:
             boost_high_on=True,
             boost_high_score=5.0,
         )
-        assert result.blocked_targets[0].stock.boost_score == 0.0
+        # 차단 종목이지만 5일고가 돌파(75000 > 70000) → 가산점 부여
+        assert result.blocked_targets[0].stock.boost_score == 5.0
 
     def test_returns_sector_summary(self):
         s1 = _stock(code="A001")
