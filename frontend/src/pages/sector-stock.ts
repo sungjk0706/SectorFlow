@@ -386,13 +386,17 @@ class SectorStockTable extends HTMLElement {
       fontWeight: FONT_WEIGHT.normal,
     })
 
-    // Row 1: 5일평균거래대금(N)억 — 중앙 정렬
+    // Row 1: 5일평균거래대금 (N)억 — 중앙 정렬
     const filterRow = document.createElement('div')
-    Object.assign(filterRow.style, { display: 'flex', alignItems: 'center', gap: '2px' })
+    Object.assign(filterRow.style, { display: 'flex', alignItems: 'center', gap: '2px', fontSize: FONT_SIZE.section })
     const filterLabel = document.createElement('span')
-    Object.assign(filterLabel.style, { color: COLOR.neutral })
-    filterLabel.textContent = '5일평균거래대금('
+    Object.assign(filterLabel.style, { color: COLOR.neutral, marginRight: '8px' })
+    filterLabel.textContent = '5일평균거래대금'
     filterRow.appendChild(filterLabel)
+    const filterOpenParen = document.createElement('span')
+    Object.assign(filterOpenParen.style, { color: COLOR.neutral })
+    filterOpenParen.textContent = '('
+    filterRow.appendChild(filterOpenParen)
     this.titleFilterNumSpan = document.createElement('span')
     Object.assign(this.titleFilterNumSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
     filterRow.appendChild(this.titleFilterNumSpan)
@@ -404,7 +408,7 @@ class SectorStockTable extends HTMLElement {
 
     // Row 2: 합계 KRX NXT▲ 코스피 코스닥 — 중앙 정렬
     const countRow = document.createElement('div')
-    Object.assign(countRow.style, { display: 'flex', alignItems: 'center', gap: '4px' })
+    Object.assign(countRow.style, { display: 'flex', alignItems: 'center', gap: '2px' })
 
     // 합계
     const totalLabel = document.createElement('span')
@@ -421,8 +425,8 @@ class SectorStockTable extends HTMLElement {
 
     // KRX
     const krxLabel = document.createElement('span')
-    Object.assign(krxLabel.style, { color: COLOR.neutral })
-    krxLabel.textContent = ' KRX:'
+    Object.assign(krxLabel.style, { color: COLOR.neutral, marginLeft: '14px' })
+    krxLabel.textContent = 'KRX:'
     countRow.appendChild(krxLabel)
     this.titleKrxNumSpan = document.createElement('span')
     Object.assign(this.titleKrxNumSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
@@ -434,8 +438,8 @@ class SectorStockTable extends HTMLElement {
 
     // NXT (빨강 라벨 + 삼각이모지)
     const nxtLabel = document.createElement('span')
-    Object.assign(nxtLabel.style, { color: COLOR.up })
-    nxtLabel.textContent = ' NXT'
+    Object.assign(nxtLabel.style, { color: COLOR.up, marginLeft: '14px' })
+    nxtLabel.textContent = 'NXT'
     countRow.appendChild(nxtLabel)
     const nxtTri = document.createElement('span')
     Object.assign(nxtTri.style, {
@@ -462,8 +466,8 @@ class SectorStockTable extends HTMLElement {
 
     // 코스피
     const kospiLabel = document.createElement('span')
-    Object.assign(kospiLabel.style, { color: COLOR.neutral })
-    kospiLabel.textContent = ' 코스피:'
+    Object.assign(kospiLabel.style, { color: COLOR.neutral, marginLeft: '14px' })
+    kospiLabel.textContent = '코스피:'
     countRow.appendChild(kospiLabel)
     this.titleKospiNumSpan = document.createElement('span')
     Object.assign(this.titleKospiNumSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
@@ -475,8 +479,8 @@ class SectorStockTable extends HTMLElement {
 
     // 코스닥 (자주색 라벨)
     const kosdaqLabel = document.createElement('span')
-    Object.assign(kosdaqLabel.style, { color: COLOR.kosdaq })
-    kosdaqLabel.textContent = ' 코스닥:'
+    Object.assign(kosdaqLabel.style, { color: COLOR.kosdaq, marginLeft: '14px' })
+    kosdaqLabel.textContent = '코스닥:'
     countRow.appendChild(kosdaqLabel)
     this.titleKosdaqNumSpan = document.createElement('span')
     Object.assign(this.titleKosdaqNumSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
