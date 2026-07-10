@@ -16,6 +16,7 @@ import {
   buildChartFromDailySummary,
   renderAccountVals as renderAccountValsShared,
   buildSectorStockPnl,
+  getLocalToday,
   type AccountValsParams,
 } from './profit-shared'
 
@@ -385,19 +386,27 @@ function mount(container: HTMLElement): void {
 
   // 차트 생성 — 일별 수익률
   const { profitDateFrom: storedFrom, profitDateTo: storedTo } = hotStore.getState()
+  const todayStr = getLocalToday()
+  const monthStart = todayStr.slice(0, 8) + '01'
   chart = createProfitChart({
     container: chartContainer,
     data: buildChartFromDailySummary(hotStore.getState().dailySummary),
     dateFrom: storedFrom,
     dateTo: storedTo,
+    quickDateRanges: [
+      { label: '당일', from: todayStr, to: todayStr },
+      { label: '당월', from: monthStart, to: todayStr },
+      { label: '전체', from: '', to: '' },
+    ],
     onDateRangeChange: async (from: string, to: string) => {
       try {
         const settings = globalSettingsManager.getSettings()
         const tradeMode = settings?.trade_mode || 'test'
-        const data = await api.getDailySummary(from, to, tradeMode)
+        const isAll = !from && !to
+        const data = await api.getDailySummary(from, to, tradeMode, isAll ? 0 : undefined)
         chart?.updateData(buildChartFromDailySummary(data))
         hotStore.setState({ profitDateFrom: from, profitDateTo: to, dailySummary: data })
-        saveProfitDateRange(from, to)
+        if (!isAll) saveProfitDateRange(from, to)
         refreshFilteredViews()
       } catch (err) {
         console.error('[profit-overview] daily-summary fetch failed:', err)

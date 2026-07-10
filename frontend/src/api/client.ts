@@ -162,8 +162,8 @@ export const api = {
       body: body ? JSON.stringify(body) : undefined,
     }),
 
-  getDailySummary: (from: string, to: string, tradeMode: string) =>
-    request<Record<string, unknown>[]>(`/api/trade-history/daily-summary?date_from=${from}&date_to=${to}&trade_mode=${tradeMode}`),
+  getDailySummary: (from: string, to: string, tradeMode: string, days?: number) =>
+    request<Record<string, unknown>[]>(`/api/trade-history/daily-summary?date_from=${from}&date_to=${to}&trade_mode=${tradeMode}${days !== undefined ? `&days=${days}` : ''}`),
 
   getStockDetail5d: () =>
     request<{

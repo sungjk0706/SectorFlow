@@ -463,11 +463,24 @@ async def get_daily_summary(
             while current <= end:
                 trading_dates.append(current.isoformat())
                 current = date.fromordinal(current.toordinal() + 1)
-    else:
+    elif days > 0:
         from backend.app.core.trading_calendar import get_recent_trading_days
         trading_dates = [d.isoformat() for d in get_recent_trading_days(days)]
+    # days == 0 and not use_date_range: trading_dates를 락 내에서 데이터 기반으로 추출
 
     async with _history_lock:
+        if not use_date_range and days == 0:
+            dates_set: set[str] = set()
+            for rec in _buy_history:
+                if trade_mode is not None and rec["trade_mode"] != trade_mode:
+                    continue
+                dates_set.add(rec["date"])
+            for rec in _sell_history:
+                if trade_mode is not None and rec["trade_mode"] != trade_mode:
+                    continue
+                dates_set.add(rec["date"])
+            trading_dates = sorted(dates_set)
+
         daily_map = {}
         for d in trading_dates:
             buy_count = 0
