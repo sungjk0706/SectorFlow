@@ -4,20 +4,19 @@
 - 없음
 
 ## 진행 중 작업 (다음 세션에서 이어서 진행)
-- 없음 — 0% 커버리지 모듈 7개 전부 완료
+- 없음
 
 ## 직전 완료 작업
-- **2026-07-11: 0% 커버리지 모듈 3개 단위 테스트 107건 추가 (커밋 `f5262e9`, `99a6ad9`, `78d549f`)**
-  - `test_engine_cache.py` 19건 — `_load_caches_preboot` DB 로드/WS 구간 분기/테스트모드 settlement/catchup 예외
-  - `test_broker_router.py` 51건 — BrokerRouter `_load_specs`/`_build`/properties/`validate`/`summary`/`get_provider`/`invalidate_page`/`validate_page_overrides`/`get_spec`
-  - `test_engine_loop.py` 37건 — `_cache_and_bootstrap`/`_get_all_tokens_async`/`_load_broker_spec_async`/`run_engine_loop` (초기화/토큰/REST API/AutoTradeManager/계좌번호 마스킹/CancelledError/finally 정리)
-  - 주요 기술: `_AwaitableMock` (`__await__` 지원 MagicMock), `MagicMock(spec=AuthProvider)` (rest_api 스킵), `sys.modules` mock 주입 (pipeline_compute import 실패 방지)
-  - 검증: 107 passed, 전체 회귀 2436 passed (8.54s)
+- **2026-07-11: 업종순위 페이지 불투명도 3단계 통일 (커밋 `30edc31`)**
+  - `frontend/src/pages/sector-stock.ts` — `dim: boolean` → `opacity: string` 교체, 3단계 분기 적용 (rank=0 → 0.4, rank>maxTargets → 0.65, 통과 → 1)
+  - 중앙 패널(sector-ranking-list.ts)과 우측 패널(sector-stock.ts) 불투명도 체계 일치
+  - 백엔드 수정 불필요 — 양쪽 패널이 동일한 `hotStore.sectorScores`의 `rank` 필드 사용
+  - 검증: `npm run typecheck` 통과, `npm run build` 통과 (58 modules transformed)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치 — 모두 코드 확인 완료 (git history 참조)
-- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가 — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: `78d549f` (0% 모듈 3개 테스트 107건) — 커밋 완료 (push 미수행)
+- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일 — 모두 코드 확인 완료, `npm run build` 통과
+- **Git**: `30edc31` (업종순위 불투명도 3단계 통일) — 커밋 + push 완료
 - **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 전부 완료 — 백엔드 2436 passed, 프론트엔드 112 passed (실행 시점 기준)
   - 커버리지 측정 환경 구축 완료 — 전체 65.87% → 재측정 필요 (190건 추가 후 상승 예상)
   - 0% 모듈 7개 전부 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
