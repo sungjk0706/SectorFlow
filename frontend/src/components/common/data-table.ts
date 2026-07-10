@@ -681,6 +681,11 @@ function createVirtualScrollMode<T extends object>(
 
     const key = currentIsGroup ? row.key : keyFn(row as T, index)
 
+    // 이전 키와 비교 — 행 요소가 풀에서 다른 데이터 행으로 재활용되었는지 판별
+    // keyChanged=true면 스크롤 등으로 다른 종목 행이 재활용된 것이므로 플래시 억제
+    const prevKey = (rowEl as RowWithKey)._rowKey
+    const keyChanged = prevKey !== undefined && prevKey !== key
+
     ;(rowEl as RowWithKey)._rowKey = key
 
     // 공통 스타일 적용
@@ -827,7 +832,7 @@ function createVirtualScrollMode<T extends object>(
         if (typeof content === 'string') {
           if (cell.textContent !== content) {
             cell.textContent = content
-            if (columns[i].flash) triggerFlash(cell)
+            if (columns[i].flash && !keyChanged) triggerFlash(cell)
           }
         } else if (content instanceof HTMLElement) {
           // HTMLElement 셀: isEqualNode 비교 후 변경 시에만 교체
@@ -837,7 +842,7 @@ function createVirtualScrollMode<T extends object>(
               cell.removeChild(cell.firstChild)
             }
             cell.appendChild(content)
-            if (columns[i].flash) triggerFlash(cell)
+            if (columns[i].flash && !keyChanged) triggerFlash(cell)
           }
         }
       } catch (e) { console.error('[DataTable] cell render error', e) }
