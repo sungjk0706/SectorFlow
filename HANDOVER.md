@@ -7,19 +7,16 @@
 - 없음
 
 ## 직전 완료 작업
-- **2026-07-11: 일반설정 비거래일 배지 위치 수정 + 업종순위 요약 라벨 가독성 개선**
-  - 수정 1: `general-settings.ts` 680행 — 실시간 연결 시간 행에서 비거래일 배지를 시간 입력란 우측→좌측으로 이동. `appendChild` 순서 교체 (배지→시간입력란). 아래 행(1일봉챠트 시세 다운로드)과 시간 입력란 정렬. 다른 4곳(232/280/323/660행)은 이미 배지 좌측 패턴이므로 수정 불필요 확인
-  - 수정 2: `sector-stock.ts` 389~487행 — 업종별 종목 실시간 시세 테이블 상단 요약 라벨 가독성 개선
-    - Row 1 `5일평균거래대금(N)억`: fontSize 12px→14px(FONT_SIZE.section), "5일평균거래대금"과 "(N)억" 사이 8px 여백 (filterLabel.marginRight + 별도 span 분리)
-    - Row 2 종목 수 라벨: countRow gap 4px→2px, 각 카테고리 라벨(KRX/NXT/코스피/코스닥)에 marginLeft:14px 추가, 선행 공백 제거 → 카테고리 간 16px 여백으로 즉각적 식별 가능
+- **2026-07-11: 매수후보 테이블 상단 배지 폰트 크기 11px→13px 가독성 개선**
+  - 수정: `buy-target.ts` 207행 — `createBadgeSpan()` 함수에서 `FONT_SIZE.badge`(11px) → `FONT_SIZE.body`(13px) 변경, padding `3px 10px` → `4px 12px` 조정
+  - 전역 상수 `FONT_SIZE.badge`는 15개 파일에서 사용 중이므로 로컬 수정만 진행 (사이드 이펙트 없음)
+  - `.gitignore`에 DB 백업 파일 패턴 추가 (`*.db.bak.*`, `*.db-shm.bak.*`, `*.db-wal.bak.*`)
   - 검증: `npm run typecheck` 통과, `npm run build` 통과
-- **2026-07-11: 가상 스크롤 행 재활용 시 플래시 효과 억제 — 스크롤 시 노란색 플래시 미발생**
-  - 커밋: `01f99fb` push 완료
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치 — 모두 코드 확인 완료 (git history 참조)
-- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선 — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: `01f99fb` (가상 스크롤 플래시 억제), `acb1034` (비거래일 배지 정렬 + 업종순위 라벨 가독성) — `01f99fb` push 완료, `acb1034` push 대기
+- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대 — 모두 코드 확인 완료, `npm run build` 통과
+- **Git**: `01f99fb` (가상 스크롤 플래시 억제), `acb1034` (비거래일 배지 정렬 + 업종순위 라벨 가독성), `dbedbb1` (HANDOVER 업데이트) — 모두 push 완료 예정
 - **테스트 커버리지**: Stage 1~9 완료 — 백엔드 2138 passed, 프론트엔드 112 passed (실행 시점 기준)
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 

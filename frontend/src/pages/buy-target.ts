@@ -204,7 +204,7 @@ function renderLimitBadge(el: HTMLSpanElement, label: string, cur: number, max: 
 
 function createBadgeSpan(): HTMLSpanElement {
   const span = document.createElement('span')
-  Object.assign(span.style, { fontSize: FONT_SIZE.badge, padding: '3px 10px', borderRadius: '4px', marginRight: '6px' })
+  Object.assign(span.style, { fontSize: FONT_SIZE.body, padding: '4px 12px', borderRadius: '4px', marginRight: '6px' })
   return span
 }
 

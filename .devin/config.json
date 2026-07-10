@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Exec(git status)",
+      "Exec(git diff)",
+      "Exec(./SectorFlow.command)",
+      "Exec(bash SectorFlow.command)",
+      "Exec(npm run dev)",
+      "Exec(npm run *)",
+      "Exec(python main.py)",
+      "Exec(.venv/bin/python main.py)",
+      "Exec(python -m *)",
+      "Exec(python backend/app/db/stock_tables.py)"
+    ],
+    "deny": [
+      "Write(**/*.db)",
+      "Write(**/*.db-shm)",
+      "Write(**/*.db-wal)",
+      "Write(**/*.db-journal)",
+      "Write(**/*.db.bak)",
+      "Write(**/*.db.backup*)",
+      "Write(~/.bashrc)",
+      "Write(~/.zshrc)",
+      "Write(/etc/**)",
+      "Exec(sqlite3 **)",
+      "Exec(rm **/*.db*)",
+      "Exec(rm -rf *)",
+      "Exec(rm -f **/*.db*)",
+      "Exec(python -c *)",
+      "Exec(sudo **)",
+      "Exec(curl **)",
+      "Exec(wget **)"
+    ],
+    "ask": [
+      "Exec(python *)",
+      "Exec(rm *)",
+      "Write(**/.env*)"
+    ]
+  }
+}

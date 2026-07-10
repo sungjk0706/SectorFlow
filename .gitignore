@@ -36,6 +36,9 @@ yarn-error.log*
 *.db-wal
 *.db-journal
 *.db.bak
+*.db.bak.*
+*.db-shm.bak.*
+*.db-wal.bak.*
 *.db.backup*
 
 # IDE
