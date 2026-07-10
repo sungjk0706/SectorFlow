@@ -26,8 +26,9 @@ interface DisplayRow extends ProfitChartRow {
 
 export interface QuickDateRange {
   label: string
-  from: string
-  to: string
+  from?: string
+  to?: string
+  days?: number
 }
 
 export interface ProfitChartOptions {
@@ -36,7 +37,7 @@ export interface ProfitChartOptions {
   mode?: 'pnl' | 'volume'
   maxBars?: number
   height?: number
-  onDateRangeChange?: (from: string, to: string) => void
+  onDateRangeChange?: (from: string, to: string, days?: number) => void
   dateFrom?: string
   dateTo?: string
   quickDateRanges?: QuickDateRange[]
@@ -194,8 +195,10 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
     btn.addEventListener('click', (e) => {
       _activeQuickIdx = i
       updateQuickBtnStyles()
-      dateRangeInput.setValue(qr.from, qr.to)
-      options.onDateRangeChange?.(qr.from, qr.to)
+      const from = qr.from ?? ''
+      const to = qr.to ?? ''
+      dateRangeInput.setValue(from, to)
+      options.onDateRangeChange?.(from, to, qr.days)
       ;(e.target as HTMLElement).blur()
     })
     quickBtns.push(btn)
