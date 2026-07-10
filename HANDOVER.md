@@ -15,50 +15,44 @@
     - C-2-3 완료: ws(7), engine_account(18), stock_tables(1), app(1), settings_file(2), notification_worker(3), engine_ws_fill_followup(2), engine_bootstrap(3), stock_classification_data(2), kiwoom_stock_rest(12), trading(5) = 56건
     - 제외: SQL 주석 7건(stock_tables), 장식용 구분선 6건(app.py) — 문법/의도적
     - engine_service.py는 `--` 매치 0건으로 제외됨
-  - **B단계**: 부적절한 로그 레벨 1건
-    - `engine_cache.py:152` — `logger.info` → `logger.warning` ("저장데이터 로드 실패"를 INFO로 로깅)
-  - **A단계**: silent 예외 처리 5건 (`except Exception: pass` → `logger.warning` 추가)
-    - `settlement_engine.py:110-111` — State Gate 회복 실패 silent pass
-    - `settlement_engine.py:228-229` — test_virtual_deposit 로드 실패 silent pass
-    - `trade_history.py:109-110` — dry_run 포지션 캐시 무효화 실패 silent pass
-    - `trade_history.py:228-229` — 동일 (이력 초기화 후)
-    - `trade_history.py:530-531` — 동일 (테스트모드 데이터 삭제 후)
+  - **B단계 완료: 부적절한 로그 레벨 2건** — 커밋 `2ed1c6f`
+    - `engine_cache.py:88` — `logger.info` → `logger.warning` ("stocks DB 5일평균 비정상")
+    - `engine_cache.py:152` — `logger.info` → `logger.warning` ("저장데이터 로드 실패")
+  - **A단계 완료: silent 예외 처리 5건** — 커밋 `9cd7e60`
+    - `settlement_engine.py:110` — State Gate 회복 실패 → `logger.warning("[정산] State Gate 회복 실패 (매도 정산은 완료): ...", exc_info=True)`
+    - `settlement_engine.py:228` — test_virtual_deposit 설정 로드 실패 → `logger.warning("[정산] test_virtual_deposit 설정 로드 실패 (기본값 사용): ...", exc_info=True)`
+    - `trade_history.py:109` — _insert_trade() 내 dry_run 포지션 캐시 무효화 실패 → `logger.warning("[정산] dry_run 포지션 캐시 무효화 실패 (stale 가능): ...", exc_info=True)`
+    - `trade_history.py:228` — _reset_global_state() 내 동일 패턴
+    - `trade_history.py:530` — clear_test_history() 내 동일 패턴
+    - 검증: py_compile 2개 통과, 런타임 기동 정상, 테스트 106 passed (0.42s), 잔존 프로세스 0건
   - **검토 권장 (D단계, 별도)**: 영구 저장소 실패를 `logger.warning` → `logger.error` 검토
     - `settlement_engine.py:176` — "상태 저장 실패"
     - `settlement_engine.py:219` — "상태 파일 로드 실패 (기본값 사용)"
 
 ## 직전 완료 작업
-- **2026-07-11: C-2-3 — `--` → "—" 통일 (3차, 56건)**
-  - 대상: ws(7), engine_account(18), stock_tables(1), app(1), settings_file(2), notification_worker(3), engine_ws_fill_followup(2), engine_bootstrap(3), stock_classification_data(2), kiwoom_stock_rest(12), trading(5)
-  - 제외: SQL 주석 7건(stock_tables `-- 백만원 단위`), 장식용 구분선 6건(app.py `# --- startup ---` 등)
-  - 로그 vs 동작 불일치: 없음 (정밀 검증 완료)
-  - 검증: py_compile 11개 통과, 런타임 기동 정상 (`—` 로그 출력 확인), 잔존 프로세스 0건
-  - **커밋**: `9b5d60d`
+- **2026-07-11: A단계 — silent 예외 처리 5건 수정 (커밋 `9cd7e60`)**
+  - `settlement_engine.py:110, 228` + `trade_history.py:109, 228, 530`
+  - `except Exception: pass` → `except Exception as e: logger.warning("...", exc_info=True)`
+  - 검증: py_compile 2개 통과, 런타임 기동 정상, 테스트 106 passed, 잔존 프로세스 0건
+- **2026-07-11: B단계 — 부적절한 로그 레벨 수정 2건 (커밋 `2ed1c6f`)**
+  - `engine_cache.py:88, 152` — INFO → WARNING
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치 — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가 — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: `5d175d9` (C-2-1, 26건) + `82032e1` (C-2-2, 50건) + `9b5d60d` (C-2-3, 56건) — push 미수행
+- **Git**: `5d175d9` (C-2-1) + `82032e1` (C-2-2) + `9b5d60d` (C-2-3) + `2ed1c6f` (B단계) + `9cd7e60` (A단계) — push 미수행
 - **테스트 커버리지**: Stage 1~9 완료 — 백엔드 2138 passed, 프론트엔드 112 passed (실행 시점 기준)
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 
 ## 다음 단계
-- **1순위: B단계 — 부적절한 로그 레벨 (1세션)**:
-  - `engine_cache.py:152` — `logger.info` → `logger.warning` ("저장데이터 로드 실패"를 INFO로 로깅)
-  - 검증: py_compile + 런타임 기동
-- **2순위: A단계 — silent 예외 처리 5건 (1세션)**:
-  - `settlement_engine.py:110-111, 228-229`, `trade_history.py:109-110, 228-229, 530-531`
-  - `except Exception: pass` → `logger.warning("...", exc_info=True)` 추가
-  - 각 예외 블록의 의도(silent 허용 vs 버그)를 코드 맥락에서 판단 후 수정
-  - 검증: py_compile + 런타임 기동 + 관련 테스트 파일 실행
-- **3순위: D단계 — 영구 저장소 실패 로그 레벨 검토 (1세션)**:
+- **1순위: D단계 — 영구 저장소 실패 로그 레벨 검토 (1세션)**:
   - `settlement_engine.py:176, 219` — `logger.warning` → `logger.error` 검토
   - 검증: py_compile + 런타임 기동
-- **4순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
+- **2순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
   - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
-- **5순위: 테스트 커버리지 다음 Stage 대상 선정 (사용자와 논의)**:
+- **3순위: 테스트 커버리지 다음 Stage 대상 선정 (사용자와 논의)**:
   - Stage 1~9 완료 — 전체 2138 passed (P1~P6 우선순위별 진행 완료)
   - 남은 미진행 파일: `telegram_bot.py` (P6)
   - 다음 Stage 대상 파일 선정 필요
