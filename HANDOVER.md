@@ -30,7 +30,7 @@
     - `state` 속성 접근 예외 테스트 → `side_effect=Exception`은 속성 접근 시 작동하지 않음 → `RaisingState` class `__getattr__` 예외 발생
     - `lifespan` shutdown 단계 lazy import 20+개 → `_lifespan_patches()` 헬퍼 함수로 일괄 patch 관리 (start/stop 패턴)
   - 검증: 전체 1549 passed, 0 failed (기존 1409 + 신규 140), regression 없음, 런타임 기동 정상 (135ms 부트, 에러 없음, 잔존 프로세스 0건)
-  - 커밋: (이번 커밋)
+  - 커밋: `00fc3f5` push 완료
 - **2026-07-10: settlement.py await 누락 버그 수정 + 테스트 커버리지 Stage 5 (P5-b) — 신규 38건, 전체 1409건 통과**
   - **settlement.py await 누락 버그 수정**: `settlement.py:16`에서 `settlement_engine.charge(amount)`를 `await` 없이 호출 (async 함수 동기 호출 → coroutine 반환) → `await settlement_engine.charge(amount)` 수정. 기존 테스트 2건 AsyncMock + 실제 반환값 검증으로 수정
   - **Stage 5 (P5-b): 중형 Web 라우트 — `status.py`(144줄) + `settings.py`(169줄) + `ws.py`(207줄) — 신규 38건**
@@ -212,7 +212,7 @@
 ## 현재 상태
 - **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료, 보유종목 buy_date 파생·브로드캐스트 구현 완료, exchange_calendars 교체 완료 (korean_lunar_calendar 기반 직접 구현, ~109MB 절감, 제헌절 버그 수정)
 - **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지·검색 입력란 추가 완료, 보유종목 테이블 매수일자 컬럼 추가 완료, 수익현황 페이지 빈 데이터 차트/도넛 stale state 근본 수정 완료, 프론트엔드 색상 체계 통일 완료 (하드코딩 ~190곳 COLOR 상수화 + secondary→tertiary 통합), 검색 입력란 공통 컴포넌트 통일 완료 (5페이지 7개 인스턴스 + label/compact 옵션 + 포커스 언더라인 + placeholder 색상), `npm run build` 통과
-- **Git**: 커밋 `413cb6f` push 완료 (settlement.py await 수정 + 테스트 커버리지 Stage 1~5). 커밋 (이번 커밋) push 예정 (테스트 커버리지 Stage 6)
+- **Git**: 커밋 `413cb6f` push 완료 (settlement.py await 수정 + 테스트 커버리지 Stage 1~5). 커밋 `00fc3f5` push 완료 (테스트 커버리지 Stage 6)
 - **테스트 커버리지**: Stage 1~6 완료 — 신규 472건 (encryption 34 + sector_mapping 22 + telegram 20 + journal 38 + logger 24 + trade_history 66 + dry_run 30 + web_routes 50 + web_ws_routes 48 + ws_manager 75 + stock_classification 42 + web_app 23), 전체 1549 passed
 - **settlement.py await 누락 버그**: 수정 완료 (`await settlement_engine.charge(amount)`)
 
