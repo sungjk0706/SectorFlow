@@ -245,11 +245,7 @@ function mount(container: HTMLElement): void {
   Object.assign(chartTitle.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.normal, color: COLOR.down, padding: '10px 0 6px', borderBottom: '2px solid ' + COLOR.borderLight, marginBottom: '8px' })
   const chartTitleText = document.createElement('span')
   chartTitleText.textContent = '일별 수익률'
-  const retentionLabel = document.createElement('span')
-  Object.assign(retentionLabel.style, { fontSize: '11px', color: COLOR.disabled, fontWeight: 'normal' })
-  retentionLabel.textContent = isTestMode ? '최근 60거래일 데이터' : '최근 5거래일 데이터'
   chartTitle.appendChild(chartTitleText)
-  chartTitle.appendChild(retentionLabel)
   chartPanel.appendChild(chartTitle)
 
   const chartContainer = document.createElement('div')
@@ -395,18 +391,18 @@ function mount(container: HTMLElement): void {
     dateTo: storedTo,
     quickDateRanges: [
       { label: '당일', from: todayStr, to: todayStr },
+      { label: '5일', days: 5 },
       { label: '당월', from: monthStart, to: todayStr },
-      { label: '전체', from: '', to: '' },
+      { label: '전체', days: 0 },
     ],
-    onDateRangeChange: async (from: string, to: string) => {
+    onDateRangeChange: async (from: string, to: string, days?: number) => {
       try {
         const settings = globalSettingsManager.getSettings()
         const tradeMode = settings?.trade_mode || 'test'
-        const isAll = !from && !to
-        const data = await api.getDailySummary(from, to, tradeMode, isAll ? 0 : undefined)
+        const data = await api.getDailySummary(from, to, tradeMode, days)
         chart?.updateData(buildChartFromDailySummary(data))
         hotStore.setState({ profitDateFrom: from, profitDateTo: to, dailySummary: data })
-        if (!isAll) saveProfitDateRange(from, to)
+        if (days === undefined) saveProfitDateRange(from, to)
         refreshFilteredViews()
       } catch (err) {
         console.error('[profit-overview] daily-summary fetch failed:', err)
@@ -501,7 +497,6 @@ function mount(container: HTMLElement): void {
         if (tradeModeChanged) {
           prevTradeMode = settings?.trade_mode
           const isTest = settings?.trade_mode === 'test'
-          retentionLabel.textContent = isTest ? '최근 60거래일 데이터' : '최근 5거래일 데이터'
           if (realAccountContainer && testAccountContainer) {
             realAccountContainer.style.display = isTest ? 'none' : ''
             testAccountContainer.style.display = isTest ? '' : 'none'
