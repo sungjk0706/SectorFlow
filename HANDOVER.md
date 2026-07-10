@@ -4,59 +4,26 @@
 - 없음
 
 ## 진행 중 작업 (다음 세션에서 이어서 진행)
-- **백엔드 로그 아키텍처 점검 후속 — 세션별 단위 작업 (로그+코드 정밀 검증)**
-  - 점검 완료: 런타임 기동 로그 + 코드베이스 886건 logger 호출 분석 (3개 병렬 에이전트)
-  - 2단계 완료: 함수명 변경 (`_restore_daily_buy_state` → `_load_daily_buy_state`, `restore_state` → `load_state`)
-  - C-1단계 완료: 구두점 "->" → "—" 통일 7건
-  - E단계 완료: `engine_config.py` 로그 메시지 vs 실제 동작 불일치 수정 (백엔드 3건 + 프론트엔드 6건)
-  - **C단계 완료: C-2 `--` → "—" 통일** — C-2-1(26건) + C-2-2(50건) + C-2-3(56건) = 총 132건
-    - C-2-1 완료: settlement_engine(7), engine_lifecycle(6), engine_cache(5), dry_run(8) = 26건
-    - C-2-2 완료: daily_time_scheduler(23), market_close_pipeline(4), engine_ws(14), engine_ws_reg(9) = 50건
-    - C-2-3 완료: ws(7), engine_account(18), stock_tables(1), app(1), settings_file(2), notification_worker(3), engine_ws_fill_followup(2), engine_bootstrap(3), stock_classification_data(2), kiwoom_stock_rest(12), trading(5) = 56건
-    - 제외: SQL 주석 7건(stock_tables), 장식용 구분선 6건(app.py) — 문법/의도적
-    - engine_service.py는 `--` 매치 0건으로 제외됨
-  - **B단계 완료: 부적절한 로그 레벨 2건** — 커밋 `2ed1c6f`
-    - `engine_cache.py:88` — `logger.info` → `logger.warning` ("stocks DB 5일평균 비정상")
-    - `engine_cache.py:152` — `logger.info` → `logger.warning` ("저장데이터 로드 실패")
-  - **A단계 완료: silent 예외 처리 5건** — 커밋 `9cd7e60`
-    - `settlement_engine.py:110` — State Gate 회복 실패 → `logger.warning("[정산] State Gate 회복 실패 (매도 정산은 완료): ...", exc_info=True)`
-    - `settlement_engine.py:228` — test_virtual_deposit 설정 로드 실패 → `logger.warning("[정산] test_virtual_deposit 설정 로드 실패 (기본값 사용): ...", exc_info=True)`
-    - `trade_history.py:109` — _insert_trade() 내 dry_run 포지션 캐시 무효화 실패 → `logger.warning("[정산] dry_run 포지션 캐시 무효화 실패 (stale 가능): ...", exc_info=True)`
-    - `trade_history.py:228` — _reset_global_state() 내 동일 패턴
-    - `trade_history.py:530` — clear_test_history() 내 동일 패턴
-    - 검증: py_compile 2개 통과, 런타임 기동 정상, 테스트 106 passed (0.42s), 잔존 프로세스 0건
-  - **D단계 완료: 영구 저장소 실패 로그 레벨 승격 + 데드 코드 제거 4건** — 커밋 `39db2b9`
-    - `settlement_engine.py:173` — `_persist()` 데드 코드 try/except 제거 (save_settlement_state 내부에서 예외 삼킴)
-    - `settlement_engine.py:216` — 상태 로드 실패 `logger.warning` → `logger.error` + `exc_info=True`
-    - `stock_tables.py:121` — 저장 실패 `logger.warning` → `logger.error` + `exc_info=True`
-    - `stock_tables.py:137` — 로드 실패 `logger.warning` → `logger.error` + `exc_info=True`
-    - 검증: py_compile 2개 통과, 런타임 기동 정상, 잔존 프로세스 0건
+- 없음
 
 ## 직전 완료 작업
-- **2026-07-11: D단계 — 영구 저장소 실패 로그 레벨 승격 + 데드 코드 제거 4건 (커밋 `39db2b9`)**
-  - `settlement_engine.py:173, 216` + `stock_tables.py:121, 137`
-  - `_persist()` 데드 코드 try/except 제거 + 3건 `logger.warning` → `logger.error` + `exc_info=True`
-  - 검증: py_compile 2개 통과, 런타임 기동 정상, 잔존 프로세스 0건
-- **2026-07-11: A단계 — silent 예외 처리 5건 수정 (커밋 `9cd7e60`)**
-  - `settlement_engine.py:110, 228` + `trade_history.py:109, 228, 530`
-  - `except Exception: pass` → `except Exception as e: logger.warning("...", exc_info=True)`
-  - 검증: py_compile 2개 통과, 런타임 기동 정상, 테스트 106 passed, 잔존 프로세스 0건
+- **2026-07-11: telegram_bot.py 단위 테스트 108건 추가 (P6) (커밋 `933f9e6`)**
+  - `backend/tests/test_telegram_bot.py` 신규 파일 (1301줄)
+  - 순수 함수(15), 초기화/상태(3), start/stop/stop_async(14), _fetch_enabled_settings(9),
+    _poll_one(10), _handle_command 라우터(22), 명령어 핸들러(35) = 총 108건
+  - 검증: 108 passed (1.58s), 전체 회귀 2246 passed (9.62s)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치 — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가 — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: `5d175d9` (C-2-1) + `82032e1` (C-2-2) + `9b5d60d` (C-2-3) + `2ed1c6f` (B단계) + `9cd7e60` (A단계) + `39db2b9` (D단계) — push 완료
-- **테스트 커버리지**: Stage 1~9 완료 — 백엔드 2138 passed, 프론트엔드 112 passed (실행 시점 기준)
+- **Git**: `f4107a2` (HANDOVER 우선순위 재조정) + `933f9e6` (telegram_bot.py 테스트 108건) — push 완료
+- **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) 완료 — 백엔드 2246 passed, 프론트엔드 112 passed (실행 시점 기준)
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 
 ## 다음 단계
-- **1순위: telegram_bot.py 테스트 작성 (P6)**:
-  - 현재 테스트 커버리지 0건 — 매매 알림 핵심 채널
-  - Stage 1~9 완료 — 전체 2138 passed (P1~P6 우선순위별 진행 완료)
-  - 남은 미진행 파일: `telegram_bot.py` (P6)
-- **2순위: 테스트 커버리지 측정 환경 구축**:
+- **1순위: 테스트 커버리지 측정 환경 구축**:
   - `.coveragerc` 설정 등 커버리지 측정 인프라 구성
-- **3순위: 유령 포지션 005930 근본 원인 조사 (후순위)**:
+- **2순위: 유령 포지션 005930 근본 원인 조사 (후순위)**:
   - 여러 차례 시도했으나 원인 식별이 어려워 후순위로 변경
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
