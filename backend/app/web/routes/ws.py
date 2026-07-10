@@ -105,30 +105,35 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
             await state.sector_summary_ready_event.wait()
             logger.info("[연결] 업종 요약정보 생성 완료")
 
-        scores_result = get_sector_scores_snapshot()
-        scores, ranked_count = scores_result if isinstance(scores_result, tuple) else (scores_result, 0)
-        if scores:
-            from backend.app.pipelines.pipeline_compute import get_current_receive_rate
-            scores_payload = {
-                "_v": 1,
-                "scores": scores,
-                "status": {
-                    "total_stocks": len(scores),
-                    "max_targets": int(
-                        state.integrated_system_settings_cache["sector_max_targets"]
-                    ),
-                    "ranked_sectors_count": ranked_count,
-                    "receive_rate": get_current_receive_rate(),
-                },
-            }
-            await ws_manager.send_to(websocket, "sector-scores", scores_payload)
+        # ── 수신율 임계값 게이트 — WS 구독 구간 내 임계값 미달 시 sector-scores 전송 차단 ──
+        from backend.app.pipelines.pipeline_compute import is_sector_threshold_passed
+        if not is_sector_threshold_passed():
+            logger.info("[연결] 업종점수 미전송 -- 수신율 임계값 미달")
         else:
-            if state.sector_summary_cache is None:
-                logger.info(
-                    "[연결] 업종점수 미전송 -- 업종 요약정보 없음"
-                )
+            scores_result = get_sector_scores_snapshot()
+            scores, ranked_count = scores_result if isinstance(scores_result, tuple) else (scores_result, 0)
+            if scores:
+                from backend.app.pipelines.pipeline_compute import get_current_receive_rate
+                scores_payload = {
+                    "_v": 1,
+                    "scores": scores,
+                    "status": {
+                        "total_stocks": len(scores),
+                        "max_targets": int(
+                            state.integrated_system_settings_cache["sector_max_targets"]
+                        ),
+                        "ranked_sectors_count": ranked_count,
+                        "receive_rate": get_current_receive_rate(),
+                    },
+                }
+                await ws_manager.send_to(websocket, "sector-scores", scores_payload)
             else:
-                logger.info("[연결] 업종점수 미전송 -- 종목 없음 (정상)")
+                if state.sector_summary_cache is None:
+                    logger.info(
+                        "[연결] 업종점수 미전송 -- 업종 요약정보 없음"
+                    )
+                else:
+                    logger.info("[연결] 업종점수 미전송 -- 종목 없음 (정상)")
 
         # buy-targets 전송 (initial-snapshot에 이미 포함되어 있으나, WS delta 메커니즘을 위해 별도 전송)
         from backend.app.services.sector_data_provider import get_buy_targets_sector_stocks

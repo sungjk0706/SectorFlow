@@ -267,6 +267,16 @@ async def notify_desktop_settings_toggled(changed_keys_dict: dict | None = None)
 
 async def notify_desktop_sector_scores(*, force: bool = False) -> None:
     """업종 순위 + 상태 + 수신율 전송 → WS sector-scores. delta 전송."""
+    # ── 수신율 임계값 게이트 — WS 구독 구간 내 임계값 미달 시 sector-scores 전송 차단 ──
+    # 임계값 통과 후 첫 전송이 전체 스냅샷이 되도록 delta 비교 캐시 클리어.
+    try:
+        from backend.app.pipelines.pipeline_compute import is_sector_threshold_passed
+        if not is_sector_threshold_passed():
+            notify_cache.prev_scores = []
+            return
+    except Exception as e:
+        logger.warning("[시스템] 수신율 임계값 게이트 조회 실패 (전송 허용): %s", e)
+
     from backend.app.services.engine_state import state
     from backend.app.services.sector_data_provider import get_sector_scores_snapshot
     scores, ranked_count = get_sector_scores_snapshot()

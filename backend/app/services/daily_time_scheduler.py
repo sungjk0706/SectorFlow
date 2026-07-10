@@ -519,6 +519,9 @@ async def _on_ws_subscribe_start() -> None:
             logger.info("[스케줄] 실시간 구독 자동 연결 생략 (수동 모드)")
             return
         state.ws_subscribe_window_active = True
+        # ── 수신율 임계값 게이트 리셋 — 새 구독 세션 시작 시 임계값 대기 상태로 전환 ──
+        from backend.app.pipelines.pipeline_compute import reset_sector_threshold
+        reset_sector_threshold()
         # ── 실시간 필드 초기화 (전일 확정 데이터 제거) ──
         logger.info("[스케줄] 실시간 필드 초기화 시작")
         from backend.app.services.engine_snapshot import _reset_realtime_fields
@@ -549,6 +552,9 @@ async def _on_ws_subscribe_end() -> None:
         log_memory_snapshot("장마감 GC 정리 후")
         stop_memory_monitor()
         state.ws_subscribe_window_active = False
+        # ── 수신율 임계값 게이트 해제 — 장마감 후 확정 데이터 기반 전송 허용 ──
+        from backend.app.pipelines.pipeline_compute import mark_sector_threshold_passed
+        mark_sector_threshold_passed()
         state.confirmed_done = False  # 오후 8시 구독 종료 → 8시 30분 확정 갱신 허용
         logger.info("[스케줄] 실시간 구독 구간 종료 — 구독 해지 + 연결 해제")
         await _trigger_unreg_all()
@@ -596,6 +602,9 @@ async def _ws_disconnect_only() -> None:
     실제 WS 연결 해제는 엔진 루프의 구간 감지가 담당."""
     try:
         state.ws_subscribe_window_active = False
+        # ── 수신율 임계값 게이트 해제 — 구독 구간 밖 전환 시 확정 데이터 기반 전송 허용 ──
+        from backend.app.pipelines.pipeline_compute import mark_sector_threshold_passed
+        mark_sector_threshold_passed()
         logger.info("[스케줄] 구독 구간 변경 — 구독 해지 + 엔진 루프에 해제 통지")
         await _trigger_unreg_all()
         from backend.app.services.ws_subscribe_control import _set_status
@@ -717,6 +726,13 @@ async def _init_ws_subscribe_state() -> None:
         raise RuntimeError("settings cache not initialized")
     in_window = await is_ws_subscribe_window(settings)
     state.ws_subscribe_window_active = in_window
+
+    # ── 수신율 임계값 게이트 동기화 — 엔진 재기동 시 현재 구간에 맞게 플래그 설정 ──
+    from backend.app.pipelines.pipeline_compute import reset_sector_threshold, mark_sector_threshold_passed
+    if in_window:
+        reset_sector_threshold()
+    else:
+        mark_sector_threshold_passed()
 
     if in_window:
         # 장중 GC 비활성화 (HFT 지연 방지) — _on_ws_subscribe_start와 동일

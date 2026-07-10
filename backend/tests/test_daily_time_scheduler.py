@@ -22,6 +22,11 @@ def _close_coro(*args, **kwargs):
     return DEFAULT
 
 
+# Initialize queues before importing daily_time_scheduler (lazy import of pipeline_compute triggers module-level get_broadcast_queue call)
+from backend.app.services.core_queues import initialize_queues
+initialize_queues()
+
+
 from backend.app.services.daily_time_scheduler import (
     KST,
     is_nxt_premarket_window,
