@@ -7,17 +7,15 @@
 - 없음
 
 ## 직전 완료 작업
-- **2026-07-11: 수익현황 차트 5일 버튼 추가 + 안내 라벨 삭제 + 테스트모드 6개월 보관 정책**
-  - `frontend/src/components/canvas-profit-chart.ts` — `QuickDateRange`에 `days?` 추가, `onDateRangeChange` 시그니처에 `days` 전달
-  - `frontend/src/pages/profit-overview.ts` — 당일/5일/당월/전체 4버튼 구성, days 기반 API 호출, "최근 60거래일 데이터" 안내 라벨 삭제
-  - `backend/app/services/trade_history.py` — `RETENTION_TRADING_DAYS_TEST` 30→125, `_trim_expired()`에 DB DELETE 추가, `_ensure_loaded()` 기동 시 `_trim_expired()` 호출
-  - `backend/tests/test_trade_history.py` — cutoff 날짜 조정, `execute_db_write` mock 추가
-  - 검증: `npm run typecheck` 통과, `npm run build` 통과 (59 modules), pytest 70 passed, 백엔드 런타임 기동 정상 (214ms, 만료 레코드 정리 로그 확인)
+- **2026-07-11: SectorFlow.command 기동 최적화 — 브라우저 오픈 39% 단축 (2.16s → 1.31s)**
+  - `SectorFlow.command` — 폴링 간격 0.5s→0.2s, 브라우저 오픈 타이밍 앞당기기(프론트엔드 ready 즉시), curl `--connect-timeout 1 --max-time 2` 추가, 이전 프로세스 정리 대기 2s→1s, 백엔드 비블로킹 추가 대기 섹션 신설(최대 10s)
+  - 안정성 근거: 프론트엔드 자체 health check(main.ts L223-253, 300ms/100회)가 백엔드 대기 + 오버레이 UI 표시, WS 재연결(ws.ts L66-141 exponential backoff)로 백엔드 ready 전 실패 시 자동 복구
+  - 검증: 런타임 측정 4회(before 2회/after 2회), 백엔드/프론트엔드 기동 및 graceful shutdown 정상 확인, 임시 측정 코드 잔존 없음(grep + /tmp 파일 삭제 확인)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제 — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: `c187f12` (테스트모드 거래 데이터 6개월 보관 정책 적용) — 커밋 + 푸시 완료
+- **Git**: `SectorFlow.command 기동 최적화` — 커밋 + 푸시 완료
 - **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 전부 완료 — 백엔드 2436 passed, 프론트엔드 112 passed (실행 시점 기준)
   - 커버리지 측정 환경 구축 완료 — 전체 65.87% → 재측정 필요 (190건 추가 후 상승 예상)
   - 0% 모듈 7개 전부 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
