@@ -131,7 +131,7 @@ async def _fetch_account_data(settings: dict) -> dict:
     _rest_api_thread_sem = state.rest_api_thread_sem or _ensure_rest_api_thread_sem()
     
     if _rest_api is None:
-        logger.warning("[계좌] _rest_api 없음 -- 엔진 기동 완료 전 호출. 계좌 조회 건너뜀.")
+        logger.warning("[계좌] _rest_api 없음 — 엔진 기동 완료 전 호출. 계좌 조회 건너뜀.")
         return _EMPTY
 
     # ── 토큰 유효성 먼저 확인 ─────────────────────────────────────────────
@@ -139,7 +139,7 @@ async def _fetch_account_data(settings: dict) -> dict:
         token_ok = await _rest_api._ensure_token()
     if not token_ok:
         logger.warning(
-            "[계좌] 유효한 토큰 없음 (au10001 발급 실패) -- 계좌 조회 건너뜀. "
+            "[계좌] 유효한 토큰 없음 (au10001 발급 실패) — 계좌 조회 건너뜀. "
             "이전 값을 그대로 유지합니다. (0원 표시 방지)"
         )
         return _EMPTY
@@ -149,7 +149,7 @@ async def _fetch_account_data(settings: dict) -> dict:
         token_preview = t[:4] + "****" + t[-2:] if len(t) > 6 else "****"
     else:
         token_preview = "?"
-    logger.info("[계좌] 토큰 유효 확인 (%s) -- 계좌 조회 시작", token_preview)
+    logger.info("[계좌] 토큰 유효 확인 (%s) — 계좌 조회 시작", token_preview)
 
     acnt_no = str(getattr(_rest_api, "_acnt_no", "") or "")
 
@@ -165,7 +165,7 @@ async def _fetch_account_data(settings: dict) -> dict:
         return _EMPTY
 
     if not deposit_raw:
-        logger.warning("[계좌] 예수금 응답 없음 (kt00001 실패함) -- 조회 중단")
+        logger.warning("[계좌] 예수금 응답 없음 (kt00001 실패함) — 조회 중단")
         return _EMPTY
 
     ok_dep, dep_body, deposit, orderable, _withdrawable = parse_kt00001_deposit(deposit_raw)
@@ -181,7 +181,7 @@ async def _fetch_account_data(settings: dict) -> dict:
     )
 
     logger.info(
-        "[계좌] 조회 완료 -- 총평가 %s원 | 손익 %s원 | 매입 %s원 | 예수금 %s원 | 종목 %d개",
+        "[계좌] 조회 완료 — 총평가 %s원 | 손익 %s원 | 매입 %s원 | 예수금 %s원 | 종목 %d개",
         f"{tot_eval:,}", f"{tot_pnl:,}", f"{tot_buy:,}", f"{deposit:,}", len(stock_list),
     )
 
@@ -204,15 +204,15 @@ async def _update_account_memory(settings: dict) -> None:
     """
     브로커 REST(kt00001/18)로 예수금·주문가능·잔고·증권사 합계(tot_*)를 부트스트랩한다.
     합계는 포지션 합산하지 않고 API 루트 합계만 _broker_rest_totals 에 저장한다.
-    Lock으로 동시 호출 직렬화 -- 기동 시 _run_snapshot_and_sell_check + _login_post_pipeline 경쟁 방지.
+    Lock으로 동시 호출 직렬화 — 기동 시 _run_snapshot_and_sell_check + _login_post_pipeline 경쟁 방지.
     """
     lock = engine_state._get_account_rest_lock()
     if lock.locked():
-        logger.info("[계좌] REST 조회 중복 요청 -- 선행 조회 완료까지 대기")
+        logger.info("[계좌] REST 조회 중복 요청 — 선행 조회 완료까지 대기")
     async with lock:
         # lock 대기 중 선행 조회가 완료됐으면 중복 호출 스킵
         if state.account_rest_bootstrapped:
-            logger.info("[계좌] REST 조회 -- 선행 조회에서 이미 완료됨, 중복 생략")
+            logger.info("[계좌] REST 조회 — 선행 조회에서 이미 완료됨, 중복 생략")
             return
         await _update_account_memory_inner(settings)
 
@@ -236,7 +236,7 @@ async def _update_account_memory_inner(settings: dict) -> None:
 
     if not yield_data.get("success"):
         logger.warning(
-            "[계좌] 조회 실패함 -- 기존 스냅샷 유지 (총평가=%s원)",
+            "[계좌] 조회 실패함 — 기존 스냅샷 유지 (총평가=%s원)",
             f"{state.account_snapshot.get('total_eval', 0):,}",
         )
         return
@@ -245,9 +245,9 @@ async def _update_account_memory_inner(settings: dict) -> None:
     summary    = yield_data.get("summary", {})
 
     _apply_broker_totals_from_summary(summary)
-    # 테스트모드: 실전 잔고로 _positions 덮어쓰지 않음 -- dry_run 가상 잔고 격리
+    # 테스트모드: 실전 잔고로 _positions 덮어쓰지 않음 — dry_run 가상 잔고 격리
     if is_test_mode(s):
-        logger.info("[계좌] 테스트모드 -- 실전 잔고 %d건 무시, dry_run 가상 잔고 유지", len(stock_list))
+        logger.info("[계좌] 테스트모드 — 실전 잔고 %d건 무시, dry_run 가상 잔고 유지", len(stock_list))
     else:
         # 수량·매입은 REST 기준
         merged = _merge_positions_from_rest(stock_list)
@@ -288,7 +288,7 @@ async def _update_account_memory_inner(settings: dict) -> None:
         else str(_ps)
     )
     logger.info(
-        f"[계좌] 갱신 완료 -- 평가금: {state.account_snapshot.get('total_eval', 0):,}원 | "
+        f"[계좌] 갱신 완료 — 평가금: {state.account_snapshot.get('total_eval', 0):,}원 | "
         f"손익: {state.account_snapshot.get('total_pnl', 0):,}원 | 포지션: {state.account_snapshot.get('position_count', 0)}개 | "
         f"가격소스: {_ps_kr}"
     )
@@ -303,7 +303,7 @@ def _merge_positions_from_rest(stock_list: list) -> list:
 
 
 def _apply_broker_totals_from_summary(summary: dict) -> None:
-    """REST kt00018 루트 합계 -- 실시간 이벤트에서 임의 합산하지 않고 이 값만 갱신."""
+    """REST kt00018 루트 합계 — 실시간 이벤트에서 임의 합산하지 않고 이 값만 갱신."""
     from backend.app.services.engine_account_rest import broker_totals_from_summary
     state.broker_rest_totals = broker_totals_from_summary(summary)
 
@@ -355,7 +355,7 @@ async def _refresh_account_snapshot_meta() -> None:
 
 
 async def _apply_last_price_to_positions(stk_cd: str, price: int) -> bool:
-    """실시간 체결(REAL 01) -- 체결가 반영 + 평가손익·수익률·평가금액 실시간 재계산. 보유에 반영되면 True."""
+    """실시간 체결(REAL 01) — 체결가 반영 + 평가손익·수익률·평가금액 실시간 재계산. 보유에 반영되면 True."""
     from backend.app.services.engine_account_rest import (
         apply_last_price_to_positions_inplace,
         recalc_broker_totals_from_positions,
@@ -376,7 +376,7 @@ async def _apply_last_price_to_positions(stk_cd: str, price: int) -> bool:
 
 async def _apply_balance_realtime(item: dict, vals: dict) -> None:
     """
-    실시간 잔고(04) -- item 필드로 계좌/종목 레코드 구분 후 처리.
+    실시간 잔고(04) — item 필드로 계좌/종목 레코드 구분 후 처리.
     계좌 단위(item=계좌번호): FID 930~934 계좌 합계 갱신.
     종목 단위(item=종목코드): FID 930~933·950·8019·10 포지션 갱신.
     """
@@ -388,13 +388,13 @@ async def _apply_balance_realtime(item: dict, vals: dict) -> None:
     from backend.app.services.engine_account_notify import _rebuild_positions_cache
 
     if _real04_is_stock_item(item):
-        # 종목 단위 레코드 -- 보유수량·매입단가·평가손익 등 갱신
+        # 종목 단위 레코드 — 보유수량·매입단가·평가손익 등 갱신
         _prev_len = len(state.positions)
         real04_official_apply_position_line(item, vals, state.positions, {})
         if len(state.positions) != _prev_len:
             _rebuild_positions_cache(state.positions)
     else:
-        # 계좌 단위 레코드 -- 예수금·총평가·총손익 등 갱신
+        # 계좌 단위 레코드 — 예수금·총평가·총손익 등 갱신
         delta = real04_official_account_delta(vals)
         if delta:
             if "deposit" in delta:
@@ -422,7 +422,7 @@ async def _apply_balance_realtime(item: dict, vals: dict) -> None:
 
 
 async def _on_fill_after_ws() -> None:
-    """주문체결(00) 완료 직후 -- REST 없이 메모리·매도조건만 갱신."""
+    """주문체결(00) 완료 직후 — REST 없이 메모리·매도조건만 갱신."""
     from backend.app.services.auto_trading_effective import auto_sell_effective
     from backend.app.services import dry_run
 

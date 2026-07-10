@@ -362,7 +362,7 @@ async def load_master_stocks_table() -> dict[str, dict]:
                 "sector": sector,
                 "status": "active"
             }
-        logger.info("[데이터] 로드 완료 -- %d종목", len(result))
+        logger.info("[데이터] 로드 완료 — %d종목", len(result))
         return result
     except Exception as e:
         logger.warning("[데이터] 로드 실패: %s", e)

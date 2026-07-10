@@ -121,7 +121,7 @@ async def lifespan(app: FastAPI):
                 return
 
             state.engine_ready_event.set()
-            logger.info("[웹서버] [앱시작] lifespan 총 기동시간 -- %.0fms", (time.perf_counter() - _t_lifespan_start) * 1000)
+            logger.info("[웹서버] [앱시작] lifespan 총 기동시간 — %.0fms", (time.perf_counter() - _t_lifespan_start) * 1000)
 
             await start_daily_time_scheduler()
 

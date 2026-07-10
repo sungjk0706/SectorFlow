@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-주문체결(00) 직후 후속 처리 -- 지연·스냅샷·브로드캐스트·매도조건 검사.
+주문체결(00) 직후 후속 처리 — 지연·스냅샷·브로드캐스트·매도조건 검사.
 
 엔진 전역·AutoTradeManager 는 콜백으로만 연결한다 (로직 불변·순서 유지).
 테스트모드(dry-run)에서는 REST 잔고 조회를 건너뛰고 인메모리 잔고만 사용.
@@ -24,6 +24,6 @@ def run_after_order_fill_ws(
     인메모리(dry_run) 잔고 기반 메타 갱신 + 매도조건 검사만 수행.
     """
     if is_dry_run:
-        logger.debug("[시스템] fill_00 후속 -- REST 생략, 인메모리 잔고 기준 처리")
+        logger.debug("[시스템] fill_00 후속 — REST 생략, 인메모리 잔고 기준 처리")
     refresh_account_snapshot_meta()
     run_sell_conditions_if_applicable()

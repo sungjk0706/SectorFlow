@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-개별종목시세 REST API -- ka10086(일별주가).
+개별종목시세 REST API — ka10086(일별주가).
 
 - ka10086: 장마감 후 확정 종가·등락률·거래대금 조회 (종목별 개별 POST)
 - 실시간: 엔진 WebSocket REG·REAL(REST 반복 폴링 아님).
@@ -86,7 +86,7 @@ async def fetch_ka10081_daily_price(
         data = resp.json()
         rows = data.get("stk_dt_pole_chart_qry") or []
         if not rows or not isinstance(rows, list):
-            logger.warning("[다운로드] 실패[데이터없음] 응답행 없음 -- %s (api:%s)", log_cd, api_cd)
+            logger.warning("[다운로드] 실패[데이터없음] 응답행 없음 — %s (api:%s)", log_cd, api_cd)
             return None
 
         # 내림차순(최신순) 정렬 보장
@@ -97,7 +97,7 @@ async def fetch_ka10081_daily_price(
         latest = rows[0]
         close_px = _si(latest.get("cur_prc") or 0)
         if close_px <= 0:
-            logger.warning("[다운로드] 실패[종가0] cur_prc=%s -- %s (api:%s)", latest.get("cur_prc"), log_cd, api_cd)
+            logger.warning("[다운로드] 실패[종가0] cur_prc=%s — %s (api:%s)", latest.get("cur_prc"), log_cd, api_cd)
             return None
 
         change_raw = _si_signed(latest.get("pred_pre") or 0)
@@ -192,7 +192,7 @@ async def fetch_ka10081_daily_5d_data(
             break
 
     if not all_rows:
-        logger.warning("[다운로드] 실패[데이터없음] 응답행 없음 -- %s (api:%s)", log_cd, api_cd)
+        logger.warning("[다운로드] 실패[데이터없음] 응답행 없음 — %s (api:%s)", log_cd, api_cd)
         return None
 
     try:
@@ -206,7 +206,7 @@ async def fetch_ka10081_daily_5d_data(
         # 최근 5개 추출 (신규 상장 종목 지원: 부족한 날짜는 None으로 채움)
         recent_5: list[dict | None] = list(rows[:5])
         if len(recent_5) < 5:
-            logger.info("[다운로드] 데이터 부족 -- %d개 (필요 5개) -- %s (신규상장으로 간주, 부족한 날짜는 NULL)", len(recent_5), log_cd)
+            logger.info("[다운로드] 데이터 부족 — %d개 (필요 5개) — %s (신규상장으로 간주, 부족한 날짜는 NULL)", len(recent_5), log_cd)
             while len(recent_5) < 5:
                 recent_5.append(None)
 
@@ -232,7 +232,7 @@ async def fetch_ka10081_all_stocks_daily_confirmed(
     on_progress: "Callable[[int, int], None] | None" = None,
 ) -> dict[str, dict]:
     """
-    전체 종목 ka10081 순차 조회 -- 확정시세 전용.
+    전체 종목 ka10081 순차 조회 — 확정시세 전용.
     """
     result: dict[str, dict] = {}
     failed_codes: list[str] = []
@@ -279,7 +279,7 @@ async def fetch_ka10081_all_stocks_5day(
     on_progress: "Callable[[int, int], None] | None" = None,
 ) -> dict[str, dict]:
     """
-    전체 종목 ka10081 순차 조회 -- 5일봉 전용.
+    전체 종목 ka10081 순차 조회 — 5일봉 전용.
     """
     result: dict[str, dict] = {}
     failed_codes: list[str] = []
@@ -360,7 +360,7 @@ async def fetch_ka10099_unified(
                     await asyncio.sleep(2)
                     continue
                 else:
-                    logger.warning("[다운로드] %s -- 호출 실패 (최대 재시도 초과), 연속조회 중단", label)
+                    logger.warning("[다운로드] %s — 호출 실패 (최대 재시도 초과), 연속조회 중단", label)
                     break
 
             try:
@@ -401,7 +401,7 @@ async def fetch_ka10099_unified(
                     ))
                     count += 1
                 market_count += count
-                logger.info("[다운로드] %s -- %d종목 (누적 %d)", label, count, market_count)
+                logger.info("[다운로드] %s — %d종목 (누적 %d)", label, count, market_count)
                 
                 # 연속조회 확인
                 resp_cont_yn = resp.headers.get("cont-yn", "N")
@@ -410,7 +410,7 @@ async def fetch_ka10099_unified(
                 if resp_cont_yn == "Y" and resp_next_key:
                     cont_yn = "Y"
                     next_key = resp_next_key
-                    logger.info("[다운로드] %s -- 연속조회 계속 (next-key: %s)", label, next_key[:20] + "..." if len(next_key) > 20 else next_key)
+                    logger.info("[다운로드] %s — 연속조회 계속 (next-key: %s)", label, next_key[:20] + "..." if len(next_key) > 20 else next_key)
                 else:
                     break  # while 루프 종료
             except Exception as e:
@@ -424,7 +424,7 @@ async def fetch_ka10099_unified(
         # 코스피→코스닥 사이 간격
         await asyncio.sleep(0.5)
 
-    logger.info("[다운로드] 전체 -- %d종목", len(result))
+    logger.info("[다운로드] 전체 — %d종목", len(result))
     return result
 
 

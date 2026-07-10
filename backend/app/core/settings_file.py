@@ -211,7 +211,7 @@ async def save_selected_settings(data: dict) -> None:
                 bulk_params,
             )
             await conn.commit()
-            logger.info("[설정] 증분 저장 완료 -- %d개 필드", len(bulk_params))
+            logger.info("[설정] 증분 저장 완료 — %d개 필드", len(bulk_params))
         except Exception as e:
             await conn.rollback()
             logger.error("[설정] 증분 저장 실패: %s", e, exc_info=True)
@@ -411,7 +411,7 @@ async def save_settings(data: dict, delete_keys: list[str] | None = None) -> Non
                 )
 
             await conn.commit()
-            logger.info("[설정] DB 저장 완료 -- %d개 broker_specs, %d개 일반 설정", len(broker_specs_params), len(bulk_params))
+            logger.info("[설정] DB 저장 완료 — %d개 broker_specs, %d개 일반 설정", len(broker_specs_params), len(bulk_params))
         except Exception as e:
             await conn.rollback()
             logger.error("[설정] DB 저장 실패: %s", e, exc_info=True)
