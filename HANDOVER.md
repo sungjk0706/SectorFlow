@@ -4,16 +4,27 @@
 - 없음
 
 ## 진행 중 작업 (다음 세션에서 이어서 진행)
-- 없음
+- **백엔드 로그 메시지 "복원" → "로드/구축" 수정: 2단계 (함수명 변경) 대기 중**
+  - 1단계 완료 (이번 세션): 로그 메시지 + docstring/주석 16건 수정 — 아래 "직전 완료 작업" 참조
+  - 2단계 (후속 세션): 함수명 변경 — `_restore_daily_buy_state()` → `_load_daily_buy_state()` (`trading.py:53`), `restore_state()` → `load_state()` (`settlement_engine.py:159`)
+    - 주의: `restore_state()`는 기동 시(로드)와 모드 전환 시(복원) 모두 호출되는 dual-purpose 함수
+    - 모드 전환 호출처: `engine_lifecycle.py:188` — 이쪽은 "복원"이 맞으므로 함수 분리 또는 호출처 주석으로 맥락 명시 필요
+    - 호출처 추적 필수: `restore_state` 검색 후 모든 caller 확인
 
 ## 직전 완료 작업
-- **2026-07-11: 매도설정 보유종목 테이블 상단에 평가금액/손익/수익률 요약 배지 추가**
-  - 수정: `sell-position.ts` — 보유종목 테이블 상단에 3개 배지 (보유주식 평가금액, 평가손익, 수익률) 1행 가로 배치
-  - 매수후보 테이블 상단 배지 스타일과 통일 (FONT_SIZE.body 13px, COLOR.neutralBg 배경, padding 4px 12px, borderRadius 4px)
-  - hotStore account 데이터 (`total_eval_amount`, `total_pnl`, `total_pnl_rate`, `positionCount`)로 실시간 갱신 — 백엔드 변경 불필요
-  - 평가금액은 검정색(COLOR.neutral), 손익/수익률은 pnlColor로 빨강/파랑 적용
-  - 검증: `npm run typecheck` 통과, `npm run build` 통과, `npm test` 112/112 통과
-  - 커밋: `9dfc6e2`
+- **2026-07-11: 백엔드 로그 메시지 "복원" → "로드/구축" 수정 (1단계: 로그+주석)**
+  - 문제: 앱 기동 시 DB→메모리 로드 작업에 "복원(restore)"이라는 단어가 사용되어 실제 동작과 불일치
+  - 수정 파일 7개 + 테스트 파일 1개:
+    - `trade_history.py` — 로그 2건 + docstring 2건: "DB 복원" → "체결 이력 로드"
+    - `settlement_engine.py` — 로그 1건 + docstring 3건: "상태 복원" → "상태 로드"
+    - `engine_lifecycle.py` — 로그 1건 + docstring/주석 2건: "포지션 복원" → "포지션 구축"
+    - `engine_cache.py` — 로그 1건 + 주석 1건: "상태 복원" → "상태 로드"
+    - `trading.py` — 로그 2건 + docstring 1건: "매수 상태 복원" → "매수 상태 로드"
+    - `engine_loop.py` — 주석 1건: "예수금 복원" → "예수금 로드"
+    - `test_trade_history.py` — docstring 1건: "메모리 복원" → "메모리 로드"
+  - 수정하지 않은 "복원" (적절한 사용): 재연결 후 구독 복원, 플래그 복원, 모드 전환 시 상태 복원, 재상장 종목 복원 등 39건
+  - 검증: 런타임 기동 (`main.py` 15s) — 로그에서 "로드"/"구축" 출력 확인, 잔여 프로세스 없음
+  - 커밋: `43699ac`
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치 — 모두 코드 확인 완료 (git history 참조)
@@ -23,7 +34,11 @@
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 
 ## 다음 단계
-- **1순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
+- **1순위: 백엔드 로그 메시지 "복원" → "로드/구축" 수정 2단계 (함수명 변경)**:
+  - `_restore_daily_buy_state()` → `_load_daily_buy_state()` (`trading.py:53`)
+  - `restore_state()` → `load_state()` (`settlement_engine.py:159`) — dual-purpose 함수이므로 모드 전환 호출처(`engine_lifecycle.py:188`) 맥락 처리 필요
+  - 모든 caller 추적 후 일괄 변경, 테스트 통과 확인
+- **2순위: 유령 포지션 근본 원인 심층 조사 (별도 세션)**:
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
   - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
