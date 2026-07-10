@@ -105,6 +105,9 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
      "scheduler_market_close_on": True,
      # 5일 거래대금/최고가 롤링 다운로드 실행 여부
      "scheduler_5d_download_on": True,
+
+     # UI 설정 — 실시간 현재가 플래시 효과 (기본값 True = 활성화)
+     "ui_price_flash_on": True,
  }
  
  # 시스템 설정 기본값 (system_config)

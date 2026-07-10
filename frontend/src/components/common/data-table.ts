@@ -8,6 +8,7 @@
 import { CELL_BORDER, COLOR, FONT_SIZE, FONT_WEIGHT, FONT_FAMILY } from './ui-styles'
 import { computeColumnWidths, type ColumnWidthInput } from './auto-width'
 import { createVirtualScroller } from '../virtual-scroller'
+import { uiStore } from '../../stores/uiStore'
 
 interface CellWithPrevContent extends HTMLElement {
   _prevContent?: string
@@ -28,6 +29,8 @@ export interface ColumnDef<T> {
   maxWidth?: number
   headerStyle?: Partial<CSSStyleDeclaration>
   cellStyle?: Partial<CSSStyleDeclaration>
+  /** 값이 변경되면 셀 배경에 노란 플래시 애니메이션 적용 (ui_price_flash_on 설정 연동) */
+  flash?: boolean
 }
 
 /* ── GroupRow, TableRow, Options, Api ───────────────────── */
@@ -66,6 +69,16 @@ export interface DataTableApi<T> {
 
 
 /* ── 유틸리티 ──────────────────────────────────────────── */
+
+/** 실시간 현재가 플래시 효과 — Web Animations API 기반 (reflow/setTimeout/class 관리 없음) */
+function triggerFlash(cell: HTMLElement): void {
+  const settings = uiStore.getState().settings
+  if (settings && settings.ui_price_flash_on === false) return
+  cell.animate(
+    [{ backgroundColor: 'rgba(255, 235, 59, 0.4)' }, { backgroundColor: 'transparent' }],
+    { duration: 500, easing: 'ease-out', composite: 'replace' },
+  )
+}
 
 function isGroupRow<T>(row: TableRow<T>): row is GroupRow {
   return (row as GroupRow).type === 'group'
@@ -398,12 +411,14 @@ function createFixedMode<T extends object>(
                 if (typeof content === 'string') {
                   if (cell.textContent !== content) {
                     cell.textContent = content
+                    if (columns[cIdx].flash) triggerFlash(cell)
                   }
                 } else if (content instanceof HTMLElement) {
                   const existing = cell.firstElementChild as HTMLElement | null
                   if (!existing || !existing.isEqualNode(content)) {
                     while (cell.firstChild) cell.removeChild(cell.firstChild)
                     cell.appendChild(content)
+                    if (columns[cIdx].flash) triggerFlash(cell)
                   }
                 }
               } catch (err) { console.error('[data-table] cell render error:', err) }
@@ -492,12 +507,14 @@ function createFixedMode<T extends object>(
               if (typeof content === 'string') {
                 if (cell.textContent !== content) {
                   cell.textContent = content
+                  if (columns[cIdx].flash) triggerFlash(cell)
                 }
               } else if (content instanceof HTMLElement) {
                 const existing = cell.firstElementChild as HTMLElement | null
                 if (!existing || !existing.isEqualNode(content)) {
                   while (cell.firstChild) cell.removeChild(cell.firstChild)
                   cell.appendChild(content)
+                  if (columns[cIdx].flash) triggerFlash(cell)
                 }
               }
             } catch (e) { console.error('[DataTable] cell render error', e) }
@@ -556,12 +573,14 @@ function createFixedMode<T extends object>(
         if (typeof content === 'string') {
           if (cell.textContent !== content) {
             cell.textContent = content
+            if (columns[cIdx].flash) triggerFlash(cell)
           }
         } else if (content instanceof HTMLElement) {
           const existing = cell.firstElementChild as HTMLElement | null
           if (!existing || !existing.isEqualNode(content)) {
             while (cell.firstChild) cell.removeChild(cell.firstChild)
             cell.appendChild(content)
+            if (columns[cIdx].flash) triggerFlash(cell)
           }
         }
       } catch (e) { console.error('[DataTable] cell render error', e) }
@@ -808,6 +827,7 @@ function createVirtualScrollMode<T extends object>(
         if (typeof content === 'string') {
           if (cell.textContent !== content) {
             cell.textContent = content
+            if (columns[i].flash) triggerFlash(cell)
           }
         } else if (content instanceof HTMLElement) {
           // HTMLElement 셀: isEqualNode 비교 후 변경 시에만 교체
@@ -817,6 +837,7 @@ function createVirtualScrollMode<T extends object>(
               cell.removeChild(cell.firstChild)
             }
             cell.appendChild(content)
+            if (columns[i].flash) triggerFlash(cell)
           }
         }
       } catch (e) { console.error('[DataTable] cell render error', e) }

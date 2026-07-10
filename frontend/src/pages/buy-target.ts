@@ -24,7 +24,7 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
     })
   ),
   {
-    key: 'cur_price', label: '현재가', align: 'right',
+    key: 'cur_price', label: '현재가', align: 'right', flash: true,
     render: (t) => {
       const cell = createPriceCell(t.cur_price != null ? Number(t.cur_price) : null, t.change_rate != null ? Number(t.change_rate) : null)
       if (t.high_5d && t.high_5d > 0 && t.cur_price != null && Number(t.cur_price) > t.high_5d) {

@@ -31,7 +31,7 @@ const COLUMNS: ColumnDef<Position>[] = [
     }
   ),
   {
-    key: 'cur_price', label: '현재가', align: 'right',
+    key: 'cur_price', label: '현재가', align: 'right', flash: true,
     render: (p) => {
       const sectorStock = hotStore.getState().sectorStocks[normalizeStockCode(p.stk_cd)]
       const curPrice = sectorStock?.cur_price

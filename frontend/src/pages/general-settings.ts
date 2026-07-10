@@ -54,6 +54,7 @@ let sellTimeHandle: TimePairInputHandle | null = null
 let wsToggle: ReturnType<typeof createToggleBtn> | null = null
 let wsTimePairWrap: HTMLElement | null = null
 let holidayBadgeEls: HTMLElement[] = []
+let uiFlashToggle: ReturnType<typeof createToggleBtn> | null = null
 
 // TimePairInput
 let wsSH = '09', wsSM = '00', wsEH = '15', wsEM = '00'
@@ -708,6 +709,33 @@ function renderApiSettingsTab(container: HTMLElement): void {
   descLabel5.textContent = '장마감 후 확정 시세 다운로드 시간 (기본값 20:40)'
   container.appendChild(descLabel5)
 
+  // 실시간 현재가 플래시 효과
+  const uiFlashRow = document.createElement('div')
+  Object.assign(uiFlashRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  const uiFlashLabel = document.createElement('span')
+  Object.assign(uiFlashLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  uiFlashLabel.textContent = '실시간 현재가 플래시 효과'
+  uiFlashRow.appendChild(uiFlashLabel)
+
+  uiFlashToggle = createToggleBtn({ on: false, onClick: async () => {
+    const next = !vals.ui_price_flash_on
+    vals.ui_price_flash_on = next
+    uiFlashToggle!.setOn(next)
+    const res = await settingsMgr!.saveSection({ ui_price_flash_on: next })
+    toastResult(res)
+    if (!res.ok) {
+      vals.ui_price_flash_on = !next
+      uiFlashToggle!.setOn(!next)
+    }
+  }})
+  uiFlashRow.appendChild(uiFlashToggle.el)
+  container.appendChild(uiFlashRow)
+
+  const descLabel6 = document.createElement('div')
+  Object.assign(descLabel6.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px' })
+  descLabel6.textContent = '실시간 시세 변경 시 노란색 플래시 깜빡임 효과 적용 여부'
+  container.appendChild(descLabel6)
+
   // Step 2B: API 키 보관용 탭 (키움 API / LS API)
   const apiTabBar = document.createElement('div')
   Object.assign(apiTabBar.style, { display: 'flex', gap: '8px', marginBottom: '12px' })
@@ -871,6 +899,9 @@ function syncFromSettings(s: AppSettings | null): void {
     const [cdh, cdm] = parseHM(String(r.confirmed_download_time ?? '20:40'))
     confirmedDlH = cdh; confirmedDlM = cdm
     if (confirmedDlSlot) updateTimeSlotDisplay(confirmedDlSlot, cdh, cdm)
+
+    // 실시간 현재가 플래시 효과
+    uiFlashToggle?.setOn(r.ui_price_flash_on !== false)
 
     // 자동매수
     autoBuyToggle?.setOn(!!r.auto_buy_on)
