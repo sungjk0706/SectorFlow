@@ -8,7 +8,7 @@ import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createStockNameColumn, makeSeqColumn, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, makeAmountColumn, makeAvgAmountColumn, FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import { createSearchInput } from '../components/common/search-input'
-import type { SectorStock, SectorScoreRow } from '../types'
+import { type SectorStock, type SectorScoreRow, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
 
 /* ── ColumnDef 배열 (10개 컬럼) ── */
 
@@ -296,7 +296,7 @@ class SectorStockTable extends HTMLElement {
     const uiState = uiStore.getState()
     this.currentMatchedCodes = filterStocksBySearch(Object.values(state.sectorStocks), this.searchTerm)
     this.currentMatchedSectors = filterSectorsByName(state.sectorStocks, this.sectorSearchTerm)
-    const maxTargets = Number(uiState.settings?.sector_max_targets) || 10
+    const maxTargets = Number(uiState.settings?.sector_max_targets) || DEFAULT_SECTOR_MAX_TARGETS
     // 5일평균거래대금 필터링은 백엔드에서 수행 (단일 소스 진리)
 
     return computeRows(

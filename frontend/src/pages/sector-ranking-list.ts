@@ -6,7 +6,7 @@ import { uiStore, setSelectedSector } from '../stores/uiStore'
 import { FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import { getMaxTargetsStatusEl } from './sector-settings'
-import type { SectorScoreRow } from '../types'
+import { type SectorScoreRow, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
 import type { PageModule } from '../router'
 
 const MAX_ROWS = 60
@@ -213,7 +213,7 @@ function mount(container: HTMLElement): void {
         if (!_mounted) return
         const latest = hotStore.getState()
         const latestUi = uiStore.getState()
-        const maxTargets = Number(latestUi.settings?.sector_max_targets) || 1
+        const maxTargets = Number(latestUi.settings?.sector_max_targets) || DEFAULT_SECTOR_MAX_TARGETS
         updateRankingRows(latest.sectorScores, latestUi.selectedSector, maxTargets, latestUi.sectorScoresDelta)
         updateMaxTargetsStatus(latest.sectorScores)
       })
@@ -226,7 +226,7 @@ function mount(container: HTMLElement): void {
   // 초기 렌더링
   const state = hotStore.getState()
   const uiState = uiStore.getState()
-  const maxTargets = Number(uiState.settings?.sector_max_targets) || 1
+  const maxTargets = Number(uiState.settings?.sector_max_targets) || DEFAULT_SECTOR_MAX_TARGETS
   updateRankingRows(state.sectorScores, uiState.selectedSector, maxTargets, uiState.sectorScoresDelta)
   updateMaxTargetsStatus(state.sectorScores)
 }
