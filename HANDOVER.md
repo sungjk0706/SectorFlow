@@ -18,7 +18,7 @@
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치 — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼 및 정렬 개선(당일/당월/전체 버튼 + 중복 제거 + 파랑 테두리) — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: 수익현황/수익상세 기간 전환 버튼 개선 — 커밋 예정
+- **Git**: `d04def8` (수익현황/수익상세 기간 전환 버튼 및 정렬 개선) — 커밋 완료
 - **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 전부 완료 — 백엔드 2436 passed, 프론트엔드 112 passed (실행 시점 기준)
   - 커버리지 측정 환경 구축 완료 — 전체 65.87% → 재측정 필요 (190건 추가 후 상승 예상)
   - 0% 모듈 7개 전부 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
