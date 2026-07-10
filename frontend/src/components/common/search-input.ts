@@ -21,7 +21,7 @@ export function createSearchInput(options: SearchInputOptions): {
   clear(): void
 } {
   const {
-    placeholder = '종목명 또는 코드 검색',
+    placeholder = '종목명/코드 검색',
     onSearch,
     width = '180px',
     borderColor = COLOR.border,

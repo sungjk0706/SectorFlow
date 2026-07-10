@@ -1,7 +1,17 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-10: 검색 입력란 전수조사 및 공통 컴포넌트 통일 — 5페이지 7개 인스턴스 일원화 + label/compact 옵션 + 포커스 언더라인 + placeholder 색상**
+- **2026-07-10: 기간 선택 박스 공통 컴포넌트 신규 생성 + 수익현황/수익상세 일원화 + 검색입력창 라벨/placeholder 일관성 통일**
+  - 목적: 수익현황/수익상세 페이지의 기간 선택 박스가 인라인 하드코딩(2곳)으로 스타일 분산 + 크기 너무 작음(padding 2px 4px, font 11px) → 공통 컴포넌트 생성 후 일원화 + 크기 증가
+  - `date-range-input.ts` (신규): `createDateRangeInput({ from, to, label, compact, onChange })` API, 반환 `{ el, getValue(), setValue() }`, 기본 크기 padding 6px 8px / fontSize 13px / minWidth 120px, compact 모드 padding 4px 6px / fontSize 12px / minWidth 100px, `~` 구분자 + 시작/종료 date input 한 쌍, change 이벤트 → onChange 콜백
+  - `canvas-profit-chart.ts`: 인라인 dateFromInput/dateToInput 2개 + dateSep span 제거 → `createDateRangeInput` 사용, `setDateRange()` API → `dateRangeInput.setValue()` 위임
+  - `profit-detail.ts`: 모듈 변수 `dateFromInput`/`dateToInput` 2개 → `dateRangeInput: DateRangeInputApi` 1개로 통합, `filterByDate`/`filterByDateRange`/`updateTabLabels`/`updateStatistics`/`showTable`/`clearBtn`/`onTotalClick` 모두 `getValue()`/`setValue()` API 사용, 인라인 date input 2개 + dateSep + filterLabel 제거 → `createDateRangeInput` label 옵션 사용, 날짜 필터 change 이벤트를 컴포넌트 onChange로 이관
+  - 검색입력창 일관성 통일: `profit-detail.ts` `compact: true` 제거 → 기본 모드(padding 4px 26px, fontSize 13px, 🔍 아이콘 + ✕ 클리어버튼)로 다른 6개 인스턴스와 통일
+  - 라벨 텍스트 통일: `'종목명 / 코드'` → `'종목명/코드'` (슬래시 양옆 공백 제거) 5곳 일괄 변경 (profit-detail, stock-classification, stock-detail, buy-target, sector-stock)
+  - 안내 글자(placeholder) 통일: `종목명/코드 검색`으로 6곳 일괄 변경 — 기존 2종 혼재(`종목명 / 코드 검색` 3곳, `종목명 또는 코드 검색` 2곳) + search-input.ts 기본값 1곳
+  - 아키텍처: 원칙 10 (SSOT — 기간 선택 UI 단일 소스), 원칙 22 (파생 데이터 — dateRangeInput.getValue()로 모든 날짜 접근 일원화)
+  - 검증: tsc 타입체크 0 에러, vite build 통과 (58 모듈 1.78s), 잔여 `dateFromInput`/`dateToInput` 외부 참조 0건, 잔여 `종목명 / 코드`/`종목명 또는` 0건
+  - 커밋: (이번 커밋)
   - 목적: 각 페이지가 검색 입력란의 라벨/색상/스타일을 자체 구현하여 7개 검색란 스타일 분산 → 공통 컴포넌트 `search-input.ts`에 기능 내장 후 전 페이지 통일
   - `search-input.ts`: `label`/`labelColor`/`compact` 옵션 추가, `width` 기본값 `100%`→`180px`, input에 `sf-search-input` 클래스 추가, 텍스트 색상 `COLOR.code` 명시, 포커스 언더라인 강조 (`boxShadow: inset 0 -2px 0 borderColor`, HTS 스타일), compact 모드(아이콘/클리어버튼 off, padding 2px 4px, fontSize 12px), 라벨 폰트 `FONT_SIZE.section`(14px) 통일
   - `index.html`: `.sf-search-input::placeholder { color: #9e9e9e; }` CSS 추가 (COLOR.disabled 통일 — JS inline style로는 ::placeholder 설정 불가)

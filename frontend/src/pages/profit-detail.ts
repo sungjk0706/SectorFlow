@@ -6,6 +6,7 @@ import { createDataTable, type ColumnDef, type DataTableApi } from '../component
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import { createSearchInput } from '../components/common/search-input'
+import { createDateRangeInput, type DateRangeInputApi } from '../components/common/date-range-input'
 import { hotStore } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import {
@@ -34,8 +35,7 @@ let buyTabBtn: HTMLButtonElement | null = null
 let tableContainer: HTMLDivElement | null = null
 let tableViewContainer: HTMLDivElement | null = null
 let drilldownViewContainer: HTMLDivElement | null = null
-let dateFromInput: HTMLInputElement | null = null
-let dateToInput: HTMLInputElement | null = null
+let dateRangeInput: DateRangeInputApi | null = null
 let stockFilterInput: ReturnType<typeof createSearchInput> | null = null
 let unsubStore: (() => void) | null = null
 
@@ -106,11 +106,10 @@ function applyTabStyle(btn: HTMLButtonElement, active: boolean): void {
 
 /* ── 탭 헤더 텍스트 업데이트 ── */
 function updateTabLabels(): void {
-  const dateFrom = dateFromInput?.value || ''
-  const dateTo = dateToInput?.value || ''
+  const dateRange = dateRangeInput?.getValue() ?? { from: '', to: '' }
   const stockQuery = stockFilterInput?.getValue() || ''
-  const filteredSells = filterRows(sellHistory, dateFrom, dateTo, stockQuery || undefined)
-  const filteredBuys = filterRows(buyHistory, dateFrom, dateTo, stockQuery || undefined)
+  const filteredSells = filterRows(sellHistory, dateRange.from, dateRange.to, stockQuery || undefined)
+  const filteredBuys = filterRows(buyHistory, dateRange.from, dateRange.to, stockQuery || undefined)
   if (sellTabBtn) {
     sellTabBtn.textContent = `매도 내역 (${filteredSells.length}건)`
   }
@@ -162,8 +161,7 @@ function showDrilldown(): void {
 function filterByDate(date: string): void {
   drilldownActive = false
 
-  if (dateFromInput) dateFromInput.value = date
-  if (dateToInput) dateToInput.value = date
+  if (dateRangeInput) dateRangeInput.setValue(date, date)
 
   if (tabRow) tabRow.style.display = 'flex'
 
@@ -175,8 +173,7 @@ function filterByDate(date: string): void {
 function filterByDateRange(from: string, to: string): void {
   drilldownActive = false
 
-  if (dateFromInput) dateFromInput.value = from
-  if (dateToInput) dateToInput.value = to
+  if (dateRangeInput) dateRangeInput.setValue(from, to)
 
   if (tabRow) tabRow.style.display = 'flex'
 
@@ -186,11 +183,10 @@ function filterByDateRange(from: string, to: string): void {
 
 /* ── 통계 정보 갱신 ── */
 function updateStatistics(): void {
-  const dateFrom = dateFromInput?.value || ''
-  const dateTo = dateToInput?.value || ''
+  const dateRange = dateRangeInput?.getValue() ?? { from: '', to: '' }
   const stockQuery = stockFilterInput?.getValue() || ''
-  const filteredSells = filterRows(sellHistory, dateFrom, dateTo, stockQuery || undefined)
-  const filteredBuys = filterRows(buyHistory, dateFrom, dateTo, stockQuery || undefined)
+  const filteredSells = filterRows(sellHistory, dateRange.from, dateRange.to, stockQuery || undefined)
+  const filteredBuys = filterRows(buyHistory, dateRange.from, dateRange.to, stockQuery || undefined)
 
   const sellCount = filteredSells.length
   const buyCount = filteredBuys.length
@@ -218,12 +214,11 @@ function showTable(): void {
 
   if (tabRow) tabRow.style.display = 'flex'
 
-  const dateFrom = dateFromInput?.value || ''
-  const dateTo = dateToInput?.value || ''
+  const dateRange = dateRangeInput?.getValue() ?? { from: '', to: '' }
   const stockQuery = stockFilterInput?.getValue() || ''
   const isSell = activeTab === 'sell'
   let rows = isSell ? sellHistory : buyHistory
-  rows = filterRows(rows, dateFrom, dateTo, stockQuery || undefined)
+  rows = filterRows(rows, dateRange.from, dateRange.to, stockQuery || undefined)
 
   const displayRows = rows
 
@@ -299,8 +294,7 @@ function mount(container: HTMLElement): void {
       selectedView = 'total'
       updateCardSelection()
       updateDrilldownBtnStyle(false)
-      if (dateFromInput) dateFromInput.value = ''
-      if (dateToInput) dateToInput.value = ''
+      if (dateRangeInput) dateRangeInput.setValue('', '')
       drilldownActive = false
       showTable()
       updateTabLabels()
@@ -317,27 +311,19 @@ function mount(container: HTMLElement): void {
   const filterRow = document.createElement('div')
   Object.assign(filterRow.style, { display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 4px', borderBottom: '1px solid ' + COLOR.borderLight, flexWrap: 'wrap' })
 
-  const filterLabel = document.createElement('span')
-  Object.assign(filterLabel.style, { fontSize: FONT_SIZE.label, color: COLOR.tertiary, whiteSpace: 'nowrap' })
-  filterLabel.textContent = '기간:'
-  filterRow.appendChild(filterLabel)
-
-  dateFromInput = document.createElement('input')
-  dateFromInput.type = 'date'
-  dateFromInput.value = monthStart
-  Object.assign(dateFromInput.style, { padding: '2px 4px', fontSize: FONT_SIZE.label, border: '1px solid ' + COLOR.borderLight, borderRadius: '4px', color: COLOR.code })
-  filterRow.appendChild(dateFromInput)
-
-  const dateSep = document.createElement('span')
-  dateSep.textContent = '~'
-  dateSep.style.color = COLOR.border
-  filterRow.appendChild(dateSep)
-
-  dateToInput = document.createElement('input')
-  dateToInput.type = 'date'
-  dateToInput.value = todayStr
-  Object.assign(dateToInput.style, { padding: '2px 4px', fontSize: FONT_SIZE.label, border: '1px solid ' + COLOR.borderLight, borderRadius: '4px', color: COLOR.code })
-  filterRow.appendChild(dateToInput)
+  dateRangeInput = createDateRangeInput({
+    from: monthStart,
+    to: todayStr,
+    label: '기간:',
+    onChange: () => {
+      selectedView = null
+      updateCardSelection()
+      updateDrilldownBtnStyle(false)
+      showTable()
+      updateTabLabels()
+    },
+  })
+  filterRow.appendChild(dateRangeInput.el)
 
   const clearBtn = document.createElement('button')
   Object.assign(clearBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.label, border: '1px solid ' + COLOR.borderLight, borderRadius: '4px', background: COLOR.white, cursor: 'pointer', color: COLOR.tertiary })
@@ -346,8 +332,7 @@ function mount(container: HTMLElement): void {
     selectedView = 'total'
     updateCardSelection()
     updateDrilldownBtnStyle(false)
-    if (dateFromInput) dateFromInput.value = ''
-    if (dateToInput) dateToInput.value = ''
+    if (dateRangeInput) dateRangeInput.setValue('', '')
     drilldownActive = false
     showTable()
     updateTabLabels()
@@ -362,11 +347,10 @@ function mount(container: HTMLElement): void {
   filterRow.appendChild(stockSep)
 
   stockFilterInput = createSearchInput({
-    label: '종목명 / 코드',
+    label: '종목명/코드',
     labelColor: COLOR.down,
-    placeholder: '종목명/코드',
+    placeholder: '종목명/코드 검색',
     borderColor: COLOR.down,
-    compact: true,
     onSearch: () => { showTable(); updateTabLabels() },
   })
   filterRow.appendChild(stockFilterInput.el)
@@ -475,22 +459,6 @@ function mount(container: HTMLElement): void {
   root.appendChild(lower)
   container.appendChild(root)
 
-  // 날짜 필터 변경 이벤트
-  dateFromInput.addEventListener('change', () => {
-    selectedView = null
-    updateCardSelection()
-    updateDrilldownBtnStyle(false)
-    showTable()
-    updateTabLabels()
-  })
-  dateToInput.addEventListener('change', () => {
-    selectedView = null
-    updateCardSelection()
-    updateDrilldownBtnStyle(false)
-    showTable()
-    updateTabLabels()
-  })
-
   // 초기 데이터 반영
   const initState = hotStore.getState()
   sellHistory = initState.sellHistory
@@ -595,8 +563,7 @@ function unmount(): void {
   tableContainer = null
   tableViewContainer = null
   drilldownViewContainer = null
-  dateFromInput = null
-  dateToInput = null
+  dateRangeInput = null
   stockFilterInput = null
   statCountEl = null
   statBuyAmtEl = null

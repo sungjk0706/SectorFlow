@@ -534,9 +534,9 @@ class SectorStockTable extends HTMLElement {
 
     // 좌측: 종목명/코드 검색 (파란색 라벨 — 인라인 배치)
     this.searchInput = createSearchInput({
-      label: '종목명 / 코드',
+      label: '종목명/코드',
       labelColor: COLOR.down,
-      placeholder: '종목명 / 코드 검색',
+      placeholder: '종목명/코드 검색',
       borderColor: COLOR.down,
       onSearch: (query) => {
         this.searchTerm = query
