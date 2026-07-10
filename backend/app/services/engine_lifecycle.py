@@ -165,7 +165,7 @@ def get_engine_status() -> dict:
 # ── 투자 모드 전환 ─────────────────────────────────────────────────
 
 async def on_trade_mode_switched() -> None:
-    """투자모드 전환 시 호출 -- 엔진 재기동 없이 계좌 구독 상태만 전환한다."""
+    """투자모드 전환 시 호출 — 엔진 재기동 없이 계좌 구독 상태만 전환한다."""
     from backend.app.services import settlement_engine
     from backend.app.services.engine_ws import _subscribe_account_realtime, _subscribe_positions_stocks_realtime
     from backend.app.services.engine_account import _refresh_account_snapshot_meta, _broadcast_account
@@ -183,19 +183,19 @@ async def on_trade_mode_switched() -> None:
         # 실전→테스트: 계좌 실시간 구독(00/04) 해제, 분석용 구독은 유지
         from backend.app.services.engine_ws_reg import _unreg_grp
         await _unreg_grp("10")
-        logger.info("[구독] 테스트모드 전환 -- 계좌 실시간 구독 해제 완료")
+        logger.info("[구독] 테스트모드 전환 — 계좌 실시간 구독 해제 완료")
         # Settlement Engine: 상태 로드 (모드 전환 시 복원 목적) + 만료 항목 정리 + 타이머 재스케줄
         # load_state는 기동 시(로드)와 모드 전환 시(복원) 양쪽에 사용되는 dual-purpose 함수
         await settlement_engine.load_state()
-        logger.info("[연산] 테스트모드 전환 -- 정산 엔진 상태 복원 완료")
+        logger.info("[연산] 테스트모드 전환 — 정산 엔진 상태 복원 완료")
     else:
         # 테스트→실전: Settlement Engine 상태 저장 + 타이머 취소
         await settlement_engine.save_state()
-        logger.info("[연산] 실전모드 전환 -- 정산 엔진 상태 저장 완료")
+        logger.info("[연산] 실전모드 전환 — 정산 엔진 상태 저장 완료")
         # 테스트→실전: 계좌 실시간 구독(00/04) + 보유종목 실시간(0B) 등록
         await _subscribe_account_realtime()
         await _subscribe_positions_stocks_realtime()
-        logger.info("[구독] 실전모드 전환 -- 계좌 + 보유종목 실시간 구독 완료")
+        logger.info("[구독] 실전모드 전환 — 계좌 + 보유종목 실시간 구독 완료")
 
     # 모드 전환 후 계좌 스냅샷 즉시 갱신
     await _refresh_account_snapshot_meta()
@@ -357,7 +357,7 @@ async def broadcast_engine_status() -> None:
 
 
 async def _delayed_resubscribe_stock_after_rate_limit(norm_cd: str) -> None:
-    """105110 직후 재시도하지 않고, 일정 시간 뒤 필요한 종목만 REG 재전송 -- 시장가 운용으로 no-op."""
+    """105110 직후 재시도하지 않고, 일정 시간 뒤 필요한 종목만 REG 재전송 — 시장가 운용으로 no-op."""
     pass
 
 

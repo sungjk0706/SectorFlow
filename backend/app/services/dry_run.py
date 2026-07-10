@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Dry-Run 모듈 -- 테스트모드 전용 가상 체결 엔진 + 영속 잔고.
+Dry-Run 모듈 — 테스트모드 전용 가상 체결 엔진 + 영속 잔고.
 
 책임:
-  1. fake_send_order()  -- 키움 send_order 응답과 동일한 구조의 가짜 체결 반환
-  2. _test_positions     -- 가상 잔고 (trades 테이블 기반 파생, 인메모리 캐시)
-  3. update_price()      -- 0B 틱으로 가상 잔고 현재가/수익률 갱신
+  1. fake_send_order()  — 키움 send_order 응답과 동일한 구조의 가짜 체결 반환
+  2. _test_positions     — 가상 잔고 (trades 테이블 기반 파생, 인메모리 캐시)
+  3. update_price()      — 0B 틱으로 가상 잔고 현재가/수익률 갱신
 """
 from __future__ import annotations
 from typing import Optional
@@ -63,7 +63,7 @@ async def _refresh_positions_if_dirty() -> None:
                     new_pos["stk_nm"] = old["stk_nm"]
         _test_positions.clear()
         _test_positions.update(computed)
-        logger.info("[매매] 포지션 캐시 재구축 -- %d종목", len(_test_positions))
+        logger.info("[매매] 포지션 캐시 재구축 — %d종목", len(_test_positions))
     except Exception as e:
         logger.warning("[매매] 포지션 캐시 재구축 실패: %s", e)
 
@@ -234,7 +234,7 @@ def _recalc_pnl(pos: dict) -> None:
 
 async def update_price(code: str, price: int) -> bool:
     """
-    0B 틱 수신 시 호출 -- 가상 잔고의 현재가/수익률 갱신.
+    0B 틱 수신 시 호출 — 가상 잔고의 현재가/수익률 갱신.
     반환: True=가격 변경됨, False=해당 종목 미보유 또는 가격 동일
     """
     from backend.app.services.engine_symbol_utils import _base_stk_cd
@@ -302,7 +302,7 @@ async def position_codes() -> set[str]:
 
 
 async def clear() -> None:
-    """가상 포지션만 초기화 (예수금은 건드리지 않음 -- 사용자 직접 초기화만 허용)."""
+    """가상 포지션만 초기화 (예수금은 건드리지 않음 — 사용자 직접 초기화만 허용)."""
     global _positions_loaded, _positions_dirty
     _test_positions.clear()
     _positions_loaded = True
@@ -310,7 +310,7 @@ async def clear() -> None:
 
 
 def _estimate_market_price(code: str) -> int:
-    """시장가 주문 시 현재가 추정 -- 가상 잔고에 있으면 그 값, 없으면 0."""
+    """시장가 주문 시 현재가 추정 — 가상 잔고에 있으면 그 값, 없으면 0."""
     pos = _test_positions.get(code)
     if pos:
         return int(pos.get("cur_price", 0))

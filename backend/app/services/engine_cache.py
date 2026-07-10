@@ -59,7 +59,7 @@ async def _load_caches_preboot(settings: dict) -> None:
         from backend.app.services.engine_account_notify import _rebuild_layout_cache
         _rebuild_layout_cache(auto_layout)
         logger.debug(
-            "[데이터] 업종 매핑 기반 자동 구성 -- %d종목 / %d업종",
+            "[데이터] 업종 매핑 기반 자동 구성 — %d종목 / %d업종",
             sum(1 for t, _ in auto_layout if t == "code"),
             len(sector_groups),
         )
@@ -85,16 +85,16 @@ async def _load_caches_preboot(settings: dict) -> None:
 
         # ── 5일 평균 + 5일 전고점 적재 ──
         if _cached_avg is not None and sum(1 for v in _cached_avg.values() if int(v or 0) > 0) < 100:
-            logger.info("[데이터] stocks DB 5일평균 비정상 -- 백그라운드 갱신 예정")
+            logger.info("[데이터] stocks DB 5일평균 비정상 — 백그라운드 갱신 예정")
 
         if _cached_avg is not None:
-            logger.debug("[데이터] 5일거래대금평균/고가 저장데이터 로드 -- %d종목", len(_cached_avg))
+            logger.debug("[데이터] 5일거래대금평균/고가 저장데이터 로드 — %d종목", len(_cached_avg))
         else:
-            logger.debug("[데이터] 5일거래대금평균/고가 저장데이터 미스 -- 백그라운드 갱신 예정")
+            logger.debug("[데이터] 5일거래대금평균/고가 저장데이터 미스 — 백그라운드 갱신 예정")
 
         # ── 시장구분 적재 제거 (master_stocks_cache 사용으로 대체) ──
         _total_nxt = sum(1 for v in state.master_stocks_cache.values() if v.get("nxt_enable"))
-        logger.debug("[데이터] 시장구분(마스터 캐시) 로드 완료 -- %d종목 (NXT %d)", len(state.master_stocks_cache), _total_nxt)
+        logger.debug("[데이터] 시장구분(마스터 캐시) 로드 완료 — %d종목 (NXT %d)", len(state.master_stocks_cache), _total_nxt)
 
         # 캐시선행 완료 플래그 — 앱준비 에서 중복 로드 스킵용
         state.preboot_cache_loaded = True
