@@ -85,7 +85,7 @@ async def _load_caches_preboot(settings: dict) -> None:
 
         # ── 5일 평균 + 5일 전고점 적재 ──
         if _cached_avg is not None and sum(1 for v in _cached_avg.values() if int(v or 0) > 0) < 100:
-            logger.info("[데이터] stocks DB 5일평균 비정상 — 백그라운드 갱신 예정")
+            logger.warning("[데이터] stocks DB 5일평균 비정상 — 백그라운드 갱신 예정")
 
         if _cached_avg is not None:
             logger.debug("[데이터] 5일거래대금평균/고가 저장데이터 로드 — %d종목", len(_cached_avg))
@@ -149,4 +149,4 @@ async def _load_caches_preboot(settings: dict) -> None:
             logger.warning("[데이터] 데이터동기화중 재시도 실패(무시): %s", _catchup_err, exc_info=True)
 
     except Exception as _cache_err:
-        logger.info("[데이터] 저장데이터 로드 실패 (무시, 기존 흐름으로 진행): %s", _cache_err)
+        logger.warning("[데이터] 저장데이터 로드 실패 (무시, 기존 흐름으로 진행): %s", _cache_err)
