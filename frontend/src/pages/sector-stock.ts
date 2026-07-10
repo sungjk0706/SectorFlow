@@ -40,13 +40,13 @@ interface GroupRowItem {
   sector: string
   label: string
   score?: number
-  dim: boolean
+  opacity: string
 }
 
 interface DataRowItem {
   type: 'data'
   stock: SectorStock
-  dim: boolean
+  opacity: string
   krxInactive: boolean
   seq: number
 }
@@ -112,7 +112,7 @@ function mapRowsToTableRows(rows: RowItem[]): TableRow<DataRowItem>[] {
         label: item.label,
         key: 'g-' + item.sector,
         score: item.score,
-        style: { opacity: item.dim ? '0.65' : '1' },
+        style: { opacity: item.opacity },
       } satisfies DataTableGroupRow
     }
     return item
@@ -212,7 +212,7 @@ function computeRows(
   for (const sector of orderedSectors) {
     const codes = grouped.get(sector)
     const sectorRank = sortedSectorScores.find(s => s.sector === sector)?.rank ?? 0
-    const dim = sectorRank === 0 || sectorRank > maxTargets
+    const opacity = sectorRank === 0 ? '0.4' : (sectorRank > maxTargets ? '0.65' : '1')
     const score = scoreMap.get(sector)
 
     rows.push({
@@ -220,7 +220,7 @@ function computeRows(
       sector,
       label: `${sectorRankMap.get(sector) ?? 0}. ${sector}`,
       score,
-      dim,
+      opacity,
     })
 
     // 종목이 없으면 종목 행 추가 안 함
@@ -239,10 +239,10 @@ function computeRows(
 
       // 행 객체 캐시: stock 참조가 같으면 이전 행 재사용
       const cached = rowCache.get(code)
-      if (cached && cached.stock === stock && cached.row.dim === dim && cached.row.krxInactive === stockKrxInactive && cached.row.seq === stockSeq) {
+      if (cached && cached.stock === stock && cached.row.opacity === opacity && cached.row.krxInactive === stockKrxInactive && cached.row.seq === stockSeq) {
         rows.push(cached.row)
       } else {
-        const row: DataRowItem = { type: 'data', stock, dim, krxInactive: stockKrxInactive, seq: stockSeq }
+        const row: DataRowItem = { type: 'data', stock, opacity, krxInactive: stockKrxInactive, seq: stockSeq }
         rowCache.set(code, { stock, row })
         rows.push(row)
       }
@@ -600,7 +600,7 @@ class SectorStockTable extends HTMLElement {
       groupRowHeight: 48,
       rowHeight: 32,
       rowStyle: (row, _idx) => ({
-        opacity: row.dim ? '0.65' : '1',
+        opacity: row.opacity,
         background: row.krxInactive ? COLOR.inactiveBg : '',
         outline: this.currentMatchedCodes?.has(row.stock.code)
           ? `2px solid ${COLOR.down}`
