@@ -106,8 +106,8 @@ async def _insert_trade(rec: dict) -> None:
     try:
         from backend.app.services import dry_run
         dry_run._positions_dirty = True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[정산] dry_run 포지션 캐시 무효화 실패 (stale 가능): %s", e, exc_info=True)
     try:
         from backend.app.db.db_writer import execute_db_write, DBWriteOperation
         await execute_db_write(DBWriteOperation(
@@ -225,8 +225,8 @@ def _reset_global_state() -> None:
     try:
         from backend.app.services import dry_run
         dry_run._positions_dirty = True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[정산] dry_run 포지션 캐시 무효화 실패 (stale 가능): %s", e, exc_info=True)
 
 
 def start_consumer_task() -> None:
@@ -527,8 +527,8 @@ async def clear_test_history() -> None:
     try:
         from backend.app.services import dry_run
         dry_run._positions_dirty = True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("[정산] dry_run 포지션 캐시 무효화 실패 (stale 가능): %s", e, exc_info=True)
     try:
         from backend.app.db.db_writer import execute_db_write, DBWriteOperation
         await execute_db_write(DBWriteOperation(
