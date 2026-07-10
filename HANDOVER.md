@@ -23,7 +23,7 @@
     - `test_web_ws_routes.py` 신규 11건 (기존 37 → 48): `TestSendInitialSnapshotDelayed` 4건 (전체시퀀스/임계값미달스킵/buy-targets전송/예외로깅), `TestWsPrices` 5건 (ping→pong/page-active/page-inactive/subscribe-fids/WebSocketDisconnect), `TestWsRouter` 2건
     - 수정 중 이슈: `pipeline_compute.py` lazy import 시 `get_broadcast_queue()` 미초기화 RuntimeError → `initialize_queues()` 사전 호출 추가 (`test_daily_time_scheduler.py` / `test_pipeline_compute.py`와 동일 패턴); `asyncio.create_task` mock 코루틴 미close RuntimeWarning → `side_effect=lambda coro: (coro.close(), mock_task)[1]` 패턴으로 해결
   - 검증: 전체 1409 passed, 0 failed (기존 1371 + 신규 38), regression 없음, 런타임 기동 정상 (118ms 부트, 에러 없음, 잔존 프로세스 0건)
-  - 커밋: (이번 커밋)
+  - 커밋: `413cb6f` push 완료
 - **2026-07-10: 테스트 커버리지 확장 Stage 1~4 (P6-a~c, P5-a) — 신규 294건, 전체 1371건 통과**
   - 목적: 테스트 커버리지 14% → 확장. P6(유틸/기타) → P5(Web) → P4(브로커) 순서, 소그룹 단위(2~3파일) 진행
   - **Stage 1 (P6-a): `encryption.py`(87줄) + `sector_mapping.py`(99줄) + `telegram.py`(43줄) — 신규 76건**
@@ -45,7 +45,7 @@
     - 발견된 버그: `settlement.py:16`에서 `settlement_engine.charge(amount)` 호출 시 `await` 누락 (async 함수를 동기 호출) — 테스트에서 coroutine 반환 확인, 별도 수정 필요
     - `account.py`는 라우터만 있고 엔드포인트 없음 (WS initial-snapshot으로 대체) — 라우터 설정 검증만
   - 검증: 전체 1371 passed, 0 failed (기존 1077 + 신규 294), regression 없음
-  - 커밋: 미커밋 (모든 Stage 완료 후 일괄 커밋 예정)
+  - 커밋: `413cb6f` push 완료 (Stage 5와 일괄 커밋)
 - **2026-07-10: 업종순위 수신율 임계값 우회 버그 수정 — SSOT 게이트로 5개 우회 경로 차단**
   - 목적: 사용자가 설정한 수신율 임계값(`sector_start_threshold_pct`)에 도달하기 전에 업종순위가 프론트엔드에 표시되는 버그. Phase 1 루프의 지역 변수 게이트만으로는 5개 외부 경로가 임계값 체크 없이 sector-scores를 전송했음
   - 근본 원인: `_sector_recompute_loop_impl` Phase 1의 `phase1_completed` 지역 변수가 임계값 통과 상태의 유일한 게이트. 외부 5개 경로(`_login_post_pipeline`, `apply_settings_change`, `_on_krx_market_open`, `_on_krx_after_hours_start`, `_send_initial_snapshot_delayed`)가 `recompute_sector_summary_now()` → `notify_desktop_sector_scores(force=True)` 또는 `ws_manager.send_to()`로 임계값과 무관하게 sector-scores 브로드캐스트
@@ -197,7 +197,7 @@
 ## 현재 상태
 - **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료, 보유종목 buy_date 파생·브로드캐스트 구현 완료, exchange_calendars 교체 완료 (korean_lunar_calendar 기반 직접 구현, ~109MB 절감, 제헌절 버그 수정)
 - **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지·검색 입력란 추가 완료, 보유종목 테이블 매수일자 컬럼 추가 완료, 수익현황 페이지 빈 데이터 차트/도넛 stale state 근본 수정 완료, 프론트엔드 색상 체계 통일 완료 (하드코딩 ~190곳 COLOR 상수화 + secondary→tertiary 통합), 검색 입력란 공통 컴포넌트 통일 완료 (5페이지 7개 인스턴스 + label/compact 옵션 + 포커스 언더라인 + placeholder 색상), `npm run build` 통과
-- **Git**: 커밋 `b111496` push 완료 (exchange_calendars 교체). 테스트 커버리지 Stage 1~5 + settlement.py await 수정은 (이번 커밋)으로 push 예정
+- **Git**: 커밋 `b111496` push 완료 (exchange_calendars 교체). 커밋 `413cb6f` push 완료 (settlement.py await 수정 + 테스트 커버리지 Stage 1~5)
 - **테스트 커버리지**: Stage 1~5 완료 — 신규 332건 (encryption 34 + sector_mapping 22 + telegram 20 + journal 38 + logger 24 + trade_history 66 + dry_run 30 + web_routes 50 + web_ws_routes 48), 전체 1409 passed
 - **settlement.py await 누락 버그**: 수정 완료 (`await settlement_engine.charge(amount)`)
 
