@@ -27,7 +27,7 @@
   - 영향: WS 구독 구간 내 임계값 미달 시 sector-scores 전송 차단, 비-WS 구간은 기본값 True로 기존 동작 유지, 내부 계산(`recompute_sector_summary_now`)은 수행되므로 `_filtered` 플래그/구독 파이프라인 정상 동작, 수신율 표시(`receive-rate` 이벤트)는 영향 없음
   - 검증: 신규 테스트 7개(`TestSectorThresholdGate` 5 + `TestNotifySectorScoresGate` 2) 통과, 기존 테스트 1077개 전체 통과, 프론트엔드 빌드 성공, 런타임 기동 검증 완료
   - 테스트 파일: `test_daily_time_scheduler.py`에 `initialize_queues()` 추가 (lazy import of pipeline_compute 시 모듈 레벨 `get_broadcast_queue()` 호출 대응)
-  - 커밋: (이번 커밋)
+  - 커밋: `accca2b` push 완료
 - **2026-07-10: exchange_calendars 교체 — korean_lunar_calendar 기반 직접 구현 (~109MB 절감 + 제헌절 버그 수정)**
   - 목적: exchange_calendars가 pandas(70MB)+numpy(33MB) 등 ~109MB 의존성을 끌어오는데, 코드베이스에서 사용처는 `trading_calendar.py`의 `_generate_trading_days_from_xkrx()` 1곳만. 연 1회 캐시 생성 시에만 사용하므로 경량화 필요
   - 추가 발견: exchange_calendars XKRX 캘린더가 제헌절(7/17, 2026년부터 공휴일 재지정)을 반영하지 않는 버그 확인 — DB 캐시에 2026년 7/17이 거래일로 잘못 등록되어 있었음 (246일 → 정상 245일)
