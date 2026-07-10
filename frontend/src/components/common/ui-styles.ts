@@ -72,7 +72,6 @@ export const COLOR = {
   surfaceLight: '#fafafa',  // 연한 서피스
   hoverBg:      '#f0f0f0',  // 호버/활성 배경
   surface:      '#f8f9fa',  // 서피스 (사이드바/버튼)
-  highlight:    '#fff9c4',  // 하이라이트 (노랑)
   inactiveBg:   '#e0e0e0',  // 비활성 배경
   toggleOff:    '#6c757d',  // 토글 OFF
 } as const

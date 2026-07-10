@@ -84,7 +84,6 @@ let addSectorBtnRef: HTMLElement | null = null
 // UI 참조 — Search
 let searchInputRef: ReturnType<typeof createSearchInput> | null = null
 let searchResultTableRef: DataTableApi<SearchResultRow> | null = null
-let highlightStockCode: string | null = null
 
 // UI 참조 — Center (Stock List)
 let centerContentRef: HTMLElement | null = null
@@ -775,7 +774,6 @@ function buildSectorManageCard(): HTMLElement {
     if (idx >= masterRows.length) return
     const clickedRow = masterRows[idx]
     selectedSector = selectedSector === clickedRow.sectorName ? null : clickedRow.sectorName
-    highlightStockCode = null
     selectedStocks.clear()
     anchorRow = -1
     updateMasterPanel()
@@ -1017,9 +1015,6 @@ function buildTripleCenter(): void {
     stickyHeader: true,
     keyFn: (row) => row.code,
     rowStyle: (row) => {
-      if (highlightStockCode && row.code === highlightStockCode) {
-        return { cursor: 'pointer', background: COLOR.warningBg, transition: 'background 0.3s' }
-      }
       if (selectedStocks.has(row.code)) {
         return { cursor: 'pointer', background: COLOR.downBg, transition: '' }
       }
@@ -1512,7 +1507,6 @@ function unmount(): void {
   addSectorBtnRef = null
   searchInputRef = null
   searchResultTableRef = null
-  highlightStockCode = null
   centerContentRef = null
   centerEmptyRef = null
   detailTitleRef = null
