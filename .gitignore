@@ -71,6 +71,7 @@ backend/data/*.json
 # Test artifacts
 test-results/
 coverage/
+htmlcov/
 .coverage
 .coverage.*
 
