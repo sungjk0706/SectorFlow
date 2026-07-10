@@ -82,7 +82,7 @@ function updateCardSelection(): void {
 function updateDrilldownBtnStyle(active: boolean): void {
   if (!drilldownBtnEl) return
   Object.assign(drilldownBtnEl.style, {
-    border: active ? '2px solid ' + COLOR.down : '1px solid ' + COLOR.borderLight,
+    border: active ? '2px solid ' + COLOR.down : '1px solid ' + COLOR.down,
     background: active ? COLOR.downBg : COLOR.white,
     color: active ? COLOR.down : COLOR.tertiary,
   })
@@ -325,39 +325,9 @@ function mount(container: HTMLElement): void {
   })
   filterRow.appendChild(dateRangeInput.el)
 
-  const clearBtn = document.createElement('button')
-  Object.assign(clearBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.label, border: '1px solid ' + COLOR.borderLight, borderRadius: '4px', background: COLOR.white, cursor: 'pointer', color: COLOR.tertiary })
-  clearBtn.textContent = '전체'
-  clearBtn.addEventListener('click', (e) => {
-    selectedView = 'total'
-    updateCardSelection()
-    updateDrilldownBtnStyle(false)
-    if (dateRangeInput) dateRangeInput.setValue('', '')
-    drilldownActive = false
-    showTable()
-    updateTabLabels()
-    ;(e.target as HTMLElement).blur()
-  })
-  filterRow.appendChild(clearBtn)
-
-  // 종목 필터
-  const stockSep = document.createElement('span')
-  stockSep.textContent = '|'
-  stockSep.style.color = COLOR.border
-  filterRow.appendChild(stockSep)
-
-  stockFilterInput = createSearchInput({
-    label: '종목명/코드',
-    labelColor: COLOR.down,
-    placeholder: '종목명/코드 검색',
-    borderColor: COLOR.down,
-    onSearch: () => { showTable(); updateTabLabels() },
-  })
-  filterRow.appendChild(stockFilterInput.el)
-
   // 드릴다운 토글 버튼
   drilldownBtnEl = document.createElement('button')
-  Object.assign(drilldownBtnEl.style, { padding: '2px 8px', fontSize: FONT_SIZE.label, border: '1px solid ' + COLOR.borderLight, borderRadius: '4px', background: COLOR.white, cursor: 'pointer', color: COLOR.tertiary, marginLeft: 'auto' })
+  Object.assign(drilldownBtnEl.style, { padding: '2px 8px', fontSize: FONT_SIZE.label, border: '1px solid ' + COLOR.down, borderRadius: '4px', background: COLOR.white, cursor: 'pointer', color: COLOR.tertiary })
   drilldownBtnEl.textContent = '당월 일별 요약'
   drilldownBtnEl.addEventListener('click', (e) => {
     drilldownActive = !drilldownActive
@@ -376,6 +346,21 @@ function mount(container: HTMLElement): void {
     ;(e.target as HTMLElement).blur()
   })
   filterRow.appendChild(drilldownBtnEl)
+
+  // 종목 필터
+  const stockSep = document.createElement('span')
+  stockSep.textContent = '|'
+  stockSep.style.color = COLOR.border
+  filterRow.appendChild(stockSep)
+
+  stockFilterInput = createSearchInput({
+    label: '종목명/코드',
+    labelColor: COLOR.down,
+    placeholder: '종목명/코드 검색',
+    borderColor: COLOR.down,
+    onSearch: () => { showTable(); updateTabLabels() },
+  })
+  filterRow.appendChild(stockFilterInput.el)
 
   lower.appendChild(filterRow)
 

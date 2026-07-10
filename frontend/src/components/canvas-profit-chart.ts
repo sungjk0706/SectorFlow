@@ -5,7 +5,7 @@
  * - 인터랙티브: 크로스헤어, 툴팁
  */
 
-import { pnlColor, FONT_FAMILY, COLOR, fmtWon, positionTooltip } from './common/ui-styles'
+import { pnlColor, FONT_FAMILY, FONT_SIZE, COLOR, fmtWon, positionTooltip } from './common/ui-styles'
 import { createDateRangeInput } from './common/date-range-input'
 
 // ── 타입 ────────────────────────────────────────────────────
@@ -24,6 +24,12 @@ interface DisplayRow extends ProfitChartRow {
   cumulative: number
 }
 
+export interface QuickDateRange {
+  label: string
+  from: string
+  to: string
+}
+
 export interface ProfitChartOptions {
   container: HTMLElement
   data: ProfitChartRow[]
@@ -33,6 +39,7 @@ export interface ProfitChartOptions {
   onDateRangeChange?: (from: string, to: string) => void
   dateFrom?: string
   dateTo?: string
+  quickDateRanges?: QuickDateRange[]
 }
 
 export interface ProfitChartApi {
@@ -146,10 +153,56 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
   const dateRangeInput = createDateRangeInput({
     from: options.dateFrom || monthFirstStr,
     to: options.dateTo || todayStr,
-    onChange: (from, to) => options.onDateRangeChange?.(from, to),
+    onChange: (from, to) => {
+      // 수동 날짜 변경 시 모든 빠른 버튼 비활성화
+      _activeQuickIdx = -1
+      updateQuickBtnStyles()
+      options.onDateRangeChange?.(from, to)
+    },
   })
 
   dateHeader.appendChild(dateRangeInput.el)
+
+  // 빠른 날짜 범위 버튼들
+  const quickRanges = options.quickDateRanges ?? []
+  let _activeQuickIdx = -1
+  const quickBtns: HTMLButtonElement[] = []
+
+  function applyQuickBtnStyle(btn: HTMLButtonElement, active: boolean): void {
+    Object.assign(btn.style, {
+      border: active ? `2px solid ${COLOR.down}` : `1px solid ${COLOR.down}`,
+      background: active ? COLOR.downBg : COLOR.white,
+      color: active ? COLOR.down : COLOR.tertiary,
+    })
+  }
+
+  function updateQuickBtnStyles(): void {
+    quickBtns.forEach((btn, i) => applyQuickBtnStyle(btn, i === _activeQuickIdx))
+  }
+
+  for (let i = 0; i < quickRanges.length; i++) {
+    const qr = quickRanges[i]
+    const btn = document.createElement('button')
+    Object.assign(btn.style, {
+      padding: '2px 8px',
+      fontSize: FONT_SIZE.label,
+      borderRadius: '4px',
+      cursor: 'pointer',
+      marginLeft: i === 0 ? 'auto' : '0',
+    })
+    btn.textContent = qr.label
+    btn.addEventListener('click', (e) => {
+      _activeQuickIdx = i
+      updateQuickBtnStyles()
+      dateRangeInput.setValue(qr.from, qr.to)
+      options.onDateRangeChange?.(qr.from, qr.to)
+      ;(e.target as HTMLElement).blur()
+    })
+    quickBtns.push(btn)
+    dateHeader.appendChild(btn)
+  }
+  updateQuickBtnStyles()
+
   wrapper.appendChild(dateHeader)
 
   const canvasWrap = document.createElement('div')
@@ -443,6 +496,9 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
     },
     setDateRange(from: string, to: string) {
       dateRangeInput.setValue(from, to)
+      // 외부 설정 시 일치하는 빠른 버튼 활성화, 없으면 모두 비활성화
+      _activeQuickIdx = quickRanges.findIndex(qr => qr.from === from && qr.to === to)
+      updateQuickBtnStyles()
     }
   }
 }
