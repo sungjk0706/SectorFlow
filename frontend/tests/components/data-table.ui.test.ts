@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createDataTable, type ColumnDef } from '../../src/components/common/data-table'
 
 interface TestRow {
@@ -162,5 +162,145 @@ describe('createDataTable — virtual scroll mode', () => {
       keyFn: (row) => row.name,
     })
     expect(table.el).toBeTruthy()
+  })
+})
+
+describe('createDataTable — virtual scroll flash suppression on row recycle', () => {
+  let animateMock: ReturnType<typeof vi.fn>
+  let originalAnimate: unknown
+
+  beforeEach(() => {
+    // triggerFlash uses element.animate() — jsdom에 없으므로 mock 함수 직접 할당
+    originalAnimate = (HTMLElement.prototype as any).animate
+    animateMock = vi.fn().mockReturnValue({
+      cancel: () => {},
+      finished: Promise.resolve(),
+      oncancel: null,
+      onfinish: null,
+      play: () => {},
+      pause: () => {},
+      reverse: () => {},
+      finish: () => {},
+      currentTime: null,
+      startTime: null,
+      playbackRate: 1,
+      playState: 'finished',
+      replaceState: 'active',
+      timeline: null,
+      id: '',
+      effect: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    } as any)
+    ;(HTMLElement.prototype as any).animate = animateMock
+  })
+
+  afterEach(() => {
+    if (originalAnimate) {
+      ;(HTMLElement.prototype as any).animate = originalAnimate
+    } else {
+      delete (HTMLElement.prototype as any).animate
+    }
+  })
+
+  it('triggers flash when same key data changes (price update)', () => {
+    const flashColumns: ColumnDef<TestRow>[] = [
+      { key: 'name', label: '종목명', align: 'left', render: (r) => r.name },
+      { key: 'price', label: '현재가', align: 'right', flash: true, render: (r) => String(r.price) },
+    ]
+    const table = createDataTable({
+      columns: flashColumns,
+      virtualScroll: true,
+      keyFn: (row) => row.name,
+    })
+    document.body.appendChild(table.el)
+
+    table.updateRows([
+      { name: 'A', price: 100, change: 0 },
+      { name: 'B', price: 200, change: 0 },
+    ])
+    // 최초 렌더링은 isFirst 경로 → 플래시 없음
+    expect(animateMock).not.toHaveBeenCalled()
+
+    // 같은 키, 가격 변경
+    table.updateRows([
+      { name: 'A', price: 150, change: 0 },
+      { name: 'B', price: 250, change: 0 },
+    ])
+
+    // 같은 키의 데이터 변경 → 플래시 호출되어야 함
+    expect(animateMock).toHaveBeenCalled()
+  })
+
+  it('does NOT trigger flash when row element is recycled for different key (scroll)', () => {
+    const flashColumns: ColumnDef<TestRow>[] = [
+      { key: 'name', label: '종목명', align: 'left', render: (r) => r.name },
+      { key: 'price', label: '현재가', align: 'right', flash: true, render: (r) => String(r.price) },
+    ]
+    const table = createDataTable({
+      columns: flashColumns,
+      virtualScroll: true,
+      keyFn: (row) => row.name,
+      rowHeight: 32,
+    })
+    document.body.appendChild(table.el)
+
+    // 50개 행 생성 (50 * 32 = 1600px, viewport 300px)
+    const manyRows: TestRow[] = []
+    for (let i = 0; i < 50; i++) {
+      manyRows.push({ name: `stock-${i}`, price: 1000 + i, change: 0 })
+    }
+    table.updateRows(manyRows)
+    // 최초 렌더링 → 플래시 없음
+    expect(animateMock).not.toHaveBeenCalled()
+
+    // 스크롤 컨테이너 찾기 (wrapper > scrollContainer)
+    const scrollContainer = table.el.firstElementChild as HTMLElement
+    expect(scrollContainer).toBeTruthy()
+
+    // 스크롤을 아래로 이동 — 새로운 행들이 풀에서 재활용된 DOM 요소로 렌더링됨
+    scrollContainer.scrollTop = 1200
+    scrollContainer.dispatchEvent(new Event('scroll'))
+
+    // 행 재활용으로 다른 키의 데이터가 표시되므로 플래시 없어야 함
+    expect(animateMock).not.toHaveBeenCalled()
+  })
+
+  it('triggers flash on same key update after scroll recycles rows', () => {
+    const flashColumns: ColumnDef<TestRow>[] = [
+      { key: 'name', label: '종목명', align: 'left', render: (r) => r.name },
+      { key: 'price', label: '현재가', align: 'right', flash: true, render: (r) => String(r.price) },
+    ]
+    const table = createDataTable({
+      columns: flashColumns,
+      virtualScroll: true,
+      keyFn: (row) => row.name,
+      rowHeight: 32,
+    })
+    document.body.appendChild(table.el)
+
+    const manyRows: TestRow[] = []
+    for (let i = 0; i < 50; i++) {
+      manyRows.push({ name: `stock-${i}`, price: 1000 + i, change: 0 })
+    }
+    table.updateRows(manyRows)
+
+    const scrollContainer = table.el.firstElementChild as HTMLElement
+
+    // 스크롤 이동 (행 재활용 발생, 플래시 없음)
+    scrollContainer.scrollTop = 1200
+    scrollContainer.dispatchEvent(new Event('scroll'))
+    expect(animateMock).not.toHaveBeenCalled()
+
+    // 현재 보이는 행들의 가격을 변경하여 updateRows 호출
+    const updatedRows = manyRows.map((r, i) =>
+      i >= 35 && i <= 45 ? { ...r, price: r.price + 50 } : r,
+    )
+    animateMock.mockClear()
+    table.updateRows(updatedRows)
+
+    // 같은 키의 가격 변경 → 플래시 호출되어야 함
+    expect(animateMock).toHaveBeenCalled()
   })
 })
