@@ -282,7 +282,7 @@ def _make_sell_rec(
 # ── _ensure_loaded ────────────────────────────────────────────────────────────
 
 class TestEnsureLoaded:
-    """_ensure_loaded: 최초 1회만 DB → 메모리 복원."""
+    """_ensure_loaded: 최초 1회만 DB → 메모리 로드."""
 
     async def test_first_load_sets_loaded_true(self):
         from backend.app.services import trade_history
