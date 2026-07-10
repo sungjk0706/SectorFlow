@@ -157,7 +157,7 @@ async def save_state() -> None:
 
 
 async def restore_state(initial_deposit: int | None = None) -> None:
-    """파일에서 상태 복원 (모드 전환 시 호출)."""
+    """SQLite에서 상태 로드 (기동 시 및 모드 전환 시 호출)."""
     await _load(force_reload=True, initial_deposit=initial_deposit)
 
 
@@ -177,9 +177,9 @@ async def _persist() -> None:
 
 
 async def _load(force_reload: bool = False, initial_deposit: int | None = None) -> None:
-    """SQLite KV 스토어에서 상태 복원.
+    """SQLite KV 스토어에서 상태 로드.
 
-    - DB에 저장된 상태가 있으면 복원한다.
+    - DB에 저장된 상태가 있으면 로드한다.
     - 없으면 initial_deposit(인자 → settings.test_virtual_deposit → 기본값)을 사용해 초기화.
 
     Args:
@@ -212,7 +212,7 @@ async def _load(force_reload: bool = False, initial_deposit: int | None = None) 
             _orderable = _accumulated_investment
         _loaded = True
         logger.info(
-            "[정산] 상태 복원 완료 -- 누적투자금: %s원 / 주문가능: %s원",
+            "[정산] 상태 로드 완료 -- 누적투자금: %s원 / 주문가능: %s원",
             f"{_accumulated_investment:,}", f"{_orderable:,}",
         )
     except Exception as e:

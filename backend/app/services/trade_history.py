@@ -10,7 +10,7 @@
   5. 승률 / MDD / 실현손익 집계
 
 영속성: 체결 시 db_writer queue 경유 SQLite 비동기 INSERT.
-        앱 기동 시 _ensure_loaded()에서 SQLite → 메모리 복원.
+        앱 기동 시 _ensure_loaded()에서 SQLite → 메모리 로드.
 """
 from __future__ import annotations
 import logging
@@ -32,7 +32,7 @@ RETENTION_TRADING_DAYS_REAL: int = 90
 # ── 메모리 초기화 ─────────────────────────────────────────────────────────────
 
 async def _ensure_loaded() -> None:
-    """앱 기동 시 SQLite → 메모리 복원. 최초 1회만 실행."""
+    """앱 기동 시 SQLite → 메모리 로드. 최초 1회만 실행."""
     global _loaded
     if _loaded:
         return
@@ -58,11 +58,11 @@ async def _ensure_loaded() -> None:
                 else:
                     _sell_history.append(rec)
         logger.info(
-            "[정산] DB 복원 완료 — 매수 %d건, 매도 %d건",
+            "[정산] 체결 이력 로드 완료 — 매수 %d건, 매도 %d건",
             len(_buy_history), len(_sell_history),
         )
     except Exception as e:
-        logger.warning("[정산] DB 이력 복원 실패 (신규 설치 시 정상): %s", e)
+        logger.warning("[정산] 체결 이력 로드 실패 (신규 설치 시 정상): %s", e)
 
 
 async def _migrate_from_json() -> None:

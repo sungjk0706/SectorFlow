@@ -51,7 +51,7 @@ class AutoTradeManager:
         self._symbol_daily_buy_spent: dict[str, int] = {}
 
     async def _restore_daily_buy_state(self) -> tuple[int, dict[str, float], dict[str, int]]:
-        """기동 시 trade_history에서 오늘 매수 합계 + 매수 종목 timestamp dict + 종목당 누적 매수금액 복원."""
+        """기동 시 trade_history에서 오늘 매수 합계 + 매수 종목 timestamp dict + 종목당 누적 매수금액 로드."""
         try:
             rows = await trade_history.get_buy_history(today_only=True)
             spent = sum(int(r.get("price", 0) or 0) * int(r.get("qty", 0) or 0) for r in rows)
@@ -69,7 +69,7 @@ class AutoTradeManager:
                         bought_today[cd] = time.time()
             return spent, bought_today, symbol_spent
         except Exception:
-            logger.warning("[매매] 일일 매수 상태 복원 실패: %s", exc_info=True)
+            logger.warning("[매매] 일일 매수 상태 로드 실패: %s", exc_info=True)
             return 0, {}, {}
 
     async def _ensure_daily_buy_counter(self) -> None:
@@ -78,7 +78,7 @@ class AutoTradeManager:
             self._daily_buy_date = today
             self._daily_buy_spent, self._bought_today, self._symbol_daily_buy_spent = await self._restore_daily_buy_state()  # type: ignore
             logger.info(
-                "[매매] 일일 매수 상태 복원 — 날짜=%s 누적매수=%s원 종목수=%d",
+                "[매매] 일일 매수 상태 로드 — 날짜=%s 누적매수=%s원 종목수=%d",
                 today, f"{self._daily_buy_spent:,}", len(self._bought_today),
             )
 
