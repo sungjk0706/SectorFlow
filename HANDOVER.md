@@ -1,6 +1,20 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-10: 현재가 플래시 효과 복원 — Web Animations API + 일반설정 ON/OFF 토글**
+  - 목적: 과거 3차례 구현/제거된 현재가 플래시 효과와 ON/OFF 토글 UI를 Web Animations API 기반으로 복원. reflow 강제/setTimeout/class 관리 없이 부하 거의 0으로 실시간 가격 변동 시각화
+  - 히스토리 조사: 1차(행 단위 빨강/파랑, 5cba9e3에서 제거), 2차(셀 단위 노랑, 17a779d에서 추가), 3차(flash-anim.ts 모듈 분리 + 토글, 864c385에서 리팩토링 → 3e6da0c에서 제거). 세 번 모두 기능 자체 버그/성능 문제가 아닌 부수적 코드 정리로 제거됨
+  - `data-table.ts`: `ColumnDef.flash?: boolean` 옵션 추가 + `triggerFlash(cell)` 헬퍼 (Web Animations API `cell.animate()` 1줄). `composite: 'replace'`로 연속 틱 시 이전 애니메이션 자동 대체. `uiStore.getState().settings.ui_price_flash_on === false` 체크로 토글 반영. 4개 diffing 지점 (fixed mode key 기반/index 기반/updateItemByKey + virtual scroll renderRow)에 트리거 삽입
+  - `ui-styles.ts`: `makePriceColumn`에 `flash: true` 추가 (업종별종목실시간시세 페이지 적용)
+  - `sell-position.ts`: 커스텀 `cur_price` 컬럼에 `flash: true` 추가 (보유종목 페이지)
+  - `buy-target.ts`: 커스텀 `cur_price` 컬럼에 `flash: true` 추가 (매수후보 페이지)
+  - `general-settings.ts`: '실시간 데이터 통신' 섹션 하단에 '실시간 현재가 플래시 효과' ON/OFF 토글 UI 추가. `createToggleBtn` + `settingsMgr.saveSection({ ui_price_flash_on: next })` 패턴 (기존 토글과 동일). `syncFromSettings()`에 `uiFlashToggle?.setOn(r.ui_price_flash_on !== false)` 동기화 추가
+  - `settings_defaults.py`: `DEFAULT_USER_SETTINGS`에 `"ui_price_flash_on": True` 추가 (기본값 ON)
+  - `types/index.ts`: `AppSettings`에 `ui_price_flash_on: boolean` 명시 (인덱스 시그니처로 이미 호환되나 가독성 향상)
+  - `index.html`: 잔존 dead CSS (`@keyframes cell-flash`, `.cell-flash`) 제거 — Web Animations API 사용으로 CSS 불필요
+  - 백엔드 스키마 변경 불필요: `integrated_system_settings` 테이블이 key-value 구조, `PATCH /api/settings/{field_name}`가 모든 필드 범용 저장
+  - 검증: tsc 타입체크 0 에러, vite build 통과 (58 모듈 2.28s), eslint 0건, 백엔드 런타임 기동 정상 (238ms 부트, 잔여 프로세스 없음), `DEFAULT_USER_SETTINGS` 확인 `ui_price_flash_on=True`
+  - 커밋: 3df2bc0
 - **2026-07-10: 매수후보 거래대금 가산점 비교 범위 확대 — 통과 종목만 → 전체 종목(통과+차단) + 차단 종목 5일고가 가산점 부여**
   - 목적: 거래대금 가산점이 통과 종목끼리만 상대비교되어 종목 수가 적을 때 가산점 왜곡 가능 → 매수후보 테이블 전체 종목(통과/차단 무관)으로 비교 범위 확대
   - `buy_filter.py:198-209`: 거래대금 순위 계산에서 `guard_pass` 필터 제거 → `all_stocks` 전체로 순위 계산 (보유/금일매수 종목도 포함)
