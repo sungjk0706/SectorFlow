@@ -15,7 +15,22 @@
   2. 재매수차단 OFF 시 금일매수 종목도 매수 후보 유효 → "보유중/금일매수 구독 제외"는 `rebuy_block_on` 설정과 충돌. 단, `buy_filter.py:194`는 `rebuy_block_on` 설정과 무관하게 항상 금일매수를 차단 처리함 — 이 자체가 별개 모순
   3. 매수후보 테이블 모든 종목(통과/차단 무관)은 이미 0B 실시간 데이터 수신 중 — 0D/PGM만 guard_pass 기반
 
+## 진행 중 작업 (다음 세션에서 이어서 진행)
+- 없음
+
 ## 직전 완료 작업
+- **2026-07-11: 테스트 커버리지 Stage 7 (P4-a) — 소형 브로커 3개 파일, 신규 123건, 전체 1672건 통과**
+  - 목적: 테스트 커버리지 Stage 7 — 소형 브로커 `kiwoom_order.py`(93줄) + `ls_providers.py`(195줄) + `connector_manager.py`(269줄) 단위 테스트 작성
+  - **`test_kiwoom_order.py` (30건)**: `resolve_exchange` 10건 (_NX 접미사/대소문자/공백, exchange_mode KRX/NXT/SOR, 빈 코드/None/무효값→SOR), `_send_request` 5건 (성공/HTTP 500 재시도 실패/예외 재시도 실패/2회차 성공/1회 성공), `send_order` 10건 (BUY/SELL 성공, 알 수 없는 주문 타입, rt_cd non-zero, 통신 장애, NXT trde_tp P/U 조정+ord_uv clear, SOR trde_tp 유지, 주문 타입 대소문자), `market_sell` 2건 (send_order SELL 위임/api-id kt10001, 통신 장애), `get_unexecuted_orders` 4건 (all_stk_tp 1/0 분기, 통신 장애, rt_cd non-zero)
+  - **`test_ls_providers.py` (39건)**: `LsAuthProvider` 11건 (신규/캐시 재사용/캐시 저장, app_key/secret 전달/strip/누락, get_access_token 성공/실패, ensure_token 위임, broker_name, rest_api property), `LsAccountProvider` 10건 (acnt_no 추출/누락/공백 보존, rest_api 없음, get_account_number, get_deposit_detail 성공/실패/no rest_api, get_balance_detail 성공/None/no rest_api), `get_account_balance` 7건 (no rest_api, 실패 rsp_cd, None 응답, 성공+stock_list, zero qty 필터, 빈 stock_list, total_rate 계산), `LsOrderProvider` 9건 (no rest_api, buy/sell 성공, buy/sell 실패, None 응답, A 접두사 buy/sell), `LsWebSocketProvider` 2건 (get_ws_uri 반환/호출)
+  - **`test_connector_manager.py` (54건)**: `__init__`/`_build` 5건 (단일/다중/알수없는 스킵/빈/websocket None 폴백), `_create_single` 3건 (성공/알수없는 증권사/no create_connector), 콜백 5건 (message_callback 전파/저장/빈, reconnect_callback 지원/미지원), `connect_all` 4건 (성공/빈/일부 실패/reconnect 콜백 설정), `_on_reconnect_success` 2건 (restore 호출/예외 처리), `disconnect_all` 3건 (성공/빈/일부 실패), 상태조회 9건 (is_connected any/all/빈, get_connector 있음/없음, active_broker_ids/빈, broker_id 첫번째/None), `send_message` 2건 (연결됨/연결없음), `subscribe_stocks` 5건 (단일/연결없음/다중 분산/일부 실패/sub_codes 추적), `unsubscribe_stocks` 5건 (구독된 커넥터/매치 없음 폴백/전체/실패/연결안됨), `subscribe_account`/`subscribe_index` 3건, `supports_ack` 3건, `unsubscribe_all` 3건, `subscribe_dynamic`/`unsubscribe_dynamic` 2건
+  - 수정 중 이슈:
+    - `kiwoom_order.py`: `trde_tp="3"`일 때 `ord_uv`는 항상 `""` (소스: `ord_uv = "" if str(trde_tp) == "3" else str(price)`) — 테스트 assertion 수정
+    - `ls_providers.py`: `LsAccountProvider.__init__`은 `.strip()` 호출 없음 (`str(... or "")`만) — 테스트를 실제 동작에 맞게 수정 (공백 보존)
+    - `connector_manager.py`: `_create_single`은 `@staticmethod` → `patch("...ConnectorManager._create_single", staticmethod(...))` 패턴 사용; `{"kiwoom": {}}`는 falsy라 `if not connector_registry`에서 걸림 → truthy dict `{"other_key": "value"}` 사용하여 `create_connector` 미존재 케이스 테스트
+  - 검증: 전체 1672 passed, 0 failed (기존 1549 + 신규 123), regression 없음, 런타임 기동 정상 (142ms 부트, 에러 없음, 잔존 프로세스 0건)
+  - 커밋: (이번 커밋)
+
 - **2026-07-10: 테스트 커버리지 확장 Stage 6 (P5-c) — 대형 Web 라우트 3개 파일, 신규 140건, 전체 1549건 통과**
   - 목적: 테스트 커버리지 Stage 6 — 대형 Web 라우트 `ws_manager.py`(351줄) + `stock_classification.py`(330줄) + `app.py`(317줄) 단위 테스트 작성
   - **`test_web_ws_manager.py` (75건)**: `_encode_realdata` 13건 (FID 필터링 default/custom, key shortening t/i/v, `_v` 스탬프 추가/보존, 캐시 hit/miss/LRU eviction/different-fids, values 비-dict/missing, non-shortened key 보존, binary None), `WSManager` 62건 (init 2, register 4, unregister 6, active_page 5, subscribed_fids 3, `_stamp` 3, `_send_broadcast` 3, `_send_realdata_immediate` 2, `_send_realdata_encoded` 4, `broadcast_to_pages` 5, `broadcast` 4, `broadcast_threadsafe` 2, `send_to` 2, `_send` 2, `_send_sigterm` 4, `close_all` 4, `_send_initial_data_on_connect` 3, `client_count` 2)
@@ -213,7 +228,7 @@
 - **백엔드**: 유령 매도 기록(id=144) 삭제 완료, 유령 포지션 재발 방지 예방 조치 구현 완료 (근본 원인은 미해결), boost_order_ratio_pct 422 오류 수정 완료, Settlement Engine 리팩토링 완료, RiskManager 리팩토링 Phase 1 완료, 보유종목 buy_date 파생·브로드캐스트 구현 완료, exchange_calendars 교체 완료 (korean_lunar_calendar 기반 직접 구현, ~109MB 절감, 제헌절 버그 수정)
 - **프론트엔드**: 더미 데이터 삭제 완료, 차트 툴팁 잘림 수정 완료, 매수후보 페이지 주문가능금액 배지·검색 입력란 추가 완료, 보유종목 테이블 매수일자 컬럼 추가 완료, 수익현황 페이지 빈 데이터 차트/도넛 stale state 근본 수정 완료, 프론트엔드 색상 체계 통일 완료 (하드코딩 ~190곳 COLOR 상수화 + secondary→tertiary 통합), 검색 입력란 공통 컴포넌트 통일 완료 (5페이지 7개 인스턴스 + label/compact 옵션 + 포커스 언더라인 + placeholder 색상), `npm run build` 통과
 - **Git**: 커밋 `413cb6f` push 완료 (settlement.py await 수정 + 테스트 커버리지 Stage 1~5). 커밋 `00fc3f5` push 완료 (테스트 커버리지 Stage 6)
-- **테스트 커버리지**: Stage 1~6 완료 — 신규 472건 (encryption 34 + sector_mapping 22 + telegram 20 + journal 38 + logger 24 + trade_history 66 + dry_run 30 + web_routes 50 + web_ws_routes 48 + ws_manager 75 + stock_classification 42 + web_app 23), 전체 1549 passed
+- **테스트 커버리지**: Stage 1~6 완료 — 신규 472건 (encryption 34 + sector_mapping 22 + telegram 20 + journal 38 + logger 24 + trade_history 66 + dry_run 30 + web_routes 50 + web_ws_routes 48 + ws_manager 75 + stock_classification 42 + web_app 23), 전체 1549 passed. **Stage 7 (P4-a) 진행 중** — 계획 승인 + 코드 조사 완료, 파일 작성 0건 (상단 "진행 중 작업" 섹션 참조)
 - **settlement.py await 누락 버그**: 수정 완료 (`await settlement_engine.charge(amount)`)
 
 ## 다음 단계
@@ -228,7 +243,7 @@
   - **Stage 4 (P5-a)** ✅ 완료: 소형 Web 라우트 7개 (`account.py` + `market.py` + `settlement.py` + `auth.py` + `deps.py` + `ws_orders.py` + `ws_settings.py` + `ws_subscribe.py`) — 60건
   - **Stage 5 (P5-b)** ✅ 완료: 중형 Web 라우트 — `status.py`(144) + `settings.py`(169) + `ws.py`(207) — 38건 (settlement.py await 버그 수정 포함)
   - **Stage 6 (P5-c)** ✅ 완료: 대형 Web 라우트 — `ws_manager.py`(351) + `stock_classification.py`(330) + `app.py`(317) — 140건
-  - **Stage 7 (P4-a)** ⏳ 다음: 소형 브로커 — `kiwoom_order.py`(93) + `ls_providers.py`(195) + `connector_manager.py`(269)
+  - **Stage 7 (P4-a)** ⏳ 진행 중 (계획 승인 + 코드 조사 완료, 파일 작성 0건 — 상단 "진행 중 작업" 섹션 참조): 소형 브로커 — `kiwoom_order.py`(93) + `ls_providers.py`(195) + `connector_manager.py`(269)
   - **Stage 8 (P4-b)**: 중형 브로커 — `kiwoom_providers.py`(337) + `kiwoom_stock_rest.py`(430)
   - **Stage 9 (P4-c)**: 대형 브로커 — `kiwoom_connector.py`(563) + `ls_rest.py`(635) + `kiwoom_rest.py`(653) + `ls_connector.py`(875)
 
