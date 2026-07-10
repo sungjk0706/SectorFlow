@@ -556,9 +556,9 @@ function buildSectorManageCard(): HTMLElement {
 
   // ── 종목 검색 UI ──
   searchInputRef = createSearchInput({
-    label: '종목명 / 코드',
+    label: '종목명/코드',
     labelColor: COLOR.down,
-    placeholder: '종목명 또는 코드 검색',
+    placeholder: '종목명/코드 검색',
     width: '100%',
     borderColor: COLOR.down,
     onSearch: (query) => {

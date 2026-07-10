@@ -318,9 +318,9 @@ function mount(container: HTMLElement): void {
   })
 
   searchInput = createSearchInput({
-    label: '종목명 / 코드',
+    label: '종목명/코드',
     labelColor: COLOR.down,
-    placeholder: '종목명 / 코드 검색',
+    placeholder: '종목명/코드 검색',
     borderColor: COLOR.down,
     onSearch: (query) => {
       searchTerm = query

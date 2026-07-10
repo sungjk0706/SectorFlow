@@ -6,6 +6,7 @@
  */
 
 import { pnlColor, FONT_FAMILY, COLOR, fmtWon, positionTooltip } from './common/ui-styles'
+import { createDateRangeInput } from './common/date-range-input'
 
 // ── 타입 ────────────────────────────────────────────────────
 
@@ -142,27 +143,14 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const monthFirstStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
 
-  const dateFromInput = document.createElement('input')
-  dateFromInput.type = 'date'
-  dateFromInput.value = options.dateFrom || monthFirstStr
-  dateFromInput.style.cssText = `padding:2px 4px;font-size:11px;border:1px solid ${COLOR.borderLight};border-radius:4px;color:${COLOR.code};`
+  const dateRangeInput = createDateRangeInput({
+    from: options.dateFrom || monthFirstStr,
+    to: options.dateTo || todayStr,
+    onChange: (from, to) => options.onDateRangeChange?.(from, to),
+  })
 
-  const dateToInput = document.createElement('input')
-  dateToInput.type = 'date'
-  dateToInput.value = options.dateTo || todayStr
-  dateToInput.style.cssText = `padding:2px 4px;font-size:11px;border:1px solid ${COLOR.borderLight};border-radius:4px;color:${COLOR.code};`
-
-  const dateSep = document.createElement('span')
-  dateSep.textContent = '~'
-  dateSep.style.color = COLOR.border
-
-  dateHeader.appendChild(dateFromInput)
-  dateHeader.appendChild(dateSep)
-  dateHeader.appendChild(dateToInput)
+  dateHeader.appendChild(dateRangeInput.el)
   wrapper.appendChild(dateHeader)
-
-  dateFromInput.addEventListener('change', () => options.onDateRangeChange?.(dateFromInput.value, dateToInput.value))
-  dateToInput.addEventListener('change', () => options.onDateRangeChange?.(dateFromInput.value, dateToInput.value))
 
   const canvasWrap = document.createElement('div')
   canvasWrap.style.cssText = `position:relative;width:100%;height:${height}px;background:${COLOR.white};overflow:hidden;`
@@ -454,8 +442,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
       wrapper.remove()
     },
     setDateRange(from: string, to: string) {
-      dateFromInput.value = from
-      dateToInput.value = to
+      dateRangeInput.setValue(from, to)
     }
   }
 }
