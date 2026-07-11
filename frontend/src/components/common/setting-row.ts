@@ -56,13 +56,19 @@ function applySpinBtn(btn: HTMLButtonElement) {
   btn.tabIndex = -1
 }
 
-function createSpinButtons(onUp: () => void, onDown: () => void) {
+function createSpinButtons(input: HTMLInputElement, onUp: () => void, onDown: () => void) {
   const wrap = document.createElement('div')
   Object.assign(wrap.style, {
     display: 'flex',
     flexDirection: 'column',
     borderRadius: '0 4px 4px 0',
     overflow: 'hidden',
+  })
+  // mousedown 시 버튼 포커스 및 INPUT blur 방지 + INPUT 포커스 보장
+  // (macOS에서 버튼 클릭 시 INPUT이 blur되어 syncFromSettings 가드가 무력화되는 문제 방지)
+  wrap.addEventListener('mousedown', (e) => {
+    e.preventDefault()
+    input.focus()
   })
   const upBtn = document.createElement('button')
   applySpinBtn(upBtn)
@@ -221,6 +227,7 @@ export function createNumInput(options: {
   })
 
   const spinBtns = createSpinButtons(
+    input,
     () => { currentValue = Math.round((currentValue + numStep) * 100) / 100; input.value = String(currentValue); options.onChange(currentValue) },
     () => { currentValue = Math.round(Math.max(0, currentValue - numStep) * 100) / 100; input.value = String(currentValue); options.onChange(currentValue) },
   )
@@ -286,6 +293,7 @@ export function createMoneyInput(options: {
   })
 
   const spinBtns = createSpinButtons(
+    input,
     () => { currentValue = currentValue + step; input.value = currentValue > 0 ? currentValue.toLocaleString() : '0'; options.onChange(currentValue) },
     () => { currentValue = Math.max(0, currentValue - step); input.value = currentValue > 0 ? currentValue.toLocaleString() : '0'; options.onChange(currentValue) },
   )
