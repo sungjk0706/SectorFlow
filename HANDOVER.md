@@ -4,21 +4,21 @@
 - 없음
 
 ## 진행 중 작업 (다음 세션에서 이어서 진행)
-- **Vite http proxy error 로그 근본 해결**
-  - 현상: 기동 시 프론트 health check가 백엔드보다 먼저 시작되어 ECONNREFUSED 발생 → `http proxy error: /api/settings` 로그 출력
-  - 현재 상태: 크래시 방어 완료 (`vite.config.ts` this 컨텍스트 복원) — Vite 정상 동작하나 로그 자체가 발생함
-  - 방향: `SectorFlow.command` 또는 프론트 health check 시작 타이밍 조정 — 백엔드 8000번 포트 ready 확인 후 프록시 요청 시작
+- 없음
 
 ## 직전 완료 작업
+- **2026-07-11: Vite http proxy error 로그 근본 해결**
+  - 원인: `SectorFlow.command`에서 프론트엔드 ready 시 즉시 `break`로 탈출 → 백엔드 준비 전 브라우저 오픈 → 프론트 `healthCheck()`가 Vite 프록시 통해 ECONNREFUSED 발생 → "http proxy error" 로그 출력
+  - 수정: 프론트엔드 ready 시 `break` 제거 → 백엔드+프론트엔드 모두 ready 대기 후 브라우저 오픈, 불필요한 백엔드 추가 대기 섹션 제거
+  - 검증: 런타임 기동 → `GET /api/health 200` 첫 시도 성공, WS 3채널 정상 연결, http proxy error 로그 0건, 백엔드 기동 약 230ms, 커밋 `45c27d9`
 - **2026-07-11: 프론트엔드 Enter 키 포커스 이동 개선 + Vite 프록시 크래시 방어**
   - Enter 키 포커스 이동: `setting-row.ts` `focusNext` 셀렉터에서 `tabindex="-1"` 스핀 버튼 제외 + `display:none` 탭 요소 필터링, Telegram 입력창 3개 + API 키 입력창 3개에 Enter 핸들러 추가 — 총 28개 입력창 개선, 커밋 `10beff1`
   - Vite 프록시 크래시 방어: `vite.config.ts` EE3 `listeners()` 컨텍스트 손실 근본 해결 — `fn.apply(proxy, [err, ...rest])`로 this와 인자 복원, `proxy.onError` default throw 스킵, 커밋 `7d3c11c`
-  - 검증: `npm run typecheck` 통과, `npm run build` 통과, 런타임 검증 (백엔드 없이 Vite 기동 → HTTP/WS 프록시 에러 시 크래시 없음, 연속 3회 에러에도 Vite 정상 유지)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
-- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어 — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: Enter 키 포커스 개선 `10beff1`, Vite 프록시 크래시 방어 `7d3c11c` — `main` == `origin/main`
+- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈) — 모두 코드 확인 완료, `npm run build` 통과
+- **Git**: Vite http proxy error 근본 해결 `45c27d9` — `main` == `origin/main`
 - **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2761 passed, 0 failed
   - 0% 모듈 7개 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
   - 10%대 모듈 9개 해결: engine_settings(100%), stock_tables(100%), stock_filter(99.44%), stock_classification_data(95.14%), settings_store(93.13%), sector_data_provider(92.94%), engine_bootstrap(49.62%), engine_snapshot(39.22%), engine_sector_confirm(33.45%)
@@ -27,7 +27,9 @@
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 
 ## 다음 단계
-- **1순위: 유령 포지션 005930 근본 원인 조사 (후순위)**
+- **1순위: engine_sector_confirm 커버리지 추가 개선 (91.20% → 95%+ 목표)**
+  - 현재 91.20%로 30~50%대 Phase 3 완료 기준 충족했으나, 남은 8.8% 분석 후 추가 테스트 작성 여부 검토
+- **2순위: 유령 포지션 005930 근본 원인 조사 (후순위)**
   - 여러 차례 시도했으나 원인 식별이 어려워 후순위로 변경
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
