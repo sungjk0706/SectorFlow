@@ -36,23 +36,24 @@ export interface SettingsManager {
   getSettings(): AppSettings | null
   isLoading(): boolean
   saveSection(data: Record<string, unknown>): Promise<SaveResult>
-  registerEditing(id: string, editing: boolean): void
   subscribe(cb: () => void): () => void
   destroy(): void
 }
 
 export function createSettingsManager(store: StoreApi<UIState> = uiStore): SettingsManager {
-  const editingSet = new Set<string>()
   const subscribers = new Set<() => void>()
 
   function notify(): void {
     for (const cb of subscribers) cb()
   }
 
-  // store의 settings 변경 감지 — 편집 중이 아닐 때만 반영
-  const unsubStore = store.subscribe(() => {
-    if (editingSet.size > 0) return
-    notify()
+  // store의 settings 변경 감지 — settings가 실제로 바뀔 때만 반영 (무관한 store 변경 무시)
+  let prevSettings = store.getState().settings
+  const unsubStore = store.subscribe((state) => {
+    if (state.settings !== prevSettings) {
+      prevSettings = state.settings
+      notify()
+    }
   })
 
   function getSettings(): AppSettings | null {
@@ -81,11 +82,6 @@ export function createSettingsManager(store: StoreApi<UIState> = uiStore): Setti
     }
   }
 
-  function registerEditing(id: string, editing: boolean): void {
-    if (editing) editingSet.add(id)
-    else editingSet.delete(id)
-  }
-
   function subscribe(cb: () => void): () => void {
     subscribers.add(cb)
     return () => { subscribers.delete(cb) }
@@ -94,10 +90,9 @@ export function createSettingsManager(store: StoreApi<UIState> = uiStore): Setti
   function destroy(): void {
     unsubStore()
     subscribers.clear()
-    editingSet.clear()
   }
 
-  return { getSettings, isLoading, saveSection, registerEditing, subscribe, destroy }
+  return { getSettings, isLoading, saveSection, subscribe, destroy }
 }
 
 // ── 전역 싱글톤 Settings Manager (Python GC 최적화) ──
