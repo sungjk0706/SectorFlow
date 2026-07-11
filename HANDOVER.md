@@ -4,14 +4,15 @@
 - 없음
 
 ## 직전 완료 작업
-- **2026-07-12: AGENTS.md 컨텍스트 관리 규칙 보강 — 작업 분할 + 단계별 컨텍스트 점검 추가**
-  - **대상**: `AGENTS.md`, `HANDOVER.md`
-  - **현상**: AGENTS.md 섹션4 Context Management Rules에 (1) 작업량 기반 사전 분할 규칙, (2) 단계 완료 시 컨텍스트 사용량 점검 규칙이 미포함. 기존 규칙은 컨텍스트 가득 찬 이후의 사후 대응만 있고 사전 예방 규칙 부재
-  - **근본 원인**: 이전 개정에서 사후 종료 규칙(사전 종료 권한, HANDOVER 기록 의무)은 추가했으나, 사전 분할·점검 규칙을 누락
-  - **수정 1 (신규 #1)**: 섹션4 Context Management Rules에 "작업량 기반 사전 분할" 추가 — 작업량이 많은 경우 에이전트가 자체 판단하여 작은 단위로 분할, 각 단위는 독립적으로 완료·검증 가능한 크기, 분할 시 사용자에게 분할 계획 보고 후 진행
-  - **수정 2 (신규 #2)**: 섹션4 Context Management Rules에 "단계 완료 시 컨텍스트 점검" 추가 — 각 작은 단계 완료 시 컨텍스트 사용량 점검, 사용량이 높으면 다음 단계 진행 전 HANDOVER.md 갱신하여 만일의 중단에 대비
-  - **수정 3 (재번호)**: 기존 Context Management Rules #1~#6을 #3~#8로 재번호. 내용은 보존
-  - **검증**: 신규 2건 추가 확인, 기존 6건 내용 보존 확인, AGENTS.md 전체 일관성 확인
+- **2026-07-12: B-05 아키텍처 점검 — 자동매매 유효성 및 코어 큐 (6건 수정)**
+  - **대상**: `auto_trading_effective.py`, `core_queues.py`, `engine_lifecycle.py`, `ARCHITECTURE.md`, `architecture_audit_plan.md`
+  - **B05-01 (P20/P21)**: `_in_time_range` silent except → `logger.warning` 추가. 설정 키 누락 시 매수·매도 차단 원인을 로그에 기록
+  - **B05-02 (P16)**: `schedule_allows_auto_trading` dead code 제거. 호출처 전무 (grep 확인)
+  - **B05-03 (P10)**: docstring에서 제거된 필드 `auto_trade_on` historical reference 정리
+  - **B05-04 (P16/P10)**: `core_queues.py` docstring "5개 코어 큐" → 4개 수정. `order_queue` phantom 참조 제거. `ARCHITECTURE.md:53,265`의 `order_queue` 참조도 "직접 호출"로 수정
+  - **B05-05 (P16/P22)**: `clear_all_queues` dead code → `stop_engine()`에 배선. 엔진 재기동 시 stale 큐 데이터 제거
+  - **B05-06 (P10)**: `ARCHITECTURE.md` tick_queue size 5000 → 20000 갱신 (코드 기준 SSOT)
+  - **검증**: py_compile 통과, 378 tests passed (test_trading + test_buy_order_executor + test_settings_store + test_web_app + test_pipeline_compute + test_daily_time_scheduler + test_market_close_pipeline + test_broker_change), 런타임 기동 검증 완료 (tick=20000 로그 확인, 잔존 프로세스 0)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
@@ -27,7 +28,7 @@
 
 ## 진행 중 작업
 
-### 아키텍처 전수 점검 — 4/30 세션 완료
+### 아키텍처 전수 점검 — 5/30 세션 완료
 
 | 세션 ID | 우선순위 | 내용 | 상태 |
 |---------|----------|------|------|
@@ -35,7 +36,7 @@
 | B-02 | P0 | 리스크 관리 및 서킷 브레이커 | ☑ 완료 (3건 수정, 2774 tests passed, V-02 프론트 통지 보류) |
 | B-03 | P0 | Dry Run (테스트 모드 가상 주문) | ☑ 완료 (3건 수정, 2768 tests passed) |
 | B-04 | P0 | 정산 엔진 및 거래 이력 | ☑ 완료 (4건 수정, 1건 보류, 2763 tests passed) |
-| B-05 | P0 | 자동매매 유효성 및 코어 큐 | ☐ 미시작 |
+| B-05 | P0 | 자동매매 유효성 및 코어 큐 | ☑ 완료 (6건 수정, 378 tests passed) |
 | F-01 | P0 | 통신 계층 및 상태 관리 | ☐ 미시작 |
 | B-06~B-11 | P1 | 엔진 루프/WS/부트스트랩/섹터/계좌/파이프라인 | ☐ 미시작 |
 | B-12~B-19 | P2 | DB/설정/Broker/증권사/Domain/스케줄러 | ☐ 미시작 |
@@ -44,12 +45,11 @@
 
 ## 다음 단계
 
-### 1순위: 아키텍처 전수 점검 P0 세션 (B-05, F-01)
+### 1순위: 아키텍처 전수 점검 P0 세션 (F-01)
 
-B-04 완료. 다음 세션에서 `docs/architecture_audit_plan.md`의 추천 세션 순서에 따라 진행:
+B-05 완료. P0 백엔드 세션(5/5) 전부 완료. 다음 세션에서 `docs/architecture_audit_plan.md`의 추천 세션 순서에 따라 진행:
 
-1. **B-05**: 자동매매 유효성 및 코어 큐 (`services/auto_trading_effective.py`, `services/core_queue.py`)
-2. **F-01**: 통신 계층 및 상태 관리 (`stores/hotStore.ts`, `api/ws.ts`, `binding.ts` 등)
+1. **F-01**: 통신 계층 및 상태 관리 (`stores/hotStore.ts`, `api/ws.ts`, `binding.ts` 등)
 
 **보류 (V-02)**: B-02에서 발견된 OMS 서킷브레이커 OPEN 프론트엔드 통지 (P21) — 프론트엔드 세션에서 `circuit_breaker_open` WS 이벤트 핸들러 및 UI 알림 칩 추가 필요
 

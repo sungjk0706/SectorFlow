@@ -82,6 +82,10 @@ async def stop_engine() -> None:
         await asyncio.gather(*bg_tasks, return_exceptions=True)
         logger.info("[연산] 백그라운드 태스크 취소 완료")
 
+    # 모든 루프·태스크 취소 완료 후 큐 잔류 데이터 제거 (원칙16 살아있는 경로, 원칙22 데이터 정합성)
+    from backend.app.services.core_queues import clear_all_queues
+    clear_all_queues()
+
     # 테스트모드 가상 잔고: 엔진 중지 시 초기화하지 않음
     # (포지션·예수금은 사용자가 직접 초기화할 때만 리셋)
 

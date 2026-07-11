@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 time_scheduler_on(마스터 스위치) + 매수/매도 개별 시간 범위 + auto_buy_on / auto_sell_on.
-영속 필드 auto_trade_on 제거 후 엔진·API·WS에서 공통 사용.
+엔진·API·WS에서 공통 사용하는 자동매매 유효성 판정 모듈.
 
 v2: 작동시간을 매수/매도 각각 분리.
     - buy_time_start / buy_time_end  (매수 작동시간)
@@ -11,7 +11,9 @@ v2: 작동시간을 매수/매도 각각 분리.
 from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 from typing import Any
+import logging
 KST = timezone(timedelta(hours=9))
+logger = logging.getLogger(__name__)
 
 
 def _master_on(flat: dict[str, Any] | None) -> bool:
@@ -39,17 +41,10 @@ def _in_time_range(flat: dict[str, Any], start_key: str, end_key: str,
         start_str = str(flat[start_key])[:5]
         end_str = str(flat[end_key])[:5]
         return start_str <= hm <= end_str
-    except Exception:
+    except (KeyError, TypeError) as e:
+        logger.warning("[자동매매] 시간 범위 설정 오류 — %s: %s (start_key=%s, end_key=%s)",
+                       type(e).__name__, e, start_key, end_key)
         return False
-
-
-def schedule_allows_auto_trading(flat: dict[str, Any] | None, now: datetime | None = None) -> bool:
-    """
-    마스터 스위치 체크만 수행 (하위호환 유지).
-    time_scheduler_on == False -> 항상 False.
-    time_scheduler_on == True -> True (시간 범위는 매수/매도 각각에서 판단).
-    """
-    return _master_on(flat)
 
 
 def auto_buy_effective(flat: dict[str, Any] | None, now: datetime | None = None) -> bool:

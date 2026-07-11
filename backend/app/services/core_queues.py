@@ -2,9 +2,8 @@
 """
 전역 이벤트 버스 (Queues) - 파이프라인 아키텍처 핵심 배관
 
-HTS급 실시간 처리를 위한 5개 코어 큐:
+HTS급 실시간 처리를 위한 4개 코어 큐:
 - tick_queue: 시세 수신 전용 (드롭 정책 적용)
-- order_queue: 주문/체결 전용 (무결성 보장)
 - broadcast_queue: UI 프론트엔드 전송 전용
 - control_queue: 사용자 설정 제어 전용 (최우선순위)
 - price_pass_through_queue: 현재가 직통 전송 전용 (Compute 루프 우회)
