@@ -409,3 +409,18 @@ def cancel_sector_recompute() -> None:
 
 def cancel_recompute_timer() -> None:
     clear_dirty_sectors()
+
+
+def cancel_all_dynamic_unreg_timers() -> None:
+    """증권사 변경 시 모든 동적 구독 해지 타이머 취소 + 대기실 클리어.
+
+    stop_engine() 시 cancel_recompute_timer()가 _dirty_codes만 클리어하므로,
+    동적 구독 해지 타이머는 별도로 취소해야 함.
+    잔존 타이머가 신규 세션에서 발화하면 DYNAMIC_UNREG가 신규 증권사에 전송됨 (원칙 22 위반).
+    """
+    global _PENDING_UNREG_TIMERS, _UNREG_READY_CODES, _UNREG_BATCH_PENDING
+    for timer in _PENDING_UNREG_TIMERS.values():
+        timer.cancel()
+    _PENDING_UNREG_TIMERS.clear()
+    _UNREG_READY_CODES.clear()
+    _UNREG_BATCH_PENDING = False

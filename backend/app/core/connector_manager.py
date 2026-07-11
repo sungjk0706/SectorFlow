@@ -113,12 +113,24 @@ class ConnectorManager:
             logger.error("[연결] %s 구독 복원 실패: %s", broker_id.upper(), e, exc_info=True)
 
     async def disconnect_all(self) -> None:
-        """모든 Connector를 병렬로 해제한다."""
+        """모든 Connector를 병렬로 해제한다.
+
+        LS API 명세 (US3/UH1): tr_type=4 명시적 실시간 시세 해지 후 소켓 종료.
+        각 Connector의 disconnect() 호출 전 unsubscribe_stocks로 구독 중인 종목 해지.
+        원칙 4: 각 증권사의 API 명세 준수.
+        """
         if not self._connectors:
             return
 
         async def _disconnect_one(broker_name: str, connector: BrokerConnector) -> None:
             try:
+                # 명시적 구독 해지 (LS API tr_type=4) — 소켓 종료 전
+                sub_codes = self._sub_codes.get(broker_name, set())
+                if sub_codes and hasattr(connector, "unsubscribe_stocks"):
+                    try:
+                        await connector.unsubscribe_stocks(list(sub_codes))
+                    except Exception:
+                        logger.warning("[연결] %s 구독 해지 전송 실패 (무시)", broker_name.upper(), exc_info=True)
                 await connector.disconnect()
                 logger.info("[연결] %s 연결 해제 완료", broker_name.upper())
             except Exception as e:

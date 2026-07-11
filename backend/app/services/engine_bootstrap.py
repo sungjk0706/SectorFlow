@@ -180,6 +180,12 @@ async def _login_post_pipeline() -> None:
                 from backend.app.services.engine_ws import _run_sector_reg_pipeline, _ensure_ws_subscriptions_for_positions
                 await _run_sector_reg_pipeline()
                 await _ensure_ws_subscriptions_for_positions()
+                # 동적 구독 복원 — sector_summary_cache 재계산 후 buy_targets 기준 DYNAMIC_REG
+                # 원칙 16: 동적 구독 복원이 실제 LOGIN 후 파이프라인에 배선됨
+                ss = state.sector_summary_cache
+                if ss and ss.buy_targets:
+                    from backend.app.services.engine_sector_confirm import sync_dynamic_subscriptions
+                    sync_dynamic_subscriptions(ss.buy_targets)
 
             await _account_notify.notify_desktop_sector_refresh()
             await _account_notify.notify_desktop_sector_stocks_refresh()
