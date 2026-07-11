@@ -2,7 +2,7 @@
 // 매수설정 카드 — Vanilla TS PageModule
 // BuySettingsCard.tsx + BuySettingsSection.tsx + BuyBlockSection.tsx + QuickToggle + TimePairInput 통합
 
-import { createSettingRow, createNumInput, createMoneyInput, createToggleBtn, createFixedValue, createSelect } from '../components/common/setting-row'
+import { createSettingRow, createNumInput, createMoneyInput, createToggleBtn, createFixedValue, createSelect, createToggleLabelControlsRow } from '../components/common/setting-row'
 import { sectionTitle } from '../components/common/settings-common'
 import { initSettingsPage, startSettingsSubscription, destroySettingsPage } from '../utils/settings-page'
 import type { AutoSaveHelper } from '../utils/settings-save'
@@ -25,6 +25,7 @@ let fallInput: ReturnType<typeof createNumInput> | null = null
 let strengthInput: ReturnType<typeof createNumInput> | null = null
 let maxDailyToggle: ReturnType<typeof createToggleBtn> | null = null
 let maxDailyInput: ReturnType<typeof createMoneyInput> | null = null
+let maxDailyControls: HTMLElement | null = null
 let maxStockCntInput: ReturnType<typeof createNumInput> | null = null
 let buyAmtInput: ReturnType<typeof createMoneyInput> | null = null
 
@@ -58,41 +59,6 @@ let buyIntervalInput: ReturnType<typeof createNumInput> | null = null
 let buyIntervalControls: HTMLElement | null = null
 
 
-/* ── 부스트 가산점 섹션 헬퍼 (토글 + 라벨 + 스코어 입력) ── */
-function createBoostScoreSection(
-  root: HTMLElement,
-  labelText: string,
-  toggleKey: string,
-  scoreKey: string,
-  vals: Record<string, unknown>,
-  helper: AutoSaveHelper,
-): { toggle: ReturnType<typeof createToggleBtn>; scoreInput: ReturnType<typeof createNumInput>; controls: HTMLElement } {
-  const labelWrap = document.createElement('span')
-  labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
-  const toggle = createToggleBtn({ on: false, onClick: () => {
-    const next = !vals[toggleKey]
-    vals[toggleKey] = next
-    toggle.setOn(next)
-    setDisabled(controls, !next)
-    helper.saveImmediate({ [toggleKey]: next })
-  }})
-  labelWrap.appendChild(toggle.el)
-  const label = document.createElement('span')
-  label.textContent = labelText
-  labelWrap.appendChild(label)
-
-  const controls = document.createElement('span')
-  controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
-  setDisabled(controls, true)
-
-  const scoreInput = createNumInput({ value: 1.0, onChange: v => { vals[scoreKey] = v; helper.autoSave(scoreKey, v) }, step: 1, name: scoreKey })
-  controls.appendChild(scoreInput.el)
-
-  root.appendChild(createSettingRow(labelWrap, controls))
-  return { toggle, scoreInput, controls }
-}
-
-
 /* ── 설정 동기화 ── */
 function syncFromSettings(s: AppSettings): void {
   if (boostOrderDualSlider && boostOrderDualSlider.isInteracting) return
@@ -110,7 +76,7 @@ function syncFromSettings(s: AppSettings): void {
   const dailyOn = !!r.max_daily_total_buy_on
   maxDailyToggle?.setOn(dailyOn)
   if (maxDailyInput && (!act || !maxDailyInput.el.contains(act))) maxDailyInput.setValue(Number(r.max_daily_total_buy_amt) || 0)
-  if (maxDailyInput) setDisabled(maxDailyInput.el, !dailyOn)
+  if (maxDailyControls) setDisabled(maxDailyControls, !dailyOn)
   if (maxStockCntInput && (!act || !maxStockCntInput.el.contains(act))) maxStockCntInput.setValue(Number(r.max_stock_cnt) || 0)
   if (buyAmtInput && (!act || !buyAmtInput.el.contains(act))) buyAmtInput.setValue(Number(r.buy_amt) || 0)
 
@@ -199,20 +165,41 @@ function mount(container: HTMLElement): void {
 
   // --- 5일 고가 돌파 ---
   {
-    const r = createBoostScoreSection(root, '5일 고가 돌파', 'boost_high_breakout_on', 'boost_high_breakout_score', vals, saveHelper!)
-    boostHighToggle = r.toggle; boostHighScoreInput = r.scoreInput; boostHighControls = r.controls
+    boostHighScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_high_breakout_score = v; saveHelper!.autoSave('boost_high_breakout_score', v) }, step: 1, name: 'boost_high_breakout_score' })
+    const r = createToggleLabelControlsRow({
+      labelText: '5일 고가 돌파',
+      toggleOn: false,
+      onToggle: next => { vals.boost_high_breakout_on = next; saveHelper!.saveImmediate({ boost_high_breakout_on: next }) },
+      controlsChild: boostHighScoreInput.el,
+    })
+    boostHighToggle = r.toggle; boostHighControls = r.controls
+    root.appendChild(r.el)
   }
 
   // --- 프로그램 순매수 ---
   {
-    const r = createBoostScoreSection(root, '프로그램 순매수', 'boost_program_net_buy_on', 'boost_program_net_buy_score', vals, saveHelper!)
-    boostProgramToggle = r.toggle; boostProgramScoreInput = r.scoreInput; boostProgramControls = r.controls
+    boostProgramScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_program_net_buy_score = v; saveHelper!.autoSave('boost_program_net_buy_score', v) }, step: 1, name: 'boost_program_net_buy_score' })
+    const r = createToggleLabelControlsRow({
+      labelText: '프로그램 순매수',
+      toggleOn: false,
+      onToggle: next => { vals.boost_program_net_buy_on = next; saveHelper!.saveImmediate({ boost_program_net_buy_on: next }) },
+      controlsChild: boostProgramScoreInput.el,
+    })
+    boostProgramToggle = r.toggle; boostProgramControls = r.controls
+    root.appendChild(r.el)
   }
 
   // --- 거래대금 순위 ---
   {
-    const r = createBoostScoreSection(root, '거래대금 순위 (보유제외)', 'boost_trade_amount_rank_on', 'boost_trade_amount_rank_score', vals, saveHelper!)
-    boostTradeAmountToggle = r.toggle; boostTradeAmountScoreInput = r.scoreInput; boostTradeAmountControls = r.controls
+    boostTradeAmountScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_trade_amount_rank_score = v; saveHelper!.autoSave('boost_trade_amount_rank_score', v) }, step: 1, name: 'boost_trade_amount_rank_score' })
+    const r = createToggleLabelControlsRow({
+      labelText: '거래대금 순위 (보유제외)',
+      toggleOn: false,
+      onToggle: next => { vals.boost_trade_amount_rank_on = next; saveHelper!.saveImmediate({ boost_trade_amount_rank_on: next }) },
+      controlsChild: boostTradeAmountScoreInput.el,
+    })
+    boostTradeAmountToggle = r.toggle; boostTradeAmountControls = r.controls
+    root.appendChild(r.el)
   }
 
   // --- 매수/매도호가 잔량비율 ---
@@ -220,41 +207,7 @@ function mount(container: HTMLElement): void {
     const block = document.createElement('div')
     block.style.borderBottom = '1px solid ' + COLOR.borderLight
 
-    // Row 1: toggle + label | 가산점 + input
-    const labelWrap = document.createElement('span')
-    labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
-    boostOrderToggle = createToggleBtn({ on: false, onClick: () => {
-      const next = !vals.boost_order_ratio_on
-      vals.boost_order_ratio_on = next
-      boostOrderToggle!.setOn(next)
-      if (boostOrderControls) {
-        setDisabled(boostOrderControls, !next)
-      }
-      if (boostOrderRow2) {
-        setDisabled(boostOrderRow2, !next)
-      }
-      saveHelper!.saveImmediate({ boost_order_ratio_on: next })
-    }})
-    labelWrap.appendChild(boostOrderToggle.el)
-    const label = document.createElement('span')
-    label.textContent = '매수/매도호가 잔량비율'
-    labelWrap.appendChild(label)
-
-    const row1Controls = document.createElement('span')
-    row1Controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
-    setDisabled(row1Controls, true)
-    boostOrderControls = row1Controls
-
-    boostOrderScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_order_ratio_score = v; saveHelper!.autoSave('boost_order_ratio_score', v) }, step: 1, name: 'boost_order_ratio_score' })
-    row1Controls.appendChild(boostOrderScoreInput.el)
-
-    const row1 = document.createElement('div')
-    Object.assign(row1.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' })
-    row1.appendChild(labelWrap)
-    row1.appendChild(row1Controls)
-    block.appendChild(row1)
-
-    // Row 2: dual label slider
+    // Row 2: dual label slider (먼저 생성 — extraDisableTargets로 전달)
     boostOrderDualSlider = createDualLabelSlider({
       min: 0, max: 200, value: 120, step: 1,
       leftLabel: (v) => v < 100 ? `매도잔량 +${100 - v}%` : '매도잔량',
@@ -275,9 +228,21 @@ function mount(container: HTMLElement): void {
     const row2 = document.createElement('div')
     Object.assign(row2.style, { padding: '0 0 6px' })
     row2.appendChild(boostOrderDualSlider.el)
-    setDisabled(row2, true)
     boostOrderRow2 = row2
 
+    // Row 1: toggle + label | 가산점 + input
+    boostOrderScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_order_ratio_score = v; saveHelper!.autoSave('boost_order_ratio_score', v) }, step: 1, name: 'boost_order_ratio_score' })
+    const r = createToggleLabelControlsRow({
+      labelText: '매수/매도호가 잔량비율',
+      toggleOn: false,
+      onToggle: next => { vals.boost_order_ratio_on = next; saveHelper!.saveImmediate({ boost_order_ratio_on: next }) },
+      controlsChild: boostOrderScoreInput.el,
+      extraDisableTargets: [row2],
+      rowStyle: { borderBottom: 'none' },
+    })
+    boostOrderToggle = r.toggle; boostOrderControls = r.controls
+
+    block.appendChild(r.el)
     block.appendChild(row2)
     root.appendChild(block)
   }
@@ -291,20 +256,14 @@ function mount(container: HTMLElement): void {
   // 일일 최대 매수 금액 (토글 + 금액 입력)
   maxDailyInput = createMoneyInput({ value: 0, onChange: v => { vals.max_daily_total_buy_amt = v; saveHelper!.autoSave('max_daily_total_buy_amt', v) }, name: 'max_daily_total_buy_amt' })
   {
-    const labelWrap = document.createElement('span')
-    labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
-    maxDailyToggle = createToggleBtn({ on: false, onClick: () => {
-      const next = !maxDailyToggle!.isOn()
-      vals.max_daily_total_buy_on = next
-      maxDailyToggle!.setOn(next)
-      if (maxDailyInput) setDisabled(maxDailyInput.el, !next)
-      saveHelper!.saveImmediate({ max_daily_total_buy_on: next })
-    }})
-    labelWrap.appendChild(maxDailyToggle.el)
-    const label = document.createElement('span')
-    label.textContent = '전체 일일 최대 매수 금액'
-    labelWrap.appendChild(label)
-    root.appendChild(createSettingRow(labelWrap, maxDailyInput.el))
+    const r = createToggleLabelControlsRow({
+      labelText: '전체 일일 최대 매수 금액',
+      toggleOn: false,
+      onToggle: next => { vals.max_daily_total_buy_on = next; saveHelper!.saveImmediate({ max_daily_total_buy_on: next }) },
+      controlsChild: maxDailyInput.el,
+    })
+    maxDailyToggle = r.toggle; maxDailyControls = r.controls
+    root.appendChild(r.el)
   }
 
   // 최대 동시 보유 종목 수
@@ -314,31 +273,15 @@ function mount(container: HTMLElement): void {
   // ── 매수 주문 간격 섹션 ──
   root.appendChild(sectionTitle('매수 주문 간격'))
   {
-    const labelWrap = document.createElement('span')
-    labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
-    buyIntervalToggle = createToggleBtn({ on: false, onClick: () => {
-      const next = !buyIntervalToggle!.isOn()
-      vals.buy_interval_on = next
-      buyIntervalToggle!.setOn(next)
-      if (buyIntervalControls) {
-        setDisabled(buyIntervalControls, !next)
-      }
-      saveHelper!.saveImmediate({ buy_interval_on: next })
-    }})
-    labelWrap.appendChild(buyIntervalToggle.el)
-    const label = document.createElement('span')
-    label.textContent = '매수 주문 간격 활성화 (분)'
-    labelWrap.appendChild(label)
-
-    const controls = document.createElement('span')
-    controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
-    setDisabled(controls, true)
-    buyIntervalControls = controls
-
     buyIntervalInput = createNumInput({ value: 0, onChange: v => { vals.buy_interval_min = v; saveHelper!.autoSave('buy_interval_min', v) }, step: 1, name: 'buy_interval_min' })
-    controls.appendChild(buyIntervalInput.el)
-
-    root.appendChild(createSettingRow(labelWrap, controls))
+    const r = createToggleLabelControlsRow({
+      labelText: '매수 주문 간격 활성화 (분)',
+      toggleOn: false,
+      onToggle: next => { vals.buy_interval_on = next; saveHelper!.saveImmediate({ buy_interval_on: next }) },
+      controlsChild: buyIntervalInput.el,
+    })
+    buyIntervalToggle = r.toggle; buyIntervalControls = r.controls
+    root.appendChild(r.el)
   }
 
   // ── 동일 종목 재매수 제어 섹션 ──
@@ -350,26 +293,6 @@ function mount(container: HTMLElement): void {
 
   // 재매수 차단 ON/OFF + 차단 기간 select
   {
-    const labelWrap = document.createElement('span')
-    labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
-    rebuyBlockToggle = createToggleBtn({ on: true, onClick: () => {
-      const next = !vals.rebuy_block_on
-      vals.rebuy_block_on = next
-      rebuyBlockToggle!.setOn(next)
-      if (rebuyBlockControls) {
-        setDisabled(rebuyBlockControls, !next)
-      }
-      saveHelper!.saveImmediate({ rebuy_block_on: next })
-    }})
-    labelWrap.appendChild(rebuyBlockToggle.el)
-    const label = document.createElement('span')
-    label.textContent = '재매수 차단 활성화'
-    labelWrap.appendChild(label)
-
-    const controls = document.createElement('span')
-    controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
-    rebuyBlockControls = controls
-
     rebuyBlockSelect = createSelect({
       items: [
         { value: 'today', label: '당일' },
@@ -383,9 +306,14 @@ function mount(container: HTMLElement): void {
       onChange: v => { vals.rebuy_block_period = v; saveHelper!.autoSave('rebuy_block_period', v) },
       name: 'rebuy_block_period',
     })
-    controls.appendChild(rebuyBlockSelect.el)
-
-    root.appendChild(createSettingRow(labelWrap, controls))
+    const r = createToggleLabelControlsRow({
+      labelText: '재매수 차단 활성화',
+      toggleOn: true,
+      onToggle: next => { vals.rebuy_block_on = next; saveHelper!.saveImmediate({ rebuy_block_on: next }) },
+      controlsChild: rebuyBlockSelect.el,
+    })
+    rebuyBlockToggle = r.toggle; rebuyBlockControls = r.controls
+    root.appendChild(r.el)
   }
 
   container.appendChild(root)
@@ -399,7 +327,7 @@ function unmount(): void {
   destroySettingsPage(unsubSettings, saveHelper, settingsMgr)
   unsubSettings = null; saveHelper = null; settingsMgr = null
   riseInput = null; fallInput = null; strengthInput = null
-  maxDailyToggle = null; maxDailyInput = null; maxStockCntInput = null; buyAmtInput = null
+  maxDailyToggle = null; maxDailyInput = null; maxDailyControls = null; maxStockCntInput = null; buyAmtInput = null
   boostHighToggle = null; boostHighScoreInput = null; boostHighControls = null
   boostOrderToggle = null
   if (boostOrderDualSlider && typeof boostOrderDualSlider.destroy === 'function') {

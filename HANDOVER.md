@@ -7,21 +7,19 @@
 - 없음
 
 ## 직전 완료 작업
-- **2026-07-11: 프론트엔드 입력 요소 공통 컴포넌트화 — Phase 1~4 전체 완료**
-  - `setting-row.ts`: `createTextInput`(text/password, applyInputBase 기반, Enter → focusNext), `createRadioGroup`(items/name/value/onChange, handle: setValue/getValue/setDisabled) 추가
-  - `settings-common.ts`: `createDescText`(FONT_SIZE.desc, COLOR.tertiary, extraStyle 옵션) 추가
-  - `ui-styles.ts`: `FONT_SIZE.desc: '12px'` 토큰 추가 (GS.desc 대체, SSOT)
-  - Phase 1: `general-settings.ts` 텔레그램 탭 raw input 3개 → `createTextInput`, `TEXT_INPUT_WIDTH` import 제거
-  - Phase 2: 투자모드 라디오 + 증권사 라디오 → `createRadioGroup`, `syncTradeMode()`/`syncBrokerRadios()` querySelector → handle 단순화, 모듈 변수 2개 → handle 참조
-  - Phase 3: `createWsTimePairInput` 중복 함수 제거 → `createTimePairInput` + handle 사용, 모듈 변수 7개(wsSH/wsSM/wsEH/wsEM/wsStartSlot/wsEndSlot/wsTimePairWrap) → `wsTimeHandle` 1개, `updateWsTimeDisabled` → `wsTimeHandle.setEnabled()`
-  - Phase 4: 9곳 설명 행 raw div → `createDescText`, `GS.desc`/`GS.descPad` 제거
-  - 제외: 컴포지션 패턴(토글+라벨+컨트롤), 커스텀 API 탭 바, context-popup 입력, settings-common 시/분 탭
-  - 검증: typecheck 통과, build 통과, 테스트 112 passed
+- **2026-07-11: 컴포지션 패턴(토글+라벨+컨트롤) 공통화 — buy-settings.ts 5곳 교체 완료**
+  - `setting-row.ts`: `createToggleLabelControlsRow`(labelText/toggleOn/onToggle/controlsChild/initialDisabled/extraDisableTargets/rowStyle) 팩토리 함수 추가, `setDisabled` import 추가
+  - `buy-settings.ts`: `createBoostScoreSection` 함수 제거 → 3곳(5일 고가/프로그램 순매수/거래대금 순위) 인라인 `createToggleLabelControlsRow` 호출
+  - 매수/매도호가 잔량비율 block: 수동 row1 div → `createToggleLabelControlsRow` + `extraDisableTargets: [row2]` + `rowStyle: { borderBottom: 'none' }`
+  - 일일 최대 매수 금액: controls span 없음 → `createToggleLabelControlsRow` 사용, toggle OFF → disabled 일관성 통일 (사용자 승인), `maxDailyControls` 모듈 변수 추가
+  - 매수 주문 간격, 재매수 차단: 수동 패턴 → `createToggleLabelControlsRow`
+  - `syncFromSettings`: `setDisabled(maxDailyInput.el, ...)` → `setDisabled(maxDailyControls, ...)`
+  - 검증: typecheck 통과, build 통과 (60 modules, 1.61s)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈), 수익현황 업종 섹션 연동(도넛 범례 클릭→스크롤+하이라이트), 전체보기/전체접기 토글 버튼, 차트 onMove undefined 크래시 근본 해결(render early return 시 barRects 동기화), 수익현황 기간 선택 상태 재기동 후 유지(localStorage quickLabel 영속화 + 초기 활성 버튼 복원), 수익상세 페이지 뷰 상태 재기동 후 유지(localStorage selectedView+drilldownActive+dateRange 영속화, 7곳 핸들러 persistViewState) — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: 입력 요소 공통 컴포넌트화 Phase 1~4 전체 완료 — 커밋 + 푸시 완료
+- **Git**: 컴포지션 패턴(토글+라벨+컨트롤) 공통화 완료 — 커밋 + 푸시 완료
 - **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2768 passed, 0 failed
   - 0% 모듈 7개 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
   - 10%대 모듈 9개 해결: engine_settings(100%), stock_tables(100%), stock_filter(99.44%), stock_classification_data(95.14%), settings_store(93.13%), sector_data_provider(92.94%), engine_bootstrap(49.62%), engine_snapshot(39.22%), engine_sector_confirm(33.45%)
@@ -31,16 +29,10 @@
 
 ## 다음 단계
 - **1순위: 유령 포지션 005930 근본 원인 조사**
-  - 버튼 공통화 완료로 최우선 과제로 승격
+  - 버튼 공통화, 입력 요소 공통화, 컴포지션 패턴 공통화 모두 완료로 최우선 과제
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
   - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
-- **2순위: 컴포지션 패턴(토글+라벨+컨트롤) 공통화**
-  - 이번 세션 입력 요소 공통화에서 "Leaf 요소만" 진행, 컴포지션은 제외됨
-  - `buy-settings.ts`에 동일 패턴 5곳 반복: `labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'` + `controls.style.cssText = 'display:flex;align-items:center;gap:6px;'` + `setDisabled(controls, true)` + toggle + label + createNumInput/createSelect
-  - 반복 위치: `createBoostScoreSection`(line 62~93, 3곳 호출), 매수/매도호가 잔량비율 block(line 218~282), 매수 주문 간격(line 316~342), 재매수 차단(line 352~389)
-  - 공통화 방향: `createToggleLabelControlsRow(label, toggleKey, controlsChild, opts)` 팩토리 함수 추가 후 5곳 교체
-  - 영향 파일: `setting-row.ts`(또는 신규 컴포넌트 파일), `buy-settings.ts`
 
 ## 미해결 문제
 - **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결**

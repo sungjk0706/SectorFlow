@@ -1,4 +1,4 @@
-import { COLOR, FONT_SIZE } from './ui-styles'
+import { COLOR, FONT_SIZE, setDisabled } from './ui-styles'
 
 /* ── 공통 너비 상수 ────────────────────────────────────────── */
 export const INPUT_WIDTH = 80
@@ -108,6 +108,52 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
   div.appendChild(labelSpan)
   div.appendChild(child)
   return div
+}
+
+/* ── 토글 + 라벨 + 컨트롤 컴포지션 행 ─────────────────────── */
+export function createToggleLabelControlsRow(options: {
+  labelText: string
+  toggleOn: boolean
+  onToggle: (next: boolean) => void
+  controlsChild: HTMLElement
+  initialDisabled?: boolean
+  extraDisableTargets?: HTMLElement[]
+  rowStyle?: Partial<CSSStyleDeclaration>
+}): {
+  el: HTMLElement
+  toggle: ReturnType<typeof createToggleBtn>
+  controls: HTMLElement
+} {
+  const controls = document.createElement('span')
+  controls.style.cssText = 'display:flex;align-items:center;gap:6px;'
+
+  let toggle: ReturnType<typeof createToggleBtn>
+  toggle = createToggleBtn({ on: options.toggleOn, onClick: () => {
+    const next = !toggle.isOn()
+    toggle.setOn(next)
+    setDisabled(controls, !next)
+    if (options.extraDisableTargets) {
+      for (const t of options.extraDisableTargets) setDisabled(t, !next)
+    }
+    options.onToggle(next)
+  }})
+
+  const labelWrap = document.createElement('span')
+  labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
+  labelWrap.appendChild(toggle.el)
+  const label = document.createElement('span')
+  label.textContent = options.labelText
+  labelWrap.appendChild(label)
+
+  controls.appendChild(options.controlsChild)
+  const initDisabled = options.initialDisabled ?? !options.toggleOn
+  setDisabled(controls, initDisabled)
+  if (options.extraDisableTargets) {
+    for (const t of options.extraDisableTargets) setDisabled(t, initDisabled)
+  }
+
+  const el = createSettingRow(labelWrap, controls, options.rowStyle ? { style: options.rowStyle } : undefined)
+  return { el, toggle, controls }
 }
 
 /* ── 설정 행: 레이블 위 — 입력란 아래 (2줄) ───────────────── */
