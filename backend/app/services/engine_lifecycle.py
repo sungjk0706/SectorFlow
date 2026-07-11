@@ -117,6 +117,21 @@ def reset_broker_session_state() -> None:
     state.sector_summary_ready_event.clear()
     state.ws_reg_pipeline_done.clear()
 
+    # 동적 구독 상태 초기화 (원칙 10 SSOT, 원칙 17 플래그 단일 소스)
+    # 1. master_stocks_cache에서 동적 구독 플래그 + 파생 데이터 제거
+    for entry in state.master_stocks_cache.values():
+        entry.pop("_subscribed_dynamic", None)
+        entry.pop("order_ratio", None)
+        entry.pop("program_net_buy", None)
+        entry.pop("_filtered", None)
+
+    # 2. sector_summary_cache 초기화 — are_buy_targets_changed가 True 반환 유도
+    state.sector_summary_cache = None
+
+    # 3. 동적 구독 해지 타이머 일괄 취소
+    from backend.app.services.engine_sector_confirm import cancel_all_dynamic_unreg_timers
+    cancel_all_dynamic_unreg_timers()
+
 
 def is_engine_running() -> bool:
     """엔진이 현재 가동 중인지 확인한다."""
