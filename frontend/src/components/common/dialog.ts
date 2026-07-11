@@ -1,5 +1,6 @@
 // frontend/src/components/common/dialog.ts — 공통 모달 다이얼로그 시스템 (Facade 패턴)
-import { FONT_SIZE, COLOR } from './ui-styles'
+import { COLOR } from './ui-styles'
+import { createActionButton, type ActionVariant } from './button'
 
 /* ── 공개 타입 ── */
 
@@ -121,26 +122,6 @@ function createMessageElement(message: string): HTMLElement {
   return el
 }
 
-function createButton(label: string, variant: DialogAction['variant']): HTMLButtonElement {
-  const btn = document.createElement('button')
-  btn.type = 'button'
-  btn.textContent = label
-  const isPrimary = variant === 'primary'
-  const isDanger = variant === 'danger'
-  Object.assign(btn.style, {
-    padding: '7px 18px',
-    borderRadius: '6px',
-    border: (isPrimary || isDanger) ? 'none' : '1px solid ' + COLOR.border,
-    background: isPrimary ? `${COLOR.down}` : isDanger ? `${COLOR.up}` : COLOR.white,
-    color: (isPrimary || isDanger) ? COLOR.white : `${COLOR.neutral}`,
-    cursor: 'pointer',
-    fontSize: FONT_SIZE.label,
-    fontFamily: 'inherit',
-    fontWeight: '500',
-  })
-  return btn
-}
-
 /* ── 내부 공통 렌더링 함수 (유일한 구현) ── */
 
 function renderDialog(config: DialogConfig): HTMLElement {
@@ -165,10 +146,14 @@ function renderDialog(config: DialogConfig): HTMLElement {
 
   const buttons: HTMLButtonElement[] = []
   for (const act of config.actions) {
-    const btn = createButton(act.label, act.variant)
-    btn.addEventListener('click', () => {
-      close()
-      act.onClick()
+    const actionVariant: ActionVariant = (!act.variant || act.variant === 'default') ? 'secondary' : act.variant
+    const btn = createActionButton({
+      label: act.label,
+      variant: actionVariant,
+      onClick: () => {
+        close()
+        act.onClick()
+      },
     })
     btnRow.appendChild(btn)
     buttons.push(btn)

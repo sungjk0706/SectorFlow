@@ -3,6 +3,7 @@
 // react-router-dom 대체
 
 import { COLOR } from './components/common/ui-styles'
+import { createActionButton } from './components/common/button'
 
 // ── 타입 정의 ──
 
@@ -198,13 +199,25 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
       removeSpinner(contentEl)
       console.error('[Router] 페이지 로딩 실패:', err)
 
-      contentEl.innerHTML = `
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:16px;min-height:200px;">
-          <p style="color:${COLOR.up};font-size:13px">페이지를 불러올 수 없습니다</p>
-          <button style="padding:8px 16px;border:1px solid ${COLOR.border};border-radius:4px;background:${COLOR.white};cursor:pointer"
-                  onclick="location.reload()">다시 시도</button>
-        </div>
-      `
+      contentEl.innerHTML = ''
+      const errorWrap = document.createElement('div')
+      Object.assign(errorWrap.style, {
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', flex: '1', gap: '16px', minHeight: '200px',
+      })
+      const errorMsg = document.createElement('p')
+      Object.assign(errorMsg.style, { color: COLOR.up, fontSize: '13px' })
+      errorMsg.textContent = '페이지를 불러올 수 없습니다'
+      const retryBtn = createActionButton({
+        label: '다시 시도',
+        variant: 'secondary',
+        padding: '8px 16px',
+        borderRadius: '4px',
+        onClick: () => location.reload(),
+      })
+      errorWrap.appendChild(errorMsg)
+      errorWrap.appendChild(retryBtn)
+      contentEl.appendChild(errorWrap)
     }
   }
 

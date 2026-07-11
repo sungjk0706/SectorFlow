@@ -7,16 +7,20 @@
 - 없음
 
 ## 직전 완료 작업
-- **2026-07-11: engine_sector_confirm 커버리지 91.20% → 100% — 미커버 7개 라인/분기 테스트 추가**
-  - 미커버 라인: L143 (dirty_codes_for_calc 빈 경우), L150→147 (업종 사라짐), L331→329 (timer None 복귀), L345→exit (batch pending 스킵), L349 (call_soon 정상 경로), L374-385 (DYNAMIC_UNREG 큐 발행+except), L389-393 (캐시 엔트리 정리), L396-398 (schedule_engine_task)
-  - 추가 테스트 7개: test_dirty_codes_for_calc_empty, test_sector_disappeared_from_new_map, test_returned_codes_multiple_cancels_timers, test_batch_already_pending_skips_call_soon, test_with_loop_calls_call_soon, test_with_subscribed_codes, test_queue_put_failure_logged
-  - 검증: 개별 51 passed + 커버리지 100.00% (212 stmts 0 miss, 72 branches 0 partial) + 전체 2768 passed, 0 failed
-  - 수정 파일: `test_engine_sector_confirm.py` (소스 코드 변경 없음)
+- **2026-07-11: 프론트엔드 버튼 공통 컴포넌트화 — Phase 1~5 전체 완료**
+  - `button.ts` 신규 생성: `createActionButton`(primary/danger/secondary/warning + customColor), `createSolidBtn`(sm/md), `createTabBar`(equalWidth 옵션), `createToggleSelectBtn`
+  - `ui-styles.ts`: `FONT_SIZE.settingsLabel: '14px'` 토큰 추가 (GS.label 대체)
+  - Phase 2: `dialog.ts` createButton → createActionButton, `context-popup.ts` confirm/cancel → createActionButton
+  - Phase 3: `general-settings.ts` 탭 바 → createTabBar, 저장/충전/변경/초기화/API저장 → createActionButton, GS.label → FONT_SIZE.settingsLabel 참조
+  - Phase 3 제외: `settings-common.ts` 시/분 탭 — 드롭다운 내부 특수 컨트롤로 유지 (콘텐츠 재렌더링 결합)
+  - Phase 4: `profit-detail.ts` 탭 바 + 드릴다운 버튼 교체, `canvas-profit-chart.ts` 빠른 선택 버튼 → createToggleSelectBtn, `profit-overview.ts` 전체보기/상세분석 버튼 → createActionButton
+  - Phase 5: `stock-classification.ts` actionBtn 함수 제거 + 7개 호출 사이트 → createSolidBtn, 다운로드 버튼 2개 → createSolidBtn(hoverColor), `sector-row.ts` 이동 버튼 → createSolidBtn, `sector-stock.ts` clear 버튼 → createActionButton, `router.ts` 다시 시도 버튼 inline HTML → DOM API + createActionButton
+  - 검증: typecheck 통과, build 통과, 테스트 112 passed
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈), 수익현황 업종 섹션 연동(도넛 범례 클릭→스크롤+하이라이트), 전체보기/전체접기 토글 버튼, 차트 onMove undefined 크래시 근본 해결(render early return 시 barRects 동기화), 수익현황 기간 선택 상태 재기동 후 유지(localStorage quickLabel 영속화 + 초기 활성 버튼 복원), 수익상세 페이지 뷰 상태 재기동 후 유지(localStorage selectedView+drilldownActive+dateRange 영속화, 7곳 핸들러 persistViewState) — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: engine_sector_confirm 커버리지 100% — `main` 9710ceb, `origin/main` push 완료
+- **Git**: 버튼 공통 컴포넌트화 Phase 1~5 전체 완료 — 커밋 + 푸시 완료
 - **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2768 passed, 0 failed
   - 0% 모듈 7개 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
   - 10%대 모듈 9개 해결: engine_settings(100%), stock_tables(100%), stock_filter(99.44%), stock_classification_data(95.14%), settings_store(93.13%), sector_data_provider(92.94%), engine_bootstrap(49.62%), engine_snapshot(39.22%), engine_sector_confirm(33.45%)
@@ -26,10 +30,30 @@
 
 ## 다음 단계
 - **1순위: 유령 포지션 005930 근본 원인 조사**
-  - 여러 차례 시도했으나 원인 식별이 어려워 후순위로 변경되었으나, 현재 남은 최우선 과제
+  - 버튼 공통화 완료로 최우선 과제로 승격
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
   - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
+
+## 버튼 공통 컴포넌트화 상세 진행 상황 (완료)
+
+### 완료된 파일 (커밋됨)
+1. `frontend/src/components/common/ui-styles.ts` — FONT_SIZE.settingsLabel 추가
+2. `frontend/src/components/common/button.ts` — **신규 파일** (4개 컴포넌트)
+3. `frontend/src/components/common/dialog.ts` — createButton → createActionButton
+4. `frontend/src/components/common/context-popup.ts` — confirm/cancel → createActionButton
+5. `frontend/src/pages/general-settings.ts` — 탭 바 + 5개 액션 버튼 교체, GS.label → FONT_SIZE.settingsLabel
+6. `frontend/src/pages/profit-detail.ts` — 탭 바 + 드릴다운 버튼 교체, FONT_WEIGHT import 제거
+7. `frontend/src/components/canvas-profit-chart.ts` — 빠른 선택 버튼 → createToggleSelectBtn, applyQuickBtnStyle/updateQuickBtnStyles 제거, FONT_SIZE import 제거
+8. `frontend/src/pages/profit-overview.ts` — 전체보기/상세분석 버튼 → createActionButton(secondary) + 스타일 오버라이드
+9. `frontend/src/pages/stock-classification.ts` — actionBtn 함수 제거 + 7개 호출 사이트 → createSolidBtn, 다운로드 버튼 2개 → createSolidBtn(hoverColor)
+10. `frontend/src/components/common/sector-row.ts` — 이동 버튼 → createSolidBtn, FONT_FAMILY import 제거
+11. `frontend/src/pages/sector-stock.ts` — clear 버튼 → createActionButton(secondary) + 오버라이드
+12. `frontend/src/router.ts` — 다시 시도 버튼 inline HTML → DOM API + createActionButton(secondary)
+
+### 제외 파일 (공통화 대상 아님)
+- `settings-common.ts` 시/분 탭 — 드롭다운 내부 특수 컨트롤 (콘텐츠 재렌더링 결합)
+- `stock-classification.ts` chip removeSpan — × 문자 Span (버튼 아님)
 
 ## 미해결 문제
 - **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결**

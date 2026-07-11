@@ -3,9 +3,10 @@
 // 차트(크게) + 드릴다운 + 날짜/종목 필터 + 전체 거래내역(가상 스크롤) + 통계 정보
 
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
-import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, pnlColor, fmtWon, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import { createSearchInput } from '../components/common/search-input'
+import { createTabBar, createToggleSelectBtn } from '../components/common/button'
 import { createDateRangeInput, type DateRangeInputApi } from '../components/common/date-range-input'
 import { hotStore } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
@@ -32,6 +33,7 @@ let sellTable: DataTableApi<Record<string, unknown>> | null = null
 let buyTable: DataTableApi<Record<string, unknown>> | null = null
 let sellTabBtn: HTMLButtonElement | null = null
 let buyTabBtn: HTMLButtonElement | null = null
+let tabBarHandle: ReturnType<typeof createTabBar> | null = null
 let tableContainer: HTMLDivElement | null = null
 let tableViewContainer: HTMLDivElement | null = null
 let drilldownViewContainer: HTMLDivElement | null = null
@@ -44,7 +46,7 @@ let drilldownActive = true
 let drilldownTable: DataTableApi<DailyDrilldownRow> | null = null
 let drilldownCols: ColumnDef<DailyDrilldownRow>[] = []
 let tabRow: HTMLDivElement | null = null
-let drilldownBtnEl: HTMLButtonElement | null = null
+let drilldownBtnHandle: ReturnType<typeof createToggleSelectBtn> | null = null
 
 type SelectedView = 'today' | 'month' | 'total' | 'drilldown' | null
 let selectedView: SelectedView = null
@@ -131,28 +133,7 @@ function updateCardSelection(): void {
 }
 
 function updateDrilldownBtnStyle(active: boolean): void {
-  if (!drilldownBtnEl) return
-  Object.assign(drilldownBtnEl.style, {
-    border: active ? '2px solid ' + COLOR.down : '1px solid ' + COLOR.down,
-    background: active ? COLOR.downBg : COLOR.white,
-    color: active ? COLOR.down : COLOR.tertiary,
-  })
-}
-
-/* ── 탭 버튼 스타일 ── */
-function applyTabStyle(btn: HTMLButtonElement, active: boolean): void {
-  Object.assign(btn.style, {
-    flex: '1',
-    padding: '8px 0',
-    cursor: 'pointer',
-    border: 'none',
-    background: 'transparent',
-    borderBottom: active ? '2px solid ' + COLOR.down : '2px solid transparent',
-    fontWeight: active ? FONT_WEIGHT.normal : FONT_WEIGHT.normal,
-    color: active ? COLOR.down : COLOR.tertiary,
-    fontSize: FONT_SIZE.label,
-    textAlign: 'center',
-  })
+  drilldownBtnHandle?.setActive(active)
 }
 
 /* ── 탭 헤더 텍스트 업데이트 ── */
@@ -306,8 +287,7 @@ function showTable(): void {
   const activeTbl = isSell ? sellTable : buyTable
   activeTbl.updateRows(displayRows)
 
-  if (sellTabBtn) applyTabStyle(sellTabBtn, activeTab === 'sell')
-  if (buyTabBtn) applyTabStyle(buyTabBtn, activeTab === 'buy')
+  if (tabBarHandle) tabBarHandle.setActive(activeTab)
 
   updateStatistics()
 }
@@ -386,28 +366,28 @@ function mount(container: HTMLElement): void {
   filterRow.appendChild(dateRangeInput.el)
 
   // 드릴다운 토글 버튼
-  drilldownBtnEl = document.createElement('button')
-  Object.assign(drilldownBtnEl.style, { padding: '2px 8px', fontSize: FONT_SIZE.label, border: '1px solid ' + COLOR.down, borderRadius: '4px', background: COLOR.white, cursor: 'pointer', color: COLOR.tertiary })
-  drilldownBtnEl.textContent = '당월 일별 요약'
-  drilldownBtnEl.addEventListener('click', (e) => {
-    drilldownActive = !drilldownActive
-    if (drilldownActive) {
-      selectedView = 'drilldown'
-      updateCardSelection()
-      updateDrilldownBtnStyle(true)
-      showDrilldown()
-      persistViewState()
-    } else {
-      selectedView = null
-      updateCardSelection()
-      updateDrilldownBtnStyle(false)
-      showTable()
-      updateTabLabels()
-      persistViewState()
-    }
-    ;(e.target as HTMLElement).blur()
+  drilldownBtnHandle = createToggleSelectBtn({
+    label: '당월 일별 요약',
+    active: false,
+    onClick: () => {
+      drilldownActive = !drilldownActive
+      if (drilldownActive) {
+        selectedView = 'drilldown'
+        updateCardSelection()
+        updateDrilldownBtnStyle(true)
+        showDrilldown()
+        persistViewState()
+      } else {
+        selectedView = null
+        updateCardSelection()
+        updateDrilldownBtnStyle(false)
+        showTable()
+        updateTabLabels()
+        persistViewState()
+      }
+    },
   })
-  filterRow.appendChild(drilldownBtnEl)
+  filterRow.appendChild(drilldownBtnHandle.el)
 
   // 종목 필터
   const stockSep = document.createElement('span')
@@ -430,28 +410,25 @@ function mount(container: HTMLElement): void {
   tabRow = document.createElement('div')
   Object.assign(tabRow.style, { display: 'flex', borderBottom: '1px solid ' + COLOR.borderLight, marginBottom: '8px' })
 
-  sellTabBtn = document.createElement('button')
-  applyTabStyle(sellTabBtn, true)
-  sellTabBtn.addEventListener('click', (e) => {
-    activeTab = 'sell'
-    drilldownActive = false
-    showTable()
-    updateTabLabels()
-    ;(e.target as HTMLElement).blur()
+  tabBarHandle = createTabBar({
+    tabs: [
+      { id: 'sell', label: '매도 내역' },
+      { id: 'buy', label: '매수 내역' },
+    ],
+    activeId: activeTab,
+    onChange: (id) => {
+      activeTab = id as LowerTab
+      drilldownActive = false
+      showTable()
+      updateTabLabels()
+    },
+    fontSize: FONT_SIZE.label,
+    padding: '8px 0',
+    equalWidth: true,
   })
-
-  buyTabBtn = document.createElement('button')
-  applyTabStyle(buyTabBtn, false)
-  buyTabBtn.addEventListener('click', (e) => {
-    activeTab = 'buy'
-    drilldownActive = false
-    showTable()
-    updateTabLabels()
-    ;(e.target as HTMLElement).blur()
-  })
-
-  tabRow.appendChild(sellTabBtn)
-  tabRow.appendChild(buyTabBtn)
+  sellTabBtn = tabBarHandle.buttons.get('sell') ?? null
+  buyTabBtn = tabBarHandle.buttons.get('buy') ?? null
+  tabRow.appendChild(tabBarHandle.el)
   lower.appendChild(tabRow)
 
   // 테이블 컨테이너 (테이블 뷰 + 드릴다운 뷰)
@@ -618,9 +595,10 @@ function unmount(): void {
   if (drilldownTable) { drilldownTable.destroy(); drilldownTable = null }
   drilldownActive = false
   drilldownCols = []
-  drilldownBtnEl = null
+  drilldownBtnHandle = null
   selectedView = null
   tabRow = null
+  tabBarHandle = null
   buyHistory = []
   sellHistory = []
   sellTabBtn = null

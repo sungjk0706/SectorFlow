@@ -1,5 +1,6 @@
 // frontend/src/components/common/context-popup.ts — 마우스 위치 기반 컨텍스트 팝업
 import { FONT_SIZE, COLOR } from './ui-styles'
+import { createActionButton } from './button'
 
 /* ── 타입 ── */
 
@@ -170,39 +171,29 @@ export function showContextPopup(options: ContextPopupOptions): Promise<ContextP
       gap: '6px',
     })
 
-    const confirmBtn = document.createElement('button')
-    confirmBtn.textContent = confirmText
-    Object.assign(confirmBtn.style, {
+    const confirmBtn = createActionButton({
+      label: confirmText,
+      variant: 'secondary',
+      customColor: confirmColor,
       padding: '5px 14px',
-      border: 'none',
       borderRadius: '4px',
-      color: COLOR.white,
-      background: confirmColor,
-      cursor: 'pointer',
-      fontSize: FONT_SIZE.label,
-      fontFamily: 'inherit',
-    })
-    confirmBtn.addEventListener('click', () => {
-      if (options.type === 'input') {
-        cleanup({ confirmed: true, value: inputEl!.value })
-      } else {
-        cleanup({ confirmed: true })
-      }
+      onClick: () => {
+        if (options.type === 'input') {
+          cleanup({ confirmed: true, value: inputEl!.value })
+        } else {
+          cleanup({ confirmed: true })
+        }
+      },
     })
 
-    const cancelBtn = document.createElement('button')
-    cancelBtn.textContent = cancelText
-    Object.assign(cancelBtn.style, {
+    const cancelBtn = createActionButton({
+      label: cancelText,
+      variant: 'secondary',
+      customColor: COLOR.toggleOff,
       padding: '5px 14px',
-      border: 'none',
       borderRadius: '4px',
-      color: COLOR.white,
-      background: COLOR.toggleOff,
-      cursor: 'pointer',
-      fontSize: FONT_SIZE.label,
-      fontFamily: 'inherit',
+      onClick: () => cleanup({ confirmed: false }),
     })
-    cancelBtn.addEventListener('click', () => cleanup({ confirmed: false }))
 
     btnRow.appendChild(confirmBtn)
     btnRow.appendChild(cancelBtn)

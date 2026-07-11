@@ -7,6 +7,7 @@ import { uiStore, setSelectedSector } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createStockNameColumn, makeSeqColumn, makeCodeColumn, makePriceColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, makeAmountColumn, makeAvgAmountColumn, FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
+import { createActionButton } from '../components/common/button'
 import { createSearchInput } from '../components/common/search-input'
 import { type SectorStock, type SectorScoreRow, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
 
@@ -510,19 +511,20 @@ class SectorStockTable extends HTMLElement {
     badgeLabel.className = 'badge-label'
     this.filterBadge.appendChild(badgeLabel)
 
-    const clearBtn = document.createElement('button')
+    const clearBtn = createActionButton({
+      label: '전체 보기',
+      variant: 'secondary',
+      fontSize: FONT_SIZE.badge,
+      padding: '2px 8px',
+      borderRadius: '4px',
+      onClick: () => setSelectedSector(null),
+    })
     Object.assign(clearBtn.style, {
       marginLeft: 'auto',
       background: 'none',
       border: '1px solid ' + COLOR.down,
-      borderRadius: '4px',
       color: COLOR.down,
-      cursor: 'pointer',
-      fontSize: FONT_SIZE.badge,
-      padding: '2px 8px',
     })
-    clearBtn.textContent = '전체 보기'
-    clearBtn.addEventListener('click', () => setSelectedSector(null))
     this.filterBadge.appendChild(clearBtn)
     this.rootEl.appendChild(this.filterBadge)
 
