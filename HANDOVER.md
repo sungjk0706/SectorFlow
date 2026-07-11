@@ -7,30 +7,26 @@
 - 없음
 
 ## 직전 완료 작업
-- **2026-07-11: 수익상세 페이지 뷰 상태 재기동 후 유지 — localStorage 영속화**
-  - 근본 원인: `profit-detail.ts`에 localStorage 저장/복원 로직 전무, `selectedView` + `drilldownActive` + `dateRangeInput`이 mount 시마다 하드코딩(`today` 고정)
-  - 수정: `profit-detail.ts` — `PROFIT_DETAIL_VIEW_KEY` 상수 + `loadProfitDetailView()`/`saveProfitDetailView()`/`persistViewState()` 헬퍼 추가
-  - 수정: mount 초기화 — `loadProfitDetailView()`로 복원, saved 있으면 selectedView/drilldownActive/dateRangeInput 복원, 없으면 기존 'today' 기본값
-  - 수정: 7곳 상호작용 핸들러에 `persistViewState()` 추가 (Today/Month/Total 카드, 드릴다운 토글 ON/OFF, dateRangeInput onChange, 드릴다운 행 클릭)
-  - 검증: `npm run typecheck` + `npm run build` 통과 (59 modules transformed) + `npm test` 112 passed
-  - 수정 파일: `profit-detail.ts`
+- **2026-07-11: engine_sector_confirm 커버리지 91.20% → 100% — 미커버 7개 라인/분기 테스트 추가**
+  - 미커버 라인: L143 (dirty_codes_for_calc 빈 경우), L150→147 (업종 사라짐), L331→329 (timer None 복귀), L345→exit (batch pending 스킵), L349 (call_soon 정상 경로), L374-385 (DYNAMIC_UNREG 큐 발행+except), L389-393 (캐시 엔트리 정리), L396-398 (schedule_engine_task)
+  - 추가 테스트 7개: test_dirty_codes_for_calc_empty, test_sector_disappeared_from_new_map, test_returned_codes_multiple_cancels_timers, test_batch_already_pending_skips_call_soon, test_with_loop_calls_call_soon, test_with_subscribed_codes, test_queue_put_failure_logged
+  - 검증: 개별 51 passed + 커버리지 100.00% (212 stmts 0 miss, 72 branches 0 partial) + 전체 2768 passed, 0 failed
+  - 수정 파일: `test_engine_sector_confirm.py` (소스 코드 변경 없음)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈), 수익현황 업종 섹션 연동(도넛 범례 클릭→스크롤+하이라이트), 전체보기/전체접기 토글 버튼, 차트 onMove undefined 크래시 근본 해결(render early return 시 barRects 동기화), 수익현황 기간 선택 상태 재기동 후 유지(localStorage quickLabel 영속화 + 초기 활성 버튼 복원), 수익상세 페이지 뷰 상태 재기동 후 유지(localStorage selectedView+drilldownActive+dateRange 영속화, 7곳 핸들러 persistViewState) — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: 수익상세 페이지 뷰 상태 유지 — `main` 50750a9, `origin/main` push 완료
-- **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2761 passed, 0 failed
+- **Git**: engine_sector_confirm 커버리지 100% — `main` 9710ceb, `origin/main` push 완료
+- **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2768 passed, 0 failed
   - 0% 모듈 7개 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
   - 10%대 모듈 9개 해결: engine_settings(100%), stock_tables(100%), stock_filter(99.44%), stock_classification_data(95.14%), settings_store(93.13%), sector_data_provider(92.94%), engine_bootstrap(49.62%), engine_snapshot(39.22%), engine_sector_confirm(33.45%)
-  - 30~50%대 Phase 1,2,3 전부 완료 (실측): engine_snapshot(39.22%→97.39%, 12 테스트), engine_sector_confirm(33.45%→91.20%, 19 테스트), engine_bootstrap(49.62%→99.25%, 12 테스트)
+  - 30~50%대 Phase 1,2,3 전부 완료 (실측): engine_snapshot(39.22%→97.39%, 12 테스트), engine_sector_confirm(33.45%→100%, 51 테스트), engine_bootstrap(49.62%→99.25%, 12 테스트)
   - 커버리지 실행 명령어: `python -m pytest backend/tests --cov=backend --cov-report=term-missing --cov-report=html --timeout=15 --timeout-method=signal`
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 
 ## 다음 단계
-- **1순위: engine_sector_confirm 커버리지 추가 개선 (91.20% → 95%+ 목표)**
-  - 현재 91.20%로 30~50%대 Phase 3 완료 기준 충족했으나, 남은 8.8% 분석 후 추가 테스트 작성 여부 검토
-- **2순위: 유령 포지션 005930 근본 원인 조사 (후순위)**
-  - 여러 차례 시도했으나 원인 식별이 어려워 후순위로 변경
+- **1순위: 유령 포지션 005930 근본 원인 조사**
+  - 여러 차례 시도했으나 원인 식별이 어려워 후순위로 변경되었으나, 현재 남은 최우선 과제
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
   - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
