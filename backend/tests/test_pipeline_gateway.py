@@ -347,6 +347,7 @@ class TestStartStopGatewayLoop:
             await stop_gateway_loop()
             assert gw_mod._gateway_running is False
             assert _FakeTask.cancelled is True
+            assert gw_mod._gateway_task is None
         finally:
             gw_mod._gateway_running = old_running
             gw_mod._gateway_task = old_task

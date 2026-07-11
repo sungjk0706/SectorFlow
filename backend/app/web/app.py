@@ -164,6 +164,12 @@ async def lifespan(app: FastAPI):
 
     await telegram_bot.stop_async()
     await stop_engine()
+
+    # Gateway 루프 종료 (compute 종료 후 broadcast_queue 컨슘 중단)
+    from backend.app.pipelines.pipeline_gateway import stop_gateway_loop
+    await stop_gateway_loop()
+    logger.info("[웹서버] Gateway 루프 종료 완료")
+
     await stop_daily_time_scheduler()
     
     # DB Writer 종료 및 DB 커넥션 정리

@@ -158,12 +158,14 @@ async def stop_compute_loop() -> None:
             await _sector_recompute_task
         except asyncio.CancelledError:
             pass
+        _sector_recompute_task = None
     if _compute_task:
         _compute_task.cancel()
         try:
             await _compute_task
         except asyncio.CancelledError:
             pass
+        _compute_task = None
 
 
 _BATCH_MAX = 500
