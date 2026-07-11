@@ -1,7 +1,5 @@
 // frontend/src/api/ws.ts — 다중 채널 WebSocket 클라이언트 (prices, settings, orders)
 
-import { forceLogout } from './client'
-import { setBackfilling } from '../stores/uiStore'
 import { event } from '../types/event'
 
 // key expansion: 백엔드 key shortening 복원
@@ -71,7 +69,6 @@ export class WSClient {
   private _onConnected: (() => void) | null = null
   private _onDisconnected: (() => void) | null = null
   private token: string | null = null
-  private _hasConnectedOnce: boolean = false
   private channel: 'prices' | 'settings' | 'orders'
 
   constructor(channel: 'prices' | 'settings' | 'orders' = 'prices') {
@@ -101,11 +98,6 @@ export class WSClient {
     ws.onopen = () => {
       this.reconnectDelay = 1000
       this._startPing()
-      if (this._hasConnectedOnce) {
-        // 재연결 성공 → backfilling 플래그 설정, 서버 initial-snapshot 대기
-        setBackfilling(true)
-      }
-      this._hasConnectedOnce = true
       if (this._onConnected) this._onConnected()
     }
 
@@ -119,15 +111,17 @@ export class WSClient {
       }
     }
 
-    ws.onerror = () => {}
+    ws.onerror = (e) => {
+      console.error('[WS] 오류:', e)
+    }
 
     ws.onclose = (e: CloseEvent) => {
       if (this.ws === ws) this.ws = null
       this._stopPing()
       if (this._onDisconnected) this._onDisconnected()
-      // 1008 = 서버 인증 거부 → 로그아웃
+      // 1008 = 서버 인증 거부
       if (e.code === 1008) {
-        forceLogout()
+        console.error('[WS] 인증 거부 (code 1008) — 연결 종료')
         return
       }
       // 나머지 (1006 포함) → 지수 백오프 재연결

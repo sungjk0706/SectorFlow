@@ -34,6 +34,7 @@ import {
   applyWsSubscribeStatus,
   applyBuyLimitStatus,
   applyEngineReloadComplete,
+  applyCircuitBreakerOpen,
   applyMarketPhase,
   applyIndexData,
   uiStore,
@@ -51,6 +52,7 @@ import type {
 } from './types'
 import type { SectorPriceTick } from './stores/hotStore'
 import { applyStockClassificationChanged } from './stores/stockClassificationStore'
+import { showToast } from './components/common/toast'
 
 /**
  * WS 18개+ 이벤트 타입을 Store 액션에 바인딩한다.
@@ -68,8 +70,7 @@ export function bindWSToStore(
       const page = getCurrentPage()
       if (page) pricesClient.send(JSON.stringify({ type: 'page-active', page }))
     },
-    () => {
-    },
+    () => {},
   )
 
   /* ── prices 채널 기존 SSE 이벤트 핸들러 (WS로 통합) ── */
@@ -306,6 +307,13 @@ export function bindWSToStore(
   /* ── ws-subscribe-status: 구독 상태 실시간 갱신 ── */
   pricesClient.onEvent('ws-subscribe-status', (data) => {
     applyWsSubscribeStatus(data as { index_subscribed: boolean; quote_subscribed: boolean })
+  })
+
+  /* ── circuit_breaker_open: OMS 서킷브레이커 발동 알림 ── */
+  pricesClient.onEvent('circuit_breaker_open', (data) => {
+    const d = data as { message?: string }
+    applyCircuitBreakerOpen(d)
+    showToast('error', d.message ?? '서킷브레이커 발동 — 자동매매 중지', 8000)
   })
 
   /* ── buy-limit-status: 매수 한도 상태 실시간 갱신 ── */

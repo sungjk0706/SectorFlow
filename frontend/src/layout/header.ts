@@ -4,6 +4,7 @@
 
 import { uiStore } from '../stores/uiStore'
 import type { UIState } from '../stores/uiStore'
+import { clearCircuitBreakerOpen } from '../stores/uiStore'
 import type { IndexData } from '../types'
 import { BROKER_LABELS } from '../components/common/broker-badge'
 import { COLOR } from '../components/common/ui-styles'
@@ -170,6 +171,13 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   krxAlertChip.style.display = 'none'
   header.appendChild(krxAlertChip)
 
+  // OMS 서킷브레이커 발동 칩 (클릭 시 해제)
+  const circuitBreakerChip = createChipEl()
+  circuitBreakerChip.style.display = 'none'
+  circuitBreakerChip.style.cursor = 'pointer'
+  circuitBreakerChip.addEventListener('click', () => clearCircuitBreakerOpen())
+  header.appendChild(circuitBreakerChip)
+
   // 앱준비 진행률 칩
   const bootstrapChip = createChipEl()
   bootstrapChip.style.display = 'none'
@@ -203,7 +211,18 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   // ── Store 구독 ──
 
   function onStateChange(state: UIState): void {
-    const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings, indexData } = state
+    const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings, indexData, circuitBreakerOpen } = state
+
+    // OMS 서킷브레이커 발동 칩
+    if (circuitBreakerOpen) {
+      circuitBreakerChip.style.display = ''
+      circuitBreakerChip.style.background = `${COLOR.upBg}`
+      circuitBreakerChip.style.color = `${COLOR.up}`
+      circuitBreakerChip.style.border = `1px solid ${COLOR.up}40`
+      circuitBreakerChip.textContent = `⚠ ${circuitBreakerOpen.message}`
+    } else {
+      circuitBreakerChip.style.display = 'none'
+    }
 
     // 장 상태
     applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx)
