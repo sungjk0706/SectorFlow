@@ -39,5 +39,5 @@ async def send_msg_async(message: str, settings: dict | None = None, msg_type: s
             res = await client.post(url, data=params)
         return res.status_code == 200
     except Exception as e:
-        logger.debug(f"[알림] 메시지 전송 실패함: {e}")
+        logger.debug(f"[알림] 메시지 전송 실패: {e}")
         return False

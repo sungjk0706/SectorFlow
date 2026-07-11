@@ -3,7 +3,7 @@
 Risk Management Layer - 주문 전 리스크 통제
 
 책임:
-  1. Circuit Breaker: 연속 주문 실패 시 계좌 보호
+  1. 서킷브레이커: 연속 주문 실패 시 계좌 보호
   2. Max Exposure (최대 노출 한도): 잔여 예수금 및 현재 보유 총액 기반 한도 초과 방지
   3. Daily Loss Limit (일일 손실 한도): 당일 실현손실이 임계치 초과 시 매수 차단
   4. Single Stock Limit (단일 종목 한도): 한 종목에 대한 과도한 비중 제한
@@ -43,9 +43,9 @@ class RiskManager:
         """
         self._sync_thresholds()
 
-        # 1. Circuit Breaker 검사 (공통)
+        # 1. 서킷브레이커 검사 (공통)
         if not self.circuit_breaker.allow_request():
-            return False, f"Circuit Breaker OPEN 상태 ({self.circuit_breaker.get_state()})"
+            return False, f"서킷브레이커 차단 상태 ({self.circuit_breaker.get_state()})"
 
         # 2. 일일 손실 한도 검사 (공통 — trade_history에 모드 구분 있음)
         from backend.app.services.engine_state import state as engine_state
@@ -103,19 +103,19 @@ class RiskManager:
     def check_sell_order_allowed(self, stk_cd: str, price: float, qty: int) -> tuple[bool, str]:
         """
         매도 주문 허용 여부 검사.
-        (매도는 리스크 축소 행위이므로 비교적 관대하게 허용하지만, Circuit Breaker는 확인)
+        (매도는 리스크 축소 행위이므로 비교적 관대하게 허용하지만, 서킷브레이커는 확인)
         """
         if not self.circuit_breaker.allow_request():
-            return False, f"Circuit Breaker OPEN 상태 ({self.circuit_breaker.get_state()})"
+            return False, f"서킷브레이커 차단 상태 ({self.circuit_breaker.get_state()})"
             
         return True, "승인"
 
     def record_order_success(self) -> None:
-        """주문 성공 시 Circuit Breaker에 보고"""
+        """주문 성공 시 서킷브레이커에 보고"""
         self.circuit_breaker.record_success()
 
     def record_order_failure(self) -> None:
-        """주문 실패 시 Circuit Breaker에 보고"""
+        """주문 실패 시 서킷브레이커에 보고"""
         self.circuit_breaker.record_failure()
 
 

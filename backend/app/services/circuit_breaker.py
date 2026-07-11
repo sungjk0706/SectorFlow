@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-OMS Circuit Breaker - 주문 실패 시 계좌 보호
+OMS 서킷브레이커 - 주문 실패 시 계좌 보호
 
 상태:
 - CLOSED: 정상 상태 (주문 허용)
@@ -8,10 +8,10 @@ OMS Circuit Breaker - 주문 실패 시 계좌 보호
 - HALF_OPEN: 복구 시도 상태 (단일 테스트 주문 허용)
 
 상태 전이:
-- CLOSED → OPEN: 주문 실패 5회 연속
-- OPEN → HALF_OPEN: 60초 경과
-- HALF_OPEN → CLOSED: 테스트 주문 성공
-- HALF_OPEN → OPEN: 테스트 주문 실패
+- 정상 → 차단: 주문 실패 5번 연속
+- 차단 → 복구시도: 60초 경과
+- 복구시도 → 정상: 테스트 주문 성공
+- 복구시도 → 차단: 테스트 주문 실패
 """
 import time
 import logging
@@ -20,15 +20,15 @@ logger = logging.getLogger(__name__)
 
 
 class CircuitBreaker:
-    """OMS용 서킷 브레이커 - 주문 실패 시 계좌 보호."""
+    """OMS용 서킷브레이커 - 주문 실패 시 계좌 보호."""
 
     def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 60):
         """
-        서킷 브레이커 초기화.
+        서킷브레이커 초기화.
 
         Args:
-            failure_threshold: OPEN 상태 전이 실패 임계치 (기본값: 5)
-            recovery_timeout: 복구 시도 타임아웃 (초, 기본값: 60)
+            failure_threshold: 차단 상태 전이 실패 임계치 (기본값: 5)
+            recovery_timeout: 복구 시도 시간 초과 (초, 기본값: 60)
         """
         self.state = "CLOSED"
         self.failure_count = 0
@@ -43,7 +43,7 @@ class CircuitBreaker:
         self.last_failure_time = time.time()
         self._half_open_test_in_progress = False
         logger.warning(
-            "[매매] 서킷브레이커 주문 실패 기록 — failure_count=%d, threshold=%d",
+            "[매매] 서킷브레이커 주문 실패 기록 — 실패횟수=%d, 임계치=%d",
             self.failure_count,
             self.failure_threshold,
         )
@@ -51,7 +51,7 @@ class CircuitBreaker:
         if self.failure_count >= self.failure_threshold:
             self.state = "OPEN"
             logger.error(
-                "[매매] 서킷브레이커 상태 전이: CLOSED → OPEN (실패 %d회 누적)",
+                "[매매] 서킷브레이커 상태 전이: 정상 → 차단 (실패 %d번 누적)",
                 self.failure_count,
             )
 
@@ -61,7 +61,7 @@ class CircuitBreaker:
         self._half_open_test_in_progress = False
         if self.state == "HALF_OPEN":
             self.state = "CLOSED"
-            logger.info("[매매] 서킷브레이커 상태 전이: HALF_OPEN → CLOSED (복구 완료)")
+            logger.info("[매매] 서킷브레이커 상태 전이: 복구시도 → 정상 (복구 완료)")
 
     def allow_request(self) -> bool:
         """
@@ -78,7 +78,7 @@ class CircuitBreaker:
                     self.state = "HALF_OPEN"
                     self._half_open_test_in_progress = True
                     logger.info(
-                        "[매매] 서킷브레이커 상태 전이: OPEN → HALF_OPEN (복구 시도)"
+                        "[매매] 서킷브레이커 상태 전이: 차단 → 복구시도 (복구 시도)"
                     )
                     return True
             return False
@@ -93,7 +93,7 @@ class CircuitBreaker:
         return self.state
 
     def reset(self) -> None:
-        """서킷 브레이커 초기화 (테스트용)."""
+        """서킷브레이커 초기화 (테스트용)."""
         self.state = "CLOSED"
         self.failure_count = 0
         self.last_failure_time = None
@@ -106,7 +106,7 @@ _circuit_breaker: CircuitBreaker | None = None
 
 
 def get_circuit_breaker() -> CircuitBreaker:
-    """서킷 브레이커 인스턴스 반환."""
+    """서킷브레이커 인스턴스 반환."""
     global _circuit_breaker
     if _circuit_breaker is None:
         _circuit_breaker = CircuitBreaker()
@@ -114,7 +114,7 @@ def get_circuit_breaker() -> CircuitBreaker:
 
 
 def reset_circuit_breaker() -> None:
-    """서킷 브레이커 초기화."""
+    """서킷브레이커 초기화."""
     global _circuit_breaker
     if _circuit_breaker is not None:
         _circuit_breaker.reset()
