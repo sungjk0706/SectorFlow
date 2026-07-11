@@ -256,22 +256,22 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 
 | 파일 | 줄 수 | 규모 | 점검 완료 |
 |------|-------|------|----------|
-| `services/engine_loop.py` | 384 | 대형 | ☐ |
-| `services/engine_lifecycle.py` | 378 | 대형 | ☐ |
-| `services/engine_state.py` | 141 | 중형 | ☐ |
+| `services/engine_loop.py` | 384 | 대형 | ☑ |
+| `services/engine_lifecycle.py` | 378 | 대형 | ☑ |
+| `services/engine_state.py` | 141 | 중형 | ☑ |
 
 **원칙 체크리스트**:
-- [ ] P1: 단일 이벤트 루프
-- [ ] P2: 모든 I/O async def
-- [ ] P5: 직접 호출 체인, fire-and-forget 없음
-- [ ] P7: 루프 내 블로킹 연산 없음, `asyncio.sleep(0)` 양보
-- [ ] P8: 실시간 루프와 배치 분리
-- [ ] P9: 파이프라인 간 간섭 없음
-- [ ] P11: 이벤트 기반 (`ws_window_changed_event` 대기)
-- [ ] P14: 멀티스레드 없음
-- [ ] P16: dead code/no-op 없음
-- [ ] P19: `await` 누락 없음
-- [ ] P20: 폴백/silent except 없음
+- [x] P1: 단일 이벤트 루프
+- [x] P2: 모든 I/O async def
+- [x] P5: 직접 호출 체인, fire-and-forget 없음
+- [x] P7: 루프 내 블로킹 연산 없음, `asyncio.sleep(0)` 양보
+- [x] P8: 실시간 루프와 배치 분리
+- [x] P9: 파이프라인 간 간섭 없음
+- [x] P11: 이벤트 기반 (`ws_window_changed_event` 대기)
+- [x] P14: 멀티스레드 없음
+- [x] P16: dead code/no-op 없음 (B06-01, B06-02, B06-03 해결)
+- [x] P19: `await` 누락 없음
+- [x] P20: 폴백/silent except 없음
 
 ---
 
@@ -978,7 +978,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B04-02 | B-04 | `stock_tables.py:123-138`, `settlement_engine.py:176-231` | P20/P22 | CRITICAL | `load_settlement_state`가 "행 없음"과 "DB 에러"를 구분하지 않고 모두 None 반환 (silent except) + `_load`가 None을 신규 설치로 간주하고 기본값으로 초기화 후 영속화 → 일시적 DB 에러 시 실제 정산 상태가 기본값으로 덮어씌워짐 → 자금 손실 | 해결 |
 | B04-03 | B-04 | `trade_history.py:388-401` | P20 | MEDIUM | `_lookup_sector`가 DB 에러 시 "미분류" 폴백 반환 → "행 없음"과 "DB 에러"를 구분하지 않음, 정상 데이터를 폴백으로 덮음 | 해결 |
 | B04-04 | B-04 | `trade_history.py:69-71, 156-177, 249-256, 654-656` | P16 | MEDIUM | dead code 5개 함수 (`_migrate_from_json`, `_patch_sell_history`, `start/stop_consumer_task`, `close_db_connection`) — no-op이거나 앱 코드에서 호출되지 않음 | 해결 |
-| B04-05 | B-04 | `settlement_engine.py`, `trade_history.py` | P22 | HIGH | 기동 시 정산 상태(`_orderable`)와 거래 이력으로 역산한 값 간 대조(reconciliation) 없음 → B04-02 폴백 문제와 결합 시 자금 손실 위험 | 보류 |
+| B04-05 | B-04 | `settlement_engine.py`, `trade_history.py` | P22 | HIGH | 기동 시 정산 상태(`_orderable`)와 거래 이력으로 역산한 값 간 대조(reconciliation) 없음 → B04-02 폴백 문제와 결합 시 자금 손실 위험. B06-02 해결로 `_reconciliation_on_startup` 미구현 함수 제거됨 — 실전투자 모드는 증권사 서버가 SSOT이므로 별도 대조 불필요 (사용자 결정) | 해결 |
 | B05-01 | B-05 | `auto_trading_effective.py:38-43` | P20/P21 | MEDIUM | `_in_time_range`에서 `except Exception: return False` — 설정 키 누락/오류 시 매수·매도 조용히 차단, 사용자가 차단 원인 인지 불가 | 해결 |
 | B05-02 | B-05 | `auto_trading_effective.py:46-52` | P16 | MEDIUM | `schedule_allows_auto_trading` dead code — 함수 정의만 있고 호출처 전무 (grep 확인) | 해결 |
 | B05-03 | B-05 | `auto_trading_effective.py:4` | P10 | LOW | docstring이 제거된 필드 `auto_trade_on`을 참조 — migration 코드는 `settings_file.py`에 별도 존재, 혼란 유발 | 해결 |
@@ -995,6 +995,10 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | F01-08 | F-01 | `binding.ts` (V-02 보류) | P21 | HIGH | `circuit_breaker_open` 이벤트 미배선 — 백엔드 `trading.py:293,484`에서 서킷브레이커 OPEN 시 브로드캐스트하나 프론트엔드 수신 핸들러 없음 → 사용자가 리스크 차단을 UI에서 인지 불가 | 해결 |
 | F01-09 | F-01 | `ws.ts:122` | P20/P21 | MEDIUM | `ws.onerror = () => {}` — WebSocket 에러를 조용히 무시. `console.error` 로깅 추가 | 해결 |
 | F01-10 | F-01 | `binding.ts:71-73,192-194` | P21 | LOW | WS `onDisconnected` 콜백이 빈 함수. 로컬 앱에서 연결 해제 칩 불필요 (사용자 결정) — 빈 콜백 유지, 별도 화면 표시 없음 | 해결 |
+| B06-01 | B-06 | `engine_lifecycle.py:378-380`, `engine_ws_dispatch.py:152-158` | P16 | MEDIUM | `_delayed_resubscribe_stock_after_rate_limit` no-op 함수 (`pass`만 존재) + 호출부에서 태스크 생성·done_callback·try/except 전부 dead code. 시장가 운용으로 재구독 불필요 → 함수 + 호출부 + 미사용 import 제거 | 해결 |
+| B06-02 | B-06 | `engine_lifecycle.py:237-302` | P16/P21 | HIGH | `_reconciliation_on_startup` 미구현 — 서버 체결 내역 조회 후 실제 대조 없이 "원장 대조 완료" 로그 + `{"status":"success"}` UI 브로드캐스트 (프론트엔드 수신부 없음). 실전투자 모드는 증권사 서버가 SSOT이므로 별도 대조 불필요 → 함수 제거, 테스트모드 포지션 구축 로직만 `start_engine`에 인라인 유지 | 해결 |
+| B06-03 | B-06 | `engine_state.py:131-133` | P16 | LOW | `_on_filter_settings_changed` module-level 래퍼 — `state.on_filter_settings_changed()` 메서드와 기능 중복, 프로덕션에서 호출처 전무 (테스트는 `sector_data_provider` 직접 import) → 래퍼 제거 | 해결 |
+| B06-04 | B-06 | `engine_lifecycle.py:325-328` | P10 | LOW | `get_current_kst_time`가 `datetime.now()` (로컬 시간) 사용 — 함수명/주석은 KST이나 실제로 KST 아님. `constants.py`의 `_KST` 상수 import하여 `datetime.now(_KST)`로 수정 | 해결 |
 
 ---
 
@@ -1007,9 +1011,9 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B-01 | P0 | 주문 실행 경로 | ☑ 완료 (8건 수정) |
 | B-02 | P0 | 리스크 관리 및 서킷 브레이커 | ☑ 완료 (3건 수정) |
 | B-03 | P0 | Dry Run | ☑ 완료 (3건 수정) |
-| B-04 | P0 | 정산 엔진 및 거래 이력 | ☑ 완료 (4건 수정, 1건 보류) |
+| B-04 | P0 | 정산 엔진 및 거래 이력 | ☑ 완료 (4건 수정) |
 | B-05 | P0 | 자동매매 유효성 및 코어 큐 | ☑ 완료 (6건 수정, 378 tests passed) |
-| B-06 | P1 | 엔진 루프 및 생명주기 | ☐ 미시작 |
+| B-06 | P1 | 엔진 루프 및 생명주기 | ☑ 완료 (4건 수정, 271 tests passed) |
 | B-07 | P1 | WS 시세 처리 | ☐ 미시작 |
 | B-08 | P1 | 엔진 부트스트랩/캐시/스냅샷 | ☐ 미시작 |
 | B-09 | P1 | 엔진 섹터 확인/전략/레이더 | ☐ 미시작 |
@@ -1040,11 +1044,12 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | 항목 | 카운트 |
 |------|--------|
 | 전체 세션 | 30 |
-| 완료 | 0 |
+| 완료 | 7 |
 | 진행 중 | 0 |
-| 미시작 | 30 |
-| 발견된 문제 | 0 |
-| 해결된 문제 | 0 |
+| 미시작 | 23 |
+| 발견된 문제 | 28 |
+| 해결된 문제 | 28 |
+| 보류된 문제 | 0 |
 
 ---
 

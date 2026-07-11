@@ -4,19 +4,13 @@
 - 없음
 
 ## 직전 완료 작업
-- **2026-07-12: F-01 아키텍처 점검 — 통신 계층 및 상태 관리 (10건 수정, V-02 해결)**
-  - **대상**: `stores/uiStore.ts`, `api/client.ts`, `api/ws.ts`, `binding.ts`, `layout/header.ts`, `architecture_audit_plan.md`
-  - **F01-01 (P16)**: `setConnected()` + `connected` 상태 제거. 로컬 앱에서 WS 연결 상태 칩 불필요 (사용자 결정)
-  - **F01-02 (P16)**: `setEngineReady()` dead code 제거. `engineReady`는 `applyInitialSnapshotUI`에서만 갱신
-  - **F01-03 (P16/P21)**: `applyWsConnectionStatus()` 제거. 로컬 앱에서 WS 연결 상태 칩 불필요 (사용자 결정). 증권사 WS 상태는 `broker_statuses` 기반 헤더 칩으로 표시 중
-  - **F01-04 (P16/P10)**: `uiStore.positionCount` 중복 상태 제거. `hotStore.positionCount`가 SSOT
-  - **F01-05 (P16/P21)**: `backfilling` 상태, `setBackfilling()`, `_hasConnectedOnce` 전부 제거. 로컬 앱에서 재연결 중 칩 불필요 (사용자 결정)
-  - **F01-06 (P16)**: `applyTestDataResetCompleted` console.log 디버그 로그 3개 제거
-  - **F01-07 (P16/P20)**: `client.ts` 인증 dead code 일괄 제거 (`getTokenExp`, `isAuthenticated`, `setToken`, `clearToken`, `forceLogout`, 401 처리). `ws.ts`에서 `forceLogout` 의존성 제거
-  - **F01-08/V-02 (P21)**: `circuit_breaker_open` 이벤트 → `binding.ts`에 핸들러 배선 + `uiStore.circuitBreakerOpen` 상태 추가 + 화면에 "⚠ 서킷브레이커 — 자동매매 중지" 빨강 칩 + 에러 토스트. 클릭 시 해제, engine-reload-complete 시 자동 해제
-  - **F01-09 (P20/P21)**: `ws.onerror = () => {}` 빈 핸들러 → `console.error` 로깅 추가
-  - **F01-10 (P21)**: WS `onDisconnected` 빈 콜백 유지. 로컬 앱에서 연결 해제 칩 불필요 (사용자 결정)
-  - **검증**: typecheck 통과, build 통과, 112 tests passed (8 test files), 잔존 참조 0건 (grep 확인)
+- **2026-07-12: 아키텍처 점검 B-06 (엔진 루프 및 생명주기) — 4건 수정**
+  - **B06-01 (P16)**: `_delayed_resubscribe_stock_after_rate_limit` no-op 함수 제거 + `engine_ws_dispatch.py` 호출부(태스크 생성·done_callback·try/except) 제거 + 미사용 `engine_lifecycle` import 제거
+  - **B06-02 (P16/P21)**: `_reconciliation_on_startup` 미구현 함수 제거 — 서버 체결 내역 조회 후 실제 대조 없이 거짓 "원장 대조 완료" 로그 + `{"status":"success"}` UI 브로드캐스트 (프론트엔드 수신부 없음). 실전투자 모드는 증권사 서버가 SSOT이므로 별도 대조 불필요. 테스트모드 포지션 구축 로직(`dry_run._refresh_positions_if_dirty`)만 `start_engine`에 인라인 유지
+  - **B06-03 (P16)**: `engine_state.py`의 `_on_filter_settings_changed` module-level 래퍼 제거 — `state.on_filter_settings_changed()` 메서드와 중복, 프로덕션 호출처 전무
+  - **B06-04 (P10)**: `get_current_kst_time`가 `datetime.now()` (로컬 시간) → `datetime.now(_KST)` 수정. `constants.py`의 `_KST` 상수 import
+  - **문서 정리**: `ARCHITECTURE.md:397` — 제거된 `_reconciliation_on_startup` 참조를 테스트모드 포지션 구축으로 교체
+  - **검증**: py_compile 3개 파일 통과, pytest 271 passed 0 failed, 런타임 기동 15s 정상 (테스트모드 포지션 구축 로그 확인), 잔여 위반 grep 0건
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
@@ -29,33 +23,35 @@
   - 30~50%대 Phase 1,2,3 전부 완료 (실측): engine_snapshot(39.22%→97.39%, 12 테스트), engine_sector_confirm(33.45%→100%, 51 테스트), engine_bootstrap(49.62%→99.25%, 12 테스트)
   - 커버리지 실행 명령어: `python -m pytest backend/tests --cov=backend --cov-report=term-missing --cov-report=html --timeout=15 --timeout-method=signal`
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
+- **루트 폴더 정리**: 완료된 1회성 계획서 3건 + 로컬 산출물 4건 제거 (2026-07-12). `docs/architecture_audit_plan.md`, `docs/ghost_position_investigation.md`, `docs/api_specs/` 유지
 
 ## 진행 중 작업
 
-### 아키텍처 전수 점검 — 6/30 세션 완료
+### 아키텍처 전수 점검 — 7/30 세션 완료
 
 | 세션 ID | 우선순위 | 내용 | 상태 |
 |---------|----------|------|------|
 | B-01 | P0 | 주문 실행 경로 | ☑ 완료 (8건 수정, 50 tests passed) |
 | B-02 | P0 | 리스크 관리 및 서킷 브레이커 | ☑ 완료 (3건 수정, 2774 tests passed) |
 | B-03 | P0 | Dry Run (테스트 모드 가상 주문) | ☑ 완료 (3건 수정, 2768 tests passed) |
-| B-04 | P0 | 정산 엔진 및 거래 이력 | ☑ 완료 (4건 수정, 1건 보류, 2763 tests passed) |
+| B-04 | P0 | 정산 엔진 및 거래 이력 | ☑ 완료 (4건 수정, 2763 tests passed) |
 | B-05 | P0 | 자동매매 유효성 및 코어 큐 | ☑ 완료 (6건 수정, 378 tests passed) |
 | F-01 | P0 | 통신 계층 및 상태 관리 | ☑ 완료 (10건 수정, V-02 해결, 112 tests passed) |
-| B-06~B-11 | P1 | 엔진 루프/WS/부트스트랩/섹터/계좌/파이프라인 | ☐ 미시작 |
+| B-06 | P1 | 엔진 루프 및 생명주기 | ☑ 완료 (4건 수정, 271 tests passed) |
+| B-07~B-11 | P1 | WS/부트스트랩/섹터/계좌/파이프라인 | ☐ 미시작 |
 | B-12~B-19 | P2 | DB/설정/Broker/증권사/Domain/스케줄러 | ☐ 미시작 |
 | B-20~B-23 | P3 | 알림/유틸/Web API/테스트 | ☐ 미시작 |
 | F-02~F-07 | P1~P3 | 진입점/핵심페이지/설정/수익/컴포넌트/타입 | ☐ 미시작 |
 
 ## 다음 단계
 
-### 1순위: 아키텍처 전수 점검 P1 세션 (B-06)
+### 1순위: 아키텍처 전수 점검 P1 세션 (B-07)
 
-F-01 완료. P0 세션(6/6) 전부 완료 — 백엔드 5개 + 프론트엔드 1개. 다음 세션에서 `docs/architecture_audit_plan.md`의 추천 세션 순서에 따라 P1 진행:
+B-06 완료. P0 세션(6/6) + B-06 완료 — 총 7/30 세션. 다음 세션에서 `docs/architecture_audit_plan.md`의 추천 세션 순서에 따라 P1 진행:
 
-1. **B-06**: 엔진 루프 및 생명주기 (`engine_loop.py`, `engine_lifecycle.py`, `engine_state.py`)
+1. **B-07**: WS 시세 처리 (파싱/디스패치/등록) (`engine_ws_reg.py`, `engine_ws_dispatch.py`, `engine_ws.py`, `engine_ws_parsing.py`, `engine_ws_fill_followup.py`)
 
-**보류 (B04-05)**: B-04에서 발견된 기동 시 정산 상태-거래 이력 대조(reconciliation) 부재 (P22) — `_orderable`이 거래 이력으로 역산한 값과 일치하는지 검증 로직 설계 필요
+**보류 (B04-05)**: B-04에서 발견된 기동 시 정산 상태-거래 이력 대조(reconciliation) 부재 (P22) — B06-02 해결로 `_reconciliation_on_startup` 미구현 함수 제거됨. 실전투자 모드는 증권사 서버가 SSOT이므로 별도 대조 불필요 (사용자 결정). B04-05 상태를 "해결"로 변경.
 
 각 세션 진행 시:
 - `docs/architecture_audit_plan.md`의 해당 세션 체크리스트 사용
@@ -68,8 +64,8 @@ F-01 완료. P0 세션(6/6) 전부 완료 — 백엔드 5개 + 프론트엔드 1
 - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
 - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
 
-### 3순위: P1 세션 (B-06~B-11, F-02)
-P0 세션 완료 후 진행.
+### 3순위: P1 세션 (B-08~B-11, F-02)
+B-06, B-07 완료 후 진행.
 
 ### 4순위: P2 세션 (B-12~B-19, F-03~F-04)
 P1 세션 완료 후 진행.

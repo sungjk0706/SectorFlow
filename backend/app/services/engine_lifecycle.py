@@ -9,7 +9,9 @@
 import asyncio
 from typing import Any, Coroutine
 import logging
+from datetime import datetime
 from backend.app.core.trade_mode import is_test_mode
+from backend.app.core.constants import _KST
 from backend.app.services.engine_state import state
 
 logger = logging.getLogger(__name__)
@@ -27,9 +29,13 @@ async def start_engine(user_id: str = "") -> bool:
     state.running = True
     state.engine_task = asyncio.create_task(_engine_loop())
 
-    # ── Reconciliation(강제 정산) 관문 ───────────────────────────────────────
-    # 엔진 시작 시 조건부 정산(Smart Reconciliation)
-    await _reconciliation_on_startup()
+    # ── 테스트모드: trades 기반 포지션 구축 ──────────────────────────────────
+    # 테스트모드는 증권사 서버가 없으므로 trades 테이블(SSOT)에서 포지션 구축.
+    # 실전투자 모드는 증권사 서버가 SSOT이므로 별도 대조 불필요.
+    if is_test_mode(state.integrated_system_settings_cache):
+        logger.info("[연산] 테스트모드 - trades 기반 포지션 구축")
+        from backend.app.services import dry_run
+        await dry_run._refresh_positions_if_dirty()
 
     # ── Pending Settings Changes 적용 ───────────────────────────────────────
     # 엔진 미실행 중 변경된 설정이 있으면 기동 시 반영
@@ -228,76 +234,6 @@ async def on_trade_mode_switched() -> None:
 # evaluate_buy_candidates는 buy_order_executor.py로 이전됨
 
 
-# ── Reconciliation(강제 정산) ───────────────────────────────────────────
-
-async def _reconciliation_on_startup() -> None:
-    """
-    기동 시 조건부 정산(Smart Reconciliation).
-
-    로컬 장부에서 Pending 상태인 주문이 존재하는지 먼저 SELECT 쿼리.
-    Pending 데이터가 단 1건이라도 존재할 때만 서버에 원장 조회 API(TR)를 호출.
-    서버에서 받아온 진짜 주문/체결 내역과 로컬의 Pending 리스트를 대조하여 유령 데이터 정리.
-    Pending 건수가 0건이면 불필요한 네트워크 호출 없이 즉시 엔진 가동.
-
-    테스트모드는 trades 기반으로 포지션 구축 (test_positions 테이블 미사용).
-    """
-    from backend.app.core.trade_mode import is_test_mode
-    from backend.app.core.journal import oms_get_pending_orders
-    from backend.app.services.data_manager import get_account_profit_rate
-    from backend.app.services.engine_account_notify import _broadcast
-
-    try:
-        # 테스트모드: trades 기반 포지션 구축 (test_positions 테이블 미사용)
-        if is_test_mode(state.integrated_system_settings_cache):
-            logger.info("[연산] 테스트모드 - trades 기반 포지션 구축")
-            from backend.app.services import dry_run
-            await dry_run._refresh_positions_if_dirty()
-            return
-
-        # 1. 로컬 장부에서 Pending 상태인 주문 조회
-        pending_orders = await oms_get_pending_orders()
-        pending_count = len(pending_orders)
-
-        if pending_count == 0:
-            # Pending 건수가 0건이면 불필요한 네트워크 호출 없이 즉시 엔진 가동
-            logger.info("[연산] 미처리 주문 없음 - 즉시 엔진 가동")
-            return
-
-        # 2. Pending 데이터가 존재하면 서버 원장 조회
-        logger.info("[연산] 미처리 주문 %d건 - 서버 원장 조회 시작", pending_count)
-
-        access_token = state.access_token
-
-        if not access_token:
-            logger.warning("[연산] 원장 대조 실패 - 토큰 없음")
-            return
-
-        # 실제 체결 내역 조회
-        balance_raw = await get_account_profit_rate(access_token)
-        if not balance_raw:
-            logger.warning("[연산] 원장 대조 실패 - 체결 내역 조회 실패")
-            return
-
-        # 3. 서버 원장과 로컬 Pending 리스트 대조
-        # 서버에서 받아온 진짜 주문/체결 내역과 로컬의 Pending 리스트를 대조
-        # 유령 데이터를 즉시 정리
-        # (실제 구현은 서버 응답의 order_id와 로컬 Pending order_id 비교)
-        logger.info("[연산] 원장 대조 완료 - 유령 데이터 정리")
-
-        # 4. UI에 Reconciliation 완료 알림 전송
-        await _broadcast("reconciliation_complete", {
-            "status": "success",
-            "message": f"기동 시 원장 대조 완료 - {pending_count}건 Pending 처리",
-        })
-
-    except Exception as e:
-        logger.error("[연산] 원장 대조 오류: %s", e, exc_info=True)
-        await _broadcast("reconciliation_complete", {
-            "status": "failed",
-            "message": f"원장 대조 실패: {str(e)}",
-        })
-
-
 async def _apply_pending_settings_on_startup() -> None:
     """엔진 미실행 중 변경된 설정이 있으면 기동 시 반영."""
     from backend.app.core.sector_stock_cache import load_pending_settings, clear_pending_settings
@@ -324,8 +260,7 @@ def log_message(msg: str) -> None:
 
 def get_current_kst_time() -> str:
     """현재 KST 시간 반환."""
-    from datetime import datetime
-    return datetime.now().strftime("%H:%M:%S")
+    return datetime.now(_KST).strftime("%H:%M:%S")
 
 
 def schedule_engine_task(coro: Coroutine[Any, Any, Any], *, context: str) -> bool:
@@ -375,8 +310,6 @@ async def broadcast_engine_status() -> None:
     await broadcast_engine_status_ws(get_engine_status())
 
 
-async def _delayed_resubscribe_stock_after_rate_limit(norm_cd: str) -> None:
-    """105110 직후 재시도하지 않고, 일정 시간 뒤 필요한 종목만 REG 재전송 — 시장가 운용으로 no-op."""
-    pass
+
 
 

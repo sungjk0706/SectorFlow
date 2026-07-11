@@ -10,7 +10,6 @@ import time
 import backend.app.services.engine_state as engine_state
 from backend.app.services.engine_state import state
 from backend.app.services import engine_account
-from backend.app.services import engine_lifecycle
 import logging
 from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
@@ -149,13 +148,6 @@ def _handle_reg(data: dict) -> None:
                     "[연결] REG 응답 건수한도(105110) -- 즉시 재시도하지 않음 item=%s (응답 본문 기준)",
                     norm,
                 )
-                try:
-                    _resub_task = asyncio.get_running_loop().create_task(
-                        engine_lifecycle._delayed_resubscribe_stock_after_rate_limit(norm)
-                    )
-                    _resub_task.add_done_callback(lambda t: logger.warning("[구독] 지연 재구독 태스크 실패: %s", t.exception()) if t.exception() else None)
-                except RuntimeError as e:
-                    logger.warning("[구독] 루프 미실행 %s: %s", norm, e)
             elif rc not in ("0", "00", ""):
                 if norm in state.master_stocks_cache:
                     state.master_stocks_cache[norm].pop("_subscribed", None)
