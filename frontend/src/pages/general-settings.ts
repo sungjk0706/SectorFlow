@@ -5,7 +5,7 @@
 import { uiStore, applyTestDataResetCompleted } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingsManager, extractDirty, MASKED_FIELDS, type SettingsManager } from '../settings'
-import { createToggleBtn, createMoneyInput, TEXT_INPUT_WIDTH } from '../components/common/setting-row'
+import { createToggleBtn, createMoneyInput, TEXT_INPUT_WIDTH, focusNext } from '../components/common/setting-row'
 import { toastResult, showSaveToast } from '../components/common/toast'
 import { createDataTable, type ColumnDef } from '../components/common/data-table'
 import { api } from '../api/client'
@@ -400,6 +400,9 @@ function renderTelegramTab(container: HTMLElement): void {
     input.value = String(vals[k] || '')
     Object.assign(input.style, { width: `${TEXT_INPUT_WIDTH}px`, padding: GS.inputPad, borderRadius: '4px', border: '1px solid ' + COLOR.border, fontSize: GS.input })
     input.addEventListener('input', () => { teleInputs[k] = input })
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); focusNext(input) }
+    })
     teleInputs[k] = input
     row.appendChild(input)
     container.appendChild(row)
@@ -797,6 +800,9 @@ function renderApiFields(container: HTMLElement): void {
 
     const input = createDarkInput(field.type)
     input.value = String(vals[field.key] || '')
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); focusNext(input) }
+    })
     apiKeyInputs[field.key] = input
     row.appendChild(input)
     container.appendChild(row)

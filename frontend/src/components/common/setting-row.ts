@@ -5,12 +5,12 @@ export const INPUT_WIDTH = 80
 export const TEXT_INPUT_WIDTH = 220
 
 /* ── Enter → 다음 포커스 이동 헬퍼 ─────────────────────────── */
-function focusNext(el: HTMLElement) {
+export function focusNext(el: HTMLElement) {
   const form = el.closest('form, section, div[role="group"], header, main, [data-settings]')
   const root = form || document.body
   const inputs = Array.from(root.querySelectorAll<HTMLElement>(
-    'input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])'
-  ))
+    'input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]):not([tabindex="-1"])'
+  )).filter(e => e.offsetParent !== null || e === document.activeElement)
   const idx = inputs.indexOf(el)
   if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus()
 }
