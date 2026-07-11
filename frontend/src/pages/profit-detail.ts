@@ -49,6 +49,57 @@ let drilldownBtnEl: HTMLButtonElement | null = null
 type SelectedView = 'today' | 'month' | 'total' | 'drilldown' | null
 let selectedView: SelectedView = null
 
+/* ── 뷰 상태 localStorage 영속화 ── */
+const PROFIT_DETAIL_VIEW_KEY = 'sf_profit_detail_view'
+
+interface ProfitDetailViewState {
+  selectedView: SelectedView
+  drilldownActive: boolean
+  from: string
+  to: string
+}
+
+function loadProfitDetailView(): ProfitDetailViewState | null {
+  try {
+    const raw = localStorage.getItem(PROFIT_DETAIL_VIEW_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { selectedView?: string; drilldownActive?: boolean; from?: string; to?: string }
+    const validViews: string[] = ['today', 'month', 'total', 'drilldown']
+    const sv = parsed.selectedView ?? null
+    if (sv !== null && !validViews.includes(sv)) return null
+    // total/drilldown은 from/to가 빈 문자열일 수 있음
+    const from = parsed.from ?? ''
+    const to = parsed.to ?? ''
+    // 수동 날짜 범위(sv === null) 또는 today/month인 경우 from/to 유효성 검증
+    if (sv === null || sv === 'today' || sv === 'month') {
+      if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) return null
+      if (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null
+      if (from && to && from > to) return null
+    }
+    return {
+      selectedView: sv as SelectedView,
+      drilldownActive: parsed.drilldownActive ?? false,
+      from,
+      to,
+    }
+  } catch {
+    return null
+  }
+}
+
+function saveProfitDetailView(state: ProfitDetailViewState): void {
+  try {
+    localStorage.setItem(PROFIT_DETAIL_VIEW_KEY, JSON.stringify(state))
+  } catch {
+    // localStorage 접근 불가 시 무시 (private mode 등)
+  }
+}
+
+function persistViewState(): void {
+  const dr = dateRangeInput?.getValue() ?? { from: '', to: '' }
+  saveProfitDetailView({ selectedView, drilldownActive, from: dr.from, to: dr.to })
+}
+
 /* ── 통계 정보 DOM 참조 ── */
 let statCountEl: HTMLSpanElement | null = null
 let statBuyAmtEl: HTMLSpanElement | null = null
@@ -143,7 +194,12 @@ function showDrilldown(): void {
   if (tabRow) tabRow.style.display = 'none'
 
   if (!drilldownTable) {
-    drilldownCols = createDrilldownCols(filterByDate)
+    drilldownCols = createDrilldownCols((date: string) => {
+      filterByDate(date)
+      selectedView = null
+      updateCardSelection()
+      persistViewState()
+    })
     drilldownTable = createDataTable<DailyDrilldownRow>({
       columns: drilldownCols,
       emptyText: '당월 거래 내역이 없습니다.',
@@ -283,12 +339,14 @@ function mount(container: HTMLElement): void {
       updateCardSelection()
       updateDrilldownBtnStyle(false)
       filterByDate(todayStr)
+      persistViewState()
     },
     onMonthClick: () => {
       selectedView = 'month'
       updateCardSelection()
       updateDrilldownBtnStyle(false)
       filterByDateRange(monthStart, monthEnd)
+      persistViewState()
     },
     onTotalClick: () => {
       selectedView = 'total'
@@ -298,6 +356,7 @@ function mount(container: HTMLElement): void {
       drilldownActive = false
       showTable()
       updateTabLabels()
+      persistViewState()
     },
   })
 
@@ -321,6 +380,7 @@ function mount(container: HTMLElement): void {
       updateDrilldownBtnStyle(false)
       showTable()
       updateTabLabels()
+      persistViewState()
     },
   })
   filterRow.appendChild(dateRangeInput.el)
@@ -336,12 +396,14 @@ function mount(container: HTMLElement): void {
       updateCardSelection()
       updateDrilldownBtnStyle(true)
       showDrilldown()
+      persistViewState()
     } else {
       selectedView = null
       updateCardSelection()
       updateDrilldownBtnStyle(false)
       showTable()
       updateTabLabels()
+      persistViewState()
     }
     ;(e.target as HTMLElement).blur()
   })
@@ -449,9 +511,27 @@ function mount(container: HTMLElement): void {
   sellHistory = initState.sellHistory
   buyHistory = initState.buyHistory
   updateTabLabels()
-  selectedView = 'today'
-  updateCardSelection()
-  filterByDate(todayStr)
+
+  // 저장된 뷰 상태 복원 — 없으면 기본값 'today'
+  const savedView = loadProfitDetailView()
+  if (savedView) {
+    selectedView = savedView.selectedView
+    drilldownActive = savedView.drilldownActive
+    if (dateRangeInput) dateRangeInput.setValue(savedView.from, savedView.to)
+    updateCardSelection()
+    if (savedView.drilldownActive) {
+      updateDrilldownBtnStyle(true)
+      showDrilldown()
+    } else {
+      updateDrilldownBtnStyle(false)
+      showTable()
+      updateTabLabels()
+    }
+  } else {
+    selectedView = 'today'
+    updateCardSelection()
+    filterByDate(todayStr)
+  }
   if (summaryCardEls) {
     updateSummaryCards(sellHistory, initState.dailySummary, summaryCardEls)
   }
