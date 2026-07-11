@@ -75,6 +75,9 @@ def _make_manager(settings=None):
     # _ensure_daily_buy_counter가 trade_history.get_buy_history → aiosqlite.connect
     # 백그라운드 스레드를 생성하여 이벤트 루프 종료를 차단하므로 mock로 대체
     mgr._ensure_daily_buy_counter = AsyncMock()
+    # _ensure_daily_buy_counter mock가 실제 로드를 수행하지 않으므로
+    # _daily_buy_spent를 0으로 설정 (로드 성공 + 당일 매수 없음 상태 시뮬레이션)
+    mgr._daily_buy_spent = 0
     return mgr
 
 

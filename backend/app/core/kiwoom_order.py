@@ -70,24 +70,3 @@ async def send_order(settings: dict, access_token: str, order_type: str, code: s
     data = r.json()
     ok = data.get("rt_cd") == "0"
     return {"success": ok, "msg": data.get("msg1", "알 수 없음"), "data": data}
-
-
-async def market_sell(settings: dict, access_token: str, code: str, qty: int) -> dict:
-    return await send_order(settings, access_token, "SELL", code, qty, price=0, trde_tp="3")
-
-
-
-
-async def get_unexecuted_orders(settings: dict, access_token: str, code: str = "") -> dict:
-    host = build_broker_urls("kiwoom")["rest_base"]
-    acnt_no = str(settings.get("kiwoom_account_no", "") or "")
-    stk_cd = str(code).strip()
-    all_stk_tp = "1" if stk_cd else "0"
-    url = f"{host}/api/dostk/acnt"
-    headers = {"Content-Type": "application/json;charset=UTF-8", "authorization": f"Bearer {access_token}", "api-id": "ka10075", "cont-yn": "N"}
-    params = {"acnt_no": acnt_no, "all_stk_tp": all_stk_tp, "trde_tp": "0", "stk_cd": stk_cd, "stex_tp": "0"}
-    r = await _send_request(url, headers, params)
-    if not r:
-        return {"success": False, "msg": "미체결조회 통신 장애", "data": []}
-    d = r.json()
-    return {"success": d.get("rt_cd") == "0", "msg": d.get("msg1", ""), "data": d.get("output1", [])}

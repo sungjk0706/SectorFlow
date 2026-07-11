@@ -73,6 +73,9 @@ async def evaluate_buy_candidates() -> None:
     _max_daily_on = bool(state.integrated_system_settings_cache.get("max_daily_total_buy_on", False))
     _daily_remain: int | None = None
     if _max_daily_on and _max_daily > 0:
+        if state.auto_trade._daily_buy_spent is None:
+            logger.critical("[매매] 일일 매수 상태 로드 실패 — 매수 시도 중단")
+            return
         _daily_remain = _max_daily - state.auto_trade._daily_buy_spent
         if _daily_remain <= 0:
             return
@@ -161,7 +164,7 @@ async def evaluate_buy_candidates() -> None:
                 if _holding_cnt >= _max_limit:
                     break
                 await state.auto_trade._ensure_daily_buy_counter()
-                if _max_daily > 0 and state.auto_trade._daily_buy_spent >= _max_daily:
+                if state.auto_trade._daily_buy_spent is not None and _max_daily > 0 and state.auto_trade._daily_buy_spent >= _max_daily:
                     break
         except Exception as e:
             logger.warning("[매매] 매수 실행 오류 %s: %s", s.code, e, exc_info=True)

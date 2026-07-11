@@ -46,12 +46,13 @@ class AutoTradeManager:
         self._recent_sells: set = set()  # 매도 주문 전송 완료 종목 — 체결/실패 확인까지 재주문 차단
         self._buy_state: dict = {}
         self._daily_buy_date: str = ""
-        self._daily_buy_spent = 0
+        self._daily_buy_spent: int | None = None  # None = 로드 실패 (매수 차단)
         self._bought_today: dict[str, float] = {}  # stk_cd -> buy timestamp
         self._symbol_daily_buy_spent: dict[str, int] = {}
 
-    async def _load_daily_buy_state(self) -> tuple[int, dict[str, float], dict[str, int]]:
-        """기동 시 trade_history에서 오늘 매수 합계 + 매수 종목 timestamp dict + 종목당 누적 매수금액 로드."""
+    async def _load_daily_buy_state(self) -> tuple[int | None, dict[str, float], dict[str, int]]:
+        """기동 시 trade_history에서 오늘 매수 합계 + 매수 종목 timestamp dict + 종목당 누적 매수금액 로드.
+        실패 시 spent=None 반환 — 호출부에서 매수 차단."""
         try:
             rows = await trade_history.get_buy_history(today_only=True)
             spent = sum(int(r.get("price", 0) or 0) * int(r.get("qty", 0) or 0) for r in rows)
@@ -66,21 +67,27 @@ class AutoTradeManager:
                         ts_dt = datetime.fromisoformat(ts_str)
                         bought_today[cd] = ts_dt.timestamp()
                     except (ValueError, TypeError):
-                        bought_today[cd] = time.time()
+                        logger.warning("[매매] 일일 매수 상태 — %s timestamp 파싱 실패 (ts=%r), 해당 종목 스킵", cd, ts_str)
             return spent, bought_today, symbol_spent
         except Exception:
-            logger.warning("[매매] 일일 매수 상태 로드 실패: %s", exc_info=True)
-            return 0, {}, {}
+            logger.critical("[매매] 일일 매수 상태 로드 실패 — 매수 차단 모드 진입: %s", exc_info=True)
+            return None, {}, {}
 
     async def _ensure_daily_buy_counter(self) -> None:
         today = datetime.now().strftime("%Y-%m-%d")
         if self._daily_buy_date != today:
             self._daily_buy_date = today
             self._daily_buy_spent, self._bought_today, self._symbol_daily_buy_spent = await self._load_daily_buy_state()  # type: ignore
-            logger.info(
-                "[매매] 일일 매수 상태 로드 — 날짜=%s 누적매수=%s원 종목수=%d",
-                today, f"{self._daily_buy_spent:,}", len(self._bought_today),
-            )
+            if self._daily_buy_spent is None:
+                logger.critical(
+                    "[매매] 일일 매수 상태 로드 실패 — 날짜=%s 매수 차단 모드 (trade_history 조회 실패)",
+                    today,
+                )
+            else:
+                logger.info(
+                    "[매매] 일일 매수 상태 로드 — 날짜=%s 누적매수=%s원 종목수=%d",
+                    today, f"{self._daily_buy_spent:,}", len(self._bought_today),
+                )
 
     async def execute_buy(self, stk_cd: str, current_price: float,
                     access_token: str, force_buy: bool = False, reason: str = "") -> bool:
@@ -94,6 +101,11 @@ class AutoTradeManager:
         settings = self._to_trade_settings(self.get_settings_fn())
         raw_all = self.get_settings_fn()
         await self._ensure_daily_buy_counter()
+
+        # ── 일일 매수 상태 로드 실패 시 매수 차단 (P20 폴백 금지) ──────────────
+        if self._daily_buy_spent is None:
+            logger.critical("[매매] [매수차단] %s 일일 매수 상태 로드 실패 — 매수 불가", stk_cd)
+            return False
 
         # ── 실시간 지연 중단 게이트 ────────────────────────────────────────────
         try:
@@ -206,12 +218,14 @@ class AutoTradeManager:
             if _strength_raw is not None and _strength_raw != "-":
                 try:
                     _strength_val = float(_strength_raw)
-                    if _strength_val < _min_strength:
-                        stk_nm_s = data_manager.get_stock_name(stk_cd, access_token)
-                        logger.info("[매매] [체결강도가드] %s(%s) 체결강도 %.0f < %.0f — 매수 차단", stk_nm_s, stk_cd, _strength_val, _min_strength)
-                        return False
                 except (ValueError, TypeError):
-                    pass
+                    stk_nm_s = data_manager.get_stock_name(stk_cd, access_token)
+                    logger.warning("[매매] [체결강도가드] %s(%s) 체결강도 값 파싱 실패 (raw=%r) — 매수 차단", stk_nm_s, stk_cd, _strength_raw)
+                    return False
+                if _strength_val < _min_strength:
+                    stk_nm_s = data_manager.get_stock_name(stk_cd, access_token)
+                    logger.info("[매매] [체결강도가드] %s(%s) 체결강도 %.0f < %.0f — 매수 차단", stk_nm_s, stk_cd, _strength_val, _min_strength)
+                    return False
 
         # ── 주문가능 금액 내에서 최대한 매수 (buy_amt는 한도, 의무 지출액 아님) ──
         _orderable = get_risk_manager().get_withdrawable_deposit()
@@ -241,10 +255,8 @@ class AutoTradeManager:
         logger.info("[매매] [매수주문] %s(%s) 매수신호 감지. %s %d주 주문전송.", stk_nm, stk_cd, order_type, buy_qty)
         _fire_and_forget_telegram(f"🚀 [자동매매] {stk_nm} {buy_qty}주 매수 주문 전송 완료.", self.get_settings_fn())
 
-        base_settings = self.get_settings_fn()
-
         # ── 테스트모드: 예수금 검증 (Settlement Engine) ────────────────────────
-        if is_test_mode(base_settings):
+        if is_test_mode(raw_all):
             from backend.app.services.engine_strategy_core import check_test_buy_power
             _check_price = int(order_price) if order_price > 0 else int(current_price)
             _check_price = dry_run.estimate_fill_price(_check_price, "BUY")
@@ -257,19 +269,19 @@ class AutoTradeManager:
                 return False
 
         # ── 테스트모드 가드: 테스트모드면 실전 서버에 절대 주문 안 보냄 ─────────
-        if is_test_mode(base_settings):
+        if is_test_mode(raw_all):
             _dry_price = int(order_price) if order_price > 0 else int(current_price)
             res = await dry_run.fake_send_order(
-                base_settings, access_token, "BUY", stk_cd, buy_qty, _dry_price, trde_tp,
+                raw_all, access_token, "BUY", stk_cd, buy_qty, _dry_price, trde_tp,
             )
             await dry_run.set_stock_name(stk_cd, stk_nm)
         else:
-            res = await get_router().order.send_order(base_settings, access_token, "BUY", stk_cd, buy_qty, int(order_price), trde_tp)
+            res = await get_router().order.send_order(raw_all, access_token, "BUY", stk_cd, buy_qty, int(order_price), trde_tp)
 
         if not (res and res.get("success")):
             self._buy_state[stk_cd]["has_open_buy"] = False
             logger.info("[매매] [매수실패] %s 주문 전송 실패. 잠금 해제.", stk_nm)
-            _fire_and_forget_telegram(f"⚠️ [매수실패] {stk_nm}({stk_cd}) 주문 전송 실패. 잠금 해제.", base_settings)
+            _fire_and_forget_telegram(f"⚠️ [매수실패] {stk_nm}({stk_cd}) 주문 전송 실패. 잠금 해제.", raw_all)
             try:
                 risk_mgr = get_risk_manager()
                 risk_mgr.record_order_failure()
@@ -290,7 +302,7 @@ class AutoTradeManager:
 
         # ── 저널링: 주문 요청 기록 ─────────────────────────────────────────────
         order_id = res.get("order_id", f"buy_{stk_cd}_{int(time.time())}")
-        _mode = "test" if is_test_mode(base_settings) else "real"
+        _mode = "test" if is_test_mode(raw_all) else "real"
         await _journal.record_order_request(
             order_id=order_id,
             stock_code=stk_cd,
@@ -301,7 +313,7 @@ class AutoTradeManager:
         )
 
         fill_price = int(order_price) if order_price > 0 else int(current_price)
-        if is_test_mode(base_settings):
+        if is_test_mode(raw_all):
             fill_price = dry_run.estimate_fill_price(fill_price, "BUY")
         spent = int(buy_qty * fill_price)
         self._daily_buy_spent += max(0, spent)
@@ -314,7 +326,7 @@ class AutoTradeManager:
 
         # ── 체결 이력 기록 ────────────────────────────────────────────────────
         _buy_reason = reason or "자동매수"
-        _mode = "test" if is_test_mode(base_settings) else "real"
+        _mode = "test" if is_test_mode(raw_all) else "real"
         await trade_history.record_buy(
             stk_cd=stk_cd, stk_nm=stk_nm,
             price=fill_price, qty=buy_qty,
@@ -331,7 +343,7 @@ class AutoTradeManager:
             logger.warning("[매매] 매수 한도 브로드캐스트 실패", exc_info=True)
 
         # ── 테스트모드: 가상 체결 이벤트 예약 (실전 WS "00"과 동일한 downstream) ──
-        if is_test_mode(base_settings):
+        if is_test_mode(raw_all):
             _dry_fill_price = int(order_price) if order_price > 0 else int(current_price)
             _fill_task = asyncio.create_task(
                 dry_run.fake_fill_event("BUY", stk_cd, buy_qty, _dry_fill_price, stk_nm)
@@ -367,7 +379,12 @@ class AutoTradeManager:
         nk = _base_stk_cd(str(stk_cd or ""))
         state = self._buy_state.get(stk_cd, {"last_req_ts": 0.0, "has_open_buy": False})
         state["last_req_ts"] = time.time()
-        unex = int(unex_qty) if str(unex_qty).lstrip("-").isdigit() else 0
+        try:
+            unex = int(unex_qty)
+        except (ValueError, TypeError):
+            logger.warning("[매매] [체결업데이트] %s unex_qty 파싱 실패 (raw=%r) — 체결 처리 중단", stk_cd, unex_qty)
+            self._buy_state[stk_cd] = state
+            return
 
         if str(side) == "1" and unex == 0:
             state["has_open_buy"] = False
@@ -617,7 +634,10 @@ class AutoTradeManager:
                 if max_reached["pnl_rate"] >= ts_start_val:
                     drop_rate = ((highest_price - cur_price) / highest_price * 100) if highest_price > 0 else 0
                     if drop_rate >= ts_drop_val:
-                        await self.execute_sell(stk_cd, cur_price, stk_nm, "T/S 익절", sell_qty, pnl_rate, s, base_settings, access_token)
+                        try:
+                            await self.execute_sell(stk_cd, cur_price, stk_nm, "T/S 익절", sell_qty, pnl_rate, s, base_settings, access_token)
+                        except Exception:
+                            logger.error("[매매] T/S 익절 실행 실패", exc_info=True)
 
     def _to_trade_settings(self, raw: dict) -> dict:
         """engine_settings 형식을 logic_auto_trade 호환 형식으로 변환."""
