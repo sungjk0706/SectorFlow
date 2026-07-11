@@ -7,6 +7,11 @@
 - 없음
 
 ## 직전 완료 작업
+- **2026-07-11: 9개 모듈 단위 테스트 추가 — 커버리지 대폭 향상 (243개 신규 테스트)**
+  - 대상 모듈 (이전 → 이후): engine_settings 5.17%→100%, stock_tables 10.53%→100%, stock_filter 13.33%→99.44%, stock_classification_data 9.19%→95.14%, settings_store 8.15%→93.13%, sector_data_provider 5.88%→92.94%, engine_bootstrap 9.02%→49.62%, engine_snapshot 9.80%→39.22%, engine_sector_confirm 9.51%→33.45%
+  - 신규 테스트 파일 9개: test_stock_filter.py(37), test_engine_settings.py(34), test_settings_store.py(52), test_stock_classification_data.py(24), test_stock_tables.py(25), test_sector_data_provider.py(16), test_engine_sector_confirm.py(25), test_engine_snapshot.py(17), test_engine_bootstrap.py(13)
+  - 검증: 전체 2718 passed (기존 2475 + 신규 243), 0 failed, 9.54s
+  - 커밋: `650d4f1` — 푸시 완료 (origin/main 동기화 확인)
 - **2026-07-11: SectorFlow.command 기동 최적화 — 브라우저 오픈 39% 단축 (2.16s → 1.31s)**
   - `SectorFlow.command` — 폴링 간격 0.5s→0.2s, 브라우저 오픈 타이밍 앞당기기(프론트엔드 ready 즉시), curl `--connect-timeout 1 --max-time 2` 추가, 이전 프로세스 정리 대기 2s→1s, 백엔드 비블로킹 추가 대기 섹션 신설(최대 10s)
   - 안정성 근거: 프론트엔드 자체 health check(main.ts L223-253, 300ms/100회)가 백엔드 대기 + 오버레이 UI 표시, WS 재연결(ws.ts L66-141 exponential backoff)로 백엔드 ready 전 실패 시 자동 복구
@@ -15,18 +20,21 @@
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제 — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: `SectorFlow.command 기동 최적화` — 커밋 + 푸시 완료
-- **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 전부 완료 — 백엔드 2436 passed, 프론트엔드 112 passed (실행 시점 기준)
-  - 커버리지 측정 환경 구축 완료 — 전체 65.87% → 재측정 필요 (190건 추가 후 상승 예상)
-  - 0% 모듈 7개 전부 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
+- **Git**: `9개 모듈 단위 테스트 추가` (650d4f1) + `SectorFlow.command 기동 최적화` (77c75b1) — 커밋 + 푸시 완료
+- **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 전부 완료 — 백엔드 2718 passed, 0 failed
+  - 0% 모듈 7개 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
+  - 10%대 모듈 9개 해결 (이번 세션): engine_settings(100%), stock_tables(100%), stock_filter(99.44%), stock_classification_data(95.14%), settings_store(93.13%), sector_data_provider(92.94%), engine_bootstrap(49.62%), engine_snapshot(39.22%), engine_sector_confirm(33.45%)
+  - 커버리지 재측정 필요 (243건 추가 후 상승 예상)
   - 커버리지 실행 명령어: `python -m pytest backend/tests --cov=backend --cov-report=term-missing --cov-report=html --timeout=15 --timeout-method=signal`
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 
 ## 다음 단계
-- **1순위: 10%대 커버리지 모듈 테스트 추가**:
-  - `engine_settings.py`(5.17%), `sector_data_provider.py`(5.88%), `settings_store.py`(8.15%), `engine_bootstrap.py`(9.02%), `stock_classification_data.py`(9.19%), `engine_sector_confirm.py`(9.51%), `engine_snapshot.py`(9.80%), `stock_tables.py`(10.53%), `stock_filter.py`(13.33%)
-  - 커버리지 재측정 후 0% 모듈 7개 해결로 인한 상승분 확인 권장
-- **2순위: 유령 포지션 005930 근본 원인 조사 (후순위)**:
+- **1순위: 추가 커버리지 개선 필요 모듈 (30~50%대)**
+  - `engine_bootstrap.py`(49.62%) — 80, 105-106, 128-129, 137-191 미커버 (엔진 부트스트랩 메인 함수)
+  - `engine_snapshot.py`(39.22%) — 25-90, 95-109, 151-208, 229-230 미커버 (스냅샷 생성 메인 함수)
+  - `engine_sector_confirm.py`(33.45%) — 72-209, 217-266, 298-310 미커버 (재계산 트리거/구독 관리)
+  - 커버리지 재측정 후 전체 상승분 확인 권장
+- **2순위: 유령 포지션 005930 근본 원인 조사 (후순위)**
   - 여러 차례 시도했으나 원인 식별이 어려워 후순위로 변경
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
