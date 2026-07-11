@@ -7,18 +7,17 @@
 - 없음
 
 ## 직전 완료 작업
-- **2026-07-11: Vite http proxy error 로그 근본 해결**
-  - 원인: `SectorFlow.command`에서 프론트엔드 ready 시 즉시 `break`로 탈출 → 백엔드 준비 전 브라우저 오픈 → 프론트 `healthCheck()`가 Vite 프록시 통해 ECONNREFUSED 발생 → "http proxy error" 로그 출력
-  - 수정: 프론트엔드 ready 시 `break` 제거 → 백엔드+프론트엔드 모두 ready 대기 후 브라우저 오픈, 불필요한 백엔드 추가 대기 섹션 제거
-  - 검증: 런타임 기동 → `GET /api/health 200` 첫 시도 성공, WS 3채널 정상 연결, http proxy error 로그 0건, 백엔드 기동 약 230ms, 커밋 `45c27d9`
-- **2026-07-11: 프론트엔드 Enter 키 포커스 이동 개선 + Vite 프록시 크래시 방어**
-  - Enter 키 포커스 이동: `setting-row.ts` `focusNext` 셀렉터에서 `tabindex="-1"` 스핀 버튼 제외 + `display:none` 탭 요소 필터링, Telegram 입력창 3개 + API 키 입력창 3개에 Enter 핸들러 추가 — 총 28개 입력창 개선, 커밋 `10beff1`
-  - Vite 프록시 크래시 방어: `vite.config.ts` EE3 `listeners()` 컨텍스트 손실 근본 해결 — `fn.apply(proxy, [err, ...rest])`로 this와 인자 복원, `proxy.onError` default throw 스킵, 커밋 `7d3c11c`
+- **2026-07-11: 수익현황 페이지 업종 섹션 연동 + 전체보기 토글 + 차트 onMove undefined 크래시 근본 해결**
+  - 업종 섹션 연동: 도넛 범례 업종명 클릭 시 우측 종목수익 해당 업종으로 스크롤 + 하이라이트(`canvas-sector-donut.ts` `onSectorClick` 콜백 추가, `profit-overview.ts` `onSectorClick`에서 `_activeSector` 설정 + `scrollIntoView` + `COLOR.hoverBg` 하이라이트)
+  - 전체보기 토글: "업종별 종목 수익" 타이틀 우측에 "전체보기"↔"전체접기" 버튼 추가, 업종 헤더 클릭 시 해당 업종만 펼침/접힘 토글, 기본 상태 전체보기(`_allExpanded=true`)
+  - 차트 onMove undefined 크래시: `canvas-profit-chart.ts:262` `render()` early return 시 `barRects` stale 데이터 유지가 근본 원인 — early return 시 `barRects=[]`, `hitIdx=null`, `tooltip.style.display='none'` 초기화로 상태 동기화 보장
+  - 검증: `npm run typecheck` + `npm run build` 통과 (59 modules transformed)
+  - 수정 파일: `canvas-sector-donut.ts`, `canvas-profit-chart.ts`, `profit-overview.ts`
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
-- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈) — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: Vite http proxy error 근본 해결 `45c27d9` — `main` == `origin/main`
+- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈), 수익현황 업종 섹션 연동(도넛 범례 클릭→스크롤+하이라이트), 전체보기/전체접기 토글 버튼, 차트 onMove undefined 크래시 근본 해결(render early return 시 barRects 동기화) — 모두 코드 확인 완료, `npm run build` 통과
+- **Git**: 수익현황 업종 섹션 연동 + 차트 onMove 크래시 해결 — `main` (커밋 후 push 예정)
 - **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2761 passed, 0 failed
   - 0% 모듈 7개 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
   - 10%대 모듈 9개 해결: engine_settings(100%), stock_tables(100%), stock_filter(99.44%), stock_classification_data(95.14%), settings_store(93.13%), sector_data_provider(92.94%), engine_bootstrap(49.62%), engine_snapshot(39.22%), engine_sector_confirm(33.45%)

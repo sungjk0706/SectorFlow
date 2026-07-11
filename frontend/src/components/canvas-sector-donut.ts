@@ -20,6 +20,7 @@ export interface SectorDonutOptions {
   container: HTMLElement
   data: SectorDonutRow[]
   height?: number
+  onSectorClick?: (sector: string) => void
 }
 
 export interface SectorDonutApi {
@@ -67,6 +68,7 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
 
   let data: SectorDonutRow[] = []
   let hoveredIdx: number | null = null
+  const onSectorClick = options.onSectorClick
 
   // ── DOM 구조 ──────────────────────────────────────────────
   const wrapper = document.createElement('div')
@@ -249,6 +251,11 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
         render()
         renderLegendHighlight()
       })
+      if (onSectorClick) {
+        item.addEventListener('click', () => {
+          onSectorClick(seg.row.sector)
+        })
+      }
       legendWrap.appendChild(item)
     }
   }
