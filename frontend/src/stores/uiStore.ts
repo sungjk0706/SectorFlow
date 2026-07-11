@@ -16,13 +16,10 @@ export interface UIState {
   snapshotHistory: SnapshotHistory[]
   sectorStatus: SectorStatus | null
   selectedSector: string | null
-  positionCount: number
 
   /* ── 연결 상태 ── */
-  connected: boolean
   initialized: boolean
   engineReady: boolean
-  backfilling: boolean
 
   /* ── 백그라운드 진행률 ── */
   avgAmtProgress: { current: number; total: number; done: boolean; message?: string; eta_sec?: number; status?: string; step?: number; failed_count?: number } | null
@@ -53,6 +50,9 @@ export interface UIState {
 
   /* ── 업종지수 실시간 (참고용, 저장 없음) ── */
   indexData: Record<string, IndexData> | null
+
+  /* ── OMS 서킷브레이커 발동 상태 ── */
+  circuitBreakerOpen: { message: string } | null
 }
 
 const initialState: UIState = {
@@ -61,11 +61,8 @@ const initialState: UIState = {
   snapshotHistory: [],
   sectorStatus: null,
   selectedSector: null,
-  positionCount: 0,
-  connected: false,
   initialized: false,
   engineReady: false,
-  backfilling: false,
   avgAmtProgress: null,
   bootstrapStage: null,
   marketPhase: { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null },
@@ -76,23 +73,12 @@ const initialState: UIState = {
   engineReloadComplete: false,
   receiveRate: null,
   indexData: null,
+  circuitBreakerOpen: null,
 }
 
 export const uiStore = createStore<UIState>(initialState)
 
 /* ── UI 상태 액션 함수 ── */
-
-export function setConnected(v: boolean): void {
-  uiStore.setState({ connected: v })
-}
-
-export function setBackfilling(v: boolean): void {
-  uiStore.setState({ backfilling: v })
-}
-
-export function setEngineReady(v: boolean): void {
-  uiStore.setState({ engineReady: v })
-}
 
 export function applyAvgAmtProgress(data: { current: number; total: number; done: boolean; message?: string; eta_sec?: number; status?: string; step?: number; failed_count?: number }): void {
   if (data.done && (data.status === 'completed' || data.status === 'confirmed')) {
@@ -138,9 +124,19 @@ export function applyIndexRefresh(data: EngineStatus): void {
   uiStore.setState(patch)
 }
 
-/* ── engine-reload-complete: 설정 재로드 완료 ── */
+/* ── engine-reload-complete: 설정 재로드 완료 + 서킷브레이커 알림 해제 ── */
 export function applyEngineReloadComplete(): void {
-  uiStore.setState({ engineReloadComplete: true })
+  uiStore.setState({ engineReloadComplete: true, circuitBreakerOpen: null })
+}
+
+/* ── circuit_breaker_open: OMS 서킷브레이커 발동 알림 ── */
+export function applyCircuitBreakerOpen(data: { message?: string }): void {
+  uiStore.setState({ circuitBreakerOpen: { message: data.message ?? '서킷브레이커 발동 — 자동매매 중지' } })
+}
+
+/* ── 서킷브레이커 알림 수동 해제 (사용자 클릭) ── */
+export function clearCircuitBreakerOpen(): void {
+  uiStore.setState({ circuitBreakerOpen: null })
 }
 
 /* ── snapshot-update: 수익 이력만 갱신 ── */
@@ -172,25 +168,15 @@ export function applyBuyLimitStatus(data: { daily_buy_spent: number }): void {
 
 /* ── test-data-reset-completed: 통합 초기화 완료 ── */
 export function applyTestDataResetCompleted(): void {
-  console.log("[초기화] applyTestDataResetCompleted 실행")
-  console.log("Store 업데이트 전")
   uiStore.setState({
     snapshotHistory: [],
     buyLimitStatus: { daily_buy_spent: 0 },
   })
-  console.log("Store 업데이트 후")
 }
 
 /* ── ws-subscribe-status: 구독 상태 갱신 ── */
 export function applyWsSubscribeStatus(data: { index_subscribed: boolean; quote_subscribed: boolean }): void {
   uiStore.setState({ wsSubscribeStatus: data })
-}
-
-/* ── ws-connection-status: Broker WebSocket 연결 상태 갱신 ── */
-export function applyWsConnectionStatus(data: { connected: boolean }): void {
-  uiStore.setState((state) => ({
-    status: state.status ? { ...state.status, broker_connected: data.connected } : null,
-  }))
 }
 
 /* ── market-phase: 장 상태 갱신 ── */
@@ -234,7 +220,7 @@ export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
     buyLimitStatus: (data.buy_limit_status as { daily_buy_spent: number }) ?? { daily_buy_spent: 0 },
     wsSubscribeStatus: (data.ws_subscribe_status as { index_subscribed: boolean; quote_subscribed: boolean }) ?? { index_subscribed: false, quote_subscribed: false },
     initialized: true,
-    backfilling: false,
+    circuitBreakerOpen: null,
     engineReady: !!(data.bootstrap_done),
     marketPhase: (data.market_phase as { krx: string; nxt: string; krx_alert?: string | null }) ?? { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null },
     receiveRate: (data.receive_rate as { received: number; total: number; pct: number }) ?? null,

