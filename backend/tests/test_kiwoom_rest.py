@@ -19,6 +19,7 @@ kiwoom_try_token: 성공/크리덴셜없음/HTTP실패/토큰필드없음/예외
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import pytest
 from datetime import datetime, timezone, timedelta
@@ -377,11 +378,13 @@ class TestKiwoomRestRevokeToken:
             assert result is True
             assert api._token_info is None
 
-    async def test_no_token(self):
+    async def test_no_token(self, caplog):
         api = _make_kiwoom_rest()
         api._token_info = None
-        result = await api.revoke_token()
-        assert result is True
+        with caplog.at_level(logging.INFO, logger="backend.app.core.kiwoom_rest"):
+            result = await api.revoke_token()
+            assert result is True
+        assert "토큰 폐기 스킵 — 발급된 토큰 없음" in caplog.text
 
     async def test_http_failure_still_returns_true(self):
         api = _make_kiwoom_rest()
