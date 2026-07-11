@@ -235,17 +235,17 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 
 | 파일 | 줄 수 | 규모 | 점검 완료 |
 |------|-------|------|----------|
-| `services/auto_trading_effective.py` | 80 | 중형 | ☐ |
-| `services/core_queues.py` | 127 | 중형 | ☐ |
+| `services/auto_trading_effective.py` | 80 | 중형 | ☑ |
+| `services/core_queues.py` | 127 | 중형 | ☑ |
 
 **원칙 체크리스트**:
-- [ ] P5: asyncio.Queue 파이프라인 일원화
-- [ ] P10: 설정 캐시 직접 참조
-- [ ] P11: 폴링 없음, 이벤트 기반
-- [ ] P13: 설정 O(1) 메모리 조회
-- [ ] P17: `auto_buy_on`/`auto_sell_on` 플래그 SSOT
-- [ ] P18: 테스트모드에서도 동일한 게이트 로직
-- [ ] P21: 매매 차단 시 사용자에게 표시
+- [x] P5: asyncio.Queue 파이프라인 일원화
+- [x] P10: 설정 캐시 직접 참조 (B05-04 docstring 불일치 수정, B05-06 tick_queue size 불일치 수정)
+- [x] P11: 폴링 없음, 이벤트 기반
+- [x] P13: 설정 O(1) 메모리 조회
+- [x] P17: `auto_buy_on`/`auto_sell_on` 플래그 SSOT
+- [x] P18: 테스트모드에서도 동일한 게이트 로직
+- [x] P21: 매매 차단 시 사용자에게 표시 (B05-01 silent except → warning 로그 추가)
 
 ---
 
@@ -979,6 +979,12 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B04-03 | B-04 | `trade_history.py:388-401` | P20 | MEDIUM | `_lookup_sector`가 DB 에러 시 "미분류" 폴백 반환 → "행 없음"과 "DB 에러"를 구분하지 않음, 정상 데이터를 폴백으로 덮음 | 해결 |
 | B04-04 | B-04 | `trade_history.py:69-71, 156-177, 249-256, 654-656` | P16 | MEDIUM | dead code 5개 함수 (`_migrate_from_json`, `_patch_sell_history`, `start/stop_consumer_task`, `close_db_connection`) — no-op이거나 앱 코드에서 호출되지 않음 | 해결 |
 | B04-05 | B-04 | `settlement_engine.py`, `trade_history.py` | P22 | HIGH | 기동 시 정산 상태(`_orderable`)와 거래 이력으로 역산한 값 간 대조(reconciliation) 없음 → B04-02 폴백 문제와 결합 시 자금 손실 위험 | 보류 |
+| B05-01 | B-05 | `auto_trading_effective.py:38-43` | P20/P21 | MEDIUM | `_in_time_range`에서 `except Exception: return False` — 설정 키 누락/오류 시 매수·매도 조용히 차단, 사용자가 차단 원인 인지 불가 | 해결 |
+| B05-02 | B-05 | `auto_trading_effective.py:46-52` | P16 | MEDIUM | `schedule_allows_auto_trading` dead code — 함수 정의만 있고 호출처 전무 (grep 확인) | 해결 |
+| B05-03 | B-05 | `auto_trading_effective.py:4` | P10 | LOW | docstring이 제거된 필드 `auto_trade_on`을 참조 — migration 코드는 `settings_file.py`에 별도 존재, 혼란 유발 | 해결 |
+| B05-04 | B-05 | `core_queues.py:7`, `ARCHITECTURE.md:53,265` | P16/P10 | MEDIUM | docstring이 "5개 코어 큐"라고 기술하고 `order_queue`를 나열하나 실제 4개 큐만 존재 — `order_queue` 변수/함수/상수 전무, ARCHITECTURE.md도 같은 불일치 | 해결 |
+| B05-05 | B-05 | `core_queues.py:108-128`, `engine_lifecycle.py:83` | P16/P22 | MEDIUM | `clear_all_queues` dead code — `stop_engine()`에서 호출되지 않아 엔진 재기동 시 stale 큐 데이터 잔존 가능 | 해결 |
+| B05-06 | B-05 | `core_queues.py:22`, `ARCHITECTURE.md:444,475` | P10 | LOW | `tick_queue` size 불일치 — 코드는 20000, ARCHITECTURE.md는 5000으로 기술 | 해결 |
 
 ---
 
@@ -992,7 +998,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B-02 | P0 | 리스크 관리 및 서킷 브레이커 | ☑ 완료 (3건 수정) |
 | B-03 | P0 | Dry Run | ☑ 완료 (3건 수정) |
 | B-04 | P0 | 정산 엔진 및 거래 이력 | ☑ 완료 (4건 수정, 1건 보류) |
-| B-05 | P0 | 자동매매 유효성 및 코어 큐 | ☐ 미시작 |
+| B-05 | P0 | 자동매매 유효성 및 코어 큐 | ☑ 완료 (6건 수정, 378 tests passed) |
 | B-06 | P1 | 엔진 루프 및 생명주기 | ☐ 미시작 |
 | B-07 | P1 | WS 시세 처리 | ☐ 미시작 |
 | B-08 | P1 | 엔진 부트스트랩/캐시/스냅샷 | ☐ 미시작 |
