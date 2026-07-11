@@ -16,6 +16,7 @@ import { showAlertDialog } from '../components/common/dialog'
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
 import { createSearchInput } from '../components/common/search-input'
 import { createSectorRowEl } from '../components/common/sector-row'
+import { createSolidBtn } from '../components/common/button'
 import { FONT_SIZE, FONT_FAMILY, FONT_WEIGHT, createStockNameColumn, COLOR } from '../components/common/ui-styles'
 import type { PageModule } from '../router'
 import type { StockClassificationMutationResponse } from '../types'
@@ -333,20 +334,6 @@ function setControlsDisabled(disabled: boolean): void {
   }
 }
 
-/* ── 공통: 액션 버튼 ── */
-function actionBtn(text: string, color: string = COLOR.success): HTMLButtonElement {
-  const btn = document.createElement('button')
-  btn.setAttribute('data-edit-control', '')
-  Object.assign(btn.style, {
-    padding: '4px 10px', border: 'none', borderRadius: '4px',
-    background: color, color: COLOR.white, cursor: 'pointer',
-    fontSize: FONT_SIZE.small, fontFamily: FONT_FAMILY,
-    flexShrink: '0', whiteSpace: 'nowrap',
-  })
-  btn.textContent = text
-  return btn
-}
-
 /* ── 공통: 카드 래퍼 ── */
 function cardWrap(): HTMLElement {
   const div = document.createElement('div')
@@ -378,15 +365,6 @@ function buildTripleHeader(): void {
     flex: '1', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', gap: '6px', alignItems: 'flex-start'
   })
 
-  // 버튼 공통 스타일 (크기 및 폰트 축소)
-  const btnStyle = {
-    padding: '4px 10px', border: 'none', borderRadius: '4px',
-    background: COLOR.success, color: COLOR.white, cursor: 'pointer',
-    fontSize: FONT_SIZE.small, fontFamily: FONT_FAMILY,
-    fontWeight: 'normal', whiteSpace: 'nowrap',
-    transition: 'background-color 0.2s',
-  }
-
   // 설명라벨
   const descLabel = document.createElement('span')
   Object.assign(descLabel.style, { fontSize: FONT_SIZE.small, color: COLOR.disabled, whiteSpace: 'nowrap' })
@@ -397,19 +375,19 @@ function buildTripleHeader(): void {
   const buttonContainer = document.createElement('div')
   Object.assign(buttonContainer.style, { display: 'flex', gap: '6px' })
 
-  const btn1 = document.createElement('button')
-  Object.assign(btn1.style, btnStyle)
-  btn1.textContent = '⬇️ 1일봉챠트 시세 다운로드'
-  btn1.addEventListener('mouseenter', () => btn1.style.background = '#157347')
-  btn1.addEventListener('mouseleave', () => btn1.style.background = COLOR.success)
-  btn1.addEventListener('click', (e) => onTriggerConfirmedDownload(e))
+  const btn1 = createSolidBtn({
+    label: '⬇️ 1일봉챠트 시세 다운로드',
+    color: COLOR.success,
+    hoverColor: '#157347',
+    onClick: (e) => onTriggerConfirmedDownload(e),
+  })
 
-  const btn2 = document.createElement('button')
-  Object.assign(btn2.style, btnStyle)
-  btn2.textContent = '⬇️ 5일봉챠트 거래대금,고가 다운로드'
-  btn2.addEventListener('mouseenter', () => btn2.style.background = '#157347')
-  btn2.addEventListener('mouseleave', () => btn2.style.background = COLOR.success)
-  btn2.addEventListener('click', (e) => onTrigger5dDownload(e))
+  const btn2 = createSolidBtn({
+    label: '⬇️ 5일봉챠트 거래대금,고가 다운로드',
+    color: COLOR.success,
+    hoverColor: '#157347',
+    onClick: (e) => onTrigger5dDownload(e),
+  })
 
   buttonContainer.appendChild(btn1)
   buttonContainer.appendChild(btn2)
@@ -537,9 +515,13 @@ function buildSectorManageCard(): HTMLElement {
   Object.assign(statsLabelRef.style, { fontSize: FONT_SIZE.label, color: COLOR.tertiary, fontWeight: FONT_WEIGHT.normal })
 
   // 우측 컨테이너: 통계 레이블 + 새 업종 추가 버튼
-  addSectorBtnRef = actionBtn('+ 새 업종 추가', COLOR.down)
+  addSectorBtnRef = createSolidBtn({
+    label: '+ 새 업종 추가',
+    color: COLOR.down,
+    editControl: true,
+    onClick: (e: MouseEvent) => onAddSector(e),
+  })
   Object.assign(addSectorBtnRef.style, { padding: '2px 8px', fontSize: FONT_SIZE.small })
-  addSectorBtnRef.addEventListener('click', (e: MouseEvent) => onAddSector(e))
 
   const titleRightContainer = document.createElement('div')
   Object.assign(titleRightContainer.style, { display: 'flex', alignItems: 'center', gap: '8px' })
@@ -725,15 +707,23 @@ function buildSectorManageCard(): HTMLElement {
       render: (row) => {
         const container = document.createElement('div')
         Object.assign(container.style, { display: 'flex', gap: '4px', justifyContent: 'center' })
-        const renameBtn = actionBtn('이름변경', COLOR.tertiary)
-        renameBtn.addEventListener('click', (e: MouseEvent) => {
-          e.stopPropagation()
-          onRenameSector(row.sectorName, e)
+        const renameBtn = createSolidBtn({
+          label: '이름변경',
+          color: COLOR.tertiary,
+          editControl: true,
+          onClick: (e: MouseEvent) => {
+            e.stopPropagation()
+            onRenameSector(row.sectorName, e)
+          },
         })
-        const deleteBtn = actionBtn('삭제', COLOR.up)
-        deleteBtn.addEventListener('click', (e: MouseEvent) => {
-          e.stopPropagation()
-          onDeleteSector(row.sectorName, e)
+        const deleteBtn = createSolidBtn({
+          label: '삭제',
+          color: COLOR.up,
+          editControl: true,
+          onClick: (e: MouseEvent) => {
+            e.stopPropagation()
+            onDeleteSector(row.sectorName, e)
+          },
         })
         container.appendChild(renameBtn)
         container.appendChild(deleteBtn)
@@ -915,10 +905,14 @@ function buildTripleCenter(): void {
   stagingCountRef = document.createElement('span')
   Object.assign(stagingCountRef.style, { fontSize: FONT_SIZE.small, fontWeight: 'normal', color: COLOR.neutral })
 
-  const stagingClearBtn = actionBtn('전체 해제', COLOR.tertiary)
+  const stagingClearBtn = createSolidBtn({
+    label: '전체 해제',
+    color: COLOR.tertiary,
+    editControl: true,
+    onClick: () => clearStaging(),
+  })
   stagingClearBtn.className = 'staging-clear-btn'
   Object.assign(stagingClearBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.small, display: 'none' })
-  stagingClearBtn.addEventListener('click', () => clearStaging())
 
   stagingHeader.appendChild(stagingCountRef)
   stagingHeader.appendChild(stagingClearBtn)
@@ -959,29 +953,37 @@ function buildTripleCenter(): void {
   const btnGroup = document.createElement('div')
   Object.assign(btnGroup.style, { display: 'flex', gap: '4px' })
 
-  const selectAllBtn = actionBtn('전체 선택', COLOR.down)
-  Object.assign(selectAllBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.small })
-  selectAllBtn.addEventListener('click', () => {
-    if (!selectedSector) return
-    const stocks = getStocksForSector(selectedSector)
-    selectedStocks.clear()
-    for (const s of stocks) selectedStocks.add(s.code)
-    anchorRow = stocks.length > 0 ? 0 : -1
-    if (detailTableRef) detailTableRef.updateRows(stocks)
-    updateAllInlineMoveButtons()
-  })
-
-  const deselectAllBtn = actionBtn('전체 해제', COLOR.tertiary)
-  Object.assign(deselectAllBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.small })
-  deselectAllBtn.addEventListener('click', () => {
-    selectedStocks.clear()
-    anchorRow = -1
-    if (selectedSector && detailTableRef) {
+  const selectAllBtn = createSolidBtn({
+    label: '전체 선택',
+    color: COLOR.down,
+    editControl: true,
+    onClick: () => {
+      if (!selectedSector) return
       const stocks = getStocksForSector(selectedSector)
-      detailTableRef.updateRows(stocks)
-    }
-    updateAllInlineMoveButtons()
+      selectedStocks.clear()
+      for (const s of stocks) selectedStocks.add(s.code)
+      anchorRow = stocks.length > 0 ? 0 : -1
+      if (detailTableRef) detailTableRef.updateRows(stocks)
+      updateAllInlineMoveButtons()
+    },
   })
+  Object.assign(selectAllBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.small })
+
+  const deselectAllBtn = createSolidBtn({
+    label: '전체 해제',
+    color: COLOR.tertiary,
+    editControl: true,
+    onClick: () => {
+      selectedStocks.clear()
+      anchorRow = -1
+      if (selectedSector && detailTableRef) {
+        const stocks = getStocksForSector(selectedSector)
+        detailTableRef.updateRows(stocks)
+      }
+      updateAllInlineMoveButtons()
+    },
+  })
+  Object.assign(deselectAllBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.small })
 
   btnGroup.appendChild(selectAllBtn)
   btnGroup.appendChild(deselectAllBtn)

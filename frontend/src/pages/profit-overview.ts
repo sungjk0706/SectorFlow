@@ -6,6 +6,7 @@ import { createProfitChart, type ProfitChartApi } from '../components/canvas-pro
 import { createSectorDonut, type SectorDonutApi, type SectorDonutRow } from '../components/canvas-sector-donut'
 import { globalSettingsManager } from '../settings'
 import { FONT_SIZE, FONT_WEIGHT, COLOR, pnlColor, fmtWon } from '../components/common/ui-styles'
+import { createActionButton } from '../components/common/button'
 import { createCardTitle } from '../components/common/card-title'
 import { sectionTitle } from '../components/common/settings-common'
 import { ACCOUNT_LABELS_REAL, ACCOUNT_LABELS_TEST } from '../components/common/account-labels'
@@ -393,18 +394,24 @@ function mount(container: HTMLElement): void {
   stockListTitle.textContent = '업종별 종목 수익'
   stockListHeaderWrap.appendChild(stockListTitle)
 
-  expandToggleBtn = document.createElement('button')
-  Object.assign(expandToggleBtn.style, {
-    padding: '2px 10px', fontSize: FONT_SIZE.small, fontWeight: FONT_WEIGHT.normal,
-    border: '1px solid ' + COLOR.borderDark, borderRadius: '4px',
-    background: COLOR.surfaceLight, cursor: 'pointer', color: COLOR.down,
+  expandToggleBtn = createActionButton({
+    label: _allExpanded ? '전체접기' : '전체보기',
+    variant: 'secondary',
+    padding: '2px 10px',
+    fontSize: FONT_SIZE.small,
+    borderRadius: '4px',
+    onClick: () => {
+      _allExpanded = !_allExpanded
+      _activeSector = null
+      updateExpandToggleBtn()
+      renderSectorStockPnl()
+    },
   })
-  expandToggleBtn.textContent = _allExpanded ? '전체접기' : '전체보기'
-  expandToggleBtn.addEventListener('click', () => {
-    _allExpanded = !_allExpanded
-    _activeSector = null
-    updateExpandToggleBtn()
-    renderSectorStockPnl()
+  Object.assign(expandToggleBtn.style, {
+    border: '1px solid ' + COLOR.borderDark,
+    background: COLOR.surfaceLight,
+    color: COLOR.down,
+    fontWeight: FONT_WEIGHT.normal,
   })
   stockListHeaderWrap.appendChild(expandToggleBtn)
   accountPanel.appendChild(stockListHeaderWrap)
@@ -421,20 +428,20 @@ function mount(container: HTMLElement): void {
   const lower = document.createElement('div')
   Object.assign(lower.style, { flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 0' })
 
-  const detailBtn = document.createElement('button')
-  Object.assign(detailBtn.style, {
+  const detailBtn = createActionButton({
+    label: '상세 분석 보기 →',
+    variant: 'secondary',
     padding: '10px 24px',
-    fontSize: FONT_SIZE.label,
+    borderRadius: '6px',
+    onClick: () => {
+      location.hash = '#/profit-detail'
+    },
+  })
+  Object.assign(detailBtn.style, {
     fontWeight: FONT_WEIGHT.semibold,
     border: '1px solid ' + COLOR.borderDark,
-    borderRadius: '6px',
     background: COLOR.surfaceLight,
-    cursor: 'pointer',
     color: COLOR.down,
-  })
-  detailBtn.textContent = '상세 분석 보기 →'
-  detailBtn.addEventListener('click', () => {
-    location.hash = '#/profit-detail'
   })
   lower.appendChild(detailBtn)
 

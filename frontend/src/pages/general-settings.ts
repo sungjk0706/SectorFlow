@@ -14,13 +14,14 @@ import { createTimePairInput, type TimePairInputHandle } from '../components/com
 import { FONT_SIZE, FONT_WEIGHT, createDarkInput, COLOR } from '../components/common/ui-styles'
 import { showConfirmDialog, showAlertDialog, showCustomDialog } from '../components/common/dialog'
 import { createCardTitle } from '../components/common/card-title'
+import { createActionButton, createTabBar } from '../components/common/button'
 import type { AppSettings } from '../types'
 
 type TabId = 'auto-trade' | 'telegram' | 'account-manage' | 'api-settings'
 
 // 일반설정 페이지 전용 스타일 상수 (공유 FONT_SIZE와 분리)
 const GS = {
-  label: '14px',   // 토글/행 라벨 (기존 FONT_SIZE.label=12px → 14px)
+  label: FONT_SIZE.settingsLabel,   // 토글/행 라벨 (FONT_SIZE.settingsLabel = 14px)
   desc:  '12px',   // 설명 텍스트 (기존 FONT_SIZE.badge=11px → 12px)
   input: '13px',   // 입력박스 폰트
   rowPad: '10px 0', // 행 상하 패딩
@@ -41,6 +42,7 @@ let tradingDayLoading = true
 // 탭 상태
 let activeTab: TabId = 'auto-trade'
 let tabBar: HTMLElement | null = null
+let tabBarHandle: ReturnType<typeof createTabBar> | null = null
 let tabContent: HTMLElement | null = null
 let rootEl: HTMLElement | null = null
 let tabPanels: Record<TabId, HTMLElement> | null = null
@@ -177,35 +179,22 @@ function renderTabBar(): HTMLElement {
     { id: 'api-settings', label: 'API 설정' },
   ]
 
-  const btnGroup = document.createElement('div')
-  btnGroup.style.display = 'flex'
-
-  for (const tab of tabs) {
-    const btn = document.createElement('button')
-    btn.type = 'button'
-    btn.dataset.tabId = tab.id
-    const isActive = activeTab === tab.id
-    Object.assign(btn.style, {
-      padding: '8px 16px', cursor: 'pointer', border: 'none', background: 'transparent', fontSize: FONT_SIZE.tab,
-      borderBottom: isActive ? '2px solid ' + COLOR.down : '2px solid transparent',
-      fontWeight: isActive ? FONT_WEIGHT.normal : FONT_WEIGHT.normal,
-      color: isActive ? COLOR.down : COLOR.tertiary,
-    })
-    btn.textContent = tab.label
-    btn.addEventListener('click', () => { activeTab = tab.id; refreshUI() })
-    btnGroup.appendChild(btn)
-  }
-  bar.appendChild(btnGroup)
+  tabBarHandle = createTabBar({
+    tabs,
+    activeId: activeTab,
+    onChange: (id) => { activeTab = id as TabId; refreshUI() },
+    fontSize: FONT_SIZE.tab,
+    padding: '8px 16px',
+  })
+  bar.appendChild(tabBarHandle.el)
 
   return bar
 }
 
 function refreshUI(): void {
   if (!rootEl || !tabContent || !tabPanels) return
-  // 탭 바 재렌더링
-  const oldBar = tabBar
-  tabBar = renderTabBar()
-  if (oldBar && oldBar.parentNode) oldBar.parentNode.replaceChild(tabBar, oldBar)
+  // 탭 바 활성 상태 업데이트 (DOM 재생성 없음)
+  if (tabBarHandle) tabBarHandle.setActive(activeTab)
 
   // 탭 패널 display 토글 (DOM 재생성 없음)
   for (const [id, panel] of Object.entries(tabPanels) as [TabId, HTMLElement][]) {
@@ -411,24 +400,26 @@ function renderTelegramTab(container: HTMLElement): void {
   // 저장 버튼
   const saveRow = document.createElement('div')
   Object.assign(saveRow.style, { margin: GS.saveMargin, textAlign: 'right' })
-  const saveBtn = document.createElement('button')
-  saveBtn.type = 'button'
-  Object.assign(saveBtn.style, { padding: GS.btnPad, borderRadius: '6px', border: '1px solid ' + COLOR.border, cursor: 'pointer', fontSize: GS.label })
-  saveBtn.textContent = '저장'
-  saveBtn.addEventListener('click', async () => {
-    const orig: Record<string, unknown> = {}
-    const current: Record<string, unknown> = {}
-    for (const k of STR_KEYS) {
-      orig[k] = vals[k]
-      current[k] = teleInputs[k]?.value ?? vals[k]
-    }
-    const dirty = extractDirty(orig, current, STR_KEYS as unknown as string[])
-    saveBtn.textContent = '저장 중...'
-    saveBtn.setAttribute('disabled', 'true')
-    const res = await settingsMgr!.saveSection(dirty)
-    showSaveToast(res.ok ? 'saved' : 'error')
-    saveBtn.textContent = '저장'
-    saveBtn.removeAttribute('disabled')
+  const saveBtn = createActionButton({
+    label: '저장',
+    variant: 'secondary',
+    padding: GS.btnPad,
+    fontSize: GS.label,
+    onClick: async () => {
+      const orig: Record<string, unknown> = {}
+      const current: Record<string, unknown> = {}
+      for (const k of STR_KEYS) {
+        orig[k] = vals[k]
+        current[k] = teleInputs[k]?.value ?? vals[k]
+      }
+      const dirty = extractDirty(orig, current, STR_KEYS as unknown as string[])
+      saveBtn.textContent = '저장 중...'
+      saveBtn.disabled = true
+      const res = await settingsMgr!.saveSection(dirty)
+      showSaveToast(res.ok ? 'saved' : 'error')
+      saveBtn.textContent = '저장'
+      saveBtn.disabled = false
+    },
   })
   saveRow.appendChild(saveBtn)
   container.appendChild(saveRow)
@@ -545,18 +536,21 @@ function renderTestVirtualSection(): HTMLElement {
   depositInput = createMoneyInput({ value: inputAmount, onChange: v => { inputAmount = Math.max(0, v) }, style: { width: '160px' } as unknown as Partial<CSSStyleDeclaration>, name: 'deposit_amount' })
   inputRow.appendChild(depositInput.el)
 
-  const chargeBtn = document.createElement('button')
-  chargeBtn.type = 'button'
-  Object.assign(chargeBtn.style, { padding: '7px 12px', borderRadius: '4px', border: '1px solid ' + COLOR.border, background: COLOR.surface, cursor: 'pointer', fontSize: GS.label })
-  chargeBtn.textContent = '투자금충전'
-  chargeBtn.addEventListener('click', async () => {
-    if (inputAmount <= 0) return
-    try {
-      const res = await api.settlementCharge(inputAmount)
-      showSaveToast(res.ok ? 'saved' : 'error')
-    } catch {
-      showSaveToast('error')
-    }
+  const chargeBtn = createActionButton({
+    label: '투자금충전',
+    variant: 'secondary',
+    padding: '7px 12px',
+    borderRadius: '4px',
+    fontSize: GS.label,
+    onClick: async () => {
+      if (inputAmount <= 0) return
+      try {
+        const res = await api.settlementCharge(inputAmount)
+        showSaveToast(res.ok ? 'saved' : 'error')
+      } catch {
+        showSaveToast('error')
+      }
+    },
   })
   inputRow.appendChild(chargeBtn)
   wrap.appendChild(inputRow)
@@ -564,13 +558,16 @@ function renderTestVirtualSection(): HTMLElement {
   // 기본예수금으로 저장 버튼
   const saveRow = document.createElement('div')
   Object.assign(saveRow.style, { display: 'flex', justifyContent: 'flex-end', margin: GS.saveMargin })
-  const saveDepositBtn = document.createElement('button')
-  saveDepositBtn.type = 'button'
-  Object.assign(saveDepositBtn.style, { padding: '7px 16px', borderRadius: '4px', border: '1px solid ' + COLOR.border, background: COLOR.surface, cursor: 'pointer', fontSize: GS.label })
-  saveDepositBtn.textContent = '투자금 변경'
-  saveDepositBtn.addEventListener('click', async () => {
-    const res = await settingsMgr!.saveSection({ test_virtual_deposit: inputAmount, test_virtual_balance: inputAmount })
-    showSaveToast(res.ok ? 'saved' : 'error')
+  const saveDepositBtn = createActionButton({
+    label: '투자금 변경',
+    variant: 'secondary',
+    padding: '7px 16px',
+    borderRadius: '4px',
+    fontSize: GS.label,
+    onClick: async () => {
+      const res = await settingsMgr!.saveSection({ test_virtual_deposit: inputAmount, test_virtual_balance: inputAmount })
+      showSaveToast(res.ok ? 'saved' : 'error')
+    },
   })
   saveRow.appendChild(saveDepositBtn)
   wrap.appendChild(saveRow)
@@ -597,24 +594,27 @@ function renderTestVirtualSection(): HTMLElement {
   // 전체 초기화
   const resetWrap = document.createElement('div')
   Object.assign(resetWrap.style, { borderTop: '1px solid ' + COLOR.borderLight, padding: GS.rowPad })
-  const resetBtn = document.createElement('button')
-  resetBtn.type = 'button'
-  Object.assign(resetBtn.style, { padding: '8px 18px', borderRadius: '4px', border: '1px solid ' + COLOR.up, background: COLOR.up, color: COLOR.white, cursor: 'pointer', fontSize: GS.label })
-  resetBtn.textContent = '🔴 테스트 데이터 전체 초기화'
-  resetBtn.addEventListener('click', async () => {
-    const confirmed = await showConfirmDialog({
-      title: '테스트 데이터 초기화',
-      message: '테스트 데이터를 전체 초기화하시겠습니까?\n가상 보유종목, 매매 이력, 투자금이 모두 초기화됩니다.',
-      isDanger: true
-    })
-    if (!confirmed) return
-    try {
-      await api.resetTestData()
-      applyTestDataResetCompleted()
-      showSaveToast('saved')
-    } catch {
-      await showAlertDialog({ title: '오류', message: '초기화 실패' })
-    }
+  const resetBtn = createActionButton({
+    label: '🔴 테스트 데이터 전체 초기화',
+    variant: 'danger',
+    padding: '8px 18px',
+    borderRadius: '4px',
+    fontSize: GS.label,
+    onClick: async () => {
+      const confirmed = await showConfirmDialog({
+        title: '테스트 데이터 초기화',
+        message: '테스트 데이터를 전체 초기화하시겠습니까?\n가상 보유종목, 매매 이력, 투자금이 모두 초기화됩니다.',
+        isDanger: true
+      })
+      if (!confirmed) return
+      try {
+        await api.resetTestData()
+        applyTestDataResetCompleted()
+        showSaveToast('saved')
+      } catch {
+        await showAlertDialog({ title: '오류', message: '초기화 실패' })
+      }
+    },
   })
   resetWrap.appendChild(resetBtn)
   wrap.appendChild(resetWrap)
@@ -810,30 +810,29 @@ function renderApiFields(container: HTMLElement): void {
 
   const btnRow = document.createElement('div')
   Object.assign(btnRow.style, { textAlign: 'right', margin: GS.saveMargin })
-  const saveBtn = document.createElement('button')
-  saveBtn.type = 'button'
-  Object.assign(saveBtn.style, {
-    padding: GS.btnPad, borderRadius: '4px',
-    border: '1px solid ' + COLOR.warning, background: 'transparent',
-    color: COLOR.warning, cursor: 'pointer', fontSize: GS.label,
-  })
-  saveBtn.textContent = '저장'
-  saveBtn.addEventListener('click', async () => {
-    const keys = fields.map(f => f.key)
-    const orig: Record<string, unknown> = {}
-    const current: Record<string, unknown> = {}
-    for (const k of keys) {
-      orig[k] = vals[k]
-      current[k] = apiKeyInputs[k]?.value ?? vals[k]
-    }
-    const dirty = extractDirty(orig, current, keys)
-    if (Object.keys(dirty).length === 0) return
-    saveBtn.textContent = '저장 중...'
-    saveBtn.setAttribute('disabled', 'true')
-    const res = await settingsMgr!.saveSection(dirty)
-    showSaveToast(res.ok ? 'saved' : 'error')
-    saveBtn.textContent = '저장'
-    saveBtn.removeAttribute('disabled')
+  const saveBtn = createActionButton({
+    label: '저장',
+    variant: 'warning',
+    padding: GS.btnPad,
+    borderRadius: '4px',
+    fontSize: GS.label,
+    onClick: async () => {
+      const keys = fields.map(f => f.key)
+      const orig: Record<string, unknown> = {}
+      const current: Record<string, unknown> = {}
+      for (const k of keys) {
+        orig[k] = vals[k]
+        current[k] = apiKeyInputs[k]?.value ?? vals[k]
+      }
+      const dirty = extractDirty(orig, current, keys)
+      if (Object.keys(dirty).length === 0) return
+      saveBtn.textContent = '저장 중...'
+      saveBtn.disabled = true
+      const res = await settingsMgr!.saveSection(dirty)
+      showSaveToast(res.ok ? 'saved' : 'error')
+      saveBtn.textContent = '저장'
+      saveBtn.disabled = false
+    },
   })
   btnRow.appendChild(saveBtn)
   container.appendChild(btnRow)
@@ -1037,6 +1036,7 @@ function unmount(): void {
   if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }
   rootEl = null
   tabBar = null
+  tabBarHandle = null
   tabContent = null
   tabPanels = null
   masterToggle = null

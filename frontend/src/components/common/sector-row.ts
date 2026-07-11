@@ -1,6 +1,7 @@
 // 공통 업종 행 컴포넌트 — [업종명] [이동 버튼(우측 정렬)]
 
-import { FONT_SIZE, FONT_FAMILY, COLOR } from './ui-styles'
+import { FONT_SIZE, COLOR } from './ui-styles'
+import { createSolidBtn } from './button'
 
 export interface SectorRowOptions {
   sectorName: string
@@ -38,31 +39,17 @@ export function createSectorRowEl(options: SectorRowOptions): HTMLElement {
   })
   nameSpan.textContent = sectorName
 
-  const btn = document.createElement('button')
-  btn.setAttribute('data-edit-control', '')
-  btn.textContent = btnText
-  Object.assign(btn.style, {
-    marginLeft: 'auto',
-    flexShrink: '0',
-    whiteSpace: 'nowrap',
-    padding: '4px 10px',
-    border: 'none',
-    borderRadius: '4px',
-    background: `${COLOR.success}`,
-    color: COLOR.white,
-    cursor: 'pointer',
-    fontSize: FONT_SIZE.small,
-    fontFamily: FONT_FAMILY,
+  const btn = createSolidBtn({
+    label: btnText,
+    color: COLOR.success,
+    editControl: true,
+    disabled: btnDisabled,
+    onClick: (e: MouseEvent) => {
+      e.stopPropagation()
+      onBtnClick(e)
+    },
   })
-  if (btnDisabled) {
-    btn.disabled = true
-    btn.style.opacity = '0.4'
-    btn.style.pointerEvents = 'none'
-  }
-  btn.addEventListener('click', (e: MouseEvent) => {
-    e.stopPropagation()
-    onBtnClick(e)
-  })
+  btn.style.marginLeft = 'auto'
 
   if (onRowClick) {
     row.addEventListener('click', onRowClick)
