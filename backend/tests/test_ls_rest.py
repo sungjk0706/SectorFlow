@@ -16,6 +16,7 @@ LsRestAPI: __init__, __aenter__/__aexit__, ensure_client, ensure_token, get_toke
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -275,11 +276,13 @@ class TestLsRestRevokeToken:
             assert result is True
             assert api._token_info is None
 
-    async def test_no_token(self):
+    async def test_no_token(self, caplog):
         api = _make_ls_rest()
         api._token_info = None
-        result = await api.revoke_token()
-        assert result is True
+        with caplog.at_level(logging.INFO, logger="backend.app.core.ls_rest"):
+            result = await api.revoke_token()
+            assert result is True
+        assert "토큰 폐기 스킵 — 발급된 토큰 없음" in caplog.text
 
     async def test_http_failure(self):
         api = _make_ls_rest()
@@ -302,14 +305,16 @@ class TestLsRestRevokeToken:
             assert result is True
             assert api._token_info is None
 
-    async def test_no_client(self):
+    async def test_no_client(self, caplog):
         api = _make_ls_rest()
         api._token_info = _make_ls_token_info()
         api._client = None
         with patch.object(api, "ensure_client", AsyncMock()):
-            result = await api.revoke_token()
-            assert result is True
-            assert api._token_info is None
+            with caplog.at_level(logging.INFO, logger="backend.app.core.ls_rest"):
+                result = await api.revoke_token()
+                assert result is True
+                assert api._token_info is None
+        assert "토큰 폐기 스킵 — HTTP 클라이언트 없음" in caplog.text
 
 
 # ── LsRestAPI.call_api ─────────────────────────────────────────────────────────

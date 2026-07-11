@@ -180,6 +180,7 @@ class LsRestAPI:
     async def revoke_token(self) -> bool:
         """OAuth2 접근 토큰 폐기 (LS증권 REST API 명세). 실패해도 예외 전파 안 함."""
         if not self._token_info or not self._token_info.access_token:
+            logger.info("[연결] 토큰 폐기 스킵 — 발급된 토큰 없음")
             return True
         token = self._token_info.access_token
         url = f"{self.base_url}{self.REVOKE_URL}"
@@ -193,6 +194,7 @@ class LsRestAPI:
         try:
             await self.ensure_client()
             if self._client is None:
+                logger.info("[연결] 토큰 폐기 스킵 — HTTP 클라이언트 없음")
                 return True
             resp = await self._client.post(url, headers=headers, data=body, timeout=5)
             if resp.status_code == 200:

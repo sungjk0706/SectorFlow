@@ -284,6 +284,7 @@ class KiwoomRestAPI:
     async def revoke_token(self) -> bool:
         """OAuth2 접근 토큰 폐기 (키움 REST API 명세 au10002). 실패해도 예외 전파 안 함."""
         if not self._token_info or not self._token_info.token:
+            logger.info("[연결] 토큰 폐기 스킵 — 발급된 토큰 없음")
             return True
         token = self._token_info.token
         url = f"{self.base_url}{self.REVOKE_URL}"
