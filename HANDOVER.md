@@ -4,23 +4,20 @@
 - 없음
 
 ## 직전 완료 작업
-- **2026-07-12: 증권사 변경 시 토큰 폐기 로그 불일치 수정 (P15/P21) — 런타임 검증 완료**
-  - **대상**: `backend/app/core/ls_rest.py`, `backend/app/core/kiwoom_rest.py`, `backend/tests/test_ls_rest.py`, `backend/tests/test_kiwoom_rest.py`
-  - **현상**: 첫 번째 증권사 변경(키움→LS) 시 "토큰 폐기 완료" 로그 출력, 두 번째 변경(LS→키움, 4초 후) 시 로그 누락
-  - **근본 원인**: `revoke_token()`의 silent early return — `_token_info`가 None일 때 로그 없이 `return True`. LS 토큰 발급 4초 내 미완료 상태에서 `stop_engine()` 취소 → finally 블록 진입 시 `_token_info=None` → 로그 없이 스킵
-  - **수정 1**: `ls_rest.py` line 182-183 (토큰 없음) + line 195-196 (client 없음) silent return에 `logger.info("[연결] 토큰 폐기 스킵 — ...")` 추가
-  - **수정 2**: `kiwoom_rest.py` line 286-287 (토큰 없음) silent return에 `logger.info("[연결] 토큰 폐기 스킵 — 발급된 토큰 없음")` 추가
-  - **수정 3**: 테스트 `test_no_token`(LS/키움), `test_no_client`(LS)에 caplog 로그 출력 검증 추가
-  - **검증 1 (단위 테스트)**: 148 passed (test_ls_rest + test_kiwoom_rest)
-  - **검증 2 (런타임 — test_mode)**: 백엔드 기동 후 `PATCH /api/settings/broker` API 직접 호출로 9회 변경 검증
-    - 개별 4회 (kiwoom↔ls): 매번 "토큰 폐기 완료" 로그 출력 — LS 토큰 폐기 로그 누락 없음 확인
-    - 초고속 연속 5회: "토큰 폐기 스킵 — 발급된 토큰 없음" 경로 3회 재현 — 수정 핵심 경로(토큰 발급 완료 전 취소) 정상 로그 출력 확인
-    - 9회 전체 토큰 폐기 로그 누락 0건 — 일관성 확인 완료
+- **2026-07-12: AGENTS.md 컨텍스트 관리 규칙 보강 — 작업 분할 + 단계별 컨텍스트 점검 추가**
+  - **대상**: `AGENTS.md`, `HANDOVER.md`
+  - **현상**: AGENTS.md 섹션4 Context Management Rules에 (1) 작업량 기반 사전 분할 규칙, (2) 단계 완료 시 컨텍스트 사용량 점검 규칙이 미포함. 기존 규칙은 컨텍스트 가득 찬 이후의 사후 대응만 있고 사전 예방 규칙 부재
+  - **근본 원인**: 이전 개정에서 사후 종료 규칙(사전 종료 권한, HANDOVER 기록 의무)은 추가했으나, 사전 분할·점검 규칙을 누락
+  - **수정 1 (신규 #1)**: 섹션4 Context Management Rules에 "작업량 기반 사전 분할" 추가 — 작업량이 많은 경우 에이전트가 자체 판단하여 작은 단위로 분할, 각 단위는 독립적으로 완료·검증 가능한 크기, 분할 시 사용자에게 분할 계획 보고 후 진행
+  - **수정 2 (신규 #2)**: 섹션4 Context Management Rules에 "단계 완료 시 컨텍스트 점검" 추가 — 각 작은 단계 완료 시 컨텍스트 사용량 점검, 사용량이 높으면 다음 단계 진행 전 HANDOVER.md 갱신하여 만일의 중단에 대비
+  - **수정 3 (재번호)**: 기존 Context Management Rules #1~#6을 #3~#8로 재번호. 내용은 보존
+  - **검증**: 신규 2건 추가 확인, 기존 6건 내용 보존 확인, AGENTS.md 전체 일관성 확인
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈), 수익현황 업종 섹션 연동(도넛 범례 클릭→스크롤+하이라이트), 전체보기/전체접기 토글 버튼, 차트 onMove undefined 크래시 근본 해결(render early return 시 barRects 동기화), 수익현황 기간 선택 상태 재기동 후 유지(localStorage quickLabel 영속화 + 초기 활성 버튼 복원), 수익상세 페이지 뷰 상태 재기동 후 유지(localStorage selectedView+drilldownActive+dateRange 영속화, 7곳 핸들러 persistViewState), 스핀버튼 초기 비활성 버그 근본 해결(store subscriber settings 변경 시에만 notify + createSpinButtons mousedown 포커스 유지 + registerEditing 데드 코드 제거), 증권사 변경 확인 팝업 추가(showConfirmDialog 재사용 + 변경 전/후 증권사명 + 4개 작업 요약 + 취소 시 라디오 복원 + BROKER_NAMES SSOT 상수), brokerSaving disabled 잔존 버그 수정(then 콜백 실행 순서 교정) — 모두 코드 확인 완료, `npm run build` 통과
 - **Git**: 증권사 변경 시 토큰 폐기 로그 불일치 수정 (P15/P21) — 커밋 완료 (10dbafe), 런타임 검증 완료
+- **AGENTS.md**: 4섹션 우선순위 구조 재구성 완료 (섹션1 개요 > 섹션2 아키텍처 원칙 > 섹션3 수행 규칙 > 섹션4 작업 프로세스). 신규 규칙 7건 추가 — 사용자 프로필 "코딩 1도 모름", 아키텍처 원칙 참조, 사용자 의사소통 규칙(기술 명령어 안내 금지·UI 기준 검증·API 직접 호출 안내 금지), 보고서 5항목 명시화, HANDOVER.md read-before-write 의무, 작업량 기반 사전 분할, 단계 완료 시 컨텍스트 점검. 기존 규칙 15개 누락 없음 대조 완료
 - **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2763 passed, 0 failed
   - 0% 모듈 7개 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
   - 10%대 모듈 9개 해결: engine_settings(100%), stock_tables(100%), stock_filter(99.44%), stock_classification_data(95.14%), settings_store(93.13%), sector_data_provider(92.94%), engine_bootstrap(49.62%), engine_snapshot(39.22%), engine_sector_confirm(33.45%)
