@@ -132,15 +132,16 @@ class TestAllowRequest:
             assert cb.allow_request() is False
         assert cb.state == "OPEN"
 
-    def test_half_open_allows_request(self):
+    def test_half_open_allows_single_test_request(self):
+        """HALF_OPEN 진입 첫 번째 요청만 허용, 두 번째부터는 차단."""
         cb = CircuitBreaker(failure_threshold=2, recovery_timeout=1)
         cb.record_failure()
         cb.record_failure()
         with patch("backend.app.services.circuit_breaker.time.time") as mock_time:
             mock_time.return_value = cb.last_failure_time + 2
-            cb.allow_request()
+            assert cb.allow_request() is True  # 첫 번째: HALF_OPEN 진입 + 테스트 주문 허용
         assert cb.state == "HALF_OPEN"
-        assert cb.allow_request() is True
+        assert cb.allow_request() is False  # 두 번째: 테스트 주문 진행 중, 차단
 
     def test_open_with_no_failure_time_blocks(self):
         cb = CircuitBreaker(failure_threshold=1)

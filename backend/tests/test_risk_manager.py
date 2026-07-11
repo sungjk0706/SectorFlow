@@ -30,7 +30,6 @@ def risk_manager(mock_circuit_breaker):
     rm.max_daily_loss_limit = -500_000
     rm.daily_loss_limit = -500_000
     rm.max_single_stock_exposure = 20_000_000
-    rm.max_total_exposure_ratio = 0.95
     return rm
 
 
@@ -41,7 +40,6 @@ def settings_cache():
         "test_mode_on": False,
         "max_daily_loss_limit": -500_000,
         "max_single_stock_exposure": 20_000_000,
-        "max_total_exposure_ratio": 0.95,
     }
 
 
@@ -55,7 +53,6 @@ class TestSyncThresholds:
         mock_cache = {
             "max_daily_loss_limit": -1_000_000,
             "max_single_stock_exposure": 30_000_000,
-            "max_total_exposure_ratio": 0.8,
         }
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.integrated_system_settings_cache = mock_cache
@@ -64,7 +61,6 @@ class TestSyncThresholds:
         assert rm.max_daily_loss_limit == -1_000_000
         assert rm.daily_loss_limit == -1_000_000
         assert rm.max_single_stock_exposure == 30_000_000
-        assert rm.max_total_exposure_ratio == 0.8
 
     def test_sync_defaults_when_keys_missing(self):
         rm = RiskManager.__new__(RiskManager)
@@ -77,7 +73,6 @@ class TestSyncThresholds:
         assert rm.max_daily_loss_limit == -500_000
         assert rm.daily_loss_limit == -500_000
         assert rm.max_single_stock_exposure == 20_000_000
-        assert rm.max_total_exposure_ratio == 0.95
 
 
 # ── get_withdrawable_deposit ──────────────────────────────────────────────────

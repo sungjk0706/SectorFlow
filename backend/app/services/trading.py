@@ -560,7 +560,8 @@ class AutoTradeManager:
                 logger.info("[매매] [리스크차단] 매도 조건 전체 차단 — %s", reason)
                 return
         except Exception:
-            logger.warning("[매매] 리스크 관리자 체크 실패", exc_info=True)
+            logger.warning("[매매] 리스크 관리자 체크 실패 — 매도 전체 중단", exc_info=True)
+            return
 
         for stock in stock_list:
             s = dict(settings)
