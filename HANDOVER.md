@@ -14,18 +14,18 @@
     - 미커버 1분기(`167->166`): `stale` 집합에서 추출한 코드가 `master_stocks_cache`에 없는 방어 코드 — 정상 실행에서 도달 불가능
   - 검증: 전체 2761 passed (기존 2749 + 신규 12), 0 failed, 17.00s
 - **2026-07-11: 30~50%대 커버리지 모듈 추가 개선 — Phase 1, 2 완료 (31개 신규 테스트)**
-  - engine_snapshot.py: 39.22%→85%+ — 12개 테스트 추가, 커밋 `075d28c`
-  - engine_sector_confirm.py: 33.45%→75%+ — 19개 테스트 추가, 커밋 `694e0fb`
+  - engine_snapshot.py: 39.22%→97.39% — 12개 테스트 추가, 커밋 `075d28c`
+  - engine_sector_confirm.py: 33.45%→91.20% — 19개 테스트 추가, 커밋 `694e0fb`
   - 검증: 전체 2749 passed, 0 failed, 10.38s
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제 — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: `engine_snapshot 커버리지 추가` (075d28c) + `engine_sector_confirm 커버리지 추가` (694e0fb) — 커밋 완료, 푸시 미수행 / Phase 3 engine_bootstrap 테스트 미커밋
+- **Git**: Phase 1~3 전부 커밋 + 푸시 완료 — `075d28c`(engine_snapshot), `694e0fb`(engine_sector_confirm), `6ddb6ef`(engine_bootstrap), `16fc2dd`(HANDOVER.md) — `main` == `origin/main`
 - **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2761 passed, 0 failed
   - 0% 모듈 7개 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
   - 10%대 모듈 9개 해결: engine_settings(100%), stock_tables(100%), stock_filter(99.44%), stock_classification_data(95.14%), settings_store(93.13%), sector_data_provider(92.94%), engine_bootstrap(49.62%), engine_snapshot(39.22%), engine_sector_confirm(33.45%)
-  - 30~50%대 Phase 1,2,3 전부 완료: engine_snapshot(39.22%→85%+, 12 테스트), engine_sector_confirm(33.45%→75%+, 19 테스트), engine_bootstrap(49.62%→99.25%, 12 테스트)
+  - 30~50%대 Phase 1,2,3 전부 완료 (실측): engine_snapshot(39.22%→97.39%, 12 테스트), engine_sector_confirm(33.45%→91.20%, 19 테스트), engine_bootstrap(49.62%→99.25%, 12 테스트)
   - 커버리지 실행 명령어: `python -m pytest backend/tests --cov=backend --cov-report=term-missing --cov-report=html --timeout=15 --timeout-method=signal`
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 
