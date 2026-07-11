@@ -4,19 +4,21 @@
 - 없음
 
 ## 직전 완료 작업
-- **2026-07-12: B-03 Dry Run (테스트 모드 가상 주문) 아키텍처 점검 (3건 수정)**
-  - **대상**: `services/dry_run.py` + 테스트 1개 파일
-  - **수정 1 (B03-01, P20/P22)**: `_refresh_positions_if_dirty`에서 dirty 플래그를 try 블록 이전에 `False`로 설정하던 것을 성공 후로 이동 — 재구축 실패 시 `_positions_dirty`를 `True`로 유지하여 다음 호출에서 재시도, silent except 제거
-  - **수정 2 (B03-02, P16)**: dead code 4개 함수 제거 — `get_virtual_balance`, `get_virtual_deposit_setting`, `reset_virtual_balance`, `charge_virtual_balance` (web routes가 settlement_engine 직접 호출하도록 변경되어 잔존) + 관련 테스트 4개 제거 + 미사용 import (`load_integrated_system_settings`, `datetime`) 제거
-  - **수정 3 (B03-03, P16/P20)**: `_estimate_market_price` 제거 + `fake_send_order`/`fake_fill_event`의 price=0 폴백 분기 제거 — 호출자(trading.py)가 항상 price > 0을 보장하므로 도달 불가 + 가짜 체결가 0 조용히 허용하던 폴백 제거 + 관련 테스트 2개 제거
-  - 수정 파일: `backend/app/services/dry_run.py`, `backend/tests/test_dry_run.py`
-  - 검증: 2768 passed 0 failed (이전 2774 - 제거된 6개 테스트 = 2768), 런타임 기동 정상 (포지션 캐시 재구축 5종목 로그 확인, AttributeError/Traceback 없음)
+- **2026-07-12: B-04 정산 엔진 및 거래 이력 아키텍처 점검 (4건 수정, 1건 보류)**
+  - **대상**: `services/settlement_engine.py`, `services/trade_history.py`, `db/stock_tables.py`, `web/app.py` + 테스트 3개 파일
+  - **수정 1 (B04-04, P16)**: dead code 5개 함수 제거 — `_migrate_from_json`, `_patch_sell_history`, `start/stop_consumer_task`, `close_db_connection` (no-op이거나 앱 코드에서 호출되지 않음) + `app.py`에서 `trade_history.start_consumer_task()`/`stop_consumer_task()` 호출 제거 + 관련 테스트 8개 제거
+  - **수정 2 (B04-01, P20)**: `_ensure_loaded`에서 `_loaded = True`를 try 블록 이전에 설정하던 것을 성공 후로 이동 — DB 로드 실패 시 `_loaded`를 `False`로 유지하여 다음 호출에서 재시도, silent except 제거 + "신규 설치 시 정상" 잘못된 진단 메시지 제거
+  - **수정 3 (B04-03, P20)**: `_lookup_sector`의 silent except 제거 — DB 에러 시 예외 전파, "행 없음"일 때만 "미분류" 반환 + `record_sell`에서 `_lookup_sector` 실패 시 "미분류"로 진행하되 logger.error 레벨로 명시적 로깅
+  - **수정 4 (B04-02, P20/P22, CRITICAL)**: `load_settlement_state`의 silent except 제거 — "행 없음"과 "DB 에러" 구분 (행 없음 시 None 반환, DB 에러 시 예외 전파) + `_load`의 try/except 폴백 제거 — DB 에러 시 기본값으로 정산 상태 덮어쓰던 CRITICAL 폴백 제거, 예외 전파하여 기동 실패로 명시적 알림
+  - **보류 (B04-05, P22)**: 기동 시 정산 상태-거래 이력 대조(reconciliation) 없음 — 설계 수준의 문제, 별도 논의 항목으로 등록
+  - 수정 파일: `backend/app/services/settlement_engine.py`, `backend/app/services/trade_history.py`, `backend/app/db/stock_tables.py`, `backend/app/web/app.py`, `backend/tests/test_settlement_engine.py`, `backend/tests/test_trade_history.py`, `backend/tests/test_stock_tables.py`, `backend/tests/test_web_app.py`
+  - 검증: 2763 passed 0 failed, 런타임 기동 정상 (체결 이력 로드 44건/39건, 정산 상태 로드 완료, AttributeError/Traceback 없음)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈), 수익현황 업종 섹션 연동(도넛 범례 클릭→스크롤+하이라이트), 전체보기/전체접기 토글 버튼, 차트 onMove undefined 크래시 근본 해결(render early return 시 barRects 동기화), 수익현황 기간 선택 상태 재기동 후 유지(localStorage quickLabel 영속화 + 초기 활성 버튼 복원), 수익상세 페이지 뷰 상태 재기동 후 유지(localStorage selectedView+drilldownActive+dateRange 영속화, 7곳 핸들러 persistViewState), 스핀버튼 초기 비활성 버그 근본 해결(store subscriber settings 변경 시에만 notify + createSpinButtons mousedown 포커스 유지 + registerEditing 데드 코드 제거) — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: B-03 Dry Run 아키텍처 점검 — 커밋 대기
-- **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2768 passed, 0 failed
+- **Git**: B-04 정산 엔진 및 거래 이력 아키텍처 점검 — 커밋 대기
+- **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2763 passed, 0 failed
   - 0% 모듈 7개 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
   - 10%대 모듈 9개 해결: engine_settings(100%), stock_tables(100%), stock_filter(99.44%), stock_classification_data(95.14%), settings_store(93.13%), sector_data_provider(92.94%), engine_bootstrap(49.62%), engine_snapshot(39.22%), engine_sector_confirm(33.45%)
   - 30~50%대 Phase 1,2,3 전부 완료 (실측): engine_snapshot(39.22%→97.39%, 12 테스트), engine_sector_confirm(33.45%→100%, 51 테스트), engine_bootstrap(49.62%→99.25%, 12 테스트)
@@ -25,14 +27,14 @@
 
 ## 진행 중 작업
 
-### 아키텍처 전수 점검 — 3/30 세션 완료
+### 아키텍처 전수 점검 — 4/30 세션 완료
 
 | 세션 ID | 우선순위 | 내용 | 상태 |
 |---------|----------|------|------|
 | B-01 | P0 | 주문 실행 경로 | ☑ 완료 (8건 수정, 50 tests passed) |
 | B-02 | P0 | 리스크 관리 및 서킷 브레이커 | ☑ 완료 (3건 수정, 2774 tests passed, V-02 프론트 통지 보류) |
 | B-03 | P0 | Dry Run (테스트 모드 가상 주문) | ☑ 완료 (3건 수정, 2768 tests passed) |
-| B-04 | P0 | 정산 엔진 및 거래 이력 | ☐ 미시작 |
+| B-04 | P0 | 정산 엔진 및 거래 이력 | ☑ 완료 (4건 수정, 1건 보류, 2763 tests passed) |
 | B-05 | P0 | 자동매매 유효성 및 코어 큐 | ☐ 미시작 |
 | F-01 | P0 | 통신 계층 및 상태 관리 | ☐ 미시작 |
 | B-06~B-11 | P1 | 엔진 루프/WS/부트스트랩/섹터/계좌/파이프라인 | ☐ 미시작 |
@@ -42,15 +44,16 @@
 
 ## 다음 단계
 
-### 1순위: 아키텍처 전수 점검 P0 세션 (B-03~B-05, F-01)
+### 1순위: 아키텍처 전수 점검 P0 세션 (B-05, F-01)
 
-B-03 완료. 다음 세션에서 `docs/architecture_audit_plan.md`의 추천 세션 순서에 따라 진행:
+B-04 완료. 다음 세션에서 `docs/architecture_audit_plan.md`의 추천 세션 순서에 따라 진행:
 
-1. **B-04**: 정산 엔진 및 거래 이력 (`services/settlement_engine.py`, `services/trade_history.py`)
-2. **B-05**: 자동매매 유효성 및 코어 큐 (`services/auto_trading_effective.py`, `services/core_queue.py`)
-3. **F-01**: 통신 계층 및 상태 관리 (`stores/hotStore.ts`, `api/ws.ts`, `binding.ts` 등)
+1. **B-05**: 자동매매 유효성 및 코어 큐 (`services/auto_trading_effective.py`, `services/core_queue.py`)
+2. **F-01**: 통신 계층 및 상태 관리 (`stores/hotStore.ts`, `api/ws.ts`, `binding.ts` 등)
 
 **보류 (V-02)**: B-02에서 발견된 OMS 서킷브레이커 OPEN 프론트엔드 통지 (P21) — 프론트엔드 세션에서 `circuit_breaker_open` WS 이벤트 핸들러 및 UI 알림 칩 추가 필요
+
+**보류 (B04-05)**: B-04에서 발견된 기동 시 정산 상태-거래 이력 대조(reconciliation) 부재 (P22) — `_orderable`이 거래 이력으로 역산한 값과 일치하는지 검증 로직 설계 필요
 
 각 세션 진행 시:
 - `docs/architecture_audit_plan.md`의 해당 세션 체크리스트 사용

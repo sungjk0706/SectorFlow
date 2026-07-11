@@ -1,10 +1,8 @@
-"""kiwoom_order.py 단위 테스트 — 주문 거래소 결정, HTTP 재시도, 주문 전송, 미체결 조회.
+"""kiwoom_order.py 단위 테스트 — 주문 거래소 결정, HTTP 재시도, 주문 전송.
 
 resolve_exchange: _NX 접미사, exchange_mode 설정, 기본 SOR
 _send_request: httpx 재시도 로직, HTTP 200 반환, 예외 처리, 최대 재시도 실패
 send_order: BUY/SELL 라우팅, 알 수 없는 주문 타입, NXT trde_tp 조정, 통신 장애, 성공/실패
-market_sell: send_order SELL 위임
-get_unexecuted_orders: all_stk_tp 분기, 통신 장애, 성공
 
 의존성: build_broker_urls, httpx.AsyncClient, get_nxt_trde_tp (lazy import)
 → 모두 mock으로 대체 (conftest hang 방지 원칙 준수)

@@ -29,6 +29,15 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
 6. Report using: problem symptom, root cause (file:line), fix, impact, verification.
 7. Do not commit or update `HANDOVER.md` without user approval.
 
+## Code Removal Rules
+
+함수, 변수, 클래스, 모듈 등 코드를 제거할 때 다음을 반드시 함께 수행:
+
+1. **참조 주석 정리**: 제거된 코드를 참조하는 모든 주석, docstring, 파일 헤더 설명을 함께 수정 또는 제거.
+2. **불일치 금지**: 주석과 코드의 불일치는 원칙10(SSOT) 및 원칙21(사용자 투명성) 위반. 제거된 함수가 docstring에 남아 있으면 신규 코드에서 해당 함수를 찾는 오류 발생.
+3. **검색 범위**: 제거된 코드의 이름으로 전체 코드베이스(backend + frontend + tests + docs)를 검색하여 잔존 참조 확인. 단, 문제 기록(`architecture_audit_plan.md` 섹션 7)의 역사적 로그는 유지.
+4. **테스트 파일 포함**: 테스트 파일의 docstring, 헤더 주석도 코드와 일치해야 함.
+
 ## Forbidden Words
 
 "아마도", "아마", "대부분", "일반적으로", "일단", "우선", "임시로", "추후 개선", "나중에 리팩토링", "제 생각에는"
