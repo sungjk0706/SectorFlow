@@ -285,13 +285,13 @@ class AutoTradeManager:
             try:
                 risk_mgr = get_risk_manager()
                 risk_mgr.record_order_failure()
-                # CircuitBreaker OPEN 시 마스터 스위치 강제 OFF
+                # 서킷브레이커 차단 시 마스터 스위치 강제 OFF
                 if risk_mgr.circuit_breaker.get_state() == "OPEN":
                     from backend.app.services.engine_state import state
                     from backend.app.services.engine_account_notify import _broadcast, notify_desktop_header_refresh, notify_desktop_settings_toggled
                     state.integrated_system_settings_cache["time_scheduler_on"] = False
                     await _broadcast("circuit_breaker_open", {
-                        "message": "Circuit Breaker OPEN - 마스터 스위치 강제 OFF",
+                        "message": "서킷브레이커 차단 — 자동매매 마스터 스위치 강제 OFF",
                     })
                     await notify_desktop_header_refresh()
                     await notify_desktop_settings_toggled({"time_scheduler_on": False})
@@ -476,13 +476,13 @@ class AutoTradeManager:
             try:
                 risk_mgr = get_risk_manager()
                 risk_mgr.record_order_failure()
-                # CircuitBreaker OPEN 시 마스터 스위치 강제 OFF
+                # 서킷브레이커 차단 시 마스터 스위치 강제 OFF
                 if risk_mgr.circuit_breaker.get_state() == "OPEN":
                     from backend.app.services.engine_state import state
                     from backend.app.services.engine_account_notify import _broadcast, notify_desktop_header_refresh, notify_desktop_settings_toggled
                     state.integrated_system_settings_cache["time_scheduler_on"] = False
                     await _broadcast("circuit_breaker_open", {
-                        "message": "Circuit Breaker OPEN - 마스터 스위치 강제 OFF",
+                        "message": "서킷브레이커 차단 — 자동매매 마스터 스위치 강제 OFF",
                     })
                     await notify_desktop_header_refresh()
                     await notify_desktop_settings_toggled({"time_scheduler_on": False})
@@ -552,7 +552,7 @@ class AutoTradeManager:
         except Exception:
             logger.warning("[매매] 실시간 지연 체크 실패", exc_info=True)
 
-        # ── RiskManager Circuit Breaker 체크 ───────────────────────────────────
+        # ── RiskManager 서킷브레이커 체크 ───────────────────────────────────
         try:
             risk_mgr = get_risk_manager()
             allowed, reason = risk_mgr.check_sell_order_allowed("", 0, 0)

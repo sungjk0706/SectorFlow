@@ -72,7 +72,7 @@ class TelegramBot:
         logger.info("[알림] 폴링 시작")
 
     async def stop_async(self) -> None:
-        """폴링 태스크가 httpx 대기 중이어도 취소·종료를 기다린다(데스크톱 종료 시 잔류 방지)."""
+        """폴링 작업이 httpx 대기 중이어도 취소·종료를 기다린다(데스크톱 종료 시 잔류 방지)."""
         self._running = False
         t = self._task
         if t and not t.done():
@@ -99,7 +99,7 @@ class TelegramBot:
             return None
         return time.monotonic() - self._last_poll_ok_mon
 
-    # ── 내부 폴링 루프 ────────────────────────────────────────────────────────
+    # ── 내부 폴링 반복 ────────────────────────────────────────────────────────
 
     async def _poll_loop(self):
         while self._running:
@@ -118,7 +118,7 @@ class TelegramBot:
                 break
             except Exception as exc:
                 had_error = True
-                logger.error("[알림] 루프 오류: %s", _mask_telegram_url(str(exc)))
+                logger.error("[알림] 반복 오류: %s", _mask_telegram_url(str(exc)))
             if not tasks:
                 self._running = False
                 logger.info("[알림] 활성 설정 없음 — 폴링 자동 종료")
@@ -185,7 +185,7 @@ class TelegramBot:
                 or self._last_poll_err_mon is None
                 or (now - self._last_poll_err_mon) >= 10.0
             ):
-                logger.debug("[알림] 업데이트 조회 실패: %s", masked)
+                logger.debug("[알림] 갱신 조회 실패: %s", masked)
                 self._last_poll_err_msg = masked
                 self._last_poll_err_mon = now
             return
@@ -207,7 +207,7 @@ class TelegramBot:
             raw_chat = (msg.get("chat") or {}).get("id")
             sender_id = _normalize_chat_id(str(raw_chat) if raw_chat is not None else "")
             if sender_id != allowed_chat:
-                logger.warning("[알림] 비승인 채팅 ID %s (허용: %s)", sender_id, allowed_chat)
+                logger.warning("[알림] 허용되지 않은 채팅 ID %s (허용: %s)", sender_id, allowed_chat)
                 continue
 
             text = (msg.get("text") or "").strip()
