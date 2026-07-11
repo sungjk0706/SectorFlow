@@ -259,7 +259,14 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
     const plotW = plotR - plotL
     const plotH = plotB - plotT
 
-    if (plotW <= 0 || plotH <= 0 || displayData.length === 0) return
+    if (plotW <= 0 || plotH <= 0 || displayData.length === 0) {
+      barRects = []
+      if (hitIdx !== null) {
+        hitIdx = null
+        tooltip.style.display = 'none'
+      }
+      return
+    }
 
     // ── 축 범위 계산 ────────────────────────────────────────
     let minPnl = 0, maxPnl = 0

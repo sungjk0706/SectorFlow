@@ -66,6 +66,9 @@ let holdingCountSpanTest: HTMLSpanElement | null = null
 let realAccountContainer: HTMLDivElement | null = null
 let testAccountContainer: HTMLDivElement | null = null
 let sectorStockListContainer: HTMLDivElement | null = null
+let expandToggleBtn: HTMLButtonElement | null = null
+let _allExpanded = true
+let _activeSector: string | null = null
 let buyHistory: Record<string, unknown>[] = []
 let sellHistory: Record<string, unknown>[] = []
 let filteredSellHistory: Record<string, unknown>[] = []
@@ -113,11 +116,20 @@ function renderSectorStockPnl(): void {
   }
 
   for (const group of groups) {
-    // 업종 헤더
+    // 업종 그룹 래퍼 — data-sector로 식별, 하이라이트 배경 적용 대상
+    const sectorGroup = document.createElement('div')
+    sectorGroup.dataset.sector = group.sector
+    const isActive = _activeSector === group.sector
+    if (isActive) {
+      Object.assign(sectorGroup.style, { background: COLOR.hoverBg, borderRadius: '6px' })
+    }
+
+    // 업종 헤더 — 클릭 시 해당 업종만 토글
     const header = document.createElement('div')
     Object.assign(header.style, {
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: '8px 4px 4px', borderBottom: '2px solid ' + COLOR.borderLight, marginTop: '8px',
+      cursor: 'pointer', userSelect: 'none',
     })
     const sectorName = document.createElement('span')
     Object.assign(sectorName.style, { fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.semibold, color: group.color })
@@ -133,9 +145,13 @@ function renderSectorStockPnl(): void {
     header.appendChild(sectorName)
     header.appendChild(sectorPnl)
     header.appendChild(sectorRate)
-    sectorStockListContainer.appendChild(header)
+    sectorGroup.appendChild(header)
 
-    // 종목 행
+    // 종목 행 컨테이너 — 펼침/접힘 토글 대상
+    const stockRowsWrap = document.createElement('div')
+    const shouldShow = _allExpanded || isActive
+    stockRowsWrap.style.display = shouldShow ? 'block' : 'none'
+
     for (const stock of group.stocks) {
       const row = document.createElement('div')
       Object.assign(row.style, {
@@ -168,9 +184,31 @@ function renderSectorStockPnl(): void {
       row.appendChild(pnlEl)
       row.appendChild(rateEl)
       row.appendChild(qtyEl)
-      sectorStockListContainer.appendChild(row)
+      stockRowsWrap.appendChild(row)
     }
+    sectorGroup.appendChild(stockRowsWrap)
+
+    // 업종 헤더 클릭 — 해당 업종만 토글 (전체보기 상태 해제)
+    header.addEventListener('click', () => {
+      if (_activeSector === group.sector && !_allExpanded) {
+        // 동일 업종 재클릭 시 접기
+        _activeSector = null
+      } else {
+        _activeSector = group.sector
+        _allExpanded = false
+      }
+      updateExpandToggleBtn()
+      renderSectorStockPnl()
+    })
+
+    sectorStockListContainer.appendChild(sectorGroup)
   }
+}
+
+/* ── 전체보기 버튼 텍스트 동기화 ── */
+function updateExpandToggleBtn(): void {
+  if (!expandToggleBtn) return
+  expandToggleBtn.textContent = _allExpanded ? '전체접기' : '전체보기'
 }
 
 /* ── 도넛 차트 데이터 빌드 (sellHistory → 업종별 손익 + 수익률 집계) ── */
@@ -332,11 +370,33 @@ function mount(container: HTMLElement): void {
   }
   accountPanel.appendChild(testAccountContainer)
 
-  // 업종별 종목 수익 섹션
-  const stockListHeader = sectionTitle('업종별 종목 수익')
-  stockListHeader.style.color = COLOR.down
-  stockListHeader.style.marginTop = '12px'
-  accountPanel.appendChild(stockListHeader)
+  // 업종별 종목 수익 섹션 — 타이틀 + 전체보기 버튼
+  const stockListHeaderWrap = document.createElement('div')
+  Object.assign(stockListHeaderWrap.style, {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    fontWeight: FONT_WEIGHT.normal, fontSize: FONT_SIZE.section, color: COLOR.down,
+    padding: '10px 0 6px', borderBottom: '2px solid ' + COLOR.borderLight,
+    marginBottom: '8px', marginTop: '12px',
+  })
+  const stockListTitle = document.createElement('span')
+  stockListTitle.textContent = '업종별 종목 수익'
+  stockListHeaderWrap.appendChild(stockListTitle)
+
+  expandToggleBtn = document.createElement('button')
+  Object.assign(expandToggleBtn.style, {
+    padding: '2px 10px', fontSize: FONT_SIZE.small, fontWeight: FONT_WEIGHT.normal,
+    border: '1px solid ' + COLOR.borderDark, borderRadius: '4px',
+    background: COLOR.surfaceLight, cursor: 'pointer', color: COLOR.down,
+  })
+  expandToggleBtn.textContent = _allExpanded ? '전체접기' : '전체보기'
+  expandToggleBtn.addEventListener('click', () => {
+    _allExpanded = !_allExpanded
+    _activeSector = null
+    updateExpandToggleBtn()
+    renderSectorStockPnl()
+  })
+  stockListHeaderWrap.appendChild(expandToggleBtn)
+  accountPanel.appendChild(stockListHeaderWrap)
 
   sectorStockListContainer = document.createElement('div')
   Object.assign(sectorStockListContainer.style, { flex: '1', minHeight: '0' })
@@ -430,6 +490,21 @@ function mount(container: HTMLElement): void {
   donutChart = createSectorDonut({
     container: donutChartContainer,
     data: buildSectorDonutData(filteredSellHistory),
+    onSectorClick: (sector: string) => {
+      // 좌측 도넛 범례 업종 클릭 → 우측 종목수익 해당 업종으로 스크롤 + 하이라이트
+      _activeSector = sector
+      _allExpanded = false
+      updateExpandToggleBtn()
+      renderSectorStockPnl()
+      // 렌더 후 해당 업종 요소 찾아 스크롤
+      requestAnimationFrame(() => {
+        if (!sectorStockListContainer) return
+        const target = sectorStockListContainer.querySelector(`[data-sector="${CSS.escape(sector)}"]`) as HTMLElement | null
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      })
+    },
   })
 
   refreshFilteredViews()
@@ -528,6 +603,9 @@ function unmount(): void {
   realAccountContainer = null
   testAccountContainer = null
   sectorStockListContainer = null
+  expandToggleBtn = null
+  _allExpanded = true
+  _activeSector = null
   buyHistory = []
   sellHistory = []
   filteredSellHistory = []
