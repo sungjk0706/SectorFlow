@@ -34,12 +34,12 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
             await state.data_ready_event.wait()
             logger.info("[연결] 데이터 준비 완료 — 초기 스냅샷 전송 시작")
 
-        # 앱준비 완료 대기 (이벤트 구동)
-        # 테스트모드와 실전모드 동일하게 앱준비 대기 (앱 기동 준비는 돈과 무관)
+        # 앱 준비 완료 대기 (이벤트 구동)
+        # 테스트모드와 실전모드 동일하게 앱 준비 대기 (앱 기동 준비는 돈과 무관)
         if not state.bootstrap_event.is_set():
-            logger.info("[연결] 앱준비 대기 중 — 초기 스냅샷 전송 지연")
+            logger.info("[연결] 앱 준비 대기 중 — 초기 스냅샷 전송 지연")
             await state.bootstrap_event.wait()
-            logger.info("[연결] 앱준비 완료 — 초기 스냅샷 전송 시작")
+            logger.info("[연결] 앱 준비 완료 — 초기 스냅샷 전송 시작")
 
         # 엔진 준비 완료 유니캐스트 전송 (engine-ready)
         if state.bootstrap_event.is_set():
@@ -166,12 +166,12 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
     await websocket.accept()
     await ws_manager.register(websocket)
     logger.info(
-        "[연결] 접속화면 연결 (user=%s, 총 %d)", username, ws_manager.client_count
+        "[연결] 접속 화면 연결 (사용자=%s, 총 %d)", username, ws_manager.client_count
     )
 
     delayed_task: asyncio.Task | None = None
     try:
-        # 앱준비 대기 → 업종순위 계산 대기 → initial-snapshot 및 sector 데이터 순차 유니캐스트
+        # 앱 준비 대기 → 업종순위 계산 대기 → initial-snapshot 및 sector 데이터 순차 유니캐스트
         delayed_task = asyncio.create_task(_send_initial_snapshot_delayed(websocket, ws_manager))
 
         # 수신 루프: ping → pong, page-active/page-inactive → 페이지 추적, 그 외 무시
@@ -199,9 +199,9 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
     except WebSocketDisconnect:
         pass
     except Exception as e:
-        logger.warning("[연결] 접속화면 오류: %s", e)
+        logger.warning("[연결] 접속 화면 오류: %s", e)
     finally:
         if delayed_task is not None:
             delayed_task.cancel()
         ws_manager.unregister(websocket)
-        logger.info("[연결] 접속화면 해제 (총 %d)", ws_manager.client_count)
+        logger.info("[연결] 접속 화면 해제 (총 %d)", ws_manager.client_count)

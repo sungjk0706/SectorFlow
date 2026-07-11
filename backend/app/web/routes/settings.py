@@ -79,7 +79,7 @@ async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_
     except Exception as e:
         import traceback
         traceback.print_exc()
-        logger.error("[설정] PATCH %s 실패: %s", field_name, e, exc_info=True)
+        logger.error("[설정] 설정 변경 %s 실패: %s", field_name, e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"유효하지 않은 설정값: {e}",
@@ -120,7 +120,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         _logger = logging.getLogger(__name__)
         subscribed_count = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
         _logger.info(
-            "[디버그] 초기화 직전 구독목록 positions=%d subscribed=%d layout=%d pos_codes=%d",
+            "[디버그] 초기화 직전 구독목록 보유종목=%d 구독중=%d 레이아웃=%d 종목코드=%d",
             len(state.positions), subscribed_count,
             len(state.integrated_system_settings_cache["sector_stock_layout"]),
             len(notify_cache.positions_code_set),
@@ -132,7 +132,7 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         _rebuild_positions_cache([])
         subscribed_count_after = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
         _logger.info(
-            "[디버그] 초기화 직후 구독목록 positions=%d subscribed=%d layout=%d pos_codes=%d",
+            "[디버그] 초기화 직후 구독목록 보유종목=%d 구독중=%d 레이아웃=%d 종목코드=%d",
             len(state.positions), subscribed_count_after,
             len(state.integrated_system_settings_cache["sector_stock_layout"]),
             len(notify_cache.positions_code_set),

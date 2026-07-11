@@ -21,7 +21,7 @@ async def ws_orders(websocket: WebSocket, token: str = Query(...)):
     await websocket.accept()
     await ws_manager.register(websocket)
     logger.info(
-        "[연결] 체결채널 연결 (user=%s, 총 %d)", username, ws_manager.client_count
+        "[연결] 체결 채널 연결 (사용자=%s, 총 %d)", username, ws_manager.client_count
     )
 
     try:
@@ -40,7 +40,7 @@ async def ws_orders(websocket: WebSocket, token: str = Query(...)):
     except WebSocketDisconnect:
         pass
     except Exception as e:
-        logger.warning("[연결] 체결채널 오류: %s", e)
+        logger.warning("[연결] 체결 채널 오류: %s", e)
     finally:
         ws_manager.unregister(websocket)
-        logger.info("[연결] 체결채널 해제 (총 %d)", ws_manager.client_count)
+        logger.info("[연결] 체결 채널 해제 (총 %d)", ws_manager.client_count)
