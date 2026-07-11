@@ -11,8 +11,7 @@ from __future__ import annotations
 from typing import Optional
 import asyncio
 import logging
-from datetime import datetime
-from backend.app.core.settings_file import load_integrated_system_settings, update_settings
+from backend.app.core.settings_file import update_settings
 from backend.app.services import settlement_engine
 logger = logging.getLogger(__name__)
 
@@ -41,31 +40,29 @@ async def _refresh_positions_if_dirty() -> None:
     SSOT: trade_history._buy_history/_sell_history가 유일한 진실 원천.
     _test_positions는 파생 캐시이며, record_buy/record_sell 후 무효화된다.
     재구축 시 cur_price/stk_nm 등 비파생 필드는 기존 캐시에서 보존된다.
+    재구축 실패 시 _positions_dirty를 True로 유지하여 다음 호출에서 재시도한다.
     """
     global _positions_loaded, _positions_dirty
     if _positions_loaded and not _positions_dirty:
         return
     _positions_loaded = True
+    from backend.app.services import trade_history
+    computed = await trade_history.build_positions_from_trades("test")
+    # 비파생 필드 보존: cur_price, change, change_rate, bid_depth, ask_depth, stk_nm
+    _preserve_fields = ("cur_price", "change", "change_rate", "bid_depth", "ask_depth")
+    for cd, new_pos in computed.items():
+        old = _test_positions.get(cd)
+        if old:
+            for f in _preserve_fields:
+                if old.get(f) is not None:
+                    new_pos[f] = old[f]
+            # stk_nm: 기존 캐시에 있고 새 값이 비어있으면 보존
+            if old.get("stk_nm") and not new_pos.get("stk_nm"):
+                new_pos["stk_nm"] = old["stk_nm"]
+    _test_positions.clear()
+    _test_positions.update(computed)
     _positions_dirty = False
-    try:
-        from backend.app.services import trade_history
-        computed = await trade_history.build_positions_from_trades("test")
-        # 비파생 필드 보존: cur_price, change, change_rate, bid_depth, ask_depth, stk_nm
-        _preserve_fields = ("cur_price", "change", "change_rate", "bid_depth", "ask_depth")
-        for cd, new_pos in computed.items():
-            old = _test_positions.get(cd)
-            if old:
-                for f in _preserve_fields:
-                    if old.get(f) is not None:
-                        new_pos[f] = old[f]
-                # stk_nm: 기존 캐시에 있고 새 값이 비어있으면 보존
-                if old.get("stk_nm") and not new_pos.get("stk_nm"):
-                    new_pos["stk_nm"] = old["stk_nm"]
-        _test_positions.clear()
-        _test_positions.update(computed)
-        logger.info("[매매] 포지션 캐시 재구축 — %d종목", len(_test_positions))
-    except Exception as e:
-        logger.warning("[매매] 포지션 캐시 재구축 실패: %s", e)
+    logger.info("[매매] 포지션 캐시 재구축 — %d종목", len(_test_positions))
 
 
 def _next_fake_order_no() -> str:
@@ -127,13 +124,15 @@ async def fake_send_order(
     price: int = 0,
     trde_tp: str = "3",
 ) -> dict:
-    """키움 send_order()와 동일한 반환 구조. 주문 접수만 (체결은 fake_fill_event에서)."""
+    """키움 send_order()와 동일한 반환 구조. 주문 접수만 (체결은 fake_fill_event에서).
+
+    호출자(trading.py)는 항상 price > 0을 보장한다 (order_price 또는 current_price).
+    """
     order_no = _next_fake_order_no()
-    fill_price = price if price > 0 else _estimate_market_price(code)
     side = order_type.upper()
     logger.info(
         "[매매] %s 주문 접수 %s %d주 @%s ord_no=%s",
-        side, code, qty, f"{fill_price:,}" if fill_price else "시장가", order_no,
+        side, code, qty, f"{price:,}" if price else "시장가", order_no,
     )
     return {
         "success": True,
@@ -145,7 +144,7 @@ async def fake_send_order(
                 "ord_no": order_no,
                 "stk_cd": str(code),
                 "ord_qty": str(qty),
-                "ord_uv": str(fill_price),
+                "ord_uv": str(price),
             },
         },
     }
@@ -170,8 +169,7 @@ async def fake_fill_event(
     await asyncio.sleep(FAKE_FILL_DELAY)
 
     side = order_type.upper()
-    fill_price = price if price > 0 else _estimate_market_price(code)
-    fill_price = _apply_slippage(fill_price, side)
+    fill_price = _apply_slippage(price, side)
 
     # 1. 가상 체결 (포지션 + Settlement Engine)
     if side == "BUY":
@@ -309,26 +307,7 @@ async def clear() -> None:
     _positions_dirty = False
 
 
-def _estimate_market_price(code: str) -> int:
-    """시장가 주문 시 현재가 추정 — 가상 잔고에 있으면 그 값, 없으면 0."""
-    pos = _test_positions.get(code)
-    if pos:
-        return int(pos.get("cur_price", 0))
-    return 0
-
-
 # ── 5. 가상 예수금 관리 ─────────────────────────────────────────────────────
-
-def get_virtual_balance() -> int:
-    """현재 가상 예수금 잔액 반환 (Settlement Engine 위임)."""
-    return settlement_engine.get_available_cash()
-
-
-async def get_virtual_deposit_setting() -> int:
-    """설정된 가상 예수금 초기값 반환."""
-    s = await load_integrated_system_settings()
-    return int(s.get("test_virtual_deposit", 10_000_000) or 0)
-
 
 async def set_virtual_deposit(amount: int) -> None:
     """가상 예수금 설정값 저장."""
@@ -337,18 +316,3 @@ async def set_virtual_deposit(amount: int) -> None:
         "test_virtual_balance": amount,
     })
     logger.info("[매매] 가상 예수금 설정: %s원", f"{amount:,}")
-
-
-async def reset_virtual_balance() -> None:
-    """현재 가상 예수금 잔액을 설정값(초기값)으로 리셋 (Settlement Engine 위임)."""
-    deposit = await get_virtual_deposit_setting()
-    await settlement_engine.reset(deposit)
-    await update_settings({"test_virtual_balance": deposit})
-    logger.info("[매매] 가상 예수금 잔액 초기화: %s원", f"{deposit:,}")
-
-
-async def charge_virtual_balance(amount: int) -> int:
-    """가상 예수금 충전 (Settlement Engine 위임). 반환: 충전 후 잔액."""
-    result = await settlement_engine.charge(amount)
-    logger.info("[매매] 가상 예수금 충전 %s원 — 잔액 %s원", f"{amount:,}", f"{result:,}")
-    return result
