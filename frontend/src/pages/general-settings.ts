@@ -80,6 +80,9 @@ let activeApiTab: 'kiwoom' | 'ls' = 'kiwoom'
 let apiTabButtons: Record<string, HTMLElement> = {}
 let brokerSaving = false
 
+// 증권사 코드 → 표시명 (라디오 items 라벨과 SSOT 일치)
+const BROKER_NAMES: Record<string, string> = { kiwoom: '키움증권', ls: 'LS증권' }
+
 /* ── 헬퍼 ── */
 function shouldForceOff(): boolean {
   return !tradingDayLoading && !isTradingDay
@@ -792,8 +795,38 @@ function refreshApiTabContent(): void {
   }
 }
 
-function handleBrokerChange(val: 'kiwoom' | 'ls'): void {
+async function handleBrokerChange(val: 'kiwoom' | 'ls'): Promise<void> {
   if (val === vals.broker || brokerSaving) return
+
+  const prev = String(vals.broker ?? 'kiwoom')
+  const prevName = BROKER_NAMES[prev] ?? prev
+  const nextName = BROKER_NAMES[val] ?? val
+
+  const message =
+    '주 사용 증권사를 변경합니다.\n\n' +
+    `변경 전: ${prevName}\n` +
+    `변경 후: ${nextName}\n\n` +
+    '수행될 작업:\n' +
+    '  • 기존 증권사 연결 해제\n' +
+    '  • 기존 인증 토큰 폐기\n' +
+    '  • 거래 엔진 재기동\n' +
+    '  • 새 증권사 연결 및 인증\n\n' +
+    '확인을 누르면 즉시 실행되며, 실시간 연결이 잠시 끊깁니다.'
+
+  const confirmed = await showConfirmDialog({
+    title: '주 사용 증권사 변경',
+    message,
+    confirmText: '확인',
+    cancelText: '취소',
+  })
+
+  if (!confirmed) {
+    // 취소/Escape/외부클릭 — 라디오를 원래 값으로 복원
+    syncBrokerRadios()
+    return
+  }
+
+  // 확인 — 기존 변경 로직 그대로 진행
   brokerSaving = true
   const prevBroker = vals.broker
   settingsMgr?.saveSection({ broker: val }).then(res => {
@@ -802,8 +835,8 @@ function handleBrokerChange(val: 'kiwoom' | 'ls'): void {
     } else {
       vals.broker = prevBroker
     }
-    syncBrokerRadios()
     brokerSaving = false
+    syncBrokerRadios()
   })
 }
 
