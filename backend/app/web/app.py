@@ -55,11 +55,11 @@ async def lifespan(app: FastAPI):
     from backend.app.services.core_queues import initialize_queues
     initialize_queues()
 
-    # Gateway 루프 시작 (엔진과 독립적으로 실행 - 파이프라인 독립성 보장)
+    # 게이트웨이 루프 시작 (엔진과 독립적으로 실행 - 파이프라인 독립성 보장)
     from backend.app.pipelines.pipeline_gateway import start_gateway_loop
     _gateway_task = asyncio.create_task(start_gateway_loop())
-    _gateway_task.add_done_callback(lambda t: logger.warning("[웹서버] Gateway 루프 태스크 실패: %s", t.exception()) if t.exception() else None)
-    logger.info("[웹서버] Gateway 루프 시작 완료")
+    _gateway_task.add_done_callback(lambda t: logger.warning("[웹서버] 게이트웨이 루프 작업 실패: %s", t.exception()) if t.exception() else None)
+    logger.info("[웹서버] 게이트웨이 루프 시작 완료")
 
     # ── 3개 독립 DB read 작업 병렬 실행 (순차 대기 시간 제거) ──
     from backend.app.core.trading_calendar import initialize_trading_calendar_cache
@@ -70,9 +70,9 @@ async def lifespan(app: FastAPI):
     async def _load_filter_summary_meta():
         try:
             state.latest_filter_summary_meta = await load_filter_summary_meta_cache()
-            logger.info("[웹서버] filter_summary_meta 캐시 로드 완료")
+            logger.info("[웹서버] 필터 요약 메타 캐시 로드 완료")
         except Exception as e:
-            logger.warning("[웹서버] filter_summary_meta 캐시 초기 로드 실패: %s", e)
+            logger.warning("[웹서버] 필터 요약 메타 캐시 초기 로드 실패: %s", e)
 
     _trading_cal_task, _filter_meta_task, _settings_task = await asyncio.gather(
         initialize_trading_calendar_cache(),
@@ -98,10 +98,10 @@ async def lifespan(app: FastAPI):
     # 모듈 전역 변수 초기화 (비정상 종료 후 재시작 시 잔존 상태 방지)
     trade_history._reset_global_state()
 
-    # Journal Consumer Task 시작 (Phase 4.2 Persistence Journaling)
+    # 저널 처리 작업 시작 (Phase 4.2 Persistence Journaling)
     from backend.app.core import journal
     journal.start_consumer_task()
-    logger.info("[웹서버] Journal Consumer Task 시작 완료")
+    logger.info("[웹서버] 저널 처리 작업 시작 완료")
 
     # 서버 준비 완료 — Health endpoint 즉시 응답 (프론트엔드 접속 허용)
     from backend.app.services.engine_state import state
@@ -119,7 +119,7 @@ async def lifespan(app: FastAPI):
                 return
 
             state.engine_ready_event.set()
-            logger.info("[웹서버] [앱시작] lifespan 총 기동시간 — %.0fms", (time.perf_counter() - _t_lifespan_start) * 1000)
+            logger.info("[웹서버] [앱시작] 총 기동시간 — %.0fms", (time.perf_counter() - _t_lifespan_start) * 1000)
 
             await start_daily_time_scheduler()
 
@@ -132,12 +132,12 @@ async def lifespan(app: FastAPI):
                 else:
                     logger.info("[웹서버] 텔레그램 OFF — 폴링 시작 안 함")
             _tg_task = asyncio.create_task(_start_telegram_lazy())
-            _tg_task.add_done_callback(lambda t: logger.warning("[웹서버] 텔레그램 지연시작 태스크 실패: %s", t.exception()) if t.exception() else None)
+            _tg_task.add_done_callback(lambda t: logger.warning("[웹서버] 텔레그램 지연시작 작업 실패: %s", t.exception()) if t.exception() else None)
         except Exception as e:
             logger.error("[웹서버] 엔진 백그라운드 초기화 실패: %s", e, exc_info=True)
 
     _engine_init_task = asyncio.create_task(_engine_init_background())
-    _engine_init_task.add_done_callback(lambda t: logger.warning("[웹서버] 엔진 초기화 태스크 실패: %s", t.exception()) if t.exception() else None)
+    _engine_init_task.add_done_callback(lambda t: logger.warning("[웹서버] 엔진 초기화 작업 실패: %s", t.exception()) if t.exception() else None)
 
     yield
 
@@ -145,23 +145,23 @@ async def lifespan(app: FastAPI):
     # 1. WS 클라이언트 정상 종료 (EPIPE 방지 — close_all이 flush_task 취소 + 모든 ws.close())
     from backend.app.web.ws_manager import ws_manager
     await ws_manager.close_all()
-    logger.info("[웹서버] WebSocket 클라이언트 정상 종료 완료")
+    logger.info("[웹서버] 실시간 통신 클라이언트 정상 종료 완료")
 
     from backend.app.services.daily_time_scheduler import stop_daily_time_scheduler
     from backend.app.services.engine_lifecycle import stop_engine
 
-    # Journal Consumer Task 종료 (Phase 4.2 Persistence Journaling)
+    # 저널 처리 작업 종료 (Phase 4.2 Persistence Journaling)
     from backend.app.core import journal
     await journal.stop_consumer_task()
-    logger.info("[웹서버] Journal Consumer Task 종료 완료")
+    logger.info("[웹서버] 저널 처리 작업 종료 완료")
 
     await telegram_bot.stop_async()
     await stop_engine()
 
-    # Gateway 루프 종료 (compute 종료 후 broadcast_queue 컨슘 중단)
+    # 게이트웨이 루프 종료 (compute 종료 후 broadcast_queue 컨슘 중단)
     from backend.app.pipelines.pipeline_gateway import stop_gateway_loop
     await stop_gateway_loop()
-    logger.info("[웹서버] Gateway 루프 종료 완료")
+    logger.info("[웹서버] 게이트웨이 루프 종료 완료")
 
     await stop_daily_time_scheduler()
     
@@ -170,7 +170,7 @@ async def lifespan(app: FastAPI):
     from backend.app.db.database import close_db_connection
     await stop_db_writer()
     await close_db_connection()
-    logger.info("[웹서버] DB Writer 및 DB 커넥션 정리 완료")
+    logger.info("[웹서버] DB 기록기 및 DB 연결 정리 완료")
 
     # 파일 로거 태스크 정지
     from backend.app.core.logger import stop_file_writers
@@ -249,7 +249,7 @@ async def global_exception_handler(request: Request, exc: Exception):
             error_msg = f"[SectorFlow 에러 알림]\n에러 타입: {error_type}\n메시지: {str(exc)}\n경로: {request.url.path}"
             await send_msg_async(error_msg, settings, msg_type="error_alert")
             _last_alert_time[error_type] = current_time
-            logger.info("[웹서버] 텔레그램 에러 알림 전송 완료 - error_type=%s", error_type)
+            logger.info("[웹서버] 텔레그램 오류 알림 전송 완료 - 오류유형=%s", error_type)
         except Exception as e:
             logger.warning("[웹서버] 텔레그램 알림 전송 실패: %s", e)
 
