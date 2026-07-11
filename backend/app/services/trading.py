@@ -67,7 +67,7 @@ class AutoTradeManager:
                         ts_dt = datetime.fromisoformat(ts_str)
                         bought_today[cd] = ts_dt.timestamp()
                     except (ValueError, TypeError):
-                        logger.warning("[매매] 일일 매수 상태 — %s timestamp 파싱 실패 (ts=%r), 해당 종목 스킵", cd, ts_str)
+                        logger.warning("[매매] 일일 매수 상태 — %s 시각 해석 실패 (시각=%r), 해당 종목 건너뜀", cd, ts_str)
             return spent, bought_today, symbol_spent
         except Exception:
             logger.critical("[매매] 일일 매수 상태 로드 실패 — 매수 차단 모드 진입: %s", exc_info=True)
@@ -111,7 +111,7 @@ class AutoTradeManager:
         try:
             from backend.app.services.engine_state import state as engine_state
             if engine_state.realtime_latency_exceeded:
-                logger.info("[매매] [실시간지연] %s 매수 차단 — WS 지연 200ms 초과", stk_cd)
+                logger.info("[매매] [실시간지연] %s 매수 차단 — 실시간 통신 지연 200ms 초과", stk_cd)
                 return False
         except Exception:
             logger.warning("[매매] 실시간 지연 체크 실패", exc_info=True)
@@ -119,7 +119,7 @@ class AutoTradeManager:
         # 스케줄 자동매매 게이트: force_buy(매수대기 수동 매수) 시에만 우회
         if not settings["is_auto"] and not force_buy:
             stk_nm = data_manager.get_stock_name(stk_cd, access_token)
-            logger.info("[매매] [자동매매 비활성화] %s(%s) 주문 생략 (force_buy=%s, source=auto_signal)", stk_nm, stk_cd, force_buy)
+            logger.info("[매매] [자동매매 비활성화] %s(%s) 주문 생략 (강제매수=%s, 출처=자동신호)", stk_nm, stk_cd, force_buy)
             return False
         # ── 재매수 차단 (설정 기반: ON/OFF + 차단 기간) ──────────────────────
         rebuy_block_on = bool(settings.get("rebuy_block_on", True))
@@ -148,11 +148,11 @@ class AutoTradeManager:
             logger.info("[매매] [매수차단] %s 매수 주문이 이미 처리 중입니다.", stk_cd)
             return False
         if now - last_ts < MIN_INTERVAL:
-            logger.info("[매매] [매수쓰로틀] %s 연속 신호 감지. 차단.", stk_cd)
+            logger.info("[매매] [연속신호 차단] %s 연속 신호 감지. 차단.", stk_cd)
             return False
 
         # ── 실제 잔고 보유종목 수 기준으로 최대보유종목수 체크 ─────────────
-        # 테스트모드: dry_run 가상 잔고 / 실전투자: 키움 실제 잔고
+        # 테스트모드: 모의투자 가상 잔고 / 실전투자: 키움 실제 잔고
         max_limit = settings["max_limit"]
         from backend.app.services.engine_account import get_positions as _get_positions
         _positions_for_count = await _get_positions()
@@ -220,7 +220,7 @@ class AutoTradeManager:
                     _strength_val = float(_strength_raw)
                 except (ValueError, TypeError):
                     stk_nm_s = data_manager.get_stock_name(stk_cd, access_token)
-                    logger.warning("[매매] [체결강도가드] %s(%s) 체결강도 값 파싱 실패 (raw=%r) — 매수 차단", stk_nm_s, stk_cd, _strength_raw)
+                    logger.warning("[매매] [체결강도가드] %s(%s) 체결강도 값 해석 실패 (원본=%r) — 매수 차단", stk_nm_s, stk_cd, _strength_raw)
                     return False
                 if _strength_val < _min_strength:
                     stk_nm_s = data_manager.get_stock_name(stk_cd, access_token)
@@ -295,7 +295,7 @@ class AutoTradeManager:
                     })
                     await notify_desktop_header_refresh()
                     await notify_desktop_settings_toggled({"time_scheduler_on": False})
-                    logger.error("[매매] 서킷브레이커 OPEN — 자동매매 마스터 스위치 강제 OFF")
+                    logger.error("[매매] 서킷브레이커 차단 — 자동매매 마스터 스위치 강제 OFF")
             except Exception:
                 logger.warning("[매매] 리스크 관리자 실패 보고 실패", exc_info=True)
             return False
@@ -340,7 +340,7 @@ class AutoTradeManager:
             from backend.app.services.engine_account import _broadcast_buy_limit_status
             await _broadcast_buy_limit_status()
         except Exception:
-            logger.warning("[매매] 매수 한도 브로드캐스트 실패", exc_info=True)
+            logger.warning("[매매] 매수 한도 전송 실패", exc_info=True)
 
         # ── 테스트모드: 가상 체결 이벤트 예약 (실전 WS "00"과 동일한 downstream) ──
         if is_test_mode(raw_all):
@@ -366,7 +366,7 @@ class AutoTradeManager:
             risk_mgr.record_order_success()
             new_state = risk_mgr.circuit_breaker.get_state()
             if prev_state == "HALF_OPEN" and new_state == "CLOSED":
-                logger.info("[매매] 서킷브레이커 복구 완료 — HALF_OPEN → CLOSED")
+                logger.info("[매매] 서킷브레이커 복구 완료 — 복구시도 → 정상")
                 _fire_and_forget_telegram("✅ [OMS] 서킷브레이커 복구 완료 — 주문 정상 작동 재개", self.get_settings_fn())
         except Exception:
             logger.warning("[매매] 리스크 관리자 성공 보고 실패", exc_info=True)
@@ -382,7 +382,7 @@ class AutoTradeManager:
         try:
             unex = int(unex_qty)
         except (ValueError, TypeError):
-            logger.warning("[매매] [체결업데이트] %s unex_qty 파싱 실패 (raw=%r) — 체결 처리 중단", stk_cd, unex_qty)
+            logger.warning("[매매] [체결업데이트] %s 미체결수량 해석 실패 (원본=%r) — 체결 처리 중단", stk_cd, unex_qty)
             self._buy_state[stk_cd] = state
             return
 
@@ -486,7 +486,7 @@ class AutoTradeManager:
                     })
                     await notify_desktop_header_refresh()
                     await notify_desktop_settings_toggled({"time_scheduler_on": False})
-                    logger.error("[매매] 서킷브레이커 OPEN — 자동매매 마스터 스위치 강제 OFF")
+                    logger.error("[매매] 서킷브레이커 차단 — 자동매매 마스터 스위치 강제 OFF")
             except Exception:
                 logger.warning("[매매] 리스크 관리자 실패 보고 실패", exc_info=True)
             return
@@ -533,7 +533,7 @@ class AutoTradeManager:
             risk_mgr.record_order_success()
             new_state = risk_mgr.circuit_breaker.get_state()
             if prev_state == "HALF_OPEN" and new_state == "CLOSED":
-                logger.info("[매매] 서킷브레이커 복구 완료 — HALF_OPEN → CLOSED")
+                logger.info("[매매] 서킷브레이커 복구 완료 — 복구시도 → 정상")
                 _fire_and_forget_telegram("✅ [OMS] 서킷브레이커 복구 완료 — 주문 정상 작동 재개", self.get_settings_fn())
         except Exception:
             logger.warning("[매매] 리스크 관리자 성공 보고 실패", exc_info=True)
@@ -547,7 +547,7 @@ class AutoTradeManager:
         try:
             from backend.app.services.engine_state import state as engine_state
             if engine_state.realtime_latency_exceeded:
-                logger.info("[매매] [실시간지연] 매도 조건 전체 차단 — WS 지연 200ms 초과")
+                logger.info("[매매] [실시간지연] 매도 조건 전체 차단 — 실시간 통신 지연 200ms 초과")
                 return
         except Exception:
             logger.warning("[매매] 실시간 지연 체크 실패", exc_info=True)

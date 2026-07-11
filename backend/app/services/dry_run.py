@@ -131,7 +131,7 @@ async def fake_send_order(
     order_no = _next_fake_order_no()
     side = order_type.upper()
     logger.info(
-        "[매매] %s 주문 접수 %s %d주 @%s ord_no=%s",
+        "[매매] %s 주문 접수 %s %d주 @%s 주문번호=%s",
         side, code, qty, f"{price:,}" if price else "시장가", order_no,
     )
     return {

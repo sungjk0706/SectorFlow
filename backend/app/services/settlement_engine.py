@@ -101,14 +101,14 @@ async def on_sell_fill(price: int, qty: int, stk_cd: str, stk_nm: str) -> int:
     await _persist()
     await _broadcast_delta()
 
-    # ── State Gate 회복: 매도 체결로 주문가능 금액 증가 시 매수 재평가 ──
+    # ── 상태 게이트 회복: 매도 체결로 주문가능 금액 증가 시 매수 재평가 ──
     try:
         from backend.app.services.buy_order_executor import _cash_insufficient, evaluate_buy_candidates, invalidate_buy_snapshot
         if _cash_insufficient:
             invalidate_buy_snapshot()
             await evaluate_buy_candidates()
     except Exception as e:
-        logger.warning("[정산] State Gate 회복 실패 (매도 정산은 완료): %s", e, exc_info=True)
+        logger.warning("[정산] 상태 게이트 회복 실패 (매도 정산은 완료): %s", e, exc_info=True)
 
     return _orderable
 
@@ -239,5 +239,5 @@ async def _broadcast_delta() -> None:
             await _broadcast_account(reason="settlement_delta")
     except Exception as e:
         logger.warning(
-            "[정산] 브로드캐스트 실패 (엔진 미기동 가능): %s", e,
+            "[정산] 전송 실패 (엔진 미기동 가능): %s", e,
         )

@@ -42,7 +42,7 @@ def _in_time_range(flat: dict[str, Any], start_key: str, end_key: str,
         end_str = str(flat[end_key])[:5]
         return start_str <= hm <= end_str
     except (KeyError, TypeError) as e:
-        logger.warning("[자동매매] 시간 범위 설정 오류 — %s: %s (start_key=%s, end_key=%s)",
+        logger.warning("[자동매매] 시간 범위 설정 오류 — %s: %s (시작시간설정=%s, 종료시간설정=%s)",
                        type(e).__name__, e, start_key, end_key)
         return False
 

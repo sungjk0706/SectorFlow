@@ -82,7 +82,7 @@ def _log_ws_trnm_json_detail(trnm: str, data: dict) -> None:
         if total_len > max_len:
             s = s[:max_len] + f"... (truncated, total {total_len} chars)"
     except Exception as e:
-        logger.warning("[시스템] 문자열 truncation 실패: %s", e)
+        logger.warning("[시스템] 문자열 자르기 실패: %s", e)
 
 
 
@@ -95,7 +95,7 @@ def _handle_login(data: dict) -> None:
             from backend.app.services.daily_time_scheduler import _trigger_reg_pipeline
             _trigger_reg_pipeline()
         except Exception as e:
-            logger.warning("[연결] REG 파이프라인 트리거 실패: %s", e, exc_info=True)
+            logger.warning("[연결] 조회 파이프라인 트리거 실패: %s", e, exc_info=True)
 
 
 def _reg_response_item_val(row: dict) -> str | None:
@@ -221,7 +221,7 @@ async def _handle_real_00(item: dict, vals: dict) -> None:
                     except asyncio.QueueEmpty:
                         pq.put_nowait(price_tick_data)
         except Exception as e:
-            logger.warning("[연결] price_pass_through 전송 실패 (code=%s): %s", raw_cd, e)
+            logger.warning("[연결] 현재가 직통 전송 실패 (종목코드=%s): %s", raw_cd, e)
 
     _check_realtime_latency(_ts)
 
@@ -245,7 +245,7 @@ async def handle_ws_data(data: dict) -> None:
         elif trnm == "JIF":
             await _handle_jif(data)
     except Exception:
-        logger.error("[연결] 메시지 처리 예외 (trnm=%s): %s", data.get("trnm"), data, exc_info=True)
+        logger.error("[연결] 메시지 처리 오류 (메시지유형=%s): %s", data.get("trnm"), data, exc_info=True)
 
 
 # ── JIF (장운행정보) 처리 ──────────────────────────────────────────────────
@@ -296,19 +296,19 @@ async def _handle_jif(data: dict) -> None:
     mp["krx_alert"] = alert
     from backend.app.services.engine_account_notify import _broadcast
     await _broadcast("market-phase", {"krx_alert": alert})
-    logger.info("[연결] 서킷브레이커/사이드카 alert 갱신: jstatus=%s → %s", jstatus, alert)
+    logger.info("[연결] 서킷브레이커/사이드카 알림 갱신: 장상태=%s → %s", jstatus, alert)
 
     if jstatus in _KRX_CB_ACTIVATION_CODES:
         if not engine_state.state.krx_circuit_breaker_active:
             engine_state.state.krx_circuit_breaker_active = True
-            logger.warning("[구독] 서킷브레이커/사이드카 발동 — 자동매매 임시 중단 (jstatus=%s)", jstatus)
+            logger.warning("[구독] 서킷브레이커/사이드카 발동 — 자동매매 임시 중단 (장상태=%s)", jstatus)
             _notify_krx_cb_telegram(f"🛑 [KRX] {alert} — 자동매매 임시 중단", engine_state.state.integrated_system_settings_cache)
             await _broadcast("krx-circuit-breaker", {"active": True, "alert": alert})
 
     elif jstatus in _KRX_CB_RELEASE_CODES:
         if engine_state.state.krx_circuit_breaker_active:
             engine_state.state.krx_circuit_breaker_active = False
-            logger.info("[구독] 서킷브레이커/사이드카 해제 — 자동매매 자동 재개 (jstatus=%s)", jstatus)
+            logger.info("[구독] 서킷브레이커/사이드카 해제 — 자동매매 자동 재개 (장상태=%s)", jstatus)
             _notify_krx_cb_telegram(f"✅ [KRX] {alert} — 자동매매 자동 재개", engine_state.state.integrated_system_settings_cache)
             await _broadcast("krx-circuit-breaker", {"active": False, "alert": alert})
 

@@ -4,10 +4,10 @@
 - 없음
 
 ## 직전 완료 작업
-- **2026-07-12: 백엔드 로그 한글화 2차 작업 — 2단계 (웹서버/실시간 통신) 완료**
-  - **수정 파일**: `backend/app/web/app.py`, `ws_manager.py`, `routes/ws.py`, `routes/ws_settings.py`, `routes/ws_orders.py`, `routes/settings.py`, `routes/stock_classification.py` (7개 파일)
-  - **내용**: 33건 로그 메시지 한글화 — Gateway→게이트웨이, Journal Consumer Task→저널 처리 작업, 태스크→작업, WebSocket→실시간 통신, shutdown→종료, broadcast→전송, 브로커→증권사, SIGTERM/Graceful Shutdown→종료 신호/정상 종료, user→사용자, 앱준비→앱 준비, 접속화면→접속 화면, 설정채널→설정 채널, 체결채널→체결 채널, PATCH→설정 변경, positions/subscribed/layout/pos_codes→보유종목/구독중/레이아웃/종목코드, all_stocks→전체 종목, stock_moves→종목 이동, filter_summary→필터 요약, 1일봉챠트→1일봉 차트, error_type→오류유형, 에러→오류. 추가로 P10(SSOT) 일관성을 위해 주석/docstring/사용자 에러 메시지 11건 동기화
-  - **검증**: py_compile 7개 파일 통과, 잔존 영어 grep 확인(주석/docstring의 WebSocket은 계획서 원칙3 따라 유지), 런타임 기동/종료 시 8개 메시지 한국어 출력 확인 (게이트웨이 루프 시작 완료, 필터 요약 메타 캐시 로드 완료, 저널 처리 작업 시작/종료 완료, 총 기동시간, 실시간 통신 클라이언트 정상 종료 완료, 게이트웨이 루프 종료 완료, DB 기록기 및 DB 연결 정리 완료)
+- **2026-07-12: 백엔드 로그 한글화 2차 작업 — 3단계 (매매/계좌/정산) 완료**
+  - **수정 파일**: `services/trading.py`, `settlement_engine.py`, `trade_history.py`, `engine_account.py`, `engine_account_notify.py`, `engine_service.py`, `engine_lifecycle.py`, `engine_bootstrap.py`, `engine_ws_dispatch.py`, `dry_run.py`, `auto_trading_effective.py` (11개 파일)
+  - **내용**: 59건 로그 메시지 한글화 — timestamp→시각, WS 지연→실시간 통신 지연, force_buy→강제매수, source→출처, 매수쓰로틀→연속신호 차단, 파싱 실패→해석 실패, raw→원본, 서킷브레이커 OPEN→차단, 브로드캐스트→전송, HALF_OPEN→복구시도, CLOSED→정상, unex_qty→미체결수량, State Gate→상태 게이트, dry_run→모의투자, stale→오래된 데이터, 만료 레코드→만료 기록, 화면전송→화면 전송, sector→섹터, avg_buy_price→평균매입가, _rest_api→REST API, au10001→인증 API, kt00001→예수금 상세현황, return_code→응답코드, broker→증권사, scheduler_5d_download_on→5일봉 다운로드 설정, tele_on→텔레그램 설정, ws_subscribe_control→실시간 구독 제어, trades→거래내역, 백그라운드 태스크→백그라운드 작업, 실전모드→실전투자, 스케줄→예약, 부트스트랩→시작, 접속화면→접속 화면, UI→화면, 앱준비→앱 준비, truncation→자르기, REG 파이프라인→조회 파이프라인, price_pass_through→현재가 직통, trnm→메시지유형, alert→알림, jstatus→장상태, ord_no→주문번호, start_key/end_key→시작시간설정/종료시간설정. 추가로 P10(SSOT) 일관성을 위해 주석/docstring/화면 데이터 11건 동기화 (앱준비 완료→앱 준비 완료, 부트스트랩 단계 브로드캐스트→시작 단계 전송, State Gate→상태 게이트, dry_run 가상 잔고→모의투자 가상 잔고, trades 기반→거래내역 기반, 백그라운드 태스크→백그라운드 작업, 실전모드→실전투자). 계획서 누락 1건 추가 수정 (settlement_engine.py:242 브로드캐스트→전송)
+  - **검증**: py_compile 11개 파일 통과, 잔존 영어 grep 확인(3단계 대상 11개 파일 잔존 영어 0건, 남은 영어는 4~5단계 및 내부 디버그 로그 2차 미룸 대상), 런타임 기동/종료 시 한국어 로그 출력 확인 (테스트모드 - 거래내역 기반 포지션 구축, 만료 기록 정리 완료 — 테스트모드 보관기간/실전모드 보관기간, 총 기동시간 120ms, 에러/Traceback 없음), 잔존 프로세스 0개 확인
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
@@ -24,22 +24,22 @@
 
 ## 진행 중 작업
 
-### 백엔드 로그 한글화 2차 작업 — 1~2단계 완료, 3~5단계 미시작
+### 백엔드 로그 한글화 2차 작업 — 1~3단계 완료, 4~5단계 미시작
 
 > **계획서**: `backend/docs/log_korean_migration_plan.md`
-> **이력**: 1차 작업(2026-07-09) 약 30개 파일 1차 한글화. 2차 작업 1단계(Uvicorn 자체 로그) + 2단계(웹서버/실시간 통신) 완료.
+> **이력**: 1차 작업(2026-07-09) 약 30개 파일 1차 한글화. 2차 작업 1단계(Uvicorn 자체 로그) + 2단계(웹서버/실시간 통신) + 3단계(매매/계좌/정산) 완료.
 
 | 단계 | 내용 | 파일 수 | 상태 |
 |------|------|---------|------|
 | 1단계 | Uvicorn 자체 로그 한국어화 | 1 | ☑ 완료 (2026-07-12) |
 | 2단계 | 웹서버/실시간 통신 로그 | 7 | ☑ 완료 (2026-07-12) |
-| 3단계 | 매매/계좌/정산 로그 | 12 | ☐ 미시작 |
+| 3단계 | 매매/계좌/정산 로그 | 12 | ☑ 완료 (2026-07-12) |
 | 4단계 | 알림/서킷브레이커 로그 | 5 | ☐ 미시작 |
 | 5단계 | 증권사 연결/주문/잔고 로그 | 11 | ☐ 미시작 |
 
 **다음 세션 진행 방법**:
-1. `backend/docs/log_korean_migration_plan.md`의 "파일별 수정 상세" 섹션에서 3단계 줄번호별 수정 전/후 표 확인
-2. 3단계부터 순차적으로 진행 — 각 단계 완료 후 계획서의 "진행 상황 추적" 표에 완료 표시 + 날짜 기록
+1. `backend/docs/log_korean_migration_plan.md`의 "파일별 수정 상세" 섹션에서 4단계 줄번호별 수정 전/후 표 확인
+2. 4단계부터 순차적으로 진행 — 각 단계 완료 후 계획서의 "진행 상황 추적" 표에 완료 표시 + 날짜 기록
 3. 각 단계 완료 후 검증: py_compile + 잔존 영어 grep + 런타임 기동 검증
 4. 한 세션에 다 못 끝내면, 계획서의 추적 표를 확인하여 어느 단계까지 완료되었는지 파악 후 이어서 진행
 
@@ -61,13 +61,13 @@
 
 ## 다음 단계
 
-### 1순위: 백엔드 로그 한글화 2차 작업 — 3단계부터 순차 진행
+### 1순위: 백엔드 로그 한글화 2차 작업 — 4단계부터 순차 진행
 
-1~2단계 완료 (Uvicorn 자체 로그 + 웹서버/실시간 통신). 다음 세션부터 3단계(매매/계좌/정산)부터 5단계(증권사 연결/주문/잔고)까지 순차적으로 코드 수정 진행.
+1~3단계 완료 (Uvicorn 자체 로그 + 웹서버/실시간 통신 + 매매/계좌/정산). 다음 세션부터 4단계(알림/서킷브레이커)부터 5단계(증권사 연결/주문/잔고)까지 순차적으로 코드 수정 진행.
 
 - **1단계** ☑ 완료: `app/core/logger.py` — InterceptHandler uvicorn 메시지 치환 맵 + setup_console_intercept 분리
 - **2단계** ☑ 완료: `app/web/app.py`, `ws_manager.py`, `routes/ws.py`, `routes/ws_settings.py`, `routes/ws_orders.py`, `routes/settings.py`, `routes/stock_classification.py` — 33건 로그 메시지 + 11건 주석/docstring/에러 메시지 동기화
-- **3단계** (12개 파일): `services/trading.py`, `settlement_engine.py`, `trade_history.py`, `engine_account.py`, `engine_account_notify.py`, `engine_service.py`, `engine_lifecycle.py`, `engine_bootstrap.py`, `engine_ws_dispatch.py`, `buy_order_executor.py`, `dry_run.py`, `auto_trading_effective.py`
+- **3단계** ☑ 완료: `services/trading.py`, `settlement_engine.py`, `trade_history.py`, `engine_account.py`, `engine_account_notify.py`, `engine_service.py`, `engine_lifecycle.py`, `engine_bootstrap.py`, `engine_ws_dispatch.py`, `dry_run.py`, `auto_trading_effective.py` — 59건 로그 메시지 + 11건 주석/docstring/화면 데이터 동기화 + 1건 계획서 누락 추가 수정
 - **4단계** (5개 파일): `services/notification_worker.py`, `telegram_bot.py`, `telegram.py`, `circuit_breaker.py`, `risk_manager.py`
 - **5단계** (11개 파일): `core/kiwoom_rest.py`, `kiwoom_stock_rest.py`, `kiwoom_connector.py`, `kiwoom_order.py`, `kiwoom_providers.py`, `ls_rest.py`, `ls_connector.py`, `ls_providers.py`, `broker_router.py`, `broker_registry.py`, `connector_manager.py`
 

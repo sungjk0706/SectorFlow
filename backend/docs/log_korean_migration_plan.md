@@ -69,7 +69,7 @@
 - **내용**: Gateway→게이트웨이, Journal Consumer Task→저널 처리 태스크, error_type→오류유형, WS→실시간 통신, shutdown→종료, broadcast→전송, broker→증권사, user→사용자, 띄어쓰기
 - **완료 기준**: 웹서버 기동/종료 로그, WebSocket 연결/해제 로그에서 영어 잔존 없음
 
-### 3단계: 매매/계좌/정산 로그 (10개 파일)
+### 3단계: 매매/계좌/정산 로그 — ☑ 완료 (2026-07-12) (10개 파일)
 - **대상**: `services/trading.py`, `services/settlement_engine.py`, `services/trade_history.py`, `services/engine_account.py`, `services/engine_account_notify.py`, `services/engine_service.py`, `services/engine_lifecycle.py`, `services/engine_bootstrap.py`, `services/engine_ws_dispatch.py`, `services/buy_order_executor.py`, `services/dry_run.py`, `services/auto_trading_effective.py`
 - **내용**: timestamp→시각, WS 지연→실시간 통신 지연, force_buy→강제매수, source→출처, throttle→연속신호 차단, 서킷브레이커 상태 코드, sector→섹터, dry_run→모의투자, broker→증권사, tele_on→텔레그램 설정, 실전모드→실전투자, 태스크→작업, 부트스트랩→시작, UI→화면
 - **완료 기준**: 매매/계좌/정산 관련 로그에서 영어 잔존 없음
@@ -192,7 +192,7 @@
 
 ---
 
-### 3단계: 매매/계좌/정산 로그
+### 3단계: 매매/계좌/정산 로그 — ☑ 완료 (2026-07-12)
 
 #### `backend/app/services/trading.py`
 | 줄 | 현재 | 수정 후 |
@@ -527,7 +527,7 @@
 |------|------|---------|------|--------|
 | 1단계 | Uvicorn 자체 로그 | 1 | ☑ 완료 | 2026-07-12 |
 | 2단계 | 웹서버/실시간 통신 | 7 | ☑ 완료 | 2026-07-12 |
-| 3단계 | 매매/계좌/정산 | 12 | ☐ 미시작 | |
+| 3단계 | 매매/계좌/정산 | 12 | ☑ 완료 | 2026-07-12 |
 | 4단계 | 알림/서킷브레이커 | 5 | ☐ 미시작 | |
 | 5단계 | 증권사 연결/주문/잔고 | 11 | ☐ 미시작 | |
 

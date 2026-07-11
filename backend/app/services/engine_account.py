@@ -110,7 +110,7 @@ async def _broadcast_buy_limit_status() -> None:
         await _broadcast("buy-limit-status", await get_buy_limit_status())
         await notify_buy_targets_update()
     except Exception as e:
-        logger.warning("[연결] 매수한도 화면전송 실패: %s", e, exc_info=True)
+        logger.warning("[연결] 매수한도 화면 전송 실패: %s", e, exc_info=True)
 
 
 # ── REST 계좌 데이터 조회 ─────────────────────────────────────────────────
@@ -131,7 +131,7 @@ async def _fetch_account_data(settings: dict) -> dict:
     _rest_api_thread_sem = state.rest_api_thread_sem or _ensure_rest_api_thread_sem()
     
     if _rest_api is None:
-        logger.warning("[계좌] _rest_api 없음 — 엔진 기동 완료 전 호출. 계좌 조회 건너뜀.")
+        logger.warning("[계좌] REST API 없음 — 엔진 기동 완료 전 호출. 계좌 조회 건너뜀.")
         return _EMPTY
 
     # ── 토큰 유효성 먼저 확인 ─────────────────────────────────────────────
@@ -139,7 +139,7 @@ async def _fetch_account_data(settings: dict) -> dict:
         token_ok = await _rest_api._ensure_token()
     if not token_ok:
         logger.warning(
-            "[계좌] 유효한 토큰 없음 (au10001 발급 실패) — 계좌 조회 건너뜀. "
+            "[계좌] 유효한 토큰 없음 (인증 API(au10001) 발급 실패) — 계좌 조회 건너뜀. "
             "이전 값을 그대로 유지합니다. (0원 표시 방지)"
         )
         return _EMPTY
@@ -165,13 +165,13 @@ async def _fetch_account_data(settings: dict) -> dict:
         return _EMPTY
 
     if not deposit_raw:
-        logger.warning("[계좌] 예수금 응답 없음 (kt00001 실패함) — 조회 중단")
+        logger.warning("[계좌] 예수금 응답 없음 (예수금 상세현황(kt00001) 실패) — 조회 중단")
         return _EMPTY
 
     ok_dep, dep_body, deposit, orderable, _withdrawable = parse_kt00001_deposit(deposit_raw)
     if not ok_dep:
         logger.warning(
-            "[계좌] kt00001 오류 return_code=%s 메시지=%s",
+            "[계좌] 예수금 상세현황(kt00001) 오류 응답코드=%s 메시지=%s",
             dep_body.get("return_code"), dep_body.get("return_msg", ""),
         )
         return _EMPTY
@@ -245,9 +245,9 @@ async def _update_account_memory_inner(settings: dict) -> None:
     summary    = yield_data.get("summary", {})
 
     _apply_broker_totals_from_summary(summary)
-    # 테스트모드: 실전 잔고로 _positions 덮어쓰지 않음 — dry_run 가상 잔고 격리
+    # 테스트모드: 실전 잔고로 _positions 덮어쓰지 않음 — 모의투자 가상 잔고 격리
     if is_test_mode(s):
-        logger.info("[계좌] 테스트모드 — 실전 잔고 %d건 무시, dry_run 가상 잔고 유지", len(stock_list))
+        logger.info("[계좌] 테스트모드 — 실전 잔고 %d건 무시, 모의투자 가상 잔고 유지", len(stock_list))
     else:
         # 수량·매입은 REST 기준
         merged = _merge_positions_from_rest(stock_list)
@@ -363,7 +363,7 @@ async def _apply_last_price_to_positions(stk_cd: str, price: int) -> bool:
     from backend.app.services.engine_symbol_utils import _base_stk_cd
     from backend.app.services import dry_run
     
-    # 테스트모드: dry_run 가상 잔고에 현재가 반영 (6자리 정규화)
+    # 테스트모드: 모의투자 가상 잔고에 현재가 반영 (6자리 정규화)
     if is_test_mode(state.integrated_system_settings_cache):
         nk = _base_stk_cd(str(stk_cd or "").strip())
         return await dry_run.update_price(nk, price) if nk else False
@@ -411,7 +411,7 @@ async def _apply_balance_realtime(item: dict, vals: dict) -> None:
     if state.update_account_memory:
         state.update_account_memory()
 
-    # ── State Gate 회복: 실전모드 잔고 업데이트 시 매수 재평가 ──
+    # ── 상태 게이트 회복: 실전투자 잔고 업데이트 시 매수 재평가 ──
     try:
         from backend.app.services.buy_order_executor import _cash_insufficient, evaluate_buy_candidates, invalidate_buy_snapshot
         if _cash_insufficient:
