@@ -971,7 +971,9 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 
 | ID | 세션 | 파일:줄 | 위반 원칙 | 심각도 | 설명 | 상태 |
 |----|------|---------|-----------|--------|------|------|
-| — | — | — | — | — | (점검 미진행) | — |
+| B03-01 | B-03 | `dry_run.py:45-68` | P20/P22 | HIGH | `_refresh_positions_if_dirty`에서 dirty 플래그를 try 이전에 `False`로 설정 + silent except → 재구축 실패 시 stale 캐시 영속, 데이터 정합성 위반 | 해결 |
+| B03-02 | B-03 | `dry_run.py:320-353` | P16 | MEDIUM | dead code 4개 함수 (`get_virtual_balance`, `get_virtual_deposit_setting`, `reset_virtual_balance`, `charge_virtual_balance`) — web routes가 settlement_engine 직접 호출하도록 변경되어 잔존 | 해결 |
+| B03-03 | B-03 | `dry_run.py:312-317, 130, 171` | P16/P20 | MEDIUM | `_estimate_market_price` 도달 불가 (호출자가 항상 price > 0 보장) + price=0 폴백이 가짜 체결가 0을 조용히 허용 | 해결 |
 
 ---
 
@@ -981,9 +983,9 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 
 | 세션 ID | 우선순위 | 내용 | 상태 |
 |---------|----------|------|------|
-| B-01 | P0 | 주문 실행 경로 | ☐ 미시작 |
-| B-02 | P0 | 리스크 관리 및 서킷 브레이커 | ☐ 미시작 |
-| B-03 | P0 | Dry Run | ☐ 미시작 |
+| B-01 | P0 | 주문 실행 경로 | ☑ 완료 (8건 수정) |
+| B-02 | P0 | 리스크 관리 및 서킷 브레이커 | ☑ 완료 (3건 수정) |
+| B-03 | P0 | Dry Run | ☑ 완료 (3건 수정) |
 | B-04 | P0 | 정산 엔진 및 거래 이력 | ☐ 미시작 |
 | B-05 | P0 | 자동매매 유효성 및 코어 큐 | ☐ 미시작 |
 | B-06 | P1 | 엔진 루프 및 생명주기 | ☐ 미시작 |

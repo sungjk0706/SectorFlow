@@ -4,14 +4,13 @@
 이 파일은 미커버 영역을 보완:
   - _refresh_positions_if_dirty (캐시 재구축/스킵/비파생 필드 보존)
   - _next_fake_order_no (시퀀스)
-  - _estimate_market_price (보유/미보유)
   - update_price (가격 변경/동일/미보유/손익 재계산)
   - set_stock_name (설정/미보유)
   - get_positions / get_position (전체/단일/미보유)
   - has_position / position_codes (보유/수량0/codes)
   - clear (포지션 클리어)
   - _recalc_pnl (손익 계산/buy_amt=0)
-  - 가상 예수금 5종 (get_virtual_balance/deposit/setting, set/reset/charge)
+  - 가상 예수금 (set_virtual_deposit)
 """
 from __future__ import annotations
 
@@ -148,19 +147,6 @@ class TestNextFakeOrderNo:
         assert int(r2) == int(r1) + 1
 
 
-# ── _estimate_market_price ────────────────────────────────────────────────────
-
-class TestEstimateMarketPrice:
-    """_estimate_market_price: 보유→cur_price, 미보유→0."""
-
-    def test_held_returns_cur_price(self):
-        dry_run._test_positions[_TEST_CODE] = _make_position(cur_price=75_000)
-        assert dry_run._estimate_market_price(_TEST_CODE) == 75_000
-
-    def test_not_held_returns_zero(self):
-        assert dry_run._estimate_market_price("999999") == 0
-
-
 # ── update_price ──────────────────────────────────────────────────────────────
 
 class TestUpdatePrice:
@@ -287,17 +273,7 @@ class TestRecalcPnl:
 # ── 가상 예수금 ───────────────────────────────────────────────────────────────
 
 class TestVirtualBalance:
-    """가상 예수금 관리 — Settlement Engine 위임 검증."""
-
-    def test_get_virtual_balance(self):
-        settlement_engine._orderable = 9_500_000
-        assert dry_run.get_virtual_balance() == 9_500_000
-
-    async def test_get_virtual_deposit_setting(self):
-        mock_settings = {"test_virtual_deposit": 15_000_000}
-        with patch("backend.app.services.dry_run.load_integrated_system_settings", new_callable=AsyncMock, return_value=mock_settings):
-            result = await dry_run.get_virtual_deposit_setting()
-        assert result == 15_000_000
+    """가상 예수금 관리 — set_virtual_deposit 검증 (예수금 잔액/충전/리셋은 settlement_engine 라우터가 직접 처리)."""
 
     async def test_set_virtual_deposit(self):
         with patch("backend.app.services.dry_run.update_settings", new_callable=AsyncMock) as mock_update:
@@ -306,19 +282,6 @@ class TestVirtualBalance:
             "test_virtual_deposit": 20_000_000,
             "test_virtual_balance": 20_000_000,
         })
-
-    async def test_reset_virtual_balance(self):
-        with patch("backend.app.services.dry_run.get_virtual_deposit_setting", new_callable=AsyncMock, return_value=10_000_000):
-            with patch("backend.app.services.settlement_engine.reset", new_callable=AsyncMock) as mock_reset:
-                with patch("backend.app.services.dry_run.update_settings", new_callable=AsyncMock) as mock_update:
-                    await dry_run.reset_virtual_balance()
-        mock_reset.assert_called_once_with(10_000_000)
-        mock_update.assert_called_once_with({"test_virtual_balance": 10_000_000})
-
-    async def test_charge_virtual_balance(self):
-        with patch("backend.app.services.settlement_engine.charge", new_callable=AsyncMock, return_value=12_000_000):
-            result = await dry_run.charge_virtual_balance(2_000_000)
-        assert result == 12_000_000
 
 
 # ── _apply_buy / _apply_sell ──────────────────────────────────────────────────
