@@ -86,7 +86,7 @@ async def fetch_ka10081_daily_price(
         data = resp.json()
         rows = data.get("stk_dt_pole_chart_qry") or []
         if not rows or not isinstance(rows, list):
-            logger.warning("[다운로드] 실패[데이터없음] 응답행 없음 — %s (api:%s)", log_cd, api_cd)
+            logger.warning("[다운로드] 실패(데이터 없음) 응답 없음 — %s (API:%s)", log_cd, api_cd)
             return None
 
         # 내림차순(최신순) 정렬 보장
@@ -97,7 +97,7 @@ async def fetch_ka10081_daily_price(
         latest = rows[0]
         close_px = _si(latest.get("cur_prc") or 0)
         if close_px <= 0:
-            logger.warning("[다운로드] 실패[종가0] cur_prc=%s — %s (api:%s)", latest.get("cur_prc"), log_cd, api_cd)
+            logger.warning("[다운로드] 실패(종가 0) 현재가=%s — %s (API:%s)", latest.get("cur_prc"), log_cd, api_cd)
             return None
 
         change_raw = _si_signed(latest.get("pred_pre") or 0)
@@ -122,7 +122,7 @@ async def fetch_ka10081_daily_price(
             "high_price": high_price,
         }
     except Exception as e:
-        logger.warning("[다운로드] 파싱 예외 %s/%s: %s", log_cd, api_cd, e)
+        logger.warning("[다운로드] 데이터 해석 오류 %s/%s: %s", log_cd, api_cd, e)
         return None
 
 
@@ -176,7 +176,7 @@ async def fetch_ka10081_daily_5d_data(
                 break
             all_rows.extend(page_rows)
         except Exception as e:
-            logger.warning("[다운로드] 파싱 예외 %s/%s: %s", log_cd, api_cd, e)
+            logger.warning("[다운로드] 데이터 해석 오류 %s/%s: %s", log_cd, api_cd, e)
             break
 
         if len(all_rows) >= 5:
@@ -206,7 +206,7 @@ async def fetch_ka10081_daily_5d_data(
         # 최근 5개 추출 (신규 상장 종목 지원: 부족한 날짜는 None으로 채움)
         recent_5: list[dict | None] = list(rows[:5])
         if len(recent_5) < 5:
-            logger.info("[다운로드] 데이터 부족 — %d개 (필요 5개) — %s (신규상장으로 간주, 부족한 날짜는 NULL)", len(recent_5), log_cd)
+            logger.info("[다운로드] 데이터 부족 — %d개 (필요 5개) — %s (신규 상장으로 간주, 부족한 날짜는 비어있음)", len(recent_5), log_cd)
             while len(recent_5) < 5:
                 recent_5.append(None)
 
@@ -219,7 +219,7 @@ async def fetch_ka10081_daily_5d_data(
             "highs_5d_array": highs_5d,
         }
     except Exception as e:
-        logger.warning("[다운로드] 파싱 예외 %s/%s: %s", log_cd, api_cd, e)
+        logger.warning("[다운로드] 데이터 해석 오류 %s/%s: %s", log_cd, api_cd, e)
         return None
 
 
@@ -249,7 +249,7 @@ async def fetch_ka10081_all_stocks_daily_confirmed(
             else:
                 failed_codes.append(cd)
         except Exception as e:
-            logger.warning("[다운로드] fetch 예외 %s: %s", cd, e)
+            logger.warning("[다운로드] 조회 오류 %s: %s", cd, e)
             failed_codes.append(cd)
 
         if on_progress:
@@ -296,7 +296,7 @@ async def fetch_ka10081_all_stocks_5day(
             else:
                 failed_codes.append(cd)
         except Exception as e:
-            logger.warning("[다운로드] fetch 예외 %s: %s", cd, e)
+            logger.warning("[다운로드] 조회 오류 %s: %s", cd, e)
             failed_codes.append(cd)
 
         if on_progress:
@@ -356,11 +356,11 @@ async def fetch_ka10099_unified(
             if not resp:
                 retry_count += 1
                 if retry_count < max_retries:
-                    logger.warning("[다운로드] %s 예외 (시도=%d): 재시도 예정", label, retry_count)
+                    logger.warning("[다운로드] %s 오류 (시도=%d): 재시도 예정", label, retry_count)
                     await asyncio.sleep(2)
                     continue
                 else:
-                    logger.warning("[다운로드] %s — 호출 실패 (최대 재시도 초과), 연속조회 중단", label)
+                    logger.warning("[다운로드] %s — 호출 실패 (최대 재시도 초과), 연속 조회 중단", label)
                     break
 
             try:
@@ -403,21 +403,21 @@ async def fetch_ka10099_unified(
                 market_count += count
                 logger.info("[다운로드] %s — %d종목 (누적 %d)", label, count, market_count)
                 
-                # 연속조회 확인
+                # 연속 조회 확인
                 resp_cont_yn = resp.headers.get("cont-yn", "N")
                 resp_next_key = resp.headers.get("next-key", "")
                 
                 if resp_cont_yn == "Y" and resp_next_key:
                     cont_yn = "Y"
                     next_key = resp_next_key
-                    logger.info("[다운로드] %s — 연속조회 계속 (next-key: %s)", label, next_key[:20] + "..." if len(next_key) > 20 else next_key)
+                    logger.info("[다운로드] %s — 연속 조회 계속 (다음 키: %s)", label, next_key[:20] + "..." if len(next_key) > 20 else next_key)
                 else:
                     break  # while 루프 종료
             except Exception as e:
-                logger.warning("[다운로드] 파싱 예외 %s: %s", label, e)
+                logger.warning("[다운로드] 데이터 해석 오류 %s: %s", label, e)
                 break
             
-            # 연속조회 종료 확인
+            # 연속 조회 종료 확인
             if cont_yn == "N":
                 break
 

@@ -82,7 +82,7 @@ class LsAccountProvider(AccountProvider):
 
         res = await self._rest_api.get_balance(cts_expcode="")
         if not res or res.get("rsp_cd") not in ("00040", "00000"):
-            logger.warning("[연결] 잔고 조회 실패: %s", res.get("rsp_msg") if res else "No Response")
+            logger.warning("[연결] 잔고 조회 실패: %s", res.get("rsp_msg") if res else "응답 없음")
             return _empty
 
         outblock = res.get("t0424OutBlock", {})

@@ -79,7 +79,7 @@
 - **내용**: type→유형, 드롭→누락, 타임아웃→시간 초과, 루프→반복, 업데이트→갱신, CLOSED/OPEN/HALF_OPEN→정상/차단/복구시도, failure_count→실패횟수, Circuit Breaker OPEN→서킷브레이커 차단
 - **완료 기준**: 알림/서킷브레이커 로그에서 영어 잔존 없음
 
-### 5단계: 증권사 연결/주문/잔고 로그 (12개 파일)
+### 5단계: 증권사 연결/주문/잔고 로그 — ☑ 완료 (2026-07-12) (11개 파일)
 - **대상**: `core/kiwoom_rest.py`, `core/kiwoom_stock_rest.py`, `core/kiwoom_connector.py`, `core/kiwoom_order.py`, `core/kiwoom_providers.py`, `core/ls_rest.py`, `core/ls_connector.py`, `core/ls_providers.py`, `core/broker_router.py`, `core/broker_registry.py`, `core/connector_manager.py`
 - **내용**: HTTP→응답 코드, status→응답코드, api-id→요청ID, tr_cd→TR코드, trnm→메시지유형, Body→본문, No Response→응답 없음, 429→요청 과다, AsyncClient→HTTP 클라이언트, app_key→API 키, API 코드→기능명+코드 병기, tick_queue→시세 큐, WebSocket→웹소켓/실시간 통신, stop 신호→중지 신호, 브로드캐스트→전송, broker→증권사, spec→설정, 폴백→대체, Connector→커넥터
 - **완료 기준**: 증권사 연결/주문/잔고 로그에서 영어 잔존 없음
@@ -343,7 +343,7 @@
 
 ---
 
-### 5단계: 증권사 연결/주문/잔고 로그
+### 5단계: 증권사 연결/주문/잔고 로그 — ☑ 완료 (2026-07-12)
 
 #### `backend/app/core/kiwoom_rest.py`
 | 줄 | 현재 | 수정 후 |
@@ -529,7 +529,7 @@
 | 2단계 | 웹서버/실시간 통신 | 7 | ☑ 완료 | 2026-07-12 |
 | 3단계 | 매매/계좌/정산 | 12 | ☑ 완료 | 2026-07-12 |
 | 4단계 | 알림/서킷브레이커 | 5 | ☑ 완료 | 2026-07-12 |
-| 5단계 | 증권사 연결/주문/잔고 | 11 | ☐ 미시작 | |
+| 5단계 | 증권사 연결/주문/잔고 | 11 | ☑ 완료 | 2026-07-12 |
 
 ---
 

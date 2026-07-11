@@ -44,16 +44,16 @@ class ConnectorManager:
             try:
                 connector = self._create_single(broker_name)
                 self._connectors[broker_name] = connector
-                logger.info("[연결] %s Connector 생성 완료", broker_name.upper())
+                logger.info("[연결] %s 커넥터 생성 완료", broker_name.upper())
             except ValueError as e:
-                logger.warning("[연결] %s Connector 생성 실패 (설정 확인 필요): %s", broker_name.upper(), e, exc_info=True)
+                logger.warning("[연결] %s 커넥터 생성 실패 (설정 확인 필요): %s", broker_name.upper(), e, exc_info=True)
 
         if not self._connectors:
-            logger.warning("[연결] 생성된 Connector 없음 — broker_config.websocket=%r", ws_val)
+            logger.warning("[연결] 생성된 커넥터 없음 — 웹소켓 설정=%r", ws_val)
 
     @staticmethod
     def _create_single(broker_name: str) -> BrokerConnector:
-        """단일 증권사 Connector 생성."""
+        """단일 증권사 커넥터 생성."""
         from backend.app.core.broker_registry import CONNECTOR_REGISTRY
 
         connector_registry = CONNECTOR_REGISTRY.get(broker_name)
@@ -85,7 +85,7 @@ class ConnectorManager:
     async def connect_all(self) -> None:
         """모든 Connector를 병렬로 연결한다."""
         if not self._connectors:
-            logger.warning("[연결] 연결할 Connector 없음")
+            logger.warning("[연결] 연결할 커넥터 없음")
             return
 
         # 재연결 성공 시 구독 복원 콜백 등록

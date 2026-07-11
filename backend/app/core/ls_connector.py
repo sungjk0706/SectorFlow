@@ -41,7 +41,7 @@ class _LsSocket:
     def __init__(self, uri: str, token: str, on_message: Callable, on_disconnect: Callable | None = None, queue_callback: Callable | None = None):
         self._uri = uri
         self._token = token
-        self._on_message = on_message          # async callable (폴백)
+        self._on_message = on_message          # async callable (대체)
         self._on_disconnect = on_disconnect    # 연결 끊김 시 호출 (재연결 트리거)
         self._queue_callback = queue_callback  # Producer 콜백 (asyncio.Queue.put_nowait)
         self._ws: Any = None                        # websockets connection
@@ -83,7 +83,7 @@ class _LsSocket:
         """페이로드 송신. 연결 없으면 False."""
         if not self.connected or not self._ws:
             tr_cd = payload.get("body", {}).get("tr_cd", "?")
-            logger.warning("[연결] 전송 생략 — 연결 없음 (TR=%s)", tr_cd)
+            logger.warning("[연결] 전송 생략 — 연결 없음 (TR코드=%s)", tr_cd)
             return False
         msg = json.dumps(payload, ensure_ascii=False)
         await self._ws.send(msg)
@@ -136,7 +136,7 @@ class _LsSocket:
                         except asyncio.QueueFull:
                             logger.warning("[연결] 데이터 큐 가득 참 — 실시간 데이터 일부 누락: %s", tr_cd)
                     else:
-                        # 폴백: 기존 방식 유지
+                        # 대체: 기존 방식 유지
                         await self._on_message(internal_msg)
                 else:
                     # 변환 실패 또는 처리 불필요한 메시지
@@ -184,7 +184,7 @@ class _LsSocket:
             drate = float(body.get("drate", 0) or 0)
 
             if drate == 0.0 and change > 0 and price > 0:
-                logger.warning("[연결] 체결 데이터 등락율 누락 — 서버 데이터 품질 이슈 (종목=%s 부호=%s 변동=%d 가격=%d)", shcode, sign, change, price)
+                logger.warning("[연결] 체결 데이터 등락률 누락 — 서버 데이터 품질 이슈 (종목=%s 부호=%s 변동=%d 가격=%d)", shcode, sign, change, price)
                 if sign in ("4", "5"):
                     prev_close = price + change
                 elif sign in ("1", "2"):
@@ -291,7 +291,7 @@ class _LsSocket:
                     "values": {
                         "10": jisu,    # 지수
                         "11": change_str,  # 전일대비
-                        "12": drate_str,   # 등락율
+                        "12": drate_str,   # 등락률
                         "25": sign,    # 전일대비구분
                     }
                 }]
@@ -370,19 +370,19 @@ class LsConnector(BrokerConnector):
             if not token:
                 raise ConnectionError("LS증권 토큰 발급 실패")
             self._token = token
-            # Queue 콜백 래퍼 (드롭 정책 적용)
+            # Queue 콜백 래퍼 (누락 정책 적용)
             queue_callback = None
             if self._ws_queue is not None:
                 _q = self._ws_queue
                 def _queue_put_with_drop(msg: dict) -> None:
-                    """드롭 정책 적용 - 큐 가득 찼을 때 가장 오래된 데이터 버리고 최신 데이터 삽입."""
+                    """누락 정책 적용 — 큐 가득 찼을 때 가장 오래된 데이터 버리고 최신 데이터 삽입."""
                     try:
                         _q.put_nowait(msg)
                     except asyncio.QueueFull:
                         try:
                             _q.get_nowait()
                             _q.put_nowait(msg)
-                            logger.warning("[연결] 데이터 큐 드롭 발생 — 최신 데이터 유지")
+                            logger.warning("[연결] 데이터 큐 누락 발생 — 최신 데이터 유지")
                         except asyncio.QueueEmpty:
                             _q.put_nowait(msg)
                 queue_callback = _queue_put_with_drop
@@ -418,7 +418,7 @@ class LsConnector(BrokerConnector):
             except Exception:
                 logger.warning("[구독] 장운영정보 구독 실패", exc_info=True)
             # 업종지수(IJ_) 구독은 REG 파이프라인(ws_subscribe_control)에서 통합 관리
-            # 연결 상태 브로드캐스트
+            # 연결 상태 전송
             try:
                 from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
                 broadcast_ws_connection_status(True)
@@ -436,7 +436,7 @@ class LsConnector(BrokerConnector):
                 await self._socket.disconnect()
                 self._socket = None
             logger.info("[연결] LS증권 연결 종료")
-            # 연결 해제 상태 브로드캐스트
+            # 연결 해제 상태 전송
             try:
                 from backend.app.services.ws_subscribe_control import broadcast_ws_connection_status
                 broadcast_ws_connection_status(False)
@@ -592,19 +592,19 @@ class LsConnector(BrokerConnector):
         await self.unsubscribe_stocks_tr(codes, "UPH")
 
     async def register_account(self, tr_cd: str = "SC0") -> bool:
-        """계좌등록 (LS WebSocket: tr_type=1).
+        """계좌 등록 (LS WebSocket: tr_type=1).
 
         명세서: header {token, tr_type="1"}, body {tr_cd, tr_key=""}
-        tr_key는 계좌등록/해제 시 필수값 아님 (명세서: Required=N).
+        tr_key는 계좌 등록/해제 시 필수값 아님 (명세서: Required=N).
         주문 관련 TR 코드: SC0(접수), SC1(체결), SC2(정정), SC3(취소), SC4(거부).
         """
         if not self.is_connected() or not self._socket:
-            logger.warning("[계좌] 계좌등록 실패 — 연결 없음 (tr_cd=%s)", tr_cd)
+            logger.warning("[계좌] 계좌 등록 실패 — 연결 없음 (TR코드=%s)", tr_cd)
             return False
         payload = {
             "header": {
                 "token": self._token,
-                "tr_type": "1"  # 1: 계좌등록
+                "tr_type": "1"  # 1: 계좌 등록
             },
             "body": {
                 "tr_cd": tr_cd,
@@ -613,24 +613,24 @@ class LsConnector(BrokerConnector):
         }
         success = await self._socket.send(payload)
         if success:
-            logger.info("[계좌] 계좌등록 완료 (tr_cd=%s)", tr_cd)
+            logger.info("[계좌] 계좌 등록 완료 (TR코드=%s)", tr_cd)
         else:
-            logger.warning("[계좌] 계좌등록 실패 (tr_cd=%s)", tr_cd)
+            logger.warning("[계좌] 계좌 등록 실패 (TR코드=%s)", tr_cd)
         return success
 
     async def unregister_account(self, tr_cd: str = "SC0") -> bool:
-        """계좌해제 (LS WebSocket: tr_type=2).
+        """계좌 해제 (LS WebSocket: tr_type=2).
 
         명세서: header {token, tr_type="2"}, body {tr_cd, tr_key=""}
-        tr_key는 계좌등록/해제 시 필수값 아님 (명세서: Required=N).
+        tr_key는 계좌 등록/해제 시 필수값 아님 (명세서: Required=N).
         """
         if not self.is_connected() or not self._socket:
-            logger.warning("[계좌] 계좌해제 실패 — 연결 없음 (tr_cd=%s)", tr_cd)
+            logger.warning("[계좌] 계좌 해제 실패 — 연결 없음 (TR코드=%s)", tr_cd)
             return False
         payload = {
             "header": {
                 "token": self._token,
-                "tr_type": "2"  # 2: 계좌해제
+                "tr_type": "2"  # 2: 계좌 해제
             },
             "body": {
                 "tr_cd": tr_cd,
@@ -639,9 +639,9 @@ class LsConnector(BrokerConnector):
         }
         success = await self._socket.send(payload)
         if success:
-            logger.info("[계좌] 계좌해제 완료 (tr_cd=%s)", tr_cd)
+            logger.info("[계좌] 계좌 해제 완료 (TR코드=%s)", tr_cd)
         else:
-            logger.warning("[계좌] 계좌해제 실패 (tr_cd=%s)", tr_cd)
+            logger.warning("[계좌] 계좌 해제 실패 (TR코드=%s)", tr_cd)
         return success
 
     async def subscribe_jif(self) -> bool:
@@ -742,19 +742,19 @@ class LsConnector(BrokerConnector):
                 if self._lock is None:
                     self._lock = asyncio.Lock()
                 async with self._lock:
-                    # Queue 콜백 래퍼 (재연결 시도 - 드롭 정책 적용)
+                    # Queue 콜백 래퍼 (재연결 시도 - 누락 정책 적용)
                     queue_callback = None
                     if self._ws_queue is not None:
                         _q = self._ws_queue
                         def _queue_put_with_drop(msg: dict) -> None:
-                            """드롭 정책 적용 - 재연결 시도."""
+                            """누락 정책 적용 - 재연결 시도."""
                             try:
                                 _q.put_nowait(msg)
                             except asyncio.QueueFull:
                                 try:
                                     _q.get_nowait()
                                     _q.put_nowait(msg)
-                                    logger.warning("[연결] 데이터 큐 드롭 발생 (재연결) — 최신 데이터 유지")
+                                    logger.warning("[연결] 데이터 큐 누락 발생 (재연결) — 최신 데이터 유지")
                                 except asyncio.QueueEmpty:
                                     _q.put_nowait(msg)
                         queue_callback = _queue_put_with_drop
@@ -802,7 +802,7 @@ class LsConnector(BrokerConnector):
                 return
             except Exception as e:
                 logger.warning("[연결] 재연결 %d회 실패: %s", attempt, e)
-        logger.error("[연결] 최대 재연결 횟수(20회) 초과 — 포기", exc_info=True)
+        logger.error("[연결] 최대 재연결 횟수(20회) 초과 — 중단", exc_info=True)
 
     def set_reconnect_success_callback(self, callback: Callable) -> None:
         """재연결 성공 시 호출될 콜백 설정 (ConnectorManager가 구독 복원에 사용)."""
@@ -813,7 +813,7 @@ class LsConnector(BrokerConnector):
         self._receive_callback = callback
 
     def set_queue_callback(self, queue: asyncio.Queue) -> None:
-        """Producer-Consumer Queue 설정 (드롭 정책 적용)."""
+        """Producer-Consumer Queue 설정 (누락 정책 적용)."""
         self._ws_queue = queue
 
     def _format_code(self, code: str) -> str:
