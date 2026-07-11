@@ -35,6 +35,12 @@
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
   - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
+- **2순위: 컴포지션 패턴(토글+라벨+컨트롤) 공통화**
+  - 이번 세션 입력 요소 공통화에서 "Leaf 요소만" 진행, 컴포지션은 제외됨
+  - `buy-settings.ts`에 동일 패턴 5곳 반복: `labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'` + `controls.style.cssText = 'display:flex;align-items:center;gap:6px;'` + `setDisabled(controls, true)` + toggle + label + createNumInput/createSelect
+  - 반복 위치: `createBoostScoreSection`(line 62~93, 3곳 호출), 매수/매도호가 잔량비율 block(line 218~282), 매수 주문 간격(line 316~342), 재매수 차단(line 352~389)
+  - 공통화 방향: `createToggleLabelControlsRow(label, toggleKey, controlsChild, opts)` 팩토리 함수 추가 후 5곳 교체
+  - 영향 파일: `setting-row.ts`(또는 신규 컴포넌트 파일), `buy-settings.ts`
 
 ## 미해결 문제
 - **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결**
