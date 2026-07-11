@@ -56,7 +56,6 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     # 리스크 관리
     "max_daily_loss_limit": -500000,
     "max_single_stock_exposure": 20000000,
-    "max_total_exposure_ratio": 0.95,
     "max_position_size": 0,
 
      # 매도 설정

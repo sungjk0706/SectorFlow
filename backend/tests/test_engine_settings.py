@@ -42,7 +42,6 @@ class TestBuildEngineSettingsDictDefaults:
         result = build_engine_settings_dict({})
         assert result["max_daily_loss_limit"] == -500000
         assert result["max_single_stock_exposure"] == 20000000
-        assert result["max_total_exposure_ratio"] == 0.95
 
     def test_telegram_fields_defaults(self):
         result = build_engine_settings_dict({})

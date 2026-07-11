@@ -35,11 +35,13 @@ class CircuitBreaker:
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
         self.last_failure_time: float | None = None
+        self._half_open_test_in_progress = False
 
     def record_failure(self) -> None:
         """주문 실패 기록."""
         self.failure_count += 1
         self.last_failure_time = time.time()
+        self._half_open_test_in_progress = False
         logger.warning(
             "[매매] 서킷브레이커 주문 실패 기록 — failure_count=%d, threshold=%d",
             self.failure_count,
@@ -56,6 +58,7 @@ class CircuitBreaker:
     def record_success(self) -> None:
         """주문 성공 기록."""
         self.failure_count = 0
+        self._half_open_test_in_progress = False
         if self.state == "HALF_OPEN":
             self.state = "CLOSED"
             logger.info("[매매] 서킷브레이커 상태 전이: HALF_OPEN → CLOSED (복구 완료)")
@@ -73,12 +76,15 @@ class CircuitBreaker:
             if self.last_failure_time is not None:
                 if time.time() - self.last_failure_time >= self.recovery_timeout:
                     self.state = "HALF_OPEN"
+                    self._half_open_test_in_progress = True
                     logger.info(
                         "[매매] 서킷브레이커 상태 전이: OPEN → HALF_OPEN (복구 시도)"
                     )
                     return True
             return False
         elif self.state == "HALF_OPEN":
+            if self._half_open_test_in_progress:
+                return False
             return True
         return False
 
@@ -91,6 +97,7 @@ class CircuitBreaker:
         self.state = "CLOSED"
         self.failure_count = 0
         self.last_failure_time = None
+        self._half_open_test_in_progress = False
         logger.info("[매매] 서킷브레이커 초기화 완료")
 
 

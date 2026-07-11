@@ -35,7 +35,6 @@ class RiskManager:
             cache.get("daily_loss_limit", self.max_daily_loss_limit) or self.max_daily_loss_limit
         )
         self.max_single_stock_exposure = int(cache.get("max_single_stock_exposure", 20000000) or 20000000)
-        self.max_total_exposure_ratio = float(cache.get("max_total_exposure_ratio", 0.95) or 0.95)
 
     async def check_buy_order_allowed(self, stk_cd: str, price: float, qty: int) -> tuple[bool, str]:
         """
