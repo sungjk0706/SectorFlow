@@ -128,10 +128,6 @@ def _get_account_rest_lock() -> asyncio.Lock:
         state.account_rest_lock = asyncio.Lock()
     return state.account_rest_lock
 
-async def _on_filter_settings_changed() -> None:
-    """필터 설정 변경 시 처리 (engine_sector 모듈 위임)."""
-    await state.on_filter_settings_changed()
-
 def _notify_reg_ack(return_code: str = "") -> None:
     """`engine_ws_dispatch` REG/UNREG 응답 처리 끝에서 호출 -- 순차 전송 대기 해제."""
     state.reg_ack_return_code = return_code
