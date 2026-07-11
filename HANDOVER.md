@@ -4,6 +4,11 @@
 - 없음
 
 ## 직전 완료 작업
+- **2026-07-12: 증권사 변경 확인 팝업 추가 + 라디오 disabled 잔존 버그 수정**
+  - **대상**: `frontend/src/pages/general-settings.ts`
+  - **수정 1**: `handleBrokerChange`를 `async`로 변경하고 `showConfirmDialog`(공통 팝업)로 확인 단계 삽입 — 라디오 클릭 → 팝업(변경 전/후 증권사명 + 4개 작업 요약: 연결 해제, 토큰 폐기, 엔진 재기동, 새 연결/인증) → 확인 시 재기동. 취소/Escape/외부클릭 시 `syncBrokerRadios()`로 라디오 원래 값 복원. `BROKER_NAMES` 상수 추가(라디오 items 라벨과 SSOT 일치).
+  - **수정 2**: `saveSection` then 콜백에서 `brokerSaving = false`를 `syncBrokerRadios()` 이전으로 이동 — 기존에는 `syncBrokerRadios()`가 `brokerSaving=true` 상태로 `setDisabled(true)`를 호출한 뒤 `brokerSaving=false`가 설정되어 라디오가 영구 disabled 되는 버그. 실행 순서 교정만으로 해결.
+  - 검증: `npm run typecheck` exit 0, `npm run build` exit 0 (60 modules transformed)
 - **2026-07-12: B-04 정산 엔진 및 거래 이력 아키텍처 점검 (4건 수정, 1건 보류)**
   - **대상**: `services/settlement_engine.py`, `services/trade_history.py`, `db/stock_tables.py`, `web/app.py` + 테스트 3개 파일
   - **수정 1 (B04-04, P16)**: dead code 5개 함수 제거 — `_migrate_from_json`, `_patch_sell_history`, `start/stop_consumer_task`, `close_db_connection` (no-op이거나 앱 코드에서 호출되지 않음) + `app.py`에서 `trade_history.start_consumer_task()`/`stop_consumer_task()` 호출 제거 + 관련 테스트 8개 제거
@@ -16,8 +21,8 @@
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
-- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈), 수익현황 업종 섹션 연동(도넛 범례 클릭→스크롤+하이라이트), 전체보기/전체접기 토글 버튼, 차트 onMove undefined 크래시 근본 해결(render early return 시 barRects 동기화), 수익현황 기간 선택 상태 재기동 후 유지(localStorage quickLabel 영속화 + 초기 활성 버튼 복원), 수익상세 페이지 뷰 상태 재기동 후 유지(localStorage selectedView+drilldownActive+dateRange 영속화, 7곳 핸들러 persistViewState), 스핀버튼 초기 비활성 버그 근본 해결(store subscriber settings 변경 시에만 notify + createSpinButtons mousedown 포커스 유지 + registerEditing 데드 코드 제거) — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: B-04 정산 엔진 및 거래 이력 아키텍처 점검 — 커밋 대기
+- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈), 수익현황 업종 섹션 연동(도넛 범례 클릭→스크롤+하이라이트), 전체보기/전체접기 토글 버튼, 차트 onMove undefined 크래시 근본 해결(render early return 시 barRects 동기화), 수익현황 기간 선택 상태 재기동 후 유지(localStorage quickLabel 영속화 + 초기 활성 버튼 복원), 수익상세 페이지 뷰 상태 재기동 후 유지(localStorage selectedView+drilldownActive+dateRange 영속화, 7곳 핸들러 persistViewState), 스핀버튼 초기 비활성 버그 근본 해결(store subscriber settings 변경 시에만 notify + createSpinButtons mousedown 포커스 유지 + registerEditing 데드 코드 제거), 증권사 변경 확인 팝업 추가(showConfirmDialog 재사용 + 변경 전/후 증권사명 + 4개 작업 요약 + 취소 시 라디오 복원 + BROKER_NAMES SSOT 상수), brokerSaving disabled 잔존 버그 수정(then 콜백 실행 순서 교정) — 모두 코드 확인 완료, `npm run build` 통과
+- **Git**: 증권사 변경 확인 팝업 + 라디오 disabled 잔존 버그 수정 — 커밋 대기
 - **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2763 passed, 0 failed
   - 0% 모듈 7개 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
   - 10%대 모듈 9개 해결: engine_settings(100%), stock_tables(100%), stock_filter(99.44%), stock_classification_data(95.14%), settings_store(93.13%), sector_data_provider(92.94%), engine_bootstrap(49.62%), engine_snapshot(39.22%), engine_sector_confirm(33.45%)
