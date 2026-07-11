@@ -5,11 +5,11 @@
 import { uiStore, applyTestDataResetCompleted } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingsManager, extractDirty, MASKED_FIELDS, type SettingsManager } from '../settings'
-import { createToggleBtn, createMoneyInput, TEXT_INPUT_WIDTH, focusNext } from '../components/common/setting-row'
+import { createToggleBtn, createMoneyInput, createTextInput, createRadioGroup, focusNext } from '../components/common/setting-row'
 import { toastResult, showSaveToast } from '../components/common/toast'
 import { createDataTable, type ColumnDef } from '../components/common/data-table'
 import { api } from '../api/client'
-import { parseHM, sectionTitle, createTimeSlot, updateTimeSlotDisplay } from '../components/common/settings-common'
+import { parseHM, sectionTitle, createDescText, createTimeSlot, updateTimeSlotDisplay } from '../components/common/settings-common'
 import { createTimePairInput, type TimePairInputHandle } from '../components/common/time-pair-input'
 import { FONT_SIZE, FONT_WEIGHT, createDarkInput, COLOR } from '../components/common/ui-styles'
 import { showConfirmDialog, showAlertDialog, showCustomDialog } from '../components/common/dialog'
@@ -22,13 +22,11 @@ type TabId = 'auto-trade' | 'telegram' | 'account-manage' | 'api-settings'
 // 일반설정 페이지 전용 스타일 상수 (공유 FONT_SIZE와 분리)
 const GS = {
   label: FONT_SIZE.settingsLabel,   // 토글/행 라벨 (FONT_SIZE.settingsLabel = 14px)
-  desc:  '12px',   // 설명 텍스트 (기존 FONT_SIZE.badge=11px → 12px)
   input: '13px',   // 입력박스 폰트
   rowPad: '10px 0', // 행 상하 패딩
   inputPad: '6px 10px', // 입력박스 패딩
   btnPad: '6px 20px',   // 저장/액션 버튼 패딩
   rowBorder: '1px solid ' + COLOR.borderLight,    // 설정 행 구분선
-  descPad: '0 0 4px',             // 설명 텍스트 패딩
   saveMargin: '12px 0 0',         // 저장 버튼 상단 마진
 } as const
 
@@ -54,14 +52,11 @@ let buyTimeHandle: TimePairInputHandle | null = null
 let autoSellToggle: ReturnType<typeof createToggleBtn> | null = null
 let sellTimeHandle: TimePairInputHandle | null = null
 let wsToggle: ReturnType<typeof createToggleBtn> | null = null
-let wsTimePairWrap: HTMLElement | null = null
+let wsTimeHandle: TimePairInputHandle | null = null
 let holidayBadgeEls: HTMLElement[] = []
 let uiFlashToggle: ReturnType<typeof createToggleBtn> | null = null
 
-// TimePairInput
-let wsSH = '09', wsSM = '00', wsEH = '15', wsEM = '00'
-let wsStartSlot: HTMLElement | null = null
-let wsEndSlot: HTMLElement | null = null
+// 확정 시세 다운로드 시간 (단일 슬롯)
 let confirmedDlSlot: HTMLElement | null = null
 let confirmedDlH = '20', confirmedDlM = '40'
 let savingConfirmedDl = false
@@ -73,14 +68,14 @@ let teleToggle: ReturnType<typeof createToggleBtn> | null = null
 let teleInputs: Record<string, HTMLInputElement> = {}
 
 // 계정관리 탭 참조
-let tradeModeSection: HTMLElement | null = null
+let tradeModeRadioGroup: ReturnType<typeof createRadioGroup> | null = null
 let testVirtualSection: HTMLElement | null = null
 let depositInput: ReturnType<typeof createMoneyInput> | null = null
 let depositDisplay: HTMLElement | null = null
 
 // API 설정 탭 참조
 let apiKeyInputs: Record<string, HTMLInputElement> = {}
-let brokerRadios: Record<string, HTMLInputElement> = {}
+let brokerRadioGroup: ReturnType<typeof createRadioGroup> | null = null
 let activeApiTab: 'kiwoom' | 'ls' = 'kiwoom'
 let apiTabButtons: Record<string, HTMLElement> = {}
 let brokerSaving = false
@@ -103,24 +98,7 @@ function updateHolidayBadges(): void {
   for (const el of holidayBadgeEls) el.style.display = show ? 'inline' : 'none'
 }
 
-/* ── TimePairInput (인라인 — 공통 컴포넌트 사용) ── */
-function createWsTimePairInput(startKey: string, endKey: string): HTMLElement {
-  const wrap = document.createElement('div')
-  Object.assign(wrap.style, { display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 0' })
-  wsStartSlot = createTimeSlot(wsSH, wsSM, (h, m) => {
-    wsSH = h; wsSM = m; updateTimeSlotDisplay(wsStartSlot!, h, m); scheduleTimeSave(startKey, endKey)
-  })
-  wsEndSlot = createTimeSlot(wsEH, wsEM, (h, m) => {
-    wsEH = h; wsEM = m; updateTimeSlotDisplay(wsEndSlot!, h, m); scheduleTimeSave(startKey, endKey)
-  })
-  const tilde = document.createElement('span')
-  Object.assign(tilde.style, { color: COLOR.disabled, fontSize: FONT_SIZE.badge, margin: '0 2px' })
-  tilde.textContent = '~'
-  wrap.appendChild(wsStartSlot); wrap.appendChild(tilde); wrap.appendChild(wsEndSlot)
-  wsTimePairWrap = wrap
-  return wrap
-}
-
+/* ── WS 시간 저장 (debounce) ── */
 function scheduleTimeSave(startKey: string, endKey: string): void {
   if (!settingsMgr) return
   if (savingTime) {
@@ -130,7 +108,7 @@ function scheduleTimeSave(startKey: string, endKey: string): void {
   savingTime = true
   const run = async (sk: string, ek: string): Promise<void> => {
     const serverStart = String(vals[sk] ?? ''), serverEnd = String(vals[ek] ?? '')
-    const newStart = `${wsSH}:${wsSM}`, newEnd = `${wsEH}:${wsEM}`
+    const { start: newStart, end: newEnd } = wsTimeHandle?.getValue() ?? { start: '', end: '' }
     const dirty: Record<string, unknown> = {}
     if (newStart !== serverStart) dirty[sk] = newStart
     if (newEnd !== serverEnd) dirty[ek] = newEnd
@@ -224,10 +202,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
   masterRow.appendChild(masterRight)
   container.appendChild(masterRow)
 
-  const masterDesc = document.createElement('div')
-  Object.assign(masterDesc.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px' })
-  masterDesc.textContent = '자동매매(매수/매도) 마스터 스위치 — OFF면 모든 매매 중단'
-  container.appendChild(masterDesc)
+  container.appendChild(createDescText('자동매매(매수/매도) 마스터 스위치 — OFF면 모든 매매 중단'))
 
   // 자동매수 행
   const autoBuyRow = document.createElement('div')
@@ -315,15 +290,8 @@ function renderAutoTradeTab(container: HTMLElement): void {
   autoSellRow.appendChild(autoSellRight)
   container.appendChild(autoSellRow)
 
-  const descLabel1 = document.createElement('div')
-  Object.assign(descLabel1.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px' })
-  descLabel1.textContent = '거래일 설정시간 내에서만 자동 매수/매도 실행'
-  container.appendChild(descLabel1)
-
-  const descLabel2 = document.createElement('div')
-  Object.assign(descLabel2.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px' })
-  descLabel2.textContent = '공휴일·주말에는 자동매매가 항상 차단됩니다'
-  container.appendChild(descLabel2)
+  container.appendChild(createDescText('거래일 설정시간 내에서만 자동 매수/매도 실행'))
+  container.appendChild(createDescText('공휴일·주말에는 자동매매가 항상 차단됩니다'))
 }
 
 function handleMasterToggle(): void {
@@ -346,11 +314,7 @@ function handleWsToggle(): void {
 }
 
 function updateWsTimeDisabled(): void {
-  if (wsTimePairWrap) {
-    const disabled = !vals.ws_subscribe_on
-    wsTimePairWrap.style.opacity = disabled ? '0.5' : '1'
-    wsTimePairWrap.style.pointerEvents = disabled ? 'none' : 'auto'
-  }
+  wsTimeHandle?.setEnabled(!!vals.ws_subscribe_on)
 }
 
 /* ── 텔레그램 탭 ── */
@@ -384,13 +348,11 @@ function renderTelegramTab(container: HTMLElement): void {
     Object.assign(lbl.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
     lbl.textContent = LABELS[k]
     row.appendChild(lbl)
-    const input = document.createElement('input')
-    input.type = MASKED_FIELDS.has(k) ? 'password' : 'text'
-    input.value = String(vals[k] || '')
-    Object.assign(input.style, { width: `${TEXT_INPUT_WIDTH}px`, padding: GS.inputPad, borderRadius: '4px', border: '1px solid ' + COLOR.border, fontSize: GS.input })
-    input.addEventListener('input', () => { teleInputs[k] = input })
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); focusNext(input) }
+    const input = createTextInput({
+      value: String(vals[k] || ''),
+      type: MASKED_FIELDS.has(k) ? 'password' : 'text',
+      name: k,
+      style: { padding: GS.inputPad } as Partial<CSSStyleDeclaration>,
     })
     teleInputs[k] = input
     row.appendChild(input)
@@ -450,21 +412,17 @@ function renderAccountTab(container: HTMLElement): void {
   container.appendChild(sectionTitle('투자모드'))
 
   // 투자모드 선택 (중앙정렬)
-  tradeModeSection = document.createElement('div')
-  Object.assign(tradeModeSection.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder, gap: '24px' })
-
-  for (const v of ['test', 'real'] as const) {
-    const label = document.createElement('label')
-    label.style.cssText = 'cursor:pointer;display:flex;align-items:center;gap:6px;font-size:' + GS.label
-    const radio = document.createElement('input')
-    radio.type = 'radio'; radio.name = 'trade-mode-acct'
-    radio.checked = vals.trade_mode === v
-    radio.addEventListener('change', () => handleTradeMode(v))
-    label.appendChild(radio)
-    label.appendChild(document.createTextNode(v === 'test' ? '테스트' : '실전투자'))
-    tradeModeSection.appendChild(label)
-  }
-  container.appendChild(tradeModeSection)
+  tradeModeRadioGroup = createRadioGroup({
+    items: [
+      { value: 'test', label: '테스트' },
+      { value: 'real', label: '실전투자' },
+    ],
+    name: 'trade-mode-acct',
+    value: String(vals.trade_mode ?? 'test'),
+    onChange: (v) => handleTradeMode(v),
+  })
+  Object.assign(tradeModeRadioGroup.el.style, { justifyContent: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  container.appendChild(tradeModeRadioGroup.el)
 
   // 가상 예수금 (항상 렌더링, display로 토글)
   const virtualTitle = sectionTitle('가상 투자금 (테스트모드 전용)')
@@ -508,10 +466,7 @@ function handleTradeMode(val: string): void {
 
 function syncTradeMode(): void {
   // 라디오 버튼 상태 업데이트
-  if (tradeModeSection) {
-    const radios = tradeModeSection.querySelectorAll<HTMLInputElement>('input[type="radio"]')
-    radios.forEach(r => { r.checked = (r.parentElement?.textContent?.includes('테스트') ? 'test' : 'real') === vals.trade_mode })
-  }
+  tradeModeRadioGroup?.setValue(String(vals.trade_mode ?? 'test'))
   // 가상 예수금 섹션 표시/숨김
   if (testVirtualSection) {
     testVirtualSection.style.display = vals.trade_mode === 'test' ? '' : 'none'
@@ -573,10 +528,7 @@ function renderTestVirtualSection(): HTMLElement {
   wrap.appendChild(saveRow)
 
   // 설명 텍스트
-  const hintRow = document.createElement('div')
-  Object.assign(hintRow.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px' })
-  hintRow.textContent = '누적투자금과 주문가능금액을 입력한 금액으로 변경합니다. 데이터 초기화 시에도 이 금액이 기본값으로 사용됩니다.'
-  wrap.appendChild(hintRow)
+  wrap.appendChild(createDescText('누적투자금과 주문가능금액을 입력한 금액으로 변경합니다. 데이터 초기화 시에도 이 금액이 기본값으로 사용됩니다.'))
 
   // 읽기전용 표시
   const infoWrap = document.createElement('div')
@@ -626,27 +578,19 @@ function renderTestVirtualSection(): HTMLElement {
 function renderApiSettingsTab(container: HTMLElement): void {
   // Step 2A: 주 사용 증권사 선택 (통신망 전환)
   container.appendChild(sectionTitle('주 사용 증권사'))
-  const brokerSection = document.createElement('div')
-  Object.assign(brokerSection.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder, gap: '24px' })
+  brokerRadioGroup = createRadioGroup({
+    items: [
+      { value: 'kiwoom', label: '키움증권' },
+      { value: 'ls', label: 'LS증권' },
+    ],
+    name: 'primary-broker',
+    value: String(vals.broker ?? 'kiwoom'),
+    onChange: (v) => handleBrokerChange(v as 'kiwoom' | 'ls'),
+  })
+  Object.assign(brokerRadioGroup.el.style, { justifyContent: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  container.appendChild(brokerRadioGroup.el)
 
-  for (const v of ['kiwoom', 'ls'] as const) {
-    const label = document.createElement('label')
-    label.style.cssText = 'cursor:pointer;display:flex;align-items:center;gap:6px;font-size:' + GS.label
-    const radio = document.createElement('input')
-    radio.type = 'radio'; radio.name = 'primary-broker'
-    radio.checked = vals.broker === v
-    radio.addEventListener('change', () => handleBrokerChange(v))
-    brokerRadios[v] = radio
-    label.appendChild(radio)
-    label.appendChild(document.createTextNode(v === 'kiwoom' ? '키움증권' : 'LS증권'))
-    brokerSection.appendChild(label)
-  }
-  container.appendChild(brokerSection)
-
-  const brokerDesc = document.createElement('div')
-  Object.assign(brokerDesc.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px', textAlign: 'center' })
-  brokerDesc.textContent = '선택한 증권사로 시스템 전체 통신망(시세, 계좌, 주문)이 전환됩니다. 엔진이 재기동되어 실시간 연결이 잠시 끊깁니다.'
-  container.appendChild(brokerDesc)
+  container.appendChild(createDescText('선택한 증권사로 시스템 전체 통신망(시세, 계좌, 주문)이 전환됩니다. 엔진이 재기동되어 실시간 연결이 잠시 끊깁니다.', { textAlign: 'center' }))
 
   container.appendChild(sectionTitle('실시간 데이터 통신'))
 
@@ -666,10 +610,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   wsRow.appendChild(wsRight)
   container.appendChild(wsRow)
 
-  const descLabel3 = document.createElement('div')
-  Object.assign(descLabel3.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px' })
-  descLabel3.textContent = '실시간 데이터 자동 연결 스위치 — OFF면 수동 연결만 가능'
-  container.appendChild(descLabel3)
+  container.appendChild(createDescText('실시간 데이터 자동 연결 스위치 — OFF면 수동 연결만 가능'))
 
   // 실시간 연결 시간
   const wsTimeRow = document.createElement('div')
@@ -681,14 +622,18 @@ function renderApiSettingsTab(container: HTMLElement): void {
   const wsTimeRight = document.createElement('span')
   wsTimeRight.style.cssText = 'display:flex;align-items:center;gap:8px;'
   wsTimeRight.appendChild(createHolidayBadge())
-  wsTimeRight.appendChild(createWsTimePairInput('ws_subscribe_start', 'ws_subscribe_end'))
+  const wsStart = String(vals.ws_subscribe_start ?? '09:00')
+  const wsEnd = String(vals.ws_subscribe_end ?? '15:00')
+  const { el: wsTpEl, handle: wsHandle } = createTimePairInput(wsStart, wsEnd, () => {
+    scheduleTimeSave('ws_subscribe_start', 'ws_subscribe_end')
+  })
+  wsTimeHandle = wsHandle
+  wsTpEl.style.padding = '6px 0'
+  wsTimeRight.appendChild(wsTpEl)
   wsTimeRow.appendChild(wsTimeRight)
   container.appendChild(wsTimeRow)
 
-  const descLabel4 = document.createElement('div')
-  Object.assign(descLabel4.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px' })
-  descLabel4.textContent = '실시간 시세 수신 시작/종료 시간'
-  container.appendChild(descLabel4)
+  container.appendChild(createDescText('실시간 시세 수신 시작/종료 시간'))
 
   // 확정 시세 다운로드 시간
   const confirmedDlRow = document.createElement('div')
@@ -707,10 +652,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   confirmedDlRow.appendChild(confirmedDlSlot)
   container.appendChild(confirmedDlRow)
 
-  const descLabel5 = document.createElement('div')
-  Object.assign(descLabel5.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px' })
-  descLabel5.textContent = '장마감 후 확정 시세 다운로드 시간 (기본값 20:40)'
-  container.appendChild(descLabel5)
+  container.appendChild(createDescText('장마감 후 확정 시세 다운로드 시간 (기본값 20:40)'))
 
   // 실시간 현재가 플래시 효과
   const uiFlashRow = document.createElement('div')
@@ -734,10 +676,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   uiFlashRow.appendChild(uiFlashToggle.el)
   container.appendChild(uiFlashRow)
 
-  const descLabel6 = document.createElement('div')
-  Object.assign(descLabel6.style, { fontSize: GS.desc, color: COLOR.tertiary, padding: GS.descPad, marginTop: '-4px' })
-  descLabel6.textContent = '실시간 시세 변경 시 노란색 플래시 깜빡임 효과 적용 여부'
-  container.appendChild(descLabel6)
+  container.appendChild(createDescText('실시간 시세 변경 시 노란색 플래시 깜빡임 효과 적용 여부'))
 
   // Step 2B: API 키 보관용 탭 (키움 API / LS API)
   const apiTabBar = document.createElement('div')
@@ -869,10 +808,8 @@ function handleBrokerChange(val: 'kiwoom' | 'ls'): void {
 }
 
 function syncBrokerRadios(): void {
-  for (const [v, radio] of Object.entries(brokerRadios)) {
-    radio.checked = v === vals.broker
-    radio.disabled = brokerSaving
-  }
+  brokerRadioGroup?.setValue(String(vals.broker ?? 'kiwoom'))
+  brokerRadioGroup?.setDisabled(brokerSaving)
 }
 
 /* ── 설정 동기화 ── */
@@ -893,11 +830,9 @@ function syncFromSettings(s: AppSettings | null): void {
     updateHolidayBadges()
 
     // TimePairInput
-    const [sh, sm] = parseHM(String(r.ws_subscribe_start ?? ''))
-    const [eh, em] = parseHM(String(r.ws_subscribe_end ?? ''))
-    wsSH = sh; wsSM = sm; wsEH = eh; wsEM = em
-    if (wsStartSlot) updateTimeSlotDisplay(wsStartSlot, sh, sm)
-    if (wsEndSlot) updateTimeSlotDisplay(wsEndSlot, eh, em)
+    const wsStart = String(r.ws_subscribe_start ?? '09:00')
+    const wsEnd = String(r.ws_subscribe_end ?? '15:00')
+    wsTimeHandle?.setValue(wsStart, wsEnd)
     updateWsTimeDisabled()
 
     // 확정 시세 다운로드 시간
@@ -1045,18 +980,16 @@ function unmount(): void {
   autoSellToggle = null
   sellTimeHandle = null
   wsToggle = null
-  wsTimePairWrap = null
+  wsTimeHandle = null
   holidayBadgeEls = []
   teleToggle = null
   teleInputs = {}
-  tradeModeSection = null
+  tradeModeRadioGroup = null
   testVirtualSection = null
   depositInput = null
   depositDisplay = null
-  wsStartSlot = null
-  wsEndSlot = null
   apiKeyInputs = {}
-  brokerRadios = {}
+  brokerRadioGroup = null
   apiTabButtons = {}
   activeApiTab = 'kiwoom'
   brokerSaving = false

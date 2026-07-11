@@ -30,6 +30,20 @@ export function sectionTitle(text: string): HTMLElement {
   return div
 }
 
+/* ── createDescText — 설정 행 아래 설명 텍스트 ── */
+export function createDescText(text: string, extraStyle?: Partial<CSSStyleDeclaration>): HTMLElement {
+  const div = document.createElement('div')
+  Object.assign(div.style, {
+    fontSize: FONT_SIZE.desc,
+    color: COLOR.tertiary,
+    padding: '0 0 4px',
+    marginTop: '-4px',
+  })
+  if (extraStyle) Object.assign(div.style, extraStyle)
+  div.textContent = text
+  return div
+}
+
 /* ── createTimeSlot ── */
 export function createTimeSlot(
   hour: string,

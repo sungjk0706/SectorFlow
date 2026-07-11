@@ -24,6 +24,7 @@ export const FONT_SIZE = {
   tab: '13px',       // 탭 버튼
   label: '12px',     // 토글 라벨·서브패널 제목·검색·탭(소)
   settingsLabel: '14px', // 설정 페이지 라벨·버튼 (GS.label 대체)
+  desc: '12px',      // 설정 페이지 설명 텍스트 (GS.desc 대체)
   badge: '11px',     // 한도배지·경고·빈상태 메시지
   chip: '10px',      // 헤더 칩
   spin: '8px',       // 스핀 버튼 화살표
