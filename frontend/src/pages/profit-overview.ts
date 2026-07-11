@@ -27,11 +27,22 @@ const ROW_CSS = `display:flex;justify-content:space-between;padding:10px 4px;bor
 /* ── 날짜 범위 localStorage 영속화 ── */
 const PROFIT_DATE_KEY = 'sf_profit_date_range'
 
-function loadProfitDateRange(): { from: string; to: string } | null {
+interface ProfitDateRange {
+  from: string
+  to: string
+  quickLabel?: string
+}
+
+function loadProfitDateRange(): ProfitDateRange | null {
   try {
     const raw = localStorage.getItem(PROFIT_DATE_KEY)
     if (!raw) return null
-    const parsed = JSON.parse(raw) as { from?: string; to?: string }
+    const parsed = JSON.parse(raw) as { from?: string; to?: string; quickLabel?: string }
+    // quickLabel이 있는 경우(5일/전체 등) from/to가 빈 문자열일 수 있음
+    if (parsed.quickLabel) {
+      return { from: parsed.from ?? '', to: parsed.to ?? '', quickLabel: parsed.quickLabel }
+    }
+    // 수동 날짜 범위 — from/to 유효성 검증
     if (parsed.from && parsed.to && /^\d{4}-\d{2}-\d{2}$/.test(parsed.from) && /^\d{4}-\d{2}-\d{2}$/.test(parsed.to) && parsed.from <= parsed.to) {
       return { from: parsed.from, to: parsed.to }
     }
@@ -41,9 +52,9 @@ function loadProfitDateRange(): { from: string; to: string } | null {
   }
 }
 
-function saveProfitDateRange(from: string, to: string): void {
+function saveProfitDateRange(from: string, to: string, quickLabel?: string): void {
   try {
-    localStorage.setItem(PROFIT_DATE_KEY, JSON.stringify({ from, to }))
+    localStorage.setItem(PROFIT_DATE_KEY, JSON.stringify({ from, to, quickLabel }))
   } catch {
     // localStorage 접근 불가 시 무시 (private mode 등)
   }
@@ -444,25 +455,27 @@ function mount(container: HTMLElement): void {
   const { profitDateFrom: storedFrom, profitDateTo: storedTo } = hotStore.getState()
   const todayStr = getLocalToday()
   const monthStart = todayStr.slice(0, 8) + '01'
+  const quickDateRangesConfig = [
+    { label: '당일', from: todayStr, to: todayStr },
+    { label: '5일', days: 5 },
+    { label: '당월', from: monthStart, to: todayStr },
+    { label: '전체', days: 0 },
+  ]
   chart = createProfitChart({
     container: chartContainer,
     data: buildChartFromDailySummary(hotStore.getState().dailySummary),
     dateFrom: storedFrom,
     dateTo: storedTo,
-    quickDateRanges: [
-      { label: '당일', from: todayStr, to: todayStr },
-      { label: '5일', days: 5 },
-      { label: '당월', from: monthStart, to: todayStr },
-      { label: '전체', days: 0 },
-    ],
-    onDateRangeChange: async (from: string, to: string, days?: number) => {
+    quickDateRanges: quickDateRangesConfig,
+    initialActiveQuickLabel: saved?.quickLabel,
+    onDateRangeChange: async (from: string, to: string, days?: number, label?: string) => {
       try {
         const settings = globalSettingsManager.getSettings()
         const tradeMode = settings?.trade_mode || 'test'
         const data = await api.getDailySummary(from, to, tradeMode, days)
         chart?.updateData(buildChartFromDailySummary(data))
         hotStore.setState({ profitDateFrom: from, profitDateTo: to, dailySummary: data })
-        if (days === undefined) saveProfitDateRange(from, to)
+        saveProfitDateRange(from, to, label)
         refreshFilteredViews()
       } catch (err) {
         console.error('[profit-overview] daily-summary fetch failed:', err)
@@ -470,15 +483,27 @@ function mount(container: HTMLElement): void {
     },
   })
 
-  // 초기 차트 데이터 — 저장된 날짜 범위로 API 조회하여 필터링된 데이터 반영
+  // 초기 차트 데이터 — 저장된 quickLabel이 있으면 days 파라미터로 API 조회, 없으면 from/to로 조회
   const initSettings = globalSettingsManager.getSettings()
   const initTradeMode = initSettings?.trade_mode || 'test'
-  api.getDailySummary(storedFrom, storedTo, initTradeMode).then(data => {
-    chart?.updateData(buildChartFromDailySummary(data))
-    hotStore.setState({ dailySummary: data })
-  }).catch(err => {
-    console.error('[profit-overview] initial daily-summary fetch failed:', err)
-  })
+  if (saved?.quickLabel) {
+    const savedQuick = quickDateRangesConfig.find(qr => qr.label === saved.quickLabel)
+    if (savedQuick) {
+      api.getDailySummary(savedQuick.from ?? '', savedQuick.to ?? '', initTradeMode, savedQuick.days).then(data => {
+        chart?.updateData(buildChartFromDailySummary(data))
+        hotStore.setState({ dailySummary: data })
+      }).catch(err => {
+        console.error('[profit-overview] initial daily-summary fetch failed:', err)
+      })
+    }
+  } else {
+    api.getDailySummary(storedFrom, storedTo, initTradeMode).then(data => {
+      chart?.updateData(buildChartFromDailySummary(data))
+      hotStore.setState({ dailySummary: data })
+    }).catch(err => {
+      console.error('[profit-overview] initial daily-summary fetch failed:', err)
+    })
+  }
 
   // 초기 데이터 반영 — 도넛 차트 생성 전 filteredSellHistory 선할당
   const initState = hotStore.getState()
