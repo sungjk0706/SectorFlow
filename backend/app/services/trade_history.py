@@ -36,7 +36,6 @@ async def _ensure_loaded() -> None:
     global _loaded
     if _loaded:
         return
-    _loaded = True
     try:
         from backend.app.db.database import get_db_connection
         conn = await get_db_connection()
@@ -62,13 +61,9 @@ async def _ensure_loaded() -> None:
             len(_buy_history), len(_sell_history),
         )
         await _trim_expired()
+        _loaded = True
     except Exception as e:
-        logger.warning("[정산] 체결 이력 로드 실패 (신규 설치 시 정상): %s", e)
-
-
-async def _migrate_from_json() -> None:
-    """No-op - 메모리 전용으로 변경"""
-    pass
+        logger.error("[정산] 체결 이력 로드 실패: %s", e, exc_info=True)
 
 
 _TRADE_INSERT_SQL = (
@@ -153,30 +148,6 @@ async def _trim_expired() -> None:
         logger.error("[정산] 만료 레코드 정리 실패: %s", e)
 
 
-async def _patch_sell_history() -> None:
-    """avg_buy_price=0인 매도 건의 실현손익을 보정."""
-    patched = 0
-    try:
-        async with _history_lock:
-            for rec in _sell_history:
-                if rec["avg_buy_price"] == 0:
-                    avg = await _calc_avg_buy_price(rec["stk_cd"])
-                    if avg <= 0:
-                        continue
-                    qty = int(rec["qty"] or 0)
-                    sell_price = int(rec["price"] or 0)
-                    realized_pnl = (sell_price - avg) * qty
-                    rec["avg_buy_price"] = avg
-                    rec["realized_pnl"] = realized_pnl
-                    rec["pnl_rate"] = round(realized_pnl / (avg * qty) * 100, 2) if qty > 0 else 0.0
-                    patched += 1
-
-        if patched > 0:
-            logger.info("[정산] 매도 %d건 실현손익 보정 완료", patched)
-    except Exception as e:
-        logger.error("[정산] 기존 매도건 보정 중 오류: %s", e)
-
-
 # ── 날짜 유틸 ──────────────────────────────────────────────────────────────
 
 async def _broadcast_sell_append(rec: dict) -> None:
@@ -244,16 +215,6 @@ def _reset_global_state() -> None:
         dry_run._positions_dirty = True
     except Exception as e:
         logger.warning("[정산] dry_run 포지션 캐시 무효화 실패 (stale 가능): %s", e, exc_info=True)
-
-
-def start_consumer_task() -> None:
-    """Consumer Task 시작 (SQLite 구조에서는 사용안함)."""
-    pass
-
-
-async def stop_consumer_task() -> None:
-    """Consumer Task 정지 (SQLite 구조에서는 사용안함)."""
-    pass
 
 
 # ── 기록 API ─────────────────────────────────────────────────────────────────
@@ -337,7 +298,11 @@ async def record_sell(
     await _ensure_loaded()
     now = datetime.now()
     # sector 조회 (custom_sectors 테이블에서 단일 소스 진리)
-    sector = await _lookup_sector(stk_cd)
+    try:
+        sector = await _lookup_sector(stk_cd)
+    except Exception as e:
+        logger.error("[정산] sector 조회 실패 — 매도 체결은 '미분류'로 진행 (%s): %s", stk_cd, e, exc_info=True)
+        sector = "미분류"
     # 안전장치: avg_buy_price가 0이면 유령 데이터 혼입 방지를 위해 실현손익 계산 건너뜀
     if avg_buy_price <= 0:
         logger.warning("[정산] 외부에서 전달된 평균매입가(avg_buy_price)가 0 이하입니다. 유령 데이터 혼입 방지를 위해 실현손익 계산을 건너뜁니다.")
@@ -387,17 +352,14 @@ async def record_sell(
 
 async def _lookup_sector(stk_cd: str) -> str:
     """custom_sectors 테이블에서 종목코드로 업종명 조회. 매칭 안 되면 '미분류'."""
-    try:
-        from backend.app.db.database import get_db_connection
-        conn = await get_db_connection()
-        async with conn.execute(
-            "SELECT name FROM custom_sectors WHERE stock_code = ?", (stk_cd,)
-        ) as cur:
-            row = await cur.fetchone()
-        if row:
-            return str(row["name"])
-    except Exception as e:
-        logger.warning("[정산] sector 조회 실패 (%s): %s", stk_cd, e)
+    from backend.app.db.database import get_db_connection
+    conn = await get_db_connection()
+    async with conn.execute(
+        "SELECT name FROM custom_sectors WHERE stock_code = ?", (stk_cd,)
+    ) as cur:
+        row = await cur.fetchone()
+    if row:
+        return str(row["name"])
     return "미분류"
 
 
@@ -649,8 +611,3 @@ async def get_earliest_buy_date(stk_cd: str, trade_mode: str) -> str:
                 if d and (not earliest or d < earliest):
                     earliest = d
         return earliest
-
-
-async def close_db_connection() -> None:
-    """No-op - 메모리 전용으로 변경"""
-    pass

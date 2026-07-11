@@ -1,11 +1,11 @@
 """trade_history.py 단위 테스트.
 
 기존: get_daily_summary buy_total 중복 합산 회귀 테스트 4건
-추가: _ensure_loaded, _insert_trade, _trim_expired, _patch_sell_history,
+추가: _ensure_loaded, _insert_trade, _trim_expired,
       record_buy, record_sell, _calc_avg_buy_price, _lookup_sector,
       get_buy/sell_history, get_total_realized_pnl, get_daily_summary 확장,
       clear_test_history, build_positions_from_trades, get_earliest_buy_date,
-      _reset_global_state, start/stop_consumer_task, 브로드캐스트 함수들
+      _reset_global_state, 브로드캐스트 함수들
 """
 from __future__ import annotations
 
@@ -308,7 +308,7 @@ class TestEnsureLoaded:
             await trade_history._ensure_loaded()
         mock_conn.assert_not_called()
 
-    async def test_db_failure_logs_warning(self):
+    async def test_db_failure_keeps_loaded_false_for_retry(self):
         from backend.app.services import trade_history
         trade_history._loaded = False
         trade_history._buy_history.clear()
@@ -318,7 +318,7 @@ class TestEnsureLoaded:
         with patch("backend.app.db.database.get_db_connection", return_value=mock_conn):
             with patch("backend.app.services.trade_history._history_lock"):
                 await trade_history._ensure_loaded()
-        assert trade_history._loaded is True
+        assert trade_history._loaded is False
         assert len(trade_history._buy_history) == 0
         assert len(trade_history._sell_history) == 0
 
@@ -411,46 +411,6 @@ class TestTrimExpired:
         assert len(trade_history._buy_history) == 1
 
 
-# ── _patch_sell_history ───────────────────────────────────────────────────────
-
-class TestPatchSellHistory:
-    """_patch_sell_history: avg_buy_price=0인 매도 건 실현손익 보정."""
-
-    async def test_patches_zero_avg_buy_price(self):
-        from backend.app.services import trade_history
-        trade_history._sell_history.clear()
-        trade_history._buy_history.clear()
-        trade_history._buy_history.append(_make_buy_rec(price=70000, qty=10))
-        sell_rec = _make_sell_rec(price=69000, qty=10, avg_buy_price=0)
-        trade_history._sell_history.append(sell_rec)
-        with patch("backend.app.services.trade_history._history_lock"):
-            with patch("backend.app.services.trade_history._calc_avg_buy_price", new_callable=AsyncMock, return_value=70000):
-                await trade_history._patch_sell_history()
-        assert trade_history._sell_history[0]["avg_buy_price"] == 70000
-        assert trade_history._sell_history[0]["realized_pnl"] != 0
-
-    async def test_skips_when_avg_le_zero(self):
-        from backend.app.services import trade_history
-        trade_history._sell_history.clear()
-        sell_rec = _make_sell_rec(avg_buy_price=0)
-        trade_history._sell_history.append(sell_rec)
-        with patch("backend.app.services.trade_history._history_lock"):
-            with patch("backend.app.services.trade_history._calc_avg_buy_price", new_callable=AsyncMock, return_value=0):
-                await trade_history._patch_sell_history()
-        assert trade_history._sell_history[0]["avg_buy_price"] == 0
-
-    async def test_normal_records_unchanged(self):
-        from backend.app.services import trade_history
-        trade_history._sell_history.clear()
-        sell_rec = _make_sell_rec(avg_buy_price=70000)
-        trade_history._sell_history.append(sell_rec)
-        original_pnl = sell_rec["realized_pnl"]
-        with patch("backend.app.services.trade_history._history_lock"):
-            with patch("backend.app.services.trade_history._calc_avg_buy_price", new_callable=AsyncMock, return_value=70000):
-                await trade_history._patch_sell_history()
-        assert trade_history._sell_history[0]["realized_pnl"] == original_pnl
-
-
 # ── _trade_params ─────────────────────────────────────────────────────────────
 
 class TestTradeParams:
@@ -469,16 +429,6 @@ class TestTradeParams:
             rec["reason"], rec["trade_mode"],
         )
         assert len(params) == 17
-
-
-# ── _migrate_from_json ────────────────────────────────────────────────────────
-
-class TestMigrateFromJson:
-    """_migrate_from_json: no-op 확인."""
-
-    async def test_migrate_is_noop(self):
-        from backend.app.services import trade_history
-        await trade_history._migrate_from_json()  # 예외 없이 완료되어야 함
 
 
 # ── record_buy ────────────────────────────────────────────────────────────────
@@ -613,6 +563,19 @@ class TestRecordSell:
                         )
         assert rec["sector"] == "반도체"
 
+    async def test_sector_lookup_failure_falls_back_to_default(self):
+        from backend.app.services import trade_history
+        trade_history._loaded = True
+        with patch("backend.app.services.trade_history._history_lock"):
+            with patch("backend.app.services.trade_history._insert_trade", new_callable=AsyncMock):
+                with patch("backend.app.services.trade_history._broadcast_sell_append", new_callable=AsyncMock):
+                    with patch("backend.app.services.trade_history._lookup_sector", new_callable=AsyncMock, side_effect=Exception("DB error")):
+                        rec = await trade_history.record_sell(
+                            stk_cd="005930", stk_nm="삼성전자", price=71000, qty=10,
+                            avg_buy_price=70000, trade_mode="test",
+                        )
+        assert rec["sector"] == "미분류"
+
 
 # ── _calc_avg_buy_price ───────────────────────────────────────────────────────
 
@@ -681,13 +644,13 @@ class TestLookupSector:
             result = await trade_history._lookup_sector("999999")
         assert result == "미분류"
 
-    async def test_db_failure_returns_default(self):
+    async def test_db_failure_raises_exception(self):
         from backend.app.services import trade_history
         mock_conn = MagicMock()
         mock_conn.execute.side_effect = Exception("DB error")
         with patch("backend.app.db.database.get_db_connection", return_value=mock_conn):
-            result = await trade_history._lookup_sector("005930")
-        assert result == "미분류"
+            with pytest.raises(Exception, match="DB error"):
+                await trade_history._lookup_sector("005930")
 
 
 # ── get_buy_history / get_sell_history ────────────────────────────────────────
@@ -1057,20 +1020,6 @@ class TestResetGlobalState:
         assert dry_run._positions_dirty is True
 
 
-# ── start/stop_consumer_task ──────────────────────────────────────────────────
-
-class TestConsumerTaskNoops:
-    """start/stop_consumer_task: SQLite 구조에서 no-op."""
-
-    def test_start_is_noop(self):
-        from backend.app.services import trade_history
-        trade_history.start_consumer_task()  # 예외 없이 완료
-
-    async def test_stop_is_noop(self):
-        from backend.app.services import trade_history
-        await trade_history.stop_consumer_task()  # 예외 없이 완료
-
-
 # ── 브로드캐스트 함수들 ──────────────────────────────────────────────────────
 
 class TestBroadcastFunctions:
@@ -1142,13 +1091,3 @@ class TestBroadcastHistory:
                 await trade_history.broadcast_history("test")
         mock_buy.assert_called_once_with("test")
         mock_sell.assert_called_once_with("test")
-
-
-# ── close_db_connection ───────────────────────────────────────────────────────
-
-class TestCloseDbConnection:
-    """close_db_connection: no-op 확인."""
-
-    async def test_close_is_noop(self):
-        from backend.app.services import trade_history
-        await trade_history.close_db_connection()  # 예외 없이 완료

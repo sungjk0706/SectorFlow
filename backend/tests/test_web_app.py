@@ -43,8 +43,6 @@ def _lifespan_patches(start_engine_return=True):
         patch("backend.app.services.daily_time_scheduler.start_daily_time_scheduler", AsyncMock()),
         patch("backend.app.services.daily_time_scheduler.stop_daily_time_scheduler", AsyncMock()),
         patch("backend.app.services.trade_history._reset_global_state"),
-        patch("backend.app.services.trade_history.start_consumer_task"),
-        patch("backend.app.services.trade_history.stop_consumer_task", AsyncMock()),
         patch("backend.app.core.journal.start_consumer_task"),
         patch("backend.app.core.journal.stop_consumer_task", AsyncMock()),
         patch("backend.app.web.ws_manager.ws_manager.close_all", AsyncMock()),
@@ -149,9 +147,7 @@ class TestLifespanShutdown:
         try:
             async with lifespan(mock_app):
                 pass
-            # shutdown 단계에서 stop_consumer_task 호출 확인
-            from backend.app.services.trade_history import stop_consumer_task
-            stop_consumer_task.assert_awaited()
+            # shutdown 단계에서 journal stop_consumer_task 호출 확인
             from backend.app.core.journal import stop_consumer_task as journal_stop
             journal_stop.assert_awaited()
         finally:

@@ -121,20 +121,17 @@ async def save_settlement_state(data: dict) -> None:
         logger.error("[시스템] 저장 실패: %s", e, exc_info=True)
 
 async def load_settlement_state() -> dict | None:
-    """정산 상태 로드"""
-    try:
-        conn = await get_db_connection()
-        cursor = await conn.execute("""SELECT accumulated_investment, orderable, initial_deposit 
-                                        FROM settlement_state WHERE id = 1""")
-        row = await cursor.fetchone()
-        if row:
-            return {
-                "accumulated_investment": row["accumulated_investment"],
-                "orderable": row["orderable"],
-                "initial_deposit": row["initial_deposit"],
-            }
-    except Exception as e:
-        logger.error("[시스템] 로드 실패: %s", e, exc_info=True)
+    """정산 상태 로드. 행이 없으면 None 반환, DB 에러 시 예외 전파."""
+    conn = await get_db_connection()
+    cursor = await conn.execute("""SELECT accumulated_investment, orderable, initial_deposit
+                                    FROM settlement_state WHERE id = 1""")
+    row = await cursor.fetchone()
+    if row:
+        return {
+            "accumulated_investment": row["accumulated_investment"],
+            "orderable": row["orderable"],
+            "initial_deposit": row["initial_deposit"],
+        }
     return None
 
 
