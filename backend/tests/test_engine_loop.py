@@ -33,9 +33,11 @@ def _mock_pipeline_compute():
 
     pipeline_compute.py가 모듈 로드 시점에 get_broadcast_queue()를 호출하므로
     sys.modules에 mock 모듈을 주입하여 import 실패를 차단.
+    start_compute_loop / stop_compute_loop은 await로 호출되므로 AsyncMock 사용.
     """
     mock_mod = MagicMock()
-    mock_mod.start_compute_loop = MagicMock()
+    mock_mod.start_compute_loop = AsyncMock()
+    mock_mod.stop_compute_loop = AsyncMock()
     with patch.dict(sys.modules, {"backend.app.pipelines.pipeline_compute": mock_mod}):
         yield
 
@@ -665,6 +667,45 @@ class TestRunEngineLoopInit:
             await engine_loop.run_engine_loop()
 
         assert mock_state.running is False
+
+    @pytest.mark.asyncio
+    async def test_finally_calls_stop_compute_loop(self):
+        """finally → stop_compute_loop() 호출 검증.
+
+        start_compute_loop()는 서브태스크 생성 후 즉시 반환하므로
+        외부 태스크 취소로는 실제 루프가 종료되지 않음.
+        finally 블록에서 stop_compute_loop()를 호출하여
+        _compute_running=False + 서브태스크 취소가 보장되어야 함.
+        """
+        mock_state = _mock_state()
+        mock_state.engine_stop_event.is_set.return_value = True
+
+        mock_router = _mock_router()
+
+        with (
+            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_loop, "get_router", return_value=mock_router),
+            patch.object(engine_loop, "is_test_mode", return_value=True),
+            patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
+            patch.object(engine_loop, "_get_all_tokens_async", new_callable=AsyncMock),
+            patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
+            patch.object(engine_loop.asyncio, "gather", new_callable=AsyncMock),
+            patch.object(engine_loop.asyncio, "create_task", return_value=_AwaitableMock()),
+            patch("backend.app.services.engine_state._notify_reg_ack"),
+            patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
+            patch("backend.app.services.engine_lifecycle.log_message"),
+            patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock),
+            patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
+            patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
+            patch("backend.app.services.engine_config._get_settings"),
+            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
+        ):
+            mock_state.access_token = None
+            await engine_loop.run_engine_loop()
+
+        # finally 블록에서 stop_compute_loop()가 await 호출되었는지 검증
+        mock_compute_mod = sys.modules["backend.app.pipelines.pipeline_compute"]
+        mock_compute_mod.stop_compute_loop.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_cancelled_error_handled(self):

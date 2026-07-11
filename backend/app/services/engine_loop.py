@@ -153,10 +153,6 @@ async def run_engine_loop() -> None:
 
     # 전역 이벤트 버스 (Queues)는 app.py lifespan에서 이미 초기화됨
 
-    gateway_task = None
-    oms_task = None
-    compute_task = None
-
     try:
         # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
         settings = state.integrated_system_settings_cache
@@ -286,7 +282,7 @@ async def run_engine_loop() -> None:
         # Gateway 루프는 app.py에서 독립적으로 시작 (파이프라인 독립성 보장)
         from backend.app.pipelines.pipeline_compute import start_compute_loop
 
-        compute_task = asyncio.create_task(start_compute_loop())
+        await start_compute_loop()
 
         # ── WS 구간 변화 감지 루프 (WS 연결/해제 단일 책임) ──
         state.engine_stop_event.clear()
@@ -351,28 +347,14 @@ async def run_engine_loop() -> None:
         logger.warning("[연산] 엔진 루프 예외", exc_info=True)
     finally:
         # ── 백그라운드 태스크 종료 (Step 7: 중앙 코디네이터 연동) ───────────────
-        if gateway_task:
-            gateway_task.cancel()
-        if oms_task:
-            oms_task.cancel()
-        if compute_task:
-            compute_task.cancel()
-
+        # start_compute_loop()는 _compute_task/_sector_recompute_task 서브태스크를
+        # 생성 후 즉시 반환하므로, 외부 태스크 취소로는 실제 루프가 종료되지 않음.
+        # stop_compute_loop()를 호출하여 _compute_running=False + 서브태스크 취소 보장.
+        from backend.app.pipelines.pipeline_compute import stop_compute_loop
         try:
-            if gateway_task:
-                await gateway_task
-        except asyncio.CancelledError:
-            pass
-        try:
-            if oms_task:
-                await oms_task
-        except asyncio.CancelledError:
-            pass
-        try:
-            if compute_task:
-                await compute_task
-        except asyncio.CancelledError:
-            pass
+            await stop_compute_loop()
+        except Exception as e:
+            logger.warning("[연산] compute 루프 종료 실패: %s", e, exc_info=True)
 
         logger.info("[연산] 백그라운드 태스크 종료 완료")
 

@@ -44,6 +44,7 @@ async def stop_gateway_loop() -> None:
             await _gateway_task
         except asyncio.CancelledError:
             pass
+        _gateway_task = None
     logger.info("[연결] 루프 종료")
 
 
