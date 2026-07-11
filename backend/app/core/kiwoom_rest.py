@@ -123,7 +123,7 @@ class KiwoomRestAPI:
             if router:
                 return router.get_spec(role_key, feature=feature)
         except Exception as e:
-            logger.warning("[연결] get_spec 조회 실패 (role=%s, feature=%s): %s", role_key, feature, e)
+            logger.warning("[연결] 명세 조회 실패 (역할=%s, 기능=%s): %s", role_key, feature, e)
         return None
 
     # ── 공통 REST 호출 (429 adaptive backoff) ────────────────────────────────
@@ -162,7 +162,7 @@ class KiwoomRestAPI:
         hit_429 = False
 
         if not await self._ensure_token():
-            logger.warning("[연결] %s 토큰 없음 -- 생략", tag)
+            logger.warning("[연결] %s 토큰 없음 — 생략", tag)
             return None, False
 
         assert self._token_info is not None
@@ -184,7 +184,7 @@ class KiwoomRestAPI:
                     hit_429 = True
                     wait_sec = self._API_BACKOFF_BASE * (attempt + 1)
                     logger.warning(
-                        "[연결] %s 429 -- %.0f초 대기 후 재시도 (%d/%d)",
+                        "[연결] %s 요청 과다 — %.0f초 대기 후 재시도 (%d/%d)",
                         tag, wait_sec, attempt + 1, retries,
                     )
                     # adaptive delay 증가
@@ -193,7 +193,7 @@ class KiwoomRestAPI:
                     continue
 
                 if resp.status_code != 200:
-                    logger.info("[연결] %s HTTP %s", tag, resp.status_code)
+                    logger.info("[연결] %s 응답 코드 %s", tag, resp.status_code)
                     return None, hit_429
 
                 # 성공 — adaptive delay 축소
@@ -201,20 +201,20 @@ class KiwoomRestAPI:
                 return resp, hit_429
 
             except Exception as e:
-                logger.warning("[연결] %s 예외 (시도=%d): %s: %s", tag, attempt + 1, type(e).__name__, str(e))
+                logger.warning("[연결] %s 오류 (시도=%d): %s: %s", tag, attempt + 1, type(e).__name__, str(e))
                 await self._reset_client()
                 if attempt < retries - 1:
                     await asyncio.sleep(2 * (attempt + 1))
                     continue
                 return None, hit_429
 
-        logger.warning("[연결] %s %d회 재시도 모두 실패", tag, retries)
+        logger.warning("[연결] %s %d번 재시도 모두 실패", tag, retries)
         return None, hit_429
 
     async def _issue_token(self) -> bool:
         """OAuth2 접근 토큰 발급 (키움 REST API 명세 au10001). 429 시 최대 3회 재시도."""
         if not self.app_key or not self.app_secret:
-            logger.warning("[연결]  토큰 발급 불가 -- app_key 또는 app_secret 없음")
+            logger.warning("[연결] 토큰 발급 불가 — API 키 또는 시크릿 키 없음")
             return False
         url = f"{self.base_url}{self.TOKEN_URL}"
         headers = {"Content-Type": "application/json;charset=UTF-8"}
@@ -228,7 +228,7 @@ class KiwoomRestAPI:
                 if attempt > 0:
                     wait_sec = 5 * attempt
                     logger.warning(
-                        "[연결] 토큰 재시도 %d/3 -- %d초 대기 후 재요청 (au10001)",
+                        "[연결] 토큰 발급 재시도 %d/3 — %d초 대기",
                         attempt + 1, wait_sec,
                     )
                     await asyncio.sleep(wait_sec)
@@ -238,15 +238,15 @@ class KiwoomRestAPI:
                 if resp.status_code == 429:
                     wait_sec = 10 * (attempt + 1)
                     logger.warning(
-                        "[연결]  429 요청 과다(au10001) -- %d초 대기 후 재시도 (%d/3)",
+                        "[연결] 요청 과다(인증 API(au10001)) — %d초 대기 후 재시도 (%d/3)",
                         wait_sec, attempt + 1,
                     )
                     await asyncio.sleep(wait_sec)
                     continue
                 if resp.status_code != 200:
                     logger.warning(
-                        "[연결] 토큰 발급 실패 status=%s url=%s body=%s",
-                        resp.status_code, url, data,
+                        "[연결] 토큰 발급 실패 (응답코드=%s)",
+                        resp.status_code,
                     )
                     return False
                 token = data.get("token") or data.get("access_token")
@@ -256,7 +256,7 @@ class KiwoomRestAPI:
                     rc = data.get("return_code")
                     if "8030" in msg or "투자구분" in msg:
                         logger.warning(
-                            "[연결] OAuth 거부(return_code=%s) %s -- "
+                            "[연결] 인증 거부(응답코드=%s) %s — "
                             "AppKey가 유효하지 않습니다. "
                             "키움 Open API+에서 발급한 Key/Secret을 확인하세요. "
                             "연결 서버: %s",
@@ -266,25 +266,23 @@ class KiwoomRestAPI:
                         )
                     else:
                         logger.warning(
-                            "[연결] 200 응답이지만 토큰 필드 없음 url=%s body=%s",
-                            url,
-                            data,
+                            "[연결] 응답 성공이지만 토큰 없음",
                         )
                     return False
                 self._token_info = TokenInfo(token=token, expires_dt=expires_dt)
                 logger.info("[연결] 토큰 발급 완료")
                 return True
             except Exception as e:
-                logger.warning("[연결] 토큰 요청 예외 (시도=%d): %s: %s", attempt + 1, type(e).__name__, e)
+                logger.warning("[연결] 토큰 발급 오류 (시도=%d): %s: %s", attempt + 1, type(e).__name__, e)
                 await self._reset_client()
                 continue
-        logger.warning("[연결]  토큰 발급 3회 모두 실패 (429 초과)")
+        logger.warning("[연결] 토큰 발급 3번 모두 실패 (요청 과다 초과)")
         return False
 
     async def revoke_token(self) -> bool:
         """OAuth2 접근 토큰 폐기 (키움 REST API 명세 au10002). 실패해도 예외 전파 안 함."""
         if not self._token_info or not self._token_info.token:
-            logger.info("[연결] 토큰 폐기 스킵 — 발급된 토큰 없음")
+            logger.info("[연결] 토큰 폐기 생략 — 발급된 토큰 없음")
             return True
         token = self._token_info.token
         url = f"{self.base_url}{self.REVOKE_URL}"
@@ -298,11 +296,11 @@ class KiwoomRestAPI:
             client = await self._get_client()
             resp = await client.post(url, headers=headers, json=body, timeout=5)
             if resp.status_code == 200:
-                logger.info("[연결] 토큰 폐기 완료 (au10002)")
+                logger.info("[연결] 토큰 폐기 완료 (토큰 폐기 API(au10002))")
             else:
-                logger.warning("[연결] 토큰 폐기 실패 status=%s", resp.status_code)
+                logger.warning("[연결] 토큰 폐기 실패 (응답코드=%s)", resp.status_code)
         except Exception as e:
-            logger.warning("[연결] 토큰 폐기 예외: %s: %s", type(e).__name__, e)
+            logger.warning("[연결] 토큰 폐기 오류: %s: %s", type(e).__name__, e)
         finally:
             self._token_info = None
         return True
@@ -333,7 +331,7 @@ class KiwoomRestAPI:
     async def _request(self, api_id: str, body: Optional[dict] = None,
                  cont_yn: str = "N", next_key: str = "") -> Optional[dict]:
         if not await self._ensure_token():
-            logger.warning("[연결] 요청 건너뜀 -- 유효한 토큰 없음 (api-id=%s)", api_id)
+            logger.warning("[연결] 요청 건너뜀 — 유효한 토큰 없음 (요청ID=%s)", api_id)
             return None
         assert self._token_info is not None
         url = f"{self.base_url}{self.ACCOUNT_URL}"
@@ -354,28 +352,28 @@ class KiwoomRestAPI:
                 if resp.status_code == 429:
                     wait_sec = 10 * (attempt + 1)
                     logger.warning(
-                        "[연결]  429 요청 과다(api-id=%s) -- %d초 대기 후 재시도 (%d/3)",
+                        "[연결] 요청 과다 (요청ID=%s) — %d초 대기 후 재시도 (%d/3)",
                         api_id, wait_sec, attempt + 1,
                     )
                     await asyncio.sleep(wait_sec)
                     continue
                 if resp.status_code != 200:
                     logger.warning(
-                        "[연결] API 응답 실패 status=%s api-id=%s",
+                        "[연결] API 응답 실패 (응답코드=%s, 요청ID=%s)",
                         resp.status_code, api_id,
                     )
                     return None
                 return resp.json()
             except Exception as e:
-                logger.warning("[연결] 요청 예외 api-id=%s: %s: %s", api_id, type(e).__name__, e)
+                logger.warning("[연결] 요청 오류 (요청ID=%s): %s: %s", api_id, type(e).__name__, e)
                 await self._reset_client()
                 return None
         return None
 
     async def _paginated_request(self, api_id: str, body: Optional[dict] = None) -> Optional[dict]:
-        """연속조회(cont-yn=Y)를 처리하여 전체 페이지를 합산 반환. 페이지간 0.3초 대기."""
+        """연속 조회(cont-yn=Y)를 처리하여 전체 페이지를 합산 반환. 페이지간 0.3초 대기."""
         if not await self._ensure_token():
-            logger.warning("[연결] 연속조회 요청 건너뜀 -- 유효한 토큰 없음 (api-id=%s)", api_id)
+            logger.warning("[연결] 연속 조회 요청 건너뜀 — 유효한 토큰 없음 (요청ID=%s)", api_id)
             return None
         assert self._token_info is not None
         url = f"{self.base_url}{self.ACCOUNT_URL}"
@@ -392,7 +390,7 @@ class KiwoomRestAPI:
         page = 0
         while True:
             if page > 0:
-                await asyncio.sleep(0.3)  # 연속조회 페이지 간 요청 간격
+                await asyncio.sleep(0.3)  # 연속 조회 페이지 간 요청 간격
             page += 1
             headers = {**base_headers, "cont-yn": cont_yn, "next-key": next_key}
             retry_429 = 0
@@ -404,7 +402,7 @@ class KiwoomRestAPI:
                         retry_429 += 1
                         wait_sec = 10 * retry_429
                         logger.warning(
-                            "[연결]  429 요청 과다(api-id=%s, page=%d) -- %d초 대기 후 재시도 (%d/3)",
+                            "[연결] 요청 과다 (요청ID=%s, 페이지=%d) — %d초 대기 후 재시도 (%d/3)",
                             api_id, page, wait_sec, retry_429,
                         )
                         if retry_429 >= 3:
@@ -413,7 +411,7 @@ class KiwoomRestAPI:
                         continue
                     if resp.status_code != 200:
                         logger.warning(
-                            "[연결] 연속조회 응답 실패 status=%s api-id=%s page=%d",
+                            "[연결] 연속 조회 응답 실패 (응답코드=%s, 요청ID=%s, 페이지=%d)",
                             resp.status_code, api_id, page,
                         )
                         return result
@@ -427,7 +425,7 @@ class KiwoomRestAPI:
                     next_key = resp.headers.get("next-key", "")
                     break
                 except Exception as e:
-                    logger.warning("[연결] 연속조회 요청 예외 api-id=%s page=%d: %s: %s", api_id, page, type(e).__name__, e)
+                    logger.warning("[연결] 연속 조회 요청 오류 (요청ID=%s, 페이지=%d): %s: %s", api_id, page, type(e).__name__, e)
                     await self._reset_client()
                     return result
             if cont_yn != "Y" or not next_key:
@@ -459,7 +457,7 @@ class KiwoomRestAPI:
     async def get_balance_detail(
         self, qry_tp: str = "1", dmst_stex_tp: str = "KRX"
     ) -> Optional[dict]:
-        """계좌평가잔고내역 조회 (api-id: kt00018). 연속조회 자동 처리."""
+        """계좌평가잔고내역 조회 (api-id: kt00018). 연속 조회 자동 처리."""
         api_id = getattr(self, "_balance_tr_id", "kt00018")
         body = {"qry_tp": qry_tp, "dmst_stex_tp": dmst_stex_tp}
         return await self._paginated_request(api_id, body=body)
@@ -498,7 +496,7 @@ class KiwoomRestAPI:
         try:
             data = resp.json()
         except Exception:
-            logger.info("[스케줄] ka20001 JSON 파싱 실패 inds_cd=%s", inds_cd)
+            logger.info("[스케줄] 업종별 거래량 조회(ka20001) JSON 해석 실패 (업종코드=%s)", inds_cd)
             return None
 
         def _f(v) -> float:
@@ -575,7 +573,7 @@ class KiwoomRestAPI:
                 result.append((c6, nxt, mkt_code))
             return result
         except Exception as e:
-            logger.warning("[연결] ka10099 예외 mrkt_tp=%s: %s", mrkt_tp, e)
+            logger.warning("[연결] 전종목 통합 조회(ka10099) 오류 (시장구분=%s): %s", mrkt_tp, e)
             return []
 
 
@@ -605,7 +603,7 @@ class KiwoomRestAPI:
                             break
             return str(nxt_val or "N").strip().upper()
         except Exception as e:
-            logger.debug("[연결] ka10001 조회 실패 %s: %s", stk_cd, e)
+            logger.debug("[연결] 전체 종목 조회(ka10001) 실패 %s: %s", stk_cd, e)
             return ""
 
     async def fetch_nxt_enable_map(self, codes: list[str], interval_sec: float = 0.17) -> dict[str, bool]:

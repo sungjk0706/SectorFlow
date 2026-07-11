@@ -110,7 +110,7 @@ class KiwoomAccountProvider(AccountProvider):
             return _empty
         if not await self._rest_api._ensure_token():
             logger.warning(
-                "[연결] 토큰 없음 -- 계좌잔고 조회 중단"
+                "[연결] 토큰 없음 — 계좌 잔고 조회 중단"
             )
             return _empty
 
@@ -135,13 +135,13 @@ class KiwoomAccountProvider(AccountProvider):
         bal_raw = await self._rest_api.get_balance_detail()
 
         if not dep_raw:
-            logger.warning("[연결] kt00001 응답 없음")
+            logger.warning("[연결] 예수금 상세현황(kt00001) 응답 없음")
             return _empty
 
         dep_body = dep_raw.get("body") or dep_raw
         if _n(dep_body.get("return_code", 0)) != 0:
             logger.warning(
-                "[연결] kt00001 오류 return_code=%s msg=%s",
+                "[연결] 예수금 상세현황(kt00001) 오류 응답코드=%s 메시지=%s",
                 dep_body.get("return_code"),
                 dep_body.get("return_msg", ""),
             )
@@ -188,7 +188,7 @@ class KiwoomAccountProvider(AccountProvider):
                 })
 
         logger.info(
-            "[연결] 잔고 조회 완료 -- 총평가 %s원 | 손익 %s원 | 종목 %d개",
+            "[연결] 잔고 조회 완료 — 총평가 %s원 | 손익 %s원 | 종목 %d개",
             f"{tot_eval:,}",
             f"{tot_pnl:,}",
             len(stock_list),

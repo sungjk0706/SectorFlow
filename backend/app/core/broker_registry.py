@@ -158,7 +158,7 @@ def _create_provider(
     broker_providers = PROVIDER_REGISTRY.get(broker_name)
     if not broker_providers:
         if not broker_name:
-            logger.warning("[연결] broker 설정이 비어있음")
+            logger.warning("[연결] 증권사 설정이 비어있음")
             return None
         raise ValueError(f"지원하지 않는 증권사: {broker_name}")
 

@@ -4,10 +4,10 @@
 - 없음
 
 ## 직전 완료 작업
-- **2026-07-12: 백엔드 로그 한글화 2차 작업 — 4단계 (알림/서킷브레이커) 완료**
-  - **수정 파일**: `services/notification_worker.py`, `telegram_bot.py`, `telegram.py`, `circuit_breaker.py`, `risk_manager.py` (5개 파일) + `services/trading.py` (P10 SSOT 누락 추가, 1개 파일)
-  - **내용**: 12건 로그 메시지 한글화 — 워커 태스크→작업, 메시지 드롭→누락, 메시지 타입→유형, 종료 타임아웃→시간 초과, 루프 오류→반복 오류, 업데이트 조회→갱신 조회, 비승인→허용되지 않은, 전송 실패함→전송 실패, failure_count→실패횟수, threshold→임계치, CLOSED→정상, OPEN→차단, HALF_OPEN→복구시도, %d회→%d번, Circuit Breaker OPEN→서킷브레이커 차단. 추가로 P10(SSOT) 일관성을 위해 주석/docstring 19건 동기화 (별도 태스크→별도 작업, 워커 태스크→워커 작업, 큐 소비 루프→큐 소비 반복, 메시지 타입별→메시지 유형별, 폴링 태스크→폴링 작업, 내부 폴링 루프→내부 폴링 반복, OMS Circuit Breaker→OMS 서킷브레이커, 상태 전이 설명 4줄 한국어화, 서킷 브레이커→서킷브레이커 띄어쓰기 통일 4건, OPEN 상태 전이→차단 상태 전이, 타임아웃→시간 초과, Circuit Breaker→서킷브레이커 5건). 추가로 3단계 누락 P10/P21 위반 5건 수정 (trading.py 화면 전송 메시지 2건 "Circuit Breaker OPEN"→"서킷브레이커 차단", 주석 3건)
-  - **검증**: py_compile 6개 파일 통과, 잔존 영어 grep 확인(4단계 대상 5개 파일 + trading.py 잔존 영어 0건), 런타임 기동/종료 시 한국어 로그 출력 확인 (테스트모드 - 거래내역 기반 포지션 구축, 만료 기록 정리 완료, 총 기동시간 181ms, 에러/Traceback 없음), 잔존 프로세스 0개 확인
+- **2026-07-12: 백엔드 로그 한글화 2차 작업 — 5단계 (증권사 연결/주문/잔고) 완료**
+  - **수정 파일**: `core/kiwoom_rest.py`, `kiwoom_stock_rest.py`, `kiwoom_connector.py`, `kiwoom_order.py`, `kiwoom_providers.py`, `core/ls_rest.py`, `ls_connector.py`, `ls_providers.py`, `core/broker_router.py`, `broker_registry.py`, `connector_manager.py` (11개 파일)
+  - **내용**: 약 130건 로그 메시지 한글화 — get_spec→명세 조회, app_key/app_secret→API 키/시크릿 키, AsyncClient→HTTP 클라이언트, 429→요청 과다, HTTP %s→응답 코드, status=→응답코드=, api-id=→요청ID=, tr_cd=→TR코드=, TR=→TR코드=, trnm=→메시지유형, Body→본문, No Response→응답 없음, 예외→오류, %d회→%d번, 스킵→생략, OAuth→인증, 200 응답이지만 토큰 필드 없음→응답 성공이지만 토큰 없음, expires_in→유효기간, tick_queue 드롭→시세 큐 누락, WebSocket→웹소켓, 브로드캐스트→전송, stop 신호→중지 신호, 재연결 루프→재연결 시작, 포기→중단, broker→증권사, spec→설정, 폴백→대체, Connector→커넥터, 드롭 정책→누락 정책, 매수주문→매수 주문, 매도주문→매도 주문, 계좌등록→계좌 등록, 계좌해제→계좌 해제, 연속조회→연속 조회, 등락율→등락률, 파싱 예외→데이터 해석 오류, fetch 예외→조회 오류, NULL→비어있음, API 코드→기능명+코드 병기 (ka20001→업종별 거래량 조회, ka10099→전종목 통합 조회, ka10001→전체 종목 조회, kt00001→예수금 상세현황, au10001→인증 API, au10002→토큰 폐기 API). 추가로 P10(SSOT) 일관성을 위해 주석/docstring 24건 동기화 (연속조회→연속 조회 5건, 드롭 정책→누락 정책 12건, 브로드캐스트→전송 4건, 폴백→대체 2건, 계좌등록/해제→계좌 등록/해제 5건, Connector→커넥터 1건, broker 비어있음→증권사 비어있음 1건, 등락율→등락률 1건)
+  - **검증**: py_compile 11개 파일 통과, 잔존 영어 grep 확인(5단계 대상 11개 파일 잔존 영어 0건 — 폴백/드롭/브로드캐스트/계좌등록/계좌해제/연속조회/매수주문/매도주문/AsyncClient/api-id/tr_cd 등 전부 0건), 런타임 기동/종료 시 한국어 로그 출력 확인 (테스트모드 - 거래내역 기반 포지션 구축, 만료 기록 정리 완료, 총 기동시간 167ms, 에러/Traceback 없음, "토큰 발급 성공 (유효기간=79682초)" 한국어 출력 확인), 잔존 프로세스 0개 확인
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
@@ -24,10 +24,10 @@
 
 ## 진행 중 작업
 
-### 백엔드 로그 한글화 2차 작업 — 1~4단계 완료, 5단계 미시작
+### 백엔드 로그 한글화 2차 작업 — 1~5단계 전부 완료
 
 > **계획서**: `backend/docs/log_korean_migration_plan.md`
-> **이력**: 1차 작업(2026-07-09) 약 30개 파일 1차 한글화. 2차 작업 1단계(Uvicorn 자체 로그) + 2단계(웹서버/실시간 통신) + 3단계(매매/계좌/정산) + 4단계(알림/서킷브레이커) 완료.
+> **이력**: 1차 작업(2026-07-09) 약 30개 파일 1차 한글화. 2차 작업 1단계(Uvicorn 자체 로그) + 2단계(웹서버/실시간 통신) + 3단계(매매/계좌/정산) + 4단계(알림/서킷브레이커) + 5단계(증권사 연결/주문/잔고) 완료. 2차 작업 5단계 전부 완료.
 
 | 단계 | 내용 | 파일 수 | 상태 |
 |------|------|---------|------|
@@ -35,13 +35,9 @@
 | 2단계 | 웹서버/실시간 통신 로그 | 7 | ☑ 완료 (2026-07-12) |
 | 3단계 | 매매/계좌/정산 로그 | 12 | ☑ 완료 (2026-07-12) |
 | 4단계 | 알림/서킷브레이커 로그 | 5 | ☑ 완료 (2026-07-12) |
-| 5단계 | 증권사 연결/주문/잔고 로그 | 11 | ☐ 미시작 |
+| 5단계 | 증권사 연결/주문/잔고 로그 | 11 | ☑ 완료 (2026-07-12) |
 
-**다음 세션 진행 방법**:
-1. `backend/docs/log_korean_migration_plan.md`의 "파일별 수정 상세" 섹션에서 5단계 줄번호별 수정 전/후 표 확인
-2. 5단계부터 순차적으로 진행 — 각 단계 완료 후 계획서의 "진행 상황 추적" 표에 완료 표시 + 날짜 기록
-3. 각 단계 완료 후 검증: py_compile + 잔존 영어 grep + 런타임 기동 검증
-4. 한 세션에 다 못 끝내면, 계획서의 추적 표를 확인하여 어느 단계까지 완료되었는지 파악 후 이어서 진행
+**2차 작업(사용자 노출 로그) 전부 완료.** 다음은 3차 작업(내부 디버그 로그)을 별도 세션에서 진행.
 
 ### 아키텍처 전수 점검 — 7/30 세션 완료
 
@@ -61,19 +57,17 @@
 
 ## 다음 단계
 
-### 1순위: 백엔드 로그 한글화 2차 작업 — 5단계 진행
+### 1순위: 백엔드 로그 한글화 3차 작업 (내부 디버그 로그) — 향후 진행
 
-1~4단계 완료 (Uvicorn 자체 로그 + 웹서버/실시간 통신 + 매매/계좌/정산 + 알림/서킷브레이커). 다음 세션부터 5단계(증권사 연결/주문/잔고) 코드 수정 진행.
+2차 작업(사용자 노출 로그) 5단계 전부 완료. 다음은 3차 작업(내부 디버그 로그)을 별도 세션에서 진행.
 
 - **1단계** ☑ 완료: `app/core/logger.py` — InterceptHandler uvicorn 메시지 치환 맵 + setup_console_intercept 분리
 - **2단계** ☑ 완료: `app/web/app.py`, `ws_manager.py`, `routes/ws.py`, `routes/ws_settings.py`, `routes/ws_orders.py`, `routes/settings.py`, `routes/stock_classification.py` — 33건 로그 메시지 + 11건 주석/docstring/에러 메시지 동기화
 - **3단계** ☑ 완료: `services/trading.py`, `settlement_engine.py`, `trade_history.py`, `engine_account.py`, `engine_account_notify.py`, `engine_service.py`, `engine_lifecycle.py`, `engine_bootstrap.py`, `engine_ws_dispatch.py`, `dry_run.py`, `auto_trading_effective.py` — 59건 로그 메시지 + 11건 주석/docstring/화면 데이터 동기화 + 1건 계획서 누락 추가 수정
 - **4단계** ☑ 완료: `services/notification_worker.py`, `telegram_bot.py`, `telegram.py`, `circuit_breaker.py`, `risk_manager.py` — 12건 로그 메시지 + 19건 주석/docstring 동기화 + 3단계 누락 P10/P21 위반 5건 추가 수정 (trading.py 화면 전송 메시지 + 주석)
-- **5단계** (11개 파일): `core/kiwoom_rest.py`, `kiwoom_stock_rest.py`, `kiwoom_connector.py`, `kiwoom_order.py`, `kiwoom_providers.py`, `ls_rest.py`, `ls_connector.py`, `ls_providers.py`, `broker_router.py`, `broker_registry.py`, `connector_manager.py`
+- **5단계** ☑ 완료: `core/kiwoom_rest.py`, `kiwoom_stock_rest.py`, `kiwoom_connector.py`, `kiwoom_order.py`, `kiwoom_providers.py`, `ls_rest.py`, `ls_connector.py`, `ls_providers.py`, `broker_router.py`, `broker_registry.py`, `connector_manager.py` — 약 130건 로그 메시지 + 24건 주석/docstring 동기화
 
-각 단계 완료 후:
-- 계획서 "진행 상황 추적" 표에 완료 표시 + 날짜 기록
-- py_compile + 잔존 영어 grep + 런타임 기동 검증 수행
+3차 작업(내부 디버그 로그) 대상 파일은 `backend/docs/log_korean_migration_plan.md`의 "2차 작업 (내부 디버그 로그) — 향후 진행" 섹션 참조.
 
 ### 2순위: 아키텍처 전수 점검 P1 세션 (B-07)
 

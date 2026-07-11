@@ -16,11 +16,11 @@ async def _send_request(url: str, headers: dict, params: dict, max_retries: int 
                 r = await client.post(url, headers=headers, json=params, timeout=5)
                 if r.status_code == 200:
                     return r
-                logger.warning("[매매] HTTP %s (시도=%d/%d) url=%s", r.status_code, attempt + 1, max_retries, url)
+                logger.warning("[매매] 응답 코드 %s (시도=%d/%d) URL=%s", r.status_code, attempt + 1, max_retries, url)
         except Exception as e:
-            logger.warning("[매매] 통신 예외 (시도=%d/%d): %s", attempt + 1, max_retries, e)
+            logger.warning("[매매] 통신 오류 (시도=%d/%d): %s", attempt + 1, max_retries, e)
         await asyncio.sleep(delay)
-    logger.error("[매매] %d회 재시도 모두 실패 url=%s", max_retries, url)
+    logger.error("[매매] %d번 재시도 모두 실패 (URL=%s)", max_retries, url)
     return None
 
 
