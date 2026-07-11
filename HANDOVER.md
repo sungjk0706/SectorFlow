@@ -4,23 +4,21 @@
 - 없음
 
 ## 직전 완료 작업
-- **2026-07-11: architecture_audit_plan.md 작성 완료 (아키텍처 전수 점검 계획서)**
-  - 파일: `docs/architecture_audit_plan.md` (1037줄, 30세션)
-  - 내용: SectorFlow 전체 코드베이스(백엔드 107파일 + 프론트엔드 56파일) 아키텍처 전수 점검 계획서
-  - 22개 불변 원칙 평가 기준표, 세션 진행 가이드, 30개 세션 체크리스트, 추천 세션 순서, 발견된 문제 기록 섹션 포함
-  - 우선순위: P0(자금 손실 직결) → P1(시스템 가동 필수) → P2(데이터 기반) → P3(부가 기능)
-- **2026-07-11: compute_task 미취소 버그 수정 + app.py shutdown 시 stop_gateway_loop() 호출 추가**
-  - **compute_task 미취소 버그 수정**: `engine_loop.py` finally 블록에서 `compute_task.cancel()`은 이미 완료된 `start_compute_loop()` 태스크를 취소할 뿐, 실제 실행 중인 `_compute_task`/`_sector_recompute_task`는 취소되지 않음 → `_compute_running=True` 잔존 → 신규 세션에서 `[연산] 이미 실행 중` 발생. `stop_compute_loop()` 호출로 교체하여 근본 해결.
-  - **app.py shutdown 시 stop_gateway_loop() 호출 추가**: gateway 루프가 이벤트 루프 종료에 의한 자연 소멸에 의존하던 것을 명시적 종료로 변경 (원칙 15 단일 경로, 원칙 20 폴백 금지). 종료 순서: `stop_engine()` → `stop_gateway_loop()` → `stop_daily_time_scheduler()`.
-  - **stop_compute_loop() / stop_gateway_loop() None 리셋 추가**: 취소 후 `_compute_task`/`_sector_recompute_task`/`_gateway_task`를 `None`으로 설정하여 stale 참조 방지.
-  - **데드 코드 제거**: `engine_loop.py`에서 `gateway_task`/`oms_task`/`compute_task` 변수 선언 제거 (항상 `None`, 할당된 적 없음).
-  - 수정 파일: `engine_loop.py`, `pipeline_compute.py`, `pipeline_gateway.py`, `app.py`, `test_engine_loop.py`, `test_pipeline_gateway.py`
-  - 검증: py_compile 6개 파일 통과, 회귀 테스트 193 passed, 런타임 기동 2회 정상 (잔존 프로세스 0개)
+- **2026-07-11: 스핀버튼 초기 비활성 버그 근본 해결 + registerEditing 데드 코드 제거**
+  - **증상**: 매수설정 페이지 "종목 하락률 매수차단" ▲▼ 버튼이 초기에 작동 안 함, 직접 입력 후에야 작동
+  - **근본 원인 A**: `settings.ts` store subscriber가 settings와 무관한 uiStore 변경(sector-scores, index-data 등)에도 `notify()` 호출 → `syncFromSettings` 반복 실행 → 값 리셋
+  - **근본 원인 B**: macOS에서 버튼 클릭 시 INPUT 포커스 유지 안 됨 → `syncFromSettings` 포커스 가드 무력화
+  - **수정 1**: store subscriber가 `state.settings` 실제 변경 시에만 `notify()` 호출 (`settings.ts`)
+  - **수정 2**: `createSpinButtons` mousedown 시 `e.preventDefault()` + `input.focus()`로 INPUT 포커스 유지 (`setting-row.ts`)
+  - **수정 3**: `registerEditing`/`editingSet` 데드 코드 제거 — 호출처 0곳, 인터페이스/변수/함수/destroy/return 6곳 정리 (`settings.ts`)
+  - 수정 파일: `frontend/src/settings.ts`, `frontend/src/components/common/setting-row.ts`
+  - 검증: typecheck 통과, build 통과 (60 modules), 브라우저 확인 필요
+  - 영향: 모든 설정 페이지(매수/매도/업종/일반)의 `createNumInput`/`createMoneyInput` 스핀 버튼 정상화
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
-- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈), 수익현황 업종 섹션 연동(도넛 범례 클릭→스크롤+하이라이트), 전체보기/전체접기 토글 버튼, 차트 onMove undefined 크래시 근본 해결(render early return 시 barRects 동기화), 수익현황 기간 선택 상태 재기동 후 유지(localStorage quickLabel 영속화 + 초기 활성 버튼 복원), 수익상세 페이지 뷰 상태 재기동 후 유지(localStorage selectedView+drilldownActive+dateRange 영속화, 7곳 핸들러 persistViewState) — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: architecture_audit_plan.md 작성 + compute_task 미취소 버그 수정 — 커밋 완료
+- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈), 수익현황 업종 섹션 연동(도넛 범례 클릭→스크롤+하이라이트), 전체보기/전체접기 토글 버튼, 차트 onMove undefined 크래시 근본 해결(render early return 시 barRects 동기화), 수익현황 기간 선택 상태 재기동 후 유지(localStorage quickLabel 영속화 + 초기 활성 버튼 복원), 수익상세 페이지 뷰 상태 재기동 후 유지(localStorage selectedView+drilldownActive+dateRange 영속화, 7곳 핸들러 persistViewState), 스핀버튼 초기 비활성 버그 근본 해결(store subscriber settings 변경 시에만 notify + createSpinButtons mousedown 포커스 유지 + registerEditing 데드 코드 제거) — 모두 코드 확인 완료, `npm run build` 통과
+- **Git**: 스핀버튼 초기 비활성 버그 수정 + registerEditing 데드 코드 제거 — 커밋 + push 완료 (ccd97ea)
 - **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2768 passed, 0 failed
   - 0% 모듈 7개 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
   - 10%대 모듈 9개 해결: engine_settings(100%), stock_tables(100%), stock_filter(99.44%), stock_classification_data(95.14%), settings_store(93.13%), sector_data_provider(92.94%), engine_bootstrap(49.62%), engine_snapshot(39.22%), engine_sector_confirm(33.45%)
