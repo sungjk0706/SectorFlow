@@ -52,7 +52,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         from backend.app.core.broker_factory import reset_router
         if is_engine_running():
             from backend.app.services.engine_lifecycle import stop_engine, start_engine, reset_broker_session_state
-            logger.info("[설정] broker 변경 감지 — 엔진 재기동 (단일 진입점 보장)")
+            logger.info("[설정] 증권사 변경 감지 — 엔진 재기동 (단일 진입점 보장)")
             await stop_engine()
             reset_broker_session_state()
             reset_router()
@@ -106,7 +106,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         if _5d_on:
             try:
                 state.avg_amt_needs_bg_refresh = True
-                logger.info("[설정] scheduler_5d_download_on=ON → 5일봉 다운로드 트리거")
+                logger.info("[설정] 5일봉 다운로드 설정=ON → 5일봉 다운로드 트리거")
             except Exception:
                 logger.warning("[설정] 5일봉 다운로드 트리거 실패", exc_info=True)
 
@@ -181,7 +181,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         try:
             await notify_desktop_sector_scores(force=True)
         except Exception as e:
-            logger.warning("[설정] 업종 점수 브로드캐스트 실패: %s", e, exc_info=True)
+            logger.warning("[설정] 업종 점수 전송 실패: %s", e, exc_info=True)
 
     # WS 구독 제어 설정 변경 시 즉시 반영 (구독 시작/해지)
     _WS_SUBSCRIBE_CONTROL_KEYS = {"index_auto_subscribe", "quote_auto_subscribe"}
@@ -195,7 +195,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
                     context=f"WS 구독 제어 설정 반영({key})",
                 )
         except Exception:
-            logger.warning("[설정] ws_subscribe_control 설정 변경 반영 실패", exc_info=True)
+            logger.warning("[설정] 실시간 구독 제어 설정 변경 반영 실패", exc_info=True)
 
     # 텔레그램 토글 시 폴링 start/stop
     if "tele_on" in changed_keys:
@@ -204,10 +204,10 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             _tele_on = bool(state.integrated_system_settings_cache.get("tele_on", False))
             if _tele_on:
                 telegram_bot.start()
-                logger.info("[설정] tele_on=ON → 텔레그램 폴링 시작")
+                logger.info("[설정] 텔레그램 설정=ON → 텔레그램 폴링 시작")
             else:
                 await telegram_bot.stop_async()
-                logger.info("[설정] tele_on=OFF → 텔레그램 폴링 종료")
+                logger.info("[설정] 텔레그램 설정=OFF → 텔레그램 폴링 종료")
         except Exception:
             logger.warning("[설정] 텔레그램 폴링 토글 실패", exc_info=True)
 

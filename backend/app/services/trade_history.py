@@ -98,12 +98,12 @@ async def _insert_trade(rec: dict) -> None:
             _buy_history.insert(0, rec)
         else:
             _sell_history.insert(0, rec)
-    # dry_run 포지션 캐시 무효화 (순환 참조 방지: 지연 import)
+    # 모의투자 포지션 캐시 무효화 (순환 참조 방지: 지연 import)
     try:
         from backend.app.services import dry_run
         dry_run._positions_dirty = True
     except Exception as e:
-        logger.warning("[정산] dry_run 포지션 캐시 무효화 실패 (stale 가능): %s", e, exc_info=True)
+        logger.warning("[정산] 모의투자 포지션 캐시 무효화 실패 (오래된 데이터 가능): %s", e, exc_info=True)
     try:
         from backend.app.db.db_writer import execute_db_write, DBWriteOperation
         await execute_db_write(DBWriteOperation(
@@ -141,11 +141,11 @@ async def _trim_expired() -> None:
         ))
 
         logger.info(
-            "[정산] 만료 레코드 정리 완료 — test cutoff=%s, real cutoff=%s",
+            "[정산] 만료 기록 정리 완료 — 테스트모드 보관기간=%s, 실전모드 보관기간=%s",
             test_cutoff, real_cutoff,
         )
     except Exception as e:
-        logger.error("[정산] 만료 레코드 정리 실패: %s", e)
+        logger.error("[정산] 만료 기록 정리 실패: %s", e)
 
 
 # ── 날짜 유틸 ──────────────────────────────────────────────────────────────
@@ -158,7 +158,7 @@ async def _broadcast_sell_append(rec: dict) -> None:
         summary = await get_daily_summary(days=20, trade_mode=trade_mode)
         await ws_manager.broadcast("sell-history-append", {"trade": rec, "daily_summary": summary})
     except Exception as e:
-        logger.warning("[정산] 매도 단건 실시간 화면전송 실패: %s", e)
+        logger.warning("[정산] 매도 단건 실시간 화면 전송 실패: %s", e)
 
 
 async def _broadcast_buy_append(rec: dict) -> None:
@@ -167,7 +167,7 @@ async def _broadcast_buy_append(rec: dict) -> None:
         from backend.app.web.ws_manager import ws_manager
         await ws_manager.broadcast("buy-history-append", {"trade": rec})
     except Exception as e:
-        logger.warning("[정산] 매수 단건 실시간 화면전송 실패: %s", e)
+        logger.warning("[정산] 매수 단건 실시간 화면 전송 실패: %s", e)
 
 
 async def _broadcast_full_sell_history(trade_mode: str) -> None:
@@ -179,7 +179,7 @@ async def _broadcast_full_sell_history(trade_mode: str) -> None:
         summary = await get_daily_summary(days=20, trade_mode=trade_mode)
         await ws_manager.broadcast("daily-summary-update", {"daily_summary": summary})
     except Exception as e:
-        logger.warning("[정산] 매도 내역 실시간 화면전송 실패: %s", e)
+        logger.warning("[정산] 매도 내역 실시간 화면 전송 실패: %s", e)
 
 
 async def _broadcast_full_buy_history(trade_mode: str) -> None:
@@ -189,7 +189,7 @@ async def _broadcast_full_buy_history(trade_mode: str) -> None:
         rows = await get_buy_history(trade_mode=trade_mode)
         await ws_manager.broadcast("buy-history-update", {"buy_history": rows})
     except Exception as e:
-        logger.warning("[정산] 매수 내역 실시간 화면전송 실패: %s", e)
+        logger.warning("[정산] 매수 내역 실시간 화면 전송 실패: %s", e)
 
 
 async def _broadcast_order_filled(fill_data: dict) -> None:
@@ -198,7 +198,7 @@ async def _broadcast_order_filled(fill_data: dict) -> None:
         from backend.app.web.ws_manager import ws_manager
         await ws_manager.broadcast("order-filled", fill_data)
     except Exception as e:
-        logger.warning("[정산] 체결 이벤트 실시간 화면전송 실패: %s", e)
+        logger.warning("[정산] 체결 이벤트 실시간 화면 전송 실패: %s", e)
 
 
 # ── Lifecycle Management (No-op in SQLite architecture) ────────────────────────
@@ -209,12 +209,12 @@ def _reset_global_state() -> None:
     _loaded = False
     _buy_history.clear()
     _sell_history.clear()
-    # dry_run 포지션 캐시 무효화
+    # 모의투자 포지션 캐시 무효화
     try:
         from backend.app.services import dry_run
         dry_run._positions_dirty = True
     except Exception as e:
-        logger.warning("[정산] dry_run 포지션 캐시 무효화 실패 (stale 가능): %s", e, exc_info=True)
+        logger.warning("[정산] 모의투자 포지션 캐시 무효화 실패 (오래된 데이터 가능): %s", e, exc_info=True)
 
 
 # ── 기록 API ─────────────────────────────────────────────────────────────────
@@ -301,11 +301,11 @@ async def record_sell(
     try:
         sector = await _lookup_sector(stk_cd)
     except Exception as e:
-        logger.error("[정산] sector 조회 실패 — 매도 체결은 '미분류'로 진행 (%s): %s", stk_cd, e, exc_info=True)
+        logger.error("[정산] 섹터 조회 실패 — 매도 체결은 '미분류'로 진행 (%s): %s", stk_cd, e, exc_info=True)
         sector = "미분류"
     # 안전장치: avg_buy_price가 0이면 유령 데이터 혼입 방지를 위해 실현손익 계산 건너뜀
     if avg_buy_price <= 0:
-        logger.warning("[정산] 외부에서 전달된 평균매입가(avg_buy_price)가 0 이하입니다. 유령 데이터 혼입 방지를 위해 실현손익 계산을 건너뜁니다.")
+        logger.warning("[정산] 외부에서 전달된 평균매입가가 0 이하입니다. 유령 데이터 혼입 방지를 위해 실현손익 계산을 건너뜁니다.")
         # realized_pnl 및 pnl_rate를 0으로 처리 (이후 코드에서 avg_buy_price > 0 체크로 안전하게 처리됨)
     total_amt = price * qty
     # 테스트모드: 수수료 0.015%, 세금 0.20%
@@ -520,7 +520,7 @@ async def clear_test_history() -> None:
         from backend.app.services import dry_run
         dry_run._positions_dirty = True
     except Exception as e:
-        logger.warning("[정산] dry_run 포지션 캐시 무효화 실패 (stale 가능): %s", e, exc_info=True)
+        logger.warning("[정산] 모의투자 포지션 캐시 무효화 실패 (오래된 데이터 가능): %s", e, exc_info=True)
     try:
         from backend.app.db.db_writer import execute_db_write, DBWriteOperation
         await execute_db_write(DBWriteOperation(

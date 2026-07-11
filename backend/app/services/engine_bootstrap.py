@@ -14,14 +14,14 @@ logger = logging.getLogger(__name__)
 # 구독 동시성 상한 (앱 기동 시 일회성 구독 준비)
 _subscribe_semaphore = asyncio.Semaphore(50)
 
-# ── 앱준비 단계 정의 (하드코딩 금지 — len()으로 total 산출) ──
+# ── 앱 준비 단계 정의 (하드코딩 금지 — len()으로 total 산출) ──
 BOOTSTRAP_STAGES = [
     (1, "레이아웃 저장데이터 확인"),
     (2, "업종 매핑 로드"),
     (3, "KRX 확정데이터 로드 중"),
     (4, "시세 데이터 반영"),
     (5, "5일 평균 저장데이터 로드"),
-    (6, "앱준비 완료"),
+    (6, "앱 준비 완료"),
 ]
 
 
@@ -29,7 +29,7 @@ async def _broadcast_bootstrap_stage(
     stage_id: int, stage_name: str,
     progress: dict | None = None,
 ) -> None:
-    """부트스트랩 단계 브로드캐스트."""
+    """시작 단계 전송."""
     try:
         from backend.app.web.ws_manager import ws_manager
         payload = {
@@ -42,7 +42,7 @@ async def _broadcast_bootstrap_stage(
             payload["progress"] = progress
         await ws_manager.broadcast("bootstrap-stage", payload)
     except Exception as e:
-        logger.warning("[연산] 부트스트랩 단계 브로드캐스트 실패 %s: %s", stage_name, e, exc_info=True)
+        logger.warning("[연산] 시작 단계 전송 실패 %s: %s", stage_name, e, exc_info=True)
 
 
 # _bootstrap_sector_stocks_async 함수 삭제: _load_caches_preboot로 단일화 완료
@@ -101,9 +101,9 @@ async def _deferred_sector_summary() -> None:
                     notify_desktop_sector_stocks_refresh(),
                     notify_buy_targets_update(),
                 )
-                logger.debug("[연산] 업종순위 화면 전송 완료 (접속화면=%d)", _client_cnt)
+                logger.debug("[연산] 업종순위 화면 전송 완료 (접속 화면=%d)", _client_cnt)
             except Exception as e:
-                logger.error("[연산] UI 초기 전송 실패: %s", e, exc_info=True)
+                logger.error("[연산] 화면 초기 전송 실패: %s", e, exc_info=True)
         else:
             # 종목 없음 — 이벤트만 발행 (대기 해제)
             state.sector_summary_ready_event.set()
@@ -154,7 +154,7 @@ async def _login_post_pipeline() -> None:
                 await _update_account_memory(state.integrated_system_settings_cache)
                 logger.info("[연산] 파이프라인 — REST 잔고 선행 조회 완료 (보유 %d종목)", len(state.positions))
             else:
-                logger.info("[연산] 파이프라인 — 잔고 이미 앱준비 완료 — 재조회 생략 (보유 %d종목)", len(state.positions))
+                logger.info("[연산] 파이프라인 — 잔고 이미 앱 준비 완료 — 재조회 생략 (보유 %d종목)", len(state.positions))
         else:
             if not state.positions and not state.account_rest_bootstrapped:
                 from backend.app.services.engine_account import _update_account_memory

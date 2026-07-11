@@ -532,7 +532,7 @@ async def broadcast_account_update(positions: list[dict], snapshot: dict, reason
             if int(p.get("qty", 0) or 0) > 0
         ]
         logger.info(
-            "[시스템] 계좌 화면 전송 사유=%s 총평가=%s 보유현재가=%s changed=%d removed=%d profit-overview=%s sell-position=%s",
+            "[시스템] 계좌 화면 전송 사유=%s 총평가=%s 보유현재가=%s 변경=%d 제거=%d 수익개요=%s 매도포지션=%s",
             reason, snapshot.get("total_eval"), cur_pairs,
             len(changed_positions), len(removed_codes),
             profit_overview_active, sell_position_active,

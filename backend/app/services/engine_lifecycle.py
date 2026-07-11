@@ -29,11 +29,11 @@ async def start_engine(user_id: str = "") -> bool:
     state.running = True
     state.engine_task = asyncio.create_task(_engine_loop())
 
-    # ── 테스트모드: trades 기반 포지션 구축 ──────────────────────────────────
+    # ── 테스트모드: 거래내역 기반 포지션 구축 ──────────────────────────────────
     # 테스트모드는 증권사 서버가 없으므로 trades 테이블(SSOT)에서 포지션 구축.
     # 실전투자 모드는 증권사 서버가 SSOT이므로 별도 대조 불필요.
     if is_test_mode(state.integrated_system_settings_cache):
-        logger.info("[연산] 테스트모드 - trades 기반 포지션 구축")
+        logger.info("[연산] 테스트모드 - 거래내역 기반 포지션 구축")
         from backend.app.services import dry_run
         await dry_run._refresh_positions_if_dirty()
 
@@ -76,17 +76,17 @@ async def stop_engine() -> None:
             pass
         state.engine_task = None
 
-    # 백그라운드 태스크 일괄 취소
+    # 백그라운드 작업 일괄 취소
     current = asyncio.current_task()
     all_tasks = [t for t in asyncio.all_tasks() if t is not current and not t.done()]
     bg_names = ("daily_time_scheduler",)
     bg_tasks = [t for t in all_tasks if any(n in (t.get_name() or "") for n in bg_names)]
     if bg_tasks:
-        logger.info("[연산] 백그라운드 태스크 %d개 취소 중...", len(bg_tasks))
+        logger.info("[연산] 백그라운드 작업 %d개 취소 중...", len(bg_tasks))
         for t in bg_tasks:
             t.cancel()
         await asyncio.gather(*bg_tasks, return_exceptions=True)
-        logger.info("[연산] 백그라운드 태스크 취소 완료")
+        logger.info("[연산] 백그라운드 작업 취소 완료")
 
     # 모든 루프·태스크 취소 완료 후 큐 잔류 데이터 제거 (원칙16 살아있는 경로, 원칙22 데이터 정합성)
     from backend.app.services.core_queues import clear_all_queues
@@ -216,11 +216,11 @@ async def on_trade_mode_switched() -> None:
     else:
         # 테스트→실전: Settlement Engine 상태 저장 + 타이머 취소
         await settlement_engine.save_state()
-        logger.info("[연산] 실전모드 전환 — 정산 엔진 상태 저장 완료")
+        logger.info("[연산] 실전투자 전환 — 정산 엔진 상태 저장 완료")
         # 테스트→실전: 계좌 실시간 구독(00/04) + 보유종목 실시간(0B) 등록
         await _subscribe_account_realtime()
         await _subscribe_positions_stocks_realtime()
-        logger.info("[구독] 실전모드 전환 — 계좌 + 보유종목 실시간 구독 완료")
+        logger.info("[구독] 실전투자 전환 — 계좌 + 보유종목 실시간 구독 완료")
 
     # 모드 전환 후 계좌 스냅샷 즉시 갱신
     await _refresh_account_snapshot_meta()
@@ -273,11 +273,11 @@ def schedule_engine_task(coro: Coroutine[Any, Any, Any], *, context: str) -> boo
         try:
             def _create_with_callback():
                 task = loop.create_task(coro)
-                task.add_done_callback(lambda t: logger.warning("[시스템] %s 태스크 실패: %s", context, t.exception()) if t.exception() else None)
+                task.add_done_callback(lambda t: logger.warning("[시스템] %s 작업 실패: %s", context, t.exception()) if t.exception() else None)
             loop.call_soon_threadsafe(_create_with_callback)
             return True
         except Exception as e:
-            logger.warning("[시스템] %s 스케줄 실패: %s", context, e, exc_info=True)
+            logger.warning("[시스템] %s 예약 실패: %s", context, e, exc_info=True)
             try:
                 coro.close()
             except Exception:
@@ -285,7 +285,7 @@ def schedule_engine_task(coro: Coroutine[Any, Any, Any], *, context: str) -> boo
             return False
     try:
         task = asyncio.get_running_loop().create_task(coro)
-        task.add_done_callback(lambda t: logger.warning("[시스템] %s 태스크 실패: %s", context, t.exception()) if t.exception() else None)
+        task.add_done_callback(lambda t: logger.warning("[시스템] %s 작업 실패: %s", context, t.exception()) if t.exception() else None)
         return True
     except Exception as e:
         logger.warning("[시스템] %s 요청 실패: %s", context, e, exc_info=True)
