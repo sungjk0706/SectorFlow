@@ -212,19 +212,19 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 
 | 파일 | 줄 수 | 규모 | 점검 완료 |
 |------|-------|------|----------|
-| `services/settlement_engine.py` | 248 | 대형 | ☐ |
-| `services/trade_history.py` | 656 | 대형 | ☐ |
+| `services/settlement_engine.py` | 248 | 대형 | ☑ |
+| `services/trade_history.py` | 656 | 대형 | ☑ |
 
 **원칙 체크리스트**:
-- [ ] P2: DB I/O async def
-- [ ] P6: SQLite 단일화, Raw SQL
-- [ ] P8: 배치 파이프라인과 분리
-- [ ] P9: `db_write_queue`로 쓰기 직렬화
-- [ ] P10: 정산 상태 SSOT (`settlement_state` 단일 행)
-- [ ] P12: DB 연결 싱글톤
-- [ ] P13: 정산 상태 메모리 상주
-- [ ] P20: 폴백 없음
-- [ ] P22: 정산 상태와 거래 이력 간 정합성, 기동 시 대조
+- [x] P2: DB I/O async def
+- [x] P6: SQLite 단일화, Raw SQL
+- [x] P8: 배치 파이프라인과 분리
+- [x] P9: `db_write_queue`로 쓰기 직렬화
+- [x] P10: 정산 상태 SSOT (`settlement_state` 단일 행)
+- [x] P12: DB 연결 싱글톤
+- [x] P13: 정산 상태 메모리 상주
+- [x] P20: 폴백 없음 (B04-01/02/03 — silent except 및 폴백 3건 제거)
+- [x] P22: 정산 상태와 거래 이력 간 정합성, 기동 시 대조 (B04-02 — DB 에러 시 기본값 덮어쓰기 폴백 제거, B04-05 reconciliation 보류)
 
 ---
 
@@ -974,6 +974,11 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B03-01 | B-03 | `dry_run.py:45-68` | P20/P22 | HIGH | `_refresh_positions_if_dirty`에서 dirty 플래그를 try 이전에 `False`로 설정 + silent except → 재구축 실패 시 stale 캐시 영속, 데이터 정합성 위반 | 해결 |
 | B03-02 | B-03 | `dry_run.py:320-353` | P16 | MEDIUM | dead code 4개 함수 (`get_virtual_balance`, `get_virtual_deposit_setting`, `reset_virtual_balance`, `charge_virtual_balance`) — web routes가 settlement_engine 직접 호출하도록 변경되어 잔존 | 해결 |
 | B03-03 | B-03 | `dry_run.py:312-317, 130, 171` | P16/P20 | MEDIUM | `_estimate_market_price` 도달 불가 (호출자가 항상 price > 0 보장) + price=0 폴백이 가짜 체결가 0을 조용히 허용 | 해결 |
+| B04-01 | B-04 | `trade_history.py:34-66` | P20 | HIGH | `_ensure_loaded`에서 `_loaded = True`를 try 블록 이전에 설정 → DB 로드 실패 시 후속 호출이 재시도하지 않음, empty history로 세션 전체 진행 → 체결 이력 누락 | 해결 |
+| B04-02 | B-04 | `stock_tables.py:123-138`, `settlement_engine.py:176-231` | P20/P22 | CRITICAL | `load_settlement_state`가 "행 없음"과 "DB 에러"를 구분하지 않고 모두 None 반환 (silent except) + `_load`가 None을 신규 설치로 간주하고 기본값으로 초기화 후 영속화 → 일시적 DB 에러 시 실제 정산 상태가 기본값으로 덮어씌워짐 → 자금 손실 | 해결 |
+| B04-03 | B-04 | `trade_history.py:388-401` | P20 | MEDIUM | `_lookup_sector`가 DB 에러 시 "미분류" 폴백 반환 → "행 없음"과 "DB 에러"를 구분하지 않음, 정상 데이터를 폴백으로 덮음 | 해결 |
+| B04-04 | B-04 | `trade_history.py:69-71, 156-177, 249-256, 654-656` | P16 | MEDIUM | dead code 5개 함수 (`_migrate_from_json`, `_patch_sell_history`, `start/stop_consumer_task`, `close_db_connection`) — no-op이거나 앱 코드에서 호출되지 않음 | 해결 |
+| B04-05 | B-04 | `settlement_engine.py`, `trade_history.py` | P22 | HIGH | 기동 시 정산 상태(`_orderable`)와 거래 이력으로 역산한 값 간 대조(reconciliation) 없음 → B04-02 폴백 문제와 결합 시 자금 손실 위험 | 보류 |
 
 ---
 
@@ -986,7 +991,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B-01 | P0 | 주문 실행 경로 | ☑ 완료 (8건 수정) |
 | B-02 | P0 | 리스크 관리 및 서킷 브레이커 | ☑ 완료 (3건 수정) |
 | B-03 | P0 | Dry Run | ☑ 완료 (3건 수정) |
-| B-04 | P0 | 정산 엔진 및 거래 이력 | ☐ 미시작 |
+| B-04 | P0 | 정산 엔진 및 거래 이력 | ☑ 완료 (4건 수정, 1건 보류) |
 | B-05 | P0 | 자동매매 유효성 및 코어 큐 | ☐ 미시작 |
 | B-06 | P1 | 엔진 루프 및 생명주기 | ☐ 미시작 |
 | B-07 | P1 | WS 시세 처리 | ☐ 미시작 |

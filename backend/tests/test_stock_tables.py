@@ -92,10 +92,10 @@ class TestLoadSettlementState:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_load_exception_returns_none(self, _mock_db_connection):
+    async def test_load_exception_propagates(self, _mock_db_connection):
         _mock_db_connection.execute = AsyncMock(side_effect=Exception("DB error"))
-        result = await load_settlement_state()
-        assert result is None
+        with pytest.raises(Exception, match="DB error"):
+            await load_settlement_state()
 
 
 # ── create_master_stocks_table ──────────────────────────────────────

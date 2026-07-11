@@ -63,7 +63,8 @@ class TestLoad:
         settlement_engine._accumulated_investment = 0
         settlement_engine._orderable = 0
         with patch("backend.app.services.settlement_engine.load_settlement_state",
-                   new_callable=AsyncMock, return_value=None):
+                   new_callable=AsyncMock, return_value=None), \
+             patch.object(settlement_engine, "_persist", new_callable=AsyncMock):
             await settlement_engine._load(initial_deposit=5_000_000)
         assert get_initial_deposit() == 5_000_000
         assert settlement_engine._accumulated_investment == 5_000_000
@@ -89,12 +90,24 @@ class TestLoad:
         settlement_engine._orderable = 0
         with patch("backend.app.services.settlement_engine.load_settlement_state",
                    new_callable=AsyncMock, return_value=None), \
-             patch("backend.app.services.engine_state.state") as mock_state:
+             patch("backend.app.services.engine_state.state") as mock_state, \
+             patch.object(settlement_engine, "_persist", new_callable=AsyncMock):
             mock_state.integrated_system_settings_cache = {"test_virtual_deposit": 7_000_000}
             await settlement_engine._load()
         assert get_initial_deposit() == 7_000_000
         assert settlement_engine._accumulated_investment == 7_000_000
         assert settlement_engine._orderable == 7_000_000
+
+    @pytest.mark.asyncio
+    async def test_load_db_error_raises_exception(self, fresh_engine):
+        settlement_engine._loaded = False
+        settlement_engine._accumulated_investment = 0
+        settlement_engine._orderable = 0
+        with patch("backend.app.services.settlement_engine.load_settlement_state",
+                   new_callable=AsyncMock, side_effect=Exception("DB error")):
+            with pytest.raises(Exception, match="DB error"):
+                await settlement_engine._load(initial_deposit=5_000_000)
+        assert settlement_engine._loaded is False
 
 
 # ── getters ────────────────────────────────────────────────────────────────────

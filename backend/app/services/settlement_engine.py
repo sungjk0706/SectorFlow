@@ -178,6 +178,7 @@ async def _load(force_reload: bool = False, initial_deposit: int | None = None) 
 
     - DB에 저장된 상태가 있으면 로드한다.
     - 없으면 initial_deposit(인자 → settings.test_virtual_deposit → 기본값)을 사용해 초기화.
+    - DB 에러 시 예외 전파하여 기동 실패로 명시적 알림.
 
     Args:
         force_reload: True이면 이미 로드되어 있어도 강제 재로드 (모드 전환 시 사용)
@@ -189,46 +190,40 @@ async def _load(force_reload: bool = False, initial_deposit: int | None = None) 
     if _loaded and not force_reload:
         return
 
-    try:
-        data = await load_settlement_state()
-        if not data:
-            raise FileNotFoundError("SQLite KV Store에서 settlement_state를 찾을 수 없습니다.")
-
-        _initial_deposit = int(data.get("initial_deposit", _initial_deposit))
-        # 신버전 파일 (accumulated_investment 키) 처리
-        if "accumulated_investment" in data:
-            _accumulated_investment = int(data["accumulated_investment"])
-            _orderable = int(data.get("orderable", _accumulated_investment))
-        # 구버전 파일 (deposit 키) 하위 호환 처리
-        elif "deposit" in data:
-            _accumulated_investment = int(data["deposit"])
-            _orderable = int(data.get("orderable", _accumulated_investment))
-        # 구버전 파일 (available_cash 키) 하위 호환 처리
-        else:
-            _accumulated_investment = int(data.get("available_cash", _initial_deposit))
-            _orderable = _accumulated_investment
-        _loaded = True
-        logger.info(
-            "[정산] 상태 로드 완료 — 누적투자금: %s원 / 주문가능: %s원",
-            f"{_accumulated_investment:,}", f"{_orderable:,}",
-        )
-    except Exception as e:
-        logger.error("[정산] 상태 파일 로드 실패 (기본값 사용): %s", e, exc_info=True)
-        # initial_deposit: 인자 우선, 다음 settings, 마지막 기본값
+    data = await load_settlement_state()
+    if not data:
+        # 신규 설치 — initial_deposit으로 초기화
         if initial_deposit is not None and initial_deposit > 0:
             _initial_deposit = initial_deposit
         else:
-            try:
-                from backend.app.services.engine_state import state
-                s = state.integrated_system_settings_cache
-                _initial_deposit = int(s["test_virtual_deposit"])
-            except Exception as e:
-                logger.warning("[정산] test_virtual_deposit 설정 로드 실패 (기본값 사용): %s", e, exc_info=True)
+            from backend.app.services.engine_state import state
+            s = state.integrated_system_settings_cache
+            _initial_deposit = int(s["test_virtual_deposit"])
         _accumulated_investment = _initial_deposit
         _orderable = _initial_deposit
         _loaded = True
         await _persist()
         logger.info("[정산] 초기값 SQLite 저장 완료 — 주문가능: %s원", f"{_orderable:,}")
+        return
+
+    _initial_deposit = int(data.get("initial_deposit", _initial_deposit))
+    # 신버전 파일 (accumulated_investment 키) 처리
+    if "accumulated_investment" in data:
+        _accumulated_investment = int(data["accumulated_investment"])
+        _orderable = int(data.get("orderable", _accumulated_investment))
+    # 구버전 파일 (deposit 키) 하위 호환 처리
+    elif "deposit" in data:
+        _accumulated_investment = int(data["deposit"])
+        _orderable = int(data.get("orderable", _accumulated_investment))
+    # 구버전 파일 (available_cash 키) 하위 호환 처리
+    else:
+        _accumulated_investment = int(data.get("available_cash", _initial_deposit))
+        _orderable = _accumulated_investment
+    _loaded = True
+    logger.info(
+        "[정산] 상태 로드 완료 — 누적투자금: %s원 / 주문가능: %s원",
+        f"{_accumulated_investment:,}", f"{_orderable:,}",
+    )
 
 
 # ── 브로드캐스트 ────────────────────────────────────────────────────────────
