@@ -214,6 +214,24 @@ class InterceptHandler(logging.Handler):
         "연결 닫힘": "[연결] 종료",
     }
 
+    # uvicorn 기동/종료 메시지 한국어화 (access log 제외)
+    _UVICORN_MSG_MAP = {
+        "Waiting for application startup.": "앱 시작 대기 중",
+        "Application startup complete.": "앱 시작 완료",
+        "Application startup failed. Exiting.": "앱 시작 실패. 종료.",
+        "Waiting for application shutdown.": "앱 종료 대기 중",
+        "Application shutdown complete.": "앱 종료 완료",
+        "Application shutdown failed. Exiting.": "앱 종료 실패. 종료.",
+        "Shutting down": "종료 중",
+    }
+
+    # 파라미터 포함 메시지 — 접두사 일치 후 나머지 보존
+    _UVICORN_PREFIX_MAP = {
+        "Started server process": "서버 프로세스 시작",
+        "Finished server process": "서버 프로세스 종료",
+        "Uvicorn running on": "Uvicorn 실행 중",
+    }
+
     def emit(self, record: logging.LogRecord) -> None:
         """표준 logging 레코드를 loguru로 전달."""
         try:
@@ -232,6 +250,14 @@ class InterceptHandler(logging.Handler):
             msg = self._WS_MSG_MAP[msg_lower]
         elif record.name.startswith("websockets"):
             msg = self._WS_MSG_MAP.get(msg_lower, msg)
+        elif record.name.startswith("uvicorn") and not record.name.startswith("uvicorn.access"):
+            if msg in self._UVICORN_MSG_MAP:
+                msg = self._UVICORN_MSG_MAP[msg]
+            else:
+                for prefix, replacement in self._UVICORN_PREFIX_MAP.items():
+                    if msg.startswith(prefix):
+                        msg = replacement + msg[len(prefix):]
+                        break
 
         _loguru_logger.opt(depth=depth, exception=record.exc_info).log(
             level, msg
@@ -240,21 +266,37 @@ class InterceptHandler(logging.Handler):
 
 # ── 메인 설정 함수 ────────────────────────────────────────────────────────────
 
-async def setup_loguru(log_level: str = "INFO") -> None:
-    """앱 기동 시 1회 호출 — 콘솔 + 파일(trading.log) 2채널 설정."""
-    global _configured
-    if _configured:
-        return
-    _configured = True
+_stdout_utf8: io.TextIOWrapper | None = None
 
-    await asyncio.to_thread(LOG_DIR.mkdir, parents=True, exist_ok=True)
 
-    _loguru_logger.remove()  # 기본 핸들러 제거
+def _get_stdout_utf8() -> io.TextIOWrapper:
+    """stdout UTF-8 래퍼 싱글톤 — loguru remove()로 닫히지 않도록 함수 싱크에서 사용."""
+    global _stdout_utf8
+    if _stdout_utf8 is None or _stdout_utf8.closed:
+        _stdout_utf8 = io.TextIOWrapper(
+            sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True,
+        )
+    return _stdout_utf8
 
-    # ── 1. 콘솔 — INFO 이상 (Windows cp949 환경 UTF-8 강제) ──────────────
-    _stdout_utf8 = io.TextIOWrapper(
-        sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True,
-    )
+
+def _stdout_sink(message) -> None:
+    """loguru 콘솔 싱크 — 함수 기반 (loguru가 close하지 않음)."""
+    try:
+        s = _get_stdout_utf8()
+        s.write(str(message))
+        s.flush()
+    except (ValueError, OSError):
+        pass  # stdout이 닫힌 경우 — 무시
+
+
+def setup_console_intercept(log_level: str = "INFO") -> None:
+    """콘솔 싱크 + InterceptHandler 설치 — uvicorn.run() 이전에 호출 가능 (동기).
+
+    uvicorn 기동 초기 메시지(Started server process, Waiting for application startup 등)를
+    한국어로 변환. 파일 싱크는 setup_loguru()에서 별도 추가됨.
+    """
+    _loguru_logger.remove()  # 기본 핸들러 제거 (함수 싱크는 close되지 않음)
+
     _KR_LEVEL = {
         "DEBUG":    "디버그",
         "INFO":     "정보",
@@ -268,24 +310,12 @@ async def setup_loguru(log_level: str = "INFO") -> None:
         return True
 
     _loguru_logger.add(
-        _stdout_utf8,
+        _stdout_sink,
         level=log_level,
         format="<green>{time:HH:mm:ss}</green> [<level>{extra[level_kr]}</level>] {message}",
         colorize=True,
         filter=_inject_kr_level,
     )
-
-    # ── 2. 파일 — LOG_LEVEL 이상 (trading.log, 일별 분할, 10MB 로테이션, 2일 보관) ───────
-    #    LOG_LEVEL=DEBUG 시 DEBUG 로그도 trading.log에 기록됨
-    _loguru_logger.add(
-        _info_file_sink,
-        level=log_level,
-        format=_FILE_FORMAT,
-        colorize=False,
-    )
-
-    # 파일 쓰기 asyncio 태스크 시작
-    await _start_file_writers()
 
     # ── 표준 logging → loguru 인터셉트 ────────────────────────────────────
     logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
@@ -301,6 +331,32 @@ async def setup_loguru(log_level: str = "INFO") -> None:
     # 외부 라이브러리 노이즈 차단
     for noisy in ("httpx", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+
+
+async def setup_loguru(log_level: str = "INFO") -> None:
+    """앱 기동 시 1회 호출 — 콘솔 + 파일(trading.log) 2채널 설정."""
+    global _configured
+    if _configured:
+        return
+    _configured = True
+
+    await asyncio.to_thread(LOG_DIR.mkdir, parents=True, exist_ok=True)
+
+    # 콘솔 싱크 + InterceptHandler (uvicorn.run() 이전에 setup_console_intercept()가
+    # 호출되었어도 재설정 — 파일 싱크만 이 시점에 추가)
+    setup_console_intercept(log_level)
+
+    # ── 파일 — LOG_LEVEL 이상 (trading.log, 일별 분할, 10MB 로테이션, 2일 보관) ───────
+    #    LOG_LEVEL=DEBUG 시 DEBUG 로그도 trading.log에 기록됨
+    _loguru_logger.add(
+        _info_file_sink,
+        level=log_level,
+        format=_FILE_FORMAT,
+        colorize=False,
+    )
+
+    # 파일 쓰기 asyncio 태스크 시작
+    await _start_file_writers()
 
 
 def get_logger(name: str = "sectorflow") -> logging.Logger:

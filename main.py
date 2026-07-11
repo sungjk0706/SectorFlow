@@ -57,6 +57,10 @@ if __name__ == "__main__":
             sys.exit(1)
 
     # 4. uvicorn 서버 시작 (엔진 초기화는 lifespan에서 처리)
+    # uvicorn 기동 초기 메시지 한국어화를 위해 InterceptHandler를 uvicorn.run() 이전에 설치
+    from backend.app.core.logger import setup_console_intercept
+    setup_console_intercept("INFO")
+
     uvicorn.run(
         app,
         host="127.0.0.1",
@@ -65,4 +69,5 @@ if __name__ == "__main__":
         loop="uvloop",
         ws_ping_interval=30,
         ws_ping_timeout=10,
+        log_config=None,  # InterceptHandler가 uvicorn에 의해 덮어씌워지지 않도록 함
     )

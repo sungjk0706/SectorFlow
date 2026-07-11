@@ -148,6 +148,73 @@ class TestInterceptHandler:
         # loguru로 리다이렉트되므로 예외 없이 완료되어야 함
         handler.emit(record)
 
+    # ── uvicorn 메시지 맵 ──────────────────────────────────────────────────────────
+
+    def test_uvicorn_msg_map_contains_startup_messages(self):
+        assert "Waiting for application startup." in InterceptHandler._UVICORN_MSG_MAP
+        assert "Application startup complete." in InterceptHandler._UVICORN_MSG_MAP
+        assert "Application startup failed. Exiting." in InterceptHandler._UVICORN_MSG_MAP
+
+    def test_uvicorn_msg_map_contains_shutdown_messages(self):
+        assert "Waiting for application shutdown." in InterceptHandler._UVICORN_MSG_MAP
+        assert "Application shutdown complete." in InterceptHandler._UVICORN_MSG_MAP
+        assert "Application shutdown failed. Exiting." in InterceptHandler._UVICORN_MSG_MAP
+        assert "Shutting down" in InterceptHandler._UVICORN_MSG_MAP
+
+    def test_uvicorn_msg_map_values_are_korean(self):
+        assert InterceptHandler._UVICORN_MSG_MAP["Application startup complete."] == "앱 시작 완료"
+        assert InterceptHandler._UVICORN_MSG_MAP["Shutting down"] == "종료 중"
+
+    def test_uvicorn_prefix_map_contains_process_messages(self):
+        assert "Started server process" in InterceptHandler._UVICORN_PREFIX_MAP
+        assert "Finished server process" in InterceptHandler._UVICORN_PREFIX_MAP
+        assert "Uvicorn running on" in InterceptHandler._UVICORN_PREFIX_MAP
+
+    def test_uvicorn_prefix_map_values_are_korean(self):
+        assert InterceptHandler._UVICORN_PREFIX_MAP["Started server process"] == "서버 프로세스 시작"
+        assert InterceptHandler._UVICORN_PREFIX_MAP["Finished server process"] == "서버 프로세스 종료"
+
+    def test_emit_translates_uvicorn_startup_message(self):
+        handler = InterceptHandler()
+        record = logging.LogRecord(
+            name="uvicorn.error", level=logging.INFO, pathname=__file__, lineno=1,
+            msg="Application startup complete.", args=(), exc_info=None,
+        )
+        with patch("backend.app.core.logger._loguru_logger") as mock_logger:
+            mock_logger.level.return_value = MagicMock(name="INFO")
+            mock_logger.opt.return_value.log = MagicMock()
+            handler.emit(record)
+        args = mock_logger.opt.return_value.log.call_args
+        assert "앱 시작 완료" in args[0][1]
+
+    def test_emit_translates_uvicorn_prefix_message(self):
+        handler = InterceptHandler()
+        record = logging.LogRecord(
+            name="uvicorn.error", level=logging.INFO, pathname=__file__, lineno=1,
+            msg="Started server process [12345]", args=(), exc_info=None,
+        )
+        with patch("backend.app.core.logger._loguru_logger") as mock_logger:
+            mock_logger.level.return_value = MagicMock(name="INFO")
+            mock_logger.opt.return_value.log = MagicMock()
+            handler.emit(record)
+        args = mock_logger.opt.return_value.log.call_args
+        assert "서버 프로세스 시작" in args[0][1]
+        assert "12345" in args[0][1]
+
+    def test_emit_does_not_translate_uvicorn_access(self):
+        handler = InterceptHandler()
+        record = logging.LogRecord(
+            name="uvicorn.access", level=logging.INFO, pathname=__file__, lineno=1,
+            msg="Application startup complete.", args=(), exc_info=None,
+        )
+        with patch("backend.app.core.logger._loguru_logger") as mock_logger:
+            mock_logger.level.return_value = MagicMock(name="INFO")
+            mock_logger.opt.return_value.log = MagicMock()
+            handler.emit(record)
+        args = mock_logger.opt.return_value.log.call_args
+        # access log는 영문 유지 — 치환되지 않아야 함
+        assert "Application startup complete." in args[0][1]
+
 
 # ── _rotate_old_logs ───────────────────────────────────────────────────────────────
 
@@ -237,3 +304,35 @@ class TestSetupLoguru:
             assert logger_mod._configured is True
         finally:
             logger_mod._configured = original
+
+
+# ── setup_console_intercept ───────────────────────────────────────────────────────
+
+class TestSetupConsoleIntercept:
+    def test_installs_intercept_handler_on_uvicorn_loggers(self):
+        mock_stdout_wrapper = MagicMock()
+        with (
+            patch("loguru.logger.remove"),
+            patch("loguru.logger.add"),
+            patch("logging.basicConfig"),
+            patch("backend.app.core.logger.io.TextIOWrapper", return_value=mock_stdout_wrapper),
+        ):
+            logger_mod.setup_console_intercept("INFO")
+        for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+            log = logging.getLogger(name)
+            assert len(log.handlers) == 1
+            assert isinstance(log.handlers[0], InterceptHandler)
+
+    def test_sets_uvicorn_access_to_warning(self):
+        # access log는 InterceptHandler 설치되지만 메시지 치환은 emit()에서 제외
+        mock_stdout_wrapper = MagicMock()
+        with (
+            patch("loguru.logger.remove"),
+            patch("loguru.logger.add"),
+            patch("logging.basicConfig"),
+            patch("backend.app.core.logger.io.TextIOWrapper", return_value=mock_stdout_wrapper),
+        ):
+            logger_mod.setup_console_intercept("INFO")
+        # httpx, httpcore 노이즈 차단 확인
+        assert logging.getLogger("httpx").level == logging.WARNING
+        assert logging.getLogger("httpcore").level == logging.WARNING
