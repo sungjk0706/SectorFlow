@@ -4,7 +4,23 @@
 - 없음
 
 ## 진행 중 작업 (다음 세션에서 이어서 진행)
-- 없음
+- **1순위: compute_task 미취소 버그 수정 — 증권사 변경 시 `[연산] 이미 실행 중` 발생**
+  - **현상**: 증권사 변경(LS→kiwoom) 시 `22:07:27 [주의] [연산] 이미 실행 중` 로그 출력
+  - **원인 (코드 기반 추정, 정밀 조사 필요)**:
+    - `engine_loop.py:352-375` finally 블록에서 `compute_task.cancel()` 후 `await compute_task` 수행
+    - 그러나 `compute_task`는 `start_compute_loop()`를 실행하는 태스크 — `start_compute_loop()`는 `_compute_task` / `_sector_recompute_task` 두 개의 서브태스크를 생성하고 **즉시 반환**함 (`pipeline_compute.py:136-147`)
+    - 따라서 `compute_task.cancel()`은 이미 완료된 `start_compute_loop()` 태스크를 취소할 뿐, 실제 실행 중인 `_compute_task` / `_sector_recompute_task`는 취소되지 않음
+    - `_compute_running` 플래그가 `True`로 잔존 → 신규 세션의 `start_compute_loop()`가 `if _compute_running: return` 즉시 반환 → 새 compute 루프 미기동
+  - **수정 방안 (검증 필요)**:
+    - `engine_loop.py:358-375` finally 블록에서 `compute_task.cancel()` + `await compute_task` 대신 `stop_compute_loop()` 호출로 교체
+    - `stop_compute_loop()` (`pipeline_compute.py:150-166`)는 `_compute_running = False` 설정 + `_sector_recompute_task.cancel()` + `_compute_task.cancel()` 수행
+    - 동일하게 `gateway_task`, `oms_task`도 정상 종료 함수가 있는지 확인 필요
+  - **조사 필요 항목**:
+    - `pipeline_compute.py`의 `_compute_running` 전역 플래그가 `stop_engine()` 경로에서 정상적으로 `False`로 리셋되는지 추적
+    - `pipeline_gateway.py`의 `_gateway_running` 동일한 패턴인지 확인
+    - `stop_compute_loop()` / `stop_gateway_loop()` 함수가 존재하는지, finally 블록에서 호출하는 것이 정확한지 검증
+    - 기존 테스트 (`test_engine_loop.py` 등)에서 compute_task 종료 경로 커버 여부 확인
+  - **검증**: pytest 회귀 + 런타임 기동 후 증권사 변경 시 `[연산] 이미 실행 중` 로그 미발생 확인
 
 ## 직전 완료 작업
 - **2026-07-11: 증권사 변경 엔진 재기동 수정 Phase 1~3 전체 완료**
@@ -12,6 +28,7 @@
   - Phase 2 (수정 D+E): `_login_post_pipeline`에 `sync_dynamic_subscriptions(ss.buy_targets)` 호출 추가 (동적 구독 복원), `disconnect_all()`에 `unsubscribe_stocks` 호출 추가 (LS API tr_type=4 준수)
   - Phase 3 (수정 F): `tests/test_broker_change.py` 신규 — 11개 테스트 (세션 초기화 3, 타이머 취소 3, 호출 순서 2, 동적 구독 복원 3)
   - 검증: ast.parse 5개 파일 통과, 회귀 테스트 295 passed (6개 파일), 런타임 기동 2회 정상 (잔존 프로세스 0개)
+  - **실사용 로그 확인 (2026-07-11 22:07)**: LS→kiwoom 증권사 변경 시 Phase 1~3 수정 정상 동작 확인 (호출 순서, 세션 초기화, 증권사 전환 모두 정상). 단, 기존 버그 `compute_task` 미취소 발견 → 진행 중 작업으로 이관
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
@@ -25,7 +42,8 @@
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 
 ## 다음 단계
-- **1순위: 유령 포지션 005930 근본 원인 조사**
+- **1순위: compute_task 미취소 버그 수정** (진행 중 작업 섹션 참조)
+- **2순위: 유령 포지션 005930 근본 원인 조사**
   - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
   - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
   - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
