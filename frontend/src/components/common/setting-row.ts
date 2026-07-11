@@ -1,4 +1,4 @@
-import { COLOR } from './ui-styles'
+import { COLOR, FONT_SIZE } from './ui-styles'
 
 /* ── 공통 너비 상수 ────────────────────────────────────────── */
 export const INPUT_WIDTH = 80
@@ -261,6 +261,53 @@ export function createMoneyInput(options: {
   return { el: wrap as HTMLElement, setValue, getValue }
 }
 
+/* ── 텍스트/패스워드 입력란 ────────────────────────────────── */
+export function createTextInput(options: {
+  value?: string
+  type?: 'text' | 'password'
+  placeholder?: string
+  name?: string
+  width?: string
+  onChange?: (v: string) => void
+  onEnter?: () => void
+  style?: Partial<CSSStyleDeclaration>
+}): HTMLInputElement {
+  const {
+    value = '',
+    type = 'text',
+    placeholder,
+    name,
+    width = `${TEXT_INPUT_WIDTH}px`,
+    onChange,
+    onEnter,
+    style,
+  } = options
+
+  const input = document.createElement('input')
+  input.type = type
+  input.value = value
+  if (placeholder) input.placeholder = placeholder
+  if (name) input.setAttribute('data-name', name)
+  applyInputBase(input, {
+    width,
+    textAlign: 'left',
+    ...(style || {}),
+  } as Partial<CSSStyleDeclaration>)
+
+  if (onChange) {
+    input.addEventListener('input', () => onChange(input.value))
+  }
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      if (onEnter) onEnter()
+      else focusNext(input)
+    }
+  })
+
+  return input
+}
+
 /* ── 드롭다운 셀렉트 (공통 스타일) ─────────────────────────── */
 export function createSelect(options: {
   items: { value: string; label: string }[]
@@ -366,6 +413,67 @@ export function createToggleBtn(options: {
   }
 
   return { el: btn as HTMLElement, setOn, isOn: getOn }
+}
+
+/* ── 라디오 버튼 그룹 ─────────────────────────────────────── */
+export function createRadioGroup(options: {
+  items: { value: string; label: string }[]
+  name: string
+  value: string
+  onChange: (v: string) => void
+  fontSize?: string
+  gap?: string
+}): { el: HTMLElement; setValue: (v: string) => void; getValue: () => string; setDisabled: (disabled: boolean) => void } {
+  const {
+    items,
+    name,
+    value: initialValue,
+    onChange,
+    fontSize = FONT_SIZE.settingsLabel,
+    gap = '24px',
+  } = options
+
+  const container = document.createElement('div')
+  Object.assign(container.style, { display: 'flex', alignItems: 'center', gap })
+
+  const radios: Record<string, HTMLInputElement> = {}
+  let currentValue = initialValue
+
+  for (const item of items) {
+    const label = document.createElement('label')
+    label.style.cssText = `cursor:pointer;display:flex;align-items:center;gap:6px;font-size:${fontSize}`
+    const radio = document.createElement('input')
+    radio.type = 'radio'
+    radio.name = name
+    radio.checked = item.value === initialValue
+    radio.addEventListener('change', () => {
+      currentValue = item.value
+      onChange(item.value)
+    })
+    radios[item.value] = radio
+    label.appendChild(radio)
+    label.appendChild(document.createTextNode(item.label))
+    container.appendChild(label)
+  }
+
+  function setValue(v: string): void {
+    currentValue = v
+    for (const [val, radio] of Object.entries(radios)) {
+      radio.checked = val === v
+    }
+  }
+
+  function getValue(): string {
+    return currentValue
+  }
+
+  function setDisabled(disabled: boolean): void {
+    for (const radio of Object.values(radios)) {
+      radio.disabled = disabled
+    }
+  }
+
+  return { el: container, setValue, getValue, setDisabled }
 }
 
 /* ── 고정 텍스트 값 (시장가 등) ────────────────────────────── */
