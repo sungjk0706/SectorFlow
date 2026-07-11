@@ -37,10 +37,12 @@ export interface ProfitChartOptions {
   mode?: 'pnl' | 'volume'
   maxBars?: number
   height?: number
-  onDateRangeChange?: (from: string, to: string, days?: number) => void
+  onDateRangeChange?: (from: string, to: string, days?: number, label?: string) => void
   dateFrom?: string
   dateTo?: string
   quickDateRanges?: QuickDateRange[]
+  /** 초기 활성 빠른 버튼 라벨 (영속화 복원용) */
+  initialActiveQuickLabel?: string
 }
 
 export interface ProfitChartApi {
@@ -158,7 +160,7 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
       // 수동 날짜 변경 시 모든 빠른 버튼 비활성화
       _activeQuickIdx = -1
       updateQuickBtnStyles()
-      options.onDateRangeChange?.(from, to)
+      options.onDateRangeChange?.(from, to, undefined, undefined)
     },
   })
 
@@ -198,11 +200,15 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
       const from = qr.from ?? ''
       const to = qr.to ?? ''
       dateRangeInput.setValue(from, to)
-      options.onDateRangeChange?.(from, to, qr.days)
+      options.onDateRangeChange?.(from, to, qr.days, qr.label)
       ;(e.target as HTMLElement).blur()
     })
     quickBtns.push(btn)
     dateHeader.appendChild(btn)
+  }
+  // 초기 활성 버튼 복원 (영속화된 quickLabel 기반)
+  if (options.initialActiveQuickLabel) {
+    _activeQuickIdx = quickRanges.findIndex(qr => qr.label === options.initialActiveQuickLabel)
   }
   updateQuickBtnStyles()
 
