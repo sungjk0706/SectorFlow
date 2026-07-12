@@ -4,17 +4,22 @@
 - **ARCHITECTURE.md "JIF bypass" 기록 정리 완료**: 3단계 문서 정리에서 "JIF bypass: 0B 틱 우회로 직통 전송 (지연 감소)" 기록을 `price_pass_through_queue` 제거 사실로 대체. grep 결과 잔존 0건 확인 완료
 
 ## 직전 완료 작업
-- **2026-07-13: 업종 분류 69개 → 55개 재분류 + 업종명 정비 완료**
-  - 인터넷 검색으로 120개 대표 종목의 실제 사업 내용 확인 (5개 병렬 서브에이전트)
-  - 주가 동조성("같은 시기에 같이 오를 확률")을 유일한 기준으로 10개 쟁점 추가 검증 (2개 병렬 서브에이전트)
-  - 25개 오분류 종목 이동 (예: 고려아연 제철→비철금속, 현대모비스 완성차→부품, 달바글로벌 화학→뷰티, KCC 건설자재→화학, 한화시스템 전자부품→방산)
-  - 14개 업종 병합 (동조성 확인된 그룹만 통합), 16개 업종 분리 유지 (다르게 움직이는 것 확인)
-  - 9개 업종명을 한국 주식시장 일반 용어로 변경 (KRX/FICS 공식 업종명 기준)
-  - DB 3개 테이블 일괄 갱신: sectors, custom_sectors, master_stocks_table.sector
-  - 종목 수 1,338 보존, 업종 수 55, 런타임 기동 검증 완료
-  - 마이그레이션 스크립트: `backend/scripts/migrate_sectors_55.py`, `backend/scripts/rename_sectors_55.py`
-  - 백업: `backend/data/stocks.db.20260713_001316.backup`
-  - 커밋: `fba3a3d` (재분류), `cbe9af5` (업종명 정비)
+- **2026-07-13: 재매수 차단 토글 버그 수정 (3건)**
+  - **버그 1: 토글 OFF가 차단 로직에 반영되지 않음**
+    - 근본 원인: `backend/app/domain/buy_filter.py:188-196` — `create_buy_targets()`가 `rebuy_block_on` 설정값과 무관하게 보유/금일매수 종목을 무조건 차단 마킹
+    - 추가 문제: `buy_order_executor.py:116, 144`의 `_rebuy_block_on` 체크는 상류 buy_filter에서 이미 차단 마킹되어 도달 불가능한 dead code (P16 위반)
+    - 수정: `create_buy_targets()`에 `rebuy_block_on: bool = True` 파라미터 추가, `if rebuy_block_on:` 블록으로 차단 마킹 분기. `build_buy_targets_from_settings()` 래퍼에서 `settings.get("rebuy_block_on")` 전달. dead code 2곳 제거
+    - ARCHITECTURE.md:628 execute_buy "중복 매수 차단 (오늘 매수 / 보유 중)" → "재매수 차단 (rebuy_block_on=True 시 오늘 매수 종목 차단)" 정정
+    - 테스트: `test_buy_filter.py` 신규 4건 추가 (rebuy_block_on=False 시 매수 허용 3건 + 기본값 True 차단 유지 1건), `test_buy_order_executor.py` dead code 테스트 1건 제거
+  - **버그 2: 토글 OFF→ON 전환 시 차단 표시 복구 안 됨**
+    - 근본 원인: `backend/app/services/engine_service.py:159-171` — `_SECTOR_UI_KEYS` 집합에 `rebuy_block_on` 누락, 토글 변경 시 `recompute_sector_summary_now()`가 호출되지 않아 stale 캐시 유지
+    - 수정: `_SECTOR_UI_KEYS`에 `"rebuy_block_on"` 추가 → 토글 변경 시 즉시 재계산 + UI 갱신
+    - 테스트: `test_settings_boost_order_ratio.py` 신규 2건 추가 (엔진 실행 중 recompute 호출 + 엔진 미실행 시 미호출)
+  - **버그 3: 설정 캐시에서 rebuy_block_on 키 누락 (근본 원인)**
+    - 근본 원인: `backend/app/core/engine_settings.py:26-219` — `build_engine_settings_dict()`가 `rebuy_block_on`, `rebuy_block_period`를 결과 dict에 포함하지 않음. 설정 캐시 갱신 시 키가 삭제되어, 하류 `build_buy_targets_from_settings()`와 `trading.py:125`의 `settings.get("rebuy_block_on", True)`가 항상 기본값 True 반환. 버그 1+2 수정이 실제 앱에서 작동하지 않은 진짜 원인
+    - 수정: `build_engine_settings_dict()`에 `result["rebuy_block_on"]` = bool(merged.get("rebuy_block_on", True)), `result["rebuy_block_period"]` = str(merged.get("rebuy_block_period", "today")) 추가
+    - 검증: DB False/True 각각 → build_engine_settings_dict 결과 → build_buy_targets_from_settings 전달값 → trading.py 전달값 전 경로 추적 확인. 런타임 PATCH API 호출 시 "설정 캐시 갱신 완료" → "업종순위 재계산 진입" → "재계산 완료" 로그 확인
+  - 전체 검증: 단위 테스트 210개 통과, 백엔드 런타임 기동 확인, 사용자 UI 확인 완료 (토글 ON/OFF 즉시 반영, 새로고침 후 유지)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
@@ -29,6 +34,7 @@
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 - **루트 폴더 정리**: 완료된 1회성 계획서 3건 + 로컬 산출물 4건 제거 (2026-07-12). `docs/architecture_audit_plan.md`, `docs/ghost_position_investigation.md`, `docs/api_specs/` 유지
 - **업종 점수 계산 방식 전환**: 구현 완료. min-max 정규화 → 순위 기반 점수 교체. `rank_to_score` 함수 추가 (공식: `(N - rank + 1) / N × 100`), 동점 순위 처리 + 4단계 타이브레이크. 트리밍 유지. 단위 테스트 112개 통과, 런타임 기동 확인. 사용자 UI 확인 대기
+- **재매수 차단 토글 버그 수정**: 구현 완료 (2026-07-13). 3건 수정 — (1) buy_filter.py에 rebuy_block_on 파라미터 추가로 토글 OFF 시 보유/금일매수 종목 매수 허용 + buy_order_executor.py dead code 제거 (P16), (2) engine_service.py _SECTOR_UI_KEYS에 rebuy_block_on 추가로 토글 변경 시 즉시 재계산, (3) engine_settings.py build_engine_settings_dict에 rebuy_block_on/rebuy_block_period 추가 (근본 원인 — 설정 캐시에서 키 누락으로 항상 기본값 True 반환). 단위 테스트 210개 통과, 런타임 기동 확인, 사용자 UI 확인 완료. 커밋 완료
 
 ## 진행 중 작업
 
@@ -50,22 +56,18 @@
 
 ## 다음 단계
 
-### 1순위: 업종 분류 재분류 — 사용자 UI 확인 대기
+### 1순위: 재매수 차단 토글 수정 — 완료
 
-**구현 완료** (2026-07-13). 69개 → 55개 업종 재분류 + 9개 업종명 정비 완료.
+**구현 + 검증 완료** (2026-07-13). 3건 수정 — (1) buy_filter.py rebuy_block_on 파라미터 추가, (2) engine_service.py _SECTOR_UI_KEYS에 rebuy_block_on 추가, (3) engine_settings.py build_engine_settings_dict에 rebuy_block_on/rebuy_block_period 추가 (근본 원인). 단위 테스트 210개 통과, 런타임 기동 확인, 사용자 UI 확인 완료, 커밋 완료.
 
-**사용자 확인 필요 항목**:
-- 업종순위 화면: 55개 업종이 표시되는지
-- 업종순위 화면: 변경된 업종명이 반영되었는지 (예: "자동차부품", "건설", "K-콘텐츠/미디어", "서비스업" 등)
-- 매수 후보 화면: 25개 이동 종목이 새 업종에 표시되는지 (예: 현대모비스가 자동차부품에, 고려아연이 비철금속·특수강에)
+### 2순위: 업종 분류 재분류 + 업종 점수 계산 전환 — 사용자 UI 확인 대기
 
-### 2순위: 업종 점수 계산 방식 전환 — 사용자 UI 확인 대기
-
-**구현 완료** (2026-07-12). min-max 정규화 → 순위 기반 점수 교체. 단위 테스트 112개 통과, 런타임 기동 확인.
+**구현 완료** (2026-07-13). 69→55 업종 재분류 + 9개 업종명 정비 + min-max 정규화 → 순위 기반 점수 교체.
 
 **사용자 확인 필요 항목**:
+- 업종순위 화면: 55개 업종이 표시되는지, 변경된 업종명이 반영되었는지
 - 업종순위 화면: 점수 바 분포가 균등한 간격으로 표시되는지 (순위 기반이므로 균등 간격)
-- 업종순위 화면: 순위와 점수가 일치하는지 (1위가 가장 높은 점수)
+- 매수 후보 화면: 25개 이동 종목이 새 업종에 표시되는지
 
 ### 3순위: 아키텍처 전수 점검 P1 세션 (B-07)
 

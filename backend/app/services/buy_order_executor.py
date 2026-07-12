@@ -104,7 +104,6 @@ async def evaluate_buy_candidates() -> None:
 
     # ── 전역 조건 스냅샷: 변화 없으면 매수 시도 스킵 (원칙 11 이벤트 기반) ──
     _after_hours = is_krx_after_hours()
-    _rebuy_block_on = bool(state.integrated_system_settings_cache.get("rebuy_block_on", True))
 
     _buyable_codes: list[str] = []
     for bt in ss.buy_targets:
@@ -112,8 +111,6 @@ async def evaluate_buy_candidates() -> None:
         if not s.guard_pass:
             continue
         if _after_hours and not is_nxt_enabled(s.code):
-            continue
-        if _rebuy_block_on and s.code in state.auto_trade._bought_today:
             continue
         _buyable_codes.append(s.code)
 
@@ -138,10 +135,6 @@ async def evaluate_buy_candidates() -> None:
             continue
         # 장외 시간 KRX 단독 종목 매수 차단
         if _after_hours and not is_nxt_enabled(s.code):
-            continue
-
-        # 재매수 차단 사전 체크 — execute_buy 불필요 호출 + 로그 노이즈 제거
-        if _rebuy_block_on and s.code in state.auto_trade._bought_today:
             continue
 
         logger.info("[매매] 매수 시도: %s(%s) 업종=%s",

@@ -168,6 +168,8 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         "boost_order_ratio_pct", "boost_order_ratio_score",
         "boost_program_net_buy_on", "boost_program_net_buy_score",
         "boost_trade_amount_rank_on", "boost_trade_amount_rank_score",
+        # 재매수 차단 — 보유/금일매수 종목의 buy_targets/blocked_targets 분류에 영향
+        "rebuy_block_on",
     }
     if changed_keys & _SECTOR_UI_KEYS:
         if is_engine_running():

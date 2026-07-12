@@ -130,6 +130,8 @@ def create_buy_targets(
     bought_today_codes: set[str] | None = None,
     boost_trade_amount_rank_on: bool = False,
     boost_trade_amount_rank_score: float = 1.0,
+    # ── 재매수 차단 (보유중/금일매수 종목 차단 여부) ──
+    rebuy_block_on: bool = True,
 ) -> SectorSummary:
     """
     업종 스코어 -> 매수 타겟 큐 생성.
@@ -185,15 +187,17 @@ def create_buy_targets(
     _held = held_codes or set()
     _bought_today = bought_today_codes or set()
 
-    # ── 보유/금일매수 종목: 전역 조건이 기술적 가드보다 우선 (SSOT: trading.py 실행 게이트와 동일 순서) ──
+    # ── 보유/금일매수 종목: 재매수 차단 ON 시에만 차단 마킹 (SSOT: trading.py execute_buy 게이트와 동일 조건) ──
+    # rebuy_block_on=False → 보유/금일매수 종목도 매수 후보에 포함 (사용자 설정: 재매수 허용)
     # guard_pass=False → blocked_targets 로 이동, UI 제한 컬럼 "차단" 표시
-    for s, _ in all_stocks:
-        if s.code in _held:
-            s.guard_pass = False
-            s.guard_reason = "보유중"
-        elif s.code in _bought_today:
-            s.guard_pass = False
-            s.guard_reason = "금일매수"
+    if rebuy_block_on:
+        for s, _ in all_stocks:
+            if s.code in _held:
+                s.guard_pass = False
+                s.guard_reason = "보유중"
+            elif s.code in _bought_today:
+                s.guard_pass = False
+                s.guard_reason = "금일매수"
 
     # ── 거래대금 순위 계산: 매수후보 테이블 통과 종목만 대상 (차단 종목 제외) ──
     _trade_amount_rank_map: dict[str, int] = {}
@@ -311,4 +315,5 @@ def build_buy_targets_from_settings(
         bought_today_codes=bought_today_codes,
         boost_trade_amount_rank_on=bool(settings.get("boost_trade_amount_rank_on", False)),
         boost_trade_amount_rank_score=float(settings.get("boost_trade_amount_rank_score", 1.0)),
+        rebuy_block_on=bool(settings.get("rebuy_block_on", True)),
     )
