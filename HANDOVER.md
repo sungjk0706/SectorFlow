@@ -4,14 +4,14 @@
 - 없음
 
 ## 직전 완료 작업
+- **2026-07-12: 백엔드 로그 한글화 4차 1단계 — 내부 코드 식별자 노출 23건 한글화**
+  - **수정 파일**: `services/sector_data_provider.py`, `services/engine_loop.py`, `services/core_queues.py`, `services/engine_ws_fill_followup.py`, `core/settings_file.py`, `core/trading_calendar.py`, `core/sector_stock_cache.py`, `core/stock_classification_data.py`, `core/sector_mapping.py`, `pipelines/pipeline_compute.py` (10개 소스) + `tests/test_engine_loop.py` (1개 테스트) = 11개 파일
+  - **내용**: 로그 메시지에 내부 코드 식별자(함수명/변수명/파일명)가 그대로 노출된 23건 한글화 — sector_data_provider.py:241 "recompute_sector_summary_now 진입"→"업종순위 재계산 진입", engine_loop.py:120/123/308 "role_mappings/broker_specs/tick_queue"→"역할 매핑/증권사 명세/틱 큐", settings_file.py:158/249/272/274/415 "load_selected_settings/integrated_system_settings/broker_specs"→"선택 설정/통합 설정/증권사 명세", trading_calendar.py:282/286 "initialize_trading_calendar_cache()/refresh_trading_days_for_year()"→"거래일 캐시 초기화/연도별 거래일 갱신", sector_stock_cache.py:30/32/46 "filter_summary_meta"→"필터 요약 메타", stock_classification_data.py:224/236/239 "custom_sectors 기반 master_stocks_table.sector/sector"→"사용자 업종 기반 종목 업종/업종", core_queues.py:102 "tick_queue"→"틱 큐", pipeline_compute.py:365 "settings.py"→"설정 파일", sector_mapping.py:36/75/95 "get_merged_sector/get_merged_sectors_batch/get_merged_all_sectors"→"업종 통합 조회/업종 일괄 통합 조회/전체 업종 통합 조회", engine_ws_fill_followup.py:27 "fill_00"→"체결". 테스트 assertion 2건 불일치 수정 (test_engine_loop.py L360 "broker_specs 형식 오류"→"증권사 명세 형식 오류", L370 "role_mappings 형식 오류"→"역할 매핑 형식 오류"). P21 사용자 투명성 준수
+  - **검증**: py_compile 11개 파일 통과, 전체 2773 passed 0 failed (9.15s), 런타임 기동 확인 ("[업종] 업종순위 재계산 진입, 실행중=True" 한글화 정상 출력, 에러/Traceback 없음, 기동시간 186ms), 잔존 프로세스 0개
 - **2026-07-12: 토큰 발급/폐기 로그 API 코드 제거 + 테스트-코드 로그 문자열 불일치 5건 수정**
   - **수정 파일**: `core/kiwoom_rest.py`, `services/engine_account.py` (2개 소스) + `tests/test_broker_router.py`, `tests/test_risk_manager.py` (2개 테스트) = 4개 파일
   - **내용**: (A) 키움 로그 메시지에서 내부 API 코드(au10001/au10002) 제거 — kiwoom_rest.py:243 "요청 과다(인증 API(au10001))" → "요청 과다", kiwoom_rest.py:302 "토큰 폐기 완료 (토큰 폐기 API(au10002))" → "토큰 폐기 완료" (LS증권은 이미 코드 없음, 양사 통일). engine_account.py:142 "인증 API(au10001) 발급 실패" → "토큰 발급 실패". docstring의 API 코드는 유지 (개발자 참고용). P10 SSOT + P21 사용자 투명성 준수. (B) 백엔드 로그 한글화 작업(2차/3차)에서 소스 로그를 한국어로 변경했으나 테스트 assertion이 예전 문자열 기대하여 발생한 5건 불일치 수정 — test_broker_router.py 3건 ("spec 없음"→"설정 없음", "폴백"→"대체" 2건), test_risk_manager.py 2건 ("Circuit Breaker"→"서킷브레이커" 2건). 소스 코드 변경 없이 테스트 파일만 수정
   - **검증**: py_compile 2개 소스 파일 통과, 관련 테스트 116 passed (test_kiwoom_rest.py + test_engine_account.py), 전체 2773 passed 0 failed (8.82s), 런타임 기동 확인 ("키움증권 토큰 발급 완료" API 코드 없이 정상 출력, 에러/Traceback 없음, 기동시간 133ms), 잔존 프로세스 0개
-- **2026-07-12: 증권사별 전용 파일 로그 표시명 통일 — 토큰/연결/주문/잔고 로그에 증권사명 추가**
-  - **수정 파일**: `core/kiwoom_rest.py`, `core/ls_rest.py`, `core/kiwoom_connector.py`, `core/ls_connector.py`, `core/kiwoom_order.py`, `core/kiwoom_providers.py`, `core/ls_providers.py`, `services/engine_loop.py` (8개 소스) + `tests/test_kiwoom_rest.py`, `tests/test_ls_rest.py` (2개 테스트) = 10개 파일
-  - **내용**: 증권사별 전용 파일(커넥터/REST/주문/프로바이더)의 로그 메시지에 증권사 표시명 추가 — 각 파일에 모듈 수준 상수 `_BROKER_DISPLAY = BROKER_DISPLAY_NAMES["kiwoom"]`(또는 `"ls"`) 정의 후 모든 로그에 `%s` + `_BROKER_DISPLAY` 추가. kiwoom_rest.py(31건: 토큰 발급/폐기/REST 호출/429 재시도/연속조회), ls_rest.py(46건: 토큰 발급/폐기/REST 호출/주문 매수·매도/429 재시도), kiwoom_connector.py(41건: 연결/재연결/구독/로그인/소켓 종료), ls_connector.py(57건: 연결/재연결/구독/계좌 등록/장운영정보/업종지수), kiwoom_order.py(3건: 응답 코드/통신 오류/재시도 실패), kiwoom_providers.py(4건: 토큰 없음/예수금 응답 없음/오류 응답코드/잔고 조회 완료), ls_providers.py(1건: 잔고 조회 실패), engine_loop.py(3건: L181/L185/L228 "증권사" → 특정 증권사명 명시). 하드코딩된 "키움"/"LS증권" 7건 SSOT 상수로 교체 (kiwoom_connector.py L242, ls_connector.py L59/62/83/374/407/441). 테스트 파일 "스킵"→"생략" 불일치 3건 수정 (test_kiwoom_rest.py L387, test_ls_rest.py L285/L317 — 코드는 "생략"이었으나 테스트는 "스킵" 검증). P10 SSOT 원칙 준수
-  - **검증**: py_compile 10개 파일 통과, pytest — test_kiwoom_rest.py + test_ls_rest.py 148 passed, test_kiwoom_connector.py + test_ls_connector.py 184 passed, 전체 2768 passed (기존 실패 5건 무관 확인 — test_broker_router.py 3건 "spec 없음" 문자열 검증 + test_risk_manager.py 2건 "Circuit Breaker" vs "서킷브레이커" 불일치, git stash로 수정 전에도 동일 실패 확인), 런타임 기동 확인 ("[연결] LS증권 토큰 발급 성공 (유효기간=72690초)", "[연결] 키움증권 토큰 발급 완료", "[연결] LS증권 연결 완료 (테스트모드=True)" 증권사 표시명 정상 출력 확인), 잔존 프로세스 0개
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
@@ -27,6 +27,15 @@
 - **루트 폴더 정리**: 완료된 1회성 계획서 3건 + 로컬 산출물 4건 제거 (2026-07-12). `docs/architecture_audit_plan.md`, `docs/ghost_position_investigation.md`, `docs/api_specs/` 유지
 
 ## 진행 중 작업
+
+### 백엔드 로그 한글화 4차 작업 (내부 코드 식별자 노출) — 1/2단계 완료
+
+> **이력**: 1차 작업(2026-07-09) 약 30개 파일 1차 한글화. 2차 작업(사용자 노출 로그) 5단계 전부 완료. 3차 작업(내부 디버그 로그) 8단계 전부 완료. 4차 작업(내부 코드 식별자 노출) 1단계 완료.
+
+| 단계 | 내용 | 파일 수 | 상태 |
+|------|------|---------|------|
+| 1단계 | A 카테고리 — 함수명/변수명/파일명 노출 23건 | 11 | ☑ 완료 (2026-07-12) |
+| 2단계 | B 카테고리 — 프로그래밍 용어(await, UNREG, REG 등) | 미정 | ☐ 미시작 |
 
 ### 백엔드 로그 한글화 3차 작업 (내부 디버그 로그) — 8/8단계 전부 완료
 

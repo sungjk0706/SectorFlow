@@ -99,7 +99,7 @@ def put_tick_with_drop_policy(data: dict) -> None:
         try:
             queue.get_nowait()
             queue.put_nowait(data)
-            logger.warning("[시스템] tick_queue 누락 발생 - 최신 데이터 유지")
+            logger.warning("[시스템] 틱 큐 누락 발생 - 최신 데이터 유지")
         except asyncio.QueueEmpty:
             queue.put_nowait(data)
 

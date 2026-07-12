@@ -117,10 +117,10 @@ async def _load_broker_spec_async(broker_nm: str, settings: dict) -> list:
                 if isinstance(role_mappings, dict):
                     return list(role_mappings.values())  # dict → list 변환
                 else:
-                    logger.warning("[연산] role_mappings 형식 오류: %s (기대: dict)", type(role_mappings))
+                    logger.warning("[연산] 역할 매핑 형식 오류: %s (기대: dict)", type(role_mappings))
                     return []
             else:
-                logger.warning("[연산] broker_specs 형식 오류: %s (기대: dict)", type(spec))
+                logger.warning("[연산] 증권사 명세 형식 오류: %s (기대: dict)", type(spec))
                 return []
         return []
     except Exception as e:
@@ -305,7 +305,7 @@ async def run_engine_loop() -> None:
                         for connector in _mgr._connectors.values():
                             if hasattr(connector, 'set_queue_callback'):
                                 connector.set_queue_callback(tick_queue)
-                        logger.info("[연결] 커넥터 큐 콜백 설정 완료 (tick_queue)")
+                        logger.info("[연결] 커넥터 큐 콜백 설정 완료 (틱 큐)")
                         state.connector_manager = _mgr
                         state.active_connector = _mgr.get_connector(broker_nm)
                         await _mgr.connect_all()

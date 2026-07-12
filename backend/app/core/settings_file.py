@@ -155,7 +155,7 @@ async def load_selected_settings(keys: set[str]) -> dict:
                 continue
             result[key] = _parse_value(row["value"], row["value_type"])
     except Exception as e:
-        logger.error("[설정] load_selected_settings 실패 (keys=%s): %s", keys, e)
+        logger.error("[설정] 선택 설정 로드 실패 (keys=%s): %s", keys, e)
 
     from backend.app.core.encryption import decrypt_value
     for enc_field in _ENCRYPT_FIELDS:
@@ -246,7 +246,7 @@ async def load_integrated_system_settings() -> dict:
             else:
                 db_data[key] = parsed_val
     except Exception as e:
-        logger.error("[설정] DB integrated_system_settings 로드 실패: %s", e)
+        logger.error("[설정] DB 통합 설정 로드 실패: %s", e)
         return {**DEFAULT_USER_SETTINGS, **DEFAULT_SYSTEM_CONFIG}
 
     for key, default_value in DEFAULT_USER_SETTINGS.items():
@@ -269,9 +269,9 @@ async def load_integrated_system_settings() -> dict:
                         content = await f.read()
                     spec_data = json.loads(content)
                     db_data["_broker_specs"][broker_name] = spec_data
-                    logger.info("[설정] broker_specs 초기화: %s", BROKER_DISPLAY_NAMES.get(broker_name, broker_name))
+                    logger.info("[설정] 증권사 명세 초기화: %s", BROKER_DISPLAY_NAMES.get(broker_name, broker_name))
                 except Exception as e:
-                    logger.warning("[설정] broker_specs 로드 실패 (%s): %s", spec_file, e)
+                    logger.warning("[설정] 증권사 명세 로드 실패 (%s): %s", spec_file, e)
 
     global _migrations_completed
 
@@ -412,7 +412,7 @@ async def save_settings(data: dict, delete_keys: list[str] | None = None) -> Non
                 )
 
             await conn.commit()
-            logger.info("[설정] DB 저장 완료 — %d개 broker_specs, %d개 일반 설정", len(broker_specs_params), len(bulk_params))
+            logger.info("[설정] DB 저장 완료 — %d개 증권사 명세, %d개 일반 설정", len(broker_specs_params), len(bulk_params))
         except Exception as e:
             await conn.rollback()
             logger.error("[설정] DB 저장 실패: %s", e, exc_info=True)

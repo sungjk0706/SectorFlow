@@ -362,7 +362,7 @@ async def _handle_config_update(
     """
     # 캐시 직접 업데이트 제거 - 단일 소스 진리 원칙 준수
     # DB에서 캐시 갱신은 settings.py → apply_settings_change → refresh_engine_integrated_system_settings_cache 경로만 사용
-    logger.info("[연산] 설정 변경 처리 - 캐시 갱신은 settings.py에서 DB 로드로 수행됨")
+    logger.info("[연산] 설정 변경 처리 - 캐시 갱신은 설정 파일에서 DB 로드로 수행됨")
     
     # 설정(투자모드, 증권사 등) 변경에 따라 Header 상태 갱신
     from backend.app.services.engine_account_notify import notify_desktop_header_refresh

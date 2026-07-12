@@ -24,6 +24,6 @@ def run_after_order_fill_ws(
     인메모리(dry_run) 잔고 기반 메타 갱신 + 매도조건 검사만 수행.
     """
     if is_dry_run:
-        logger.debug("[시스템] fill_00 후속 — REST 생략, 인메모리 잔고 기준 처리")
+        logger.debug("[시스템] 체결 후속 — REST 생략, 인메모리 잔고 기준 처리")
     refresh_account_snapshot_meta()
     run_sell_conditions_if_applicable()

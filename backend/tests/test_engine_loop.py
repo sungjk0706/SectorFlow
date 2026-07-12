@@ -357,7 +357,7 @@ class TestLoadBrokerSpecAsync:
             result = await engine_loop._load_broker_spec_async("kiwoom", settings)
         assert result == []
         warning_msgs = [str(c) for c in mock_logger.warning.call_args_list]
-        assert any("broker_specs 형식 오류" in m for m in warning_msgs)
+        assert any("증권사 명세 형식 오류" in m for m in warning_msgs)
 
     @pytest.mark.asyncio
     async def test_role_mappings_not_dict_returns_empty(self):
@@ -367,7 +367,7 @@ class TestLoadBrokerSpecAsync:
             result = await engine_loop._load_broker_spec_async("kiwoom", settings)
         assert result == []
         warning_msgs = [str(c) for c in mock_logger.warning.call_args_list]
-        assert any("role_mappings 형식 오류" in m for m in warning_msgs)
+        assert any("역할 매핑 형식 오류" in m for m in warning_msgs)
 
     @pytest.mark.asyncio
     async def test_empty_role_mappings_returns_empty_list(self):
