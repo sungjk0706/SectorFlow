@@ -595,7 +595,7 @@ _flush_sector_recompute_impl()
     compute_sector_scores()
          │
          ▼
-    calculate_weighted_scores()  — min-max 정규화 + 가중치 점수
+    calculate_weighted_scores()  — 순위 기반 점수 + 가중치 점수
          │
          ▼
     업종 컷오프 (min_rise_ratio 미만 → rank=0)
@@ -687,7 +687,7 @@ SectorScore (업종 단위)
 ├── scored_trade_amount (트리밍 후)
 ├── scored_rise_ratio (트리밍 후)
 ├── final_score (가중치 최종 점수 0~100)
-├── metric_scores (지표별 정규화 점수)
+├── metric_scores (지표별 순위 점수)
 ├── rank (1=최강, 0=순위 없음)
 └── stocks: list[StockScore]
 
@@ -708,10 +708,14 @@ SectorSummary (전체 결과)
 
 **계산 과정:**
 1. 가중치 정규화 (합 = 1.0, 음수 클램프, 0이면 기본값)
-2. 각 지표별 min-max 정규화 → 0~100 점
-3. `final_score = Σ(normalized_i × weight_i)`
-4. 정렬: `final_score` 내림차순 → `rise_ratio` 내림차순 → 업종명 오름차순 (결정적 정렬)
+2. 각 지표별 순위 점수 변환 (`rank_to_score`): 순위 점수 = (N - rank + 1) / N × 100
+3. `final_score = Σ(rank_score_i × weight_i)`
+4. 정렬: `final_score` 내림차순 → `scored_rise_ratio` 내림차순 → `scored_trade_amount` 내림차순 → 업종명 오름차순 (결정적 정렬)
 5. rank 부여 (1-based)
+
+> **순위 기반 점수**: 각 지표별로 트리밍 후 원시값 기준 순위를 매기고, 순위를 점수로 변환.
+> 동점 처리: 같은 값 = 같은 순위, 다음 순위 건너뜀 (표준 순위 방식).
+> 1위 = 100점, N위 = 100/N 점. min-max 정규화 대비 long-tail 분포에 강건.
 
 ### 6.3 트리밍 (Trimming)
 
@@ -733,7 +737,7 @@ SectorSummary (전체 결과)
 | 모드 | 조건 | 동작 |
 |------|------|------|
 | 전체 재계산 | 캐시 없음 (콜드 스타트) | `compute_full_sector_summary()` |
-| 증분 재계산 | 캐시 있음, dirty 섹터만 | dirty 섹터만 재계산 → 병합 → 전체 정규화 |
+| 증분 재계산 | 캐시 있음, dirty 섹터만 | dirty 섹터만 재계산 → 병합 → 전체 순위 점수 재계산 |
 
 ### 6.6 가산점 (Boost Score)
 
@@ -1210,7 +1214,7 @@ SectorFlow/
 │       ├── domain/                  — 도메인 로직 (순수 계산)
 │       │   ├── models.py            — 데이터 모델 (StockScore, SectorScore etc.)
 │       │   ├── sector_calculator.py — 업종 점수 계산
-│       │   ├── sector_score.py      — 정규화 + 가중치 계산
+│       │   ├── sector_score.py      — 순위 기반 점수 + 가중치 계산
 │       │   ├── sector_filter.py     — 업종 필터링/그룹핑
 │       │   ├── buy_filter.py        — 매수 타겟 생성 + 가드
 │       │   └── stock_filter.py      — 종목 필터 로직

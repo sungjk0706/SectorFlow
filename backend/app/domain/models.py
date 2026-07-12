@@ -48,7 +48,7 @@ class SectorScore:
     scored_rise_ratio: float = 0.0      # 가중치 점수 계산에 사용되는 상승비율
     # ── 신규 필드: 가중치 점수 시스템 ──
     final_score: float = 0.0                          # 가중치 최종 점수 (0.0~100.0)
-    metric_scores: dict[str, float] = field(default_factory=dict)  # 지표별 정규화 점수
+    metric_scores: dict[str, float] = field(default_factory=dict)  # 지표별 순위 점수
 
 
 @dataclass
