@@ -4,10 +4,10 @@
 - **ARCHITECTURE.md "JIF bypass" 기록 정리 완료**: 3단계 문서 정리에서 "JIF bypass: 0B 틱 우회로 직통 전송 (지연 감소)" 기록을 `price_pass_through_queue` 제거 사실로 대체. grep 결과 잔존 0건 확인 완료
 
 ## 직전 완료 작업
-- **2026-07-12: ARCHITECTURE.md 5.1/5.2/6.4절 실제 코드에 맞게 정정 — WS 구독 대상·전송 경로·배치 루프 명시 (커밋 e834a68)**
-  - **수정 파일**: `ARCHITECTURE.md`, `backend/app/pipelines/pipeline_gateway.py` (2개)
-  - **내용**: 실시간 시세 흐름 다이어그램이 실제 코드와 불일치하여 사용자 설계 의도가 문서에 반영되지 않은 문제 정정. 5.1절 — WS 구독 대상(1차 필터 통과 종목 + 보유종목) 명시, 필터 미통과 종목은 아무 처리도 하지 않는다는 사실 명시, Compute Loop 내부 5단계 순차 처리 다이어그램으로 정정, 01/0D/PGM 틱 전송 경로 일관성(P23) 명시. 5.2절 — "10초 디바운스" → "0.2초 배치 루프" 정정, Phase 1/Phase 2 구조 명시. 6.4절 — 1차 필터가 all_codes → _filtered 플래그 → WS 구독 대상 선정 기준 명시. pipeline_gateway.py 상단 주석 — 01/0B 틱(broadcast_queue)과 0D/PGM 틱(직접 broadcast) 두 가지 전송 경로 명시. "추후 논의 필요"의 broadcast_queue 불일치 항목 해결 (공식 패턴으로 채택)
-  - **검증**: pytest 2784 passed (8.35s), 런타임 기동 정상 (큐 초기화 로그 "시세=20000, 전송=2000, 제어=500", 1338종목 로드, 에러 없음, 205ms), 잔존 프로세스 0개
+- **2026-07-12: 거래대금 순위 가산점을 통과 종목만으로 제한 — 매수 불가 종목 1위 무효화 해결 (커밋 77d0e10)**
+  - **수정 파일**: `backend/app/domain/buy_filter.py`, `backend/tests/test_buy_filter.py`, `frontend/src/stores/hotStore.ts`, `frontend/src/pages/buy-settings.ts` (4개)
+  - **내용**: 차단/보유 종목이 거래대금 1위를 차지하면 가산점과 하이라이트가 매수 불가능한 종목에 소비되어 기능이 무의미해지는 문제 수정. 백엔드 `buy_filter.py` — 거래대금 순위 계산을 `guard_pass` 통과 종목만으로 제한 (`_all_for_rank` → `_pass_for_rank`), 차단 종목은 `trade_amount_rank = -1`. 프론트엔드 `hotStore.ts` — `recalcTradeAmountRank` 동일 로직 적용. `buy-settings.ts` — 설정 라벨 "(보유제외)" → "(매수가능종목만)" 정정 (P21 사용자 투명성). 호가잔량비/프순매 가산점(통과 종목만)과 일관성 확보 (P23). 테스트 `test_trade_amount_rank_includes_held_codes` → `test_trade_amount_rank_excludes_held_codes`로 반대 검증으로 수정
+  - **검증**: pytest test_buy_filter.py 57 passed (0.10s), npm run build 성공 (1.25s), 런타임 기동 정상 (185ms, 에러 없음, 잔존 프로세스 0개)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
