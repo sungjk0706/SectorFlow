@@ -304,7 +304,8 @@ class SectorStockTable extends HTMLElement {
     const uiState = uiStore.getState()
     this.currentMatchedCodes = filterStocksBySearch(Object.values(state.sectorStocks), this.searchTerm)
     this.currentMatchedSectors = filterSectorsByName(state.sectorStocks, this.sectorSearchTerm)
-    const maxTargets = Number(uiState.settings?.sector_max_targets) || DEFAULT_SECTOR_MAX_TARGETS
+    const rawTargets = uiState.settings?.sector_max_targets
+    const maxTargets = typeof rawTargets === 'number' ? rawTargets : DEFAULT_SECTOR_MAX_TARGETS
     // 5일평균거래대금 필터링은 백엔드에서 수행 (단일 소스 진리)
 
     return computeRows(
