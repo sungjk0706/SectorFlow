@@ -4,21 +4,21 @@
 - 없음
 
 ## 직전 완료 작업
+- **2026-07-12: 토큰 발급/폐기 로그 API 코드 제거 + 테스트-코드 로그 문자열 불일치 5건 수정**
+  - **수정 파일**: `core/kiwoom_rest.py`, `services/engine_account.py` (2개 소스) + `tests/test_broker_router.py`, `tests/test_risk_manager.py` (2개 테스트) = 4개 파일
+  - **내용**: (A) 키움 로그 메시지에서 내부 API 코드(au10001/au10002) 제거 — kiwoom_rest.py:243 "요청 과다(인증 API(au10001))" → "요청 과다", kiwoom_rest.py:302 "토큰 폐기 완료 (토큰 폐기 API(au10002))" → "토큰 폐기 완료" (LS증권은 이미 코드 없음, 양사 통일). engine_account.py:142 "인증 API(au10001) 발급 실패" → "토큰 발급 실패". docstring의 API 코드는 유지 (개발자 참고용). P10 SSOT + P21 사용자 투명성 준수. (B) 백엔드 로그 한글화 작업(2차/3차)에서 소스 로그를 한국어로 변경했으나 테스트 assertion이 예전 문자열 기대하여 발생한 5건 불일치 수정 — test_broker_router.py 3건 ("spec 없음"→"설정 없음", "폴백"→"대체" 2건), test_risk_manager.py 2건 ("Circuit Breaker"→"서킷브레이커" 2건). 소스 코드 변경 없이 테스트 파일만 수정
+  - **검증**: py_compile 2개 소스 파일 통과, 관련 테스트 116 passed (test_kiwoom_rest.py + test_engine_account.py), 전체 2773 passed 0 failed (8.82s), 런타임 기동 확인 ("키움증권 토큰 발급 완료" API 코드 없이 정상 출력, 에러/Traceback 없음, 기동시간 133ms), 잔존 프로세스 0개
 - **2026-07-12: 증권사별 전용 파일 로그 표시명 통일 — 토큰/연결/주문/잔고 로그에 증권사명 추가**
   - **수정 파일**: `core/kiwoom_rest.py`, `core/ls_rest.py`, `core/kiwoom_connector.py`, `core/ls_connector.py`, `core/kiwoom_order.py`, `core/kiwoom_providers.py`, `core/ls_providers.py`, `services/engine_loop.py` (8개 소스) + `tests/test_kiwoom_rest.py`, `tests/test_ls_rest.py` (2개 테스트) = 10개 파일
   - **내용**: 증권사별 전용 파일(커넥터/REST/주문/프로바이더)의 로그 메시지에 증권사 표시명 추가 — 각 파일에 모듈 수준 상수 `_BROKER_DISPLAY = BROKER_DISPLAY_NAMES["kiwoom"]`(또는 `"ls"`) 정의 후 모든 로그에 `%s` + `_BROKER_DISPLAY` 추가. kiwoom_rest.py(31건: 토큰 발급/폐기/REST 호출/429 재시도/연속조회), ls_rest.py(46건: 토큰 발급/폐기/REST 호출/주문 매수·매도/429 재시도), kiwoom_connector.py(41건: 연결/재연결/구독/로그인/소켓 종료), ls_connector.py(57건: 연결/재연결/구독/계좌 등록/장운영정보/업종지수), kiwoom_order.py(3건: 응답 코드/통신 오류/재시도 실패), kiwoom_providers.py(4건: 토큰 없음/예수금 응답 없음/오류 응답코드/잔고 조회 완료), ls_providers.py(1건: 잔고 조회 실패), engine_loop.py(3건: L181/L185/L228 "증권사" → 특정 증권사명 명시). 하드코딩된 "키움"/"LS증권" 7건 SSOT 상수로 교체 (kiwoom_connector.py L242, ls_connector.py L59/62/83/374/407/441). 테스트 파일 "스킵"→"생략" 불일치 3건 수정 (test_kiwoom_rest.py L387, test_ls_rest.py L285/L317 — 코드는 "생략"이었으나 테스트는 "스킵" 검증). P10 SSOT 원칙 준수
   - **검증**: py_compile 10개 파일 통과, pytest — test_kiwoom_rest.py + test_ls_rest.py 148 passed, test_kiwoom_connector.py + test_ls_connector.py 184 passed, 전체 2768 passed (기존 실패 5건 무관 확인 — test_broker_router.py 3건 "spec 없음" 문자열 검증 + test_risk_manager.py 2건 "Circuit Breaker" vs "서킷브레이커" 불일치, git stash로 수정 전에도 동일 실패 확인), 런타임 기동 확인 ("[연결] LS증권 토큰 발급 성공 (유효기간=72690초)", "[연결] 키움증권 토큰 발급 완료", "[연결] LS증권 연결 완료 (테스트모드=True)" 증권사 표시명 정상 출력 확인), 잔존 프로세스 0개
-- **2026-07-12: 증권사 로그 표시명 통일 — 코드 식별자 유지 + 로그에 화면 표시명 사용**
-  - **수정 파일**: `services/engine_loop.py`, `core/connector_manager.py`, `services/engine_ws_reg.py`, `core/broker_router.py`, `core/broker_factory.py`, `core/settings_file.py`, `services/market_close_pipeline.py` (7개 파일)
-  - **내용**: 26건 로그 메시지 증권사 표시명 통일 — 기존 로그에서 소문자 "ls" 또는 대문자 "LS"로 출력되던 증권사 식별자를 `BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper())`를 사용하여 화면 표시명("LS증권")으로 통일. engine_loop.py(4건: 연결 완료/기동 완료/토큰 발급 실패/토큰 폐기 실패), connector_manager.py(9건: 커넥터 생성/연결/재연결/구독 복원/구독 해지/연결 해제), engine_ws_reg.py(7건: 구독 복원 생략/완료/실패/업종지수 구독 복원/계좌 구독 복원), broker_router.py(2건: 설정 형식 오류/설정 없음), broker_factory.py(1건: 연결 준비), settings_file.py(1건: broker_specs 초기화), market_close_pipeline.py(2건: 1단계 시작/종목 제공자). 코드 식별자("ls"/"kiwoom" 소문자)는 DB 저장값·설정 파일 키·broker_specs/ls.json 파일명·25개 파일 딕셔너리 키로 사용되므로 유지 (P10 SSOT, P22 데이터 정합성 준수). BROKER_DISPLAY_NAMES에 없는 증권사가 추가되어도 기존처럼 대문자로 출력되도록 폴백 유지
-  - **검증**: py_compile 7개 파일 통과, 런타임 기동 확인 (총 기동시간 201ms, 에러/Traceback 없음, "[연결] LS증권 연결 완료 (테스트모드=True)" 화면 표시명 출력 확인, "[연산] 기동 완료 — LS증권 테스트모드 / 계좌: 미설정" 확인), 잔존 프로세스 0개
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈), 수익현황 업종 섹션 연동(도넛 범례 클릭→스크롤+하이라이트), 전체보기/전체접기 토글 버튼, 차트 onMove undefined 크래시 근본 해결(render early return 시 barRects 동기화), 수익현황 기간 선택 상태 재기동 후 유지(localStorage quickLabel 영속화 + 초기 활성 버튼 복원), 수익상세 페이지 뷰 상태 재기동 후 유지(localStorage selectedView+drilldownActive+dateRange 영속화, 7곳 핸들러 persistViewState), 스핀버튼 초기 비활성 버그 근본 해결(store subscriber settings 변경 시에만 notify + createSpinButtons mousedown 포커스 유지 + registerEditing 데드 코드 제거), 증권사 변경 확인 팝업 추가(showConfirmDialog 재사용 + 변경 전/후 증권사명 + 4개 작업 요약 + 취소 시 라디오 복원 + BROKER_NAMES SSOT 상수), brokerSaving disabled 잔존 버그 수정(then 콜백 실행 순서 교정) — 모두 코드 확인 완료, `npm run build` 통과
 - **Git**: 증권사 변경 시 토큰 폐기 로그 불일치 수정 (P15/P21) — 커밋 완료 (10dbafe), 런타임 검증 완료
 - **AGENTS.md**: 4섹션 우선순위 구조 재구성 완료 (섹션1 개요 > 섹션2 아키텍처 원칙 > 섹션3 수행 규칙 > 섹션4 작업 프로세스). 신규 규칙 7건 추가 — 사용자 프로필 "코딩 1도 모름", 아키텍처 원칙 참조, 사용자 의사소통 규칙(기술 명령어 안내 금지·UI 기준 검증·API 직접 호출 안내 금지), 보고서 5항목 명시화, HANDOVER.md read-before-write 의무, 작업량 기반 사전 분할, 단계 완료 시 컨텍스트 점검. 기존 규칙 15개 누락 없음 대조 완료
-- **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2763 passed, 0 failed
+- **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2773 passed, 0 failed
   - 0% 모듈 7개 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
   - 10%대 모듈 9개 해결: engine_settings(100%), stock_tables(100%), stock_filter(99.44%), stock_classification_data(95.14%), settings_store(93.13%), sector_data_provider(92.94%), engine_bootstrap(49.62%), engine_snapshot(39.22%), engine_sector_confirm(33.45%)
   - 30~50%대 Phase 1,2,3 전부 완료 (실측): engine_snapshot(39.22%→97.39%, 12 테스트), engine_sector_confirm(33.45%→100%, 51 테스트), engine_bootstrap(49.62%→99.25%, 12 테스트)
@@ -91,19 +91,19 @@
 - 세션 완료 시 계획서 섹션 8 "점검 진행 현황 요약" 갱신
 - 세션 종료 시 본 `HANDOVER.md` 진행 상태 갱신
 
-### 2순위: 유령 포지션 005930 근본 원인 조사
+### 2순위: P1 세션 (B-08~B-11, F-02)
+B-06, B-07 완료 후 진행.
+
+### 3순위: P2 세션 (B-12~B-19, F-03~F-04)
+P1 세션 완료 후 진행.
+
+### 4순위: P3 세션 (B-20~B-23, F-05~F-07)
+P2 세션 완료 후 진행.
+
+### 5순위: 유령 포지션 005930 근본 원인 조사
 - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
 - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
 - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
-
-### 3순위: P1 세션 (B-08~B-11, F-02)
-B-06, B-07 완료 후 진행.
-
-### 4순위: P2 세션 (B-12~B-19, F-03~F-04)
-P1 세션 완료 후 진행.
-
-### 5순위: P3 세션 (B-20~B-23, F-05~F-07)
-P2 세션 완료 후 진행.
 
 ## 미해결 문제
 - **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결**

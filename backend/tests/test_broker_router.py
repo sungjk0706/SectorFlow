@@ -109,7 +109,7 @@ class TestInitAndLoadSpecs:
             BrokerRouter()
 
         warning_msgs = [str(c) for c in mock_logger.warning.call_args_list]
-        assert any("spec 없음" in m for m in warning_msgs)
+        assert any("설정 없음" in m for m in warning_msgs)
 
     def test_load_specs_empty_broker_name_skipped(self):
         """broker_name이 빈 문자열이면 스킵됨."""
@@ -166,7 +166,7 @@ class TestBuild:
             router = BrokerRouter()
 
         warning_msgs = [str(c) for c in mock_logger.warning.call_args_list]
-        assert any("폴백" in m for m in warning_msgs)
+        assert any("대체" in m for m in warning_msgs)
 
     def test_build_broker_map_set_correctly(self):
         """_broker_map에 feature → broker_name 매핑이 설정됨."""
@@ -384,7 +384,7 @@ class TestGetProvider:
 
         assert result is router._providers["order"]
         warning_msgs = [str(c) for c in mock_logger.warning.call_args_list]
-        assert any("폴백" in m for m in warning_msgs)
+        assert any("대체" in m for m in warning_msgs)
 
     def test_get_provider_empty_page_config_returns_global(self):
         """page_overrides에 page가 있지만 config가 빈 dict → 전역 provider."""
