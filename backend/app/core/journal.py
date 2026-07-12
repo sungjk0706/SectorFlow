@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Persistence Journaling - 메모리 기반 저널링
+영속성 저널링 - 메모리 기반 저널링
 
 책임:
   1. 설정 변경 기록 (SETTINGS_CHANGE)
@@ -27,7 +27,7 @@ _journal_entries: list[dict] = []
 _journal_lock: LazyLock = LazyLock()
 
 
-# ── Journal Event Types ──────────────────────────────────────────────────────
+# ── 저널 이벤트 타입 ──────────────────────────────────────────────────────────
 
 class JournalEventType(str, Enum):
     """저널 이벤트 타입"""
@@ -46,24 +46,24 @@ class JournalEntry:
     seq: int  # SQLite id와 매핑
 
 
-# ── DB Connection ─────────────────────────────────────────────────────────────
+# ── DB 연결 ────────────────────────────────────────────────────────────────────
 
 async def _get_conn() -> None:
-    """No-op - 메모리 전용으로 변경"""
+    """작업 없음 - 메모리 전용으로 변경"""
     pass
 
 
 async def _ensure_loaded() -> None:
-    """No-op - 메모리 전용으로 변경"""
+    """작업 없음 - 메모리 전용으로 변경"""
     pass
 
 
 async def _migrate_from_json() -> None:
-    """No-op - 메모리 전용으로 변경"""
+    """작업 없음 - 메모리 전용으로 변경"""
     pass
 
 
-# ── File I/O ─────────────────────────────────────────────────────────────────
+# ── 파일 입출력 ────────────────────────────────────────────────────────────────
 
 async def _append_entry(event_type: Any, timestamp: float | None = None, data: dict | None = None) -> int:
     """저널 엔트리를 메모리에 추가하고 seq 반환"""
@@ -119,7 +119,7 @@ async def _read_all_entries() -> list[JournalEntry]:
 
 
 async def _perform_compaction() -> None:
-    """Compaction - 오래된 엔트리 정리 (최근 1000개 유지)"""
+    """압축 - 오래된 엔트리 정리 (최근 1000개 유지)"""
     await _ensure_loaded()
     try:
         async with _journal_lock:
@@ -127,24 +127,24 @@ async def _perform_compaction() -> None:
                 cutoff_index = len(_journal_entries) - 1000
                 removed = _journal_entries[:cutoff_index]
                 _journal_entries[:] = _journal_entries[cutoff_index:]
-                logger.info("[연산] Compaction 완료 - %d개 이전 엔트리 삭제됨", len(removed))
+                logger.info("[연산] 압축 완료 - %d개 이전 엔트리 삭제됨", len(removed))
     except Exception as e:
-        logger.error("[연산] Compaction 실패: %s", e, exc_info=True)
+        logger.error("[연산] 압축 실패: %s", e, exc_info=True)
 
 
-# ── Lifecycle Management (No-op in SQLite) ───────────────────────────────────
+# ── 생명주기 관리 (SQLite에서 작업 없음) ────────────────────────────────────────
 
 def start_consumer_task() -> None:
-    """Consumer Task 시작 (SQLite 구조에서는 사용안함)"""
+    """컨슈머 작업 시작 (SQLite 구조에서는 사용안함)"""
     pass
 
 
 async def stop_consumer_task() -> None:
-    """Consumer Task 정지 (SQLite 구조에서는 사용안함)"""
+    """컨슈머 작업 정지 (SQLite 구조에서는 사용안함)"""
     pass
 
 
-# ── Public API - 기록 ────────────────────────────────────────────────────────
+# ── 공개 API - 기록 ────────────────────────────────────────────────────────────
 
 async def record_settings_change(changed_keys: set[str], before: dict, after: dict) -> None:
     """설정 변경 기록"""
@@ -209,7 +209,7 @@ async def record_fill_event(
 # ── OMS 전용 메서드 ─────────────────────────────────────────────────────────
 
 async def oms_get_pending_orders() -> list[dict]:
-    """OMS용 로컬 장부에서 Pending 상태인 주문 조회"""
+    """OMS용 로컬 장부에서 대기 상태인 주문 조회"""
     await _ensure_loaded()
     pending = []
     try:
@@ -220,7 +220,7 @@ async def oms_get_pending_orders() -> list[dict]:
                     if data.get("status") == "pending":
                         pending.append(data)
     except Exception as e:
-        logger.error("[연산] Pending 주문 조회 실패: %s", e, exc_info=True)
+        logger.error("[연산] 대기 주문 조회 실패: %s", e, exc_info=True)
     return pending
 
 
@@ -251,7 +251,7 @@ async def oms_get_next_seq() -> int:
 _next_seq = oms_get_next_seq
 
 
-# ── Public API - 재생 ─────────────────────────────────────────────────────────
+# ── 공개 API - 재생 ─────────────────────────────────────────────────────────────
 
 async def replay_journal(
     settings_change_handler: Callable | None = None,
@@ -320,5 +320,5 @@ async def get_journal_stats() -> dict[str, Any]:
 
 
 async def close_db_connection() -> None:
-    """No-op - 메모리 전용으로 변경"""
+    """작업 없음 - 메모리 전용으로 변경"""
     pass

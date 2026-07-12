@@ -38,12 +38,12 @@ def update_sector_in_cache(code: str, sector: str) -> None:
     """sector 값을 master_stocks_cache에 안전하게 갱신.
 
     단일 진입점: 모든 sector 캐시 쓰기는 이 함수를 경유한다.
-    캐시에 종목이 없으면 경고 로그 후 스킵 (폴백 없음).
+    캐시에 종목이 없으면 경고 로그 후 생략 (폴백 없음).
     """
     from backend.app.services.engine_state import state
     entry = state.master_stocks_cache.get(code)
     if entry is None:
-        logger.warning("[데이터] 종목 %s이(가) 캐시에 없음 — sector 갱신 스킵", code)
+        logger.warning("[데이터] 종목 %s이(가) 캐시에 없음 — 업종 갱신 생략", code)
         return
     entry["sector"] = sector
 

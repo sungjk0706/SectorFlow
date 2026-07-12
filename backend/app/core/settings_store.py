@@ -26,9 +26,9 @@ def _schedule_settings_task(coro, context: str) -> None:
         try:
             done_task.result()
         except asyncio.CancelledError:
-            logger.info("[설정] %s 태스크 취소됨", context)
+            logger.info("[설정] %s 작업 취소됨", context)
         except Exception:
-            logger.warning("[설정] %s 태스크 실패", context, exc_info=True)
+            logger.warning("[설정] %s 작업 실패", context, exc_info=True)
 
     task.add_done_callback(_log_task_error)
 
