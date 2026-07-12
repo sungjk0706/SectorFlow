@@ -40,7 +40,7 @@ def acquire_lock(lock_path: Path) -> bool:
             import msvcrt
             fh = open(lock_path, "w", encoding="utf-8")  # noqa: SIM115
             try:
-                # LK_NBLCK: Non-blocking lock
+                # LK_NBLCK: 논블로킹 잠금
                 msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
             except (OSError, IOError):
                 fh.close()
@@ -101,7 +101,7 @@ def register_cleanup(lock_path: Path) -> None:
 
     def _signal_handler(signum: int, frame: object) -> None:
         release_lock(lock_path)
-        # Restore default handler and re-raise to exit cleanly without Python SystemExit traceback
+        # 기본 핸들러 복원 후 재발생시켜 Python SystemExit 트레이스백 없이 깔끔하게 종료
         signal.signal(signum, signal.SIG_DFL)
         if hasattr(signal, "raise_signal"):
             signal.raise_signal(signum)

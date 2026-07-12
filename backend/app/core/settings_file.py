@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import aiofiles
+from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +133,7 @@ _migrations_completed: bool = False
 
 
 async def load_selected_settings(keys: set[str]) -> dict:
-    """지정된 키만 DB에서 로드 (마이그레이션/기본값/브로커스펙 스킵).
+    """지정된 키만 DB에서 로드 (마이그레이션/기본값/브로커스펙 생략).
     암호화 필드는 복호화하여 반환. 증분 저장 경로에서 사용."""
     if not keys:
         return {}
@@ -268,14 +269,14 @@ async def load_integrated_system_settings() -> dict:
                         content = await f.read()
                     spec_data = json.loads(content)
                     db_data["_broker_specs"][broker_name] = spec_data
-                    logger.info("[설정] broker_specs 초기화: %s", broker_name)
+                    logger.info("[설정] broker_specs 초기화: %s", BROKER_DISPLAY_NAMES.get(broker_name, broker_name))
                 except Exception as e:
                     logger.warning("[설정] broker_specs 로드 실패 (%s): %s", spec_file, e)
 
     global _migrations_completed
 
     if _migrations_completed:
-        # 마이그레이션 이미 완료 — 스킵하고 복호화만 수행
+        # 마이그레이션 이미 완료 — 생략하고 복호화만 수행
         merged = {**db_data}
         from backend.app.core.encryption import decrypt_value
         for enc_field in _ENCRYPT_FIELDS:

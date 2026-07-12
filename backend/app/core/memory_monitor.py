@@ -15,13 +15,13 @@ _started = False
 
 
 def start_memory_monitor() -> None:
-    """tracemalloc 시작 — 앱 기동 최초 1회만 호출."""
+    """메모리 추적 시작 — 앱 기동 최초 1회만 호출."""
     global _started
     if _started:
         return
     tracemalloc.start(25)
     _started = True
-    logger.info("[시스템] tracemalloc 시작 — 할당 추적 활성화 (frames=25)")
+    logger.info("[시스템] 메모리 추적 시작 — 할당 추적 활성화 (frames=25)")
 
 
 def log_memory_snapshot(label: str = "") -> None:
@@ -38,15 +38,15 @@ def log_memory_snapshot(label: str = "") -> None:
     logger.info("[시스템] %s — 총 할당: %.1f MB", label or "스냅샷", total / 1024 / 1024)
 
     for stat in top_stats[:10]:
-        logger.info("[시스템]   %s: %.1f KB (%d blocks)",
+        logger.info("[시스템]   %s: %.1f KB (%d 블록)",
                      stat.traceback, stat.size / 1024, stat.count)
 
 
 def stop_memory_monitor() -> None:
-    """tracemalloc 종료 — 앱 종료 시 호출."""
+    """메모리 추적 종료 — 앱 종료 시 호출."""
     global _started
     if not _started:
         return
     tracemalloc.stop()
     _started = False
-    logger.info("[시스템] tracemalloc 종료")
+    logger.info("[시스템] 메모리 추적 종료")

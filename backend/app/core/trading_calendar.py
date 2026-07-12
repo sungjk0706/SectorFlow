@@ -131,7 +131,7 @@ def _compute_holidays(year: int) -> set[date]:
     1. 고정 양력 휴일 (신정~크리스마스 + 제헌절 2026~)
     2. 음력 휴일 (설날 3일, 추석 3일, 부처님오신날)
     3. 대체 공휴일 (2021년 확대 규칙)
-    4. KRX 전용 연말 휴일 (Dec 31, 마지막 거래일 관측)
+    4. KRX 전용 연말 휴일 (12월 31일, 마지막 거래일 관측)
     5. 임시 공휴일 / 선거일 (수동 오버라이드)
     """
     holidays: set[date] = set()
@@ -213,7 +213,7 @@ def _compute_holidays(year: int) -> set[date]:
 
     holidays.update(substitutes)
 
-    # 4. KRX 전용 연말 휴일 (Dec 31이 주말이면 그 직전 마지막 평일)
+    # 4. KRX 전용 연말 휴일 (12월 31일이 주말이면 그 직전 마지막 평일)
     dec31 = date(year, 12, 31)
     if dec31.weekday() >= 5:
         # 주말이면 직전 금요일을 휴일로 (이미 주말이므로 비거래일)

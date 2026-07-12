@@ -62,11 +62,11 @@ def assemble_filter_summary(meta_json: str, stock_count: int) -> str:
             result += " | 주요 부적격: " + ", ".join(reason_strs)
         return result
     except Exception as e:
-        logger.error("[시스템] meta 조립 실패: %s", e)
+        logger.error("[시스템] 메타데이터 조립 실패: %s", e)
         return ""
 
 
-# ── Pending Settings Changes ──────────────────────────────────────────
+# ── 보류 설정 변경 ──────────────────────────────────────────
 
 _PENDING_KEY = "pending_settings_changes"
 
