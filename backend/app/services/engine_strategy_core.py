@@ -6,42 +6,9 @@ engine_service 모듈의 전역 상태에 get_state/set_state로 접근한다.
 """
 from __future__ import annotations
 import logging
-from backend.app.services import data_manager
 from backend.app.services import settlement_engine
 from backend.app.services.engine_state import state
 logger = logging.getLogger(__name__)
-
-
-def _is_placeholder_stock_name(nm: str) -> bool:
-    s = (nm or "").strip()
-    if not s or s == "알수없음":
-        return True
-    if len(s) >= 4 and s.startswith("종목(") and s.endswith(")"):
-        return True
-    return False
-
-
-def resolve_radar_display_name(stk_cd: str, ws_stk_nm: str, access_token) -> str:
-    """
-    실시간 통신 FID 302 등과 불일치 시 로컬 stock_name_cache로 보강.
-
-    실시간 통신 힌트(FID 302)는 종목코드와 짝이 어긋날 수 있어, 로컬 종목명과 다르면 로컬을 우선한다.
-    """
-    hint = (ws_stk_nm or "").strip()
-    rest_nm = ""
-    try:
-        rest_nm = (data_manager.get_stock_name(stk_cd, access_token) or "").strip()
-    except Exception as e:
-        logger.warning("[시스템] 종목명 REST 조회 실패 %s: %s", stk_cd, e)
-        rest_nm = ""
-
-    if hint and hint != stk_cd:
-        if not _is_placeholder_stock_name(rest_nm) and rest_nm and rest_nm != hint:
-            return rest_nm
-        return hint
-    if rest_nm:
-        return rest_nm
-    return stk_cd
 
 
 def make_detail(stk_cd: str, stk_nm: str, cur_price: int,
@@ -59,9 +26,6 @@ def make_detail(stk_cd: str, stk_nm: str, cur_price: int,
         "strength":    str(strength or "-"),
         "sector":      sector,
     }
-
-
-# register_pending_stock() 삭제: _radar_cnsr_order 삭제로 더 이상 필요 없음
 
 
 def check_test_buy_power(price: int, qty: int, daily_spent: int) -> tuple[bool, str]:
