@@ -12,8 +12,10 @@ import logging
 import time
 from dataclasses import dataclass
 import httpx
-from backend.app.core.broker_urls import build_broker_urls
+from backend.app.core.broker_urls import build_broker_urls, BROKER_DISPLAY_NAMES
 logger = logging.getLogger(__name__)
+
+_BROKER_DISPLAY = BROKER_DISPLAY_NAMES["ls"]
 
 
 @dataclass
@@ -81,7 +83,7 @@ class LsRestAPI:
                     if getattr(self, '_loop', None) and getattr(self, '_loop').is_running():
                         await self._client.aclose()
             except Exception as e:
-                logger.warning("[연결] 이전 클라이언트 정리 실패: %s", e)
+                logger.warning("[연결] %s 이전 클라이언트 정리 실패: %s", _BROKER_DISPLAY, e)
             
             self._client = httpx.AsyncClient()
             self._loop = current_loop
@@ -112,12 +114,12 @@ class LsRestAPI:
     async def _issue_token(self) -> bool:
         """OAuth2 토큰 발급 (exponential backoff 재시도)"""
         if not self.app_key or not self.app_secret:
-            logger.warning("[연결] API 키 또는 시크릿 키 없음")
+            logger.warning("[연결] %s API 키 또는 시크릿 키 없음", _BROKER_DISPLAY)
             return False
 
         await self.ensure_client()
         if self._client is None:
-            logger.warning("[연결] HTTP 클라이언트 초기화 안됨")
+            logger.warning("[연결] %s HTTP 클라이언트 초기화 안됨", _BROKER_DISPLAY)
             return False
 
         url = f"{self.base_url}{self.TOKEN_URL}"
@@ -135,7 +137,7 @@ class LsRestAPI:
                 if attempt > 0:
                     wait_sec = 5 * attempt
                     logger.warning(
-                        f"[연결] 토큰 발급 재시도 {attempt+1}/{max_retries} — {wait_sec}초 대기"
+                        f"[연결] {_BROKER_DISPLAY} 토큰 발급 재시도 {attempt+1}/{max_retries} — {wait_sec}초 대기"
                     )
                     await asyncio.sleep(wait_sec)
 
@@ -145,20 +147,20 @@ class LsRestAPI:
                 if resp.status_code == 429:
                     wait_sec = 10 * (attempt + 1)
                     logger.warning(
-                        f"[연결] 요청 과다 — {wait_sec}초 대기 후 재시도"
+                        f"[연결] {_BROKER_DISPLAY} 요청 과다 — {wait_sec}초 대기 후 재시도"
                     )
                     await asyncio.sleep(wait_sec)
                     continue
 
                 if resp.status_code != 200:
-                    logger.warning(f"[연결] 토큰 발급 실패 (응답코드={resp.status_code})")
+                    logger.warning(f"[연결] {_BROKER_DISPLAY} 토큰 발급 실패 (응답코드={resp.status_code})")
                     return False
 
                 access_token = data.get("access_token")
                 expires_in = data.get("expires_in", 86400)
 
                 if not access_token:
-                    logger.warning("[연결] 응답 성공이지만 토큰 없음")
+                    logger.warning("[연결] %s 응답 성공이지만 토큰 없음", _BROKER_DISPLAY)
                     return False
 
                 self._token_info = LsTokenInfo(
@@ -166,21 +168,21 @@ class LsRestAPI:
                     expires_in=expires_in,
                     issued_at=time.time(),
                 )
-                logger.info(f"[연결] 토큰 발급 성공 (유효기간={expires_in}초)")
+                logger.info(f"[연결] {_BROKER_DISPLAY} 토큰 발급 성공 (유효기간={expires_in}초)")
                 return True
 
             except Exception as e:
-                logger.warning(f"[연결] 토큰 발급 오류 (시도={attempt+1}): {e}")
+                logger.warning(f"[연결] {_BROKER_DISPLAY} 토큰 발급 오류 (시도={attempt+1}): {e}")
                 if attempt < max_retries - 1:
                     continue
 
-        logger.warning(f"[연결] 토큰 발급 {max_retries}번 모두 실패")
+        logger.warning(f"[연결] {_BROKER_DISPLAY} 토큰 발급 {max_retries}번 모두 실패")
         return False
 
     async def revoke_token(self) -> bool:
         """OAuth2 접근 토큰 폐기 (LS증권 REST API 명세). 실패해도 예외 전파 안 함."""
         if not self._token_info or not self._token_info.access_token:
-            logger.info("[연결] 토큰 폐기 생략 — 발급된 토큰 없음")
+            logger.info("[연결] %s 토큰 폐기 생략 — 발급된 토큰 없음", _BROKER_DISPLAY)
             return True
         token = self._token_info.access_token
         url = f"{self.base_url}{self.REVOKE_URL}"
@@ -194,15 +196,15 @@ class LsRestAPI:
         try:
             await self.ensure_client()
             if self._client is None:
-                logger.info("[연결] 토큰 폐기 생략 — HTTP 클라이언트 없음")
+                logger.info("[연결] %s 토큰 폐기 생략 — HTTP 클라이언트 없음", _BROKER_DISPLAY)
                 return True
             resp = await self._client.post(url, headers=headers, data=body, timeout=5)
             if resp.status_code == 200:
-                logger.info("[연결] 토큰 폐기 완료")
+                logger.info("[연결] %s 토큰 폐기 완료", _BROKER_DISPLAY)
             else:
-                logger.warning("[연결] 토큰 폐기 실패 (응답코드=%s)", resp.status_code)
+                logger.warning("[연결] %s 토큰 폐기 실패 (응답코드=%s)", _BROKER_DISPLAY, resp.status_code)
         except Exception as e:
-            logger.warning("[연결] 토큰 폐기 오류: %s: %s", type(e).__name__, e)
+            logger.warning("[연결] %s 토큰 폐기 오류: %s: %s", _BROKER_DISPLAY, type(e).__name__, e)
         finally:
             self._token_info = None
         return True
@@ -226,11 +228,11 @@ class LsRestAPI:
         """
         await self.ensure_client()
         if self._client is None:
-            logger.warning("[연결] HTTP 클라이언트 초기화 안됨")
+            logger.warning("[연결] %s HTTP 클라이언트 초기화 안됨", _BROKER_DISPLAY)
             return None
 
         if not await self.ensure_token():
-            logger.warning("[연결] 토큰 없음")
+            logger.warning("[연결] %s 토큰 없음", _BROKER_DISPLAY)
             return None
 
         assert self._token_info is not None
@@ -251,25 +253,25 @@ class LsRestAPI:
                 if resp.status_code == 429:
                     wait_sec = 8 * (attempt + 1)
                     logger.warning(
-                        f"[연결] 요청 과다 — {wait_sec:.0f}초 대기 후 재시도 ({attempt+1}/{max_retries})"
+                        f"[연결] {_BROKER_DISPLAY} 요청 과다 — {wait_sec:.0f}초 대기 후 재시도 ({attempt+1}/{max_retries})"
                     )
                     await asyncio.sleep(wait_sec)
                     continue
 
                 if resp.status_code != 200:
-                    logger.info(f"[연결] 응답 코드 {resp.status_code} - 본문: {resp.text}")
+                    logger.info(f"[연결] {_BROKER_DISPLAY} 응답 코드 {resp.status_code} - 본문: {resp.text}")
                     return None
 
                 return resp.json()
 
             except Exception as e:
-                logger.warning(f"[연결] 오류 (시도={attempt+1}): {e}")
+                logger.warning(f"[연결] {_BROKER_DISPLAY} 오류 (시도={attempt+1}): {e}")
                 if attempt < max_retries - 1:
                     await asyncio.sleep(2 * (attempt + 1))
                     continue
                 return None
 
-        logger.warning(f"[연결] {max_retries}번 재시도 모두 실패")
+        logger.warning(f"[연결] {_BROKER_DISPLAY} {max_retries}번 재시도 모두 실패")
         return None
 
     async def call_tr(
@@ -285,11 +287,11 @@ class LsRestAPI:
     ) -> Optional[dict]:
         await self.ensure_client()
         if self._client is None:
-            logger.warning("[연결] HTTP 클라이언트 초기화 안됨")
+            logger.warning("[연결] %s HTTP 클라이언트 초기화 안됨", _BROKER_DISPLAY)
             return None
 
         if not await self.ensure_token():
-            logger.warning("[연결] 토큰 없음")
+            logger.warning("[연결] %s 토큰 없음", _BROKER_DISPLAY)
             return None
 
         assert self._token_info is not None
@@ -310,19 +312,19 @@ class LsRestAPI:
                 if resp.status_code == 429:
                     wait_sec = 8 * (attempt + 1)
                     logger.warning(
-                        "[연결] %s 요청 과다 — %.0f초 대기 후 재시도 (%d/%d)",
-                        tr_cd, wait_sec, attempt + 1, max_retries,
+                        "[연결] %s %s 요청 과다 — %.0f초 대기 후 재시도 (%d/%d)",
+                        _BROKER_DISPLAY, tr_cd, wait_sec, attempt + 1, max_retries,
                     )
                     await asyncio.sleep(wait_sec)
                     continue
 
                 if resp.status_code != 200:
-                    logger.info("[연결] %s 응답 코드 %s - 본문: %s", tr_cd, resp.status_code, resp.text)
+                    logger.info("[연결] %s %s 응답 코드 %s - 본문: %s", _BROKER_DISPLAY, tr_cd, resp.status_code, resp.text)
                     return None
 
                 rsp_cd = str(data.get("rsp_cd") or "")
                 if rsp_cd and rsp_cd not in ("00000", "00040"):
-                    logger.warning("[연결] %s 실패: %s - %s", tr_cd, rsp_cd, data.get("rsp_msg", ""))
+                    logger.warning("[연결] %s %s 실패: %s - %s", _BROKER_DISPLAY, tr_cd, rsp_cd, data.get("rsp_msg", ""))
                     return {"data": data, "headers": dict(resp.headers), "tr_cont": "N", "tr_cont_key": ""}
 
                 resp_headers = dict(resp.headers)
@@ -346,13 +348,13 @@ class LsRestAPI:
                 }
 
             except Exception as e:
-                logger.warning("[연결] %s 오류 (시도=%d): %s", tr_cd, attempt + 1, e)
+                logger.warning("[연결] %s %s 오류 (시도=%d): %s", _BROKER_DISPLAY, tr_cd, attempt + 1, e)
                 if attempt < max_retries - 1:
                     await asyncio.sleep(2 * (attempt + 1))
                     continue
                 return None
 
-        logger.warning("[연결] %s %d번 재시도 모두 실패", tr_cd, max_retries)
+        logger.warning("[연결] %s %s %d번 재시도 모두 실패", _BROKER_DISPLAY, tr_cd, max_retries)
         return None
 
     # ========== 주문 관련 메서드 ==========
@@ -386,11 +388,11 @@ class LsRestAPI:
         """
         await self.ensure_client()
         if self._client is None:
-            logger.warning("[연결] HTTP 클라이언트 초기화 안됨")
+            logger.warning("[연결] %s HTTP 클라이언트 초기화 안됨", _BROKER_DISPLAY)
             return None
 
         if not await self.ensure_token():
-            logger.warning("[연결] 토큰 없음")
+            logger.warning("[연결] %s 토큰 없음", _BROKER_DISPLAY)
             return None
 
         assert self._token_info is not None
@@ -423,7 +425,7 @@ class LsRestAPI:
                 if attempt > 0:
                     wait_sec = 2 * attempt
                     logger.warning(
-                        f"[연결] 매수 주문 재시도 {attempt+1}/{max_retries} — {wait_sec}초 대기"
+                        f"[연결] {_BROKER_DISPLAY} 매수 주문 재시도 {attempt+1}/{max_retries} — {wait_sec}초 대기"
                     )
                     await asyncio.sleep(wait_sec)
 
@@ -433,33 +435,33 @@ class LsRestAPI:
                 if resp.status_code == 429:
                     wait_sec = 8 * (attempt + 1)
                     logger.warning(
-                        f"[연결] 매수 주문 요청 과다 — {wait_sec}초 대기 후 재시도"
+                        f"[연결] {_BROKER_DISPLAY} 매수 주문 요청 과다 — {wait_sec}초 대기 후 재시도"
                     )
                     await asyncio.sleep(wait_sec)
                     continue
 
                 if resp.status_code != 200:
-                    logger.warning(f"[연결] 매수 주문 실패 (응답코드={resp.status_code})")
+                    logger.warning(f"[연결] {_BROKER_DISPLAY} 매수 주문 실패 (응답코드={resp.status_code})")
                     return data
 
                 rsp_cd = data.get("rsp_cd", "")
                 rsp_msg = data.get("rsp_msg", "")
 
                 if rsp_cd == "00040" or rsp_cd == "00000":  # 성공 코드
-                    logger.info(f"[연결] 매수 주문 성공: {rsp_msg}")
+                    logger.info(f"[연결] {_BROKER_DISPLAY} 매수 주문 성공: {rsp_msg}")
                 else:
-                    logger.warning(f"[연결] 매수 주문 실패: {rsp_cd} - {rsp_msg}")
+                    logger.warning(f"[연결] {_BROKER_DISPLAY} 매수 주문 실패: {rsp_cd} - {rsp_msg}")
 
                 return data
 
             except Exception as e:
-                logger.warning(f"[연결] 매수 주문 오류 (시도={attempt+1}): {e}")
+                logger.warning(f"[연결] {_BROKER_DISPLAY} 매수 주문 오류 (시도={attempt+1}): {e}")
                 if attempt < max_retries - 1:
                     await asyncio.sleep(2 * (attempt + 1))
                     continue
                 return None
 
-        logger.warning(f"[연결] 매수 주문 {max_retries}번 모두 실패")
+        logger.warning(f"[연결] {_BROKER_DISPLAY} 매수 주문 {max_retries}번 모두 실패")
         return None
 
     async def sell_order(
@@ -491,11 +493,11 @@ class LsRestAPI:
         """
         await self.ensure_client()
         if self._client is None:
-            logger.warning("[연결] HTTP 클라이언트 초기화 안됨")
+            logger.warning("[연결] %s HTTP 클라이언트 초기화 안됨", _BROKER_DISPLAY)
             return None
 
         if not await self.ensure_token():
-            logger.warning("[연결] 토큰 없음")
+            logger.warning("[연결] %s 토큰 없음", _BROKER_DISPLAY)
             return None
 
         assert self._token_info is not None
@@ -528,7 +530,7 @@ class LsRestAPI:
                 if attempt > 0:
                     wait_sec = 2 * attempt
                     logger.warning(
-                        f"[연결] 매도 주문 재시도 {attempt+1}/{max_retries} — {wait_sec}초 대기"
+                        f"[연결] {_BROKER_DISPLAY} 매도 주문 재시도 {attempt+1}/{max_retries} — {wait_sec}초 대기"
                     )
                     await asyncio.sleep(wait_sec)
 
@@ -538,33 +540,33 @@ class LsRestAPI:
                 if resp.status_code == 429:
                     wait_sec = 8 * (attempt + 1)
                     logger.warning(
-                        f"[연결] 매도 주문 요청 과다 — {wait_sec}초 대기 후 재시도"
+                        f"[연결] {_BROKER_DISPLAY} 매도 주문 요청 과다 — {wait_sec}초 대기 후 재시도"
                     )
                     await asyncio.sleep(wait_sec)
                     continue
 
                 if resp.status_code != 200:
-                    logger.warning(f"[연결] 매도 주문 실패 (응답코드={resp.status_code})")
+                    logger.warning(f"[연결] {_BROKER_DISPLAY} 매도 주문 실패 (응답코드={resp.status_code})")
                     return data
 
                 rsp_cd = data.get("rsp_cd", "")
                 rsp_msg = data.get("rsp_msg", "")
 
                 if rsp_cd == "00040" or rsp_cd == "00000":  # 성공 코드
-                    logger.info(f"[연결] 매도 주문 성공: {rsp_msg}")
+                    logger.info(f"[연결] {_BROKER_DISPLAY} 매도 주문 성공: {rsp_msg}")
                 else:
-                    logger.warning(f"[연결] 매도 주문 실패: {rsp_cd} - {rsp_msg}")
+                    logger.warning(f"[연결] {_BROKER_DISPLAY} 매도 주문 실패: {rsp_cd} - {rsp_msg}")
 
                 return data
 
             except Exception as e:
-                logger.warning(f"[연결] 매도 주문 오류 (시도={attempt+1}): {e}")
+                logger.warning(f"[연결] {_BROKER_DISPLAY} 매도 주문 오류 (시도={attempt+1}): {e}")
                 if attempt < max_retries - 1:
                     await asyncio.sleep(2 * (attempt + 1))
                     continue
                 return None
 
-        logger.warning(f"[연결] 매도 주문 {max_retries}번 모두 실패")
+        logger.warning(f"[연결] {_BROKER_DISPLAY} 매도 주문 {max_retries}번 모두 실패")
         return None
 
     # ========== 계좌 관련 메서드 ==========

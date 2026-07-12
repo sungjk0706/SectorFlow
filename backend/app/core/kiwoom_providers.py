@@ -20,8 +20,11 @@ from backend.app.core.broker_providers import (
     WebSocketProvider,
 )
 from backend.app.core.kiwoom_rest import KiwoomRestAPI
+from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 
 logger = logging.getLogger(__name__)
+
+_BROKER_DISPLAY = BROKER_DISPLAY_NAMES["kiwoom"]
 
 
 # ── Auth Provider ─────────────────────────────────────────────────────
@@ -110,7 +113,7 @@ class KiwoomAccountProvider(AccountProvider):
             return _empty
         if not await self._rest_api._ensure_token():
             logger.warning(
-                "[연결] 토큰 없음 — 계좌 잔고 조회 중단"
+                "[연결] %s 토큰 없음 — 계좌 잔고 조회 중단", _BROKER_DISPLAY
             )
             return _empty
 
@@ -135,13 +138,14 @@ class KiwoomAccountProvider(AccountProvider):
         bal_raw = await self._rest_api.get_balance_detail()
 
         if not dep_raw:
-            logger.warning("[연결] 예수금 상세현황(kt00001) 응답 없음")
+            logger.warning("[연결] %s 예수금 상세현황(kt00001) 응답 없음", _BROKER_DISPLAY)
             return _empty
 
         dep_body = dep_raw.get("body") or dep_raw
         if _n(dep_body.get("return_code", 0)) != 0:
             logger.warning(
-                "[연결] 예수금 상세현황(kt00001) 오류 응답코드=%s 메시지=%s",
+                "[연결] %s 예수금 상세현황(kt00001) 오류 응답코드=%s 메시지=%s",
+                _BROKER_DISPLAY,
                 dep_body.get("return_code"),
                 dep_body.get("return_msg", ""),
             )
@@ -188,7 +192,8 @@ class KiwoomAccountProvider(AccountProvider):
                 })
 
         logger.info(
-            "[연결] 잔고 조회 완료 — 총평가 %s원 | 손익 %s원 | 종목 %d개",
+            "[연결] %s 잔고 조회 완료 — 총평가 %s원 | 손익 %s원 | 종목 %d개",
+            _BROKER_DISPLAY,
             f"{tot_eval:,}",
             f"{tot_pnl:,}",
             len(stock_list),

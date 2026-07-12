@@ -384,7 +384,7 @@ class TestKiwoomRestRevokeToken:
         with caplog.at_level(logging.INFO, logger="backend.app.core.kiwoom_rest"):
             result = await api.revoke_token()
             assert result is True
-        assert "토큰 폐기 스킵 — 발급된 토큰 없음" in caplog.text
+        assert "토큰 폐기 생략 — 발급된 토큰 없음" in caplog.text
 
     async def test_http_failure_still_returns_true(self):
         api = _make_kiwoom_rest()

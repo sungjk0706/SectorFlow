@@ -282,7 +282,7 @@ class TestLsRestRevokeToken:
         with caplog.at_level(logging.INFO, logger="backend.app.core.ls_rest"):
             result = await api.revoke_token()
             assert result is True
-        assert "토큰 폐기 스킵 — 발급된 토큰 없음" in caplog.text
+        assert "토큰 폐기 생략 — 발급된 토큰 없음" in caplog.text
 
     async def test_http_failure(self):
         api = _make_ls_rest()
@@ -314,7 +314,7 @@ class TestLsRestRevokeToken:
                 result = await api.revoke_token()
                 assert result is True
                 assert api._token_info is None
-        assert "토큰 폐기 스킵 — HTTP 클라이언트 없음" in caplog.text
+        assert "토큰 폐기 생략 — HTTP 클라이언트 없음" in caplog.text
 
 
 # ── LsRestAPI.call_api ─────────────────────────────────────────────────────────
