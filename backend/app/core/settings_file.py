@@ -26,6 +26,15 @@ def migrate_rank_primary_to_weights(sector_rank_primary: str) -> dict[str, float
 
 def _migrate_sector_weights(merged: dict, raw_data: dict) -> tuple[dict, bool]:
     if "sector_weights" in raw_data:
+        sw = raw_data["sector_weights"]
+        # 레거시 trade_amount 키 → total_trade_amount 변환 (DEFAULT_METRICS 키 일치화)
+        if isinstance(sw, dict) and "trade_amount" in sw and "total_trade_amount" not in sw:
+            merged["sector_weights"] = {
+                "rise_ratio": sw.get("rise_ratio", 0.5),
+                "total_trade_amount": sw["trade_amount"],
+            }
+            logger.info("[설정] sector_weights 레거시 키 변환: trade_amount → total_trade_amount")
+            return merged, True
         return merged, False
     rank_primary = raw_data.get("sector_rank_primary")
     if rank_primary:

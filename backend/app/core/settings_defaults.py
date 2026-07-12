@@ -82,7 +82,7 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
      "sector_max_targets": 3,
      "sector_trim_trade_amt_pct": 10.0,
      "sector_trim_change_rate_pct": 10.0,
-     "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
+     "sector_weights": {"rise_ratio": 0.5, "total_trade_amount": 0.5},
      "sector_sort_keys": ["score"],
      "sector_stock_layout": [],
 

@@ -48,6 +48,17 @@ let dualSlider: DualLabelSliderHandle | null = null
 let currentVals: Record<string, number> = {}
 let currentRiseRatio = 50
 
+/* ── 헬퍼: 실제 적용 가중치 라벨 업데이트 ── */
+function updateAppliedWeightsLabel(el: HTMLElement, weights: Record<string, number> | null): void {
+  if (!weights || !('total_trade_amount' in weights) || !('rise_ratio' in weights)) {
+    el.textContent = ''
+    return
+  }
+  const risePct = Math.round(weights.rise_ratio * 100)
+  const tradePct = Math.round(weights.total_trade_amount * 100)
+  el.textContent = `실제 적용: 상승종목비율 ${risePct}% / 평균거래대금 ${tradePct}%`
+}
+
 async function onNumChange(key: string, value: number): Promise<void> {
   let v = value
   if (key === 'sector_max_targets') {
@@ -211,6 +222,17 @@ function mount(container: HTMLElement): void {
     },
   })
   weightWrap.appendChild(dualSlider.el)
+
+  // 실제 적용 가중치 표시 (백엔드 정규화 결과, P21 투명성)
+  const appliedWeightsLabel = document.createElement('div')
+  Object.assign(appliedWeightsLabel.style, {
+    fontSize: FONT_SIZE.small,
+    color: COLOR.tertiary,
+    textAlign: 'right',
+    marginTop: '2px',
+    minHeight: '14px',
+  })
+  weightWrap.appendChild(appliedWeightsLabel)
   root.appendChild(weightWrap)
 
   // ⑥ 매수 대상
@@ -265,8 +287,9 @@ function mount(container: HTMLElement): void {
     }
   })
 
-  // uiStore 구독 — 수신율 표시 갱신
+  // uiStore 구독 — 수신율 및 실제 적용 가중치 표시 갱신
   let prevReceiveRate = uiStore.getState().receiveRate
+  let prevNormalizedWeights = uiStore.getState().normalizedWeights
   unsubUiStore = uiStore.subscribe(() => {
     const uiState = uiStore.getState()
     if (uiState.receiveRate !== prevReceiveRate) {
@@ -276,7 +299,13 @@ function mount(container: HTMLElement): void {
         receiveCountRow.textContent = `수신: ${uiState.receiveRate.received}종목 / 미수신: ${uiState.receiveRate.total - uiState.receiveRate.received}종목`
       }
     }
+    if (uiState.normalizedWeights !== prevNormalizedWeights) {
+      prevNormalizedWeights = uiState.normalizedWeights
+      updateAppliedWeightsLabel(appliedWeightsLabel, uiState.normalizedWeights)
+    }
   })
+  // 초기 표시
+  updateAppliedWeightsLabel(appliedWeightsLabel, uiStore.getState().normalizedWeights)
 }
 
 /* ── unmount ── */

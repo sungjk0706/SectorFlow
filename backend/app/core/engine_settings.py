@@ -5,10 +5,13 @@
 포함: 브로커 자격·스케줄·매수 전략 필드 -- 디스크에 있는 영속 설정.
 미포함: 레이더/대기 큐 -- engine_service 메모리·WebSocket 전용(휘발성).
 """
+import logging
 from backend.app.core.settings_file import load_integrated_system_settings
 from backend.app.core.encryption import decrypt_value
 from backend.app.core.trade_mode import effective_trade_mode
 from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
+
+logger = logging.getLogger(__name__)
 
 
 async def get_engine_settings(user_id: str | None = None, profile: str = "default") -> dict:
@@ -126,8 +129,11 @@ def build_engine_settings_dict(flat: dict) -> dict:
     result["sector_sort_keys"]            = merged.get("sector_sort_keys") or ["score"]
     # 기존 설정에서 foreign_net / institution_net 제거 마이그레이션
     result["sector_sort_keys"] = [k for k in result["sector_sort_keys"] if k not in ("foreign_net", "institution_net")]
-    result["sector_rank_primary"]         = str(merged.get("sector_rank_primary") or "rise_ratio")
     result["sector_weights"]              = merged["sector_weights"]
+    # sector_weights 키 정합성 검증 (P22) — total_trade_amount 키 누락 시 경고
+    _sw = merged["sector_weights"]
+    if isinstance(_sw, dict) and "total_trade_amount" not in _sw:
+        logger.warning("[설정] sector_weights에 total_trade_amount 키 없음: %s — 마이그레이션 누락 가능", _sw)
     result["sector_max_targets"]          = int(merged.get("sector_max_targets", 3) or 3)
     result["sector_min_rise_ratio_pct"]   = float(merged.get("sector_min_rise_ratio_pct", 60.0) or 60.0)
     result["sector_min_trade_amt"]        = float(merged.get("sector_min_trade_amt", 0.0) or 0.0)

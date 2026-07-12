@@ -64,3 +64,27 @@ class TestMigrateSectorWeights:
         result, dirty = _migrate_sector_weights(merged, raw_data)
         assert dirty is False
         assert "sector_weights" not in result
+
+    def test_legacy_trade_amount_key_migrated_to_total_trade_amount(self):
+        """레거시 trade_amount 키 → total_trade_amount 자동 변환 검증."""
+        merged = {"sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5}}
+        raw_data = {"sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5}}
+        result, dirty = _migrate_sector_weights(merged, raw_data)
+        assert dirty is True
+        assert result["sector_weights"] == {"rise_ratio": 0.5, "total_trade_amount": 0.5}
+
+    def test_legacy_trade_amount_with_custom_rise_ratio(self):
+        """레거시 trade_amount 키 + 커스텀 rise_ratio 조합 변환 검증."""
+        merged = {"sector_weights": {"rise_ratio": 0.3, "trade_amount": 0.7}}
+        raw_data = {"sector_weights": {"rise_ratio": 0.3, "trade_amount": 0.7}}
+        result, dirty = _migrate_sector_weights(merged, raw_data)
+        assert dirty is True
+        assert result["sector_weights"] == {"rise_ratio": 0.3, "total_trade_amount": 0.7}
+
+    def test_already_has_total_trade_amount_no_migration(self):
+        """total_trade_amount 키 이미 존재 → 변환 없음."""
+        merged = {"sector_weights": {"rise_ratio": 0.6, "total_trade_amount": 0.4}}
+        raw_data = {"sector_weights": {"rise_ratio": 0.6, "total_trade_amount": 0.4}}
+        result, dirty = _migrate_sector_weights(merged, raw_data)
+        assert dirty is False
+        assert result["sector_weights"] == {"rise_ratio": 0.6, "total_trade_amount": 0.4}

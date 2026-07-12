@@ -279,7 +279,12 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
 
     from backend.app.services.engine_state import state
     from backend.app.services.sector_data_provider import get_sector_scores_snapshot
+    from backend.app.domain.sector_score import normalize_weight_values
     scores, ranked_count = get_sector_scores_snapshot()
+
+    # 정규화된 가중치 계산 (P21 — 사용자 투명성: 실제 계산에 사용된 가중치 전송)
+    raw_weights = state.integrated_system_settings_cache.get("sector_weights", {})
+    normalized_weights = normalize_weight_values(raw_weights) if raw_weights else {}
 
     # 수신율 가져오기 (pipeline_compute.py에서 이벤트 기반으로 갱신)
     receive_rate = None
@@ -316,7 +321,8 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
                 "total_stocks": len(scores),
                 "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3)),
                 "ranked_sectors_count": ranked_count,
-                "receive_rate": receive_rate
+                "receive_rate": receive_rate,
+                "normalized_weights": normalized_weights,
             },
             "delta": True,
             "changed_sectors": [s["sector"] for s in changed],
@@ -333,7 +339,8 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
                 "total_stocks": len(scores),
                 "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3)),
                 "ranked_sectors_count": ranked_count,
-                "receive_rate": receive_rate
+                "receive_rate": receive_rate,
+                "normalized_weights": normalized_weights,
             },
         }
 
