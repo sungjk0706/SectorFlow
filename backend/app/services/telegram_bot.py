@@ -91,7 +91,7 @@ class TelegramBot:
         if self._task and not self._task.done():
             self._task.cancel()
         self._last_poll_ok_mon = None
-        logger.info("[알림] 폴링 종료(취소만, await 없음)")
+        logger.info("[알림] 폴링 종료(취소만, 대기 없음)")
 
     def get_poll_ok_age_sec(self) -> float | None:
         """마지막 getUpdates 성공(HTTP 200·ok) 이후 경과 초. 없으면 None."""

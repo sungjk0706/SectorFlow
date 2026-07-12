@@ -117,10 +117,10 @@ async def _load_broker_spec_async(broker_nm: str, settings: dict) -> list:
                 if isinstance(role_mappings, dict):
                     return list(role_mappings.values())  # dict → list 변환
                 else:
-                    logger.warning("[연산] 역할 매핑 형식 오류: %s (기대: dict)", type(role_mappings))
+                    logger.warning("[연산] 역할 매핑 형식 오류: %s (기대: 사전 형식)", type(role_mappings))
                     return []
             else:
-                logger.warning("[연산] 증권사 명세 형식 오류: %s (기대: dict)", type(spec))
+                logger.warning("[연산] 증권사 명세 형식 오류: %s (기대: 사전 형식)", type(spec))
                 return []
         return []
     except Exception as e:
@@ -355,7 +355,7 @@ async def run_engine_loop() -> None:
         try:
             await stop_compute_loop()
         except Exception as e:
-            logger.warning("[연산] compute 루프 종료 실패: %s", e, exc_info=True)
+            logger.warning("[연산] 계산 루프 종료 실패: %s", e, exc_info=True)
 
         logger.info("[연산] 백그라운드 태스크 종료 완료")
 
