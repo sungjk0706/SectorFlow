@@ -12,8 +12,6 @@ import pytest
 from backend.app.services.engine_ws_dispatch import (
     _get_wl_codes_cached,
     _update_trade_amount_fid14,
-    _update_strength_buckets,
-    _log_ws_trnm_json_detail,
     _handle_login,
     _reg_response_item_val,
     _reg_data_rows,
@@ -79,27 +77,6 @@ class TestUpdateTradeAmountFid14:
 
     def test_negative(self):
         assert _update_trade_amount_fid14("005930", -1) == 0
-
-
-# ── _update_strength_buckets ──────────────────────────────────────────────────────
-
-class TestUpdateStrengthBuckets:
-    def test_no_op(self):
-        _update_strength_buckets("005930", 1.5, 1000)
-
-
-# ── _log_ws_trnm_json_detail ──────────────────────────────────────────────────────
-
-class TestLogWsTrnmJsonDetail:
-    def test_small_data(self):
-        _log_ws_trnm_json_detail("REG", {"trnm": "REG", "return_code": "0"})
-
-    def test_large_data_truncated(self):
-        large = {"data": "x" * 6000}
-        _log_ws_trnm_json_detail("REAL", large)
-
-    def test_non_serializable(self):
-        _log_ws_trnm_json_detail("REAL", {"obj": object()})
 
 
 # ── _handle_login ──────────────────────────────────────────────────────────────────

@@ -24,15 +24,10 @@ from backend.app.services.engine_ws import (
     _subscribe_account_realtime,
     _log_reg_stock_chunk,
     _subscribe_positions_stocks_realtime,
-    _subscribe_radar_stocks_realtime,
-    _subscribe_all_tracked_stocks_realtime,
     _subscribe_sector_stocks_0b,
     _ensure_ws_subscriptions_for_positions,
     _run_sector_reg_pipeline,
     _cleanup_stale_ws_subscriptions_on_session_ready,
-    _item_cd_is_position,
-    _item_cd_tracked_radar_or_ready,
-    _sweep_unreg_subscribed_except_positions_and_tracked,
     subscribe_dynamic_data,
     unsubscribe_dynamic_data,
 )
@@ -346,26 +341,6 @@ class TestSubscribePositionsStocksRealtime:
             mock_set.assert_not_called()
 
 
-# ── _subscribe_radar_stocks_realtime ────────────────────────────────────────────────
-
-class TestSubscribeRadarStocksRealtime:
-    @pytest.mark.asyncio
-    async def test_noop(self):
-        await _subscribe_radar_stocks_realtime()
-
-
-# ── _subscribe_all_tracked_stocks_realtime ──────────────────────────────────────────
-
-class TestSubscribeAllTrackedStocksRealtime:
-    @pytest.mark.asyncio
-    async def test_delegates_both(self):
-        with patch("backend.app.services.engine_ws._subscribe_positions_stocks_realtime", new_callable=AsyncMock) as mock_pos, \
-             patch("backend.app.services.engine_ws._subscribe_radar_stocks_realtime", new_callable=AsyncMock) as mock_radar:
-            await _subscribe_all_tracked_stocks_realtime()
-            mock_pos.assert_awaited_once()
-            mock_radar.assert_awaited_once()
-
-
 # ── _subscribe_sector_stocks_0b ─────────────────────────────────────────────────────
 
 class TestSubscribeSectorStocks0b:
@@ -466,60 +441,6 @@ class TestCleanupStaleWsSubscriptions:
              patch("backend.app.services.ws_subscribe_control.cleanup_stale_subscriptions", new_callable=AsyncMock) as mock_cleanup:
             await _cleanup_stale_ws_subscriptions_on_session_ready()
             mock_cleanup.assert_awaited_once()
-
-
-# ── _item_cd_is_position ────────────────────────────────────────────────────────────
-
-class TestItemCdIsPosition:
-    def test_match(self):
-        assert _item_cd_is_position("005930", {"005930", "000660"}) is True
-
-    def test_no_match(self):
-        assert _item_cd_is_position("999999", {"005930"}) is False
-
-    def test_al_suffix_match(self):
-        assert _item_cd_is_position("005930", {"005930_AL"}) is True
-
-    def test_empty_pos_keep(self):
-        assert _item_cd_is_position("005930", set()) is False
-
-
-# ── _item_cd_tracked_radar_or_ready ──────────────────────────────────────────────────
-
-class TestItemCdTrackedRadarOrReady:
-    def test_subscribed(self):
-        with patch("backend.app.services.engine_ws.state") as mock_state:
-            mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
-            assert _item_cd_tracked_radar_or_ready("005930") is True
-
-    def test_not_subscribed(self):
-        with patch("backend.app.services.engine_ws.state") as mock_state:
-            mock_state.master_stocks_cache = {"005930": {"_subscribed": False}}
-            assert _item_cd_tracked_radar_or_ready("005930") is False
-
-    def test_not_in_cache(self):
-        with patch("backend.app.services.engine_ws.state") as mock_state:
-            mock_state.master_stocks_cache = {}
-            assert _item_cd_tracked_radar_or_ready("999999") is False
-
-    def test_empty_code(self):
-        with patch("backend.app.services.engine_ws.state") as mock_state:
-            mock_state.master_stocks_cache = {}
-            assert _item_cd_tracked_radar_or_ready("") is False
-
-    def test_zero_code(self):
-        with patch("backend.app.services.engine_ws.state") as mock_state:
-            mock_state.master_stocks_cache = {}
-            assert _item_cd_tracked_radar_or_ready("000000") is False
-
-
-# ── _sweep_unreg_subscribed_except_positions_and_tracked ────────────────────────────
-
-class TestSweepUnreg:
-    @pytest.mark.asyncio
-    async def test_noop_returns_zero(self):
-        result = await _sweep_unreg_subscribed_except_positions_and_tracked()
-        assert result == 0
 
 
 # ── subscribe_dynamic_data ──────────────────────────────────────────────────────────

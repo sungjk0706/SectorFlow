@@ -5,7 +5,6 @@ engine_state에서 직접 상태를 참조하여 순환 import 없이 모듈 전
 """
 from __future__ import annotations
 import asyncio
-import json
 import time
 import backend.app.services.engine_state as engine_state
 from backend.app.services.engine_state import state
@@ -60,30 +59,6 @@ def _update_trade_amount_fid14(
 
     amt_won = amt14 * 1_000_000
     return amt_won
-
-
-def _update_strength_buckets(
-    nk_px: str,
-    str_f: float,
-    vol13: int,
-) -> None:
-    """KRX 단독 체결강도 갱신.
-    저장하지 않고 순간 계산만 수행.
-    """
-    pass
-
-
-def _log_ws_trnm_json_detail(trnm: str, data: dict) -> None:
-    """REG/REAL 등 웹소켓 응답 본문을 DEBUG로 남김(과대 전문은 잘림)."""
-    try:
-        s = json.dumps(data, ensure_ascii=False)
-        max_len = 5000
-        total_len = len(s)
-        if total_len > max_len:
-            s = s[:max_len] + f"... (truncated, total {total_len} chars)"
-    except Exception as e:
-        logger.warning("[시스템] 문자열 자르기 실패: %s", e)
-
 
 
 def _handle_login(data: dict) -> None:
@@ -151,8 +126,6 @@ def _handle_reg(data: dict) -> None:
             elif rc not in ("0", "00", ""):
                 if norm in state.master_stocks_cache:
                     state.master_stocks_cache[norm].pop("_subscribed", None)
-        if state.REG_REAL_DEBUG_EXTRA_LOG and rows:
-            _log_ws_trnm_json_detail(trnm, d if d else {"_raw": data})
     finally:
         engine_state._notify_reg_ack(return_code=rc)
 

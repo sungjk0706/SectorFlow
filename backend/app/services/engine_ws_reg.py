@@ -204,15 +204,13 @@ async def _unreg_grp(grp_no: str) -> bool:
     그 외 grp는 data:[]로 전송.
 
     Args:
-        es: engine_service 모듈 참조 (상태·실시간 통신 전송 함수 접근)
         grp_no: 해지할 구독 그룹 번호 (예: "4", "2", "5", "10")
 
     Returns:
         True if 성공(또는 등록 항목 없음), False if 실패/시간 초과.
     """
-    cm = state.connector_manager
-    kiwoom_conn = cm.get_connector("kiwoom") if cm else None
-    if not kiwoom_conn or not kiwoom_conn.is_connected():
+    ws = state.connector_manager or state.active_connector
+    if not ws or not ws.is_connected():
         return True
 
     # grp_no=4(0B): 등록된 종목 코드를 data에 포함
@@ -232,7 +230,7 @@ async def _unreg_grp(grp_no: str) -> bool:
                     "data":    [{"item": chunk, "type": ["0B"]}],
                 }
                 try:
-                    await _ws_send_remove_fire_and_forget(payload, sender=kiwoom_conn)
+                    await _ws_send_remove_fire_and_forget(payload, sender=ws)
                 except Exception as e:
                     logger.warning("[구독] 구독해지 청크 %d/%d 오류: %s", ci+1, nchunks, e, exc_info=True)
             for cd in subscribed_codes:
@@ -353,17 +351,18 @@ async def subscribe_index_realtime() -> None:
 async def subscribe_account_realtime() -> None:
     """계좌 단위 실시간 구독: 주문체결(00)·잔고(04) — refresh='0'으로 누적 등록.
 
-    Args:
-        es: engine_service 모듈 참조
+    키움: grp_no=10으로 계좌 구독 전송.
+    LS증권: 소켓 연결 및 로그인 핸드셰이크 단계에서 계좌 등록(tr_type="1")을 수행하므로 여기서 생략.
     """
-    cm = state.connector_manager
-    kiwoom_conn = cm.get_connector("kiwoom") if cm else None
-    if not kiwoom_conn or not kiwoom_conn.is_connected():
-        # LS증권은 소켓 연결 및 로그인 핸드셰이크 단계에서 계좌 등록(tr_type="1")을 수행하므로 키움만 그룹 10 전송
-        return
-
     s = state.integrated_system_settings_cache
     broker_nm = str(s.get("broker", "") or "").lower().strip()
+    if broker_nm != "kiwoom":
+        return
+
+    ws = state.connector_manager or state.active_connector
+    if not ws or not ws.is_connected():
+        return
+
     acnt = str(s.get(f"{broker_nm}_account_no", "") or "").strip()
     if not acnt:
         logger.warning("[계좌] 계좌번호 미설정 — 구독 요청은 빈값으로 전송")
@@ -371,7 +370,7 @@ async def subscribe_account_realtime() -> None:
     payload = build_account_reg_payload()
     try:
         from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
-        ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload, sender=kiwoom_conn)
+        ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload, sender=ws)
         if ok:
             state.ws_account_subscribed = True
             logger.info(
