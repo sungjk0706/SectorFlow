@@ -2,13 +2,13 @@
 """
 화면 전송기 (게이트웨이 파이프라인) - 파이프라인 아키텍처 Step 5
 
-모든 연산 엔진과 OMS에서 나오는 결과값들은 직접 프론트엔드로 쏘지 말고,
-오직 broadcast_queue에 put 하는 구조를 유지.
+전송 경로 (P23 일관성):
+- 01/0B 틱 (현재가/등락률/체결강도/거래대금): broadcast_queue에 put → 게이트웨이 반복이 컨슘하여 전송
+- 0D/PGM 틱 (호가잔량비/프로그램 순매수): notify_orderbook_update/notify_program_update가
+  ws_manager.broadcast 직접 호출 (매수 후보만, broadcast_queue 우회)
 
 게이트웨이 반복은 broadcast_queue를 지속적으로 컨슘하여,
 현재 연결된 모든 웹소켓 클라이언트에게 실시간 데이터를 전송(Publish).
-
-모든 이벤트는 ws_manager.broadcast를 통해 즉시 전송.
 """
 from __future__ import annotations
 from typing import Optional
