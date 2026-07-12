@@ -3,7 +3,7 @@
 WebSocket 구독 관련 모듈
 - REG/UNREG/REMOVE 메시지 전송
 - 실시간 구독 관리
-- 브로커 메시지 핸들러
+- 증권사 메시지 핸들러
 """
 import asyncio
 import logging
@@ -22,12 +22,12 @@ def _ws_live() -> bool:
 
 async def _ws_send_reg_unreg_and_wait_ack(payload: dict, *, sender=None) -> tuple[bool, str]:
     """
-    브로커 공식: REG/UNREG 1건 전송 후 응답(ACK, return_code 포함) 수신까지 대기한 뒤 다음 전송.
-    Returns (True, return_code) if ACK 수신, (False, "") if 타임아웃(응답 없음).
+    증권사 공식: REG/UNREG 1건 전송 후 응답(ACK, return_code 포함) 수신까지 대기한 뒤 다음 전송.
+    Returns (True, return_code) if ACK 수신, (False, "") if 시간 초과(응답 없음).
 
     Args:
         payload: 전송할 REG/UNREG 페이로드.
-        sender: 송신할 커넥터 (BrokerConnector). None이면 state에서 자동 해결.
+        sender: 송신할 커넥터 (증권사 커넥터). None이면 state에서 자동 해결.
     """
     if state.reg_seq_lock is None:
         state.reg_seq_lock = asyncio.Lock()
@@ -54,7 +54,7 @@ async def _ws_send_reg_unreg_and_wait_ack(payload: dict, *, sender=None) -> tupl
         except asyncio.TimeoutError:
             if state.reg_ack_event:
                 state.reg_ack_event.clear()
-            logger.warning("[구독] 구독 응답 대기 시간 초과(10초) — trnm=%s", payload.get("trnm"))
+            logger.warning("[구독] 구독 응답 대기 시간 초과(10초) — 메시지유형=%s", payload.get("trnm"))
             return False, ""
 
         rc = state.reg_ack_return_code
@@ -73,7 +73,7 @@ async def _ws_send_remove_fire_and_forget(payload: dict, *, sender=None) -> bool
 
     Args:
         payload: 전송할 REMOVE 페이로드.
-        sender: 송신할 커넥터 (BrokerConnector). None이면 state에서 자동 해결.
+        sender: 송신할 커넥터 (증권사 커넥터). None이면 state에서 자동 해결.
     """
     _sender = sender if sender is not None else (
         state.connector_manager if state.connector_manager and state.connector_manager.is_connected() else state.active_connector
@@ -88,13 +88,13 @@ async def _ws_send_remove_fire_and_forget(payload: dict, *, sender=None) -> bool
     return sent
 
 
-# ── 브로커 메시지 핸들러 ─────────────────────────────────────────────────
+# ── 증권사 메시지 핸들러 ─────────────────────────────────────────────────
 
 async def _broker_message_handler(payload: dict) -> None:
-    """BrokerConnector에서 호출되는 핸들러.
+    """증권사 커넥터에서 호출되는 핸들러.
 
     _BrokerSocket._recv_loop → _on_ws_message(async) → 이 함수(async).
-    create_task 없이 await 직접 호출 — 순서 보장, 태스크 폭발 없음.
+    create_task 없이 await 직접 호출 — 순서 보장, 작업 폭발 없음.
     """
     if not isinstance(payload, dict):
         return
@@ -114,7 +114,7 @@ async def _handle_ws_data(data: dict) -> None:
 async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
     """
     모니터링 등록 시점이 LOGIN 이전이면 REG가 무력화될 수 있어,
-    WS 연결·로그인 성공 후 REG를 보내도록 짧게 재시도한다.
+    실시간 통신 연결·로그인 성공 후 REG를 보내도록 짧게 재시도한다.
     기동 시 배치 파이프라인(_run_sector_reg_pipeline) 완료 전에는
     단건 REG를 보내지 않음 — 배치가 이미 커버하므로 중복 블로킹 방지.
     시장가 운용으로 호가(02) REG 제거됨 — 0B는 배치에서 커버.
@@ -125,7 +125,7 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
     if not stk_cd:
         return
     
-    # 배치 파이프라인 완료 대기 (이벤트 구동 - 타임아웃 제거)
+    # 배치 파이프라인 완료 대기 (이벤트 구동 - 시간 초과 제거)
     if state.ws_reg_pipeline_done:
         await state.ws_reg_pipeline_done.wait()
 
@@ -159,7 +159,7 @@ async def _subscribe_account_realtime() -> None:
 
 def _log_reg_stock_chunk(scope: str, start_ord: int, end_ord: int, ca: int, cs: int, cf: int) -> None:
     logger.info(
-        "[구독] %s %d~%d번 처리 완료 — 성공 %d건, 이미구독 생략 %d건, 실패 %d건",
+        "[구독] %s %d~%d번 처리 완료 — 성공 %d건, 이미 구독 생략 %d건, 실패 %d건",
         scope,
         start_ord,
         end_ord,
@@ -200,14 +200,14 @@ async def _subscribe_sector_stocks_0b() -> None:
     """
     from backend.app.services import engine_ws_reg, ws_subscribe_control
     await engine_ws_reg.subscribe_sector_stocks_0b()
-    # REG 실행 후 인메모리 상태 동기화 → WS 브로드캐스트
+    # REG 실행 후 인메모리 상태 동기화 → 실시간 통신 전송
     ws_subscribe_control._set_status(quote=True)
 
 
 async def _ensure_ws_subscriptions_for_positions() -> None:
     """로그인 직후 계좌 실시간 구독 + 보유종목 시세 구독을 하는 함수.
 
-    테스트모드: 계좌 구독(00/04) 스킵, 보유종목 시세(0B)만 구독.
+    테스트모드: 계좌 구독(00/04) 생략, 보유종목 시세(0B)만 구독.
     실전투자: 계좌 구독 + 보유종목 시세 모두 구독.
     """
     from backend.app.core.trade_mode import is_test_mode
@@ -250,12 +250,12 @@ async def _run_sector_reg_pipeline() -> None:
 
 
 async def _cleanup_stale_ws_subscriptions_on_session_ready() -> None:
-    """로그인 직후 1회: 잔존 구독 정리 + 비보유 종목 UNREG 스윕."""
+    """로그인 직후 1회: 잔존 구독 정리 + 비보유 종목 UNREG 일괄 정리."""
     ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected():
         return
     
-    # 잔존 구독 정리 (grp_no=5,2,4 UNREG best-effort)
+    # 잔존 구독 정리 (grp_no=5,2,4 UNREG 최선 노력)
     from backend.app.services import ws_subscribe_control
     await ws_subscribe_control.cleanup_stale_subscriptions()
 
@@ -273,8 +273,8 @@ def _item_cd_is_position(item_cd: str, pos_keep: set[str]) -> bool:
 
 def _item_cd_tracked_radar_or_ready(item_cd: str) -> bool:
     """
-    모니터링 pending에 올라간 종목 — 비보유여도 실시간(REG) 유지해야 HTS와 시세가 맞는다.
-    잔고 REST 반영 후 UNREG 스윕 등에서 UNREG 대상에서 제외한다.
+    모니터링 대기 중인 종목 — 비보유여도 실시간(REG) 유지해야 HTS와 시세가 맞는다.
+    잔고 REST 반영 후 UNREG 일괄 정리 등에서 UNREG 대상에서 제외한다.
     """
     from backend.app.services.engine_symbol_utils import _base_stk_cd
 
@@ -286,7 +286,7 @@ def _item_cd_tracked_radar_or_ready(item_cd: str) -> bool:
 
 
 async def _sweep_unreg_subscribed_except_positions_and_tracked() -> int:
-    """비보유·비추적 종목 정리 — 시장가 운용으로 호가(02) 제거됨, 현재 no-op."""
+    """비보유·비추적 종목 정리 — 시장가 운용으로 호가(02) 제거됨, 현재 작업 없음."""
     return 0
 
 async def subscribe_dynamic_data(codes: list[str]) -> None:
