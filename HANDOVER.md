@@ -4,14 +4,14 @@
 - 없음
 
 ## 직전 완료 작업
+- **2026-07-12: 백엔드 로그 한글화 3차 작업 — 6단계 (services C 내부 디버그 로그) 완료**
+  - **수정 파일**: `services/sector_data_provider.py`, `ws_subscribe_control.py`, `engine_strategy_core.py`, `engine_ws_fill_followup.py`, `core_queues.py` (5개 파일)
+  - **내용**: 약 20건 로그 메시지 + 주석/docstring 한글화 — is_running=→실행중=(1건), sector_weights→업종 가중치(1건), WS 전송→실시간 통신 전송(1건), notify 3종→알림 3종(1건), WS 구독 제어→실시간 통신 구독 제어(1건), WS 브로드캐스트→실시간 통신 전송(3건), 브로드캐스트→전송(3건), no-op→작업 없음(3건), best-effort→최선 노력(2건), 스킵→생략(1건), warning 로그→경고 로그(1건), stub→스텁(1건), Kiwoom WebSocket→키움 실시간 통신(1건), 프론트엔드→화면(2건), WS 미연결→실시간 통신 미연결(2건), WS 연결→실시간 통신 연결(2건), WS FID/WS 힌트→실시간 통신 FID/실시간 통신 힌트(2건), WS 연결 시도→실시간 통신 연결 시도(1건), 브로드캐스트·→전송·(1건), 드롭 정책→누락 정책(4건), 드롭 발생→누락 발생(1건), Tick Queue→시세 큐(1건), UI 전송→화면 전송(2건), Compute 루프→연산 루프(1건), 프론트엔드 전송→화면 전송(1건), Queues→큐(1건), 전체 OFF→전체 끄기(1건), tick=/broadcast=/control=/price_pass_through=→시세=/전송=/제어=/현재가직통=(1건). WebSocket(프로토콜 고유명사), REG/UNREG(프로토콜 메시지 타입), tick_queue/broadcast_queue/control_queue/price_pass_through_queue(코드 변수명), REST/Redis(기술 표준명), NXT-only/NXT-enabled(코드베이스 확립 용어)는 유지
+  - **검증**: py_compile 5개 파일 통과, 잔존 영어 grep 0건 (is_running=/sector_weights:/WS 전송/notify 3종/WS 구독 제어/WS 브로드캐스트/브로드캐스트)/no-op /best-effort/스킵 +/warning 로그/stub)/프론트엔드로/Kiwoom WebSocket/WS 미연결/WS 연결 +/WS FID/WS 힌트/WS 연결 시도/브로드캐스트·/드롭 정책/드롭 발생/Tick Queue/UI 전송/Compute 루프/프론트엔드 전송 전부 0건), 런타임 기동 확인 (총 기동시간 126ms, 에러/Traceback 없음, "[시스템] 초기화 완료 - 시세=20000, 전송=2000, 제어=500, 현재가직통=4096" 한국어 출력 확인, "[업종] recompute_sector_summary_now 진입, 실행중=True" 확인, "[업종] 재계산 업종 가중치: ..." 확인), 잔존 프로세스 0개
 - **2026-07-12: 백엔드 로그 한글화 3차 작업 — 5단계 (services B 내부 디버그 로그) 완료**
   - **수정 파일**: `services/engine_ws_reg.py`, `engine_ws.py`, `engine_sector_confirm.py`, `data_manager.py` (4개 파일)
   - **내용**: 약 33건 로그 메시지 + 주석/docstring 한글화 — 브로커→증권사(3건), BrokerConnector→증권사 커넥터(3건), BrokerRouter→증권사 라우터(1건), 태스크→작업(2건), 타임아웃→시간 초과(3건), trnm=→메시지유형=(1건), WS→실시간 통신(3건), 이미구독→이미 구독(1건), 브로드캐스트→전송(1건), 스킵→생략(3건), 스윕→일괄 정리(2건), best-effort→최선 노력(1건), pending→대기(1건), no-op→작업 없음(1건), delta→증분(4건), ready set→준비 대기실(1건), 클리어→비우기(2건), 계좌등록→계좌 등록(1건), 계좌설정→계좌 설정(1건), Grp 10→그룹 10(1건), base_url→기본 주소(2건), broker 기반→증권사 기반(1건), kt00018→계좌평가잔고내역(kt00018)(1건), kt00001→예수금 상세현황(kt00001)(1건), 예수금상세현황→예수금 상세현황(1건), 예외→오류(2건), 메인계좌정보→메인 계좌정보(1건), 실패함→실패(1건). WebSocket(프로토콜 고유명사), REG/UNREG/REMOVE(프로토콜 메시지 타입), dirty(코드 변수명)는 유지
-  - **검증**: py_compile 4개 파일 통과, 잔존 영어 grep 0건 (브로커/BrokerConnector/BrokerRouter/WS /타임아웃/best-effort/no-op/trnm=/스킵/이미구독/브로드캐스트/스윕/pending에/delta/ready set/클리어/계좌등록/계좌설정/Grp 10/base_url/예외/kt00018 /kt00001 /예수금상세현황/메인계좌정보/실패함 전부 0건 — 코드 내 프로토콜 필드값 trnm="REG"/trnm="REMOVE" 및 속성 접근 auth.rest_api.base_url는 정상 유지), 런타임 기동 확인 (총 기동시간 193ms, 에러/Traceback 없음, "전종목 마스터 테이블 초기화 완료" 한국어 출력 확인), 잔존 프로세스 0개
-- **2026-07-12: 백엔드 로그 한글화 3차 작업 — 4단계 (market_close_pipeline) 완료**
-  - **수정 파일**: `services/market_close_pipeline.py` (1개 파일, 1370줄)
-  - **내용**: 81건 logger 호출 + 약 40건 주석/docstring 한글화 — Step 1~7→1~7단계, stock_5d_array→5일봉 배열 테이블, master_stocks_table→전종목 마스터 테이블, 브로드캐스트→전송, 파싱→해석, 예외→오류, broker→증권사, WS 브로드캐스트→실시간 통신 전송, fire-and-forget→즉시 전송, Rate limiting→요청 간격 조절 등 (상세는 git history 참조)
-  - **검증**: py_compile 1개 파일 통과, 잔존 영어 grep 0건, 런타임 기동 확인 (총 기동시간 320ms, 에러/Traceback 없음), 잔존 프로세스 0개
+  - **검증**: py_compile 4개 파일 통과, 잔존 영어 grep 0건, 런타임 기동 확인 (총 기동시간 193ms, 에러/Traceback 없음), 잔존 프로세스 0개
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
@@ -28,10 +28,10 @@
 
 ## 진행 중 작업
 
-### 백엔드 로그 한글화 3차 작업 (내부 디버그 로그) — 5/8단계 완료
+### 백엔드 로그 한글화 3차 작업 (내부 디버그 로그) — 6/8단계 완료
 
 > **계획서**: `backend/docs/log_korean_migration_plan.md`의 "2차 작업 (내부 디버그 로그) — 향후 진행" 섹션
-> **이력**: 1차 작업(2026-07-09) 약 30개 파일 1차 한글화. 2차 작업(사용자 노출 로그) 5단계 전부 완료. 3차 작업(내부 디버그 로그) 8단계 중 5단계 완료.
+> **이력**: 1차 작업(2026-07-09) 약 30개 파일 1차 한글화. 2차 작업(사용자 노출 로그) 5단계 전부 완료. 3차 작업(내부 디버그 로그) 8단계 중 6단계 완료.
 
 | 단계 | 내용 | 파일 수 | 상태 |
 |------|------|---------|------|
@@ -40,7 +40,7 @@
 | 3단계 | services A (engine_cache, engine_snapshot, engine_config) | 3 | ☑ 완료 (2026-07-12) |
 | 4단계 | market_close_pipeline (단독, 81건) | 1 | ☑ 완료 (2026-07-12) |
 | 5단계 | services B (engine_ws_reg, engine_ws, engine_sector_confirm, data_manager) | 4 | ☑ 완료 (2026-07-12) |
-| 6단계 | services C (sector_data_provider, ws_subscribe_control, engine_strategy_core, engine_ws_fill_followup, core_queues) | 5 | ☐ 미시작 |
+| 6단계 | services C (sector_data_provider, ws_subscribe_control, engine_strategy_core, engine_ws_fill_followup, core_queues) | 5 | ☑ 완료 (2026-07-12) |
 | 7단계 | core A (stock_classification_data, sector_mapping, sector_stock_cache, settings_file, settings_store) | 5 | ☐ 미시작 |
 | 8단계 | core B (trading_calendar, lock_manager, journal, memory_monitor) | 4 | ☐ 미시작 |
 
@@ -79,14 +79,14 @@
 
 ### 1순위: 백엔드 로그 한글화 3차 작업 (내부 디버그 로그) — 진행 중
 
-3차 작업 8단계 중 5단계 완료. **다음 세션은 6단계(services C)부터 시작** — `services/sector_data_provider.py`, `ws_subscribe_control.py`, `engine_strategy_core.py`, `engine_ws_fill_followup.py`, `core_queues.py` 5개 파일. 진행 방법은 5단계와 동일 (파일별 logger 호출 + 주석/docstring 한글화 → py_compile → 잔존 영어 grep → 런타임 기동 검증).
+3차 작업 8단계 중 6단계 완료. **다음 세션은 7단계(core A)부터 시작** — `core/stock_classification_data.py`, `sector_mapping.py`, `sector_stock_cache.py`, `settings_file.py`, `settings_store.py` 5개 파일. 진행 방법은 6단계와 동일 (파일별 logger 호출 + 주석/docstring 한글화 → py_compile → 잔존 영어 grep → 런타임 기동 검증).
 
 - **1단계** ☑ 완료 (2026-07-12): `pipelines/pipeline_compute.py`, `pipeline_gateway.py` — 28건 로그 메시지 + 8건 주석/docstring 동기화
 - **2단계** ☑ 완료 (2026-07-12): `db/stock_tables.py`, `db/db_writer.py`, `db/json_utils.py` — 12건 로그 메시지 한글화
 - **3단계** ☑ 완료 (2026-07-12): `services/engine_cache.py`, `engine_snapshot.py`, `engine_config.py` — 15건 로그 메시지 한글화
 - **4단계** ☑ 완료 (2026-07-12): `services/market_close_pipeline.py` — 81건 logger 호출 + 약 40건 주석/docstring 한글화
 - **5단계** ☑ 완료 (2026-07-12): `services/engine_ws_reg.py`, `engine_ws.py`, `engine_sector_confirm.py`, `data_manager.py` — 약 33건 로그 메시지 + 주석/docstring 한글화
-- **6단계** ☐ 미시작: `services/sector_data_provider.py`, `ws_subscribe_control.py`, `engine_strategy_core.py`, `engine_ws_fill_followup.py`, `core_queues.py`
+- **6단계** ☑ 완료 (2026-07-12): `services/sector_data_provider.py`, `ws_subscribe_control.py`, `engine_strategy_core.py`, `engine_ws_fill_followup.py`, `core_queues.py` — 약 20건 로그 메시지 + 주석/docstring 한글화
 - **7단계** ☐ 미시작: `core/stock_classification_data.py`, `sector_mapping.py`, `sector_stock_cache.py`, `settings_file.py`, `settings_store.py`
 - **8단계** ☐ 미시작: `core/trading_calendar.py`, `lock_manager.py`, `journal.py`, `memory_monitor.py`
 

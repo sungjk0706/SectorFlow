@@ -238,7 +238,7 @@ async def recompute_sector_summary_now() -> None:
     from backend.app.services.engine_lifecycle import is_engine_running
     from backend.app.services.engine_account_notify import notify_desktop_sector_scores, notify_buy_targets_update, notify_desktop_sector_stocks_refresh
 
-    logger.info("[업종] recompute_sector_summary_now 진입, is_running=%s", is_engine_running())
+    logger.info("[업종] recompute_sector_summary_now 진입, 실행중=%s", is_engine_running())
     if not is_engine_running():
         logger.info("[업종] 엔진 미실행으로 종료")
         return
@@ -246,7 +246,7 @@ async def recompute_sector_summary_now() -> None:
         trim_trade = float(state.integrated_system_settings_cache["sector_trim_trade_amt_pct"])
         trim_change = float(state.integrated_system_settings_cache["sector_trim_change_rate_pct"])
         sector_weights = state.integrated_system_settings_cache["sector_weights"]
-        logger.info("[업종] 재계산 sector_weights: %s", sector_weights)
+        logger.info("[업종] 재계산 업종 가중치: %s", sector_weights)
         _inputs = await get_sector_summary_inputs()
         _sector_summary = await compute_full_sector_summary(
             **_inputs,
@@ -290,9 +290,9 @@ async def recompute_sector_summary_now() -> None:
 
 
 async def _on_filter_settings_changed() -> None:
-    """필터 설정 변경 시 업종순위 재계산 + WS 전송.
+    """필터 설정 변경 시 업종순위 재계산 + 실시간 통신 전송.
 
-    recompute_sector_summary_now() 내부에서 notify 3종이 이미 호출되므로 중복 호출을 제거한다.
+    recompute_sector_summary_now() 내부에서 알림 3종이 이미 호출되므로 중복 호출을 제거한다.
     """
     try:
         await recompute_sector_summary_now()

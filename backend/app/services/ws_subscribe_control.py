@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-WS 구독 제어 모듈 — 지수(0J), 실시간시세(0B) 독립 제어.
+실시간 통신 구독 제어 모듈 — 지수(0J), 실시간시세(0B) 독립 제어.
 
 인메모리 상태 관리 + REG/UNREG 오케스트레이션.
 각 grp_no는 독립적으로 REG/UNREG — 한쪽 해지가 다른 쪽에 영향 없음.
@@ -45,13 +45,13 @@ def get_subscribe_status() -> dict[str, bool]:
 
 
 # ---------------------------------------------------------------------------
-# 상태 변경 + WS 브로드캐스트
+# 상태 변경 + 실시간 통신 전송
 # ---------------------------------------------------------------------------
 
 def _set_status(
     quote: bool | None = None,
 ) -> None:
-    """상태 변경 시에만 WS ws-subscribe-status 브로드캐스트."""
+    """상태 변경 시에만 실시간 통신 ws-subscribe-status 전송."""
     changed = False
     if quote is not None and quote != state.quote_subscribed:
         state.quote_subscribed = quote
@@ -62,11 +62,11 @@ def _set_status(
         schedule_engine_task(_broadcast("ws-subscribe-status", {
             "_v": 1,
             "quote_subscribed": state.quote_subscribed,
-        }), context="ws-subscribe-status 브로드캐스트")
+        }), context="ws-subscribe-status 전송")
 
 
 def broadcast_ws_connection_status(connected: bool) -> None:
-    """Kiwoom WebSocket 연결/해제 상태를 프론트엔드로 브로드캐스트 (상태 변경 시에만)."""
+    """키움 실시간 통신 연결/해제 상태를 화면으로 전송 (상태 변경 시에만)."""
     if state.ws_connection_status == connected:
         return  # 상태 변경 없음 → 전송 생략
     state.ws_connection_status = connected
@@ -75,7 +75,7 @@ def broadcast_ws_connection_status(connected: bool) -> None:
         "_v": 1,
         "connected": connected,
         "timestamp": time.time(),
-    }), context="ws-connection-status 브로드캐스트")
+    }), context="ws-connection-status 전송")
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +91,7 @@ async def _ensure_account_subscription() -> None:
     if is_test_mode(state.integrated_system_settings_cache):
         return
 
-    # 이미 구독 중이면 no-op (멱등)
+    # 이미 구독 중이면 작업 없음 (멱등)
     if state.ws_account_subscribed:
         return
 
@@ -108,7 +108,7 @@ async def _ensure_account_subscription() -> None:
 # ---------------------------------------------------------------------------
 
 async def start_quote() -> dict:
-    """grp 4(0B) REG 등록. 이미 활성이면 no-op (멱등).
+    """grp 4(0B) REG 등록. 이미 활성이면 작업 없음 (멱등).
 
     Returns:
         {"ok": True, "status": {...}} on success,
@@ -119,7 +119,7 @@ async def start_quote() -> dict:
             return {"ok": True, "status": get_subscribe_status()}
 
         if not _ws_connected():
-            return {"ok": False, "message": "WS 미연결 상태"}
+            return {"ok": False, "message": "실시간 통신 미연결 상태"}
 
         from backend.app.services import engine_ws_reg
         try:
@@ -138,7 +138,7 @@ async def start_quote() -> dict:
 # ---------------------------------------------------------------------------
 
 async def stop_industry() -> dict:
-    """업종 구독 해지 — no-op (하위 호환용 stub).
+    """업종 구독 해지 — 작업 없음 (하위 호환용 스텁).
 
     하위 호환을 위해 함수 시그니처 유지, 항상 성공 반환.
     """
@@ -170,7 +170,7 @@ async def stop_quote() -> dict:
 async def run_conditional_reg_pipeline() -> None:
     """index_auto_subscribe / quote_auto_subscribe에 따라 조건부 REG.
 
-    WS 구독 구간 외이면 REG 호출 없이 종료.
+    실시간 통신 구독 구간 외이면 REG 호출 없이 종료.
     모두 false면 종료.
     """
     from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
@@ -201,14 +201,14 @@ async def run_conditional_reg_pipeline() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 잔존 구독 정리 — 새 세션 시 grp_no=5,2,4,10 UNREG (best-effort)
+# 잔존 구독 정리 — 새 세션 시 grp_no=5,2,4,10 UNREG (최선 노력)
 # ---------------------------------------------------------------------------
 
 async def cleanup_stale_subscriptions() -> None:
-    """새 세션 시작 시 grp_no=5,2,4,10 UNREG (best-effort).
+    """새 세션 시작 시 grp_no=5,2,4,10 UNREG (최선 노력).
 
     UNREG 완료 후 상태 false 설정.
-    WS 미연결 시 스킵 + warning 로그.
+    실시간 통신 미연결 시 생략 + 경고 로그.
     """
     if not _ws_connected():
         logger.warning("[구독] 잔존 구독 정리 생략 — 실시간 미연결")
@@ -220,7 +220,7 @@ async def cleanup_stale_subscriptions() -> None:
     for entry in state.master_stocks_cache.values():
         entry.pop("_subscribed", None)
     _set_status(quote=False)
-    logger.debug("[구독] 잔존 구독 정리 완료 — 전체 OFF (인메모리 초기화, 서버 측은 다음 REG refresh=0으로 덮어씀)")
+    logger.debug("[구독] 잔존 구독 정리 완료 — 전체 끄기 (인메모리 초기화, 서버 측은 다음 REG refresh=0으로 덮어씀)")
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +230,7 @@ async def cleanup_stale_subscriptions() -> None:
 async def on_setting_changed(key: str, value: bool) -> None:
     """quote_auto_subscribe 변경 시 즉시 반영.
 
-    WS 구독 구간 밖이면 설정만 저장 (구독 변경 없음).
+    실시간 통신 구독 구간 밖이면 설정만 저장 (구독 변경 없음).
     """
     from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
 
@@ -253,7 +253,7 @@ async def on_setting_changed(key: str, value: bool) -> None:
 # ---------------------------------------------------------------------------
 
 def _ws_connected() -> bool:
-    """WS 연결 + 로그인 완료 여부."""
+    """실시간 통신 연결 + 로그인 완료 여부."""
     # ConnectorManager가 있으면 우선 사용 (키움/LS 모두 지원)
     if state.connector_manager is not None:
         return bool(state.connector_manager.is_connected() and state.login_ok)
