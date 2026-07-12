@@ -80,12 +80,14 @@ export function createActionButton(options: ActionButtonOptions): HTMLButtonElem
 
   if (dataAttr) btn.setAttribute(`data-${dataAttr.key}`, dataAttr.value)
 
+  // 항상 click 리스너를 추가 — disabled는 속성으로 클릭을 차단하고,
+  // 이후 disabled=false 변경 시 클릭이 동작하도록 보장
+  btn.addEventListener('click', onClick)
+
   if (disabled) {
     btn.disabled = true
     btn.style.opacity = '0.4'
     btn.style.cursor = 'not-allowed'
-  } else {
-    btn.addEventListener('click', onClick)
   }
 
   return btn
@@ -149,16 +151,18 @@ export function createSolidBtn(options: SolidButtonOptions): HTMLButtonElement {
 
   if (editControl) btn.setAttribute('data-edit-control', '')
 
+  // 항상 click 리스너를 추가 — disabled는 속성으로 클릭을 차단하고,
+  // 이후 disabled=false 변경 시 클릭이 동작하도록 보장
+  if (hoverColor) {
+    btn.addEventListener('mouseenter', () => { btn.style.background = hoverColor })
+    btn.addEventListener('mouseleave', () => { btn.style.background = color })
+  }
+  btn.addEventListener('click', onClick)
+
   if (disabled) {
     btn.disabled = true
     btn.style.opacity = '0.4'
     btn.style.pointerEvents = 'none'
-  } else {
-    if (hoverColor) {
-      btn.addEventListener('mouseenter', () => { btn.style.background = hoverColor })
-      btn.addEventListener('mouseleave', () => { btn.style.background = color })
-    }
-    btn.addEventListener('click', onClick)
   }
 
   return btn

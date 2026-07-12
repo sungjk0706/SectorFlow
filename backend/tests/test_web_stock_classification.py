@@ -279,7 +279,6 @@ class TestGetStockClassification:
         mock_custom = MagicMock()
         mock_custom.sectors = {"반도체": ["005930"]}
         mock_custom.stock_moves = {"005930": "반도체"}
-        mock_custom.deleted_sectors = ["old_sector"]
         mock_merged = {"반도체": ["005930"], "미분류": []}
         mock_stocks = [{"code": "005930", "sector": "반도체"}]
 
@@ -291,7 +290,6 @@ class TestGetStockClassification:
 
         assert result["custom_data"]["sectors"] == {"반도체": ["005930"]}
         assert result["custom_data"]["stock_moves"] == {"005930": "반도체"}
-        assert result["custom_data"]["deleted_sectors"] == ["old_sector"]
         assert result["merged_sectors"] == mock_merged
         assert result["edit_window_open"] is True
 
@@ -300,7 +298,6 @@ class TestGetStockClassification:
         mock_custom = MagicMock()
         mock_custom.sectors = {}
         mock_custom.stock_moves = {}
-        mock_custom.deleted_sectors = []
         mock_merged = {}
 
         with patch("backend.app.core.stock_classification_data.load_custom_data", return_value=mock_custom):
@@ -317,7 +314,6 @@ class TestGetStockClassification:
         mock_custom = MagicMock()
         mock_custom.sectors = {}
         mock_custom.stock_moves = {}
-        mock_custom.deleted_sectors = []
         mock_merged = {"미분류": []}
         mock_stocks = [
             {"code": "005930", "sector": "미분류"},

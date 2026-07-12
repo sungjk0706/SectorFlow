@@ -119,7 +119,6 @@ async def broadcast_stock_classification_changed() -> None:
         "custom_data": {
             "sectors": custom_sectors,
             "stock_moves": stock_moves,
-            "deleted_sectors": [],
         },
         "merged_sectors": merged,
         "sector_counts": sector_counts,
@@ -194,7 +193,6 @@ async def get_stock_classification(_: str = Depends(get_current_user)):
         "custom_data": {
             "sectors": dict(custom.sectors),
             "stock_moves": dict(custom.stock_moves),
-            "deleted_sectors": list(custom.deleted_sectors),
         },
         "merged_sectors": merged,
         "no_sector_count": no_sector_count,

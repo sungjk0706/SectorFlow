@@ -271,12 +271,11 @@ function updateStagingPanel(): void {
 /** Task 9.1: SSE 수신 시 모든 Chip의 업종명 텍스트만 갱신 (전체 리렌더링 금지) */
 function updateStagingChipSectors(): void {
   const state = stockClassificationStore.getState()
-  const { stockMoves, sectors, deletedSectors } = state
+  const { stockMoves, sectors } = state
   for (const [code, chip] of stagingChipMap) {
     const stock = getAllStocks().get(code)
     let sectorName = stockMoves[code] ?? stock?.sector ?? ''
     if (sectors[sectorName]) sectorName = sectors[sectorName]
-    if (deletedSectors.includes(sectorName)) sectorName = '미분류'
     const sectorSpan = chip.querySelector('.chip-sector')
     if (sectorSpan) sectorSpan.textContent = sectorName
   }
@@ -289,14 +288,13 @@ function updateStagingChipSectors(): void {
 function countStocksBySector(): Record<string, number> {
   const counts: Record<string, number> = {}
   const state = stockClassificationStore.getState()
-  const { stockMoves, sectors, deletedSectors, mergedSectors } = state
+  const { stockMoves, sectors, mergedSectors } = state
   for (const s of mergedSectors) counts[s] = 0
 
   for (const [, stock] of getAllStocks()) {
     let sector = stockMoves[stock.code] ?? stock.sector
     if (sector === undefined || sector === null) sector = '미분류'
     if (sectors[sector]) sector = sectors[sector]
-    if (deletedSectors.includes(sector)) sector = '업종명없음'
     if (sector && counts[sector] !== undefined) counts[sector]++
     else if (sector) counts[sector] = 1
   }
@@ -305,14 +303,13 @@ function countStocksBySector(): Record<string, number> {
 
 function getStocksForSector(sectorName: string): Array<{ code: string; name: string; market_type?: string; nxt_enable?: boolean }> {
   const state = stockClassificationStore.getState()
-  const { stockMoves, sectors, deletedSectors } = state
+  const { stockMoves, sectors } = state
   const result: Array<{ code: string; name: string; market_type?: string; nxt_enable?: boolean }> = []
 
   for (const [, stock] of getAllStocks()) {
     let sector = stockMoves[stock.code] ?? stock.sector
     if (sector === undefined || sector === null) sector = '미분류'
     if (sectors[sector]) sector = sectors[sector]
-    if (deletedSectors.includes(sector)) sector = '업종명없음'
     if (sector === sectorName) result.push({ code: stock.code, name: stock.name, market_type: stock.market_type, nxt_enable: stock.nxt_enable })
   }
   return result.sort((a, b) => a.name.localeCompare(b.name))
@@ -748,8 +745,6 @@ function buildSectorManageCard(): HTMLElement {
       if (selectedSector === row.sectorName) {
         style.background = COLOR.downBg
         style.borderLeft = '3px solid ' + COLOR.down
-      } else if (row.sectorName === '업종명없음' && row.stockCount > 0) {
-        style.background = COLOR.warningBg
       }
       return style
     },
@@ -1453,13 +1448,13 @@ function mount(_container: HTMLElement): void {
       return
     }
 
-    if (state.allStocks !== prev.allStocks || state.mergedSectors !== prev.mergedSectors || state.sectors !== prev.sectors || state.deletedSectors !== prev.deletedSectors || state.stockMoves !== prev.stockMoves) {
+    if (state.allStocks !== prev.allStocks || state.mergedSectors !== prev.mergedSectors || state.sectors !== prev.sectors || state.stockMoves !== prev.stockMoves) {
       if (state.allStocks !== prev.allStocks) {
         updateStockNameIndex()
       }
 
-      // Check if selectedSector still exists
-      if (selectedSector && !state.mergedSectors.includes(selectedSector)) {
+      // Check if selectedSector still exists (미분류 등 특수 카테고리 포함)
+      if (selectedSector && !getActiveSectors().includes(selectedSector)) {
         selectedSector = null
       }
 

@@ -71,7 +71,6 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
             "custom_data": {
                 "sectors": dict(custom.sectors),
                 "stock_moves": dict(custom.stock_moves),
-                "deleted_sectors": list(custom.deleted_sectors),
             },
             "merged_sectors": merged,
             "no_sector_count": no_sector_count,
