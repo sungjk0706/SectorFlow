@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-UI 브로드캐스터 (Gateway Pipeline) - 파이프라인 아키텍처 Step 5
+화면 전송기 (게이트웨이 파이프라인) - 파이프라인 아키텍처 Step 5
 
 모든 연산 엔진과 OMS에서 나오는 결과값들은 직접 프론트엔드로 쏘지 말고,
 오직 broadcast_queue에 put 하는 구조를 유지.
 
-Gateway 루프는 broadcast_queue를 지속적으로 컨슘하여,
+게이트웨이 반복은 broadcast_queue를 지속적으로 컨슘하여,
 현재 연결된 모든 웹소켓 클라이언트에게 실시간 데이터를 전송(Publish).
 
 모든 이벤트는 ws_manager.broadcast를 통해 즉시 전송.
@@ -21,7 +21,7 @@ _gateway_task: Optional[asyncio.Task] = None
 _gateway_running: bool = False
 
 async def start_gateway_loop() -> None:
-    """Gateway 루프 시작."""
+    """게이트웨이 반복 시작."""
     global _gateway_task, _gateway_running
 
     if _gateway_running:
@@ -30,11 +30,11 @@ async def start_gateway_loop() -> None:
 
     _gateway_running = True
     _gateway_task = asyncio.get_running_loop().create_task(_gateway_loop_impl())
-    logger.info("[연결] 루프 시작")
+    logger.info("[연결] 반복 시작")
 
 
 async def stop_gateway_loop() -> None:
-    """Gateway 루프 종료."""
+    """게이트웨이 반복 종료."""
     global _gateway_running, _gateway_task
 
     _gateway_running = False
@@ -45,11 +45,11 @@ async def stop_gateway_loop() -> None:
         except asyncio.CancelledError:
             pass
         _gateway_task = None
-    logger.info("[연결] 루프 종료")
+    logger.info("[연결] 반복 종료")
 
 
 async def _gateway_loop_impl() -> None:
-    """Gateway 루프 구현 — broadcast_queue + price_pass_through_queue 동시 구독."""
+    """게이트웨이 반복 구현 — broadcast_queue + price_pass_through_queue 동시 구독."""
     global _gateway_running
 
     try:
@@ -60,11 +60,11 @@ async def _gateway_loop_impl() -> None:
         )
     finally:
         _gateway_running = False
-        logger.info("[연결] 루프 종료")
+        logger.info("[연결] 반복 종료")
 
 
 async def _broadcast_loop() -> None:
-    """broadcast_queue 구독 루프 — sector-scores 등 연산 결과 전송."""
+    """broadcast_queue 구독 반복 — sector-scores 등 연산 결과 전송."""
     global _gateway_running
     broadcast_queue = get_broadcast_queue()
 
@@ -79,13 +79,13 @@ async def _broadcast_loop() -> None:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("[연결] broadcast 루프 예외 (계속): %s", e, exc_info=True)
+                logger.error("[연결] 전송 반복 오류 (계속): %s", e, exc_info=True)
     except asyncio.CancelledError:
         pass
 
 
 async def _price_pass_through_loop() -> None:
-    """price_pass_through_queue 구독 루프 — 현재가 직통 전송."""
+    """price_pass_through_queue 구독 반복 — 현재가 직통 전송."""
     global _gateway_running
 
     # lazy import: core_queues 초기화 이후에 import
@@ -93,7 +93,7 @@ async def _price_pass_through_loop() -> None:
         from backend.app.services.core_queues import get_price_pass_through_queue
         pq = get_price_pass_through_queue()
     except Exception as e:
-        logger.error("[연결] price_pass_through_queue 접근 실패: %s", e)
+        logger.error("[연결] 현재가 직통 큐 접근 실패: %s", e)
         return
 
     try:
@@ -108,14 +108,14 @@ async def _price_pass_through_loop() -> None:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("[연결] price_pass_through 루프 예외 (계속): %s", e, exc_info=True)
+                logger.error("[연결] 현재가 직통 반복 오류 (계속): %s", e, exc_info=True)
     except asyncio.CancelledError:
         pass
 
 
 async def _send_price_tick_to_frontend(data: dict) -> None:
     """
-    현재가 직통 전송 — sector-price-tick 이벤트로 프론트엔드 전송.
+    현재가 직통 전송 — 섹터 현재가 이벤트로 화면 전송.
 
     Args:
         data: price_tick_data 딕셔너리
@@ -138,17 +138,17 @@ async def _send_price_tick_to_frontend(data: dict) -> None:
         await ws_manager.broadcast("sector-price-tick", payload)
 
     except Exception as e:
-        logger.error("[연결] sector-price-tick 전송 예외: %s", e, exc_info=True)
+        logger.error("[연결] 섹터 현재가 전송 오류: %s", e, exc_info=True)
 
 
 async def _process_broadcast(data: dict) -> None:
     """
-    브로드캐스트 데이터 처리.
+    전송 데이터 처리.
 
-    WebSocket 전송.
+    실시간 통신 전송.
 
     Args:
-        data: 브로드캐스트 데이터
+        data: 전송 데이터
     """
     try:
         event_type = data.get("type")
@@ -158,12 +158,12 @@ async def _process_broadcast(data: dict) -> None:
         await _send_to_websocket(event_type, payload)
 
     except Exception as e:
-        logger.error("[연결] 브로드캐스트 처리 예외: %s", e, exc_info=True)
+        logger.error("[연결] 전송 처리 오류: %s", e, exc_info=True)
 
 
 async def _send_to_websocket(event_type: str, data: dict) -> None:
     """
-    WebSocket 전송.
+    실시간 통신 전송.
 
     Args:
         event_type: 이벤트 타입
@@ -178,4 +178,4 @@ async def _send_to_websocket(event_type: str, data: dict) -> None:
         await ws_manager.broadcast(event_type, data)
 
     except Exception as e:
-        logger.error("[연결] WebSocket 전송 예외: %s", e, exc_info=True)
+        logger.error("[연결] 실시간 통신 전송 오류: %s", e, exc_info=True)

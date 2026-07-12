@@ -124,7 +124,7 @@ async def _calculate_receive_rate() -> None:
         _current_receive_rate = {"received": received_count, "total": total_count, "pct": current_pct}
 
     except Exception as e:
-        logger.error("[연산] 수신율 계산 예외: %s", e, exc_info=True)
+        logger.error("[연산] 수신율 계산 오류: %s", e, exc_info=True)
 
 
 def get_current_receive_rate() -> dict:
@@ -268,7 +268,7 @@ async def _compute_loop_impl() -> None:
                     # 동일 종목 01 틱 코얼레싱 — 최신 데이터만 유지
                     coalesced = _coalesce_batch(batch)
 
-                    # 배치 처리 + 계좌 브로드캐스트 디바운스
+                    # 배치 처리 + 계좌 전송 디바운스
                     _account_broadcast_dirty = False
                     for event in coalesced:
                         try:
@@ -276,23 +276,23 @@ async def _compute_loop_impl() -> None:
                             if _hit:
                                 _account_broadcast_dirty = True
                         except Exception as e:
-                            logger.error("[연산] 이벤트 처리 예외 (계속): %s", e, exc_info=True)
+                            logger.error("[연산] 이벤트 처리 오류 (계속): %s", e, exc_info=True)
 
-                    # 배치 후 계좌 브로드캐스트 1회 실행
+                    # 배치 후 계좌 전송 1회 실행
                     if _account_broadcast_dirty:
                         try:
                             from backend.app.services import engine_account
                             await engine_account._refresh_account_snapshot_meta()
                             await engine_account._broadcast_account(reason="price_tick_batch")
                         except Exception as e:
-                            logger.error("[연산] 배치 계좌 브로드캐스트 실패: %s", e, exc_info=True)
+                            logger.error("[연산] 배치 계좌 전송 실패: %s", e, exc_info=True)
 
                 # P0-1: 틱 폭주 시 이벤트 루프 고갈 방지 - 협력적 멀티태스킹 (Yielding)
                 await asyncio.sleep(0)
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("[연산] 처리 예외 (계속): %s", e, exc_info=True)
+                logger.error("[연산] 처리 오류 (계속): %s", e, exc_info=True)
     finally:
         _compute_running = False
 
@@ -346,7 +346,7 @@ async def _process_control_signal(
             logger.warning("[연산] 알 수 없는 제어 신호: %s", signal_type)
 
     except Exception as e:
-        logger.error("[연산] 제어 신호 처리 예외: %s", e, exc_info=True)
+        logger.error("[연산] 제어 신호 처리 오류: %s", e, exc_info=True)
 
 
 async def _handle_config_update(
@@ -362,7 +362,7 @@ async def _handle_config_update(
     """
     # 캐시 직접 업데이트 제거 - 단일 소스 진리 원칙 준수
     # DB에서 캐시 갱신은 settings.py → apply_settings_change → refresh_engine_integrated_system_settings_cache 경로만 사용
-    logger.info("[연산] 설정 변경 처리 - 캐시 업데이트는 settings.py에서 DB 로드로 수행됨")
+    logger.info("[연산] 설정 변경 처리 - 캐시 갱신은 settings.py에서 DB 로드로 수행됨")
     
     # 설정(투자모드, 증권사 등) 변경에 따라 Header 상태 갱신
     from backend.app.services.engine_account_notify import notify_desktop_header_refresh
@@ -386,7 +386,7 @@ async def _handle_sector_recompute(
         logger.info("[연산] 업종순위 재계산 완료")
 
     except Exception as e:
-        logger.error("[연산] 업종순위 재계산 예외: %s", e, exc_info=True)
+        logger.error("[연산] 업종순위 재계산 오류: %s", e, exc_info=True)
 
 
 async def _process_tick_data(
@@ -401,7 +401,7 @@ async def _process_tick_data(
         broadcast_queue: UI 전송 큐
 
     Returns:
-        True if 보유종목 가격 갱신 발생 (계좌 브로드캐스트 필요), False otherwise.
+        True if 보유종목 가격 갱신 발생 (계좌 전송 필요), False otherwise.
     """
     # Step 3: engine_service의 연산 로직 이관
     # 1. 틱 데이터 파싱 및 캐시 업데이트
@@ -423,7 +423,7 @@ async def _handle_real_tick(
         broadcast_queue: UI 전송 큐
 
     Returns:
-        True if 보유종목 가격 갱신 발생 (계좌 브로드캐스트 필요), False otherwise.
+        True if 보유종목 가격 갱신 발생 (계좌 전송 필요), False otherwise.
     """
     _account_dirty = False
     # engine_service._apply_real01_volume_amount_to_radar_rows 이관
@@ -467,7 +467,7 @@ async def _handle_real_tick(
             # 0D 호가 처리 (호가 잔량 테이블)
             elif norm_type == "0d":
                 await _handle_real_0d_tick(item, vals, broadcast_queue)
-            # 0J 업종지수 처리 (즉시 브로드캐스트, 저장 없음)
+            # 0J 업종지수 처리 (즉시 전송, 저장 없음)
             elif norm_type == "0j":
                 await _handle_real_0j_tick(item, vals)
             # PGM 프로그램 순매수 처리 (커스텀 타입)
@@ -475,12 +475,12 @@ async def _handle_real_tick(
                 await _handle_real_pgm_tick(item, vals, broadcast_queue)
 
     except Exception as e:
-        logger.error("[연산] REAL 틱 처리 예외: %s", e, exc_info=True)
+        logger.error("[연산] 실시간 틱 처리 오류: %s", e, exc_info=True)
     return _account_dirty
 
 
 async def _handle_real_0j_tick(item: dict, vals: dict) -> None:
-    """0J 업종지수 틱 처리 — 저장 없이 즉시 프론트엔드에 브로드캐스트."""
+    """0J 업종지수 틱 처리 — 저장 없이 즉시 화면에 전송."""
     upcode = str(item.get("item", "") or "").strip()
     if not upcode:
         return
@@ -508,7 +508,7 @@ async def _handle_real_01_tick(
         broadcast_queue: UI 전송 큐
 
     Returns:
-        True if 보유종목 가격 갱신 발생 (계좌 브로드캐스트 필요), False otherwise.
+        True if 보유종목 가격 갱신 발생 (계좌 전송 필요), False otherwise.
     """
     global _received_codes, _receive_rate_dirty
 
@@ -542,13 +542,13 @@ async def _handle_real_01_tick(
             _check_realtime_latency(_ts)
             return False
 
-        # ── 1. UI 프론트엔드로 RAW 틱 데이터 브로드캐스트 ──
+        # ── 1. 화면으로 실시간 틱 데이터 전송 ──
         item["item"] = raw_cd
         item["_ts"] = _ts
         try:
             broadcast_queue.put_nowait({"type": "real-data", "data": item})
         except asyncio.QueueFull:
-            logger.warning("[연산] broadcast_queue 가득 참 — UI 데이터 드롭 (code=%s)", raw_cd)
+            logger.warning("[연산] 전송 큐 가득 참 — 화면 데이터 누락 (종목코드=%s)", raw_cd)
 
         # ── 2. 레이더 행 갱신 + 업종 점수 증분 재계산 트리거 ──
         if is_0b_tick and any(f in vals for f in ("10", "11", "12", "14", "17", "228")):
@@ -593,7 +593,7 @@ async def _handle_real_01_tick(
         _check_realtime_latency(_ts)
 
     except Exception as e:
-        logger.error("[연산] 0B/01 틱 처리 예외: %s", e, exc_info=True)
+        logger.error("[연산] 체결 틱(0B/01) 처리 오류: %s", e, exc_info=True)
     return _price_hit
 
 
@@ -634,7 +634,7 @@ async def _handle_real_0d_tick(
             await notify_orderbook_update(nk, bid, ask)
 
     except Exception as e:
-        logger.error("[연산] 0D 틱 처리 예외: %s", e, exc_info=True)
+        logger.error("[연산] 호가 틱(0D) 처리 오류: %s", e, exc_info=True)
 
 
 async def _handle_real_pgm_tick(
@@ -668,7 +668,7 @@ async def _handle_real_pgm_tick(
             await notify_program_update(nk, tval)
 
     except Exception as e:
-        logger.error("[연산] PGM 틱 처리 예외: %s", e, exc_info=True)
+        logger.error("[연산] 프로그램 순매수 틱(PGM) 처리 오류: %s", e, exc_info=True)
 
 
 async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
@@ -714,7 +714,7 @@ async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
                         await _send_receive_rate(_current_receive_rate)
 
             except Exception as e:
-                logger.error("[연산] 수신율 체크 예외: %s", e, exc_info=True)
+                logger.error("[연산] 수신율 체크 오류: %s", e, exc_info=True)
 
         # Phase 2: 0.2초 배치 재계산 루프
         from backend.app.services.engine_sector_confirm import has_dirty_sectors, _flush_sector_recompute_impl
@@ -735,5 +735,5 @@ async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
                 await _flush_sector_recompute_impl()
 
     except asyncio.CancelledError:
-        logger.info("[연산] 백그라운드 업종 점수 재계산 루프 취소됨")
+        logger.info("[연산] 백그라운드 업종 점수 재계산 반복 취소됨")
 

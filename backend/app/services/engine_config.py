@@ -89,7 +89,7 @@ async def refresh_engine_integrated_system_settings_cache(user_id: str | None = 
         if state.running:
             new_min_amt = fresh.get("sector_min_trade_amt", 0.0)
             if old_min_amt != new_min_amt:
-                logger.info("[설정] sector_min_trade_amt 변경: %.0f억 → %.0f억", old_min_amt, new_min_amt)
+                logger.info("[설정] 업종 최소 거래대금 변경: %.0f억 → %.0f억", old_min_amt, new_min_amt)
                 await state.on_filter_settings_changed()
     except Exception as e:
         logger.error("[설정] 설정 캐시 갱신 실패: %s", e, exc_info=True)
@@ -102,12 +102,12 @@ async def reload_engine_settings() -> None:
     # broker 설정 변경 시 BrokerRouter 캐시 초기화
     from backend.app.core.broker_factory import reset_router
     reset_router()
-    logger.info("[설정] 설정 재로드 — BrokerRouter 캐시 초기화")
+    logger.info("[설정] 설정 재로드 — 증권사 라우터 캐시 초기화")
 
     # 설정 재로드 완료 후 engine-reload-complete 이벤트 전송
     from backend.app.services.engine_account_notify import _broadcast
     await _broadcast("engine-reload-complete", {"status": "complete"})
-    logger.info("[설정] 설정 재로드 완료 — engine-reload-complete 전송")
+    logger.info("[설정] 설정 재로드 완료 — 엔진 갱신 완료 전송")
 
 
 # ── 민감 정보 마스킹 ─────────────────────────────────────────────────

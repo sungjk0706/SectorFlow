@@ -4,6 +4,14 @@
 - 없음
 
 ## 직전 완료 작업
+- **2026-07-12: 백엔드 로그 한글화 3차 작업 — 4단계 (market_close_pipeline) 완료**
+  - **수정 파일**: `services/market_close_pipeline.py` (1개 파일, 1370줄)
+  - **내용**: 81건 logger 호출 + 약 40건 주석/docstring 한글화 — Step 1~7→1~7단계(로그 15건+주석/docstring 12건), stock_5d_array→5일봉 배열 테이블(로그 3건+주석 3건), master_stocks_table→전종목 마스터 테이블(로그 3건+주석 6건), _master_stocks_cache→전종목 마스터 캐시(로그 1건+주석 5건), ka10099→전종목 통합 조회(ka10099)(로그 5건+docstring 2건), ka10081→전종목 1일봉챠트 시세 조회(ka10081)(docstring 2건+주석 1건), 브로드캐스트→전송(로그 4건+주석 2건), 파싱→해석(로그 4건+broadcast 1건+주석 2건), 예외→오류(로그 2건), broker→증권사(로그 2건+주석 2건), code→종목코드(로그 2건), Top 5→상위 5건(로그 1건), state 플래그→상태 플래그(로그 1건), 화면전송→화면 전송(로그 2건), 업데이트→갱신(로그 1건+주석 2건), INSERT→삽입(로그 1건+주석 2건), skip_codes→생략 종목(로그 1건), subscribed→구독 중(로그 1건), cached=False→캐시 미적용(로그 1건), scheduler_market_close_on=OFF→장마감 스케줄러=꺼짐(로그 1건), 스킵→생략(로그 1건), post-confirmed 파이프라인→확정 후 파이프라인(로그 2건), run_id/total/excluded/duplicate/final_excluded→실행ID/전체/제외/중복/최종 제외(로그 1건), raw_rows/unique_codes/duplicate_codes/conflict_codes→원본 행/고유 종목/중복 종목/충돌 종목(로그 1건), avg_5d_trade_amount→5일 평균 거래대금(로그 1건), date=%s→날짜=%s, skip=%d→생략=%d(로그 1건), Failed to broadcast filter summary→필터 요약 전송 실패(로그 1건), stock provider→종목 제공자(로그 1건), WS 브로드캐스트→실시간 통신 전송(docstring 2건), WS 구독→실시간 통신 구독(docstring 1건+주석 1건), NULL→빈 값(주석 3건), PK→기본키(주석 1건), fire-and-forget→즉시 전송(주석 1건), Rate limiting→요청 간격 조절(주석 1건), Kiwoom→키움(주석 1건), 일본어 が→가 수정(docstring 1건)
+  - **검증**: py_compile 1개 파일 통과, 잔존 영어 grep 0건 (Step/stock_5d_array/master_stocks_table/_master_stocks_cache/브로드캐스트/파싱/스킵/화면전송/업데이트/예외/Top 5/state 플래그/broker=/cached=False/scheduler_market_close_on=OFF/post-confirmed/Failed to broadcast/fire-and-forget/Rate limiting/Kiwoom/WS 브로드캐스트/WS 구독/NULL/PK/가(일본어) 전부 0건), 런타임 기동 확인 (총 기동시간 320ms, 에러/Traceback 없음, "전종목 마스터 테이블 초기화 완료" 한국어 출력 확인), 잔존 프로세스 0개
+- **2026-07-12: 백엔드 로그 한글화 3차 작업 — 3단계 (services A 내부 디버그 로그) 완료**
+  - **수정 파일**: `services/engine_cache.py`, `services/engine_snapshot.py`, `services/engine_config.py` (3개 파일)
+  - **내용**: 15건 로그 메시지 한글화 — stocks DB→주식 DB, 미스→누락, WS→실시간 통신(2건), Settlement Engine→정산 엔진, 스킵→생략, post-login→로그인 후, 태스크→작업(2건), sector_summary_ready_event→섹터 요약 준비 이벤트, delta→증분(2건), master_stocks_table→전종목 마스터 테이블(2건), sector_min_trade_amt→업종 최소 거래대금, BrokerRouter→증권사 라우터, engine-reload-complete→엔진 갱신 완료
+  - **검증**: py_compile 3개 파일 통과, 잔존 영어 grep 0건, 런타임 기동 확인 (총 기동시간 241ms, "섹터 요약 준비 이벤트 대기" 한국어 출력 확인), 잔존 프로세스 0개
 - **2026-07-12: 백엔드 로그 한글화 2차 작업 — 5단계 (증권사 연결/주문/잔고) 완료**
   - **수정 파일**: `core/kiwoom_rest.py`, `kiwoom_stock_rest.py`, `kiwoom_connector.py`, `kiwoom_order.py`, `kiwoom_providers.py`, `core/ls_rest.py`, `ls_connector.py`, `ls_providers.py`, `core/broker_router.py`, `broker_registry.py`, `connector_manager.py` (11개 파일)
   - **내용**: 약 130건 로그 메시지 한글화 — get_spec→명세 조회, app_key/app_secret→API 키/시크릿 키, AsyncClient→HTTP 클라이언트, 429→요청 과다, HTTP %s→응답 코드, status=→응답코드=, api-id=→요청ID=, tr_cd=→TR코드=, TR=→TR코드=, trnm=→메시지유형, Body→본문, No Response→응답 없음, 예외→오류, %d회→%d번, 스킵→생략, OAuth→인증, 200 응답이지만 토큰 필드 없음→응답 성공이지만 토큰 없음, expires_in→유효기간, tick_queue 드롭→시세 큐 누락, WebSocket→웹소켓, 브로드캐스트→전송, stop 신호→중지 신호, 재연결 루프→재연결 시작, 포기→중단, broker→증권사, spec→설정, 폴백→대체, Connector→커넥터, 드롭 정책→누락 정책, 매수주문→매수 주문, 매도주문→매도 주문, 계좌등록→계좌 등록, 계좌해제→계좌 해제, 연속조회→연속 조회, 등락율→등락률, 파싱 예외→데이터 해석 오류, fetch 예외→조회 오류, NULL→비어있음, API 코드→기능명+코드 병기 (ka20001→업종별 거래량 조회, ka10099→전종목 통합 조회, ka10001→전체 종목 조회, kt00001→예수금 상세현황, au10001→인증 API, au10002→토큰 폐기 API). 추가로 P10(SSOT) 일관성을 위해 주석/docstring 24건 동기화 (연속조회→연속 조회 5건, 드롭 정책→누락 정책 12건, 브로드캐스트→전송 4건, 폴백→대체 2건, 계좌등록/해제→계좌 등록/해제 5건, Connector→커넥터 1건, broker 비어있음→증권사 비어있음 1건, 등락율→등락률 1건)
@@ -24,6 +32,22 @@
 
 ## 진행 중 작업
 
+### 백엔드 로그 한글화 3차 작업 (내부 디버그 로그) — 4/8단계 완료
+
+> **계획서**: `backend/docs/log_korean_migration_plan.md`의 "2차 작업 (내부 디버그 로그) — 향후 진행" 섹션
+> **이력**: 1차 작업(2026-07-09) 약 30개 파일 1차 한글화. 2차 작업(사용자 노출 로그) 5단계 전부 완료. 3차 작업(내부 디버그 로그) 8단계 중 4단계 완료.
+
+| 단계 | 내용 | 파일 수 | 상태 |
+|------|------|---------|------|
+| 1단계 | pipelines 내부 디버그 로그 | 2 | ☑ 완료 (2026-07-12) |
+| 2단계 | db (stock_tables, db_writer, json_utils) | 3 | ☑ 완료 (2026-07-12) |
+| 3단계 | services A (engine_cache, engine_snapshot, engine_config) | 3 | ☑ 완료 (2026-07-12) |
+| 4단계 | market_close_pipeline (단독, 81건) | 1 | ☑ 완료 (2026-07-12) |
+| 5단계 | services B (engine_ws_reg, engine_ws, engine_sector_confirm, data_manager) | 4 | ☐ 미시작 |
+| 6단계 | services C (sector_data_provider, ws_subscribe_control, engine_strategy_core, engine_ws_fill_followup, core_queues) | 5 | ☐ 미시작 |
+| 7단계 | core A (stock_classification_data, sector_mapping, sector_stock_cache, settings_file, settings_store) | 5 | ☐ 미시작 |
+| 8단계 | core B (trading_calendar, lock_manager, journal, memory_monitor) | 4 | ☐ 미시작 |
+
 ### 백엔드 로그 한글화 2차 작업 — 1~5단계 전부 완료
 
 > **계획서**: `backend/docs/log_korean_migration_plan.md`
@@ -37,7 +61,7 @@
 | 4단계 | 알림/서킷브레이커 로그 | 5 | ☑ 완료 (2026-07-12) |
 | 5단계 | 증권사 연결/주문/잔고 로그 | 11 | ☑ 완료 (2026-07-12) |
 
-**2차 작업(사용자 노출 로그) 전부 완료.** 다음은 3차 작업(내부 디버그 로그)을 별도 세션에서 진행.
+**2차 작업(사용자 노출 로그) 전부 완료.**
 
 ### 아키텍처 전수 점검 — 7/30 세션 완료
 
@@ -57,17 +81,21 @@
 
 ## 다음 단계
 
-### 1순위: 백엔드 로그 한글화 3차 작업 (내부 디버그 로그) — 향후 진행
+### 1순위: 백엔드 로그 한글화 3차 작업 (내부 디버그 로그) — 진행 중
 
-2차 작업(사용자 노출 로그) 5단계 전부 완료. 다음은 3차 작업(내부 디버그 로그)을 별도 세션에서 진행.
+3차 작업 8단계 중 4단계 완료. 다음은 5단계(services B)부터 순차 진행.
 
-- **1단계** ☑ 완료: `app/core/logger.py` — InterceptHandler uvicorn 메시지 치환 맵 + setup_console_intercept 분리
-- **2단계** ☑ 완료: `app/web/app.py`, `ws_manager.py`, `routes/ws.py`, `routes/ws_settings.py`, `routes/ws_orders.py`, `routes/settings.py`, `routes/stock_classification.py` — 33건 로그 메시지 + 11건 주석/docstring/에러 메시지 동기화
-- **3단계** ☑ 완료: `services/trading.py`, `settlement_engine.py`, `trade_history.py`, `engine_account.py`, `engine_account_notify.py`, `engine_service.py`, `engine_lifecycle.py`, `engine_bootstrap.py`, `engine_ws_dispatch.py`, `dry_run.py`, `auto_trading_effective.py` — 59건 로그 메시지 + 11건 주석/docstring/화면 데이터 동기화 + 1건 계획서 누락 추가 수정
-- **4단계** ☑ 완료: `services/notification_worker.py`, `telegram_bot.py`, `telegram.py`, `circuit_breaker.py`, `risk_manager.py` — 12건 로그 메시지 + 19건 주석/docstring 동기화 + 3단계 누락 P10/P21 위반 5건 추가 수정 (trading.py 화면 전송 메시지 + 주석)
-- **5단계** ☑ 완료: `core/kiwoom_rest.py`, `kiwoom_stock_rest.py`, `kiwoom_connector.py`, `kiwoom_order.py`, `kiwoom_providers.py`, `ls_rest.py`, `ls_connector.py`, `ls_providers.py`, `broker_router.py`, `broker_registry.py`, `connector_manager.py` — 약 130건 로그 메시지 + 24건 주석/docstring 동기화
+- **1단계** ☑ 완료 (2026-07-12): `pipelines/pipeline_compute.py`, `pipeline_gateway.py` — 28건 로그 메시지 + 8건 주석/docstring 동기화
+- **2단계** ☑ 완료 (2026-07-12): `db/stock_tables.py`, `db/db_writer.py`, `db/json_utils.py` — 12건 로그 메시지 한글화
+- **3단계** ☑ 완료 (2026-07-12): `services/engine_cache.py`, `engine_snapshot.py`, `engine_config.py` — 15건 로그 메시지 한글화
+- **4단계** ☑ 완료 (2026-07-12): `services/market_close_pipeline.py` — 81건 logger 호출 + 약 40건 주석/docstring 한글화
+- **5단계** ☐ 미시작: `services/engine_ws_reg.py`, `engine_ws.py`, `engine_sector_confirm.py`, `data_manager.py`
+- **5단계** ☐ 미시작: `services/engine_ws_reg.py`, `engine_ws.py`, `engine_sector_confirm.py`, `data_manager.py`
+- **6단계** ☐ 미시작: `services/sector_data_provider.py`, `ws_subscribe_control.py`, `engine_strategy_core.py`, `engine_ws_fill_followup.py`, `core_queues.py`
+- **7단계** ☐ 미시작: `core/stock_classification_data.py`, `sector_mapping.py`, `sector_stock_cache.py`, `settings_file.py`, `settings_store.py`
+- **8단계** ☐ 미시작: `core/trading_calendar.py`, `lock_manager.py`, `journal.py`, `memory_monitor.py`
 
-3차 작업(내부 디버그 로그) 대상 파일은 `backend/docs/log_korean_migration_plan.md`의 "2차 작업 (내부 디버그 로그) — 향후 진행" 섹션 참조.
+3차 작업 대상 파일 목록은 `backend/docs/log_korean_migration_plan.md`의 "2차 작업 (내부 디버그 로그) — 향후 진행" 섹션 참조.
 
 ### 2순위: 아키텍처 전수 점검 P1 세션 (B-07)
 

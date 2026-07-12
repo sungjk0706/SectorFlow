@@ -18,7 +18,7 @@ def encode_json_field(value: Any) -> str:
     try:
         return json.dumps(value, ensure_ascii=False)
     except Exception as e:
-        logger.error("[시스템] encode 실패: %s", e)
+        logger.error("[시스템] 인코딩 실패: %s", e)
         raise
 
 
@@ -48,7 +48,7 @@ def decode_json_field(text: str | None, expected_type: type = dict) -> Any:
     try:
         decoded = json.loads(text)
     except json.JSONDecodeError as e:
-        logger.error("[시스템] JSON 파싱 실패: %s (text=%s)", e, text[:100])
+        logger.error("[시스템] JSON 해석 실패: %s (본문=%s)", e, text[:100])
         raise
     
     # 타입 검증

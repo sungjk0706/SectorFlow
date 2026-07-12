@@ -85,7 +85,7 @@ async def build_initial_snapshot() -> dict:
         from backend.app.services.engine_account_notify import init_sent_caches
         init_sent_caches([], positions, account_snap)
     except Exception as e:
-        logger.warning("[시스템] delta 저장 데이터 초기화 실패: %s", e, exc_info=True)
+        logger.warning("[시스템] 증분 저장 데이터 초기화 실패: %s", e, exc_info=True)
 
     return snapshot
 
@@ -104,7 +104,7 @@ async def build_sector_stocks_payload() -> dict:
         from backend.app.services.engine_account_notify import init_sent_caches
         init_sent_caches(sector_stocks, await get_positions(), await get_account_snapshot())
     except Exception:
-        logger.warning("[시스템] delta 캐시 초기화 실패", exc_info=True)
+        logger.warning("[시스템] 증분 캐시 초기화 실패", exc_info=True)
 
     return {"_v": 1, "stocks": filtered, "krx_after_hours": is_krx_after_hours()}
 
@@ -196,9 +196,9 @@ async def _reset_realtime_fields() -> None:
                     trade_amount = NULL
             """)
             await conn.commit()
-        logger.info("[시스템] DB master_stocks_table 실시간 필드 초기화 완료")
+        logger.info("[시스템] DB 전종목 마스터 테이블 실시간 필드 초기화 완료")
     except Exception as db_err:
-        logger.error("[시스템] DB master_stocks_table 실시간 필드 초기화 실패: %s", db_err, exc_info=True)
+        logger.error("[시스템] DB 전종목 마스터 테이블 실시간 필드 초기화 실패: %s", db_err, exc_info=True)
     logger.info(
         "[시스템] 실시간 필드 및 REST 보완 저장 데이터, 수익 이력 초기화 완료 — %d종목, 실시간/REST 저장 데이터 전체 클리어",
         len(state.master_stocks_cache),
