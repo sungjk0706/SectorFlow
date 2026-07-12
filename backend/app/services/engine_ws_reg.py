@@ -12,6 +12,7 @@ from backend.app.services.engine_symbol_utils import (
     get_ws_subscribe_code,
 )
 from backend.app.services.engine_state import state
+from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -445,7 +446,7 @@ async def restore_subscriptions_after_reconnect(broker_id: str) -> None:
 
     ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected():
-        logger.warning("[연결] %s 구독 복원 생략 — 연결 없음", broker_id.upper())
+        logger.warning("[연결] %s 구독 복원 생략 — 연결 없음", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()))
         return
 
     subscribed = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed", False)}
@@ -462,23 +463,23 @@ async def restore_subscriptions_after_reconnect(broker_id: str) -> None:
         
         ok = await ws.subscribe_stocks(targets_list)
         if ok:
-            logger.info("[연결] %s 구독 복원 완료 — %d종목", broker_id.upper(), len(targets_list))
+            logger.info("[연결] %s 구독 복원 완료 — %d종목", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()), len(targets_list))
         else:
             for cd in targets_list:
                 if cd in state.master_stocks_cache:
                     state.master_stocks_cache[cd].pop("_subscribed", None)
-            logger.warning("[연결] %s 구독 복원 실패", broker_id.upper())
+            logger.warning("[연결] %s 구독 복원 실패", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()))
 
     # 데이터(0J) 복원
     try:
         await subscribe_index_realtime()
-        logger.info("[구독] %s 업종지수 구독 복원 완료", broker_id.upper())
+        logger.info("[구독] %s 업종지수 구독 복원 완료", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()))
     except Exception as e:
-        logger.warning("[구독] %s 업종지수 구독 복원 실패: %s", broker_id.upper(), e, exc_info=True)
+        logger.warning("[구독] %s 업종지수 구독 복원 실패: %s", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()), e, exc_info=True)
 
     # 계좌(00/04) 복원
     try:
         await subscribe_account_realtime()
-        logger.info("[계좌] %s 계좌 구독 복원 완료", broker_id.upper())
+        logger.info("[계좌] %s 계좌 구독 복원 완료", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()))
     except Exception as e:
-        logger.warning("[계좌] %s 계좌 구독 복원 실패: %s", broker_id.upper(), e, exc_info=True)
+        logger.warning("[계좌] %s 계좌 구독 복원 실패: %s", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()), e, exc_info=True)

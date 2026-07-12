@@ -19,6 +19,7 @@ from backend.app.core.broker_registry import (
     PROVIDER_REGISTRY,
     _create_provider,
 )
+from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -85,9 +86,9 @@ class BrokerRouter:
                 if isinstance(spec_data, dict):
                     self._specs[broker_name] = spec_data.get("role_mappings", {})
                 else:
-                    logger.warning("[설정] %s 설정 형식 오류: %s (기대: dict)", broker_name, type(spec_data))
+                    logger.warning("[설정] %s 설정 형식 오류: %s (기대: dict)", BROKER_DISPLAY_NAMES.get(broker_name, broker_name), type(spec_data))
             else:
-                logger.warning("[설정] %s 설정 없음", broker_name)
+                logger.warning("[설정] %s 설정 없음", BROKER_DISPLAY_NAMES.get(broker_name, broker_name))
 
     def _build(self) -> None:
         """단일 소스 진리: state.integrated_system_settings_cache 직접 사용."""

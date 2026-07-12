@@ -10,6 +10,7 @@ import asyncio
 import time
 from backend.app.core.broker_factory import get_router
 from backend.app.core.broker_providers import AuthProvider
+from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 import logging
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.services.trading import AutoTradeManager
@@ -83,7 +84,7 @@ async def _get_all_tokens_async(router) -> None:
             token = await auth_provider.get_access_token()
             return broker_id, token
         except Exception as e:
-            logger.warning("[연결] %s 토큰 발급 실패: %s", broker_id.upper(), e, exc_info=True)
+            logger.warning("[연결] %s 토큰 발급 실패: %s", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()), e, exc_info=True)
             return broker_id, None
 
     results = await asyncio.gather(
@@ -244,13 +245,13 @@ async def run_engine_loop() -> None:
                     _rest_api._account_tr_id = tr
             state.broker_rest_apis[broker_nm] = _rest_api
             from backend.app.services.engine_lifecycle import log_message
-            log_message(f"[연결] {broker_nm} 증권사 연결 완료 (테스트모드={_is_test})")
+            log_message(f"[연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 연결 완료 (테스트모드={_is_test})")
 
 
 
         _is_test_flag  = is_test_mode(settings)
         _mode_str      = "테스트모드" if _is_test_flag else "실전투자"
-        _broker_str    = "증권사"
+        _broker_str    = BROKER_DISPLAY_NAMES.get(broker_nm, "증권사")
         _acnt_raw      = (
             settings.get(f"{broker_nm}_account_no")
             or "미설정"
@@ -371,7 +372,7 @@ async def run_engine_loop() -> None:
             try:
                 await _rest_api.revoke_token()
             except Exception as e:
-                logger.warning("[연산] %s 토큰 폐기 실패: %s", _broker_id, e)
+                logger.warning("[연산] %s 토큰 폐기 실패: %s", BROKER_DISPLAY_NAMES.get(_broker_id, _broker_id), e)
             if hasattr(_rest_api, '_reset_client'):
                 await _rest_api._reset_client()
             elif hasattr(_rest_api, '_client') and _rest_api._client:

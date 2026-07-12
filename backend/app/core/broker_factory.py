@@ -8,6 +8,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import logging
+from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 if TYPE_CHECKING:
     from backend.app.core.broker_router import BrokerRouter
 
@@ -41,7 +42,7 @@ def create_connector(settings: dict):
     from backend.app.core.broker_registry import CONNECTOR_REGISTRY
 
     broker_name = str(settings.get("broker", "") or "").lower().strip()
-    logger.info("[설정] %s 연결 준비", broker_name)
+    logger.info("[설정] %s 연결 준비", BROKER_DISPLAY_NAMES.get(broker_name, broker_name))
 
     connector_registry = CONNECTOR_REGISTRY.get(broker_name)
     if not connector_registry:
