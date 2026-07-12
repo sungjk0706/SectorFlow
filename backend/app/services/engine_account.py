@@ -220,7 +220,7 @@ async def _update_account_memory(settings: dict) -> None:
 async def _update_account_memory_inner(settings: dict) -> None:
     """_update_account_memory 실제 구현 (Lock 내부에서 호출)."""
     from backend.app.services.engine_account_notify import _rebuild_positions_cache
-    from backend.app.services.engine_ws import _ws_live, _sweep_unreg_subscribed_except_positions_and_tracked
+    from backend.app.services.engine_ws import _ws_live
     from backend.app.core.engine_settings import get_engine_settings
 
     s = settings or {}
@@ -255,23 +255,10 @@ async def _update_account_memory_inner(settings: dict) -> None:
         _rebuild_positions_cache(merged)
 
     state.account_rest_bootstrapped = True
-    
+
     state.account_snapshot["broker"] = broker
     state.account_snapshot["deposit"] = int(summary.get("deposit", 0) or 0)
     state.account_snapshot["orderable"] = int(summary.get("orderable", 0) or 0)
-
-    # WS 구독 보강은 _login_post_pipeline / _run_snapshot_and_sell_check 에서 명시적으로 호출.
-    # 여기서 호출하면 _account_rest_lock 안에서 _reg_seq_lock 을 잡는 중첩 락 -> 데드락 위험.
-    if _ws_live():
-        try:
-            n_unreg = await _sweep_unreg_subscribed_except_positions_and_tracked()
-            if n_unreg:
-                logger.info(
-                    "[구독정리] 잔고 반영 후 미보유·미추적 종목 구독해지 %d건 (추적 종목 제외)",
-                    n_unreg,
-                )
-        except Exception as e:
-            logger.warning("[연결] 웹소켓 실시간 구독 정리 실패함: %s", e, exc_info=True)
 
     if state.refresh_account_snapshot_meta:
         await state.refresh_account_snapshot_meta()

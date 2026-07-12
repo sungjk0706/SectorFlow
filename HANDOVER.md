@@ -1,14 +1,16 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 종목분류 페이지 업종관리 테이블 UI 개선 + 승인 규칙 강화**
-  - **순번 컬럼 추가**: `frontend/src/pages/stock-classification.ts:106` MasterRow에 `seq: number | null` 필드 추가, `buildMasterRows()`에서 미분류 제외 1번부터 순차 부여, `masterColumns` 맨 앞에 36px 고정폭 순번 컬럼 삽입 (미분류 행은 빈 칸)
-  - **통계 라벨 숫자 파란색 강조 + 미분류 제외**: `updateStatsLabel()` 단일 textContent → span 구조로 변경, 숫자+단위 부분만 COLOR.down(파랑) 강조, 업종 수 계산 시 미분류 제외, 전체 종목 수는 모든 종목 포함 유지
-  - **"새 업종 추가" 버튼 md 사이즈 적용**: 작업 컬럼 버튼(sm)보다 한 단계 큰 md 사이즈(6px 12px, 12px label)로 중요 액션 버튼 시각적 비중 강화
-  - **통계 라벨 폰트 통일**: statsLabelRef 폰트를 11px(small)로 변경
-  - **승인 전 코드 수정 절대 금지 규칙 강화**: AGENTS.md 섹션3 규칙0 강화 (승인 트리거, 미승인 상황, 추천 요청 시 자동 수정 금지, Plan 모드 무관 적용), 5개 스킬 파일에 동일 규칙 추가
-  - 검증: `npm run typecheck` 통과, `npm run build` 통과
-  - 추가 점검: 좌측/우측 업종 정렬 순서 일치 확인 (양쪽 모두 `getActiveSectors()` 단일 소스 공유, P10 준수), 우측 순번 컬럼은 추가 안 함 권장 (이동 타겟 선택 UI에 순번이 의미 없고 단순성 P24 위반)
+- **2026-07-13: B-07 아키텍처 전수 점검 — WS 시세 처리 (P16 dead code 4건 제거 + P4 위반 2건 수정)**
+  - **P16 위반 제거 (4건 + 연관 dead code 3건)**:
+    - `_update_strength_buckets` (engine_ws_dispatch.py) — pass stub, 호출처 없음 → 함수 + 테스트 제거
+    - `_log_ws_trnm_json_detail` (engine_ws_dispatch.py) — 문자열 계산 후 logger.debug 누락 → 함수 + 호출처 + 테스트 제거, `import json` 제거
+    - `_subscribe_radar_stocks_realtime` (engine_ws.py) — pass stub → 함수 + 호출처 제거
+    - `_subscribe_all_tracked_stocks_realtime` (engine_ws.py) — radar 제거 후 1줄 래퍼, 프로덕션 호출처 없음 → 함수 + 테스트 제거
+    - `_sweep_unreg_subscribed_except_positions_and_tracked` (engine_ws.py) — return 0 stub → 함수 + 호출처(engine_ws.py, engine_account.py) 제거
+    - `_item_cd_is_position`, `_item_cd_tracked_radar_or_ready` (engine_ws.py) — sweep 제거 후 호출처 없음 → 함수 + 테스트 제거
+  - **P4 위반 수정 (2건)**: `_unreg_grp`, `subscribe_account_realtime` (engine_ws_reg.py) — `cm.get_connector("kiwoom")` 하드코딩 → `state.connector_manager or state.active_connector` + 설정 기반 증권사 체크
+  - 검증: `pytest test_engine_ws_dispatch.py test_engine_ws.py test_engine_ws_reg.py test_engine_account.py` 140 passed, 런타임 기동 20s 정상, grep 잔존 참조 0건
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책 — 모두 완료 (git history 참조)
@@ -19,10 +21,10 @@
 
 ## 진행 중 작업
 
-### 아키텍처 전수 점검 — 7/30 세션 완료, 23개 미시작
-- **완료**: B-01~B-06, F-01 (P0 전체 + B-06)
-- **미시작**: B-07~B-11 (P1), B-12~B-19 (P2), B-20~B-23 (P3), F-02~F-07 (P1~P3)
-- 다음 세션: B-07 (WS 시세 처리) — `docs/architecture_audit_plan.md` 체크리스트 사용
+### 아키텍처 전수 점검 — B-07 완료, 22개 미시작
+- **완료**: B-01~B-07, F-01 (P0 전체 + B-06 + B-07)
+- **미시작**: B-08~B-11 (P1), B-12~B-19 (P2), B-20~B-23 (P3), F-02~F-07 (P1~P3)
+- 다음 세션: B-08 (엔진 부트스트랩/캐시/스냅샷/구성/유틸) — `docs/architecture_audit_plan.md` 체크리스트 사용
 
 ## 다음 단계
 
@@ -30,13 +32,16 @@
 - 69→55 업종 재분류 + 9개 업종명 정비 + 순위 기반 점수 전환 완료
 - 사용자 확인 필요: 업종순위 화면(55개 업종 표시, 변경된 업종명, 점수 바 균등 간격), 매수 후보 화면(25개 이동 종목 새 업종 표시)
 
-### 2순위: 아키텍처 전수 점검 P1 세션 (B-07)
-- B-07: WS 시세 처리 (`engine_ws_reg.py`, `engine_ws_dispatch.py`, `engine_ws.py`, `engine_ws_parsing.py`, `engine_ws_fill_followup.py`)
+### 2순위: 아키텍처 전수 점검 P1 세션 (B-08)
+- B-08: 엔진 부트스트랩/캐시/스냅샷/구성/유틸 (`engine_bootstrap.py`, `engine_snapshot.py`, `engine_cache.py`, `engine_config.py`, `engine_utils.py`)
 - `docs/architecture_audit_plan.md` 체크리스트 사용, 발견 문제를 섹션 7에 등록
-- 이후 B-08~B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
+- 이후 B-09~B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
 
-### 3순위: 유령 포지션 005930 근본 원인 조사
-- `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
+### B-07에서 발견한 후속 P4 위반 (다음 세션에서 처리)
+- `get_connector("kiwoom")` 하드코딩이 B-07 범위 밖 파일에도 존재:
+  - `daily_time_scheduler.py:867` — B-11 세션에서 처리
+  - `market_close_pipeline.py:126` — B-15 세션에서 처리
+- 각 세션 진행 시 P4 위반으로 함께 수정 필요
 
 ### 보류: P23 테이블 컬럼 너비 일관성 개선 (사용자 승인 대기)
 - stock-detail.ts 자체 `makeAmountColumn` 너비 설정 없음, 비표준 컬럼 너비 설정 없음 (buy-target.ts 6개, sell-position.ts 6개, profit-shared.ts 9개), 순번/종목코드 컬럼 팩토리 사용 통일

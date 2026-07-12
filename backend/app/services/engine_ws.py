@@ -178,20 +178,6 @@ async def _subscribe_positions_stocks_realtime() -> None:
         ws_subscribe_control._set_status(quote=True)
 
 
-async def _subscribe_radar_stocks_realtime() -> None:
-    """
-    레이더 종목 REG — 시장가 운용으로 호가(02) 불필요, 제거됨.
-    0B는 _subscribe_sector_stocks_0b 에서 이미 커버됨.
-    """
-    pass
-
-
-async def _subscribe_all_tracked_stocks_realtime() -> None:
-    """보유 + 레이더 — 조건 전환 등 전체 재동기화 시에만."""
-    await _subscribe_positions_stocks_realtime()
-    await _subscribe_radar_stocks_realtime()
-
-
 async def _subscribe_sector_stocks_0b() -> None:
     """필터 통과 종목 + 보유종목 0B REG — engine_ws_reg 모듈로 위임.
 
@@ -250,44 +236,14 @@ async def _run_sector_reg_pipeline() -> None:
 
 
 async def _cleanup_stale_ws_subscriptions_on_session_ready() -> None:
-    """로그인 직후 1회: 잔존 구독 정리 + 비보유 종목 UNREG 일괄 정리."""
+    """로그인 직후 1회: 잔존 구독 정리 (grp_no=5,2,4 UNREG 최선 노력)."""
     ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected():
         return
-    
-    # 잔존 구독 정리 (grp_no=5,2,4 UNREG 최선 노력)
+
     from backend.app.services import ws_subscribe_control
     await ws_subscribe_control.cleanup_stale_subscriptions()
 
-    if state.account_rest_bootstrapped:
-        await _sweep_unreg_subscribed_except_positions_and_tracked()
-
-
-def _item_cd_is_position(item_cd: str, pos_keep: set[str]) -> bool:
-    from backend.app.services.engine_symbol_utils import _base_stk_cd
-    for p in pos_keep:
-        if _base_stk_cd(p) == item_cd:
-            return True
-    return False
-
-
-def _item_cd_tracked_radar_or_ready(item_cd: str) -> bool:
-    """
-    모니터링 대기 중인 종목 — 비보유여도 실시간(REG) 유지해야 HTS와 시세가 맞는다.
-    잔고 REST 반영 후 UNREG 일괄 정리 등에서 UNREG 대상에서 제외한다.
-    """
-    from backend.app.services.engine_symbol_utils import _base_stk_cd
-
-    nk = _base_stk_cd(str(item_cd).strip())
-    if not nk or nk == "000000":
-        return False
-    # _radar_cnsr_order 삭제: state.master_stocks_cache의 "_subscribed" 사용 (제로-체크 보장)
-    return bool(state.master_stocks_cache.get(nk, {}).get("_subscribed"))
-
-
-async def _sweep_unreg_subscribed_except_positions_and_tracked() -> int:
-    """비보유·비추적 종목 정리 — 시장가 운용으로 호가(02) 제거됨, 현재 작업 없음."""
-    return 0
 
 async def subscribe_dynamic_data(codes: list[str]) -> None:
     """동적 데이터(0D, PGM, UH1, UPH 등) 실시간 구독 등록을 커넥터에 위임합니다."""
