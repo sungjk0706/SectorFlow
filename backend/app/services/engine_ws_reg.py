@@ -203,11 +203,11 @@ async def _unreg_grp(grp_no: str) -> bool:
     그 외 grp는 data:[]로 전송.
 
     Args:
-        es: engine_service 모듈 참조 (상태·WS 전송 함수 접근)
+        es: engine_service 모듈 참조 (상태·실시간 통신 전송 함수 접근)
         grp_no: 해지할 구독 그룹 번호 (예: "4", "2", "5", "10")
 
     Returns:
-        True if 성공(또는 등록 항목 없음), False if 실패/타임아웃.
+        True if 성공(또는 등록 항목 없음), False if 실패/시간 초과.
     """
     cm = state.connector_manager
     kiwoom_conn = cm.get_connector("kiwoom") if cm else None
@@ -358,7 +358,7 @@ async def subscribe_account_realtime() -> None:
     cm = state.connector_manager
     kiwoom_conn = cm.get_connector("kiwoom") if cm else None
     if not kiwoom_conn or not kiwoom_conn.is_connected():
-        # LS증권은 소켓 연결 및 로그인 핸드셰이크 단계에서 계좌등록(tr_type="1")을 수행하므로 키움만 Grp 10 전송
+        # LS증권은 소켓 연결 및 로그인 핸드셰이크 단계에서 계좌 등록(tr_type="1")을 수행하므로 키움만 그룹 10 전송
         return
 
     s = state.integrated_system_settings_cache
@@ -374,7 +374,7 @@ async def subscribe_account_realtime() -> None:
         if ok:
             state.ws_account_subscribed = True
             logger.info(
-                "[계좌] 계좌 구독 완료 — 계좌설정=%s",
+                "[계좌] 계좌 구독 완료 — 계좌 설정=%s",
                 "Y" if acnt else "N",
             )
         else:

@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _get_rest_base() -> str:
-    """BrokerRouter의 AuthProvider에서 REST base URL 획득."""
+    """증권사 라우터의 인증 제공자에서 REST 기본 주소 획득."""
     from backend.app.core.broker_factory import get_router
     from backend.app.core.broker_urls import build_broker_urls
     from backend.app.services.engine_state import state
@@ -20,8 +20,8 @@ async def _get_rest_base() -> str:
         if hasattr(auth, "rest_api") and hasattr(auth.rest_api, "base_url"):
             return auth.rest_api.base_url
     except Exception:
-        logger.warning("[데이터] base_url 조회 실패", exc_info=True)
-    # 기본값: broker 기반 URL
+        logger.warning("[데이터] 기본 주소 조회 실패", exc_info=True)
+    # 기본값: 증권사 기반 URL
     broker_nm = str(state.integrated_system_settings_cache["broker"]).lower().strip()
     urls = build_broker_urls(broker_nm)
     return urls.get("rest_base", "")
@@ -39,7 +39,7 @@ def _norm_stk_cd(stk_cd: str) -> str:
 
 async def _load_broker_settings() -> dict | None:
     """
-    로컬 settings.json에서 브로커 설정 로드 (비동기 버전).
+    로컬 settings.json에서 증권사 설정 로드 (비동기 버전).
     실패 시 None 반환.
     """
     try:
@@ -116,7 +116,7 @@ async def get_account_profit_rate(access_token: str) -> dict:
             resp = await client.post(url, headers=headers, json=body or None, timeout=10)
         
         if resp.status_code != 200:
-            logger.debug("[데이터] kt00018 실패함: %s", resp.status_code)
+            logger.debug("[데이터] 계좌평가잔고내역(kt00018) 실패: %s", resp.status_code)
             return _empty
 
         data = resp.json()
@@ -172,14 +172,14 @@ async def get_account_profit_rate(access_token: str) -> dict:
         }
 
     except Exception as e:
-        logger.debug("[데이터] 계좌수익률 조회 예외: %s", e)
+        logger.debug("[데이터] 계좌수익률 조회 오류: %s", e)
         return _empty
 
 
 async def get_main_account_info(access_token: str) -> list:
     """
     계좌 메인 정보 -- [예수금, 주문가능, 출금가능(pymn), "0", "0.00%"] 문자열 리스트.
-    키움 REST API kt00001(예수금상세현황) 직접 호출.
+    키움 REST API kt00001(예수금 상세현황) 직접 호출.
     실패 시 ["0","0","0","0","0.00%"] 반환.
     """
     _fallback = ["0", "0", "0", "0", "0.00%"]
@@ -217,7 +217,7 @@ async def get_main_account_info(access_token: str) -> list:
         body_data = data.get("body") or data
 
         if int(str(body_data.get("return_code", 0)).replace(",", "") or 0) != 0:
-            logger.debug("[데이터] kt00001 오류 메시지: %s", body_data.get("return_msg", ""))
+            logger.debug("[데이터] 예수금 상세현황(kt00001) 오류 메시지: %s", body_data.get("return_msg", ""))
             return _fallback
 
         def _n(v) -> str:
@@ -233,5 +233,5 @@ async def get_main_account_info(access_token: str) -> list:
         return [deposit, orderable, withdrawable, "0", "0.00%"]
 
     except Exception as e:
-        logger.debug("[데이터] 메인계좌정보 조회 예외: %s", e)
+        logger.debug("[데이터] 메인 계좌정보 조회 오류: %s", e)
         return _fallback

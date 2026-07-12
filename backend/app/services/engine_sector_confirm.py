@@ -2,7 +2,7 @@
 """
 업종 재계산 — 이벤트 기반 증분 갱신.
 
-개별 REAL 체결마다 태스크를 만들지 않는다.
+개별 REAL 체결마다 작업을 만들지 않는다.
 recompute_sector_for_code(code)는 이벤트 발생 시 호출되며,
 연속 호출은 중복 제거되어 1회만 재계산한다.
 구독 갱신은 buy_targets 변경 시 직접 호출된다.
@@ -191,7 +191,7 @@ async def _flush_sector_recompute_impl() -> None:
         # 참조 교체 방식으로 캐시 갱신 (R5.6)
         state.sector_summary_cache = ss
 
-        # 업종 점수 delta 전송 (내부에서 변경분만 비교)
+        # 업종 점수 증분 전송 (내부에서 변경분만 비교)
         await notify_desktop_sector_scores()
         await notify_buy_targets_update()
 
@@ -252,7 +252,7 @@ async def _full_recompute(codes_snapshot: set[str] | None = None) -> None:
     # 참조 교체 방식으로 캐시 갱신 (R5.6)
     state.sector_summary_cache = ss
 
-    # 업종 점수 delta 전송 (내부에서 변경분만 비교)
+    # 업종 점수 증분 전송 (내부에서 변경분만 비교)
     await notify_desktop_sector_scores()
     await notify_buy_targets_update()
 
@@ -266,11 +266,11 @@ async def _full_recompute(codes_snapshot: set[str] | None = None) -> None:
     state.sector_summary_ready_event.set()
 
 
-# ── 0D 구독 delta 갱신 ────────────────────────────────────────────────────
+# ── 0D 구독 증분 갱신 ────────────────────────────────────────────────────
 
 
 def sync_dynamic_subscriptions(new_buy_targets) -> None:
-    """buy_targets 변경 시 동적 구독 delta 갱신 (해지 지연 적용).
+    """buy_targets 변경 시 동적 구독 증분 갱신 (해지 지연 적용).
 
     신규 구독은 즉시, 해지는 30초 지연 후 적용.
     guard_pass 경계값 진동으로 인한 빈번한 REG/REMOVE 반복을 방지한다.
@@ -282,7 +282,7 @@ def sync_dynamic_subscriptions(new_buy_targets) -> None:
     from backend.app.services.core_queues import get_control_queue
     import time
 
-    # WS 미연결 → 스킵
+    # 실시간 통신 미연결 → 생략
     ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected() or not state.login_ok:
         return
@@ -338,7 +338,7 @@ def sync_dynamic_subscriptions(new_buy_targets) -> None:
 
 
 def _on_unreg_timer(code: str) -> None:
-    """종목별 타이머 만료 콜백 — ready set에 추가 후 call_soon으로 일괄 처리 예약."""
+    """종목별 타이머 만료 콜백 — 준비 대기실에 추가 후 call_soon으로 일괄 처리 예약."""
     global _UNREG_BATCH_PENDING
     _PENDING_UNREG_TIMERS.pop(code, None)
     _UNREG_READY_CODES.add(code)
@@ -350,7 +350,7 @@ def _on_unreg_timer(code: str) -> None:
         except RuntimeError:
             _UNREG_BATCH_PENDING = False
             _UNREG_READY_CODES.clear()
-            logger.warning("[구독] 타이머 만료 시 이벤트 루프 없음 — 해지 스킵")
+            logger.warning("[구독] 타이머 만료 시 이벤트 루프 없음 — 해지 생략")
 
 
 def _flush_unreg_batch() -> None:
@@ -412,9 +412,9 @@ def cancel_recompute_timer() -> None:
 
 
 def cancel_all_dynamic_unreg_timers() -> None:
-    """증권사 변경 시 모든 동적 구독 해지 타이머 취소 + 대기실 클리어.
+    """증권사 변경 시 모든 동적 구독 해지 타이머 취소 + 대기실 비우기.
 
-    stop_engine() 시 cancel_recompute_timer()가 _dirty_codes만 클리어하므로,
+    stop_engine() 시 cancel_recompute_timer()가 _dirty_codes만 비우므로,
     동적 구독 해지 타이머는 별도로 취소해야 함.
     잔존 타이머가 신규 세션에서 발화하면 DYNAMIC_UNREG가 신규 증권사에 전송됨 (원칙 22 위반).
     """
