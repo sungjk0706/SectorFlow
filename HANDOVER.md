@@ -1,15 +1,15 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 업종순위설정 ⑥ 행 종목 합계 표시 + P20 폴백 제거 (sector_max_targets=0)**
-  - **종목 합계 표시 (P21 투명성)**: ⑥ "매수대상 업종수" 행 아래 보조 줄 추가 — "상위 N개 업종 종목 합계: X종목". 파란 배경 + 파란 굵은 숫자 강조. ⑤ appliedWeightsLabel 패턴과 일관 (P23). `updateMaxTargetsStatus(scores, maxTargets)`가 rank>0 업종을 rank 순 정렬 후 상위 N개의 total 합산
-  - **P20 폴백 제거 (프론트 3곳)**: `Number(...) || DEFAULT_SECTOR_MAX_TARGETS` → `typeof raw === 'number' ? raw : DEFAULT_SECTOR_MAX_TARGETS`. 0을 0으로 동작, undefined일 때만 기본값. `sector-ranking-list.ts` 2곳, `sector-stock.ts` 1곳
-  - **P20 clamp 제거**: `onNumChange`의 `sector_max_targets < 1 → 1` 강제 제거
-  - **P20 폴백 제거 (백엔드)**: `engine_settings.py:137` `int(... or 3)` → `_v if _v is not None else 3` 패턴 (인접 라인 141 기존 패턴과 일관, P23)
-  - **수정 파일**: `sector-settings.ts`, `sector-ranking-list.ts`, `sector-stock.ts` (프론트 3개) + `engine_settings.py` (백엔드 1개)
-  - 검증: 백엔드 단위 `build_engine_settings_dict` 0→0/{}→3/5→5 정상, `npm run typecheck` 통과, `npm run build` 1.84s 성공, 런타임 기동은 백엔드 이미 실행 중(PID 19679)으로 잠금 충돌 생략
-  - **사용자 UI 확인 대기**: ⑥ 입력란 0 설정 → "상위 0개 업종 종목 합계: 0종목" 표시, 1/3/5 변경 시 N과 합계 즉시 갱신
-  - **추가 발견 (승인 대기)**: `engine_settings.py` 인접 라인 138(`sector_min_rise_ratio_pct` or 60.0), 139(`sector_min_trade_amt` or 0.0) 동일 P20 패턴 — 0을 정상 값으로 쓰면 같은 위험, 일괄 정리 권장
+- **2026-07-13: 업종순위 수신율 0% 고정 해결 + 2개 필드 체크 배선 + dead code 제거 + 라벨 색상 구분**
+  - **수신율 0% 고정 근본 해결 (P21/P22)**: `_calculate_receive_rate()`를 `_received_codes`(틱 기반) → `master_stocks_cache` 2개 필드(change_rate, trade_amount) 체크로 변경. 장마감후 확정 데이터 반영 시 100% 산출
+  - **P16 dead code 배선**: `_has_any_realtime_data()`가 정의만 되고 호출되지 않던 dead code → `_calculate_receive_rate()`에 실제 배선
+  - **P10 SSOT**: `_received_codes` 변수 완전 제거 — 수신율 판단 기준 단일화(2개 필드 체크)
+  - **P24 단순성**: Phase 1 루프에서 `_receive_rate_dirty` 가드 제거, WS/비-WS 구분 없이 항상 필드 기반 계산. `_reset_realtime_fields()`가 WS 구독 시작시 필드를 None으로 초기화하므로 0%→100% 상승은 자연스럽게 처리
+  - **확정 데이터 반영후 수신율 갱신**: `market_close_pipeline.py` `_step7_recompute_and_broadcast()`와 5일봉 후처리에 `_calculate_receive_rate()` + `_send_receive_rate()` 호출 추가
+  - **라벨 색상 구분**: 정적 라벨(업종순위 계산 수신율, 수신:, 미수신:) → `COLOR.neutral`(검정), 동적 숫자(100.0%, 173종목) → `COLOR.down`(파랑) 분리
+  - **수정 파일**: `pipeline_compute.py`, `market_close_pipeline.py` (백엔드 2개) + `sector-settings.ts` (프론트 1개) + `test_pipeline_compute.py` (테스트 1개)
+  - 검증: pytest 87개 통과(0.41s), 백엔드 런타임 기동 로그 "수신율 임계값 통과 (현재: 100.0%)" 확인, `npm run build` 1.88s 성공
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책 — 모두 완료 (git history 참조)
@@ -27,9 +27,10 @@
 
 ## 다음 단계
 
-### 1순위: 업종순위설정 ⑥ 종목 합계 표시 — 사용자 UI 확인 대기
-- ⑥ 입력란 0/1/3/5 변경 시 보조 줄 "상위 N개 업종 종목 합계: X종목" 즉시 갱신 확인
-- 0 설정 시 "상위 0개 업종 종목 합계: 0종목" 표시 확인 (백엔드 재기동 후)
+### 1순위: 업종순위 수신율 UI 확인 대기
+- 브라우저에서 업종순위설정 패널 ② 행 확인: 수신율 100.0% 표시, 수신/미수신 종목수 표시
+- 라벨 색상: 정적 라벨 검정, 동적 숫자 파랑 구분 확인
+- 장개시 후 WS 구독 시작 시 수신율 0% → 틱 수신시 상승 → 임계값 도달시 업종점수 계산 시작 확인
 
 ### 2순위: engine_settings.py 인접 라인 P20 폴백 일괄 정리 (승인 대기)
 - line 138: `sector_min_rise_ratio_pct` — `or 60.0`이 0%를 60%로 치환
