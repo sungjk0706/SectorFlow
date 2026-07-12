@@ -1,21 +1,20 @@
 # HANDOVER — SectorFlow
 
 ## 추후 논의 필요 (미결정)
-- **broadcast_queue vs ws_manager.broadcast() 직접 호출 불일치 (P23 일관성 위반)**: `01` 틱만 `broadcast_queue` 사용, `0d`/`0j`/`PGM`/`account-update` 등은 `ws_manager.broadcast()` 직접 호출. 모든 화면 전송을 `broadcast_queue`로 통합할지, 아니면 `ws_manager.broadcast()` 직접 호출을 공식 패턴으로 채택할지 검토 필요
 - **ARCHITECTURE.md "JIF bypass" 기록 정리 완료**: 3단계 문서 정리에서 "JIF bypass: 0B 틱 우회로 직통 전송 (지연 감소)" 기록을 `price_pass_through_queue` 제거 사실로 대체. grep 결과 잔존 0건 확인 완료
 
 ## 직전 완료 작업
-- **2026-07-12: price_pass_through_queue 제거 — 현재가 직통 큐 불필요 구조 정리 (P23 일관성, P24 단순성)**
-  - **수정 파일**: `backend/app/services/engine_ws_dispatch.py`, `backend/app/pipelines/pipeline_gateway.py`, `backend/app/services/core_queues.py`, `backend/tests/test_pipeline_gateway.py`, `frontend/src/stores/hotStore.ts`, `frontend/src/binding.ts`, `ARCHITECTURE.md` (7개)
-  - **내용**: "현재가 직통(Compute 우회)"이라는 이름의 `price_pass_through_queue`가 실제로는 Compute Loop를 통과하고 있었고, 01 틱 `real-data` + `account-update`로 동일 데이터가 이미 전송되어 중복 구조였음. 3단계로 분할 제거 — 1단계 백엔드(생산자·소비자·큐 인프라 + 테스트), 2단계 프론트엔드(`SectorPriceTick`/`applySectorPriceTick`/`sector-price-tick` 리스너), 3단계 문서(ARCHITECTURE.md 다이어그램·큐 테이블·이벤트 테이블·변경 로그). 큐 개수 4→3, Gateway Loop 2개 소비 루프→1개
-  - **검증**: pytest 159 passed (0.69s), npm run build 성공 (2.00s), 런타임 기동 정상 (큐 초기화 로그 "시세=20000, 전송=2000, 제어=500", 에러 없음, 211ms), 잔존 프로세스 0개
+- **2026-07-12: ARCHITECTURE.md 5.1/5.2/6.4절 실제 코드에 맞게 정정 — WS 구독 대상·전송 경로·배치 루프 명시 (커밋 e834a68)**
+  - **수정 파일**: `ARCHITECTURE.md`, `backend/app/pipelines/pipeline_gateway.py` (2개)
+  - **내용**: 실시간 시세 흐름 다이어그램이 실제 코드와 불일치하여 사용자 설계 의도가 문서에 반영되지 않은 문제 정정. 5.1절 — WS 구독 대상(1차 필터 통과 종목 + 보유종목) 명시, 필터 미통과 종목은 아무 처리도 하지 않는다는 사실 명시, Compute Loop 내부 5단계 순차 처리 다이어그램으로 정정, 01/0D/PGM 틱 전송 경로 일관성(P23) 명시. 5.2절 — "10초 디바운스" → "0.2초 배치 루프" 정정, Phase 1/Phase 2 구조 명시. 6.4절 — 1차 필터가 all_codes → _filtered 플래그 → WS 구독 대상 선정 기준 명시. pipeline_gateway.py 상단 주석 — 01/0B 틱(broadcast_queue)과 0D/PGM 틱(직접 broadcast) 두 가지 전송 경로 명시. "추후 논의 필요"의 broadcast_queue 불일치 항목 해결 (공식 패턴으로 채택)
+  - **검증**: pytest 2784 passed (8.35s), 런타임 기동 정상 (큐 초기화 로그 "시세=20000, 전송=2000, 제어=500", 1338종목 로드, 에러 없음, 205ms), 잔존 프로세스 0개
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈), 수익현황 업종 섹션 연동(도넛 범례 클릭→스크롤+하이라이트), 전체보기/전체접기 토글 버튼, 차트 onMove undefined 크래시 근본 해결(render early return 시 barRects 동기화), 수익현황 기간 선택 상태 재기동 후 유지(localStorage quickLabel 영속화 + 초기 활성 버튼 복원), 수익상세 페이지 뷰 상태 재기동 후 유지(localStorage selectedView+drilldownActive+dateRange 영속화, 7곳 핸들러 persistViewState), 스핀버튼 초기 비활성 버그 근본 해결(store subscriber settings 변경 시에만 notify + createSpinButtons mousedown 포커스 유지 + registerEditing 데드 코드 제거), 증권사 변경 확인 팝업 추가(showConfirmDialog 재사용 + 변경 전/후 증권사명 + 4개 작업 요약 + 취소 시 라디오 복원 + BROKER_NAMES SSOT 상수), brokerSaving disabled 잔존 버그 수정(then 콜백 실행 순서 교정) — 모두 코드 확인 완료, `npm run build` 통과
 - **Git**: 증권사 변경 시 토큰 폐기 로그 불일치 수정 (P15/P21) — 커밋 완료 (10dbafe), 런타임 검증 완료
 - **AGENTS.md**: 4섹션 우선순위 구조 재구성 완료 (섹션1 개요 > 섹션2 아키텍처 원칙 > 섹션3 수행 규칙 > 섹션4 작업 프로세스). 신규 규칙 7건 추가 — 사용자 프로필 "코딩 1도 모름", 아키텍처 원칙 참조, 사용자 의사소통 규칙(기술 명령어 안내 금지·UI 기준 검증·API 직접 호출 안내 금지), 보고서 5항목 명시화, HANDOVER.md read-before-write 의무, 작업량 기반 사전 분할, 단계 완료 시 컨텍스트 점검. 기존 규칙 15개 누락 없음 대조 완료. 아키텍처 원칙 22→24개 업데이트 (P23 일관된 통일성, P24 단순성 추가)
-- **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2773 passed, 0 failed
+- **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2784 passed, 0 failed
   - 0% 모듈 7개 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
   - 10%대 모듈 9개 해결: engine_settings(100%), stock_tables(100%), stock_filter(99.44%), stock_classification_data(95.14%), settings_store(93.13%), sector_data_provider(92.94%), engine_bootstrap(49.62%), engine_snapshot(39.22%), engine_sector_confirm(33.45%)
   - 30~50%대 Phase 1,2,3 전부 완료 (실측): engine_snapshot(39.22%→97.39%, 12 테스트), engine_sector_confirm(33.45%→100%, 51 테스트), engine_bootstrap(49.62%→99.25%, 12 테스트)
@@ -25,79 +24,7 @@
 
 ## 진행 중 작업
 
-### 헤더 KRX/NXT 인디케이터 — JIF 실시간 장운영정보 표시 개선 (3단계 전부 완료)
-
-> **목표**: 프론트엔드 상단 헤더 KRX/NXT 인디케이터가 (1) 정확한 시계 기반 장운영 스케줄과 (2) LS증권 JIF 실시간 이벤트("정규장개시 5분전" 등)를 모두 표시. 시계=지속 기준선, JIF=휘발성 실시간 덮어씌움(DB 저장 X).
-
-| 단계 | 내용 | 상태 |
-|------|------|------|
-| Stage 1 | 스케줄 정정 — daily_time_scheduler 상수/calc_timebased_market_phase/윈도우 함수/타이머 + frontend PHASE_STYLE/sector-stock sets + tests | ☑ 완료 (2026-07-12) |
-| Stage 2 | _handle_jif 확장 — jstatus 시간대이벤트 라벨맵 + jangubun 6 처리 + market_phase krx_event/nxt_event 덮어씌움 + engine_state 초기값 + tests | ☑ 완료 (2026-07-12) |
-| Stage 3 | 헤더 우선 표시 — uiStore 타입 + header.ts applyMarketPhaseChip 이벤트 우선 렌더링 + snapshot/get_market_phase 필드 검증 + npm build | ☑ 완료 (2026-07-12) |
-
-**Stage 1 완료 상세**:
-- `daily_time_scheduler.py`: KRX 상수 6→11개 세분화(08:00 거래없음/08:30 장전시간외/08:40 동시호가접수/08:50 시가동시호가/15:20 종가동시호가/15:30 체결정산/15:40 장후시간외/16:00 시간외단일가/18:00 장종료/20:00 장마감). NXT 상수 6→9개 세분화(08:50 정규장준비/15:20 조기마감/15:30 단일가매매/15:40 애프터마켓/18:00 애프터마켓지속). calc_timebased_market_phase 분기 재작성. is_nxt_premarket_window 08:00~09:00→08:00~08:50. is_nxt_aftermarket_window 15:30~20:00→15:40~20:00. is_krx_after_hours는 거래 게이트용으로 15:30~20:00 유지(docstring 명확화). KRX_INACTIVE_PHASES/NXT_ACTIVE_PHASES 신규 페이즈명 동기화. market-phase 타이머 7→11개 전환 시각 확장.
-- `frontend/src/layout/header.ts`: PHASE_STYLE 11→21 페이즈 색상 매핑.
-- `frontend/src/pages/sector-stock.ts`: KRX_INACTIVE_PHASES/NXT_ACTIVE_PHASES Set 신규명 동기화.
-- `backend/tests/test_daily_time_scheduler.py`: 기존 6 페이즈 테스트 assertion 갱신 + 신규 5 세분 페이즈 테스트 + premarket/aftermarket 경계 축소 테스트 2개 추가.
-- `sector_data_provider.py`: docstring 시각 오기(15:30→15:20, 08:00~09:00→08:00~08:50) 정정.
-
-**Stage 2 완료 상세**:
-- `engine_ws_dispatch.py`: `_JSTATUS_KRX_EVENT` 맵(11,22,23,24,25,31,42,43,44 — 카운트다운/개시/마감, 경계 21/41/51/52/54 제외) + `_JSTATUS_NXT_EVENT` 맵(A2-A5,B2-B5,C2-C4,D2-D4,22-25,42-44 — 프리마켓/메인/에프터마켓 카운트다운, 경계 21/41/55/56/57/58 제외) 추가. `_handle_jif()` 재작성 — jangubun 1/2: CB/사이드카(기존 로직 유지) + krx_event; jangubun 6: nxt_event. 경계 이벤트는 시계 전환이 인계하도록 저장 제외. 주석 갱신.
-- `engine_state.py`: market_phase 초기값에 krx_event/nxt_event None 추가.
-- `daily_time_scheduler.py`: `_broadcast_market_phase()` 시계 전환 시 krx_event/nxt_event 초기화(경계 이벤트 이후 시계 페이즈명으로 인계). `get_market_phase()` krx_event/nxt_event 필드 포함.
-- `tests/test_engine_ws_dispatch.py`: JIF 이벤트 처리 테스트 8개 추가(KRX/NXT 이벤트 저장, 동일 이벤트 재전송 제외, 경계 이벤트 미저장, NXT CB 미처리). `tests/test_daily_time_scheduler.py`: _broadcast_market_phase 이벤트 초기화 테스트 + get_market_phase 이벤트 포함 테스트 추가.
-
-**Stage 3 완료 상세**:
-- `frontend/src/stores/uiStore.ts`: marketPhase 타입에 krx_event/nxt_event 추가. 초기값·applyMarketPhase·applyIndexRefresh·snapshot 캐스트 갱신.
-- `frontend/src/layout/header.ts`: `applyMarketPhaseChip` event 파라미터 추가 — JIF 이벤트 라벨 있으면 주황 강조색으로 "KRX 정규장 장개시 5분 전" 형태 우선 표시, 없으면 시계 페이즈명. 호출부 krx_event/nxt_event 전달.
-- `engine_snapshot.py`: get_market_phase() 사용으로 이벤트 필드 자동 포함(추가 수정 불필요).
-
-**전체 검증**: 백엔드 전체 2789 passed 0 failed (신규 16개 + 기존 2773), npm run build 성공, 런타임 기동 "장 상태 초기화: KRX=휴장일, NXT=휴장일" 정상 (오류 0, 잔존 프로세스 0).
-
-**실시간 검증 필요 (거래일 장 시간)**: 거래일에 브라우저 헤더에서 JIF 이벤트 도착 시 "KRX 정규장 장개시 5분 전" 등 주황 칩으로 전환되는지 사용자 UI 확인 필요. 현재 일요일이므로 JIF 이벤트 수신 없어 시계 페이즈명만 표시됨.
-
-### 백엔드 로그 한글화 4차 작업 (내부 코드 식별자 노출) — 2/2단계 전부 완료
-
-> **이력**: 1차 작업(2026-07-09) 약 30개 파일 1차 한글화. 2차 작업(사용자 노출 로그) 5단계 전부 완료. 3차 작업(내부 디버그 로그) 8단계 전부 완료. 4차 작업(내부 코드 식별자 노출) 2단계 전부 완료.
-
-| 단계 | 내용 | 파일 수 | 상태 |
-|------|------|---------|------|
-| 1단계 | A 카테고리 — 함수명/변수명/파일명 노출 23건 | 11 | ☑ 완료 (2026-07-12) |
-| 2단계 | B 카테고리 — 프로그래밍 용어(await, UNREG, REG, dict, grp 등) 18건 | 10 | ☑ 완료 (2026-07-12) |
-
-**4차 작업(내부 코드 식별자 노출) 전부 완료.**
-
-### 백엔드 로그 한글화 3차 작업 (내부 디버그 로그) — 8/8단계 전부 완료
-
-> **계획서**: `backend/docs/log_korean_migration_plan.md`의 "2차 작업 (내부 디버그 로그) — 향후 진행" 섹션
-> **이력**: 1차 작업(2026-07-09) 약 30개 파일 1차 한글화. 2차 작업(사용자 노출 로그) 5단계 전부 완료. 3차 작업(내부 디버그 로그) 8단계 전부 완료.
-
-| 단계 | 내용 | 파일 수 | 상태 |
-|------|------|---------|------|
-| 1단계 | pipelines 내부 디버그 로그 | 2 | ☑ 완료 (2026-07-12) |
-| 2단계 | db (stock_tables, db_writer, json_utils) | 3 | ☑ 완료 (2026-07-12) |
-| 3단계 | services A (engine_cache, engine_snapshot, engine_config) | 3 | ☑ 완료 (2026-07-12) |
-| 4단계 | market_close_pipeline (단독, 81건) | 1 | ☑ 완료 (2026-07-12) |
-| 5단계 | services B (engine_ws_reg, engine_ws, engine_sector_confirm, data_manager) | 4 | ☑ 완료 (2026-07-12) |
-| 6단계 | services C (sector_data_provider, ws_subscribe_control, engine_strategy_core, engine_ws_fill_followup, core_queues) | 5 | ☑ 완료 (2026-07-12) |
-| 7단계 | core A (stock_classification_data, sector_mapping, sector_stock_cache, settings_file, settings_store) | 5 | ☑ 완료 (2026-07-12) |
-| 8단계 | core B (trading_calendar, lock_manager, journal, memory_monitor) | 4 | ☑ 완료 (2026-07-12) |
-
-### 백엔드 로그 한글화 2차 작업 — 1~5단계 전부 완료
-
-> **계획서**: `backend/docs/log_korean_migration_plan.md`
-> **이력**: 1차 작업(2026-07-09) 약 30개 파일 1차 한글화. 2차 작업 1단계(Uvicorn 자체 로그) + 2단계(웹서버/실시간 통신) + 3단계(매매/계좌/정산) + 4단계(알림/서킷브레이커) + 5단계(증권사 연결/주문/잔고) 완료. 2차 작업 5단계 전부 완료.
-
-| 단계 | 내용 | 파일 수 | 상태 |
-|------|------|---------|------|
-| 1단계 | Uvicorn 자체 로그 한국어화 | 1 | ☑ 완료 (2026-07-12) |
-| 2단계 | 웹서버/실시간 통신 로그 | 7 | ☑ 완료 (2026-07-12) |
-| 3단계 | 매매/계좌/정산 로그 | 12 | ☑ 완료 (2026-07-12) |
-| 4단계 | 알림/서킷브레이커 로그 | 5 | ☑ 완료 (2026-07-12) |
-| 5단계 | 증권사 연결/주문/잔고 로그 | 11 | ☑ 완료 (2026-07-12) |
-
-**2차 작업(사용자 노출 로그) 전부 완료.**
+현재 진행 중인 작업 없음.
 
 ### 아키텍처 전수 점검 — 7/30 세션 완료
 
