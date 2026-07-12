@@ -1,12 +1,13 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 종목분류 페이지 업종관리 테이블 UI 개선 (4건)**
+- **2026-07-13: 종목분류 페이지 업종관리 테이블 UI 개선 + 승인 규칙 강화**
   - **순번 컬럼 추가**: `frontend/src/pages/stock-classification.ts:106` MasterRow에 `seq: number | null` 필드 추가, `buildMasterRows()`에서 미분류 제외 1번부터 순차 부여, `masterColumns` 맨 앞에 36px 고정폭 순번 컬럼 삽입 (미분류 행은 빈 칸)
-  - **통계 라벨 숫자 파란색 강조 + 미분류 제외**: `updateStatsLabel()` 단일 textContent → span 구조로 변경, 숫자+단위 부분만 COLOR.down(파랑) 강조, 업종 수 계산 시 미분류 제외 (`filter(s => s !== '미분류')`), 전체 종목 수는 모든 종목 포함 유지
-  - **"새 업종 추가" 버튼 높이/폰트 통일**: createSolidBtn 기본 sm 사이즈(`4px 10px`, 11px) 적용하도록 padding/fontSize 오버라이드 제거 → 작업 컬럼의 이름변경/삭제 버튼과 동일
-  - **통계 라벨 폰트 통일**: statsLabelRef 폰트를 11px(small)로 변경 → 버튼 라벨과 동일 크기
-  - 검증: `npm run typecheck` 통과, `npm run build` 통과 (60 모듈 변환)
+  - **통계 라벨 숫자 파란색 강조 + 미분류 제외**: `updateStatsLabel()` 단일 textContent → span 구조로 변경, 숫자+단위 부분만 COLOR.down(파랑) 강조, 업종 수 계산 시 미분류 제외, 전체 종목 수는 모든 종목 포함 유지
+  - **"새 업종 추가" 버튼 md 사이즈 적용**: 작업 컬럼 버튼(sm)보다 한 단계 큰 md 사이즈(6px 12px, 12px label)로 중요 액션 버튼 시각적 비중 강화
+  - **통계 라벨 폰트 통일**: statsLabelRef 폰트를 11px(small)로 변경
+  - **승인 전 코드 수정 절대 금지 규칙 강화**: AGENTS.md 섹션3 규칙0 강화 (승인 트리거, 미승인 상황, 추천 요청 시 자동 수정 금지, Plan 모드 무관 적용), 5개 스킬 파일에 동일 규칙 추가
+  - 검증: `npm run typecheck` 통과, `npm run build` 통과
   - 추가 점검: 좌측/우측 업종 정렬 순서 일치 확인 (양쪽 모두 `getActiveSectors()` 단일 소스 공유, P10 준수), 우측 순번 컬럼은 추가 안 함 권장 (이동 타겟 선택 UI에 순번이 의미 없고 단순성 P24 위반)
 
 ## 현재 상태
