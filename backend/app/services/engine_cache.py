@@ -10,9 +10,6 @@ import logging
 from backend.app.services.engine_state import state
 logger = logging.getLogger(__name__)
 
-# 구독 동시성 상한 (앱 기동 시 일회성 구독 준비)
-_subscribe_semaphore = asyncio.Semaphore(50)
-
 
 async def _load_caches_preboot(settings: dict) -> None:
     """캐시 선행 로드: 장외 시간에만 실행 (장중에는 실시간 데이터가 채움).
@@ -84,13 +81,10 @@ async def _load_caches_preboot(settings: dict) -> None:
         logger.info("[데이터] 선행 캐시 로드 완료 (메모리 반영 및 인덱싱 완료)")
 
         # ── 5일 평균 + 5일 전고점 적재 ──
-        if _cached_avg is not None and sum(1 for v in _cached_avg.values() if int(v or 0) > 0) < 100:
+        if sum(1 for v in _cached_avg.values() if int(v or 0) > 0) < 100:
             logger.warning("[데이터] 주식 DB 5일평균 비정상 — 백그라운드 갱신 예정")
 
-        if _cached_avg is not None:
-            logger.debug("[데이터] 5일거래대금평균/고가 저장데이터 로드 — %d종목", len(_cached_avg))
-        else:
-            logger.debug("[데이터] 5일거래대금평균/고가 저장데이터 누락 — 백그라운드 갱신 예정")
+        logger.debug("[데이터] 5일거래대금평균/고가 저장데이터 로드 — %d종목", len(_cached_avg))
 
         # ── 시장구분 적재 제거 (master_stocks_cache 사용으로 대체) ──
         _total_nxt = sum(1 for v in state.master_stocks_cache.values() if v.get("nxt_enable"))
@@ -108,7 +102,7 @@ async def _load_caches_preboot(settings: dict) -> None:
             await _reset_realtime_fields()
             logger.info("[데이터] 실시간 통신 구독 구간 — 실시간 필드 초기화 완료 (DB 로드 후)")
 
-        # ── 기동 완료 로직 이관 (engine_bootstrap.py _bootstrap_sector_stocks_async에서 이관) ──
+        # ── 기동 완료 로직 ──
         # 테스트모드: Settlement Engine 상태 로드 (설정 test_virtual_deposit 우선, DB 없으면 초기화)
         if state.integrated_system_settings_cache["trade_mode"] == "test":
             from backend.app.services import settlement_engine

@@ -121,11 +121,8 @@ async def remove_krx_only_stocks() -> dict:
     Returns:
         {"removed": int, "failed": int, "skipped": bool}
     """
-    # 0B REMOVE 페이로드는 키움 규격이므로 kiwoom 커넥터를 직접 조회
-    cm = state.connector_manager
-    ws = cm.get_connector("kiwoom") if cm else None
-    if not ws or not ws.is_connected():
-        ws = state.active_connector
+    # 0B REMOVE 페이로드 전송 — 증권사별 ACK 지원 여부로 분기
+    ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected():
         logger.warning("[스케줄] KRX 장마감 구독해지 생략 — 실시간 미연결")
         return {"removed": 0, "failed": 0, "skipped": True}

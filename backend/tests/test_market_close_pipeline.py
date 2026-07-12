@@ -187,9 +187,7 @@ class TestRemoveKrxOnlyStocks:
     async def test_no_krx_codes_returns_empty(self):
         mock_ws = MagicMock()
         mock_ws.is_connected.return_value = True
-        mock_cm = MagicMock()
-        mock_cm.get_connector.return_value = mock_ws
-        mock_state = _mock_state(connector_manager=mock_cm)
+        mock_state = _mock_state(connector_manager=mock_ws)
         with patch("backend.app.services.market_close_pipeline.state", mock_state), \
              patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=[]):
             result = await remove_krx_only_stocks()
@@ -200,9 +198,7 @@ class TestRemoveKrxOnlyStocks:
         mock_ws = MagicMock()
         mock_ws.is_connected.return_value = True
         mock_ws.supports_ack.return_value = True
-        mock_cm = MagicMock()
-        mock_cm.get_connector.return_value = mock_ws
-        mock_state = _mock_state(connector_manager=mock_cm)
+        mock_state = _mock_state(connector_manager=mock_ws)
         mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
         with patch("backend.app.services.market_close_pipeline.state", mock_state), \
              patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]), \
@@ -219,9 +215,7 @@ class TestRemoveKrxOnlyStocks:
         mock_ws = MagicMock()
         mock_ws.is_connected.return_value = True
         mock_ws.supports_ack.return_value = False
-        mock_cm = MagicMock()
-        mock_cm.get_connector.return_value = mock_ws
-        mock_state = _mock_state(connector_manager=mock_cm)
+        mock_state = _mock_state(connector_manager=mock_ws)
         mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
         with patch("backend.app.services.market_close_pipeline.state", mock_state), \
              patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]), \
@@ -237,9 +231,7 @@ class TestRemoveKrxOnlyStocks:
         mock_ws = MagicMock()
         mock_ws.is_connected.return_value = True
         mock_ws.supports_ack.return_value = True
-        mock_cm = MagicMock()
-        mock_cm.get_connector.return_value = mock_ws
-        mock_state = _mock_state(connector_manager=mock_cm)
+        mock_state = _mock_state(connector_manager=mock_ws)
         mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
         with patch("backend.app.services.market_close_pipeline.state", mock_state), \
              patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]), \
@@ -255,9 +247,7 @@ class TestRemoveKrxOnlyStocks:
         mock_ws = MagicMock()
         mock_ws.is_connected.return_value = True
         mock_ws.supports_ack.return_value = True
-        mock_cm = MagicMock()
-        mock_cm.get_connector.return_value = mock_ws
-        mock_state = _mock_state(connector_manager=mock_cm)
+        mock_state = _mock_state(connector_manager=mock_ws)
         mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
         with patch("backend.app.services.market_close_pipeline.state", mock_state), \
              patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]), \
@@ -271,9 +261,7 @@ class TestRemoveKrxOnlyStocks:
     async def test_no_payloads_returns_empty(self):
         mock_ws = MagicMock()
         mock_ws.is_connected.return_value = True
-        mock_cm = MagicMock()
-        mock_cm.get_connector.return_value = mock_ws
-        mock_state = _mock_state(connector_manager=mock_cm)
+        mock_state = _mock_state(connector_manager=mock_ws)
         with patch("backend.app.services.market_close_pipeline.state", mock_state), \
              patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]), \
              patch("backend.app.services.market_close_pipeline.get_ws_subscribe_code", side_effect=lambda x: x), \
