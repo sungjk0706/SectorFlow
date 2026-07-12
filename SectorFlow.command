@@ -75,6 +75,8 @@ fi
 
 # 브라우저 열기 (Chrome) — 백엔드 준비 확인 후
 # 백엔드가 ready 상태이므로 프론트엔드 healthCheck()가 첫 시도에 성공 → proxy error 없음
+# 기존 localhost:5173 탭을 닫고 새로 열어 Chrome 캐시/bfcache로 인한 이전 코드 잔존 방지
+osascript -e 'tell application "Google Chrome" to close every tab in every window where URL starts with "http://localhost:5173"' 2>/dev/null
 open -a "Google Chrome" http://localhost:5173
 
 echo ""

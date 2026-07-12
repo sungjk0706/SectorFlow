@@ -4,14 +4,15 @@
 - **ARCHITECTURE.md "JIF bypass" 기록 정리 완료**: 3단계 문서 정리에서 "JIF bypass: 0B 틱 우회로 직통 전송 (지연 감소)" 기록을 `price_pass_through_queue` 제거 사실로 대체. grep 결과 잔존 0건 확인 완료
 
 ## 직전 완료 작업
-- **2026-07-12: 거래대금 순위 가산점을 통과 종목만으로 제한 — 매수 불가 종목 1위 무효화 해결 (커밋 77d0e10)**
-  - **수정 파일**: `backend/app/domain/buy_filter.py`, `backend/tests/test_buy_filter.py`, `frontend/src/stores/hotStore.ts`, `frontend/src/pages/buy-settings.ts` (4개)
-  - **내용**: 차단/보유 종목이 거래대금 1위를 차지하면 가산점과 하이라이트가 매수 불가능한 종목에 소비되어 기능이 무의미해지는 문제 수정. 백엔드 `buy_filter.py` — 거래대금 순위 계산을 `guard_pass` 통과 종목만으로 제한 (`_all_for_rank` → `_pass_for_rank`), 차단 종목은 `trade_amount_rank = -1`. 프론트엔드 `hotStore.ts` — `recalcTradeAmountRank` 동일 로직 적용. `buy-settings.ts` — 설정 라벨 "(보유제외)" → "(매수가능종목만)" 정정 (P21 사용자 투명성). 호가잔량비/프순매 가산점(통과 종목만)과 일관성 확보 (P23). 테스트 `test_trade_amount_rank_includes_held_codes` → `test_trade_amount_rank_excludes_held_codes`로 반대 검증으로 수정
-  - **검증**: pytest test_buy_filter.py 57 passed (0.10s), npm run build 성공 (1.25s), 런타임 기동 정상 (185ms, 에러 없음, 잔존 프로세스 0개)
+- **2026-07-12: 표 컬럼 너비 로직 전면 개편 완료**
+  - `auto-width.ts`: `computeColumnWidths` → `computeColWidths` + `widthsToPercentages` + `clampColWidth` 3개 함수로 분리. `ColumnWidthResult` 제거 (P16)
+  - `data-table.ts`: `createColumnWidthManager` 공통 팩토리 추가 (initFromRows 전체 계산 + checkCellWidth 증분 추적 + flushWidthUpdate 일괄 적용). `calcPercentages` 제거 (관리자에 흡수)
+  - `createFixedMode`/`createVirtualScrollMode`: `columnWidthsCalculated` 1회 고정 플래그 제거, 매 updateRows 시 initFromRows 호출, renderRow/셀 diffing/updateItemByKey에 checkCellWidth + flushWidthUpdate 통합
+  - 검증: `npm run build` 통과, `npx vitest run` 112 tests passed, 브라우저 확인 완료 (업종순위, 매수후보, 보유종목)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
-- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈), 수익현황 업종 섹션 연동(도넛 범례 클릭→스크롤+하이라이트), 전체보기/전체접기 토글 버튼, 차트 onMove undefined 크래시 근본 해결(render early return 시 barRects 동기화), 수익현황 기간 선택 상태 재기동 후 유지(localStorage quickLabel 영속화 + 초기 활성 버튼 복원), 수익상세 페이지 뷰 상태 재기동 후 유지(localStorage selectedView+drilldownActive+dateRange 영속화, 7곳 핸들러 persistViewState), 스핀버튼 초기 비활성 버그 근본 해결(store subscriber settings 변경 시에만 notify + createSpinButtons mousedown 포커스 유지 + registerEditing 데드 코드 제거), 증권사 변경 확인 팝업 추가(showConfirmDialog 재사용 + 변경 전/후 증권사명 + 4개 작업 요약 + 취소 시 라디오 복원 + BROKER_NAMES SSOT 상수), brokerSaving disabled 잔존 버그 수정(then 콜백 실행 순서 교정) — 모두 코드 확인 완료, `npm run build` 통과
+- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈), 수익현황 업종 섹션 연동(도넛 범례 클릭→스크롤+하이라이트), 전체보기/전체접기 토글 버튼, 차트 onMove undefined 크래시 근본 해결(render early return 시 barRects 동기화), 수익현황 기간 선택 상태 재기동 후 유지(localStorage quickLabel 영속화 + 초기 활성 버튼 복원), 수익상세 페이지 뷰 상태 재기동 후 유지(localStorage selectedView+drilldownActive+dateRange 영속화, 7곳 핸들러 persistViewState), 스핀버튼 초기 비활성 버그 근본 해결(store subscriber settings 변경 시에만 notify + createSpinButtons mousedown 포커스 유지 + registerEditing 데드 코드 제거), 증권사 변경 확인 팝업 추가(showConfirmDialog 재사용 + 변경 전/후 증권사명 + 4개 작업 요약 + 취소 시 라디오 복원 + BROKER_NAMES SSOT 상수), brokerSaving disabled 잔존 버그 수정(then 콜백 실행 순서 교정), 테이블 컬럼 너비 하이브리드 방식 도입(7개 컬럼 팩토리 minWidth/maxWidth 경계 설정 + 전체 종목 샘플링), 테이블 컬럼 너비 로직 전면 개편(createColumnWidthManager 공통 팩토리 + 1회 고정 플래그 제거 + 증분 추적), SectorFlow.command Chrome 캐시 잔존 해결(시작 시 localhost:5173 탭 닫고 새로 열기) — 모두 코드 확인 완료, `npm run build` 통과
 - **Git**: 증권사 변경 시 토큰 폐기 로그 불일치 수정 (P15/P21) — 커밋 완료 (10dbafe), 런타임 검증 완료
 - **AGENTS.md**: 4섹션 우선순위 구조 재구성 완료 (섹션1 개요 > 섹션2 아키텍처 원칙 > 섹션3 수행 규칙 > 섹션4 작업 프로세스). 신규 규칙 7건 추가 — 사용자 프로필 "코딩 1도 모름", 아키텍처 원칙 참조, 사용자 의사소통 규칙(기술 명령어 안내 금지·UI 기준 검증·API 직접 호출 안내 금지), 보고서 5항목 명시화, HANDOVER.md read-before-write 의무, 작업량 기반 사전 분할, 단계 완료 시 컨텍스트 점검. 기존 규칙 15개 누락 없음 대조 완료. 아키텍처 원칙 22→24개 업데이트 (P23 일관된 통일성, P24 단순성 추가)
 - **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2784 passed, 0 failed
@@ -23,8 +24,6 @@
 - **루트 폴더 정리**: 완료된 1회성 계획서 3건 + 로컬 산출물 4건 제거 (2026-07-12). `docs/architecture_audit_plan.md`, `docs/ghost_position_investigation.md`, `docs/api_specs/` 유지
 
 ## 진행 중 작업
-
-현재 진행 중인 작업 없음.
 
 ### 아키텍처 전수 점검 — 7/30 세션 완료
 
@@ -71,6 +70,11 @@ P2 세션 완료 후 진행.
 - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
 - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
 - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
+
+### 보류: P23 테이블 컬럼 너비 일관성 개선 (subagent 조사 완료, 사용자 승인 대기)
+- **stock-detail.ts 자체 `makeAmountColumn`** (`stock-detail.ts:55-62`): 너비 설정 없음 (P23 위반). 공통 `makeAmountColumn`(minWidth 60, maxWidth 95)과 이름이 같지만 구현이 다름. minWidth/maxWidth 추가 또는 함수명 변경 권장
+- **비표준 컬럼 너비 설정 없음**: buy-target.ts(호가잔량비, 프순매, 5일고가, 가산점, 제한, 원인 6개), sell-position.ts(현재가, 매수가, 매수금액, 평가손익, 수익률, 수량 6개), profit-shared.ts(매수가, 매도가, 수량, 매수금액, 매도금액, 실현손익, 수익률, 수수료, 세금 9개) — 각 컬럼에 minWidth/maxWidth 직접 지정 권장
+- **순번/종목코드 컬럼 팩토리 사용 통일**: 5개 페이지에서 직접 생성(설정은 동일) → `makeSeqColumn`, `makeCodeColumn` 팩토리 사용으로 코드 중복 감소 권장
 
 ## 미해결 문제
 - **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결**

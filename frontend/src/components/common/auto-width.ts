@@ -52,7 +52,7 @@ export function estimateTextWidth(text: string, fontSize: number): number {
   return width
 }
 
-/** computeColumnWidths 입력 */
+/** 컬럼 폭 계산 입력 */
 export interface ColumnWidthInput {
   label: string
   minWidth?: number
@@ -61,73 +61,65 @@ export interface ColumnWidthInput {
   samples: string[]
 }
 
-/** computeColumnWidths 출력 */
-export interface ColumnWidthResult {
-  /** 각 컬럼의 계산된 폭 (px) */
-  widths: number[]
-  /** 각 컬럼의 비율 (%) — 합계 100 */
-  percentages: number[]
+/**
+ * 단일 텍스트 폭을 클램프된 px 폭으로 변환.
+ * rawWidth = textWidth + 셀 패딩, minWidth/maxWidth 클램핑.
+ */
+export function clampColWidth(
+  textWidth: number,
+  minWidth?: number,
+  maxWidth?: number,
+): number {
+  const rawWidth = textWidth + CELL_HORIZONTAL_PADDING
+  let minW = minWidth ?? DEFAULT_MIN_WIDTH
+  let maxW = maxWidth ?? Infinity
+  if (minW > maxW) {
+    console.warn(
+      `[auto-width] minWidth(${minW}) > maxWidth(${maxW}), clamping minWidth to maxWidth`,
+    )
+    minW = maxW
+  }
+  return Math.max(minW, Math.min(rawWidth, maxW))
 }
 
 /**
- * 컬럼 폭 계산.
- * 1. 각 컬럼의 rawWidth = max(헤더 텍스트 폭, 데이터 샘플 최대 폭) + 셀 패딩
- * 2. minWidth/maxWidth 클램핑
- * 3. 컨테이너 너비에 비례 배분하여 합계 100%
+ * 각 컬럼의 클램프된 px 폭 계산 (컨테이너 너비 무관).
+ * 1. 각 컬럼의 maxTextWidth = max(헤더 텍스트 폭, 데이터 샘플 최대 폭)
+ * 2. clampColWidth로 px 폭 산출
  */
-export function computeColumnWidths(
+export function computeColWidths(
   columns: ColumnWidthInput[],
-  containerWidth: number,
   fontSize: number = DEFAULT_FONT_SIZE,
-): ColumnWidthResult {
-  if (columns.length === 0) {
-    return { widths: [], percentages: [] }
-  }
+): number[] {
+  if (columns.length === 0) return []
 
-  // containerWidth ≤ 0이면 기본값 800px
-  const cw = containerWidth > 0 ? containerWidth : 800
-
-  const clampedWidths: number[] = new Array(columns.length)
+  const widths: number[] = new Array(columns.length)
 
   for (let i = 0; i < columns.length; i++) {
     const col = columns[i]
-
-    // rawWidth = max(헤더 폭, 샘플 최대 폭) + 패딩
     let maxTextWidth = estimateTextWidth(col.label, fontSize)
     const samples = col.samples
     for (let j = 0; j < samples.length; j++) {
       const w = estimateTextWidth(samples[j], fontSize)
       if (w > maxTextWidth) maxTextWidth = w
     }
-    const rawWidth = maxTextWidth + CELL_HORIZONTAL_PADDING
-
-    // minWidth/maxWidth 클램핑
-    let minW = col.minWidth ?? DEFAULT_MIN_WIDTH
-    let maxW = col.maxWidth ?? Infinity
-
-    if (minW > maxW) {
-      console.warn(
-        `[auto-width] Column "${col.label}": minWidth(${minW}) > maxWidth(${maxW}), clamping minWidth to maxWidth`,
-      )
-      minW = maxW
-    }
-
-    clampedWidths[i] = Math.max(minW, Math.min(rawWidth, maxW))
+    widths[i] = clampColWidth(maxTextWidth, col.minWidth, col.maxWidth)
   }
 
-  // 비례 배분: percentage[i] = clampedWidth[i] / totalClamped * 100
-  let totalClamped = 0
-  for (let i = 0; i < clampedWidths.length; i++) {
-    totalClamped += clampedWidths[i]
+  return widths
+}
+
+/**
+ * px 폭 배열을 비율(%) 배열로 변환 — 합계 100.
+ */
+export function widthsToPercentages(widths: number[]): number[] {
+  if (widths.length === 0) return []
+  let total = 0
+  for (let i = 0; i < widths.length; i++) total += widths[i]
+  if (total <= 0) return widths.map(() => 100 / widths.length)
+  const percentages = new Array(widths.length)
+  for (let i = 0; i < widths.length; i++) {
+    percentages[i] = (widths[i] / total) * 100
   }
-
-  const percentages: number[] = new Array(columns.length)
-  const widths: number[] = new Array(columns.length)
-
-  for (let i = 0; i < columns.length; i++) {
-    percentages[i] = (clampedWidths[i] / totalClamped) * 100
-    widths[i] = (percentages[i] / 100) * cw
-  }
-
-  return { widths, percentages }
+  return percentages
 }

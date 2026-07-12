@@ -416,6 +416,8 @@ export function makePriceColumn<T>(
     key: 'cur_price',
     label: '현재가',
     align: 'right',
+    minWidth: 70,
+    maxWidth: 100,
     flash: true,
     render: (t) => {
       return createPriceCell(getPrice(t), getRate(t))
@@ -429,6 +431,8 @@ export function makeChangeColumn<T>(get: (t: T) => number | null | undefined): C
     key: 'change',
     label: '대비',
     align: 'center',
+    minWidth: 60,
+    maxWidth: 80,
     render: (t) => createChangeCell(get(t)),
   }
 }
@@ -439,6 +443,8 @@ export function makeRateColumn<T>(get: (t: T) => number | null | undefined): Col
     key: 'change_rate',
     label: '등락률',
     align: 'right',
+    minWidth: 60,
+    maxWidth: 75,
     render: (t) => createRateCell(get(t)),
   }
 }
@@ -449,6 +455,8 @@ export function makeStrengthColumn<T>(get: (t: T) => number | null | undefined):
     key: 'strength',
     label: '체결강도',
     align: 'right',
+    minWidth: 60,
+    maxWidth: 75,
     render: (t) => createStrengthCell(get(t)),
   }
 }
@@ -459,6 +467,8 @@ export function makeAmountColumn<T>(get: (t: T) => number | null | undefined): C
     key: 'trade_amount',
     label: '거래대금(억)',
     align: 'right',
+    minWidth: 60,
+    maxWidth: 95,
     render: (t) => createAmountCell(get(t)),
   }
 }
@@ -469,6 +479,8 @@ export function makeAvgAmountColumn<T>(get: (t: T) => number): ColumnDef<T> {
     key: 'avg_amt_5d',
     label: '5일평균(억)',
     align: 'right',
+    minWidth: 60,
+    maxWidth: 90,
     render: (t) => createAvgAmountCell(get(t)),
   }
 }
@@ -484,6 +496,7 @@ export function createStockNameColumn<T extends object>(
     label: '종목명',
     align: 'left',
     minWidth: 80,
+    maxWidth: 220,
     cellStyle: { fontWeight: 'normal', color: COLOR.neutral },
     render: (item: T) => {
       const lookup = fallbackLookup(item)
@@ -502,6 +515,7 @@ export function createStockNameColumnWithSectorLookup<T extends object>(
     label: '종목명',
     align: 'left',
     minWidth: 80,
+    maxWidth: 220,
     cellStyle: { fontWeight: 'normal', color: COLOR.neutral },
     render: (item: T) => {
       const name = String(item[nameKey] || '')
