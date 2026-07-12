@@ -534,42 +534,6 @@ class TestGlobalSnapshotCache:
                 p.stop()
 
     @pytest.mark.asyncio
-    async def test_all_stocks_rebuy_blocked_skips_buy(self, fresh_state, reset_cash_gate):
-        """전체 guard_pass 종목이 재매수 차단된 경우 매수 시도 없음."""
-        s1 = _stock(code="A001")
-        s2 = _stock(code="A002")
-        fresh_state.sector_summary_cache = SectorSummary(
-            sectors=[],
-            buy_targets=[
-                BuyTarget(rank=1, sector_rank=1, stock=s1),
-                BuyTarget(rank=2, sector_rank=1, stock=s2),
-            ],
-            blocked_targets=[],
-            version=1,
-        )
-        fresh_state.auto_trade._bought_today = {"A001": 1.0, "A002": 2.0}
-        fresh_state.integrated_system_settings_cache = _default_settings(rebuy_block_on=True)
-        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=True)
-        patches = [
-            patch("backend.app.services.engine_state.state", fresh_state),
-            patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True),
-            patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True),
-            patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
-                  return_value=[]),
-            patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
-            patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False),
-            patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False),
-        ]
-        for p in patches:
-            p.start()
-        try:
-            await evaluate_buy_candidates()
-            fresh_state.auto_trade.execute_buy.assert_not_called()
-        finally:
-            for p in patches:
-                p.stop()
-
-    @pytest.mark.asyncio
     async def test_successful_buy_invalidates_snapshot(self, fresh_state, reset_cash_gate):
         """매수 성공 후 스냅샷이 무효화되어 다음 호출 시 재시도 허용."""
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=True)

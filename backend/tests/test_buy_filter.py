@@ -618,3 +618,54 @@ class TestCreateBuyTargets:
         sc = _sector(rank=1, stocks=[s_bought])
         result = create_buy_targets([sc], bought_today_codes={"A003"}, block_fall_pct=7.0)
         assert result.blocked_targets[0].reason == "금일매수"
+
+    # ── rebuy_block_on=False: 보유/금일매수 종목 매수 허용 ──
+
+    def test_rebuy_block_off_held_stock_in_buy_targets(self):
+        """rebuy_block_on=False → 보유 종목도 매수 후보에 포함."""
+        s_normal = _stock(code="A001", change_rate=1.0)
+        s_held = _stock(code="A002", change_rate=5.0)
+        sc = _sector(rank=1, stocks=[s_held, s_normal])
+        result = create_buy_targets(
+            [sc], held_codes={"A002"}, rebuy_block_on=False, sort_keys=["change_rate"],
+        )
+        codes = {t.stock.code for t in result.buy_targets}
+        assert "A002" in codes
+        assert "A001" in codes
+        # 보유 종목의 guard_pass는 True, reason은 빈 문자열
+        held_target = next(t for t in result.buy_targets if t.stock.code == "A002")
+        assert held_target.stock.guard_pass is True
+        assert held_target.reason == ""
+
+    def test_rebuy_block_off_bought_today_in_buy_targets(self):
+        """rebuy_block_on=False → 금일매수 종목도 매수 후보에 포함."""
+        s_normal = _stock(code="A001", change_rate=1.0)
+        s_bought = _stock(code="A002", change_rate=5.0)
+        sc = _sector(rank=1, stocks=[s_bought, s_normal])
+        result = create_buy_targets(
+            [sc], bought_today_codes={"A002"}, rebuy_block_on=False, sort_keys=["change_rate"],
+        )
+        codes = {t.stock.code for t in result.buy_targets}
+        assert "A002" in codes
+        assert "A001" in codes
+        bought_target = next(t for t in result.buy_targets if t.stock.code == "A002")
+        assert bought_target.stock.guard_pass is True
+        assert bought_target.reason == ""
+
+    def test_rebuy_block_off_no_blocked_targets_from_held(self):
+        """rebuy_block_on=False → 보유 종목이 blocked_targets에 들어가지 않음."""
+        s_held = _stock(code="A002", change_rate=5.0)
+        sc = _sector(rank=1, stocks=[s_held])
+        result = create_buy_targets(
+            [sc], held_codes={"A002"}, rebuy_block_on=False,
+        )
+        assert [t.stock.code for t in result.blocked_targets] == []
+        assert [t.stock.code for t in result.buy_targets] == ["A002"]
+
+    def test_rebuy_block_on_default_blocks_held(self):
+        """rebuy_block_on 미전달(기본값 True) → 보유 종목 차단 (기존 동작 유지)."""
+        s_held = _stock(code="A002", change_rate=5.0)
+        sc = _sector(rank=1, stocks=[s_held])
+        result = create_buy_targets([sc], held_codes={"A002"})
+        assert [t.stock.code for t in result.blocked_targets] == ["A002"]
+        assert result.blocked_targets[0].reason == "보유중"

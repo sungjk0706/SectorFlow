@@ -121,6 +121,84 @@ class TestApplySettingsChangeSectorBroadcast:
         assert "필터 설정 변경" in schedule_contexts
         assert "업종 설정 변경" in schedule_contexts
 
+    @pytest.mark.asyncio
+    async def test_rebuy_block_on_triggers_recompute(self):
+        """rebuy_block_on 변경 시 엔진 실행 중이면 recompute_sector_summary_now 호출."""
+        from backend.app.services.engine_service import apply_settings_change
+
+        changed_keys = {"rebuy_block_on"}
+
+        with (
+            patch(
+                "backend.app.services.engine_service.refresh_engine_integrated_system_settings_cache",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_service.is_engine_running",
+                return_value=True,
+            ),
+            patch(
+                "backend.app.services.engine_service.schedule_engine_task",
+            ) as mock_schedule,
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_header_refresh",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_settings_toggled",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_sector_scores",
+                AsyncMock(),
+            ),
+        ):
+            await apply_settings_change(changed_keys)
+
+        schedule_contexts = [c.kwargs.get("context", "") for c in mock_schedule.call_args_list]
+        assert "업종 설정 변경" in schedule_contexts
+
+    @pytest.mark.asyncio
+    async def test_rebuy_block_on_no_recompute_when_engine_stopped(self):
+        """엔진 미실행 시 rebuy_block_on 변경은 recompute 호출하지 않음."""
+        from backend.app.services.engine_service import apply_settings_change
+
+        changed_keys = {"rebuy_block_on"}
+
+        with (
+            patch(
+                "backend.app.services.engine_service.refresh_engine_integrated_system_settings_cache",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_service.is_engine_running",
+                return_value=False,
+            ),
+            patch(
+                "backend.app.services.engine_service.schedule_engine_task",
+            ) as mock_schedule,
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_header_refresh",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_settings_toggled",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_sector_scores",
+                AsyncMock(),
+            ),
+        ):
+            await apply_settings_change(changed_keys)
+
+        # 엔진 미실행 → schedule_engine_task가 호출되지 않아야 함
+        recompute_calls = [
+            c for c in mock_schedule.call_args_list
+            if c.kwargs.get("context", "") == "업종 설정 변경"
+        ]
+        assert recompute_calls == []
+
 
 class TestSettingsPyHttpExceptionReraise:
     """Step 3: settings.py catch-all에서 HTTPException re-raise 검증."""

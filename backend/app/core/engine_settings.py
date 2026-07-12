@@ -155,6 +155,10 @@ def build_engine_settings_dict(flat: dict) -> dict:
     result["buy_interval_on"]              = bool(merged.get("buy_interval_on", False))
     result["buy_interval_min"]             = int(merged.get("buy_interval_min", 0) or 0)
 
+    # ── 재매수 차단 (보유/금일매수 종목 매수 허용 여부 + 차단 기간) ────────
+    result["rebuy_block_on"]               = bool(merged.get("rebuy_block_on", True))
+    result["rebuy_block_period"]           = str(merged.get("rebuy_block_period", "today"))
+
     # ── 매수 가산점 설정 ────────
     # 5일 전고가 돌파 가산점
     result["boost_high_breakout_on"]       = bool(merged.get("boost_high_breakout_on"))
