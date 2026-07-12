@@ -22,7 +22,6 @@ from backend.app.services.market_close_pipeline import (
     execute_unified_rolling_and_save,
     _apply_confirmed_to_memory,
     _run_post_confirmed_pipeline,
-    _save_filter_diagnostics_snapshot,
     _save_confirmed_cache,
     _run_confirmed_pipeline,
     fetch_unified_confirmed_data,
@@ -420,26 +419,6 @@ class TestRunPostConfirmedPipeline:
             await _run_post_confirmed_pipeline()
 
 
-# ── _save_filter_diagnostics_snapshot ─────────────────────────────────────────
-
-class TestSaveFilterDiagnosticsSnapshot:
-    @pytest.mark.asyncio
-    async def test_logs_diagnostics(self):
-        evals = [
-            (_make_record("005930"), _make_eval("005930", excluded=True, reason="관리종목")),
-            (_make_record("000660"), _make_eval("000660", excluded=False)),
-        ]
-        await _save_filter_diagnostics_snapshot("run123", evals, {"005930"}, set())
-
-    @pytest.mark.asyncio
-    async def test_empty_evaluations(self):
-        await _save_filter_diagnostics_snapshot("run123", [], set(), set())
-
-    @pytest.mark.asyncio
-    async def test_exception_does_not_raise(self):
-        await _save_filter_diagnostics_snapshot("run123", None, set(), set())
-
-
 # ── _save_confirmed_cache ─────────────────────────────────────────────────────
 
 class TestSaveConfirmedCache:
@@ -629,7 +608,6 @@ class TestRunConfirmedPipeline:
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
              patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
              patch("backend.app.core.stock_filter.evaluate_stock_filter", side_effect=lambda raw, code: _make_eval(code, excluded=False)), \
-             patch("backend.app.services.market_close_pipeline._save_filter_diagnostics_snapshot", new_callable=AsyncMock), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
              patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
@@ -667,7 +645,6 @@ class TestRunConfirmedPipeline:
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
              patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
              patch("backend.app.core.stock_filter.evaluate_stock_filter", side_effect=lambda raw, code: _make_eval(code, excluded=False)), \
-             patch("backend.app.services.market_close_pipeline._save_filter_diagnostics_snapshot", new_callable=AsyncMock), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
              patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \

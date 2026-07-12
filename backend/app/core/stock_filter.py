@@ -49,6 +49,72 @@ _ORDER_WARNING_REASONS: dict[str, str] = {
 }
 
 
+# 사유(raw) → 표시명 매핑 — UI 표시 + 로그 출력 공용 (P10 SSOT, P23 일관성)
+# raw 사유는 evaluate_stock_filter 내부에서 생성되는 문자열.
+# 표시명은 사용자 친화적 일반 용어.
+_REASON_DISPLAY_MAP: dict[str, str] = {
+    # marketCode 계열 — "marketCode=8(ETF)" → "ETF"
+    "marketCode=1(우선주)": "우선주(비주식)",
+    "marketCode=2(인프라투융자)": "인프라투융자",
+    "marketCode=3(ELW)": "ELW",
+    "marketCode=4(뮤추얼펀드)": "뮤추얼펀드",
+    "marketCode=5(신주인수권)": "신주인수권",
+    "marketCode=6(리츠)": "리츠",
+    "marketCode=7(신주인수권증서)": "신주인수권증서",
+    "marketCode=8(ETF)": "ETF",
+    "marketCode=9(하이일드펀드)": "하이일드펀드",
+    "marketCode=30(K-OTC)": "K-OTC",
+    "marketCode=50(코넥스)": "코넥스",
+    "marketCode=60(ETN)": "ETN",
+    "marketCode=70(손실제한ETN)": "손실제한ETN",
+    "marketCode=80(금현물)": "금현물",
+    "marketCode=90(변동성ETN)": "변동성ETN",
+    # state 계열 — "state=관리종목" → "관리종목"
+    "state=관리종목": "관리종목",
+    "state=거래정지": "거래정지",
+    "state=불성실공시": "불성실공시",
+    "state=상장폐지": "상장폐지",
+    "state=상장폐지예고": "상장폐지예고",
+    "state=정리매매": "정리매매",
+    "state=투자경고": "투자경고",
+    "state=투자위험": "투자위험",
+    "state=증거금100%": "증거금100%종목",
+    # orderWarning 계열 — 이미 일반 용어
+    "ETF투자주의": "ETF투자주의",
+    "정리매매": "정리매매",
+    "단기과열/투자주의": "단기과열/투자주의",
+    "투자위험": "투자위험",
+    "투자경고": "투자경고",
+    # 기타
+    "스팩": "스팩",
+}
+
+
+def to_display_reason(raw_reason: str) -> str:
+    """raw 사유 문자열 → 사용자 친화적 표시명 변환.
+
+    정확 매칭 우선, 실패 시 접두사 기반 매칭(fallback 아님 — 매핑 누락 시 raw 그대로 반환하여
+    사용자에게 최소한의 정보라도 전달. P21 사용자 투명성).
+    """
+    if not raw_reason:
+        return ""
+    # 정확 매칭
+    if raw_reason in _REASON_DISPLAY_MAP:
+        return _REASON_DISPLAY_MAP[raw_reason]
+    # 접두사 매칭: "marketCode=99(알수없음)" 등 매핑 누락 케이스
+    for raw_prefix, display in _REASON_DISPLAY_MAP.items():
+        if raw_reason.startswith(raw_prefix):
+            return display
+    # 우선주 계열 — "우선주(종목명)-우B" → "우선주"
+    if raw_reason.startswith("우선주"):
+        return "우선주"
+    # 감리 계열 — "감리=감리지정" → "감리지정"
+    if raw_reason.startswith("감리="):
+        return raw_reason.split("=", 1)[1]
+    # 상장주식수/전일종가 비정상 — 그대로 (이미 일반 용어)
+    return raw_reason
+
+
 @dataclass
 class StockFilterEvaluation:
     code: str
@@ -120,14 +186,9 @@ def evaluate_stock_filter(item: dict, stk_cd: str) -> StockFilterEvaluation:
         label = _MARKET_CODE_LABELS.get(mc, mc)
         reasons.append(f"marketCode={mc}({label})")
 
-    non_equity_keywords = ["etf", "etn", "elw", "리츠", "reit", "k-otc", "k otc", "kots", "코넥스"]
-    market_name_lower = market_name.lower()
-    name_lower = name_raw.lower()
-    company_class_lower = company_class.lower()
-    for kw in non_equity_keywords:
-        if kw in market_name_lower or kw in name_lower or kw in company_class_lower:
-            reasons.append(f"비주식분류={kw}")
-            break
+    # non_equity_keywords 키워드 체크 제거 — marketCode 체크로 SSOT 단일 판정 (P10).
+    # marketCode가 0/10(코스피/코스닥)이면 주식, 그 외는 비주식으로 이미 분류됨.
+    # 종목명/분류 키워드 중복 체크는 사유 카운트를 부풀리는 원인이었음.
 
     if ow != "0":
         reasons.append(_ORDER_WARNING_REASONS.get(ow, f"orderWarning={ow}"))
@@ -138,7 +199,7 @@ def evaluate_stock_filter(item: dict, stk_cd: str) -> StockFilterEvaluation:
             if kw in part:
                 reasons.append(f"state={kw}")
 
-    if "스팩" in name_raw or "spac" in name_lower:
+    if "스팩" in name_raw or "spac" in name_raw.lower():
         reasons.append("스팩")
 
     preferred = _preferred_reason(name_raw, company_class)
