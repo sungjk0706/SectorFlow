@@ -17,7 +17,6 @@ class StockClassificationData:
     """사용자 커스텀 업종 분류 데이터 (하위 호환성용 dummy 구조체)."""
     sectors: dict[str, str] = field(default_factory=dict)
     stock_moves: dict[str, str] = field(default_factory=dict)
-    deleted_sectors: list[str] = field(default_factory=list)
 
 
 # ── 캐시 조회 (하위 호환 및 REST API용 더미 인터페이스) ──

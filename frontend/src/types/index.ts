@@ -288,7 +288,6 @@ export interface StockClassificationChangedEvent {
   custom_data: {
     sectors: Record<string, string>;
     stock_moves: Record<string, string>;
-    deleted_sectors: string[];
   };
   merged_sectors: string[];
   no_sector_count?: number;
@@ -306,7 +305,6 @@ export interface StockClassificationResponse {
   custom_data: {
     sectors: Record<string, string>;
     stock_moves: Record<string, string>;
-    deleted_sectors: string[];
   };
   merged_sectors: string[];
   edit_window_open: boolean;

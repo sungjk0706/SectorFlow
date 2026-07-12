@@ -5,7 +5,6 @@ import type { AppSettings, StockClassificationChangedEvent } from '../types'
 export interface StockClassificationState {
   sectors: Record<string, string>
   stockMoves: Record<string, string>
-  deletedSectors: string[]
   mergedSectors: string[]
   editWindowOpen: boolean
   noSectorCount: number
@@ -22,7 +21,6 @@ export interface StockClassificationState {
 const initialState: StockClassificationState = {
   sectors: {},
   stockMoves: {},
-  deletedSectors: [],
   mergedSectors: [],
   editWindowOpen: true,
   noSectorCount: 0,
@@ -39,7 +37,6 @@ export function applyStockClassificationChanged(data: StockClassificationChanged
   stockClassificationStore.setState({
     sectors: cd?.sectors ?? {},
     stockMoves: cd?.stock_moves ?? {},
-    deletedSectors: cd?.deleted_sectors ?? [],
     mergedSectors: data.merged_sectors ?? [],
     noSectorCount: data.no_sector_count ?? 0,
     filter_summary: data.filter_summary ?? currentState.filter_summary,

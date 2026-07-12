@@ -484,7 +484,7 @@ class TestSendInitialSnapshotDelayed:
 
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_config.get_settings_snapshot", return_value={"trade_mode": "test"}), \
-             patch("backend.app.core.stock_classification_data.load_custom_data", return_value=MagicMock(sectors={}, stock_moves={}, deleted_sectors=[])), \
+             patch("backend.app.core.stock_classification_data.load_custom_data", return_value=MagicMock(sectors={}, stock_moves={})), \
              patch("backend.app.core.sector_mapping.get_merged_all_sectors", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.services.sector_data_provider.get_all_sector_stocks", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.core.sector_stock_cache.assemble_filter_summary", return_value=""), \
@@ -517,7 +517,7 @@ class TestSendInitialSnapshotDelayed:
 
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_config.get_settings_snapshot", return_value={"trade_mode": "test"}), \
-             patch("backend.app.core.stock_classification_data.load_custom_data", return_value=MagicMock(sectors={}, stock_moves={}, deleted_sectors=[])), \
+             patch("backend.app.core.stock_classification_data.load_custom_data", return_value=MagicMock(sectors={}, stock_moves={})), \
              patch("backend.app.core.sector_mapping.get_merged_all_sectors", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.services.sector_data_provider.get_all_sector_stocks", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.core.sector_stock_cache.assemble_filter_summary", return_value=""), \
@@ -546,7 +546,7 @@ class TestSendInitialSnapshotDelayed:
         targets = [{"code": "005930", "cur_price": 50000}]
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_config.get_settings_snapshot", return_value={"trade_mode": "test"}), \
-             patch("backend.app.core.stock_classification_data.load_custom_data", return_value=MagicMock(sectors={}, stock_moves={}, deleted_sectors=[])), \
+             patch("backend.app.core.stock_classification_data.load_custom_data", return_value=MagicMock(sectors={}, stock_moves={})), \
              patch("backend.app.core.sector_mapping.get_merged_all_sectors", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.services.sector_data_provider.get_all_sector_stocks", new_callable=AsyncMock, return_value=[]), \
              patch("backend.app.core.sector_stock_cache.assemble_filter_summary", return_value=""), \

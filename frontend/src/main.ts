@@ -211,7 +211,7 @@ function main(): void {
     shell.setOverlay(false, '')
   }
 
-  // 6. 업종명없음 배지 — stockClassificationStore 구독
+  // 6. 미분류 종목수 배지 — stockClassificationStore 구독
   stockClassificationStore.subscribe((state) => {
     shell.setBadge('#/stock-classification', state.noSectorCount)
   })

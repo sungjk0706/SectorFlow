@@ -1,21 +1,19 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 수동 1일봉 다운로드 로그 정리 — 7줄 중복 → 2줄 통합 + 내부 코드 일반 용어 변환 + non_equity_keywords 중복 제거**
-  - **stock_filter.py**: `_REASON_DISPLAY_MAP` 매핑 테이블 + `to_display_reason()` 함수 추가 (UI/로그 공용, P10 SSOT). `non_equity_keywords` 키워드 체크 제거 — `marketCode` 체크로 SSOT 단일 판정 (사유 카운트 부풀림 원인 제거)
-  - **market_close_pipeline.py**: `_save_filter_diagnostics_snapshot` dead code 제거 (P16). `_step2_filter_eligible`에서 `all_reason_counts`/`state_flag_counts`/`diagnostic_counts` 중복 집계 3종 제거, B 방식(종목 단위/primary_reason)만 유일 정답으로 채택. 7줄 로그 → 2줄 요약 통합 (요약 1줄 + 주요 제외 사유 1줄). 중복/충돌 종목은 이상 시에만 WARNING
-  - **sector_stock_cache.py**: `assemble_filter_summary` 일반 용어화 — "raw 행"/"중복 종목" 개발자 용어 제거, "매매 가능 N종목" 표시
-  - **테스트**: `test_stock_filter.py` — `to_display_reason` 16개 테스트 추가, `non_equity_keywords` 테스트 수정. `test_market_close_pipeline.py` — `_save_filter_diagnostics_snapshot` 참조 3곳 제거
-  - 검증: pytest 242 passed (test_stock_filter + test_market_close_pipeline + test_web_*), 런타임 기동 182ms 정상, 잔존 프로세스 없음
-  - 변경 전: `marketCode=8(ETF)`, `state=증거금100%` → 변경 후: `ETF`, `증거금100%종목`
+- **2026-07-13: 종목분류 페이지 종목 이동 버그 3건 근본 해결 + "업종명없음" 잔적 전면 제거**
+  - **버그1 (이동 버튼 무반응, 근본)**: `button.ts`의 `createSolidBtn`/`createActionButton`이 disabled=true로 생성 시 click 리스너를 아예 추가하지 않음 → 이후 disabled=false로 변경해도 클릭 동작 안 함. 수정: 항상 click 리스너 추가 후 disabled 속성으로 클릭 차단하는 표준 패턴으로 변경
+  - **버그2 (미분류 선택 강제 해제)**: `stock-classification.ts:1457`이 `mergedSectors`만 검사해서 "미분류" 선택 시 데이터 갱신마다 선택 해제됨. 수정: `getActiveSectors()`로 검사 기준 변경 (미분류/특수 카테고리 포함)
+  - **버그3 (업종명없음 dead code, P16/P23 위반)**: `deletedSectors`가 백엔드에서 항상 빈 배열이라 프론트엔드 3곳의 "업종명없음" 분기는 절대 실행되지 않음 + 용어 불일치. 수정: 프론트엔드+백엔드+테스트 전면 제거
+  - **수정 파일**: `button.ts`, `stock-classification.ts`, `stockClassificationStore.ts`, `types/index.ts`, `main.ts` (프론트엔드 5개) + `stock_classification_data.py`, `stock_classification.py`, `ws.py` (백엔드 3개) + 테스트 3개
+  - 검증: `npm run build` 통과, 프론트엔드 테스트 112 passed, 백엔드 테스트 114 passed, 런타임 기동 153ms 정상, 잔존 프로세스 없음, `업종명없음`/`deletedSectors`/`deleted_sectors` 잔여 0건
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책 — 모두 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 색상 체계 통일, 수익현황/수익상세 기간 전환, 테이블 컬럼 너비 동적 조정 등 — 모두 완료, `npm run build` 통과 (git history 참조)
 - **테스트**: 백엔드 pytest 통과. 커버리지 Phase 1~3 완료
-- **업종 분류**: 69→55 재분류 + 업종명 정비 + 순위 기반 점수 전환 — 완료, 사용자 UI 확인 대기
+- **업종 분류**: 69→55 재분류 + 업종명 정비 + 순위 기반 점수 전환 + 종목 이동 버그 3건 근본 해결 + "업종명없음" 잔적 제거 — 완료, 사용자 UI 확인 대기
 - **규칙/문서 정리**: AGENTS.md 4섹션 구조, 아키텍처 원칙 24개, .devin/workflows 제거 + skills 통합 — 완료 (2026-07-13)
-- **수동 1일봉 다운로드 로그 정리**: 7줄 중복 → 2줄 통합 + 내부 코드 일반 용어 변환 + non_equity_keywords 중복 제거 — 완료 (2026-07-13)
 
 ## 진행 중 작업
 
@@ -26,9 +24,9 @@
 
 ## 다음 단계
 
-### 1순위: 업종 분류 재분류 — 사용자 UI 확인 대기
-- 69→55 업종 재분류 + 9개 업종명 정비 + 순위 기반 점수 전환 완료
-- 사용자 확인 필요: 업종순위 화면(55개 업종 표시, 변경된 업종명, 점수 바 균등 간격), 매수 후보 화면(25개 이동 종목 새 업종 표시)
+### 1순위: 종목분류 페이지 종목 이동 — 사용자 UI 확인 대기
+- 종목 이동 버그 3건 근본 해결 완료 (이동 버튼 무반응 + 미분류 선택 해제 + 업종명없음 dead code)
+- 사용자 확인 필요: 종목분류 페이지에서 "미분류" 선택 → 종목 선택 → 우측 업종 "이동" 버튼 클릭 → 확인 팝업 표시 → 이동 실행 정상 동작 확인
 
 ### 2순위: 아키텍처 전수 점검 P1 세션 (B-10)
 - B-10: 엔진 계좌/서비스 (`engine_account.py`, `engine_account_rest.py`, `engine_account_notify.py`, `engine_service.py`)

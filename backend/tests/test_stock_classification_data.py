@@ -24,7 +24,6 @@ class TestStockClassificationData:
         d = StockClassificationData()
         assert d.sectors == {}
         assert d.stock_moves == {}
-        assert d.deleted_sectors == []
 
     def test_load_custom_data_returns_empty(self):
         result = load_custom_data()
