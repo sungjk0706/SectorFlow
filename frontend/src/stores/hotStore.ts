@@ -94,11 +94,17 @@ export function getPositionIndex(stkCd: string): number | undefined {
   return _positionIndexCache.get(normalizeStockCode(stkCd))
 }
 
-/* ── trade_amount_rank 재계산 (백엔드 buy_filter.py와 동일 로직: 전체 종목 대상) ── */
+/* ── trade_amount_rank 재계산 (백엔드 buy_filter.py와 동일 로직: 통과 종목만 대상) ── */
 export function recalcTradeAmountRank(targets: SectorStock[]): void {
-  const sorted = [...targets].sort((a, b) => (b.trade_amount ?? 0) - (a.trade_amount ?? 0))
-  for (let i = 0; i < sorted.length; i++) {
-    sorted[i].trade_amount_rank = i
+  // 차단 종목은 순위에서 제외 (trade_amount_rank = -1)
+  for (const t of targets) {
+    if (!t.guard_pass) {
+      t.trade_amount_rank = -1
+    }
+  }
+  const passSorted = targets.filter(t => t.guard_pass).sort((a, b) => (b.trade_amount ?? 0) - (a.trade_amount ?? 0))
+  for (let i = 0; i < passSorted.length; i++) {
+    passSorted[i].trade_amount_rank = i
   }
 }
 

@@ -19,7 +19,7 @@ def calculate_boost_score(
     boost_program_net_buy_on: bool = False,
     boost_program_net_buy_score: float = 1.0,
     # ── 거래대금 순위 가산점 ──
-    trade_amount_rank: int = -1,  # 0 = 매수 후보 내 거래대금 1위, -1 = 순위 밖/보유 제외
+    trade_amount_rank: int = -1,  # 0 = 매수 후보 내 거래대금 1위, -1 = 순위 밖/차단 종목 제외
     boost_trade_amount_rank_on: bool = False,
     boost_trade_amount_rank_score: float = 1.0,
 ) -> float:
@@ -54,7 +54,7 @@ def calculate_boost_score(
         if net_buy > 0:
             score += boost_program_net_buy_score
 
-    # 4. 거래대금 순위 (매수후보 테이블 전체 종목 중 거래대금 상위 1종목)
+    # 4. 거래대금 순위 (매수후보 테이블 통과 종목 중 거래대금 상위 1종목)
     if boost_trade_amount_rank_on and trade_amount_rank == 0:
         score += boost_trade_amount_rank_score
 
@@ -195,7 +195,7 @@ def create_buy_targets(
             s.guard_pass = False
             s.guard_reason = "금일매수"
 
-    # ── 거래대금 순위 계산: 매수후보 테이블 전체 종목 대상 (통과/차단 무관) ──
+    # ── 거래대금 순위 계산: 매수후보 테이블 통과 종목만 대상 (차단 종목 제외) ──
     _trade_amount_rank_map: dict[str, int] = {}
     if boost_trade_amount_rank_on:
         # 실시간 거래대금으로 StockScore.trade_amount 갱신 — 증분 재계산 시 비-dirty 업종의 stale 값 방지
@@ -203,13 +203,13 @@ def create_buy_targets(
         for s, _ in all_stocks:
             if s.code in _ta_cache:
                 s.trade_amount = _ta_cache[s.code]
-        _all_for_rank = [s for s, _ in all_stocks]
-        _all_for_rank.sort(key=lambda st: float(st.trade_amount), reverse=True)
-        for i, st in enumerate(_all_for_rank):
+        _pass_for_rank = [s for s, _ in all_stocks if s.guard_pass]
+        _pass_for_rank.sort(key=lambda st: float(st.trade_amount), reverse=True)
+        for i, st in enumerate(_pass_for_rank):
             _trade_amount_rank_map[st.code] = i  # 0 = 1위
 
     for s, _ in all_stocks:
-        # 차단 종목도 가산점 계산 (5일고가 + 거래대금; 잔량비/프순매는 구독 세션 제한으로 통과 종목만)
+        # 차단 종목도 가산점 계산 (5일고가; 잔량비/프순매는 구독 세션 제한으로 통과 종목만, 거래대금 순위는 통과 종목만)
         _is_blocked = not s.guard_pass
         s.boost_score = calculate_boost_score(
             s,

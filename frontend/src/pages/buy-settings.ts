@@ -193,7 +193,7 @@ function mount(container: HTMLElement): void {
   {
     boostTradeAmountScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_trade_amount_rank_score = v; saveHelper!.autoSave('boost_trade_amount_rank_score', v) }, step: 1, name: 'boost_trade_amount_rank_score' })
     const r = createToggleLabelControlsRow({
-      labelText: '거래대금 순위 (보유제외)',
+      labelText: '거래대금 순위 (매수가능종목만)',
       toggleOn: false,
       onToggle: next => { vals.boost_trade_amount_rank_on = next; saveHelper!.saveImmediate({ boost_trade_amount_rank_on: next }) },
       controlsChild: boostTradeAmountScoreInput.el,
