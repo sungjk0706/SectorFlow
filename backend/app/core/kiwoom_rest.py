@@ -240,7 +240,7 @@ class KiwoomRestAPI:
                 if resp.status_code == 429:
                     wait_sec = 10 * (attempt + 1)
                     logger.warning(
-                        "[연결] %s 요청 과다(인증 API(au10001)) — %d초 대기 후 재시도 (%d/3)",
+                        "[연결] %s 요청 과다 — %d초 대기 후 재시도 (%d/3)",
                         _BROKER_DISPLAY, wait_sec, attempt + 1,
                     )
                     await asyncio.sleep(wait_sec)
@@ -299,7 +299,7 @@ class KiwoomRestAPI:
             client = await self._get_client()
             resp = await client.post(url, headers=headers, json=body, timeout=5)
             if resp.status_code == 200:
-                logger.info("[연결] %s 토큰 폐기 완료 (토큰 폐기 API(au10002))", _BROKER_DISPLAY)
+                logger.info("[연결] %s 토큰 폐기 완료", _BROKER_DISPLAY)
             else:
                 logger.warning("[연결] %s 토큰 폐기 실패 (응답코드=%s)", _BROKER_DISPLAY, resp.status_code)
         except Exception as e:

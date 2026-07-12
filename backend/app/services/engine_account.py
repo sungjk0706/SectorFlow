@@ -139,7 +139,7 @@ async def _fetch_account_data(settings: dict) -> dict:
         token_ok = await _rest_api._ensure_token()
     if not token_ok:
         logger.warning(
-            "[계좌] 유효한 토큰 없음 (인증 API(au10001) 발급 실패) — 계좌 조회 건너뜀. "
+            "[계좌] 유효한 토큰 없음 (토큰 발급 실패) — 계좌 조회 건너뜀. "
             "이전 값을 그대로 유지합니다. (0원 표시 방지)"
         )
         return _EMPTY

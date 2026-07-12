@@ -129,7 +129,7 @@ class TestCheckBuyOrderAllowed:
             mock_state.positions = []
             allowed, reason = await risk_manager.check_buy_order_allowed("005930", 70_000, 10)
         assert allowed is False
-        assert "Circuit Breaker" in reason
+        assert "서킷브레이커" in reason
 
     @pytest.mark.asyncio
     async def test_daily_loss_limit_blocks(self, risk_manager, settings_cache):
@@ -258,7 +258,7 @@ class TestCheckSellOrderAllowed:
         risk_manager.circuit_breaker.state = "OPEN"
         allowed, reason = risk_manager.check_sell_order_allowed("005930", 80_000, 10)
         assert allowed is False
-        assert "Circuit Breaker" in reason
+        assert "서킷브레이커" in reason
 
     def test_half_open_allows_sell(self, risk_manager):
         risk_manager.circuit_breaker.state = "HALF_OPEN"
