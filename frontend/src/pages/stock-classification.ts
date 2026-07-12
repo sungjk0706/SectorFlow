@@ -516,9 +516,11 @@ function buildSectorManageCard(): HTMLElement {
   Object.assign(statsLabelRef.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, fontWeight: FONT_WEIGHT.normal })
 
   // 우측 컨테이너: 통계 레이블 + 새 업종 추가 버튼
+  // "새 업종 추가"는 중요 액션 → md 사이즈(6px 12px, 12px label)로 작업 컬럼 버튼(sm)보다 한 단계 크게
   addSectorBtnRef = createSolidBtn({
     label: '+ 새 업종 추가',
     color: COLOR.down,
+    size: 'md',
     editControl: true,
     onClick: (e: MouseEvent) => onAddSector(e),
   })
