@@ -62,7 +62,11 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
 
 ### Investigation & Problem Solving Rules
 
-0. **Approval before editing.** Before modifying any code for debugging, new implementation, or improvements, always present a clear plan and get explicit user approval first. Do not make any file edits until the user explicitly says "진행해", "수정해", "구현해", "go", or similar. If the user only asks for analysis or reporting, do not edit.
+0. **승인 전 코드 수정 절대 금지 (최우선 규칙).** 어떤 작업이든 — 디버깅, 새 구현, 개선, 리팩토링, 1줄 변경 포함 — 사용자의 명시적 승인 없이는 절대 코드를 수정하지 않는다. 분석, 조사, 계획 제안, 추천까지만 수행하고 승인 전까지 수정 금지.
+   - **승인 트리거**: 사용자가 "진행해", "수정해", "구현해", "go", "해줘", "적용해" 등 명시적 실행 지시어를 사용한 경우만 승인으로 간주.
+   - **미승인 상황 (수정 금지)**: 사용자가 "분석해", "조사해", "확인해", "검토해", "의견 줘", "추천해", "어떻게 생각해", "계획 보여줘" 등을 요청한 경우. 이 경우 분석/조사/제안까지만 하고 응답 종료. 사용자가 추가로 실행 지시어를 줄 때까지 대기.
+   - **추천 요청 시 주의**: 사용자가 "추천해줘", "너의 추천은?" 등을 물을 때, 추천을 제시한 후 사용자의 명시적 승인 없이 자동으로 수정에 들어가는 것은 절대 금지. 추천 제시 → 사용자 승인 → 수정 순서 엄수.
+   - **Plan 모드가 아닐 때도 동일**: Normal 모드라도 승인 전 수정 금지. 모드와 무관하게 항상 적용.
 1. No guessing. Base all conclusions on actual code, search results, logs, and browser reproducible behavior.
 2. Solve the root cause, not the symptom. No temporary fixes, fallbacks, `!important`, `as any`, or "let's do this for now" workarounds.
 3. One small step at a time. Modify one file or block at a time, then verify.
