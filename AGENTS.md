@@ -45,7 +45,7 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
   - **P22 (데이터 정합성)**: 파생 데이터 모델, 기동 시 대조(reconciliation), 불일치 시 즉시 차단.
   - **P23 (일관된 통일성)**: 용어 사전 준수, 에러/비동기/네이밍/상수 패턴 파일 간 일관, UI 패턴 공통 컴포넌트 추출.
   - **P24 (단순성)**: 더 단순한 대체 가능성, 불필요한 추상화 금지, 함수/파일 길이·복잡도 기준.
-- 전체 원칙 목록은 `docs/architecture_audit_plan.md` 섹션 2의 평가 기준표 참조.
+- 전체 원칙 목록은 `ARCHITECTURE.md` 제1부 "불변 원칙 24개" 참조.
 
 ### Code Removal Rules
 
