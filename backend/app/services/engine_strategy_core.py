@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-매수 파이프라인 핵심 로직: 시장가 즉시 매수, 모니터링 종목 등록, 스냅샷·매도 검사, WS 연결 시도.
+매수 파이프라인 핵심 로직: 시장가 즉시 매수, 모니터링 종목 등록, 스냅샷·매도 검사, 실시간 통신 연결 시도.
 
 engine_service 모듈의 전역 상태에 get_state/set_state로 접근한다.
 """
@@ -23,9 +23,9 @@ def _is_placeholder_stock_name(nm: str) -> bool:
 
 def resolve_radar_display_name(stk_cd: str, ws_stk_nm: str, access_token) -> str:
     """
-    WS FID 302 등과 불일치 시 로컬 stock_name_cache로 보강.
+    실시간 통신 FID 302 등과 불일치 시 로컬 stock_name_cache로 보강.
 
-    WS 힌트(FID 302)는 종목코드와 짝이 어긋날 수 있어, 로컬 종목명과 다르면 로컬을 우선한다.
+    실시간 통신 힌트(FID 302)는 종목코드와 짝이 어긋날 수 있어, 로컬 종목명과 다르면 로컬을 우선한다.
     """
     hint = (ws_stk_nm or "").strip()
     rest_nm = ""
