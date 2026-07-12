@@ -4,16 +4,14 @@
 - **ARCHITECTURE.md "JIF bypass" 기록 정리 완료**: 3단계 문서 정리에서 "JIF bypass: 0B 틱 우회로 직통 전송 (지연 감소)" 기록을 `price_pass_through_queue` 제거 사실로 대체. grep 결과 잔존 0건 확인 완료
 
 ## 직전 완료 작업
-- **2026-07-12: 업종순위 거래대금 가중치 무시 버그 수정 + 추가 개선 7건 완료**
-  - **Stage 1 (핵심 수정 4건)**: `settings_defaults.py:85` 기본값 키 `trade_amount` → `total_trade_amount` 정정 (P10 SSOT). `settings_file.py` `_migrate_sector_weights` 레거시 `trade_amount` 키 자동 변환 마이그레이션 추가 (P22). `test_engine_settings.py:64` 기대값 정정. `test_sector_score.py` 회귀 방지 테스트 추가 (기본값 정규화 후 50/50 검증). `test_settings_file.py` 마이그레이션 테스트 3건 추가.
-  - **Stage 2 (추가 개선 2건)**: `engine_settings.py:129` `sector_rank_primary` dead code 제거 (P16). `engine_service.py:160` `_SECTOR_UI_KEYS`에서 `sector_rank_primary` 제거. `models.py:114-122` `SectorRankPrimary`/`_SECTOR_RANK_LABEL`/`DEFAULT_SECTOR_RANK_PRIMARY` dead code 제거. `engine_settings.py` `sector_weights` 키 정합성 검증 경고 추가 (P22).
-  - **Stage 3 (추가 개선 1건)**: `engine_account_notify.py` `notify_desktop_sector_scores`의 `status`에 정규화된 가중치(`normalized_weights`) 추가 (P21 투명성). `types/index.ts` `SectorStatus`에 `normalized_weights` 필드 추가. `uiStore.ts` `normalizedWeights` 상태 추가. `binding.ts` `sector-scores` 이벤트에서 `normalized_weights` → `uiStore` 저장. `sector-settings.ts` 슬라이더 하단에 "실제 적용: 상승종목비율 N% / 평균거래대금 N%" 라벨 표시.
-  - 검증: `pytest` 213 passed, `npm run build` 통과, 런타임 기동 확인 (가중치 `{rise_ratio: 0.77, total_trade_amount: 0.23}` 정상 로드), 잔존 프로세스 0개
-- **2026-07-12: 표 컬럼 너비 로직 전면 개편 완료**
-  - `auto-width.ts`: `computeColumnWidths` → `computeColWidths` + `widthsToPercentages` + `clampColWidth` 3개 함수로 분리. `ColumnWidthResult` 제거 (P16)
-  - `data-table.ts`: `createColumnWidthManager` 공통 팩토리 추가 (initFromRows 전체 계산 + checkCellWidth 증분 추적 + flushWidthUpdate 일괄 적용). `calcPercentages` 제거 (관리자에 흡수)
-  - `createFixedMode`/`createVirtualScrollMode`: `columnWidthsCalculated` 1회 고정 플래그 제거, 매 updateRows 시 initFromRows 호출, renderRow/셀 diffing/updateItemByKey에 checkCellWidth + flushWidthUpdate 통합
-  - 검증: `npm run build` 통과, `npx vitest run` 112 tests passed, 브라우저 확인 완료 (업종순위, 매수후보, 보유종목)
+- **2026-07-12: 업종 점수 계산 방식 전환 구현 완료 — min-max 정규화 → 순위 기반 점수**
+  - `sector_score.py`: `normalize_metric_value` 제거, `rank_to_score` 추가 (공식: `(N - rank + 1) / N × 100`), `calculate_weighted_scores` 내부 로직 순위 기반으로 교체, 정렬 키 4단계 타이브레이크로 수정 (final_score → scored_rise_ratio → scored_trade_amount → 업종명)
+  - `models.py`: `metric_scores` 필드 주석 "정규화 점수" → "순위 점수"
+  - `test_sector_score.py`: `TestNormalizeMetricValue` 제거, `TestRankToScore` 7개 추가, `TestCalculateWeightedScores` 순위 기반 10개로 재작성 (동점 순위, 타이브레이크 3단계, 순위 점수 공식 검증)
+  - `ARCHITECTURE.md`: 5.2절 다이어그램, 6.2절 계산 과정, 6.5절 증분 연산, 데이터 모델 주석, 파일 트리 주석 — 5곳 순위 기반으로 수정
+  - 전체 검색: `normalize_metric_value` 코드 잔존 0건 (계획서에만 역사적 기록)
+  - 검증: py_compile + ruff 통과, 단위 테스트 112개 전부 통과 (test_sector_score 23 + test_sector_calculator 38 + test_engine_sector_confirm 51), 런타임 기동 에러 없음, 잔존 프로세스 0건
+  - 대기 중: 사용자 UI 확인 (업종순위 화면 점수 바 분포 균등, 순위-점수 일치)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
@@ -27,6 +25,7 @@
   - 커버리지 실행 명령어: `python -m pytest backend/tests --cov=backend --cov-report=term-missing --cov-report=html --timeout=15 --timeout-method=signal`
 - **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
 - **루트 폴더 정리**: 완료된 1회성 계획서 3건 + 로컬 산출물 4건 제거 (2026-07-12). `docs/architecture_audit_plan.md`, `docs/ghost_position_investigation.md`, `docs/api_specs/` 유지
+- **업종 점수 계산 방식 전환**: 구현 완료. min-max 정규화 → 순위 기반 점수 교체. `rank_to_score` 함수 추가 (공식: `(N - rank + 1) / N × 100`), 동점 순위 처리 + 4단계 타이브레이크. 트리밍 유지. 단위 테스트 112개 통과, 런타임 기동 확인. 사용자 UI 확인 대기
 
 ## 진행 중 작업
 
@@ -48,7 +47,19 @@
 
 ## 다음 단계
 
-### 1순위: 아키텍처 전수 점검 P1 세션 (B-07)
+### 1순위: 업종 점수 계산 방식 전환 — 사용자 UI 확인 대기
+
+**구현 완료** (2026-07-12). 코드 수정·테스트·런타임 기동 검증 모두 완료.
+
+**사용자 확인 필요 항목**:
+- 업종순위 화면: 점수 바 분포가 균등한 간격으로 표시되는지 (순위 기반이므로 균등 간격)
+- 업종순위 화면: 순위와 점수가 일치하는지 (1위가 가장 높은 점수)
+- 설정 화면: 가중치 슬라이더 변경 시 업종 순위가 변하는지
+- 매수 후보 화면: 상위 N개 업종 내 종목이 표시되는지
+
+**참고**: 점수 계산 방식이 순위 기반으로 변경되어 점수 숫자가 달라집니다. 순위 자체는 크게 변하지 않습니다.
+
+### 2순위: 아키텍처 전수 점검 P1 세션 (B-07)
 
 백엔드 로그 한글화 4차 작업 전부 완료됨. P0 세션(6/6) + B-06 완료 — 총 7/30 세션. `docs/architecture_audit_plan.md`의 추천 세션 순서에 따라 P1 진행:
 
@@ -62,16 +73,16 @@
 - 세션 완료 시 계획서 섹션 8 "점검 진행 현황 요약" 갱신
 - 세션 종료 시 본 `HANDOVER.md` 진행 상태 갱신
 
-### 2순위: P1 세션 (B-08~B-11, F-02)
+### 3순위: P1 세션 (B-08~B-11, F-02)
 B-07 완료 후 진행.
 
-### 3순위: P2 세션 (B-12~B-19, F-03~F-04)
+### 4순위: P2 세션 (B-12~B-19, F-03~F-04)
 P1 세션 완료 후 진행.
 
-### 4순위: P3 세션 (B-20~B-23, F-05~F-07)
+### 5순위: P3 세션 (B-20~B-23, F-05~F-07)
 P2 세션 완료 후 진행.
 
-### 5순위: 유령 포지션 005930 근본 원인 조사
+### 6순위: 유령 포지션 005930 근본 원인 조사
 - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
 - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
 - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
