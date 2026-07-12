@@ -170,7 +170,7 @@ async def create_master_stocks_table():
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_sector ON master_stocks_table(sector)')
 
     await conn.commit()
-    logger.info("master_stocks_table 테이블 초기화 완료.")
+    logger.info("전종목 마스터 테이블 초기화 완료.")
 
 
 async def migrate_master_stocks_table_pk():
@@ -184,14 +184,14 @@ async def migrate_master_stocks_table_pk():
     cursor = await conn.execute("PRAGMA table_info(master_stocks_table)")
     columns = await cursor.fetchall()
     if not columns:
-        logger.info("[데이터] master_stocks_table 없음 — skip PK migration")
+        logger.info("[데이터] 전종목 마스터 테이블 없음 — 기본키 마이그레이션 생략")
         return
 
     code_col = next((col for col in columns if col["name"] == "code"), None)
     if code_col and code_col["pk"] >= 1:
         return
 
-    logger.warning("[데이터] master_stocks_table code 컬럼 PK 소실 — 재생성 시작")
+    logger.warning("[데이터] 전종목 마스터 테이블 종목코드 컬럼 기본키 소실 — 재생성 시작")
 
     await conn.execute("""
         CREATE TABLE _master_stocks_table_pk_tmp (
@@ -225,11 +225,11 @@ async def migrate_master_stocks_table_pk():
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_avg_5d ON master_stocks_table(avg_5d_trade_amount)')
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_mst_sector ON master_stocks_table(sector)')
     await conn.commit()
-    logger.info("[데이터] master_stocks_table code PRIMARY KEY 복구 완료 — 백업 테이블 삭제 진행")
+    logger.info("[데이터] 전종목 마스터 테이블 종목코드 기본키 복구 완료 — 백업 테이블 삭제 진행")
 
     await conn.execute("DROP TABLE _master_stocks_table_old")
     await conn.commit()
-    logger.info("[데이터] master_stocks_table 마이그레이션 백업 테이블 삭제 완료")
+    logger.info("[데이터] 전종목 마스터 테이블 마이그레이션 백업 테이블 삭제 완료")
 
 
 async def migrate_add_hidden_to_custom_sectors():
@@ -244,9 +244,9 @@ async def migrate_add_hidden_to_custom_sectors():
     if "hidden" not in column_names:
         await conn.execute("ALTER TABLE custom_sectors ADD COLUMN hidden INTEGER DEFAULT 0")
         await conn.commit()
-        logger.info("[데이터] custom_sectors에 hidden 컬럼 추가 완료")
+        logger.info("[데이터] 사용자 섹터에 숨김 컬럼 추가 완료")
     else:
-        logger.debug("[데이터] custom_sectors hidden 컬럼 이미 존재 - 스킵")
+        logger.debug("[데이터] 사용자 섹터 숨김 컬럼 이미 존재 - 생략")
 
 
 async def migrate_add_nxt_enable_column():
@@ -261,9 +261,9 @@ async def migrate_add_nxt_enable_column():
     if "nxt_enable" not in column_names:
         await conn.execute("ALTER TABLE master_stocks_table ADD COLUMN nxt_enable INTEGER DEFAULT 0")
         await conn.commit()
-        logger.info("[데이터] master_stocks_table에 nxt_enable 컬럼 추가 완료")
+        logger.info("[데이터] 전종목 마스터 테이블에 NXT 거래 가능 컬럼 추가 완료")
     else:
-        logger.debug("[데이터] nxt_enable 컬럼 이미 존재 - 스킵")
+        logger.debug("[데이터] NXT 거래 가능 컬럼 이미 존재 - 생략")
 
 
 # load_stock_name_cache 함수 삭제: 메모리 캐시(_master_stocks_cache)로 단일화
@@ -288,7 +288,7 @@ async def create_stock_5d_array_table():
         )
     ''')
     await conn.commit()
-    logger.info("stock_5d_array 테이블 초기화 완료.")
+    logger.info("5일봉 배열 테이블 초기화 완료.")
 
 
 # ── 거래일 캐시 ─────────────────────────────────────────────────────────────

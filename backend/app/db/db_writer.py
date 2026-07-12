@@ -82,10 +82,10 @@ async def _db_writer_loop() -> None:
                 logger.error("[데이터] 작업 처리 실패: %s", e, exc_info=True)
 
     except asyncio.CancelledError:
-        logger.info("[데이터] 루프 취소됨")
+        logger.info("[데이터] 반복 취소됨")
     finally:
         _running = False
-        logger.info("[데이터] 루프 종료")
+        logger.info("[데이터] 반복 종료")
 
 
 async def _process_operation(op: DBWriteOperation) -> None:
@@ -104,7 +104,7 @@ async def _process_operation(op: DBWriteOperation) -> None:
                     await conn.execute(op.query, op.params)
             else:
                 # 기본 테이블 작업 (확장 가능)
-                logger.warning("[데이터] 사용자 정의 쿼리 없음 - 작업 스킵: %s", op.table)
+                logger.warning("[데이터] 사용자 정의 쿼리 없음 - 작업 생략: %s", op.table)
                 if op.future and not op.future.done():
                     op.future.set_result(None)
                 return
@@ -115,7 +115,7 @@ async def _process_operation(op: DBWriteOperation) -> None:
 
         except Exception as e:
             await conn.rollback()
-            logger.error("[데이터] 작업 실패 - table=%s, operation=%s: %s", op.table, op.operation, e, exc_info=True)
+            logger.error("[데이터] 작업 실패 - 테이블=%s, 작업=%s: %s", op.table, op.operation, e, exc_info=True)
             if op.future and not op.future.done():
                 op.future.set_exception(e)
             raise
