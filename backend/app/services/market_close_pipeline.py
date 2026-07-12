@@ -916,6 +916,10 @@ async def _step7_recompute_and_broadcast(tag: str) -> None:
     try:
         from backend.app.services.sector_data_provider import recompute_sector_summary_now
         from backend.app.services.engine_account_notify import notify_desktop_sector_stocks_refresh
+        # 확정 데이터 반영 후 수신율 갱신 — change_rate, trade_amount 기준 100% 산출 (P21 투명성, P22 정합성)
+        from backend.app.pipelines.pipeline_compute import _calculate_receive_rate, _send_receive_rate, get_current_receive_rate
+        await _calculate_receive_rate()
+        await _send_receive_rate(get_current_receive_rate())
         await notify_desktop_sector_stocks_refresh(force=True)
         await recompute_sector_summary_now()
         logger.info("%s 업종순위 재계산 + 실시간 화면 전송 완료", tag)
@@ -1315,6 +1319,10 @@ async def fetch_5d_data_only() -> dict:
             from backend.app.services.engine_account_notify import (
                 notify_desktop_sector_stocks_refresh,
             )
+            # 확정 데이터 반영 후 수신율 갱신 — change_rate, trade_amount 기준 100% 산출 (P21 투명성, P22 정합성)
+            from backend.app.pipelines.pipeline_compute import _calculate_receive_rate, _send_receive_rate, get_current_receive_rate
+            await _calculate_receive_rate()
+            await _send_receive_rate(get_current_receive_rate())
             await notify_desktop_sector_stocks_refresh(force=True)
             await recompute_sector_summary_now()
             logger.info("[다운로드] 업종순위 재계산 + 실시간 화면 전송 완료")

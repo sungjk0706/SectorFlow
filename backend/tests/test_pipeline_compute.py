@@ -127,7 +127,6 @@ class TestCalculateReceiveRate:
     async def test_empty_codes_returns_early(self):
         with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock) as mock_inputs:
             mock_inputs.return_value = {"all_codes": []}
-            compute_mod._received_codes = {"005930"}
             old = dict(compute_mod._current_receive_rate)
             await _calculate_receive_rate()
             # Should not update _current_receive_rate
@@ -135,22 +134,62 @@ class TestCalculateReceiveRate:
 
     @pytest.mark.asyncio
     async def test_normal_calculation(self):
-        with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock) as mock_inputs:
+        # 3종목 중 2종목이 change_rate/trade_amount 필드 보유 → 66.67%
+        mock_cache = {
+            "005930": {"change_rate": 1.5, "trade_amount": 1000000},
+            "000660": {"change_rate": None, "trade_amount": 500000},
+            "035420": {"change_rate": None, "trade_amount": None},
+        }
+        with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock) as mock_inputs, \
+             patch.object(compute_mod, "state", MagicMock(master_stocks_cache=mock_cache)):
             mock_inputs.return_value = {"all_codes": ["005930", "000660", "035420"]}
-            compute_mod._received_codes = {"005930", "000660"}
             await _calculate_receive_rate()
             assert compute_mod._current_receive_rate["received"] == 2
             assert compute_mod._current_receive_rate["total"] == 3
             assert abs(compute_mod._current_receive_rate["pct"] - 66.67) < 0.1
 
     @pytest.mark.asyncio
-    async def test_no_received_codes(self):
-        with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock) as mock_inputs:
+    async def test_no_received_data(self):
+        # 모든 종목이 필드 미보유 → 0%
+        mock_cache = {
+            "005930": {"change_rate": None, "trade_amount": None},
+            "000660": {"change_rate": None, "trade_amount": None},
+        }
+        with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock) as mock_inputs, \
+             patch.object(compute_mod, "state", MagicMock(master_stocks_cache=mock_cache)):
             mock_inputs.return_value = {"all_codes": ["005930", "000660"]}
-            compute_mod._received_codes = set()
             await _calculate_receive_rate()
             assert compute_mod._current_receive_rate["received"] == 0
             assert compute_mod._current_receive_rate["pct"] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_all_received_data(self):
+        # 모든 종목이 필드 보유 → 100% (장마감 후 확정 데이터 반영 상태)
+        mock_cache = {
+            "005930": {"change_rate": 1.5, "trade_amount": 1000000},
+            "000660": {"change_rate": -0.5, "trade_amount": 500000},
+        }
+        with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock) as mock_inputs, \
+             patch.object(compute_mod, "state", MagicMock(master_stocks_cache=mock_cache)):
+            mock_inputs.return_value = {"all_codes": ["005930", "000660"]}
+            await _calculate_receive_rate()
+            assert compute_mod._current_receive_rate["received"] == 2
+            assert compute_mod._current_receive_rate["total"] == 2
+            assert abs(compute_mod._current_receive_rate["pct"] - 100.0) < 0.1
+
+    @pytest.mark.asyncio
+    async def test_missing_entry_in_cache(self):
+        # all_codes에 있으나 cache에 없는 종목은 미수신으로 카운트
+        mock_cache = {
+            "005930": {"change_rate": 1.5, "trade_amount": 1000000},
+        }
+        with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock) as mock_inputs, \
+             patch.object(compute_mod, "state", MagicMock(master_stocks_cache=mock_cache)):
+            mock_inputs.return_value = {"all_codes": ["005930", "000660"]}
+            await _calculate_receive_rate()
+            assert compute_mod._current_receive_rate["received"] == 1
+            assert compute_mod._current_receive_rate["total"] == 2
+            assert abs(compute_mod._current_receive_rate["pct"] - 50.0) < 0.1
 
     @pytest.mark.asyncio
     async def test_exception_does_not_raise(self):
@@ -913,8 +952,7 @@ class TestSectorRecomputeLoopImpl:
     @pytest.mark.asyncio
     async def test_phase1_threshold_met_transitions_to_phase2(self):
         compute_mod._compute_running = True
-        compute_mod._receive_rate_dirty = True
-        compute_mod._received_codes = {"005930", "000660"}
+        compute_mod._current_receive_rate = {"received": 8, "total": 10, "pct": 80.0}
         mock_bq = MagicMock()
 
         mock_state = MagicMock()
@@ -939,11 +977,12 @@ class TestSectorRecomputeLoopImpl:
             await _sector_recompute_loop_impl(mock_bq)
         compute_mod._compute_running = False
         compute_mod._receive_rate_dirty = False
+        compute_mod._current_receive_rate = {"received": 0, "total": 0, "pct": 0.0}
 
     @pytest.mark.asyncio
     async def test_phase1_total_zero_continues(self):
         compute_mod._compute_running = True
-        compute_mod._receive_rate_dirty = True
+        compute_mod._current_receive_rate = {"received": 0, "total": 0, "pct": 0.0}
         mock_bq = MagicMock()
 
         mock_state = MagicMock()
@@ -959,16 +998,16 @@ class TestSectorRecomputeLoopImpl:
         with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
              patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
              patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={"received": 0, "total": 0, "pct": 0.0}), \
              patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
             await _sector_recompute_loop_impl(mock_bq)
         compute_mod._compute_running = False
         compute_mod._receive_rate_dirty = False
+        compute_mod._current_receive_rate = {"received": 0, "total": 0, "pct": 0.0}
 
     @pytest.mark.asyncio
     async def test_phase1_received_zero_continues(self):
         compute_mod._compute_running = True
-        compute_mod._receive_rate_dirty = True
+        compute_mod._current_receive_rate = {"received": 0, "total": 10, "pct": 0.0}
         mock_bq = MagicMock()
 
         mock_state = MagicMock()
@@ -984,16 +1023,15 @@ class TestSectorRecomputeLoopImpl:
         with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
              patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
              patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={"received": 0, "total": 10, "pct": 0.0}), \
              patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
             await _sector_recompute_loop_impl(mock_bq)
         compute_mod._compute_running = False
         compute_mod._receive_rate_dirty = False
+        compute_mod._current_receive_rate = {"received": 0, "total": 0, "pct": 0.0}
 
     @pytest.mark.asyncio
     async def test_phase1_below_threshold_sends_rate(self):
         compute_mod._compute_running = True
-        compute_mod._receive_rate_dirty = True
         compute_mod._current_receive_rate = {"received": 3, "total": 10, "pct": 30.0}
         mock_bq = MagicMock()
 
@@ -1020,7 +1058,6 @@ class TestSectorRecomputeLoopImpl:
     @pytest.mark.asyncio
     async def test_phase1_exception_does_not_crash(self):
         compute_mod._compute_running = True
-        compute_mod._receive_rate_dirty = True
         mock_bq = MagicMock()
 
         mock_state = MagicMock()
@@ -1087,7 +1124,6 @@ class TestSectorThresholdGate:
         """Phase 1 임계값 통과 시 mark_sector_threshold_passed() 호출 검증."""
         compute_mod._compute_running = True
         compute_mod._receive_rate_dirty = True
-        compute_mod._received_codes = {"005930", "000660"}
         compute_mod._sector_threshold_passed = False
         compute_mod._current_receive_rate = {"received": 8, "total": 10, "pct": 80.0}
         mock_bq = MagicMock()

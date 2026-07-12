@@ -133,6 +133,7 @@ function mount(container: HTMLElement): void {
   Object.assign(labelContainer.style, { display: 'flex', alignItems: 'center' })
   const labelText = document.createElement('span')
   labelText.textContent = '업종순위 계산 수신율'
+  Object.assign(labelText.style, { color: COLOR.neutral })
   labelContainer.appendChild(labelText)
   labelContainer.appendChild(receiveRateSpan)
 
@@ -141,19 +142,32 @@ function mount(container: HTMLElement): void {
   thresholdRow.style.borderBottom = 'none'
   root.appendChild(thresholdRow)
 
-  // 수신/미수신 종목수 표시 행
+  // 수신/미수신 종목수 표시 행 — 정적 라벨(검정) + 동적 숫자(파랑) 분리
   const receiveCountRow = document.createElement('div')
   Object.assign(receiveCountRow.style, {
     fontSize: FONT_SIZE.small,
-    color: COLOR.tertiary,
+    color: COLOR.neutral,
     textAlign: 'right',
     padding: '2px 0 6px 0',
     borderBottom: '1px solid ' + COLOR.borderLight,
     marginBottom: '12px',
   })
-  receiveCountRow.textContent = _initialRate
-    ? `수신: ${_initialRate.received}종목 / 미수신: ${_initialRate.total - _initialRate.received}종목`
-    : ''
+  // 동적 숫자 span — 수신 종목수
+  const receivedCountSpan = document.createElement('span')
+  Object.assign(receivedCountSpan.style, { color: COLOR.down })
+  // 동적 숫자 span — 미수신 종목수
+  const missedCountSpan = document.createElement('span')
+  Object.assign(missedCountSpan.style, { color: COLOR.down })
+
+  function _fillReceiveCount(rate: { received: number; total: number }) {
+    receivedCountSpan.textContent = `${rate.received}종목`
+    missedCountSpan.textContent = `${rate.total - rate.received}종목`
+  }
+
+  if (_initialRate) {
+    _fillReceiveCount(_initialRate)
+    receiveCountRow.append('수신: ', receivedCountSpan, ' / 미수신: ', missedCountSpan)
+  }
   root.appendChild(receiveCountRow)
 
   // ③ 업종 컷오프
@@ -312,7 +326,13 @@ function mount(container: HTMLElement): void {
       prevReceiveRate = uiState.receiveRate
       if (uiState.receiveRate) {
         receiveRateSpan.textContent = `(현재: ${uiState.receiveRate.pct.toFixed(1)}%)`
-        receiveCountRow.textContent = `수신: ${uiState.receiveRate.received}종목 / 미수신: ${uiState.receiveRate.total - uiState.receiveRate.received}종목`
+        // 최초 수신율이 없었을 경우 분리된 span 구성
+        if (receiveCountRow.childElementCount === 0) {
+          _fillReceiveCount(uiState.receiveRate)
+          receiveCountRow.append('수신: ', receivedCountSpan, ' / 미수신: ', missedCountSpan)
+        } else {
+          _fillReceiveCount(uiState.receiveRate)
+        }
       }
     }
     if (uiState.normalizedWeights !== prevNormalizedWeights) {
