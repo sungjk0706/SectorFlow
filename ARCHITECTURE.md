@@ -545,23 +545,47 @@ while _compute_running:
 
 ### 5.1 실시간 시세 흐름
 
+**WS 구독 대상 (1차 필터 게이트):**
+- 1차 필터(5일평균거래대금 `sector_min_trade_amt`억원 이상) 통과 종목 + 보유종목만 WS 구독
+- `subscribe_sector_stocks_0b()`가 `_filtered` 플래그 기반으로 구독 대상 선정 (200개 한도, 보유종목 우선)
+- 필터 미통과 종목: WS 구독 안됨 → 01 틱 수신 없음 → 업종 순위 계산 대상 아님 → 아무 처리도 하지 않음
+
 ```
-증권사 WS ──► engine_ws_dispatch.py
-                 ├──► master_stocks_cache 갱신 (메모리)
-                 ├──► tick_queue ──► Compute Loop ──► sector 재계산
-                 ├──► broadcast_queue (real-data) ──► WS Manager ──► 프론트엔드
-                 └──► _check_realtime_latency() ──► 200ms 초과 시 자동매매 중단
+[WS 구독] 1차 필터 통과 종목 + 보유종목만 구독 (subscribe_sector_stocks_0b)
+    │
+    ▼
+증권사 WS ──► connector ──► tick_queue
+                                │
+                                ▼
+                            Compute Loop (_handle_real_01_tick)
+                                ├── 1. broadcast_queue.put_nowait(real-data)  — 화면 전송 (최우선)
+                                │      └──► pipeline_gateway ──► WS Manager ──► 프론트엔드
+                                ├── 2. master_stocks_cache 갱신 (cur_price, change_rate, strength, trade_amount)
+                                ├── 3. request_sector_recompute(nk_px)  — dirty 마킹 (O(1), 별도 배치 루프에서 계산)
+                                ├── 4. 보유종목 현재가 반영 (state.positions) + 자동매도 조건 체크
+                                └── 5. _check_realtime_latency()  — 200ms 초과 시 자동매매 중단
 ```
+
+**전송 경로 일관성 (P23):**
+- 01/0B 틱 (현재가/등락률/체결강도/거래대금): `broadcast_queue` 경로 (전 종목 동일)
+- 0D 틱 (호가잔량비): `ws_manager.broadcast` 직접 경로 (매수 후보만, `_subscribed_dynamic` 플래그)
+- PGM 틱 (프로그램 순매수): `ws_manager.broadcast` 직접 경로 (매수 후보만, `_subscribed_dynamic` 플래그)
 
 ### 5.2 업종 점수 계산 흐름
 
+**별도 백그라운드 루프 — 실시간 시세 전송과 분리:**
+- Compute Loop 내 `_handle_real_01_tick`에서 `request_sector_recompute(code)`로 dirty 마킹만 수행 (O(1) set add)
+- 실제 업종 점수 계산은 별도 백그라운드 루프 `_sector_recompute_loop_impl()`에서 수행
+- Phase 1 (1회): 실시간데이터 수신율 임계값(`sector_start_threshold_pct`) 대기 → 통과 후 Phase 2 전환
+- Phase 2: 0.2초 배치 루프 — dirty 종목의 업종만 증분 재계산
+
 ```
-tick 이벤트
+tick 이벤트 (01/0B 틱)
     │
     ▼
-request_sector_recompute(code)  — dirty 코드 등록 + 디바운스 타이머
+request_sector_recompute(code)  — dirty 코드 등록 (O(1) set add, 계산 아님)
     │
-    ▼ (10초 디바운스 또는 즉시)
+    ▼ (별도 백그라운드 루프, 0.2초 배치)
 _flush_sector_recompute_impl()
     │
     ├── 캐시 없음 → _full_recompute()     — 전체 재계산 (콜드 스타트)
@@ -698,6 +722,9 @@ SectorSummary (전체 결과)
 ### 6.4 필터링
 
 - **1차 필터**: 5일평균거래대금 (`min_avg_amt_eok`) — 업종 그룹핑 전 적용
+  - `get_sector_stocks()`에서 필터 통과 종목만 `all_codes`에 포함 → 업종 순위 계산 대상
+  - 필터 통과 종목에 `_filtered` 플래그 설정 → `subscribe_sector_stocks_0b()`에서 WS 구독 대상 선정 (보유종목 포함, 200개 한도)
+  - **필터 미통과 종목**: WS 구독 안됨 → 실시간 시세 수신 없음 → 업종 순위 계산 대상 아님 → 아무 처리도 하지 않음
 - **업종 컷오프**: `min_rise_ratio` 미만 업종은 `rank=0` (매수 대상 제외)
 - **개별 종목 가드**: 상승률 과열(`block_rise_pct`), 하락률 과열(`block_fall_pct`), 체결강도 최소값
 
@@ -1720,6 +1747,7 @@ PRAGMA mmap_size = 268435456
 
 ### 최근 결정 사항
 
+- **ARCHITECTURE.md 5.1/5.2/6.4절 정정**: 실시간 시세 흐름 다이어그램을 실제 코드에 맞게 정정 — WS 구독 대상(1차 필터 통과 종목 + 보유종목) 명시, Compute Loop 내부 순차 처리 반영, 업종 점수 계산 0.2초 배치 루프 정정, 1차 필터가 WS 구독 대상 선정 기준 명시. pipeline_gateway.py 주석도 0D/PGM 직접 broadcast 예외 반영 (P23 일관성)
 - **price_pass_through_queue 제거**: 현재가 직통 큐가 "Compute 우회"라는 설계 의도와 달리 실제로는 Compute Loop를 통과하고 있었고, 01 틱 `real-data` + `account-update`로 동일 데이터가 이미 전송되어 중복 제거 (P23 일관성, P24 단순성)
 - **Queue sizing**: tick_queue 20000, broadcast_queue 2000, control_queue 500
 - **mmap_size**: 256MB로 설정 (대용량 캐시)
