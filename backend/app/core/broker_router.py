@@ -86,7 +86,7 @@ class BrokerRouter:
                 if isinstance(spec_data, dict):
                     self._specs[broker_name] = spec_data.get("role_mappings", {})
                 else:
-                    logger.warning("[설정] %s 설정 형식 오류: %s (기대: dict)", BROKER_DISPLAY_NAMES.get(broker_name, broker_name), type(spec_data))
+                    logger.warning("[설정] %s 설정 형식 오류: %s (기대: 사전 형식)", BROKER_DISPLAY_NAMES.get(broker_name, broker_name), type(spec_data))
             else:
                 logger.warning("[설정] %s 설정 없음", BROKER_DISPLAY_NAMES.get(broker_name, broker_name))
 

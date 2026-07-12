@@ -349,7 +349,7 @@ class AutoTradeManager:
                 dry_run.fake_fill_event("BUY", stk_cd, buy_qty, _dry_fill_price, stk_nm)
             )
             _fill_task.add_done_callback(
-                lambda t: logger.error("[매매] 가상 체결 이벤트(BUY) 실패: %s", t.exception(), exc_info=t.exception()) if t.exception() else None
+                lambda t: logger.error("[매매] 가상 체결 이벤트(매수) 실패: %s", t.exception(), exc_info=t.exception()) if t.exception() else None
             )
 
         t_str = datetime.now().strftime("%H:%M:%S")
@@ -523,7 +523,7 @@ class AutoTradeManager:
                 dry_run.fake_fill_event("SELL", stk_cd, qty, _dry_sell_price, stk_nm)
             )
             _fill_task.add_done_callback(
-                lambda t: logger.error("[매매] 가상 체결 이벤트(SELL) 실패: %s", t.exception(), exc_info=t.exception()) if t.exception() else None
+                lambda t: logger.error("[매매] 가상 체결 이벤트(매도) 실패: %s", t.exception(), exc_info=t.exception()) if t.exception() else None
             )
 
         # ── RiskManager 성공 보고 ─────────────────────────────────────────────

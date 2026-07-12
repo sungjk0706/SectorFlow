@@ -21,7 +21,7 @@ def start_memory_monitor() -> None:
         return
     tracemalloc.start(25)
     _started = True
-    logger.info("[시스템] 메모리 추적 시작 — 할당 추적 활성화 (frames=25)")
+    logger.info("[시스템] 메모리 추적 시작 — 할당 추적 활성화 (프레임=25)")
 
 
 def log_memory_snapshot(label: str = "") -> None:

@@ -272,7 +272,7 @@ async def replay_journal(
                 fill_event_handler(entry)
             replayed_count += 1
         except Exception as e:
-            logger.error("[연산] 엔트리 재생 실패 (seq=%d): %s", entry.seq, e, exc_info=True)
+            logger.error("[연산] 엔트리 재생 실패 (순번=%d): %s", entry.seq, e, exc_info=True)
             continue
 
     logger.info("[연산] 저널 재생 완료 - %d/%d 엔트리 재생됨", replayed_count, len(entries))

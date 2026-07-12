@@ -155,7 +155,7 @@ async def load_selected_settings(keys: set[str]) -> dict:
                 continue
             result[key] = _parse_value(row["value"], row["value_type"])
     except Exception as e:
-        logger.error("[설정] 선택 설정 로드 실패 (keys=%s): %s", keys, e)
+        logger.error("[설정] 선택 설정 로드 실패 (키=%s): %s", keys, e)
 
     from backend.app.core.encryption import decrypt_value
     for enc_field in _ENCRYPT_FIELDS:

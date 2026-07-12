@@ -4,14 +4,14 @@
 - 없음
 
 ## 직전 완료 작업
+- **2026-07-12: 백엔드 로그 한글화 4차 2단계 — 프로그래밍 용어 18건 한글화 (4차 작업 완료)**
+  - **수정 파일**: `services/telegram_bot.py`, `services/ws_subscribe_control.py`, `services/engine_loop.py`, `services/engine_account_notify.py`, `services/daily_time_scheduler.py`, `services/trading.py`, `core/broker_router.py`, `core/memory_monitor.py`, `core/journal.py`, `core/settings_file.py` (10개 소스) = 10개 파일
+  - **내용**: 로그 메시지에 영어 프로그래밍 용어/약어가 섞인 18건 한글화 — telegram_bot.py:94 "await 없음"→"대기 없음", engine_loop.py:120/123 "기대: dict"→"기대: 사전 형식", engine_loop.py:358 "compute 루프"→"계산 루프", broker_router.py:89 "기대: dict"→"기대: 사전 형식", memory_monitor.py:24 "frames=25"→"프레임=25", journal.py:275 "seq=%d"→"순번=%d", ws_subscribe_control.py:101/129/162 "grp 10/4"→"그룹 10/4", "UNREG 완료"→"구독 해지 완료", ws_subscribe_control.py:223 "REG refresh=0"→"구독 등록 갱신=0", engine_account_notify.py:290 "None으로 진행"→"빈 값으로 진행", daily_time_scheduler.py:232 "hm_str=%r"→"시간 문자열=%r", daily_time_scheduler.py:699 "catch-up에서 처리"→"보충 처리에서 담당", daily_time_scheduler.py:778 "REG 파이프라인 트리거 오류"→"구독 등록 파이프라인 실행 오류", trading.py:352/526 "이벤트(BUY)/이벤트(SELL)"→"이벤트(매수)/이벤트(매도)", settings_file.py:158 "keys=%s"→"키=%s". 테스트 파일 참조 없음 (수정 불필요). P21 사용자 투명성 준수
+  - **검증**: py_compile 10개 파일 통과, 전체 2773 passed 0 failed (9.86s), 런타임 기동 확인 (에러/Traceback 없음, 기동시간 181ms), 잔존 프로세스 0개
 - **2026-07-12: 백엔드 로그 한글화 4차 1단계 — 내부 코드 식별자 노출 23건 한글화**
   - **수정 파일**: `services/sector_data_provider.py`, `services/engine_loop.py`, `services/core_queues.py`, `services/engine_ws_fill_followup.py`, `core/settings_file.py`, `core/trading_calendar.py`, `core/sector_stock_cache.py`, `core/stock_classification_data.py`, `core/sector_mapping.py`, `pipelines/pipeline_compute.py` (10개 소스) + `tests/test_engine_loop.py` (1개 테스트) = 11개 파일
   - **내용**: 로그 메시지에 내부 코드 식별자(함수명/변수명/파일명)가 그대로 노출된 23건 한글화 — sector_data_provider.py:241 "recompute_sector_summary_now 진입"→"업종순위 재계산 진입", engine_loop.py:120/123/308 "role_mappings/broker_specs/tick_queue"→"역할 매핑/증권사 명세/틱 큐", settings_file.py:158/249/272/274/415 "load_selected_settings/integrated_system_settings/broker_specs"→"선택 설정/통합 설정/증권사 명세", trading_calendar.py:282/286 "initialize_trading_calendar_cache()/refresh_trading_days_for_year()"→"거래일 캐시 초기화/연도별 거래일 갱신", sector_stock_cache.py:30/32/46 "filter_summary_meta"→"필터 요약 메타", stock_classification_data.py:224/236/239 "custom_sectors 기반 master_stocks_table.sector/sector"→"사용자 업종 기반 종목 업종/업종", core_queues.py:102 "tick_queue"→"틱 큐", pipeline_compute.py:365 "settings.py"→"설정 파일", sector_mapping.py:36/75/95 "get_merged_sector/get_merged_sectors_batch/get_merged_all_sectors"→"업종 통합 조회/업종 일괄 통합 조회/전체 업종 통합 조회", engine_ws_fill_followup.py:27 "fill_00"→"체결". 테스트 assertion 2건 불일치 수정 (test_engine_loop.py L360 "broker_specs 형식 오류"→"증권사 명세 형식 오류", L370 "role_mappings 형식 오류"→"역할 매핑 형식 오류"). P21 사용자 투명성 준수
   - **검증**: py_compile 11개 파일 통과, 전체 2773 passed 0 failed (9.15s), 런타임 기동 확인 ("[업종] 업종순위 재계산 진입, 실행중=True" 한글화 정상 출력, 에러/Traceback 없음, 기동시간 186ms), 잔존 프로세스 0개
-- **2026-07-12: 토큰 발급/폐기 로그 API 코드 제거 + 테스트-코드 로그 문자열 불일치 5건 수정**
-  - **수정 파일**: `core/kiwoom_rest.py`, `services/engine_account.py` (2개 소스) + `tests/test_broker_router.py`, `tests/test_risk_manager.py` (2개 테스트) = 4개 파일
-  - **내용**: (A) 키움 로그 메시지에서 내부 API 코드(au10001/au10002) 제거 — kiwoom_rest.py:243 "요청 과다(인증 API(au10001))" → "요청 과다", kiwoom_rest.py:302 "토큰 폐기 완료 (토큰 폐기 API(au10002))" → "토큰 폐기 완료" (LS증권은 이미 코드 없음, 양사 통일). engine_account.py:142 "인증 API(au10001) 발급 실패" → "토큰 발급 실패". docstring의 API 코드는 유지 (개발자 참고용). P10 SSOT + P21 사용자 투명성 준수. (B) 백엔드 로그 한글화 작업(2차/3차)에서 소스 로그를 한국어로 변경했으나 테스트 assertion이 예전 문자열 기대하여 발생한 5건 불일치 수정 — test_broker_router.py 3건 ("spec 없음"→"설정 없음", "폴백"→"대체" 2건), test_risk_manager.py 2건 ("Circuit Breaker"→"서킷브레이커" 2건). 소스 코드 변경 없이 테스트 파일만 수정
-  - **검증**: py_compile 2개 소스 파일 통과, 관련 테스트 116 passed (test_kiwoom_rest.py + test_engine_account.py), 전체 2773 passed 0 failed (8.82s), 런타임 기동 확인 ("키움증권 토큰 발급 완료" API 코드 없이 정상 출력, 에러/Traceback 없음, 기동시간 133ms), 잔존 프로세스 0개
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
@@ -28,14 +28,16 @@
 
 ## 진행 중 작업
 
-### 백엔드 로그 한글화 4차 작업 (내부 코드 식별자 노출) — 1/2단계 완료
+### 백엔드 로그 한글화 4차 작업 (내부 코드 식별자 노출) — 2/2단계 전부 완료
 
-> **이력**: 1차 작업(2026-07-09) 약 30개 파일 1차 한글화. 2차 작업(사용자 노출 로그) 5단계 전부 완료. 3차 작업(내부 디버그 로그) 8단계 전부 완료. 4차 작업(내부 코드 식별자 노출) 1단계 완료.
+> **이력**: 1차 작업(2026-07-09) 약 30개 파일 1차 한글화. 2차 작업(사용자 노출 로그) 5단계 전부 완료. 3차 작업(내부 디버그 로그) 8단계 전부 완료. 4차 작업(내부 코드 식별자 노출) 2단계 전부 완료.
 
 | 단계 | 내용 | 파일 수 | 상태 |
 |------|------|---------|------|
 | 1단계 | A 카테고리 — 함수명/변수명/파일명 노출 23건 | 11 | ☑ 완료 (2026-07-12) |
-| 2단계 | B 카테고리 — 프로그래밍 용어(await, UNREG, REG 등) | 미정 | ☐ 미시작 |
+| 2단계 | B 카테고리 — 프로그래밍 용어(await, UNREG, REG, dict, grp 등) 18건 | 10 | ☑ 완료 (2026-07-12) |
+
+**4차 작업(내부 코드 식별자 노출) 전부 완료.**
 
 ### 백엔드 로그 한글화 3차 작업 (내부 디버그 로그) — 8/8단계 전부 완료
 
@@ -86,18 +88,9 @@
 
 ## 다음 단계
 
-### 1순위: 백엔드 로그 한글화 4차 2단계 — B 카테고리 (프로그래밍 용어)
+### 1순위: 아키텍처 전수 점검 P1 세션 (B-07)
 
-4차 1단계 완료됨 (23건, 11개 파일). 2단계는 B 카테고리 — 프로그래밍/프로토콜 용어 한글화:
-- `await` (telegram_bot.py:94 "폴링 종료(취소만, await 없음)")
-- `UNREG`, `REG` (ws_subscribe_control.py — 웹소켓 구독 프로토콜 용어)
-- 기타 영어 프로그래밍 용어 섞임 로그 조사 후 한글화
-
-**참고**: REST, DB, KRX, ON/OFF, SQLite, NXT 등 업계 표준/고유명사는 한글화 대상 아님 (사용자 판단 확인 완료).
-
-### 2순위: 아키텍처 전수 점검 P1 세션 (B-07)
-
-백엔드 로그 한글화 4차 작업 완료 후 진행. P0 세션(6/6) + B-06 완료 — 총 7/30 세션. `docs/architecture_audit_plan.md`의 추천 세션 순서에 따라 P1 진행:
+백엔드 로그 한글화 4차 작업 전부 완료됨. P0 세션(6/6) + B-06 완료 — 총 7/30 세션. `docs/architecture_audit_plan.md`의 추천 세션 순서에 따라 P1 진행:
 
 1. **B-07**: WS 시세 처리 (파싱/디스패치/등록) (`engine_ws_reg.py`, `engine_ws_dispatch.py`, `engine_ws.py`, `engine_ws_parsing.py`, `engine_ws_fill_followup.py`)
 
@@ -109,16 +102,16 @@
 - 세션 완료 시 계획서 섹션 8 "점검 진행 현황 요약" 갱신
 - 세션 종료 시 본 `HANDOVER.md` 진행 상태 갱신
 
-### 3순위: P1 세션 (B-08~B-11, F-02)
-B-06, B-07 완료 후 진행.
+### 2순위: P1 세션 (B-08~B-11, F-02)
+B-07 완료 후 진행.
 
-### 4순위: P2 세션 (B-12~B-19, F-03~F-04)
+### 3순위: P2 세션 (B-12~B-19, F-03~F-04)
 P1 세션 완료 후 진행.
 
-### 5순위: P3 세션 (B-20~B-23, F-05~F-07)
+### 4순위: P3 세션 (B-20~B-23, F-05~F-07)
 P2 세션 완료 후 진행.
 
-### 6순위: 유령 포지션 005930 근본 원인 조사
+### 5순위: 유령 포지션 005930 근본 원인 조사
 - 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
 - WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
 - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조

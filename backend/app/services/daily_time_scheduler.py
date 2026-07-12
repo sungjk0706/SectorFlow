@@ -229,7 +229,7 @@ def _parse_hm(hm_str: str) -> tuple[int, int]:
         parts = str(hm_str or "").strip().split(":")
         return int(parts[0]), int(parts[1])
     except Exception:
-        logger.warning("[스케줄] 시간 파싱 실패 (hm_str=%r)", hm_str, exc_info=True)
+        logger.warning("[스케줄] 시간 파싱 실패 (시간 문자열=%r)", hm_str, exc_info=True)
         return 0, 0
 
 
@@ -696,7 +696,7 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
         logger.debug("[스케줄] 확정 시세 다운로드 (%s) — %.0f초 후 예약", confirmed_dl_str, delay_confirmed)
     elif delay_confirmed <= 0 and loop:
         # 이미 다운로드 시간이 지났으면 부트스트랩 catch-up에서 처리
-        logger.debug("[스케줄] 확정 시세 다운로드 시간(%s) 이미 경과 — 부트스트랩 catch-up에서 처리", confirmed_dl_str)
+        logger.debug("[스케줄] 확정 시세 다운로드 시간(%s) 이미 경과 — 부트스트랩 보충 처리에서 담당", confirmed_dl_str)
 
 
     # ★ 09:00/15:30 고정 폴링 타이머 제거됨 (Task 5.1, 0J REAL 수신 여부로 자동 판단)
@@ -775,7 +775,7 @@ def _trigger_reg_pipeline() -> None:
         else:
             logger.info("[스케줄] 구독 구간 진입 — 연결 없음, 연결 후 자동 구독됨")
     except Exception as e:
-        logger.warning("[스케줄] REG 파이프라인 트리거 오류: %s", e)
+        logger.warning("[스케줄] 구독 등록 파이프라인 실행 오류: %s", e)
 
 
 async def _trigger_unreg_all() -> None:

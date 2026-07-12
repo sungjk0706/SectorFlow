@@ -287,7 +287,7 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
         from backend.app.pipelines.pipeline_compute import get_current_receive_rate
         receive_rate = get_current_receive_rate()
     except Exception as e:
-        logger.warning("[시스템] 수신율 조회 실패 (None으로 진행): %s", e)
+        logger.warning("[시스템] 수신율 조회 실패 (빈 값으로 진행): %s", e)
 
     # delta 계산: 변경된 업종만 전송
     if not force and notify_cache.prev_scores:
