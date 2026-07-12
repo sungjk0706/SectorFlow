@@ -3,9 +3,9 @@
 
 import { hotStore } from '../stores/hotStore'
 import { uiStore, setSelectedSector } from '../stores/uiStore'
-import { FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import { FONT_WEIGHT, FONT_SIZE, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
-import { getMaxTargetsStatusEl } from './sector-settings'
+import { getMaxTargetsStatusEl, getMaxTargetsSumEl } from './sector-settings'
 import { type SectorScoreRow, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
 import type { PageModule } from '../router'
 
@@ -27,26 +27,55 @@ interface RowCache {
 }
 let rowCaches: (RowCache | null)[] = []
 
-function updateMaxTargetsStatus(scores: SectorScoreRow[]): void {
+function updateMaxTargetsStatus(scores: SectorScoreRow[], maxTargets: number): void {
   const el = getMaxTargetsStatusEl()
-  if (!el) return
-  const passed = scores.filter(s => s.rank > 0).length
+  if (el) {
+    const passed = scores.filter(s => s.rank > 0).length
 
-  while (el.firstChild) {
-    el.removeChild(el.firstChild)
+    while (el.firstChild) {
+      el.removeChild(el.firstChild)
+    }
+    el.style.gap = '4px'
+
+    const passedLabel = document.createElement('span')
+    passedLabel.textContent = '통과'
+    passedLabel.style.color = COLOR.up
+    el.appendChild(passedLabel)
+
+    const passedVal = document.createElement('span')
+    passedVal.textContent = String(passed)
+    passedVal.style.color = COLOR.up
+    passedVal.style.fontWeight = FONT_WEIGHT.bold
+    el.appendChild(passedVal)
   }
-  el.style.gap = '4px'
 
-  const passedLabel = document.createElement('span')
-  passedLabel.textContent = '통과'
-  passedLabel.style.color = COLOR.up
-  el.appendChild(passedLabel)
+  // 상위 N 업종 종목 합계 보조 줄 갱신 (P21 투명성)
+  const sumEl = getMaxTargetsSumEl()
+  if (sumEl) {
+    // rank>0 업종을 rank 오름차순 정렬 후 상위 maxTargets개의 total 합산
+    const ranked = scores
+      .filter(s => s.rank > 0)
+      .sort((a, b) => a.rank - b.rank)
+    const limit = maxTargets > 0 ? maxTargets : 0
+    const topSectors = limit > 0 ? ranked.slice(0, limit) : []
+    const stockSum = topSectors.reduce((acc, s) => acc + (s.total || 0), 0)
 
-  const passedVal = document.createElement('span')
-  passedVal.textContent = String(passed)
-  passedVal.style.color = COLOR.up
-  passedVal.style.fontWeight = FONT_WEIGHT.bold
-  el.appendChild(passedVal)
+    while (sumEl.firstChild) {
+      sumEl.removeChild(sumEl.firstChild)
+    }
+
+    const labelSpan = document.createElement('span')
+    labelSpan.textContent = `상위 ${limit}개 업종 종목 합계:`
+    labelSpan.style.color = COLOR.tertiary
+    sumEl.appendChild(labelSpan)
+
+    const valSpan = document.createElement('span')
+    valSpan.textContent = `${stockSum}종목`
+    valSpan.style.color = COLOR.down
+    valSpan.style.fontWeight = FONT_WEIGHT.bold
+    valSpan.style.fontSize = FONT_SIZE.label
+    sumEl.appendChild(valSpan)
+  }
 }
 
 /* ── 업종 순위 리스트 빌드 ── */
@@ -213,9 +242,10 @@ function mount(container: HTMLElement): void {
         if (!_mounted) return
         const latest = hotStore.getState()
         const latestUi = uiStore.getState()
-        const maxTargets = Number(latestUi.settings?.sector_max_targets) || DEFAULT_SECTOR_MAX_TARGETS
+        const rawTargets = latestUi.settings?.sector_max_targets
+        const maxTargets = typeof rawTargets === 'number' ? rawTargets : DEFAULT_SECTOR_MAX_TARGETS
         updateRankingRows(latest.sectorScores, latestUi.selectedSector, maxTargets, latestUi.sectorScoresDelta)
-        updateMaxTargetsStatus(latest.sectorScores)
+        updateMaxTargetsStatus(latest.sectorScores, maxTargets)
       })
     }
 
@@ -226,9 +256,10 @@ function mount(container: HTMLElement): void {
   // 초기 렌더링
   const state = hotStore.getState()
   const uiState = uiStore.getState()
-  const maxTargets = Number(uiState.settings?.sector_max_targets) || DEFAULT_SECTOR_MAX_TARGETS
+  const rawTargets = uiState.settings?.sector_max_targets
+  const maxTargets = typeof rawTargets === 'number' ? rawTargets : DEFAULT_SECTOR_MAX_TARGETS
   updateRankingRows(state.sectorScores, uiState.selectedSector, maxTargets, uiState.sectorScoresDelta)
-  updateMaxTargetsStatus(state.sectorScores)
+  updateMaxTargetsStatus(state.sectorScores, maxTargets)
 }
 
 /* ── unmount ── */

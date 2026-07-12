@@ -42,6 +42,7 @@ let trimTradeAmtInput: ReturnType<typeof createNumInput> | null = null
 let minRiseRatioInput: ReturnType<typeof createNumInput> | null = null
 let maxTargetsInput: ReturnType<typeof createNumInput> | null = null
 let maxTargetsStatusEl: HTMLSpanElement | null = null
+let maxTargetsSumEl: HTMLDivElement | null = null
 let dualSlider: DualLabelSliderHandle | null = null
 
 // 현재 값 추적
@@ -60,12 +61,8 @@ function updateAppliedWeightsLabel(el: HTMLElement, weights: Record<string, numb
 }
 
 async function onNumChange(key: string, value: number): Promise<void> {
-  let v = value
-  if (key === 'sector_max_targets') {
-    if (v < 1) {
-      v = 1
-    }
-  }
+  // sector_max_targets: 0은 "매수 대상 0개" (백엔드 buy_filter와 일치) — P20 폴백 금지
+  const v = value
   currentVals[key] = v
   if (autoSaveHelper) {
     autoSaveHelper.autoSave(key, v)
@@ -272,6 +269,25 @@ function mount(container: HTMLElement): void {
   maxTargetsRow.appendChild(rightWrap)
   root.appendChild(maxTargetsRow)
 
+  // ⑥ 행 아래 보조 줄 — 상위 N 업종 종목 합계 (P21 투명성)
+  maxTargetsSumEl = document.createElement('div')
+  Object.assign(maxTargetsSumEl.style, {
+    fontSize: FONT_SIZE.small,
+    color: COLOR.tertiary,
+    textAlign: 'right',
+    marginTop: '4px',
+    marginBottom: '6px',
+    minHeight: '16px',
+    padding: '4px 8px',
+    background: COLOR.downBg,
+    borderRadius: '6px',
+    display: 'flex',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: '4px',
+  })
+  root.appendChild(maxTargetsSumEl)
+
   container.appendChild(root)
 
   // 설정 초기 동기화
@@ -321,6 +337,7 @@ function unmount(): void {
   minRiseRatioInput = null
   maxTargetsInput = null
   maxTargetsStatusEl = null
+  maxTargetsSumEl = null
   if (dualSlider && typeof dualSlider.destroy === 'function') {
     dualSlider.destroy()
   }
@@ -331,6 +348,11 @@ function unmount(): void {
 /* ── 외부에서 maxTargetsStatusEl 갱신용 ── */
 export function getMaxTargetsStatusEl(): HTMLSpanElement | null {
   return maxTargetsStatusEl
+}
+
+/* ── 외부에서 maxTargetsSumEl 갱신용 (상위 N 업종 종목 합계) ── */
+export function getMaxTargetsSumEl(): HTMLDivElement | null {
+  return maxTargetsSumEl
 }
 
 export default { mount, unmount } satisfies PageModule

@@ -134,7 +134,8 @@ def build_engine_settings_dict(flat: dict) -> dict:
     _sw = merged["sector_weights"]
     if isinstance(_sw, dict) and "total_trade_amount" not in _sw:
         logger.warning("[설정] sector_weights에 total_trade_amount 키 없음: %s — 마이그레이션 누락 가능", _sw)
-    result["sector_max_targets"]          = int(merged.get("sector_max_targets", 3) or 3)
+    _v = merged.get("sector_max_targets")
+    result["sector_max_targets"]          = int(_v if _v is not None else 3)
     result["sector_min_rise_ratio_pct"]   = float(merged.get("sector_min_rise_ratio_pct", 60.0) or 60.0)
     result["sector_min_trade_amt"]        = float(merged.get("sector_min_trade_amt", 0.0) or 0.0)
     _v = merged.get("buy_block_rise_pct")
