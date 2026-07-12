@@ -49,15 +49,11 @@ async def stop_gateway_loop() -> None:
 
 
 async def _gateway_loop_impl() -> None:
-    """게이트웨이 반복 구현 — broadcast_queue + price_pass_through_queue 동시 구독."""
+    """게이트웨이 반복 구현 — broadcast_queue 구독."""
     global _gateway_running
 
     try:
-        # 두 큐를 동시에 구독 (asyncio.gather)
-        await asyncio.gather(
-            _broadcast_loop(),
-            _price_pass_through_loop(),
-        )
+        await _broadcast_loop()
     finally:
         _gateway_running = False
         logger.info("[연결] 반복 종료")
@@ -82,63 +78,6 @@ async def _broadcast_loop() -> None:
                 logger.error("[연결] 전송 반복 오류 (계속): %s", e, exc_info=True)
     except asyncio.CancelledError:
         pass
-
-
-async def _price_pass_through_loop() -> None:
-    """price_pass_through_queue 구독 반복 — 현재가 직통 전송."""
-    global _gateway_running
-
-    # lazy import: core_queues 초기화 이후에 import
-    try:
-        from backend.app.services.core_queues import get_price_pass_through_queue
-        pq = get_price_pass_through_queue()
-    except Exception as e:
-        logger.error("[연결] 현재가 직통 큐 접근 실패: %s", e)
-        return
-
-    try:
-        while _gateway_running:
-            try:
-                data = await pq.get()
-
-                # 현재가 직통 전송 (sector-price-tick 이벤트)
-                await _send_price_tick_to_frontend(data)
-
-                pq.task_done()
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error("[연결] 현재가 직통 반복 오류 (계속): %s", e, exc_info=True)
-    except asyncio.CancelledError:
-        pass
-
-
-async def _send_price_tick_to_frontend(data: dict) -> None:
-    """
-    현재가 직통 전송 — 섹터 현재가 이벤트로 화면 전송.
-
-    Args:
-        data: price_tick_data 딕셔너리
-            {"code": ..., "raw_code": ..., "price": ..., "change": ...,
-             "change_rate": ..., "sector": ..., "timestamp": ...}
-    """
-    try:
-        from backend.app.web.ws_manager import ws_manager
-
-        payload = {
-            "code": data.get("code"),
-            "raw_code": data.get("raw_code"),
-            "price": data.get("price"),
-            "change": data.get("change"),
-            "change_rate": data.get("change_rate"),
-            "sector": data.get("sector"),
-            "timestamp": data.get("timestamp"),
-            "_v": 1,
-        }
-        await ws_manager.broadcast("sector-price-tick", payload)
-
-    except Exception as e:
-        logger.error("[연결] 섹터 현재가 전송 오류: %s", e, exc_info=True)
 
 
 async def _process_broadcast(data: dict) -> None:

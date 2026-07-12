@@ -2,11 +2,10 @@
 """
 전역 이벤트 버스 (큐) - 파이프라인 아키텍처 핵심 배관
 
-HTS급 실시간 처리를 위한 4개 코어 큐:
+HTS급 실시간 처리를 위한 3개 코어 큐:
 - tick_queue: 시세 수신 전용 (누락 정책 적용)
 - broadcast_queue: 화면 전송 전용
 - control_queue: 사용자 설정 제어 전용 (최우선순위)
-- price_pass_through_queue: 현재가 직통 전송 전용 (연산 루프 우회)
 
 외부 브로커(Redis 등) 미사용 - 순수 asyncio.Queue 기반 프로세스 내 배관.
 """
@@ -21,19 +20,17 @@ logger = logging.getLogger(__name__)
 TICK_QUEUE_MAXSIZE = 20000  # 시세 수신 전용 (누락 정책 적용)
 BROADCAST_QUEUE_MAXSIZE = 2000  # 화면 전송 전용
 CONTROL_QUEUE_MAXSIZE = 500  # 제어 전용 (최우선순위)
-PRICE_PASS_THROUGH_QUEUE_MAXSIZE = 4096  # 현재가 직통 전송 전용
 
 
 # ── 전역 큐 인스턴스 ───────────────────────────────────────────────────────────
 _tick_queue: Optional[asyncio.Queue] = None
 _broadcast_queue: Optional[asyncio.Queue] = None
 _control_queue: Optional[asyncio.PriorityQueue] = None
-_price_pass_through_queue: Optional[asyncio.Queue] = None
 
 
 def initialize_queues() -> None:
     """전역 큐 인스턴스 초기화 (엔진 기동 시 1회 호출)."""
-    global _tick_queue, _broadcast_queue, _control_queue, _price_pass_through_queue
+    global _tick_queue, _broadcast_queue, _control_queue
 
     if _tick_queue is not None:
         return
@@ -41,13 +38,11 @@ def initialize_queues() -> None:
     _tick_queue = asyncio.Queue(maxsize=TICK_QUEUE_MAXSIZE)
     _broadcast_queue = asyncio.Queue(maxsize=BROADCAST_QUEUE_MAXSIZE)
     _control_queue = asyncio.PriorityQueue(maxsize=CONTROL_QUEUE_MAXSIZE)
-    _price_pass_through_queue = asyncio.Queue(maxsize=PRICE_PASS_THROUGH_QUEUE_MAXSIZE)
 
     logger.info(
         "[시스템] 초기화 완료 - "
         f"시세={TICK_QUEUE_MAXSIZE}, "
-        f"전송={BROADCAST_QUEUE_MAXSIZE}, 제어={CONTROL_QUEUE_MAXSIZE}, "
-        f"현재가직통={PRICE_PASS_THROUGH_QUEUE_MAXSIZE}"
+        f"전송={BROADCAST_QUEUE_MAXSIZE}, 제어={CONTROL_QUEUE_MAXSIZE}"
     )
 
 
@@ -70,13 +65,6 @@ def get_control_queue() -> asyncio.PriorityQueue:
     if _control_queue is None:
         raise RuntimeError("control_queue가 초기화되지 않음 - initialize_queues() 먼저 호출")
     return _control_queue
-
-
-def get_price_pass_through_queue() -> asyncio.Queue:
-    """현재가 직통 전송 전용 큐 반환."""
-    if _price_pass_through_queue is None:
-        raise RuntimeError("price_pass_through_queue가 초기화되지 않음 - initialize_queues() 먼저 호출")
-    return _price_pass_through_queue
 
 
 # ── 시세 큐 누락 정책 (무손실 최신화) ─────────────────────────────────────────
@@ -106,7 +94,7 @@ def put_tick_with_drop_policy(data: dict) -> None:
 
 def clear_all_queues() -> None:
     """모든 큐 비우기 (엔진 정지 시 호출)."""
-    global _tick_queue, _broadcast_queue, _control_queue, _price_pass_through_queue
+    global _tick_queue, _broadcast_queue, _control_queue
 
     if _tick_queue:
         while not _tick_queue.empty():
@@ -120,8 +108,5 @@ def clear_all_queues() -> None:
                 _, _, _ = _control_queue.get_nowait()
             except asyncio.QueueEmpty:
                 break
-    if _price_pass_through_queue:
-        while not _price_pass_through_queue.empty():
-            _price_pass_through_queue.get_nowait()
 
     logger.info("[시스템] 모든 큐 비우기 완료")
