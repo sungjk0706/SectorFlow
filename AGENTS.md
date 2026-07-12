@@ -24,7 +24,7 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
 
 ## 섹션2. 아키텍처 원칙 (불변 원칙)
 
-> 본 섹션은 `ARCHITECTURE.md`에 정의된 22개 불변 원칙(P1~P22)과 안전 규칙을 포함. 코드 변경 시 반드시 준수.
+> 본 섹션은 `ARCHITECTURE.md`에 정의된 24개 불변 원칙(P1~P24)과 안전 규칙을 포함. 코드 변경 시 반드시 준수.
 
 ### Safety Rules (Always Apply)
 
@@ -37,12 +37,14 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
 
 ### Architecture Principles Reference
 
-- 코드 변경 시 `ARCHITECTURE.md`의 22개 불변 원칙(P1~P22)을 준수. 주요 원칙:
+- 코드 변경 시 `ARCHITECTURE.md`의 24개 불변 원칙(P1~P24)을 준수. 주요 원칙:
   - **P10 (SSOT)**: 같은 데이터가 여러 곳에서 독립 관리되지 않도록 단일 진실 소스 유지.
   - **P16 (구현 = 살아있는 경로 배선)**: 호출되지 않는 안전코드/dead code 금지.
   - **P20 (폴백 금지)**: 정상 경로의 빈 문자열/None/누락을 폴백으로 덮지 않음, silent `except: pass` 금지.
   - **P21 (사용자 투명성)**: 사용자 모르는 중요 의사결정 금지, 백엔드 상태의 UI 표시 의무.
   - **P22 (데이터 정합성)**: 파생 데이터 모델, 기동 시 대조(reconciliation), 불일치 시 즉시 차단.
+  - **P23 (일관된 통일성)**: 용어 사전 준수, 에러/비동기/네이밍/상수 패턴 파일 간 일관, UI 패턴 공통 컴포넌트 추출.
+  - **P24 (단순성)**: 더 단순한 대체 가능성, 불필요한 추상화 금지, 함수/파일 길이·복잡도 기준.
 - 전체 원칙 목록은 `docs/architecture_audit_plan.md` 섹션 2의 평가 기준표 참조.
 
 ### Code Removal Rules
