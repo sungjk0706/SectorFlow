@@ -21,6 +21,7 @@ from backend.app.services.engine_symbol_utils import (
 from backend.app.services.engine_ws_reg import build_0b_remove_payloads
 from backend.app.core.trading_calendar import get_current_trading_day_str
 from backend.app.services.engine_state import state
+from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -647,7 +648,7 @@ async def _step1_fetch_all_stocks(
     tag: str, _sector: object, _broker_name: str,
 ) -> list | None:
     """1단계: 전종목 리스트 다운로드."""
-    logger.info("%s 1단계 시작 — 전종목 리스트 다운로드 (증권사=%s)", tag, _broker_name)
+    logger.info("%s 1단계 시작 — 전종목 리스트 다운로드 (증권사=%s)", tag, BROKER_DISPLAY_NAMES.get(_broker_name, _broker_name))
     _broadcast_confirmed_progress(0, 0, message="전종목 목록 갱신 중...", step=1)
     try:
         records: list = await _sector.fetch_all_stocks()
@@ -1177,7 +1178,7 @@ async def fetch_5d_data_only() -> dict:
             from backend.app.services.engine_lifecycle import broadcast_engine_status
             await broadcast_engine_status()
         _sector = _create_provider("stock", _broker_name, _settings, _auth_cache)
-        logger.info("[다운로드] 종목 제공자 증권사=%s", _broker_name)
+        logger.info("[다운로드] 종목 제공자 증권사=%s", BROKER_DISPLAY_NAMES.get(_broker_name, _broker_name))
 
         # ── 메모리 캐시에서 매매적격종목 코드 리스트 로드 (SSOT: DB에서만 로드된 캐시 사용) ──
         logger.info("[다운로드] 매매적격종목 목록 로드 시작")
