@@ -124,10 +124,16 @@ function mapRowsToTableRows(rows: RowItem[]): TableRow<DataRowItem>[] {
 
 const KRX_INACTIVE_PHASES = new Set([
   '장개시전',
-  '장전 동시호가',
-  '장마감',
+  '장전 대기',
+  '장전 시간외',
+  '동시호가 접수',
+  '시가 동시호가',
+  '종가 동시호가',
+  '체결 정산',
   '장후 시간외',
   '시간외 단일가',
+  '장 종료',
+  '장마감',
   '휴장일',
 ])
 
@@ -135,6 +141,7 @@ const NXT_ACTIVE_PHASES = new Set([
   '프리마켓',
   '메인마켓',
   '애프터마켓',
+  '애프터마켓 지속',
 ])
 
 function isKrxInactiveWindow(marketPhase: { krx: string; nxt: string }): boolean {

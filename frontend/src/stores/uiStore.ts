@@ -28,7 +28,13 @@ export interface UIState {
   bootstrapStage: { stage_id: number; stage_name: string; total: number; progress?: { current: number; total: number } } | null
 
   /* ── 장 상태 ── */
-  marketPhase: { krx: string; nxt: string; krx_alert?: string | null }
+  marketPhase: {
+    krx: string
+    nxt: string
+    krx_alert?: string | null
+    krx_event?: string | null
+    nxt_event?: string | null
+  }
 
   /* ── 매수 한도 상태 ── */
   buyLimitStatus: { daily_buy_spent: number }
@@ -65,7 +71,7 @@ const initialState: UIState = {
   engineReady: false,
   avgAmtProgress: null,
   bootstrapStage: null,
-  marketPhase: { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null },
+  marketPhase: { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null, krx_event: null, nxt_event: null },
   buyLimitStatus: { daily_buy_spent: 0 },
   wsSubscribeStatus: { index_subscribed: false, quote_subscribed: false },
   sectorScoresDelta: null,
@@ -119,7 +125,7 @@ export function applySettingsChanged(data: AppSettings | { delta: boolean; chang
 /* ── index-refresh: 엔진 상태 + 장 상태 갱신 ── */
 export function applyIndexRefresh(data: EngineStatus): void {
   const patch: Partial<UIState> = { status: data }
-  const mp = (data as unknown as Record<string, unknown>).market_phase as { krx: string; nxt: string; krx_alert?: string | null } | undefined
+  const mp = (data as unknown as Record<string, unknown>).market_phase as UIState['marketPhase'] | undefined
   if (mp) patch.marketPhase = mp
   uiStore.setState(patch)
 }
@@ -180,7 +186,7 @@ export function applyWsSubscribeStatus(data: { index_subscribed: boolean; quote_
 }
 
 /* ── market-phase: 장 상태 갱신 ── */
-export function applyMarketPhase(data: Partial<{ krx: string; nxt: string; krx_alert: string | null }>): void {
+export function applyMarketPhase(data: Partial<UIState['marketPhase']>): void {
   const prev = uiStore.getState().marketPhase
   uiStore.setState({ marketPhase: { ...prev, ...data } })
 }
@@ -222,7 +228,7 @@ export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
     initialized: true,
     circuitBreakerOpen: null,
     engineReady: !!(data.bootstrap_done),
-    marketPhase: (data.market_phase as { krx: string; nxt: string; krx_alert?: string | null }) ?? { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null },
+    marketPhase: (data.market_phase as UIState['marketPhase']) ?? { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null, krx_event: null, nxt_event: null },
     receiveRate: (data.receive_rate as { received: number; total: number; pct: number }) ?? null,
     avgAmtProgress: data.avg_amt_refresh ? { current: (data.avg_amt_refresh as Record<string, unknown>).current as number ?? 0, total: (data.avg_amt_refresh as Record<string, unknown>).total as number ?? 0, done: false, status: ((data.avg_amt_refresh as Record<string, unknown>).status as string) || undefined } : data.confirmed_refresh ? { current: 0, total: 0, done: false, message: ((data.confirmed_refresh as Record<string, unknown>).message as string) || '', status: 'confirmed' } : null,
   })

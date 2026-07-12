@@ -24,6 +24,8 @@ from backend.app.services.engine_ws_dispatch import (
     handle_ws_data,
     _handle_jif,
     _JSTATUS_KRX_ALERT,
+    _JSTATUS_KRX_EVENT,
+    _JSTATUS_NXT_EVENT,
     _KRX_CB_ACTIVATION_CODES,
     _KRX_CB_RELEASE_CODES,
 )
@@ -349,6 +351,75 @@ class TestHandleJif:
             mock_es.state.market_phase = {"krx_alert": None}
             mock_es.state.integrated_system_settings_cache = {}
             await _handle_jif({"jangubun": "1", "jstatus": "62"})
+            mock_bc.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_krx_event_sets_krx_event(self):
+        """jangubun 1 + jstatus 24(정규장 장개시 5분 전) → krx_event 갱신 + 브로드캐스트."""
+        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
+            mock_es.state.market_phase = {"krx_event": None}
+            await _handle_jif({"jangubun": "1", "jstatus": "24"})
+            assert mock_es.state.market_phase["krx_event"] == "정규장 장개시 5분 전"
+            mock_bc.assert_awaited_once()
+            assert mock_bc.call_args.args[0] == "market-phase"
+            assert mock_bc.call_args.args[1] == {"krx_event": "정규장 장개시 5분 전"}
+
+    @pytest.mark.asyncio
+    async def test_krx_event_same_no_rebroadcast(self):
+        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
+            mock_es.state.market_phase = {"krx_event": "정규장 장개시 5분 전"}
+            await _handle_jif({"jangubun": "2", "jstatus": "24"})
+            mock_bc.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_krx_boundary_event_not_stored(self):
+        """jangubun 1 + jstatus 21(장시작, 경계) → 시계가 인계하므로 JIF는 저장하지 않음."""
+        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
+            mock_es.state.market_phase = {"krx_event": None}
+            await _handle_jif({"jangubun": "1", "jstatus": "21"})
+            assert mock_es.state.market_phase.get("krx_event") is None
+            mock_bc.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_nxt_event_sets_nxt_event(self):
+        """jangubun 6 + jstatus A4(프리마켓 장개시 5분 전) → nxt_event 갱신."""
+        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
+            mock_es.state.market_phase = {"nxt_event": None}
+            await _handle_jif({"jangubun": "6", "jstatus": "A4"})
+            assert mock_es.state.market_phase["nxt_event"] == "프리마켓 장개시 5분 전"
+            mock_bc.assert_awaited_once()
+            assert mock_bc.call_args.args[1] == {"nxt_event": "프리마켓 장개시 5분 전"}
+
+    @pytest.mark.asyncio
+    async def test_nxt_event_aftermarket_countdown(self):
+        """jangubun 6 + jstatus B3(에프터마켓 장개시 1분 전) → nxt_event 갱신."""
+        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
+            mock_es.state.market_phase = {"nxt_event": None}
+            await _handle_jif({"jangubun": "6", "jstatus": "B3"})
+            assert mock_es.state.market_phase["nxt_event"] == "에프터마켓 장개시 1분 전"
+
+    @pytest.mark.asyncio
+    async def test_nxt_boundary_event_not_stored(self):
+        """jangubun 6 + jstatus 55(프리마켓 개시, 경계) → 시계가 인계하므로 저장하지 않음."""
+        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
+            mock_es.state.market_phase = {"nxt_event": None}
+            await _handle_jif({"jangubun": "6", "jstatus": "55"})
+            assert mock_es.state.market_phase.get("nxt_event") is None
+            mock_bc.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_nxt_cb_code_not_handled(self):
+        """jangubun 6 + jstatus 61(서킷브레이커) → CB는 KRX(1/2) 전용이므로 NXT에서 미처리."""
+        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
+            mock_es.state.market_phase = {"nxt_event": None, "krx_alert": None}
+            await _handle_jif({"jangubun": "6", "jstatus": "61"})
             mock_bc.assert_not_awaited()
 
 

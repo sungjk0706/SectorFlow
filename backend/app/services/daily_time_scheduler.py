@@ -18,26 +18,35 @@ KST = timezone(timedelta(hours=9))
 
 
 
-# ── KRX 거래 시간대 ─────────────────────────────────────────────────────────
-KRX_PREMARKET_START   = (8,  0)    # 08:00 장전 동시호가 시작
-KRX_REGULAR_START     = (9,  0)    # 09:00 정규장 시작
-KRX_REGULAR_END       = (15, 20)   # 15:20 정규장 종료 → 장후 동시호가
-KRX_AFTER_AUCTION_END = (15, 30)   # 15:30 장후 동시호가 종료 → 장후 시간외
-KRX_AFTER_HOURS_END   = (15, 40)   # 15:40 장후 시간외 종료 → 시간외 단일가
-KRX_SINGLE_PRICE_END  = (16, 0)    # 16:00 시간외 단일가 종료 → 장마감
+# ── KRX 거래 시간대 (한국거래소 실제 스케줄) ────────────────────────────────
+KRX_PRE_OPEN_NONE_START = (8,  0)    # 08:00 거래 없음(주문 불가) 시작
+KRX_PRE_TIME_EXTERNAL   = (8,  30)   # 08:30 장전 시간외 시작 (전일 종가, 실시간 선착순)
+KRX_PRE_AUCTION_NONE    = (8,  40)   # 08:40 거래 없음(동시호가 접수) 시작
+KRX_OPENING_AUCTION     = (8,  50)   # 08:50 시가 동시호가 시작 (09:00 일괄 체결)
+KRX_REGULAR_START       = (9,  0)    # 09:00 정규장 시작
+KRX_REGULAR_END         = (15, 20)   # 15:20 정규장 종료 → 종가 동시호가
+KRX_CLOSING_AUCTION_END = (15, 30)   # 15:30 종가 동시호가 종료 → 거래 없음(정산)
+KRX_SETTLE_END          = (15, 40)   # 15:40 거래 없음(정산) 종료 → 장후 시간외
+KRX_AFTER_HOURS_END     = (16, 0)    # 16:00 장후 시간외 종료 → 시간외 단일가
+KRX_SINGLE_PRICE_END    = (18, 0)    # 18:00 시간외 단일가 종료 → 거래 없음(장 마감)
+KRX_CLOSE_NONE_END      = (20, 0)    # 20:00 거래 없음(장 마감) 종료 → 장마감
 
-# ── NXT 거래 시간대 (증권사 공식 답변 기준) ─────────────────────────────────
-NXT_PREMARKET_START   = (8,  0)    # 08:00 프리마켓 시작
-NXT_PREMARKET_END     = (9,  0)    # 09:00 프리마켓 종료 → 메인마켓
-NXT_MAINMARKET_END    = (15, 20)   # 15:20 메인마켓 종료 → 휴식
-NXT_BREAK_END         = (15, 30)   # 15:30 휴식 종료 → 애프터마켓
-NXT_AFTERMARKET_START = (15, 30)   # 15:30 애프터마켓 시작
-NXT_AFTERMARKET_END   = (20, 0)    # 20:00 애프터마켓 종료 → 장마감
+# ── NXT 거래 시간대 (넥스트레이드 실제 스케줄) ──────────────────────────────
+NXT_PREMARKET_START   = (8,  0)    # 08:00 프리마켓 시작 (전일 종가 ±10%)
+NXT_PREMARKET_END     = (8,  50)   # 08:50 프리마켓 종료 → 거래 없음(정규장 준비)
+NXT_PREP_NONE_END     = (9,  0)    # 09:00 거래 없음(정규장 준비) 종료 → 메인마켓
+NXT_MAINMARKET_END    = (15, 20)   # 15:20 메인마켓 조기 마감 → 조기 마감
+NXT_EARLY_CLOSE_END   = (15, 30)   # 15:30 조기 마감 종료 → 단일가 매매
+NXT_SINGLE_PRICE_END  = (15, 40)   # 15:40 단일가 매매 종료(일괄 체결) → 애프터마켓
+NXT_AFTERMARKET_START = (15, 40)   # 15:40 애프터마켓 시작 (당일 종가 ±10%)
+NXT_AFTERMARKET_MID_END = (18, 0)  # 18:00 애프터마켓 → 애프터마켓 지속
+NXT_AFTERMARKET_END   = (20, 0)    # 20:00 애프터마켓 지속 종료 → 장마감
 
 
 def is_nxt_premarket_window() -> bool:
-    """현재 시각이 NXT 프리마켓 구간(08:00~09:00)인지 판단.
-    거래일(평일 + 공휴일 아님) AND 08:00 <= KST < 09:00 → True."""
+    """현재 시각이 NXT 프리마켓 구간(08:00~08:50)인지 판단.
+    거래일(평일 + 공휴일 아님) AND 08:00 <= KST < 08:50 → True.
+    08:50~09:00은 거래 없음(정규장 준비) 구간이므로 프리마켓에서 제외."""
     from backend.app.core.trading_calendar import is_trading_day
     now = _kst_now()
     today = now.date()
@@ -52,7 +61,8 @@ def is_nxt_premarket_window() -> bool:
 
 
 def is_nxt_aftermarket_window() -> bool:
-    """현재 시각이 NXT 애프터마켓 구간(15:30~20:00)인지 판단."""
+    """현재 시각이 NXT 애프터마켓 구간(15:40~20:00)인지 판단.
+    15:30~15:40은 단일가 매매(일괄 체결) 구간이므로 애프터마켓에서 제외."""
     now = _kst_now()
     t = now.hour * 60 + now.minute
     s = NXT_AFTERMARKET_START[0] * 60 + NXT_AFTERMARKET_START[1]
@@ -66,21 +76,29 @@ def calc_timebased_market_phase() -> dict:
     market_phase의 SSOT로 사용되며, 거래일 판별 포함.
     반환: {"krx": str, "nxt": str}
 
-    시간대별 상태 정의:
+    시간대별 상태 정의 (한국거래소/넥스트레이드 실제 스케줄):
       KRX:
         00:00~08:00  장개시전
-        08:00~09:00  장전 동시호가
-        09:00~15:20  정규장
-        15:20~15:30  장후 동시호가
-        15:30~15:40  장후 시간외
-        15:40~16:00  시간외 단일가
-        16:00~24:00  장마감
+        08:00~08:30  장전 대기 (거래 없음, 주문 불가)
+        08:30~08:40  장전 시간외 (전일 종가, 실시간 선착순)
+        08:40~08:50  동시호가 접수 (거래 없음)
+        08:50~09:00  시가 동시호가 (09:00 일괄 체결)
+        09:00~15:20  정규장 (실시간 매매, ±30%)
+        15:20~15:30  종가 동시호가 (15:30 일괄 체결)
+        15:30~15:40  체결 정산 (거래 없음)
+        15:40~16:00  장후 시간외 (당일 종가, 실시간 선착순)
+        16:00~18:00  시간외 단일가 (10분 단위 체결, ±10%)
+        18:00~20:00  장 종료 (거래 없음)
+        20:00~24:00  장마감
       NXT:
         00:00~08:00  장개시전
-        08:00~09:00  프리마켓
-        09:00~15:20  메인마켓
-        15:20~15:30  휴식
-        15:30~20:00  애프터마켓
+        08:00~08:50  프리마켓 (전일 종가 ±10%)
+        08:50~09:00  정규장 준비 (거래 없음)
+        09:00~15:20  메인마켓 (실시간 매매, ±30%)
+        15:20~15:30  조기 마감
+        15:30~15:40  단일가 매매 (15:40 일괄 체결)
+        15:40~18:00  애프터마켓 (당일 종가 ±10%)
+        18:00~20:00  애프터마켓 지속
         20:00~24:00  장마감
     """
     from backend.app.core.trading_calendar import is_trading_day
@@ -96,18 +114,28 @@ def calc_timebased_market_phase() -> dict:
         return hm[0] * 60 + hm[1]
 
     # ── KRX ──
-    if t < _m(KRX_PREMARKET_START):
+    if t < _m(KRX_PRE_OPEN_NONE_START):
         krx = "장개시전"
+    elif t < _m(KRX_PRE_TIME_EXTERNAL):
+        krx = "장전 대기"
+    elif t < _m(KRX_PRE_AUCTION_NONE):
+        krx = "장전 시간외"
+    elif t < _m(KRX_OPENING_AUCTION):
+        krx = "동시호가 접수"
     elif t < _m(KRX_REGULAR_START):
-        krx = "장전 동시호가"
+        krx = "시가 동시호가"
     elif t < _m(KRX_REGULAR_END):
         krx = "정규장"
-    elif t < _m(KRX_AFTER_AUCTION_END):
-        krx = "장후 동시호가"
+    elif t < _m(KRX_CLOSING_AUCTION_END):
+        krx = "종가 동시호가"
+    elif t < _m(KRX_SETTLE_END):
+        krx = "체결 정산"
     elif t < _m(KRX_AFTER_HOURS_END):
         krx = "장후 시간외"
     elif t < _m(KRX_SINGLE_PRICE_END):
         krx = "시간외 단일가"
+    elif t < _m(KRX_CLOSE_NONE_END):
+        krx = "장 종료"
     else:
         krx = "장마감"
 
@@ -116,12 +144,18 @@ def calc_timebased_market_phase() -> dict:
         nxt = "장개시전"
     elif t < _m(NXT_PREMARKET_END):
         nxt = "프리마켓"
+    elif t < _m(NXT_PREP_NONE_END):
+        nxt = "정규장 준비"
     elif t < _m(NXT_MAINMARKET_END):
         nxt = "메인마켓"
-    elif t < _m(NXT_BREAK_END):
-        nxt = "휴식"
-    elif t < _m(NXT_AFTERMARKET_END):
+    elif t < _m(NXT_EARLY_CLOSE_END):
+        nxt = "조기 마감"
+    elif t < _m(NXT_SINGLE_PRICE_END):
+        nxt = "단일가 매매"
+    elif t < _m(NXT_AFTERMARKET_MID_END):
         nxt = "애프터마켓"
+    elif t < _m(NXT_AFTERMARKET_END):
+        nxt = "애프터마켓 지속"
     else:
         nxt = "장마감"
 
@@ -129,11 +163,13 @@ def calc_timebased_market_phase() -> dict:
 
 
 KRX_INACTIVE_PHASES = frozenset({
-    "장개시전", "장전 동시호가", "장마감", "장후 시간외", "시간외 단일가", "휴장일",
+    "장개시전", "장전 대기", "장전 시간외", "동시호가 접수", "시가 동시호가",
+    "종가 동시호가", "체결 정산", "장후 시간외", "시간외 단일가", "장 종료",
+    "장마감", "휴장일",
 })
 
 NXT_ACTIVE_PHASES = frozenset({
-    "프리마켓", "메인마켓", "애프터마켓",
+    "프리마켓", "메인마켓", "애프터마켓", "애프터마켓 지속",
 })
 
 
@@ -155,9 +191,11 @@ def is_nxt_only_window() -> bool:
 def get_nxt_trde_tp(base_trde_tp: str = "3") -> str:
     """
     현재 시간대에 맞는 NXT trde_tp 반환.
-    - 프리마켓(08:00~09:00): 'P'
-    - 애프터마켓(15:30~20:00): 'U'
+    - 프리마켓(08:00~08:50): 'P'
+    - 애프터마켓(15:40~20:00): 'U'
     - 정규장: base_trde_tp 그대로 (지정가=1, 시장가=3 — KRX와 동일)
+    - 08:50~09:00(정규장 준비), 15:20~15:40(조기 마감/단일가 매매): base_trde_tp
+      (실시간 매매 불가 구간 — 자동매매 게이트에서 차단 전제)
     """
     if is_nxt_premarket_window():
         return "P"
@@ -169,6 +207,10 @@ def get_nxt_trde_tp(base_trde_tp: str = "3") -> str:
 def is_krx_after_hours(now: datetime | None = None) -> bool:
     """
     현재 시각이 KRX 장외 시간대(15:30~20:00)인지 판별.
+
+    거래 게이트용 함수 — 정규장 종료 후 KRX 단독 종목 자동매매를 차단하기 위한 기준.
+    표시용 세부 페이즈(체결 정산/장후 시간외/시간외 단일가/장 종료)와는 별개로
+    안전을 위해 15:30~20:00 전 구간을 장외로 취급하여 KRX 단독 종목 매수를 차단한다.
     - 영업일(평일 + 공휴일 아님) AND 15:30 <= KST < 20:00 → True
     - 그 외 → False
     """
@@ -199,6 +241,9 @@ def get_market_phase() -> dict:
     phase: dict = {"krx": krx, "nxt": nxt}
     if mp.get("krx_alert"):
         phase["krx_alert"] = mp["krx_alert"]
+    # JIF 실시간 이벤트 라벨(휘발성) — None이어도 필드 포함하여 프론트엔드가 인계받을 수 있도록 함
+    phase["krx_event"] = mp.get("krx_event")
+    phase["nxt_event"] = mp.get("nxt_event")
     return phase
 
 
@@ -296,7 +341,7 @@ async def is_edit_window_open(settings: dict | None = None) -> bool:
 async def _on_krx_market_open() -> None:
     """09:00 KRX 정규장 진입 콜백 — 업종 종합점수 재계산 + KRX 단독 종목 재구독.
 
-    NXT 프리마켓(08:00~09:00)에는 NXT-enabled 종목만 업종 점수에 포함되었으므로,
+    NXT 프리마켓(08:00~08:50)에는 NXT-enabled 종목만 업종 점수에 포함되었으므로,
     09:00 KRX 정규장 진입 시 전체 종목을 포함하도록 재계산 필요.
     또한 15:30에 구독해지된 KRX 단독 종목을 재구독하여 실시간 시세를 수신한다.
     recompute_sector_summary_now() 내부에서 notify 3종이 이미 호출되므로 중복 호출을 제거한다.
@@ -321,7 +366,7 @@ async def _on_krx_market_open() -> None:
 async def _on_krx_after_hours_start() -> None:
     """15:30 전환 콜백 — 업종 종합점수 재계산 + KRX 단독 종목 구독해지.
 
-    KRX 정규장 마감(15:30) 시점에 KRX 단독 종목(nxt_enable=False) WS 구독 해지.
+    KRX 종가 동시호가 종료(15:30) 시점에 KRX 단독 종목(nxt_enable=False) WS 구독 해지.
     NXT-enabled 종목은 NXT 거래(20:00까지)가 가능하므로 구독 유지.
     recompute_sector_summary_now() 내부에서 notify 3종이 이미 호출되므로 중복 호출을 제거한다.
     _broadcast_market_phase()는 market-phase 타이머 배열(line 710)에서 동일 시각에 호출된다.
@@ -452,16 +497,21 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
 
 
 def _broadcast_market_phase() -> None:
-    """market-phase WS 이벤트 브로드캐스트 (08:00, 09:00, 20:00 전환 시점).
+    """market-phase WS 이벤트 브로드캐스트 (각 페이즈 전환 시점).
 
     state.market_phase를 시간 기반 최신값으로 갱신 후 브로드캐스트.
     SSOT: state.market_phase가 항상 현재 시각 기반 상태를 반영하도록 보장.
+    시계 페이즈 전환 시 JIF 휘발성 이벤트 라벨(krx_event/nxt_event)을 초기화하여
+    경계 이벤트(장시작/장마감 등) 이후 시계 페이즈명이 표시를 인계받도록 한다.
     """
     try:
         from backend.app.services.engine_account_notify import _broadcast
         fresh = calc_timebased_market_phase()
         state.market_phase["krx"] = fresh["krx"]
         state.market_phase["nxt"] = fresh["nxt"]
+        # 시계 전환 시 JIF 이벤트 라벨 초기화 — 경계 이벤트 이후 시계 페이즈명으로 인계
+        state.market_phase["krx_event"] = None
+        state.market_phase["nxt_event"] = None
         phase = get_market_phase()
         schedule_engine_task(_broadcast("market-phase", phase), context="market-phase 브로드캐스트")
     except Exception as e:
@@ -702,12 +752,16 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
     # ★ 09:00/15:30 고정 폴링 타이머 제거됨 (Task 5.1, 0J REAL 수신 여부로 자동 판단)
 
     # ★ market-phase 전환 시점 타이머
-    # 08:00 NXT프리, 09:00 KRX정규장, 15:20 NXT메인→휴식, 15:30 KRX정규종료/NXT애프터,
-    # 15:40 KRX시간외종가, 16:00 KRX시간외단일가/장마감, 20:00 NXT장마감
+    # KRX: 08:00 장전대기, 08:30 장전시간외, 08:40 동시호가접수, 08:50 시가동시호가,
+    #      09:00 정규장, 15:20 종가동시호가, 15:30 체결정산, 15:40 장후시간외,
+    #      16:00 시간외단일가, 18:00 장종료, 20:00 장마감
+    # NXT: 08:00 프리마켓, 08:50 정규장준비, 09:00 메인마켓, 15:20 조기마감,
+    #      15:30 단일가매매, 15:40 애프터마켓, 18:00 애프터마켓지속, 20:00 장마감
     for hm_h, hm_m, label in (
-        (8, 0, "08:00"), (9, 0, "09:00"),
+        (8, 0, "08:00"), (8, 30, "08:30"), (8, 40, "08:40"), (8, 50, "08:50"),
+        (9, 0, "09:00"),
         (15, 20, "15:20"), (15, 30, "15:30"), (15, 40, "15:40"), (16, 0, "16:00"),
-        (20, 0, "20:00"),
+        (18, 0, "18:00"), (20, 0, "20:00"),
     ):
         delay_mp = _seconds_until_hm(hm_h, hm_m)
         if delay_mp > 0 and loop:
