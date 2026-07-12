@@ -1,12 +1,15 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 종목분류 페이지 종목 이동 버그 3건 근본 해결 + "업종명없음" 잔적 전면 제거**
-  - **버그1 (이동 버튼 무반응, 근본)**: `button.ts`의 `createSolidBtn`/`createActionButton`이 disabled=true로 생성 시 click 리스너를 아예 추가하지 않음 → 이후 disabled=false로 변경해도 클릭 동작 안 함. 수정: 항상 click 리스너 추가 후 disabled 속성으로 클릭 차단하는 표준 패턴으로 변경
-  - **버그2 (미분류 선택 강제 해제)**: `stock-classification.ts:1457`이 `mergedSectors`만 검사해서 "미분류" 선택 시 데이터 갱신마다 선택 해제됨. 수정: `getActiveSectors()`로 검사 기준 변경 (미분류/특수 카테고리 포함)
-  - **버그3 (업종명없음 dead code, P16/P23 위반)**: `deletedSectors`가 백엔드에서 항상 빈 배열이라 프론트엔드 3곳의 "업종명없음" 분기는 절대 실행되지 않음 + 용어 불일치. 수정: 프론트엔드+백엔드+테스트 전면 제거
-  - **수정 파일**: `button.ts`, `stock-classification.ts`, `stockClassificationStore.ts`, `types/index.ts`, `main.ts` (프론트엔드 5개) + `stock_classification_data.py`, `stock_classification.py`, `ws.py` (백엔드 3개) + 테스트 3개
-  - 검증: `npm run build` 통과, 프론트엔드 테스트 112 passed, 백엔드 테스트 114 passed, 런타임 기동 153ms 정상, 잔존 프로세스 없음, `업종명없음`/`deletedSectors`/`deleted_sectors` 잔여 0건
+- **2026-07-13: 업종순위설정 ⑥ 행 종목 합계 표시 + P20 폴백 제거 (sector_max_targets=0)**
+  - **종목 합계 표시 (P21 투명성)**: ⑥ "매수대상 업종수" 행 아래 보조 줄 추가 — "상위 N개 업종 종목 합계: X종목". 파란 배경 + 파란 굵은 숫자 강조. ⑤ appliedWeightsLabel 패턴과 일관 (P23). `updateMaxTargetsStatus(scores, maxTargets)`가 rank>0 업종을 rank 순 정렬 후 상위 N개의 total 합산
+  - **P20 폴백 제거 (프론트 3곳)**: `Number(...) || DEFAULT_SECTOR_MAX_TARGETS` → `typeof raw === 'number' ? raw : DEFAULT_SECTOR_MAX_TARGETS`. 0을 0으로 동작, undefined일 때만 기본값. `sector-ranking-list.ts` 2곳, `sector-stock.ts` 1곳
+  - **P20 clamp 제거**: `onNumChange`의 `sector_max_targets < 1 → 1` 강제 제거
+  - **P20 폴백 제거 (백엔드)**: `engine_settings.py:137` `int(... or 3)` → `_v if _v is not None else 3` 패턴 (인접 라인 141 기존 패턴과 일관, P23)
+  - **수정 파일**: `sector-settings.ts`, `sector-ranking-list.ts`, `sector-stock.ts` (프론트 3개) + `engine_settings.py` (백엔드 1개)
+  - 검증: 백엔드 단위 `build_engine_settings_dict` 0→0/{}→3/5→5 정상, `npm run typecheck` 통과, `npm run build` 1.84s 성공, 런타임 기동은 백엔드 이미 실행 중(PID 19679)으로 잠금 충돌 생략
+  - **사용자 UI 확인 대기**: ⑥ 입력란 0 설정 → "상위 0개 업종 종목 합계: 0종목" 표시, 1/3/5 변경 시 N과 합계 즉시 갱신
+  - **추가 발견 (승인 대기)**: `engine_settings.py` 인접 라인 138(`sector_min_rise_ratio_pct` or 60.0), 139(`sector_min_trade_amt` or 0.0) 동일 P20 패턴 — 0을 정상 값으로 쓰면 같은 위험, 일괄 정리 권장
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책 — 모두 완료 (git history 참조)
@@ -24,11 +27,16 @@
 
 ## 다음 단계
 
-### 1순위: 종목분류 페이지 종목 이동 — 사용자 UI 확인 대기
-- 종목 이동 버그 3건 근본 해결 완료 (이동 버튼 무반응 + 미분류 선택 해제 + 업종명없음 dead code)
-- 사용자 확인 필요: 종목분류 페이지에서 "미분류" 선택 → 종목 선택 → 우측 업종 "이동" 버튼 클릭 → 확인 팝업 표시 → 이동 실행 정상 동작 확인
+### 1순위: 업종순위설정 ⑥ 종목 합계 표시 — 사용자 UI 확인 대기
+- ⑥ 입력란 0/1/3/5 변경 시 보조 줄 "상위 N개 업종 종목 합계: X종목" 즉시 갱신 확인
+- 0 설정 시 "상위 0개 업종 종목 합계: 0종목" 표시 확인 (백엔드 재기동 후)
 
-### 2순위: 아키텍처 전수 점검 P1 세션 (B-10)
+### 2순위: engine_settings.py 인접 라인 P20 폴백 일괄 정리 (승인 대기)
+- line 138: `sector_min_rise_ratio_pct` — `or 60.0`이 0%를 60%로 치환
+- line 139: `sector_min_trade_amt` — `or 0.0`은 다행이지만 패턴 동일 위험
+- 동일 패턴(`_v if _v is not None else 기본값`)으로 일괄 정리 권장
+
+### 3순위: 아키텍처 전수 점검 P1 세션 (B-10)
 - B-10: 엔진 계좌/서비스 (`engine_account.py`, `engine_account_rest.py`, `engine_account_notify.py`, `engine_service.py`)
 - `docs/architecture_audit_plan.md` 체크리스트 사용, 발견 문제를 섹션 7에 등록
 - 이후 B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
