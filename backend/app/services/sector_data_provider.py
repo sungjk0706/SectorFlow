@@ -238,7 +238,7 @@ async def recompute_sector_summary_now() -> None:
     from backend.app.services.engine_lifecycle import is_engine_running
     from backend.app.services.engine_account_notify import notify_desktop_sector_scores, notify_buy_targets_update, notify_desktop_sector_stocks_refresh
 
-    logger.info("[업종] recompute_sector_summary_now 진입, 실행중=%s", is_engine_running())
+    logger.info("[업종] 업종순위 재계산 진입, 실행중=%s", is_engine_running())
     if not is_engine_running():
         logger.info("[업종] 엔진 미실행으로 종료")
         return

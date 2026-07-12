@@ -221,7 +221,7 @@ async def sync_sector_from_custom_sectors() -> None:
                 updated += 1
         
         await conn.commit()
-        logger.info("[데이터] custom_sectors 기반 master_stocks_table.sector 동기화 완료 — %d종목, 숨김 %d종목, 복원 %d종목", updated, orphaned, restored)
+        logger.info("[데이터] 사용자 업종 기반 종목 업종 동기화 완료 — %d종목, 숨김 %d종목, 복원 %d종목", updated, orphaned, restored)
         
         # 메모리 캐시 sector 필드 갱신 (활성 + 복원 종목 모두 포함)
         for row in rows:
@@ -233,8 +233,8 @@ async def sync_sector_from_custom_sectors() -> None:
             if code in master_codes:
                 update_sector_in_cache(code, row["name"])
         
-        logger.info("[데이터] 메모리 캐시 sector 필드 갱신 완료 — %d종목", updated)
+        logger.info("[데이터] 메모리 캐시 업종 필드 갱신 완료 — %d종목", updated)
     except Exception as e:
         await conn.rollback()
-        logger.error("[데이터] custom_sectors 기반 동기화 실패: %s", e)
+        logger.error("[데이터] 사용자 업종 기반 동기화 실패: %s", e)
         raise e

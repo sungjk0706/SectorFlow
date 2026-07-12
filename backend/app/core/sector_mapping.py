@@ -33,7 +33,7 @@ async def get_merged_sector(stock_code: str) -> str:
         if row and row["sector"]:
             return row["sector"]
     except Exception as e:
-        logger.warning("[데이터] get_merged_sector DB 조회 실패 (%s): %s", stock_code, e)
+        logger.warning("[데이터] 업종 통합 조회 실패 (%s): %s", stock_code, e)
 
     return "미분류"
 
@@ -72,7 +72,7 @@ async def get_merged_sectors_batch(codes: list[str]) -> dict[str, str]:
             for row in rows:
                 result[row["code"]] = row["sector"] or "미분류"
         except Exception as e:
-            logger.warning("[데이터] get_merged_sectors_batch DB 조회 실패: %s", e)
+            logger.warning("[데이터] 업종 일괄 통합 조회 실패: %s", e)
 
     for cd in codes:
         if cd not in result:
@@ -92,7 +92,7 @@ async def get_merged_all_sectors() -> list[str]:
         for row in rows:
             sectors.add(row["name"])
     except Exception as e:
-        logger.warning("[데이터] get_merged_all_sectors sectors 테이블 조회 실패: %s", e)
+        logger.warning("[데이터] 전체 업종 통합 조회 실패: %s", e)
 
     if "미분류" not in sectors:
         sectors.add("미분류")

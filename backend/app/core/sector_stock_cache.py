@@ -27,9 +27,9 @@ async def save_filter_summary_meta_cache(meta_json: str) -> None:
                 ("filter_summary_meta", meta_json)
             )
             await conn.commit()
-        logger.info("[데이터] filter_summary_meta DB 저장 완료")
+        logger.info("[데이터] 필터 요약 메타 DB 저장 완료")
     except Exception as e:
-        logger.error("[데이터] filter_summary_meta DB 저장 실패: %s", e)
+        logger.error("[데이터] 필터 요약 메타 DB 저장 실패: %s", e)
 
 async def load_filter_summary_meta_cache() -> str:
     """DB에서 filter_summary 메타데이터 JSON 로드"""
@@ -43,7 +43,7 @@ async def load_filter_summary_meta_cache() -> str:
         row = await cursor.fetchone()
         return row["value"] if row else ""
     except Exception as e:
-        logger.error("[데이터] filter_summary_meta 로드 실패: %s", e)
+        logger.error("[데이터] 필터 요약 메타 로드 실패: %s", e)
         return ""
 
 def assemble_filter_summary(meta_json: str, stock_count: int) -> str:
