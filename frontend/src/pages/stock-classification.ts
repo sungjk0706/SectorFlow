@@ -106,6 +106,7 @@ let selectedTargetSector: string | null = null  // 우측 패널 선택된 대�
 interface MasterRow {
   sectorName: string
   stockCount: number
+  seq: number | null  // 미분류는 null (실제 업종이 아니므로 순번 미부여)
 }
 
 interface DetailRow {
@@ -512,7 +513,7 @@ function buildSectorManageCard(): HTMLElement {
   const titleText = document.createElement('span')
   titleText.textContent = '업종 관리'
   statsLabelRef = document.createElement('span')
-  Object.assign(statsLabelRef.style, { fontSize: FONT_SIZE.label, color: COLOR.tertiary, fontWeight: FONT_WEIGHT.normal })
+  Object.assign(statsLabelRef.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, fontWeight: FONT_WEIGHT.normal })
 
   // 우측 컨테이너: 통계 레이블 + 새 업종 추가 버튼
   addSectorBtnRef = createSolidBtn({
@@ -521,7 +522,6 @@ function buildSectorManageCard(): HTMLElement {
     editControl: true,
     onClick: (e: MouseEvent) => onAddSector(e),
   })
-  Object.assign(addSectorBtnRef.style, { padding: '2px 8px', fontSize: FONT_SIZE.small })
 
   const titleRightContainer = document.createElement('div')
   Object.assign(titleRightContainer.style, { display: 'flex', alignItems: 'center', gap: '8px' })
@@ -673,6 +673,11 @@ function buildSectorManageCard(): HTMLElement {
 
   const masterColumns: ColumnDef<MasterRow>[] = [
     {
+      key: 'seq', label: '순번', align: 'center', minWidth: 36, maxWidth: 36,
+      cellStyle: { color: COLOR.disabled, fontSize: FONT_SIZE.small },
+      render: (row) => row.seq === null ? '' : String(row.seq),
+    },
+    {
       key: 'name', label: '업종명', align: 'left',
       cellStyle: { fontWeight: 'normal', color: COLOR.neutral },
       render: (row) => {
@@ -789,9 +794,11 @@ function getActiveSectors(): string[] {
 function buildMasterRows(): MasterRow[] {
   const counts = countStocksBySector()
   const activeSectors = getActiveSectors()
+  let seq = 0
   const rows: MasterRow[] = activeSectors.map(s => ({
     sectorName: s,
     stockCount: counts[s] ?? 0,
+    seq: s === '미분류' ? null : ++seq,
   }))
   return rows
 }
@@ -809,10 +816,28 @@ function updateStatsLabel(): void {
   if (!statsLabelRef) return
   const counts = countStocksBySector()
   const activeSectors = getActiveSectors()
-  const sectorCount = activeSectors.length
+  // 미분류는 임시 보관함이므로 업종 수에서 제외
+  const sectorCount = activeSectors.filter(s => s !== '미분류').length
   let totalStocks = 0
   for (const c of Object.values(counts)) totalStocks += c
-  statsLabelRef.textContent = `업종 ${sectorCount}개 · 전체 종목 ${totalStocks}개`
+
+  statsLabelRef.replaceChildren()
+  const labelText = (text: string): HTMLSpanElement => {
+    const span = document.createElement('span')
+    span.textContent = text
+    Object.assign(span.style, { color: COLOR.tertiary, fontSize: FONT_SIZE.small })
+    return span
+  }
+  const numText = (text: string): HTMLSpanElement => {
+    const span = document.createElement('span')
+    span.textContent = text
+    Object.assign(span.style, { color: COLOR.down, fontSize: FONT_SIZE.small, fontWeight: FONT_WEIGHT.medium })
+    return span
+  }
+  statsLabelRef.appendChild(labelText('업종 '))
+  statsLabelRef.appendChild(numText(`${sectorCount}개`))
+  statsLabelRef.appendChild(labelText(' · 전체 종목 '))
+  statsLabelRef.appendChild(numText(`${totalStocks}개`))
 }
 
 /* ── Master_Panel 액션 핸들러 ── */
