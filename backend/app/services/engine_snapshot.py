@@ -206,37 +206,3 @@ async def _reset_realtime_fields() -> None:
     await notify_desktop_sector_stocks_refresh()
     await _broadcast_account("realtime_reset")
     await _broadcast("realtime-reset", {})
-
-
-# ── 기타 헬퍼 ─────────────────────────────────────────────────
-
-
-async def get_position_pnl_pct_for_code(stk_cd: str) -> float | None:
-    """보유 잔고에 있으면 수익률(%), 없으면 None."""
-    from backend.app.services.engine_symbol_utils import _base_stk_cd
-    from backend.app.services import dry_run
-    from backend.app.core.trade_mode import is_test_mode
-    
-    nk = _base_stk_cd(str(stk_cd or "").strip())
-    if not nk:
-        return None
-    # 테스트모드: dry_run 가상 잔고에서 조회
-    if is_test_mode(state.integrated_system_settings_cache):
-        pos = await dry_run.get_position(nk)
-        if pos and int(pos.get("qty", 0) or 0) > 0:
-            try:
-                return float(pos.get("pnl_rate") or 0.0)
-            except (TypeError, ValueError):
-                return 0.0
-        return None
-    for p in state.positions:
-        pcd = _base_stk_cd(str(p.get("stk_cd", "") or ""))
-        if pcd != nk:
-            continue
-        if int(p.get("qty", 0) or 0) <= 0:
-            return None
-        try:
-            return float(p.get("pnl_rate") or 0.0)
-        except (TypeError, ValueError):
-            return 0.0
-    return None

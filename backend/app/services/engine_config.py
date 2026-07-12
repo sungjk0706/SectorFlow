@@ -23,10 +23,7 @@ def _get_settings() -> dict:
 def get_settings_snapshot() -> dict:
     """설정 스냅샷 반환 (민감 정보 마스킹 포함)."""
     # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
-    if isinstance(state.integrated_system_settings_cache, dict) and state.integrated_system_settings_cache:
-        d = dict(state.integrated_system_settings_cache)
-    else:
-        d = dict(state.integrated_system_settings_cache)
+    d = dict(state.integrated_system_settings_cache)
 
     if "tele_on" not in d:
         d["tele_on"] = bool(d.get("telegram_on", False))
@@ -134,19 +131,6 @@ def _mask_sensitive_settings(settings: dict) -> dict:
             masked[key] = "***"
     
     return masked
-
-
-# ── 연결 레벨 설정 키 ─────────────────────────────────────────────────
-
-def get_connection_level_keys(broker_nm: str) -> frozenset[str]:
-    """broker 기반 연결 레벨 설정 키를 동적으로 생성한다."""
-    base_keys = {"broker", "broker_config"}
-    broker_keys = {
-        f"{broker_nm}_app_key",
-        f"{broker_nm}_app_secret",
-        f"{broker_nm}_account_no",
-    }
-    return frozenset(base_keys | broker_keys)
 
 
 # 거래 모드 전환 키 -- 엔진 재기동 없이 캐시 갱신 + 계좌 구독 전환만 수행한다.

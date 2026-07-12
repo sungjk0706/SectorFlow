@@ -6,7 +6,6 @@ from unittest.mock import patch, AsyncMock, MagicMock
 
 from backend.app.services.engine_snapshot import (
     _filter_stock_fields,
-    get_position_pnl_pct_for_code,
     _get_trade_history_for_snapshot,
     _get_daily_summary_for_snapshot,
     build_initial_snapshot,
@@ -76,116 +75,6 @@ class TestFilterStockFields:
             "code", "name", "cur_price", "change", "change_rate", "strength",
             "trade_amount", "sector", "avg_amt_5d", "market_type", "nxt_enable",
         }
-
-
-# ── get_position_pnl_pct_for_code ───────────────────────────────────
-
-class TestGetPositionPnlPctForCode:
-    @pytest.mark.asyncio
-    async def test_empty_code_returns_none(self):
-        result = await get_position_pnl_pct_for_code("")
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_none_code_returns_none(self):
-        result = await get_position_pnl_pct_for_code(None)
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_test_mode_position_found(self):
-        """테스트모드에서 dry_run 가상 잔고 조회."""
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
-             patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"), \
-             patch("backend.app.services.dry_run.get_position", new=AsyncMock(return_value={
-                 "qty": 10, "pnl_rate": 5.5,
-             })):
-            mock_state.integrated_system_settings_cache = {"trade_mode": "test"}
-            result = await get_position_pnl_pct_for_code("005930")
-            assert result == 5.5
-
-    @pytest.mark.asyncio
-    async def test_test_mode_position_not_found(self):
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
-             patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"), \
-             patch("backend.app.services.dry_run.get_position", new=AsyncMock(return_value=None)):
-            mock_state.integrated_system_settings_cache = {"trade_mode": "test"}
-            result = await get_position_pnl_pct_for_code("005930")
-            assert result is None
-
-    @pytest.mark.asyncio
-    async def test_test_mode_zero_qty(self):
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
-             patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"), \
-             patch("backend.app.services.dry_run.get_position", new=AsyncMock(return_value={
-                 "qty": 0, "pnl_rate": 0.0,
-             })):
-            mock_state.integrated_system_settings_cache = {"trade_mode": "test"}
-            result = await get_position_pnl_pct_for_code("005930")
-            assert result is None
-
-    @pytest.mark.asyncio
-    async def test_real_mode_position_found(self):
-        """실전모드에서 state.positions에서 조회."""
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils._base_stk_cd", side_effect=lambda x: x):
-            mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
-            mock_state.positions = [
-                {"stk_cd": "005930", "qty": 10, "pnl_rate": 3.2},
-            ]
-            result = await get_position_pnl_pct_for_code("005930")
-            assert result == 3.2
-
-    @pytest.mark.asyncio
-    async def test_real_mode_position_not_found(self):
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils._base_stk_cd", side_effect=lambda x: x):
-            mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
-            mock_state.positions = []
-            result = await get_position_pnl_pct_for_code("005930")
-            assert result is None
-
-    @pytest.mark.asyncio
-    async def test_real_mode_zero_qty(self):
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils._base_stk_cd", side_effect=lambda x: x):
-            mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
-            mock_state.positions = [
-                {"stk_cd": "005930", "qty": 0, "pnl_rate": 0.0},
-            ]
-            result = await get_position_pnl_pct_for_code("005930")
-            assert result is None
-
-    @pytest.mark.asyncio
-    async def test_invalid_pnl_rate(self):
-        """pnl_rate가 숫자가 아닌 경우 0.0 반환."""
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils._base_stk_cd", side_effect=lambda x: x):
-            mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
-            mock_state.positions = [
-                {"stk_cd": "005930", "qty": 10, "pnl_rate": "invalid"},
-            ]
-            result = await get_position_pnl_pct_for_code("005930")
-            assert result == 0.0
-
-    @pytest.mark.asyncio
-    async def test_test_mode_invalid_pnl_rate(self):
-        """테스트모드에서 pnl_rate가 숫자가 아닌 경우 0.0 반환 (L229-230)."""
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
-             patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
-             patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"), \
-             patch("backend.app.services.dry_run.get_position", new=AsyncMock(return_value={
-                 "qty": 10, "pnl_rate": "invalid",
-             })):
-            mock_state.integrated_system_settings_cache = {"trade_mode": "test"}
-            result = await get_position_pnl_pct_for_code("005930")
-            assert result == 0.0
 
 
 # ── _get_trade_history_for_snapshot ─────────────────────────────────

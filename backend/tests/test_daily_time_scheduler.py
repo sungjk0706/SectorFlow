@@ -871,13 +871,10 @@ class TestDoUnregAll:
 
     @pytest.mark.asyncio
     async def test_unsubscribes_stocks(self):
-        mock_ws = MagicMock()
-        mock_ws.is_connected.return_value = True
-        mock_ws.send_message = AsyncMock()
         mock_cm = MagicMock()
         mock_cm.is_connected.return_value = True
         mock_cm.unsubscribe_stocks = AsyncMock(return_value=True)
-        mock_cm.get_connector.return_value = mock_ws
+        mock_cm.send_message = AsyncMock()
         mock_state = MagicMock()
         mock_state.connector_manager = mock_cm
         mock_state.active_connector = None

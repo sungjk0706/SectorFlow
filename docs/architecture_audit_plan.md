@@ -326,23 +326,23 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 
 | 파일 | 줄 수 | 규모 | 점검 완료 |
 |------|-------|------|----------|
-| `services/engine_bootstrap.py` | 206 | 대형 | ☐ |
-| `services/engine_snapshot.py` | 242 | 대형 | ☐ |
-| `services/engine_cache.py` | 152 | 중형 | ☐ |
-| `services/engine_config.py` | 155 | 중형 | ☐ |
-| `services/engine_utils.py` | 68 | 중형 | ☐ |
+| `services/engine_bootstrap.py` | 206 | 대형 | ☑ |
+| `services/engine_snapshot.py` | 242 | 대형 | ☑ |
+| `services/engine_cache.py` | 152 | 중형 | ☑ |
+| `services/engine_config.py` | 155 | 중형 | ☑ |
+| `services/engine_utils.py` | 68 | 중형 | ☑ |
 
 **원칙 체크리스트**:
-- [ ] P5: fire-and-forget create_task 없음 (done_callback 확인)
-- [ ] P10: 캐시 SSOT (`master_stocks_cache`, `integrated_system_settings_cache`)
-- [ ] P12: DB 연결 싱글톤
-- [ ] P13: 설정 메모리 상주
-- [ ] P14: 멀티스레드 없음
-- [ ] P16: dead code 없음
-- [ ] P19: `await` 누락 없음
-- [ ] P20: 폴백/silent except 없음
-- [ ] P23: 용어 사전 준수, 에러/비동기/네이밍/상수 패턴 파일 간 일관
-- [ ] P24: 더 단순한 대체 가능성, 불필요한 추상화, 함수/파일 길이·복잡도 기준
+- [x] P5: fire-and-forget create_task 없음 (done_callback 확인)
+- [x] P10: 캐시 SSOT (`master_stocks_cache`, `integrated_system_settings_cache`)
+- [x] P12: DB 연결 싱글톤
+- [x] P13: 설정 메모리 상주
+- [x] P14: 멀티스레드 없음
+- [x] P16: dead code 없음
+- [x] P19: `await` 누락 없음
+- [x] P20: 폴백/silent except 없음
+- [x] P23: 용어 사전 준수, 에러/비동기/네이밍/상수 패턴 파일 간 일관
+- [x] P24: 더 단순한 대체 가능성, 불필요한 추상화, 함수/파일 길이·복잡도 기준
 
 ---
 
@@ -1061,6 +1061,20 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B06-02 | B-06 | `engine_lifecycle.py:237-302` | P16/P21 | HIGH | `_reconciliation_on_startup` 미구현 — 서버 체결 내역 조회 후 실제 대조 없이 "원장 대조 완료" 로그 + `{"status":"success"}` UI 브로드캐스트 (프론트엔드 수신부 없음). 실전투자 모드는 증권사 서버가 SSOT이므로 별도 대조 불필요 → 함수 제거, 테스트모드 포지션 구축 로직만 `start_engine`에 인라인 유지 | 해결 |
 | B06-03 | B-06 | `engine_state.py:131-133` | P16 | LOW | `_on_filter_settings_changed` module-level 래퍼 — `state.on_filter_settings_changed()` 메서드와 기능 중복, 프로덕션에서 호출처 전무 (테스트는 `sector_data_provider` 직접 import) → 래퍼 제거 | 해결 |
 | B06-04 | B-06 | `engine_lifecycle.py:325-328` | P10 | LOW | `get_current_kst_time`가 `datetime.now()` (로컬 시간) 사용 — 함수명/주석은 KST이나 실제로 KST 아님. `constants.py`의 `_KST` 상수 import하여 `datetime.now(_KST)`로 수정 | 해결 |
+| B08-01 | B-08 | `engine_bootstrap.py:15` | P16 | MEDIUM | `_subscribe_semaphore` — 정의만 있고 사용처 전무, 구독 루프 제거 후 잔존 | 해결 |
+| B08-02 | B-08 | `engine_bootstrap.py:18-45` | P16 | MEDIUM | `BOOTSTRAP_STAGES` + `_broadcast_bootstrap_stage` — 프로덕션 호출처 전무, 테스트에서만 호출 | 해결 |
+| B08-03 | B-08 | `engine_bootstrap.py:51-112` | P16 | MEDIUM | `_deferred_sector_summary` — 프로덕션 호출처 전무, 테스트에서만 호출 | 해결 |
+| B08-04 | B-08 | `engine_bootstrap.py:115-129` | P16 | MEDIUM | `_notify_close_data_ui` — 프로덕션 호출처 전무, 테스트에서만 호출 | 해결 |
+| B08-05 | B-08 | `engine_bootstrap.py:48` | P23 | LOW | 삭제된 함수 `_bootstrap_sector_stocks_async` 참조 주석 잔존 | 해결 |
+| B08-06 | B-08 | `engine_bootstrap.py:200-203` | P16/P24 | MEDIUM | `_run_sector_reg_pipeline` 래퍼 — 프로덕션에서 engine_ws 직접 import, 래퍼는 테스트만 사용 | 해결 |
+| B08-07 | B-08 | `engine_snapshot.py:214-242` | P16 | MEDIUM | `get_position_pnl_pct_for_code` — 프로덕션 호출처 전무, 테스트에서만 호출 | 해결 |
+| B08-08 | B-08 | `engine_cache.py:14` | P16 | MEDIUM | `_subscribe_semaphore` — 정의만 있고 사용처 전무 | 해결 |
+| B08-09 | B-08 | `engine_cache.py:87-93` | P16/P20 | MEDIUM | `_cached_avg is not None` — 항상 dict이므로 None 불가, else 분기 dead code | 해결 |
+| B08-10 | B-08 | `engine_cache.py:111` | P23 | LOW | 삭제된 함수 `_bootstrap_sector_stocks_async` 참조 주석 잔존 | 해결 |
+| B08-11 | B-08 | `engine_config.py:26-29` | P20/P24 | MEDIUM | `get_settings_snapshot` if/else 양 분기가 동일 코드 (`dict(state.integrated_system_settings_cache)`) | 해결 |
+| B08-12 | B-08 | `engine_config.py:141-149` | P16 | MEDIUM | `get_connection_level_keys` — 정의만 있고 호출처 전무 | 해결 |
+| B08-13 | B-08 | `daily_time_scheduler.py:867` | P4 | HIGH | `cm.get_connector("kiwoom")` 하드코딩 → broker 확인 + `state.connector_manager or state.active_connector` | 해결 |
+| B08-14 | B-08 | `market_close_pipeline.py:126` | P4 | HIGH | `cm.get_connector("kiwoom")` 하드코딩 → `state.connector_manager or state.active_connector` | 해결 |
 
 ---
 
@@ -1076,8 +1090,8 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B-04 | P0 | 정산 엔진 및 거래 이력 | ☑ 완료 (4건 수정) |
 | B-05 | P0 | 자동매매 유효성 및 코어 큐 | ☑ 완료 (6건 수정, 378 tests passed) |
 | B-06 | P1 | 엔진 루프 및 생명주기 | ☑ 완료 (4건 수정, 271 tests passed) |
-| B-07 | P1 | WS 시세 처리 | ☐ 미시작 |
-| B-08 | P1 | 엔진 부트스트랩/캐시/스냅샷 | ☐ 미시작 |
+| B-07 | P1 | WS 시세 처리 | ☑ 완료 (7건 수정, 140 tests passed) |
+| B-08 | P1 | 엔진 부트스트랩/캐시/스냅샷 | ☑ 완료 (14건 수정, 261 tests passed) |
 | B-09 | P1 | 엔진 섹터 확인/전략/레이더 | ☐ 미시작 |
 | B-10 | P1 | 엔진 계좌/서비스 | ☐ 미시작 |
 | B-11 | P1 | 파이프라인 (Compute/Gateway) | ☐ 미시작 |
@@ -1106,11 +1120,11 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | 항목 | 카운트 |
 |------|--------|
 | 전체 세션 | 30 |
-| 완료 | 7 |
+| 완료 | 9 |
 | 진행 중 | 0 |
-| 미시작 | 23 |
-| 발견된 문제 | 28 |
-| 해결된 문제 | 28 |
+| 미시작 | 21 |
+| 발견된 문제 | 42 |
+| 해결된 문제 | 42 |
 | 보류된 문제 | 0 |
 
 ---
