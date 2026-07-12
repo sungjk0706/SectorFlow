@@ -1,8 +1,5 @@
 # HANDOVER — SectorFlow
 
-## 추후 논의 필요 (미결정)
-- **ARCHITECTURE.md "JIF bypass" 기록 정리 완료**: 3단계 문서 정리에서 "JIF bypass: 0B 틱 우회로 직통 전송 (지연 감소)" 기록을 `price_pass_through_queue` 제거 사실로 대체. grep 결과 잔존 0건 확인 완료
-
 ## 직전 완료 작업
 - **2026-07-13: 재매수 차단 토글 버그 수정 (3건)**
   - **버그 1: 토글 OFF가 차단 로직에 반영되지 않음**
@@ -22,85 +19,35 @@
   - 전체 검증: 단위 테스트 210개 통과, 백엔드 런타임 기동 확인, 사용자 UI 확인 완료 (토글 ON/OFF 즉시 반영, 새로고침 후 유지)
 
 ## 현재 상태
-- **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
-- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 주문가능금액 배지, 매수일자 컬럼, stale state 수정, 색상 체계 통일 (COLOR 상수화), 검색 입력란 공통 컴포넌트, 가상 스크롤 플래시 억제, 일반설정 비거래일 배지 정렬 수정, 업종순위 요약 라벨 가독성 개선, 매수후보 배지 폰트 13px 확대, 매도설정 보유종목 요약 배지 추가, 업종순위 페이지 불투명도 3단계 통일, maxTargets fallback SSOT 통일(DEFAULT_SECTOR_MAX_TARGETS 상수), 수익현황/수익상세 기간 전환 버튼(당일/5일/당월/전체 4버튼 + 파랑 테두리), 일별수익률 안내 라벨 삭제, Enter 키 포커스 이동 개선(28개 입력창), Vite 프록시 크래시 방어, Vite http proxy error 로그 근본 해결(백엔드 ready 대기 후 브라우저 오픈), 수익현황 업종 섹션 연동(도넛 범례 클릭→스크롤+하이라이트), 전체보기/전체접기 토글 버튼, 차트 onMove undefined 크래시 근본 해결(render early return 시 barRects 동기화), 수익현황 기간 선택 상태 재기동 후 유지(localStorage quickLabel 영속화 + 초기 활성 버튼 복원), 수익상세 페이지 뷰 상태 재기동 후 유지(localStorage selectedView+drilldownActive+dateRange 영속화, 7곳 핸들러 persistViewState), 스핀버튼 초기 비활성 버그 근본 해결(store subscriber settings 변경 시에만 notify + createSpinButtons mousedown 포커스 유지 + registerEditing 데드 코드 제거), 증권사 변경 확인 팝업 추가(showConfirmDialog 재사용 + 변경 전/후 증권사명 + 4개 작업 요약 + 취소 시 라디오 복원 + BROKER_NAMES SSOT 상수), brokerSaving disabled 잔존 버그 수정(then 콜백 실행 순서 교정), 테이블 컬럼 너비 하이브리드 방식 도입(7개 컬럼 팩토리 minWidth/maxWidth 경계 설정 + 전체 종목 샘플링), 테이블 컬럼 너비 로직 전면 개편(createColumnWidthManager 공통 팩토리 + 1회 고정 플래그 제거 + 증분 추적), SectorFlow.command Chrome 캐시 잔존 해결(시작 시 localhost:5173 탭 닫고 새로 열기) — 모두 코드 확인 완료, `npm run build` 통과
-- **Git**: 증권사 변경 시 토큰 폐기 로그 불일치 수정 (P15/P21) — 커밋 완료 (10dbafe), 런타임 검증 완료
-- **AGENTS.md**: 4섹션 우선순위 구조 재구성 완료 (섹션1 개요 > 섹션2 아키텍처 원칙 > 섹션3 수행 규칙 > 섹션4 작업 프로세스). 신규 규칙 7건 추가 — 사용자 프로필 "코딩 1도 모름", 아키텍처 원칙 참조, 사용자 의사소통 규칙(기술 명령어 안내 금지·UI 기준 검증·API 직접 호출 안내 금지), 보고서 5항목 명시화, HANDOVER.md read-before-write 의무, 작업량 기반 사전 분할, 단계 완료 시 컨텍스트 점검. 기존 규칙 15개 누락 없음 대조 완료. 아키텍처 원칙 22→24개 업데이트 (P23 일관된 통일성, P24 단순성 추가)
-- **테스트 커버리지**: Stage 1~9 + P6(telegram_bot.py) + 0% 모듈 7개 + 10%대 모듈 9개 + 30~50%대 Phase 1,2,3 전부 완료 — 백엔드 2784 passed, 0 failed
-  - 0% 모듈 7개 해결: engine_ws_fill_followup(100%), engine_radar_ops(100%), notification_worker(85.19%), lock_manager(68.09%), engine_cache, broker_router, engine_loop
-  - 10%대 모듈 9개 해결: engine_settings(100%), stock_tables(100%), stock_filter(99.44%), stock_classification_data(95.14%), settings_store(93.13%), sector_data_provider(92.94%), engine_bootstrap(49.62%), engine_snapshot(39.22%), engine_sector_confirm(33.45%)
-  - 30~50%대 Phase 1,2,3 전부 완료 (실측): engine_snapshot(39.22%→97.39%, 12 테스트), engine_sector_confirm(33.45%→100%, 51 테스트), engine_bootstrap(49.62%→99.25%, 12 테스트)
-  - 커버리지 실행 명령어: `python -m pytest backend/tests --cov=backend --cov-report=term-missing --cov-report=html --timeout=15 --timeout-method=signal`
-- **settlement.py await 누락**: 수정 완료 (`settlement.py:16`)
-- **루트 폴더 정리**: 완료된 1회성 계획서 3건 + 로컬 산출물 4건 제거 (2026-07-12). `docs/architecture_audit_plan.md`, `docs/ghost_position_investigation.md`, `docs/api_specs/` 유지
-- **업종 점수 계산 방식 전환**: 구현 완료. min-max 정규화 → 순위 기반 점수 교체. `rank_to_score` 함수 추가 (공식: `(N - rank + 1) / N × 100`), 동점 순위 처리 + 4단계 타이브레이크. 트리밍 유지. 단위 테스트 112개 통과, 런타임 기동 확인. 사용자 UI 확인 대기
-- **재매수 차단 토글 버그 수정**: 구현 완료 (2026-07-13). 3건 수정 — (1) buy_filter.py에 rebuy_block_on 파라미터 추가로 토글 OFF 시 보유/금일매수 종목 매수 허용 + buy_order_executor.py dead code 제거 (P16), (2) engine_service.py _SECTOR_UI_KEYS에 rebuy_block_on 추가로 토글 변경 시 즉시 재계산, (3) engine_settings.py build_engine_settings_dict에 rebuy_block_on/rebuy_block_period 추가 (근본 원인 — 설정 캐시에서 키 누락으로 항상 기본값 True 반환). 단위 테스트 210개 통과, 런타임 기동 확인, 사용자 UI 확인 완료. 커밋 완료
+- **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책 — 모두 완료 (git history 참조)
+- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 색상 체계 통일, 수익현황/수익상세 기간 전환, 테이블 컬럼 너비 동적 조정 등 — 모두 완료, `npm run build` 통과 (git history 참조)
+- **테스트**: 백엔드 2784 passed, 0 failed. 커버리지 Phase 1~3 완료
+- **업종 분류**: 69→55 재분류 + 업종명 정비 + 순위 기반 점수 전환 — 완료, 사용자 UI 확인 대기
+- **규칙/문서 정리**: AGENTS.md 4섹션 구조, 아키텍처 원칙 24개, .devin/workflows 제거 + skills 통합 — 완료 (2026-07-13)
 
 ## 진행 중 작업
 
-### 아키텍처 전수 점검 — 7/30 세션 완료
-
-| 세션 ID | 우선순위 | 내용 | 상태 |
-|---------|----------|------|------|
-| B-01 | P0 | 주문 실행 경로 | ☑ 완료 (8건 수정, 50 tests passed) |
-| B-02 | P0 | 리스크 관리 및 서킷 브레이커 | ☑ 완료 (3건 수정, 2774 tests passed) |
-| B-03 | P0 | Dry Run (테스트 모드 가상 주문) | ☑ 완료 (3건 수정, 2768 tests passed) |
-| B-04 | P0 | 정산 엔진 및 거래 이력 | ☑ 완료 (4건 수정, 2763 tests passed) |
-| B-05 | P0 | 자동매매 유효성 및 코어 큐 | ☑ 완료 (6건 수정, 378 tests passed) |
-| F-01 | P0 | 통신 계층 및 상태 관리 | ☑ 완료 (10건 수정, V-02 해결, 112 tests passed) |
-| B-06 | P1 | 엔진 루프 및 생명주기 | ☑ 완료 (4건 수정, 271 tests passed) |
-| B-07~B-11 | P1 | WS/부트스트랩/섹터/계좌/파이프라인 | ☐ 미시작 |
-| B-12~B-19 | P2 | DB/설정/Broker/증권사/Domain/스케줄러 | ☐ 미시작 |
-| B-20~B-23 | P3 | 알림/유틸/Web API/테스트 | ☐ 미시작 |
-| F-02~F-07 | P1~P3 | 진입점/핵심페이지/설정/수익/컴포넌트/타입 | ☐ 미시작 |
+### 아키텍처 전수 점검 — 7/30 세션 완료, 23개 미시작
+- **완료**: B-01~B-06, F-01 (P0 전체 + B-06)
+- **미시작**: B-07~B-11 (P1), B-12~B-19 (P2), B-20~B-23 (P3), F-02~F-07 (P1~P3)
+- 다음 세션: B-07 (WS 시세 처리) — `docs/architecture_audit_plan.md` 체크리스트 사용
 
 ## 다음 단계
 
-### 1순위: 재매수 차단 토글 수정 — 완료
+### 1순위: 업종 분류 재분류 — 사용자 UI 확인 대기
+- 69→55 업종 재분류 + 9개 업종명 정비 + 순위 기반 점수 전환 완료
+- 사용자 확인 필요: 업종순위 화면(55개 업종 표시, 변경된 업종명, 점수 바 균등 간격), 매수 후보 화면(25개 이동 종목 새 업종 표시)
 
-**구현 + 검증 완료** (2026-07-13). 3건 수정 — (1) buy_filter.py rebuy_block_on 파라미터 추가, (2) engine_service.py _SECTOR_UI_KEYS에 rebuy_block_on 추가, (3) engine_settings.py build_engine_settings_dict에 rebuy_block_on/rebuy_block_period 추가 (근본 원인). 단위 테스트 210개 통과, 런타임 기동 확인, 사용자 UI 확인 완료, 커밋 완료.
+### 2순위: 아키텍처 전수 점검 P1 세션 (B-07)
+- B-07: WS 시세 처리 (`engine_ws_reg.py`, `engine_ws_dispatch.py`, `engine_ws.py`, `engine_ws_parsing.py`, `engine_ws_fill_followup.py`)
+- `docs/architecture_audit_plan.md` 체크리스트 사용, 발견 문제를 섹션 7에 등록
+- 이후 B-08~B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
 
-### 2순위: 업종 분류 재분류 + 업종 점수 계산 전환 — 사용자 UI 확인 대기
-
-**구현 완료** (2026-07-13). 69→55 업종 재분류 + 9개 업종명 정비 + min-max 정규화 → 순위 기반 점수 교체.
-
-**사용자 확인 필요 항목**:
-- 업종순위 화면: 55개 업종이 표시되는지, 변경된 업종명이 반영되었는지
-- 업종순위 화면: 점수 바 분포가 균등한 간격으로 표시되는지 (순위 기반이므로 균등 간격)
-- 매수 후보 화면: 25개 이동 종목이 새 업종에 표시되는지
-
-### 3순위: 아키텍처 전수 점검 P1 세션 (B-07)
-
-백엔드 로그 한글화 4차 작업 전부 완료됨. P0 세션(6/6) + B-06 완료 — 총 7/30 세션. `docs/architecture_audit_plan.md`의 추천 세션 순서에 따라 P1 진행:
-
-1. **B-07**: WS 시세 처리 (파싱/디스패치/등록) (`engine_ws_reg.py`, `engine_ws_dispatch.py`, `engine_ws.py`, `engine_ws_parsing.py`, `engine_ws_fill_followup.py`)
-
-**보류 (B04-05)**: B-04에서 발견된 기동 시 정산 상태-거래 이력 대조(reconciliation) 부재 (P22) — B06-02 해결로 `_reconciliation_on_startup` 미구현 함수 제거됨. 실전투자 모드는 증권사 서버가 SSOT이므로 별도 대조 불필요 (사용자 결정). B04-05 상태를 "해결"로 변경.
-
-각 세션 진행 시:
-- `docs/architecture_audit_plan.md`의 해당 세션 체크리스트 사용
-- 발견된 문제를 계획서 섹션 7 "발견된 문제 기록"에 등록
-- 세션 완료 시 계획서 섹션 8 "점검 진행 현황 요약" 갱신
-- 세션 종료 시 본 `HANDOVER.md` 진행 상태 갱신
-
-### 3순위: P1 세션 (B-08~B-11, F-02)
-B-07 완료 후 진행.
-
-### 4순위: P2 세션 (B-12~B-19, F-03~F-04)
-P1 세션 완료 후 진행.
-
-### 5순위: P3 세션 (B-20~B-23, F-05~F-07)
-P2 세션 완료 후 진행.
-
-### 6순위: 유령 포지션 005930 근본 원인 조사
-- 과거 005930 유령 포지션의 정확한 발생 시점 및 경로 추적
-- WAL 체크포인트 타이밍, `_save_positions_worker` 실행 시점 등 DB 레벨 분석
+### 3순위: 유령 포지션 005930 근본 원인 조사
 - `docs/ghost_position_investigation.md` [A]~[I] 미조사 항목 참조
 
-### 보류: P23 테이블 컬럼 너비 일관성 개선 (subagent 조사 완료, 사용자 승인 대기)
-- **stock-detail.ts 자체 `makeAmountColumn`** (`stock-detail.ts:55-62`): 너비 설정 없음 (P23 위반). 공통 `makeAmountColumn`(minWidth 60, maxWidth 95)과 이름이 같지만 구현이 다름. minWidth/maxWidth 추가 또는 함수명 변경 권장
-- **비표준 컬럼 너비 설정 없음**: buy-target.ts(호가잔량비, 프순매, 5일고가, 가산점, 제한, 원인 6개), sell-position.ts(현재가, 매수가, 매수금액, 평가손익, 수익률, 수량 6개), profit-shared.ts(매수가, 매도가, 수량, 매수금액, 매도금액, 실현손익, 수익률, 수수료, 세금 9개) — 각 컬럼에 minWidth/maxWidth 직접 지정 권장
-- **순번/종목코드 컬럼 팩토리 사용 통일**: 5개 페이지에서 직접 생성(설정은 동일) → `makeSeqColumn`, `makeCodeColumn` 팩토리 사용으로 코드 중복 감소 권장
+### 보류: P23 테이블 컬럼 너비 일관성 개선 (사용자 승인 대기)
+- stock-detail.ts 자체 `makeAmountColumn` 너비 설정 없음, 비표준 컬럼 너비 설정 없음 (buy-target.ts 6개, sell-position.ts 6개, profit-shared.ts 9개), 순번/종목코드 컬럼 팩토리 사용 통일
 
 ## 미해결 문제
 - **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결**
