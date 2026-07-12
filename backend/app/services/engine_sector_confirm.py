@@ -23,11 +23,6 @@ _UNREG_BATCH_PENDING: bool = False  # 일괄 처리 call_soon 예약 플래그
 _UNREG_DELAY_SEC: float = 30.0  # 해지 지연 시간 (30초)
 
 
-def is_engine_running_internal() -> bool:
-    from backend.app.services.engine_state import state
-    return state.running
-
-
 def request_sector_recompute(code: str | None = None) -> None:
     """종목을 dirty로 마킹. 실제 재계산은 배치 루프에서 단일 호출.
 
@@ -399,10 +394,6 @@ def _flush_unreg_batch() -> None:
 
 
 # ── 호환용 ────────────────────────────────────────────────────────────────
-
-def flush_pending_recompute() -> None:
-    """하위 호환성: recompute_sector_for_code(None)과 동일."""
-    request_sector_recompute(None)
 
 def cancel_sector_recompute() -> None:
     clear_dirty_sectors()

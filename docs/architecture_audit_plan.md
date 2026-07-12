@@ -353,23 +353,23 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 
 | 파일 | 줄 수 | 규모 | 점검 완료 |
 |------|-------|------|----------|
-| `services/engine_sector_confirm.py` | 426 | 대형 | ☐ |
-| `services/engine_radar.py` | 208 | 대형 | ☐ |
-| `services/engine_strategy_core.py` | 78 | 중형 | ☐ |
-| `services/engine_symbol_utils.py` | 157 | 중형 | ☐ |
-| `services/engine_radar_ops.py` | 70 | 중형 | ☐ |
+| `services/engine_sector_confirm.py` | 426→413 | 대형 | ☑ |
+| `services/engine_radar.py` | 208→79 | 대형 | ☑ |
+| `services/engine_strategy_core.py` | 78→42 | 중형 | ☑ |
+| `services/engine_symbol_utils.py` | 157→143 | 중형 | ☑ |
+| `services/engine_radar_ops.py` | 70→제거 | 중형 | ☑ |
 
 **원칙 체크리스트**:
-- [ ] P5: 직접 호출 체인
-- [ ] P7: 증분 재계산에서 블로킹 없음
-- [ ] P10: 업종 점수 캐시 SSOT
-- [ ] P11: 이벤트 기반 (dirty 섹터 감지)
-- [ ] P13: 설정 O(1) 조회
-- [ ] P16: dead code 없음
-- [ ] P18: 테스트모드에서 동일한 계산 로직
-- [ ] P20: 폴백/silent except 없음
-- [ ] P23: 용어 사전 준수, 에러/비동기/네이밍/상수 패턴 파일 간 일관
-- [ ] P24: 더 단순한 대체 가능성, 불필요한 추상화, 함수/파일 길이·복잡도 기준
+- [x] P5: 직접 호출 체인
+- [x] P7: 증분 재계산에서 블로킹 없음
+- [x] P10: 업종 점수 캐시 SSOT
+- [x] P11: 이벤트 기반 (dirty 섹터 감지)
+- [x] P13: 설정 O(1) 조회
+- [x] P16: dead code 없음
+- [x] P18: 테스트모드에서 동일한 계산 로직
+- [x] P20: 폴백/silent except 없음
+- [x] P23: 용어 사전 준수, 에러/비동기/네이밍/상수 패턴 파일 간 일관
+- [x] P24: 더 단순한 대체 가능성, 불필요한 추상화, 함수/파일 길이·복잡도 기준
 
 ---
 
@@ -1075,6 +1075,27 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B08-12 | B-08 | `engine_config.py:141-149` | P16 | MEDIUM | `get_connection_level_keys` — 정의만 있고 호출처 전무 | 해결 |
 | B08-13 | B-08 | `daily_time_scheduler.py:867` | P4 | HIGH | `cm.get_connector("kiwoom")` 하드코딩 → broker 확인 + `state.connector_manager or state.active_connector` | 해결 |
 | B08-14 | B-08 | `market_close_pipeline.py:126` | P4 | HIGH | `cm.get_connector("kiwoom")` 하드코딩 → `state.connector_manager or state.active_connector` | 해결 |
+| B09-01 | B-09 | `engine_radar.py:19-29` | P16 | MEDIUM | `get_subscribed_stocks` — 프로덕션 호출처 전무 | 해결 |
+| B09-02 | B-09 | `engine_radar.py:32-34` | P16 | MEDIUM | `get_sector_layout` — 프로덕션 호출처 전무 | 해결 |
+| B09-03 | B-09 | `engine_radar.py:37-40` | P16 | MEDIUM | `get_avg_trade_amount_5d_map` — 프로덕션 호출처 전무 | 해결 |
+| B09-04 | B-09 | `engine_radar.py:77-94` | P16 | MEDIUM | `merge_live_price_to_radar_row` — 프로덕션 호출처 전무 | 해결 |
+| B09-05 | B-09 | `engine_radar.py:135-155` | P16 | MEDIUM | `_mark_radar_exited` — 프로덕션 호출처 전무 | 해결 |
+| B09-06 | B-09 | `engine_radar.py:158-160` | P16 | LOW | `clear_exited_from_radar` — 항상 0 반환, 호출처 전무 | 해결 |
+| B09-07 | B-09 | `engine_radar.py:163-165` | P16 | LOW | `_drop_rest_radar_quote_for_nk` — pass만 존재, 호출처 전무 | 해결 |
+| B09-08 | B-09 | `engine_radar.py:168-174` | P16 | LOW | `_clear_radar_rest_bootstrap_for_stk_cd` — pass만 존재, _mark_radar_exited에서만 호출 (동시 제거) | 해결 |
+| B09-09 | B-09 | `engine_radar.py:177-185` | P16 | MEDIUM | `_clear_radar_and_ready_memory` — 프로덕션 호출처 전무 | 해결 |
+| B09-10 | B-09 | `engine_radar.py:188-208` | P16 | MEDIUM | `_tracked_ui_stock_codes` — 프로덕션 호출처 전무 | 해결 |
+| B09-11 | B-09 | `engine_strategy_core.py:15-21` | P16 | LOW | `_is_placeholder_stock_name` — resolve_radar_display_name에서만 호출 (동시 제거) | 해결 |
+| B09-12 | B-09 | `engine_strategy_core.py:24-44` | P16 | MEDIUM | `resolve_radar_display_name` — 프로덕션 호출처 전무 | 해결 |
+| B09-13 | B-09 | `engine_symbol_utils.py:65-70` | P16 | LOW | `_to_al_stk_cd` — 테스트에서만 호출 | 해결 |
+| B09-14 | B-09 | `engine_symbol_utils.py:73-75` | P16 | LOW | `is_nxt_code` — 테스트에서만 호출 | 해결 |
+| B09-15 | B-09 | `engine_radar_ops.py:9-49` | P16 | MEDIUM | `overlay_radar_row_with_live_price` — merge_live_price_to_radar_row에서만 호출 (동시 제거) | 해결 |
+| B09-16 | B-09 | `engine_radar_ops.py:52-70` | P16 | MEDIUM | `apply_real01_volume_amount_to_radar_rows` — 테스트에서만 호출 | 해결 |
+| B09-17 | B-09 | `engine_sector_confirm.py:26-28` | P16 | LOW | `is_engine_running_internal` — 테스트에서만 호출 | 해결 |
+| B09-18 | B-09 | `engine_sector_confirm.py:403-405` | P16 | LOW | `flush_pending_recompute` — 호환용 래퍼, 테스트에서만 호출 | 해결 |
+| B09-19 | B-09 | `engine_radar.py:70-71` | P20 | MEDIUM | `get_orderbook_cache` silent except → 로깅 추가 (데이터 정합성 가시화) | 해결 |
+| B09-20 | B-09 | `engine_radar.py:45,51,57,63` | P23 | LOW | 함수 내 중복 `from ... import state` 4건 (상단 import 사용) | 해결 |
+| B09-21 | B-09 | `engine_strategy_core.py:64` | P23 | LOW | 삭제된 `register_pending_stock` 참조 주석 잔존 | 해결 |
 
 ---
 
@@ -1092,7 +1113,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B-06 | P1 | 엔진 루프 및 생명주기 | ☑ 완료 (4건 수정, 271 tests passed) |
 | B-07 | P1 | WS 시세 처리 | ☑ 완료 (7건 수정, 140 tests passed) |
 | B-08 | P1 | 엔진 부트스트랩/캐시/스냅샷 | ☑ 완료 (14건 수정, 261 tests passed) |
-| B-09 | P1 | 엔진 섹터 확인/전략/레이더 | ☐ 미시작 |
+| B-09 | P1 | 엔진 섹터 확인/전략/레이더 | ☑ 완료 (24건 수정, 2714 tests passed) |
 | B-10 | P1 | 엔진 계좌/서비스 | ☐ 미시작 |
 | B-11 | P1 | 파이프라인 (Compute/Gateway) | ☐ 미시작 |
 | B-12 | P2 | DB 계층 | ☐ 미시작 |

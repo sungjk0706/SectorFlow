@@ -62,19 +62,6 @@ def _base_stk_cd(stk_cd: str) -> str:
     return s
 
 
-def _to_al_stk_cd(stk_cd: str) -> str:
-    """6자리 종목코드 -> KRX+NXT 통합 구독용 _AL 접미사 코드 반환. 예: '005930' -> '005930_AL'"""
-    base = _base_stk_cd(stk_cd)
-    if not base:
-        return stk_cd
-    return f"{base}_AL"
-
-
-def is_nxt_code(stk_cd: str) -> bool:
-    """종목코드가 NXT 전용(_NX 접미사)인지 판단."""
-    return str(stk_cd or "").strip().upper().endswith("_NX")
-
-
 def _resolve_bucket_key(raw_cd: str, bucket: dict) -> str | None:
     """
     REAL 수신 종목코드와 레이더/작전 dict 키가 표기만 다를 때(6자리·접두 등) 실제 키 반환.

@@ -9,8 +9,6 @@ from unittest.mock import patch, MagicMock
 
 from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
-    _to_al_stk_cd,
-    is_nxt_code,
     _resolve_bucket_key,
     _dict_get_fid,
     _fid9001_to_stk_cd,
@@ -51,47 +49,6 @@ class TestBaseStkCd:
 
     def test_truncated_to_6(self):
         assert _base_stk_cd("00005930") == "005930"
-
-
-# ── _to_al_stk_cd ───────────────────────────────────────────────────────────────
-
-class TestToAlStkCd:
-    def test_plain(self):
-        assert _to_al_stk_cd("005930") == "005930_AL"
-
-    def test_already_al(self):
-        assert _to_al_stk_cd("005930_AL") == "005930_AL"
-
-    def test_nx_converted(self):
-        assert _to_al_stk_cd("005930_NX") == "005930_AL"
-
-    def test_empty(self):
-        assert _to_al_stk_cd("") == ""
-
-    def test_none(self):
-        assert _to_al_stk_cd(None) is None
-
-
-# ── is_nxt_code ──────────────────────────────────────────────────────────────────
-
-class TestIsNxtCode:
-    def test_nx_suffix(self):
-        assert is_nxt_code("005930_NX") is True
-
-    def test_nx_lowercase(self):
-        assert is_nxt_code("005930_nx") is True
-
-    def test_al_suffix(self):
-        assert is_nxt_code("005930_AL") is False
-
-    def test_plain(self):
-        assert is_nxt_code("005930") is False
-
-    def test_empty(self):
-        assert is_nxt_code("") is False
-
-    def test_none(self):
-        assert is_nxt_code(None) is False
 
 
 # ── _resolve_bucket_key ──────────────────────────────────────────────────────────

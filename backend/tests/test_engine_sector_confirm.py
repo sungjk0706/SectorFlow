@@ -5,13 +5,11 @@ import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 
 from backend.app.services.engine_sector_confirm import (
-    is_engine_running_internal,
     request_sector_recompute,
     has_dirty_sectors,
     clear_dirty_sectors,
     extract_guard_pass_codes,
     are_buy_targets_changed,
-    flush_pending_recompute,
     cancel_sector_recompute,
     cancel_recompute_timer,
     _dirty_codes,
@@ -39,20 +37,6 @@ def _mock_db():
     mock_conn.execute = AsyncMock(side_effect=Exception("DB not available"))
     with patch("backend.app.db.database.get_db_connection", new=AsyncMock(return_value=mock_conn)):
         yield
-
-
-# ── is_engine_running_internal ──────────────────────────────────────
-
-class TestIsEngineRunningInternal:
-    def test_running_true(self):
-        with patch("backend.app.services.engine_state.state") as mock_state:
-            mock_state.running = True
-            assert is_engine_running_internal() is True
-
-    def test_running_false(self):
-        with patch("backend.app.services.engine_state.state") as mock_state:
-            mock_state.running = False
-            assert is_engine_running_internal() is False
 
 
 # ── request_sector_recompute / has_dirty / clear ────────────────────
@@ -180,10 +164,6 @@ class TestAreBuyTargetsChanged:
 # ── 호환용 함수 ─────────────────────────────────────────────────────
 
 class TestCompatFunctions:
-    def test_flush_pending_recompute(self):
-        flush_pending_recompute()
-        assert "__ALL__" in _dirty_codes
-
     def test_cancel_sector_recompute(self):
         request_sector_recompute("005930")
         cancel_sector_recompute()

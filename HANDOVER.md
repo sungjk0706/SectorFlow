@@ -1,27 +1,28 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: B-08 아키텍처 전수 점검 — 엔진 부트스트랩/캐시/스냅샷/구성/유틸 (P16 dead code 8건 + P20/P24 2건 + P23 2건 + P4 2건 = 14건 수정)**
-  - **engine_bootstrap.py (206→78줄)**: `_subscribe_semaphore`, `BOOTSTRAP_STAGES`+`_broadcast_bootstrap_stage`, `_deferred_sector_summary`, `_notify_close_data_ui`, `_run_sector_reg_pipeline` 래퍼 제거 + `import asyncio` 제거 + 주석 정리
-  - **engine_snapshot.py (242→208줄)**: `get_position_pnl_pct_for_code` dead code 제거
-  - **engine_cache.py**: `_subscribe_semaphore` 제거, `_cached_avg is not None` dead branch 정리, 주석 정리
-  - **engine_config.py**: `get_settings_snapshot` if/else 중복 단순화, `get_connection_level_keys` dead code 제거
-  - **P4 위반 2건 (B-07 후속)**: `daily_time_scheduler.py:867`, `market_close_pipeline.py:126` — `cm.get_connector("kiwoom")` → `state.connector_manager or state.active_connector` + broker 확인
-  - 검증: pytest 261 passed (6개 파일 통합), 런타임 기동 195ms 정상, grep 잔존 참조 0건
+- **2026-07-13: B-09 아키텍처 전수 점검 — 엔진 섹터 확인/전략/레이더/심볼 (P16 dead code 18건 + P20 1건 + P23 5건 = 24건 수정)**
+  - **engine_radar.py (208→79줄)**: `get_subscribed_stocks`, `get_sector_layout`, `get_avg_trade_amount_5d_map`, `merge_live_price_to_radar_row`, `_mark_radar_exited`, `clear_exited_from_radar`, `_drop_rest_radar_quote_for_nk`, `_clear_radar_rest_bootstrap_for_stk_cd`, `_clear_radar_and_ready_memory`, `_tracked_ui_stock_codes` dead code 10건 제거 + 중복 import 4건 제거 + `get_orderbook_cache` silent except에 로깅 추가 (P20) + `typing.Any`/`engine_radar_ops` import 제거
+  - **engine_strategy_core.py (78→42줄)**: `_is_placeholder_stock_name`, `resolve_radar_display_name` dead code 2건 제거 + `register_pending_stock` 참조 주석 제거 + `data_manager` import 제거
+  - **engine_symbol_utils.py (157→143줄)**: `_to_al_stk_cd`, `is_nxt_code` dead code 2건 제거
+  - **engine_sector_confirm.py (426→413줄)**: `is_engine_running_internal`, `flush_pending_recompute` dead code 2건 제거
+  - **engine_radar_ops.py 파일 제거**: `overlay_radar_row_with_live_price`, `apply_real01_volume_amount_to_radar_rows` dead code 2건 → 파일 + `test_engine_radar_ops.py` 제거
+  - **테스트 정리**: `test_engine_symbol_utils.py` (TestToAlStkCd, TestIsNxtCode 제거), `test_engine_sector_confirm.py` (TestIsEngineRunningInternal, test_flush_pending_recompute 제거)
+  - 검증: pytest 2714 passed, 런타임 기동 179ms 정상, grep 잔존 참조 0건
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책 — 모두 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 색상 체계 통일, 수익현황/수익상세 기간 전환, 테이블 컬럼 너비 동적 조정 등 — 모두 완료, `npm run build` 통과 (git history 참조)
-- **테스트**: 백엔드 2784 passed, 0 failed. 커버리지 Phase 1~3 완료
+- **테스트**: 백엔드 2714 passed, 0 failed. 커버리지 Phase 1~3 완료
 - **업종 분류**: 69→55 재분류 + 업종명 정비 + 순위 기반 점수 전환 — 완료, 사용자 UI 확인 대기
 - **규칙/문서 정리**: AGENTS.md 4섹션 구조, 아키텍처 원칙 24개, .devin/workflows 제거 + skills 통합 — 완료 (2026-07-13)
 
 ## 진행 중 작업
 
-### 아키텍처 전수 점검 — B-08 완료, 21개 미시작
-- **완료**: B-01~B-08, F-01 (P0 전체 + B-06~B-08)
-- **미시작**: B-09~B-11 (P1), B-12~B-19 (P2), B-20~B-23 (P3), F-02~F-07 (P1~P3)
-- 다음 세션: B-09 (엔진 섹터 확인/전략/레이더/심볼) — `docs/architecture_audit_plan.md` 체크리스트 사용
+### 아키텍처 전수 점검 — B-09 완료, 20개 미시작
+- **완료**: B-01~B-09, F-01 (P0 전체 + B-06~B-09)
+- **미시작**: B-10~B-11 (P1), B-12~B-19 (P2), B-20~B-23 (P3), F-02~F-07 (P1~P3)
+- 다음 세션: B-10 (엔진 계좌/서비스) — `docs/architecture_audit_plan.md` 체크리스트 사용
 
 ## 다음 단계
 
@@ -29,10 +30,10 @@
 - 69→55 업종 재분류 + 9개 업종명 정비 + 순위 기반 점수 전환 완료
 - 사용자 확인 필요: 업종순위 화면(55개 업종 표시, 변경된 업종명, 점수 바 균등 간격), 매수 후보 화면(25개 이동 종목 새 업종 표시)
 
-### 2순위: 아키텍처 전수 점검 P1 세션 (B-09)
-- B-09: 엔진 섹터 확인/전략/레이더/심볼 (`engine_sector_confirm.py`, `engine_radar.py`, `engine_strategy_core.py`, `engine_symbol_utils.py`, `engine_radar_ops.py`)
+### 2순위: 아키텍처 전수 점검 P1 세션 (B-10)
+- B-10: 엔진 계좌/서비스 (`engine_account.py`, `engine_account_rest.py`, `engine_account_notify.py`, `engine_service.py`)
 - `docs/architecture_audit_plan.md` 체크리스트 사용, 발견 문제를 섹션 7에 등록
-- 이후 B-10~B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
+- 이후 B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
 
 ### 보류: P23 테이블 컬럼 너비 일관성 개선 (사용자 승인 대기)
 - stock-detail.ts 자체 `makeAmountColumn` 너비 설정 없음, 비표준 컬럼 너비 설정 없음 (buy-target.ts 6개, sell-position.ts 6개, profit-shared.ts 9개), 순번/종목코드 컬럼 팩토리 사용 통일
