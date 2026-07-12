@@ -11,6 +11,7 @@ from backend.app.core.stock_filter import (
     evaluate_stock_filter,
     is_excluded,
     is_excluded_with_ka10100,
+    to_display_reason,
 )
 
 
@@ -298,19 +299,13 @@ class TestEvaluateStockFilter:
         # "state=관리종목"이 한 번만 나와야 함
         assert result.reasons.count("state=관리종목") == 1
 
-    def test_non_equity_keyword_in_name(self):
+    def test_non_equity_keyword_in_name_not_excluded(self):
+        """non_equity_keywords 제거 — marketCode=0(코스피)이면 종목명에 ETF가 있어도 제외 안 함.
+        실제 ETF는 marketCode=8로 잡힘 (P10 SSOT 단일 판정)."""
         item = self._normal_item()
         item["hname"] = "KODEX ETF"
         result = evaluate_stock_filter(item, "005930")
-        assert result.excluded is True
-        assert any("비주식분류=etf" in r for r in result.reasons)
-
-    def test_non_equity_keyword_in_market_name(self):
-        item = self._normal_item()
-        item["marketName"] = "ETF"
-        result = evaluate_stock_filter(item, "005930")
-        assert result.excluded is True
-        assert any("비주식분류=etf" in r for r in result.reasons)
+        assert result.excluded is False
 
     def test_code_field_set(self):
         result = evaluate_stock_filter(self._normal_item(), "005930")
@@ -419,3 +414,54 @@ class TestIsExcludedWithKa10100:
         ka = {"companyClassName": ""}
         excluded, reason = is_excluded_with_ka10100(self._normal_item(), "005930", ka)
         assert excluded is False
+
+
+# ── to_display_reason ───────────────────────────────────────────────
+
+class TestToDisplayReason:
+    def test_empty(self):
+        assert to_display_reason("") == ""
+
+    def test_market_code_etf(self):
+        assert to_display_reason("marketCode=8(ETF)") == "ETF"
+
+    def test_market_code_etn(self):
+        assert to_display_reason("marketCode=60(ETN)") == "ETN"
+
+    def test_market_code_elw(self):
+        assert to_display_reason("marketCode=3(ELW)") == "ELW"
+
+    def test_market_code_reits(self):
+        assert to_display_reason("marketCode=6(리츠)") == "리츠"
+
+    def test_market_code_unknown_prefix(self):
+        """매핑 누락 marketCode — raw 그대로 반환 (P21 투명성)."""
+        assert to_display_reason("marketCode=99(알수없음)") == "marketCode=99(알수없음)"
+
+    def test_state_keyword(self):
+        assert to_display_reason("state=관리종목") == "관리종목"
+
+    def test_state_margin_100(self):
+        assert to_display_reason("state=증거금100%") == "증거금100%종목"
+
+    def test_state_trading_halt(self):
+        assert to_display_reason("state=거래정지") == "거래정지"
+
+    def test_order_warning(self):
+        assert to_display_reason("정리매매") == "정리매매"
+
+    def test_preferred_stock_by_name(self):
+        assert to_display_reason("우선주(종목명)-우B") == "우선주"
+
+    def test_preferred_stock_english(self):
+        assert to_display_reason("우선주(영문표기)-PREFERRED") == "우선주"
+
+    def test_audit(self):
+        assert to_display_reason("감리=감리지정") == "감리지정"
+
+    def test_spac(self):
+        assert to_display_reason("스팩") == "스팩"
+
+    def test_unmapped_returns_raw(self):
+        """매핑에 없는 사유는 raw 그대로 반환 (P21 투명성 — 최소 정보 전달)."""
+        assert to_display_reason("상장주식수비정상=0") == "상장주식수비정상=0"

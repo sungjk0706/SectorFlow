@@ -1,21 +1,21 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: B-09 아키텍처 전수 점검 — 엔진 섹터 확인/전략/레이더/심볼 (P16 dead code 18건 + P20 1건 + P23 5건 = 24건 수정)**
-  - **engine_radar.py (208→79줄)**: `get_subscribed_stocks`, `get_sector_layout`, `get_avg_trade_amount_5d_map`, `merge_live_price_to_radar_row`, `_mark_radar_exited`, `clear_exited_from_radar`, `_drop_rest_radar_quote_for_nk`, `_clear_radar_rest_bootstrap_for_stk_cd`, `_clear_radar_and_ready_memory`, `_tracked_ui_stock_codes` dead code 10건 제거 + 중복 import 4건 제거 + `get_orderbook_cache` silent except에 로깅 추가 (P20) + `typing.Any`/`engine_radar_ops` import 제거
-  - **engine_strategy_core.py (78→42줄)**: `_is_placeholder_stock_name`, `resolve_radar_display_name` dead code 2건 제거 + `register_pending_stock` 참조 주석 제거 + `data_manager` import 제거
-  - **engine_symbol_utils.py (157→143줄)**: `_to_al_stk_cd`, `is_nxt_code` dead code 2건 제거
-  - **engine_sector_confirm.py (426→413줄)**: `is_engine_running_internal`, `flush_pending_recompute` dead code 2건 제거
-  - **engine_radar_ops.py 파일 제거**: `overlay_radar_row_with_live_price`, `apply_real01_volume_amount_to_radar_rows` dead code 2건 → 파일 + `test_engine_radar_ops.py` 제거
-  - **테스트 정리**: `test_engine_symbol_utils.py` (TestToAlStkCd, TestIsNxtCode 제거), `test_engine_sector_confirm.py` (TestIsEngineRunningInternal, test_flush_pending_recompute 제거)
-  - 검증: pytest 2714 passed, 런타임 기동 179ms 정상, grep 잔존 참조 0건
+- **2026-07-13: 수동 1일봉 다운로드 로그 정리 — 7줄 중복 → 2줄 통합 + 내부 코드 일반 용어 변환 + non_equity_keywords 중복 제거**
+  - **stock_filter.py**: `_REASON_DISPLAY_MAP` 매핑 테이블 + `to_display_reason()` 함수 추가 (UI/로그 공용, P10 SSOT). `non_equity_keywords` 키워드 체크 제거 — `marketCode` 체크로 SSOT 단일 판정 (사유 카운트 부풀림 원인 제거)
+  - **market_close_pipeline.py**: `_save_filter_diagnostics_snapshot` dead code 제거 (P16). `_step2_filter_eligible`에서 `all_reason_counts`/`state_flag_counts`/`diagnostic_counts` 중복 집계 3종 제거, B 방식(종목 단위/primary_reason)만 유일 정답으로 채택. 7줄 로그 → 2줄 요약 통합 (요약 1줄 + 주요 제외 사유 1줄). 중복/충돌 종목은 이상 시에만 WARNING
+  - **sector_stock_cache.py**: `assemble_filter_summary` 일반 용어화 — "raw 행"/"중복 종목" 개발자 용어 제거, "매매 가능 N종목" 표시
+  - **테스트**: `test_stock_filter.py` — `to_display_reason` 16개 테스트 추가, `non_equity_keywords` 테스트 수정. `test_market_close_pipeline.py` — `_save_filter_diagnostics_snapshot` 참조 3곳 제거
+  - 검증: pytest 242 passed (test_stock_filter + test_market_close_pipeline + test_web_*), 런타임 기동 182ms 정상, 잔존 프로세스 없음
+  - 변경 전: `marketCode=8(ETF)`, `state=증거금100%` → 변경 후: `ETF`, `증거금100%종목`
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책 — 모두 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 색상 체계 통일, 수익현황/수익상세 기간 전환, 테이블 컬럼 너비 동적 조정 등 — 모두 완료, `npm run build` 통과 (git history 참조)
-- **테스트**: 백엔드 2714 passed, 0 failed. 커버리지 Phase 1~3 완료
+- **테스트**: 백엔드 pytest 통과. 커버리지 Phase 1~3 완료
 - **업종 분류**: 69→55 재분류 + 업종명 정비 + 순위 기반 점수 전환 — 완료, 사용자 UI 확인 대기
 - **규칙/문서 정리**: AGENTS.md 4섹션 구조, 아키텍처 원칙 24개, .devin/workflows 제거 + skills 통합 — 완료 (2026-07-13)
+- **수동 1일봉 다운로드 로그 정리**: 7줄 중복 → 2줄 통합 + 내부 코드 일반 용어 변환 + non_equity_keywords 중복 제거 — 완료 (2026-07-13)
 
 ## 진행 중 작업
 

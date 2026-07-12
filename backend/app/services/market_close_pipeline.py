@@ -490,30 +490,6 @@ async def _run_post_confirmed_pipeline(eligible_codes: set[str] | None = None) -
 # 확정 데이터 디스크 캐시 저장
 # ---------------------------------------------------------------------------
 
-async def _save_filter_diagnostics_snapshot(
-    run_id: str,
-    evaluations: list[tuple[object, StockFilterEvaluation]],
-    final_excluded_codes: set[str],
-    duplicate_codes: set[str],
-) -> None:
-    try:
-        excluded_count = sum(1 for _, ev in evaluations if getattr(ev, "excluded", False))
-        total_count = len(evaluations)
-        logger.info(
-            "[업종] 실행ID=%s, 전체=%d, 제외=%d, 중복=%d, 최종 제외=%d",
-            run_id, total_count, excluded_count, len(duplicate_codes), len(final_excluded_codes),
-        )
-        if final_excluded_codes:
-            reason_counts: dict[str, int] = {}
-            for _, ev in evaluations:
-                if getattr(ev, "excluded", False):
-                    reason = getattr(ev, "primary_reason", "부적격")
-                    reason_counts[reason] = reason_counts.get(reason, 0) + 1
-            logger.info("[업종] 제외 사유별 집계: %s", reason_counts)
-    except Exception as exc:
-        logger.warning("[업종] 로그 출력 실패: %s", exc, exc_info=True)
-
-
 async def _save_confirmed_cache(
     skip_codes: set[str] | None = None,
     name_map: dict[str, str] | None = None,
@@ -670,23 +646,12 @@ async def _step2_filter_eligible(
     _broadcast_confirmed_progress(0, 0, message="2단계: 매매부적격종목 필터링 중...", step=2)
     try:
         confirmed_codes: set[str] = set()
-        filter_reasons: dict[str, int] = {}
-        all_reason_counts: dict[str, int] = {}
-        state_flag_counts: dict[str, int] = {}
-        diagnostic_counts: dict[str, int] = {}
+        filter_reasons: dict[str, int] = {}  # 종목 단위/primary_reason 기반 (유일 정답)
         code_groups: dict[str, list[tuple[object, StockFilterEvaluation]]] = {}
-        row_evaluations: list[tuple[object, StockFilterEvaluation]] = []
-        from backend.app.core.stock_filter import evaluate_stock_filter
+        from backend.app.core.stock_filter import evaluate_stock_filter, to_display_reason
         for r in records:
             evaluation = evaluate_stock_filter(r.raw_item, r.code)
-            row_evaluations.append((r, evaluation))
             code_groups.setdefault(r.code, []).append((r, evaluation))
-            for reason in evaluation.reasons:
-                all_reason_counts[reason] = all_reason_counts.get(reason, 0) + 1
-            for state_flag in evaluation.state_flags:
-                state_flag_counts[state_flag] = state_flag_counts.get(state_flag, 0) + 1
-            for diagnostic_flag in evaluation.diagnostic_flags:
-                diagnostic_counts[diagnostic_flag] = diagnostic_counts.get(diagnostic_flag, 0) + 1
 
         duplicate_codes = {code for code, group in code_groups.items() if len(group) > 1}
         final_excluded_codes: set[str] = set()
@@ -699,27 +664,28 @@ async def _step2_filter_eligible(
             if excluded_evaluations:
                 final_excluded_codes.add(code)
                 primary_reason = excluded_evaluations[0].primary_reason or "부적격"
-                filter_reasons[primary_reason] = filter_reasons.get(primary_reason, 0) + 1
+                display_reason = to_display_reason(primary_reason)
+                filter_reasons[display_reason] = filter_reasons.get(display_reason, 0) + 1
             else:
                 confirmed_codes.add(code)
-
-        run_id = f"{get_current_trading_day_str()}-{int(time.time())}"
-        await _save_filter_diagnostics_snapshot(run_id, row_evaluations, final_excluded_codes, duplicate_codes)
 
         raw_rows = len(records)
         unique_codes = len(code_groups)
         excluded_count = len(final_excluded_codes)
         pct = (excluded_count / unique_codes * 100) if unique_codes else 0
+        pct_int = int(round(pct))
+
+        # ── 2줄 요약 로그 (7줄 중복 제거) ──
         logger.info(
-            "%s 2단계 완료 — 원본 행=%d, 고유 종목=%d, 중복 종목=%d, 충돌 종목=%d, 통과=%d, 제외=%d, 제외 사유: %s",
-            tag, raw_rows, unique_codes, len(duplicate_codes), len(conflict_codes), len(confirmed_codes), excluded_count, filter_reasons,
+            "%s 2단계 완료 — 전체 %d종목 → 적격 %d종목, 제외 %d종목 (%d%%)",
+            tag, unique_codes, len(confirmed_codes), excluded_count, pct_int,
         )
-        if all_reason_counts:
-            logger.info("%s 전체 부적격 사유 집계: %s", tag, dict(sorted(all_reason_counts.items(), key=lambda x: x[1], reverse=True)[:20]))
-        if state_flag_counts:
-            logger.info("%s 상태 플래그 집계: %s", tag, dict(sorted(state_flag_counts.items(), key=lambda x: x[1], reverse=True)[:20]))
-        if diagnostic_counts:
-            logger.info("%s 진단 플래그 집계: %s", tag, dict(sorted(diagnostic_counts.items(), key=lambda x: x[1], reverse=True)[:20]))
+        if filter_reasons:
+            top_reasons = sorted(filter_reasons.items(), key=lambda x: x[1], reverse=True)[:5]
+            reason_strs = [f"{k} {v}개" for k, v in top_reasons]
+            logger.info("%s 주요 제외 사유: %s", tag, ", ".join(reason_strs))
+
+        # 이상 케이스는 WARNING으로만 출력 (정상 시 silent)
         if duplicate_codes:
             duplicate_preview = sorted(duplicate_codes)[:20]
             logger.warning("%s 전종목 통합 조회(ka10099) 동일 종목코드 중복 감지 — %d종목, 예시=%s", tag, len(duplicate_codes), duplicate_preview)
@@ -728,18 +694,15 @@ async def _step2_filter_eligible(
             logger.warning("%s 전종목 통합 조회(ka10099) 동일 종목코드 판정 충돌 — %d종목, 예시=%s", tag, len(conflict_codes), conflict_preview)
         _broadcast_confirmed_progress(0, 0, message=f"✅ 2단계 완료: 총 {unique_codes}종목 중 {len(confirmed_codes)}종목 적격 판정", step=2)
 
-        summary_str = f"전체 {unique_codes}종목(raw {raw_rows}행) → 적격 {len(confirmed_codes)}종목 (제외 {excluded_count}종목, {pct:.1f}%, 중복 {len(duplicate_codes)}종목)"
+        # UI 표시용 요약 문자열 — 일반 용어 사용 (P21 사용자 투명성)
+        summary_str = f"전체 {unique_codes}종목 → 매매 가능 {len(confirmed_codes)}종목 (제외 {excluded_count}종목, {pct_int}%)"
         if filter_reasons:
             top_reasons = sorted(filter_reasons.items(), key=lambda x: x[1], reverse=True)[:5]
-            logger.info("%s 주요 부적격 사유 (상위 5건): %s", tag, dict(top_reasons))
-            reason_strs = []
-            for k, v in top_reasons:
-                k_clean = k.split("(")[-1].replace(")", "") if "(" in k else k.split("=")[-1]
-                reason_strs.append(f"{k_clean} {v}개")
-            summary_str += " | 주요 부적격: " + ", ".join(reason_strs)
+            reason_strs = [f"{k} {v}개" for k, v in top_reasons]
+            summary_str += " | 주요 제외: " + ", ".join(reason_strs)
         import json as _json
         _meta_top = [
-            {"k": k.split("(")[-1].replace(")", "") if "(" in k else k.split("=")[-1], "v": v}
+            {"k": k, "v": v}
             for k, v in sorted(filter_reasons.items(), key=lambda x: x[1], reverse=True)[:5]
         ] if filter_reasons else []
         filter_summary_meta = _json.dumps({

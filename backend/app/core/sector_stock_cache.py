@@ -48,18 +48,20 @@ async def load_filter_summary_meta_cache() -> str:
 
 def assemble_filter_summary(meta_json: str, stock_count: int) -> str:
     """meta JSON + master_stocks_table 종목수 → filter_summary 표시 문자열 조립
-    SSOT 원칙: 종목수는 master_stocks_table에서만 파생, meta에는 종목수 없음"""
+    SSOT 원칙: 종목수는 master_stocks_table에서만 파생, meta에는 종목수 없음
+    표시명은 to_display_reason()을 거친 일반 용어 (P21 사용자 투명성)"""
     if not meta_json:
-        return f"적격 {stock_count}종목" if stock_count > 0 else ""
+        return f"매매 가능 {stock_count}종목" if stock_count > 0 else ""
     try:
         meta = json.loads(meta_json)
+        pct_int = int(round(meta.get("pct", 0)))
         result = (
-            f"전체 {meta['unique_codes']}종목(raw {meta['raw_rows']}행) → 적격 {stock_count}종목 "
-            f"(제외 {meta['excluded_count']}종목, {meta['pct']:.1f}%, 중복 {meta['duplicate_count']}종목)"
+            f"전체 {meta['unique_codes']}종목 → 매매 가능 {stock_count}종목 "
+            f"(제외 {meta['excluded_count']}종목, {pct_int}%)"
         )
         if meta.get("top_reasons"):
             reason_strs = [f"{r['k']} {r['v']}개" for r in meta["top_reasons"]]
-            result += " | 주요 부적격: " + ", ".join(reason_strs)
+            result += " | 주요 제외: " + ", ".join(reason_strs)
         return result
     except Exception as e:
         logger.error("[시스템] 메타데이터 조립 실패: %s", e)
