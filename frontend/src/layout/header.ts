@@ -16,18 +16,27 @@ const CHIP_STYLE =
 
 const PHASE_STYLE: Record<string, { bg: string; color: string }> = {
   /* 장중(거래 가능) — 초록 */
-  '장전 동시호가': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
+  '장전 시간외': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
+  '시가 동시호가': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
   '정규장': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
+  '종가 동시호가': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
   '장후 시간외': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
   '시간외 단일가': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
   '프리마켓': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
   '메인마켓': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
   '애프터마켓': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
-  /* 비장중(휴장/대기/종료) — 회색 */
+  '애프터마켓 지속': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
+  /* 비장중(휴장/대기/거래없음/종료) — 회색 */
   '휴장일': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
   '장개시전': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
+  '장전 대기': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
+  '동시호가 접수': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
+  '체결 정산': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
+  '장 종료': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
+  '정규장 준비': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
+  '조기 마감': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
+  '단일가 매매': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
   '장마감': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
-  '휴식': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
 }
 
 const STATUS_THEME = {
@@ -59,11 +68,26 @@ function applyStatusChip(
   el.textContent = label
 }
 
-function applyMarketPhaseChip(el: HTMLSpanElement, market: string, phase: string): void {
+function applyMarketPhaseChip(
+  el: HTMLSpanElement,
+  market: string,
+  phase: string,
+  event?: string | null,
+): void {
+  // JIF 실시간 이벤트 라벨이 있으면 우선 표시(강조색), 없으면 시계 페이즈명 표시
+  if (event) {
+    el.style.background = `${COLOR.warningBg}`
+    el.style.color = `${COLOR.warning}`
+    el.style.border = `1px solid ${COLOR.warning}40`
+    el.style.fontWeight = '700'
+    el.textContent = `${market} ${event}`
+    return
+  }
   const s = PHASE_STYLE[phase] || PHASE_STYLE['장마감']
   el.style.background = s.bg
   el.style.color = s.color
   el.style.border = `1px solid ${s.color}20`
+  el.style.fontWeight = '600'
   el.textContent = `${market} ${phase}`
 }
 
@@ -224,9 +248,9 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
       circuitBreakerChip.style.display = 'none'
     }
 
-    // 장 상태
-    applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx)
-    applyMarketPhaseChip(nxtChip, 'NXT', marketPhase.nxt)
+    // 장 상태 — JIF 실시간 이벤트 라벨이 있으면 우선 표시, 없으면 시계 페이즈명
+    applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx, marketPhase.krx_event)
+    applyMarketPhaseChip(nxtChip, 'NXT', marketPhase.nxt, marketPhase.nxt_event)
 
     // 업종지수 실시간 — 칩은 항상 표시, 데이터 없으면 placeholder
     const kospi = indexData?.['001']

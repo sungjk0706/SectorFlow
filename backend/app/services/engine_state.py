@@ -67,7 +67,10 @@ class EngineState:
         self.latest_filter_summary: str = ""
         self.latest_filter_summary_meta: str = ""
         self.master_stocks_cache: dict[str, dict] = {}
-        self.market_phase: dict = {"krx": "장개시전", "nxt": "장개시전"}
+        self.market_phase: dict = {
+            "krx": "장개시전", "nxt": "장개시전",
+            "krx_event": None, "nxt_event": None,
+        }
         self.krx_circuit_breaker_active: bool = False
 
         # ── 매수 주문 간격 (전체 매수 간격 타이머) ───────────────────────────

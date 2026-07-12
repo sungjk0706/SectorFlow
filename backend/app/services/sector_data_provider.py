@@ -17,8 +17,8 @@ async def get_sector_summary_inputs() -> dict:
     """업종 요약 계산 입력 데이터 반환.
 
     단일 소스 진리: master_stocks_cache를 직접 참조하므로 스냅샷 제거.
-    NXT-only 구간(08:00~09:00, 15:30~20:00) 거래일에는 NXT-enabled 종목만 포함.
-    정규장(09:00~15:30)에는 전체 종목 포함.
+    NXT-only 구간(08:00~08:50, 15:40~20:00) 거래일에는 NXT-enabled 종목만 포함.
+    정규장(09:00~15:20)에는 전체 종목 포함.
     """
     from backend.app.services.engine_symbol_utils import is_nxt_enabled as _is_nxt
     from backend.app.services.daily_time_scheduler import is_nxt_only_window

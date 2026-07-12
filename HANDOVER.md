@@ -28,6 +28,38 @@
 
 ## 진행 중 작업
 
+### 헤더 KRX/NXT 인디케이터 — JIF 실시간 장운영정보 표시 개선 (3단계 전부 완료)
+
+> **목표**: 프론트엔드 상단 헤더 KRX/NXT 인디케이터가 (1) 정확한 시계 기반 장운영 스케줄과 (2) LS증권 JIF 실시간 이벤트("정규장개시 5분전" 등)를 모두 표시. 시계=지속 기준선, JIF=휘발성 실시간 덮어씌움(DB 저장 X).
+
+| 단계 | 내용 | 상태 |
+|------|------|------|
+| Stage 1 | 스케줄 정정 — daily_time_scheduler 상수/calc_timebased_market_phase/윈도우 함수/타이머 + frontend PHASE_STYLE/sector-stock sets + tests | ☑ 완료 (2026-07-12) |
+| Stage 2 | _handle_jif 확장 — jstatus 시간대이벤트 라벨맵 + jangubun 6 처리 + market_phase krx_event/nxt_event 덮어씌움 + engine_state 초기값 + tests | ☑ 완료 (2026-07-12) |
+| Stage 3 | 헤더 우선 표시 — uiStore 타입 + header.ts applyMarketPhaseChip 이벤트 우선 렌더링 + snapshot/get_market_phase 필드 검증 + npm build | ☑ 완료 (2026-07-12) |
+
+**Stage 1 완료 상세**:
+- `daily_time_scheduler.py`: KRX 상수 6→11개 세분화(08:00 거래없음/08:30 장전시간외/08:40 동시호가접수/08:50 시가동시호가/15:20 종가동시호가/15:30 체결정산/15:40 장후시간외/16:00 시간외단일가/18:00 장종료/20:00 장마감). NXT 상수 6→9개 세분화(08:50 정규장준비/15:20 조기마감/15:30 단일가매매/15:40 애프터마켓/18:00 애프터마켓지속). calc_timebased_market_phase 분기 재작성. is_nxt_premarket_window 08:00~09:00→08:00~08:50. is_nxt_aftermarket_window 15:30~20:00→15:40~20:00. is_krx_after_hours는 거래 게이트용으로 15:30~20:00 유지(docstring 명확화). KRX_INACTIVE_PHASES/NXT_ACTIVE_PHASES 신규 페이즈명 동기화. market-phase 타이머 7→11개 전환 시각 확장.
+- `frontend/src/layout/header.ts`: PHASE_STYLE 11→21 페이즈 색상 매핑.
+- `frontend/src/pages/sector-stock.ts`: KRX_INACTIVE_PHASES/NXT_ACTIVE_PHASES Set 신규명 동기화.
+- `backend/tests/test_daily_time_scheduler.py`: 기존 6 페이즈 테스트 assertion 갱신 + 신규 5 세분 페이즈 테스트 + premarket/aftermarket 경계 축소 테스트 2개 추가.
+- `sector_data_provider.py`: docstring 시각 오기(15:30→15:20, 08:00~09:00→08:00~08:50) 정정.
+
+**Stage 2 완료 상세**:
+- `engine_ws_dispatch.py`: `_JSTATUS_KRX_EVENT` 맵(11,22,23,24,25,31,42,43,44 — 카운트다운/개시/마감, 경계 21/41/51/52/54 제외) + `_JSTATUS_NXT_EVENT` 맵(A2-A5,B2-B5,C2-C4,D2-D4,22-25,42-44 — 프리마켓/메인/에프터마켓 카운트다운, 경계 21/41/55/56/57/58 제외) 추가. `_handle_jif()` 재작성 — jangubun 1/2: CB/사이드카(기존 로직 유지) + krx_event; jangubun 6: nxt_event. 경계 이벤트는 시계 전환이 인계하도록 저장 제외. 주석 갱신.
+- `engine_state.py`: market_phase 초기값에 krx_event/nxt_event None 추가.
+- `daily_time_scheduler.py`: `_broadcast_market_phase()` 시계 전환 시 krx_event/nxt_event 초기화(경계 이벤트 이후 시계 페이즈명으로 인계). `get_market_phase()` krx_event/nxt_event 필드 포함.
+- `tests/test_engine_ws_dispatch.py`: JIF 이벤트 처리 테스트 8개 추가(KRX/NXT 이벤트 저장, 동일 이벤트 재전송 제외, 경계 이벤트 미저장, NXT CB 미처리). `tests/test_daily_time_scheduler.py`: _broadcast_market_phase 이벤트 초기화 테스트 + get_market_phase 이벤트 포함 테스트 추가.
+
+**Stage 3 완료 상세**:
+- `frontend/src/stores/uiStore.ts`: marketPhase 타입에 krx_event/nxt_event 추가. 초기값·applyMarketPhase·applyIndexRefresh·snapshot 캐스트 갱신.
+- `frontend/src/layout/header.ts`: `applyMarketPhaseChip` event 파라미터 추가 — JIF 이벤트 라벨 있으면 주황 강조색으로 "KRX 정규장 장개시 5분 전" 형태 우선 표시, 없으면 시계 페이즈명. 호출부 krx_event/nxt_event 전달.
+- `engine_snapshot.py`: get_market_phase() 사용으로 이벤트 필드 자동 포함(추가 수정 불필요).
+
+**전체 검증**: 백엔드 전체 2789 passed 0 failed (신규 16개 + 기존 2773), npm run build 성공, 런타임 기동 "장 상태 초기화: KRX=휴장일, NXT=휴장일" 정상 (오류 0, 잔존 프로세스 0).
+
+**실시간 검증 필요 (거래일 장 시간)**: 거래일에 브라우저 헤더에서 JIF 이벤트 도착 시 "KRX 정규장 장개시 5분 전" 등 주황 칩으로 전환되는지 사용자 UI 확인 필요. 현재 일요일이므로 JIF 이벤트 수신 없어 시계 페이즈명만 표시됨.
+
 ### 백엔드 로그 한글화 4차 작업 (내부 코드 식별자 노출) — 2/2단계 전부 완료
 
 > **이력**: 1차 작업(2026-07-09) 약 30개 파일 1차 한글화. 2차 작업(사용자 노출 로그) 5단계 전부 완료. 3차 작업(내부 디버그 로그) 8단계 전부 완료. 4차 작업(내부 코드 식별자 노출) 2단계 전부 완료.
