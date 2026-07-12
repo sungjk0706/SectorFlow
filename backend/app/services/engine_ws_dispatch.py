@@ -188,41 +188,6 @@ async def _handle_real_00(item: dict, vals: dict) -> None:
     # [근본해결] 부분 체결(unex > 0) 포함 모든 체결 발생 시 즉시 계좌 상태 반영
     await engine_account._on_fill_after_ws()
 
-    # ── 현재가 직통 전송 (price_pass_through_queue) ──
-    # 체결도 현재가 변동을 동반하므로 동일하게 직통 전송
-    if raw_cd:
-        try:
-            from backend.app.services.core_queues import get_price_pass_through_queue
-            from backend.app.core.sector_mapping import get_merged_sector
-
-            last_px_00 = _parse_fid10_price(vals)
-            if last_px_00 > 0:
-                nk_px_00 = _base_stk_cd(raw_cd)
-                diff_00 = _ws_fid_int(vals, "11", 0) if _ws_fid_key_present(vals, "11") else 0
-                rate_00 = parse_change_rate_to_percent(_ws_fid_raw(vals, "12")) if _ws_fid_key_present(vals, "12") else 0.0
-                sector_00 = get_merged_sector(raw_cd)
-
-                pq = get_price_pass_through_queue()
-                price_tick_data = {
-                    "code": nk_px_00,
-                    "raw_code": raw_cd,
-                    "price": last_px_00,
-                    "change": diff_00,
-                    "change_rate": rate_00,
-                    "sector": sector_00,
-                    "timestamp": int(time.time() * 1000),
-                }
-                try:
-                    pq.put_nowait(price_tick_data)
-                except asyncio.QueueFull:
-                    try:
-                        pq.get_nowait()
-                        pq.put_nowait(price_tick_data)
-                    except asyncio.QueueEmpty:
-                        pq.put_nowait(price_tick_data)
-        except Exception as e:
-            logger.warning("[연결] 현재가 직통 전송 실패 (종목코드=%s): %s", raw_cd, e)
-
     _check_realtime_latency(_ts)
 
 

@@ -31,16 +31,6 @@ export function stocksToMap(stocks: SectorStock[]): Record<string, SectorStock> 
   return m
 }
 
-export interface SectorPriceTick {
-  code: string
-  raw_code: string
-  price: number
-  change: number
-  change_rate: number
-  sector: string
-  timestamp: number
-}
-
 export interface HotState {
   /* ── 실시간 데이터 필드 ── */
   account: AccountSnapshot | null
@@ -55,8 +45,6 @@ export interface HotState {
   /** 수익현황 페이지 날짜 범위 (SSOT — 페이지 전환 후에도 유지) */
   profitDateFrom: string
   profitDateTo: string
-  /** 현재가 직통 전송 캐시 — 업종순위 페이지 즉시 반영용 */
-  sectorPrices: Record<string, SectorPriceTick>
 }
 
 const initialState: HotState = {
@@ -71,7 +59,6 @@ const initialState: HotState = {
   dailySummary: [],
   profitDateFrom: '',
   profitDateTo: '',
-  sectorPrices: {},
 }
 
 export const hotStore = createStore<HotState>(initialState)
@@ -581,68 +568,6 @@ export function applyDailySummaryUpdate(data: { daily_summary: Record<string, un
 /* ── buy-history-update: 매수 내역 갱신 ── */
 export function applyBuyHistoryUpdate(data: { buy_history: Record<string, unknown>[] }): void {
   hotStore.setState({ buyHistory: data.buy_history ?? [] })
-}
-
-/* ── sector-price-tick: 현재가 직통 전송 — 업종순위 페이지 즉시 반영 ── */
-export function applySectorPriceTick(data: SectorPriceTick): void {
-  const code = normalizeStockCode(data.code)
-
-  // 1. sectorPrices 캐시 갱신
-  const sectorPrices = hotStore.getState().sectorPrices
-  const prevTick = sectorPrices[code]
-  if (prevTick && prevTick.timestamp >= data.timestamp) return // 과거 틱 무시
-
-  let changed = false;
-
-  // 2. sectorStocks In-place Mutation (O(1) DOM 갱신용)
-  const sectorStocks = hotStore.getState().sectorStocks
-  const stock = sectorStocks[code]
-  if (stock) {
-    if (stock.cur_price !== data.price ||
-        stock.change !== data.change ||
-        stock.change_rate !== data.change_rate) {
-      stock.cur_price = data.price
-      stock.change = data.change
-      stock.change_rate = data.change_rate
-      changed = true
-    }
-  }
-
-  // 3. positions In-place Mutation — cur_price만 갱신 (PnL/eval은 백엔드 account-update가 SSOT)
-  const positions = hotStore.getState().positions
-  const posIdx = getPositionIndex(code)
-  if (posIdx !== undefined) {
-    const pos = positions[posIdx]
-    if (pos.cur_price !== data.price) {
-      pos.cur_price = data.price
-      changed = true
-    }
-  }
-
-  // 4. buyTargets In-place Mutation
-  const btIdx = getBuyTargetIndex(code)
-  if (btIdx !== undefined) {
-    const bt = hotStore.getState().buyTargets
-    const t = bt[btIdx]
-    if (t.cur_price !== data.price ||
-        t.change !== data.change ||
-        t.change_rate !== data.change_rate) {
-      t.cur_price = data.price
-      t.change = data.change
-      t.change_rate = data.change_rate
-      changed = true
-    }
-  }
-
-  // 모든 in-place mutation 완료 후 이벤트 발생 (applyRealData와 동일한 패턴)
-  if (changed) {
-    window.dispatchEvent(new CustomEvent('real-data-tick', { detail: code }))
-  }
-
-  // 5. sectorPrices 캐시 저장 (setState로 참조 갱신)
-  hotStore.setState((state) => ({
-    sectorPrices: { ...state.sectorPrices, [code]: data },
-  }))
 }
 
 /* ── initial-snapshot (hotStore): 실시간 데이터 초기화 ── */

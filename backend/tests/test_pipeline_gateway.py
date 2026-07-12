@@ -9,32 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import pytest
-from unittest.mock import AsyncMock, DEFAULT, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
-
-def _close_coro(*args, **kwargs):
-    """mock에 전달된 코루틴을 close하여 RuntimeWarning 방지."""
-    for arg in args:
-        if asyncio.iscoroutine(arg):
-            arg.close()
-    return DEFAULT
-
-
-def _close_coro_then_raise(exc):
-    """코루틴을 close한 후 exc를 발생시키는 side_effect 팩토리."""
-    def _fn(*args, **kwargs):
-        for arg in args:
-            if asyncio.iscoroutine(arg):
-                arg.close()
-        raise exc
-    return _fn
 
 from backend.app.pipelines.pipeline_gateway import (
     _process_broadcast,
     _send_to_websocket,
-    _send_price_tick_to_frontend,
     _broadcast_loop,
-    _price_pass_through_loop,
     _gateway_loop_impl,
     start_gateway_loop,
     stop_gateway_loop,
@@ -109,50 +90,6 @@ class TestSendToWebSocket:
             await _send_to_websocket("test", {})
 
 
-# ── _send_price_tick_to_frontend ──────────────────────────────────────────────
-
-class TestSendPriceTickToFrontend:
-    @pytest.mark.asyncio
-    async def test_broadcast_sector_price_tick(self):
-        mock_ws = MagicMock()
-        mock_ws.broadcast = AsyncMock()
-        data = {
-            "code": "005930",
-            "raw_code": "005930",
-            "price": 60000,
-            "change": 1000,
-            "change_rate": 1.5,
-            "sector": "반도체",
-            "timestamp": 1234567890,
-        }
-        with patch("backend.app.web.ws_manager.ws_manager", mock_ws):
-            await _send_price_tick_to_frontend(data)
-            mock_ws.broadcast.assert_awaited_once()
-            event_type, payload = mock_ws.broadcast.call_args.args
-            assert event_type == "sector-price-tick"
-            assert payload["code"] == "005930"
-            assert payload["price"] == 60000
-            assert payload["_v"] == 1
-
-    @pytest.mark.asyncio
-    async def test_missing_fields_default_to_none(self):
-        mock_ws = MagicMock()
-        mock_ws.broadcast = AsyncMock()
-        with patch("backend.app.web.ws_manager.ws_manager", mock_ws):
-            await _send_price_tick_to_frontend({})
-            _, payload = mock_ws.broadcast.call_args.args
-            assert payload["code"] is None
-            assert payload["price"] is None
-            assert payload["_v"] == 1
-
-    @pytest.mark.asyncio
-    async def test_exception_does_not_raise(self):
-        mock_ws = MagicMock()
-        mock_ws.broadcast = AsyncMock(side_effect=Exception("ws error"))
-        with patch("backend.app.web.ws_manager.ws_manager", mock_ws):
-            await _send_price_tick_to_frontend({"code": "005930"})
-
-
 # ── _broadcast_loop ───────────────────────────────────────────────────────────
 
 class TestBroadcastLoop:
@@ -212,64 +149,18 @@ class TestBroadcastLoop:
             gw_mod._gateway_running = old_running
 
 
-# ── _price_pass_through_loop ──────────────────────────────────────────────────
-
-class TestPricePassThroughLoop:
-    @pytest.mark.asyncio
-    async def test_processes_one_item_then_stops(self):
-        import backend.app.pipelines.pipeline_gateway as gw_mod
-        old_running = gw_mod._gateway_running
-
-        mock_queue = AsyncMock()
-        mock_queue.task_done = MagicMock()
-        call_count = [0]
-        async def _get():
-            call_count[0] += 1
-            if call_count[0] > 1:
-                gw_mod._gateway_running = False
-                raise asyncio.CancelledError()
-            return {"code": "005930", "price": 60000}
-        mock_queue.get = _get
-
-        gw_mod._gateway_running = True
-        try:
-            with patch("backend.app.services.core_queues.get_price_pass_through_queue", return_value=mock_queue), \
-                 patch("backend.app.pipelines.pipeline_gateway._send_price_tick_to_frontend", new_callable=AsyncMock) as mock_send:
-                try:
-                    await _price_pass_through_loop()
-                except asyncio.CancelledError:
-                    pass
-            mock_send.assert_awaited_once_with({"code": "005930", "price": 60000})
-        finally:
-            gw_mod._gateway_running = old_running
-
-    @pytest.mark.asyncio
-    async def test_queue_access_failure_returns(self):
-        # The lazy import 'from backend.app.services.core_queue import ...' will fail
-        # because the module is 'core_queues' (plural), causing the function to return early.
-        await _price_pass_through_loop()
-
-
 # ── _gateway_loop_impl ────────────────────────────────────────────────────────
 
 class TestGatewayLoopImpl:
     @pytest.mark.asyncio
-    async def test_gathers_two_loops(self):
-        with patch("backend.app.pipelines.pipeline_gateway._broadcast_loop", new_callable=AsyncMock) as mock_b, \
-             patch("backend.app.pipelines.pipeline_gateway._price_pass_through_loop", new_callable=AsyncMock) as mock_p, \
-             patch("backend.app.pipelines.pipeline_gateway.asyncio.gather", new_callable=AsyncMock, side_effect=_close_coro) as mock_gather:
-            mock_gather.return_value = None
+    async def test_runs_broadcast_loop(self):
+        with patch("backend.app.pipelines.pipeline_gateway._broadcast_loop", new_callable=AsyncMock) as mock_b:
             await _gateway_loop_impl()
-            mock_gather.assert_awaited_once()
-            # Check that both coroutines were passed
-            args = mock_gather.call_args.args
-            assert len(args) == 2
+            mock_b.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_finally_sets_running_false(self):
-        with patch("backend.app.pipelines.pipeline_gateway._broadcast_loop", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_gateway._price_pass_through_loop", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_gateway.asyncio.gather", new_callable=AsyncMock, side_effect=_close_coro_then_raise(Exception("test"))):
+        with patch("backend.app.pipelines.pipeline_gateway._broadcast_loop", new_callable=AsyncMock, side_effect=Exception("test")):
             import backend.app.pipelines.pipeline_gateway as gw_mod
             old = gw_mod._gateway_running
             try:

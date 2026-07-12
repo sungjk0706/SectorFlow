@@ -16,7 +16,6 @@ import {
   applyBuyHistoryUpdate,
   applyDailySummaryUpdate,
   applySectorScores,
-  applySectorPriceTick,
   stocksToMap,
   rebuildBuyTargetIndex,
   recalcTradeAmountRank,
@@ -50,7 +49,6 @@ import type {
   SectorScoresEvent,
   IndexData,
 } from './types'
-import type { SectorPriceTick } from './stores/hotStore'
 import { applyStockClassificationChanged } from './stores/stockClassificationStore'
 import { showToast } from './components/common/toast'
 
@@ -170,10 +168,6 @@ export function bindWSToStore(
 
   pricesClient.onEvent('real-data', (data) => {
     applyRealData(data as RealDataEvent)
-  })
-
-  pricesClient.onEvent('sector-price-tick', (data) => {
-    applySectorPriceTick(data as SectorPriceTick)
   })
 
   pricesClient.onEvent('orderbook-update', (data) => {

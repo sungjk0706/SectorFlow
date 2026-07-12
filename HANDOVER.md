@@ -1,17 +1,14 @@
 # HANDOVER — SectorFlow
 
 ## 추후 논의 필요 (미결정)
-- 없음
+- **broadcast_queue vs ws_manager.broadcast() 직접 호출 불일치 (P23 일관성 위반)**: `01` 틱만 `broadcast_queue` 사용, `0d`/`0j`/`PGM`/`account-update` 등은 `ws_manager.broadcast()` 직접 호출. 모든 화면 전송을 `broadcast_queue`로 통합할지, 아니면 `ws_manager.broadcast()` 직접 호출을 공식 패턴으로 채택할지 검토 필요
+- **ARCHITECTURE.md "JIF bypass" 기록 정리 완료**: 3단계 문서 정리에서 "JIF bypass: 0B 틱 우회로 직통 전송 (지연 감소)" 기록을 `price_pass_through_queue` 제거 사실로 대체. grep 결과 잔존 0건 확인 완료
 
 ## 직전 완료 작업
-- **2026-07-12: 아키텍처 점검 항목 추가 — P23 일관된 통일성, P24 단순성 불변 원칙 신설**
-  - **수정 파일**: `ARCHITECTURE.md`, `docs/architecture_audit_plan.md`, `AGENTS.md` (3개)
-  - **내용**: 기존 P1~P22에 P23(일관된 통일성), P24(단순성) 불변 원칙 2개 추가. ARCHITECTURE.md에 P23/P24 원칙 정의 + 부록 M 표준 용어 사전 신설(업종/종목/매수/매도/매수후보/보유종목/증권사표시명 7개 표준-금지 용어 쌍). architecture_audit_plan.md 섹션 2 평가 기준표에 P23/P24 행 추가 + 30개 세션 체크리스트에 P23/P24 항목 추가 + 30개 세션 대상 원칙에 P23/P24 추가. AGENTS.md 원칙 개수 22→24 업데이트 + P23/P24 요약 추가. 헤더 원칙 개수 22→24 통일
-  - **검증**: Python 스크립트로 3개 파일 일관성 자동 검증 — 헤더 원칙 개수, P23/P24 존재, 부록 M 존재, 용어 포함, 평가 기준표 행, 체크리스트 항목 수(29+1=30), 대상 원칙 포함 수(30), AGENTS.md 참조 전부 True 통과
-- **2026-07-12: 백엔드 로그 한글화 4차 2단계 — 프로그래밍 용어 18건 한글화 (4차 작업 완료)**
-  - **수정 파일**: `services/telegram_bot.py`, `services/ws_subscribe_control.py`, `services/engine_loop.py`, `services/engine_account_notify.py`, `services/daily_time_scheduler.py`, `services/trading.py`, `core/broker_router.py`, `core/memory_monitor.py`, `core/journal.py`, `core/settings_file.py` (10개 소스) = 10개 파일
-  - **내용**: 로그 메시지에 영어 프로그래밍 용어/약어가 섞인 18건 한글화. P21 사용자 투명성 준수
-  - **검증**: py_compile 10개 파일 통과, 전체 2773 passed 0 failed (9.86s), 런타임 기동 확인, 잔존 프로세스 0개
+- **2026-07-12: price_pass_through_queue 제거 — 현재가 직통 큐 불필요 구조 정리 (P23 일관성, P24 단순성)**
+  - **수정 파일**: `backend/app/services/engine_ws_dispatch.py`, `backend/app/pipelines/pipeline_gateway.py`, `backend/app/services/core_queues.py`, `backend/tests/test_pipeline_gateway.py`, `frontend/src/stores/hotStore.ts`, `frontend/src/binding.ts`, `ARCHITECTURE.md` (7개)
+  - **내용**: "현재가 직통(Compute 우회)"이라는 이름의 `price_pass_through_queue`가 실제로는 Compute Loop를 통과하고 있었고, 01 틱 `real-data` + `account-update`로 동일 데이터가 이미 전송되어 중복 구조였음. 3단계로 분할 제거 — 1단계 백엔드(생산자·소비자·큐 인프라 + 테스트), 2단계 프론트엔드(`SectorPriceTick`/`applySectorPriceTick`/`sector-price-tick` 리스너), 3단계 문서(ARCHITECTURE.md 다이어그램·큐 테이블·이벤트 테이블·변경 로그). 큐 개수 4→3, Gateway Loop 2개 소비 루프→1개
+  - **검증**: pytest 159 passed (0.69s), npm run build 성공 (2.00s), 런타임 기동 정상 (큐 초기화 로그 "시세=20000, 전송=2000, 제어=500", 에러 없음, 211ms), 잔존 프로세스 0개
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체 (korean_lunar_calendar), boost_order_ratio_pct 422 수정, 보유종목 buy_date 파생, 유령 포지션 재발 방지 조치, 테스트모드 6개월 보관 정책(125거래일, 메모리+DB 동시 정리) — 모두 코드 확인 완료 (git history 참조)
