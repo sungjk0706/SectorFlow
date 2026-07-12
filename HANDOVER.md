@@ -1,22 +1,13 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 재매수 차단 토글 버그 수정 (3건)**
-  - **버그 1: 토글 OFF가 차단 로직에 반영되지 않음**
-    - 근본 원인: `backend/app/domain/buy_filter.py:188-196` — `create_buy_targets()`가 `rebuy_block_on` 설정값과 무관하게 보유/금일매수 종목을 무조건 차단 마킹
-    - 추가 문제: `buy_order_executor.py:116, 144`의 `_rebuy_block_on` 체크는 상류 buy_filter에서 이미 차단 마킹되어 도달 불가능한 dead code (P16 위반)
-    - 수정: `create_buy_targets()`에 `rebuy_block_on: bool = True` 파라미터 추가, `if rebuy_block_on:` 블록으로 차단 마킹 분기. `build_buy_targets_from_settings()` 래퍼에서 `settings.get("rebuy_block_on")` 전달. dead code 2곳 제거
-    - ARCHITECTURE.md:628 execute_buy "중복 매수 차단 (오늘 매수 / 보유 중)" → "재매수 차단 (rebuy_block_on=True 시 오늘 매수 종목 차단)" 정정
-    - 테스트: `test_buy_filter.py` 신규 4건 추가 (rebuy_block_on=False 시 매수 허용 3건 + 기본값 True 차단 유지 1건), `test_buy_order_executor.py` dead code 테스트 1건 제거
-  - **버그 2: 토글 OFF→ON 전환 시 차단 표시 복구 안 됨**
-    - 근본 원인: `backend/app/services/engine_service.py:159-171` — `_SECTOR_UI_KEYS` 집합에 `rebuy_block_on` 누락, 토글 변경 시 `recompute_sector_summary_now()`가 호출되지 않아 stale 캐시 유지
-    - 수정: `_SECTOR_UI_KEYS`에 `"rebuy_block_on"` 추가 → 토글 변경 시 즉시 재계산 + UI 갱신
-    - 테스트: `test_settings_boost_order_ratio.py` 신규 2건 추가 (엔진 실행 중 recompute 호출 + 엔진 미실행 시 미호출)
-  - **버그 3: 설정 캐시에서 rebuy_block_on 키 누락 (근본 원인)**
-    - 근본 원인: `backend/app/core/engine_settings.py:26-219` — `build_engine_settings_dict()`가 `rebuy_block_on`, `rebuy_block_period`를 결과 dict에 포함하지 않음. 설정 캐시 갱신 시 키가 삭제되어, 하류 `build_buy_targets_from_settings()`와 `trading.py:125`의 `settings.get("rebuy_block_on", True)`가 항상 기본값 True 반환. 버그 1+2 수정이 실제 앱에서 작동하지 않은 진짜 원인
-    - 수정: `build_engine_settings_dict()`에 `result["rebuy_block_on"]` = bool(merged.get("rebuy_block_on", True)), `result["rebuy_block_period"]` = str(merged.get("rebuy_block_period", "today")) 추가
-    - 검증: DB False/True 각각 → build_engine_settings_dict 결과 → build_buy_targets_from_settings 전달값 → trading.py 전달값 전 경로 추적 확인. 런타임 PATCH API 호출 시 "설정 캐시 갱신 완료" → "업종순위 재계산 진입" → "재계산 완료" 로그 확인
-  - 전체 검증: 단위 테스트 210개 통과, 백엔드 런타임 기동 확인, 사용자 UI 확인 완료 (토글 ON/OFF 즉시 반영, 새로고침 후 유지)
+- **2026-07-13: 종목분류 페이지 업종관리 테이블 UI 개선 (4건)**
+  - **순번 컬럼 추가**: `frontend/src/pages/stock-classification.ts:106` MasterRow에 `seq: number | null` 필드 추가, `buildMasterRows()`에서 미분류 제외 1번부터 순차 부여, `masterColumns` 맨 앞에 36px 고정폭 순번 컬럼 삽입 (미분류 행은 빈 칸)
+  - **통계 라벨 숫자 파란색 강조 + 미분류 제외**: `updateStatsLabel()` 단일 textContent → span 구조로 변경, 숫자+단위 부분만 COLOR.down(파랑) 강조, 업종 수 계산 시 미분류 제외 (`filter(s => s !== '미분류')`), 전체 종목 수는 모든 종목 포함 유지
+  - **"새 업종 추가" 버튼 높이/폰트 통일**: createSolidBtn 기본 sm 사이즈(`4px 10px`, 11px) 적용하도록 padding/fontSize 오버라이드 제거 → 작업 컬럼의 이름변경/삭제 버튼과 동일
+  - **통계 라벨 폰트 통일**: statsLabelRef 폰트를 11px(small)로 변경 → 버튼 라벨과 동일 크기
+  - 검증: `npm run typecheck` 통과, `npm run build` 통과 (60 모듈 변환)
+  - 추가 점검: 좌측/우측 업종 정렬 순서 일치 확인 (양쪽 모두 `getActiveSectors()` 단일 소스 공유, P10 준수), 우측 순번 컬럼은 추가 안 함 권장 (이동 타겟 선택 UI에 순번이 의미 없고 단순성 P24 위반)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책 — 모두 완료 (git history 참조)
