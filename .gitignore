@@ -40,6 +40,9 @@ yarn-error.log*
 *.db-shm.bak.*
 *.db-wal.bak.*
 *.db.backup*
+*.db.*.backup
+*.db-shm.*.backup
+*.db-wal.*.backup
 
 # IDE
 
