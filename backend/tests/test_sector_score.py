@@ -69,6 +69,15 @@ class TestNormalizeWeightValues:
         assert "unknown_key" not in result
         assert len(result) == 2
 
+    def test_default_settings_weights_normalize_to_half_half(self):
+        """DEFAULT_USER_SETTINGS의 sector_weights가 정규화 후 50/50이 되는지 검증.
+        레거시 trade_amount 키 사용 시 거래대금 가중치가 0이 되는 회귀 방지."""
+        from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
+        sw = DEFAULT_USER_SETTINGS["sector_weights"]
+        norm = normalize_weight_values(sw)
+        assert norm["total_trade_amount"] == pytest.approx(0.5)
+        assert norm["rise_ratio"] == pytest.approx(0.5)
+
 
 # ── calculate_weighted_scores ───────────────────────────────────────────────────
 

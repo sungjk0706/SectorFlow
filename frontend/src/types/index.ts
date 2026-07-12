@@ -238,6 +238,7 @@ export interface SectorStatus {
   total_stocks: number;
   max_targets?: number;
   ranked_sectors_count?: number;
+  normalized_weights?: Record<string, number>;
 }
 
 // SSE 이벤트 페이로드

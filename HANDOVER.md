@@ -4,6 +4,11 @@
 - **ARCHITECTURE.md "JIF bypass" 기록 정리 완료**: 3단계 문서 정리에서 "JIF bypass: 0B 틱 우회로 직통 전송 (지연 감소)" 기록을 `price_pass_through_queue` 제거 사실로 대체. grep 결과 잔존 0건 확인 완료
 
 ## 직전 완료 작업
+- **2026-07-12: 업종순위 거래대금 가중치 무시 버그 수정 + 추가 개선 7건 완료**
+  - **Stage 1 (핵심 수정 4건)**: `settings_defaults.py:85` 기본값 키 `trade_amount` → `total_trade_amount` 정정 (P10 SSOT). `settings_file.py` `_migrate_sector_weights` 레거시 `trade_amount` 키 자동 변환 마이그레이션 추가 (P22). `test_engine_settings.py:64` 기대값 정정. `test_sector_score.py` 회귀 방지 테스트 추가 (기본값 정규화 후 50/50 검증). `test_settings_file.py` 마이그레이션 테스트 3건 추가.
+  - **Stage 2 (추가 개선 2건)**: `engine_settings.py:129` `sector_rank_primary` dead code 제거 (P16). `engine_service.py:160` `_SECTOR_UI_KEYS`에서 `sector_rank_primary` 제거. `models.py:114-122` `SectorRankPrimary`/`_SECTOR_RANK_LABEL`/`DEFAULT_SECTOR_RANK_PRIMARY` dead code 제거. `engine_settings.py` `sector_weights` 키 정합성 검증 경고 추가 (P22).
+  - **Stage 3 (추가 개선 1건)**: `engine_account_notify.py` `notify_desktop_sector_scores`의 `status`에 정규화된 가중치(`normalized_weights`) 추가 (P21 투명성). `types/index.ts` `SectorStatus`에 `normalized_weights` 필드 추가. `uiStore.ts` `normalizedWeights` 상태 추가. `binding.ts` `sector-scores` 이벤트에서 `normalized_weights` → `uiStore` 저장. `sector-settings.ts` 슬라이더 하단에 "실제 적용: 상승종목비율 N% / 평균거래대금 N%" 라벨 표시.
+  - 검증: `pytest` 213 passed, `npm run build` 통과, 런타임 기동 확인 (가중치 `{rise_ratio: 0.77, total_trade_amount: 0.23}` 정상 로드), 잔존 프로세스 0개
 - **2026-07-12: 표 컬럼 너비 로직 전면 개편 완료**
   - `auto-width.ts`: `computeColumnWidths` → `computeColWidths` + `widthsToPercentages` + `clampColWidth` 3개 함수로 분리. `ColumnWidthResult` 제거 (P16)
   - `data-table.ts`: `createColumnWidthManager` 공통 팩토리 추가 (initFromRows 전체 계산 + checkCellWidth 증분 추적 + flushWidthUpdate 일괄 적용). `calcPercentages` 제거 (관리자에 흡수)

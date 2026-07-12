@@ -111,14 +111,4 @@ _SORT_LABEL: dict[SortKey, str] = {
     "trade_amount":    "거래대금",
 }
 
-# 업종 순위 1차 정렬 기준
-SectorRankPrimary = Literal["rise_ratio", "total_trade_amount"]
-
-_SECTOR_RANK_LABEL: dict[SectorRankPrimary, str] = {
-    "rise_ratio":          "상승비율",
-    "total_trade_amount":  "총거래대금",
-}
-
-DEFAULT_SECTOR_RANK_PRIMARY: SectorRankPrimary = "rise_ratio"
-
 DEFAULT_SORT_KEYS: list[SortKey] = ["change_rate", "trade_amount", "strength"]

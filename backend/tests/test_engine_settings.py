@@ -61,7 +61,7 @@ class TestBuildEngineSettingsDictDefaults:
         assert result["sector_max_targets"] == 3
         assert result["sector_min_rise_ratio_pct"] == 60.0
         assert result["sector_min_trade_amt"] == 0.0
-        assert result["sector_weights"] == {"rise_ratio": 0.5, "trade_amount": 0.5}
+        assert result["sector_weights"] == {"rise_ratio": 0.5, "total_trade_amount": 0.5}
 
     def test_sector_sort_keys_default(self):
         result = build_engine_settings_dict({})
