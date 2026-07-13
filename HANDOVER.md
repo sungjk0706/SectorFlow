@@ -8,7 +8,7 @@
   - **변경 내용**: 19곳 `is_ws_subscribe_window` 패치 제거. 이중 4곳(427, 637, 669, 706)은 `is_ws_subscribe_window` → `_init_ws_subscribe_state` 교체, 나머지 15곳은 중복 패치 라인 제거. 최종 `_init_ws_subscribe_state` 19건으로 통일
   - **영향 범위**: `test_engine_loop.py` 내 `run_engine_loop()` 호출 테스트만. 프로덕션 코드 변경 없음
   - **검증**: pytest test_engine_loop.py 38 passed in 6.94s. ruff 0건
-  - **커밋**: (승인 대기)
+  - **커밋**: `087ca1f`
 
 - **2026-07-13: test_engine_loop.py 12건 실패 + 3건 잘못 통과 해결 — _init_ws_subscribe_state mock 누락 수정 (P23/P16)**
   - **현상**: `test_engine_loop.py` 12건 실패 (`RuntimeError: settings cache not initialized`). 커밋 `939d199`에서 `engine_loop.py:168-169`에 `_init_ws_subscribe_state()` 호출 추가했으나 테스트 미갱신. 추가로 3건(`test_cancelled_error_handled`, `test_general_exception_handled`, `test_no_auto_trade_without_token`)이 의도와 다른 예외 경로에서 우연히 통과 (P16 위반)
@@ -18,22 +18,6 @@
   - **영향 범위**: `test_engine_loop.py` 내 `run_engine_loop()` 호출 테스트만. 프로덕션 코드 변경 없음
   - **검증**: pytest test_engine_loop.py 38 passed in 6.21s. ruff 0건
   - **커밋**: `ee4b67d`
-
-- **2026-07-13: engine_settings.py 잔존 폴백 9곳 해결 — 복호화 실패 silent 1곳 + real 키 레거시 폴백 7곳 + max_position_size lambda 1곳 (P20/P21/P23)**
-  - **현상**: 직전 세션에서 22곳 or 폴백 정리 후 잔존 9곳이 미해결 문제로 등록됨. (1) `_dec` 내 `decrypt_value(s) or ""` — 복호화 실패 시 빈문자열 폴백, 실패 사실 로그 미출력 (P21). (2) `_dec(real) or _dec(legacy)` 7곳 — real 키 복호화 실패 시 레거시 키로 인증 시도, 사용자 모르게 다른 키 사용 (P21). (3) max_position_size lambda — None/빈문자열/"None" → 0 폴백, 0이 유효값(제한 없음)이므로 구분 불가 (P20)
-  - **근본 원인**: `backend/app/core/engine_settings.py:33` (`_dec` or 폴백), `:43-45`/`:126-128` (real 키 or 레거시 폴백, kiwoom + non-kiwoom 루프), `:73` (max_position_size lambda)
-  - **수정 파일**: `backend/app/core/engine_settings.py`, `backend/tests/test_engine_settings.py` (2개 파일)
-  - **변경 내용**:
-    1. `_dec` 함수: `decrypt_value(s) or ""` → `decrypt_value(s)` 반환값 None 체크 + `logger.warning("[설정] 복호화 실패...")` 출력 후 빈문자열 반환 (P21)
-    2. 신규 helper `_pick_real_or_legacy(real_key, legacy_key, field_name)`: real 키가 암호문(`gAAAA`)인데 복호화 실패 → 레거시 폴백 금지 + `logger.error("레거시 폴백 금지")` (P21). real 키가 None/빈값 → 레거시 폴백 허용 (정상 마이그레이션 유지). kiwoom 3곳 + non-kiwoom 루프 3곳 + account_no 명시적 None 체크로 통일
-    3. max_position_size: lambda 제거 → `_v = merged.get("max_position_size"); result["max_position_size"] = 0 if _v is None or _v == "None" or _v == "" else int(_v)` (P20/P23). dict 블록에서 "리스크 (이어서)" 섹션으로 이동
-    4. 신규 테스트 4건: `test_decrypt_failure_logs_warning`, `test_real_key_decrypt_failure_blocks_legacy_fallback`, `test_real_key_empty_falls_back_to_legacy`, `test_non_kiwoom_real_key_decrypt_failure_blocks_legacy`
-  - **영향 범위**: `build_engine_settings_dict()` 반환 dict를 사용하는 모든 호출처. 정상 케이스(real 키 평문/None) 반환값 동일. 복호화 실패 케이스만 동작 변경 — 기존에는 레거시 키로 인증 시도, 수정 후 빈문자열 반환 + 에러 로그. account_no는 암호화 대상 아님(`SENSITIVE_KEYS` 제외) → 문자열 폴백만 명시적 None 체크로 통일
-  - **검증**: pytest test_engine_settings.py 55 passed (기존 51 + 신규 4) in 0.81s. 런타임 기동 정상 — "복호화 실패" 경고 없음, 키움/LS 토큰 발급 완료, 잔존 프로세스 0건
-  - **커밋**: (승인 대기)
-
-- **2026-07-13: 키움증권 토큰 발급 경로 복구 — confirmed_data_broker 캐시 누락 수정 (P10 SSOT)**
-  - **커밋**: `b27a8b0`
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책, JIF 경계 이벤트 즉시 갱신 — 모두 완료 (git history 참조)
@@ -87,12 +71,7 @@
 - **주의**: WS payload 하위 호환성 — Phase 1에서 `total_trade_amount`→`avg_trade_amount` 명명 변경 시, 프론트엔드(Phase 2 전)가 일시적 에러. 해결: Phase 1에서 WS payload에 `total_trade_amount`와 `avg_trade_amount` 둘 다 전송(하위 호환), Phase 2 완료 후 `total_trade_amount` 제거.
 - **시작점**: 사용자 "진행해" 지시 후 Phase 1부터 착수
 
-### 2순위: engine_settings.py P20/P21 폴백 일괄 정리 — 전량 완료 (2026-07-13)
-- 1차: 22곳 `or` 폴백 → `_v if _v is not None else 기본값` 통일
-- 2차: 잔존 9곳 해결 — 복호화 실패 silent 1곳(logger.warning 추가), real 키 레거시 폴백 7곳(_pick_real_or_legacy helper + 복호화 실패 시 폴백 금지), max_position_size lambda 1곳(명시적 if 패턴)
-- pytest 55 passed, 런타임 기동 정상
-
-### 3순위: 아키텍처 전수 점검 P1 세션 (B-10)
+### 2순위: 아키텍처 전수 점검 P1 세션 (B-10)
 - B-10: 엔진 계좌/서비스 (`engine_account.py`, `engine_account_rest.py`, `engine_account_notify.py`, `engine_service.py`)
 - `docs/architecture_audit_plan.md` 체크리스트 사용, 발견 문제를 섹션 7에 등록
 - 이후 B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
@@ -113,33 +92,6 @@
     - [G] 외부 프로세스에 의한 DB 직접 조작 가능성 (14:32~15:52 공백 시간)
     - [H] 70,100 값의 출처 역산 — 07-09 005930 매수 체결가들로 평균가 계산 불가 확인
     - [I] WAL checkpoint 타이밍 이슈 — 이전 데이터 복원 가능성
-
-- **engine_settings.py 내 `or` 폴백 패턴 (P20/P23 위반) — 전량 해결 완료**
-  - **해결 완료 (2026-07-13)**: 1차 22곳 `or` 폴백 → `_v if _v is not None else 기본값` 통일. 2차 잔존 9곳(복호화 실패 silent 1곳, real 키 레거시 폴백 7곳, max_position_size lambda 1곳) 해결 — `_dec` 복호화 실패 시 `logger.warning` 추가, `_pick_real_or_legacy` helper로 real 키 복호화 실패 시 레거시 폴백 금지 + `logger.error`, max_position_size lambda → 명시적 if 패턴. pytest 55 passed.
-
-- **pipeline_compute.py DYNAMIC_REG 처리 — 구독 실패 시에도 _subscribed_dynamic=True 설정 (P22 위반)**
-  - 발견 일시: 2026-07-13 (실시간 데이터 수신율 문제 조사 중 발견)
-  - **해결 완료 (2026-07-13)**: `subscribe_dynamic` 반환형 `None → bool` 통일 + DYNAMIC_REG 처리 시 성공 반환값 확인 후에만 `_subscribed_dynamic=True` 설정, 실패 시 `_PENDING_REG_CODES` 유지 (pipeline_compute.py:329-345, ls_connector.py, kiwoom_connector.py, engine_ws.py, connector_manager.py, broker_connector.py)
-
-- **테스트 파일 ruff lint 에러 72건 (기존 존재, P23 일관성 위반 가능성)**
-  - 발견 일시: 2026-07-13 (최초 17건 보고 후 4개 파일 17건 수정 완료, 전수 검사에서 추가 72건 발견)
-  - **해결 완료 (17건, 4개 파일)**: `test_broker_router.py` (F401/F841×2/E731), `test_connector_manager.py` (F401), `test_engine_sector_confirm.py` (F401/F811×7), `test_pipeline_compute.py` (E402×3/F401) — 2026-07-13 수정, ruff 0건 + pytest 240 passed 확인
-  - **해결 완료 (72건, 34개 파일)**: 2026-07-13 전량 해결
-    - 1단계: `ruff --fix` 자동 수정 — F401 47건(unused import 제거) + F811 1건(중복 정의 제거)
-    - 2단계: F841 20건 수동 수정 — `with patch(...) as mock_xxx:`에서 미사용 변수 `as mock_xxx` 제거 (10개 파일), `result = await ...` → `await ...`로 변경 (3건), 미사용 `mock_fh = MagicMock()` / `mock_cursor = AsyncMock()` 줄 제거 (3건)
-    - 3단계: E402 3건 수동 수정 — 의도적 import 순서(헬퍼 함수 정의 후 백엔드 모듈 import, `initialize_queues()` 선행 필수)에 `# noqa: E402` 명시 (`test_daily_time_scheduler.py` 2건, `test_trading.py` 1건)
-    - 검증: `ruff check backend/tests/` 0건 + `pytest backend/tests/` 2745 passed in 16.16s
-
-- **test_engine_loop.py 12건 실패 — _init_ws_subscribe_state mock 누락 (P23 테스트 일관성)**
-  - **해결 완료 (2026-07-13)**: 15개 테스트에 `patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock)` 추가. 12건 실패 + 3건 잘못 통과(`test_cancelled_error_handled`, `test_general_exception_handled`, `test_no_auto_trade_without_token`) 해결. pytest 38 passed, ruff 0건
-
-- **test_engine_loop.py 내 is_ws_subscribe_window 패치 잔존 — dead code (P16 위반)**
-  - 발견 일시: 2026-07-13 (_init_ws_subscribe_state mock 패치 추가 작업 중 발견)
-  - **해결 완료 (2026-07-13)**: 19곳 `is_ws_subscribe_window` 패치 제거. 이중 4곳(427, 637, 669, 706)은 `_init_ws_subscribe_state` 패치로 교체(패치 누락 보완), 나머지 15곳은 중복 패치 라인 제거. 최종 `_init_ws_subscribe_state` 19건 통일. pytest 38 passed, ruff 0건
-
-- **test_engine_loop.py _init_ws_subscribe_state 패치 누락 4곳 — 잘못 통과 (P16 위반)**
-  - 발견 일시: 2026-07-13 (is_ws_subscribe_window dead code 제거 작업 중 사전조사로 발견)
-  - **해결 완료 (2026-07-13)**: 직전 커밋 `ee4b67d`에서 15곳만 패치 추가하고 4곳 누락(`test_state_initialized`, `test_finally_clears_broker_rest_apis`, `test_finally_running_set_false`, `test_finally_calls_stop_compute_loop`). 이 4곳은 `engine_loop.py:169` 실제 호출 시 `RuntimeError` → `except Exception` 포착 → finally 경로에서 우연히 통과. 위 is_ws_subscribe_window 제거 작업에서 4곳에 `_init_ws_subscribe_state` 패치 추가로 해결. pytest 38 passed
 
 ## 테스트 실행 원칙 (필수 준수)
 
