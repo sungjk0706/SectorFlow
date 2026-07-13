@@ -84,8 +84,13 @@ async def lifespan(app: FastAPI):
 
 
     # state.integrated_system_settings_cache 초기화 (단일 소스 진리 보장)
+    # 원본 DB 데이터를 build_engine_settings_dict로 정규화하여 캐시에 주입.
+    # 정규화 없이 원본을 그대로 채우면 broker_config={} (DEFAULT_USER_SETTINGS)가
+    # 그대로 남아 connector_manager/broker_router가 폴백 경로를 사용하게 됨 (P20 위반).
+    from backend.app.core.engine_settings import build_engine_settings_dict
+    normalized = build_engine_settings_dict(settings)
     state.integrated_system_settings_cache.clear()
-    state.integrated_system_settings_cache.update(settings)
+    state.integrated_system_settings_cache.update(normalized)
 
 
     from backend.app.services.daily_time_scheduler import start_daily_time_scheduler

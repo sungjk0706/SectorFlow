@@ -233,24 +233,37 @@ class TestProcessControlSignal:
         mock_bq = AsyncMock()
         mock_state = MagicMock()
         mock_state.master_stocks_cache = {"005930": {}, "000660": {}}
+        from backend.app.services.engine_sector_confirm import _PENDING_REG_CODES
+        _PENDING_REG_CODES.clear()
+        _PENDING_REG_CODES.update({"005930", "000660"})  # 대기 중 상태 시뮬레이션
         with patch("backend.app.services.engine_ws.subscribe_dynamic_data", new_callable=AsyncMock) as mock_sub, \
              patch("backend.app.services.engine_state.state", mock_state):
             await _process_control_signal({"type": "DYNAMIC_REG", "payload": {"codes": ["005930", "000660"]}}, mock_bq)
             mock_sub.assert_awaited_once_with(["005930", "000660"])
             assert mock_state.master_stocks_cache["005930"]["_subscribed_dynamic"] is True
             assert mock_state.master_stocks_cache["000660"]["_subscribed_dynamic"] is True
+            # 구독 완료 후 대기 세트에서 제거됨 (P10 SSOT)
+            assert "005930" not in _PENDING_REG_CODES
+            assert "000660" not in _PENDING_REG_CODES
+        _PENDING_REG_CODES.clear()
 
     @pytest.mark.asyncio
     async def test_dynamic_unreg(self):
         mock_bq = AsyncMock()
         mock_state = MagicMock()
         mock_state.master_stocks_cache = {"005930": {"_subscribed_dynamic": True}, "000660": {"_subscribed_dynamic": True}}
+        from backend.app.services.engine_sector_confirm import _PENDING_REG_CODES
+        _PENDING_REG_CODES.clear()
+        _PENDING_REG_CODES.add("005930")  # 005930이 대기 중이었을 수 있음
         with patch("backend.app.services.engine_ws.unsubscribe_dynamic_data", new_callable=AsyncMock) as mock_unsub, \
              patch("backend.app.services.engine_state.state", mock_state):
             await _process_control_signal({"type": "DYNAMIC_UNREG", "payload": {"codes": ["005930"]}}, mock_bq)
             mock_unsub.assert_awaited_once_with(["005930"])
             assert "_subscribed_dynamic" not in mock_state.master_stocks_cache["005930"]
             assert "_subscribed_dynamic" in mock_state.master_stocks_cache["000660"]
+            # 해지 후 대기 세트에서도 제거됨
+            assert "005930" not in _PENDING_REG_CODES
+        _PENDING_REG_CODES.clear()
 
     @pytest.mark.asyncio
     async def test_unknown_signal_logs_warning(self):

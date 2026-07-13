@@ -61,7 +61,11 @@ class BrokerRouter:
         self._build()
 
     def _load_specs(self) -> None:
-        """단일 소스 진리: state.integrated_system_settings_cache 직접 사용."""
+        """단일 소스 진리: state.integrated_system_settings_cache 직접 사용.
+
+        캐시는 app.py 시작 시 build_engine_settings_dict로 정규화되어
+        broker_config의 모든 feature 키가 항상 설정되어 있음 (P20 폴백 금지).
+        """
         from backend.app.services.engine_state import state
         broker_config = state.integrated_system_settings_cache["broker_config"]
         default_broker = str(
@@ -71,9 +75,7 @@ class BrokerRouter:
         # 모든 사용 중인 broker의 spec 로드
         brokers_to_load = set([default_broker])
         for feature in FEATURES:
-            broker_name = str(
-                broker_config.get(feature, default_broker) or default_broker
-            ).lower().strip()
+            broker_name = str(broker_config[feature]).lower().strip()
             brokers_to_load.add(broker_name)
 
         # settings에 미리 로드된 spec 사용
@@ -91,7 +93,11 @@ class BrokerRouter:
                 logger.warning("[설정] %s 설정 없음", BROKER_DISPLAY_NAMES.get(broker_name, broker_name))
 
     def _build(self) -> None:
-        """단일 소스 진리: state.integrated_system_settings_cache 직접 사용."""
+        """단일 소스 진리: state.integrated_system_settings_cache 직접 사용.
+
+        캐시는 app.py 시작 시 build_engine_settings_dict로 정규화되어
+        broker_config의 모든 feature 키가 항상 설정되어 있음 (P20 폴백 금지).
+        """
         from backend.app.services.engine_state import state
         broker_config = state.integrated_system_settings_cache["broker_config"]
         default_broker = str(
@@ -99,9 +105,7 @@ class BrokerRouter:
         ).lower().strip()
 
         for feature in FEATURES:
-            broker_name = str(
-                broker_config.get(feature, default_broker) or default_broker
-            ).lower().strip()
+            broker_name = str(broker_config[feature]).lower().strip()
 
             provider = _create_provider(
                 feature, broker_name, state.integrated_system_settings_cache, self._auth_cache

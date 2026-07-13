@@ -113,20 +113,25 @@ class TestInitBuild:
             mgr = ConnectorManager()
             assert len(mgr._connectors) == 0
 
-    def test_init_falls_back_to_broker_when_websocket_none(self):
+    def test_init_raises_when_websocket_missing(self):
+        """broker_config.websocket이 없으면 정규화 누락 오류 — 폴백 대신 명시적 실패 (P20).
+
+        app.py 시작 시 build_engine_settings_dict로 정규화되므로,
+        websocket 키가 없으면 설정 파이프라인 오류를 의미함.
+        """
         mock_conn = _mock_connector()
         state = MagicMock()
         state.integrated_system_settings_cache = {
             "broker": "kiwoom",
-            "broker_config": {"websocket": None},
+            "broker_config": {},  # websocket 키 없음 — 정규화 누락 시뮬레이션
         }
         with (
             patch("backend.app.services.engine_state.state", state),
             patch("backend.app.core.connector_manager.ConnectorManager._create_single", staticmethod(lambda name: mock_conn)),
+            pytest.raises(KeyError),
         ):
             from backend.app.core.connector_manager import ConnectorManager
-            mgr = ConnectorManager()
-            assert "kiwoom" in mgr._connectors
+            ConnectorManager()
 
 
 # ── _create_single ─────────────────────────────────────────────────────────────

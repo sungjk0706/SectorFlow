@@ -1,6 +1,33 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-13: 미해결 문제 2건 근본 해결 — broker_config 폴백 제거 (P20) + _subscribed_dynamic 이중 설정 해결 (P10/P22)**
+  - **목적**: HANDOVER.md 미해결 문제 2건 근본 원인 해결
+  - **문제 1: broker_config = {} 빈 객체 + fallback 사용 (P20 위반)**
+    - **근본 원인**: `app.py:88` 시작 시 원본 DB 데이터를 `build_engine_settings_dict` 정규화 없이 캐시에 주입. `settings_defaults.py:100` 기본값이 `broker_config = {}`이므로 시작 시 캐시가 빈 객체 → 5곳에서 폴백 사용
+    - **해결 방안**:
+      - 수정 1: `app.py:83-92` — `build_engine_settings_dict(settings)`로 정규화 후 캐시 주입 → `broker_config.websocket` 항상 설정 보장
+      - 수정 2: `connector_manager.py:38-40` — `broker_config.get("websocket") or ...` → `broker_config["websocket"]` (폴백 제거)
+      - 수정 3: `broker_router.py:74-76, 102-104` — `broker_config.get(feature, default) or default` → `broker_config[feature]` (폴백 제거 2곳)
+      - 수정 4: `engine_loop.py:51` — `state.integrated_system_settings_cache.get("broker_config") or {}` → `state.integrated_system_settings_cache["broker_config"]` (폴백 제거)
+      - 수정 5: `test_connector_manager.py:116-129` — `test_init_falls_back_to_broker_when_websocket_none` → `test_init_raises_when_websocket_missing` (폴백 테스트 → 정상 경로 검증)
+      - 수정 6: `test_broker_router.py:18-48` — `_mock_settings` 헬퍼가 정규화된 broker_config 기본값 제공 + 부분 broker_config 병합
+  - **문제 2: _subscribed_dynamic 플래그 이중 설정 (P10/P22 위반)**
+    - **근본 원인**: `engine_sector_confirm.py:330-332` 구독 완료 전에 `_subscribed_dynamic = True` 설정 + `pipeline_compute.py:335-337` 구독 완료 후 다시 설정. 구독 실패 시에도 True로 남는 정합성 문제. "구독 중"과 "구독 대기 중"을 하나의 플래그로 겸용하는 설계 오류
+    - **해결 방안**:
+      - 수정 1: `engine_sector_confirm.py:25` — `_PENDING_REG_CODES: set[str]` 신규 추가 (구독 대기 중 추적)
+      - 수정 2: `engine_sector_confirm.py:294-311` — `prev_codes` 계산 시 `_PENDING_REG_CODES` 포함, DYNAMIC_REG 큐 발행 후 `_PENDING_REG_CODES.update(to_reg)`, `prev_codes | to_reg` 임시 코드 제거
+      - 수정 3: `engine_sector_confirm.py:338-341` — 구독 전 플래그 설정 코드 제거 (P22 정합성)
+      - 수정 4: `pipeline_compute.py:329-346` — DYNAMIC_REG/UNREG 처리 후 `_PENDING_REG_CODES.difference_update(codes)` 추가
+      - 수정 5: `engine_lifecycle.py:137-139` — stop_engine 시 `_PENDING_REG_CODES.clear()` 추가
+      - 수정 6: `test_engine_sector_confirm.py:996-1021` — `test_subscribed_dynamic_set_in_cache` → `test_pending_reg_codes_set_when_reg_queued` 교체
+      - 수정 7: `test_pipeline_compute.py:231-266` — `test_dynamic_reg`/`test_dynamic_unreg`에 `_PENDING_REG_CODES` 검증 추가
+      - 수정 8: `conftest.py:31-35` — autouse fixture에 `_PENDING_REG_CODES.clear()` 추가
+  - **수정 파일**: `app.py`, `connector_manager.py`, `broker_router.py`, `engine_loop.py`, `engine_sector_confirm.py`, `pipeline_compute.py`, `engine_lifecycle.py`, `test_connector_manager.py`, `test_broker_router.py`, `test_engine_sector_confirm.py`, `test_pipeline_compute.py`, `conftest.py`
+  - **검증**: py_compile OK, pytest 352 passed (test_connector_manager 19 + test_broker_router 25 + test_engine_sector_confirm 96 + test_pipeline_compute 120 + test_engine_loop 28 + test_engine_snapshot 22 + test_engine_settings 14 + test_broker_change 28), 런타임 기동 정상 (`[증권사] 계좌=설정됨, 주문=설정됨, 인증=설정됨, 웹소켓=설정됨` — 폴백 없이 정상 경로 작동 확인)
+  - **커밋/푸쉬**: 미수행 (사용자 승인 대기)
+
+## 직전 완료 작업 (이전)
 - **2026-07-13: LS증권 구독 로그 중복 출력 정리 — per-code 완료 로그 → 요약 1줄**
   - **목적**: 13종목 구독 시 28줄(시작 2줄 + 종목별 완료 26줄) 출력되는 로그 과다 문제 해결
   - **근본 원인**:
@@ -13,24 +40,7 @@
     - 수정 4: `test_ls_connector.py:721-796` 반환값 튜플 변경에 따른 assertion 수정
   - **수정 파일**: `engine_ws.py`, `ls_connector.py`, `test_ls_connector.py`
   - **검증**: py_compile OK, ruff OK, pytest 102 passed, 런타임 기동 17종목 구독 로그 3줄 출력 확인 (이전 36줄 → 3줄)
-  - **실제 구독 요청 중복 여부**: 중복 아님 (DYNAMIC_REG 1회 → WebSocket 메시지 26건 = 13종목 × 2TR은 정상)
-  - **키움 코드 미수정**: 현재 WS 연결이 LS만이므로 키움 경로는 dead path (P16 준수)
   - **커밋/푸쉬**: `f340b89` pushed to `origin/main`
-
-## 직전 완료 작업 (이전)
-- **2026-07-13: KRX/NXT 장운영정보 인디케이터 타이밍 불일치 해결 — JIF 경계 이벤트 즉시 갱신 + P16/P21/P22 위반 수정**
-  - **목적**: KRX 정규장 시작(09:00) 시각에도 상단 헤더 KRX/NXT 인디케이터가 늦게 전환되거나 카운트다운 문구가 남는 타이밍 불일치 해결
-  - **근본 원인**:
-    1. `engine_ws_dispatch.py:215,228,267` — JIF 경계 이벤트(장시작/장마감 신호, jstatus 21/41/51/52/54/55/56/57/58)를 의도적으로 무시하고 로컬 시계 타이머(call_later)에만 의존. 09:00에 시계 타이머와 _on_krx_market_open(업종 재계산+재구독)이 동시 예약되어 이벤트 루프 혼잡 시 지연. 지연 동안 카운트다운 라벨이 krx_event에 남아 헤더에 표시됨 (P22 위반)
-    2. `engine_lifecycle.py:174-187` — get_engine_status()에 market_phase 미포함. index-data 이벤트로 헤더 장 상태 갱신 불가 (P21 위반)
-    3. `uiStore.ts:129-135` — applyIndexRefresh dead code. 백엔드에서 index-refresh 이벤트 발송 없음 (P16 위반)
-  - **해결 방안**:
-    - 수정안 1: JIF 경계 이벤트 수신 시 _broadcast_market_phase() 즉시 호출 → 시계 페이즈 갱신 + 카운트다운 라벨 초기화. 시계 타이머는 JIF 누락 시 백업 역할로 유지
-    - 수정안 2: applyIndexRefresh dead code 제거
-    - 수정안 3: get_engine_status()에 market_phase 포함 + IndexData 타입에 market_phase 필드 추가 + applyIndexData에서 market_phase 갱신
-  - **수정 파일**: `engine_ws_dispatch.py`, `engine_lifecycle.py`, `uiStore.ts`, `types/index.ts`, `test_engine_ws_dispatch.py`
-  - **검증**: pytest 56 passed, npm run build 성공, 런타임 기동 정상 (장 상태 초기화 KRX=정규장/NXT=메인마켓 확인, JIF 구독 완료 로그 확인)
-  - **커밋/푸쉬**: `24a5be1` pushed to `origin/main`
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책, JIF 경계 이벤트 즉시 갱신 — 모두 완료 (git history 참조)
@@ -81,20 +91,6 @@
 - 이후 B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
 
 ## 미해결 문제
-- **broker_config = {} 빈 객체 + fallback 사용 (P20 위반 가능성)**
-  - 파일: `backend/app/core/connector_manager.py:39`
-  - 증상: `broker_config.get("websocket")`이 None일 때 `or state.integrated_system_settings_cache["broker"]`로 fallback. DB 확인 결과 `broker_config = {}` 빈 객체로 저장되어 있어 항상 fallback 경로 사용 중
-  - 위반 원칙: P20 (폴백 금지) — 정상 경로의 None/누락을 폴백으로 덮음
-  - 수정 방향: `broker_config.websocket`이 정상 설정되도록 설정 저장 로직 점검, 또는 fallback 제거 후 명시적 에러 처리
-  - 발견 일시: 2026-07-13 (구독 로그 중복 조사 도중)
-
-- **_subscribed_dynamic 플래그 이중 설정 (P10 위반 가능성)**
-  - 파일: `backend/app/services/engine_sector_confirm.py:330-332` (구독 완료 전), `backend/app/pipelines/pipeline_compute.py:335-337` (구독 완료 후)
-  - 증상: 동일한 `_subscribed_dynamic` 플래그가 2곳에서 설정됨. 구독 실패 시에도 sector_confirm에서 True로 남는 정합성 문제 가능성
-  - 위반 원칙: P10 (SSOT) — 같은 상태가 2곳에서 독립 관리됨
-  - 수정 방향: 단일 진실 소스로 통일 (구독 완료 후 1곳에서만 설정 권장)
-  - 발견 일시: 2026-07-13 (구독 로그 중복 조사 도중)
-
 - **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결**
   - 상세 조사 기록: `docs/ghost_position_investigation.md` ([A]~[I] 미조사 항목)
   - 재발 방지 조치 (2026-07-10, 코드 확인 완료):
@@ -110,6 +106,22 @@
     - [G] 외부 프로세스에 의한 DB 직접 조작 가능성 (14:32~15:52 공백 시간)
     - [H] 70,100 값의 출처 역산 — 07-09 005930 매수 체결가들로 평균가 계산 불가 확인
     - [I] WAL checkpoint 타이밍 이슈 — 이전 데이터 복원 가능성
+
+- **테스트 파일 ruff lint 에러 17건 (기존 존재, P23 일관성 위반 가능성)**
+  - 발견 일시: 2026-07-13 (미해결 문제 2건 수정 후 ruff 검증 도중)
+  - 내역 (4개 테스트 파일):
+    - `test_broker_router.py:11` — F401 `pytest` imported but unused
+    - `test_broker_router.py:184` — F841 `mock_cp` unused
+    - `test_broker_router.py:188` — F841 `router` unused
+    - `test_broker_router.py:208` — E731 lambda assignment (def 사용 권장)
+    - `test_connector_manager.py:11` — F401 `asyncio` imported but unused
+    - `test_engine_sector_confirm.py:20` — F401 `_UNREG_READY_CODES` imported but unused (모듈 레벨 import)
+    - `test_engine_sector_confirm.py:210,221,240,259,266,279,318` — F811 `_UNREG_READY_CODES` redefinition 7건 (함수 내 재import)
+    - `test_pipeline_compute.py:24,28,52` — E402 module level import not at top 3건
+    - `test_pipeline_compute.py:43` — F401 `_REALTIME_CHECK_FIELDS` imported but unused
+  - 위반 원칙: P23 (일관된 통일성) — 테스트 파일 lint 일관성 미준수
+  - 수정 방향: 11건은 `ruff --fix`로 자동 수정 가능 (F401/F811 unused import 제거), 6건은 수동 수정 (F841 unused var, E731 lambda→def, E402 import 순서)
+  - 참고: 이번 세션 수정 파일에서 신규 발생한 ruff 에러 없음 — 모두 기존 존재 에러
 
 ## 테스트 실행 원칙 (필수 준수)
 

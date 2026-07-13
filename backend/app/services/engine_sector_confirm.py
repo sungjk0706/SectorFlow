@@ -22,6 +22,12 @@ _UNREG_READY_CODES: set[str] = set()  # 타이머 만료된 종목 대기실
 _UNREG_BATCH_PENDING: bool = False  # 일괄 처리 call_soon 예약 플래그
 _UNREG_DELAY_SEC: float = 30.0  # 해지 지연 시간 (30초)
 
+# DYNAMIC_REG 큐 발행 후 실제 구독 완료 전까지의 "구독 대기 중" 종목 추적 (P10 SSOT).
+# _subscribed_dynamic은 "실제 구독 완료" 단일 진실 소스이며,
+# _pending_reg_codes는 "큐에 발행됐으나 아직 subscribe_dynamic_data 완료 전" 상태를 추적.
+# sync_dynamic_subscriptions 재진입 시 동일 종목 중복 REG 방지 목적.
+_PENDING_REG_CODES: set[str] = set()
+
 
 def request_sector_recompute(code: str | None = None) -> None:
     """종목을 dirty로 마킹. 실제 재계산은 배치 루프에서 단일 호출.
@@ -285,7 +291,9 @@ def sync_dynamic_subscriptions(new_buy_targets) -> None:
     new_codes = {bt.stock.code for bt in new_buy_targets if bt.stock.guard_pass}
 
     all_stocks = state.master_stocks_cache
-    prev_codes = {cd for cd, entry in all_stocks.items() if entry.get("_subscribed_dynamic", False)}
+    # 구독 중 + 구독 대기 중 종목 모두 포함 — 중복 REG 방지 (P10 SSOT)
+    prev_codes = ({cd for cd, entry in all_stocks.items() if entry.get("_subscribed_dynamic", False)}
+                  | _PENDING_REG_CODES)
 
     # 신규 구독: 즉시 적용
     to_reg = new_codes - prev_codes
@@ -300,9 +308,10 @@ def sync_dynamic_subscriptions(new_buy_targets) -> None:
         }
         try:
             get_control_queue().put_nowait((1, time.time(), payload))
+            # 큐 발행 성공 시 대기 세트에 추가 — 실제 구독 완료 시 pipeline_compute에서 제거
+            _PENDING_REG_CODES.update(to_reg)
         except Exception as e:
             logger.warning("[구독] 신규 등록 이벤트 큐 발행 실패: %s", e)
-        prev_codes = prev_codes | to_reg  # 임시로 추가
 
     # 해지 대상: 종목별 독립 타이머 설정 (기존 타이머 건드리지 않음 — 리셋 누적 방지)
     new_unreg_candidates = prev_codes - new_codes
@@ -326,10 +335,9 @@ def sync_dynamic_subscriptions(new_buy_targets) -> None:
         if timer:
             timer.cancel()
 
-    # state.master_stocks_cache에 "_subscribed_dynamic" 설정
-    for cd in prev_codes:
-        if cd in state.master_stocks_cache:
-            state.master_stocks_cache[cd]["_subscribed_dynamic"] = True
+    # _subscribed_dynamic 플래그는 구독 완료 후 pipeline_compute.py의 DYNAMIC_REG 처리에서만
+    # 설정됨 (P10 SSOT, P22 정합성). 이전에는 구독 전에 설정하여 실패 시에도 True로 남는
+    # 정합성 문제가 있었음 — _pending_reg_codes로 대기 상태 추적.
 
 
 def _on_unreg_timer(code: str) -> None:
