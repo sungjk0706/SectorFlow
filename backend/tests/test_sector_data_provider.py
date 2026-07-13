@@ -275,6 +275,9 @@ class TestRecomputeSectorSummaryNow:
         settings_cache = {
             "sector_min_rise_ratio_pct": 60.0,
             "sector_min_trade_amt": 0.0,
+            "sector_bonus_rise_ratio_max": 10,
+            "sector_bonus_relative_strength_max": 7,
+            "sector_bonus_trade_amount_max": 5,
         }
 
         with patch("backend.app.services.engine_lifecycle.is_engine_running", return_value=True), \

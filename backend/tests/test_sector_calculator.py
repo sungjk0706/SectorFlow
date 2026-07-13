@@ -375,11 +375,9 @@ class TestComputeFullSectorSummary:
             assert sc.bonus_rise_ratio >= 0.0
             assert sc.bonus_trade_amount >= 0.0
             assert sc.bonus_relative_strength >= 0.0
-            assert 0.0 <= sc.final_score <= 300.0
-            expected = round(
-                sc.bonus_rise_ratio + sc.bonus_relative_strength + sc.bonus_trade_amount, 1,
-            )
-            assert sc.final_score == expected
+            assert 0.0 <= sc.final_score <= 22.0
+            expected = int(sc.bonus_rise_ratio) + int(sc.bonus_relative_strength) + int(sc.bonus_trade_amount)
+            assert sc.final_score == float(expected)
 
     async def test_empty_input_returns_empty_summary(self, cache):
         result = await compute_full_sector_summary(

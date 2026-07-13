@@ -163,6 +163,10 @@ async def compute_full_sector_summary(
     min_strength: float = 0.0,
     min_avg_amt_eok: float = 0.0,
     max_sectors: int = 3,
+    # ── 업종 점수 3단계 누적 가산점 만점 (사용자 설정) ──
+    max_rise_ratio_score: int = 10,
+    max_relative_strength_score: int = 7,
+    max_trade_amount_score: int = 5,
     # ── 가산점 관련 파라미터 (pass-through → build_buy_targets) ──
     high_5d_cache: dict[str, int] | None = None,
     orderbook_cache: dict[str, tuple[int, int]] | None = None,
@@ -192,7 +196,13 @@ async def compute_full_sector_summary(
     )
 
     # 2. 3단계 누적 가산점 계산 + 컷오프 + 정렬 + 순위 부여
-    calculate_bonus_scores(sector_scores, min_rise_ratio=min_rise_ratio)
+    calculate_bonus_scores(
+        sector_scores,
+        min_rise_ratio=min_rise_ratio,
+        max_rise_ratio_score=max_rise_ratio_score,
+        max_relative_strength_score=max_relative_strength_score,
+        max_trade_amount_score=max_trade_amount_score,
+    )
 
     return SectorSummary(
         sectors=sector_scores,

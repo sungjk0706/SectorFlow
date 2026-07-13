@@ -595,7 +595,7 @@ _flush_sector_recompute_impl()
     compute_sector_scores()
          │
          ▼
-    calculate_bonus_scores()  — 3단계 누적 가산점 (0~300) + 컷오프 내부 적용
+    calculate_bonus_scores()  — 3단계 누적 가산점 (순위별 차등, 0~만점 합) + 컷오프 내부 적용
          │  (옵션 C 2패스: 1차/3차 계산 → 컷오프 → 2차 모집단 구성 → 종합)
          ▼
     build_buy_targets_from_settings()  — 매수 타겟 큐 생성
@@ -681,10 +681,10 @@ StockScore (종목 단위)
 SectorScore (업종 단위)
 ├── sector, total, rise_count, rise_ratio
 ├── avg_change_rate, avg_trade_amount, avg_ratio_5d_pct
-├── final_score (종합 가산점 = 1차+2차+3차, 0~300)
-├── bonus_rise_ratio (1차 가산점: 상승 종목 비율 순위, 0~100)
-├── bonus_relative_strength (2차 가산점: 통과 업종 종목 백분위 평균, 0~100)
-├── bonus_trade_amount (3차 가산점: 거래대금 순위, 0~100)
+├── final_score (종합 가산점 = 1차+2차+3차, 0~만점 합, 정수)
+├── bonus_rise_ratio (1차 가산점: 상승 종목 비율 순위, tiered 점수 0~만점)
+├── bonus_relative_strength (2차 가산점: 통과 업종 종목 백분위 평균 순위, tiered 점수 0~만점)
+├── bonus_trade_amount (3차 가산점: 거래대금 순위, tiered 점수 0~만점)
 ├── rank (1=최강, 0=순위 없음/컷오프 미달)
 └── stocks: list[StockScore]
 
@@ -701,24 +701,29 @@ SectorSummary (전체 결과)
 순위/백분위 기반의 3단계 누적 가산점으로 업종 강도 평가. 매수 설정 `boost_score` 누적
 합산 패턴과 동일 구조 (P23 일관성).
 
-**3개 단계 (각 0~100점, 종합 0~300점):**
+**3개 단계 (각 0~사용자 설정 만점, 종합 0~만점 합):**
 
 | 단계 | 의미 | 데이터 | 점수 변환 | 함수 |
 |------|------|--------|-----------|------|
-| 1차 | 상승 폭 (참여 폭) | `rise_ratio` (상승 종목 비율) | 업종 간 순위 → 0~100 | `rank_to_score` |
-| 2차 | 상승 강도 (상승 폭) | 통과 업종 종목 `change_rate` | 종목 백분위 → 업종별 평균 0~100 | `percentile_to_score` |
-| 3차 | 거래대금 (유동성) | `avg_trade_amount` (평균 거래대금) | 업종 간 순위 → 0~100 | `rank_to_score` |
+| 1차 | 상승 폭 (참여 폭) | `rise_ratio` (상승 종목 비율) | 업종 간 순위 → tiered 점수 (0~만점) | `rank_to_tiered_score` |
+| 2차 | 상승 강도 (상승 폭) | 통과 업종 종목 `change_rate` | 종목 백분위 → 업종별 평균 → 업종 간 순위 → tiered 점수 (0~만점) | `percentile_to_score` + `rank_to_tiered_score` |
+| 3차 | 거래대금 (유동성) | `avg_trade_amount` (평균 거래대금) | 업종 간 순위 → tiered 점수 (0~만점) | `rank_to_tiered_score` |
+
+**사용자 설정 만점 (기본값):**
+- `sector_bonus_rise_ratio_max` = 10 (1차 만점)
+- `sector_bonus_relative_strength_max` = 7 (2차 만점)
+- `sector_bonus_trade_amount_max` = 5 (3차 만점)
 
 **점수 변환 함수:**
-- `rank_to_score`: 순위 점수 = (N - rank + 1) / N × 100 — 1위=100점, 꼴찌=100/N점 (0점 아님). 업종 간 순위 비교용 (1차/3차).
-- `percentile_to_score`: 백분위 점수 = (N - rank) / (N - 1) × 100 — 최대값=100점, 최소값=0점 (완전 0~100 스케일). 종목 간 상대 비교용 (2차). N=1이면 100점.
+- `rank_to_tiered_score`: 순위별 차등 점수 = max(0, max_score - rank + 1) — 1위=만점, 2위=만점-1, ..., 만점 순위=1, 그 아래=0. 업종 간 순위 비교용 (1차/3차, 2차 최종 변환).
+- `percentile_to_score`: 백분위 점수 = (N - rank) / (N - 1) × 100 — 최대값=100점, 최소값=0점 (완전 0~100 스케일). 종목 간 상대 비교용 (2차 중간 단계). N=1이면 100점.
 - 동점 처리: 같은 값 = 같은 점수, 다음 순위 건너뜀 (표준 순위 방식).
 
 **계산 과정 (옵션 C — 2패스, `calculate_bonus_scores`):**
-1. **1패스**: 1차(상승비율 순위) + 3차(거래대금 순위) 계산 → 임시 합산 기반 정렬
+1. **1패스**: 1차(상승비율 순위 → tiered) + 3차(거래대금 순위 → tiered) 계산 → 임시 합산 기반 정렬
 2. **컷오프**: `min_rise_ratio` 미만 업종 `rank=0` (매수 대상 제외) — `calculate_bonus_scores` 내부에서 수행 (진실 소스 1곳, P10/P22)
-3. **2패스**: 통과 업종(rank>0) 종목들만 모집단 → `percentile_to_score` 백분위 → 업종별 평균 = 2차 가산점
-4. **종합**: `final_score = 1차 + 2차 + 3차` (0~300)
+3. **2패스**: 통과 업종(rank>0) 종목들만 모집단 → `percentile_to_score` 백분위 → 업종별 평균 → 업종 간 순위 → `rank_to_tiered_score` tiered 점수 = 2차 가산점
+4. **종합**: `final_score = 1차 + 2차 + 3차` (0~만점 합, 정수)
 5. **재정렬**: `final_score` 내림차순 → `bonus_relative_strength` 내림차순 → `bonus_rise_ratio` 내림차순 → 업종명 오름차순 (결정적 정렬)
 6. **rank 부여**: 1-based, 컷오프 미달 업종은 `rank=0` 유지
 

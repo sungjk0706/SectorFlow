@@ -153,7 +153,13 @@ async def _flush_sector_recompute_impl() -> None:
 
         # 4. 3단계 누적 가산점 계산 + 컷오프 + 순위 재정렬
         min_rise_ratio = float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0
-        calculate_bonus_scores(merged, min_rise_ratio=min_rise_ratio)
+        calculate_bonus_scores(
+            merged,
+            min_rise_ratio=min_rise_ratio,
+            max_rise_ratio_score=int(state.integrated_system_settings_cache["sector_bonus_rise_ratio_max"]),
+            max_relative_strength_score=int(state.integrated_system_settings_cache["sector_bonus_relative_strength_max"]),
+            max_trade_amount_score=int(state.integrated_system_settings_cache["sector_bonus_trade_amount_max"]),
+        )
 
         # 5. 매수 타겟 큐
         # buy_targets 변경 감지를 위해 이전 값 저장
@@ -213,6 +219,9 @@ async def _full_recompute(codes_snapshot: set[str] | None = None) -> None:
         **inputs,
         min_rise_ratio=float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
         min_avg_amt_eok=float(state.integrated_system_settings_cache["sector_min_trade_amt"]),
+        max_rise_ratio_score=int(state.integrated_system_settings_cache["sector_bonus_rise_ratio_max"]),
+        max_relative_strength_score=int(state.integrated_system_settings_cache["sector_bonus_relative_strength_max"]),
+        max_trade_amount_score=int(state.integrated_system_settings_cache["sector_bonus_trade_amount_max"]),
     )
     from backend.app.services import engine_account
     _held = await engine_account.get_held_codes()

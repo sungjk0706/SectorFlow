@@ -87,6 +87,10 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
      "sector_max_targets": 3,
      "sector_sort_keys": ["score"],
      "sector_stock_layout": [],
+     # 업종 점수 3단계 누적 가산점 만점 (사용자 설정)
+     "sector_bonus_rise_ratio_max": 10,
+     "sector_bonus_relative_strength_max": 7,
+     "sector_bonus_trade_amount_max": 5,
 
      # 매수 주문 간격 (1순위 종목만 매수 후 사용자 설정 간격 대기)
      "buy_interval_on": False,
