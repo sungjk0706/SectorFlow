@@ -1,13 +1,17 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: engine_settings.py or 폴백 패턴 22곳 → _v if _v is not None else 기본값 통일 (P20/P23)**
-  - **현상**: `build_engine_settings_dict()` 내 `or 0`/`or ""`/`or {}`/`or ["score"]` 패턴이 None과 정상값(0/빈문자열/빈 dict)을 동일하게 치환하여 P20(폴백 금지)/P23(일관성) 위반
-  - **근본 원인**: `backend/app/core/engine_settings.py` dict 블록 내 및 블록 뒤 22곳에서 `merged.get(key, 기본값) or 기본값` 패턴 사용. 0/빈문자열이 falsy로 평가되어 기본값으로 치환됨
-  - **수정 파일**: `backend/app/core/engine_settings.py` (1개 파일)
-  - **변경 내용**: 22곳을 `_v = merged.get(key); result[key] = _v if _v is not None else 기본값` 패턴으로 통일. dict 블록 내 `or` 패턴 필드는 dict 블록 뒤로 이동. 잔존 9곳(복호화 실패 1곳, real 키 우선 레거시 마이그레이션 7곳, max_position_size lambda 1곳)은 P20/P21 위반으로 판단하여 "미해결 문제"에 등록, 다음 세션에서 수정
-  - **영향 범위**: `build_engine_settings_dict()` 반환 dict를 사용하는 모든 호출처(engine_loop.py, engine_service.py, app.py 캐시 등). 값 자체는 동일(None과 0/빈값이 동일 취급되던 것을 None만 기본값으로 치환하도록 정교화). test_virtual_deposit/balance는 None→10_000_000(기본값)으로 변경되어 더 합리적
-  - **검증**: pytest test_engine_settings.py 51 passed in 0.41s
+- **2026-07-13: engine_settings.py 잔존 폴백 9곳 해결 — 복호화 실패 silent 1곳 + real 키 레거시 폴백 7곳 + max_position_size lambda 1곳 (P20/P21/P23)**
+  - **현상**: 직전 세션에서 22곳 or 폴백 정리 후 잔존 9곳이 미해결 문제로 등록됨. (1) `_dec` 내 `decrypt_value(s) or ""` — 복호화 실패 시 빈문자열 폴백, 실패 사실 로그 미출력 (P21). (2) `_dec(real) or _dec(legacy)` 7곳 — real 키 복호화 실패 시 레거시 키로 인증 시도, 사용자 모르게 다른 키 사용 (P21). (3) max_position_size lambda — None/빈문자열/"None" → 0 폴백, 0이 유효값(제한 없음)이므로 구분 불가 (P20)
+  - **근본 원인**: `backend/app/core/engine_settings.py:33` (`_dec` or 폴백), `:43-45`/`:126-128` (real 키 or 레거시 폴백, kiwoom + non-kiwoom 루프), `:73` (max_position_size lambda)
+  - **수정 파일**: `backend/app/core/engine_settings.py`, `backend/tests/test_engine_settings.py` (2개 파일)
+  - **변경 내용**:
+    1. `_dec` 함수: `decrypt_value(s) or ""` → `decrypt_value(s)` 반환값 None 체크 + `logger.warning("[설정] 복호화 실패...")` 출력 후 빈문자열 반환 (P21)
+    2. 신규 helper `_pick_real_or_legacy(real_key, legacy_key, field_name)`: real 키가 암호문(`gAAAA`)인데 복호화 실패 → 레거시 폴백 금지 + `logger.error("레거시 폴백 금지")` (P21). real 키가 None/빈값 → 레거시 폴백 허용 (정상 마이그레이션 유지). kiwoom 3곳 + non-kiwoom 루프 3곳 + account_no 명시적 None 체크로 통일
+    3. max_position_size: lambda 제거 → `_v = merged.get("max_position_size"); result["max_position_size"] = 0 if _v is None or _v == "None" or _v == "" else int(_v)` (P20/P23). dict 블록에서 "리스크 (이어서)" 섹션으로 이동
+    4. 신규 테스트 4건: `test_decrypt_failure_logs_warning`, `test_real_key_decrypt_failure_blocks_legacy_fallback`, `test_real_key_empty_falls_back_to_legacy`, `test_non_kiwoom_real_key_decrypt_failure_blocks_legacy`
+  - **영향 범위**: `build_engine_settings_dict()` 반환 dict를 사용하는 모든 호출처. 정상 케이스(real 키 평문/None) 반환값 동일. 복호화 실패 케이스만 동작 변경 — 기존에는 레거시 키로 인증 시도, 수정 후 빈문자열 반환 + 에러 로그. account_no는 암호화 대상 아님(`SENSITIVE_KEYS` 제외) → 문자열 폴백만 명시적 None 체크로 통일
+  - **검증**: pytest test_engine_settings.py 55 passed (기존 51 + 신규 4) in 0.81s. 런타임 기동 정상 — "복호화 실패" 경고 없음, 키움/LS 토큰 발급 완료, 잔존 프로세스 0건
   - **커밋**: (승인 대기)
 
 - **2026-07-13: 키움증권 토큰 발급 경로 복구 — confirmed_data_broker 캐시 누락 수정 (P10 SSOT)**
@@ -65,10 +69,10 @@
 - **주의**: WS payload 하위 호환성 — Phase 1에서 `total_trade_amount`→`avg_trade_amount` 명명 변경 시, 프론트엔드(Phase 2 전)가 일시적 에러. 해결: Phase 1에서 WS payload에 `total_trade_amount`와 `avg_trade_amount` 둘 다 전송(하위 호환), Phase 2 완료 후 `total_trade_amount` 제거.
 - **시작점**: 사용자 "진행해" 지시 후 Phase 1부터 착수
 
-### 2순위: engine_settings.py P20 폴백 일괄 정리 — 완료 (2026-07-13)
-- 22곳 `or` 폴백 패턴 → `_v if _v is not None else 기본값` 패턴으로 통일 완료
-- 의도적 폴백 8곳(복호화 실패, real 키 우선 레거시 마이그레이션)은 유지
-- **미해결 문제에서 해당 항목 삭제 완료**
+### 2순위: engine_settings.py P20/P21 폴백 일괄 정리 — 전량 완료 (2026-07-13)
+- 1차: 22곳 `or` 폴백 → `_v if _v is not None else 기본값` 통일
+- 2차: 잔존 9곳 해결 — 복호화 실패 silent 1곳(logger.warning 추가), real 키 레거시 폴백 7곳(_pick_real_or_legacy helper + 복호화 실패 시 폴백 금지), max_position_size lambda 1곳(명시적 if 패턴)
+- pytest 55 passed, 런타임 기동 정상
 
 ### 3순위: 아키텍처 전수 점검 P1 세션 (B-10)
 - B-10: 엔진 계좌/서비스 (`engine_account.py`, `engine_account_rest.py`, `engine_account_notify.py`, `engine_service.py`)
@@ -92,24 +96,8 @@
     - [H] 70,100 값의 출처 역산 — 07-09 005930 매수 체결가들로 평균가 계산 불가 확인
     - [I] WAL checkpoint 타이밍 이슈 — 이전 데이터 복원 가능성
 
-- **engine_settings.py 내 `or` 폴백 패턴 (P20/P23 위반) — 22곳 해결 완료, 9곳 미해결**
-  - **해결 완료 (2026-07-13)**: 22곳 `or` 폴백 패턴 → `_v if _v is not None else 기본값` 패턴으로 통일. pytest test_engine_settings.py 51 passed 확인.
-  - **미해결 잔존 (9곳, P20/P21 위반)** — 다음 세션에서 수정:
-    - **복호화 실패 silent 폴백 (1곳, P20/P21)**:
-      - `engine_settings.py:33` — `decrypt_value(s) or ""` — 복호화 실패 시 빈문자열로 폴백. 실패 사실이 사용자에게 알려지지 않음 (P21 위반). 빈문자열이 정상값인지와 무관하게 실패를 silent 처리.
-    - **real 키 우선 레거시 마이그레이션 silent 폴백 (7곳, P20/P21)**:
-      - `engine_settings.py:43` — `_dec(merged.get("kiwoom_app_key_real")) or _dec(merged.get("kiwoom_app_key"))` — real 키 복호화 실패/빈값 시 레거시 키로 폴백. 사용자가 real 키를 설정했는데 레거시 키로 인증 시도 → 사용자 모르게 다른 키 사용 (P21 위반).
-      - `engine_settings.py:44` — 동일 (kiwoom_app_secret)
-      - `engine_settings.py:45` — `str(merged.get("kiwoom_account_no_real") or merged.get("kiwoom_account_no") or "").strip()` — 동일 (account_no)
-      - `engine_settings.py:126` — `_dec(merged.get(f"{b_name}_app_key_real")) or _dec(merged.get(f"{b_name}_app_key"))` — 루프 내 동일 패턴
-      - `engine_settings.py:127` — 동일 (app_secret, 루프)
-      - `engine_settings.py:128` — `str(merged.get(f"{b_name}_account_no_real") or merged.get(f"{b_name}_account_no") or "").strip()` — 동일 (account_no, 루프)
-    - **max_position_size lambda 폴백 (1곳, P20)**:
-      - `engine_settings.py:73` — `(lambda raw: 0 if raw is None or raw == "None" or raw == "" else int(raw))(merged.get("max_position_size"))` — None/빈문자열 → 0 폴백. 0이 정상값(제한 없음)이므로 None과 0 구분 불가 (P20 위반).
-    - **수정 방향**:
-      - 복호화 실패: 실패 시 빈값 폴백 대신 로그 경고 + 빈값 명시적 반환 (P21 투명성)
-      - real 키 우선 레거시: real 키가 설정되었으면 레거시 폴백 금지, real 키 실패 시 에러/경고. 레거시 키는 마이그레이션 완료 후 제거 검토
-      - max_position_size: `_v if _v is not None else 0` 패턴으로 통일
+- **engine_settings.py 내 `or` 폴백 패턴 (P20/P23 위반) — 전량 해결 완료**
+  - **해결 완료 (2026-07-13)**: 1차 22곳 `or` 폴백 → `_v if _v is not None else 기본값` 통일. 2차 잔존 9곳(복호화 실패 silent 1곳, real 키 레거시 폴백 7곳, max_position_size lambda 1곳) 해결 — `_dec` 복호화 실패 시 `logger.warning` 추가, `_pick_real_or_legacy` helper로 real 키 복호화 실패 시 레거시 폴백 금지 + `logger.error`, max_position_size lambda → 명시적 if 패턴. pytest 55 passed.
 
 - **pipeline_compute.py DYNAMIC_REG 처리 — 구독 실패 시에도 _subscribed_dynamic=True 설정 (P22 위반)**
   - 발견 일시: 2026-07-13 (실시간 데이터 수신율 문제 조사 중 발견)
