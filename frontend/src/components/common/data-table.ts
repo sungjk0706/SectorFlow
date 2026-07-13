@@ -9,8 +9,6 @@ import { CELL_BORDER, COLOR, FONT_SIZE, FONT_WEIGHT, FONT_FAMILY } from './ui-st
 import {
   computeColWidths,
   widthsToPercentages,
-  clampColWidth,
-  estimateTextWidth,
   type ColumnWidthInput,
 } from './auto-width'
 import { createVirtualScroller } from '../virtual-scroller'
@@ -101,7 +99,6 @@ function extractSamples<T>(
   columns: ColumnDef<T>[],
   rows: TableRow<T>[],
 ): string[][] {
-  // 전체 데이터 행 샘플링 — updateRows 시마다 실행하여 컬럼 폭을 데이터에 맞게 재계산
   const samplesByCol: string[][] = columns.map(() => [])
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
@@ -115,29 +112,21 @@ function extractSamples<T>(
 }
 
 /**
- * 컬럼 너비 관리자 — 초기 전체 계산 + 증분 추적 + 일괄 적용.
+ * 컬럼 너비 관리자 — 첫 updateRows 시 1회만 데이터 기반 폭 계산 후 고정.
  * 두 모드(fixed/virtualScroll)가 공통 사용하며 applyWidths 콜백만 모드별 주입.
+ * 첫 데이터로 적절한 폭을 자동 계산하고, 이후 어떤 데이터 변화에도 재계산하지 않아 컬럼 구분선이 완전 고정됨.
  */
 function createColumnWidthManager<T extends object>(
   columns: ColumnDef<T>[],
   applyWidths: (percentages: number[]) => void,
 ) {
   const fontSize = 13 // FONT_SIZE.body (13px) — auto-width.ts DEFAULT_FONT_SIZE와 동일
-  // 각 컬럼의 현재 최대 텍스트 폭 (패딩 제외)
-  let maxTextWidths: number[] = columns.map(c => estimateTextWidth(c.label, fontSize))
-  // 각 컬럼의 클램프된 px 폭
-  let colWidths: number[] = computeColWidths(
-    columns.map(c => ({ label: c.label, minWidth: c.minWidth, maxWidth: c.maxWidth, samples: [] })),
-    fontSize,
-  )
-  let percentages: number[] = widthsToPercentages(colWidths)
-  let dirty = false
+  let initialized = false
 
-  // 초기 percentages 적용
-  applyWidths(percentages)
-
-  /** 전체 데이터로 폭 재계산 + 즉시 적용 (updateRows 시 호출) */
+  /** 첫 updateRows 시 1회만 전체 데이터로 폭 계산 + 적용. 이후 호출은 no-op. */
   function initFromRows(rows: TableRow<T>[]) {
+    if (initialized) return
+    initialized = true
     const samples = extractSamples(columns, rows)
     const inputs: ColumnWidthInput[] = columns.map((col, i) => ({
       label: col.label,
@@ -145,43 +134,12 @@ function createColumnWidthManager<T extends object>(
       maxWidth: col.maxWidth,
       samples: samples[i],
     }))
-    colWidths = computeColWidths(inputs, fontSize)
-    // maxTextWidths 동기화 — 증분 추적의 기준점
-    maxTextWidths = columns.map((c, i) => {
-      let max = estimateTextWidth(c.label, fontSize)
-      for (let j = 0; j < samples[i].length; j++) {
-        const w = estimateTextWidth(samples[i][j], fontSize)
-        if (w > max) max = w
-      }
-      return max
-    })
-    percentages = widthsToPercentages(colWidths)
+    const colWidths = computeColWidths(inputs, fontSize)
+    const percentages = widthsToPercentages(colWidths)
     applyWidths(percentages)
-    dirty = false
   }
 
-  /** renderRow 중 개별 셀 텍스트 폭 검사 (증분) — 기존 최대보다 크면 갱신 */
-  function checkCellWidth(colIndex: number, text: string) {
-    const w = estimateTextWidth(text, fontSize)
-    if (w > maxTextWidths[colIndex]) {
-      maxTextWidths[colIndex] = w
-      const newColWidth = clampColWidth(w, columns[colIndex].minWidth, columns[colIndex].maxWidth)
-      if (newColWidth > colWidths[colIndex]) {
-        colWidths[colIndex] = newColWidth
-        dirty = true
-      }
-    }
-  }
-
-  /** 누적된 폭 변경을 DOM에 일괄 적용 (dirty 플래그로 스킵 판정) */
-  function flushWidthUpdate() {
-    if (!dirty) return
-    percentages = widthsToPercentages(colWidths)
-    applyWidths(percentages)
-    dirty = false
-  }
-
-  return { initFromRows, checkCellWidth, flushWidthUpdate }
+  return { initFromRows }
 }
 
 
@@ -346,10 +304,8 @@ function createFixedMode<T extends object>(
         if (typeof content === 'string') {
           td.textContent = content
           ;(td as CellWithPrevContent)._prevContent = content
-          widthMgr.checkCellWidth(i, content)
         } else if (content instanceof HTMLElement) {
           td.appendChild(content)
-          widthMgr.checkCellWidth(i, content.textContent || '')
         }
       } catch (e) { console.error('[DataTable] cell render error', e) }
       tr.appendChild(td)
@@ -361,7 +317,7 @@ function createFixedMode<T extends object>(
     for (let i = 0; i < colEls.length; i++) colEls[i].style.width = `${percentages[i]}%`
   }
 
-  // 컬럼 너비 관리자 — initFromRows(전체 계산) + checkCellWidth(증분) + flushWidthUpdate(일괄 적용)
+  // 컬럼 너비 관리자 — 첫 updateRows 시 1회만 데이터 기반 폭 계산 후 고정
   const widthMgr = createColumnWidthManager(columns, updateColWidths)
 
   // Phase 2.1: 렌더링 주기 제한 (requestAnimationFrame)
@@ -398,7 +354,7 @@ function createFixedMode<T extends object>(
       }
       emptyTr.style.display = 'none'
 
-      // 전체 데이터로 컬럼 폭 재계산 — 매 updateRows 시 실행 (1회 고정 해제)
+      // 첫 updateRows 시 1회만 데이터 기반 폭 계산 (이후 no-op, 구분선 고정)
       widthMgr.initFromRows(rows)
 
       // keyFn 기반 증분 갱신
@@ -472,7 +428,6 @@ function createFixedMode<T extends object>(
                     cell.textContent = content
                     if (columns[cIdx].flash) triggerFlash(cell)
                   }
-                  widthMgr.checkCellWidth(cIdx, content)
                 } else if (content instanceof HTMLElement) {
                   const existing = cell.firstElementChild as HTMLElement | null
                   if (!existing || !existing.isEqualNode(content)) {
@@ -480,7 +435,6 @@ function createFixedMode<T extends object>(
                     cell.appendChild(content)
                     if (columns[cIdx].flash) triggerFlash(cell)
                   }
-                  widthMgr.checkCellWidth(cIdx, content.textContent || '')
                 }
               } catch (err) { console.error('[data-table] cell render error:', err) }
             }
@@ -570,7 +524,6 @@ function createFixedMode<T extends object>(
                   cell.textContent = content
                   if (columns[cIdx].flash) triggerFlash(cell)
                 }
-                widthMgr.checkCellWidth(cIdx, content)
               } else if (content instanceof HTMLElement) {
                 const existing = cell.firstElementChild as HTMLElement | null
                 if (!existing || !existing.isEqualNode(content)) {
@@ -578,14 +531,11 @@ function createFixedMode<T extends object>(
                   cell.appendChild(content)
                   if (columns[cIdx].flash) triggerFlash(cell)
                 }
-                widthMgr.checkCellWidth(cIdx, content.textContent || '')
               }
             } catch (e) { console.error('[DataTable] cell render error', e) }
           }
         }
       }
-      // 렌더 주기 끝 — 누적된 폭 변경 일괄 적용
-      widthMgr.flushWidthUpdate()
     })
     if (!callbackRan) {
       rafId = id
@@ -640,7 +590,6 @@ function createFixedMode<T extends object>(
             cell.textContent = content
             if (columns[cIdx].flash) triggerFlash(cell)
           }
-          widthMgr.checkCellWidth(cIdx, content)
         } else if (content instanceof HTMLElement) {
           const existing = cell.firstElementChild as HTMLElement | null
           if (!existing || !existing.isEqualNode(content)) {
@@ -648,11 +597,9 @@ function createFixedMode<T extends object>(
             cell.appendChild(content)
             if (columns[cIdx].flash) triggerFlash(cell)
           }
-          widthMgr.checkCellWidth(cIdx, content.textContent || '')
         }
       } catch (e) { console.error('[DataTable] cell render error', e) }
     }
-    widthMgr.flushWidthUpdate()
   }
 
   return { el: wrapper, updateRows, destroy, updateItems: updateRows, updateItemByKey }
@@ -721,8 +668,29 @@ function createVirtualScrollMode<T extends object>(
   emptyDiv.textContent = emptyText
   scrollContainer.appendChild(emptyDiv)
 
-  function updateGridTemplate(percentages: number[]) {
-    gridTemplateColumns = percentages.map(p => `${p}%`).join(' ')
+  // 컬럼 폭 비율(%) 캐싱 — px 변환은 applyGridTemplatePx에서 수행
+  let cachedPercentages: number[] = columns.map(() => 100 / (columns.length || 1))
+  let lastContainerWidth = 0
+
+  /** 캐싱된 percentages를 scrollContainer 너비 기준 px로 변환하여 DOM에 적용.
+   *  scrollContainer.clientWidth는 스크롤바를 제외한 실제 렌더링 영역 너비이므로 px 합계가 정확히 일치.
+   *  마지막 컬럼에 반올림 오차를 보정하여 좌우 스크롤 발생 방지. */
+  function applyGridTemplatePx() {
+    const w = scrollContainer.clientWidth
+    if (w <= 0) return
+    lastContainerWidth = w
+    const pxWidths: number[] = new Array(cachedPercentages.length)
+    let sum = 0
+    for (let i = 0; i < cachedPercentages.length; i++) {
+      const px = Math.round((cachedPercentages[i] / 100) * w)
+      pxWidths[i] = px
+      sum += px
+    }
+    // 마지막 컬럼에 반올림 오차 보정 — 합계가 w와 정확히 일치하도록
+    if (pxWidths.length > 0) {
+      pxWidths[pxWidths.length - 1] += w - sum
+    }
+    gridTemplateColumns = pxWidths.map(px => `${px}px`).join(' ')
     headerDiv.style.gridTemplateColumns = gridTemplateColumns
     const sentinel = scrollContainer.querySelector('div')
     if (sentinel) {
@@ -734,9 +702,24 @@ function createVirtualScrollMode<T extends object>(
     }
   }
 
+  /** 데이터 기반 폭 비율 갱신 — initFromRows 시 호출 */
+  function updateGridTemplate(percentages: number[]) {
+    cachedPercentages = percentages
+    applyGridTemplatePx()
+  }
+
   updateGridTemplate(columns.map(() => 100 / (columns.length || 1)))
 
-  // 컬럼 너비 관리자 — initFromRows(전체 계산) + checkCellWidth(증분) + flushWidthUpdate(일괄 적용)
+  // ResizeObserver — scrollContainer 너비 실제 변화 시에만 px 재계산 (데이터 변경과 무관)
+  const gridRo = new ResizeObserver(() => {
+    const w = scrollContainer.clientWidth
+    if (w > 0 && w !== lastContainerWidth) {
+      applyGridTemplatePx()
+    }
+  })
+  gridRo.observe(scrollContainer)
+
+  // 컬럼 너비 관리자 — 첫 updateRows 시 1회만 데이터 기반 폭 계산 후 고정
   const widthMgr = createColumnWidthManager(columns, updateGridTemplate)
 
   /** 행이 그룹 행으로 렌더링되었는지 판별 (data-row-type 속성 기반) */
@@ -838,10 +821,8 @@ function createVirtualScrollMode<T extends object>(
           const content = c.render(dataRow, index)
           if (typeof content === 'string') {
             cell.textContent = content
-            widthMgr.checkCellWidth(i, content)
           } else if (content instanceof HTMLElement) {
             cell.appendChild(content)
-            widthMgr.checkCellWidth(i, content.textContent || '')
           }
         } catch (e) { console.error('[DataTable] cell render error', e) }
         rowEl.appendChild(cell)
@@ -909,7 +890,6 @@ function createVirtualScrollMode<T extends object>(
             cell.textContent = content
             if (columns[i].flash && !keyChanged) triggerFlash(cell)
           }
-          widthMgr.checkCellWidth(i, content)
         } else if (content instanceof HTMLElement) {
           // HTMLElement 셀: isEqualNode 비교 후 변경 시에만 교체
           const existing = cell.firstElementChild as HTMLElement | null
@@ -920,7 +900,6 @@ function createVirtualScrollMode<T extends object>(
             cell.appendChild(content)
             if (columns[i].flash && !keyChanged) triggerFlash(cell)
           }
-          widthMgr.checkCellWidth(i, content.textContent || '')
         }
       } catch (e) { console.error('[DataTable] cell render error', e) }
     }
@@ -951,12 +930,10 @@ function createVirtualScrollMode<T extends object>(
     currentRows = rows
     toggleEmpty(rows)
     if (rows.length > 0) {
-      // 전체 데이터로 컬럼 폭 재계산 — 매 updateRows 시 실행 (1회 고정 해제)
+      // 첫 updateRows 시 1회만 데이터 기반 폭 계산 (이후 no-op, 구분선 고정)
       widthMgr.initFromRows(rows)
     }
     scroller.updateItems(rows)
-    // 가상 스크롤러 렌더링 후 누적된 폭 변경 일괄 적용
-    widthMgr.flushWidthUpdate()
   }
 
   // Phase 2.1: 렌더링 주기 제한 (requestAnimationFrame)
@@ -1000,6 +977,7 @@ function createVirtualScrollMode<T extends object>(
 
   function destroy() {
     destroyed = true
+    gridRo.disconnect()
     scroller.destroy()
     wrapper.remove()
   }
@@ -1013,12 +991,10 @@ function createVirtualScrollMode<T extends object>(
       if (destroyed) return
       currentRows[index] = item
       scroller.updateItem(index, item)
-      widthMgr.flushWidthUpdate()
     },
     updateItemByKey: (key: string) => {
       if (!destroyed) {
         scroller.updateItemByKey(key)
-        widthMgr.flushWidthUpdate()
       }
     },
     scrollToIndex: (index: number) => { if (!destroyed) scroller.scrollToIndex(index) },

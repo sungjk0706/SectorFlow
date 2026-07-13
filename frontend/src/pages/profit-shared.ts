@@ -307,7 +307,7 @@ export function buildChartFromDailySummary(summary: Record<string, unknown>[]): 
 /* ── 매수 컬럼 (7개) ── */
 export const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
   { key: 'no', label: '순번', align: 'center', minWidth: 36, maxWidth: 36, render: (_, i) => String(i + 1) },
-  { key: 'datetime', label: '일시', align: 'center', minWidth: 80, render: r => { const d = String(r.date ?? ''); const t = String(r.time ?? ''); const dd = d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d; return dd + (t ? ' ' + t : '') } },
+  { key: 'datetime', label: '일시', align: 'center', minWidth: 80, maxWidth: 95, render: r => { const d = String(r.date ?? ''); const t = String(r.time ?? ''); const dd = d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d; return dd + (t ? ' ' + t : '') } },
   { key: 'stk_cd', label: '종목코드', align: 'center', minWidth: 72, maxWidth: 72, render: r => createCodeCell(String(r.stk_cd ?? '')) },
   createStockNameColumn<Record<string, unknown>>(
     (r: Record<string, unknown>) => {
@@ -320,16 +320,16 @@ export const BUY_COLS: ColumnDef<Record<string, unknown>>[] = [
       }
     }
   ),
-  { key: 'price', label: '매수가', align: 'right', render: r => createNumberCell(Number(r.price ?? 0)) },
-  { key: 'qty', label: '수량', align: 'right', render: r => createNumberCell(Number(r.qty ?? 0)) },
-  { key: 'total_amt', label: '매수금액', align: 'right', render: r => fmtWon(Number(r.total_amt ?? 0)) },
-  { key: 'fee', label: '수수료', align: 'right', render: r => fmtWon(Number(r.fee ?? 0)) },
+  { key: 'price', label: '매수가', align: 'right', minWidth: 60, maxWidth: 72, render: r => createNumberCell(Number(r.price ?? 0)) },
+  { key: 'qty', label: '수량', align: 'right', minWidth: 48, maxWidth: 56, render: r => createNumberCell(Number(r.qty ?? 0)) },
+  { key: 'total_amt', label: '매수금액', align: 'right', minWidth: 72, maxWidth: 85, render: r => fmtWon(Number(r.total_amt ?? 0)) },
+  { key: 'fee', label: '수수료', align: 'right', minWidth: 60, maxWidth: 72, render: r => fmtWon(Number(r.fee ?? 0)) },
 ]
 
 /* ── 매도 컬럼 (12개) ── */
 export const SELL_COLS: ColumnDef<Record<string, unknown>>[] = [
   { key: 'no', label: '순번', align: 'center', minWidth: 36, maxWidth: 36, render: (_, i) => String(i + 1) },
-  { key: 'datetime', label: '일시', align: 'center', minWidth: 80, render: r => { const d = String(r.date ?? ''); const t = String(r.time ?? ''); const dd = d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d; return dd + (t ? ' ' + t : '') } },
+  { key: 'datetime', label: '일시', align: 'center', minWidth: 80, maxWidth: 95, render: r => { const d = String(r.date ?? ''); const t = String(r.time ?? ''); const dd = d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d; return dd + (t ? ' ' + t : '') } },
   { key: 'stk_cd', label: '종목코드', align: 'center', minWidth: 72, maxWidth: 72, render: r => createCodeCell(String(r.stk_cd ?? '')) },
   createStockNameColumn<Record<string, unknown>>(
     (r: Record<string, unknown>) => {
@@ -342,8 +342,8 @@ export const SELL_COLS: ColumnDef<Record<string, unknown>>[] = [
       }
     }
   ),
-  { key: 'avg_buy_price', label: '매수가', align: 'right', render: r => createNumberCell(Number(r.avg_buy_price ?? 0)) },
-  { key: 'price', label: '매도가', align: 'right', render: r => {
+  { key: 'avg_buy_price', label: '매수가', align: 'right', minWidth: 60, maxWidth: 72, render: r => createNumberCell(Number(r.avg_buy_price ?? 0)) },
+  { key: 'price', label: '매도가', align: 'right', minWidth: 60, maxWidth: 72, render: r => {
     const sell = Number(r.price ?? 0)
     const pnl = Number(r.realized_pnl ?? 0)
     const span = document.createElement('span')
@@ -351,37 +351,37 @@ export const SELL_COLS: ColumnDef<Record<string, unknown>>[] = [
     span.textContent = fmtComma(sell)
     return span
   }},
-  { key: 'qty', label: '수량', align: 'right', render: r => createNumberCell(Number(r.qty ?? 0)) },
-  { key: 'buy_total_amt', label: '매수금액', align: 'right', render: r => fmtWon(Number(r.buy_total_amt ?? 0)) },
-  { key: 'total_amt', label: '매도금액', align: 'right', render: r => {
+  { key: 'qty', label: '수량', align: 'right', minWidth: 48, maxWidth: 56, render: r => createNumberCell(Number(r.qty ?? 0)) },
+  { key: 'buy_total_amt', label: '매수금액', align: 'right', minWidth: 72, maxWidth: 85, render: r => fmtWon(Number(r.buy_total_amt ?? 0)) },
+  { key: 'total_amt', label: '매도금액', align: 'right', minWidth: 72, maxWidth: 85, render: r => {
     const v = Number(r.realized_pnl ?? 0)
     const span = document.createElement('span')
     span.style.color = pnlColor(v)
     span.textContent = fmtWon(Number(r.total_amt ?? 0))
     return span
   }},
-  { key: 'realized_pnl', label: '실현손익', align: 'right', render: r => {
+  { key: 'realized_pnl', label: '실현손익', align: 'right', minWidth: 72, maxWidth: 85, render: r => {
     const v = Number(r.realized_pnl ?? 0)
     const span = document.createElement('span')
     span.style.color = pnlColor(v)
     span.textContent = `${v > 0 ? '+' : ''}${v.toLocaleString()}원`
     return span
   }},
-  { key: 'pnl_rate', label: '수익률', align: 'right', render: r => {
+  { key: 'pnl_rate', label: '수익률', align: 'right', minWidth: 60, maxWidth: 72, render: r => {
     const v = Number(r.pnl_rate ?? 0)
     const span = document.createElement('span')
     span.style.color = pnlColor(v)
     span.textContent = `${v > 0 ? '+' : ''}${v.toFixed(2)}%`
     return span
   }},
-  { key: 'fee', label: '수수료', align: 'right', render: r => fmtWon(Number(r.fee ?? 0)) },
-  { key: 'tax', label: '세금', align: 'right', render: r => fmtWon(Number(r.tax ?? 0)) },
+  { key: 'fee', label: '수수료', align: 'right', minWidth: 60, maxWidth: 72, render: r => fmtWon(Number(r.fee ?? 0)) },
+  { key: 'tax', label: '세금', align: 'right', minWidth: 60, maxWidth: 72, render: r => fmtWon(Number(r.tax ?? 0)) },
 ]
 
 /* ── 드릴다운 컬럼 (팩토리 — onDateClick 콜백 주입) ── */
 export function createDrilldownCols(onDateClick: (date: string) => void): ColumnDef<DailyDrilldownRow>[] {
   return [
-    { key: 'date', label: '날짜', align: 'center', render: r => {
+    { key: 'date', label: '날짜', align: 'center', minWidth: 60, maxWidth: 72, render: r => {
       const span = document.createElement('span')
       span.style.cursor = 'pointer'
       span.style.color = COLOR.down
@@ -390,15 +390,15 @@ export function createDrilldownCols(onDateClick: (date: string) => void): Column
       span.addEventListener('click', () => onDateClick(r.date))
       return span
     }},
-    { key: 'sellCount', label: '매도건수', align: 'right', render: r => String(r.sellCount) },
-    { key: 'buyCount', label: '매수건수', align: 'right', render: r => String(r.buyCount) },
-    { key: 'pnl', label: '당일손익', align: 'right', render: r => {
+    { key: 'sellCount', label: '매도건수', align: 'right', minWidth: 52, maxWidth: 60, render: r => String(r.sellCount) },
+    { key: 'buyCount', label: '매수건수', align: 'right', minWidth: 52, maxWidth: 60, render: r => String(r.buyCount) },
+    { key: 'pnl', label: '당일손익', align: 'right', minWidth: 72, maxWidth: 85, render: r => {
       const span = document.createElement('span')
       span.style.color = pnlColor(r.pnl)
       span.textContent = fmtWon(r.pnl)
       return span
     }},
-    { key: 'rate', label: '당일수익률', align: 'right', render: r => {
+    { key: 'rate', label: '당일수익률', align: 'right', minWidth: 60, maxWidth: 72, render: r => {
       const span = document.createElement('span')
       span.style.color = pnlColor(r.rate)
       span.textContent = `${r.rate > 0 ? '+' : ''}${r.rate.toFixed(2)}%`

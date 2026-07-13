@@ -57,6 +57,7 @@ function makeAmountColumn(key: string, label: string): ColumnDef<StockDetail5dIt
     key,
     label,
     align: 'right',
+    minWidth: 72, maxWidth: 95,
     render: (row) => fmtAmount(row[key as keyof StockDetail5dItem] as number | null),
   }
 }
@@ -66,6 +67,7 @@ function makeHighColumn(key: string, label: string): ColumnDef<StockDetail5dItem
     key,
     label,
     align: 'right',
+    minWidth: 60, maxWidth: 75,
     render: (row) => fmtHigh(row[key as keyof StockDetail5dItem] as number | null),
   }
 }

@@ -31,7 +31,7 @@ const COLUMNS: ColumnDef<Position>[] = [
     }
   ),
   {
-    key: 'cur_price', label: '현재가', align: 'right', flash: true,
+    key: 'cur_price', label: '현재가', align: 'right', flash: true, minWidth: 78, maxWidth: 90,
     render: (p) => {
       const sectorStock = hotStore.getState().sectorStocks[normalizeStockCode(p.stk_cd)]
       const curPrice = sectorStock?.cur_price
@@ -43,15 +43,15 @@ const COLUMNS: ColumnDef<Position>[] = [
     },
   },
   {
-    key: 'buy_price', label: '매수가', align: 'right',
+    key: 'buy_price', label: '매수가', align: 'right', minWidth: 60, maxWidth: 72,
     render: (p) => createNumberCell(p.buy_price ?? p.avg_price ?? 0),
   },
   {
-    key: 'buy_amt', label: '매수금액', align: 'right',
+    key: 'buy_amt', label: '매수금액', align: 'right', minWidth: 72, maxWidth: 85,
     render: (p) => createNumberCell(p.buy_amt ?? 0),
   },
   {
-    key: 'pnl', label: '평가손익', align: 'right',
+    key: 'pnl', label: '평가손익', align: 'right', minWidth: 72, maxWidth: 85,
     render: (p) => {
       const sectorStock = hotStore.getState().sectorStocks[normalizeStockCode(p.stk_cd)]
       const curPrice = sectorStock?.cur_price ?? p.cur_price
@@ -65,7 +65,7 @@ const COLUMNS: ColumnDef<Position>[] = [
     },
   },
   {
-    key: 'rate', label: '수익률', align: 'right',
+    key: 'rate', label: '수익률', align: 'right', minWidth: 60, maxWidth: 72,
     render: (p) => {
       const sectorStock = hotStore.getState().sectorStocks[normalizeStockCode(p.stk_cd)]
       const curPrice = sectorStock?.cur_price ?? p.cur_price
@@ -78,7 +78,7 @@ const COLUMNS: ColumnDef<Position>[] = [
     },
   },
   {
-    key: 'qty', label: '수량', align: 'right',
+    key: 'qty', label: '수량', align: 'right', minWidth: 48, maxWidth: 56,
     render: (p) => createNumberCell(p.qty ?? 0),
   },
   {

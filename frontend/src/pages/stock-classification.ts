@@ -613,7 +613,7 @@ function buildSectorManageCard(): HTMLElement {
       }
     ),
     {
-      key: 'sector', label: '소속업종', align: 'left',
+      key: 'sector', label: '소속업종', align: 'left', minWidth: 80, maxWidth: 150,
       cellStyle: { fontWeight: 'normal', color: COLOR.neutral },
       render: (row) => row.sector
     },
@@ -677,14 +677,14 @@ function buildSectorManageCard(): HTMLElement {
       render: (row) => row.seq === null ? '' : String(row.seq),
     },
     {
-      key: 'name', label: '업종명', align: 'left',
+      key: 'name', label: '업종명', align: 'left', minWidth: 80, maxWidth: 150,
       cellStyle: { fontWeight: 'normal', color: COLOR.neutral },
       render: (row) => {
         return row.sectorName
       },
     },
     {
-      key: 'count', label: '종목수', align: 'center',
+      key: 'count', label: '종목수', align: 'center', minWidth: 48, maxWidth: 56,
       render: (row) => {
         if (row.sectorName === '미분류' && row.stockCount > 0) {
           const badge = document.createElement('span')
@@ -707,7 +707,7 @@ function buildSectorManageCard(): HTMLElement {
       },
     },
     {
-      key: 'actions', label: '작업', align: 'center',
+      key: 'actions', label: '작업', align: 'center', minWidth: 60, maxWidth: 80,
       render: (row) => {
         const container = document.createElement('div')
         Object.assign(container.style, { display: 'flex', gap: '4px', justifyContent: 'center' })
