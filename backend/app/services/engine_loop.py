@@ -160,6 +160,14 @@ async def run_engine_loop() -> None:
         # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
         settings = state.integrated_system_settings_cache
 
+        # ── WS 구독 상태 초기화 (표준 기동 순서: 초기화 → 연결 → 구독) ──
+        # 엔진 루프의 WS 연결/구독/틱 수신 이전에 실행 보장 (경쟁 조건 제거, P22 데이터 정합성).
+        # preboot_cache_loaded=False 상태이므로 _reset_realtime_fields()는 자동 스킵되고
+        # engine_cache._load_caches_preboot()에서 캐시 로드 후 수행됨.
+        # schedule_engine_task()가 정상 동작하도록 engine_loop_ref 설정 이후에 실행.
+        from backend.app.services.daily_time_scheduler import _init_ws_subscribe_state
+        await _init_ws_subscribe_state()
+
         # 엔진 내부 준비 완료 시그널 — Uvicorn 리스닝 + 브라우저 열기 즉시 허용
         state.preboot_ready_event.set()
 

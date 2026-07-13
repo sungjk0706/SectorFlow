@@ -354,22 +354,30 @@ class KiwoomConnector(BrokerConnector):
                 success_all = False
         return success_all
 
-    async def subscribe_dynamic(self, codes: list[str]) -> None:
-        """동적 데이터 구독 (Kiwoom 0D 일괄 등록)."""
+    async def subscribe_dynamic(self, codes: list[str]) -> bool:
+        """동적 데이터 구독 (Kiwoom 0D 일괄 등록).
+
+        Returns:
+            True if 1건 이상 ACK 수신, False if 연결 없음/전부 실패 (P22 정합성).
+        """
         if not self.is_connected() or not self._socket:
             logger.warning("[연결] %s 동적 구독 실패 — 연결 없음", _BROKER_DISPLAY)
-            return
+            return False
 
         from backend.app.services.engine_ws_reg import build_0d_reg_payloads
         from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
 
         payloads = build_0d_reg_payloads(codes)
 
+        any_ok = False
         for payload in payloads:
             try:
-                await _ws_send_reg_unreg_and_wait_ack(payload, sender=self)
+                ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload, sender=self)
+                if ok:
+                    any_ok = True
             except RuntimeError:
                 logger.warning("[연결] %s 동적 구독 — 이벤트 루프 없음", _BROKER_DISPLAY, exc_info=True)
+        return any_ok
 
     async def unsubscribe_dynamic(self, codes: list[str]) -> None:
         """동적 데이터 구독 해지 (Kiwoom 0D 일괄 해지)."""

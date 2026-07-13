@@ -331,13 +331,17 @@ async def _process_control_signal(
             from backend.app.services.engine_state import state
             from backend.app.services.engine_sector_confirm import _PENDING_REG_CODES
             codes = payload.get("codes", [])
-            await subscribe_dynamic_data(codes)
-            # _subscribed_dynamic 플래그 설정 — 구독 완료 후 단일 진실 소스 (P10 SSOT)
-            for cd in codes:
-                if cd in state.master_stocks_cache:
-                    state.master_stocks_cache[cd]["_subscribed_dynamic"] = True
-            # 대기 세트에서 제거 — 실제 구독 완료되었으므로
-            _PENDING_REG_CODES.difference_update(codes)
+            ok = await subscribe_dynamic_data(codes)
+            if ok:
+                # 구독 성공 — _subscribed_dynamic 플래그 설정 (단일 진실 소스, P10 SSOT, P22 정합성)
+                for cd in codes:
+                    if cd in state.master_stocks_cache:
+                        state.master_stocks_cache[cd]["_subscribed_dynamic"] = True
+                # 대기 세트에서 제거 — 실제 구독 완료되었으므로
+                _PENDING_REG_CODES.difference_update(codes)
+            else:
+                # 구독 실패 — _subscribed_dynamic 미설정, _PENDING_REG_CODES 유지하여 재시도 가능 (P22)
+                logger.warning("[연산] 동적 구독 실패 — %d종목 대기 세트 유지 (재시도 대상)", len(codes))
         elif signal_type == "DYNAMIC_UNREG":
             from backend.app.services.engine_ws import unsubscribe_dynamic_data
             from backend.app.services.engine_state import state

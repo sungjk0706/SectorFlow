@@ -58,7 +58,11 @@ async def _engine_loop() -> None:
 
 async def stop_engine() -> None:
     """엔진 중지."""
-    from backend.app.services.engine_sector_confirm import cancel_recompute_timer
+    from backend.app.services.engine_sector_confirm import (
+        cancel_recompute_timer,
+        cancel_all_dynamic_unreg_timers,
+        _PENDING_REG_CODES,
+    )
 
     state.running = False
 
@@ -67,6 +71,10 @@ async def stop_engine() -> None:
 
     # 디바운스 타이머 정리
     cancel_recompute_timer()
+
+    # 동적 구독 상태 정리 — 잔존 타이머/대기 세트가 신규 세션으로 누출되는 것 방지 (P22 데이터 정합성)
+    cancel_all_dynamic_unreg_timers()
+    _PENDING_REG_CODES.clear()
 
     if state.engine_task:
         state.engine_task.cancel()

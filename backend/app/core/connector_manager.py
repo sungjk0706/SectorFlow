@@ -271,11 +271,19 @@ class ConnectorManager:
             self._sub_codes.pop(bid, None)
         return success
 
-    async def subscribe_dynamic(self, codes: list[str]) -> None:
-        """동적 데이터(호가, 프로그램 매매) 구독 등록 라우팅"""
+    async def subscribe_dynamic(self, codes: list[str]) -> bool:
+        """동적 데이터(호가, 프로그램 매매) 구독 등록 라우팅.
+
+        Returns:
+            True if 1개 이상 커넥터에서 1건 이상 성공, False if 전부 실패 (P22 정합성).
+        """
+        any_ok = False
         for c in self._connectors.values():
             if c.is_connected() and hasattr(c, "subscribe_dynamic"):
-                await c.subscribe_dynamic(codes) # type: ignore
+                ok = await c.subscribe_dynamic(codes) # type: ignore
+                if ok:
+                    any_ok = True
+        return any_ok
 
     async def unsubscribe_dynamic(self, codes: list[str]) -> None:
         """동적 데이터 구독 해지 라우팅"""
