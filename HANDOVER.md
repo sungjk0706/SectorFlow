@@ -1,32 +1,26 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 수읉상세 매도/매수 탭 시각적 개선 — 사각 테두리 + 1행 표시 + 동적 숫자 파랑 강조**
-  - **목적**: 수읉상세 페이지 매도/매수 탭의 여백 부재, 시각적 구분 부재, 폰트 크기 작음, 매수내역 2행 줄바꿈 문제 해결
+- **2026-07-13: 검색 결과 행 하이라이트 P23 일관성 통일 — outline 제거 + 파랑 배경 통일**
+  - **목적**: 업종순위/매수설정/종목상세 페이지의 검색 결과 행 하이라이트를 수읉상세 카드 선택 방식과 시각 통일
   - **근본 원인**:
-    1. `button.ts:210-223` `createTabBar`의 `applyStyle`에 `whiteSpace: 'nowrap'` 설정 없음 → `equalWidth: true` + 긴 라벨(건수 포함) 시 자동 줄바꿈
-    2. `profit-detail.ts:425-426` 탭 폰트 12px, 패딩 `8px 0` (좌우 패딩 0) — general-settings(13px, `8px 16px`) 대비 작고 좁음
-    3. `button.ts:214-216` `border: 'none'`, 활성/비활성 구분이 하단 2px 보더만 → 사각 테두리 없이 클릭 영역 불명확
-    4. `profit-detail.ts:145-150` `textContent` 단일 할당 → 동적 숫자만 별도 색상 적용 불가
+    1. 3개 페이지(`sector-stock.ts:614`, `buy-target.ts:289`, `stock-detail.ts:235`)가 각각 `outline: 2px solid 파랑`만 사용, 배경 없음 → 수읉상세 카드(파랑 배경)와 불일치 (P23 위반)
+    2. `outline`이 행 구분선(`data-table.ts:746` 하단 1px 회색)과 인접 행에서 겹쳐 2줄로 표시
+    3. `sector-stock.ts:248-256` rowCache가 행 객체 재사용 → `virtual-scroller.ts:430-433`에서 `oldItems[i] !== item` false로 renderRow 생략 → 검색어 제거 시 rowStyle(outline) 잔상
   - **해결 방안**:
-    - 수정 1: `button.ts:178-256` `createTabBar` — `whiteSpace: 'nowrap'` 추가 (모든 탭 줄바꿈 방지), `boxed?: boolean` 옵션 추가 (기본 false, 기존 페이지 영향 없음)
-    - 수정 2: `button.ts:210-223` `applyStyle` — `boxed: true`일 때 사각 테두리 패턴 (활성: `1px solid COLOR.down` + `COLOR.downBg` 배경, 비활성: `1px solid COLOR.border` + 투명, `borderRadius: 4px`)
-    - 수정 3: `profit-detail.ts:6` `FONT_WEIGHT` import 추가
-    - 수정 4: `profit-detail.ts:139-159` `setTabLabel` 헬퍼 추가 — `replaceChildren()` + 텍스트 노드 + 숫자 span(`COLOR.down` 파랑 + `FONT_WEIGHT.semibold`) 조립, `updateTabLabels`에서 `textContent` → `setTabLabel` 호출로 전환
-    - 수정 5: `profit-detail.ts:418` tabRow `borderBottom` 제거 (사각 탭 테두리와 이중 보더 방지), `marginTop: 4px`, `padding: 0 4px`, `marginBottom: 12px` 적용
-    - 수정 6: `profit-detail.ts:432-436` `fontSize: FONT_SIZE.tab` (13px), `padding: '8px 16px'`, `boxed: true` 적용
-  - **수정 파일**: `button.ts`, `profit-detail.ts`
-  - **검증**: typecheck OK, build OK (61 modules, 2.08s), 런타임 브라우저 확인 — 매도/매수 탭 1행 표시, 사각 테두리 파랑/회색 구분, 동적 숫자 파랑 강조 정상
-  - **커밋/푸쉬**: `dd16522` pushed to `origin/main`
+    - 수정 1: 3개 파일 rowStyle을 `outline` 제거 → `background: COLOR.downBg`(파랑 배경)만 유지로 통일
+    - 수정 2: `sector-stock.ts:561,579` onSearch 콜백에 `this.rowCache.clear()` 추가 — 검색어 변경 시 rowCache 클리어로 새 row 객체 생성 → renderRow 호출 보장, rowStyle 즉시 갱신
+    - 강도: 사용자 선택 "배경만 살짝" — outline 제거로 2줄 현상 해결, 파랑 배경으로 검색 결과 강조
+  - **수정 파일**: `sector-stock.ts`, `buy-target.ts`, `stock-detail.ts`
+  - **검증**: typecheck OK, build OK (61 modules, 2.07s), 브라우저 확인 대기 — 검색어 입력 시 파랑 배경 강조, 검색어 제거 시 잔상 없이 즉시 해제, 2줄 현상 없음
+  - **커밋/푸쉬**: `bc1f10f` pushed to `origin/main`
 
 ## 직전 완료 작업 (이전)
-- **2026-07-13: 미해결 문제 2건 근본 해결 — broker_config 폴백 제거 (P20) + _subscribed_dynamic 이중 설정 해결 (P10/P22)**
-  - **목적**: HANDOVER.md 미해결 문제 2건 근본 원인 해결
-  - **문제 1: broker_config = {} 빈 객체 + fallback 사용 (P20 위반)** — `app.py:83-92` 정규화 후 캐시 주입, 5곳 폴백 제거
-  - **문제 2: _subscribed_dynamic 플래그 이중 설정 (P10/P22 위반)** — `_PENDING_REG_CODES` 신규 추가로 구독 대기 중 추적 분리
-  - **수정 파일**: `app.py`, `connector_manager.py`, `broker_router.py`, `engine_loop.py`, `engine_sector_confirm.py`, `pipeline_compute.py`, `engine_lifecycle.py`, 테스트 4개, `conftest.py`
-  - **검증**: pytest 352 passed, 런타임 기동 정상
-  - **커밋/푸쉬**: `a5e190d` pushed to `origin/main`
+- **2026-07-13: 수읉상세 매도/매수 탭 시각적 개선 — 사각 테두리 + 1행 표시 + 동적 숫자 파랑 강조**
+  - **목적**: 수읉상세 페이지 매도/매수 탭의 여백 부재, 시각적 구분 부재, 폰트 크기 작음, 매수내역 2행 줄바꿈 문제 해결
+  - **수정 파일**: `button.ts`, `profit-detail.ts`
+  - **검증**: typecheck OK, build OK (61 modules, 2.08s), 런타임 브라우저 확인 — 정상
+  - **커밋/푸쉬**: `dd16522` pushed to `origin/main`
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책, JIF 경계 이벤트 즉시 갱신 — 모두 완료 (git history 참조)
