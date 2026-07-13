@@ -84,6 +84,12 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
 2. Solve the root cause, not the symptom. No temporary fixes, fallbacks, `!important`, `as any`, or "let's do this for now" workarounds.
 3. One small step at a time. Modify one file or block at a time, then verify.
 4. After any change, run at least one of: type check, lint, build, test, or runtime start.
+4-1. **테스트 실패 추적 의무 (강제).** 테스트 실행 시 실패가 발생하면 "내 수정과 무관한 기존 실패"라고 단정하지 말고, 반드시 아래 절차를 수행:
+   1) **연관성 조사**: 실패한 테스트가 수정한 코드/함수/모듈/설정 키를 직접 또는 간접적으로 참조하는지 확인.
+   2) **수정 전 상태 비교**: `git stash`로 수정을 임시 되돌린 후 동일 테스트를 실행하여 수정 전에도 실패하는지 확인. 수정 전에도 실패하면 기존 실패로 판정, 수정 후에만 실패하면 내 수정이 원인.
+   3) **기존 실패로 판정된 경우**: 사용자 보고에 "기존 실패 N건 (수정 전 동일 실패 확인)"으로 명시하고, `HANDOVER.md` "미해결 문제" 섹션에 기록.
+   4) **내 수정이 원인인 경우**: 즉시 원인 추적 및 수정. "기존 실패"로 치부하고 넘어가는 것은 절대 금지.
+   - 테스트 실패는 무언가 잘못됐다는 신호. 무시하지 말고 반드시 추적하는 것이 원칙.
 5. For backend changes, runtime startup check is mandatory: start `.venv/bin/python main.py`, check logs, wait 10–30s, then terminate and confirm no leftover processes.
 6. Do not commit or update `HANDOVER.md` without user approval.
 

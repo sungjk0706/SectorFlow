@@ -223,6 +223,12 @@ def build_engine_settings_dict(flat: dict) -> dict:
     # ── WS 구독 자동 스위치 ────────
     result["quote_auto_subscribe"]         = bool(merged.get("quote_auto_subscribe"))
 
+    # ── 확정 데이터 브로커 ────────
+    # _get_all_tokens_async가 토큰 발급 대상 증권사를 수집할 때 사용.
+    # build_engine_settings_dict 결과에 포함하지 않으면 캐시에서 사라져
+    # 주 사용 증권사와 다른 확정 데이터 브로커의 토큰이 발급되지 않음 (P10 SSOT).
+    result["confirmed_data_broker"]        = str(merged.get("confirmed_data_broker") or "").strip()
+
     # ── 테스트모드 가상 예수금 ────────
     result["test_virtual_deposit"]         = int(merged.get("test_virtual_deposit", 10_000_000) or 0)
     result["test_virtual_balance"]         = int(merged.get("test_virtual_balance", 10_000_000) or 0)
