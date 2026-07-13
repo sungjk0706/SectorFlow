@@ -187,6 +187,8 @@ export interface TabBarOptions {
   equalWidth?: boolean
   /** 활성 색상 (기본 COLOR.down) */
   activeColor?: string
+  /** 사각 테두리 패턴 여부 (기본 false) — 활성: 파랑 보더+배경, 비활성: 회색 보더 */
+  boxed?: boolean
 }
 
 /**
@@ -200,6 +202,7 @@ export function createTabBar(options: TabBarOptions): { el: HTMLElement; buttons
     padding = '8px 16px',
     equalWidth = false,
     activeColor = COLOR.down,
+    boxed = false,
   } = options
 
   const bar = document.createElement('div')
@@ -211,13 +214,21 @@ export function createTabBar(options: TabBarOptions): { el: HTMLElement; buttons
     Object.assign(btn.style, {
       padding,
       cursor: 'pointer',
-      border: 'none',
-      background: 'transparent',
-      borderBottom: active ? `2px solid ${activeColor}` : '2px solid transparent',
+      border: boxed
+        ? `1px solid ${active ? activeColor : COLOR.border}`
+        : 'none',
+      borderRadius: boxed ? '4px' : '0',
+      background: boxed
+        ? (active ? COLOR.downBg : 'transparent')
+        : 'transparent',
+      borderBottom: boxed
+        ? `1px solid ${active ? activeColor : COLOR.border}`
+        : (active ? `2px solid ${activeColor}` : '2px solid transparent'),
       fontWeight: FONT_WEIGHT.normal,
       color: active ? activeColor : COLOR.tertiary,
       fontSize,
       textAlign: 'center',
+      whiteSpace: 'nowrap',
       ...(equalWidth ? { flex: '1' } : {}),
     })
   }

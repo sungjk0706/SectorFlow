@@ -3,7 +3,7 @@
 // 차트(크게) + 드릴다운 + 날짜/종목 필터 + 전체 거래내역(가상 스크롤) + 통계 정보
 
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
-import { FONT_SIZE, pnlColor, fmtWon, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import { createSearchInput } from '../components/common/search-input'
 import { createTabBar, createToggleSelectBtn } from '../components/common/button'
@@ -137,17 +137,24 @@ function updateDrilldownBtnStyle(active: boolean): void {
 }
 
 /* ── 탭 헤더 텍스트 업데이트 ── */
+function setTabLabel(btn: HTMLButtonElement, label: string, count: number): void {
+  // 라벨 텍스트 + 동적 숫자(파란색 강조) 분리 렌더
+  btn.replaceChildren()
+  btn.appendChild(document.createTextNode(`${label} (`))
+  const numSpan = document.createElement('span')
+  Object.assign(numSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
+  numSpan.textContent = String(count)
+  btn.appendChild(numSpan)
+  btn.appendChild(document.createTextNode('건)'))
+}
+
 function updateTabLabels(): void {
   const dateRange = dateRangeInput?.getValue() ?? { from: '', to: '' }
   const stockQuery = stockFilterInput?.getValue() || ''
   const filteredSells = filterRows(sellHistory, dateRange.from, dateRange.to, stockQuery || undefined)
   const filteredBuys = filterRows(buyHistory, dateRange.from, dateRange.to, stockQuery || undefined)
-  if (sellTabBtn) {
-    sellTabBtn.textContent = `매도 내역 (${filteredSells.length}건)`
-  }
-  if (buyTabBtn) {
-    buyTabBtn.textContent = `매수 내역 (${filteredBuys.length}건)`
-  }
+  if (sellTabBtn) setTabLabel(sellTabBtn, '매도 내역', filteredSells.length)
+  if (buyTabBtn) setTabLabel(buyTabBtn, '매수 내역', filteredBuys.length)
 }
 
 /* ── 날짜 + 종목 필터 ── */
@@ -408,7 +415,7 @@ function mount(container: HTMLElement): void {
 
   // 탭 헤더
   tabRow = document.createElement('div')
-  Object.assign(tabRow.style, { display: 'flex', borderBottom: '1px solid ' + COLOR.borderLight, marginBottom: '8px' })
+  Object.assign(tabRow.style, { display: 'flex', marginTop: '4px', padding: '0 4px', marginBottom: '12px' })
 
   tabBarHandle = createTabBar({
     tabs: [
@@ -422,9 +429,10 @@ function mount(container: HTMLElement): void {
       showTable()
       updateTabLabels()
     },
-    fontSize: FONT_SIZE.label,
-    padding: '8px 0',
+    fontSize: FONT_SIZE.tab,
+    padding: '8px 16px',
     equalWidth: true,
+    boxed: true,
   })
   sellTabBtn = tabBarHandle.buttons.get('sell') ?? null
   buyTabBtn = tabBarHandle.buttons.get('buy') ?? null
