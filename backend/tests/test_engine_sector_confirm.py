@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 
+from backend.app.domain.models import SectorScore
 from backend.app.services.engine_sector_confirm import (
     request_sector_recompute,
     has_dirty_sectors,
@@ -339,14 +340,20 @@ class TestFlushUnregBatch:
 
 # ── _flush_sector_recompute_impl ───────────────────────────────────
 
-def _make_sector_score(sector_name, rise_ratio=0.5, final_score=1.0):
-    """테스트용 sector score mock 생성."""
-    sc = MagicMock()
-    sc.sector = sector_name
-    sc.rise_ratio = rise_ratio
-    sc.final_score = final_score
-    sc.rank = 0
-    return sc
+def _make_sector_score(sector_name, rise_ratio=0.5, final_score=0.0):
+    """테스트용 SectorScore 생성 (실제 객체 — calculate_bonus_scores 실행 가능)."""
+    return SectorScore(
+        sector=sector_name,
+        total=3,
+        rise_count=int(rise_ratio * 3),
+        rise_ratio=rise_ratio,
+        avg_change_rate=1.0,
+        avg_trade_amount=1_000_000_000,
+        avg_ratio_5d_pct=10.0,
+        rank=0,
+        stocks=[],
+        final_score=final_score,
+    )
 
 
 def _make_buy_target(code, guard_pass=True):
@@ -412,7 +419,7 @@ class TestFlushSectorRecomputeImpl:
                  {"005930": "반도체", "005935": "반도체"},
              ])), \
              patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[new_sector])), \
-             patch("backend.app.domain.sector_score.calculate_weighted_scores") as mock_weighted, \
+             patch("backend.app.domain.sector_score.calculate_bonus_scores") as mock_bonus, \
              patch("backend.app.domain.buy_filter.build_buy_targets_from_settings", return_value=mock_result), \
              patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()) as mock_notify_scores, \
@@ -421,9 +428,6 @@ class TestFlushSectorRecomputeImpl:
             mock_state.sector_summary_cache = mock_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
-                "sector_trim_trade_amt_pct": 10.0,
-                "sector_trim_change_rate_pct": 10.0,
-                "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
                 "sector_min_rise_ratio_pct": 0.0,
             }
             mock_state.auto_trade = None
@@ -431,7 +435,7 @@ class TestFlushSectorRecomputeImpl:
 
             await _flush_sector_recompute_impl()
 
-            mock_weighted.assert_called_once()
+            mock_bonus.assert_called_once()
             mock_notify_scores.assert_called_once()
             mock_notify_targets.assert_called_once()
             mock_state.sector_summary_ready_event.set.assert_called_once()
@@ -458,7 +462,7 @@ class TestFlushSectorRecomputeImpl:
                  {"005930": "반도체", "005935": "반도체"},
              ])), \
              patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[existing_sector])), \
-             patch("backend.app.domain.sector_score.calculate_weighted_scores"), \
+             patch("backend.app.domain.sector_score.calculate_bonus_scores"), \
              patch("backend.app.domain.buy_filter.build_buy_targets_from_settings", return_value=mock_result), \
              patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()), \
@@ -467,9 +471,6 @@ class TestFlushSectorRecomputeImpl:
             mock_state.sector_summary_cache = mock_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
-                "sector_trim_trade_amt_pct": 10.0,
-                "sector_trim_change_rate_pct": 10.0,
-                "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
                 "sector_min_rise_ratio_pct": 0.0,
             }
             mock_state.auto_trade = None
@@ -500,7 +501,6 @@ class TestFlushSectorRecomputeImpl:
                  {"005930": "반도체"},
              ])), \
              patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[pass_sector])), \
-             patch("backend.app.domain.sector_score.calculate_weighted_scores"), \
              patch("backend.app.domain.buy_filter.build_buy_targets_from_settings", return_value=mock_result), \
              patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()), \
@@ -509,9 +509,6 @@ class TestFlushSectorRecomputeImpl:
             mock_state.sector_summary_cache = mock_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
-                "sector_trim_trade_amt_pct": 10.0,
-                "sector_trim_change_rate_pct": 10.0,
-                "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
                 "sector_min_rise_ratio_pct": 50.0,
             }
             mock_state.auto_trade = None
@@ -543,7 +540,7 @@ class TestFlushSectorRecomputeImpl:
                  {"005930": "반도체"},
              ])), \
              patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[existing_sector])), \
-             patch("backend.app.domain.sector_score.calculate_weighted_scores"), \
+             patch("backend.app.domain.sector_score.calculate_bonus_scores"), \
              patch("backend.app.domain.buy_filter.build_buy_targets_from_settings", return_value=mock_result), \
              patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()), \
@@ -555,9 +552,6 @@ class TestFlushSectorRecomputeImpl:
             mock_state.sector_summary_cache = mock_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
-                "sector_trim_trade_amt_pct": 10.0,
-                "sector_trim_change_rate_pct": 10.0,
-                "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
                 "sector_min_rise_ratio_pct": 0.0,
             }
             mock_state.auto_trade = None
@@ -589,7 +583,7 @@ class TestFlushSectorRecomputeImpl:
                  {"005930": "반도체"},
              ])), \
              patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[existing_sector])), \
-             patch("backend.app.domain.sector_score.calculate_weighted_scores"), \
+             patch("backend.app.domain.sector_score.calculate_bonus_scores"), \
              patch("backend.app.domain.buy_filter.build_buy_targets_from_settings", return_value=mock_result), \
              patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()), \
@@ -601,9 +595,6 @@ class TestFlushSectorRecomputeImpl:
             mock_state.sector_summary_cache = mock_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
-                "sector_trim_trade_amt_pct": 10.0,
-                "sector_trim_change_rate_pct": 10.0,
-                "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
                 "sector_min_rise_ratio_pct": 0.0,
             }
             mock_state.auto_trade = None
@@ -648,7 +639,7 @@ class TestFlushSectorRecomputeImpl:
                  {"005930": "반도체"},
              ])), \
              patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[existing_sector])), \
-             patch("backend.app.domain.sector_score.calculate_weighted_scores"), \
+             patch("backend.app.domain.sector_score.calculate_bonus_scores"), \
              patch("backend.app.domain.buy_filter.build_buy_targets_from_settings", return_value=mock_result) as mock_build, \
              patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()), \
@@ -657,9 +648,6 @@ class TestFlushSectorRecomputeImpl:
             mock_state.sector_summary_cache = mock_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
-                "sector_trim_trade_amt_pct": 10.0,
-                "sector_trim_change_rate_pct": 10.0,
-                "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
                 "sector_min_rise_ratio_pct": 0.0,
             }
             mock_state.auto_trade = mock_auto_trade
@@ -692,7 +680,7 @@ class TestFlushSectorRecomputeImpl:
                  {"000660": "자동차"},   # all_codes → sectors (000660 not in 반도체)
              ])), \
              patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[])), \
-             patch("backend.app.domain.sector_score.calculate_weighted_scores"), \
+             patch("backend.app.domain.sector_score.calculate_bonus_scores"), \
              patch("backend.app.domain.buy_filter.build_buy_targets_from_settings", return_value=mock_result), \
              patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()), \
@@ -701,9 +689,6 @@ class TestFlushSectorRecomputeImpl:
             mock_state.sector_summary_cache = mock_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
-                "sector_trim_trade_amt_pct": 10.0,
-                "sector_trim_change_rate_pct": 10.0,
-                "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
                 "sector_min_rise_ratio_pct": 0.0,
             }
             mock_state.auto_trade = None
@@ -735,7 +720,7 @@ class TestFlushSectorRecomputeImpl:
                  {"005930": "자동차"},   # all_codes → sectors
              ])), \
              patch("backend.app.domain.sector_calculator.compute_sector_scores", new=AsyncMock(return_value=[])), \
-             patch("backend.app.domain.sector_score.calculate_weighted_scores"), \
+             patch("backend.app.domain.sector_score.calculate_bonus_scores"), \
              patch("backend.app.domain.buy_filter.build_buy_targets_from_settings", return_value=mock_result), \
              patch("backend.app.services.engine_account.get_held_codes", new=AsyncMock(return_value=set())), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new=AsyncMock()), \
@@ -744,9 +729,6 @@ class TestFlushSectorRecomputeImpl:
             mock_state.sector_summary_cache = mock_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
-                "sector_trim_trade_amt_pct": 10.0,
-                "sector_trim_change_rate_pct": 10.0,
-                "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
                 "sector_min_rise_ratio_pct": 0.0,
             }
             mock_state.auto_trade = None
@@ -787,9 +769,6 @@ class TestFullRecompute:
             mock_state.sector_summary_cache = None
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
-                "sector_trim_trade_amt_pct": 10.0,
-                "sector_trim_change_rate_pct": 10.0,
-                "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
                 "sector_min_rise_ratio_pct": 0.0,
             }
             mock_state.auto_trade = None
@@ -830,9 +809,6 @@ class TestFullRecompute:
             mock_state.sector_summary_cache = prev_cache
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
-                "sector_trim_trade_amt_pct": 10.0,
-                "sector_trim_change_rate_pct": 10.0,
-                "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
                 "sector_min_rise_ratio_pct": 0.0,
             }
             mock_state.auto_trade = None
@@ -867,9 +843,6 @@ class TestFullRecompute:
             mock_state.sector_summary_cache = None
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
-                "sector_trim_trade_amt_pct": 10.0,
-                "sector_trim_change_rate_pct": 10.0,
-                "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
                 "sector_min_rise_ratio_pct": 0.0,
             }
             mock_state.auto_trade = mock_auto_trade

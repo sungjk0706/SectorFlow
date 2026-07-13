@@ -1164,7 +1164,7 @@ class TestCmdSector:
         mock_sector1.avg_change_rate = 2.5
         mock_sector1.rise_count = 8
         mock_sector1.total = 10
-        mock_sector1.scored_trade_amount = 500_000_000
+        mock_sector1.avg_trade_amount = 500_000_000
 
         mock_summary = MagicMock()
         mock_summary.sectors = [mock_sector1]
@@ -1217,7 +1217,7 @@ class TestCmdSector:
             s.avg_change_rate = float(i)
             s.rise_count = i
             s.total = 10
-            s.scored_trade_amount = 100_000_000 * (i + 1)
+            s.avg_trade_amount = 100_000_000 * (i + 1)
             sectors.append(s)
 
         mock_summary = MagicMock()
