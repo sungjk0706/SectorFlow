@@ -22,6 +22,7 @@ from backend.app.services.engine_ws_reg import build_0b_remove_payloads
 from backend.app.core.trading_calendar import get_current_trading_day_str
 from backend.app.services.engine_state import state
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
+from backend.app.db.json_utils import dumps
 
 logger = logging.getLogger(__name__)
 
@@ -700,12 +701,11 @@ async def _step2_filter_eligible(
             top_reasons = sorted(filter_reasons.items(), key=lambda x: x[1], reverse=True)[:5]
             reason_strs = [f"{k} {v}개" for k, v in top_reasons]
             summary_str += " | 주요 제외: " + ", ".join(reason_strs)
-        import json as _json
         _meta_top = [
             {"k": k, "v": v}
             for k, v in sorted(filter_reasons.items(), key=lambda x: x[1], reverse=True)[:5]
         ] if filter_reasons else []
-        filter_summary_meta = _json.dumps({
+        filter_summary_meta = dumps({
             "raw_rows": raw_rows,
             "unique_codes": unique_codes,
             "excluded_count": excluded_count,

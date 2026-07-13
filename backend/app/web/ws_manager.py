@@ -6,11 +6,11 @@ broadcast()는 async 함수로, 모든 이벤트를 await 기반 직접 전송�
 """
 from __future__ import annotations
 import asyncio
-import json
 import logging
 from typing import Any
 from collections import OrderedDict
 from fastapi import WebSocket
+from backend.app.db.json_utils import dumps
 logger = logging.getLogger(__name__)
 
 # real-data FID 필터: 프론트엔드에서 사용하는 FID만 전송
@@ -42,7 +42,7 @@ def _encode_realdata(data: dict, subscribed_fids: frozenset[str] | None = None) 
 
     # 캐시 키 생성: data 해시 + fids 튜플
     import hashlib
-    data_str = json.dumps(data, sort_keys=True, ensure_ascii=False)
+    data_str = dumps(data, sort_keys=True)
     data_hash = hashlib.md5(data_str.encode('utf-8')).hexdigest()
     fids_tuple = tuple(sorted(target_fids))
     cache_key = (data_hash, fids_tuple)
@@ -66,7 +66,7 @@ def _encode_realdata(data: dict, subscribed_fids: frozenset[str] | None = None) 
     if "_v" not in shortened:
         shortened["_v"] = 1
 
-    payload = json.dumps({"event": "real-data", "data": shortened}, ensure_ascii=False)
+    payload = dumps({"event": "real-data", "data": shortened})
 
     # 캐시 저장 (LRU)
     _encoding_cache[cache_key] = (payload, None)
@@ -157,7 +157,7 @@ class WSManager:
 
     async def _send_broadcast(self, event_type: str, data: dict) -> None:
         """모든 클라이언트에게 이벤트 즉시 전송."""
-        message = json.dumps({"event": event_type, "data": self._stamp(data)}, ensure_ascii=False)
+        message = dumps({"event": event_type, "data": self._stamp(data)})
         dead: set[WebSocket] = set()
         for ws in set(self._clients):
             try:
@@ -230,7 +230,7 @@ class WSManager:
 
     async def _send_to_pages_immediate(self, event_type: str, data: dict, target_clients: set[WebSocket]) -> None:
         """특정 클라이언트 집합에 즉시 전송."""
-        message = json.dumps({"event": event_type, "data": self._stamp(data)}, ensure_ascii=False)
+        message = dumps({"event": event_type, "data": self._stamp(data)})
         dead: set[WebSocket] = set()
         for ws in target_clients:
             try:
@@ -278,7 +278,7 @@ class WSManager:
     async def send_to(self, ws: WebSocket, event_type: str, data: dict) -> None:
         """특정 클라이언트에만 유니캐스트 (initial-snapshot용)."""
         stamped = self._stamp(data)
-        text = json.dumps({"event": event_type, "data": stamped}, ensure_ascii=False)
+        text = dumps({"event": event_type, "data": stamped})
         try:
             await ws.send_text(text)
         except Exception as e:
@@ -332,7 +332,7 @@ class WSManager:
             targets = await get_buy_targets_sector_stocks()
             if targets:
                 data = {"buy_targets": targets, "_v": 1}
-                message = json.dumps({"event": "buy-targets-update", "data": data}, ensure_ascii=False)
+                message = dumps({"event": "buy-targets-update", "data": data})
                 await ws.send_text(message)
         except Exception as e:
             logger.warning("[연결] 초기 데이터 전송 실패: %s", e, exc_info=True)

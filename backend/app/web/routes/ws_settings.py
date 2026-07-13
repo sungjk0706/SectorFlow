@@ -3,10 +3,10 @@
 
 시세 폭주가 설정/진행률 이벤트를 막지 않도록 별도 채널로 분리."""
 from __future__ import annotations
-import json
 import logging
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from backend.app.web.ws_manager import ws_manager
+from backend.app.db.json_utils import dumps, loads
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ws", tags=["websocket"])
@@ -29,14 +29,14 @@ async def ws_settings(websocket: WebSocket, token: str = Query(...)):
         while True:
             raw = await websocket.receive_text()
             try:
-                msg = json.loads(raw)
-            except (json.JSONDecodeError, ValueError):
+                msg = loads(raw)
+            except ValueError:
                 continue
             if not isinstance(msg, dict):
                 continue
             msg_type = msg.get("type")
             if msg_type == "ping":
-                await websocket.send_text(json.dumps({"type": "pong"}))
+                await websocket.send_text(dumps({"type": "pong"}))
             elif msg_type == "page-active":
                 page = msg.get("page", "")
                 if page:

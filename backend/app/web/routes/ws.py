@@ -5,10 +5,10 @@ fire-and-forget broadcast는 WSManager가 담당하며,
 이 엔드포인트는 연결 관리 + initial snapshot + ping-pong만 처리한다."""
 from __future__ import annotations
 import asyncio
-import json
 import logging
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from backend.app.web.ws_manager import ws_manager
+from backend.app.db.json_utils import dumps, loads
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ws", tags=["websocket"])
@@ -177,14 +177,14 @@ async def ws_prices(websocket: WebSocket, token: str = Query(...)):
         while True:
             raw = await websocket.receive_text()
             try:
-                msg = json.loads(raw)
-            except (json.JSONDecodeError, ValueError):
+                msg = loads(raw)
+            except ValueError:
                 continue
             if not isinstance(msg, dict):
                 continue
             msg_type = msg.get("type")
             if msg_type == "ping":
-                await websocket.send_text(json.dumps({"type": "pong"}))
+                await websocket.send_text(dumps({"type": "pong"}))
             elif msg_type == "page-active":
                 page = msg.get("page", "")
                 if page:
