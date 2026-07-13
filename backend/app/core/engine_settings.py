@@ -63,20 +63,12 @@ def build_engine_settings_dict(flat: dict) -> dict:
         "ws_subscribe_start":   str(merged["ws_subscribe_start"])[:5],
         "ws_subscribe_end":     str(merged["ws_subscribe_end"])[:5],
         # 매수 설정 (엔진 내부 필드명) — 값은 merged(기본값 포함), _on 마이그레이션은 flat 기반
-        "buy_amount":           int(merged.get("buy_amt", 0) or 0),
-        "buy_amount_on":        bool(flat.get("buy_amt_on")) if "buy_amt_on" in flat else (int(merged.get("buy_amt", 0) or 0) > 0),
-        "max_stock_count":      int(merged.get("max_stock_cnt", 5) or 5),
-        "max_stock_count_on":   bool(flat.get("max_stock_cnt_on")) if "max_stock_cnt_on" in flat else (int(merged.get("max_stock_cnt", 5) or 5) > 0),
+        # P20: 0도 유효값이므로 or 폴백 금지 — dict 블록 뒤에서 _v if _v is not None else 기본값 패턴으로 처리
         # 매도/손절/트레일링 (엔진 내부 필드명)
         "loss_cut_apply":       bool(merged.get("loss_apply")),
-        "loss_cut_value":       float(merged.get("loss_val", 0) or 0),
         "trailing_stop_apply":  bool(merged.get("ts_apply")),
-        "trailing_start_value": float(merged.get("ts_start_val", 0) or 0),
-        "trailing_drop_value":  float(merged.get("ts_drop_val", 0) or 0),
         "sell_price_type":      merged.get("sell_price_type", "mkt"),
-        "sell_offset":          int(merged.get("sell_offset", 0) or 0),
         "sell_qty_type":        merged.get("sell_qty_type", "%"),
-        "sell_custom_qty":      int(merged.get("sell_custom_qty", 0) or 0),
         # 리스크
         "max_position_size":    (lambda raw: 0 if raw is None or raw == "None" or raw == "" else int(raw))(merged.get("max_position_size")),
         # 텔레그램 (복호화)
@@ -89,11 +81,36 @@ def build_engine_settings_dict(flat: dict) -> dict:
         "kiwoom_app_key":       k_woom,
         "kiwoom_app_secret":    s_woom,
         "kiwoom_account_no":    acnt_woom,
-        # UI 표시용 _real 키 (마스킹 상태 유지)
-        "kiwoom_app_key_real":    merged.get("kiwoom_app_key_real") or "",
-        "kiwoom_app_secret_real": merged.get("kiwoom_app_secret_real") or "",
-        "kiwoom_account_no_real": str(merged.get("kiwoom_account_no_real") or "").strip(),
+        # UI 표시용 _real 키 (마스킹 상태 유지) — P20: 빈문자열도 유효값이므로 dict 블록 뒤에서 처리
     }
+
+    # 매수 설정 (이어서) — 0도 유효값이므로 or 폴백 금지 (P20)
+    _v = merged.get("buy_amt")
+    result["buy_amount"] = int(_v if _v is not None else 0)
+    result["buy_amount_on"] = bool(flat.get("buy_amt_on")) if "buy_amt_on" in flat else (int(_v if _v is not None else 0) > 0)
+    _v = merged.get("max_stock_cnt")
+    result["max_stock_count"] = int(_v if _v is not None else 5)
+    result["max_stock_count_on"] = bool(flat.get("max_stock_cnt_on")) if "max_stock_cnt_on" in flat else (int(_v if _v is not None else 5) > 0)
+
+    # 매도/손절/트레일링 (이어서) — 0도 유효값이므로 or 폴백 금지 (P20)
+    _v = merged.get("loss_val")
+    result["loss_cut_value"] = float(_v if _v is not None else 0)
+    _v = merged.get("ts_start_val")
+    result["trailing_start_value"] = float(_v if _v is not None else 0)
+    _v = merged.get("ts_drop_val")
+    result["trailing_drop_value"] = float(_v if _v is not None else 0)
+    _v = merged.get("sell_offset")
+    result["sell_offset"] = int(_v if _v is not None else 0)
+    _v = merged.get("sell_custom_qty")
+    result["sell_custom_qty"] = int(_v if _v is not None else 0)
+
+    # UI 표시용 _real 키 (이어서) — 빈문자열도 유효값이므로 or 폴백 금지 (P20)
+    _v = merged.get("kiwoom_app_key_real")
+    result["kiwoom_app_key_real"] = _v if _v is not None else ""
+    _v = merged.get("kiwoom_app_secret_real")
+    result["kiwoom_app_secret_real"] = _v if _v is not None else ""
+    _v = merged.get("kiwoom_account_no_real")
+    result["kiwoom_account_no_real"] = str(_v if _v is not None else "").strip()
 
     # 리스크 (이어서) — 0도 유효값이므로 or 폴백 금지 (P20)
     _v = merged.get("max_daily_loss_limit")
@@ -112,35 +129,46 @@ def build_engine_settings_dict(flat: dict) -> dict:
         result[f"{b_name}_app_key"] = k
         result[f"{b_name}_app_secret"] = s
         result[f"{b_name}_account_no"] = a
-        # UI 표시용 _real 유지
-        result[f"{b_name}_app_key_real"] = merged.get(f"{b_name}_app_key_real") or ""
-        result[f"{b_name}_app_secret_real"] = merged.get(f"{b_name}_app_secret_real") or ""
-        result[f"{b_name}_account_no_real"] = str(merged.get(f"{b_name}_account_no_real") or "").strip()
+        # UI 표시용 _real 유지 — 빈문자열도 유효값이므로 or 폴백 금지 (P20)
+        _rv = merged.get(f"{b_name}_app_key_real")
+        result[f"{b_name}_app_key_real"] = _rv if _rv is not None else ""
+        _rv = merged.get(f"{b_name}_app_secret_real")
+        result[f"{b_name}_app_secret_real"] = _rv if _rv is not None else ""
+        _rv = merged.get(f"{b_name}_account_no_real")
+        result[f"{b_name}_account_no_real"] = str(_rv if _rv is not None else "").strip()
     # logic_auto_trade / AutoTradeManager 호환 키 (merged 필드명 그대로)
     # _to_trade_settings()가 merged 키를 직접 참조하므로 반드시 원본 키명으로 포함해야 한다.
     # ── 마이그레이션: _on 키가 flat에 없으면 기존 값으로 추론 (P10 SSOT) ──
     # buy_amt_on: 기존 buy_amt > 0 → True, buy_amt = 0 → False (한도 없음)
-    _buy_amt_raw = int(merged.get("buy_amt", 0) or 0)
+    _v = merged.get("buy_amt")
+    _buy_amt_raw = int(_v if _v is not None else 0)
     result["buy_amt_on"] = bool(flat.get("buy_amt_on")) if "buy_amt_on" in flat else (_buy_amt_raw > 0)
     result["buy_amt"] = _buy_amt_raw
     result["max_daily_total_buy_on"] = bool(merged.get("max_daily_total_buy_on", False))
-    result["max_daily_total_buy_amt"] = int(merged.get("max_daily_total_buy_amt", 0) or 0)
+    _v = merged.get("max_daily_total_buy_amt")
+    result["max_daily_total_buy_amt"] = int(_v if _v is not None else 0)
     # max_stock_cnt_on: 기존 max_stock_cnt > 0 → True, = 0 → False (제한 없음)
     _msc_v = merged.get("max_stock_cnt")
     _max_stock_cnt_raw = int(_msc_v) if _msc_v is not None else 5
     result["max_stock_cnt_on"] = bool(flat.get("max_stock_cnt_on")) if "max_stock_cnt_on" in flat else (_max_stock_cnt_raw > 0)
     result["max_stock_cnt"] = _max_stock_cnt_raw
-    result["tp_val"] = float(merged.get("tp_val") or 0)
+    _v = merged.get("tp_val")
+    result["tp_val"] = float(_v if _v is not None else 0)
     result["tp_apply"] = bool(merged.get("tp_apply"))
     result["loss_apply"] = bool(merged.get("loss_apply"))
-    result["loss_val"] = float(merged.get("loss_val", 0) or 0)
+    _v = merged.get("loss_val")
+    result["loss_val"] = float(_v if _v is not None else 0)
     result["ts_apply"] = bool(merged.get("ts_apply"))
-    result["ts_start_val"] = float(merged.get("ts_start_val", 0) or 0)
-    result["ts_drop_val"] = float(merged.get("ts_drop_val", 0) or 0)
-    result["sell_per_symbol"] = merged.get("sell_per_symbol") or {}
+    _v = merged.get("ts_start_val")
+    result["ts_start_val"] = float(_v if _v is not None else 0)
+    _v = merged.get("ts_drop_val")
+    result["ts_drop_val"] = float(_v if _v is not None else 0)
+    _v = merged.get("sell_per_symbol")
+    result["sell_per_symbol"] = _v if _v is not None else {}
 
     # ── 업종 매수가드 설정 (매수설정 카드 ↔ 엔진 동기화) ────────
-    result["sector_sort_keys"]            = merged.get("sector_sort_keys") or ["score"]
+    _v = merged.get("sector_sort_keys")
+    result["sector_sort_keys"]            = _v if _v is not None else ["score"]
     # 기존 설정에서 foreign_net / institution_net 제거 마이그레이션
     result["sector_sort_keys"] = [k for k in result["sector_sort_keys"] if k not in ("foreign_net", "institution_net")]
     result["sector_weights"]              = merged["sector_weights"]
@@ -177,7 +205,8 @@ def build_engine_settings_dict(flat: dict) -> dict:
 
     # ── 매수 주문 간격 (1순위 종목만 매수 후 사용자 설정 간격 대기) ────────
     result["buy_interval_on"]              = bool(merged.get("buy_interval_on", False))
-    result["buy_interval_min"]             = int(merged.get("buy_interval_min", 0) or 0)
+    _v = merged.get("buy_interval_min")
+    result["buy_interval_min"]             = int(_v if _v is not None else 0)
 
     # ── 재매수 차단 (보유/금일매수 종목 매수 허용 여부 + 차단 기간) ────────
     result["rebuy_block_on"]               = bool(merged.get("rebuy_block_on", True))
@@ -227,11 +256,16 @@ def build_engine_settings_dict(flat: dict) -> dict:
     # _get_all_tokens_async가 토큰 발급 대상 증권사를 수집할 때 사용.
     # build_engine_settings_dict 결과에 포함하지 않으면 캐시에서 사라져
     # 주 사용 증권사와 다른 확정 데이터 브로커의 토큰이 발급되지 않음 (P10 SSOT).
-    result["confirmed_data_broker"]        = str(merged.get("confirmed_data_broker") or "").strip()
+    # P20: 빈문자열도 유효값이므로 or 폴백 금지
+    _v = merged.get("confirmed_data_broker")
+    result["confirmed_data_broker"]        = str(_v if _v is not None else "").strip()
 
     # ── 테스트모드 가상 예수금 ────────
-    result["test_virtual_deposit"]         = int(merged.get("test_virtual_deposit", 10_000_000) or 0)
-    result["test_virtual_balance"]         = int(merged.get("test_virtual_balance", 10_000_000) or 0)
+    # P20: None → 기본값 10_000_000, 0 → 0 (유효값)
+    _v = merged.get("test_virtual_deposit")
+    result["test_virtual_deposit"]         = int(_v) if _v is not None else 10_000_000
+    _v = merged.get("test_virtual_balance")
+    result["test_virtual_balance"]         = int(_v) if _v is not None else 10_000_000
 
     # ── 브로커 기능별 매핑 ────────
     def _normalize_broker_config(settings: dict) -> dict:
