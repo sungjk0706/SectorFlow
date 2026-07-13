@@ -1,18 +1,19 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 업종 점수 누적 가산점제 전환 계획서 갱신 (폭넓은 사전조사 + 설계 문제 2건 해결)**
-  - **목적**: 계획서 백엔드 위주 문제 보완 + 프론트엔드 UI 변경 계획 보강 + 이전 검토 설계 문제 2건 반영
-  - **사전조사 범위**: 백엔드 11개 파일, 프론트엔드 9개 파일, 테스트 14개 파일 (백엔드 12, 프론트엔드 2)
-  - **설계 문제 해결**:
-    1. **옵션 C 채택** (2차 가산점 모집단 시점): 1차/3차 계산 → 컷오프 → 2차 계산(통과 업종만) → 종합 점수. 컷오프 로직을 `calculate_bonus_scores` 내부로 이관하여 진실 소스 1곳 (P10/P22 준수)
-    2. **Phase 1+2 통합** (중간 상태 깨짐 방지): 백엔드 도메인+서비스/설정을 1세션에 통합. 3세션 구조(Phase 1: 백엔드 전환 → Phase 2: 프론트엔드 전환 → Phase 3: 테스트 전환)로 재설계
-  - **사전조사 발견 (계획서 누락/오류 수정)**:
-    - `sector-stock.ts` 영향 범위 누락 발견 (L156,180-184,211 — final_score/sectorScores 참조) → 계획서에 추가
-    - `createDualLabelSlider` 삭제 불가 확인 (`buy-settings.ts:11,267`에서 매수설정 슬라이더로 사용 중) → 계획서 "삭제 검토"에서 "유지"로 수정
-  - **추가 개선점 반영**: 3차 가산점 median 대안(편향 모니터링 후 전환 검토), `total_trade_amount`→`avg_trade_amount` 명명 변경(P10/P23), WS payload 하위 호환성 유지 방안
-  - **수정 파일**: `docs/plan_sector_bonus_points.md` (687줄→895줄 전체 재작성), `HANDOVER.md` (진행 중 작업 + 다음 단계 1순위 갱신)
-  - **검증**: 문서 업데이트 작업으로 코드 수정 없음. 구현 검증은 Phase 1 착수 시 수행 예정
+- **2026-07-13: 업종순위 페이지 탈락 행 표시 개선 (배경색 + opacity 통일)**
+  - **목적**: 탈락 업종이 opacity만으로 처리되어 너무 희미하게 보이는 문제 해결
+  - **수정 파일**: `frontend/src/pages/sector-ranking-list.ts`
+  - **변경 내용**:
+    - 탈락 구분을 1차/2차 분리 → 단일 `isEliminated` 조건로 통일 (rank=0 또는 rank>maxTargets)
+    - opacity 0.4/0.65 → 0.85/1.0 (너무 흐리지 않게)
+    - 배경색 추가: 탈락 `COLOR.hoverBg` (#f0f0f0), 통과 투명, 선택 `COLOR.downBg`
+    - 배지 도입 검토 후 제거 (업종명 잘림 + 1차/2차 구분이 사용자에게 의미 없음, P24 단순성)
+    - `RowCache`에 `bgColor` 필드 추가 (델타 갱신 지원)
+    - 막대 색상 로직 유지 (rank=0: inactiveBg, rank≤maxTargets: down, rank>maxTargets: muted)
+  - **패널 비율**: 1:3 유지 (1:2/1:1.5/1:4/1:3.5 시도 후 소수점 flex 효과 미미하여 원래 복원)
+  - **검증**: `npm run typecheck` 통과, `npm run build` 통과 (61 modules), 브라우저 확인 완료
+  - **P23 일관성**: 업종별 종목 테이블(sector-stock.ts)에 동일 패턴 적용은 다음 세션에서 진행
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책, JIF 경계 이벤트 즉시 갱신 — 모두 완료 (git history 참조)
@@ -22,6 +23,13 @@
 - **규칙/문서 정리**: AGENTS.md 4섹션 구조, 아키텍처 원칙 24개, .devin/workflows 제거 + skills 통합 — 완료 (2026-07-13)
 
 ## 진행 중 작업
+
+### 업종순위 탈락 행 표시 개선 — 업종순위 페이지 완료, 업종별 종목 테이블 대기
+- **완료**: `sector-ranking-list.ts` — 탈락 행 배경색(`COLOR.hoverBg` #f0f0f0) + opacity 0.85 통일, 배지 제거
+- **대기**: `sector-stock.ts` — 업종별 종목 테이블에 동일한 배경색 + opacity 패턴 적용 (P23 일관성)
+  - 현재: 업종 그룹 헤더는 opacity 0.4/0.65/1만 적용, KRX 비활성 종목은 `COLOR.inactiveBg` 배경
+  - 목표: 탈락 업종 헤더에 `COLOR.hoverBg` 배경 + opacity 0.85, KRX 비활성 종목도 동일 패턴으로 통일
+- **패널 비율 미세 조정**: 1:3에서 소수점 flex(1:3.5 등) 효과 미미. 다른 방식(min-width/max-width) 검토 필요
 
 ### 업종 점수 누적 가산점제 전환 — 계획서 갱신 완료, 구현 대기
 - **계획서**: `docs/plan_sector_bonus_points.md` (895줄 — 2026-07-13 갱신)
@@ -40,7 +48,20 @@
 
 ## 다음 단계
 
-### 1순위: 업종 점수 누적 가산점제 전환 구현 (승인 대기)
+### 1순위: 업종별 종목 테이블 탈락 표시 통일 (sector-stock.ts)
+- **목표**: 업종순위 페이지와 동일한 배경색 + opacity 패턴 적용 (P23 일관성)
+- **수정 대상**:
+  - 업종 그룹 헤더: opacity 0.4/0.65/1 → 배경색 `COLOR.hoverBg` + opacity 0.85 (탈락 통일)
+  - KRX 비활성 종목: `COLOR.inactiveBg` → `COLOR.hoverBg` + opacity 0.85 (탈락과 동일 패턴)
+- **검증**: `npm run typecheck` + `npm run build` + 브라우저 확인
+- **시작점**: 사용자 "진행해" 지시 후 착수
+
+### 2순위: 패널 비율 미세 조정 (중앙 패널 폭)
+- **문제**: flex 소수점(1:3.5)이 시각적 효과 미미. 중앙 패널을 약간만 좁히는 방법 필요
+- **대안 검토**: 중앙에 `max-width` 제한 또는 우측에 `min-width` 지정 방식
+- **시작점**: 1순위 완료 후 진행
+
+### 3순위: 업종 점수 누적 가산점제 전환 구현 (승인 대기)
 - **계획서**: `docs/plan_sector_bonus_points.md` (895줄 — 폭넓은 사전조사 + 설계 문제 해결 완료)
 - **구현 순서** (계획서 섹션 9 — 3세션 구조):
   1. **Phase 1: 백엔드 전환 (1세션)** — 도메인+서비스+설정 통합 (11개 파일)
