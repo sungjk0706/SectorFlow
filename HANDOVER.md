@@ -1,6 +1,24 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-14: 업종 점수 순위별 차등 점수제 전환 (프론트엔드) — 설정 만점 입력란 3개 + 점수 정수 표시 (P10/P16/P21/P23)**
+  - **현상**: 백엔드에서 업종 점수가 순위별 차등 점수제로 전환되었으나, 프론트엔드 설정 화면에 만점 입력란이 없고 업종순위 테이블의 점수가 소수점으로 표시됨.
+  - **근본 원인**: (1) `types/index.ts:147-151` — `AppSettings`에 만점 키 3개가 없어 설정 저장/불러오기 불가. (2) `sector-settings.ts:129-141` — ④ 섹션이 안내문만 있고 입력란 없음. (3) `sector-ranking-list.ts:152` + `data-table.ts:273,484,789,854` — 점수를 `toFixed(1)`로 소수점 표시.
+  - **수정 파일**: 프론트엔드 4개 파일 — `types/index.ts`, `sector-settings.ts`, `sector-ranking-list.ts`, `data-table.ts`
+  - **변경 내용**: (1) `types/index.ts` — `AppSettings`에 신규 키 3개(`sector_bonus_rise_ratio_max`, `sector_bonus_relative_strength_max`, `sector_bonus_trade_amount_max`) 추가, `SectorScoreRow` 주석 "0~300"/"0~100" → "0~만점 합"/"0~만점" 갱신. (2) `sector-settings.ts` — ④ 섹션 안내문 → 만점 입력란 3개(1차=10, 2차=7, 3차=5) + 안내문("1위=만점, 2위=만점-1, ... 0점까지 1점씩 차감")으로 변경, `NUM_KEYS`에 3개 키 추가, `syncFromSettings` 동기화, `unmount` 정리. (3) `sector-ranking-list.ts:152` — `final_score.toFixed(1)` → `String(s.final_score)` (정수). (4) `data-table.ts` — "종합점수" 표시 4곳 `score.toFixed(1)` → `score` (정수).
+  - **영향 범위**: 프론트엔드 4개 파일 (+41/-17). 백엔드/테스트 영향 없음. 업종순위 설정 패널 ④ 섹션만 변경, 다른 설정 섹션(①②③⑤)은 영향 없음.
+  - **검증**: `npm run build` 1.54s 에러 없음 (60 modules transformed). `npm test` 101 passed (7 files, 7.16s). `score.toFixed`/`final_score.toFixed` 잔존 0건 확인. 사용자 UI 확인 — 업종순위 설정 ④ 섹션 만점 입력란 3개 정상 표시, 값 변경 시 업종 순위 실시간 갱신, 점수 정수 표시 정상. 잔존 프로세스 0건 (규칙 5-1 준수, 내가 띄운 프로세스 기준).
+  - **커밋**: `17b9300`
+
+- **2026-07-14: 업종 점수 순위별 차등 점수제 전환 (백엔드) — rank_to_score 제거 + rank_to_tiered_score 도입 + 사용자 설정 만점 3개 (P10/P16/P21/P23/P24)**
+  - **현상**: 업종 점수가 `rank_to_score`(0~100점) 방식으로 계산되어 인접 순위 간 격차가 1.67%로 미세했으며, 사용자가 각 조건(1·2·3차)의 중요도를 조절할 수 있는 장치가 없었음.
+  - **근본 원인**: `backend/app/domain/sector_score.py:15-53` — `rank_to_score` 함수가 `(N-rank+1)/N×100` 공식으로 0~100점을 부여하여 순위 간 격차가 미세했고, 만점을 사용자가 설정할 수 있는 구조가 없었음.
+  - **수정 파일**: 백엔드 7개 파일 + 테스트 5개 파일 + ARCHITECTURE.md — `sector_score.py`, `settings_defaults.py`, `engine_settings.py`, `sector_calculator.py`, `engine_sector_confirm.py`, `sector_data_provider.py`, `engine_service.py` + `test_sector_score.py`, `test_sector_calculator.py`, `test_sector_calculator_integration.py`, `test_engine_sector_confirm.py`, `test_sector_data_provider.py`
+  - **변경 내용**: (1) `sector_score.py` — `rank_to_score` 제거 (P16 dead code), 신규 함수 `rank_to_tiered_score(values, max_score)` 추가 (`max(0, max_score-rank+1)` — 1위=만점, 2위=만점-1, ..., 0점까지 1점씩 차감), `calculate_bonus_scores` 시그니처에 만점 파라미터 3개 추가, 1차/3차 tiered 점수 적용, 2차 종목 백분위→업종 평균→업종 간 순위→tiered 변환, 컷오프(min_rise_ratio) 2패스 구조 유지. (2) `settings_defaults.py` — 신규 키 3개(기본값 1차=10, 2차=7, 3차=5). (3) `engine_settings.py` — 3개 키 검증 로직. (4) `sector_calculator.py` — `compute_full_sector_summary` 시그니처 + 만점값 전달. (5) `engine_sector_confirm.py` — 증분/전체 재계산 시 만점값 전달. (6) `sector_data_provider.py` — `recompute_sector_summary_now` 시 만점값 전달. (7) `engine_service.py` — `_SECTOR_UI_KEYS`에 3개 키 추가 → 설정 변경 시 자동 재계산. (8) `ARCHITECTURE.md` — `rank_to_score` 참조 3건 → `rank_to_tiered_score` 갱신 (Code Removal Rules), 점수 범위 0~300 → 0~만점 합. (9) 테스트 5개 파일 — `rank_to_score` 테스트 제거, `rank_to_tiered_score` 테스트 8개 추가, 점수 검증값 변경, 설정 캐시에 새 키 3개 추가.
+  - **영향 범위**: 백엔드 7개 파일 + 테스트 5개 파일 + ARCHITECTURE.md (+254/-110). 프론트엔드 영향 없음 (별도 세션). `execute_buy`/`execute_sell` 주문 경로 수정 없음 (P15 준수). 거래 모드: 테스트모드.
+  - **검증**: ruff (수정 파일 12개) All checks passed. pytest 백엔드 전체 2737 passed, 50 warnings (기존 mock 경고, 내 수정과 무관). 런타임 기동 `.venv/bin/python -W error::RuntimeWarning main.py` — 225ms 기동, 에러/Traceback/RuntimeWarning 없음, `[업종] 업종순위 재계산 (3단계 누적 가산점)` + `재계산 완료` 로그 확인. `rank_to_score` 잔존 — `.py` 파일 0건, ARCHITECTURE.md 0건 (계획서는 역사적 로그로 유지). 잔존 프로세스 0건 (규칙 5-1 준수).
+  - **커밋**: `b106a71`
+
 - **2026-07-14: 백엔드 JSON 직렬화 단일 소스 통일 — json_utils.py 범용 dumps/loads 추가 + 10개 파일 30건 직접 호출 교체 (P10/P23/P24)**
   - **현상**: 백엔드 10개 파일에서 `json_utils.py`의 중앙화 함수(`encode/decode_json_field`)가 있음에도 직접 `json.loads/dumps` 호출 (30건). `ensure_ascii=False` 누락 3건으로 한글 데이터 유니코드 이스케이프 저장 위험. P10(SSOT)·P23(일관성) 위반.
   - **근본 원인**: `json_utils.py` docstring이 "Repository Boundary 단일화" 선언만 하고 범용 WS 메시지·파일 파싱용 함수 부재 → 모든 호출처가 `import json` 후 직접 호출. 선언-실행 불일치.
@@ -109,18 +127,17 @@
 
 ## 진행 중 작업
 
-### 업종 점수 누적 가산점제 전환 — Phase 1(백엔드)+Phase 2(프론트엔드)+Phase 3-A(테스트 3개)+Phase 3-B(테스트 6개) 완료
+### 업종 점수 순위별 차등 점수제 전환 — 백엔드+프론트엔드 완료
+- **상태**: 백엔드 전환(`b106a71`) + 프론트엔드 전환(`17b9300`) 완료. 사용자 UI 확인 완료. 본 전환 작업 완료.
+- **배경**: 기존 3단계 누적 가산점(0~300, `rank_to_score`)은 인접 순위 간 격차가 1.67%로 미세하여 순위 구분이 애매했음. 사용자가 각 조건의 중요도를 조절할 수 없었음.
+- **전환 내용**: `rank_to_score`(0~100) → `rank_to_tiered_score`(0~사용자 설정 만점). 1위=만점, 2위=만점-1, ..., 0점까지 1점씩 차감. 사용자 설정 만점 3개(1차=10, 2차=7, 3차=5 기본값). 컷오프(min_rise_ratio) 2패스 구조 유지.
+- **백엔드 완료** (`b106a71`): `sector_score.py`(`rank_to_score` 제거, `rank_to_tiered_score` 도입), `settings_defaults.py`/`engine_settings.py`(신규 키 3개), `sector_calculator.py`/`engine_sector_confirm.py`/`sector_data_provider.py`(만점값 전달), `engine_service.py`(`_SECTOR_UI_KEYS` 추가 → 설정 변경 시 자동 재계산), ARCHITECTURE.md(참조 갱신), 테스트 5개 파일. pytest 2737 passed + ruff 0건 + 런타임 기동 통과.
+- **프론트엔드 완료** (`17b9300`): `types/index.ts`(신규 키 3개), `sector-settings.ts`(④ 섹션 만점 입력란 3개), `sector-ranking-list.ts`+`data-table.ts`(점수 정수 표시). `npm run build` 1.54s + `npm test` 101 passed 통과. 사용자 UI 확인 완료.
+
+### 업종 점수 누적 가산점제 전환 (구 작업 — 완료)
 - **계획서**: `docs/plan_sector_bonus_points.md` (895줄 — 2026-07-13 갱신)
-- **상태**: Phase 1(백엔드 전환) + Phase 2(프론트엔드 전환) + Phase 3-A(핵심 점수 로직 테스트 3개) + Phase 3-B(mock/설정 테스트 6개) 완료. 본 전환 작업 완료.
-- **Phase 1 완료**: 백엔드 11개 파일 전환 — 3단계 누적 가산점(0~300), 트리밍 제거, 가중치 슬라이더 제거. 런타임 기동 검증 통과.
-- **Phase 2 완료**: 프론트엔드 6개 파일 수정+2개 파일 삭제 — 가중치 슬라이더/트리밍 UI 제거, "가산점 자동 계산" 안내문 추가, `avg_trade_amount` 전환, `normalizedWeights` 제거, `sliderConvert.ts` 삭제. `npm run build`+`npm test` 101 passed 통과.
-- **Phase 3-A 완료**: 백엔드 테스트 3개 파일 전환 — `test_sector_score.py`(전면 재작성, 27테스트), `test_sector_calculator.py`(클래스 2제거+1신규, 28테스트), `test_sector_calculator_integration.py`(테스트 1 재작성, 7테스트). `percentile_to_score` 반전 버그 수정(`sector_score.py:85`). pytest 62 passed + ruff 0건 + 런타임 기동 통과.
-- **Phase 3-B 완료**: 백엔드 테스트 5개 파일 수정+1개 파일 삭제 — `test_engine_sector_confirm.py`(헬퍼 실제 `SectorScore` 전환+7개 patch 교체+`test_min_rise_ratio_cutoff` 통합 테스트 전환+11개 settings_cache 정리), `test_settings_file.py`(삭제), `test_engine_settings.py`(`sector_weights` 단언 제거), `test_buy_filter.py`(`_sector` 헬퍼 전환), `test_telegram_bot.py`(2줄 `scored_trade_amount`→`avg_trade_amount`), `test_sector_data_provider.py`(dead mock/data 6줄 제거). pytest 6개 파일 291 passed + 전체 2734 passed + ruff 0건 + 런타임 기동 통과.
-- **WS payload 하위 호환 필드 제거 완료**: `total_trade_amount` 하위 호환 필드 제거 (커밋 `c851a04`). `avg_trade_amount` 단일 전송, `final_score` 필드명 유지.
-- **잔존 정리 항목 완료**: `test_settings_file_integration.py`의 `sector_weights` 테스트 데이터 → `sell_per_symbol` 전환 완료 (커밋 `c851a04`).
-- **ARCHITECTURE.md 문서 갱신 완료**: 섹션 5.2/6.1~6.3 구 가중치/트리밍 설명 제거 → 3단계 누적 가산점 시스템으로 갱신 (커밋 `cc41d64`). 코드-문서 정합성 확보. 본 전환 작업의 모든 잔존 정리 완료.
-- **전수 검증 완료**: GLM-5.2 Max 모델로 전환 작업 전체 전수 검증 — pytest 2734 passed, 빌드 1.98s, npm test 101 passed, 런타임 정상, 제거 심볼 소스 잔존 0건, 계획서-구현 일치.
-- **추가 개선점**: 3차 가산점 median 대안(편향 모니터링 후 전환 검토)
+- **상태**: Phase 1~3-B + 잔존 정리 + ARCHITECTURE.md 갱신 + 전수 검증 완료. 이후 순위별 차등 점수제로 재전환 완료 (상단 참조).
+- **추가 개선점**: 3차 가산점 median 대안(편향 모니터링 후 전환 검토) — 순위별 차등 점수제 전환 후에는 median 대안 불필요 (순위 기반이므로 절대값 왜곡 영향 없음)
 
 ### 아키텍처 전수 점검 — B-09 완료, 20개 미시작 (일시 보류)
 - **완료**: B-01~B-09, F-01 (P0 전체 + B-06~B-09)
