@@ -249,6 +249,51 @@ class TestBuildEngineSettingsDictOverride:
         assert result["naver_app_key"] == "naver_real_key"
         assert result["naver_app_secret"] == "naver_real_secret"
 
+    def test_decrypt_failure_logs_warning(self):
+        """복호화 실패 시 logger.warning 호출 (P21 사용자 투명성)."""
+        with patch("backend.app.core.engine_settings.decrypt_value", return_value=None), \
+             patch("backend.app.core.engine_settings.logger") as mock_logger:
+            result = build_engine_settings_dict({
+                "kiwoom_app_key": "gAAAAAencrypted",
+            })
+            assert result["kiwoom_app_key"] == ""
+            mock_logger.warning.assert_called_once()
+            assert "복호화 실패" in mock_logger.warning.call_args[0][0]
+
+    def test_real_key_decrypt_failure_blocks_legacy_fallback(self):
+        """real 키가 암호문인데 복호화 실패 → 레거시 폴백 금지 + 에러 로그 (P21)."""
+        with patch("backend.app.core.engine_settings.decrypt_value", return_value=None), \
+             patch("backend.app.core.engine_settings.logger") as mock_logger:
+            result = build_engine_settings_dict({
+                "trade_mode": "real",
+                "kiwoom_app_key_real": "gAAAAAencrypted_real",
+                "kiwoom_app_key": "legacy_key",
+            })
+            # real 키 복호화 실패 → 빈문자열 (레거시 폴백 금지)
+            assert result["kiwoom_app_key"] == ""
+            mock_logger.error.assert_called_once()
+            assert "레거시 폴백 금지" in mock_logger.error.call_args[0][0]
+
+    def test_real_key_empty_falls_back_to_legacy(self):
+        """real 키가 빈문자열 → 레거시 폴백 허용 (정상 마이그레이션 유지)."""
+        result = build_engine_settings_dict({
+            "trade_mode": "real",
+            "kiwoom_app_key_real": "",
+            "kiwoom_app_key": "legacy_key",
+        })
+        assert result["kiwoom_app_key"] == "legacy_key"
+
+    def test_non_kiwoom_real_key_decrypt_failure_blocks_legacy(self):
+        """non-kiwoom real 키 복호화 실패 → 레거시 폴백 금지 (P21)."""
+        with patch("backend.app.core.engine_settings.decrypt_value", return_value=None), \
+             patch("backend.app.core.engine_settings.logger") as mock_logger:
+            result = build_engine_settings_dict({
+                "naver_app_key_real": "gAAAAAencrypted_real",
+                "naver_app_key": "naver_legacy_key",
+            })
+            assert result["naver_app_key"] == ""
+            mock_logger.error.assert_called_once()
+
     def test_sector_sort_keys_migration(self):
         """foreign_net / institution_net 제거 마이그레이션."""
         result = build_engine_settings_dict({

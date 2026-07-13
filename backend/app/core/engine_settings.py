@@ -30,7 +30,12 @@ def build_engine_settings_dict(flat: dict) -> dict:
             return ""
         s = str(v)
         if s.startswith("gAAAA"):
-            return decrypt_value(s) or ""
+            _plain = decrypt_value(s)
+            if _plain is None:
+                # 복호화 실패 — 빈문자열 폴백하되 실패 사실을 로그에 명시 (P21 사용자 투명성)
+                logger.warning("[설정] 복호화 실패 — 빈문자열로 폴백. cipher 앞 10자: %s...", s[:10])
+                return ""
+            return _plain
         return s
 
     # 단일 소스 진리: DEFAULT_USER_SETTINGS를 기본값으로 사용
@@ -38,11 +43,32 @@ def build_engine_settings_dict(flat: dict) -> dict:
 
     tm = effective_trade_mode(merged)
 
+    def _pick_real_or_legacy(real_key: str, legacy_key: str, field_name: str) -> str:
+        """real 키 우선, real 키가 None/빈값이면 레거시 폴백 (정상 마이그레이션).
+        real 키가 암호문인데 복호화 실패 → 레거시 폴백 금지 + 에러 로그 (P21 사용자 투명성)."""
+        _raw_real = merged.get(real_key)
+        if _raw_real is not None and str(_raw_real).strip() != "":
+            _dec_real = _dec(_raw_real)
+            if _dec_real != "":
+                return _dec_real
+            # real 키 존재하지만 복호화 결과 빈문자열
+            if str(_raw_real).startswith("gAAAA"):
+                logger.error(
+                    "[설정] %s real 키 복호화 실패 — 레거시 폴백 금지 (P21). "
+                    "사용자가 real 키를 설정했으나 복호화 불가 → 인증 차단 필요.",
+                    field_name,
+                )
+                return ""
+            # real 키가 빈문자열/공백 → 레거시 폴백 (정상 마이그레이션)
+        return _dec(merged.get(legacy_key))
+
     def _pick_kiwoom_cred(mode: str) -> tuple[str, str, str]:
-        """mode: test | real -- real 키 우선, 없으면 레거시 kiwoom_* 단일 필드."""
-        k = _dec(merged.get("kiwoom_app_key_real")) or _dec(merged.get("kiwoom_app_key"))
-        s = _dec(merged.get("kiwoom_app_secret_real")) or _dec(merged.get("kiwoom_app_secret"))
-        a = str(merged.get("kiwoom_account_no_real") or merged.get("kiwoom_account_no") or "").strip()
+        """mode: test | real -- real 키 우선, 없으면 레거시 kiwoom_* 단일 필드.
+        real 키가 암호문인데 복호화 실패 → 레거시 폴백 금지 (P21)."""
+        k = _pick_real_or_legacy("kiwoom_app_key_real", "kiwoom_app_key", "kiwoom_app_key")
+        s = _pick_real_or_legacy("kiwoom_app_secret_real", "kiwoom_app_secret", "kiwoom_app_secret")
+        _ra = merged.get("kiwoom_account_no_real")
+        a = str(_ra).strip() if _ra is not None and str(_ra).strip() != "" else str(merged.get("kiwoom_account_no") or "").strip()
         return k, s, a
 
     k_woom, s_woom, acnt_woom = _pick_kiwoom_cred(tm)
@@ -69,8 +95,6 @@ def build_engine_settings_dict(flat: dict) -> dict:
         "trailing_stop_apply":  bool(merged.get("ts_apply")),
         "sell_price_type":      merged.get("sell_price_type", "mkt"),
         "sell_qty_type":        merged.get("sell_qty_type", "%"),
-        # 리스크
-        "max_position_size":    (lambda raw: 0 if raw is None or raw == "None" or raw == "" else int(raw))(merged.get("max_position_size")),
         # 텔레그램 (복호화)
         "tele_on":              bool(merged.get("tele_on")),
         "telegram_on":          bool(merged.get("tele_on")),
@@ -113,6 +137,9 @@ def build_engine_settings_dict(flat: dict) -> dict:
     result["kiwoom_account_no_real"] = str(_v if _v is not None else "").strip()
 
     # 리스크 (이어서) — 0도 유효값이므로 or 폴백 금지 (P20)
+    # max_position_size: 0=제한 없음(유효값). None/빈문자열/"None" 문자열(레거시 DB)만 0으로 치환
+    _v = merged.get("max_position_size")
+    result["max_position_size"] = 0 if _v is None or _v == "None" or _v == "" else int(_v)
     _v = merged.get("max_daily_loss_limit")
     result["max_daily_loss_limit"] = int(_v if _v is not None else -500000)
     _v = merged.get("max_single_stock_exposure")
@@ -123,9 +150,10 @@ def build_engine_settings_dict(flat: dict) -> dict:
     for b_name in broker_names:
         if b_name == "kiwoom":
             continue
-        k = _dec(merged.get(f"{b_name}_app_key_real")) or _dec(merged.get(f"{b_name}_app_key"))
-        s = _dec(merged.get(f"{b_name}_app_secret_real")) or _dec(merged.get(f"{b_name}_app_secret"))
-        a = str(merged.get(f"{b_name}_account_no_real") or merged.get(f"{b_name}_account_no") or "").strip()
+        k = _pick_real_or_legacy(f"{b_name}_app_key_real", f"{b_name}_app_key", f"{b_name}_app_key")
+        s = _pick_real_or_legacy(f"{b_name}_app_secret_real", f"{b_name}_app_secret", f"{b_name}_app_secret")
+        _ra = merged.get(f"{b_name}_account_no_real")
+        a = str(_ra).strip() if _ra is not None and str(_ra).strip() != "" else str(merged.get(f"{b_name}_account_no") or "").strip()
         result[f"{b_name}_app_key"] = k
         result[f"{b_name}_app_secret"] = s
         result[f"{b_name}_account_no"] = a
