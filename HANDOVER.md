@@ -1,6 +1,15 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-13: 업종 점수 누적 가산점제 전환 Phase 2 (프론트엔드) — 가중치 슬라이더+트리밍 UI 제거 + 가산점 안내문 + avg_trade_amount 전환 (P10/P16/P20/P21/P23/P24)**
+  - **현상**: Phase 1(백엔드) 완료 후 프론트엔드가 구 가중치 슬라이더/트리밍 UI와 `total_trade_amount` 필드 참조 중. 백엔드가 전송하는 신규 가산점 필드(`bonus_rise_ratio`/`bonus_relative_strength`/`bonus_trade_amount`/`avg_trade_amount`) 미사용.
+  - **근본 원인**: 프론트엔드 8개 파일이 구 점수 시스템 기반. `sector-settings.ts`에 ④ 극단값 제외+⑤ 가중치 슬라이더 섹션 잔존, `sector-ranking-list.ts:155`가 `total_trade_amount` 참조, `types/index.ts`·`uiStore.ts`·`binding.ts`에 `sector_weights`/`sector_trim_*`/`normalized_weights` 잔존.
+  - **수정 파일**: 프론트엔드 6개 파일 수정 + 2개 파일 삭제 — `types/index.ts`, `uiStore.ts`, `binding.ts`, `sector-settings.ts`, `sector-ranking-list.ts`, `sliderConvert.ts`(삭제), `sliderConvert.test.ts`(삭제). `sector-stock.ts`/`hotStore.ts`는 `final_score`만 참조로 변경 불필요.
+  - **변경 내용**: (1) `types/index.ts` — `AppSettings`에서 `sector_weights`/`sector_trim_*` 3필드 제거, `SectorScoreRow`에 `avg_trade_amount` 명명변경+가산점 3필드 추가, `SectorStatus.normalized_weights` 제거. (2) `uiStore.ts` — `normalizedWeights` 필드+초기값 제거. (3) `binding.ts` — `normalized_weights` 수신 처리 3줄 제거. (4) `sector-settings.ts` — ④ 극단값 제외+⑤ 가중치 슬라이더 섹션 전체 제거, 관련 함수 3개+변수 3개+import 4개 제거, `NUM_KEYS`에서 `sector_trim_*` 2개 제거, `syncFromSettings` 가중치/트리밍 동기화 제거, uiStore 구독 normalizedWeights 갱신 제거, unmount dualSlider.destroy 제거, "가산점 자동 계산" 안내문 추가+섹션 번호 재정렬(⑥→⑤). (5) `sector-ranking-list.ts` — `total_trade_amount`→`avg_trade_amount`, 헤더 "종합점수"→"가산점". (6) `sliderConvert.ts`+`sliderConvert.test.ts` 삭제.
+  - **영향 범위**: 프론트엔드 6개 파일 수정+2개 파일 삭제. 백엔드 프로덕션 코드 변경 없음. 백엔드 WS payload `total_trade_amount` 하위 호환 필드는 별도 세션에서 제거 예정. Phase 3(테스트 전환) 대기.
+  - **검증**: `npm run build` 성공 (✓ built in 1.50s, 60 modules transformed). `npm test` 7 test files 101 tests passed. 프론트엔드 전체 잔존 참조 0건 확인 (`total_trade_amount`/`sector_weights`/`sector_trim`/`normalized_weights`/`sliderConvert` 검색). 잔존 프로세스 0건 (규칙 5-1 준수).
+  - **커밋**: `d5862e9`
+
 - **2026-07-13: 업종 점수 누적 가산점제 전환 Phase 1 (백엔드) — 3단계 가산점 + 트리밍 제거 + 가중치 슬라이더 제거 (P10/P16/P20/P21/P22/P23/P24)**
   - **현상**: 기존 업종 점수 시스템이 2개 지표 가중치 슬라이더 방식 — 상승비율 이진 판단 정보 손실, 가중치 주관 왜곡, 종목 수 비대칭 트리밍 미작동(4종목 업종 round(4×0.1)=0).
   - **근본 원인**: `sector_score.py:77-130` 가중치 합산 방식, `sector_calculator.py:137-166` 트리밍 로직, `models.py:76-99` MetricDef/DEFAULT_METRICS 구조. 절대값 기반 점수의 근본적 한계.
@@ -37,15 +46,6 @@
   - **검증**: git diff 7개 파일 114줄 추가/71줄 삭제. 잔존 프로세스 0건 확인(규칙 5-1 준수). 오타 1건 수정(safe-trade "반도시"→"반드시").
   - **커밋**: `77af288`
 
-- **2026-07-13: test_engine_loop.py is_ws_subscribe_window dead code 19곳 제거 + _init_ws_subscribe_state 패치 누락 4곳 추가 (P16/P23)**
-  - **현상**: (1) 19개 테스트에 `is_ws_subscribe_window` 패치 잔존 — `engine_stop_event.is_set()==True`로 while 루프 진입 불가 → 도달 불가 dead code (P16 위반). (2) 직전 커밋 `ee4b67d`에서 15곳만 `_init_ws_subscribe_state` 패치 추가하고 4곳 누락 — `test_state_initialized`, `test_finally_clears_broker_rest_apis`, `test_finally_running_set_false`, `test_finally_calls_stop_compute_loop`. 이 4곳은 `engine_loop.py:169` 실제 호출 시 `RuntimeError` → `except Exception` 포착 → finally 경로에서 우연히 통과 (P16 위반, 잘못 통과)
-  - **근본 원인**: `engine_loop.py:300-304` while 루프 내 `is_ws_subscribe_window` 호출은 `engine_stop_event.is_set()==True` 시 도달 불가. 누락 4곳은 이전 커밋의 패치 추가 범위 누락
-  - **수정 파일**: `backend/tests/test_engine_loop.py` (1개 파일, 19곳)
-  - **변경 내용**: 19곳 `is_ws_subscribe_window` 패치 제거. 이중 4곳(427, 637, 669, 706)은 `is_ws_subscribe_window` → `_init_ws_subscribe_state` 교체, 나머지 15곳은 중복 패치 라인 제거. 최종 `_init_ws_subscribe_state` 19건으로 통일
-  - **영향 범위**: `test_engine_loop.py` 내 `run_engine_loop()` 호출 테스트만. 프로덕션 코드 변경 없음
-  - **검증**: pytest test_engine_loop.py 38 passed in 6.94s. ruff 0건
-  - **커밋**: `087ca1f`
-
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책, JIF 경계 이벤트 즉시 갱신 — 모두 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 색상 체계 통일, 수익현황/수익상세 기간 전환, DataTable 컬럼 너비 안정화, applyIndexRefresh dead code 제거 + applyIndexData market_phase 갱신 — 모두 완료, `npm run build` 통과 (git history 참조)
@@ -54,13 +54,13 @@
 
 ## 진행 중 작업
 
-### 업종 점수 누적 가산점제 전환 — Phase 1(백엔드) 완료, Phase 2(프론트엔드) 대기
+### 업종 점수 누적 가산점제 전환 — Phase 1(백엔드)+Phase 2(프론트엔드) 완료, Phase 3(테스트) 대기
 - **계획서**: `docs/plan_sector_bonus_points.md` (895줄 — 2026-07-13 갱신)
-- **상태**: Phase 1(백엔드 전환) 완료. Phase 2(프론트엔드 전환) + Phase 3(테스트 전환) 대기.
+- **상태**: Phase 1(백엔드 전환) + Phase 2(프론트엔드 전환) 완료. Phase 3(테스트 전환) 대기.
 - **Phase 1 완료**: 백엔드 11개 파일 전환 — 3단계 누적 가산점(0~300), 트리밍 제거, 가중치 슬라이더 제거. 런타임 기동 검증 통과.
-- **Phase 2 대기 (프론트엔드 9개 파일)**: `sector-settings.ts`(④ 트리밍 섹션+⑤ 가중치 슬라이더 제거), `sector-ranking-list.ts`(가산점 표시), `sector-stock.ts`(final_score 참조), `types/index.ts`(SectorScoreRow 필드), `uiStore.ts`(normalizedWeights 제거), `binding.ts`(normalized_weights 수신 제거), `hotStore.ts`(SectorScoreRow 타입), `sliderConvert.ts`(삭제), `create-slider.ts`(유지-buy-settings.ts 사용)
-- **Phase 3 대기 (테스트 14개 파일)**: 백엔드 12개 + 프론트엔드 2개. 기존 함수명(`calculate_weighted_scores`/`normalize_weight_values`/`scored_*`/`sector_weights`/`trim_*`) 참조로 인해 현재 실패 예상.
-- **WS payload 하위 호환**: Phase 1에서 `total_trade_amount`+`avg_trade_amount` 동시 전송, `final_score` 필드명 유지. Phase 2 완료 후 `total_trade_amount` 제거 검토.
+- **Phase 2 완료**: 프론트엔드 6개 파일 수정+2개 파일 삭제 — 가중치 슬라이더/트리밍 UI 제거, "가산점 자동 계산" 안내문 추가, `avg_trade_amount` 전환, `normalizedWeights` 제거, `sliderConvert.ts` 삭제. `npm run build`+`npm test` 101 passed 통과.
+- **Phase 3 대기 (테스트 13개 파일)**: 백엔드 12개 + 프론트엔드 1개(sliderConvert.test.ts는 Phase 2에서 이미 삭제). 기존 함수명(`calculate_weighted_scores`/`normalize_weight_values`/`scored_*`/`sector_weights`/`trim_*`) 참조로 인해 현재 실패 예상.
+- **WS payload 하위 호환**: Phase 1에서 `total_trade_amount`+`avg_trade_amount` 동시 전송, `final_score` 필드명 유지. Phase 2 완료로 프론트엔드는 `avg_trade_amount` 사용 중. `total_trade_amount` 하위 호환 필드는 별도 세션에서 백엔드 제거 예정.
 - **추가 개선점**: 3차 가산점 median 대안(편향 모니터링 후 전환 검토)
 
 ### 아키텍처 전수 점검 — B-09 완료, 20개 미시작 (일시 보류)
@@ -70,20 +70,20 @@
 
 ## 다음 단계
 
-### 1순위: 업종 점수 누적 가산점제 전환 Phase 2 (프론트엔드) — 승인 대기
+### 1순위: 업종 점수 누적 가산점제 전환 Phase 3 (테스트) — 승인 대기
 - **계획서**: `docs/plan_sector_bonus_points.md` (895줄)
-- **Phase 1 완료**: 백엔드 11개 파일 전환 완료 (커밋 참조)
-- **Phase 2 구현 내용 (프론트엔드 9개 파일)**:
-  1. `sector-settings.ts`: ④ 극단값 제외 + ⑤ 가중치 슬라이더 섹션 제거, "가산점 자동 계산" 안내문 추가, 섹션 번호 재정렬
-  2. `sector-ranking-list.ts`: 가산점 표시(0~300), 헤더 라벨 변경, `avg_trade_amount` 참조 변경
-  3. `sector-stock.ts`: `final_score`/`sectorScores` 참조 확인, `avg_trade_amount` 참조 변경
-  4. `types/index.ts`, `uiStore.ts`, `binding.ts`, `hotStore.ts` — 타입/상태/바인딩 전환
-  5. `sliderConvert.ts` 삭제 (sector-settings.ts 전용), `create-slider.ts` 유지 (buy-settings.ts 사용)
-  - **검증**: `npm run build` + 브라우저 확인
-- **Phase 3 구현 내용 (테스트 14개 파일)**: 백엔드 12개 + 프론트엔드 2개. 기존 함수명 참조 수정.
+- **Phase 1+2 완료**: 백엔드 11개 파일 + 프론트엔드 6개 파일 수정+2개 파일 삭제 완료
+- **Phase 3 구현 내용 (테스트 13개 파일)**: 백엔드 12개 + 프론트엔드 1개(sliderConvert.test.ts는 Phase 2에서 이미 삭제). 기존 함수명 참조 수정.
+  - `test_sector_score.py`: `TestNormalizeWeightValues`/`TestCalculateWeightedScores` 제거, `TestCalculateBonusScores`/`TestPercentileToScore` 신규, `_make_sector_score` 헬퍼 수정
+  - `test_sector_calculator.py`: `TestComputeSectorScoresTrimming`/`TestComputeSectorScoresWeights` 제거, `TestComputeSectorScoresWithBonus` 신규
+  - `test_sector_calculator_integration.py`: `test_weighted_scores_calculated`→`test_bonus_scores_calculated`
+  - `test_engine_sector_confirm.py`: `calculate_weighted_scores` mock→`calculate_bonus_scores` mock (8개), `sector_weights`/`trim_*` mock 제거 (11개)
+  - `test_settings_file.py`: `TestMigrateRankPrimaryToWeights`/`TestMigrateSectorWeights` 제거
+  - `test_engine_settings.py`: `sector_weights`/`sector_trim_*` 기본값 검증 제거
+  - `test_sector_data_provider.py`/`test_buy_filter.py`/`test_telegram_bot.py`/`test_pipeline_compute.py`/`test_web_ws_routes.py`/`test_engine_snapshot.py`: score 참조 수정
   - **검증**: pytest 전체 통과 + ruff 0건 + 프론트엔드 빌드
-- **WS payload 하위 호환**: Phase 1에서 `total_trade_amount`+`avg_trade_amount` 동시 전송 중. Phase 2 완료 후 `total_trade_amount` 제거 검토.
-- **시작점**: 사용자 "진행해" 지시 후 Phase 2부터 착수
+- **별도 세션**: 백엔드 WS payload `total_trade_amount` 하위 호환 필드 제거 (Phase 3 완료 후)
+- **시작점**: 사용자 "진행해" 지시 후 Phase 3부터 착수
 
 ### 2순위: 아키텍처 전수 점검 P1 세션 (B-10)
 - B-10: 엔진 계좌/서비스 (`engine_account.py`, `engine_account_rest.py`, `engine_account_notify.py`, `engine_service.py`)

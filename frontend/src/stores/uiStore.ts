@@ -54,9 +54,6 @@ export interface UIState {
   /* ── 수신율 상태 ── */
   receiveRate: { received: number; total: number; pct: number } | null
 
-  /* ── 업종 점수 정규화 가중치 (백엔드 실제 적용값, P21 투명성) ── */
-  normalizedWeights: Record<string, number> | null
-
   /* ── 업종지수 실시간 (참고용, 저장 없음) ── */
   indexData: Record<string, IndexData> | null
 
@@ -81,7 +78,6 @@ const initialState: UIState = {
   sectorSummary: null,
   engineReloadComplete: false,
   receiveRate: null,
-  normalizedWeights: null,
   indexData: null,
   circuitBreakerOpen: null,
 }
