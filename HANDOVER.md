@@ -1,26 +1,22 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 검색 결과 행 하이라이트 P23 일관성 통일 — outline 제거 + 파랑 배경 통일**
-  - **목적**: 업종순위/매수설정/종목상세 페이지의 검색 결과 행 하이라이트를 수읉상세 카드 선택 방식과 시각 통일
+- **2026-07-13: 매수설정 5개 설정행 토글 도입 + 상승률/하락률 0 해석 충돌 해결 (P10/P23)**
+  - **목적**: 매수 설정 패널 5개 설정행(상승률/하락률/체결강도 차단, 최대 동시 보유 종목 수, 종목당 일일 최대 매수 금액)에 토글 도입, "끄기"와 "0값" 구분, 후보 생성/주문 실행 단계 간 0 해석 충돌 해결
   - **근본 원인**:
-    1. 3개 페이지(`sector-stock.ts:614`, `buy-target.ts:289`, `stock-detail.ts:235`)가 각각 `outline: 2px solid 파랑`만 사용, 배경 없음 → 수읉상세 카드(파랑 배경)와 불일치 (P23 위반)
-    2. `outline`이 행 구분선(`data-table.ts:746` 하단 1px 회색)과 인접 행에서 겹쳐 2줄로 표시
-    3. `sector-stock.ts:248-256` rowCache가 행 객체 재사용 → `virtual-scroller.ts:430-433`에서 `oldItems[i] !== item` false로 renderRow 생략 → 검색어 제거 시 rowStyle(outline) 잔상
+    1. `buy_filter.py:82,86` — `if block_rise_pct > 0` → 0 = "차단 안 함" (후보 생성 단계)
+    2. `trading.py:203,206` — `if _change_rate >= _rise_limit` (> 0 검사 없음) → 0 = "0% 이상 상승 전 종목 차단" (주문 실행 단계)
+    3. 같은 설정값이 단계별로 다르게 해석되는 P10(SSOT) 위반
+    4. "전체 일일 최대 매수 금액"만 토글이 있고 비슷한 한도 설정들은 토글이 없는 P23(일관성) 위반
   - **해결 방안**:
-    - 수정 1: 3개 파일 rowStyle을 `outline` 제거 → `background: COLOR.downBg`(파랑 배경)만 유지로 통일
-    - 수정 2: `sector-stock.ts:561,579` onSearch 콜백에 `this.rowCache.clear()` 추가 — 검색어 변경 시 rowCache 클리어로 새 row 객체 생성 → renderRow 호출 보장, rowStyle 즉시 갱신
-    - 강도: 사용자 선택 "배경만 살짝" — outline 제거로 2줄 현상 해결, 파랑 배경으로 검색 결과 강조
-  - **수정 파일**: `sector-stock.ts`, `buy-target.ts`, `stock-detail.ts`
-  - **검증**: typecheck OK, build OK (61 modules, 2.07s), 브라우저 확인 대기 — 검색어 입력 시 파랑 배경 강조, 검색어 제거 시 잔상 없이 즉시 해제, 2줄 현상 없음
-  - **커밋/푸쉬**: `bc1f10f` pushed to `origin/main`
-
-## 직전 완료 작업 (이전)
-- **2026-07-13: 수읉상세 매도/매수 탭 시각적 개선 — 사각 테두리 + 1행 표시 + 동적 숫자 파랑 강조**
-  - **목적**: 수읉상세 페이지 매도/매수 탭의 여백 부재, 시각적 구분 부재, 폰트 크기 작음, 매수내역 2행 줄바꿈 문제 해결
-  - **수정 파일**: `button.ts`, `profit-detail.ts`
-  - **검증**: typecheck OK, build OK (61 modules, 2.08s), 런타임 브라우저 확인 — 정상
-  - **커밋/푸쉬**: `dd16522` pushed to `origin/main`
+    - 새 설정 키 5개: `buy_block_rise_on`, `buy_block_fall_on`, `buy_block_strength_on`, `max_stock_cnt_on`, `buy_amt_on`
+    - 마이그레이션: 기존 값 기반 자동 추론 (값 > 0 → ON, 값 = 0 → OFF)
+    - 0 해석 충돌 해결: `buy_filter.py`와 `trading.py` 양쪽 모두 `_on` 플래그 기반으로 통일
+    - 토글 OFF 의미: 차단 3개 = "차단 안 함", 보유종목수 = "제한 없음", 종목당 한도 = "한도 없음" (사용자 선택)
+    - 안전 기본값 변경: `max_stock_cnt` 0→5, `buy_amt` 0→1,000,000 (신규 사용자 보호, P21)
+  - **수정 파일**: 백엔드 6파일(settings_defaults.py, engine_settings.py, buy_filter.py, trading.py, buy_order_executor.py, engine_service.py) + 프론트엔드 3파일(types/index.ts, buy-settings.ts, buy-target.ts) + 테스트 4파일
+  - **검증**: pytest 2741 passed, npm run build OK, 런타임 기동 OK (에러 없음, 15s 대기 후 종료)
+  - **커밋/푸쉬**: (이번 커밋)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책, JIF 경계 이벤트 즉시 갱신 — 모두 완료 (git history 참조)
@@ -92,7 +88,7 @@
     - `engine_settings.py:81` `max_single_stock_exposure` — `or 20000000` → `_v if _v is not None else 20000000` 패턴으로 수정 (dict 블록 밖으로 이동)
     - `engine_settings.py:139-140` `sector_min_rise_ratio_pct` / `sector_min_trade_amt` — `or` 패턴 → `_v if _v is not None else 기본값` 패턴으로 수정
   - **미해결 잔존**:
-    - `engine_settings.py:67,118` — `int(merged.get("max_stock_cnt", 5) or 5)` — 0을 5로 치환 (비즈니스상 0은 무효값일 수 있어 방어 로직 가능성, 검토 필요)
+    - **해결 완료 (2026-07-13, 매수설정 토글 작업 중)**: `engine_settings.py:67,118` — `int(merged.get("max_stock_cnt", 5) or 5)` — 0을 5로 치환하던 부분을 `flat.get` + `is not None` 패턴으로 수정 (max_stock_cnt_on 마이그레이션과 함께)
     - **P23 일관성 위반 (or 0 패턴, 0이 정상값)**: line 66, 70, 72, 73, 75, 77, 115, 117, 119, 122, 124, 125, 159 — `or 0` 패턴 13곳. 0이 정상값이므로 사실상 문제 없으나, `_v if _v is not None else 0` 패턴으로 통일 권장
     - **기본값 불일치 의심**: `engine_settings.py:206` — `int(merged.get("test_virtual_deposit", 10_000_000) or 0)` — 기본값 10_000_000이지만 or가 0으로 치환. None→10_000_000, 0→0으로 의도적일 수 있으나 패턴 불일치. `engine_settings.py:207` 동일
     - 수정 방향: P23 일관성 정리 시 일괄 처리

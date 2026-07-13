@@ -104,9 +104,11 @@ export interface AppSettings {
 
   // 매수 설정
   buy_amt: number;
+  buy_amt_on: boolean;
   max_daily_total_buy_on: boolean;
   max_daily_total_buy_amt: number;
   max_stock_cnt: number;
+  max_stock_cnt_on: boolean;
   rebuy_block_on: boolean;
   rebuy_block_period: string;
 
@@ -152,8 +154,11 @@ export interface AppSettings {
   sector_trim_change_rate_pct: number;
 
   // 매수 차단
+  buy_block_rise_on: boolean;
   buy_block_rise_pct: number;
+  buy_block_fall_on: boolean;
   buy_block_fall_pct: number;
+  buy_block_strength_on: boolean;
   buy_min_strength: number;
 
   // 매수 가산점

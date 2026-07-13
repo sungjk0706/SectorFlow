@@ -68,26 +68,32 @@ def calculate_boost_score(
 def check_stock_guards(
     stock,  # StockScore 타입 (순환 import 방지를 위해 타입 힌트 생략)
     *,
+    block_rise_on: bool = True,
     block_rise_pct: float = 7.0,
+    block_fall_on: bool = True,
     block_fall_pct: float = 7.0,
+    min_strength_on: bool = False,
     min_strength: float = 0.0,
 ) -> object:  # StockScore
     """
     개별 종목 매수 가드 적용.
+    block_rise_on: 상승률 차단 활성화 여부 (토글)
     block_rise_pct: 이 값 이상 상승 시 차단
+    block_fall_on: 하락률 차단 활성화 여부 (토글)
     block_fall_pct: 이 값 이상 하락 시 차단
-    min_strength: 체결강도 최소 기준 (0=미적용)
+    min_strength_on: 체결강도 차단 활성화 여부 (토글)
+    min_strength: 체결강도 최소 기준
     (5일평균거래대금 필터는 업종분석 단계에서 1차 처리됨 — 여기서 중복 체크하지 않음)
     """
-    if block_rise_pct > 0 and stock.change_rate >= block_rise_pct:
+    if block_rise_on and block_rise_pct > 0 and stock.change_rate >= block_rise_pct:
         stock.guard_pass = False
         stock.guard_reason = "상승률"
         return stock
-    if block_fall_pct > 0 and stock.change_rate <= -block_fall_pct:
+    if block_fall_on and block_fall_pct > 0 and stock.change_rate <= -block_fall_pct:
         stock.guard_pass = False
         stock.guard_reason = "하락률"
         return stock
-    if min_strength > 0 and stock.strength >= 0 and stock.strength < min_strength:
+    if min_strength_on and min_strength > 0 and stock.strength >= 0 and stock.strength < min_strength:
         stock.guard_pass = False
         stock.guard_reason = "체결강도"
         return stock
@@ -109,8 +115,11 @@ def create_buy_targets(
     *,
     sort_keys: list[Literal["strength", "change_rate", "trade_amount"]] | None = None,
     min_rise_ratio: float = 0.6,
+    block_rise_on: bool = True,
     block_rise_pct: float = 7.0,
+    block_fall_on: bool = True,
     block_fall_pct: float = 7.0,
+    min_strength_on: bool = False,
     min_strength: float = 0.0,
     max_sectors: int = 3,
     # ── 가산점 관련 파라미터 (기본값 = 모든 가산점 OFF → boost_score=0.0) ──
@@ -170,8 +179,11 @@ def create_buy_targets(
         for s in sc.stocks:
             check_stock_guards(
                 s,
+                block_rise_on=block_rise_on,
                 block_rise_pct=block_rise_pct,
+                block_fall_on=block_fall_on,
                 block_fall_pct=block_fall_pct,
+                min_strength_on=min_strength_on,
                 min_strength=min_strength,
             )
             all_stocks.append((s, sc))
@@ -296,8 +308,11 @@ def build_buy_targets_from_settings(
         sector_scores,
         sort_keys=settings.get("sector_sort_keys") or None,
         min_rise_ratio=float(settings.get("sector_min_rise_ratio_pct", 60.0)) / 100.0,
+        block_rise_on=bool(settings.get("buy_block_rise_on", True)),
         block_rise_pct=float(settings.get("buy_block_rise_pct", 7.0)),
+        block_fall_on=bool(settings.get("buy_block_fall_on", True)),
         block_fall_pct=float(settings.get("buy_block_fall_pct", 7.0)),
+        min_strength_on=bool(settings.get("buy_block_strength_on", False)),
         min_strength=float(settings.get("buy_min_strength", 0)),
         max_sectors=int(settings.get("sector_max_targets", 3)),
         high_5d_cache=get_high_price_5d_cache(),

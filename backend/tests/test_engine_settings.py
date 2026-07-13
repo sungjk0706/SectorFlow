@@ -35,8 +35,47 @@ class TestBuildEngineSettingsDictDefaults:
 
     def test_buy_amount_default(self):
         result = build_engine_settings_dict({})
-        assert result["buy_amount"] == 0
-        assert result["max_stock_count"] == 5  # DEFAULT_USER_SETTINGS max_stock_cnt=0 → fallback 5
+        assert result["buy_amount"] == 1000000  # 안전 기본값 (P21: 신규 사용자 보호)
+        assert result["buy_amount_on"] is True
+        assert result["max_stock_count"] == 5
+        assert result["max_stock_count_on"] is True
+
+    def test_buy_block_toggle_defaults(self):
+        result = build_engine_settings_dict({})
+        assert result["buy_block_rise_on"] is True
+        assert result["buy_block_fall_on"] is True
+        assert result["buy_block_strength_on"] is False  # 기본값 0 → 비활성
+
+    def test_buy_amt_on_migration_from_zero(self):
+        # 기존 buy_amt=0 → buy_amt_on=False (한도 없음)
+        result = build_engine_settings_dict({"buy_amt": 0})
+        assert result["buy_amt_on"] is False
+        assert result["buy_amt"] == 0
+
+    def test_buy_amt_on_migration_from_value(self):
+        # 기존 buy_amt>0 → buy_amt_on=True
+        result = build_engine_settings_dict({"buy_amt": 500000})
+        assert result["buy_amt_on"] is True
+        assert result["buy_amt"] == 500000
+
+    def test_max_stock_cnt_on_migration_from_zero(self):
+        # 기존 max_stock_cnt=0 → max_stock_cnt_on=False (제한 없음)
+        result = build_engine_settings_dict({"max_stock_cnt": 0})
+        assert result["max_stock_cnt_on"] is False
+        assert result["max_stock_cnt"] == 0
+
+    def test_max_stock_cnt_on_migration_from_value(self):
+        result = build_engine_settings_dict({"max_stock_cnt": 10})
+        assert result["max_stock_cnt_on"] is True
+        assert result["max_stock_cnt"] == 10
+
+    def test_buy_block_rise_on_migration_from_zero(self):
+        result = build_engine_settings_dict({"buy_block_rise_pct": 0})
+        assert result["buy_block_rise_on"] is False
+
+    def test_buy_block_rise_on_migration_from_value(self):
+        result = build_engine_settings_dict({"buy_block_rise_pct": 5.0})
+        assert result["buy_block_rise_on"] is True
 
     def test_risk_fields_defaults(self):
         result = build_engine_settings_dict({})

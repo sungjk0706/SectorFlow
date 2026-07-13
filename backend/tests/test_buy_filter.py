@@ -120,23 +120,28 @@ class TestCheckStockGuards:
 
     def test_block_by_min_strength(self):
         stock = _stock(strength=50.0)
-        result = check_stock_guards(stock, min_strength=80.0)
+        result = check_stock_guards(stock, min_strength_on=True, min_strength=80.0)
         assert result.guard_pass is False
         assert result.guard_reason == "체결강도"
 
     def test_pass_min_strength_equal(self):
         stock = _stock(strength=80.0)
-        result = check_stock_guards(stock, min_strength=80.0)
+        result = check_stock_guards(stock, min_strength_on=True, min_strength=80.0)
+        assert result.guard_pass is True
+
+    def test_min_strength_on_false_disables_check(self):
+        stock = _stock(strength=10.0)
+        result = check_stock_guards(stock, min_strength_on=False, min_strength=80.0)
         assert result.guard_pass is True
 
     def test_min_strength_zero_disables_check(self):
         stock = _stock(strength=10.0)
-        result = check_stock_guards(stock, min_strength=0.0)
+        result = check_stock_guards(stock, min_strength_on=True, min_strength=0.0)
         assert result.guard_pass is True
 
     def test_strength_minus_one_skips_strength_check(self):
         stock = _stock(strength=-1.0)
-        result = check_stock_guards(stock, min_strength=80.0)
+        result = check_stock_guards(stock, min_strength_on=True, min_strength=80.0)
         assert result.guard_pass is True
 
     def test_rise_takes_priority_over_fall(self):
@@ -145,19 +150,29 @@ class TestCheckStockGuards:
         assert result.guard_pass is False
         assert result.guard_reason == "상승률"
 
+    def test_block_rise_on_false_disables_check(self):
+        stock = _stock(change_rate=10.0)
+        result = check_stock_guards(stock, block_rise_on=False, block_rise_pct=7.0)
+        assert result.guard_pass is True
+
     def test_block_rise_pct_zero_disables_check(self):
         stock = _stock(change_rate=10.0)
-        result = check_stock_guards(stock, block_rise_pct=0.0)
+        result = check_stock_guards(stock, block_rise_on=True, block_rise_pct=0.0)
+        assert result.guard_pass is True
+
+    def test_block_fall_on_false_disables_check(self):
+        stock = _stock(change_rate=-5.0)
+        result = check_stock_guards(stock, block_fall_on=False, block_fall_pct=7.0)
         assert result.guard_pass is True
 
     def test_block_fall_pct_zero_disables_check(self):
         stock = _stock(change_rate=-5.0)
-        result = check_stock_guards(stock, block_fall_pct=0.0)
+        result = check_stock_guards(stock, block_fall_on=True, block_fall_pct=0.0)
         assert result.guard_pass is True
 
     def test_block_fall_pct_zero_passes_zero_change_rate(self):
         stock = _stock(change_rate=0.0)
-        result = check_stock_guards(stock, block_fall_pct=0.0)
+        result = check_stock_guards(stock, block_fall_on=True, block_fall_pct=0.0)
         assert result.guard_pass is True
 
     def test_mutates_stock_in_place(self):

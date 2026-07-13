@@ -158,7 +158,9 @@ function updateBadges(): void {
   const settings = globalSettingsManager.getSettings()
   const maxDailyOn = !!settings?.max_daily_total_buy_on
   const maxDaily = (maxDailyOn ? (settings?.max_daily_total_buy_amt ?? 0) : 0)
+  const maxStockOn = !!settings?.max_stock_cnt_on
   const maxStock = settings?.max_stock_cnt ?? 5
+  const buyAmtOn = !!settings?.buy_amt_on
   const buyAmtPerStock = settings?.buy_amt ?? 0
   const holdingCnt = state.positions.filter(p => (p.qty ?? 0) > 0).length
   const dailySpent = uiState.buyLimitStatus.daily_buy_spent
@@ -170,9 +172,16 @@ function updateBadges(): void {
     return (a.rank ?? 999999) - (b.rank ?? 999999)
   }).find(t => t.guard_pass && t.reason === '')
 
-  // 백엔드 trading.py:217-220 과 동일 — min(buy_amt, dailyRemain, orderable)
+  // 백엔드 trading.py와 동일 — buy_amt_on=False 시 종목당 한도 없음 (주문가능 금액이 상한)
   const dailyRemain = maxDaily > 0 ? Math.max(0, maxDaily - dailySpent) : Infinity
-  const effectiveBuyAmt = buyAmtPerStock > 0 ? Math.min(buyAmtPerStock, dailyRemain, orderable) : 0
+  let effectiveBuyAmt: number
+  if (buyAmtOn && buyAmtPerStock > 0) {
+    effectiveBuyAmt = Math.min(buyAmtPerStock, dailyRemain, orderable)
+  } else if (buyAmtOn) {
+    effectiveBuyAmt = 0  // buy_amt_on=True but buy_amt=0 → 매수 불가
+  } else {
+    effectiveBuyAmt = Math.min(dailyRemain, orderable)  // 한도 없음
+  }
   let qty = 0
   if (topTarget && effectiveBuyAmt > 0 && topTarget.cur_price > 0) {
     qty = Math.floor(effectiveBuyAmt / topTarget.cur_price)
@@ -209,11 +218,12 @@ function updateBadges(): void {
     statusColor: dailyHit ? COLOR.up : dailyNear ? COLOR.warning : COLOR.code,
   })
 
-  // 동시 보유 종목 배지 — cur / max
-  const holdingHit = maxStock > 0 && holdingCnt >= maxStock
-  const holdingNear = maxStock > 0 && holdingCnt >= maxStock * 0.8 && holdingCnt < maxStock
+  // 동시 보유 종목 배지 — cur / max (maxStockOn=False 시 무제한)
+  const effectiveMaxStock = maxStockOn ? maxStock : 0  // 0 = 무제한 표시
+  const holdingHit = effectiveMaxStock > 0 && holdingCnt >= effectiveMaxStock
+  const holdingNear = effectiveMaxStock > 0 && holdingCnt >= effectiveMaxStock * 0.8 && holdingCnt < effectiveMaxStock
   const holdingStatus: BadgeStatus = holdingHit ? 'hit' : holdingNear ? 'near' : 'normal'
-  const holdingValue = `${holdingCnt.toLocaleString()} / ${maxStock > 0 ? maxStock.toLocaleString() : '무제한'}`
+  const holdingValue = `${holdingCnt.toLocaleString()} / ${effectiveMaxStock > 0 ? effectiveMaxStock.toLocaleString() : '무제한'}`
   const holdingStatusText = holdingHit ? ' (한도)' : holdingNear ? ' (근접)' : ''
   updateBadge(badgeEls.holding, holdingValue, {
     status: holdingStatus,
