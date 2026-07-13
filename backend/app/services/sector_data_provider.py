@@ -222,7 +222,6 @@ def get_sector_scores_snapshot() -> tuple[list[dict], int]:
             "bonus_relative_strength": round(sc.bonus_relative_strength, 1),
             "bonus_trade_amount": round(sc.bonus_trade_amount, 1),
             "avg_trade_amount": sc.avg_trade_amount,
-            "total_trade_amount": sc.avg_trade_amount,  # 하위 호환 (Phase 2에서 제거)
             "rise_ratio": round(sc.rise_ratio * 100, 1),
             "total": sc.total,
         })

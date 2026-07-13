@@ -98,13 +98,12 @@ class TestLoadIntegratedSystemSettingsDB:
         """json 타입 값이 DB에서 올바르게 로드되는지 확인."""
         await in_memory_db.execute(
             "INSERT INTO integrated_system_settings (key, value, value_type) VALUES (?, ?, ?)",
-            ("sector_weights", '{"rise_ratio": 0.6, "total_trade_amount": 0.4}', "json"),
+            ("sell_per_symbol", '{"005930": {"tp_val": 10.0}}', "json"),
         )
         await in_memory_db.commit()
 
         result = await load_integrated_system_settings()
-        assert result["sector_weights"]["rise_ratio"] == 0.6
-        assert result["sector_weights"]["total_trade_amount"] == 0.4
+        assert result["sell_per_symbol"]["005930"]["tp_val"] == 10.0
 
     @pytest.mark.asyncio
     async def test_loads_string_value_from_db(self, in_memory_db):
@@ -174,18 +173,18 @@ class TestSaveSettingsDB:
     @pytest.mark.asyncio
     async def test_saves_json_to_db(self, in_memory_db):
         """json 값이 DB에 올바른 타입으로 저장되는지 확인."""
-        weights = {"rise_ratio": 0.7, "total_trade_amount": 0.3}
-        await save_settings({"sector_weights": weights})
+        sps = {"005930": {"tp_val": 10.0}}
+        await save_settings({"sell_per_symbol": sps})
 
         cursor = await in_memory_db.execute(
             "SELECT value, value_type FROM integrated_system_settings WHERE key = ?",
-            ("sector_weights",),
+            ("sell_per_symbol",),
         )
         row = await cursor.fetchone()
         assert row["value_type"] == "json"
         import json
         parsed = json.loads(row["value"])
-        assert parsed["rise_ratio"] == 0.7
+        assert parsed["005930"]["tp_val"] == 10.0
 
     @pytest.mark.asyncio
     async def test_overwrites_existing_key(self, in_memory_db):
