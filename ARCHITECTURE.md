@@ -595,11 +595,8 @@ _flush_sector_recompute_impl()
     compute_sector_scores()
          │
          ▼
-    calculate_weighted_scores()  — 순위 기반 점수 + 가중치 점수
-         │
-         ▼
-    업종 컷오프 (min_rise_ratio 미만 → rank=0)
-         │
+    calculate_bonus_scores()  — 3단계 누적 가산점 (0~300) + 컷오프 내부 적용
+         │  (옵션 C 2패스: 1차/3차 계산 → 컷오프 → 2차 모집단 구성 → 종합)
          ▼
     build_buy_targets_from_settings()  — 매수 타겟 큐 생성
          │
@@ -683,12 +680,12 @@ StockScore (종목 단위)
 
 SectorScore (업종 단위)
 ├── sector, total, rise_count, rise_ratio
-├── avg_change_rate, total_trade_amount
-├── scored_trade_amount (트리밍 후)
-├── scored_rise_ratio (트리밍 후)
-├── final_score (가중치 최종 점수 0~100)
-├── metric_scores (지표별 순위 점수)
-├── rank (1=최강, 0=순위 없음)
+├── avg_change_rate, avg_trade_amount, avg_ratio_5d_pct
+├── final_score (종합 가산점 = 1차+2차+3차, 0~300)
+├── bonus_rise_ratio (1차 가산점: 상승 종목 비율 순위, 0~100)
+├── bonus_relative_strength (2차 가산점: 통과 업종 종목 백분위 평균, 0~100)
+├── bonus_trade_amount (3차 가산점: 거래대금 순위, 0~100)
+├── rank (1=최강, 0=순위 없음/컷오프 미달)
 └── stocks: list[StockScore]
 
 SectorSummary (전체 결과)
@@ -698,32 +695,38 @@ SectorSummary (전체 결과)
 └── version
 ```
 
-### 6.2 가중치 점수 시스템
+### 6.2 3단계 누적 가산점 시스템
 
-**기본 지표 (MetricDef):**
-| 키 | 라벨 | 기본 가중치 | 추출값 |
-|----|------|------------|--------|
-| `total_trade_amount` | 거래대금 | 0.5 | `scored_trade_amount` |
-| `rise_ratio` | 상승종목비율 | 0.5 | `scored_rise_ratio` |
+**설계 원칙**: 기존 가중치 슬라이더(주관 개입)와 트리밍(인위적 잘라내기)을 제거하고,
+순위/백분위 기반의 3단계 누적 가산점으로 업종 강도 평가. 매수 설정 `boost_score` 누적
+합산 패턴과 동일 구조 (P23 일관성).
 
-**계산 과정:**
-1. 가중치 정규화 (합 = 1.0, 음수 클램프, 0이면 기본값)
-2. 각 지표별 순위 점수 변환 (`rank_to_score`): 순위 점수 = (N - rank + 1) / N × 100
-3. `final_score = Σ(rank_score_i × weight_i)`
-4. 정렬: `final_score` 내림차순 → `scored_rise_ratio` 내림차순 → `scored_trade_amount` 내림차순 → 업종명 오름차순 (결정적 정렬)
-5. rank 부여 (1-based)
+**3개 단계 (각 0~100점, 종합 0~300점):**
 
-> **순위 기반 점수**: 각 지표별로 트리밍 후 원시값 기준 순위를 매기고, 순위를 점수로 변환.
-> 동점 처리: 같은 값 = 같은 순위, 다음 순위 건너뜀 (표준 순위 방식).
-> 1위 = 100점, N위 = 100/N 점. min-max 정규화 대비 long-tail 분포에 강건.
+| 단계 | 의미 | 데이터 | 점수 변환 | 함수 |
+|------|------|--------|-----------|------|
+| 1차 | 상승 폭 (참여 폭) | `rise_ratio` (상승 종목 비율) | 업종 간 순위 → 0~100 | `rank_to_score` |
+| 2차 | 상승 강도 (상승 폭) | 통과 업종 종목 `change_rate` | 종목 백분위 → 업종별 평균 0~100 | `percentile_to_score` |
+| 3차 | 거래대금 (유동성) | `avg_trade_amount` (평균 거래대금) | 업종 간 순위 → 0~100 | `rank_to_score` |
 
-### 6.3 트리밍 (Trimming)
+**점수 변환 함수:**
+- `rank_to_score`: 순위 점수 = (N - rank + 1) / N × 100 — 1위=100점, 꼴찌=100/N점 (0점 아님). 업종 간 순위 비교용 (1차/3차).
+- `percentile_to_score`: 백분위 점수 = (N - rank) / (N - 1) × 100 — 최대값=100점, 최소값=0점 (완전 0~100 스케일). 종목 간 상대 비교용 (2차). N=1이면 100점.
+- 동점 처리: 같은 값 = 같은 점수, 다음 순위 건너뜀 (표준 순위 방식).
 
-- **등락률 트리밍** (`trim_change_rate_pct`): 상하위 N% 종목 제외 후 상승비율 계산
-- **거래대금 트리밍** (`trim_trade_amt_pct`): 상하위 N% 종목 제외 후 평균 계산
-- 트리밍 후 값은 `scored_*` 필드에 저장, 표시용은 원본값 유지
+**계산 과정 (옵션 C — 2패스, `calculate_bonus_scores`):**
+1. **1패스**: 1차(상승비율 순위) + 3차(거래대금 순위) 계산 → 임시 합산 기반 정렬
+2. **컷오프**: `min_rise_ratio` 미만 업종 `rank=0` (매수 대상 제외) — `calculate_bonus_scores` 내부에서 수행 (진실 소스 1곳, P10/P22)
+3. **2패스**: 통과 업종(rank>0) 종목들만 모집단 → `percentile_to_score` 백분위 → 업종별 평균 = 2차 가산점
+4. **종합**: `final_score = 1차 + 2차 + 3차` (0~300)
+5. **재정렬**: `final_score` 내림차순 → `bonus_relative_strength` 내림차순 → `bonus_rise_ratio` 내림차순 → 업종명 오름차순 (결정적 정렬)
+6. **rank 부여**: 1-based, 컷오프 미달 업종은 `rank=0` 유지
 
-### 6.4 필터링
+> **2차 가산점 모집단 (P22 데이터 정합성)**: 컷오프 적용 후 통과 업종이 확정된 상태에서
+> 모집단 구성. 옵션 C 2패스 채택으로 진실 소스 1곳 유지. 미통과 업종은 2차 가산점=0점.
+> 통과 업종 0개 시 모든 업종 2차 가산점=0점 (1차/3차만으로 순위 결정).
+
+### 6.3 필터링
 
 - **1차 필터**: 5일평균거래대금 (`min_avg_amt_eok`) — 업종 그룹핑 전 적용
   - `get_sector_stocks()`에서 필터 통과 종목만 `all_codes`에 포함 → 업종 순위 계산 대상
@@ -732,14 +735,14 @@ SectorSummary (전체 결과)
 - **업종 컷오프**: `min_rise_ratio` 미만 업종은 `rank=0` (매수 대상 제외)
 - **개별 종목 가드**: 상승률 과열(`block_rise_pct`), 하락률 과열(`block_fall_pct`), 체결강도 최소값
 
-### 6.5 증분 연산 모드
+### 6.4 증분 연산 모드
 
 | 모드 | 조건 | 동작 |
 |------|------|------|
 | 전체 재계산 | 캐시 없음 (콜드 스타트) | `compute_full_sector_summary()` |
 | 증분 재계산 | 캐시 있음, dirty 섹터만 | dirty 섹터만 재계산 → 병합 → 전체 순위 점수 재계산 |
 
-### 6.6 가산점 (Boost Score)
+### 6.5 가산점 (Boost Score)
 
 | 가산점 | 조건 | 설정 키 |
 |--------|------|---------|
