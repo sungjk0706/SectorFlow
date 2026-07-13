@@ -1,49 +1,63 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 업종순위 수신율 0% 고정 해결 + 2개 필드 체크 배선 + dead code 제거 + 라벨 색상 구분**
-  - **수신율 0% 고정 근본 해결 (P21/P22)**: `_calculate_receive_rate()`를 `_received_codes`(틱 기반) → `master_stocks_cache` 2개 필드(change_rate, trade_amount) 체크로 변경. 장마감후 확정 데이터 반영 시 100% 산출
-  - **P16 dead code 배선**: `_has_any_realtime_data()`가 정의만 되고 호출되지 않던 dead code → `_calculate_receive_rate()`에 실제 배선
-  - **P10 SSOT**: `_received_codes` 변수 완전 제거 — 수신율 판단 기준 단일화(2개 필드 체크)
-  - **P24 단순성**: Phase 1 루프에서 `_receive_rate_dirty` 가드 제거, WS/비-WS 구분 없이 항상 필드 기반 계산. `_reset_realtime_fields()`가 WS 구독 시작시 필드를 None으로 초기화하므로 0%→100% 상승은 자연스럽게 처리
-  - **확정 데이터 반영후 수신율 갱신**: `market_close_pipeline.py` `_step7_recompute_and_broadcast()`와 5일봉 후처리에 `_calculate_receive_rate()` + `_send_receive_rate()` 호출 추가
-  - **라벨 색상 구분**: 정적 라벨(업종순위 계산 수신율, 수신:, 미수신:) → `COLOR.neutral`(검정), 동적 숫자(100.0%, 173종목) → `COLOR.down`(파랑) 분리
-  - **수정 파일**: `pipeline_compute.py`, `market_close_pipeline.py` (백엔드 2개) + `sector-settings.ts` (프론트 1개) + `test_pipeline_compute.py` (테스트 1개)
-  - 검증: pytest 87개 통과(0.41s), 백엔드 런타임 기동 로그 "수신율 임계값 통과 (현재: 100.0%)" 확인, `npm run build` 1.88s 성공
+- **2026-07-13: DataTable 컬럼 너비 안정화 — 실시간 틱 시 구분선 흔들림 + 좌우 스크롤 근본 해결**
+  - **목적**: 정규장 실시간 틱 수신 시 매수후보 테이블 컬럼 구분선이 미세하게 흔들리고, 모든 페이지에 좌우 스크롤이 발생하는 문제 해결
+  - **근본 원인 3단계**:
+    1. `checkCellWidth`/`flushWidthUpdate` — 실시간 틱 경로에서 셀 텍스트 폭 재측정 → 전체 컬럼 % 재계산 → 구분선 이동
+    2. `initFromRows` 무조건 `applyWidths` 호출 — `buy-targets-delta` 이벤트 시마다 폭 재계산
+    3. `gridTemplateColumns` % 단위 → 매 레이아웃 평가 시 컨테이너 너비 기준 px 재변환 + `wrapper.clientWidth` 사용으로 스크롤바 너비 초과 → 좌우 스크롤
+  - **해결 방안**: 첫 `updateRows` 시 1회만 데이터 기반 폭 계산 후 고정 (`initialized` 플래그). 이후 실시간 틱/데이터 변화에 재계산 없음. px 단위 고정 + `scrollContainer.clientWidth` 사용 + 반올림 오차 보정. 전체 7개 DataTable 페이지 28개 컬럼에 minWidth/maxWidth 지정.
+  - **수정 파일**: `data-table.ts` (폭 재계산 로직 전면 개편), `buy-target.ts`, `sell-position.ts`, `profit-shared.ts`, `stock-classification.ts`, `stock-detail.ts`, `general-settings.ts` (컬럼 minWidth/maxWidth 추가)
+  - 검증: `npm run typecheck` 통과, `npm run build` 통과, 브라우저 확인 대기
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책 — 모두 완료 (git history 참조)
-- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 색상 체계 통일, 수익현황/수익상세 기간 전환, 테이블 컬럼 너비 동적 조정 등 — 모두 완료, `npm run build` 통과 (git history 참조)
+- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 색상 체계 통일, 수익현황/수익상세 기간 전환, DataTable 컬럼 너비 안정화(1회 계산 후 고정 + px 단위 + 전체 컬럼 minWidth/maxWidth 지정) — 모두 완료, `npm run build` 통과 (git history 참조)
 - **테스트**: 백엔드 pytest 통과. 커버리지 Phase 1~3 완료
 - **업종 분류**: 69→55 재분류 + 업종명 정비 + 순위 기반 점수 전환 + 종목 이동 버그 3건 근본 해결 + "업종명없음" 잔적 제거 — 완료, 사용자 UI 확인 대기
 - **규칙/문서 정리**: AGENTS.md 4섹션 구조, 아키텍처 원칙 24개, .devin/workflows 제거 + skills 통합 — 완료 (2026-07-13)
 
 ## 진행 중 작업
 
-### 아키텍처 전수 점검 — B-09 완료, 20개 미시작
+### 업종 점수 누적 가산점제 전환 — 사전 조사 완료, 구현 대기
+- **계획서**: `docs/plan_sector_bonus_points.md` (687줄)
+- **상태**: 정밀 사전 조사 + 변경 계획서 작성 완료. 사용자 승인 후 구현 착수.
+- **구현 단위**: Phase 1(백엔드 도메인) → Phase 2(백엔드 서비스/설정) → Phase 3(프론트엔드) → Phase 4(테스트)
+- **각 Phase 완료 시**: 커밋 + HANDOVER.md 갱신 + 사용자 보고
+
+### 아키텍처 전수 점검 — B-09 완료, 20개 미시작 (일시 보류)
 - **완료**: B-01~B-09, F-01 (P0 전체 + B-06~B-09)
 - **미시작**: B-10~B-11 (P1), B-12~B-19 (P2), B-20~B-23 (P3), F-02~F-07 (P1~P3)
 - 다음 세션: B-10 (엔진 계좌/서비스) — `docs/architecture_audit_plan.md` 체크리스트 사용
 
 ## 다음 단계
 
-### 1순위: 업종순위 수신율 UI 확인 대기
+### 1순위: 업종 점수 누적 가산점제 전환 구현 (승인 대기)
+- **계획서**: `docs/plan_sector_bonus_points.md` (정밀 사전 조사 완료)
+- **구현 순서** (계획서 섹션 9):
+  1. Phase 1: 백엔드 도메인 (`models.py`, `sector_score.py`, `sector_calculator.py`) — `MetricDef`/`DEFAULT_METRICS` 제거, `calculate_bonus_scores` + `percentile_to_score` 신규, `sector_weights` 파라미터 제거, **트리밍 로직/파라미터 제거**, `scored_rise_ratio`/`scored_trade_amount` 필드 제거 → `rise_ratio`/`total_trade_amount` 통합
+  2. Phase 2: 백엔드 서비스/설정 (`engine_sector_confirm.py`, `sector_data_provider.py`, `settings_*.py`, `engine_account_notify.py`) — `sector_weights` 참조 제거, **트리밍 변수/인자/설정 키 제거** (`sector_trim_*`), WS payload 가산점 필드 추가
+  3. Phase 3: 프론트엔드 (`sector-settings.ts` 슬라이더 + **④ 극단값 제외(트리밍) 섹션 제거**, `sector-ranking-list.ts` 점수 표시, `types/index.ts`, `uiStore.ts`, `binding.ts`)
+  4. Phase 4: 테스트 전면 수정 (11개 파일, **트리밍 테스트 제거 포함**)
+- **주의**: 2차 가산점 모집단 시점 이슈 (계획서 섹션 8.1) — `calculate_bonus_scores`에 `min_rise_ratio` 파라미터 추가로 통과 업종 판단 필요
+- **시작점**: 사용자 "진행해" 지시 후 Phase 1부터 착수
+
+### 2순위: 업종순위 수신율 UI 확인 대기
 - 브라우저에서 업종순위설정 패널 ② 행 확인: 수신율 100.0% 표시, 수신/미수신 종목수 표시
 - 라벨 색상: 정적 라벨 검정, 동적 숫자 파랑 구분 확인
 - 장개시 후 WS 구독 시작 시 수신율 0% → 틱 수신시 상승 → 임계값 도달시 업종점수 계산 시작 확인
 
-### 2순위: engine_settings.py 인접 라인 P20 폴백 일괄 정리 (승인 대기)
+### 3순위: engine_settings.py 인접 라인 P20 폴백 일괄 정리 (승인 대기)
 - line 138: `sector_min_rise_ratio_pct` — `or 60.0`이 0%를 60%로 치환
 - line 139: `sector_min_trade_amt` — `or 0.0`은 다행이지만 패턴 동일 위험
 - 동일 패턴(`_v if _v is not None else 기본값`)으로 일괄 정리 권장
+- **참고**: 업종 점수 가산점제 전환 시 `sector_weights` 관련 코드 제거되므로, 본 항목과 중복 정리 검토
 
-### 3순위: 아키텍처 전수 점검 P1 세션 (B-10)
+### 4순위: 아키텍처 전수 점검 P1 세션 (B-10)
 - B-10: 엔진 계좌/서비스 (`engine_account.py`, `engine_account_rest.py`, `engine_account_notify.py`, `engine_service.py`)
 - `docs/architecture_audit_plan.md` 체크리스트 사용, 발견 문제를 섹션 7에 등록
 - 이후 B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
-
-### 보류: P23 테이블 컬럼 너비 일관성 개선 (사용자 승인 대기)
-- stock-detail.ts 자체 `makeAmountColumn` 너비 설정 없음, 비표준 컬럼 너비 설정 없음 (buy-target.ts 6개, sell-position.ts 6개, profit-shared.ts 9개), 순번/종목코드 컬럼 팩토리 사용 통일
 
 ## 미해결 문제
 - **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결**

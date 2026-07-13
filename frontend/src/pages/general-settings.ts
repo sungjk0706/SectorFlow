@@ -392,8 +392,8 @@ function renderTelegramTab(container: HTMLElement): void {
   // 명령어 안내 테이블
   interface CommandRow { cmd: string; desc: string }
   const COMMAND_COLUMNS: ColumnDef<CommandRow>[] = [
-    { key: 'cmd', label: '명령어', align: 'center', minWidth: 60, render: r => r.cmd },
-    { key: 'desc', label: '설명', align: 'left', render: r => r.desc },
+    { key: 'cmd', label: '명령어', align: 'center', minWidth: 60, maxWidth: 80, render: r => r.cmd },
+    { key: 'desc', label: '설명', align: 'left', minWidth: 100, maxWidth: 200, render: r => r.desc },
   ]
   const commands: CommandRow[] = [
     { cmd: '자동', desc: '자동매매 ON/OFF' }, { cmd: '매수', desc: '자동매수 ON/OFF' },
