@@ -227,10 +227,10 @@ class TestComputeSectorScoresDBIntegration:
 
         for s in result.sectors:
             assert s.final_score >= 0.0
-            assert s.final_score <= 300.0
-            assert 0.0 <= s.bonus_rise_ratio <= 100.0
-            assert 0.0 <= s.bonus_relative_strength <= 100.0
-            assert 0.0 <= s.bonus_trade_amount <= 100.0
+            assert s.final_score <= 22.0
+            assert 0.0 <= s.bonus_rise_ratio <= 10.0
+            assert 0.0 <= s.bonus_relative_strength <= 7.0
+            assert 0.0 <= s.bonus_trade_amount <= 5.0
 
     @pytest.mark.asyncio
     async def test_empty_codes_returns_empty_list(self, in_memory_db, setup_master_cache):

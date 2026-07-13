@@ -1,13 +1,13 @@
-"""sector_score.py 단위 테스트 — 3단계 누적 가산점 시스템 검증.
+"""sector_score.py 단위 테스트 — 3단계 누적 가산점 시스템 검증 (순위별 차등 점수).
 
-rank_to_score(순위 기반), percentile_to_score(백분위 기반),
+rank_to_tiered_score(순위별 차등), percentile_to_score(백분위 기반),
 calculate_bonus_scores(3단계 누적 가산점 + 컷오프 + 순위 부여) 로직 검증.
 """
 from __future__ import annotations
 
 from backend.app.domain.models import SectorScore, StockScore
 from backend.app.domain.sector_score import (
-    rank_to_score,
+    rank_to_tiered_score,
     percentile_to_score,
     calculate_bonus_scores,
 )
@@ -49,44 +49,50 @@ def _make_sector_score(
     )
 
 
-# ── rank_to_score ──────────────────────────────────────────────────────────────
+# ── rank_to_tiered_score ──────────────────────────────────────────────────────
 
-class TestRankToScore:
+class TestRankToTieredScore:
     def test_empty_list_returns_empty(self):
-        assert rank_to_score([]) == []
+        assert rank_to_tiered_score([], max_score=10) == []
 
-    def test_single_value_returns_100(self):
-        assert rank_to_score([42.0]) == [100.0]
+    def test_single_value_returns_max_score(self):
+        assert rank_to_tiered_score([42.0], max_score=10) == [10]
 
-    def test_all_same_values_returns_100(self):
-        """모든 값이 동일하면 공동 1위 → 모두 100점."""
-        assert rank_to_score([5.0, 5.0, 5.0]) == [100.0, 100.0, 100.0]
+    def test_all_same_values_returns_max_score(self):
+        """모든 값이 동일하면 공동 1위 → 모두 만점."""
+        assert rank_to_tiered_score([5.0, 5.0, 5.0], max_score=10) == [10, 10, 10]
 
-    def test_rank_score_formula_5_values(self):
-        """5개 업종: 1위=100, 2위=80, 3위=60, 4위=40, 5위=20."""
+    def test_tiered_score_formula_5_values(self):
+        """5개 업종, max_score=10: 1위=10, 2위=9, 3위=8, 4위=7, 5위=6."""
         values = [30.0, 10.0, 50.0, 20.0, 40.0]  # 50=1위, 40=2위, 30=3위, 20=4위, 10=5위
-        result = rank_to_score(values, higher_is_better=True)
-        assert result == [60.0, 20.0, 100.0, 40.0, 80.0]
+        result = rank_to_tiered_score(values, max_score=10, higher_is_better=True)
+        assert result == [8, 6, 10, 7, 9]
 
     def test_higher_is_better_false(self):
         """lower_is_better: 작은 값이 1위."""
         values = [10.0, 20.0, 30.0]  # 10=1위, 20=2위, 30=3위
-        result = rank_to_score(values, higher_is_better=False)
-        assert result == [100.0, 66.7, 33.3]
+        result = rank_to_tiered_score(values, max_score=10, higher_is_better=False)
+        assert result == [10, 9, 8]
 
     def test_tie_values_same_rank_same_score(self):
         """동점: 같은 값은 같은 순위, 다음 순위 건너뜀."""
         # A=50(1위), B=50(1위), C=30(3위), D=20(4위)
         values = [50.0, 50.0, 30.0, 20.0]
-        result = rank_to_score(values, higher_is_better=True)
-        # 1위: (4-1+1)/4*100 = 100, 3위: (4-3+1)/4*100 = 50, 4위: (4-4+1)/4*100 = 25
-        assert result == [100.0, 100.0, 50.0, 25.0]
+        result = rank_to_tiered_score(values, max_score=10, higher_is_better=True)
+        # 1위: 10, 3위: 10-3+1=8, 4위: 10-4+1=7
+        assert result == [10, 10, 8, 7]
 
-    def test_rounding_to_one_decimal(self):
-        """소수점 첫째 자리 반올림 (3개 업종: 100, 66.7, 33.3)."""
-        values = [3.0, 1.0, 2.0]
-        result = rank_to_score(values, higher_is_better=True)
-        assert result == [100.0, 33.3, 66.7]
+    def test_score_zero_below_max_score_rank(self):
+        """max_score 순위 이하 = 0점. max_score=3, 5개 업종: 1위=3, 2위=2, 3위=1, 4위=0, 5위=0."""
+        values = [50.0, 40.0, 30.0, 20.0, 10.0]
+        result = rank_to_tiered_score(values, max_score=3, higher_is_better=True)
+        assert result == [3, 2, 1, 0, 0]
+
+    def test_max_score_zero_all_zero(self):
+        """max_score=0 → 모든 업종 0점."""
+        values = [50.0, 40.0, 30.0]
+        result = rank_to_tiered_score(values, max_score=0, higher_is_better=True)
+        assert result == [0, 0, 0]
 
 
 # ── percentile_to_score ─────────────────────────────────────────────────────────
@@ -134,20 +140,20 @@ class TestCalculateBonusScores:
         calculate_bonus_scores([])
 
     def test_single_sector_gets_rank_1_and_full_score(self):
-        """단일 업종: 1차=100, 3차=100, 2차=100(단일 종목 백분위=100) → final=300."""
+        """단일 업종: 1차=10, 3차=5, 2차=7(단일 종목 백분위=100 → 단일 업종 tiered=7) → final=22."""
         sc = _make_sector_score(
             "반도체", rise_ratio=0.8, avg_trade_amount=1_000_000,
             stocks=[_make_stock("A", "반도체", 2.5)],
         )
         calculate_bonus_scores([sc])
         assert sc.rank == 1
-        assert sc.bonus_rise_ratio == 100.0
-        assert sc.bonus_trade_amount == 100.0
-        assert sc.bonus_relative_strength == 100.0
-        assert sc.final_score == 300.0
+        assert sc.bonus_rise_ratio == 10.0
+        assert sc.bonus_trade_amount == 5.0
+        assert sc.bonus_relative_strength == 7.0
+        assert sc.final_score == 22.0
 
     def test_bonus_rise_ratio_ranking(self):
-        """1차 가산점: rise_ratio 순위 → rank_to_score."""
+        """1차 가산점: rise_ratio 순위 → rank_to_tiered_score (기본 만점 10)."""
         scores = [
             _make_sector_score("A", rise_ratio=0.3, stocks=[_make_stock("a1", "A", 1.0)]),
             _make_sector_score("B", rise_ratio=0.7, stocks=[_make_stock("b1", "B", 1.0)]),
@@ -157,13 +163,13 @@ class TestCalculateBonusScores:
         a = next(s for s in scores if s.sector == "A")
         b = next(s for s in scores if s.sector == "B")
         c = next(s for s in scores if s.sector == "C")
-        # rise_ratio: B(0.7)=1위=100, C(0.5)=2위=66.7, A(0.3)=3위=33.3
-        assert b.bonus_rise_ratio == 100.0
-        assert c.bonus_rise_ratio == 66.7
-        assert a.bonus_rise_ratio == 33.3
+        # rise_ratio: B(0.7)=1위=10, C(0.5)=2위=9, A(0.3)=3위=8
+        assert b.bonus_rise_ratio == 10.0
+        assert c.bonus_rise_ratio == 9.0
+        assert a.bonus_rise_ratio == 8.0
 
     def test_bonus_trade_amount_ranking(self):
-        """3차 가산점: avg_trade_amount 순위 → rank_to_score."""
+        """3차 가산점: avg_trade_amount 순위 → rank_to_tiered_score (기본 만점 5)."""
         scores = [
             _make_sector_score("A", avg_trade_amount=100, stocks=[_make_stock("a1", "A", 1.0)]),
             _make_sector_score("B", avg_trade_amount=900, stocks=[_make_stock("b1", "B", 1.0)]),
@@ -173,10 +179,10 @@ class TestCalculateBonusScores:
         a = next(s for s in scores if s.sector == "A")
         b = next(s for s in scores if s.sector == "B")
         c = next(s for s in scores if s.sector == "C")
-        # 거래대금: B(900)=1위=100, C(500)=2위=66.7, A(100)=3위=33.3
-        assert b.bonus_trade_amount == 100.0
-        assert c.bonus_trade_amount == 66.7
-        assert a.bonus_trade_amount == 33.3
+        # 거래대금: B(900)=1위=5, C(500)=2위=4, A(100)=3위=3
+        assert b.bonus_trade_amount == 5.0
+        assert c.bonus_trade_amount == 4.0
+        assert a.bonus_trade_amount == 3.0
 
     def test_cutoff_min_rise_ratio_sets_rank_zero(self):
         """min_rise_ratio 미만 업종 rank=0, 2차 가산점=0."""
@@ -192,7 +198,7 @@ class TestCalculateBonusScores:
         assert failed.bonus_relative_strength == 0.0
 
     def test_second_bonus_uses_passed_sectors_only(self):
-        """2차 가산점: 통과 업종 종목들만 모집단 → 백분위 평균."""
+        """2차 가산점: 통과 업종 종목들만 모집단 → 백분위 평균 → tiered 점수."""
         # 통과 업종 2개: 반도체(종목 +3, +1), 은행(종목 +2, -1)
         # 탈락 업종 1개: 자동차(종목 +10, -5) — 모집단에서 제외
         scores = [
@@ -214,20 +220,23 @@ class TestCalculateBonusScores:
         # 정렬: 3(1위)=100, 2(2위)=66.7, 1(3위)=33.3, -1(4위)=0
         # 반도체 평균: (100 + 33.3) / 2 = 66.65 → round = 66.7
         # 은행 평균: (66.7 + 0) / 2 = 33.35 → round = 33.4
-        assert semi.bonus_relative_strength == 66.7
-        assert bank.bonus_relative_strength == 33.4
+        # 업종 간 순위: 반도체(66.7)=1위, 은행(33.4)=2위
+        # tiered 점수 (max_relative_strength_score=7): 반도체=7, 은행=6
+        assert semi.bonus_relative_strength == 7.0
+        assert bank.bonus_relative_strength == 6.0
 
     def test_final_score_is_sum_of_three_bonuses(self):
-        """final_score = 1차 + 2차 + 3차."""
+        """final_score = 1차 + 2차 + 3차 (정수 합)."""
         sc = _make_sector_score(
             "반도체", rise_ratio=0.8, avg_trade_amount=1_000_000,
             stocks=[_make_stock("s1", "반도체", 2.5)],
         )
         calculate_bonus_scores([sc])
-        expected = sc.bonus_rise_ratio + sc.bonus_relative_strength + sc.bonus_trade_amount
-        assert sc.final_score == round(expected, 1)
+        expected = int(sc.bonus_rise_ratio) + int(sc.bonus_relative_strength) + int(sc.bonus_trade_amount)
+        assert sc.final_score == float(expected)
 
-    def test_final_score_range_0_to_300(self):
+    def test_final_score_range_0_to_max_sum(self):
+        """final_score 범위: 0 ~ 만점 합 (기본 10+7+5=22)."""
         scores = [
             _make_sector_score("A", rise_ratio=0.5, avg_trade_amount=500,
                                stocks=[_make_stock("a1", "A", 1.0)]),
@@ -236,7 +245,7 @@ class TestCalculateBonusScores:
         ]
         calculate_bonus_scores(scores)
         for sc in scores:
-            assert 0.0 <= sc.final_score <= 300.0
+            assert 0.0 <= sc.final_score <= 22.0
 
     def test_sort_order_by_final_score_descending(self):
         """종합 점수 기반 내림차순 정렬."""
@@ -303,3 +312,44 @@ class TestCalculateBonusScores:
         calculate_bonus_scores(scores, min_rise_ratio=0.0)
         for sc in scores:
             assert sc.rank > 0
+
+    def test_custom_max_scores(self):
+        """사용자 설정 만점으로 점수 범위 변경."""
+        scores = [
+            _make_sector_score("A", rise_ratio=0.3, avg_trade_amount=100,
+                               stocks=[_make_stock("a1", "A", 0.5)]),
+            _make_sector_score("B", rise_ratio=0.9, avg_trade_amount=900,
+                               stocks=[_make_stock("b1", "B", 3.0)]),
+        ]
+        calculate_bonus_scores(
+            scores,
+            max_rise_ratio_score=20,
+            max_relative_strength_score=15,
+            max_trade_amount_score=10,
+        )
+        b = next(s for s in scores if s.sector == "B")
+        # B는 1위 → 1차=20, 3차=10, 2차=15 (단일 종목 → 단일 업종 tiered=15)
+        assert b.bonus_rise_ratio == 20.0
+        assert b.bonus_trade_amount == 10.0
+        assert b.bonus_relative_strength == 15.0
+        assert b.final_score == 45.0
+
+    def test_max_score_zero_disables_dimension(self):
+        """만점=0 → 해당 차수 모든 업종 0점."""
+        scores = [
+            _make_sector_score("A", rise_ratio=0.3, avg_trade_amount=100,
+                               stocks=[_make_stock("a1", "A", 0.5)]),
+            _make_sector_score("B", rise_ratio=0.9, avg_trade_amount=900,
+                               stocks=[_make_stock("b1", "B", 3.0)]),
+        ]
+        calculate_bonus_scores(
+            scores,
+            max_rise_ratio_score=0,
+            max_relative_strength_score=0,
+            max_trade_amount_score=0,
+        )
+        for sc in scores:
+            assert sc.bonus_rise_ratio == 0.0
+            assert sc.bonus_relative_strength == 0.0
+            assert sc.bonus_trade_amount == 0.0
+            assert sc.final_score == 0.0

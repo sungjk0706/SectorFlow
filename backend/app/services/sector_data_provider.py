@@ -252,6 +252,9 @@ async def recompute_sector_summary_now() -> None:
             **_inputs,
             min_rise_ratio=float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
             min_avg_amt_eok=float(state.integrated_system_settings_cache["sector_min_trade_amt"]),
+            max_rise_ratio_score=int(state.integrated_system_settings_cache["sector_bonus_rise_ratio_max"]),
+            max_relative_strength_score=int(state.integrated_system_settings_cache["sector_bonus_relative_strength_max"]),
+            max_trade_amount_score=int(state.integrated_system_settings_cache["sector_bonus_trade_amount_max"]),
         )
         from backend.app.services import engine_account
         _held = await engine_account.get_held_codes()
