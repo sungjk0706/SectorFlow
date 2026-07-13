@@ -82,7 +82,8 @@ def percentile_to_score(
         while j < n and indexed[j][1] == indexed[i][1]:
             j += 1
         # 동점 그룹에 동일한 점수 부여 (그룹 내 최고 순위 기준)
-        score = round((rank - 1) / (n - 1) * 100.0, 1)
+        # 공식: (n - rank) / (n - 1) × 100 — rank=1(최대값)이 100점, rank=n(최소값)이 0점
+        score = round((n - rank) / (n - 1) * 100.0, 1)
         for k in range(i, j):
             orig_idx = indexed[k][0]
             scores[orig_idx] = score

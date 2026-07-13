@@ -1,7 +1,7 @@
 """sector_calculator.py 단위 테스트 — 전체 파이프라인 로직 검증.
 
 compute_sector_scores 및 compute_full_sector_summary의 데이터 추출,
-필터링, 트리밍, 그룹핑, 컷오프 로직을 런타임 경로로 검증.
+필터링, 그룹핑, 3단계 누적 가산점, 컷오프 로직을 런타임 경로로 검증.
 mock 없이 state.master_stocks_cache 직접 주입으로 DB 의존성 회피.
 """
 from __future__ import annotations
@@ -121,7 +121,6 @@ class TestComputeSectorScoresBasic:
         assert sc.total == 1
         assert sc.rise_count == 1
         assert sc.rise_ratio == 1.0
-        assert sc.rank == 1
 
     async def test_two_sectors_grouping(self, cache):
         _populate_cache(cache)
@@ -151,15 +150,6 @@ class TestComputeSectorScoresBasic:
         sc = result[0]
         expected = (2.5 + (-1.0) + 0.5) / 3
         assert sc.avg_change_rate == pytest.approx(expected, abs=0.01)
-
-    async def test_ranking_by_final_score(self, cache):
-        _populate_cache(cache)
-        result = await compute_sector_scores(
-            _ALL_CODES, trade_prices={}, trade_amounts={}, avg_amt_5d=_AVG_AMT_5D,
-        )
-        assert result[0].rank == 1
-        assert result[1].rank == 2
-        assert result[0].final_score >= result[1].final_score
 
     async def test_returns_list_of_sector_score(self, cache):
         _populate_cache(cache)
@@ -331,113 +321,29 @@ class TestComputeSectorScoresFiltering:
         assert "반도체" in sectors
 
 
-# ── compute_sector_scores: 트리밍 ─────────────────────────────────────────────
+# ── compute_sector_scores: 트리밍/가중치 제거 검증 ──────────────────────────────
 
-class TestComputeSectorScoresTrimming:
+class TestComputeSectorScoresNoTrimWeights:
 
-    def _make_5_stock_cache(self) -> dict:
-        return {
-            "S001": _stock_entry(sector="테스트", name="A", change_rate=3.0, trade_amount=10_000_000_000, cur_price=10000, strength="100%"),
-            "S002": _stock_entry(sector="테스트", name="B", change_rate=2.0, trade_amount=8_000_000_000, cur_price=20000, strength="90%"),
-            "S003": _stock_entry(sector="테스트", name="C", change_rate=1.0, trade_amount=5_000_000_000, cur_price=30000, strength="80%"),
-            "S004": _stock_entry(sector="테스트", name="D", change_rate=-1.0, trade_amount=2_000_000_000, cur_price=40000, strength="70%"),
-            "S005": _stock_entry(sector="테스트", name="E", change_rate=-2.0, trade_amount=1_000_000_000, cur_price=50000, strength="60%"),
-        }
-
-    def _avg_5d_for_5(self) -> dict:
-        return {f"S00{i}": 1000 for i in range(1, 6)}
-
-    async def test_trim_change_rate_pct(self, cache):
-        stocks = self._make_5_stock_cache()
-        _populate_cache(cache, stocks)
-        result = await compute_sector_scores(
-            ["S001", "S002", "S003", "S004", "S005"],
-            trade_prices={},
-            trade_amounts={},
-            avg_amt_5d=self._avg_5d_for_5(),
-            trim_change_rate_pct=20.0,
-        )
-        sc = result[0]
-        assert sc.sector == "테스트"
-        assert sc.scored_rise_ratio == pytest.approx(2 / 3, abs=0.01)
-
-    async def test_trim_trade_amt_pct(self, cache):
-        stocks = self._make_5_stock_cache()
-        _populate_cache(cache, stocks)
-        result = await compute_sector_scores(
-            ["S001", "S002", "S003", "S004", "S005"],
-            trade_prices={},
-            trade_amounts={},
-            avg_amt_5d=self._avg_5d_for_5(),
-            trim_trade_amt_pct=20.0,
-        )
-        sc = result[0]
-        expected = (8_000_000_000 + 5_000_000_000 + 2_000_000_000) / 3
-        assert sc.scored_trade_amount == pytest.approx(expected, rel=0.01)
-
-    async def test_no_trim_when_pct_zero(self, cache):
-        stocks = self._make_5_stock_cache()
-        _populate_cache(cache, stocks)
-        result = await compute_sector_scores(
-            ["S001", "S002", "S003", "S004", "S005"],
-            trade_prices={},
-            trade_amounts={},
-            avg_amt_5d=self._avg_5d_for_5(),
-            trim_change_rate_pct=0.0,
-            trim_trade_amt_pct=0.0,
-        )
-        sc = result[0]
-        assert sc.scored_rise_ratio == pytest.approx(3 / 5, abs=0.01)
-        expected_ta = (10_000_000_000 + 8_000_000_000 + 5_000_000_000 + 2_000_000_000 + 1_000_000_000) / 5
-        assert sc.scored_trade_amount == pytest.approx(expected_ta, rel=0.01)
-
-
-# ── compute_sector_scores: 가중치 전달 ────────────────────────────────────────
-
-class TestComputeSectorScoresWeights:
-
-    async def test_custom_weights_affect_ranking(self, cache):
-        high_amt_low_rise = {
-            "A001": _stock_entry(sector="고거래", name="A", change_rate=-1.0, trade_amount=10_000_000_000, cur_price=10000, strength="100%"),
-            "A002": _stock_entry(sector="고거래", name="B", change_rate=-1.0, trade_amount=8_000_000_000, cur_price=20000, strength="90%"),
-            "B001": _stock_entry(sector="고상승", name="C", change_rate=3.0, trade_amount=500_000_000, cur_price=30000, strength="80%"),
-            "B002": _stock_entry(sector="고상승", name="D", change_rate=2.0, trade_amount=300_000_000, cur_price=40000, strength="70%"),
-        }
-        local_avg = {"A001": 5000, "A002": 4000, "B001": 1000, "B002": 800}
-        local_codes = ["A001", "A002", "B001", "B002"]
-        _populate_cache(cache, high_amt_low_rise)
-        await compute_sector_scores(
-            local_codes, trade_prices={}, trade_amounts={}, avg_amt_5d=local_avg,
-        )
-        result_weighted_amt = await compute_sector_scores(
-            local_codes,
-            trade_prices={},
-            trade_amounts={},
-            avg_amt_5d=local_avg,
-            sector_weights={"total_trade_amount": 1.0, "rise_ratio": 0.0},
-        )
-        result_weighted_rise = await compute_sector_scores(
-            local_codes,
-            trade_prices={},
-            trade_amounts={},
-            avg_amt_5d=local_avg,
-            sector_weights={"total_trade_amount": 0.0, "rise_ratio": 1.0},
-        )
-        assert result_weighted_amt[0].sector == "고거래"
-        assert result_weighted_rise[0].sector == "고상승"
-
-    async def test_none_weights_uses_defaults(self, cache):
+    async def test_no_weights_or_trim_params_needed(self, cache):
+        """sector_weights/trim_* 파라미터 없이 정상 동작 (트리밍/가중치 제거 검증)."""
         _populate_cache(cache)
         result = await compute_sector_scores(
-            _ALL_CODES,
-            trade_prices={},
-            trade_amounts={},
-            avg_amt_5d=_AVG_AMT_5D,
-            sector_weights=None,
+            _ALL_CODES, trade_prices={}, trade_amounts={}, avg_amt_5d=_AVG_AMT_5D,
         )
+        assert len(result) == 2
         for sc in result:
-            assert sc.final_score >= 0
-            assert sc.rank > 0
+            assert isinstance(sc, SectorScore)
+
+    async def test_avg_trade_amount_is_full_average(self, cache):
+        """트리밍 제거: avg_trade_amount가 전체 종목 기준 평균 (잘라내기 없음)."""
+        _populate_cache(cache, _SEMI_STOCKS)
+        result = await compute_sector_scores(
+            _SEMI_CODES, trade_prices={}, trade_amounts={}, avg_amt_5d=_AVG_AMT_5D,
+        )
+        sc = result[0]
+        expected = (5_000_000_000 + 3_000_000_000 + 1_000_000_000) / 3
+        assert sc.avg_trade_amount == pytest.approx(expected, rel=0.01)
 
 
 # ── compute_full_sector_summary ───────────────────────────────────────────────
@@ -454,6 +360,26 @@ class TestComputeFullSectorSummary:
             latest_index={},
         )
         assert isinstance(result, SectorSummary)
+
+    async def test_bonus_fields_populated_by_full_summary(self, cache):
+        """compute_full_sector_summary가 calculate_bonus_scores 호출로 bonus_* 필드 채움."""
+        _populate_cache(cache)
+        result = await compute_full_sector_summary(
+            _ALL_CODES,
+            trade_prices={},
+            trade_amounts={},
+            avg_amt_5d=_AVG_AMT_5D,
+            latest_index={},
+        )
+        for sc in result.sectors:
+            assert sc.bonus_rise_ratio >= 0.0
+            assert sc.bonus_trade_amount >= 0.0
+            assert sc.bonus_relative_strength >= 0.0
+            assert 0.0 <= sc.final_score <= 300.0
+            expected = round(
+                sc.bonus_rise_ratio + sc.bonus_relative_strength + sc.bonus_trade_amount, 1,
+            )
+            assert sc.final_score == expected
 
     async def test_empty_input_returns_empty_summary(self, cache):
         result = await compute_full_sector_summary(

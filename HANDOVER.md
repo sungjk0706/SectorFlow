@@ -1,6 +1,15 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-13: 업종 점수 누적 가산점제 전환 Phase 3-A (테스트) — 핵심 점수 로직 테스트 3개 파일 전환 + percentile_to_score 반전 버그 수정 (P10/P16/P22/P23/P24)**
+  - **현상**: Phase 1(백엔드)+Phase 2(프론트엔드) 완료 후 테스트 파일들이 제거된 함수/필드(`calculate_weighted_scores`/`normalize_weight_values`/`scored_*`/`sector_weights`/`trim_*`/`metric_scores`)를 참조하여 실패. 추가로 조사 중 `percentile_to_score` 반전 버그 발견 — 최대값이 0점, 최소값이 100점 부여 (계획서 의도와 반대).
+  - **근본 원인**: (1) Phase 1에서 함수/필드 제거 시 테스트 미전환. (2) `sector_score.py:85` 공식 `(rank-1)/(n-1)*100`이 내림차순 정렬에서 rank=1(최대값)에게 0점 부여 — 계획서 의도("가장 많이 오른 종목 = 100점")와 반대. (3) `compute_sector_scores`가 Phase 1에서 랭킹 수행 제외(랭킹은 `compute_full_sector_summary`로 이관)되었으나 기존 테스트 2건이 여전히 `sc.rank`/`sc.final_score` 검증.
+  - **수정 파일**: 백엔드 4개 파일 — `sector_score.py`, `test_sector_score.py`, `test_sector_calculator.py`, `test_sector_calculator_integration.py`
+  - **변경 내용**: (1) `sector_score.py:85` — 공식 `(rank-1)/(n-1)*100` → `(n-rank)/(n-1)*100` 수정. 최대값=100점, 최소값=0점. (2) `test_sector_score.py` 전면 재작성 — `TestNormalizeWeightValues`/`TestCalculateWeightedScores` 제거, `TestPercentileToScore`(7테스트)/`TestCalculateBonusScores`(12테스트) 신규, 헬퍼 `_make_sector_score`/`_make_stock` 추가, import 수정. (3) `test_sector_calculator.py` — `TestComputeSectorScoresTrimming`/`TestComputeSectorScoresWeights` 제거, `TestComputeSectorScoresNoTrimWeights`(2테스트) 신규, `TestComputeFullSectorSummary::test_bonus_fields_populated_by_full_summary` 신규, 기존 2테스트 rank 검증 수정/제거. (4) `test_sector_calculator_integration.py` — `test_weighted_scores_calculated` → `test_bonus_scores_calculated` 재작성 (`compute_full_sector_summary` 사용, `final_score <= 300.0`, `bonus_*` 0~100 검증).
+  - **영향 범위**: 백엔드 4개 파일. 2차 가산점 점수 반전 → 정상 수정으로 업종 순위가 "많이 오른 종목들이 많은 업종"에 높은 점수 부여하도록 정상화. 기존 DB 점수는 다음 재계산 시 자동 갱신. Phase 3-B 대상 6개 파일은 이번 세션 미수정 (기존 실패로 기록).
+  - **검증**: pytest 3개 파일 62 passed. ruff All checks passed. 런타임 기동 `.venv/bin/python -W error::RuntimeWarning main.py` — 에러/Traceback/RuntimeWarning 없음, `[업종] 업종순위 재계산 (3단계 누적 가산점)` + `재계산 완료` 로그 확인, 103ms 기동. 전체 백엔드 테스트(Phase 3-B 6개 제외) 2443 passed. 프론트엔드 빌드 ✓ built in 1.79s. 잔존 프로세스 0건 (규칙 5-1 준수).
+  - **커밋**: (본 커밋)
+
 - **2026-07-13: 업종 점수 누적 가산점제 전환 Phase 2 (프론트엔드) — 가중치 슬라이더+트리밍 UI 제거 + 가산점 안내문 + avg_trade_amount 전환 (P10/P16/P20/P21/P23/P24)**
   - **현상**: Phase 1(백엔드) 완료 후 프론트엔드가 구 가중치 슬라이더/트리밍 UI와 `total_trade_amount` 필드 참조 중. 백엔드가 전송하는 신규 가산점 필드(`bonus_rise_ratio`/`bonus_relative_strength`/`bonus_trade_amount`/`avg_trade_amount`) 미사용.
   - **근본 원인**: 프론트엔드 8개 파일이 구 점수 시스템 기반. `sector-settings.ts`에 ④ 극단값 제외+⑤ 가중치 슬라이더 섹션 잔존, `sector-ranking-list.ts:155`가 `total_trade_amount` 참조, `types/index.ts`·`uiStore.ts`·`binding.ts`에 `sector_weights`/`sector_trim_*`/`normalized_weights` 잔존.
@@ -54,12 +63,13 @@
 
 ## 진행 중 작업
 
-### 업종 점수 누적 가산점제 전환 — Phase 1(백엔드)+Phase 2(프론트엔드) 완료, Phase 3(테스트) 대기
+### 업종 점수 누적 가산점제 전환 — Phase 1(백엔드)+Phase 2(프론트엔드)+Phase 3-A(테스트 3개) 완료, Phase 3-B(테스트 6개) 대기
 - **계획서**: `docs/plan_sector_bonus_points.md` (895줄 — 2026-07-13 갱신)
-- **상태**: Phase 1(백엔드 전환) + Phase 2(프론트엔드 전환) 완료. Phase 3(테스트 전환) 대기.
+- **상태**: Phase 1(백엔드 전환) + Phase 2(프론트엔드 전환) + Phase 3-A(핵심 점수 로직 테스트 3개) 완료. Phase 3-B(mock/설정 테스트 6개) 대기.
 - **Phase 1 완료**: 백엔드 11개 파일 전환 — 3단계 누적 가산점(0~300), 트리밍 제거, 가중치 슬라이더 제거. 런타임 기동 검증 통과.
 - **Phase 2 완료**: 프론트엔드 6개 파일 수정+2개 파일 삭제 — 가중치 슬라이더/트리밍 UI 제거, "가산점 자동 계산" 안내문 추가, `avg_trade_amount` 전환, `normalizedWeights` 제거, `sliderConvert.ts` 삭제. `npm run build`+`npm test` 101 passed 통과.
-- **Phase 3 대기 (테스트 13개 파일)**: 백엔드 12개 + 프론트엔드 1개(sliderConvert.test.ts는 Phase 2에서 이미 삭제). 기존 함수명(`calculate_weighted_scores`/`normalize_weight_values`/`scored_*`/`sector_weights`/`trim_*`) 참조로 인해 현재 실패 예상.
+- **Phase 3-A 완료**: 백엔드 테스트 3개 파일 전환 — `test_sector_score.py`(전면 재작성, 27테스트), `test_sector_calculator.py`(클래스 2제거+1신규, 28테스트), `test_sector_calculator_integration.py`(테스트 1 재작성, 7테스트). `percentile_to_score` 반전 버그 수정(`sector_score.py:85`). pytest 62 passed + ruff 0건 + 런타임 기동 통과.
+- **Phase 3-B 대기 (테스트 6개 파일)**: `test_engine_sector_confirm`(8 failed), `test_settings_file`(수집 에러), `test_engine_settings`(1 failed), `test_buy_filter`(30 failed), `test_telegram_bot`(2 failed), `test_sector_data_provider`(16 passed — P16/P23 일관성 수정만 필요). 기존 실패 (Phase 1/2 원인, Phase 3-A 수정과 무관 — git stash로 확인).
 - **WS payload 하위 호환**: Phase 1에서 `total_trade_amount`+`avg_trade_amount` 동시 전송, `final_score` 필드명 유지. Phase 2 완료로 프론트엔드는 `avg_trade_amount` 사용 중. `total_trade_amount` 하위 호환 필드는 별도 세션에서 백엔드 제거 예정.
 - **추가 개선점**: 3차 가산점 median 대안(편향 모니터링 후 전환 검토)
 
@@ -70,20 +80,19 @@
 
 ## 다음 단계
 
-### 1순위: 업종 점수 누적 가산점제 전환 Phase 3 (테스트) — 승인 대기
+### 1순위: 업종 점수 누적 가산점제 전환 Phase 3-B (테스트 6개 파일) — 승인 대기
 - **계획서**: `docs/plan_sector_bonus_points.md` (895줄)
-- **Phase 1+2 완료**: 백엔드 11개 파일 + 프론트엔드 6개 파일 수정+2개 파일 삭제 완료
-- **Phase 3 구현 내용 (테스트 13개 파일)**: 백엔드 12개 + 프론트엔드 1개(sliderConvert.test.ts는 Phase 2에서 이미 삭제). 기존 함수명 참조 수정.
-  - `test_sector_score.py`: `TestNormalizeWeightValues`/`TestCalculateWeightedScores` 제거, `TestCalculateBonusScores`/`TestPercentileToScore` 신규, `_make_sector_score` 헬퍼 수정
-  - `test_sector_calculator.py`: `TestComputeSectorScoresTrimming`/`TestComputeSectorScoresWeights` 제거, `TestComputeSectorScoresWithBonus` 신규
-  - `test_sector_calculator_integration.py`: `test_weighted_scores_calculated`→`test_bonus_scores_calculated`
-  - `test_engine_sector_confirm.py`: `calculate_weighted_scores` mock→`calculate_bonus_scores` mock (8개), `sector_weights`/`trim_*` mock 제거 (11개)
-  - `test_settings_file.py`: `TestMigrateRankPrimaryToWeights`/`TestMigrateSectorWeights` 제거
-  - `test_engine_settings.py`: `sector_weights`/`sector_trim_*` 기본값 검증 제거
-  - `test_sector_data_provider.py`/`test_buy_filter.py`/`test_telegram_bot.py`/`test_pipeline_compute.py`/`test_web_ws_routes.py`/`test_engine_snapshot.py`: score 참조 수정
+- **Phase 1+2+3-A 완료**: 백엔드 11개 파일 + 프론트엔드 6개 파일 수정+2개 파일 삭제 + 테스트 3개 파일 전환 + `percentile_to_score` 버그 수정 완료
+- **Phase 3-B 구현 내용 (테스트 6개 파일)**:
+  - `test_engine_sector_confirm.py`: `calculate_weighted_scores` mock→`calculate_bonus_scores` mock (8개), `sector_weights`/`trim_*` mock 제거 (11개), `test_min_rise_ratio_cutoff` 통합 테스트 전환 (컷오프가 `calculate_bonus_scores` 내부로 이관)
+  - `test_settings_file.py`: `TestMigrateRankPrimaryToWeights`/`TestMigrateSectorWeights` 제거, import에서 `migrate_rank_primary_to_weights`/`_migrate_sector_weights` 제거 (수집 에러 해결)
+  - `test_engine_settings.py`: `sector_weights` 기본값 검증 제거 (L102)
+  - `test_buy_filter.py`: 헬퍼 `_make_sector_score`에서 `total_trade_amount`/`scored_trade_amount`/`scored_rise_ratio` 제거 → `avg_trade_amount`/`rise_ratio` 전환 (30 failed 해결)
+  - `test_telegram_bot.py`: `scored_trade_amount` mock → `avg_trade_amount` mock (L1167, L1220)
+  - `test_sector_data_provider.py`: `scored_trade_amount` mock → `avg_trade_amount` mock (L42,64,72), `sector_weights`/`sector_trim_*` mock 제거 (L279-281) — P16/P23 일관성
   - **검증**: pytest 전체 통과 + ruff 0건 + 프론트엔드 빌드
-- **별도 세션**: 백엔드 WS payload `total_trade_amount` 하위 호환 필드 제거 (Phase 3 완료 후)
-- **시작점**: 사용자 "진행해" 지시 후 Phase 3부터 착수
+- **별도 세션**: 백엔드 WS payload `total_trade_amount` 하위 호환 필드 제거 (Phase 3-B 완료 후)
+- **시작점**: 사용자 "진행해" 지시 후 Phase 3-B부터 착수
 
 ### 2순위: 아키텍처 전수 점검 P1 세션 (B-10)
 - B-10: 엔진 계좌/서비스 (`engine_account.py`, `engine_account_rest.py`, `engine_account_notify.py`, `engine_service.py`)
