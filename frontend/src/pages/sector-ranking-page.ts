@@ -32,9 +32,9 @@ function mount(_container: HTMLElement): void {
   shell.tripleLeft.style.width = `${SETTINGS_PANEL_WIDTH}px`
   shell.tripleLeft.style.minWidth = `${SETTINGS_PANEL_WIDTH}px`
   shell.tripleLeft.style.padding = '8px'
-  // 중앙·우측: 남은 공간 분할 (1:3)
+  // 중앙·우측: 남은 공간 분할 (1:2.5) — 중앙 패널 너비 확대로 업종명 짤림 완화
   shell.tripleCenter.style.flex = '1'
-  shell.tripleRight.style.flex = '3'
+  shell.tripleRight.style.flex = '2.5'
 
   // 좌측: 설정 패널 마운트
   sectorSettings.mount(shell.tripleLeft)
