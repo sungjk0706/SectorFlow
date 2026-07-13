@@ -15,7 +15,7 @@
     - DYNAMIC_REG 처리 시 성공 반환값 확인 후에만 `_subscribed_dynamic=True` 설정, 실패 시 `_PENDING_REG_CODES` 유지 (pipeline_compute.py:329-345)
   - **수정 파일**: 백엔드 9파일(engine_loop.py, daily_time_scheduler.py, engine_lifecycle.py, pipeline_compute.py, engine_ws.py, ls_connector.py, kiwoom_connector.py, connector_manager.py, broker_connector.py)
   - **검증**: pytest 2741 passed, ruff 0건, 런타임 기동 OK (초기화→연결→구독 순서 로그 확인, 수신율 5초 만에 95.4% 임계값 통과, 에러 없음)
-  - **커밋/푸쉬**: 사용자 승인 대기
+  - **커밋/푸쉬**: `939d199` pushed to `origin/main`
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책, JIF 경계 이벤트 즉시 갱신 — 모두 완료 (git history 참조)
