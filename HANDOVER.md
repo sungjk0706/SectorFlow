@@ -1,6 +1,15 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-14: 보유종목/수익현황 페이지 평가손익·수익률 실시간 불일치 해결 — computeHoldingsSummary 공통 함수 도입 (P22/P10/P23/P21)**
+  - **현상**: 보유종목 페이지 상단 요약 배지와 수익현황 페이지 계좌현황 섹션의 평가손익/수익률이 개별 종목 합산 값과 크게 불일치 (예: 개별 합산 +268,968원 vs 요약 -900원).
+  - **근본 원인**: 두 페이지의 요약/계좌현황은 백엔드 계좌 스냅샷(`account.total_pnl`)을 표시했으나, 개별 종목 행은 프론트엔드에서 실시간 틱 가격(`sectorStocks[code].cur_price`)으로 재계산. 0B 틱 시 계좌 스냅샷은 갱신되지 않고 프론트엔드도 틱 이벤트에 반응하지 않아 요약이 마지막 체결 시점 값에 머물러 있었음.
+  - **수정 파일**: 프론트엔드 3개 파일 — `profit-shared.ts`, `sell-position.ts`, `profit-overview.ts`
+  - **변경 내용**: (1) `profit-shared.ts` — `computeHoldingsSummary(positions, sectorStocks)` 공통 순수 함수 추가 (평가금액=`sum(현재가×수량)`, 매입금액=`sum(매입가×수량)`, 평가손익=평가금액−매입금액, 수익률=평가손익/매입금액×100 가중평균). `AccountValsParams`에 `positions`/`sectorStocks` 필드 추가. `renderAccountVals`에서 `account.total_pnl` 대신 `computeHoldingsSummary` 사용. (2) `sell-position.ts` — `renderSummary`가 `computeHoldingsSummary` 사용. `onRealDataTick`에서 보유종목 틱 시 `renderSummary` 호출 (별도 `_summaryRafId` rAF 배칭). `unmount`에 `_summaryRafId` 정리 추가. (3) `profit-overview.ts` — `renderAccountVals`에 `positions`/`sectorStocks` 전달. rAF 콜백을 `flushRender` 함수로 추출. `real-data-tick` 리스너 추가 (보유종목 틱 시 `_dirtyAccount=true` 후 `flushRender`). `unmount`에 리스너 정리 추가.
+  - **영향 범위**: 프론트엔드 3개 파일 (+104/-45). 백엔드/테스트 영향 없음. `pages` 디렉토리에서 `total_pnl`/`total_eval_amount`/`total_pnl_rate` 직접 사용 0건 확인. `hotStore.ts`/`uiStore.ts`의 스냅샷 동등성 비교 로직은 유지 (참조 변경 감지용, 계산과 무관).
+  - **검증**: `npm run build` 1.75s 에러 없음 (60 modules transformed). `npm test` 101 passed (7 files, 6.16s). 잔존 프로세스 0건 (규칙 5-1 준수, 내가 띄운 프로세스 기준).
+  - **커밋**: `8dd84a8`
+
 - **2026-07-14: 업종 점수 순위별 차등 점수제 전환 (프론트엔드) — 설정 만점 입력란 3개 + 점수 정수 표시 (P10/P16/P21/P23)**
   - **현상**: 백엔드에서 업종 점수가 순위별 차등 점수제로 전환되었으나, 프론트엔드 설정 화면에 만점 입력란이 없고 업종순위 테이블의 점수가 소수점으로 표시됨.
   - **근본 원인**: (1) `types/index.ts:147-151` — `AppSettings`에 만점 키 3개가 없어 설정 저장/불러오기 불가. (2) `sector-settings.ts:129-141` — ④ 섹션이 안내문만 있고 입력란 없음. (3) `sector-ranking-list.ts:152` + `data-table.ts:273,484,789,854` — 점수를 `toFixed(1)`로 소수점 표시.
@@ -126,6 +135,11 @@
 - **규칙/문서 정리**: AGENTS.md 4섹션 구조, 아키텍처 원칙 24개, .devin/workflows 제거 + skills 통합 — 완료 (2026-07-13)
 
 ## 진행 중 작업
+
+### 보유종목/수익현황 페이지 평가손익·수익률 실시간 불일치 해결 — 완료
+- **상태**: 프론트엔드 3개 파일 수정 완료 (`8dd84a8`). 빌드 + 테스트 통과. 사용자 UI 확인 대기.
+- **내용**: `computeHoldingsSummary` 공통 함수로 두 페이지(보유종목 요약 배지 + 수익현황 계좌현황)가 개별 종목 행과 동일한 데이터 소스(positions + sectorStocks)·공식으로 평가손익/수익률 계산. `real-data-tick` 이벤트에 반응하여 실시간 갱신.
+- **대기**: 사용자 브라우저 UI 확인 — (1) 보유종목 페이지 개별 합산=요약 일치, (2) 수익현황 계좌현황=보유종목 요약 일치, (3) 실시간 가격 변동 시 두 페이지 갱신.
 
 ### 업종 점수 순위별 차등 점수제 전환 — 백엔드+프론트엔드 완료
 - **상태**: 백엔드 전환(`b106a71`) + 프론트엔드 전환(`17b9300`) 완료. 사용자 UI 확인 완료. 본 전환 작업 완료.
