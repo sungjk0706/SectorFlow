@@ -9,8 +9,7 @@ hang 방지 원칙:
 from __future__ import annotations
 
 import asyncio
-import gc
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 import pytest
 from unittest.mock import AsyncMock, DEFAULT, MagicMock, patch
 
@@ -23,11 +22,11 @@ def _close_coro(*args, **kwargs):
 
 
 # Initialize queues before importing daily_time_scheduler (lazy import of pipeline_compute triggers module-level get_broadcast_queue call)
-from backend.app.services.core_queues import initialize_queues
+from backend.app.services.core_queues import initialize_queues  # noqa: E402
 initialize_queues()
 
 
-from backend.app.services.daily_time_scheduler import (
+from backend.app.services.daily_time_scheduler import (  # noqa: E402
     KST,
     is_nxt_premarket_window,
     is_nxt_aftermarket_window,
@@ -69,7 +68,6 @@ from backend.app.services.daily_time_scheduler import (
     schedule_auto_trade_timers,
     retry_pipeline_catchup_after_bootstrap,
 )
-import backend.app.services.daily_time_scheduler as scheduler_mod
 
 
 def _make_kst(h: int, m: int, weekday: int = 0) -> datetime:

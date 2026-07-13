@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock
 
 from backend.app.db.stock_tables import (
     init_cache_tables,

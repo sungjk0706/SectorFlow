@@ -6,11 +6,9 @@ encrypt_sensitive/decrypt_sensitive는 SENSITIVE_KEYS 필드만 처리 확인.
 """
 from __future__ import annotations
 
-import pytest
 from unittest.mock import patch, MagicMock
 from cryptography.fernet import Fernet
 
-from backend.app.core import encryption
 from backend.app.core.encryption import (
     SENSITIVE_KEYS,
     _get_fernet,

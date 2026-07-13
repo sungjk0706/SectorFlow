@@ -14,7 +14,7 @@ LazyLock은 실제 asyncio.Lock을 생성하므로 mock으로 대체 (hang 방�
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from contextlib import asynccontextmanager
 
 from backend.app.core.journal import (

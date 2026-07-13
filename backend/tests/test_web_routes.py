@@ -458,7 +458,7 @@ class TestPatchSettingField:
 
     async def test_engine_running_applies_settings_change(self):
         from backend.app.web.routes.settings import patch_setting_field
-        with patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock, return_value={"trade_mode"}) as mock_updates, \
+        with patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock, return_value={"trade_mode"}), \
              patch("backend.app.services.engine_lifecycle.is_engine_running", return_value=True), \
              patch("backend.app.services.engine_service.apply_settings_change", new_callable=AsyncMock) as mock_apply:
             result = await patch_setting_field("trade_mode", {"value": "real"}, _="dev")
@@ -467,7 +467,7 @@ class TestPatchSettingField:
 
     async def test_engine_running_empty_changes_skips_apply(self):
         from backend.app.web.routes.settings import patch_setting_field
-        with patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock, return_value=set()) as mock_updates, \
+        with patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock, return_value=set()), \
              patch("backend.app.services.engine_lifecycle.is_engine_running", return_value=True), \
              patch("backend.app.services.engine_service.apply_settings_change", new_callable=AsyncMock) as mock_apply:
             result = await patch_setting_field("trade_mode", {"value": "test"}, _="dev")
@@ -476,7 +476,7 @@ class TestPatchSettingField:
 
     async def test_engine_not_running_saves_pending(self):
         from backend.app.web.routes.settings import patch_setting_field
-        with patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock, return_value={"sector_max_targets"}) as mock_updates, \
+        with patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock, return_value={"sector_max_targets"}), \
              patch("backend.app.services.engine_lifecycle.is_engine_running", return_value=False), \
              patch("backend.app.core.sector_stock_cache.save_pending_settings", new_callable=AsyncMock) as mock_save, \
              patch("backend.app.services.engine_config.refresh_engine_integrated_system_settings_cache", new_callable=AsyncMock), \

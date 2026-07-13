@@ -5,12 +5,10 @@ lifespan startup/shutdown 전체 흐름 + global_exception_handler + CacheContro
 """
 from __future__ import annotations
 
-import asyncio
-import json
 import time
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 
 # Initialize queues before any lazy import of pipeline_compute (module-level get_broadcast_queue call)
 from backend.app.services.core_queues import initialize_queues
@@ -208,7 +206,7 @@ class TestGlobalExceptionHandler:
         assert result.body.decode() == '{"detail":"서버 내부 오류"}'
 
     async def test_cooldown_blocks_second_alert(self):
-        from backend.app.web.app import global_exception_handler, _last_alert_time, ALERT_COOLDOWN_SECONDS
+        from backend.app.web.app import global_exception_handler, _last_alert_time
         error_type = "ValueError"
         _last_alert_time[error_type] = time.time()  # 방금 전송됨
 

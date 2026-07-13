@@ -106,10 +106,11 @@
 - **테스트 파일 ruff lint 에러 72건 (기존 존재, P23 일관성 위반 가능성)**
   - 발견 일시: 2026-07-13 (최초 17건 보고 후 4개 파일 17건 수정 완료, 전수 검사에서 추가 72건 발견)
   - **해결 완료 (17건, 4개 파일)**: `test_broker_router.py` (F401/F841×2/E731), `test_connector_manager.py` (F401), `test_engine_sector_confirm.py` (F401/F811×7), `test_pipeline_compute.py` (E402×3/F401) — 2026-07-13 수정, ruff 0건 + pytest 240 passed 확인
-  - **미해결 (72건, 34개 파일)**: 전체 `backend/tests/` 디렉토리 ruff 검사 결과 72건 잔존
-    - 주요 파일: `test_engine_ws_dispatch.py` (8건), `test_daily_time_scheduler.py` (6건), `test_market_close_pipeline.py` (5건), `test_web_app.py`/`test_logger.py`/`test_broker_change.py` (각 4건) 외 28개 파일
-    - 위반 원칙: P23 (일관된 통일성) — 테스트 파일 lint 일관성 미준수
-    - 수정 방향: 47건은 `ruff --fix`로 자동 수정 가능 (F401/F811 unused import 제거), 25건은 수동 수정 필요 (F841 unused var, E731 lambda→def, E402 import 순서 등)
+  - **해결 완료 (72건, 34개 파일)**: 2026-07-13 전량 해결
+    - 1단계: `ruff --fix` 자동 수정 — F401 47건(unused import 제거) + F811 1건(중복 정의 제거)
+    - 2단계: F841 20건 수동 수정 — `with patch(...) as mock_xxx:`에서 미사용 변수 `as mock_xxx` 제거 (10개 파일), `result = await ...` → `await ...`로 변경 (3건), 미사용 `mock_fh = MagicMock()` / `mock_cursor = AsyncMock()` 줄 제거 (3건)
+    - 3단계: E402 3건 수동 수정 — 의도적 import 순서(헬퍼 함수 정의 후 백엔드 모듈 import, `initialize_queues()` 선행 필수)에 `# noqa: E402` 명시 (`test_daily_time_scheduler.py` 2건, `test_trading.py` 1건)
+    - 검증: `ruff check backend/tests/` 0건 + `pytest backend/tests/` 2745 passed in 16.16s
 
 - **test_engine_loop.py 12건 실패 — _init_ws_subscribe_state mock 누락 (P23 테스트 일관성)**
   - 발견 일시: 2026-07-13 (키움 토큰 발급 경로 복구 작업 중 발견)

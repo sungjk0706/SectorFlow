@@ -5,9 +5,8 @@ check_stock_guards, calculate_boost_score, create_buy_targets의
 """
 from __future__ import annotations
 
-import pytest
 
-from backend.app.domain.models import StockScore, SectorScore, BuyTarget, SectorSummary
+from backend.app.domain.models import StockScore, SectorScore, SectorSummary
 from backend.app.domain.buy_filter import (
     calculate_boost_score,
     check_stock_guards,

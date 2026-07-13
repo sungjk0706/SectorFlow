@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from backend.app.services import dry_run
 from backend.app.services import settlement_engine

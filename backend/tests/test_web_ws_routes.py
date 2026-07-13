@@ -362,7 +362,7 @@ class TestStartSubscription:
         state.integrated_system_settings_cache = {"test": True}
         req = SubscribeRequest(group=SubscribeGroup.sector)
         with patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True):
-            with patch("backend.app.services.ws_subscribe_control.get_subscribe_status", return_value={"quote": False}) as mock_status:
+            with patch("backend.app.services.ws_subscribe_control.get_subscribe_status", return_value={"quote": False}):
                 result = await start_subscription(req, _="dev")
         assert result["ok"] is True
         assert "status" in result

@@ -8,7 +8,6 @@ from backend.app.core.engine_settings import (
     get_engine_settings,
     build_engine_settings_dict,
 )
-from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
 
 
 # ── build_engine_settings_dict ──────────────────────────────────────

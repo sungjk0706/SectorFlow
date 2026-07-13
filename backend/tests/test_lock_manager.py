@@ -5,7 +5,6 @@ hang 방지: 실제 파일 I/O 및 signal 핸들러 등록은 mock으로 대체.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -33,7 +32,6 @@ def _reset_lock_fh():
 class TestAcquireLock:
     def test_success_unix(self, tmp_path):
         lock_path = tmp_path / "test.lock"
-        mock_fh = MagicMock()
         mock_open_obj = mock_open()
 
         with patch("builtins.open", mock_open_obj):
@@ -46,7 +44,6 @@ class TestAcquireLock:
 
     def test_duplicate_detected_unix(self, tmp_path):
         lock_path = tmp_path / "test.lock"
-        mock_fh = MagicMock()
 
         with patch("builtins.open", mock_open()):
             with patch("fcntl.flock", side_effect=OSError("locked")):

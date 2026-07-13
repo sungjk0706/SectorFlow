@@ -5,7 +5,7 @@ _safe_broadcast/_broadcast를 mock하여 검증.
 """
 from __future__ import annotations
 
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock
 
 import pytest
 
@@ -17,8 +17,6 @@ from backend.app.services.engine_ws_dispatch import (
     _reg_data_rows,
     _handle_reg,
     _check_realtime_latency,
-    _handle_real_00,
-    _handle_real_balance,
     handle_ws_data,
     _handle_jif,
     _JSTATUS_KRX_ALERT,
@@ -88,7 +86,7 @@ class TestHandleLogin:
         with patch("backend.app.services.engine_ws_dispatch.state") as mock_state, \
              patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
              patch("backend.app.services.engine_ws_dispatch._trigger_reg_pipeline", create=True), \
-             patch("backend.app.services.daily_time_scheduler._trigger_reg_pipeline", create=True) as mock_trigger:
+             patch("backend.app.services.daily_time_scheduler._trigger_reg_pipeline", create=True):
             _handle_login({"return_code": "0"})
             assert mock_state.login_ok is True
             mock_es._notify_reg_ack.assert_called_once()
@@ -173,7 +171,7 @@ class TestHandleReg:
 
     def test_rc_105110_unsubscribes(self):
         with patch("backend.app.services.engine_ws_dispatch.state") as mock_state, \
-             patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es:
+             patch("backend.app.services.engine_ws_dispatch.engine_state"):
             mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
             mock_state.REG_REAL_DEBUG_EXTRA_LOG = False
             _handle_reg({"trnm": "REG", "return_code": "105110", "data": [{"item": "005930", "type": "0B"}]})
@@ -181,7 +179,7 @@ class TestHandleReg:
 
     def test_non_zero_rc_unsubscribes(self):
         with patch("backend.app.services.engine_ws_dispatch.state") as mock_state, \
-             patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es:
+             patch("backend.app.services.engine_ws_dispatch.engine_state"):
             mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
             mock_state.REG_REAL_DEBUG_EXTRA_LOG = False
             _handle_reg({"trnm": "REG", "return_code": "999", "data": [{"item": "005930", "type": "0B"}]})
@@ -304,7 +302,7 @@ class TestHandleJif:
     @pytest.mark.asyncio
     async def test_cb_release(self):
         with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
-             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock), \
              patch("backend.app.services.engine_ws_dispatch._notify_krx_cb_telegram"):
             mock_es.state.market_phase = {"krx_alert": "서킷브레이커 1단계 발동"}
             mock_es.state.krx_circuit_breaker_active = True
@@ -378,7 +376,7 @@ class TestHandleJif:
     async def test_nxt_event_aftermarket_countdown(self):
         """jangubun 6 + jstatus B3(에프터마켓 장개시 1분 전) → nxt_event 갱신."""
         with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
-             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock):
             mock_es.state.market_phase = {"nxt_event": None}
             await _handle_jif({"jangubun": "6", "jstatus": "B3"})
             assert mock_es.state.market_phase["nxt_event"] == "에프터마켓 장개시 1분 전"

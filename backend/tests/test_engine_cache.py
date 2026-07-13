@@ -99,8 +99,8 @@ class TestLoadCachesPrebootNormal:
         with (
             patch.object(engine_cache, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
-            patch("backend.app.services.engine_account_notify._rebuild_layout_cache") as mock_rebuild,
-            patch("backend.app.services.engine_account_notify.notify_cache") as mock_notify,
+            patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
+            patch("backend.app.services.engine_account_notify.notify_cache"),
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False),
             patch("backend.app.services.daily_time_scheduler.retry_pipeline_catchup_after_bootstrap", new_callable=AsyncMock),
             patch.object(engine_cache.asyncio, "create_task") as mock_create_task,

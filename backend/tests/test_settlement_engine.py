@@ -274,7 +274,7 @@ class TestCharge:
     async def test_charge_negative_amount_no_change(self, fresh_engine):
         settlement_engine._accumulated_investment = 5_000_000
         settlement_engine._orderable = 3_000_000
-        result = await charge(-1_000_000)
+        await charge(-1_000_000)
         assert settlement_engine._accumulated_investment == 5_000_000
         assert settlement_engine._orderable == 3_000_000
 
