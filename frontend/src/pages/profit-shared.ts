@@ -79,7 +79,7 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
     cardEls.push(card)
 
     const titleEl = document.createElement('div')
-    Object.assign(titleEl.style, { fontSize: FONT_SIZE.badge, color: COLOR.tertiary, whiteSpace: 'nowrap' })
+    Object.assign(titleEl.style, { fontSize: FONT_SIZE.section, color: COLOR.tertiary, whiteSpace: 'nowrap' })
     titleEl.textContent = CARD_TITLES[i]
 
     const valRow = document.createElement('div')

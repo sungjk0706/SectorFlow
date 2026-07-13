@@ -465,11 +465,11 @@ function mount(container: HTMLElement): void {
     stat.style.cssText = STAT_STYLE
 
     const labelEl = document.createElement('span')
-    Object.assign(labelEl.style, { fontSize: FONT_SIZE.label, color: COLOR.tertiary })
+    Object.assign(labelEl.style, { fontSize: FONT_SIZE.section, color: COLOR.tertiary })
     labelEl.textContent = STAT_LABELS[i]
 
     const valEl = document.createElement('span')
-    Object.assign(valEl.style, { fontSize: FONT_SIZE.label, fontWeight: 'normal' })
+    Object.assign(valEl.style, { fontSize: FONT_SIZE.section, fontWeight: 'normal' })
     valEl.textContent = '-'
 
     stat.appendChild(labelEl)

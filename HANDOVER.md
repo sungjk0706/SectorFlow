@@ -1,6 +1,24 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-13: 수익 상세 페이지 요약/통계 카드 폰트 크기 통일 — 상단 라벨 11px→14px + 하단 라벨/값 12px→14px (P23)**
+  - **현상**: 수익 상세 페이지 상단 요약 카드(당일/당월/누적 손익) 라벨이 11px(badge)로 너무 작았고, 하단 통계 카드 6개도 12px(label)로 작았음. 상단 라벨이 손익금액(14px)보다 작아 위계 반전.
+  - **근본 원인**: `profit-shared.ts:82` 상단 카드 라벨이 `FONT_SIZE.badge`(11px, 배지/경고용)로 설정되어 카드 제목 역할과 불일치. `profit-detail.ts:467-472` 하단 통계 카드 라벨/값이 `FONT_SIZE.label`(12px)로 설정.
+  - **수정 파일**: `frontend/src/pages/profit-shared.ts`, `frontend/src/pages/profit-detail.ts` (2개 파일)
+  - **변경 내용**: 상단 카드 라벨 `FONT_SIZE.badge`(11px) → `FONT_SIZE.section`(14px). 하단 통계 카드 라벨/값 `FONT_SIZE.label`(12px) → `FONT_SIZE.section`(14px). 상단/하단 14px 통일.
+  - **영향 범위**: `createSummaryCards`는 `profit-detail.ts`에서만 사용 → 다른 페이지 영향 없음.
+  - **검증**: `npm run build` 성공 (✓ built in 2.07s). 잔존 프로세스 0건 (규칙 5-1 준수).
+  - **커밋**: (본 커밋)
+
+- **2026-07-13: 에이전트/스킬 아키텍처 원칙 실행 절차 구체화 — 24원칙 체크리스트 + safe-trade P15/P16/P18 + 금지패턴 5개 + 잔존 프로세스 규칙 5-1 (P10/P16/P20/P21/P23)**
+  - **현상**: 에이전트 스킬과 AGENTS.md가 24개 원칙 중 일부만 실행 절차로 구체화하여 사각지대 존재. safe-trade에 거래 핵심 원칙 누락, AGENTS.md에 실행 가능한 체크리스트 부재, 금지 패턴 5개 미참조, 용어 사전 미참조.
+  - **근본 원인**: 각 스킬이 개별 원칙만 부분 명시, AGENTS.md 섹션2가 원칙 번호 나열만으로 실행 불가. 사용자가 코딩 지식 없으므로 에이전트 자력 준수 불가.
+  - **수정 파일**: AGENTS.md, .devin/skills/{safe-trade,backend-fix,problem-solve,frontend-fix,db-backup}/SKILL.md, HANDOVER.md (7개 파일)
+  - **변경 내용**: (1) AGENTS.md 섹션2 체크리스트 신설 — 백엔드 14항목+프론트엔드 3항목+금지패턴 5항목. (2) AGENTS.md 섹션3 규칙 5-1 신설 — 세션 종료 전 잔존 프로세스 완전 종료 강제. (3) safe-trade P15/P16/P18 추가. (4) backend-fix 금지 패턴 5개+RuntimeWarning 검증 추가. (5) problem-solve 사전조사 P10/P16/P20/P21/P22/P23/P24 구체화. (6) frontend-fix P21/P23 추가. (7) 5개 스킬 용어 사전(부록 L) 참조 추가. (8) HANDOVER.md 직전 완료 작업 2건 축소+미해결 문제 6건 삭제.
+  - **영향 범위**: 프로덕션 코드 변경 없음. 이후 모든 코드 수정 시 에이전트가 24원칙 체크리스트로 점검. 거래 로직 수정 시 P15/P16/P18 강제 준수.
+  - **검증**: git diff 7개 파일 114줄 추가/71줄 삭제. 잔존 프로세스 0건 확인(규칙 5-1 준수). 오타 1건 수정(safe-trade "반도시"→"반드시").
+  - **커밋**: `77af288`
+
 - **2026-07-13: test_engine_loop.py is_ws_subscribe_window dead code 19곳 제거 + _init_ws_subscribe_state 패치 누락 4곳 추가 (P16/P23)**
   - **현상**: (1) 19개 테스트에 `is_ws_subscribe_window` 패치 잔존 — `engine_stop_event.is_set()==True`로 while 루프 진입 불가 → 도달 불가 dead code (P16 위반). (2) 직전 커밋 `ee4b67d`에서 15곳만 `_init_ws_subscribe_state` 패치 추가하고 4곳 누락 — `test_state_initialized`, `test_finally_clears_broker_rest_apis`, `test_finally_running_set_false`, `test_finally_calls_stop_compute_loop`. 이 4곳은 `engine_loop.py:169` 실제 호출 시 `RuntimeError` → `except Exception` 포착 → finally 경로에서 우연히 통과 (P16 위반, 잘못 통과)
   - **근본 원인**: `engine_loop.py:300-304` while 루프 내 `is_ws_subscribe_window` 호출은 `engine_stop_event.is_set()==True` 시 도달 불가. 누락 4곳은 이전 커밋의 패치 추가 범위 누락
@@ -9,15 +27,6 @@
   - **영향 범위**: `test_engine_loop.py` 내 `run_engine_loop()` 호출 테스트만. 프로덕션 코드 변경 없음
   - **검증**: pytest test_engine_loop.py 38 passed in 6.94s. ruff 0건
   - **커밋**: `087ca1f`
-
-- **2026-07-13: test_engine_loop.py 12건 실패 + 3건 잘못 통과 해결 — _init_ws_subscribe_state mock 누락 수정 (P23/P16)**
-  - **현상**: `test_engine_loop.py` 12건 실패 (`RuntimeError: settings cache not initialized`). 커밋 `939d199`에서 `engine_loop.py:168-169`에 `_init_ws_subscribe_state()` 호출 추가했으나 테스트 미갱신. 추가로 3건(`test_cancelled_error_handled`, `test_general_exception_handled`, `test_no_auto_trade_without_token`)이 의도와 다른 예외 경로에서 우연히 통과 (P16 위반)
-  - **근본 원인**: `engine_loop.py:168-169`의 local import가 `daily_time_scheduler.state` 사용 (`daily_time_scheduler.py:778-780`). 테스트는 `engine_loop.state`만 mock 교체하고 `daily_time_scheduler.state`는 미교체 → `RuntimeError` → `except Exception`에서 포착 → 라인 169~354 코드 전체 스킵
-  - **수정 파일**: `backend/tests/test_engine_loop.py` (1개 파일, 15곳)
-  - **변경 내용**: 15개 테스트의 `is_ws_subscribe_window` 패치 라인 다음에 `patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock)` 추가. 12건 실패(462,493,525,563,595,813,884,916,947,985,1019,1052) + 3건 잘못 통과(734,766,851)
-  - **영향 범위**: `test_engine_loop.py` 내 `run_engine_loop()` 호출 테스트만. 프로덕션 코드 변경 없음
-  - **검증**: pytest test_engine_loop.py 38 passed in 6.21s. ruff 0건
-  - **커밋**: `ee4b67d`
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책, JIF 경계 이벤트 즉시 갱신 — 모두 완료 (git history 참조)
