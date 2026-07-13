@@ -5,15 +5,12 @@ import { uiStore } from '../stores/uiStore'
 import { createSettingsManager } from '../settings'
 import { createAutoSaveHelper, type AutoSaveHelper } from '../utils/settings-save'
 import { createSettingRow, createNumInput, createMoneyInput } from '../components/common/setting-row'
-import { createDualLabelSlider } from '../components/common/create-slider'
-import type { DualLabelSliderHandle } from '../components/common/create-slider'
-import { toDisplayValue, toServerValue } from '../utils/sliderConvert'
 import { FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import type { AppSettings } from '../types'
 import type { PageModule } from '../router'
 
-const NUM_KEYS = ['sector_start_threshold_pct', 'sector_min_trade_amt', 'sector_min_rise_ratio_pct', 'sector_max_targets', 'sector_trim_trade_amt_pct', 'sector_trim_change_rate_pct'] as const
+const NUM_KEYS = ['sector_start_threshold_pct', 'sector_min_trade_amt', 'sector_min_rise_ratio_pct', 'sector_max_targets'] as const
 
 /* ── 헬퍼: 단계 라벨 ── */
 function createStepLabel(num: string, text: string): HTMLElement {
@@ -37,28 +34,13 @@ let saving = false
 // 입력 컴포넌트 참조
 let thresholdInput: ReturnType<typeof createNumInput> | null = null
 let minTradeAmtInput: ReturnType<typeof createMoneyInput> | null = null
-let trimChangeRateInput: ReturnType<typeof createNumInput> | null = null
-let trimTradeAmtInput: ReturnType<typeof createNumInput> | null = null
 let minRiseRatioInput: ReturnType<typeof createNumInput> | null = null
 let maxTargetsInput: ReturnType<typeof createNumInput> | null = null
 let maxTargetsStatusEl: HTMLSpanElement | null = null
 let maxTargetsSumEl: HTMLDivElement | null = null
-let dualSlider: DualLabelSliderHandle | null = null
 
 // 현재 값 추적
 let currentVals: Record<string, number> = {}
-let currentRiseRatio = 50
-
-/* ── 헬퍼: 실제 적용 가중치 라벨 업데이트 ── */
-function updateAppliedWeightsLabel(el: HTMLElement, weights: Record<string, number> | null): void {
-  if (!weights || !('total_trade_amount' in weights) || !('rise_ratio' in weights)) {
-    el.textContent = ''
-    return
-  }
-  const risePct = Math.round(weights.rise_ratio * 100)
-  const tradePct = Math.round(weights.total_trade_amount * 100)
-  el.textContent = `실제 적용: 상승종목비율 ${risePct}% / 평균거래대금 ${tradePct}%`
-}
 
 async function onNumChange(key: string, value: number): Promise<void> {
   // sector_max_targets: 0은 "매수 대상 0개" (백엔드 buy_filter와 일치) — P20 폴백 금지
@@ -69,36 +51,17 @@ async function onNumChange(key: string, value: number): Promise<void> {
   }
 }
 
-async function saveWeightsNow(ratio: number): Promise<void> {
-  const serverWeights = { rise_ratio: toServerValue(100 - ratio), total_trade_amount: toServerValue(ratio) }
-  if (autoSaveHelper) {
-    await autoSaveHelper.saveImmediate({ sector_weights: serverWeights })
-  }
-}
-
-function updateSliderUI(): void {
-  if (dualSlider && !dualSlider.isInteracting && dualSlider.getValue() !== currentRiseRatio) {
-    dualSlider.setValue(currentRiseRatio)
-  }
-}
-
 function syncFromSettings(s: AppSettings): void {
   if (saving) return
   for (const k of NUM_KEYS) {
     const newValue = s[k];
     currentVals[k] = newValue !== undefined ? Number(newValue) : currentVals[k];
   }
-  const w = s.sector_weights || {}
-  const tradeAmtVal = w.total_trade_amount !== undefined ? Number(w.total_trade_amount) : 0.5
-  currentRiseRatio = toDisplayValue(tradeAmtVal)
   const act = document.activeElement
   if (thresholdInput && (!act || !thresholdInput.el.contains(act))) thresholdInput.setValue(currentVals.sector_start_threshold_pct ?? 70)
   if (minTradeAmtInput && (!act || !minTradeAmtInput.el.contains(act))) minTradeAmtInput.setValue(currentVals.sector_min_trade_amt ?? 0)
-  if (trimChangeRateInput && (!act || !trimChangeRateInput.el.contains(act))) trimChangeRateInput.setValue(currentVals.sector_trim_change_rate_pct ?? 0)
-  if (trimTradeAmtInput && (!act || !trimTradeAmtInput.el.contains(act))) trimTradeAmtInput.setValue(currentVals.sector_trim_trade_amt_pct ?? 0)
   if (minRiseRatioInput && (!act || !minRiseRatioInput.el.contains(act))) minRiseRatioInput.setValue(currentVals.sector_min_rise_ratio_pct ?? 0)
   if (maxTargetsInput && (!act || !maxTargetsInput.el.contains(act))) maxTargetsInput.setValue(currentVals.sector_max_targets ?? 0)
-  updateSliderUI()
 }
 
 /* ── mount ── */
@@ -106,7 +69,6 @@ function mount(container: HTMLElement): void {
   settingsMgr = createSettingsManager(uiStore)
   autoSaveHelper = createAutoSaveHelper(settingsMgr)
   currentVals = {}
-  currentRiseRatio = 50
   saving = false
 
   const root = document.createElement('div')
@@ -175,79 +137,22 @@ function mount(container: HTMLElement): void {
   minRiseRatioInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_min_rise_ratio_pct', v), step: 1, name: 'sector_min_rise_ratio_pct' })
   root.appendChild(createSettingRow('업종내 종목 상승비율', minRiseRatioInput.el))
 
-  // ④ 극단값 제외
-  root.appendChild(createStepLabel('④', '상하위(N%) 종목 제외후 가중치 계산'))
-  const trimRow = document.createElement('div')
-  Object.assign(trimRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', borderBottom: '1px solid ' + COLOR.borderLight })
-
-  const leftCol = document.createElement('div')
-  const leftLabel = document.createElement('div')
-  Object.assign(leftLabel.style, { color: COLOR.code, marginBottom: '4px' })
-  leftLabel.textContent = '상승률 상/하위'
-  leftCol.appendChild(leftLabel)
-  trimChangeRateInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_trim_change_rate_pct', v), step: 1, name: 'sector_trim_change_rate_pct' })
-  leftCol.appendChild(trimChangeRateInput.el)
-
-  const rightCol = document.createElement('div')
-  rightCol.style.textAlign = 'right'
-  const rightLabel = document.createElement('div')
-  Object.assign(rightLabel.style, { color: COLOR.code, marginBottom: '4px' })
-  rightLabel.textContent = '거래대금 상/하위'
-  rightCol.appendChild(rightLabel)
-  const rightInputWrap = document.createElement('div')
-  Object.assign(rightInputWrap.style, { display: 'flex', justifyContent: 'flex-end' })
-  trimTradeAmtInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_trim_trade_amt_pct', v), step: 1, name: 'sector_trim_trade_amt_pct' })
-  rightInputWrap.appendChild(trimTradeAmtInput.el)
-  rightCol.appendChild(rightInputWrap)
-
-  trimRow.appendChild(leftCol)
-  trimRow.appendChild(rightCol)
-  root.appendChild(trimRow)
-
-  // ⑤ 점수 가중치
-  const weightLabel = createStepLabel('⑤', '')
-  const weightDesc = document.createElement('span')
-  Object.assign(weightDesc.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary })
-  weightDesc.textContent = '상승 종목 비율과 평균 거래대금의 점수 반영 비중을 조절합니다.'
-  weightLabel.appendChild(weightDesc)
-  root.appendChild(weightLabel)
-  const weightWrap = document.createElement('div')
-  Object.assign(weightWrap.style, { marginBottom: '8px', marginTop: '4px' })
-
-  dualSlider = createDualLabelSlider({
-    min: 0,
-    max: 100,
-    value: currentRiseRatio,
-    step: 1,
-    leftLabel: (v) => `상승 종목 비율 ${100 - v}%`,
-    rightLabel: (v) => `평균 거래대금 ${v}%`,
-    leftColor: COLOR.down,
-    leftColorLight: COLOR.downLight,
-    rightColor: COLOR.warning,
-    rightColorLight: COLOR.warningLight,
-    onChange(v) {
-      currentRiseRatio = v
-    },
-    onCommit(v) {
-      saveWeightsNow(v)
-    },
-  })
-  weightWrap.appendChild(dualSlider.el)
-
-  // 실제 적용 가중치 표시 (백엔드 정규화 결과, P21 투명성)
-  const appliedWeightsLabel = document.createElement('div')
-  Object.assign(appliedWeightsLabel.style, {
+  // ④ 가산점 자동 계산 (상승폭·참여폭·거래대금 3단계 누적)
+  root.appendChild(createStepLabel('④', '가산점 자동 계산 (상승폭·참여폭·거래대금 3단계 누적)'))
+  const bonusDesc = document.createElement('div')
+  Object.assign(bonusDesc.style, {
     fontSize: FONT_SIZE.small,
     color: COLOR.tertiary,
-    textAlign: 'right',
-    marginTop: '2px',
-    minHeight: '14px',
+    padding: '6px 0',
+    borderBottom: '1px solid ' + COLOR.borderLight,
+    marginBottom: '12px',
+    lineHeight: '1.5',
   })
-  weightWrap.appendChild(appliedWeightsLabel)
-  root.appendChild(weightWrap)
+  bonusDesc.textContent = '업종 점수는 3단계 누적 가산점으로 자동 계산됩니다. 1차: 업종 내 상승 종목 비율(0~100), 2차: 통과 업종 종목들 상대평가(0~100), 3차: 업종 평균 거래대금(0~100). 종합 가산점 = 1차 + 2차 + 3차 (0~300).'
+  root.appendChild(bonusDesc)
 
-  // ⑥ 매수 대상
-  root.appendChild(createStepLabel('⑥', '최대 매수 대상 업종수 설정'))
+  // ⑤ 매수 대상
+  root.appendChild(createStepLabel('⑤', '최대 매수 대상 업종수 설정'))
   maxTargetsInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_max_targets', v), step: 1, name: 'sector_max_targets' })
 
   const maxTargetsRow = document.createElement('div')
@@ -283,7 +188,7 @@ function mount(container: HTMLElement): void {
   maxTargetsRow.appendChild(rightWrap)
   root.appendChild(maxTargetsRow)
 
-  // ⑥ 행 아래 보조 줄 — 상위 N 업종 종목 합계 (P21 투명성)
+  // ⑤ 행 아래 보조 줄 — 상위 N 업종 종목 합계 (P21 투명성)
   maxTargetsSumEl = document.createElement('div')
   Object.assign(maxTargetsSumEl.style, {
     fontSize: FONT_SIZE.small,
@@ -307,7 +212,6 @@ function mount(container: HTMLElement): void {
   // 설정 초기 동기화
   const initialSettings = settingsMgr.getSettings()
   if (initialSettings) syncFromSettings(initialSettings)
-  updateSliderUI()
 
   // 설정 변경 구독 — 사용자 입력에 의한 설정 동기화
   unsubSettings = settingsMgr.subscribe(() => {
@@ -317,9 +221,8 @@ function mount(container: HTMLElement): void {
     }
   })
 
-  // uiStore 구독 — 수신율 및 실제 적용 가중치 표시 갱신
+  // uiStore 구독 — 수신율 표시 갱신
   let prevReceiveRate = uiStore.getState().receiveRate
-  let prevNormalizedWeights = uiStore.getState().normalizedWeights
   unsubUiStore = uiStore.subscribe(() => {
     const uiState = uiStore.getState()
     if (uiState.receiveRate !== prevReceiveRate) {
@@ -335,13 +238,7 @@ function mount(container: HTMLElement): void {
         }
       }
     }
-    if (uiState.normalizedWeights !== prevNormalizedWeights) {
-      prevNormalizedWeights = uiState.normalizedWeights
-      updateAppliedWeightsLabel(appliedWeightsLabel, uiState.normalizedWeights)
-    }
   })
-  // 초기 표시
-  updateAppliedWeightsLabel(appliedWeightsLabel, uiStore.getState().normalizedWeights)
 }
 
 /* ── unmount ── */
@@ -352,16 +249,10 @@ function unmount(): void {
   if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }
   thresholdInput = null
   minTradeAmtInput = null
-  trimChangeRateInput = null
-  trimTradeAmtInput = null
   minRiseRatioInput = null
   maxTargetsInput = null
   maxTargetsStatusEl = null
   maxTargetsSumEl = null
-  if (dualSlider && typeof dualSlider.destroy === 'function') {
-    dualSlider.destroy()
-  }
-  dualSlider = null
   saving = false
 }
 

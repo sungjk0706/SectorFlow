@@ -147,11 +147,8 @@ export interface AppSettings {
   // 업종 필터
   sector_min_rise_ratio_pct: number;
   sector_min_trade_amt: number;
-  sector_weights: Record<string, number>;
   sector_max_targets: number;
   sector_start_threshold_pct: number;
-  sector_trim_trade_amt_pct: number;
-  sector_trim_change_rate_pct: number;
 
   // 매수 차단
   buy_block_rise_on: boolean;
@@ -234,8 +231,11 @@ export interface SnapshotHistory {
 export interface SectorScoreRow {
   rank: number;
   sector: string;
-  final_score: number;
-  total_trade_amount: number;  // 평균 거래대금 (가중치 계산 기반과 일관성 유지)
+  final_score: number;              // 0~300 (종합 가산점 = 1차+2차+3차)
+  bonus_rise_ratio: number;         // 1차 가산점 (0~100) — 업종 내 상승 종목 비율
+  bonus_relative_strength: number;  // 2차 가산점 (0~100) — 통과 업종 종목들 상대평가
+  bonus_trade_amount: number;       // 3차 가산점 (0~100) — 업종 평균 거래대금
+  avg_trade_amount: number;         // 평균 거래대금
   rise_ratio: number;
   total: number;
 }
@@ -244,7 +244,6 @@ export interface SectorStatus {
   total_stocks: number;
   max_targets?: number;
   ranked_sectors_count?: number;
-  normalized_weights?: Record<string, number>;
 }
 
 // SSE 이벤트 페이로드

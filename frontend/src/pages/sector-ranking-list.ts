@@ -152,7 +152,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     const finalScore = s.final_score.toFixed(1)
     const riseRatio = s.rise_ratio.toFixed(1) + '%'
     const riseColor = s.rise_ratio > 50 ? COLOR.up : s.rise_ratio < 50 ? COLOR.down : COLOR.neutral
-    const tradeAmt = (s.total_trade_amount / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+    const tradeAmt = (s.avg_trade_amount / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
     const barWidth = `${Math.min((s.final_score / maxScore) * 100, 100)}%`
     const barColor = s.rank === 0 ? COLOR.inactiveBg : (s.rank <= maxTargets ? COLOR.down : COLOR.muted)
 
@@ -199,7 +199,7 @@ function mount(container: HTMLElement): void {
     ['width:24px;text-align:right;', '순위'],
     ['flex:1;padding-left:6px;', '업종명'],
     ['width:40px;text-align:right;margin-right:12px;', '종목수'],
-    ['width:48px;text-align:right;', '종합점수'],
+    ['width:48px;text-align:right;', '가산점'],
     ['width:64px;text-align:right;', '상승비율'],
     ['width:72px;text-align:right;', '평균거래(억)'],
   ]

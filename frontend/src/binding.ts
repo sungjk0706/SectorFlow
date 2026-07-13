@@ -296,9 +296,6 @@ export function bindWSToStore(
     // receiveRate (uiStore) 갱신
     const receiveRate = (d.status as Record<string, unknown>)?.receive_rate as { received: number; total: number; pct: number } | undefined
     uiStore.setState({ receiveRate: receiveRate ?? null })
-    // normalizedWeights (uiStore) 갱신 — 백엔드 실제 적용 가중치 (P21 투명성)
-    const normalizedWeights = (d.status as Record<string, unknown>)?.normalized_weights as Record<string, number> | undefined
-    uiStore.setState({ normalizedWeights: normalizedWeights ?? null })
   })
 
   /* ── ws-subscribe-status: 구독 상태 실시간 갱신 ── */
