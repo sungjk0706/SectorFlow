@@ -1,6 +1,15 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-13: 업종 점수 가산점제 전환 잔존 정리 — total_trade_amount 하위 호환 필드 제거 + test_settings_file_integration sector_weights 테스트 데이터 전환 (P10/P16/P20/P23)**
+  - **현상**: (1) Phase 1에서 WS payload에 `total_trade_amount`+`avg_trade_amount` 동시 전송(하위 호환), Phase 2 완료로 프론트엔드는 `avg_trade_amount`만 사용 중이나 백엔드가 불필요한 `total_trade_amount` 필드 잔존. (2) `test_settings_file_integration.py` 2개 메서드가 Phase 1에서 제거된 `sector_weights` 키를 테스트 데이터로 사용 중.
+  - **근본 원인**: (1) `backend/app/services/sector_data_provider.py:225` — `"total_trade_amount": sc.avg_trade_amount,  # 하위 호환 (Phase 2에서 제거)` 1줄 잔존. (2) `backend/tests/test_settings_file_integration.py:101/177` — `sector_weights` JSON save/load 테스트 데이터가 제거된 키 참조 (P10/P23 위반).
+  - **수정 파일**: 백엔드 2개 파일 — `sector_data_provider.py`, `test_settings_file_integration.py`
+  - **변경 내용**: (1) `sector_data_provider.py` L225 — `total_trade_amount` 하위 호환 필드 1줄 제거, `avg_trade_amount` 단일 전송. (2) `test_settings_file_integration.py` — `test_loads_json_value_from_db`/`test_saves_json_to_db` 2개 메서드 테스트 데이터 `sector_weights`(`{"rise_ratio": 0.6, "total_trade_amount": 0.4}`) → `sell_per_symbol`(`{"005930": {"tp_val": 10.0}}`) 전환.
+  - **영향 범위**: 백엔드 2개 파일. 프론트엔드 영향 없음 (이미 `avg_trade_amount`만 참조). 프로덕션 코드 변경 1줄(필드 제거) + 테스트 2개 메서드.
+  - **검증**: pytest 전체 백엔드 2734 passed. ruff All checks passed. 런타임 기동 `.venv/bin/python -W error::RuntimeWarning main.py` — 에러/Traceback/RuntimeWarning 없음, `[업종] 업종순위 재계산 (3단계 누적 가산점)` + `재계산 완료` 로그 확인, 95ms 기동. 프론트엔드 `npm run build` ✓ built in 2.31s. 잔존 프로세스 0건 (규칙 5-1 준수).
+  - **커밋**: `c851a04`
+
 - **2026-07-13: 업종 점수 누적 가산점제 전환 Phase 3-B (테스트) — mock/설정 테스트 6개 파일 전환 (P10/P16/P23/P24)**
   - **현상**: Phase 1(백엔드)에서 제거된 함수/필드(`calculate_weighted_scores`/`normalize_weight_values`/`scored_*`/`sector_weights`/`sector_trim_*`/`migrate_rank_primary_to_weights`/`_migrate_sector_weights`)를 6개 테스트 파일이 참조하여 41건 실패 + 1건 수집 에러.
   - **근본 원인**: (1) `test_engine_sector_confirm.py` 8곳 — `patch("...calculate_weighted_scores")`가 존재하지 않는 속성 patch → `AttributeError`. (2) `test_settings_file.py` — 제거된 2개 함수 import → `ImportError` (수집 에러). (3) `test_engine_settings.py` L102 — `build_engine_settings_dict`가 `sector_weights` 키 더 이상 생성 안 함 → `KeyError`. (4) `test_buy_filter.py` 헬퍼 — `SectorScore(total_trade_amount=..., scored_trade_amount=..., scored_rise_ratio=...)` 3 필드 제거 → `TypeError`. (5) `test_telegram_bot.py` 2곳 — mock에 `scored_trade_amount` 설정, 프로덕션은 `avg_trade_amount` 읽음 → format 오류. (6) `test_sector_data_provider.py` — `scored_trade_amount` mock 속성 + `sector_trim_*`/`sector_weights` settings_cache (프로덕션 미사용 dead data).
@@ -79,8 +88,8 @@
 - **Phase 2 완료**: 프론트엔드 6개 파일 수정+2개 파일 삭제 — 가중치 슬라이더/트리밍 UI 제거, "가산점 자동 계산" 안내문 추가, `avg_trade_amount` 전환, `normalizedWeights` 제거, `sliderConvert.ts` 삭제. `npm run build`+`npm test` 101 passed 통과.
 - **Phase 3-A 완료**: 백엔드 테스트 3개 파일 전환 — `test_sector_score.py`(전면 재작성, 27테스트), `test_sector_calculator.py`(클래스 2제거+1신규, 28테스트), `test_sector_calculator_integration.py`(테스트 1 재작성, 7테스트). `percentile_to_score` 반전 버그 수정(`sector_score.py:85`). pytest 62 passed + ruff 0건 + 런타임 기동 통과.
 - **Phase 3-B 완료**: 백엔드 테스트 5개 파일 수정+1개 파일 삭제 — `test_engine_sector_confirm.py`(헬퍼 실제 `SectorScore` 전환+7개 patch 교체+`test_min_rise_ratio_cutoff` 통합 테스트 전환+11개 settings_cache 정리), `test_settings_file.py`(삭제), `test_engine_settings.py`(`sector_weights` 단언 제거), `test_buy_filter.py`(`_sector` 헬퍼 전환), `test_telegram_bot.py`(2줄 `scored_trade_amount`→`avg_trade_amount`), `test_sector_data_provider.py`(dead mock/data 6줄 제거). pytest 6개 파일 291 passed + 전체 2734 passed + ruff 0건 + 런타임 기동 통과.
-- **WS payload 하위 호환**: Phase 1에서 `total_trade_amount`+`avg_trade_amount` 동시 전송, `final_score` 필드명 유지. Phase 2 완료로 프론트엔드는 `avg_trade_amount` 사용 중. `total_trade_amount` 하위 호환 필드는 별도 세션에서 백엔드 제거 예정.
-- **잔존 정리 항목**: `test_settings_file_integration.py`의 `sector_weights` 테스트 데이터 (별도 세션 정리 권장)
+- **WS payload 하위 호환 필드 제거 완료**: `total_trade_amount` 하위 호환 필드 제거 (커밋 `c851a04`). `avg_trade_amount` 단일 전송, `final_score` 필드명 유지.
+- **잔존 정리 항목 완료**: `test_settings_file_integration.py`의 `sector_weights` 테스트 데이터 → `sell_per_symbol` 전환 완료 (커밋 `c851a04`).
 - **추가 개선점**: 3차 가산점 median 대안(편향 모니터링 후 전환 검토)
 
 ### 아키텍처 전수 점검 — B-09 완료, 20개 미시작 (일시 보류)
@@ -90,16 +99,7 @@
 
 ## 다음 단계
 
-### 1순위: 백엔드 WS payload `total_trade_amount` 하위 호환 필드 제거 — 승인 대기
-- **상태**: Phase 1에서 `total_trade_amount`+`avg_trade_amount` 동시 전송(하위 호환), Phase 2 완료로 프론트엔드는 `avg_trade_amount` 사용 중. `total_trade_amount` 하위 호환 필드 제거 가능.
-- **수정 파일**: `sector_data_provider.py` L225 (`"total_trade_amount": sc.avg_trade_amount,  # 하위 호환` 제거)
-- **검증**: pytest + ruff + 런타임 기동 + 프론트엔드 빌드
-
-### 2순위: `test_settings_file_integration.py` `sector_weights` 테스트 데이터 정리 — 승인 대기
-- **상태**: Phase 3-B 범위 제외. `sector_weights`를 JSON save/load 테스트 데이터로 사용 중 (L101/106/107/178/182). 제거된 키 사용으로 P23 관점에서 정리 권장.
-- **검증**: pytest + ruff
-
-### 3순위: 아키텍처 전수 점검 P1 세션 (B-10)
+### 1순위: 아키텍처 전수 점검 P1 세션 (B-10)
 - B-10: 엔진 계좌/서비스 (`engine_account.py`, `engine_account_rest.py`, `engine_account_notify.py`, `engine_service.py`)
 - `docs/architecture_audit_plan.md` 체크리스트 사용, 발견 문제를 섹션 7에 등록
 - 이후 B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
