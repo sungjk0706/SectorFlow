@@ -1,6 +1,16 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-14: ARCHITECTURE.md 섹션6 업종 점수 3단계 누적 가산점 시스템으로 갱신 — 구 가중치/트리밍 설명 제거 + 6.2 재작성 + 6.3 트리밍 섹션 제거 + 섹션 번호 재정렬 (P10/P23)**
+  - **현상**: 업종 점수 가산점제 전환(Phase 1~3 + 잔존 정리) 완료 후에도 ARCHITECTURE.md 섹션 5.2/6.1~6.3이 제거된 구 가중치/트리밍 시스템을 설명 중 — 코드-문서 불일치 (P10/P23 위반, Code Removal Rules 위반).
+  - **근본 원인**: `ARCHITECTURE.md:686-724` — `total_trade_amount`/`scored_trade_amount`/`scored_rise_ratio`/`metric_scores`/`MetricDef`/`trim_change_rate_pct`/`trim_trade_amt_pct`/`normalize_weight_values`/`calculate_weighted_scores`/`sector_weights` 구 심볼 잔존. `ARCHITECTURE.md:598` 흐름도에도 `calculate_weighted_scores()` + 별도 컷오프 단계로 구 시스템 흐름 잔존.
+  - **수정 파일**: `ARCHITECTURE.md` (1개 파일)
+  - **변경 내용**: (1) 섹션 5.2 흐름도 L598 — `calculate_weighted_scores()` + 별도 컷오프 단계 → `calculate_bonus_scores() — 3단계 누적 가산점 (0~300) + 컷오프 내부 적용` (옵션 C 2패스 흐름 명시). (2) 섹션 6.1 데이터 모델 L681-689 — `total_trade_amount`/`scored_*`/`metric_scores` 제거 → `avg_trade_amount`/`avg_ratio_5d_pct`/`bonus_rise_ratio`/`bonus_relative_strength`/`bonus_trade_amount` 추가, `final_score` 0~300 명시. (3) 섹션 6.2 L698-727 — "가중치 점수 시스템" → "3단계 누적 가산점 시스템" 전면 재작성 (3개 단계 표, `rank_to_score`/`percentile_to_score` 함수 설명, 옵션 C 2패스 계산 과정 6단계, P22 모집단 정합성 노트). (4) 섹션 6.3 L729 — 트리밍 섹션 제거 + 섹션 번호 재정렬 (6.4→6.3 필터링, 6.5→6.4 증분 연산, 6.6→6.5 가산점).
+  - **영향 범위**: ARCHITECTURE.md 1개 파일 (+36/-33). 프로덕션 코드/테스트/프론트엔드 영향 없음 (문서 전용). P10(SSOT)·P23(일관성)·Code Removal Rules 위반 해결.
+  - **검증**: ARCHITECTURE.md에서 제거된 심볼(`scored_*`/`total_trade_amount`/`metric_scores`/`MetricDef`/`DEFAULT_METRICS`/`trim_*`/`normalize_weight_values`/`calculate_weighted_scores`/`sector_weights`) 잔존 0건 확인. "가중치 슬라이더/트리밍" 1건 잔존는 L700 "기존 ... 제거하고"로 제거됨을 명시하는 정당한 참조. `docs/plan_*.md` 잔존는 계획서 역사적 로그(Code Removal Rules 규칙3 유지 대상). 잔존 프로세스 0건 (규칙 5-1 준수). 문서 전용 수정이므로 pytest/빌드/런타임 검증 불필요 (코드 동작 영향 없음).
+  - **커밋**: `cc41d64`
+  - **전수 검증 보고**: 본 세션 시작 시 GLM-5.2 Max 모델로 업종 점수 가산점제 전환 작업 전체(Phase 1 백엔드 11파일 + Phase 2 프론트엔드 8파일 + Phase 3-A 핵심 테스트+버그 수정 + Phase 3-B mock/설정 테스트 6개 + 1순위 total_trade_amount 제거 + 2순위 test_settings_file_integration 정리) 전수 검증 수행. 결과: pytest 2734 passed, ruff(수정 파일 20개) All checks passed, npm run build 1.98s, npm test 101 passed, 런타임 기동 정상 (394ms, `[업종] 업종순위 재계산 (3단계 누적 가산점)` 로그 확인). 제거된 심볼 소스 코드 잔존 0건. 계획서-구현 일치 (경미한 차이 2건: 섹션 번호 ④⑤ 배치, 계획서 명시 3개 테스트 파일 미수정 — 둘 다 정당). 유일한 미해결 = ARCHITECTURE.md 구 시스템 잔존 → 본 세션에서 해결 완료.
+
 - **2026-07-13: 업종 점수 가산점제 전환 잔존 정리 — total_trade_amount 하위 호환 필드 제거 + test_settings_file_integration sector_weights 테스트 데이터 전환 (P10/P16/P20/P23)**
   - **현상**: (1) Phase 1에서 WS payload에 `total_trade_amount`+`avg_trade_amount` 동시 전송(하위 호환), Phase 2 완료로 프론트엔드는 `avg_trade_amount`만 사용 중이나 백엔드가 불필요한 `total_trade_amount` 필드 잔존. (2) `test_settings_file_integration.py` 2개 메서드가 Phase 1에서 제거된 `sector_weights` 키를 테스트 데이터로 사용 중.
   - **근본 원인**: (1) `backend/app/services/sector_data_provider.py:225` — `"total_trade_amount": sc.avg_trade_amount,  # 하위 호환 (Phase 2에서 제거)` 1줄 잔존. (2) `backend/tests/test_settings_file_integration.py:101/177` — `sector_weights` JSON save/load 테스트 데이터가 제거된 키 참조 (P10/P23 위반).
@@ -90,6 +100,8 @@
 - **Phase 3-B 완료**: 백엔드 테스트 5개 파일 수정+1개 파일 삭제 — `test_engine_sector_confirm.py`(헬퍼 실제 `SectorScore` 전환+7개 patch 교체+`test_min_rise_ratio_cutoff` 통합 테스트 전환+11개 settings_cache 정리), `test_settings_file.py`(삭제), `test_engine_settings.py`(`sector_weights` 단언 제거), `test_buy_filter.py`(`_sector` 헬퍼 전환), `test_telegram_bot.py`(2줄 `scored_trade_amount`→`avg_trade_amount`), `test_sector_data_provider.py`(dead mock/data 6줄 제거). pytest 6개 파일 291 passed + 전체 2734 passed + ruff 0건 + 런타임 기동 통과.
 - **WS payload 하위 호환 필드 제거 완료**: `total_trade_amount` 하위 호환 필드 제거 (커밋 `c851a04`). `avg_trade_amount` 단일 전송, `final_score` 필드명 유지.
 - **잔존 정리 항목 완료**: `test_settings_file_integration.py`의 `sector_weights` 테스트 데이터 → `sell_per_symbol` 전환 완료 (커밋 `c851a04`).
+- **ARCHITECTURE.md 문서 갱신 완료**: 섹션 5.2/6.1~6.3 구 가중치/트리밍 설명 제거 → 3단계 누적 가산점 시스템으로 갱신 (커밋 `cc41d64`). 코드-문서 정합성 확보. 본 전환 작업의 모든 잔존 정리 완료.
+- **전수 검증 완료**: GLM-5.2 Max 모델로 전환 작업 전체 전수 검증 — pytest 2734 passed, 빌드 1.98s, npm test 101 passed, 런타임 정상, 제거 심볼 소스 잔존 0건, 계획서-구현 일치.
 - **추가 개선점**: 3차 가산점 median 대안(편향 모니터링 후 전환 검토)
 
 ### 아키텍처 전수 점검 — B-09 완료, 20개 미시작 (일시 보류)
