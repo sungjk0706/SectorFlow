@@ -16,7 +16,7 @@
     - 안전 기본값 변경: `max_stock_cnt` 0→5, `buy_amt` 0→1,000,000 (신규 사용자 보호, P21)
   - **수정 파일**: 백엔드 6파일(settings_defaults.py, engine_settings.py, buy_filter.py, trading.py, buy_order_executor.py, engine_service.py) + 프론트엔드 3파일(types/index.ts, buy-settings.ts, buy-target.ts) + 테스트 4파일
   - **검증**: pytest 2741 passed, npm run build OK, 런타임 기동 OK (에러 없음, 15s 대기 후 종료)
-  - **커밋/푸쉬**: (이번 커밋)
+  - **커밋/푸쉬**: `86e349c` pushed to `origin/main`
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책, JIF 경계 이벤트 즉시 갱신 — 모두 완료 (git history 참조)
