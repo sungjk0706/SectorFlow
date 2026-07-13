@@ -11,7 +11,10 @@ import { createCardTitle } from '../components/common/card-title'
 import type { AppSettings } from '../types'
 import type { PageModule } from '../router'
 
-const NUM_KEYS = ['sector_start_threshold_pct', 'sector_min_trade_amt', 'sector_min_rise_ratio_pct', 'sector_max_targets'] as const
+const NUM_KEYS = [
+  'sector_start_threshold_pct', 'sector_min_trade_amt', 'sector_min_rise_ratio_pct', 'sector_max_targets',
+  'sector_bonus_rise_ratio_max', 'sector_bonus_relative_strength_max', 'sector_bonus_trade_amount_max',
+] as const
 
 /* ── 모듈 상태 ── */
 let settingsMgr: ReturnType<typeof createSettingsManager> | null = null
@@ -25,6 +28,9 @@ let thresholdInput: ReturnType<typeof createNumInput> | null = null
 let minTradeAmtInput: ReturnType<typeof createMoneyInput> | null = null
 let minRiseRatioInput: ReturnType<typeof createNumInput> | null = null
 let maxTargetsInput: ReturnType<typeof createNumInput> | null = null
+let bonusRiseRatioMaxInput: ReturnType<typeof createNumInput> | null = null
+let bonusRelativeStrengthMaxInput: ReturnType<typeof createNumInput> | null = null
+let bonusTradeAmountMaxInput: ReturnType<typeof createNumInput> | null = null
 let maxTargetsStatusEl: HTMLSpanElement | null = null
 let maxTargetsSumEl: HTMLDivElement | null = null
 
@@ -51,6 +57,9 @@ function syncFromSettings(s: AppSettings): void {
   if (minTradeAmtInput && (!act || !minTradeAmtInput.el.contains(act))) minTradeAmtInput.setValue(currentVals.sector_min_trade_amt ?? 0)
   if (minRiseRatioInput && (!act || !minRiseRatioInput.el.contains(act))) minRiseRatioInput.setValue(currentVals.sector_min_rise_ratio_pct ?? 0)
   if (maxTargetsInput && (!act || !maxTargetsInput.el.contains(act))) maxTargetsInput.setValue(currentVals.sector_max_targets ?? 0)
+  if (bonusRiseRatioMaxInput && (!act || !bonusRiseRatioMaxInput.el.contains(act))) bonusRiseRatioMaxInput.setValue(currentVals.sector_bonus_rise_ratio_max ?? 10)
+  if (bonusRelativeStrengthMaxInput && (!act || !bonusRelativeStrengthMaxInput.el.contains(act))) bonusRelativeStrengthMaxInput.setValue(currentVals.sector_bonus_relative_strength_max ?? 7)
+  if (bonusTradeAmountMaxInput && (!act || !bonusTradeAmountMaxInput.el.contains(act))) bonusTradeAmountMaxInput.setValue(currentVals.sector_bonus_trade_amount_max ?? 5)
 }
 
 /* ── mount ── */
@@ -126,18 +135,25 @@ function mount(container: HTMLElement): void {
   minRiseRatioInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_min_rise_ratio_pct', v), step: 1, name: 'sector_min_rise_ratio_pct' })
   root.appendChild(createSettingRow('업종내 종목 상승비율', minRiseRatioInput.el))
 
-  // ④ 가산점 자동 계산 (상승폭·참여폭·거래대금 3단계 누적)
-  root.appendChild(createStepLabel('④', '가산점 자동 계산 (3단계 누적)'))
+  // ④ 가산점 만점 설정 (상승비율·상대평가·거래대금 3단계 누적)
+  root.appendChild(createStepLabel('④', '가산점 만점 설정 (3단계 누적)'))
+
+  bonusRiseRatioMaxInput = createNumInput({ value: 10, onChange: v => onNumChange('sector_bonus_rise_ratio_max', v), step: 1, name: 'sector_bonus_rise_ratio_max' })
+  root.appendChild(createSettingRow('1차 만점 (상승비율)', bonusRiseRatioMaxInput.el))
+
+  bonusRelativeStrengthMaxInput = createNumInput({ value: 7, onChange: v => onNumChange('sector_bonus_relative_strength_max', v), step: 1, name: 'sector_bonus_relative_strength_max' })
+  root.appendChild(createSettingRow('2차 만점 (상대평가)', bonusRelativeStrengthMaxInput.el))
+
+  bonusTradeAmountMaxInput = createNumInput({ value: 5, onChange: v => onNumChange('sector_bonus_trade_amount_max', v), step: 1, name: 'sector_bonus_trade_amount_max' })
+  root.appendChild(createSettingRow('3차 만점 (거래대금)', bonusTradeAmountMaxInput.el))
+
   const bonusDescWrap = document.createElement('div')
   Object.assign(bonusDescWrap.style, {
     borderBottom: '1px solid ' + COLOR.borderLight,
     marginBottom: '12px',
   })
-  bonusDescWrap.appendChild(createDescText('업종 점수는 3단계 누적 가산점으로 자동 계산됩니다.', { marginTop: '8px' }))
-  bonusDescWrap.appendChild(createDescText('1차: 업종 내 상승 종목 비율 (0~100)', { marginTop: '8px' }))
-  bonusDescWrap.appendChild(createDescText('2차: 통과 업종 종목들 상대평가 (0~100)'))
-  bonusDescWrap.appendChild(createDescText('3차: 업종 평균 거래대금 (0~100)'))
-  bonusDescWrap.appendChild(createDescText('종합 가산점 = 1차 + 2차 + 3차 (0~300)'))
+  bonusDescWrap.appendChild(createDescText('1위 = 만점, 2위 = 만점-1, ... 0점까지 1점씩 차감', { marginTop: '8px' }))
+  bonusDescWrap.appendChild(createDescText('종합 점수 = 1차 + 2차 + 3차 (0~만점 합)'))
   root.appendChild(bonusDescWrap)
 
   // ⑤ 매수 대상
@@ -240,6 +256,9 @@ function unmount(): void {
   minTradeAmtInput = null
   minRiseRatioInput = null
   maxTargetsInput = null
+  bonusRiseRatioMaxInput = null
+  bonusRelativeStrengthMaxInput = null
+  bonusTradeAmountMaxInput = null
   maxTargetsStatusEl = null
   maxTargetsSumEl = null
   saving = false

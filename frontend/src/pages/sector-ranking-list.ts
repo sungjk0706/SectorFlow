@@ -149,7 +149,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     const isEliminated = s.rank === 0 || s.rank > maxTargets
     const opacity = isEliminated ? '0.85' : '1'
     const bgColor = isSel ? COLOR.downBg : (isEliminated ? COLOR.hoverBg : 'transparent')
-    const finalScore = s.final_score.toFixed(1)
+    const finalScore = String(s.final_score)
     const riseRatio = s.rise_ratio.toFixed(1) + '%'
     const riseColor = s.rise_ratio > 50 ? COLOR.up : s.rise_ratio < 50 ? COLOR.down : COLOR.neutral
     const tradeAmt = (s.avg_trade_amount / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
