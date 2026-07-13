@@ -163,6 +163,14 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
 
 ## 섹션4. 작업 프로세스 (워크플로우)
 
+### 세션 시작 절차 (필수 — 모든 세션 첫 응답 전 수행)
+
+1. **HANDOVER.md 자동 확인 (강제)**: 세션 첫 응답 전 반드시 `HANDOVER.md`를 읽고 현재 상태 파악. 사용자가 "핸드오버 확인해줘"라고 별도 요청하지 않아도 자동 수행.
+   - 확인 항목: 직전 완료 작업, 현재 상태, 진행 중 작업, 다음 단계, 미해결 문제.
+2. **현재 상태 간략 보고**: 확인 후 사용자에게 현재 진행 상태를 간략히 요약 보고 (직전 완료 작업, 진행 중 작업, 다음 단계 우선순위).
+3. **사용자 지시 대기**: 보고 후 사용자의 다음 작업 지시 대기. 사용자가 명확히 다른 작업을 즉시 지시한 경우(예: "X 수정해줘") 핸드오버 요약은 생략하고 지시된 작업에 집중 가능.
+4. **완료 작업 정리 (규칙 7 연계)**: 새 세션 시작 시 `HANDOVER.md`의 "직전 완료 작업" 섹션에서 최근 1~2건만 유지하고 과거 완료 작업은 삭제 (규칙 7 준수).
+
 ### Skill Auto-Invocation
 
 The user is a beginner and does not know which skill to use. Automatically invoke the appropriate skill based on the user's request. Do not wait for the user to ask for a specific skill.
@@ -186,7 +194,7 @@ When in doubt, invoke `/problem-solve` first. Always follow the rules in this fi
    - 진행 중인 작업의 현재 단계 (어디까지 했고, 어디서부터 이어하면 되는지)
    - 다음 세션에서 수행해야 할 구체적 항목
 5. **사용자 보고**: 세션 종료 시 사용자에게 진행 상태와 다음 단계를 명확히 전달.
-6. **다음 세션 연속성**: 다음 세션에서는 `HANDOVER.md`를 먼저 확인하여 이어서 작업 진행.
+6. **다음 세션 연속성**: 다음 세션 시작 시 "세션 시작 절차"의 HANDOVER.md 자동 확인(강제)에 따라 이어서 작업 진행.
 7. **완료 작업 정리**: 새 세션 시작 시 `HANDOVER.md`의 "직전 완료 작업" 섹션에서 최근 1~2건만 유지하고 나머지 과거 완료 작업은 삭제. git history에 이미 기록되어 있으므로 중복 누적 방지. "현재 상태"와 "다음 단계" 섹션도 최신 상태로 업데이트.
 8. **HANDOVER.md 수정 원칙 (read-before-write)**: `HANDOVER.md` 수정 시 반드시 read 먼저 수행. 기존 내용을 보존한 후 병합. write 도구로 덮어쓰기 금지 — 기존 섹션 내용을 읽어 확인한 후에만 수정/추가. 실수로 기존 내용을 삭제하는 사고 방지.
 9. **작업 중 발견 문제 기록 의무 (강제)**: 메인 작업 도중 우연히 발견한 아키텍처 위반(P원칙), 오류, 잠재적 버그, dead code, 폴백 패턴 등은 현재 세션에서 즉시 해결하지 못하더라도 **반드시** `HANDOVER.md`의 "미해결 문제" 섹션에 기록. 사용자는 코딩 지식이 없어 직접 해결할 수 없으므로, 에이전트가 발견 즉시 기록하지 않으면 영영 누락됨.
