@@ -1,6 +1,15 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-13: test_engine_loop.py is_ws_subscribe_window dead code 19곳 제거 + _init_ws_subscribe_state 패치 누락 4곳 추가 (P16/P23)**
+  - **현상**: (1) 19개 테스트에 `is_ws_subscribe_window` 패치 잔존 — `engine_stop_event.is_set()==True`로 while 루프 진입 불가 → 도달 불가 dead code (P16 위반). (2) 직전 커밋 `ee4b67d`에서 15곳만 `_init_ws_subscribe_state` 패치 추가하고 4곳 누락 — `test_state_initialized`, `test_finally_clears_broker_rest_apis`, `test_finally_running_set_false`, `test_finally_calls_stop_compute_loop`. 이 4곳은 `engine_loop.py:169` 실제 호출 시 `RuntimeError` → `except Exception` 포착 → finally 경로에서 우연히 통과 (P16 위반, 잘못 통과)
+  - **근본 원인**: `engine_loop.py:300-304` while 루프 내 `is_ws_subscribe_window` 호출은 `engine_stop_event.is_set()==True` 시 도달 불가. 누락 4곳은 이전 커밋의 패치 추가 범위 누락
+  - **수정 파일**: `backend/tests/test_engine_loop.py` (1개 파일, 19곳)
+  - **변경 내용**: 19곳 `is_ws_subscribe_window` 패치 제거. 이중 4곳(427, 637, 669, 706)은 `is_ws_subscribe_window` → `_init_ws_subscribe_state` 교체, 나머지 15곳은 중복 패치 라인 제거. 최종 `_init_ws_subscribe_state` 19건으로 통일
+  - **영향 범위**: `test_engine_loop.py` 내 `run_engine_loop()` 호출 테스트만. 프로덕션 코드 변경 없음
+  - **검증**: pytest test_engine_loop.py 38 passed in 6.94s. ruff 0건
+  - **커밋**: (승인 대기)
+
 - **2026-07-13: test_engine_loop.py 12건 실패 + 3건 잘못 통과 해결 — _init_ws_subscribe_state mock 누락 수정 (P23/P16)**
   - **현상**: `test_engine_loop.py` 12건 실패 (`RuntimeError: settings cache not initialized`). 커밋 `939d199`에서 `engine_loop.py:168-169`에 `_init_ws_subscribe_state()` 호출 추가했으나 테스트 미갱신. 추가로 3건(`test_cancelled_error_handled`, `test_general_exception_handled`, `test_no_auto_trade_without_token`)이 의도와 다른 예외 경로에서 우연히 통과 (P16 위반)
   - **근본 원인**: `engine_loop.py:168-169`의 local import가 `daily_time_scheduler.state` 사용 (`daily_time_scheduler.py:778-780`). 테스트는 `engine_loop.state`만 mock 교체하고 `daily_time_scheduler.state`는 미교체 → `RuntimeError` → `except Exception`에서 포착 → 라인 169~354 코드 전체 스킵
@@ -124,11 +133,13 @@
 - **test_engine_loop.py 12건 실패 — _init_ws_subscribe_state mock 누락 (P23 테스트 일관성)**
   - **해결 완료 (2026-07-13)**: 15개 테스트에 `patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock)` 추가. 12건 실패 + 3건 잘못 통과(`test_cancelled_error_handled`, `test_general_exception_handled`, `test_no_auto_trade_without_token`) 해결. pytest 38 passed, ruff 0건
 
-- **test_engine_loop.py 내 is_ws_subscribe_window 패치 잔존 — dead code (P16 위반, 별도 세션 정리 예정)**
+- **test_engine_loop.py 내 is_ws_subscribe_window 패치 잔존 — dead code (P16 위반)**
   - 발견 일시: 2026-07-13 (_init_ws_subscribe_state mock 패치 추가 작업 중 발견)
-  - **증상**: 19개 테스트에 `patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock)` 존재. `_init_ws_subscribe_state`를 AsyncMock으로 패치하면 while 루프의 `is_ws_subscribe_window` 호출은 `engine_stop_event.is_set()==True`로 스킵되어 도달 불가 → dead code (P16 위반)
-  - **위치**: `backend/tests/test_engine_loop.py` — 라인 427, 463, 495, 528, 567, 600, 740, 773, 821, 860, 894, 927, 959, 998, 1033, 1067 (기존 19곳, _init_ws_subscribe_state 삽입 후 라인 번호 변경됨)
-  - **수정 방향**: 별도 세션에서 19곳 `is_ws_subscribe_window` 패치 제거
+  - **해결 완료 (2026-07-13)**: 19곳 `is_ws_subscribe_window` 패치 제거. 이중 4곳(427, 637, 669, 706)은 `_init_ws_subscribe_state` 패치로 교체(패치 누락 보완), 나머지 15곳은 중복 패치 라인 제거. 최종 `_init_ws_subscribe_state` 19건 통일. pytest 38 passed, ruff 0건
+
+- **test_engine_loop.py _init_ws_subscribe_state 패치 누락 4곳 — 잘못 통과 (P16 위반)**
+  - 발견 일시: 2026-07-13 (is_ws_subscribe_window dead code 제거 작업 중 사전조사로 발견)
+  - **해결 완료 (2026-07-13)**: 직전 커밋 `ee4b67d`에서 15곳만 패치 추가하고 4곳 누락(`test_state_initialized`, `test_finally_clears_broker_rest_apis`, `test_finally_running_set_false`, `test_finally_calls_stop_compute_loop`). 이 4곳은 `engine_loop.py:169` 실제 호출 시 `RuntimeError` → `except Exception` 포착 → finally 경로에서 우연히 통과. 위 is_ws_subscribe_window 제거 작업에서 4곳에 `_init_ws_subscribe_state` 패치 추가로 해결. pytest 38 passed
 
 ## 테스트 실행 원칙 (필수 준수)
 

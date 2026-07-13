@@ -424,7 +424,7 @@ class TestRunEngineLoopInit:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
+            patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
             patch.object(engine_loop, "AutoTradeManager"),
         ):
             mock_state.access_token = None  # AutoTradeManager 생성 경로 우회
@@ -459,7 +459,6 @@ class TestRunEngineLoopInit:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
         ):
             mock_state.access_token = None
@@ -491,7 +490,6 @@ class TestRunEngineLoopInit:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
         ):
             mock_state.access_token = None
@@ -524,7 +522,6 @@ class TestRunEngineLoopInit:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
         ):
             mock_state.access_token = None
@@ -563,7 +560,6 @@ class TestRunEngineLoopInit:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
             patch.object(engine_loop, "AutoTradeManager"),
         ):
@@ -596,7 +592,6 @@ class TestRunEngineLoopInit:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
         ):
             await engine_loop.run_engine_loop()
@@ -634,7 +629,7 @@ class TestRunEngineLoopInit:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
+            patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
         ):
             mock_state.access_token = None
             await engine_loop.run_engine_loop()
@@ -666,7 +661,7 @@ class TestRunEngineLoopInit:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
+            patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
         ):
             mock_state.access_token = None
             await engine_loop.run_engine_loop()
@@ -703,7 +698,7 @@ class TestRunEngineLoopInit:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
+            patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
         ):
             mock_state.access_token = None
             await engine_loop.run_engine_loop()
@@ -736,7 +731,6 @@ class TestRunEngineLoopInit:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
         ):
             # CancelledError는 except에서 pass 처리됨 → finally 실행
@@ -769,7 +763,6 @@ class TestRunEngineLoopInit:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
             patch.object(engine_loop, "logger") as mock_logger,
         ):
@@ -817,7 +810,6 @@ class TestRunEngineLoopRestApi:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
             patch.object(engine_loop, "AutoTradeManager"),
         ):
@@ -856,7 +848,6 @@ class TestRunEngineLoopRestApi:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides") as mock_sync,
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
             patch.object(engine_loop, "AutoTradeManager") as mock_atm_cls,
         ):
@@ -890,7 +881,6 @@ class TestRunEngineLoopRestApi:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides") as mock_sync,
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
             patch.object(engine_loop, "AutoTradeManager") as mock_atm_cls,
         ):
@@ -923,7 +913,6 @@ class TestRunEngineLoopRestApi:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock) as mock_bbl,
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
         ):
             mock_state.access_token = None
@@ -955,7 +944,6 @@ class TestRunEngineLoopRestApi:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock, side_effect=Exception("broadcast fail")),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
             patch.object(engine_loop, "logger") as mock_logger,
         ):
@@ -994,7 +982,6 @@ class TestRunEngineLoopAccountMasking:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
             patch.object(engine_loop, "logger") as mock_logger,
         ):
@@ -1029,7 +1016,6 @@ class TestRunEngineLoopAccountMasking:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
             patch.object(engine_loop, "logger") as mock_logger,
         ):
@@ -1063,7 +1049,6 @@ class TestRunEngineLoopAccountMasking:
             patch("backend.app.services.engine_lifecycle.sync_sell_overrides"),
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
-            patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
             patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock),
             patch.object(engine_loop, "logger") as mock_logger,
         ):
