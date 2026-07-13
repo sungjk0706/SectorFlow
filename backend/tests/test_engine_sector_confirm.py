@@ -17,7 +17,6 @@ from backend.app.services.engine_sector_confirm import (
     _full_recompute,
     sync_dynamic_subscriptions,
     _PENDING_UNREG_TIMERS,
-    _UNREG_READY_CODES,
 )
 
 

@@ -21,11 +21,11 @@ def _close_coro(*args, **kwargs):
 
 
 # Initialize queues before importing pipeline_compute (module-level get_broadcast_queue call)
-from backend.app.services.core_queues import initialize_queues
+from backend.app.services.core_queues import initialize_queues  # noqa: E402
 initialize_queues()
 
 
-from backend.app.pipelines.pipeline_compute import (
+from backend.app.pipelines.pipeline_compute import (  # noqa: E402
     _has_any_realtime_data,
     _calculate_receive_rate,
     get_current_receive_rate,
@@ -40,7 +40,6 @@ from backend.app.pipelines.pipeline_compute import (
     _handle_real_0d_tick,
     _handle_real_pgm_tick,
     _check_realtime_latency,
-    _REALTIME_CHECK_FIELDS,
     start_compute_loop,
     stop_compute_loop,
     _compute_loop_impl,
@@ -49,7 +48,7 @@ from backend.app.pipelines.pipeline_compute import (
     reset_sector_threshold,
     mark_sector_threshold_passed,
 )
-import backend.app.pipelines.pipeline_compute as compute_mod
+import backend.app.pipelines.pipeline_compute as compute_mod  # noqa: E402
 
 
 # ── _has_any_realtime_data ────────────────────────────────────────────────────
