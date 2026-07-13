@@ -382,40 +382,39 @@ class SectorStockTable extends HTMLElement {
     this.titleH3 = createCardTitle('업종별 종목 실시간 시세')
     this.rootEl.appendChild(this.titleH3)
 
-    // 1-1. 합계 정보 바 — 타이틀 하단 중앙 정렬 (stock-detail.ts 패턴과 동일)
+    // 1-1. 합계 정보 바 — 1행: 좌측 5일평균거래대금, 우측 종목수 요약
     const summaryBar = document.createElement('div')
     Object.assign(summaryBar.style, {
       display: 'flex',
-      flexDirection: 'column',
       alignItems: 'center',
-      gap: '2px',
+      justifyContent: 'space-between',
       marginBottom: '8px',
       flexShrink: '0',
       fontSize: FONT_SIZE.label,
       fontWeight: FONT_WEIGHT.normal,
     })
 
-    // Row 1: 5일평균거래대금 (N)억 — 중앙 정렬
-    const filterRow = document.createElement('div')
-    Object.assign(filterRow.style, { display: 'flex', alignItems: 'center', gap: '2px', fontSize: FONT_SIZE.section })
+    // 좌측: 5일평균거래대금 (N)억
+    const filterGroup = document.createElement('div')
+    Object.assign(filterGroup.style, { display: 'flex', alignItems: 'center', gap: '2px', fontSize: FONT_SIZE.section })
     const filterLabel = document.createElement('span')
     Object.assign(filterLabel.style, { color: COLOR.neutral, marginRight: '8px' })
     filterLabel.textContent = '5일평균거래대금'
-    filterRow.appendChild(filterLabel)
+    filterGroup.appendChild(filterLabel)
     const filterOpenParen = document.createElement('span')
     Object.assign(filterOpenParen.style, { color: COLOR.neutral })
     filterOpenParen.textContent = '('
-    filterRow.appendChild(filterOpenParen)
+    filterGroup.appendChild(filterOpenParen)
     this.titleFilterNumSpan = document.createElement('span')
     Object.assign(this.titleFilterNumSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
-    filterRow.appendChild(this.titleFilterNumSpan)
+    filterGroup.appendChild(this.titleFilterNumSpan)
     const filterSuffix = document.createElement('span')
     Object.assign(filterSuffix.style, { color: COLOR.neutral })
     filterSuffix.textContent = ')억'
-    filterRow.appendChild(filterSuffix)
-    summaryBar.appendChild(filterRow)
+    filterGroup.appendChild(filterSuffix)
+    summaryBar.appendChild(filterGroup)
 
-    // Row 2: 합계 KRX NXT▲ 코스피 코스닥 — 중앙 정렬
+    // 우측: 합계 KRX NXT▲ 코스피 코스닥
     const countRow = document.createElement('div')
     Object.assign(countRow.style, { display: 'flex', alignItems: 'center', gap: '2px' })
 
