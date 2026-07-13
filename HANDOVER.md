@@ -8,7 +8,7 @@
   - **변경 내용**: (1) `types/index.ts` — `AppSettings`에서 `sector_weights`/`sector_trim_*` 3필드 제거, `SectorScoreRow`에 `avg_trade_amount` 명명변경+가산점 3필드 추가, `SectorStatus.normalized_weights` 제거. (2) `uiStore.ts` — `normalizedWeights` 필드+초기값 제거. (3) `binding.ts` — `normalized_weights` 수신 처리 3줄 제거. (4) `sector-settings.ts` — ④ 극단값 제외+⑤ 가중치 슬라이더 섹션 전체 제거, 관련 함수 3개+변수 3개+import 4개 제거, `NUM_KEYS`에서 `sector_trim_*` 2개 제거, `syncFromSettings` 가중치/트리밍 동기화 제거, uiStore 구독 normalizedWeights 갱신 제거, unmount dualSlider.destroy 제거, "가산점 자동 계산" 안내문 추가+섹션 번호 재정렬(⑥→⑤). (5) `sector-ranking-list.ts` — `total_trade_amount`→`avg_trade_amount`, 헤더 "종합점수"→"가산점". (6) `sliderConvert.ts`+`sliderConvert.test.ts` 삭제.
   - **영향 범위**: 프론트엔드 6개 파일 수정+2개 파일 삭제. 백엔드 프로덕션 코드 변경 없음. 백엔드 WS payload `total_trade_amount` 하위 호환 필드는 별도 세션에서 제거 예정. Phase 3(테스트 전환) 대기.
   - **검증**: `npm run build` 성공 (✓ built in 1.50s, 60 modules transformed). `npm test` 7 test files 101 tests passed. 프론트엔드 전체 잔존 참조 0건 확인 (`total_trade_amount`/`sector_weights`/`sector_trim`/`normalized_weights`/`sliderConvert` 검색). 잔존 프로세스 0건 (규칙 5-1 준수).
-  - **커밋**: `d5862e9`
+  - **커밋**: `2bd0ee9`
 
 - **2026-07-13: 업종 점수 누적 가산점제 전환 Phase 1 (백엔드) — 3단계 가산점 + 트리밍 제거 + 가중치 슬라이더 제거 (P10/P16/P20/P21/P22/P23/P24)**
   - **현상**: 기존 업종 점수 시스템이 2개 지표 가중치 슬라이더 방식 — 상승비율 이진 판단 정보 손실, 가중치 주관 왜곡, 종목 수 비대칭 트리밍 미작동(4종목 업종 round(4×0.1)=0).
