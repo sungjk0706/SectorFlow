@@ -5,24 +5,13 @@ import { uiStore } from '../stores/uiStore'
 import { createSettingsManager } from '../settings'
 import { createAutoSaveHelper, type AutoSaveHelper } from '../utils/settings-save'
 import { createSettingRow, createNumInput, createMoneyInput } from '../components/common/setting-row'
-import { FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import { createDescText, createStepLabel } from '../components/common/settings-common'
+import { FONT_SIZE, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import type { AppSettings } from '../types'
 import type { PageModule } from '../router'
 
 const NUM_KEYS = ['sector_start_threshold_pct', 'sector_min_trade_amt', 'sector_min_rise_ratio_pct', 'sector_max_targets'] as const
-
-/* ── 헬퍼: 단계 라벨 ── */
-function createStepLabel(num: string, text: string): HTMLElement {
-  const div = document.createElement('div')
-  Object.assign(div.style, { fontSize: FONT_SIZE.small, color: COLOR.disabled, marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '4px' })
-  const badge = document.createElement('span')
-  Object.assign(badge.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.normal })
-  badge.textContent = num
-  div.appendChild(badge)
-  div.appendChild(document.createTextNode(text))
-  return div
-}
 
 /* ── 모듈 상태 ── */
 let settingsMgr: ReturnType<typeof createSettingsManager> | null = null
@@ -76,12 +65,12 @@ function mount(container: HTMLElement): void {
   root.appendChild(createCardTitle('업종순위 설정'))
 
   // ① 종목 필터
-  root.appendChild(createStepLabel('①', '5일 평균 거래대금(N억) 이하 차단 필터링'))
+  root.appendChild(createStepLabel('①', '5일 평균 거래대금 이하 차단'))
   minTradeAmtInput = createMoneyInput({ value: 0, onChange: v => onNumChange('sector_min_trade_amt', v), step: 1, name: 'sector_min_trade_amt' })
   root.appendChild(createSettingRow('5일평균 최소 거래대금', minTradeAmtInput.el))
 
   // ② 업종순위
-  root.appendChild(createStepLabel('②', '업종순위 : 필터링종목 실시간데이터 수신율(%N)후 계산'))
+  root.appendChild(createStepLabel('②', '업종순위: 수신율 기반 계산'))
   thresholdInput = createNumInput({ value: 70, onChange: v => { onNumChange('sector_start_threshold_pct', v) }, step: 1, name: 'sector_start_threshold_pct' })
 
   const receiveRateSpan = document.createElement('span')
@@ -133,23 +122,23 @@ function mount(container: HTMLElement): void {
   root.appendChild(receiveCountRow)
 
   // ③ 업종 컷오프
-  root.appendChild(createStepLabel('③', '업종내 종목 상승비율(N%)이하 차단 필터링'))
+  root.appendChild(createStepLabel('③', '업종 내 상승비율 이하 차단'))
   minRiseRatioInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_min_rise_ratio_pct', v), step: 1, name: 'sector_min_rise_ratio_pct' })
   root.appendChild(createSettingRow('업종내 종목 상승비율', minRiseRatioInput.el))
 
   // ④ 가산점 자동 계산 (상승폭·참여폭·거래대금 3단계 누적)
-  root.appendChild(createStepLabel('④', '가산점 자동 계산 (상승폭·참여폭·거래대금 3단계 누적)'))
-  const bonusDesc = document.createElement('div')
-  Object.assign(bonusDesc.style, {
-    fontSize: FONT_SIZE.small,
-    color: COLOR.tertiary,
-    padding: '6px 0',
+  root.appendChild(createStepLabel('④', '가산점 자동 계산 (3단계 누적)'))
+  const bonusDescWrap = document.createElement('div')
+  Object.assign(bonusDescWrap.style, {
     borderBottom: '1px solid ' + COLOR.borderLight,
     marginBottom: '12px',
-    lineHeight: '1.5',
   })
-  bonusDesc.textContent = '업종 점수는 3단계 누적 가산점으로 자동 계산됩니다. 1차: 업종 내 상승 종목 비율(0~100), 2차: 통과 업종 종목들 상대평가(0~100), 3차: 업종 평균 거래대금(0~100). 종합 가산점 = 1차 + 2차 + 3차 (0~300).'
-  root.appendChild(bonusDesc)
+  bonusDescWrap.appendChild(createDescText('업종 점수는 3단계 누적 가산점으로 자동 계산됩니다.', { marginTop: '8px' }))
+  bonusDescWrap.appendChild(createDescText('1차: 업종 내 상승 종목 비율 (0~100)', { marginTop: '8px' }))
+  bonusDescWrap.appendChild(createDescText('2차: 통과 업종 종목들 상대평가 (0~100)'))
+  bonusDescWrap.appendChild(createDescText('3차: 업종 평균 거래대금 (0~100)'))
+  bonusDescWrap.appendChild(createDescText('종합 가산점 = 1차 + 2차 + 3차 (0~300)'))
+  root.appendChild(bonusDescWrap)
 
   // ⑤ 매수 대상
   root.appendChild(createStepLabel('⑤', '최대 매수 대상 업종수 설정'))
