@@ -8,7 +8,7 @@
   - **변경 내용**: (1) `test_engine_sector_confirm.py` — `_make_sector_score` 헬퍼 MagicMock → 실제 `SectorScore` 객체 반환, 7개 테스트 `calculate_weighted_scores` patch → `calculate_bonus_scores` patch, `test_min_rise_ratio_cutoff` patch 제거(실제 `calculate_bonus_scores` 실행, 통합 테스트 전환), 11개 settings_cache에서 `sector_trim_*`/`sector_weights` 3줄씩 제거. (2) `test_settings_file.py` — 파일 전체 삭제 (제거된 2개 함수 테스트만 존재). (3) `test_engine_settings.py` — `sector_weights` 단언문 1줄 제거. (4) `test_buy_filter.py` — `_sector` 헬퍼 `total_trade_amount`→`avg_trade_amount`, `scored_trade_amount`/`scored_rise_ratio` 파라미터+필드 제거. (5) `test_telegram_bot.py` — L1167/1220 `scored_trade_amount` → `avg_trade_amount`. (6) `test_sector_data_provider.py` — `scored_trade_amount` mock 3줄 제거, `sector_trim_*`/`sector_weights` 3줄 제거.
   - **영향 범위**: 백엔드 테스트 5개 파일 수정+1개 파일 삭제. 프로덕션 코드 변경 없음. `test_settings_file_integration.py`의 `sector_weights` 테스트 데이터는 Phase 3-B 범위 제외 (별도 세션 정리 권장).
   - **검증**: pytest 6개 파일 291 passed. pytest 전체 백엔드 2734 passed. ruff All checks passed. 런타임 기동 `.venv/bin/python -W error::RuntimeWarning main.py` — 에러/Traceback/RuntimeWarning 없음, `[업종] 업종순위 재계산 (3단계 누적 가산점)` + `재계산 완료` 로그 확인, 247ms 기동. 잔존 프로세스 0건 (규칙 5-1 준수).
-  - **커밋**: (본 커밋)
+  - **커밋**: `bafa4e6`
 
 - **2026-07-13: 업종 점수 누적 가산점제 전환 Phase 3-A (테스트) — 핵심 점수 로직 테스트 3개 파일 전환 + percentile_to_score 반전 버그 수정 (P10/P16/P22/P23/P24)**
   - **현상**: Phase 1(백엔드)+Phase 2(프론트엔드) 완료 후 테스트 파일들이 제거된 함수/필드(`calculate_weighted_scores`/`normalize_weight_values`/`scored_*`/`sector_weights`/`trim_*`/`metric_scores`)를 참조하여 실패. 추가로 조사 중 `percentile_to_score` 반전 버그 발견 — 최대값이 0점, 최소값이 100점 부여 (계획서 의도와 반대).
