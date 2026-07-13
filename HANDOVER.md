@@ -1,6 +1,22 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-13: LS증권 구독 로그 중복 출력 정리 — per-code 완료 로그 → 요약 1줄**
+  - **목적**: 13종목 구독 시 28줄(시작 2줄 + 종목별 완료 26줄) 출력되는 로그 과다 문제 해결
+  - **근본 원인**:
+    1. `engine_ws.py:252` — wrapper 레벨 "구독 시작" 로그 + `ls_connector.py:583` 커넥터 레벨 "구독 시작" 로그 이중 출력
+    2. `ls_connector.py:549` — `subscribe_stocks_tr()`에서 종목마다 "구독 완료: {code}" 로그. UH1+UPH 2TR이라 종목당 2줄
+  - **해결 방안**:
+    - 수정 1: `engine_ws.py:252` wrapper 시작 로그 제거 (커넥터 레벨로 단일화, P23)
+    - 수정 2: `ls_connector.py:522-595` `subscribe_stocks_tr`/`unsubscribe_stocks_tr` per-code 로그 제거, 반환값 `bool` → `tuple[int, int]` (success_count, fail_count) 변경
+    - 수정 3: `ls_connector.py:597-627` `subscribe_dynamic`/`unsubscribe_dynamic`에서 UH1/UPH 처리 후 요약 1줄 로그 출력
+    - 수정 4: `test_ls_connector.py:721-796` 반환값 튜플 변경에 따른 assertion 수정
+  - **수정 파일**: `engine_ws.py`, `ls_connector.py`, `test_ls_connector.py`
+  - **검증**: py_compile OK, ruff OK, pytest 102 passed, 런타임 기동 17종목 구독 로그 3줄 출력 확인 (이전 36줄 → 3줄)
+  - **실제 구독 요청 중복 여부**: 중복 아님 (DYNAMIC_REG 1회 → WebSocket 메시지 26건 = 13종목 × 2TR은 정상)
+  - **키움 코드 미수정**: 현재 WS 연결이 LS만이므로 키움 경로는 dead path (P16 준수)
+
+## 직전 완료 작업 (이전)
 - **2026-07-13: KRX/NXT 장운영정보 인디케이터 타이밍 불일치 해결 — JIF 경계 이벤트 즉시 갱신 + P16/P21/P22 위반 수정**
   - **목적**: KRX 정규장 시작(09:00) 시각에도 상단 헤더 KRX/NXT 인디케이터가 늦게 전환되거나 카운트다운 문구가 남는 타이밍 불일치 해결
   - **근본 원인**:
@@ -64,6 +80,20 @@
 - 이후 B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
 
 ## 미해결 문제
+- **broker_config = {} 빈 객체 + fallback 사용 (P20 위반 가능성)**
+  - 파일: `backend/app/core/connector_manager.py:39`
+  - 증상: `broker_config.get("websocket")`이 None일 때 `or state.integrated_system_settings_cache["broker"]`로 fallback. DB 확인 결과 `broker_config = {}` 빈 객체로 저장되어 있어 항상 fallback 경로 사용 중
+  - 위반 원칙: P20 (폴백 금지) — 정상 경로의 None/누락을 폴백으로 덮음
+  - 수정 방향: `broker_config.websocket`이 정상 설정되도록 설정 저장 로직 점검, 또는 fallback 제거 후 명시적 에러 처리
+  - 발견 일시: 2026-07-13 (구독 로그 중복 조사 도중)
+
+- **_subscribed_dynamic 플래그 이중 설정 (P10 위반 가능성)**
+  - 파일: `backend/app/services/engine_sector_confirm.py:330-332` (구독 완료 전), `backend/app/pipelines/pipeline_compute.py:335-337` (구독 완료 후)
+  - 증상: 동일한 `_subscribed_dynamic` 플래그가 2곳에서 설정됨. 구독 실패 시에도 sector_confirm에서 True로 남는 정합성 문제 가능성
+  - 위반 원칙: P10 (SSOT) — 같은 상태가 2곳에서 독립 관리됨
+  - 수정 방향: 단일 진실 소스로 통일 (구독 완료 후 1곳에서만 설정 권장)
+  - 발견 일시: 2026-07-13 (구독 로그 중복 조사 도중)
+
 - **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결**
   - 상세 조사 기록: `docs/ghost_position_investigation.md` ([A]~[I] 미조사 항목)
   - 재발 방지 조치 (2026-07-10, 코드 확인 완료):
