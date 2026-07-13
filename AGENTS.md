@@ -47,6 +47,39 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
   - **P24 (단순성)**: 더 단순한 대체 가능성, 불필요한 추상화 금지, 함수/파일 길이·복잡도 기준.
 - 전체 원칙 목록은 `ARCHITECTURE.md` 제1부 "불변 원칙 24개" 참조.
 
+### 코드 수정 시 점검 체크리스트 (수정 전/중/후 필수)
+
+> 아래 체크리스트는 24개 원칙 중 스킬 파일에 개별 명시되지 않은 원칙들을 실행 가능한 점검 항목으로 구체화. 모든 코드 수정 시 수정 전 조사(규칙 0-2) 단계에서 확인.
+
+#### 백엔드 수정 시 필수 점검
+- [ ] **P1-P3 (async 일관성)**: 모든 I/O는 `async def`, 동기 함수(`requests`, `sqlite3`, `time.sleep`, `threading.Lock`) 금지, `run_in_executor()` 우회 금지
+- [ ] **P4 (증권사명 침투 금지)**: 공통 로직에 `kiwoom_`/`ls_` 접두사가 없는가? 증권사별 코드는 `broker_factory.py` 레지스트리에 분리되었는가?
+- [ ] **P5 (EventBus 금지)**: Redis/Pub-Sub/콜백 리스트 옵서버 패턴을 도입하지 않았는가? 직접 호출 체인을 유지했는가?
+- [ ] **P7 (블로킹 금지)**: 틱 핸들러에 per-tick O(n) 연산, 매 틱 DB 조회, 매 틱 전체 리스트 순회가 없는가?
+- [ ] **P11 (폴링 금지)**: `while + sleep` 폴링을 도입하지 않았는가? `asyncio.Queue` + `asyncio.wait()` 이벤트 기반인가?
+- [ ] **P12 (DB 연결)**: 매 요청마다 `connect()`를 호출하지 않았는가? 싱글톤 연결을 유지했는가?
+- [ ] **P13 (설정 메모리 상주)**: 틱 연산 단계에서 DB 설정 조회를 하지 않았는가? 메모리 캐시를 참조했는가?
+- [ ] **P14 (멀티스레드 금지)**: `threading.Thread()` 신규 생성이 없는가? `asyncio.create_task()` 무분별 분리가 없는가?
+- [ ] **P15 (단일 주문 경로)**: 주문 로직이 `execute_buy()`/`execute_sell()` 단일 경로인가? 분기/우회 경로가 없는가? (거래 로직 수정 시 safe-trade 스킬 필수)
+- [ ] **P16 (살아있는 경로)**: 작성한 안전장치가 실제 실행 경로에 연결되었는가? 호출되지 않는 dead code가 아닌가?
+- [ ] **P17 (플래그 단일 소스)**: 플래그(`auto_buy_on` 등)를 여러 곳에서 직접 수정하지 않았는가? `integrated_system_settings_cache`에서만 관리되는가?
+- [ ] **P20 (폴백 금지)**: 정상 경로의 빈 문자열/None/누락을 폴백으로 덮지 않았는가? silent `except: pass`가 없는가?
+- [ ] **P22 (데이터 정합성)**: 파생 데이터를 중복 저장하지 않았는가? 원본에서 파생하는 모델인가? 불일치 시 즉시 차단하는가?
+- [ ] **P23 (용어 통일)**: 로그/문서에 "섹터" 대신 "업종", "주식" 대신 "종목"을 사용했는가? (`ARCHITECTURE.md` 부록 L 참조)
+- [ ] **P24 (단순성)**: 함수 50줄 이하, 파일 500줄 이하, 순환 복잡도 10 이하? 불필요한 추상화/1회용 래퍼가 없는가?
+
+#### 프론트엔드 수정 시 필수 점검
+- [ ] **P21 (사용자 투명성)**: 백엔드 상태 변화(매수 차단, 리스크 초과 등)를 UI에 표시했는가? 사용자가 "왜 이 종목이 매수되지 않았지?"라고 의문을 갖지 않도록 했는가?
+- [ ] **P23 (용어 통일)**: UI 텍스트에 "섹터" 대신 "업종", "주식" 대신 "종목", "바이 리스트" 대신 "매수 후보"를 사용했는가? (`ARCHITECTURE.md` 부록 L 참조)
+- [ ] **P23 (UI 패턴 일관성)**: 동일한 UI 패턴이 2회 이상 반복 시 공통 컴포넌트로 추출했는가?
+
+#### ARCHITECTURE.md 금지 패턴 5개 (수정 후 필수 확인)
+- [ ] `asyncio.run()` 사용 금지 → `async def` + `await` 직접 호출
+- [ ] `create_task` 무분별 분리 금지 → `schedule_engine_task()` 사용 (add_done_callback 포함)
+- [ ] `except Exception: pass` 금지 → `logger.warning(..., exc_info=True)`
+- [ ] async 함수 `await` 누락 금지 → `python -W error::RuntimeWarning main.py`로 검증
+- [ ] dead code 방치 금지 → 호출되지 않는 함수 삭제 또는 명시적 `# DEPRECATED` 표시
+
 ### Code Removal Rules
 
 함수, 변수, 클래스, 모듈 등 코드를 제거할 때 다음을 반드시 함께 수행:
@@ -90,7 +123,13 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
    3) **기존 실패로 판정된 경우**: 사용자 보고에 "기존 실패 N건 (수정 전 동일 실패 확인)"으로 명시하고, `HANDOVER.md` "미해결 문제" 섹션에 기록.
    4) **내 수정이 원인인 경우**: 즉시 원인 추적 및 수정. "기존 실패"로 치부하고 넘어가는 것은 절대 금지.
    - 테스트 실패는 무언가 잘못됐다는 신호. 무시하지 말고 반드시 추적하는 것이 원칙.
-5. For backend changes, runtime startup check is mandatory: start `.venv/bin/python main.py`, check logs, wait 10–30s, then terminate and confirm no leftover processes.
+5. For backend changes, runtime startup check is mandatory: start `.venv/bin/python main.py`, check logs, wait 10–30s, then terminate. 잔존 프로세스 정리는 규칙 5-1 준수.
+5-1. **세션 종료 전 잔존 프로세스 완전 종료 (강제).** 모든 작업 완료 후 세션 종료 전 반드시 다음 절차 수행:
+   1) **잔존 프로세스 확인**: `ps aux | grep -E "python|main.py|pytest" | grep -v grep`로 백엔드/테스트 프로세스 잔존 여부 확인.
+   2) **잔존 시 즉시 종료**: 1개라도 잔존하면 `kill <PID>`로 종료. 응답 없으면 `kill -9 <PID>`.
+   3) **재확인으로 0건 확인**: 종료 후 재확인하여 잔존 0건까지가 세션 종료 조건.
+   - **적용 범위**: 백엔드 런타임 기동(규칙 5), pytest 실행, db-backup 앱 종료 등 프로세스를 띄운 모든 작업. 프론트엔드 전용 작업이라도 백엔드 기동을 동반한 경우 포함.
+   - **세션 종료 조건**: 잔존 프로세스 0건 확인 전에는 세션 종료 불가. HANDOVER.md 갱신 + 사용자 보고 전에 반드시 수행.
 6. Do not commit or update `HANDOVER.md` without user approval.
 
 ### 사용자 의사소통 규칙 (필수)
