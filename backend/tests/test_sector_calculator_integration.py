@@ -10,7 +10,10 @@ import aiosqlite
 
 from backend.app.db import database
 from backend.app.services.engine_state import state
-from backend.app.domain.sector_calculator import compute_sector_scores
+from backend.app.domain.sector_calculator import (
+    compute_sector_scores,
+    compute_full_sector_summary,
+)
 
 
 @pytest.fixture
@@ -206,27 +209,28 @@ class TestComputeSectorScoresDBIntegration:
         assert stock.cur_price == 75000
 
     @pytest.mark.asyncio
-    async def test_weighted_scores_calculated(self, in_memory_db, setup_master_cache):
-        """가중치 점수가 계산되어 final_score가 부여되는지 확인."""
+    async def test_bonus_scores_calculated(self, in_memory_db, setup_master_cache):
+        """3단계 누적 가산점이 계산되어 final_score가 부여되는지 확인."""
         all_codes = ["005930", "000660", "009950", "005270", "000270"]
         avg_amt_5d = {
             "005930": 50000, "000660": 80000, "009950": 30000,
             "005270": 40000, "000270": 35000,
         }
-        weights = {"rise_ratio": 0.5, "total_trade_amount": 0.5}
 
-        result = await compute_sector_scores(
+        result = await compute_full_sector_summary(
             all_codes,
             trade_prices={},
             trade_amounts={},
             avg_amt_5d=avg_amt_5d,
-            sector_weights=weights,
+            latest_index={},
         )
 
-        for s in result:
+        for s in result.sectors:
             assert s.final_score >= 0.0
-            assert s.final_score <= 100.0
-            assert len(s.metric_scores) > 0
+            assert s.final_score <= 300.0
+            assert 0.0 <= s.bonus_rise_ratio <= 100.0
+            assert 0.0 <= s.bonus_relative_strength <= 100.0
+            assert 0.0 <= s.bonus_trade_amount <= 100.0
 
     @pytest.mark.asyncio
     async def test_empty_codes_returns_empty_list(self, in_memory_db, setup_master_cache):
