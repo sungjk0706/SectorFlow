@@ -1,6 +1,34 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-13: 매수후보/보유종목 상단 배지 인디케이터 + 업종별 종목 시세 상단 요약 라벨 정리**
+  - **목적**:
+    1. 매수설정 → 매수후보 페이지 상단 3개 인디케이터(주문가능금액, 일일 매수 금액, 동시 보유 종목)가 금액/종목명/수량 변동 시 좌우로 밀리는 문제 해결
+    2. 업종순위 → 업종별 종목 실시간 시세 페이지 상단 라벨(`5일평균거래대금`과 `합계/KRX/NXT/코스피/코스닥`)을 1행으로 정리해 불안정해 보이는 배치 개선
+  - **근본 원인**:
+    1. `buy-target.ts:312-313` 배지 행에 `display: flex`/`gap`이 없이 `lineHeight: '2'`만 지정 → 자식 `span`이 inline 상태로 텍스트 폭에 따라 shrink-to-fit
+    2. `renderLimitBadge`/`renderOrderableBadge`가 매번 `el.textContent = ''` 후 새 `span` 생성/append → DOM 재구성
+    3. `sell-position.ts:145-146`도 동일한 inline 배지 행으로 중복 구현
+    4. `sector-stock.ts`의 `summaryBar`가 `flexDirection: 'column'` + `alignItems: 'center'`로 2행 중앙 정렬되어 있어, 그룹 간 여백과 중심이 고정되지 않아 불안정해 보임
+  - **해결 방안**:
+    - `frontend/src/components/common/badge.ts` 신규: `createBadgeRow`, `createBadge`, `updateBadge` — `display: flex` + `gap` + `flex: 1` + `min-width: 0` + `nowrap` + `ellipsis` 구조
+    - `buy-target.ts` 배지 행과 렌더 로직을 공통 컴포넌트로 교체, `updateBadges`는 `textContent`만 갱신
+    - `sell-position.ts` 요약 배지 행도 동일한 공통 컴포넌트로 교체
+    - `sector-stock.ts`의 `summaryBar`를 `flexDirection: 'row'` + `justifyContent: 'space-between'`로 1행 정리. 좌측에 `5일평균거래대금 (N)억`, 우측에 `합계/KRX/NXT/코스피/코스닥` 종목수 요약
+  - **수정 파일**: `components/common/badge.ts` (신규), `buy-target.ts`, `sell-position.ts`, `sector-stock.ts`
+  - **검증**: `npm run typecheck` 통과, `npm run build` 통과
+  - **목적**: 매수설정 → 매수후보 페이지 상단 3개 인디케이터(주문가능금액, 일일 매수 금액, 동시 보유 종목)가 금액/종목명/수량 변동 시 좌우로 밀리는 문제 해결
+  - **근본 원인**:
+    1. `buy-target.ts:312-313` 배지 행에 `display: flex`/`gap`이 없이 `lineHeight: '2'`만 지정 → 자식 `span`이 inline 상태로 텍스트 폭에 따라 shrink-to-fit
+    2. `renderLimitBadge`/`renderOrderableBadge`가 매번 `el.textContent = ''` 후 새 `span` 생성/append → DOM 재구성
+    3. `sell-position.ts:145-146`도 동일한 inline 배지 행으로 중복 구현
+  - **해결 방안**:
+    - `frontend/src/components/common/badge.ts` 신규: `createBadgeRow`, `createBadge`, `updateBadge` — `display: flex` + `gap` + `flex: 1` + `min-width: 0` + `nowrap` + `ellipsis` 구조
+    - `buy-target.ts` 배지 행과 렌더 로직을 공통 컴포넌트로 교체, `updateBadges`는 `textContent`만 갱신
+    - `sell-position.ts` 요약 배지 행도 동일한 공통 컴포넌트로 교체
+  - **수정 파일**: `components/common/badge.ts` (신규), `buy-target.ts`, `sell-position.ts`
+  - **검증**: `npm run typecheck` 통과, `npm run build` 통과
+
 - **2026-07-13: DataTable 컬럼 너비 안정화 — 실시간 틱 시 구분선 흔들림 + 좌우 스크롤 근본 해결**
   - **목적**: 정규장 실시간 틱 수신 시 매수후보 테이블 컬럼 구분선이 미세하게 흔들리고, 모든 페이지에 좌우 스크롤이 발생하는 문제 해결
   - **근본 원인 3단계**:
@@ -9,7 +37,7 @@
     3. `gridTemplateColumns` % 단위 → 매 레이아웃 평가 시 컨테이너 너비 기준 px 재변환 + `wrapper.clientWidth` 사용으로 스크롤바 너비 초과 → 좌우 스크롤
   - **해결 방안**: 첫 `updateRows` 시 1회만 데이터 기반 폭 계산 후 고정 (`initialized` 플래그). 이후 실시간 틱/데이터 변화에 재계산 없음. px 단위 고정 + `scrollContainer.clientWidth` 사용 + 반올림 오차 보정. 전체 7개 DataTable 페이지 28개 컬럼에 minWidth/maxWidth 지정.
   - **수정 파일**: `data-table.ts` (폭 재계산 로직 전면 개편), `buy-target.ts`, `sell-position.ts`, `profit-shared.ts`, `stock-classification.ts`, `stock-detail.ts`, `general-settings.ts` (컬럼 minWidth/maxWidth 추가)
-  - 검증: `npm run typecheck` 통과, `npm run build` 통과, 브라우저 확인 대기
+  - **검증**: `npm run typecheck` 통과, `npm run build` 통과, 브라우저 확인 대기
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책 — 모두 완료 (git history 참조)

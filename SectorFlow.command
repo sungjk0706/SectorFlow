@@ -73,11 +73,15 @@ if [ "$BACKEND_READY" = false ]; then
     echo "⚠️ 백엔드 타임아웃 — 프론트엔드 healthCheck에서 자동 재시도 중..."
 fi
 
-# 브라우저 열기 (Chrome) — 백엔드 준비 확인 후
+# 브라우저 열기 (Safari) — 백엔드 준비 확인 후
 # 백엔드가 ready 상태이므로 프론트엔드 healthCheck()가 첫 시도에 성공 → proxy error 없음
-# 기존 localhost:5173 탭을 닫고 새로 열어 Chrome 캐시/bfcache로 인한 이전 코드 잔존 방지
-osascript -e 'tell application "Google Chrome" to close every tab in every window where URL starts with "http://localhost:5173"' 2>/dev/null
-open -a "Google Chrome" http://localhost:5173
+# 기존 localhost:5173 탭을 닫고 새로 열어 Safari 캐시/bfcache로 인한 이전 코드 잔존 방지
+# 주의: Safari가 꺼져 있을 때 osascript "tell application Safari"가 Safari를 강제 기동하여
+#       시작 페이지 탭이 추가로 열리므로, 이미 실행 중인 경우에만 기존 탭 닫기 수행
+if pgrep -x "Safari" > /dev/null 2>&1; then
+    osascript -e 'tell application "Safari" to close every tab in every window where URL starts with "http://localhost:5173"' 2>/dev/null
+fi
+open -a "Safari" http://localhost:5173
 
 echo ""
 echo "============================================"

@@ -76,3 +76,6 @@ python -m pytest backend/tests/[파일명] -v --timeout=15 --timeout-method=sign
 - 아키텍처 원칙 관련 수정은 런타임 기동 검증 생략 금지
 - asyncio, 이벤트 루프, 비동기 큐, WebSocket 관련 수정은 특히 주의
 - 잔존 프로세스 0개 확인까지가 완료 기준
+
+## 작업 중 발견 문제 기록 의무
+- 메인 작업 도중 발견한 아키텍처 위반(P원칙), 오류, 잠재적 버그, dead code, 폴백 패턴 등은 즉시 `HANDOVER.md` "미해결 문제" 섹션에 기록 (파일:줄, 위반 원칙 번호, 증상). 사용자 승인 불필요 — 발견 즉시 기록. 상세 규칙은 AGENTS.md 섹션4 규칙 9 참조.

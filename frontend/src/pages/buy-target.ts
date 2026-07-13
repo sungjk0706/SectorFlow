@@ -9,6 +9,7 @@ import { createCardTitle } from '../components/common/card-title'
 import { createSearchInput } from '../components/common/search-input'
 import { globalSettingsManager } from '../settings'
 import { createStockNameColumn, createSeqCell, makeCodeColumn, makeChangeColumn, makeRateColumn, makeStrengthColumn, createAmountCell, createPriceCell, createNumberCell, FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import { createBadgeRow, createBadge, updateBadge, type BadgeHandle, type BadgeStatus } from '../components/common/badge'
 import { filterStocksBySearch } from './sector-stock'
 import type { SectorStock } from '../types'
 
@@ -137,7 +138,7 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
 
 /* ── 모듈 변수 ── */
 let dataTable: DataTableApi<SectorStock> | null = null
-let badgeEls: { orderable: HTMLSpanElement; daily: HTMLSpanElement; holding: HTMLSpanElement } | null = null
+let badgeEls: { orderable: BadgeHandle; daily: BadgeHandle; holding: BadgeHandle } | null = null
 let emptyEl: HTMLElement | null = null
 let searchInput: ReturnType<typeof createSearchInput> | null = null
 let searchTerm = ''
@@ -149,113 +150,7 @@ let onOrderbookTick: ((e: Event) => void) | null = null
 let onProgramTick: ((e: Event) => void) | null = null
 let _mounted = false
 
-/* ── 한도 배지 렌더링 ── */
-function renderLimitBadge(el: HTMLSpanElement, label: string, cur: number, max: number, unit = '원'): void {
-  const hit = max > 0 && cur >= max
-  const near = max > 0 && cur >= max * 0.8 && cur < max
-  el.style.background = hit ? COLOR.upBg : near ? COLOR.warningBg : COLOR.neutralBg
-  el.style.fontWeight = (hit || near) ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal
-  el.textContent = ''
-
-  const labelSpan = document.createElement('span')
-  labelSpan.style.color = COLOR.code
-  labelSpan.textContent = `${label} `
-  el.appendChild(labelSpan)
-
-  const curSpan = document.createElement('span')
-  curSpan.style.color = COLOR.up
-  curSpan.textContent = cur.toLocaleString()
-  el.appendChild(curSpan)
-
-  const curUnitSpan = document.createElement('span')
-  curUnitSpan.style.color = COLOR.code
-  curUnitSpan.textContent = unit
-  el.appendChild(curUnitSpan)
-
-  const sepSpan = document.createElement('span')
-  sepSpan.style.color = COLOR.code
-  sepSpan.textContent = ' / '
-  el.appendChild(sepSpan)
-
-  const maxSpan = document.createElement('span')
-  maxSpan.style.color = COLOR.up
-  maxSpan.textContent = max > 0 ? max.toLocaleString() : '무제한'
-  el.appendChild(maxSpan)
-
-  if (max > 0) {
-    const maxUnitSpan = document.createElement('span')
-    maxUnitSpan.style.color = COLOR.code
-    maxUnitSpan.textContent = unit
-    el.appendChild(maxUnitSpan)
-  }
-
-  if (hit) {
-    const hitSpan = document.createElement('span')
-    hitSpan.style.color = COLOR.up
-    hitSpan.textContent = ' (한도)'
-    el.appendChild(hitSpan)
-  } else if (near) {
-    const nearSpan = document.createElement('span')
-    nearSpan.style.color = COLOR.warning
-    nearSpan.textContent = ' (근접)'
-    el.appendChild(nearSpan)
-  }
-}
-
-function createBadgeSpan(): HTMLSpanElement {
-  const span = document.createElement('span')
-  Object.assign(span.style, { fontSize: FONT_SIZE.body, padding: '4px 12px', borderRadius: '4px', marginRight: '6px' })
-  return span
-}
-
-/* ── 주문가능금액 배지 렌더링 — 1위 종목 매수 가능 수량 통합 ── */
-function renderOrderableBadge(el: HTMLSpanElement, orderable: number, topName: string, qty: number): void {
-  const insufficient = orderable <= 0
-  const cannotBuy = !insufficient && topName !== '' && qty <= 0
-  const warn = insufficient || cannotBuy
-  el.style.background = warn ? COLOR.upBg : COLOR.neutralBg
-  el.style.fontWeight = warn ? FONT_WEIGHT.semibold : FONT_WEIGHT.normal
-  el.textContent = ''
-
-  const labelSpan = document.createElement('span')
-  labelSpan.style.color = COLOR.code
-  labelSpan.textContent = '💳 주문가능금액 '
-  el.appendChild(labelSpan)
-
-  const valSpan = document.createElement('span')
-  valSpan.style.color = COLOR.up
-  valSpan.textContent = orderable.toLocaleString()
-  el.appendChild(valSpan)
-
-  const unitSpan = document.createElement('span')
-  unitSpan.style.color = COLOR.code
-  unitSpan.textContent = '원'
-  el.appendChild(unitSpan)
-
-  if (topName !== '') {
-    const info = document.createElement('span')
-    info.style.color = COLOR.code
-    info.textContent = ` (1위 ${topName} `
-    el.appendChild(info)
-
-    const qtySpan = document.createElement('span')
-    qtySpan.style.color = COLOR.up
-    qtySpan.textContent = String(qty)
-    el.appendChild(qtySpan)
-
-    const qtyUnit = document.createElement('span')
-    qtyUnit.style.color = COLOR.code
-    qtyUnit.textContent = warn ? '주 ⚠️ 매수 불가)' : '주)'
-    el.appendChild(qtyUnit)
-  } else if (insufficient) {
-    const tag = document.createElement('span')
-    tag.style.color = COLOR.up
-    tag.textContent = ' (매수 불가)'
-    el.appendChild(tag)
-  }
-}
-
-/* ── 배지 행 업데이트 ── */
+/* ── 배지 행 업데이트 — DOM 재구성 없이 textContent만 갱신 ── */
 function updateBadges(): void {
   if (!badgeEls) return
   const state = hotStore.getState()
@@ -284,9 +179,47 @@ function updateBadges(): void {
   }
   const topName = topTarget?.name ?? ''
 
-  renderOrderableBadge(badgeEls.orderable, orderable, topName, qty)
-  renderLimitBadge(badgeEls.daily, '💰 일일 매수 금액 (수수료 제외)', dailySpent, maxDaily)
-  renderLimitBadge(badgeEls.holding, '📦 동시 보유 종목 최대', holdingCnt, maxStock, '종목')
+  // 주문가능금액 배지 — 값 + 1위 종목 정보
+  const insufficient = orderable <= 0
+  const cannotBuy = !insufficient && topName !== '' && qty <= 0
+  const orderableStatus: BadgeStatus = (insufficient || cannotBuy) ? 'warn' : 'normal'
+  let orderableStatusText = ''
+  if (topName !== '') {
+    orderableStatusText = cannotBuy
+      ? ` (1위 ${topName} ${qty}주 ⚠️ 매수 불가)`
+      : ` (1위 ${topName} ${qty}주)`
+  } else if (insufficient) {
+    orderableStatusText = ' (매수 불가)'
+  }
+  updateBadge(badgeEls.orderable, orderable.toLocaleString(), {
+    status: orderableStatus,
+    statusText: orderableStatusText,
+    statusColor: (insufficient || cannotBuy) ? COLOR.up : COLOR.code,
+  })
+
+  // 일일 매수 금액 배지 — cur / max
+  const dailyHit = maxDaily > 0 && dailySpent >= maxDaily
+  const dailyNear = maxDaily > 0 && dailySpent >= maxDaily * 0.8 && dailySpent < maxDaily
+  const dailyStatus: BadgeStatus = dailyHit ? 'hit' : dailyNear ? 'near' : 'normal'
+  const dailyValue = `${dailySpent.toLocaleString()} / ${maxDaily > 0 ? maxDaily.toLocaleString() : '무제한'}`
+  const dailyStatusText = dailyHit ? ' (한도)' : dailyNear ? ' (근접)' : ''
+  updateBadge(badgeEls.daily, dailyValue, {
+    status: dailyStatus,
+    statusText: dailyStatusText,
+    statusColor: dailyHit ? COLOR.up : dailyNear ? COLOR.warning : COLOR.code,
+  })
+
+  // 동시 보유 종목 배지 — cur / max
+  const holdingHit = maxStock > 0 && holdingCnt >= maxStock
+  const holdingNear = maxStock > 0 && holdingCnt >= maxStock * 0.8 && holdingCnt < maxStock
+  const holdingStatus: BadgeStatus = holdingHit ? 'hit' : holdingNear ? 'near' : 'normal'
+  const holdingValue = `${holdingCnt.toLocaleString()} / ${maxStock > 0 ? maxStock.toLocaleString() : '무제한'}`
+  const holdingStatusText = holdingHit ? ' (한도)' : holdingNear ? ' (근접)' : ''
+  updateBadge(badgeEls.holding, holdingValue, {
+    status: holdingStatus,
+    statusText: holdingStatusText,
+    statusColor: holdingHit ? COLOR.up : holdingNear ? COLOR.warning : COLOR.code,
+  })
 }
 
 /* ── mount ── */
@@ -308,16 +241,15 @@ function mount(container: HTMLElement): void {
   headerRow.appendChild(createCardTitle('매수후보'))
   root.appendChild(headerRow)
 
-  // 한도 배지 행
-  const badgeRow = document.createElement('div')
-  Object.assign(badgeRow.style, { marginBottom: '6px', lineHeight: '2' })
-  const orderableSpan = createBadgeSpan()
-  const dailySpan = createBadgeSpan()
-  const holdingSpan = createBadgeSpan()
-  badgeRow.appendChild(orderableSpan)
-  badgeRow.appendChild(dailySpan)
-  badgeRow.appendChild(holdingSpan)
-  badgeEls = { orderable: orderableSpan, daily: dailySpan, holding: holdingSpan }
+  // 한도 배지 행 — 공통 컴포넌트 (flex 3등분 고정)
+  const badgeRow = createBadgeRow()
+  const orderableBadge = createBadge('💳 주문가능금액', '원')
+  const dailyBadge = createBadge('💰 일일 매수 금액 (수수료 제외)', '원')
+  const holdingBadge = createBadge('📦 동시 보유 종목 최대', '종목')
+  badgeRow.appendChild(orderableBadge.el)
+  badgeRow.appendChild(dailyBadge.el)
+  badgeRow.appendChild(holdingBadge.el)
+  badgeEls = { orderable: orderableBadge, daily: dailyBadge, holding: holdingBadge }
   root.appendChild(badgeRow)
 
   // 검색 입력란 — 테이블 좌측 상단, 주문가능금액 배지 하단 (업종별 종목 시세와 동일한 패턴)
