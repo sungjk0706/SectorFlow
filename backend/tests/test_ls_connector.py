@@ -727,7 +727,8 @@ class TestLsConnectorSubscribeStocksTr:
         conn._socket = mock_socket
         with patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"):
             result = await conn.subscribe_stocks_tr(["005930"], "UH1")
-        assert result is True
+        # 반환값: (success_count, fail_count)
+        assert result == (1, 0)
         payload = mock_socket.send.call_args[0][0]
         assert payload["body"]["tr_cd"] == "UH1"
 
@@ -735,7 +736,8 @@ class TestLsConnectorSubscribeStocksTr:
         conn = _make_ls_connector()
         conn._connected = False
         result = await conn.subscribe_stocks_tr(["005930"], "UH1")
-        assert result is False
+        # 연결 없음 → (0, fail_count=len(codes))
+        assert result == (0, 1)
 
     async def test_unsubscribe_stocks_tr_success(self):
         conn = _make_ls_connector()
@@ -746,7 +748,8 @@ class TestLsConnectorSubscribeStocksTr:
         conn._socket = mock_socket
         with patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"):
             result = await conn.unsubscribe_stocks_tr(["005930"], "UPH")
-        assert result is True
+        # 반환값: (success_count, fail_count)
+        assert result == (1, 0)
         payload = mock_socket.send.call_args[0][0]
         assert payload["body"]["tr_cd"] == "UPH"
         assert payload["header"]["tr_type"] == "4"
@@ -755,7 +758,8 @@ class TestLsConnectorSubscribeStocksTr:
         conn = _make_ls_connector()
         conn._connected = False
         result = await conn.unsubscribe_stocks_tr(["005930"], "UPH")
-        assert result is False
+        # 연결 없음 → (0, fail_count=len(codes))
+        assert result == (0, 1)
 
 
 # ── LsConnector.subscribe_dynamic / unsubscribe_dynamic ────────────────────────
@@ -764,7 +768,7 @@ class TestLsConnectorSubscribeDynamic:
     async def test_subscribe_dynamic_success(self):
         conn = _make_ls_connector()
         with (
-            patch.object(conn, "subscribe_stocks_tr", AsyncMock(return_value=True)) as mock_sub,
+            patch.object(conn, "subscribe_stocks_tr", AsyncMock(return_value=(1, 0))) as mock_sub,
         ):
             await conn.subscribe_dynamic(["005930", "000660"])
             assert mock_sub.call_count == 2
@@ -773,21 +777,21 @@ class TestLsConnectorSubscribeDynamic:
 
     async def test_subscribe_dynamic_empty_codes(self):
         conn = _make_ls_connector()
-        with patch.object(conn, "subscribe_stocks_tr", AsyncMock()) as mock_sub:
+        with patch.object(conn, "subscribe_stocks_tr", AsyncMock(return_value=(0, 0))) as mock_sub:
             await conn.subscribe_dynamic([])
             mock_sub.assert_not_called()
 
     async def test_unsubscribe_dynamic_success(self):
         conn = _make_ls_connector()
         with (
-            patch.object(conn, "unsubscribe_stocks_tr", AsyncMock(return_value=True)) as mock_unsub,
+            patch.object(conn, "unsubscribe_stocks_tr", AsyncMock(return_value=(1, 0))) as mock_unsub,
         ):
             await conn.unsubscribe_dynamic(["005930"])
             assert mock_unsub.call_count == 2
 
     async def test_unsubscribe_dynamic_empty_codes(self):
         conn = _make_ls_connector()
-        with patch.object(conn, "unsubscribe_stocks_tr", AsyncMock()) as mock_unsub:
+        with patch.object(conn, "unsubscribe_stocks_tr", AsyncMock(return_value=(0, 0))) as mock_unsub:
             await conn.unsubscribe_dynamic([])
             mock_unsub.assert_not_called()
 

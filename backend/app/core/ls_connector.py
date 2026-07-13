@@ -519,17 +519,22 @@ class LsConnector(BrokerConnector):
             await asyncio.sleep(0)
         return success_all
 
-    async def subscribe_stocks_tr(self, codes: list[str], tr_cd: str) -> bool:
-        """지정된 TR 코드로 종목 리스트 실시간 구독 등록 (예: UH1, UPH)."""
+    async def subscribe_stocks_tr(self, codes: list[str], tr_cd: str) -> tuple[int, int]:
+        """지정된 TR 코드로 종목 리스트 실시간 구독 등록 (예: UH1, UPH).
+
+        Returns:
+            (success_count, fail_count) — per-code 로그 대신 호출자가 요약 로그 출력 (P23).
+        """
         if not self.is_connected() or not self._socket:
             logger.warning(f"[구독] {_BROKER_DISPLAY} {_TR_KOR.get(tr_cd, tr_cd)} 구독 실패 — 연결 없음")
-            return False
+            return 0, len(codes)
 
-        success_all = True
+        success_count = 0
+        fail_count = 0
         for code in codes:
             if not self._socket:
                 logger.warning(f"[구독] {_BROKER_DISPLAY} {_TR_KOR.get(tr_cd, tr_cd)} 구독 중단 — 연결 해제됨")
-                success_all = False
+                fail_count += len(codes) - success_count - fail_count
                 break
             formatted_code = self._format_code(code)
             payload = {
@@ -543,23 +548,28 @@ class LsConnector(BrokerConnector):
                 }
             }
             success = await self._socket.send(payload)
-            if not success:
-                success_all = False
+            if success:
+                success_count += 1
             else:
-                logger.info(f"[구독] {_BROKER_DISPLAY} {_TR_KOR.get(tr_cd, tr_cd)} 구독 완료: {code}")
+                fail_count += 1
             await asyncio.sleep(0)
-        return success_all
+        return success_count, fail_count
 
-    async def unsubscribe_stocks_tr(self, codes: list[str], tr_cd: str) -> bool:
-        """지정된 TR 코드로 종목 리스트 실시간 구독 해지."""
+    async def unsubscribe_stocks_tr(self, codes: list[str], tr_cd: str) -> tuple[int, int]:
+        """지정된 TR 코드로 종목 리스트 실시간 구독 해지.
+
+        Returns:
+            (success_count, fail_count) — per-code 로그 대신 호출자가 요약 로그 출력 (P23).
+        """
         if not self.is_connected() or not self._socket:
-            return False
+            return 0, len(codes)
 
-        success_all = True
+        success_count = 0
+        fail_count = 0
         for code in codes:
             if not self._socket:
                 logger.warning(f"[구독] {_BROKER_DISPLAY} {_TR_KOR.get(tr_cd, tr_cd)} 구독 해지 중단 — 연결 해제됨")
-                success_all = False
+                fail_count += len(codes) - success_count - fail_count
                 break
             formatted_code = self._format_code(code)
             payload = {
@@ -573,26 +583,45 @@ class LsConnector(BrokerConnector):
                 }
             }
             success = await self._socket.send(payload)
-            if not success:
-                success_all = False
+            if success:
+                success_count += 1
+            else:
+                fail_count += 1
             await asyncio.sleep(0)
-        return success_all
+        return success_count, fail_count
 
     async def subscribe_dynamic(self, codes: list[str]) -> None:
-        """동적 데이터(호가, 프로그램 매매) 구독 등록"""
-        logger.info("[구독] %s 호가·프로그램매매 구독 시작 — 종목: %s", _BROKER_DISPLAY, codes)
+        """동적 데이터(호가, 프로그램 매매) 구독 등록.
+
+        UH1(호가) + UPH(프로그램매매) 순차 등록 후 요약 1줄 로그 출력 (P23).
+        per-code 로그는 subscribe_stocks_tr에서 제거됨.
+        """
         if not codes:
             logger.warning("[구독] %s 호가·프로그램매매 구독 — 종목 목록 비어있음", _BROKER_DISPLAY)
             return
-        await self.subscribe_stocks_tr(codes, "UH1")
-        await self.subscribe_stocks_tr(codes, "UPH")
+        logger.info("[구독] %s 호가·프로그램매매 구독 시작 — %d종목", _BROKER_DISPLAY, len(codes))
+        uh1_ok, uh1_fail = await self.subscribe_stocks_tr(codes, "UH1")
+        uph_ok, uph_fail = await self.subscribe_stocks_tr(codes, "UPH")
+        total_ok = uh1_ok + uph_ok
+        total_fail = uh1_fail + uph_fail
+        logger.info(
+            "[구독] %s 호가·프로그램매매 구독 완료 — %d종목 (성공 %d, 실패 %d)",
+            _BROKER_DISPLAY, len(codes), total_ok, total_fail,
+        )
 
     async def unsubscribe_dynamic(self, codes: list[str]) -> None:
-        """동적 데이터 구독 해지"""
+        """동적 데이터 구독 해지. UH1 + UPH 순차 해지 후 요약 1줄 로그 출력 (P23)."""
         if not codes:
             return
-        await self.unsubscribe_stocks_tr(codes, "UH1")
-        await self.unsubscribe_stocks_tr(codes, "UPH")
+        logger.info("[구독] %s 호가·프로그램매매 구독 해지 시작 — %d종목", _BROKER_DISPLAY, len(codes))
+        uh1_ok, uh1_fail = await self.unsubscribe_stocks_tr(codes, "UH1")
+        uph_ok, uph_fail = await self.unsubscribe_stocks_tr(codes, "UPH")
+        total_ok = uh1_ok + uph_ok
+        total_fail = uh1_fail + uph_fail
+        logger.info(
+            "[구독] %s 호가·프로그램매매 구독 해지 완료 — %d종목 (성공 %d, 실패 %d)",
+            _BROKER_DISPLAY, len(codes), total_ok, total_fail,
+        )
 
     async def register_account(self, tr_cd: str = "SC0") -> bool:
         """계좌 등록 (LS WebSocket: tr_type=1).
