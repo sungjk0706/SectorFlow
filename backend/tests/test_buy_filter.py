@@ -54,10 +54,8 @@ def _sector(
     rise_count: int = 2,
     rise_ratio: float = 0.67,
     avg_change_rate: float = 1.0,
-    total_trade_amount: int = 3_000_000_000,
+    avg_trade_amount: int = 3_000_000_000,
     avg_ratio_5d_pct: float = 10.0,
-    scored_trade_amount: int = 3_000_000_000,
-    scored_rise_ratio: float = 0.67,
 ) -> SectorScore:
     return SectorScore(
         sector=sector,
@@ -65,12 +63,10 @@ def _sector(
         rise_count=rise_count,
         rise_ratio=rise_ratio,
         avg_change_rate=avg_change_rate,
-        total_trade_amount=total_trade_amount,
+        avg_trade_amount=avg_trade_amount,
         avg_ratio_5d_pct=avg_ratio_5d_pct,
         rank=rank,
         stocks=stocks or [],
-        scored_trade_amount=scored_trade_amount,
-        scored_rise_ratio=scored_rise_ratio,
     )
 
 

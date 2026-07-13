@@ -39,7 +39,6 @@ class TestGetSectorScoresSnapshot:
         mock_sc.rank = 1
         mock_sc.sector = "반도체"
         mock_sc.final_score = 85.5
-        mock_sc.scored_trade_amount = 100000
         mock_sc.rise_ratio = 0.65
         mock_sc.total = 10
 
@@ -61,7 +60,6 @@ class TestGetSectorScoresSnapshot:
         mock_sc1.rank = 1
         mock_sc1.sector = "반도체"
         mock_sc1.final_score = 85.5
-        mock_sc1.scored_trade_amount = 100000
         mock_sc1.rise_ratio = 0.65
         mock_sc1.total = 10
 
@@ -69,7 +67,6 @@ class TestGetSectorScoresSnapshot:
         mock_sc2.rank = 0
         mock_sc2.sector = "미분류"
         mock_sc2.final_score = 30.0
-        mock_sc2.scored_trade_amount = 5000
         mock_sc2.rise_ratio = 0.3
         mock_sc2.total = 5
 
@@ -276,9 +273,6 @@ class TestRecomputeSectorSummaryNow:
         mock_ss.blocked_targets = []
 
         settings_cache = {
-            "sector_trim_trade_amt_pct": 10.0,
-            "sector_trim_change_rate_pct": 10.0,
-            "sector_weights": {"rise_ratio": 0.5, "trade_amount": 0.5},
             "sector_min_rise_ratio_pct": 60.0,
             "sector_min_trade_amt": 0.0,
         }
