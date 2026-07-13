@@ -1,21 +1,22 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 업종순위 페이지 패널 비율 + 종목명 컬럼 너비 미세 조정**
-  - **목적**: 중앙 패널(업종순위) 업종명 짤림 완화 + 우측 패널(종목시세) 종목명 컬럼 여유 축소
-  - **수정 파일**: `frontend/src/pages/sector-ranking-page.ts`, `frontend/src/components/common/ui-styles.ts`
+- **2026-07-13: 업종별 종목 테이블 탈락 + KRX 비활성 표시 통일 (sector-stock.ts)**
+  - **목적**: 우측 패널(업종별 종목 시세) 탈락 행 표시를 중앙 패널(sector-ranking-list.ts)과 동일 패턴으로 통일 (P23 일관성)
+  - **수정 파일**: `frontend/src/pages/sector-stock.ts`, `frontend/src/components/common/ui-styles.ts`
   - **변경 내용**:
-    - `sector-ranking-page.ts:37` — 우측 flex 3 → 2.5 (중앙:우측 = 1:2.5, 중앙 패널 너비 약 9% 확대)
-    - `ui-styles.ts:499` — `createStockNameColumn` maxWidth 220 → 200
-    - `ui-styles.ts:518` — `createStockNameColumnWithSectorLookup` maxWidth 220 → 200 (P23 일관성)
-  - **영향 범위**: 종목명 컬럼은 6개 페이지(sector-stock, buy-target, stock-detail, sell-position, stock-classification, profit-shared)에 공통 적용 → P10(SSOT)/P23(일관성) 유지. 패널 비율은 sector-ranking 페이지에만 국한 (다른 페이지는 unmount 시 기본값 3으로 복원)
-  - **검증**: `npm run typecheck` 통과, `npm run build` 통과 (61 modules, 2.03s), 브라우저 확인 완료
-  - **커밋**: `b83141a` (push 완료)
+    - `sector-stock.ts:39-55` — `GroupRowItem.bgColor`, `DataRowItem.eliminated` 필드 추가
+    - `sector-stock.ts:224-236` — 탈락 2단계(0.4/0.65) → 단일 `isEliminated` + opacity 0.85 + `COLOR.hoverBg` 배경
+    - `sector-stock.ts:118` — 그룹 헤더 style에 `background: item.bgColor` 추가
+    - `sector-stock.ts:250-259` — KRX 비활성 종목도 opacity 0.85 적용 (`rowOpacity`), `eliminated` 캐시 비교 조건 추가
+    - `sector-stock.ts:621-627` — rowStyle 우선순위: `검색(downBg) > krxInactive(inactiveRowBg) > eliminated(hoverBg) > 투명`
+    - `ui-styles.ts:78` — `inactiveRowBg: '#c8c8c8'` 신규 추가 (기존 `inactiveBg` #e0e0e0는 sector-ranking-list.ts 막대그래프에 계속 사용)
+  - **영향 범위**: sector-stock.ts 1개 파일 + ui-styles.ts 색상 1개 추가. 기존 `inactiveBg` 사용처(중앙 패널 막대그래프) 영향 없음
+  - **검증**: `npm run typecheck` 통과, `npm run build` 통과 (61 modules, 2.12s), 브라우저 확인 완료
+  - **커밋**: (이번 세션에서 진행)
 
-- **2026-07-13: 업종순위 페이지 탈락 행 표시 개선 (배경색 + opacity 통일)**
-  - **수정 파일**: `frontend/src/pages/sector-ranking-list.ts`
-  - **요약**: 탈락 구분 단일 `isEliminated` 통일, opacity 0.85/1.0, 배경색 `COLOR.hoverBg`/`COLOR.downBg` 추가, `RowCache.bgColor` 필드 추가
-  - **P23 일관성**: 업종별 종목 테이블(sector-stock.ts)에 동일 패턴 적용은 다음 세션에서 진행
+- **2026-07-13: 업종순위 페이지 패널 비율 + 종목명 컬럼 너비 미세 조정**
+  - **커밋**: `b83141a` (push 완료)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책, JIF 경계 이벤트 즉시 갱신 — 모두 완료 (git history 참조)
@@ -26,12 +27,10 @@
 
 ## 진행 중 작업
 
-### 업종순위 탈락 행 표시 개선 — 업종순위 페이지 완료, 업종별 종목 테이블 대기
+### 업종순위 탈락 행 표시 개선 — 완료
 - **완료**: `sector-ranking-list.ts` — 탈락 행 배경색(`COLOR.hoverBg` #f0f0f0) + opacity 0.85 통일, 배지 제거
 - **완료**: 패널 비율 미세 조정 — 우측 flex 3→2.5 + 종목명 maxWidth 220→200 (커밋 `b83141a`)
-- **대기**: `sector-stock.ts` — 업종별 종목 테이블에 동일한 배경색 + opacity 패턴 적용 (P23 일관성)
-  - 현재: 업종 그룹 헤더는 opacity 0.4/0.65/1만 적용, KRX 비활성 종목은 `COLOR.inactiveBg` 배경
-  - 목표: 탈락 업종 헤더에 `COLOR.hoverBg` 배경 + opacity 0.85, KRX 비활성 종목도 동일 패턴으로 통일
+- **완료**: `sector-stock.ts` — 업종별 종목 테이블에 동일 배경색 + opacity 패턴 적용 + KRX 비활성 `inactiveRowBg`(#c8c8c8) 구분 (이번 세션)
 
 ### 업종 점수 누적 가산점제 전환 — 계획서 갱신 완료, 구현 대기
 - **계획서**: `docs/plan_sector_bonus_points.md` (895줄 — 2026-07-13 갱신)
@@ -50,15 +49,7 @@
 
 ## 다음 단계
 
-### 1순위: 업종별 종목 테이블 탈락 표시 통일 (sector-stock.ts)
-- **목표**: 업종순위 페이지와 동일한 배경색 + opacity 패턴 적용 (P23 일관성)
-- **수정 대상**:
-  - 업종 그룹 헤더: opacity 0.4/0.65/1 → 배경색 `COLOR.hoverBg` + opacity 0.85 (탈락 통일)
-  - KRX 비활성 종목: `COLOR.inactiveBg` → `COLOR.hoverBg` + opacity 0.85 (탈락과 동일 패턴)
-- **검증**: `npm run typecheck` + `npm run build` + 브라우저 확인
-- **시작점**: 사용자 "진행해" 지시 후 착수
-
-### 2순위: 업종 점수 누적 가산점제 전환 구현 (승인 대기)
+### 1순위: 업종 점수 누적 가산점제 전환 구현 (승인 대기)
 - **계획서**: `docs/plan_sector_bonus_points.md` (895줄 — 폭넓은 사전조사 + 설계 문제 해결 완료)
 - **구현 순서** (계획서 섹션 9 — 3세션 구조):
   1. **Phase 1: 백엔드 전환 (1세션)** — 도메인+서비스+설정 통합 (11개 파일)
@@ -85,16 +76,16 @@
 - **주의**: WS payload 하위 호환성 — Phase 1에서 `total_trade_amount`→`avg_trade_amount` 명명 변경 시, 프론트엔드(Phase 2 전)가 일시적 에러. 해결: Phase 1에서 WS payload에 `total_trade_amount`와 `avg_trade_amount` 둘 다 전송(하위 호환), Phase 2 완료 후 `total_trade_amount` 제거.
 - **시작점**: 사용자 "진행해" 지시 후 Phase 1부터 착수
 
-### 3순위: 업종순위 수신율 UI 확인 대기
+### 2순위: 업종순위 수신율 UI 확인 대기
 - 브라우저에서 업종순위설정 패널 ② 행 확인: 수신율 100.0% 표시, 수신/미수신 종목수 표시
 - 라벨 색상: 정적 라벨 검정, 동적 숫자 파랑 구분 확인
 - **재기동 시 수신율 상승 속도 확인** (이번 수정 후 기대 효과): 앱 재기동 시 수신율이 일관되게 정상 속도로 상승하는지 확인. 이전 증상(간헐적 정체, "업종점수 미전송 — 수신율 임계값 미달" 장시간 지속)이 해결되었는지 검증
 
-### 4순위: engine_settings.py 인접 라인 P20 폴백 일괄 정리 — 완료 (2026-07-13)
+### 3순위: engine_settings.py 인접 라인 P20 폴백 일괄 정리 — 완료 (2026-07-13)
 - line 139-140: `sector_min_rise_ratio_pct` / `sector_min_trade_amt` — `or` 패턴 → `_v if _v is not None else 기본값` 패턴으로 통일 완료
 - **잔존**: 같은 파일 내 다른 `or` 패턴 27곳 → "미해결 문제"에 신규 등록 (P20/P23 위반)
 
-### 5순위: 아키텍처 전수 점검 P1 세션 (B-10)
+### 4순위: 아키텍처 전수 점검 P1 세션 (B-10)
 - B-10: 엔진 계좌/서비스 (`engine_account.py`, `engine_account_rest.py`, `engine_account_notify.py`, `engine_service.py`)
 - `docs/architecture_audit_plan.md` 체크리스트 사용, 발견 문제를 섹션 7에 등록
 - 이후 B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
