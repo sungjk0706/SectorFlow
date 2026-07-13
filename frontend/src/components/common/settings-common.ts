@@ -44,6 +44,28 @@ export function createDescText(text: string, extraStyle?: Partial<CSSStyleDeclar
   return div
 }
 
+/* ── createStepLabel — 단계 요약 라벨 (①~⑤ 등, 번호 없이 본문만 가능) ── */
+export function createStepLabel(num: string, text: string, extraStyle?: Partial<CSSStyleDeclaration>): HTMLElement {
+  const div = document.createElement('div')
+  Object.assign(div.style, {
+    fontSize: FONT_SIZE.desc,
+    color: COLOR.neutral,
+    marginBottom: '2px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  })
+  if (num) {
+    const badge = document.createElement('span')
+    Object.assign(badge.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.normal })
+    badge.textContent = num
+    div.appendChild(badge)
+  }
+  div.appendChild(document.createTextNode(text))
+  if (extraStyle) Object.assign(div.style, extraStyle)
+  return div
+}
+
 /* ── createTimeSlot ── */
 export function createTimeSlot(
   hour: string,

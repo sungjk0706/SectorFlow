@@ -17,6 +17,7 @@ import { createDataTable, type ColumnDef, type DataTableApi } from '../component
 import { createSearchInput } from '../components/common/search-input'
 import { createSectorRowEl } from '../components/common/sector-row'
 import { createSolidBtn } from '../components/common/button'
+import { createStepLabel } from '../components/common/settings-common'
 import { FONT_SIZE, FONT_FAMILY, FONT_WEIGHT, createStockNameColumn, COLOR } from '../components/common/ui-styles'
 import type { PageModule } from '../router'
 import type { StockClassificationMutationResponse } from '../types'
@@ -342,14 +343,6 @@ function cardWrap(): HTMLElement {
   return div
 }
 
-/* ── 공통: 설명 레이블 ── */
-function descLabel(text: string): HTMLElement {
-  const p = document.createElement('p')
-  Object.assign(p.style, { fontSize: FONT_SIZE.badge, color: COLOR.tertiary, margin: '0 0 10px' })
-  p.textContent = text
-  return p
-}
-
 /* ── 8.2: tripleHeader — 공통 헤더 (Indicator_Bar) ── */
 
 function buildTripleHeader(): void {
@@ -364,9 +357,7 @@ function buildTripleHeader(): void {
   })
 
   // 설명라벨
-  const descLabel = document.createElement('span')
-  Object.assign(descLabel.style, { fontSize: FONT_SIZE.small, color: COLOR.disabled, whiteSpace: 'nowrap' })
-  descLabel.textContent = '장마감 후 매매적격종목 확정시세 및 5일봉 거래대금,고가 데이터 저장'
+  const descLabel = createStepLabel('', '장마감 후 매매적격종목 확정시세 및 5일봉 거래대금,고가 데이터 저장', { whiteSpace: 'nowrap' })
   left.appendChild(descLabel)
 
   // 버튼 컨테이너 (가로 정렬)
@@ -532,7 +523,7 @@ function buildSectorManageCard(): HTMLElement {
   const sectorManageTitle = createCardTitleWithContent(titleContainer)
   card.appendChild(sectorManageTitle)
 
-  card.appendChild(descLabel('업종명을 변경하거나, 새 업종을 만들거나, 불필요한 업종을 삭제할 수 있습니다'))
+  card.appendChild(createStepLabel('', '업종명을 변경하거나, 새 업종을 만들거나, 불필요한 업종을 삭제할 수 있습니다'))
 
   // ── 종목 검색 UI ──
   searchInputRef = createSearchInput({

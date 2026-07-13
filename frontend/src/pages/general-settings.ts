@@ -293,8 +293,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
   autoSellRow.appendChild(autoSellRight)
   container.appendChild(autoSellRow)
 
-  container.appendChild(createDescText('거래일 설정시간 내에서만 자동 매수/매도 실행'))
-  container.appendChild(createDescText('공휴일·주말에는 자동매매가 항상 차단됩니다'))
+  container.appendChild(createDescText('거래일 설정시간 내에서만 자동 매수/매도 실행. 공휴일·주말에는 자동매매가 항상 차단됩니다'))
 }
 
 function handleMasterToggle(): void {
