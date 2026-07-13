@@ -135,6 +135,10 @@ def reset_broker_session_state() -> None:
         entry.pop("program_net_buy", None)
         entry.pop("_filtered", None)
 
+    # 2. 구독 대기 세트 초기화 — 재기동 시 잔존 대기 종목 제거 (P10 SSOT)
+    from backend.app.services.engine_sector_confirm import _PENDING_REG_CODES
+    _PENDING_REG_CODES.clear()
+
     # 2. sector_summary_cache 초기화 — are_buy_targets_changed가 True 반환 유도
     state.sector_summary_cache = None
 

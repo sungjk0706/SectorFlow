@@ -32,12 +32,14 @@ class ConnectorManager:
     # ── 생성 ──────────────────────────────────────────────────────────
 
     def _build(self) -> None:
-        """단일 소스 진리: state.integrated_system_settings_cache 직접 사용."""
+        """단일 소스 진리: state.integrated_system_settings_cache 직접 사용.
+
+        캐시는 app.py 시작 시 build_engine_settings_dict로 정규화되어
+        broker_config.websocket이 항상 설정되어 있음 (P20 폴백 금지).
+        """
         from backend.app.services.engine_state import state
         broker_config = state.integrated_system_settings_cache["broker_config"]
-        ws_val = str(
-            broker_config.get("websocket") or state.integrated_system_settings_cache["broker"]
-        ).lower().strip()
+        ws_val = str(broker_config["websocket"]).lower().strip()
 
         broker_names = [b.strip() for b in ws_val.split(",") if b.strip()]
 

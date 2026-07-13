@@ -889,6 +889,8 @@ class TestSyncDynamicSubscriptionsReg:
 
     def test_to_reg_new_codes(self):
         """신규 구독 코드 — DYNAMIC_REG 큐 발행 (L296-310)."""
+        from backend.app.services.engine_sector_confirm import _PENDING_REG_CODES
+        _PENDING_REG_CODES.clear()
         bt = _make_buy_target("005930", guard_pass=True)
         mock_ws = MagicMock()
         mock_ws.is_connected.return_value = True
@@ -904,9 +906,12 @@ class TestSyncDynamicSubscriptionsReg:
             payload = mock_queue.put_nowait.call_args[0][0]
             assert payload[2]["type"] == "DYNAMIC_REG"
             assert "005930" in payload[2]["payload"]["codes"]
+        _PENDING_REG_CODES.clear()
 
     def test_queue_put_failure_logged(self):
         """큐 발행 실패 시 로깅만 수행 (L308-309)."""
+        from backend.app.services.engine_sector_confirm import _PENDING_REG_CODES
+        _PENDING_REG_CODES.clear()
         bt = _make_buy_target("005930", guard_pass=True)
         mock_ws = MagicMock()
         mock_ws.is_connected.return_value = True
@@ -920,6 +925,9 @@ class TestSyncDynamicSubscriptionsReg:
             mock_state.master_stocks_cache = {}
             # 예외 없이 종료
             sync_dynamic_subscriptions([bt])
+        # 큐 발행 실패 시 대기 세트에 추가되지 않음
+        assert "005930" not in _PENDING_REG_CODES
+        _PENDING_REG_CODES.clear()
 
     def test_unreg_candidates_no_loop(self):
         """이벤트 루프 없는 환경 — 해지 타이머 설정 안 함 (L316-318)."""
@@ -993,8 +1001,14 @@ class TestSyncDynamicSubscriptionsReg:
             assert "005930" not in _PENDING_UNREG_TIMERS
         _PENDING_UNREG_TIMERS.clear()
 
-    def test_subscribed_dynamic_set_in_cache(self):
-        """prev_codes의 종목에 _subscribed_dynamic=True 설정 (L335-337)."""
+    def test_pending_reg_codes_set_when_reg_queued(self):
+        """DYNAMIC_REG 큐 발행 시 _pending_reg_codes에 추가 — 구독 전 플래그 설정 안 함 (P10 SSOT).
+
+        _subscribed_dynamic은 구독 완료 후 pipeline_compute DYNAMIC_REG 처리에서만 설정됨.
+        sync_dynamic_subscriptions는 _pending_reg_codes에만 추적.
+        """
+        from backend.app.services.engine_sector_confirm import _PENDING_REG_CODES
+        _PENDING_REG_CODES.clear()
         bt = _make_buy_target("005930", guard_pass=True)
         mock_ws = MagicMock()
         mock_ws.is_connected.return_value = True
@@ -1008,7 +1022,11 @@ class TestSyncDynamicSubscriptionsReg:
                 "005930": {},
             }
             sync_dynamic_subscriptions([bt])
-            assert mock_state.master_stocks_cache["005930"]["_subscribed_dynamic"] is True
+            # 대기 세트에 추가됨
+            assert "005930" in _PENDING_REG_CODES
+            # 구독 전이므로 _subscribed_dynamic은 설정되지 않음 (P22 정합성)
+            assert "_subscribed_dynamic" not in mock_state.master_stocks_cache["005930"]
+        _PENDING_REG_CODES.clear()
 
     @pytest.mark.asyncio
     async def test_returned_codes_multiple_cancels_timers(self):

@@ -329,21 +329,27 @@ async def _process_control_signal(
         elif signal_type == "DYNAMIC_REG":
             from backend.app.services.engine_ws import subscribe_dynamic_data
             from backend.app.services.engine_state import state
+            from backend.app.services.engine_sector_confirm import _PENDING_REG_CODES
             codes = payload.get("codes", [])
             await subscribe_dynamic_data(codes)
-            # _subscribed_dynamic 플래그 설정
+            # _subscribed_dynamic 플래그 설정 — 구독 완료 후 단일 진실 소스 (P10 SSOT)
             for cd in codes:
                 if cd in state.master_stocks_cache:
                     state.master_stocks_cache[cd]["_subscribed_dynamic"] = True
+            # 대기 세트에서 제거 — 실제 구독 완료되었으므로
+            _PENDING_REG_CODES.difference_update(codes)
         elif signal_type == "DYNAMIC_UNREG":
             from backend.app.services.engine_ws import unsubscribe_dynamic_data
             from backend.app.services.engine_state import state
+            from backend.app.services.engine_sector_confirm import _PENDING_REG_CODES
             codes = payload.get("codes", [])
             await unsubscribe_dynamic_data(codes)
             # _subscribed_dynamic 플래그 제거
             for cd in codes:
                 if cd in state.master_stocks_cache:
                     state.master_stocks_cache[cd].pop("_subscribed_dynamic", None)
+            # 대기 세트에서도 제거 — 해지된 종목이 대기 중이었을 수 있음
+            _PENDING_REG_CODES.difference_update(codes)
         else:
             logger.warning("[연산] 알 수 없는 제어 신호: %s", signal_type)
 

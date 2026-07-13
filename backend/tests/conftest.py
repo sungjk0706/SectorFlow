@@ -29,6 +29,11 @@ def _reset_global_caches():
     except Exception:
         pass
     try:
+        from backend.app.services.engine_sector_confirm import _PENDING_REG_CODES
+        _PENDING_REG_CODES.clear()
+    except Exception:
+        pass
+    try:
         import asyncio
         from backend.app.db.database import _db_connection, close_db_connection
         if _db_connection is not None:

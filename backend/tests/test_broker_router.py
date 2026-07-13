@@ -23,11 +23,33 @@ def _mock_settings(
     preloaded_specs=None,
     page_overrides=None,
 ):
-    """테스트용 integrated_system_settings_cache dict 생성."""
-    bc = broker_config or {}
+    """테스트용 integrated_system_settings_cache dict 생성.
+
+    broker_config이 제공되지 않으면 build_engine_settings_dict와 동일하게
+    모든 feature를 broker로 채운 정규화된 dict 생성 (P20 폴백 금지 준수).
+    """
+    if broker_config is None:
+        broker_config = {
+            "websocket": broker,
+            "order": broker,
+            "account": broker,
+            "sector": broker,
+            "auth": broker,
+        }
+    else:
+        # 부분 broker_config 병합 — 누락 feature는 기본 broker로 채움 (P20 정규화 준수)
+        full = {
+            "websocket": broker,
+            "order": broker,
+            "account": broker,
+            "sector": broker,
+            "auth": broker,
+        }
+        full.update(broker_config)
+        broker_config = full
     settings = {
         "broker": broker,
-        "broker_config": bc,
+        "broker_config": broker_config,
         f"{broker}_app_key": app_key,
         f"{broker}_app_secret": app_secret,
         "_broker_specs": preloaded_specs or {},

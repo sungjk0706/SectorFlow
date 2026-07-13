@@ -48,7 +48,9 @@ async def _get_all_tokens_async(router) -> None:
     auth_cache: dict[str, AuthProvider] = getattr(router, "_auth_cache", {})
 
     # broker_config + confirmed_data_broker의 모든 증권사 수집 (auth_cache에 없는 stock 증권사 포함)
-    broker_config = state.integrated_system_settings_cache.get("broker_config") or {}
+    # 캐시는 app.py 시작 시 build_engine_settings_dict로 정규화되어
+    # broker_config가 항상 dict로 존재함 (P20 폴백 금지).
+    broker_config = state.integrated_system_settings_cache["broker_config"]
     all_broker_ids = set(auth_cache.keys())
     for _feat, _bname in broker_config.items():
         _bname = str(_bname or "").lower().strip()
