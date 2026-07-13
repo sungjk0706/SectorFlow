@@ -1,6 +1,15 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-14: 백엔드 JSON 직렬화 단일 소스 통일 — json_utils.py 범용 dumps/loads 추가 + 10개 파일 30건 직접 호출 교체 (P10/P23/P24)**
+  - **현상**: 백엔드 10개 파일에서 `json_utils.py`의 중앙화 함수(`encode/decode_json_field`)가 있음에도 직접 `json.loads/dumps` 호출 (30건). `ensure_ascii=False` 누락 3건으로 한글 데이터 유니코드 이스케이프 저장 위험. P10(SSOT)·P23(일관성) 위반.
+  - **근본 원인**: `json_utils.py` docstring이 "Repository Boundary 단일화" 선언만 하고 범용 WS 메시지·파일 파싱용 함수 부재 → 모든 호출처가 `import json` 후 직접 호출. 선언-실행 불일치.
+  - **수정 파일**: 백엔드 11개 파일 — `json_utils.py`, `settings_file.py`, `sector_stock_cache.py`, `stock_tables.py`, `market_close_pipeline.py`, `ws_manager.py`, `ws.py`, `ws_orders.py`, `ws_settings.py`, `kiwoom_connector.py`, `ls_connector.py`
+  - **변경 내용**: (1) `json_utils.py` — 범용 `dumps(obj, *, ensure_ascii=False, sort_keys=False)` + `loads(text)` 추가, `encode/decode_json_field`는 DB 전용 타입 검증 함수로 유지, docstring "전역 JSON 유틸 + DB 전용 타입 검증"으로 갱신. (2) DB 저장/조회 12건 — `encode_json_field`/`decode_json_field`/`loads` 교체. (3) WS 메시지 12건 — `dumps`/`loads` 교체. (4) 증권사 WS 5건 — `dumps`/`loads` 교체. (5) 파일 I/O 1건 — `loads` 교체. (6) `settings_file.py:296-318` `_parse_value` 이중 파싱(`json.loads` 후 `decode_json_field` 재호출) → `loads` 1회 + `isinstance` 검증으로 단순화 (P24). (7) `except (json.JSONDecodeError, ValueError)` → `except ValueError` 5곳 통일 (`json` import 제거 후 참조 불가, `JSONDecodeError`는 `ValueError` 서브클래스). (8) `stock_tables.py` 기존 미사용 `import sqlite3` 제거 (ruff F401 기존 실패, 규칙 4-1로 수정 전 실패 확인).
+  - **영향 범위**: 백엔드 11개 파일 (+97/-80). 프론트엔드/테스트 영향 없음. `encode_json_field`/`decode_json_field` 시그니처 unchanged — 기존 호출처 호환. `ensure_ascii=False`가 3건에 새로 적용되어 한글 데이터 저장 방식 변경 (유니코드 이스케이프 → 직접 한글 저장, 정상 방향).
+  - **검증**: ruff (수정 파일 11개) All checks passed. pytest 백엔드 전체 2734 passed, 50 warnings (10.06s). 런타임 기동 `.venv/bin/python -W error::RuntimeWarning main.py` — 181ms 기동, 에러/Traceback/RuntimeWarning 없음, `[업종] 업종순위 재계산 (3단계 누적 가산점)` + `재계산 완료` 로그 확인. grep 잔존 `json.loads/dumps` 직접 호출 — `json_utils.py` 자신 2건만 (단일 소스 구현, 정상). 잔존 프로세스 0건 (규칙 5-1 준수).
+  - **커밋**: `5afe492`
+
 - **2026-07-14: 프론트엔드 설정 페이지 요약 라벨 가독성 일괄 개선 — createStepLabel 공통 컴포넌트 승격 + 3개 페이지 통일 (P16/P21/P23)**
   - **현상**: 업종순위 설정 ①~⑤ 단계 요약 라벨이 11px(`small`) + #9e9e9e(`disabled`, 비활성 색상)로 가독성 저하. 종목분류 페이지 설명 라벨 2곳도 동일 문제. 일반설정 페이지의 `createDescText`와 3개 페이지가 각각 다른 폰트/색상 패턴 사용 (P23 위반).
   - **근본 원인**: (1) `sector-settings.ts:17-25` 내부 헬퍼 `createStepLabel`이 `FONT_SIZE.small`(11px) + `COLOR.disabled`(#9e9e9e) 사용 — 활성 정보에 비활성 색상. (2) `stock-classification.ts:347-352` `descLabel` 함수가 `FONT_SIZE.badge`(11px) + `COLOR.tertiary`(#666) 사용. (3) `stock-classification.ts:367-370` 인라인 `descLabel`이 `FONT_SIZE.small`(11px) + `COLOR.disabled`(#9e9e9e) 사용. (4) `general-settings.ts:296-297` 두 행 라벨이 붙어 있어 가독성 저하.
@@ -120,7 +129,16 @@
 
 ## 다음 단계
 
-### 1순위: 아키텍처 전수 점검 P1 세션 (B-10)
+### 1순위: 중복 로직 정리 — 2순위 (백엔드 설정 로드/마스킹 단일화)
+- **상태**: 중복 로직 전수 조사 완료 (백엔드 8건 + 프론트엔드 9건 = 17건 식별). 1순위(JSON 직렬화 통일) 완료 (커밋 `5afe492`).
+- **2순위**: 백엔드 설정 로드/마스킹/복호화 로직 단일화 — `engine_settings.py`로 통합
+  - `settings_store.py:220-251`(`build_masked_settings_dict`)와 `engine_config.py:117-133`(`_mask_sensitive_settings`) 마스킹 중복
+  - `engine_settings.py:28-39`(`_dec`)와 `settings_file.py:141-145` 복호화 유사 패턴
+  - 영향 파일: 3개 (`engine_settings.py`, `settings_store.py`, `engine_config.py`)
+- **3순위 이후**: 프론트엔드 숫자/소수점 포맷팅 통일 → 프론트엔드 설정 페이지 행 스타일 공통화 → 프론트엔드 날짜 포맷팅 공통화 → 백엔드 종목코드 정규화 → 백엔드 REG 페이로드 → 백엔드 KST 타임존 → 기타 LOW 항목
+- **참고**: 각 항목은 세션당 1단계 원칙(규칙 0-1)에 따라 한 세션에 하나씩 진행
+
+### 아키텍처 전수 점검 (일시 보류)
 - B-10: 엔진 계좌/서비스 (`engine_account.py`, `engine_account_rest.py`, `engine_account_notify.py`, `engine_service.py`)
 - `docs/architecture_audit_plan.md` 체크리스트 사용, 발견 문제를 섹션 7에 등록
 - 이후 B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
