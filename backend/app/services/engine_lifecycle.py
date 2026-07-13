@@ -150,6 +150,7 @@ def is_engine_running() -> bool:
 
 def get_engine_status() -> dict:
     """엔진 상태 반환."""
+    from backend.app.services.daily_time_scheduler import get_market_phase
     # 실시간 구독 종목 수
     sub_count = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
 
@@ -184,6 +185,7 @@ def get_engine_status() -> dict:
         "stock_subscribed_count": sub_count,
         "ws_reg_total_estimate": sub_count,
         "broker_statuses": broker_statuses,  # broker별 실제 연결 상태
+        "market_phase": get_market_phase(),  # 장 상태 (P21 사용자 투명성)
     }
 
 

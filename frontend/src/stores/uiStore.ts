@@ -126,14 +126,6 @@ export function applySettingsChanged(data: AppSettings | { delta: boolean; chang
   }
 }
 
-/* ── index-refresh: 엔진 상태 + 장 상태 갱신 ── */
-export function applyIndexRefresh(data: EngineStatus): void {
-  const patch: Partial<UIState> = { status: data }
-  const mp = (data as unknown as Record<string, unknown>).market_phase as UIState['marketPhase'] | undefined
-  if (mp) patch.marketPhase = mp
-  uiStore.setState(patch)
-}
-
 /* ── engine-reload-complete: 설정 재로드 완료 + 서킷브레이커 알림 해제 ── */
 export function applyEngineReloadComplete(): void {
   uiStore.setState({ engineReloadComplete: true, circuitBreakerOpen: null })
@@ -195,7 +187,7 @@ export function applyMarketPhase(data: Partial<UIState['marketPhase']>): void {
   uiStore.setState({ marketPhase: { ...prev, ...data } })
 }
 
-/* ── index-data: 업종지수 실시간 갱신 + broker_statuses 갱신 ── */
+/* ── index-data: 업종지수 실시간 갱신 + broker_statuses + market_phase 갱신 ── */
 export function applyIndexData(data: IndexData): void {
   uiStore.setState((state) => {
     const patch: Partial<UIState> = {}
@@ -207,6 +199,9 @@ export function applyIndexData(data: IndexData): void {
       patch.status = state.status
         ? { ...state.status, broker_statuses: data.broker_statuses }
         : { broker_statuses: data.broker_statuses } as EngineStatus
+    }
+    if (data.market_phase) {
+      patch.marketPhase = { ...state.marketPhase, ...data.market_phase }
     }
     return patch
   })
