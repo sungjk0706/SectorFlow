@@ -93,6 +93,13 @@
     - **기본값 불일치 의심**: `engine_settings.py:206` — `int(merged.get("test_virtual_deposit", 10_000_000) or 0)` — 기본값 10_000_000이지만 or가 0으로 치환. None→10_000_000, 0→0으로 의도적일 수 있으나 패턴 불일치. `engine_settings.py:207` 동일
     - 수정 방향: P23 일관성 정리 시 일괄 처리
 
+- **pipeline_compute.py DYNAMIC_REG 처리 — 구독 실패 시에도 _subscribed_dynamic=True 설정 (P22 위반)**
+  - 발견 일시: 2026-07-13 (실시간 데이터 수신율 문제 조사 중 발견)
+  - 위치: `backend/app/pipelines/pipeline_compute.py:336-340`
+  - 증상: `subscribe_dynamic_data(codes)`가 WS 미연결로 조기 반환해도, 이후 코드가 `_subscribed_dynamic=True` 설정 + `_PENDING_REG_CODES` 제거 수행. 구독 실패 시에도 "구독 완료" 상태로 남아 재등록 불가
+  - 위반 원칙: P22 (데이터 정합성) — 플래그와 실제 구독 상태 불일치
+  - 수정 방향: `subscribe_dynamic_data` 반환값(성공 여부) 확인 후 성공 시에만 `_subscribed_dynamic=True` 설정. 실패 시 `_PENDING_REG_CODES` 유지하여 재시도 가능하도록 수정
+
 - **테스트 파일 ruff lint 에러 72건 (기존 존재, P23 일관성 위반 가능성)**
   - 발견 일시: 2026-07-13 (최초 17건 보고 후 4개 파일 17건 수정 완료, 전수 검사에서 추가 72건 발견)
   - **해결 완료 (17건, 4개 파일)**: `test_broker_router.py` (F401/F841×2/E731), `test_connector_manager.py` (F401), `test_engine_sector_confirm.py` (F401/F811×7), `test_pipeline_compute.py` (E402×3/F401) — 2026-07-13 수정, ruff 0건 + pytest 240 passed 확인
