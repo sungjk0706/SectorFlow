@@ -1,6 +1,6 @@
-import json
 import logging
 from backend.app.db.database import get_db_connection, get_db_lock
+from backend.app.db.json_utils import dumps, loads
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def assemble_filter_summary(meta_json: str, stock_count: int) -> str:
     if not meta_json:
         return f"매매 가능 {stock_count}종목" if stock_count > 0 else ""
     try:
-        meta = json.loads(meta_json)
+        meta = loads(meta_json)
         pct_int = int(round(meta.get("pct", 0)))
         result = (
             f"전체 {meta['unique_codes']}종목 → 매매 가능 {stock_count}종목 "
@@ -89,13 +89,13 @@ async def save_pending_settings(changed_keys: set[str]) -> None:
             existing: set[str] = set()
             if row:
                 try:
-                    existing = set(json.loads(row["value"]))
+                    existing = set(loads(row["value"]))
                 except Exception:
                     existing = set()
             merged = existing | changed_keys
             await conn.execute(
                 "INSERT OR REPLACE INTO system_state_cache (key, value) VALUES (?, ?)",
-                (_PENDING_KEY, json.dumps(sorted(merged)))
+                (_PENDING_KEY, dumps(sorted(merged)))
             )
             await conn.commit()
         logger.info("[연산] 설정 변경 보류 저장: %s", sorted(merged))
@@ -116,7 +116,7 @@ async def load_pending_settings() -> set[str]:
         if not row:
             return set()
         try:
-            return set(json.loads(row["value"]))
+            return set(loads(row["value"]))
         except Exception:
             return set()
     except Exception as e:

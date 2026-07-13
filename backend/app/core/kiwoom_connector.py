@@ -7,11 +7,11 @@ ws_client.py 완전 대체: _KiwoomSocket 내부 클래스에 수신루프/큐/�
 """
 from __future__ import annotations
 import asyncio
-import json
 import logging
 from typing import Any, Callable, Optional
 from backend.app.core.broker_connector import BrokerConnector
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
+from backend.app.db.json_utils import dumps, loads
 logger = logging.getLogger(__name__)
 
 _BROKER_DISPLAY = BROKER_DISPLAY_NAMES["kiwoom"]
@@ -84,13 +84,13 @@ class _KiwoomSocket:
             trnm = payload.get("trnm", "?")
             logger.warning("[시스템] %s 전송 생략 — 연결 없음 (메시지유형=%s)", _BROKER_DISPLAY, trnm)
             return False
-        msg = json.dumps(payload, ensure_ascii=False)
+        msg = dumps(payload)
         await self._ws.send(msg)
         return True
 
     async def _raw_send(self, payload: dict) -> None:
         """내부 전용 송신 (연결 체크 없음)."""
-        await self._ws.send(json.dumps(payload, ensure_ascii=False))
+        await self._ws.send(dumps(payload))
 
     async def _recv_loop(self) -> None:
         """WebSocket 수신루프 — PING 처리, LOGIN 응답, REAL 큐 투입, 연결 끊김 감지."""
@@ -106,8 +106,8 @@ class _KiwoomSocket:
 
                 # 2. JSON 파싱
                 try:
-                    msg = json.loads(raw)
-                except (json.JSONDecodeError, TypeError):
+                    msg = loads(raw)
+                except (ValueError, TypeError):
                     logger.warning("[시스템] %s 메시지 해석 실패(무시): %s", _BROKER_DISPLAY, raw[:80])
                     continue
 

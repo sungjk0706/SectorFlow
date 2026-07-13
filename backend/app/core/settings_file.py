@@ -4,13 +4,13 @@
 단일 사용자 모드: SQLite의 integrated_system_settings 단일 테이블 사용.
 """
 import asyncio
-import json
 import logging
 from pathlib import Path
 from typing import Any
 
 import aiofiles
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
+from backend.app.db.json_utils import encode_json_field, loads
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +175,7 @@ async def save_selected_settings(data: dict) -> None:
             val_str = str(v)
         elif isinstance(v, (dict, list)):
             value_type = "json"
-            val_str = json.dumps(v, ensure_ascii=False)
+            val_str = encode_json_field(v)
         else:
             value_type = "string"
             val_str = str(v)
@@ -248,7 +248,7 @@ async def load_integrated_system_settings() -> dict:
                 try:
                     async with aiofiles.open(spec_file, mode="r", encoding="utf-8") as f:
                         content = await f.read()
-                    spec_data = json.loads(content)
+                    spec_data = loads(content)
                     db_data["_broker_specs"][broker_name] = spec_data
                     logger.info("[설정] 증권사 명세 초기화: %s", BROKER_DISPLAY_NAMES.get(broker_name, broker_name))
                 except Exception as e:
@@ -294,9 +294,6 @@ async def load_integrated_system_settings() -> dict:
 
 
 def _parse_value(value: str, value_type: str) -> Any:
-    from backend.app.db.json_utils import decode_json_field
-    import json
-    
     if value_type == "boolean":
         return value == "True"
     elif value_type == "number":
@@ -305,15 +302,12 @@ def _parse_value(value: str, value_type: str) -> Any:
         return int(value)
     elif value_type == "json":
         try:
-            decoded = json.loads(value)
-            if isinstance(decoded, dict):
-                return decode_json_field(value, expected_type=dict)
-            elif isinstance(decoded, list):
-                return decode_json_field(value, expected_type=list)
-            else:
-                raise ValueError(f"[settings] JSON 타입 지원 안 함: {type(decoded).__name__}")
-        except json.JSONDecodeError as e:
+            decoded = loads(value)
+        except ValueError as e:
             raise ValueError(f"[settings] JSON 파싱 실패: {e}")
+        if isinstance(decoded, (dict, list)):
+            return decoded
+        raise ValueError(f"[settings] JSON 타입 지원 안 함: {type(decoded).__name__}")
     else:
         return value
 
@@ -354,12 +348,12 @@ async def save_settings(data: dict, delete_keys: list[str] | None = None) -> Non
                 if k == "_broker_specs":
                     if isinstance(v, dict):
                         for b_name, spec in v.items():
-                            spec_str = json.dumps(spec, ensure_ascii=False)
+                            spec_str = encode_json_field(spec)
                             broker_specs_params.append((f"_broker_specs:{b_name}", spec_str, "json"))
                     continue
                 if k.startswith("_broker_specs:") or k.startswith("broker_specs:"):
                     b_name = k.split(":", 1)[1]
-                    spec_str = json.dumps(v, ensure_ascii=False)
+                    spec_str = encode_json_field(v)
                     broker_specs_params.append((f"_broker_specs:{b_name}", spec_str, "json"))
                     continue
 
@@ -372,7 +366,7 @@ async def save_settings(data: dict, delete_keys: list[str] | None = None) -> Non
                     val_str = str(v)
                 elif isinstance(v, (dict, list)):
                     value_type = "json"
-                    val_str = json.dumps(v, ensure_ascii=False)
+                    val_str = encode_json_field(v)
                 else:
                     value_type = "string"
                     val_str = str(v)

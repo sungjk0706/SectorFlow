@@ -1,7 +1,6 @@
-import json
 import logging
-import sqlite3
 from backend.app.db.database import get_db_connection
+from backend.app.db.json_utils import dumps, loads
 
 logger = logging.getLogger(__name__)
 
@@ -298,7 +297,7 @@ async def save_trading_days_cache(cache: dict[int, set[str]]) -> None:
     try:
         conn = await get_db_connection()
         for year, days_set in cache.items():
-            data_json = json.dumps(sorted(days_set))
+            data_json = dumps(sorted(days_set))
             await conn.execute(
                 "INSERT OR REPLACE INTO trading_days_cache (year, data) VALUES (?, ?)",
                 (year, data_json)
@@ -319,7 +318,7 @@ async def load_trading_days_cache() -> dict[int, set[str]] | None:
             return None
         result: dict[int, set[str]] = {}
         for row in rows:
-            result[row["year"]] = set(json.loads(row["data"]))
+            result[row["year"]] = set(loads(row["data"]))
         logger.debug("[스케줄] DB 로드 완료 — %d개 연도", len(result))
         return result
     except Exception as e:

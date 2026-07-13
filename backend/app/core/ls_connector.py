@@ -11,11 +11,11 @@ LS증권 Connector — LS증권 WebSocket 커넥터
 """
 from __future__ import annotations
 import asyncio
-import json
 import logging
 from collections.abc import Callable
 from typing import Any
 from backend.app.core.broker_connector import BrokerConnector
+from backend.app.db.json_utils import dumps, loads
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ class _LsSocket:
             tr_cd = payload.get("body", {}).get("tr_cd", "?")
             logger.warning("[연결] %s 전송 생략 — 연결 없음 (TR코드=%s)", _BROKER_DISPLAY, tr_cd)
             return False
-        msg = json.dumps(payload, ensure_ascii=False)
+        msg = dumps(payload)
         await self._ws.send(msg)
         return True
 
@@ -106,8 +106,8 @@ class _LsSocket:
 
                 # 2. JSON 파싱
                 try:
-                    msg = json.loads(raw)
-                except (json.JSONDecodeError, TypeError):
+                    msg = loads(raw)
+                except (ValueError, TypeError):
                     logger.warning("[연결] %s 메시지 해석 실패 (무시): %s", _BROKER_DISPLAY, raw[:80])
                     continue
 
