@@ -10,7 +10,7 @@ import { createActionButton } from '../components/common/button'
 import { createCardTitle } from '../components/common/card-title'
 import { sectionTitle } from '../components/common/settings-common'
 import { ACCOUNT_LABELS_REAL, ACCOUNT_LABELS_TEST } from '../components/common/account-labels'
-import { hotStore } from '../stores/hotStore'
+import { hotStore, getPositionIndex } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { api } from '../api/client'
 import {
@@ -85,6 +85,7 @@ let buyHistory: Record<string, unknown>[] = []
 let sellHistory: Record<string, unknown>[] = []
 let filteredSellHistory: Record<string, unknown>[] = []
 let unsubStore: (() => void) | null = null
+let onRealDataTick: ((e: Event) => void) | null = null
 
 /* ── rAF 배칭 상태 ── */
 let _rafId: number | null = null
@@ -99,6 +100,8 @@ function renderAccountVals(): void {
   const settings = globalSettingsManager.getSettings()
   const params: AccountValsParams = {
     account: state.account,
+    positions: state.positions,
+    sectorStocks: state.sectorStocks,
     positionCount: state.positionCount ?? 0,
     isTestMode: settings?.trade_mode === 'test',
     buyHistory,
@@ -550,33 +553,7 @@ function mount(container: HTMLElement): void {
   let prevPositionsRef = initState.positions
   _mounted = true
 
-  unsubStore = hotStore.subscribe((curr) => {
-    const accountChanged = curr.account !== prevAccountRef || curr.positions !== prevPositionsRef
-    const historyChanged = curr.sellHistory !== prevSellRef || curr.buyHistory !== prevBuyRef
-    const chartChanged = curr.dailySummary !== prevDailySummaryRef || globalSettingsManager.getSettings()?.trade_mode !== prevTradeMode
-
-    if (!accountChanged && !historyChanged && !chartChanged) return
-
-    if (accountChanged) {
-      prevAccountRef = curr.account
-      prevPositionsRef = curr.positions
-      _dirtyAccount = true
-    }
-    if (historyChanged) {
-      prevSellRef = curr.sellHistory
-      prevBuyRef = curr.buyHistory
-      sellHistory = curr.sellHistory
-      buyHistory = curr.buyHistory
-      _dirtyHistory = true
-    }
-    if (chartChanged) {
-      prevDailySummaryRef = curr.dailySummary
-      prevTradeMode = globalSettingsManager.getSettings()?.trade_mode
-      _dirtyChart = true
-    }
-
-    if (_rafId !== null) return
-
+  function flushRender(): void {
     _rafId = requestAnimationFrame(() => {
       _rafId = null
       if (!_mounted) return
@@ -612,7 +589,46 @@ function mount(container: HTMLElement): void {
         }
       }
     })
+  }
+
+  unsubStore = hotStore.subscribe((curr) => {
+    const accountChanged = curr.account !== prevAccountRef || curr.positions !== prevPositionsRef
+    const historyChanged = curr.sellHistory !== prevSellRef || curr.buyHistory !== prevBuyRef
+    const chartChanged = curr.dailySummary !== prevDailySummaryRef || globalSettingsManager.getSettings()?.trade_mode !== prevTradeMode
+
+    if (!accountChanged && !historyChanged && !chartChanged) return
+
+    if (accountChanged) {
+      prevAccountRef = curr.account
+      prevPositionsRef = curr.positions
+      _dirtyAccount = true
+    }
+    if (historyChanged) {
+      prevSellRef = curr.sellHistory
+      prevBuyRef = curr.buyHistory
+      sellHistory = curr.sellHistory
+      buyHistory = curr.buyHistory
+      _dirtyHistory = true
+    }
+    if (chartChanged) {
+      prevDailySummaryRef = curr.dailySummary
+      prevTradeMode = globalSettingsManager.getSettings()?.trade_mode
+      _dirtyChart = true
+    }
+
+    if (_rafId !== null) return
+    flushRender()
   })
+
+  // 보유종목 실시간 틱 시 계좌현황 평가손익/수익률 갱신 (개별 종목 행과 동일 소스 — P22 데이터 정합성)
+  onRealDataTick = (e: Event) => {
+    const code = (e as CustomEvent<string>).detail
+    if (getPositionIndex(code) !== undefined) {
+      _dirtyAccount = true
+      if (_rafId === null) flushRender()
+    }
+  }
+  window.addEventListener('real-data-tick', onRealDataTick)
 
   renderAccountVals()
 }
@@ -626,6 +642,7 @@ function unmount(): void {
   _dirtyHistory = false
   _dirtyChart = false
   if (unsubStore) { unsubStore(); unsubStore = null }
+  if (onRealDataTick) { window.removeEventListener('real-data-tick', onRealDataTick); onRealDataTick = null }
   if (chart) { chart.destroy(); chart = null }
   if (donutChart) { donutChart.destroy(); donutChart = null }
   accountValRefs = []
