@@ -496,7 +496,7 @@ export function createStockNameColumn<T extends object>(
     label: '종목명',
     align: 'left',
     minWidth: 80,
-    maxWidth: 220,
+    maxWidth: 200,
     cellStyle: { fontWeight: 'normal', color: COLOR.neutral },
     render: (item: T) => {
       const lookup = fallbackLookup(item)
@@ -515,7 +515,7 @@ export function createStockNameColumnWithSectorLookup<T extends object>(
     label: '종목명',
     align: 'left',
     minWidth: 80,
-    maxWidth: 220,
+    maxWidth: 200,
     cellStyle: { fontWeight: 'normal', color: COLOR.neutral },
     render: (item: T) => {
       const name = String(item[nameKey] || '')
