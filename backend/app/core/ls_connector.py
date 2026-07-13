@@ -594,12 +594,13 @@ class LsConnector(BrokerConnector):
         """동적 데이터(호가, 프로그램 매매) 구독 등록.
 
         UH1(호가) + UPH(프로그램매매) 순차 등록 후 요약 1줄 로그 출력 (P23).
+        시작 로그에 종목코드 포함 — 사용자가 구독 대상 확인 가능 (P21).
         per-code 로그는 subscribe_stocks_tr에서 제거됨.
         """
         if not codes:
             logger.warning("[구독] %s 호가·프로그램매매 구독 — 종목 목록 비어있음", _BROKER_DISPLAY)
             return
-        logger.info("[구독] %s 호가·프로그램매매 구독 시작 — %d종목", _BROKER_DISPLAY, len(codes))
+        logger.info("[구독] %s 호가·프로그램매매 구독 시작 — %d종목 %s", _BROKER_DISPLAY, len(codes), codes)
         uh1_ok, uh1_fail = await self.subscribe_stocks_tr(codes, "UH1")
         uph_ok, uph_fail = await self.subscribe_stocks_tr(codes, "UPH")
         total_ok = uh1_ok + uph_ok
@@ -610,10 +611,13 @@ class LsConnector(BrokerConnector):
         )
 
     async def unsubscribe_dynamic(self, codes: list[str]) -> None:
-        """동적 데이터 구독 해지. UH1 + UPH 순차 해지 후 요약 1줄 로그 출력 (P23)."""
+        """동적 데이터 구독 해지. UH1 + UPH 순차 해지 후 요약 1줄 로그 출력 (P23).
+
+        시작 로그에 종목코드 포함 — 사용자가 해지 대상 확인 가능 (P21).
+        """
         if not codes:
             return
-        logger.info("[구독] %s 호가·프로그램매매 구독 해지 시작 — %d종목", _BROKER_DISPLAY, len(codes))
+        logger.info("[구독] %s 호가·프로그램매매 구독 해지 시작 — %d종목 %s", _BROKER_DISPLAY, len(codes), codes)
         uh1_ok, uh1_fail = await self.unsubscribe_stocks_tr(codes, "UH1")
         uph_ok, uph_fail = await self.unsubscribe_stocks_tr(codes, "UPH")
         total_ok = uh1_ok + uph_ok
