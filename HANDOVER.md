@@ -1,46 +1,32 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 미해결 문제 2건 근본 해결 — broker_config 폴백 제거 (P20) + _subscribed_dynamic 이중 설정 해결 (P10/P22)**
-  - **목적**: HANDOVER.md 미해결 문제 2건 근본 원인 해결
-  - **문제 1: broker_config = {} 빈 객체 + fallback 사용 (P20 위반)**
-    - **근본 원인**: `app.py:88` 시작 시 원본 DB 데이터를 `build_engine_settings_dict` 정규화 없이 캐시에 주입. `settings_defaults.py:100` 기본값이 `broker_config = {}`이므로 시작 시 캐시가 빈 객체 → 5곳에서 폴백 사용
-    - **해결 방안**:
-      - 수정 1: `app.py:83-92` — `build_engine_settings_dict(settings)`로 정규화 후 캐시 주입 → `broker_config.websocket` 항상 설정 보장
-      - 수정 2: `connector_manager.py:38-40` — `broker_config.get("websocket") or ...` → `broker_config["websocket"]` (폴백 제거)
-      - 수정 3: `broker_router.py:74-76, 102-104` — `broker_config.get(feature, default) or default` → `broker_config[feature]` (폴백 제거 2곳)
-      - 수정 4: `engine_loop.py:51` — `state.integrated_system_settings_cache.get("broker_config") or {}` → `state.integrated_system_settings_cache["broker_config"]` (폴백 제거)
-      - 수정 5: `test_connector_manager.py:116-129` — `test_init_falls_back_to_broker_when_websocket_none` → `test_init_raises_when_websocket_missing` (폴백 테스트 → 정상 경로 검증)
-      - 수정 6: `test_broker_router.py:18-48` — `_mock_settings` 헬퍼가 정규화된 broker_config 기본값 제공 + 부분 broker_config 병합
-  - **문제 2: _subscribed_dynamic 플래그 이중 설정 (P10/P22 위반)**
-    - **근본 원인**: `engine_sector_confirm.py:330-332` 구독 완료 전에 `_subscribed_dynamic = True` 설정 + `pipeline_compute.py:335-337` 구독 완료 후 다시 설정. 구독 실패 시에도 True로 남는 정합성 문제. "구독 중"과 "구독 대기 중"을 하나의 플래그로 겸용하는 설계 오류
-    - **해결 방안**:
-      - 수정 1: `engine_sector_confirm.py:25` — `_PENDING_REG_CODES: set[str]` 신규 추가 (구독 대기 중 추적)
-      - 수정 2: `engine_sector_confirm.py:294-311` — `prev_codes` 계산 시 `_PENDING_REG_CODES` 포함, DYNAMIC_REG 큐 발행 후 `_PENDING_REG_CODES.update(to_reg)`, `prev_codes | to_reg` 임시 코드 제거
-      - 수정 3: `engine_sector_confirm.py:338-341` — 구독 전 플래그 설정 코드 제거 (P22 정합성)
-      - 수정 4: `pipeline_compute.py:329-346` — DYNAMIC_REG/UNREG 처리 후 `_PENDING_REG_CODES.difference_update(codes)` 추가
-      - 수정 5: `engine_lifecycle.py:137-139` — stop_engine 시 `_PENDING_REG_CODES.clear()` 추가
-      - 수정 6: `test_engine_sector_confirm.py:996-1021` — `test_subscribed_dynamic_set_in_cache` → `test_pending_reg_codes_set_when_reg_queued` 교체
-      - 수정 7: `test_pipeline_compute.py:231-266` — `test_dynamic_reg`/`test_dynamic_unreg`에 `_PENDING_REG_CODES` 검증 추가
-      - 수정 8: `conftest.py:31-35` — autouse fixture에 `_PENDING_REG_CODES.clear()` 추가
-  - **수정 파일**: `app.py`, `connector_manager.py`, `broker_router.py`, `engine_loop.py`, `engine_sector_confirm.py`, `pipeline_compute.py`, `engine_lifecycle.py`, `test_connector_manager.py`, `test_broker_router.py`, `test_engine_sector_confirm.py`, `test_pipeline_compute.py`, `conftest.py`
-  - **검증**: py_compile OK, pytest 352 passed (test_connector_manager 19 + test_broker_router 25 + test_engine_sector_confirm 96 + test_pipeline_compute 120 + test_engine_loop 28 + test_engine_snapshot 22 + test_engine_settings 14 + test_broker_change 28), 런타임 기동 정상 (`[증권사] 계좌=설정됨, 주문=설정됨, 인증=설정됨, 웹소켓=설정됨` — 폴백 없이 정상 경로 작동 확인)
-  - **커밋/푸쉬**: 미수행 (사용자 승인 대기)
+- **2026-07-13: 수읉상세 매도/매수 탭 시각적 개선 — 사각 테두리 + 1행 표시 + 동적 숫자 파랑 강조**
+  - **목적**: 수읉상세 페이지 매도/매수 탭의 여백 부재, 시각적 구분 부재, 폰트 크기 작음, 매수내역 2행 줄바꿈 문제 해결
+  - **근본 원인**:
+    1. `button.ts:210-223` `createTabBar`의 `applyStyle`에 `whiteSpace: 'nowrap'` 설정 없음 → `equalWidth: true` + 긴 라벨(건수 포함) 시 자동 줄바꿈
+    2. `profit-detail.ts:425-426` 탭 폰트 12px, 패딩 `8px 0` (좌우 패딩 0) — general-settings(13px, `8px 16px`) 대비 작고 좁음
+    3. `button.ts:214-216` `border: 'none'`, 활성/비활성 구분이 하단 2px 보더만 → 사각 테두리 없이 클릭 영역 불명확
+    4. `profit-detail.ts:145-150` `textContent` 단일 할당 → 동적 숫자만 별도 색상 적용 불가
+  - **해결 방안**:
+    - 수정 1: `button.ts:178-256` `createTabBar` — `whiteSpace: 'nowrap'` 추가 (모든 탭 줄바꿈 방지), `boxed?: boolean` 옵션 추가 (기본 false, 기존 페이지 영향 없음)
+    - 수정 2: `button.ts:210-223` `applyStyle` — `boxed: true`일 때 사각 테두리 패턴 (활성: `1px solid COLOR.down` + `COLOR.downBg` 배경, 비활성: `1px solid COLOR.border` + 투명, `borderRadius: 4px`)
+    - 수정 3: `profit-detail.ts:6` `FONT_WEIGHT` import 추가
+    - 수정 4: `profit-detail.ts:139-159` `setTabLabel` 헬퍼 추가 — `replaceChildren()` + 텍스트 노드 + 숫자 span(`COLOR.down` 파랑 + `FONT_WEIGHT.semibold`) 조립, `updateTabLabels`에서 `textContent` → `setTabLabel` 호출로 전환
+    - 수정 5: `profit-detail.ts:418` tabRow `borderBottom` 제거 (사각 탭 테두리와 이중 보더 방지), `marginTop: 4px`, `padding: 0 4px`, `marginBottom: 12px` 적용
+    - 수정 6: `profit-detail.ts:432-436` `fontSize: FONT_SIZE.tab` (13px), `padding: '8px 16px'`, `boxed: true` 적용
+  - **수정 파일**: `button.ts`, `profit-detail.ts`
+  - **검증**: typecheck OK, build OK (61 modules, 2.08s), 런타임 브라우저 확인 — 매도/매수 탭 1행 표시, 사각 테두리 파랑/회색 구분, 동적 숫자 파랑 강조 정상
+  - **커밋/푸쉬**: `dd16522` pushed to `origin/main`
 
 ## 직전 완료 작업 (이전)
-- **2026-07-13: LS증권 구독 로그 중복 출력 정리 — per-code 완료 로그 → 요약 1줄**
-  - **목적**: 13종목 구독 시 28줄(시작 2줄 + 종목별 완료 26줄) 출력되는 로그 과다 문제 해결
-  - **근본 원인**:
-    1. `engine_ws.py:252` — wrapper 레벨 "구독 시작" 로그 + `ls_connector.py:583` 커넥터 레벨 "구독 시작" 로그 이중 출력
-    2. `ls_connector.py:549` — `subscribe_stocks_tr()`에서 종목마다 "구독 완료: {code}" 로그. UH1+UPH 2TR이라 종목당 2줄
-  - **해결 방안**:
-    - 수정 1: `engine_ws.py:252` wrapper 시작 로그 제거 (커넥터 레벨로 단일화, P23)
-    - 수정 2: `ls_connector.py:522-595` `subscribe_stocks_tr`/`unsubscribe_stocks_tr` per-code 로그 제거, 반환값 `bool` → `tuple[int, int]` (success_count, fail_count) 변경
-    - 수정 3: `ls_connector.py:597-627` `subscribe_dynamic`/`unsubscribe_dynamic`에서 UH1/UPH 처리 후 요약 1줄 로그 출력
-    - 수정 4: `test_ls_connector.py:721-796` 반환값 튜플 변경에 따른 assertion 수정
-  - **수정 파일**: `engine_ws.py`, `ls_connector.py`, `test_ls_connector.py`
-  - **검증**: py_compile OK, ruff OK, pytest 102 passed, 런타임 기동 17종목 구독 로그 3줄 출력 확인 (이전 36줄 → 3줄)
-  - **커밋/푸쉬**: `f340b89` pushed to `origin/main`
+- **2026-07-13: 미해결 문제 2건 근본 해결 — broker_config 폴백 제거 (P20) + _subscribed_dynamic 이중 설정 해결 (P10/P22)**
+  - **목적**: HANDOVER.md 미해결 문제 2건 근본 원인 해결
+  - **문제 1: broker_config = {} 빈 객체 + fallback 사용 (P20 위반)** — `app.py:83-92` 정규화 후 캐시 주입, 5곳 폴백 제거
+  - **문제 2: _subscribed_dynamic 플래그 이중 설정 (P10/P22 위반)** — `_PENDING_REG_CODES` 신규 추가로 구독 대기 중 추적 분리
+  - **수정 파일**: `app.py`, `connector_manager.py`, `broker_router.py`, `engine_loop.py`, `engine_sector_confirm.py`, `pipeline_compute.py`, `engine_lifecycle.py`, 테스트 4개, `conftest.py`
+  - **검증**: pytest 352 passed, 런타임 기동 정상
+  - **커밋/푸쉬**: `a5e190d` pushed to `origin/main`
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책, JIF 경계 이벤트 즉시 갱신 — 모두 완료 (git history 참조)
