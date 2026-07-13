@@ -77,8 +77,6 @@ def build_engine_settings_dict(flat: dict) -> dict:
         "sell_custom_qty":      int(merged.get("sell_custom_qty", 0) or 0),
         # 리스크
         "max_position_size":    (lambda raw: 0 if raw is None or raw == "None" or raw == "" else int(raw))(merged.get("max_position_size")),
-        "max_daily_loss_limit": int(merged.get("max_daily_loss_limit", -500000) or -500000),
-        "max_single_stock_exposure": int(merged.get("max_single_stock_exposure", 20000000) or 20000000),
         # 텔레그램 (복호화)
         "tele_on":              bool(merged.get("tele_on")),
         "telegram_on":          bool(merged.get("tele_on")),
@@ -94,6 +92,12 @@ def build_engine_settings_dict(flat: dict) -> dict:
         "kiwoom_app_secret_real": merged.get("kiwoom_app_secret_real") or "",
         "kiwoom_account_no_real": str(merged.get("kiwoom_account_no_real") or "").strip(),
     }
+
+    # 리스크 (이어서) — 0도 유효값이므로 or 폴백 금지 (P20)
+    _v = merged.get("max_daily_loss_limit")
+    result["max_daily_loss_limit"] = int(_v if _v is not None else -500000)
+    _v = merged.get("max_single_stock_exposure")
+    result["max_single_stock_exposure"] = int(_v if _v is not None else 20000000)
 
     # 모든 증권사 API 키/시크릿/계좌번호 동적 수집 및 복호화 (real 키 우선)
     broker_names = {k.split("_")[0] for k in merged if k.endswith("_app_key") or k.endswith("_app_key_real")}
@@ -136,8 +140,10 @@ def build_engine_settings_dict(flat: dict) -> dict:
         logger.warning("[설정] sector_weights에 total_trade_amount 키 없음: %s — 마이그레이션 누락 가능", _sw)
     _v = merged.get("sector_max_targets")
     result["sector_max_targets"]          = int(_v if _v is not None else 3)
-    result["sector_min_rise_ratio_pct"]   = float(merged.get("sector_min_rise_ratio_pct", 60.0) or 60.0)
-    result["sector_min_trade_amt"]        = float(merged.get("sector_min_trade_amt", 0.0) or 0.0)
+    _v = merged.get("sector_min_rise_ratio_pct")
+    result["sector_min_rise_ratio_pct"]   = float(_v if _v is not None else 60.0)
+    _v = merged.get("sector_min_trade_amt")
+    result["sector_min_trade_amt"]        = float(_v if _v is not None else 0.0)
     _v = merged.get("buy_block_rise_pct")
     result["buy_block_rise_pct"]          = float(_v if _v is not None else 7.0)
     _v = merged.get("buy_block_fall_pct")
