@@ -4,7 +4,7 @@
 import type { ColumnDef } from '../components/common/data-table'
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, fmtComma, createStockNameColumn, createCodeCell, createNumberCell, COLOR } from '../components/common/ui-styles'
 import { hotStore, normalizeStockCode } from '../stores/hotStore'
-import type { AccountSnapshot } from '../types'
+import type { AccountSnapshot, Position, SectorStock } from '../types'
 import type { SectorDonutRow } from '../components/canvas-sector-donut'
 import { assignSectorColors } from '../components/canvas-sector-donut'
 
@@ -407,10 +407,45 @@ export function createDrilldownCols(onDateClick: (date: string) => void): Column
   ]
 }
 
+/* ── 보유 종목 요약 계산 (순수 함수 — P22 데이터 정합성) ── */
+
+/**
+ * 보유 종목 positions + 실시간 시세 sectorStocks로부터 평가금액/평가손익/수익률 계산.
+ * 개별 종목 행(sell-position.ts COLUMNS pnl/rate 컬럼)과 동일한 데이터 소스·공식 사용.
+ *
+ * - 현재가: sectorStocks[code].cur_price ?? p.cur_price (실시간 틱 우선)
+ * - 매입가: p.buy_price ?? p.avg_price
+ * - 평가금액 = sum(현재가 × 수량)
+ * - 매입금액 = sum(매입가 × 수량)
+ * - 평가손익 = 평가금액 - 매입금액
+ * - 수익률 = 평가손익 / 매입금액 × 100 (가중 평균, 매입금액 0이면 0)
+ */
+export function computeHoldingsSummary(
+  positions: Position[],
+  sectorStocks: Record<string, SectorStock>,
+): { evalTotal: number; evalPnl: number; evalRate: number; buyTotal: number } {
+  let evalTotal = 0
+  let buyTotal = 0
+  for (const p of positions) {
+    const qty = p.qty ?? 0
+    if (qty <= 0) continue
+    const code = normalizeStockCode(p.stk_cd)
+    const curPrice = sectorStocks[code]?.cur_price ?? p.cur_price ?? 0
+    const buyPrice = p.buy_price ?? p.avg_price ?? 0
+    evalTotal += Number(curPrice) * qty
+    buyTotal += buyPrice * qty
+  }
+  const evalPnl = evalTotal - buyTotal
+  const evalRate = buyTotal > 0 ? Math.round((evalPnl / buyTotal) * 10000) / 100 : 0
+  return { evalTotal, evalPnl, evalRate, buyTotal }
+}
+
 /* ── 계좌 현황 렌더 (순수 함수 — 매개변수 기반) ── */
 
 export interface AccountValsParams {
   account: AccountSnapshot | null
+  positions: Position[]
+  sectorStocks: Record<string, SectorStock>
   positionCount: number
   isTestMode: boolean
   buyHistory: Record<string, unknown>[]
@@ -443,10 +478,8 @@ export function renderAccountVals(params: AccountValsParams): void {
     buyHistory.reduce((s, r) => s + Number(r.fee ?? 0), 0) +
     sellHistory.reduce((s, r) => s + Number(r.fee ?? 0) + Number(r.tax ?? 0), 0)
 
-  // 보유주식 평가금액/평가손익/수익률: 백엔드가 실시간 계산하여 전송한 account 값 직접 사용
-  const evalTotal = a?.total_eval_amount ?? 0
-  const evalPnl = a?.total_pnl ?? 0
-  const evalRate = a?.total_pnl_rate ?? 0
+  // 보유주식 평가금액/평가손익/수익률: positions + sectorStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식)
+  const { evalTotal, evalPnl, evalRate } = computeHoldingsSummary(params.positions, params.sectorStocks)
 
   // 누적 실현 손익: sellHistory 전체 합산
   const cumPnl = aggregatePnl(sellHistory)

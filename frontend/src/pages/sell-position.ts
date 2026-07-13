@@ -4,11 +4,12 @@
 // frontend/src/pages/sell-position.ts
 
 import { createDataTable, type DataTableApi, type ColumnDef } from '../components/common/data-table'
-import { hotStore, normalizeStockCode } from '../stores/hotStore'
+import { hotStore, normalizeStockCode, getPositionIndex } from '../stores/hotStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardHeaderWithMargin } from '../components/common/card-header'
 import { rateColor, pnlColor, fmtComma, fmtRate, createCodeCell, createStockNameColumn, createNumberCell, createPriceCell, COLOR } from '../components/common/ui-styles'
 import { createBadgeRow, createBadge, updateBadge, type BadgeHandle } from '../components/common/badge'
+import { computeHoldingsSummary } from './profit-shared'
 import type { Position } from '../types'
 
 const COLUMNS: ColumnDef<Position>[] = [
@@ -98,6 +99,7 @@ const COLUMNS: ColumnDef<Position>[] = [
 let dataTable: DataTableApi<Position> | null = null
 let unsubStore: (() => void) | null = null
 let _rafId: number | null = null
+let _summaryRafId: number | null = null
 let onRealDataTick: ((e: Event) => void) | null = null
 let _mounted = false
 
@@ -106,30 +108,28 @@ let summaryEvalBadge: BadgeHandle | null = null
 let summaryPnlBadge: BadgeHandle | null = null
 let summaryRateBadge: BadgeHandle | null = null
 
-/** 보유주식 요약 행 렌더 — hotStore account 값으로 평가금액/손익/수익률 표시 */
+/** 보유주식 요약 행 렌더 — positions + sectorStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식) */
 function renderSummary(): void {
   const state = hotStore.getState()
-  const a = state.account
   const count = state.positionCount ?? state.positions.length
+  const { evalTotal, evalPnl, evalRate } = computeHoldingsSummary(state.positions, state.sectorStocks)
 
   if (summaryEvalBadge) {
-    updateBadge(summaryEvalBadge, fmtComma(a?.total_eval_amount ?? 0), {
+    updateBadge(summaryEvalBadge, fmtComma(evalTotal), {
       statusText: `(${count}종목) `,
       statusColor: COLOR.code,
     })
   }
 
-  const pnl = a?.total_pnl ?? 0
-  const rate = a?.total_pnl_rate ?? 0
-  const color = pnlColor(pnl)
-  const pnlSign = pnl > 0 ? '+' : ''
-  const rateSign = rate > 0 ? '+' : ''
+  const color = pnlColor(evalPnl)
+  const pnlSign = evalPnl > 0 ? '+' : ''
+  const rateSign = evalRate > 0 ? '+' : ''
 
   if (summaryPnlBadge) {
-    updateBadge(summaryPnlBadge, `${pnlSign}${fmtComma(pnl)}`, { valueColor: color })
+    updateBadge(summaryPnlBadge, `${pnlSign}${fmtComma(evalPnl)}`, { valueColor: color })
   }
   if (summaryRateBadge) {
-    updateBadge(summaryRateBadge, `${rateSign}${rate.toFixed(2)}`, { valueColor: color })
+    updateBadge(summaryRateBadge, `${rateSign}${evalRate.toFixed(2)}`, { valueColor: color })
   }
 }
 
@@ -228,6 +228,14 @@ function mount(container: HTMLElement): void {
     if (dataTable && dataTable.updateItemByKey) {
       dataTable.updateItemByKey(code)
     }
+    // 보유종목 틱 시 요약 배지 갱신 (rAF 배칭 — 개별 행과 동일 소스로 실시간 일치)
+    if (getPositionIndex(code) !== undefined && _summaryRafId === null) {
+      _summaryRafId = requestAnimationFrame(() => {
+        _summaryRafId = null
+        if (!_mounted) return
+        renderSummary()
+      })
+    }
   }
   window.addEventListener('real-data-tick', onRealDataTick)
 }
@@ -241,6 +249,7 @@ function unmount(): void {
   }
   if (unsubStore) { unsubStore(); unsubStore = null }
   if (_rafId !== null) { cancelAnimationFrame(_rafId); _rafId = null }
+  if (_summaryRafId !== null) { cancelAnimationFrame(_summaryRafId); _summaryRafId = null }
   if (dataTable) { dataTable.destroy(); dataTable = null }
   summaryEvalBadge = null
   summaryPnlBadge = null
