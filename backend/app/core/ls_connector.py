@@ -590,16 +590,19 @@ class LsConnector(BrokerConnector):
             await asyncio.sleep(0)
         return success_count, fail_count
 
-    async def subscribe_dynamic(self, codes: list[str]) -> None:
+    async def subscribe_dynamic(self, codes: list[str]) -> bool:
         """동적 데이터(호가, 프로그램 매매) 구독 등록.
 
         UH1(호가) + UPH(프로그램매매) 순차 등록 후 요약 1줄 로그 출력 (P23).
         시작 로그에 종목코드 포함 — 사용자가 구독 대상 확인 가능 (P21).
         per-code 로그는 subscribe_stocks_tr에서 제거됨.
+
+        Returns:
+            True if 1건 이상 성공, False if 전부 실패 또는 종목 목록 비어있음 (P22 정합성).
         """
         if not codes:
             logger.warning("[구독] %s 호가·프로그램매매 구독 — 종목 목록 비어있음", _BROKER_DISPLAY)
-            return
+            return False
         logger.info("[구독] %s 호가·프로그램매매 구독 시작 — %d종목 %s", _BROKER_DISPLAY, len(codes), codes)
         uh1_ok, uh1_fail = await self.subscribe_stocks_tr(codes, "UH1")
         uph_ok, uph_fail = await self.subscribe_stocks_tr(codes, "UPH")
@@ -609,6 +612,7 @@ class LsConnector(BrokerConnector):
             "[구독] %s 호가·프로그램매매 구독 완료 — %d종목 (성공 %d, 실패 %d)",
             _BROKER_DISPLAY, len(codes), total_ok, total_fail,
         )
+        return total_ok > 0
 
     async def unsubscribe_dynamic(self, codes: list[str]) -> None:
         """동적 데이터 구독 해지. UH1 + UPH 순차 해지 후 요약 1줄 로그 출력 (P23).

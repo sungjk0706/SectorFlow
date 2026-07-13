@@ -82,9 +82,9 @@ class BrokerConnector(ABC):
         """구독/해지 ACK 응답 지원 여부 반환"""
         ...
 
-    async def subscribe_dynamic(self, codes: list[str]) -> None:
-        """동적 데이터 구독 등록 (기본 구현: 패스)"""
-        pass
+    async def subscribe_dynamic(self, codes: list[str]) -> bool:
+        """동적 데이터 구독 등록 (기본 구현: 미지원)"""
+        return False
 
     async def unsubscribe_dynamic(self, codes: list[str]) -> None:
         """동적 데이터 구독 해지 (기본 구현: 패스)"""

@@ -1081,8 +1081,8 @@ async def start_daily_time_scheduler() -> None:
         await schedule_auto_trade_timers(settings)
         await schedule_ws_subscribe_timers(settings)
         schedule_midnight_timer()
-        # 현재 시각 기준 WS 구독 상태 즉시 판정 (기동 시점)
-        await _init_ws_subscribe_state()
+        # WS 구독 상태 초기화는 engine_loop.run_engine_loop()에서 WS 연결 이전에 수행됨
+        # (표준 기동 순서: 초기화 → 연결 → 구독). 여기서 중복 호출 제거 — 경쟁 조건 방지 (P22).
     except Exception as e:
         logger.warning("[스케줄] 타이머 초기 예약 실패: %s", e)
 

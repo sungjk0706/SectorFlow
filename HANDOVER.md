@@ -1,22 +1,21 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 매수설정 5개 설정행 토글 도입 + 상승률/하락률 0 해석 충돌 해결 (P10/P23)**
-  - **목적**: 매수 설정 패널 5개 설정행(상승률/하락률/체결강도 차단, 최대 동시 보유 종목 수, 종목당 일일 최대 매수 금액)에 토글 도입, "끄기"와 "0값" 구분, 후보 생성/주문 실행 단계 간 0 해석 충돌 해결
+- **2026-07-13: 실시간 데이터 구독 기동 순서 경쟁 조건 해결 + 동적 구독 정합성 3건 수정 (P22/P10/P23)**
+  - **목적**: 앱 재기동 시 간헐적 수신율 상승 정체 + "업종점수 미전송 — 수신율 임계값 미달" 장시간 지속 문제 근본 해결
   - **근본 원인**:
-    1. `buy_filter.py:82,86` — `if block_rise_pct > 0` → 0 = "차단 안 함" (후보 생성 단계)
-    2. `trading.py:203,206` — `if _change_rate >= _rise_limit` (> 0 검사 없음) → 0 = "0% 이상 상승 전 종목 차단" (주문 실행 단계)
-    3. 같은 설정값이 단계별로 다르게 해석되는 P10(SSOT) 위반
-    4. "전체 일일 최대 매수 금액"만 토글이 있고 비슷한 한도 설정들은 토글이 없는 P23(일관성) 위반
+    1. `app.py:121-129` — `start_engine()`(엔진 루프 백그라운드) 후 `start_daily_time_scheduler()` 순차 호출 시, 엔진 루프가 WS 연결+구독+틱 수신까지 도달한 후 `_init_ws_subscribe_state()`가 실행되어 이미 수신된 틱 데이터를 None으로 리셋 → 수신율 0% 추락 → 임계값 재대기
+    2. `engine_lifecycle.py:59-93` — `stop_engine()`이 `_PENDING_REG_CODES`와 동적 구독 해지 타이머를 정리하지 않음 → 이전 세션 잔존 상태가 신규 세션으로 누출
+    3. `pipeline_compute.py:336-340` — DYNAMIC_REG 처리 시 `subscribe_dynamic_data` 실패해도 `_subscribed_dynamic=True` 설정 → 플래그와 실제 구독 상태 불일치
   - **해결 방안**:
-    - 새 설정 키 5개: `buy_block_rise_on`, `buy_block_fall_on`, `buy_block_strength_on`, `max_stock_cnt_on`, `buy_amt_on`
-    - 마이그레이션: 기존 값 기반 자동 추론 (값 > 0 → ON, 값 = 0 → OFF)
-    - 0 해석 충돌 해결: `buy_filter.py`와 `trading.py` 양쪽 모두 `_on` 플래그 기반으로 통일
-    - 토글 OFF 의미: 차단 3개 = "차단 안 함", 보유종목수 = "제한 없음", 종목당 한도 = "한도 없음" (사용자 선택)
-    - 안전 기본값 변경: `max_stock_cnt` 0→5, `buy_amt` 0→1,000,000 (신규 사용자 보호, P21)
-  - **수정 파일**: 백엔드 6파일(settings_defaults.py, engine_settings.py, buy_filter.py, trading.py, buy_order_executor.py, engine_service.py) + 프론트엔드 3파일(types/index.ts, buy-settings.ts, buy-target.ts) + 테스트 4파일
-  - **검증**: pytest 2741 passed, npm run build OK, 런타임 기동 OK (에러 없음, 15s 대기 후 종료)
-  - **커밋/푸쉬**: `86e349c` pushed to `origin/main`
+    - 표준 기동 순서 적용 (초기화 → 연결 → 구독): `_init_ws_subscribe_state()`를 `engine_loop.run_engine_loop()` 내 WS 연결 이전에 실행 (engine_loop.py:165-169)
+    - `start_daily_time_scheduler()`에서 `_init_ws_subscribe_state()` 중복 호출 제거 (daily_time_scheduler.py:1081-1084)
+    - `stop_engine()`에 `cancel_all_dynamic_unreg_timers()` + `_PENDING_REG_CODES.clear()` 추가 (engine_lifecycle.py:71-74)
+    - `subscribe_dynamic` 반환형 `None → bool` 통일 (ls_connector.py, kiwoom_connector.py, engine_ws.py, connector_manager.py, broker_connector.py — P23 일관성)
+    - DYNAMIC_REG 처리 시 성공 반환값 확인 후에만 `_subscribed_dynamic=True` 설정, 실패 시 `_PENDING_REG_CODES` 유지 (pipeline_compute.py:329-345)
+  - **수정 파일**: 백엔드 9파일(engine_loop.py, daily_time_scheduler.py, engine_lifecycle.py, pipeline_compute.py, engine_ws.py, ls_connector.py, kiwoom_connector.py, connector_manager.py, broker_connector.py)
+  - **검증**: pytest 2741 passed, ruff 0건, 런타임 기동 OK (초기화→연결→구독 순서 로그 확인, 수신율 5초 만에 95.4% 임계값 통과, 에러 없음)
+  - **커밋/푸쉬**: 사용자 승인 대기
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책, JIF 경계 이벤트 즉시 갱신 — 모두 완료 (git history 참조)
@@ -53,7 +52,7 @@
 ### 2순위: 업종순위 수신율 UI 확인 대기
 - 브라우저에서 업종순위설정 패널 ② 행 확인: 수신율 100.0% 표시, 수신/미수신 종목수 표시
 - 라벨 색상: 정적 라벨 검정, 동적 숫자 파랑 구분 확인
-- 장개시 후 WS 구독 시작 시 수신율 0% → 틱 수신시 상승 → 임계값 도달시 업종점수 계산 시작 확인
+- **재기동 시 수신율 상승 속도 확인** (이번 수정 후 기대 효과): 앱 재기동 시 수신율이 일관되게 정상 속도로 상승하는지 확인. 이전 증상(간헐적 정체, "업종점수 미전송 — 수신율 임계값 미달" 장시간 지속)이 해결되었는지 검증
 
 ### 3순위: engine_settings.py 인접 라인 P20 폴백 일괄 정리 — 완료 (2026-07-13)
 - line 139-140: `sector_min_rise_ratio_pct` / `sector_min_trade_amt` — `or` 패턴 → `_v if _v is not None else 기본값` 패턴으로 통일 완료
@@ -95,10 +94,7 @@
 
 - **pipeline_compute.py DYNAMIC_REG 처리 — 구독 실패 시에도 _subscribed_dynamic=True 설정 (P22 위반)**
   - 발견 일시: 2026-07-13 (실시간 데이터 수신율 문제 조사 중 발견)
-  - 위치: `backend/app/pipelines/pipeline_compute.py:336-340`
-  - 증상: `subscribe_dynamic_data(codes)`가 WS 미연결로 조기 반환해도, 이후 코드가 `_subscribed_dynamic=True` 설정 + `_PENDING_REG_CODES` 제거 수행. 구독 실패 시에도 "구독 완료" 상태로 남아 재등록 불가
-  - 위반 원칙: P22 (데이터 정합성) — 플래그와 실제 구독 상태 불일치
-  - 수정 방향: `subscribe_dynamic_data` 반환값(성공 여부) 확인 후 성공 시에만 `_subscribed_dynamic=True` 설정. 실패 시 `_PENDING_REG_CODES` 유지하여 재시도 가능하도록 수정
+  - **해결 완료 (2026-07-13)**: `subscribe_dynamic` 반환형 `None → bool` 통일 + DYNAMIC_REG 처리 시 성공 반환값 확인 후에만 `_subscribed_dynamic=True` 설정, 실패 시 `_PENDING_REG_CODES` 유지 (pipeline_compute.py:329-345, ls_connector.py, kiwoom_connector.py, engine_ws.py, connector_manager.py, broker_connector.py)
 
 - **테스트 파일 ruff lint 에러 72건 (기존 존재, P23 일관성 위반 가능성)**
   - 발견 일시: 2026-07-13 (최초 17건 보고 후 4개 파일 17건 수정 완료, 전수 검사에서 추가 72건 발견)

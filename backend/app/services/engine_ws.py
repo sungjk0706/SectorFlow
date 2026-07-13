@@ -245,18 +245,22 @@ async def _cleanup_stale_ws_subscriptions_on_session_ready() -> None:
     await ws_subscribe_control.cleanup_stale_subscriptions()
 
 
-async def subscribe_dynamic_data(codes: list[str]) -> None:
+async def subscribe_dynamic_data(codes: list[str]) -> bool:
     """동적 데이터(0D, PGM, UH1, UPH 등) 실시간 구독 등록을 커넥터에 위임합니다.
 
     시작/완료 로그는 커넥터 레벨에서 broker 표시명과 함께 1회씩 출력 (P23 일관성).
+
+    Returns:
+        True if 커넥터 subscribe_dynamic이 1건 이상 성공, False if 연결/로그인 없거나 전부 실패 (P22 정합성).
     """
     from backend.app.services.engine_state import state
     ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected() or not state.login_ok:
         logger.warning("[구독] 호가·프로그램매매 구독 실패 — 연결=%s, 로그인=%s", ws.is_connected() if ws else False, state.login_ok)
-        return
+        return False
     if hasattr(ws, "subscribe_dynamic"):
-        await ws.subscribe_dynamic(codes)
+        return bool(await ws.subscribe_dynamic(codes))
+    return False
 
 
 async def unsubscribe_dynamic_data(codes: list[str]) -> None:
