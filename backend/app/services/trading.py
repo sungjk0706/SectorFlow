@@ -153,37 +153,54 @@ class AutoTradeManager:
 
         # ── 실제 잔고 보유종목 수 기준으로 최대보유종목수 체크 ─────────────
         # 테스트모드: 모의투자 가상 잔고 / 실전투자: 키움 실제 잔고
+        # max_stock_cnt_on=False → 제한 없음 (사용자 선택)
         max_limit = settings["max_limit"]
+        max_limit_on = bool(raw_all.get("max_stock_cnt_on", True))
         from backend.app.services.engine_account import get_positions as _get_positions
         _positions_for_count = await _get_positions()
         holding_count = sum(
             1 for p in _positions_for_count
             if int(p.get("qty", 0)) > 0
         )
-        if holding_count >= max_limit:
+        if max_limit_on and holding_count >= max_limit:
             logger.info("[매매] [매수제한] 잔고 보유종목 %d종목 ≥ 최대 %d종목. %s 매수 차단.", holding_count, max_limit, stk_cd)
             return False
 
+        # ── 종목당 일일 최대 매수 금액 (buy_amt_on=False → 한도 없음) ──
+        buy_amt_on = bool(raw_all.get("buy_amt_on", True))
         buy_amt = settings.get("buy_amt", 0)
-        if buy_amt <= 0:
-            return False
         max_daily_total = int(settings.get("max_daily_total_buy_amt", 0) or 0)
         max_daily_on = bool(settings.get("max_daily_total_buy_on", False))
-        # ── 종목당 일일 누적 매수금액 한도 체크 (buy_amt = 종목당 일일 최대 매수금액) ──
-        symbol_spent = self._symbol_daily_buy_spent.get(stk_cd, 0)
-        symbol_remain = max(0, int(buy_amt) - symbol_spent)
-        if symbol_remain <= 0:
-            logger.info("[매매] [종목당한도] %s 차단. 종목누적 %s원 / 한도 %s원", stk_cd, f"{symbol_spent:,}", f"{int(buy_amt):,}")
-            return False
-        # 일일 한도 내에서 실제 사용 가능 금액 계산 (잔여 한도가 종목당 한도보다 적으면 잔여 한도만큼만 매수)
-        if max_daily_on and max_daily_total > 0:
-            daily_remain = max(0, max_daily_total - self._daily_buy_spent)
-            if daily_remain <= 0:
-                logger.info("[매매] [일일매수한도] %s 차단. 잔여 0원 / 한도 %s원", stk_cd, f"{max_daily_total:,}")
+        if buy_amt_on:
+            if buy_amt <= 0:
                 return False
-            effective_buy_amt = min(symbol_remain, daily_remain)
+            # ── 종목당 일일 누적 매수금액 한도 체크 ──
+            symbol_spent = self._symbol_daily_buy_spent.get(stk_cd, 0)
+            symbol_remain = max(0, int(buy_amt) - symbol_spent)
+            if symbol_remain <= 0:
+                logger.info("[매매] [종목당한도] %s 차단. 종목누적 %s원 / 한도 %s원", stk_cd, f"{symbol_spent:,}", f"{int(buy_amt):,}")
+                return False
+            # 일일 한도 내에서 실제 사용 가능 금액 계산 (잔여 한도가 종목당 한도보다 적으면 잔여 한도만큼만 매수)
+            if max_daily_on and max_daily_total > 0:
+                daily_remain = max(0, max_daily_total - self._daily_buy_spent)
+                if daily_remain <= 0:
+                    logger.info("[매매] [일일매수한도] %s 차단. 잔여 0원 / 한도 %s원", stk_cd, f"{max_daily_total:,}")
+                    return False
+                effective_buy_amt = min(symbol_remain, daily_remain)
+            else:
+                effective_buy_amt = symbol_remain
         else:
-            effective_buy_amt = symbol_remain
+            # buy_amt_on=False → 종목당 한도 없음, 일일 한도만 적용
+            symbol_spent = self._symbol_daily_buy_spent.get(stk_cd, 0)
+            if max_daily_on and max_daily_total > 0:
+                daily_remain = max(0, max_daily_total - self._daily_buy_spent)
+                if daily_remain <= 0:
+                    logger.info("[매매] [일일매수한도] %s 차단. 잔여 0원 / 한도 %s원", stk_cd, f"{max_daily_total:,}")
+                    return False
+                effective_buy_amt = daily_remain
+            else:
+                # 한도 없음 — 주문가능 금액이 실제 상한 (아래 _orderable 체크에서 산출)
+                effective_buy_amt = None
 
         if current_price <= 0:
             logger.info("[매매] [매수제한] %s 서버 현재가 미수신(<=0). 주문 차단.", stk_cd)
@@ -193,17 +210,19 @@ class AutoTradeManager:
         # 단일 소스 진리: master_stocks_cache에서 직접 읽기
         from backend.app.services.engine_state import state
 
-        # 등락률 가드
+        # 등락률 가드 (토글 기반 — buy_filter.py와 동일 조건, P10 SSOT)
+        _rise_on = bool(raw_all.get("buy_block_rise_on", True))
+        _fall_on = bool(raw_all.get("buy_block_fall_on", True))
         _rise_limit = float(raw_all.get("buy_block_rise_pct", 7.0))
         _fall_limit = float(raw_all.get("buy_block_fall_pct", 7.0))
         _change_rate = state.master_stocks_cache.get(stk_cd, {}).get("change_rate")
         if _change_rate is not None:
             _blocked = False
             _block_reason = ""
-            if _change_rate >= _rise_limit:
+            if _rise_on and _rise_limit > 0 and _change_rate >= _rise_limit:
                 _blocked = True
                 _block_reason = f"상승률 {_change_rate:+.1f}%"
-            elif _change_rate <= -_fall_limit:
+            elif _fall_on and _fall_limit > 0 and _change_rate <= -_fall_limit:
                 _blocked = True
                 _block_reason = f"하락률 {abs(_change_rate):.1f}%"
             if _blocked:
@@ -211,9 +230,10 @@ class AutoTradeManager:
                 logger.info("[매매] [등락률가드] %s(%s) 등락률 %s — 매수 차단", stk_nm_g, stk_cd, _block_reason)
                 return False
 
-        # 체결강도 가드
+        # 체결강도 가드 (토글 기반)
+        _strength_on = bool(raw_all.get("buy_block_strength_on", False))
         _min_strength = float(raw_all.get("buy_min_strength", 0))
-        if _min_strength > 0:
+        if _strength_on and _min_strength > 0:
             _strength_raw = state.master_stocks_cache.get(stk_cd, {}).get("strength")
             if _strength_raw is not None and _strength_raw != "-":
                 try:
@@ -229,7 +249,8 @@ class AutoTradeManager:
 
         # ── 주문가능 금액 내에서 최대한 매수 (buy_amt는 한도, 의무 지출액 아님) ──
         _orderable = get_risk_manager().get_withdrawable_deposit()
-        _max_available = min(effective_buy_amt, _orderable)
+        # effective_buy_amt=None → 종목당 한도 없음 → 주문가능 금액이 상한
+        _max_available = min(effective_buy_amt, _orderable) if effective_buy_amt is not None else _orderable
         _est_buy_price = dry_run.estimate_fill_price(int(current_price), "BUY") if is_test_mode(raw_all) else int(current_price)
         buy_qty = _max_available // _est_buy_price
         if buy_qty <= 0:
@@ -649,7 +670,9 @@ class AutoTradeManager:
             "is_auto": auto_buy_effective(r),
             "is_sell_auto": auto_sell_effective(r),
             "max_limit": int(r["max_stock_cnt"]),
+            "max_limit_on": bool(r.get("max_stock_cnt_on", True)),
             "buy_amt": int(r["buy_amt"]),
+            "buy_amt_on": bool(r.get("buy_amt_on", True)),
             "max_daily_total_buy_on": bool(r.get("max_daily_total_buy_on", False)),
             "max_daily_total_buy_amt": int(r["max_daily_total_buy_amt"]),
             "rebuy_block_on": bool(r.get("rebuy_block_on", True)),

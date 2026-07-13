@@ -62,9 +62,11 @@ def build_engine_settings_dict(flat: dict) -> dict:
         # WS 구독 스케줄러
         "ws_subscribe_start":   str(merged["ws_subscribe_start"])[:5],
         "ws_subscribe_end":     str(merged["ws_subscribe_end"])[:5],
-        # 매수 설정 (엔진 내부 필드명)
+        # 매수 설정 (엔진 내부 필드명) — 값은 merged(기본값 포함), _on 마이그레이션은 flat 기반
         "buy_amount":           int(merged.get("buy_amt", 0) or 0),
+        "buy_amount_on":        bool(flat.get("buy_amt_on")) if "buy_amt_on" in flat else (int(merged.get("buy_amt", 0) or 0) > 0),
         "max_stock_count":      int(merged.get("max_stock_cnt", 5) or 5),
+        "max_stock_count_on":   bool(flat.get("max_stock_cnt_on")) if "max_stock_cnt_on" in flat else (int(merged.get("max_stock_cnt", 5) or 5) > 0),
         # 매도/손절/트레일링 (엔진 내부 필드명)
         "loss_cut_apply":       bool(merged.get("loss_apply")),
         "loss_cut_value":       float(merged.get("loss_val", 0) or 0),
@@ -116,10 +118,18 @@ def build_engine_settings_dict(flat: dict) -> dict:
         result[f"{b_name}_account_no_real"] = str(merged.get(f"{b_name}_account_no_real") or "").strip()
     # logic_auto_trade / AutoTradeManager 호환 키 (merged 필드명 그대로)
     # _to_trade_settings()가 merged 키를 직접 참조하므로 반드시 원본 키명으로 포함해야 한다.
-    result["buy_amt"] = int(merged.get("buy_amt", 0) or 0)
+    # ── 마이그레이션: _on 키가 flat에 없으면 기존 값으로 추론 (P10 SSOT) ──
+    # buy_amt_on: 기존 buy_amt > 0 → True, buy_amt = 0 → False (한도 없음)
+    _buy_amt_raw = int(merged.get("buy_amt", 0) or 0)
+    result["buy_amt_on"] = bool(flat.get("buy_amt_on")) if "buy_amt_on" in flat else (_buy_amt_raw > 0)
+    result["buy_amt"] = _buy_amt_raw
     result["max_daily_total_buy_on"] = bool(merged.get("max_daily_total_buy_on", False))
     result["max_daily_total_buy_amt"] = int(merged.get("max_daily_total_buy_amt", 0) or 0)
-    result["max_stock_cnt"] = int(merged.get("max_stock_cnt", 5) or 5)
+    # max_stock_cnt_on: 기존 max_stock_cnt > 0 → True, = 0 → False (제한 없음)
+    _msc_v = merged.get("max_stock_cnt")
+    _max_stock_cnt_raw = int(_msc_v) if _msc_v is not None else 5
+    result["max_stock_cnt_on"] = bool(flat.get("max_stock_cnt_on")) if "max_stock_cnt_on" in flat else (_max_stock_cnt_raw > 0)
+    result["max_stock_cnt"] = _max_stock_cnt_raw
     result["tp_val"] = float(merged.get("tp_val") or 0)
     result["tp_apply"] = bool(merged.get("tp_apply"))
     result["loss_apply"] = bool(merged.get("loss_apply"))
@@ -144,12 +154,19 @@ def build_engine_settings_dict(flat: dict) -> dict:
     result["sector_min_rise_ratio_pct"]   = float(_v if _v is not None else 60.0)
     _v = merged.get("sector_min_trade_amt")
     result["sector_min_trade_amt"]        = float(_v if _v is not None else 0.0)
-    _v = merged.get("buy_block_rise_pct")
-    result["buy_block_rise_pct"]          = float(_v if _v is not None else 7.0)
-    _v = merged.get("buy_block_fall_pct")
-    result["buy_block_fall_pct"]          = float(_v if _v is not None else 7.0)
-    _v = merged.get("buy_min_strength")
-    result["buy_min_strength"]            = float(_v if _v is not None else 0)
+    # ── 매수 차단 토글 (_on 키 마이그레이션: flat에 없으면 기존 값 > 0 → True) ──
+    _v = flat.get("buy_block_rise_pct")
+    _rise_pct = float(_v) if _v is not None else 7.0
+    result["buy_block_rise_on"]           = bool(flat.get("buy_block_rise_on")) if "buy_block_rise_on" in flat else (_rise_pct > 0)
+    result["buy_block_rise_pct"]          = _rise_pct
+    _v = flat.get("buy_block_fall_pct")
+    _fall_pct = float(_v) if _v is not None else 7.0
+    result["buy_block_fall_on"]           = bool(flat.get("buy_block_fall_on")) if "buy_block_fall_on" in flat else (_fall_pct > 0)
+    result["buy_block_fall_pct"]          = _fall_pct
+    _v = flat.get("buy_min_strength")
+    _strength = float(_v) if _v is not None else 0
+    result["buy_block_strength_on"]       = bool(flat.get("buy_block_strength_on")) if "buy_block_strength_on" in flat else (_strength > 0)
+    result["buy_min_strength"]            = _strength
     # 업종 내 종목 트리밍 비율 (%)
     _v = merged.get("sector_trim_trade_amt_pct")
     result["sector_trim_trade_amt_pct"]    = float(_v if _v is not None else 10.0)

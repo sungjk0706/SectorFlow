@@ -39,8 +39,10 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     # 매수 설정
     "max_daily_total_buy_on": False,
     "max_daily_total_buy_amt": 0,
-    "max_stock_cnt": 0,
-    "buy_amt": 0,
+    "max_stock_cnt_on": True,
+    "max_stock_cnt": 5,
+    "buy_amt_on": True,
+    "buy_amt": 1000000,
     "rebuy_block_on": True,
     "rebuy_block_period": "today",
     "boost_high_breakout_on": False,
@@ -75,8 +77,11 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
 
      # 업종순위 설정
      "sector_min_rise_ratio_pct": 60.0,
+     "buy_block_rise_on": True,
      "buy_block_rise_pct": 7.0,
+     "buy_block_fall_on": True,
      "buy_block_fall_pct": 7.0,
+     "buy_block_strength_on": False,
      "buy_min_strength": 0.0,
      "sector_min_trade_amt": 0.0,
      "sector_max_targets": 3,

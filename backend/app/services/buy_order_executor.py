@@ -57,16 +57,18 @@ async def evaluate_buy_candidates() -> None:
 
     # ── 전역 조건 사전 체크 ──────────────────────────────────────────
     _max_limit = int(state.integrated_system_settings_cache["max_stock_cnt"])
+    _max_limit_on = bool(state.integrated_system_settings_cache.get("max_stock_cnt_on", True))
     if is_test_mode(state.integrated_system_settings_cache):
         _pos_for_cnt = await dry_run.get_positions()
     else:
         _pos_for_cnt = state.positions
     _holding_cnt = sum(1 for p in _pos_for_cnt if int(p.get("qty", 0)) > 0)
-    if _holding_cnt >= _max_limit:
+    if _max_limit_on and _holding_cnt >= _max_limit:
         return
 
     _buy_amt = int(state.integrated_system_settings_cache["buy_amt"])
-    if _buy_amt <= 0:
+    _buy_amt_on = bool(state.integrated_system_settings_cache.get("buy_amt_on", True))
+    if _buy_amt_on and _buy_amt <= 0:
         return
 
     _max_daily = int(state.integrated_system_settings_cache["max_daily_total_buy_amt"])
@@ -83,10 +85,17 @@ async def evaluate_buy_candidates() -> None:
     # ── 주문가능 금액 사전 체크 (매수 시도 전 조기 차단) ────────────────
     from backend.app.services.risk_manager import get_risk_manager
     _available = get_risk_manager().get_withdrawable_deposit()
-    if _max_daily_on and _max_daily > 0 and _daily_remain is not None:
-        _effective_buy_amt = min(_buy_amt, _daily_remain)
+    if _buy_amt_on:
+        if _max_daily_on and _max_daily > 0 and _daily_remain is not None:
+            _effective_buy_amt = min(_buy_amt, _daily_remain)
+        else:
+            _effective_buy_amt = _buy_amt
     else:
-        _effective_buy_amt = _buy_amt
+        # buy_amt_on=False → 종목당 한도 없음, 일일 한도만 적용
+        if _max_daily_on and _max_daily > 0 and _daily_remain is not None:
+            _effective_buy_amt = _daily_remain
+        else:
+            _effective_buy_amt = None  # 주문가능 금액이 상한
     if _available <= 0:
         _cash_insufficient = True
         logger.info("[매매] 주문가능 금액 0원 — 매수 시도 중단")
@@ -119,7 +128,9 @@ async def evaluate_buy_candidates() -> None:
         "holding_cnt": _holding_cnt,
         "daily_remain": _daily_remain if (_max_daily_on and _max_daily > 0) else None,
         "buy_amt": _buy_amt,
+        "buy_amt_on": _buy_amt_on,
         "max_limit": _max_limit,
+        "max_limit_on": _max_limit_on,
         "available_cash": _available,
     }
 
@@ -154,7 +165,7 @@ async def evaluate_buy_candidates() -> None:
                 if _buy_interval_on:
                     state._last_global_buy_ts = time.time()
                 _holding_cnt += 1
-                if _holding_cnt >= _max_limit:
+                if _max_limit_on and _holding_cnt >= _max_limit:
                     break
                 await state.auto_trade._ensure_daily_buy_counter()
                 if state.auto_trade._daily_buy_spent is not None and _max_daily > 0 and state.auto_trade._daily_buy_spent >= _max_daily:

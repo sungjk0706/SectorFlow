@@ -47,7 +47,9 @@ def _raw_settings(**overrides):
         "sell_time_start": "09:00",
         "sell_time_end": "15:30",
         "max_stock_cnt": 5,
+        "max_stock_cnt_on": True,
         "buy_amt": 1_000_000,
+        "buy_amt_on": True,
         "max_daily_total_buy_on": False,
         "max_daily_total_buy_amt": 0,
         "rebuy_block_on": True,
@@ -88,7 +90,9 @@ class TestToTradeSettings:
         mgr = _make_manager()
         ts = mgr._to_trade_settings(_raw_settings())
         assert ts["max_limit"] == 5
+        assert ts["max_limit_on"] is True
         assert ts["buy_amt"] == 1_000_000
+        assert ts["buy_amt_on"] is True
         assert ts["tp_val"] == 10.0
         assert ts["chk_tp"] is True
         assert ts["chk_loss"] is True

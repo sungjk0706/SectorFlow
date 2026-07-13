@@ -20,14 +20,24 @@ let saveHelper: AutoSaveHelper | null = null
 let vals: Record<string, unknown> = {}
 
 // 입력 컴포넌트 참조
+let riseToggle: ReturnType<typeof createToggleBtn> | null = null
 let riseInput: ReturnType<typeof createNumInput> | null = null
+let riseControls: HTMLElement | null = null
+let fallToggle: ReturnType<typeof createToggleBtn> | null = null
 let fallInput: ReturnType<typeof createNumInput> | null = null
+let fallControls: HTMLElement | null = null
+let strengthToggle: ReturnType<typeof createToggleBtn> | null = null
 let strengthInput: ReturnType<typeof createNumInput> | null = null
+let strengthControls: HTMLElement | null = null
 let maxDailyToggle: ReturnType<typeof createToggleBtn> | null = null
 let maxDailyInput: ReturnType<typeof createMoneyInput> | null = null
 let maxDailyControls: HTMLElement | null = null
+let maxStockCntToggle: ReturnType<typeof createToggleBtn> | null = null
 let maxStockCntInput: ReturnType<typeof createNumInput> | null = null
+let maxStockCntControls: HTMLElement | null = null
+let buyAmtToggle: ReturnType<typeof createToggleBtn> | null = null
 let buyAmtInput: ReturnType<typeof createMoneyInput> | null = null
+let buyAmtControls: HTMLElement | null = null
 
 // 가산점 UI 참조
 let boostHighToggle: ReturnType<typeof createToggleBtn> | null = null
@@ -67,18 +77,37 @@ function syncFromSettings(s: AppSettings): void {
 
   const act = document.activeElement
 
-  // 매수 조건
+  // 매수 조건 (토글 + 값)
+  const riseOn = !!r.buy_block_rise_on
+  riseToggle?.setOn(riseOn)
   if (riseInput && (!act || !riseInput.el.contains(act))) riseInput.setValue(Number(r.buy_block_rise_pct) || 0)
+  if (riseControls) setDisabled(riseControls, !riseOn)
+
+  const fallOn = !!r.buy_block_fall_on
+  fallToggle?.setOn(fallOn)
   if (fallInput && (!act || !fallInput.el.contains(act))) fallInput.setValue(Number(r.buy_block_fall_pct) || 0)
+  if (fallControls) setDisabled(fallControls, !fallOn)
+
+  const strengthOn = !!r.buy_block_strength_on
+  strengthToggle?.setOn(strengthOn)
   if (strengthInput && (!act || !strengthInput.el.contains(act))) strengthInput.setValue(Number(r.buy_min_strength) || 0)
+  if (strengthControls) setDisabled(strengthControls, !strengthOn)
 
   // 매수 금액
   const dailyOn = !!r.max_daily_total_buy_on
   maxDailyToggle?.setOn(dailyOn)
   if (maxDailyInput && (!act || !maxDailyInput.el.contains(act))) maxDailyInput.setValue(Number(r.max_daily_total_buy_amt) || 0)
   if (maxDailyControls) setDisabled(maxDailyControls, !dailyOn)
+
+  const stockCntOn = !!r.max_stock_cnt_on
+  maxStockCntToggle?.setOn(stockCntOn)
   if (maxStockCntInput && (!act || !maxStockCntInput.el.contains(act))) maxStockCntInput.setValue(Number(r.max_stock_cnt) || 0)
+  if (maxStockCntControls) setDisabled(maxStockCntControls, !stockCntOn)
+
+  const buyAmtOn = !!r.buy_amt_on
+  buyAmtToggle?.setOn(buyAmtOn)
   if (buyAmtInput && (!act || !buyAmtInput.el.contains(act))) buyAmtInput.setValue(Number(r.buy_amt) || 0)
+  if (buyAmtControls) setDisabled(buyAmtControls, !buyAmtOn)
 
   // 매수 가산점
   const highOn = !!r.boost_high_breakout_on
@@ -148,17 +177,44 @@ function mount(container: HTMLElement): void {
   // ── 매수 조건 섹션 ──
   root.appendChild(sectionTitle('매수 차단'))
 
-  // 상승률 제한
+  // 상승률 제한 (토글 + 입력)
   riseInput = createNumInput({ value: 0, onChange: v => { vals.buy_block_rise_pct = v; saveHelper!.autoSave('buy_block_rise_pct', v) }, step: 1, name: 'buy_block_rise_pct' })
-  root.appendChild(createSettingRow('종목 상승률 매수차단', riseInput.el))
+  {
+    const r = createToggleLabelControlsRow({
+      labelText: '종목 상승률 매수차단',
+      toggleOn: true,
+      onToggle: next => { vals.buy_block_rise_on = next; saveHelper!.saveImmediate({ buy_block_rise_on: next }) },
+      controlsChild: riseInput.el,
+    })
+    riseToggle = r.toggle; riseControls = r.controls
+    root.appendChild(r.el)
+  }
 
-  // 하락률 제한
+  // 하락률 제한 (토글 + 입력)
   fallInput = createNumInput({ value: 0, onChange: v => { vals.buy_block_fall_pct = v; saveHelper!.autoSave('buy_block_fall_pct', v) }, step: 1, name: 'buy_block_fall_pct' })
-  root.appendChild(createSettingRow('종목 하락률 매수차단', fallInput.el))
+  {
+    const r = createToggleLabelControlsRow({
+      labelText: '종목 하락률 매수차단',
+      toggleOn: true,
+      onToggle: next => { vals.buy_block_fall_on = next; saveHelper!.saveImmediate({ buy_block_fall_on: next }) },
+      controlsChild: fallInput.el,
+    })
+    fallToggle = r.toggle; fallControls = r.controls
+    root.appendChild(r.el)
+  }
 
-  // 체결강도 하한
+  // 체결강도 하한 (토글 + 입력)
   strengthInput = createNumInput({ value: 0, onChange: v => { vals.buy_min_strength = v; saveHelper!.autoSave('buy_min_strength', v) }, step: 1, name: 'buy_min_strength' })
-  root.appendChild(createSettingRow('종목 체결강도 매수차단', strengthInput.el))
+  {
+    const r = createToggleLabelControlsRow({
+      labelText: '종목 체결강도 매수차단',
+      toggleOn: false,
+      onToggle: next => { vals.buy_block_strength_on = next; saveHelper!.saveImmediate({ buy_block_strength_on: next }) },
+      controlsChild: strengthInput.el,
+    })
+    strengthToggle = r.toggle; strengthControls = r.controls
+    root.appendChild(r.el)
+  }
 
   // ── 매수 가산점 섹션 ──
   root.appendChild(sectionTitle('매수 가산점 (+N)'))
@@ -266,9 +322,18 @@ function mount(container: HTMLElement): void {
     root.appendChild(r.el)
   }
 
-  // 최대 동시 보유 종목 수
+  // 최대 동시 보유 종목 수 (토글 + 입력)
   maxStockCntInput = createNumInput({ value: 0, onChange: v => { vals.max_stock_cnt = v; saveHelper!.autoSave('max_stock_cnt', v) }, name: 'max_stock_cnt' })
-  root.appendChild(createSettingRow('최대 동시 보유 종목 수', maxStockCntInput.el))
+  {
+    const r = createToggleLabelControlsRow({
+      labelText: '최대 동시 보유 종목 수',
+      toggleOn: true,
+      onToggle: next => { vals.max_stock_cnt_on = next; saveHelper!.saveImmediate({ max_stock_cnt_on: next }) },
+      controlsChild: maxStockCntInput.el,
+    })
+    maxStockCntToggle = r.toggle; maxStockCntControls = r.controls
+    root.appendChild(r.el)
+  }
 
   // ── 매수 주문 간격 섹션 ──
   root.appendChild(sectionTitle('매수 주문 간격'))
@@ -287,9 +352,18 @@ function mount(container: HTMLElement): void {
   // ── 동일 종목 재매수 제어 섹션 ──
   root.appendChild(sectionTitle('동일 종목 재매수 제어'))
 
-  // 종목당 일일 최대 매수 금액
+  // 종목당 일일 최대 매수 금액 (토글 + 입력)
   buyAmtInput = createMoneyInput({ value: 0, onChange: v => { vals.buy_amt = v; saveHelper!.autoSave('buy_amt', v) }, name: 'buy_amt' })
-  root.appendChild(createSettingRow('종목당 일일 최대 매수 금액', buyAmtInput.el))
+  {
+    const r = createToggleLabelControlsRow({
+      labelText: '종목당 일일 최대 매수 금액',
+      toggleOn: true,
+      onToggle: next => { vals.buy_amt_on = next; saveHelper!.saveImmediate({ buy_amt_on: next }) },
+      controlsChild: buyAmtInput.el,
+    })
+    buyAmtToggle = r.toggle; buyAmtControls = r.controls
+    root.appendChild(r.el)
+  }
 
   // 재매수 차단 ON/OFF + 차단 기간 select
   {
@@ -326,8 +400,12 @@ function mount(container: HTMLElement): void {
 function unmount(): void {
   destroySettingsPage(unsubSettings, saveHelper, settingsMgr)
   unsubSettings = null; saveHelper = null; settingsMgr = null
-  riseInput = null; fallInput = null; strengthInput = null
-  maxDailyToggle = null; maxDailyInput = null; maxDailyControls = null; maxStockCntInput = null; buyAmtInput = null
+  riseToggle = null; riseInput = null; riseControls = null
+  fallToggle = null; fallInput = null; fallControls = null
+  strengthToggle = null; strengthInput = null; strengthControls = null
+  maxDailyToggle = null; maxDailyInput = null; maxDailyControls = null
+  maxStockCntToggle = null; maxStockCntInput = null; maxStockCntControls = null
+  buyAmtToggle = null; buyAmtInput = null; buyAmtControls = null
   boostHighToggle = null; boostHighScoreInput = null; boostHighControls = null
   boostOrderToggle = null
   if (boostOrderDualSlider && typeof boostOrderDualSlider.destroy === 'function') {

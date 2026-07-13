@@ -43,7 +43,9 @@ def _default_settings(**overrides):
     s = {
         "test_mode_on": True,
         "max_stock_cnt": 5,
+        "max_stock_cnt_on": True,
         "buy_amt": 1_000_000,
+        "buy_amt_on": True,
         "max_daily_total_buy_amt": 0,
         "max_daily_total_buy_on": False,
         "buy_interval_on": False,
@@ -145,6 +147,39 @@ class TestEarlyReturnGates:
                    return_value=[]):
             await evaluate_buy_candidates()
         fresh_state.auto_trade.execute_buy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_buy_amt_on_false_skips_buy_amt_check(self, fresh_state, reset_cash_gate):
+        # buy_amt_on=False → buy_amt=0이어도 차단하지 않음 (한도 없음)
+        fresh_state.integrated_system_settings_cache = _default_settings(buy_amt_on=False, buy_amt=0)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 500_000
+            await evaluate_buy_candidates()
+        # execute_buy가 호출되어야 함 (buy_amt_on=False로 차단되지 않음)
+        fresh_state.auto_trade.execute_buy.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_max_stock_cnt_on_false_skips_holding_check(self, fresh_state, reset_cash_gate):
+        # max_stock_cnt_on=False → 보유수 >= max_stock_cnt여도 차단하지 않음
+        fresh_state.integrated_system_settings_cache = _default_settings(max_stock_cnt_on=False, max_stock_cnt=1)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[{"qty": 1}, {"qty": 2}]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 500_000
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_daily_limit_exceeded_returns_early(self, fresh_state, reset_cash_gate):
