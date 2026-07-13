@@ -558,6 +558,8 @@ class SectorStockTable extends HTMLElement {
           if (this.sectorSearchInput) this.sectorSearchInput.clear()
           this.sectorSearchTerm = ''
         }
+        // 검색어 변경 시 rowCache 클리어 — rowStyle(outline/background) 갱신 보장
+        this.rowCache.clear()
         this.refreshRows()
       },
     })
@@ -576,6 +578,8 @@ class SectorStockTable extends HTMLElement {
           if (this.searchInput) this.searchInput.clear()
           this.searchTerm = ''
         }
+        // 검색어 변경 시 rowCache 클리어 — rowStyle(outline/background) 갱신 보장
+        this.rowCache.clear()
         this.refreshRows()
       },
     })
@@ -610,10 +614,9 @@ class SectorStockTable extends HTMLElement {
       rowHeight: 32,
       rowStyle: (row, _idx) => ({
         opacity: row.opacity,
-        background: row.krxInactive ? COLOR.inactiveBg : '',
-        outline: this.currentMatchedCodes?.has(row.stock.code)
-          ? `2px solid ${COLOR.down}`
-          : 'none',
+        background: this.currentMatchedCodes?.has(row.stock.code)
+          ? COLOR.downBg
+          : row.krxInactive ? COLOR.inactiveBg : '',
       }),
     })
 
