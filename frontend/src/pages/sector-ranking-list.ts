@@ -24,6 +24,7 @@ interface RowCache {
   rank: number; sector: string; total: number; finalScore: string
   riseRatio: string; riseColor: string; tradeAmt: string
   barWidth: string; barColor: string; opacity: string; selected: boolean; visible: boolean
+  bgColor: string
 }
 let rowCaches: (RowCache | null)[] = []
 
@@ -137,7 +138,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     if (i >= sortedScores.length) {
       if (!rowCaches[i] || rowCaches[i]!.visible) {
         row.style.display = 'none'
-        rowCaches[i] = { rank: -1, sector: '', total: 0, finalScore: '', riseRatio: '', riseColor: '', tradeAmt: '', barWidth: '', barColor: '', opacity: '', selected: false, visible: false }
+        rowCaches[i] = { rank: -1, sector: '', total: 0, finalScore: '', riseRatio: '', riseColor: '', tradeAmt: '', barWidth: '', barColor: '', opacity: '', selected: false, visible: false, bgColor: '' }
       }
       continue
     }
@@ -145,21 +146,22 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     const s = sortedScores[i]
     const prev = rowCaches[i]
     const isSel = selected === s.sector
-    const isUnranked = s.rank === 0
-    const opacity = isUnranked ? '0.4' : (s.rank > maxTargets ? '0.65' : '1')
+    const isEliminated = s.rank === 0 || s.rank > maxTargets
+    const opacity = isEliminated ? '0.85' : '1'
+    const bgColor = isSel ? COLOR.downBg : (isEliminated ? COLOR.hoverBg : 'transparent')
     const finalScore = s.final_score.toFixed(1)
     const riseRatio = s.rise_ratio.toFixed(1) + '%'
     const riseColor = s.rise_ratio > 50 ? COLOR.up : s.rise_ratio < 50 ? COLOR.down : COLOR.neutral
     const tradeAmt = (s.total_trade_amount / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
     const barWidth = `${Math.min((s.final_score / maxScore) * 100, 100)}%`
-    const barColor = isUnranked ? COLOR.inactiveBg : (s.rank <= maxTargets ? COLOR.down : COLOR.muted)
+    const barColor = s.rank === 0 ? COLOR.inactiveBg : (s.rank <= maxTargets ? COLOR.down : COLOR.muted)
 
     if (!prev || !prev.visible) row.style.display = ''
 
     if (!prev || prev.opacity !== opacity) row.style.opacity = opacity
     if (!prev || prev.sector !== s.sector) row.dataset.sector = s.sector
-    if (!prev || prev.selected !== isSel) {
-      row.style.background = isSel ? COLOR.downBg : 'transparent'
+    if (!prev || prev.bgColor !== bgColor || prev.selected !== isSel) {
+      row.style.background = bgColor
       row.style.outline = isSel ? '2px solid ' + COLOR.down : 'none'
     }
 
@@ -176,7 +178,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     if (!prev || prev.barWidth !== barWidth) bar.style.width = barWidth
     if (!prev || prev.barColor !== barColor) bar.style.background = barColor
 
-    rowCaches[i] = { rank: i + 1, sector: s.sector, total: s.total, finalScore, riseRatio, riseColor, tradeAmt, barWidth, barColor, opacity, selected: isSel, visible: true }
+    rowCaches[i] = { rank: i + 1, sector: s.sector, total: s.total, finalScore, riseRatio, riseColor, tradeAmt, barWidth, barColor, opacity, selected: isSel, visible: true, bgColor }
   }
 }
 
