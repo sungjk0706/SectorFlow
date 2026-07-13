@@ -157,13 +157,12 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
 
     # 업종 정렬/필터 관련 설정 변경 시 업종 점수만 재계산 (종목 시세는 WS delta로만 전송)
     _SECTOR_UI_KEYS = {
-        "sector_sort_keys", "sector_weights",
+        "sector_sort_keys",
         "sector_min_rise_ratio_pct", "sector_min_trade_amt",
         "sector_max_targets",
         "buy_block_rise_on", "buy_block_rise_pct",
         "buy_block_fall_on", "buy_block_fall_pct",
         "buy_block_strength_on", "buy_min_strength",
-        "sector_trim_trade_amt_pct", "sector_trim_change_rate_pct",
         # 가산점 설정
         "boost_high_breakout_on", "boost_high_breakout_score",
         "boost_order_ratio_on",

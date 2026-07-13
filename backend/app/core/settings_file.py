@@ -15,34 +15,6 @@ from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 logger = logging.getLogger(__name__)
 
 
-def migrate_rank_primary_to_weights(sector_rank_primary: str) -> dict[str, float]:
-    """기존 sector_rank_primary 값을 가중치로 변환."""
-    if sector_rank_primary == "total_trade_amount":
-        return {"total_trade_amount": 0.7, "rise_ratio": 0.3}
-    if sector_rank_primary == "rise_ratio":
-        return {"rise_ratio": 0.7, "total_trade_amount": 0.3}
-    return {"total_trade_amount": 0.5, "rise_ratio": 0.5}
-
-
-def _migrate_sector_weights(merged: dict, raw_data: dict) -> tuple[dict, bool]:
-    if "sector_weights" in raw_data:
-        sw = raw_data["sector_weights"]
-        # 레거시 trade_amount 키 → total_trade_amount 변환 (DEFAULT_METRICS 키 일치화)
-        if isinstance(sw, dict) and "trade_amount" in sw and "total_trade_amount" not in sw:
-            merged["sector_weights"] = {
-                "rise_ratio": sw.get("rise_ratio", 0.5),
-                "total_trade_amount": sw["trade_amount"],
-            }
-            logger.info("[설정] sector_weights 레거시 키 변환: trade_amount → total_trade_amount")
-            return merged, True
-        return merged, False
-    rank_primary = raw_data.get("sector_rank_primary")
-    if rank_primary:
-        merged["sector_weights"] = migrate_rank_primary_to_weights(rank_primary)
-        return merged, True
-    return merged, False
-
-
 def _migrate_legacy_auto_trade_on(merged: dict) -> tuple[dict, bool]:
     if "auto_trade_on" not in merged:
         return merged, False
@@ -299,12 +271,11 @@ async def load_integrated_system_settings() -> dict:
     merged, dirty = _migrate_legacy_auto_trade_on(merged)
     merged, dirty_tm = _migrate_trade_mode(merged)
     merged, dirty_tr = _migrate_time_range_split(merged)
-    merged, dirty_sw = _migrate_sector_weights(merged, db_data)
     merged, dirty_si = _migrate_sector_to_industry_index(merged, db_data)
     merged, dirty_bc = _migrate_broker_config(merged, db_data)
     merged, dirty_tg = _migrate_telegram_token_split(merged)
 
-    dirty = dirty or dirty_tm or dirty_tr or dirty_sw or dirty_si or dirty_bc or dirty_tg
+    dirty = dirty or dirty_tm or dirty_tr or dirty_si or dirty_bc or dirty_tg
     if dirty:
         _legacy_keys = list(_keys_before - set(merged.keys()))
         await save_settings(merged, delete_keys=_legacy_keys or None)

@@ -6,7 +6,6 @@
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
-from collections.abc import Callable
 from typing import Literal
 @dataclass
 class StockScore:
@@ -39,16 +38,15 @@ class SectorScore:
     rise_count: int             # 상승 종목 수 (change_rate > 0)
     rise_ratio: float           # 상승 비율 (0.0~1.0)
     avg_change_rate: float      # 평균 등락률 (%)
-    total_trade_amount: int     # 업종 평균 거래대금 (원) — 표시용 (가중치 계산 기반과 일관성 유지)
+    avg_trade_amount: int       # 업종 평균 거래대금 (원)
     avg_ratio_5d_pct: float     # 업종 평균 5D거래대금비율 (%)
     rank: int = 0               # 강도 순위 (1=최강)
     stocks: list[StockScore] = field(default_factory=list)
-    # ── 점수 계산용 (트리밍/필터 후 값) ──
-    scored_trade_amount: int = 0        # 가중치 점수 계산에 사용되는 거래대금 평균 (원)
-    scored_rise_ratio: float = 0.0      # 가중치 점수 계산에 사용되는 상승비율
-    # ── 신규 필드: 가중치 점수 시스템 ──
-    final_score: float = 0.0                          # 가중치 최종 점수 (0.0~100.0)
-    metric_scores: dict[str, float] = field(default_factory=dict)  # 지표별 순위 점수
+    # ── 3단계 누적 가산점 (0~300) ──
+    final_score: float = 0.0                  # 종합 가산점 = 1차 + 2차 + 3차 (0.0~300.0)
+    bonus_rise_ratio: float = 0.0             # 1차 가산점: 업종 내 상승 종목 비율 순위 (0~100)
+    bonus_relative_strength: float = 0.0      # 2차 가산점: 통과 업종 종목들 상대평가 백분위 평균 (0~100)
+    bonus_trade_amount: float = 0.0           # 3차 가산점: 업종 거래대금 순위 (0~100)
 
 
 @dataclass
@@ -67,36 +65,6 @@ class SectorSummary:
     buy_targets: list[BuyTarget]        # 매수 타겟 큐 (가드 통과 종목만)
     blocked_targets: list[BuyTarget]    # 가드 차단 종목 (UI 표시용)
     version: int = 1                    # 버전 관리 필드 (캐시 갱신 감지용)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 지표 정의 (MetricDef)
-# ──────────────────────────────────────────────────────────────────────────────
-
-@dataclass(frozen=True)
-class MetricDef:
-    """업종 분석 지표 정의."""
-    key: str                                    # 고유 키 (예: "total_trade_amount")
-    label: str                                  # UI 표시명 (예: "거래대금")
-    extract: Callable[[SectorScore], float]     # SectorScore에서 원시값 추출
-    default_weight: float                       # 기본 가중치 (모든 지표 합 = 1.0)
-    higher_is_better: bool = True               # True: 값이 클수록 좋음
-
-
-DEFAULT_METRICS: list[MetricDef] = [
-    MetricDef(
-        key="total_trade_amount",
-        label="거래대금",
-        extract=lambda sc: float(sc.scored_trade_amount),
-        default_weight=0.5,
-    ),
-    MetricDef(
-        key="rise_ratio",
-        label="상승종목비율",
-        extract=lambda sc: sc.scored_rise_ratio,
-        default_weight=0.5,
-    ),
-]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

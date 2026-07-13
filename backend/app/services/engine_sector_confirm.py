@@ -80,7 +80,7 @@ async def _flush_sector_recompute_impl() -> None:
         from backend.app.services.sector_data_provider import get_sector_summary_inputs
         from backend.app.domain.buy_filter import build_buy_targets_from_settings
         from backend.app.domain.sector_calculator import compute_sector_scores
-        from backend.app.domain.sector_score import calculate_weighted_scores
+        from backend.app.domain.sector_score import calculate_bonus_scores
         from backend.app.services.engine_account_notify import (
             notify_desktop_sector_scores,
             notify_buy_targets_update,
@@ -117,9 +117,6 @@ async def _flush_sector_recompute_impl() -> None:
         inputs = await get_sector_summary_inputs()
         all_codes = inputs["all_codes"]
         min_avg_amt_eok = float(state.integrated_system_settings_cache["sector_min_trade_amt"])
-        trim_trade = float(state.integrated_system_settings_cache["sector_trim_trade_amt_pct"])
-        trim_change = float(state.integrated_system_settings_cache["sector_trim_change_rate_pct"])
-        sector_weights = state.integrated_system_settings_cache["sector_weights"]
 
         # dirty 업종에 속한 종목코드만 필터 (배치 조회)
         all_sectors_map = await sector_mapping.get_merged_sectors_batch(all_codes)
@@ -135,9 +132,6 @@ async def _flush_sector_recompute_impl() -> None:
                 trade_amounts=inputs["trade_amounts"],
                 avg_amt_5d=inputs["avg_amt_5d"],
                 min_avg_amt_eok=min_avg_amt_eok,
-                sector_weights=sector_weights,
-                trim_trade_amt_pct=trim_trade,
-                trim_change_rate_pct=trim_change,
             )
             new_map = {sc.sector: sc for sc in new_sector_scores}
         else:
@@ -157,23 +151,11 @@ async def _flush_sector_recompute_impl() -> None:
         for sc in new_map.values():
             merged.append(sc)
 
-        # 4. 전체 정규화 + 순위 재정렬
-        calculate_weighted_scores(merged, weights=sector_weights)
-
-        # 5. 업종 컷오프: 상승비율 미만 업종은 순위 없음(rank=0)
+        # 4. 3단계 누적 가산점 계산 + 컷오프 + 순위 재정렬
         min_rise_ratio = float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0
-        if min_rise_ratio > 0:
-            pass_sectors = [sc for sc in merged if sc.rise_ratio >= min_rise_ratio]
-            fail_sectors = [sc for sc in merged if sc.rise_ratio < min_rise_ratio]
-            # pass 그룹에만 순위 부여 (1부터)
-            for i, sc in enumerate(pass_sectors):
-                sc.rank = i + 1
-            # fail 그룹은 순위 없음 (0)
-            for sc in fail_sectors:
-                sc.rank = 0
-            # 표시 순서는 프론트엔드에서 결정 (백엔드는 final_score 기준 정렬 유지)
+        calculate_bonus_scores(merged, min_rise_ratio=min_rise_ratio)
 
-        # 6. 매수 타겟 큐
+        # 5. 매수 타겟 큐
         # buy_targets 변경 감지를 위해 이전 값 저장
         prev_targets = existing.buy_targets if hasattr(existing, 'buy_targets') else None
 
@@ -226,17 +208,11 @@ async def _full_recompute(codes_snapshot: set[str] | None = None) -> None:
     _prev_cache = state.sector_summary_cache
     prev_targets = _prev_cache.buy_targets if _prev_cache and hasattr(_prev_cache, 'buy_targets') else None
 
-    trim_trade = float(state.integrated_system_settings_cache["sector_trim_trade_amt_pct"])
-    trim_change = float(state.integrated_system_settings_cache["sector_trim_change_rate_pct"])
-
     inputs = await get_sector_summary_inputs()
     sector_summary = await compute_full_sector_summary(
         **inputs,
         min_rise_ratio=float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
         min_avg_amt_eok=float(state.integrated_system_settings_cache["sector_min_trade_amt"]),
-        sector_weights=state.integrated_system_settings_cache["sector_weights"],
-        trim_trade_amt_pct=trim_trade,
-        trim_change_rate_pct=trim_change,
     )
     from backend.app.services import engine_account
     _held = await engine_account.get_held_codes()

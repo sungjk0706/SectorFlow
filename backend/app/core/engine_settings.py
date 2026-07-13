@@ -199,11 +199,6 @@ def build_engine_settings_dict(flat: dict) -> dict:
     result["sector_sort_keys"]            = _v if _v is not None else ["score"]
     # 기존 설정에서 foreign_net / institution_net 제거 마이그레이션
     result["sector_sort_keys"] = [k for k in result["sector_sort_keys"] if k not in ("foreign_net", "institution_net")]
-    result["sector_weights"]              = merged["sector_weights"]
-    # sector_weights 키 정합성 검증 (P22) — total_trade_amount 키 누락 시 경고
-    _sw = merged["sector_weights"]
-    if isinstance(_sw, dict) and "total_trade_amount" not in _sw:
-        logger.warning("[설정] sector_weights에 total_trade_amount 키 없음: %s — 마이그레이션 누락 가능", _sw)
     _v = merged.get("sector_max_targets")
     result["sector_max_targets"]          = int(_v if _v is not None else 3)
     _v = merged.get("sector_min_rise_ratio_pct")
@@ -223,11 +218,6 @@ def build_engine_settings_dict(flat: dict) -> dict:
     _strength = float(_v) if _v is not None else 0
     result["buy_block_strength_on"]       = bool(flat.get("buy_block_strength_on")) if "buy_block_strength_on" in flat else (_strength > 0)
     result["buy_min_strength"]            = _strength
-    # 업종 내 종목 트리밍 비율 (%)
-    _v = merged.get("sector_trim_trade_amt_pct")
-    result["sector_trim_trade_amt_pct"]    = float(_v if _v is not None else 10.0)
-    _v = merged.get("sector_trim_change_rate_pct")
-    result["sector_trim_change_rate_pct"]  = float(_v if _v is not None else 10.0)
     _v = merged.get("sector_start_threshold_pct")
     result["sector_start_threshold_pct"]   = float(_v if _v is not None else 70.0)
 

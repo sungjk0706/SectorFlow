@@ -7,7 +7,7 @@ from typing import Literal
 import logging
 from backend.app.domain.models import SectorSummary
 from backend.app.domain.sector_filter import filter_by_avg_amt, group_by_sector
-from backend.app.domain.sector_score import calculate_weighted_scores
+from backend.app.domain.sector_score import calculate_bonus_scores
 from backend.app.services.engine_state import state
 logger = logging.getLogger(__name__)
 
@@ -19,9 +19,6 @@ async def compute_sector_scores(
     trade_amounts: dict[str, int],
     avg_amt_5d: dict[str, int],
     min_avg_amt_eok: float = 0.0,                  # 1차 필터: 5일평균 최소 거래대금 (억 단위, 0=미적용)
-    sector_weights: dict[str, float] | None = None,  # 가중치 기반 점수 계산용
-    trim_trade_amt_pct: float = 0.0,       # 업종 내 종목 거래대금 트리밍 비율 (%)
-    trim_change_rate_pct: float = 0.0,     # 업종 내 종목 등락률 트리밍 비율 (%)
 ) -> list:  # list[SectorScore]
     """
     업종별 강도 스코어 계산.
@@ -128,42 +125,13 @@ async def compute_sector_scores(
         if not filtered_stocks:
             continue
 
-        # ── 표시용: 전체 종목 기준 실제 값 ─────────────────────────────────
+        # ── 전체 종목 기준 실제 값 (트리밍 제거 — 순위/백분위 기반 점수이므로 불필요) ──
         raw_rise_count = sum(1 for s in filtered_stocks if s.change_rate > 0)
         raw_total = len(filtered_stocks)
         raw_rise_ratio = raw_rise_count / raw_total if raw_total > 0 else 0.0
         raw_total_ta = sum(s.trade_amount for s in filtered_stocks)
-
-        # ── 점수 계산용: 트리밍 후 값 ────────────────────────────────────────
-        # ── 등락률 트리밍: 상하위 N% 종목 제외 후 상승비율 계산 ──
-        _trim_cr_pct = max(trim_change_rate_pct, 0.0)
-        if _trim_cr_pct > 0 and len(filtered_stocks) > 0:
-            _n = len(filtered_stocks)
-            _trim_cnt = round(_n * _trim_cr_pct / 100)
-            if _trim_cnt * 2 < _n:
-                _sorted_cr = sorted(filtered_stocks, key=lambda s: s.change_rate)
-                _cr_trimmed = _sorted_cr[_trim_cnt : _n - _trim_cnt]
-                scored_rise_count = sum(1 for s in _cr_trimmed if s.change_rate > 0)
-                scored_total = len(_cr_trimmed)
-                scored_rise_ratio = scored_rise_count / scored_total if scored_total > 0 else 0.0
-            else:
-                scored_rise_ratio = raw_rise_ratio
-        else:
-            scored_rise_ratio = raw_rise_ratio
+        avg_ta = raw_total_ta // raw_total if raw_total > 0 else 0
         avg_cr = sum(s.change_rate for s in filtered_stocks) / len(filtered_stocks) if len(filtered_stocks) > 0 else 0.0
-        # ── 거래대금 트리밍: 상하위 N% 종목 제외 후 평균 계산 ──
-        _trim_ta_pct = max(trim_trade_amt_pct, 0.0)
-        if _trim_ta_pct > 0 and len(filtered_stocks) > 0:
-            _n = len(filtered_stocks)
-            _trim_cnt = round(_n * _trim_ta_pct / 100)
-            if _trim_cnt * 2 < _n:
-                _sorted_ta = sorted(filtered_stocks, key=lambda s: s.trade_amount)
-                _ta_trimmed = _sorted_ta[_trim_cnt : _n - _trim_cnt]
-                scored_ta = sum(s.trade_amount for s in _ta_trimmed) / len(_ta_trimmed) if len(_ta_trimmed) > 0 else 0
-            else:
-                scored_ta = raw_total_ta / len(filtered_stocks) if len(filtered_stocks) > 0 else 0
-        else:
-            scored_ta = raw_total_ta / len(filtered_stocks) if len(filtered_stocks) > 0 else 0
         avg_r5d = sum(s.ratio_5d_pct for s in filtered_stocks) / len(filtered_stocks) if len(filtered_stocks) > 0 else 0.0
 
         sector_scores.append(SectorScore(
@@ -172,15 +140,10 @@ async def compute_sector_scores(
             rise_count=raw_rise_count,
             rise_ratio=raw_rise_ratio,
             avg_change_rate=avg_cr,
-            total_trade_amount=raw_total_ta,
+            avg_trade_amount=avg_ta,
             avg_ratio_5d_pct=avg_r5d,
             stocks=filtered_stocks,
-            scored_trade_amount=scored_ta,
-            scored_rise_ratio=scored_rise_ratio,
         ))
-
-    # 가중치 기반 점수 계산 + 정렬 + 순위 부여
-    calculate_weighted_scores(sector_scores, weights=sector_weights)
 
     return sector_scores
 
@@ -200,9 +163,6 @@ async def compute_full_sector_summary(
     min_strength: float = 0.0,
     min_avg_amt_eok: float = 0.0,
     max_sectors: int = 3,
-    sector_weights: dict[str, float] | None = None,
-    trim_trade_amt_pct: float = 0.0,
-    trim_change_rate_pct: float = 0.0,
     # ── 가산점 관련 파라미터 (pass-through → build_buy_targets) ──
     high_5d_cache: dict[str, int] | None = None,
     orderbook_cache: dict[str, tuple[int, int]] | None = None,
@@ -220,30 +180,19 @@ async def compute_full_sector_summary(
     engine_bootstrap, engine_sector_confirm, sector_data_provider, telegram_bot에서 이벤트 기반 호출.
 
     sector_mapping.get_merged_sector() 기반 커스텀 업종 그룹핑.
+    컷오프(min_rise_ratio)는 calculate_bonus_scores 내부에서 처리 (옵션 C 2패스).
     """
-    # 1. 업종 스코어 계산
+    # 1. 업종 스코어 계산 (컷오프는 calculate_bonus_scores 내부에서 처리)
     sector_scores = await compute_sector_scores(
         all_codes,
         trade_prices=trade_prices,
         trade_amounts=trade_amounts,
         avg_amt_5d=avg_amt_5d,
         min_avg_amt_eok=min_avg_amt_eok,
-        sector_weights=sector_weights,
-        trim_trade_amt_pct=trim_trade_amt_pct,
-        trim_change_rate_pct=trim_change_rate_pct,
     )
 
-    # ── 업종 컷오프: 상승비율 min_rise_ratio 미만 업종은 순위 없음(rank=0) ──
-    if min_rise_ratio > 0:
-        pass_sectors = [sc for sc in sector_scores if sc.rise_ratio >= min_rise_ratio]
-        fail_sectors = [sc for sc in sector_scores if sc.rise_ratio < min_rise_ratio]
-        # pass 그룹에만 순위 부여 (1부터)
-        for i, sc in enumerate(pass_sectors):
-            sc.rank = i + 1
-        # fail 그룹은 순위 없음 (0)
-        for sc in fail_sectors:
-            sc.rank = 0
-        # 표시 순서는 프론트엔드에서 결정 (백엔드는 final_score 기준 정렬 유지)
+    # 2. 3단계 누적 가산점 계산 + 컷오프 + 정렬 + 순위 부여
+    calculate_bonus_scores(sector_scores, min_rise_ratio=min_rise_ratio)
 
     return SectorSummary(
         sectors=sector_scores,
