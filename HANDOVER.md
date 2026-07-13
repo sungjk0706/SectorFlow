@@ -1,22 +1,17 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 업종별 종목 테이블 탈락 + KRX 비활성 표시 통일 (sector-stock.ts)**
-  - **목적**: 우측 패널(업종별 종목 시세) 탈락 행 표시를 중앙 패널(sector-ranking-list.ts)과 동일 패턴으로 통일 (P23 일관성)
-  - **수정 파일**: `frontend/src/pages/sector-stock.ts`, `frontend/src/components/common/ui-styles.ts`
-  - **변경 내용**:
-    - `sector-stock.ts:39-55` — `GroupRowItem.bgColor`, `DataRowItem.eliminated` 필드 추가
-    - `sector-stock.ts:224-236` — 탈락 2단계(0.4/0.65) → 단일 `isEliminated` + opacity 0.85 + `COLOR.hoverBg` 배경
-    - `sector-stock.ts:118` — 그룹 헤더 style에 `background: item.bgColor` 추가
-    - `sector-stock.ts:250-259` — KRX 비활성 종목도 opacity 0.85 적용 (`rowOpacity`), `eliminated` 캐시 비교 조건 추가
-    - `sector-stock.ts:621-627` — rowStyle 우선순위: `검색(downBg) > krxInactive(inactiveRowBg) > eliminated(hoverBg) > 투명`
-    - `ui-styles.ts:78` — `inactiveRowBg: '#c8c8c8'` 신규 추가 (기존 `inactiveBg` #e0e0e0는 sector-ranking-list.ts 막대그래프에 계속 사용)
-  - **영향 범위**: sector-stock.ts 1개 파일 + ui-styles.ts 색상 1개 추가. 기존 `inactiveBg` 사용처(중앙 패널 막대그래프) 영향 없음
-  - **검증**: `npm run typecheck` 통과, `npm run build` 통과 (61 modules, 2.12s), 브라우저 확인 완료
+- **2026-07-13: 키움증권 토큰 발급 경로 복구 — confirmed_data_broker 캐시 누락 수정 (P10 SSOT)**
+  - **현상**: 키움증권 배지 비활성화, 키움 토큰 발급/로그인 로그 전혀 없음, LS증권만 정상 연결
+  - **근본 원인**: `backend/app/core/engine_settings.py:build_engine_settings_dict()` 결과 dict에 `confirmed_data_broker` 키 누락. 커밋 `a5e190d`에서 app.py가 원본 DB 데이터 대신 정규화 결과를 캐시에 주입하도록 변경했으나, `build_engine_settings_dict`가 `confirmed_data_broker`를 결과에 포함하지 않아 캐시에서 사라짐. `_get_all_tokens_async`(engine_loop.py:60)가 `cache.get("confirmed_data_broker")` → None 반환 → 키움이 토큰 발급 대상에서 누락.
+  - **수정 파일**: `backend/app/core/engine_settings.py` (1개 파일, 6줄 추가)
+  - **변경 내용**: `build_engine_settings_dict()` 결과 dict에 `result["confirmed_data_broker"] = str(merged.get("confirmed_data_broker") or "").strip()` 추가
+  - **영향 범위**: `_get_all_tokens_async` 토큰 발급 대상에 키움 복귀. `refresh_engine_integrated_system_settings_cache` 경로에도 자동 적용. 주문/계좌/WS 구독에 영향 없음
+  - **검증**: pytest test_engine_settings.py 51 passed, test_broker_router.py/test_connector_manager.py 전부 통과. 런타임 기동 로그에서 `[연결] 키움증권 토큰 발급 완료` 확인 (수정 전에는 이 로그 없었음)
   - **커밋**: (이번 세션에서 진행)
 
-- **2026-07-13: 업종순위 페이지 패널 비율 + 종목명 컬럼 너비 미세 조정**
-  - **커밋**: `b83141a` (push 완료)
+- **2026-07-13: 업종별 종목 테이블 탈락 + KRX 비활성 표시 통일 (sector-stock.ts)**
+  - **커밋**: `3cb1542` (push 완료)
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책, JIF 경계 이벤트 즉시 갱신 — 모두 완료 (git history 참조)
@@ -130,6 +125,17 @@
     - 주요 파일: `test_engine_ws_dispatch.py` (8건), `test_daily_time_scheduler.py` (6건), `test_market_close_pipeline.py` (5건), `test_web_app.py`/`test_logger.py`/`test_broker_change.py` (각 4건) 외 28개 파일
     - 위반 원칙: P23 (일관된 통일성) — 테스트 파일 lint 일관성 미준수
     - 수정 방향: 47건은 `ruff --fix`로 자동 수정 가능 (F401/F811 unused import 제거), 25건은 수동 수정 필요 (F841 unused var, E731 lambda→def, E402 import 순서 등)
+
+- **test_engine_loop.py 12건 실패 — _init_ws_subscribe_state mock 누락 (P23 테스트 일관성)**
+  - 발견 일시: 2026-07-13 (키움 토큰 발급 경로 복구 작업 중 발견)
+  - **연관성 조사 완료 (규칙 4-1)**:
+    1) 연관성: 실패 테스트들은 `run_engine_loop()`를 호출하며, `engine_loop.py:169`의 `_init_ws_subscribe_state()` 호출이 mock되지 않아 `RuntimeError: settings cache not initialized` 발생. 내 수정(`engine_settings.py`의 `confirmed_data_broker` 추가)과 무관 — 실패 위치는 `daily_time_scheduler.py:780`.
+    2) 수정 전 비교: `git stash` 후 동일 12건 실패 확인 → 기존 실패 판정.
+    3) 도입 커밋: `939d199` — 이 커밋에서 `engine_loop.py:169`에 `_init_ws_subscribe_state()` 호출 추가. 커밋 `939d199^` 기준으로 `test_engine_loop.py` 38 passed 확인. `939d199`에서 테스트 미갱신.
+  - **원인**: 커밋 `939d199`에서 `engine_loop.run_engine_loop()` 내 WS 연결 이전에 `_init_ws_subscribe_state()` 호출을 추가했으나, `test_engine_loop.py`의 `TestRunEngineLoopInit`/`TestRunEngineLoopRestApi`/`TestRunEngineLoopAccountMasking` 클래스들이 이 호출을 mock하지 않아 `RuntimeError: settings cache not initialized` 발생. `test_state_initialized`는 `preboot_ready_event.set.assert_called()`를 검사하지 않아 통과.
+  - **실패 12건**: `test_preboot_ready_event_set`, `test_token_ready_event_set_after_gather`, `test_no_valid_brokers_logs_warning`, `test_token_success_sets_access_token`, `test_token_failure_sets_access_token_none`, `test_rest_api_tr_ids_assigned`, `test_auto_trade_created_with_token`, `test_broadcast_buy_limit_status_called`, `test_broadcast_buy_limit_exception_handled`, `test_account_number_masked_in_log`, `test_short_account_number_not_masked`, `test_real_mode_warning_in_log`
+  - **위반 원칙**: P23 (일관성) — 코드 변경 시 테스트 미갱신
+  - **수정 방향**: `test_engine_loop.py`의 `run_engine_loop` 호출 테스트들에 `patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock())` 추가
 
 ## 테스트 실행 원칙 (필수 준수)
 
