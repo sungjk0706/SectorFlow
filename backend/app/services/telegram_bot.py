@@ -457,7 +457,7 @@ class TelegramBot:
             # 상위 5개
             lines.append("🔺 <b>상위 업종</b>")
             for s in sectors[:5]:
-                amt_b = s.scored_trade_amount / 1e8
+                amt_b = s.avg_trade_amount / 1e8
                 lines.append(
                     f"  {s.rank}. {s.sector}  "
                     f"avg {s.avg_change_rate:+.2f}%  "
@@ -469,7 +469,7 @@ class TelegramBot:
             if len(sectors) > 5:
                 lines.append("\n🔻 <b>하위 업종</b>")
                 for s in sectors[-3:]:
-                    amt_b = s.scored_trade_amount / 1e8
+                    amt_b = s.avg_trade_amount / 1e8
                     lines.append(
                         f"  {s.rank}. {s.sector}  "
                         f"avg {s.avg_change_rate:+.2f}%  "

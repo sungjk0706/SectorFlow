@@ -218,7 +218,11 @@ def get_sector_scores_snapshot() -> tuple[list[dict], int]:
             "rank": sc.rank,
             "sector": sc.sector,
             "final_score": round(sc.final_score, 1),
-            "total_trade_amount": sc.scored_trade_amount,  # 평균 거래대금 (가중치 계산 기반과 일관성 유지)
+            "bonus_rise_ratio": round(sc.bonus_rise_ratio, 1),
+            "bonus_relative_strength": round(sc.bonus_relative_strength, 1),
+            "bonus_trade_amount": round(sc.bonus_trade_amount, 1),
+            "avg_trade_amount": sc.avg_trade_amount,
+            "total_trade_amount": sc.avg_trade_amount,  # 하위 호환 (Phase 2에서 제거)
             "rise_ratio": round(sc.rise_ratio * 100, 1),
             "total": sc.total,
         })
@@ -243,18 +247,12 @@ async def recompute_sector_summary_now() -> None:
         logger.info("[업종] 엔진 미실행으로 종료")
         return
     try:
-        trim_trade = float(state.integrated_system_settings_cache["sector_trim_trade_amt_pct"])
-        trim_change = float(state.integrated_system_settings_cache["sector_trim_change_rate_pct"])
-        sector_weights = state.integrated_system_settings_cache["sector_weights"]
-        logger.info("[업종] 재계산 업종 가중치: %s", sector_weights)
+        logger.info("[업종] 업종순위 재계산 (3단계 누적 가산점)")
         _inputs = await get_sector_summary_inputs()
         _sector_summary = await compute_full_sector_summary(
             **_inputs,
             min_rise_ratio=float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
             min_avg_amt_eok=float(state.integrated_system_settings_cache["sector_min_trade_amt"]),
-            sector_weights=state.integrated_system_settings_cache["sector_weights"],
-            trim_trade_amt_pct=trim_trade,
-            trim_change_rate_pct=trim_change,
         )
         from backend.app.services import engine_account
         _held = await engine_account.get_held_codes()
