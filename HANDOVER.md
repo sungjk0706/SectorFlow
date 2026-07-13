@@ -1,38 +1,24 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 매수후보/보유종목 상단 배지 인디케이터 + 업종별 종목 시세 상단 요약 라벨 정리**
-  - **목적**:
-    1. 매수설정 → 매수후보 페이지 상단 3개 인디케이터(주문가능금액, 일일 매수 금액, 동시 보유 종목)가 금액/종목명/수량 변동 시 좌우로 밀리는 문제 해결
-    2. 업종순위 → 업종별 종목 실시간 시세 페이지 상단 라벨(`5일평균거래대금`과 `합계/KRX/NXT/코스피/코스닥`)을 1행으로 정리해 불안정해 보이는 배치 개선
+- **2026-07-13: KRX/NXT 장운영정보 인디케이터 타이밍 불일치 해결 — JIF 경계 이벤트 즉시 갱신 + P16/P21/P22 위반 수정**
+  - **목적**: KRX 정규장 시작(09:00) 시각에도 상단 헤더 KRX/NXT 인디케이터가 늦게 전환되거나 카운트다운 문구가 남는 타이밍 불일치 해결
   - **근본 원인**:
-    1. `buy-target.ts:312-313` 배지 행에 `display: flex`/`gap`이 없이 `lineHeight: '2'`만 지정 → 자식 `span`이 inline 상태로 텍스트 폭에 따라 shrink-to-fit
-    2. `renderLimitBadge`/`renderOrderableBadge`가 매번 `el.textContent = ''` 후 새 `span` 생성/append → DOM 재구성
-    3. `sell-position.ts:145-146`도 동일한 inline 배지 행으로 중복 구현
-    4. `sector-stock.ts`의 `summaryBar`가 `flexDirection: 'column'` + `alignItems: 'center'`로 2행 중앙 정렬되어 있어, 그룹 간 여백과 중심이 고정되지 않아 불안정해 보임
+    1. `engine_ws_dispatch.py:215,228,267` — JIF 경계 이벤트(장시작/장마감 신호, jstatus 21/41/51/52/54/55/56/57/58)를 의도적으로 무시하고 로컬 시계 타이머(call_later)에만 의존. 09:00에 시계 타이머와 _on_krx_market_open(업종 재계산+재구독)이 동시 예약되어 이벤트 루프 혼잡 시 지연. 지연 동안 카운트다운 라벨이 krx_event에 남아 헤더에 표시됨 (P22 위반)
+    2. `engine_lifecycle.py:174-187` — get_engine_status()에 market_phase 미포함. index-data 이벤트로 헤더 장 상태 갱신 불가 (P21 위반)
+    3. `uiStore.ts:129-135` — applyIndexRefresh dead code. 백엔드에서 index-refresh 이벤트 발송 없음 (P16 위반)
   - **해결 방안**:
-    - `frontend/src/components/common/badge.ts` 신규: `createBadgeRow`, `createBadge`, `updateBadge` — `display: flex` + `gap` + `flex: 1` + `min-width: 0` + `nowrap` + `ellipsis` 구조
-    - `buy-target.ts` 배지 행과 렌더 로직을 공통 컴포넌트로 교체, `updateBadges`는 `textContent`만 갱신
-    - `sell-position.ts` 요약 배지 행도 동일한 공통 컴포넌트로 교체
-    - `sector-stock.ts`의 `summaryBar`를 `flexDirection: 'row'` + `justifyContent: 'space-between'`로 1행 정리. 좌측에 `5일평균거래대금 (N)억`, 우측에 `합계/KRX/NXT/코스피/코스닥` 종목수 요약
-  - **수정 파일**: `components/common/badge.ts` (신규), `buy-target.ts`, `sell-position.ts`, `sector-stock.ts`
-  - **검증**: `npm run typecheck` 통과, `npm run build` 통과
-  - **커밋/푸쉬**: `21ddb1b` pushed to `origin/main`
-
-- **2026-07-13: DataTable 컬럼 너비 안정화 — 실시간 틱 시 구분선 흔들림 + 좌우 스크롤 근본 해결**
-  - **목적**: 정규장 실시간 틱 수신 시 매수후보 테이블 컬럼 구분선이 미세하게 흔들리고, 모든 페이지에 좌우 스크롤이 발생하는 문제 해결
-  - **근본 원인 3단계**:
-    1. `checkCellWidth`/`flushWidthUpdate` — 실시간 틱 경로에서 셀 텍스트 폭 재측정 → 전체 컬럼 % 재계산 → 구분선 이동
-    2. `initFromRows` 무조건 `applyWidths` 호출 — `buy-targets-delta` 이벤트 시마다 폭 재계산
-    3. `gridTemplateColumns` % 단위 → 매 레이아웃 평가 시 컨테이너 너비 기준 px 재변환 + `wrapper.clientWidth` 사용으로 스크롤바 너비 초과 → 좌우 스크롤
-  - **해결 방안**: 첫 `updateRows` 시 1회만 데이터 기반 폭 계산 후 고정 (`initialized` 플래그). 이후 실시간 틱/데이터 변화에 재계산 없음. px 단위 고정 + `scrollContainer.clientWidth` 사용 + 반올림 오차 보정. 전체 7개 DataTable 페이지 28개 컬럼에 minWidth/maxWidth 지정.
-  - **수정 파일**: `data-table.ts` (폭 재계산 로직 전면 개편), `buy-target.ts`, `sell-position.ts`, `profit-shared.ts`, `stock-classification.ts`, `stock-detail.ts`, `general-settings.ts` (컬럼 minWidth/maxWidth 추가)
-  - **검증**: `npm run typecheck` 통과, `npm run build` 통과, 브라우저 확인 대기
+    - 수정안 1: JIF 경계 이벤트 수신 시 _broadcast_market_phase() 즉시 호출 → 시계 페이즈 갱신 + 카운트다운 라벨 초기화. 시계 타이머는 JIF 누락 시 백업 역할로 유지
+    - 수정안 2: applyIndexRefresh dead code 제거
+    - 수정안 3: get_engine_status()에 market_phase 포함 + IndexData 타입에 market_phase 필드 추가 + applyIndexData에서 market_phase 갱신
+  - **수정 파일**: `engine_ws_dispatch.py`, `engine_lifecycle.py`, `uiStore.ts`, `types/index.ts`, `test_engine_ws_dispatch.py`
+  - **검증**: pytest 56 passed, npm run build 성공, 런타임 기동 정상 (장 상태 초기화 KRX=정규장/NXT=메인마켓 확인, JIF 구독 완료 로그 확인)
+  - **커밋/푸쉬**: `24a5be1` pushed to `origin/main`
 
 ## 현재 상태
-- **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책 — 모두 완료 (git history 참조)
-- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 색상 체계 통일, 수익현황/수익상세 기간 전환, DataTable 컬럼 너비 안정화(1회 계산 후 고정 + px 단위 + 전체 컬럼 minWidth/maxWidth 지정) — 모두 완료, `npm run build` 통과 (git history 참조)
-- **테스트**: 백엔드 pytest 통과. 커버리지 Phase 1~3 완료
+- **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책, JIF 경계 이벤트 즉시 갱신 — 모두 완료 (git history 참조)
+- **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 색상 체계 통일, 수익현황/수익상세 기간 전환, DataTable 컬럼 너비 안정화, applyIndexRefresh dead code 제거 + applyIndexData market_phase 갱신 — 모두 완료, `npm run build` 통과 (git history 참조)
+- **테스트**: 백엔드 pytest 56 passed (test_engine_ws_dispatch.py). 커버리지 Phase 1~3 완료
 - **업종 분류**: 69→55 재분류 + 업종명 정비 + 순위 기반 점수 전환 + 종목 이동 버그 3건 근본 해결 + "업종명없음" 잔적 제거 — 완료, 사용자 UI 확인 대기
 - **규칙/문서 정리**: AGENTS.md 4섹션 구조, 아키텍처 원칙 24개, .devin/workflows 제거 + skills 통합 — 완료 (2026-07-13)
 
