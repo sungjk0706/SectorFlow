@@ -270,7 +270,7 @@ function createFixedMode<T extends object>(
         fontWeight: FONT_WEIGHT.normal,
         color: scoreColor(g.score),
       })
-      span.textContent = `(종합점수 : ${g.score.toFixed(1)})`
+      span.textContent = `(종합점수 : ${g.score})`
       td.appendChild(span)
     }
     tr.appendChild(td)
@@ -481,7 +481,7 @@ function createFixedMode<T extends object>(
               }
               if (row.score != null) {
                 let span = td.querySelector('span')
-                const scoreText = `(종합점수 : ${row.score.toFixed(1)})`
+                const scoreText = `(종합점수 : ${row.score})`
                 if (span) {
                   if (span.textContent !== scoreText) span.textContent = scoreText
                   if (span.style.color !== scoreColor(row.score)) span.style.color = scoreColor(row.score)
@@ -786,7 +786,7 @@ function createVirtualScrollMode<T extends object>(
             fontWeight: FONT_WEIGHT.normal,
             color: scoreColor(row.score),
           })
-          span.textContent = `(종합점수 : ${row.score.toFixed(1)})`
+          span.textContent = `(종합점수 : ${row.score})`
           cell.appendChild(span)
         }
         rowEl.appendChild(cell)
@@ -851,7 +851,7 @@ function createVirtualScrollMode<T extends object>(
         // 점수 span 갱신
         if (row.score != null) {
           let span = cell.querySelector('span') as HTMLElement | null
-          const scoreText = `(종합점수 : ${row.score.toFixed(1)})`
+          const scoreText = `(종합점수 : ${row.score})`
           if (span) {
             if (span.textContent !== scoreText) span.textContent = scoreText
             if (span.style.color !== scoreColor(row.score)) span.style.color = scoreColor(row.score)
