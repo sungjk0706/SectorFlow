@@ -287,8 +287,8 @@ function mount(container: HTMLElement): void {
     stickyHeader: true,
     rowHeight: 32,
     rowStyle: (_row, _idx) => searchTerm
-      ? { outline: `2px solid ${COLOR.down}` }
-      : { outline: 'none' },
+      ? { background: COLOR.downBg }
+      : { background: '' },
   })
 
   // 빈 상태 메시지 (DataTable 외부 — 기존 동작 유지)

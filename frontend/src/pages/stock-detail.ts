@@ -233,8 +233,8 @@ function mount(container: HTMLElement): void {
     emptyText: '데이터가 없습니다.',
     zebraStriping: true,
     rowStyle: (_row, _idx) => searchQuery
-      ? { outline: `2px solid ${COLOR.down}` }
-      : { outline: 'none' },
+      ? { background: COLOR.downBg }
+      : { background: '' },
   })
   Object.assign(tableRef.el.style, { flex: '1', minHeight: '0' })
   root.appendChild(tableRef.el)
