@@ -79,11 +79,9 @@
 - 라벨 색상: 정적 라벨 검정, 동적 숫자 파랑 구분 확인
 - 장개시 후 WS 구독 시작 시 수신율 0% → 틱 수신시 상승 → 임계값 도달시 업종점수 계산 시작 확인
 
-### 3순위: engine_settings.py 인접 라인 P20 폴백 일괄 정리 (승인 대기)
-- line 138: `sector_min_rise_ratio_pct` — `or 60.0`이 0%를 60%로 치환
-- line 139: `sector_min_trade_amt` — `or 0.0`은 다행이지만 패턴 동일 위험
-- 동일 패턴(`_v if _v is not None else 기본값`)으로 일괄 정리 권장
-- **참고**: 업종 점수 가산점제 전환 시 `sector_weights` 관련 코드 제거되므로, 본 항목과 중복 정리 검토
+### 3순위: engine_settings.py 인접 라인 P20 폴백 일괄 정리 — 완료 (2026-07-13)
+- line 139-140: `sector_min_rise_ratio_pct` / `sector_min_trade_amt` — `or` 패턴 → `_v if _v is not None else 기본값` 패턴으로 통일 완료
+- **잔존**: 같은 파일 내 다른 `or` 패턴 27곳 → "미해결 문제"에 신규 등록 (P20/P23 위반)
 
 ### 4순위: 아키텍처 전수 점검 P1 세션 (B-10)
 - B-10: 엔진 계좌/서비스 (`engine_account.py`, `engine_account_rest.py`, `engine_account_notify.py`, `engine_service.py`)
@@ -106,6 +104,18 @@
     - [G] 외부 프로세스에 의한 DB 직접 조작 가능성 (14:32~15:52 공백 시간)
     - [H] 70,100 값의 출처 역산 — 07-09 005930 매수 체결가들로 평균가 계산 불가 확인
     - [I] WAL checkpoint 타이밍 이슈 — 이전 데이터 복원 가능성
+
+- **engine_settings.py 내 `or` 폴백 패턴 다수 잔존 (P20/P23 위반)**
+  - 발견 일시: 2026-07-13 (engine_settings.py P20 폴백 일괄 정리 작업 중 발견)
+  - **해결 완료 (2026-07-13)**:
+    - `engine_settings.py:80` `max_daily_loss_limit` — `or -500000` → `_v if _v is not None else -500000` 패턴으로 수정 (dict 블록 밖으로 이동)
+    - `engine_settings.py:81` `max_single_stock_exposure` — `or 20000000` → `_v if _v is not None else 20000000` 패턴으로 수정 (dict 블록 밖으로 이동)
+    - `engine_settings.py:139-140` `sector_min_rise_ratio_pct` / `sector_min_trade_amt` — `or` 패턴 → `_v if _v is not None else 기본값` 패턴으로 수정
+  - **미해결 잔존**:
+    - `engine_settings.py:67,118` — `int(merged.get("max_stock_cnt", 5) or 5)` — 0을 5로 치환 (비즈니스상 0은 무효값일 수 있어 방어 로직 가능성, 검토 필요)
+    - **P23 일관성 위반 (or 0 패턴, 0이 정상값)**: line 66, 70, 72, 73, 75, 77, 115, 117, 119, 122, 124, 125, 159 — `or 0` 패턴 13곳. 0이 정상값이므로 사실상 문제 없으나, `_v if _v is not None else 0` 패턴으로 통일 권장
+    - **기본값 불일치 의심**: `engine_settings.py:206` — `int(merged.get("test_virtual_deposit", 10_000_000) or 0)` — 기본값 10_000_000이지만 or가 0으로 치환. None→10_000_000, 0→0으로 의도적일 수 있으나 패턴 불일치. `engine_settings.py:207` 동일
+    - 수정 방향: P23 일관성 정리 시 일괄 처리
 
 - **테스트 파일 ruff lint 에러 72건 (기존 존재, P23 일관성 위반 가능성)**
   - 발견 일시: 2026-07-13 (최초 17건 보고 후 4개 파일 17건 수정 완료, 전수 검사에서 추가 72건 발견)
