@@ -8,7 +8,7 @@
   - **변경 내용**: 15개 테스트의 `is_ws_subscribe_window` 패치 라인 다음에 `patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock)` 추가. 12건 실패(462,493,525,563,595,813,884,916,947,985,1019,1052) + 3건 잘못 통과(734,766,851)
   - **영향 범위**: `test_engine_loop.py` 내 `run_engine_loop()` 호출 테스트만. 프로덕션 코드 변경 없음
   - **검증**: pytest test_engine_loop.py 38 passed in 6.21s. ruff 0건
-  - **커밋**: (승인 대기)
+  - **커밋**: `ee4b67d`
 
 - **2026-07-13: engine_settings.py 잔존 폴백 9곳 해결 — 복호화 실패 silent 1곳 + real 키 레거시 폴백 7곳 + max_position_size lambda 1곳 (P20/P21/P23)**
   - **현상**: 직전 세션에서 22곳 or 폴백 정리 후 잔존 9곳이 미해결 문제로 등록됨. (1) `_dec` 내 `decrypt_value(s) or ""` — 복호화 실패 시 빈문자열 폴백, 실패 사실 로그 미출력 (P21). (2) `_dec(real) or _dec(legacy)` 7곳 — real 키 복호화 실패 시 레거시 키로 인증 시도, 사용자 모르게 다른 키 사용 (P21). (3) max_position_size lambda — None/빈문자열/"None" → 0 폴백, 0이 유효값(제한 없음)이므로 구분 불가 (P20)
