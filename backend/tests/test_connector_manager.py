@@ -8,7 +8,6 @@ _on_reconnect_success, 상태 조회, send_message, subscribe/unsubscribe 라우
 """
 from __future__ import annotations
 
-import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 

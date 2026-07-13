@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from backend.app.core.broker_router import BrokerRouter, FEATURES, _FEATURE_DISPLAY
 
 
@@ -181,11 +179,11 @@ class TestBuild:
         settings = _mock_settings(broker="kiwoom")
         with (
             patch("backend.app.services.engine_state.state") as mock_state,
-            patch("backend.app.core.broker_router._create_provider", side_effect=side_effect) as mock_cp,
+            patch("backend.app.core.broker_router._create_provider", side_effect=side_effect),
             patch("backend.app.core.broker_router.logger") as mock_logger,
         ):
             mock_state.integrated_system_settings_cache = settings
-            router = BrokerRouter()
+            BrokerRouter()
 
         warning_msgs = [str(c) for c in mock_logger.warning.call_args_list]
         assert any("대체" in m for m in warning_msgs)
@@ -205,7 +203,9 @@ class TestBuild:
         )
         # _create_provider가 feature별로 다른 provider 반환
         providers = {feat: MagicMock() for feat in FEATURES}
-        side_effect = lambda feat, bn, s, ac: providers[feat]
+
+        def side_effect(feat, bn, s, ac):
+            return providers[feat]
 
         with (
             patch("backend.app.services.engine_state.state") as mock_state,

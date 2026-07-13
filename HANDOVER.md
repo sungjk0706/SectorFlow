@@ -107,21 +107,13 @@
     - [H] 70,100 값의 출처 역산 — 07-09 005930 매수 체결가들로 평균가 계산 불가 확인
     - [I] WAL checkpoint 타이밍 이슈 — 이전 데이터 복원 가능성
 
-- **테스트 파일 ruff lint 에러 17건 (기존 존재, P23 일관성 위반 가능성)**
-  - 발견 일시: 2026-07-13 (미해결 문제 2건 수정 후 ruff 검증 도중)
-  - 내역 (4개 테스트 파일):
-    - `test_broker_router.py:11` — F401 `pytest` imported but unused
-    - `test_broker_router.py:184` — F841 `mock_cp` unused
-    - `test_broker_router.py:188` — F841 `router` unused
-    - `test_broker_router.py:208` — E731 lambda assignment (def 사용 권장)
-    - `test_connector_manager.py:11` — F401 `asyncio` imported but unused
-    - `test_engine_sector_confirm.py:20` — F401 `_UNREG_READY_CODES` imported but unused (모듈 레벨 import)
-    - `test_engine_sector_confirm.py:210,221,240,259,266,279,318` — F811 `_UNREG_READY_CODES` redefinition 7건 (함수 내 재import)
-    - `test_pipeline_compute.py:24,28,52` — E402 module level import not at top 3건
-    - `test_pipeline_compute.py:43` — F401 `_REALTIME_CHECK_FIELDS` imported but unused
-  - 위반 원칙: P23 (일관된 통일성) — 테스트 파일 lint 일관성 미준수
-  - 수정 방향: 11건은 `ruff --fix`로 자동 수정 가능 (F401/F811 unused import 제거), 6건은 수동 수정 (F841 unused var, E731 lambda→def, E402 import 순서)
-  - 참고: 이번 세션 수정 파일에서 신규 발생한 ruff 에러 없음 — 모두 기존 존재 에러
+- **테스트 파일 ruff lint 에러 72건 (기존 존재, P23 일관성 위반 가능성)**
+  - 발견 일시: 2026-07-13 (최초 17건 보고 후 4개 파일 17건 수정 완료, 전수 검사에서 추가 72건 발견)
+  - **해결 완료 (17건, 4개 파일)**: `test_broker_router.py` (F401/F841×2/E731), `test_connector_manager.py` (F401), `test_engine_sector_confirm.py` (F401/F811×7), `test_pipeline_compute.py` (E402×3/F401) — 2026-07-13 수정, ruff 0건 + pytest 240 passed 확인
+  - **미해결 (72건, 34개 파일)**: 전체 `backend/tests/` 디렉토리 ruff 검사 결과 72건 잔존
+    - 주요 파일: `test_engine_ws_dispatch.py` (8건), `test_daily_time_scheduler.py` (6건), `test_market_close_pipeline.py` (5건), `test_web_app.py`/`test_logger.py`/`test_broker_change.py` (각 4건) 외 28개 파일
+    - 위반 원칙: P23 (일관된 통일성) — 테스트 파일 lint 일관성 미준수
+    - 수정 방향: 47건은 `ruff --fix`로 자동 수정 가능 (F401/F811 unused import 제거), 25건은 수동 수정 필요 (F841 unused var, E731 lambda→def, E402 import 순서 등)
 
 ## 테스트 실행 원칙 (필수 준수)
 
