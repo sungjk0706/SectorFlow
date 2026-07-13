@@ -1,31 +1,25 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 키움증권 토큰 발급 경로 복구 — confirmed_data_broker 캐시 누락 수정 (P10 SSOT)**
-  - **현상**: 키움증권 배지 비활성화, 키움 토큰 발급/로그인 로그 전혀 없음, LS증권만 정상 연결
-  - **근본 원인**: `backend/app/core/engine_settings.py:build_engine_settings_dict()` 결과 dict에 `confirmed_data_broker` 키 누락. 커밋 `a5e190d`에서 app.py가 원본 DB 데이터 대신 정규화 결과를 캐시에 주입하도록 변경했으나, `build_engine_settings_dict`가 `confirmed_data_broker`를 결과에 포함하지 않아 캐시에서 사라짐. `_get_all_tokens_async`(engine_loop.py:60)가 `cache.get("confirmed_data_broker")` → None 반환 → 키움이 토큰 발급 대상에서 누락.
-  - **수정 파일**: `backend/app/core/engine_settings.py` (1개 파일, 6줄 추가)
-  - **변경 내용**: `build_engine_settings_dict()` 결과 dict에 `result["confirmed_data_broker"] = str(merged.get("confirmed_data_broker") or "").strip()` 추가
-  - **영향 범위**: `_get_all_tokens_async` 토큰 발급 대상에 키움 복귀. `refresh_engine_integrated_system_settings_cache` 경로에도 자동 적용. 주문/계좌/WS 구독에 영향 없음
-  - **검증**: pytest test_engine_settings.py 51 passed, test_broker_router.py/test_connector_manager.py 전부 통과. 런타임 기동 로그에서 `[연결] 키움증권 토큰 발급 완료` 확인 (수정 전에는 이 로그 없었음)
-  - **커밋**: (이번 세션에서 진행)
+- **2026-07-13: engine_settings.py or 폴백 패턴 22곳 → _v if _v is not None else 기본값 통일 (P20/P23)**
+  - **현상**: `build_engine_settings_dict()` 내 `or 0`/`or ""`/`or {}`/`or ["score"]` 패턴이 None과 정상값(0/빈문자열/빈 dict)을 동일하게 치환하여 P20(폴백 금지)/P23(일관성) 위반
+  - **근본 원인**: `backend/app/core/engine_settings.py` dict 블록 내 및 블록 뒤 22곳에서 `merged.get(key, 기본값) or 기본값` 패턴 사용. 0/빈문자열이 falsy로 평가되어 기본값으로 치환됨
+  - **수정 파일**: `backend/app/core/engine_settings.py` (1개 파일)
+  - **변경 내용**: 22곳을 `_v = merged.get(key); result[key] = _v if _v is not None else 기본값` 패턴으로 통일. dict 블록 내 `or` 패턴 필드는 dict 블록 뒤로 이동. 잔존 9곳(복호화 실패 1곳, real 키 우선 레거시 마이그레이션 7곳, max_position_size lambda 1곳)은 P20/P21 위반으로 판단하여 "미해결 문제"에 등록, 다음 세션에서 수정
+  - **영향 범위**: `build_engine_settings_dict()` 반환 dict를 사용하는 모든 호출처(engine_loop.py, engine_service.py, app.py 캐시 등). 값 자체는 동일(None과 0/빈값이 동일 취급되던 것을 None만 기본값으로 치환하도록 정교화). test_virtual_deposit/balance는 None→10_000_000(기본값)으로 변경되어 더 합리적
+  - **검증**: pytest test_engine_settings.py 51 passed in 0.41s
+  - **커밋**: (승인 대기)
 
-- **2026-07-13: 업종별 종목 테이블 탈락 + KRX 비활성 표시 통일 (sector-stock.ts)**
-  - **커밋**: `3cb1542` (push 완료)
+- **2026-07-13: 키움증권 토큰 발급 경로 복구 — confirmed_data_broker 캐시 누락 수정 (P10 SSOT)**
+  - **커밋**: `b27a8b0`
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책, JIF 경계 이벤트 즉시 갱신 — 모두 완료 (git history 참조)
 - **프론트엔드**: 더미 데이터 삭제, 차트 툴팁, 색상 체계 통일, 수익현황/수익상세 기간 전환, DataTable 컬럼 너비 안정화, applyIndexRefresh dead code 제거 + applyIndexData market_phase 갱신 — 모두 완료, `npm run build` 통과 (git history 참조)
 - **테스트**: 백엔드 pytest 56 passed (test_engine_ws_dispatch.py). 커버리지 Phase 1~3 완료
-- **업종 분류**: 69→55 재분류 + 업종명 정비 + 순위 기반 점수 전환 + 종목 이동 버그 3건 근본 해결 + "업종명없음" 잔적 제거 — 완료, 사용자 UI 확인 대기
 - **규칙/문서 정리**: AGENTS.md 4섹션 구조, 아키텍처 원칙 24개, .devin/workflows 제거 + skills 통합 — 완료 (2026-07-13)
 
 ## 진행 중 작업
-
-### 업종순위 탈락 행 표시 개선 — 완료
-- **완료**: `sector-ranking-list.ts` — 탈락 행 배경색(`COLOR.hoverBg` #f0f0f0) + opacity 0.85 통일, 배지 제거
-- **완료**: 패널 비율 미세 조정 — 우측 flex 3→2.5 + 종목명 maxWidth 220→200 (커밋 `b83141a`)
-- **완료**: `sector-stock.ts` — 업종별 종목 테이블에 동일 배경색 + opacity 패턴 적용 + KRX 비활성 `inactiveRowBg`(#c8c8c8) 구분 (이번 세션)
 
 ### 업종 점수 누적 가산점제 전환 — 계획서 갱신 완료, 구현 대기
 - **계획서**: `docs/plan_sector_bonus_points.md` (895줄 — 2026-07-13 갱신)
@@ -71,16 +65,12 @@
 - **주의**: WS payload 하위 호환성 — Phase 1에서 `total_trade_amount`→`avg_trade_amount` 명명 변경 시, 프론트엔드(Phase 2 전)가 일시적 에러. 해결: Phase 1에서 WS payload에 `total_trade_amount`와 `avg_trade_amount` 둘 다 전송(하위 호환), Phase 2 완료 후 `total_trade_amount` 제거.
 - **시작점**: 사용자 "진행해" 지시 후 Phase 1부터 착수
 
-### 2순위: 업종순위 수신율 UI 확인 대기
-- 브라우저에서 업종순위설정 패널 ② 행 확인: 수신율 100.0% 표시, 수신/미수신 종목수 표시
-- 라벨 색상: 정적 라벨 검정, 동적 숫자 파랑 구분 확인
-- **재기동 시 수신율 상승 속도 확인** (이번 수정 후 기대 효과): 앱 재기동 시 수신율이 일관되게 정상 속도로 상승하는지 확인. 이전 증상(간헐적 정체, "업종점수 미전송 — 수신율 임계값 미달" 장시간 지속)이 해결되었는지 검증
+### 2순위: engine_settings.py P20 폴백 일괄 정리 — 완료 (2026-07-13)
+- 22곳 `or` 폴백 패턴 → `_v if _v is not None else 기본값` 패턴으로 통일 완료
+- 의도적 폴백 8곳(복호화 실패, real 키 우선 레거시 마이그레이션)은 유지
+- **미해결 문제에서 해당 항목 삭제 완료**
 
-### 3순위: engine_settings.py 인접 라인 P20 폴백 일괄 정리 — 완료 (2026-07-13)
-- line 139-140: `sector_min_rise_ratio_pct` / `sector_min_trade_amt` — `or` 패턴 → `_v if _v is not None else 기본값` 패턴으로 통일 완료
-- **잔존**: 같은 파일 내 다른 `or` 패턴 27곳 → "미해결 문제"에 신규 등록 (P20/P23 위반)
-
-### 4순위: 아키텍처 전수 점검 P1 세션 (B-10)
+### 3순위: 아키텍처 전수 점검 P1 세션 (B-10)
 - B-10: 엔진 계좌/서비스 (`engine_account.py`, `engine_account_rest.py`, `engine_account_notify.py`, `engine_service.py`)
 - `docs/architecture_audit_plan.md` 체크리스트 사용, 발견 문제를 섹션 7에 등록
 - 이후 B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
@@ -102,17 +92,24 @@
     - [H] 70,100 값의 출처 역산 — 07-09 005930 매수 체결가들로 평균가 계산 불가 확인
     - [I] WAL checkpoint 타이밍 이슈 — 이전 데이터 복원 가능성
 
-- **engine_settings.py 내 `or` 폴백 패턴 다수 잔존 (P20/P23 위반)**
-  - 발견 일시: 2026-07-13 (engine_settings.py P20 폴백 일괄 정리 작업 중 발견)
-  - **해결 완료 (2026-07-13)**:
-    - `engine_settings.py:80` `max_daily_loss_limit` — `or -500000` → `_v if _v is not None else -500000` 패턴으로 수정 (dict 블록 밖으로 이동)
-    - `engine_settings.py:81` `max_single_stock_exposure` — `or 20000000` → `_v if _v is not None else 20000000` 패턴으로 수정 (dict 블록 밖으로 이동)
-    - `engine_settings.py:139-140` `sector_min_rise_ratio_pct` / `sector_min_trade_amt` — `or` 패턴 → `_v if _v is not None else 기본값` 패턴으로 수정
-  - **미해결 잔존**:
-    - **해결 완료 (2026-07-13, 매수설정 토글 작업 중)**: `engine_settings.py:67,118` — `int(merged.get("max_stock_cnt", 5) or 5)` — 0을 5로 치환하던 부분을 `flat.get` + `is not None` 패턴으로 수정 (max_stock_cnt_on 마이그레이션과 함께)
-    - **P23 일관성 위반 (or 0 패턴, 0이 정상값)**: line 66, 70, 72, 73, 75, 77, 115, 117, 119, 122, 124, 125, 159 — `or 0` 패턴 13곳. 0이 정상값이므로 사실상 문제 없으나, `_v if _v is not None else 0` 패턴으로 통일 권장
-    - **기본값 불일치 의심**: `engine_settings.py:206` — `int(merged.get("test_virtual_deposit", 10_000_000) or 0)` — 기본값 10_000_000이지만 or가 0으로 치환. None→10_000_000, 0→0으로 의도적일 수 있으나 패턴 불일치. `engine_settings.py:207` 동일
-    - 수정 방향: P23 일관성 정리 시 일괄 처리
+- **engine_settings.py 내 `or` 폴백 패턴 (P20/P23 위반) — 22곳 해결 완료, 9곳 미해결**
+  - **해결 완료 (2026-07-13)**: 22곳 `or` 폴백 패턴 → `_v if _v is not None else 기본값` 패턴으로 통일. pytest test_engine_settings.py 51 passed 확인.
+  - **미해결 잔존 (9곳, P20/P21 위반)** — 다음 세션에서 수정:
+    - **복호화 실패 silent 폴백 (1곳, P20/P21)**:
+      - `engine_settings.py:33` — `decrypt_value(s) or ""` — 복호화 실패 시 빈문자열로 폴백. 실패 사실이 사용자에게 알려지지 않음 (P21 위반). 빈문자열이 정상값인지와 무관하게 실패를 silent 처리.
+    - **real 키 우선 레거시 마이그레이션 silent 폴백 (7곳, P20/P21)**:
+      - `engine_settings.py:43` — `_dec(merged.get("kiwoom_app_key_real")) or _dec(merged.get("kiwoom_app_key"))` — real 키 복호화 실패/빈값 시 레거시 키로 폴백. 사용자가 real 키를 설정했는데 레거시 키로 인증 시도 → 사용자 모르게 다른 키 사용 (P21 위반).
+      - `engine_settings.py:44` — 동일 (kiwoom_app_secret)
+      - `engine_settings.py:45` — `str(merged.get("kiwoom_account_no_real") or merged.get("kiwoom_account_no") or "").strip()` — 동일 (account_no)
+      - `engine_settings.py:126` — `_dec(merged.get(f"{b_name}_app_key_real")) or _dec(merged.get(f"{b_name}_app_key"))` — 루프 내 동일 패턴
+      - `engine_settings.py:127` — 동일 (app_secret, 루프)
+      - `engine_settings.py:128` — `str(merged.get(f"{b_name}_account_no_real") or merged.get(f"{b_name}_account_no") or "").strip()` — 동일 (account_no, 루프)
+    - **max_position_size lambda 폴백 (1곳, P20)**:
+      - `engine_settings.py:73` — `(lambda raw: 0 if raw is None or raw == "None" or raw == "" else int(raw))(merged.get("max_position_size"))` — None/빈문자열 → 0 폴백. 0이 정상값(제한 없음)이므로 None과 0 구분 불가 (P20 위반).
+    - **수정 방향**:
+      - 복호화 실패: 실패 시 빈값 폴백 대신 로그 경고 + 빈값 명시적 반환 (P21 투명성)
+      - real 키 우선 레거시: real 키가 설정되었으면 레거시 폴백 금지, real 키 실패 시 에러/경고. 레거시 키는 마이그레이션 완료 후 제거 검토
+      - max_position_size: `_v if _v is not None else 0` 패턴으로 통일
 
 - **pipeline_compute.py DYNAMIC_REG 처리 — 구독 실패 시에도 _subscribed_dynamic=True 설정 (P22 위반)**
   - 발견 일시: 2026-07-13 (실시간 데이터 수신율 문제 조사 중 발견)
