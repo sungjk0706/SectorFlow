@@ -1,21 +1,18 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
-- **2026-07-13: 실시간 데이터 구독 기동 순서 경쟁 조건 해결 + 동적 구독 정합성 3건 수정 (P22/P10/P23)**
-  - **목적**: 앱 재기동 시 간헐적 수신율 상승 정체 + "업종점수 미전송 — 수신율 임계값 미달" 장시간 지속 문제 근본 해결
-  - **근본 원인**:
-    1. `app.py:121-129` — `start_engine()`(엔진 루프 백그라운드) 후 `start_daily_time_scheduler()` 순차 호출 시, 엔진 루프가 WS 연결+구독+틱 수신까지 도달한 후 `_init_ws_subscribe_state()`가 실행되어 이미 수신된 틱 데이터를 None으로 리셋 → 수신율 0% 추락 → 임계값 재대기
-    2. `engine_lifecycle.py:59-93` — `stop_engine()`이 `_PENDING_REG_CODES`와 동적 구독 해지 타이머를 정리하지 않음 → 이전 세션 잔존 상태가 신규 세션으로 누출
-    3. `pipeline_compute.py:336-340` — DYNAMIC_REG 처리 시 `subscribe_dynamic_data` 실패해도 `_subscribed_dynamic=True` 설정 → 플래그와 실제 구독 상태 불일치
-  - **해결 방안**:
-    - 표준 기동 순서 적용 (초기화 → 연결 → 구독): `_init_ws_subscribe_state()`를 `engine_loop.run_engine_loop()` 내 WS 연결 이전에 실행 (engine_loop.py:165-169)
-    - `start_daily_time_scheduler()`에서 `_init_ws_subscribe_state()` 중복 호출 제거 (daily_time_scheduler.py:1081-1084)
-    - `stop_engine()`에 `cancel_all_dynamic_unreg_timers()` + `_PENDING_REG_CODES.clear()` 추가 (engine_lifecycle.py:71-74)
-    - `subscribe_dynamic` 반환형 `None → bool` 통일 (ls_connector.py, kiwoom_connector.py, engine_ws.py, connector_manager.py, broker_connector.py — P23 일관성)
-    - DYNAMIC_REG 처리 시 성공 반환값 확인 후에만 `_subscribed_dynamic=True` 설정, 실패 시 `_PENDING_REG_CODES` 유지 (pipeline_compute.py:329-345)
-  - **수정 파일**: 백엔드 9파일(engine_loop.py, daily_time_scheduler.py, engine_lifecycle.py, pipeline_compute.py, engine_ws.py, ls_connector.py, kiwoom_connector.py, connector_manager.py, broker_connector.py)
-  - **검증**: pytest 2741 passed, ruff 0건, 런타임 기동 OK (초기화→연결→구독 순서 로그 확인, 수신율 5초 만에 95.4% 임계값 통과, 에러 없음)
-  - **커밋/푸쉬**: `939d199` pushed to `origin/main`
+- **2026-07-13: 업종 점수 누적 가산점제 전환 계획서 갱신 (폭넓은 사전조사 + 설계 문제 2건 해결)**
+  - **목적**: 계획서 백엔드 위주 문제 보완 + 프론트엔드 UI 변경 계획 보강 + 이전 검토 설계 문제 2건 반영
+  - **사전조사 범위**: 백엔드 11개 파일, 프론트엔드 9개 파일, 테스트 14개 파일 (백엔드 12, 프론트엔드 2)
+  - **설계 문제 해결**:
+    1. **옵션 C 채택** (2차 가산점 모집단 시점): 1차/3차 계산 → 컷오프 → 2차 계산(통과 업종만) → 종합 점수. 컷오프 로직을 `calculate_bonus_scores` 내부로 이관하여 진실 소스 1곳 (P10/P22 준수)
+    2. **Phase 1+2 통합** (중간 상태 깨짐 방지): 백엔드 도메인+서비스/설정을 1세션에 통합. 3세션 구조(Phase 1: 백엔드 전환 → Phase 2: 프론트엔드 전환 → Phase 3: 테스트 전환)로 재설계
+  - **사전조사 발견 (계획서 누락/오류 수정)**:
+    - `sector-stock.ts` 영향 범위 누락 발견 (L156,180-184,211 — final_score/sectorScores 참조) → 계획서에 추가
+    - `createDualLabelSlider` 삭제 불가 확인 (`buy-settings.ts:11,267`에서 매수설정 슬라이더로 사용 중) → 계획서 "삭제 검토"에서 "유지"로 수정
+  - **추가 개선점 반영**: 3차 가산점 median 대안(편향 모니터링 후 전환 검토), `total_trade_amount`→`avg_trade_amount` 명명 변경(P10/P23), WS payload 하위 호환성 유지 방안
+  - **수정 파일**: `docs/plan_sector_bonus_points.md` (687줄→895줄 전체 재작성), `HANDOVER.md` (진행 중 작업 + 다음 단계 1순위 갱신)
+  - **검증**: 문서 업데이트 작업으로 코드 수정 없음. 구현 검증은 Phase 1 착수 시 수행 예정
 
 ## 현재 상태
 - **백엔드**: Settlement Engine, RiskManager Phase 1, exchange_calendars 교체, 유령 포지션 재발 방지, 테스트모드 6개월 보관 정책, JIF 경계 이벤트 즉시 갱신 — 모두 완료 (git history 참조)
@@ -26,10 +23,14 @@
 
 ## 진행 중 작업
 
-### 업종 점수 누적 가산점제 전환 — 사전 조사 완료, 구현 대기
-- **계획서**: `docs/plan_sector_bonus_points.md` (687줄)
-- **상태**: 정밀 사전 조사 + 변경 계획서 작성 완료. 사용자 승인 후 구현 착수.
-- **구현 단위**: Phase 1(백엔드 도메인) → Phase 2(백엔드 서비스/설정) → Phase 3(프론트엔드) → Phase 4(테스트)
+### 업종 점수 누적 가산점제 전환 — 계획서 갱신 완료, 구현 대기
+- **계획서**: `docs/plan_sector_bonus_points.md` (895줄 — 2026-07-13 갱신)
+- **상태**: 폭넓은 사전조사(백엔드/프론트엔드/테스트 전 범위) + 설계 문제 2건 해결 + 프론트엔드 UI 계획 보강 완료. 사용자 승인 후 구현 착수.
+- **설계 문제 해결**:
+  - **옵션 C 채택** (2차 가산점 모집단 시점): 1차/3차 계산 → 컷오프 → 2차 계산(통과 업종만) → 종합 점수. 컷오프 로직을 `calculate_bonus_scores` 내부로 이관하여 진실 소스 1곳 (P10/P22 준수).
+  - **Phase 1+2 통합** (중간 상태 깨짐 방지): 백엔드 도메인+서비스/설정을 1세션에 통합. "백엔드 전환"을 1단계로 정의. 각 Phase가 독립적으로 완료·검증 가능.
+- **구현 단위 (3세션)**: Phase 1(백엔드 전환 — 도메인+서비스+설정 통합) → Phase 2(프론트엔드 전환) → Phase 3(테스트 전환)
+- **추가 개선점**: 3차 가산점 median 대안(편향 모니터링 후 전환 검토), `total_trade_amount`→`avg_trade_amount` 명명 변경(P10/P23), `sector-stock.ts` 영향 범위 추가, `createDualLabelSlider` 삭제 불가(buy-settings.ts 사용), WS payload 하위 호환성 유지
 - **각 Phase 완료 시**: 커밋 + HANDOVER.md 갱신 + 사용자 보고
 
 ### 아키텍처 전수 점검 — B-09 완료, 20개 미시작 (일시 보류)
@@ -40,13 +41,30 @@
 ## 다음 단계
 
 ### 1순위: 업종 점수 누적 가산점제 전환 구현 (승인 대기)
-- **계획서**: `docs/plan_sector_bonus_points.md` (정밀 사전 조사 완료)
-- **구현 순서** (계획서 섹션 9):
-  1. Phase 1: 백엔드 도메인 (`models.py`, `sector_score.py`, `sector_calculator.py`) — `MetricDef`/`DEFAULT_METRICS` 제거, `calculate_bonus_scores` + `percentile_to_score` 신규, `sector_weights` 파라미터 제거, **트리밍 로직/파라미터 제거**, `scored_rise_ratio`/`scored_trade_amount` 필드 제거 → `rise_ratio`/`total_trade_amount` 통합
-  2. Phase 2: 백엔드 서비스/설정 (`engine_sector_confirm.py`, `sector_data_provider.py`, `settings_*.py`, `engine_account_notify.py`) — `sector_weights` 참조 제거, **트리밍 변수/인자/설정 키 제거** (`sector_trim_*`), WS payload 가산점 필드 추가
-  3. Phase 3: 프론트엔드 (`sector-settings.ts` 슬라이더 + **④ 극단값 제외(트리밍) 섹션 제거**, `sector-ranking-list.ts` 점수 표시, `types/index.ts`, `uiStore.ts`, `binding.ts`)
-  4. Phase 4: 테스트 전면 수정 (11개 파일, **트리밍 테스트 제거 포함**)
-- **주의**: 2차 가산점 모집단 시점 이슈 (계획서 섹션 8.1) — `calculate_bonus_scores`에 `min_rise_ratio` 파라미터 추가로 통과 업종 판단 필요
+- **계획서**: `docs/plan_sector_bonus_points.md` (895줄 — 폭넓은 사전조사 + 설계 문제 해결 완료)
+- **구현 순서** (계획서 섹션 9 — 3세션 구조):
+  1. **Phase 1: 백엔드 전환 (1세션)** — 도메인+서비스+설정 통합 (11개 파일)
+     - `models.py`: `MetricDef`/`DEFAULT_METRICS` 제거, `SectorScore` 필드 수정 (`scored_*` 제거, `total_trade_amount`→`avg_trade_amount` 명명 변경, `bonus_*` 신규 필드)
+     - `sector_score.py`: `normalize_weight_values` 제거, `calculate_weighted_scores`→`calculate_bonus_scores` 재작성 (옵션 C 2패스, 컷오프 이관), `percentile_to_score` 신규
+     - `sector_calculator.py`: `sector_weights`/`trim_*` 파라미터 제거, 트리밍 로직 제거, `calculate_bonus_scores` 호출로 교체
+     - `engine_sector_confirm.py`, `sector_data_provider.py`, `engine_account_notify.py`, `settings_defaults.py`, `engine_settings.py`, `settings_file.py`, `telegram_bot.py`, `engine_service.py` — 참조/변수/인자 제거, WS payload 가산점 필드 추가
+     - **검증**: 런타임 기동 + 신규 함수 단위 테스트 (기존 테스트는 Phase 3에서 수정)
+  2. **Phase 2: 프론트엔드 전환 (1세션)** — UI+타입+바인딩 (8개 파일 + sliderConvert.ts 삭제)
+     - `sector-settings.ts`: ④ 극단값 제외 + ⑤ 가중치 슬라이더 섹션 제거, "가산점 자동 계산" 안내문 추가, 섹션 번호 재정렬
+     - `sector-ranking-list.ts`: 가산점 표시(0~300), 헤더 라벨 변경, `avg_trade_amount` 참조 변경
+     - `sector-stock.ts` (신규 추가): `final_score`/`sectorScores` 참조 확인, `avg_trade_amount` 참조 변경
+     - `types/index.ts`, `uiStore.ts`, `binding.ts`, `hotStore.ts` — 타입/상태/바인딩 전환
+     - `sliderConvert.ts` 삭제 (sector-settings.ts 전용), `create-slider.ts` 유지 (buy-settings.ts 사용)
+     - **검증**: `npm run build` + 브라우저 확인
+  3. **Phase 3: 테스트 전환 (1세션)** — 백엔드 12개 + 프론트엔드 1개
+     - `test_sector_score.py`: `TestNormalizeWeightValues`/`TestCalculateWeightedScores` 제거, `TestCalculateBonusScores`/`TestPercentileToScore` 신규
+     - `test_sector_calculator.py`: `TestComputeSectorScoresTrimming`/`TestComputeSectorScoresWeights` 제거, `TestComputeSectorScoresWithBonus` 신규
+     - `test_engine_sector_confirm.py`: mock 교체 (8개 테스트), `sector_weights`/`trim_*` mock 제거 (11개)
+     - `test_settings_file.py`: `TestMigrateRankPrimaryToWeights`/`TestMigrateSectorWeights` 제거
+     - 기타 8개 파일: `scored_trade_amount`→`avg_trade_amount` 참조 수정
+     - `frontend/tests/utils/sliderConvert.test.ts` 삭제
+     - **검증**: pytest 전체 통과 + ruff 0건 + 프론트엔드 빌드
+- **주의**: WS payload 하위 호환성 — Phase 1에서 `total_trade_amount`→`avg_trade_amount` 명명 변경 시, 프론트엔드(Phase 2 전)가 일시적 에러. 해결: Phase 1에서 WS payload에 `total_trade_amount`와 `avg_trade_amount` 둘 다 전송(하위 호환), Phase 2 완료 후 `total_trade_amount` 제거.
 - **시작점**: 사용자 "진행해" 지시 후 Phase 1부터 착수
 
 ### 2순위: 업종순위 수신율 UI 확인 대기
