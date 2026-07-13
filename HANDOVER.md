@@ -8,7 +8,7 @@
   - **변경 내용**: (1) `settings-common.ts` — `createStepLabel` 공통 컴포넌트 추가 (12px `desc` + #333 `neutral` 검정 + 번호 없는 변형 지원 `extraStyle` 파라미터). (2) `sector-settings.ts` — 내부 헬퍼 제거, 공통 컴포넌트 import, ①~④ 단계 텍스트 축약 (⑤는 변경 없음), 미사용 `FONT_WEIGHT` import 제거. (3) `stock-classification.ts` — `descLabel` 함수 제거 (P16 dead code), 인라인 `descLabel` 2곳 → `createStepLabel` 사용. (4) `general-settings.ts` — 자동매매 탭 2행 라벨 1행 통합. (5) `sector-settings.ts` ④ 가산점 설명 블록 — `createDescText` 5행 분리 + intro/1차 행 여백 추가.
   - **영향 범위**: 프론트엔드 4개 파일 (+40/-39). 백엔드/테스트 영향 없음. P16(dead code 제거)·P21(사용자 투명성 가독성)·P23(일관성) 위반 해결.
   - **검증**: `npm run build` 806ms~2.88s 에러 없음. `npm test` 101 passed (7 files). 잔존 프로세스 0건 (규칙 5-1 준수, 내가 띄운 프로세스 기준).
-  - **커밋**: (추정)
+  - **커밋**: `bf526b3`
 
 - **2026-07-14: ARCHITECTURE.md 섹션6 업종 점수 3단계 누적 가산점 시스템으로 갱신 — 구 가중치/트리밍 설명 제거 + 6.2 재작성 + 6.3 트리밍 섹션 제거 + 섹션 번호 재정렬 (P10/P23)**
   - **현상**: 업종 점수 가산점제 전환(Phase 1~3 + 잔존 정리) 완료 후에도 ARCHITECTURE.md 섹션 5.2/6.1~6.3이 제거된 구 가중치/트리밍 시스템을 설명 중 — 코드-문서 불일치 (P10/P23 위반, Code Removal Rules 위반).
