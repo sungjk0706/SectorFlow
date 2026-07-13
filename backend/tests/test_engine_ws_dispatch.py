@@ -24,6 +24,8 @@ from backend.app.services.engine_ws_dispatch import (
     _JSTATUS_KRX_ALERT,
     _JSTATUS_KRX_EVENT,
     _JSTATUS_NXT_EVENT,
+    _JSTATUS_KRX_BOUNDARY,
+    _JSTATUS_NXT_BOUNDARY,
     _KRX_CB_ACTIVATION_CODES,
     _KRX_CB_RELEASE_CODES,
 )
@@ -351,13 +353,14 @@ class TestHandleJif:
             mock_bc.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_krx_boundary_event_not_stored(self):
-        """jangubun 1 + jstatus 21(장시작, 경계) → 시계가 인계하므로 JIF는 저장하지 않음."""
+    async def test_krx_boundary_event_triggers_phase_refresh(self):
+        """jangubun 1 + jstatus 21(장시작, 경계) → 시계 페이즈 즉시 갱신 트리거."""
         with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
-             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc, \
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase") as mock_bmp:
             mock_es.state.market_phase = {"krx_event": None}
             await _handle_jif({"jangubun": "1", "jstatus": "21"})
-            assert mock_es.state.market_phase.get("krx_event") is None
+            mock_bmp.assert_called_once()
             mock_bc.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -381,13 +384,14 @@ class TestHandleJif:
             assert mock_es.state.market_phase["nxt_event"] == "에프터마켓 장개시 1분 전"
 
     @pytest.mark.asyncio
-    async def test_nxt_boundary_event_not_stored(self):
-        """jangubun 6 + jstatus 55(프리마켓 개시, 경계) → 시계가 인계하므로 저장하지 않음."""
+    async def test_nxt_boundary_event_triggers_phase_refresh(self):
+        """jangubun 6 + jstatus 55(프리마켓 개시, 경계) → 시계 페이즈 즉시 갱신 트리거."""
         with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
-             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc, \
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase") as mock_bmp:
             mock_es.state.market_phase = {"nxt_event": None}
             await _handle_jif({"jangubun": "6", "jstatus": "55"})
-            assert mock_es.state.market_phase.get("nxt_event") is None
+            mock_bmp.assert_called_once()
             mock_bc.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -416,3 +420,13 @@ class TestJifConstants:
     def test_none_alerts_exist(self):
         none_codes = [k for k, v in _JSTATUS_KRX_ALERT.items() if v is None]
         assert len(none_codes) > 0
+
+    def test_krx_boundary_disjoint_from_event(self):
+        """KRX 경계 이벤트 세트가 시간대 이벤트 세트와 겹치지 않음."""
+        overlap = _JSTATUS_KRX_BOUNDARY & set(_JSTATUS_KRX_EVENT.keys())
+        assert not overlap, f"KRX 경계/이벤트 코드 중복: {overlap}"
+
+    def test_nxt_boundary_disjoint_from_event(self):
+        """NXT 경계 이벤트 세트가 시간대 이벤트 세트와 겹치지 않음."""
+        overlap = _JSTATUS_NXT_BOUNDARY & set(_JSTATUS_NXT_EVENT.keys())
+        assert not overlap, f"NXT 경계/이벤트 코드 중복: {overlap}"
