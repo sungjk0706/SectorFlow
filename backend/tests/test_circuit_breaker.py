@@ -5,7 +5,6 @@ CircuitBreaker의 CLOSED → OPEN → HALF_OPEN → CLOSED 상태 전이와
 """
 from __future__ import annotations
 
-import time
 from unittest.mock import patch
 
 from backend.app.services.circuit_breaker import (

@@ -18,9 +18,7 @@ kiwoom_try_token: 성공/크리덴셜없음/HTTP실패/토큰필드없음/예외
 """
 from __future__ import annotations
 
-import asyncio
 import logging
-import time
 import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch

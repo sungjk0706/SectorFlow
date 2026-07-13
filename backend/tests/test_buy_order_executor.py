@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.app.services import buy_order_executor
 from backend.app.services.buy_order_executor import evaluate_buy_candidates
-from backend.app.domain.models import StockScore, SectorScore, SectorSummary, BuyTarget
+from backend.app.domain.models import StockScore, SectorSummary, BuyTarget
 
 
 # ── 헬퍼 ──────────────────────────────────────────────────────────────────────

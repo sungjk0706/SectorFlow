@@ -477,7 +477,7 @@ class TestKiwoomConnectorConnect:
         with (
             patch.object(conn, "_get_token_async", AsyncMock(return_value="tok")),
             patch("backend.app.core.kiwoom_connector._KiwoomSocket") as mock_sock_cls,
-            patch.object(conn, "_on_socket_disconnect", AsyncMock()) as mock_disc,
+            patch.object(conn, "_on_socket_disconnect", AsyncMock()),
         ):
             mock_socket = AsyncMock()
             mock_socket.connect.side_effect = Exception("ws fail")

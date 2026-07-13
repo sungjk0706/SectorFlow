@@ -1,9 +1,7 @@
 """stock_filter.py 단위 테스트 — 매매 부적격 종목 필터 (순수 함수, mock 불필요)."""
 from __future__ import annotations
 
-import pytest
 from backend.app.core.stock_filter import (
-    StockFilterEvaluation,
     _split_state_flags,
     _positive_int_string,
     _stock_name,

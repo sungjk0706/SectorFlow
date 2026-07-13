@@ -417,7 +417,7 @@ class TestRunEngineLoopInit:
             patch.object(engine_loop, "_load_broker_spec_async", new_callable=AsyncMock, return_value=[]),
             patch.object(engine_loop.asyncio, "gather", new_callable=AsyncMock),
             patch.object(engine_loop.asyncio, "create_task", return_value=_AwaitableMock()),
-            patch("backend.app.services.engine_state._notify_reg_ack") as mock_notify,
+            patch("backend.app.services.engine_state._notify_reg_ack"),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_lifecycle.log_message"),
             patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock),
@@ -425,7 +425,7 @@ class TestRunEngineLoopInit:
             patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock),
             patch("backend.app.services.engine_config._get_settings"),
             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock),
-            patch.object(engine_loop, "AutoTradeManager") as mock_atm,
+            patch.object(engine_loop, "AutoTradeManager"),
         ):
             mock_state.access_token = None  # AutoTradeManager 생성 경로 우회
             await engine_loop.run_engine_loop()

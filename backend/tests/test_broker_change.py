@@ -11,15 +11,13 @@
 """
 from __future__ import annotations
 
-import asyncio
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.app.services.engine_sector_confirm import (
     cancel_all_dynamic_unreg_timers,
     _PENDING_UNREG_TIMERS,
     _UNREG_READY_CODES,
-    _UNREG_BATCH_PENDING,
 )
 
 

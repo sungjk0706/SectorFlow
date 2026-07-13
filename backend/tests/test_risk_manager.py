@@ -7,7 +7,7 @@ CircuitBreaker, trade_history, engine_state는 mock로 격리.
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from backend.app.services.risk_manager import RiskManager
 from backend.app.services.circuit_breaker import CircuitBreaker

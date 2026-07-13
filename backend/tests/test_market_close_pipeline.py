@@ -8,10 +8,8 @@ hang 방지 원칙:
 """
 from __future__ import annotations
 
-import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from dataclasses import dataclass
 
 from backend.app.core.broker_providers import UnifiedStockRecord
 from backend.app.core.stock_filter import StockFilterEvaluation
@@ -29,7 +27,6 @@ from backend.app.services.market_close_pipeline import (
     fetch_5d_data_only,
     _update_layout_cache,
 )
-import backend.app.services.market_close_pipeline as mcp_mod
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -387,7 +384,7 @@ class TestApplyConfirmedToMemory:
         with patch("backend.app.services.market_close_pipeline.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x):
-            result = await _apply_confirmed_to_memory(confirmed, {"005930": 85.5})
+            await _apply_confirmed_to_memory(confirmed, {"005930": 85.5})
             assert mock_state.master_stocks_cache["005930"]["strength"] == "85.50"
 
     @pytest.mark.asyncio
@@ -671,7 +668,7 @@ class TestRunConfirmedPipeline:
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
              patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
              patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock) as mock_broadcast:
-            result = await _run_confirmed_pipeline("test")
+            await _run_confirmed_pipeline("test")
             # Token was registered and then cleaned up in finally
             assert "kiwoom" not in mock_state.broker_tokens
             # broadcast_engine_status called twice: once for register, once for cleanup

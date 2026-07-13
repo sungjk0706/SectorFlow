@@ -5,7 +5,7 @@ state.master_stocks_cache를 mock하여 검증.
 """
 from __future__ import annotations
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,

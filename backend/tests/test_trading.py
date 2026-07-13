@@ -18,7 +18,7 @@ def _close_coro(*args, **kwargs):
             arg.close()
     return DEFAULT
 
-from backend.app.services.trading import AutoTradeManager
+from backend.app.services.trading import AutoTradeManager  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, AsyncMock
 
 from backend.app.core.stock_classification_data import (
     StockClassificationData,
@@ -74,7 +74,6 @@ class TestRenameSector:
     @pytest.mark.asyncio
     async def test_successful_rename(self):
         mock_conn = AsyncMock()
-        mock_cursor = AsyncMock()
         mock_conn.execute = AsyncMock()
         mock_conn.commit = AsyncMock()
         with patch("backend.app.db.database.get_db_connection", new=AsyncMock(return_value=mock_conn)), \
