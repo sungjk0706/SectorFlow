@@ -1,6 +1,15 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-13: test_engine_loop.py 12건 실패 + 3건 잘못 통과 해결 — _init_ws_subscribe_state mock 누락 수정 (P23/P16)**
+  - **현상**: `test_engine_loop.py` 12건 실패 (`RuntimeError: settings cache not initialized`). 커밋 `939d199`에서 `engine_loop.py:168-169`에 `_init_ws_subscribe_state()` 호출 추가했으나 테스트 미갱신. 추가로 3건(`test_cancelled_error_handled`, `test_general_exception_handled`, `test_no_auto_trade_without_token`)이 의도와 다른 예외 경로에서 우연히 통과 (P16 위반)
+  - **근본 원인**: `engine_loop.py:168-169`의 local import가 `daily_time_scheduler.state` 사용 (`daily_time_scheduler.py:778-780`). 테스트는 `engine_loop.state`만 mock 교체하고 `daily_time_scheduler.state`는 미교체 → `RuntimeError` → `except Exception`에서 포착 → 라인 169~354 코드 전체 스킵
+  - **수정 파일**: `backend/tests/test_engine_loop.py` (1개 파일, 15곳)
+  - **변경 내용**: 15개 테스트의 `is_ws_subscribe_window` 패치 라인 다음에 `patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock)` 추가. 12건 실패(462,493,525,563,595,813,884,916,947,985,1019,1052) + 3건 잘못 통과(734,766,851)
+  - **영향 범위**: `test_engine_loop.py` 내 `run_engine_loop()` 호출 테스트만. 프로덕션 코드 변경 없음
+  - **검증**: pytest test_engine_loop.py 38 passed in 6.21s. ruff 0건
+  - **커밋**: (승인 대기)
+
 - **2026-07-13: engine_settings.py 잔존 폴백 9곳 해결 — 복호화 실패 silent 1곳 + real 키 레거시 폴백 7곳 + max_position_size lambda 1곳 (P20/P21/P23)**
   - **현상**: 직전 세션에서 22곳 or 폴백 정리 후 잔존 9곳이 미해결 문제로 등록됨. (1) `_dec` 내 `decrypt_value(s) or ""` — 복호화 실패 시 빈문자열 폴백, 실패 사실 로그 미출력 (P21). (2) `_dec(real) or _dec(legacy)` 7곳 — real 키 복호화 실패 시 레거시 키로 인증 시도, 사용자 모르게 다른 키 사용 (P21). (3) max_position_size lambda — None/빈문자열/"None" → 0 폴백, 0이 유효값(제한 없음)이므로 구분 불가 (P20)
   - **근본 원인**: `backend/app/core/engine_settings.py:33` (`_dec` or 폴백), `:43-45`/`:126-128` (real 키 or 레거시 폴백, kiwoom + non-kiwoom 루프), `:73` (max_position_size lambda)
@@ -113,15 +122,13 @@
     - 검증: `ruff check backend/tests/` 0건 + `pytest backend/tests/` 2745 passed in 16.16s
 
 - **test_engine_loop.py 12건 실패 — _init_ws_subscribe_state mock 누락 (P23 테스트 일관성)**
-  - 발견 일시: 2026-07-13 (키움 토큰 발급 경로 복구 작업 중 발견)
-  - **연관성 조사 완료 (규칙 4-1)**:
-    1) 연관성: 실패 테스트들은 `run_engine_loop()`를 호출하며, `engine_loop.py:169`의 `_init_ws_subscribe_state()` 호출이 mock되지 않아 `RuntimeError: settings cache not initialized` 발생. 내 수정(`engine_settings.py`의 `confirmed_data_broker` 추가)과 무관 — 실패 위치는 `daily_time_scheduler.py:780`.
-    2) 수정 전 비교: `git stash` 후 동일 12건 실패 확인 → 기존 실패 판정.
-    3) 도입 커밋: `939d199` — 이 커밋에서 `engine_loop.py:169`에 `_init_ws_subscribe_state()` 호출 추가. 커밋 `939d199^` 기준으로 `test_engine_loop.py` 38 passed 확인. `939d199`에서 테스트 미갱신.
-  - **원인**: 커밋 `939d199`에서 `engine_loop.run_engine_loop()` 내 WS 연결 이전에 `_init_ws_subscribe_state()` 호출을 추가했으나, `test_engine_loop.py`의 `TestRunEngineLoopInit`/`TestRunEngineLoopRestApi`/`TestRunEngineLoopAccountMasking` 클래스들이 이 호출을 mock하지 않아 `RuntimeError: settings cache not initialized` 발생. `test_state_initialized`는 `preboot_ready_event.set.assert_called()`를 검사하지 않아 통과.
-  - **실패 12건**: `test_preboot_ready_event_set`, `test_token_ready_event_set_after_gather`, `test_no_valid_brokers_logs_warning`, `test_token_success_sets_access_token`, `test_token_failure_sets_access_token_none`, `test_rest_api_tr_ids_assigned`, `test_auto_trade_created_with_token`, `test_broadcast_buy_limit_status_called`, `test_broadcast_buy_limit_exception_handled`, `test_account_number_masked_in_log`, `test_short_account_number_not_masked`, `test_real_mode_warning_in_log`
-  - **위반 원칙**: P23 (일관성) — 코드 변경 시 테스트 미갱신
-  - **수정 방향**: `test_engine_loop.py`의 `run_engine_loop` 호출 테스트들에 `patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock())` 추가
+  - **해결 완료 (2026-07-13)**: 15개 테스트에 `patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock)` 추가. 12건 실패 + 3건 잘못 통과(`test_cancelled_error_handled`, `test_general_exception_handled`, `test_no_auto_trade_without_token`) 해결. pytest 38 passed, ruff 0건
+
+- **test_engine_loop.py 내 is_ws_subscribe_window 패치 잔존 — dead code (P16 위반, 별도 세션 정리 예정)**
+  - 발견 일시: 2026-07-13 (_init_ws_subscribe_state mock 패치 추가 작업 중 발견)
+  - **증상**: 19개 테스트에 `patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock)` 존재. `_init_ws_subscribe_state`를 AsyncMock으로 패치하면 while 루프의 `is_ws_subscribe_window` 호출은 `engine_stop_event.is_set()==True`로 스킵되어 도달 불가 → dead code (P16 위반)
+  - **위치**: `backend/tests/test_engine_loop.py` — 라인 427, 463, 495, 528, 567, 600, 740, 773, 821, 860, 894, 927, 959, 998, 1033, 1067 (기존 19곳, _init_ws_subscribe_state 삽입 후 라인 번호 변경됨)
+  - **수정 방향**: 별도 세션에서 19곳 `is_ws_subscribe_window` 패치 제거
 
 ## 테스트 실행 원칙 (필수 준수)
 
