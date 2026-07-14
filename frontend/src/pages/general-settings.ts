@@ -52,7 +52,6 @@ let buyTimeHandle: TimePairInputHandle | null = null
 let autoSellToggle: ReturnType<typeof createToggleBtn> | null = null
 let sellTimeHandle: TimePairInputHandle | null = null
 let wsToggle: ReturnType<typeof createToggleBtn> | null = null
-let wsTimeHandle: TimePairInputHandle | null = null
 let holidayBadgeEls: HTMLElement[] = []
 let uiFlashToggle: ReturnType<typeof createToggleBtn> | null = null
 
@@ -60,8 +59,6 @@ let uiFlashToggle: ReturnType<typeof createToggleBtn> | null = null
 let confirmedDlSlot: HTMLElement | null = null
 let confirmedDlH = '20', confirmedDlM = '40'
 let savingConfirmedDl = false
-let savingTime = false
-let pendingTimeSave: { startKey: string; endKey: string } | null = null
 
 // 텔레그램 탭 참조
 let teleToggle: ReturnType<typeof createToggleBtn> | null = null
@@ -99,35 +96,6 @@ function createHolidayBadge(): HTMLElement {
 function updateHolidayBadges(): void {
   const show = shouldForceOff()
   for (const el of holidayBadgeEls) el.style.display = show ? 'inline' : 'none'
-}
-
-/* ── WS 시간 저장 (debounce) ── */
-function scheduleTimeSave(startKey: string, endKey: string): void {
-  if (!settingsMgr) return
-  if (savingTime) {
-    pendingTimeSave = { startKey, endKey }
-    return
-  }
-  savingTime = true
-  const run = async (sk: string, ek: string): Promise<void> => {
-    const serverStart = String(vals[sk] ?? ''), serverEnd = String(vals[ek] ?? '')
-    const { start: newStart, end: newEnd } = wsTimeHandle?.getValue() ?? { start: '', end: '' }
-    const dirty: Record<string, unknown> = {}
-    if (newStart !== serverStart) dirty[sk] = newStart
-    if (newEnd !== serverEnd) dirty[ek] = newEnd
-    if (Object.keys(dirty).length > 0) {
-      const res = await settingsMgr!.saveSection(dirty)
-      toastResult(res)
-      if (res.ok) Object.assign(vals, dirty)
-    }
-    if (pendingTimeSave) {
-      const next = pendingTimeSave
-      pendingTimeSave = null
-      await run(next.startKey, next.endKey)
-    }
-    savingTime = false
-  }
-  run(startKey, endKey)
 }
 
 function scheduleConfirmedDlSave(): void {
@@ -308,15 +276,10 @@ function handleMasterToggle(): void {
 function handleWsToggle(): void {
   const next = !vals.ws_subscribe_on
   vals.ws_subscribe_on = next; wsToggle?.setOn(next)
-  updateWsTimeDisabled()
   settingsMgr?.saveSection({ ws_subscribe_on: next }).then(r => {
     toastResult(r)
-    if (!r.ok) { vals.ws_subscribe_on = !next; wsToggle?.setOn(!next); updateWsTimeDisabled() }
+    if (!r.ok) { vals.ws_subscribe_on = !next; wsToggle?.setOn(!next) }
   })
-}
-
-function updateWsTimeDisabled(): void {
-  wsTimeHandle?.setEnabled(!!vals.ws_subscribe_on)
 }
 
 /* ── 텔레그램 탭 ── */
@@ -614,29 +577,6 @@ function renderApiSettingsTab(container: HTMLElement): void {
 
   container.appendChild(createDescText('실시간 데이터 자동 연결 스위치 — OFF면 수동 연결만 가능'))
 
-  // 실시간 연결 시간
-  const wsTimeRow = document.createElement('div')
-  Object.assign(wsTimeRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const wsTimeLabel = document.createElement('span')
-  Object.assign(wsTimeLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal, whiteSpace: 'nowrap' })
-  wsTimeLabel.textContent = '실시간 연결 시간'
-  wsTimeRow.appendChild(wsTimeLabel)
-  const wsTimeRight = document.createElement('span')
-  wsTimeRight.style.cssText = 'display:flex;align-items:center;gap:8px;'
-  wsTimeRight.appendChild(createHolidayBadge())
-  const wsStart = String(vals.ws_subscribe_start ?? '09:00')
-  const wsEnd = String(vals.ws_subscribe_end ?? '15:00')
-  const { el: wsTpEl, handle: wsHandle } = createTimePairInput(wsStart, wsEnd, () => {
-    scheduleTimeSave('ws_subscribe_start', 'ws_subscribe_end')
-  })
-  wsTimeHandle = wsHandle
-  wsTpEl.style.padding = '6px 0'
-  wsTimeRight.appendChild(wsTpEl)
-  wsTimeRow.appendChild(wsTimeRight)
-  container.appendChild(wsTimeRow)
-
-  container.appendChild(createDescText('실시간 시세 수신 시작/종료 시간'))
-
   // 확정 시세 다운로드 시간
   const confirmedDlRow = document.createElement('div')
   Object.assign(confirmedDlRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
@@ -861,12 +801,6 @@ function syncFromSettings(s: AppSettings | null): void {
     wsToggle?.setOn(!!r.ws_subscribe_on)
     updateHolidayBadges()
 
-    // TimePairInput
-    const wsStart = String(r.ws_subscribe_start ?? '09:00')
-    const wsEnd = String(r.ws_subscribe_end ?? '15:00')
-    wsTimeHandle?.setValue(wsStart, wsEnd)
-    updateWsTimeDisabled()
-
     // 확정 시세 다운로드 시간
     const [cdh, cdm] = parseHM(String(r.confirmed_download_time ?? '20:40'))
     confirmedDlH = cdh; confirmedDlM = cdm
@@ -994,7 +928,7 @@ function mount(container: HTMLElement): void {
 
   // 거래일 확인
   api.getTradingDay()
-    .then(data => { isTradingDay = data.is_trading_day; tradingDayLoading = false; updateHolidayBadges(); updateWsTimeDisabled() })
+    .then(data => { isTradingDay = data.is_trading_day; tradingDayLoading = false; updateHolidayBadges() })
     .catch(() => { isTradingDay = true; tradingDayLoading = false })
 }
 function unmount(): void {
@@ -1012,7 +946,6 @@ function unmount(): void {
   autoSellToggle = null
   sellTimeHandle = null
   wsToggle = null
-  wsTimeHandle = null
   holidayBadgeEls = []
   teleToggle = null
   teleInputs = {}

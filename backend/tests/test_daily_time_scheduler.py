@@ -887,7 +887,7 @@ class TestInitWsSubscribeState:
     @pytest.mark.asyncio
     async def test_in_window_sets_active(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"ws_subscribe_start": "08:00", "ws_subscribe_end": "20:00", "ws_subscribe_on": True}
+        mock_state.integrated_system_settings_cache = {"ws_subscribe_on": True}
         mock_state.preboot_cache_loaded = True
         mock_state.ws_window_changed_event = MagicMock()
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
@@ -902,7 +902,7 @@ class TestInitWsSubscribeState:
     @pytest.mark.asyncio
     async def test_outside_window_sets_inactive(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"ws_subscribe_start": "08:00", "ws_subscribe_end": "20:00", "ws_subscribe_on": True}
+        mock_state.integrated_system_settings_cache = {"ws_subscribe_on": True}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
              patch("backend.app.services.ws_subscribe_control._set_status"):
@@ -1291,8 +1291,9 @@ class TestRetryPipelineCatchup:
     @pytest.mark.asyncio
     async def test_in_ws_window_returns(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"ws_subscribe_start": "08:00", "ws_subscribe_end": "20:00", "confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"ws_subscribe_on": True, "confirmed_download_time": "20:40"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
             await retry_pipeline_catchup_after_bootstrap()
@@ -1300,9 +1301,10 @@ class TestRetryPipelineCatchup:
     @pytest.mark.asyncio
     async def test_disconnected_before_download_time_returns(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"ws_subscribe_start": "08:00", "ws_subscribe_end": "20:00", "confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"ws_subscribe_on": True, "confirmed_download_time": "20:40"}
         mock_state.master_stocks_cache = {}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 10)), \
              patch("backend.app.core.trading_calendar.get_current_trading_day_str", return_value="20250106"), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
@@ -1311,10 +1313,11 @@ class TestRetryPipelineCatchup:
     @pytest.mark.asyncio
     async def test_disconnected_cache_outdated_triggers_fetch(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"ws_subscribe_start": "08:00", "ws_subscribe_end": "20:00", "confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"ws_subscribe_on": True, "confirmed_download_time": "20:40"}
         mock_state.master_stocks_cache = {"005930": {"date": "20250105"}}
         mock_state.confirmed_done = False
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(21, 0)), \
              patch("backend.app.core.trading_calendar.get_current_trading_day_str", return_value="20250106"), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
@@ -1325,10 +1328,11 @@ class TestRetryPipelineCatchup:
     @pytest.mark.asyncio
     async def test_disconnected_cache_today_sets_done(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"ws_subscribe_start": "08:00", "ws_subscribe_end": "20:00", "confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"ws_subscribe_on": True, "confirmed_download_time": "20:40"}
         mock_state.master_stocks_cache = {"005930": {"date": "20250106"}}
         mock_state.confirmed_done = False
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(21, 0)), \
              patch("backend.app.core.trading_calendar.get_current_trading_day_str", return_value="20250106"), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):

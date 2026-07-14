@@ -252,7 +252,7 @@ def get_market_phase() -> dict:
 async def is_heavy_operation_allowed(now: datetime | None = None) -> bool:
     """
     대량 다운로드 및 무거운 배치 연산 허용 여부 반환.
-    - 실시간 연결 구간(ws_subscribe_start ~ ws_subscribe_end): 차단 (False)
+    - 실시간 연결 구간(market_phase 활성): 차단 (False)
     - 그 외 시간: 허용 (True)
     """
     if now is None:
@@ -405,7 +405,7 @@ async def _on_krx_after_hours_start() -> None:
 
 
 def _fire_unified_confirmed_fetch() -> None:
-    """ws_subscribe_end 도달 또는 부트스트랩 catch-up 시 확정 조회 트리거 함수.
+    """장마감(market_phase 비활성 전환) 또는 부트스트랩 catch-up 시 확정 조회 트리거 함수.
 
     confirmed_done 플래그 체크 → 이미 완료면 스킵.
     fetch_unified_confirmed_data(es) 비동기 태스크 생성.
@@ -443,19 +443,12 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
     기동 시 WS/REST 미준비로 스킵된 작업을 부트스트랩 완료 후 재실행한다.
     
     데이터 무결성 및 단일 진실 공급원(Single Source of Truth) 원칙에 따라,
-    단절 구간(ws_subscribe_end ~ 다음날 ws_subscribe_start) 기동 시 
+    단절 구간(market_phase 비활성) 기동 시 
     메모리에 로드된 DB 데이터의 유효 기한(date)을 엄격히 판별하여 누락된 확정 다운로드를 수행한다.
     """
     t = _kst_now().hour * 60 + _kst_now().minute
 
-    # 사용자 설정의 ws_subscribe_start / ws_subscribe_end 시간 로드
     _settings = state.integrated_system_settings_cache
-    ws_start = str(_settings["ws_subscribe_start"])
-    ws_end   = str(_settings["ws_subscribe_end"])
-    sh, sm = _parse_hm(ws_start)
-    eh, em = _parse_hm(ws_end)
-    ws_start_minutes = sh * 60 + sm
-    ws_end_minutes   = eh * 60 + em
 
     # 마스터 캐시에서 데이터 유효기간(date) 추출
     _cached_date_str = ""
@@ -467,10 +460,10 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
     _current_trading_day = get_current_trading_day_str()
     _cache_is_today = (_cached_date_str == _current_trading_day)
 
-    # ── 판단: 단절 구간 (ws_subscribe_end ~ 다음날 ws_subscribe_start) ──
-    unified_past = t > ws_end_minutes or t < ws_start_minutes
+    # ── 판단: 단절 구간 (market_phase 비활성) — is_ws_subscribe_window() 기반 (P10) ──
+    in_ws_window = await is_ws_subscribe_window(_settings)
 
-    if unified_past:
+    if not in_ws_window:
         confirmed_dl_str = str(_settings["confirmed_download_time"])[:5]
         cdl_h, cdl_m = _parse_hm(confirmed_dl_str)
         confirmed_dl_minutes = cdl_h * 60 + cdl_m
@@ -497,7 +490,7 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
         state.confirmed_done = True
         return
     else:
-        # 실시간 연결 구간 (ws_subscribe_start ~ ws_subscribe_end)
+        # 실시간 연결 구간 (market_phase 활성)
         # 이 구간에서는 실시간 틱 데이터가 캐시를 채우므로 확정 다운로드를 하지 않음
         logger.debug("[스케줄] 실시간 연결 구간 기동 — 실시간 틱 수신 중이므로 다운로드 대기/스킵")
         return
@@ -556,21 +549,7 @@ async def _apply_auto_toggle_on_startup(settings: dict) -> None:
 
     is_trade_day = is_trading_day(get_kst_today())
 
-    now = _kst_now()
-    now_minutes = now.hour * 60 + now.minute
-    ws_start = str(settings["ws_subscribe_start"])
-    ws_end = str(settings["ws_subscribe_end"])
-    sh, sm = _parse_hm(ws_start)
-    eh, em = _parse_hm(ws_end)
-    start_total = sh * 60 + sm
-    end_total = eh * 60 + em
-
-    in_time_window = start_total <= now_minutes <= end_total
-
-    logger.debug(
-        "[스케줄] 기동 판별 — 거래일=%s, 시간구간내=%s (설정값 미변경)",
-        is_trade_day, in_time_window,
-    )
+    logger.debug("[스케줄] 기동 판별 — 거래일=%s (설정값 미변경)", is_trade_day)
     try:
         from backend.app.services.engine_account_notify import (
             notify_desktop_header_refresh,
@@ -712,7 +691,7 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
         # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
         settings = state.integrated_system_settings_cache
 
-    # ★ ws_subscribe_start / ws_subscribe_end 타이머 — 제거됨 (Step 2)
+    # ★ ws_subscribe_start / ws_subscribe_end 타이머 + 설정 키 — 제거됨 (Step 2+3)
     # _broadcast_market_phase() 내 NXT "프리마켓"/"장마감" 진입 시 자동 트리거 (P10/P24).
 
     # ★ 08:00/09:00/15:30 재계산 타이머 — 제거됨 (수정 8)
@@ -722,7 +701,7 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
     # ★ 20:10 NXT 확정 조회 타이머 — 제거됨 (Task 3.1, 20:30 통합 확정 조회로 교체)
 
     # ★ 확정 시세 다운로드 타이머 — confirmed_download_time (기본값 20:40)
-    # ws_subscribe_end와 분리된 별도 타이머: 증권사 확정 데이터 준비 시간 확보
+    # 장마감과 분리된 별도 타이머: 증권사 확정 데이터 준비 시간 확보
     # 사용자 설정 1순위, 미설정 시 기본값 20:40
     confirmed_dl_str = str(settings["confirmed_download_time"])[:5]
     cd_h, cd_m = _parse_hm(confirmed_dl_str)

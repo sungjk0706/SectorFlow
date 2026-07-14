@@ -79,8 +79,6 @@ class TestAccountFieldOrLegacyFlat:
 class TestGeneralSavePayloadFromFlat:
     def _full_input(self) -> dict:
         return {
-            "ws_subscribe_start": "09:00",
-            "ws_subscribe_end": "15:00",
             "confirmed_download_time": "20:40",
             "time_scheduler_on": True,
             "auto_buy_on": False,
@@ -98,7 +96,6 @@ class TestGeneralSavePayloadFromFlat:
 
     def test_basic_fields(self):
         result = general_save_payload_from_flat(self._full_input())
-        assert result["ws_subscribe_start"] == "09:00"
         assert result["time_scheduler_on"] is True
         assert result["tele_on"] is True
         assert result["trade_mode"] == "test"
@@ -204,8 +201,6 @@ class TestPayloadValuesEqual:
 class TestChangedKeysGeneralSave:
     def test_no_changes(self):
         before = {
-            "ws_subscribe_start": "09:00",
-            "ws_subscribe_end": "15:00",
             "confirmed_download_time": "20:40",
             "time_scheduler_on": True,
             "auto_buy_on": False,
@@ -226,8 +221,6 @@ class TestChangedKeysGeneralSave:
 
     def test_changed_value(self):
         before = {
-            "ws_subscribe_start": "09:00",
-            "ws_subscribe_end": "15:00",
             "confirmed_download_time": "20:40",
             "time_scheduler_on": True,
             "auto_buy_on": False,

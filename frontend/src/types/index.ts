@@ -136,8 +136,6 @@ export interface AppSettings {
   buy_time_end: string;
   sell_time_start: string;
   sell_time_end: string;
-  ws_subscribe_start: string;
-  ws_subscribe_end: string;
   confirmed_download_time: string;
   ws_subscribe_on: boolean;
   industry_auto_subscribe: boolean;

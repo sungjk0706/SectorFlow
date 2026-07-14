@@ -113,6 +113,17 @@ def _migrate_remove_krx_subscribe_keys(merged: dict) -> tuple[dict, bool]:
     return merged, dirty
 
 
+def _migrate_remove_ws_subscribe_window_keys(merged: dict) -> tuple[dict, bool]:
+    """market_phase 기반 전환으로 WS 구독 시간 설정 키 2개 제거 (Step 3).
+    구독 시작/종료는 장운영정보(market_phase) 페이즈 변경 감지로 자동 처리되므로 별도 설정 불필요."""
+    dirty = False
+    for key in ("ws_subscribe_start", "ws_subscribe_end"):
+        if key in merged:
+            del merged[key]
+            dirty = True
+    return merged, dirty
+
+
 # 암호화 필드 목록 (단일 정의)
 _ENCRYPT_FIELDS: frozenset[str] = frozenset({
     "kiwoom_app_key", "kiwoom_app_secret",
@@ -286,8 +297,9 @@ async def load_integrated_system_settings() -> dict:
     merged, dirty_bc = _migrate_broker_config(merged, db_data)
     merged, dirty_tg = _migrate_telegram_token_split(merged)
     merged, dirty_krx = _migrate_remove_krx_subscribe_keys(merged)
+    merged, dirty_ws = _migrate_remove_ws_subscribe_window_keys(merged)
 
-    dirty = dirty or dirty_tm or dirty_tr or dirty_si or dirty_bc or dirty_tg or dirty_krx
+    dirty = dirty or dirty_tm or dirty_tr or dirty_si or dirty_bc or dirty_tg or dirty_krx or dirty_ws
     if dirty:
         _legacy_keys = list(_keys_before - set(merged.keys()))
         await save_settings(merged, delete_keys=_legacy_keys or None)

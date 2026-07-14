@@ -71,8 +71,6 @@ def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
     if mode == "mock":
         mode = "test"
     data: dict[str, Any] = {
-        "ws_subscribe_start": str(d["ws_subscribe_start"]).strip(),
-        "ws_subscribe_end": str(d["ws_subscribe_end"]).strip(),
         "confirmed_download_time": str(d["confirmed_download_time"]).strip(),
         "time_scheduler_on": bool(d["time_scheduler_on"]),
         "auto_buy_on": bool(d["auto_buy_on"]),
@@ -142,7 +140,6 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
     import re
     _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
     _TIME_FIELDS = frozenset({
-        "ws_subscribe_start", "ws_subscribe_end",
         "confirmed_download_time",
         "buy_time_start", "buy_time_end",
         "sell_time_start", "sell_time_end",
