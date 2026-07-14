@@ -4,7 +4,7 @@
 
 ### 다음 작업: 업종 점수 산정 방식 리팩토링 — Step 4 대기
 
-**진행 단계**: Step 3 후속 수정 완료 (커밋 `32aa370`). 다음 세션에서 Step 4 사전조사부터 시작.
+**진행 단계**: 종목상세 페이지 5일봉 데이터 표시 복구 완료 (커밋 `ff334e6`). 다음 세션에서 Step 4 사전조사부터 시작.
 
 **계획서**: `docs/plan_sector_score_redesign.md` (4개 Step, 세션당 1단계 — Step 2를 Split A/B로 분할)
 
@@ -23,6 +23,23 @@
 - Step 3: 프론트엔드 설정 패널 + 타입 + 슬라이더 값 표시 (소스 5 + 테스트 1) — 완료
 - Step 3 후속: 업종순위 슬라이더 매수설정 동일 모듈 통일 + 숫자 입력란 연동 + 라벨 명확화 (소스 2 + 테스트 1) — 완료
 - Step 4: 테스트 + 문서 갱신 (3개 테스트 + 2개 문서) — 대기
+
+---
+
+### 작업: 종목상세 페이지 5일봉 데이터 표시 복구 + 날짜 헤더 + 종목명 너비 축소 — 완료
+
+**진행 단계**: 완료 (커밋 `ff334e6`). 다음 작업: 업종 점수 산정 방식 리팩토링 Step 4 사전조사 대기.
+
+**완료 내용 (2026-07-15)**:
+- **현상**: 종목 상세 페이지 테이블에 종목코드·종목명만 표시되고 5일 배열 데이터(거래대금/고가)가 모두 빈 값(`-`)으로 표시됨. 추가 수정: 종목명 컬럼 너비 넓음, 헤더에 년도 표시, 날짜 헤더 전체 파란색(날짜만 파란색 필요).
+- **근본 원인**: 커밋 `82dcd96`에서 백엔드 `stock_detail.py:60-70` 응답을 평탄 필드(`day1_amount` 등) → `bars: [{dt, trade_amount, high_price}]` 배열로 전환했으나 프론트엔드 복구(Step 3)가 누락. `stock-detail.ts:11-26` 인터페이스가 여전히 평탄 필드 기대 → `row['day1_amount']`가 `undefined` → 빈 값. `shortDate` 정규식이 하이픈 구분만 매칭해 "YYYYMMDD" 형식(백엔드 dt 실제 형식) 매칭 실패 → 년도 포함 원본 그대로 표시. 종목명 컬럼이 공통 컴포넌트 기본값(80/200) 사용. `headerStyle`로 헤더 전체 파란색 적용.
+- **수정 내용**: 프론트엔드 3파일 (+92/-64):
+  - `client.ts`: `getStockDetail5d` 응답 타입을 `bars: Array<{dt, trade_amount, high_price}>`로 변경.
+  - `stock-detail.ts`: `StockDetail5dItem` 인터페이스 bars 기반 전환. `makeAmountColumn`/`makeHighColumn` render를 `row.bars[idx]?.trade_amount`/`high_price` 사용. `buildColumns` 신설 — 첫 종목 bars에서 5개 날짜 추출해 동적 컬럼 생성. `shortDate` 정규식 `^\d{4}-?(\d{2})-?(\d{2})$`로 YYYYMMDD/YYYY-MM-DD 모두 지원 → "MM-DD" 단축. `makeDateHeader` 헬퍼 신설 — 날짜 span(`COLOR.down` 파랑) + 접미사 텍스트 노드(검정) 분리 렌더링. 종목명 컬럼 `minWidth`/`maxWidth` 80→53/200→133 override (2/3 축소, 공통 컴포넌트 자체는 수정 없음). mount 흐름을 데이터 로드→테이블 생성으로 변경 (DataTable 캡슐화 유지, 동적 라벨 자연스럽게 적용). 로드 실패 시 "데이터를 불러오지 못했습니다." 메시지 표시.
+  - `data-table.ts`: `ColumnDef.label` 타입 `string` → `string | HTMLElement` 확장 (후방 호환). fixed mode(227-229줄)/virtual scroll mode(661-663줄) 헤더 렌더링에서 `typeof c.label === 'string'`이면 `textContent`, 아니면 `appendChild`. 컬럼 너비 계산(131줄)에서 HTMLElement인 경우 `textContent`로 문자열 변환.
+- **영향 범위**: 프론트엔드 3파일. `ColumnDef.label` 타입 확장은 후방 호환(string label 사용 페이지 동작 변화 없음). 백엔드, DB 스키마, 거래 로직 변경 없음. 종목 상세 페이지 외 다른 페이지 영향 없음.
+- **검증**: TypeScript typecheck 통과, 빌드 통과 (1.82s), 잔존 프로세스 0건. 브라우저 확인 필요 (5일 데이터 가로 표시, 헤더 "MM-DD 거래대금(억)" 형식 + 날짜 파랑/접미사 검정, 종목명 컬럼 너비 축소). 단, DB `stock_5d_bars`에 데이터가 있어야 표시됨 — 5일봉 다운로드 실행 후 확인 필요.
+- **P10/P16/P21/P23/P24**: 백엔드 bars 배열 단일 진실 소스 (SSOT), dead path 복원 (살아있는 경로), 사용자 투명성 복원, `COLOR.down` 표준 파란색 + 공통 컴포넌트 후방 호환 확장 (일관성), DataTable 캡슐화 유지 + override로 단순 구현 (단순성).
 
 ---
 
@@ -405,6 +422,12 @@
 ---
 
 ## 직전 완료 작업
+- **2026-07-15: 종목상세 페이지 5일봉 데이터 표시 복구 + 날짜 헤더 + 종목명 너비 축소 (P10/P16/P21/P23/P24)**
+  - **현상**: 종목 상세 페이지 테이블에 종목코드·종목명만 표시되고 5일 배열 데이터(거래대금/고가)가 모두 빈 값(`-`)으로 표시됨. 추가: 종목명 컬럼 너비 넓음, 헤더 년도 표시, 날짜 헤더 전체 파란색.
+  - **근본 원인**: 커밋 `82dcd96`에서 백엔드 응답을 `bars` 배열로 전환 후 프론트엔드 복구(Step 3) 누락. `shortDate` 정규식이 하이픈 구분만 매칭해 YYYYMMDD 형식 실패. 종목명 공통 컴포넌트 기본값 사용. `headerStyle`로 헤더 전체 파란색.
+  - **수정 파일**: 프론트엔드 3파일 (`client.ts`, `stock-detail.ts`, `data-table.ts`) (+92/-64)
+  - **변경 내용**: (1) `client.ts` — 응답 타입 bars 배열로 변경. (2) `stock-detail.ts` — 인터페이스 bars 기반 전환, `buildColumns`로 첫 종목 bars에서 5개 날짜 추출해 동적 컬럼 생성, `shortDate` YYYYMMDD 지원, `makeDateHeader` 날짜 파랑+접미사 검정 분리, 종목명 너비 2/3 축소 override, mount 흐름 데이터 로드→테이블 생성으로 변경. (3) `data-table.ts` — `ColumnDef.label` 타입 `string | HTMLElement` 확장(후방 호환), 두 모드 헤더 렌더링 + 너비 계산 대응.
+  - **검증**: typecheck 통과, 빌드 통과 (1.82s), 잔존 프로세스 0건. 브라우저 확인 필요 (5일봉 다운로드 실행 후).
 - **2026-07-15: 5일봉 배열 테이블 구조 개선 — Step 1: DB 스키마 + 백엔드 쓰기/읽기 세로 행 전환 (P10/P16/P22/P24)**
   - **현상**: `stock_5d_array` 테이블이 가로 배열(`day1~day5`) 구조로, 각 일봉의 실제 날짜를 알 수 없어 당일/직전1일 중복 버그의 근본 원인.
   - **근본 원인**: 테이블 구조 자체가 날짜 모호성을 내포 — `date` 컬럼은 API 조회일 1개만 저장하고 각 day의 실제 거래일은 저장하지 않음. 추가로 `create_stock_5d_array_table()`이 `app.py` startup에 연결되지 않은 dead code 상태.
