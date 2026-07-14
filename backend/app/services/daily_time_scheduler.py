@@ -169,7 +169,8 @@ KRX_INACTIVE_PHASES = frozenset({
 })
 
 NXT_ACTIVE_PHASES = frozenset({
-    "프리마켓", "메인마켓", "애프터마켓", "애프터마켓 지속",
+    "프리마켓", "정규장 준비", "메인마켓",
+    "단일가 매매", "애프터마켓", "애프터마켓 지속",
 })
 
 
@@ -336,6 +337,29 @@ async def is_edit_window_open(settings: dict | None = None) -> bool:
 
 
 
+
+
+async def _on_nxt_premarket_start() -> None:
+    """08:00 NXT 프리마켓 진입 콜백 — 업종 종합점수 재계산.
+
+    07:55(WS 구독 시작) 시점에는 market_phase가 장개시전/장개시전이므로
+    is_nxt_only_window()가 False이고, KRX 단독 종목이 포함된 채 점수가 계산됨.
+    08:00 NXT 경계 이벤트 수신 시 market_phase가 장전 대기/프리마켓으로 갱신되어
+    is_nxt_only_window()가 True로 전환되므로, 재계산 시 KRX 단독 종목이 제외됨.
+    구독 변경은 없음 (08:00에는 구독 해지/재구독 불필요 — 필터링만 적용).
+    recompute_sector_summary_now() 내부에서 notify 3종이 이미 호출되므로 중복 호출을 제거한다.
+    _broadcast_market_phase()는 JIF 경계 이벤트(engine_ws_dispatch)에서 동일 시각에 호출된다.
+    """
+    try:
+        from backend.app.core.trading_calendar import is_trading_day
+        today = _kst_now().date()
+        if today.weekday() >= 5 or not is_trading_day(today):
+            return
+        logger.info("[스케줄] NXT 프리마켓 진입 (08:00) — 업종 종합점수 재계산 (KRX 단독 종목 제외)")
+        from backend.app.services.sector_data_provider import recompute_sector_summary_now
+        await recompute_sector_summary_now()
+    except Exception as e:
+        logger.warning("[스케줄] NXT 프리마켓 진입 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_krx_market_open() -> None:
@@ -713,6 +737,15 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
         h = loop.call_later(max(delay_end, 1), _fire_ws_subscribe_end)
         state.ws_subscribe_timer_handles.append(h)
         logger.debug("[스케줄] 실시간 구독 종료 (%s) — %.0f초 후 예약", ws_end_str, delay_end)
+
+    # ★ 08:00 NXT 프리마켓 진입 타이머 — KRX 단독 종목 제외 업종 재계산
+    delay_nxt_pre = _seconds_until_hm(8, 0)
+    if delay_nxt_pre > 0 and loop:
+        def _nxt_pre_wrapper() -> None:
+            schedule_engine_task(_on_nxt_premarket_start(), context="NXT 프리마켓 진입")
+        h = loop.call_later(max(delay_nxt_pre, 1), _nxt_pre_wrapper)
+        state.ws_subscribe_timer_handles.append(h)
+        logger.debug("[스케줄] NXT 프리마켓 진입 (08:00) — %.0f초 후 예약", delay_nxt_pre)
 
     # ★ 09:00 KRX 정규장 진입 타이머 — NXT-only → 전체 종목 업종 재계산
     delay_krx_open = _seconds_until_hm(9, 0)
