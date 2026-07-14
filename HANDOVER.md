@@ -4,7 +4,7 @@
 
 ### 다음 작업: 업종 점수 산정 방식 리팩토링 — Step 2 Split B 대기
 
-**진행 단계**: Step 2 Split A 완료 (커밋 대기). 다음 세션에서 Step 2 Split B 사전조사부터 시작.
+**진행 단계**: Step 2 Split A 완료 (커밋 `0295195`). 다음 세션에서 Step 2 Split B 사전조사부터 시작.
 
 **계획서**: `docs/plan_sector_score_redesign.md` (4개 Step, 세션당 1단계 — Step 2를 Split A/B로 분할)
 
@@ -27,7 +27,7 @@
 
 ### 작업: 업종 점수 산정 방식 리팩토링 — Step 2 Split A 완료 (dead code 제거 + 파라미터 전환)
 
-**진행 단계**: 완료 (커밋 대기). 다음 작업: Step 2 Split B 사전조사 대기.
+**진행 단계**: 완료 (커밋 `0295195`). 다음 작업: Step 2 Split B 사전조사 대기.
 
 **완료 내용 (2026-07-15)**:
 - **현상**: Step 1 완료 후 `calculate_bonus_scores()`와 `compute_full_sector_summary()`는 슬라이더 기반으로 개편되었으나, 호출처 3곳이 여전히 구 만점 파라미터(max_score 3개)를 전달하고 있었고, deprecated max_score 설정/파라미터/기본값이 코드에 잔존함.
