@@ -219,13 +219,20 @@ def build_engine_settings_dict(flat: dict) -> dict:
     _v = merged.get("sector_start_threshold_pct")
     result["sector_start_threshold_pct"]   = float(_v if _v is not None else 70.0)
 
-    # ── 업종 점수 3단계 누적 가산점 만점 (사용자 설정) ────────
+    # ── 업종 점수 3단계 누적 가산점 만점 (deprecated — Step 2에서 제거, 현재 무시됨) ────────
     _v = merged.get("sector_bonus_rise_ratio_max")
     result["sector_bonus_rise_ratio_max"] = int(_v if _v is not None else 10)
     _v = merged.get("sector_bonus_relative_strength_max")
     result["sector_bonus_relative_strength_max"] = int(_v if _v is not None else 7)
     _v = merged.get("sector_bonus_trade_amount_max")
     result["sector_bonus_trade_amount_max"] = int(_v if _v is not None else 5)
+    # ── 업종 점수 3단계 가산점 슬라이더 (-100~+100, 기본값 0) — 조정 만점 = 업종 수 × (1 + slider/100) ──
+    _v = merged.get("sector_bonus_rise_ratio_slider")
+    result["sector_bonus_rise_ratio_slider"] = int(_v if _v is not None else 0)
+    _v = merged.get("sector_bonus_relative_strength_slider")
+    result["sector_bonus_relative_strength_slider"] = int(_v if _v is not None else 0)
+    _v = merged.get("sector_bonus_trade_amount_slider")
+    result["sector_bonus_trade_amount_slider"] = int(_v if _v is not None else 0)
 
     # ── 매수 주문 간격 (1순위 종목만 매수 후 사용자 설정 간격 대기) ────────
     result["buy_interval_on"]              = bool(merged.get("buy_interval_on", False))
