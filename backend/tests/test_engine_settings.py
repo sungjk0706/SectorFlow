@@ -31,8 +31,6 @@ class TestBuildEngineSettingsDictDefaults:
         assert len(result["sell_time_end"]) == 5
         assert len(result["ws_subscribe_start"]) == 5
         assert len(result["ws_subscribe_end"]) == 5
-        assert len(result["ws_subscribe_start_krx"]) == 5
-        assert len(result["ws_subscribe_end_krx"]) == 5
 
     def test_buy_amount_default(self):
         result = build_engine_settings_dict({})

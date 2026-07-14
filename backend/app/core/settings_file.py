@@ -102,6 +102,17 @@ def _migrate_telegram_token_split(merged: dict) -> tuple[dict, bool]:
     return merged, dirty
 
 
+def _migrate_remove_krx_subscribe_keys(merged: dict) -> tuple[dict, bool]:
+    """반자동 방식 전환으로 KRX 구독 시간 설정 키 2개 제거 (그룹 B).
+    09:00 KRX 추가 구독/15:30 KRX 해지는 장운영정보 이벤트로 자동 처리되므로 별도 설정 불필요."""
+    dirty = False
+    for key in ("ws_subscribe_start_krx", "ws_subscribe_end_krx"):
+        if key in merged:
+            del merged[key]
+            dirty = True
+    return merged, dirty
+
+
 # 암호화 필드 목록 (단일 정의)
 _ENCRYPT_FIELDS: frozenset[str] = frozenset({
     "kiwoom_app_key", "kiwoom_app_secret",
@@ -274,8 +285,9 @@ async def load_integrated_system_settings() -> dict:
     merged, dirty_si = _migrate_sector_to_industry_index(merged, db_data)
     merged, dirty_bc = _migrate_broker_config(merged, db_data)
     merged, dirty_tg = _migrate_telegram_token_split(merged)
+    merged, dirty_krx = _migrate_remove_krx_subscribe_keys(merged)
 
-    dirty = dirty or dirty_tm or dirty_tr or dirty_si or dirty_bc or dirty_tg
+    dirty = dirty or dirty_tm or dirty_tr or dirty_si or dirty_bc or dirty_tg or dirty_krx
     if dirty:
         _legacy_keys = list(_keys_before - set(merged.keys()))
         await save_settings(merged, delete_keys=_legacy_keys or None)
