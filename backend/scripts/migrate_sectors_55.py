@@ -181,7 +181,7 @@ def main():
         """)
         orphaned = c.fetchall()
         if orphaned:
-            print(f"ERROR: sectors 테이블에 없는 업종이 master_stocks_table에 존재:")
+            print("ERROR: sectors 테이블에 없는 업종이 master_stocks_table에 존재:")
             for row in orphaned:
                 print(f"  - {row[0]}")
             sys.exit(1)
@@ -196,7 +196,7 @@ def main():
         """)
         empty_sectors = c.fetchall()
         if empty_sectors:
-            print(f"WARNING: master_stocks_table에 종목이 없는 빈 업종:")
+            print("WARNING: master_stocks_table에 종목이 없는 빈 업종:")
             for row in empty_sectors:
                 print(f"  - {row[0]}")
 

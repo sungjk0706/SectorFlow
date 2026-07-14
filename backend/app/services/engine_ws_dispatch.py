@@ -4,7 +4,6 @@ WebSocket 수신 `trnm` 분기 -- `engine_service._handle_ws_data` 본문을 위
 engine_state에서 직접 상태를 참조하여 순환 import 없이 모듈 전역 상태를 갱신한다.
 """
 from __future__ import annotations
-import asyncio
 import time
 import backend.app.services.engine_state as engine_state
 from backend.app.services.engine_state import state
@@ -13,13 +12,6 @@ import logging
 from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
     _real_item_stk_cd,
-)
-from backend.app.services.engine_ws_parsing import (
-    _parse_fid10_price,
-    parse_change_rate_to_percent,
-    _ws_fid_int,
-    _ws_fid_key_present,
-    _ws_fid_raw,
 )
 
 logger = logging.getLogger(__name__)
