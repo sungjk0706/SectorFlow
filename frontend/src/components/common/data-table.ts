@@ -692,7 +692,9 @@ function createVirtualScrollMode<T extends object>(
     }
     gridTemplateColumns = pxWidths.map(px => `${px}px`).join(' ')
     headerDiv.style.gridTemplateColumns = gridTemplateColumns
-    const sentinel = scrollContainer.querySelector('div')
+    // data-vs-sentinel 속성으로 virtual-scroller의 sentinel div를 정확히 식별.
+    // querySelector('div')는 headerDiv를 반환하여 헤더 자식만 갱신하는 버그가 있었음.
+    const sentinel = scrollContainer.querySelector('[data-vs-sentinel]')
     if (sentinel) {
       const rowEls = sentinel.children
       for (let i = 0; i < rowEls.length; i++) {
