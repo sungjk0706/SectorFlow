@@ -2,6 +2,60 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
+### 다음 작업: 업종 점수 산정 방식 리팩토링 — Step 2 대기
+
+**진행 단계**: Step 1 완료 (커밋 진행 중). 다음 세션에서 Step 2 사전조사부터 시작.
+
+**계획서**: `docs/plan_sector_score_redesign.md` (4개 Step, 세션당 1단계)
+
+**변경 요약**:
+- 만점 기준: 사용자 입력(10/7/5) → 업종 수 자동 사용
+- 가중치 조절: 만점 입력 3개 제거 → 슬라이더 3개(-100%~+100%) 추가
+- 2차 가산점: 백분위 평균(4단계) → 가중 순위 합(3단계)
+- 컷오프 미달 업종: rank=0 고정 → 순위 정상 표시 + is_cutoff_passed 분리
+- 계산 대상: 컷오프 통과 업종만 (현행 유지)
+- 실시간 반영: 기존 구조 활용 (추가 작업 없음)
+
+**Step 구성 (전체)**:
+- Step 1: 백엔드 점수 계산 로직 전면 개편 (5개 파일) — 완료
+- Step 2: 백엔드 호출처 + 매수 필터 + 스냅샷 전파 (4개 파일) — 대기
+- Step 3: 프론트엔드 설정 패널 + 타입 (3개 파일)
+- Step 4: 테스트 + 문서 갱신 (3개 테스트 + 2개 문서)
+
+---
+
+### 작업: 업종 점수 산정 방식 리팩토링 — Step 1 완료 (백엔드 점수 계산 로직 전면 개편)
+
+**진행 단계**: 완료 (커밋 진행 중). 다음 작업: Step 2 사전조사 대기.
+
+**완료 내용 (2026-07-15)**:
+- **현상**: 업종 점수 만점이 사용자 입력(10/7/5)으로 고정되어 업종 수 변동 시 부적합, 2차 가산점이 백분위 평균(4단계)으로 상위 집중도 미반영, 컷오프 미달 업종이 rank=0으로 순위 표시 불가.
+- **근본 원인**: `sector_score.py:96-103` `calculate_bonus_scores()`가 사용자 입력 만점 3개를 파라미터로 받아 고정 점수 산정. `sector_score.py:56-93` `percentile_to_score()`가 백분위 기반 2차 가산점 계산 (상위 집중도 미반영). `models.py:43` `SectorScore`에 컷오프 통과 여부 필드 부재.
+- **수정 내용**: 5개 백엔드 파일 + 2개 테스트 파일 (+324/-249, 임시 호환 방안):
+  - `sector_score.py`: `rank_to_tiered_score()` float 반환 전환, `percentile_to_score()` 제거(P16), `calculate_bonus_scores()` 전면 개편 — 만점 = `len(sector_scores) × (1 + slider/100)` (업종 수 자동 도출, P10), 2차 알고리즘 백분위 평균 → 가중 순위 합(Weighted Rank Sum), `is_cutoff_passed` 필드 설정, `final_score` 계산 `int()` 래핑 제거, rank=0 임시 호환 유지.
+  - `models.py`: `SectorScore`에 `is_cutoff_passed: bool = True` 필드 추가.
+  - `settings_defaults.py`: 슬라이더 기본값 3개(0) 추가, 만점 기본값 3개 유지(deprecated).
+  - `engine_settings.py`: 슬라이더 설정 3개 추가, 만점 설정 3개 유지(deprecated).
+  - `sector_calculator.py`: slider 파라미터 3개 추가, `calculate_bonus_scores()` 호출에 slider 전달.
+  - `test_sector_score.py`: `TestPercentileToScore` 7개 삭제, `TestRankToTieredScore` 8개 float 수정, `TestCalculateBonusScores` 16개 재작성 (만점 자동화, 슬라이더, 가중 순위 합, is_cutoff_passed).
+  - `test_sector_calculator.py`: `final_score` 범위 assertion 수정 (고정 22.0 → 가변 업종 수 × 3), `int()` 래핑 제거.
+- **영향 범위**: 백엔드 5파일 + 테스트 2파일. 임시 호환 상태 — 만점 설정 3개가 캐시에 존재하지만 사용되지 않음 (dead settings), max_score 파라미터 3개가 존재하지만 무시됨 (dead params), slider 값이 항상 0 (호출처가 전달하지 않음) → 조정 만점 = 업종 수. Step 2에서 dead settings/params 제거 + buy_filter.py is_cutoff_passed 전환 + engine_service.py 설정 키 갱신.
+- **검증**: py_compile OK, ruff `All checks passed!`, pytest 56 passed (test_sector_score + test_sector_calculator), 전체 pytest 1810 passed 1 failed (기존 실패 — `test_pipeline_compute.py::test_subscribed_dynamic_calls_notify`, `engine_ws_dispatch._ws_fid_int` 속성 부재, 수정 전 동일 실패 확인), 런타임 기동 160ms (`-W error::RuntimeWarning`), `[업종] 재계산 완료` 로그 확인, 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건.
+- **P10/P16/P20/P21/P22/P24**: 만점 업종 수 자동 도출, percentile_to_score 제거, 슬라이더 -100% 사용자 의도적 무효화, is_cutoff_passed 필드 신설, 통과 업종만 모집단, 만점 입력 3개 → 슬라이더 3개.
+
+**Step 2 사전조사 필요 항목**:
+- `engine_sector_confirm.py:156-162` — `calculate_bonus_scores()` 호출처, max_score 파라미터 → slider 파라미터 전환
+- `engine_sector_confirm.py:218-225` — `compute_full_sector_summary()` 호출처, 동일
+- `sector_data_provider.py:251-258` — `recompute_sector_summary_now()` 내 `compute_full_sector_summary()` 호출처, 동일
+- `sector_data_provider.py:204-230` — `get_sector_scores_snapshot()`에 `is_cutoff_passed` 필드 추가
+- `buy_filter.py:172` — `sc.rank == 0` → `not sc.is_cutoff_passed` 전환
+- `engine_service.py:162-165` — 설정 키 목록 갱신 (만점 3개 제거, 슬라이더 3개 추가)
+- `sector_score.py` — rank 부여 로직 수정 (모든 업종에 순위 부여, rank=0 제거)
+- `sector_calculator.py` — deprecated max_score 파라미터 3개 제거
+- 테스트: `test_engine_sector_confirm.py`, `test_buy_filter.py`, `test_sector_data_provider.py` mock settings 갱신
+
+---
+
 ### 작업: 수동 다운로드 확인 팝업 분기 — 당일 데이터 존재 시 메시지 분기
 
 **진행 단계**: 완료 (커밋 `9ccea56`). 다음 작업: 사용자 지시 대기.

@@ -163,7 +163,11 @@ async def compute_full_sector_summary(
     min_strength: float = 0.0,
     min_avg_amt_eok: float = 0.0,
     max_sectors: int = 3,
-    # ── 업종 점수 3단계 누적 가산점 만점 (사용자 설정) ──
+    # ── 업종 점수 3단계 가산점 슬라이더 (-100~+100, 기본값 0) — 조정 만점 = 업종 수 × (1 + slider/100) ──
+    rise_ratio_slider: int = 0,
+    relative_strength_slider: int = 0,
+    trade_amount_slider: int = 0,
+    # ── deprecated: 기존 만점 설정 (Step 2에서 제거, 현재 무시됨) ──
     max_rise_ratio_score: int = 10,
     max_relative_strength_score: int = 7,
     max_trade_amount_score: int = 5,
@@ -199,9 +203,9 @@ async def compute_full_sector_summary(
     calculate_bonus_scores(
         sector_scores,
         min_rise_ratio=min_rise_ratio,
-        max_rise_ratio_score=max_rise_ratio_score,
-        max_relative_strength_score=max_relative_strength_score,
-        max_trade_amount_score=max_trade_amount_score,
+        rise_ratio_slider=rise_ratio_slider,
+        relative_strength_slider=relative_strength_slider,
+        trade_amount_slider=trade_amount_slider,
     )
 
     return SectorSummary(

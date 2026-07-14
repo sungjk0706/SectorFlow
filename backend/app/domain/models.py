@@ -40,13 +40,14 @@ class SectorScore:
     avg_change_rate: float      # 평균 등락률 (%)
     avg_trade_amount: int       # 업종 평균 거래대금 (원)
     avg_ratio_5d_pct: float     # 업종 평균 5D거래대금비율 (%)
-    rank: int = 0               # 강도 순위 (1=최강)
+    rank: int = 0               # 강도 순위 (1=최강) — 임시 호환: 컷오프 미달은 0 유지 (Step 2에서 is_cutoff_passed로 전환)
+    is_cutoff_passed: bool = True  # 컷오프(min_rise_ratio) 통과 여부 — rank와 분리된 진실 소스 (P10)
     stocks: list[StockScore] = field(default_factory=list)
-    # ── 3단계 누적 가산점 (0~300) ──
-    final_score: float = 0.0                  # 종합 가산점 = 1차 + 2차 + 3차 (0.0~300.0)
-    bonus_rise_ratio: float = 0.0             # 1차 가산점: 업종 내 상승 종목 비율 순위 (0~100)
-    bonus_relative_strength: float = 0.0      # 2차 가산점: 통과 업종 종목들 상대평가 백분위 평균 (0~100)
-    bonus_trade_amount: float = 0.0           # 3차 가산점: 업종 거래대금 순위 (0~100)
+    # ── 3단계 누적 가산점 (만점 = 업종 수 × 슬라이더 비율, 가변) ──
+    final_score: float = 0.0                  # 종합 가산점 = 1차 + 2차 + 3차 (float, 만점 가변)
+    bonus_rise_ratio: float = 0.0             # 1차 가산점: 업종 간 상승비율 순위 → tiered (float)
+    bonus_relative_strength: float = 0.0      # 2차 가산점: 통과 업종 종목들 가중 순위 합 → tiered (float)
+    bonus_trade_amount: float = 0.0           # 3차 가산점: 업종 간 거래대금 순위 → tiered (float)
 
 
 @dataclass

@@ -371,13 +371,16 @@ class TestComputeFullSectorSummary:
             avg_amt_5d=_AVG_AMT_5D,
             latest_index={},
         )
+        # 업종 2개 → 만점 = 2, 만점 합 = 6 (슬라이더 기본값 0)
+        n_sectors = len(result.sectors)
+        max_total = n_sectors * 3
         for sc in result.sectors:
             assert sc.bonus_rise_ratio >= 0.0
             assert sc.bonus_trade_amount >= 0.0
             assert sc.bonus_relative_strength >= 0.0
-            assert 0.0 <= sc.final_score <= 22.0
-            expected = int(sc.bonus_rise_ratio) + int(sc.bonus_relative_strength) + int(sc.bonus_trade_amount)
-            assert sc.final_score == float(expected)
+            assert 0.0 <= sc.final_score <= float(max_total)
+            expected = sc.bonus_rise_ratio + sc.bonus_relative_strength + sc.bonus_trade_amount
+            assert sc.final_score == expected
 
     async def test_empty_input_returns_empty_summary(self, cache):
         result = await compute_full_sector_summary(
