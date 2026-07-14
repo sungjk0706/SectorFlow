@@ -351,7 +351,7 @@ async def _on_nxt_premarket_start() -> None:
     is_nxt_only_window()가 True로 전환되므로, 재계산 시 KRX 단독 종목이 제외됨.
     구독 변경은 없음 (08:00에는 구독 해지/재구독 불필요 — 필터링만 적용).
     recompute_sector_summary_now() 내부에서 notify 3종이 이미 호출되므로 중복 호출을 제거한다.
-    _broadcast_market_phase()는 JIF 경계 이벤트(engine_ws_dispatch)에서 동일 시각에 호출된다.
+    _broadcast_market_phase() 내 페이즈 변경 감지 시 자동 트리거된다 (수정 8 통합).
     """
     try:
         from backend.app.core.trading_calendar import is_trading_day
@@ -372,7 +372,7 @@ async def _on_krx_market_open() -> None:
     09:00 KRX 정규장 진입 시 전체 종목을 포함하도록 재계산 필요.
     또한 15:30에 구독해지된 KRX 단독 종목을 재구독하여 실시간 시세를 수신한다.
     recompute_sector_summary_now() 내부에서 notify 3종이 이미 호출되므로 중복 호출을 제거한다.
-    _broadcast_market_phase()는 market-phase 타이머 배열(line 710)에서 동일 시각에 호출된다.
+    _broadcast_market_phase() 내 페이즈 변경 감지 시 자동 트리거된다 (수정 8 통합).
     """
     try:
         from backend.app.core.trading_calendar import is_trading_day
@@ -396,7 +396,7 @@ async def _on_krx_after_hours_start() -> None:
     KRX 종가 동시호가 종료(15:30) 시점에 KRX 단독 종목(nxt_enable=False) WS 구독 해지.
     NXT-enabled 종목은 NXT 거래(20:00까지)가 가능하므로 구독 유지.
     recompute_sector_summary_now() 내부에서 notify 3종이 이미 호출되므로 중복 호출을 제거한다.
-    _broadcast_market_phase()는 market-phase 타이머 배열(line 710)에서 동일 시각에 호출된다.
+    _broadcast_market_phase() 내 페이즈 변경 감지 시 자동 트리거된다 (수정 8 통합).
     """
     try:
         from backend.app.core.trading_calendar import is_trading_day
@@ -524,15 +524,23 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
 
 
 def _broadcast_market_phase() -> None:
-    """market-phase WS 이벤트 브로드캐스트 (각 페이즈 전환 시점).
+    """market-phase WS 이벤트 브로드캐스트 + 페이즈 변경 감지 시 업종 재계산 트리거.
 
     state.market_phase를 시간 기반 최신값으로 갱신 후 브로드캐스트.
     SSOT: state.market_phase가 항상 현재 시각 기반 상태를 반영하도록 보장.
     시계 페이즈 전환 시 JIF 휘발성 이벤트 라벨(krx_event/nxt_event)을 초기화하여
     경계 이벤트(장시작/장마감 등) 이후 시계 페이즈명이 표시를 인계받도록 한다.
+
+    페이즈 변경 감지 시 업종 재계산 트리거 (수정 8 — 타이머 3개 통합):
+      - NXT "프리마켓" 진입 → _on_nxt_premarket_start() (08:00, KRX 단독 종목 제외)
+      - KRX "정규장" 진입 → _on_krx_market_open() (09:00, 전체 종목 + 재구독)
+      - KRX "체결 정산" 진입 → _on_krx_after_hours_start() (15:30, KRX 단독 종목 구독해지)
+    JIF 경계 이벤트와 시계 타이머 중복 호출 시 첫 번째 호출만 트리거 (P22).
     """
     try:
         from backend.app.services.engine_account_notify import _broadcast
+        prev_krx = state.market_phase.get("krx")
+        prev_nxt = state.market_phase.get("nxt")
         fresh = calc_timebased_market_phase()
         state.market_phase["krx"] = fresh["krx"]
         state.market_phase["nxt"] = fresh["nxt"]
@@ -541,6 +549,14 @@ def _broadcast_market_phase() -> None:
         state.market_phase["nxt_event"] = None
         phase = get_market_phase()
         schedule_engine_task(_broadcast("market-phase", phase), context="market-phase 브로드캐스트")
+        # 페이즈 변경 감지 → 업종 재계산 트리거 (타이머 3개 통합)
+        if prev_krx != fresh["krx"] or prev_nxt != fresh["nxt"]:
+            if fresh["nxt"] == "프리마켓" and prev_nxt != "프리마켓":
+                schedule_engine_task(_on_nxt_premarket_start(), context="NXT 프리마켓 진입")
+            if fresh["krx"] == "정규장" and prev_krx != "정규장":
+                schedule_engine_task(_on_krx_market_open(), context="KRX 정규장 진입")
+            if fresh["krx"] == "체결 정산" and prev_krx != "체결 정산":
+                schedule_engine_task(_on_krx_after_hours_start(), context="KRX 장외 전환")
     except Exception as e:
         logger.warning("[스케줄] 장 상태 화면 전송 오류: %s", e, exc_info=True)
 
@@ -741,32 +757,9 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
         state.ws_subscribe_timer_handles.append(h)
         logger.debug("[스케줄] 실시간 구독 종료 (%s) — %.0f초 후 예약", ws_end_str, delay_end)
 
-    # ★ 08:00 NXT 프리마켓 진입 타이머 — KRX 단독 종목 제외 업종 재계산
-    delay_nxt_pre = _seconds_until_hm(8, 0)
-    if delay_nxt_pre > 0 and loop:
-        def _nxt_pre_wrapper() -> None:
-            schedule_engine_task(_on_nxt_premarket_start(), context="NXT 프리마켓 진입")
-        h = loop.call_later(max(delay_nxt_pre, 1), _nxt_pre_wrapper)
-        state.ws_subscribe_timer_handles.append(h)
-        logger.debug("[스케줄] NXT 프리마켓 진입 (08:00) — %.0f초 후 예약", delay_nxt_pre)
-
-    # ★ 09:00 KRX 정규장 진입 타이머 — NXT-only → 전체 종목 업종 재계산
-    delay_krx_open = _seconds_until_hm(9, 0)
-    if delay_krx_open > 0 and loop:
-        def _krx_open_wrapper() -> None:
-            schedule_engine_task(_on_krx_market_open(), context="KRX 정규장 진입")
-        h = loop.call_later(max(delay_krx_open, 1), _krx_open_wrapper)
-        state.ws_subscribe_timer_handles.append(h)
-        logger.debug("[스케줄] KRX 정규장 진입 (09:00) — %.0f초 후 예약", delay_krx_open)
-
-    # ★ 15:30 KRX 장외 시간대 전환 타이머
-    delay_krx_after = _seconds_until_hm(15, 30)
-    if delay_krx_after > 0 and loop:
-        def _krx_after_wrapper() -> None:
-            schedule_engine_task(_on_krx_after_hours_start(), context="KRX 장외 전환")
-        h = loop.call_later(max(delay_krx_after, 1), _krx_after_wrapper)
-        state.ws_subscribe_timer_handles.append(h)
-        logger.debug("[스케줄] KRX 장외 전환 (15:30) — %.0f초 후 예약", delay_krx_after)
+    # ★ 08:00/09:00/15:30 재계산 타이머 — 제거됨 (수정 8)
+    # _broadcast_market_phase() 내 페이즈 변경 감지 시 자동 트리거 (P10/P22/P24).
+    # JIF 경계 이벤트와 시계 타이머 중복 호출 시 첫 번째 호출만 트리거.
 
     # ★ 20:10 NXT 확정 조회 타이머 — 제거됨 (Task 3.1, 20:30 통합 확정 조회로 교체)
 

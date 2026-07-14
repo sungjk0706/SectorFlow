@@ -608,7 +608,7 @@ class TestDoUnifiedConfirmedFetch:
 class TestBroadcastMarketPhase:
     def test_broadcasts_phase(self):
         mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "", "nxt": ""}
+        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
@@ -636,6 +636,53 @@ class TestBroadcastMarketPhase:
     def test_exception_does_not_raise(self):
         with patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", side_effect=Exception("boom")):
             _broadcast_market_phase()
+
+    def test_triggers_nxt_premarket_on_phase_change(self):
+        """NXT '프리마켓' 전환 시 _on_nxt_premarket_start() 트리거 (수정 8)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "장전 대기", "nxt": "프리마켓"}), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "장전 대기", "nxt": "프리마켓"}), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
+            _broadcast_market_phase()
+            contexts = [c.kwargs.get("context", "") for c in mock_sched.call_args_list]
+            assert any("NXT 프리마켓 진입" in ctx for ctx in contexts)
+
+    def test_triggers_krx_market_open_on_phase_change(self):
+        """KRX '정규장' 전환 시 _on_krx_market_open() 트리거 (수정 8)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
+            _broadcast_market_phase()
+            contexts = [c.kwargs.get("context", "") for c in mock_sched.call_args_list]
+            assert any("KRX 정규장 진입" in ctx for ctx in contexts)
+
+    def test_triggers_krx_after_hours_on_phase_change(self):
+        """KRX '체결 정산' 전환 시 _on_krx_after_hours_start() 트리거 (수정 8)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "종가 동시호가", "nxt": "조기 마감"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "체결 정산", "nxt": "단일가 매매"}), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "체결 정산", "nxt": "단일가 매매"}), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
+            _broadcast_market_phase()
+            contexts = [c.kwargs.get("context", "") for c in mock_sched.call_args_list]
+            assert any("KRX 장외 전환" in ctx for ctx in contexts)
+
+    def test_no_recompute_trigger_when_phase_unchanged(self):
+        """페이즈 변경 없을 시 재계산 트리거 없음 (중복 방지, 수정 8)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
+            _broadcast_market_phase()
+            assert mock_sched.call_count == 1  # 브로드캐스트만, 재계산 없음
 
 
 # ── _on_krx_market_open ───────────────────────────────────────────────────────

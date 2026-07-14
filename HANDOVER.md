@@ -2,30 +2,28 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
-### 작업: 장운영정보(market_phase) 단일 소스 통합 — 수정 7,5,1,2,3,4,6 완료, 수정 8 대기
+### 작업: 장운영정보(market_phase) 단일 소스 통합 — 수정 1~8 전부 완료
 
-**진행 단계**: 수정 7,5,1,2,3,4,6 완료. 다음 단계: 수정 8 (선택, 타이머 통합) 또는 신규 작업.
+**진행 단계**: 수정 1,2,3,4,5,6,7,8 전부 완료. 다음 단계: 신규 작업 지시 가능.
 
 **완료된 수정**:
+- **수정 8 완료** (커밋 미정): 08:00/09:00/15:30 재계산 타이머 3개 → `_broadcast_market_phase()` 내 페이즈 변경 감지 시 자동 트리거 통합.
+  - `_broadcast_market_phase()`에 prev/new 페이즈 비교 로직 추가 — NXT "프리마켓"/KRX "정규장"/KRX "체결 정산" 전환 시 `schedule_engine_task`로 재계산 예약.
+  - 타이머 3개 제거 (line 744-769, -28줄), docstring 3개 갱신.
+  - JIF 경계 이벤트와 시계 타이머 중복 호출 시 첫 번째 호출만 트리거 (P22 중복 방지).
+  - 테스트: 기존 `test_broadcasts_phase` 수정 + 신규 4건 (NXT 프리마켓/KRX 정규장/KRX 체결정산 트리거 + 변경 없을 시 미트리거).
+  - 검증: ruff + py_compile 통과, pytest 133 passed (test_daily_time_scheduler), 런타임 기동 103ms 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건.
 - **수정 7 완료** (커밋 `786e371`): `is_ws_subscribe_window()` docstring 기본값 불일치 수정.
 - **수정 5 완료** (커밋 `2636bc1`): `build_sector_stocks_payload()`의 `krx_after_hours` dead data 제거.
 - **수정 1,2,3,4 완료** (커밋 `cc5f153`): 4개 시간 함수 → `state.market_phase` 기반 전환.
 - **수정 6 완료** (커밋 `76abe89`): 프론트엔드 중복 상수 제거 + `is_nxt_only` SSOT 전송.
-  - 백엔드 `get_market_phase()` 반환 dict에 `is_nxt_only` 파생 필드 추가 — 3개 전송 경로(initial-snapshot/market-phase/index-data) 자동 전송.
-  - 프론트엔드 `sector-stock.ts`의 `KRX_INACTIVE_PHASES`/`NXT_ACTIVE_PHASES` 상수 2개 + `isKrxInactiveWindow()` 제거 (-43줄), `marketPhase.is_nxt_only` 사용.
-  - `uiStore.ts`/`types/index.ts`/`binding.ts` 타입 + 초기값에 `is_nxt_only` 추가.
-  - 테스트 `TestGetMarketPhase` 4건에 `is_nxt_only` 검증 추가 + 신규 1건 (True 케이스).
-  - 검증: ruff + py_compile 통과, pytest 164 passed (test_daily_time_scheduler 129 + test_engine_snapshot 19 + test_sector_data_provider 16), 프론트엔드 typecheck 통과, 런타임 기동 82ms 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건.
-
-**남은 수정안 (승인 대기)**:
-- **수정 8 (선택)**: 08:00/09:00/15:30 재계산 타이머 → `_broadcast_market_phase()` 내 페이즈 변경 감지 시 자동 트리거 통합 (`daily_time_scheduler.py:741-766`). 복잡도 증가 가능성 있어 신중 평가 필요.
 
 **다음 단계 제안 (세션당 1단계, 규칙 0-1 준수)**:
-1. 수정 8 (선택, 타이머 통합) — 별도 검증 필요
-2. 신규 작업 지시 가능
+1. 신규 작업 지시 가능 (수정 1~8 전부 완료로 market_phase 통합 작업 종료)
 
 **주요 리스크**:
 - JIF 누락 시 `market_phase` 부정확 (시계 타이머 백업으로 최대 1초 지연)
+- 구독 구간 내 재기동 시 초기값 "장개시전" → 현재 페이즈 전환 감지로 재계산 트리거됨 (올바른 동작, 부트스트랩 재계산과 중복 가능하나 정합성 문제 없음)
 
 **추가 검토 결론: `ws_subscribe_start/end` 자동화 대체 권장하지 않음**:
 - 거래소 장시간과 사용자가 원하는 데이터 수신 시간은 다를 수 있음 (P21 위반)
@@ -33,12 +31,18 @@
 - 현재 3계층 구조(ws_subscribe_on 토글 + 시간 설정 + market_phase 타이머)가 합리적
 - 다만 기본값 09:00~15:00을 NXT 거래시간 고려해 08:50~15:30 조정은 별도 세션에서 검토 가능
 
-**다음 세션 지시어 예시**:
-- "수정 8 진행해" → 타이머 통합 (선택)
-
 ---
 
 ## 직전 완료 작업
+- **2026-07-14: 재계산 타이머 3개 _broadcast_market_phase() 통합 — 수정 8 (P10/P22/P24)**
+  - **현상**: 08:00/09:00/15:30 재계산 타이머 3개가 `_broadcast_market_phase()`와 별도로 존재하여, JIF 경계 이벤트와 시계 타이머가 동시에 발생할 때 재계산이 중복 실행될 위험 존재.
+  - **근본 원인**: `daily_time_scheduler.py:744-769`의 재계산 타이머 3개가 `market-phase` 타이머 배열(동일 시각 `_broadcast_market_phase()` 호출)과 독립적으로 예약되어, 동일 시각에 2개의 타이머가 각각 재계산과 페이즈 갱신을 따로 수행.
+  - **수정 파일**: 백엔드 1개 파일 + 테스트 1개 파일 — `daily_time_scheduler.py`, `test_daily_time_scheduler.py`
+  - **변경 내용**: (1) `_broadcast_market_phase()`에 prev/new 페이즈 비교 로직 추가 — NXT "프리마켓"/KRX "정규장"/KRX "체결 정산" 전환 시 `schedule_engine_task`로 `_on_nxt_premarket_start()`/`_on_krx_market_open()`/`_on_krx_after_hours_start()` 예약. (2) 타이머 3개 제거 (line 744-769, -28줄). (3) `_on_*` 함수 3개 docstring 갱신 — "_broadcast_market_phase()는 ...에서 동일 시각에 호출된다" → "내 페이즈 변경 감지 시 자동 트리거된다 (수정 8 통합)". (4) 테스트 기존 `test_broadcasts_phase` 수정 (prev=new로 설정) + 신규 4건 추가 (NXT 프리마켓/KRX 정규장/KRX 체결정산 트리거 + 변경 없을 시 미트리거).
+  - **영향 범위**: 백엔드 1개 파일 + 테스트 1개 파일 (+47/-45). 구독 구간 내 재기동 시 초기값 "장개시전" → 현재 페이즈 전환 감지로 재계산 트리거됨 (올바른 동작). JIF 경계 이벤트와 시계 타이머 중복 호출 시 첫 번째 호출만 트리거 (P22 중복 방지).
+  - **검증**: ruff All checks passed. py_compile OK. pytest 133 passed (test_daily_time_scheduler) in 0.76s. 런타임 기동 `-W error::RuntimeWarning` 103ms, `장 상태 초기화: KRX=정규장, NXT=메인마켓` 확인, 에러/Traceback/RuntimeWarning 없음. 잔존 프로세스 0건 (규칙 5-1 준수).
+  - **커밋**: (본 세션에서 커밋 예정)
+
 - **2026-07-14: 프론트엔드 KRX/NXT 중복 상수 제거 + is_nxt_only SSOT 전송 — 수정 6 (P10/P16/P22/P24)**
   - **현상**: 프론트엔드 `sector-stock.ts`가 백엔드와 동일한 `KRX_INACTIVE_PHASES`(12개)·`NXT_ACTIVE_PHASES`(6개) 상수와 `isKrxInactiveWindow()` 함수를 중복 정의하여 P10(SSOT) 위반. 백엔드가 이미 `is_nxt_only_window()`로 단일 진실 소스를 보유하고 있으나 프론트엔드에 전달되지 않아 독립 계산.
   - **근본 원인**: `get_market_phase()` (`daily_time_scheduler.py:230-247`)가 `market-phase` 이벤트 페이로드를 조립하면서 `is_nxt_only` 파생 값을 포함하지 않았음. 이 페이로드는 `initial-snapshot`·`market-phase`·`index-data` 3개 전송 경로가 모두 경유하는 SSOT 지점.
