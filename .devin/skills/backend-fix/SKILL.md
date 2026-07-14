@@ -76,6 +76,7 @@ python -m pytest backend/tests/[파일명] -v --timeout=15 --timeout-method=sign
 - 검증한 항목 (정적 검증 + 런타임 기동)
 - 사용자가 직접 확인할 방법
 - **용어 사전 준수 (P23)**: 사용자 보고, 로그 메시지, 문서 작성 시 `ARCHITECTURE.md` 부록 L 표준 용어 사전 준수 — "업종" not "섹터", "종목" not "주식", "매수 후보" not "바이 리스트"
+- **단계 완료 시 작업 여력 보고 (AGENTS.md 섹션4 Context Management Rules 10 준수)**: 각 단계 완료 시 사용자에게 현재 작업 여력을 일반 용어로 보고 ("작업 여력 충분/적음"). 보고 후 커밋 + HANDOVER.md 갱신 진행 여부를 사용자 승인받아 진행.
 
 ## 주의사항
 - 아키텍처 원칙 관련 수정은 런타임 기동 검증 생략 금지
