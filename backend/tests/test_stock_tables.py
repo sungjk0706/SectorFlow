@@ -13,7 +13,7 @@ from backend.app.db.stock_tables import (
     migrate_master_stocks_table_pk,
     migrate_add_hidden_to_custom_sectors,
     migrate_add_nxt_enable_column,
-    create_stock_5d_array_table,
+    create_stock_5d_bars_table,
     save_trading_days_cache,
     load_trading_days_cache,
     load_master_stocks_table,
@@ -206,13 +206,14 @@ class TestMigrateAddNxtEnable:
         assert _mock_db_connection.execute.call_count == 1
 
 
-# ── create_stock_5d_array_table ─────────────────────────────────────
+# ── create_stock_5d_bars_table ─────────────────────────────────────
 
-class TestCreateStock5dArrayTable:
+class TestCreateStock5dBarsTable:
     @pytest.mark.asyncio
     async def test_creates_table(self, _mock_db_connection):
-        await create_stock_5d_array_table()
-        assert _mock_db_connection.execute.call_count == 1
+        await create_stock_5d_bars_table()
+        # DROP IF EXISTS + CREATE IF NOT EXISTS = 2 execute calls
+        assert _mock_db_connection.execute.call_count == 2
         _mock_db_connection.commit.assert_called_once()
 
 

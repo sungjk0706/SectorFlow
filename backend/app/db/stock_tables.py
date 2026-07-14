@@ -267,27 +267,26 @@ async def migrate_add_nxt_enable_column():
 
 # load_stock_name_cache 함수 삭제: 메모리 캐시(_master_stocks_cache)로 단일화
 
-async def create_stock_5d_array_table():
-    """stock_5d_array 테이블 생성 (5일봉 배열 데이터 저장용)"""
+async def create_stock_5d_bars_table():
+    """stock_5d_bars 테이블 생성 (5일봉 세로 행 데이터 저장용).
+
+    가로 배열(day1~day5) 구조를 세로 행으로 변경 — 각 일봉이 (종목코드, 거래일) 복합키로 1행 저장.
+    기존 stock_5d_array 테이블은 각 day의 실제 날짜를 알 수 없어 마이그레이션 불가 → DROP 후 신규 시작 (P10/P22/P24).
+    """
     conn = await get_db_connection()
+    # 기존 가로 배열 테이블 제거 (날짜 모호성이 근본 원인 — 마이그레이션 불가)
+    await conn.execute("DROP TABLE IF EXISTS stock_5d_array")
     await conn.execute('''
-        CREATE TABLE IF NOT EXISTS stock_5d_array (
-            code TEXT PRIMARY KEY,
-            date TEXT,
-            day1_amount INTEGER,  -- 백만원 단위
-            day2_amount INTEGER,  -- 백만원 단위
-            day3_amount INTEGER,  -- 백만원 단위
-            day4_amount INTEGER,  -- 백만원 단위
-            day5_amount INTEGER,  -- 백만원 단위
-            day1_high INTEGER,
-            day2_high INTEGER,
-            day3_high INTEGER,
-            day4_high INTEGER,
-            day5_high INTEGER
+        CREATE TABLE IF NOT EXISTS stock_5d_bars (
+            code TEXT NOT NULL,
+            dt TEXT NOT NULL,           -- 실제 거래일 (YYYYMMDD)
+            trade_amount INTEGER,       -- 백만원 단위
+            high_price INTEGER,         -- 원 단위
+            PRIMARY KEY (code, dt)
         )
     ''')
     await conn.commit()
-    logger.info("5일봉 배열 테이블 초기화 완료.")
+    logger.info("5일봉 세로 행 테이블 초기화 완료.")
 
 
 # ── 거래일 캐시 ─────────────────────────────────────────────────────────────
