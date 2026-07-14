@@ -5,7 +5,7 @@
 import { createProfitChart, type ProfitChartApi } from '../components/canvas-profit-chart'
 import { createSectorDonut, type SectorDonutApi, type SectorDonutRow } from '../components/canvas-sector-donut'
 import { globalSettingsManager } from '../settings'
-import { FONT_SIZE, FONT_WEIGHT, COLOR, pnlColor, fmtWon } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, COLOR, pnlColor } from '../components/common/ui-styles'
 import { createActionButton } from '../components/common/button'
 import { createCardTitle } from '../components/common/card-title'
 import { sectionTitle } from '../components/common/settings-common'
@@ -139,27 +139,53 @@ function renderSectorStockPnl(): void {
       Object.assign(sectorGroup.style, { background: COLOR.hoverBg, borderRadius: '6px' })
     }
 
-    // 업종 헤더 — 클릭 시 해당 업종만 토글
+    // 업종 헤더 — 5컬럼 그리드 (종목 행과 동일 구조 — P23 일관성)
+    // 컬럼: 1:업종명  2:빈셀  3:총수익금  4:총수익률  5:빈셀
     const header = document.createElement('div')
     Object.assign(header.style, {
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      display: 'flex', alignItems: 'center',
       padding: '8px 4px 4px', borderBottom: '2px solid ' + COLOR.borderLight, marginTop: '8px',
       cursor: 'pointer', userSelect: 'none',
     })
+    // 컬럼1: 업종명 (flex:1, 종목 행 컬럼2와 폭 공유)
     const sectorName = document.createElement('span')
-    Object.assign(sectorName.style, { fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.semibold, color: group.color })
+    Object.assign(sectorName.style, { flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.semibold, color: group.color })
     sectorName.textContent = group.sector
+    // 컬럼2: 빈셀 (종목 행의 종목명 자리)
+    const headerEmpty2 = document.createElement('span')
+    Object.assign(headerEmpty2.style, { flex: '1' })
+    // 컬럼3: 업종 총수익금 (90px, 굵게 + 업종색 테두리, 숫자/원 분리 + tabular-nums)
     const sectorPnl = document.createElement('span')
-    Object.assign(sectorPnl.style, { fontSize: FONT_SIZE.label, fontWeight: FONT_WEIGHT.normal, color: pnlColor(group.pnl) })
+    Object.assign(sectorPnl.style, { flex: 'none', width: '90px', display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', fontSize: FONT_SIZE.label, fontWeight: FONT_WEIGHT.semibold, border: '1px solid ' + group.color, borderRadius: '4px', padding: '2px 4px', boxSizing: 'border-box' })
     const sign = group.pnl >= 0 ? '+' : ''
-    sectorPnl.textContent = `${sign}${fmtWon(group.pnl)}`
+    const sectorPnlNum = document.createElement('span')
+    Object.assign(sectorPnlNum.style, { fontVariantNumeric: 'tabular-nums', color: pnlColor(group.pnl) })
+    sectorPnlNum.textContent = `${sign}${group.pnl.toLocaleString()}`
+    const sectorPnlUnit = document.createElement('span')
+    Object.assign(sectorPnlUnit.style, { flex: 'none', width: '14px', textAlign: 'left', color: pnlColor(group.pnl) })
+    sectorPnlUnit.textContent = '원'
+    sectorPnl.appendChild(sectorPnlNum)
+    sectorPnl.appendChild(sectorPnlUnit)
+    // 컬럼4: 업종 수익률 (60px, 굵게 + 업종색 테두리, 숫자/% 분리 + tabular-nums)
     const sectorRate = document.createElement('span')
-    Object.assign(sectorRate.style, { fontSize: FONT_SIZE.label, fontWeight: FONT_WEIGHT.normal, color: pnlColor(group.rate), marginLeft: '8px' })
+    Object.assign(sectorRate.style, { flex: 'none', width: '60px', display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', fontSize: FONT_SIZE.label, fontWeight: FONT_WEIGHT.semibold, border: '1px solid ' + group.color, borderRadius: '4px', padding: '2px 4px', boxSizing: 'border-box' })
     const rateSign = group.rate >= 0 ? '+' : ''
-    sectorRate.textContent = `${rateSign}${group.rate.toFixed(2)}%`
+    const sectorRateNum = document.createElement('span')
+    Object.assign(sectorRateNum.style, { fontVariantNumeric: 'tabular-nums', color: pnlColor(group.rate) })
+    sectorRateNum.textContent = `${rateSign}${group.rate.toFixed(2)}`
+    const sectorRateUnit = document.createElement('span')
+    Object.assign(sectorRateUnit.style, { flex: 'none', width: '12px', textAlign: 'left', color: pnlColor(group.rate) })
+    sectorRateUnit.textContent = '%'
+    sectorRate.appendChild(sectorRateNum)
+    sectorRate.appendChild(sectorRateUnit)
+    // 컬럼5: 빈셀 (종목 행의 매도수량 자리)
+    const headerEmpty5 = document.createElement('span')
+    Object.assign(headerEmpty5.style, { flex: 'none', width: '55px' })
     header.appendChild(sectorName)
+    header.appendChild(headerEmpty2)
     header.appendChild(sectorPnl)
     header.appendChild(sectorRate)
+    header.appendChild(headerEmpty5)
     sectorGroup.appendChild(header)
 
     // 종목 행 컨테이너 — 펼침/접힘 토글 대상
@@ -170,31 +196,49 @@ function renderSectorStockPnl(): void {
     for (const stock of group.stocks) {
       const row = document.createElement('div')
       Object.assign(row.style, {
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '6px 4px 6px 12px', borderBottom: '1px solid ' + COLOR.neutralBg,
+        display: 'flex', alignItems: 'center',
+        padding: '6px 4px 6px', borderBottom: '1px solid ' + COLOR.neutralBg,
       })
-      // 종목명
+      // 컬럼1: 빈셀 (업종 헤더의 업종명 자리 — 들여쓰기 효과)
+      const empty1 = document.createElement('span')
+      Object.assign(empty1.style, { flex: '1' })
+      // 컬럼2: 종목명 (flex:1, 업종 헤더 컬럼2와 폭 공유)
       const nameEl = document.createElement('span')
       Object.assign(nameEl.style, { flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: FONT_SIZE.body, fontWeight: FONT_WEIGHT.medium })
       nameEl.textContent = stock.stk_nm
 
-      // 수익금
+      // 컬럼3: 수익금 — 숫자와 '원' 단위 분리 (digit 세로 정렬 + tabular-nums)
       const pnlEl = document.createElement('span')
-      Object.assign(pnlEl.style, { flex: 'none', width: '90px', textAlign: 'right', fontSize: FONT_SIZE.body, color: pnlColor(stock.realized_pnl) })
+      Object.assign(pnlEl.style, { flex: 'none', width: '90px', display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', fontSize: FONT_SIZE.body })
       const pnlSign = stock.realized_pnl >= 0 ? '+' : ''
-      pnlEl.textContent = `${pnlSign}${stock.realized_pnl.toLocaleString()}원`
+      const pnlNum = document.createElement('span')
+      Object.assign(pnlNum.style, { fontVariantNumeric: 'tabular-nums', color: pnlColor(stock.realized_pnl) })
+      pnlNum.textContent = `${pnlSign}${stock.realized_pnl.toLocaleString()}`
+      const pnlUnit = document.createElement('span')
+      Object.assign(pnlUnit.style, { flex: 'none', width: '14px', textAlign: 'left', color: pnlColor(stock.realized_pnl) })
+      pnlUnit.textContent = '원'
+      pnlEl.appendChild(pnlNum)
+      pnlEl.appendChild(pnlUnit)
 
-      // 수익률
+      // 컬럼4: 수익률 — 숫자와 '%' 단위 분리 (동일 패턴, P23 일관성)
       const rateEl = document.createElement('span')
-      Object.assign(rateEl.style, { flex: 'none', width: '60px', textAlign: 'right', fontSize: FONT_SIZE.body, color: pnlColor(stock.pnl_rate) })
+      Object.assign(rateEl.style, { flex: 'none', width: '60px', display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', fontSize: FONT_SIZE.body })
       const rateSign = stock.pnl_rate >= 0 ? '+' : ''
-      rateEl.textContent = `${rateSign}${stock.pnl_rate.toFixed(2)}%`
+      const rateNum = document.createElement('span')
+      Object.assign(rateNum.style, { fontVariantNumeric: 'tabular-nums', color: pnlColor(stock.pnl_rate) })
+      rateNum.textContent = `${rateSign}${stock.pnl_rate.toFixed(2)}`
+      const rateUnit = document.createElement('span')
+      Object.assign(rateUnit.style, { flex: 'none', width: '12px', textAlign: 'left', color: pnlColor(stock.pnl_rate) })
+      rateUnit.textContent = '%'
+      rateEl.appendChild(rateNum)
+      rateEl.appendChild(rateUnit)
 
-      // 매도수량
+      // 컬럼5: 매도수량
       const qtyEl = document.createElement('span')
       Object.assign(qtyEl.style, { flex: 'none', width: '55px', textAlign: 'right', fontSize: FONT_SIZE.small, color: COLOR.tertiary })
       qtyEl.textContent = `매도 ${stock.qty}주`
 
+      row.appendChild(empty1)
       row.appendChild(nameEl)
       row.appendChild(pnlEl)
       row.appendChild(rateEl)
