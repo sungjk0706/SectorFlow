@@ -222,11 +222,11 @@ async def _handle_jif(data: dict) -> None:
 
 | 세션 | Step | 내용 | 검증 |
 |---|---|---|---|
-| 1 | Step 1 | `is_ws_subscribe_window()` market_phase 기반 변경 | pytest + 런타임 기동 |
-| 2 | Step 2 | `_broadcast_market_phase` 핸들러 추가 + 타이머 2개 제거 | pytest + 런타임 기동 |
-| 3 | Step 3 | 설정 키 2개 + UI 제거 + 마이그레이션 | pytest + tsc + vite build |
-| 4 | Step 4 | JIF 처리 단순화 | pytest + 런타임 기동 |
-| 5 | Step 5 | 카운트다운 프론트엔드 계산 (선택) | tsc + vite build + 브라우저 확인 |
+| 1 | Step 1 | `is_ws_subscribe_window()` market_phase 기반 변경 | pytest + 런타임 기동 | ✅ 완료 (커밋 `076a66b`) |
+| 2 | Step 2 | `_broadcast_market_phase` 핸들러 추가 + 타이머 2개 제거 | pytest + 런타임 기동 | ✅ 완료 (커밋 `076a66b`) |
+| 3 | Step 3 | 설정 키 2개 + UI 제거 + 마이그레이션 | pytest + tsc + vite build | ✅ 완료 (커밋 `3f7a1e6`) |
+| 4 | Step 4 | JIF 처리 단순화 | pytest + 런타임 기동 | 대기 |
+| 5 | Step 5 | 카운트다운 프론트엔드 계산 (선택) | tsc + vite build + 브라우저 확인 | 대기 |
 
 ---
 
