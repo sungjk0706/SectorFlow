@@ -180,4 +180,65 @@ describe('createDualLabelSlider', () => {
     })
     expect(() => handle.destroy()).not.toThrow()
   })
+
+  // 일반화된 dominant 로직 — midpoint 기반 (매수설정 min=0/max=200, 업종순위 min=-100/max=100)
+  it('uses left dominant color when value below midpoint (min=0, max=200)', () => {
+    const handle = createDualLabelSlider({
+      min: 0, max: 200, value: 50,
+      leftLabel: (v) => `L ${v}`,
+      rightLabel: (v) => `R ${v}`,
+      leftColor: '#0d6efd',
+      leftColorLight: '#8bb8f8',
+      rightColor: '#fd7e14',
+      rightColorLight: '#fdc89e',
+    })
+    const spans = handle.el.querySelectorAll('span')
+    expect(spans[0].style.color).toBe('rgb(13, 110, 253)')  // leftColor (dominant)
+    expect(spans[1].style.color).toBe('rgb(253, 200, 158)') // rightColorLight (non-dominant)
+  })
+
+  it('uses right dominant color when value above midpoint (min=0, max=200)', () => {
+    const handle = createDualLabelSlider({
+      min: 0, max: 200, value: 150,
+      leftLabel: (v) => `L ${v}`,
+      rightLabel: (v) => `R ${v}`,
+      leftColor: '#0d6efd',
+      leftColorLight: '#8bb8f8',
+      rightColor: '#fd7e14',
+      rightColorLight: '#fdc89e',
+    })
+    const spans = handle.el.querySelectorAll('span')
+    expect(spans[0].style.color).toBe('rgb(139, 184, 248)') // leftColorLight (non-dominant)
+    expect(spans[1].style.color).toBe('rgb(253, 126, 20)')  // rightColor (dominant)
+  })
+
+  it('uses left dominant color when value negative (min=-100, max=100, midpoint=0)', () => {
+    const handle = createDualLabelSlider({
+      min: -100, max: 100, value: -50,
+      leftLabel: (v) => `${v}%`,
+      rightLabel: (v) => `+${v}%`,
+      leftColor: '#1e88e5',
+      leftColorLight: '#90caf9',
+      rightColor: '#f44336',
+      rightColorLight: '#ef9a9a',
+    })
+    const spans = handle.el.querySelectorAll('span')
+    expect(spans[0].style.color).toBe('rgb(30, 136, 229)')  // leftColor (dominant, 음수)
+    expect(spans[1].style.color).toBe('rgb(239, 154, 154)') // rightColorLight (non-dominant)
+  })
+
+  it('uses right dominant color when value positive (min=-100, max=100, midpoint=0)', () => {
+    const handle = createDualLabelSlider({
+      min: -100, max: 100, value: 50,
+      leftLabel: (v) => `${v}%`,
+      rightLabel: (v) => `+${v}%`,
+      leftColor: '#1e88e5',
+      leftColorLight: '#90caf9',
+      rightColor: '#f44336',
+      rightColorLight: '#ef9a9a',
+    })
+    const spans = handle.el.querySelectorAll('span')
+    expect(spans[0].style.color).toBe('rgb(144, 202, 249)') // leftColorLight (non-dominant)
+    expect(spans[1].style.color).toBe('rgb(244, 67, 54)')   // rightColor (dominant, 양수)
+  })
 })
