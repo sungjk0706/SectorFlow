@@ -2,7 +2,50 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
-### 작업: ruff F401/F541 13건 일괄 제거 — 완료
+### 작업: 5일봉 배열 당일/직전1일 중복 버그 수정 (rolling 가드) — 완료 (커밋 대기)
+
+**진행 단계**: 완료 (검증 완료, 커밋 미진행 — 사용자 직접 다운로드 확인 대기 중). 다음 작업: 5일봉 배열 구조 개선(방식 B) Step 1 대기.
+
+**완료 내용 (2026-07-14, 커밋 대기)**:
+- **현상**: 종목상세 화면 5일봉 배열 테이블에서 `당일 거래대금(억)`과 `직전1일(억)` 값이 동일, `당일 고가`와 `직전1일 고가` 값이 동일. MTS 실제 데이터와 비교하면 당일/직전1일이 달라야 정상.
+- **근본 원인**: `market_close_pipeline.py`에 5일봉 배열(`stock_5d_array`)을 갱신하는 두 경로가 서로 다른 의미론으로 데이터를 씀. (1) `execute_unified_rolling_and_save()` (1일봉 시세 다운로드) — 기존 `day1`을 `day2`로 밀어내는 rolling 방식 ("기존 day1은 어제" 가정). (2) `fetch_5d_data_only()` (5일봉 다운로드) — 테이블 전체 삭제 후 API에서 받은 5일치를 직접 저장 (`day1`=당일, `day2`=직전1일). 사용자 시나리오(5일봉→1일봉 순서)에서 1일봉이 이미 `day1`=당일로 채워진 배열을 "어제"로 착각하고 `day2`로 밀어내면서 `day1`과 `day2`가 모두 당일 값이 됨. 추가: `fetch_5d_data_only()` 1119줄 주석이 "execute_unified_rolling_and_save()를 사용"이라고 쓰여 있으나 실제는 직접 DELETE/INSERT (주석/코드 불일치).
+- **수정 내용**: `market_close_pipeline.py` 1개 파일 6곳 수정 + `test_market_close_pipeline.py` 테스트 2개 추가:
+  - `execute_unified_rolling_and_save()` 시그니처에 `qry_dt` 파라미터 추가 (keyword-only)
+  - SELECT 쿼리에 `date` 컬럼 추가 (rolling 가드용)
+  - rolling 가드 추가 — 기존 `date`가 `qry_dt`와 같으면 rolling 생략, `day1`만 덮어쓰기. 다르면 기존대로 rolling.
+  - `stock_5d_array.date` 값을 `qry_dt`(API 조회일)로 통일
+  - `_step5_download_daily_confirmed()`에서 `qry_dt` 전달
+  - `fetch_5d_data_only()` docstring 수정 (거짓 주석 → 실제 동작)
+  - 테스트: `test_rolling_guard_same_day_skips_rolling`, `test_rolling_normal_new_day` 추가
+- **영향 범위**: `market_close_pipeline.py` (6곳), `test_market_close_pipeline.py` (테스트 2개). `stock_5d_array.date` 의미가 "API 조회일"로 통일. `master_stocks_table.date`는 변경 없음. 스키마 변경 없음.
+- **검증**: py_compile OK, ruff `All checks passed!`, pytest 51 passed in 0.44s (새 테스트 2개 포함), 런타임 기동 103ms (`-W error::RuntimeWarning`), 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건.
+- **P10/P22/P23**: 5일봉 배열 `date` 단일화, 같은 날 재실행 시 중복 방지, docstring/코드 일치.
+- **사용자 확인 대기**: 사용자가 직접 5일봉 다운로드 → 1일봉 다운로드 순서로 실행 후 종목상세 화면에서 당일/직전1일 값이 다르게 나오는지 확인 필요. 확인 후 커밋 진행.
+
+---
+
+### 다음 작업: 5일봉 배열 테이블 구조 개선 (방식 B — 가로 배열 → 세로 행) — 계획서 작성 완료
+
+**진행 단계**: 계획서 작성 완료 (`docs/plan_5d_array_vertical.md`). Step 1 진행 대기.
+
+**계획서**: `docs/plan_5d_array_vertical.md` (4개 Step, 세션당 1단계)
+
+**목표**: `stock_5d_array` 가로 배열(`day1~day5`) 구조를 세로 행(`code, dt, trade_amount, high_price`) 구조로 변경. UI 컬럼명을 "당일/직전1일" → 실제 날짜로 표시. rolling 로직 제거.
+
+**Step 구성**:
+- Step 1: DB 스키마 변경 + 마이그레이션 + 백엔드 쓰기 로직 (3개 백엔드 파일 + 3개 테스트)
+- Step 2: 백엔드 읽기 API + 캐시 계산 로직 (2개 백엔드 파일 + 2개 테스트)
+- Step 3: 프론트엔드 타입 + UI 동적 날짜 컬럼 (2개 프론트엔드 파일)
+- Step 4: 테스트 전면 수정 + 문서 갱신 (3개 테스트 + 2개 문서)
+
+**주의사항**:
+- 기존 `stock_5d_array` 데이터는 각 day의 실제 날짜를 알 수 없으므로 마이그레이션 불가 — DROP + CREATE로 신규 시작
+- Step 1 시작 전 db-backup 스킬로 `stocks.db` 백업 필수
+- 사용자 안내 필요: "기존 5일봉 데이터가 삭제됩니다. 앱 기동 후 5일봉 다운로드를 다시 실행해 주세요."
+
+---
+
+### 이전 작업: ruff F401/F541 13건 일괄 제거 — 완료
 
 **진행 단계**: 완료. 다음 작업은 사용자 지시 대기.
 
@@ -293,6 +336,17 @@
 - 이후 B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
 
 ## 미해결 문제
+- **5일봉 배열 테이블에서 당일/직전1일 거래대금·고가 중복 — 근본 원인 확인 (2026-07-14, 조사 중)**
+  - 증상: 종목상세 화면 5일봉 배열 테이블에서 `당일 거래대금(억)`과 `직전1일(억)`, `당일 고가`와 `직전1일 고가` 값이 동일하게 표시됨.
+  - 근본 원인: `backend/app/services/market_close_pipeline.py`에 5일봉 배열(`stock_5d_array`)을 갱신하는 두 경로가 서로 다른 가정으로 데이터를 씀.
+    1. `execute_unified_rolling_and_save()` (206-340줄, `_run_confirmed_pipeline` → 1일봉 차트 시세 다운로드): 기존 `day1`을 `day2`로 밀어내고 새 `day1`에 당일 값을 저장. 즉, "기존 `day1`은 어제 데이터"라고 가정.
+    2. `fetch_5d_data_only()` (1164-1278줄, 수동 5일봉 거래대금·고가 다운로드): `stock_5d_array`를 통째로 지우고 API에서 받은 5일 데이터 `[당일, 직전1일, 직전2일, …]`를 `day1~day5`에 직접 저장. 즉, `day1`에 당일, `day2`에 직전1일이 들어감.
+  - 사용자 시나리오(5일봉 다운로드 → 1일봉 시세 다운로드)에서, `execute_unified_rolling_and_save()`가 이미 `day1=당일`로 채워진 배열을 "어제"라고 착각하고 `day1`을 `day2`로 밀어내면서 `day1`과 `day2`가 모두 당일 값이 됨.
+  - 추가 문제: `fetch_5d_data_only()` 1119줄 docstring에는 "`execute_unified_rolling_and_save()`를 사용하여 순서 보장"이라고 쓰여 있으나 실제 코드는 직접 DELETE/INSERT를 수행. 주석과 코드 불일치 (P16/P22/P23).
+  - 아키텍처 원칙 위반: P10(SSOT — 5일봉 배열에 대한 쓰기 경로가 두 곳이며 서로 다른 의미론 사용), P22(데이터 정합성 — 충돌 시 경고 없이 당일 값이 중복 저장됨), P23(일관성 — docstring/구현 불일치), P21(사용자 투명성 — 데이터 손상 시 UI에 알림/경고 없음).
+  - 영향 범위: `stock_5d_array` 테이블 외, `master_stocks_table`의 `avg_5d_trade_amount`/`high_5d_price`도 당일 값이 중복 반영되어 왜곡될 수 있음. 이 값은 업종 순위, 매수 후보 필터 등에 연쇄적으로 영향.
+  - 수정 방안(보류): 두 쓰기 경로를 단일화하거나, `execute_unified_rolling_and_save()`에서 `stock_5d_array`의 `date`가 이미 오늘이면 rolling을 하지 않고 `day1`만 덮어쓰도록 가드 추가.
+
 - **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결**
   - 상세 조사 기록: `docs/ghost_position_investigation.md` ([A]~[I] 미조사 항목)
   - 재발 방지 조치 (2026-07-10, 코드 확인 완료):
