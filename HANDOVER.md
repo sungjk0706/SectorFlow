@@ -4,7 +4,7 @@
 
 ### 다음 작업: 업종 점수 산정 방식 리팩토링 — Step 4 대기
 
-**진행 단계**: Step 3 완료 (커밋 `477d562`). 다음 세션에서 Step 4 사전조사부터 시작.
+**진행 단계**: Step 3 후속 수정 완료 (커밋 `32aa370`). 다음 세션에서 Step 4 사전조사부터 시작.
 
 **계획서**: `docs/plan_sector_score_redesign.md` (4개 Step, 세션당 1단계 — Step 2를 Split A/B로 분할)
 
@@ -21,7 +21,33 @@
 - Step 2 Split A: dead code 제거 + 파라미터 전환 (소스 7 + 테스트 2) — 완료
 - Step 2 Split B: rank/is_cutoff_passed 전환 (소스 4 + 테스트 5) — 완료
 - Step 3: 프론트엔드 설정 패널 + 타입 + 슬라이더 값 표시 (소스 5 + 테스트 1) — 완료
+- Step 3 후속: 업종순위 슬라이더 매수설정 동일 모듈 통일 + 숫자 입력란 연동 + 라벨 명확화 (소스 2 + 테스트 1) — 완료
 - Step 4: 테스트 + 문서 갱신 (3개 테스트 + 2개 문서) — 대기
+
+---
+
+### 작업: 업종순위 슬라이더 매수설정 동일 모듈 통일 + 숫자 입력란 연동 + 라벨 명확화 — Step 3 후속 완료
+
+**진행 단계**: 완료 (커밋 `32aa370`). 다음 작업: Step 4 사전조사 대기.
+
+**완료 내용 (2026-07-15)**:
+- **현상**: Step 3 완료 후 업종순위 설정 ④ 슬라이더 3개가 매수설정 슬라이더와 시각적으로 불일치 — 라벨과 슬라이더가 같은 행에 붙어 너비 좁음, 막대 크기·폰트·색상 상이, 숫자 직접 입력 불가, 라벨 축약("1차 가중치 (상승비율)" 등)로 기능 명확하지 않음.
+- **근본 원인**: `sector-settings.ts` (이전 상태) `createSettingRow('라벨', slider.el)`로 라벨+슬라이더 1행 배치 → 슬라이더 너비 좁음. `createSlider`(단일 우측 라벨, `COLOR.down`/`#e9ecef` 고정 색상) 사용 — 매수설정은 `createDualLabelSlider`(양쪽 라벨, dominant 색상 변화, 2행 레이아웃) 사용. 숫자 직접 입력 기능 없음. `create-slider.ts:145-163` `createDualLabelSlider`의 dominant 판단이 `leftVal = max - v`로 min=0 가정에 하드코딩 — min=-100/max=100(업종순위) 범위에서 음수/양수 방향 dominant 판단 불가.
+- **수정 내용**: 소스 2개 + 테스트 1개 파일 (+143/-21):
+  - `create-slider.ts`: `applyLabels()` dominant 판단을 midpoint 기반으로 일반화 — `midpoint = (min+max)/2`, `v <= midpoint` → 좌측 dominant, `v >= midpoint` → 우측 dominant. 매수설정(min=0/max=200, midpoint=100) 기존 동작 유지, 업종순위(min=-100/max=100, midpoint=0) 음수=좌측/양수=우측 dominant.
+  - `sector-settings.ts`: 슬라이더 3개 `createSlider` → `createDualLabelSlider` 교체 (양쪽 라벨: 음수 `${v}%`/양수 `+${v}%`, 색상 `COLOR.down`/`COLOR.downLight`/`COLOR.up`/`COLOR.upLight`). `createBonusSliderRow` 헬퍼 신설 — 2행 레이아웃(라벨 행: 설명 라벨(좌) + 숫자 입력란(우), 슬라이더 행: 전체 너비). `createNumInput` 3개 추가 — 슬라이더-입력란 양방향 연동 (슬라이더 `onChange` → `numInput.setValue` + `onNumChange`, 입력란 `onChange` → `slider.setValue` + `onNumChange`, 무한 루프 없음 — 양쪽 `setValue` 모두 `onChange` 미트리거). 라벨 명확화: "1차 가중치 (상승비율)" → "1차 가산점 — 업종 내 상승 종목 비율", "2차 가중치 (가중 순위 합)" → "2차 가산점 — 종목 상승률 상위 집중도", "3차 가중치 (거래대금)" → "3차 가산점 — 업종 평균 거래대금". 모듈 상태 변수 입력란 참조 3개 추가, `syncFromSettings` 입력란 3개 `setValue` 추가, `unmount` 입력란 3개 null 처리 추가.
+  - `create-slider.ui.test.ts`: 일반화된 dominant 로직 테스트 4개 추가 — 매수설정 범위(min=0/max=200) 좌/우 dominant 2개 (회귀 검증), 업종순위 범위(min=-100/max=100) 좌/우 dominant 2개 (신규).
+- **영향 범위**: 프론트엔드 2파일 + 테스트 1파일. 동작 변화: 업종순위 설정 ④ 슬라이더 3개가 매수설정과 완전히 동일한 2행 레이아웃/크기/폰트/색상 + 라벨 행 숫자 입력란(슬라이더-입력란 양방향 연동) + 라벨 명확화. 매수설정 `createDualLabelSlider` 로직 일반화 영향 — midpoint=100으로 기존 동작 유지 (테스트 검증). 백엔드, DB 스키마, 거래 로직 변경 없음.
+- **검증**: TypeScript typecheck 통과, 빌드 통과 (1.88s), 슬라이더 테스트 22개 전부 통과 (기존 18 + 신규 4 — 매수설정 회귀 포함), 잔존 프로세스 0건. 브라우저 확인 필요 (슬라이더 2행 레이아웃/양쪽 라벨/색상, 슬라이더-입력란 양방향 연동, 라벨 명확화).
+- **P21/P23/P24**: 라벨 명확화 + 숫자 입력으로 정확한 설정 가능 + 부호 방향 색상 구분 (사용자 투명성), `createNumInput` + `createDualLabelSlider` 공통 컴포넌트 재사용 → 매수설정과 무조건 동일 (일관성), 검증된 컴포넌트 재사용 + 연동 로직 단순 (단순성).
+
+**Step 4 사전조사 필요 항목**:
+- `backend/tests/test_sector_score.py` — 만점 자동화, 슬라이더, 가중 순위 합, is_cutoff_passed 테스트 전면 재작성
+- `backend/tests/test_engine_sector_confirm.py` — 만점 파라미터 → 슬라이더 파라미터 mock 변경
+- `backend/tests/test_buy_filter.py` — `rank == 0` → `is_cutoff_passed` 테스트 변경
+- `ARCHITECTURE.md` — 업종 점수 계산 방식 설명 갱신
+- `HANDOVER.md` — 작업 완료 기록
+- 검증: pytest 전체, 런타임 기동, ruff, typecheck, 빌드
 
 ---
 
