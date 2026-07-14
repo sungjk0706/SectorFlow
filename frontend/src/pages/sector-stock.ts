@@ -149,13 +149,8 @@ function computeRows(
     arr.push(s.code)
   }
 
-  // rank > 0 먼저 표시 (프론트엔드에서 표시 순서 결정)
-  const sortedSectorScores = [...sectorScores].sort((a, b) => {
-    if (a.rank === 0 && b.rank === 0) return b.final_score - a.final_score
-    if (a.rank === 0) return 1
-    if (b.rank === 0) return -1
-    return b.final_score - a.final_score
-  })
+  // rank 오름차순 정렬 (모든 업종에 1..N 순위 부여됨, is_cutoff_passed로 통과 여부 구분)
+  const sortedSectorScores = [...sectorScores].sort((a, b) => a.rank - b.rank)
   const sectorOrder = sortedSectorScores.map(s => s.sector)
   // selectedSector 또는 검색 모드: 빈 배열로 시작
   const orderedSectors = (selectedSector || matchedCodes || matchedSectors) ? [] : [...sectorOrder]
@@ -192,8 +187,9 @@ function computeRows(
 
   for (const sector of orderedSectors) {
     const codes = grouped.get(sector)
-    const sectorRank = sortedSectorScores.find(s => s.sector === sector)?.rank ?? 0
-    const isEliminated = sectorRank === 0 || sectorRank > maxTargets
+    const sectorScore = sortedSectorScores.find(s => s.sector === sector)
+    const sectorRank = sectorScore?.rank ?? 0
+    const isEliminated = !sectorScore?.is_cutoff_passed || sectorRank > maxTargets
     const opacity = isEliminated ? '0.85' : '1'
     const bgColor = isEliminated ? COLOR.hoverBg : 'transparent'
     const score = scoreMap.get(sector)

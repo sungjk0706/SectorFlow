@@ -31,7 +31,7 @@ let rowCaches: (RowCache | null)[] = []
 function updateMaxTargetsStatus(scores: SectorScoreRow[], maxTargets: number): void {
   const el = getMaxTargetsStatusEl()
   if (el) {
-    const passed = scores.filter(s => s.rank > 0).length
+    const passed = scores.filter(s => s.is_cutoff_passed).length
 
     while (el.firstChild) {
       el.removeChild(el.firstChild)
@@ -53,9 +53,9 @@ function updateMaxTargetsStatus(scores: SectorScoreRow[], maxTargets: number): v
   // 상위 N 업종 종목 합계 보조 줄 갱신 (P21 투명성)
   const sumEl = getMaxTargetsSumEl()
   if (sumEl) {
-    // rank>0 업종을 rank 오름차순 정렬 후 상위 maxTargets개의 total 합산
+    // 통과 업종(is_cutoff_passed)을 rank 오름차순 정렬 후 상위 maxTargets개의 total 합산
     const ranked = scores
-      .filter(s => s.rank > 0)
+      .filter(s => s.is_cutoff_passed)
       .sort((a, b) => a.rank - b.rank)
     const limit = maxTargets > 0 ? maxTargets : 0
     const topSectors = limit > 0 ? ranked.slice(0, limit) : []
@@ -122,12 +122,7 @@ function buildRankingRows(container: HTMLElement): void {
 }
 
 function updateRankingRows(scores: SectorScoreRow[], selected: string | null, maxTargets: number, _delta: { delta: boolean; changed_sectors: string[]; removed_sectors: string[] } | null = null): void {
-  const sortedScores = [...scores].sort((a, b) => {
-    if (a.rank === 0 && b.rank === 0) return b.final_score - a.final_score
-    if (a.rank === 0) return 1
-    if (b.rank === 0) return -1
-    return a.rank - b.rank
-  })
+  const sortedScores = [...scores].sort((a, b) => a.rank - b.rank)
 
   const maxScore = sortedScores.length > 0 ? Math.max(...sortedScores.map(s => s.final_score), 1) : 1
 
@@ -146,7 +141,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     const s = sortedScores[i]
     const prev = rowCaches[i]
     const isSel = selected === s.sector
-    const isEliminated = s.rank === 0 || s.rank > maxTargets
+    const isEliminated = !s.is_cutoff_passed || s.rank > maxTargets
     const opacity = isEliminated ? '0.85' : '1'
     const bgColor = isSel ? COLOR.downBg : (isEliminated ? COLOR.hoverBg : 'transparent')
     const finalScore = String(s.final_score)
@@ -154,7 +149,7 @@ function updateRankingRows(scores: SectorScoreRow[], selected: string | null, ma
     const riseColor = s.rise_ratio > 50 ? COLOR.up : s.rise_ratio < 50 ? COLOR.down : COLOR.neutral
     const tradeAmt = (s.avg_trade_amount / 100).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
     const barWidth = `${Math.min((s.final_score / maxScore) * 100, 100)}%`
-    const barColor = s.rank === 0 ? COLOR.inactiveBg : (s.rank <= maxTargets ? COLOR.down : COLOR.muted)
+    const barColor = !s.is_cutoff_passed ? COLOR.inactiveBg : (s.rank <= maxTargets ? COLOR.down : COLOR.muted)
 
     if (!prev || !prev.visible) row.style.display = ''
 
