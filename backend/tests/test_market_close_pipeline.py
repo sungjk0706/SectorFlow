@@ -319,6 +319,87 @@ class TestExecuteUnifiedRollingAndSave:
                 await execute_unified_rolling_and_save({"005930": {"cur_price": 50000}})
             mock_conn.rollback.assert_awaited_once()
 
+    @pytest.mark.asyncio
+    async def test_rolling_guard_same_day_skips_rolling(self):
+        """같은 날 재실행 시 rolling 생략, day1만 덮어쓰기 (P10/P22 — 당일/직전1일 중복 방지)."""
+        mock_conn = _mock_conn()
+        cursor = MagicMock()
+        # 1st fetchall: stock_5d_array existing rows, 2nd fetchall: master_stocks_table mkt rows
+        existing_rows = [{
+            "code": "005930", "date": "20250106",
+            "day1_amount": 100, "day2_amount": 200, "day3_amount": 300, "day4_amount": 400, "day5_amount": 500,
+            "day1_high": 1000, "day2_high": 2000, "day3_high": 3000, "day4_high": 4000, "day5_high": 5000,
+        }]
+        cursor.fetchall = AsyncMock(side_effect=[existing_rows, []])
+        mock_conn.execute = AsyncMock(return_value=cursor)
+        mock_lock = MagicMock()
+        mock_lock.__aenter__ = AsyncMock(return_value=mock_lock)
+        mock_lock.__aexit__ = AsyncMock(return_value=None)
+        mock_state = _mock_state()
+        mock_state.master_stocks_cache = {"005930": {"name": "삼성전자"}}
+        confirmed = {
+            "005930": {"cur_price": 50000, "change": 1000, "change_rate": 2.0, "trade_amount": 999, "high_price": 9999},
+        }
+        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+             patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
+             patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
+             patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x):
+            result = await execute_unified_rolling_and_save(confirmed, qry_dt="20250106")
+            assert result is True
+            # executemany 호출 파라미터 검증 — day1만 덮어쓰고 day2~5는 기존 값 유지
+            array_call = mock_conn.executemany.call_args_list[0]
+            params = array_call.args[1][0]  # 첫 번째 종목의 파라미터 튜플
+            # (code, date, day1_amt, day2_amt, day3_amt, day4_amt, day5_amt, day1_high, ...)
+            assert params[0] == "005930"
+            assert params[1] == "20250106"  # date = qry_dt
+            assert params[2] == 999   # day1_amount = 새 당일 값
+            assert params[3] == 200   # day2_amount = 기존 day2 유지 (rolling 안 됨)
+            assert params[4] == 300   # day3_amount = 기존 day3 유지
+            assert params[5] == 400   # day4_amount = 기존 day4 유지
+            assert params[6] == 500   # day5_amount = 기존 day5 유지
+            assert params[7] == 9999  # day1_high = 새 당일 고가
+            assert params[8] == 2000  # day2_high = 기존 day2_high 유지
+
+    @pytest.mark.asyncio
+    async def test_rolling_normal_new_day(self):
+        """새 거래일 실행 시 정상 rolling — 기존 day1이 day2로 밀림."""
+        mock_conn = _mock_conn()
+        cursor = MagicMock()
+        existing_rows = [{
+            "code": "005930", "date": "20250105",
+            "day1_amount": 100, "day2_amount": 200, "day3_amount": 300, "day4_amount": 400, "day5_amount": 500,
+            "day1_high": 1000, "day2_high": 2000, "day3_high": 3000, "day4_high": 4000, "day5_high": 5000,
+        }]
+        cursor.fetchall = AsyncMock(side_effect=[existing_rows, []])
+        mock_conn.execute = AsyncMock(return_value=cursor)
+        mock_lock = MagicMock()
+        mock_lock.__aenter__ = AsyncMock(return_value=mock_lock)
+        mock_lock.__aexit__ = AsyncMock(return_value=None)
+        mock_state = _mock_state()
+        mock_state.master_stocks_cache = {"005930": {"name": "삼성전자"}}
+        confirmed = {
+            "005930": {"cur_price": 50000, "change": 1000, "change_rate": 2.0, "trade_amount": 999, "high_price": 9999},
+        }
+        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+             patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
+             patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
+             patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x):
+            result = await execute_unified_rolling_and_save(confirmed, qry_dt="20250106")
+            assert result is True
+            array_call = mock_conn.executemany.call_args_list[0]
+            params = array_call.args[1][0]
+            assert params[0] == "005930"
+            assert params[1] == "20250106"  # date = qry_dt
+            assert params[2] == 999   # day1_amount = 새 당일 값
+            assert params[3] == 100   # day2_amount = 기존 day1이 rolling됨
+            assert params[4] == 200   # day3_amount = 기존 day2가 rolling됨
+            assert params[5] == 300   # day4_amount = 기존 day3가 rolling됨
+            assert params[6] == 400   # day5_amount = 기존 day4가 rolling됨
+            assert params[7] == 9999  # day1_high = 새 당일 고가
+            assert params[8] == 1000  # day2_high = 기존 day1_high가 rolling됨
+
 
 # ── _apply_confirmed_to_memory ────────────────────────────────────────────────
 
