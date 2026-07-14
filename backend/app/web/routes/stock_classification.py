@@ -326,3 +326,40 @@ async def trigger_5d_download(_: str = Depends(get_current_user)):
         return {"ok": False, "error": str(e)}
 
 
+# ── GET /api/stock-classification/download-data-exists ────────────────────────
+
+@router.get("/download-data-exists")
+async def check_download_data_exists(_: str = Depends(get_current_user)):
+    """수동 다운로드 대상 거래일의 데이터 저장 여부 확인.
+
+    현재 거래일 기준으로 1일봉 시세(master_stocks_table.date)와
+    5일봉(stock_5d_bars.dt) 데이터 존재 여부를 반환.
+    프론트엔드에서 수동 다운로드 버튼 클릭 시 사전 확인용으로 호출 (P21).
+    """
+    from backend.app.db.database import get_db_connection
+    from backend.app.core.trading_calendar import get_current_trading_day_str
+
+    trading_day = get_current_trading_day_str()
+    conn = await get_db_connection()
+
+    cursor = await conn.execute(
+        "SELECT COUNT(*) AS cnt FROM master_stocks_table WHERE date = ?",
+        (trading_day,),
+    )
+    row = await cursor.fetchone()
+    confirmed_exists = (row["cnt"] if row else 0) > 0
+
+    cursor = await conn.execute(
+        "SELECT COUNT(*) AS cnt FROM stock_5d_bars WHERE dt = ?",
+        (trading_day,),
+    )
+    row = await cursor.fetchone()
+    bars_5d_exists = (row["cnt"] if row else 0) > 0
+
+    return {
+        "trading_day": trading_day,
+        "confirmed_exists": confirmed_exists,
+        "5d_exists": bars_5d_exists,
+    }
+
+

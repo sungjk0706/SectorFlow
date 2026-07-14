@@ -435,12 +435,29 @@ async function onTriggerConfirmedDownload(e: MouseEvent): Promise<void> {
     return
   }
 
+  // 당일 데이터 존재 여부 사전 확인 (P21 사용자 투명성)
+  let dataExists = false
+  try {
+    const check = await api.get<{ confirmed_exists: boolean; '5d_exists': boolean }>(
+      '/api/stock-classification/download-data-exists',
+    )
+    dataExists = check.confirmed_exists
+  } catch {
+    // 확인 API 실패 시 기존 동작 유지 (폴백 아님 — 사용자에게 알림)
+    toastResult({ ok: false, error: '데이터 저장 여부 확인에 실패했습니다.' })
+    return
+  }
+
+  const message = dataExists
+    ? `이미 당일 시세 데이터가 저장되어 있습니다.\n${label}를 다시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`
+    : `${label}를 지금 수동으로 즉시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`
+
   const result = await showContextPopup({
     type: 'confirm',
     x: e.clientX,
     y: e.clientY,
     title: `${label} 실행`,
-    message: `${label}를 지금 수동으로 즉시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`,
+    message,
     confirmText: '실행',
     confirmColor: COLOR.success,
   })
@@ -466,12 +483,28 @@ async function onTrigger5dDownload(e: MouseEvent): Promise<void> {
     return
   }
 
+  // 당일 데이터 존재 여부 사전 확인 (P21 사용자 투명성)
+  let dataExists = false
+  try {
+    const check = await api.get<{ confirmed_exists: boolean; '5d_exists': boolean }>(
+      '/api/stock-classification/download-data-exists',
+    )
+    dataExists = check['5d_exists']
+  } catch {
+    toastResult({ ok: false, error: '데이터 저장 여부 확인에 실패했습니다.' })
+    return
+  }
+
+  const message = dataExists
+    ? `이미 당일 5일봉 데이터가 저장되어 있습니다.\n${label}를 다시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`
+    : `${label}를 지금 수동으로 즉시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`
+
   const result = await showContextPopup({
     type: 'confirm',
     x: e.clientX,
     y: e.clientY,
     title: `${label} 실행`,
-    message: `${label}를 지금 수동으로 즉시 실행하시겠습니까?\n이 작업은 백그라운드에서 진행됩니다.`,
+    message,
     confirmText: '실행',
     confirmColor: COLOR.success,
   })
