@@ -14,7 +14,7 @@ from backend.app.services.engine_utils import LazyEvent
 if TYPE_CHECKING:
     from backend.app.core.connector_manager import ConnectorManager
     from backend.app.core.broker_providers import AuthProvider
-    from backend.app.domain.models import SectorScore, SectorSummary
+    from backend.app.domain.models import SectorSummary
 
 
 class EngineState:

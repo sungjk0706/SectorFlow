@@ -220,7 +220,6 @@ async def _update_account_memory(settings: dict) -> None:
 async def _update_account_memory_inner(settings: dict) -> None:
     """_update_account_memory 실제 구현 (Lock 내부에서 호출)."""
     from backend.app.services.engine_account_notify import _rebuild_positions_cache
-    from backend.app.services.engine_ws import _ws_live
     from backend.app.core.engine_settings import get_engine_settings
 
     s = settings or {}

@@ -9,7 +9,6 @@
 import asyncio
 import time
 import logging
-import backend.app.services.engine_state as engine_state
 from backend.app.services.engine_state import state
 
 logger = logging.getLogger(__name__)

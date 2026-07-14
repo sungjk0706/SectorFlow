@@ -11,7 +11,6 @@ from backend.app.core.settings_file import (
     load_integrated_system_settings,
     load_selected_settings,
     save_selected_settings,
-    save_settings,
     _ENCRYPT_FIELDS as ENCRYPT_FIELDS,
 )
 from backend.app.core import journal as _journal
