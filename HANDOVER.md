@@ -2,24 +2,25 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
-### 작업: 장운영정보(market_phase) 단일 소스 통합 — 수정 1~8 전부 완료
+### 작업: 가상스크롤 테이블 헤더/본문 컬럼 세로선 불일치 수정 — 완료
 
-**진행 단계**: 수정 1,2,3,4,5,6,7,8 전부 완료. 다음 단계: 신규 작업 지시 가능.
+**진행 단계**: 완료. 다음 단계: 신규 작업 지시 가능.
 
-**완료된 수정**:
-- **수정 8 완료** (커밋 `aba9e92`): 08:00/09:00/15:30 재계산 타이머 3개 → `_broadcast_market_phase()` 내 페이즈 변경 감지 시 자동 트리거 통합.
-  - `_broadcast_market_phase()`에 prev/new 페이즈 비교 로직 추가 — NXT "프리마켓"/KRX "정규장"/KRX "체결 정산" 전환 시 `schedule_engine_task`로 재계산 예약.
-  - 타이머 3개 제거 (line 744-769, -28줄), docstring 3개 갱신.
-  - JIF 경계 이벤트와 시계 타이머 중복 호출 시 첫 번째 호출만 트리거 (P22 중복 방지).
-  - 테스트: 기존 `test_broadcasts_phase` 수정 + 신규 4건 (NXT 프리마켓/KRX 정규장/KRX 체결정산 트리거 + 변경 없을 시 미트리거).
-  - 검증: ruff + py_compile 통과, pytest 133 passed (test_daily_time_scheduler), 런타임 기동 103ms 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건.
-- **수정 7 완료** (커밋 `786e371`): `is_ws_subscribe_window()` docstring 기본값 불일치 수정.
-- **수정 5 완료** (커밋 `2636bc1`): `build_sector_stocks_payload()`의 `krx_after_hours` dead data 제거.
-- **수정 1,2,3,4 완료** (커밋 `cc5f153`): 4개 시간 함수 → `state.market_phase` 기반 전환.
-- **수정 6 완료** (커밋 `76abe89`): 프론트엔드 중복 상수 제거 + `is_nxt_only` SSOT 전송.
+**완료 내용**:
+- **커밋 `0aec178`**: `applyGridTemplatePx()`가 `scrollContainer.querySelector('div')`로 sentinel를 찾으나 DOM 순서상 첫 div인 `headerDiv`를 반환하여, 리사이즈 시 데이터 행의 `gridTemplateColumns`가 갱신되지 않는 버그 수정.
+  - `virtual-scroller.ts`: sentinel div에 `data-vs-sentinel` 속성 추가.
+  - `data-table.ts`: `querySelector('div')` → `querySelector('[data-vs-sentinel]')`로 실제 데이터 행 컨테이너 정확히 식별.
+  - 검증: typecheck 통과, vite build 통과, vitest 101 passed (7 files), Playwright headless Chrome으로 리사이즈 시 헤더/본문 GTC 일치 확인, 잔존 프로세스 0건.
 
 **다음 단계 제안 (세션당 1단계, 규칙 0-1 준수)**:
-1. 신규 작업 지시 가능 (수정 1~8 전부 완료로 market_phase 통합 작업 종료)
+1. 신규 작업 지시 가능
+
+**이전 작업: 장운영정보(market_phase) 단일 소스 통합 — 수정 1~8 전부 완료**:
+- 수정 8 (커밋 `aba9e92`): 재계산 타이머 3개 → `_broadcast_market_phase()` 내 페이즈 변경 감지 시 자동 트리거 통합.
+- 수정 7 (커밋 `786e371`): `is_ws_subscribe_window()` docstring 기본값 불일치 수정.
+- 수정 6 (커밋 `76abe89`): 프론트엔드 중복 상수 제거 + `is_nxt_only` SSOT 전송.
+- 수정 5 (커밋 `2636bc1`): `build_sector_stocks_payload()`의 `krx_after_hours` dead data 제거.
+- 수정 1,2,3,4 (커밋 `cc5f153`): 4개 시간 함수 → `state.market_phase` 기반 전환.
 
 **주요 리스크**:
 - JIF 누락 시 `market_phase` 부정확 (시계 타이머 백업으로 최대 1초 지연)
@@ -34,6 +35,15 @@
 ---
 
 ## 직전 완료 작업
+- **2026-07-14: 가상스크롤 테이블 헤더/본문 컬럼 세로선 불일치 수정 — querySelector('div') → [data-vs-sentinel] (P16/P23)**
+  - **현상**: 수익상세 페이지 매도내역/매수내역 테이블에서 컬럼 타이틀(헤더)의 세로셀선과 데이터 행의 세로셀선이 일치하지 않음.
+  - **근본 원인**: `frontend/src/components/common/data-table.ts:695` — `applyGridTemplatePx()` 함수가 리사이즈 시 데이터 행 컨테이너(sentinel)를 찾기 위해 `scrollContainer.querySelector('div')`를 사용했으나, 이는 DOM 순서상 첫 번째 div인 `headerDiv`를 반환함. 결과로 헤더 `gridTemplateColumns`는 갱신되나 데이터 행 `gridTemplateColumns`는 갱신되지 않아 구값 유지. 컨테이너 너비가 변하는 시점(플렉스 레이아웃 안착, 탭 전환, 윈도우 리사이즈 등)부터 헤더와 본문의 컬럼 폭이 불일치.
+  - **수정 파일**: 프론트엔드 2개 파일 — `virtual-scroller.ts`, `data-table.ts`
+  - **변경 내용**: (1) `virtual-scroller.ts:185` — sentinel div에 `data-vs-sentinel` 속성 추가. (2) `data-table.ts:695` — `querySelector('div')` → `querySelector('[data-vs-sentinel]')`로 실제 데이터 행 컨테이너 정확히 식별.
+  - **영향 범위**: 프론트엔드 2개 파일 (+6/-1). 가상 스크롤 모드를 사용하는 모든 DataTable이 리사이즈 시 헤더-본문 컬럼 정렬 유지. 초기 렌더링 동작은 동일 (이미 정렬 맞음), 리사이즈 시에만 수정 효과 적용. 기존 기능 영향 없음.
+  - **검증**: typecheck (tsc --noEmit) 통과. vite build 통과. vitest 101 passed (7 files). Playwright headless Chrome 검증 — 초기 렌더링(800px) 헤더/데이터 GTC 일치, 리사이즈 후(600px) 헤더 GTC = 데이터 GTC = `39px 102px 77px 88px 69px 51px 88px 69px` 일치, 셀 경계 위치 완전 일치 확인. 잔존 프로세스 0건 (규칙 5-1 준수).
+  - **커밋**: `0aec178`
+
 - **2026-07-14: 재계산 타이머 3개 _broadcast_market_phase() 통합 — 수정 8 (P10/P22/P24)**
   - **현상**: 08:00/09:00/15:30 재계산 타이머 3개가 `_broadcast_market_phase()`와 별도로 존재하여, JIF 경계 이벤트와 시계 타이머가 동시에 발생할 때 재계산이 중복 실행될 위험 존재.
   - **근본 원인**: `daily_time_scheduler.py:744-769`의 재계산 타이머 3개가 `market-phase` 타이머 배열(동일 시각 `_broadcast_market_phase()` 호출)과 독립적으로 예약되어, 동일 시각에 2개의 타이머가 각각 재계산과 페이즈 갱신을 따로 수행.
