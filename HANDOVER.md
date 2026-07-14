@@ -2,36 +2,30 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
-### 작업: 장운영정보(market_phase) 단일 소스 통합 — 수정 7,5,1,2,3,4 완료, 수정 6,8 대기
+### 작업: 장운영정보(market_phase) 단일 소스 통합 — 수정 7,5,1,2,3,4,6 완료, 수정 8 대기
 
-**진행 단계**: 수정 7,5,1,2,3,4 완료. 다음 단계: 수정 6 (프론트엔드 상수 제거 + is_nxt_only 전송) 또는 수정 8 (선택, 타이머 통합).
+**진행 단계**: 수정 7,5,1,2,3,4,6 완료. 다음 단계: 수정 8 (선택, 타이머 통합) 또는 신규 작업.
 
 **완료된 수정**:
 - **수정 7 완료** (커밋 `786e371`): `is_ws_subscribe_window()` docstring 기본값 불일치 수정.
 - **수정 5 완료** (커밋 `2636bc1`): `build_sector_stocks_payload()`의 `krx_after_hours` dead data 제거.
-- **수정 1,2,3,4 완료** (이번 세션): 4개 시간 함수 → `state.market_phase` 기반 전환.
-  - 수정 1: `is_nxt_premarket_window()` → `state.market_phase["nxt"] == "프리마켓"`, 빈 문자열 감지 포함.
-  - 수정 2: `is_nxt_aftermarket_window()` → `state.market_phase["nxt"] in ("애프터마켓", "애프터마켓 지속")`, 거래일 체크 누락 자동 해결.
-  - 수정 3: `is_krx_after_hours()` → `state.market_phase["krx"] in ("체결 정산", "장후 시간외", "시간외 단일가", "장 종료")`, `now` 파라미터 제거 (P24).
-  - 수정 4: `get_nxt_trde_tp()` docstring 갱신 (market_phase 기반 명시), 로직은 헬퍼 호출 유지 (P16).
-  - 테스트 3개 클래스 재작성 (TestIsNxtPremarketWindow 5건, TestIsNxtAftermarketWindow 5건, TestIsKrxAfterHours 8건) — `_kst_now`/`is_trading_day` patch → `state.market_phase` mock 패턴. TestGetNxtTrdeTp 4건은 헬퍼 mock 방식 유지.
-  - 검증: ruff + py_compile 통과, pytest 178 passed (test_daily_time_scheduler 128 + test_buy_order_executor + test_kiwoom_order 50), 런타임 기동 `-W error::RuntimeWarning` 94ms 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건.
+- **수정 1,2,3,4 완료** (커밋 `cc5f153`): 4개 시간 함수 → `state.market_phase` 기반 전환.
+- **수정 6 완료** (커밋 `76abe89`): 프론트엔드 중복 상수 제거 + `is_nxt_only` SSOT 전송.
+  - 백엔드 `get_market_phase()` 반환 dict에 `is_nxt_only` 파생 필드 추가 — 3개 전송 경로(initial-snapshot/market-phase/index-data) 자동 전송.
+  - 프론트엔드 `sector-stock.ts`의 `KRX_INACTIVE_PHASES`/`NXT_ACTIVE_PHASES` 상수 2개 + `isKrxInactiveWindow()` 제거 (-43줄), `marketPhase.is_nxt_only` 사용.
+  - `uiStore.ts`/`types/index.ts`/`binding.ts` 타입 + 초기값에 `is_nxt_only` 추가.
+  - 테스트 `TestGetMarketPhase` 4건에 `is_nxt_only` 검증 추가 + 신규 1건 (True 케이스).
+  - 검증: ruff + py_compile 통과, pytest 164 passed (test_daily_time_scheduler 129 + test_engine_snapshot 19 + test_sector_data_provider 16), 프론트엔드 typecheck 통과, 런타임 기동 82ms 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건.
 
 **남은 수정안 (승인 대기)**:
-- **수정 6**: 프론트엔드 `KRX_INACTIVE_PHASES`/`NXT_ACTIVE_PHASES` 제거 + 백엔드 `market-phase` 이벤트에 `is_nxt_only: boolean` 추가 (`sector-stock.ts:127-154`, `uiStore.ts`, `types/index.ts`, `binding.ts`, `engine_account_notify.py`)
 - **수정 8 (선택)**: 08:00/09:00/15:30 재계산 타이머 → `_broadcast_market_phase()` 내 페이즈 변경 감지 시 자동 트리거 통합 (`daily_time_scheduler.py:741-766`). 복잡도 증가 가능성 있어 신중 평가 필요.
 
 **다음 단계 제안 (세션당 1단계, 규칙 0-1 준수)**:
-1. 수정 6 (프론트엔드 상수 제거 + is_nxt_only 전송) — 백엔드-프론트엔드 동시 수정
-2. 수정 8 (선택, 타이머 통합) — 별도 검증 필요
-
-**남은 수정 파일 목록**:
-- 백엔드: `engine_account_notify.py`
-- 프론트엔드: `sector-stock.ts`, `uiStore.ts`, `types/index.ts`, `binding.ts`
+1. 수정 8 (선택, 타이머 통합) — 별도 검증 필요
+2. 신규 작업 지시 가능
 
 **주요 리스크**:
 - JIF 누락 시 `market_phase` 부정확 (시계 타이머 백업으로 최대 1초 지연)
-- 프론트엔드-백엔드 `is_nxt_only` 동기화 (수정 6)
 
 **추가 검토 결론: `ws_subscribe_start/end` 자동화 대체 권장하지 않음**:
 - 거래소 장시간과 사용자가 원하는 데이터 수신 시간은 다를 수 있음 (P21 위반)
@@ -40,12 +34,20 @@
 - 다만 기본값 09:00~15:00을 NXT 거래시간 고려해 08:50~15:30 조정은 별도 세션에서 검토 가능
 
 **다음 세션 지시어 예시**:
-- "수정 6 진행해" → 프론트엔드 상수 제거 + is_nxt_only 전송
 - "수정 8 진행해" → 타이머 통합 (선택)
 
 ---
 
 ## 직전 완료 작업
+- **2026-07-14: 프론트엔드 KRX/NXT 중복 상수 제거 + is_nxt_only SSOT 전송 — 수정 6 (P10/P16/P22/P24)**
+  - **현상**: 프론트엔드 `sector-stock.ts`가 백엔드와 동일한 `KRX_INACTIVE_PHASES`(12개)·`NXT_ACTIVE_PHASES`(6개) 상수와 `isKrxInactiveWindow()` 함수를 중복 정의하여 P10(SSOT) 위반. 백엔드가 이미 `is_nxt_only_window()`로 단일 진실 소스를 보유하고 있으나 프론트엔드에 전달되지 않아 독립 계산.
+  - **근본 원인**: `get_market_phase()` (`daily_time_scheduler.py:230-247`)가 `market-phase` 이벤트 페이로드를 조립하면서 `is_nxt_only` 파생 값을 포함하지 않았음. 이 페이로드는 `initial-snapshot`·`market-phase`·`index-data` 3개 전송 경로가 모두 경유하는 SSOT 지점.
+  - **수정 파일**: 백엔드 1개 파일 + 테스트 1개 파일 + 프론트엔드 4개 파일 — `daily_time_scheduler.py`, `test_daily_time_scheduler.py`, `sector-stock.ts`, `uiStore.ts`, `types/index.ts`, `binding.ts`
+  - **변경 내용**: (1) 백엔드 `get_market_phase()` 반환 dict에 `phase["is_nxt_only"] = is_nxt_only_window()` 추가 (P22 파생). (2) 프론트엔드 `sector-stock.ts` 중복 상수 2개 + `isKrxInactiveWindow()` 제거 (-43줄), `computeRows` 파라미터 타입에 `is_nxt_only?: boolean` 추가, `krxInactive = marketPhase.is_nxt_only === true` 사용. (3) `uiStore.ts` marketPhase 인터페이스 + 초기값에 `is_nxt_only` 추가. (4) `types/index.ts` IndexData.market_phase 타입에 `is_nxt_only?: boolean` 추가. (5) `binding.ts` market-phase 이벤트 핸들러 타입에 `is_nxt_only` 추가. (6) 테스트 `TestGetMarketPhase` 기존 4건에 `is_nxt_only` 검증 추가 + 신규 1건 `test_is_nxt_only_true_when_krx_inactive_nxt_active` 추가.
+  - **영향 범위**: 6개 파일 (+20/-36). `engine_account_notify.py` 수정 불필요 — 페이로드 조립 없이 `_broadcast()` 전달만 담당. 3개 전송 경로 모두 `get_market_phase()` 경유 → 자동 전송. 기존 `krxInactive` 행 스타일링 유지, UI 변화 없음.
+  - **검증**: ruff All checks passed. py_compile OK. pytest 164 passed (test_daily_time_scheduler 129 + test_engine_snapshot 19 + test_sector_data_provider 16). 프론트엔드 typecheck (tsc --noEmit) 통과. 런타임 기동 `-W error::RuntimeWarning` 82ms, `장 상태 초기화: KRX=정규장, NXT=메인마켓` 확인, 에러/Traceback/RuntimeWarning 없음. 잔존 프로세스 0건 (규칙 5-1 준수).
+  - **커밋**: `76abe89`
+
 - **2026-07-14: 시간 함수 4개 market_phase 기반 전환 — 수정 1,2,3,4 (P10/P16/P20/P22/P23/P24)**
   - **현상**: `is_nxt_premarket_window()`, `is_nxt_aftermarket_window()`, `is_krx_after_hours()`, `get_nxt_trde_tp()` 4개 함수가 `state.market_phase`를 사용하지 않고 독립적으로 시간 계산 + 거래일 판별을 수행하여 SSOT(P10) 위반. 특히 `is_nxt_aftermarket_window()`는 거래일 체크 누락 버그 존재.
   - **근본 원인**: `calc_timebased_market_phase()`가 이미 거래일 판별 + 시간 구간 산정하여 `state.market_phase`에 저장하므로, 4개 함수가 이를 재사용해야 SSOT 준수. `daily_time_scheduler.py:46-60, 63-70, 192-205, 208-228`.
@@ -53,9 +55,8 @@
   - **변경 내용**: (1) 수정 1 — `is_nxt_premarket_window()` → `state.market_phase["nxt"] == "프리마켓"`, 빈 문자열 감지 시 `logger.error` + `return False`. (2) 수정 2 — `is_nxt_aftermarket_window()` → `state.market_phase["nxt"] in ("애프터마켓", "애프터마켓 지속")`, 거래일 체크 누락 자동 해결. (3) 수정 3 — `is_krx_after_hours()` → `state.market_phase["krx"] in ("체결 정산", "장후 시간외", "시간외 단일가", "장 종료")`, `now` 파라미터 제거 (P24). (4) 수정 4 — `get_nxt_trde_tp()` docstring 갱신 (market_phase 기반 명시), 로직은 헬퍼 호출 유지 (P16). (5) 테스트 3개 클래스 재작성 — `_kst_now`/`is_trading_day` patch → `state.market_phase` mock 패턴. TestGetNxtTrdeTp 4건은 헬퍼 mock 방식 유지.
   - **영향 범위**: 백엔드 1개 파일 + 테스트 1개 파일 (+131/-90). 호출처 영향 없음 (`buy_order_executor.py:115`, `kiwoom_order.py:61` 인자 없이 호출). `test_buy_order_executor.py`/`test_kiwoom_order.py` — 함수를 `return_value`로 patch하므로 영향 없음.
   - **검증**: ruff All checks passed. py_compile OK. pytest 178 passed (test_daily_time_scheduler 128 + test_buy_order_executor + test_kiwoom_order 50). 런타임 기동 `-W error::RuntimeWarning` 94ms, `장 상태 초기화: KRX=정규장, NXT=메인마켓` 확인, 에러/Traceback/RuntimeWarning 없음. 잔존 프로세스 0건 (규칙 5-1 준수).
-  - **커밋**: (이번 세션에서 커밋 예정)
+  - **커밋**: `cc5f153`
 
-- **2026-07-14: 단계 완료 시 작업 여력 보고 규칙 추가 — AGENTS.md Context Mgmt 10번 + 스킬 5개 참조 링크 (P10/P23)**
 - **2026-07-14: 단계 완료 시 작업 여력 보고 규칙 추가 — AGENTS.md Context Mgmt 10번 + 스킬 5개 참조 링크 (P10/P23)**
   - **현상**: AGENTS.md와 5개 스킬 파일에 "단계 완료 시 작업 여력 보고 + 커밋/핸드오버 승인" 규칙이 없어, 에이전트가 매 단계 완료 시 사용자에게 작업 여력을 보고하고 승인받는 절차가 명시되어 있지 않았음.
   - **근본 원인**: `AGENTS.md` 섹션4 Context Management Rules에 "세션 종료 시 보고"(규칙 5)는 있었으나 "매 단계 완료 시 보고" 규칙이 없었음. 스킬 파일 5개에도 동일 규칙 누락.
