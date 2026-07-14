@@ -206,12 +206,15 @@ async def remove_krx_only_stocks() -> dict:
 async def execute_unified_rolling_and_save(
     confirmed: dict[str, dict],
     name_map: dict[str, str] | None = None,
+    *,
+    qry_dt: str = "",
 ) -> bool:
     """모든 정산 데이터를 메모리에서 연산 후 단일 트랜잭션으로 DB 및 메모리에 저장.
 
     Args:
         confirmed: {종목코드: {cur_price, change, change_rate, trade_amount, high_price, high_5d_price}}
         name_map: {6자리 종목코드: 종목명} — 종목명 보정용
+        qry_dt: API 조회일 (YYYYMMDD). stock_5d_array.date 및 rolling 가드용 (P10/P22).
 
     Returns:
         저장 성공 여부.
@@ -219,6 +222,7 @@ async def execute_unified_rolling_and_save(
     from backend.app.db.database import get_db_connection, get_db_lock
 
     date_str = get_current_trading_day_str()
+    array_date = qry_dt or date_str  # stock_5d_array.date는 API 조회일로 통일 (P10)
     _nm = name_map or {}
 
     async with get_db_lock():
@@ -227,7 +231,7 @@ async def execute_unified_rolling_and_save(
         try:
             # 1. 기존 5일 배열 일괄 로드 (1회 조회) — 기본키=code이므로 종목당 1행
             cursor = await conn.execute("""
-                SELECT code, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount,
+                SELECT code, date, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount,
                        day1_high, day2_high, day3_high, day4_high, day5_high
                 FROM stock_5d_array
             """)
@@ -253,8 +257,15 @@ async def execute_unified_rolling_and_save(
                 # 5일 롤링 계산 (빈 값 허용)
                 if nk in existing_map:
                     row = existing_map[nk]
-                    new_amts = [today_amt, row["day1_amount"], row["day2_amount"], row["day3_amount"], row["day4_amount"]]
-                    new_highs = [today_high, row["day1_high"], row["day2_high"], row["day3_high"], row["day4_high"]]
+                    existing_date = str(row["date"] or "")
+                    # 같은 날 재실행 시 rolling 생략, day1만 덮어쓰기 (P10/P22 — 당일/직전1일 중복 방지)
+                    if qry_dt and existing_date == qry_dt:
+                        new_amts = [today_amt, row["day2_amount"], row["day3_amount"], row["day4_amount"], row["day5_amount"]]
+                        new_highs = [today_high, row["day2_high"], row["day3_high"], row["day4_high"], row["day5_high"]]
+                    else:
+                        # 새 거래일 — 기존 day1을 day2로 rolling
+                        new_amts = [today_amt, row["day1_amount"], row["day2_amount"], row["day3_amount"], row["day4_amount"]]
+                        new_highs = [today_high, row["day1_high"], row["day2_high"], row["day3_high"], row["day4_high"]]
                 else:
                     new_amts = [today_amt, None, None, None, None]
                     new_highs = [today_high, None, None, None, None]
@@ -268,7 +279,7 @@ async def execute_unified_rolling_and_save(
 
                 # DB 벌크 파라미터 추가
                 array_5d_bulk_params.append((
-                    nk, date_str,
+                    nk, array_date,
                     new_amts[0], new_amts[1], new_amts[2], new_amts[3], new_amts[4],
                     new_highs[0], new_highs[1], new_highs[2], new_highs[3], new_highs[4]
                 ))
@@ -877,7 +888,7 @@ async def _step5_download_daily_confirmed(
     cached = False
     if confirmed:
         logger.info("%s 단일 벌크 트랜잭션 시작", tag)
-        await execute_unified_rolling_and_save(normalized_confirmed, name_map=name_map)
+        await execute_unified_rolling_and_save(normalized_confirmed, name_map=name_map, qry_dt=qry_dt)
         logger.info("%s 단일 벌크 트랜잭션 완료", tag)
         cached = True
 
@@ -1116,7 +1127,8 @@ async def fetch_5d_data_only() -> dict:
     
     DB의 master_stocks_table에 등록된 매매적격종목을 대상으로
     개별 종목의 5일 고가 및 거래대금 데이터를 다운로드하여 DB 및 메모리에 저장합니다.
-    execute_unified_rolling_and_save()를 사용하여 순서 보장.
+    stock_5d_array 테이블을 전체 삭제 후 API에서 5일치 데이터를 직접 저장.
+    execute_unified_rolling_and_save()와 date 기반 가드로 같은 날 재실행 시 중복 방지 (P10/P22).
     """
     from backend.app.core.trading_calendar import get_kst_today_str
 
