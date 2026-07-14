@@ -94,8 +94,7 @@ async def build_sector_stocks_payload() -> dict:
     """sector-stocks-refresh 이벤트용 종목 데이터 페이로드를 조립한다."""
     from backend.app.services.sector_data_provider import get_sector_stocks
     from backend.app.services.engine_account import get_positions, get_account_snapshot
-    from backend.app.services.daily_time_scheduler import is_krx_after_hours
-    
+
     sector_stocks = await get_sector_stocks()
     filtered = _filter_stock_fields(sector_stocks)
 
@@ -106,7 +105,7 @@ async def build_sector_stocks_payload() -> dict:
     except Exception:
         logger.warning("[시스템] 증분 캐시 초기화 실패", exc_info=True)
 
-    return {"_v": 1, "stocks": filtered, "krx_after_hours": is_krx_after_hours()}
+    return {"_v": 1, "stocks": filtered}
 
 
 # ── 데이터 필드 필터링 ─────────────────────────────────────────────
