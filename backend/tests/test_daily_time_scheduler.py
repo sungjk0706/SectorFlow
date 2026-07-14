@@ -431,6 +431,7 @@ class TestGetMarketPhase:
             assert result["nxt"] == "메인마켓"
             assert result["krx_event"] is None
             assert result["nxt_event"] is None
+            assert result["is_nxt_only"] is False
 
     def test_includes_krx_alert(self):
         mock_state = MagicMock()
@@ -438,6 +439,7 @@ class TestGetMarketPhase:
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             result = get_market_phase()
             assert result["krx_alert"] == "테스트"
+            assert result["is_nxt_only"] is False
 
     def test_includes_events(self):
         mock_state = MagicMock()
@@ -449,6 +451,7 @@ class TestGetMarketPhase:
             result = get_market_phase()
             assert result["krx_event"] == "정규장 장개시 5분 전"
             assert result["nxt_event"] == "메인마켓 장개시 1분 전"
+            assert result["is_nxt_only"] is False
 
     def test_empty_krx_logs_error(self):
         mock_state = MagicMock()
@@ -456,6 +459,15 @@ class TestGetMarketPhase:
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             result = get_market_phase()
             assert result["krx"] == ""
+            assert result["is_nxt_only"] is False
+
+    def test_is_nxt_only_true_when_krx_inactive_nxt_active(self):
+        """KRX 비활성 + NXT 활성 구간 → is_nxt_only=True 파생 (P10 SSOT)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장마감", "nxt": "애프터마켓"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+            result = get_market_phase()
+            assert result["is_nxt_only"] is True
 
 
 # ── is_ws_subscribe_window ────────────────────────────────────────────────────

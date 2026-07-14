@@ -244,6 +244,8 @@ def get_market_phase() -> dict:
     # JIF 실시간 이벤트 라벨(휘발성) — None이어도 필드 포함하여 프론트엔드가 인계받을 수 있도록 함
     phase["krx_event"] = mp.get("krx_event")
     phase["nxt_event"] = mp.get("nxt_event")
+    # NXT-only 구간 플래그 — 프론트엔드가 중복 상수 없이 백엔드 SSOT를 사용하도록 파생 (P10/P22)
+    phase["is_nxt_only"] = is_nxt_only_window()
     return phase
 
 
