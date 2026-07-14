@@ -2,11 +2,26 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
-### 작업: 장운영정보(market_phase) 기반 개별 타이머 통합 — Step 1 + Step 2 완료
+### 작업: 장운영정보(market_phase) 기반 개별 타이머 통합 — Step 1 + Step 2 + Step 3 완료
 
-**진행 단계**: Step 1(`is_ws_subscribe_window()` market_phase 기반 변경) + Step 2(`_broadcast_market_phase()` 핸들러 추가 + 타이머 2개 제거) 완료. Step 3~5 대기.
+**진행 단계**: Step 1(`is_ws_subscribe_window()` market_phase 기반 변경) + Step 2(`_broadcast_market_phase()` 핸들러 추가 + 타이머 2개 제거) + Step 3(`ws_subscribe_start`/`end` 설정 키 + UI 제거 + 마이그레이션) 완료. Step 4~5 대기.
 
 **계획서**: `docs/plan_market_phase_integration.md` (5개 Step, 세션당 1단계)
+
+**Step 3 완료 내용 (2026-07-14, 커밋 `3f7a1e6`)**:
+- 백엔드 6파일 수정:
+  - `settings_defaults.py`: 기본값 `"ws_subscribe_start": "09:00"`, `"ws_subscribe_end": "15:00"` 2개 제거
+  - `settings_store.py`: `general_save_payload_from_flat()` 저장 페이로드 + `_TIME_FIELDS` frozenset에서 2개 제거
+  - `engine_settings.py`: `build_engine_settings_dict()` 결과 dict에서 2개 제거
+  - `engine_service.py`: `_WS_SCHEDULE_KEYS`에서 2개 제거 → `{"ws_subscribe_on", "confirmed_download_time"}`만 유지
+  - `settings_file.py`: `_migrate_remove_ws_subscribe_window_keys()` 마이그레이션 함수 추가 + 호출 체인 연결 (기존 `_migrate_remove_krx_subscribe_keys` 패턴 준수)
+  - `daily_time_scheduler.py`: `retry_pipeline_catchup_after_bootstrap()`를 `is_ws_subscribe_window()` 기반으로 전환 (기존 `ws_subscribe_start`/`end` 시간 비교 → `market_phase` 기반), `_apply_auto_toggle_on_startup()`에서 `in_time_window` dead data 제거 (P16 — 로깅에만 사용, 설정 변경 없음), 주석 4곳 갱신
+- 프론트엔드 2파일 수정:
+  - `types/index.ts`: `AppSettings` 인터페이스에서 `ws_subscribe_start`/`end` 2개 필드 제거
+  - `general-settings.ts`: "실시간 연결 시간" UI 블록(행+설명) 제거, `scheduleTimeSave()` 함수 제거 (단일 호출처 사라짐, P24), `updateWsTimeDisabled()` 함수 제거, `wsTimeHandle`/`savingTime`/`pendingTimeSave` 변수 제거, cleanup에서 `wsTimeHandle = null` 제거
+- 테스트 3파일 수정: `test_daily_time_scheduler.py` (mock 설정에서 2개 키 제거 + `is_ws_subscribe_window` patch 추가), `test_settings_store.py` (저장 페이로드 테스트에서 2개 키 제거), `test_engine_settings.py` (엔진 설정 dict 검증에서 2개 키 제거)
+- 문서: `ARCHITECTURE.md` 3곳 갱신 — 타이머 시각(09:00→08:00, 15:00→20:00, "사용자 설정 가능"→"자동 트리거"), `is_ws_subscribe_window` 판단 로직(4단계→2단계 market_phase 기반), 장마감 파이프라인(15:00→20:00)
+- 검증: py_compile OK, ruff 기존 실패 1건 (`settings_store.py:14` `save_settings` unused import — 수정 전 동일 실패, 규칙 4-1), pytest 240 passed (test_daily_time_scheduler + test_settings_store + test_engine_settings) in 1.09s, tsc 통과, vite build 통과 (1.76s), 런타임 기동 203ms (`-W error::RuntimeWarning`), 마이그레이션 정상 동작 (`레거시 키 2개 DB에서 삭제: ['ws_subscribe_end', 'ws_subscribe_start']`), 단절 구간 판단 정상 (`is_ws_subscribe_window()` 기반), `장 상태 초기화: KRX=장마감, NXT=장마감`, 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건
 
 **Step 2 완료 내용 (2026-07-14, 커밋 `076a66b`)**:
 - `_broadcast_market_phase()`에 NXT "프리마켓" 진입 시 `_on_ws_subscribe_start()` 호출 추가, NXT "장마감" 진입 시 `_on_ws_subscribe_end()` 호출 추가
@@ -23,7 +38,7 @@
 - 테스트: `TestIsWsSubscribeWindow` 6개 + `TestIsEditWindowOpen` 2개를 `market_phase` 기반 mock로 변경
 - 검증: py_compile OK, ruff All checks passed, pytest 133 passed + 90 passed, 런타임 기동 215ms, 잔존 프로세스 0건
 
-**다음 단계**: Step 3 — `ws_subscribe_start`/`end` 설정 키 + UI 제거 + 마이그레이션. 사용자 승인 대기.
+**다음 단계**: Step 4 — JIF 처리 단순화 (서킷브레이커/사이드카만 남김). 사용자 승인 대기.
 
 **이전 작업: NXT-only 구독 분리 — 그룹 A + 그룹 B 완료**
 
@@ -74,6 +89,15 @@
 ---
 
 ## 직전 완료 작업
+- **2026-07-14: 장운영정보 기반 타이머 통합 — Step 3: ws_subscribe_start/end 설정 키 + UI 제거 + 마이그레이션 (P10/P16/P24)**
+  - **현상**: Step 2에서 `ws_subscribe_start`/`end` 타이머가 제거되고 `market_phase` 기반으로 통합되었으나, 설정 키 2개가 코드베이스 전체(백엔드 6파일 + 프론트엔드 2파일 + 테스트 3파일)에 잔존하여 dead data 상태. 계획서에 누락된 2개 함수(`retry_pipeline_catchup_after_bootstrap`, `_apply_auto_toggle_on_startup`)도 이 키를 참조.
+  - **근본 원인**: `ws_subscribe_start`/`end` 설정 키가 `settings_defaults.py`, `settings_store.py`, `engine_settings.py`, `engine_service.py`, `daily_time_scheduler.py`(`retry_pipeline_catchup_after_bootstrap` + `_apply_auto_toggle_on_startup`), 프론트엔드 `types/index.ts` + `general-settings.ts`에 잔존. `market_phase`가 구독 구간 판단의 단일 기준이 되었으나 이중 기준 잔존.
+  - **수정 파일**: 백엔드 6파일 + 프론트엔드 2파일 + 테스트 3파일 + 문서 1파일 (12파일, +43/-134)
+  - **변경 내용**: (1) 백엔드 — `settings_defaults.py` 기본값 2개 제거, `settings_store.py` 저장 페이로드 + `_TIME_FIELDS` 2개 제거, `engine_settings.py` 엔진 설정 dict 2개 제거, `engine_service.py` `_WS_SCHEDULE_KEYS` 2개 제거, `settings_file.py` `_migrate_remove_ws_subscribe_window_keys()` 마이그레이션 함수 추가 + 호출 체인 연결, `daily_time_scheduler.py` `retry_pipeline_catchup_after_bootstrap()`를 `is_ws_subscribe_window()` 기반으로 전환 + `_apply_auto_toggle_on_startup()`에서 `in_time_window` dead data 제거 + 주석 4곳 갱신. (2) 프론트엔드 — `types/index.ts` `AppSettings` 필드 2개 제거, `general-settings.ts` "실시간 연결 시간" UI 블록 + `scheduleTimeSave()` + `updateWsTimeDisabled()` + `wsTimeHandle`/`savingTime`/`pendingTimeSave` 변수 제거. (3) 테스트 3파일 — mock 설정에서 2개 키 제거 + `is_ws_subscribe_window` patch 추가. (4) `ARCHITECTURE.md` 3곳 갱신.
+  - **영향 범위**: 기존 DB에 잔존하던 `ws_subscribe_start`/`end` 키 2개 → 다음 기동 시 마이그레이션으로 자동 DELETE (런타임 로그 확인). `retry_pipeline_catchup_after_bootstrap()`가 `is_ws_subscribe_window()` 기반으로 전환 — 수동 모드(`ws_subscribe_on=False`)에서도 확정 다운로드 정상 트리거 (올바른 동작).
+  - **검증**: py_compile 6개 파일 통과. ruff 기존 실패 1건 (`settings_store.py:14` `save_settings` unused import — 수정 전 동일 실패, 규칙 4-1). pytest 240 passed (3개 테스트 파일) in 1.09s. tsc 통과. vite build 통과 (1.76s). 런타임 기동 `-W error::RuntimeWarning` 203ms, 마이그레이션 정상 동작 (`레거시 키 2개 DB에서 삭제: ['ws_subscribe_end', 'ws_subscribe_start']`), 단절 구간 판단 정상, `장 상태 초기화: KRX=장마감, NXT=장마감`, 에러/Traceback/RuntimeWarning 없음. 잔존 프로세스 0건 (규칙 5-1 준수).
+  - **커밋**: `3f7a1e6`
+
 - **2026-07-14: 장운영정보 기반 타이머 통합 — Step 2: _broadcast_market_phase() 핸들러 추가 + 타이머 2개 제거 (P10/P16/P24)**
   - **현상**: `ws_subscribe_start`/`end` 타이머가 `schedule_ws_subscribe_timers()`에서 예약되어 `_on_ws_subscribe_start`/`_end`를 호출했으나, Step 1에서 `is_ws_subscribe_window()`가 `market_phase` 기반으로 전환되어 타이머와 market_phase 이중 트리거 상태.
   - **근본 원인**: `daily_time_scheduler.py`의 `schedule_ws_subscribe_timers()`가 `ws_subscribe_start`/`end` 시각에 call_later 타이머를 예약하여 별도 트리거 경로를 유지. `_broadcast_market_phase()`의 페이즈 변경 감지로 통합 필요.
