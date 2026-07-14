@@ -7,7 +7,7 @@
 **진행 단계**: 수정 1,2,3,4,5,6,7,8 전부 완료. 다음 단계: 신규 작업 지시 가능.
 
 **완료된 수정**:
-- **수정 8 완료** (커밋 미정): 08:00/09:00/15:30 재계산 타이머 3개 → `_broadcast_market_phase()` 내 페이즈 변경 감지 시 자동 트리거 통합.
+- **수정 8 완료** (커밋 `aba9e92`): 08:00/09:00/15:30 재계산 타이머 3개 → `_broadcast_market_phase()` 내 페이즈 변경 감지 시 자동 트리거 통합.
   - `_broadcast_market_phase()`에 prev/new 페이즈 비교 로직 추가 — NXT "프리마켓"/KRX "정규장"/KRX "체결 정산" 전환 시 `schedule_engine_task`로 재계산 예약.
   - 타이머 3개 제거 (line 744-769, -28줄), docstring 3개 갱신.
   - JIF 경계 이벤트와 시계 타이머 중복 호출 시 첫 번째 호출만 트리거 (P22 중복 방지).
@@ -41,7 +41,7 @@
   - **변경 내용**: (1) `_broadcast_market_phase()`에 prev/new 페이즈 비교 로직 추가 — NXT "프리마켓"/KRX "정규장"/KRX "체결 정산" 전환 시 `schedule_engine_task`로 `_on_nxt_premarket_start()`/`_on_krx_market_open()`/`_on_krx_after_hours_start()` 예약. (2) 타이머 3개 제거 (line 744-769, -28줄). (3) `_on_*` 함수 3개 docstring 갱신 — "_broadcast_market_phase()는 ...에서 동일 시각에 호출된다" → "내 페이즈 변경 감지 시 자동 트리거된다 (수정 8 통합)". (4) 테스트 기존 `test_broadcasts_phase` 수정 (prev=new로 설정) + 신규 4건 추가 (NXT 프리마켓/KRX 정규장/KRX 체결정산 트리거 + 변경 없을 시 미트리거).
   - **영향 범위**: 백엔드 1개 파일 + 테스트 1개 파일 (+47/-45). 구독 구간 내 재기동 시 초기값 "장개시전" → 현재 페이즈 전환 감지로 재계산 트리거됨 (올바른 동작). JIF 경계 이벤트와 시계 타이머 중복 호출 시 첫 번째 호출만 트리거 (P22 중복 방지).
   - **검증**: ruff All checks passed. py_compile OK. pytest 133 passed (test_daily_time_scheduler) in 0.76s. 런타임 기동 `-W error::RuntimeWarning` 103ms, `장 상태 초기화: KRX=정규장, NXT=메인마켓` 확인, 에러/Traceback/RuntimeWarning 없음. 잔존 프로세스 0건 (규칙 5-1 준수).
-  - **커밋**: (본 세션에서 커밋 예정)
+  - **커밋**: `aba9e92`
 
 - **2026-07-14: 프론트엔드 KRX/NXT 중복 상수 제거 + is_nxt_only SSOT 전송 — 수정 6 (P10/P16/P22/P24)**
   - **현상**: 프론트엔드 `sector-stock.ts`가 백엔드와 동일한 `KRX_INACTIVE_PHASES`(12개)·`NXT_ACTIVE_PHASES`(6개) 상수와 `isKrxInactiveWindow()` 함수를 중복 정의하여 P10(SSOT) 위반. 백엔드가 이미 `is_nxt_only_window()`로 단일 진실 소스를 보유하고 있으나 프론트엔드에 전달되지 않아 독립 계산.
