@@ -132,16 +132,11 @@ export const api = {
         name: string;
         market_type: string;
         nxt_enable: boolean;
-        day1_amount: number | null;
-        day2_amount: number | null;
-        day3_amount: number | null;
-        day4_amount: number | null;
-        day5_amount: number | null;
-        day1_high: number | null;
-        day2_high: number | null;
-        day3_high: number | null;
-        day4_high: number | null;
-        day5_high: number | null;
+        bars: Array<{
+          dt: string;
+          trade_amount: number | null;
+          high_price: number | null;
+        }>;
       }>;
     }>('/api/stock-detail/5d-array'),
 };

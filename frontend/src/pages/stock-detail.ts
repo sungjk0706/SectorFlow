@@ -8,21 +8,18 @@ import { createSearchInput } from '../components/common/search-input'
 import { createCardTitle } from '../components/common/card-title'
 import { FONT_SIZE, FONT_WEIGHT, COLOR, fmtComma, createStockNameColumn, createSeqCell } from '../components/common/ui-styles'
 
+interface StockDetail5dBar {
+  dt: string
+  trade_amount: number | null
+  high_price: number | null
+}
+
 interface StockDetail5dItem {
   code: string
   name: string
   market_type: string
   nxt_enable: boolean
-  day1_amount: number | null
-  day2_amount: number | null
-  day3_amount: number | null
-  day4_amount: number | null
-  day5_amount: number | null
-  day1_high: number | null
-  day2_high: number | null
-  day3_high: number | null
-  day4_high: number | null
-  day5_high: number | null
+  bars: StockDetail5dBar[]
 }
 
 interface StockDetail5dResponse {
@@ -52,43 +49,67 @@ function fmtHigh(v: number | null): string {
   return fmtComma(v)
 }
 
-function makeAmountColumn(key: string, label: string): ColumnDef<StockDetail5dItem> {
+/** 날짜(파랑) + 접미사(검정)로 구성된 헤더 HTMLElement 생성. */
+function makeDateHeader(dateLabel: string, suffix: string): HTMLElement {
+  const frag = document.createElement('span')
+  const dateSpan = document.createElement('span')
+  Object.assign(dateSpan.style, { color: COLOR.down })
+  dateSpan.textContent = dateLabel
+  frag.appendChild(dateSpan)
+  frag.appendChild(document.createTextNode(suffix))
+  return frag
+}
+
+function makeAmountColumn(idx: number, label: HTMLElement): ColumnDef<StockDetail5dItem> {
   return {
-    key,
+    key: `amt${idx}`,
     label,
     align: 'right',
     minWidth: 72, maxWidth: 95,
-    render: (row) => fmtAmount(row[key as keyof StockDetail5dItem] as number | null),
+    render: (row) => fmtAmount(row.bars[idx]?.trade_amount ?? null),
   }
 }
 
-function makeHighColumn(key: string, label: string): ColumnDef<StockDetail5dItem> {
+function makeHighColumn(idx: number, label: HTMLElement): ColumnDef<StockDetail5dItem> {
   return {
-    key,
+    key: `high${idx}`,
     label,
     align: 'right',
     minWidth: 60, maxWidth: 75,
-    render: (row) => fmtHigh(row[key as keyof StockDetail5dItem] as number | null),
+    render: (row) => fmtHigh(row.bars[idx]?.high_price ?? null),
   }
 }
 
-const columns: ColumnDef<StockDetail5dItem>[] = [
-  { key: 'seq', label: '순번', align: 'center', minWidth: 36, maxWidth: 36, render: (_t, idx) => createSeqCell(idx + 1) },
-  { key: 'code', label: '종목코드', align: 'center', minWidth: 72, maxWidth: 72, render: (row) => row.code },
-  createStockNameColumn<StockDetail5dItem>(
+/** "YYYY-MM-DD" 또는 "YYYYMMDD" → "MM-DD" 단축 날짜. 형식 불일치 시 원본 그대로 반환. */
+function shortDate(dt: string): string {
+  const m = dt.match(/^\d{4}-?(\d{2})-?(\d{2})$/)
+  return m ? `${m[1]}-${m[2]}` : dt
+}
+
+/** 첫 종목 bars에서 5개 날짜를 추출해 컬럼 배열 동적 생성. */
+function buildColumns(sampleBars: StockDetail5dBar[]): ColumnDef<StockDetail5dItem>[] {
+  const nameCol = createStockNameColumn<StockDetail5dItem>(
     (item) => ({ name: item.name, market_type: item.market_type || undefined, nxt_enable: item.nxt_enable })
-  ),
-  makeAmountColumn('day1_amount', '당일 거래대금(억)'),
-  makeAmountColumn('day2_amount', '직전1일(억)'),
-  makeAmountColumn('day3_amount', '직전2일(억)'),
-  makeAmountColumn('day4_amount', '직전3일(억)'),
-  makeAmountColumn('day5_amount', '직전4일(억)'),
-  makeHighColumn('day1_high', '당일 고가'),
-  makeHighColumn('day2_high', '직전1일 고가'),
-  makeHighColumn('day3_high', '직전2일 고가'),
-  makeHighColumn('day4_high', '직전3일 고가'),
-  makeHighColumn('day5_high', '직전4일 고가'),
-]
+  )
+  nameCol.minWidth = 53
+  nameCol.maxWidth = 133
+  const cols: ColumnDef<StockDetail5dItem>[] = [
+    { key: 'seq', label: '순번', align: 'center', minWidth: 36, maxWidth: 36, render: (_t, idx) => createSeqCell(idx + 1) },
+    { key: 'code', label: '종목코드', align: 'center', minWidth: 72, maxWidth: 72, render: (row) => row.code },
+    nameCol,
+  ]
+  for (let i = 0; i < 5; i++) {
+    const dt = sampleBars[i]?.dt ?? ''
+    const dateLabel = dt ? shortDate(dt) : (i === 0 ? '당일' : `직전${i}일`)
+    cols.push(makeAmountColumn(i, makeDateHeader(dateLabel, ' 거래대금(억)')))
+  }
+  for (let i = 0; i < 5; i++) {
+    const dt = sampleBars[i]?.dt ?? ''
+    const dateLabel = dt ? shortDate(dt) : (i === 0 ? '당일' : `직전${i}일`)
+    cols.push(makeHighColumn(i, makeDateHeader(dateLabel, ' 고가')))
+  }
+  return cols
+}
 
 function updateSummary(items: StockDetail5dItem[]): void {
   if (!summaryEls) return
@@ -224,35 +245,45 @@ function mount(container: HTMLElement): void {
 
   root.appendChild(summaryBar)
 
-  // 테이블
-  tableRef = createDataTable<StockDetail5dItem>({
-    columns,
-    virtualScroll: false,
-    keyFn: (row) => row.code,
-    stickyHeader: true,
-    emptyText: '데이터가 없습니다.',
-    zebraStriping: true,
-    rowStyle: (_row, _idx) => searchQuery
-      ? { background: COLOR.downBg }
-      : { background: '' },
-  })
-  Object.assign(tableRef.el.style, { flex: '1', minHeight: '0' })
-  root.appendChild(tableRef.el)
+  // 테이블 자리 (데이터 로드 후 실제 날짜 라벨 컬럼으로 생성)
+  const tableSlot = document.createElement('div')
+  Object.assign(tableSlot.style, { flex: '1', minHeight: '0' })
+  root.appendChild(tableSlot)
 
   container.appendChild(root)
 
-  // 데이터 로드
+  // 데이터 로드 → 날짜 라벨 컬럼 생성 → 테이블 생성
   api.getStockDetail5d().then((data: StockDetail5dResponse) => {
     allItems = data.items
     if (data.date) {
       dateLabel.textContent = `기준일: ${data.date}`
     }
-    if (tableRef) {
-      tableRef.updateRows(allItems)
-    }
+    const sampleBars = allItems[0]?.bars ?? []
+    const columns = buildColumns(sampleBars)
+    tableRef = createDataTable<StockDetail5dItem>({
+      columns,
+      virtualScroll: false,
+      keyFn: (row) => row.code,
+      stickyHeader: true,
+      emptyText: '데이터가 없습니다.',
+      zebraStriping: true,
+      rowStyle: (_row, _idx) => searchQuery
+        ? { background: COLOR.downBg }
+        : { background: '' },
+    })
+    Object.assign(tableRef.el.style, { flex: '1', minHeight: '0' })
+    tableSlot.appendChild(tableRef.el)
+    tableRef.updateRows(allItems)
     updateSummary(allItems)
   }).catch((err) => {
     console.error('[stock-detail] 데이터 로드 실패:', err)
+    const errEl = document.createElement('div')
+    Object.assign(errEl.style, {
+      flex: '1', minHeight: '0', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: COLOR.down, fontSize: FONT_SIZE.label,
+    })
+    errEl.textContent = '데이터를 불러오지 못했습니다.'
+    tableSlot.appendChild(errEl)
   })
 }
 

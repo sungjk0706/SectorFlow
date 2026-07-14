@@ -26,7 +26,7 @@ interface RowWithKey extends HTMLElement {
 
 export interface ColumnDef<T> {
   key: string
-  label: string
+  label: string | HTMLElement
   align: 'left' | 'right' | 'center'
   render: (row: T, index: number) => string | HTMLElement
   minWidth?: number
@@ -129,7 +129,7 @@ function createColumnWidthManager<T extends object>(
     initialized = true
     const samples = extractSamples(columns, rows)
     const inputs: ColumnWidthInput[] = columns.map((col, i) => ({
-      label: col.label,
+      label: typeof col.label === 'string' ? col.label : (col.label.textContent || ''),
       minWidth: col.minWidth,
       maxWidth: col.maxWidth,
       samples: samples[i],
@@ -225,7 +225,8 @@ function createFixedMode<T extends object>(
       borderBottom: `2px solid ${COLOR.borderDark}`,
     })
     if (c.headerStyle) Object.assign(th.style, c.headerStyle)
-    th.textContent = c.label
+    if (typeof c.label === 'string') th.textContent = c.label
+    else th.appendChild(c.label)
     headerTr.appendChild(th)
   }
   thead.appendChild(headerTr)
@@ -658,7 +659,8 @@ function createVirtualScrollMode<T extends object>(
       background: COLOR.white,
     })
     if (c.headerStyle) Object.assign(cell.style, c.headerStyle)
-    cell.textContent = c.label
+    if (typeof c.label === 'string') cell.textContent = c.label
+    else cell.appendChild(c.label)
     headerDiv.appendChild(cell)
   }
   scrollContainer.appendChild(headerDiv)
