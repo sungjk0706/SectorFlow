@@ -6,7 +6,7 @@ import { hotStore } from '../stores/hotStore'
 import { createSettingsManager } from '../settings'
 import { createAutoSaveHelper, type AutoSaveHelper } from '../utils/settings-save'
 import { createSettingRow, createNumInput, createMoneyInput } from '../components/common/setting-row'
-import { createSlider } from '../components/common/create-slider'
+import { createDualLabelSlider, type DualLabelSliderHandle } from '../components/common/create-slider'
 import { createDescText, createStepLabel } from '../components/common/settings-common'
 import { FONT_SIZE, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
@@ -30,9 +30,12 @@ let thresholdInput: ReturnType<typeof createNumInput> | null = null
 let minTradeAmtInput: ReturnType<typeof createMoneyInput> | null = null
 let minRiseRatioInput: ReturnType<typeof createNumInput> | null = null
 let maxTargetsInput: ReturnType<typeof createNumInput> | null = null
-let bonusRiseRatioSlider: ReturnType<typeof createSlider> | null = null
-let bonusRelativeStrengthSlider: ReturnType<typeof createSlider> | null = null
-let bonusTradeAmountSlider: ReturnType<typeof createSlider> | null = null
+let bonusRiseRatioSlider: DualLabelSliderHandle | null = null
+let bonusRelativeStrengthSlider: DualLabelSliderHandle | null = null
+let bonusTradeAmountSlider: DualLabelSliderHandle | null = null
+let bonusRiseRatioInput: ReturnType<typeof createNumInput> | null = null
+let bonusRelativeStrengthInput: ReturnType<typeof createNumInput> | null = null
+let bonusTradeAmountInput: ReturnType<typeof createNumInput> | null = null
 let maxScoreDisplayEl: HTMLSpanElement | null = null
 let maxTargetsStatusEl: HTMLSpanElement | null = null
 let maxTargetsSumEl: HTMLDivElement | null = null
@@ -64,6 +67,38 @@ function syncFromSettings(s: AppSettings): void {
   if (bonusRiseRatioSlider && (!act || !bonusRiseRatioSlider.el.contains(act))) bonusRiseRatioSlider.setValue(currentVals.sector_bonus_rise_ratio_slider ?? 0)
   if (bonusRelativeStrengthSlider && (!act || !bonusRelativeStrengthSlider.el.contains(act))) bonusRelativeStrengthSlider.setValue(currentVals.sector_bonus_relative_strength_slider ?? 0)
   if (bonusTradeAmountSlider && (!act || !bonusTradeAmountSlider.el.contains(act))) bonusTradeAmountSlider.setValue(currentVals.sector_bonus_trade_amount_slider ?? 0)
+  if (bonusRiseRatioInput && (!act || !bonusRiseRatioInput.el.contains(act))) bonusRiseRatioInput.setValue(currentVals.sector_bonus_rise_ratio_slider ?? 0)
+  if (bonusRelativeStrengthInput && (!act || !bonusRelativeStrengthInput.el.contains(act))) bonusRelativeStrengthInput.setValue(currentVals.sector_bonus_relative_strength_slider ?? 0)
+  if (bonusTradeAmountInput && (!act || !bonusTradeAmountInput.el.contains(act))) bonusTradeAmountInput.setValue(currentVals.sector_bonus_trade_amount_slider ?? 0)
+}
+
+/* ── 가산점 슬라이더 2행 레이아웃 (매수설정 슬라이더와 동일 패턴 — P23 일관성) ── */
+function createBonusSliderRow(labelText: string, sliderEl: HTMLElement, numInputEl: HTMLElement): HTMLElement {
+  const block = document.createElement('div')
+  block.style.borderBottom = '1px solid ' + COLOR.borderLight
+
+  // Row 1: 라벨 행 — 설명 라벨(좌) + 숫자 입력란(우) (매수설정 라벨 행과 동일 패턴)
+  const labelRow = document.createElement('div')
+  Object.assign(labelRow.style, {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '6px 0',
+  })
+  const labelSpan = document.createElement('span')
+  labelSpan.textContent = labelText
+  labelSpan.style.color = COLOR.neutral
+  labelRow.appendChild(labelSpan)
+  labelRow.appendChild(numInputEl)
+  block.appendChild(labelRow)
+
+  // Row 2: 슬라이더 행 (전체 너비 — 매수설정 row2와 동일)
+  const sliderRow = document.createElement('div')
+  Object.assign(sliderRow.style, { padding: '0 0 6px' })
+  sliderRow.appendChild(sliderEl)
+  block.appendChild(sliderRow)
+
+  return block
 }
 
 /* ── mount ── */
@@ -158,26 +193,47 @@ function mount(container: HTMLElement): void {
   maxScoreLabel.appendChild(maxScoreDisplayEl)
   root.appendChild(maxScoreLabel)
 
-  bonusRiseRatioSlider = createSlider({
+  // 1차 가산점 — 업종 내 상승 종목 비율 (슬라이더-입력란 양방향 연동)
+  bonusRiseRatioInput = createNumInput({ value: 0, onChange: v => { bonusRiseRatioSlider?.setValue(v); onNumChange('sector_bonus_rise_ratio_slider', v) }, step: 1, name: 'sector_bonus_rise_ratio_slider' })
+  bonusRiseRatioSlider = createDualLabelSlider({
     min: -100, max: 100, value: 0, step: 1,
-    onChange: v => onNumChange('sector_bonus_rise_ratio_slider', v),
-    valueLabel: v => `${v}%`,
+    leftLabel: v => v < 0 ? `${v}%` : '0%',
+    rightLabel: v => v > 0 ? `+${v}%` : '0%',
+    leftColor: COLOR.down,
+    leftColorLight: COLOR.downLight,
+    rightColor: COLOR.up,
+    rightColorLight: COLOR.upLight,
+    onChange: v => { bonusRiseRatioInput?.setValue(v); onNumChange('sector_bonus_rise_ratio_slider', v) },
   })
-  root.appendChild(createSettingRow('1차 가중치 (상승비율)', bonusRiseRatioSlider.el))
+  root.appendChild(createBonusSliderRow('1차 가산점 — 업종 내 상승 종목 비율', bonusRiseRatioSlider.el, bonusRiseRatioInput.el))
 
-  bonusRelativeStrengthSlider = createSlider({
+  // 2차 가산점 — 종목 상승률 상위 집중도 (슬라이더-입력란 양방향 연동)
+  bonusRelativeStrengthInput = createNumInput({ value: 0, onChange: v => { bonusRelativeStrengthSlider?.setValue(v); onNumChange('sector_bonus_relative_strength_slider', v) }, step: 1, name: 'sector_bonus_relative_strength_slider' })
+  bonusRelativeStrengthSlider = createDualLabelSlider({
     min: -100, max: 100, value: 0, step: 1,
-    onChange: v => onNumChange('sector_bonus_relative_strength_slider', v),
-    valueLabel: v => `${v}%`,
+    leftLabel: v => v < 0 ? `${v}%` : '0%',
+    rightLabel: v => v > 0 ? `+${v}%` : '0%',
+    leftColor: COLOR.down,
+    leftColorLight: COLOR.downLight,
+    rightColor: COLOR.up,
+    rightColorLight: COLOR.upLight,
+    onChange: v => { bonusRelativeStrengthInput?.setValue(v); onNumChange('sector_bonus_relative_strength_slider', v) },
   })
-  root.appendChild(createSettingRow('2차 가중치 (가중 순위 합)', bonusRelativeStrengthSlider.el))
+  root.appendChild(createBonusSliderRow('2차 가산점 — 종목 상승률 상위 집중도', bonusRelativeStrengthSlider.el, bonusRelativeStrengthInput.el))
 
-  bonusTradeAmountSlider = createSlider({
+  // 3차 가산점 — 업종 평균 거래대금 (슬라이더-입력란 양방향 연동)
+  bonusTradeAmountInput = createNumInput({ value: 0, onChange: v => { bonusTradeAmountSlider?.setValue(v); onNumChange('sector_bonus_trade_amount_slider', v) }, step: 1, name: 'sector_bonus_trade_amount_slider' })
+  bonusTradeAmountSlider = createDualLabelSlider({
     min: -100, max: 100, value: 0, step: 1,
-    onChange: v => onNumChange('sector_bonus_trade_amount_slider', v),
-    valueLabel: v => `${v}%`,
+    leftLabel: v => v < 0 ? `${v}%` : '0%',
+    rightLabel: v => v > 0 ? `+${v}%` : '0%',
+    leftColor: COLOR.down,
+    leftColorLight: COLOR.downLight,
+    rightColor: COLOR.up,
+    rightColorLight: COLOR.upLight,
+    onChange: v => { bonusTradeAmountInput?.setValue(v); onNumChange('sector_bonus_trade_amount_slider', v) },
   })
-  root.appendChild(createSettingRow('3차 가중치 (거래대금)', bonusTradeAmountSlider.el))
+  root.appendChild(createBonusSliderRow('3차 가산점 — 업종 평균 거래대금', bonusTradeAmountSlider.el, bonusTradeAmountInput.el))
 
   const bonusDescWrap = document.createElement('div')
   Object.assign(bonusDescWrap.style, {
@@ -307,6 +363,9 @@ function unmount(): void {
   bonusRiseRatioSlider = null
   bonusRelativeStrengthSlider = null
   bonusTradeAmountSlider = null
+  bonusRiseRatioInput = null
+  bonusRelativeStrengthInput = null
+  bonusTradeAmountInput = null
   maxScoreDisplayEl = null
   maxTargetsStatusEl = null
   maxTargetsSumEl = null

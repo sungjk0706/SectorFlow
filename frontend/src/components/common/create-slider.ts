@@ -143,10 +143,13 @@ export function createDualLabelSlider(opts: DualLabelSliderOptions): DualLabelSl
   container.appendChild(slider.input)
 
   function applyLabels(v: number): void {
-    const leftVal = max - v
-    const rightVal = v
-    const leftDominant = leftVal >= rightVal
-    const rightDominant = rightVal >= leftVal
+    // midpoint 기반 dominant 판단 — min/max 대칭/비대칭 모두 지원
+    // 매수설정(min=0, max=200): midpoint=100 → v<100 좌측 dominant, v>100 우측 dominant (기존 동작)
+    // 업종순위(min=-100, max=100): midpoint=0 → v<0 좌측 dominant, v>0 우측 dominant
+    const min = opts.min ?? 0
+    const midpoint = (min + max) / 2
+    const leftDominant = v <= midpoint
+    const rightDominant = v >= midpoint
 
     leftSpan.textContent = opts.leftLabel(v)
     leftSpan.style.color = leftDominant ? opts.leftColor : opts.leftColorLight
@@ -157,7 +160,6 @@ export function createDualLabelSlider(opts: DualLabelSliderOptions): DualLabelSl
     rightSpan.style.fontWeight = 'normal'
 
     // 트랙 그라디언트 (thumb 위치와 일치)
-    const min = opts.min ?? 0
     const pct = max > min ? ((v - min) / (max - min)) * 100 : 0
     slider.input.style.background = `linear-gradient(to right, ${leftSpan.style.color} ${pct}%, ${rightSpan.style.color} ${pct}%)`
   }
