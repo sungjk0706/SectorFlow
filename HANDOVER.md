@@ -4,7 +4,7 @@
 
 ### 다음 작업: 업종 점수 산정 방식 리팩토링 — Step 4 대기
 
-**진행 단계**: 종목상세 페이지 5일봉 데이터 표시 복구 완료 (커밋 `ff334e6`). 다음 세션에서 Step 4 사전조사부터 시작.
+**진행 단계**: 5일봉 데이터 중복 저장 근본 원인 수정 완료 (커밋 `d80a1a0`). 다음 세션에서 Step 4 사전조사부터 시작.
 
 **계획서**: `docs/plan_sector_score_redesign.md` (4개 Step, 세션당 1단계 — Step 2를 Split A/B로 분할)
 
@@ -23,6 +23,25 @@
 - Step 3: 프론트엔드 설정 패널 + 타입 + 슬라이더 값 표시 (소스 5 + 테스트 1) — 완료
 - Step 3 후속: 업종순위 슬라이더 매수설정 동일 모듈 통일 + 숫자 입력란 연동 + 라벨 명확화 (소스 2 + 테스트 1) — 완료
 - Step 4: 테스트 + 문서 갱신 (3개 테스트 + 2개 문서) — 대기
+
+---
+
+### 작업: 5일봉 데이터 중복 저장 근본 원인 수정 — 1일봉 파이프라인 dt 출처 전환 — 완료
+
+**진행 단계**: 완료 (커밋 `d80a1a0`). 다음 작업: 업종 점수 산정 방식 리팩토링 Step 4 사전조사 대기.
+
+**완료 내용 (2026-07-15)**:
+- **현상**: 종목 상세 페이지에서 삼성전자(005930)의 07-15와 07-14 거래대금·고가가 완전히 동일하게 표시됨. DB 원본 조회 결과 프론트엔드 표시 버그가 아니라 DB 자체에 중복 데이터가 저장된 상태. 전체 1341개 종목 중 07-15/07-14 동일값 1341개(100%), 07-14/07-13 동일값 0개(0%) → 체계적 버그.
+- **근본 원인**: `market_close_pipeline.py:225` + `kiwoom_stock_rest.py:116-123`. 1일봉 확정 파이프라인이 `stock_5d_bars`에 당일 행을 쓸 때 API가 반환한 일봉의 실제 거래일이 아닌 달력상 오늘(qry_dt)을 dt로 사용. `fetch_ka10081_daily_price`가 `latest = rows[0]`에서 dt 필드에 접근 가능했으나 반환값에 포함하지 않음. `execute_unified_rolling_and_save`가 `bar_dt = qry_dt or date_str`로 달력 오늘을 그대로 dt로 사용. 장마감 전 실행 시 API는 어제(07-14) 일봉을 latest로 반환 → 코드가 이 07-14 값을 `dt=20260715` 행으로 저장 → 07-14 행(5일봉 파이프라인이 이미 올바르게 저장)과 동일값 중복 발생.
+- **수정 내용**: 백엔드 2파일 + 테스트 2파일 (+86/-10):
+  - `kiwoom_stock_rest.py:113-126`: `fetch_ka10081_daily_price` 반환값에 `bar_dt = str(latest.get("dt") or "").strip()`를 `"dt"` 필드로 추가. API 일봉의 실제 거래일을 호출자에 전달.
+  - `market_close_pipeline.py:224-261`: `execute_unified_rolling_and_save`의 `bar_dt`를 종목별 `detail.get("dt")` 우선 사용 → `qry_dt` → `date_str` 순서. dt 누락 시 해당 종목 행 저장 생략 (P20 폴백 금지).
+  - `market_close_pipeline.py:883-895`: `_run_confirmed_pipeline`의 `normalized_confirmed`에 `val.get("dt")` 포함.
+  - `test_kiwoom_stock_rest.py`: `test_normal`에 dt 검증 추가, 신규 `test_dt_field_propagated_from_latest_row` (qry_dt≠API dt일 때 API 실제 거래일 반환 검증).
+  - `test_market_close_pipeline.py`: 기존 2개 테스트 confirmed에 dt 필드 추가, 신규 `test_api_returns_previous_day_uses_api_dt_not_qry_dt` (qry_dt=20250106이나 API가 20250105 반환 시 20250105 행에 저장 검증 — 핵심 버그 회귀 방지).
+- **영향 범위**: 백엔드 2파일 + 테스트 2파일. 기존 중복 행(07-15=07-14)은 다음 정상 다운로드 시 올바른 값으로 덮어쓰기됨 (INSERT OR REPLACE 구조, 별도 마이그레이션 불필요). 거래 로직 영향 없음 — `avg_5d_trade_amount`, `high_5d_price` 재계산 로직은 데이터 정상화 시 자동 정정. 프론트엔드, DB 스키마 변경 없음.
+- **검증**: 단위 테스트 127개 전부 통과 (test_kiwoom_stock_rest.py + test_market_close_pipeline.py), 런타임 기동 정상 (207ms, RuntimeWarning 0건), 잔존 프로세스 0건. 다운로드 재실행 후 DB 확인 필요 (07-15 행이 07-14와 다른 값으로 저장되는지, 또는 07-15 미확정 시 07-15 행이 생성되지 않는지).
+- **P10/P20/P22**: 두 저장 경로(1일봉/5일봉)가 동일한 dt 의미론(API 실제 거래일)으로 통일 (SSOT), 달력 오늘을 무조건 사용하던 폴백 제거 + dt 누락 시 저장 생략 (폴백 금지), 거래일 미확정 데이터를 오늘 날짜로 기록하는 정합성 위반 해소 + INSERT OR REPLACE로 중복 원천 차단 (데이터 정합성).
 
 ---
 
@@ -592,11 +611,16 @@
 - 이후 B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
 
 ## 미해결 문제
-- **5일봉 배열 테이블에서 당일/직전1일 거래대금·고가 중복 — 근본 해결 완료 (2026-07-15, Step 1 완료)**
-  - 증상: 종목상세 화면 5일봉 배열 테이블에서 `당일 거래대금(억)`과 `직전1일(억)`, `당일 고가`와 `직전1일 고가` 값이 동일하게 표시됨.
-  - 근본 원인: `stock_5d_array` 가로 배열 구조 자체가 날짜 모호성을 내포 — 각 day의 실제 거래일을 저장하지 않아 두 쓰기 경로의 의미론 충돌 발생.
-  - 해결: 2026-07-15 Step 1 완료 — 가로 배열 → 세로 행(`stock_5d_bars`, 복합키 `code, dt`) 구조 전환. rolling 로직 제거, 각 일봉이 실제 날짜와 함께 1행으로 저장. `avg_5d`/`high_5d`는 `stock_5d_bars`에서 최근 5행으로 재계산 (P10 SSOT).
-  - 잔존: Step 2~4 진행 대기 (캐시 계산 로직, 프론트엔드 UI, 테스트/문서).
+- **5일봉 배열 테이블에서 당일/직전1일 거래대금·고가 중복 — 근본 해결 완료 (2026-07-15, 커밋 `d80a1a0`)**
+  - 증상: 종목상세 화면 5일봉 테이블에서 07-15와 07-14 거래대금·고가가 완전히 동일하게 표시됨. 전체 1341개 종목 중 07-15/07-14 동일값 1341개(100%), 07-14/07-13 동일값 0개(0%) → 체계적 버그.
+  - 근본 원인 (최종 확정): 1일봉 확정 파이프라인(`execute_unified_rolling_and_save`)이 `stock_5d_bars`에 당일 행을 쓸 때 API가 반환한 일봉의 실제 거래일이 아닌 달력상 오늘(qry_dt)을 dt로 사용. 장마감 전 실행 시 API가 어제 일봉을 latest로 반환 → 어제 값을 오늘 행으로 기록 → 5일봉 파이프라인이 저장한 어제 행과 동일값 중복 발생.
+  - 해결 (2026-07-15, 커밋 `d80a1a0`): `fetch_ka10081_daily_price` 반환값에 latest 일봉의 dt 추가, `execute_unified_rolling_and_save`가 `detail.dt` 우선 사용, `_run_confirmed_pipeline`이 `normalized_confirmed`에 dt 전달. 회귀 방지 테스트 3개 추가.
+  - 잔존: 다운로드 재실행 후 DB 확인 필요 (07-15 행이 07-14와 다른 값으로 저장되는지, 또는 07-15 미확정 시 07-15 행이 생성되지 않는지).
+
+- **`master_stocks_table.high_5d_price`가 `stock_5d_bars` 최대 고가와 불일치 — P22 위반 의심 (2026-07-15 발견)**
+  - 증상: 삼성전자(005930) `master_stocks_table.high_5d_price=300000`이나 `stock_5d_bars` 5개 행 최대 고가는 298000.
+  - 원인 추정: 과거 다운로드에서 계산된 값이 5일봉 세로 행 전환 후 재계산되지 않은 잔재. 본 수정(`d80a1a0`)으로 재계산 경로가 정상화되면 자연 해소 예상이나, 다운로드 재실행 후 재확인 필요.
+  - 파일: `backend/app/services/market_close_pipeline.py:288-310` (avg_5d/high_5d 재계산 로직), `backend/app/db/stock_tables.py:270-289` (stock_5d_bars 스키마).
 
 - **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결**
   - 상세 조사 기록: `docs/ghost_position_investigation.md` ([A]~[I] 미조사 항목)
