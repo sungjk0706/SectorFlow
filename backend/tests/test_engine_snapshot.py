@@ -294,7 +294,7 @@ class TestBuildInitialSnapshot:
 # ── build_sector_stocks_payload ────────────────────────────────────
 
 class TestBuildSectorStocksPayload:
-    """build_sector_stocks_payload — sector-stocks-refresh 페이로드 조립 (L93-109)."""
+    """build_sector_stocks_payload — sector-stocks-refresh 페이로드 조립 (L93-108)."""
 
     @pytest.mark.asyncio
     async def test_happy_path(self):
@@ -302,11 +302,9 @@ class TestBuildSectorStocksPayload:
         with patch("backend.app.services.sector_data_provider.get_sector_stocks", new=AsyncMock(return_value=stocks)), \
              patch("backend.app.services.engine_account.get_positions", new=AsyncMock(return_value=[])), \
              patch("backend.app.services.engine_account.get_account_snapshot", new=AsyncMock(return_value={})), \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=True), \
              patch("backend.app.services.engine_account_notify.init_sent_caches") as mock_init:
             result = await build_sector_stocks_payload()
             assert result["_v"] == 1
-            assert result["krx_after_hours"] is True
             assert len(result["stocks"]) == 1
             assert result["stocks"][0]["code"] == "005930"
             assert "extra" not in result["stocks"][0]
@@ -318,12 +316,10 @@ class TestBuildSectorStocksPayload:
         with patch("backend.app.services.sector_data_provider.get_sector_stocks", new=AsyncMock(return_value=[])), \
              patch("backend.app.services.engine_account.get_positions", new=AsyncMock(return_value=[])), \
              patch("backend.app.services.engine_account.get_account_snapshot", new=AsyncMock(return_value={})), \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
              patch("backend.app.services.engine_account_notify.init_sent_caches", side_effect=Exception("init fail")):
             result = await build_sector_stocks_payload()
             assert result["_v"] == 1
             assert result["stocks"] == []
-            assert result["krx_after_hours"] is False
 
 
 # ── _reset_realtime_fields ─────────────────────────────────────────
