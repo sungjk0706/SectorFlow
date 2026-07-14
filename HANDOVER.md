@@ -2,35 +2,33 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
-### 작업: NXT-only 구독 분리 — 그룹 A 완료, 그룹 B 대기
+### 작업: NXT-only 구독 분리 — 그룹 A + 그룹 B 완료
 
-**진행 단계**: 그룹 A(NXT-only 구독 구현, 2개 파일) 완료. 다음 세션에서 그룹 B(세션 1 설정 키/UI 제거, 7개 파일) 착수 (사용자 승인 시).
+**진행 단계**: 그룹 A(NXT-only 구독 구현) + 그룹 B(설정 키/UI 제거) 모두 완료. NXT-only 구독 분리 작업 전체 완료.
 
-**방향 재조정 (개발자님 결정)**:
-- 기존 "KRX 구독 시간 별도 추가" 방향에서 **반자동 방식**으로 재조정.
+**방향 (반자동 방식)**:
 - 07:55: NXT만 먼저 구독 (처음부터 NXT만 시작, 필터 추가)
 - 09:00: KRX 추가 구독은 장운영정보 이벤트(`_on_krx_market_open()`)로 자동 처리 — 타이머 불필요
 - 15:30: KRX 해지는 기존 로직(`_on_krx_after_hours_start()` → `remove_krx_only_stocks()`) 그대로 사용
 - 20:00: NXT 해지는 기존 로직(`_on_ws_subscribe_end()` → `_trigger_unreg_all()`) 그대로 사용 — 15:30에 KRX `_subscribed` 제거되어 NXT만 남음
-- **제거 대상**: 사용자 설정 UI(KRX 구독 시간 입력란), KRX 전용 타이머/콜백, 세션 1에서 추가한 설정 키 2개
+
+**그룹 B 완료 내용 (2026-07-14, 커밋 `145cf3c`)**:
+- 세션 1에서 추가한 KRX 구독 시간 설정 키 2개(`ws_subscribe_start_krx`, `ws_subscribe_end_krx`) + UI 입력란 제거
+- `settings_file.py`에 `_migrate_remove_krx_subscribe_keys()` 마이그레이션 함수 추가 — 기존 `_migrate_*` 패턴 준수, 다음 기동 시 DB에서 자동 DELETE
+- `general-settings.ts`의 `scheduleTimeSave` 매개변수화(handle 파라미터)를 세션 1 이전 형태로 롤백 — 단일 호출처만 남으므로 불필요한 추상화 제거 (P24)
+- 검증: ruff 기존 실패 1건 (수정 전 동일 실패, 규칙 4-1), py_compile OK, pytest 122 passed, tsc 통과, vite build 통과, vitest 101 passed, 런타임 기동 185ms (`-W error::RuntimeWarning`), `장 상태 초기화: KRX=종가 동시호가, NXT=조기 마감` 확인, 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건
 
 **그룹 A 완료 내용 (2026-07-14, 커밋 `b04f98c`)**:
 - `subscribe_sector_stocks_0b()`에 `nxt_only: bool = False` 키워드 파라미터 추가 — NXT-only 구간에 NXT 중복상장 종목만 구독
 - `ws_subscribe_control.py`의 `start_quote()` + `run_conditional_reg_pipeline()`에서 `is_nxt_only_window()` 분기 추가
 - 기존 로직 재사용: `_on_krx_market_open()`(09:00 KRX 추가), `_on_krx_after_hours_start()`(15:30 KRX 해지), `_on_ws_subscribe_end()`(20:00 NXT 해지) — 모두 수정 없음
-- 검증: py_compile OK, ruff All checks passed, pytest 42 passed (test_engine_ws), 런타임 기동 285ms 정상 (`-W error::RuntimeWarning`), `장 상태 초기화: KRX=정규장, NXT=메인마켓` 확인, 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건
+- 검증: py_compile OK, ruff All checks passed, pytest 42 passed (test_engine_ws), 런타임 기동 285ms 정상, 잔존 프로세스 0건
 
-**남은 작업 — 그룹 B (다음 세션)**:
-- 세션 1에서 추가한 설정 키 2개 + UI 입력란 제거 (반자동 방식이므로 불필요)
-- 제거 파일 7개:
-  - 백엔드 3파일: `settings_defaults.py`(`ws_subscribe_start_krx`/`ws_subscribe_end_krx` 제거), `settings_store.py`(저장 페이로드에서 KRX 키 제거), `engine_settings.py`(엔진 설정 dict에서 KRX 키 제거)
-  - 프론트엔드 2파일: `types/index.ts`(IndexData 인터페이스에서 KRX 필드 제거), `general-settings.ts`("KRX 구독 시간" 입력란 제거 + `scheduleTimeSave` handle 매개변수화 롤백)
-  - 테스트 2파일: `test_settings_store.py`(KRX 키 제거), `test_engine_settings.py`(KRX 키 제거)
-- **P16 주의**: 그룹 A 완료 후 그룹 B 전까지 설정 키 2개가 dead code로 잔존 (UI에 표시되고 저장되지만 실제 동작에 연결되지 않음). 그룹 B에서 제거 시 P16 복귀.
+**다음 단계**: NXT-only 구독 분리 작업 전체 완료. 다음 작업은 사용자 지시 대기.
 
-**이전 작업: KRX 구독 시간 설정 키 2개 추가 — 세션 1 (커밋 `eff5e1e`, 그룹 B에서 롤백 예정)**:
+**이전 작업: KRX 구독 시간 설정 키 2개 추가 — 세션 1 (커밋 `eff5e1e`, 그룹 B에서 롤백 완료)**:
 - 설정 키 2개(`ws_subscribe_start_krx`, `ws_subscribe_end_krx`)의 기반 구축 — 7개 파일 수정
-- 반자동 방식 재조정으로 인해 그룹 B에서 제거 예정
+- 반자동 방식 재조정으로 인해 그룹 B(커밋 `145cf3c`)에서 제거 완료
 
 **이전 작업: 가상스크롤 테이블 헤더/본문 컬럼 세로선 불일치 수정 — 완료 (커밋 `0aec178`)**:
 - `applyGridTemplatePx()`가 `scrollContainer.querySelector('div')`로 sentinel를 찾으나 DOM 순서상 첫 div인 `headerDiv`를 반환하여, 리사이즈 시 데이터 행의 `gridTemplateColumns`가 갱신되지 않는 버그 수정.
@@ -48,11 +46,22 @@
 **주요 리스크**:
 - JIF 누락 시 `market_phase` 부정확 (시계 타이머 백업으로 최대 1초 지연)
 - 구독 구간 내 재기동 시 초기값 "장개시전" → 현재 페이즈 전환 감지로 재계산 트리거됨 (올바른 동작, 부트스트랩 재계산과 중복 가능하나 정합성 문제 없음)
-- **그룹 A~B 사이 상태**: 설정 키 2개가 dead code로 잔존 (UI에 표시되고 저장되지만 실제 동작에 연결되지 않음). 그룹 B에서 제거 시 P16 복귀.
+
+**미해결 문제**:
+- ruff 기존 실패 1건: `settings_store.py:14` `save_settings` unused import (수정 전 동일 실패, 규칙 4-1 기존 실패로 판정)
 
 ---
 
 ## 직전 완료 작업
+- **2026-07-14: KRX 구독 시간 설정 키 2개 제거 — 그룹 B (P10/P16/P24)**
+  - **현상**: 세션 1에서 추가한 KRX 구독 시간 설정 키 2개(`ws_subscribe_start_krx`, `ws_subscribe_end_krx`)와 UI 입력란이 반자동 방식 재조정으로 인해 dead code로 잔존. 사용자가 설정 화면에서 "KRX 구독 시간" 입력란을 변경해도 실제 동작에 반영되지 않는 P16(살아있는 경로) 위반 상태.
+  - **근본 원인**: 반자동 방식 전환으로 09:00 KRX 추가 구독/15:30 KRX 해지가 장운영정보 이벤트로 자동 처리되므로, 별도 KRX 구독 시간 설정이 불필요. 세션 1에서 추가한 설정 키 2개 + UI 입력란이 8개 파일에 걸쳐 잔존.
+  - **수정 파일**: 백엔드 4파일 + 프론트엔드 2파일 + 테스트 2파일 — `settings_file.py`, `settings_defaults.py`, `settings_store.py`, `engine_settings.py`, `types/index.ts`, `general-settings.ts`, `test_settings_store.py`, `test_engine_settings.py`
+  - **변경 내용**: (1) `settings_file.py` — `_migrate_remove_krx_subscribe_keys()` 마이그레이션 함수 추가 (기존 `_migrate_*` 패턴 준수, `del merged[key]`로 DB 자동 DELETE), 체인 등록. (2) 백엔드 3파일 — `settings_defaults.py`(기본값 2개 제거), `settings_store.py`(저장 페이로드 + `_TIME_FIELDS` 제거), `engine_settings.py`(엔진 설정 dict 제거). (3) 프론트엔드 2파일 — `types/index.ts`(IndexData 필드 2개 제거), `general-settings.ts`(KRX UI 입력란 블록 제거 + `scheduleTimeSave` handle 매개변수화를 세션 1 이전 형태로 롤백, `pendingTimeSave` 타입도 롤백, `wsKrxTimeHandle` 변수/cleanup 제거). (4) 테스트 2파일 — `test_settings_store.py`(3곳 dict에서 KRX 키 제거), `test_engine_settings.py`(5문자 검증 2줄 제거).
+  - **영향 범위**: 8개 파일 (+21/-54). KRX 구독 시간 설정이 완전히 제거되고, 09:00 KRX 추가 구독/15:30 KRX 해지는 장운영정보 이벤트로 자동 처리 (그룹 A에서 이미 구현). DB에 잔존하는 KRX 키가 있을 경우 다음 기동 시 마이그레이션으로 자동 삭제. `scheduleTimeSave` 매개변수화 롤백으로 P24(단순성) 복귀 — 단일 호출처만 남으므로 불필요한 추상화 제거.
+  - **검증**: ruff 기존 실패 1건 (`save_settings` unused import, 수정 전 동일 실패 확인 — 규칙 4-1 준수). py_compile 6개 파일 통과. pytest 122 passed (test_settings_store + test_engine_settings + test_settings_file_integration) in 0.40s. tsc --noEmit 통과. vite build 통과 (1.93s). vitest 101 passed (7 files). 런타임 기동 `-W error::RuntimeWarning` 185ms, `장 상태 초기화: KRX=종가 동시호가, NXT=조기 마감` 확인, 에러/Traceback/RuntimeWarning 없음. 잔존 프로세스 0건 (규칙 5-1 준수).
+  - **커밋**: `145cf3c`
+
 - **2026-07-14: NXT-only 구독 분리 — subscribe_sector_stocks_0b() nxt_only 파라미터 추가 (P10/P24)**
   - **현상**: 07:55 구독 시 KRX/NXT 구분 없이 전체 종목이 구독되어, KRX 장개시 전(09:00 이전)에 KRX 단독 종목의 실시간 데이터가 불필요하게 수신됨.
   - **근본 원인**: `subscribe_sector_stocks_0b()` (`engine_ws_reg.py:243`)가 KRX/NXT 구분 없이 보유종목 + 필터통과 종목을 모두 구독. `ws_subscribe_control.py`의 `start_quote()`와 `run_conditional_reg_pipeline()`이 이 함수를 호출할 때 NXT-only 구간 여부를 판단하지 않았음.
