@@ -44,30 +44,34 @@ NXT_AFTERMARKET_END   = (20, 0)    # 20:00 애프터마켓 지속 종료 → 장
 
 
 def is_nxt_premarket_window() -> bool:
-    """현재 시각이 NXT 프리마켓 구간(08:00~08:50)인지 판단.
-    거래일(평일 + 공휴일 아님) AND 08:00 <= KST < 08:50 → True.
-    08:50~09:00은 거래 없음(정규장 준비) 구간이므로 프리마켓에서 제외."""
-    from backend.app.core.trading_calendar import is_trading_day
-    now = _kst_now()
-    today = now.date()
-    if today.weekday() >= 5:
+    """현재 장 상태가 NXT 프리마켓 구간인지 판단.
+
+    SSOT: engine_state.market_phase에서 읽어 판단.
+    market_phase는 시간 기반 스케줄러 + JIF 경계 이벤트가 갱신하므로 빈 문자열이면 안 됨.
+    거래일 판별은 calc_timebased_market_phase()에서 이미 수행되어 market_phase에 반영됨.
+    """
+    mp = state.market_phase
+    nxt = mp.get("nxt", "")
+    if not nxt:
+        logger.error("[시스템] 장 상태 빈 문자열 감지: nxt=%r — 시간 기반 초기화 누락 가능", nxt)
         return False
-    if not is_trading_day(today):
-        return False
-    t = now.hour * 60 + now.minute
-    s = NXT_PREMARKET_START[0] * 60 + NXT_PREMARKET_START[1]
-    e = NXT_PREMARKET_END[0] * 60 + NXT_PREMARKET_END[1]
-    return s <= t < e
+    return nxt == "프리마켓"
 
 
 def is_nxt_aftermarket_window() -> bool:
-    """현재 시각이 NXT 애프터마켓 구간(15:40~20:00)인지 판단.
-    15:30~15:40은 단일가 매매(일괄 체결) 구간이므로 애프터마켓에서 제외."""
-    now = _kst_now()
-    t = now.hour * 60 + now.minute
-    s = NXT_AFTERMARKET_START[0] * 60 + NXT_AFTERMARKET_START[1]
-    e = NXT_AFTERMARKET_END[0] * 60 + NXT_AFTERMARKET_END[1]
-    return s <= t < e
+    """현재 장 상태가 NXT 애프터마켓 구간(애프터마켓 + 애프터마켓 지속)인지 판단.
+
+    SSOT: engine_state.market_phase에서 읽어 판단.
+    market_phase는 시간 기반 스케줄러 + JIF 경계 이벤트가 갱신하므로 빈 문자열이면 안 됨.
+    거래일 판별은 calc_timebased_market_phase()에서 이미 수행되어 market_phase에 반영됨
+    (기존 시간 기반 구현의 거래일 체크 누락이 자동 해결됨).
+    """
+    mp = state.market_phase
+    nxt = mp.get("nxt", "")
+    if not nxt:
+        logger.error("[시스템] 장 상태 빈 문자열 감지: nxt=%r — 시간 기반 초기화 누락 가능", nxt)
+        return False
+    return nxt in ("애프터마켓", "애프터마켓 지속")
 
 
 def calc_timebased_market_phase() -> dict:
@@ -191,12 +195,13 @@ def is_nxt_only_window() -> bool:
 
 def get_nxt_trde_tp(base_trde_tp: str = "3") -> str:
     """
-    현재 시간대에 맞는 NXT trde_tp 반환.
-    - 프리마켓(08:00~08:50): 'P'
-    - 애프터마켓(15:40~20:00): 'U'
-    - 정규장: base_trde_tp 그대로 (지정가=1, 시장가=3 — KRX와 동일)
-    - 08:50~09:00(정규장 준비), 15:20~15:40(조기 마감/단일가 매매): base_trde_tp
+    현재 장 상태에 맞는 NXT trde_tp 반환.
+    - 프리마켓: 'P'
+    - 애프터마켓/애프터마켓 지속: 'U'
+    - 그 외(메인마켓/정규장 준비/조기 마감/단일가 매매): base_trde_tp
       (실시간 매매 불가 구간 — 자동매매 게이트에서 차단 전제)
+
+    SSOT: engine_state.market_phase 기반으로 is_nxt_premarket_window/is_nxt_aftermarket_window 경유 판단.
     """
     if is_nxt_premarket_window():
         return "P"
@@ -205,27 +210,21 @@ def get_nxt_trde_tp(base_trde_tp: str = "3") -> str:
     return base_trde_tp
 
 
-def is_krx_after_hours(now: datetime | None = None) -> bool:
+def is_krx_after_hours() -> bool:
     """
-    현재 시각이 KRX 장외 시간대(15:30~20:00)인지 판별.
+    현재 장 상태가 KRX 장외 시간대인지 판별.
 
     거래 게이트용 함수 — 정규장 종료 후 KRX 단독 종목 자동매매를 차단하기 위한 기준.
-    표시용 세부 페이즈(체결 정산/장후 시간외/시간외 단일가/장 종료)와는 별개로
-    안전을 위해 15:30~20:00 전 구간을 장외로 취급하여 KRX 단독 종목 매수를 차단한다.
-    - 영업일(평일 + 공휴일 아님) AND 15:30 <= KST < 20:00 → True
-    - 그 외 → False
+    SSOT: engine_state.market_phase에서 읽어 판단.
+    market_phase는 시간 기반 스케줄러 + JIF 경계 이벤트가 갱신하므로 빈 문자열이면 안 됨.
+    거래일 판별은 calc_timebased_market_phase()에서 이미 수행되어 market_phase에 반영됨.
     """
-    from backend.app.core.trading_calendar import is_trading_day
-    if now is None:
-        now = _kst_now()
-    today = now.date()
-    if today.weekday() >= 5:
+    mp = state.market_phase
+    krx = mp.get("krx", "")
+    if not krx:
+        logger.error("[시스템] 장 상태 빈 문자열 감지: krx=%r — 시간 기반 초기화 누락 가능", krx)
         return False
-    if not is_trading_day(today):
-        return False
-    h, m = now.hour, now.minute
-    t = h * 60 + m
-    return 930 <= t < 1200  # 15:30 <= time < 20:00
+    return krx in ("체결 정산", "장후 시간외", "시간외 단일가", "장 종료")
 
 
 def get_market_phase() -> dict:

@@ -128,55 +128,75 @@ class TestSecondsUntilHm:
 # ── is_nxt_premarket_window ───────────────────────────────────────────────────
 
 class TestIsNxtPremarketWindow:
-    def test_weekend_returns_false(self):
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 30, weekday=5)):
-            assert is_nxt_premarket_window() is False
+    """market_phase 기반 판별 — state.market_phase를 mock하여 검증."""
 
-    def test_holiday_returns_false(self):
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 30)), \
-             patch("backend.app.core.trading_calendar.is_trading_day", return_value=False):
-            assert is_nxt_premarket_window() is False
-
-    def test_in_window_returns_true(self):
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 30)), \
-             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
+    def test_premarket_phase_returns_true(self):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"nxt": "프리마켓"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             assert is_nxt_premarket_window() is True
 
-    def test_before_window_returns_false(self):
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 30)), \
-             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
-            assert is_nxt_premarket_window() is False
-
-    def test_after_window_returns_false(self):
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 30)), \
-             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
+    def test_regular_market_returns_false(self):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"nxt": "메인마켓"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             assert is_nxt_premarket_window() is False
 
     def test_prep_gap_returns_false(self):
-        """08:50~09:00 정규장 준비(거래 없음) 구간은 프리마켓에서 제외."""
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 55)), \
-             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
+        """정규장 준비(거래 없음) 구간은 프리마켓에서 제외."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"nxt": "정규장 준비"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+            assert is_nxt_premarket_window() is False
+
+    def test_holiday_returns_false(self):
+        """휴장일 — calc_timebased_market_phase가 '휴장일' 페이즈 산정."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"nxt": "휴장일"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+            assert is_nxt_premarket_window() is False
+
+    def test_empty_nxt_returns_false(self):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"nxt": ""}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             assert is_nxt_premarket_window() is False
 
 
 # ── is_nxt_aftermarket_window ─────────────────────────────────────────────────
 
 class TestIsNxtAftermarketWindow:
-    def test_in_window_returns_true(self):
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(16, 0)):
+    """market_phase 기반 판별 — state.market_phase를 mock하여 검증."""
+
+    def test_aftermarket_returns_true(self):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"nxt": "애프터마켓"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             assert is_nxt_aftermarket_window() is True
 
-    def test_before_window_returns_false(self):
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20)):
-            assert is_nxt_aftermarket_window() is False
+    def test_aftermarket_sustained_returns_true(self):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"nxt": "애프터마켓 지속"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+            assert is_nxt_aftermarket_window() is True
 
     def test_single_price_gap_returns_false(self):
-        """15:30~15:40 단일가 매매(일괄 체결) 구간은 애프터마켓에서 제외."""
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 35)):
+        """단일가 매매(일괄 체결) 구간은 애프터마켓에서 제외."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"nxt": "단일가 매매"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             assert is_nxt_aftermarket_window() is False
 
-    def test_after_window_returns_false(self):
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 30)):
+    def test_market_closed_returns_false(self):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"nxt": "장마감"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+            assert is_nxt_aftermarket_window() is False
+
+    def test_empty_nxt_returns_false(self):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"nxt": ""}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             assert is_nxt_aftermarket_window() is False
 
 
@@ -347,34 +367,56 @@ class TestGetNxtTrdeTp:
 # ── is_krx_after_hours ────────────────────────────────────────────────────────
 
 class TestIsKrxAfterHours:
-    def test_in_window_returns_true(self):
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(16, 0)), \
-             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
+    """market_phase 기반 판별 — state.market_phase를 mock하여 검증."""
+
+    def test_settle_returns_true(self):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "체결 정산"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             assert is_krx_after_hours() is True
 
-    def test_weekend_returns_false(self):
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(16, 0, weekday=5)):
+    def test_after_hours_returns_true(self):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장후 시간외"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+            assert is_krx_after_hours() is True
+
+    def test_single_price_returns_true(self):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "시간외 단일가"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+            assert is_krx_after_hours() is True
+
+    def test_close_none_returns_true(self):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장 종료"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+            assert is_krx_after_hours() is True
+
+    def test_regular_market_returns_false(self):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "정규장"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+            assert is_krx_after_hours() is False
+
+    def test_market_closed_returns_false(self):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장마감"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             assert is_krx_after_hours() is False
 
     def test_holiday_returns_false(self):
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(16, 0)), \
-             patch("backend.app.core.trading_calendar.is_trading_day", return_value=False):
+        """휴장일 — calc_timebased_market_phase가 '휴장일' 페이즈 산정."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "휴장일"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             assert is_krx_after_hours() is False
 
-    def test_before_window_returns_false(self):
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(14, 0)), \
-             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
+    def test_empty_krx_returns_false(self):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": ""}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             assert is_krx_after_hours() is False
-
-    def test_after_window_returns_false(self):
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 30)), \
-             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
-            assert is_krx_after_hours() is False
-
-    def test_with_explicit_now(self):
-        now = _make_kst(16, 0)
-        with patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
-            assert is_krx_after_hours(now) is True
 
 
 # ── get_market_phase ──────────────────────────────────────────────────────────
