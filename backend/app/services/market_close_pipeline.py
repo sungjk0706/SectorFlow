@@ -19,7 +19,10 @@ from backend.app.services.engine_symbol_utils import (
     get_ws_subscribe_code,
 )
 from backend.app.services.engine_ws_reg import build_0b_remove_payloads
-from backend.app.core.trading_calendar import get_current_trading_day_str
+from backend.app.core.trading_calendar import (
+    get_current_trading_day_str,
+    get_previous_trading_day_str,
+)
 from backend.app.services.engine_state import state
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 from backend.app.db.json_utils import dumps
@@ -214,14 +217,20 @@ async def execute_unified_rolling_and_save(
     Args:
         confirmed: {종목코드: {cur_price, change, change_rate, trade_amount, high_price, high_5d_price}}
         name_map: {6자리 종목코드: 종목명} — 종목명 보정용
-        qry_dt: API 조회일 (YYYYMMDD). stock_5d_bars의 dt로 저장 (P10/P22).
+        qry_dt: API 조회일 (YYYYMMDD) = 가장 최근 확정된 거래일.
+            stock_5d_bars의 dt로 저장되며, master_stocks_table.date에도 동일 기준 적용 (P10/P22).
 
     Returns:
         저장 성공 여부.
     """
     from backend.app.db.database import get_db_connection, get_db_lock
 
-    date_str = get_current_trading_day_str()
+    # date_str = "데이터 기준일" — qry_dt(가장 최근 확정된 거래일) 우선 (P10/P22)
+    # qry_dt가 소속 거래일의 직전 거래일이므로, 장 전 실행 시 date=직전 거래일(07-14),
+    # 장 후 실행 시 date=오늘(07-15 확정). 이 값이 master_stocks_table.date와
+    # 메모리 캐시 date에 사용되어 retry_pipeline_catchup_after_bootstrap의
+    # 스킵 판단이 정확하게 동작함.
+    date_str = qry_dt or get_current_trading_day_str()
     _nm = name_map or {}
 
     if not date_str:
@@ -257,6 +266,16 @@ async def execute_unified_rolling_and_save(
                 if not bar_dt:
                     logger.warning("[데이터] %s 행 저장 생략 — dt 누락 (P20 폴백 금지)", nk)
                     continue
+                # 안전망: 소속 거래일 자체(미확정 당일) 행은 저장 차단 (P22 데이터 정합성)
+                # qry_dt를 직전 거래일로 설정했으므로 정상 경로에서는 발생하지 않으나,
+                # API가 당일 행을 반환하는 예외 케이스를 방어.
+                current_td = get_current_trading_day_str()
+                if bar_dt == current_td:
+                    logger.warning(
+                        "[데이터] %s 행 저장 생략 — 소속 거래일(미확정) 행 감지 (bar_dt=%s, P22)",
+                        nk, bar_dt,
+                    )
+                    continue
 
                 # 당일 세로 행 파라미터 (INSERT OR REPLACE — 같은 날 재실행 시 자동 덮어쓰기 P22)
                 bars_bulk_params.append((nk, bar_dt, today_amt, today_high))
@@ -285,6 +304,10 @@ async def execute_unified_rolling_and_save(
                         entry["name"] = stk_nm
 
             # 2. 단일 트랜잭션 내 벌크 실행
+            # 미확정 당일(미래) 행 정리 — qry_dt보다 큰 dt 행 삭제 (P22 데이터 정합성)
+            # 기존 07-15 미확정 행이 잔존하면 avg_5d/high_5d 재계산이 왜곡되므로
+            # INSERT OR REPLACE 전에 먼저 삭제.
+            await conn.execute("DELETE FROM stock_5d_bars WHERE dt > ?", (qry_dt,))
             # 5일봉 세로 행 적재 (당일 1행씩 INSERT OR REPLACE)
             if bars_bulk_params:
                 await conn.executemany("""
@@ -559,7 +582,13 @@ async def _save_confirmed_cache(
             from backend.app.db.database import get_db_connection
 
             conn = await get_db_connection()
-            date_str = get_current_trading_day_str()
+            # date_str = 메모리 캐시의 date 우선 (execute_unified_rolling_and_save가 설정한 값),
+            # 없으면 현재 거래일 (P10 — execute_unified_rolling_and_save와 동일 기준)
+            _cached_date = ""
+            if pending:
+                _first = next(iter(pending.values()))
+                _cached_date = _first.get("date", "")
+            date_str = _cached_date or get_current_trading_day_str()
 
             # 전종목 마스터 테이블에서 각 종목의 market 정보 가져오기
             cursor = await conn.execute("SELECT code, market FROM master_stocks_table")
@@ -847,11 +876,17 @@ async def _step5_download_daily_confirmed(
     tag: str, _sector: object, all_codes: list[str],
     name_map: dict[str, str], confirmed_codes: set[str],
 ) -> tuple[int, int, bool]:
-    """5단계: 전종목 1일봉챠트 시세 조회(ka10081) 다운로드. Returns (fetched, failed, cached)."""
-    from backend.app.core.trading_calendar import get_kst_today_str
+    """5단계: 전종목 1일봉챠트 시세 조회(ka10081) 다운로드. Returns (fetched, failed, cached).
 
+    qry_dt는 가장 최근 확정된 거래일을 사용 (P10/P22).
+    달력 오늘을 사용하면 장 전/중 실행 시 API가 오늘 미확정 일봉(거래대금=0)을
+    반환하여 미확정 데이터가 DB에 저장되는 정합성 위반이 발생함.
+    """
     logger.info("[다운로드] 다운로드 시작 (%d종목)", len(all_codes))
-    qry_dt = get_kst_today_str()
+    # 가장 최근 확정된 거래일 — 소속 거래일의 직전 거래일 (P10/P22)
+    # 06:36 @ 07-15(수, 장전): current=07-15 → previous=07-14 (07-14 확정 데이터)
+    # 20:40 @ 07-15(수, 장후): current=07-16 → previous=07-15 (07-15 확정 데이터)
+    qry_dt = get_previous_trading_day_str(get_current_trading_day_str())
     total = len(all_codes)
     _main_loop = asyncio.get_running_loop()
 
@@ -1139,8 +1174,11 @@ async def fetch_5d_data_only() -> dict:
     stock_5d_bars 테이블에 각 일봉을 (code, dt) 복합키 세로 행으로 INSERT OR REPLACE (P10/P22/P24).
     전체 DELETE 없이 덮어쓰기 방식 — 부분 실패 시 기존 데이터 보존 (P22).
     저장 후 최근 5개 거래일 외 행 삭제로 테이블 크기 유지 (P24).
+
+    qry_dt는 가장 최근 확정된 거래일을 사용 (P10/P22).
+    달력 오늘을 사용하면 장 전/중 실행 시 API가 오늘 미확정 일봉(거래대금=0)을
+    반환하여 미확정 데이터가 DB에 저장되는 정합성 위반이 발생함.
     """
-    from backend.app.core.trading_calendar import get_kst_today_str
 
     # 중복 실행 방지
     if state.confirmed_refresh_running_5d:
@@ -1190,7 +1228,10 @@ async def fetch_5d_data_only() -> dict:
         fetched = 0
         failed = 0
         confirmed_5d = {}
-        qry_dt = get_kst_today_str()
+        # 가장 최근 확정된 거래일 — 소속 거래일의 직전 거래일 (P10/P22)
+        # 06:36 @ 07-15(수, 장전): current=07-15 → previous=07-14 (07-14 이하 5영업일)
+        # 20:40 @ 07-15(수, 장후): current=07-16 → previous=07-15 (07-15 이하 5영업일)
+        qry_dt = get_previous_trading_day_str(get_current_trading_day_str())
 
         for idx, base_cd in enumerate(all_codes):
             nk = _base_stk_cd(base_cd)
@@ -1260,9 +1301,19 @@ async def fetch_5d_data_only() -> dict:
                 high_5d = max(valid_highs) if valid_highs else 0
 
                 # 세로 행 파라미터 — 각 일봉을 (code, dt, trade_amount, high_price) 1행으로 저장
+                # 안전망: 소속 거래일 자체(미확정 당일) 행은 저장 차단 (P22 데이터 정합성)
+                # qry_dt를 직전 거래일로 설정했으므로 정상 경로에서는 발생하지 않으나,
+                # API가 당일 행을 반환하는 예외 케이스를 방어.
+                current_td = get_current_trading_day_str()
                 for i in range(min(len(amts_5d), len(highs_5d), len(dts_5d))):
                     dt = dts_5d[i]
                     if not dt:
+                        continue
+                    if str(dt) == current_td:
+                        logger.warning(
+                            "[다운로드] %s 행 저장 생략 — 소속 거래일(미확정) 행 감지 (dt=%s, P22)",
+                            cd, dt,
+                        )
                         continue
                     bars_params.append((cd, str(dt), amts_5d[i], highs_5d[i]))
 
@@ -1284,12 +1335,22 @@ async def fetch_5d_data_only() -> dict:
                     WHERE code = ?""",
                     master_update_params
                 )
-                # 오래된 행 정리 — 최근 5개 거래일 외 행 삭제 (P22/P24)
+                # 행 정리 — qry_dt 기준 최근 5거래일 외 행 삭제 + 미확정 당일(미래) 행 삭제 (P22/P24)
+                # qry_dt 기준: 장 전 실행 시 qry_dt=직전 거래일(07-14) → 07-14 이하 5거래일만 보존
+                # 미래 행 삭제: qry_dt보다 큰 dt 행(예: 기존 07-15 미확정 행)을 삭제하여
+                #   미확정 당일 행이 DB에 잔존하는 정합성 위반 해소
+                from datetime import date as _date
                 from backend.app.core.trading_calendar import get_recent_trading_days
-                recent_5 = get_recent_trading_days(5)
+                qry_date = _date(int(qry_dt[:4]), int(qry_dt[4:6]), int(qry_dt[6:8]))
+                recent_5 = get_recent_trading_days(5, from_date=qry_date)
                 if recent_5:
                     oldest_dt = recent_5[0].strftime("%Y%m%d")
-                    await conn.execute("DELETE FROM stock_5d_bars WHERE dt < ?", (oldest_dt,))
+                    # dt < oldest_dt: 과거 행 정리 (기존)
+                    # dt > qry_dt: 미확정 당일(미래) 행 정리 (신규) — 기존 07-15 행 삭제
+                    await conn.execute(
+                        "DELETE FROM stock_5d_bars WHERE dt < ? OR dt > ?",
+                        (oldest_dt, qry_dt),
+                    )
                 await conn.commit()
 
             logger.info("[다운로드] DB 저장 완료 — %d종목, %d행", len(confirmed_5d), len(bars_params))
