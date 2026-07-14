@@ -136,7 +136,7 @@ async def fetch_ka10081_daily_5d_data(
 ) -> Optional[dict]:
     """
     ka10081(주식일봉차트조회요청) 단건 조회.
-    최근 5개 일봉에서 5일 평균 거래대금 및 최고가를 계산 반환.
+    최근 5개 일봉에서 5일 평균 거래대금, 최고가, 각 일봉의 거래일(dt)을 반환.
     """
     base = api.base_url.rstrip("/")
     url = f"{base}/api/dostk/chart"
@@ -210,13 +210,15 @@ async def fetch_ka10081_daily_5d_data(
             while len(recent_5) < 5:
                 recent_5.append(None)
 
-        # 5일 고가/거래대금 추출 (데이터 없으면 None)
+        # 5일 고가/거래대금/거래일 추출 (데이터 없으면 None)
         highs_5d = [_si(r.get("high_pric")) if r is not None else None for r in recent_5]
         amts_5d = [_si(r.get("trde_prica")) if r is not None else None for r in recent_5]  # 백만원 단위
+        dts_5d = [str(r.get("dt")) if r is not None else None for r in recent_5]  # YYYYMMDD
 
         return {
             "amts_5d_array": amts_5d,
             "highs_5d_array": highs_5d,
+            "dts_5d_array": dts_5d,
         }
     except Exception as e:
         logger.warning("[다운로드] 데이터 해석 오류 %s/%s: %s", log_cd, api_cd, e)

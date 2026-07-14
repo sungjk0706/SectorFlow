@@ -214,7 +214,7 @@ async def execute_unified_rolling_and_save(
     Args:
         confirmed: {종목코드: {cur_price, change, change_rate, trade_amount, high_price, high_5d_price}}
         name_map: {6자리 종목코드: 종목명} — 종목명 보정용
-        qry_dt: API 조회일 (YYYYMMDD). stock_5d_array.date 및 rolling 가드용 (P10/P22).
+        qry_dt: API 조회일 (YYYYMMDD). stock_5d_bars의 dt로 저장 (P10/P22).
 
     Returns:
         저장 성공 여부.
@@ -222,25 +222,21 @@ async def execute_unified_rolling_and_save(
     from backend.app.db.database import get_db_connection, get_db_lock
 
     date_str = get_current_trading_day_str()
-    array_date = qry_dt or date_str  # stock_5d_array.date는 API 조회일로 통일 (P10)
+    bar_dt = qry_dt or date_str  # stock_5d_bars.dt는 API 조회일(실제 거래일)로 통일 (P10)
     _nm = name_map or {}
+
+    if not bar_dt:
+        logger.warning("[데이터] 저장 실패 — qry_dt 누락 (P20 폴백 금지)")
+        return False
 
     async with get_db_lock():
         conn = await get_db_connection()
 
         try:
-            # 1. 기존 5일 배열 일괄 로드 (1회 조회) — 기본키=code이므로 종목당 1행
-            cursor = await conn.execute("""
-                SELECT code, date, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount,
-                       day1_high, day2_high, day3_high, day4_high, day5_high
-                FROM stock_5d_array
-            """)
-            existing_rows = await cursor.fetchall()
-            existing_map = {r["code"]: r for r in existing_rows}
-
-            # 2. 메모리 연산 및 벌크 파라미터 빌드
+            # 1. 당일 5일봉 행 INSERT OR REPLACE 파라미터 빌드 (rolling 제거 — 세로 행 구조 P24)
             master_bulk_params = []
-            array_5d_bulk_params = []
+            bars_bulk_params = []
+            codes_to_recalc = []
 
             for raw_cd, detail in confirmed.items():
                 nk = _base_stk_cd(raw_cd)
@@ -254,45 +250,19 @@ async def execute_unified_rolling_and_save(
                 change = int(detail.get("change") or 0)
                 change_rate = float(detail.get("change_rate") or 0.0)
 
-                # 5일 롤링 계산 (빈 값 허용)
-                if nk in existing_map:
-                    row = existing_map[nk]
-                    existing_date = str(row["date"] or "")
-                    # 같은 날 재실행 시 rolling 생략, day1만 덮어쓰기 (P10/P22 — 당일/직전1일 중복 방지)
-                    if qry_dt and existing_date == qry_dt:
-                        new_amts = [today_amt, row["day2_amount"], row["day3_amount"], row["day4_amount"], row["day5_amount"]]
-                        new_highs = [today_high, row["day2_high"], row["day3_high"], row["day4_high"], row["day5_high"]]
-                    else:
-                        # 새 거래일 — 기존 day1을 day2로 rolling
-                        new_amts = [today_amt, row["day1_amount"], row["day2_amount"], row["day3_amount"], row["day4_amount"]]
-                        new_highs = [today_high, row["day1_high"], row["day2_high"], row["day3_high"], row["day4_high"]]
-                else:
-                    new_amts = [today_amt, None, None, None, None]
-                    new_highs = [today_high, None, None, None, None]
-
-                # 메트릭 계산 (빈 값 제외)
-                valid_amts = [a for a in new_amts if a is not None and a > 0]
-                avg_5d = sum(valid_amts) // len(valid_amts) if valid_amts else 0
-
-                valid_highs = [h for h in new_highs if h is not None and h > 0]
-                high_5d = max(valid_highs) if valid_highs else 0
-
-                # DB 벌크 파라미터 추가
-                array_5d_bulk_params.append((
-                    nk, array_date,
-                    new_amts[0], new_amts[1], new_amts[2], new_amts[3], new_amts[4],
-                    new_highs[0], new_highs[1], new_highs[2], new_highs[3], new_highs[4]
-                ))
+                # 당일 세로 행 파라미터 (INSERT OR REPLACE — 같은 날 재실행 시 자동 덮어쓰기 P22)
+                bars_bulk_params.append((nk, bar_dt, today_amt, today_high))
+                codes_to_recalc.append(nk)
 
                 # 전종목 마스터 테이블 market 정보 조회
                 stk_nm = _nm.get(_base_stk_cd(raw_cd), nk)
 
                 master_bulk_params.append((
                     nk, stk_nm, cur_price, change, change_rate,
-                    today_amt, avg_5d, high_5d, date_str
+                    today_amt, 0, 0, date_str  # avg_5d/high_5d는 아래에서 재계산 후 갱신
                 ))
 
-                # 메모리 캐시 동시 갱신
+                # 메모리 캐시 동시 갱신 (avg_5d/high_5d는 아래에서 재계산 후 갱신)
                 if nk in state.master_stocks_cache:
                     entry = state.master_stocks_cache[nk]
                     entry.update({
@@ -300,23 +270,48 @@ async def execute_unified_rolling_and_save(
                         "change": change,
                         "change_rate": change_rate,
                         "trade_amount": today_amt,
-                        "avg_5d_trade_amount": avg_5d,
-                        "high_5d_price": high_5d,
                         "date": date_str,
                         "status": "active"
                     })
                     if stk_nm and stk_nm != nk:
                         entry["name"] = stk_nm
 
-            # 3. 단일 트랜잭션 내 벌크 실행
-            # 5일 배열 적재
-            if array_5d_bulk_params:
+            # 2. 단일 트랜잭션 내 벌크 실행
+            # 5일봉 세로 행 적재 (당일 1행씩 INSERT OR REPLACE)
+            if bars_bulk_params:
                 await conn.executemany("""
-                    INSERT OR REPLACE INTO stock_5d_array
-                    (code, date, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount,
-                     day1_high, day2_high, day3_high, day4_high, day5_high)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, array_5d_bulk_params)
+                    INSERT OR REPLACE INTO stock_5d_bars
+                    (code, dt, trade_amount, high_price)
+                    VALUES (?, ?, ?, ?)
+                """, bars_bulk_params)
+
+            # 3. avg_5d_trade_amount, high_5d_price 재계산 — stock_5d_bars에서 종목당 최근 5행 (P10 SSOT)
+            recalc_params = []
+            if codes_to_recalc:
+                placeholders = ",".join("?" for _ in codes_to_recalc)
+                cursor = await conn.execute(f"""
+                    SELECT code, trade_amount, high_price
+                    FROM stock_5d_bars
+                    WHERE code IN ({placeholders})
+                    ORDER BY dt DESC
+                """, codes_to_recalc)
+                rows = await cursor.fetchall()
+                # 종목별 최근 5행 집계
+                from collections import defaultdict
+                by_code: dict[str, list] = defaultdict(list)
+                for r in rows:
+                    by_code[r["code"]].append(r)
+                for nk in codes_to_recalc:
+                    recent = by_code.get(nk, [])[:5]
+                    valid_amts = [r["trade_amount"] for r in recent if r["trade_amount"] is not None and r["trade_amount"] > 0]
+                    avg_5d = sum(valid_amts) // len(valid_amts) if valid_amts else 0
+                    valid_highs = [r["high_price"] for r in recent if r["high_price"] is not None and r["high_price"] > 0]
+                    high_5d = max(valid_highs) if valid_highs else 0
+                    recalc_params.append((avg_5d, high_5d, nk))
+                    # 메모리 캐시 갱신
+                    if nk in state.master_stocks_cache:
+                        state.master_stocks_cache[nk]["avg_5d_trade_amount"] = avg_5d
+                        state.master_stocks_cache[nk]["high_5d_price"] = high_5d
 
             # 마스터 테이블 적재 (UPSERT)
             if master_bulk_params:
@@ -325,11 +320,16 @@ async def execute_unified_rolling_and_save(
                 mkt_rows = await cursor.fetchall()
                 mkt_map = {r["code"]: r["market"] for r in mkt_rows}
 
+                # recalc 결과를 master_bulk_params에 반영
+                recalc_map = {p[2]: (p[0], p[1]) for p in recalc_params}
                 updated_params = []
                 for params in master_bulk_params:
                     code = params[0]
+                    avg_5d, high_5d = recalc_map.get(code, (0, 0))
                     market = mkt_map.get(code, "")
-                    updated_params.append(params + (market,))
+                    # params: (code, name, cur_price, change, change_rate, today_amt, 0, 0, date_str)
+                    updated_params.append((params[0], params[1], params[2], params[3], params[4],
+                                           params[5], avg_5d, high_5d, params[8], market))
 
                 await conn.executemany("""
                     INSERT INTO master_stocks_table
@@ -348,7 +348,7 @@ async def execute_unified_rolling_and_save(
                 """, updated_params)
 
             await conn.commit()
-            logger.info("[데이터] 저장 완료 — 5일봉 배열 테이블: %d종목, 전종목 마스터 테이블: %d종목", len(array_5d_bulk_params), len(master_bulk_params))
+            logger.info("[데이터] 저장 완료 — 5일봉 세로 행: %d종목, 전종목 마스터 테이블: %d종목", len(bars_bulk_params), len(master_bulk_params))
             return True
 
         except Exception as e:
@@ -775,7 +775,7 @@ async def _step4_save_to_db_and_cache(
                 master_placeholders = ",".join("?" for _ in master_codes)
                 master_codes_list = list(master_codes)
                 if master_codes:
-                    await _conn.execute(f"DELETE FROM stock_5d_array WHERE code NOT IN ({master_placeholders})", master_codes_list)
+                    await _conn.execute(f"DELETE FROM stock_5d_bars WHERE code NOT IN ({master_placeholders})", master_codes_list)
                 await _conn.execute("""
                     CREATE TABLE IF NOT EXISTS system_state_cache (
                         key TEXT PRIMARY KEY,
@@ -1124,11 +1124,10 @@ async def fetch_confirmed_data_only() -> dict:
 
 async def fetch_5d_data_only() -> dict:
     """수동 5일봉 거래대금,고가 다운로드 파이프라인.
-    
+
     DB의 master_stocks_table에 등록된 매매적격종목을 대상으로
     개별 종목의 5일 고가 및 거래대금 데이터를 다운로드하여 DB 및 메모리에 저장합니다.
-    stock_5d_array 테이블을 전체 삭제 후 API에서 5일치 데이터를 직접 저장.
-    execute_unified_rolling_and_save()와 date 기반 가드로 같은 날 재실행 시 중복 방지 (P10/P22).
+    stock_5d_bars 테이블에 각 일봉을 (code, dt) 복합키 세로 행으로 INSERT OR REPLACE (P10/P22/P24).
     """
     from backend.app.core.trading_calendar import get_kst_today_str
 
@@ -1160,7 +1159,7 @@ async def fetch_5d_data_only() -> dict:
         logger.info("[다운로드] 매매적격종목 목록 로드 시작")
         all_codes = [cd for cd, entry in state.master_stocks_cache.items() if entry.get("status") == "active"]
         total = len(all_codes)
-        
+
         logger.info("[다운로드] 대상 적격 종목 수: %d", total)
         if total == 0:
             logger.warning("[다운로드] 대상 종목 없음 — 중단")
@@ -1168,14 +1167,14 @@ async def fetch_5d_data_only() -> dict:
             state.confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
 
-        # ── 5일봉 배열 테이블 전체 삭제 (수동 다운로드는 무조건 재다운로드) ─────────
+        # ── 5일봉 세로 행 테이블 전체 삭제 (수동 다운로드는 무조건 재다운로드) ─────────
         from backend.app.db.database import get_db_connection, get_db_lock
         conn = await get_db_connection()
         try:
             async with get_db_lock():
-                await conn.execute("DELETE FROM stock_5d_array")
+                await conn.execute("DELETE FROM stock_5d_bars")
                 await conn.commit()
-            logger.info("[다운로드] 5일봉 배열 테이블 전체 삭제 후 재다운로드")
+            logger.info("[다운로드] 5일봉 세로 행 테이블 전체 삭제 후 재다운로드")
         except Exception as e:
             logger.warning("[다운로드] 전체 데이터 삭제 실패: %s", e)
 
@@ -1200,11 +1199,13 @@ async def fetch_5d_data_only() -> dict:
                 if res:
                     amounts_5d = res.get("amts_5d_array") or []
                     highs_5d = res.get("highs_5d_array") or []
-                    
-                    if amounts_5d and highs_5d:
+                    dts_5d = res.get("dts_5d_array") or []
+
+                    if amounts_5d and highs_5d and dts_5d:
                         confirmed_5d[nk] = {
                             "amts_5d_array": amounts_5d,
                             "highs_5d_array": highs_5d,
+                            "dts_5d_array": dts_5d,
                         }
                         fetched += 1
                     else:
@@ -1235,52 +1236,44 @@ async def fetch_5d_data_only() -> dict:
             # 요청 간격 조절
             await asyncio.sleep(0.3)
 
-        # ── 5일봉 배열 테이블 직접 삽입 (5일치 전체 저장) ───────────────────────
+        # ── 5일봉 세로 행 테이블 직접 삽입 (5일치 전체 저장) ───────────────────
         if confirmed_5d:
-            logger.info("[다운로드] 5일봉 배열 테이블 직접 삽입 — %d종목", len(confirmed_5d))
-            
-            date_str = get_kst_today_str()
-            array_5d_params = []
+            logger.info("[다운로드] 5일봉 세로 행 테이블 직접 삽입 — %d종목", len(confirmed_5d))
+
+            bars_params = []
             master_update_params = []
-            
+
             for cd, data in confirmed_5d.items():
                 amts_5d = data.get("amts_5d_array") or []
                 highs_5d = data.get("highs_5d_array") or []
-                
+                dts_5d = data.get("dts_5d_array") or []
+
                 # 5일평균, 5일최고가 계산 (빈 값 제외)
                 valid_amts = [a for a in amts_5d if a is not None and a > 0]
                 avg_5d = sum(valid_amts) // len(valid_amts) if valid_amts else 0
-                
+
                 valid_highs = [h for h in highs_5d if h is not None and h > 0]
                 high_5d = max(valid_highs) if valid_highs else 0
-                
-                # 5일봉 배열 테이블 삽입 파라미터
-                array_5d_params.append((
-                    cd, date_str,
-                    amts_5d[0] if len(amts_5d) > 0 else None,
-                    amts_5d[1] if len(amts_5d) > 1 else None,
-                    amts_5d[2] if len(amts_5d) > 2 else None,
-                    amts_5d[3] if len(amts_5d) > 3 else None,
-                    amts_5d[4] if len(amts_5d) > 4 else None,
-                    highs_5d[0] if len(highs_5d) > 0 else None,
-                    highs_5d[1] if len(highs_5d) > 1 else None,
-                    highs_5d[2] if len(highs_5d) > 2 else None,
-                    highs_5d[3] if len(highs_5d) > 3 else None,
-                    highs_5d[4] if len(highs_5d) > 4 else None,
-                ))
-                
+
+                # 세로 행 파라미터 — 각 일봉을 (code, dt, trade_amount, high_price) 1행으로 저장
+                for i in range(min(len(amts_5d), len(highs_5d), len(dts_5d))):
+                    dt = dts_5d[i]
+                    if not dt:
+                        continue
+                    bars_params.append((cd, str(dt), amts_5d[i], highs_5d[i]))
+
                 # 전종목 마스터 테이블 갱신 파라미터
                 master_update_params.append((avg_5d, high_5d, cd))
-            
+
             # 단일 트랜잭션으로 저장
             async with get_db_lock():
-                await conn.executemany(
-                    """INSERT OR REPLACE INTO stock_5d_array
-                    (code, date, day1_amount, day2_amount, day3_amount, day4_amount, day5_amount,
-                     day1_high, day2_high, day3_high, day4_high, day5_high)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    array_5d_params
-                )
+                if bars_params:
+                    await conn.executemany(
+                        """INSERT OR REPLACE INTO stock_5d_bars
+                        (code, dt, trade_amount, high_price)
+                        VALUES (?, ?, ?, ?)""",
+                        bars_params
+                    )
                 await conn.executemany(
                     """UPDATE master_stocks_table
                     SET avg_5d_trade_amount = ?, high_5d_price = ?
@@ -1288,24 +1281,24 @@ async def fetch_5d_data_only() -> dict:
                     master_update_params
                 )
                 await conn.commit()
-            
-            logger.info("[다운로드] DB 저장 완료 — %d종목", len(confirmed_5d))
-            
+
+            logger.info("[다운로드] DB 저장 완료 — %d종목, %d행", len(confirmed_5d), len(bars_params))
+
             # 메모리 캐시 갱신
             for cd, data in confirmed_5d.items():
                 amts_5d = data.get("amts_5d_array") or []
                 highs_5d = data.get("highs_5d_array") or []
-                
+
                 valid_amts = [a for a in amts_5d if a is not None and a > 0]
                 avg_5d = sum(valid_amts) // len(valid_amts) if valid_amts else 0
-                
+
                 valid_highs = [h for h in highs_5d if h is not None and h > 0]
                 high_5d = max(valid_highs) if valid_highs else 0
-                
+
                 if cd in state.master_stocks_cache:
                     state.master_stocks_cache[cd]["avg_5d_trade_amount"] = avg_5d
                     state.master_stocks_cache[cd]["high_5d_price"] = high_5d
-            
+
             logger.info("[다운로드] 메모리 캐시 갱신 완료")
 
         success_rate = (fetched / total * 100) if total else 0

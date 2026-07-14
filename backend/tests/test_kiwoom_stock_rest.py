@@ -317,6 +317,8 @@ class TestFetchKa10081Daily5dData:
         assert result is not None
         assert len(result["amts_5d_array"]) == 5
         assert len(result["highs_5d_array"]) == 5
+        assert len(result["dts_5d_array"]) == 5
+        assert result["dts_5d_array"][0] == "20260719"  # 최신일이 첫 번째
 
     @pytest.mark.asyncio
     async def test_ascending_sorted_reversed(self):
@@ -341,6 +343,8 @@ class TestFetchKa10081Daily5dData:
         assert result["amts_5d_array"][4] is None
         assert result["highs_5d_array"][3] is None
         assert result["highs_5d_array"][4] is None
+        assert result["dts_5d_array"][3] is None
+        assert result["dts_5d_array"][4] is None
 
     @pytest.mark.asyncio
     async def test_resp_none(self):
