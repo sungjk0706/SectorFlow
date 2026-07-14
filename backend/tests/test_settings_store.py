@@ -81,6 +81,8 @@ class TestGeneralSavePayloadFromFlat:
         return {
             "ws_subscribe_start": "09:00",
             "ws_subscribe_end": "15:00",
+            "ws_subscribe_start_krx": "09:00",
+            "ws_subscribe_end_krx": "15:30",
             "confirmed_download_time": "20:40",
             "time_scheduler_on": True,
             "auto_buy_on": False,
@@ -206,6 +208,8 @@ class TestChangedKeysGeneralSave:
         before = {
             "ws_subscribe_start": "09:00",
             "ws_subscribe_end": "15:00",
+            "ws_subscribe_start_krx": "09:00",
+            "ws_subscribe_end_krx": "15:30",
             "confirmed_download_time": "20:40",
             "time_scheduler_on": True,
             "auto_buy_on": False,
@@ -228,6 +232,8 @@ class TestChangedKeysGeneralSave:
         before = {
             "ws_subscribe_start": "09:00",
             "ws_subscribe_end": "15:00",
+            "ws_subscribe_start_krx": "09:00",
+            "ws_subscribe_end_krx": "15:30",
             "confirmed_download_time": "20:40",
             "time_scheduler_on": True,
             "auto_buy_on": False,
