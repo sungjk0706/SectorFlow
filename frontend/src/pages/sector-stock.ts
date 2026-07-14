@@ -141,7 +141,9 @@ const KRX_INACTIVE_PHASES = new Set([
 
 const NXT_ACTIVE_PHASES = new Set([
   '프리마켓',
+  '정규장 준비',
   '메인마켓',
+  '단일가 매매',
   '애프터마켓',
   '애프터마켓 지속',
 ])

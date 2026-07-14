@@ -306,6 +306,20 @@ class TestIsNxtOnlyWindow:
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             assert is_nxt_only_window() is False
 
+    def test_opening_auction_nxt_prep_returns_true(self):
+        """08:50~09:00 구간: KRX 시가 동시호가(비활성) + NXT 정규장 준비(활성) → True."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+            assert is_nxt_only_window() is True
+
+    def test_settle_nxt_single_price_returns_true(self):
+        """15:30~15:40 구간: KRX 체결 정산(비활성) + NXT 단일가 매매(활성) → True."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "체결 정산", "nxt": "단일가 매매"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+            assert is_nxt_only_window() is True
+
 
 # ── get_nxt_trde_tp ───────────────────────────────────────────────────────────
 
