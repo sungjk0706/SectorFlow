@@ -2,9 +2,26 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
-### 작업: 5일봉 수동 다운로드 저장 방식 — DELETE→INSERT OR REPLACE 전환 (덮어쓰기)
+### 작업: 수동 다운로드 확인 팝업 분기 — 당일 데이터 존재 시 메시지 분기
 
-**진행 단계**: 완료 (커밋 `1f5882b`). 다음 작업: 수동 다운로드 확인 팝업 분기 (데이터 존재 시/미존재 시) — 프론트엔드 + 백엔드 API 추가 동반.
+**진행 단계**: 완료 (커밋 `9ccea56`). 다음 작업: 사용자 지시 대기.
+
+**완료 내용 (2026-07-15)**:
+- **현상**: 1일봉/5일봉 수동 다운로드 버튼 클릭 시 당일 데이터가 이미 저장되어 있는지 알 수 없어, 중복 다운로드 여부를 사용자가 사전에 인지하지 못함.
+- **근본 원인**: `stock-classification.ts:427`, `stock-classification.ts:475`의 두 다운로드 핸들러가 확인 팝업 표시 전 데이터 존재 여부를 확인하지 않고 동일한 일반 메시지만 표시.
+- **수정 내용**: 백엔드 1파일 + 프론트엔드 2파일 (+75/-2):
+  - `stock_classification.py`: 신규 `GET /api/stock-classification/download-data-exists` 엔드포인트 추가. `get_current_trading_day_str()`로 현재 거래일 조회 후 `master_stocks_table.date`(1일봉)와 `stock_5d_bars.dt`(5일봉) COUNT 조회로 존재 여부 반환. 반환: `{"trading_day", "confirmed_exists", "5d_exists"}`.
+  - `client.ts`: `api.post`와 대칭되는 generic `api.get` 메서드 추가.
+  - `stock-classification.ts`: 두 다운로드 핸들러에 사전 확인 API 호출 추가. 데이터 존재 시 "이미 당일 시세/5일봉 데이터가 저장되어 있습니다. 다시 다운로드하시겠습니까?" 메시지 분기, 미존재 시 기존 메시지 유지. 확인 API 실패 시 토스트 알림 후 중단 (폴백 아님 — P20 준수).
+- **영향 범위**: 백엔드 1파일 + 프론트엔드 2파일. 기존 다운로드 실행 로직, DB 스키마, 테스트 코드 변경 없음. 사용자는 여전히 데이터 존재 여부와 무관하게 다운로드 실행 가능 (INSERT OR REPLACE로 덮어쓰기).
+- **검증**: py_compile OK, ruff `All checks passed!`, TypeScript typecheck 에러 0건 (숫자 시작 식별자 `5d_exists` → 따옴표 처리), 빌드 성공 (1.88s), 런타임 기동 188ms (`-W error::RuntimeWarning`), 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건.
+- **P21/P23**: 백엔드 데이터 존재 여부를 UI에 투명하게 전달, 기존 `showContextPopup` 패턴 재사용.
+
+---
+
+### 이전 작업: 5일봉 수동 다운로드 저장 방식 — DELETE→INSERT OR REPLACE 전환 (덮어쓰기)
+
+**진행 단계**: 완료 (커밋 `1f5882b`).
 
 **완료 내용 (2026-07-15)**:
 - **현상**: 5일봉 수동 다운로드(`fetch_5d_data_only`)가 전체 DELETE 후 INSERT 방식으로, 다운로드 중 실패 시 데이터 전체 손실 위험.
@@ -18,15 +35,23 @@
 
 ---
 
-### 다음 작업: 수동 다운로드 확인 팝업 분기 (데이터 존재 시/미존재 시)
+### 다음 작업: 5일봉 배열 테이블 구조 개선 — Step 2 (백엔드 캐시 계산 로직)
 
-**진행 단계**: 대기.
+**진행 단계**: Step 1 완료. Step 2 진행 대기.
 
-**계획**:
-- 백엔드: "현재 소속 거래일 데이터 존재 여부" 확인 API 신규 추가 (1일봉은 `master_stocks_table.date`, 5일봉은 `stock_5d_bars` MAX(dt) 조회)
-- 프론트엔드: 1일봉/5일봉 수동 다운로드 버튼 클릭 시 먼저 확인 API 호출 → 데이터 있으면 "이미 저장되어 있습니다" 메시지, 없으면 기존 일반 메시지
-- 기존 `showContextPopup` 패턴 재사용 (P23 일관성)
-- 세션당 1단계 원칙에 따라 백엔드+프론트엔드 1세션 진행
+**계획서**: `docs/plan_5d_array_vertical.md` (4개 Step, 세션당 1단계)
+
+**Step 2 축소 가능**: Step 1에서 읽기 API(`stock_detail.py`)를 이미 전환했으므로, Step 2는 `_save_confirmed_cache()`의 `avg_5d_trade_amount`/`high_5d_price` 계산 로직 중심으로 축소 가능. 사전조사 시 해당 함수 확인 필요.
+
+**Step 구성 (전체)**:
+- Step 1: DB 스키마 변경 + 백엔드 쓰기/읽기 로직 — 완료
+- Step 2: 백엔드 캐시 계산 로직 (`_save_confirmed_cache`) — 대기
+- Step 3: 프론트엔드 타입 + UI 동적 날짜 컬럼 (2개 프론트엔드 파일)
+- Step 4: 테스트 전면 수정 + 문서 갱신 (3개 테스트 + 2개 문서)
+
+**주의사항**:
+- 기존 `stock_5d_array` 데이터는 삭제됨 — 앱 기동 후 5일봉 다운로드 재실행 필요
+- 종목상세 페이지가 임시 미작동 상태 — Step 3에서 복구
 
 ---
 
