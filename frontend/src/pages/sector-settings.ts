@@ -7,6 +7,7 @@ import { createSettingsManager } from '../settings'
 import { createAutoSaveHelper, type AutoSaveHelper } from '../utils/settings-save'
 import { createSettingRow, createNumInput, createMoneyInput } from '../components/common/setting-row'
 import { createDualLabelSlider, type DualLabelSliderHandle } from '../components/common/create-slider'
+import { createProgressBar, type ProgressBarHandle } from '../components/common/progress-bar'
 import { createDescText, createStepLabel } from '../components/common/settings-common'
 import { FONT_SIZE, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
@@ -40,6 +41,9 @@ let maxScoreDisplayEl: HTMLSpanElement | null = null
 let maxTargetsStatusEl: HTMLSpanElement | null = null
 let maxTargetsSumEl: HTMLDivElement | null = null
 let unsubHotStore: (() => void) | null = null
+let receiveProgressBar: ProgressBarHandle | null = null
+let receiveStatusLabelEl: HTMLSpanElement | null = null
+let thresholdInfoSpan: HTMLSpanElement | null = null
 
 // 현재 값 추적
 let currentVals: Record<string, number> = {}
@@ -50,6 +54,18 @@ async function onNumChange(key: string, value: number): Promise<void> {
   currentVals[key] = v
   if (autoSaveHelper) {
     autoSaveHelper.autoSave(key, v)
+  }
+}
+
+// 수신율 상태 라벨 갱신 — 임계치 대기/진행 중 (P21 투명성)
+function _updateStatusLabel(pct: number, threshold: number): void {
+  if (!receiveStatusLabelEl) return
+  if (pct >= threshold) {
+    receiveStatusLabelEl.textContent = '업종순위 계산 진행 중'
+    receiveStatusLabelEl.style.color = COLOR.success
+  } else {
+    receiveStatusLabelEl.textContent = '업종순위 계산 대기 중'
+    receiveStatusLabelEl.style.color = COLOR.down
   }
 }
 
@@ -70,6 +86,15 @@ function syncFromSettings(s: AppSettings): void {
   if (bonusRiseRatioInput && (!act || !bonusRiseRatioInput.el.contains(act))) bonusRiseRatioInput.setValue(currentVals.sector_bonus_rise_ratio_slider ?? 0)
   if (bonusRelativeStrengthInput && (!act || !bonusRelativeStrengthInput.el.contains(act))) bonusRelativeStrengthInput.setValue(currentVals.sector_bonus_relative_strength_slider ?? 0)
   if (bonusTradeAmountInput && (!act || !bonusTradeAmountInput.el.contains(act))) bonusTradeAmountInput.setValue(currentVals.sector_bonus_trade_amount_slider ?? 0)
+
+  // 임계치 변경 시 진행률 바 마커 + 임계치 표시 + 상태 라벨 갱신
+  const threshold = currentVals.sector_start_threshold_pct ?? 70
+  if (receiveProgressBar) receiveProgressBar.setThreshold(threshold)
+  if (thresholdInfoSpan) thresholdInfoSpan.textContent = `(임계치 ${threshold}%)`
+  if (receiveStatusLabelEl) {
+    const curPct = uiStore.getState().receiveRate?.pct ?? 0
+    _updateStatusLabel(curPct, threshold)
+  }
 }
 
 /* ── 가산점 슬라이더 2행 레이아웃 (매수설정 슬라이더와 동일 패턴 — P23 일관성) ── */
@@ -121,27 +146,36 @@ function mount(container: HTMLElement): void {
   root.appendChild(createStepLabel('②', '업종순위: 수신율 기반 계산'))
   thresholdInput = createNumInput({ value: 70, onChange: v => { onNumChange('sector_start_threshold_pct', v) }, step: 1, name: 'sector_start_threshold_pct' })
 
-  const receiveRateSpan = document.createElement('span')
-  Object.assign(receiveRateSpan.style, { fontSize: '12px', color: COLOR.down, marginLeft: '8px' })
   const _initialRate = uiStore.getState().receiveRate
-  receiveRateSpan.textContent = _initialRate
-    ? `(현재: ${_initialRate.pct.toFixed(1)}%)`
-    : '(현재: 0%)'
+  const _initialThreshold = uiStore.getState().settings?.sector_start_threshold_pct ?? 70
 
-  const labelContainer = document.createElement('div')
-  Object.assign(labelContainer.style, { display: 'flex', alignItems: 'center' })
-  const labelText = document.createElement('span')
-  labelText.textContent = '업종순위 계산 수신율'
-  Object.assign(labelText.style, { color: COLOR.neutral })
-  labelContainer.appendChild(labelText)
-  labelContainer.appendChild(receiveRateSpan)
-
-  const thresholdRow = createSettingRow(labelContainer, thresholdInput.el)
+  // 1행: 임계치 설정 입력란 (라벨 명확화 — "수신율" → "임계치")
+  const thresholdRow = createSettingRow('업종순위 계산 임계치', thresholdInput.el)
   thresholdRow.style.margin = '0'
   thresholdRow.style.borderBottom = 'none'
   root.appendChild(thresholdRow)
 
-  // 수신/미수신 종목수 표시 행 — 정적 라벨(검정) + 동적 숫자(파랑) 분리
+  // 2행: 동적 상태 라벨 (대기 중 / 진행 중) — P21 투명성
+  receiveStatusLabelEl = document.createElement('span')
+  Object.assign(receiveStatusLabelEl.style, {
+    fontSize: FONT_SIZE.small,
+    color: COLOR.down,
+    display: 'block',
+    padding: '4px 0 2px 0',
+  })
+  _updateStatusLabel(_initialRate?.pct ?? 0, _initialThreshold)
+  root.appendChild(receiveStatusLabelEl)
+
+  // 3행: 진행률 바 + 임계치 마커 + 우측 % 수치
+  receiveProgressBar = createProgressBar(COLOR.down, { showPct: true, height: '10px' })
+  receiveProgressBar.setThreshold(_initialThreshold)
+  receiveProgressBar.setValue(_initialRate?.pct ?? 0)
+  const progressBarRow = document.createElement('div')
+  Object.assign(progressBarRow.style, { padding: '0 0 4px 0' })
+  progressBarRow.appendChild(receiveProgressBar.el)
+  root.appendChild(progressBarRow)
+
+  // 4행: 수신/미수신 종목수 + 임계치 정보
   const receiveCountRow = document.createElement('div')
   Object.assign(receiveCountRow.style, {
     fontSize: FONT_SIZE.small,
@@ -157,6 +191,10 @@ function mount(container: HTMLElement): void {
   // 동적 숫자 span — 미수신 종목수
   const missedCountSpan = document.createElement('span')
   Object.assign(missedCountSpan.style, { color: COLOR.down })
+  // 임계치 표시 span
+  thresholdInfoSpan = document.createElement('span')
+  Object.assign(thresholdInfoSpan.style, { color: COLOR.tertiary, marginLeft: '8px' })
+  thresholdInfoSpan.textContent = `(임계치 ${_initialThreshold}%)`
 
   function _fillReceiveCount(rate: { received: number; total: number }) {
     receivedCountSpan.textContent = `${rate.received}종목`
@@ -165,7 +203,9 @@ function mount(container: HTMLElement): void {
 
   if (_initialRate) {
     _fillReceiveCount(_initialRate)
-    receiveCountRow.append('수신: ', receivedCountSpan, ' / 미수신: ', missedCountSpan)
+    receiveCountRow.append('수신 ', receivedCountSpan, ' / 미수신 ', missedCountSpan, thresholdInfoSpan)
+  } else {
+    receiveCountRow.append('수신 ', receivedCountSpan, ' / 미수신 ', missedCountSpan, thresholdInfoSpan)
   }
   root.appendChild(receiveCountRow)
 
@@ -315,21 +355,21 @@ function mount(container: HTMLElement): void {
     }
   })
 
-  // uiStore 구독 — 수신율 표시 갱신
+  // uiStore 구독 — 수신율 표시 갱신 (진행률 바 + 라벨 + 종목수)
   let prevReceiveRate = uiStore.getState().receiveRate
   unsubUiStore = uiStore.subscribe(() => {
     const uiState = uiStore.getState()
     if (uiState.receiveRate !== prevReceiveRate) {
       prevReceiveRate = uiState.receiveRate
-      if (uiState.receiveRate) {
-        receiveRateSpan.textContent = `(현재: ${uiState.receiveRate.pct.toFixed(1)}%)`
-        // 최초 수신율이 없었을 경우 분리된 span 구성
-        if (receiveCountRow.childElementCount === 0) {
-          _fillReceiveCount(uiState.receiveRate)
-          receiveCountRow.append('수신: ', receivedCountSpan, ' / 미수신: ', missedCountSpan)
-        } else {
-          _fillReceiveCount(uiState.receiveRate)
-        }
+      const rate = uiState.receiveRate
+      const threshold = currentVals.sector_start_threshold_pct ?? 70
+      if (rate) {
+        receiveProgressBar?.setValue(rate.pct)
+        _fillReceiveCount(rate)
+        _updateStatusLabel(rate.pct, threshold)
+      } else {
+        receiveProgressBar?.setValue(0)
+        _updateStatusLabel(0, threshold)
       }
     }
   })
@@ -369,6 +409,9 @@ function unmount(): void {
   maxScoreDisplayEl = null
   maxTargetsStatusEl = null
   maxTargetsSumEl = null
+  receiveProgressBar = null
+  receiveStatusLabelEl = null
+  thresholdInfoSpan = null
   saving = false
 }
 
