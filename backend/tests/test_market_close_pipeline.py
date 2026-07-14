@@ -818,6 +818,9 @@ class TestFetch5dDataOnly:
         mock_lock = MagicMock()
         mock_lock.__aenter__ = AsyncMock(return_value=mock_lock)
         mock_lock.__aexit__ = AsyncMock(return_value=None)
+        # 최근 5개 거래일 mock — 오래된 행 정리 로직 검증용
+        from datetime import date
+        recent_5_days = [date(2025, 1, 2), date(2025, 1, 3), date(2025, 1, 4), date(2025, 1, 5), date(2025, 1, 6)]
         with patch("backend.app.services.market_close_pipeline.state", mock_state), \
              patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
@@ -829,10 +832,18 @@ class TestFetch5dDataOnly:
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new_callable=AsyncMock), \
              patch("backend.app.core.trading_calendar.get_kst_today_str", return_value="20250106"), \
+             patch("backend.app.core.trading_calendar.get_recent_trading_days", return_value=recent_5_days), \
              patch("asyncio.sleep", new_callable=AsyncMock):
             result = await fetch_5d_data_only()
             assert result["fetched"] == 2
             assert result["failed"] == 0
+            # 오래된 행 정리 검증 — DELETE FROM stock_5d_bars WHERE dt < '20250102' 호출 확인
+            delete_calls = [
+                call for call in mock_conn.execute.call_args_list
+                if "DELETE FROM stock_5d_bars" in str(call)
+            ]
+            assert len(delete_calls) == 1
+            assert "20250102" in str(delete_calls[0])
 
     @pytest.mark.asyncio
     async def test_5d_api_returns_none(self):
