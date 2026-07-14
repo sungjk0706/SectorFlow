@@ -2,18 +2,62 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
-### 작업: 가상스크롤 테이블 헤더/본문 컬럼 세로선 불일치 수정 — 완료
+### 작업: KRX 구독 시작/종료 시간 별도 추가 — 세션 1 완료, 세션 2 대기
 
-**진행 단계**: 완료. 다음 단계: 신규 작업 지시 가능.
+**진행 단계**: 세션 1(설정 키 2개 추가) 완료. 다음 세션에서 세션 2(타이머/콜백 구현) 착수 (사용자 승인 시).
 
-**완료 내용**:
-- **커밋 `0aec178`**: `applyGridTemplatePx()`가 `scrollContainer.querySelector('div')`로 sentinel를 찾으나 DOM 순서상 첫 div인 `headerDiv`를 반환하여, 리사이즈 시 데이터 행의 `gridTemplateColumns`가 갱신되지 않는 버그 수정.
-  - `virtual-scroller.ts`: sentinel div에 `data-vs-sentinel` 속성 추가.
-  - `data-table.ts`: `querySelector('div')` → `querySelector('[data-vs-sentinel]')`로 실제 데이터 행 컨테이너 정확히 식별.
-  - 검증: typecheck 통과, vite build 통과, vitest 101 passed (7 files), Playwright headless Chrome으로 리사이즈 시 헤더/본문 GTC 일치 확인, 잔존 프로세스 0건.
+**세션 1 완료 내용 (2026-07-14)**:
+- 설정 키 2개(`ws_subscribe_start_krx`, `ws_subscribe_end_krx`)의 기반 구축 — 7개 파일 수정
+- 백엔드 3파일: `settings_defaults.py`(기본값 09:00/15:30), `settings_store.py`(저장 페이로드 + HH:MM 검증), `engine_settings.py`(엔진 설정 dict)
+- 프론트엔드 2파일: `types/index.ts`(필드 2개), `general-settings.ts`(KRX 구독 시간 입력란 + `scheduleTimeSave` handle 매개변수화)
+- 테스트 2파일: `test_settings_store.py`(3개 dict에 새 키 추가), `test_engine_settings.py`(5문자 검증 2줄)
+- **설계 결정**: `engine_service.py`의 `_WS_SCHEDULE_KEYS`는 세션 2에서 추가 (P16 준수 — 설정 키가 타이머 동작과 함께 연결)
+- 검증: ruff 기존 실패 1건(save_settings unused import, 수정 전 동일 실패), py_compile OK, pytest 107 passed, tsc 통과, vite build 통과, vitest 101 passed, 런타임 기동 164ms 정상, 잔존 프로세스 0건
 
-**다음 단계 제안 (세션당 1단계, 규칙 0-1 준수)**:
-1. 신규 작업 지시 가능
+**단순화된 구조 (P24 준수)**:
+```
+기존:
+  ws_subscribe_start(08:50) → 전체 종목 구독 (KRX+NXT 일괄)
+  ws_subscribe_end(15:30)   → 전체 종목 해지
+
+제안:
+  ws_subscribe_start(08:50)       → NXT 종목만 구독 (기존 로직에 KRX 제외 필터 추가)
+  ws_subscribe_start_krx(09:00)   → KRX 종목만 추가 REG (신규 단순 콜백)
+  ws_subscribe_end_krx(15:30)     → remove_krx_only_stocks() 호출 (기존 함수 재사용)
+  ws_subscribe_end(20:00)         → 전체 종목 해지 (기존 로직 그대로)
+```
+
+**P24 재검토 핵심 통찰 (이전 조사가 놓친 사실)**:
+1. **엔진 루프 이벤트 분리 불필요** — 엔진 루프(engine_loop.py:298-351)는 WS 서버 연결 자체만 담당. KRX/NXT 종목 구분 구독은 타이머 콜백이 직접 수행. 단일 `ws_window_changed_event` 그대로 유지.
+2. **KRX 종목만 해지하는 함수 이미 존재** — `remove_krx_only_stocks()` (market_close_pipeline.py:119-199). 현재 15:30 `_on_krx_after_hours_start()`에서 호출 중. 이 함수를 KRX 구독 종료 타이머 콜백에서 재사용.
+3. **전역 작업(GC, 필드 초기화, 브로드캐스트) 분리 불필요** — `_on_ws_subscribe_start()`의 전역 작업은 WS 서버 연결 자체에 대한 것. KRX 구독 시작은 WS 이미 연결된 상태에서 KRX 종목만 추가 REG이므로 전역 작업 불필요. 기존 `_on_ws_subscribe_start/end`는 그대로, KRX용 단순 콜백만 추가.
+
+**남은 작업 2세션 분할**:
+- **세션 2**: 타이머/콜백 구현 (daily_time_scheduler.py 1파일 중심) + `engine_service.py` `_WS_SCHEDULE_KEYS` 추가
+  - `schedule_ws_subscribe_timers()`에 KRX 타이머 2개 추가
+  - `_on_ws_subscribe_start_krx()` 신규 — KRX 종목만 추가 REG (`is_nxt_enabled()` 필터)
+  - `_on_ws_subscribe_end_krx()` 신규 — `remove_krx_only_stocks()` 호출
+  - `_on_ws_subscribe_start()`에 KRX 제외 필터 추가 (NXT-only 구독으로 변경)
+  - `_on_krx_after_hours_start()`에서 `remove_krx_only_stocks()` 호출 제거 (중복 해결, `recompute_sector_summary_now()`는 유지)
+  - `_init_ws_subscribe_state()`에 KRX 구독 구간 판정 추가
+  - `engine_service.py` `_WS_SCHEDULE_KEYS`에 `ws_subscribe_start_krx`, `ws_subscribe_end_krx` 추가 (P16 — 타이머와 함께 연결)
+  - "KRX 시작 ≥ NXT 시작, KRX 종료 ≤ NXT 종료" 검증 추가 (P22)
+- **세션 3**: 테스트 + 검증
+  - 타이머 예약/콜백 테스트 추가
+  - 런타임 기동 검증 (규칙 5)
+  - 잔존 프로세스 0건 확인 (규칙 5-1)
+
+**주의사항 (P21/P22)**:
+- **P21 (사용자 투명성)**: 기존 08:50~15:30 설정 사용자의 동작이 바뀜 — 08:50에 NXT만 구독, 09:00에 KRX 추가. UI에 "NXT 구독 시간"과 "KRX 구독 시간"으로 명확히 표시 필요.
+- **P22 (데이터 정합성)**: 경계 케이스 — KRX 구독 시작 시각이 NXT 구독 시작 시각보다 빠르면 WS 미연결 상태에서 KRX REG 시도 → 실패. 단순 규칙으로 "KRX 시작 ≥ NXT 시작, KRX 종료 ≤ NXT 종료" 검증 추가 필요.
+- **15:30 업종 재계산 유지**: `_on_krx_after_hours_start()`의 `recompute_sector_summary_now()`는 그대로 유지 (market_phase 기반 업종 재계산이므로 KRX 구독 종료와 무관). `remove_krx_only_stocks()` 호출만 제거.
+- **세션 1~세션 2 사이 상태**: UI에 "KRX 구독 시간" 입력란이 표시되고 저장되지만, 실제 KRX 분리 구독 동작은 구현되지 않음. 사용자가 입력란을 변경해도 기존 통합 구독 동작 유지. 세션 2에서 타이머 구현 시 실제 동작 연결.
+
+**이전 작업: 가상스크롤 테이블 헤더/본문 컬럼 세로선 불일치 수정 — 완료 (커밋 `0aec178`)**:
+- `applyGridTemplatePx()`가 `scrollContainer.querySelector('div')`로 sentinel를 찾으나 DOM 순서상 첫 div인 `headerDiv`를 반환하여, 리사이즈 시 데이터 행의 `gridTemplateColumns`가 갱신되지 않는 버그 수정.
+- `virtual-scroller.ts`: sentinel div에 `data-vs-sentinel` 속성 추가.
+- `data-table.ts`: `querySelector('div')` → `querySelector('[data-vs-sentinel]')`로 실제 데이터 행 컨테이너 정확히 식별.
+- 검증: typecheck 통과, vite build 통과, vitest 101 passed (7 files), Playwright headless Chrome으로 리사이즈 시 헤더/본문 GTC 일치 확인, 잔존 프로세스 0건.
 
 **이전 작업: 장운영정보(market_phase) 단일 소스 통합 — 수정 1~8 전부 완료**:
 - 수정 8 (커밋 `aba9e92`): 재계산 타이머 3개 → `_broadcast_market_phase()` 내 페이즈 변경 감지 시 자동 트리거 통합.
@@ -26,15 +70,24 @@
 - JIF 누락 시 `market_phase` 부정확 (시계 타이머 백업으로 최대 1초 지연)
 - 구독 구간 내 재기동 시 초기값 "장개시전" → 현재 페이즈 전환 감지로 재계산 트리거됨 (올바른 동작, 부트스트랩 재계산과 중복 가능하나 정합성 문제 없음)
 
-**추가 검토 결론: `ws_subscribe_start/end` 자동화 대체 권장하지 않음**:
+**추가 검토 결론: `ws_subscribe_start/end` 완전 자동화 권장하지 않음**:
 - 거래소 장시간과 사용자가 원하는 데이터 수신 시간은 다를 수 있음 (P21 위반)
 - 테스트모드 유연성 제약 (P18 위반)
 - 현재 3계층 구조(ws_subscribe_on 토글 + 시간 설정 + market_phase 타이머)가 합리적
-- 다만 기본값 09:00~15:00을 NXT 거래시간 고려해 08:50~15:30 조정은 별도 세션에서 검토 가능
+- **단, KRX 구독 시간 별도 추가는 사용자 설정 기반이므로 P21/P18 부함 — 위 조사 완료**
 
 ---
 
 ## 직전 완료 작업
+- **2026-07-14: KRX 구독 시간 설정 키 2개 추가 — 세션 1 (P10/P21/P23/P24)**
+  - **현상**: KRX 구독 시작/종료 시간을 NXT 구독 시간과 별도로 설정할 수 있는 기능이 없어, 세션 1에서 설정 키 2개(`ws_subscribe_start_krx`, `ws_subscribe_end_krx`)의 기반을 구축.
+  - **근본 원인**: 기존 `ws_subscribe_start`/`ws_subscribe_end` 2개 키만 존재하여 KRX/NXT 구분 설정이 불가능. 설정 정의(`settings_defaults.py`), 저장(`settings_store.py`), 엔진 전달(`engine_settings.py`), UI 입력(`general-settings.ts`), 타입(`types/index.ts`), 테스트(2파일) 경로에 새 키가 없었음.
+  - **수정 파일**: 백엔드 3파일 + 프론트엔드 2파일 + 테스트 2파일 — `settings_defaults.py`, `settings_store.py`, `engine_settings.py`, `types/index.ts`, `general-settings.ts`, `test_settings_store.py`, `test_engine_settings.py`
+  - **변경 내용**: (1) `settings_defaults.py:21-22` — `DEFAULT_USER_SETTINGS`에 `ws_subscribe_start_krx="09:00"`, `ws_subscribe_end_krx="15:30"` 추가. (2) `settings_store.py:74-75` — `general_save_payload_from_flat()`에 새 키 2개 추가 + `_TIME_FIELDS`에 HH:MM 검증 대상 추가. (3) `engine_settings.py:89-90` — result dict에 새 키 2개 추가 (`str(merged[...])[:5]` 패턴). (4) `types/index.ts:139-140` — `IndexData` 인터페이스에 필드 2개 추가. (5) `general-settings.ts` — `scheduleTimeSave` handle 매개변수화 (기존 하드코딩 `wsTimeHandle` → 매개변수로 일반화), "KRX 구독 시간" TimePairInput 입력란 추가, `wsKrxTimeHandle` 변수/로드/cleanup/비활성화 처리. (6) 테스트 2파일 — 기존 dict에 새 키 2개 추가 + 5문자 검증 2줄.
+  - **영향 범위**: 7개 파일 (+약 50줄). 세션 1 완료 후 세션 2 전까지: UI에 "KRX 구독 시간" 입력란이 표시되고 저장되지만, 실제 KRX 분리 구독 동작은 구현되지 않음. 사용자가 입력란을 변경해도 기존 통합 구독 동작 유지. 세션 2에서 타이머 구현 시 실제 동작 연결. `engine_service.py`의 `_WS_SCHEDULE_KEYS`는 세션 2에서 추가 (P16 준수 — 설정 키가 타이머 동작과 함께 연결).
+  - **검증**: ruff 기존 실패 1건 (`save_settings` unused import, 수정 전 동일 실패 확인 — 규칙 4-1 준수). py_compile OK. pytest 107 passed (test_settings_store + test_engine_settings). tsc --noEmit 통과. vite build 통과 (1.98s). vitest 101 passed (7 files). 런타임 기동 164ms, `장 상태 초기화: KRX=정규장, NXT=메인마켓` 확인, 에러/Traceback/RuntimeWarning 없음. 잔존 프로세스 0건 (규칙 5-1 준수).
+  - **커밋**: (이번 커밋)
+
 - **2026-07-14: 가상스크롤 테이블 헤더/본문 컬럼 세로선 불일치 수정 — querySelector('div') → [data-vs-sentinel] (P16/P23)**
   - **현상**: 수익상세 페이지 매도내역/매수내역 테이블에서 컬럼 타이틀(헤더)의 세로셀선과 데이터 행의 세로셀선이 일치하지 않음.
   - **근본 원인**: `frontend/src/components/common/data-table.ts:695` — `applyGridTemplatePx()` 함수가 리사이즈 시 데이터 행 컨테이너(sentinel)를 찾기 위해 `scrollContainer.querySelector('div')`를 사용했으나, 이는 DOM 순서상 첫 번째 div인 `headerDiv`를 반환함. 결과로 헤더 `gridTemplateColumns`는 갱신되나 데이터 행 `gridTemplateColumns`는 갱신되지 않아 구값 유지. 컨테이너 너비가 변하는 시점(플렉스 레이아웃 안착, 탭 전환, 윈도우 리사이즈 등)부터 헤더와 본문의 컬럼 폭이 불일치.

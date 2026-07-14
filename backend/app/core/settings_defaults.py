@@ -20,6 +20,8 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "ws_subscribe_on": False,
     "ws_subscribe_start": "09:00",
     "ws_subscribe_end": "15:00",
+    "ws_subscribe_start_krx": "09:00",
+    "ws_subscribe_end_krx": "15:30",
     "confirmed_download_time": "20:40",
     
     # 텔레그램

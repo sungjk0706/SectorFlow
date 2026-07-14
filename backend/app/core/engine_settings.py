@@ -88,6 +88,8 @@ def build_engine_settings_dict(flat: dict) -> dict:
         # WS 구독 스케줄러
         "ws_subscribe_start":   str(merged["ws_subscribe_start"])[:5],
         "ws_subscribe_end":     str(merged["ws_subscribe_end"])[:5],
+        "ws_subscribe_start_krx": str(merged["ws_subscribe_start_krx"])[:5],
+        "ws_subscribe_end_krx":   str(merged["ws_subscribe_end_krx"])[:5],
         # 매수 설정 (엔진 내부 필드명) — 값은 merged(기본값 포함), _on 마이그레이션은 flat 기반
         # P20: 0도 유효값이므로 or 폴백 금지 — dict 블록 뒤에서 _v if _v is not None else 기본값 패턴으로 처리
         # 매도/손절/트레일링 (엔진 내부 필드명)
