@@ -86,7 +86,7 @@
   - **변경 내용**: (1) `settings_defaults.py:21-22` — `DEFAULT_USER_SETTINGS`에 `ws_subscribe_start_krx="09:00"`, `ws_subscribe_end_krx="15:30"` 추가. (2) `settings_store.py:74-75` — `general_save_payload_from_flat()`에 새 키 2개 추가 + `_TIME_FIELDS`에 HH:MM 검증 대상 추가. (3) `engine_settings.py:89-90` — result dict에 새 키 2개 추가 (`str(merged[...])[:5]` 패턴). (4) `types/index.ts:139-140` — `IndexData` 인터페이스에 필드 2개 추가. (5) `general-settings.ts` — `scheduleTimeSave` handle 매개변수화 (기존 하드코딩 `wsTimeHandle` → 매개변수로 일반화), "KRX 구독 시간" TimePairInput 입력란 추가, `wsKrxTimeHandle` 변수/로드/cleanup/비활성화 처리. (6) 테스트 2파일 — 기존 dict에 새 키 2개 추가 + 5문자 검증 2줄.
   - **영향 범위**: 7개 파일 (+약 50줄). 세션 1 완료 후 세션 2 전까지: UI에 "KRX 구독 시간" 입력란이 표시되고 저장되지만, 실제 KRX 분리 구독 동작은 구현되지 않음. 사용자가 입력란을 변경해도 기존 통합 구독 동작 유지. 세션 2에서 타이머 구현 시 실제 동작 연결. `engine_service.py`의 `_WS_SCHEDULE_KEYS`는 세션 2에서 추가 (P16 준수 — 설정 키가 타이머 동작과 함께 연결).
   - **검증**: ruff 기존 실패 1건 (`save_settings` unused import, 수정 전 동일 실패 확인 — 규칙 4-1 준수). py_compile OK. pytest 107 passed (test_settings_store + test_engine_settings). tsc --noEmit 통과. vite build 통과 (1.98s). vitest 101 passed (7 files). 런타임 기동 164ms, `장 상태 초기화: KRX=정규장, NXT=메인마켓` 확인, 에러/Traceback/RuntimeWarning 없음. 잔존 프로세스 0건 (규칙 5-1 준수).
-  - **커밋**: (이번 커밋)
+  - **커밋**: `eff5e1e`
 
 - **2026-07-14: 가상스크롤 테이블 헤더/본문 컬럼 세로선 불일치 수정 — querySelector('div') → [data-vs-sentinel] (P16/P23)**
   - **현상**: 수익상세 페이지 매도내역/매수내역 테이블에서 컬럼 타이틀(헤더)의 세로셀선과 데이터 행의 세로셀선이 일치하지 않음.
