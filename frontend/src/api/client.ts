@@ -118,6 +118,9 @@ export const api = {
       body: body ? JSON.stringify(body) : undefined,
     }),
 
+  get: <T = unknown>(path: string) =>
+    request<T>(path),
+
   getDailySummary: (from: string, to: string, tradeMode: string, days?: number) =>
     request<Record<string, unknown>[]>(`/api/trade-history/daily-summary?date_from=${from}&date_to=${to}&trade_mode=${tradeMode}${days !== undefined ? `&days=${days}` : ''}`),
 
