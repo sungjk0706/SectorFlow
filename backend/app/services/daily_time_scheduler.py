@@ -283,8 +283,10 @@ async def is_ws_subscribe_window(settings: dict | None = None) -> bool:
     """
     현재 시각이 웹소켓 구독 허용 구간인지 판단.
     조건: KRX 영업일(평일 + 공휴일 아님) AND 구독 시간 구간 내
-    구독 구간 = ws_subscribe_start ~ ws_subscribe_end (사용자 설정, 기본값 07:50~20:00)
-    settings 미전달 시 settings.json에서 직접 읽음.
+    구독 구간 = ws_subscribe_start ~ ws_subscribe_end (사용자 설정).
+    초기 기본값 09:00~15:00 (settings_defaults.py — 최초 설치 시 1회만 사용).
+    사용자가 설정을 변경하면 DB에 저장되어 이후 해당 값이 사용됨.
+    settings 미전달 시 integrated_system_settings_cache에서 읽음.
     """
     # ── 영업일 판단: 주말·공휴일 항상 차단 ──
     from backend.app.core.trading_calendar import is_trading_day
