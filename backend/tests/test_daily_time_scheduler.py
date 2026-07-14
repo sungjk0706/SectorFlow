@@ -428,8 +428,6 @@ class TestGetMarketPhase:
             result = get_market_phase()
             assert result["krx"] == "정규장"
             assert result["nxt"] == "메인마켓"
-            assert result["krx_event"] is None
-            assert result["nxt_event"] is None
             assert result["is_nxt_only"] is False
 
     def test_includes_krx_alert(self):
@@ -438,18 +436,6 @@ class TestGetMarketPhase:
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             result = get_market_phase()
             assert result["krx_alert"] == "테스트"
-            assert result["is_nxt_only"] is False
-
-    def test_includes_events(self):
-        mock_state = MagicMock()
-        mock_state.market_phase = {
-            "krx": "정규장", "nxt": "메인마켓",
-            "krx_event": "정규장 장개시 5분 전", "nxt_event": "메인마켓 장개시 1분 전",
-        }
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
-            result = get_market_phase()
-            assert result["krx_event"] == "정규장 장개시 5분 전"
-            assert result["nxt_event"] == "메인마켓 장개시 1분 전"
             assert result["is_nxt_only"] is False
 
     def test_empty_krx_logs_error(self):
@@ -622,21 +608,6 @@ class TestBroadcastMarketPhase:
             assert mock_state.market_phase["krx"] == "정규장"
             assert mock_state.market_phase["nxt"] == "메인마켓"
             mock_sched.assert_called_once()
-
-    def test_clears_jif_events_on_transition(self):
-        """시계 페이즈 전환 시 JIF 휘발성 이벤트 라벨(krx_event/nxt_event) 초기화 확인."""
-        mock_state = MagicMock()
-        mock_state.market_phase = {
-            "krx": "시가 동시호가", "nxt": "정규장 준비",
-            "krx_event": "정규장 장개시 1분 전", "nxt_event": "메인마켓 장개시 1분 전",
-        }
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
-             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
-             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
-            _broadcast_market_phase()
-            assert mock_state.market_phase["krx_event"] is None
-            assert mock_state.market_phase["nxt_event"] is None
 
     def test_exception_does_not_raise(self):
         with patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", side_effect=Exception("boom")):

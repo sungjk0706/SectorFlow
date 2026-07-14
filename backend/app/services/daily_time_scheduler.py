@@ -241,9 +241,6 @@ def get_market_phase() -> dict:
     phase: dict = {"krx": krx, "nxt": nxt}
     if mp.get("krx_alert"):
         phase["krx_alert"] = mp["krx_alert"]
-    # JIF 실시간 이벤트 라벨(휘발성) — None이어도 필드 포함하여 프론트엔드가 인계받을 수 있도록 함
-    phase["krx_event"] = mp.get("krx_event")
-    phase["nxt_event"] = mp.get("nxt_event")
     # NXT-only 구간 플래그 — 프론트엔드가 중복 상수 없이 백엔드 SSOT를 사용하도록 파생 (P10/P22)
     phase["is_nxt_only"] = is_nxt_only_window()
     return phase
@@ -503,8 +500,6 @@ def _broadcast_market_phase() -> None:
 
     state.market_phase를 시간 기반 최신값으로 갱신 후 브로드캐스트.
     SSOT: state.market_phase가 항상 현재 시각 기반 상태를 반영하도록 보장.
-    시계 페이즈 전환 시 JIF 휘발성 이벤트 라벨(krx_event/nxt_event)을 초기화하여
-    경계 이벤트(장시작/장마감 등) 이후 시계 페이즈명이 표시를 인계받도록 한다.
 
     페이즈 변경 감지 시 업종 재계산 트리거 (수정 8 — 타이머 3개 통합):
       - NXT "프리마켓" 진입 → _on_nxt_premarket_start() (08:00, KRX 단독 종목 제외)
@@ -512,7 +507,6 @@ def _broadcast_market_phase() -> None:
       - KRX "정규장" 진입 → _on_krx_market_open() (09:00, 전체 종목 + 재구독)
       - KRX "체결 정산" 진입 → _on_krx_after_hours_start() (15:30, KRX 단독 종목 구독해지)
       - NXT "장마감" 진입 → _on_ws_subscribe_end() (20:00, WS 연결 해제 + 구독 해지)
-    JIF 경계 이벤트와 시계 타이머 중복 호출 시 첫 번째 호출만 트리거 (P22).
     """
     try:
         from backend.app.services.engine_account_notify import _broadcast
@@ -521,9 +515,6 @@ def _broadcast_market_phase() -> None:
         fresh = calc_timebased_market_phase()
         state.market_phase["krx"] = fresh["krx"]
         state.market_phase["nxt"] = fresh["nxt"]
-        # 시계 전환 시 JIF 이벤트 라벨 초기화 — 경계 이벤트 이후 시계 페이즈명으로 인계
-        state.market_phase["krx_event"] = None
-        state.market_phase["nxt_event"] = None
         phase = get_market_phase()
         schedule_engine_task(_broadcast("market-phase", phase), context="market-phase 브로드캐스트")
         # 페이즈 변경 감지 → 업종 재계산 + WS 구독 시작/종료 트리거

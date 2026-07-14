@@ -32,8 +32,6 @@ export interface UIState {
     krx: string
     nxt: string
     krx_alert?: string | null
-    krx_event?: string | null
-    nxt_event?: string | null
     is_nxt_only?: boolean
   }
 
@@ -72,7 +70,7 @@ const initialState: UIState = {
   engineReady: false,
   avgAmtProgress: null,
   bootstrapStage: null,
-  marketPhase: { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null, krx_event: null, nxt_event: null, is_nxt_only: false },
+  marketPhase: { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null, is_nxt_only: false },
   buyLimitStatus: { daily_buy_spent: 0 },
   wsSubscribeStatus: { index_subscribed: false, quote_subscribed: false },
   sectorScoresDelta: null,
@@ -224,7 +222,7 @@ export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
     initialized: true,
     circuitBreakerOpen: null,
     engineReady: !!(data.bootstrap_done),
-    marketPhase: (data.market_phase as UIState['marketPhase']) ?? { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null, krx_event: null, nxt_event: null },
+    marketPhase: (data.market_phase as UIState['marketPhase']) ?? { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null },
     receiveRate: (data.receive_rate as { received: number; total: number; pct: number }) ?? null,
     avgAmtProgress: data.avg_amt_refresh ? { current: (data.avg_amt_refresh as Record<string, unknown>).current as number ?? 0, total: (data.avg_amt_refresh as Record<string, unknown>).total as number ?? 0, done: false, status: ((data.avg_amt_refresh as Record<string, unknown>).status as string) || undefined } : data.confirmed_refresh ? { current: 0, total: 0, done: false, message: ((data.confirmed_refresh as Record<string, unknown>).message as string) || '', status: 'confirmed' } : null,
   })

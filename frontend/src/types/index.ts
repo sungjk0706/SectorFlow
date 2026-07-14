@@ -92,7 +92,7 @@ export interface IndexData {
   drate?: string;
   sign?: string;
   broker_statuses?: Record<string, { token_valid: boolean; ws_connected: boolean }>;
-  market_phase?: { krx: string; nxt: string; krx_alert?: string | null; krx_event?: string | null; nxt_event?: string | null; is_nxt_only?: boolean };
+  market_phase?: { krx: string; nxt: string; krx_alert?: string | null; is_nxt_only?: boolean };
 }
 
 export interface AppSettings {
