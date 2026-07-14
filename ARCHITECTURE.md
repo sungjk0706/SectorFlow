@@ -970,12 +970,12 @@ WSManager (싱글톤)
 ```
 asyncio.call_later() 기반 — 매일 재스케줄링
 
-07:50  _on_ws_subscribe_start()     — WS 구독 시작 + GC 비활성화
+09:00  _on_ws_subscribe_start()     — WS 구독 시작 + GC 비활성화 (초기 기본값, 사용자 설정 가능)
 09:00  KRX 개장 감지
+15:00  _on_ws_subscribe_end()       — WS 구독 종료 + GC 정상화 (초기 기본값, 사용자 설정 가능)
 15:30  KRX after hours / NXT aftermarket 시작
 16:01  KRX unsubscribe              — KRX 종목 구독 해제
 18:00  NXT aftermarket 종료
-20:00  _on_ws_subscribe_end()       — WS 구독 종료 + GC 정상화
 20:40  _fire_unified_confirmed_fetch() — 확정 시세 + 5일봉 다운로드
 00:00  _on_midnight()               — 일일 리셋 (거래일 판단, 타이머 재예약)
 ```
@@ -1118,7 +1118,7 @@ ConnectorManager
 ## 16. 장마감 파이프라인
 
 ```
-20:00 _on_ws_subscribe_end()
+15:00 _on_ws_subscribe_end() (초기 기본값, 사용자 설정 가능)
   ├── GC 정상화 (gc.enable() + gc.collect())
   ├── 실시간 구독 전체 해제 (_trigger_unreg_all)
   ├── time_scheduler_on = False, ws_subscribe_on = False
