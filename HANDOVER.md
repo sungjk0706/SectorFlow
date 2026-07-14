@@ -4,7 +4,7 @@
 
 ### 작업: 5일봉 배열 테이블 구조 개선 (방식 B) — Step 1 완료 (DB 스키마 + 백엔드 쓰기/읽기 전환)
 
-**진행 단계**: Step 1 완료 (검증 완료, 커밋 진행 중). 다음 작업: Step 2 (백엔드 읽기 API + 캐시 계산 로직) 대기 — 단, Step 1에서 읽기 API(`stock_detail.py`)를 이미 전환했으므로 Step 2는 캐시 계산 로직(`_save_confirmed_cache`) 중심으로 축소 가능.
+**진행 단계**: Step 1 완료 (커밋 `82dcd96`). 다음 작업: Step 2 (백엔드 읽기 API + 캐시 계산 로직) 대기 — 단, Step 1에서 읽기 API(`stock_detail.py`)를 이미 전환했으므로 Step 2는 캐시 계산 로직(`_save_confirmed_cache`) 중심으로 축소 가능.
 
 **완료 내용 (2026-07-15, 커밋 진행 중)**:
 - **현상**: `stock_5d_array` 테이블이 가로 배열(`day1~day5`) 구조로, 각 일봉의 실제 날짜를 알 수 없어 당일/직전1일 중복 버그의 근본 원인.
@@ -191,7 +191,7 @@
   - **변경 내용**: (1) `stock_tables.py` — `create_stock_5d_array_table()` 제거 → `create_stock_5d_bars_table()` 추가 (`stock_5d_array` DROP + `stock_5d_bars` CREATE, 복합키 `code, dt`). (2) `app.py` — startup에 `create_stock_5d_bars_table()` 호출 연결 (P16 dead code 해소). (3) `kiwoom_stock_rest.py` — `fetch_ka10081_daily_5d_data()` 응답에 `dts_5d_array` 추가. (4) `market_close_pipeline.py` — `execute_unified_rolling_and_save()` rolling 제거 → 당일 1행 INSERT OR REPLACE + `avg_5d`/`high_5d` 재계산; `fetch_5d_data_only()` 5일치 세로 행 저장; 778줄 정리 로직 `stock_5d_bars`로 변경. (5) `stock_detail.py` — 읽기 API를 `stock_5d_bars` 기반 `bars` 배열 응답으로 전환 (Step 2에서 앞당김). (6) 테스트 3파일 — rolling 테스트 2개 → 세로 행 upsert 테스트로 재작성, mock에 `dts_5d_array` 추가.
   - **영향 범위**: 기존 5일봉 데이터 삭제 (앱 기동 후 5일봉 다운로드 재실행 필요). 종목상세 페이지 임시 미작동 (Step 3에서 복구). DB 백업 `stocks.db.20260715_002605.backup` (1.0M) 생성.
   - **검증**: py_compile 8개 파일 OK. ruff All checks passed. pytest 150 passed in 0.89s. 런타임 기동 193ms (`-W error::RuntimeWarning`), `5일봉 세로 행 테이블 초기화 완료` 로그 확인, 에러/Traceback/RuntimeWarning 없음. 잔존 프로세스 0건 (규칙 5-1 준수).
-  - **커밋**: (진행 중)
+  - **커밋**: `82dcd96`
 
 - **2026-07-14: 장운영정보 기반 타이머 통합 — Step 3: ws_subscribe_start/end 설정 키 + UI 제거 + 마이그레이션 (P10/P16/P24)**
   - **현상**: Step 2에서 `ws_subscribe_start`/`end` 타이머가 제거되고 `market_phase` 기반으로 통합되었으나, 설정 키 2개가 코드베이스 전체(백엔드 6파일 + 프론트엔드 2파일 + 테스트 3파일)에 잔존하여 dead data 상태. 계획서에 누락된 2개 함수(`retry_pipeline_catchup_after_bootstrap`, `_apply_auto_toggle_on_startup`)도 이 키를 참조.
