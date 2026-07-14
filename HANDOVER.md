@@ -2,9 +2,9 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
-### 다음 작업: 업종 점수 산정 방식 리팩토링 — Step 3 대기
+### 다음 작업: 업종 점수 산정 방식 리팩토링 — Step 4 대기
 
-**진행 단계**: Step 2 Split B 완료 (커밋 `b02ce34`). 다음 세션에서 Step 3 사전조사부터 시작.
+**진행 단계**: Step 3 완료 (커밋 `477d562`). 다음 세션에서 Step 4 사전조사부터 시작.
 
 **계획서**: `docs/plan_sector_score_redesign.md` (4개 Step, 세션당 1단계 — Step 2를 Split A/B로 분할)
 
@@ -20,8 +20,36 @@
 - Step 1: 백엔드 점수 계산 로직 전면 개편 (5개 파일) — 완료
 - Step 2 Split A: dead code 제거 + 파라미터 전환 (소스 7 + 테스트 2) — 완료
 - Step 2 Split B: rank/is_cutoff_passed 전환 (소스 4 + 테스트 5) — 완료
-- Step 3: 프론트엔드 설정 패널 + 타입 (3개 파일) — 대기
-- Step 4: 테스트 + 문서 갱신 (3개 테스트 + 2개 문서)
+- Step 3: 프론트엔드 설정 패널 + 타입 + 슬라이더 값 표시 (소스 5 + 테스트 1) — 완료
+- Step 4: 테스트 + 문서 갱신 (3개 테스트 + 2개 문서) — 대기
+
+---
+
+### 작업: 업종 점수 산정 방식 리팩토링 — Step 3 완료 (프론트엔드 슬라이더 + is_cutoff_passed + 값 표시)
+
+**진행 단계**: 완료 (커밋 `477d562`). 다음 작업: Step 4 사전조사 대기.
+
+**완료 내용 (2026-07-15)**:
+- **현상**: Step 2 Split B 완료 후 백엔드에서 모든 업종에 rank 1..N 부여 + is_cutoff_passed로 통과 여부 구분하지만, 프론트엔드는 구 만점 입력 3개 + `rank === 0` 기반 미달 판단 로직 사용 중. 추가로 슬라이더에 현재 % 수치가 표시되지 않아 사용자가 설정값을 알 수 없었음.
+- **근본 원인**: `types/index.ts:151-154` 구 만점 설정 키 3개 잔존, `SectorScoreRow`에 `is_cutoff_passed` 필드 누락. `sector-settings.ts:138-157` 만점 숫자 입력 3개로 슬라이더 미지원. `sector-ranking-list.ts:34,56-59,126-129,149,157` 및 `sector-stock.ts:152-156,195-196` `rank === 0` / `rank > 0` 기반 로직이 Step 2 Split B 이후 dead code화. `create-slider.ts:30-72` `createSlider` 컴포넌트가 순수 `<input type="range">`만 반환하고 값 표시 라벨 기능 없음 (매수설정은 `createDualLabelSlider` 사용으로 수치 표시 있음 — P23 일관성 위반).
+- **수정 내용**: 소스 5개 + 테스트 1개 파일 (+179/-90):
+  - `types/index.ts`: `AppSettings` 만점 키 3개 → 슬라이더 키 3개 교체, `SectorScoreRow`에 `is_cutoff_passed: boolean` 추가 + 2차 가산점 주석 "상대평가 순위" → "가중 순위 합".
+  - `sector-settings.ts`: ④ 섹션 숫자 입력 3개 → `createSlider()` 슬라이더 3개(-100~+100, 기본값 0) 전환, 만점 자동 표시 추가(`hotStore` 구독 — "현재 만점 = N점, 업종 N개"), 설명 문구 갱신, `hotStore` 구독 추가.
+  - `sector-ranking-list.ts`: 통과 카운트 `s.rank > 0` → `s.is_cutoff_passed`, 정렬 `rank === 0` dead branches 3개 제거 → `a.rank - b.rank` 단순화, `isEliminated`/`barColor` `rank === 0` → `!is_cutoff_passed`.
+  - `sector-stock.ts`: 정렬 `rank === 0` dead branches 3개 제거 → `a.rank - b.rank`, `isEliminated` `sectorRank === 0` → `!sectorScore?.is_cutoff_passed` (계획서에 누락된 파일 — P16 위반 해소).
+  - `create-slider.ts`: `SliderOptions`에 `valueLabel?: (v: number) => string` 옵션 추가 — 지정 시 라벨 행(우측 정렬, `FONT_SIZE.small`, `COLOR.down`) + input 컨테이너 반환, `setValue()` 및 input 이벤트 시 라벨 자동 갱신. `SliderHandle`에 `input: HTMLInputElement` 필드 추가. `createDualLabelSlider` 내부 `slider.el` → `slider.input` 4곳 변경.
+  - `create-slider.ui.test.ts`: `handle.el` → `handle.input` 11곳 변경, `valueLabel` 테스트 3개 추가 (컨테이너 생성, input 이벤트 시 라벨 갱신, setValue 시 라벨 갱신).
+- **영향 범위**: 프론트엔드 5파일 + 테스트 1파일. 동작 변화: 업종순위 설정 패널 ④ 만점 숫자 입력 3개 → 슬라이더 3개 + 만점 자동 표시 + % 수치 표시. 업종 순위 리스트/종목 목록 미달 업종 `rank === 0` → `is_cutoff_passed` 기준 회색 표시 (Step 2 Split B 이후 정상 동작 복원). `createSlider` 공통 컴포넌트 — `valueLabel` 미지정 시 기존과 동일 동작. 백엔드, DB 스키마, 거래 로직 변경 없음.
+- **검증**: TypeScript typecheck 통과, 빌드 통과 (60 modules, 1.85s), 슬라이더 테스트 18개 전부 통과 (기존 15 + 신규 3), 잔존 프로세스 0건. 브라우저 확인 필요 (업종순위 설정 ④ 슬라이더 % 표시, 업종 순위 리스트 미달 업종 회색 표시).
+- **P10/P16/P20/P21/P23/P24**: rank/is_cutoff_passed 분리를 프론트엔드에 동일 적용 (SSOT), `rank === 0` dead branches 6곳 제거 (살아있는 경로), `rank === 0`을 "미달" 의미로 재사용하던 폴백 제거, 미달 업종 실제 순위 표시 + 만점 자동 표시 (사용자 투명성), 슬라이더 값 표시로 매수설정과 동일 UX (일관성), 만점 입력 3개 → 슬라이더 3개 + dead branches 제거 (단순성).
+
+**Step 4 사전조사 필요 항목**:
+- `backend/tests/test_sector_score.py` — 만점 자동화, 슬라이더, 가중 순위 합, is_cutoff_passed 테스트 전면 재작성
+- `backend/tests/test_engine_sector_confirm.py` — 만점 파라미터 → 슬라이더 파라미터 mock 변경
+- `backend/tests/test_buy_filter.py` — `rank == 0` → `is_cutoff_passed` 테스트 변경
+- `ARCHITECTURE.md` — 업종 점수 계산 방식 설명 갱신
+- `HANDOVER.md` — 작업 완료 기록
+- 검증: pytest 전체, 런타임 기동, ruff, typecheck, 빌드
 
 ---
 
