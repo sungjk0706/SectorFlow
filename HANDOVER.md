@@ -2,56 +2,35 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
-### 작업: KRX 구독 시작/종료 시간 별도 추가 — 세션 1 완료, 세션 2 대기
+### 작업: NXT-only 구독 분리 — 그룹 A 완료, 그룹 B 대기
 
-**진행 단계**: 세션 1(설정 키 2개 추가) 완료. 다음 세션에서 세션 2(타이머/콜백 구현) 착수 (사용자 승인 시).
+**진행 단계**: 그룹 A(NXT-only 구독 구현, 2개 파일) 완료. 다음 세션에서 그룹 B(세션 1 설정 키/UI 제거, 7개 파일) 착수 (사용자 승인 시).
 
-**세션 1 완료 내용 (2026-07-14)**:
+**방향 재조정 (개발자님 결정)**:
+- 기존 "KRX 구독 시간 별도 추가" 방향에서 **반자동 방식**으로 재조정.
+- 07:55: NXT만 먼저 구독 (처음부터 NXT만 시작, 필터 추가)
+- 09:00: KRX 추가 구독은 장운영정보 이벤트(`_on_krx_market_open()`)로 자동 처리 — 타이머 불필요
+- 15:30: KRX 해지는 기존 로직(`_on_krx_after_hours_start()` → `remove_krx_only_stocks()`) 그대로 사용
+- 20:00: NXT 해지는 기존 로직(`_on_ws_subscribe_end()` → `_trigger_unreg_all()`) 그대로 사용 — 15:30에 KRX `_subscribed` 제거되어 NXT만 남음
+- **제거 대상**: 사용자 설정 UI(KRX 구독 시간 입력란), KRX 전용 타이머/콜백, 세션 1에서 추가한 설정 키 2개
+
+**그룹 A 완료 내용 (2026-07-14, 커밋 `b04f98c`)**:
+- `subscribe_sector_stocks_0b()`에 `nxt_only: bool = False` 키워드 파라미터 추가 — NXT-only 구간에 NXT 중복상장 종목만 구독
+- `ws_subscribe_control.py`의 `start_quote()` + `run_conditional_reg_pipeline()`에서 `is_nxt_only_window()` 분기 추가
+- 기존 로직 재사용: `_on_krx_market_open()`(09:00 KRX 추가), `_on_krx_after_hours_start()`(15:30 KRX 해지), `_on_ws_subscribe_end()`(20:00 NXT 해지) — 모두 수정 없음
+- 검증: py_compile OK, ruff All checks passed, pytest 42 passed (test_engine_ws), 런타임 기동 285ms 정상 (`-W error::RuntimeWarning`), `장 상태 초기화: KRX=정규장, NXT=메인마켓` 확인, 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건
+
+**남은 작업 — 그룹 B (다음 세션)**:
+- 세션 1에서 추가한 설정 키 2개 + UI 입력란 제거 (반자동 방식이므로 불필요)
+- 제거 파일 7개:
+  - 백엔드 3파일: `settings_defaults.py`(`ws_subscribe_start_krx`/`ws_subscribe_end_krx` 제거), `settings_store.py`(저장 페이로드에서 KRX 키 제거), `engine_settings.py`(엔진 설정 dict에서 KRX 키 제거)
+  - 프론트엔드 2파일: `types/index.ts`(IndexData 인터페이스에서 KRX 필드 제거), `general-settings.ts`("KRX 구독 시간" 입력란 제거 + `scheduleTimeSave` handle 매개변수화 롤백)
+  - 테스트 2파일: `test_settings_store.py`(KRX 키 제거), `test_engine_settings.py`(KRX 키 제거)
+- **P16 주의**: 그룹 A 완료 후 그룹 B 전까지 설정 키 2개가 dead code로 잔존 (UI에 표시되고 저장되지만 실제 동작에 연결되지 않음). 그룹 B에서 제거 시 P16 복귀.
+
+**이전 작업: KRX 구독 시간 설정 키 2개 추가 — 세션 1 (커밋 `eff5e1e`, 그룹 B에서 롤백 예정)**:
 - 설정 키 2개(`ws_subscribe_start_krx`, `ws_subscribe_end_krx`)의 기반 구축 — 7개 파일 수정
-- 백엔드 3파일: `settings_defaults.py`(기본값 09:00/15:30), `settings_store.py`(저장 페이로드 + HH:MM 검증), `engine_settings.py`(엔진 설정 dict)
-- 프론트엔드 2파일: `types/index.ts`(필드 2개), `general-settings.ts`(KRX 구독 시간 입력란 + `scheduleTimeSave` handle 매개변수화)
-- 테스트 2파일: `test_settings_store.py`(3개 dict에 새 키 추가), `test_engine_settings.py`(5문자 검증 2줄)
-- **설계 결정**: `engine_service.py`의 `_WS_SCHEDULE_KEYS`는 세션 2에서 추가 (P16 준수 — 설정 키가 타이머 동작과 함께 연결)
-- 검증: ruff 기존 실패 1건(save_settings unused import, 수정 전 동일 실패), py_compile OK, pytest 107 passed, tsc 통과, vite build 통과, vitest 101 passed, 런타임 기동 164ms 정상, 잔존 프로세스 0건
-
-**단순화된 구조 (P24 준수)**:
-```
-기존:
-  ws_subscribe_start(08:50) → 전체 종목 구독 (KRX+NXT 일괄)
-  ws_subscribe_end(15:30)   → 전체 종목 해지
-
-제안:
-  ws_subscribe_start(08:50)       → NXT 종목만 구독 (기존 로직에 KRX 제외 필터 추가)
-  ws_subscribe_start_krx(09:00)   → KRX 종목만 추가 REG (신규 단순 콜백)
-  ws_subscribe_end_krx(15:30)     → remove_krx_only_stocks() 호출 (기존 함수 재사용)
-  ws_subscribe_end(20:00)         → 전체 종목 해지 (기존 로직 그대로)
-```
-
-**P24 재검토 핵심 통찰 (이전 조사가 놓친 사실)**:
-1. **엔진 루프 이벤트 분리 불필요** — 엔진 루프(engine_loop.py:298-351)는 WS 서버 연결 자체만 담당. KRX/NXT 종목 구분 구독은 타이머 콜백이 직접 수행. 단일 `ws_window_changed_event` 그대로 유지.
-2. **KRX 종목만 해지하는 함수 이미 존재** — `remove_krx_only_stocks()` (market_close_pipeline.py:119-199). 현재 15:30 `_on_krx_after_hours_start()`에서 호출 중. 이 함수를 KRX 구독 종료 타이머 콜백에서 재사용.
-3. **전역 작업(GC, 필드 초기화, 브로드캐스트) 분리 불필요** — `_on_ws_subscribe_start()`의 전역 작업은 WS 서버 연결 자체에 대한 것. KRX 구독 시작은 WS 이미 연결된 상태에서 KRX 종목만 추가 REG이므로 전역 작업 불필요. 기존 `_on_ws_subscribe_start/end`는 그대로, KRX용 단순 콜백만 추가.
-
-**남은 작업 2세션 분할**:
-- **세션 2**: 타이머/콜백 구현 (daily_time_scheduler.py 1파일 중심) + `engine_service.py` `_WS_SCHEDULE_KEYS` 추가
-  - `schedule_ws_subscribe_timers()`에 KRX 타이머 2개 추가
-  - `_on_ws_subscribe_start_krx()` 신규 — KRX 종목만 추가 REG (`is_nxt_enabled()` 필터)
-  - `_on_ws_subscribe_end_krx()` 신규 — `remove_krx_only_stocks()` 호출
-  - `_on_ws_subscribe_start()`에 KRX 제외 필터 추가 (NXT-only 구독으로 변경)
-  - `_on_krx_after_hours_start()`에서 `remove_krx_only_stocks()` 호출 제거 (중복 해결, `recompute_sector_summary_now()`는 유지)
-  - `_init_ws_subscribe_state()`에 KRX 구독 구간 판정 추가
-  - `engine_service.py` `_WS_SCHEDULE_KEYS`에 `ws_subscribe_start_krx`, `ws_subscribe_end_krx` 추가 (P16 — 타이머와 함께 연결)
-  - "KRX 시작 ≥ NXT 시작, KRX 종료 ≤ NXT 종료" 검증 추가 (P22)
-- **세션 3**: 테스트 + 검증
-  - 타이머 예약/콜백 테스트 추가
-  - 런타임 기동 검증 (규칙 5)
-  - 잔존 프로세스 0건 확인 (규칙 5-1)
-
-**주의사항 (P21/P22)**:
-- **P21 (사용자 투명성)**: 기존 08:50~15:30 설정 사용자의 동작이 바뀜 — 08:50에 NXT만 구독, 09:00에 KRX 추가. UI에 "NXT 구독 시간"과 "KRX 구독 시간"으로 명확히 표시 필요.
-- **P22 (데이터 정합성)**: 경계 케이스 — KRX 구독 시작 시각이 NXT 구독 시작 시각보다 빠르면 WS 미연결 상태에서 KRX REG 시도 → 실패. 단순 규칙으로 "KRX 시작 ≥ NXT 시작, KRX 종료 ≤ NXT 종료" 검증 추가 필요.
-- **15:30 업종 재계산 유지**: `_on_krx_after_hours_start()`의 `recompute_sector_summary_now()`는 그대로 유지 (market_phase 기반 업종 재계산이므로 KRX 구독 종료와 무관). `remove_krx_only_stocks()` 호출만 제거.
-- **세션 1~세션 2 사이 상태**: UI에 "KRX 구독 시간" 입력란이 표시되고 저장되지만, 실제 KRX 분리 구독 동작은 구현되지 않음. 사용자가 입력란을 변경해도 기존 통합 구독 동작 유지. 세션 2에서 타이머 구현 시 실제 동작 연결.
+- 반자동 방식 재조정으로 인해 그룹 B에서 제거 예정
 
 **이전 작업: 가상스크롤 테이블 헤더/본문 컬럼 세로선 불일치 수정 — 완료 (커밋 `0aec178`)**:
 - `applyGridTemplatePx()`가 `scrollContainer.querySelector('div')`로 sentinel를 찾으나 DOM 순서상 첫 div인 `headerDiv`를 반환하여, 리사이즈 시 데이터 행의 `gridTemplateColumns`가 갱신되지 않는 버그 수정.
@@ -69,17 +48,21 @@
 **주요 리스크**:
 - JIF 누락 시 `market_phase` 부정확 (시계 타이머 백업으로 최대 1초 지연)
 - 구독 구간 내 재기동 시 초기값 "장개시전" → 현재 페이즈 전환 감지로 재계산 트리거됨 (올바른 동작, 부트스트랩 재계산과 중복 가능하나 정합성 문제 없음)
-
-**추가 검토 결론: `ws_subscribe_start/end` 완전 자동화 권장하지 않음**:
-- 거래소 장시간과 사용자가 원하는 데이터 수신 시간은 다를 수 있음 (P21 위반)
-- 테스트모드 유연성 제약 (P18 위반)
-- 현재 3계층 구조(ws_subscribe_on 토글 + 시간 설정 + market_phase 타이머)가 합리적
-- **단, KRX 구독 시간 별도 추가는 사용자 설정 기반이므로 P21/P18 부함 — 위 조사 완료**
+- **그룹 A~B 사이 상태**: 설정 키 2개가 dead code로 잔존 (UI에 표시되고 저장되지만 실제 동작에 연결되지 않음). 그룹 B에서 제거 시 P16 복귀.
 
 ---
 
 ## 직전 완료 작업
-- **2026-07-14: KRX 구독 시간 설정 키 2개 추가 — 세션 1 (P10/P21/P23/P24)**
+- **2026-07-14: NXT-only 구독 분리 — subscribe_sector_stocks_0b() nxt_only 파라미터 추가 (P10/P24)**
+  - **현상**: 07:55 구독 시 KRX/NXT 구분 없이 전체 종목이 구독되어, KRX 장개시 전(09:00 이전)에 KRX 단독 종목의 실시간 데이터가 불필요하게 수신됨.
+  - **근본 원인**: `subscribe_sector_stocks_0b()` (`engine_ws_reg.py:243`)가 KRX/NXT 구분 없이 보유종목 + 필터통과 종목을 모두 구독. `ws_subscribe_control.py`의 `start_quote()`와 `run_conditional_reg_pipeline()`이 이 함수를 호출할 때 NXT-only 구간 여부를 판단하지 않았음.
+  - **수정 파일**: 백엔드 2개 파일 — `engine_ws_reg.py`, `ws_subscribe_control.py`
+  - **변경 내용**: (1) `engine_ws_reg.py` — import에 `is_nxt_enabled` 추가, `subscribe_sector_stocks_0b()`에 `nxt_only: bool = False` 키워드 파라미터 추가, `nxt_only=True`일 때 보유종목/필터통과 종목 모두 `is_nxt_enabled(cd)`가 True인 종목만 필터링 (2줄 추가). 기본값 `False`로 기존 호출 경로 동작 변화 없음. (2) `ws_subscribe_control.py` — `start_quote()`와 `run_conditional_reg_pipeline()`에서 `is_nxt_only_window()` import 후 `subscribe_sector_stocks_0b(nxt_only=is_nxt_only_window())`로 호출.
+  - **영향 범위**: 백엔드 2개 파일 (+12/-4줄). 기존 호출 경로(`_on_krx_market_open`, `_on_krx_after_hours_start`, `_on_ws_subscribe_end`)는 수정 없이 기본값 `nxt_only=False`로 기존 동작 유지. 09:00 KRX 추가 구독, 15:30 KRX 해지, 20:00 NXT 해지 — 모두 기존 로직 그대로 재사용.
+  - **검증**: py_compile 2개 파일 통과. ruff All checks passed. pytest 42 passed (test_engine_ws) in 0.27s. 런타임 기동 `-W error::RuntimeWarning` 285ms, `장 상태 초기화: KRX=정규장, NXT=메인마켓` 확인, 에러/Traceback/RuntimeWarning 없음. 잔존 프로세스 0건 (규칙 5-1 준수).
+  - **커밋**: `b04f98c`
+
+- **2026-07-14: KRX 구독 시간 설정 키 2개 추가 — 세션 1 (P10/P21/P23/P24, 그룹 B에서 롤백 예정)**
   - **현상**: KRX 구독 시작/종료 시간을 NXT 구독 시간과 별도로 설정할 수 있는 기능이 없어, 세션 1에서 설정 키 2개(`ws_subscribe_start_krx`, `ws_subscribe_end_krx`)의 기반을 구축.
   - **근본 원인**: 기존 `ws_subscribe_start`/`ws_subscribe_end` 2개 키만 존재하여 KRX/NXT 구분 설정이 불가능. 설정 정의(`settings_defaults.py`), 저장(`settings_store.py`), 엔진 전달(`engine_settings.py`), UI 입력(`general-settings.ts`), 타입(`types/index.ts`), 테스트(2파일) 경로에 새 키가 없었음.
   - **수정 파일**: 백엔드 3파일 + 프론트엔드 2파일 + 테스트 2파일 — `settings_defaults.py`, `settings_store.py`, `engine_settings.py`, `types/index.ts`, `general-settings.ts`, `test_settings_store.py`, `test_engine_settings.py`
