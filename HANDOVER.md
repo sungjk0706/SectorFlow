@@ -4,7 +4,7 @@
 
 ### 다음 작업: 업종 점수 산정 방식 리팩토링 — Step 4 대기
 
-**진행 단계**: 업종순위 수신률 표시 개선 완료 (커밋 `b0a5d68`). 다음 세션에서 Step 4 사전조사부터 시작.
+**진행 단계**: 5일봉 미확정 당일 행 유입 차단 + 기존 행 삭제 + master.date 정합성 수정 완료 (커밋 `f50ce9f`). 다음 세션에서 Step 4 사전조사부터 시작.
 
 **계획서**: `docs/plan_sector_score_redesign.md` (4개 Step, 세션당 1단계 — Step 2를 Split A/B로 분할)
 
@@ -23,6 +23,26 @@
 - Step 3: 프론트엔드 설정 패널 + 타입 + 슬라이더 값 표시 (소스 5 + 테스트 1) — 완료
 - Step 3 후속: 업종순위 슬라이더 매수설정 동일 모듈 통일 + 숫자 입력란 연동 + 라벨 명확화 (소스 2 + 테스트 1) — 완료
 - Step 4: 테스트 + 문서 갱신 (3개 테스트 + 2개 문서) — 대기
+
+---
+
+### 작업: 5일봉 미확정 당일 행 유입 차단 + 기존 행 삭제 + master.date 정합성 — 완료
+
+**진행 단계**: 완료 (커밋 `f50ce9f`). 다음 작업: 업종 점수 산정 방식 리팩토링 Step 4 사전조사 대기.
+
+**완료 내용 (2026-07-15)**:
+- **현상**: 종목 상세 페이지에서 삼성전자(005930) 5일봉 테이블에 07-15 행(거래대금=0, 고가=263,000)이 존재. 장 시작도 안 했는데 오늘 날짜 행이 DB에 있음. 직전 수정(`d80a1a0`) 후에도 07-15 행이 잔존하여 문제 지속.
+- **근본 원인 (3가지)**:
+  1. 1일봉/5일봉 파이프라인이 qry_dt로 달력상 오늘(`get_kst_today_str()`)을 사용 → API가 오늘 미확정 일봉(거래대금=0)을 반환 → 그대로 DB에 저장.
+  2. 5일봉 DELETE 로직이 `dt < oldest_dt`만 수행 → 07-15 행은 07-09보다 크므로 삭제되지 않음. 1일봉 파이프라인에는 stock_5d_bars 정리 로직 자체 없음.
+  3. master_stocks_table.date가 소속 거래일(07-15)로 설정 → retry_pipeline_catchup_after_bootstrap이 cache_is_today=True로 판단하여 자동 다운로드 스킵 → 기존 07-15 행 정리 기회 상실.
+- **수정 내용**: 백엔드 2파일 + 테스트 1파일 (+342/-29):
+  - `market_close_pipeline.py`: 1일봉/5일봉 qry_dt를 `get_previous_trading_day_str(get_current_trading_day_str())`로 변경. 안전망 필터 추가 (bar_dt == current_td 시 저장 차단). 5일봉 DELETE를 `dt < oldest OR dt > qry_dt`로 변경 (과거+미래 행 동시 삭제). 1일봉에 `DELETE FROM stock_5d_bars WHERE dt > qry_dt` 추가 (INSERT OR REPLACE 전). `date_str = qry_dt or get_current_trading_day_str()`로 변경. `_save_confirmed_cache`가 메모리 캐시 date 우선 사용.
+  - `stock_classification.py`: `check_download_data_exists` API를 qry_dt 기준으로 변경 (다운로드 파이프라인과 SSOT).
+  - `test_market_close_pipeline.py`: 기존 테스트 7개 수정 (current_trading_day patch 변경, DELETE 검증 변경), 신규 회귀 방지 테스트 5개 추가 (안전망 2 + 미래행 DELETE 2 + date 필드 1).
+- **영향 범위**: 백엔드 2파일 + 테스트 1파일. 기존 07-15 행은 다운로드 재실행 시 삭제됨 (별도 마이그레이션 불필요). 거래 로직 영향 없음. 프론트엔드 변경 없음.
+- **검증**: 단위 테스트 57 passed (test_market_close_pipeline.py) + 248 passed (test_kiwoom_stock_rest + test_web_stock_classification + test_daily_time_scheduler), ruff 0건, 런타임 기동 195ms (RuntimeWarning 0건), 잔존 프로세스 0건. 사용자 UI 확인 필요 — 수동 다운로드 재실행 후 종목 상세 페이지에서 07-15 행이 사라지고 07-14 이하 5행만 표시되는지 확인.
+- **P10/P22/P24**: master.date와 stock_5d_bars.dt가 qry_dt로 단일화 (SSOT), 미확정 당일 행 잔존 정합성 위반을 능동적 DELETE로 해소 (데이터 정합성), 기존 DELETE 조건에 `OR dt > qry_dt` 추가 1줄 (단순성).
 
 ---
 
@@ -627,16 +647,28 @@
 - 이후 B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
 
 ## 미해결 문제
-- **5일봉 배열 테이블에서 당일/직전1일 거래대금·고가 중복 — 근본 해결 완료 (2026-07-15, 커밋 `d80a1a0`)**
-  - 증상: 종목상세 화면 5일봉 테이블에서 07-15와 07-14 거래대금·고가가 완전히 동일하게 표시됨. 전체 1341개 종목 중 07-15/07-14 동일값 1341개(100%), 07-14/07-13 동일값 0개(0%) → 체계적 버그.
-  - 근본 원인 (최종 확정): 1일봉 확정 파이프라인(`execute_unified_rolling_and_save`)이 `stock_5d_bars`에 당일 행을 쓸 때 API가 반환한 일봉의 실제 거래일이 아닌 달력상 오늘(qry_dt)을 dt로 사용. 장마감 전 실행 시 API가 어제 일봉을 latest로 반환 → 어제 값을 오늘 행으로 기록 → 5일봉 파이프라인이 저장한 어제 행과 동일값 중복 발생.
-  - 해결 (2026-07-15, 커밋 `d80a1a0`): `fetch_ka10081_daily_price` 반환값에 latest 일봉의 dt 추가, `execute_unified_rolling_and_save`가 `detail.dt` 우선 사용, `_run_confirmed_pipeline`이 `normalized_confirmed`에 dt 전달. 회귀 방지 테스트 3개 추가.
-  - 잔존: 다운로드 재실행 후 DB 확인 필요 (07-15 행이 07-14와 다른 값으로 저장되는지, 또는 07-15 미확정 시 07-15 행이 생성되지 않는지).
+- **5일봉 미확정 당일 행 유입 + 기존 행 잔존 + master.date 정합성 — 근본 해결 완료 (2026-07-15, 커밋 `f50ce9f`)**
+  - 증상: 종목상세 화면 5일봉 테이블에서 07-15 행(거래대금=0, 고가=263,000=장전 기준가)이 표시됨. 장 시작도 안 했는데 오늘 날짜 행이 DB에 있음. 직전 수정(`d80a1a0`) 후에도 07-15 행이 잔존하여 문제 지속.
+  - 근본 원인 (3가지):
+    1. 1일봉/5일봉 파이프라인이 qry_dt로 달력상 오늘(`get_kst_today_str()`)을 사용 → API가 오늘 미확정 일봉(거래대금=0)을 반환 → 그대로 DB에 저장.
+    2. 5일봉 DELETE 로직이 `dt < oldest_dt`만 수행 → 07-15 행은 07-09보다 크므로 삭제되지 않음. 1일봉 파이프라인에는 stock_5d_bars 정리 로직 자체 없음.
+    3. master_stocks_table.date가 소속 거래일(07-15)로 설정 → retry_pipeline_catchup_after_bootstrap이 cache_is_today=True로 판단하여 자동 다운로드 스킵 → 기존 07-15 행 정리 기회 상실.
+  - 해결 (2026-07-15, 커밋 `f50ce9f`):
+    - 1일봉/5일봉 qry_dt를 `get_previous_trading_day_str(get_current_trading_day_str())`로 변경.
+    - 안전망 필터 추가 (bar_dt == current_td 시 저장 차단).
+    - 5일봉 DELETE를 `dt < oldest OR dt > qry_dt`로 변경 (과거+미래 행 동시 삭제).
+    - 1일봉에 `DELETE FROM stock_5d_bars WHERE dt > qry_dt` 추가 (INSERT OR REPLACE 전).
+    - master_stocks_table.date를 qry_dt로 변경. _save_confirmed_cache가 메모리 캐시 date 우선 사용.
+    - check_download_data_exists API를 qry_dt 기준으로 변경 (다운로드 파이프라인과 SSOT).
+    - 회귀 방지 테스트 5개 추가.
+  - 잔존: 다운로드 재실행 후 DB 확인 필요 (07-15 행이 삭제되고 07-14 이하 5행만 표시되는지).
+  - 참고: 직전 수정 `d80a1a0`은 "API가 어제 일봉을 반환하는 경우" 해결이었으나, "API가 오늘 미확정 일봉을 반환하는 경우"는 미해결이었음. 본 수정이 두 케이스 모두의 근본 해결.
 
-- **`master_stocks_table.high_5d_price`가 `stock_5d_bars` 최대 고가와 불일치 — P22 위반 의심 (2026-07-15 발견)**
+- **`master_stocks_table.high_5d_price`가 `stock_5d_bars` 최대 고가와 불일치 — 근본 해결 완료 (2026-07-15, 커밋 `f50ce9f`)**
   - 증상: 삼성전자(005930) `master_stocks_table.high_5d_price=300000`이나 `stock_5d_bars` 5개 행 최대 고가는 298000.
-  - 원인 추정: 과거 다운로드에서 계산된 값이 5일봉 세로 행 전환 후 재계산되지 않은 잔재. 본 수정(`d80a1a0`)으로 재계산 경로가 정상화되면 자연 해소 예상이나, 다운로드 재실행 후 재확인 필요.
-  - 파일: `backend/app/services/market_close_pipeline.py:288-310` (avg_5d/high_5d 재계산 로직), `backend/app/db/stock_tables.py:270-289` (stock_5d_bars 스키마).
+  - 원인: 07-15 미확정 행(고가=263,000)이 stock_5d_bars에 잔존한 상태에서 avg_5d/high_5d 재계산이 수행되지 않은 잔재. 본 수정(`f50ce9f`)으로 07-15 행이 삭제되고 qry_dt 기준 5거래일만 남게 되므로, 다운로드 재실행 시 high_5d_price가 stock_5d_bars 최대 고가와 일치하게 됨.
+  - 파일: `backend/app/services/market_close_pipeline.py:309-335` (avg_5d/high_5d 재계산 로직), `backend/app/db/stock_tables.py:270-289` (stock_5d_bars 스키마).
+  - 잔존: 다운로드 재실행 후 재확인 필요.
 
 - **유령 포지션 005930 (avg_price=70,100) — 근본 원인 미해결**
   - 상세 조사 기록: `docs/ghost_position_investigation.md` ([A]~[I] 미조사 항목)
