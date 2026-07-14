@@ -53,7 +53,6 @@ let autoSellToggle: ReturnType<typeof createToggleBtn> | null = null
 let sellTimeHandle: TimePairInputHandle | null = null
 let wsToggle: ReturnType<typeof createToggleBtn> | null = null
 let wsTimeHandle: TimePairInputHandle | null = null
-let wsKrxTimeHandle: TimePairInputHandle | null = null
 let holidayBadgeEls: HTMLElement[] = []
 let uiFlashToggle: ReturnType<typeof createToggleBtn> | null = null
 
@@ -62,7 +61,7 @@ let confirmedDlSlot: HTMLElement | null = null
 let confirmedDlH = '20', confirmedDlM = '40'
 let savingConfirmedDl = false
 let savingTime = false
-let pendingTimeSave: { startKey: string; endKey: string; handle: TimePairInputHandle | null } | null = null
+let pendingTimeSave: { startKey: string; endKey: string } | null = null
 
 // 텔레그램 탭 참조
 let teleToggle: ReturnType<typeof createToggleBtn> | null = null
@@ -103,16 +102,16 @@ function updateHolidayBadges(): void {
 }
 
 /* ── WS 시간 저장 (debounce) ── */
-function scheduleTimeSave(startKey: string, endKey: string, handle: TimePairInputHandle | null): void {
+function scheduleTimeSave(startKey: string, endKey: string): void {
   if (!settingsMgr) return
   if (savingTime) {
-    pendingTimeSave = { startKey, endKey, handle }
+    pendingTimeSave = { startKey, endKey }
     return
   }
   savingTime = true
-  const run = async (sk: string, ek: string, h: TimePairInputHandle | null): Promise<void> => {
+  const run = async (sk: string, ek: string): Promise<void> => {
     const serverStart = String(vals[sk] ?? ''), serverEnd = String(vals[ek] ?? '')
-    const { start: newStart, end: newEnd } = h?.getValue() ?? { start: '', end: '' }
+    const { start: newStart, end: newEnd } = wsTimeHandle?.getValue() ?? { start: '', end: '' }
     const dirty: Record<string, unknown> = {}
     if (newStart !== serverStart) dirty[sk] = newStart
     if (newEnd !== serverEnd) dirty[ek] = newEnd
@@ -124,11 +123,11 @@ function scheduleTimeSave(startKey: string, endKey: string, handle: TimePairInpu
     if (pendingTimeSave) {
       const next = pendingTimeSave
       pendingTimeSave = null
-      await run(next.startKey, next.endKey, next.handle)
+      await run(next.startKey, next.endKey)
     }
     savingTime = false
   }
-  run(startKey, endKey, handle)
+  run(startKey, endKey)
 }
 
 function scheduleConfirmedDlSave(): void {
@@ -318,7 +317,6 @@ function handleWsToggle(): void {
 
 function updateWsTimeDisabled(): void {
   wsTimeHandle?.setEnabled(!!vals.ws_subscribe_on)
-  wsKrxTimeHandle?.setEnabled(!!vals.ws_subscribe_on)
 }
 
 /* ── 텔레그램 탭 ── */
@@ -629,7 +627,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   const wsStart = String(vals.ws_subscribe_start ?? '09:00')
   const wsEnd = String(vals.ws_subscribe_end ?? '15:00')
   const { el: wsTpEl, handle: wsHandle } = createTimePairInput(wsStart, wsEnd, () => {
-    scheduleTimeSave('ws_subscribe_start', 'ws_subscribe_end', wsTimeHandle)
+    scheduleTimeSave('ws_subscribe_start', 'ws_subscribe_end')
   })
   wsTimeHandle = wsHandle
   wsTpEl.style.padding = '6px 0'
@@ -638,28 +636,6 @@ function renderApiSettingsTab(container: HTMLElement): void {
   container.appendChild(wsTimeRow)
 
   container.appendChild(createDescText('실시간 시세 수신 시작/종료 시간'))
-
-  // KRX 구독 시간
-  const wsKrxTimeRow = document.createElement('div')
-  Object.assign(wsKrxTimeRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const wsKrxTimeLabel = document.createElement('span')
-  Object.assign(wsKrxTimeLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal, whiteSpace: 'nowrap' })
-  wsKrxTimeLabel.textContent = 'KRX 구독 시간'
-  wsKrxTimeRow.appendChild(wsKrxTimeLabel)
-  const wsKrxTimeRight = document.createElement('span')
-  wsKrxTimeRight.style.cssText = 'display:flex;align-items:center;gap:8px;'
-  const wsKrxStart = String(vals.ws_subscribe_start_krx ?? '09:00')
-  const wsKrxEnd = String(vals.ws_subscribe_end_krx ?? '15:30')
-  const { el: wsKrxTpEl, handle: wsKrxHandle } = createTimePairInput(wsKrxStart, wsKrxEnd, () => {
-    scheduleTimeSave('ws_subscribe_start_krx', 'ws_subscribe_end_krx', wsKrxTimeHandle)
-  })
-  wsKrxTimeHandle = wsKrxHandle
-  wsKrxTpEl.style.padding = '6px 0'
-  wsKrxTimeRight.appendChild(wsKrxTpEl)
-  wsKrxTimeRow.appendChild(wsKrxTimeRight)
-  container.appendChild(wsKrxTimeRow)
-
-  container.appendChild(createDescText('KRX 종목 실시간 시세 수신 시작/종료 시간 (NXT 구독 시간 내 구간)'))
 
   // 확정 시세 다운로드 시간
   const confirmedDlRow = document.createElement('div')
@@ -889,9 +865,6 @@ function syncFromSettings(s: AppSettings | null): void {
     const wsStart = String(r.ws_subscribe_start ?? '09:00')
     const wsEnd = String(r.ws_subscribe_end ?? '15:00')
     wsTimeHandle?.setValue(wsStart, wsEnd)
-    const wsKrxStart = String(r.ws_subscribe_start_krx ?? '09:00')
-    const wsKrxEnd = String(r.ws_subscribe_end_krx ?? '15:30')
-    wsKrxTimeHandle?.setValue(wsKrxStart, wsKrxEnd)
     updateWsTimeDisabled()
 
     // 확정 시세 다운로드 시간
@@ -1040,7 +1013,6 @@ function unmount(): void {
   sellTimeHandle = null
   wsToggle = null
   wsTimeHandle = null
-  wsKrxTimeHandle = null
   holidayBadgeEls = []
   teleToggle = null
   teleInputs = {}
