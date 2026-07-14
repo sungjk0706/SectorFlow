@@ -1,6 +1,15 @@
 # HANDOVER — SectorFlow
 
 ## 직전 완료 작업
+- **2026-07-14: NXT-only 구간 KRX 단독 종목 필터링 복원 — NXT_ACTIVE_PHASES 2개 페이즈 추가 + 08:00 재계산 타이머 (P22/P10/P16/P21/P23)**
+  - **현상**: NXT-only 거래 시간대(08:00~09:00, 15:30~20:00)에 KRX 단독 등록 종목이 업종 점수에서 제외되지 않고 포함됨. 08:30에 파세코(KRX Only, 037070)가 업종순위 1위로 표시됨. 프론트엔드 "업종별 종목 실시간 시세" 테이블에서도 KRX 단독 종목의 회색 배경이 표시되지 않았음.
+  - **근본 원인**: (원인 A) `daily_time_scheduler.py:171-173` — `NXT_ACTIVE_PHASES`에 "정규장 준비", "단일가 매매" 2개 페이즈 누락. 08:50~09:00, 15:30~15:40 구간에서 `is_nxt_only_window()`가 False 반환 → KRX 단독 종목 필터링 미작동 + 수신율 왜곡(KRX 단독 종목이 수신율 분모에 포함). (원인 B) `daily_time_scheduler.py:741` — 08:00 NXT 프리마켓 시작 시 전체 재계산 타이머 부재. 07:55 재계산 결과(KRX 단독 종목 포함, market_phase=장개시전/장개시전 → is_nxt_only_window=False)가 08:00 이후에도 갱신되지 않아 유지됨. 08:00에 market_phase가 NXT-only로 전환되어도 재계산 트리거가 없었음.
+  - **수정 파일**: 백엔드 2개 파일 + 프론트엔드 1개 파일 — `daily_time_scheduler.py`, `test_daily_time_scheduler.py`, `sector-stock.ts`
+  - **변경 내용**: (1) `daily_time_scheduler.py:171-174` — `NXT_ACTIVE_PHASES`에 "정규장 준비", "단일가 매매" 2개 추가 → 08:50~09:00, 15:30~15:40 구간에서 `is_nxt_only_window()` True 반환. (2) `daily_time_scheduler.py:342-362` — `_on_nxt_premarket_start()` 콜백 함수 신규 작성 (기존 09:00/15:30 패턴과 동일, `recompute_sector_summary_now()` 호출, 구독 변경 없음). (3) `daily_time_scheduler.py:741-749` — 08:00 타이머 등록 (`_seconds_until_hm(8, 0)` + `schedule_engine_task`). (4) `sector-stock.ts:142-149` — 프론트엔드 `NXT_ACTIVE_PHASES`에 동일 2개 페이즈 추가 → KRX 단독 종목 회색 배경 표시. (5) `test_daily_time_scheduler.py:309-321` — 08:55(시가 동시호가/정규장 준비), 15:35(체결 정산/단일가 매매) 케이스 2개 추가.
+  - **영향 범위**: 백엔드 2개 파일 + 프론트엔드 1개 파일 (+50/-1). 거래 로직(`execute_buy`/`execute_sell`) 수정 없음 (P15 준수). 수신율 계산 로직(`_calculate_receive_rate`) 수정 없음 — `get_sector_summary_inputs()` 필터링 결과를 자동 따라 수정 1만으로 수신율 왜곡도 해결. 08:00 타이머는 기존 09:00/15:30 타이머와 동일한 `schedule_engine_task` + `recompute_sector_summary_now` 패턴.
+  - **검증**: ruff (수정 파일 2개) All checks passed. pytest 백엔드 전체 2739 passed, 50 warnings (기존 mock 경고, 무관). pytest test_daily_time_scheduler.py 126 passed (신규 2개 케이스 포함). 런타임 기동 `.venv/bin/python -W error::RuntimeWarning main.py` — 147ms 기동, 에러/Traceback/RuntimeWarning 없음. npm run build 4.60s 에러 없음 (60 modules transformed). npm test 101 passed (7 files, 7.23s). 잔존 프로세스 0건 (규칙 5-1 준수).
+  - **커밋**: `8f28020`
+
 - **2026-07-14: 보유종목/수익현황 페이지 평가손익·수익률 실시간 불일치 해결 — computeHoldingsSummary 공통 함수 도입 (P22/P10/P23/P21)**
   - **현상**: 보유종목 페이지 상단 요약 배지와 수익현황 페이지 계좌현황 섹션의 평가손익/수익률이 개별 종목 합산 값과 크게 불일치 (예: 개별 합산 +268,968원 vs 요약 -900원).
   - **근본 원인**: 두 페이지의 요약/계좌현황은 백엔드 계좌 스냅샷(`account.total_pnl`)을 표시했으나, 개별 종목 행은 프론트엔드에서 실시간 틱 가격(`sectorStocks[code].cur_price`)으로 재계산. 0B 틱 시 계좌 스냅샷은 갱신되지 않고 프론트엔드도 틱 이벤트에 반응하지 않아 요약이 마지막 체결 시점 값에 머물러 있었음.
