@@ -970,9 +970,9 @@ WSManager (싱글톤)
 ```
 asyncio.call_later() 기반 — 매일 재스케줄링
 
-09:00  _on_ws_subscribe_start()     — WS 구독 시작 + GC 비활성화 (초기 기본값, 사용자 설정 가능)
+08:00  _on_ws_subscribe_start()     — WS 구독 시작 + GC 비활성화 (NXT 프리마켓 진입 시 자동 트리거)
 09:00  KRX 개장 감지
-15:00  _on_ws_subscribe_end()       — WS 구독 종료 + GC 정상화 (초기 기본값, 사용자 설정 가능)
+20:00  _on_ws_subscribe_end()       — WS 구독 종료 + GC 정상화 (NXT 장마감 진입 시 자동 트리거)
 15:30  KRX after hours / NXT aftermarket 시작
 16:01  KRX unsubscribe              — KRX 종목 구독 해제
 18:00  NXT aftermarket 종료
@@ -993,10 +993,9 @@ sell_time_end   — auto_sell_effective() 비활성화
 
 ```python
 is_ws_subscribe_window(settings):
-  1. 주말 차단 (weekday >= 5)
-  2. 공휴일 가드: holiday_guard_on → is_trading_day() 체크
-  3. ws_subscribe_on 마스터 스위치 체크
-  4. ws_subscribe_start <= now <= ws_subscribe_end
+  1. ws_subscribe_on 마스터 스위치 체크
+  2. state.market_phase["nxt"]가 NXT_ACTIVE_PHASES에 포함 여부
+     (주말/공휴일은 calc_timebased_market_phase()가 nxt="휴장일"로 자동 차단)
 ```
 
 ### 12.4 엔진 루프의 WS 구간 감지
@@ -1118,7 +1117,7 @@ ConnectorManager
 ## 16. 장마감 파이프라인
 
 ```
-15:00 _on_ws_subscribe_end() (초기 기본값, 사용자 설정 가능)
+20:00 _on_ws_subscribe_end() (NXT 장마감 진입 시 자동 트리거)
   ├── GC 정상화 (gc.enable() + gc.collect())
   ├── 실시간 구독 전체 해제 (_trigger_unreg_all)
   ├── time_scheduler_on = False, ws_subscribe_on = False
