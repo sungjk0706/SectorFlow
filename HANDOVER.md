@@ -2,7 +2,21 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
-### 작업: 수익현황 페이지 업종별 종목 수익 테이블 정렬 수정 — 완료
+### 작업: ruff F401/F541 13건 일괄 제거 — 완료
+
+**진행 단계**: 완료. 다음 작업은 사용자 지시 대기.
+
+**완료 내용 (2026-07-14, 커밋 `4a64628`)**:
+- **현상**: ruff 전체 실행 시 13건 에러 (F401 unused import 11건 + F541 f-string without placeholders 2건). 이전부터 기존 실패로 판정되어 HANDOVER.md 미해결 문제에 기록 중.
+- **근본 원인**: (1) `settings_store.py:14` `save_settings` unused import — 증분 저장 리팩토링(커밋 `4e46205`, 2026-07-06)에서 `load_selected_settings`/`save_selected_settings`로 전환 후 잔존. (2) `stock_classification_data.py:177` 로컬 import `state` 사용처 없음. (3) `engine_account.py:223` 로컬 import `_ws_live` 사용처 없음 (306번에서 재import). (4) `engine_snapshot.py:12` 모듈 import `engine_state` 사용처 없음 (13번 `state`만 사용). (5) `engine_state.py:17` `SectorScore` TYPE_CHECKING import 사용처 없음 (`SectorSummary`만 62번에서 사용). (6) `engine_ws_dispatch.py:7,18-22` `asyncio` + parsing 함수 5개 unused import — Step 4+5에서 `_handle_jif` 단순화로 dead import 됨. (7) `migrate_sectors_55.py:184,199` f-string에 `{}` placeholder 없음.
+- **수정 내용**: 7개 파일 13건 일괄 제거 — unused import 11줄 + unused 심볼 1단어(`SectorScore`) + f-string 접두어 2곳(`f"` → `"`). 로직/타입/동작 변경 없음.
+- **영향 범위**: 7개 파일만 수정 (+4/-16). 제거된 6개 parsing 함수(`_parse_fid10_price` 등)는 `engine_ws_parsing.py`에 정의되어 `pipeline_compute.py`, `engine_radar.py`, `engine_account_rest.py`, 테스트에서 활발히 사용 중 — 함수 자체는 살아있는 경로, `engine_ws_dispatch.py`에서만 unused import였음. P16(살아있는 경로)/P24(단순성) 강화.
+- **검증**: ruff 전체 `All checks passed!` (이전 13건 → 0건), py_compile 7개 파일 ALL OK, 런타임 기동 147ms (`-W error::RuntimeWarning`), `장 상태 초기화: KRX=장마감, NXT=장마감`, 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건.
+- **P16/P24**: dead import/dead f-string 접두어 제거로 원칙 강화.
+
+---
+
+### 이전 작업: 수익현황 페이지 업종별 종목 수익 테이블 정렬 수정 — 완료
 
 **진행 단계**: 완료. 다음 작업은 사용자 지시 대기.
 
@@ -119,7 +133,7 @@
 - 구독 구간 내 재기동 시 초기값 "장개시전" → 현재 페이즈 전환 감지로 재계산 트리거됨 (올바른 동작, 부트스트랩 재계산과 중복 가능하나 정합성 문제 없음)
 
 **미해결 문제**:
-- ruff 기존 실패 1건: `settings_store.py:14` `save_settings` unused import (수정 전 동일 실패, 규칙 4-1 기존 실패로 판정)
+- (없음 — ruff 기존 실패 13건은 2026-07-14 커밋 `4a64628`로 일괄 해결 완료)
 
 ---
 
