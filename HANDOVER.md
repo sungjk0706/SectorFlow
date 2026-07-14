@@ -2,9 +2,25 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
-### 작업: 장운영정보(market_phase) 기반 개별 타이머 통합 — Step 1 + Step 2 + Step 3 완료
+### 작업: 장운영정보(market_phase) 기반 개별 타이머 통합 — Step 1~5 전체 완료
 
-**진행 단계**: Step 1(`is_ws_subscribe_window()` market_phase 기반 변경) + Step 2(`_broadcast_market_phase()` 핸들러 추가 + 타이머 2개 제거) + Step 3(`ws_subscribe_start`/`end` 설정 키 + UI 제거 + 마이그레이션) 완료. Step 4~5 대기.
+**진행 단계**: Step 1~5 전체 완료. 장운영정보(market_phase) 기반 개별 타이머 통합 작업 종료.
+
+**Step 4+5 완료 내용 (2026-07-14, 커밋 `9e3944f`)**:
+- 백엔드 3파일 수정:
+  - `engine_ws_dispatch.py`: 상수 4개 제거 (`_JSTATUS_KRX_BOUNDARY`, `_JSTATUS_KRX_EVENT`, `_JSTATUS_NXT_BOUNDARY`, `_JSTATUS_NXT_EVENT`), `_handle_jif` 본문 단순화 — 서킷브레이커/사이드카 alert만 처리, NXT 블록 전체 제거, 주석/docstring 갱신 (-150줄)
+  - `daily_time_scheduler.py`: `get_market_phase()`에서 `krx_event`/`nxt_event` 필드 포함 제거, `_broadcast_market_phase()`에서 초기화 로직 + docstring 갱신 (P16 dead code 제거)
+  - `engine_state.py`: 초기값 `"krx_event": None, "nxt_event": None,` 제거
+- 프론트엔드 3파일 수정:
+  - `header.ts`: `computeCountdown()` 함수 추가 — 페이즈명 + KST 시각으로 다음 전환까지 남은 시간 계산, `KRX_COUNTDOWN`/`NXT_COUNTDOWN` 매핑 (장개시/장마감만), 30초 간격 `setInterval` 타이머로 주기 갱신, 10분 이내 카운트다운 표시 (분/초), `applyMarketPhaseChip`의 `event` 파라미터 → `countdown`으로 교체, `destroy()`에서 `clearInterval` 추가
+  - `types/index.ts`: `market_phase` 타입에서 `krx_event`/`nxt_event` 필드 제거
+  - `uiStore.ts`: `UIState.marketPhase` 타입 + 초기값 + fallback에서 `krx_event`/`nxt_event` 제거
+- 테스트 2파일 수정:
+  - `test_engine_ws_dispatch.py`: import 4개 제거, 이벤트/경계 테스트 6개 제거, constants 테스트 2개 제거, `test_nxt_cb_code_not_handled` → `test_nxt_jangubun_not_handled`로 갱신
+  - `test_daily_time_scheduler.py`: `test_includes_events` 제거, `test_returns_copy_with_krx_nxt`에서 `krx_event`/`nxt_event` 단언 제거, `test_clears_jif_events_on_transition` 제거
+- 검증: ruff 기존 실패 7건 (수정 전 동일 실패, 규칙 4-1), py_compile OK, pytest 179 passed (test_engine_ws_dispatch + test_daily_time_scheduler) in 0.60s, tsc 통과, vite build 통과 (1.78s), 런타임 기동 216ms (`-W error::RuntimeWarning`), `장 상태 초기화: KRX=장마감, NXT=장마감` 확인, 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건
+
+**Step 3 완료 내용 (2026-07-14, 커밋 `3f7a1e6`)**:
 
 **계획서**: `docs/plan_market_phase_integration.md` (5개 Step, 세션당 1단계)
 
@@ -38,7 +54,7 @@
 - 테스트: `TestIsWsSubscribeWindow` 6개 + `TestIsEditWindowOpen` 2개를 `market_phase` 기반 mock로 변경
 - 검증: py_compile OK, ruff All checks passed, pytest 133 passed + 90 passed, 런타임 기동 215ms, 잔존 프로세스 0건
 
-**다음 단계**: Step 4 — JIF 처리 단순화 (서킷브레이커/사이드카만 남김). 사용자 승인 대기.
+**다음 단계**: 장운영정보(market_phase) 기반 개별 타이머 통합 작업 전체 완료 (Step 1~5). 다음 작업은 사용자 지시 대기.
 
 **이전 작업: NXT-only 구독 분리 — 그룹 A + 그룹 B 완료**
 
