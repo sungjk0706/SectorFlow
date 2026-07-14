@@ -205,8 +205,8 @@ def get_sector_scores_snapshot() -> tuple[list[dict], int]:
     """업종 분석 순위 스냅샷 반환 — UI 업종분석 카드용.
     
     Returns: (scores_list, ranked_sectors_count)
-    - scores_list: 전체 업종 목록 (rank=0 포함)
-    - ranked_sectors_count: 순위 있는 업종 수 (rank > 0)
+    - scores_list: 전체 업종 목록 (모든 업종에 순위 부여, is_cutoff_passed 포함)
+    - ranked_sectors_count: 컷오프 통과 업종 수 (is_cutoff_passed=True)
     """
     ss = state.sector_summary_cache
     if not ss:
@@ -224,8 +224,9 @@ def get_sector_scores_snapshot() -> tuple[list[dict], int]:
             "avg_trade_amount": sc.avg_trade_amount,
             "rise_ratio": round(sc.rise_ratio * 100, 1),
             "total": sc.total,
+            "is_cutoff_passed": sc.is_cutoff_passed,
         })
-        if sc.rank > 0:
+        if sc.is_cutoff_passed:
             ranked_count += 1
     return out, ranked_count
 

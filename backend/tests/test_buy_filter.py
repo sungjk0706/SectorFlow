@@ -56,6 +56,7 @@ def _sector(
     avg_change_rate: float = 1.0,
     avg_trade_amount: int = 3_000_000_000,
     avg_ratio_5d_pct: float = 10.0,
+    is_cutoff_passed: bool = True,
 ) -> SectorScore:
     return SectorScore(
         sector=sector,
@@ -66,6 +67,7 @@ def _sector(
         avg_trade_amount=avg_trade_amount,
         avg_ratio_5d_pct=avg_ratio_5d_pct,
         rank=rank,
+        is_cutoff_passed=is_cutoff_passed,
         stocks=stocks or [],
     )
 
@@ -365,9 +367,10 @@ class TestCreateBuyTargets:
         assert result.blocked_targets == []
         assert result.sectors == []
 
-    def test_rank_zero_sectors_excluded(self):
+    def test_cutoff_failed_sectors_excluded(self):
+        """is_cutoff_passed=False 업종은 매수 대상에서 제외 (rank가 아닌 is_cutoff_passed로 판단)."""
         s1 = _stock(code="A001", change_rate=1.0)
-        sc = _sector(rank=0, stocks=[s1])
+        sc = _sector(rank=2, is_cutoff_passed=False, stocks=[s1])
         result = create_buy_targets([sc])
         assert result.buy_targets == []
         assert result.blocked_targets == []
