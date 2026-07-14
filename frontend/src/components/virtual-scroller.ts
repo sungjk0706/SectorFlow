@@ -182,7 +182,10 @@ export function createVirtualScroller<T>(
   ro.observe(container)
 
   // sentinel div — 전체 높이 확보 + CSS containment로 내부 변경 격리
+  // data-vs-sentinel 속성: data-table.ts applyGridTemplatePx()가 헤더가 아닌
+  // 실제 데이터 행 컨테이너를 정확히 찾아 gridTemplateColumns를 갱신하도록 식별
   const sentinel = document.createElement('div')
+  sentinel.setAttribute('data-vs-sentinel', '')
   sentinel.style.position = 'relative'
   sentinel.style.width = '100%'
   sentinel.style.overflow = 'visible'
