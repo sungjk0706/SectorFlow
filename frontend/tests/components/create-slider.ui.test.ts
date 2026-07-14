@@ -8,21 +8,21 @@ beforeEach(() => {
 describe('createSlider', () => {
   it('creates an input element of type range', () => {
     const handle = createSlider()
-    expect(handle.el.type).toBe('range')
+    expect(handle.input.type).toBe('range')
   })
 
   it('uses default min 0 and max 100', () => {
     const handle = createSlider()
-    expect(handle.el.min).toBe('0')
-    expect(handle.el.max).toBe('100')
+    expect(handle.input.min).toBe('0')
+    expect(handle.input.max).toBe('100')
   })
 
   it('uses custom min, max, value, and step', () => {
     const handle = createSlider({ min: 10, max: 50, value: 30, step: 5 })
-    expect(handle.el.min).toBe('10')
-    expect(handle.el.max).toBe('50')
-    expect(handle.el.value).toBe('30')
-    expect(handle.el.step).toBe('5')
+    expect(handle.input.min).toBe('10')
+    expect(handle.input.max).toBe('50')
+    expect(handle.input.value).toBe('30')
+    expect(handle.input.step).toBe('5')
   })
 
   it('getValue returns current value as number', () => {
@@ -34,36 +34,58 @@ describe('createSlider', () => {
     const handle = createSlider({ value: 0 })
     handle.setValue(75)
     expect(handle.getValue()).toBe(75)
-    expect(handle.el.value).toBe('75')
+    expect(handle.input.value).toBe('75')
   })
 
   it('fires onChange callback on input event', () => {
     let changedValue: number | null = null
     const handle = createSlider({ onChange: (v) => { changedValue = v } })
-    handle.el.value = '50'
-    handle.el.dispatchEvent(new Event('input'))
+    handle.input.value = '50'
+    handle.input.dispatchEvent(new Event('input'))
     expect(changedValue).toBe(50)
   })
 
   it('fires onCommit callback on mouseup event', () => {
     let committedValue: number | null = null
     const handle = createSlider({ onCommit: (v) => { committedValue = v } })
-    handle.el.value = '80'
-    handle.el.dispatchEvent(new MouseEvent('mouseup'))
+    handle.input.value = '80'
+    handle.input.dispatchEvent(new MouseEvent('mouseup'))
     expect(committedValue).toBe(80)
   })
 
   it('sets background gradient style', () => {
     const handle = createSlider({ value: 50 })
-    expect(handle.el.style.background).toContain('linear-gradient')
+    expect(handle.input.style.background).toContain('linear-gradient')
   })
 
   it('updates gradient when value changes via input event', () => {
     const handle = createSlider({ value: 0 })
-    const initialBg = handle.el.style.background
-    handle.el.value = '100'
-    handle.el.dispatchEvent(new Event('input'))
-    expect(handle.el.style.background).not.toBe(initialBg)
+    const initialBg = handle.input.style.background
+    handle.input.value = '100'
+    handle.input.dispatchEvent(new Event('input'))
+    expect(handle.input.style.background).not.toBe(initialBg)
+  })
+
+  it('wraps in container with value label when valueLabel is provided', () => {
+    const handle = createSlider({ value: 30, valueLabel: v => `${v}%` })
+    expect(handle.el.tagName).toBe('DIV')
+    const labelSpan = handle.el.querySelector('span')
+    expect(labelSpan?.textContent).toBe('30%')
+  })
+
+  it('updates value label on input event', () => {
+    const handle = createSlider({ value: 0, valueLabel: v => `${v}%` })
+    handle.input.value = '50'
+    handle.input.dispatchEvent(new Event('input'))
+    const labelSpan = handle.el.querySelector('span')
+    expect(labelSpan?.textContent).toBe('50%')
+  })
+
+  it('updates value label on setValue', () => {
+    const handle = createSlider({ value: 0, valueLabel: v => `${v}%` })
+    handle.setValue(75)
+    const labelSpan = handle.el.querySelector('span')
+    expect(labelSpan?.textContent).toBe('75%')
   })
 })
 

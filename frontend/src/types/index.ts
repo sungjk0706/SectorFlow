@@ -148,10 +148,10 @@ export interface AppSettings {
   sector_max_targets: number;
   sector_start_threshold_pct: number;
 
-  // 업종 점수 3단계 누적 가산점 만점 (사용자 설정)
-  sector_bonus_rise_ratio_max: number;
-  sector_bonus_relative_strength_max: number;
-  sector_bonus_trade_amount_max: number;
+  // 업종 점수 3단계 가산점 가중치 슬라이더 (-100%~+100%, 기본값 0)
+  sector_bonus_rise_ratio_slider: number;
+  sector_bonus_relative_strength_slider: number;
+  sector_bonus_trade_amount_slider: number;
 
   // 매수 차단
   buy_block_rise_on: boolean;
@@ -234,13 +234,14 @@ export interface SnapshotHistory {
 export interface SectorScoreRow {
   rank: number;
   sector: string;
-  final_score: number;              // 0~만점 합, 정수 (종합 가산점 = 1차+2차+3차)
-  bonus_rise_ratio: number;         // 1차 가산점 (0~만점) — 업종 내 상승 종목 비율 순위
-  bonus_relative_strength: number;  // 2차 가산점 (0~만점) — 통과 업종 종목들 상대평가 순위
-  bonus_trade_amount: number;       // 3차 가산점 (0~만점) — 업종 평균 거래대금 순위
+  final_score: number;              // 0~만점 합 (종합 가산점 = 1차+2차+3차)
+  bonus_rise_ratio: number;         // 1차 가산점 (0~조정 만점) — 업종 내 상승 종목 비율 순위
+  bonus_relative_strength: number;  // 2차 가산점 (0~조정 만점) — 통과 업종 종목들 가중 순위 합
+  bonus_trade_amount: number;       // 3차 가산점 (0~조정 만점) — 업종 평균 거래대금 순위
   avg_trade_amount: number;         // 평균 거래대금
   rise_ratio: number;
   total: number;
+  is_cutoff_passed: boolean;        // 컷오프(min_rise_ratio) 통과 여부 — rank와 분리된 진실 소스 (P10)
 }
 
 export interface SectorStatus {

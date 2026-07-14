@@ -2,9 +2,11 @@
 // 업종순위 설정 패널 — Vanilla TS PageModule (설정 입력만 담당)
 
 import { uiStore } from '../stores/uiStore'
+import { hotStore } from '../stores/hotStore'
 import { createSettingsManager } from '../settings'
 import { createAutoSaveHelper, type AutoSaveHelper } from '../utils/settings-save'
 import { createSettingRow, createNumInput, createMoneyInput } from '../components/common/setting-row'
+import { createSlider } from '../components/common/create-slider'
 import { createDescText, createStepLabel } from '../components/common/settings-common'
 import { FONT_SIZE, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
@@ -13,7 +15,7 @@ import type { PageModule } from '../router'
 
 const NUM_KEYS = [
   'sector_start_threshold_pct', 'sector_min_trade_amt', 'sector_min_rise_ratio_pct', 'sector_max_targets',
-  'sector_bonus_rise_ratio_max', 'sector_bonus_relative_strength_max', 'sector_bonus_trade_amount_max',
+  'sector_bonus_rise_ratio_slider', 'sector_bonus_relative_strength_slider', 'sector_bonus_trade_amount_slider',
 ] as const
 
 /* ── 모듈 상태 ── */
@@ -28,11 +30,13 @@ let thresholdInput: ReturnType<typeof createNumInput> | null = null
 let minTradeAmtInput: ReturnType<typeof createMoneyInput> | null = null
 let minRiseRatioInput: ReturnType<typeof createNumInput> | null = null
 let maxTargetsInput: ReturnType<typeof createNumInput> | null = null
-let bonusRiseRatioMaxInput: ReturnType<typeof createNumInput> | null = null
-let bonusRelativeStrengthMaxInput: ReturnType<typeof createNumInput> | null = null
-let bonusTradeAmountMaxInput: ReturnType<typeof createNumInput> | null = null
+let bonusRiseRatioSlider: ReturnType<typeof createSlider> | null = null
+let bonusRelativeStrengthSlider: ReturnType<typeof createSlider> | null = null
+let bonusTradeAmountSlider: ReturnType<typeof createSlider> | null = null
+let maxScoreDisplayEl: HTMLSpanElement | null = null
 let maxTargetsStatusEl: HTMLSpanElement | null = null
 let maxTargetsSumEl: HTMLDivElement | null = null
+let unsubHotStore: (() => void) | null = null
 
 // 현재 값 추적
 let currentVals: Record<string, number> = {}
@@ -57,9 +61,9 @@ function syncFromSettings(s: AppSettings): void {
   if (minTradeAmtInput && (!act || !minTradeAmtInput.el.contains(act))) minTradeAmtInput.setValue(currentVals.sector_min_trade_amt ?? 0)
   if (minRiseRatioInput && (!act || !minRiseRatioInput.el.contains(act))) minRiseRatioInput.setValue(currentVals.sector_min_rise_ratio_pct ?? 0)
   if (maxTargetsInput && (!act || !maxTargetsInput.el.contains(act))) maxTargetsInput.setValue(currentVals.sector_max_targets ?? 0)
-  if (bonusRiseRatioMaxInput && (!act || !bonusRiseRatioMaxInput.el.contains(act))) bonusRiseRatioMaxInput.setValue(currentVals.sector_bonus_rise_ratio_max ?? 10)
-  if (bonusRelativeStrengthMaxInput && (!act || !bonusRelativeStrengthMaxInput.el.contains(act))) bonusRelativeStrengthMaxInput.setValue(currentVals.sector_bonus_relative_strength_max ?? 7)
-  if (bonusTradeAmountMaxInput && (!act || !bonusTradeAmountMaxInput.el.contains(act))) bonusTradeAmountMaxInput.setValue(currentVals.sector_bonus_trade_amount_max ?? 5)
+  if (bonusRiseRatioSlider && (!act || !bonusRiseRatioSlider.el.contains(act))) bonusRiseRatioSlider.setValue(currentVals.sector_bonus_rise_ratio_slider ?? 0)
+  if (bonusRelativeStrengthSlider && (!act || !bonusRelativeStrengthSlider.el.contains(act))) bonusRelativeStrengthSlider.setValue(currentVals.sector_bonus_relative_strength_slider ?? 0)
+  if (bonusTradeAmountSlider && (!act || !bonusTradeAmountSlider.el.contains(act))) bonusTradeAmountSlider.setValue(currentVals.sector_bonus_trade_amount_slider ?? 0)
 }
 
 /* ── mount ── */
@@ -135,25 +139,54 @@ function mount(container: HTMLElement): void {
   minRiseRatioInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_min_rise_ratio_pct', v), step: 1, name: 'sector_min_rise_ratio_pct' })
   root.appendChild(createSettingRow('업종내 종목 상승비율', minRiseRatioInput.el))
 
-  // ④ 가산점 만점 설정 (상승비율·상대평가·거래대금 3단계 누적)
-  root.appendChild(createStepLabel('④', '가산점 만점 설정 (3단계 누적)'))
+  // ④ 가산점 가중치 슬라이더 (상승비율·가중 순위 합·거래대금 3단계)
+  root.appendChild(createStepLabel('④', '가산점 가중치 조절 (3단계)'))
 
-  bonusRiseRatioMaxInput = createNumInput({ value: 10, onChange: v => onNumChange('sector_bonus_rise_ratio_max', v), step: 1, name: 'sector_bonus_rise_ratio_max' })
-  root.appendChild(createSettingRow('1차 만점 (상승비율)', bonusRiseRatioMaxInput.el))
+  // 만점 자동 표시 — 업종 수 = 만점 (P21 투명성)
+  maxScoreDisplayEl = document.createElement('span')
+  Object.assign(maxScoreDisplayEl.style, { fontSize: FONT_SIZE.small, color: COLOR.down, marginLeft: '8px' })
+  const _initialSectorCount = hotStore.getState().sectorScores.length
+  maxScoreDisplayEl.textContent = _initialSectorCount > 0
+    ? `(현재 만점 = ${_initialSectorCount}점, 업종 ${_initialSectorCount}개)`
+    : '(업종 수에 따라 자동 설정)'
+  const maxScoreLabel = document.createElement('div')
+  Object.assign(maxScoreLabel.style, { display: 'flex', alignItems: 'center', marginBottom: '8px' })
+  const maxScoreLabelText = document.createElement('span')
+  maxScoreLabelText.textContent = '만점 = 업종 수 (자동)'
+  Object.assign(maxScoreLabelText.style, { color: COLOR.neutral, fontSize: FONT_SIZE.small })
+  maxScoreLabel.appendChild(maxScoreLabelText)
+  maxScoreLabel.appendChild(maxScoreDisplayEl)
+  root.appendChild(maxScoreLabel)
 
-  bonusRelativeStrengthMaxInput = createNumInput({ value: 7, onChange: v => onNumChange('sector_bonus_relative_strength_max', v), step: 1, name: 'sector_bonus_relative_strength_max' })
-  root.appendChild(createSettingRow('2차 만점 (상대평가)', bonusRelativeStrengthMaxInput.el))
+  bonusRiseRatioSlider = createSlider({
+    min: -100, max: 100, value: 0, step: 1,
+    onChange: v => onNumChange('sector_bonus_rise_ratio_slider', v),
+    valueLabel: v => `${v}%`,
+  })
+  root.appendChild(createSettingRow('1차 가중치 (상승비율)', bonusRiseRatioSlider.el))
 
-  bonusTradeAmountMaxInput = createNumInput({ value: 5, onChange: v => onNumChange('sector_bonus_trade_amount_max', v), step: 1, name: 'sector_bonus_trade_amount_max' })
-  root.appendChild(createSettingRow('3차 만점 (거래대금)', bonusTradeAmountMaxInput.el))
+  bonusRelativeStrengthSlider = createSlider({
+    min: -100, max: 100, value: 0, step: 1,
+    onChange: v => onNumChange('sector_bonus_relative_strength_slider', v),
+    valueLabel: v => `${v}%`,
+  })
+  root.appendChild(createSettingRow('2차 가중치 (가중 순위 합)', bonusRelativeStrengthSlider.el))
+
+  bonusTradeAmountSlider = createSlider({
+    min: -100, max: 100, value: 0, step: 1,
+    onChange: v => onNumChange('sector_bonus_trade_amount_slider', v),
+    valueLabel: v => `${v}%`,
+  })
+  root.appendChild(createSettingRow('3차 가중치 (거래대금)', bonusTradeAmountSlider.el))
 
   const bonusDescWrap = document.createElement('div')
   Object.assign(bonusDescWrap.style, {
     borderBottom: '1px solid ' + COLOR.borderLight,
     marginBottom: '12px',
   })
-  bonusDescWrap.appendChild(createDescText('1위 = 만점, 2위 = 만점-1, ... 0점까지 1점씩 차감', { marginTop: '8px' }))
-  bonusDescWrap.appendChild(createDescText('종합 점수 = 1차 + 2차 + 3차 (0~만점 합)'))
+  bonusDescWrap.appendChild(createDescText('슬라이더 -100%~+100%: 조정 만점 = 업종 수 × (1 + 슬라이더/100)', { marginTop: '8px' }))
+  bonusDescWrap.appendChild(createDescText('1위 = 조정 만점, 2위 = 조정 만점 - 1, ... 0점까지 1점씩 차감'))
+  bonusDescWrap.appendChild(createDescText('종합 점수 = 1차 + 2차 + 3차'))
   root.appendChild(bonusDescWrap)
 
   // ⑤ 매수 대상
@@ -244,21 +277,37 @@ function mount(container: HTMLElement): void {
       }
     }
   })
+
+  // hotStore 구독 — 만점 자동 표시 갱신 (업종 수 = 만점)
+  let prevSectorCount = hotStore.getState().sectorScores.length
+  unsubHotStore = hotStore.subscribe(() => {
+    const sectorCount = hotStore.getState().sectorScores.length
+    if (sectorCount !== prevSectorCount) {
+      prevSectorCount = sectorCount
+      if (maxScoreDisplayEl) {
+        maxScoreDisplayEl.textContent = sectorCount > 0
+          ? `(현재 만점 = ${sectorCount}점, 업종 ${sectorCount}개)`
+          : '(업종 수에 따라 자동 설정)'
+      }
+    }
+  })
 }
 
 /* ── unmount ── */
 function unmount(): void {
   if (unsubSettings) { unsubSettings(); unsubSettings = null }
   if (unsubUiStore) { unsubUiStore(); unsubUiStore = null }
+  if (unsubHotStore) { unsubHotStore(); unsubHotStore = null }
   if (autoSaveHelper) { autoSaveHelper.destroy(); autoSaveHelper = null }
   if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }
   thresholdInput = null
   minTradeAmtInput = null
   minRiseRatioInput = null
   maxTargetsInput = null
-  bonusRiseRatioMaxInput = null
-  bonusRelativeStrengthMaxInput = null
-  bonusTradeAmountMaxInput = null
+  bonusRiseRatioSlider = null
+  bonusRelativeStrengthSlider = null
+  bonusTradeAmountSlider = null
+  maxScoreDisplayEl = null
   maxTargetsStatusEl = null
   maxTargetsSumEl = null
   saving = false
