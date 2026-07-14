@@ -1,6 +1,70 @@
 # HANDOVER — SectorFlow
 
+## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
+
+### 작업: 장운영정보(market_phase) 단일 소스 통합 — 수정 7, 5 완료, 수정 1,2,3,4 대기
+
+**진행 단계**: 수정 7 (docstring) + 수정 5 (dead data 제거) 완료. 다음 단계: 수정 1,2,3,4 (시간 함수 → market_phase 전환, 위험도 높음).
+
+**완료된 수정**:
+- **수정 7 완료** (커밋 `786e371`): `is_ws_subscribe_window()` docstring 기본값 불일치 수정 — "07:50~20:00" → "초기 기본값 09:00~15:00 (settings_defaults.py — 최초 설치 시 1회만 사용). 사용자가 설정을 변경하면 DB에 저장되어 이후 해당 값이 사용됨". ARCHITECTURE.md 타이머 예시 07:50/20:00 → 09:00/15:00 갱신. 로직 수정 없음 (settings_file.py:233-239에서 이미 DB 값 우선 구조 확인).
+- **수정 5 완료** (커밋 `2636bc1`): `build_sector_stocks_payload()`의 `krx_after_hours` dead data 제거 — 필드 + `is_krx_after_hours` import + 테스트 patch/assertion 정리. 프론트엔드 참조 0건 확인 (P16). `is_krx_after_hours` 함수 자체는 유지 (수정 3 대상, `buy_order_executor.py` 사용 중).
+
+**남은 수정안 (승인 대기)**:
+- **수정 1**: `is_nxt_premarket_window()` → `market_phase["nxt"]=="프리마켓"` 기반 전환 (`daily_time_scheduler.py:46-60`)
+- **수정 2**: `is_nxt_aftermarket_window()` → `market_phase["nxt"] in {"애프터마켓","애프터마켓 지속"}` 전환 + 거래일 체크 누락 자동 해결 (`daily_time_scheduler.py:63-70`)
+- **수정 3**: `is_krx_after_hours()` → `market_phase["krx"] in {"체결 정산","장후 시간외","시간외 단일가","장 종료"}` 전환 (`daily_time_scheduler.py:208-228`)
+- **수정 4**: `get_nxt_trde_tp()` → `market_phase["nxt"]` 직접 판단 (`daily_time_scheduler.py:192-205`)
+- **수정 6**: 프론트엔드 `KRX_INACTIVE_PHASES`/`NXT_ACTIVE_PHASES` 제거 + 백엔드 `market-phase` 이벤트에 `is_nxt_only: boolean` 추가 (`sector-stock.ts:127-154`, `uiStore.ts`, `types/index.ts`, `binding.ts`, `engine_account_notify.py`)
+- **수정 8 (선택)**: 08:00/09:00/15:30 재계산 타이머 → `_broadcast_market_phase()` 내 페이즈 변경 감지 시 자동 트리거 통합 (`daily_time_scheduler.py:741-766`). 복잡도 증가 가능성 있어 신중 평가 필요.
+
+**다음 단계 제안 (세션당 1단계, 규칙 0-1 준수)**:
+1. 수정 1,2,3,4 (시간 함수 → market_phase 전환) — 위험도 높음, 일괄 적용 + 테스트 필수
+2. 수정 6 (프론트엔드 상수 제거 + is_nxt_only 전송) — 백엔드-프론트엔드 동시 수정
+3. 수정 8 (선택, 타이머 통합) — 별도 검증 필요
+
+**남은 수정 파일 목록**:
+- 백엔드: `daily_time_scheduler.py`, `engine_account_notify.py`
+- 프론트엔드: `sector-stock.ts`, `uiStore.ts`, `types/index.ts`, `binding.ts`
+- 테스트: `tests/test_daily_time_scheduler.py`
+
+**주요 리스크**:
+- JIF 누락 시 `market_phase` 부정확 (시계 타이머 백업으로 최대 1초 지연)
+- NXT 주문 타입 오류 시 증권사 거절 (수정 3,4 후 테스트모드에서 주문 타입 검증 필수)
+- `market_phase` 빈 문자열 감지 로직 시간 함수들에도 포함 필요
+- 프론트엔드-백엔드 `is_nxt_only` 동기화 (수정 6)
+
+**추가 검토 결론: `ws_subscribe_start/end` 자동화 대체 권장하지 않음**:
+- 거래소 장시간과 사용자가 원하는 데이터 수신 시간은 다를 수 있음 (P21 위반)
+- 테스트모드 유연성 제약 (P18 위반)
+- 현재 3계층 구조(ws_subscribe_on 토글 + 시간 설정 + market_phase 타이머)가 합리적
+- 다만 기본값 09:00~15:00을 NXT 거래시간 고려해 08:50~15:30 조정은 별도 세션에서 검토 가능
+
+**다음 세션 지시어 예시**:
+- "수정 1,2,3,4 진행해" → 시간 함수 4개 market_phase 전환 (일괄)
+- "수정 6 진행해" → 프론트엔드 상수 제거 + is_nxt_only 전송
+
+---
+
 ## 직전 완료 작업
+- **2026-07-14: build_sector_stocks_payload krx_after_hours dead data 제거 — 필드 + import + 테스트 정리 (P16/P10)**
+  - **현상**: `build_sector_stocks_payload()`가 `sector-stocks-refresh` 이벤트 페이로드에 `krx_after_hours` 필드를 포함하여 전송했으나, 프론트엔드 전체에서 참조 코드 없어 dead data로 전송됨 (P16 위반).
+  - **근본 원인**: `engine_snapshot.py:97,109` — `is_krx_after_hours`를 import하여 반환값에 `krx_after_hours` 필드로 포함. 프론트엔드 `frontend/` 디렉토리 전체 검색 결과 참조 0건. `ws.py:94-95`에서 페이로드를 그대로 WS 전송하므로 불필요 데이터 매 전송마다 포함.
+  - **수정 파일**: 백엔드 1개 파일 + 테스트 1개 파일 — `engine_snapshot.py`, `test_engine_snapshot.py`
+  - **변경 내용**: (1) `engine_snapshot.py:97` — `is_krx_after_hours` import 제거. (2) `engine_snapshot.py:109` — 반환값 `{"_v": 1, "stocks": filtered, "krx_after_hours": is_krx_after_hours()}` → `{"_v": 1, "stocks": filtered}`. (3) `test_engine_snapshot.py:305,309,321,326` — `is_krx_after_hours` patch 2건 + assertion 2건 제거 + docstring 라인 번호 갱신 (L93-109 → L93-108). (4) `is_krx_after_hours` 함수 자체는 `daily_time_scheduler.py`에 유지 (수정 3 대상, `buy_order_executor.py` 사용 중).
+  - **영향 범위**: 백엔드 1개 파일 + 테스트 1개 파일 (+3/-8). 프론트엔드 영향 없음 (참조 코드 없었음). WS 전송 `sector-stocks-refresh` 페이로드에서 `krx_after_hours` 필드 제거, UI 동작 영향 없음.
+  - **검증**: ruff `test_engine_snapshot.py` All checks passed. `engine_snapshot.py` 기존 실패 1건 (`engine_state` unused import, 수정 전 동일 실패 확인 — 규칙 4-1). pytest `test_engine_snapshot.py` 19 passed in 1.03s. 런타임 기동 `.venv/bin/python -W error::RuntimeWarning main.py` — 171ms 기동, 에러/Traceback/RuntimeWarning 없음. 잔존 프로세스 0건 (규칙 5-1 준수). `krx_after_hours` 잔존 — `engine_snapshot.py`/`test_engine_snapshot.py` 0건 확인.
+  - **커밋**: `2636bc1`
+
+- **2026-07-14: is_ws_subscribe_window docstring 기본값 불일치 수정 — 07:50~20:00 → 09:00~15:00 + 1회성 초기 기본값 명시 (P23)**
+  - **현상**: `is_ws_subscribe_window()` docstring이 "기본값 07:50~20:00"으로 기숤했으나, 실제 초기 기본값은 `settings_defaults.py`에서 "09:00"/"15:00"으로 정의되어 불일치 (P23 위반). ARCHITECTURE.md 타이머 예시 시간도 07:50/20:00으로 불일치.
+  - **근본 원인**: `daily_time_scheduler.py:286` docstring에 과거 기본값 기준으로 "07:50~20:00"으로 잘못 기술됨. `ARCHITECTURE.md:973,978,1121` 타이머 예시도 과거 기본값 기준. `settings_defaults.py:21-22` 실제 초기 기본값은 "09:00"/"15:00".
+  - **수정 파일**: 백엔드 1개 파일 + 문서 1개 파일 — `daily_time_scheduler.py`, `ARCHITECTURE.md`
+  - **변경 내용**: (1) `daily_time_scheduler.py:286-289` — docstring "초기 기본값 09:00~15:00 (settings_defaults.py — 최초 설치 시 1회만 사용). 사용자가 설정을 변경하면 DB에 저장되어 이후 해당 값이 사용됨"으로 수정. "settings.json에서 직접 읽음" → "integrated_system_settings_cache에서 읽음" 정정. (2) `ARCHITECTURE.md:973-978` — 타이머 예시 07:50→09:00, 20:00→15:00 갱신 + "(초기 기본값, 사용자 설정 가능)" 명시, 시간순 정렬 유지. (3) `ARCHITECTURE.md:1121` — 장마감 파이프라인 시작 시간 20:00→15:00 갱신. (4) 로직 수정 없음 — `settings_file.py:233-239`에서 이미 DB 값 우선, 기본값은 DB에 값 없을 때만 사용하는 구조 확인.
+  - **영향 범위**: 백엔드 1개 파일 + 문서 1개 파일 (+7/-5). 코드 로직 변경 없음 (docstring/문서만 수정). 런타임 동작 영향 없음.
+  - **검증**: ruff `daily_time_scheduler.py` All checks passed. 런타임 기동 `.venv/bin/python -W error::RuntimeWarning main.py` — 189ms 기동, 에러/Traceback/RuntimeWarning 없음. 잔존 프로세스 0건 (규칙 5-1 준수).
+  - **커밋**: `786e371`
+
 - **2026-07-14: NXT-only 구간 KRX 단독 종목 필터링 복원 — NXT_ACTIVE_PHASES 2개 페이즈 추가 + 08:00 재계산 타이머 (P22/P10/P16/P21/P23)**
   - **현상**: NXT-only 거래 시간대(08:00~09:00, 15:30~20:00)에 KRX 단독 등록 종목이 업종 점수에서 제외되지 않고 포함됨. 08:30에 파세코(KRX Only, 037070)가 업종순위 1위로 표시됨. 프론트엔드 "업종별 종목 실시간 시세" 테이블에서도 KRX 단독 종목의 회색 배경이 표시되지 않았음.
   - **근본 원인**: (원인 A) `daily_time_scheduler.py:171-173` — `NXT_ACTIVE_PHASES`에 "정규장 준비", "단일가 매매" 2개 페이즈 누락. 08:50~09:00, 15:30~15:40 구간에서 `is_nxt_only_window()`가 False 반환 → KRX 단독 종목 필터링 미작동 + 수신율 왜곡(KRX 단독 종목이 수신율 분모에 포함). (원인 B) `daily_time_scheduler.py:741` — 08:00 NXT 프리마켓 시작 시 전체 재계산 타이머 부재. 07:55 재계산 결과(KRX 단독 종목 포함, market_phase=장개시전/장개시전 → is_nxt_only_window=False)가 08:00 이후에도 갱신되지 않아 유지됨. 08:00에 market_phase가 NXT-only로 전환되어도 재계산 트리거가 없었음.
