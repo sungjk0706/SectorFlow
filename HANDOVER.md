@@ -2,11 +2,11 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
-### 다음 작업: 업종 점수 산정 방식 리팩토링 — Step 2 대기
+### 다음 작업: 업종 점수 산정 방식 리팩토링 — Step 2 Split B 대기
 
-**진행 단계**: Step 1 완료 (커밋 `c31d870`). 다음 세션에서 Step 2 사전조사부터 시작.
+**진행 단계**: Step 2 Split A 완료 (커밋 대기). 다음 세션에서 Step 2 Split B 사전조사부터 시작.
 
-**계획서**: `docs/plan_sector_score_redesign.md` (4개 Step, 세션당 1단계)
+**계획서**: `docs/plan_sector_score_redesign.md` (4개 Step, 세션당 1단계 — Step 2를 Split A/B로 분할)
 
 **변경 요약**:
 - 만점 기준: 사용자 입력(10/7/5) → 업종 수 자동 사용
@@ -18,15 +18,46 @@
 
 **Step 구성 (전체)**:
 - Step 1: 백엔드 점수 계산 로직 전면 개편 (5개 파일) — 완료
-- Step 2: 백엔드 호출처 + 매수 필터 + 스냅샷 전파 (4개 파일) — 대기
+- Step 2 Split A: dead code 제거 + 파라미터 전환 (소스 7 + 테스트 2) — 완료
+- Step 2 Split B: rank/is_cutoff_passed 전환 (소스 4 + 테스트 4) — 대기
 - Step 3: 프론트엔드 설정 패널 + 타입 (3개 파일)
 - Step 4: 테스트 + 문서 갱신 (3개 테스트 + 2개 문서)
 
 ---
 
+### 작업: 업종 점수 산정 방식 리팩토링 — Step 2 Split A 완료 (dead code 제거 + 파라미터 전환)
+
+**진행 단계**: 완료 (커밋 대기). 다음 작업: Step 2 Split B 사전조사 대기.
+
+**완료 내용 (2026-07-15)**:
+- **현상**: Step 1 완료 후 `calculate_bonus_scores()`와 `compute_full_sector_summary()`는 슬라이더 기반으로 개편되었으나, 호출처 3곳이 여전히 구 만점 파라미터(max_score 3개)를 전달하고 있었고, deprecated max_score 설정/파라미터/기본값이 코드에 잔존함.
+- **근본 원인**: `engine_sector_confirm.py:156-162, 218-225` 및 `sector_data_provider.py:251-258`가 구 max_score 파라미터 전달. `sector_score.py:67-69`, `sector_calculator.py:170-173`에 deprecated max_score 파라미터 잔존 (dead params, P16 위반). `settings_defaults.py:89-91`, `engine_settings.py:222-228`에 deprecated max_score 설정 잔존 (dead settings). `engine_service.py:163-165` `_SECTOR_UI_KEYS`에 구 설정 키만 등록.
+- **수정 내용**: 소스 7개 + 테스트 2개 파일 (+48/-67):
+  - `sector_score.py`: deprecated max_score 파라미터 3개 제거.
+  - `sector_calculator.py`: deprecated max_score 파라미터 3개 제거.
+  - `engine_sector_confirm.py`: 2개 호출처 max_score → slider 파라미터 전환 (설정 키 `sector_bonus_*_slider` 읽기).
+  - `sector_data_provider.py`: `recompute_sector_summary_now()` 호출처 동일 전환.
+  - `engine_service.py`: `_SECTOR_UI_KEYS` 설정 키 3개 교체 (max_score → slider).
+  - `settings_defaults.py`: deprecated max_score 기본값 3개 제거.
+  - `engine_settings.py`: deprecated max_score 설정 3개 제거.
+  - `test_engine_sector_confirm.py`: mock settings 11곳 max_score → slider 교체.
+  - `test_sector_data_provider.py`: mock settings 1곳 동일 교체.
+- **영향 범위**: 백엔드 7파일 + 테스트 2파일. 동작 변화 없음 (slider 기본값 0 → 조정 만점 = 업종 수, 기존과 동일). dead code(params/settings/defaults) 제거로 P16 준수. 프론트엔드, DB 스키마, 거래 로직 변경 없음.
+- **검증**: py_compile OK, ruff `All checks passed!`, pytest 2733 passed 3 failed (기존 실패 3건 — `test_pipeline_compute.py::TestHandleReal0dTick` 3개, `engine_ws_dispatch._ws_fid_int` 속성 부재, `git stash` 후 수정 전 동일 실패 확인), 런타임 기동 197ms (`-W error::RuntimeWarning`), `[업종] 재계산 완료` 로그 확인, 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건.
+- **P10/P16/P20/P24**: max_score dead settings 3개 제거, deprecated max_score 파라미터 6개(함수 2개 × 3개) 제거, 구 파라미터 "무시됨" 방치 패턴 제거, 설정 6개 + 파라미터 6개 = 12개 dead code 제거.
+
+**Step 2 Split B 사전조사 필요 항목**:
+- `sector_score.py:202-208` — rank 부여 로직: 모든 업종에 1, 2, 3... 순위 부여 (rank=0 제거)
+- `buy_filter.py:172` — `sc.rank == 0` → `not sc.is_cutoff_passed` 매수 제외 조건 전환
+- `sector_data_provider.py:204-230` — `get_sector_scores_snapshot()`에 `is_cutoff_passed` 필드 추가, `ranked_count` 로직 `sc.rank > 0` → `sc.is_cutoff_passed` 전환
+- `models.py:43` — `SectorScore.rank` 필드 주석 갱신 ("임시 호환" → "1=최강, 모든 업종에 순위 부여")
+- 테스트: `test_buy_filter.py` (_sector 헬퍼 is_cutoff_passed 추가, test_rank_zero_sectors_excluded 변경), `test_sector_score.py` (rank==0 assertion → is_cutoff_passed), `test_sector_calculator.py` (bank.rank==0 → not is_cutoff_passed), `test_sector_data_provider.py` (snapshot is_cutoff_passed)
+
+---
+
 ### 작업: 업종 점수 산정 방식 리팩토링 — Step 1 완료 (백엔드 점수 계산 로직 전면 개편)
 
-**진행 단계**: 완료 (커밋 `c31d870`). 다음 작업: Step 2 사전조사 대기.
+**진행 단계**: 완료 (커밋 `c31d870`). 다음 작업: Step 2 Split B 사전조사 대기.
 
 **완료 내용 (2026-07-15)**:
 - **현상**: 업종 점수 만점이 사용자 입력(10/7/5)으로 고정되어 업종 수 변동 시 부적합, 2차 가산점이 백분위 평균(4단계)으로 상위 집중도 미반영, 컷오프 미달 업종이 rank=0으로 순위 표시 불가.

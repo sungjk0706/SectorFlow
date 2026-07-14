@@ -429,9 +429,9 @@ class TestFlushSectorRecomputeImpl:
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
                 "sector_min_rise_ratio_pct": 0.0,
-                "sector_bonus_rise_ratio_max": 10,
-                "sector_bonus_relative_strength_max": 7,
-                "sector_bonus_trade_amount_max": 5,
+                "sector_bonus_rise_ratio_slider": 0,
+                "sector_bonus_relative_strength_slider": 0,
+                "sector_bonus_trade_amount_slider": 0,
             }
             mock_state.auto_trade = None
             mock_state.sector_summary_ready_event = MagicMock()
@@ -475,9 +475,9 @@ class TestFlushSectorRecomputeImpl:
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
                 "sector_min_rise_ratio_pct": 0.0,
-                "sector_bonus_rise_ratio_max": 10,
-                "sector_bonus_relative_strength_max": 7,
-                "sector_bonus_trade_amount_max": 5,
+                "sector_bonus_rise_ratio_slider": 0,
+                "sector_bonus_relative_strength_slider": 0,
+                "sector_bonus_trade_amount_slider": 0,
             }
             mock_state.auto_trade = None
             mock_state.sector_summary_ready_event = MagicMock()
@@ -516,9 +516,9 @@ class TestFlushSectorRecomputeImpl:
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
                 "sector_min_rise_ratio_pct": 50.0,
-                "sector_bonus_rise_ratio_max": 10,
-                "sector_bonus_relative_strength_max": 7,
-                "sector_bonus_trade_amount_max": 5,
+                "sector_bonus_rise_ratio_slider": 0,
+                "sector_bonus_relative_strength_slider": 0,
+                "sector_bonus_trade_amount_slider": 0,
             }
             mock_state.auto_trade = None
             mock_state.sector_summary_ready_event = MagicMock()
@@ -562,9 +562,9 @@ class TestFlushSectorRecomputeImpl:
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
                 "sector_min_rise_ratio_pct": 0.0,
-                "sector_bonus_rise_ratio_max": 10,
-                "sector_bonus_relative_strength_max": 7,
-                "sector_bonus_trade_amount_max": 5,
+                "sector_bonus_rise_ratio_slider": 0,
+                "sector_bonus_relative_strength_slider": 0,
+                "sector_bonus_trade_amount_slider": 0,
             }
             mock_state.auto_trade = None
             mock_state.sector_summary_ready_event = MagicMock()
@@ -608,9 +608,9 @@ class TestFlushSectorRecomputeImpl:
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
                 "sector_min_rise_ratio_pct": 0.0,
-                "sector_bonus_rise_ratio_max": 10,
-                "sector_bonus_relative_strength_max": 7,
-                "sector_bonus_trade_amount_max": 5,
+                "sector_bonus_rise_ratio_slider": 0,
+                "sector_bonus_relative_strength_slider": 0,
+                "sector_bonus_trade_amount_slider": 0,
             }
             mock_state.auto_trade = None
             mock_state.sector_summary_ready_event = MagicMock()
@@ -664,9 +664,9 @@ class TestFlushSectorRecomputeImpl:
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
                 "sector_min_rise_ratio_pct": 0.0,
-                "sector_bonus_rise_ratio_max": 10,
-                "sector_bonus_relative_strength_max": 7,
-                "sector_bonus_trade_amount_max": 5,
+                "sector_bonus_rise_ratio_slider": 0,
+                "sector_bonus_relative_strength_slider": 0,
+                "sector_bonus_trade_amount_slider": 0,
             }
             mock_state.auto_trade = mock_auto_trade
             mock_state.sector_summary_ready_event = MagicMock()
@@ -708,9 +708,9 @@ class TestFlushSectorRecomputeImpl:
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
                 "sector_min_rise_ratio_pct": 0.0,
-                "sector_bonus_rise_ratio_max": 10,
-                "sector_bonus_relative_strength_max": 7,
-                "sector_bonus_trade_amount_max": 5,
+                "sector_bonus_rise_ratio_slider": 0,
+                "sector_bonus_relative_strength_slider": 0,
+                "sector_bonus_trade_amount_slider": 0,
             }
             mock_state.auto_trade = None
             mock_state.sector_summary_ready_event = MagicMock()
@@ -751,9 +751,9 @@ class TestFlushSectorRecomputeImpl:
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
                 "sector_min_rise_ratio_pct": 0.0,
-                "sector_bonus_rise_ratio_max": 10,
-                "sector_bonus_relative_strength_max": 7,
-                "sector_bonus_trade_amount_max": 5,
+                "sector_bonus_rise_ratio_slider": 0,
+                "sector_bonus_relative_strength_slider": 0,
+                "sector_bonus_trade_amount_slider": 0,
             }
             mock_state.auto_trade = None
             mock_state.sector_summary_ready_event = MagicMock()
@@ -794,9 +794,9 @@ class TestFullRecompute:
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
                 "sector_min_rise_ratio_pct": 0.0,
-                "sector_bonus_rise_ratio_max": 10,
-                "sector_bonus_relative_strength_max": 7,
-                "sector_bonus_trade_amount_max": 5,
+                "sector_bonus_rise_ratio_slider": 0,
+                "sector_bonus_relative_strength_slider": 0,
+                "sector_bonus_trade_amount_slider": 0,
             }
             mock_state.auto_trade = None
             mock_state.sector_summary_ready_event = MagicMock()
@@ -837,9 +837,9 @@ class TestFullRecompute:
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
                 "sector_min_rise_ratio_pct": 0.0,
-                "sector_bonus_rise_ratio_max": 10,
-                "sector_bonus_relative_strength_max": 7,
-                "sector_bonus_trade_amount_max": 5,
+                "sector_bonus_rise_ratio_slider": 0,
+                "sector_bonus_relative_strength_slider": 0,
+                "sector_bonus_trade_amount_slider": 0,
             }
             mock_state.auto_trade = None
             mock_state.sector_summary_ready_event = MagicMock()
@@ -874,9 +874,9 @@ class TestFullRecompute:
             mock_state.integrated_system_settings_cache = {
                 "sector_min_trade_amt": 0.0,
                 "sector_min_rise_ratio_pct": 0.0,
-                "sector_bonus_rise_ratio_max": 10,
-                "sector_bonus_relative_strength_max": 7,
-                "sector_bonus_trade_amount_max": 5,
+                "sector_bonus_rise_ratio_slider": 0,
+                "sector_bonus_relative_strength_slider": 0,
+                "sector_bonus_trade_amount_slider": 0,
             }
             mock_state.auto_trade = mock_auto_trade
             mock_state.sector_summary_ready_event = MagicMock()
