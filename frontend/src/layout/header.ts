@@ -68,19 +68,58 @@ function applyStatusChip(
   el.textContent = label
 }
 
+// ── 장 페이즈 카운트다운 (프론트엔드 자체 계산 — P10/P24) ──
+// 백엔드 시계 페이즈명 + 현재 KST 시각으로 다음 전환까지 남은 시간 계산.
+// JIF 없이도 "정규장 장개시 5분 전" 등 카운트다운 표시 유지.
+
+// [다음 전환 시각(H, M), 이벤트 라벨] — 장개시/장마감만 카운트다운 표시
+const KRX_COUNTDOWN: Record<string, readonly [number, number, string]> = {
+  '시가 동시호가': [9, 0, '정규장 장개시'],
+  '정규장': [15, 20, '정규장 장마감'],
+}
+const NXT_COUNTDOWN: Record<string, readonly [number, number, string]> = {
+  '장개시전': [8, 0, '프리마켓 장개시'],
+  '프리마켓': [8, 50, '프리마켓 장마감'],
+  '정규장 준비': [9, 0, '메인마켓 장개시'],
+  '메인마켓': [15, 20, '메인마켓 장마감'],
+  '단일가 매매': [15, 40, '에프터마켓 장개시'],
+  '애프터마켓 지속': [20, 0, '에프터마켓 장마감'],
+}
+
+const COUNTDOWN_THRESHOLD_MIN = 10
+
+function computeCountdown(
+  phase: string,
+  map: Record<string, readonly [number, number, string]>,
+): string | null {
+  const entry = map[phase]
+  if (!entry) return null
+  const [h, m, label] = entry
+  const now = new Date()
+  // KST = UTC+9 (백엔드 KST 상수와 동일 기준)
+  const kstTotalSec = (((now.getUTCHours() + 9) % 24) * 60 + now.getUTCMinutes()) * 60 + now.getUTCSeconds()
+  const targetSec = (h * 60 + m) * 60
+  const remainingSec = targetSec - kstTotalSec
+  if (remainingSec <= 0) return null
+  const remainingMin = Math.floor(remainingSec / 60)
+  if (remainingMin > COUNTDOWN_THRESHOLD_MIN) return null
+  if (remainingMin >= 1) return `${label} ${remainingMin}분 전`
+  return `${label} ${remainingSec}초 전`
+}
+
 function applyMarketPhaseChip(
   el: HTMLSpanElement,
   market: string,
   phase: string,
-  event?: string | null,
+  countdown?: string | null,
 ): void {
-  // JIF 실시간 이벤트 라벨이 있으면 우선 표시(강조색), 없으면 시계 페이즈명 표시
-  if (event) {
+  // 카운트다운 표시가 있으면 우선 표시(강조색), 없으면 시계 페이즈명 표시
+  if (countdown) {
     el.style.background = `${COLOR.warningBg}`
     el.style.color = `${COLOR.warning}`
     el.style.border = `1px solid ${COLOR.warning}40`
     el.style.fontWeight = '700'
-    el.textContent = `${market} ${event}`
+    el.textContent = `${market} ${countdown}`
     return
   }
   const s = PHASE_STYLE[phase] || PHASE_STYLE['장마감']
@@ -248,9 +287,9 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
       circuitBreakerChip.style.display = 'none'
     }
 
-    // 장 상태 — JIF 실시간 이벤트 라벨이 있으면 우선 표시, 없으면 시계 페이즈명
-    applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx, marketPhase.krx_event)
-    applyMarketPhaseChip(nxtChip, 'NXT', marketPhase.nxt, marketPhase.nxt_event)
+    // 장 상태 — 카운트다운(프론트엔드 자체 계산)이 있으면 우선 표시, 없으면 시계 페이즈명
+    applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx, computeCountdown(marketPhase.krx, KRX_COUNTDOWN))
+    applyMarketPhaseChip(nxtChip, 'NXT', marketPhase.nxt, computeCountdown(marketPhase.nxt, NXT_COUNTDOWN))
 
     // 업종지수 실시간 — 칩은 항상 표시, 데이터 없으면 placeholder
     const kospi = indexData?.['001']
@@ -455,8 +494,16 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   // 초기 렌더링
   onStateChange(uiStore.getState())
 
+  // 카운트다운 주기 갱신 — 30초 간격으로 페이즈 칩만 재계산 (P21 사용자 투명성)
+  const countdownTimer = setInterval(() => {
+    const { marketPhase } = uiStore.getState()
+    applyMarketPhaseChip(krxChip, 'KRX', marketPhase.krx, computeCountdown(marketPhase.krx, KRX_COUNTDOWN))
+    applyMarketPhaseChip(nxtChip, 'NXT', marketPhase.nxt, computeCountdown(marketPhase.nxt, NXT_COUNTDOWN))
+  }, 30_000)
+
   function destroy(): void {
     unsubscribe()
+    clearInterval(countdownTimer)
   }
 
   return { el: header, destroy }

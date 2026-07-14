@@ -187,14 +187,9 @@ async def handle_ws_data(data: dict) -> None:
 
 
 # ── JIF (장운영정보) 처리 ──────────────────────────────────────────────────
-# market_phase(krx, nxt) 페이즈명은 시간 기반(calc_timebased_market_phase)으로 관리.
-# JIF 실시간 이벤트는 휘발성 상세 라벨(krx_event/nxt_event)로 덮어씌워 표시 우선순위를 갖는다.
-#   - 시계 = 지속 기준선(페이즈명), JIF = 일시적 실시간 덮어씌움(이벤트 라벨).
-#   - 경계 이벤트(장시작/장마감/개시/종료 등)는 JIF 수신 즉시 시계 페이즈를 갱신하여
-#     타이머 지연 없이 헤더가 실제 장운영 신호를 반영하도록 한다 (P22 데이터 정합성).
-#     시계 타이머(_broadcast_market_phase)는 JIF 누락 시 백업 역할로 동작.
-#   - 카운트다운 이벤트(N분전/10초전)와 개시/마감 알림만 krx_event/nxt_event에 저장한다.
-# 서킷브레이커/사이드카(61~71)는 krx_alert로 별도 처리 + 자동매매 임시중단/재개.
+# market_phase(krx, nxt) 페이즈명은 시간 기반(calc_timebased_market_phase)으로 관리 (P10 SSOT).
+# 시계 타이머(_broadcast_market_phase)가 페이즈 전환을 담당하며, JIF는 서킷브레이커/사이드카만 처리.
+# 카운트다운 표시는 프론트엔드가 페이즈명 + 현재 시각으로 자체 계산 (P24 단순성).
 
 _JSTATUS_KRX_ALERT: dict[str, str | None] = {
     "61": "서킷브레이커 1단계 발동",
@@ -213,68 +208,16 @@ _JSTATUS_KRX_ALERT: dict[str, str | None] = {
 _KRX_CB_ACTIVATION_CODES: set[str] = {"61", "64", "66", "68", "69"}
 _KRX_CB_RELEASE_CODES: set[str] = {"63", "71"}
 
-# KRX(jangubun 1/2) 경계 이벤트 — 장시작/장종료/개시/종료 (시계 페이즈 즉시 갱신 트리거)
-_JSTATUS_KRX_BOUNDARY: set[str] = {"21", "41", "51", "52", "54"}
-
-# KRX(jangubun 1/2) 시간대 이벤트 — 카운트다운/개시/마감 알림
-_JSTATUS_KRX_EVENT: dict[str, str] = {
-    "11": "장전 동시호가 개시",
-    "22": "정규장 장개시 10초 전",
-    "23": "정규장 장개시 1분 전",
-    "24": "정규장 장개시 5분 전",
-    "25": "정규장 장개시 10분 전",
-    "31": "장후 동시호가 개시",
-    "42": "정규장 장마감 10초 전",
-    "43": "정규장 장마감 1분 전",
-    "44": "정규장 장마감 5분 전",
-}
-
-# NXT(jangubun 6) 경계 이벤트 — 장시작/장종료/개시/종료 (시계 페이즈 즉시 갱신 트리거)
-_JSTATUS_NXT_BOUNDARY: set[str] = {"21", "41", "55", "56", "57", "58"}
-
-# NXT(jangubun 6) 시간대 이벤트 — 프리마켓/메인마켓/에프터마켓 카운트다운
-_JSTATUS_NXT_EVENT: dict[str, str] = {
-    # 프리마켓 개시 카운트다운
-    "A5": "프리마켓 장개시 10분 전",
-    "A4": "프리마켓 장개시 5분 전",
-    "A3": "프리마켓 장개시 1분 전",
-    "A2": "프리마켓 장개시 10초 전",
-    # 프리마켓 마감 카운트다운
-    "C4": "프리마켓 장마감 5분 전",
-    "C3": "프리마켓 장마감 1분 전",
-    "C2": "프리마켓 장마감 10초 전",
-    # 메인마켓 개시/마감 카운트다운
-    "25": "메인마켓 장개시 10분 전",
-    "24": "메인마켓 장개시 5분 전",
-    "23": "메인마켓 장개시 1분 전",
-    "22": "메인마켓 장개시 10초 전",
-    "44": "메인마켓 장마감 5분 전",
-    "43": "메인마켓 장마감 1분 전",
-    "42": "메인마켓 장마감 10초 전",
-    # 에프터마켓 개시 카운트다운
-    "B5": "에프터마켓 장개시 10분 전",
-    "B4": "에프터마켓 장개시 5분 전",
-    "B3": "에프터마켓 장개시 1분 전",
-    "B2": "에프터마켓 장개시 10초 전",
-    # 에프터마켓 마감 카운트다운
-    "D4": "에프터마켓 장마감 5분 전",
-    "D3": "에프터마켓 장마감 1분 전",
-    "D2": "에프터마켓 장마감 10초 전",
-}
-
 
 async def _handle_jif(data: dict) -> None:
-    """JIF 장운영정보 수신 → 서킷브레이커/사이드카 alert + 시간대 이벤트 라벨 갱신 + 브로드캐스트.
+    """JIF 장운영정보 수신 → 서킷브레이커/사이드카 alert만 처리.
+
+    장운영 페이즈 전환은 앱 내부 시계 로직(_broadcast_market_phase)이 담당 (P10 SSOT).
+    카운트다운 표시는 프론트엔드가 페이즈명 + 현재 시각으로 자체 계산 (P24 단순성).
 
     jangubun 1/2(코스피/코스닥):
       - jstatus 61~71 → krx_alert(서킷브레이커/사이드카) + 자동매매 임시중단/재개.
-      - jstatus 21/41/51/52/54 → 경계 이벤트: 시계 페이즈 즉시 갱신 + krx_event 초기화.
-      - jstatus 11/22~25/31/42~44 → krx_event(시간대 카운트다운/개시 알림).
-    jangubun 6(NXT전용):
-      - jstatus 21/41/55~58 → 경계 이벤트: 시계 페이즈 즉시 갱신 + nxt_event 초기화.
-      - jstatus A2~A5/B2~B5/C2~C4/D2~D4/22~25/42~44 → nxt_event(프리마켓/메인/에프터마켓 카운트다운).
-    경계 이벤트 수신 시 _broadcast_market_phase()를 호출하여 시계 페이즈를 갱신하고
-    카운트다운 라벨을 초기화한다. 시계 타이머는 JIF 누락 시 백업으로 동작 (P22).
+    그 외 jangubun/jstatus 조합은 미처리 (시계 타이머가 페이즈 전환을 담당).
     """
     jangubun = str(data.get("jangubun", "")).strip()
     jstatus = str(data.get("jstatus", "")).strip()
@@ -283,70 +226,31 @@ async def _handle_jif(data: dict) -> None:
 
     from backend.app.services.engine_account_notify import _broadcast
 
-    # ── KRX (jangubun 1/2): 서킷브레이커/사이드카 + 경계 이벤트 + 시간대 이벤트 ──
+    # ── KRX (jangubun 1/2): 서킷브레이커/사이드카만 처리 ──
     if jangubun in ("1", "2"):
         mp = engine_state.state.market_phase
 
-        # 0) 경계 이벤트 — 시계 페이즈 즉시 갱신 (타이머 지연 없이 실제 장운영 신호 반영)
-        if jstatus in _JSTATUS_KRX_BOUNDARY:
-            from backend.app.services.daily_time_scheduler import _broadcast_market_phase
-            logger.info("[연결] KRX 경계 이벤트 수신 — 시계 페이즈 즉시 갱신 (장상태=%s)", jstatus)
-            _broadcast_market_phase()
-            return
-
-        # 1) 서킷브레이커/사이드카 alert (기존 로직 유지)
         alert = _JSTATUS_KRX_ALERT.get(jstatus, "__no_change__")
-        if alert != "__no_change__":
-            if mp.get("krx_alert") == alert:
-                return
-            mp["krx_alert"] = alert
-            await _broadcast("market-phase", {"krx_alert": alert})
-            logger.info("[연결] 서킷브레이커/사이드카 알림 갱신: 장상태=%s → %s", jstatus, alert)
+        if alert == "__no_change__":
+            return
+        if mp.get("krx_alert") == alert:
+            return
+        mp["krx_alert"] = alert
+        await _broadcast("market-phase", {"krx_alert": alert})
+        logger.info("[연결] 서킷브레이커/사이드카 알림 갱신: 장상태=%s → %s", jstatus, alert)
 
-            if jstatus in _KRX_CB_ACTIVATION_CODES:
-                if not engine_state.state.krx_circuit_breaker_active:
-                    engine_state.state.krx_circuit_breaker_active = True
-                    logger.warning("[구독] 서킷브레이커/사이드카 발동 — 자동매매 임시 중단 (장상태=%s)", jstatus)
-                    _notify_krx_cb_telegram(f"🛑 [KRX] {alert} — 자동매매 임시 중단", engine_state.state.integrated_system_settings_cache)
-                    await _broadcast("krx-circuit-breaker", {"active": True, "alert": alert})
-            elif jstatus in _KRX_CB_RELEASE_CODES:
-                if engine_state.state.krx_circuit_breaker_active:
-                    engine_state.state.krx_circuit_breaker_active = False
-                    logger.info("[구독] 서킷브레이커/사이드카 해제 — 자동매매 자동 재개 (장상태=%s)", jstatus)
-                    _notify_krx_cb_telegram(f"✅ [KRX] {alert} — 자동매매 자동 재개", engine_state.state.integrated_system_settings_cache)
-                    await _broadcast("krx-circuit-breaker", {"active": False, "alert": alert})
-            return
-
-        # 2) 시간대 이벤트 라벨 (카운트다운/개시/마감 알림)
-        event = _JSTATUS_KRX_EVENT.get(jstatus)
-        if event is None:
-            return
-        if mp.get("krx_event") == event:
-            return
-        mp["krx_event"] = event
-        await _broadcast("market-phase", {"krx_event": event})
-        logger.info("[연결] KRX 장운영 이벤트 갱신: 장상태=%s → %s", jstatus, event)
-        return
-
-    # ── NXT (jangubun 6): 경계 이벤트 + 시간대 이벤트 라벨 ──
-    if jangubun == "6":
-        mp = engine_state.state.market_phase
-
-        # 0) 경계 이벤트 — 시계 페이즈 즉시 갱신 (타이머 지연 없이 실제 장운영 신호 반영)
-        if jstatus in _JSTATUS_NXT_BOUNDARY:
-            from backend.app.services.daily_time_scheduler import _broadcast_market_phase
-            logger.info("[연결] NXT 경계 이벤트 수신 — 시계 페이즈 즉시 갱신 (장상태=%s)", jstatus)
-            _broadcast_market_phase()
-            return
-
-        event = _JSTATUS_NXT_EVENT.get(jstatus)
-        if event is None:
-            return
-        if mp.get("nxt_event") == event:
-            return
-        mp["nxt_event"] = event
-        await _broadcast("market-phase", {"nxt_event": event})
-        logger.info("[연결] NXT 장운영 이벤트 갱신: 장상태=%s → %s", jstatus, event)
+        if jstatus in _KRX_CB_ACTIVATION_CODES:
+            if not engine_state.state.krx_circuit_breaker_active:
+                engine_state.state.krx_circuit_breaker_active = True
+                logger.warning("[구독] 서킷브레이커/사이드카 발동 — 자동매매 임시 중단 (장상태=%s)", jstatus)
+                _notify_krx_cb_telegram(f"🛑 [KRX] {alert} — 자동매매 임시 중단", engine_state.state.integrated_system_settings_cache)
+                await _broadcast("krx-circuit-breaker", {"active": True, "alert": alert})
+        elif jstatus in _KRX_CB_RELEASE_CODES:
+            if engine_state.state.krx_circuit_breaker_active:
+                engine_state.state.krx_circuit_breaker_active = False
+                logger.info("[구독] 서킷브레이커/사이드카 해제 — 자동매매 자동 재개 (장상태=%s)", jstatus)
+                _notify_krx_cb_telegram(f"✅ [KRX] {alert} — 자동매매 자동 재개", engine_state.state.integrated_system_settings_cache)
+                await _broadcast("krx-circuit-breaker", {"active": False, "alert": alert})
         return
 
 

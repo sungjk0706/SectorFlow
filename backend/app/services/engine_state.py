@@ -69,7 +69,6 @@ class EngineState:
         self.master_stocks_cache: dict[str, dict] = {}
         self.market_phase: dict = {
             "krx": "장개시전", "nxt": "장개시전",
-            "krx_event": None, "nxt_event": None,
         }
         self.krx_circuit_breaker_active: bool = False
 
