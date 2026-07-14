@@ -2,7 +2,35 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
-### 작업: 5일봉 배열 테이블 구조 개선 (방식 B) — Step 1 완료 (DB 스키마 + 백엔드 쓰기/읽기 전환)
+### 작업: 5일봉 수동 다운로드 저장 방식 — DELETE→INSERT OR REPLACE 전환 (덮어쓰기)
+
+**진행 단계**: 완료 (커밋 진행 중). 다음 작업: 수동 다운로드 확인 팝업 분기 (데이터 존재 시/미존재 시) — 프론트엔드 + 백엔드 API 추가 동반.
+
+**완료 내용 (2026-07-15)**:
+- **현상**: 5일봉 수동 다운로드(`fetch_5d_data_only`)가 전체 DELETE 후 INSERT 방식으로, 다운로드 중 실패 시 데이터 전체 손실 위험.
+- **근본 원인**: `market_close_pipeline.py:1170-1177` `DELETE FROM stock_5d_bars` 전체 삭제 후 5일치 재저장 — 삭제 성공 + 저장 실패 시 빈 테이블 상태로 방치.
+- **수정 내용**: DELETE 제거 → INSERT OR REPLACE 기반 덮어쓰기 + 오래된 행 정리 (2개 파일, +20/-8):
+  - `market_close_pipeline.py`: `fetch_5d_data_only()`에서 `DELETE FROM stock_5d_bars` 전체 삭제 블록 제거. INSERT OR REPLACE는 기존 코드(1271줄)에 이미 구현되어 있었음. 다운로드 완료 후 `get_recent_trading_days(5)`로 최근 5개 거래일 조회, 가장 오래된 거래일보다 이전 행 삭제 (`DELETE FROM stock_5d_bars WHERE dt < ?`) — 테이블 크기 종목당 5행 유지. docstring 갱신.
+  - `test_market_close_pipeline.py`: `test_full_5d_download_success`에 `get_recent_trading_days` mock 추가 + 오래된 행 정리 DELETE 호출 검증 추가.
+- **영향 범위**: 백엔드 1파일 + 테스트 1파일. 자동 다운로드/1일봉/프론트엔드 변경 없음.
+- **검증**: py_compile OK, ruff `All checks passed!`, pytest 51 passed in 1.49s, 런타임 기동 197ms (`-W error::RuntimeWarning`), `5일봉 세로 행 테이블 초기화 완료` 로그 확인, 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건.
+- **P10/P22/P24**: `get_recent_trading_days`로 정리 기준 단일화, 부분 실패 시 기존 데이터 보존, 오래된 행 정리로 테이블 크기 유지.
+
+---
+
+### 다음 작업: 수동 다운로드 확인 팝업 분기 (데이터 존재 시/미존재 시)
+
+**진행 단계**: 대기.
+
+**계획**:
+- 백엔드: "현재 소속 거래일 데이터 존재 여부" 확인 API 신규 추가 (1일봉은 `master_stocks_table.date`, 5일봉은 `stock_5d_bars` MAX(dt) 조회)
+- 프론트엔드: 1일봉/5일봉 수동 다운로드 버튼 클릭 시 먼저 확인 API 호출 → 데이터 있으면 "이미 저장되어 있습니다" 메시지, 없으면 기존 일반 메시지
+- 기존 `showContextPopup` 패턴 재사용 (P23 일관성)
+- 세션당 1단계 원칙에 따라 백엔드+프론트엔드 1세션 진행
+
+---
+
+### 이전 작업: 5일봉 배열 테이블 구조 개선 (방식 B) — Step 1 완료 (DB 스키마 + 백엔드 쓰기/읽기 전환)
 
 **진행 단계**: Step 1 완료 (커밋 `82dcd96`). 다음 작업: Step 2 (백엔드 읽기 API + 캐시 계산 로직) 대기 — 단, Step 1에서 읽기 API(`stock_detail.py`)를 이미 전환했으므로 Step 2는 캐시 계산 로직(`_save_confirmed_cache`) 중심으로 축소 가능.
 

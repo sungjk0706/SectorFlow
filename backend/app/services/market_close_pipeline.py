@@ -1128,6 +1128,8 @@ async def fetch_5d_data_only() -> dict:
     DB의 master_stocks_table에 등록된 매매적격종목을 대상으로
     개별 종목의 5일 고가 및 거래대금 데이터를 다운로드하여 DB 및 메모리에 저장합니다.
     stock_5d_bars 테이블에 각 일봉을 (code, dt) 복합키 세로 행으로 INSERT OR REPLACE (P10/P22/P24).
+    전체 DELETE 없이 덮어쓰기 방식 — 부분 실패 시 기존 데이터 보존 (P22).
+    저장 후 최근 5개 거래일 외 행 삭제로 테이블 크기 유지 (P24).
     """
     from backend.app.core.trading_calendar import get_kst_today_str
 
@@ -1167,16 +1169,9 @@ async def fetch_5d_data_only() -> dict:
             state.confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
 
-        # ── 5일봉 세로 행 테이블 전체 삭제 (수동 다운로드는 무조건 재다운로드) ─────────
+        # ── DB 연결 (INSERT OR REPLACE 기반 — 전체 DELETE 제거로 부분 실패 시 기존 데이터 보존) ──
         from backend.app.db.database import get_db_connection, get_db_lock
         conn = await get_db_connection()
-        try:
-            async with get_db_lock():
-                await conn.execute("DELETE FROM stock_5d_bars")
-                await conn.commit()
-            logger.info("[다운로드] 5일봉 세로 행 테이블 전체 삭제 후 재다운로드")
-        except Exception as e:
-            logger.warning("[다운로드] 전체 데이터 삭제 실패: %s", e)
 
         # ── 개별 5일봉 데이터 다운로드 ───────────────────────────────────────
         logger.info("[다운로드] 다운로드 시작 (%d종목)", total)
@@ -1280,6 +1275,12 @@ async def fetch_5d_data_only() -> dict:
                     WHERE code = ?""",
                     master_update_params
                 )
+                # 오래된 행 정리 — 최근 5개 거래일 외 행 삭제 (P22/P24)
+                from backend.app.core.trading_calendar import get_recent_trading_days
+                recent_5 = get_recent_trading_days(5)
+                if recent_5:
+                    oldest_dt = recent_5[0].strftime("%Y%m%d")
+                    await conn.execute("DELETE FROM stock_5d_bars WHERE dt < ?", (oldest_dt,))
                 await conn.commit()
 
             logger.info("[다운로드] DB 저장 완료 — %d종목, %d행", len(confirmed_5d), len(bars_params))
