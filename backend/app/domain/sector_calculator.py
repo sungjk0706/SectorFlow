@@ -167,10 +167,6 @@ async def compute_full_sector_summary(
     rise_ratio_slider: int = 0,
     relative_strength_slider: int = 0,
     trade_amount_slider: int = 0,
-    # ── deprecated: 기존 만점 설정 (Step 2에서 제거, 현재 무시됨) ──
-    max_rise_ratio_score: int = 10,
-    max_relative_strength_score: int = 7,
-    max_trade_amount_score: int = 5,
     # ── 가산점 관련 파라미터 (pass-through → build_buy_targets) ──
     high_5d_cache: dict[str, int] | None = None,
     orderbook_cache: dict[str, tuple[int, int]] | None = None,

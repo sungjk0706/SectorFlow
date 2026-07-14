@@ -156,9 +156,9 @@ async def _flush_sector_recompute_impl() -> None:
         calculate_bonus_scores(
             merged,
             min_rise_ratio=min_rise_ratio,
-            max_rise_ratio_score=int(state.integrated_system_settings_cache["sector_bonus_rise_ratio_max"]),
-            max_relative_strength_score=int(state.integrated_system_settings_cache["sector_bonus_relative_strength_max"]),
-            max_trade_amount_score=int(state.integrated_system_settings_cache["sector_bonus_trade_amount_max"]),
+            rise_ratio_slider=int(state.integrated_system_settings_cache["sector_bonus_rise_ratio_slider"]),
+            relative_strength_slider=int(state.integrated_system_settings_cache["sector_bonus_relative_strength_slider"]),
+            trade_amount_slider=int(state.integrated_system_settings_cache["sector_bonus_trade_amount_slider"]),
         )
 
         # 5. 매수 타겟 큐
@@ -219,9 +219,9 @@ async def _full_recompute(codes_snapshot: set[str] | None = None) -> None:
         **inputs,
         min_rise_ratio=float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
         min_avg_amt_eok=float(state.integrated_system_settings_cache["sector_min_trade_amt"]),
-        max_rise_ratio_score=int(state.integrated_system_settings_cache["sector_bonus_rise_ratio_max"]),
-        max_relative_strength_score=int(state.integrated_system_settings_cache["sector_bonus_relative_strength_max"]),
-        max_trade_amount_score=int(state.integrated_system_settings_cache["sector_bonus_trade_amount_max"]),
+        rise_ratio_slider=int(state.integrated_system_settings_cache["sector_bonus_rise_ratio_slider"]),
+        relative_strength_slider=int(state.integrated_system_settings_cache["sector_bonus_relative_strength_slider"]),
+        trade_amount_slider=int(state.integrated_system_settings_cache["sector_bonus_trade_amount_slider"]),
     )
     from backend.app.services import engine_account
     _held = await engine_account.get_held_codes()
