@@ -487,7 +487,7 @@ class TestFlushSectorRecomputeImpl:
 
     @pytest.mark.asyncio
     async def test_min_rise_ratio_cutoff(self):
-        """min_rise_ratio > 0 → 상승비율 미만 업종 rank=0 (L164-173)."""
+        """min_rise_ratio > 0 → 상승비율 미만 업종 is_cutoff_passed=False (L164-173)."""
         request_sector_recompute("005930")
         pass_sector = _make_sector_score("반도체", rise_ratio=0.8)
         fail_sector = _make_sector_score("자동차", rise_ratio=0.2)
@@ -525,8 +525,9 @@ class TestFlushSectorRecomputeImpl:
 
             await _flush_sector_recompute_impl()
 
+            assert pass_sector.is_cutoff_passed is True
             assert pass_sector.rank == 1
-            assert fail_sector.rank == 0
+            assert fail_sector.is_cutoff_passed is False
 
     @pytest.mark.asyncio
     async def test_buy_targets_changed_triggers_sync_and_evaluate(self):

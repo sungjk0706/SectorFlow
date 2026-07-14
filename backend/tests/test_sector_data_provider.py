@@ -41,6 +41,7 @@ class TestGetSectorScoresSnapshot:
         mock_sc.final_score = 85.5
         mock_sc.rise_ratio = 0.65
         mock_sc.total = 10
+        mock_sc.is_cutoff_passed = True
 
         mock_ss = MagicMock()
         mock_ss.sectors = [mock_sc]
@@ -52,23 +53,26 @@ class TestGetSectorScoresSnapshot:
             assert scores[0]["sector"] == "반도체"
             assert scores[0]["rank"] == 1
             assert scores[0]["final_score"] == 85.5
+            assert scores[0]["is_cutoff_passed"] is True
             assert ranked_count == 1
 
-    def test_unranked_sectors_not_counted(self):
-        """rank=0인 업종은 ranked_count에서 제외."""
+    def test_cutoff_failed_sectors_not_counted(self):
+        """is_cutoff_passed=False 업종은 ranked_count에서 제외 (rank와 분리)."""
         mock_sc1 = MagicMock()
         mock_sc1.rank = 1
         mock_sc1.sector = "반도체"
         mock_sc1.final_score = 85.5
         mock_sc1.rise_ratio = 0.65
         mock_sc1.total = 10
+        mock_sc1.is_cutoff_passed = True
 
         mock_sc2 = MagicMock()
-        mock_sc2.rank = 0
+        mock_sc2.rank = 2
         mock_sc2.sector = "미분류"
         mock_sc2.final_score = 30.0
         mock_sc2.rise_ratio = 0.3
         mock_sc2.total = 5
+        mock_sc2.is_cutoff_passed = False
 
         mock_ss = MagicMock()
         mock_ss.sectors = [mock_sc1, mock_sc2]
@@ -77,6 +81,11 @@ class TestGetSectorScoresSnapshot:
             mock_state.sector_summary_cache = mock_ss
             scores, ranked_count = get_sector_scores_snapshot()
             assert len(scores) == 2
+            # 모든 업종에 순위 부여 (rank=1, 2), 통과 업종만 ranked_count 계산
+            assert scores[0]["rank"] == 1
+            assert scores[0]["is_cutoff_passed"] is True
+            assert scores[1]["rank"] == 2
+            assert scores[1]["is_cutoff_passed"] is False
             assert ranked_count == 1
 
 

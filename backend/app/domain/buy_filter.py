@@ -168,8 +168,8 @@ def create_buy_targets(
     all_stocks: list = []
 
     for sc in sector_scores:
-        # 순위 없는 업종(rank=0)은 매수대상 카운트에서 제외
-        if sc.rank == 0:
+        # 컷오프 미달 업종(is_cutoff_passed=False)은 매수대상 카운트에서 제외
+        if not sc.is_cutoff_passed:
             continue
         if sector_count >= max_sectors:
             break

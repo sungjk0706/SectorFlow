@@ -154,7 +154,7 @@ class TestCalculateBonusScores:
         assert a.bonus_trade_amount == 1.0
 
     def test_cutoff_min_rise_ratio_sets_is_cutoff_passed_false(self):
-        """min_rise_ratio 미만 업종 is_cutoff_passed=False, rank=0, 2차 가산점=0."""
+        """min_rise_ratio 미만 업종 is_cutoff_passed=False, 2차 가산점=0 (rank는 모든 업종에 부여)."""
         scores = [
             _make_sector_score("통과", rise_ratio=0.8, stocks=[_make_stock("p1", "통과", 2.0)]),
             _make_sector_score("탈락", rise_ratio=0.2, stocks=[_make_stock("f1", "탈락", -1.0)]),
@@ -163,9 +163,7 @@ class TestCalculateBonusScores:
         passed = next(s for s in scores if s.sector == "통과")
         failed = next(s for s in scores if s.sector == "탈락")
         assert passed.is_cutoff_passed is True
-        assert passed.rank == 1
         assert failed.is_cutoff_passed is False
-        assert failed.rank == 0
         assert failed.bonus_relative_strength == 0.0
 
     def test_second_bonus_weighted_rank_sum(self):
@@ -192,9 +190,8 @@ class TestCalculateBonusScores:
         semi = next(s for s in scores if s.sector == "반도체")
         bank = next(s for s in scores if s.sector == "은행")
         auto = next(s for s in scores if s.sector == "자동차")
-        # 자동차는 탈락 → is_cutoff_passed=False, rank=0, 2차=0
+        # 자동차는 탈락 → is_cutoff_passed=False, 2차=0 (rank는 모든 업종에 부여)
         assert auto.is_cutoff_passed is False
-        assert auto.rank == 0
         assert auto.bonus_relative_strength == 0.0
         # 만점 = 전체 업종 수 = 3 (슬라이더 기본값 0)
         # 반도체 가중 합 1.5 = 1위 → tiered = 3.0
@@ -257,8 +254,8 @@ class TestCalculateBonusScores:
         assert scores[1].sector == "Z"
         assert scores[0].final_score == scores[1].final_score
 
-    def test_rank_assignment_sequential_for_passed(self):
-        """통과 업종에 1, 2, 3... 순차 rank 부여 (임시 호환: 미달 rank=0)."""
+    def test_rank_assignment_sequential_for_all_sectors(self):
+        """모든 업종에 1, 2, 3... 순차 rank 부여 (컷오프 미달 포함, is_cutoff_passed로 구분)."""
         scores = [
             _make_sector_score("A", rise_ratio=0.3, avg_trade_amount=100,
                                stocks=[_make_stock("a1", "A", 0.5)]),
@@ -268,12 +265,11 @@ class TestCalculateBonusScores:
                                stocks=[_make_stock("c1", "C", 1.0)]),
         ]
         calculate_bonus_scores(scores)
-        passed = [s for s in scores if s.is_cutoff_passed]
-        ranks = [s.rank for s in passed]
-        assert ranks == list(range(1, len(passed) + 1))
+        ranks = [s.rank for s in scores]
+        assert ranks == list(range(1, len(scores) + 1))
 
     def test_no_passed_sectors_all_second_bonus_zero(self):
-        """모든 업종 컷오프 탈락 → 2차 가산점 전부 0, is_cutoff_passed=False."""
+        """모든 업종 컷오프 탈락 → 2차 가산점 전부 0, is_cutoff_passed=False (rank는 부여됨)."""
         scores = [
             _make_sector_score("A", rise_ratio=0.1, stocks=[_make_stock("a1", "A", 1.0)]),
             _make_sector_score("B", rise_ratio=0.2, stocks=[_make_stock("b1", "B", 2.0)]),
@@ -281,8 +277,10 @@ class TestCalculateBonusScores:
         calculate_bonus_scores(scores, min_rise_ratio=0.5)
         for sc in scores:
             assert sc.is_cutoff_passed is False
-            assert sc.rank == 0
             assert sc.bonus_relative_strength == 0.0
+        # 모든 업종에 순위 부여 (1, 2)
+        ranks = [s.rank for s in scores]
+        assert ranks == [1, 2]
 
     def test_no_cutoff_all_sectors_ranked(self):
         """min_rise_ratio=0 → 모든 업종 통과, 순차 rank 부여."""
@@ -296,6 +294,9 @@ class TestCalculateBonusScores:
         for sc in scores:
             assert sc.is_cutoff_passed is True
             assert sc.rank > 0
+        # 모든 업종 순차 rank
+        ranks = [s.rank for s in scores]
+        assert ranks == list(range(1, len(scores) + 1))
 
     # ── 슬라이더 테스트 ──
 

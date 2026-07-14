@@ -406,7 +406,7 @@ class TestComputeFullSectorSummary:
         assert semi.rise_ratio >= 0.6
         assert semi.rank >= 1
         assert bank.rise_ratio < 0.6
-        assert bank.rank == 0
+        assert bank.is_cutoff_passed is False
 
     async def test_min_rise_ratio_zero_no_cutoff(self, cache):
         _populate_cache(cache)
@@ -433,7 +433,7 @@ class TestComputeFullSectorSummary:
         assert result.buy_targets == []
         assert result.blocked_targets == []
 
-    async def test_pass_sectors_get_sequential_ranks(self, cache):
+    async def test_all_sectors_get_sequential_ranks(self, cache):
         _populate_cache(cache)
         result = await compute_full_sector_summary(
             _ALL_CODES,
@@ -443,6 +443,6 @@ class TestComputeFullSectorSummary:
             latest_index={},
             min_rise_ratio=0.6,
         )
-        pass_sectors = [sc for sc in result.sectors if sc.rank > 0]
-        ranks = [sc.rank for sc in pass_sectors]
-        assert ranks == list(range(1, len(pass_sectors) + 1))
+        # 모든 업종에 1..N 순위 부여 (컷오프 미달 포함, is_cutoff_passed로 구분)
+        all_ranks = [sc.rank for sc in result.sectors]
+        assert all_ranks == list(range(1, len(result.sectors) + 1))

@@ -78,7 +78,7 @@ def calculate_bonus_scores(
       3. 임시 합산(1차+3차) 기반 정렬
 
     컷오프:
-      4. min_rise_ratio 미만 업종 is_cutoff_passed=False, rank=0 (임시 호환)
+      4. min_rise_ratio 미만 업종 is_cutoff_passed=False (rank는 최종 단계에서 모든 업종에 부여)
 
     2패스:
       5. 2차 가산점: 통과 업종(is_cutoff_passed) 종목들 가중 순위 합
@@ -89,7 +89,7 @@ def calculate_bonus_scores(
     종합:
       6. final_score = 1차 + 2차 + 3차 (float)
       7. final_score 내림차순 재정렬, 동점 시 2차→1차→업종명 타이브레이크
-      8. rank 부여 — 통과 업종 1, 2, 3..., 미달 업종 rank=0 유지 (임시 호환)
+      8. rank 부여 — 모든 업종에 1, 2, 3... 순위 부여 (컷오프 미달 포함, is_cutoff_passed로 구분)
     """
     if not sector_scores:
         return
@@ -124,14 +124,12 @@ def calculate_bonus_scores(
         ),
     )
 
-    # ── 컷오프: min_rise_ratio 미만 업종 is_cutoff_passed=False, rank=0 ──
+    # ── 컷오프: min_rise_ratio 미만 업종 is_cutoff_passed=False (rank는 최종 단계에서 부여) ──
     for sc in sector_scores:
         if min_rise_ratio > 0 and sc.rise_ratio < min_rise_ratio:
             sc.is_cutoff_passed = False
-            sc.rank = 0  # 임시 호환 — Step 2에서 rank 정상 부여로 전환
         else:
             sc.is_cutoff_passed = True
-            sc.rank = 1  # 임시 — 최종 rank는 종합 점수 정렬 후 부여
 
     # ── 2패스: 2차 가산점 — 통과 업종(is_cutoff_passed) 종목들 가중 순위 합 ──
     passed_sectors = [sc for sc in sector_scores if sc.is_cutoff_passed]
@@ -195,10 +193,8 @@ def calculate_bonus_scores(
         ),
     )
 
-    # ── rank 부여 (임시 호환: 통과 업종 1, 2, 3..., 미달 업종 rank=0 유지) ──
+    # ── rank 부여 — 모든 업종에 1, 2, 3... 순위 부여 (컷오프 미달 포함, is_cutoff_passed로 구분) ──
     current_rank = 0
     for sc in sector_scores:
-        if not sc.is_cutoff_passed:
-            continue  # 컷오프 미달 — rank=0 유지
         current_rank += 1
         sc.rank = current_rank
