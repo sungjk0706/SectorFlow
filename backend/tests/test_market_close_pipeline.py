@@ -314,16 +314,20 @@ class TestExecuteUnifiedRollingAndSave:
         mock_lock.__aexit__ = AsyncMock(return_value=None)
         with patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
-             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"):
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250107"):
             with pytest.raises(Exception, match="DB error"):
-                await execute_unified_rolling_and_save({"005930": {"cur_price": 50000}})
+                # dt="20250105" 명시 — 안전망(bar_dt==current_td=20250107) 통과 후
+                # recalc 단계의 conn.execute에서 DB 에러 발생 검증
+                await execute_unified_rolling_and_save({"005930": {"dt": "20250105", "cur_price": 50000}})
             mock_conn.rollback.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_same_day_upsert_no_duplicate(self):
         """같은 날 재실행 시 INSERT OR REPLACE로 당일 행 덮어쓰기 (P10/P22 — 세로 행 구조).
 
-        API가 반환한 일봉의 실제 dt(=qry_dt와 동일)를 stock_5d_bars.dt로 사용.
+        장마감 후 시나리오: current_trading_day=20250107(다음 거래일, 20:00 이후),
+        qry_dt=20250106(직전 거래일), API가 20250106 일봉을 latest로 반환.
+        안전망(bar_dt == current_td)은 20250106 != 20250107이므로 동작하지 않고 정상 저장.
         """
         mock_conn = _mock_conn()
         cursor = MagicMock()
@@ -346,7 +350,7 @@ class TestExecuteUnifiedRollingAndSave:
         with patch("backend.app.services.market_close_pipeline.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
-             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250107"), \
              patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x):
             result = await execute_unified_rolling_and_save(confirmed, qry_dt="20250106")
             assert result is True
@@ -363,7 +367,9 @@ class TestExecuteUnifiedRollingAndSave:
     async def test_new_day_insert_new_row(self):
         """새 거래일 실행 시 새 행 추가 — 기존 행은 그대로 유지 (세로 행 구조, rolling 제거).
 
-        API가 반환한 일봉의 실제 dt(=qry_dt와 동일)를 stock_5d_bars.dt로 사용.
+        장마감 후 시나리오: current_trading_day=20250107(다음 거래일, 20:00 이후),
+        qry_dt=20250106(직전 거래일), API가 20250106 일봉을 latest로 반환.
+        안전망(bar_dt == current_td)은 20250106 != 20250107이므로 동작하지 않고 정상 저장.
         """
         mock_conn = _mock_conn()
         cursor = MagicMock()
@@ -385,7 +391,7 @@ class TestExecuteUnifiedRollingAndSave:
         with patch("backend.app.services.market_close_pipeline.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
-             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250107"), \
              patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x):
             result = await execute_unified_rolling_and_save(confirmed, qry_dt="20250106")
             assert result is True
@@ -436,6 +442,122 @@ class TestExecuteUnifiedRollingAndSave:
             assert bars_params[1] == "20250105"  # detail.dt 우선 — 중복 행 생성 차단
             assert bars_params[2] == 200   # trade_amount
             assert bars_params[3] == 2000  # high_price
+
+    @pytest.mark.asyncio
+    async def test_safety_net_blocks_current_trading_day_bar(self):
+        """안전망: API가 소속 거래일(미확정 당일) 행을 반환하면 저장 차단 (P22).
+
+        시나리오: current_trading_day=20250106(장 전/중), API가 20250106 미확정 일봉
+        (거래대금=0)을 latest로 반환 → 안전망이 bar_dt==current_td 감지 → 저장 생략.
+        과거 버그: 미확정 당일 행이 DB에 저장되어 5일봉 테이블에 거래대금=0 행이 섞임.
+        """
+        mock_conn = _mock_conn()
+        cursor = MagicMock()
+        cursor.fetchall = AsyncMock(side_effect=[[], []])
+        mock_conn.execute = AsyncMock(return_value=cursor)
+        mock_lock = MagicMock()
+        mock_lock.__aenter__ = AsyncMock(return_value=mock_lock)
+        mock_lock.__aexit__ = AsyncMock(return_value=None)
+        mock_state = _mock_state()
+        mock_state.master_stocks_cache = {"005930": {"name": "삼성전자"}}
+        # API가 20250106(소속 거래일=미확정 당일) 일봉을 latest로 반환
+        confirmed = {
+            "005930": {"dt": "20250106", "cur_price": 50000, "change": 0, "change_rate": 0.0, "trade_amount": 0, "high_price": 50000},
+        }
+        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+             patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
+             patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
+             patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x):
+            result = await execute_unified_rolling_and_save(confirmed, qry_dt="20250105")
+            assert result is True
+            # stock_5d_bars INSERT OR REPLACE가 호출되지 않아야 함 (안전망이 20250106 행 차단)
+            bars_calls = [
+                call for call in mock_conn.executemany.call_args_list
+                if "stock_5d_bars" in str(call)
+            ]
+            assert len(bars_calls) == 0  # 당일 미확정 행 1개만 있었으므로 bars_bulk_params 비어있음
+
+    @pytest.mark.asyncio
+    async def test_deletes_future_bars_before_insert(self):
+        """1일봉 파이프라인이 qry_dt보다 큰 dt 행(미확정 당일/미래)을 DELETE 검증 (P22).
+
+        시나리오: qry_dt=20250106(직전 거래일), DB에 기존 20250107(미확정 당일) 행 잔존.
+        수정 전: INSERT OR REPLACE만 수행 → 20250107 행 잔존 → 프론트엔드에 미확정 행 표시.
+        수정 후: INSERT OR REPLACE 전에 DELETE FROM stock_5d_bars WHERE dt > '20250106' 수행.
+        """
+        mock_conn = _mock_conn()
+        cursor = MagicMock()
+        cursor.fetchall = AsyncMock(side_effect=[[], []])
+        mock_conn.execute = AsyncMock(return_value=cursor)
+        mock_lock = MagicMock()
+        mock_lock.__aenter__ = AsyncMock(return_value=mock_lock)
+        mock_lock.__aexit__ = AsyncMock(return_value=None)
+        mock_state = _mock_state()
+        mock_state.master_stocks_cache = {"005930": {"name": "삼성전자"}}
+        # API가 20250106(직전 거래일) 일봉을 latest로 반환
+        confirmed = {
+            "005930": {"dt": "20250106", "cur_price": 50000, "change": 1000, "change_rate": 2.0, "trade_amount": 555, "high_price": 8888},
+        }
+        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+             patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
+             patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250107"), \
+             patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x):
+            result = await execute_unified_rolling_and_save(confirmed, qry_dt="20250106")
+            assert result is True
+            # DELETE FROM stock_5d_bars WHERE dt > '20250106' 호출 확인
+            delete_calls = [
+                call for call in mock_conn.execute.call_args_list
+                if "DELETE FROM stock_5d_bars" in str(call) and "dt >" in str(call)
+            ]
+            assert len(delete_calls) == 1
+            # DELETE 인자가 qry_dt(20250106)인지 검증
+            # call.args = (sql, (params...)) 형태
+            delete_params = delete_calls[0].args[1]
+            assert delete_params[0] == "20250106"
+
+    @pytest.mark.asyncio
+    async def test_master_date_uses_qry_dt_not_current_trading_day(self):
+        """master_stocks_table.date가 qry_dt(데이터 기준일)로 설정되는지 검증 (P10/P22).
+
+        시나리오: current_trading_day=20250106(장 전), qry_dt=20250105(직전 거래일).
+        수정 전: date_str = get_current_trading_day_str() = 20250106 → master.date=20250106.
+        수정 후: date_str = qry_dt = 20250105 → master.date=20250105.
+        이 값이 retry_pipeline_catchup_after_bootstrap의 스킵 판단에 사용되므로
+        정확해야 함 (cache_is_today = (master.date == current_trading_day)).
+        """
+        mock_conn = _mock_conn()
+        cursor = MagicMock()
+        cursor.fetchall = AsyncMock(side_effect=[[], []])
+        mock_conn.execute = AsyncMock(return_value=cursor)
+        mock_lock = MagicMock()
+        mock_lock.__aenter__ = AsyncMock(return_value=mock_lock)
+        mock_lock.__aexit__ = AsyncMock(return_value=None)
+        mock_state = _mock_state()
+        mock_state.master_stocks_cache = {"005930": {"name": "삼성전자"}}
+        confirmed = {
+            "005930": {"dt": "20250105", "cur_price": 50000, "change": 1000, "change_rate": 2.0, "trade_amount": 555, "high_price": 8888},
+        }
+        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+             patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
+             patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
+             patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x):
+            result = await execute_unified_rolling_and_save(confirmed, qry_dt="20250105")
+            assert result is True
+            # master_stocks_table UPSERT에서 date 값이 qry_dt(20250105)인지 검증
+            master_calls = [
+                call for call in mock_conn.executemany.call_args_list
+                if "master_stocks_table" in str(call) and "INSERT INTO" in str(call)
+            ]
+            assert len(master_calls) == 1
+            master_params = master_calls[0].args[1][0]
+            # params: (code, name, cur_price, change, change_rate, today_amt, avg_5d, high_5d, date, market)
+            # date는 마지막에서 2번째 (인덱스 8)
+            assert master_params[8] == "20250105"  # date = qry_dt (데이터 기준일)
+            # 메모리 캐시 date도 qry_dt로 설정되었는지 검증
+            assert mock_state.master_stocks_cache["005930"]["date"] == "20250105"
 
 
 # ── _apply_confirmed_to_memory ────────────────────────────────────────────────
@@ -736,6 +858,7 @@ class TestRunConfirmedPipeline:
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new_callable=AsyncMock), \
              patch("backend.app.services.engine_lifecycle.broadcast_engine_status", new_callable=AsyncMock), \
+             patch("backend.app.services.market_close_pipeline.get_previous_trading_day_str", return_value="20250105"), \
              patch("backend.app.core.trading_calendar.get_kst_today_str", return_value="20250106"):
             result = await _run_confirmed_pipeline("test")
             assert result["fetched"] == 2
@@ -878,19 +1001,138 @@ class TestFetch5dDataOnly:
              patch("backend.app.web.routes.stock_classification.broadcast_stock_classification_changed", new_callable=AsyncMock), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new_callable=AsyncMock), \
-             patch("backend.app.core.trading_calendar.get_kst_today_str", return_value="20250106"), \
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250107"), \
+             patch("backend.app.services.market_close_pipeline.get_previous_trading_day_str", return_value="20250106"), \
              patch("backend.app.core.trading_calendar.get_recent_trading_days", return_value=recent_5_days), \
              patch("asyncio.sleep", new_callable=AsyncMock):
             result = await fetch_5d_data_only()
             assert result["fetched"] == 2
             assert result["failed"] == 0
-            # 오래된 행 정리 검증 — DELETE FROM stock_5d_bars WHERE dt < '20250102' 호출 확인
+            # 행 정리 검증 — DELETE FROM stock_5d_bars WHERE dt < '20250102' OR dt > '20250106'
+            # qry_dt=20250106, recent_5 기준 oldest=20250102
             delete_calls = [
                 call for call in mock_conn.execute.call_args_list
                 if "DELETE FROM stock_5d_bars" in str(call)
             ]
             assert len(delete_calls) == 1
-            assert "20250102" in str(delete_calls[0])
+            delete_sql = str(delete_calls[0])
+            assert "dt <" in delete_sql and "dt >" in delete_sql  # 과거 + 미래 행 삭제
+            # call.args = (sql, (params...)) 형태
+            delete_params = delete_calls[0].args[1]
+            assert delete_params[0] == "20250102"  # oldest_dt (과거 기준)
+            assert delete_params[1] == "20250106"  # qry_dt (미래 기준)
+
+    @pytest.mark.asyncio
+    async def test_5d_safety_net_blocks_current_trading_day_bar(self):
+        """5일봉 안전망: API가 소속 거래일(미확정 당일) 행을 반환하면 저장 차단 (P22).
+
+        시나리오: current_trading_day=20250106(장 전/중), qry_dt=20250105(직전 거래일).
+        API가 5일치 일봉 중 첫 번째(최신)로 20250106 미확정 행을 반환.
+        안전망이 str(dt)==current_td 감지 → 20250106 행만 저장에서 제외,
+        나머지 4행(20250105~20250102)은 정상 저장.
+        """
+        mock_state = _mock_state()
+        mock_state.master_stocks_cache = {
+            "005930": {"status": "active", "name": "삼성전자"},
+        }
+        mock_auth = MagicMock()
+        mock_auth.get_access_token = AsyncMock(return_value=None)
+        mock_sector = MagicMock()
+        # 첫 번째(최신)가 소속 거래일(20250106) — 미확정 행
+        mock_sector.fetch_stock_5day_data = AsyncMock(return_value={
+            "amts_5d_array": [0, 4000000, 3000000, 2000000, 1000000],
+            "highs_5d_array": [50000, 52000, 53000, 54000, 55000],
+            "dts_5d_array": ["20250106", "20250105", "20250104", "20250103", "20250102"],
+        })
+        mock_conn = _mock_conn()
+        mock_lock = MagicMock()
+        mock_lock.__aenter__ = AsyncMock(return_value=mock_lock)
+        mock_lock.__aexit__ = AsyncMock(return_value=None)
+        from datetime import date
+        recent_5_days = [date(2025, 1, 2), date(2025, 1, 3), date(2025, 1, 4), date(2025, 1, 5), date(2025, 1, 6)]
+        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+             patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
+             patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
+             patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
+             patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
+             patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x), \
+             patch("backend.app.services.market_close_pipeline._run_post_confirmed_pipeline", new_callable=AsyncMock), \
+             patch("backend.app.web.routes.stock_classification.broadcast_stock_classification_changed", new_callable=AsyncMock), \
+             patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new_callable=AsyncMock), \
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
+             patch("backend.app.services.market_close_pipeline.get_previous_trading_day_str", return_value="20250105"), \
+             patch("backend.app.core.trading_calendar.get_recent_trading_days", return_value=recent_5_days), \
+             patch("asyncio.sleep", new_callable=AsyncMock):
+            result = await fetch_5d_data_only()
+            assert result["fetched"] == 1
+            assert result["failed"] == 0
+            # stock_5d_bars INSERT OR REPLACE 호출에서 20250106 행이 제외되었는지 검증
+            bars_calls = [
+                call for call in mock_conn.executemany.call_args_list
+                if "stock_5d_bars" in str(call)
+            ]
+            assert len(bars_calls) == 1
+            bars_params = bars_calls[0].args[1]
+            dts_saved = [p[1] for p in bars_params]
+            assert "20250106" not in dts_saved  # 미확정 당일 행은 저장되지 않아야 함
+            assert "20250105" in dts_saved      # 직전 거래일 행은 저장되어야 함
+
+    @pytest.mark.asyncio
+    async def test_5d_deletes_future_bars(self):
+        """5일봉 파이프라인이 qry_dt보다 큰 dt 행(미확정 당일/미래)을 DELETE 검증 (P22).
+
+        시나리오: qry_dt=20250105(직전 거래일), DB에 기존 20250106(미확정 당일) 행 잔존.
+        수정 전: DELETE WHERE dt < oldest만 수행 → 20250106 행 잔존.
+        수정 후: DELETE WHERE dt < oldest OR dt > qry_dt 수행 → 20250106 행 삭제.
+        """
+        mock_state = _mock_state()
+        mock_state.master_stocks_cache = {
+            "005930": {"status": "active", "name": "삼성전자"},
+        }
+        mock_auth = MagicMock()
+        mock_auth.get_access_token = AsyncMock(return_value=None)
+        mock_sector = MagicMock()
+        # API가 20250105 이하 5영업일 반환 (미확정 당일 20250106 미포함)
+        mock_sector.fetch_stock_5day_data = AsyncMock(return_value={
+            "amts_5d_array": [5000000, 4000000, 3000000, 2000000, 1000000],
+            "highs_5d_array": [51000, 52000, 53000, 54000, 55000],
+            "dts_5d_array": ["20250105", "20250104", "20250103", "20250102", "20250101"],
+        })
+        mock_conn = _mock_conn()
+        mock_lock = MagicMock()
+        mock_lock.__aenter__ = AsyncMock(return_value=mock_lock)
+        mock_lock.__aexit__ = AsyncMock(return_value=None)
+        from datetime import date
+        # qry_dt=20250105 기준 recent_5 (오래된 순)
+        recent_5_days = [date(2025, 1, 1), date(2025, 1, 2), date(2025, 1, 3), date(2025, 1, 4), date(2025, 1, 5)]
+        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+             patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
+             patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
+             patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
+             patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
+             patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x), \
+             patch("backend.app.services.market_close_pipeline._run_post_confirmed_pipeline", new_callable=AsyncMock), \
+             patch("backend.app.web.routes.stock_classification.broadcast_stock_classification_changed", new_callable=AsyncMock), \
+             patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new_callable=AsyncMock), \
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
+             patch("backend.app.services.market_close_pipeline.get_previous_trading_day_str", return_value="20250105"), \
+             patch("backend.app.core.trading_calendar.get_recent_trading_days", return_value=recent_5_days), \
+             patch("asyncio.sleep", new_callable=AsyncMock):
+            result = await fetch_5d_data_only()
+            assert result["fetched"] == 1
+            assert result["failed"] == 0
+            # DELETE FROM stock_5d_bars WHERE dt < '20250101' OR dt > '20250105' 호출 확인
+            delete_calls = [
+                call for call in mock_conn.execute.call_args_list
+                if "DELETE FROM stock_5d_bars" in str(call) and "dt <" in str(call) and "dt >" in str(call)
+            ]
+            assert len(delete_calls) == 1
+            # call.args = (sql, (params...)) 형태
+            delete_params = delete_calls[0].args[1]
+            assert delete_params[0] == "20250101"  # oldest_dt (과거 기준)
+            assert delete_params[1] == "20250105"  # qry_dt (미래 기준) — 20250106 행 삭제
 
     @pytest.mark.asyncio
     async def test_5d_api_returns_none(self):
@@ -916,7 +1158,8 @@ class TestFetch5dDataOnly:
              patch("backend.app.web.routes.stock_classification.broadcast_stock_classification_changed", new_callable=AsyncMock), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new_callable=AsyncMock), \
-             patch("backend.app.core.trading_calendar.get_kst_today_str", return_value="20250106"), \
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250107"), \
+             patch("backend.app.services.market_close_pipeline.get_previous_trading_day_str", return_value="20250106"), \
              patch("asyncio.sleep", new_callable=AsyncMock):
             result = await fetch_5d_data_only()
             assert result["fetched"] == 0
@@ -946,7 +1189,8 @@ class TestFetch5dDataOnly:
              patch("backend.app.web.routes.stock_classification.broadcast_stock_classification_changed", new_callable=AsyncMock), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new_callable=AsyncMock), \
-             patch("backend.app.core.trading_calendar.get_kst_today_str", return_value="20250106"), \
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250107"), \
+             patch("backend.app.services.market_close_pipeline.get_previous_trading_day_str", return_value="20250106"), \
              patch("asyncio.sleep", new_callable=AsyncMock):
             result = await fetch_5d_data_only()
             assert result["fetched"] == 0
@@ -976,7 +1220,8 @@ class TestFetch5dDataOnly:
              patch("backend.app.web.routes.stock_classification.broadcast_stock_classification_changed", new_callable=AsyncMock), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new_callable=AsyncMock), \
-             patch("backend.app.core.trading_calendar.get_kst_today_str", return_value="20250106"), \
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250107"), \
+             patch("backend.app.services.market_close_pipeline.get_previous_trading_day_str", return_value="20250106"), \
              patch("asyncio.sleep", new_callable=AsyncMock):
             result = await fetch_5d_data_only()
             assert result["fetched"] == 0

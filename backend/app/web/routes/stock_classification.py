@@ -332,14 +332,21 @@ async def trigger_5d_download(_: str = Depends(get_current_user)):
 async def check_download_data_exists(_: str = Depends(get_current_user)):
     """수동 다운로드 대상 거래일의 데이터 저장 여부 확인.
 
-    현재 거래일 기준으로 1일봉 시세(master_stocks_table.date)와
-    5일봉(stock_5d_bars.dt) 데이터 존재 여부를 반환.
-    프론트엔드에서 수동 다운로드 버튼 클릭 시 사전 확인용으로 호출 (P21).
+    가장 최근 확정된 거래일(소속 거래일의 직전 거래일) 기준으로
+    1일봉 시세(master_stocks_table.date)와 5일봉(stock_5d_bars.dt) 데이터
+    존재 여부를 반환. 프론트엔드에서 수동 다운로드 버튼 클릭 시 사전 확인용 (P21).
+
+    다운로드 파이프라인이 qry_dt=직전 거래일을 사용하므로, 이 API도 동일 기준으로
+    일관성 유지 (P10 SSOT). 장 전 실행 시 07-15가 아닌 07-14 기준으로 존재 여부 판단.
     """
     from backend.app.db.database import get_db_connection
-    from backend.app.core.trading_calendar import get_current_trading_day_str
+    from backend.app.core.trading_calendar import (
+        get_current_trading_day_str,
+        get_previous_trading_day_str,
+    )
 
-    trading_day = get_current_trading_day_str()
+    # 가장 최근 확정된 거래일 — 다운로드 파이프라인의 qry_dt와 동일 기준 (P10)
+    trading_day = get_previous_trading_day_str(get_current_trading_day_str())
     conn = await get_db_connection()
 
     cursor = await conn.execute(
