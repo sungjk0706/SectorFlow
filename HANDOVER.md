@@ -2,9 +2,9 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
-### 다음 작업: 업종 점수 산정 방식 리팩토링 — Step 2 Split B 대기
+### 다음 작업: 업종 점수 산정 방식 리팩토링 — Step 3 대기
 
-**진행 단계**: Step 2 Split A 완료 (커밋 `0295195`). 다음 세션에서 Step 2 Split B 사전조사부터 시작.
+**진행 단계**: Step 2 Split B 완료 (커밋 `b02ce34`). 다음 세션에서 Step 3 사전조사부터 시작.
 
 **계획서**: `docs/plan_sector_score_redesign.md` (4개 Step, 세션당 1단계 — Step 2를 Split A/B로 분할)
 
@@ -19,9 +19,38 @@
 **Step 구성 (전체)**:
 - Step 1: 백엔드 점수 계산 로직 전면 개편 (5개 파일) — 완료
 - Step 2 Split A: dead code 제거 + 파라미터 전환 (소스 7 + 테스트 2) — 완료
-- Step 2 Split B: rank/is_cutoff_passed 전환 (소스 4 + 테스트 4) — 대기
-- Step 3: 프론트엔드 설정 패널 + 타입 (3개 파일)
+- Step 2 Split B: rank/is_cutoff_passed 전환 (소스 4 + 테스트 5) — 완료
+- Step 3: 프론트엔드 설정 패널 + 타입 (3개 파일) — 대기
 - Step 4: 테스트 + 문서 갱신 (3개 테스트 + 2개 문서)
+
+---
+
+### 작업: 업종 점수 산정 방식 리팩토링 — Step 2 Split B 완료 (rank/is_cutoff_passed 전환)
+
+**진행 단계**: 완료 (커밋 `b02ce34`). 다음 작업: Step 3 사전조사 대기.
+
+**완료 내용 (2026-07-15)**:
+- **현상**: Step 2 Split A 완료 후 `rank=0` 임시 호환이 잔존 — 컷오프 미달 업종이 `rank=0`으로 순위 표시 불가, 매수 제외 조건이 `sc.rank == 0`에 의존.
+- **근본 원인**: `sector_score.py:130-131, 133-134` 컷오프 블록에서 `sc.rank = 0` / `sc.rank = 1` 임시값 부여. `sector_score.py:198-204` rank 부여 시 `if not sc.is_cutoff_passed: continue`로 미달 업종 rank=0 유지. `buy_filter.py:171-172` `if sc.rank == 0: continue` 매수 제외 조건 (rank와 통과 여부 혼용). `sector_data_provider.py:228` `if sc.rank > 0: ranked_count += 1` (rank로 통과 카운트 계산). `models.py:43` rank 필드 주석 "임시 호환" 잔존.
+- **수정 내용**: 소스 4개 + 테스트 5개 파일 (+49/-38):
+  - `models.py`: rank 필드 주석 갱신 ("임시 호환" → "모든 업종에 순위 부여, is_cutoff_passed로 구분").
+  - `sector_score.py`: docstring 2곳 갱신, 컷오프 블록 rank 임시값 제거 (is_cutoff_passed만 설정), rank 부여 로직을 모든 업종 1..N 순위 부여로 전환.
+  - `buy_filter.py`: `sc.rank == 0` → `not sc.is_cutoff_passed` + 주석 갱신.
+  - `sector_data_provider.py`: docstring 갱신, snapshot dict에 `is_cutoff_passed` 필드 추가, `ranked_count` 로직 `sc.rank > 0` → `sc.is_cutoff_passed` 전환.
+  - `test_sector_score.py`: 5곳 assertion 전환 (rank==0 → is_cutoff_passed is False), `test_rank_assignment_sequential_for_passed` → `test_rank_assignment_sequential_for_all_sectors` (모든 업종 순위 검증).
+  - `test_sector_calculator.py`: `bank.rank == 0` → `bank.is_cutoff_passed is False`, `test_pass_sectors_get_sequential_ranks` → `test_all_sectors_get_sequential_ranks` (전체 1..N 검증).
+  - `test_buy_filter.py`: `_sector` 헬퍼에 `is_cutoff_passed` 파라미터 추가, `test_rank_zero_sectors_excluded` → `test_cutoff_failed_sectors_excluded` (rank=2 + is_cutoff_passed=False로 제외 검증).
+  - `test_sector_data_provider.py`: mock에 `is_cutoff_passed` 추가, snapshot `is_cutoff_passed` 필드 assertion, `test_unranked_sectors_not_counted` → `test_cutoff_failed_sectors_not_counted`.
+  - `test_engine_sector_confirm.py`: docstring + assertion `fail_sector.rank == 0` → `fail_sector.is_cutoff_passed is False`, `pass_sector.is_cutoff_passed is True` 추가.
+- **영향 범위**: 백엔드 소스 4파일 + 테스트 5파일. 동작 변화: 컷오프 미달 업종이 `rank=0` 대신 실제 순위(1..N)를 가짐. 매수 제외는 `is_cutoff_passed`로 판단 (rank와 분리). `telegram_bot.py`, `sector_data_provider.py` 종목 정렬 등 rank를 표시/정렬에 사용하는 코드는 정상 동작 (미달 업종이 하위 순위로 표시되는 것은 P21 투명성 향상). 프론트엔드, DB 스키마, 거래 로직 변경 없음.
+- **검증**: py_compile OK, ruff `All checks passed!`, pytest 5개 파일 184 passed, 전체 pytest 2733 passed 3 failed (기존 실패 3건 — `test_pipeline_compute.py::TestHandleReal0dTick` 3개, `engine_ws_dispatch._ws_fid_int` 속성 부재, `git stash` 후 수정 전 동일 실패 확인), 런타임 기동 129ms (`-W error::RuntimeWarning`), `[업종] 재계산 완료` 로그 확인, 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건.
+- **P10/P16/P20/P21/P23/P24**: rank(순위)와 is_cutoff_passed(통과 여부) 분리 — 단일 진실 소스, "임시 호환" rank=0 로직 제거 → dead 호환 코드 해소, rank=0을 "미달" 의미로 재사용하던 폴백 제거, 미달 업종도 실제 순위 표시 → 사용자 투명성 향상, "임시 호환" 주석 전면 제거로 주석-코드 일치, rank 부여 로직 단순화 (분기 제거 → 단일 카운터).
+
+**Step 3 사전조사 필요 항목**:
+- `frontend/src/types/index.ts` — `AppSettings`: 만점 3개 제거, 슬라이더 3개 추가. `SectorScoreRow`: `is_cutoff_passed: boolean` 추가
+- `frontend/src/pages/sector-settings.ts` — 만점 숫자 입력 3개 제거 → 슬라이더 3개 추가 (`createSlider()` 재사용), 만점 자동 표시 ("현재 만점 = N점 (업종 N개)")
+- `frontend/src/pages/sector-ranking-list.ts` — `rank === 0` → `is_cutoff_passed` 기반 표시 변경, 통과 카운트 표시 로직 변경 (`rank > 0` → `is_cutoff_passed`)
+- 검증: TypeScript typecheck, 빌드, 브라우저 확인
 
 ---
 
