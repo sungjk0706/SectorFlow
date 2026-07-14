@@ -2,9 +2,30 @@
 
 ## 현재 진행 상태 (최신 — 다음 세션은 여기서 이어서 진행)
 
-### 작업: NXT-only 구독 분리 — 그룹 A + 그룹 B 완료
+### 작업: 장운영정보(market_phase) 기반 개별 타이머 통합 — Step 1 + Step 2 완료
 
-**진행 단계**: 그룹 A(NXT-only 구독 구현) + 그룹 B(설정 키/UI 제거) 모두 완료. NXT-only 구독 분리 작업 전체 완료.
+**진행 단계**: Step 1(`is_ws_subscribe_window()` market_phase 기반 변경) + Step 2(`_broadcast_market_phase()` 핸들러 추가 + 타이머 2개 제거) 완료. Step 3~5 대기.
+
+**계획서**: `docs/plan_market_phase_integration.md` (5개 Step, 세션당 1단계)
+
+**Step 2 완료 내용 (2026-07-14)**:
+- `_broadcast_market_phase()`에 NXT "프리마켓" 진입 시 `_on_ws_subscribe_start()` 호출 추가, NXT "장마감" 진입 시 `_on_ws_subscribe_end()` 호출 추가
+- `schedule_ws_subscribe_timers()`에서 `ws_subscribe_start`/`end` 타이머 예약 제거 — `confirmed_download_time` + market_phase 전환 타이머 11개만 유지
+- `_fire_ws_subscribe_end()` dead code 제거 (P16) — call_later 콜백용 동기 래퍼였으나 타이머 제거로 호출처 사라짐, 테스트도 함께 제거
+- 테스트: `test_triggers_nxt_premarket_on_phase_change`에 WS 구독 시작 검증 추가, `test_triggers_ws_subscribe_end_on_nxt_close` 신규 추가, `TestScheduleWsSubscribeTimers`에서 `ws_subscribe_start`/`end` 설정 제거
+- 검증: py_compile OK, ruff All checks passed, pytest 133 passed (test_daily_time_scheduler) + 90 passed (test_web_ws_routes + test_engine_ws), 런타임 기동 209ms (`-W error::RuntimeWarning`), `장 상태 초기화: KRX=시간외 단일가, NXT=애프터마켓` 확인, 에러/Traceback/RuntimeWarning 없음, 잔존 프로세스 0건
+
+**Step 1 완료 내용 (2026-07-14)**:
+- `is_ws_subscribe_window()` 함수 본문을 `state.market_phase["nxt"]` 기반으로 변경 — `ws_subscribe_start`/`end` 시간 비교 로직 제거, `NXT_ACTIVE_PHASES` 포함 여부로 판단
+- 주말/공휴일 판단 제거 — `calc_timebased_market_phase()`가 `nxt="휴장일"` 반환으로 자동 차단
+- `ws_subscribe_on` 마스터 스위치 + 빈 settings RuntimeError 유지
+- 빈 문자열 `nxt` 시 에러 로그 + False 반환 (P20 폴백 금지, 기존 `is_nxt_only_window` 패턴 동일)
+- 테스트: `TestIsWsSubscribeWindow` 6개 + `TestIsEditWindowOpen` 2개를 `market_phase` 기반 mock로 변경
+- 검증: py_compile OK, ruff All checks passed, pytest 133 passed + 90 passed, 런타임 기동 215ms, 잔존 프로세스 0건
+
+**다음 단계**: Step 3 — `ws_subscribe_start`/`end` 설정 키 + UI 제거 + 마이그레이션. 사용자 승인 대기.
+
+**이전 작업: NXT-only 구독 분리 — 그룹 A + 그룹 B 완료**
 
 **방향 (반자동 방식)**:
 - 07:55: NXT만 먼저 구독 (처음부터 NXT만 시작, 필터 추가)
@@ -53,6 +74,22 @@
 ---
 
 ## 직전 완료 작업
+- **2026-07-14: 장운영정보 기반 타이머 통합 — Step 2: _broadcast_market_phase() 핸들러 추가 + 타이머 2개 제거 (P10/P16/P24)**
+  - **현상**: `ws_subscribe_start`/`end` 타이머가 `schedule_ws_subscribe_timers()`에서 예약되어 `_on_ws_subscribe_start`/`_end`를 호출했으나, Step 1에서 `is_ws_subscribe_window()`가 `market_phase` 기반으로 전환되어 타이머와 market_phase 이중 트리거 상태.
+  - **근본 원인**: `daily_time_scheduler.py`의 `schedule_ws_subscribe_timers()`가 `ws_subscribe_start`/`end` 시각에 call_later 타이머를 예약하여 별도 트리거 경로를 유지. `_broadcast_market_phase()`의 페이즈 변경 감지로 통합 필요.
+  - **수정 파일**: 백엔드 1파일 + 테스트 1파일 — `daily_time_scheduler.py`, `test_daily_time_scheduler.py`
+  - **변경 내용**: (1) `daily_time_scheduler.py` — `_broadcast_market_phase()`에 NXT "프리마켓" 진입 시 `_on_ws_subscribe_start()` 호출 추가 (기존 `_on_nxt_premarket_start()` 이후), NXT "장마감" 진입 시 `_on_ws_subscribe_end()` 호출 추가. `schedule_ws_subscribe_timers()`에서 `ws_subscribe_start`/`end` 타이머 예약 로직 제거 (713-740행), `confirmed_download_time` + market_phase 전환 타이머 11개 유지. `_fire_ws_subscribe_end()` dead code 제거 (P16 — 타이머 제거로 호출처 사라짐). (2) `test_daily_time_scheduler.py` — `test_triggers_nxt_premarket_on_phase_change`에 WS 구독 시작 검증 추가, `test_triggers_ws_subscribe_end_on_nxt_close` 신규 추가, `TestScheduleWsSubscribeTimers`에서 `ws_subscribe_start`/`end` 설정 제거, `_fire_ws_subscribe_end` import + 테스트 제거.
+  - **영향 범위**: 백엔드 1파일 + 테스트 1파일 (+33/-66, -33줄净감). `_on_ws_subscribe_start`/`_end` 함수 본문은 수정 없이 재사용. 재귀 호출 위험 없음 (페이즈 변경 감지 가드 `prev != fresh`로 차단). `_apply_auto_toggle_on_startup`은 여전히 `ws_subscribe_start`/`end` 설정 참조 (Step 3에서 설정 키 제거 시 함께 처리).
+  - **검증**: py_compile 2개 파일 통과. ruff All checks passed. pytest 133 passed (test_daily_time_scheduler) in 0.75s + 90 passed (test_web_ws_routes + test_engine_ws) in 0.77s. 런타임 기동 `-W error::RuntimeWarning` 209ms, `장 상태 초기화: KRX=시간외 단일가, NXT=애프터마켓` 확인, 실시간 연결 완료, 에러/Traceback/RuntimeWarning 없음. 잔존 프로세스 0건 (규칙 5-1 준수).
+
+- **2026-07-14: 장운영정보 기반 타이머 통합 — Step 1: is_ws_subscribe_window() market_phase 기반 변경 (P10/P16/P20/P24)**
+  - **현상**: `is_ws_subscribe_window()`가 사용자 설정 시간(`ws_subscribe_start`/`end`) 기반으로 구독 구간을 판단하나, 실제 구독 시작/종료는 `_broadcast_market_phase()`의 페이즈 변경 핸들러가 담당하여 시간 설정이 구독 동작에 반영되지 않는 P16(살아있는 경로) 위반 상태.
+  - **근본 원인**: `daily_time_scheduler.py:283-324`의 `is_ws_subscribe_window()`가 주말/공휴일 판단 + `ws_subscribe_start`/`end` 시간 비교 로직으로 구독 구간을 판단. `market_phase`가 이미 시간 기반 + JIF 이벤트로 갱신되는 SSOT이므로 이중 기준 상태.
+  - **수정 파일**: 백엔드 1파일 + 테스트 1파일 — `daily_time_scheduler.py`, `test_daily_time_scheduler.py`
+  - **변경 내용**: (1) `daily_time_scheduler.py` — `is_ws_subscribe_window()` 본문을 `state.market_phase["nxt"]`가 `NXT_ACTIVE_PHASES`에 포함되는지로 판단하도록 변경. 주말/공휴일 판단 제거 (`calc_timebased_market_phase()`가 `nxt="휴장일"` 반환으로 자동 차단). `ws_subscribe_on` 마스터 스위치 + 빈 settings RuntimeError 유지. 빈 문자열 `nxt` 시 에러 로그 + False 반환 (P20 폴백 금지, 기존 `is_nxt_only_window` 패턴 동일). 호출처 8개 파일은 함수 본문만 변경으로 자동 적용, 수정 불필요 (P24 단순성). (2) `test_daily_time_scheduler.py` — `TestIsWsSubscribeWindow` 6개 테스트 + `TestIsEditWindowOpen` 2개 테스트를 `_kst_now`/`is_trading_day` 기반 mock → `state.market_phase` 기반 mock로 변경.
+  - **영향 범위**: 백엔드 1파일 + 테스트 1파일 (+24/-42, -18줄净감). 호출처 8개 파일 (`engine_loop`, `engine_bootstrap`, `engine_cache`, `engine_service`, `ws_subscribe_control`, `stock_classification`, `ws_subscribe` 라우트, 내부 `is_heavy_operation_allowed`/`is_edit_window_open`/`_init_ws_subscribe_state`)은 자동 적용. 파생 함수 `is_edit_window_open()`, `is_heavy_operation_allowed()`도 자동 적용. `ws_subscribe_start`/`end` 설정 키는 Step 3에서 완전 제거 예정.
+  - **검증**: py_compile 2개 파일 통과. ruff All checks passed. pytest 133 passed (test_daily_time_scheduler) in 0.65s + 90 passed (test_web_ws_routes + test_engine_ws) in 0.74s. 런타임 기동 `-W error::RuntimeWarning` 215ms, `장 상태 초기화: KRX=시간외 단일가, NXT=애프터마켓` 확인, 실시간 연결 완료, 에러/Traceback/RuntimeWarning 없음. 잔존 프로세스 0건 (규칙 5-1 준수).
+
 - **2026-07-14: KRX 구독 시간 설정 키 2개 제거 — 그룹 B (P10/P16/P24)**
   - **현상**: 세션 1에서 추가한 KRX 구독 시간 설정 키 2개(`ws_subscribe_start_krx`, `ws_subscribe_end_krx`)와 UI 입력란이 반자동 방식 재조정으로 인해 dead code로 잔존. 사용자가 설정 화면에서 "KRX 구독 시간" 입력란을 변경해도 실제 동작에 반영되지 않는 P16(살아있는 경로) 위반 상태.
   - **근본 원인**: 반자동 방식 전환으로 09:00 KRX 추가 구독/15:30 KRX 해지가 장운영정보 이벤트로 자동 처리되므로, 별도 KRX 구독 시간 설정이 불필요. 세션 1에서 추가한 설정 키 2개 + UI 입력란이 8개 파일에 걸쳐 잔존.

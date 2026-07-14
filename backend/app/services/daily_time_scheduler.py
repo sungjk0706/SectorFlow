@@ -283,45 +283,27 @@ def _parse_hm(hm_str: str) -> tuple[int, int]:
 async def is_ws_subscribe_window(settings: dict | None = None) -> bool:
     """
     현재 시각이 웹소켓 구독 허용 구간인지 판단.
-    조건: KRX 영업일(평일 + 공휴일 아님) AND 구독 시간 구간 내
-    구독 구간 = ws_subscribe_start ~ ws_subscribe_end (사용자 설정).
-    초기 기본값 09:00~15:00 (settings_defaults.py — 최초 설치 시 1회만 사용).
-    사용자가 설정을 변경하면 DB에 저장되어 이후 해당 값이 사용됨.
+    조건: WS 구독 마스터 스위치 ON AND market_phase의 NXT 페이즈가 활성 구간.
+    구독 구간 = NXT_ACTIVE_PHASES (프리마켓 ~ 애프터마켓 지속, 08:00~20:00).
+    주말/공휴일은 calc_timebased_market_phase()가 nxt="휴장일"로 산정하므로 자동 차단.
     settings 미전달 시 integrated_system_settings_cache에서 읽음.
+    SSOT: state.market_phase가 구독 구간 판단의 단일 기준 (P10).
     """
-    # ── 영업일 판단: 주말·공휴일 항상 차단 ──
-    from backend.app.core.trading_calendar import is_trading_day
-    now = _kst_now()
-    today = now.date()
-    # 주말은 무조건 차단
-    if today.weekday() >= 5:
-        return False
-
     if settings is None:
         settings = state.integrated_system_settings_cache
     if not settings:
         raise RuntimeError("settings cache not initialized")
 
-    # 공휴일 차단
-    if not is_trading_day(today):
-        return False
-
     # WS 구독 마스터 스위치: OFF면 구독 차단
     if not bool(settings.get("ws_subscribe_on", True)):
         return False
 
-    ws_start = str(settings["ws_subscribe_start"])
-    ws_end = str(settings["ws_subscribe_end"])
-
-    sh, sm = _parse_hm(ws_start)
-    eh, em = _parse_hm(ws_end)
-
-    now_total = now.hour * 60 + now.minute
-
-    start_total = sh * 60 + sm
-    end_total = eh * 60 + em
-
-    return start_total <= now_total <= end_total
+    mp = state.market_phase
+    nxt = mp.get("nxt", "")
+    if not nxt:
+        logger.error("[시스템] 장 상태 빈 문자열 감지: nxt=%r — 시간 기반 초기화 누락 가능", nxt)
+        return False
+    return nxt in NXT_ACTIVE_PHASES
 
 
 async def is_edit_window_open(settings: dict | None = None) -> bool:
@@ -533,8 +515,10 @@ def _broadcast_market_phase() -> None:
 
     페이즈 변경 감지 시 업종 재계산 트리거 (수정 8 — 타이머 3개 통합):
       - NXT "프리마켓" 진입 → _on_nxt_premarket_start() (08:00, KRX 단독 종목 제외)
+      - NXT "프리마켓" 진입 → _on_ws_subscribe_start() (08:00, WS 연결 + 실시간 필드 초기화)
       - KRX "정규장" 진입 → _on_krx_market_open() (09:00, 전체 종목 + 재구독)
       - KRX "체결 정산" 진입 → _on_krx_after_hours_start() (15:30, KRX 단독 종목 구독해지)
+      - NXT "장마감" 진입 → _on_ws_subscribe_end() (20:00, WS 연결 해제 + 구독 해지)
     JIF 경계 이벤트와 시계 타이머 중복 호출 시 첫 번째 호출만 트리거 (P22).
     """
     try:
@@ -549,14 +533,17 @@ def _broadcast_market_phase() -> None:
         state.market_phase["nxt_event"] = None
         phase = get_market_phase()
         schedule_engine_task(_broadcast("market-phase", phase), context="market-phase 브로드캐스트")
-        # 페이즈 변경 감지 → 업종 재계산 트리거 (타이머 3개 통합)
+        # 페이즈 변경 감지 → 업종 재계산 + WS 구독 시작/종료 트리거
         if prev_krx != fresh["krx"] or prev_nxt != fresh["nxt"]:
             if fresh["nxt"] == "프리마켓" and prev_nxt != "프리마켓":
                 schedule_engine_task(_on_nxt_premarket_start(), context="NXT 프리마켓 진입")
+                schedule_engine_task(_on_ws_subscribe_start(), context="WS 구독 시작")
             if fresh["krx"] == "정규장" and prev_krx != "정규장":
                 schedule_engine_task(_on_krx_market_open(), context="KRX 정규장 진입")
             if fresh["krx"] == "체결 정산" and prev_krx != "체결 정산":
                 schedule_engine_task(_on_krx_after_hours_start(), context="KRX 장외 전환")
+            if fresh["nxt"] == "장마감" and prev_nxt != "장마감":
+                schedule_engine_task(_on_ws_subscribe_end(), context="WS 구독 종료")
     except Exception as e:
         logger.warning("[스케줄] 장 상태 화면 전송 오류: %s", e, exc_info=True)
 
@@ -666,11 +653,6 @@ async def _on_ws_subscribe_end() -> None:
         logger.warning("[스케줄] 실시간 구독 종료 콜백 오류: %s", e, exc_info=True)
 
 
-def _fire_ws_subscribe_end() -> None:
-    """call_later 콜백용 동기 래퍼 — 비동기 _on_ws_subscribe_end()를 태스크로 감싸서 실행하는 함수."""
-    schedule_engine_task(_on_ws_subscribe_end(), context="실시간 구독 종료")
-
-
 def _fire_confirmed_download() -> None:
     """call_later 콜백용 동기 래퍼 — confirmed_download_time 도달 시 확정 데이터 다운로드 트리거."""
     schedule_engine_task(_on_confirmed_download(), context="확정 데이터 다운로드")
@@ -709,9 +691,11 @@ async def _ws_disconnect_only() -> None:
 
 async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
     """
-    ws_subscribe_start / ws_subscribe_end 시각에 call_later 타이머를 예약한다.
+    confirmed_download_time 타이머 + market_phase 전환 타이머를 예약한다.
     기존 타이머는 모두 취소 후 재예약.
     엔진 기동 시 + 설정 변경 시 호출.
+    ws_subscribe_start/end 타이머는 제거됨 (Step 2) — _broadcast_market_phase() 내
+    페이즈 변경 감지로 _on_ws_subscribe_start/_end가 자동 트리거 (P10/P24).
     """
 
     for handle in state.ws_subscribe_timer_handles:
@@ -728,34 +712,8 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
         # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
         settings = state.integrated_system_settings_cache
 
-    ws_start_str = str(settings["ws_subscribe_start"])[:5]
-    ws_end_str = str(settings["ws_subscribe_end"])[:5]
-
-    # ※ ws_subscribe_on 상태와 무관하게 타이머는 항상 예약한다.
-    # 실행 여부는 _on_ws_subscribe_start() 내부에서 판단한다.
-    # (공휴일 가드가 자동으로 OFF한 경우와 사용자 수동 OFF를 여기서 구분할 수 없음)
-
-    sh, sm = _parse_hm(ws_start_str)
-    eh, em = _parse_hm(ws_end_str)
-
-    delay_start = _seconds_until_hm(sh, sm)
-    delay_end = _seconds_until_hm(eh, em)
-
-    if delay_start > 0 and loop:
-        h = loop.call_later(max(delay_start, 1), lambda: schedule_engine_task(_on_ws_subscribe_start(), context="실시간 구독 시작"))
-        state.ws_subscribe_timer_handles.append(h)
-        logger.debug("[스케줄] 실시간 구독 시작 (%s) — %.0f초 후 예약", ws_start_str, delay_start)
-    elif delay_start <= 0 and delay_end > 0 and loop:
-        # 이미 구독 구간 내 — _init_ws_subscribe_state가 단일 책임으로 처리
-        # 내일 ws_subscribe_start 시각에 타이머 예약 (24시간 후)
-        h = loop.call_later(max(delay_start + 86400, 1), lambda: schedule_engine_task(_on_ws_subscribe_start(), context="실시간 구독 시작(내일)"))
-        state.ws_subscribe_timer_handles.append(h)
-        logger.debug("[스케줄] 실시간 구독 시작 (%s) — 구독 구간 내 기동, 내일 예약", ws_start_str)
-
-    if delay_end > 0 and loop:
-        h = loop.call_later(max(delay_end, 1), _fire_ws_subscribe_end)
-        state.ws_subscribe_timer_handles.append(h)
-        logger.debug("[스케줄] 실시간 구독 종료 (%s) — %.0f초 후 예약", ws_end_str, delay_end)
+    # ★ ws_subscribe_start / ws_subscribe_end 타이머 — 제거됨 (Step 2)
+    # _broadcast_market_phase() 내 NXT "프리마켓"/"장마감" 진입 시 자동 트리거 (P10/P24).
 
     # ★ 08:00/09:00/15:30 재계산 타이머 — 제거됨 (수정 8)
     # _broadcast_market_phase() 내 페이즈 변경 감지 시 자동 트리거 (P10/P22/P24).
