@@ -10,6 +10,7 @@ import math
 from backend.app.services.engine_symbol_utils import (
     _base_stk_cd,
     get_ws_subscribe_code,
+    is_nxt_enabled,
 )
 from backend.app.services.engine_state import state
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
@@ -240,14 +241,15 @@ async def _unreg_grp(grp_no: str) -> bool:
     return True
 
 
-async def subscribe_sector_stocks_0b() -> None:
+async def subscribe_sector_stocks_0b(*, nxt_only: bool = False) -> None:
     """필터 통과 종목 + 보유종목 0B REG — 첫 청크 refresh='0'(기존 해지 후 등록), 이후 refresh='1'(누적 등록).
 
     engine_service.py of _subscribe_sector_stocks_0b() 이동 버전.
     보유종목 우선 등록, 200개 한도 적용, 이미 구독된 종목 제외.
 
     Args:
-        es: engine_service 모듈 참조
+        nxt_only: True일 때 NXT 중복상장 종목(is_nxt_enabled=True)만 구독.
+                  KRX 단독 종목은 09:00 _on_krx_market_open()에서 추가 구독.
     """
     ws = state.connector_manager or state.active_connector
     if not ws or not ws.is_connected() or not state.login_ok:
@@ -266,12 +268,16 @@ async def subscribe_sector_stocks_0b() -> None:
     pos_codes: list[str] = list(dict.fromkeys(
         _base_stk_cd(cd) for cd in pos_codes_raw if cd
     ))
+    if nxt_only:
+        pos_codes = [cd for cd in pos_codes if is_nxt_enabled(cd)]
 
     # ── 2) 필터 통과 종목 코드 수집 ──
     _raw_filter = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_filtered", False)}
     filtered_codes: list[str] = list(dict.fromkeys(
         _base_stk_cd(cd) for cd in _raw_filter if cd
     ))
+    if nxt_only:
+        filtered_codes = [cd for cd in filtered_codes if is_nxt_enabled(cd)]
 
     # ── 3) 합산 + 200개 한도 적용 (보유종목 우선) ──
     pos_set = set(pos_codes)

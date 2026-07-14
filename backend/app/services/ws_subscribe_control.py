@@ -122,8 +122,9 @@ async def start_quote() -> dict:
             return {"ok": False, "message": "실시간 통신 미연결 상태"}
 
         from backend.app.services import engine_ws_reg
+        from backend.app.services.daily_time_scheduler import is_nxt_only_window
         try:
-            await engine_ws_reg.subscribe_sector_stocks_0b()
+            await engine_ws_reg.subscribe_sector_stocks_0b(nxt_only=is_nxt_only_window())
             _set_status(quote=True)
             await _ensure_account_subscription()
             logger.info("[구독] 실시간시세(0B, 그룹 4) 구독 시작 완료")
@@ -182,9 +183,10 @@ async def run_conditional_reg_pipeline() -> None:
 
     async with _get_lock():
         from backend.app.services import engine_ws_reg
+        from backend.app.services.daily_time_scheduler import is_nxt_only_window
 
         try:
-            await engine_ws_reg.subscribe_sector_stocks_0b()
+            await engine_ws_reg.subscribe_sector_stocks_0b(nxt_only=is_nxt_only_window())
             _set_status(quote=True)
             logger.info("[구독] 실시간시세(0B) 자동 구독 완료")
         except Exception as e:
