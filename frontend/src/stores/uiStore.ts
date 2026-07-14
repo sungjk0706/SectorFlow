@@ -34,6 +34,7 @@ export interface UIState {
     krx_alert?: string | null
     krx_event?: string | null
     nxt_event?: string | null
+    is_nxt_only?: boolean
   }
 
   /* ── 매수 한도 상태 ── */
@@ -71,7 +72,7 @@ const initialState: UIState = {
   engineReady: false,
   avgAmtProgress: null,
   bootstrapStage: null,
-  marketPhase: { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null, krx_event: null, nxt_event: null },
+  marketPhase: { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null, krx_event: null, nxt_event: null, is_nxt_only: false },
   buyLimitStatus: { daily_buy_spent: 0 },
   wsSubscribeStatus: { index_subscribed: false, quote_subscribed: false },
   sectorScoresDelta: null,

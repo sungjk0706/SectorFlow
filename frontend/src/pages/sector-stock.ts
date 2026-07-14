@@ -122,37 +122,6 @@ function mapRowsToTableRows(rows: RowItem[]): TableRow<DataRowItem>[] {
   })
 }
 
-/* ── KRX 비활성 구간 판정 (NXT-only 거래 시간대) ── */
-
-const KRX_INACTIVE_PHASES = new Set([
-  '장개시전',
-  '장전 대기',
-  '장전 시간외',
-  '동시호가 접수',
-  '시가 동시호가',
-  '종가 동시호가',
-  '체결 정산',
-  '장후 시간외',
-  '시간외 단일가',
-  '장 종료',
-  '장마감',
-  '휴장일',
-])
-
-const NXT_ACTIVE_PHASES = new Set([
-  '프리마켓',
-  '정규장 준비',
-  '메인마켓',
-  '단일가 매매',
-  '애프터마켓',
-  '애프터마켓 지속',
-])
-
-function isKrxInactiveWindow(marketPhase: { krx: string; nxt: string }): boolean {
-  return KRX_INACTIVE_PHASES.has(marketPhase.krx)
-    && NXT_ACTIVE_PHASES.has(marketPhase.nxt)
-}
-
 /* ── rows 계산 ── */
 
 function computeRows(
@@ -163,7 +132,7 @@ function computeRows(
   matchedCodes: Set<string> | null,
   matchedSectors: Set<string> | null,
   rowCache: Map<string, { stock: SectorStock; row: DataRowItem }>,
-  marketPhase: { krx: string; nxt: string },
+  marketPhase: { krx: string; nxt: string; is_nxt_only?: boolean },
 ): RowItem[] {
   // 업종별 종목 그룹핑
   const grouped = new Map<string, string[]>()
@@ -217,7 +186,7 @@ function computeRows(
   const sectorRankMap = new Map<string, number>()
   for (let i = 0; i < sectorOrder.length; i++) sectorRankMap.set(sectorOrder[i], i + 1)
 
-  const krxInactive = isKrxInactiveWindow(marketPhase)
+  const krxInactive = marketPhase.is_nxt_only === true
   const rows: RowItem[] = []
   let stockSeq = 0
 
