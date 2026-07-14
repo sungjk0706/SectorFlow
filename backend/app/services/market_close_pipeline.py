@@ -222,11 +222,10 @@ async def execute_unified_rolling_and_save(
     from backend.app.db.database import get_db_connection, get_db_lock
 
     date_str = get_current_trading_day_str()
-    bar_dt = qry_dt or date_str  # stock_5d_bars.dt는 API 조회일(실제 거래일)로 통일 (P10)
     _nm = name_map or {}
 
-    if not bar_dt:
-        logger.warning("[데이터] 저장 실패 — qry_dt 누락 (P20 폴백 금지)")
+    if not date_str:
+        logger.warning("[데이터] 저장 실패 — 현재 거래일 확인 불가 (P20 폴백 금지)")
         return False
 
     async with get_db_lock():
@@ -249,6 +248,15 @@ async def execute_unified_rolling_and_save(
                 cur_price = int(detail.get("cur_price") or 0)
                 change = int(detail.get("change") or 0)
                 change_rate = float(detail.get("change_rate") or 0.0)
+
+                # stock_5d_bars.dt는 API가 반환한 일봉의 실제 거래일을 우선 사용 (P10/P22)
+                # fetch_ka10081_daily_price가 latest 일봉의 dt를 반환 — 장마감 전 실행 시
+                # API가 어제 일봉을 latest로 반환하므로, 달력 오늘(qry_dt)을 dt로 쓰면
+                # 어제 값을 오늘 행으로 기록하는 중복이 발생함.
+                bar_dt = str(detail.get("dt") or "").strip() or qry_dt or date_str
+                if not bar_dt:
+                    logger.warning("[데이터] %s 행 저장 생략 — dt 누락 (P20 폴백 금지)", nk)
+                    continue
 
                 # 당일 세로 행 파라미터 (INSERT OR REPLACE — 같은 날 재실행 시 자동 덮어쓰기 P22)
                 bars_bulk_params.append((nk, bar_dt, today_amt, today_high))
@@ -875,6 +883,7 @@ async def _step5_download_daily_confirmed(
         normalized_confirmed = {}
         for cd, val in confirmed.items():
             normalized_confirmed[cd] = {
+                "dt": val.get("dt") or "",
                 "cur_price": val.get("close") or val.get("cur_price") or 0,
                 "trade_amount": val.get("value") or val.get("trade_amount") or 0,
                 "high_price": val.get("high") or val.get("high_price") or 0,

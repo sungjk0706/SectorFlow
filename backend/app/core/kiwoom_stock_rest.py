@@ -112,8 +112,11 @@ async def fetch_ka10081_daily_price(
 
         trade_amt = _si(latest.get("trde_prica") or 0)  # 백만원 단위
         high_price = _si(latest.get("high_pric") or 0)
+        # API가 반환한 일봉의 실제 거래일 (YYYYMMDD) — stock_5d_bars.dt 단일 진실 소스 (P10/P22)
+        bar_dt = str(latest.get("dt") or "").strip()
 
         return {
+            "dt": bar_dt,
             "cur_price": close_px,
             "sign": sign,
             "change": change_raw,

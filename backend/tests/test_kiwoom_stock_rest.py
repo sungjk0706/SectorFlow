@@ -172,12 +172,29 @@ class TestFetchKa10081DailyPrice:
         api._call_api.return_value = (_mock_resp({"stk_dt_pole_chart_qry": [row]}), False)
         result = await fetch_ka10081_daily_price(api, "005930", "20260710")
         assert result is not None
+        assert result["dt"] == "20260710"  # API 일봉의 실제 거래일 (P10/P22)
         assert result["cur_price"] == 70000
         assert result["sign"] == "2"
         assert result["change"] == 1000
         assert result["trade_amount"] == 500000
         assert result["high_price"] == 72000
         assert result["change_rate"] is not None
+
+    @pytest.mark.asyncio
+    async def test_dt_field_propagated_from_latest_row(self):
+        """fetch_ka10081_daily_price가 latest 일봉의 dt를 반환값에 포함하는지 검증 (P10/P22).
+
+        장마감 전 API가 어제 일봉을 latest로 반환할 때, 호출자가 이 dt를
+        stock_5d_bars.dt로 사용해야 중복 행 생성이 차단됨.
+        """
+        from backend.app.core.kiwoom_stock_rest import fetch_ka10081_daily_price
+        api = _mock_api()
+        # qry_dt는 20260715(달력 오늘)이지만 API는 아직 20260714 일봉을 latest로 반환
+        row = _make_daily_row(dt="20260714", cur_prc="70,000")
+        api._call_api.return_value = (_mock_resp({"stk_dt_pole_chart_qry": [row]}), False)
+        result = await fetch_ka10081_daily_price(api, "005930", "20260715")
+        assert result is not None
+        assert result["dt"] == "20260714"  # qry_dt가 아니라 API 실제 거래일
 
     @pytest.mark.asyncio
     async def test_ascending_sorted_reversed(self):

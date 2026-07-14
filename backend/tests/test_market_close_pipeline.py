@@ -321,7 +321,10 @@ class TestExecuteUnifiedRollingAndSave:
 
     @pytest.mark.asyncio
     async def test_same_day_upsert_no_duplicate(self):
-        """같은 날 재실행 시 INSERT OR REPLACE로 당일 행 덮어쓰기 (P10/P22 — 세로 행 구조)."""
+        """같은 날 재실행 시 INSERT OR REPLACE로 당일 행 덮어쓰기 (P10/P22 — 세로 행 구조).
+
+        API가 반환한 일봉의 실제 dt(=qry_dt와 동일)를 stock_5d_bars.dt로 사용.
+        """
         mock_conn = _mock_conn()
         cursor = MagicMock()
         # 1st fetchall: stock_5d_bars existing rows (당일 + 직전일들), 2nd fetchall: master_stocks_table mkt rows
@@ -338,7 +341,7 @@ class TestExecuteUnifiedRollingAndSave:
         mock_state = _mock_state()
         mock_state.master_stocks_cache = {"005930": {"name": "삼성전자"}}
         confirmed = {
-            "005930": {"cur_price": 50000, "change": 1000, "change_rate": 2.0, "trade_amount": 555, "high_price": 8888},
+            "005930": {"dt": "20250106", "cur_price": 50000, "change": 1000, "change_rate": 2.0, "trade_amount": 555, "high_price": 8888},
         }
         with patch("backend.app.services.market_close_pipeline.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
@@ -350,15 +353,18 @@ class TestExecuteUnifiedRollingAndSave:
             # 1st executemany: stock_5d_bars INSERT OR REPLACE (당일 1행)
             bars_call = mock_conn.executemany.call_args_list[0]
             bars_params = bars_call.args[1][0]
-            # (code, dt, trade_amount, high_price)
+            # (code, dt, trade_amount, high_price) — dt는 API 실제 거래일 우선
             assert bars_params[0] == "005930"
-            assert bars_params[1] == "20250106"  # dt = qry_dt
+            assert bars_params[1] == "20250106"  # dt = detail.dt (API 실제 거래일 = qry_dt)
             assert bars_params[2] == 555   # trade_amount = 새 당일 값
             assert bars_params[3] == 8888  # high_price = 새 당일 고가
 
     @pytest.mark.asyncio
     async def test_new_day_insert_new_row(self):
-        """새 거래일 실행 시 새 행 추가 — 기존 행은 그대로 유지 (세로 행 구조, rolling 제거)."""
+        """새 거래일 실행 시 새 행 추가 — 기존 행은 그대로 유지 (세로 행 구조, rolling 제거).
+
+        API가 반환한 일봉의 실제 dt(=qry_dt와 동일)를 stock_5d_bars.dt로 사용.
+        """
         mock_conn = _mock_conn()
         cursor = MagicMock()
         # 기존 행: 직전1일~직전3일 (당일 행 없음)
@@ -374,7 +380,7 @@ class TestExecuteUnifiedRollingAndSave:
         mock_state = _mock_state()
         mock_state.master_stocks_cache = {"005930": {"name": "삼성전자"}}
         confirmed = {
-            "005930": {"cur_price": 50000, "change": 1000, "change_rate": 2.0, "trade_amount": 999, "high_price": 9999},
+            "005930": {"dt": "20250106", "cur_price": 50000, "change": 1000, "change_rate": 2.0, "trade_amount": 999, "high_price": 9999},
         }
         with patch("backend.app.services.market_close_pipeline.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
@@ -386,9 +392,50 @@ class TestExecuteUnifiedRollingAndSave:
             bars_call = mock_conn.executemany.call_args_list[0]
             bars_params = bars_call.args[1][0]
             assert bars_params[0] == "005930"
-            assert bars_params[1] == "20250106"  # dt = qry_dt (새 거래일)
+            assert bars_params[1] == "20250106"  # dt = detail.dt (API 실제 거래일 = qry_dt)
             assert bars_params[2] == 999   # trade_amount = 새 당일 값
             assert bars_params[3] == 9999  # high_price = 새 당일 고가
+
+    @pytest.mark.asyncio
+    async def test_api_returns_previous_day_uses_api_dt_not_qry_dt(self):
+        """장마감 전 실행 시 API가 어제 일봉을 latest로 반환하는 경우 회귀 방지 (P10/P22).
+
+        qry_dt=20250106(달력 오늘)이지만 API가 아직 20250105(직전 거래일) 일봉을
+        latest로 반환하면, stock_5d_bars에는 20250105 행으로 저장되어야 함.
+        과거 버그: qry_dt(달력 오늘)를 그대로 dt로 써서 20250105 값을 20250106 행에
+        기록 → 20250105 행과 동일값 중복 발생.
+        """
+        mock_conn = _mock_conn()
+        cursor = MagicMock()
+        # 기존 행: 20250105(직전 거래일) 이미 존재
+        existing_bars = [
+            {"code": "005930", "trade_amount": 200, "high_price": 2000},
+        ]
+        cursor.fetchall = AsyncMock(side_effect=[existing_bars, []])
+        mock_conn.execute = AsyncMock(return_value=cursor)
+        mock_lock = MagicMock()
+        mock_lock.__aenter__ = AsyncMock(return_value=mock_lock)
+        mock_lock.__aexit__ = AsyncMock(return_value=None)
+        mock_state = _mock_state()
+        mock_state.master_stocks_cache = {"005930": {"name": "삼성전자"}}
+        # API가 20250105 일봉을 latest로 반환 → dt="20250105"
+        confirmed = {
+            "005930": {"dt": "20250105", "cur_price": 50000, "change": 1000, "change_rate": 2.0, "trade_amount": 200, "high_price": 2000},
+        }
+        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+             patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
+             patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
+             patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x):
+            result = await execute_unified_rolling_and_save(confirmed, qry_dt="20250106")
+            assert result is True
+            bars_call = mock_conn.executemany.call_args_list[0]
+            bars_params = bars_call.args[1][0]
+            assert bars_params[0] == "005930"
+            # 핵심: dt는 qry_dt(20250106)가 아니라 API 실제 거래일(20250105)이어야 함
+            assert bars_params[1] == "20250105"  # detail.dt 우선 — 중복 행 생성 차단
+            assert bars_params[2] == 200   # trade_amount
+            assert bars_params[3] == 2000  # high_price
 
 
 # ── _apply_confirmed_to_memory ────────────────────────────────────────────────
