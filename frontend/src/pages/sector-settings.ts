@@ -43,7 +43,6 @@ let maxTargetsSumEl: HTMLDivElement | null = null
 let unsubHotStore: (() => void) | null = null
 let receiveProgressBar: ProgressBarHandle | null = null
 let receiveStatusLabelEl: HTMLSpanElement | null = null
-let thresholdInfoSpan: HTMLSpanElement | null = null
 
 // 현재 값 추적
 let currentVals: Record<string, number> = {}
@@ -60,13 +59,9 @@ async function onNumChange(key: string, value: number): Promise<void> {
 // 수신율 상태 라벨 갱신 — 임계치 대기/진행 중 (P21 투명성)
 function _updateStatusLabel(pct: number, threshold: number): void {
   if (!receiveStatusLabelEl) return
-  if (pct >= threshold) {
-    receiveStatusLabelEl.textContent = '업종순위 계산 진행 중'
-    receiveStatusLabelEl.style.color = COLOR.success
-  } else {
-    receiveStatusLabelEl.textContent = '업종순위 계산 대기 중'
-    receiveStatusLabelEl.style.color = COLOR.down
-  }
+  const reached = pct >= threshold
+  receiveStatusLabelEl.textContent = reached ? '업종순위 계산 진행 중' : '업종순위 계산 대기 중'
+  receiveStatusLabelEl.style.color = reached ? COLOR.success : COLOR.down
 }
 
 function syncFromSettings(s: AppSettings): void {
@@ -87,10 +82,9 @@ function syncFromSettings(s: AppSettings): void {
   if (bonusRelativeStrengthInput && (!act || !bonusRelativeStrengthInput.el.contains(act))) bonusRelativeStrengthInput.setValue(currentVals.sector_bonus_relative_strength_slider ?? 0)
   if (bonusTradeAmountInput && (!act || !bonusTradeAmountInput.el.contains(act))) bonusTradeAmountInput.setValue(currentVals.sector_bonus_trade_amount_slider ?? 0)
 
-  // 임계치 변경 시 진행률 바 마커 + 임계치 표시 + 상태 라벨 갱신
+  // 임계치 변경 시 진행률 바 마커 + 상태 라벨 갱신
   const threshold = currentVals.sector_start_threshold_pct ?? 70
   if (receiveProgressBar) receiveProgressBar.setThreshold(threshold)
-  if (thresholdInfoSpan) thresholdInfoSpan.textContent = `(임계치 ${threshold}%)`
   if (receiveStatusLabelEl) {
     const curPct = uiStore.getState().receiveRate?.pct ?? 0
     _updateStatusLabel(curPct, threshold)
@@ -155,59 +149,59 @@ function mount(container: HTMLElement): void {
   thresholdRow.style.borderBottom = 'none'
   root.appendChild(thresholdRow)
 
-  // 2행: 동적 상태 라벨 (대기 중 / 진행 중) — P21 투명성
+  // 2행: 상태 라벨(좌) + 수신/미수신 종목수(우) — P21 투명성 + P24 행 수 감소
+  const statusRow = document.createElement('div')
+  Object.assign(statusRow.style, {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '4px 0 2px 0',
+  })
+
   receiveStatusLabelEl = document.createElement('span')
   Object.assign(receiveStatusLabelEl.style, {
     fontSize: FONT_SIZE.small,
     color: COLOR.down,
-    display: 'block',
-    padding: '4px 0 2px 0',
   })
-  _updateStatusLabel(_initialRate?.pct ?? 0, _initialThreshold)
-  root.appendChild(receiveStatusLabelEl)
+  statusRow.appendChild(receiveStatusLabelEl)
 
-  // 3행: 진행률 바 + 임계치 마커 + 우측 % 수치
-  receiveProgressBar = createProgressBar(COLOR.down, { showPct: true, height: '10px' })
-  receiveProgressBar.setThreshold(_initialThreshold)
-  receiveProgressBar.setValue(_initialRate?.pct ?? 0)
-  const progressBarRow = document.createElement('div')
-  Object.assign(progressBarRow.style, { padding: '0 0 4px 0' })
-  progressBarRow.appendChild(receiveProgressBar.el)
-  root.appendChild(progressBarRow)
-
-  // 4행: 수신/미수신 종목수 + 임계치 정보
-  const receiveCountRow = document.createElement('div')
-  Object.assign(receiveCountRow.style, {
+  // 우측 정보: 수신 N종목 / 미수신 N종목 (임계치는 1행 입력란에 표시되므로 중복 제거)
+  const rightInfo = document.createElement('span')
+  Object.assign(rightInfo.style, {
     fontSize: FONT_SIZE.small,
     color: COLOR.neutral,
-    textAlign: 'right',
-    padding: '2px 0 6px 0',
-    borderBottom: '1px solid ' + COLOR.borderLight,
-    marginBottom: '12px',
+    whiteSpace: 'nowrap',
   })
-  // 동적 숫자 span — 수신 종목수
+
   const receivedCountSpan = document.createElement('span')
   Object.assign(receivedCountSpan.style, { color: COLOR.down })
-  // 동적 숫자 span — 미수신 종목수
   const missedCountSpan = document.createElement('span')
   Object.assign(missedCountSpan.style, { color: COLOR.down })
-  // 임계치 표시 span
-  thresholdInfoSpan = document.createElement('span')
-  Object.assign(thresholdInfoSpan.style, { color: COLOR.tertiary, marginLeft: '8px' })
-  thresholdInfoSpan.textContent = `(임계치 ${_initialThreshold}%)`
 
   function _fillReceiveCount(rate: { received: number; total: number }) {
     receivedCountSpan.textContent = `${rate.received}종목`
     missedCountSpan.textContent = `${rate.total - rate.received}종목`
   }
 
-  if (_initialRate) {
-    _fillReceiveCount(_initialRate)
-    receiveCountRow.append('수신 ', receivedCountSpan, ' / 미수신 ', missedCountSpan, thresholdInfoSpan)
-  } else {
-    receiveCountRow.append('수신 ', receivedCountSpan, ' / 미수신 ', missedCountSpan, thresholdInfoSpan)
-  }
-  root.appendChild(receiveCountRow)
+  if (_initialRate) _fillReceiveCount(_initialRate)
+  rightInfo.append('수신 ', receivedCountSpan, ' / 미수신 ', missedCountSpan)
+  statusRow.appendChild(rightInfo)
+
+  _updateStatusLabel(_initialRate?.pct ?? 0, _initialThreshold)
+  root.appendChild(statusRow)
+
+  // 3행: 진행률 % (우측 정렬) + 4행: 바 (전체 너비) — showPctTop으로 바 위 % 표시
+  receiveProgressBar = createProgressBar(COLOR.down, { showPct: false, showPctTop: true, height: '10px' })
+  receiveProgressBar.setThreshold(_initialThreshold)
+  receiveProgressBar.setValue(_initialRate?.pct ?? 0)
+  const progressBarRow = document.createElement('div')
+  Object.assign(progressBarRow.style, {
+    padding: '6px 0 6px 0',
+    borderBottom: '1px solid ' + COLOR.borderLight,
+    marginBottom: '12px',
+  })
+  progressBarRow.appendChild(receiveProgressBar.el)
+  root.appendChild(progressBarRow)
 
   // ③ 업종 컷오프
   root.appendChild(createStepLabel('③', '업종 내 상승비율 이하 차단'))
@@ -411,7 +405,6 @@ function unmount(): void {
   maxTargetsSumEl = null
   receiveProgressBar = null
   receiveStatusLabelEl = null
-  thresholdInfoSpan = null
   saving = false
 }
 
