@@ -442,8 +442,10 @@ class TelegramBot:
                 await self._send(token, chat_id, " 종목 데이터가 없습니다. 엔진 가동 후 다시 시도하세요.")
                 return
 
+            # krx_codes/nxt_codes는 수신률 분리 집계 전용 — compute_full_sector_summary에는 all_codes만 전달
+            compute_inputs = {k: v for k, v in inputs.items() if k not in ("krx_codes", "nxt_codes")}
             summary = await compute_full_sector_summary(
-                **inputs,
+                **compute_inputs,
             )
 
             sectors = summary.sectors

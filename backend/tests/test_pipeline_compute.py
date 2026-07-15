@@ -83,40 +83,55 @@ class TestHasAnyRealtimeData:
 
 class TestReceiveRate:
     def test_get_current_receive_rate_returns_copy(self):
-        compute_mod._current_receive_rate = {"received": 5, "total": 10, "pct": 50.0}
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 5, "total": 10, "pct": 50.0},
+            "nxt": {"received": 3, "total": 8, "pct": 37.5},
+        }
         result = get_current_receive_rate()
-        assert result == {"received": 5, "total": 10, "pct": 50.0}
+        assert result == {
+            "krx": {"received": 5, "total": 10, "pct": 50.0},
+            "nxt": {"received": 3, "total": 8, "pct": 37.5},
+        }
         # Verify it's a copy
-        result["received"] = 999
-        assert compute_mod._current_receive_rate["received"] == 5
+        result["krx"]["received"] = 999
+        assert compute_mod._current_receive_rate["krx"]["received"] == 5
 
     @pytest.mark.asyncio
     async def test_send_receive_rate_puts_to_queue(self):
+        # 3단계: 분리 구조 rate 전달 — module-level broadcast_queue 사용
         mock_bq = AsyncMock()
-        rate = {"received": 3, "total": 10, "pct": 30.0}
-        await _send_receive_rate.__wrapped__(rate, mock_bq) if hasattr(_send_receive_rate, '__wrapped__') else None
-        # Direct call with broadcast_queue
-        await _send_receive_rate.__wrapped__ if False else None
-        # Just call the function directly with mock queue
         mock_bq.put = AsyncMock()
-        await _send_receive_rate(rate)
-        # broadcast_queue is module-level, so we need to patch it
-        # Actually _send_receive_rate uses the module-level broadcast_queue
-        # Let's test it differently
+        with patch.object(compute_mod, "broadcast_queue", mock_bq):
+            rate = {
+                "krx": {"received": 3, "total": 10, "pct": 30.0},
+                "nxt": {"received": 2, "total": 5, "pct": 40.0},
+            }
+            await _send_receive_rate(rate)
+            mock_bq.put.assert_awaited_once()
+            call_args = mock_bq.put.call_args.args[0]
+            assert call_args["type"] == "receive-rate"
+            assert call_args["data"]["krx"]["received"] == 3
+            assert call_args["data"]["nxt"]["received"] == 2
 
     @pytest.mark.asyncio
     async def test_send_receive_rate_direct(self):
         mock_bq = AsyncMock()
         mock_bq.put = AsyncMock()
         with patch.object(compute_mod, "broadcast_queue", mock_bq):
-            rate = {"received": 3, "total": 10, "pct": 30.0}
+            rate = {
+                "krx": {"received": 3, "total": 10, "pct": 30.0},
+                "nxt": {"received": 2, "total": 5, "pct": 40.0},
+            }
             await _send_receive_rate(rate)
             mock_bq.put.assert_awaited_once()
             call_args = mock_bq.put.call_args.args[0]
             assert call_args["type"] == "receive-rate"
-            assert call_args["data"]["pct"] == 30.0
-            assert call_args["data"]["received"] == 3
-            assert call_args["data"]["total"] == 10
+            assert call_args["data"]["krx"]["pct"] == 30.0
+            assert call_args["data"]["krx"]["received"] == 3
+            assert call_args["data"]["krx"]["total"] == 10
+            assert call_args["data"]["nxt"]["pct"] == 40.0
+            assert call_args["data"]["nxt"]["received"] == 2
+            assert call_args["data"]["nxt"]["total"] == 5
 
 
 # ── _calculate_receive_rate ───────────────────────────────────────────────────
@@ -125,27 +140,34 @@ class TestCalculateReceiveRate:
     @pytest.mark.asyncio
     async def test_empty_codes_returns_early(self):
         with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock) as mock_inputs:
-            mock_inputs.return_value = {"all_codes": []}
-            old = dict(compute_mod._current_receive_rate)
+            mock_inputs.return_value = {"all_codes": [], "krx_codes": [], "nxt_codes": []}
             await _calculate_receive_rate()
-            # Should not update _current_receive_rate
-            assert compute_mod._current_receive_rate == old
+            # 양쪽 모두 빈 codes → 0/0/0.0 (비활성 상태)
+            assert compute_mod._current_receive_rate["krx"] == {"received": 0, "total": 0, "pct": 0.0}
+            assert compute_mod._current_receive_rate["nxt"] == {"received": 0, "total": 0, "pct": 0.0}
 
     @pytest.mark.asyncio
     async def test_normal_calculation(self):
-        # 3종목 중 2종목이 change_rate/trade_amount 필드 보유 → 66.67%
+        # KRX 2종목(1종목 수신), NXT 1종목(1종목 수신) → KRX 50%, NXT 100%
         mock_cache = {
-            "005930": {"change_rate": 1.5, "trade_amount": 1000000},
-            "000660": {"change_rate": None, "trade_amount": 500000},
-            "035420": {"change_rate": None, "trade_amount": None},
+            "005930": {"change_rate": 1.5, "trade_amount": 1000000},  # KRX, 수신
+            "000660": {"change_rate": None, "trade_amount": None},    # KRX, 미수신
+            "035420": {"change_rate": -0.5, "trade_amount": 500000},  # NXT, 수신
         }
         with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock) as mock_inputs, \
              patch.object(compute_mod, "state", MagicMock(master_stocks_cache=mock_cache)):
-            mock_inputs.return_value = {"all_codes": ["005930", "000660", "035420"]}
+            mock_inputs.return_value = {
+                "all_codes": ["005930", "000660", "035420"],
+                "krx_codes": ["005930", "000660"],
+                "nxt_codes": ["035420"],
+            }
             await _calculate_receive_rate()
-            assert compute_mod._current_receive_rate["received"] == 2
-            assert compute_mod._current_receive_rate["total"] == 3
-            assert abs(compute_mod._current_receive_rate["pct"] - 66.67) < 0.1
+            assert compute_mod._current_receive_rate["krx"]["received"] == 1
+            assert compute_mod._current_receive_rate["krx"]["total"] == 2
+            assert abs(compute_mod._current_receive_rate["krx"]["pct"] - 50.0) < 0.1
+            assert compute_mod._current_receive_rate["nxt"]["received"] == 1
+            assert compute_mod._current_receive_rate["nxt"]["total"] == 1
+            assert abs(compute_mod._current_receive_rate["nxt"]["pct"] - 100.0) < 0.1
 
     @pytest.mark.asyncio
     async def test_no_received_data(self):
@@ -156,10 +178,16 @@ class TestCalculateReceiveRate:
         }
         with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock) as mock_inputs, \
              patch.object(compute_mod, "state", MagicMock(master_stocks_cache=mock_cache)):
-            mock_inputs.return_value = {"all_codes": ["005930", "000660"]}
+            mock_inputs.return_value = {
+                "all_codes": ["005930", "000660"],
+                "krx_codes": ["005930", "000660"],
+                "nxt_codes": [],
+            }
             await _calculate_receive_rate()
-            assert compute_mod._current_receive_rate["received"] == 0
-            assert compute_mod._current_receive_rate["pct"] == 0.0
+            assert compute_mod._current_receive_rate["krx"]["received"] == 0
+            assert compute_mod._current_receive_rate["krx"]["pct"] == 0.0
+            assert compute_mod._current_receive_rate["nxt"]["received"] == 0
+            assert compute_mod._current_receive_rate["nxt"]["total"] == 0
 
     @pytest.mark.asyncio
     async def test_all_received_data(self):
@@ -170,25 +198,58 @@ class TestCalculateReceiveRate:
         }
         with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock) as mock_inputs, \
              patch.object(compute_mod, "state", MagicMock(master_stocks_cache=mock_cache)):
-            mock_inputs.return_value = {"all_codes": ["005930", "000660"]}
+            mock_inputs.return_value = {
+                "all_codes": ["005930", "000660"],
+                "krx_codes": ["005930"],
+                "nxt_codes": ["000660"],
+            }
             await _calculate_receive_rate()
-            assert compute_mod._current_receive_rate["received"] == 2
-            assert compute_mod._current_receive_rate["total"] == 2
-            assert abs(compute_mod._current_receive_rate["pct"] - 100.0) < 0.1
+            assert compute_mod._current_receive_rate["krx"]["received"] == 1
+            assert compute_mod._current_receive_rate["krx"]["total"] == 1
+            assert abs(compute_mod._current_receive_rate["krx"]["pct"] - 100.0) < 0.1
+            assert compute_mod._current_receive_rate["nxt"]["received"] == 1
+            assert compute_mod._current_receive_rate["nxt"]["total"] == 1
+            assert abs(compute_mod._current_receive_rate["nxt"]["pct"] - 100.0) < 0.1
 
     @pytest.mark.asyncio
     async def test_missing_entry_in_cache(self):
-        # all_codes에 있으나 cache에 없는 종목은 미수신으로 카운트
+        # krx_codes에 있으나 cache에 없는 종목은 미수신으로 카운트
         mock_cache = {
             "005930": {"change_rate": 1.5, "trade_amount": 1000000},
         }
         with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock) as mock_inputs, \
              patch.object(compute_mod, "state", MagicMock(master_stocks_cache=mock_cache)):
-            mock_inputs.return_value = {"all_codes": ["005930", "000660"]}
+            mock_inputs.return_value = {
+                "all_codes": ["005930", "000660"],
+                "krx_codes": ["005930", "000660"],
+                "nxt_codes": [],
+            }
             await _calculate_receive_rate()
-            assert compute_mod._current_receive_rate["received"] == 1
-            assert compute_mod._current_receive_rate["total"] == 2
-            assert abs(compute_mod._current_receive_rate["pct"] - 50.0) < 0.1
+            assert compute_mod._current_receive_rate["krx"]["received"] == 1
+            assert compute_mod._current_receive_rate["krx"]["total"] == 2
+            assert abs(compute_mod._current_receive_rate["krx"]["pct"] - 50.0) < 0.1
+
+    @pytest.mark.asyncio
+    async def test_nxt_only_window_krx_empty(self):
+        # NXT-only 구간: krx_codes가 빈 리스트 → KRX 0/0, NXT만 산출
+        mock_cache = {
+            "035420": {"change_rate": -0.5, "trade_amount": 500000},
+            "005930": {"change_rate": None, "trade_amount": None},
+        }
+        with patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new_callable=AsyncMock) as mock_inputs, \
+             patch.object(compute_mod, "state", MagicMock(master_stocks_cache=mock_cache)):
+            mock_inputs.return_value = {
+                "all_codes": ["035420", "005930"],
+                "krx_codes": [],
+                "nxt_codes": ["035420", "005930"],
+            }
+            await _calculate_receive_rate()
+            assert compute_mod._current_receive_rate["krx"]["received"] == 0
+            assert compute_mod._current_receive_rate["krx"]["total"] == 0
+            assert compute_mod._current_receive_rate["krx"]["pct"] == 0.0
+            assert compute_mod._current_receive_rate["nxt"]["received"] == 1
+            assert compute_mod._current_receive_rate["nxt"]["total"] == 2
+            assert abs(compute_mod._current_receive_rate["nxt"]["pct"] - 50.0) < 0.1
 
     @pytest.mark.asyncio
     async def test_exception_does_not_raise(self):
@@ -964,7 +1025,10 @@ class TestSectorRecomputeLoopImpl:
     @pytest.mark.asyncio
     async def test_phase1_threshold_met_transitions_to_phase2(self):
         compute_mod._compute_running = True
-        compute_mod._current_receive_rate = {"received": 8, "total": 10, "pct": 80.0}
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 8, "total": 10, "pct": 80.0},
+            "nxt": {"received": 4, "total": 5, "pct": 80.0},
+        }
         mock_bq = MagicMock()
 
         mock_state = MagicMock()
@@ -980,7 +1044,11 @@ class TestSectorRecomputeLoopImpl:
         with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
              patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
              patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={"received": 8, "total": 10, "pct": 80.0}), \
+             patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={
+                 "krx": {"received": 8, "total": 10, "pct": 80.0},
+                 "nxt": {"received": 4, "total": 5, "pct": 80.0},
+             }), \
+             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
              patch("backend.app.services.engine_sector_confirm.request_sector_recompute"), \
              patch("backend.app.services.engine_sector_confirm.has_dirty_sectors", return_value=False), \
              patch("backend.app.services.engine_sector_confirm._flush_sector_recompute_impl", new_callable=AsyncMock), \
@@ -989,12 +1057,18 @@ class TestSectorRecomputeLoopImpl:
             await _sector_recompute_loop_impl(mock_bq)
         compute_mod._compute_running = False
         compute_mod._receive_rate_dirty = False
-        compute_mod._current_receive_rate = {"received": 0, "total": 0, "pct": 0.0}
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 0, "total": 0, "pct": 0.0},
+            "nxt": {"received": 0, "total": 0, "pct": 0.0},
+        }
 
     @pytest.mark.asyncio
     async def test_phase1_total_zero_continues(self):
         compute_mod._compute_running = True
-        compute_mod._current_receive_rate = {"received": 0, "total": 0, "pct": 0.0}
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 0, "total": 0, "pct": 0.0},
+            "nxt": {"received": 0, "total": 0, "pct": 0.0},
+        }
         mock_bq = MagicMock()
 
         mock_state = MagicMock()
@@ -1010,16 +1084,23 @@ class TestSectorRecomputeLoopImpl:
         with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
              patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
              patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
+             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
              patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
             await _sector_recompute_loop_impl(mock_bq)
         compute_mod._compute_running = False
         compute_mod._receive_rate_dirty = False
-        compute_mod._current_receive_rate = {"received": 0, "total": 0, "pct": 0.0}
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 0, "total": 0, "pct": 0.0},
+            "nxt": {"received": 0, "total": 0, "pct": 0.0},
+        }
 
     @pytest.mark.asyncio
     async def test_phase1_received_zero_continues(self):
         compute_mod._compute_running = True
-        compute_mod._current_receive_rate = {"received": 0, "total": 10, "pct": 0.0}
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 0, "total": 10, "pct": 0.0},
+            "nxt": {"received": 0, "total": 5, "pct": 0.0},
+        }
         mock_bq = MagicMock()
 
         mock_state = MagicMock()
@@ -1035,16 +1116,23 @@ class TestSectorRecomputeLoopImpl:
         with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
              patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
              patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
+             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
              patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
             await _sector_recompute_loop_impl(mock_bq)
         compute_mod._compute_running = False
         compute_mod._receive_rate_dirty = False
-        compute_mod._current_receive_rate = {"received": 0, "total": 0, "pct": 0.0}
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 0, "total": 0, "pct": 0.0},
+            "nxt": {"received": 0, "total": 0, "pct": 0.0},
+        }
 
     @pytest.mark.asyncio
     async def test_phase1_below_threshold_sends_rate(self):
         compute_mod._compute_running = True
-        compute_mod._current_receive_rate = {"received": 3, "total": 10, "pct": 30.0}
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 3, "total": 10, "pct": 30.0},
+            "nxt": {"received": 1, "total": 5, "pct": 20.0},
+        }
         mock_bq = MagicMock()
 
         mock_state = MagicMock()
@@ -1060,12 +1148,95 @@ class TestSectorRecomputeLoopImpl:
         with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
              patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
              patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock) as mock_send, \
+             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
              patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
             await _sector_recompute_loop_impl(mock_bq)
             mock_send.assert_awaited()
         compute_mod._compute_running = False
         compute_mod._receive_rate_dirty = False
-        compute_mod._current_receive_rate = {"received": 0, "total": 0, "pct": 0.0}
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 0, "total": 0, "pct": 0.0},
+            "nxt": {"received": 0, "total": 0, "pct": 0.0},
+        }
+
+    @pytest.mark.asyncio
+    async def test_phase1_nxt_only_window_nxt_only_threshold(self):
+        """NXT-only 구간: NXT 수신률만 기준으로 임계값 통과 검증 (옵션 C)."""
+        compute_mod._compute_running = True
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 0, "total": 0, "pct": 0.0},  # KRX 비활성
+            "nxt": {"received": 8, "total": 10, "pct": 80.0},  # NXT 80% → 임계값 50% 통과
+        }
+        mock_bq = MagicMock()
+
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"sector_start_threshold_pct": 50.0}
+
+        sleep_count = 0
+        async def _sleep_mock(seconds):
+            nonlocal sleep_count
+            sleep_count += 1
+            if sleep_count >= 3:
+                compute_mod._compute_running = False
+
+        with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
+             patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
+             patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
+             patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={
+                 "krx": {"received": 0, "total": 0, "pct": 0.0},
+                 "nxt": {"received": 8, "total": 10, "pct": 80.0},
+             }), \
+             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=True), \
+             patch("backend.app.services.engine_sector_confirm.request_sector_recompute"), \
+             patch("backend.app.services.engine_sector_confirm.has_dirty_sectors", return_value=False), \
+             patch("backend.app.services.engine_sector_confirm._flush_sector_recompute_impl", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new_callable=AsyncMock), \
+             patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
+            await _sector_recompute_loop_impl(mock_bq)
+        # NXT-only 구간에서 NXT 수신률 80% ≥ 임계값 50% → 통과
+        assert is_sector_threshold_passed() is True
+        compute_mod._compute_running = False
+        compute_mod._receive_rate_dirty = False
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 0, "total": 0, "pct": 0.0},
+            "nxt": {"received": 0, "total": 0, "pct": 0.0},
+        }
+
+    @pytest.mark.asyncio
+    async def test_phase1_regular_window_and_gate_krx_only_fails(self):
+        """정규장: KRX만 통과, NXT 미달 → 게이트 해제 안 됨 (AND 정책)."""
+        compute_mod._compute_running = True
+        compute_mod._sector_threshold_passed = False
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 8, "total": 10, "pct": 80.0},  # KRX 80% → 통과
+            "nxt": {"received": 1, "total": 5, "pct": 20.0},   # NXT 20% → 미달
+        }
+        mock_bq = MagicMock()
+
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"sector_start_threshold_pct": 50.0}
+
+        sleep_count = 0
+        async def _sleep_mock(seconds):
+            nonlocal sleep_count
+            sleep_count += 1
+            if sleep_count >= 2:
+                compute_mod._compute_running = False
+
+        with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
+             patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
+             patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
+             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
+             patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
+            await _sector_recompute_loop_impl(mock_bq)
+        # 정규장 AND 정책: KRX 통과해도 NXT 미달 → 게이트 False 유지
+        assert is_sector_threshold_passed() is False
+        compute_mod._compute_running = False
+        compute_mod._receive_rate_dirty = False
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 0, "total": 0, "pct": 0.0},
+            "nxt": {"received": 0, "total": 0, "pct": 0.0},
+        }
 
     @pytest.mark.asyncio
     async def test_phase1_exception_does_not_crash(self):
@@ -1084,6 +1255,7 @@ class TestSectorRecomputeLoopImpl:
 
         with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
              patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock, side_effect=Exception("calc error")), \
+             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
              patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
             await _sector_recompute_loop_impl(mock_bq)
         compute_mod._compute_running = False
@@ -1133,11 +1305,14 @@ class TestSectorThresholdGate:
 
     @pytest.mark.asyncio
     async def test_phase1_marks_threshold_passed(self):
-        """Phase 1 임계값 통과 시 mark_sector_threshold_passed() 호출 검증."""
+        """Phase 1 임계값 통과 시 mark_sector_threshold_passed() 호출 검증 (정규장 AND 정책)."""
         compute_mod._compute_running = True
         compute_mod._receive_rate_dirty = True
         compute_mod._sector_threshold_passed = False
-        compute_mod._current_receive_rate = {"received": 8, "total": 10, "pct": 80.0}
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 8, "total": 10, "pct": 80.0},
+            "nxt": {"received": 4, "total": 5, "pct": 80.0},
+        }
         mock_bq = MagicMock()
 
         mock_state = MagicMock()
@@ -1153,7 +1328,11 @@ class TestSectorThresholdGate:
         with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
              patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
              patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={"received": 8, "total": 10, "pct": 80.0}), \
+             patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={
+                 "krx": {"received": 8, "total": 10, "pct": 80.0},
+                 "nxt": {"received": 4, "total": 5, "pct": 80.0},
+             }), \
+             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
              patch("backend.app.services.engine_sector_confirm.request_sector_recompute"), \
              patch("backend.app.services.engine_sector_confirm.has_dirty_sectors", return_value=False), \
              patch("backend.app.services.engine_sector_confirm._flush_sector_recompute_impl", new_callable=AsyncMock), \
@@ -1165,14 +1344,20 @@ class TestSectorThresholdGate:
         assert is_sector_threshold_passed() is True
         compute_mod._compute_running = False
         compute_mod._receive_rate_dirty = False
-        compute_mod._current_receive_rate = {"received": 0, "total": 0, "pct": 0.0}
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 0, "total": 0, "pct": 0.0},
+            "nxt": {"received": 0, "total": 0, "pct": 0.0},
+        }
 
     @pytest.mark.asyncio
     async def test_phase1_below_threshold_keeps_gate_false(self):
-        """Phase 1 임계값 미달 시 플래그가 False로 유지됨 검증."""
+        """Phase 1 임계값 미달 시 플래그가 False로 유지됨 검증 (정규장 AND 정책)."""
         compute_mod._compute_running = True
         compute_mod._receive_rate_dirty = True
-        compute_mod._current_receive_rate = {"received": 3, "total": 10, "pct": 30.0}
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 3, "total": 10, "pct": 30.0},
+            "nxt": {"received": 1, "total": 5, "pct": 20.0},
+        }
         compute_mod._sector_threshold_passed = False
         mock_bq = MagicMock()
 
@@ -1189,6 +1374,7 @@ class TestSectorThresholdGate:
         with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
              patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
              patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
+             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
              patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
             await _sector_recompute_loop_impl(mock_bq)
 
@@ -1196,7 +1382,10 @@ class TestSectorThresholdGate:
         assert is_sector_threshold_passed() is False
         compute_mod._compute_running = False
         compute_mod._receive_rate_dirty = False
-        compute_mod._current_receive_rate = {"received": 0, "total": 0, "pct": 0.0}
+        compute_mod._current_receive_rate = {
+            "krx": {"received": 0, "total": 0, "pct": 0.0},
+            "nxt": {"received": 0, "total": 0, "pct": 0.0},
+        }
 
 
 # ── notify_desktop_sector_scores 게이트 ────────────────────────────────────────
@@ -1233,6 +1422,9 @@ class TestNotifySectorScoresGate:
         mock_scores = [{"sector": "반도체", "rank": 1, "final_score": 90.0}]
         with patch("backend.app.services.sector_data_provider.get_sector_scores_snapshot", return_value=(mock_scores, 1)), \
              patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_broadcast, \
-             patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={"received": 8, "total": 10, "pct": 80.0}):
+             patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={
+                 "krx": {"received": 8, "total": 10, "pct": 80.0},
+                 "nxt": {"received": 4, "total": 5, "pct": 80.0},
+             }):
             await notify_desktop_sector_scores(force=True)
             mock_broadcast.assert_awaited_once()
