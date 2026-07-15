@@ -23,9 +23,9 @@ def _stock_entry(
     *,
     sector: str,
     name: str,
-    change_rate: float = 0.0,
+    change_rate: float | None = 0.0,
     change: int = 0,
-    trade_amount: int = 0,
+    trade_amount: int | None = 0,
     cur_price: int = 0,
     strength: str = "-",
     market: str = "0",
@@ -446,3 +446,90 @@ class TestComputeFullSectorSummary:
         # 모든 업종에 1..N 순위 부여 (컷오프 미달 포함, is_cutoff_passed로 구분)
         all_ranks = [sc.rank for sc in result.sectors]
         assert all_ranks == list(range(1, len(result.sectors) + 1))
+
+
+# ── P-001 Step 3: 미수신 종목(None) 제외 검증 ──────────────────────────────────
+
+class TestComputeSectorScoresNoneExclusion:
+    """change_rate 또는 trade_amount가 None인 미수신 종목은 업종 점수 계산에서 제외 (P20/P22)."""
+
+    async def test_change_rate_none_stock_excluded(self, cache):
+        # 005930: 정상, 000660: change_rate=None (미수신)
+        stocks = {
+            "005930": _stock_entry(sector="반도체", name="삼성전자", change_rate=2.5, trade_amount=5_000_000_000, cur_price=70000),
+            "000660": _stock_entry(sector="반도체", name="SK하이닉스", change_rate=None, trade_amount=3_000_000_000, cur_price=120000),
+        }
+        _populate_cache(cache, stocks)
+        result = await compute_sector_scores(
+            ["005930", "000660"], trade_prices={}, trade_amounts={}, avg_amt_5d={"005930": 4000, "000660": 3000},
+        )
+        assert len(result) == 1
+        sc = result[0]
+        # 000660 제외 → 1개만 남음
+        assert sc.total == 1
+        codes = {s.code for s in sc.stocks}
+        assert codes == {"005930"}
+
+    async def test_trade_amount_none_stock_excluded(self, cache):
+        # 005930: 정상, 000660: trade_amount=None (미수신)
+        stocks = {
+            "005930": _stock_entry(sector="반도체", name="삼성전자", change_rate=2.5, trade_amount=5_000_000_000, cur_price=70000),
+            "000660": _stock_entry(sector="반도체", name="SK하이닉스", change_rate=-1.0, trade_amount=None, cur_price=120000),
+        }
+        _populate_cache(cache, stocks)
+        result = await compute_sector_scores(
+            ["005930", "000660"], trade_prices={}, trade_amounts={}, avg_amt_5d={"005930": 4000, "000660": 3000},
+        )
+        assert len(result) == 1
+        sc = result[0]
+        assert sc.total == 1
+        codes = {s.code for s in sc.stocks}
+        assert codes == {"005930"}
+
+    async def test_all_stocks_none_returns_empty(self, cache):
+        # 전체 종목 change_rate=None → stocks 빈 리스트 → 업종 스킵
+        stocks = {
+            "005930": _stock_entry(sector="반도체", name="삼성전자", change_rate=None, trade_amount=5_000_000_000, cur_price=70000),
+            "000660": _stock_entry(sector="반도체", name="SK하이닉스", change_rate=None, trade_amount=3_000_000_000, cur_price=120000),
+        }
+        _populate_cache(cache, stocks)
+        result = await compute_sector_scores(
+            ["005930", "000660"], trade_prices={}, trade_amounts={}, avg_amt_5d={"005930": 4000, "000660": 3000},
+        )
+        assert result == []
+
+    async def test_zero_change_rate_not_excluded(self, cache):
+        # change_rate=0.0은 정상 수신 0% → 제외되지 않음 (None과 0 구분 — P22)
+        stocks = {
+            "005930": _stock_entry(sector="반도체", name="삼성전자", change_rate=0.0, trade_amount=5_000_000_000, cur_price=70000),
+        }
+        _populate_cache(cache, stocks)
+        result = await compute_sector_scores(
+            ["005930"], trade_prices={}, trade_amounts={}, avg_amt_5d={"005930": 4000},
+        )
+        assert len(result) == 1
+        assert result[0].total == 1
+
+    async def test_zero_trade_amount_not_excluded(self, cache):
+        # trade_amount=0은 정상 수신 0원 → 제외되지 않음 (None과 0 구분 — P22)
+        stocks = {
+            "005930": _stock_entry(sector="반도체", name="삼성전자", change_rate=2.5, trade_amount=0, cur_price=70000),
+        }
+        _populate_cache(cache, stocks)
+        result = await compute_sector_scores(
+            ["005930"], trade_prices={}, trade_amounts={}, avg_amt_5d={"005930": 4000},
+        )
+        assert len(result) == 1
+        assert result[0].total == 1
+
+    async def test_none_stock_no_type_error_on_ratio_5d(self, cache):
+        # None 종목이 ratio_5d 계산 전에 continue되어 TypeError 미발생 확인 (계획서 결함 방지)
+        stocks = {
+            "005930": _stock_entry(sector="반도체", name="삼성전자", change_rate=2.5, trade_amount=None, cur_price=70000),
+        }
+        _populate_cache(cache, stocks)
+        # 예외 없이 빈 결과 반환해야 함
+        result = await compute_sector_scores(
+            ["005930"], trade_prices={}, trade_amounts={}, avg_amt_5d={"005930": 4000},
+        )
+        assert result == []

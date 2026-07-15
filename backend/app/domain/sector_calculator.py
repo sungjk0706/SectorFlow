@@ -66,16 +66,25 @@ async def compute_sector_scores(
             # cur_price 0도 유효한 데이터 -- WS 틱 미수신 상태일 뿐, 스킵하지 않음
 
             # 등락률: master_stocks_cache(change_rate) 사용 (단일 소스 진리)
-            change_rate = float(detail.get("change_rate", 0) or 0)
+            # None = 실시간 데이터 미수신 — 0으로 폴백하지 않고 None 유지 (P20/P22)
+            _change_rate_raw = detail.get("change_rate")
+            change_rate = float(_change_rate_raw) if _change_rate_raw is not None else None
 
             # 전일 대비 (원)
             change = int(detail.get("change", 0) or 0)
 
             # 거래대금 (원 단위) - WS 틱 우선, master_stocks_cache trade_amount fallback
+            # None = 실시간 데이터 미수신 — 0으로 폴백하지 않고 None 유지 (P20/P22)
             ta_ws = int(trade_amounts.get(code, 0) or 0)
             ta = ta_ws
             if ta <= 0:
-                ta = int(detail.get("trade_amount", 0) or 0)
+                _ta_raw = detail.get("trade_amount")
+                ta = int(_ta_raw) if _ta_raw is not None else None
+
+            # 미수신 종목(change_rate 또는 trade_amount가 None)은 업종 점수 계산에서 제외 (P22)
+            # ratio_5d 계산 등 후속 연산에서 None 비교 TypeError 방지를 위해 여기서 continue
+            if change_rate is None or ta is None:
+                continue
 
             # 5일 평균 거래대금: avg_amt_5d dict는 master_stocks_cache["avg_5d_trade_amount"] = 백만원 단위
             avg5d_million = int(avg_amt_5d.get(code, 0) or 0)
