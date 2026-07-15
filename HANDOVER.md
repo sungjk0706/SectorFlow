@@ -1,11 +1,45 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-15 (수신률 100% 왜곡 근본 해결 — P-001 후속 + _received_codes 복원)
-- 작업: P-001 Step 1~3 완료 후에도 수신률 100% 왜곡 지속 → 근본 원인 추적 + 7개 파일 수정
-- 상태: 구현 + 검증 완료, 커밋 완료. P-001 3단계 + 후속 근본 해결 전체 완료.
+- 날짜: 2026-07-15 (수신률 왜곡 근본 해결 + dead code 4건 제거)
+- 작업: P-001 후속 수신률 100% 왜곡 근본 해결 (7개 파일) + ratio_5d/FID 11/dead code 4건 제거 (11개 파일)
+- 상태: 구현 + 검증 완료, 커밋 + 푸시 완료.
 
 ## 직전 완료 작업 (이번 세션)
+
+### dead code 4건 제거 + FID 11 폴백 제거 (11개 파일)
+
+**수정 내용 (4건)**:
+1. **`ratio_5d` dead code 제거 (P16)** — `sector_calculator.py`, `models.py` + 테스트 5개
+   - `ratio_5d` (당일 거래대금 ÷ 5일 평균 거래대금 × 100) 계산만 하고 업종 점수/순위/UI 어디에서도 사용되지 않음
+   - `79a4a56` (2026-06-09)에서 무명 커밋으로 추가됨
+   - `StockScore.ratio_5d_pct`, `SectorScore.avg_ratio_5d_pct` 필드 제거
+   - `sector_calculator.py`에서 계산(라인 96), 저장(라인 118), 평균(라인 145), SectorScore 저장(라인 154) 제거
+   - 테스트 5개 파일에서 `ratio_5d_pct`/`avg_ratio_5d_pct` 참조 제거, `TestComputeSectorScoresRatio5d` 클래스 3개 테스트 제거
+2. **FID 11(대비) 빈 값 → 0 폴백 제거 (P20)** — `pipeline_compute.py:585`
+   - `_ws_fid_int(vals, "11", 0)` → `_ws_fid_raw`로 빈 값 체크 후 None 유지 (Step 1~2 동일 패턴)
+   - `diff`는 보유종목 `_dr_pos["change"]`에만 사용, 프론트엔드는 이미 null 안전
+3. **`notify_desktop_trade_price` dead code 제거 (P16)** — `engine_account_notify.py:350-367`
+   - 프로덕션 호출처 0건, 테스트에서만 3회 호출
+   - 함수 + `TestNotifyDesktopTradePrice` 클래스 3개 테스트 제거
+4. **`lta`/`ltp`/`lst` dict dead code 제거 (P16)** — `market_close_pipeline.py:410-412, 463, 465, 474, 492, 500`
+   - 3개 dict 모두 정의/할당만 있고 읽는 곳 0건
+   - dict 정의 3개 + 할당 7곳 제거
+
+**검증 결과**:
+- py_compile 11개 파일 전부 통과
+- 단위 테스트 382개 전부 통과 (1.01s)
+- 런타임 기동 (`-W error::RuntimeWarning`) 정상, 에러/Traceback/RuntimeWarning 0건, 금지 패턴 5개 0건
+- 수신률 상승 로그 정상 확인: 9/134 (6.7%) → 70/134 (52.2%) 점진적 증가
+- 잔존 프로세스 0건 확인
+
+**영향 범위**: 프로덕션 5개 파일 + 테스트 6개 파일. 프론트엔드 영향 없음 (이미 null 안전).
+
+## 다음 세션 작업
+- 안건 3 (문서 보강): AGENTS.md + 4개 SKILL.md에 "사용자 승인 없는 롤백 금지" + "핵심 로직 변경 시 UI 기준 설명 후 승인" 규칙 추가 — 사용자 승인 대기
+- 기존 발견 문제: `notify_raw_real_data` dead code (P16) 별도 검토 필요 시 사용자 지시
+
+## 직전 완료 작업 (이전 세션)
 
 ### 수신률 100% 왜곡 근본 해결 — _received_codes 복원 + 모든 경로 None→0 폴백 제거 (7개 파일)
 
