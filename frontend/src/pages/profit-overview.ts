@@ -517,20 +517,30 @@ function mount(container: HTMLElement): void {
     { label: '전체', days: 0 },
   ]
 
-  // 날짜 범위 적용 공통 로직 — '직전' 라벨인 경우 백엔드에서 직전 거래일 조회 후 적용
+  // 날짜 범위 적용 공통 로직 — from/to가 빈 문자열인 quickRange(직전/5일/전체)는 실제 범위 확보 후 입력란 동기화
   async function applyDateRange(from: string, to: string, days?: number, label?: string): Promise<void> {
     try {
       const settings = globalSettingsManager.getSettings()
       const tradeMode = settings?.trade_mode || 'test'
       let actualFrom = from
       let actualTo = to
-      if (label === '직전') {
+      const needsRangeFill = !from || !to
+      // 직전(days 없음) — 백엔드에서 단일 거래일 조회
+      if (needsRangeFill && days === undefined) {
         const prev = await api.getPrevTradingDay()
         actualFrom = prev.date
         actualTo = prev.date
-        chart?.setDateRange(actualFrom, actualTo, label)
       }
       const data = await api.getDailySummary(actualFrom, actualTo, tradeMode, days)
+      // days 기반(5일/전체) — 응답 데이터에서 실제 from/to 추출
+      if (needsRangeFill && days !== undefined && data.length > 0) {
+        actualFrom = String(data[0].date)
+        actualTo = String(data[data.length - 1].date)
+      }
+      // from/to가 빈 문자열이었던 quickRange 버튼 — 입력란에 실제 범위 동기화
+      if (needsRangeFill) {
+        chart?.setDateRange(actualFrom, actualTo, label)
+      }
       chart?.updateData(buildChartFromDailySummary(data))
       hotStore.setState({ profitDateFrom: actualFrom, profitDateTo: actualTo, dailySummary: data })
       saveProfitDateRange(actualFrom, actualTo, label)
