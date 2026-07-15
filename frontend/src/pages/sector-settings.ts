@@ -228,7 +228,7 @@ function mount(container: HTMLElement): void {
   root.appendChild(maxScoreLabel)
 
   // 1차 가산점 — 업종 내 상승 종목 비율 (슬라이더-입력란 양방향 연동)
-  bonusRiseRatioInput = createNumInput({ value: 0, onChange: v => { bonusRiseRatioSlider?.setValue(v); onNumChange('sector_bonus_rise_ratio_slider', v) }, step: 1, name: 'sector_bonus_rise_ratio_slider' })
+  bonusRiseRatioInput = createNumInput({ value: 0, min: -100, max: 100, onChange: v => { bonusRiseRatioSlider?.setValue(v); onNumChange('sector_bonus_rise_ratio_slider', v) }, step: 1, name: 'sector_bonus_rise_ratio_slider' })
   bonusRiseRatioSlider = createDualLabelSlider({
     min: -100, max: 100, value: 0, step: 1,
     leftLabel: v => v < 0 ? `${v}%` : '0%',
@@ -242,7 +242,7 @@ function mount(container: HTMLElement): void {
   root.appendChild(createBonusSliderRow('1차 가산점 — 업종 내 상승 종목 비율', bonusRiseRatioSlider.el, bonusRiseRatioInput.el))
 
   // 2차 가산점 — 종목 상승률 상위 집중도 (슬라이더-입력란 양방향 연동)
-  bonusRelativeStrengthInput = createNumInput({ value: 0, onChange: v => { bonusRelativeStrengthSlider?.setValue(v); onNumChange('sector_bonus_relative_strength_slider', v) }, step: 1, name: 'sector_bonus_relative_strength_slider' })
+  bonusRelativeStrengthInput = createNumInput({ value: 0, min: -100, max: 100, onChange: v => { bonusRelativeStrengthSlider?.setValue(v); onNumChange('sector_bonus_relative_strength_slider', v) }, step: 1, name: 'sector_bonus_relative_strength_slider' })
   bonusRelativeStrengthSlider = createDualLabelSlider({
     min: -100, max: 100, value: 0, step: 1,
     leftLabel: v => v < 0 ? `${v}%` : '0%',
@@ -256,7 +256,7 @@ function mount(container: HTMLElement): void {
   root.appendChild(createBonusSliderRow('2차 가산점 — 종목 상승률 상위 집중도', bonusRelativeStrengthSlider.el, bonusRelativeStrengthInput.el))
 
   // 3차 가산점 — 업종 평균 거래대금 (슬라이더-입력란 양방향 연동)
-  bonusTradeAmountInput = createNumInput({ value: 0, onChange: v => { bonusTradeAmountSlider?.setValue(v); onNumChange('sector_bonus_trade_amount_slider', v) }, step: 1, name: 'sector_bonus_trade_amount_slider' })
+  bonusTradeAmountInput = createNumInput({ value: 0, min: -100, max: 100, onChange: v => { bonusTradeAmountSlider?.setValue(v); onNumChange('sector_bonus_trade_amount_slider', v) }, step: 1, name: 'sector_bonus_trade_amount_slider' })
   bonusTradeAmountSlider = createDualLabelSlider({
     min: -100, max: 100, value: 0, step: 1,
     leftLabel: v => v < 0 ? `${v}%` : '0%',
