@@ -1,11 +1,44 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-15 (P-001 Step 2 수정 세션)
-- 작업: P-001 Step 2 — `pipeline_compute.py:576` 보유종목 틱 rate 폴백 제거
-- 상태: Step 2 구현 + 검증 완료, 커밋 완료
+- 날짜: 2026-07-15 (P-001 Step 3 수정 세션)
+- 작업: P-001 Step 3 — `sector_calculator.py:69,78` 업종 점수 계산 None 폴백 제거 + 미수신 종목 제외
+- 상태: Step 3 구현 + 검증 완료, 커밋 + 푸시 완료. P-001 3단계 전체 완료.
 
 ## 직전 완료 작업 (이번 세션)
+
+### P-001 Step 3: 업종 점수 계산 None 폴백 제거 + 미수신 종목 제외 — `sector_calculator.py`
+
+**수정 내용**: `backend/app/domain/sector_calculator.py:68-87` — `change_rate`/`trade_amount`의 `or 0` 폴백 제거, None 유지. None인 종목은 `ratio_5d` 계산 전에 `continue`로 업종 점수 계산에서 제외.
+- `change_rate` — None이면 None 유지, 값이 있으면 `float()` 변환 (라인 70-71)
+- `trade_amount` — None이면 None 유지, 값이 있으면 `int()` 변환 (라인 81-82)
+- None 제외 필터 `if change_rate is None or ta is None: continue` (라인 86-87)
+- **계획서 결함 수정**: 계획서 4-3-2는 필터를 라인 101(StockScore 생성 전)에 배치하도록 명시했으나, 라인 95의 `ratio_5d` 계산(`ta > 0` 비교)이 먼저 실행되어 None 비교 TypeError 발생. 필터를 라인 78 직후(`ta` 할당 바로 다음, `ratio_5d` 계산 이전)로 조정.
+
+**검증 결과**:
+- py_compile 통과
+- `test_sector_calculator.py` 34개 테스트(기존 28 + 신규 6) 전부 통과 (0.15s)
+  - 신규 테스트 6개: `change_rate=None` 제외, `trade_amount=None` 제외, 전체 None → 빈 결과, `0.0` 제외 안 됨(정상 수신 0%), `0` 제외 안 됨(정상 수신 0원), None 종목 ratio_5d TypeError 미발생
+- 런타임 기동 (`-W error::RuntimeWarning`) 정상, 에러/Traceback/RuntimeWarning 없음, 업종순위 재계산 2회 정상 완료, 금지 패턴 5개 로그 없음
+- 잔존 프로세스 0건 확인
+
+**영향 범위**: `sector_calculator.py` 1개 파일. `sector_score.py`(`sc.rise_ratio`, `sc.avg_trade_amount`, `stock.change_rate` 참조) — None 제거된 데이터만 들어오므로 수정 불필요. `models.py` `StockScore`(`change_rate: float`, `trade_amount: int`) — 제외 필터 후 None이 StockScore에 들어가지 않으므로 타입 변경 불필요. 프론트엔드 — 영향 없음 (이미 null 안전). 기존 테스트 28개 — `0.0`/`0` 정상 수신 케이스는 제외되지 않아 전부 통과.
+
+**P-001 3단계 전체 완료 요약**:
+- Step 1 (`engine_radar.py:73-83`): 틱 수신 빈 FID 0 폴백 제거 → None 유지
+- Step 2 (`pipeline_compute.py:576-577`): 보유종목 틱 rate 빈 FID 0 폴백 제거 → None 유지
+- Step 3 (`sector_calculator.py:68-87`): 업종 점수 계산 None 폴백 제거 + 미수신 종목 제외
+- 결과: 미수신 데이터가 0으로 왜곡되어 수신률 100%·업종 점수 왜곡되던 문제 근본 해결 (P20/P22 준수)
+
+**작업 중 발견 문제 (P-001 범위 외, 기존 기록 유지)**:
+- `pipeline_compute.py:575` FID 11(대비) 빈 값 → 0 폴백 (P20). 수신률/업종점수 미사용이라 P-001 범위 외. 별도 검토.
+- `engine_account_notify.py:350` `notify_desktop_trade_price` dead code (P16). 프로덕션 호출처 없음. 별도 검토.
+
+## 다음 세션 작업
+- P-001 3단계 전체 완료. 별도 후속 작업 없음.
+- P-001 범위 외 발견 문제 2건(위) 별도 검토 필요 시 사용자 지시.
+
+## 직전 완료 작업 (이전 세션)
 
 ### P-001 Step 2: 보유종목 틱 rate 폴백 제거 — `pipeline_compute.py`
 
@@ -29,10 +62,6 @@
 **작업 중 발견 문제 (P-001 범위 외)**:
 - `pipeline_compute.py:575` FID 11(대비) 빈 값 → 0 폴백 (P20). 수신률/업종점수 미사용이라 P-001 범위 외. 별도 검토.
 - `engine_account_notify.py:350` `notify_desktop_trade_price` dead code (P16). 프로덕션 호출처 없음. 별도 검토.
-
-## 다음 세션 작업 (P-001 Step 3)
-- `sector_calculator.py:69,78` 업종 점수 폴백 제거 (None을 0으로 폴백하지 않고 미수신 종목 제외).
-- 사전조사는 `docs/plan_P001_fix.md` Step 3 섹션 참조.
 
 ## 직전 완료 작업 (이전 세션)
 
