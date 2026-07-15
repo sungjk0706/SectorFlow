@@ -4,7 +4,7 @@
 
 ### 다음 작업: 업종 점수 산정 방식 리팩토링 — Step 4 대기
 
-**진행 단계**: 5일봉 미확정 당일 행 유입 차단 + 기존 행 삭제 + master.date 정합성 수정 완료 (커밋 `f50ce9f`). 다음 세션에서 Step 4 사전조사부터 시작.
+**진행 단계**: 호가 틱(0D) 처리 ImportError 근본 수정 완료 (커밋 `ede4515`). 다음 세션에서 Step 4 사전조사부터 시작.
 
 **계획서**: `docs/plan_sector_score_redesign.md` (4개 Step, 세션당 1단계 — Step 2를 Split A/B로 분할)
 
@@ -23,6 +23,22 @@
 - Step 3: 프론트엔드 설정 패널 + 타입 + 슬라이더 값 표시 (소스 5 + 테스트 1) — 완료
 - Step 3 후속: 업종순위 슬라이더 매수설정 동일 모듈 통일 + 숫자 입력란 연동 + 라벨 명확화 (소스 2 + 테스트 1) — 완료
 - Step 4: 테스트 + 문서 갱신 (3개 테스트 + 2개 문서) — 대기
+
+---
+
+### 작업: 호가 틱(0D) 처리 ImportError 근본 수정 — import 출처 단일화 — 완료
+
+**진행 단계**: 완료 (커밋 `ede4515`). 다음 작업: 업종 점수 산정 방식 리팩토링 Step 4 사전조사 대기.
+
+**완료 내용 (2026-07-15)**:
+- **현상**: 앱 기동 로그 점검 중 발견. 장중 실시간 호가 데이터(0D 틱)가 들어올 때마다 `ImportError: cannot import name '_ws_fid_int' from 'backend.app.services.engine_ws_dispatch'` 에러가 매 틱 반복 발생. 7-15 하루 로그 7개 파일에 약 14,400건 기록, 로그가 10MB 단위로 70번 넘게 로테이션된 원인. 매수 후보 종목의 호가잔량비가 화면에 표시되지 않음 (P21 사용자 투명성 위반).
+- **근본 원인 (`pipeline_compute.py:626`)**: 호가 틱 처리 함수 `_handle_real_0d_tick`이 `_ws_fid_int`를 실제 정의된 모듈(`engine_ws_parsing.py:54`)이 아닌 `engine_ws_dispatch`에서 import. 2026-05-23 작성된 오래된 코드로, 2026-06-28 파일 이동 시 주변 import 줄들은 새 경로로 수정됐으나 이 줄만 누락. 같은 파일 체결 틱 처리부(531번 줄)에서는 이미 올바른 출처 사용 중이었음.
+- **수정 내용**: 백엔드 1파일 + 테스트 1파일 (+4/-4):
+  - `pipeline_compute.py:626`: import 출처 `engine_ws_dispatch` → `engine_ws_parsing`으로 변경 (531번 줄과 동일 출처로 통일).
+  - `test_pipeline_compute.py` 457/471/490번 줄: patch 출처 동일하게 `engine_ws_parsing`으로 동기화 (코드-테스트 일치). 기존 실패 3건(잘못된 patch 대상으로 AttributeError) 함께 해결.
+- **영향 범위**: 백엔드 1파일 + 테스트 1파일. 거래 로직/DB/프론트엔드 변경 없음. 호가 틱(0D) 처리 경로 복구 → 매수 후보 종목 호가잔량비 화면 표시 정상화.
+- **검증**: 단위 테스트 87 passed (test_pipeline_compute.py 전체, 0D 4개 + 주변 회귀 없음), ruff 0건, py_compile 통과, 런타임 기동 126ms (RuntimeWarning 0건), 0D 처리 오류 0건 (이전 14,400건/일 → 0건), 잔존 프로세스 0건. 사용자 UI 확인 필요 — 브라우저에서 매수 후보 종목의 호가잔량비가 정상 표시되는지 확인.
+- **P10/P16/P21/P23**: `_ws_fid_int` 단일 진실 소스(`engine_ws_parsing`)로 통일 (SSOT), 매 틱 호출되는 호가 틱 처리 경로가 ImportError로 dead path화 → 복구 (살아있는 경로), 호가잔량비 UI 미표시 문제 해결 (사용자 투명성), 같은 파일 531번 줄과 동일 출처 + 코드-테스트 일치 (일관성).
 
 ---
 
