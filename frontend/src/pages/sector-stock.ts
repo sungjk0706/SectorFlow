@@ -16,13 +16,16 @@ import { type SectorStock, type SectorScoreRow, DEFAULT_SECTOR_MAX_TARGETS } fro
 const COLUMNS: ColumnDef<DataRowItem>[] = [
   makeSeqColumn<DataRowItem>((item) => item.seq),
   makeCodeColumn<DataRowItem>((item) => item.stock.code),
-  createStockNameColumn<DataRowItem>(
-    (item: DataRowItem) => ({
-      name: item.stock.name,
-      market_type: item.stock.market_type,
-      nxt_enable: item.stock.nxt_enable
-    })
-  ),
+  {
+    ...createStockNameColumn<DataRowItem>(
+      (item: DataRowItem) => ({
+        name: item.stock.name,
+        market_type: item.stock.market_type,
+        nxt_enable: item.stock.nxt_enable
+      })
+    ),
+    maxWidth: 166,
+  },
   makePriceColumn<DataRowItem>(
     (item) => item.stock.cur_price != null ? Number(item.stock.cur_price) : null,
     (item) => item.stock.change_rate != null ? Number(item.stock.change_rate) : null,
@@ -30,8 +33,14 @@ const COLUMNS: ColumnDef<DataRowItem>[] = [
   makeChangeColumn<DataRowItem>((item) => item.stock.change != null ? Number(item.stock.change) : null),
   makeRateColumn<DataRowItem>((item) => item.stock.change_rate != null ? Number(item.stock.change_rate) : null),
   makeStrengthColumn<DataRowItem>((item) => item.stock.strength != null ? parseFloat(String(item.stock.strength)) : null),
-  makeAmountColumn<DataRowItem>((item) => item.stock.trade_amount != null ? Number(item.stock.trade_amount) : null),
-  makeAvgAmountColumn<DataRowItem>((item) => Number(item.stock.avg_amt_5d) || 0),
+  {
+    ...makeAmountColumn<DataRowItem>((item) => item.stock.trade_amount != null ? Number(item.stock.trade_amount) : null),
+    maxWidth: 126,
+  },
+  {
+    ...makeAvgAmountColumn<DataRowItem>((item) => Number(item.stock.avg_amt_5d) || 0),
+    maxWidth: 108,
+  },
 ]
 
 /* ── 행 타입 ── */

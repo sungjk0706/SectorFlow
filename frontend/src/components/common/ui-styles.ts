@@ -4,6 +4,7 @@
  */
 
 import type { ColumnDef } from './data-table'
+import { COLUMN_WIDTH } from './table-config'
 import { hotStore, normalizeStockCode } from '../../stores/hotStore'
 
 /* ── 폰트 ── */
@@ -390,8 +391,8 @@ export function makeSeqColumn<T>(get: (t: T) => number): ColumnDef<T> {
     key: 'seq',
     label: '순번',
     align: 'center',
-    minWidth: 36,
-    maxWidth: 36,
+    type: 'seq',
+    ...COLUMN_WIDTH.seq,
     render: (t) => createSeqCell(get(t)),
   }
 }
@@ -402,8 +403,8 @@ export function makeCodeColumn<T>(get: (t: T) => string): ColumnDef<T> {
     key: 'code',
     label: '종목코드',
     align: 'center',
-    minWidth: 72,
-    maxWidth: 72,
+    type: 'code',
+    ...COLUMN_WIDTH.code,
     render: (t) => createCodeCell(get(t)),
   }
 }
@@ -417,8 +418,8 @@ export function makePriceColumn<T>(
     key: 'cur_price',
     label: '현재가',
     align: 'right',
-    minWidth: 70,
-    maxWidth: 100,
+    type: 'price',
+    ...COLUMN_WIDTH.price,
     flash: true,
     render: (t) => {
       return createPriceCell(getPrice(t), getRate(t))
@@ -432,8 +433,8 @@ export function makeChangeColumn<T>(get: (t: T) => number | null | undefined): C
     key: 'change',
     label: '대비',
     align: 'center',
-    minWidth: 60,
-    maxWidth: 80,
+    type: 'change',
+    ...COLUMN_WIDTH.change,
     render: (t) => createChangeCell(get(t)),
   }
 }
@@ -444,8 +445,8 @@ export function makeRateColumn<T>(get: (t: T) => number | null | undefined): Col
     key: 'change_rate',
     label: '등락률',
     align: 'right',
-    minWidth: 60,
-    maxWidth: 75,
+    type: 'rate',
+    ...COLUMN_WIDTH.rate,
     render: (t) => createRateCell(get(t)),
   }
 }
@@ -456,8 +457,8 @@ export function makeStrengthColumn<T>(get: (t: T) => number | null | undefined):
     key: 'strength',
     label: '체결강도',
     align: 'right',
-    minWidth: 60,
-    maxWidth: 75,
+    type: 'strength',
+    ...COLUMN_WIDTH.strength,
     render: (t) => createStrengthCell(get(t)),
   }
 }
@@ -468,8 +469,8 @@ export function makeAmountColumn<T>(get: (t: T) => number | null | undefined): C
     key: 'trade_amount',
     label: '거래대금(억)',
     align: 'right',
-    minWidth: 60,
-    maxWidth: 95,
+    type: 'amount',
+    ...COLUMN_WIDTH.amount,
     render: (t) => createAmountCell(get(t)),
   }
 }
@@ -480,8 +481,8 @@ export function makeAvgAmountColumn<T>(get: (t: T) => number): ColumnDef<T> {
     key: 'avg_amt_5d',
     label: '5일평균(억)',
     align: 'right',
-    minWidth: 60,
-    maxWidth: 90,
+    type: 'avg_amount',
+    ...COLUMN_WIDTH.avg_amount,
     render: (t) => createAvgAmountCell(get(t)),
   }
 }
@@ -496,8 +497,8 @@ export function createStockNameColumn<T extends object>(
     key: 'name',
     label: '종목명',
     align: 'left',
-    minWidth: 80,
-    maxWidth: 200,
+    type: 'name',
+    ...COLUMN_WIDTH.name,
     cellStyle: { fontWeight: 'normal', color: COLOR.neutral },
     render: (item: T) => {
       const lookup = fallbackLookup(item)
@@ -515,8 +516,8 @@ export function createStockNameColumnWithSectorLookup<T extends object>(
     key: String(nameKey),
     label: '종목명',
     align: 'left',
-    minWidth: 80,
-    maxWidth: 200,
+    type: 'name',
+    ...COLUMN_WIDTH.name,
     cellStyle: { fontWeight: 'normal', color: COLOR.neutral },
     render: (item: T) => {
       const name = String(item[nameKey] || '')

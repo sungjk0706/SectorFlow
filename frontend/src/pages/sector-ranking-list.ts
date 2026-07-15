@@ -89,7 +89,7 @@ function buildRankingRows(container: HTMLElement): void {
     info.style.cssText = 'display:flex;align-items:center;margin-bottom:2px;padding:0 2px;'
     const defs = [
       'width:24px;text-align:right;color:' + COLOR.tertiary + ';',
-      'flex:1;font-weight:500;padding-left:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+      'flex:1;min-width:140px;font-weight:500;padding-left:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
       'width:40px;text-align:right;color:' + COLOR.down + ';margin-right:12px;',
       'width:48px;text-align:right;',
       'width:64px;text-align:right;',

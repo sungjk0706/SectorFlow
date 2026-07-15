@@ -11,6 +11,7 @@ import {
   widthsToPercentages,
   type ColumnWidthInput,
 } from './auto-width'
+import { COLUMN_WIDTH, type ColumnType } from './table-config'
 import { createVirtualScroller } from '../virtual-scroller'
 import { uiStore } from '../../stores/uiStore'
 
@@ -29,6 +30,8 @@ export interface ColumnDef<T> {
   label: string | HTMLElement
   align: 'left' | 'right' | 'center'
   render: (row: T, index: number) => string | HTMLElement
+  /** 표준 컬럼 유형. minWidth/maxWidth가 모두 생략되면 COLUMN_WIDTH[type]이 자동 적용된다. */
+  type?: ColumnType
   minWidth?: number
   maxWidth?: number
   headerStyle?: Partial<CSSStyleDeclaration>
@@ -128,12 +131,16 @@ function createColumnWidthManager<T extends object>(
     if (initialized) return
     initialized = true
     const samples = extractSamples(columns, rows)
-    const inputs: ColumnWidthInput[] = columns.map((col, i) => ({
-      label: typeof col.label === 'string' ? col.label : (col.label.textContent || ''),
-      minWidth: col.minWidth,
-      maxWidth: col.maxWidth,
-      samples: samples[i],
-    }))
+    const inputs: ColumnWidthInput[] = columns.map((col, i) => {
+      const typeWidth = col.type ? COLUMN_WIDTH[col.type] : undefined
+      const hasExplicitWidth = col.minWidth !== undefined || col.maxWidth !== undefined
+      return {
+        label: typeof col.label === 'string' ? col.label : (col.label.textContent || ''),
+        minWidth: hasExplicitWidth ? col.minWidth : typeWidth?.minWidth,
+        maxWidth: hasExplicitWidth ? col.maxWidth : typeWidth?.maxWidth,
+        samples: samples[i],
+      }
+    })
     const colWidths = computeColWidths(inputs, fontSize)
     const percentages = widthsToPercentages(colWidths)
     applyWidths(percentages)

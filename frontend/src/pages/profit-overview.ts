@@ -149,7 +149,7 @@ function renderSectorStockPnl(): void {
     })
     // 컬럼1: 업종명 (flex:1, 종목 행 컬럼2와 폭 공유)
     const sectorName = document.createElement('span')
-    Object.assign(sectorName.style, { flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.semibold, color: group.color })
+    Object.assign(sectorName.style, { flex: '1', minWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: FONT_SIZE.section, fontWeight: FONT_WEIGHT.semibold, color: group.color })
     sectorName.textContent = group.sector
     // 컬럼2: 빈셀 (종목 행의 종목명 자리)
     const headerEmpty2 = document.createElement('span')
@@ -204,7 +204,7 @@ function renderSectorStockPnl(): void {
       Object.assign(empty1.style, { flex: '1' })
       // 컬럼2: 종목명 (flex:1, 업종 헤더 컬럼2와 폭 공유)
       const nameEl = document.createElement('span')
-      Object.assign(nameEl.style, { flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: FONT_SIZE.body, fontWeight: FONT_WEIGHT.medium })
+      Object.assign(nameEl.style, { flex: '1', minWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: FONT_SIZE.body, fontWeight: FONT_WEIGHT.medium })
       nameEl.textContent = stock.stk_nm
 
       // 컬럼3: 수익금 — 숫자와 '원' 단위 분리 (digit 세로 정렬 + tabular-nums)

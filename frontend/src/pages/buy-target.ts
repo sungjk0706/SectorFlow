@@ -15,17 +15,20 @@ import type { SectorStock } from '../types'
 
 /* ── ColumnDef 배열 (13개 컬럼) ── */
 const COLUMNS: ColumnDef<SectorStock>[] = [
-  { key: 'seq', label: '순번', align: 'center', minWidth: 36, maxWidth: 36, render: (_t, idx) => createSeqCell(idx + 1) },
+  { key: 'seq', label: '순번', align: 'center', type: 'seq', render: (_t, idx) => createSeqCell(idx + 1) },
   makeCodeColumn<SectorStock>((t) => t.code),
-  createStockNameColumn<SectorStock>(
-    (t: SectorStock) => ({
-      name: t.name,
-      market_type: t.market_type,
-      nxt_enable: t.nxt_enable
-    })
-  ),
   {
-    key: 'cur_price', label: '현재가', align: 'right', flash: true, minWidth: 78, maxWidth: 90,
+    ...createStockNameColumn<SectorStock>(
+      (t: SectorStock) => ({
+        name: t.name,
+        market_type: t.market_type,
+        nxt_enable: t.nxt_enable
+      })
+    ),
+    maxWidth: 168,
+  },
+  {
+    key: 'cur_price', label: '현재가', align: 'right', type: 'price', flash: true,
     render: (t) => {
       const cell = createPriceCell(t.cur_price != null ? Number(t.cur_price) : null, t.change_rate != null ? Number(t.change_rate) : null)
       if (t.high_5d && t.high_5d > 0 && t.cur_price != null && Number(t.cur_price) > t.high_5d) {
@@ -44,7 +47,7 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
   makeRateColumn<SectorStock>((t) => t.change_rate != null ? Number(t.change_rate) : null),
   makeStrengthColumn<SectorStock>((t) => t.strength != null ? parseFloat(String(t.strength)) : null),
   {
-    key: 'trade_amount', label: '거래대금(억)', align: 'right', minWidth: 72, maxWidth: 85,
+    key: 'trade_amount', label: '거래대금(억)', align: 'right', type: 'amount', maxWidth: 126,
     render: (t) => {
       const cell = createAmountCell(t.trade_amount != null ? Number(t.trade_amount) : null)
       if (t.trade_amount_rank === 0) {
@@ -54,27 +57,38 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
     },
   },
   {
-    key: 'order_ratio', label: '호가잔량비', align: 'right', minWidth: 85, maxWidth: 100,
+    key: 'order_ratio', label: '호가잔량비(%)', align: 'right', type: 'order_ratio', maxWidth: 110,
     render: (t) => {
       if (!t.order_ratio) return ''
       const [bid, ask] = t.order_ratio
       if (bid <= 0 && ask <= 0) return ''
-      const span = document.createElement('span')
+      const wrap = document.createElement('div')
+      Object.assign(wrap.style, { display: 'flex', justifyContent: 'space-between', width: '100%' })
+      const labelSpan = document.createElement('span')
+      const numSpan = document.createElement('span')
       if (bid === ask) {
-        span.textContent = '100.0%'
-        span.style.color = COLOR.tertiary
+        labelSpan.textContent = '보합'
+        labelSpan.style.color = COLOR.tertiary
+        numSpan.textContent = '100.0'
+        numSpan.style.color = COLOR.tertiary
       } else if (bid > ask) {
-        span.textContent = `[매수] ${((bid / ask) * 100).toFixed(1)}%`
-        span.style.color = COLOR.up
+        labelSpan.textContent = '[매수]'
+        labelSpan.style.color = COLOR.up
+        numSpan.textContent = ((bid / ask) * 100).toFixed(1)
+        numSpan.style.color = COLOR.up
       } else {
-        span.textContent = `[매도] ${((ask / bid) * 100).toFixed(1)}%`
-        span.style.color = COLOR.down
+        labelSpan.textContent = '[매도]'
+        labelSpan.style.color = COLOR.down
+        numSpan.textContent = ((ask / bid) * 100).toFixed(1)
+        numSpan.style.color = COLOR.down
       }
-      return span
+      wrap.appendChild(labelSpan)
+      wrap.appendChild(numSpan)
+      return wrap
     },
   },
   {
-    key: 'program_net_buy', label: '프순매', align: 'right', minWidth: 68, maxWidth: 80,
+    key: 'program_net_buy', label: '프.순.매(백)', align: 'right', type: 'program_net', minWidth: 106, maxWidth: 106,
     render: (t) => {
       if (t.program_net_buy === undefined || t.program_net_buy === null) return ''
       // tval이 금액(원)이라면 백만 원 단위로 환산, LS증권 대금 포맷을 고려하여 백만 단위로 나눈 후 1자리 소수점 표시
@@ -94,7 +108,7 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
     },
   },
   {
-    key: 'high_5d', label: '5일고가', align: 'right', minWidth: 68, maxWidth: 80,
+    key: 'high_5d', label: '5일고가', align: 'right', type: 'high', maxWidth: 96,
     render: (t) => {
       const cell = createNumberCell(Number(t.high_5d) || 0)
       if (t.high_5d && t.high_5d > 0 && t.cur_price != null && Number(t.cur_price) > t.high_5d) {
@@ -104,14 +118,14 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
     },
   },
   {
-    key: 'boost_score', label: '가산점', align: 'right', minWidth: 52, maxWidth: 60,
+    key: 'boost_score', label: '가산점', align: 'right', type: 'boost',
     render: (t) => {
       const bs = Number(t.boost_score) || 0
       return bs > 0 ? bs.toFixed(1) : ''
     },
   },
   {
-    key: 'guard', label: '제한', align: 'center', minWidth: 48, maxWidth: 52,
+    key: 'guard', label: '제한', align: 'center', type: 'guard',
     render: (t) => {
       const span = document.createElement('span')
       span.textContent = t.guard_pass ? '통과' : '차단'
@@ -120,8 +134,7 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
     },
   },
   {
-    key: 'reason', label: '원인', align: 'left', minWidth: 60, maxWidth: 90,
-    cellStyle: { color: COLOR.tertiary },
+    key: 'reason', label: '원인', align: 'left', type: 'reason', cellStyle: { color: COLOR.tertiary },
     render: (t) => {
       const r = t.reason || ''
       if (r === '보유중' || r === '금일매수') {
