@@ -1,11 +1,11 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-16 (KRX/NXT 수신률 분리 집계 + 분리 배지 표시 — 1단계: 프론트엔드 공통 컴포넌트 추출)
-- 작업: sector-stock.ts 인라인 KRX/NXT/코스피/코스닥 카운트 표시를 `createMarketCountRow` 공통 컴포넌트로 추출. 기능 변경 없음, 구조 분리만.
-- 상태: 1단계 구현 + 검증 완료, 커밋 완료. **2단계 시작 대기 (사용자 승인 대기)**.
+- 날짜: 2026-07-16 (KRX/NXT 수신률 분리 집계 + 분리 배지 표시 — 2단계: 프론트엔드 수신률 분리 배지 + 진행 바 2인스턴스)
+- 작업: sector-settings.ts 수신률 표시를 KRX/NXT 분리 배지 + 진행 바 2인스턴스로 변경. 1단계에서 추출한 `createMarketCountRow` 재사용. uiStore.receiveRate 타입 {krx, nxt} 분리 객체로 변경. binding.ts 단일 수신률 양쪽 동일 매핑 (3단계 백엔드 분리 전 과도기).
+- 상태: 2단계 구현 + 검증 완료, 커밋 완료. **3단계 시작 대기 (사용자 승인 대기)**.
 
-## 다음 세션 진행 대기: KRX/NXT 수신률 분리 집계 + 분리 배지 표시 — 2단계
+## 다음 세션 진행 대기: KRX/NXT 수신률 분리 집계 + 분리 배지 표시 — 3단계
 
 ### 계획서 경로
 - **`docs/plan_krx_nxt_receive_rate_separation.md`** — 3단계 구현 계획서 (사전조사 결과 + 단계별 파일 목록 + 검증 방법 + 사용자 승인 항목)
@@ -24,41 +24,46 @@
 
 ### 3단계 구현 계획 (계획서 섹션 3)
 - **1단계 (프론트엔드 공통 컴포넌트 추출)**: ✅ 완료 — sector-stock.ts 인라인 카운트 → `createMarketCountRow` 공통 컴포넌트 추출.
-- **2단계 (프론트엔드 수신률 분리 배지)**: sector-settings.ts 수신률 표시를 KRX/NXT 분리 배지 + 진행 바 2인스턴스로 변경. uiStore.receiveRate 타입 변경 + binding.ts 매핑 변경. 1단계 공통 컴포넌트 재사용.
-- **3단계 (백엔드 수신률 분리 집계 + 임계값 게이트)**: `_received_codes` KRX/NXT 2세트 분리, `_calculate_receive_rate()` 시간대별 분리 계산, `_send_receive_rate()` 전송 구조 변경, 임계값 게이트 시간대별 분기 정책(옵션 C, 승인됨). 테스트 전면 수정.
+- **2단계 (프론트엔드 수신률 분리 배지)**: ✅ 완료 — sector-settings.ts 수신률 표시 KRX/NXT 분리 배지 + 진행 바 2인스턴스. uiStore.receiveRate 타입 {krx, nxt} 분리. binding.ts 단일 수신률 양쪽 동일 매핑.
+- **3단계 (백엔드 수신률 분리 집계 + 임계값 게이트)**: `_received_codes` KRX/NXT 2세트 분리, `_calculate_receive_rate()` 시간대별 분리 계산, `_send_receive_rate()` 전송 구조 변경, 임계값 게이트 시간대별 분기 정책(옵션 C, 승인됨). 테스트 전면 수정. **2단계에서 준비한 {krx, nxt} 구조에 분리 데이터 연동**.
 
 ### 승인 대기 상태
-- 2단계 시작 승인 대기 — 사용자가 "진행해" 등 실행 지시어를 줄 때까지 코드 수정 금지 (AGENTS.md 섹션3 규칙 0).
-- 2단계는 프론트엔드 UI 구조 변경(수신률 분리 배지) — 핵심 매매 로직 변경 아님.
+- 3단계 시작 승인 대기 — 사용자가 "진행해" 등 실행 지시어를 줄 때까지 코드 수정 금지 (AGENTS.md 섹션3 규칙 0).
 - 3단계 임계값 게이트 정책은 이미 옵션 C로 승인됨 — 3단계 시작 시 재승인 불필요 (단, 3단계 시작 자체는 별도 승인 필요).
+- 3단계는 백엔드 핵심 로직 변경(수신률 집계 + 임계값 게이트) — 백엔드 수정 시 safe-trade 스킬 + 테스트 + 런타임 기동 검증 필수.
 
 ---
 
 ## 직전 완료 작업 (이번 세션)
 
-### 1단계: 프론트엔드 공통 컴포넌트 추출 — sector-stock.ts KRX/NXT/코스피/코스닥 카운트 (2개 파일)
+### 2단계: 프론트엔드 수신률 분리 배지 + 진행 바 2인스턴스 — sector-settings.ts (4개 파일)
 
-**배경**: KRX/NXT 수신률 분리 집계 + 분리 배지 표시 3단계 구현의 1단계. sector-stock.ts의 인라인 KRX/NXT/코스피/코스닥 종목수 카운트 표시(86줄)를 공통 컴포넌트로 추출하여 2단계(수신률 분리 배지)에서 재사용 가능한 기반 마련.
+**배경**: KRX/NXT 수신률 분리 집계 + 분리 배지 표시 3단계 구현의 2단계. 1단계에서 추출한 `createMarketCountRow` 공통 컴포넌트를 재사용하여 sector-settings.ts의 단일 수신률 표시를 KRX/NXT 분리 배지 + 진행 바 2인스턴스로 변경. 백엔드 분리(3단계) 전 과도기 — 단일 수신률을 양쪽에 동일 매핑.
 
 **수정 내용**:
-- **`frontend/src/components/common/market-count-row.ts` (신규, 112줄)**: `createMarketCountRow()` 공통 컴포넌트 생성. `MarketCounts` 인터페이스(total/krx/nxt/kospi/kosdaq) + `MarketCountRowHandle`(el + updateCounts). 시각적 요소 100% 보존 — NXT 라벨 빨강 + ▲ 삼각, 코스닥 자주색, 숫자 파랑 + semibold, '종목' 단위 회색. 세그먼트별 show/hide 옵션. `_appendStandardSegment()` + `_appendNxtSegment()` 헬퍼로 함수 50줄 이하 유지 (P24).
-- **`frontend/src/pages/sector-stock.ts` (718줄 → 627줄, -91줄)**: 인라인 카운트 DOM 생성 86줄 → `createMarketCountRow()` 호출 4줄로 대체. private 필드 5개(titleTotalNumSpan 등) → `marketCountRow` 핸들 1개로 통합. `updateUI()`에서 개별 textContent 갱신 6줄 → `updateCounts()` 1줄 호출. `disconnectedCallback()` 정리.
+- **`frontend/src/stores/uiStore.ts`**: `ReceiveRateEntry` 인터페이스 추가. `receiveRate` 타입을 `{krx: ReceiveRateEntry | null; nxt: ReceiveRateEntry | null} | null`로 변경. `applySnapshot`에서 단일/분리 양쪽 호환 매핑 (백엔드가 단일 전송 시 양쪽 동일, 분리 전송 시 그대로 사용).
+- **`frontend/src/binding.ts`**: `receive-rate`/`sector-scores` 이벤트에서 단일 수신률을 KRX/NXT 양쪽에 동일 매핑 (`{krx: single, nxt: single}`). 3단계에서 백엔드가 분리 데이터 전송 시 자동 연동.
+- **`frontend/src/pages/sector-settings.ts`**: 단일 진행 바 → KRX/NXT 2행 분리 배지 + 진행 바 2인스턴스. `createMarketCountRow` 재사용 (showKrx/showNxt 옵션으로 각 시장 세그먼트만 표시). `marketPhase.is_nxt_only` 기반 활성/비활성 전환 (NXT-only 구간 KRX 회색 opacity 0.3). 상태 라벨 옵션 C 정책(AND) 적용 — 정규장 양쪽 임계값 도달 시 "진행 중", NXT-only 구간은 NXT만 기준. 기존 "수신 N종목 / 미수신 N종목" 단일 표시 제거 → KRX/NXT 각 행에 배지+카운트+진행바 통합.
+- **`frontend/src/components/common/market-count-row.ts`**: `_appendNxtSegment`에 `isFirst` 파라미터 추가 — NXT 단독 행(sector-settings NXT 행) 시 좌측 여백(marginLeft 14px) 제거. sector-stock.ts에서는 NXT가 항상 KRX/합계 다음이므로 기존 동작 보존.
 
 **유지 대상 (변경 안 함)**:
-- 카운트 계산 로직(`stocks.filter(s => !s.nxt_enable).length` 등) — sector-stock.ts에 유지, 컴포넌트는 표시만 담당 (P10 SSOT).
-- 5일평균거래대금 표시 — 좌측 filterGroup은 인라인 유지 (카운트 행이 아님).
+- 임계치 입력란(thresholdInput) — 1행 그대로 유지.
+- 가산점 슬라이더/매수대상 설정 — ③④⑤ 영향 없음.
+- 백엔드 수신률 집계 로직 — 3단계에서 수정.
 
-**검증**: typecheck 통과 + build 성공 (63 modules transformed, exit 0, 1.85s). 브라우저 확인 완료 — 사용자 "괜찮아" 승인.
+**검증**: typecheck 통과 + build 성공 (63 modules transformed, exit 0, 2.09s). 브라우저 확인 — 사용자 승인 후 커밋.
 
-**위반 원칙 해결**: P23 (일관성 — 공통 컴포넌트 추출로 향후 2단계 재사용 기반 마련), P24 (단순성 — 86줄 인라인 → 4줄 호출, sector-stock.ts -91줄).
+**위반 원칙 해결**: P21 (사용자 투명성 — KRX/NXT 개별 수신 상태 표시, NXT-only 구간 KRX 비활성 명시), P23 (일관성 — 1단계 공통 컴포넌트 재사용, 진행 바 기존 컴포넌트 2인스턴스).
 
-**수정 후 화면 변화**: 없음 — 시각적 동작 100% 동일 (구조 분리만, 기능 변경 없음).
+**수정 후 화면 변화**: 업종순위 설정 ② 영역 — 기존 단일 "수신 N종목 / 미수신 N종목" + 진행 바 1개 → KRX/NXT 2행 분리 배지(KRX: N종목 / NXT▲: N종목) + 진행 바 2개(각각 % 표시 + 임계치 마커). 정규장 양쪽 활성, NXT-only 구간 KRX 회색. 2단계에서는 양쪽 같은 수치 (3단계에서 개별 수치 연동).
 
-**영향 범위**: 프론트엔드 2개 파일 (신규 1 + 수정 1). 백엔드/DB 영향 없음.
+**영향 범위**: 프론트엔드 4개 파일. 백엔드/DB 영향 없음.
 
 ---
 
 ## 직전 완료 작업 (이전 세션)
+
+### 1단계: 프론트엔드 공통 컴포넌트 추출 — sector-stock.ts KRX/NXT/코스피/코스닥 카운트 (2개 파일)
 
 ### 보유종목 테이블 수수료·세금 컬럼 삭제 + 매수금액 라벨 병기 (2개 파일)
 
