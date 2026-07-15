@@ -59,6 +59,7 @@ async def _refresh_positions_if_dirty() -> None:
             # stk_nm: 기존 캐시에 있고 새 값이 비어있으면 보존
             if old.get("stk_nm") and not new_pos.get("stk_nm"):
                 new_pos["stk_nm"] = old["stk_nm"]
+        _recalc_pnl(new_pos)
     _test_positions.clear()
     _test_positions.update(computed)
     _positions_dirty = False
@@ -217,15 +218,17 @@ async def _apply_sell(code: str, qty: int, price: int) -> None:
     await settlement_engine.on_sell_fill(price, qty, norm_code, stk_nm)
 
 def _recalc_pnl(pos: dict) -> None:
-    """현재가 기준 손익 재계산 (매수금액=수수료 포함)."""
+    """현재가 기준 손익 재계산 (순수 차익: 수수료/세금 제외)."""
     avg = int(pos.get("avg_price", 0))
     cur = int(pos.get("cur_price") or avg)
     qty = int(pos.get("qty", 0))
     total_fee = int(pos.get("total_fee", 0))
+    buy_amount = avg * qty
+    pos["buy_amount"] = buy_amount
+    pos["buy_amt"] = buy_amount + total_fee
     pos["eval_amt"] = cur * qty
-    pos["buy_amt"] = avg * qty + total_fee
-    pos["pnl_amount"] = pos["eval_amt"] - pos["buy_amt"]
-    pos["pnl_rate"] = round((pos["pnl_amount"] / pos["buy_amt"]) * 100, 2) if pos["buy_amt"] > 0 else 0.0
+    pos["pnl_amount"] = pos["eval_amt"] - buy_amount
+    pos["pnl_rate"] = round((pos["pnl_amount"] / buy_amount) * 100, 2) if buy_amount > 0 else 0.0
 
 
 # ── 3. 실시간 시세 연동 ─────────────────────────────────────────────────────

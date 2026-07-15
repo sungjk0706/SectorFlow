@@ -27,6 +27,8 @@ export interface Position {
   eval_amt?: number;
   buy_amt?: number;
   buy_amount?: number;
+  total_fee?: number;
+  tax?: number;
   pnl_amount?: number;
   pnl_rate: number;
   market_type?: string;

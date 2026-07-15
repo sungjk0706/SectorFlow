@@ -57,8 +57,11 @@ async def test_daily_summary_no_duplicate_buy_total():
     fee = round(sell_total * 0.00015)  # 104
     tax = round(sell_total * 0.002)    # 1380
     sell_net = sell_total - fee - tax   # 688516
-    buy_total = 700000 + 105            # 700105 (매수가*수량 + 매수수수료)
-    realized_pnl = sell_net - buy_total  # -11589
+    buy_fee = 105
+    buy_total = 700000 + buy_fee        # 700105 (매수가*수량 + 매수수수료)
+    buy_principal = 700000              # 순매입 (수수료 제외)
+    realized_pnl = (69000 - 70000) * 10  # -10000 (순수 차익)
+    pnl_rate = round(realized_pnl / buy_principal * 100, 2)
 
     trade_history._sell_history.append({
         "ts": f"{today}T10:00:00",
@@ -75,7 +78,7 @@ async def test_daily_summary_no_duplicate_buy_total():
         "avg_buy_price": 70000,
         "buy_total_amt": buy_total,
         "realized_pnl": realized_pnl,
-        "pnl_rate": round(realized_pnl / buy_total * 100, 2),
+        "pnl_rate": pnl_rate,
         "reason": "손절",
         "trade_mode": "test",
     })
@@ -86,7 +89,7 @@ async def test_daily_summary_no_duplicate_buy_total():
         )
 
     today_entry = [r for r in result if r["date"] == today][0]
-    expected_rate = round(realized_pnl / buy_total * 100, 2)
+    expected_rate = pnl_rate
 
     assert today_entry["realized_pnl"] == realized_pnl
     assert today_entry["buy_count"] == 1
@@ -145,7 +148,9 @@ async def test_daily_summary_fee_tax_aggregation():
     sell_total = 690000
     sell_fee = round(sell_total * 0.00015)  # 104
     sell_tax = round(sell_total * 0.002)    # 1380
+    sell_net = sell_total - sell_fee - sell_tax
     buy_total = 700000 + buy_fee             # 700105
+    realized_pnl = (69000 - 70000) * 10      # -10000 (순수 차익)
 
     trade_history._buy_history.append({
         "ts": f"{today}T09:10:00",
@@ -175,13 +180,13 @@ async def test_daily_summary_fee_tax_aggregation():
         "stk_nm": "삼성전자",
         "price": 69000,
         "qty": 10,
-        "total_amt": sell_total - sell_fee - sell_tax,
+        "total_amt": sell_net,
         "fee": sell_fee,
         "tax": sell_tax,
         "avg_buy_price": 70000,
         "buy_total_amt": buy_total,
-        "realized_pnl": -11589,
-        "pnl_rate": -1.66,
+        "realized_pnl": realized_pnl,
+        "pnl_rate": round(realized_pnl / 700000 * 100, 2),
         "reason": "손절",
         "trade_mode": "test",
     })
@@ -264,14 +269,15 @@ def _make_sell_rec(
     sell_net = total_amt - fee - tax
     buy_fee = round(avg_buy_price * qty * 0.00015) if trade_mode == "test" and avg_buy_price > 0 else 0
     buy_total = avg_buy_price * qty + buy_fee if avg_buy_price > 0 else 0
-    realized_pnl = sell_net - buy_total if avg_buy_price > 0 else 0
+    buy_principal = avg_buy_price * qty if avg_buy_price > 0 else 0
+    realized_pnl = (price - avg_buy_price) * qty if avg_buy_price > 0 else 0
     rec = {
         "ts": f"{date}T{time}", "date": date, "time": time, "side": "SELL",
         "stk_cd": stk_cd, "stk_nm": stk_nm, "price": price, "qty": qty,
         "total_amt": sell_net, "fee": fee, "tax": tax,
         "avg_buy_price": avg_buy_price, "buy_total_amt": buy_total,
         "realized_pnl": realized_pnl,
-        "pnl_rate": round(realized_pnl / buy_total * 100, 2) if buy_total > 0 else 0.0,
+        "pnl_rate": round(realized_pnl / buy_principal * 100, 2) if buy_principal > 0 else 0.0,
         "reason": reason, "trade_mode": trade_mode,
     }
     if sector is not None:
@@ -731,12 +737,11 @@ class TestGetTotalRealizedPnl:
         trade_history._sell_history.clear()
         rec1 = _make_sell_rec(price=71000, avg_buy_price=70000)
         rec2 = _make_sell_rec(price=69000, avg_buy_price=70000)
-        rec1["realized_pnl"] = 500
-        rec2["realized_pnl"] = -1000
         trade_history._sell_history.extend([rec1, rec2])
+        expected = (rec1["total_amt"] - rec1["buy_total_amt"]) + (rec2["total_amt"] - rec2["buy_total_amt"])
         with patch("backend.app.services.trade_history._history_lock"):
             total = await trade_history.get_total_realized_pnl()
-        assert total == -500
+        assert total == expected
 
     async def test_total_pnl_trade_mode_filter(self):
         from backend.app.services import trade_history
@@ -744,12 +749,11 @@ class TestGetTotalRealizedPnl:
         trade_history._sell_history.clear()
         rec_test = _make_sell_rec(trade_mode="test")
         rec_real = _make_sell_rec(trade_mode="real")
-        rec_test["realized_pnl"] = 500
-        rec_real["realized_pnl"] = 2000
         trade_history._sell_history.extend([rec_test, rec_real])
+        expected = rec_test["total_amt"] - rec_test["buy_total_amt"]
         with patch("backend.app.services.trade_history._history_lock"):
             total = await trade_history.get_total_realized_pnl(trade_mode="test")
-        assert total == 500
+        assert total == expected
 
     async def test_total_pnl_date_range(self):
         from backend.app.services import trade_history
@@ -757,12 +761,11 @@ class TestGetTotalRealizedPnl:
         trade_history._sell_history.clear()
         rec1 = _make_sell_rec(date="2026-07-01")
         rec2 = _make_sell_rec(date="2026-07-10")
-        rec1["realized_pnl"] = 300
-        rec2["realized_pnl"] = 700
         trade_history._sell_history.extend([rec1, rec2])
+        expected = rec2["total_amt"] - rec2["buy_total_amt"]
         with patch("backend.app.services.trade_history._history_lock"):
             total = await trade_history.get_total_realized_pnl(date_from="2026-07-05", date_to="2026-07-15")
-        assert total == 700
+        assert total == expected
 
 
 # ── get_daily_summary 확장 ────────────────────────────────────────────────────

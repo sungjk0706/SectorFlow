@@ -65,6 +65,7 @@ def _setup_dry_run_env(monkeypatch):
 
 
 def _make_position(cd=_TEST_CODE, qty=10, avg_price=70_000, cur_price=70_000, stk_nm=_TEST_NM):
+    buy_amount = avg_price * qty
     return {
         "stk_cd": cd,
         "stk_nm": stk_nm,
@@ -72,10 +73,11 @@ def _make_position(cd=_TEST_CODE, qty=10, avg_price=70_000, cur_price=70_000, st
         "avg_price": avg_price,
         "cur_price": cur_price,
         "total_fee": 105,
-        "buy_amt": avg_price * qty + 105,
+        "buy_amount": buy_amount,
+        "buy_amt": buy_amount + 105,
         "eval_amt": cur_price * qty,
-        "pnl_amount": (cur_price - avg_price) * qty - 105,
-        "pnl_rate": round(((cur_price - avg_price) * qty - 105) / (avg_price * qty + 105) * 100, 2),
+        "pnl_amount": (cur_price - avg_price) * qty,
+        "pnl_rate": round(((cur_price - avg_price) * qty) / buy_amount * 100, 2) if buy_amount else 0.0,
         "buy_date": "2026-07-08",
     }
 
@@ -258,9 +260,10 @@ class TestRecalcPnl:
         pos = _make_position(avg_price=70_000, cur_price=80_000, qty=10)
         dry_run._recalc_pnl(pos)
         assert pos["eval_amt"] == 800_000
+        assert pos["buy_amount"] == 700_000
         assert pos["buy_amt"] == 700_000 + 105
-        assert pos["pnl_amount"] == 800_000 - 700_105
-        assert pos["pnl_rate"] == round((800_000 - 700_105) / 700_105 * 100, 2)
+        assert pos["pnl_amount"] == 800_000 - 700_000
+        assert pos["pnl_rate"] == round((800_000 - 700_000) / 700_000 * 100, 2)
 
     def test_zero_buy_amt_pnl_rate_zero(self):
         pos = _make_position(avg_price=0, cur_price=80_000, qty=10)

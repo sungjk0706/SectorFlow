@@ -155,7 +155,7 @@ export function buildSectorStockPnl(
   for (const r of sells) {
     const sector = String(r.sector ?? '미분류')
     const pnl = Number(r.realized_pnl ?? 0)
-    const buyTotal = Number(r.buy_total_amt ?? 0)
+    const buyTotal = Number(r.avg_buy_price ?? 0) * Number(r.qty ?? 0)
     sectorPnlMap.set(sector, (sectorPnlMap.get(sector) ?? 0) + pnl)
     sectorBuyTotalMap.set(sector, (sectorBuyTotalMap.get(sector) ?? 0) + buyTotal)
   }
@@ -176,7 +176,7 @@ export function buildSectorStockPnl(
     const key = sector + '\0' + stkCd
     const pnl = Number(r.realized_pnl ?? 0)
     const qty = Number(r.qty ?? 0)
-    const buyTotal = Number(r.buy_total_amt ?? 0)
+    const buyTotal = Number(r.avg_buy_price ?? 0) * qty
     const existing = stockMap.get(key)
     if (existing) {
       existing.realized_pnl += pnl
@@ -247,7 +247,7 @@ export function aggregatePnl(
     if (dateFrom && d < dateFrom) continue
     if (dateTo && d > dateTo) continue
     pnl += Number(r.realized_pnl ?? 0)
-    buyTotal += Number(r.buy_total_amt ?? 0)
+    buyTotal += Number(r.avg_buy_price ?? 0) * Number(r.qty ?? 0)
   }
   return { pnl, buyTotal, rate: buyTotal > 0 ? Math.round(pnl / buyTotal * 10000) / 100 : 0 }
 }
@@ -268,7 +268,7 @@ export function buildMonthlyDrilldown(
     if (!row) { row = { date: d, sellCount: 0, buyCount: 0, pnl: 0, buyTotal: 0, rate: 0 }; map.set(d, row) }
     row.sellCount++
     row.pnl += Number(r.realized_pnl ?? 0)
-    row.buyTotal += Number(r.buy_total_amt ?? 0)
+    row.buyTotal += Number(r.avg_buy_price ?? 0) * Number(r.qty ?? 0)
   }
 
   for (const r of buys) {

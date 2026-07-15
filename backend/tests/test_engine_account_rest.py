@@ -326,7 +326,9 @@ class TestApplyLastPriceToPositionsInplace:
         positions = [{"stk_cd": "005930", "qty": 10, "cur_price": 70000, "buy_amount": 700000, "sum_cmsn": 5000, "tax": 3000}]
         result = apply_last_price_to_positions_inplace(positions, "005930", 80000)
         assert result is True
-        assert positions[0]["pnl_amount"] == 80000 * 10 - 700000 - 5000 - 3000
+        assert positions[0]["pnl_amount"] == 80000 * 10 - 700000
+        assert positions[0]["total_fee"] == 5000
+        assert positions[0]["buy_amt"] == 700000 + 5000
 
 
 # ── parse_kt00001_deposit ───────────────────────────────────────────────────────────
