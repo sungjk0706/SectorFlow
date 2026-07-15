@@ -327,8 +327,6 @@ class LsConnector(BrokerConnector):
         self._on_reconnect_success: Callable | None = None
         self._lock: asyncio.Lock | None = None
         self._received_count = 0
-        self._realtime_enabled: bool = True  # 실시간 연결 ON/OFF 플래그
-        self._auto_trade_enabled: bool = True  # 자동매매 ON/OFF 플래그
         self._reconnecting: bool = False
         self._stop_reconnect: bool = False
         self._ws_queue: asyncio.Queue | None = None  # Producer-Consumer Queue
@@ -342,24 +340,6 @@ class LsConnector(BrokerConnector):
 
     def supports_ack(self) -> bool:
         return False
-
-    def is_realtime_enabled(self) -> bool:
-        """실시간 연결 ON/OFF 상태 반환"""
-        return self._realtime_enabled
-
-    def set_realtime_enabled(self, enabled: bool) -> None:
-        """실시간 연결 ON/OFF 설정."""
-        self._realtime_enabled = enabled
-        logger.info("[연결] %s 실시간 데이터 설정 변경: %s", _BROKER_DISPLAY, enabled)
-
-    def is_auto_trade_enabled(self) -> bool:
-        """자동매매 ON/OFF 상태 반환"""
-        return self._auto_trade_enabled
-
-    def set_auto_trade_enabled(self, enabled: bool) -> None:
-        """자동매매 ON/OFF 설정."""
-        self._auto_trade_enabled = enabled
-        logger.info("[매매] %s 자동매매 설정 변경: %s", _BROKER_DISPLAY, enabled)
 
     async def connect(self) -> None:
         """토큰 발급 + WebSocket 연결 + 수신루프 기동."""

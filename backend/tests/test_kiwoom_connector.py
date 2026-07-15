@@ -383,8 +383,6 @@ class TestKiwoomConnectorInit:
         assert conn._token is None
         assert conn._connected is False
         assert conn._received_count == 0
-        assert conn._realtime_enabled is True
-        assert conn._auto_trade_enabled is True
         assert conn._reconnecting is False
         assert conn._stop_reconnect is False
         assert conn._ws_queue is None
@@ -416,22 +414,6 @@ class TestKiwoomConnectorInit:
     def test_supports_ack(self):
         conn = _make_kiwoom_connector()
         assert conn.supports_ack() is True
-
-    def test_realtime_get_set(self):
-        conn = _make_kiwoom_connector()
-        assert conn.is_realtime_enabled() is True
-        conn.set_realtime_enabled(False)
-        assert conn.is_realtime_enabled() is False
-        conn.set_realtime_enabled(True)
-        assert conn.is_realtime_enabled() is True
-
-    def test_auto_trade_get_set(self):
-        conn = _make_kiwoom_connector()
-        assert conn.is_auto_trade_enabled() is True
-        conn.set_auto_trade_enabled(False)
-        assert conn.is_auto_trade_enabled() is False
-        conn.set_auto_trade_enabled(True)
-        assert conn.is_auto_trade_enabled() is True
 
 
 # ── KiwoomConnector.connect ────────────────────────────────────────────────────

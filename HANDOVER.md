@@ -1,11 +1,38 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-15 (일반설정 API설정탭 1일봉차트 자동다운로드 토글 추가 + 라벨 개선)
-- 작업: 일반설정 페이지 API 설정 탭의 "1일봉챠트 시세 다운로드" 행에 자동다운로드 ON/OFF 토글 추가 + 라벨을 "1일봉차트 자동다운로드"로 개선. 기존 백엔드 `scheduler_market_close_on` 토글이 구현되어 있었으나 UI에 노출되지 않았던 P21 위반 해소.
+- 날짜: 2026-07-15 (Connector dead code 제거 — _realtime_enabled / _auto_trade_enabled 2계열)
+- 작업: KiwoomConnector / LsConnector / BrokerConnector에서 `_realtime_enabled` 및 `_auto_trade_enabled` 필드 + getter/setter 2쌍 제거. engine_service.py에서 해당 메서드 호출 2곳 제거. 관련 테스트 정리. 실시간 연결 토글(ws_subscribe_on) 자체는 현행 유지.
 - 상태: 구현 + 검증 완료, 커밋 완료.
 
 ## 직전 완료 작업 (이번 세션)
+
+### Connector dead code 제거 — _realtime_enabled / _auto_trade_enabled 2계열 (6개 파일)
+
+**배경**: 사전조사 중 `set_realtime_enabled()`/`is_realtime_enabled()`가 Connector에 플래그를 저장하기만 하고 프로덕션 코드에서 한 곳도 읽지 않는 dead code(P16 위반)임을 발견. 동일 패턴의 `_auto_trade_enabled` 계열도 dead code. 실제 의사결정은 `ws_subscribe_on`(WS 연결 게이트, engine_loop.py:304)과 `time_scheduler_on`(자동매매 타이머)이 담당하므로 Connector 플래그는 중복 저장이었음. 사용자 승인 하에 2계열 모두 제거.
+
+**수정 내용**:
+- **`backend/app/core/broker_connector.py`**: 기본 구현 스텁 `set_auto_trade_enabled`/`set_realtime_enabled` 2개 메서드 제거.
+- **`backend/app/core/kiwoom_connector.py`**: `_realtime_enabled`/`_auto_trade_enabled` 필드 2개 + `is_realtime_enabled`/`set_realtime_enabled`/`is_auto_trade_enabled`/`set_auto_trade_enabled` 메서드 4개 제거.
+- **`backend/app/core/ls_connector.py`**: 동일하게 필드 2개 + 메서드 4개 제거.
+- **`backend/app/services/engine_service.py`**: `set_realtime_enabled()` 호출 1곳 + `set_auto_trade_enabled()` 호출 1곳 제거. 주석 번호 재정렬 (3)→(2), (4)→(3)).
+- **`backend/tests/test_kiwoom_connector.py`**: `_realtime_enabled`/`_auto_trade_enabled` assertion 2개 + `test_realtime_get_set`/`test_auto_trade_get_set` 테스트 메서드 2개 제거.
+- **`backend/tests/test_ls_connector.py`**: assertion 2개 + `TestLsConnectorSettings` 클래스 전체(테스트 4개) 제거.
+
+**검증 결과**:
+- 잔존 참조 0건 확인 (grep 전체 코드베이스).
+- pytest 전체 2742개 통과 (0.70s).
+- 런타임 기동 정상 (`-W error::RuntimeWarning` 모드, 에러/Traceback/RuntimeWarning 없음, 앱 시작 완료 + Uvicorn 리스닝 확인).
+- 잔존 프로세스 0건 + lock 파일 정리 완료.
+
+**영향 범위**: 백엔드 4개 파일 + 테스트 2개 파일. 프론트엔드/DB 영향 없음. 실시간 연결 토글(ws_subscribe_on) 및 자동매매 토글(time_scheduler_on) 동작 변경 없음 — 실제 게이트는 engine_loop.py의 `is_ws_subscribe_window()`와 daily_time_scheduler의 타이머가 담당하므로.
+
+**아키텍처 원칙 부합**:
+- P16 (살아있는 경로): 저장된 플래그를 아무도 읽지 않는 dead code 제거 → 강화.
+- P24 (단순성): Connector에서 의미 없는 필드/메서드 2쌍씩 감소 → 강화.
+- P10 (SSOT): 실제 의사결정은 ws_subscribe_on/time_scheduler_on 단일 소스가 담당, Connector 플래그는 중복 저장이었음 → 제거로 강화.
+
+## 직전 완료 작업 (이전 세션)
 
 ### 1일봉차트 자동다운로드 토글 추가 + 라벨 개선 (2개 파일) — 커밋 `b3d2611`
 
