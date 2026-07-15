@@ -83,17 +83,12 @@ async def compute_sector_scores(
                 ta = int(_ta_raw) if _ta_raw is not None else None
 
             # 미수신 종목(change_rate 또는 trade_amount가 None)은 업종 점수 계산에서 제외 (P22)
-            # ratio_5d 계산 등 후속 연산에서 None 비교 TypeError 방지를 위해 여기서 continue
             if change_rate is None or ta is None:
                 continue
 
             # 5일 평균 거래대금: avg_amt_5d dict는 master_stocks_cache["avg_5d_trade_amount"] = 백만원 단위
             avg5d_million = int(avg_amt_5d.get(code, 0) or 0)
             avg5d_eok = avg5d_million // 100  # 백만원 → 억 단위 변환
-            avg5d_won = avg5d_million * 1_000_000  # 백만원 → 원 단위 변환 (비율 계산용)
-
-            # 5D거래대금비율
-            ratio_5d = round(ta / avg5d_won * 100.0, 1) if avg5d_won > 0 and ta > 0 else 0.0
 
             # 체결강도: master_stocks_cache(strength) 사용 (단일 소스 진리)
             st_raw = detail.get("strength", "-")
@@ -115,7 +110,6 @@ async def compute_sector_scores(
                 change_rate=change_rate,
                 trade_amount=ta,
                 avg_amt_5d=avg5d_eok,
-                ratio_5d_pct=ratio_5d,
                 strength=strength_val,
                 cur_price=cur_price,
                 change=change,
@@ -142,7 +136,6 @@ async def compute_sector_scores(
         raw_total_ta = sum(s.trade_amount for s in filtered_stocks)
         avg_ta = raw_total_ta // raw_total if raw_total > 0 else 0
         avg_cr = sum(s.change_rate for s in filtered_stocks) / len(filtered_stocks) if len(filtered_stocks) > 0 else 0.0
-        avg_r5d = sum(s.ratio_5d_pct for s in filtered_stocks) / len(filtered_stocks) if len(filtered_stocks) > 0 else 0.0
 
         sector_scores.append(SectorScore(
             sector=sector,
@@ -151,7 +144,6 @@ async def compute_sector_scores(
             rise_ratio=raw_rise_ratio,
             avg_change_rate=avg_cr,
             avg_trade_amount=avg_ta,
-            avg_ratio_5d_pct=avg_r5d,
             stocks=filtered_stocks,
         ))
 

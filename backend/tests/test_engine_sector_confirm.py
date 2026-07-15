@@ -349,7 +349,6 @@ def _make_sector_score(sector_name, rise_ratio=0.5, final_score=0.0):
         rise_ratio=rise_ratio,
         avg_change_rate=1.0,
         avg_trade_amount=1_000_000_000,
-        avg_ratio_5d_pct=10.0,
         rank=0,
         stocks=[],
         final_score=final_score,

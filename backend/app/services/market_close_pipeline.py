@@ -407,9 +407,6 @@ async def _apply_confirmed_to_memory(
     """
     _nm = name_map or {}
     pending: dict = state.master_stocks_cache
-    ltp: dict = {}
-    lta: dict = {}
-    lst: dict = {}
 
     updated = 0
 
@@ -460,9 +457,6 @@ async def _apply_confirmed_to_memory(
             # _radar_cnsr_order 삭제: 전종목 마스터 캐시의 "_subscribed" 사용
             if nk in state.master_stocks_cache:
                 state.master_stocks_cache[nk]["_subscribed"] = True
-            ltp[nk] = px
-            amt = int(detail["trade_amount"]) if detail.get("trade_amount") is not None else None
-            lta[nk] = amt
             updated += 1
             continue
 
@@ -471,7 +465,6 @@ async def _apply_confirmed_to_memory(
         # cur_price
         px = int(detail.get("cur_price") or 0)
         entry["cur_price"] = px
-        ltp[nk] = px
 
         # change
         change = int(detail.get("change") or 0)
@@ -489,7 +482,6 @@ async def _apply_confirmed_to_memory(
         # trade_amount
         amt = int(detail["trade_amount"]) if detail.get("trade_amount") is not None else None
         entry["trade_amount"] = amt
-        lta[nk] = amt
 
         # strength (from separate dict)
         str_val = strength.get(raw_cd) or strength.get(nk)
@@ -497,7 +489,6 @@ async def _apply_confirmed_to_memory(
             try:
                 strength_str = f"{float(str_val):.2f}"
                 entry["strength"] = strength_str
-                lst[nk] = strength_str
             except (ValueError, TypeError):
                 pass
 

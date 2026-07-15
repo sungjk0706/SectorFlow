@@ -23,7 +23,6 @@ def _stock(
     change_rate: float = 1.0,
     trade_amount: int = 1_000_000_000,
     avg_amt_5d: int = 40,
-    ratio_5d_pct: float = 10.0,
     strength: float = 100.0,
     cur_price: int = 70000,
     change: int = 700,
@@ -37,7 +36,6 @@ def _stock(
         change_rate=change_rate,
         trade_amount=trade_amount,
         avg_amt_5d=avg_amt_5d,
-        ratio_5d_pct=ratio_5d_pct,
         strength=strength,
         cur_price=cur_price,
         change=change,
@@ -55,7 +53,6 @@ def _sector(
     rise_ratio: float = 0.67,
     avg_change_rate: float = 1.0,
     avg_trade_amount: int = 3_000_000_000,
-    avg_ratio_5d_pct: float = 10.0,
     is_cutoff_passed: bool = True,
 ) -> SectorScore:
     return SectorScore(
@@ -65,7 +62,6 @@ def _sector(
         rise_ratio=rise_ratio,
         avg_change_rate=avg_change_rate,
         avg_trade_amount=avg_trade_amount,
-        avg_ratio_5d_pct=avg_ratio_5d_pct,
         rank=rank,
         is_cutoff_passed=is_cutoff_passed,
         stocks=stocks or [],
