@@ -46,32 +46,36 @@ export interface DailyDrilldownRow {
 export interface SummaryCardEls {
   todayPnlEl: HTMLSpanElement
   todayRateEl: HTMLSpanElement
+  prevPnlEl: HTMLSpanElement
+  prevRateEl: HTMLSpanElement
   monthPnlEl: HTMLSpanElement
   monthRateEl: HTMLSpanElement
   totalPnlEl: HTMLSpanElement
   totalRateEl: HTMLSpanElement
   todayCard: HTMLDivElement
+  prevCard: HTMLDivElement
   monthCard: HTMLDivElement
   totalCard: HTMLDivElement
 }
 
 export interface SummaryCardCallbacks {
   onTodayClick?: () => void
+  onPrevClick?: () => void
   onMonthClick?: () => void
   onTotalClick?: () => void
 }
 
-/** 요약 카드 3개(당일/당월/누적 손익) DOM 생성, 클릭 콜백 주입, 요소 참조 반환 */
+/** 요약 카드 4개(당일/직전/당월/누적 손익) DOM 생성, 클릭 콜백 주입, 요소 참조 반환 */
 export function createSummaryCards(container: HTMLElement, callbacks: SummaryCardCallbacks = {}): SummaryCardEls {
   const CARD_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:6px;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;`
-  const CARD_TITLES = ['당일 손익', '당월 손익', '누적 손익']
-  const clickHandlers = [callbacks.onTodayClick, callbacks.onMonthClick, callbacks.onTotalClick]
+  const CARD_TITLES = ['당일 손익', '직전 손익', '당월 손익', '누적 손익']
+  const clickHandlers = [callbacks.onTodayClick, callbacks.onPrevClick, callbacks.onMonthClick, callbacks.onTotalClick]
 
   const pnlEls: HTMLSpanElement[] = []
   const rateEls: HTMLSpanElement[] = []
   const cardEls: HTMLDivElement[] = []
 
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 4; i++) {
     const card = document.createElement('div')
     card.style.cssText = CARD_STYLE
     const handler = clickHandlers[i]
@@ -105,13 +109,14 @@ export function createSummaryCards(container: HTMLElement, callbacks: SummaryCar
 
   return {
     todayPnlEl: pnlEls[0], todayRateEl: rateEls[0],
-    monthPnlEl: pnlEls[1], monthRateEl: rateEls[1],
-    totalPnlEl: pnlEls[2], totalRateEl: rateEls[2],
-    todayCard: cardEls[0], monthCard: cardEls[1], totalCard: cardEls[2],
+    prevPnlEl: pnlEls[1], prevRateEl: rateEls[1],
+    monthPnlEl: pnlEls[2], monthRateEl: rateEls[2],
+    totalPnlEl: pnlEls[3], totalRateEl: rateEls[3],
+    todayCard: cardEls[0], prevCard: cardEls[1], monthCard: cardEls[2], totalCard: cardEls[3],
   }
 }
 
-/** 당일/당월/누적 손익 계산 및 요약 카드 DOM 갱신 */
+/** 당일/직전/당월/누적 손익 계산 및 요약 카드 DOM 갱신 */
 export function updateSummaryCards(
   sellHistory: Record<string, unknown>[],
   dailySummary: Record<string, unknown>[],
@@ -124,6 +129,17 @@ export function updateSummaryCards(
   const dayPnl = todayEntry ? Number(todayEntry.realized_pnl ?? 0) : 0
   const dayRate = todayEntry ? Number(todayEntry.pnl_rate ?? 0) : 0
 
+  // 직전 거래일: dailySummary에서 오늘보다 이전 날짜 중 가장 최근
+  let prevEntry: Record<string, unknown> | undefined
+  for (const r of dailySummary) {
+    const d = String(r.date ?? '')
+    if (d < today) {
+      if (!prevEntry || d > String(prevEntry.date ?? '')) prevEntry = r
+    }
+  }
+  const prevPnl = prevEntry ? Number(prevEntry.realized_pnl ?? 0) : 0
+  const prevRate = prevEntry ? Number(prevEntry.pnl_rate ?? 0) : 0
+
   const monS = aggregatePnl(sellHistory, yearMonth + '-01', yearMonth + '-31')
   const allS = aggregatePnl(sellHistory)
 
@@ -131,6 +147,10 @@ export function updateSummaryCards(
   els.todayPnlEl.style.color = pnlColor(dayPnl)
   els.todayRateEl.textContent = `${dayRate.toFixed(2)}%`
   els.todayRateEl.style.color = pnlColor(dayPnl)
+  els.prevPnlEl.textContent = fmtWon(prevPnl)
+  els.prevPnlEl.style.color = pnlColor(prevPnl)
+  els.prevRateEl.textContent = `${prevRate.toFixed(2)}%`
+  els.prevRateEl.style.color = pnlColor(prevPnl)
   els.monthPnlEl.textContent = fmtWon(monS.pnl)
   els.monthPnlEl.style.color = pnlColor(monS.pnl)
   els.monthRateEl.textContent = `${monS.rate.toFixed(2)}%`
