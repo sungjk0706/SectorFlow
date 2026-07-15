@@ -9,6 +9,13 @@ import type {
   IndexData,
 } from '../types'
 
+/** 수신율 단일 항목 — KRX/NXT 각각 1개씩 (2단계 분리 구조) */
+export interface ReceiveRateEntry {
+  received: number
+  total: number
+  pct: number
+}
+
 export interface UIState {
   /* ── UI 상태 필드 ── */
   settings: AppSettings | null
@@ -50,8 +57,8 @@ export interface UIState {
   /* ── 설정 재로드 완료 상태 ── */
   engineReloadComplete: boolean
 
-  /* ── 수신율 상태 ── */
-  receiveRate: { received: number; total: number; pct: number } | null
+  /* ── 수신율 상태 — KRX/NXT 분리 (2단계: 단일 데이터 양쪽 동일 매핑, 3단계: 백엔드 분리 데이터 연동) ── */
+  receiveRate: { krx: ReceiveRateEntry | null; nxt: ReceiveRateEntry | null } | null
 
   /* ── 업종지수 실시간 (참고용, 저장 없음) ── */
   indexData: Record<string, IndexData> | null
@@ -223,7 +230,14 @@ export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
     circuitBreakerOpen: null,
     engineReady: !!(data.bootstrap_done),
     marketPhase: (data.market_phase as UIState['marketPhase']) ?? { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null },
-    receiveRate: (data.receive_rate as { received: number; total: number; pct: number }) ?? null,
+    receiveRate: (() => {
+      const r = data.receive_rate as { received: number; total: number; pct: number } | { krx: ReceiveRateEntry | null; nxt: ReceiveRateEntry | null } | undefined
+      if (!r) return null
+      // 2단계: 백엔드 단일 수신률 → KRX/NXT 양쪽 동일 매핑 (3단계에서 분리 데이터 연동)
+      if ('krx' in r || 'nxt' in r) return r as { krx: ReceiveRateEntry | null; nxt: ReceiveRateEntry | null }
+      const single = r as { received: number; total: number; pct: number }
+      return { krx: single, nxt: single }
+    })(),
     avgAmtProgress: data.avg_amt_refresh ? { current: (data.avg_amt_refresh as Record<string, unknown>).current as number ?? 0, total: (data.avg_amt_refresh as Record<string, unknown>).total as number ?? 0, done: false, status: ((data.avg_amt_refresh as Record<string, unknown>).status as string) || undefined } : data.confirmed_refresh ? { current: 0, total: 0, done: false, message: ((data.confirmed_refresh as Record<string, unknown>).message as string) || '', status: 'confirmed' } : null,
   })
 }

@@ -8,9 +8,11 @@ import { createAutoSaveHelper, type AutoSaveHelper } from '../utils/settings-sav
 import { createSettingRow, createNumInput, createMoneyInput } from '../components/common/setting-row'
 import { createDualLabelSlider, type DualLabelSliderHandle } from '../components/common/create-slider'
 import { createProgressBar, type ProgressBarHandle } from '../components/common/progress-bar'
+import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
 import { createDescText, createStepLabel } from '../components/common/settings-common'
 import { FONT_SIZE, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
+import type { ReceiveRateEntry } from '../stores/uiStore'
 import type { AppSettings } from '../types'
 import type { PageModule } from '../router'
 
@@ -41,7 +43,12 @@ let maxScoreDisplayEl: HTMLSpanElement | null = null
 let maxTargetsStatusEl: HTMLSpanElement | null = null
 let maxTargetsSumEl: HTMLDivElement | null = null
 let unsubHotStore: (() => void) | null = null
-let receiveProgressBar: ProgressBarHandle | null = null
+let krxProgressBar: ProgressBarHandle | null = null
+let nxtProgressBar: ProgressBarHandle | null = null
+let krxCountRow: MarketCountRowHandle | null = null
+let nxtCountRow: MarketCountRowHandle | null = null
+let krxRowEl: HTMLDivElement | null = null
+let nxtRowEl: HTMLDivElement | null = null
 let receiveStatusLabelEl: HTMLSpanElement | null = null
 
 // 현재 값 추적
@@ -57,11 +64,26 @@ async function onNumChange(key: string, value: number): Promise<void> {
 }
 
 // 수신율 상태 라벨 갱신 — 임계치 대기/진행 중 (P21 투명성)
-function _updateStatusLabel(pct: number, threshold: number): void {
+// 옵션 C (승인됨): NXT-only 구간은 NXT 수신률만 기준, 정규장은 KRX/NXT 양쪽 모두 임계값 도달(AND)
+function _updateStatusLabel(
+  rate: { krx: ReceiveRateEntry | null; nxt: ReceiveRateEntry | null } | null,
+  threshold: number,
+  marketPhase: { is_nxt_only?: boolean },
+): void {
   if (!receiveStatusLabelEl) return
-  const reached = pct >= threshold
+  const isNxtOnly = marketPhase.is_nxt_only === true
+  const krxPct = rate?.krx?.pct ?? 0
+  const nxtPct = rate?.nxt?.pct ?? 0
+  const reached = isNxtOnly ? nxtPct >= threshold : (krxPct >= threshold && nxtPct >= threshold)
   receiveStatusLabelEl.textContent = reached ? '업종순위 계산 진행 중' : '업종순위 계산 대기 중'
   receiveStatusLabelEl.style.color = reached ? COLOR.success : COLOR.down
+}
+
+// 시간대별 KRX/NXT 활성/비활성 전환 (P21 투명성 — NXT-only 구간에서 KRX 비활성 명시)
+function _applyMarketPhaseActive(marketPhase: { is_nxt_only?: boolean }): void {
+  const isNxtOnly = marketPhase.is_nxt_only === true
+  if (krxRowEl) krxRowEl.style.opacity = isNxtOnly ? '0.3' : '1'
+  if (nxtRowEl) nxtRowEl.style.opacity = '1'
 }
 
 function syncFromSettings(s: AppSettings): void {
@@ -84,10 +106,12 @@ function syncFromSettings(s: AppSettings): void {
 
   // 임계치 변경 시 진행률 바 마커 + 상태 라벨 갱신
   const threshold = currentVals.sector_start_threshold_pct ?? 70
-  if (receiveProgressBar) receiveProgressBar.setThreshold(threshold)
+  if (krxProgressBar) krxProgressBar.setThreshold(threshold)
+  if (nxtProgressBar) nxtProgressBar.setThreshold(threshold)
   if (receiveStatusLabelEl) {
-    const curPct = uiStore.getState().receiveRate?.pct ?? 0
-    _updateStatusLabel(curPct, threshold)
+    const curRate = uiStore.getState().receiveRate
+    const curPhase = uiStore.getState().marketPhase
+    _updateStatusLabel(curRate, threshold, curPhase)
   }
 }
 
@@ -142,6 +166,7 @@ function mount(container: HTMLElement): void {
 
   const _initialRate = uiStore.getState().receiveRate
   const _initialThreshold = uiStore.getState().settings?.sector_start_threshold_pct ?? 70
+  const _initialPhase = uiStore.getState().marketPhase
 
   // 1행: 임계치 설정 입력란 (라벨 명확화 — "수신율" → "임계치")
   const thresholdRow = createSettingRow('업종순위 계산 임계치', thresholdInput.el)
@@ -149,11 +174,10 @@ function mount(container: HTMLElement): void {
   thresholdRow.style.borderBottom = 'none'
   root.appendChild(thresholdRow)
 
-  // 2행: 상태 라벨(좌) + 수신/미수신 종목수(우) — P21 투명성 + P24 행 수 감소
+  // 2행: 상태 라벨 — P21 투명성 (KRX/NXT 분리 배지가 각 행에 표시되므로 상태 라벨만 단독)
   const statusRow = document.createElement('div')
   Object.assign(statusRow.style, {
     display: 'flex',
-    justifyContent: 'space-between',
     alignItems: 'center',
     padding: '4px 0 2px 0',
   })
@@ -164,44 +188,48 @@ function mount(container: HTMLElement): void {
     color: COLOR.down,
   })
   statusRow.appendChild(receiveStatusLabelEl)
-
-  // 우측 정보: 수신 N종목 / 미수신 N종목 (임계치는 1행 입력란에 표시되므로 중복 제거)
-  const rightInfo = document.createElement('span')
-  Object.assign(rightInfo.style, {
-    fontSize: FONT_SIZE.small,
-    color: COLOR.neutral,
-    whiteSpace: 'nowrap',
-  })
-
-  const receivedCountSpan = document.createElement('span')
-  Object.assign(receivedCountSpan.style, { color: COLOR.down })
-  const missedCountSpan = document.createElement('span')
-  Object.assign(missedCountSpan.style, { color: COLOR.down })
-
-  function _fillReceiveCount(rate: { received: number; total: number }) {
-    receivedCountSpan.textContent = `${rate.received}종목`
-    missedCountSpan.textContent = `${rate.total - rate.received}종목`
-  }
-
-  if (_initialRate) _fillReceiveCount(_initialRate)
-  rightInfo.append('수신 ', receivedCountSpan, ' / 미수신 ', missedCountSpan)
-  statusRow.appendChild(rightInfo)
-
-  _updateStatusLabel(_initialRate?.pct ?? 0, _initialThreshold)
+  _updateStatusLabel(_initialRate, _initialThreshold, _initialPhase)
   root.appendChild(statusRow)
 
-  // 3행: 진행률 % (우측 정렬) + 4행: 바 (전체 너비) — showPctTop으로 바 위 % 표시
-  receiveProgressBar = createProgressBar(COLOR.down, { showPct: false, showPctTop: true, height: '10px' })
-  receiveProgressBar.setThreshold(_initialThreshold)
-  receiveProgressBar.setValue(_initialRate?.pct ?? 0)
-  const progressBarRow = document.createElement('div')
-  Object.assign(progressBarRow.style, {
+  // 3행/4행: KRX/NXT 분리 배지 + 진행 바 2인스턴스 (P21 투명성, P23 일관성 — createMarketCountRow 재사용)
+  // createMarketCountRow: showKrx/showNxt 옵션으로 각 시장 세그먼트만 표시, updateCounts로 수신 종목수 갱신
+  const progressWrap = document.createElement('div')
+  Object.assign(progressWrap.style, {
     padding: '6px 0 6px 0',
     borderBottom: '1px solid ' + COLOR.borderLight,
     marginBottom: '12px',
   })
-  progressBarRow.appendChild(receiveProgressBar.el)
-  root.appendChild(progressBarRow)
+
+  // KRX 행: 배지(KRX: N종목) + 진행 바(% 표시)
+  krxRowEl = document.createElement('div')
+  Object.assign(krxRowEl.style, { display: 'flex', alignItems: 'center', gap: '10px', padding: '2px 0' })
+  krxCountRow = createMarketCountRow({ showTotal: false, showKrx: true, showNxt: false, showKospi: false, showKosdaq: false })
+  Object.assign(krxCountRow.el.style, { flexShrink: '0' })
+  krxCountRow.updateCounts({ total: 0, krx: _initialRate?.krx?.received ?? 0, nxt: 0, kospi: 0, kosdaq: 0 })
+  krxRowEl.appendChild(krxCountRow.el)
+  krxProgressBar = createProgressBar(COLOR.down, { showPct: true, height: '10px' })
+  krxProgressBar.el.style.flex = '1'
+  krxProgressBar.setThreshold(_initialThreshold)
+  krxProgressBar.setValue(_initialRate?.krx?.pct ?? 0)
+  krxRowEl.appendChild(krxProgressBar.el)
+  progressWrap.appendChild(krxRowEl)
+
+  // NXT 행: 배지(NXT▲: N종목) + 진행 바(% 표시)
+  nxtRowEl = document.createElement('div')
+  Object.assign(nxtRowEl.style, { display: 'flex', alignItems: 'center', gap: '10px', padding: '2px 0' })
+  nxtCountRow = createMarketCountRow({ showTotal: false, showKrx: false, showNxt: true, showKospi: false, showKosdaq: false })
+  Object.assign(nxtCountRow.el.style, { flexShrink: '0' })
+  nxtCountRow.updateCounts({ total: 0, krx: 0, nxt: _initialRate?.nxt?.received ?? 0, kospi: 0, kosdaq: 0 })
+  nxtRowEl.appendChild(nxtCountRow.el)
+  nxtProgressBar = createProgressBar(COLOR.down, { showPct: true, height: '10px' })
+  nxtProgressBar.el.style.flex = '1'
+  nxtProgressBar.setThreshold(_initialThreshold)
+  nxtProgressBar.setValue(_initialRate?.nxt?.pct ?? 0)
+  nxtRowEl.appendChild(nxtProgressBar.el)
+  progressWrap.appendChild(nxtRowEl)
+
+  _applyMarketPhaseActive(_initialPhase)
+  root.appendChild(progressWrap)
 
   // ③ 업종 컷오프
   root.appendChild(createStepLabel('③', '업종 내 상승비율 이하 차단'))
@@ -349,23 +377,27 @@ function mount(container: HTMLElement): void {
     }
   })
 
-  // uiStore 구독 — 수신율 표시 갱신 (진행률 바 + 라벨 + 종목수)
+  // uiStore 구독 — 수신율 표시 갱신 (KRX/NXT 분리 진행 바 + 카운트 + 라벨 + 시간대별 활성/비활성)
   let prevReceiveRate = uiStore.getState().receiveRate
+  let prevMarketPhase = uiStore.getState().marketPhase
   unsubUiStore = uiStore.subscribe(() => {
     const uiState = uiStore.getState()
-    if (uiState.receiveRate !== prevReceiveRate) {
-      prevReceiveRate = uiState.receiveRate
-      const rate = uiState.receiveRate
-      const threshold = currentVals.sector_start_threshold_pct ?? 70
-      if (rate) {
-        receiveProgressBar?.setValue(rate.pct)
-        _fillReceiveCount(rate)
-        _updateStatusLabel(rate.pct, threshold)
-      } else {
-        receiveProgressBar?.setValue(0)
-        _updateStatusLabel(0, threshold)
-      }
-    }
+    const rateChanged = uiState.receiveRate !== prevReceiveRate
+    const phaseChanged = uiState.marketPhase !== prevMarketPhase
+    if (!rateChanged && !phaseChanged) return
+    prevReceiveRate = uiState.receiveRate
+    prevMarketPhase = uiState.marketPhase
+    const rate = uiState.receiveRate
+    const threshold = currentVals.sector_start_threshold_pct ?? 70
+    const phase = uiState.marketPhase
+    // KRX/NXT 진행 바 + 카운트 갱신
+    krxProgressBar?.setValue(rate?.krx?.pct ?? 0)
+    nxtProgressBar?.setValue(rate?.nxt?.pct ?? 0)
+    krxCountRow?.updateCounts({ total: 0, krx: rate?.krx?.received ?? 0, nxt: 0, kospi: 0, kosdaq: 0 })
+    nxtCountRow?.updateCounts({ total: 0, krx: 0, nxt: rate?.nxt?.received ?? 0, kospi: 0, kosdaq: 0 })
+    // 시간대별 활성/비활성 + 상태 라벨
+    _applyMarketPhaseActive(phase)
+    _updateStatusLabel(rate, threshold, phase)
   })
 
   // hotStore 구독 — 만점 자동 표시 갱신 (업종 수 = 만점)
@@ -403,7 +435,12 @@ function unmount(): void {
   maxScoreDisplayEl = null
   maxTargetsStatusEl = null
   maxTargetsSumEl = null
-  receiveProgressBar = null
+  krxProgressBar = null
+  nxtProgressBar = null
+  krxCountRow = null
+  nxtCountRow = null
+  krxRowEl = null
+  nxtRowEl = null
   receiveStatusLabelEl = null
   saving = false
 }
