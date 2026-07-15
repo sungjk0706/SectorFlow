@@ -252,11 +252,11 @@ async def execute_unified_rolling_and_save(
                     continue
 
                 # 당일 데이터 추출
-                today_amt = int(detail.get("trade_amount") or 0)
+                today_amt = int(detail["trade_amount"]) if detail.get("trade_amount") is not None else None
                 today_high = int(detail.get("high_price") or detail.get("cur_price") or 0)
                 cur_price = int(detail.get("cur_price") or 0)
                 change = int(detail.get("change") or 0)
-                change_rate = float(detail.get("change_rate") or 0.0)
+                change_rate = float(detail["change_rate"]) if detail.get("change_rate") is not None else None
 
                 # stock_5d_bars.dt는 API가 반환한 일봉의 실제 거래일을 우선 사용 (P10/P22)
                 # fetch_ka10081_daily_price가 latest 일봉의 dt를 반환 — 장마감 전 실행 시
@@ -447,8 +447,8 @@ async def _apply_confirmed_to_memory(
                 nk, stk_nm, px,
                 str(detail.get("sign") or "3"),
                 int(detail.get("change") or 0),
-                float(detail.get("change_rate") or 0.0),
-                trade_amount=int(detail.get("trade_amount") or 0),
+                float(detail["change_rate"]) if detail.get("change_rate") is not None else None,
+                trade_amount=int(detail["trade_amount"]) if detail.get("trade_amount") is not None else None,
                 sector=sec,
             )
             entry["status"] = "active"
@@ -461,7 +461,7 @@ async def _apply_confirmed_to_memory(
             if nk in state.master_stocks_cache:
                 state.master_stocks_cache[nk]["_subscribed"] = True
             ltp[nk] = px
-            amt = int(detail.get("trade_amount") or 0)
+            amt = int(detail["trade_amount"]) if detail.get("trade_amount") is not None else None
             lta[nk] = amt
             updated += 1
             continue
@@ -478,7 +478,7 @@ async def _apply_confirmed_to_memory(
         entry["change"] = change
 
         # change_rate
-        rate = float(detail.get("change_rate") or 0.0)
+        rate = float(detail["change_rate"]) if detail.get("change_rate") is not None else None
         entry["change_rate"] = rate
 
         # sign
@@ -487,7 +487,7 @@ async def _apply_confirmed_to_memory(
             entry["sign"] = sign
 
         # trade_amount
-        amt = int(detail.get("trade_amount") or 0)
+        amt = int(detail["trade_amount"]) if detail.get("trade_amount") is not None else None
         entry["trade_amount"] = amt
         lta[nk] = amt
 
@@ -920,11 +920,11 @@ async def _step5_download_daily_confirmed(
             normalized_confirmed[cd] = {
                 "dt": val.get("dt") or "",
                 "cur_price": val.get("close") or val.get("cur_price") or 0,
-                "trade_amount": val.get("value") or val.get("trade_amount") or 0,
+                "trade_amount": val.get("value") if val.get("value") is not None else val.get("trade_amount"),
                 "high_price": val.get("high") or val.get("high_price") or 0,
                 "volume": val.get("volume") or 0,
                 "change": val.get("change") or 0,
-                "change_rate": val.get("rate") or val.get("change_rate") or 0.0,
+                "change_rate": val.get("rate") if val.get("rate") is not None else val.get("change_rate"),
                 "sign": val.get("sign") or "3",
             }
         await _apply_confirmed_to_memory(normalized_confirmed, {}, name_map=name_map, confirmed_codes=confirmed_codes)

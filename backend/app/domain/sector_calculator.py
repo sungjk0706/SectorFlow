@@ -75,9 +75,10 @@ async def compute_sector_scores(
 
             # 거래대금 (원 단위) - WS 틱 우선, master_stocks_cache trade_amount fallback
             # None = 실시간 데이터 미수신 — 0으로 폴백하지 않고 None 유지 (P20/P22)
-            ta_ws = int(trade_amounts.get(code, 0) or 0)
+            ta_raw = trade_amounts.get(code)
+            ta_ws = int(ta_raw) if ta_raw is not None else None
             ta = ta_ws
-            if ta <= 0:
+            if ta is None or ta <= 0:
                 _ta_raw = detail.get("trade_amount")
                 ta = int(_ta_raw) if _ta_raw is not None else None
 

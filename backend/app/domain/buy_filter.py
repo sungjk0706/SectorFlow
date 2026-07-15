@@ -218,9 +218,11 @@ def create_buy_targets(
         _ta_cache = trade_amount_cache or {}
         for s, _ in all_stocks:
             if s.code in _ta_cache:
-                s.trade_amount = _ta_cache[s.code]
+                _ta_val = _ta_cache[s.code]
+                if _ta_val is not None:
+                    s.trade_amount = _ta_val
         _pass_for_rank = [s for s, _ in all_stocks if s.guard_pass]
-        _pass_for_rank.sort(key=lambda st: float(st.trade_amount), reverse=True)
+        _pass_for_rank.sort(key=lambda st: float(st.trade_amount) if st.trade_amount is not None else float('-inf'), reverse=True)
         for i, st in enumerate(_pass_for_rank):
             _trade_amount_rank_map[st.code] = i  # 0 = 1위
 

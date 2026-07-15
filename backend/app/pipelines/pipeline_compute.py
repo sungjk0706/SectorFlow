@@ -29,6 +29,10 @@ broadcast_queue = get_broadcast_queue()
 _current_receive_rate: dict = {"received": 0, "total": 0, "pct": 0.0}
 _receive_rate_dirty: bool = False
 
+# 누적 수신 종목 세트 — _reset_realtime_fields()에 의해 초기화되지 않음
+# 한 번 수신된 종목은 앱 종료까지 수신된 것으로 유지되어 수신율이 0%로 강하하지 않음
+_received_codes: set[str] = set()
+
 # ── 업종순위 수신율 임계값 게이트 (단일 소스 진리) ──
 # WS 구독 구간 진입 시 False로 리셋 → Phase 1 루프에서 임계값 통과 시 True로 전환.
 # 비-WS 구간(확정 데이터 기반)은 기본값 True로 항상 허용.
@@ -100,9 +104,11 @@ def _has_any_realtime_data(entry: dict) -> bool:
 async def _calculate_receive_rate() -> None:
     """수신율 계산 (배치 처리 — Phase 1/Phase 2 루프에서 호출).
 
-    업종순위 계산에 필요한 2개 필드(change_rate, trade_amount) 기준으로 수신율 산출.
-    master_stocks_cache의 각 종목 엔트리에서 _has_any_realtime_data()로 판정.
-    장중 실시간 틱과 장마감 후 확정 데이터 모두 이 기준으로 동일하게 카운트됨 (P10 SSOT, P22 정합성).
+    누적 수신 세트(_received_codes)와 메모리 캐시 필드를 결합하여 산출 (P10 SSOT, P22 정합성):
+    - _received_codes: 틱 수신 시 추가되며 _reset_realtime_fields()에 의해 초기화되지 않음.
+      WS 구간에서 _reset_realtime_fields() 후 메모리가 None이 되어도 수신 이력 보존.
+    - _has_any_realtime_data: 메모리 캐시의 change_rate/trade_amount가 None이 아닌 종목.
+      비-WS 구간(확정 데이터)에서 _reset_realtime_fields()가 호출되지 않으므로 100% 산출.
     """
     global _current_receive_rate
 
@@ -117,9 +123,12 @@ async def _calculate_receive_rate() -> None:
 
         received_count = 0
         for code in all_codes:
-            entry = state.master_stocks_cache.get(code)
-            if entry and _has_any_realtime_data(entry):
+            if code in _received_codes:
                 received_count += 1
+            else:
+                entry = state.master_stocks_cache.get(code)
+                if entry and _has_any_realtime_data(entry):
+                    received_count += 1
 
         current_pct = received_count / total_count * 100 if total_count > 0 else 0.0
 
@@ -522,7 +531,7 @@ async def _handle_real_01_tick(
     Returns:
         True if 보유종목 가격 갱신 발생 (계좌 전송 필요), False otherwise.
     """
-    global _receive_rate_dirty
+    global _received_codes, _receive_rate_dirty
 
     _price_hit = False
     _ts = int(time.time() * 1000)
@@ -569,6 +578,7 @@ async def _handle_real_01_tick(
             if nk_px:
                 from backend.app.services.engine_sector_confirm import request_sector_recompute
                 request_sector_recompute(nk_px)
+                _received_codes.add(nk_px)
                 _receive_rate_dirty = True
 
         # ── 3. 보유종목 현재가 반영 — 평가손익·수익률 실시간 재계산 ──
@@ -698,6 +708,7 @@ async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
         # WS 구독 시작 시 _reset_realtime_fields()가 필드를 None으로 초기화하므로
         # 비-WS 구간(확정 데이터 있음)은 100%로 즉시 통과, WS 구간은 0%에서 틱 수신시 상승.
         phase1_completed = False
+        _prev_received = -1
         while _compute_running and not phase1_completed:
             try:
                 await asyncio.sleep(1.0)
@@ -725,12 +736,20 @@ async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
                 else:
                     # 수신율 전송 (단일 진입점)
                     await _send_receive_rate(_current_receive_rate)
+                    # 수신 종목 수 증가 시에만 로그 출력 (P21 사용자 투명성)
+                    if received_count != _prev_received:
+                        logger.info(
+                            "[연산] 수신율 갱신 — %d/%d (%.1f%%) — 임계값 대기 중 (%.1f%%)",
+                            received_count, total_count, current_pct, threshold_pct
+                        )
+                        _prev_received = received_count
 
             except Exception as e:
                 logger.error("[연산] 수신율 체크 오류: %s", e, exc_info=True)
 
         # Phase 2: 0.2초 배치 재계산 루프
         from backend.app.services.engine_sector_confirm import has_dirty_sectors, _flush_sector_recompute_impl
+        _prev_p2_received = _current_receive_rate["received"]
         while _compute_running:
             await asyncio.sleep(0.2)
 
@@ -739,6 +758,14 @@ async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
                 await _calculate_receive_rate()
                 await _send_receive_rate(get_current_receive_rate())
                 _receive_rate_dirty = False
+                # 수신 종목 수 증가 시에만 로그 출력 (P21 사용자 투명성)
+                _p2_received = _current_receive_rate["received"]
+                if _p2_received != _prev_p2_received:
+                    logger.info(
+                        "[연산] 수신율 갱신 — %d/%d (%.1f%%)",
+                        _p2_received, _current_receive_rate["total"], _current_receive_rate["pct"]
+                    )
+                    _prev_p2_received = _p2_received
 
             # sector-scores 전송 (delta — 변경된 업종만)
             from backend.app.services.engine_account_notify import notify_desktop_sector_scores
