@@ -63,8 +63,9 @@ let settingsMgr: SettingsManager | null = null
 let unsubSettings: (() => void) | null = null
 let unsubHot: (() => void) | null = null
 
-// UI 참조 — Indicator Bar
-let indicatorLabel: HTMLElement | null = null
+// UI 참조 — Indicator Bar (우측 정렬, 두 줄 표시)
+let indicatorLabelMain: HTMLElement | null = null
+let indicatorLabelSub: HTMLElement | null = null
 
 // UI 참조 — Scheduler (moved to sector-scheduler.ui.ts)
 // Staging / Selection 상태
@@ -380,21 +381,6 @@ function buildTripleHeader(): void {
 
   buttonContainer.appendChild(btn1)
   buttonContainer.appendChild(btn2)
-  indicatorLabel = document.createElement('span')
-  Object.assign(indicatorLabel.style, {
-    fontSize: FONT_SIZE.body,
-    color: COLOR.tertiary,
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    display: 'flex',
-    alignItems: 'center',
-    marginLeft: '8px',
-    minWidth: '0',
-  })
-  
-  buttonContainer.appendChild(btn2)
-  buttonContainer.appendChild(indicatorLabel)
   left.appendChild(buttonContainer)
   header.appendChild(left)
 
@@ -408,18 +394,47 @@ function buildTripleHeader(): void {
 
   header.appendChild(center)
 
-  // 우측: 공백
+  // 우측: 필터요약 라벨 (두 줄 표시, 우측 정렬)
   const right = document.createElement('div')
-  right.style.flex = '1'
+  Object.assign(right.style, {
+    flex: '1', display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
+    justifyContent: 'center', textAlign: 'right', minWidth: '0', gap: '2px',
+  })
 
+  indicatorLabelMain = document.createElement('span')
+  Object.assign(indicatorLabelMain.style, {
+    fontSize: FONT_SIZE.body, color: COLOR.neutral, whiteSpace: 'nowrap',
+    overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%',
+  })
+
+  indicatorLabelSub = document.createElement('span')
+  Object.assign(indicatorLabelSub.style, {
+    fontSize: FONT_SIZE.small, color: COLOR.tertiary, whiteSpace: 'nowrap',
+    overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%',
+  })
+
+  right.appendChild(indicatorLabelMain)
+  right.appendChild(indicatorLabelSub)
   header.appendChild(right)
 }
 
 function updateIndicatorBar(): void {
   const state = stockClassificationStore.getState()
   const { filter_summary } = state
-  if (indicatorLabel) {
-    indicatorLabel.textContent = filter_summary || ''
+  if (!indicatorLabelMain || !indicatorLabelSub) return
+  if (!filter_summary) {
+    indicatorLabelMain.textContent = ''
+    indicatorLabelSub.textContent = ''
+    return
+  }
+  // "전체 N종목 → 매매 가능 N종목 (제외 N종목, N%)" | "주요 제외: ..."
+  const sepIdx = filter_summary.indexOf(' | ')
+  if (sepIdx === -1) {
+    indicatorLabelMain.textContent = filter_summary
+    indicatorLabelSub.textContent = ''
+  } else {
+    indicatorLabelMain.textContent = filter_summary.slice(0, sepIdx)
+    indicatorLabelSub.textContent = filter_summary.slice(sepIdx + 3)
   }
 }
 
@@ -1549,7 +1564,8 @@ function unmount(): void {
   closeContextPopup()
 
   // Null all DOM refs
-  indicatorLabel = null
+  indicatorLabelMain = null
+  indicatorLabelSub = null
   masterTableRef = null
   statsLabelRef = null
   addSectorBtnRef = null
