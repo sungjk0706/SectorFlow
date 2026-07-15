@@ -9,6 +9,7 @@ import { createStockNameColumn, makeSeqColumn, makeCodeColumn, makePriceColumn, 
 import { createCardTitle } from '../components/common/card-title'
 import { createActionButton } from '../components/common/button'
 import { createSearchInput } from '../components/common/search-input'
+import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
 import { type SectorStock, type SectorScoreRow, DEFAULT_SECTOR_MAX_TARGETS } from '../types'
 
 /* ── ColumnDef 배열 (10개 컬럼) ── */
@@ -263,11 +264,7 @@ class SectorStockTable extends HTMLElement {
   // DOM 참조
   private titleH3: HTMLElement | null = null
   private titleFilterNumSpan: HTMLElement | null = null
-  private titleTotalNumSpan: HTMLElement | null = null
-  private titleKrxNumSpan: HTMLElement | null = null
-  private titleNxtNumSpan: HTMLElement | null = null
-  private titleKospiNumSpan: HTMLElement | null = null
-  private titleKosdaqNumSpan: HTMLElement | null = null
+  private marketCountRow: MarketCountRowHandle | null = null
   private filterBadge: HTMLElement | null = null
   private emptyDiv: HTMLElement | null = null
   private scrollContainer: HTMLElement | null = null
@@ -322,11 +319,7 @@ class SectorStockTable extends HTMLElement {
 
     // summaryBar 갱신 — 숫자 span textContent만 갱신 (innerHTML 파괴 금지)
     if (this.titleFilterNumSpan) this.titleFilterNumSpan.textContent = String(minTradeAmt)
-    if (this.titleTotalNumSpan) this.titleTotalNumSpan.textContent = String(stockCount)
-    if (this.titleKrxNumSpan) this.titleKrxNumSpan.textContent = String(krxCount)
-    if (this.titleNxtNumSpan) this.titleNxtNumSpan.textContent = String(nxtCount)
-    if (this.titleKospiNumSpan) this.titleKospiNumSpan.textContent = String(kospiCount)
-    if (this.titleKosdaqNumSpan) this.titleKosdaqNumSpan.textContent = String(kosdaqCount)
+    if (this.marketCountRow) this.marketCountRow.updateCounts({ total: stockCount, krx: krxCount, nxt: nxtCount, kospi: kospiCount, kosdaq: kosdaqCount })
 
     // 업종 필터 배지
     if (this.filterBadge) {
@@ -396,91 +389,9 @@ class SectorStockTable extends HTMLElement {
     filterGroup.appendChild(filterSuffix)
     summaryBar.appendChild(filterGroup)
 
-    // 우측: 합계 KRX NXT▲ 코스피 코스닥
-    const countRow = document.createElement('div')
-    Object.assign(countRow.style, { display: 'flex', alignItems: 'center', gap: '2px' })
-
-    // 합계
-    const totalLabel = document.createElement('span')
-    Object.assign(totalLabel.style, { color: COLOR.neutral })
-    totalLabel.textContent = '합계:'
-    countRow.appendChild(totalLabel)
-    this.titleTotalNumSpan = document.createElement('span')
-    Object.assign(this.titleTotalNumSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
-    countRow.appendChild(this.titleTotalNumSpan)
-    const totalSuffix = document.createElement('span')
-    Object.assign(totalSuffix.style, { color: COLOR.neutral })
-    totalSuffix.textContent = '종목'
-    countRow.appendChild(totalSuffix)
-
-    // KRX
-    const krxLabel = document.createElement('span')
-    Object.assign(krxLabel.style, { color: COLOR.neutral, marginLeft: '14px' })
-    krxLabel.textContent = 'KRX:'
-    countRow.appendChild(krxLabel)
-    this.titleKrxNumSpan = document.createElement('span')
-    Object.assign(this.titleKrxNumSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
-    countRow.appendChild(this.titleKrxNumSpan)
-    const krxSuffix = document.createElement('span')
-    Object.assign(krxSuffix.style, { color: COLOR.neutral })
-    krxSuffix.textContent = '종목'
-    countRow.appendChild(krxSuffix)
-
-    // NXT (빨강 라벨 + 삼각이모지)
-    const nxtLabel = document.createElement('span')
-    Object.assign(nxtLabel.style, { color: COLOR.up, marginLeft: '14px' })
-    nxtLabel.textContent = 'NXT'
-    countRow.appendChild(nxtLabel)
-    const nxtTri = document.createElement('span')
-    Object.assign(nxtTri.style, {
-      display: 'inline-block',
-      width: '0',
-      height: '0',
-      borderLeft: '5px solid transparent',
-      borderBottom: `5px solid ${COLOR.up}`,
-      marginRight: '3px',
-      verticalAlign: 'middle',
-    })
-    countRow.appendChild(nxtTri)
-    const nxtColon = document.createElement('span')
-    Object.assign(nxtColon.style, { color: COLOR.up })
-    nxtColon.textContent = ':'
-    countRow.appendChild(nxtColon)
-    this.titleNxtNumSpan = document.createElement('span')
-    Object.assign(this.titleNxtNumSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
-    countRow.appendChild(this.titleNxtNumSpan)
-    const nxtSuffix = document.createElement('span')
-    Object.assign(nxtSuffix.style, { color: COLOR.neutral })
-    nxtSuffix.textContent = '종목'
-    countRow.appendChild(nxtSuffix)
-
-    // 코스피
-    const kospiLabel = document.createElement('span')
-    Object.assign(kospiLabel.style, { color: COLOR.neutral, marginLeft: '14px' })
-    kospiLabel.textContent = '코스피:'
-    countRow.appendChild(kospiLabel)
-    this.titleKospiNumSpan = document.createElement('span')
-    Object.assign(this.titleKospiNumSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
-    countRow.appendChild(this.titleKospiNumSpan)
-    const kospiSuffix = document.createElement('span')
-    Object.assign(kospiSuffix.style, { color: COLOR.neutral })
-    kospiSuffix.textContent = '종목'
-    countRow.appendChild(kospiSuffix)
-
-    // 코스닥 (자주색 라벨)
-    const kosdaqLabel = document.createElement('span')
-    Object.assign(kosdaqLabel.style, { color: COLOR.kosdaq, marginLeft: '14px' })
-    kosdaqLabel.textContent = '코스닥:'
-    countRow.appendChild(kosdaqLabel)
-    this.titleKosdaqNumSpan = document.createElement('span')
-    Object.assign(this.titleKosdaqNumSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
-    countRow.appendChild(this.titleKosdaqNumSpan)
-    const kosdaqSuffix = document.createElement('span')
-    Object.assign(kosdaqSuffix.style, { color: COLOR.neutral })
-    kosdaqSuffix.textContent = '종목'
-    countRow.appendChild(kosdaqSuffix)
-
-    summaryBar.appendChild(countRow)
+    // 우측: 합계 KRX NXT▲ 코스피 코스닥 — 공통 컴포넌트 (market-count-row.ts)
+    this.marketCountRow = createMarketCountRow()
+    summaryBar.appendChild(this.marketCountRow.el)
     this.rootEl.appendChild(summaryBar)
 
     // 2. 선택된 업종 필터 배지
@@ -692,8 +603,7 @@ class SectorStockTable extends HTMLElement {
     if (this.rootEl && this.rootEl.parentNode) this.rootEl.parentNode.removeChild(this.rootEl)
     this.rootEl = null
     this.titleH3 = null
-    this.titleKospiNumSpan = null
-    this.titleKosdaqNumSpan = null
+    this.marketCountRow = null
     this.filterBadge = null
     this.emptyDiv = null
     this.scrollContainer = null
