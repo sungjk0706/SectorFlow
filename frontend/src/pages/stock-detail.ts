@@ -65,7 +65,7 @@ function makeAmountColumn(idx: number, label: HTMLElement): ColumnDef<StockDetai
     key: `amt${idx}`,
     label,
     align: 'right',
-    minWidth: 72, maxWidth: 95,
+    type: 'amount',
     render: (row) => fmtAmount(row.bars[idx]?.trade_amount ?? null),
   }
 }
@@ -75,7 +75,7 @@ function makeHighColumn(idx: number, label: HTMLElement): ColumnDef<StockDetail5
     key: `high${idx}`,
     label,
     align: 'right',
-    minWidth: 60, maxWidth: 75,
+    type: 'high',
     render: (row) => fmtHigh(row.bars[idx]?.high_price ?? null),
   }
 }
@@ -94,8 +94,8 @@ function buildColumns(sampleBars: StockDetail5dBar[]): ColumnDef<StockDetail5dIt
   nameCol.minWidth = 53
   nameCol.maxWidth = 133
   const cols: ColumnDef<StockDetail5dItem>[] = [
-    { key: 'seq', label: '순번', align: 'center', minWidth: 36, maxWidth: 36, render: (_t, idx) => createSeqCell(idx + 1) },
-    { key: 'code', label: '종목코드', align: 'center', minWidth: 72, maxWidth: 72, render: (row) => row.code },
+    { key: 'seq', label: '순번', align: 'center', type: 'seq', render: (_t, idx) => createSeqCell(idx + 1) },
+    { key: 'code', label: '종목코드', align: 'center', type: 'code', render: (row) => row.code },
     nameCol,
   ]
   for (let i = 0; i < 5; i++) {

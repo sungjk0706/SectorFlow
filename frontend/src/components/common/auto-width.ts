@@ -1,8 +1,8 @@
 /**
  * Auto_Width_Engine — 데이터 기반 컬럼 폭 자동 계산 (순수 함수, DOM 접근 없음).
  *
- * 한글 문자는 영문 대비 약 1.8배 폭으로 취급하여
- * 긴 한글 종목명("LIG디펜스앤에어로스페이스")이 잘리지 않도록 보장한다.
+ * 한글 문자는 영문 대비 약 1.4배 폭으로 취급하여
+ * 9자 이내 종목명까지 표시하면서 공간 낭비를 줄인다.
  */
 
 /** 기본 폰트 크기 — FONT_SIZE.body (13px) */
@@ -13,6 +13,9 @@ const CELL_HORIZONTAL_PADDING = 12
 
 /** 기본 최소 폭 (px) */
 const DEFAULT_MIN_WIDTH = 40
+
+/** 한글 문자 폭 대비 영문/숫자 배율. Tahoma/굴림 13px 기준 실측에 가까운 1.4 사용. */
+const KOREAN_SCALE = 1.4
 
 /**
  * 한글 유니코드 범위 판별.
@@ -30,7 +33,7 @@ function isKorean(code: number): boolean {
 
 /**
  * 텍스트 폭 추정 (px).
- * - 한글: fontSize × 0.75 × 1.8
+ * - 한글: fontSize × 0.75 × KOREAN_SCALE
  * - 영문/숫자/기호: fontSize × 0.75 × 1.0
  * - 공백: fontSize × 0.3
  */
@@ -43,7 +46,7 @@ export function estimateTextWidth(text: string, fontSize: number): number {
       width += fontSize * 0.3
     } else if (isKorean(code)) {
       // 한글
-      width += fontSize * 0.75 * 1.8
+      width += fontSize * 0.75 * KOREAN_SCALE
     } else {
       // 영문/숫자/기호
       width += fontSize * 0.75 * 1.0
