@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from backend.app.web.deps import get_current_user
 from backend.app.services.trade_history import get_buy_history, get_sell_history, get_daily_summary
+from backend.app.core.trading_calendar import get_previous_trading_day_str
 router = APIRouter(prefix="/api/trade-history", tags=["trade-history"])
 
 
@@ -38,3 +39,12 @@ async def daily_summary(
     _: str = Depends(get_current_user),
 ):
     return await get_daily_summary(days=days, date_from=date_from, date_to=date_to, trade_mode=trade_mode)
+
+
+@router.get("/prev-trading-day")
+async def prev_trading_day(
+    _: str = Depends(get_current_user),
+):
+    """직전 거래일 반환 (YYYY-MM-DD). 수익현황 '직전' 버튼용."""
+    yyyymmdd = get_previous_trading_day_str()
+    return {"date": f"{yyyymmdd[:4]}-{yyyymmdd[4:6]}-{yyyymmdd[6:8]}"}

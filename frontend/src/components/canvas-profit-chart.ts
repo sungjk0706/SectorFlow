@@ -51,7 +51,7 @@ export interface ProfitChartApi {
   updateData(data: ProfitChartRow[]): void
   resize(): void
   destroy(): void
-  setDateRange(from: string, to: string): void
+  setDateRange(from: string, to: string, label?: string): void
 }
 
 // ── 상수 ───────────────────────────────────────────────
@@ -498,10 +498,14 @@ export function createProfitChart(options: ProfitChartOptions): ProfitChartApi {
       canvas.removeEventListener('mousemove', onMove)
       wrapper.remove()
     },
-    setDateRange(from: string, to: string) {
+    setDateRange(from: string, to: string, label?: string) {
       dateRangeInput.setValue(from, to)
-      // 외부 설정 시 일치하는 빠른 버튼 활성화, 없으면 모두 비활성화
-      _activeQuickIdx = quickRanges.findIndex(qr => qr.from === from && qr.to === to)
+      // label 지정 시 label 기반 매칭 ('직전' 등 from/to가 동적 조회되는 버튼용)
+      if (label) {
+        _activeQuickIdx = quickRanges.findIndex(qr => qr.label === label)
+      } else {
+        _activeQuickIdx = quickRanges.findIndex(qr => qr.from === from && qr.to === to)
+      }
       updateQuickBtnActive()
     }
   }

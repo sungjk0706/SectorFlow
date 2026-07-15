@@ -124,6 +124,9 @@ export const api = {
   getDailySummary: (from: string, to: string, tradeMode: string, days?: number) =>
     request<Record<string, unknown>[]>(`/api/trade-history/daily-summary?date_from=${from}&date_to=${to}&trade_mode=${tradeMode}${days !== undefined ? `&days=${days}` : ''}`),
 
+  getPrevTradingDay: () =>
+    request<{ date: string }>(`/api/trade-history/prev-trading-day`),
+
   getStockDetail5d: () =>
     request<{
       date: string;
