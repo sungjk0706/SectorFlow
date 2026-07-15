@@ -57,7 +57,9 @@ export function createBadgeRow(): HTMLElement {
 
 /**
  * 단일 배지 생성.
- * 구조: [labelSpan 고정] [valueSpan 가변] [unitSpan 고정] [statusSpan 가변]
+ * 구조: [labelSpan 보조] [valueSpan 중심] [unitSpan 보조] [statusSpan 보조]
+ * - 위계 분리: value는 13px 굵게(중심), label은 13px 회색, unit/status는 11px 회색(보조)
+ * - 요소 간 gap 16px로 시각적 분리, 중앙 정렬
  * - label/unit은 생성 시 1회만 세팅
  * - value/status는 updateBadge()로 textContent만 갱신
  */
@@ -65,7 +67,8 @@ export function createBadge(label: string, unit: string): BadgeHandle {
   const el = document.createElement('span')
   Object.assign(el.style, {
     display: 'inline-flex',
-    alignItems: 'center',
+    alignItems: 'baseline',
+    justifyContent: 'center',
     flex: '1',
     minWidth: '0',
     whiteSpace: 'nowrap',
@@ -75,24 +78,30 @@ export function createBadge(label: string, unit: string): BadgeHandle {
     padding: '4px 12px',
     borderRadius: '4px',
     background: COLOR.neutralBg,
+    gap: '16px',
   })
 
   const labelEl = document.createElement('span')
   labelEl.style.color = COLOR.code
-  labelEl.textContent = `${label} `
+  labelEl.style.fontSize = FONT_SIZE.body
+  labelEl.textContent = label
   el.appendChild(labelEl)
 
   const valueEl = document.createElement('span')
-  valueEl.style.color = COLOR.up
+  valueEl.style.color = COLOR.neutral
+  valueEl.style.fontSize = FONT_SIZE.body
+  valueEl.style.fontWeight = FONT_WEIGHT.semibold
   el.appendChild(valueEl)
 
   const unitEl = document.createElement('span')
   unitEl.style.color = COLOR.code
+  unitEl.style.fontSize = FONT_SIZE.small
   unitEl.textContent = unit
   el.appendChild(unitEl)
 
   const statusEl = document.createElement('span')
   statusEl.style.color = COLOR.code
+  statusEl.style.fontSize = FONT_SIZE.body
   el.appendChild(statusEl)
 
   return { el, valueEl, unitEl, statusEl }
@@ -110,6 +119,9 @@ export function updateBadge(
     status?: BadgeStatus
     statusText?: string
     statusColor?: string
+    /** 상태 숫자 강조 — "(N종목)"에서 N만 파란색, 나머지 회색 */
+    statusNumber?: string
+    statusLabel?: string
   },
 ): void {
   badge.valueEl.textContent = value
@@ -120,7 +132,15 @@ export function updateBadge(
     badge.el.style.fontWeight = STATUS_WEIGHT[options.status]
   }
 
-  if (options?.statusText !== undefined) {
+  if (options?.statusNumber !== undefined) {
+    badge.statusEl.textContent = ''
+    badge.statusEl.appendChild(document.createTextNode('( '))
+    const numSpan = document.createElement('span')
+    numSpan.style.color = COLOR.down
+    numSpan.textContent = options.statusNumber
+    badge.statusEl.appendChild(numSpan)
+    badge.statusEl.appendChild(document.createTextNode(` ${options.statusLabel ?? ''} ) `))
+  } else if (options?.statusText !== undefined) {
     badge.statusEl.textContent = options.statusText
     badge.statusEl.style.color = options.statusColor ?? COLOR.code
   }

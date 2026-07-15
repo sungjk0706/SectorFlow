@@ -124,8 +124,8 @@ function renderSummary(): void {
 
   if (summaryEvalBadge) {
     updateBadge(summaryEvalBadge, fmtComma(evalTotal), {
-      statusText: `(${count}종목) `,
-      statusColor: COLOR.code,
+      statusNumber: String(count),
+      statusLabel: '종목',
     })
   }
 
@@ -153,9 +153,9 @@ function mount(container: HTMLElement): void {
 
   // 보유주식 요약 배지 행 — 공통 컴포넌트 (flex 3등분 고정)
   const summaryRow = createBadgeRow()
-  summaryEvalBadge = createBadge('📊 보유주식 평가금액', '원')
-  summaryPnlBadge = createBadge('📉 평가손익', '원')
-  summaryRateBadge = createBadge('📈 수익률', '%')
+  summaryEvalBadge = createBadge('📊 보유주식 평가금액 합계', '원')
+  summaryPnlBadge = createBadge('📉 보유주식 평가손익 합계', '원')
+  summaryRateBadge = createBadge('📈 보유주식 평가수익률', '%')
   summaryRow.appendChild(summaryEvalBadge.el)
   summaryRow.appendChild(summaryPnlBadge.el)
   summaryRow.appendChild(summaryRateBadge.el)
