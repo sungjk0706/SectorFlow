@@ -623,7 +623,7 @@ async def _handle_real_0d_tick(
     """
     try:
         from backend.app.services.engine_symbol_utils import _real_item_stk_cd, _base_stk_cd
-        from backend.app.services.engine_ws_dispatch import _ws_fid_int
+        from backend.app.services.engine_ws_parsing import _ws_fid_int
         from backend.app.services.engine_account_notify import notify_orderbook_update
 
         # 종목코드 추출
