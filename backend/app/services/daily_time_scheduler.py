@@ -992,14 +992,14 @@ def _apply_detail_to_entry(entry: dict, detail: dict, *, base_nk: str = "") -> N
     change = int(detail.get("change") or 0)
     if change != 0:
         entry["change"] = change
-    rate = float(detail.get("change_rate") or 0.0)
-    if rate != 0.0:
+    rate = float(detail["change_rate"]) if detail.get("change_rate") is not None else None
+    if rate is not None and rate != 0.0:
         entry["change_rate"] = rate
     sign = str(detail.get("sign") or "").strip()
     if sign and sign != "3":
         entry["sign"] = sign
-    amt = int(detail.get("trade_amount") or 0)
-    if amt > 0:
+    amt = int(detail["trade_amount"]) if detail.get("trade_amount") is not None else None
+    if amt is not None and amt > 0:
         entry["trade_amount"] = amt
         # 실시간 틱 데이터 저장 제거 (장 마감 후 UI 표시용 저장 안 함)
     strength = detail.get("strength")
