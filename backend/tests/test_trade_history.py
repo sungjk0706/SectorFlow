@@ -377,42 +377,64 @@ class TestInsertTrade:
 class TestTrimExpired:
     """_trim_expired: 모드별 보관 기한 초과 레코드 제거 (메모리 + DB)."""
 
-    async def test_test_mode_125_days_expired(self):
+    async def test_test_mode_6_months_expired(self):
+        """테스트모드: 달력 6개월 이전 데이터 삭제, 최근 데이터 보존."""
         from backend.app.services import trade_history
         trade_history._buy_history.clear()
         trade_history._sell_history.clear()
         old_rec = _make_buy_rec(date="2025-12-01", trade_mode="test")
         recent_rec = _make_buy_rec(date="2026-07-08", trade_mode="test")
         trade_history._buy_history.extend([old_rec, recent_rec])
+        from datetime import date as d
+        mock_today = d(2026, 7, 15)  # cutoff = 2026-01-15
+        mock_conn = MagicMock()
+        mock_cur = AsyncMock()
+        mock_cur.fetchone.return_value = (1,)  # test_db_count = 1
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__.return_value = mock_cur
+        mock_conn.execute.return_value = mock_cm
         with patch("backend.app.services.trade_history._history_lock"):
-            with patch("backend.app.core.trading_calendar.get_recent_trading_days") as mock_days:
-                with patch("backend.app.db.db_writer.execute_db_write", new_callable=AsyncMock) as mock_db:
-                    from datetime import date as d
-                    mock_days.return_value = [d(2026, 3, 1)]
-                    await trade_history._trim_expired()
+            with patch("backend.app.core.trading_calendar.get_kst_today", return_value=mock_today):
+                with patch("backend.app.core.trading_calendar.get_recent_trading_days") as mock_days:
+                    mock_days.return_value = [d(2026, 4, 1)]
+                    with patch("backend.app.db.database.get_db_connection", return_value=mock_conn):
+                        with patch("backend.app.db.db_writer.execute_db_write", new_callable=AsyncMock) as mock_db:
+                            await trade_history._trim_expired()
         dates = [r["date"] for r in trade_history._buy_history]
         assert "2026-07-08" in dates
         assert "2025-12-01" not in dates
-        assert mock_db.call_count == 2  # test + real DB 삭제
+        assert mock_db.call_count == 2  # test + real DB 삭제 (test_db_count=1, real_db_count=1)
 
     async def test_real_mode_90_days_preserved(self):
+        """실전모드: 90거래일 이내 데이터 보존."""
         from backend.app.services import trade_history
         trade_history._buy_history.clear()
         real_rec = _make_buy_rec(date="2026-05-01", trade_mode="real")
         trade_history._buy_history.append(real_rec)
+        from datetime import date as d
+        mock_today = d(2026, 7, 15)
+        mock_conn = MagicMock()
+        mock_cur = AsyncMock()
+        mock_cur.fetchone.return_value = (0,)  # real_db_count = 0 (삭제 대상 없음)
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__.return_value = mock_cur
+        mock_conn.execute.return_value = mock_cm
         with patch("backend.app.services.trade_history._history_lock"):
-            with patch("backend.app.core.trading_calendar.get_recent_trading_days") as mock_days:
-                with patch("backend.app.db.db_writer.execute_db_write", new_callable=AsyncMock):
-                    from datetime import date as d
+            with patch("backend.app.core.trading_calendar.get_kst_today", return_value=mock_today):
+                with patch("backend.app.core.trading_calendar.get_recent_trading_days") as mock_days:
                     mock_days.return_value = [d(2026, 4, 1)]
-                    await trade_history._trim_expired()
+                    with patch("backend.app.db.database.get_db_connection", return_value=mock_conn):
+                        with patch("backend.app.db.db_writer.execute_db_write", new_callable=AsyncMock) as mock_db:
+                            await trade_history._trim_expired()
         assert real_rec in trade_history._buy_history
+        assert mock_db.call_count == 0  # 삭제 대상 0건 → DELETE 미호출
 
     async def test_trim_exception_logged(self):
+        """캘린더 조회 실패 시 예외 로그 + 메모리 보존."""
         from backend.app.services import trade_history
         trade_history._buy_history.clear()
         trade_history._buy_history.append(_make_buy_rec())
-        with patch("backend.app.core.trading_calendar.get_recent_trading_days", side_effect=Exception("cal error")):
+        with patch("backend.app.core.trading_calendar.get_kst_today", side_effect=Exception("cal error")):
             await trade_history._trim_expired()
         assert len(trade_history._buy_history) == 1
 

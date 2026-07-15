@@ -17,6 +17,7 @@ import logging
 from collections import deque
 from datetime import datetime, date
 from typing import Optional
+from dateutil.relativedelta import relativedelta
 from backend.app.core.constants import BUY_COMMISSION, SELL_COMMISSION, SECURITIES_TAX
 from backend.app.services.engine_utils import LazyLock
 logger = logging.getLogger(__name__)
@@ -27,8 +28,8 @@ _sell_history: list[dict] = []
 _history_lock: LazyLock = LazyLock()
 _loaded: bool = False
 
-RETENTION_TRADING_DAYS_TEST: int = 125
-RETENTION_TRADING_DAYS_REAL: int = 90
+RETENTION_MONTHS_TEST: int = 6       # 테스트모드: 달력 기준 6개월 보관
+RETENTION_TRADING_DAYS_REAL: int = 90  # 실전모드: 거래일 90일 보관 (추후 논의 대상)
 
 
 # ── 메모리 초기화 ─────────────────────────────────────────────────────────────
@@ -117,37 +118,58 @@ async def _insert_trade(rec: dict) -> None:
 
 
 async def _trim_expired() -> None:
-    """보관 기한 초과 레코드 제거. 모드별 독립 적용. 메모리 + DB 동시 정리."""
+    """보관 기한 초과 레코드 제거. 모드별 독립 적용. 메모리 + DB 동시 정리.
+    실제 삭제 발생 시에만 로그 출력 (P21 사용자 투명성)."""
     try:
-        from backend.app.core.trading_calendar import get_recent_trading_days
-        test_cutoff = get_recent_trading_days(RETENTION_TRADING_DAYS_TEST)[0].isoformat()
+        from backend.app.core.trading_calendar import get_recent_trading_days, get_kst_today
+        test_cutoff = (get_kst_today() - relativedelta(months=RETENTION_MONTHS_TEST)).isoformat()
         real_cutoff = get_recent_trading_days(RETENTION_TRADING_DAYS_REAL)[0].isoformat()
 
+        # DB 삭제 대상 건수 사전 조회 (불필요한 DELETE + 조용한 로그 방지)
+        from backend.app.db.database import get_db_connection
+        conn = await get_db_connection()
+        async with conn.execute(
+            "SELECT COUNT(*) FROM trades WHERE trade_mode = 'test' AND date < ?",
+            (test_cutoff,),
+        ) as cur:
+            test_db_count = (await cur.fetchone())[0]
+        async with conn.execute(
+            "SELECT COUNT(*) FROM trades WHERE trade_mode = 'real' AND date < ?",
+            (real_cutoff,),
+        ) as cur:
+            real_db_count = (await cur.fetchone())[0]
+
+        # 메모리 정리 — 항상 수행 (메모리에 오래된 데이터가 있을 수 있음)
         async with _history_lock:
             _buy_history[:] = [r for r in _buy_history if not (r["trade_mode"] == "test" and r["date"] < test_cutoff)]
             _buy_history[:] = [r for r in _buy_history if not (r["trade_mode"] == "real" and r["date"] < real_cutoff)]
             _sell_history[:] = [r for r in _sell_history if not (r["trade_mode"] == "test" and r["date"] < test_cutoff)]
             _sell_history[:] = [r for r in _sell_history if not (r["trade_mode"] == "real" and r["date"] < real_cutoff)]
 
-        # DB 레벨 정리 — 메모리와 동일한 cutoff 기준
+        # DB 레벨 정리 — 삭제 대상이 있을 때만 DELETE 실행
         from backend.app.db.db_writer import execute_db_write, DBWriteOperation
-        await execute_db_write(DBWriteOperation(
-            table="trades", operation="DELETE", data={},
-            query="DELETE FROM trades WHERE trade_mode = 'test' AND date < ?",
-            params=(test_cutoff,),
-        ))
-        await execute_db_write(DBWriteOperation(
-            table="trades", operation="DELETE", data={},
-            query="DELETE FROM trades WHERE trade_mode = 'real' AND date < ?",
-            params=(real_cutoff,),
-        ))
-
-        logger.info(
-            "[정산] 만료 기록 정리 완료 — 테스트모드 보관기간=%s, 실전모드 보관기간=%s",
-            test_cutoff, real_cutoff,
-        )
+        if test_db_count > 0:
+            await execute_db_write(DBWriteOperation(
+                table="trades", operation="DELETE", data={},
+                query="DELETE FROM trades WHERE trade_mode = 'test' AND date < ?",
+                params=(test_cutoff,),
+            ))
+            logger.info(
+                "[정산] 테스트모드 %d개월 이전 매매 기록 %d건 삭제 완료",
+                RETENTION_MONTHS_TEST, test_db_count,
+            )
+        if real_db_count > 0:
+            await execute_db_write(DBWriteOperation(
+                table="trades", operation="DELETE", data={},
+                query="DELETE FROM trades WHERE trade_mode = 'real' AND date < ?",
+                params=(real_cutoff,),
+            ))
+            logger.info(
+                "[정산] 실전모드 %d거래일 이전 매매 기록 %d건 삭제 완료",
+                RETENTION_TRADING_DAYS_REAL, real_db_count,
+            )
     except Exception as e:
-        logger.error("[정산] 만료 기록 정리 실패: %s", e)
+        logger.error("[정산] 만료 기록 정리 실패: %s", e, exc_info=True)
 
 
 # ── 날짜 유틸 ──────────────────────────────────────────────────────────────
