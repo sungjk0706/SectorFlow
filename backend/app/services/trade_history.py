@@ -14,8 +14,10 @@
 """
 from __future__ import annotations
 import logging
+from collections import deque
 from datetime import datetime, date
 from typing import Optional
+from backend.app.core.constants import BUY_COMMISSION, SELL_COMMISSION, SECURITIES_TAX
 from backend.app.services.engine_utils import LazyLock
 logger = logging.getLogger(__name__)
 
@@ -236,7 +238,7 @@ async def record_buy(
     now = datetime.now()
     total_amt = price * qty
     # 테스트모드: 수수료 0.015% 계산
-    fee = round(total_amt * 0.00015) if trade_mode == "test" else 0
+    fee = round(total_amt * BUY_COMMISSION) if trade_mode == "test" else 0
     rec = {
         "ts": now.isoformat(timespec="seconds"),
         "date": now.strftime("%Y-%m-%d"),
@@ -309,15 +311,16 @@ async def record_sell(
         # realized_pnl 및 pnl_rate를 0으로 처리 (이후 코드에서 avg_buy_price > 0 체크로 안전하게 처리됨)
     total_amt = price * qty
     # 테스트모드: 수수료 0.015%, 세금 0.20%
-    fee = round(total_amt * 0.00015) if trade_mode == "test" else 0
-    tax = round(total_amt * 0.002) if trade_mode == "test" else 0
+    fee = round(total_amt * SELL_COMMISSION) if trade_mode == "test" else 0
+    tax = round(total_amt * SECURITIES_TAX) if trade_mode == "test" else 0
     # 매도금액(실수령) = 매도가×수량 - 수수료 - 세금
     sell_net = total_amt - fee - tax
     # 매수금액(실지출) = 매수가×수량 + 매수수수료
-    buy_fee = round(avg_buy_price * qty * 0.00015) if trade_mode == "test" and avg_buy_price > 0 else 0
+    buy_fee = round(avg_buy_price * qty * BUY_COMMISSION) if trade_mode == "test" and avg_buy_price > 0 else 0
     buy_total = avg_buy_price * qty + buy_fee if avg_buy_price > 0 else 0
-    # 실현손익 = 실수령 - 실지출
-    realized_pnl = sell_net - buy_total if avg_buy_price > 0 else 0
+    # 순수 실현손익 = (매도가 - 평균매수가) × 수량 (수수료/세금 제외)
+    realized_pnl = (price - avg_buy_price) * qty if avg_buy_price > 0 else 0
+    buy_principal = avg_buy_price * qty if avg_buy_price > 0 else 0
 
     rec = {
         "ts": now.isoformat(timespec="seconds"),
@@ -332,7 +335,7 @@ async def record_sell(
         "avg_buy_price": avg_buy_price,
         "buy_total_amt": buy_total,
         "realized_pnl": realized_pnl,
-        "pnl_rate": round(realized_pnl / buy_total * 100, 2) if buy_total > 0 else 0.0,
+        "pnl_rate": round(realized_pnl / buy_principal * 100, 2) if buy_principal > 0 else 0.0,
         "fee": fee,
         "tax": tax,
         "reason": reason,
@@ -399,7 +402,7 @@ async def get_sell_history(*, today_only: bool = False, date_from: str = "", dat
 # ── 집계 API ─────────────────────────────────────────────────────────────────
 
 async def get_total_realized_pnl(*, today_only: bool = False, date_from: str = "", date_to: str = "", trade_mode: Optional[str] = None) -> int:
-    """실현손익 합계."""
+    """실제 실현손익 합계 (현금 기준: 매도 실수령 - 매수 실지출)."""
     await _ensure_loaded()
     async with _history_lock:
         total = 0
@@ -415,7 +418,7 @@ async def get_total_realized_pnl(*, today_only: bool = False, date_from: str = "
                     continue
                 if date_to and rec["date"] > date_to:
                     continue
-            total += rec["realized_pnl"] or 0
+            total += (rec["total_amt"] or 0) - (rec["buy_total_amt"] or 0)
         return total
 
 
@@ -481,7 +484,7 @@ async def get_daily_summary(
                 if rec["date"] == d:
                     sell_count += 1
                     realized_pnl += rec["realized_pnl"] or 0
-                    buy_total += rec["buy_total_amt"] or 0
+                    buy_total += (rec["avg_buy_price"] or 0) * (rec["qty"] or 0)
                     sell_fee += rec.get("fee") or 0
                     sell_tax += rec.get("tax") or 0
             daily_map[d] = {
@@ -538,76 +541,95 @@ async def broadcast_history(trade_mode: str) -> None:
     await _broadcast_full_sell_history(trade_mode)
 
 
+def _consume_fifo_sell(q: deque[dict], sell_qty: int) -> None:
+    """FIFO: 매도 수량만큼 가장 오래된 매수 lot부터 차감."""
+    remaining = sell_qty
+    while remaining > 0 and q:
+        lot = q[0]
+        if lot["qty"] <= remaining:
+            remaining -= lot["qty"]
+            q.popleft()
+        else:
+            lot["qty"] -= remaining
+            remaining = 0
+
+
+def _build_fifo_lots(trades: list[dict], trade_mode: str) -> dict[str, deque[dict]]:
+    """거래 이력을 종목별 FIFO lot 큐로 변환."""
+    lots: dict[str, deque[dict]] = {}
+    for rec in trades:
+        if rec.get("trade_mode") != trade_mode:
+            continue
+        cd = rec["stk_cd"]
+        if rec["side"] == "BUY":
+            q = lots.setdefault(cd, deque())
+            q.append({
+                "qty": int(rec["qty"]),
+                "price": int(rec["price"]),
+                "fee": int(rec.get("fee", 0) or 0),
+                "date": rec.get("date", ""),
+                "stk_nm": rec.get("stk_nm", ""),
+            })
+        else:
+            q = lots.get(cd)
+            if q:
+                _consume_fifo_sell(q, int(rec["qty"]))
+    return lots
+
+
+def _position_from_lots(stk_cd: str, q: deque[dict]) -> dict | None:
+    """FIFO lot 큐에서 보유 포지션 dict를 파생."""
+    total_qty = sum(lot["qty"] for lot in q)
+    if total_qty <= 0:
+        return None
+    total_price = sum(lot["qty"] * lot["price"] for lot in q)
+    total_fee = sum(lot["fee"] for lot in q)
+    avg_price = total_price // total_qty
+    buy_amount = avg_price * total_qty
+    buy_amt = buy_amount + total_fee
+    buy_date = ""
+    for lot in q:
+        if lot["date"] and (not buy_date or lot["date"] < buy_date):
+            buy_date = lot["date"]
+    stk_nm = q[-1].get("stk_nm") or q[0].get("stk_nm") or stk_cd
+    return {
+        "stk_cd": stk_cd,
+        "stk_nm": stk_nm,
+        "qty": total_qty,
+        "avg_price": avg_price,
+        "buy_price": avg_price,
+        "buy_amount": buy_amount,
+        "buy_amt": buy_amt,
+        "total_fee": total_fee,
+        "tax": 0,
+        "cur_price": avg_price,
+        "eval_amt": buy_amount,
+        "pnl_amount": 0,
+        "pnl_rate": 0.0,
+        "buy_date": buy_date,
+    }
+
+
 async def build_positions_from_trades(trade_mode: str) -> dict[str, dict]:
-    """trades 이력에서 보유 포지션을 파생. SSOT: trades가 유일한 포지션 진실 원천."""
-    await _ensure_loaded()
-    positions: dict[str, dict] = {}
-    async with _history_lock:
-        for rec in _buy_history:
-            if rec.get("trade_mode") != trade_mode:
-                continue
-            cd = rec["stk_cd"]
-            qty = int(rec["qty"])
-            price = int(rec["price"])
-            fee = int(rec.get("fee", 0))
-            pos = positions.get(cd)
-            if pos:
-                old_qty = int(pos["qty"])
-                old_avg = int(pos["avg_price"])
-                old_fee = int(pos.get("total_fee", 0))
-                new_qty = old_qty + qty
-                pos["qty"] = new_qty
-                pos["avg_price"] = ((old_avg * old_qty) + (price * qty)) // new_qty if new_qty > 0 else price
-                pos["total_fee"] = old_fee + fee
-                # buy_date를 최초 매수일로 추적 (_buy_history는 DESC 정렬이므로 더 오래된 date가 나중에 옴)
-                rec_date = rec.get("date", "")
-                if rec_date and (not pos.get("buy_date") or rec_date < pos["buy_date"]):
-                    pos["buy_date"] = rec_date
-            else:
-                positions[cd] = {
-                    "stk_cd": cd,
-                    "stk_nm": rec.get("stk_nm", ""),
-                    "qty": qty,
-                    "avg_price": price,
-                    "cur_price": price,
-                    "total_fee": fee,
-                    "buy_amt": price * qty + fee,
-                    "eval_amt": price * qty,
-                    "pnl_amount": -(fee),
-                    "pnl_rate": 0.0,
-                    "buy_date": rec.get("date", ""),
-                }
-        for rec in _sell_history:
-            if rec.get("trade_mode") != trade_mode:
-                continue
-            cd = rec["stk_cd"]
-            pos = positions.get(cd)
-            if not pos:
-                continue
-            sell_qty = int(rec["qty"])
-            old_qty = int(pos["qty"])
-            new_qty = max(0, old_qty - sell_qty)
-            if new_qty == 0:
-                positions.pop(cd, None)
-            else:
-                pos["qty"] = new_qty
-                pos["total_fee"] = int(pos.get("total_fee", 0) * new_qty / old_qty) if old_qty > 0 else 0
-    return positions
+    """trades 이력에서 보유 포지션을 파생. SSOT: trades가 유일한 포지션 진실 원천.
 
-
-async def get_earliest_buy_date(stk_cd: str, trade_mode: str) -> str:
-    """해당 종목의 최초 매수일 조회. SSOT: _buy_history에서 파생.
-
-    _buy_history는 DESC 정렬(최신순)이므로 전체 순회하며 최소 date를 추적한다.
+    - 종목별 FIFO(선입선출) lot 매칭: 매도 시 가장 오래된 매수 lot부터 차감.
+    - 반환된 `avg_price`/`buy_amount`는 순매입(수수료 제외), `buy_amt`/`total_fee`는
+      수수료 포함, `pnl_amount`/`pnl_rate`는 순수 차익(수수료/세금 제외).
     """
     await _ensure_loaded()
     async with _history_lock:
-        earliest = ""
-        for rec in _buy_history:
-            if rec.get("trade_mode") != trade_mode:
-                continue
-            if rec["stk_cd"] == stk_cd:
-                d = rec.get("date", "")
-                if d and (not earliest or d < earliest):
-                    earliest = d
-        return earliest
+        # _buy_history/_sell_history는 DESC 정렬(최신순)이므로 시간순으로 처리
+        all_trades = list(_buy_history) + list(_sell_history)
+        all_trades.sort(key=lambda r: r["ts"])
+        lots = _build_fifo_lots(all_trades, trade_mode)
+        return {cd: pos for cd, q in lots.items() if (pos := _position_from_lots(cd, q)) is not None}
+
+
+async def get_earliest_buy_date(stk_cd: str, trade_mode: str) -> str:
+    """해당 종목의 최초 매수일 조회. SSOT: build_positions_from_trades()에서 파생.
+
+    FIFO 기준 잔여 lot 중 가장 오래된 매수일을 반환.
+    """
+    positions = await build_positions_from_trades(trade_mode)
+    return positions.get(stk_cd, {}).get("buy_date", "")

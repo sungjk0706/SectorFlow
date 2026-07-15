@@ -45,18 +45,26 @@ def merge_positions_from_rest(
         ba = _rest_row_int(r, "buy_amount", "buy_amt", "pur_amt")
         if ba <= 0:
             ba = buy * qty
+        total_fee = _rest_row_int(r, "sum_cmsn", "pur_cmsn")
+        buy_amt = ba + total_fee
+        eval_amt = _rest_row_int(r, "eval_amount", "evlt_amt", "evltv_amt")
+        pnl_amount = eval_amt - ba if eval_amt and ba else 0
+        pnl_rate = round(pnl_amount / ba * 100, 2) if ba else 0.0
         row = {
             "stk_cd":     cd,
             "stk_nm":     str(r.get("stk_nm", cd)).strip(),
             "qty":        qty,
             "avail_qty":  _rest_row_int(r, "avail_qty", "trde_able_qty") or qty,
             "buy_price":  buy,
+            "avg_price":  buy,
             "pur_pric":   buy,
             "cur_price":  cur,
             "buy_amount": ba,
-            "pnl_amount": _rest_row_int(r, "pnl_amount", "evltv_prft", "evlt_ploss"),
-            "pnl_rate":   _rest_row_float(r, "pnl_rate", "prft_rt"),
-            "eval_amount": _rest_row_int(r, "eval_amount", "evlt_amt", "evltv_amt"),
+            "buy_amt":    buy_amt,
+            "total_fee":  total_fee,
+            "pnl_amount": pnl_amount,
+            "pnl_rate":   pnl_rate,
+            "eval_amount": eval_amt,
             "crd_tp":     str(r.get("crd_tp", "") or "").strip(),
             "pur_cmsn":   _rest_row_int(r, "pur_cmsn"),
             "sell_cmsn":  _rest_row_int(r, "sell_cmsn"),
@@ -283,18 +291,20 @@ def apply_last_price_to_positions_inplace(
             if int(s.get("cur_price", 0) or 0) == price:
                 return False  # 가격 변경 없음 — 재계산 스킵
             s["cur_price"] = price
-            # 평가손익·수익률·평가금액 실시간 재계산 (수수료+세금 반영)
+            # 평가손익·수익률·평가금액 실시간 재계산 (순수 차익: 수수료/세금 제외)
             qty = int(s.get("qty", 0) or 0)
-            buy_amt = int(s.get("buy_amount", 0) or 0)
-            if qty > 0 and buy_amt > 0:
+            buy_amount = int(s.get("buy_amount", 0) or 0)
+            if qty > 0 and buy_amount > 0:
                 cmsn = int(s.get("sum_cmsn", s.get("pur_cmsn", 0)) or 0)
                 tax = int(s.get("tax", 0) or 0)
                 eval_amt = price * qty
-                pnl = eval_amt - buy_amt - cmsn - tax
-                rate = round(pnl / buy_amt * 100, 2) if buy_amt else 0.0
+                pnl = eval_amt - buy_amount
+                rate = round(pnl / buy_amount * 100, 2) if buy_amount else 0.0
                 s["eval_amount"] = eval_amt
                 s["pnl_amount"] = pnl
                 s["pnl_rate"] = rate
+                s["total_fee"] = cmsn
+                s["buy_amt"] = buy_amount + cmsn
             return True
     return False
 

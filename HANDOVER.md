@@ -26,6 +26,30 @@
 
 ---
 
+### 작업: 보유종목/수익현황 FIFO lot 매칭 + 수수료·세금 분리 — 완료
+
+**진행 단계**: 완료. 다음 작업: 업종 점수 산정 방식 리팩토링 Step 4 사전조사 대기.
+
+**완료 내용 (2026-07-15)**:
+- **현상**: 보유종목 테이블에서 LG디스플레이(034220)의 매수일이 `07-14`로, 매수가가 `10,715`원으로 표시되었으나 실제 매수 기록은 07-15 11:39:54에 1주 10,800원. `수익현황` 보유평가손익/수익률과 `보유종목` 수익률/평가손익이 수수료·세금을 혼입하여 순수 차익과 다르게 표시됨.
+- **근본 원인 (`backend/app/services/trade_history.py:541-595`)**: `build_positions_from_trades()`가 `_buy_history`/`_sell_history`를 `ts` DESC로 순회하며 전체 매수 건의 가중평균 매입가와 전체 매수 건 중 최초 매수일을 현재 보유 포지션에 반영. 매도로 처분된 과거 매수 lot의 가격/날짜가 제거되지 않고 누적됨. FIFO(선입선출) lot 매칭 미적용. 추가로 `record_sell`/`get_daily_summary`/`aggregatePnl`/`buildSector*` 등에서 순수 차익과 수수료·세금, 분모 순매입이 혼재되어 수익률/손익이 중복 또는 누락됨.
+- **수정 내용**: 백엔드 6파일 + 프론트엔드 4파일 + 테스트 3파일 + DB 마이그레이션 1회:
+  - `trade_history.py`: `build_positions_from_trades()`에 FIFO lot 큐 도입 (`_build_fifo_lots`, `_consume_fifo_sell`, `_position_from_lots` 분리). `get_earliest_buy_date()`를 동일 FIFO 기준으로 변경. `record_sell()`은 `realized_pnl`/`pnl_rate`를 순수 차익으로, `get_total_realized_pnl()`은 `total_amt - buy_total_amt` net으로 유지. `get_daily_summary` 분모를 순매입으로 변경.
+  - `dry_run.py`: `_recalc_pnl()`이 순수 차익(`pnl_amount`, `pnl_rate`)과 총매입(`buy_amt`/`total_fee`)을 분리.
+  - `engine_account.py`: `_broadcast_account()`에서 실전 `buy_date`를 `build_positions_from_trades()` 결과에서 주입.
+  - `engine_account_notify.py`: `_POSITION_CMP_KEYS`/`_MIN_POSITION_KEYS`에 `avg_price`, `buy_price`, `buy_amount`, `buy_amt`, `total_fee`, `tax` 추가.
+  - `engine_account_rest.py`: `merge_positions_from_rest`/`apply_last_price_to_positions_inplace`에서 `total_fee`, `buy_amt`, `avg_price` 분리 및 순수 차익 계산.
+  - `profit-shared.ts`/`profit-overview.ts`: `aggregatePnl`/`buildSector*`/`buildMonthlyDrilldown` 분모를 순매입으로 변경, 수익률/손익은 순수 차익.
+  - `sell-position.ts`: `Position`에 `total_fee`, `tax` 추가 후 `수수료`, `세금` 컬럼 표시.
+  - `frontend/src/types/index.ts`: `Position` 타입에 `total_fee`, `tax` 추가.
+  - `test_trade_history.py`, `test_dry_run.py`, `test_engine_account_rest.py`: FIFO/순수 차익/분모 변경에 맞춰 기대값 수정.
+  - `stocks.db`: 89건 매도 행을 FIFO 기준으로 `avg_buy_price`, `buy_total_amt`, `total_amt`, `fee`, `tax`, `realized_pnl`, `pnl_rate` 재계산. 백업: `backend/data/stocks.db.bak.20260715T133031`.
+- **영향 범위**: 보유종목 테이블, 수익현황(보유평가손익/수익률, 누적손익/수익률, 업종별 종목 수익, 일별 손익 차트), 매도 기록, 일일 요약, RiskManager 실현손익 집계. 사용자가 보는 `수익률`/`손익`은 순수 차익(수수료·세금 제외)으로 통일, `수수료`/`세금`은 별도 컬럼/요약으로 표시. 거래 로직 자체는 `execute_buy`/`execute_sell` 단일 경로 유지.
+- **검증**: `python -m py_compile` 통과, 백엔드 전체 단위 테스트 2743 passed, `npm run typecheck` 및 `npm run build` 통과, `python main.py` 런타임 15초 기동 정상, 잔존 프로세스 0건, `build_positions_from_trades('test')`로 `034220` 직접 확인 (`avg_price=10800`, `buy_date=2026-07-15`, `buy_amt=10802`).
+- **P10/P15/P16/P18/P22/P23/P24**: `trades`를 SSOT로 하고 `build_positions_from_trades()`에서 FIFO로 파생 데이터를 일치시킴 (P10/P22). 단일 주문 경로(`execute_buy`/`execute_sell`) 및 `RiskManager`/`CircuitBreaker` 배선 유지 (P15/P16/P18). `avg_price`/`buy_amount`/`buy_amt`/`total_fee`/`tax`/`pnl_amount` 용어와 분리 일관 (P23). `build_positions_from_trades()`를 3개 헬퍼로 분리하여 50줄 기준 준수 (P24).
+
+---
+
 ### 작업: 호가 틱(0D) 처리 ImportError 근본 수정 — import 출처 단일화 — 완료
 
 **진행 단계**: 완료 (커밋 `ede4515`). 다음 작업: 업종 점수 산정 방식 리팩토링 Step 4 사전조사 대기.
@@ -663,6 +687,27 @@
 - 이후 B-11 (P1) → B-12~B-19 (P2) → B-20~B-23 (P3) → F-02~F-07 순서
 
 ## 미해결 문제
+
+- **자동 종료 로그의 정상/비정상 종료 구분 누락 — P21 사용자 투명성 위반 (2026-07-15 심층조사 발견)**
+  - 증상: WS 클라이언트 0명 시 1초 후 백엔드 자가 SIGTERM 종료. 7-15 장중 비정상 종료(이벤트 루프 블로킹)와 7-14/7-13 새벽 정상 종료(브라우저 닫기)가 **모두 동일한 "정상 종료" 로그**로 기록됨 → 사용자가 로그만 봐서는 문제인지 아닌지 구분 불가.
+  - 근본 원인 (`backend/app/web/ws_manager.py:288-305`): `_send_sigterm()`이 연결 해제 원인을 구분하지 않고 무조건 `logger.info("[연결] 재연결 없음 — 종료 신호 전송 (정상 종료)")`로 로깅. WS close code(1000=정상, 1006=비정상/강제) 또는 uvicorn ping/pong 타임아웃 여부를 확인하지 않음.
+  - 연쇄 원인 체인 (이번 세션 심층조사로 확정):
+    1. 이벤트 루프 블로킹 (과거: 호가 ImportError `pipeline_compute.py:626`, 이미 fix됨 커밋 `ede4515`)
+    2. uvicorn ws_ping_timeout=10초 초과 (`main.py:71`) → WS 강제 종료
+    3. `ws_manager.py:110-113` unregister() → 클라이언트 0명 → 1초 후 SIGTERM
+    4. `_send_sigterm()` → "정상 종료" 로그 (원인 구분 없음)
+  - 증거 (로그 기반):
+    - 7-15 장중 자동 종료 2회 (11:31:06, 11:40:32) — 모두 호가 ImportError 대량 발생 직후. 11:40:32 종료는 기동+39초 = ping_interval(30)+ping_timeout(10)=40초와 일치.
+    - 7-14/7-13 새벽 자동 종료 (각 10회+) — 0D 에러 0건, 사용자 의도적 브라우저 닫기.
+    - 두 패턴 모두 동일한 "정상 종료" 로그 → 구분 불가.
+  - 수정 방향 (다음 세션 심층조사 대상):
+    - WS 연결 해제 원인을 구분해서 로깅 — 브라우저 정상 close(code 1000) → "사용자 연결 종료", uvicorn ping/pong 타임아웃 강제 종료 → "이벤트 루프 응답 지연으로 연결 강제 해제 — 백엔드 처리 지연 의심" 경고.
+    - 자동 종료 로직 자체는 유지 (문제 발생 시 터져서 알리는 역할, P21 준수). 종료 비활성화는 기각 — P20/P21 위반 (문제 숨김).
+    - `ws_manager.py:288-305`의 `_send_sigterm()`에서 WS close code 또는 연결 해제 경위를 `unregister()` 시점에 저장 후 로깅에 반영.
+  - 파일: `backend/app/web/ws_manager.py:105-117` (unregister), `:288-305` (_send_sigterm), `main.py:70-71` (uvicorn ping 설정), `frontend/src/api/ws.ts:118-129` (onclose 처리).
+  - P21 (사용자 투명성): 문제 발생 시 "정상"이 아닌 "비정상"으로 명확 표시되어야 사용자가 인지하고 조사 가능.
+  - 참고: 직접 원인(호가 ImportError)은 이미 fix됨. fix 후 31분+ 안정, 0D 에러 0건, 자동 종료 0회 검증. 본 문제는 "향후 다른 원인으로 이벤트 루프 블로킹 시 동일 현상 재발"에 대한 투명성 강화.
+
 - **5일봉 미확정 당일 행 유입 + 기존 행 잔존 + master.date 정합성 — 근본 해결 완료 (2026-07-15, 커밋 `f50ce9f`)**
   - 증상: 종목상세 화면 5일봉 테이블에서 07-15 행(거래대금=0, 고가=263,000=장전 기준가)이 표시됨. 장 시작도 안 했는데 오늘 날짜 행이 DB에 있음. 직전 수정(`d80a1a0`) 후에도 07-15 행이 잔존하여 문제 지속.
   - 근본 원인 (3가지):

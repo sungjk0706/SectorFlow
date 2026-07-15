@@ -53,6 +53,14 @@ const COLUMNS: ColumnDef<Position>[] = [
     render: (p) => createNumberCell(p.buy_amt ?? 0),
   },
   {
+    key: 'total_fee', label: '수수료', align: 'right', minWidth: 60, maxWidth: 72,
+    render: (p) => createNumberCell(p.total_fee ?? 0),
+  },
+  {
+    key: 'tax', label: '세금', align: 'right', minWidth: 60, maxWidth: 72,
+    render: (p) => createNumberCell(p.tax ?? 0),
+  },
+  {
     key: 'pnl', label: '평가손익', align: 'right', minWidth: 72, maxWidth: 85,
     render: (p) => {
       const sectorStock = hotStore.getState().sectorStocks[normalizeStockCode(p.stk_cd)]

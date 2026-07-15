@@ -277,7 +277,7 @@ function buildSectorDonutData(sells: Record<string, unknown>[]): SectorDonutRow[
   for (const r of sells) {
     const sector = String(r.sector ?? '미분류')
     const pnl = Number(r.realized_pnl ?? 0)
-    const buyTotal = Number(r.buy_total_amt ?? 0)
+    const buyTotal = Number(r.avg_buy_price ?? 0) * Number(r.qty ?? 0)
     pnlMap.set(sector, (pnlMap.get(sector) ?? 0) + pnl)
     buyTotalMap.set(sector, (buyTotalMap.get(sector) ?? 0) + buyTotal)
   }
