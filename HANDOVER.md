@@ -1,97 +1,66 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-15 (수신률 왜곡 근본 해결 + dead code 4건 제거)
-- 작업: P-001 후속 수신률 100% 왜곡 근본 해결 (7개 파일) + ratio_5d/FID 11/dead code 4건 제거 (11개 파일)
-- 상태: 구현 + 검증 완료, 커밋 + 푸시 완료.
+- 날짜: 2026-07-15 (문서 보강 + 정산 만료 기록 정리 로직 수정)
+- 작업: 안건 3 문서 보강 (AGENTS.md 규칙 0-3/0-4/0-5 추가 + 스킬 4개 사전조사 항목 추가) + 정산 만료 기록 정리 로직 수정 (테스트모드 달력 6개월 + 조건부 로그)
+- 상태: 구현 + 검증 완료, 커밋 완료.
 
 ## 직전 완료 작업 (이번 세션)
 
-### dead code 4건 제거 + FID 11 폴백 제거 (11개 파일)
+### 1. 안건 3 문서 보강 — AGENTS.md 규칙 0-3/0-4/0-5 + 스킬 4개 사전조사 항목 (5개 파일)
 
-**수정 내용 (4건)**:
-1. **`ratio_5d` dead code 제거 (P16)** — `sector_calculator.py`, `models.py` + 테스트 5개
-   - `ratio_5d` (당일 거래대금 ÷ 5일 평균 거래대금 × 100) 계산만 하고 업종 점수/순위/UI 어디에서도 사용되지 않음
-   - `79a4a56` (2026-06-09)에서 무명 커밋으로 추가됨
-   - `StockScore.ratio_5d_pct`, `SectorScore.avg_ratio_5d_pct` 필드 제거
-   - `sector_calculator.py`에서 계산(라인 96), 저장(라인 118), 평균(라인 145), SectorScore 저장(라인 154) 제거
-   - 테스트 5개 파일에서 `ratio_5d_pct`/`avg_ratio_5d_pct` 참조 제거, `TestComputeSectorScoresRatio5d` 클래스 3개 테스트 제거
-2. **FID 11(대비) 빈 값 → 0 폴백 제거 (P20)** — `pipeline_compute.py:585`
-   - `_ws_fid_int(vals, "11", 0)` → `_ws_fid_raw`로 빈 값 체크 후 None 유지 (Step 1~2 동일 패턴)
-   - `diff`는 보유종목 `_dr_pos["change"]`에만 사용, 프론트엔드는 이미 null 안전
-3. **`notify_desktop_trade_price` dead code 제거 (P16)** — `engine_account_notify.py:350-367`
-   - 프로덕션 호출처 0건, 테스트에서만 3회 호출
-   - 함수 + `TestNotifyDesktopTradePrice` 클래스 3개 테스트 제거
-4. **`lta`/`ltp`/`lst` dict dead code 제거 (P16)** — `market_close_pipeline.py:410-412, 463, 465, 474, 492, 500`
-   - 3개 dict 모두 정의/할당만 있고 읽는 곳 0건
-   - dict 정의 3개 + 할당 7곳 제거
+**배경**: 사용자가 설계한 `_received_codes`가 승인 없이 "dead code"로 제거되고, `ratio_5d`가 사용자 모르게 추가되는 문제 확인.
+
+**수정 내용**:
+- **AGENTS.md 섹션3 규칙 0에 하위 항목 3개 추가**:
+  - **규칙 0-3 (승인 없는 롤백 절대 금지)**: 코드를 이전 상태로 되돌리는 모든 행위(코드 제거, 함수/변수 삭제, git revert/reset, 구조 회귀)는 사유·대상·영향 범위 보고 후 승인 필수. "dead code로 판단되어 제거" 단독 사유로 사용자 설계 로직 승인 없이 되돌리는 것 명시적 금지.
+  - **규칙 0-4 (핵심 로직 변경 시 UI 기준 설명+승인)**: 수신률·업종 점수·매매 로직·매수 후보 선정·매도 조건 변경 시 변경 전/후 동작을 UI 기준 일반 용어로 설명 후 승인. 기술 식별자만 나열하고 UI 설명 생략 금지.
+  - **규칙 0-5 (사용자 설계/승인 로직 더 엄격)**: 사용자가 직접 설계/승인한 로직 변경 시 사유·영향 범위·대안 상세 보고 후 승인 필수.
+- **스킬 4개 사전조사 섹션에 "기존 로직 롤백 여부 확인" 항목 추가**:
+  - `backend-fix/SKILL.md`: 수신률·업종 점수·매매 로직 예시
+  - `frontend-fix/SKILL.md`: 매수 후보 목록·업종 점수 표시·보유 종목 등 핵심 화면 예시
+  - `problem-solve/SKILL.md`: 핵심 기능 전체 예시
+  - `safe-trade/SKILL.md`: 거래 로직 최우선 엄격 적용 명시 (돈이 직결되므로 규칙 0-4/0-5를 다른 스킬보다 더 엄격하게 적용)
+
+**검증 결과**: git diff로 5개 파일 교차 참조 일관성 확인 완료. 규칙 번호 체계(0→0-1→0-2→0-3→0-4→0-5→1) 순서 정렬 확인.
+
+**영향 범위**: 문서 파일 5개만 변경. 코드 변경 없음.
+
+**커밋**: `ac3fbbf` — docs: 승인 없는 롤백 금지 + 핵심 로직 변경 UI 설명 의무 + 사용자 설계 로직 엄격 절차 규칙 추가
+
+### 2. 정산 만료 기록 정리 로직 수정 — `trade_history.py` + `test_trade_history.py` (2개 파일)
+
+**문제**: 로그 `[정산] 만료 기록 정리 완료 — 테스트모드 보관기간=2026-01-13, 실전모드 보관기간=2026-03-09`에서 보관기간이 과거 날짜로 표시되어 최근 거래 기록이 삭제되고 있는지 의심.
+
+**조사 결과**:
+- 최근 데이터 삭제 문제는 없었음 — `date < cutoff` 조건으로 cutoff 이전 데이터만 삭제, cutoff 이후~오늘 데이터 보존. 오늘(7/15) 데이터 103건/89건 DB에 안전 존재 확인.
+- 실제 문제 2가지: (1) 테스트모드 보관 기준이 거래일 125일(≈1월 13일)로 달력 기준 6개월과 미세 불일치, (2) 로그가 매 실행마다 출력되며 "보관기간" 모호 용어로 오해 유발 (P21 위반).
+
+**수정 내용**:
+- **상수 변경**: `RETENTION_TRADING_DAYS_TEST = 125` → `RETENTION_MONTHS_TEST = 6` (달력 기준 6개월). 실전모드 `RETENTION_TRADING_DAYS_REAL = 90` 현행 유지 (추후 논의 대상).
+- **cutoff 계산 변경**: `get_recent_trading_days(125)[0]` → `get_kst_today() - relativedelta(months=6)` (달력 6개월).
+- **DB COUNT 사전 조회**: 삭제 대상 건수를 COUNT 쿼리로 조회 → 0건이면 DELETE 실행 안 함 + 로그 출력 안 함.
+- **조건부 로그**: 삭제 발생 시에만 INFO 로그 출력 — "테스트모드 6개월 이전 매매 기록 N건 삭제 완료" / "실전모드 90거래일 이전 매매 기록 N건 삭제 완료".
+- **except에 `exc_info=True` 추가** (스택 트레이스 기록).
+- **테스트 3건 수정**: `test_test_mode_6_months_expired` (달력 6개월 기준), `test_real_mode_90_days_preserved` (DB COUNT=0 → DELETE 미호출 검증), `test_trim_exception_logged` (`get_kst_today` mock).
 
 **검증 결과**:
-- py_compile 11개 파일 전부 통과
-- 단위 테스트 382개 전부 통과 (1.01s)
-- 런타임 기동 (`-W error::RuntimeWarning`) 정상, 에러/Traceback/RuntimeWarning 0건, 금지 패턴 5개 0건
-- 수신률 상승 로그 정상 확인: 9/134 (6.7%) → 70/134 (52.2%) 점진적 증가
+- py_compile 2개 파일 통과
+- pytest 64개 테스트 전체 통과 (0.39s)
+- 런타임 기동 (`-W error::RuntimeWarning`) 정상, 에러/Traceback/RuntimeWarning 없음. "만료 기록 정리" 로그 출력 안 됨 (삭제 대상 0건 → 조건부 로그 정상 동작). 체결 이력 103건/89건 정상 로드. 금지 패턴 5개 없음.
 - 잔존 프로세스 0건 확인
 
-**영향 범위**: 프로덕션 5개 파일 + 테스트 6개 파일. 프론트엔드 영향 없음 (이미 null 안전).
+**영향 범위**: `trade_history.py` (상수 1개 + `_trim_expired()` 함수), `test_trade_history.py` (`TestTrimExpired` 3개 테스트). `_trim_expired`는 `_ensure_loaded()`에서만 호출 (앱 기동 시 1회). 프론트엔드 영향 없음.
 
 ## 다음 세션 작업
-- 안건 3 (문서 보강): AGENTS.md + 4개 SKILL.md에 "사용자 승인 없는 롤백 금지" + "핵심 로직 변경 시 UI 기준 설명 후 승인" 규칙 추가 — 사용자 승인 대기
-- 기존 발견 문제: `notify_raw_real_data` dead code (P16) 별도 검토 필요 시 사용자 지시
+- 실전모드 보관 기준(`RETENTION_TRADING_DAYS_REAL = 90`) 추후 논의 — 사용자가 "증권사 서버에 데이터가 다 있으니 추후 논의"라고 명시.
+- 기존 발견 문제: `notify_raw_real_data` dead code (P16) 별도 검토 필요 시 사용자 지시.
 
 ## 직전 완료 작업 (이전 세션)
 
-### 수신률 100% 왜곡 근본 해결 — _received_codes 복원 + 모든 경로 None→0 폴백 제거 (7개 파일)
+### dead code 4건 제거 + FID 11 폴백 제거 (11개 파일) — 커밋 `f5047b6`
 
-**문제**: P-001 Step 1~3 완료 후에도 앱 기동 직후 수신률이 즉시 100%로 표시되고, 백엔드 로그에 수신률 상승 과정이 표시되지 않았음.
-
-**근본 원인 (git history 추적으로 확정)**:
-1. **`89e1bd6` (2026-07-13)에서 `_received_codes` (누적 수신 세트) 제거** — "수신율 0% 고정 해결" 목적이었으나, 사용자 설계의 "한 번 수신된 종목은 수신된 것으로 유지" 메커니즘 상실. `_reset_realtime_fields()`가 메모리를 None으로 초기화하면 수신률이 0%로 강하.
-2. **`stock_tables.py:350, 352` DB 로드 시 NULL → 0.0/0 폴백** — P-001이 다루지 않은 경로. DB NULL을 0으로 폴백하여 미수신 데이터가 정상 수신으로 오분류.
-3. **`market_close_pipeline.py` 7곳 확정 데이터 반영 시 `or 0` 폴백** — None을 0으로 폴백.
-4. **`pipeline_compute.py` Phase 1/2 루프 수신률 로그 없음** — 임계값 통과 시에만 로그 출력, 상승 과정 미표시 (P21 위반).
-
-**수정 내용 (7개 파일)**:
-- `pipeline_compute.py`: `_received_codes` 복원 (전역 변수 + 틱 수신 시 `add()` + 수신률 계산을 `_received_codes` + `_has_any_realtime_data` 결합 방식). Phase 1/2 루프 수신 종목 수 증가 시 로그 출력 추가 (P21).
-- `stock_tables.py:350, 352`: `load_master_stocks_table` DB NULL → None 유지 (폴백 제거).
-- `market_close_pipeline.py:255, 259, 450-451, 464, 481, 490, 923, 927`: 확정 데이터 반영 시 None → 0 폴백 7곳 제거.
-- `sector_calculator.py:78`: `trade_amounts.get()` 폴백 제거 → None 유지.
-- `engine_radar.py:18`: `get_trade_amount_cache()` 폴백 제거 → None 유지, 반환 타입 `dict[str, int | None]`.
-- `buy_filter.py:221-223`: `trade_amount_cache` None 안전 처리 (거래대금 순위 정렬 시 None → `-inf`).
-- `daily_time_scheduler.py:995, 1001`: `_apply_detail_to_entry` 폴백 제거 → None 유지.
-
-**검증 결과**:
-- py_compile 7개 파일 전부 통과
-- 단위 테스트 523개 전부 통과 (test_pipeline_compute 87 + test_sector_calculator 34 + test_market_close_pipeline 57 + test_daily_time_scheduler 131 + test_engine_ws_parsing 107 + test_stock_classification_data 24 + test_buy_filter 64 + test_engine_cache 19)
-- 런타임 기동 (`-W error::RuntimeWarning`) 정상, 에러/Traceback/RuntimeWarning 없음, 금지 패턴 5개 로그 없음
-- **수신률 상승 로그 확인** (NXT 애프터마켓 기동):
-  ```
-  18:22:46 수신율 갱신 — 11/134 (8.2%) — 임계값 대기 중 (100.0%)
-  18:22:47 수신율 갱신 — 22/134 (16.4%) — 임계값 대기 중 (100.0%)
-  ...
-  18:22:56 수신율 갱신 — 50/134 (37.3%) — 임계값 대기 중 (100.0%)
-  ```
-- 잔존 프로세스 0건 확인
-
-**영향 범위**: 7개 파일. 수신률 계산 로직 (`pipeline_compute.py`), DB 로드 (`stock_tables.py`), 확정 데이터 반영 (`market_close_pipeline.py`), 업종 점수 (`sector_calculator.py`), 거래대금 캐시 (`engine_radar.py`, `buy_filter.py`), 확정 데이터 적용 (`daily_time_scheduler.py`). 프론트엔드 — 영향 없음 (이미 null 안전).
-
-**P-001 전체 완료 요약 (Step 1~3 + 후속 근본 해결)**:
-- Step 1 (`engine_radar.py:73-83`): 틱 수신 빈 FID 0 폴백 제거 → None 유지
-- Step 2 (`pipeline_compute.py:576-577`): 보유종목 틱 rate 빈 FID 0 폴백 제거 → None 유지
-- Step 3 (`sector_calculator.py:68-87`): 업종 점수 계산 None 폴백 제거 + 미수신 종목 제외
-- 후속 근본 해결: `_received_codes` 복원 + DB/확정데이터/캐시 모든 경로 None→0 폴백 제거 + 수신률 로그 추가
-- 결과: 미수신 데이터가 0으로 왜곡되어 수신률 100%·업종 점수 왜곡되던 문제 근본 해결 (P20/P22 준수). 수신률 상승 과정 백엔드 로그 표시 (P21).
-
-**작업 중 발견 문제 (P-001 범위 외, 기존 기록 유지)**:
-- `pipeline_compute.py:575` FID 11(대비) 빈 값 → 0 폴백 (P20). 수신률/업종점수 미사용이라 P-001 범위 외. 별도 검토.
-- `engine_account_notify.py:350` `notify_desktop_trade_price` dead code (P16). 프로덕션 호출처 없음. 별도 검토.
-- `market_close_pipeline.py:411, 465, 492` `lta` dict — 정의되고 값이 할당만 되고 사용되지 않는 dead code (P16). 별도 검토.
-
-## 다음 세션 작업
-- P-001 전체 완료. 별도 후속 작업 없음.
-- P-001 범위 외 발견 문제 3건(위) 별도 검토 필요 시 사용자 지시.
-
-## 직전 완료 작업 (이전 세션)
+### 수신률 100% 왜곡 근본 해결 — _received_codes 복원 + 모든 경로 None→0 폴백 제거 (7개 파일) — 커밋 `eb1836b`
 
 ### P-001 Step 3: 업종 점수 계산 None 폴백 제거 + 미수신 종목 제외 — `sector_calculator.py`
 
