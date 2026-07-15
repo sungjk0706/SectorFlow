@@ -1285,7 +1285,8 @@ class TestRetryPipelineCatchup:
     async def test_disconnected_cache_outdated_triggers_fetch(self):
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"ws_subscribe_on": True, "confirmed_download_time": "20:40"}
-        mock_state.master_stocks_cache = {"005930": {"date": "20250105"}}
+        # 캐시 date=20250104, 최근 확정 거래일=20250105(is_trading_day=True 모킹이므로 -1일) → 불일치 → 트리거
+        mock_state.master_stocks_cache = {"005930": {"date": "20250104"}}
         mock_state.confirmed_done = False
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
@@ -1297,10 +1298,11 @@ class TestRetryPipelineCatchup:
             mock_fire.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_disconnected_cache_today_sets_done(self):
+    async def test_disconnected_cache_fresh_sets_done(self):
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"ws_subscribe_on": True, "confirmed_download_time": "20:40"}
-        mock_state.master_stocks_cache = {"005930": {"date": "20250106"}}
+        # 캐시 date=20250105 = 최근 확정 거래일(is_trading_day=True 모킹이므로 current 20250106의 -1일) → 일치 → 스킵
+        mock_state.master_stocks_cache = {"005930": {"date": "20250105"}}
         mock_state.confirmed_done = False
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \

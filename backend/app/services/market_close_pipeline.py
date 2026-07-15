@@ -225,11 +225,10 @@ async def execute_unified_rolling_and_save(
     """
     from backend.app.db.database import get_db_connection, get_db_lock
 
-    # date_str = "데이터 기준일" — qry_dt(가장 최근 확정된 거래일) 우선 (P10/P22)
-    # qry_dt가 소속 거래일의 직전 거래일이므로, 장 전 실행 시 date=직전 거래일(07-14),
-    # 장 후 실행 시 date=오늘(07-15 확정). 이 값이 master_stocks_table.date와
-    # 메모리 캐시 date에 사용되어 retry_pipeline_catchup_after_bootstrap의
-    # 스킵 판단이 정확하게 동작함.
+    # date_str = "데이터 기준일" — qry_dt(가장 최근 확정된 거래일 = 소속 거래일의 직전 거래일) 우선 (P10/P22).
+    # qry_dt는 항상 직전 거래일이므로, 장 전/장 후 실행 모두 date=직전 거래일(예: 07-14)이 저장됨.
+    # 이 값이 master_stocks_table.date와 메모리 캐시 date에 사용되며,
+    # retry_pipeline_catchup_after_bootstrap의 스킵 판단도 동일 기준(직전 거래일)으로 비교함 (P10 SSOT).
     date_str = qry_dt or get_current_trading_day_str()
     _nm = name_map or {}
 

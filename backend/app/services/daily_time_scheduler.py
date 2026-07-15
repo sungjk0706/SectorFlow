@@ -453,9 +453,16 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
         _first_stock = next(iter(state.master_stocks_cache.values()))
         _cached_date_str = _first_stock.get("date", "")
 
-    from backend.app.core.trading_calendar import get_current_trading_day_str
-    _current_trading_day = get_current_trading_day_str()
-    _cache_is_today = (_cached_date_str == _current_trading_day)
+    # 기준일 = 가장 최근 확정된 거래일 (소속 거래일의 직전 거래일).
+    # 다운로드 파이프라인(execute_unified_rolling_and_save)과 수동 확인 API
+    # (check_download_data_exists)가 모두 이 기준일로 date/dt를 저장하므로,
+    # 기동 스킵 판단도 동일 기준일을 사용해야 함 (P10 SSOT).
+    from backend.app.core.trading_calendar import (
+        get_current_trading_day_str,
+        get_previous_trading_day_str,
+    )
+    _latest_confirmed_day = get_previous_trading_day_str(get_current_trading_day_str())
+    _cache_is_fresh = (_cached_date_str == _latest_confirmed_day)
 
     # ── 판단: 단절 구간 (market_phase 비활성) — is_ws_subscribe_window() 기반 (P10) ──
     in_ws_window = await is_ws_subscribe_window(_settings)
@@ -467,22 +474,22 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
 
         if t < confirmed_dl_minutes:
             logger.info(
-                "[스케줄] 단절 구간 기동 — 확정 다운로드 시각(%s) 이전 — 타이머 대기 (캐시=%s, 현재 거래일=%s)",
-                confirmed_dl_str, _cached_date_str, _current_trading_day
+                "[스케줄] 단절 구간 기동 — 확정 다운로드 시각(%s) 이전 — 타이머 대기 (캐시=%s, 최근 확정 거래일=%s)",
+                confirmed_dl_str, _cached_date_str, _latest_confirmed_day
             )
             return
 
-        if not _cache_is_today and not state.confirmed_done:
+        if not _cache_is_fresh and not state.confirmed_done:
             logger.info(
-                "[스케줄] 단절 구간 기동 — 캐시 날짜(%s) ≠ 현재 거래일(%s) → 확정 데이터 자동 다운로드 트리거",
-                _cached_date_str or "없음", _current_trading_day
+                "[스케줄] 단절 구간 기동 — 캐시 날짜(%s) ≠ 최근 확정 거래일(%s) → 확정 데이터 자동 다운로드 트리거",
+                _cached_date_str or "없음", _latest_confirmed_day
             )
             _fire_unified_confirmed_fetch()
             return
 
         logger.info(
-            "[스케줄] 단절 구간 기동 — 캐시(%s) = 현재 거래일(%s) 확정 다운로드 시각 경과 (스킵)",
-            _cached_date_str, _current_trading_day
+            "[스케줄] 단절 구간 기동 — 캐시(%s) = 최근 확정 거래일(%s) 확정 다운로드 시각 경과 (스킵)",
+            _cached_date_str, _latest_confirmed_day
         )
         state.confirmed_done = True
         return
