@@ -1,11 +1,40 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-15 (종목분류페이지 필터요약 라벨 우측 정렬 + 두 줄 표시 + flex 비율 조정)
-- 작업: 종목분류페이지 상단 헤더에서 필터요약 라벨을 좌측 버튼 영역에서 우측 끝으로 이동, 한 줄 긴 텍스트를 두 줄(요약/주요 제외)로 분리 표시, 헤더 flex 비율 조정으로 우측 영역 확대.
+- 날짜: 2026-07-15 (수익현황 일별 수익률 챠트에 '직전' 거래일 버튼 추가)
+- 작업: 수익현황 페이지 일별 수익률 챠트의 빠른 날짜 범위 버튼에 '직전' 버튼 추가 (당일/직전/5일/당월/전체 5개 구성). 직전 거래일은 주말·공휴일을 건너뛴 실제 KRX 거래일 기준.
 - 상태: 구현 + 검증 완료, 커밋 완료.
 
 ## 직전 완료 작업 (이번 세션)
+
+### 1. 수익현황 일별 수익률 챠트 '직전' 거래일 버튼 추가 (4개 파일)
+
+**배경**: 기존 버튼 구성이 당일/5일/당월/전체 4개. 장 마감 후 "직전 거래일(어제 장)" 하루 결과만 단독으로 보고 싶을 때, 당일은 오늘만, 5일은 5일치가 한꺼번에 나와 비교가 흐려지는 빈틈 존재. 사용자 제안으로 '직전' 버튼 추가.
+
+**수정 내용**:
+- **백엔드 `backend/app/web/routes/trade.py`**: `GET /api/trade-history/prev-trading-day` 엔드포인트 추가. 기존 `get_previous_trading_day_str()` (`trading_calendar.py`) 재사용 — YYYYMMDD → YYYY-MM-DD 변환하여 `{"date": "..."}` 반환. 메모리 캐시 O(1) 조회라 블로킹 없음 (P7 준수).
+- **프론트엔드 `frontend/src/api/client.ts`**: `getPrevTradingDay()` 메서드 추가.
+- **프론트엔드 `frontend/src/pages/profit-overview.ts`**:
+  - `quickDateRangesConfig`에 `{ label: '직전' }` 항목 추가 (당일 다음, 5일 이전 위치). from/to는 백엔드 조회 후 채움.
+  - 날짜 범위 적용 로직을 `applyDateRange()` helper 함수로 추출 (P24 단순성). '직전' 라벨 감지 시 `api.getPrevTradingDay()` 비동기 조회 후 from/to 채움 → `chart.setDateRange(from, to, label)`로 dateRangeInput + 버튼 활성화 동기화.
+  - 초기 로드 시 `saved.quickLabel === '직전'`인 경우도 `applyDateRange` 재사용으로 처리 (기존 중복 로직 제거).
+- **프론트엔드 `frontend/src/components/canvas-profit-chart.ts`**: `setDateRange(from, to, label?)` 시그니처에 선택적 `label` 파라미터 추가. '직전'처럼 from/to가 동적 조회되는 버튼은 label 기반 매칭으로 quickBtn 활성화.
+
+**검증 결과**:
+- 프론트엔드: typecheck 통과, 빌드 성공 (62 modules).
+- 백엔드: 런타임 기동 OK, `GET /prev-trading-day` → `{"date":"2026-07-14"}` (2026-07-15 수요일 기준 직전 거래일=화요일, 정상).
+- 테스트: `test_trade_history.py` 64개 전체 통과 (기존 실패 없음).
+
+**영향 범위**: 백엔드 1개 파일 (신규 엔드포인트), 프론트엔드 3개 파일. 기존 버튼(당일/5일/당월/전체) 동작 변화 없음. `get_previous_trading_day_str()` 기존 함수 재사용 (P23).
+
+**아키텍처 원칙 부합**: P23 (공통 자산 재사용 — `get_previous_trading_day_str` 재사용, 거래일 계산 중복 생성 금지), P20 (폴백 금지 — 프론트엔드 단순 `오늘-1일` 폴백 대신 백엔드 정확 로직 사용), P24 (단순성 — `applyDateRange` 추출로 중복 제거), P21 (사용자 투명성 — 직전 거래일 하루 결과를 명확히 표시).
+
+## 다음 세션 작업
+- **다운로드 완료 시간 표시 (제안2)**: 1일봉/5일봉 다운로드 버튼 우측에 가장 최근 다운로드 완료 시간 표시. 백엔드 신규 기능 필요 — 현재 DB에 다운로드 완료 시간 저장소 없음 (`master_stocks_table.date`/`stock_5d_bars.dt`는 거래일이지 다운로드 시각 아님). 사전조사: 다운로드 파이프라인 완료 지점, 저장소 설계(system_state_cache 또는 신규 테이블), P10 SSOT/P22 정합성 점검 후 설계 제안.
+- 실전모드 보관 기준(`RETENTION_TRADING_DAYS_REAL = 90`) 추후 논의 — 사용자가 "증권사 서버에 데이터가 다 있으니 추후 논의"라고 명시.
+- 기존 발견 문제: `notify_raw_real_data` dead code (P16) 별도 검토 필요 시 사용자 지시.
+
+## 직전 완료 작업 (이전 세션)
 
 ### 1. 종목분류페이지 필터요약 라벨 우측 정렬 + 두 줄 표시 — `stock-classification.ts` (커밋 `222b9ef`)
 
