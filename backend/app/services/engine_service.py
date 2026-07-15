@@ -128,7 +128,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             logger.warning("[설정] 자동매매 타이머 재예약 실패", exc_info=True)
 
     # WS 구독 시간/스위치 변경 시 → 즉시 구간 재판정 + 타이머 재예약
-    _WS_SCHEDULE_KEYS = {"ws_subscribe_on", "confirmed_download_time"}
+    _WS_SCHEDULE_KEYS = {"ws_subscribe_on", "confirmed_download_time", "scheduler_market_close_on"}
     if changed_keys & _WS_SCHEDULE_KEYS:
         try:
             new_settings = get_settings_snapshot()

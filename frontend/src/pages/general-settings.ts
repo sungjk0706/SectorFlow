@@ -11,7 +11,7 @@ import { createDataTable, type ColumnDef } from '../components/common/data-table
 import { api } from '../api/client'
 import { parseHM, sectionTitle, createDescText, createTimeSlot, updateTimeSlotDisplay } from '../components/common/settings-common'
 import { createTimePairInput, type TimePairInputHandle } from '../components/common/time-pair-input'
-import { FONT_SIZE, FONT_WEIGHT, createDarkInput, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, createDarkInput, COLOR, setDisabled } from '../components/common/ui-styles'
 import { showConfirmDialog, showAlertDialog, showCustomDialog } from '../components/common/dialog'
 import { createCardTitle } from '../components/common/card-title'
 import { createActionButton, createTabBar } from '../components/common/button'
@@ -55,8 +55,9 @@ let wsToggle: ReturnType<typeof createToggleBtn> | null = null
 let holidayBadgeEls: HTMLElement[] = []
 let uiFlashToggle: ReturnType<typeof createToggleBtn> | null = null
 
-// 확정 시세 다운로드 시간 (단일 슬롯)
+// 확정 시세 다운로드 시간 (단일 슬롯) + 자동다운로드 토글
 let confirmedDlSlot: HTMLElement | null = null
+let confirmedDlToggle: ReturnType<typeof createToggleBtn> | null = null
 let confirmedDlH = '20', confirmedDlM = '40'
 let savingConfirmedDl = false
 
@@ -577,13 +578,16 @@ function renderApiSettingsTab(container: HTMLElement): void {
 
   container.appendChild(createDescText('실시간 데이터 자동 연결 스위치 — OFF면 수동 연결만 가능'))
 
-  // 확정 시세 다운로드 시간
+  // 1일봉차트 자동다운로드 (토글 + 시간 슬롯)
   const confirmedDlRow = document.createElement('div')
   Object.assign(confirmedDlRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
   const confirmedDlLabel = document.createElement('span')
   Object.assign(confirmedDlLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal, whiteSpace: 'nowrap' })
-  confirmedDlLabel.textContent = '1일봉챠트 시세 다운로드'
+  confirmedDlLabel.textContent = '1일봉차트 자동다운로드'
   confirmedDlRow.appendChild(confirmedDlLabel)
+
+  const confirmedDlRight = document.createElement('span')
+  confirmedDlRight.style.cssText = 'display:flex;align-items:center;gap:10px;'
 
   const [cdh, cdm] = parseHM(String(vals.confirmed_download_time ?? '20:40'))
   confirmedDlH = cdh; confirmedDlM = cdm
@@ -591,10 +595,29 @@ function renderApiSettingsTab(container: HTMLElement): void {
     confirmedDlH = h; confirmedDlM = m; updateTimeSlotDisplay(confirmedDlSlot!, h, m)
     scheduleConfirmedDlSave()
   })
-  confirmedDlRow.appendChild(confirmedDlSlot)
-  container.appendChild(confirmedDlRow)
+  confirmedDlRight.appendChild(confirmedDlSlot)
 
-  container.appendChild(createDescText('장마감 후 확정 시세 다운로드 시간 (기본값 20:40)'))
+  const dlOn = vals.scheduler_market_close_on !== false
+  confirmedDlToggle = createToggleBtn({ on: dlOn, onClick: async () => {
+    const next = !confirmedDlToggle!.isOn()
+    confirmedDlToggle!.setOn(next)
+    setDisabled(confirmedDlSlot!, !next)
+    vals.scheduler_market_close_on = next
+    const res = await settingsMgr!.saveSection({ scheduler_market_close_on: next })
+    toastResult(res)
+    if (!res.ok) {
+      vals.scheduler_market_close_on = !next
+      confirmedDlToggle!.setOn(!next)
+      setDisabled(confirmedDlSlot!, next)
+    }
+  }})
+  confirmedDlRight.appendChild(confirmedDlToggle.el)
+
+  confirmedDlRow.appendChild(confirmedDlRight)
+  container.appendChild(confirmedDlRow)
+  setDisabled(confirmedDlSlot, !dlOn)
+
+  container.appendChild(createDescText('장마감 후 자동 다운로드 시간 (기본값 20:40) — OFF 시 수동 다운로드만 가능'))
 
   // 실시간 현재가 플래시 효과
   const uiFlashRow = document.createElement('div')
@@ -801,10 +824,13 @@ function syncFromSettings(s: AppSettings | null): void {
     wsToggle?.setOn(!!r.ws_subscribe_on)
     updateHolidayBadges()
 
-    // 확정 시세 다운로드 시간
+    // 확정 시세 다운로드 시간 + 자동다운로드 토글
     const [cdh, cdm] = parseHM(String(r.confirmed_download_time ?? '20:40'))
     confirmedDlH = cdh; confirmedDlM = cdm
     if (confirmedDlSlot) updateTimeSlotDisplay(confirmedDlSlot, cdh, cdm)
+    const dlOn = r.scheduler_market_close_on !== false
+    confirmedDlToggle?.setOn(dlOn)
+    if (confirmedDlSlot) setDisabled(confirmedDlSlot, !dlOn)
 
     // 실시간 현재가 플래시 효과
     uiFlashToggle?.setOn(r.ui_price_flash_on !== false)
