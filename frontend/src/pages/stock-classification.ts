@@ -387,7 +387,7 @@ function buildTripleHeader(): void {
   // 중앙: Indicator_Bar — dot + label (flex:1, text-align:center, fontSize: FONT_SIZE.title)
   const center = document.createElement('div')
   Object.assign(center.style, {
-    flex: '5', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+    flex: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
     textAlign: 'center', fontSize: FONT_SIZE.title,
     minWidth: '0',
   })
@@ -397,7 +397,7 @@ function buildTripleHeader(): void {
   // 우측: 필터요약 라벨 (두 줄 표시, 우측 정렬)
   const right = document.createElement('div')
   Object.assign(right.style, {
-    flex: '1', display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
+    flex: '3', display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
     justifyContent: 'center', textAlign: 'right', minWidth: '0', gap: '2px',
   })
 
