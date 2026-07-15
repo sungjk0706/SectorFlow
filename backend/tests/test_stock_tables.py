@@ -322,6 +322,31 @@ class TestLoadMasterStocksTable:
         assert result == {}
 
     @pytest.mark.asyncio
+    async def test_load_null_realtime_fields_preserved(self, _mock_db_connection):
+        """DB NULL → None 보존 검증 (20:00~20:40 구간: _reset_realtime_fields 후 DB NULL).
+
+        P10/P20: '데이터 없음'의 단일 기준은 None. 0 폴백 금지.
+        4개 실시간 필드(cur_price/change/change_rate/trade_amount)가 모두 None으로 로드되어야 함.
+        avg_5d_trade_amount/high_5d_price는 5일평균 데이터(0이 유효값)이므로 0 유지.
+        """
+        mock_cursor = AsyncMock()
+        mock_cursor.fetchall = AsyncMock(return_value=[
+            {"code": "005930", "name": "삼성전자", "market": "코스피", "sector": "반도체",
+             "cur_price": None, "change": None, "change_rate": None,
+             "trade_amount": None, "avg_5d_trade_amount": 0, "high_5d_price": 0,
+             "date": "", "nxt_enable": 1},
+        ])
+        _mock_db_connection.execute = AsyncMock(return_value=mock_cursor)
+        result = await load_master_stocks_table()
+        entry = result["005930"]
+        assert entry["cur_price"] is None, f"cur_price should be None, got {entry['cur_price']!r}"
+        assert entry["change"] is None, f"change should be None, got {entry['change']!r}"
+        assert entry["change_rate"] is None, f"change_rate should be None, got {entry['change_rate']!r}"
+        assert entry["trade_amount"] is None, f"trade_amount should be None, got {entry['trade_amount']!r}"
+        assert entry["avg_5d_trade_amount"] == 0
+        assert entry["high_5d_price"] == 0
+
+    @pytest.mark.asyncio
     async def test_load_exception_returns_empty(self, _mock_db_connection):
         _mock_db_connection.execute = AsyncMock(side_effect=Exception("DB error"))
         result = await load_master_stocks_table()
