@@ -565,7 +565,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   Object.assign(wsRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
   const wsLabel = document.createElement('span')
   Object.assign(wsLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  wsLabel.textContent = '실시간 연결'
+  wsLabel.textContent = '실시간 자동 연결'
   wsRow.appendChild(wsLabel)
 
   const wsRight = document.createElement('span')
@@ -576,7 +576,7 @@ function renderApiSettingsTab(container: HTMLElement): void {
   wsRow.appendChild(wsRight)
   container.appendChild(wsRow)
 
-  container.appendChild(createDescText('실시간 데이터 자동 연결 스위치 — OFF면 수동 연결만 가능'))
+  container.appendChild(createDescText('ON: 거래일 오전 8시 자동 연결 → 오후 8시 자동 해제 (주말·공휴일 제외) / OFF: 자동 연결 안 함'))
 
   // 1일봉차트 자동다운로드 (토글 + 시간 슬롯)
   const confirmedDlRow = document.createElement('div')
