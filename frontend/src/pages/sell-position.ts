@@ -49,16 +49,8 @@ const COLUMNS: ColumnDef<Position>[] = [
     render: (p) => createNumberCell(p.buy_price ?? p.avg_price ?? 0),
   },
   {
-    key: 'buy_amt', label: '매수금액', align: 'right', type: 'total_amt',
+    key: 'buy_amt', label: '매수금액(수수료 포함)', align: 'right', type: 'total_amt',
     render: (p) => createNumberCell(p.buy_amt ?? 0),
-  },
-  {
-    key: 'total_fee', label: '수수료', align: 'right', type: 'fee',
-    render: (p) => createNumberCell(p.total_fee ?? 0),
-  },
-  {
-    key: 'tax', label: '세금', align: 'right', type: 'tax',
-    render: (p) => createNumberCell(p.tax ?? 0),
   },
   {
     key: 'pnl', label: '평가손익', align: 'right', type: 'pnl',
