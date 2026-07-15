@@ -1,11 +1,45 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-15 (Connector dead code 제거 — _realtime_enabled / _auto_trade_enabled 2계열)
-- 작업: KiwoomConnector / LsConnector / BrokerConnector에서 `_realtime_enabled` 및 `_auto_trade_enabled` 필드 + getter/setter 2쌍 제거. engine_service.py에서 해당 메서드 호출 2곳 제거. 관련 테스트 정리. 실시간 연결 토글(ws_subscribe_on) 자체는 현행 유지.
+- 날짜: 2026-07-15 (기동 시 자동 다운로드 스킵 로직 무력화 근본 해결 — 기준일 SSOT 통일)
+- 작업: `retry_pipeline_catchup_after_bootstrap`의 스킵 판단 기준일을 다운로드 파이프라인과 동일(가장 최근 확정된 거래일 = 직전 거래일)하게 맞춤. `f50ce9f` 커밋이 다운로드 기준일을 직전 거래일로 변경하면서 기동 스킵 로직만 변경 누락(P10 위반)하여 매 기동마다 무조건 다운로드가 실행되던 문제 해결.
 - 상태: 구현 + 검증 완료, 커밋 완료.
 
 ## 직전 완료 작업 (이번 세션)
+
+### 기동 시 자동 다운로드 스킵 로직 무력화 근본 해결 — 기준일 SSOT 통일 (3개 파일)
+
+**배경**: 사용자 보고 "앱 기동 시마다 오늘 이미 다운로드한 데이터가 있어도 무조건 다시 자동 다운로드 실행". 조사 결과, 토글 커밋(`b3d2611`)이 아닌 같은 날 새벽 머지된 `f50ce9f`가 원인. `f50ce9f`는 5일봉 미확정 당일 행 유입 차단을 위해 다운로드 파이프라인의 기준일을 `get_kst_today_str()`(달력 오늘)에서 `get_previous_trading_day_str(get_current_trading_day_str())`(가장 최근 확정된 거래일 = 직전 거래일)로 변경. 이에 따라 `master_stocks_table.date`에 직전 거래일이 저장되게 되었으나, 기동 스킵 로직(`retry_pipeline_catchup_after_bootstrap`)은 여전히 `get_current_trading_day_str()`(달력 오늘)과 비교하여 항상 불일치 → 무조건 다운로드 트리거. P10(SSOT) 위반 — 다운로드 파이프라인·수동 확인 API는 직전 거래일 기준으로 변경되었으나 기동 스킵 로직만 누락.
+
+**수정 내용**:
+- **`backend/app/services/daily_time_scheduler.py`** (`retry_pipeline_catchup_after_bootstrap`):
+  - 비교 기준일을 `get_current_trading_day_str()`(달력 오늘)에서 `get_previous_trading_day_str(get_current_trading_day_str())`(가장 최근 확정된 거래일)로 변경 — 다운로드 파이프라인과 동일 기준(P10 SSOT).
+  - 변수명 `_current_trading_day` → `_latest_confirmed_day`, `_cache_is_today` → `_cache_is_fresh`로 변경 (의미 반영, P23 용어 일관성).
+  - 로그 메시지 "현재 거래일" → "최근 확정 거래일" 3곳 변경.
+  - 기준일 변경 이유를 설명하는 주석 추가 (다운로드 파이프라인·수동 API와 동일 기준 P10 SSOT).
+- **`backend/app/services/market_close_pipeline.py`** (`execute_unified_rolling_and_save` 주석):
+  - `f50ce9f`에서 작성된 주석 "장 후 실행 시 date=오늘(07-15 확정)… 스킵 판단이 정확하게 동작함"이 코드 동작과 불일치(실제로는 항상 직전 거래일 저장)하던 것을 정정 (P21 사용자 투명성 + 주석/코드 일치).
+- **`backend/tests/test_daily_time_scheduler.py`** (`TestRetryPipelineCatchup`):
+  - `test_disconnected_cache_outdated_triggers_fetch`: 캐시 date `20250105` → `20250104`로 변경. (is_trading_day=True 모킹 시 current 20250106의 직전 거래일=20250105이므로, 캐시 20250105는 이제 fresh가 되어 트리거하지 않음. outdated 케이스를 만들려면 20250104 필요.)
+  - `test_disconnected_cache_today_sets_done` → `test_disconnected_cache_fresh_sets_done`로 메서드명 변경 + 캐시 date `20250106` → `20250105`로 변경. (캐시 20250105 = 최근 확정 거래일 20250105 → 일치 → 스킵. "today"가 아닌 "fresh"로 의미 정정.)
+  - 각 테스트에 캐시 date와 최근 확정 거래일의 관계를 설명하는 주석 추가.
+
+**검증 결과**:
+- pytest 전체 2742개 통과 (5.88s). test_daily_time_scheduler 4개 + test_market_close_pipeline 188개 포함.
+- 런타임 기동 정상 (`-W error::RuntimeWarning` 모드, RuntimeWarning 0건, 서버 정상 기동 + Uvicorn 리스닝 확인).
+- 런타임 로그로 스킵 동작 확인: `23:10:52 [스케줄] 단절 구간 기동 — 캐시(20260715) = 최근 확정 거래일(20260715) 확정 다운로드 시각 경과 (스킵)` — 23:10 기동 시 current_trading_day=20260716(20:00 이후라 다음 거래일), previous=20260715, 캐시=20260715 → 일치 → 스킵. 수정 전이라면 캐시(20260715) ≠ 현재거래일(20260716)로 무조건 다운로드 트리거했을 것.
+- 잔존 프로세스 0건 + lock 파일 정리 완료.
+
+**영향 범위**: 백엔드 2개 파일 + 테스트 1개 파일. 프론트엔드/DB 영향 없음(스키마 변경 없음, 백업 불필요). 매수/매도/업종 점수/수신률 로직에 영향 없음 — 기동 시 다운로드 스킵 여부 판단만 수정.
+
+**아키텍처 원칙 부합**:
+- P10 (SSOT): 다운로드 파이프라인·수동 확인 API·기동 스킵 로직 3곳 모두 동일 기준일(가장 최근 확정된 거래일) 사용으로 통일. 기존에는 기동 스킵 로직만 달력 오늘 기준이어서 SSOT 위반.
+- P16 (살아있는 경로): 스킵 로직이 실제 기동 실행 경로에서 호출됨 확인 (`engine_cache._load_caches_preboot` → `retry_pipeline_catchup_after_bootstrap`).
+- P20 (폴백 금지): 스킵이 안 된다고 다른 곳에서 억지로 막지 않음 — 기준일 비교 1곳만 수정하여 근본 해결.
+- P21 (사용자 투명성): `f50ce9f`의 불일치 주석을 정정하여 주석/코드 일치 복원. 사용자 모르게 스킵 로직이 망가져 있던 것을 규명+해결.
+- P23 (일관성): 변수명/로그 메시지를 실제 의미("최근 확정 거래일")에 맞게 정정.
+
+## 직전 완료 작업 (이전 세션)
 
 ### Connector dead code 제거 — _realtime_enabled / _auto_trade_enabled 2계열 (6개 파일)
 
