@@ -26,12 +26,19 @@ logger = logging.getLogger(__name__)
 # 전역 큐 할당 (메모리 상주)
 broadcast_queue = get_broadcast_queue()
 
-_current_receive_rate: dict = {"received": 0, "total": 0, "pct": 0.0}
+_current_receive_rate: dict = {
+    "krx": {"received": 0, "total": 0, "pct": 0.0},
+    "nxt": {"received": 0, "total": 0, "pct": 0.0},
+}
 _receive_rate_dirty: bool = False
 
 # 누적 수신 종목 세트 — _reset_realtime_fields()에 의해 초기화되지 않음
 # 한 번 수신된 종목은 앱 종료까지 수신된 것으로 유지되어 수신율이 0%로 강하하지 않음
-_received_codes: set[str] = set()
+# KRX/NXT 분리 (P10 SSOT — nxt_enable 필드 기반, P23 일관성 — sector-stock.ts 카운트와 동일 기준):
+# - _received_codes_krx: KRX 단독 상장 종목 (nxt_enable=False)
+# - _received_codes_nxt: NXT 중복상장 종목 (nxt_enable=True)
+_received_codes_krx: set[str] = set()
+_received_codes_nxt: set[str] = set()
 
 # ── 업종순위 수신율 임계값 게이트 (단일 소스 진리) ──
 # WS 구독 구간 진입 시 False로 리셋 → Phase 1 루프에서 임계값 통과 시 True로 전환.
@@ -71,13 +78,23 @@ def mark_sector_threshold_passed() -> None:
 
 
 async def _send_receive_rate(receive_rate: dict) -> None:
-    """수신율 전송 단일 진입점 (단일 소스 진리 원칙 준수)."""
+    """수신율 전송 단일 진입점 (단일 소스 진리 원칙 준수).
+
+    분리 구조: {krx: {received, total, pct}, nxt: {received, total, pct}}
+    """
     await broadcast_queue.put({
         "type": "receive-rate",
         "data": {
-            "pct": receive_rate["pct"],
-            "received": receive_rate["received"],
-            "total": receive_rate["total"]
+            "krx": {
+                "pct": receive_rate["krx"]["pct"],
+                "received": receive_rate["krx"]["received"],
+                "total": receive_rate["krx"]["total"],
+            },
+            "nxt": {
+                "pct": receive_rate["nxt"]["pct"],
+                "received": receive_rate["nxt"]["received"],
+                "total": receive_rate["nxt"]["total"],
+            },
         }
     })
 
@@ -104,44 +121,65 @@ def _has_any_realtime_data(entry: dict) -> bool:
 async def _calculate_receive_rate() -> None:
     """수신율 계산 (배치 처리 — Phase 1/Phase 2 루프에서 호출).
 
-    누적 수신 세트(_received_codes)와 메모리 캐시 필드를 결합하여 산출 (P10 SSOT, P22 정합성):
-    - _received_codes: 틱 수신 시 추가되며 _reset_realtime_fields()에 의해 초기화되지 않음.
-      WS 구간에서 _reset_realtime_fields() 후 메모리가 None이 되어도 수신 이력 보존.
+    KRX/NXT 분리 집계 (P10 SSOT — nxt_enable 필드 기반, P23 일관성 — sector-stock.ts 카운트와 동일 기준):
+    - _received_codes_krx / _received_codes_nxt: 틱 수신 시 is_nxt_enabled()로 분기하여 추가.
+      _reset_realtime_fields()에 의해 초기화되지 않음 — WS 구간에서 메모리가 None이 되어도 수신 이력 보존.
     - _has_any_realtime_data: 메모리 캐시의 change_rate/trade_amount가 None이 아닌 종목.
       비-WS 구간(확정 데이터)에서 _reset_realtime_fields()가 호출되지 않으므로 100% 산출.
+    - 시간대별 분리 (P22 정합성 — market_phase 기반 파생):
+      NXT-only 구간: krx_codes가 빈 리스트 → KRX 수신률 0/0 (비활성), NXT 수신률만 산출.
+      정규장: krx_codes + nxt_codes 양쪽 분리 산출.
     """
     global _current_receive_rate
 
     try:
         from backend.app.services.sector_data_provider import get_sector_summary_inputs
         inputs = await get_sector_summary_inputs()
-        all_codes = inputs.get("all_codes", [])
-        total_count = len(all_codes)
+        krx_codes = inputs.get("krx_codes", [])
+        nxt_codes = inputs.get("nxt_codes", [])
 
-        if total_count == 0:
-            return
+        krx_rate = _calc_market_receive_rate(krx_codes, _received_codes_krx)
+        nxt_rate = _calc_market_receive_rate(nxt_codes, _received_codes_nxt)
 
-        received_count = 0
-        for code in all_codes:
-            if code in _received_codes:
-                received_count += 1
-            else:
-                entry = state.master_stocks_cache.get(code)
-                if entry and _has_any_realtime_data(entry):
-                    received_count += 1
-
-        current_pct = received_count / total_count * 100 if total_count > 0 else 0.0
-
-        _current_receive_rate = {"received": received_count, "total": total_count, "pct": current_pct}
+        _current_receive_rate = {"krx": krx_rate, "nxt": nxt_rate}
 
     except Exception as e:
         logger.error("[연산] 수신율 계산 오류: %s", e, exc_info=True)
 
 
+def _calc_market_receive_rate(codes: list[str], received_set: set[str]) -> dict:
+    """단일 시장(KRX 또는 NXT) 수신률 계산.
+
+    누적 수신 세트(received_set)와 메모리 캐시 필드를 결합하여 산출.
+    codes가 빈 리스트인 경우(비활성 시간대) total=0, received=0, pct=0.0 반환.
+    """
+    total_count = len(codes)
+    if total_count == 0:
+        return {"received": 0, "total": 0, "pct": 0.0}
+
+    received_count = 0
+    for code in codes:
+        if code in received_set:
+            received_count += 1
+        else:
+            entry = state.master_stocks_cache.get(code)
+            if entry and _has_any_realtime_data(entry):
+                received_count += 1
+
+    current_pct = received_count / total_count * 100
+    return {"received": received_count, "total": total_count, "pct": current_pct}
+
+
 def get_current_receive_rate() -> dict:
-    """현재 수신율 반환 (notify_desktop_sector_scores에서 사용)."""
+    """현재 수신율 반환 (notify_desktop_sector_scores, engine_snapshot, ws.py에서 사용).
+
+    분리 구조: {krx: {received, total, pct}, nxt: {received, total, pct}}
+    """
     global _current_receive_rate
-    return dict(_current_receive_rate)
+    return {
+        "krx": dict(_current_receive_rate["krx"]),
+        "nxt": dict(_current_receive_rate["nxt"]),
+    }
 
 
 async def start_compute_loop() -> None:
@@ -531,7 +569,7 @@ async def _handle_real_01_tick(
     Returns:
         True if 보유종목 가격 갱신 발생 (계좌 전송 필요), False otherwise.
     """
-    global _received_codes, _receive_rate_dirty
+    global _received_codes_krx, _received_codes_nxt, _receive_rate_dirty
 
     _price_hit = False
     _ts = int(time.time() * 1000)
@@ -577,8 +615,13 @@ async def _handle_real_01_tick(
             _apply_real01_volume_amount_to_radar_rows(raw_cd, vals, is_0b_tick=is_0b_tick)
             if nk_px:
                 from backend.app.services.engine_sector_confirm import request_sector_recompute
+                from backend.app.services.engine_symbol_utils import is_nxt_enabled
                 request_sector_recompute(nk_px)
-                _received_codes.add(nk_px)
+                # KRX/NXT 분리 수신 세트 추가 (P10 SSOT — nxt_enable 필드 기반, P23 일관성)
+                if is_nxt_enabled(nk_px):
+                    _received_codes_nxt.add(nk_px)
+                else:
+                    _received_codes_krx.add(nk_px)
                 _receive_rate_dirty = True
 
         # ── 3. 보유종목 현재가 반영 — 평가손익·수익률 실시간 재계산 ──
@@ -708,28 +751,61 @@ async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
         # 항상 master_stocks_cache의 change_rate, trade_amount 필드 기반으로 수신율 계산.
         # WS 구독 시작 시 _reset_realtime_fields()가 필드를 None으로 초기화하므로
         # 비-WS 구간(확정 데이터 있음)은 100%로 즉시 통과, WS 구간은 0%에서 틱 수신시 상승.
+        #
+        # 임계값 게이트 정책 — 옵션 C (시간대별 분기, P21 사용자 투명성):
+        # - NXT-only 구간(08:00~08:50, 15:40~20:00): NXT 수신률만 기준
+        # - 정규장(09:00~15:20): KRX/NXT 양쪽 모두 임계값 도달 시 (AND)
+        # - 비-WS 구간: 확정 데이터 기반이므로 양쪽 모두 100% → 즉시 통과
+        from backend.app.services.daily_time_scheduler import is_nxt_only_window
         phase1_completed = False
-        _prev_received = -1
+        _prev_krx_received = -1
+        _prev_nxt_received = -1
         while _compute_running and not phase1_completed:
             try:
                 await asyncio.sleep(1.0)
 
                 await _calculate_receive_rate()
                 threshold_pct = float(state.integrated_system_settings_cache["sector_start_threshold_pct"])
-                current_pct = _current_receive_rate["pct"]
-                received_count = _current_receive_rate["received"]
-                total_count = _current_receive_rate["total"]
+                krx_rate = _current_receive_rate["krx"]
+                nxt_rate = _current_receive_rate["nxt"]
+                krx_pct = krx_rate["pct"]
+                nxt_pct = nxt_rate["pct"]
+                krx_received = krx_rate["received"]
+                krx_total = krx_rate["total"]
+                nxt_received = nxt_rate["received"]
+                nxt_total = nxt_rate["total"]
 
-                if total_count == 0:
-                    continue
+                # 비-WS 구간: 양쪽 모두 확정 데이터 → 100% 산출 → 즉시 통과
+                # WS 구간: 시간대별 분기 정책 (옵션 C)
+                if is_nxt_only_window():
+                    # NXT-only 구간: NXT 수신률만 기준
+                    if nxt_total == 0 or nxt_received == 0:
+                        continue
+                    threshold_met = nxt_pct >= threshold_pct
+                    active_pct = nxt_pct
+                    active_received = nxt_received
+                    active_total = nxt_total
+                else:
+                    # 정규장 또는 비-WS 구간: KRX/NXT 양쪽 모두 임계값 도달 (AND)
+                    # 비-WS 구간은 양쪽 모두 100%이므로 자연스럽게 통과
+                    if krx_total == 0 or nxt_total == 0:
+                        # 한쪽이라도 종목이 없으면 통과 불가 (비-WS 구간 제외 — 양쪽 모두 100%)
+                        # 단, 양쪽 모두 total=0인 빈 캐시 상태는 스킵
+                        if krx_total == 0 and nxt_total == 0:
+                            continue
+                        # 한쪽만 0인 경우 — 비정상 상황이므로 대기
+                        continue
+                    if krx_received == 0 and nxt_received == 0:
+                        continue
+                    threshold_met = krx_pct >= threshold_pct and nxt_pct >= threshold_pct
+                    active_pct = min(krx_pct, nxt_pct)
+                    active_received = krx_received + nxt_received
+                    active_total = krx_total + nxt_total
 
-                if received_count == 0:
-                    continue
-
-                if current_pct >= threshold_pct:
+                if threshold_met:
                     logger.info(
-                        "[연산] 실시간데이터 수신율 임계값 통과 (현재: %.1f%%, 임계값: %.1f%%). 업종순위 계산을 시작합니다.",
-                        current_pct, threshold_pct
+                        "[연산] 실시간데이터 수신율 임계값 통과 (KRX: %.1f%%, NXT: %.1f%%, 임계값: %.1f%%). 업종순위 계산을 시작합니다.",
+                        krx_pct, nxt_pct, threshold_pct
                     )
                     mark_sector_threshold_passed()
                     request_sector_recompute(None)  # 콜드 스타트 1회 전체 재계산
@@ -738,19 +814,23 @@ async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
                     # 수신율 전송 (단일 진입점)
                     await _send_receive_rate(_current_receive_rate)
                     # 수신 종목 수 증가 시에만 로그 출력 (P21 사용자 투명성)
-                    if received_count != _prev_received:
+                    if krx_received != _prev_krx_received or nxt_received != _prev_nxt_received:
                         logger.info(
-                            "[연산] 수신율 갱신 — %d/%d (%.1f%%) — 임계값 대기 중 (%.1f%%)",
-                            received_count, total_count, current_pct, threshold_pct
+                            "[연산] 수신율 갱신 — KRX: %d/%d (%.1f%%), NXT: %d/%d (%.1f%%) — 임계값 대기 중 (%.1f%%)",
+                            krx_received, krx_total, krx_pct,
+                            nxt_received, nxt_total, nxt_pct,
+                            threshold_pct
                         )
-                        _prev_received = received_count
+                        _prev_krx_received = krx_received
+                        _prev_nxt_received = nxt_received
 
             except Exception as e:
                 logger.error("[연산] 수신율 체크 오류: %s", e, exc_info=True)
 
         # Phase 2: 0.2초 배치 재계산 루프
         from backend.app.services.engine_sector_confirm import has_dirty_sectors, _flush_sector_recompute_impl
-        _prev_p2_received = _current_receive_rate["received"]
+        _prev_p2_krx_received = _current_receive_rate["krx"]["received"]
+        _prev_p2_nxt_received = _current_receive_rate["nxt"]["received"]
         while _compute_running:
             await asyncio.sleep(0.2)
 
@@ -760,13 +840,16 @@ async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
                 await _send_receive_rate(get_current_receive_rate())
                 _receive_rate_dirty = False
                 # 수신 종목 수 증가 시에만 로그 출력 (P21 사용자 투명성)
-                _p2_received = _current_receive_rate["received"]
-                if _p2_received != _prev_p2_received:
+                _p2_krx_received = _current_receive_rate["krx"]["received"]
+                _p2_nxt_received = _current_receive_rate["nxt"]["received"]
+                if _p2_krx_received != _prev_p2_krx_received or _p2_nxt_received != _prev_p2_nxt_received:
                     logger.info(
-                        "[연산] 수신율 갱신 — %d/%d (%.1f%%)",
-                        _p2_received, _current_receive_rate["total"], _current_receive_rate["pct"]
+                        "[연산] 수신율 갱신 — KRX: %d/%d (%.1f%%), NXT: %d/%d (%.1f%%)",
+                        _p2_krx_received, _current_receive_rate["krx"]["total"], _current_receive_rate["krx"]["pct"],
+                        _p2_nxt_received, _current_receive_rate["nxt"]["total"], _current_receive_rate["nxt"]["pct"]
                     )
-                    _prev_p2_received = _p2_received
+                    _prev_p2_krx_received = _p2_krx_received
+                    _prev_p2_nxt_received = _p2_nxt_received
 
             # sector-scores 전송 (delta — 변경된 업종만)
             from backend.app.services.engine_account_notify import notify_desktop_sector_scores

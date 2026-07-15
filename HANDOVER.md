@@ -1,11 +1,11 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-16 (KRX/NXT 수신률 분리 집계 + 분리 배지 표시 — 2단계: 프론트엔드 수신률 분리 배지 + 진행 바 2인스턴스)
-- 작업: sector-settings.ts 수신률 표시를 KRX/NXT 분리 배지 + 진행 바 2인스턴스로 변경. 1단계에서 추출한 `createMarketCountRow` 재사용. uiStore.receiveRate 타입 {krx, nxt} 분리 객체로 변경. binding.ts 단일 수신률 양쪽 동일 매핑 (3단계 백엔드 분리 전 과도기).
-- 상태: 2단계 구현 + 검증 완료, 커밋 완료. **3단계 시작 대기 (사용자 승인 대기)**.
+- 날짜: 2026-07-16 (KRX/NXT 수신률 분리 집계 + 분리 배지 표시 — 3단계: 백엔드 수신률 KRX/NXT 분리 집계 + 임계값 게이트 옵션 C)
+- 작업: 백엔드 수신률을 단일 집계에서 KRX/NXT 분리 집계로 변경. `nxt_enable` 필드 기반 단순 방식 채택 (FID 9081 틱 분석 불필요). `_received_codes` → `_received_codes_krx`/`_received_codes_nxt` 2세트 분리. `_calculate_receive_rate()` 시간대별 분리 계산. 임계값 게이트 옵션 C (NXT-only: NXT만, 정규장: 양쪽 AND). `get_sector_summary_inputs()`에 `krx_codes`/`nxt_codes` 분리 반환 추가. `compute_full_sector_summary()` 호출 3곳에 `krx_codes`/`nxt_codes` 제외 처리. binding.ts 분리 구조 매핑.
+- 상태: 3단계 구현 + 검증 완료. **커밋 대기**.
 
-## 다음 세션 진행 대기: KRX/NXT 수신률 분리 집계 + 분리 배지 표시 — 3단계
+## 다음 세션 진행 대기: 없음 (3단계 완료 — KRX/NXT 수신률 분리 집계 + 분리 배지 표시 전체 완료)
 
 ### 계획서 경로
 - **`docs/plan_krx_nxt_receive_rate_separation.md`** — 3단계 구현 계획서 (사전조사 결과 + 단계별 파일 목록 + 검증 방법 + 사용자 승인 항목)
@@ -35,6 +35,42 @@
 ---
 
 ## 직전 완료 작업 (이번 세션)
+
+### 3단계: 백엔드 수신률 KRX/NXT 분리 집계 + 임계값 게이트 옵션 C (8개 파일)
+
+**배경**: KRX/NXT 수신률 분리 집계 + 분리 배지 표시 3단계 구현의 최종 단계. 1·2단계에서 프론트엔드 분리 표시 준비 완료. 3단계에서 백엔드 수신률을 단일 집계에서 KRX/NXT 분리 집계로 변경. **FID 9081 틱 분석 방식 대신 `nxt_enable` 필드 기반 단순 방식 채택** (P10 SSOT, P24 단순성 — 틱 분석 불필요, sector-stock.ts 카운트와 동일 기준).
+
+**수정 내용**:
+- **`backend/app/pipelines/pipeline_compute.py`**: `_received_codes` 단일 세트 → `_received_codes_krx`/`_received_codes_nxt` 2세트 분리. 틱 수신 시 `is_nxt_enabled(nk_px)`로 분기 (FID 9081 불필요). `_current_receive_rate` → `{krx: {received, total, pct}, nxt: {received, total, pct}}` 분리 구조. `_calculate_receive_rate()` 시간대별 분리 계산 (NXT-only 구간 krx_codes 빈 리스트 → KRX 0/0, NXT만 산출). `_calc_market_receive_rate()` 헬퍼 추출 (단일 시장 수신률 계산, 함수 50줄 이하 유지). `_send_receive_rate()` 분리 구조 전송. `get_current_receive_rate()` 분리 구조 반환 (깊은 복사). Phase 1 임계값 게이트 옵션 C — `is_nxt_only_window()` 분기: NXT-only 구간 NXT 수신률만 기준, 정규장 KRX/NXT 양쪽 모두 도달 시(AND). Phase 2 로그 KRX/NXT 분리 출력.
+- **`backend/app/services/sector_data_provider.py`**: `get_sector_summary_inputs()`에 `krx_codes`/`nxt_codes` 분리 반환 추가 (`nxt_enable` 필드 기반, P10 SSOT). `all_codes`는 기존 업종 점수 계산용 유지. `recompute_sector_summary_now()`에서 `compute_full_sector_summary()` 호출 시 `krx_codes`/`nxt_codes` 제외 (dict comprehension 필터).
+- **`backend/app/services/engine_sector_confirm.py`**: `_full_recompute()`에서 `compute_full_sector_summary()` 호출 시 `krx_codes`/`nxt_codes` 제외.
+- **`backend/app/services/telegram_bot.py`**: 업종 강도 요약 `compute_full_sector_summary()` 호출 시 `krx_codes`/`nxt_codes` 제외.
+- **`frontend/src/binding.ts`**: `receive-rate` 이벤트 분리 구조 매핑 (`{krx, nxt}` → `uiStore.receiveRate`). `sector-scores` 이벤트 `receive_rate` 분리 구조 매핑.
+- **`frontend/src/stores/uiStore.ts`**: `applyInitialSnapshotUI` 주석 3단계 상태로 갱신 (분리 구조 자동 처리는 2단계에서 이미 준비됨).
+- **`backend/tests/test_pipeline_compute.py`**: `TestReceiveRate`/`TestCalculateReceiveRate`/`TestSectorRecomputeLoopImpl`/`TestSectorThresholdGate` 분리 구조로 전면 수정. NXT-only 구간 임계값 통과 테스트, 정규장 AND 정책 KRX만 통과 시 게이트 유지 테스트 추가.
+- **`backend/tests/test_engine_snapshot.py`**: `get_current_receive_rate` mock 반환값 분리 구조로 변경.
+
+**자동 연동 (추가 수정 불필요)**:
+- `engine_account_notify.py`: `get_current_receive_rate()` 호출 → 분리 구조 자동 연동. `prev_receive_rate` 비교 Python `==` 중첩 dict 자동 처리. `status.receive_rate` 전송 자동 연동.
+- `engine_snapshot.py`: `get_current_receive_rate()` 호출 → `receive_rate` 분리 구조 자동 연동.
+- `ws.py`: `get_current_receive_rate()` 호출 → `receive_rate` 분리 구조 자동 연동.
+- `market_close_pipeline.py`: `_calculate_receive_rate()`/`_send_receive_rate()`/`get_current_receive_rate()` 호출 → 분리 구조 자동 연동.
+
+**유지 대상 (변경 안 함)**:
+- 임계값 게이트 플래그 `_sector_threshold_passed` — 단일 플래그 유지 (시간대별 분기 로직만 추가).
+- `is_nxt_tick()`/`parse_fid9081_exchange()` — FID 9081 기반 방식은 채택하지 않음 (`nxt_enable` 방식이 더 단순하고 일관됨).
+
+**검증**: pytest 2746개 전체 통과 + 런타임 기동 (`python -W error::RuntimeWarning main.py`) RuntimeWarning 없음 + Traceback/TypeError 없음 + 수신률 분리 로그 정상 출력 ("KRX: 100.0%, NXT: 100.0%, 임계값: 95.0%"). 프론트엔드 빌드 성공 (63 modules, 1.81s). 잔존 프로세스 0건.
+
+**위반 원칙 해결**: P10 (SSOT — `nxt_enable` 필드 단일 소스, FID 9081 중복 관리 없음), P21 (사용자 투명성 — KRX/NXT 개별 수신 상태 표시, 정규장 양쪽 대기 상태 명시), P22 (데이터 정합성 — `market_phase` 기반 파생), P23 (일관성 — sector-stock.ts 카운트와 동일 `nxt_enable` 기준, `is_nxt_only_window()` 재사용), P24 (단순성 — FID 9081 틱 분석 대신 `is_nxt_enabled()` 1회 조회, 함수 50줄 이하).
+
+**수정 후 화면 변화**: 업종순위 설정 ② 영역 — 기존(2단계) KRX/NXT 진행 바 2개가 같은 수치 → KRX/NXT 진행 바 2개가 서로 다른 실제 수치. 정규장에서 "KRX는 80%인데 NXT는 40%"처럼 양쪽 진행도 개별 확인. 업종순위 계산 시작 시점 — 정규장에서 양쪽 모두 임계값 도달 시 시작, 한쪽 늦으면 "대기 중" 상태로 표시.
+
+**영향 범위**: 백엔드 4개 파일 + 프론트엔드 2개 파일 + 테스트 2개 파일. DB 영향 없음.
+
+---
+
+## 직전 완료 작업 (이전 세션)
 
 ### 2단계: 프론트엔드 수신률 분리 배지 + 진행 바 2인스턴스 — sector-settings.ts (4개 파일)
 

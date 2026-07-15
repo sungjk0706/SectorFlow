@@ -124,14 +124,20 @@ class TestBuildInitialSnapshot:
     def _mock_pipeline_compute(self):
         """pipeline_compute 모듈 import 시 broadcast_queue 초기화 에러 방지."""
         mock_mod = MagicMock()
-        mock_mod.get_current_receive_rate = MagicMock(return_value=0.0)
+        mock_mod.get_current_receive_rate = MagicMock(return_value={
+            "krx": {"received": 0, "total": 0, "pct": 0.0},
+            "nxt": {"received": 0, "total": 0, "pct": 0.0},
+        })
         with patch.dict("sys.modules", {"backend.app.pipelines.pipeline_compute": mock_mod}):
             yield mock_mod
 
     @pytest.mark.asyncio
     async def test_happy_path(self, _mock_pipeline_compute):
         """모든 getter 정상 반환 — 스냅샷 dict 조립 확인."""
-        _mock_pipeline_compute.get_current_receive_rate.return_value = 0.95
+        _mock_pipeline_compute.get_current_receive_rate.return_value = {
+            "krx": {"received": 8, "total": 10, "pct": 80.0},
+            "nxt": {"received": 4, "total": 5, "pct": 80.0},
+        }
         with patch("backend.app.services.engine_snapshot.state") as mock_state, \
              patch("backend.app.services.engine_account.get_positions", new=AsyncMock(return_value=[{"stk_cd": "005930"}])), \
              patch("backend.app.services.engine_account.get_account_snapshot", new=AsyncMock(return_value={"balance": 100000})), \
@@ -164,7 +170,10 @@ class TestBuildInitialSnapshot:
             assert result["settings"] == {"masked": True}
             assert result["status"] == "running"
             assert result["market_phase"] == "open"
-            assert result["receive_rate"] == 0.95
+            assert result["receive_rate"] == {
+                "krx": {"received": 8, "total": 10, "pct": 80.0},
+                "nxt": {"received": 4, "total": 5, "pct": 80.0},
+            }
             assert result["broker_config"] == {"name": "test_broker"}
             assert result["avg_amt_refresh"] is None
             assert result["bootstrap_done"] is True

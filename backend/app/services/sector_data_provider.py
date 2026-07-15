@@ -19,6 +19,11 @@ async def get_sector_summary_inputs() -> dict:
     단일 소스 진리: master_stocks_cache를 직접 참조하므로 스냅샷 제거.
     NXT-only 구간(08:00~08:50, 15:40~20:00) 거래일에는 NXT-enabled 종목만 포함.
     정규장(09:00~15:20)에는 전체 종목 포함.
+
+    KRX/NXT 분리 (P10 SSOT — nxt_enable 필드 기반, P23 일관성 — sector-stock.ts 카운트와 동일 기준):
+    - krx_codes: KRX 단독 상장 종목 (nxt_enable=False)
+    - nxt_codes: NXT 중복상장 종목 (nxt_enable=True)
+    - all_codes: krx_codes + nxt_codes (기존 업종 점수 계산용 — 하위 호환)
     """
     from backend.app.services.engine_symbol_utils import is_nxt_enabled as _is_nxt
     from backend.app.services.daily_time_scheduler import is_nxt_only_window
@@ -35,15 +40,19 @@ async def get_sector_summary_inputs() -> dict:
             if _is_nxt(entry["code"])
         ]
 
-    # all_codes만 반환 (스냅샷 제거)
-    all_codes = [entry["code"] for entry in sector_stocks_list]
+    # KRX/NXT 분리 — nxt_enable 필드 기반 (P10 SSOT, P23 일관성)
+    krx_codes = [entry["code"] for entry in sector_stocks_list if not _is_nxt(entry["code"])]
+    nxt_codes = [entry["code"] for entry in sector_stocks_list if _is_nxt(entry["code"])]
+    all_codes = krx_codes + nxt_codes
 
     # 필터링된 종목만 avg_amt_5d 추출
     avg_amt_5d = {entry["code"]: int(entry.get("avg_amt_5d", 0) or 0)
                   for entry in sector_stocks_list}
 
     return {
-        "all_codes": all_codes,  # 우측테이블의 종목만 반환
+        "all_codes": all_codes,  # 우측테이블의 종목만 반환 (기존 — 업종 점수 계산용)
+        "krx_codes": krx_codes,  # KRX 단독 상장 종목 (수신률 분리 집계용)
+        "nxt_codes": nxt_codes,  # NXT 중복상장 종목 (수신률 분리 집계용)
         "trade_prices": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
         "trade_amounts": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
         "avg_amt_5d": avg_amt_5d,
@@ -249,8 +258,10 @@ async def recompute_sector_summary_now() -> None:
     try:
         logger.info("[업종] 업종순위 재계산 (3단계 누적 가산점)")
         _inputs = await get_sector_summary_inputs()
+        # krx_codes/nxt_codes는 수신률 분리 집계 전용 — compute_full_sector_summary에는 all_codes만 전달
+        _compute_inputs = {k: v for k, v in _inputs.items() if k not in ("krx_codes", "nxt_codes")}
         _sector_summary = await compute_full_sector_summary(
-            **_inputs,
+            **_compute_inputs,
             min_rise_ratio=float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
             min_avg_amt_eok=float(state.integrated_system_settings_cache["sector_min_trade_amt"]),
             rise_ratio_slider=int(state.integrated_system_settings_cache["sector_bonus_rise_ratio_slider"]),

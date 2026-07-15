@@ -233,7 +233,7 @@ export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
     receiveRate: (() => {
       const r = data.receive_rate as { received: number; total: number; pct: number } | { krx: ReceiveRateEntry | null; nxt: ReceiveRateEntry | null } | undefined
       if (!r) return null
-      // 2단계: 백엔드 단일 수신률 → KRX/NXT 양쪽 동일 매핑 (3단계에서 분리 데이터 연동)
+      // 3단계: 백엔드 KRX/NXT 분리 수신률 → 분리 매핑 (단일 구조는 레거시 호환)
       if ('krx' in r || 'nxt' in r) return r as { krx: ReceiveRateEntry | null; nxt: ReceiveRateEntry | null }
       const single = r as { received: number; total: number; pct: number }
       return { krx: single, nxt: single }

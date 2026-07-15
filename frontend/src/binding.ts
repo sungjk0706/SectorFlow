@@ -272,11 +272,13 @@ export function bindWSToStore(
   })
 
   /* ── receive-rate: 수신율 실시간 갱신 ── */
-  // 2단계: 백엔드 단일 수신률 → KRX/NXT 양쪽 동일 매핑 (3단계에서 분리 데이터 연동)
+  // 3단계: 백엔드 KRX/NXT 분리 수신률 → 분리 매핑
   pricesClient.onEvent('receive-rate', (data) => {
-    const d = data as { pct: number; received: number; total: number }
-    const single: ReceiveRateEntry = { pct: d.pct, received: d.received, total: d.total }
-    uiStore.setState({ receiveRate: { krx: single, nxt: single } })
+    const d = data as {
+      krx: ReceiveRateEntry
+      nxt: ReceiveRateEntry
+    }
+    uiStore.setState({ receiveRate: { krx: d.krx, nxt: d.nxt } })
   })
 
   /* ── sector-scores: 업종순위 실시간 갱신 ── */
@@ -296,10 +298,10 @@ export function bindWSToStore(
         ? { delta: true, changed_sectors: d.changed_sectors ?? [], removed_sectors: d.removed_sectors ?? [] }
         : null,
     })
-    // receiveRate (uiStore) 갱신 — 2단계: 단일 수신률 → KRX/NXT 양쪽 동일 매핑
-    const rawRate = (d.status as Record<string, unknown>)?.receive_rate as { received: number; total: number; pct: number } | undefined
+    // receiveRate (uiStore) 갱신 — 3단계: KRX/NXT 분리 수신률 매핑
+    const rawRate = (d.status as Record<string, unknown>)?.receive_rate as { krx: ReceiveRateEntry; nxt: ReceiveRateEntry } | undefined
     if (rawRate) {
-      uiStore.setState({ receiveRate: { krx: rawRate, nxt: rawRate } })
+      uiStore.setState({ receiveRate: { krx: rawRate.krx, nxt: rawRate.nxt } })
     } else {
       uiStore.setState({ receiveRate: null })
     }

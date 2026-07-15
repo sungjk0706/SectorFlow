@@ -215,8 +215,10 @@ async def _full_recompute(codes_snapshot: set[str] | None = None) -> None:
     prev_targets = _prev_cache.buy_targets if _prev_cache and hasattr(_prev_cache, 'buy_targets') else None
 
     inputs = await get_sector_summary_inputs()
+    # krx_codes/nxt_codes는 수신률 분리 집계 전용 — compute_full_sector_summary에는 all_codes만 전달
+    compute_inputs = {k: v for k, v in inputs.items() if k not in ("krx_codes", "nxt_codes")}
     sector_summary = await compute_full_sector_summary(
-        **inputs,
+        **compute_inputs,
         min_rise_ratio=float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
         min_avg_amt_eok=float(state.integrated_system_settings_cache["sector_min_trade_amt"]),
         rise_ratio_slider=int(state.integrated_system_settings_cache["sector_bonus_rise_ratio_slider"]),
