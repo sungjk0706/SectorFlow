@@ -72,8 +72,14 @@ def _apply_real01_volume_amount_to_radar_rows(raw_cd: str, vals: dict, *, is_0b_
             entry["change"] = -_chg if val11_str.startswith("-") else _chg
         if "12" in vals:
             from backend.app.services.engine_ws_parsing import parse_change_rate_to_percent
-            entry["change_rate"] = parse_change_rate_to_percent(vals["12"])
+            _raw12 = str(vals["12"]).strip()
+            if _raw12:
+                entry["change_rate"] = parse_change_rate_to_percent(vals["12"])
+            # 빈 문자열이면 None 유지 (미수신 — P20 폴백 금지)
         if "14" in vals:
-            entry["trade_amount"] = int(_parse_float_loose(vals["14"]))
+            _raw14 = str(vals["14"]).strip()
+            if _raw14:
+                entry["trade_amount"] = int(_parse_float_loose(vals["14"]))
+            # 빈 문자열이면 None 유지 (미수신 — P20 폴백 금지)
         if "228" in vals:
             entry["strength"] = str(vals["228"]).strip()
