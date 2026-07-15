@@ -229,6 +229,15 @@ export function createNumInput(options: {
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); focusNext(input) }
   })
+  // blur 시점 clamp — 타이핑 중간값 잘림 방지 위해 포커스 잃을 때 범위 보정 (P10 SSOT)
+  input.addEventListener('blur', () => {
+    const clamped = Math.round(Math.min(maxVal, Math.max(minVal, currentValue)) * 100) / 100
+    if (clamped !== currentValue) {
+      currentValue = clamped
+      input.value = String(clamped)
+      options.onChange(clamped)
+    }
+  })
 
   const spinBtns = createSpinButtons(
     input,
