@@ -1,11 +1,40 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-15 (수익현황 일별 수익률 챠트 '직전' 버튼 추가 + 5일/전체 버튼 기간 입력란 빈 값 근본 해결)
-- 작업: 1) 일별 수익률 챠트 빠른 날짜 범위 버튼에 '직전' 버튼 추가 (당일/직전/5일/당월/전체 5개). 2) 5일/전체 버튼 클릭 시 기간 입력란이 빈 값(회색 placeholder)으로 표시되는 문제 근본 해결 — 백엔드 응답에서 실제 from/to 추출하여 입력란 동기화.
+- 날짜: 2026-07-15 (수익상세페이지 상단 요약 카드 3개→4개 확장 + 기간별 색상 차별화 + 하단 통계 카드 색상 연동)
+- 작업: 1) 수익상세페이지 상단 요약 카드에 '직전' 카드 추가 (당일/직전/당월/누적 4개). 2) 4개 카드 선택 시 각기 다른 색상(보더+배경) 적용 — 당일 파랑/직전 청록/당월 보라/누적 슬레이트. 3) 하단 6개 통계 카드(총건수/매수금액/매도금액/실현손익/승률/평균수익률) 색상이 상단 선택 기간과 동일 색으로 연동, 수동 날짜 선택 시 회색 복귀.
 - 상태: 구현 + 검증 완료, 커밋 완료.
 
 ## 직전 완료 작업 (이번 세션)
+
+### 수익상세페이지 상단 카드 3→4 확장 + 기간별 색상 차별화 + 하단 통계 연동 (3개 파일)
+
+**배경**: 수익상세페이지 상단 요약 카드가 당일/당월/누적 3개이며, 선택 시 모두 동일 파랑 색상이라 어떤 기간을 보고 있는지 시각적 구분이 안 됨. 수익현황(overview) 차트에는 이미 '직전' 버튼이 있어 두 페이지 간 빠른 범위 옵션이 불일치. 사용자 제안으로 '직전' 카드 추가 + 4카드 색상 차별화 + 하단 6개 통계 카드 색상 연동.
+
+**수정 내용**:
+- **`frontend/src/components/common/ui-styles.ts`**: 기간 구분 전용 색 3종 추가 (기존 의미 색 success/warning/up/kosdaq과 충돌 회피). `periodPrev`(#0097a7 청록)/`periodPrevBg`(#e0f7fa), `periodMonth`(#7b1fa2 보라)/`periodMonthBg`(#f3e5f5), `periodTotal`(#455a64 슬레이트)/`periodTotalBg`(#eceff1). 당일은 기존 `down`/`downBg` 재사용.
+- **`frontend/src/pages/profit-shared.ts`**: `SummaryCardEls` 인터페이스에 `prevPnlEl`/`prevRateEl`/`prevCard` 추가. `SummaryCardCallbacks`에 `onPrevClick` 추가. `createSummaryCards` 3카드→4카드 확장 (CARD_TITLES = 당일/직전/당월/누적). `updateSummaryCards`에 직전 손익 계산 추가 — dailySummary에서 오늘보다 이전 날짜 중 가장 최근 항목 추출 (O(n) 단일 패스, 백엔드 추가 호출 없이 기존 데이터에서 파생).
+- **`frontend/src/pages/profit-detail.ts`**:
+  - `SelectedView` 타입에 `'prev'` 추가. `loadProfitDetailView` validViews 및 from/to 검증 조건에 'prev' 포함.
+  - `applyCardStyle`을 카드별 보더/배경 색상 받도록 변경. `updateCardSelection`이 4카드 각각 해당 색상 적용.
+  - 신규 `updateStatCardSelection()` — 하단 6개 통계 카드 색상을 상단 선택 기간과 동일 색으로 연동. `selectedView === null`(수동 날짜) 시 회색(borderLight/surfaceLight) 복귀.
+  - `onPrevClick` 핸들러 — `api.getPrevTradingDay()` 비동기 조회 후 `filterByDate(prev.date)`. await 중 다른 카드 클릭 시 덮어쓰기 방지 가드(`if (selectedView !== 'prev') return`) 추가.
+  - 하단 통계 카드 생성 시 `statCardEls` 배열에 push하여 색상 연동 대상 관리. unmount에서 초기화.
+  - `api` import 추가 (`../api/client`).
+
+**검증 결과**:
+- typecheck 통과, 빌드 성공 (62 modules).
+- 테스트 108개 전체 통과 (기존 실패 없음, profit 관련 테스트는 없으나 전체 회귀 확인).
+
+**영향 범위**: 프론트엔드 3개 파일. 백엔드 변경 없음 (기존 `getPrevTradingDay` API 재사용). profit-overview는 `createSummaryCards` 미사용이라 영향 없음. 공유 함수 `createSummaryCards`의 실제 사용처는 profit-detail 1곳.
+
+**아키텍처 원칙 부합**:
+- P10 (SSOT): 공유 함수 1곳에서 4카드 관리, 직전 손익은 기존 dailySummary에서 파생 (중복 저장 금지).
+- P21 (사용자 투명성): 하단 통계 색상 연동으로 "현재 보는 기간" 상단/하단 양쪽 시각화, 수동 날짜 시 회색 복귀로 상태 명확.
+- P23 (일관성): overview 차트 '직전' 버튼과 detail '직전' 카드 일치, 기존 의미 색 충돌 회피한 신규 기간 구분 색 추가.
+- P24 (단순성): 보더+옅은 배경으로 손익 텍스트 색(빨강/파랑)과 충돌 회피, 직전 손익 O(n) 단일 패스 추출.
+
+## 직전 완료 작업 (이전 세션)
 
 ### 2. 5일/전체 버튼 기간 입력란 빈 값(회색) 근본 해결 — `profit-overview.ts` (커밋 `ad5a86c`)
 

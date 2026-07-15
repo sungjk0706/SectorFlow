@@ -9,6 +9,7 @@ import { createSearchInput } from '../components/common/search-input'
 import { createTabBar, createToggleSelectBtn } from '../components/common/button'
 import { createDateRangeInput, type DateRangeInputApi } from '../components/common/date-range-input'
 import { hotStore } from '../stores/hotStore'
+import { api } from '../api/client'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import {
   BUY_COLS,
@@ -48,7 +49,7 @@ let drilldownCols: ColumnDef<DailyDrilldownRow>[] = []
 let tabRow: HTMLDivElement | null = null
 let drilldownBtnHandle: ReturnType<typeof createToggleSelectBtn> | null = null
 
-type SelectedView = 'today' | 'month' | 'total' | 'drilldown' | null
+type SelectedView = 'today' | 'prev' | 'month' | 'total' | 'drilldown' | null
 let selectedView: SelectedView = null
 
 /* ── 뷰 상태 localStorage 영속화 ── */
@@ -66,14 +67,14 @@ function loadProfitDetailView(): ProfitDetailViewState | null {
     const raw = localStorage.getItem(PROFIT_DETAIL_VIEW_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as { selectedView?: string; drilldownActive?: boolean; from?: string; to?: string }
-    const validViews: string[] = ['today', 'month', 'total', 'drilldown']
+    const validViews: string[] = ['today', 'prev', 'month', 'total', 'drilldown']
     const sv = parsed.selectedView ?? null
     if (sv !== null && !validViews.includes(sv)) return null
     // total/drilldown은 from/to가 빈 문자열일 수 있음
     const from = parsed.from ?? ''
     const to = parsed.to ?? ''
-    // 수동 날짜 범위(sv === null) 또는 today/month인 경우 from/to 유효성 검증
-    if (sv === null || sv === 'today' || sv === 'month') {
+    // 수동 날짜 범위(sv === null) 또는 today/prev/month인 경우 from/to 유효성 검증
+    if (sv === null || sv === 'today' || sv === 'prev' || sv === 'month') {
       if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) return null
       if (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null
       if (from && to && from > to) return null
@@ -118,18 +119,39 @@ let _dirtySummary = false
 let _dirtySectorStocks = false
 
 /* ── 요약 카드 선택 스타일 ── */
-function applyCardStyle(card: HTMLDivElement, active: boolean): void {
+function applyCardStyle(card: HTMLDivElement, active: boolean, borderActive: string, bgActive: string): void {
   Object.assign(card.style, {
-    border: active ? '2px solid ' + COLOR.down : '1px solid ' + COLOR.borderLight,
-    background: active ? COLOR.downBg : COLOR.surfaceLight,
+    border: active ? '2px solid ' + borderActive : '1px solid ' + COLOR.borderLight,
+    background: active ? bgActive : COLOR.surfaceLight,
   })
+}
+
+/* ── 하단 통계 카드 색상 연동 (상단 선택 기간과 동일 색) ── */
+let statCardEls: HTMLDivElement[] = []
+
+function updateStatCardSelection(): void {
+  const colorMap: Record<string, { border: string; bg: string }> = {
+    today: { border: COLOR.down, bg: COLOR.downBg },
+    prev: { border: COLOR.periodPrev, bg: COLOR.periodPrevBg },
+    month: { border: COLOR.periodMonth, bg: COLOR.periodMonthBg },
+    total: { border: COLOR.periodTotal, bg: COLOR.periodTotalBg },
+  }
+  const sel = selectedView ? colorMap[selectedView] : undefined
+  for (const card of statCardEls) {
+    Object.assign(card.style, {
+      border: sel ? '2px solid ' + sel.border : '1px solid ' + COLOR.borderLight,
+      background: sel ? sel.bg : COLOR.surfaceLight,
+    })
+  }
 }
 
 function updateCardSelection(): void {
   if (!summaryCardEls) return
-  applyCardStyle(summaryCardEls.todayCard, selectedView === 'today')
-  applyCardStyle(summaryCardEls.monthCard, selectedView === 'month')
-  applyCardStyle(summaryCardEls.totalCard, selectedView === 'total')
+  applyCardStyle(summaryCardEls.todayCard, selectedView === 'today', COLOR.down, COLOR.downBg)
+  applyCardStyle(summaryCardEls.prevCard, selectedView === 'prev', COLOR.periodPrev, COLOR.periodPrevBg)
+  applyCardStyle(summaryCardEls.monthCard, selectedView === 'month', COLOR.periodMonth, COLOR.periodMonthBg)
+  applyCardStyle(summaryCardEls.totalCard, selectedView === 'total', COLOR.periodTotal, COLOR.periodTotalBg)
+  updateStatCardSelection()
 }
 
 function updateDrilldownBtnStyle(active: boolean): void {
@@ -328,6 +350,20 @@ function mount(container: HTMLElement): void {
       filterByDate(todayStr)
       persistViewState()
     },
+    onPrevClick: async () => {
+      selectedView = 'prev'
+      updateCardSelection()
+      updateDrilldownBtnStyle(false)
+      try {
+        const prev = await api.getPrevTradingDay()
+        // await 중 다른 카드/필터 클릭 시 덮어쓰기 방지
+        if (selectedView !== 'prev') return
+        filterByDate(prev.date)
+        persistViewState()
+      } catch (err) {
+        console.error('[profit-detail] prev-trading-day fetch failed:', err)
+      }
+    },
     onMonthClick: () => {
       selectedView = 'month'
       updateCardSelection()
@@ -459,6 +495,7 @@ function mount(container: HTMLElement): void {
   const STAT_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:4px;padding:4px 8px;display:flex;flex-direction:column;align-items:center;gap:2px;`
   const STAT_LABELS = ['총 건수', '매수금액', '매도금액', '실현손익', '승률', '평균 수익률']
   const statEls: HTMLSpanElement[] = []
+  statCardEls = []
 
   for (let i = 0; i < 6; i++) {
     const stat = document.createElement('div')
@@ -477,6 +514,7 @@ function mount(container: HTMLElement): void {
     statRow.appendChild(stat)
 
     statEls.push(valEl)
+    statCardEls.push(stat)
   }
 
   statCountEl = statEls[0]
@@ -622,6 +660,7 @@ function unmount(): void {
   statPnlEl = null
   statWinRateEl = null
   statAvgRateEl = null
+  statCardEls = []
   summaryCardEls = null
 }
 
