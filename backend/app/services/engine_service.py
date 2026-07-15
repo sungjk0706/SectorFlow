@@ -120,10 +120,6 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             from backend.app.services.daily_time_scheduler import schedule_auto_trade_timers
             new_settings = get_settings_snapshot()
             await schedule_auto_trade_timers(new_settings)
-            # Connector 자동매매 플래그 동기화
-            ws = state.active_connector
-            if ws and "time_scheduler_on" in changed_keys:
-                ws.set_auto_trade_enabled(bool(new_settings["time_scheduler_on"]))
         except Exception:
             logger.warning("[설정] 자동매매 타이머 재예약 실패", exc_info=True)
 
@@ -138,17 +134,12 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
             # 1) 타이머 재예약 (항상)
             await _dts.schedule_ws_subscribe_timers(new_settings)
 
-            # 2) Connector 실시간 연결 플래그 업데이트
-            ws = state.active_connector
-            if ws:
-                ws.set_realtime_enabled(bool(new_settings["ws_subscribe_on"]))
-
-            # 3) 활성→구간밖: 즉시 구독 해제 + WS 끊기 (장마감 후처리 없이)
+            # 2) 활성→구간밖: 즉시 구독 해제 + WS 끊기 (장마감 후처리 없이)
             if was_active and not now_in_window:
                 logger.info("[설정] 실시간 구독 구간 변경 → 현재 구간 밖 — 즉시 구독 해제")
                 _dts._fire_ws_disconnect_only()
 
-            # 4) 비활성→구간안: 즉시 WS 연결 + 구독 시작
+            # 3) 비활성→구간안: 즉시 WS 연결 + 구독 시작
             elif not was_active and now_in_window:
                 logger.info("[설정] 실시간 구독 구간 변경 → 현재 구간 안 — 즉시 구독 시작")
                 schedule_engine_task(_dts._on_ws_subscribe_start(), context="실시간 구독 시작")

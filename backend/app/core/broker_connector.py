@@ -105,11 +105,3 @@ class BrokerConnector(ABC):
     async def send_message(self, payload: dict) -> bool:
         """WebSocket 송신 API (기본 구현: 미지원)"""
         return False
-
-    def set_auto_trade_enabled(self, enabled: bool) -> None:
-        """자동매매 ON/OFF 설정 (기본 구현: 패스)"""
-        pass
-
-    def set_realtime_enabled(self, enabled: bool) -> None:
-        """실시간 연결 ON/OFF 설정 (기본 구현: 패스)"""
-        pass

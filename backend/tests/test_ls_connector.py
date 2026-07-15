@@ -472,8 +472,6 @@ class TestLsConnectorInit:
         assert conn._connected is False
         assert conn._socket is None
         assert conn._token is None
-        assert conn._realtime_enabled is True
-        assert conn._auto_trade_enabled is True
 
     def test_init_default_ws_uri(self):
         with patch("backend.app.core.broker_urls.build_broker_urls", return_value={"ws_uri": "wss://ls-default"}):
@@ -509,27 +507,6 @@ class TestLsConnectorInit:
         conn = _make_ls_connector()
         assert conn.supports_ack() is False
 
-
-# ── LsConnector realtime / auto_trade 설정 ─────────────────────────────────────
-
-class TestLsConnectorSettings:
-    def test_is_realtime_enabled_default(self):
-        conn = _make_ls_connector()
-        assert conn.is_realtime_enabled() is True
-
-    def test_set_realtime_enabled(self):
-        conn = _make_ls_connector()
-        conn.set_realtime_enabled(False)
-        assert conn.is_realtime_enabled() is False
-
-    def test_is_auto_trade_enabled_default(self):
-        conn = _make_ls_connector()
-        assert conn.is_auto_trade_enabled() is True
-
-    def test_set_auto_trade_enabled(self):
-        conn = _make_ls_connector()
-        conn.set_auto_trade_enabled(False)
-        assert conn.is_auto_trade_enabled() is False
 
 
 # ── LsConnector.connect ────────────────────────────────────────────────────────
