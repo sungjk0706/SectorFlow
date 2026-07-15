@@ -4,7 +4,7 @@
 
 ### 다음 작업: 업종 점수 산정 방식 리팩토링 — Step 4 대기
 
-**진행 단계**: 호가 틱(0D) 처리 ImportError 근본 수정 완료 (커밋 `ede4515`). 다음 세션에서 Step 4 사전조사부터 시작.
+**진행 단계**: 매수후보 "매수 불가" UI와 실제 매수 시도 차단 불일치 근본 수정 완료. 다음 세션에서 Step 4 사전조사부터 시작.
 
 **계획서**: `docs/plan_sector_score_redesign.md` (4개 Step, 세션당 1단계 — Step 2를 Split A/B로 분할)
 
@@ -23,6 +23,28 @@
 - Step 3: 프론트엔드 설정 패널 + 타입 + 슬라이더 값 표시 (소스 5 + 테스트 1) — 완료
 - Step 3 후속: 업종순위 슬라이더 매수설정 동일 모듈 통일 + 숫자 입력란 연동 + 라벨 명확화 (소스 2 + 테스트 1) — 완료
 - Step 4: 테스트 + 문서 갱신 (3개 테스트 + 2개 문서) — 대기
+
+---
+
+### 작업: 매수후보 "매수 불가" UI와 실제 매수 시도 차단 불일치 근본 수정 — 완료
+
+**진행 단계**: 완료. 다음 작업: 업종 점수 산정 방식 리팩토링 Step 4 사전조사 대기.
+
+**완료 내용 (2026-07-15)**:
+- **현상**: 매수후보 테이블 주문가능금액 배지에 "매수 불가"가 표시되었음에도, 백엔드에서 `execute_buy`가 반복 호출되어 "매수 시도" 로그가 계속 남음. 주문가능금액(`orderable`)이 종목 현재가(`cur_price`)보다 현저히 낮은 상황(예: 주문가능 3,329원 vs 종목 가격 수만 원)에서도 매수 시도가 차단되지 않음.
+- **근본 원인 (`backend/app/services/buy_order_executor.py:99, 117-135`)**:
+  1. `99`줄: `_available <= 0`만 체크. 0보다 큰 주문가능금액이 있으면 `execute_buy`를 호출. 종목 현재가보다 주문가능금액이 적은지는 검사하지 않음. `bd63e1a`(2026-07-02)에서 추가된 `_available < _effective_buy_amt` 체크가 `2f17ad2b`(2026-07-03 rollback point)에서 `_available <= 0`으로 롤백된 후 복원되지 않음.
+  2. `117-124`줄(수정 전): `_buyable_codes` 집합이 `guard_pass`/`after_hours`/`nxt_enable`만 고려. `orderable`과 `cur_price` 비교는 `execute_buy` 내부(`trading.py:250-257`)에서만 수행되어, "매수 시도" 로그가 찍힌 후 차단됨.
+  3. `126-135`줄(수정 전): `_current_snapshot`에 `available_cash`를 포함했지만 `_buyable_codes`가 `price`에 의존하지 않아, `guard_pass` 변동 시 snapshot이 변경되어 `execute_buy`가 반복 호출됨.
+  4. UI-백엔드 분리: `frontend/src/pages/buy-target.ts:185-198`은 `orderable / cur_price`로 "매수 불가"를 산출하지만, 백엔드는 `_available <= 0`만 확인. 동일한 `orderable`을 보고 있지만 판단 기준이 분리되어 있었음 (P10 SSOT 위반).
+- **수정 내용**: 백엔드 1파일 + 테스트 1파일 (+59/-39):
+  - `buy_order_executor.py:114-142`: `_buyable_codes` 생성 시 `guard_pass` + `after_hours` + `nxt_enable` + `rebuy_block` + `orderable`/`cur_price` 비교를 모두 적용. 테스트모드 슬리피지(`dry_run.estimate_fill_price`) 적용 (`trading.py:254`와 동일). `_max_for_code < _est_price`이면 `_buyable_codes`에서 제외.
+  - `buy_order_executor.py:144-152`: `_current_snapshot`에서 `available_cash` 필드 제거. `_buyable_codes`가 `orderable`/`cur_price`에 의존하므로 `available_cash`는 중복.
+  - `buy_order_executor.py:159-169`: 루프 내 `s.code not in _buyable_codes` 체크 추가. `_buyable_codes`에 포함된 종목만 `execute_buy` 호출.
+  - `test_buy_order_executor.py`: `TestPriceBasedFiltering` 클래스 추가 (5개 테스트): orderable < cur_price 차단, orderable >= cur_price 허용, buy_amt_on=False 시에도 차단, rebuy_block 제외, snapshot available_cash 필드 제거 확인.
+- **영향 범위**: 백엔드 1파일 + 테스트 1파일. `trading.py`/`execute_buy`/DB/프론트엔드 변경 없음. 거래 로직은 `execute_buy` 단일 경로 유지 (P15). 사전 가드가 `execute_buy` 호출 직전에 배선됨 (P16). UI와 백엔드가 동일한 `orderable`/`cur_price` 기준으로 매수 가능 판단 (P10). "매수 불가" UI와 백엔드 판단 일치 (P21). `available_cash` 중복 필드 제거 (P24).
+- **검증**: py_compile 통과, ruff 0건, 단위 테스트 31 passed (기존 26 + 신규 5), `python -W error::RuntimeWarning main.py` 런타임 15초 기동 정상 (RuntimeWarning 0건, 에러/Traceback 0건), 잔존 프로세스 0건. 런타임 로그에서 주문가능 3,329원 상태로 정상 기동 확인.
+- **P10/P15/P16/P21/P24**: UI와 백엔드 동일 기준 (SSOT), `execute_buy` 단일 경로 유지, 사전 가드가 실제 호출 직전 배선, UI 판단과 백엔드 판단 일치, `available_cash` 중복 필드 제거.
 
 ---
 
@@ -746,6 +768,16 @@
     - [G] 외부 프로세스에 의한 DB 직접 조작 가능성 (14:32~15:52 공백 시간)
     - [H] 70,100 값의 출처 역산 — 07-09 005930 매수 체결가들로 평균가 계산 불가 확인
     - [I] WAL checkpoint 타이밍 이슈 — 이전 데이터 복원 가능성
+
+- **매수후보 '매수 불가' UI와 실제 매수 시도 차단 로직 분리 — 근본 해결 완료 (2026-07-15)**
+  - 증상: 매수후보 테이블 주문가능금액 배지에 '매수 불가'가 표시되었음에도, `evaluate_buy_candidates`가 반복 호출되어 `execute_buy`가 계속 실행됨. 주문가능금액(`orderable`)이 종목 가격(`cur_price`)보다 현저히 낮은데도 `execute_buy`가 호출되어 '매수 시도' 로그가 반복 발생.
+  - 근본 원인 (`backend/app/services/buy_order_executor.py`):
+    - `99`줄: `_available <= 0`만 체크. 0보다 큰 주문가능금액이 있으면 `execute_buy`를 호출. 2026-07-02 `bd63e1a`에서 추가되었던 `_available < _effective_buy_amt` 사전 체크가 2026-07-03 `2f17ad2b` (rollback point)에서 `_available <= 0`으로 롤백된 후 복원되지 않음.
+    - `117-124`줄: `_buyable_codes` 집합이 `guard_pass`/`after_hours`/`nxt_enable`/`rebuy_block`만 고려. `orderable`과 `cur_price` 비교는 `execute_buy` 내부(`trading.py:250-257`)에서만 수행되므로, `execute_buy` 호출 이후에야 `buy_qty <= 0`으로 `return False`됨. '매수 시도' 로그는 이미 찍힘.
+    - `126-135`줄: `_current_snapshot`에 `available_cash`를 포함. `_buyable_codes`가 `price`/`available`에 의존하지 않으므로, `guard_pass`가 실시간 데이터로 왔다갔다 하면 `_buyable_codes` 집합이 변하고 snapshot이 달라져 `execute_buy`가 반복 호출됨.
+  - UI-백엔드 분리 지점: `frontend/src/pages/buy-target.ts:185-198`은 `orderable`과 `cur_price`로 '매수 불가'를 산출, 반면 `backend/app/services/buy_order_executor.py:99`은 `_available <= 0`만 확인. 동일한 `orderable`을 보고 있지만 판단 기준이 분리되어 있었음(P10 SSOT 위반). 실제 차단은 `execute_buy` 내부(`trading.py:255-257`)에서만 이루어짐.
+  - 이전 수정이 근본이 아니었던 이유: `bd63e1a`의 `_available < _effective_buy_amt` 체크가 rollback point(`2f17ad2b`)로 인해 사라졌고, 이후 `b35eaa3`/`0efe7cd` 스냅샷 캐싱은 `buyable_codes`가 `guard_pass`에 의존하는 한 근본적으로 반복 호출을 막지 못함. `_buy_amt_on=False`일 때 `_effective_buy_amt=None`이면 `_available < _effective_buy_amt` 체크도 적용 불가능했으므로 종목 가격 대비 `orderable` 부족은 차단되지 않았음.
+  - 해결 (2026-07-15): `buy_order_executor.py`에서 `_buyable_codes` 생성 시 `orderable`/`cur_price` 비교를 추가하여 `execute_buy` 호출 전에 매수 불가 종목을 차단. `_current_snapshot`에서 `available_cash` 필드 제거. 테스트 5개 추가. 상세 내용은 "작업: 매수후보 '매수 불가' UI와 실제 매수 시도 차단 불일치 근본 수정" 섹션 참조.
 
 ## 테스트 실행 원칙 (필수 준수)
 

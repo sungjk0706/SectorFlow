@@ -600,3 +600,101 @@ class TestGlobalSnapshotCache:
         finally:
             for p in patches:
                 p.stop()
+
+
+# ── 가격 기반 사전 필터링 (orderable vs cur_price) ──────────────────────────
+
+class TestPriceBasedFiltering:
+    """_buyable_codes가 orderable/cur_price를 기반으로 종목을 필터링하는지 검증.
+    execute_buy 호출 전에 매수 불가 종목을 차단하여 "매수 시도" 로그 후 차단되는
+    불필요한 호출을 제거 (P10 SSOT, P21 사용자 투명성).
+    """
+
+    @pytest.mark.asyncio
+    async def test_orderable_less_than_price_blocks_execute_buy(self, fresh_state, reset_cash_gate):
+        """주문가능금액이 종목 가격보다 적으면 execute_buy 호출 안 됨."""
+        # cur_price=70000, 테스트모드 슬리피지 적용 시 est_price=70100
+        # available=50_000 < 70100 → _buyable_codes에서 제외
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 50_000
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_orderable_greater_than_price_allows_execute_buy(self, fresh_state, reset_cash_gate):
+        """주문가능금액이 종목 가격보다 크면 execute_buy 호출됨."""
+        # cur_price=70000, est_price=70100
+        # available=10_000_000 >= 70100 → _buyable_codes에 포함
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_buy_amt_on_false_orderable_less_than_price_blocks(self, fresh_state, reset_cash_gate):
+        """buy_amt_on=False일 때도 orderable < cur_price이면 execute_buy 호출 안 됨."""
+        # buy_amt_on=False → _effective_buy_amt=None → _max_for_code=available
+        # available=50_000 < est_price=70100 → 차단
+        fresh_state.integrated_system_settings_cache = _default_settings(buy_amt_on=False, buy_amt=0)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 50_000
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rebuy_block_excludes_from_buyable_codes(self, fresh_state, reset_cash_gate):
+        """rebuy_block_on + 금일 매수 종목 → _buyable_codes에서 제외 → execute_buy 호출 안 됨."""
+        fresh_state.auto_trade._bought_today = {"005930": 1234567890.0}
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_snapshot_excludes_available_cash_field(self, fresh_state, reset_cash_gate):
+        """snapshot에 available_cash 필드가 없는지 확인 — _buyable_codes가 orderable에 의존."""
+        # execute_buy 실패 → invalidate_buy_snapshot 호출 안 됨 → snapshot 유지
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=False)
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            await evaluate_buy_candidates()
+        # execute_buy 호출은 되었지만 실패 → snapshot 유지
+        fresh_state.auto_trade.execute_buy.assert_called_once()
+        assert buy_order_executor._last_global_snapshot is not None
+        # available_cash 필드가 제거되었는지 확인
+        assert "available_cash" not in buy_order_executor._last_global_snapshot

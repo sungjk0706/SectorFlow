@@ -113,15 +113,33 @@ async def evaluate_buy_candidates() -> None:
 
     # ── 전역 조건 스냅샷: 변화 없으면 매수 시도 스킵 (원칙 11 이벤트 기반) ──
     _after_hours = is_krx_after_hours()
+    _rebuy_block_on = bool(state.integrated_system_settings_cache.get("rebuy_block_on", True))
+    _is_test = is_test_mode(state.integrated_system_settings_cache)
 
-    _buyable_codes: list[str] = []
+    # ── 매수 가능 종목 집합: guard_pass + 장외 + 재매수 + 주문가능금액/가격 ──
+    # execute_buy 내부(trading.py:250-257)와 동일 기준으로 사전 필터링하여
+    # "매수 시도" 로그 후 차단되는 불필요한 호출 제거 (P10 SSOT, P21 사용자 투명성).
+    # available_cash를 snapshot에서 제거하고 _buyable_codes가 orderable/가격에
+    # 의존하도록 통일 — orderable 변동 시 _buyable_codes가 변하여 snapshot 반영.
+    _buyable_codes: set[str] = set()
     for bt in ss.buy_targets:
         s = bt.stock
         if not s.guard_pass:
             continue
         if _after_hours and not is_nxt_enabled(s.code):
             continue
-        _buyable_codes.append(s.code)
+        if _rebuy_block_on and s.code in state.auto_trade._bought_today:
+            continue
+        _price = int(s.cur_price or 0)
+        if _price <= 0:
+            continue
+        # 테스트모드 슬리피지 적용 (trading.py:254와 동일)
+        _est_price = dry_run.estimate_fill_price(_price, "BUY") if _is_test else _price
+        # 종목별 가용 금액 = min(effective_buy_amt, available) 또는 available
+        _max_for_code = min(_effective_buy_amt, _available) if _effective_buy_amt is not None else _available
+        if _max_for_code < _est_price:
+            continue
+        _buyable_codes.add(s.code)
 
     _current_snapshot = {
         "buyable_codes": tuple(sorted(_buyable_codes)),
@@ -131,7 +149,6 @@ async def evaluate_buy_candidates() -> None:
         "buy_amt_on": _buy_amt_on,
         "max_limit": _max_limit,
         "max_limit_on": _max_limit_on,
-        "available_cash": _available,
     }
 
     global _last_global_snapshot
@@ -146,6 +163,9 @@ async def evaluate_buy_candidates() -> None:
             continue
         # 장외 시간 KRX 단독 종목 매수 차단
         if _after_hours and not is_nxt_enabled(s.code):
+            continue
+        # 재매수 차단 + 주문가능금액/가격 필터 (buyable_codes와 동일 조건)
+        if s.code not in _buyable_codes:
             continue
 
         logger.info("[매매] 매수 시도: %s(%s) 업종=%s",
