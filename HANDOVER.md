@@ -1,11 +1,40 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-15 (P-001 Step 1 수정 세션)
-- 작업: P-001 Step 1 — `engine_radar.py:73-77` 틱 수신 폴백 제거
-- 상태: Step 1 구현 + 검증 완료, 커밋 대기
+- 날짜: 2026-07-15 (P-001 Step 2 수정 세션)
+- 작업: P-001 Step 2 — `pipeline_compute.py:576` 보유종목 틱 rate 폴백 제거
+- 상태: Step 2 구현 + 검증 완료, 커밋 완료
 
 ## 직전 완료 작업 (이번 세션)
+
+### P-001 Step 2: 보유종목 틱 rate 폴백 제거 — `pipeline_compute.py`
+
+**수정 내용**: `backend/app/pipelines/pipeline_compute.py:575-576` — FID 12(등락률) 값이 빈 문자열이거나 키가 없으면 None 저장, 값이 있으면 기존 파서 호출.
+- FID 12 키 없음 → `_raw12 = None` → `rate = None` (미수신)
+- 빈 문자열 → `"".strip()` falsy → `rate = None` (미수신)
+- `"0"` → `parse_change_rate_to_percent("0")` → `0.0` 저장 (정상 수신 0%)
+- `"1.5"` → `1.5` 저장 (정상 수신)
+- 계획서 원안 대비 P24 개선: `_ws_fid_raw` 1회 호출로 간소화 (원안은 2회 호출 + `_ws_fid_key_present` 중복)
+
+`_has_any_realtime_data` (`pipeline_compute.py:91-97`)는 **변경 없음**. Step 1 완료로 `master_stocks_cache` 빈 값이 None으로 저장되므로 기존 `is not None` 체크가 정상 동작 (None=미수신, 0.0=정상 수신 0% 구분).
+
+**검증 결과**:
+- py_compile 통과
+- `test_pipeline_compute.py` 87개 테스트 전부 통과 (0.20s)
+- 런타임 기동 (`-W error::RuntimeWarning`) 정상, 에러/Traceback/RuntimeWarning 없음, 금지 패턴 5개 로그 없음
+- 잔존 프로세스 0건 확인
+
+**영향 범위**: 보유종목 틱 처리 경로 `rate` 지역 변수 + `_dr_pos["change_rate"]` 저장 1곳. `_recalc_pnl`은 change_rate 미사용 → 안전. 보유종목 새로고침 `if old.get(f) is not None` 보존 로직 → None이면 보존 안 함, 안전. 보유종목 UI는 `sectorStock?.cur_price` 기준 자체 계산 → 안전. 수신률/업종점수/REST 잔고 경로 영향 없음.
+
+**작업 중 발견 문제 (P-001 범위 외)**:
+- `pipeline_compute.py:575` FID 11(대비) 빈 값 → 0 폴백 (P20). 수신률/업종점수 미사용이라 P-001 범위 외. 별도 검토.
+- `engine_account_notify.py:350` `notify_desktop_trade_price` dead code (P16). 프로덕션 호출처 없음. 별도 검토.
+
+## 다음 세션 작업 (P-001 Step 3)
+- `sector_calculator.py:69,78` 업종 점수 폴백 제거 (None을 0으로 폴백하지 않고 미수신 종목 제외).
+- 사전조사는 `docs/plan_P001_fix.md` Step 3 섹션 참조.
+
+## 직전 완료 작업 (이전 세션)
 
 ### P-001 Step 1: 틱 수신 경로 폴백 제거 — `engine_radar.py`
 
