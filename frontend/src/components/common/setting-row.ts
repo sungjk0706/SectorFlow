@@ -223,20 +223,18 @@ export function createNumInput(options: {
 
   input.addEventListener('input', () => {
     const raw = input.value.replace(/[^0-9.-]/g, '')
-    currentValue = Number(raw) || 0
-    options.onChange(currentValue)
+    const parsed = Number(raw) || 0
+    // 실시간 clamp — 범위 밖 값 입력 즉시 보정 (슬라이더·▲▼ 버튼과 단일 범위, P10 SSOT)
+    const clamped = Math.round(Math.min(maxVal, Math.max(minVal, parsed)) * 100) / 100
+    currentValue = clamped
+    // 보정된 경우에만 DOM 갱신 — 범위 내 타이핑 시 커서 위치 보존
+    if (clamped !== parsed) {
+      input.value = String(clamped)
+    }
+    options.onChange(clamped)
   })
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); focusNext(input) }
-  })
-  // blur 시점 clamp — 타이핑 중간값 잘림 방지 위해 포커스 잃을 때 범위 보정 (P10 SSOT)
-  input.addEventListener('blur', () => {
-    const clamped = Math.round(Math.min(maxVal, Math.max(minVal, currentValue)) * 100) / 100
-    if (clamped !== currentValue) {
-      currentValue = clamped
-      input.value = String(clamped)
-      options.onChange(clamped)
-    }
   })
 
   const spinBtns = createSpinButtons(
