@@ -582,7 +582,8 @@ async def _handle_real_01_tick(
                 _receive_rate_dirty = True
 
         # ── 3. 보유종목 현재가 반영 — 평가손익·수익률 실시간 재계산 ──
-        diff = _ws_fid_int(vals, "11", 0) if _ws_fid_key_present(vals, "11") else 0
+        _raw11 = _ws_fid_raw(vals, "11")
+        diff = _ws_fid_int(vals, "11") if _raw11 is not None and str(_raw11).strip() and str(_raw11).strip() != "-" else None
         _raw12 = _ws_fid_raw(vals, "12")
         rate = parse_change_rate_to_percent(_raw12) if _raw12 is not None and str(_raw12).strip() else None
         _price_hit = False

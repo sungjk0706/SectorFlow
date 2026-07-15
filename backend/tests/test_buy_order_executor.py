@@ -19,7 +19,7 @@ def _stock(code="005930", guard_pass=True, cur_price=70000, sector="반도체", 
     s = StockScore(
         code=code, name=name, sector=sector,
         change_rate=1.0, trade_amount=1_000_000_000,
-        avg_amt_5d=40, ratio_5d_pct=10.0, strength=100.0,
+        avg_amt_5d=40, strength=100.0,
         cur_price=cur_price, change=700, market_type="0", nxt_enable=nxt_enable,
         guard_pass=guard_pass,
     )

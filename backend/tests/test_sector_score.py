@@ -22,7 +22,7 @@ def _make_stock(
 ) -> StockScore:
     return StockScore(
         code=code, name=code, sector=sector, change_rate=change_rate,
-        trade_amount=trade_amount, avg_amt_5d=1000, ratio_5d_pct=0.0,
+        trade_amount=trade_amount, avg_amt_5d=1000,
         strength=0.0, cur_price=50000,
     )
 
@@ -44,7 +44,7 @@ def _make_sector_score(
     return SectorScore(
         sector=sector, total=total, rise_count=rise_count, rise_ratio=rise_ratio,
         avg_change_rate=avg_change, avg_trade_amount=avg_trade_amount,
-        avg_ratio_5d_pct=0.0, stocks=stocks,
+        stocks=stocks,
     )
 
 

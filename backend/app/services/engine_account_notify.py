@@ -347,26 +347,6 @@ async def notify_desktop_sector_refresh(*, force: bool = False) -> None:
     await notify_desktop_sector_scores(force=force)
 
 
-async def notify_desktop_trade_price(
-    stk_cd: str, price: int,
-    change: int = 0, change_rate: float = 0.0,
-    strength: str = "-", trade_amount: int = 0,
-) -> None:
-    """REAL 체결가 → WS trade-price (확장 필드 포함)."""
-    if price <= 0 or not stk_cd:
-        return
-    nk = _base_stk_cd(stk_cd)
-    payload = {
-        "code": nk,
-        "price": int(price),
-        "change": int(change),
-        "change_rate": float(change_rate),
-        "strength": str(strength),
-        "trade_amount": int(trade_amount),
-    }
-    await _safe_broadcast("trade-price", payload)
-
-
 def _is_relevant_code(nk: str) -> bool:
     """프론트에서 실제 사용하는 종목 코드인지 판별 (업종+보유+레이아웃). set O(1) 조회."""
     try:

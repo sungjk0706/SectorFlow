@@ -16,7 +16,6 @@ class StockScore:
     change_rate: float          # 등락률 (%)
     trade_amount: int           # 당일 거래대금 (원)
     avg_amt_5d: int             # 5일 평균 거래대금 (억 단위)
-    ratio_5d_pct: float         # 5D거래대금비율 (%) = trade_amount / avg_amt_5d * 100
     strength: float             # 체결강도 (%, -1 = 미수신)
     cur_price: int              # 현재가
     change: int = 0             # 전일 대비 (원)
@@ -39,7 +38,6 @@ class SectorScore:
     rise_ratio: float           # 상승 비율 (0.0~1.0)
     avg_change_rate: float      # 평균 등락률 (%)
     avg_trade_amount: int       # 업종 평균 거래대금 (원)
-    avg_ratio_5d_pct: float     # 업종 평균 5D거래대금비율 (%)
     rank: int = 0               # 강도 순위 (1=최강) — 모든 업종에 순위 부여, 컷오프 미달은 is_cutoff_passed=False로 구분
     is_cutoff_passed: bool = True  # 컷오프(min_rise_ratio) 통과 여부 — rank와 분리된 진실 소스 (P10)
     stocks: list[StockScore] = field(default_factory=list)

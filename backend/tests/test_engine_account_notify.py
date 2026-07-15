@@ -19,7 +19,6 @@ from backend.app.services.engine_account_notify import (
     _rebuild_positions_cache,
     _rebuild_layout_cache,
     _build_lightweight_payload_for_profit_overview,
-    notify_desktop_trade_price,
     notify_raw_real_data,
     broadcast_engine_status_ws,
     notify_ws_subscribe_status,
@@ -273,32 +272,6 @@ class TestBuildLightweightPayload:
         assert "stk_cd" in pos
         assert "extra" not in pos
         assert result["removed_codes"] == ["000660"]
-
-
-# ── notify_desktop_trade_price (ws_manager mock) ──────────────────────────────────
-
-class TestNotifyDesktopTradePrice:
-    @pytest.mark.asyncio
-    async def test_valid_price(self):
-        with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc:
-            await notify_desktop_trade_price("005930", 80000)
-            mock_bc.assert_awaited_once()
-            args = mock_bc.call_args
-            assert args.args[0] == "trade-price"
-            assert args.args[1]["code"] == "005930"
-            assert args.args[1]["price"] == 80000
-
-    @pytest.mark.asyncio
-    async def test_zero_price_skipped(self):
-        with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc:
-            await notify_desktop_trade_price("005930", 0)
-            mock_bc.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_empty_code_skipped(self):
-        with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc:
-            await notify_desktop_trade_price("", 80000)
-            mock_bc.assert_not_awaited()
 
 
 # ── notify_raw_real_data (ws_manager mock) ────────────────────────────────────────
