@@ -44,10 +44,11 @@ function _appendStandardSegment(
 
 /**
  * NXT 세그먼트 추가 — 빨강 라벨 + ▲ 삼각 + 콜론 + 숫자 + '종목' (sector-stock.ts 기존 패턴 보존).
+ * 첫 세그먼트 시 marginLeft 없음 (표준 세그먼트와 동일 — P23 일관성).
  */
-function _appendNxtSegment(parent: HTMLElement): HTMLSpanElement {
+function _appendNxtSegment(parent: HTMLElement, isFirst: boolean): HTMLSpanElement {
   const label = document.createElement('span')
-  Object.assign(label.style, { color: COLOR.up, marginLeft: '14px' })
+  Object.assign(label.style, { color: COLOR.up, marginLeft: isFirst ? '' : '14px' })
   label.textContent = 'NXT'
   parent.appendChild(label)
   const tri = document.createElement('span')
@@ -96,7 +97,7 @@ export function createMarketCountRow(options: {
   let isFirst = true
   if (showTotal) { numSpans.total = _appendStandardSegment(el, '합계:', COLOR.neutral, isFirst); isFirst = false }
   if (showKrx) { numSpans.krx = _appendStandardSegment(el, 'KRX:', COLOR.neutral, isFirst); isFirst = false }
-  if (showNxt) { numSpans.nxt = _appendNxtSegment(el); isFirst = false }
+  if (showNxt) { numSpans.nxt = _appendNxtSegment(el, isFirst); isFirst = false }
   if (showKospi) { numSpans.kospi = _appendStandardSegment(el, '코스피:', COLOR.neutral, isFirst); isFirst = false }
   if (showKosdaq) { numSpans.kosdaq = _appendStandardSegment(el, '코스닥:', COLOR.kosdaq, isFirst) }
 
