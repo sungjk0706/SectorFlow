@@ -1,11 +1,37 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-15 (문서 보강 + 정산 만료 기록 정리 로직 수정)
-- 작업: 안건 3 문서 보강 (AGENTS.md 규칙 0-3/0-4/0-5 추가 + 스킬 4개 사전조사 항목 추가) + 정산 만료 기록 정리 로직 수정 (테스트모드 달력 6개월 + 조건부 로그)
+- 날짜: 2026-07-15 (종목분류페이지 필터요약 라벨 우측 정렬 + 두 줄 표시)
+- 작업: 종목분류페이지 상단 헤더에서 필터요약 라벨을 좌측 버튼 영역에서 우측 끝으로 이동하고, 한 줄 긴 텍스트를 두 줄(요약/주요 제외)로 분리 표시.
 - 상태: 구현 + 검증 완료, 커밋 완료.
 
 ## 직전 완료 작업 (이번 세션)
+
+### 1. 종목분류페이지 필터요약 라벨 우측 정렬 + 두 줄 표시 — `stock-classification.ts` (1개 파일)
+
+**배경**: 필터요약 라벨("전체 4297종목 → 매매 가능 1341종목 (제외 2956종목, 69%) | 주요 제외: 증거금100%종목 1224개, ETF 1147개, ...")이 좌측 다운로드 버튼 2개와 같은 줄에 붙어있어, 화면이 좁으면 `nowrap + ellipsis`로 "주요 제외: ..." 부분이 잘려서 안 보이는 문제.
+
+**수정 내용**:
+- **모듈 변수 분리**: `indicatorLabel` (단일 span) → `indicatorLabelMain` + `indicatorLabelSub` (두 span).
+- **`buildTripleHeader()`**: `indicatorLabel`을 좌측 버튼 컨테이너에서 제거. 우측 영역(`right`, flex:1)을 빈 공백에서 `flexDirection: column, alignItems: flex-end, textAlign: right` 컨테이너로 변경. 메인 줄(`FONT_SIZE.body`, `COLOR.neutral`) + 서브 줄(`FONT_SIZE.small`, `COLOR.tertiary`) 두 span 추가.
+- **`updateIndicatorBar()`**: `filter_summary` 문자열을 ` | ` 기준으로 split — 첫 부분은 `indicatorLabelMain`, "주요 제외: ..."는 `indicatorLabelSub`에 표시. 분리 기준 없으면 메인에 전체 표시, 빈 값이면 두 줄 모두 클리어.
+- **cleanup**: `indicatorLabel = null` → `indicatorLabelMain = null` + `indicatorLabelSub = null`.
+
+**검증 결과**:
+- typecheck 통과 (초기 `COLOR.secondary` 미존재 에러 → `COLOR.neutral`로 수정 후 통과)
+- 빌드 성공 (stock-classification 번들 26.68 kB)
+- 백엔드 런타임 이미 실행 중 (PID 22959), 정상 응답 확인
+
+**영향 범위**: 프론트엔드 1개 파일만 변경. 백엔드/테스트 영향 없음. `filter_summary` 데이터 흐름 변화 없음 (문자열 표시만 분리).
+
+**아키텍처 원칙 부합**: P21 (사용자 투명성 — 요약 정보가 잘리지 않고 전부 표시), P23 (용어 통일 — 텍스트 변경 없음), P24 (단순성 — DOM 요소 재배치만).
+
+## 다음 세션 작업
+- **다운로드 완료 시간 표시 (제안2)**: 1일봉/5일봉 다운로드 버튼 우측에 가장 최근 다운로드 완료 시간 표시. 백엔드 신규 기능 필요 — 현재 DB에 다운로드 완료 시간 저장소 없음 (`master_stocks_table.date`/`stock_5d_bars.dt`는 거래일이지 다운로드 시각 아님). 사전조사: 다운로드 파이프라인 완료 지점, 저장소 설계(system_state_cache 또는 신규 테이블), P10 SSOT/P22 정합성 점검 후 설계 제안.
+- 실전모드 보관 기준(`RETENTION_TRADING_DAYS_REAL = 90`) 추후 논의 — 사용자가 "증권사 서버에 데이터가 다 있으니 추후 논의"라고 명시.
+- 기존 발견 문제: `notify_raw_real_data` dead code (P16) 별도 검토 필요 시 사용자 지시.
+
+## 직전 완료 작업 (이전 세션)
 
 ### 1. 안건 3 문서 보강 — AGENTS.md 규칙 0-3/0-4/0-5 + 스킬 4개 사전조사 항목 (5개 파일)
 
