@@ -454,7 +454,7 @@ class TestHandleReal0dTick:
         mock_state.master_stocks_cache = {"005930": {"_subscribed_dynamic": True}}
         with patch("backend.app.services.engine_symbol_utils._real_item_stk_cd", return_value="005930"), \
              patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"), \
-             patch("backend.app.services.engine_ws_dispatch._ws_fid_int", side_effect=[1000, 800]), \
+             patch("backend.app.services.engine_ws_parsing._ws_fid_int", side_effect=[1000, 800]), \
              patch("backend.app.services.engine_account_notify.notify_orderbook_update", new_callable=AsyncMock) as mock_notify, \
              patch("backend.app.pipelines.pipeline_compute.state", mock_state):
             await _handle_real_0d_tick(item, vals, AsyncMock())
@@ -468,7 +468,7 @@ class TestHandleReal0dTick:
         mock_state.master_stocks_cache = {"005930": {"_subscribed_dynamic": False}}
         with patch("backend.app.services.engine_symbol_utils._real_item_stk_cd", return_value="005930"), \
              patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"), \
-             patch("backend.app.services.engine_ws_dispatch._ws_fid_int", side_effect=[1000, 800]), \
+             patch("backend.app.services.engine_ws_parsing._ws_fid_int", side_effect=[1000, 800]), \
              patch("backend.app.services.engine_account_notify.notify_orderbook_update", new_callable=AsyncMock) as mock_notify, \
              patch("backend.app.pipelines.pipeline_compute.state", mock_state):
             await _handle_real_0d_tick(item, vals, AsyncMock())
@@ -487,7 +487,7 @@ class TestHandleReal0dTick:
         vals = {"125": "-1", "121": "100"}
         with patch("backend.app.services.engine_symbol_utils._real_item_stk_cd", return_value="005930"), \
              patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"), \
-             patch("backend.app.services.engine_ws_dispatch._ws_fid_int", side_effect=[-1, 100]):
+             patch("backend.app.services.engine_ws_parsing._ws_fid_int", side_effect=[-1, 100]):
             await _handle_real_0d_tick(item, vals, AsyncMock())
 
 
