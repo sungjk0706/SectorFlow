@@ -195,11 +195,15 @@ export function createNumInput(options: {
   value: number
   onChange: (v: number) => void
   step?: number
+  min?: number          // ▼ 버튼 하한 (기본 0 — 대부분 설정값은 음수 무의미)
+  max?: number          // ▲ 버튼 상한 (기본 Infinity — 상한 없음)
   name?: string
   style?: Partial<CSSStyleDeclaration>
 }) {
   let currentValue = options.value
   const numStep = options.step ?? 1
+  const minVal = options.min ?? 0
+  const maxVal = options.max ?? Infinity
 
   const wrap = document.createElement('div')
   wrap.style.display = 'flex'
@@ -228,8 +232,8 @@ export function createNumInput(options: {
 
   const spinBtns = createSpinButtons(
     input,
-    () => { currentValue = Math.round((currentValue + numStep) * 100) / 100; input.value = String(currentValue); options.onChange(currentValue) },
-    () => { currentValue = Math.round(Math.max(0, currentValue - numStep) * 100) / 100; input.value = String(currentValue); options.onChange(currentValue) },
+    () => { currentValue = Math.round(Math.min(maxVal, currentValue + numStep) * 100) / 100; input.value = String(currentValue); options.onChange(currentValue) },
+    () => { currentValue = Math.round(Math.max(minVal, currentValue - numStep) * 100) / 100; input.value = String(currentValue); options.onChange(currentValue) },
   )
 
   wrap.appendChild(input)
