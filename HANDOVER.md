@@ -1,11 +1,63 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-15 (P-001 Step 3 수정 세션)
-- 작업: P-001 Step 3 — `sector_calculator.py:69,78` 업종 점수 계산 None 폴백 제거 + 미수신 종목 제외
-- 상태: Step 3 구현 + 검증 완료, 커밋 + 푸시 완료. P-001 3단계 전체 완료.
+- 날짜: 2026-07-15 (수신률 100% 왜곡 근본 해결 — P-001 후속 + _received_codes 복원)
+- 작업: P-001 Step 1~3 완료 후에도 수신률 100% 왜곡 지속 → 근본 원인 추적 + 7개 파일 수정
+- 상태: 구현 + 검증 완료, 커밋 완료. P-001 3단계 + 후속 근본 해결 전체 완료.
 
 ## 직전 완료 작업 (이번 세션)
+
+### 수신률 100% 왜곡 근본 해결 — _received_codes 복원 + 모든 경로 None→0 폴백 제거 (7개 파일)
+
+**문제**: P-001 Step 1~3 완료 후에도 앱 기동 직후 수신률이 즉시 100%로 표시되고, 백엔드 로그에 수신률 상승 과정이 표시되지 않았음.
+
+**근본 원인 (git history 추적으로 확정)**:
+1. **`89e1bd6` (2026-07-13)에서 `_received_codes` (누적 수신 세트) 제거** — "수신율 0% 고정 해결" 목적이었으나, 사용자 설계의 "한 번 수신된 종목은 수신된 것으로 유지" 메커니즘 상실. `_reset_realtime_fields()`가 메모리를 None으로 초기화하면 수신률이 0%로 강하.
+2. **`stock_tables.py:350, 352` DB 로드 시 NULL → 0.0/0 폴백** — P-001이 다루지 않은 경로. DB NULL을 0으로 폴백하여 미수신 데이터가 정상 수신으로 오분류.
+3. **`market_close_pipeline.py` 7곳 확정 데이터 반영 시 `or 0` 폴백** — None을 0으로 폴백.
+4. **`pipeline_compute.py` Phase 1/2 루프 수신률 로그 없음** — 임계값 통과 시에만 로그 출력, 상승 과정 미표시 (P21 위반).
+
+**수정 내용 (7개 파일)**:
+- `pipeline_compute.py`: `_received_codes` 복원 (전역 변수 + 틱 수신 시 `add()` + 수신률 계산을 `_received_codes` + `_has_any_realtime_data` 결합 방식). Phase 1/2 루프 수신 종목 수 증가 시 로그 출력 추가 (P21).
+- `stock_tables.py:350, 352`: `load_master_stocks_table` DB NULL → None 유지 (폴백 제거).
+- `market_close_pipeline.py:255, 259, 450-451, 464, 481, 490, 923, 927`: 확정 데이터 반영 시 None → 0 폴백 7곳 제거.
+- `sector_calculator.py:78`: `trade_amounts.get()` 폴백 제거 → None 유지.
+- `engine_radar.py:18`: `get_trade_amount_cache()` 폴백 제거 → None 유지, 반환 타입 `dict[str, int | None]`.
+- `buy_filter.py:221-223`: `trade_amount_cache` None 안전 처리 (거래대금 순위 정렬 시 None → `-inf`).
+- `daily_time_scheduler.py:995, 1001`: `_apply_detail_to_entry` 폴백 제거 → None 유지.
+
+**검증 결과**:
+- py_compile 7개 파일 전부 통과
+- 단위 테스트 523개 전부 통과 (test_pipeline_compute 87 + test_sector_calculator 34 + test_market_close_pipeline 57 + test_daily_time_scheduler 131 + test_engine_ws_parsing 107 + test_stock_classification_data 24 + test_buy_filter 64 + test_engine_cache 19)
+- 런타임 기동 (`-W error::RuntimeWarning`) 정상, 에러/Traceback/RuntimeWarning 없음, 금지 패턴 5개 로그 없음
+- **수신률 상승 로그 확인** (NXT 애프터마켓 기동):
+  ```
+  18:22:46 수신율 갱신 — 11/134 (8.2%) — 임계값 대기 중 (100.0%)
+  18:22:47 수신율 갱신 — 22/134 (16.4%) — 임계값 대기 중 (100.0%)
+  ...
+  18:22:56 수신율 갱신 — 50/134 (37.3%) — 임계값 대기 중 (100.0%)
+  ```
+- 잔존 프로세스 0건 확인
+
+**영향 범위**: 7개 파일. 수신률 계산 로직 (`pipeline_compute.py`), DB 로드 (`stock_tables.py`), 확정 데이터 반영 (`market_close_pipeline.py`), 업종 점수 (`sector_calculator.py`), 거래대금 캐시 (`engine_radar.py`, `buy_filter.py`), 확정 데이터 적용 (`daily_time_scheduler.py`). 프론트엔드 — 영향 없음 (이미 null 안전).
+
+**P-001 전체 완료 요약 (Step 1~3 + 후속 근본 해결)**:
+- Step 1 (`engine_radar.py:73-83`): 틱 수신 빈 FID 0 폴백 제거 → None 유지
+- Step 2 (`pipeline_compute.py:576-577`): 보유종목 틱 rate 빈 FID 0 폴백 제거 → None 유지
+- Step 3 (`sector_calculator.py:68-87`): 업종 점수 계산 None 폴백 제거 + 미수신 종목 제외
+- 후속 근본 해결: `_received_codes` 복원 + DB/확정데이터/캐시 모든 경로 None→0 폴백 제거 + 수신률 로그 추가
+- 결과: 미수신 데이터가 0으로 왜곡되어 수신률 100%·업종 점수 왜곡되던 문제 근본 해결 (P20/P22 준수). 수신률 상승 과정 백엔드 로그 표시 (P21).
+
+**작업 중 발견 문제 (P-001 범위 외, 기존 기록 유지)**:
+- `pipeline_compute.py:575` FID 11(대비) 빈 값 → 0 폴백 (P20). 수신률/업종점수 미사용이라 P-001 범위 외. 별도 검토.
+- `engine_account_notify.py:350` `notify_desktop_trade_price` dead code (P16). 프로덕션 호출처 없음. 별도 검토.
+- `market_close_pipeline.py:411, 465, 492` `lta` dict — 정의되고 값이 할당만 되고 사용되지 않는 dead code (P16). 별도 검토.
+
+## 다음 세션 작업
+- P-001 전체 완료. 별도 후속 작업 없음.
+- P-001 범위 외 발견 문제 3건(위) 별도 검토 필요 시 사용자 지시.
+
+## 직전 완료 작업 (이전 세션)
 
 ### P-001 Step 3: 업종 점수 계산 None 폴백 제거 + 미수신 종목 제외 — `sector_calculator.py`
 
@@ -23,20 +75,6 @@
 - 잔존 프로세스 0건 확인
 
 **영향 범위**: `sector_calculator.py` 1개 파일. `sector_score.py`(`sc.rise_ratio`, `sc.avg_trade_amount`, `stock.change_rate` 참조) — None 제거된 데이터만 들어오므로 수정 불필요. `models.py` `StockScore`(`change_rate: float`, `trade_amount: int`) — 제외 필터 후 None이 StockScore에 들어가지 않으므로 타입 변경 불필요. 프론트엔드 — 영향 없음 (이미 null 안전). 기존 테스트 28개 — `0.0`/`0` 정상 수신 케이스는 제외되지 않아 전부 통과.
-
-**P-001 3단계 전체 완료 요약**:
-- Step 1 (`engine_radar.py:73-83`): 틱 수신 빈 FID 0 폴백 제거 → None 유지
-- Step 2 (`pipeline_compute.py:576-577`): 보유종목 틱 rate 빈 FID 0 폴백 제거 → None 유지
-- Step 3 (`sector_calculator.py:68-87`): 업종 점수 계산 None 폴백 제거 + 미수신 종목 제외
-- 결과: 미수신 데이터가 0으로 왜곡되어 수신률 100%·업종 점수 왜곡되던 문제 근본 해결 (P20/P22 준수)
-
-**작업 중 발견 문제 (P-001 범위 외, 기존 기록 유지)**:
-- `pipeline_compute.py:575` FID 11(대비) 빈 값 → 0 폴백 (P20). 수신률/업종점수 미사용이라 P-001 범위 외. 별도 검토.
-- `engine_account_notify.py:350` `notify_desktop_trade_price` dead code (P16). 프로덕션 호출처 없음. 별도 검토.
-
-## 다음 세션 작업
-- P-001 3단계 전체 완료. 별도 후속 작업 없음.
-- P-001 범위 외 발견 문제 2건(위) 별도 검토 필요 시 사용자 지시.
 
 ## 직전 완료 작업 (이전 세션)
 
