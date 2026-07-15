@@ -1,11 +1,64 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-16 (보유종목 테이블 수수료·세금 컬럼 삭제 + 매수금액 라벨 병기)
-- 작업: 보유종목 테이블에서 "세금" 컬럼(항상 0 — 보유 중 매도 전이므로 구조상 의미 없음)과 "수수료" 컬럼(매수금액에 이미 포함된 중복 표시) 2개 삭제. "매수금액" 라벨을 "매수금액(수수료 포함)"으로 병기하여 수수료 포함 여부를 사용자가 직관적으로 파악 가능하도록 개선 (P21).
-- 상태: 구현 + 빌드 검증 완료, 커밋 완료.
+- 날짜: 2026-07-16 (KRX/NXT 수신률 분리 집계 + 분리 배지 표시 — 1단계: 프론트엔드 공통 컴포넌트 추출)
+- 작업: sector-stock.ts 인라인 KRX/NXT/코스피/코스닥 카운트 표시를 `createMarketCountRow` 공통 컴포넌트로 추출. 기능 변경 없음, 구조 분리만.
+- 상태: 1단계 구현 + 검증 완료, 커밋 완료. **2단계 시작 대기 (사용자 승인 대기)**.
+
+## 다음 세션 진행 대기: KRX/NXT 수신률 분리 집계 + 분리 배지 표시 — 2단계
+
+### 계획서 경로
+- **`docs/plan_krx_nxt_receive_rate_separation.md`** — 3단계 구현 계획서 (사전조사 결과 + 단계별 파일 목록 + 검증 방법 + 사용자 승인 항목)
+
+### 사용자 승인 완료 항목 (이전 세션)
+- **7-1 임계값 게이트 정책 (3단계)**: 옵션 C(시간대별 분기) 승인 — NXT-only 구간은 NXT 수신률만 기준, 정규장은 KRX/NXT 양쪽 모두 임계값 도달 시(AND).
+- **7-2 진행 방식**: 분리 진행 (규칙 0-1 준수) 승인.
+- **7-3 1단계 시작**: 승인 → 1단계 완료됨.
+
+### 핵심 발견 (사전조사 결과 — 3단계 구현 시 참고)
+1. **수신률 단일 집계**: `_received_codes: set[str]` 단일 세트로 KRX/NXT 구분 없이 종목코드만 저장 (pipeline_compute.py:34). 틱 수신 시 FID 9081(KRX='1'/NXT='2') 확인 없이 추가 (line 581). 정규장에서 KRX/NXT 개별 수신 상태를 알 수 없음 (P10/P21 위반).
+2. **시간대 SSOT 이미 존재**: `is_nxt_only_window()`, `is_nxt_premarket_window()`, `is_nxt_aftermarket_window()`, `KRX_INACTIVE_PHASES`, `NXT_ACTIVE_PHASES` (daily_time_scheduler.py:46~193) — 새 시간 상수 불필요 (P10/P23).
+3. **FID 9081 파서 존재**: `parse_fid9081_exchange()` (engine_ws_parsing.py:181) — '1'=KRX, '2'=NXT, ''=미수신. 단, `_AL` 통합 구독 시 빈 문자열 케이스 가능성 → 3단계 구현 전 실제 틱 로그 확인 권장.
+4. **progress-bar.ts 2인스턴스 가능**: `createProgressBar()` 인터페이스로 독립 인스턴스 2개 생성 가능, 개별 `setValue`/`setThreshold` 호출 가능.
+5. **임계값 게이트 핵심 로직**: `_sector_threshold_passed` (pipeline_compute.py:41) — 단일 수신률 기준. 분리 시 시간대별 분기 정책(옵션 C, 승인됨) 적용.
+
+### 3단계 구현 계획 (계획서 섹션 3)
+- **1단계 (프론트엔드 공통 컴포넌트 추출)**: ✅ 완료 — sector-stock.ts 인라인 카운트 → `createMarketCountRow` 공통 컴포넌트 추출.
+- **2단계 (프론트엔드 수신률 분리 배지)**: sector-settings.ts 수신률 표시를 KRX/NXT 분리 배지 + 진행 바 2인스턴스로 변경. uiStore.receiveRate 타입 변경 + binding.ts 매핑 변경. 1단계 공통 컴포넌트 재사용.
+- **3단계 (백엔드 수신률 분리 집계 + 임계값 게이트)**: `_received_codes` KRX/NXT 2세트 분리, `_calculate_receive_rate()` 시간대별 분리 계산, `_send_receive_rate()` 전송 구조 변경, 임계값 게이트 시간대별 분기 정책(옵션 C, 승인됨). 테스트 전면 수정.
+
+### 승인 대기 상태
+- 2단계 시작 승인 대기 — 사용자가 "진행해" 등 실행 지시어를 줄 때까지 코드 수정 금지 (AGENTS.md 섹션3 규칙 0).
+- 2단계는 프론트엔드 UI 구조 변경(수신률 분리 배지) — 핵심 매매 로직 변경 아님.
+- 3단계 임계값 게이트 정책은 이미 옵션 C로 승인됨 — 3단계 시작 시 재승인 불필요 (단, 3단계 시작 자체는 별도 승인 필요).
+
+---
 
 ## 직전 완료 작업 (이번 세션)
+
+### 1단계: 프론트엔드 공통 컴포넌트 추출 — sector-stock.ts KRX/NXT/코스피/코스닥 카운트 (2개 파일)
+
+**배경**: KRX/NXT 수신률 분리 집계 + 분리 배지 표시 3단계 구현의 1단계. sector-stock.ts의 인라인 KRX/NXT/코스피/코스닥 종목수 카운트 표시(86줄)를 공통 컴포넌트로 추출하여 2단계(수신률 분리 배지)에서 재사용 가능한 기반 마련.
+
+**수정 내용**:
+- **`frontend/src/components/common/market-count-row.ts` (신규, 112줄)**: `createMarketCountRow()` 공통 컴포넌트 생성. `MarketCounts` 인터페이스(total/krx/nxt/kospi/kosdaq) + `MarketCountRowHandle`(el + updateCounts). 시각적 요소 100% 보존 — NXT 라벨 빨강 + ▲ 삼각, 코스닥 자주색, 숫자 파랑 + semibold, '종목' 단위 회색. 세그먼트별 show/hide 옵션. `_appendStandardSegment()` + `_appendNxtSegment()` 헬퍼로 함수 50줄 이하 유지 (P24).
+- **`frontend/src/pages/sector-stock.ts` (718줄 → 627줄, -91줄)**: 인라인 카운트 DOM 생성 86줄 → `createMarketCountRow()` 호출 4줄로 대체. private 필드 5개(titleTotalNumSpan 등) → `marketCountRow` 핸들 1개로 통합. `updateUI()`에서 개별 textContent 갱신 6줄 → `updateCounts()` 1줄 호출. `disconnectedCallback()` 정리.
+
+**유지 대상 (변경 안 함)**:
+- 카운트 계산 로직(`stocks.filter(s => !s.nxt_enable).length` 등) — sector-stock.ts에 유지, 컴포넌트는 표시만 담당 (P10 SSOT).
+- 5일평균거래대금 표시 — 좌측 filterGroup은 인라인 유지 (카운트 행이 아님).
+
+**검증**: typecheck 통과 + build 성공 (63 modules transformed, exit 0, 1.85s). 브라우저 확인 완료 — 사용자 "괜찮아" 승인.
+
+**위반 원칙 해결**: P23 (일관성 — 공통 컴포넌트 추출로 향후 2단계 재사용 기반 마련), P24 (단순성 — 86줄 인라인 → 4줄 호출, sector-stock.ts -91줄).
+
+**수정 후 화면 변화**: 없음 — 시각적 동작 100% 동일 (구조 분리만, 기능 변경 없음).
+
+**영향 범위**: 프론트엔드 2개 파일 (신규 1 + 수정 1). 백엔드/DB 영향 없음.
+
+---
+
+## 직전 완료 작업 (이전 세션)
 
 ### 보유종목 테이블 수수료·세금 컬럼 삭제 + 매수금액 라벨 병기 (2개 파일)
 
