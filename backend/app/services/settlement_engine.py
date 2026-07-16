@@ -69,6 +69,38 @@ def check_buy_power(order_amount: int, daily_limit: int = 0, daily_spent: int = 
     return (True, "")
 
 
+async def reserve_buy_power(order_amount: int, daily_limit: int = 0, daily_spent: int = 0) -> tuple[bool, str, int]:
+    """
+    매수 가능 여부 확인 + 즉시 차감 (원자적). TOCTOU 경쟁 상태 방지.
+    check_buy_power 검증 통과 시 _orderable에서 즉시 차감하고 영속화.
+    반환: (ok, reason, cost) — cost는 차감된 금액 (롤백 시 release_buy_power에 전달).
+    """
+    cost = order_amount + round(order_amount * BUY_COMMISSION)
+    effective = get_effective_buy_power(daily_limit, daily_spent)
+    if cost > effective:
+        return (False, f"주문가능금액 부족 (필요: {cost:,}원, 가용: {effective:,}원)", 0)
+    global _orderable
+    _orderable -= cost
+    await _persist()
+    await _broadcast_delta()
+    logger.info("[정산] 사전 차감 %s원 — 주문가능 %s원", f"{cost:,}", f"{_orderable:,}")
+    return (True, "", cost)
+
+
+async def release_buy_power(cost: int) -> None:
+    """
+    사전 차감 롤백 (주문 실패 시).
+    reserve_buy_power로 차감한 금액을 _orderable에 복원.
+    """
+    if cost <= 0:
+        return
+    global _orderable
+    _orderable += cost
+    await _persist()
+    await _broadcast_delta()
+    logger.info("[정산] 사전 차감 롤백 %s원 — 주문가능 %s원", f"{cost:,}", f"{_orderable:,}")
+
+
 async def on_buy_fill(price: int, qty: int) -> int:
     """
     매수 체결 처리.

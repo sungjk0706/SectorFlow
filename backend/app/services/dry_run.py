@@ -157,12 +157,16 @@ async def fake_fill_event(
     qty: int,
     price: int,
     stk_nm: str = "",
+    pre_reserved: bool = False,
 ) -> None:
     """
     테스트모드 가상 체결 이벤트 — 실전 WS "00" 이벤트와 동일한 downstream 호출 체인.
     1. _apply_buy/_apply_sell (포지션 + Settlement Engine)
     2. on_fill_update (has_open_buy 해제, _recent_sells 해제, 로그/텔레그램)
     3. _on_fill_after_ws (계좌 갱신, 매도 조건 검사)
+
+    pre_reserved=True: 매수 시 _orderable 사전 차감이 이미 완료됨 (execute_buy에서
+    reserve_buy_power 호출). _apply_buy에서 on_buy_fill 중복 차감 생략.
     """
     from backend.app.services.engine_state import state
     from backend.app.services import engine_account
@@ -174,7 +178,7 @@ async def fake_fill_event(
 
     # 1. 가상 체결 (포지션 + Settlement Engine)
     if side == "BUY":
-        await _apply_buy(code, qty, fill_price)
+        await _apply_buy(code, qty, fill_price, pre_reserved=pre_reserved)
         if stk_nm:
             await set_stock_name(code, stk_nm)
     elif side == "SELL":
@@ -197,13 +201,21 @@ async def fake_fill_event(
 
 # ── 2. 인메모리 잔고 관리 ───────────────────────────────────────────────────
 
-async def _apply_buy(code: str, qty: int, price: int) -> None:
+async def _apply_buy(code: str, qty: int, price: int, pre_reserved: bool = False) -> None:
     """매수 체결 -> Settlement Engine 예수금 차감만 수행.
 
     _test_positions는 record_buy → 캐시 무효화 → get_positions() 시
     build_positions_from_trades()로 재구축되므로 여기서 직접 수정하지 않는다.
+
+    pre_reserved=True: execute_buy에서 reserve_buy_power로 사전 차감 already 완료.
+    on_buy_fill 중복 차감 생략 — 영속화/브로드캐스트만 수행.
+    pre_reserved=False: 기존 동작 (on_buy_fill에서 차감).
     """
-    await settlement_engine.on_buy_fill(price, qty)
+    if pre_reserved:
+        await settlement_engine._persist()
+        await settlement_engine._broadcast_delta()
+    else:
+        await settlement_engine.on_buy_fill(price, qty)
 
 async def _apply_sell(code: str, qty: int, price: int) -> None:
     """매도 체결 -> Settlement Engine 매도 정산만 수행.
