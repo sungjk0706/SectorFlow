@@ -5,7 +5,6 @@
 engine_lifecycle.py에서 업종 매수 관련 함수를 분리.
 """
 from __future__ import annotations
-import time
 import logging
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.services.auto_trading_effective import auto_buy_effective
@@ -33,7 +32,7 @@ async def evaluate_buy_candidates() -> None:
     """
     이벤트 기반 매수 판단 — 실시간 데이터 변경 시 _do_sector_recompute()에서 호출.
     auto_buy_effective(시간 범위 + auto_buy_on + 마스터 스위치) 통과 시 매수 실행.
-    매수 후보 테이블 1순위 종목만 매수, buy_interval_on 시 사용자 설정 간격 대기.
+    매수 후보 테이블 1순위 종목만 매수, buy_interval_on 시 사용자 설정 간격(초) 대기.
     """
     global _cash_insufficient
     from backend.app.services import dry_run
@@ -103,13 +102,9 @@ async def evaluate_buy_candidates() -> None:
     _cash_insufficient = False
 
     # ── 전체 매수 간격 게이트 (토글 ON 시) ──────────────────────────
-    _buy_interval_on = bool(state.integrated_system_settings_cache.get("buy_interval_on", False))
-    if _buy_interval_on:
-        _buy_interval_min = int(state.integrated_system_settings_cache.get("buy_interval_min", 0) or 0)
-        if _buy_interval_min > 0:
-            _now_check = time.time()
-            if _now_check - state._last_global_buy_ts < _buy_interval_min * 60:
-                return
+    from backend.app.services.order_interval import check_order_interval
+    if not check_order_interval(state.integrated_system_settings_cache, "buy"):
+        return
 
     # ── 전역 조건 스냅샷: 변화 없으면 매수 시도 스킵 (원칙 11 이벤트 기반) ──
     _after_hours = is_krx_after_hours()
@@ -182,8 +177,8 @@ async def evaluate_buy_candidates() -> None:
             if _ordered:
                 logger.info("[매매] 매수 주문 전송: %s(%s)", s.name, s.code)
                 invalidate_buy_snapshot()
-                if _buy_interval_on:
-                    state._last_global_buy_ts = time.time()
+                from backend.app.services.order_interval import mark_order_executed
+                mark_order_executed("buy")
                 _holding_cnt += 1
                 if _max_limit_on and _holding_cnt >= _max_limit:
                     break

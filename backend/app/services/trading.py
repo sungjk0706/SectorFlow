@@ -531,6 +531,10 @@ class AutoTradeManager:
                 logger.warning("[매매] 리스크 관리자 실패 보고 실패", exc_info=True)
             return
 
+        # ── 매도 주문 전송 성공 — 간격 타이머 갱신 (P22: 실제 실행만 기록) ──
+        from backend.app.services.order_interval import mark_order_executed
+        mark_order_executed("sell")
+
         # ── 저널링: 주문 요청 기록 ─────────────────────────────────────────────
         order_id = result.get("order_id", f"sell_{stk_cd}_{int(time.time())}")
         await _journal.record_order_request(
@@ -601,6 +605,11 @@ class AutoTradeManager:
                 return
         except Exception:
             logger.warning("[매매] 리스크 관리자 체크 실패 — 매도 전체 중단", exc_info=True)
+            return
+
+        # ── 매도 주문 간격 게이트 (토글 ON 시) ──────────────────────────
+        from backend.app.services.order_interval import check_order_interval
+        if not check_order_interval(base_settings, "sell"):
             return
 
         for stock in stock_list:

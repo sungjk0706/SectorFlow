@@ -1,13 +1,28 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (매수/매도 주문 간격 설정 개선 — 다단계 작업 3세션: 백엔드 기반 Step 1)
-- 작업: 3세션 진행 → 사전조사(5개 백엔드 파일 + 2개 테스트 파일 현재 상태 확인) → 신규 `order_interval.py` 작성(check_order_interval + mark_order_executed, ~30줄) → `engine_state.py` `_last_global_sell_ts` 추가 → `settings_defaults.py` 분→초 + 매도 간격 신규 추가 → `engine_settings.py` 마이그레이션 로직 + sell 3줄 → `settings.py` 일일 리셋 → 테스트 2개 파일 교체 → 검증(py_compile + ruff + pytest 2815개 + 런타임 기동 RuntimeWarning 0건) → 커밋.
-- 상태: 다단계 작업 3세션(구현 Step 1) 완료. 커밋 `9aecd5f`. 4세션(구현 Step 2 — 백엔드 배선) 대기.
+- 날짜: 2026-07-17 (매수/매도 주문 간격 설정 개선 — 다단계 작업 4세션: 백엔드 배선 Step 2)
+- 작업: 4세션 진행 → 사전조사(4개 파일 현재 상태 + import 호환성 문제 발견) → `order_interval.py` import 방식 수정(top-level → 함수 내부, 테스트 호환성) → `buy_order_executor.py` docstring + 게이트(7줄→3줄 헬퍼) + 타이머(헬퍼) + `time` import 제거 → `trading.py` 매도 간격 게이트(for-loop 전) + 타이머 갱신(성공 후, 저널링 이전) → `test_buy_order_executor.py` TestBuyIntervalGate 2개 `_sec` 교체 → 검증(py_compile + ruff + pytest 2815개 + 런타임 기동 RuntimeWarning 0건) → 커밋.
+- 상태: 다단계 작업 4세션(구현 Step 2) 완료. 5세션(구현 Step 3 — 프론트엔드) 대기.
 - **참조 문서**: `docs/plan_order_interval.md` (태스크 파일 — 심층조사 결과 + 수정 범위 15곳 + 구현 Step 5개 + 세션 분할 7세션 + 테스트 계획 + 런타임 검증)
-- **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우" 3세션 + safe-trade 스킬 + backend-fix 스킬
+- **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우" 4세션 + safe-trade 스킬 + backend-fix 스킬
 
 ## 직전 완료 작업
+- **매수/매도 주문 간격 설정 개선 다단계 4세션 — 백엔드 배선 Step 2**: 헬퍼를 실제 매수/매도 실행 경로에 배선 (P16 살아있는 경로). 3세션에서 구축한 헬퍼가 이제 실제 호출됨.
+  - **★ `order_interval.py` import 방식 수정 (3세션 코드 정제)**: 3세션에서 `from backend.app.services.engine_state import state`를 모듈 top-level에 배치했으나, 테스트가 `patch("backend.app.services.engine_state.state", fresh_state)`로 state를 mock할 때 top-level import는 원본 싱글톤을 바인딩하므로 패치가 적용되지 않는 문제 발견 → 함수 내부 import로 변경 (`buy_order_executor.py:42`, `trading.py:125/224/330/521/588`과 동일 패턴 — P23 일관성). 순환 import 위험 없음. 사용자 설계 로직 롤백 아님 (3세션 코드의 정제).
+  - **`buy_order_executor.py`** (3곳):
+    - line 36 docstring: "간격 대기" → "간격(초) 대기" (P23 + Code Removal Rules).
+    - line 105-112 (7줄 → 3줄): `_buy_interval_on` 변수 + `buy_interval_min` 분 단위 게이트 → `check_order_interval(state.integrated_system_settings_cache, "buy")` 헬퍼 호출. `_buy_interval_on` 변수 제거 (헬퍼 내부로 이동).
+    - line 185-186: `if _buy_interval_on: state._last_global_buy_ts = time.time()` → `mark_order_executed("buy")` 헬퍼 호출. 토글 OFF 시에도 타이머 갱신 (게이트가 통과시키므로 영향 없음, P24 단순화).
+    - `import time` 제거 — 더 이상 사용하지 않음 (dead import 제거 — P16/P23).
+  - **`trading.py`** (2곳):
+    - line 610-613 (`check_sell_conditions` for-loop 직전): 매도 간격 게이트 `check_order_interval(base_settings, "sell")` 추가. RiskManager 체크 이후, for-loop 이전.
+    - line 534-536 (`execute_sell` 성공 블록 진입 직후, 저널링 이전): `mark_order_executed("sell")` 타이머 갱신. 매수 로직과 대칭 (P22: 실제 실행만 기록, P23: 매수/매도 동일 패턴, P24: 실패 보호는 서킷브레이커 담당).
+  - **`test_buy_order_executor.py:232-264`**: `TestBuyIntervalGate` 2개 케이스 `buy_interval_min` → `buy_interval_sec` 교체. 차단 테스트: `buy_interval_sec=300` + 최근 타임스탬프. 통과 테스트: `buy_interval_sec=60` + 120초 전 타임스탬프.
+  - **검증**: py_compile 통과 + ruff check 통과 + pytest 전체 2815개 통과(3세션과 동일 카운트, 신규 실패 없음) + 런타임 기동 RuntimeWarning 0건(기동 124ms, 에러/traceback 없음) + 잔존 프로세스 0건 + lock 파일 정리 완료.
+  - **P원칙**: P15(단일 주문 경로 — 게이트만 추가, 경로 분기 없음) · P16(살아있는 경로 — 헬퍼 실제 호출) · P22(데이터 정합성 — 성공 시만 타이머 갱신) · P23(일관성 — 매수/매도 동일 패턴 + 함수 내부 import 통일) · P24(단순성 — 7줄→3줄) 준수.
+  - **거래 안전성 (safe-trade)**: 모의투자 모드 유지 · 주문 경로 단일성 유지 · RiskManager/CircuitBreaker 배선 변경 없음 · P15/P16/P18 준수.
+  - **작업 여력**: 충분.
 - **매수/매도 주문 간격 설정 개선 다단계 3세션 — 백엔드 기반 Step 1 (커밋 `9aecd5f`)**: 헬퍼 모듈 + 상태/설정/마이그레이션 기반 구축. 헬퍼는 아직 매수/매도 실행 경로에 배선하지 않음 (4세션에서 배선).
   - **신규 `order_interval.py`** (~30줄): `check_order_interval(settings, kind)` — 토글 OFF/0초/최초 시 True, 간격 내 False. `mark_order_executed(kind)` — 타이머 갱신. P23 공통 자산, P20 폴백 금지(`int(... or 0)` 패턴), P24 단순성.
   - **`engine_state.py:75-77`**: `_last_global_sell_ts: float = 0.0` 추가 + 주석 "주문 간격 타이머 (매수/매도 공통)".
@@ -40,7 +55,7 @@
   - **설계서 누락 4곳**: test_engine_settings.py + test_web_routes.py + buy-settings.ts syncFromSettings + buy_order_executor.py docstring
   - **수정 범위 확정**: 백엔드 8곳 + 프론트엔드 3곳 + 테스트 3곳 + 문서 1곳 = 15곳
 - **3세션 (완료, 커밋 `9aecd5f`)**: 구현 Step 1 — 백엔드 기반: `order_interval.py` 헬퍼 + `engine_state.py` + `settings_defaults.py` + `engine_settings.py`(마이그레이션) + `settings.py`(일일 리셋) + 테스트 기반 2개(test_engine_settings.py + test_buy_order_executor.py `_default_settings`). ★ 설계서 마이그레이션 버그 수정(merged→flat 기반). 검증: pytest 2815개 + 런타임 기동 RuntimeWarning 0건.
-- **4세션 (대기)**: 구현 Step 2 — 백엔드 배선: `buy_order_executor.py`(헬퍼 적용 + docstring) + `trading.py`(매도 게이트 + 타이머 갱신) + 테스트 케이스 1개(test_buy_order_executor.py TestBuyIntervalGate)
+- **4세션 (완료)**: 구현 Step 2 — 백엔드 배선: `order_interval.py` import 방식 수정(함수 내부) + `buy_order_executor.py`(docstring + 게이트 헬퍼 + 타이머 헬퍼 + `import time` 제거) + `trading.py`(매도 게이트 + 타이머 갱신) + `test_buy_order_executor.py`(TestBuyIntervalGate 2개 `_sec` 교체). 검증: pytest 2815개 + 런타임 기동 RuntimeWarning 0건.
 - **5세션 (대기)**: 구현 Step 3 — 프론트엔드: `buy-settings.ts` + `sell-settings.ts` + `types/index.ts`
 - **6세션 (대기)**: 구현 Step 4 — 테스트: `TestSellIntervalGate` 5개 + 마이그레이션 3개 + `test_web_routes.py`
 - **7세션 (대기)**: 구현 Step 5 — 문서(`ARCHITECTURE.md`) + 런타임 검증 + 계획서 2개 삭제
@@ -50,7 +65,7 @@
 - **태스크 파일**: `docs/plan_order_interval.md` (2세션)
 
 ### 승인 대기 항목
-- **4세션 진행**: 구현 Step 2 (백엔드 배선) — 사용자 "진행" 지시 시 시작
+- **5세션 진행**: 구현 Step 3 (프론트엔드) — 사용자 "진행" 지시 시 시작
 
 ## 이전 세션 완료 작업 (커밋 완료)
 - 3단계: 백엔드 수신률 KRX/NXT 분리 집계 + 임계값 게이트 옵션 C (8개 파일) — 구현 + 검증 + 커밋 완료.

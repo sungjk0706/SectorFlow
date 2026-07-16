@@ -233,7 +233,7 @@ class TestBuyIntervalGate:
     async def test_buy_interval_blocks_within_period(self, fresh_state, reset_cash_gate):
         import time as _time
         fresh_state.integrated_system_settings_cache = _default_settings(
-            buy_interval_on=True, buy_interval_min=5,
+            buy_interval_on=True, buy_interval_sec=300,
         )
         fresh_state._last_global_buy_ts = _time.time()
         with patch("backend.app.services.engine_state.state", fresh_state), \
@@ -249,9 +249,9 @@ class TestBuyIntervalGate:
     async def test_buy_interval_passes_after_period(self, fresh_state, reset_cash_gate):
         import time as _time
         fresh_state.integrated_system_settings_cache = _default_settings(
-            buy_interval_on=True, buy_interval_min=1,
+            buy_interval_on=True, buy_interval_sec=60,
         )
-        fresh_state._last_global_buy_ts = _time.time() - 120  # 2분 전
+        fresh_state._last_global_buy_ts = _time.time() - 120  # 120초 전 (간격 60초 초과)
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
              patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \

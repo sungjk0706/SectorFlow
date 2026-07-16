@@ -6,7 +6,6 @@
 매도: trading.check_sell_conditions() for-loop 진입 전 사전 체크
 """
 import time
-from backend.app.services.engine_state import state
 
 
 def check_order_interval(settings: dict, kind: str) -> bool:
@@ -15,6 +14,7 @@ def check_order_interval(settings: dict, kind: str) -> bool:
     kind: "buy" | "sell"
     반환: True=통과(주문 시도 가능), False=차단(간격 내)
     """
+    from backend.app.services.engine_state import state
     _on = bool(settings.get(f"{kind}_interval_on", False))
     if not _on:
         return True
@@ -32,6 +32,7 @@ def mark_order_executed(kind: str) -> None:
     주문 전송 성공 시 타이머 갱신.
     kind: "buy" | "sell"
     """
+    from backend.app.services.engine_state import state
     _now = time.time()
     if kind == "buy":
         state._last_global_buy_ts = _now
