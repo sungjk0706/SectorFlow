@@ -3,7 +3,7 @@
 ## 세션 개요
 - 날짜: 2026-07-16 (장 상태 관리 안 D 구현 — 2단계 JIF 핸들러 확장)
 - 작업: 안 D 2단계(JIF 핸들러 확장) 구현. `_handle_jif()`에 장 상태 전환 분기 추가 + `_apply_market_phase()` 분리 + 테스트 11개 추가. 4개 파일 수정.
-- 상태: 구현 + 검증 완료 (py_compile + ruff + pytest 191개 통과 + 런타임 기동 RuntimeWarning 0건). **커밋 대기**.
+- 상태: 구현 + 검증 + 커밋 완료 (commit `b54edca`). py_compile + ruff + pytest 191개 통과 + 런타임 기동 RuntimeWarning 0건.
 - **2단계 태스크 파일** (구현 기반): `docs/plan_session_state_jif_handler.md` (JIF 페이즈 맵 + _handle_jif 확장 계획 + _broadcast_market_phase 분리안 + 테스트 계획 + 런타임 검증 방법)
 - **설계 검토 문서** (이전 세션): `backend/docs/architecture_session_state_design.md` (4안 비비교표 + 안 D 동작 원리 + 표준 검토 근거)
 - **조사 보고서** (이전 세션): `docs/krx_receive_rate_missing_investigation.md` (KRX 수신률 미표시 문제 조사 — 확인된 사실 16건 + 미확인 4건 + P10/P16 검토 + 수정 방안 2단계)
@@ -43,10 +43,10 @@
 
 ### 단계 진행 상황
 - **1단계** (완료): JIF jstatus 코드 맵핑 사전 검증 — LS증권 API 스펙 문서 조회. 결과는 2단계 태스크 파일에 통합.
-- **2단계** (완료): JIF 핸들러 확장 (`_handle_jif()` 장 상태 전환 처리 추가) + `_apply_market_phase()` 분리 + 테스트 11개. 구현 + 검증 완료 (커밋 대기).
+- **2단계** (완료, 커밋 `b54edca`): JIF 핸들러 확장 (`_handle_jif()` 장 상태 전환 처리 추가) + `_apply_market_phase()` 분리 + 테스트 11개. 구현 + 검증 + 커밋 완료.
   - **태스크 파일**: `docs/plan_session_state_jif_handler.md`
-  - **런타임 JIF 검증 대기**: 임시 INFO 로그(`[연결] JIF 수신: jangubun=%s, jstatus=%s`)로 장 시작 시점(08:00~09:00, 15:20~15:40, 20:00) 실제 push 코드 확인 필요. 맵핑 테이블과 불일치 시 3단계 진행 전 맵 수정.
-- **3단계** (대기): 주기 태스크 추가 + 11개 타이머 제거 + 테스트.
+  - **런타임 JIF 검증 대기 (장 시간대 별도 진행)**: 임시 INFO 로그(`[연결] JIF 수신: jangubun=%s, jstatus=%s`)로 장 시작 시점(08:00~09:00, 15:20~15:40, 20:00) 실제 push 코드 확인 필요. **현재 장 마감 시간이라 런타임 JIF 검증 불가 — 다음 장 시간대에 별도 진행**. 맵핑 테이블과 불일치 시 3단계 진행 전 맵 수정.
+- **3단계** (다음 세션 진행 대기): 주기 태스크 추가 + 11개 타이머 제거 + 주기적 시간 계산으로 전환 + 테스트. 태스크 파일 작성 준비 필요.
 - **4단계** (대기): 런타임 기동 검증 + 통합 테스트.
 
 ### 참조 문서
