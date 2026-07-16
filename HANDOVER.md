@@ -1,15 +1,23 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-16 (장 상태 관리 안 D 구현 — 2단계 JIF 핸들러 확장)
-- 작업: 안 D 2단계(JIF 핸들러 확장) 구현. `_handle_jif()`에 장 상태 전환 분기 추가 + `_apply_market_phase()` 분리 + 테스트 11개 추가. 4개 파일 수정.
-- 상태: 구현 + 검증 + 커밋 완료 (commit `b54edca`). py_compile + ruff + pytest 191개 통과 + 런타임 기동 RuntimeWarning 0건.
-- **2단계 태스크 파일** (구현 기반): `docs/plan_session_state_jif_handler.md` (JIF 페이즈 맵 + _handle_jif 확장 계획 + _broadcast_market_phase 분리안 + 테스트 계획 + 런타임 검증 방법)
-- **설계 검토 문서** (이전 세션): `backend/docs/architecture_session_state_design.md` (4안 비비교표 + 안 D 동작 원리 + 표준 검토 근거)
+- 날짜: 2026-07-16 (장 상태 관리 안 D 구현 — 3단계 주기 태스크 전환 계획서 작성)
+- 작업: 안 D 3단계(주기 태스크 전환) 구현 계획서 작성. 11개 타이머 제거 + 10초 간격 주기 태스크 추가 + 기동/종료 연결 + 테스트 계획 수립. 코드 수정 없음, 계획서 작성 only.
+- 상태: 태스크 파일 작성 완료, 구현 승인 대기.
+- **3단계 태스크 파일** (구현 기반): `docs/plan_session_state_periodic_task.md` (11개 타이머 제거 + 10초 간격 주기 태스크 + 기동/종료 연결 + 테스트 계획 + 런타임 검증 방법)
+- **2단계 태스크 파일** (이전 세션, 구현 완료): `docs/plan_session_state_jif_handler.md` (JIF 페이즈 맵 + _handle_jif 확장 계획 + _broadcast_market_phase 분리안 + 테스트 계획 + 런타임 검증 방법)
+- **설계 검토 문서** (이전 세션): `backend/docs/architecture_session_state_design.md` (4안 비교표 + 안 D 동작 원리 + 표준 검토 근거)
 - **조사 보고서** (이전 세션): `docs/krx_receive_rate_missing_investigation.md` (KRX 수신률 미표시 문제 조사 — 확인된 사실 16건 + 미확인 4건 + P10/P16 검토 + 수정 방안 2단계)
 
 ## 직전 완료 작업
-- **안 D 2단계 구현 (JIF 핸들러 확장 + _apply_market_phase 분리)**: 4개 파일 수정
+- **안 D 3단계 태스크 파일 작성 (주기 태스크 전환 계획서)**: 코드 수정 없음, 구현 계획서 작성 only
+  - 사전조사: 11개 market-phase 전환 타이머 제거 대상 식별 (`schedule_ws_subscribe_timers()` 내 루프) + `confirmed_download_time` 타이머는 별도 기능이므로 유지
+  - 주기 태스크 패턴: 기존 `_sector_recompute_loop_impl()` (0.2초) / `start_compute_loop()` 패턴 참조 (P23 일관성) — 10초 간격 `while + asyncio.wait_for(timeout=10)` 하우스키핑 태스크
+  - P11 (폴링 금지) 검토: JIF가 1순위 이벤트 소스, 주기 태스크는 하우스키핑 보완 (NexusFi Academy 표준 — 세션 종료/조정/헬스체크 타이머 허용) → P11 준수
+  - 수정 범위 3개 파일: `daily_time_scheduler.py` (타이머 제거 + 주기 태스크 + 기동/종료 연결), `engine_state.py` (핸들 필드), `test_daily_time_scheduler.py` (테스트 수정 + 7개 추가)
+  - NXT 09:00:30 / WS 07:55 조정: 본 3단계에서 제외 (별도 검토 — JIF 1순위가 보완)
+  - 태스크 파일: `docs/plan_session_state_periodic_task.md`
+- **안 D 2단계 구현 (JIF 핸들러 확장 + _apply_market_phase 분리)** (이전 세션): 4개 파일 수정
   - `engine_ws_dispatch.py`: JIF 페이즈 맵 상수 3개 신규 (`_JIF_PHASE_MAP_KRX`, `_JIF_PHASE_MAP_NXT`, `_JIF_IGNORE_CODES`) + `_handle_jif()` 장 상태 전환 분기 추가 + `_apply_jif_phase()` 신규 함수 + 임시 INFO 로그(`[연결] JIF 수신: jangubun=%s, jstatus=%s`) 추가 (런타임 검증용, 검증 후 INFO→DEBUG 조정 예정)
   - `daily_time_scheduler.py`: `_apply_market_phase(phase)` 신규 함수 추출 (적용+브로드캐스트+부작용 트리거 단일 경로 — P10 SSOT) + `_broadcast_market_phase()` 단순화 (calc → _apply_market_phase 위임)
   - `test_engine_ws_dispatch.py`: TestHandleJif 테스트 5개 추가 (KRX/NXT 페이즈 전환, 카운트다운 무시, CB 페이즈 전환 분리, NXT CB 미처리) + TestJifConstants 테스트 3개 추가 (맵 중복 없음, CB 맵 분리, 용어 일치) + 기존 `test_nxt_jangubun_not_handled` 독스트링 갱신
@@ -46,17 +54,21 @@
 - **2단계** (완료, 커밋 `b54edca`): JIF 핸들러 확장 (`_handle_jif()` 장 상태 전환 처리 추가) + `_apply_market_phase()` 분리 + 테스트 11개. 구현 + 검증 + 커밋 완료.
   - **태스크 파일**: `docs/plan_session_state_jif_handler.md`
   - **런타임 JIF 검증 대기 (장 시간대 별도 진행)**: 임시 INFO 로그(`[연결] JIF 수신: jangubun=%s, jstatus=%s`)로 장 시작 시점(08:00~09:00, 15:20~15:40, 20:00) 실제 push 코드 확인 필요. **현재 장 마감 시간이라 런타임 JIF 검증 불가 — 다음 장 시간대에 별도 진행**. 맵핑 테이블과 불일치 시 3단계 진행 전 맵 수정.
-- **3단계** (다음 세션 진행 대기): 주기 태스크 추가 + 11개 타이머 제거 + 주기적 시간 계산으로 전환 + 테스트. 태스크 파일 작성 준비 필요.
+- **3단계** (태스크 파일 작성 완료, 구현 승인 대기): 주기 태스크 추가 + 11개 타이머 제거 + 주기적 시간 계산으로 전환 + 테스트. 사전조사 + 구현 계획 수립 완료, 사용자 승인 대기.
+  - **태스크 파일**: `docs/plan_session_state_periodic_task.md` (11개 타이머 제거 + 10초 간격 주기 태스크 + 기동/종료 연결 + 테스트 계획 + 런타임 검증 방법)
+  - **수정 범위**: 3개 파일 — `daily_time_scheduler.py` (타이머 제거 + 주기 태스크), `engine_state.py` (핸들 필드), `test_daily_time_scheduler.py` (테스트 수정 + 7개 추가)
 - **4단계** (대기): 런타임 기동 검증 + 통합 테스트.
 
 ### 참조 문서
 - **설계 검토**: `backend/docs/architecture_session_state_design.md` (4안 비교표 + 안 D 동작 원리 + 표준 검토 근거)
 - **2단계 구현 계획**: `docs/plan_session_state_jif_handler.md`
+- **3단계 구현 계획**: `docs/plan_session_state_periodic_task.md`
 
 ### 승인 대기 항목
+- **3단계 구현 승인**: `docs/plan_session_state_periodic_task.md` 기반 구현 진행 — 사용자 실행 지시어 대기 (규칙 0).
 - **런타임 JIF 검증**: 장 시작 시점(08:00~09:00, 15:20~15:40, 20:00)에 임시 INFO 로그로 실제 push되는 jstatus 코드 확인 → 맵핑 테이블 검증. 검증 후 INFO→DEBUG 조정.
-- NXT 09:00:30 수정 포함 여부 (3단계에서 별도 검토).
-- WS 07:55/07:59 조정 포함 여부 (3단계에서 별도 검토).
+- NXT 09:00:30 수정 포함 여부 (3단계에서 제외 — 별도 검토, JIF 1순위가 보완).
+- WS 07:55/07:59 조정 포함 여부 (3단계에서 제외 — 별도 검토).
 
 ---
 
