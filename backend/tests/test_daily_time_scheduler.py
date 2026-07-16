@@ -67,6 +67,10 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     schedule_ws_subscribe_timers,
     schedule_auto_trade_timers,
     retry_pipeline_catchup_after_bootstrap,
+    _market_phase_periodic_loop,
+    _start_market_phase_periodic_task,
+    _stop_market_phase_periodic_task,
+    _MARKET_PHASE_PERIODIC_INTERVAL,
 )
 
 
@@ -1189,7 +1193,8 @@ class TestStopDailyTimeScheduler:
         mock_state.auto_trade_timer_handles = auto_handles
         mock_state.ws_subscribe_timer_handles = ws_handles
         mock_state.midnight_timer_handle = midnight_handle
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._stop_market_phase_periodic_task", new_callable=AsyncMock) as mock_stop_periodic:
             await stop_daily_time_scheduler()
             for h in auto_handles:
                 h.cancel.assert_called_once()
@@ -1197,6 +1202,7 @@ class TestStopDailyTimeScheduler:
                 h.cancel.assert_called_once()
             midnight_handle.cancel.assert_called_once()
             assert mock_state.midnight_timer_handle is None
+            mock_stop_periodic.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_no_timers_no_error(self):
@@ -1204,7 +1210,8 @@ class TestStopDailyTimeScheduler:
         mock_state.auto_trade_timer_handles = []
         mock_state.ws_subscribe_timer_handles = []
         mock_state.midnight_timer_handle = None
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._stop_market_phase_periodic_task", new_callable=AsyncMock):
             await stop_daily_time_scheduler()
 
 
@@ -1216,6 +1223,7 @@ class TestStartDailyTimeScheduler:
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"time_scheduler_on": False}
         mock_state.market_phase = {}
+        mock_state.market_phase_periodic_task = None
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._apply_auto_toggle_on_startup", new_callable=AsyncMock), \
              patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
@@ -1223,11 +1231,13 @@ class TestStartDailyTimeScheduler:
              patch("backend.app.services.daily_time_scheduler.schedule_ws_subscribe_timers", new_callable=AsyncMock), \
              patch("backend.app.services.daily_time_scheduler.schedule_midnight_timer"), \
              patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock), \
-             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase") as mock_broadcast:
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase") as mock_broadcast, \
+             patch("backend.app.services.daily_time_scheduler._start_market_phase_periodic_task") as mock_start_periodic:
             await start_daily_time_scheduler()
             assert mock_state.market_phase["krx"] == "정규장"
             assert mock_state.market_phase["nxt"] == "메인마켓"
             mock_broadcast.assert_called_once()
+            mock_start_periodic.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_empty_settings_logs_warning(self):
@@ -1256,7 +1266,8 @@ class TestScheduleWsSubscribeTimers:
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(6, 0)):
             await schedule_ws_subscribe_timers(settings)
             existing_handle.cancel.assert_called_once()
-            assert len(mock_state.ws_subscribe_timer_handles) > 0
+            # 11개 market-phase 타이머 제거됨 (안 D 3단계) — confirmed_download_time 타이머 1개만 예약
+            assert len(mock_state.ws_subscribe_timer_handles) == 1
 
     @pytest.mark.asyncio
     async def test_no_loop_skips(self):
@@ -1266,6 +1277,133 @@ class TestScheduleWsSubscribeTimers:
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("asyncio.get_running_loop", side_effect=RuntimeError("no loop")):
             await schedule_ws_subscribe_timers(settings)
+
+
+# ── _market_phase_periodic_loop (안 D 3단계) ──────────────────────────────────
+
+class TestMarketPhasePeriodicLoop:
+    """주기 태스크 기동/종료 + 10초 간격 실행 + 엔진 종료 시 즉시 종료 테스트."""
+
+    def test_interval_is_10_seconds(self):
+        """주기 태스크 간격이 10초(안 D 설계)인지 검증."""
+        assert _MARKET_PHASE_PERIODIC_INTERVAL == 10.0
+
+    def test_start_creates_task(self):
+        mock_state = MagicMock()
+        mock_state.market_phase_periodic_task = None
+        mock_loop = MagicMock()
+        mock_task = MagicMock()
+
+        def _create_task_and_close_coro(coro):
+            """코루틴을 close하여 RuntimeWarning 방지 (mock은 실제 스케줄하지 않음)."""
+            if asyncio.iscoroutine(coro):
+                coro.close()
+            return mock_task
+
+        mock_loop.create_task.side_effect = _create_task_and_close_coro
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("asyncio.get_running_loop", return_value=mock_loop):
+            _start_market_phase_periodic_task()
+            assert mock_state.market_phase_periodic_task is mock_task
+
+    def test_start_no_duplicate(self):
+        existing_task = MagicMock()
+        mock_state = MagicMock()
+        mock_state.market_phase_periodic_task = existing_task
+        mock_loop = MagicMock()
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("asyncio.get_running_loop", return_value=mock_loop):
+            _start_market_phase_periodic_task()
+            # 이미 task가 있으면 재생성하지 않음
+            assert mock_state.market_phase_periodic_task is existing_task
+            mock_loop.create_task.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_stop_cancels_task(self):
+        """_stop_market_phase_periodic_task() 호출 시 task 취소 + None 설정 검증."""
+
+        class _FakeTask:
+            """await 시 CancelledError를 발생시키는 fake task."""
+            def __init__(self):
+                self.cancel_called = False
+            def cancel(self):
+                self.cancel_called = True
+            def __await__(self):
+                if False:
+                    yield  # generator protocol — 실제로는 도달하지 않음
+                raise asyncio.CancelledError()
+
+        fake_task = _FakeTask()
+        mock_state = MagicMock()
+        mock_state.market_phase_periodic_task = fake_task
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+            await _stop_market_phase_periodic_task()
+            assert fake_task.cancel_called
+            assert mock_state.market_phase_periodic_task is None
+
+    @pytest.mark.asyncio
+    async def test_stop_no_task_no_error(self):
+        mock_state = MagicMock()
+        mock_state.market_phase_periodic_task = None
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+            await _stop_market_phase_periodic_task()
+            assert mock_state.market_phase_periodic_task is None
+
+    @pytest.mark.asyncio
+    async def test_loop_calls_broadcast_market_phase(self):
+        """_market_phase_periodic_loop()가 _broadcast_market_phase()를 호출하는지 검증."""
+        mock_state = MagicMock()
+        stop_event = asyncio.Event()
+        mock_state.engine_stop_event = stop_event
+
+        def _broadcast_then_stop():
+            stop_event.set()  # 1회 호출 후 종료 유도
+
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase", side_effect=_broadcast_then_stop) as mock_broadcast:
+            await _market_phase_periodic_loop()
+            mock_broadcast.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_loop_stops_on_engine_stop(self):
+        """engine_stop_event.set() 시 루프 즉시 종료 검증."""
+        mock_state = MagicMock()
+        stop_event = asyncio.Event()
+        stop_event.set()  # 즉시 종료
+        mock_state.engine_stop_event = stop_event
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
+            # 즉시 반환되어야 함 (hang 없음)
+            await asyncio.wait_for(_market_phase_periodic_loop(), timeout=2.0)
+
+    @pytest.mark.asyncio
+    async def test_loop_continues_on_exception(self):
+        """_broadcast_market_phase() 예외 시 루프 계속 실행 (다음 주기 재시도) 검증."""
+        mock_state = MagicMock()
+        stop_event = asyncio.Event()
+        mock_state.engine_stop_event = stop_event
+
+        call_count = 0
+
+        def _side_effect():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("test error")
+            # 2회차 호출 후 종료
+            stop_event.set()
+
+        def _wait_for_timeout(coro, **kwargs):
+            """asyncio.wait_for mock — 코루틴을 close하고 TimeoutError 발생 (RuntimeWarning 방지)."""
+            if asyncio.iscoroutine(coro):
+                coro.close()
+            raise asyncio.TimeoutError()
+
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase", side_effect=_side_effect), \
+             patch("asyncio.wait_for", side_effect=_wait_for_timeout):
+            await _market_phase_periodic_loop()
+            assert call_count == 2  # 예외 후에도 루프 계속 실행
 
 
 # ── schedule_auto_trade_timers ────────────────────────────────────────────────
