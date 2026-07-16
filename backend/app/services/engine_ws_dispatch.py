@@ -179,8 +179,10 @@ async def handle_ws_data(data: dict) -> None:
 
 
 # ── JIF (장운영정보) 처리 ──────────────────────────────────────────────────
-# market_phase(krx, nxt) 페이즈명은 시간 기반(calc_timebased_market_phase)으로 관리 (P10 SSOT).
-# 시계 타이머(_broadcast_market_phase)가 페이즈 전환을 담당하며, JIF는 서킷브레이커/사이드카만 처리.
+# 안 D(하이브리드): JIF push를 1순위 장 상태 소스로 사용, 시간 기반(_broadcast_market_phase)이 보완.
+# JIF 장 상태 전환 코드(11/21/31/41/51/52/54/55/56/57/58) → _apply_market_phase()로 페이즈 갱신.
+# JIF 서킷브레이커 코드(61~71) → krx_alert 갱신 + 자동매매 임시중단/재개 (기존 로직 유지).
+# 카운트다운 코드(22~25, 42~44, A2~A5 등)는 페이즈 전환 아님 → _JIF_IGNORE_CODES에서 무시 (P24).
 # 카운트다운 표시는 프론트엔드가 페이즈명 + 현재 시각으로 자체 계산 (P24 단순성).
 
 _JSTATUS_KRX_ALERT: dict[str, str | None] = {
@@ -200,25 +202,96 @@ _JSTATUS_KRX_ALERT: dict[str, str | None] = {
 _KRX_CB_ACTIVATION_CODES: set[str] = {"61", "64", "66", "68", "69"}
 _KRX_CB_RELEASE_CODES: set[str] = {"63", "71"}
 
+# ── JIF 장 상태 전환 맵 (jangubun 1/2 = KRX) ──
+# 서킷브레이커(61~71)는 _JSTATUS_KRX_ALERT에서 처리, 여기서는 장 상태 전환만.
+# 페이즈명은 calc_timebased_market_phase()의 페이즈명과 동일 (P23 용어 통일).
+_JIF_PHASE_MAP_KRX: dict[str, str] = {
+    "11": "동시호가 접수",      # 장전동시호가개시 (08:40)
+    "21": "정규장",             # 장시작 (09:00)
+    "31": "종가 동시호가",      # 장후동시호가개시 (15:20)
+    "41": "체결 정산",          # 장마감 (15:30)
+    "51": "장후 시간외",        # 시간외종가매매개시 (15:40)
+    "52": "시간외 단일가",      # 시간외종가매매종료+단일가개시 (16:00)
+    "54": "장 종료",            # 시간외단일가매매종료 (18:00)
+}
+
+# ── JIF 장 상태 전환 맵 (jangubun 6 = NXT) ──
+_JIF_PHASE_MAP_NXT: dict[str, str] = {
+    "55": "프리마켓",           # 프리마켓 개시 (08:00)
+    "57": "정규장 준비",        # 프리마켓 마감 (08:50)
+    "21": "메인마켓",           # 장시작 (09:00)
+    "31": "조기 마감",          # 장후동시호가개시 (15:20)
+    "41": "단일가 매매",        # 장마감 (15:30)
+    "56": "애프터마켓",         # 에프터마켓 개시 (15:40)
+    "58": "장마감",             # 에프터마켓 마감 (20:00)
+}
+
+# ── JIF 카운트다운 코드 (무시 — 페이즈 전환 아님) ──
+_JIF_IGNORE_CODES: frozenset[str] = frozenset({
+    "22", "23", "24", "25",           # KRX 장개시 N전
+    "42", "43", "44",                 # KRX 장마감 N전
+    "A2", "A3", "A4", "A5",           # NXT 프리마켓 장개시 N전
+    "B2", "B3", "B4", "B5",           # NXT 에프터마켓 장개시 N전
+    "C2", "C3", "C4",                 # NXT 프리마켓 장마감 N전
+    "D2", "D3", "D4",                 # NXT 에프터마켓 장마감 N전
+    "53",                             # 사용안함
+})
+
+
+def _apply_jif_phase(*, krx: str | None = None, nxt: str | None = None) -> None:
+    """JIF 수신 시 장 상태를 갱신하고 부작용을 트리거.
+
+    JIF는 KRX(jangubun 1/2) 또는 NXT(jangubun 6) 개별적으로 push하므로
+    한 번에 한쪽만 갱신. 다른 쪽은 기존 state.market_phase 값 유지 (P10 SSOT).
+    실제 갱신·브로드캐스트·부작용 트리거는 daily_time_scheduler._apply_market_phase()에 위임.
+    """
+    mp = engine_state.state.market_phase
+    new_phase = {
+        "krx": krx if krx is not None else mp.get("krx", ""),
+        "nxt": nxt if nxt is not None else mp.get("nxt", ""),
+    }
+    from backend.app.services.daily_time_scheduler import _apply_market_phase
+    _apply_market_phase(new_phase)
+
 
 async def _handle_jif(data: dict) -> None:
-    """JIF 장운영정보 수신 → 서킷브레이커/사이드카 alert만 처리.
+    """JIF 장운영정보 수신 → 장 상태 전환 + 서킷브레이커/사이드카 alert 처리.
 
-    장운영 페이즈 전환은 앱 내부 시계 로직(_broadcast_market_phase)이 담당 (P10 SSOT).
+    안 D(하이브리드): JIF push를 1순위 장 상태 소스로 사용 (P10 SSOT, P16 살아있는 경로).
     카운트다운 표시는 프론트엔드가 페이즈명 + 현재 시각으로 자체 계산 (P24 단순성).
 
     jangubun 1/2(코스피/코스닥):
-      - jstatus 61~71 → krx_alert(서킷브레이커/사이드카) + 자동매매 임시중단/재개.
-    그 외 jangubun/jstatus 조합은 미처리 (시계 타이머가 페이즈 전환을 담당).
+      - jstatus 11/21/31/41/51/52/54 → KRX 페이즈 전환 (_apply_jif_phase)
+      - jstatus 61~71 → krx_alert(서킷브레이커/사이드카) + 자동매매 임시중단/재개
+    jangubun 6(NXT):
+      - jstatus 55/57/21/31/41/56/58 → NXT 페이즈 전환 (_apply_jif_phase)
+    카운트다운 코드(22~25, 42~44, A2~A5 등)는 _JIF_IGNORE_CODES에서 무시.
     """
     jangubun = str(data.get("jangubun", "")).strip()
     jstatus = str(data.get("jstatus", "")).strip()
     if not jangubun or not jstatus:
         return
 
+    # 임시 INFO 로그 — 런타임 JIF 수신 코드 검증용 (2단계). 검증 후 INFO→DEBUG 조정 예정.
+    logger.info("[연결] JIF 수신: jangubun=%s, jstatus=%s", jangubun, jstatus)
+
+    # 카운트다운 코드 무시 (페이즈 전환 아님)
+    if jstatus in _JIF_IGNORE_CODES:
+        return
+
+    # ── 장 상태 전환 처리 (안 D — JIF 1순위) ──
+    if jangubun in ("1", "2"):
+        new_krx = _JIF_PHASE_MAP_KRX.get(jstatus)
+        if new_krx:
+            _apply_jif_phase(krx=new_krx)
+    elif jangubun == "6":
+        new_nxt = _JIF_PHASE_MAP_NXT.get(jstatus)
+        if new_nxt:
+            _apply_jif_phase(nxt=new_nxt)
+
+    # ── 서킷브레이커/사이드카 처리 (기존 로직 유지) ──
     from backend.app.services.engine_account_notify import _broadcast
 
-    # ── KRX (jangubun 1/2): 서킷브레이커/사이드카만 처리 ──
     if jangubun in ("1", "2"):
         mp = engine_state.state.market_phase
 

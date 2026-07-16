@@ -22,6 +22,9 @@ from backend.app.services.engine_ws_dispatch import (
     _JSTATUS_KRX_ALERT,
     _KRX_CB_ACTIVATION_CODES,
     _KRX_CB_RELEASE_CODES,
+    _JIF_PHASE_MAP_KRX,
+    _JIF_PHASE_MAP_NXT,
+    _JIF_IGNORE_CODES,
 )
 
 
@@ -328,12 +331,71 @@ class TestHandleJif:
 
     @pytest.mark.asyncio
     async def test_nxt_jangubun_not_handled(self):
-        """jangubun 6(NXT) → JIF는 KRX(1/2) 서킷브레이커만 처리하므로 NXT는 미처리."""
+        """jangubun 6(NXT) + jstatus 61(서킷브레이커) → NXT는 CB 코드 미처리.
+
+        jstatus 61은 KRX 서킷브레이커 코드로 _JIF_PHASE_MAP_NXT에 없으므로
+        NXT 페이즈 전환도 미발생, CB 처리도 jangubun 1/2 전용이라 미수행.
+        (NXT 페이즈 전환 코드 55/57/21/31/41/56/58은 별도 테스트에서 검증)
+        """
         with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+             patch("backend.app.services.engine_ws_dispatch._apply_jif_phase") as mock_apply, \
              patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
             mock_es.state.market_phase = {"krx_alert": None}
             await _handle_jif({"jangubun": "6", "jstatus": "61"})
+            mock_apply.assert_not_called()
             mock_bc.assert_not_awaited()
+
+    # ── 장 상태 전환 처리 (안 D — JIF 1순위) ──
+
+    @pytest.mark.asyncio
+    async def test_jif_krx_phase_transition(self):
+        """jangubun=1, jstatus=21 → KRX '정규장' 페이즈 전환 (_apply_jif_phase 호출)."""
+        with patch("backend.app.services.engine_ws_dispatch._apply_jif_phase") as mock_apply, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
+            await _handle_jif({"jangubun": "1", "jstatus": "21"})
+            mock_apply.assert_called_once_with(krx="정규장")
+            mock_bc.assert_not_awaited()  # jstatus 21은 CB 코드 아니므로 _broadcast 미호출
+
+    @pytest.mark.asyncio
+    async def test_jif_nxt_phase_transition(self):
+        """jangubun=6, jstatus=55 → NXT '프리마켓' 페이즈 전환 (_apply_jif_phase 호출)."""
+        with patch("backend.app.services.engine_ws_dispatch._apply_jif_phase") as mock_apply, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
+            await _handle_jif({"jangubun": "6", "jstatus": "55"})
+            mock_apply.assert_called_once_with(nxt="프리마켓")
+            mock_bc.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_jif_countdown_ignored(self):
+        """jstatus=22 (장개시 10초전) → 카운트다운 코드 무시, _apply_jif_phase 미호출."""
+        with patch("backend.app.services.engine_ws_dispatch._apply_jif_phase") as mock_apply, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
+            await _handle_jif({"jangubun": "1", "jstatus": "22"})
+            mock_apply.assert_not_called()
+            mock_bc.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_jif_nxt_aftermarket_close(self):
+        """jangubun=6, jstatus=58 → NXT '장마감' 페이즈 전환."""
+        with patch("backend.app.services.engine_ws_dispatch._apply_jif_phase") as mock_apply, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
+            await _handle_jif({"jangubun": "6", "jstatus": "58"})
+            mock_apply.assert_called_once_with(nxt="장마감")
+            mock_bc.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_jif_krx_circuit_breaker_no_phase_transition(self):
+        """jstatus=61 (서킷브레이커) → 페이즈 전환 없음, CB 처리만 수행."""
+        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+             patch("backend.app.services.engine_ws_dispatch._apply_jif_phase") as mock_apply, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock), \
+             patch("backend.app.services.engine_ws_dispatch._notify_krx_cb_telegram"):
+            mock_es.state.market_phase = {"krx_alert": None}
+            mock_es.state.krx_circuit_breaker_active = False
+            mock_es.state.integrated_system_settings_cache = {}
+            await _handle_jif({"jangubun": "1", "jstatus": "61"})
+            mock_apply.assert_not_called()  # CB 코드는 페이즈 맵에 없으므로 페이즈 전환 미발생
+            assert mock_es.state.krx_circuit_breaker_active is True
 
 
 # ── JIF constants ──────────────────────────────────────────────────────────────────
@@ -352,3 +414,37 @@ class TestJifConstants:
     def test_none_alerts_exist(self):
         none_codes = [k for k, v in _JSTATUS_KRX_ALERT.items() if v is None]
         assert len(none_codes) > 0
+
+    # ── JIF 페이즈 맵 완전성 (안 D) ──
+
+    def test_phase_map_no_overlap_with_ignore_codes(self):
+        """_JIF_PHASE_MAP_KRX/NXT 키가 _JIF_IGNORE_CODES와 중복 없음 (P20 폴백 금지)."""
+        krx_keys = set(_JIF_PHASE_MAP_KRX.keys())
+        nxt_keys = set(_JIF_PHASE_MAP_NXT.keys())
+        ignore = set(_JIF_IGNORE_CODES)
+        assert not (krx_keys & ignore), f"KRX 맵과 무시 코드 중복: {krx_keys & ignore}"
+        assert not (nxt_keys & ignore), f"NXT 맵과 무시 코드 중복: {nxt_keys & ignore}"
+
+    def test_phase_map_no_overlap_with_cb_alerts(self):
+        """_JIF_PHASE_MAP_KRX 키가 _JSTATUS_KRX_ALERT(CB)와 중복 없음 — 분리 처리 보장."""
+        krx_phase_keys = set(_JIF_PHASE_MAP_KRX.keys())
+        cb_keys = set(_JSTATUS_KRX_ALERT.keys())
+        assert not (krx_phase_keys & cb_keys), f"페이즈 맵과 CB 맵 중복: {krx_phase_keys & cb_keys}"
+
+    def test_phase_map_terminology_matches_calc(self):
+        """JIF 페이즈 맵 페이즈명이 calc_timebased_market_phase() 페이즈명과 일치 (P23 용어 통일)."""
+        # calc_timebased_market_phase()가 반환하는 전체 KRX/NXT 페이즈명 집합
+        # (활성/비활성 구분 없이 calc 함수의 모든 반환값)
+        valid_krx = {
+            "장개시전", "장전 대기", "장전 시간외", "동시호가 접수", "시가 동시호가",
+            "정규장", "종가 동시호가", "체결 정산", "장후 시간외", "시간외 단일가",
+            "장 종료", "장마감", "휴장일",
+        }
+        valid_nxt = {
+            "장개시전", "프리마켓", "정규장 준비", "메인마켓", "조기 마감",
+            "단일가 매매", "애프터마켓", "애프터마켓 지속", "장마감", "휴장일",
+        }
+        for name in _JIF_PHASE_MAP_KRX.values():
+            assert name in valid_krx, f"KRX 페이즈명 '{name}'이 calc_timebased 페이즈명과 불일치"
+        for name in _JIF_PHASE_MAP_NXT.values():
+            assert name in valid_nxt, f"NXT 페이즈명 '{name}'이 calc_timebased 페이즈명과 불일치"
