@@ -1,37 +1,34 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (카운트다운 SSOT 통합 검증 + 계획서 삭제 — 안 3 Step 3, P10/P16/P20/P23/P24)
-- 작업: 다단계 작업 워크플로우 5세션(Step 3 통합 검증) — pytest 전체 2789개 통과 + `npm run build` 성공 + 백엔드 런타임 기동(RuntimeWarning 0건) + WS market-phase 메시지 `krx_countdown`/`nxt_countdown` 필드 존재 확인 + 잔존 프로세스 0건 + 계획서 파일 2개 삭제. 카운트다운 SSOT 다단계 작업(설계→태스크→Step1 백엔드→Step2 프론트엔드→Step3 검증) 완전 완료.
-- 상태: 카운트다운 SSOT 구현(안 3) 전체 완료. Step 3(통합 검증 + 계획서 삭제) 완료, 커밋 대기.
+- 날짜: 2026-07-17 (계좌 잔액 검증 테스트 태스크 파일 작성 — 다단계 작업 2세션, P10/P16/P20/P22/P24)
+- 작업: 다단계 작업 워크플로우 2세션(심층 사전조사 + 태스크 파일 작성) — 1세션 디자인 파일 기반으로 심층 사전조사(settlement_engine 전역 변수 격리/stock_tables DB 연결 주입/_broadcast_delta 패치 위치/_insert_trade 직접 호출) → 기존 공통 자산 확인(test_dry_run.py/test_dry_run_fill_event.py 패턴 재사용) → 태스크 파일 작성 완료.
+- 상태: 계좌 잔액 검증 테스트 태스크 파일 작성(2세션) 완료. 3세션(구현) 승인 대기.
 - **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우 (설계 → 태스크 → 구현)"
-- **참고**: 디자인 파일(`backend/docs/architecture_countdown_supplement_design.md`) 및 태스크 파일(`docs/plan_countdown_supplement.md`)은 구현 완료 후 삭제됨 (규칙: 계획서 삭제). 설계/구현 상세는 git history(`9bd99ef`/`bf992fb`) 참조.
+- **참조 문서**: `backend/docs/settlement_verification_design.md` (디자인 파일) + `docs/plan_settlement_verification.md` (태스크 파일)
 
 ## 직전 완료 작업
-- **카운트다운 SSOT 통합 검증 + 계획서 삭제 (Step 3)**: 코드 수정 없음 (검증 + 문서 정리만)
-  - 검증 결과:
-    - pytest 전체: **2789 passed** (8.54s, 52 warnings — 기존과 동일)
-    - `npm run build`: **성공** (63 modules transformed, 627ms, exit 0)
-    - 기동 전 잔존 프로세스: **0건** (기존 vite PID 10991 사용자 승인 후 종료)
-    - 백엔드 런타임 기동 (`python -W error::RuntimeWarning main.py`): **정상** (142ms 기동, RuntimeWarning 0건, `[기동] 장 상태 계산 완료 | KRX: 휴장일, NXT: 휴장일`)
-    - WS market-phase 메시지 캡처 (임시 WS 클라이언트 `/tmp/ws_capture.py` — 검증 후 삭제): **필드 존재 확인** — `krx_countdown`/`nxt_countdown` 필드 포함 (현재 휴장일 새벽 02:29라 값은 None — 정상, 카운트다운 대상 페이즈 아님). 10초 간격 브로드캐스트 2건 수신 확인.
-    - 기동 종료 후 잔존 프로세스: **0건** (정상 종료, lock 파일 삭제 확인)
-  - 계획서 파일 2개 삭제 (사용자 승인 — "구현 완료되었으니 계획서는 역할을 다했습니다"):
-    - `backend/docs/architecture_countdown_supplement_design.md` (untracked — git 추적 이력 없음)
-    - `docs/plan_countdown_supplement.md` (untracked — git 추적 이력 없음)
-  - 브라우저 카운트다운 칩 실시간 표시(08:50, 15:10 등)는 현재 시각(휴장일 새벽)이 카운트다운 대상 페이즈 구간이 아니라서 값 None이 정상. 백엔드→WS→프론트엔드 경로에 필드 정상 전달됨은 확인 완료. 실제 카운트다운 표시는 장 시간대에 별도 확인 권장.
-- **카운트다운 SSOT 프론트엔드 구현 (Step 2, 이전 커밋 `bf992fb`)**: 4개 파일 수정 (34 insertions, 44 deletions)
-  - `frontend/src/types/index.ts:95`: `market_phase` 타입에 `krx_countdown?`/`nxt_countdown?` 필드 추가 (`{label, remaining_sec} | null`)
-  - `frontend/src/stores/uiStore.ts:38-45`: `marketPhase` 타입에 동일 필드 추가 (initialState는 optional이라 변경 불필요)
-  - `frontend/src/binding.ts:269-279`: `market-phase` 수신 타입에 countdown 필드 추가
-  - `frontend/src/layout/header.ts`: `KRX_COUNTDOWN`/`NXT_COUNTDOWN`/`COUNTDOWN_THRESHOLD_MIN` 상수 + `computeCountdown()` 함수 제거 (38줄) → `formatCountdown()` 신규 (12줄, 수신값 포맷만 수행) + 호출부 2곳 수정 (렌더링 line 264-266 + 30초 setInterval line 469-474) — `computeCountdown()` → `formatCountdown(marketPhase.krx_countdown/nxt_countdown)`
-  - 검증: `npm run build` (tsc -b + vite build) 성공 (63 modules transformed, exit 0) + 잔존 참조 0건 (`computeCountdown`/`KRX_COUNTDOWN`/`NXT_COUNTDOWN`/`COUNTDOWN_THRESHOLD_MIN` 전체 검색 0건)
-  - P10 (SSOT): 프론트엔드 시간표 하드코딩 제거 → 백엔드 단일 소스
-  - P16 (살아있는 경로): 30초 setInterval 유지(백엔드 push 보완), 재계산 아닌 수신값 재적용
-  - P20 (폴백 금지): `formatCountdown()` — countdown 없으면 `null` (빈 문자열 폴백 아님)
-  - P23 (일관성): 기존 `applyMarketPhaseChip()` 패턴·라벨 용어 유지
-  - P24 (단순성): `computeCountdown()` 18줄 → `formatCountdown()` 7줄
-- **카운트다운 SSOT 백엔드 구현 (Step 1, 이전 커밋 `9bd99ef`)**: 2개 파일 수정 (125 insertions, 3 deletions) — `calc_countdown()` 신규 + 상수 3개 + `get_market_phase()` 필드 추가 + 테스트 9개. 상세는 git history 참조.
+- **계좌 잔액 검증 테스트 태스크 파일 작성 (다단계 2세션)**: 코드 수정 없음 (심층 사전조사 + 태스크 파일 작성만)
+  - 심층 사전조사: settlement_engine 모듈 전역 변수 격리 방식(`_loaded=True` + 변수 직접 할당, 기존 test_dry_run.py 패턴) / stock_tables DB 연결 주입 방식(`save_settlement_state`가 db_writer 큐 경유 → 테스트 환경 무한 대기 → `_persist` no-op 패치) / `_broadcast_delta` 패치 위치(테스트 파일 내 fixture, conftest 아님) / `trade_history._insert_trade` 직접 호출 가능(DB 저장은 execute_db_write 패치 필요).
+  - 기존 공통 자산 확인(P23): `_noop_async` 헬퍼 / `_setup_dry_run_env` fixture 패턴 / `_do_buy`/`_do_sell` 헬퍼 / conftest.py 전역 캐시 초기화 — 모두 기존 자산 재사용, 신규 패턴 생성 없음.
+  - 태스크 파일 278줄 작성: 심층 사전조사 결과(의존성/영향범위/원칙부합/공통자산) + 구현 상세(S1~S6 시나리오별 + fixture 상세) + 세션 분할(3세션 단일 구현) + 검증 계획 + 사용자 결정 항목(S6 포함 여부) + 아키텍처 원칙 검토.
+- **계좌 잔액 검증 테스트 설계 (다단계 1세션, 이전 세션)**: 사전조사 + 디자인 파일 366줄 작성. 근본 원인 후보 3개 식별(A/B/C). 디자인 파일: `backend/docs/settlement_verification_design.md`
+- **카운트다운 SSOT 통합 검증 + 계획서 삭제 (이전 세션, 커밋 `9a2af87`)**: pytest 2789개 통과 + `npm run build` 성공 + 런타임 기동 RuntimeWarning 0건 + 계획서 파일 2개 삭제. 카운트다운 SSOT 다단계 작업 완전 완료.
+
+## 다음 세션 진행 대기: 계좌 잔액 검증 테스트 (다단계 작업 — 설계→태스크→구현)
+
+### 단계 진행 상황
+- **1세션 (완료)**: 설계 검토 + 디자인 파일 작성 — 사전조사(settlement_engine/dry_run/trade_history 소스 추적 + DB 실제 값 확인) → 근본 원인 후보 3개 식별(A/B/C) → 사용자 요구사항 3건 확인 → 디자인 파일 작성. 디자인 파일: `backend/docs/settlement_verification_design.md`
+- **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성 — 디자인 파일 기반으로 심층 사전조사(규칙 0-2 4항목 + 디자인 섹션 7 항목) → 기존 공통 자산 확인 → 세션 분할 + 태스크 파일 작성. 태스크 파일: `docs/plan_settlement_verification.md`
+- **3세션 (승인 대기)**: 구현 — `backend/tests/test_settlement_verification.py` 신규 작성 (S1~S6 테스트 함수 7개 + fixture + 헬퍼, ~300줄). 검증: pytest + 기존 회귀 + ruff + py_compile.
+
+### 참조 문서
+- **디자인 파일**: `backend/docs/settlement_verification_design.md` (검증 테스트 방식 + 시나리오 S1~S6 + 의심 경로 검증 + P10/P16/P20/P22/P24 원칙 검토 + 회귀 테스트 기반 구축)
+- **태스크 파일**: `docs/plan_settlement_verification.md` (심층 사전조사 결과 + 구현 상세 + 세션 분할 + 검증 계획 + 사용자 결정 항목)
+
+### 승인 대기 항목
+- **3세션(구현) 진행 승인**: 태스크 파일에 대한 사용자 승인 후 3세션 진행. 승인 전 다음 세션 진행 금지(규칙 0).
+- **S6(실제 DB 재현) 포함 여부 결정**: 태스크 파일 섹션 5-2의 옵션 (a) 포함 / (b) 제외 중 선택.
 
 ## 이전 세션 완료 작업 (커밋 완료)
 - 3단계: 백엔드 수신률 KRX/NXT 분리 집계 + 임계값 게이트 옵션 C (8개 파일) — 구현 + 검증 + 커밋 완료.
