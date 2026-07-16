@@ -1,17 +1,28 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-16 (장 상태 관리 안 D 구현 — 4단계 시간 조정 계획서 작성 완료)
-- 작업: 안 D 4단계(WS/NXT 시간 조정) 태스크 파일 작성. 07:59 WS 구독 사전 트리거 + 07:58 실시간 필드 초기화 분리 + NXT 09:00:30 초 단위 예외 + jstatus 52 문구(별도 진행). 계획서 작성 완료.
-- 상태: 4단계 태스크 파일 작성 완료, **구현 승인 대기** (규칙 0).
-- **4단계 태스크 파일** (구현 기반, 승인 대기): `docs/plan_session_state_phase_timing.md` (WS 07:59 사전 트리거 + 필드 초기화 07:58 분리 + NXT 09:00:30 초 단위 예외 + 멱등성 가드 + 보완 경로 + 테스트 계획 + 런타임 검증 방법)
+- 날짜: 2026-07-17 (장 상태 관리 안 D 구현 — 4단계 WS/NXT 시간 정밀 조정 구현 완료)
+- 작업: 안 D 4단계(WS/NXT 시간 조정) 구현. 07:59 WS 구독 사전 트리거 + 07:58 실시간 필드 초기화 분리 + NXT 09:00:30 초 단위 예외 + 날짜 기반 멱등성 가드 + 보완 경로. 4개 파일 수정 + 테스트 18개 신규/수정.
+- 상태: 4단계 구현 완료, 커밋 완료. **런타임 장 시간대 검증 대기** (07:58/07:59 사전 트리거 + 09:00:30 NXT 전환 — 다음 장 시간대 별도 진행).
+- **4단계 태스크 파일** (구현 완료): `docs/plan_session_state_phase_timing.md` (WS 07:59 사전 트리거 + 필드 초기화 07:58 분리 + NXT 09:00:30 초 단위 예외 + 멱등성 가드 + 보완 경로 + 테스트 계획 + 런타임 검증 방법)
 - **3단계 태스크 파일** (이전 세션, 구현 완료 — 커밋 `6533a79`): `docs/plan_session_state_periodic_task.md` (11개 타이머 제거 + 10초 간격 주기 태스크 + 기동/종료 연결 + 테스트 계획 + 런타임 검증 방법)
 - **2단계 태스크 파일** (이전 세션, 구현 완료): `docs/plan_session_state_jif_handler.md` (JIF 페이즈 맵 + _handle_jif 확장 계획 + _broadcast_market_phase 분리안 + 테스트 계획 + 런타임 검증 방법)
 - **설계 검토 문서** (이전 세션): `backend/docs/architecture_session_state_design.md` (4안 비교표 + 안 D 동작 원리 + 표준 검토 근거)
 - **조사 보고서** (이전 세션): `docs/krx_receive_rate_missing_investigation.md` (KRX 수신률 미표시 문제 조사 — 확인된 사실 16건 + 미확인 4건 + P10/P16 검토 + 수정 방안 2단계)
 
 ## 직전 완료 작업
-- **안 D 4단계 태스크 파일 작성**: 코드 수정 없음, 구현 계획서 작성 only
+- **안 D 4단계 구현 (WS/NXT 시간 정밀 조정)**: 4개 파일 수정 + 테스트 18개 신규/수정
+  - `engine_state.py`: 신규 필드 2개 (`last_realtime_reset_date`, `last_ws_subscribe_start_date`) — 스케줄러 상태 섹션, 날짜 기반 멱등성 가드 (P22)
+  - `daily_time_scheduler.py`: 상수 3개 신규 (`REALTIME_FIELDS_RESET_TIME=(7,58)`, `WS_SUBSCRIBE_PRESTART_TIME=(7,59)`, `NXT_MAINMARKET_START_SECOND=30`) + `calc_timebased_market_phase()` NXT 09:00:00~09:00:29 "정규장 준비" 유지 (초 단위 예외, KRX는 분 단위 유지) + `_on_realtime_fields_reset()` 신규 (07:58 사전 트리거, 날짜 가드) + `_on_ws_subscribe_start()` 수정 (필드 초기화 분리 + 멱등성 가드 + 07:58 누락 시 보완 경로 P16) + `_check_prestart_triggers()` 신규 (주기 태스크 내 07:58/07:59 시각 기반 사전 트리거) + `_market_phase_periodic_loop()` 수정 (사전 트리거 호출 추가) + `_init_ws_subscribe_state()` 수정 (구독 구간 내 기동 시 플래그 동기화)
+  - `engine_cache.py`: `_load_caches_preboot()` 내 `_reset_realtime_fields()` 후 `last_realtime_reset_date` 플래그 동기화 (재기동 시 중복 실행 방지)
+  - `test_daily_time_scheduler.py`: `_make_kst` 헬퍼에 `s`(초) 인자 추가 + `TestCalcTimebasedMarketPhase` NXT 09:00:00/09:00:29/09:00:30 + KRX 09:00:00 케이스 4개 추가 + `TestOnWsSubscribeStart.test_trading_day_starts_subscription` 멱등성 가드 통과 mock 추가 + 신규 `TestOnRealtimeFieldsReset` (5개 테스트) + 신규 `TestCheckPrestartTriggers` (6개 테스트) + 신규 `TestOnWsSubscribeStartIdempotency` (3개 테스트) + `TestMarketPhasePeriodicLoop` 루프 테스트 3개 `_check_prestart_triggers` 패치 추가
+  - P10 (SSOT): phase 계산(08:00)과 부작용 트리거(07:58/07:59) 분리 — 단일 진실 소스 유지
+  - P11 (폴링 금지): 기존 10초 주기 태스크 내 사전 트리거 체크 추가 (신규 폴링 아님)
+  - P16 (살아있는 경로): 07:58 사전 실행 누락 시 WS 구독 시작 안에서 보완 경로
+  - P22 (데이터 정합성): 날짜 기반 멱등성 가드 — 기존 `last_reset_date` 패턴 참조 (P23 일관성)
+  - jstatus 52 표시 문구 수정: 본 4단계에서 제외 (사용자 결정 — 별도 세션)
+  - 검증: py_compile + ruff 통과, pytest 161개 통과 (0 warnings), 런타임 기동(`-W error::RuntimeWarning`) 정상 — `[기동] 장 상태 계산 완료 | KRX: 휴장일, NXT: 휴장일` + `[기동] 장 상태 주기 태스크 시작 (10초 간격)` 로그 확인, RuntimeWarning/Traceback 0건, 잔존 프로세스 0건
+- **안 D 4단계 태스크 파일 작성 (이전 세션)**: 코드 수정 없음, 구현 계획서 작성 only
   - 사전조사: WS 구독 07:59 사전 트리거 (phase는 08:00 유지, 부작용만 사전 실행) + 실시간 필드 초기화 07:58 분리 (WS 구독 시작과 1분 간격 순차 실행) + NXT 메인마켓 09:00:30 초 단위 예외 (KRX는 분 단위 유지)
   - 사용자 결정 사항 4건: WS 구독 "phase 08:00 유지 + WS만 07:59", 필드 초기화 "07:58 단독 트리거", NXT "NXT만 초 단위 예외", jstatus 52 문구 "4단계에서 제외 (별도 세션)"
   - 멱등성 가드: 날짜 기반 플래그 (`last_realtime_reset_date`, `last_ws_subscribe_start_date`) — 자정 리셋 불필요, P22 준수, 기존 `last_reset_date` 패턴 참조 (P23)
@@ -76,15 +87,21 @@
   - **사용자 결정 사항 4건**: WS 구독 "phase 08:00 유지 + WS만 07:59", 필드 초기화 "07:58 단독 트리거", NXT "NXT만 초 단위 예외", jstatus 52 문구 "4단계에서 제외 (별도 세션)"
   - **수정 범위 예정**: 3개 파일 — `daily_time_scheduler.py` (상수 3개 + calc NXT 예외 + `_on_realtime_fields_reset()` 신규 + `_on_ws_subscribe_start()` 수정 + `_check_prestart_triggers()` 신규 + `_market_phase_periodic_loop()` 수정 + `_init_ws_subscribe_state()` 수정), `engine_state.py` (필드 2개), `engine_cache.py` (플래그 동기화 1줄) + `test_daily_time_scheduler.py` (기존 수정 + 신규 3 클래스)
   - **jstatus 52 표시 문구 수정**: 본 4단계에서 제외 (사용자 결정 — 별도 세션에서 P23 용어 통일 검토 포함 진행)
+  - **4단계 사전 검토 항목 (계획서에 없음 — 구현 시 함께 검토)**:
+    1. **일반 설정 페이지 > API 설정 탭 "실시간 연결 토글" 제거 검토**: 사용자 판단 — 불필요한 토글, 제거하는 것이 깔끔함. NXT 구독은 항상 07:59에 자동으로 이루어져야 함 (수동 토글 불필요). 4단계 구현 시 `ws_subscribe_on` 설정 키 + UI 토글 제거 범위 조사 후 승인받아 진행.
+    2. **NXT 종목 구독 신청 시간 07:59 고정값 확정**: 설정에서 변경할 필요 없이 고정값 처리. 4단계 상수 `WS_SUBSCRIBE_PRESTART_TIME = (7, 59)`와 연계 — 설정 기반 가변 시각이 아닌 고정 상수로 확정.
 
 ### 참조 문서
 - **설계 검토**: `backend/docs/architecture_session_state_design.md` (4안 비교표 + 안 D 동작 원리 + 표준 검토 근거)
 - **2단계 구현 계획**: `docs/plan_session_state_jif_handler.md`
 - **3단계 구현 계획**: `docs/plan_session_state_periodic_task.md`
+- **4단계 구현 계획**: `docs/plan_session_state_phase_timing.md`
 
 ### 승인 대기 항목
 - **런타임 JIF 검증**: 장 시작 시점(08:00~09:00, 15:20~15:40, 20:00)에 임시 INFO 로그로 실제 push되는 jstatus 코드 확인 → 맵핑 테이블 검증. 검증 후 INFO→DEBUG 조정.
 - **4단계 런타임 통합 검증**: 장 시간대에 JIF push + 주기 태스크 실제 동작 확인 (페이즈 전환 시 `[장상태]` 로그 + 10초 간격 동작).
+- **4단계 사전 검토 — 실시간 연결 토글 제거**: 일반 설정 페이지 > API 설정 탭의 "실시간 연결 토글" 제거 검토 (사용자 판단: 불필요, NXT 구독은 항상 07:59 자동). 4단계 구현 시 조사 후 승인.
+- **4단계 사전 검토 — NXT 구독 시간 07:59 고정**: NXT 종목 구독 신청 시간을 설정 가변이 아닌 07:59 고정값으로 확정.
 - NXT 09:00:30 수정 포함 여부 (3단계에서 제외 — 별도 검토, JIF 1순위가 보완).
 - WS 07:55/07:59 조정 포함 여부 (3단계에서 제외 — 별도 검토).
 
