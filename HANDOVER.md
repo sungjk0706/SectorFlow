@@ -1,34 +1,38 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (계좌 잔액 검증 테스트 태스크 파일 작성 — 다단계 작업 2세션, P10/P16/P20/P22/P24)
-- 작업: 다단계 작업 워크플로우 2세션(심층 사전조사 + 태스크 파일 작성) — 1세션 디자인 파일 기반으로 심층 사전조사(settlement_engine 전역 변수 격리/stock_tables DB 연결 주입/_broadcast_delta 패치 위치/_insert_trade 직접 호출) → 기존 공통 자산 확인(test_dry_run.py/test_dry_run_fill_event.py 패턴 재사용) → 태스크 파일 작성 완료.
-- 상태: 계좌 잔액 검증 테스트 태스크 파일 작성(2세션) 완료. 3세션(구현) 승인 대기.
+- 날짜: 2026-07-17 (계좌 잔액 검증 테스트 구현 + 근본 원인 특정 — 다단계 작업 3세션 완료, P10/P16/P20/P22/P24)
+- 작업: 다단계 작업 워크플로우 3세션(구현) — 태스크 파일 기반으로 `backend/tests/test_settlement_verification.py` 신규 작성 (410줄, 테스트 7개 + fixture + 헬퍼) → S1~S6 전체 통과 → 기존 2789개 + 신규 7개 = 2796개 회귀 없음 → S6 근본 원인 특정 (후보 A 확정 + max(0,...) 클램핑 인플레이션 발견).
+- 상태: 계좌 잔액 검증 테스트 다단계 작업(설계→태스크→구현) 완전 완료. 근본 원인 특정 완료 (후보 A). max(0,...) 클램핑 인플레이션은 별도 이슈로 미해결 문제에 기록.
 - **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우 (설계 → 태스크 → 구현)"
-- **참조 문서**: `backend/docs/settlement_verification_design.md` (디자인 파일) + `docs/plan_settlement_verification.md` (태스크 파일)
 
 ## 직전 완료 작업
-- **계좌 잔액 검증 테스트 태스크 파일 작성 (다단계 2세션)**: 코드 수정 없음 (심층 사전조사 + 태스크 파일 작성만)
-  - 심층 사전조사: settlement_engine 모듈 전역 변수 격리 방식(`_loaded=True` + 변수 직접 할당, 기존 test_dry_run.py 패턴) / stock_tables DB 연결 주입 방식(`save_settlement_state`가 db_writer 큐 경유 → 테스트 환경 무한 대기 → `_persist` no-op 패치) / `_broadcast_delta` 패치 위치(테스트 파일 내 fixture, conftest 아님) / `trade_history._insert_trade` 직접 호출 가능(DB 저장은 execute_db_write 패치 필요).
-  - 기존 공통 자산 확인(P23): `_noop_async` 헬퍼 / `_setup_dry_run_env` fixture 패턴 / `_do_buy`/`_do_sell` 헬퍼 / conftest.py 전역 캐시 초기화 — 모두 기존 자산 재사용, 신규 패턴 생성 없음.
-  - 태스크 파일 278줄 작성: 심층 사전조사 결과(의존성/영향범위/원칙부합/공통자산) + 구현 상세(S1~S6 시나리오별 + fixture 상세) + 세션 분할(3세션 단일 구현) + 검증 계획 + 사용자 결정 항목(S6 포함 여부) + 아키텍처 원칙 검토.
-- **계좌 잔액 검증 테스트 설계 (다단계 1세션, 이전 세션)**: 사전조사 + 디자인 파일 366줄 작성. 근본 원인 후보 3개 식별(A/B/C). 디자인 파일: `backend/docs/settlement_verification_design.md`
+- **계좌 잔액 검증 테스트 구현 + 근본 원인 특정 (다단계 3세션, 커밋 대기)**: `backend/tests/test_settlement_verification.py` 신규 작성 (410줄)
+  - 테스트 7개: S1(단일 매수 차감) / S2(2회 매수 누적) / S3(매수→매도 순서) / S4-1(비동기 태스크 취소 — 후보 C 재현) / S4-2(비동기 vs 동기 대칭성) / S5(30건 반복 오차 0원) / S6(실제 DB 재현 — 원본 DB 읽기 전용 복사본 사용)
+  - fixture: `_setup_settlement_env` (autouse) — 기존 test_dry_run_fill_event.py 패턴 재사용 (`_persist`/`_broadcast_delta`/`_ensure_loaded` no-op 패치 + `_fire_and_forget_telegram` no-op + 인메모리 상태 초기화)
+  - 헬퍼: `_do_buy`/`_do_sell` (기존 패턴 재사용) / `_expected_buy_cost`/`_expected_sell_net` (settlement_engine 공식 재현)
+  - 검증: pytest 2796개 통과 (기존 2789 + 신규 7) + py_compile 통과 + 원본 DB 무결성 확인 (변경 없음)
+  - **S6 근본 원인 특정 결과**: 후보 A(정상 작동) 확정 — 계산값 28,372,120원 vs DB 28,372,133원, 차이 -13원(반올림 미세 오차). **추가 발견**: `on_buy_fill` 내 `max(0, _orderable - cost)` 클램핑이 9회 발생 → orderable 약 156만원 인플레이션 → 사용자가 관찰한 "주문가능금액 2.8배" 현상의 원인. 잔액 계산 로직 자체는 정상이나, 주문가능금액 부족 상태에서 매수 실행되는 문제가 별도 존재.
+- **계좌 잔액 검증 테스트 태스크 파일 작성 (다단계 2세션, 이전 세션)**: 심층 사전조사 + 태스크 파일 278줄 작성. 태스크 파일: `docs/plan_settlement_verification.md` (삭제됨)
+- **계좌 잔액 검증 테스트 설계 (다단계 1세션, 이전 세션)**: 사전조사 + 디자인 파일 366줄 작성. 근본 원인 후보 3개 식별(A/B/C). 디자인 파일: `backend/docs/settlement_verification_design.md` (삭제됨)
 - **카운트다운 SSOT 통합 검증 + 계획서 삭제 (이전 세션, 커밋 `9a2af87`)**: pytest 2789개 통과 + `npm run build` 성공 + 런타임 기동 RuntimeWarning 0건 + 계획서 파일 2개 삭제. 카운트다운 SSOT 다단계 작업 완전 완료.
 
-## 다음 세션 진행 대기: 계좌 잔액 검증 테스트 (다단계 작업 — 설계→태스크→구현)
+## 완료된 다단계 작업: 계좌 잔액 검증 테스트 (설계→태스크→구현) ✅
 
 ### 단계 진행 상황
-- **1세션 (완료)**: 설계 검토 + 디자인 파일 작성 — 사전조사(settlement_engine/dry_run/trade_history 소스 추적 + DB 실제 값 확인) → 근본 원인 후보 3개 식별(A/B/C) → 사용자 요구사항 3건 확인 → 디자인 파일 작성. 디자인 파일: `backend/docs/settlement_verification_design.md`
-- **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성 — 디자인 파일 기반으로 심층 사전조사(규칙 0-2 4항목 + 디자인 섹션 7 항목) → 기존 공통 자산 확인 → 세션 분할 + 태스크 파일 작성. 태스크 파일: `docs/plan_settlement_verification.md`
-- **3세션 (승인 대기)**: 구현 — `backend/tests/test_settlement_verification.py` 신규 작성 (S1~S6 테스트 함수 7개 + fixture + 헬퍼, ~300줄). **S6(실제 DB 재현) 포함 확정** — 원본 DB 읽기 전용 복사본 사용. 검증: pytest + 기존 회귀 + ruff + py_compile.
+- **1세션 (완료)**: 설계 검토 + 디자인 파일 작성 — 사전조사(settlement_engine/dry_run/trade_history 소스 추적 + DB 실제 값 확인) → 근본 원인 후보 3개 식별(A/B/C) → 사용자 요구사항 3건 확인 → 디자인 파일 작성. 디자인 파일: `backend/docs/settlement_verification_design.md` (삭제됨)
+- **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성 — 디자인 파일 기반으로 심층 사전조사(규칙 0-2 4항목 + 디자인 섹션 7 항목) → 기존 공통 자산 확인 → 세션 분할 + 태스크 파일 작성. 태스크 파일: `docs/plan_settlement_verification.md` (삭제됨)
+- **3세션 (완료, 커밋 대기)**: 구현 + 근본 원인 특정 — `backend/tests/test_settlement_verification.py` 신규 작성 (410줄, 테스트 7개 + fixture + 헬퍼). S6(실제 DB 재현) 포함 — 원본 DB 읽기 전용 복사본 사용. 검증: pytest 2796개 통과 + py_compile 통과 + 원본 DB 무결성 확인. **근본 원인: 후보 A(정상 작동) 확정** — max(0,...) 클램핑 인플레이션 발견 (별도 이슈).
 
 ### 참조 문서
-- **디자인 파일**: `backend/docs/settlement_verification_design.md` (검증 테스트 방식 + 시나리오 S1~S6 + 의심 경로 검증 + P10/P16/P20/P22/P24 원칙 검토 + 회귀 테스트 기반 구축)
-- **태스크 파일**: `docs/plan_settlement_verification.md` (심층 사전조사 결과 + 구현 상세 + 세션 분할 + 검증 계획 + 사용자 결정 항목)
+- 디자인 파일·태스크 파일: 구현 완료 후 삭제됨 (규칙: 계획서 삭제). 설계/구현 상세는 git history 참조.
 
-### 승인 대기 항목
-- **3세션(구현) 진행 승인**: 태스크 파일에 대한 사용자 승인 후 3세션 진행. 승인 전 다음 세션 진행 금지(규칙 0).
-- **S6(실제 DB 재현) 포함 여부**: **확정 — 포함** (사용자 결정 2026-07-17). 원본 DB는 읽기 전용 복사본으로 보호.
+### 근본 원인 특정 결과 (S6)
+- **후보 A (정상 작동) 확정**: settlement_engine 잔액 계산 로직은 정상 작동. 계산값 28,372,120원 vs DB 28,372,133원, 차이 -13원(반올림 미세 오차).
+- **추가 발견 (별도 이슈)**: `on_buy_fill` 내 `max(0, _orderable - cost)` 클램핑이 9회 발생 → 주문가능금액 부족 상태에서 매수 실행 시 orderable이 0으로 클램핑 → 이후 매도 수익이 0에서부터 누적 → orderable 약 156만원 인플레이션. 사용자가 관찰한 "주문가능금액이 누적투자금의 2.8배" 현상의 직접 원인. `check_buy_power` 검증이 우회되는 경로 확인 필요 (미해결 문제 P-NEW-3 참조).
+
+### 차기 권장 (별도 세션)
+- **max(0,...) 클램핑 인플레이션 원인 조사**: 주문가능금액 부족 상태에서 매수가 어떻게 실행되는지 `check_buy_power` 호출 경로 추적. 별도 다단계 작업(설계→태스크→구현)으로 진행 권장.
 
 ## 이전 세션 완료 작업 (커밋 완료)
 - 3단계: 백엔드 수신률 KRX/NXT 분리 집계 + 임계값 게이트 옵션 C (8개 파일) — 구현 + 검증 + 커밋 완료.
@@ -658,6 +662,20 @@
   - 조치: flex container로 좌/우 분리 정렬, %는 컬럼명으로 이동, 보합 케이스 추가.
 
 ## 미해결 문제
+
+### P-NEW-3: 주문가능금액 부족 상태에서 매수 실행 → max(0,...) 클램핑 인플레이션 (P22 데이터 정합성)
+
+**현상**: 테스트모드 계좌 현황에서 주문가능금액(28,372,133원)이 누적투자금(10,000,000원)의 2.8배로 표시됨. 손해 보는 중(미실현 평가손익 마이너스)인데 주문가능 금액이 늘어난 모순 관찰.
+
+**근본 원인 (S6 테스트로 특정 완료)**: `backend/app/services/settlement_engine.py:81` — `on_buy_fill` 내 `_orderable = max(0, _orderable - cost)`. 주문가능금액이 부족한 상태에서 매수가 실행되면 orderable이 0으로 클램핑됨. 이후 매도 수익이 0에서부터 누적되어 orderable이 실제보다 높아짐. 실제 거래 데이터(202건)에서 9회 클램핑 발생 → 약 156만원 인플레이션. 잔액 계산 로직 자체는 정상(후보 A 확정), 문제는 주문가능금액 부족 상태에서 매수가 실행되는 것.
+
+**수정 방안 (제안)**: `check_buy_power` 검증이 우회되는 경로 추적 필요. 매수 실행 전 `check_buy_power`가 항상 호출되는지 확인하고, 우회 경로가 있다면 차단. 별도 다단계 작업(설계→태스크→구현)으로 진행 권장.
+
+**영향 범위**: 백엔드 매수 실행 경로 (`trading.execute_buy` / `buy_order_executor` / `dry_run.fake_fill_event`). 정확한 범위는 조사 필요.
+
+**위반 원칙**: P22 (데이터 정합성 — 주문가능금액 부족 시 매수가 실행되면 잔액이 실제와 불일치).
+
+---
 
 ### P-NEW-1: 가산점 입력창 직접 타이핑 시 슬라이더/저장값 범위 불일치 (P10 SSOT)
 
