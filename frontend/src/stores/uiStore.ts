@@ -40,6 +40,8 @@ export interface UIState {
     nxt: string
     krx_alert?: string | null
     is_nxt_only?: boolean
+    krx_countdown?: { label: string; remaining_sec: number } | null
+    nxt_countdown?: { label: string; remaining_sec: number } | null
   }
 
   /* ── 매수 한도 상태 ── */
