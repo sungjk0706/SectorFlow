@@ -71,12 +71,14 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     _start_market_phase_periodic_task,
     _stop_market_phase_periodic_task,
     _MARKET_PHASE_PERIODIC_INTERVAL,
+    _on_realtime_fields_reset,
+    _check_prestart_triggers,
 )
 
 
-def _make_kst(h: int, m: int, weekday: int = 0) -> datetime:
-    """Create a KST datetime at given hour:minute with given weekday (0=Mon)."""
-    base = datetime(2025, 1, 6, h, m, 0, tzinfo=KST)  # 2025-01-06 is Monday
+def _make_kst(h: int, m: int, s: int = 0, weekday: int = 0) -> datetime:
+    """Create a KST datetime at given hour:minute:second with given weekday (0=Mon)."""
+    base = datetime(2025, 1, 6, h, m, s, tzinfo=KST)  # 2025-01-06 is Monday
     return base + timedelta(days=weekday)
 
 
@@ -287,6 +289,35 @@ class TestCalcTimebasedMarketPhase:
             result = calc_timebased_market_phase()
             assert result["krx"] == "시가 동시호가"
             assert result["nxt"] == "정규장 준비"
+
+    # ── 4단계: NXT 메인마켓 09:00:30 초 단위 예외 ──
+    def test_nxt_mainmarket_at_090000_still_prep(self):
+        # 09:00:00 — NXT "정규장 준비" 유지 (초 단위 예외)
+        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0, 0)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
+            result = calc_timebased_market_phase()
+            assert result["nxt"] == "정규장 준비"
+
+    def test_nxt_mainmarket_at_090029_still_prep(self):
+        # 09:00:29 — NXT "정규장 준비" 유지 (초 단위 예외)
+        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0, 29)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
+            result = calc_timebased_market_phase()
+            assert result["nxt"] == "정규장 준비"
+
+    def test_nxt_mainmarket_at_090030_transitions(self):
+        # 09:00:30 — NXT "메인마켓" 전환
+        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0, 30)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
+            result = calc_timebased_market_phase()
+            assert result["nxt"] == "메인마켓"
+
+    def test_krx_regular_at_090000_unchanged(self):
+        # KRX는 분 단위 유지 — 09:00:00 정규장 (초 단위 예외 없음)
+        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0, 0)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
+            result = calc_timebased_market_phase()
+            assert result["krx"] == "정규장"
 
     def test_krx_single_price_and_nxt_aftermarket(self):
         with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(16, 30)), \
@@ -827,6 +858,9 @@ class TestOnWsSubscribeStart:
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"ws_subscribe_on": True}
         mock_state.ws_window_changed_event = MagicMock()
+        # 멱등성 가드 통과: 빈 문자열이어야 실행됨 (4단계)
+        mock_state.last_ws_subscribe_start_date = ""
+        mock_state.last_realtime_reset_date = ""
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
@@ -837,6 +871,202 @@ class TestOnWsSubscribeStart:
             await _on_ws_subscribe_start()
             assert mock_state.ws_subscribe_window_active is True
             mock_state.ws_window_changed_event.set.assert_called_once()
+
+
+# ── _on_realtime_fields_reset (4단계 — 07:58 사전 트리거) ──────────────────────
+
+class TestOnRealtimeFieldsReset:
+    """_on_realtime_fields_reset() — 07:58 사전 트리거 실시간 필드 초기화 테스트."""
+
+    @pytest.mark.asyncio
+    async def test_resets_fields_and_sets_flag(self):
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"ws_subscribe_on": True}
+        mock_state.last_realtime_reset_date = ""
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
+            await _on_realtime_fields_reset()
+            mock_reset.assert_awaited_once()
+            assert mock_state.last_realtime_reset_date == "20250106"
+
+    @pytest.mark.asyncio
+    async def test_skips_if_already_run_today(self):
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"ws_subscribe_on": True}
+        mock_state.last_realtime_reset_date = "20250106"  # 이미 오늘 실행됨
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
+            await _on_realtime_fields_reset()
+            mock_reset.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skips_on_weekend(self):
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"ws_subscribe_on": True}
+        mock_state.last_realtime_reset_date = ""
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58, weekday=5)), \
+             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
+            await _on_realtime_fields_reset()
+            mock_reset.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skips_on_non_trading_day(self):
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"ws_subscribe_on": True}
+        mock_state.last_realtime_reset_date = ""
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=False), \
+             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
+            await _on_realtime_fields_reset()
+            mock_reset.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skips_on_manual_mode(self):
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"ws_subscribe_on": False}
+        mock_state.last_realtime_reset_date = ""
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
+            await _on_realtime_fields_reset()
+            mock_reset.assert_not_awaited()
+
+
+# ── _check_prestart_triggers (4단계 — 07:58/07:59 사전 트리거 체크) ────────────
+
+class TestCheckPrestartTriggers:
+    """_check_prestart_triggers() — 07:58/07:59 사전 트리거 체크 테스트."""
+
+    def test_triggers_fields_reset_at_0758(self):
+        mock_state = MagicMock()
+        mock_state.last_realtime_reset_date = ""
+        mock_state.last_ws_subscribe_start_date = ""
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
+            _check_prestart_triggers()
+            # 07:58 → 필드 초기화 트리거 1회 (WS 구독은 07:59 미도달 → 0회)
+            assert mock_sched.call_count == 1
+
+    def test_triggers_ws_subscribe_at_0759(self):
+        mock_state = MagicMock()
+        mock_state.last_realtime_reset_date = "20250106"  # 필드 초기화 이미 실행
+        mock_state.last_ws_subscribe_start_date = ""
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
+            _check_prestart_triggers()
+            # 07:59 → WS 구독 시작 트리거 1회 (필드 초기화는 이미 실행 → 0회)
+            assert mock_sched.call_count == 1
+
+    def test_triggers_both_at_0759_if_neither_run(self):
+        mock_state = MagicMock()
+        mock_state.last_realtime_reset_date = ""
+        mock_state.last_ws_subscribe_start_date = ""
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
+            _check_prestart_triggers()
+            # 07:59 → 필드 초기화(미실행) + WS 구독(미실행) = 2회
+            assert mock_sched.call_count == 2
+
+    def test_skips_after_0800(self):
+        mock_state = MagicMock()
+        mock_state.last_realtime_reset_date = ""
+        mock_state.last_ws_subscribe_start_date = ""
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
+            _check_prestart_triggers()
+            # 08:00 이상 — 사전 트리거 없음 (phase 변경 감지가 담당)
+            mock_sched.assert_not_called()
+
+    def test_skips_if_already_run(self):
+        mock_state = MagicMock()
+        mock_state.last_realtime_reset_date = "20250106"
+        mock_state.last_ws_subscribe_start_date = "20250106"
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
+            _check_prestart_triggers()
+            mock_sched.assert_not_called()
+
+    def test_skips_before_0758(self):
+        mock_state = MagicMock()
+        mock_state.last_realtime_reset_date = ""
+        mock_state.last_ws_subscribe_start_date = ""
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 57)), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
+            _check_prestart_triggers()
+            mock_sched.assert_not_called()
+
+
+# ── _on_ws_subscribe_start 멱등성 + 보완 경로 (4단계) ──────────────────────────
+
+class TestOnWsSubscribeStartIdempotency:
+    """_on_ws_subscribe_start() 멱등성 + 보완 경로 테스트."""
+
+    @pytest.mark.asyncio
+    async def test_skips_if_already_started_today(self):
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"ws_subscribe_on": True}
+        mock_state.ws_window_changed_event = MagicMock()
+        mock_state.last_ws_subscribe_start_date = "20250106"  # 이미 오늘 실행됨
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
+             patch("backend.app.services.daily_time_scheduler.gc"), \
+             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
+            await _on_ws_subscribe_start()
+            # 멱등성 가드로 스킵 — 필드 초기화 호출 없음
+            mock_reset.assert_not_awaited()
+            # ws_subscribe_window_active는 이미 True로 설정되지 않음 (가드 통과 못함)
+            mock_state.ws_window_changed_event.set.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_compensates_missing_fields_reset(self):
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"ws_subscribe_on": True}
+        mock_state.ws_window_changed_event = MagicMock()
+        mock_state.last_ws_subscribe_start_date = ""        # WS 구독 미실행
+        mock_state.last_realtime_reset_date = ""            # 필드 초기화도 미실행 → 보완 경로
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.daily_time_scheduler.gc"), \
+             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset, \
+             patch("backend.app.services.engine_account_notify.notify_cache"), \
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
+            await _on_ws_subscribe_start()
+            # 보완 경로 — 필드 초기화 실행
+            mock_reset.assert_awaited_once()
+            assert mock_state.ws_subscribe_window_active is True
+
+    @pytest.mark.asyncio
+    async def test_skips_fields_reset_if_already_done(self):
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"ws_subscribe_on": True}
+        mock_state.ws_window_changed_event = MagicMock()
+        mock_state.last_ws_subscribe_start_date = ""        # WS 구독 미실행
+        mock_state.last_realtime_reset_date = "20250106"    # 필드 초기화 이미 실행 → 보완 스킵
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.daily_time_scheduler.gc"), \
+             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset, \
+             patch("backend.app.services.engine_account_notify.notify_cache"), \
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
+            await _on_ws_subscribe_start()
+            # 보완 스킵 — 필드 초기화 호출 없음
+            mock_reset.assert_not_awaited()
+            assert mock_state.ws_subscribe_window_active is True
 
 
 # ── _on_ws_subscribe_end ──────────────────────────────────────────────────────
@@ -1360,6 +1590,7 @@ class TestMarketPhasePeriodicLoop:
             stop_event.set()  # 1회 호출 후 종료 유도
 
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._check_prestart_triggers"), \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase", side_effect=_broadcast_then_stop) as mock_broadcast:
             await _market_phase_periodic_loop()
             mock_broadcast.assert_called_once()
@@ -1372,6 +1603,7 @@ class TestMarketPhasePeriodicLoop:
         stop_event.set()  # 즉시 종료
         mock_state.engine_stop_event = stop_event
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._check_prestart_triggers"), \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
             # 즉시 반환되어야 함 (hang 없음)
             await asyncio.wait_for(_market_phase_periodic_loop(), timeout=2.0)
@@ -1400,6 +1632,7 @@ class TestMarketPhasePeriodicLoop:
             raise asyncio.TimeoutError()
 
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._check_prestart_triggers"), \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase", side_effect=_side_effect), \
              patch("asyncio.wait_for", side_effect=_wait_for_timeout):
             await _market_phase_periodic_loop()

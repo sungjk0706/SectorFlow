@@ -42,6 +42,11 @@ NXT_AFTERMARKET_START = (15, 40)   # 15:40 애프터마켓 시작 (당일 종가
 NXT_AFTERMARKET_MID_END = (18, 0)  # 18:00 애프터마켓 → 애프터마켓 지속
 NXT_AFTERMARKET_END   = (20, 0)    # 20:00 애프터마켓 지속 종료 → 장마감
 
+# ── 사전 트리거 시각 (장 시작 전 사전 준비 — 안 D 4단계) ──────────────────────
+REALTIME_FIELDS_RESET_TIME = (7, 58)   # 07:58 실시간 필드 초기화 (WS 구독 1분 전)
+WS_SUBSCRIBE_PRESTART_TIME = (7, 59)   # 07:59 WS 구독 사전 시작 (NXT 프리마켓 1분 전)
+NXT_MAINMARKET_START_SECOND = 30       # 09:00:30 NXT 메인마켓 시작 (초 단위 예외)
+
 
 def is_nxt_premarket_window() -> bool:
     """현재 장 상태가 NXT 프리마켓 구간인지 판단.
@@ -150,8 +155,10 @@ def calc_timebased_market_phase() -> dict:
         nxt = "프리마켓"
     elif t < _m(NXT_PREP_NONE_END):
         nxt = "정규장 준비"
+    elif t == _m(NXT_PREP_NONE_END) and now.second < NXT_MAINMARKET_START_SECOND:
+        nxt = "정규장 준비"           # 09:00:00~09:00:29 — 정규장 준비 유지 (초 단위 예외)
     elif t < _m(NXT_MAINMARKET_END):
-        nxt = "메인마켓"
+        nxt = "메인마켓"              # 09:00:30~ — 메인마켓
     elif t < _m(NXT_EARLY_CLOSE_END):
         nxt = "조기 마감"
     elif t < _m(NXT_SINGLE_PRICE_END):
@@ -583,31 +590,71 @@ async def _apply_auto_toggle_on_startup(settings: dict) -> None:
         logger.warning("[시스템] 화면 전송 실패: %s", e, exc_info=True)
 
 
-async def _on_ws_subscribe_start() -> None:
-    """WS 구독 시작 시각이 되면 자동 실행 — WS 연결 + 실시간 데이터 수신을 시작하는 함수."""
+async def _on_realtime_fields_reset() -> None:
+    """07:58 사전 트리거 — 실시간 필드 초기화 (전일 확정 데이터 제거).
+
+    WS 구독 시작(07:59)과 분리하여 1분 먼저 실행 — WS 연결 전에 전일 데이터 제거.
+    날짜 기반 멱등성 가드: 같은 날 중복 실행 방지 (P22 데이터 정합성).
+    """
     try:
+        today = _kst_now()
+        today_str = today.strftime("%Y%m%d")
+        if state.last_realtime_reset_date == today_str:
+            return  # 이미 오늘 실행됨 — 중복 방지
+        from backend.app.core.trading_calendar import is_trading_day
+        if today.weekday() >= 5 or not is_trading_day(today.date()):
+            return
+        settings = state.integrated_system_settings_cache
+        if not bool(settings.get("ws_subscribe_on", False)):
+            logger.info("[작업실행] 실시간 필드 초기화 생략 (수동 모드)")
+            return
+        logger.info("[작업실행] 실시간 필드 초기화 (사전 — 07:58)")
+        from backend.app.services.engine_snapshot import _reset_realtime_fields
+        await _reset_realtime_fields()
+        state.last_realtime_reset_date = today_str
+        logger.info("[작업실행] 실시간 필드 초기화 완료 (사전)")
+    except Exception as e:
+        logger.warning("[작업실행] 실시간 필드 초기화 오류: %s", e, exc_info=True)
+
+
+async def _on_ws_subscribe_start() -> None:
+    """WS 구독 시작 — WS 연결 + 실시간 데이터 수신 시작.
+
+    07:59 사전 트리거 (주기 태스크) 또는 08:00 phase 변경 감지 (_apply_market_phase)로 호출.
+    날짜 기반 멱등성 가드: 같은 날 중복 실행 방지.
+    실시간 필드 초기화는 _on_realtime_fields_reset()에서 07:58에 사전 실행 (분리).
+    """
+    try:
+        today = _kst_now()
+        today_str = today.strftime("%Y%m%d")
+        if state.last_ws_subscribe_start_date == today_str:
+            logger.debug("[작업실행] WS 구독 시작 스킵 (이미 실행됨 — %s)", today_str)
+            return
         # 장중 GC 비활성화 (HFT 지연 방지)
         gc.disable()
         logger.info("[스케줄] 장중 메모리 정리 비활성화 (실시간 처리 지연 방지)")
-        from backend.app.core.trading_calendar import is_trading_day
-        today = _kst_now().date()
         if today.weekday() >= 5:
             return
         settings = state.integrated_system_settings_cache
-        if not is_trading_day(today):
+        from backend.app.core.trading_calendar import is_trading_day
+        if not is_trading_day(today.date()):
             return
         if not bool(settings.get("ws_subscribe_on", False)):
             logger.info("[작업실행] WS 구독 시작 생략 (수동 모드)")
             return
         logger.info("[작업실행] WS 구독 시작")
         state.ws_subscribe_window_active = True
+        state.last_ws_subscribe_start_date = today_str
         # ── 수신율 임계값 게이트 리셋 — 새 구독 세션 시작 시 임계값 대기 상태로 전환 ──
         from backend.app.pipelines.pipeline_compute import reset_sector_threshold
         reset_sector_threshold()
-        # ── 실시간 필드 초기화 (전일 확정 데이터 제거) ──
-        logger.info("[스케줄] 실시간 필드 초기화 시작")
-        from backend.app.services.engine_snapshot import _reset_realtime_fields
-        await _reset_realtime_fields()
+        # ── 실시간 필드 초기화는 07:58 사전 실행됨 (_on_realtime_fields_reset) ──
+        #    사전 실행 누락 시 여기서 보완 (멱등성 — last_realtime_reset_date 체크, P16 살아있는 경로)
+        if state.last_realtime_reset_date != today_str:
+            logger.info("[스케줄] 실시간 필드 초기화 (사전 실행 누락 — 보완)")
+            from backend.app.services.engine_snapshot import _reset_realtime_fields
+            await _reset_realtime_fields()
+            state.last_realtime_reset_date = today_str
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
         from backend.app.services.engine_account_notify import notify_cache
         notify_cache.prev_scores = []
@@ -767,12 +814,16 @@ async def _init_ws_subscribe_state() -> None:
         # 장중 GC 비활성화 (HFT 지연 방지) — _on_ws_subscribe_start와 동일
         gc.disable()
         logger.info("[스케줄] 장중 메모리 정리 비활성화 (실시간 처리 지연 방지)")
+        # ── 4단계: 구독 구간 내 기동 시 날짜 플래그 동기화 (중복 실행 방지) ──
+        today_str = _kst_now().strftime("%Y%m%d")
+        state.last_ws_subscribe_start_date = today_str
         # ── 실시간 필드 초기화 (전일 확정 데이터 제거) ──
         # 캐시 로드 전이면 스킵 — engine_cache._load_caches_preboot()에서 DB 로드 후 수행
         if state.preboot_cache_loaded:
             logger.info("[스케줄] 구독 구간 내 시작 — 실시간 필드 초기화")
             from backend.app.services.engine_snapshot import _reset_realtime_fields
             await _reset_realtime_fields()
+            state.last_realtime_reset_date = today_str
         else:
             logger.info("[스케줄] 구독 구간 내 시작 — 실시간 필드 초기화는 캐시 로드 후 수행")
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
@@ -1034,12 +1085,38 @@ def _apply_detail_to_entry(entry: dict, detail: dict, *, base_nk: str = "") -> N
 _MARKET_PHASE_PERIODIC_INTERVAL = 10.0  # 10초 간격 (안 D 설계)
 
 
+def _check_prestart_triggers() -> None:
+    """주기 태스크 내 사전 트리거 체크 — 07:58/07:59 시각 도달 시 사전 실행.
+
+    phase 계산(08:00)과 분리하여 부작용만 사전 실행 (P10 SSOT — phase는 실제 스케줄 유지).
+    날짜 기반 멱등성 가드로 중복 실행 방지 (P22).
+    """
+    try:
+        now = _kst_now()
+        today_str = now.strftime("%Y%m%d")
+        t = now.hour * 60 + now.minute
+        reset_t = REALTIME_FIELDS_RESET_TIME[0] * 60 + REALTIME_FIELDS_RESET_TIME[1]      # 478 (07:58)
+        prestart_t = WS_SUBSCRIBE_PRESTART_TIME[0] * 60 + WS_SUBSCRIBE_PRESTART_TIME[1]   # 479 (07:59)
+        market_t = NXT_PREMARKET_START[0] * 60 + NXT_PREMARKET_START[1]                   # 480 (08:00)
+        # 08:00 이상이면 사전 트리거 구간 아님 — phase 변경 감지가 담당
+        if t >= market_t:
+            return
+        # 07:58 이상 — 실시간 필드 초기화 사전 트리거
+        if t >= reset_t and state.last_realtime_reset_date != today_str:
+            schedule_engine_task(_on_realtime_fields_reset(), context="실시간 필드 초기화 (사전 07:58)")
+        # 07:59 이상 — WS 구독 시작 사전 트리거
+        if t >= prestart_t and state.last_ws_subscribe_start_date != today_str:
+            schedule_engine_task(_on_ws_subscribe_start(), context="WS 구독 시작 (사전 07:59)")
+    except Exception as e:
+        logger.warning("[스케줄] 사전 트리거 체크 오류: %s", e, exc_info=True)
+
+
 async def _market_phase_periodic_loop() -> None:
     """장 상태 시간 기반 보완 주기 태스크 (안 D — 하우스키핑 타이머).
 
     JIF가 1순위 장 상태 소스이나, WS 끊김/JIF 미수신/네트워크 지연 시
     시간 기반 계산이 살아있는 경로로 동작 (P16 살아있는 경로).
-    10초 간격으로 _broadcast_market_phase() → calc_timebased_market_phase() → _apply_market_phase() 호출.
+    10초 간격으로 사전 트리거 체크(07:58/07:59) + _broadcast_market_phase() 호출.
     페이즈 변경 감지는 _apply_market_phase() 내 멱등성 보장 (같은 페이즈면 부작용 미발생).
 
     P11 (폴링 금지) 준수: 하우스키핑 타이머는 이벤트 루프 내에서 허용
@@ -1050,6 +1127,7 @@ async def _market_phase_periodic_loop() -> None:
     try:
         while not state.engine_stop_event.is_set():
             try:
+                _check_prestart_triggers()       # 07:58/07:59 사전 트리거 (안 D 4단계)
                 _broadcast_market_phase()
             except Exception as e:
                 logger.warning("[스케줄] 장 상태 주기 계산 오류: %s", e, exc_info=True)

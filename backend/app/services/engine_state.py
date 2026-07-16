@@ -109,6 +109,9 @@ class EngineState:
         self.auto_trade_timer_handles: list = []
         self.midnight_timer_handle: asyncio.TimerHandle | None = None
         self.market_phase_periodic_task: asyncio.Task | None = None
+        # ── 사전 트리거 멱등성 가드 (안 D 4단계 — 날짜 기반, P22 데이터 정합성) ──
+        self.last_realtime_reset_date: str = ""        # 실시간 필드 초기화 실행 날짜 (YYYYMMDD)
+        self.last_ws_subscribe_start_date: str = ""    # WS 구독 시작 실행 날짜 (YYYYMMDD)
 
     async def on_filter_settings_changed(self) -> None:
         """필터 설정 변경 시 처리 (engine_sector 모듈 위임)."""

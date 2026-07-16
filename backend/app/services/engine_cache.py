@@ -100,6 +100,9 @@ async def _load_caches_preboot(settings: dict) -> None:
         if _in_ws_window:
             from backend.app.services.engine_snapshot import _reset_realtime_fields
             await _reset_realtime_fields()
+            # ── 4단계: 사전 트리거 멱등성 플래그 동기화 (중복 실행 방지) ──
+            from backend.app.services.daily_time_scheduler import _kst_now
+            state.last_realtime_reset_date = _kst_now().strftime("%Y%m%d")
             logger.info("[데이터] 실시간 통신 구독 구간 — 실시간 필드 초기화 완료 (DB 로드 후)")
 
         # ── 기동 완료 로직 ──
