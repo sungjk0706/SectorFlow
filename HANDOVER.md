@@ -1,107 +1,55 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (실시간 자동 연결 토글 제거 + ws_subscribe_on DB 마이그레이션 — P10/P16/P21/P24)
-- 작업: 일반 설정 > API 설정 탭 "실시간 자동 연결" 토글 완전 제거 + 백엔드 수동 모드 스킵 분기 3곳 제거 + DB 잔존 row 마이그레이션. 07:59 자동 구독이 항상 실행되므로 수동 스위치 불필요 — market_phase 기반으로만 동작.
-- 상태: 구현 완료, 커밋 완료 (`acc4a58`). 런타임 기동 검증 완료 — 마이그레이션 로그 `[설정] 레거시 키 1개 DB에서 삭제: ['ws_subscribe_on']` 확인, DB row 0건 확인.
-- **4단계 태스크 파일** (이전 세션, 구현 완료): `docs/plan_session_state_phase_timing.md` (WS 07:59 사전 트리거 + 필드 초기화 07:58 분리 + NXT 09:00:30 초 단위 예외 + 멱등성 가드 + 보완 경로 + 테스트 계획 + 런타임 검증 방법)
-- **3단계 태스크 파일** (이전 세션, 구현 완료 — 커밋 `6533a79`): `docs/plan_session_state_periodic_task.md` (11개 타이머 제거 + 10초 간격 주기 태스크 + 기동/종료 연결 + 테스트 계획 + 런타임 검증 방법)
-- **2단계 태스크 파일** (이전 세션, 구현 완료): `docs/plan_session_state_jif_handler.md` (JIF 페이즈 맵 + _handle_jif 확장 계획 + _broadcast_market_phase 분리안 + 테스트 계획 + 런타임 검증 방법)
-- **설계 검토 문서** (이전 세션): `backend/docs/architecture_session_state_design.md` (4안 비교표 + 안 D 동작 원리 + 표준 검토 근거)
-- **조사 보고서** (이전 세션): `docs/krx_receive_rate_missing_investigation.md` (KRX 수신률 미표시 문제 조사 — 확인된 사실 16건 + 미확인 4건 + P10/P16 검토 + 수정 방안 2단계)
+- 날짜: 2026-07-17 (카운트다운 SSOT 백엔드 구현 — 안 3 Step 1, P10/P16/P20/P23/P24)
+- 작업: 다단계 작업 워크플로우 3세션(Step 1 백엔드 구현) — `calc_countdown()` 신규 + `_KRX_COUNTDOWN_MAP`/`_NXT_COUNTDOWN_MAP` 상수 + `get_market_phase()`에 `krx_countdown`/`nxt_countdown` 필드 추가 + 테스트 9개 신규/갱신. 구현 + 검증 + 커밋 완료.
+- 상태: Step 1(백엔드 구현) 완료, 커밋 완료 (`9bd99ef`). Step 2(프론트엔드 구현) 승인 대기.
+- **참조 문서**:
+  - 디자인 파일: `backend/docs/architecture_countdown_supplement_design.md` (안 3 확정 — 3안 비교표 + 백엔드 카운트다운 SSOT 동작 원리)
+  - 태스크 파일: `docs/plan_countdown_supplement.md` (구현 상세 + 세션 분할 + 테스트 계획)
+- **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우 (설계 → 태스크 → 구현)"
 
 ## 직전 완료 작업
-- **실시간 자동 연결 토글 제거 + ws_subscribe_on DB 마이그레이션 (P10/P16/P21/P24)**: 11개 파일 수정 (40 insertions, 114 deletions)
-  - `frontend/src/pages/general-settings.ts`: 토글 UI 행·`handleWsToggle()`·`wsToggle` 변수·초기화·해제 전체 제거 — "실시간 자동 연결" 라벨 + 설명 문구 + `createHolidayBadge()` 1개 제거
-  - `frontend/src/layout/header.ts`: `wsOn` 판단 제거 → 증권사 "실시간" 칩이 실제 WS 연결 상태(`bs?.ws_connected`)만 표시 (P21 사용자 투명성)
-  - `frontend/src/types/index.ts`: `ws_subscribe_on: boolean` 타입 필드 제거
-  - `backend/app/core/settings_defaults.py`: `ws_subscribe_on: False` 기본값 제거
-  - `backend/app/core/engine_settings.py`: 스냅샷 변환 `result["ws_subscribe_on"]` 제거
-  - `backend/app/services/daily_time_scheduler.py`: 3곳 수동 모드 스킵 분기 제거 (P16 dead code 제거) — `is_ws_subscribe_window()` (L302 스위치 체크) + `_on_realtime_fields_reset()` (L608 수동 모드 스킵) + `_on_ws_subscribe_start()` (L642 수동 모드 스킵) → 모두 market_phase 기반으로만 동작
-  - `backend/app/services/engine_service.py`: `_WS_SCHEDULE_KEYS` 집합에서 `ws_subscribe_on` 제거
-  - `backend/app/core/settings_file.py`: `_migrate_remove_ws_subscribe_on()` 함수 추가 (기존 `_migrate_remove_ws_subscribe_window_keys()` 패턴 재사용, P23) + `load_integrated_system_settings()`에 호출 추가 + dirty 플래그 체인에 `dirty_wso` 연결 — 기동 시 자동으로 DB에서 `ws_subscribe_on` row 삭제
-  - `backend/tests/test_daily_time_scheduler.py`: obsolete 테스트 3개 제거 (`test_ws_subscribe_off_returns_false`, `test_ws_subscribe_off_skips`, `test_skips_on_manual_mode`) + 잔존 `ws_subscribe_on` 참조 정리 (mock_state 캐시 dict 등)
-  - `backend/tests/test_engine_settings.py`: `test_ws_subscribe_on_default` 제거
-  - `ARCHITECTURE.md`: 12.3절 마스터 스위치 체크 단계 제거 + 20:00 종료 시퀀스에서 `ws_subscribe_on=False` 제거
-  - P10 (SSOT): `is_ws_subscribe_window()` 한 곳에서 구독 구간 판정 단일화 유지
-  - P16 (살아있는 경로): 수동 모드 스킵 분기(dead code) 제거 — 모든 경로가 실제 실행됨
-  - P21 (사용자 투명성): 상단 상태 칩이 실제 연결 상태만 표시하도록 단순화
-  - P24 (단순성): 불필요한 설정 키·분기·UI 요소 전부 제거
-  - DB 백업: `stocks.db.20260717_010700.backup` (1.0M) + shm (32K) + wal (0B) — 마이그레이션 전 백업
-  - 검증: py_compile OK, 프론트엔드 build 성공 (646ms), pytest 212개 통과 (0.59s), 런타임 기동(`-W error::RuntimeWarning`) 정상 — 마이그레이션 로그 `[설정] 레거시 키 1개 DB에서 삭제: ['ws_subscribe_on']` 확인, DB row 0건 확인, RuntimeWarning/Traceback 0건, 잔존 프로세스 0건
-- **jstatus 52 표시 문구 통일 (P23 용어 통일)** (이전 세션): 4개 코드 파일 + 2개 테스트 파일 수정
-  - `daily_time_scheduler.py`: 상수 주석 2건(L30/31) + docstring 시간대 정의(L99) + `calc_timebased_market_phase()` 반환값(L145) + `KRX_INACTIVE_PHASES` 집합(L178) + `is_krx_after_hours()` 판별 튜플(L234) — "시간외 단일가" → "시간외 종가매매 종료 + 시간외 단일가매매 개시"
-  - `engine_ws_dispatch.py`: `_JIF_PHASE_MAP_KRX["52"]` 맵핑값(L214) — JIF 52 복합 이벤트(시간외종가매매종료 + 단일가매매개시) 페이즈명 통일
-  - `header.ts`: `PHASE_STYLE` 색상 맵 키(L24) — UI 칩 표시 문구 통일 (카운트다운 맵 KRX_COUNTDOWN에는 시간외 단일가 항목 원래 없음)
-  - `test_daily_time_scheduler.py`: 단언값 2건(L326, L421) 갱신
-  - `test_engine_ws_dispatch.py`: `test_phase_map_terminology_matches_calc` valid_krx 집합(L440) 갱신
-  - P23 (용어 통일): 로직 페이즈명과 UI 표시 문구 동일 — 단일 진실 소스(P10) 유지
-  - P21 (사용자 투명성): JIF 52 복합 이벤트(종가매매 종료 + 단일가매매 개시)가 UI에 명확히 표시되도록 개선
-  - 참고: 계획 문서/설계 문서(`docs/plan_*.md`, `architecture_session_state_design.md`)의 "시간외 단일가" 표기는 역사적 기록이므로 유지 (코드 제거 규칙 3)
-  - 참고: 사용자 지시에 `is_krx_after_hours_window`로 표기되었으나 실제 함수명은 `is_krx_after_hours`
-  - 검증: py_compile OK, pytest 전체 2784개 통과 (warnings 49건은 telegram_bot 기존 문제, 본 수정과 무관), 프론트엔드 typecheck + build 성공 (652ms)
-- **안 D 4단계 구현 (WS/NXT 시간 정밀 조정)** (이전 세션): 4개 파일 수정 + 테스트 18개 신규/수정
-  - `engine_state.py`: 신규 필드 2개 (`last_realtime_reset_date`, `last_ws_subscribe_start_date`) — 스케줄러 상태 섹션, 날짜 기반 멱등성 가드 (P22)
-  - `daily_time_scheduler.py`: 상수 3개 신규 (`REALTIME_FIELDS_RESET_TIME=(7,58)`, `WS_SUBSCRIBE_PRESTART_TIME=(7,59)`, `NXT_MAINMARKET_START_SECOND=30`) + `calc_timebased_market_phase()` NXT 09:00:00~09:00:29 "정규장 준비" 유지 (초 단위 예외, KRX는 분 단위 유지) + `_on_realtime_fields_reset()` 신규 (07:58 사전 트리거, 날짜 가드) + `_on_ws_subscribe_start()` 수정 (필드 초기화 분리 + 멱등성 가드 + 07:58 누락 시 보완 경로 P16) + `_check_prestart_triggers()` 신규 (주기 태스크 내 07:58/07:59 시각 기반 사전 트리거) + `_market_phase_periodic_loop()` 수정 (사전 트리거 호출 추가) + `_init_ws_subscribe_state()` 수정 (구독 구간 내 기동 시 플래그 동기화)
-  - `engine_cache.py`: `_load_caches_preboot()` 내 `_reset_realtime_fields()` 후 `last_realtime_reset_date` 플래그 동기화 (재기동 시 중복 실행 방지)
-  - `test_daily_time_scheduler.py`: `_make_kst` 헬퍼에 `s`(초) 인자 추가 + `TestCalcTimebasedMarketPhase` NXT 09:00:00/09:00:29/09:00:30 + KRX 09:00:00 케이스 4개 추가 + `TestOnWsSubscribeStart.test_trading_day_starts_subscription` 멱등성 가드 통과 mock 추가 + 신규 `TestOnRealtimeFieldsReset` (5개 테스트) + 신규 `TestCheckPrestartTriggers` (6개 테스트) + 신규 `TestOnWsSubscribeStartIdempotency` (3개 테스트) + `TestMarketPhasePeriodicLoop` 루프 테스트 3개 `_check_prestart_triggers` 패치 추가
-  - P10 (SSOT): phase 계산(08:00)과 부작용 트리거(07:58/07:59) 분리 — 단일 진실 소스 유지
-  - P11 (폴링 금지): 기존 10초 주기 태스크 내 사전 트리거 체크 추가 (신규 폴링 아님)
-  - P16 (살아있는 경로): 07:58 사전 실행 누락 시 WS 구독 시작 안에서 보완 경로
-  - P22 (데이터 정합성): 날짜 기반 멱등성 가드 — 기존 `last_reset_date` 패턴 참조 (P23 일관성)
-  - jstatus 52 표시 문구 수정: 본 4단계에서 제외 (사용자 결정 — 별도 세션)
-  - 검증: py_compile + ruff 통과, pytest 161개 통과 (0 warnings), 런타임 기동(`-W error::RuntimeWarning`) 정상 — `[기동] 장 상태 계산 완료 | KRX: 휴장일, NXT: 휴장일` + `[기동] 장 상태 주기 태스크 시작 (10초 간격)` 로그 확인, RuntimeWarning/Traceback 0건, 잔존 프로세스 0건
-- **안 D 4단계 태스크 파일 작성 (이전 세션)**: 코드 수정 없음, 구현 계획서 작성 only
-  - 사전조사: WS 구독 07:59 사전 트리거 (phase는 08:00 유지, 부작용만 사전 실행) + 실시간 필드 초기화 07:58 분리 (WS 구독 시작과 1분 간격 순차 실행) + NXT 메인마켓 09:00:30 초 단위 예외 (KRX는 분 단위 유지)
-  - 사용자 결정 사항 4건: WS 구독 "phase 08:00 유지 + WS만 07:59", 필드 초기화 "07:58 단독 트리거", NXT "NXT만 초 단위 예외", jstatus 52 문구 "4단계에서 제외 (별도 세션)"
-  - 멱등성 가드: 날짜 기반 플래그 (`last_realtime_reset_date`, `last_ws_subscribe_start_date`) — 자정 리셋 불필요, P22 준수, 기존 `last_reset_date` 패턴 참조 (P23)
-  - 보완 경로 (P16): 07:58 사전 실행 누락 시 WS 구독 시작 안에서 필드 초기화 보완 (`last_realtime_reset_date != today` 체크)
-  - 수정 범위 예정: 3개 파일 — `daily_time_scheduler.py` (상수 3개 + calc NXT 예외 + `_on_realtime_fields_reset()` 신규 + `_on_ws_subscribe_start()` 수정 + `_check_prestart_triggers()` 신규 + `_market_phase_periodic_loop()` 수정 + `_init_ws_subscribe_state()` 수정), `engine_state.py` (필드 2개), `engine_cache.py` (플래그 동기화 1줄) + `test_daily_time_scheduler.py` (기존 수정 + 신규 3 클래스)
-  - jstatus 52 표시 문구 수정: 본 4단계에서 제외 (사용자 결정 — 별도 세션에서 P23 용어 통일 검토 포함 진행)
-  - 태스크 파일: `docs/plan_session_state_phase_timing.md`
-- **안 D 3단계 구현 (주기 태스크 전환)** (이전 세션, 커밋 `6533a79`): 3개 파일 수정
-  - `engine_state.py`: `market_phase_periodic_task: asyncio.Task | None` 필드 추가 (스케줄러 상태 섹션)
-  - `daily_time_scheduler.py`: 11개 market-phase 전환 타이머 제거 (743-759줄) + 신규 `_market_phase_periodic_loop()` (10초 간격 하우스키핑 태스크 — `asyncio.wait_for(engine_stop_event.wait(), timeout=10)`) + `_start_market_phase_periodic_task()` / `_stop_market_phase_periodic_task()` + `start_daily_time_scheduler()`에 기동 연결 + `stop_daily_time_scheduler()`에 종료 연결
-  - `test_daily_time_scheduler.py`: 기존 테스트 3개 수정 (TestStopDailyTimeScheduler, TestStartDailyTimeScheduler, TestScheduleWsSubscribeTimers) + 신규 TestMarketPhasePeriodicLoop 클래스 (8개 테스트 — 간격 상수, 기동, 중복 방지, 종료, None 케이스, broadcast 호출, 엔진 종료 시 즉시 종료, 예외 시 루프 계속)
-  - P11 (폴링 금지) 준수: JIF가 1순위 이벤트 소스, 주기 태스크는 하우스키핑 보완 (NexusFi Academy 표준 — 세션 종료/조정/헬스체크 타이머 허용)
-  - P23 일관성: 기존 `start_compute_loop()`/`stop_compute_loop()` 패턴 참조 (장기 실행 루프 태스크 — create_task + 명시적 start/stop 관리)
-  - 검증: py_compile + ruff 통과, pytest 143개 통과 (0 warnings), 런타임 기동(`-W error::RuntimeWarning`) 정상 — `[기동] 장 상태 주기 태스크 시작 (10초 간격)` 로그 확인, `[스케줄] 장 상태 전환` 로그 0건 (타이머 제거 확인), RuntimeWarning/Traceback 0건, 잔존 프로세스 0건
-- **안 D 3단계 태스크 파일 작성 (이전 세션)**: 코드 수정 없음, 구현 계획서 작성 only
-  - 사전조사: 11개 market-phase 전환 타이머 제거 대상 식별 (`schedule_ws_subscribe_timers()` 내 루프) + `confirmed_download_time` 타이머는 별도 기능이므로 유지
-  - 주기 태스크 패턴: 기존 `_sector_recompute_loop_impl()` (0.2초) / `start_compute_loop()` 패턴 참조 (P23 일관성) — 10초 간격 `while + asyncio.wait_for(timeout=10)` 하우스키핑 태스크
-  - NXT 09:00:30 / WS 07:55 조정: 본 3단계에서 제외 (별도 검토 — JIF 1순위가 보완)
-  - 태스크 파일: `docs/plan_session_state_periodic_task.md`
-- **안 D 2단계 구현 (JIF 핸들러 확장 + _apply_market_phase 분리)** (이전 세션): 4개 파일 수정
-  - `engine_ws_dispatch.py`: JIF 페이즈 맵 상수 3개 신규 (`_JIF_PHASE_MAP_KRX`, `_JIF_PHASE_MAP_NXT`, `_JIF_IGNORE_CODES`) + `_handle_jif()` 장 상태 전환 분기 추가 + `_apply_jif_phase()` 신규 함수 + 임시 INFO 로그(`[연결] JIF 수신: jangubun=%s, jstatus=%s`) 추가 (런타임 검증용, 검증 후 INFO→DEBUG 조정 예정)
-  - `daily_time_scheduler.py`: `_apply_market_phase(phase)` 신규 함수 추출 (적용+브로드캐스트+부작용 트리거 단일 경로 — P10 SSOT) + `_broadcast_market_phase()` 단순화 (calc → _apply_market_phase 위임)
-  - `test_engine_ws_dispatch.py`: TestHandleJif 테스트 5개 추가 (KRX/NXT 페이즈 전환, 카운트다운 무시, CB 페이즈 전환 분리, NXT CB 미처리) + TestJifConstants 테스트 3개 추가 (맵 중복 없음, CB 맵 분리, 용어 일치) + 기존 `test_nxt_jangubun_not_handled` 독스트링 갱신
-  - `test_daily_time_scheduler.py`: TestApplyMarketPhase 클래스 신규 (3개 테스트 — 부작용 트리거, 멱등성, 부분 갱신) + `test_broadcast_delegates_to_apply_market_phase` 추가
-  - jstatus 52 복합 이벤트: 단일 페이즈 "시간외 단일가"로 맵핑 (사용자 승인)
-  - 임시 로그: INFO 레벨 적용 (사용자 승인 — DEBUG 아님)
-  - 검증: py_compile + ruff 통과, pytest 191개 통과 (2개 파일), 런타임 기동(`-W error::RuntimeWarning`) 정상 — `[기동] 장 상태 계산 완료` 로그 확인, RuntimeWarning/Traceback 0건, 잔존 프로세스 0건
-- **안 D 2단계 태스크 파일 작성 (이전 세션)**: 코드 수정 없음, 구현 계획서 작성 only
-  - 1단계 사전 검증 결과 통합: LS증권 JIF API 스펙 문서에서 모든 jstatus 코드 조사 → KRX/NXT 페이즈명 맵핑 테이블 구성
-  - 구조적 문제 식별: `_broadcast_market_phase()`가 항상 `calc_timebased_market_phase()`로 state를 덮어쓰므로 JIF 갱신이 무효화됨 → `_apply_market_phase()` 분리안 수립 (P10 SSOT)
-  - 태스크 파일: `docs/plan_session_state_jif_handler.md`
-- **장 상태 관리 아키텍처 설계 검토 (이전 세션)**: 코드 수정 없음, 설계 검토 문서 작성 only
-  - 4가지 설계안 비교: A(표시 주기 + 4 타이머), B(전부 주기), C(이중화), D(하이브리드 — JIF + 주기)
-  - **안 D 선택**: JIF push 1순위 + 현재 시간 기반 주기적 계산(10초) 보조. 타이머 0개.
-  - 설계 검토 문서: `backend/docs/architecture_session_state_design.md`
-- **장 상태 변경 및 스케줄 동작 로그 추가 (1단계, 이전 세션)**: `daily_time_scheduler.py` 7곳 수정
-  - `_broadcast_market_phase()`: 장 상태 변경 시 `[장상태] KRX: {이전} → {이후} | NXT: {이전} → {이후}` 로그 추가 (변경 없으면 "유지" 표시)
-  - `_on_ws_subscribe_start()` (08:00): `[작업실행] WS 구독 시작` → `WS 구독 시작 완료` (시작/완료 분리)
-  - `_on_nxt_premarket_start()` (08:00): `[작업실행] NXT 프리마켓 처리 — 업종 재계산 시작` → `완료`
-  - `_on_krx_market_open()` (09:00): `[작업실행] 전체 종목 재구독 + 업종 재계산 시작` → `업종 재계산 완료` → `전체 종목 재구독 완료`
-  - `_on_krx_after_hours_start()` (15:30): `[작업실행] KRX 단독 종목 구독 해지 시작` → `업종 재계산 완료` → `구독 해지 완료`
-  - `_on_ws_subscribe_end()` (20:00): `[작업실행] WS 연결 해제 + 전체 구독 해지 시작` → `완료`
-  - `start_daily_time_scheduler()`: `[기동] 장 상태 계산 완료 | KRX: {상태}, NXT: {상태}`
-- 검증: py_compile + ruff 통과, 런타임 기동 (`-W error::RuntimeWarning`) 정상, `backend/logs/trading_2026-07-16.log`에서 `[기동]` 로그 확인, 잔존 프로세스 0건.
+- **카운트다운 SSOT 백엔드 구현 (Step 1, 커밋 `9bd99ef`)**: 2개 파일 수정 (125 insertions, 3 deletions)
+  - `backend/app/services/daily_time_scheduler.py`: `calc_countdown(market, phase)` 신규 순수 함수 (~15줄) + `_KRX_COUNTDOWN_MAP` (KRX 2개 페이즈: 시가 동시호가→09:00, 정규장→15:20) + `_NXT_COUNTDOWN_MAP` (NXT 6개 페이즈: 장개시전→08:00, 프리마켓→08:50, 정규장 준비→09:00, 메인마켓→15:20, 단일가 매매→15:40, 애프터마켓 지속→20:00) + `COUNTDOWN_THRESHOLD_MIN = 10` — 모든 시각 기존 시간표 상수 재사용 (P10) + `get_market_phase()`에 `krx_countdown`/`nxt_countdown` 필드 추가 (기존 10초 브로드캐스트 경로에 편입, P16)
+  - `backend/tests/test_daily_time_scheduler.py`: `TestCalcCountdown` 신규 클래스 (8개 테스트 — KRX/NXT 카운트다운 계산 검증) + `TestGetMarketPhase.test_includes_countdown_fields` 신규 + `TestApplyMarketPhase` 3개 테스트 mock 반환값에 countdown 필드 추가 (실제 반환 형태와 일치)
+  - 검증: py_compile 통과 + ruff 통과 + pytest 167개 전체 통과 (신규 9개 포함) + 런타임 기동 (`-W error::RuntimeWarning`) 정상 기동 RuntimeWarning 없음 + 잔존 프로세스 0건
+  - P10 (SSOT): 거래 시간표 기존 상수 재사용 — 새 시각 하드코딩 없음
+  - P16 (살아있는 경로): `calc_countdown()`이 기존 10초 브로드캐스트 경로에 편입 — 새 전송 로직 없음
+  - P20 (폴백 금지): countdown 없으면 `None` (빈 문자열/None 폴백 아님)
+  - P23 (일관성): 기존 `get_market_phase()` 파생 필드 패턴 준수
+  - P24 (단순성): 순수 함수 1개 + 상수 3개 + WS 필드 2개
+- **카운트다운 SSOT 태스크 파일 작성 (2세션, 이전)**: 코드 수정 없음, 심층 사전조사 + 태스크 파일 작성 only. 상세는 git history 참조.
 
 ## 이전 세션 완료 작업 (커밋 완료)
 - 3단계: 백엔드 수신률 KRX/NXT 분리 집계 + 임계값 게이트 옵션 C (8개 파일) — 구현 + 검증 + 커밋 완료.
 - 분리 작업 자체는 구독 로직 미변경 확인 (git diff 확정). 본 문제와 무관.
 
-## 다음 세션 진행 대기: 장 상태 관리 안 D 구현 (하이브리드 — JIF + 주기적 계산)
+## 다음 세션 진행 대기: 카운트다운 SSOT 구현 (안 3 — 백엔드 카운트다운 SSOT)
+
+### 단계 진행 상황
+- **1세션 (완료)**: 설계 검토 + 디자인 파일 작성 — 3안 비교(안 1 JIF 카운트다운 코드 처리 / 안 2 현상 유지 / 안 3 백엔드 카운트다운 SSOT) → 안 3 추천 → 사용자 안 3 확정. 디자인 파일: `backend/docs/architecture_countdown_supplement_design.md`
+- **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성 — WS 메시지 흐름 파악 + 기존 시간표 상수 재사용 확인 + 구현 상세 + 세션 분할 + 테스트 계획. 태스크 파일: `docs/plan_countdown_supplement.md`
+- **3세션 (Step 1, 완료, 커밋 `9bd99ef`)**: 백엔드 구현 + 테스트 — `calc_countdown()` 신규 + 상수 3개 + `get_market_phase()` 필드 추가 + 테스트 9개. 검증 통과 (py_compile + ruff + pytest 167개 + 런타임 기동 RuntimeWarning 없음 + 잔존 프로세스 0건).
+- **4세션 (Step 2, 구현 승인 대기)**: 프론트엔드 구현 + 빌드
+  - `types/index.ts`, `uiStore.ts`, `binding.ts`: 타입 정의에 countdown 필드 추가
+  - `header.ts`: `KRX_COUNTDOWN`/`NXT_COUNTDOWN`/`COUNTDOWN_THRESHOLD_MIN`/`computeCountdown()` 제거 + `formatCountdown()` 신규 + 호출부 수정 + 30초 setInterval 유지(수신값 재적용)
+  - 검증: `npm run build` + 브라우저 화면 확인
+- **5세션 (Step 3, 예정)**: 통합 검증 + 커밋 + 계획서 삭제
+  - 백엔드 + 프론트엔드 동시 기동 — 카운트다운 실시간 표시 확인
+  - pytest 전체 + `npm run build` + 잔존 프로세스 0건
+  - 커밋(사용자 승인 후) + 계획서 파일 삭제(`backend/docs/architecture_countdown_supplement_design.md`, `docs/plan_countdown_supplement.md`) + HANDOVER.md 갱신
+
+### 참조 문서
+- **디자인 파일**: `backend/docs/architecture_countdown_supplement_design.md` (3안 비교표 + 안 3 동작 원리 + P10/P24 부합 근거)
+- **태스크 파일**: `docs/plan_countdown_supplement.md` (구현 상세 + 세션 분할 + 테스트 계획 + 런타임 검증 방법)
+
+### 승인 대기 항목
+- **Step 2 프론트엔드 구현 승인**: `types/index.ts`/`uiStore.ts`/`binding.ts` 타입 정의에 countdown 필드 추가 + `header.ts`에서 `KRX_COUNTDOWN`/`NXT_COUNTDOWN`/`COUNTDOWN_THRESHOLD_MIN`/`computeCountdown()` 제거 + `formatCountdown()` 신규 + 호출부 수정 + 30초 setInterval 유지(수신값 재적용). 사용자 실행 지시어 대기.
+
+---
+
+## 이전 세션 진행 대기: 장 상태 관리 안 D 구현 (하이브리드 — JIF + 주기적 계산)
 
 ### 단계 진행 상황
 - **1단계** (완료): JIF jstatus 코드 맵핑 사전 검증 — LS증권 API 스펙 문서 조회. 결과는 2단계 태스크 파일에 통합.
