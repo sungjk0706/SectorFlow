@@ -1,46 +1,33 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (TOCTOU 경쟁 상태 수정 — check_buy_power 우회 경로 사전조사 + A+B 조합 수정, P15/P22)
-- 작업: 사전조사(check_buy_power 로직 추적 + 매수 실행 경로 전체 파악 + S6 로그 분석으로 9회 클램핑 원인 특정) → A(사전 차감) + B(글로벌 매수 락) 조합 수정 → 5개 파일 수정 + 3개 테스트 파일 업데이트 → pytest 169개 통과 + 런타임 기동 검증 완료.
-- 상태: TOCTOU 경쟁 상태 수정 완료. P-NEW-3(주문가능금액 부족 상태에서 매수 실행) 해결. 커밋 대기.
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0-2(사전조사 의무) + safe-trade 스킬 + backend-fix 스킬
+- 날짜: 2026-07-17 (매수/매도 주문 간격 설정 개선 — 다단계 작업 1세션: 설계서 작성)
+- 작업: 매수/매도 주문 간격 설정 개선 검토 요청 → 현재 매수 간격 로직 분석(buy_order_executor/engine_state/settings) + 매도 로직 분석(trading.check_sell_conditions) → 3가지 설계안 비교(안 A 로직 복사 / 안 B 공통 모듈 / 안 C 통합) → 사용자 4가지 결정(손절 포함/각각 따로/_sec 키+마이그레이션/공통 모듈) → 초 단위 범위 확정(5~300초, 기본 30초, 5초 단위) → 설계서 작성.
+- 상태: 다단계 작업 1세션(설계서) 완료. 사용자 승인("진행") 받아 커밋 + HANDOVER.md 갱신 중. 2세션(태스크 파일) 대기.
+- **참조 문서**: `backend/docs/architecture_order_interval_design.md` (설계서 — 3안 비교표 + 안 B 동작 원리 + 수정 범위 + 세션 분할 제안)
+- **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우" 1세션 + safe-trade 스킬
 
 ## 직전 완료 작업
-- **TOCTOU 경쟁 상태 수정 (A+B 조합, 커밋 대기)**: check_buy_power 검증 시점과 실제 차감 시점 사이의 비동기 타이밍 갭(0.1초)으로 인한 경쟁 상태 해결.
-  - **근본 원인**: `trading.py execute_buy` line 284(검증) ↔ `dry_run.py fake_fill_event` line 170(0.1초 지연 차감) 사이에 다른 매수의 fake_fill_event가 _orderable을 차감 → on_buy_fill 시점에 _orderable 부족 → max(0,...) 클램핑 9회 발생. 글로벌 매수 락 부재 (종목별 락만 존재, 다른 종목 동시 매수 허용).
-  - **수정 내용 (A+B 조합)**:
-    - A (사전 차감): `settlement_engine.reserve_buy_power` 신규 — check + 즉시 차감 원자적 수행. `release_buy_power` 신규 — 주문 실패 시 롤백. `engine_strategy_core.reserve_test_buy_power` 신규 async 래퍼. `dry_run._apply_buy`에 `pre_reserved` 플래그 추가 (True 시 on_buy_fill 중복 차감 생략, 영속화/브로드캐스트만 수행). `trading.py execute_buy`에서 check_test_buy_power → reserve_test_buy_power로 교체, 실패 시 release_buy_power 롤백, fake_fill_event에 pre_reserved=True 전달.
-    - B (글로벌 매수 락): `trading.py AutoTradeManager._buy_lock` (asyncio.Lock) 신규. execute_buy를 래퍼로 분리 — `async with self._buy_lock:`로 감싸고 원본 본문은 `_execute_buy_locked`로 이동. 동시 매수 요청 순차 처리 보장.
-  - **수정 파일**: `settlement_engine.py` (+45줄), `engine_strategy_core.py` (+15줄), `dry_run.py` (+10줄), `trading.py` (+25줄), `test_trading.py` (patch 대상 변경), `test_settlement_engine.py` (+131줄, 신규 테스트 12개), `test_dry_run.py` (+22줄, 신규 테스트 3개)
-  - **검증**: py_compile 통과 + ruff 통과 + pytest 169개 통과 (기존 + 신규 15개) + 런타임 기동 RuntimeWarning 0건 + 잔존 프로세스 0건
-  - **아키텍처 원칙 준수**: P10(_orderable 단일 소스 유지) / P15(execute_buy 단일 경로 유지, 분기 없음) / P22(사전 차감 + 롤백으로 정합성 보장) / P23(pre_reserved 플래그 기본값 False로 기존 테스트 호환)
-- **계좌 잔액 검증 테스트 구현 + 근본 원인 특정 (다단계 3세션, 이전 세션)**: `backend/tests/test_settlement_verification.py` 신규 작성 (410줄)
-  - 테스트 7개: S1(단일 매수 차감) / S2(2회 매수 누적) / S3(매수→매도 순서) / S4-1(비동기 태스크 취소 — 후보 C 재현) / S4-2(비동기 vs 동기 대칭성) / S5(30건 반복 오차 0원) / S6(실제 DB 재현 — 원본 DB 읽기 전용 복사본 사용)
-  - fixture: `_setup_settlement_env` (autouse) — 기존 test_dry_run_fill_event.py 패턴 재사용 (`_persist`/`_broadcast_delta`/`_ensure_loaded` no-op 패치 + `_fire_and_forget_telegram` no-op + 인메모리 상태 초기화)
-  - 헬퍼: `_do_buy`/`_do_sell` (기존 패턴 재사용) / `_expected_buy_cost`/`_expected_sell_net` (settlement_engine 공식 재현)
-  - 검증: pytest 2796개 통과 (기존 2789 + 신규 7) + py_compile 통과 + 원본 DB 무결성 확인 (변경 없음)
-  - **S6 근본 원인 특정 결과**: 후보 A(정상 작동) 확정 — 계산값 28,372,120원 vs DB 28,372,133원, 차이 -13원(반올림 미세 오차). **추가 발견**: `on_buy_fill` 내 `max(0, _orderable - cost)` 클램핑이 9회 발생 → orderable 약 156만원 인플레이션 → 사용자가 관찰한 "주문가능금액 2.8배" 현상의 원인. 잔액 계산 로직 자체는 정상이나, 주문가능금액 부족 상태에서 매수 실행되는 문제가 별도 존재.
-- **계좌 잔액 검증 테스트 태스크 파일 작성 (다단계 2세션, 이전 세션)**: 심층 사전조사 + 태스크 파일 278줄 작성. 태스크 파일: `docs/plan_settlement_verification.md` (삭제됨)
-- **계좌 잔액 검증 테스트 설계 (다단계 1세션, 이전 세션)**: 사전조사 + 디자인 파일 366줄 작성. 근본 원인 후보 3개 식별(A/B/C). 디자인 파일: `backend/docs/settlement_verification_design.md` (삭제됨)
-- **카운트다운 SSOT 통합 검증 + 계획서 삭제 (이전 세션, 커밋 `9a2af87`)**: pytest 2789개 통과 + `npm run build` 성공 + 런타임 기동 RuntimeWarning 0건 + 계획서 파일 2개 삭제. 카운트다운 SSOT 다단계 작업 완전 완료.
+- **TOCTOU 경쟁 상태 수정 (A+B 조합, 커밋 `389505d`)**: check_buy_power 검증 시점과 실제 차감 시점 사이의 비동기 타이밍 갭(0.1초)으로 인한 경쟁 상태 해결. P-NEW-3 해결 완료.
+  - A(사전 차감): `settlement_engine.reserve_buy_power`/`release_buy_power` 신규 + `dry_run._apply_buy` pre_reserved 플래그. B(글로벌 매수 락): `AutoTradeManager._buy_lock`(asyncio.Lock) 신규, execute_buy 래퍼 분리.
+  - 검증: pytest 169개 통과 + 런타임 기동 RuntimeWarning 0건. P10/P15/P22/P23 준수.
 
-## 완료된 다단계 작업: 계좌 잔액 검증 테스트 (설계→태스크→구현) ✅
+## 다음 세션 진행 대기: 매수/매도 주문 간격 설정 개선 (다단계 작업)
 
 ### 단계 진행 상황
-- **1세션 (완료)**: 설계 검토 + 디자인 파일 작성 — 사전조사(settlement_engine/dry_run/trade_history 소스 추적 + DB 실제 값 확인) → 근본 원인 후보 3개 식별(A/B/C) → 사용자 요구사항 3건 확인 → 디자인 파일 작성. 디자인 파일: `backend/docs/settlement_verification_design.md` (삭제됨)
-- **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성 — 디자인 파일 기반으로 심층 사전조사(규칙 0-2 4항목 + 디자인 섹션 7 항목) → 기존 공통 자산 확인 → 세션 분할 + 태스크 파일 작성. 태스크 파일: `docs/plan_settlement_verification.md` (삭제됨)
-- **3세션 (완료, 커밋 대기)**: 구현 + 근본 원인 특정 — `backend/tests/test_settlement_verification.py` 신규 작성 (410줄, 테스트 7개 + fixture + 헬퍼). S6(실제 DB 재현) 포함 — 원본 DB 읽기 전용 복사본 사용. 검증: pytest 2796개 통과 + py_compile 통과 + 원본 DB 무결성 확인. **근본 원인: 후보 A(정상 작동) 확정** — max(0,...) 클램핑 인플레이션 발견 (별도 이슈).
+- **1세션 (완료, 커밋 대기)**: 설계 검토 + 디자인 파일 작성 — 매수 간격 로직 분석 + 매도 로직 분석 → 3가지 설계안 비교 → 사용자 4가지 결정 + 초 단위 범위 확정 → 설계서 작성.
+  - **설계서**: `backend/docs/architecture_order_interval_design.md` (433줄)
+  - **선택안**: 안 B (공통 모듈 추출 + 분리 설정 + 초 단위)
+  - **사용자 확정 사항**: 매도 간격 추가(손절 포함) / 초 단위(5~300초, 기본 30초, 5초 단위) / `_sec` 키 + 마이그레이션 / 각각 따로 / 공통 모듈 추출 / "5초 단위로 설정 가능" 안내
+- **2세션 (대기)**: 심층 사전조사 + 태스크 파일 작성 — `docs/plan_order_interval.md` (구현 Step + 세션 분할 + 테스트 계획 + 런타임 검증 방법)
+- **3세션~ (대기)**: 단계별 구현 — 백엔드 7곳 + 프론트엔드 3곳 + 테스트 2곳 + 문서 1곳 (세션 분할은 2세션에서 확정)
 
 ### 참조 문서
-- 디자인 파일·태스크 파일: 구현 완료 후 삭제됨 (규칙: 계획서 삭제). 설계/구현 상세는 git history 참조.
+- **설계서**: `backend/docs/architecture_order_interval_design.md`
 
-### 근본 원인 특정 결과 (S6)
-- **후보 A (정상 작동) 확정**: settlement_engine 잔액 계산 로직은 정상 작동. 계산값 28,372,120원 vs DB 28,372,133원, 차이 -13원(반올림 미세 오차).
-- **추가 발견 (별도 이슈)**: `on_buy_fill` 내 `max(0, _orderable - cost)` 클램핑이 9회 발생 → 주문가능금액 부족 상태에서 매수 실행 시 orderable이 0으로 클램핑 → 이후 매도 수익이 0에서부터 누적 → orderable 약 156만원 인플레이션. 사용자가 관찰한 "주문가능금액이 누적투자금의 2.8배" 현상의 직접 원인. `check_buy_power` 검증이 우회되는 경로 확인 필요 (미해결 문제 P-NEW-3 참조).
-
-### 차기 권장 (별도 세션)
-- **max(0,...) 클램핑 인플레이션 원인 조사**: 주문가능금액 부족 상태에서 매수가 어떻게 실행되는지 `check_buy_power` 호출 경로 추적. 별도 다단계 작업(설계→태스크→구현)으로 진행 권장.
+### 승인 대기 항목
+- **2세션 진행**: 태스크 파일 작성 (사용자 "진행" 지시 시 시작)
+- **매도 타이머 갱신 시점**: 주문 전송 전(line 473) vs 성공 후(line 534) — 2세션 심층 사전조사에서 확정 예정
 
 ## 이전 세션 완료 작업 (커밋 완료)
 - 3단계: 백엔드 수신률 KRX/NXT 분리 집계 + 임계값 게이트 옵션 C (8개 파일) — 구현 + 검증 + 커밋 완료.
