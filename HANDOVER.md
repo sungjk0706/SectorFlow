@@ -1,16 +1,26 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (카운트다운 SSOT 프론트엔드 구현 — 안 3 Step 2, P10/P16/P20/P23/P24)
-- 작업: 다단계 작업 워크플로우 4세션(Step 2 프론트엔드 구현) — 4개 파일 수정 (34 insertions, 44 deletions) — `types/index.ts`/`uiStore.ts`/`binding.ts` 타입 정의에 countdown 필드 추가 + `header.ts`에서 `KRX_COUNTDOWN`/`NXT_COUNTDOWN`/`COUNTDOWN_THRESHOLD_MIN`/`computeCountdown()` 제거 + `formatCountdown()` 신규 + 호출부 2곳 수정 (렌더링 + 30초 setInterval). 구현 + 빌드 검증 + 커밋 완료.
-- 상태: Step 2(프론트엔드 구현) 완료, 커밋 완료 (`bf992fb`). Step 3(통합 검증 + 계획서 삭제) 다음 세션 진행 예정.
-- **참조 문서**:
-  - 디자인 파일: `backend/docs/architecture_countdown_supplement_design.md` (안 3 확정 — 3안 비교표 + 백엔드 카운트다운 SSOT 동작 원리)
-  - 태스크 파일: `docs/plan_countdown_supplement.md` (구현 상세 + 세션 분할 + 테스트 계획)
+- 날짜: 2026-07-17 (카운트다운 SSOT 통합 검증 + 계획서 삭제 — 안 3 Step 3, P10/P16/P20/P23/P24)
+- 작업: 다단계 작업 워크플로우 5세션(Step 3 통합 검증) — pytest 전체 2789개 통과 + `npm run build` 성공 + 백엔드 런타임 기동(RuntimeWarning 0건) + WS market-phase 메시지 `krx_countdown`/`nxt_countdown` 필드 존재 확인 + 잔존 프로세스 0건 + 계획서 파일 2개 삭제. 카운트다운 SSOT 다단계 작업(설계→태스크→Step1 백엔드→Step2 프론트엔드→Step3 검증) 완전 완료.
+- 상태: 카운트다운 SSOT 구현(안 3) 전체 완료. Step 3(통합 검증 + 계획서 삭제) 완료, 커밋 대기.
 - **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우 (설계 → 태스크 → 구현)"
+- **참고**: 디자인 파일(`backend/docs/architecture_countdown_supplement_design.md`) 및 태스크 파일(`docs/plan_countdown_supplement.md`)은 구현 완료 후 삭제됨 (규칙: 계획서 삭제). 설계/구현 상세는 git history(`9bd99ef`/`bf992fb`) 참조.
 
 ## 직전 완료 작업
-- **카운트다운 SSOT 프론트엔드 구현 (Step 2, 커밋 `bf992fb`)**: 4개 파일 수정 (34 insertions, 44 deletions)
+- **카운트다운 SSOT 통합 검증 + 계획서 삭제 (Step 3)**: 코드 수정 없음 (검증 + 문서 정리만)
+  - 검증 결과:
+    - pytest 전체: **2789 passed** (8.54s, 52 warnings — 기존과 동일)
+    - `npm run build`: **성공** (63 modules transformed, 627ms, exit 0)
+    - 기동 전 잔존 프로세스: **0건** (기존 vite PID 10991 사용자 승인 후 종료)
+    - 백엔드 런타임 기동 (`python -W error::RuntimeWarning main.py`): **정상** (142ms 기동, RuntimeWarning 0건, `[기동] 장 상태 계산 완료 | KRX: 휴장일, NXT: 휴장일`)
+    - WS market-phase 메시지 캡처 (임시 WS 클라이언트 `/tmp/ws_capture.py` — 검증 후 삭제): **필드 존재 확인** — `krx_countdown`/`nxt_countdown` 필드 포함 (현재 휴장일 새벽 02:29라 값은 None — 정상, 카운트다운 대상 페이즈 아님). 10초 간격 브로드캐스트 2건 수신 확인.
+    - 기동 종료 후 잔존 프로세스: **0건** (정상 종료, lock 파일 삭제 확인)
+  - 계획서 파일 2개 삭제 (사용자 승인 — "구현 완료되었으니 계획서는 역할을 다했습니다"):
+    - `backend/docs/architecture_countdown_supplement_design.md` (untracked — git 추적 이력 없음)
+    - `docs/plan_countdown_supplement.md` (untracked — git 추적 이력 없음)
+  - 브라우저 카운트다운 칩 실시간 표시(08:50, 15:10 등)는 현재 시각(휴장일 새벽)이 카운트다운 대상 페이즈 구간이 아니라서 값 None이 정상. 백엔드→WS→프론트엔드 경로에 필드 정상 전달됨은 확인 완료. 실제 카운트다운 표시는 장 시간대에 별도 확인 권장.
+- **카운트다운 SSOT 프론트엔드 구현 (Step 2, 이전 커밋 `bf992fb`)**: 4개 파일 수정 (34 insertions, 44 deletions)
   - `frontend/src/types/index.ts:95`: `market_phase` 타입에 `krx_countdown?`/`nxt_countdown?` 필드 추가 (`{label, remaining_sec} | null`)
   - `frontend/src/stores/uiStore.ts:38-45`: `marketPhase` 타입에 동일 필드 추가 (initialState는 optional이라 변경 불필요)
   - `frontend/src/binding.ts:269-279`: `market-phase` 수신 타입에 countdown 필드 추가
@@ -27,25 +37,20 @@
 - 3단계: 백엔드 수신률 KRX/NXT 분리 집계 + 임계값 게이트 옵션 C (8개 파일) — 구현 + 검증 + 커밋 완료.
 - 분리 작업 자체는 구독 로직 미변경 확인 (git diff 확정). 본 문제와 무관.
 
-## 다음 세션 진행 대기: 카운트다운 SSOT 구현 (안 3 — 백엔드 카운트다운 SSOT)
+## 완료된 다단계 작업: 카운트다운 SSOT 구현 (안 3 — 백엔드 카운트다운 SSOT) ✅
 
 ### 단계 진행 상황
-- **1세션 (완료)**: 설계 검토 + 디자인 파일 작성 — 3안 비교(안 1 JIF 카운트다운 코드 처리 / 안 2 현상 유지 / 안 3 백엔드 카운트다운 SSOT) → 안 3 추천 → 사용자 안 3 확정. 디자인 파일: `backend/docs/architecture_countdown_supplement_design.md`
-- **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성 — WS 메시지 흐름 파악 + 기존 시간표 상수 재사용 확인 + 구현 상세 + 세션 분할 + 테스트 계획. 태스크 파일: `docs/plan_countdown_supplement.md`
+- **1세션 (완료)**: 설계 검토 + 디자인 파일 작성 — 3안 비교(안 1 JIF 카운트다운 코드 처리 / 안 2 현상 유지 / 안 3 백엔드 카운트다운 SSOT) → 안 3 추천 → 사용자 안 3 확정. 디자인 파일: `backend/docs/architecture_countdown_supplement_design.md` (삭제됨)
+- **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성 — WS 메시지 흐름 파악 + 기존 시간표 상수 재사용 확인 + 구현 상세 + 세션 분할 + 테스트 계획. 태스크 파일: `docs/plan_countdown_supplement.md` (삭제됨)
 - **3세션 (Step 1, 완료, 커밋 `9bd99ef`)**: 백엔드 구현 + 테스트 — `calc_countdown()` 신규 + 상수 3개 + `get_market_phase()` 필드 추가 + 테스트 9개. 검증 통과 (py_compile + ruff + pytest 167개 + 런타임 기동 RuntimeWarning 없음 + 잔존 프로세스 0건).
-- **4세션 (Step 2, 완료, 커밋 `bf992fb`)**: 프론트엔드 구현 + 빌드 — 4개 파일 수정 (34 insertions, 44 deletions). `types/index.ts`/`uiStore.ts`/`binding.ts` 타입 정의에 countdown 필드 추가 + `header.ts`에서 `KRX_COUNTDOWN`/`NXT_COUNTDOWN`/`COUNTDOWN_THRESHOLD_MIN`/`computeCountdown()` 제거 + `formatCountdown()` 신규 + 호출부 2곳 수정 + 30초 setInterval 유지(수신값 재적용). 검증 통과 (`npm run build` 성공 + 잔존 참조 0건). 브라우저 화면 검증은 Step 3에서 진행.
-- **5세션 (Step 3, 예정)**: 통합 검증 + 계획서 삭제
-  - 백엔드 + 프론트엔드 동시 기동 — 카운트다운 실시간 표시 확인 (브라우저)
-  - pytest 전체 + `npm run build` + 잔존 프로세스 0건
-  - 계획서 파일 삭제(사용자 승인 후): `backend/docs/architecture_countdown_supplement_design.md`, `docs/plan_countdown_supplement.md`
-  - HANDOVER.md 갱신
+- **4세션 (Step 2, 완료, 커밋 `bf992fb`)**: 프론트엔드 구현 + 빌드 — 4개 파일 수정 (34 insertions, 44 deletions). `types/index.ts`/`uiStore.ts`/`binding.ts` 타입 정의에 countdown 필드 추가 + `header.ts`에서 `KRX_COUNTDOWN`/`NXT_COUNTDOWN`/`COUNTDOWN_THRESHOLD_MIN`/`computeCountdown()` 제거 + `formatCountdown()` 신규 + 호출부 2곳 수정 + 30초 setInterval 유지(수신값 재적용). 검증 통과 (`npm run build` 성공 + 잔존 참조 0건).
+- **5세션 (Step 3, 완료, 커밋 대기)**: 통합 검증 + 계획서 삭제 — pytest 2789개 통과 + `npm run build` 성공 + 런타임 기동 RuntimeWarning 0건 + WS market-phase 메시지 `krx_countdown`/`nxt_countdown` 필드 존재 확인 + 잔존 프로세스 0건 + 계획서 파일 2개 삭제. 상세는 "직전 완료 작업" 섹션 참조.
 
 ### 참조 문서
-- **디자인 파일**: `backend/docs/architecture_countdown_supplement_design.md` (3안 비교표 + 안 3 동작 원리 + P10/P24 부합 근거)
-- **태스크 파일**: `docs/plan_countdown_supplement.md` (구현 상세 + 세션 분할 + 테스트 계획 + 런타임 검증 방법)
+- 디자인 파일·태스크 파일: 구현 완료 후 삭제됨 (규칙: 계획서 삭제). 설계/구현 상세는 git history(`9bd99ef`/`bf992fb`) 참조.
 
-### 승인 대기 항목
-- **Step 3 통합 검증 + 계획서 삭제 승인**: 백엔드 + 프론트엔드 동시 기동하여 카운트다운 실시간 표시 확인(브라우저) + pytest 전체 + `npm run build` + 잔존 프로세스 0건 + 계획서 파일 2개 삭제(`backend/docs/architecture_countdown_supplement_design.md`, `docs/plan_countdown_supplement.md`). 사용자 실행 지시어 대기.
+### 차기 권장 (별도 세션)
+- **장 시간대 브라우저 카운트다운 칩 확인**: 카운트다운 대상 페이즈 진입 시점(08:50, 15:10, 19:50 등)에 백엔드+프론트엔드 기동 후 헤더 카운트다운 칩 실시간 표시 확인. 현재 시각(휴장일 새벽)은 확인 불가.
 
 ---
 
