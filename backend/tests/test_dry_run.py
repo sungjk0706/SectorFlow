@@ -309,3 +309,25 @@ class TestApplyBuySell:
         # 매도
         await dry_run._apply_sell(_TEST_CODE, 10, 71_000)
         assert settlement_engine.get_orderable() > cash_after_buy
+
+    async def test_apply_buy_pre_reserved_skips_deduction(self):
+        """pre_reserved=True 시 on_buy_fill 중복 차감 생략 — _orderable 변동 없음."""
+        original_cash = settlement_engine.get_orderable()
+        await dry_run._apply_buy(_TEST_CODE, 10, 70_000, pre_reserved=True)
+        # 사전 차감이 이미 execute_buy에서 수행되었으므로 _apply_buy에서는 차감하지 않음
+        assert settlement_engine.get_orderable() == original_cash
+
+    async def test_apply_buy_pre_reserved_persists(self):
+        """pre_reserved=True 시 영속화/브로드캐스트는 수행 (상태 동기화)."""
+        with patch.object(settlement_engine, "_persist", new_callable=AsyncMock) as mock_persist, \
+             patch.object(settlement_engine, "_broadcast_delta", new_callable=AsyncMock) as mock_broadcast:
+            await dry_run._apply_buy(_TEST_CODE, 10, 70_000, pre_reserved=True)
+            mock_persist.assert_awaited_once()
+            mock_broadcast.assert_awaited_once()
+
+    async def test_apply_buy_default_deducts(self):
+        """pre_reserved=False (기본값) 시 기존 동작 유지 — on_buy_fill 차감."""
+        original_cash = settlement_engine.get_orderable()
+        await dry_run._apply_buy(_TEST_CODE, 10, 70_000)
+        expected_cost = 70_000 * 10 + round(70_000 * 10 * 0.00015)
+        assert settlement_engine.get_orderable() == original_cash - expected_cost

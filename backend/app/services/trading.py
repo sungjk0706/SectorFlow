@@ -49,6 +49,8 @@ class AutoTradeManager:
         self._daily_buy_spent: int | None = None  # None = 로드 실패 (매수 차단)
         self._bought_today: dict[str, float] = {}  # stk_cd -> buy timestamp
         self._symbol_daily_buy_spent: dict[str, int] = {}
+        # ── 글로벌 매수 락: 동시 매수 요청 순차 처리 (TOCTOU 경쟁 상태 방지, P22) ──
+        self._buy_lock: asyncio.Lock | None = None
 
     async def _load_daily_buy_state(self) -> tuple[int | None, dict[str, float], dict[str, int]]:
         """기동 시 trade_history에서 오늘 매수 합계 + 매수 종목 timestamp dict + 종목당 누적 매수금액 로드.
@@ -92,11 +94,22 @@ class AutoTradeManager:
     async def execute_buy(self, stk_cd: str, current_price: float,
                     access_token: str, force_buy: bool = False, reason: str = "") -> bool:
         """
-        매수 주문 실행.
+        매수 주문 실행 (글로벌 매수 락으로 순차 처리).
         force_buy=True: 매수대기 수동 매수 전용. 스케줄 자동매매 게이트만 우회하고
                         나머지 판단(buy_amt, max_limit, 쓰로틀 등)은 그대로 적용.
         reason: 매수 사유 (체결 이력 기록용).
         반환값: True=주문 전송 성공, False=가드에 의해 차단/실패
+        """
+        if self._buy_lock is None:
+            self._buy_lock = asyncio.Lock()
+        async with self._buy_lock:
+            return await self._execute_buy_locked(stk_cd, current_price, access_token, force_buy, reason)
+
+    async def _execute_buy_locked(self, stk_cd: str, current_price: float,
+                    access_token: str, force_buy: bool = False, reason: str = "") -> bool:
+        """
+        매수 주문 실행 본문 (글로벌 매수 락 내부).
+        TOCTOU 경쟁 상태 방지: reserve_buy_power로 검증+즉시 차감을 원자적 수행.
         """
         settings = self._to_trade_settings(self.get_settings_fn())
         raw_all = self.get_settings_fn()
@@ -276,12 +289,13 @@ class AutoTradeManager:
         logger.info("[매매] [매수주문] %s(%s) 매수신호 감지. %s %d주 주문전송.", stk_nm, stk_cd, order_type, buy_qty)
         _fire_and_forget_telegram(f"🚀 [자동매매] {stk_nm} {buy_qty}주 매수 주문 전송 완료.", self.get_settings_fn())
 
-        # ── 테스트모드: 예수금 검증 (Settlement Engine) ────────────────────────
+        # ── 테스트모드: 예수금 검증 + 즉시 차감 (TOCTOU 경쟁 상태 방지, P22) ────
+        _reserved_cost: int = 0
         if is_test_mode(raw_all):
-            from backend.app.services.engine_strategy_core import check_test_buy_power
+            from backend.app.services.engine_strategy_core import reserve_test_buy_power
             _check_price = int(order_price) if order_price > 0 else int(current_price)
             _check_price = dry_run.estimate_fill_price(_check_price, "BUY")
-            ok, reason = check_test_buy_power(
+            ok, reason, _reserved_cost = await reserve_test_buy_power(
                 _check_price, buy_qty, self._daily_buy_spent,
             )
             if not ok:
@@ -303,6 +317,11 @@ class AutoTradeManager:
             self._buy_state[stk_cd]["has_open_buy"] = False
             logger.info("[매매] [매수실패] %s 주문 전송 실패. 잠금 해제.", stk_nm)
             _fire_and_forget_telegram(f"⚠️ [매수실패] {stk_nm}({stk_cd}) 주문 전송 실패. 잠금 해제.", raw_all)
+            # ── 사전 차감 롤백 (주문 실패 시 정합성 보장, P22) ──
+            if _reserved_cost > 0:
+                from backend.app.services import settlement_engine
+                await settlement_engine.release_buy_power(_reserved_cost)
+                _reserved_cost = 0
             try:
                 risk_mgr = get_risk_manager()
                 risk_mgr.record_order_failure()
@@ -367,7 +386,7 @@ class AutoTradeManager:
         if is_test_mode(raw_all):
             _dry_fill_price = int(order_price) if order_price > 0 else int(current_price)
             _fill_task = asyncio.create_task(
-                dry_run.fake_fill_event("BUY", stk_cd, buy_qty, _dry_fill_price, stk_nm)
+                dry_run.fake_fill_event("BUY", stk_cd, buy_qty, _dry_fill_price, stk_nm, pre_reserved=True)
             )
             _fill_task.add_done_callback(
                 lambda t: logger.error("[매매] 가상 체결 이벤트(매수) 실패: %s", t.exception(), exc_info=t.exception()) if t.exception() else None

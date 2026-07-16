@@ -21,6 +21,8 @@ from backend.app.services.settlement_engine import (
     get_orderable,
     get_initial_deposit,
     check_buy_power,
+    reserve_buy_power,
+    release_buy_power,
     on_buy_fill,
     on_sell_fill,
     charge,
@@ -176,6 +178,132 @@ class TestCheckBuyPower:
         # 99_999 + round(99_999 * 0.00015) = 99_999 + 15 = 100_014 > 100_000
         ok, _ = check_buy_power(99_999)
         assert ok is False
+
+
+# ── reserve_buy_power (TOCTOU 경쟁 상태 방지) ──────────────────────────────────
+
+class TestReserveBuyPower:
+    """reserve_buy_power: 검증 + 즉시 차감 원자적 수행 (TOCTOU 경쟁 상태 방지)."""
+
+    @pytest.mark.asyncio
+    async def test_reserve_success_deducts_immediately(self, fresh_engine):
+        """검증 통과 시 _orderable에서 즉시 차감."""
+        settlement_engine._orderable = 10_000_000
+        ok, reason, cost = await reserve_buy_power(5_000_000)
+        assert ok is True
+        assert reason == ""
+        expected_cost = 5_000_000 + round(5_000_000 * BUY_COMMISSION)
+        assert cost == expected_cost
+        assert settlement_engine._orderable == 10_000_000 - expected_cost
+
+    @pytest.mark.asyncio
+    async def test_reserve_fail_does_not_deduct(self, fresh_engine):
+        """검증 실패 시 _orderable 변동 없음."""
+        settlement_engine._orderable = 100_000
+        ok, reason, cost = await reserve_buy_power(5_000_000)
+        assert ok is False
+        assert "주문가능금액 부족" in reason
+        assert cost == 0
+        assert settlement_engine._orderable == 100_000
+
+    @pytest.mark.asyncio
+    async def test_reserve_persists_and_broadcasts(self, fresh_engine):
+        """성공 시 영속화 + 브로드캐스트 호출."""
+        mock_persist, mock_broadcast = fresh_engine
+        settlement_engine._orderable = 10_000_000
+        await reserve_buy_power(5_000_000)
+        mock_persist.assert_awaited_once()
+        mock_broadcast.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_reserve_fail_no_persist(self, fresh_engine):
+        """실패 시 영속화/브로드캐스트 호출 안 함."""
+        mock_persist, mock_broadcast = fresh_engine
+        settlement_engine._orderable = 100
+        await reserve_buy_power(5_000_000)
+        mock_persist.assert_not_awaited()
+        mock_broadcast.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_reserve_with_daily_limit_blocks_when_exceeded(self, fresh_engine):
+        """일일 한도 초과 시 차단 (effective = min(orderable, daily_limit - daily_spent))."""
+        settlement_engine._orderable = 10_000_000
+        # effective = min(10_000_000, 5_000_000 - 3_000_000) = 2_000_000
+        # cost = 3_000_000 + 450 = 3_000_450 > 2_000_000 → 실패
+        ok, reason, cost = await reserve_buy_power(3_000_000, daily_limit=5_000_000, daily_spent=3_000_000)
+        assert ok is False
+        assert cost == 0
+
+    @pytest.mark.asyncio
+    async def test_reserve_with_daily_limit_allows_when_within(self, fresh_engine):
+        """일일 한도 내에서는 차감 허용."""
+        settlement_engine._orderable = 10_000_000
+        # effective = min(10_000_000, 5_000_000 - 0) = 5_000_000
+        # cost = 1_000_000 + 150 = 1_000_150 <= 5_000_000 → 성공
+        ok, _, cost = await reserve_buy_power(1_000_000, daily_limit=5_000_000, daily_spent=0)
+        assert ok is True
+        assert cost == 1_000_000 + round(1_000_000 * BUY_COMMISSION)
+
+    @pytest.mark.asyncio
+    async def test_reserve_prevents_toctou_race(self, fresh_engine):
+        """TOCTOU 핵심 검증: 두 번째 reserve가 첫 번째 차감 후 잔액으로 검증."""
+        settlement_engine._orderable = 5_000_000
+        # 첫 번째 매수: 4_000_000원 예약
+        ok1, _, cost1 = await reserve_buy_power(4_000_000)
+        assert ok1 is True
+        after_first = settlement_engine._orderable
+        # 두 번째 매수: 남은 잔액으로 검증 (check_buy_power였다면 원래 잔액으로 검증했을 것)
+        ok2, _, cost2 = await reserve_buy_power(4_000_000)
+        # 남은 잔액 ≈ 994_000원으로는 4_000_000원 매수 불가
+        assert ok2 is False
+        assert settlement_engine._orderable == after_first
+
+
+# ── release_buy_power (롤백) ──────────────────────────────────────────────────
+
+class TestReleaseBuyPower:
+    """release_buy_power: 사전 차감 롤백 (주문 실패 시 정합성 보장)."""
+
+    @pytest.mark.asyncio
+    async def test_release_restores_orderable(self, fresh_engine):
+        """롤백 시 _orderable에 차감액 복원."""
+        settlement_engine._orderable = 5_000_000
+        await release_buy_power(1_000_000)
+        assert settlement_engine._orderable == 6_000_000
+
+    @pytest.mark.asyncio
+    async def test_release_zero_no_change(self, fresh_engine):
+        """0원 롤백 시 변동 없음."""
+        settlement_engine._orderable = 5_000_000
+        await release_buy_power(0)
+        assert settlement_engine._orderable == 5_000_000
+
+    @pytest.mark.asyncio
+    async def test_release_negative_no_change(self, fresh_engine):
+        """음수 롤백 시 변동 없음."""
+        settlement_engine._orderable = 5_000_000
+        await release_buy_power(-100)
+        assert settlement_engine._orderable == 5_000_000
+
+    @pytest.mark.asyncio
+    async def test_release_persists_and_broadcasts(self, fresh_engine):
+        """롤백 시 영속화 + 브로드캐스트."""
+        mock_persist, mock_broadcast = fresh_engine
+        settlement_engine._orderable = 5_000_000
+        await release_buy_power(1_000_000)
+        mock_persist.assert_awaited_once()
+        mock_broadcast.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_reserve_then_release_roundtrip(self, fresh_engine):
+        """예약 → 롤백 시 원래 잔액으로 복원."""
+        original = 10_000_000
+        settlement_engine._orderable = original
+        ok, _, cost = await reserve_buy_power(3_000_000)
+        assert ok is True
+        assert settlement_engine._orderable == original - cost
+        await release_buy_power(cost)
+        assert settlement_engine._orderable == original
 
 
 # ── on_buy_fill ────────────────────────────────────────────────────────────────
