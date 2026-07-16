@@ -1,14 +1,24 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (매수/매도 주문 간격 설정 개선 — 다단계 작업 2세션: 심층 사전조사 + 태스크 파일)
-- 작업: 2세션 진행 → 설계서 기반 심층 사전조사 (매수/매도 실행 경로 코드 분석 + 매도 타이머 갱신 시점 line 473 vs 534 비교 + 전체 코드베이스 grep 잔존 참조 확인) → 매도 타이머 갱신 시점 확정(line 534 성공 후 — 매수 로직과 대칭 + P22/P23/P24 준수) → 설계서 누락 4곳 발견(test_engine_settings.py + test_web_routes.py + buy-settings.ts syncFromSettings + buy_order_executor.py docstring) → 프론트엔드 sell-settings.ts 구조 분석 → 태스크 파일 작성.
-- 상태: 다단계 작업 2세션(태스크 파일) 완료. 사용자 승인("진행") 받아 커밋 + HANDOVER.md 갱신 중. 3세션(구현 Step 1) 대기.
+- 날짜: 2026-07-17 (매수/매도 주문 간격 설정 개선 — 다단계 작업 3세션: 백엔드 기반 Step 1)
+- 작업: 3세션 진행 → 사전조사(5개 백엔드 파일 + 2개 테스트 파일 현재 상태 확인) → 신규 `order_interval.py` 작성(check_order_interval + mark_order_executed, ~30줄) → `engine_state.py` `_last_global_sell_ts` 추가 → `settings_defaults.py` 분→초 + 매도 간격 신규 추가 → `engine_settings.py` 마이그레이션 로직 + sell 3줄 → `settings.py` 일일 리셋 → 테스트 2개 파일 교체 → 검증(py_compile + ruff + pytest 2815개 + 런타임 기동 RuntimeWarning 0건) → 커밋.
+- 상태: 다단계 작업 3세션(구현 Step 1) 완료. 커밋 `9aecd5f`. 4세션(구현 Step 2 — 백엔드 배선) 대기.
 - **참조 문서**: `docs/plan_order_interval.md` (태스크 파일 — 심층조사 결과 + 수정 범위 15곳 + 구현 Step 5개 + 세션 분할 7세션 + 테스트 계획 + 런타임 검증)
-- **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우" 2세션 + safe-trade 스킬
+- **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우" 3세션 + safe-trade 스킬 + backend-fix 스킬
 
 ## 직전 완료 작업
-- **매수/매도 주문 간격 설정 개선 다단계 2세션 — 심층 사전조사 + 태스크 파일 (커밋 대기)**: 설계서(1세션) 기반 심층 사전조사 수행.
+- **매수/매도 주문 간격 설정 개선 다단계 3세션 — 백엔드 기반 Step 1 (커밋 `9aecd5f`)**: 헬퍼 모듈 + 상태/설정/마이그레이션 기반 구축. 헬퍼는 아직 매수/매도 실행 경로에 배선하지 않음 (4세션에서 배선).
+  - **신규 `order_interval.py`** (~30줄): `check_order_interval(settings, kind)` — 토글 OFF/0초/최초 시 True, 간격 내 False. `mark_order_executed(kind)` — 타이머 갱신. P23 공통 자산, P20 폴백 금지(`int(... or 0)` 패턴), P24 단순성.
+  - **`engine_state.py:75-77`**: `_last_global_sell_ts: float = 0.0` 추가 + 주석 "주문 간격 타이머 (매수/매도 공통)".
+  - **`settings_defaults.py:92-96`**: `buy_interval_min: 0` 제거 → `buy_interval_sec: 30` + `sell_interval_on: False` + `sell_interval_sec: 30`.
+  - **`engine_settings.py:230-245`**: 분→초 마이그레이션 로직 + sell 3줄. **★ 설계서 버그 수정**: 설계서의 `merged.get("buy_interval_sec") if _v is None` 패턴은 DEFAULT_USER_SETTINGS에 `buy_interval_sec: 30` 추가 시 항상 30이 반환되어 마이그레이션이 동작하지 않음 → `flat`(DB 원본) 기반 키 존재 검사로 수정 (`if "buy_interval_sec" in flat: ... elif "buy_interval_min" in flat: ... else: 30`).
+  - **`settings.py:152-154`**: 일일 리셋 시 `_last_global_sell_ts = 0.0` 추가.
+  - **`test_engine_settings.py:353-373`**: `test_buy_interval_settings` _sec 교체 + `test_sell_interval_settings` 신규 + 마이그레이션 테스트 3개(`test_buy_interval_migration_min_to_sec` / `test_buy_interval_migration_zero` / `test_buy_interval_no_migration_when_sec_present`).
+  - **`test_buy_order_executor.py:51-52`**: `_default_settings` 헬퍼 `buy_interval_min: 0` → `buy_interval_sec: 30` 교체. (TestBuyIntervalGate 본체 236/252행은 4세션에서 교체 — 배선 변경 직접 영향)
+  - **검증**: py_compile 통과 + ruff check 통과 + pytest 전체 2815개 통과(신규 5개 포함) + 런타임 기동 RuntimeWarning 0건(기동 430ms, 에러/traceback 없음) + 잔존 프로세스 0건 + lock 파일 정리 완료.
+  - **P원칙**: P10(SSOT — 헬퍼 1곳) · P20(폴백 금지) · P22(데이터 정합성) · P23(일관성) · P24(단순성 — ~30줄) 준수.
+  - **작업 여력**: 충분.
   - **매도 타이머 갱신 시점 확정**: line 534 (주문 전송 성공 후) — 매수 로직(`buy_order_executor.py:182-186` `if _ordered:` 성공 시 갱신)과 대칭. P23 일관성 + P22 데이터 정합성(실패를 실행으로 기록 금지) + P24 단일 책임(실패 보호는 서킷브레이커 담당, 간격 게이트는 실행 간격만 담당).
   - **설계서 누락 4곳 발견**: `test_engine_settings.py:353-356` + `test_web_routes.py:549` + `buy-settings.ts:157-159`(syncFromSettings) + `buy_order_executor.py:36`(docstring) — 수정 범위 백엔드 7→8곳, 테스트 2→3곳로 보완.
   - **세션 분할 7세션 확정**: 심층조사 후에도 설계서 제안(7세션) 유지. 3세션에 테스트 2개 파일 포함(기반 변경 직접 영향 — 분리 시 pytest 전체 실패 상태 방치 위반).
@@ -24,12 +34,12 @@
   - **설계서**: `backend/docs/architecture_order_interval_design.md` (433줄)
   - **선택안**: 안 B (공통 모듈 추출 + 분리 설정 + 초 단위)
   - **사용자 확정 사항**: 매도 간격 추가(손절 포함) / 초 단위(5~300초, 기본 30초, 5초 단위) / `_sec` 키 + 마이그레이션 / 각각 따로 / 공통 모듈 추출 / "5초 단위로 설정 가능" 안내
-- **2세션 (완료, 커밋 대기)**: 심층 사전조사 + 태스크 파일 작성 — 매도 타이머 갱신 시점 확정(line 534) + 설계서 누락 4곳 발견 + 프론트엔드 구조 분석 → 태스크 파일 작성.
+- **2세션 (완료, 커밋 `f1c5dde`)**: 심층 사전조사 + 태스크 파일 작성 — 매도 타이머 갱신 시점 확정(line 534) + 설계서 누락 4곳 발견 + 프론트엔드 구조 분석 → 태스크 파일 작성.
   - **태스크 파일**: `docs/plan_order_interval.md` (450줄)
   - **매도 타이머 갱신 시점**: line 534 (성공 후) — 매수 로직과 대칭 (P22/P23/P24 준수)
   - **설계서 누락 4곳**: test_engine_settings.py + test_web_routes.py + buy-settings.ts syncFromSettings + buy_order_executor.py docstring
   - **수정 범위 확정**: 백엔드 8곳 + 프론트엔드 3곳 + 테스트 3곳 + 문서 1곳 = 15곳
-- **3세션 (대기)**: 구현 Step 1 — 백엔드 기반: `order_interval.py` 헬퍼 + `engine_state.py` + `settings_defaults.py` + `engine_settings.py`(마이그레이션) + `settings.py`(일일 리셋) + 테스트 기반 2개(test_engine_settings.py + test_buy_order_executor.py `_default_settings`)
+- **3세션 (완료, 커밋 `9aecd5f`)**: 구현 Step 1 — 백엔드 기반: `order_interval.py` 헬퍼 + `engine_state.py` + `settings_defaults.py` + `engine_settings.py`(마이그레이션) + `settings.py`(일일 리셋) + 테스트 기반 2개(test_engine_settings.py + test_buy_order_executor.py `_default_settings`). ★ 설계서 마이그레이션 버그 수정(merged→flat 기반). 검증: pytest 2815개 + 런타임 기동 RuntimeWarning 0건.
 - **4세션 (대기)**: 구현 Step 2 — 백엔드 배선: `buy_order_executor.py`(헬퍼 적용 + docstring) + `trading.py`(매도 게이트 + 타이머 갱신) + 테스트 케이스 1개(test_buy_order_executor.py TestBuyIntervalGate)
 - **5세션 (대기)**: 구현 Step 3 — 프론트엔드: `buy-settings.ts` + `sell-settings.ts` + `types/index.ts`
 - **6세션 (대기)**: 구현 Step 4 — 테스트: `TestSellIntervalGate` 5개 + 마이그레이션 3개 + `test_web_routes.py`
@@ -40,8 +50,7 @@
 - **태스크 파일**: `docs/plan_order_interval.md` (2세션)
 
 ### 승인 대기 항목
-- **3세션 진행**: 구현 Step 1 (백엔드 기반) — 사용자 "진행" 지시 시 시작
-- **태스크 파일 5가지 결정 승인**: (1) 매도 타이머 line 534 (2) 누락 4곳 추가 (3) 3세션 테스트 2개 포함 (4) 세션 분할 7세션 (5) DB 백업 불필요 — 태스크 파일 섹션 10 참조
+- **4세션 진행**: 구현 Step 2 (백엔드 배선) — 사용자 "진행" 지시 시 시작
 
 ## 이전 세션 완료 작업 (커밋 완료)
 - 3단계: 백엔드 수신률 KRX/NXT 분리 집계 + 임계값 게이트 옵션 C (8개 파일) — 구현 + 검증 + 커밋 완료.
