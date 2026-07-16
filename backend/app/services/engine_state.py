@@ -72,8 +72,9 @@ class EngineState:
         }
         self.krx_circuit_breaker_active: bool = False
 
-        # ── 매수 주문 간격 (전체 매수 간격 타이머) ───────────────────────────
+        # ── 주문 간격 타이머 (매수/매도 공통 — order_interval.py 헬퍼가 갱신) ──
         self._last_global_buy_ts: float = 0.0
+        self._last_global_sell_ts: float = 0.0
 
         # ── 계좌 상태 ───────────────────────────────────────────────────────────
         self.ws_account_subscribed: bool = False

@@ -149,8 +149,9 @@ async def reset_test_data(_: str = Depends(get_current_user)):
             state.auto_trade._bought_today = {}
             state.auto_trade._symbol_daily_buy_spent = {}
             state.auto_trade._buy_state.clear()
-        # 매수 주문 간격 타이머 리셋
+        # 주문 간격 타이머 리셋 (매수/매도)
         state._last_global_buy_ts = 0.0
+        state._last_global_sell_ts = 0.0
         # buy_targets 메모리 초기화 (매수 후보 테이블 동기화)
         if state.sector_summary_cache and hasattr(state.sector_summary_cache, 'buy_targets'):
             state.sector_summary_cache.buy_targets = []

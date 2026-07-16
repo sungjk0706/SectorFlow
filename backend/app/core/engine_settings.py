@@ -227,10 +227,22 @@ def build_engine_settings_dict(flat: dict) -> dict:
     _v = merged.get("sector_bonus_trade_amount_slider")
     result["sector_bonus_trade_amount_slider"] = int(_v if _v is not None else 0)
 
-    # ── 매수 주문 간격 (1순위 종목만 매수 후 사용자 설정 간격 대기) ────────
+    # ── 주문 간격 (매수/매도 각각, 초 단위, 5~300, 기본 30초) ────────────
+    # 매수: 분→초 마이그레이션 — flat(DB 원본)에 buy_interval_sec가 없고
+    # buy_interval_min이 있으면 ×60 변환. 0(비활성화)은 그대로 0.
     result["buy_interval_on"]              = bool(merged.get("buy_interval_on", False))
-    _v = merged.get("buy_interval_min")
-    result["buy_interval_min"]             = int(_v if _v is not None else 0)
+    if "buy_interval_sec" in flat:
+        _v = merged.get("buy_interval_sec")
+        result["buy_interval_sec"]         = int(_v if _v is not None else 30)
+    elif "buy_interval_min" in flat:
+        _legacy = merged.get("buy_interval_min")
+        result["buy_interval_sec"]         = int(_legacy) * 60 if _legacy is not None and str(_legacy).strip() != "" else 30
+    else:
+        result["buy_interval_sec"]         = 30
+    # 매도: 신규 키 — 마이그레이션 불필요, 기본값 30초
+    result["sell_interval_on"]             = bool(merged.get("sell_interval_on", False))
+    _v = merged.get("sell_interval_sec")
+    result["sell_interval_sec"]            = int(_v if _v is not None else 30)
 
     # ── 재매수 차단 (보유/금일매수 종목 매수 허용 여부 + 차단 기간) ────────
     result["rebuy_block_on"]               = bool(merged.get("rebuy_block_on", True))

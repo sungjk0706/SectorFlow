@@ -89,9 +89,11 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
      "sector_bonus_relative_strength_slider": 0,
      "sector_bonus_trade_amount_slider": 0,
 
-     # 매수 주문 간격 (1순위 종목만 매수 후 사용자 설정 간격 대기)
+     # 주문 간격 (매수/매도 각각, 초 단위, 5~300, 5초 단위, 기본 30초)
      "buy_interval_on": False,
-     "buy_interval_min": 0,
+     "buy_interval_sec": 30,
+     "sell_interval_on": False,
+     "sell_interval_sec": 30,
 
      # 수신율 임계값
      "sector_start_threshold_pct": 70.0,
