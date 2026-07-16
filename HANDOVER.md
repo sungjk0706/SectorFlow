@@ -20,7 +20,7 @@
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계 검토 + 디자인 파일 작성 — 사전조사(settlement_engine/dry_run/trade_history 소스 추적 + DB 실제 값 확인) → 근본 원인 후보 3개 식별(A/B/C) → 사용자 요구사항 3건 확인 → 디자인 파일 작성. 디자인 파일: `backend/docs/settlement_verification_design.md`
 - **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성 — 디자인 파일 기반으로 심층 사전조사(규칙 0-2 4항목 + 디자인 섹션 7 항목) → 기존 공통 자산 확인 → 세션 분할 + 태스크 파일 작성. 태스크 파일: `docs/plan_settlement_verification.md`
-- **3세션 (승인 대기)**: 구현 — `backend/tests/test_settlement_verification.py` 신규 작성 (S1~S6 테스트 함수 7개 + fixture + 헬퍼, ~300줄). 검증: pytest + 기존 회귀 + ruff + py_compile.
+- **3세션 (승인 대기)**: 구현 — `backend/tests/test_settlement_verification.py` 신규 작성 (S1~S6 테스트 함수 7개 + fixture + 헬퍼, ~300줄). **S6(실제 DB 재현) 포함 확정** — 원본 DB 읽기 전용 복사본 사용. 검증: pytest + 기존 회귀 + ruff + py_compile.
 
 ### 참조 문서
 - **디자인 파일**: `backend/docs/settlement_verification_design.md` (검증 테스트 방식 + 시나리오 S1~S6 + 의심 경로 검증 + P10/P16/P20/P22/P24 원칙 검토 + 회귀 테스트 기반 구축)
@@ -28,7 +28,7 @@
 
 ### 승인 대기 항목
 - **3세션(구현) 진행 승인**: 태스크 파일에 대한 사용자 승인 후 3세션 진행. 승인 전 다음 세션 진행 금지(규칙 0).
-- **S6(실제 DB 재현) 포함 여부 결정**: 태스크 파일 섹션 5-2의 옵션 (a) 포함 / (b) 제외 중 선택.
+- **S6(실제 DB 재현) 포함 여부**: **확정 — 포함** (사용자 결정 2026-07-17). 원본 DB는 읽기 전용 복사본으로 보호.
 
 ## 이전 세션 완료 작업 (커밋 완료)
 - 3단계: 백엔드 수신률 KRX/NXT 분리 집계 + 임계값 게이트 옵션 C (8개 파일) — 구현 + 검증 + 커밋 완료.
