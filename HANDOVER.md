@@ -1,13 +1,31 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-16 (장 상태 변경 및 스케줄 동작 로그 추가 — 1단계)
-- 작업: `daily_time_scheduler.py`에 장 상태 변경/스케줄 동작/기동 시점 로그 추가. `[기동]`/`[장상태]`/`[작업실행]` 3개 태그 도입. 기존 `[스케줄]` 태그 로그를 새 형식으로 통일 (P21 사용자 투명성, P24 단순성). 로직 변경 없음, 로그 메시지만 개선.
-- 상태: 구현 + 검증 완료. **커밋 대기**.
+- 날짜: 2026-07-16 (장 상태 관리 안 D 구현 — 2단계 JIF 핸들러 확장)
+- 작업: 안 D 2단계(JIF 핸들러 확장) 구현. `_handle_jif()`에 장 상태 전환 분기 추가 + `_apply_market_phase()` 분리 + 테스트 11개 추가. 4개 파일 수정.
+- 상태: 구현 + 검증 완료 (py_compile + ruff + pytest 191개 통과 + 런타임 기동 RuntimeWarning 0건). **커밋 대기**.
+- **2단계 태스크 파일** (구현 기반): `docs/plan_session_state_jif_handler.md` (JIF 페이즈 맵 + _handle_jif 확장 계획 + _broadcast_market_phase 분리안 + 테스트 계획 + 런타임 검증 방법)
+- **설계 검토 문서** (이전 세션): `backend/docs/architecture_session_state_design.md` (4안 비비교표 + 안 D 동작 원리 + 표준 검토 근거)
 - **조사 보고서** (이전 세션): `docs/krx_receive_rate_missing_investigation.md` (KRX 수신률 미표시 문제 조사 — 확인된 사실 16건 + 미확인 4건 + P10/P16 검토 + 수정 방안 2단계)
 
 ## 직전 완료 작업
-- **장 상태 변경 및 스케줄 동작 로그 추가 (1단계)**: `daily_time_scheduler.py` 7곳 수정
+- **안 D 2단계 구현 (JIF 핸들러 확장 + _apply_market_phase 분리)**: 4개 파일 수정
+  - `engine_ws_dispatch.py`: JIF 페이즈 맵 상수 3개 신규 (`_JIF_PHASE_MAP_KRX`, `_JIF_PHASE_MAP_NXT`, `_JIF_IGNORE_CODES`) + `_handle_jif()` 장 상태 전환 분기 추가 + `_apply_jif_phase()` 신규 함수 + 임시 INFO 로그(`[연결] JIF 수신: jangubun=%s, jstatus=%s`) 추가 (런타임 검증용, 검증 후 INFO→DEBUG 조정 예정)
+  - `daily_time_scheduler.py`: `_apply_market_phase(phase)` 신규 함수 추출 (적용+브로드캐스트+부작용 트리거 단일 경로 — P10 SSOT) + `_broadcast_market_phase()` 단순화 (calc → _apply_market_phase 위임)
+  - `test_engine_ws_dispatch.py`: TestHandleJif 테스트 5개 추가 (KRX/NXT 페이즈 전환, 카운트다운 무시, CB 페이즈 전환 분리, NXT CB 미처리) + TestJifConstants 테스트 3개 추가 (맵 중복 없음, CB 맵 분리, 용어 일치) + 기존 `test_nxt_jangubun_not_handled` 독스트링 갱신
+  - `test_daily_time_scheduler.py`: TestApplyMarketPhase 클래스 신규 (3개 테스트 — 부작용 트리거, 멱등성, 부분 갱신) + `test_broadcast_delegates_to_apply_market_phase` 추가
+  - jstatus 52 복합 이벤트: 단일 페이즈 "시간외 단일가"로 맵핑 (사용자 승인)
+  - 임시 로그: INFO 레벨 적용 (사용자 승인 — DEBUG 아님)
+  - 검증: py_compile + ruff 통과, pytest 191개 통과 (2개 파일), 런타임 기동(`-W error::RuntimeWarning`) 정상 — `[기동] 장 상태 계산 완료` 로그 확인, RuntimeWarning/Traceback 0건, 잔존 프로세스 0건
+- **안 D 2단계 태스크 파일 작성 (이전 세션)**: 코드 수정 없음, 구현 계획서 작성 only
+  - 1단계 사전 검증 결과 통합: LS증권 JIF API 스펙 문서에서 모든 jstatus 코드 조사 → KRX/NXT 페이즈명 맵핑 테이블 구성
+  - 구조적 문제 식별: `_broadcast_market_phase()`가 항상 `calc_timebased_market_phase()`로 state를 덮어쓰므로 JIF 갱신이 무효화됨 → `_apply_market_phase()` 분리안 수립 (P10 SSOT)
+  - 태스크 파일: `docs/plan_session_state_jif_handler.md`
+- **장 상태 관리 아키텍처 설계 검토 (이전 세션)**: 코드 수정 없음, 설계 검토 문서 작성 only
+  - 4가지 설계안 비교: A(표시 주기 + 4 타이머), B(전부 주기), C(이중화), D(하이브리드 — JIF + 주기)
+  - **안 D 선택**: JIF push 1순위 + 현재 시간 기반 주기적 계산(10초) 보조. 타이머 0개.
+  - 설계 검토 문서: `backend/docs/architecture_session_state_design.md`
+- **장 상태 변경 및 스케줄 동작 로그 추가 (1단계, 이전 세션)**: `daily_time_scheduler.py` 7곳 수정
   - `_broadcast_market_phase()`: 장 상태 변경 시 `[장상태] KRX: {이전} → {이후} | NXT: {이전} → {이후}` 로그 추가 (변경 없으면 "유지" 표시)
   - `_on_ws_subscribe_start()` (08:00): `[작업실행] WS 구독 시작` → `WS 구독 시작 완료` (시작/완료 분리)
   - `_on_nxt_premarket_start()` (08:00): `[작업실행] NXT 프리마켓 처리 — 업종 재계산 시작` → `완료`
@@ -21,7 +39,28 @@
 - 3단계: 백엔드 수신률 KRX/NXT 분리 집계 + 임계값 게이트 옵션 C (8개 파일) — 구현 + 검증 완료. **커밋 대기**.
 - 분리 작업 자체는 구독 로직 미변경 확인 (git diff 확정). 본 문제와 무관.
 
-## 다음 세션 진행 대기: KRX 수신률 미표시 문제 추가 조사 (타이머 미실행 근본 원인)
+## 다음 세션 진행 대기: 장 상태 관리 안 D 구현 (하이브리드 — JIF + 주기적 계산)
+
+### 단계 진행 상황
+- **1단계** (완료): JIF jstatus 코드 맵핑 사전 검증 — LS증권 API 스펙 문서 조회. 결과는 2단계 태스크 파일에 통합.
+- **2단계** (완료): JIF 핸들러 확장 (`_handle_jif()` 장 상태 전환 처리 추가) + `_apply_market_phase()` 분리 + 테스트 11개. 구현 + 검증 완료 (커밋 대기).
+  - **태스크 파일**: `docs/plan_session_state_jif_handler.md`
+  - **런타임 JIF 검증 대기**: 임시 INFO 로그(`[연결] JIF 수신: jangubun=%s, jstatus=%s`)로 장 시작 시점(08:00~09:00, 15:20~15:40, 20:00) 실제 push 코드 확인 필요. 맵핑 테이블과 불일치 시 3단계 진행 전 맵 수정.
+- **3단계** (대기): 주기 태스크 추가 + 11개 타이머 제거 + 테스트.
+- **4단계** (대기): 런타임 기동 검증 + 통합 테스트.
+
+### 참조 문서
+- **설계 검토**: `backend/docs/architecture_session_state_design.md` (4안 비교표 + 안 D 동작 원리 + 표준 검토 근거)
+- **2단계 구현 계획**: `docs/plan_session_state_jif_handler.md`
+
+### 승인 대기 항목
+- **런타임 JIF 검증**: 장 시작 시점(08:00~09:00, 15:20~15:40, 20:00)에 임시 INFO 로그로 실제 push되는 jstatus 코드 확인 → 맵핑 테이블 검증. 검증 후 INFO→DEBUG 조정.
+- NXT 09:00:30 수정 포함 여부 (3단계에서 별도 검토).
+- WS 07:55/07:59 조정 포함 여부 (3단계에서 별도 검토).
+
+---
+
+## 이전 세션 진행 대기: KRX 수신률 미표시 문제 추가 조사 (타이머 미실행 근본 원인)
 
 ### 문제 개요 (사용자 보고)
 - **현상**: 앱을 NXT 프리마켓 08:00 이전에 기동한 후, 10:50경 확인하니 NXT 수신률만 표시되어 있고 KRX 수신률 표시가 없었음.

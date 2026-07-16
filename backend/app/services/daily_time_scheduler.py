@@ -506,13 +506,14 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
 
 
 
-def _broadcast_market_phase() -> None:
-    """market-phase WS 이벤트 브로드캐스트 + 페이즈 변경 감지 시 업종 재계산 트리거.
+def _apply_market_phase(phase: dict) -> None:
+    """전달받은 phase(krx, nxt)를 state.market_phase에 적용 + 브로드캐스트 + 부작용 트리거.
 
-    state.market_phase를 시간 기반 최신값으로 갱신 후 브로드캐스트.
-    SSOT: state.market_phase가 항상 현재 시각 기반 상태를 반영하도록 보장.
+    JIF 경로(_handle_jif → _apply_jif_phase)와 시간 기반 경로(_broadcast_market_phase)가
+    공통으로 사용하는 단일 적용 경로 (P10 SSOT, P24 단순성).
+    부작용 트리거 로직이 이 한 곳에 집중 — 페이즈 변경 감지 시 멱등성 보장 (같은 페이즈면 부작용 미발생).
 
-    페이즈 변경 감지 시 업종 재계산 트리거 (수정 8 — 타이머 3개 통합):
+    페이즈 변경 감지 시 부작용 트리거 (수정 8 — 타이머 3개 통합):
       - NXT "프리마켓" 진입 → _on_nxt_premarket_start() (08:00, KRX 단독 종목 제외)
       - NXT "프리마켓" 진입 → _on_ws_subscribe_start() (08:00, WS 연결 + 실시간 필드 초기화)
       - KRX "정규장" 진입 → _on_krx_market_open() (09:00, 전체 종목 + 재구독)
@@ -523,26 +524,41 @@ def _broadcast_market_phase() -> None:
         from backend.app.services.engine_account_notify import _broadcast
         prev_krx = state.market_phase.get("krx")
         prev_nxt = state.market_phase.get("nxt")
-        fresh = calc_timebased_market_phase()
-        state.market_phase["krx"] = fresh["krx"]
-        state.market_phase["nxt"] = fresh["nxt"]
-        phase = get_market_phase()
-        schedule_engine_task(_broadcast("market-phase", phase), context="market-phase 브로드캐스트")
+        new_krx = phase.get("krx", "")
+        new_nxt = phase.get("nxt", "")
+        state.market_phase["krx"] = new_krx
+        state.market_phase["nxt"] = new_nxt
+        broadcast_phase = get_market_phase()
+        schedule_engine_task(_broadcast("market-phase", broadcast_phase), context="market-phase 브로드캐스트")
         # 페이즈 변경 감지 → 업종 재계산 + WS 구독 시작/종료 트리거
-        if prev_krx != fresh["krx"] or prev_nxt != fresh["nxt"]:
+        if prev_krx != new_krx or prev_nxt != new_nxt:
             # ── 장 상태 변경 로그 (P21 사용자 투명성) ──
-            krx_part = f"KRX: {prev_krx} → {fresh['krx']}" if prev_krx != fresh["krx"] else f"KRX: {fresh['krx']} 유지"
-            nxt_part = f"NXT: {prev_nxt} → {fresh['nxt']}" if prev_nxt != fresh["nxt"] else f"NXT: {fresh['nxt']} 유지"
+            krx_part = f"KRX: {prev_krx} → {new_krx}" if prev_krx != new_krx else f"KRX: {new_krx} 유지"
+            nxt_part = f"NXT: {prev_nxt} → {new_nxt}" if prev_nxt != new_nxt else f"NXT: {new_nxt} 유지"
             logger.info("[장상태] %s | %s", krx_part, nxt_part)
-            if fresh["nxt"] == "프리마켓" and prev_nxt != "프리마켓":
+            if new_nxt == "프리마켓" and prev_nxt != "프리마켓":
                 schedule_engine_task(_on_nxt_premarket_start(), context="NXT 프리마켓 진입")
                 schedule_engine_task(_on_ws_subscribe_start(), context="WS 구독 시작")
-            if fresh["krx"] == "정규장" and prev_krx != "정규장":
+            if new_krx == "정규장" and prev_krx != "정규장":
                 schedule_engine_task(_on_krx_market_open(), context="KRX 정규장 진입")
-            if fresh["krx"] == "체결 정산" and prev_krx != "체결 정산":
+            if new_krx == "체결 정산" and prev_krx != "체결 정산":
                 schedule_engine_task(_on_krx_after_hours_start(), context="KRX 장외 전환")
-            if fresh["nxt"] == "장마감" and prev_nxt != "장마감":
+            if new_nxt == "장마감" and prev_nxt != "장마감":
                 schedule_engine_task(_on_ws_subscribe_end(), context="WS 구독 종료")
+    except Exception as e:
+        logger.warning("[스케줄] 장 상태 적용 오류: %s", e, exc_info=True)
+
+
+def _broadcast_market_phase() -> None:
+    """시간 기반 장 상태 계산 + _apply_market_phase 위임.
+
+    시간 기반 보완 경로 (안 D — JIF 1순위, 시간 기반 보조).
+    calc_timebased_market_phase() 결과를 _apply_market_phase()에 전달하여
+    state 갱신 + 브로드캐스트 + 부작용 트리거 수행 (P10 SSOT — 적용 경로 단일).
+    """
+    try:
+        fresh = calc_timebased_market_phase()
+        _apply_market_phase(fresh)
     except Exception as e:
         logger.warning("[스케줄] 장 상태 화면 전송 오류: %s", e, exc_info=True)
 

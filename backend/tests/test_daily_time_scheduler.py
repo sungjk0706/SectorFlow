@@ -43,6 +43,7 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     _fire_unified_confirmed_fetch,
     _do_unified_confirmed_fetch,
     _broadcast_market_phase,
+    _apply_market_phase,
     _on_krx_market_open,
     _on_krx_after_hours_start,
     _on_ws_subscribe_start,
@@ -672,6 +673,53 @@ class TestBroadcastMarketPhase:
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _broadcast_market_phase()
             assert mock_sched.call_count == 1  # 브로드캐스트만, 재계산 없음
+
+    def test_broadcast_delegates_to_apply_market_phase(self):
+        """_broadcast_market_phase()가 calc 결과를 _apply_market_phase에 전달 (P10 단일 적용 경로)."""
+        fresh = {"krx": "정규장", "nxt": "메인마켓"}
+        with patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value=fresh), \
+             patch("backend.app.services.daily_time_scheduler._apply_market_phase") as mock_apply:
+            _broadcast_market_phase()
+            mock_apply.assert_called_once_with(fresh)
+
+
+# ── _apply_market_phase ───────────────────────────────────────────────────────
+
+class TestApplyMarketPhase:
+    def test_apply_market_phase_change_triggers_side_effects(self):
+        """krx '정규장' 전환 시 _on_krx_market_open 부작용 트리거 (JIF/타이머 공통 경로)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
+            _apply_market_phase({"krx": "정규장", "nxt": "메인마켓"})
+            assert mock_state.market_phase["krx"] == "정규장"
+            assert mock_state.market_phase["nxt"] == "메인마켓"
+            contexts = [c.kwargs.get("context", "") for c in mock_sched.call_args_list]
+            assert any("KRX 정규장 진입" in ctx for ctx in contexts)
+
+    def test_apply_market_phase_no_change_no_side_effects(self):
+        """동일 페이즈 적용 시 부작용 미발생 (멱등성 — JIF/타이머 동시 존재 시 충돌 방지)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
+            _apply_market_phase({"krx": "정규장", "nxt": "메인마켓"})
+            assert mock_sched.call_count == 1  # 브로드캐스트만, 부작용 없음
+
+    def test_apply_market_phase_partial_update_krx_only(self):
+        """JIF 경로 — krx만 갱신 시 nxt는 기존 state 값 유지 (P10 SSOT)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "메인마켓"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
+            # JIF가 krx만 전달 — _apply_jif_phase가 nxt를 기존 값으로 채워 전달
+            _apply_market_phase({"krx": "정규장", "nxt": "메인마켓"})
+            assert mock_state.market_phase["krx"] == "정규장"
+            assert mock_state.market_phase["nxt"] == "메인마켓"  # 기존 값 유지
 
 
 # ── _on_krx_market_open ───────────────────────────────────────────────────────
