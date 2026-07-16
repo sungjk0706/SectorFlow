@@ -27,8 +27,8 @@ KRX_REGULAR_START       = (9,  0)    # 09:00 정규장 시작
 KRX_REGULAR_END         = (15, 20)   # 15:20 정규장 종료 → 종가 동시호가
 KRX_CLOSING_AUCTION_END = (15, 30)   # 15:30 종가 동시호가 종료 → 거래 없음(정산)
 KRX_SETTLE_END          = (15, 40)   # 15:40 거래 없음(정산) 종료 → 장후 시간외
-KRX_AFTER_HOURS_END     = (16, 0)    # 16:00 장후 시간외 종료 → 시간외 단일가
-KRX_SINGLE_PRICE_END    = (18, 0)    # 18:00 시간외 단일가 종료 → 거래 없음(장 마감)
+KRX_AFTER_HOURS_END     = (16, 0)    # 16:00 장후 시간외 종료 → 시간외 단일가매매 개시
+KRX_SINGLE_PRICE_END    = (18, 0)    # 18:00 시간외 단일가매매 종료 → 거래 없음(장 마감)
 KRX_CLOSE_NONE_END      = (20, 0)    # 20:00 거래 없음(장 마감) 종료 → 장마감
 
 # ── NXT 거래 시간대 (넥스트레이드 실제 스케줄) ──────────────────────────────
@@ -96,7 +96,7 @@ def calc_timebased_market_phase() -> dict:
         15:20~15:30  종가 동시호가 (15:30 일괄 체결)
         15:30~15:40  체결 정산 (거래 없음)
         15:40~16:00  장후 시간외 (당일 종가, 실시간 선착순)
-        16:00~18:00  시간외 단일가 (10분 단위 체결, ±10%)
+        16:00~18:00  시간외 종가매매 종료 + 시간외 단일가매매 개시 (10분 단위 체결, ±10%)
         18:00~20:00  장 종료 (거래 없음)
         20:00~24:00  장마감
       NXT:
@@ -142,7 +142,7 @@ def calc_timebased_market_phase() -> dict:
     elif t < _m(KRX_AFTER_HOURS_END):
         krx = "장후 시간외"
     elif t < _m(KRX_SINGLE_PRICE_END):
-        krx = "시간외 단일가"
+        krx = "시간외 종가매매 종료 + 시간외 단일가매매 개시"
     elif t < _m(KRX_CLOSE_NONE_END):
         krx = "장 종료"
     else:
@@ -175,7 +175,7 @@ def calc_timebased_market_phase() -> dict:
 
 KRX_INACTIVE_PHASES = frozenset({
     "장개시전", "장전 대기", "장전 시간외", "동시호가 접수", "시가 동시호가",
-    "종가 동시호가", "체결 정산", "장후 시간외", "시간외 단일가", "장 종료",
+    "종가 동시호가", "체결 정산", "장후 시간외", "시간외 종가매매 종료 + 시간외 단일가매매 개시", "장 종료",
     "장마감", "휴장일",
 })
 
@@ -231,7 +231,7 @@ def is_krx_after_hours() -> bool:
     if not krx:
         logger.error("[시스템] 장 상태 빈 문자열 감지: krx=%r — 시간 기반 초기화 누락 가능", krx)
         return False
-    return krx in ("체결 정산", "장후 시간외", "시간외 단일가", "장 종료")
+    return krx in ("체결 정산", "장후 시간외", "시간외 종가매매 종료 + 시간외 단일가매매 개시", "장 종료")
 
 
 def get_market_phase() -> dict:

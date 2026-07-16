@@ -1,17 +1,28 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (장 상태 관리 안 D 구현 — 4단계 WS/NXT 시간 정밀 조정 구현 완료)
-- 작업: 안 D 4단계(WS/NXT 시간 조정) 구현. 07:59 WS 구독 사전 트리거 + 07:58 실시간 필드 초기화 분리 + NXT 09:00:30 초 단위 예외 + 날짜 기반 멱등성 가드 + 보완 경로. 4개 파일 수정 + 테스트 18개 신규/수정.
-- 상태: 4단계 구현 완료, 커밋 완료. **런타임 장 시간대 검증 대기** (07:58/07:59 사전 트리거 + 09:00:30 NXT 전환 — 다음 장 시간대 별도 진행).
-- **4단계 태스크 파일** (구현 완료): `docs/plan_session_state_phase_timing.md` (WS 07:59 사전 트리거 + 필드 초기화 07:58 분리 + NXT 09:00:30 초 단위 예외 + 멱등성 가드 + 보완 경로 + 테스트 계획 + 런타임 검증 방법)
+- 날짜: 2026-07-17 (jstatus 52 표시 문구 통일 — P23 용어 통일)
+- 작업: JIF 52 페이즈명/표시 문구를 "시간외 종가매매 종료 + 시간외 단일가매매 개시"로 통일. 4개 코드 파일 + 2개 테스트 파일 수정.
+- 상태: 구현 완료, 커밋 완료. (별도 런타임 검증 불필요 — 페이즈명 문자열 변경 only, 런타임 동작은 다음 장 시간대 16:00 JIF 52 수신 시 UI에서 확인)
+- **4단계 태스크 파일** (이전 세션, 구현 완료): `docs/plan_session_state_phase_timing.md` (WS 07:59 사전 트리거 + 필드 초기화 07:58 분리 + NXT 09:00:30 초 단위 예외 + 멱등성 가드 + 보완 경로 + 테스트 계획 + 런타임 검증 방법)
 - **3단계 태스크 파일** (이전 세션, 구현 완료 — 커밋 `6533a79`): `docs/plan_session_state_periodic_task.md` (11개 타이머 제거 + 10초 간격 주기 태스크 + 기동/종료 연결 + 테스트 계획 + 런타임 검증 방법)
 - **2단계 태스크 파일** (이전 세션, 구현 완료): `docs/plan_session_state_jif_handler.md` (JIF 페이즈 맵 + _handle_jif 확장 계획 + _broadcast_market_phase 분리안 + 테스트 계획 + 런타임 검증 방법)
 - **설계 검토 문서** (이전 세션): `backend/docs/architecture_session_state_design.md` (4안 비교표 + 안 D 동작 원리 + 표준 검토 근거)
 - **조사 보고서** (이전 세션): `docs/krx_receive_rate_missing_investigation.md` (KRX 수신률 미표시 문제 조사 — 확인된 사실 16건 + 미확인 4건 + P10/P16 검토 + 수정 방안 2단계)
 
 ## 직전 완료 작업
-- **안 D 4단계 구현 (WS/NXT 시간 정밀 조정)**: 4개 파일 수정 + 테스트 18개 신규/수정
+- **jstatus 52 표시 문구 통일 (P23 용어 통일)**: 4개 코드 파일 + 2개 테스트 파일 수정
+  - `daily_time_scheduler.py`: 상수 주석 2건(L30/31) + docstring 시간대 정의(L99) + `calc_timebased_market_phase()` 반환값(L145) + `KRX_INACTIVE_PHASES` 집합(L178) + `is_krx_after_hours()` 판별 튜플(L234) — "시간외 단일가" → "시간외 종가매매 종료 + 시간외 단일가매매 개시"
+  - `engine_ws_dispatch.py`: `_JIF_PHASE_MAP_KRX["52"]` 맵핑값(L214) — JIF 52 복합 이벤트(시간외종가매매종료 + 단일가매매개시) 페이즈명 통일
+  - `header.ts`: `PHASE_STYLE` 색상 맵 키(L24) — UI 칩 표시 문구 통일 (카운트다운 맵 KRX_COUNTDOWN에는 시간외 단일가 항목 원래 없음)
+  - `test_daily_time_scheduler.py`: 단언값 2건(L326, L421) 갱신
+  - `test_engine_ws_dispatch.py`: `test_phase_map_terminology_matches_calc` valid_krx 집합(L440) 갱신
+  - P23 (용어 통일): 로직 페이즈명과 UI 표시 문구 동일 — 단일 진실 소스(P10) 유지
+  - P21 (사용자 투명성): JIF 52 복합 이벤트(종가매매 종료 + 단일가매매 개시)가 UI에 명확히 표시되도록 개선
+  - 참고: 계획 문서/설계 문서(`docs/plan_*.md`, `architecture_session_state_design.md`)의 "시간외 단일가" 표기는 역사적 기록이므로 유지 (코드 제거 규칙 3)
+  - 참고: 사용자 지시에 `is_krx_after_hours_window`로 표기되었으나 실제 함수명은 `is_krx_after_hours`
+  - 검증: py_compile OK, pytest 전체 2784개 통과 (warnings 49건은 telegram_bot 기존 문제, 본 수정과 무관), 프론트엔드 typecheck + build 성공 (652ms)
+- **안 D 4단계 구현 (WS/NXT 시간 정밀 조정)** (이전 세션): 4개 파일 수정 + 테스트 18개 신규/수정
   - `engine_state.py`: 신규 필드 2개 (`last_realtime_reset_date`, `last_ws_subscribe_start_date`) — 스케줄러 상태 섹션, 날짜 기반 멱등성 가드 (P22)
   - `daily_time_scheduler.py`: 상수 3개 신규 (`REALTIME_FIELDS_RESET_TIME=(7,58)`, `WS_SUBSCRIBE_PRESTART_TIME=(7,59)`, `NXT_MAINMARKET_START_SECOND=30`) + `calc_timebased_market_phase()` NXT 09:00:00~09:00:29 "정규장 준비" 유지 (초 단위 예외, KRX는 분 단위 유지) + `_on_realtime_fields_reset()` 신규 (07:58 사전 트리거, 날짜 가드) + `_on_ws_subscribe_start()` 수정 (필드 초기화 분리 + 멱등성 가드 + 07:58 누락 시 보완 경로 P16) + `_check_prestart_triggers()` 신규 (주기 태스크 내 07:58/07:59 시각 기반 사전 트리거) + `_market_phase_periodic_loop()` 수정 (사전 트리거 호출 추가) + `_init_ws_subscribe_state()` 수정 (구독 구간 내 기동 시 플래그 동기화)
   - `engine_cache.py`: `_load_caches_preboot()` 내 `_reset_realtime_fields()` 후 `last_realtime_reset_date` 플래그 동기화 (재기동 시 중복 실행 방지)

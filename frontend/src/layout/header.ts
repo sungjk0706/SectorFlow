@@ -21,7 +21,7 @@ const PHASE_STYLE: Record<string, { bg: string; color: string }> = {
   '정규장': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
   '종가 동시호가': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
   '장후 시간외': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
-  '시간외 단일가': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
+  '시간외 종가매매 종료 + 시간외 단일가매매 개시': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
   '프리마켓': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
   '메인마켓': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
   '애프터마켓': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },

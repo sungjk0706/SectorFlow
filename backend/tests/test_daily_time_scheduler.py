@@ -323,7 +323,7 @@ class TestCalcTimebasedMarketPhase:
         with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(16, 30)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
             result = calc_timebased_market_phase()
-            assert result["krx"] == "시간외 단일가"
+            assert result["krx"] == "시간외 종가매매 종료 + 시간외 단일가매매 개시"
             assert result["nxt"] == "애프터마켓"
 
     def test_krx_close_none_and_nxt_aftermarket_sustained(self):
@@ -418,7 +418,7 @@ class TestIsKrxAfterHours:
 
     def test_single_price_returns_true(self):
         mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "시간외 단일가"}
+        mock_state.market_phase = {"krx": "시간외 종가매매 종료 + 시간외 단일가매매 개시"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             assert is_krx_after_hours() is True
 
