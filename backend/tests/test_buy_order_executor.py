@@ -49,7 +49,7 @@ def _default_settings(**overrides):
         "max_daily_total_buy_amt": 0,
         "max_daily_total_buy_on": False,
         "buy_interval_on": False,
-        "buy_interval_min": 0,
+        "buy_interval_sec": 30,
         "time_scheduler_on": True,
         "auto_buy_on": True,
         "buy_time_start": "09:00",

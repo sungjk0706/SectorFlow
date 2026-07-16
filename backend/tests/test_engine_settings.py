@@ -351,9 +351,26 @@ class TestBuildEngineSettingsDictOverride:
         assert result["quote_auto_subscribe"] is False
 
     def test_buy_interval_settings(self):
-        result = build_engine_settings_dict({"buy_interval_on": True, "buy_interval_min": 30})
+        result = build_engine_settings_dict({"buy_interval_on": True, "buy_interval_sec": 30})
         assert result["buy_interval_on"] is True
-        assert result["buy_interval_min"] == 30
+        assert result["buy_interval_sec"] == 30
+
+    def test_sell_interval_settings(self):
+        result = build_engine_settings_dict({"sell_interval_on": True, "sell_interval_sec": 60})
+        assert result["sell_interval_on"] is True
+        assert result["sell_interval_sec"] == 60
+
+    def test_buy_interval_migration_min_to_sec(self):
+        result = build_engine_settings_dict({"buy_interval_min": 5})
+        assert result["buy_interval_sec"] == 300
+
+    def test_buy_interval_migration_zero(self):
+        result = build_engine_settings_dict({"buy_interval_min": 0})
+        assert result["buy_interval_sec"] == 0
+
+    def test_buy_interval_no_migration_when_sec_present(self):
+        result = build_engine_settings_dict({"buy_interval_sec": 120, "buy_interval_min": 5})
+        assert result["buy_interval_sec"] == 120
 
 
 # ── get_engine_settings (async) ─────────────────────────────────────
