@@ -119,9 +119,9 @@ export interface AppSettings {
   rebuy_block_on: boolean;
   rebuy_block_period: string;
 
-  // 매수 주문 간격 (1순위 종목만 매수 후 사용자 설정 간격 대기)
+  // 매수 주문 간격 (1순위 종목만 매수 후 사용자 설정 간격 대기, 초 단위 5~300 5초 단위)
   buy_interval_on: boolean;
-  buy_interval_min: number;
+  buy_interval_sec: number;
 
   // 매도 설정
   tp_val: number;
@@ -137,6 +137,10 @@ export interface AppSettings {
   ts_drop_unit: string;
   sell_price_type: string;
   sell_offset: number;
+
+  // 매도 주문 간격 (손절 포함 모든 매도에 적용, 초 단위 5~300 5초 단위)
+  sell_interval_on: boolean;
+  sell_interval_sec: number;
 
   // 시간 설정
   buy_time_start: string;
