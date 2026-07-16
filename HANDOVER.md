@@ -1,9 +1,9 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (jstatus 52 표시 문구 통일 — P23 용어 통일)
-- 작업: JIF 52 페이즈명/표시 문구를 "시간외 종가매매 종료 + 시간외 단일가매매 개시"로 통일. 4개 코드 파일 + 2개 테스트 파일 수정.
-- 상태: 구현 완료, 커밋 완료. (별도 런타임 검증 불필요 — 페이즈명 문자열 변경 only, 런타임 동작은 다음 장 시간대 16:00 JIF 52 수신 시 UI에서 확인)
+- 날짜: 2026-07-17 (실시간 자동 연결 토글 제거 + ws_subscribe_on DB 마이그레이션 — P10/P16/P21/P24)
+- 작업: 일반 설정 > API 설정 탭 "실시간 자동 연결" 토글 완전 제거 + 백엔드 수동 모드 스킵 분기 3곳 제거 + DB 잔존 row 마이그레이션. 07:59 자동 구독이 항상 실행되므로 수동 스위치 불필요 — market_phase 기반으로만 동작.
+- 상태: 구현 완료, 커밋 완료 (`acc4a58`). 런타임 기동 검증 완료 — 마이그레이션 로그 `[설정] 레거시 키 1개 DB에서 삭제: ['ws_subscribe_on']` 확인, DB row 0건 확인.
 - **4단계 태스크 파일** (이전 세션, 구현 완료): `docs/plan_session_state_phase_timing.md` (WS 07:59 사전 트리거 + 필드 초기화 07:58 분리 + NXT 09:00:30 초 단위 예외 + 멱등성 가드 + 보완 경로 + 테스트 계획 + 런타임 검증 방법)
 - **3단계 태스크 파일** (이전 세션, 구현 완료 — 커밋 `6533a79`): `docs/plan_session_state_periodic_task.md` (11개 타이머 제거 + 10초 간격 주기 태스크 + 기동/종료 연결 + 테스트 계획 + 런타임 검증 방법)
 - **2단계 태스크 파일** (이전 세션, 구현 완료): `docs/plan_session_state_jif_handler.md` (JIF 페이즈 맵 + _handle_jif 확장 계획 + _broadcast_market_phase 분리안 + 테스트 계획 + 런타임 검증 방법)
@@ -11,7 +11,25 @@
 - **조사 보고서** (이전 세션): `docs/krx_receive_rate_missing_investigation.md` (KRX 수신률 미표시 문제 조사 — 확인된 사실 16건 + 미확인 4건 + P10/P16 검토 + 수정 방안 2단계)
 
 ## 직전 완료 작업
-- **jstatus 52 표시 문구 통일 (P23 용어 통일)**: 4개 코드 파일 + 2개 테스트 파일 수정
+- **실시간 자동 연결 토글 제거 + ws_subscribe_on DB 마이그레이션 (P10/P16/P21/P24)**: 11개 파일 수정 (40 insertions, 114 deletions)
+  - `frontend/src/pages/general-settings.ts`: 토글 UI 행·`handleWsToggle()`·`wsToggle` 변수·초기화·해제 전체 제거 — "실시간 자동 연결" 라벨 + 설명 문구 + `createHolidayBadge()` 1개 제거
+  - `frontend/src/layout/header.ts`: `wsOn` 판단 제거 → 증권사 "실시간" 칩이 실제 WS 연결 상태(`bs?.ws_connected`)만 표시 (P21 사용자 투명성)
+  - `frontend/src/types/index.ts`: `ws_subscribe_on: boolean` 타입 필드 제거
+  - `backend/app/core/settings_defaults.py`: `ws_subscribe_on: False` 기본값 제거
+  - `backend/app/core/engine_settings.py`: 스냅샷 변환 `result["ws_subscribe_on"]` 제거
+  - `backend/app/services/daily_time_scheduler.py`: 3곳 수동 모드 스킵 분기 제거 (P16 dead code 제거) — `is_ws_subscribe_window()` (L302 스위치 체크) + `_on_realtime_fields_reset()` (L608 수동 모드 스킵) + `_on_ws_subscribe_start()` (L642 수동 모드 스킵) → 모두 market_phase 기반으로만 동작
+  - `backend/app/services/engine_service.py`: `_WS_SCHEDULE_KEYS` 집합에서 `ws_subscribe_on` 제거
+  - `backend/app/core/settings_file.py`: `_migrate_remove_ws_subscribe_on()` 함수 추가 (기존 `_migrate_remove_ws_subscribe_window_keys()` 패턴 재사용, P23) + `load_integrated_system_settings()`에 호출 추가 + dirty 플래그 체인에 `dirty_wso` 연결 — 기동 시 자동으로 DB에서 `ws_subscribe_on` row 삭제
+  - `backend/tests/test_daily_time_scheduler.py`: obsolete 테스트 3개 제거 (`test_ws_subscribe_off_returns_false`, `test_ws_subscribe_off_skips`, `test_skips_on_manual_mode`) + 잔존 `ws_subscribe_on` 참조 정리 (mock_state 캐시 dict 등)
+  - `backend/tests/test_engine_settings.py`: `test_ws_subscribe_on_default` 제거
+  - `ARCHITECTURE.md`: 12.3절 마스터 스위치 체크 단계 제거 + 20:00 종료 시퀀스에서 `ws_subscribe_on=False` 제거
+  - P10 (SSOT): `is_ws_subscribe_window()` 한 곳에서 구독 구간 판정 단일화 유지
+  - P16 (살아있는 경로): 수동 모드 스킵 분기(dead code) 제거 — 모든 경로가 실제 실행됨
+  - P21 (사용자 투명성): 상단 상태 칩이 실제 연결 상태만 표시하도록 단순화
+  - P24 (단순성): 불필요한 설정 키·분기·UI 요소 전부 제거
+  - DB 백업: `stocks.db.20260717_010700.backup` (1.0M) + shm (32K) + wal (0B) — 마이그레이션 전 백업
+  - 검증: py_compile OK, 프론트엔드 build 성공 (646ms), pytest 212개 통과 (0.59s), 런타임 기동(`-W error::RuntimeWarning`) 정상 — 마이그레이션 로그 `[설정] 레거시 키 1개 DB에서 삭제: ['ws_subscribe_on']` 확인, DB row 0건 확인, RuntimeWarning/Traceback 0건, 잔존 프로세스 0건
+- **jstatus 52 표시 문구 통일 (P23 용어 통일)** (이전 세션): 4개 코드 파일 + 2개 테스트 파일 수정
   - `daily_time_scheduler.py`: 상수 주석 2건(L30/31) + docstring 시간대 정의(L99) + `calc_timebased_market_phase()` 반환값(L145) + `KRX_INACTIVE_PHASES` 집합(L178) + `is_krx_after_hours()` 판별 튜플(L234) — "시간외 단일가" → "시간외 종가매매 종료 + 시간외 단일가매매 개시"
   - `engine_ws_dispatch.py`: `_JIF_PHASE_MAP_KRX["52"]` 맵핑값(L214) — JIF 52 복합 이벤트(시간외종가매매종료 + 단일가매매개시) 페이즈명 통일
   - `header.ts`: `PHASE_STYLE` 색상 맵 키(L24) — UI 칩 표시 문구 통일 (카운트다운 맵 KRX_COUNTDOWN에는 시간외 단일가 항목 원래 없음)
