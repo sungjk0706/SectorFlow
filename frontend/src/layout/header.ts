@@ -443,8 +443,6 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
     }
 
     // 엔진 상태
-    const wsOn = settings ? !!settings.ws_subscribe_on : true
-
     if (status) {
       modeChip.style.display = ''
       applyStatusChip(modeChip, status.is_test_mode ? '테스트모드' : '실전모드', undefined, status.is_test_mode ? 'blue' : 'red')
@@ -459,7 +457,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
       const bs = brokerStatuses[brokerId]
       const label = BROKER_LABELS[brokerId]
       applyStatusChip(refs.token, `${label}증권`, bs?.token_valid ?? false)
-      applyStatusChip(refs.ws, `${label}실시간`, (bs?.ws_connected ?? false) && wsOn)
+      applyStatusChip(refs.ws, `${label}실시간`, bs?.ws_connected ?? false)
     }
 
     // 설정 상태

@@ -263,8 +263,7 @@ def build_engine_settings_dict(flat: dict) -> dict:
     result["boost_trade_amount_rank_on"]   = bool(merged.get("boost_trade_amount_rank_on"))
     _v = merged.get("boost_trade_amount_rank_score")
     result["boost_trade_amount_rank_score"] = max(float(_v if _v is not None else 1.0), 0)
-    # ── WS 구독 마스터 스위치 ────────
-    result["ws_subscribe_on"]              = bool(merged.get("ws_subscribe_on"))
+    # ── 확정 시세 다운로드 시간 ────────
     result["confirmed_download_time"]      = str(merged.get("confirmed_download_time", "20:40"))[:5]
 
     # ── 장마감 후 스케줄러 토글 ────────

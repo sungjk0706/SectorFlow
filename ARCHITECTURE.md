@@ -994,8 +994,7 @@ sell_time_end   — auto_sell_effective() 비활성화
 
 ```python
 is_ws_subscribe_window(settings):
-  1. ws_subscribe_on 마스터 스위치 체크
-  2. state.market_phase["nxt"]가 NXT_ACTIVE_PHASES에 포함 여부
+  1. state.market_phase["nxt"]가 NXT_ACTIVE_PHASES에 포함 여부
      (주말/공휴일은 calc_timebased_market_phase()가 nxt="휴장일"로 자동 차단)
 ```
 
@@ -1121,7 +1120,7 @@ ConnectorManager
 20:00 _on_ws_subscribe_end() (NXT 장마감 진입 시 자동 트리거)
   ├── GC 정상화 (gc.enable() + gc.collect())
   ├── 실시간 구독 전체 해제 (_trigger_unreg_all)
-  ├── time_scheduler_on = False, ws_subscribe_on = False
+  ├── time_scheduler_on = False
   └── WS 연결 해제 (engine_loop에서)
 
 20:40 _fire_unified_confirmed_fetch()

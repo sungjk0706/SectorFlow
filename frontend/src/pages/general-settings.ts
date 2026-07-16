@@ -51,7 +51,6 @@ let autoBuyToggle: ReturnType<typeof createToggleBtn> | null = null
 let buyTimeHandle: TimePairInputHandle | null = null
 let autoSellToggle: ReturnType<typeof createToggleBtn> | null = null
 let sellTimeHandle: TimePairInputHandle | null = null
-let wsToggle: ReturnType<typeof createToggleBtn> | null = null
 let holidayBadgeEls: HTMLElement[] = []
 let uiFlashToggle: ReturnType<typeof createToggleBtn> | null = null
 
@@ -271,15 +270,6 @@ function handleMasterToggle(): void {
   settingsMgr?.saveSection({ time_scheduler_on: next }).then(r => {
     toastResult(r)
     if (!r.ok) { vals.time_scheduler_on = !next; masterToggle?.setOn(!next) }
-  })
-}
-
-function handleWsToggle(): void {
-  const next = !vals.ws_subscribe_on
-  vals.ws_subscribe_on = next; wsToggle?.setOn(next)
-  settingsMgr?.saveSection({ ws_subscribe_on: next }).then(r => {
-    toastResult(r)
-    if (!r.ok) { vals.ws_subscribe_on = !next; wsToggle?.setOn(!next) }
   })
 }
 
@@ -560,24 +550,6 @@ function renderApiSettingsTab(container: HTMLElement): void {
 
   container.appendChild(sectionTitle('실시간 데이터 통신'))
 
-  // 실시간 연결
-  const wsRow = document.createElement('div')
-  Object.assign(wsRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const wsLabel = document.createElement('span')
-  Object.assign(wsLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  wsLabel.textContent = '실시간 자동 연결'
-  wsRow.appendChild(wsLabel)
-
-  const wsRight = document.createElement('span')
-  wsRight.style.cssText = 'display:flex;align-items:center;'
-  wsRight.appendChild(createHolidayBadge())
-  wsToggle = createToggleBtn({ on: false, onClick: () => handleWsToggle() })
-  wsRight.appendChild(wsToggle.el)
-  wsRow.appendChild(wsRight)
-  container.appendChild(wsRow)
-
-  container.appendChild(createDescText('ON: 거래일 오전 8시 자동 연결 → 오후 8시 자동 해제 (주말·공휴일 제외) / OFF: 자동 연결 안 함'))
-
   // 1일봉차트 자동다운로드 (토글 + 시간 슬롯)
   const confirmedDlRow = document.createElement('div')
   Object.assign(confirmedDlRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
@@ -821,7 +793,6 @@ function syncFromSettings(s: AppSettings | null): void {
   // 자동매매 탭 (항상 DOM에 존재)
   {
     masterToggle?.setOn(!!r.time_scheduler_on)
-    wsToggle?.setOn(!!r.ws_subscribe_on)
     updateHolidayBadges()
 
     // 확정 시세 다운로드 시간 + 자동다운로드 토글
@@ -971,7 +942,6 @@ function unmount(): void {
   buyTimeHandle = null
   autoSellToggle = null
   sellTimeHandle = null
-  wsToggle = null
   holidayBadgeEls = []
   teleToggle = null
   teleInputs = {}
