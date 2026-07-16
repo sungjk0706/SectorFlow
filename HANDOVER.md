@@ -1,13 +1,32 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (매수/매도 주문 간격 설정 개선 — 다단계 작업 4세션: 백엔드 배선 Step 2)
-- 작업: 4세션 진행 → 사전조사(4개 파일 현재 상태 + import 호환성 문제 발견) → `order_interval.py` import 방식 수정(top-level → 함수 내부, 테스트 호환성) → `buy_order_executor.py` docstring + 게이트(7줄→3줄 헬퍼) + 타이머(헬퍼) + `time` import 제거 → `trading.py` 매도 간격 게이트(for-loop 전) + 타이머 갱신(성공 후, 저널링 이전) → `test_buy_order_executor.py` TestBuyIntervalGate 2개 `_sec` 교체 → 검증(py_compile + ruff + pytest 2815개 + 런타임 기동 RuntimeWarning 0건) → 커밋.
-- 상태: 다단계 작업 4세션(구현 Step 2) 완료. 5세션(구현 Step 3 — 프론트엔드) 대기.
+- 날짜: 2026-07-17 (매수/매도 주문 간격 설정 개선 — 다단계 작업 5세션: 프론트엔드 Step 3)
+- 작업: 5세션 진행 → 사전조사(3개 프론트엔드 파일 현재 상태 + `createDescText` 공통 자산 발견) → `types/index.ts`(`buy_interval_min`→`buy_interval_sec` + 매도 설정 영역에 `sell_interval_on`/`sell_interval_sec` 추가) → `buy-settings.ts`(import `createDescText` + syncFromSettings `_sec` 교체 + createNumInput step 5/min 5/max 300/value 30 + 라벨 "초, 5초 단위" + 안내 라벨) → `sell-settings.ts`(import 2개 + 변수 3개 + syncFromSettings 매도 간격 블록 + mount "매도 주문 간격" 섹션 + unmount 정리) → 검증(typecheck 통과 + build 772ms 성공 + 잔존 `buy_interval_min` 프론트엔드 0건) → 커밋.
+- 상태: 다단계 작업 5세션(구현 Step 3) 완료. 6세션(구현 Step 4 — 테스트) 대기.
 - **참조 문서**: `docs/plan_order_interval.md` (태스크 파일 — 심층조사 결과 + 수정 범위 15곳 + 구현 Step 5개 + 세션 분할 7세션 + 테스트 계획 + 런타임 검증)
-- **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우" 4세션 + safe-trade 스킬 + backend-fix 스킬
+- **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우" 5세션 + frontend-fix 스킬
 
 ## 직전 완료 작업
+- **매수/매도 주문 간격 설정 개선 다단계 5세션 — 프론트엔드 Step 3**: UI에 매도 간격 섹션 추가 + 매수 간격 초 단위 변경 (P21 사용자 투명성). 3~4세션에서 구축·배선된 백엔드 `_sec` 키를 UI에 반영.
+  - **`types/index.ts`** (2곳):
+    - line 122-124: `buy_interval_min: number` → `buy_interval_sec: number` + 주석 "초 단위 5~300 5초 단위" (P10 SSOT).
+    - line 138-143: 매도 설정 영역(`sell_offset` 이후)에 `sell_interval_on: boolean` + `sell_interval_sec: number` 추가 + 주석 "손절 포함 모든 매도에 적용".
+  - **`buy-settings.ts`** (4곳):
+    - line 6 import: `sectionTitle` → `sectionTitle, createDescText` (P23 공통 자산 재사용 — general-settings.ts/sector-settings.ts에서 안내 라벨로 이미 사용).
+    - line 159 syncFromSettings: `r.buy_interval_min` → `r.buy_interval_sec`, `|| 0` → `|| 30` (기본값 30초).
+    - line 338-351 mount: `createNumInput({ value: 0, step: 1, name: 'buy_interval_min' })` → `{ value: 30, step: 5, min: 5, max: 300, name: 'buy_interval_sec' }` + `vals.buy_interval_sec`. 라벨 `'매수 주문 간격 활성화 (분)'` → `'매수 주문 간격 활성화 (초, 5초 단위)'`.
+    - 안내 라벨: `createDescText('5초 단위로 설정 가능합니다 (5~300초, 기본 30초)')` 추가 (P21 투명성).
+  - **`sell-settings.ts`** (5곳):
+    - line 5-6 import: `createToggleLabelControlsRow`(setting-row) + `createDescText`(settings-common) 추가.
+    - line 36-38 변수: `sellIntervalToggle`/`sellIntervalInput`/`sellIntervalControls` 3개 추가 (buy-settings.ts 매수 간격 변수와 동일 패턴 — P23 일관성).
+    - syncFromSettings: 매도 간격 동기화 블록 추가 (`sell_interval_on` 토글 + `sell_interval_sec` 값 + `setDisabled`).
+    - mount line 136-149: "매도 주문 간격" 섹션 신규 (`sectionTitle` + `createNumInput`(step 5/min 5/max 300/value 30) + `createToggleLabelControlsRow` + `createDescText` 안내 "5초 단위로 설정 가능합니다 (5~300초, 기본 30초). 손절 포함 모든 매도에 간격이 적용됩니다."). 추적매도 `tsDropRow` 이후, `container.appendChild(root)` 이전.
+    - unmount: `sellIntervalToggle/Input/Controls` 3개 null 처리 추가.
+  - **검증**: `npm run typecheck` 통과 + `npm run build` 성공(772ms, 에러 없음) + 잔존 `buy_interval_min` 프론트엔드 0건(grep 확인). 백엔드 잔존은 마이그레이션 로직 3곳 + 테스트 3곳 + 설계서 22곳 = 모두 6/7세션에서 처리 예정 (계획된 잔존).
+  - **P원칙**: P10(SSOT — `buy_interval_sec` 단일 키) · P21(사용자 투명성 — 매도 간격 UI + 안내 라벨) · P23(용어 통일 — "매도 주문 간격"/"종목") · P23(공통 자산 재사용 — `createDescText`/`createToggleLabelControlsRow`/`createNumInput`) · P23(UI 패턴 일관성 — 매수/매도 간격 섹션 동일 구조) 준수.
+  - **작업 여력**: 충분.
+- **매수/매도 주문 간격 설정 개선 다단계 4세션 — 백엔드 배선 Step 2**: 헬퍼를 실제 매수/매도 실행 경로에 배선 (P16 살아있는 경로). 3세션에서 구축한 헬퍼가 이제 실제 호출됨.
 - **매수/매도 주문 간격 설정 개선 다단계 4세션 — 백엔드 배선 Step 2**: 헬퍼를 실제 매수/매도 실행 경로에 배선 (P16 살아있는 경로). 3세션에서 구축한 헬퍼가 이제 실제 호출됨.
   - **★ `order_interval.py` import 방식 수정 (3세션 코드 정제)**: 3세션에서 `from backend.app.services.engine_state import state`를 모듈 top-level에 배치했으나, 테스트가 `patch("backend.app.services.engine_state.state", fresh_state)`로 state를 mock할 때 top-level import는 원본 싱글톤을 바인딩하므로 패치가 적용되지 않는 문제 발견 → 함수 내부 import로 변경 (`buy_order_executor.py:42`, `trading.py:125/224/330/521/588`과 동일 패턴 — P23 일관성). 순환 import 위험 없음. 사용자 설계 로직 롤백 아님 (3세션 코드의 정제).
   - **`buy_order_executor.py`** (3곳):
@@ -56,7 +75,7 @@
   - **수정 범위 확정**: 백엔드 8곳 + 프론트엔드 3곳 + 테스트 3곳 + 문서 1곳 = 15곳
 - **3세션 (완료, 커밋 `9aecd5f`)**: 구현 Step 1 — 백엔드 기반: `order_interval.py` 헬퍼 + `engine_state.py` + `settings_defaults.py` + `engine_settings.py`(마이그레이션) + `settings.py`(일일 리셋) + 테스트 기반 2개(test_engine_settings.py + test_buy_order_executor.py `_default_settings`). ★ 설계서 마이그레이션 버그 수정(merged→flat 기반). 검증: pytest 2815개 + 런타임 기동 RuntimeWarning 0건.
 - **4세션 (완료)**: 구현 Step 2 — 백엔드 배선: `order_interval.py` import 방식 수정(함수 내부) + `buy_order_executor.py`(docstring + 게이트 헬퍼 + 타이머 헬퍼 + `import time` 제거) + `trading.py`(매도 게이트 + 타이머 갱신) + `test_buy_order_executor.py`(TestBuyIntervalGate 2개 `_sec` 교체). 검증: pytest 2815개 + 런타임 기동 RuntimeWarning 0건.
-- **5세션 (대기)**: 구현 Step 3 — 프론트엔드: `buy-settings.ts` + `sell-settings.ts` + `types/index.ts`
+- **5세션 (완료)**: 구현 Step 3 — 프론트엔드: `types/index.ts`(`buy_interval_sec` + `sell_interval_on`/`sell_interval_sec`) + `buy-settings.ts`(syncFromSettings `_sec` + createNumInput step 5/min 5/max 300 + 라벨 "초" + `createDescText` 안내) + `sell-settings.ts`(import 2개 + 변수 3개 + syncFromSettings + mount "매도 주문 간격" 섹션 + unmount 정리). 검증: typecheck 통과 + build 772ms 성공 + 잔존 `buy_interval_min` 프론트엔드 0건.
 - **6세션 (대기)**: 구현 Step 4 — 테스트: `TestSellIntervalGate` 5개 + 마이그레이션 3개 + `test_web_routes.py`
 - **7세션 (대기)**: 구현 Step 5 — 문서(`ARCHITECTURE.md`) + 런타임 검증 + 계획서 2개 삭제
 
@@ -65,7 +84,7 @@
 - **태스크 파일**: `docs/plan_order_interval.md` (2세션)
 
 ### 승인 대기 항목
-- **5세션 진행**: 구현 Step 3 (프론트엔드) — 사용자 "진행" 지시 시 시작
+- **6세션 진행**: 구현 Step 4 (테스트) — 사용자 "진행" 지시 시 시작
 
 ## 이전 세션 완료 작업 (커밋 완료)
 - 3단계: 백엔드 수신률 KRX/NXT 분리 집계 + 임계값 게이트 옵션 C (8개 파일) — 구현 + 검증 + 커밋 완료.

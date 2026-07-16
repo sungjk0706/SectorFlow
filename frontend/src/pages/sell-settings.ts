@@ -2,8 +2,8 @@
 // 매도설정 카드 — Vanilla TS PageModule
 // SellSettingsCard.tsx + SellSettingsSection.tsx + QuickToggle + TimePairInput 통합
 
-import { createSettingRow, createNumInput, createToggleBtn, createFixedValue } from '../components/common/setting-row'
-import { sectionTitle } from '../components/common/settings-common'
+import { createSettingRow, createNumInput, createToggleBtn, createFixedValue, createToggleLabelControlsRow } from '../components/common/setting-row'
+import { sectionTitle, createDescText } from '../components/common/settings-common'
 import { initSettingsPage, startSettingsSubscription, destroySettingsPage } from '../utils/settings-page'
 import type { AutoSaveHelper } from '../utils/settings-save'
 import type { SettingsManager } from '../settings'
@@ -34,6 +34,11 @@ let lossValRow: HTMLElement | null = null
 let tsStartRow: HTMLElement | null = null
 let tsDropRow: HTMLElement | null = null
 
+// 매도 주문 간격 UI 참조
+let sellIntervalToggle: ReturnType<typeof createToggleBtn> | null = null
+let sellIntervalInput: ReturnType<typeof createNumInput> | null = null
+let sellIntervalControls: HTMLElement | null = null
+
 /* ── 설정 동기화 ── */
 function syncFromSettings(s: AppSettings): void {
   const r = s as Record<string, unknown>
@@ -60,6 +65,14 @@ function syncFromSettings(s: AppSettings): void {
   if (tsDropValInput && (!act || !tsDropValInput.el.contains(act))) tsDropValInput.setValue(Number(r.ts_drop_val) || 0)
   setDisabled(tsStartRow!, !tsOn)
   setDisabled(tsDropRow!, !tsOn)
+
+  // 매도 주문 간격
+  const sellIntervalOn = !!r.sell_interval_on
+  sellIntervalToggle?.setOn(sellIntervalOn)
+  if (sellIntervalInput && (!act || !sellIntervalInput.el.contains(act))) sellIntervalInput.setValue(Number(r.sell_interval_sec) || 30)
+  if (sellIntervalControls) {
+    setDisabled(sellIntervalControls, !sellIntervalOn)
+  }
 }
 
 /* ── mount ── */
@@ -120,6 +133,21 @@ function mount(container: HTMLElement): void {
   tsDropRow = createSettingRow('추적 고점대비 하락률 (%)', tsDropValInput.el)
   root.appendChild(tsDropRow)
 
+  // ── 매도 주문 간격 섹션 ──
+  root.appendChild(sectionTitle('매도 주문 간격'))
+  {
+    sellIntervalInput = createNumInput({ value: 30, onChange: v => { vals.sell_interval_sec = v; saveHelper!.autoSave('sell_interval_sec', v) }, step: 5, min: 5, max: 300, name: 'sell_interval_sec' })
+    const r = createToggleLabelControlsRow({
+      labelText: '매도 주문 간격 활성화 (초, 5초 단위)',
+      toggleOn: false,
+      onToggle: next => { vals.sell_interval_on = next; saveHelper!.saveImmediate({ sell_interval_on: next }) },
+      controlsChild: sellIntervalInput.el,
+    })
+    sellIntervalToggle = r.toggle; sellIntervalControls = r.controls
+    root.appendChild(r.el)
+  }
+  root.appendChild(createDescText('5초 단위로 설정 가능합니다 (5~300초, 기본 30초). 손절 포함 모든 매도에 간격이 적용됩니다.'))
+
   container.appendChild(root)
 
   // 초기 설정 동기화 + 구독
@@ -134,6 +162,7 @@ function unmount(): void {
   tpValInput = null; lossValInput = null
   tsStartValInput = null; tsDropValInput = null
   tpValRow = null; lossValRow = null; tsStartRow = null; tsDropRow = null
+  sellIntervalToggle = null; sellIntervalInput = null; sellIntervalControls = null
   vals = {}
 }
 

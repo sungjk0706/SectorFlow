@@ -3,7 +3,7 @@
 // BuySettingsCard.tsx + BuySettingsSection.tsx + BuyBlockSection.tsx + QuickToggle + TimePairInput 통합
 
 import { createSettingRow, createNumInput, createMoneyInput, createToggleBtn, createFixedValue, createSelect, createToggleLabelControlsRow } from '../components/common/setting-row'
-import { sectionTitle } from '../components/common/settings-common'
+import { sectionTitle, createDescText } from '../components/common/settings-common'
 import { initSettingsPage, startSettingsSubscription, destroySettingsPage } from '../utils/settings-page'
 import type { AutoSaveHelper } from '../utils/settings-save'
 import type { SettingsManager } from '../settings'
@@ -156,7 +156,7 @@ function syncFromSettings(s: AppSettings): void {
   // 매수 주문 간격
   const intervalOn = !!r.buy_interval_on
   buyIntervalToggle?.setOn(intervalOn)
-  if (buyIntervalInput && (!act || !buyIntervalInput.el.contains(act))) buyIntervalInput.setValue(Number(r.buy_interval_min) || 0)
+  if (buyIntervalInput && (!act || !buyIntervalInput.el.contains(act))) buyIntervalInput.setValue(Number(r.buy_interval_sec) || 30)
   if (buyIntervalControls) {
     setDisabled(buyIntervalControls, !intervalOn)
   }
@@ -338,9 +338,9 @@ function mount(container: HTMLElement): void {
   // ── 매수 주문 간격 섹션 ──
   root.appendChild(sectionTitle('매수 주문 간격'))
   {
-    buyIntervalInput = createNumInput({ value: 0, onChange: v => { vals.buy_interval_min = v; saveHelper!.autoSave('buy_interval_min', v) }, step: 1, name: 'buy_interval_min' })
+    buyIntervalInput = createNumInput({ value: 30, onChange: v => { vals.buy_interval_sec = v; saveHelper!.autoSave('buy_interval_sec', v) }, step: 5, min: 5, max: 300, name: 'buy_interval_sec' })
     const r = createToggleLabelControlsRow({
-      labelText: '매수 주문 간격 활성화 (분)',
+      labelText: '매수 주문 간격 활성화 (초, 5초 단위)',
       toggleOn: false,
       onToggle: next => { vals.buy_interval_on = next; saveHelper!.saveImmediate({ buy_interval_on: next }) },
       controlsChild: buyIntervalInput.el,
@@ -348,6 +348,7 @@ function mount(container: HTMLElement): void {
     buyIntervalToggle = r.toggle; buyIntervalControls = r.controls
     root.appendChild(r.el)
   }
+  root.appendChild(createDescText('5초 단위로 설정 가능합니다 (5~300초, 기본 30초)'))
 
   // ── 동일 종목 재매수 제어 섹션 ──
   root.appendChild(sectionTitle('동일 종목 재매수 제어'))
