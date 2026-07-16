@@ -35,6 +35,7 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     get_nxt_trde_tp,
     is_krx_after_hours,
     get_market_phase,
+    calc_countdown,
     is_heavy_operation_allowed,
     _kst_now,
     _parse_hm,
@@ -490,6 +491,74 @@ class TestGetMarketPhase:
             result = get_market_phase()
             assert result["is_nxt_only"] is True
 
+    def test_includes_countdown_fields(self):
+        """get_market_phase() 반환에 krx_countdown/nxt_countdown 필드 포함 검증 (P10/P16)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 55)):
+            result = get_market_phase()
+            assert "krx_countdown" in result
+            assert "nxt_countdown" in result
+            # KRX '시가 동시호가' 08:55 → 09:00까지 300초 (10분 이내)
+            assert result["krx_countdown"] == {"label": "정규장 장개시", "remaining_sec": 300}
+            # NXT '정규장 준비' 08:55 → 09:00까지 300초 (10분 이내)
+            assert result["nxt_countdown"] == {"label": "메인마켓 장개시", "remaining_sec": 300}
+
+
+# ── calc_countdown ────────────────────────────────────────────────────────────
+
+class TestCalcCountdown:
+    """calc_countdown() 단위 테스트 — KRX/NXT 카운트다운 계산 (P10 SSOT, P20 폴백 금지)."""
+
+    def test_krx_countdown_within_10min(self):
+        """KRX '시가 동시호가' 08:55 → remaining 300초, label '정규장 장개시'."""
+        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 55)):
+            result = calc_countdown("krx", "시가 동시호가")
+            assert result == {"label": "정규장 장개시", "remaining_sec": 300}
+
+    def test_krx_countdown_over_10min(self):
+        """KRX '시가 동시호가' 08:40 → None (10분 초과 — 08:40~09:00 = 1200초)."""
+        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 40)):
+            result = calc_countdown("krx", "시가 동시호가")
+            assert result is None
+
+    def test_krx_countdown_passed(self):
+        """KRX '시가 동시호가' 09:05 → None (이미 09:00 전환 시각 지남, P20)."""
+        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 5)):
+            result = calc_countdown("krx", "시가 동시호가")
+            assert result is None
+
+    def test_krx_no_countdown_phase(self):
+        """KRX 매핑 없는 페이즈('장마감') → None."""
+        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(21, 0)):
+            result = calc_countdown("krx", "장마감")
+            assert result is None
+
+    def test_nxt_countdown_premarket(self):
+        """NXT '장개시전' 07:55 → remaining 300초, label '프리마켓 장개시'."""
+        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 55)):
+            result = calc_countdown("nxt", "장개시전")
+            assert result == {"label": "프리마켓 장개시", "remaining_sec": 300}
+
+    def test_nxt_countdown_aftermarket(self):
+        """NXT '애프터마켓 지속' 19:59 → remaining 60초, label '에프터마켓 장마감'."""
+        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(19, 59)):
+            result = calc_countdown("nxt", "애프터마켓 지속")
+            assert result == {"label": "에프터마켓 장마감", "remaining_sec": 60}
+
+    def test_nxt_countdown_over_threshold(self):
+        """NXT '프리마켓' 08:30 → None (08:30~08:50 = 1200초, 10분 초과)."""
+        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 30)):
+            result = calc_countdown("nxt", "프리마켓")
+            assert result is None
+
+    def test_nxt_no_countdown_phase(self):
+        """NXT 매핑 없는 페이즈('장마감') → None."""
+        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(21, 0)):
+            result = calc_countdown("nxt", "장마감")
+            assert result is None
+
 
 # ── is_ws_subscribe_window ────────────────────────────────────────────────────
 
@@ -718,7 +787,7 @@ class TestApplyMarketPhase:
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓", "krx_countdown": None, "nxt_countdown": None}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _apply_market_phase({"krx": "정규장", "nxt": "메인마켓"})
             assert mock_state.market_phase["krx"] == "정규장"
@@ -731,7 +800,7 @@ class TestApplyMarketPhase:
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓", "krx_countdown": None, "nxt_countdown": None}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _apply_market_phase({"krx": "정규장", "nxt": "메인마켓"})
             assert mock_sched.call_count == 1  # 브로드캐스트만, 부작용 없음
@@ -741,7 +810,7 @@ class TestApplyMarketPhase:
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "메인마켓"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓", "krx_countdown": None, "nxt_countdown": None}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
             # JIF가 krx만 전달 — _apply_jif_phase가 nxt를 기존 값으로 채워 전달
             _apply_market_phase({"krx": "정규장", "nxt": "메인마켓"})
