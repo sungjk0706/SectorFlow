@@ -740,23 +740,9 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
 
     # ★ 09:00/15:30 고정 폴링 타이머 제거됨 (Task 5.1, 0J REAL 수신 여부로 자동 판단)
 
-    # ★ market-phase 전환 시점 타이머
-    # KRX: 08:00 장전대기, 08:30 장전시간외, 08:40 동시호가접수, 08:50 시가동시호가,
-    #      09:00 정규장, 15:20 종가동시호가, 15:30 체결정산, 15:40 장후시간외,
-    #      16:00 시간외단일가, 18:00 장종료, 20:00 장마감
-    # NXT: 08:00 프리마켓, 08:50 정규장준비, 09:00 메인마켓, 15:20 조기마감,
-    #      15:30 단일가매매, 15:40 애프터마켓, 18:00 애프터마켓지속, 20:00 장마감
-    for hm_h, hm_m, label in (
-        (8, 0, "08:00"), (8, 30, "08:30"), (8, 40, "08:40"), (8, 50, "08:50"),
-        (9, 0, "09:00"),
-        (15, 20, "15:20"), (15, 30, "15:30"), (15, 40, "15:40"), (16, 0, "16:00"),
-        (18, 0, "18:00"), (20, 0, "20:00"),
-    ):
-        delay_mp = _seconds_until_hm(hm_h, hm_m)
-        if delay_mp > 0 and loop:
-            h = loop.call_later(max(delay_mp, 1), _broadcast_market_phase)
-            state.ws_subscribe_timer_handles.append(h)
-            logger.debug("[스케줄] 장 상태 전환 (%s) — %.0f초 후 예약", label, delay_mp)
+    # ★ market-phase 전환 타이머 제거됨 (안 D 3단계) — 주기 태스크 _market_phase_periodic_loop()가
+    #   10초 간격으로 시간 기반 보완 담당 (P10 SSOT, P16 살아있는 경로, P24 단순성).
+    #   JIF가 1순위 장 상태 소스이며, 주기 태스크는 WS 끊김/JIF 미수신 시 보완 역할.
 
 
 async def _init_ws_subscribe_state() -> None:
@@ -1042,6 +1028,62 @@ def _apply_detail_to_entry(entry: dict, detail: dict, *, base_nk: str = "") -> N
             pass
 
 
+# ── 장 상태 주기 태스크 (안 D 3단계 — 시간 기반 보완) ───────────────────────────
+
+
+_MARKET_PHASE_PERIODIC_INTERVAL = 10.0  # 10초 간격 (안 D 설계)
+
+
+async def _market_phase_periodic_loop() -> None:
+    """장 상태 시간 기반 보완 주기 태스크 (안 D — 하우스키핑 타이머).
+
+    JIF가 1순위 장 상태 소스이나, WS 끊김/JIF 미수신/네트워크 지연 시
+    시간 기반 계산이 살아있는 경로로 동작 (P16 살아있는 경로).
+    10초 간격으로 _broadcast_market_phase() → calc_timebased_market_phase() → _apply_market_phase() 호출.
+    페이즈 변경 감지는 _apply_market_phase() 내 멱등성 보장 (같은 페이즈면 부작용 미발생).
+
+    P11 (폴링 금지) 준수: 하우스키핑 타이머는 이벤트 루프 내에서 허용
+    (NexusFi Academy "Trading Automation Fundamentals" — 세션 종료/조정/헬스체크 타이머 허용).
+    JIF가 1순위 이벤트 소스이므로 본 주기 태스크는 보완 역할.
+    """
+    logger.info("[기동] 장 상태 주기 태스크 시작 (10초 간격)")
+    try:
+        while not state.engine_stop_event.is_set():
+            try:
+                _broadcast_market_phase()
+            except Exception as e:
+                logger.warning("[스케줄] 장 상태 주기 계산 오류: %s", e, exc_info=True)
+            try:
+                await asyncio.wait_for(state.engine_stop_event.wait(), timeout=_MARKET_PHASE_PERIODIC_INTERVAL)
+            except asyncio.TimeoutError:
+                pass  # 10초 경과 → 다음 주기 실행
+    except asyncio.CancelledError:
+        logger.info("[스케줄] 장 상태 주기 태스크 취소됨")
+        raise
+
+
+def _start_market_phase_periodic_task() -> None:
+    """주기 태스크 기동 — start_daily_time_scheduler()에서 호출."""
+    if state.market_phase_periodic_task is not None:
+        return
+    state.market_phase_periodic_task = asyncio.get_running_loop().create_task(
+        _market_phase_periodic_loop()
+    )
+
+
+async def _stop_market_phase_periodic_task() -> None:
+    """주기 태스크 종료 — stop_daily_time_scheduler()에서 호출."""
+    task = state.market_phase_periodic_task
+    if task is None:
+        return
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    state.market_phase_periodic_task = None
+
+
 # ── 스케줄러 시작/중지 ────────────────────────────────────────────────────────
 
 
@@ -1070,6 +1112,8 @@ async def start_daily_time_scheduler() -> None:
         await schedule_auto_trade_timers(settings)
         await schedule_ws_subscribe_timers(settings)
         schedule_midnight_timer()
+        # ── 장 상태 주기 태스크 기동 (안 D 3단계 — 시간 기반 보완) ──
+        _start_market_phase_periodic_task()
         # WS 구독 상태 초기화는 engine_loop.run_engine_loop()에서 WS 연결 이전에 수행됨
         # (표준 기동 순서: 초기화 → 연결 → 구독). 여기서 중복 호출 제거 — 경쟁 조건 방지 (P22).
     except Exception as e:
@@ -1088,4 +1132,6 @@ async def stop_daily_time_scheduler() -> None:
     if state.midnight_timer_handle is not None:
         state.midnight_timer_handle.cancel()
         state.midnight_timer_handle = None
+    # ── 장 상태 주기 태스크 종료 (안 D 3단계) ──
+    await _stop_market_phase_periodic_task()
     logger.info("[스케줄] 중지")

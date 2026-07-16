@@ -108,6 +108,7 @@ class EngineState:
         self.ws_subscribe_window_active: bool | None = None
         self.auto_trade_timer_handles: list = []
         self.midnight_timer_handle: asyncio.TimerHandle | None = None
+        self.market_phase_periodic_task: asyncio.Task | None = None
 
     async def on_filter_settings_changed(self) -> None:
         """필터 설정 변경 시 처리 (engine_sector 모듈 위임)."""
