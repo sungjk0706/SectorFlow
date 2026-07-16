@@ -5,7 +5,42 @@
 - 작업: 백엔드 수신률을 단일 집계에서 KRX/NXT 분리 집계로 변경. `nxt_enable` 필드 기반 단순 방식 채택 (FID 9081 틱 분석 불필요). `_received_codes` → `_received_codes_krx`/`_received_codes_nxt` 2세트 분리. `_calculate_receive_rate()` 시간대별 분리 계산. 임계값 게이트 옵션 C (NXT-only: NXT만, 정규장: 양쪽 AND). `get_sector_summary_inputs()`에 `krx_codes`/`nxt_codes` 분리 반환 추가. `compute_full_sector_summary()` 호출 3곳에 `krx_codes`/`nxt_codes` 제외 처리. binding.ts 분리 구조 매핑.
 - 상태: 3단계 구현 + 검증 완료. **커밋 대기**.
 
-## 다음 세션 진행 대기: 없음 (3단계 완료 — KRX/NXT 수신률 분리 집계 + 분리 배지 표시 전체 완료)
+## 다음 세션 진행 대기: KRX 수신률 미표시 문제 조사 (NXT 프리마켓 → 정규장 전환 시)
+
+### 문제 개요 (사용자 보고)
+- **현상**: 앱을 NXT 프리마켓 08:00 이전에 기동한 후, 10:50경 확인하니 NXT 수신률만 표시되어 있고 KRX 수신률 표시가 없었음.
+- **기대 동작**: 09:00 정규장 시작 후 KRX 수신률도 표시되어야 함.
+
+### 로그 조사 결과 (trading_2026-07-16.log)
+1. **07:50 기동** (비-WS 구간): 임계값 통과 (KRX: 100.0%, NXT: 100.0%) — 비-WS 구간이라 양쪽 모두 100%로 즉시 통과. Phase 2 진입.
+2. **08:30 NXT 프리마켓 시작**: 수신율 갱신 로그 정상 출력 — `KRX: 0/0 (0.0%), NXT: 5/134 (3.7%)` → `KRX: 0/0 (0.0%), NXT: 134/134 (100.0%)` (08:34 도달).
+   - NXT-only 구간이라 `is_nxt_only_window()`=True → `krx_codes` 빈 리스트 → KRX 0/0 표시. **이것은 설계대로 정상 동작.**
+3. **08:34~10:52 (약 2시간 18분)**: **수신율 갱신 로그가 전혀 없음.** 09:00 정규장 전환 후에도 수신율 갱신 로그 없음.
+   - 09:00 이후 구독 시작 로그는 정상 출력됨 (KRX 종목 구독 진행).
+   - 09:07 매매 발생 (대한항공 매도, SK이노베이션 매수) — 틱은 들어오고 있음.
+   - 09:00 정규장 전환 시 `is_nxt_only_window()`=False → `krx_codes`에 KRX 종목 포함되어야 함.
+   - 하지만 수신율 갱신 로그가 없음 → UI에 KRX 수신률이 표시되지 않았을 가능성.
+4. **10:52 앱 재기동**: "앱 시작 완료", "장 상태 초기화: KRX=정규장, NXT=메인마켓" → 임계값 대기 → 10:52:53 임계값 통과 (KRX: 97.2%, NXT: 97.0%) → 이후 KRX/NXT 분리 수신율 정상 표시.
+
+### 의심 포인트 (다음 세션 조사 대상)
+- **`_receive_rate_dirty` 미세팅 가능성**: 08:34 NXT 100% 도달 후, 09:00 정규장 전환 시 틱이 들어와도 `_receive_rate_dirty`가 세팅되지 않았을 가능성.
+  - `_handle_real_01_tick()`에서 `_receive_rate_dirty = True`는 `is_0b_tick and any(f in vals for f in ("10", "11", "12", "14", "17", "228"))` 조건에서만 세팅.
+  - 09:00 이후 들어오는 틱이 이 조건을 만족하지 않았을 가능성? 또는 Phase 2 루프가 실행 중이지 않았을 가능성?
+- **Phase 2 루프 중단 가능성**: 07:50 기동 → Phase 1 통과 → Phase 2 진입 후 08:30~08:34 수신율 갱신 로그 출력됨 (Phase 2 실행 중 확인). 08:34 이후 Phase 2가 계속 실행 중이었는지 확인 필요.
+- **UI 캐시 문제 가능성**: 08:34 마지막 수신율 (KRX: 0/0, NXT: 100%)이 UI에 남아 있고, 09:00 이후 백엔드에서 수신율 갱신이 전송되지 않아 UI가 갱신되지 않았을 가능성.
+  - `_send_receive_rate()`가 `_receive_rate_dirty=True`일 때만 호출 → dirty가 세팅되지 않으면 UI 갱신 안 됨.
+
+### 다음 세션 조사 방향
+1. **08:34~10:52 사이 Phase 2 루프 실행 여부 확인**: `_sector_recompute_loop_impl` Phase 2 while 루프가 실행 중이었는지 로그 기반 확인.
+2. **`_receive_rate_dirty` 세팅 조건 검토**: 09:00 정규장 전환 후 들어오는 틱이 `_handle_real_01_tick()`의 dirty 세팅 조건을 만족하는지 확인.
+3. **`is_nxt_only_window()` 전환 시점 확인**: 09:00 정규장 전환 시 `market_phase`가 갱신되어 `is_nxt_only_window()`가 False로 전환되었는지 확인.
+4. **근본 원인 파악 후 수정 방안 제안**: 사용자 승인 후 수정 (규칙 0 준수).
+
+### 관련 파일
+- `backend/app/pipelines/pipeline_compute.py` — `_handle_real_01_tick()` (dirty 세팅), `_sector_recompute_loop_impl()` Phase 2 (수신율 갱신 로그), `_calculate_receive_rate()` (분리 계산)
+- `backend/app/services/sector_data_provider.py` — `get_sector_summary_inputs()` (krx_codes/nxt_codes 분리 반환, is_nxt_only_window 분기)
+- `backend/app/services/daily_time_scheduler.py` — `is_nxt_only_window()` (market_phase 기반 판단)
+- `backend/logs/trading_2026-07-16.log` — 08:30~10:52 구간 로그
 
 ### 계획서 경로
 - **`docs/plan_krx_nxt_receive_rate_separation.md`** — 3단계 구현 계획서 (사전조사 결과 + 단계별 파일 목록 + 검증 방법 + 사용자 승인 항목)
