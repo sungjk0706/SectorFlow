@@ -1,13 +1,18 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (매수/매도 주문 간격 설정 개선 — 다단계 작업 1세션: 설계서 작성)
-- 작업: 매수/매도 주문 간격 설정 개선 검토 요청 → 현재 매수 간격 로직 분석(buy_order_executor/engine_state/settings) + 매도 로직 분석(trading.check_sell_conditions) → 3가지 설계안 비교(안 A 로직 복사 / 안 B 공통 모듈 / 안 C 통합) → 사용자 4가지 결정(손절 포함/각각 따로/_sec 키+마이그레이션/공통 모듈) → 초 단위 범위 확정(5~300초, 기본 30초, 5초 단위) → 설계서 작성.
-- 상태: 다단계 작업 1세션(설계서) 완료. 사용자 승인("진행") 받아 커밋 + HANDOVER.md 갱신 중. 2세션(태스크 파일) 대기.
-- **참조 문서**: `backend/docs/architecture_order_interval_design.md` (설계서 — 3안 비교표 + 안 B 동작 원리 + 수정 범위 + 세션 분할 제안)
-- **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우" 1세션 + safe-trade 스킬
+- 날짜: 2026-07-17 (매수/매도 주문 간격 설정 개선 — 다단계 작업 2세션: 심층 사전조사 + 태스크 파일)
+- 작업: 2세션 진행 → 설계서 기반 심층 사전조사 (매수/매도 실행 경로 코드 분석 + 매도 타이머 갱신 시점 line 473 vs 534 비교 + 전체 코드베이스 grep 잔존 참조 확인) → 매도 타이머 갱신 시점 확정(line 534 성공 후 — 매수 로직과 대칭 + P22/P23/P24 준수) → 설계서 누락 4곳 발견(test_engine_settings.py + test_web_routes.py + buy-settings.ts syncFromSettings + buy_order_executor.py docstring) → 프론트엔드 sell-settings.ts 구조 분석 → 태스크 파일 작성.
+- 상태: 다단계 작업 2세션(태스크 파일) 완료. 사용자 승인("진행") 받아 커밋 + HANDOVER.md 갱신 중. 3세션(구현 Step 1) 대기.
+- **참조 문서**: `docs/plan_order_interval.md` (태스크 파일 — 심층조사 결과 + 수정 범위 15곳 + 구현 Step 5개 + 세션 분할 7세션 + 테스트 계획 + 런타임 검증)
+- **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우" 2세션 + safe-trade 스킬
 
 ## 직전 완료 작업
+- **매수/매도 주문 간격 설정 개선 다단계 2세션 — 심층 사전조사 + 태스크 파일 (커밋 대기)**: 설계서(1세션) 기반 심층 사전조사 수행.
+  - **매도 타이머 갱신 시점 확정**: line 534 (주문 전송 성공 후) — 매수 로직(`buy_order_executor.py:182-186` `if _ordered:` 성공 시 갱신)과 대칭. P23 일관성 + P22 데이터 정합성(실패를 실행으로 기록 금지) + P24 단일 책임(실패 보호는 서킷브레이커 담당, 간격 게이트는 실행 간격만 담당).
+  - **설계서 누락 4곳 발견**: `test_engine_settings.py:353-356` + `test_web_routes.py:549` + `buy-settings.ts:157-159`(syncFromSettings) + `buy_order_executor.py:36`(docstring) — 수정 범위 백엔드 7→8곳, 테스트 2→3곳로 보완.
+  - **세션 분할 7세션 확정**: 심층조사 후에도 설계서 제안(7세션) 유지. 3세션에 테스트 2개 파일 포함(기반 변경 직접 영향 — 분리 시 pytest 전체 실패 상태 방치 위반).
+  - **태스크 파일**: `docs/plan_order_interval.md` (450줄, 11섹션)
 - **TOCTOU 경쟁 상태 수정 (A+B 조합, 커밋 `389505d`)**: check_buy_power 검증 시점과 실제 차감 시점 사이의 비동기 타이밍 갭(0.1초)으로 인한 경쟁 상태 해결. P-NEW-3 해결 완료.
   - A(사전 차감): `settlement_engine.reserve_buy_power`/`release_buy_power` 신규 + `dry_run._apply_buy` pre_reserved 플래그. B(글로벌 매수 락): `AutoTradeManager._buy_lock`(asyncio.Lock) 신규, execute_buy 래퍼 분리.
   - 검증: pytest 169개 통과 + 런타임 기동 RuntimeWarning 0건. P10/P15/P22/P23 준수.
@@ -15,19 +20,28 @@
 ## 다음 세션 진행 대기: 매수/매도 주문 간격 설정 개선 (다단계 작업)
 
 ### 단계 진행 상황
-- **1세션 (완료, 커밋 대기)**: 설계 검토 + 디자인 파일 작성 — 매수 간격 로직 분석 + 매도 로직 분석 → 3가지 설계안 비교 → 사용자 4가지 결정 + 초 단위 범위 확정 → 설계서 작성.
+- **1세션 (완료, 커밋 `d49cbcc`)**: 설계 검토 + 디자인 파일 작성 — 매수 간격 로직 분석 + 매도 로직 분석 → 3가지 설계안 비교 → 사용자 4가지 결정 + 초 단위 범위 확정 → 설계서 작성.
   - **설계서**: `backend/docs/architecture_order_interval_design.md` (433줄)
   - **선택안**: 안 B (공통 모듈 추출 + 분리 설정 + 초 단위)
   - **사용자 확정 사항**: 매도 간격 추가(손절 포함) / 초 단위(5~300초, 기본 30초, 5초 단위) / `_sec` 키 + 마이그레이션 / 각각 따로 / 공통 모듈 추출 / "5초 단위로 설정 가능" 안내
-- **2세션 (대기)**: 심층 사전조사 + 태스크 파일 작성 — `docs/plan_order_interval.md` (구현 Step + 세션 분할 + 테스트 계획 + 런타임 검증 방법)
-- **3세션~ (대기)**: 단계별 구현 — 백엔드 7곳 + 프론트엔드 3곳 + 테스트 2곳 + 문서 1곳 (세션 분할은 2세션에서 확정)
+- **2세션 (완료, 커밋 대기)**: 심층 사전조사 + 태스크 파일 작성 — 매도 타이머 갱신 시점 확정(line 534) + 설계서 누락 4곳 발견 + 프론트엔드 구조 분석 → 태스크 파일 작성.
+  - **태스크 파일**: `docs/plan_order_interval.md` (450줄)
+  - **매도 타이머 갱신 시점**: line 534 (성공 후) — 매수 로직과 대칭 (P22/P23/P24 준수)
+  - **설계서 누락 4곳**: test_engine_settings.py + test_web_routes.py + buy-settings.ts syncFromSettings + buy_order_executor.py docstring
+  - **수정 범위 확정**: 백엔드 8곳 + 프론트엔드 3곳 + 테스트 3곳 + 문서 1곳 = 15곳
+- **3세션 (대기)**: 구현 Step 1 — 백엔드 기반: `order_interval.py` 헬퍼 + `engine_state.py` + `settings_defaults.py` + `engine_settings.py`(마이그레이션) + `settings.py`(일일 리셋) + 테스트 기반 2개(test_engine_settings.py + test_buy_order_executor.py `_default_settings`)
+- **4세션 (대기)**: 구현 Step 2 — 백엔드 배선: `buy_order_executor.py`(헬퍼 적용 + docstring) + `trading.py`(매도 게이트 + 타이머 갱신) + 테스트 케이스 1개(test_buy_order_executor.py TestBuyIntervalGate)
+- **5세션 (대기)**: 구현 Step 3 — 프론트엔드: `buy-settings.ts` + `sell-settings.ts` + `types/index.ts`
+- **6세션 (대기)**: 구현 Step 4 — 테스트: `TestSellIntervalGate` 5개 + 마이그레이션 3개 + `test_web_routes.py`
+- **7세션 (대기)**: 구현 Step 5 — 문서(`ARCHITECTURE.md`) + 런타임 검증 + 계획서 2개 삭제
 
 ### 참조 문서
-- **설계서**: `backend/docs/architecture_order_interval_design.md`
+- **설계서**: `backend/docs/architecture_order_interval_design.md` (1세션)
+- **태스크 파일**: `docs/plan_order_interval.md` (2세션)
 
 ### 승인 대기 항목
-- **2세션 진행**: 태스크 파일 작성 (사용자 "진행" 지시 시 시작)
-- **매도 타이머 갱신 시점**: 주문 전송 전(line 473) vs 성공 후(line 534) — 2세션 심층 사전조사에서 확정 예정
+- **3세션 진행**: 구현 Step 1 (백엔드 기반) — 사용자 "진행" 지시 시 시작
+- **태스크 파일 5가지 결정 승인**: (1) 매도 타이머 line 534 (2) 누락 4곳 추가 (3) 3세션 테스트 2개 포함 (4) 세션 분할 7세션 (5) DB 백업 불필요 — 태스크 파일 섹션 10 참조
 
 ## 이전 세션 완료 작업 (커밋 완료)
 - 3단계: 백엔드 수신률 KRX/NXT 분리 집계 + 임계값 게이트 옵션 C (8개 파일) — 구현 + 검증 + 커밋 완료.
