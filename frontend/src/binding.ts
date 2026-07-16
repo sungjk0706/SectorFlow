@@ -268,7 +268,14 @@ export function bindWSToStore(
 
   /* ── market-phase: 장 상태 실시간 갱신 ── */
   pricesClient.onEvent('market-phase', (data) => {
-    applyMarketPhase(data as Partial<{ krx: string; nxt: string; krx_alert: string | null; is_nxt_only: boolean }>)
+    applyMarketPhase(data as Partial<{
+      krx: string;
+      nxt: string;
+      krx_alert: string | null;
+      is_nxt_only: boolean;
+      krx_countdown: { label: string; remaining_sec: number } | null;
+      nxt_countdown: { label: string; remaining_sec: number } | null;
+    }>)
   })
 
   /* ── receive-rate: 수신율 실시간 갱신 ── */
