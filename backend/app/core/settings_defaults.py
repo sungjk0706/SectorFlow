@@ -17,7 +17,6 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "sell_time_start": "09:00",
     "sell_time_end": "15:20",
     # 웹소켓
-    "ws_subscribe_on": False,
     "confirmed_download_time": "20:40",
     
     # 텔레그램

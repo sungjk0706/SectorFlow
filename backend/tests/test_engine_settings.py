@@ -346,10 +346,6 @@ class TestBuildEngineSettingsDictOverride:
         result = build_engine_settings_dict({"sell_per_symbol": sps})
         assert result["sell_per_symbol"] == sps
 
-    def test_ws_subscribe_on_default(self):
-        result = build_engine_settings_dict({})
-        assert result["ws_subscribe_on"] is False
-
     def test_quote_auto_subscribe_default(self):
         result = build_engine_settings_dict({})
         assert result["quote_auto_subscribe"] is False

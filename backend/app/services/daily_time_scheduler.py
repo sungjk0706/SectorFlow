@@ -287,7 +287,7 @@ def _parse_hm(hm_str: str) -> tuple[int, int]:
 async def is_ws_subscribe_window(settings: dict | None = None) -> bool:
     """
     현재 시각이 웹소켓 구독 허용 구간인지 판단.
-    조건: WS 구독 마스터 스위치 ON AND market_phase의 NXT 페이즈가 활성 구간.
+    조건: market_phase의 NXT 페이즈가 활성 구간.
     구독 구간 = NXT_ACTIVE_PHASES (프리마켓 ~ 애프터마켓 지속, 08:00~20:00).
     주말/공휴일은 calc_timebased_market_phase()가 nxt="휴장일"로 산정하므로 자동 차단.
     settings 미전달 시 integrated_system_settings_cache에서 읽음.
@@ -297,10 +297,6 @@ async def is_ws_subscribe_window(settings: dict | None = None) -> bool:
         settings = state.integrated_system_settings_cache
     if not settings:
         raise RuntimeError("settings cache not initialized")
-
-    # WS 구독 마스터 스위치: OFF면 구독 차단
-    if not bool(settings.get("ws_subscribe_on", True)):
-        return False
 
     mp = state.market_phase
     nxt = mp.get("nxt", "")
@@ -571,8 +567,7 @@ def _broadcast_market_phase() -> None:
 
 
 async def _apply_auto_toggle_on_startup(settings: dict) -> None:
-    """앱 기동/자정 시 거래일 판별 — 설정값은 사용자만 쓰고, 실행 제어는 런타임 게이트가 담당.
-    ws_subscribe_on 등 설정값을 강제 변경하지 않음 (원칙 10 SSOT, 원칙 20 폴백 금지).
+    """앱 기동/자정 시 거래일 판별 — 실행 제어는 런타임 게이트가 담당.
     거래일 판별 결과를 로깅하고 UI 갱신 알림만 수행."""
     from backend.app.core.trading_calendar import is_trading_day, get_kst_today
 
@@ -604,10 +599,6 @@ async def _on_realtime_fields_reset() -> None:
         from backend.app.core.trading_calendar import is_trading_day
         if today.weekday() >= 5 or not is_trading_day(today.date()):
             return
-        settings = state.integrated_system_settings_cache
-        if not bool(settings.get("ws_subscribe_on", False)):
-            logger.info("[작업실행] 실시간 필드 초기화 생략 (수동 모드)")
-            return
         logger.info("[작업실행] 실시간 필드 초기화 (사전 — 07:58)")
         from backend.app.services.engine_snapshot import _reset_realtime_fields
         await _reset_realtime_fields()
@@ -635,12 +626,8 @@ async def _on_ws_subscribe_start() -> None:
         logger.info("[스케줄] 장중 메모리 정리 비활성화 (실시간 처리 지연 방지)")
         if today.weekday() >= 5:
             return
-        settings = state.integrated_system_settings_cache
         from backend.app.core.trading_calendar import is_trading_day
         if not is_trading_day(today.date()):
-            return
-        if not bool(settings.get("ws_subscribe_on", False)):
-            logger.info("[작업실행] WS 구독 시작 생략 (수동 모드)")
             return
         logger.info("[작업실행] WS 구독 시작")
         state.ws_subscribe_window_active = True
