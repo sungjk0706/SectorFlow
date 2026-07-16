@@ -173,6 +173,56 @@ def calc_timebased_market_phase() -> dict:
     return {"krx": krx, "nxt": nxt}
 
 
+# ── 카운트다운 SSOT (P10) ─────────────────────────────────────────────────────
+# 각 페이즈의 다음 전환 시각 매핑 — 기존 시간표 상수 재사용 (새 시각 하드코딩 금지).
+# 10분 이내 남은 시간만 카운트다운 표시 (COUNTDOWN_THRESHOLD_MIN).
+COUNTDOWN_THRESHOLD_MIN = 10
+
+_KRX_COUNTDOWN_MAP: dict[str, tuple[tuple[int, int], str]] = {
+    "시가 동시호가": (KRX_REGULAR_START, "정규장 장개시"),   # → 09:00
+    "정규장":       (KRX_REGULAR_END,   "정규장 장마감"),   # → 15:20
+}
+
+_NXT_COUNTDOWN_MAP: dict[str, tuple[tuple[int, int], str]] = {
+    "장개시전":        (NXT_PREMARKET_START,  "프리마켓 장개시"),    # → 08:00
+    "프리마켓":        (NXT_PREMARKET_END,    "프리마켓 장마감"),    # → 08:50
+    "정규장 준비":     (NXT_PREP_NONE_END,    "메인마켓 장개시"),    # → 09:00
+    "메인마켓":        (NXT_MAINMARKET_END,   "메인마켓 장마감"),    # → 15:20
+    "단일가 매매":     (NXT_SINGLE_PRICE_END, "에프터마켓 장개시"),  # → 15:40
+    "애프터마켓 지속": (NXT_AFTERMARKET_END,  "에프터마켓 장마감"),  # → 20:00
+}
+
+
+def calc_countdown(market: str, phase: str) -> dict | None:
+    """현재 페이즈의 다음 전환까지 남은 시간 계산 (KST 기준, 순수 함수).
+
+    market: "krx" | "nxt"
+    phase: 현재 페이즈명 (calc_timebased_market_phase() 결과와 동일)
+    반환: {"label": str, "remaining_sec": int} | None
+      - 10분 이내 남은 시간만 반환 (COUNTDOWN_THRESHOLD_MIN)
+      - 카운트다운 대상 페이즈가 아니면 None
+      - remaining_sec <= 0이면 None (이미 전환 시각 지난 경우, P20 폴백 금지)
+
+    P10: target 시각은 기존 시간표 상수 참조 — 새 하드코딩 없음.
+    P16: get_market_phase()를 통해 기존 10초 브로드캐스트 경로에 편입.
+    P24: 순수 함수, 부작용 없음.
+    """
+    cmap = _KRX_COUNTDOWN_MAP if market == "krx" else _NXT_COUNTDOWN_MAP
+    entry = cmap.get(phase)
+    if not entry:
+        return None
+    target_hm, label = entry
+    now = _kst_now()
+    kst_total_sec = (now.hour * 60 + now.minute) * 60 + now.second
+    target_sec = (target_hm[0] * 60 + target_hm[1]) * 60
+    remaining_sec = target_sec - kst_total_sec
+    if remaining_sec <= 0:
+        return None
+    if remaining_sec > COUNTDOWN_THRESHOLD_MIN * 60:
+        return None
+    return {"label": label, "remaining_sec": remaining_sec}
+
+
 KRX_INACTIVE_PHASES = frozenset({
     "장개시전", "장전 대기", "장전 시간외", "동시호가 접수", "시가 동시호가",
     "종가 동시호가", "체결 정산", "장후 시간외", "시간외 종가매매 종료 + 시간외 단일가매매 개시", "장 종료",
@@ -250,6 +300,9 @@ def get_market_phase() -> dict:
         phase["krx_alert"] = mp["krx_alert"]
     # NXT-only 구간 플래그 — 프론트엔드가 중복 상수 없이 백엔드 SSOT를 사용하도록 파생 (P10/P22)
     phase["is_nxt_only"] = is_nxt_only_window()
+    # 카운트다운 — 백엔드 시간표 SSOT로 계산 (P10). 10초 주기 브로드캐스트로 자동 갱신 (P16).
+    phase["krx_countdown"] = calc_countdown("krx", krx)
+    phase["nxt_countdown"] = calc_countdown("nxt", nxt)
     return phase
 
 
