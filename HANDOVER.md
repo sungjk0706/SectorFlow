@@ -1,25 +1,27 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (카운트다운 SSOT 백엔드 구현 — 안 3 Step 1, P10/P16/P20/P23/P24)
-- 작업: 다단계 작업 워크플로우 3세션(Step 1 백엔드 구현) — `calc_countdown()` 신규 + `_KRX_COUNTDOWN_MAP`/`_NXT_COUNTDOWN_MAP` 상수 + `get_market_phase()`에 `krx_countdown`/`nxt_countdown` 필드 추가 + 테스트 9개 신규/갱신. 구현 + 검증 + 커밋 완료.
-- 상태: Step 1(백엔드 구현) 완료, 커밋 완료 (`9bd99ef`). Step 2(프론트엔드 구현) 승인 대기.
+- 날짜: 2026-07-17 (카운트다운 SSOT 프론트엔드 구현 — 안 3 Step 2, P10/P16/P20/P23/P24)
+- 작업: 다단계 작업 워크플로우 4세션(Step 2 프론트엔드 구현) — 4개 파일 수정 (34 insertions, 44 deletions) — `types/index.ts`/`uiStore.ts`/`binding.ts` 타입 정의에 countdown 필드 추가 + `header.ts`에서 `KRX_COUNTDOWN`/`NXT_COUNTDOWN`/`COUNTDOWN_THRESHOLD_MIN`/`computeCountdown()` 제거 + `formatCountdown()` 신규 + 호출부 2곳 수정 (렌더링 + 30초 setInterval). 구현 + 빌드 검증 + 커밋 완료.
+- 상태: Step 2(프론트엔드 구현) 완료, 커밋 완료 (`bf992fb`). Step 3(통합 검증 + 계획서 삭제) 다음 세션 진행 예정.
 - **참조 문서**:
   - 디자인 파일: `backend/docs/architecture_countdown_supplement_design.md` (안 3 확정 — 3안 비교표 + 백엔드 카운트다운 SSOT 동작 원리)
   - 태스크 파일: `docs/plan_countdown_supplement.md` (구현 상세 + 세션 분할 + 테스트 계획)
 - **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우 (설계 → 태스크 → 구현)"
 
 ## 직전 완료 작업
-- **카운트다운 SSOT 백엔드 구현 (Step 1, 커밋 `9bd99ef`)**: 2개 파일 수정 (125 insertions, 3 deletions)
-  - `backend/app/services/daily_time_scheduler.py`: `calc_countdown(market, phase)` 신규 순수 함수 (~15줄) + `_KRX_COUNTDOWN_MAP` (KRX 2개 페이즈: 시가 동시호가→09:00, 정규장→15:20) + `_NXT_COUNTDOWN_MAP` (NXT 6개 페이즈: 장개시전→08:00, 프리마켓→08:50, 정규장 준비→09:00, 메인마켓→15:20, 단일가 매매→15:40, 애프터마켓 지속→20:00) + `COUNTDOWN_THRESHOLD_MIN = 10` — 모든 시각 기존 시간표 상수 재사용 (P10) + `get_market_phase()`에 `krx_countdown`/`nxt_countdown` 필드 추가 (기존 10초 브로드캐스트 경로에 편입, P16)
-  - `backend/tests/test_daily_time_scheduler.py`: `TestCalcCountdown` 신규 클래스 (8개 테스트 — KRX/NXT 카운트다운 계산 검증) + `TestGetMarketPhase.test_includes_countdown_fields` 신규 + `TestApplyMarketPhase` 3개 테스트 mock 반환값에 countdown 필드 추가 (실제 반환 형태와 일치)
-  - 검증: py_compile 통과 + ruff 통과 + pytest 167개 전체 통과 (신규 9개 포함) + 런타임 기동 (`-W error::RuntimeWarning`) 정상 기동 RuntimeWarning 없음 + 잔존 프로세스 0건
-  - P10 (SSOT): 거래 시간표 기존 상수 재사용 — 새 시각 하드코딩 없음
-  - P16 (살아있는 경로): `calc_countdown()`이 기존 10초 브로드캐스트 경로에 편입 — 새 전송 로직 없음
-  - P20 (폴백 금지): countdown 없으면 `None` (빈 문자열/None 폴백 아님)
-  - P23 (일관성): 기존 `get_market_phase()` 파생 필드 패턴 준수
-  - P24 (단순성): 순수 함수 1개 + 상수 3개 + WS 필드 2개
-- **카운트다운 SSOT 태스크 파일 작성 (2세션, 이전)**: 코드 수정 없음, 심층 사전조사 + 태스크 파일 작성 only. 상세는 git history 참조.
+- **카운트다운 SSOT 프론트엔드 구현 (Step 2, 커밋 `bf992fb`)**: 4개 파일 수정 (34 insertions, 44 deletions)
+  - `frontend/src/types/index.ts:95`: `market_phase` 타입에 `krx_countdown?`/`nxt_countdown?` 필드 추가 (`{label, remaining_sec} | null`)
+  - `frontend/src/stores/uiStore.ts:38-45`: `marketPhase` 타입에 동일 필드 추가 (initialState는 optional이라 변경 불필요)
+  - `frontend/src/binding.ts:269-279`: `market-phase` 수신 타입에 countdown 필드 추가
+  - `frontend/src/layout/header.ts`: `KRX_COUNTDOWN`/`NXT_COUNTDOWN`/`COUNTDOWN_THRESHOLD_MIN` 상수 + `computeCountdown()` 함수 제거 (38줄) → `formatCountdown()` 신규 (12줄, 수신값 포맷만 수행) + 호출부 2곳 수정 (렌더링 line 264-266 + 30초 setInterval line 469-474) — `computeCountdown()` → `formatCountdown(marketPhase.krx_countdown/nxt_countdown)`
+  - 검증: `npm run build` (tsc -b + vite build) 성공 (63 modules transformed, exit 0) + 잔존 참조 0건 (`computeCountdown`/`KRX_COUNTDOWN`/`NXT_COUNTDOWN`/`COUNTDOWN_THRESHOLD_MIN` 전체 검색 0건)
+  - P10 (SSOT): 프론트엔드 시간표 하드코딩 제거 → 백엔드 단일 소스
+  - P16 (살아있는 경로): 30초 setInterval 유지(백엔드 push 보완), 재계산 아닌 수신값 재적용
+  - P20 (폴백 금지): `formatCountdown()` — countdown 없으면 `null` (빈 문자열 폴백 아님)
+  - P23 (일관성): 기존 `applyMarketPhaseChip()` 패턴·라벨 용어 유지
+  - P24 (단순성): `computeCountdown()` 18줄 → `formatCountdown()` 7줄
+- **카운트다운 SSOT 백엔드 구현 (Step 1, 이전 커밋 `9bd99ef`)**: 2개 파일 수정 (125 insertions, 3 deletions) — `calc_countdown()` 신규 + 상수 3개 + `get_market_phase()` 필드 추가 + 테스트 9개. 상세는 git history 참조.
 
 ## 이전 세션 완료 작업 (커밋 완료)
 - 3단계: 백엔드 수신률 KRX/NXT 분리 집계 + 임계값 게이트 옵션 C (8개 파일) — 구현 + 검증 + 커밋 완료.
@@ -31,21 +33,19 @@
 - **1세션 (완료)**: 설계 검토 + 디자인 파일 작성 — 3안 비교(안 1 JIF 카운트다운 코드 처리 / 안 2 현상 유지 / 안 3 백엔드 카운트다운 SSOT) → 안 3 추천 → 사용자 안 3 확정. 디자인 파일: `backend/docs/architecture_countdown_supplement_design.md`
 - **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성 — WS 메시지 흐름 파악 + 기존 시간표 상수 재사용 확인 + 구현 상세 + 세션 분할 + 테스트 계획. 태스크 파일: `docs/plan_countdown_supplement.md`
 - **3세션 (Step 1, 완료, 커밋 `9bd99ef`)**: 백엔드 구현 + 테스트 — `calc_countdown()` 신규 + 상수 3개 + `get_market_phase()` 필드 추가 + 테스트 9개. 검증 통과 (py_compile + ruff + pytest 167개 + 런타임 기동 RuntimeWarning 없음 + 잔존 프로세스 0건).
-- **4세션 (Step 2, 구현 승인 대기)**: 프론트엔드 구현 + 빌드
-  - `types/index.ts`, `uiStore.ts`, `binding.ts`: 타입 정의에 countdown 필드 추가
-  - `header.ts`: `KRX_COUNTDOWN`/`NXT_COUNTDOWN`/`COUNTDOWN_THRESHOLD_MIN`/`computeCountdown()` 제거 + `formatCountdown()` 신규 + 호출부 수정 + 30초 setInterval 유지(수신값 재적용)
-  - 검증: `npm run build` + 브라우저 화면 확인
-- **5세션 (Step 3, 예정)**: 통합 검증 + 커밋 + 계획서 삭제
-  - 백엔드 + 프론트엔드 동시 기동 — 카운트다운 실시간 표시 확인
+- **4세션 (Step 2, 완료, 커밋 `bf992fb`)**: 프론트엔드 구현 + 빌드 — 4개 파일 수정 (34 insertions, 44 deletions). `types/index.ts`/`uiStore.ts`/`binding.ts` 타입 정의에 countdown 필드 추가 + `header.ts`에서 `KRX_COUNTDOWN`/`NXT_COUNTDOWN`/`COUNTDOWN_THRESHOLD_MIN`/`computeCountdown()` 제거 + `formatCountdown()` 신규 + 호출부 2곳 수정 + 30초 setInterval 유지(수신값 재적용). 검증 통과 (`npm run build` 성공 + 잔존 참조 0건). 브라우저 화면 검증은 Step 3에서 진행.
+- **5세션 (Step 3, 예정)**: 통합 검증 + 계획서 삭제
+  - 백엔드 + 프론트엔드 동시 기동 — 카운트다운 실시간 표시 확인 (브라우저)
   - pytest 전체 + `npm run build` + 잔존 프로세스 0건
-  - 커밋(사용자 승인 후) + 계획서 파일 삭제(`backend/docs/architecture_countdown_supplement_design.md`, `docs/plan_countdown_supplement.md`) + HANDOVER.md 갱신
+  - 계획서 파일 삭제(사용자 승인 후): `backend/docs/architecture_countdown_supplement_design.md`, `docs/plan_countdown_supplement.md`
+  - HANDOVER.md 갱신
 
 ### 참조 문서
 - **디자인 파일**: `backend/docs/architecture_countdown_supplement_design.md` (3안 비교표 + 안 3 동작 원리 + P10/P24 부합 근거)
 - **태스크 파일**: `docs/plan_countdown_supplement.md` (구현 상세 + 세션 분할 + 테스트 계획 + 런타임 검증 방법)
 
 ### 승인 대기 항목
-- **Step 2 프론트엔드 구현 승인**: `types/index.ts`/`uiStore.ts`/`binding.ts` 타입 정의에 countdown 필드 추가 + `header.ts`에서 `KRX_COUNTDOWN`/`NXT_COUNTDOWN`/`COUNTDOWN_THRESHOLD_MIN`/`computeCountdown()` 제거 + `formatCountdown()` 신규 + 호출부 수정 + 30초 setInterval 유지(수신값 재적용). 사용자 실행 지시어 대기.
+- **Step 3 통합 검증 + 계획서 삭제 승인**: 백엔드 + 프론트엔드 동시 기동하여 카운트다운 실시간 표시 확인(브라우저) + pytest 전체 + `npm run build` + 잔존 프로세스 0건 + 계획서 파일 2개 삭제(`backend/docs/architecture_countdown_supplement_design.md`, `docs/plan_countdown_supplement.md`). 사용자 실행 지시어 대기.
 
 ---
 
