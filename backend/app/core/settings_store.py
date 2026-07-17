@@ -71,7 +71,7 @@ def general_save_payload_from_flat(d: dict) -> dict[str, Any]:
     if mode == "mock":
         mode = "test"
     data: dict[str, Any] = {
-        "confirmed_download_time": str(d["confirmed_download_time"]).strip(),
+        "timetable.confirmed_download": str(d["timetable.confirmed_download"]).strip(),
         "time_scheduler_on": bool(d["time_scheduler_on"]),
         "auto_buy_on": bool(d["auto_buy_on"]),
         "auto_sell_on": bool(d["auto_sell_on"]),
@@ -134,61 +134,89 @@ def changed_keys_general_save(before_editing: dict, new_payload: dict) -> set[st
     }
 
 
-# 타임테이블 시간 순서 검증 대상 키 (P20/P22)
-_TIMETABLE_ORDER_KEYS = (
+# 타임테이블 시간 순서 검증 대상 키 (P20/P22) — 2그룹 분리
+# 그룹1: 장 전 사전 준비 3개 키 (rt <= ws <= krx < 09:00)
+_TIMETABLE_PRE_OPEN_KEYS = (
     "timetable.realtime_reset",
     "timetable.ws_prestart",
     "timetable.krx_pre_subscribe",
 )
+# 그룹2: 장 후 확정 다운로드 1개 키 (confirmed_download > 20:00, NXT 종료 이후만 허용)
+_TIMETABLE_POST_CLOSE_KEYS = (
+    "timetable.confirmed_download",
+)
+# 하위 호환: 기존 _TIMETABLE_ORDER_KEYS 참조 유지 (전체 합집합)
+_TIMETABLE_ORDER_KEYS = _TIMETABLE_PRE_OPEN_KEYS + _TIMETABLE_POST_CLOSE_KEYS
 
 
 async def _validate_timetable_order(data: dict, before: dict) -> None:
-    """3개 타임테이블 키의 시간 순서 검증 (P20/P22).
+    """타임테이블 시간 순서 검증 (P20/P22) — 2그룹 분리.
 
-    검증 조건: realtime_reset <= ws_prestart <= krx_pre_subscribe < "09:00"
+    그룹1 (장 전 사전 준비): realtime_reset <= ws_prestart <= krx_pre_subscribe < "09:00"
+    그룹2 (장 후 확정 다운로드): confirmed_download > "20:00" (NXT 종료 이후만 허용)
     - data: 이번 요청에서 변경하려는 키/값
-    - before: load_selected_settings()로 로드한 기존 DB 값 (나머지 2개 키 보충용)
+    - before: load_selected_settings()로 로드한 기존 DB 값 (나머지 키 보충용)
 
     실패 시 ValueError 발생 → apply_settings_updates 호출자가 HTTP 422로 변환 (기존 패턴).
     형식 오류(_TIME_RE 위반)는 이미 apply_settings_updates 상단에서 무시+경고 처리되므로
     본 함수에서는 형식 통과한 값만 순서 검증.
     """
-    # 이번 요청에 3개 키 중 하나라도 포함 시에만 검증
-    if not (set(data.keys()) & set(_TIMETABLE_ORDER_KEYS)):
-        return
-
-    # 3개 키의 최종값 산정: data 우선, 없으면 before, 없으면 DEFAULT_USER_SETTINGS
-    values: dict[str, str] = {}
-    for k in _TIMETABLE_ORDER_KEYS:
-        if k in data and data[k]:
-            values[k] = str(data[k]).strip()
-        elif k in before and before[k]:
-            values[k] = str(before[k]).strip()
-        else:
-            values[k] = str(DEFAULT_USER_SETTINGS.get(k, "")).strip()
-
-    # 3개 모두 값이 있어야 검증 (빈 값이면 기본값 폴백이 아니라 P20 위반 → ValueError)
-    missing = [k for k in _TIMETABLE_ORDER_KEYS if not values.get(k)]
-    if missing:
-        raise ValueError(f"타임테이블 시각 누락: {missing} — 기본값 폴백 금지 (P20)")
-
-    # 시간 순서 검증: realtime_reset <= ws_prestart <= krx_pre_subscribe < 09:00
     def _to_min(v: str) -> int:
         h, m = v.split(":")
         return int(h) * 60 + int(m)
 
-    rt = _to_min(values["timetable.realtime_reset"])
-    ws = _to_min(values["timetable.ws_prestart"])
-    krx = _to_min(values["timetable.krx_pre_subscribe"])
-    open_min = 9 * 60  # 09:00
+    # ── 그룹1: 장 전 사전 준비 3개 키 순서 검증 ──
+    if set(data.keys()) & set(_TIMETABLE_PRE_OPEN_KEYS):
+        values: dict[str, str] = {}
+        for k in _TIMETABLE_PRE_OPEN_KEYS:
+            if k in data and data[k]:
+                values[k] = str(data[k]).strip()
+            elif k in before and before[k]:
+                values[k] = str(before[k]).strip()
+            else:
+                values[k] = str(DEFAULT_USER_SETTINGS.get(k, "")).strip()
 
-    if not (rt <= ws <= krx < open_min):
-        raise ValueError(
-            f"타임테이블 시간 순서 오류: "
-            f"실시간 초기화({values['timetable.realtime_reset']}) <= "
-            f"구독 시작({values['timetable.ws_prestart']}) <= "
-            f"정규장 사전 구독({values['timetable.krx_pre_subscribe']}) < 09:00 이어야 합니다"
-        )
+        # 3개 모두 값이 있어야 검증 (빈 값이면 기본값 폴백이 아니라 P20 위반 → ValueError)
+        missing = [k for k in _TIMETABLE_PRE_OPEN_KEYS if not values.get(k)]
+        if missing:
+            raise ValueError(f"타임테이블 시각 누락: {missing} — 기본값 폴백 금지 (P20)")
+
+        rt = _to_min(values["timetable.realtime_reset"])
+        ws = _to_min(values["timetable.ws_prestart"])
+        krx = _to_min(values["timetable.krx_pre_subscribe"])
+        open_min = 9 * 60  # 09:00
+
+        if not (rt <= ws <= krx < open_min):
+            raise ValueError(
+                f"타임테이블 시간 순서 오류: "
+                f"실시간 초기화({values['timetable.realtime_reset']}) <= "
+                f"구독 시작({values['timetable.ws_prestart']}) <= "
+                f"정규장 사전 구독({values['timetable.krx_pre_subscribe']}) < 09:00 이어야 합니다"
+            )
+
+    # ── 그룹2: 장 후 확정 다운로드 1개 키 하한선 검증 ──
+    if set(data.keys()) & set(_TIMETABLE_POST_CLOSE_KEYS):
+        cd_values: dict[str, str] = {}
+        for k in _TIMETABLE_POST_CLOSE_KEYS:
+            if k in data and data[k]:
+                cd_values[k] = str(data[k]).strip()
+            elif k in before and before[k]:
+                cd_values[k] = str(before[k]).strip()
+            else:
+                cd_values[k] = str(DEFAULT_USER_SETTINGS.get(k, "")).strip()
+
+        missing_cd = [k for k in _TIMETABLE_POST_CLOSE_KEYS if not cd_values.get(k)]
+        if missing_cd:
+            raise ValueError(f"타임테이블 시각 누락: {missing_cd} — 기본값 폴백 금지 (P20)")
+
+        cd = _to_min(cd_values["timetable.confirmed_download"])
+        nxt_close_min = 20 * 60  # 20:00 (NXT 마켓 종료)
+
+        if not (cd > nxt_close_min):
+            raise ValueError(
+                f"타임테이블 시간 오류: 확정 데이터 다운로드({cd_values['timetable.confirmed_download']})는 "
+                f"20:00 이후여야 합니다 (NXT 마켓 종료 후 확정 데이터 준비)"
+            )
 
 
 async def apply_settings_updates(data: dict, username: str = "admin", profile: str | None = None) -> set[str]:
@@ -197,20 +225,22 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
     import re
     _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
     _TIME_FIELDS = frozenset({
-        "confirmed_download_time",
         "buy_time_start", "buy_time_end",
         "sell_time_start", "sell_time_end",
         "timetable.realtime_reset",
         "timetable.ws_prestart",
         "timetable.krx_pre_subscribe",
+        "timetable.confirmed_download",
     })
 
     # 변경 대상 키 + broker 키만 SELECT (전체 로드 대신 증분 로드)
-    # 타임테이블 키 중 하나라도 data에 있으면 3개 모두 select_keys에 추가
-    # (순서 검증 시 나머지 2개 키의 기존 DB 값이 필요하므로)
+    # 타임테이블 키 중 하나라도 data에 있으면 해당 그룹의 모든 키를 select_keys에 추가
+    # (순서 검증 시 나머지 키의 기존 DB 값이 필요하므로)
     select_keys = set(data.keys()) | {"broker"}
-    if set(data.keys()) & set(_TIMETABLE_ORDER_KEYS):
-        select_keys = select_keys | set(_TIMETABLE_ORDER_KEYS)
+    if set(data.keys()) & set(_TIMETABLE_PRE_OPEN_KEYS):
+        select_keys = select_keys | set(_TIMETABLE_PRE_OPEN_KEYS)
+    if set(data.keys()) & set(_TIMETABLE_POST_CLOSE_KEYS):
+        select_keys = select_keys | set(_TIMETABLE_POST_CLOSE_KEYS)
     before = await load_selected_settings(select_keys)
 
     # 검증 + 저장할 값 준비

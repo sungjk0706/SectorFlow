@@ -1,12 +1,12 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-18 (1일봉 다운로드 타임테이블 통합 다단계 작업 2세션 — 심층 사전조사 + 태스크 파일 작성 완료 · **3세션 승인 대기**)
-- 작업: 1일봉차트 확정 다운로드 시간 DB 타임테이블 통합 다단계 작업 2세션(심층 사전조사 + 태스크 파일 작성) 진행. 사용자 명시적 실행 지시어("2세션 진행해")로 진행 승인. 대상 파일 11개(백엔드 6 + 프론트엔드 2 + 테스트 3) 심층 조사 — 의존성·영향 범위·아키텍처 원칙 부합·기존 공통 자산 확인 4항목 완료. 수정 포인트 24개(A-X) 식별, 3세션(3/4/5) 분할 확정. 핵심 발견: `schedule_ws_subscribe_timers()` 호출자 3곳(engine_service.py, _on_midnight, start_daily_time_scheduler) 식별, `is_ws_subscribe_window()` 테스트의 `confirmed_download_time` 참조 50곳은 cosmetic(함수 내부 미사용), `retry_pipeline_catchup_after_bootstrap()` 10곳은 실제 키 사용. 3세션 완료 후 런타임 기동 시 KeyError 가능성 식별 → 3세션은 정적 검증만, 런타임 기동은 4세션으로 이월. 자정 타임테이블 재빌드 보완 필요성 식별(4세션에서 처리). 타임테이블 direct 콜백 비동기 패턴 `_timetable_event_fired()` 검증 필요(4세션). 신규 함수/상수/컴포넌트 생성 없음 — 기존 공통 자산 재사용(P23/P24). 사용자 체감 변화 없음.
-- 상태: 2세션(심층 사전조사 + 태스크 파일 작성) 완료. 커밋 완료. **3세션(DB 마이그레이션 + 백엔드 키 변경) 승인 대기.**
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 섹션4 "다단계 작업 워크플로우" + 규칙 11(계획서 삭제) + Safety Rules 2(DB 백업) + P10/P14/P16/P20/P21/P22/P23/P24
+- 날짜: 2026-07-18 (1일봉 다운로드 타임테이블 통합 다단계 작업 3세션 — DB 마이그레이션 + 백엔드 키 변경 완료 · **4세션 승인 대기**)
+- 작업: 1일봉차트 확정 다운로드 시간 DB 타임테이블 통합 다단계 작업 3세션(DB 마이그레이션 + 백엔드 키 변경) 진행. 사용자 명시적 실행 지시어("3세션 진행해")로 진행 승인. db-backup 스킬로 stocks.db 3개 파일 타임스탬프 백업(20260718_034627) 후 DB 마이그레이션 수행 — `integrated_system_settings` 테이블에서 `confirmed_download_time` 키 → `timetable.confirmed_download` 키 UPDATE (값 '20:40' 보존, 1행→1행 검증 완료). 백엔드 키 변경 3개 파일: `settings_defaults.py`(키 이동 + 네임스페이스 일관성), `engine_settings.py`(키 참조 + 주석 갱신), `settings_store.py`(`general_save_payload_from_flat()` 키 변경 + `_TIME_FIELDS` 치환 + `_TIMETABLE_ORDER_KEYS` 2그룹 분리 → `_TIMETABLE_PRE_OPEN_KEYS`/`_TIMETABLE_POST_CLOSE_KEYS` + `_validate_timetable_order()` 2단계 검증 분리 + `select_keys` 확장). 테스트 2개 파일: `test_settings_store.py`(키 치환 3곳 + 그룹2 검증 테스트 7개 추가 — 통과/실패/독립성/상한선 없음), `test_engine_settings.py`(키 치환 2개 테스트). 정적 검증: py_compile OK + ruff check OK + pytest test_settings_store+test_engine_settings 136/136 통과 + test_daily_time_scheduler 217/217 통과 + 전체 회귀 2897 passed (기존 실패 1개 `test_trading.py::TestExecuteBuyGates::test_rebu_block_disabled`은 원본 코드에서도 동일 실패 — 테스트 격리 문제, 본 수정과 무관). 런타임 기동 검증은 4세션으로 이월(`daily_time_scheduler.py` 2곳 키 참조 미변경으로 KeyError 가능). 신규 함수/상수/컴포넌트 생성 없음 — 기존 공통 자산 재사용(P23/P24). 사용자 체감 변화 없음.
+- 상태: 3세션(DB 마이그레이션 + 백엔드 키 변경) 완료. 커밋 완료. **4세션(타임테이블 통합 + 멱등성 가드) 승인 대기.**
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 4-1(테스트 실패 추적) + 섹션4 "다단계 작업 워크플로우" + 규칙 11(계획서 삭제) + Safety Rules 2(DB 백업) + P10/P14/P16/P20/P21/P22/P23/P24
 
-## 1일봉 다운로드 타임테이블 통합 다단계 작업 — 진행 중 (2/5세션)
+## 1일봉 다운로드 타임테이블 통합 다단계 작업 — 진행 중 (3/5세션)
 
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계서 작성 — 이전 세션 검토(방식 A/B 비교) + 사용자 확정 7항목 반영.
@@ -17,14 +17,19 @@
   - **태스크 파일**: `docs/plan_download_timetable_integration.md` (473줄)
   - **심층 발견사항**: 대상 파일 11개(백엔드 6 + 프론트엔드 2 + 테스트 3) + DB + ARCHITECTURE.md. 수정 포인트 24개(A-X) 식별. `schedule_ws_subscribe_timers()` 호출자 3곳 식별(engine_service.py:135, _on_midnight:1410, start_daily_time_scheduler:1494). `is_ws_subscribe_window()` 테스트의 `confirmed_download_time` 참조 50곳은 cosmetic(함수 내부 미사용), `retry_pipeline_catchup_after_bootstrap()` 10곳은 실제 키 사용(line 687). 3세션 완료 후 런타임 기동 시 KeyError 가능성 식별 → 3세션은 정적 검증만, 런타임 기동은 4세션으로 이월. 자정 타임테이블 재빌드 보완 필요성 식별(4세션에서 처리). 타임테이블 direct 콜백 비동기 패턴 `_timetable_event_fired()` 검증 필요(4세션). 기존 공통 자산 10개 재사용 확인 — 신규 함수/상수/컴포넌트 생성 없음(P23/P24). 역사적 조사 문서(`krx_receive_rate_missing_investigation.md`)는 코드 제거 규칙 3에 따라 유지.
   - **세션 분할 (3세션 구현 확정)**: 3세션(DB 마이그레이션 + 백엔드 키 변경 — A,B,C,D,E,F,G,H,I,J) / 4세션(타임테이블 통합 + 멱등성 가드 — K,L,M,N,O,P,Q,R,S,T) / 5세션(프론트엔드 + 최종 검증 + 계획서 삭제 — U,V,W,X)
-- **3세션 (대기)**: DB 마이그레이션 + 백엔드 키 변경 — db-backup 스크립트 백업 → 마이그레이션 스크립트 실행 → `settings_defaults.py`/`engine_settings.py`/`settings_store.py` 키 변경 + 순서 검증 2그룹 분리 → 테스트 수정.
+- **3세션 (완료)**: DB 마이그레이션 + 백엔드 키 변경 — db-backup 스킬 백업(20260718_034627) → DB 마이그레이션(`confirmed_download_time` → `timetable.confirmed_download` key UPDATE, 값 '20:40' 보존) → `settings_defaults.py`/`engine_settings.py`/`settings_store.py` 키 변경 + 순서 검증 2그룹 분리 → `test_settings_store.py`/`test_engine_settings.py` 테스트 수정.
+  - **변경 파일 5개**: `backend/app/core/settings_defaults.py` (+2/-2), `backend/app/core/engine_settings.py` (+2/-2), `backend/app/core/settings_store.py` (+83/-55), `backend/tests/test_settings_store.py` (+97/-16), `backend/tests/test_engine_settings.py` (+5/-5)
+  - **수정 포인트 10개 (A-J)**: (A) DB 마이그레이션 — `integrated_system_settings` 키 UPDATE, 값 보존 / (B) `settings_defaults.py` `confirmed_download_time` 제거 → `timetable.confirmed_download`를 `timetable.*` 네임스페이스에 추가 / (C) `engine_settings.py` `result["confirmed_download_time"]` → `result["timetable.confirmed_download"]` + 주석 갱신 / (D) `settings_store.py` `general_save_payload_from_flat()` 키 변경 / (E) `_TIME_FIELDS` 키 치환 / (F) `_TIMETABLE_ORDER_KEYS` 2그룹 분리 → `_TIMETABLE_PRE_OPEN_KEYS` + `_TIMETABLE_POST_CLOSE_KEYS` (하위 호환 `_TIMETABLE_ORDER_KEYS` 합집합 유지) / (G) `_validate_timetable_order()` 2단계 검증 분리 — 그룹1: rt ≤ ws ≤ krx < 09:00 / 그룹2: confirmed_download > 20:00 (NXT 종료 이후, 상한선 없음) / (H) `select_keys` 확장 — 그룹별 독립 확장 / (I) `test_settings_store.py` 키 치환 3곳 + 그룹2 검증 테스트 7개 추가 / (J) `test_engine_settings.py` 키 치환 2개 테스트
+  - **검증**: py_compile OK + ruff check OK + pytest test_settings_store+test_engine_settings 136/136 통과 + test_daily_time_scheduler 217/217 통과 + 전체 회귀 2897 passed (기존 실패 1개 `test_trading.py::TestExecuteBuyGates::test_rebuy_block_disabled`은 원본 코드에서도 동일 실패 — 테스트 격리 문제, 본 수정과 무관, 규칙 4-1 준수)
+  - **잔존 참조 (4세션/5세션 처리 예정)**: `daily_time_scheduler.py` 8곳(4세션 R/O), `engine_service.py` 1곳(4세션 S), `test_daily_time_scheduler.py` 27곳(4세션 T), `general-settings.ts` 4곳(5세션 U), `types/index.ts` 1곳(5세션 V), `ARCHITECTURE.md` 1곳(5세션 W). 태스크 파일 + 설계서는 5세션에서 삭제(규칙 11).
+  - **런타임 기동 검증 이월**: 3세션 완료 후 `daily_time_scheduler.py` 2곳(line 687, 1157) 키 참조 미변경으로 런타임 기동 시 KeyError 가능 → 3세션은 정적 검증만 수행, 런타임 기동은 4세션 완료 후 수행.
 - **4세션 (대기)**: 타임테이블 통합 + 멱등성 가드 — `build_timetable_from_cache()` 11번째 항목 추가 + 토글 연동 + `_on_confirmed_download()` 멱등성 가드 + `schedule_ws_subscribe_timers()` 분기 제거 + `engine_service.py` 설정 변경 감지 키 이동 + 부트스트랩 catch-up 키 참조 변경 → 테스트 수정.
 - **5세션 (대기)**: 프론트엔드 키 참조 변경 + 저장 함수 통합 + 최종 검증 + 계획서 2개 삭제 (규칙 11).
 
-## 다음 세션 진행 대기: 3세션 (DB 마이그레이션 + 백엔드 키 변경)
+## 다음 세션 진행 대기: 4세션 (타임테이블 통합 + 멱등성 가드)
 
-> 2세션(심층 사전조사 + 태스크 파일 작성) 완료. 3세션 진행은 사용자 명시적 실행 지시어 대기.
-> 3세션 작업 범위: db-backup 스킬 백업 → DB 마이그레이션(`confirmed_download_time` → `timetable.confirmed_download` key UPDATE) → `settings_defaults.py`/`engine_settings.py`/`settings_store.py` 키 변경 + 순서 검증 2그룹 분리 → `test_settings_store.py`/`test_engine_settings.py` 테스트 수정. 런타임 기동 검증은 4세션으로 이월(3세션 완료 후 `daily_time_scheduler.py` 2곳 키 참조 미변경으로 KeyError 가능).
+> 3세션(DB 마이그레이션 + 백엔드 키 변경) 완료. 4세션 진행은 사용자 명시적 실행 지시어 대기.
+> 4세션 작업 범위: `engine_state.py` `ws_subscribe_timer_handles` 제거 + `last_confirmed_download_date` 추가 → `daily_time_scheduler.py` `build_timetable_from_cache()` 11번째 항목 추가(토글 OFF 시 스킵, P16) + `_on_confirmed_download()` 멱등성 가드(P22) + `_on_midnight()` 가드 리셋 + `schedule_ws_subscribe_timers()` + `_fire_confirmed_download()` 제거 + `start/stop_daily_time_scheduler()` 정리 + `retry_pipeline_catchup_after_bootstrap()` 키 참조 변경 → `engine_service.py` `_WS_SCHEDULE_KEYS` 제거 + `_TIMETABLE_KEYS` 확장 + 분기 재작성 → `test_daily_time_scheduler.py` 키 치환(60곳) + 함수 제거 테스트 삭제 + 멱등성/토글 스킵 테스트 추가. 런타임 기동 검증 포함(`python -W error::RuntimeWarning main.py`).
 
 ## 이전 다단계 작업: 일반설정 탭 재구성 — 전체 완료 (3~8세션, 총 6세션)
 

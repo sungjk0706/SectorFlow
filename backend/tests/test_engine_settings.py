@@ -324,13 +324,13 @@ class TestBuildEngineSettingsDictOverride:
         })
         assert result["boost_order_ratio_pct"] == 20
 
-    def test_confirmed_download_time_default(self):
+    def test_timetable_confirmed_download_default(self):
         result = build_engine_settings_dict({})
-        assert result["confirmed_download_time"] == "20:40"
+        assert result["timetable.confirmed_download"] == "20:40"
 
-    def test_confirmed_download_time_override(self):
-        result = build_engine_settings_dict({"confirmed_download_time": "21:00"})
-        assert result["confirmed_download_time"] == "21:00"
+    def test_timetable_confirmed_download_override(self):
+        result = build_engine_settings_dict({"timetable.confirmed_download": "21:00"})
+        assert result["timetable.confirmed_download"] == "21:00"
 
     def test_broker_specs_passthrough(self):
         """_broker_specs가 merged에 있으면 result에 포함."""

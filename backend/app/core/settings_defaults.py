@@ -16,9 +16,6 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "auto_sell_on": False,
     "sell_time_start": "09:00",
     "sell_time_end": "15:20",
-    # 웹소켓
-    "confirmed_download_time": "20:40",
-    
     # 텔레그램
     "tele_on": False,
     "telegram_chat_id": "",
@@ -121,6 +118,7 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
      "timetable.realtime_reset": "07:58",      # 실시간 항목 초기화
      "timetable.ws_prestart": "07:59",         # WS 구독 사전 시작
      "timetable.krx_pre_subscribe": "08:59",   # KRX 정규장 사전 구독
+     "timetable.confirmed_download": "20:40",  # 장 후 확정 데이터 다운로드 (NXT 종료 이후)
  }
  
  # 시스템 설정 기본값 (system_config)
