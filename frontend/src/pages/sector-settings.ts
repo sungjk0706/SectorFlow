@@ -79,11 +79,28 @@ function _updateStatusLabel(
   receiveStatusLabelEl.style.color = reached ? COLOR.success : COLOR.down
 }
 
-// 시간대별 KRX/NXT 활성/비활성 전환 (P21 투명성 — NXT-only 구간에서 KRX 비활성 명시)
-function _applyMarketPhaseActive(marketPhase: { is_nxt_only?: boolean }): void {
+// 정규장 phase 문자열 집합 (구독 시점 기준 08:59~15:20 — 시가 동시호가 포함)
+// header.ts PHASE_STYLE의 "거래 가능(초록)" 그룹 중 "정규장 모드"에 해당하는 phase만 포함.
+// 시간외/NXT 전용 phase('장전 시간외', '장후 시간외', '프리마켓', '애프터마켓', '애프터마켓 지속',
+// '시간외 종가매매 종료 + 시간외 단일가매매 개시')는 is_nxt_only 플래그로 우선 분리되므로 제외.
+// ⚠️ 동기화 주의: header.ts PHASE_STYLE에 신규 "정규장 모드" phase 추가 시 본 집합도 갱신 필요 (P10/P23).
+const REGULAR_PHASES = new Set(['정규장', '시가 동시호가', '종가 동시호가', '메인마켓'])
+
+// 시간대별 KRX/NXT 수신률 바 표시/숨김 (P21 투명성 — 3상태: NXT 전용/정규장/그 외)
+// 구독 신청/해지 시점 기준:
+//   1) NXT 전용 (07:59~08:59, 15:20~20:00): KRX 숨김, NXT 표시
+//   2) 정규장 (08:59~15:20): KRX/NXT 둘 다 표시
+//   3) 그 외 (20:00~07:59): KRX/NXT 둘 다 숨김
+// 판정 순서: is_nxt_only 우선 → false일 때만 REGULAR_PHASES로 정규장 여부 판단.
+function _applyMarketPhaseActive(marketPhase: {
+  is_nxt_only?: boolean
+  krx: string
+  nxt: string
+}): void {
   const isNxtOnly = marketPhase.is_nxt_only === true
-  if (krxRowEl) krxRowEl.style.opacity = isNxtOnly ? '0.3' : '1'
-  if (nxtRowEl) nxtRowEl.style.opacity = '1'
+  const isRegular = REGULAR_PHASES.has(marketPhase.krx) || REGULAR_PHASES.has(marketPhase.nxt)
+  if (krxRowEl) krxRowEl.style.display = isNxtOnly ? 'none' : (isRegular ? 'flex' : 'none')
+  if (nxtRowEl) nxtRowEl.style.display = (isNxtOnly || isRegular) ? 'flex' : 'none'
 }
 
 function syncFromSettings(s: AppSettings): void {
