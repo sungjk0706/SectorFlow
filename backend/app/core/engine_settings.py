@@ -275,8 +275,8 @@ def build_engine_settings_dict(flat: dict) -> dict:
     result["boost_trade_amount_rank_on"]   = bool(merged.get("boost_trade_amount_rank_on"))
     _v = merged.get("boost_trade_amount_rank_score")
     result["boost_trade_amount_rank_score"] = max(float(_v if _v is not None else 1.0), 0)
-    # ── 확정 시세 다운로드 시간 ────────
-    result["confirmed_download_time"]      = str(merged.get("confirmed_download_time", "20:40"))[:5]
+    # ── 확정 시세 다운로드 시간 (timetable 네임스페이스 — P10/P23) ────────
+    result["timetable.confirmed_download"] = str(merged.get("timetable.confirmed_download", "20:40"))[:5]
 
     # ── 장마감 후 스케줄러 토글 ────────
     # DEFAULT_USER_SETTINGS 기본값: True (활성화)
