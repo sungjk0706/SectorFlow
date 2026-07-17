@@ -810,12 +810,14 @@ auto_sell_effective():
   └── _in_time_range(sell_time_start, sell_time_end)
 ```
 
-### 7.4 매수 주문 간격 및 쓰로틀
+### 7.4 매수/매도 주문 간격 및 쓰로틀
 
 | 항목 | 기본값 | 설명 |
 |------|--------|------|
 | `buy_interval_on` | False | 매수 주문 간격 활성화 (토글) |
-| `buy_interval_min` | 0분 | 1순위 종목 매수 후 대기 간격 (분 단위) |
+| `buy_interval_sec` | 30초 | 매수 주문 간격 (초 단위, 5~300, 5초 단위) |
+| `sell_interval_on` | False | 매도 주문 간격 활성화 (토글) |
+| `sell_interval_sec` | 30초 | 매도 주문 간격 (초 단위, 5~300, 5초 단위, 손절 포함) |
 | `MIN_INTERVAL` | 30초 | 동일 종목 연속 신호 차단 |
 | `_bought_today` | set | 오늘 매수한 종목 재매수 차단 |
 | `max_stock_cnt` | 설정값 | 최대 보유 종목 수 |

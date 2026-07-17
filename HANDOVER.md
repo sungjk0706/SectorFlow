@@ -1,13 +1,29 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (매수/매도 주문 간격 설정 개선 — 다단계 작업 6세션: 테스트 Step 4)
-- 작업: 6세션 진행 → 사전조사(3개 테스트 파일 현재 상태 + 기존 `TestCheckSellConditions` 패턴 분석 + 마이그레이션 테스트 3개 3세션 이미 완료 확인) → `test_buy_order_executor.py`(`TestBuyIntervalGate` 신규 2개: `test_buy_interval_off_passes` 토글 OFF 시 통과 + `test_buy_interval_zero_sec_passes` 0초=비활성 시 통과) → `test_trading.py`(`TestSellIntervalGate` 신규 클래스 5개: `test_sell_interval_blocks_within_period` 간격 내 차단 + `test_sell_interval_passes_after_period` 간격 초과 통과 + `test_sell_interval_off_passes` 토글 OFF 통과 + `test_sell_interval_applies_to_loss_cut` 손절도 간격 적용 차단 + `test_mark_order_executed_updates_sell_ts` 헬퍼 직접 단위테스트 타이머 갱신 검증) → `test_web_routes.py:549`(`mock_state._last_global_sell_ts = 0.0` 1줄 추가 — 일일 리셋 시 매도 타이머 초기화) → 검증(py_compile 통과 + pytest 전체 2822 passed = 이전 2815 + 신규 7, 회귀 없음) → 커밋.
-- 상태: 다단계 작업 6세션(구현 Step 4 — 테스트) 완료. 7세션(구현 Step 5 — 문서 + 런타임 검증 + 계획서 삭제) 대기.
-- **참조 문서**: `docs/plan_order_interval.md` (태스크 파일 — 섹션 4-4 6세션 테스트 계획 + 섹션 6 테스트 상세)
-- **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우" 6세션 + backend-fix 스킬
+- 날짜: 2026-07-17 (매수/매도 주문 간격 설정 개선 — 다단계 작업 7세션: 문서 + 런타임 검증 + 계획서 삭제 Step 5 — **다단계 작업 전체 완료**)
+- 작업: 7세션 진행 → 사전조사(ARCHITECTURE.md:817-818 현재 상태 + 잔존 `buy_interval_min` 56곳 분석 — 마이그레이션 로직/테스트 6곳 의도적 잔존 + 계획서 49곳은 삭제로 제거 + ARCHITECTURE.md 1곳은 수정) → `ARCHITECTURE.md:813-823`(섹션 7.4 제목 "매수 주문 간격 및 쓰로틀" → "매수/매도 주문 간격 및 쓰로틀" + `buy_interval_min` 1줄 제거 → `buy_interval_sec` + `sell_interval_on` + `sell_interval_sec` 3줄 추가) → 계획서 2개 삭제(`docs/plan_order_interval.md` 450줄 + `backend/docs/architecture_order_interval_design.md` 433줄 — `git rm`) → 검증(pytest 전체 2822 passed 회귀 없음 + npm run build 635ms 성공 + 잔존 `buy_interval_min` 6곳 모두 마이그레이션 로직/테스트 의도적 잔존 + 런타임 기동 RuntimeWarning 0건 146ms + WS 설정 응답 4개 필드 모두 존재 `buy_interval_on=True`/`buy_interval_sec=30`/`sell_interval_on=False`/`sell_interval_sec=30` + 잔존 프로세스 0건) → 커밋.
+- 상태: **다단계 작업 7세션 전체 완료** (설계 1세션 → 태스크 2세션 → 백엔드 기반 3세션 → 백엔드 배선 4세션 → 프론트엔드 5세션 → 테스트 6세션 → 문서+검증+정리 7세션). 매수/매도 주문 간격 설정 개선 기능 전체 구현 완료.
+- **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우" 7세션 + backend-fix 스킬
 
 ## 직전 완료 작업
+- **매수/매도 주문 간격 설정 개선 다단계 7세션 — 문서 + 런타임 검증 + 계획서 삭제 Step 5 (다단계 작업 전체 완료)**: 1~6세션 구현의 문서 갱신 + 통합 런타임 검증 + 작업 계획서 정리.
+  - **`ARCHITECTURE.md:813-823`** (섹션 7.4 — 1곳):
+    - 제목: "매수 주문 간격 및 쓰로틀" → "매수/매도 주문 간격 및 쓰로틀" (매도 간격 추가 반영).
+    - 표 항목: `buy_interval_min | 0분 | 1순위 종목 매수 후 대기 간격 (분 단위)` 1줄 제거 → `buy_interval_sec | 30초 | 매수 주문 간격 (초 단위, 5~300, 5초 단위)` + `sell_interval_on | False | 매도 주문 간격 활성화 (토글)` + `sell_interval_sec | 30초 | 매도 주문 간격 (초 단위, 5~300, 5초 단위, 손절 포함)` 3줄 추가 (P10 SSOT — 문서와 코드 단일 진실 소스 일치, P21 사용자 투명성 — 손절 포함 명시).
+  - **삭제 2개 파일** (사용자 승인 — 계획서 삭제 규칙):
+    - `docs/plan_order_interval.md` (450줄 — 2세션 태스크 파일, 심층 사전조사 + 수정 범위 + 구현 Step + 테스트 계획).
+    - `backend/docs/architecture_order_interval_design.md` (433줄 — 1세션 설계서, 안 B 공통 모듈 추출 + 분리 설정 + 초 단위).
+    - `git rm`로 삭제 — 다단계 작업 완료 후 계획서 정리 (AGENTS.md 섹션4 다단계 워크플로우 규칙).
+  - **검증 (통합 런타임 검증)**:
+    - pytest 전체 2822 passed (6세션과 동일 카운트, 회귀 없음).
+    - npm run build 635ms 성공 (에러 없음).
+    - 잔존 `buy_interval_min` 참조 6곳 — 모두 마이그레이션 로직/테스트 의도적 잔존 (`engine_settings.py` 3곳 + `test_engine_settings.py` 3곳). 프론트엔드/문서 잔존 0건.
+    - 런타임 기동 `python3 -W error::RuntimeWarning main.py` — RuntimeWarning 0건, 기동 146ms, 에러/traceback 없음.
+    - WS 설정 응답(`/api/settings`) 4개 필드 모두 존재: `buy_interval_on=True`, `buy_interval_sec=30`, `sell_interval_on=False`, `sell_interval_sec=30`.
+    - 잔존 프로세스 0건.
+  - **P원칙**: P10(SSOT — ARCHITECTURE.md와 코드 일치) · P21(사용자 투명성 — 손절 포함 명시) · P23(용어 통일 — "매수/매도 주문 간격") 준수.
+  - **작업 여력**: 충분.
 - **매수/매도 주문 간격 설정 개선 다단계 6세션 — 테스트 Step 4**: 3~5세션에서 구축·배선·UI 반영된 매수/매도 주문 간격 기능의 테스트 검증 (P16 살아있는 경로 — 게이트/타이머 배선 테스트로 확인). 마이그레이션 테스트 3개는 3세션에서 이미 완료(중복 제외).
   - **`test_buy_order_executor.py`** (신규 2개 — `TestBuyIntervalGate` 클래스 내):
     - `test_buy_interval_off_passes`: `buy_interval_on=False, buy_interval_sec=300` + `_last_global_buy_ts=now` → 토글 OFF 시 간격 내라도 통과 → `execute_buy` 호출. 기존 2개(차단/통과)와 함께 4개 케이스로 게이트 4가지 상태全覆盖.
