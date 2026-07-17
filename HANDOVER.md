@@ -1,26 +1,30 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-18 (1일봉 다운로드 타임테이블 통합 다단계 작업 1세션 — 설계서 작성 완료 · **2세션 승인 대기**)
-- 작업: 1일봉차트 확정 다운로드 시간 DB 타임테이블 통합 다단계 작업 1세션(설계서 작성) 진행. 사용자 명시적 실행 지시어("설계서 작성해 주세요")로 진행 승인. 방식 A(아키텍처 원칙 완전 부합) 채택 — `confirmed_download_time` → `timetable.confirmed_download` 키 이름 변경 + DB 마이그레이션 + 타임테이블 11번째 항목 추가 + `schedule_ws_subscribe_timers()` 분기 제거 + 멱등성 가드(`last_confirmed_download_date`) + 토글 OFF 시 엔트리 스킵 + 순서 검증 2그룹 분리(사전 준비 3개 < 09:00, 확정 다운로드 > 20:00). 사용자 체감 변화 없음 (내부 타이머 통합만). 아키텍처 원칙 P10/P14/P16/P20/P21/P22/P23/P24 8개 완전 부합, 타협 없음.
-- 상태: 1세션(설계서 작성) 완료. 커밋 완료. **2세션(심층 사전조사 + 태스크 파일 작성) 승인 대기.**
+- 날짜: 2026-07-18 (1일봉 다운로드 타임테이블 통합 다단계 작업 2세션 — 심층 사전조사 + 태스크 파일 작성 완료 · **3세션 승인 대기**)
+- 작업: 1일봉차트 확정 다운로드 시간 DB 타임테이블 통합 다단계 작업 2세션(심층 사전조사 + 태스크 파일 작성) 진행. 사용자 명시적 실행 지시어("2세션 진행해")로 진행 승인. 대상 파일 11개(백엔드 6 + 프론트엔드 2 + 테스트 3) 심층 조사 — 의존성·영향 범위·아키텍처 원칙 부합·기존 공통 자산 확인 4항목 완료. 수정 포인트 24개(A-X) 식별, 3세션(3/4/5) 분할 확정. 핵심 발견: `schedule_ws_subscribe_timers()` 호출자 3곳(engine_service.py, _on_midnight, start_daily_time_scheduler) 식별, `is_ws_subscribe_window()` 테스트의 `confirmed_download_time` 참조 50곳은 cosmetic(함수 내부 미사용), `retry_pipeline_catchup_after_bootstrap()` 10곳은 실제 키 사용. 3세션 완료 후 런타임 기동 시 KeyError 가능성 식별 → 3세션은 정적 검증만, 런타임 기동은 4세션으로 이월. 자정 타임테이블 재빌드 보완 필요성 식별(4세션에서 처리). 타임테이블 direct 콜백 비동기 패턴 `_timetable_event_fired()` 검증 필요(4세션). 신규 함수/상수/컴포넌트 생성 없음 — 기존 공통 자산 재사용(P23/P24). 사용자 체감 변화 없음.
+- 상태: 2세션(심층 사전조사 + 태스크 파일 작성) 완료. 커밋 완료. **3세션(DB 마이그레이션 + 백엔드 키 변경) 승인 대기.**
 - **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 섹션4 "다단계 작업 워크플로우" + 규칙 11(계획서 삭제) + Safety Rules 2(DB 백업) + P10/P14/P16/P20/P21/P22/P23/P24
 
-## 1일봉 다운로드 타임테이블 통합 다단계 작업 — 진행 중 (1/5세션)
+## 1일봉 다운로드 타임테이블 통합 다단계 작업 — 진행 중 (2/5세션)
 
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계서 작성 — 이전 세션 검토(방식 A/B 비교) + 사용자 확정 7항목 반영.
   - **설계서**: `docs/architecture_download_timetable_integration_design.md` (398줄)
   - **핵심 설계**: 방식 A(아키텍처 원칙 완전 부합) 채택. `confirmed_download_time` → `timetable.confirmed_download` 키 이름 변경 + DB 마이그레이션(db-backup 선행). `build_timetable_from_cache()` 11번째 항목 추가 (토글 OFF 시 엔트리 스킵 — P16 dead path 제거). `schedule_ws_subscribe_timers()` 분기 제거 (함수 자체 제거 검토). 멱등성 가드 `state.last_confirmed_download_date` 추가 (P22, 기존 `last_realtime_reset_date` 패턴 재사용). 순서 검증 2그룹 분리 — 그룹1 사전 준비 3개 키(`rt <= ws <= krx < 09:00`), 그룹2 확정 다운로드(`confirmed_download > 20:00`). `engine_service.py` `_WS_SCHEDULE_KEYS` 제거 → `_TIMETABLE_KEYS`에 `timetable.confirmed_download` + `scheduler_market_close_on` 추가. 프론트엔드 `scheduleConfirmedDlSave()` → `scheduleTimetableSave()` 통합 (P23 일관성). 사용자 체감 변화 없음 (UI 입력칸, 다운로드 시간, 토글 동작 모두 기존과 동일).
   - **세션 분할 (5세션 확정)**: 1세션(설계서·완료) / 2세션(심층 사전조사 + 태스크 파일 작성) / 3세션(DB 마이그레이션 + 백엔드 키 변경) / 4세션(타임테이블 통합 + 멱등성 가드) / 5세션(프론트엔드 + 최종 검증 + 계획서 삭제)
-- **2세션 (대기)**: 심층 사전조사 + 태스크 파일 작성 — 대상 파일별 의존성·영향 범위 식별, 태스크 파일에 단계별 검증 항목 명시.
+- **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성 — 대상 파일 11개 의존성·영향 범위 식별, 태스크 파일에 단계별 검증 항목 명시.
+  - **태스크 파일**: `docs/plan_download_timetable_integration.md` (473줄)
+  - **심층 발견사항**: 대상 파일 11개(백엔드 6 + 프론트엔드 2 + 테스트 3) + DB + ARCHITECTURE.md. 수정 포인트 24개(A-X) 식별. `schedule_ws_subscribe_timers()` 호출자 3곳 식별(engine_service.py:135, _on_midnight:1410, start_daily_time_scheduler:1494). `is_ws_subscribe_window()` 테스트의 `confirmed_download_time` 참조 50곳은 cosmetic(함수 내부 미사용), `retry_pipeline_catchup_after_bootstrap()` 10곳은 실제 키 사용(line 687). 3세션 완료 후 런타임 기동 시 KeyError 가능성 식별 → 3세션은 정적 검증만, 런타임 기동은 4세션으로 이월. 자정 타임테이블 재빌드 보완 필요성 식별(4세션에서 처리). 타임테이블 direct 콜백 비동기 패턴 `_timetable_event_fired()` 검증 필요(4세션). 기존 공통 자산 10개 재사용 확인 — 신규 함수/상수/컴포넌트 생성 없음(P23/P24). 역사적 조사 문서(`krx_receive_rate_missing_investigation.md`)는 코드 제거 규칙 3에 따라 유지.
+  - **세션 분할 (3세션 구현 확정)**: 3세션(DB 마이그레이션 + 백엔드 키 변경 — A,B,C,D,E,F,G,H,I,J) / 4세션(타임테이블 통합 + 멱등성 가드 — K,L,M,N,O,P,Q,R,S,T) / 5세션(프론트엔드 + 최종 검증 + 계획서 삭제 — U,V,W,X)
 - **3세션 (대기)**: DB 마이그레이션 + 백엔드 키 변경 — db-backup 스크립트 백업 → 마이그레이션 스크립트 실행 → `settings_defaults.py`/`engine_settings.py`/`settings_store.py` 키 변경 + 순서 검증 2그룹 분리 → 테스트 수정.
 - **4세션 (대기)**: 타임테이블 통합 + 멱등성 가드 — `build_timetable_from_cache()` 11번째 항목 추가 + 토글 연동 + `_on_confirmed_download()` 멱등성 가드 + `schedule_ws_subscribe_timers()` 분기 제거 + `engine_service.py` 설정 변경 감지 키 이동 + 부트스트랩 catch-up 키 참조 변경 → 테스트 수정.
 - **5세션 (대기)**: 프론트엔드 키 참조 변경 + 저장 함수 통합 + 최종 검증 + 계획서 2개 삭제 (규칙 11).
 
-## 다음 세션 진행 대기: 2세션 (심층 사전조사 + 태스크 파일 작성)
+## 다음 세션 진행 대기: 3세션 (DB 마이그레이션 + 백엔드 키 변경)
 
-> 1세션(설계서 작성) 완료. 2세션 진행은 사용자 명시적 실행 지시어 대기.
+> 2세션(심층 사전조사 + 태스크 파일 작성) 완료. 3세션 진행은 사용자 명시적 실행 지시어 대기.
+> 3세션 작업 범위: db-backup 스킬 백업 → DB 마이그레이션(`confirmed_download_time` → `timetable.confirmed_download` key UPDATE) → `settings_defaults.py`/`engine_settings.py`/`settings_store.py` 키 변경 + 순서 검증 2그룹 분리 → `test_settings_store.py`/`test_engine_settings.py` 테스트 수정. 런타임 기동 검증은 4세션으로 이월(3세션 완료 후 `daily_time_scheduler.py` 2곳 키 참조 미변경으로 KeyError 가능).
 
 ## 이전 다단계 작업: 일반설정 탭 재구성 — 전체 완료 (3~8세션, 총 6세션)
 
