@@ -187,8 +187,7 @@ function refreshUI(): void {
 }
 
 /* ── 시간 설정 탭 ── */
-// Step 1 골조 + Step 2 자동매수/매도 시간쌍 이동 + Step 3 사전 준비 시간·거래소 고정 시간 이동.
-// 1일봉 다운로드는 Step 4에서 이동.
+// Step 1 골조 + Step 2 자동매수/매도 시간쌍 이동 + Step 3 사전 준비 시간·거래소 고정 시간 이동 + Step 4 1일봉 다운로드 이동.
 // 토글 OFF 시에도 시간 입력 활성화 유지 (설계서 2-1, P24 탭 간 의존성 최소화, P21 안내 문구로 보완).
 function renderTimeSettingsTab(container: HTMLElement): void {
   container.appendChild(sectionTitle('시간 설정'))
@@ -297,6 +296,48 @@ function renderTimeSettingsTab(container: HTMLElement): void {
   ttKrxRow.appendChild(timetableKrxSlot)
   container.appendChild(ttKrxRow)
   container.appendChild(createDescText('정규장 시작 1분 전에 KRX 종목을 사전 구독합니다 (기본 08:59, 09:00 미만)'))
+
+  // 1일봉차트 자동다운로드 (토글 + 시간 슬롯) — API 설정 탭에서 이동 (Step 4)
+  container.appendChild(sectionTitle('1일봉차트 자동다운로드'))
+  const confirmedDlRow = document.createElement('div')
+  Object.assign(confirmedDlRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  const confirmedDlLabel = document.createElement('span')
+  Object.assign(confirmedDlLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal, whiteSpace: 'nowrap' })
+  confirmedDlLabel.textContent = '1일봉차트 자동다운로드'
+  confirmedDlRow.appendChild(confirmedDlLabel)
+
+  const confirmedDlRight = document.createElement('span')
+  confirmedDlRight.style.cssText = 'display:flex;align-items:center;gap:10px;'
+
+  const [cdh, cdm] = parseHM(String(vals.confirmed_download_time ?? '20:40'))
+  confirmedDlH = cdh; confirmedDlM = cdm
+  confirmedDlSlot = createTimeSlot(confirmedDlH, confirmedDlM, (h, m) => {
+    confirmedDlH = h; confirmedDlM = m; updateTimeSlotDisplay(confirmedDlSlot!, h, m)
+    scheduleConfirmedDlSave()
+  })
+  confirmedDlRight.appendChild(confirmedDlSlot)
+
+  const dlOn = vals.scheduler_market_close_on !== false
+  confirmedDlToggle = createToggleBtn({ on: dlOn, onClick: async () => {
+    const next = !confirmedDlToggle!.isOn()
+    confirmedDlToggle!.setOn(next)
+    setDisabled(confirmedDlSlot!, !next)
+    vals.scheduler_market_close_on = next
+    const res = await settingsMgr!.saveSection({ scheduler_market_close_on: next })
+    toastResult(res)
+    if (!res.ok) {
+      vals.scheduler_market_close_on = !next
+      confirmedDlToggle!.setOn(!next)
+      setDisabled(confirmedDlSlot!, next)
+    }
+  }})
+  confirmedDlRight.appendChild(confirmedDlToggle.el)
+
+  confirmedDlRow.appendChild(confirmedDlRight)
+  container.appendChild(confirmedDlRow)
+  setDisabled(confirmedDlSlot, !dlOn)
+
+  container.appendChild(createDescText('장마감 후 자동 다운로드 시간 (기본값 20:40) — OFF 시 수동 다운로드만 가능'))
 
   // 거래소 고정 시간 참고 표시 (읽기 전용, 변경 불가) — P21 투명성
   const fixedTimes: Array<[string, string]> = [
@@ -716,47 +757,6 @@ function renderApiSettingsTab(container: HTMLElement): void {
   container.appendChild(createDescText('선택한 증권사로 시스템 전체 통신망(시세, 계좌, 주문)이 전환됩니다. 엔진이 재기동되어 실시간 연결이 잠시 끊깁니다.', { textAlign: 'center' }))
 
   container.appendChild(sectionTitle('실시간 데이터 통신'))
-
-  // 1일봉차트 자동다운로드 (토글 + 시간 슬롯)
-  const confirmedDlRow = document.createElement('div')
-  Object.assign(confirmedDlRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const confirmedDlLabel = document.createElement('span')
-  Object.assign(confirmedDlLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal, whiteSpace: 'nowrap' })
-  confirmedDlLabel.textContent = '1일봉차트 자동다운로드'
-  confirmedDlRow.appendChild(confirmedDlLabel)
-
-  const confirmedDlRight = document.createElement('span')
-  confirmedDlRight.style.cssText = 'display:flex;align-items:center;gap:10px;'
-
-  const [cdh, cdm] = parseHM(String(vals.confirmed_download_time ?? '20:40'))
-  confirmedDlH = cdh; confirmedDlM = cdm
-  confirmedDlSlot = createTimeSlot(confirmedDlH, confirmedDlM, (h, m) => {
-    confirmedDlH = h; confirmedDlM = m; updateTimeSlotDisplay(confirmedDlSlot!, h, m)
-    scheduleConfirmedDlSave()
-  })
-  confirmedDlRight.appendChild(confirmedDlSlot)
-
-  const dlOn = vals.scheduler_market_close_on !== false
-  confirmedDlToggle = createToggleBtn({ on: dlOn, onClick: async () => {
-    const next = !confirmedDlToggle!.isOn()
-    confirmedDlToggle!.setOn(next)
-    setDisabled(confirmedDlSlot!, !next)
-    vals.scheduler_market_close_on = next
-    const res = await settingsMgr!.saveSection({ scheduler_market_close_on: next })
-    toastResult(res)
-    if (!res.ok) {
-      vals.scheduler_market_close_on = !next
-      confirmedDlToggle!.setOn(!next)
-      setDisabled(confirmedDlSlot!, next)
-    }
-  }})
-  confirmedDlRight.appendChild(confirmedDlToggle.el)
-
-  confirmedDlRow.appendChild(confirmedDlRight)
-  container.appendChild(confirmedDlRow)
-  setDisabled(confirmedDlSlot, !dlOn)
-
-  container.appendChild(createDescText('장마감 후 자동 다운로드 시간 (기본값 20:40) — OFF 시 수동 다운로드만 가능'))
 
   // 실시간 현재가 플래시 효과
   const uiFlashRow = document.createElement('div')
