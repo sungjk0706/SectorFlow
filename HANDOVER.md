@@ -1,12 +1,60 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (NXT 전용 시간대 KRX 종목 숨김 처리 — 다단계 4세션 전체 완료)
-- 작업: NXT 전용 시간대(07:59~08:59, 15:20~20:00 — 구독 시점 기준)에 KRX 단독 종목을 회색 배경에서 완전 숨김 방식으로 전환하는 다단계 작업 4세션(구현 Step 2: sector-settings.ts 수신률 섹션 3상태 숨김) 완료. sector-settings.ts — REGULAR_PHASES 상수 추가(new Set(['정규장', '시가 동시호가', '종가 동시호가', '메인마켓']), header.ts PHASE_STYLE 동기화 주석 포함) + _applyMarketPhaseActive 시그니처 확장({ is_nxt_only?, krx, nxt }) + 3상태 분기(NXT 전용/정규장/그 외) + opacity 0.3/1.0 토글 → display none/flex 토글 전환. 호출부 2곳(L231, L399)은 이미 marketPhase 전체 객체 전달 중이라 수정 불필요. 검증: typecheck + build(637ms) + 테스트 108/108 통과 + 개발 서버 5174 기동 정상.
-- 상태: 다단계 작업 4세션 전체 완료. 다음 작업 대기.
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 UI 기준 설명) + 섹션4 다단계 작업 워크플로우 + 규칙 11(완료 시 계획서 삭제) + P10/P16/P20/P21/P22/P23/P24 + frontend-fix 스킬
+- 날짜: 2026-07-17 (force_buy dead parameter 정리 — P-NEW-4 해결 완료)
+- 작업: HANDOVER.md "미해결 문제" P-NEW-4로 등록된 force_buy dead parameter 정리 완료. 사전조사(force_buy 전체 참조 검색 — execute_buy/_execute_buy_locked 시그니처 + 분기문 + docstring/주석/로그 + 유일 호출부 buy_order_executor.py:172 + 테스트 영향 범위) → 사용자 승인 후 정리. trading.py 시그니처 2곳 + 자동매매 게이트 분기 단순화(`if not settings["is_auto"]:`) + docstring/주석/로그 정리 + buy_order_executor.py force_buy=False 인자 제거 + ARCHITECTURE.md:625 갱신 + 설계서 섹션 8 "해결 완료" 상태 갱신. 동작 변화 없음(기존 force_buy 항상 False → not force_buy 항상 True → 단순화만 하고 동작 보존). 검증: pytest 64개 통과 + 런타임 기동 정상(테스트모드, RuntimeWarning 0건).
+- 상태: P-NEW-4 해결 완료. 커밋 완료. 다음 세션: 시장가 주문 중단 시간대 게이트 2세션(태스크 파일 작성) 승인 대기.
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-3(롤백 승인) + P15(단일 주문 경로) + P16(살아있는 경로) + P18(테스트모드 동등성) + P23(일관성) + P24(단순성) + problem-solve 스킬 + safe-trade 스킬
 
-## 다음 세션 진행 대기: 없음 (다단계 작업 전체 완료)
+## 다음 세션 진행 대기: 시장가 주문 중단 시간대 게이트 (다단계 작업)
+
+### 단계 진행 상황
+- **1세션 (완료)**: 설계서 작성 — 사전조사 + 사용자 결정 5항목 확정 + 설계서 작성.
+  - **설계서**: `docs/architecture_order_time_guard_design.md` (277줄)
+  - **전신 문서**: `docs/plan_order_suspension_by_time.md` (사전조사 + 사용자 결정 완료 → 본 설계서로 통합)
+  - **사용자 확정 사항**:
+    1. 08:00~08:50: KRX만 차단 / NXT 허용 (KRX 시장가 불가, NXT 프리마켓 체결 가능)
+    2. 08:50~09:00: 양쪽 차단 (시가 동시호가, 양쪽 체결 없음)
+    3. 09:00~15:20: 양쪽 허용 (정규장/메인마켓)
+    4. 15:20~15:40: 양쪽 차단 (종가 동시호가·체결 정산, 양쪽 체결 없음/일괄)
+    5. 15:40~20:00: KRX만 차단 / NXT 허용 (KRX 시장가 불가, NXT 애프터마켓 체결 가능)
+    6. ±5초 버퍼: execute_buy/execute_sell 내부(주문 체크 시점)에만 적용, phase 산정은 건드리지 않음
+    7. UI: 일반설정 > 자동매매 탭에 토글 추가 (기본 ON)
+    8. 매수/매도 동일 적용
+    9. KRX_INACTIVE_PHASES·NXT_ACTIVE_PHASES 재사용 (새 시간 상수 생성 없음)
+    10. force_buy dead parameter: 본 작업에서 제거하지 않음 (별도 이슈로 기록)
+  - **차단 판별 로직**: 신규 함수 `is_order_blocked_by_time(stk_cd)` — 기존 `is_nxt_only_window()` 패턴과 동일 구조. KRX 비활성 + NXT 활성 시 `is_nxt_enabled(stk_cd)`로 종목별 분기 (KRX 단독 종목만 차단, NXT 종목은 허용).
+  - **백엔드 설계 (Step 1~5)**:
+    - Step 1: `daily_time_scheduler.py` — `is_order_blocked_by_time()` 신규 함수 + ±5초 버퍼 (기존 `is_krx_after_hours()`는 유지, 영향 범위 최소화)
+    - Step 2: `trading.py` `execute_buy()` 내부 — 자동매매 게이트 직후에 시간 게이트 배선 (P15 단일 경로, P16 살아있는 경로)
+    - Step 3: `trading.py` `execute_sell()` 내부 — `is_sell_auto` 체크 직후에 시간 게이트 배선 (매도 동일 적용)
+    - Step 4: `settings_defaults.py` — `order_time_guard_on: True` 설정 키 추가 (P13/P17)
+    - Step 5: `engine_ws_dispatch.py` — `order_time_blocked` WS 이벤트 (기존 `circuit_breaker_open` 패턴 재사용, P23)
+  - **프론트엔드 설계 (Step 6~8)**:
+    - Step 6: `general-settings.ts` 자동매매 탭 — "체결 불가 시간대 주문 차단" 토글 (`createToggleBtn` 재사용, 기본 ON)
+    - Step 7: `header.ts` — 노란색 "주문 일시중단(동시호가)" 칩 (서킷브레이커 칩 패턴 재사용, 시간대 종료 시 자동 해제)
+    - Step 8: `binding.ts` + `uiStore.ts` — `order_time_blocked` 이벤트 바인딩 + `orderTimeBlocked` 상태 (기존 `circuitBreakerOpen` 패턴 재사용)
+  - **세션 분할 (세션당 1단계 — 규칙 0-1)**:
+    | 세션 | 단계 | 파일 | 검증 |
+    |---|---|---|---|
+    | 2세션 | 심층 사전조사 + 태스크 파일 작성 | (사전조사 후 확정) | — |
+    | 3세션 | Step 1 (차단 판별 함수 + ±5초 버퍼) + Step 4 (설정 키) | daily_time_scheduler.py + settings_defaults.py | 단위 테스트 |
+    | 4세션 | Step 2 (execute_buy 게이트) + Step 3 (execute_sell 게이트) + Step 5 (헬퍼) | trading.py | 런타임 기동 + 차단 로그 |
+    | 5세션 | Step 7 (WS 이벤트) + Step 8 (바인딩) | engine_ws_dispatch.py + binding.ts + uiStore.ts | WS 이벤트 수신 |
+    | 6세션 | Step 6 (설정 토글) + Step 9 (헤더 칩) | general-settings.ts + header.ts | 브라우저 확인 |
+  - **별도 이슈 (force_buy dead parameter)**: `execute_buy(force_buy: bool = False)` 파라미터 존재하나 `force_buy=True` 호출부가 백엔드·프론트엔드·테스트 전체에 0건. P16(살아있는 경로)/P23(일관성 — docstring 불일치) 위반 소지. 본 작업에서 제거 안 함 → "미해결 문제" 섹션에 별도 기록 필요.
+  - **코드 수정 없음**: 설계서 작성 only. 2세션 태스크 파일 작성은 사용자 "진행" 지시 시 시작.
+
+### 참조 문서
+- **설계서**: `docs/architecture_order_time_guard_design.md` (1세션)
+- **전신 문서**: `docs/plan_order_suspension_by_time.md` (사전조사 + 사용자 결정 — 본 설계서로 통합됨)
+
+### 승인 대기 항목
+- **2세션 진행**: 심층 사전조사 + 태스크 파일 작성 — 사용자 "진행" 지시 시 시작
+
+---
+
+## 이전 다단계 작업: NXT 전용 시간대 KRX 종목 숨김 처리 (전체 완료)
 
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계 검토 + 디자인 파일 작성 — ARCHITECTURE.md 24개 원칙 검토 + 기존 공통 자산 조사(badge.ts, fade-in 패턴, filterBadge 패턴) + 사용자 결정 5항목 확정 + 시간 표기 구독 시점 기준 통일.
@@ -68,6 +116,27 @@
     - 그 외 시간대(20:00~07:59): KRX/NXT 수신률 바 둘 다 완전 숨김 (기존에는 둘 다 흐릿 표시).
   - **검증 결과**: typecheck 통과 + build 성공(637ms) + 테스트 108/108 통과 + 개발 서버 5174 기동 정상.
   - **커밋**: `feat: NXT 전용 시간대 KRX 수신률 섹션 3상태 숨김 (4세션)`.
+  - **작업 여력**: 충분.
+- **시장가 주문 중단 시간대 게이트 설계서 작성 (다단계 1세션)**: 사전조사 + 사용자 결정 5항목 확정 + 설계서 작성. 코드 수정 없음.
+  - **설계서**: `docs/architecture_order_time_guard_design.md` (277줄) — 전신 `docs/plan_order_suspension_by_time.md` (사전조사 + 사용자 결정 완료 → 본 설계서로 통합)
+  - **사전조사 결과**:
+    - 매수 경로: `execute_buy()` 내부에 시간 체크 없음 — 외부 `buy_order_executor.py:110`만 `is_krx_after_hours()` 호출 (사전 필터). `force_buy=True` 경로는 존재하지 않음 (dead parameter, 별도 이슈).
+    - 매도 경로: `execute_sell()`에 시간 체크 전혀 없음 — 동시호가 시간대 매도 주문 가능 (시장가이므로 체결 불가).
+    - 기존 `is_krx_after_hours()` (daily_time_scheduler.py:298-312): 차단 O = 체결 정산·장후 시간외·시간외 단일가·장 종료. 차단 X(누락) = 시가 동시호가(08:50~09:00)·종가 동시호가(15:20~15:30)·동시호가 접수(08:40~08:50).
+    - `KRX_INACTIVE_PHASES` frozenset (daily_time_scheduler.py:227-231): 이미 "시가 동시호가", "종가 동시호가" 포함 — 이 집합 재사용 시 누락 없이 차단 가능 (P10/P23).
+    - `is_nxt_only_window()` 패턴 (KRX 비활성 + NXT 활성 판별)과 동일 구조로 KRX/NXT 분리 차단 가능.
+  - **사용자 결정 5항목 확정** (규칙 0-4 UI 기준 설명 + 승인):
+    1. 08:00~08:50: KRX만 차단 / NXT 허용 (KRX 시장가 불가, NXT 프리마켓 체결 가능)
+    2. 08:50~09:00: 양쪽 차단 (시가 동시호가, 양쪽 체결 없음)
+    3. 15:20~15:40: 양쪽 차단 (종가 동시호가·체결 정산)
+    4. 15:40~20:00: KRX만 차단 / NXT 허용 (KRX 시장가 불가, NXT 애프터마켓 체결 가능)
+    5. ±5초 버퍼: execute_buy/execute_sell 내부(주문 체크 시점)에만 적용, phase 산정은 건드리지 않음
+    + 토글 UI(기본 ON) + 매수/매도 동일 적용 + KRX_INACTIVE_PHASES 재사용 + force_buy 본 작업에서 제거 안 함
+  - **차단 판별 로직**: 신규 함수 `is_order_blocked_by_time(stk_cd)` — KRX 비활성 + NXT 활성 시 `is_nxt_enabled(stk_cd)`로 종목별 분기 (KRX 단독만 차단, NXT 종목 허용). 기존 `is_nxt_only_window()` 패턴과 동일.
+  - **아키텍처 원칙 준수**: P10(SSOT — market_phase 단일 기준, 새 시간 상수 생성 금지) · P13(설정 메모리 상주) · P15(단일 주문 경로 — execute_buy/execute_sell 내부에만 게이트) · P16(살아있는 경로 — 내부 체크가 실제 주문 전송 전 호출) · P17(플래그 단일 소스) · P20(폴백 금지 — 빈 문자열 phase 시 logger.error + False) · P21(사용자 투명성 — 토글 + 헤더 칩) · P23(일관성 — 기존 패턴 재사용) · P24(단순성 — 시간 기반, 별도 재개 로직 불필요).
+  - **세션 분할 (세션당 1단계 — 규칙 0-1)**: 2세션(태스크 파일) → 3세션(차단 판별 함수 + 설정 키) → 4세션(execute_buy/execute_sell 게이트) → 5세션(WS 이벤트 + 바인딩) → 6세션(설정 토글 + 헤더 칩).
+  - **별도 이슈 (force_buy dead parameter)**: `execute_buy(force_buy: bool = False)` 파라미터 존재하나 `force_buy=True` 호출부가 백엔드·프론트엔드·테스트 전체에 0건. P16/P23 위반 소지. 본 작업에서 제거 안 함 → "미해결 문제" 섹션에 별도 기록 필요.
+  - **코드 수정 없음**: 설계서 작성 only. 2세션 태스크 파일 작성은 사용자 "진행" 지시 시 시작.
   - **작업 여력**: 충분.
 - **NXT 전용 시간대 KRX 종목 숨김 + 안내 배지 구현 (다단계 3세션)**: sector-stock.ts + ui-styles.ts 구현 Step 1 완료.
   - **sector-stock.ts 수정**: DataRowItem 인터페이스 krxInactive 필드 제거 + computeRows KRX 단독 종목 continue 숨김 + 빈 업종 그룹 행 숨김 + stockSeq++ 위치 이동(순번 자동 재정렬) + 안내 배지 DOM/갱신(filterBadge 패턴 재사용, COLOR.warningBg/warning, fade-in 150ms) + rowStyle 분기 제거 + disconnectedCallback 정리.
@@ -895,6 +964,32 @@
   - 조치: flex container로 좌/우 분리 정렬, %는 컬럼명으로 이동, 보합 케이스 추가.
 
 ## 미해결 문제
+
+### P-NEW-4: force_buy dead parameter — execute_buy 파라미터/분기/docstring 잔존 (P16 살아있는 경로, P23 일관성) → 해결 완료 (2026-07-17)
+
+**이슈 ID**: P-NEW-4 (신규 등록 2026-07-17, 시장가 주문 중단 시간대 게이트 설계서 작성 중 발견 / 해결 2026-07-17)
+
+**현상**: `trading.py execute_buy(force_buy: bool = False)` 파라미터가 존재하나, `force_buy=True`로 호출하는 코드가 백엔드·프론트엔드·테스트 전체에 0건. 유일한 실제 호출부는 `buy_order_executor.py:172`이며 `force_buy=False` 고정. "매수대기 수동 매수"라는 용어는 `trading.py` docstring/주석(98, 132행)에만 잔존하며, 프론트엔드에 수동 매수 UI 없음 (순수 자동매매 앱).
+
+**근본 원인**: 과거에 수동 매수 기능이 존재했으나 제거되고, 파라미터와 관련 분기·docstring만 남은 것으로 추정. git history에서 `force_buy` 파라미터 자체는 Initial commit부터 존재.
+
+**위반 원칙**:
+- **P16 (살아있는 경로)**: 호출되지 않는 분기(`if not settings["is_auto"] and not force_buy`)가 잔존 — dead code 소지.
+- **P23 (일관성)**: docstring이 실제 동작과 불일치 ("매수대기 수동 매수 전용"이라 했으나 해당 기능 없음).
+
+**해결 내역 (2026-07-17)**:
+- `trading.py`: `execute_buy()`·`_execute_buy_locked()` 시그니처에서 `force_buy` 파라미터 제거 + docstring "force_buy=True: 매수대기 수동 매수 전용" 제거 + 자동매매 게이트 분기 `if not settings["is_auto"] and not force_buy:` → `if not settings["is_auto"]:` 단순화 + 주석 "force_buy(매수대기 수동 매수) 시에만 우회" → "자동매매 비활성화 시 주문 생략" + 로그 `(강제매수=%s, 출처=자동신호)` → `(출처=자동신호)` (강제매수 필드 제거)
+- `buy_order_executor.py:172`: `force_buy=False` 인자 제거
+- `ARCHITECTURE.md:625`: "자동매매 게이트 (force_buy 시 우회)" → "자동매매 게이트 (자동매매 비활성화 시 차단)" 갱신
+- `docs/architecture_order_time_guard_design.md` 섹션 8: "본 작업 범위 외" → "해결 완료 (2026-07-17 별도 세션)" 상태 갱신
+- **동작 변화 없음**: 기존 `force_buy` 항상 False → `not force_buy` 항상 True → `if not settings["is_auto"]`와 동일. 자동매매 게이트 동작 100% 보존.
+- **검증**: pytest 64개 전부 통과 (test_trading.py 31 + test_buy_order_executor.py 33) + 런타임 기동 정상 (테스트모드, RuntimeWarning 0건, execute_buy 임포트 OK)
+
+**영향 범위**: `backend/app/services/trading.py` (시그니처 2곳 + 분기 1곳 + docstring/주석/로그 3곳) + `backend/app/services/buy_order_executor.py:172` (인자 제거) + `ARCHITECTURE.md:625` + `docs/architecture_order_time_guard_design.md` 섹션 8. 테스트 파일은 force_buy 인자 없이 호출하거나 AsyncMock 사용 → 영향 없음 확인.
+
+**참조**: 시장가 주문 중단 시간대 게이트 설계서(`docs/architecture_order_time_guard_design.md`) 섹션 8에서 본 작업 범위 외로 명시적으로 분리했던 이슈.
+
+---
 
 ### P-NEW-3: 주문가능금액 부족 상태에서 매수 실행 → max(0,...) 클램핑 인플레이션 (P22 데이터 정합성) → 해결 완료 (2026-07-17)
 
