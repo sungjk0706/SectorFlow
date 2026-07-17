@@ -1,17 +1,32 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (force_buy dead parameter 정리 — P-NEW-4 해결 완료)
-- 작업: HANDOVER.md "미해결 문제" P-NEW-4로 등록된 force_buy dead parameter 정리 완료. 사전조사(force_buy 전체 참조 검색 — execute_buy/_execute_buy_locked 시그니처 + 분기문 + docstring/주석/로그 + 유일 호출부 buy_order_executor.py:172 + 테스트 영향 범위) → 사용자 승인 후 정리. trading.py 시그니처 2곳 + 자동매매 게이트 분기 단순화(`if not settings["is_auto"]:`) + docstring/주석/로그 정리 + buy_order_executor.py force_buy=False 인자 제거 + ARCHITECTURE.md:625 갱신 + 설계서 섹션 8 "해결 완료" 상태 갱신. 동작 변화 없음(기존 force_buy 항상 False → not force_buy 항상 True → 단순화만 하고 동작 보존). 검증: pytest 64개 통과 + 런타임 기동 정상(테스트모드, RuntimeWarning 0건).
-- 상태: P-NEW-4 해결 완료. 커밋 완료. 다음 세션: 시장가 주문 중단 시간대 게이트 2세션(태스크 파일 작성) 승인 대기.
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-3(롤백 승인) + P15(단일 주문 경로) + P16(살아있는 경로) + P18(테스트모드 동등성) + P23(일관성) + P24(단순성) + problem-solve 스킬 + safe-trade 스킬
+- 날짜: 2026-07-17 (시장가 주문 중단 시간대 게이트 2세션 — 심층 사전조사 + 태스크 파일 작성 완료)
+- 작업: 시장가 주문 중단 시간대 게이트 2세션 완료. 심층 사전조사(의존성/영향범위/아키텍처 원칙/기존 공통 자산 4항목) + 태스크 파일 `docs/plan_order_time_guard.md` (300줄) 작성 + 전신 문서 `docs/plan_order_suspension_by_time.md` 삭제(규칙 11, 설계서에 통합됨). 사전조사 중 설계서 대비 핵심 발견사항 5건 식별 — (1) ★`_to_trade_settings` 설정 키 누락: `order_time_guard_on`이 `_to_trade_settings()` 반환 dict에 없어 토글 OFF 무효화 위험(P17) → 헬퍼에 raw engine_settings 전달로 해결(buy: raw_all, sell: base_settings). (2) ±5초 버퍼 구현 방식 확정: 분 단위 phase와 별도로 초 단위 경계 집합 정의, 경계 ±5초 내 무조건 차단(안전 측, P24). (3) WS 이벤트 브로드캐스트 시점 확정: 기존 10초 주기 `_broadcast_market_phase`에 탑승, 별도 이벤트. (4) execute_sell 삽입 위치 확인: L461 is_sell_auto 체크 직후, order_type 선언 전. (5) 기존 plan_order_suspension_by_time.md 잔존(규칙 11) → 삭제. 코드 수정 없음(사전조사 + 태스크 파일 작성 only).
+- 상태: 2세션 완료. 커밋 완료. 다음 세션: 시장가 주문 중단 시간대 게이트 3세션(Step 1 차단 판별 함수 + ±5초 버퍼 + Step 4 설정 키) 승인 대기.
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 11(계획서 삭제) + P10/P13/P15/P16/P17/P20/P21/P22/P23/P24 + problem-solve 스킬
 
 ## 다음 세션 진행 대기: 시장가 주문 중단 시간대 게이트 (다단계 작업)
 
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계서 작성 — 사전조사 + 사용자 결정 5항목 확정 + 설계서 작성.
   - **설계서**: `docs/architecture_order_time_guard_design.md` (277줄)
-  - **전신 문서**: `docs/plan_order_suspension_by_time.md` (사전조사 + 사용자 결정 완료 → 본 설계서로 통합)
+  - **전신 문서**: `docs/plan_order_suspension_by_time.md` (사전조사 + 사용자 결정 완료 → 본 설계서로 통합, 2세션에서 삭제)
+- **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성.
+  - **태스크 파일**: `docs/plan_order_time_guard.md` (300줄)
+  - **사전조사 결과 (규칙 0-2 4항목)**:
+    1. **의존성**: `KRX_INACTIVE_PHASES`(daily_time_scheduler.py:227)·`NXT_ACTIVE_PHASES`(L233)·`is_nxt_enabled()`(engine_symbol_utils.py:11)·`_broadcast()`(engine_account_notify.py:69)·`createToggleBtn()`·`circuitBreakerOpen` 패턴 전부 재사용 확정. 외부 참조 없음.
+    2. **영향범위**: 백엔드 4개 파일(daily_time_scheduler.py, settings_defaults.py, trading.py, engine_ws_dispatch.py) + 프론트엔드 4개 파일(general-settings.ts, header.ts, binding.ts, uiStore.ts) + 테스트 1개 파일(test_daily_time_scheduler.py). 기존 test_buy_order_executor.py는 변경 없음(기존 is_krx_after_hours 유지).
+    3. **아키텍처 원칙 부합**: P10/P13/P15/P16/P17/P20/P21/P22/P23/P24 전부 재확인 완료.
+    4. **기존 공통 자산 확인**: 위 1항과 동일 — 모두 재사용, 신규 자산 생성 없음.
+  - **설계서 대비 핵심 발견사항 5건 (구현 세션 전 반드시 반영)**:
+    1. **★ `_to_trade_settings` 설정 키 누락 (중요 — P17 위반 위험)**: `trading.py:694` `_to_trade_settings()` 반환 dict에 `order_time_guard_on` 키 없음. 설계서 의사코드대로 `settings.get("order_time_guard_on", True)` 쓰면 항상 True → 토글 OFF 무효화. **해결안**: 헬퍼 `_is_order_time_blocked(stk_cd, raw_settings)`에 raw engine_settings 전달 — execute_buy는 `raw_all`(L113), execute_sell은 `base_settings`(L457 인자). 4세션 구현 시 필수 반영.
+    2. **±5초 버퍼 구현 방식 확정**: `calc_timebased_market_phase()` 분 단위 산정 → 버퍼는 `is_order_blocked_by_time()` 내부에서 초 단위 별도 계산. 차단 전환 경계(08:00, 09:00, 15:20, 15:40, 20:00) ±5초 내 무조건 차단(양방향 안전 측, P24 단순화). NXT 09:00:30은 calc_timebased_market_phase가 이미 초 단위 처리 → 버퍼 경계 집합에서 제외 검토(3세션 확정). 상수 `ORDER_TIME_BUFFER_SEC = 5`.
+    3. **WS 이벤트 브로드캐스트 시점 확정**: `_broadcast_market_phase()`(10초 주기)에 탑승하여 별도 이벤트 `order_time_blocked` 브로드캐스트. 페이로드 `{"blocked": bool, "reason": str}`. 시간 기반이므로 별도 해제 로직 없음(P24).
+    4. **execute_sell 삽입 위치 확인**: L461 `is_sell_auto` 체크 직후, L464 `order_type` 선언 전. `trade_settings`는 `_to_trade_settings` 출력 → `order_time_guard_on` 없음 → `base_settings` 사용(1번 해결안).
+    5. **기존 `plan_order_suspension_by_time.md` 잔존 (규칙 11)**: 설계서에 "통합됨" 기록되었으나 파일 잔존 → 2세션에서 삭제 완료.
+  - **세션 분할 확정 (3~6세션)**: 설계서 섹션 6과 동일. 3세션(Step 1+4) → 4세션(Step 2+3+5) → 5세션(Step 7+8) → 6세션(Step 6+9).
+  - **코드 수정 없음**: 사전조사 + 태스크 파일 작성 only.
   - **사용자 확정 사항**:
     1. 08:00~08:50: KRX만 차단 / NXT 허용 (KRX 시장가 불가, NXT 프리마켓 체결 가능)
     2. 08:50~09:00: 양쪽 차단 (시가 동시호가, 양쪽 체결 없음)
@@ -47,10 +62,11 @@
 
 ### 참조 문서
 - **설계서**: `docs/architecture_order_time_guard_design.md` (1세션)
-- **전신 문서**: `docs/plan_order_suspension_by_time.md` (사전조사 + 사용자 결정 — 본 설계서로 통합됨)
+- **태스크 파일**: `docs/plan_order_time_guard.md` (2세션 — 심층 사전조사 + 세션별 태스크 상세)
+- **전신 문서**: `docs/plan_order_suspension_by_time.md` (2세션에서 삭제 — 설계서에 통합됨, 규칙 11)
 
 ### 승인 대기 항목
-- **2세션 진행**: 심층 사전조사 + 태스크 파일 작성 — 사용자 "진행" 지시 시 시작
+- **3세션 진행**: Step 1 (차단 판별 함수 `is_order_blocked_by_time()` + ±5초 버퍼) + Step 4 (`order_time_guard_on` 설정 키) — `daily_time_scheduler.py` + `settings_defaults.py` + `test_daily_time_scheduler.py` — 사용자 "진행" 지시 시 시작
 
 ---
 
