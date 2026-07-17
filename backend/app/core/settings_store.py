@@ -7,6 +7,7 @@ import asyncio
 import logging
 from typing import Any
 from backend.app.core.encryption import decrypt_value, encrypt_value
+from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
 from backend.app.core.settings_file import (
     load_integrated_system_settings,
     load_selected_settings,
@@ -133,6 +134,63 @@ def changed_keys_general_save(before_editing: dict, new_payload: dict) -> set[st
     }
 
 
+# 타임테이블 시간 순서 검증 대상 키 (P20/P22)
+_TIMETABLE_ORDER_KEYS = (
+    "timetable.realtime_reset",
+    "timetable.ws_prestart",
+    "timetable.krx_pre_subscribe",
+)
+
+
+async def _validate_timetable_order(data: dict, before: dict) -> None:
+    """3개 타임테이블 키의 시간 순서 검증 (P20/P22).
+
+    검증 조건: realtime_reset <= ws_prestart <= krx_pre_subscribe < "09:00"
+    - data: 이번 요청에서 변경하려는 키/값
+    - before: load_selected_settings()로 로드한 기존 DB 값 (나머지 2개 키 보충용)
+
+    실패 시 ValueError 발생 → apply_settings_updates 호출자가 HTTP 422로 변환 (기존 패턴).
+    형식 오류(_TIME_RE 위반)는 이미 apply_settings_updates 상단에서 무시+경고 처리되므로
+    본 함수에서는 형식 통과한 값만 순서 검증.
+    """
+    # 이번 요청에 3개 키 중 하나라도 포함 시에만 검증
+    if not (set(data.keys()) & set(_TIMETABLE_ORDER_KEYS)):
+        return
+
+    # 3개 키의 최종값 산정: data 우선, 없으면 before, 없으면 DEFAULT_USER_SETTINGS
+    values: dict[str, str] = {}
+    for k in _TIMETABLE_ORDER_KEYS:
+        if k in data and data[k]:
+            values[k] = str(data[k]).strip()
+        elif k in before and before[k]:
+            values[k] = str(before[k]).strip()
+        else:
+            values[k] = str(DEFAULT_USER_SETTINGS.get(k, "")).strip()
+
+    # 3개 모두 값이 있어야 검증 (빈 값이면 기본값 폴백이 아니라 P20 위반 → ValueError)
+    missing = [k for k in _TIMETABLE_ORDER_KEYS if not values.get(k)]
+    if missing:
+        raise ValueError(f"타임테이블 시각 누락: {missing} — 기본값 폴백 금지 (P20)")
+
+    # 시간 순서 검증: realtime_reset <= ws_prestart <= krx_pre_subscribe < 09:00
+    def _to_min(v: str) -> int:
+        h, m = v.split(":")
+        return int(h) * 60 + int(m)
+
+    rt = _to_min(values["timetable.realtime_reset"])
+    ws = _to_min(values["timetable.ws_prestart"])
+    krx = _to_min(values["timetable.krx_pre_subscribe"])
+    open_min = 9 * 60  # 09:00
+
+    if not (rt <= ws <= krx < open_min):
+        raise ValueError(
+            f"타임테이블 시간 순서 오류: "
+            f"실시간 초기화({values['timetable.realtime_reset']}) <= "
+            f"구독 시작({values['timetable.ws_prestart']}) <= "
+            f"정규장 사전 구독({values['timetable.krx_pre_subscribe']}) < 09:00 이어야 합니다"
+        )
+
+
 async def apply_settings_updates(data: dict, username: str = "admin", profile: str | None = None) -> set[str]:
     """업데이트 데이터를 SQLite integrated_system_settings 테이블에 증분 저장.
     전체 설정 로드/저장 대신 변경된 필드만 로드/저장."""
@@ -142,10 +200,17 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
         "confirmed_download_time",
         "buy_time_start", "buy_time_end",
         "sell_time_start", "sell_time_end",
+        "timetable.realtime_reset",
+        "timetable.ws_prestart",
+        "timetable.krx_pre_subscribe",
     })
 
     # 변경 대상 키 + broker 키만 SELECT (전체 로드 대신 증분 로드)
+    # 타임테이블 키 중 하나라도 data에 있으면 3개 모두 select_keys에 추가
+    # (순서 검증 시 나머지 2개 키의 기존 DB 값이 필요하므로)
     select_keys = set(data.keys()) | {"broker"}
+    if set(data.keys()) & set(_TIMETABLE_ORDER_KEYS):
+        select_keys = select_keys | set(_TIMETABLE_ORDER_KEYS)
     before = await load_selected_settings(select_keys)
 
     # 검증 + 저장할 값 준비
@@ -193,6 +258,9 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
             after.get("trade_mode", before.get("trade_mode")),
             sorted(list(set(data.keys()) & mode_keys)),
         )
+
+    # 타임테이블 시간 순서 검증 (P20/P22) — 저장 전 차단
+    await _validate_timetable_order(data, before)
 
     # 증분 저장 (전체 설정 덮어쓰기 없이 변경된 필드만 저장)
     await save_selected_settings(to_save)

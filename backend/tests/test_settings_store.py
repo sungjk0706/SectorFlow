@@ -14,6 +14,7 @@ from backend.app.core.settings_store import (
     apply_settings_updates,
     build_masked_settings_dict,
     load_integrated_system_settings_for_editing,
+    _validate_timetable_order,
 )
 
 
@@ -241,6 +242,90 @@ class TestChangedKeysGeneralSave:
         assert "broker" in changed
 
 
+# ── _validate_timetable_order (async) ───────────────────────────────
+
+class TestValidateTimetableOrder:
+    """타임테이블 3개 키 시간 순서 검증 (P20/P22).
+
+    검증 조건: realtime_reset <= ws_prestart <= krx_pre_subscribe < "09:00"
+    """
+
+    @pytest.mark.asyncio
+    async def test_valid_order(self):
+        # 07:58 <= 07:59 <= 08:59 < 09:00 → 통과
+        data = {
+            "timetable.realtime_reset": "07:58",
+            "timetable.ws_prestart": "07:59",
+            "timetable.krx_pre_subscribe": "08:59",
+        }
+        await _validate_timetable_order(data, before={})  # 예외 없음
+
+    @pytest.mark.asyncio
+    async def test_equal_values(self):
+        # 07:58 = 07:58 = 07:58 → 통과 (<= 조건)
+        data = {
+            "timetable.realtime_reset": "07:58",
+            "timetable.ws_prestart": "07:58",
+            "timetable.krx_pre_subscribe": "07:58",
+        }
+        await _validate_timetable_order(data, before={})
+
+    @pytest.mark.asyncio
+    async def test_reverse_order(self):
+        # 08:59, 07:59, 07:58 → ValueError
+        data = {
+            "timetable.realtime_reset": "08:59",
+            "timetable.ws_prestart": "07:59",
+            "timetable.krx_pre_subscribe": "07:58",
+        }
+        with pytest.raises(ValueError, match="타임테이블 시간 순서 오류"):
+            await _validate_timetable_order(data, before={})
+
+    @pytest.mark.asyncio
+    async def test_krx_at_open(self):
+        # 08:59 = 09:00 → ValueError (< 09:00 엄격)
+        data = {
+            "timetable.realtime_reset": "07:58",
+            "timetable.ws_prestart": "07:59",
+            "timetable.krx_pre_subscribe": "09:00",
+        }
+        with pytest.raises(ValueError, match="타임테이블 시간 순서 오류"):
+            await _validate_timetable_order(data, before={})
+
+    @pytest.mark.asyncio
+    async def test_krx_after_open(self):
+        # 09:30 → ValueError
+        data = {
+            "timetable.realtime_reset": "07:58",
+            "timetable.ws_prestart": "07:59",
+            "timetable.krx_pre_subscribe": "09:30",
+        }
+        with pytest.raises(ValueError, match="타임테이블 시간 순서 오류"):
+            await _validate_timetable_order(data, before={})
+
+    @pytest.mark.asyncio
+    async def test_missing_in_data_uses_before(self):
+        # data에 1개만, before에 나머지 2개 → 통과
+        data = {"timetable.ws_prestart": "07:59"}
+        before = {
+            "timetable.realtime_reset": "07:58",
+            "timetable.krx_pre_subscribe": "08:59",
+        }
+        await _validate_timetable_order(data, before)
+
+    @pytest.mark.asyncio
+    async def test_missing_in_data_uses_default(self):
+        # data에 1개만, before도 비어 있음 → DEFAULT_USER_SETTINGS 기본값 사용 → 통과
+        data = {"timetable.ws_prestart": "07:59"}
+        await _validate_timetable_order(data, before={})
+
+    @pytest.mark.asyncio
+    async def test_no_timetable_keys_skipped(self):
+        # data에 일반 키만 → 검증 생략 (통과)
+        data = {"broker": "kiwoom", "buy_time_start": "09:00"}
+        await _validate_timetable_order(data, before={})
+
+
 # ── apply_settings_updates (async) ──────────────────────────────────
 
 class TestApplySettingsUpdates:
@@ -352,6 +437,54 @@ class TestApplySettingsUpdates:
             assert "sell_per_symbol" in result
             saved = mock_save.call_args[0][0]
             assert "005930" in saved["sell_per_symbol"]
+
+    @pytest.mark.asyncio
+    async def test_timetable_order_violation_raises(self):
+        """타임테이블 순서 위반 시 ValueError → 저장 차단 (P20/P22)."""
+        before = {
+            "timetable.realtime_reset": "07:58",
+            "timetable.ws_prestart": "07:59",
+            "timetable.krx_pre_subscribe": "08:59",
+        }
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value=before)), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="타임테이블 시간 순서 오류"):
+                await apply_settings_updates({"timetable.krx_pre_subscribe": "07:00"})
+            # 저장이 호출되지 않아야 함 (검증에서 차단)
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_timetable_order_valid_saves(self):
+        """정상 시각 → 저장 호출 확인."""
+        before = {
+            "timetable.realtime_reset": "07:58",
+            "timetable.ws_prestart": "07:59",
+            "timetable.krx_pre_subscribe": "08:59",
+        }
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value=before)), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            result = await apply_settings_updates({"timetable.krx_pre_subscribe": "08:30"})
+            assert "timetable.krx_pre_subscribe" in result
+            saved = mock_save.call_args[0][0]
+            assert saved["timetable.krx_pre_subscribe"] == "08:30"
+
+    @pytest.mark.asyncio
+    async def test_timetable_select_keys_includes_all_three(self):
+        """타임테이블 키 1개만 변경해도 3개 모두 load_selected_settings에 전달 (순서 검증용)."""
+        before = {
+            "timetable.realtime_reset": "07:58",
+            "timetable.ws_prestart": "07:59",
+            "timetable.krx_pre_subscribe": "08:59",
+            "broker": "kiwoom",
+        }
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value=before)) as mock_load, \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()):
+            await apply_settings_updates({"timetable.ws_prestart": "07:58"})
+            # load_selected_settings에 전달된 키 집합에 3개 모두 포함 확인
+            called_keys = mock_load.call_args[0][0]
+            assert "timetable.realtime_reset" in called_keys
+            assert "timetable.ws_prestart" in called_keys
+            assert "timetable.krx_pre_subscribe" in called_keys
 
 
 # ── build_masked_settings_dict (async) ──────────────────────────────

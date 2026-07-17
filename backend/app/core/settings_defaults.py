@@ -115,6 +115,12 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
 
      # 체결 불가 시간대 주문 차단 (동시호가·장외 시장가 주문 자동 중단, 기본 ON)
      "order_time_guard_on": True,
+
+     # 타임테이블 사용자 조정 시각 (장 시작 전 사전 준비 — P10 SSOT 기본값)
+     # 거래소 고정 7개 시간(08:00~20:00)은 코드 상수로 daily_time_scheduler.py:21-49에 유지.
+     "timetable.realtime_reset": "07:58",      # 실시간 항목 초기화
+     "timetable.ws_prestart": "07:59",         # WS 구독 사전 시작
+     "timetable.krx_pre_subscribe": "08:59",   # KRX 정규장 사전 구독
  }
  
  # 시스템 설정 기본값 (system_config)
