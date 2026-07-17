@@ -475,6 +475,7 @@ class AutoTradeManager:
         # ── 평균매입가를 주문 전에 미리 조회 (주문 후 포지션 삭제되면 조회 불가) ──
         _mode = "test" if is_test_mode(base_settings) else "real"
         _avg_buy = 0
+        _buy_date = ""
         try:
             if _mode == "test":
                 from backend.app.services import trade_history
@@ -491,11 +492,13 @@ class AutoTradeManager:
                     )
                     return
                 _avg_buy = int(_computed_pos.get("avg_price", 0))
+                _buy_date = str(_computed_pos.get("buy_date", "") or "")
             else:
                 from backend.app.services.engine_account import get_positions as _get_positions
                 for _p in await _get_positions():
                     if _base_stk_cd(str(_p.get("stk_cd", ""))) == stk_cd:
                         _avg_buy = int(_p.get("avg_price", 0))
+                        _buy_date = str(_p.get("buy_date", "") or "")
                         break
         except Exception:
             logger.warning("[매매] 평균 매수가 조회 실패", exc_info=True)
@@ -558,6 +561,7 @@ class AutoTradeManager:
             price=_sell_price, qty=qty,
             avg_buy_price=_avg_buy, reason=reason,
             pnl_rate=pnl_rate, trade_mode=_mode,
+            buy_date=_buy_date,
         )
 
         # ── 테스트모드: 가상 체결 이벤트 예약 (실전 WS "00"과 동일한 downstream) ──
