@@ -948,18 +948,52 @@ async def _ws_disconnect_only() -> None:
 #
 # P10 SSOT: 시간 상수는 기존 라인 21-49 재사용, 신규 상수 생성 없음.
 # P24 단순성: 두 종류를 동일 리스트에서 kind 필드로 구분 (별도 리스트 분할 금지).
-_TIMETABLE: list[dict] = [
-    {"time": REALTIME_FIELDS_RESET_TIME, "kind": "direct", "action": _on_realtime_fields_reset, "ctx": "실시간 필드 초기화 (07:58)"},
-    {"time": WS_SUBSCRIBE_PRESTART_TIME,  "kind": "direct", "action": _on_ws_subscribe_start,    "ctx": "WS 구독 사전 시작 (07:59)"},
-    {"time": NXT_PREMARKET_START,         "kind": "phase",  "ctx": "NXT 프리마켓 진입 감지 (08:00)"},
-    {"time": KRX_PRE_SUBSCRIBE_TIME,      "kind": "direct", "action": _on_krx_pre_subscribe,     "ctx": "KRX 사전 구독 (08:59)"},
-    {"time": KRX_REGULAR_START,           "kind": "phase",  "ctx": "KRX 정규장 진입 감지 (09:00)"},
-    {"time": KRX_REGULAR_END,             "kind": "phase",  "ctx": "KRX 종가 동시호가 진입 감지 (15:20)"},
-    {"time": KRX_CLOSING_AUCTION_END,     "kind": "phase",  "ctx": "KRX 체결 정산 전환 감지 (15:30)"},
-    {"time": NXT_SINGLE_PRICE_END,        "kind": "phase",  "ctx": "NXT 애프터마켓 진입 감지 (15:40)"},
-    {"time": NXT_AFTERMARKET_MID_END,     "kind": "phase",  "ctx": "NXT 애프터마켓 지속 전환 감지 (18:00)"},
-    {"time": NXT_AFTERMARKET_END,         "kind": "phase",  "ctx": "NXT 장마감 진입 감지 (20:00)"},
-]
+# P16 (살아있는 경로): _TIMETABLE은 기동 시 build_timetable_from_cache()로 채워짐.
+#   빈 리스트 상태로 스케줄러 동작 금지 → start_daily_time_scheduler()에서 반드시 빌드 호출.
+_TIMETABLE: list[dict] = []
+
+
+def _parse_hm_tuple(v: str) -> tuple[int, int]:
+    """HH:MM 문자열 → (h, m) 튜플. 형식 오류 시 ValueError (P20 폴백 금지)."""
+    h, m = str(v).strip().split(":")
+    return int(h), int(m)
+
+
+def build_timetable_from_cache(settings: dict) -> list[dict]:
+    """설정 캐시 기반으로 타임테이블 리스트 빌드 (P10 SSOT · P13 메모리 상주).
+
+    인자: state.integrated_system_settings_cache 스냅샷
+    반환: 기존 _TIMETABLE과 동일한 dict 리스트 10항목
+          - 3개 direct: 시각을 캐시에서 읽음 (없으면 DEFAULT_USER_SETTINGS 기본값)
+          - 7개 phase:  시각을 코드 상수(21-49)에서 읽음 (거래소 고정)
+
+    P24 단순성: 함수 50줄 이하, 복잡도 O(n) n=10.
+    P20 폴백 금지: 캐시에 키가 없으면 DEFAULT_USER_SETTINGS 기본값 (이것도 없으면 ValueError).
+    """
+    from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
+
+    def _cache_time(key: str) -> tuple[int, int]:
+        v = settings.get(key) or DEFAULT_USER_SETTINGS.get(key)
+        if not v:
+            raise ValueError(f"타임테이블 시각 누락: {key} — 기본값 폴백 금지 (P20)")
+        return _parse_hm_tuple(v)
+
+    rt = _cache_time("timetable.realtime_reset")
+    ws = _cache_time("timetable.ws_prestart")
+    krx = _cache_time("timetable.krx_pre_subscribe")
+
+    return [
+        {"time": rt,   "kind": "direct", "action": _on_realtime_fields_reset, "ctx": f"실시간 필드 초기화 ({rt[0]:02d}:{rt[1]:02d})"},
+        {"time": ws,   "kind": "direct", "action": _on_ws_subscribe_start,    "ctx": f"WS 구독 사전 시작 ({ws[0]:02d}:{ws[1]:02d})"},
+        {"time": NXT_PREMARKET_START,         "kind": "phase",  "ctx": "NXT 프리마켓 진입 감지 (08:00)"},
+        {"time": krx,  "kind": "direct", "action": _on_krx_pre_subscribe,     "ctx": f"KRX 사전 구독 ({krx[0]:02d}:{krx[1]:02d})"},
+        {"time": KRX_REGULAR_START,           "kind": "phase",  "ctx": "KRX 정규장 진입 감지 (09:00)"},
+        {"time": KRX_REGULAR_END,             "kind": "phase",  "ctx": "KRX 종가 동시호가 진입 감지 (15:20)"},
+        {"time": KRX_CLOSING_AUCTION_END,     "kind": "phase",  "ctx": "KRX 체결 정산 전환 감지 (15:30)"},
+        {"time": NXT_SINGLE_PRICE_END,        "kind": "phase",  "ctx": "NXT 애프터마켓 진입 감지 (15:40)"},
+        {"time": NXT_AFTERMARKET_MID_END,     "kind": "phase",  "ctx": "NXT 애프터마켓 지속 전환 감지 (18:00)"},
+        {"time": NXT_AFTERMARKET_END,         "kind": "phase",  "ctx": "NXT 장마감 진입 감지 (20:00)"},
+    ]
 
 
 def _schedule_next_timetable_event() -> None:
@@ -996,11 +1030,14 @@ def _schedule_next_timetable_event() -> None:
             next_entry = entry
 
     if next_entry is None or next_delay is None:
-        # 오늘 남은 이벤트 없음 → 익일 첫 이벤트(07:58)까지 대기
-        h, m = REALTIME_FIELDS_RESET_TIME
+        # 오늘 남은 이벤트 없음 → 익일 첫 이벤트까지 대기
+        # P10 SSOT: 빌드된 _TIMETABLE의 첫 항목 시각을 참조 (사용자 조정 시각 반영).
+        # 빈 리스트 상태는 기동 시 빌드 전에만 존재 → REALTIME_FIELDS_RESET_TIME 상수로 안전장치.
+        first_time = _TIMETABLE[0]["time"] if _TIMETABLE else REALTIME_FIELDS_RESET_TIME
+        h, m = first_time
         target = now.replace(hour=h, minute=m, second=0, microsecond=0) + timedelta(days=1)
         next_delay = (target - now).total_seconds()
-        next_entry = {"time": REALTIME_FIELDS_RESET_TIME, "kind": "phase", "ctx": "익일 첫 이벤트 (07:58 재스케줄)"}
+        next_entry = {"time": first_time, "kind": "phase", "ctx": f"익일 첫 이벤트 ({h:02d}:{m:02d} 재스케줄)"}
 
     # 최소 1초 보장 (즉시 실행 방지)
     delay = max(next_delay, 1)
@@ -1456,6 +1493,13 @@ async def start_daily_time_scheduler() -> None:
         await schedule_auto_trade_timers(settings)
         await schedule_ws_subscribe_timers(settings)
         schedule_midnight_timer()
+
+        # ── 타임테이블 빌드 (DB 저장 시각 반영 — P10/P13/P16) ──
+        # 기동 시 캐시 기반으로 _TIMETABLE 채움. 빈 리스트 상태로 스케줄러 동작 금지.
+        global _TIMETABLE
+        _TIMETABLE = build_timetable_from_cache(settings)
+        logger.info("[기동] 타임테이블 빌드 완료 — %d항목", len(_TIMETABLE))
+
         # ── 타임테이블 스케줄러 기동 (10초 루프 대체 — 시간표 기반 보완) ──
         await _timetable_startup_scan()
         # WS 구독 상태 초기화는 engine_loop.run_engine_loop()에서 WS 연결 이전에 수행됨

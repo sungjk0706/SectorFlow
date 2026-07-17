@@ -28,6 +28,9 @@ initialize_queues()
 
 from backend.app.services.daily_time_scheduler import (  # noqa: E402
     KST,
+    NXT_PREMARKET_START,
+    KRX_REGULAR_START,
+    NXT_AFTERMARKET_END,
     is_nxt_premarket_window,
     is_nxt_aftermarket_window,
     calc_timebased_market_phase,
@@ -75,6 +78,8 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     retry_pipeline_catchup_after_bootstrap,
     _on_realtime_fields_reset,
     _TIMETABLE,
+    build_timetable_from_cache,
+    _parse_hm_tuple,
     _schedule_next_timetable_event,
     _timetable_event_fired,
     _check_jif_health,
@@ -2059,8 +2064,94 @@ class TestRetryPipelineCatchup:
 
 # ── 타임테이블 스케줄러 (10초 루프 대체) ──────────────────────────────────────
 
+class TestTimetableBuilder:
+    """build_timetable_from_cache 단위 테스트 — 캐시 기반 동적 빌드 (Step 2)."""
+
+    def test_build_with_cache_values_returns_10_items(self):
+        """캐시에서 3개 direct 시각을 읽어 10항목 리스트 반환."""
+        tt = build_timetable_from_cache({
+            "timetable.realtime_reset": "07:55",
+            "timetable.ws_prestart": "07:56",
+            "timetable.krx_pre_subscribe": "08:58",
+        })
+        assert len(tt) == 10
+        # 3개 direct 항목 — 캐시 시각 반영
+        assert tt[0]["time"] == (7, 55)
+        assert tt[0]["kind"] == "direct"
+        assert tt[0]["action"] is _on_realtime_fields_reset
+        assert tt[1]["time"] == (7, 56)
+        assert tt[1]["kind"] == "direct"
+        assert tt[1]["action"] is _on_ws_subscribe_start
+        assert tt[3]["time"] == (8, 58)
+        assert tt[3]["kind"] == "direct"
+        assert tt[3]["action"] is _on_krx_pre_subscribe
+        # 7개 phase 항목 — 코드 상수 유지
+        assert tt[2]["time"] == NXT_PREMARKET_START
+        assert tt[4]["time"] == KRX_REGULAR_START
+        assert tt[9]["time"] == NXT_AFTERMARKET_END
+
+    def test_build_with_empty_cache_falls_back_to_defaults(self):
+        """캐시에 키 없으면 DEFAULT_USER_SETTINGS 기본값(07:58/07:59/08:59) 사용."""
+        tt = build_timetable_from_cache({})
+        assert tt[0]["time"] == (7, 58)
+        assert tt[1]["time"] == (7, 59)
+        assert tt[3]["time"] == (8, 59)
+
+    def test_build_with_none_cache_value_falls_back_to_default(self):
+        """캐시 값이 None/빈 문자열이면 DEFAULT_USER_SETTINGS 기본값 사용 (P20)."""
+        tt = build_timetable_from_cache({
+            "timetable.realtime_reset": None,
+            "timetable.ws_prestart": "",
+            "timetable.krx_pre_subscribe": "08:55",
+        })
+        assert tt[0]["time"] == (7, 58)  # None → 기본값
+        assert tt[1]["time"] == (7, 59)  # 빈 문자열 → 기본값
+        assert tt[3]["time"] == (8, 55)  # 캐시값 우선
+
+    def test_build_ctx_string_includes_time(self):
+        """ctx 문자열에 시각이 포함되어 사용자에게 의미 전달 (P21 투명성)."""
+        tt = build_timetable_from_cache({
+            "timetable.realtime_reset": "07:55",
+            "timetable.ws_prestart": "07:56",
+            "timetable.krx_pre_subscribe": "08:58",
+        })
+        assert "07:55" in tt[0]["ctx"]
+        assert "07:56" in tt[1]["ctx"]
+        assert "08:58" in tt[3]["ctx"]
+
+    def test_parse_hm_tuple_valid(self):
+        """정상 HH:MM → (h, m) 튜플."""
+        assert _parse_hm_tuple("07:58") == (7, 58)
+        assert _parse_hm_tuple("20:40") == (20, 40)
+
+    def test_parse_hm_tuple_invalid_raises(self):
+        """형식 오류 시 ValueError (P20 폴백 금지 — (0,0) 폴백과 대조)."""
+        with pytest.raises(ValueError):
+            _parse_hm_tuple("invalid")
+        with pytest.raises(ValueError):
+            _parse_hm_tuple("7:58:99")
+        with pytest.raises(ValueError):
+            _parse_hm_tuple("")
+
+
 class TestTimetableScheduler:
     """타임테이블 스케줄러 단위 테스트 — 시간표 기반 이벤트 예약/실행/헬스체크."""
+
+    def setup_method(self, _method):
+        """각 테스트 전 _TIMETABLE을 빌더로 채움 (기동 시 빌드 배선과 동일).
+
+        in-place mutation (_TIMETABLE[:] = ...) 사용 — from import로 가져온
+        로컬 참조와 모듈 속성 모두 동일 리스트 객체를 가리키도록 일치 (P23 일관성).
+        """
+        _TIMETABLE[:] = build_timetable_from_cache({
+            "timetable.realtime_reset": "07:58",
+            "timetable.ws_prestart": "07:59",
+            "timetable.krx_pre_subscribe": "08:59",
+        })
+
+    def teardown_method(self, _method):
+        """테스트 후 _TIMETABLE을 빈 리스트로 복원 (모듈 로드 상태와 일치)."""
+        _TIMETABLE.clear()
 
     def test_jif_stale_warn_sec_is_120(self):
         """JIF 헬스체크 임계값이 120초(2분)인지 검증."""
