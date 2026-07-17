@@ -684,7 +684,7 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
     in_ws_window = await is_ws_subscribe_window(_settings)
 
     if not in_ws_window:
-        confirmed_dl_str = str(_settings["confirmed_download_time"])[:5]
+        confirmed_dl_str = str(_settings["timetable.confirmed_download"])[:5]
         cdl_h, cdl_m = _parse_hm(confirmed_dl_str)
         confirmed_dl_minutes = cdl_h * 60 + cdl_m
 
@@ -898,23 +898,27 @@ async def _on_ws_subscribe_end() -> None:
         # ── WS 연결 해제는 엔진 루프의 구간 감지가 담당 → 이벤트 통지 ──
         state.ws_window_changed_event.set()
         logger.info("[작업실행] WS 연결 해제 + 전체 구독 해지 완료 — 엔진 루프에 해제 통지")
-        # ── 확정 데이터 다운로드는 confirmed_download_time 타이머가 별도 실행 ──
-        # ws_subscribe_end와 confirmed_download_time을 분리하여
-        # 증권사 확정 데이터 준비 시간을 확보 (기본값 20:40)
+        # ── 확정 데이터 다운로드는 타임테이블 11번째 항목(timetable.confirmed_download)이 담당 ──
+        # ws_subscribe_end와 분리하여 증권사 확정 데이터 준비 시간 확보 (기본값 20:40)
     except Exception as e:
         logger.warning("[작업실행] WS 연결 해제 + 전체 구독 해지 콜백 오류: %s", e, exc_info=True)
 
 
-def _fire_confirmed_download() -> None:
-    """call_later 콜백용 동기 래퍼 — confirmed_download_time 도달 시 확정 데이터 다운로드 트리거."""
-    schedule_engine_task(_on_confirmed_download(), context="확정 데이터 다운로드")
-
-
 async def _on_confirmed_download() -> None:
-    """confirmed_download_time 도달 시 확정 데이터 다운로드 실행."""
+    """timetable.confirmed_download 도달 시 확정 데이터 다운로드 실행.
+
+    P22 (데이터 정합성): last_confirmed_download_date 날짜 기반 멱등성 가드 —
+        같은 날 2회 호출 시 2회째 스킵. 기존 last_realtime_reset_date 패턴과 동일 (P23).
+        기존 confirmed_done 플래그는 _fire_unified_confirmed_fetch() 내 1차 가드로 유지 (이중 안전장치).
+    """
     try:
+        today_str = _kst_now().strftime("%Y%m%d")
+        if state.last_confirmed_download_date == today_str:
+            logger.debug("[스케줄] 확정 다운로드 오늘 이미 실행 — 스킵 (P22)")
+            return
         logger.info("[스케줄] 확정 시세 다운로드 시각 도달 → 확정 데이터 다운로드 트리거")
         _fire_unified_confirmed_fetch()
+        state.last_confirmed_download_date = today_str
     except Exception as e:
         logger.warning("[스케줄] 확정 데이터 다운로드 콜백 오류: %s", e, exc_info=True)
 
@@ -963,11 +967,13 @@ def build_timetable_from_cache(settings: dict) -> list[dict]:
     """설정 캐시 기반으로 타임테이블 리스트 빌드 (P10 SSOT · P13 메모리 상주).
 
     인자: state.integrated_system_settings_cache 스냅샷
-    반환: 기존 _TIMETABLE과 동일한 dict 리스트 10항목
-          - 3개 direct: 시각을 캐시에서 읽음 (없으면 DEFAULT_USER_SETTINGS 기본값)
-          - 7개 phase:  시각을 코드 상수(21-49)에서 읽음 (거래소 고정)
+    반환: 기존 _TIMETABLE과 동일한 dict 리스트 (10~11항목)
+          - 3~4개 direct: 시각을 캐시에서 읽음 (없으면 DEFAULT_USER_SETTINGS 기본값)
+          - 7개 phase:    시각을 코드 상수(21-49)에서 읽음 (거래소 고정)
 
-    P24 단순성: 함수 50줄 이하, 복잡도 O(n) n=10.
+    P16 (살아있는 경로): scheduler_market_close_on OFF 시 11번째 항목 스킵 —
+        dead path(콜백 호출 후 아무 동작 없음) 제거.
+    P24 단순성: 함수 50줄 이하, 복잡도 O(n) n=11.
     P20 폴백 금지: 캐시에 키가 없으면 DEFAULT_USER_SETTINGS 기본값 (이것도 없으면 ValueError).
     """
     from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
@@ -982,7 +988,7 @@ def build_timetable_from_cache(settings: dict) -> list[dict]:
     ws = _cache_time("timetable.ws_prestart")
     krx = _cache_time("timetable.krx_pre_subscribe")
 
-    return [
+    entries: list[dict] = [
         {"time": rt,   "kind": "direct", "action": _on_realtime_fields_reset, "ctx": f"실시간 필드 초기화 ({rt[0]:02d}:{rt[1]:02d})"},
         {"time": ws,   "kind": "direct", "action": _on_ws_subscribe_start,    "ctx": f"WS 구독 사전 시작 ({ws[0]:02d}:{ws[1]:02d})"},
         {"time": NXT_PREMARKET_START,         "kind": "phase",  "ctx": "NXT 프리마켓 진입 감지 (08:00)"},
@@ -994,6 +1000,20 @@ def build_timetable_from_cache(settings: dict) -> list[dict]:
         {"time": NXT_AFTERMARKET_MID_END,     "kind": "phase",  "ctx": "NXT 애프터마켓 지속 전환 감지 (18:00)"},
         {"time": NXT_AFTERMARKET_END,         "kind": "phase",  "ctx": "NXT 장마감 진입 감지 (20:00)"},
     ]
+
+    # 11번째 항목 — 확정 데이터 다운로드 (timetable.confirmed_download)
+    # 토글 OFF 시 엔트리 자체 스킵 → 콜백 내부 게이트 불필요 (P16 살아있는 경로)
+    scheduler_close_on = bool(settings.get("scheduler_market_close_on", True))
+    if scheduler_close_on:
+        cd = _cache_time("timetable.confirmed_download")
+        entries.append({
+            "time": cd,
+            "kind": "direct",
+            "action": _on_confirmed_download,
+            "ctx": f"확정 데이터 다운로드 ({cd[0]:02d}:{cd[1]:02d})",
+        })
+
+    return entries
 
 
 def _schedule_next_timetable_event() -> None:
@@ -1117,60 +1137,6 @@ async def _timetable_startup_scan() -> None:
     # 다음 미래 이벤트 예약
     _schedule_next_timetable_event()
     logger.info("[기동] 타임테이블 스케줄러 시작 — 다음 이벤트 예약 완료")
-
-
-async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
-    """
-    confirmed_download_time 타이머 + market_phase 전환 타이머를 예약한다.
-    기존 타이머는 모두 취소 후 재예약.
-    엔진 기동 시 + 설정 변경 시 호출.
-    ws_subscribe_start/end 타이머는 제거됨 (Step 2) — _broadcast_market_phase() 내
-    페이즈 변경 감지로 _on_ws_subscribe_start/_end가 자동 트리거 (P10/P24).
-    """
-
-    for handle in state.ws_subscribe_timer_handles:
-        handle.cancel()
-    state.ws_subscribe_timer_handles.clear()
-
-    loop = None
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        pass
-
-    if not settings:
-        # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
-        settings = state.integrated_system_settings_cache
-
-    # ★ ws_subscribe_start / ws_subscribe_end 타이머 + 설정 키 — 제거됨 (Step 2+3)
-    # _broadcast_market_phase() 내 NXT "프리마켓"/"장마감" 진입 시 자동 트리거 (P10/P24).
-
-    # ★ 08:00/09:00/15:30 재계산 타이머 — 제거됨 (수정 8)
-    # _broadcast_market_phase() 내 페이즈 변경 감지 시 자동 트리거 (P10/P22/P24).
-    # JIF 경계 이벤트와 시계 타이머 중복 호출 시 첫 번째 호출만 트리거.
-
-    # ★ 20:10 NXT 확정 조회 타이머 — 제거됨 (Task 3.1, 20:30 통합 확정 조회로 교체)
-
-    # ★ 확정 시세 다운로드 타이머 — confirmed_download_time (기본값 20:40)
-    # 장마감과 분리된 별도 타이머: 증권사 확정 데이터 준비 시간 확보
-    # 사용자 설정 1순위, 미설정 시 기본값 20:40
-    confirmed_dl_str = str(settings["confirmed_download_time"])[:5]
-    cd_h, cd_m = _parse_hm(confirmed_dl_str)
-    delay_confirmed = _seconds_until_hm(cd_h, cd_m)
-    if delay_confirmed > 0 and loop:
-        h = loop.call_later(max(delay_confirmed, 1), _fire_confirmed_download)
-        state.ws_subscribe_timer_handles.append(h)
-        logger.debug("[스케줄] 확정 시세 다운로드 (%s) — %.0f초 후 예약", confirmed_dl_str, delay_confirmed)
-    elif delay_confirmed <= 0 and loop:
-        # 이미 다운로드 시간이 지났으면 부트스트랩 catch-up에서 처리
-        logger.debug("[스케줄] 확정 시세 다운로드 시간(%s) 이미 경과 — 부트스트랩 보충 처리에서 담당", confirmed_dl_str)
-
-
-    # ★ 09:00/15:30 고정 폴링 타이머 제거됨 (Task 5.1, 0J REAL 수신 여부로 자동 판단)
-
-    # ★ market-phase 전환 타이머 제거됨 — 타임테이블 스케줄러가 시간표 기반으로 장 상태 보완
-    #   (P10 SSOT, P11 폴링 금지, P16 살아있는 경로, P24 단순성).
-    #   JIF가 1순위 장 상태 소스이며, 타임테이블은 WS 끊김/JIF 미수신 시 보완 역할.
 
 
 async def _init_ws_subscribe_state() -> None:
@@ -1388,6 +1354,7 @@ async def _on_midnight() -> None:
             state.last_reset_date = now.strftime("%Y%m%d")
             state.krx_remove_done = False
             state.confirmed_done = False
+            state.last_confirmed_download_date = ""  # 확정 다운로드 멱등성 가드 리셋 (P22)
             logger.info("[스케줄] 자정 날짜 변경 — 플래그 초기화 (%s)", state.last_reset_date)
 
             # 연도 변경 시 다음 연도 거래일 캐시 미리 생성 (블로킹 방지)
@@ -1407,7 +1374,9 @@ async def _on_midnight() -> None:
             await _apply_auto_toggle_on_startup(settings)
 
             await schedule_auto_trade_timers(settings)
-            await schedule_ws_subscribe_timers(settings)
+            # ── 타임테이블 타이머는 _schedule_next_timetable_event()가 다음 미래 이벤트를
+            #    자동 예약하므로 자정에 별도 재예약 불필요 (P14 단일 타이머, P24 단순성).
+            #    confirmed_download 타이머도 타임테이블 11번째 항목으로 통합 (4세션).
         # 다음날 자정 타이머 재예약 (날짜 변경 여부와 무관하게 항상 수행)
         schedule_midnight_timer()
     except Exception as e:
@@ -1491,7 +1460,6 @@ async def start_daily_time_scheduler() -> None:
         state.last_reset_date = _kst_now().strftime("%Y%m%d")
 
         await schedule_auto_trade_timers(settings)
-        await schedule_ws_subscribe_timers(settings)
         schedule_midnight_timer()
 
         # ── 타임테이블 빌드 (DB 저장 시각 반영 — P10/P13/P16) ──
@@ -1514,9 +1482,6 @@ async def stop_daily_time_scheduler() -> None:
     for handle in state.auto_trade_timer_handles:
         handle.cancel()
     state.auto_trade_timer_handles.clear()
-    for handle in state.ws_subscribe_timer_handles:
-        handle.cancel()
-    state.ws_subscribe_timer_handles.clear()
     if state.midnight_timer_handle is not None:
         state.midnight_timer_handle.cancel()
         state.midnight_timer_handle = None
