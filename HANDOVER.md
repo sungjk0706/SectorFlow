@@ -1,22 +1,25 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-18 (DB 테이블 스케줄러 1세션 — 설계서 작성 완료)
-- 작업: DB 테이블 스케줄러 다단계 작업의 1세션(설계서 작성). (1) 사전조사: `daily_time_scheduler.py:951-962`의 `_TIMETABLE` 파이썬 리스트(10항목) + `integrated_system_settings` 테이블 스키마(`stock_tables.py:76-82`, key/value/value_type/updated_at) + `settings_store.py`/`settings_file.py`의 증분 저장 API(`save_selected_settings`/`load_selected_settings`/`apply_settings_updates`) + `engine_state.py:90`의 `integrated_system_settings_cache` + `engine_service.py:30-160`의 `apply_settings_change` 분기 패턴(`_TIME_SCHEDULE_KEYS`/`_WS_SCHEDULE_KEYS`) 조사. (2) 검토 의견 제시: 방식 A(key-value JSON 단일키)·B(key-value 평면 `timetable.*`)·C(신규 테이블) 비교 → 방식 B 추천 (P24 단순성·P23 일관성·항목 단위 저널링·UI 1:1 매핑). (3) 사용자 결정: 방식 B 채택 + 3개 키만 DB 저장(realtime_reset/ws_prestart/krx_pre_subscribe) + 거래소 고정 7개는 코드 상수 유지 + 시간 순서 검증 필수. (4) 설계서 작성: `docs/architecture_db_timetable_design.md` (325줄) — 11개 섹션(배경·확정 결정·원칙 준수·백엔드 설계 6단계·프론트엔드 설계 3단계·데이터 흐름·영향 범위·다단계 분할 6세션·위험 완화·승인 대기·참조). (5) 규칙 0-5 통지: 기존 `_TIMETABLE` 정적 리스트 → 빌더 함수 방식 변경 사전 명시 (사유·영향·대안 포함). P10/P13/P16/P20/P21/P22/P23/P24 부합. **코드 수정 없음** — 규칙 0(승인 전 수정 금지) 준수, 설계서만 작성.
-- 상태: 1세션(설계서) 완료. 커밋 완료. 다음 작업: 2세션(태스크 파일 작성) 승인 대기.
-- **참조 문서**: `docs/architecture_db_timetable_design.md` (325줄, DB 테이블 스케줄러 설계서)
+- 날짜: 2026-07-18 (DB 테이블 스케줄러 2세션 — 심층 사전조사 + 태스크 파일 작성 완료)
+- 작업: DB 테이블 스케줄러 다단계 작업의 2세션(심층 사전조사 + 태스크 파일 작성). (1) 심층 사전조사 6항목: ① `settings_defaults.py:117`에 3개 키 삽입 위치 확정 (`order_time_guard_on` 다음, 닫는 `}` 이전) + `DEFAULT_SETTINGS` 병합 자동 전파 확인 ② `settings_store.py:141-145`의 `_TIME_FIELDS` 확장 지점 + `_validate_timetable_order()` 신규 함수 구현 세부 (검증 조건 `rt ≤ ws ≤ krx < 09:00`, `before` 인자로 나머지 2개 키 보충, `ValueError` → `routes/settings.py:84` HTTP 422 자동 변환) + `apply_settings_updates()` 라인 198 `save_selected_settings` 직전 호출 배선 + `select_keys` (라인 148) 3개 키 자동 추가 확장 ③ `daily_time_scheduler.py:951-962`의 `_TIMETABLE` 정적 리스트 제거 → 빈 리스트 초기화 + `build_timetable_from_cache(settings)` 빌더 함수 추가 (3개 direct 시각은 캐시에서, 7개 phase 시각은 코드 상수 21-49에서) + `_schedule_next_timetable_event()` fallback(999-1003)도 `_TIMETABLE[0]["time"]` 참조로 변경 필요 발견 ④ 기동 빌드 배선 위치: `engine_bootstrap.py`(LOGIN 후 파이프라인만)/`engine_config.py`(캐시 갱신만) 부적합 → `start_daily_time_scheduler()` 내 `await _timetable_startup_scan()` 직전이 최적 (app.py 변경 불필요, 단일 기동 진입점) ⑤ `engine_service.py:147`의 `_WS_SCHEDULE_KEYS` 분기 종료 직후 `_TIMETABLE_KEYS` 분기 삽입 + 모듈 전역 `_TIMETABLE` 재할당은 `import ... as _dts_mod` 후 `_dts_mod._TIMETABLE = ...` 방식 (state 필드 아님) + setter 함수는 1회용 래퍼(P24 위반)으로 제외 ⑥ 프론트엔드 `createTimeSlot()`(`settings-common.ts:70`)이 단일 시간 입력 패턴 — `confirmed_download_time` 행(590)이 동일 패턴 사용 → 신규 컴포넌트 생성 불필요, `renderAutoTradeTab()` 내 라인 288 다음에 카드 삽입. (2) 태스크 파일 작성: `docs/plan_db_timetable.md` (631줄) — 6개 섹션(심층 사전조사 결과 0-1~0-6 + 다단계 분할 6세션 + Step 1 상세 + 위험 완화 + 규칙 0-5 통지 + 승인 대기 + 참조). (3) 규칙 0-5 통지 갱신: `_TIMETABLE` 정적 리스트 → 빌더 함수 변경 사유·영향·대안(A/B/C 비교) 명시. P10/P13/P16/P20/P21/P22/P23/P24 부합. **코드 수정 없음** — 규칙 0(승인 전 수정 금지) 준수, 태스크 파일만 작성.
+- 상태: 2세션(심층 사전조사 + 태스크 파일) 완료. 커밋 완료. 다음 작업: 3세션(백엔드 Step 1: 설정 키 + 검증 함수) 승인 대기.
+- **참조 문서**: `docs/architecture_db_timetable_design.md` (325줄, 설계서) + `docs/plan_db_timetable.md` (631줄, 태스크 파일)
 - **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-5(사용자 설계 로직 변경 시 엄격 절차) + P10/P13/P16/P20/P21/P22/P23/P24
 
-## 다음 세션 진행 대기: DB 테이블 스케줄러 (다단계 작업) — 2세션 태스크 파일 작성 승인 대기
+## 다음 세션 진행 대기: DB 테이블 스케줄러 (다단계 작업) — 3세션 백엔드 Step 1 승인 대기
 
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계서 작성 — 사전조사 + 사용자 검토 요청 → 방식 B 채택 결정 + 설계서 작성.
   - **설계서**: `docs/architecture_db_timetable_design.md` (325줄)
   - **핵심 설계**: 방식 B(key-value 평면 `timetable.*` 네임스페이스)로 3개 키(realtime_reset 07:58 / ws_prestart 07:59 / krx_pre_subscribe 08:59)를 `integrated_system_settings` 테이블에 저장. 거래소 고정 7개(08:00/09:00/15:20/15:30/15:40/18:00/20:00)는 코드 상수 유지. 시간 순서 검증(`realtime_reset ≤ ws_prestart ≤ krx_pre_subscribe < 09:00`) 필수. 저장 후 `_schedule_next_timetable_event()` 재호출로 타이머 재예약. `_TIMETABLE` 정적 리스트 → `build_timetable_from_cache()` 빌더 함수 방식 변경(규칙 0-5 사전 통지).
-  - **다단계 분할 (6세션)**: 1세션(설계서·완료) / 2세션(태스크 파일) / 3세션(백엔드 Step 1: 설정 키 + 검증 함수) / 4세션(백엔드 Step 2: 빌더 함수 + 기동 배선) / 5세션(백엔드 Step 3: 저장 후 재예약 배선) / 6세션(프론트엔드 Step 4-5: 입력칸 + 거래소 고정 표시 + 검증 에러) / 7세션(테스트 갱신 + 신규 테스트)
-- **2세션 (승인 대기)**: 심층 사전조사 + 태스크 파일 작성.
-  - **예상 산출물**: `docs/plan_db_timetable.md` (태스크 파일)
-  - **예상 심층 조사 항목**: (1) `settings_defaults.py`의 `DEFAULT_USER_SETTINGS` 정확한 삽입 위치 (2) `settings_store.py`의 `_TIME_FIELDS` 확장 지점 + `_validate_timetable_order()` 구현 세부 (3) `daily_time_scheduler.py`의 `_TIMETABLE` 전역 리스트 제거 범위 + `build_timetable_from_cache()` 구현 (4) 기동 시 빌드 배선 위치(`engine_bootstrap.py` vs `engine_config.py`) (5) `engine_service.py`의 `_TIMETABLE_KEYS` 분기 삽입 위치 (6) 프론트엔드 `general-settings.ts`의 입력칸 패턴 재사용 지점
+- **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성.
+  - **태스크 파일**: `docs/plan_db_timetable.md` (631줄)
+  - **심층 발견사항 6항목**: (2-1) `settings_defaults.py:117` 삽입 위치 확정 + `DEFAULT_SETTINGS` 병합 자동 전파 확인 / (2-2) `_validate_timetable_order()` 구현 세부 — `before` 인자로 나머지 2개 키 보충 + `select_keys` (라인 148) 확장 필요 + `routes/settings.py:84`가 `ValueError` → HTTP 422 자동 변환 (라우트 변경 불필요) / (2-3) `_TIMETABLE` 정적 리스트 제거 → 빈 리스트 + 빌더 함수 + `_schedule_next_timetable_event()` fallback(999-1003)도 `_TIMETABLE[0]["time"]` 참조로 변경 필요 (불일치 가능성 발견) / (2-4) 기동 빌드 배선 위치: `start_daily_time_scheduler()` 내 `_timetable_startup_scan()` 직전이 최적 (app.py 변경 불필요) / (2-5) `_TIMETABLE_KEYS` 분기는 `_WS_SCHEDULE_KEYS` 종료 직후 + 모듈 전역 재할당은 `_dts_mod._TIMETABLE = ...` 방식 (state 필드 아님, setter는 P24 위반) / (2-6) 프론트엔드 `createTimeSlot()` 재사용 — `confirmed_download_time` 행(590) 동일 패턴, 신규 컴포넌트 불필요, `renderAutoTradeTab()` 라인 288 다음 삽입
+  - **다단계 분할 (6세션 확정)**: 1세션(설계서·완료) / 2세션(태스크 파일·완료) / 3세션(백엔드 Step 1: 설정 키 + 검증 함수) / 4세션(백엔드 Step 2: 빌더 함수 + 기동 배선) / 5세션(백엔드 Step 3: 저장 후 재예약 배선) / 6세션(프론트엔드 Step 4-5: 입력칸 + 거래소 고정 표시 + 검증 에러) / 7세션(테스트 갱신 + 신규 테스트)
+- **3세션 (승인 대기)**: 백엔드 Step 1 구현 — `settings_defaults.py` 3개 키 추가 + `settings_store.py` `_TIME_FIELDS` 확장 + `_validate_timetable_order()` + `apply_settings_updates()` 배선.
+  - **수정 파일 2개**: `backend/app/core/settings_defaults.py` + `backend/app/core/settings_store.py`
+  - **검증**: 단위 테스트(정상/순서 위반/형식 오류) + 기존 테스트 회귀 + 런타임 기동
   - **승인 대기**: 사용자 명시적 실행 지시어("진행해", "구현해", "go" 등) 대기
 
 ## 이전 다단계 작업: 타임테이블 기반 스케줄러 (다단계 작업) — 전체 완료
