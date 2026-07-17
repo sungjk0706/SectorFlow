@@ -397,3 +397,192 @@ class TestGetEngineSettings:
         ):
             result = await get_engine_settings(user_id="user1", profile="custom")
         assert result["broker"] == "kiwoom"
+
+
+# ── apply_settings_change — 타임테이블 재빌드/재예약 배선 (Step 3) ──────
+
+class TestApplySettingsChangeTimetableRebuild:
+    """_TIMETABLE_KEYS 변경 시 _TIMETABLE 재빌드 + 타이머 재예약 검증.
+
+    시나리오: 사용자가 설정 화면에서 장 시작 전 사전 준비 시간 3개 중
+    하나를 변경하면, 저장 직후 백엔드가 타임테이블을 새 시각으로 다시
+    만들고 다음 이벤트 타이머를 다시 예약해야 함 (P14 단일 타이머).
+    """
+
+    def setup_method(self):
+        """테스트 전 _TIMETABLE 모듈 전역 백업 (P22 정합성)."""
+        from backend.app.services import daily_time_scheduler as _dts_mod
+        self._orig_timetable = list(_dts_mod._TIMETABLE)
+
+    def teardown_method(self):
+        """테스트 후 _TIMETABLE 모듈 전역 복원."""
+        from backend.app.services import daily_time_scheduler as _dts_mod
+        _dts_mod._TIMETABLE = self._orig_timetable
+
+    @pytest.mark.asyncio
+    async def test_realtime_reset_triggers_rebuild(self):
+        """timetable.realtime_reset 변경 → 재빌드 + 재예약 호출."""
+        from backend.app.services.engine_service import apply_settings_change
+        from backend.app.services import daily_time_scheduler as _dts_mod
+
+        dummy_built = [{"time": (7, 58), "kind": "direct", "ctx": "test"}]
+        with (
+            patch(
+                "backend.app.services.engine_service.refresh_engine_integrated_system_settings_cache",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_header_refresh",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_settings_toggled",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.daily_time_scheduler.build_timetable_from_cache",
+                return_value=dummy_built,
+            ) as mock_build,
+            patch(
+                "backend.app.services.daily_time_scheduler._schedule_next_timetable_event",
+            ) as mock_sched,
+        ):
+            await apply_settings_change({"timetable.realtime_reset"})
+
+        mock_build.assert_called_once()
+        mock_sched.assert_called_once()
+        assert _dts_mod._TIMETABLE == dummy_built
+
+    @pytest.mark.asyncio
+    async def test_ws_prestart_triggers_rebuild(self):
+        """timetable.ws_prestart 변경 → 재빌드 + 재예약 호출."""
+        from backend.app.services.engine_service import apply_settings_change
+        from backend.app.services import daily_time_scheduler as _dts_mod
+
+        dummy_built = [{"time": (7, 59), "kind": "direct", "ctx": "test"}]
+        with (
+            patch(
+                "backend.app.services.engine_service.refresh_engine_integrated_system_settings_cache",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_header_refresh",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_settings_toggled",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.daily_time_scheduler.build_timetable_from_cache",
+                return_value=dummy_built,
+            ) as mock_build,
+            patch(
+                "backend.app.services.daily_time_scheduler._schedule_next_timetable_event",
+            ) as mock_sched,
+        ):
+            await apply_settings_change({"timetable.ws_prestart"})
+
+        mock_build.assert_called_once()
+        mock_sched.assert_called_once()
+        assert _dts_mod._TIMETABLE == dummy_built
+
+    @pytest.mark.asyncio
+    async def test_krx_pre_subscribe_triggers_rebuild(self):
+        """timetable.krx_pre_subscribe 변경 → 재빌드 + 재예약 호출."""
+        from backend.app.services.engine_service import apply_settings_change
+        from backend.app.services import daily_time_scheduler as _dts_mod
+
+        dummy_built = [{"time": (8, 59), "kind": "direct", "ctx": "test"}]
+        with (
+            patch(
+                "backend.app.services.engine_service.refresh_engine_integrated_system_settings_cache",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_header_refresh",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_settings_toggled",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.daily_time_scheduler.build_timetable_from_cache",
+                return_value=dummy_built,
+            ) as mock_build,
+            patch(
+                "backend.app.services.daily_time_scheduler._schedule_next_timetable_event",
+            ) as mock_sched,
+        ):
+            await apply_settings_change({"timetable.krx_pre_subscribe"})
+
+        mock_build.assert_called_once()
+        mock_sched.assert_called_once()
+        assert _dts_mod._TIMETABLE == dummy_built
+
+    @pytest.mark.asyncio
+    async def test_non_timetable_key_no_rebuild(self):
+        """관련 없는 키 변경 → 재빌드/재예약 미호출."""
+        from backend.app.services.engine_service import apply_settings_change
+
+        with (
+            patch(
+                "backend.app.services.engine_service.refresh_engine_integrated_system_settings_cache",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_header_refresh",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_settings_toggled",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.daily_time_scheduler.build_timetable_from_cache",
+            ) as mock_build,
+            patch(
+                "backend.app.services.daily_time_scheduler._schedule_next_timetable_event",
+            ) as mock_sched,
+        ):
+            await apply_settings_change({"tele_on"})
+
+        mock_build.assert_not_called()
+        mock_sched.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rebuild_exception_does_not_propagate(self):
+        """재빌드 중 예외 시 apply_settings_change 정상 반환 (P20/P21).
+
+        예외가 사용자에게 전파되지 않고 warning 로그로 처리되어야 함.
+        단, 저장 자체는 이미 routes/settings.py에서 완료되었으므로
+        다음 기동 시 start_daily_time_scheduler() 빌드로 복구됨.
+        """
+        from backend.app.services.engine_service import apply_settings_change
+
+        with (
+            patch(
+                "backend.app.services.engine_service.refresh_engine_integrated_system_settings_cache",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_header_refresh",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_settings_toggled",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.daily_time_scheduler.build_timetable_from_cache",
+                side_effect=ValueError("테스트용 예외"),
+            ),
+            patch(
+                "backend.app.services.daily_time_scheduler._schedule_next_timetable_event",
+            ),
+        ):
+            # 예외 전파 없이 정상 반환해야 함
+            result = await apply_settings_change({"timetable.realtime_reset"})
+
+        assert result is None

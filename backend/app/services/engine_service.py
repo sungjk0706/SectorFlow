@@ -146,6 +146,26 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         except Exception:
             logger.warning("[설정] 실시간 구독 타이머 재예약 실패", exc_info=True)
 
+    # 타임테이블 시각 변경 시 → _TIMETABLE 재빌드 + 타이머 재예약 (P14 단일 타이머 유지)
+    _TIMETABLE_KEYS = {
+        "timetable.realtime_reset",
+        "timetable.ws_prestart",
+        "timetable.krx_pre_subscribe",
+    }
+    if changed_keys & _TIMETABLE_KEYS:
+        try:
+            import backend.app.services.daily_time_scheduler as _dts_mod
+            from backend.app.services.daily_time_scheduler import (
+                _schedule_next_timetable_event, build_timetable_from_cache,
+            )
+            _dts_mod._TIMETABLE = build_timetable_from_cache(
+                state.integrated_system_settings_cache
+            )
+            _schedule_next_timetable_event()  # 기존 타이머 취소 후 재예약 (P14)
+            logger.info("[설정] 타임테이블 변경 감지 — 재빌드 + 타이머 재예약 완료")
+        except Exception:
+            logger.warning("[설정] 타임테이블 재빌드/재예약 실패", exc_info=True)
+
     # 업종 정렬/필터 관련 설정 변경 시 업종 점수만 재계산 (종목 시세는 WS delta로만 전송)
     _SECTOR_UI_KEYS = {
         "sector_sort_keys",
