@@ -1,9 +1,9 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (시장가 주문 중단 시간대 게이트 6세션 — Step 6 설정 토글 `general-settings.ts` + Step 9 헤더 칩 `header.ts` + `types/index.ts`)
-- 작업: 시장가 주문 중단 시간대 게이트 6세션 완료 — 다단계 작업(3~6세션) 최종 마무리. (1) `types/index.ts`에 `order_time_guard_on: boolean` 설정 키 추가 (AppSettings 인터페이스, L213). (2) `general-settings.ts` 자동매도 행 아래에 "체결 불가 시간대 주문 차단" 토글 행 추가 — `createToggleBtn()` 재사용, `settingsMgr.saveSection({ order_time_guard_on: next })` 저장, 기본 ON, `orderTimeGuardToggle` 모듈 변수 + `syncFromSettings`에서 `r.order_time_guard_on !== false` 동기화 (기존 `uiFlashToggle` 패턴 동일, P23). 설명 문구: "동시호가·장외 시간대에 시장가 주문 자동 중단 (KRX 단독 종목만, NXT 종목은 NXT 거래 시간에 허용)". (3) `header.ts`에 `orderTimeBlockedChip` 신규 칩 추가 — `circuitBreakerChip` 패턴 동일 구조, `clearOrderTimeBlocked()` 클릭 해제, `COLOR.warning`/`COLOR.warningBg` 표준 색상(노란색), `onStateChange`에서 `orderTimeBlocked` 분해 + 표시 로직(`⏸ 주문 일시중단(${reason})`). 검증: typecheck 통과 + build 1.01s 통과 + 에러 0건.
-- 상태: 6세션 완료. 커밋 완료. 시장가 주문 중단 시간대 게이트 다단계 작업(3~6세션) 전부 완료. 다음 작업: 사용자 신규 요청 대기.
+- 날짜: 2026-07-17 (휴장일 주문 일시중단 칩 표시 문제 수정 — 옵션 A 페이즈 기반 조기 반환)
+- 작업: 휴장일/비거래일에 헤더 "주문 일시중단(동시호가/장외 시간대)" 칩이 표시되는 문제 수정. (1) `daily_time_scheduler.py` `get_order_time_block_status()` (L363)에 휴장일 조기 반환 추가 — `krx == "휴장일" or nxt == "휴장일"` 시 `(False, "")` 반환, ±5초 버퍼 판별 전 조기 종료, `_is_pre_subscribe_window()` L255-256과 동일 패턴 (P23 일관성), P21(사용자 투명성) — 장 안 열리는 날에 칩 표시 불필요. (2) `is_order_blocked_by_time()` (L331)에도 동일 휴장일 조기 반환 추가 — P23 일관성 (양쪽 함수 동일 패턴). 휴장일에는 매수 후보 자체가 생성되지 않으므로 실질 영향 없으나 일관성 차원 적용. (3) `test_daily_time_scheduler.py` 기대값 갱신 — `TestIsOrderBlockedByTime.test_holiday_both_blocked` → `test_holiday_returns_false` (True → False), `TestGetOrderTimeBlockStatus.test_holiday_returns_auction_reason` → `test_holiday_returns_false` ((True, "동시호가/장외 시간대") → (False, "")). 검증: py_compile + ruff 통과 + 단위 테스트 249개 전부 통과(test_daily_time_scheduler 216 + test_buy_order_executor 33, 회귀 없음) + 런타임 기동(`-W error::RuntimeWarning`) 174ms 정상 기동 + "KRX: 휴장일, NXT: 휴장일" 표시 확인 + 에러/Traceback/RuntimeWarning 0건 + 잔존 프로세스 0건.
+- 상태: 수정 완료. 커밋 완료. 다음 작업: 사용자 신규 요청 대기.
 - **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 UI 기준 설명) + 규칙 4-1(테스트 실패 추적) + P10/P15/P16/P20/P21/P23/P24 + backend-fix 스킬 + frontend-fix 스킬
 
 ## 다음 세션 진행 대기: 시장가 주문 중단 시간대 게이트 (다단계 작업) — 완료
