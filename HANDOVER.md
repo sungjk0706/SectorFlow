@@ -1,13 +1,13 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-18 (일반설정 탭 재구성 다단계 작업 3세션 — Step 1 탭 골조 추가 완료)
-- 작업: 일반설정 페이지 탭 재구성 다단계 작업 3세션(Step 1 구현) 진행. 사용자 명시적 실행 지시어("3세션 진행해")로 승인. Step 1 "탭 골조 추가" 4개 수정 포인트 적용 (A/B/C/D): (A) `TabId` 타입에 `'time-settings'` 추가 (20줄) / (B) `renderTabBar()`의 `tabs` 배열 순서 변경 — 자동매매 → 시간 설정 → 투자모드 → API 설정 → 텔레그램 (설계서 2-4 확정 순서) / (C) 신규 `renderTimeSettingsTab(container)` 골조 함수 추가 — `sectionTitle('시간 설정')`만 포함, 시간쌍·타임테이블·1일봉·거래소 고정 시간은 Step 2~5에서 이동 예정 / (D) `mount()`에 5번째 패널(timeSettingsPanel) 추가 + 패널 순서를 탭 바 순서와 일치시킴 (자동매매 → 시간 설정 → 투자모드 → API 설정 → 텔레그램). `unmount()`는 이번 Step에서 변경 없음 — 시간 설정 탭 참조 변수가 아직 없으므로 (태스크 파일 명시: Step 2~에서 추가). 백엔드 변경 없음 (순수 프론트엔드 UI 배치). P10/P16/P20/P21/P23/P24 준거.
-- 상태: 3세션(Step 1 구현) 완료. 커밋 완료. **4세션(Step 2: 자동매수/매도 시간쌍 이동) 승인 대기.**
+- 날짜: 2026-07-18 (일반설정 탭 재구성 다단계 작업 3-4세션 — Step 1 탭 골조 + Step 2 자동매수/매도 시간쌍 이동 완료)
+- 작업: 일반설정 페이지 탭 재구성 다단계 작업 3세션(Step 1) + 4세션(Step 2) 연속 진행. 사용자 명시적 실행 지시어("3세션 진행해" → "컨텍스트 사용량 여유가 있으면 4세션 진행해")로 4세션까지 연속 진행 승인. (1) 3세션 — Step 1 "탭 골조 추가" 4개 수정 포인트 (A/B/C/D): `TabId`에 `'time-settings'` 추가 / `renderTabBar()` tabs 배열 순서 변경 (자동매매 → 시간 설정 → 투자모드 → API 설정 → 텔레그램) / 신규 `renderTimeSettingsTab()` 골조 (sectionTitle만) / `mount()`에 5번째 패널 추가 + 패널 순서 일치. (2) 4세션 — Step 2 "자동매수/매도 시간쌍 이동": `renderAutoTradeTab()`의 자동매수/매도 시간쌍 행 제거 (토글만 남김) → `renderTimeSettingsTab()`에 자동매수 시간쌍 + 자동매도 시간쌍 + 안내 문구 추가. **설계서 2-1 핵심 변경**: 자동매수/매도 토글 OFF 시 시간 입력 활성화 유지 (기존: 토글 OFF 시 시간 입력 비활성화) → `buyTimeHandle.setEnabled()`/`sellTimeHandle.setEnabled()` 호출 제거 (자동매매 탭 토글 onClick + syncFromSettings 양쪽). 탭 간 의존성 최소화 (P24), 안내 문구로 보완 (P21). `unmount()`는 변경 없음 (buyTimeHandle/sellTimeHandle 변수 재사용, 이미 초기화 코드 있음). 백엔드 변경 없음. P10/P16/P20/P21/P23/P24 준거.
+- 상태: 3-4세션(Step 1-2 구현) 완료. 커밋 완료. **5세션(Step 3: 사전 준비 시간 + 거래소 고정 시간 이동) 승인 대기.**
 - **참조 문서**: `docs/architecture_settings_tab_reorganization_design.md` (설계서) + `docs/plan_settings_tab_reorganization.md` (태스크 파일) — 다단계 작업 완료 시 삭제 (규칙 11)
 - **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 섹션4 "다단계 작업 워크플로우" + 규칙 11(계획서 삭제) + P10/P16/P20/P21/P23/P24
 
-## 다음 세션 진행 대기: 일반설정 탭 재구성 다단계 작업 4세션 (Step 2: 자동매수/매도 시간쌍 이동)
+## 다음 세션 진행 대기: 일반설정 탭 재구성 다단계 작업 5세션 (Step 3: 사전 준비 시간 + 거래소 고정 시간 이동)
 
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계서 작성 — 검토 결과(이전 세션) + 사용자 확정 4항목 반영.
@@ -15,16 +15,20 @@
   - **핵심 설계**: "시간 설정" 탭 신설(자동매수/매도 시간쌍 + 사전 준비 3슬롯 + 1일봉 다운로드 + 거래소 고정 시간 참고). 자동매매 탭 정리(매매 토글 4개 + 플래시 효과 이동). API 설정 탭 정리(증권사 + API 키만). 탭 순서: 자동매매 → 시간 설정 → 투자모드 → API 설정 → 텔레그램. "화면 설정" 탭 신설 기각(사용자 의견: 과잉). 자동매수/매도 토글 OFF 시 시간 입력 활성화 유지 + 안내 문구. 백엔드 변경 없음.
 - **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성.
   - **태스크 파일**: `docs/plan_settings_tab_reorganization.md` (260줄)
-  - **심층 발견사항**: 대상 파일 단일 `general-settings.ts` (약 1122줄). 백엔드 영향 없음. 기존 공통 컴포넌트 재사용 — 신규 컴포넌트 생성 없음. 핵심 내부 의존성 13항목 식별(`TabId` / `renderTabBar` / `renderAutoTradeTab` / `renderApiSettingsTab` / `syncFromSettings` / `mount` / `unmount` / 모듈 상태 변수 / `scheduleConfirmedDlSave` / `scheduleTimetableSave` / `handleMasterToggle` 등). `syncFromSettings()`(930-1021줄)가 모든 탭 동기화를 한 곳에서 처리 → 재구성 시 이 함수도 수정 필요. `unmount()`(1093-1120줄)에서 모든 모듈 상태 변수 초기화 → 새 변수 추가 시 여기도 업데이트.
+  - **심층 발견사항**: 대상 파일 단일 `general-settings.ts` (약 1122줄). 백엔드 영향 없음. 기존 공통 컴포넌트 재사용 — 신규 컴포넌트 생성 없음. 핵심 내부 의존성 13항목 식별. `syncFromSettings()`가 모든 탭 동기화를 한 곳에서 처리 → 재구성 시 이 함수도 수정 필요. `unmount()`에서 모든 모듈 상태 변수 초기화 → 새 변수 추가 시 여기도 업데이트.
   - **세션 분할 (6세션 확정)**: 3세션(Step 1: 탭 골조 추가) / 4세션(Step 2: 자동매수/매도 시간쌍 이동) / 5세션(Step 3: 사전 준비 시간 + 거래소 고정 시간 이동) / 6세션(Step 4: 1일봉 다운로드 이동) / 7세션(Step 5: 플래시 효과 이동) / 8세션(Step 6: 최종 검증 + 정리 + 계획서 삭제)
 - **3세션 (완료)**: Step 1 구현 — 탭 골조 추가.
   - **변경 파일 1개**: `frontend/src/pages/general-settings.ts` (+16줄 / -5줄)
-  - **수정 포인트 4개 (A/B/C/D)**: (A) `TabId` 타입에 `'time-settings'` 추가 / (B) `renderTabBar()` tabs 배열 순서 변경 + 시간 설정 탭 추가 (자동매매 → 시간 설정 → 투자모드 → API 설정 → 텔레그램) / (C) 신규 `renderTimeSettingsTab(container)` 골조 함수 추가 (`sectionTitle('시간 설정')`만) / (D) `mount()`에 5번째 패널(timeSettingsPanel) 추가 + 패널 순서를 탭 바 순서와 일치
-  - **미구현 (Step 2~에서 진행)**: `unmount()` 신규 변수 초기화 — 시간 설정 탭 참조 변수가 아직 없으므로 (태스크 파일 명시)
-  - **검증**: typecheck 통과 (tsc --noEmit exit 0) + 빌드 통과 (vite build 632ms exit 0) + 전체 테스트 116/116 통과 (8 test files). 브라우저 검증은 사용자 확인 필요 (5개 탭 순서·전환 정상, 시간 설정 탭은 빈 화면 with "시간 설정" 제목만)
-- **4세션 (승인 대기)**: Step 2 구현 — 자동매수/매도 시간쌍 이동.
-  - **예상 작업**: `renderAutoTradeTab()`의 자동매수/매도 시간쌍 행(`buyTimeHandle`/`sellTimeHandle` + 관련 변수)을 `renderTimeSettingsTab()`으로 이동. 자동매매 탭에는 토글만 남김. `syncFromSettings()`의 자동매수/매도 시간쌍 동기화 블록도 시간 설정 탭으로 이동. 자동매수/매도 토글 OFF 시 시간 입력 활성화 유지 + 안내 문구 추가 (설계서 2-1). `unmount()`에 시간 설정 탭 참조 변수 초기화 추가.
-  - **예상 검증**: 빌드 + 브라우저에서 시간 설정 탭에 자동매수/매도 시간쌍 표시 + 자동매매 탭에 토글만 표시 + 저장 동작 정상
+  - **수정 포인트 4개 (A/B/C/D)**: (A) `TabId` 타입에 `'time-settings'` 추가 / (B) `renderTabBar()` tabs 배열 순서 변경 + 시간 설정 탭 추가 / (C) 신규 `renderTimeSettingsTab(container)` 골조 함수 추가 (sectionTitle만) / (D) `mount()`에 5번째 패널 추가 + 패널 순서 일치
+  - **검증**: typecheck + 빌드 + 전체 테스트 116/116 통과
+- **4세션 (완료)**: Step 2 구현 — 자동매수/매도 시간쌍 이동.
+  - **변경 파일 1개**: `frontend/src/pages/general-settings.ts` (+64줄 / -54줄)
+  - **수정 포인트 3개**: (1) `renderAutoTradeTab()` 자동매수/매도 행 단순화 — 시간쌍 입력 제거, 토글만 남김 + 안내 문구 "시간 설정은 시간 설정 탭에서" 추가 / (2) `renderTimeSettingsTab()`에 자동매수 시간쌍 + 자동매도 시간쌍 + 안내 문구 추가 ("자동매수/매도가 꺼져 있어도 시간을 미리 설정할 수 있습니다...") / (3) `syncFromSettings()`에서 `buyTimeHandle.setEnabled()`/`sellTimeHandle.setEnabled()` 호출 제거 (토글 OFF 시에도 시간 입력 활성화 유지 — 설계서 2-1)
+  - **핵심 동작 변경 (사용자 확인 필요)**: 기존에는 자동매수/매도 토글을 끄면 시간 입력칸이 회색으로 비활성화되었음. 변경 후에는 토글이 꺼져 있어도 시간 입력칸이 항상 활성화되어 미리 시간을 설정할 수 있음. 안내 문구로 "자동매수/매도가 꺼져 있어도 시간을 미리 설정할 수 있습니다. 자동매매 탭에서 자동매수/매도를 켜면 이 시간에 맞춰 실행됩니다." 표시 (P21 사용자 투명성)
+  - **검증**: typecheck 통과 + 빌드 통과 (1.89s) + 전체 테스트 116/116 통과. 브라우저 검증은 사용자 확인 필요 (시간 설정 탭에 자동매수/매도 시간쌍 표시 + 자동매매 탭에 토글만 표시 + 토글 OFF 시에도 시간 입력 활성화 + 저장 동작 정상)
+- **5세션 (승인 대기)**: Step 3 구현 — 사전 준비 시간 + 거래소 고정 시간 이동.
+  - **예상 작업**: `renderAutoTradeTab()`의 장 시작 전 사전 준비 시간 3개 슬롯(`timetableResetSlot`/`timetableWsSlot`/`timetableKrxSlot`) + 거래소 고정 시간 참고 7개 행을 `renderTimeSettingsTab()`으로 이동. 자동매매 탭에서 해당 섹션 제거. `syncFromSettings()`의 타임테이블 3개 키 동기화 블록은 위치 유지 (변수 참조 그대로). `unmount()`는 이미 timetable* 변수 초기화 코드 있으므로 변경 불필요 예상.
+  - **예상 검증**: 빌드 + 브라우저에서 시간 설정 탭에 사전 준비 시간 3개 슬롯 + 거래소 고정 시간 참고 표시 + 자동매매 탭에서 해당 섹션 제거 + 저장 동작 정상
 
 ## 이전 다단계 작업: DB 테이블 스케줄러 (다단계 작업) — 전체 완료
 
