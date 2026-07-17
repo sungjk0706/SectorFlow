@@ -1,12 +1,28 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-18 (일반설정 탭 재구성 다단계 작업 8세션 — Step 6 최종 검증 + 정리 + 계획서 삭제 완료 · **다단계 작업 전체 완료**)
-- 작업: 일반설정 페이지 탭 재구성 다단계 작업 8세션(Step 6) 진행. 사용자 명시적 실행 지시어("8세션 진행해")로 진행 승인. Step 6 "최종 검증 + 정리": (1) 전체 typecheck + 빌드 + 테스트 116/116 통과 / (2) dead code 잔존 점검 — 모든 설정 키(`buy_time_*`, `sell_time_*`, `timetable.*`, `confirmed_download_time`, `scheduler_market_close_on`, `ui_price_flash_on`, `order_time_guard_on`, `auto_buy_on`, `auto_sell_on`, `time_scheduler_on`)가 살아있는 경로에 연결, 잔존 없음 / (3) 5개 탭 구조 원칙 점검 (P10/P16/P20/P21/P23/P24) — 모두 준수 / (4) 계획서 파일 2개 삭제 (`docs/architecture_settings_tab_reorganization_design.md` + `docs/plan_settings_tab_reorganization.md`, 규칙 11). 백엔드 변경 없음. **다단계 작업 전체 완료 (3~8세션, 총 6세션).**
-- 상태: 8세션(Step 6 구현) 완료. 커밋 완료. **일반설정 탭 재구성 다단계 작업 전체 완료. 다음 작업 승인 대기.**
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 섹션4 "다단계 작업 워크플로우" + 규칙 11(계획서 삭제) + P10/P16/P20/P21/P23/P24
+- 날짜: 2026-07-18 (1일봉 다운로드 타임테이블 통합 다단계 작업 1세션 — 설계서 작성 완료 · **2세션 승인 대기**)
+- 작업: 1일봉차트 확정 다운로드 시간 DB 타임테이블 통합 다단계 작업 1세션(설계서 작성) 진행. 사용자 명시적 실행 지시어("설계서 작성해 주세요")로 진행 승인. 방식 A(아키텍처 원칙 완전 부합) 채택 — `confirmed_download_time` → `timetable.confirmed_download` 키 이름 변경 + DB 마이그레이션 + 타임테이블 11번째 항목 추가 + `schedule_ws_subscribe_timers()` 분기 제거 + 멱등성 가드(`last_confirmed_download_date`) + 토글 OFF 시 엔트리 스킵 + 순서 검증 2그룹 분리(사전 준비 3개 < 09:00, 확정 다운로드 > 20:00). 사용자 체감 변화 없음 (내부 타이머 통합만). 아키텍처 원칙 P10/P14/P16/P20/P21/P22/P23/P24 8개 완전 부합, 타협 없음.
+- 상태: 1세션(설계서 작성) 완료. 커밋 완료. **2세션(심층 사전조사 + 태스크 파일 작성) 승인 대기.**
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 섹션4 "다단계 작업 워크플로우" + 규칙 11(계획서 삭제) + Safety Rules 2(DB 백업) + P10/P14/P16/P20/P21/P22/P23/P24
 
-## 일반설정 탭 재구성 다단계 작업 — 전체 완료 (3~8세션, 총 6세션)
+## 1일봉 다운로드 타임테이블 통합 다단계 작업 — 진행 중 (1/5세션)
+
+### 단계 진행 상황
+- **1세션 (완료)**: 설계서 작성 — 이전 세션 검토(방식 A/B 비교) + 사용자 확정 7항목 반영.
+  - **설계서**: `docs/architecture_download_timetable_integration_design.md` (398줄)
+  - **핵심 설계**: 방식 A(아키텍처 원칙 완전 부합) 채택. `confirmed_download_time` → `timetable.confirmed_download` 키 이름 변경 + DB 마이그레이션(db-backup 선행). `build_timetable_from_cache()` 11번째 항목 추가 (토글 OFF 시 엔트리 스킵 — P16 dead path 제거). `schedule_ws_subscribe_timers()` 분기 제거 (함수 자체 제거 검토). 멱등성 가드 `state.last_confirmed_download_date` 추가 (P22, 기존 `last_realtime_reset_date` 패턴 재사용). 순서 검증 2그룹 분리 — 그룹1 사전 준비 3개 키(`rt <= ws <= krx < 09:00`), 그룹2 확정 다운로드(`confirmed_download > 20:00`). `engine_service.py` `_WS_SCHEDULE_KEYS` 제거 → `_TIMETABLE_KEYS`에 `timetable.confirmed_download` + `scheduler_market_close_on` 추가. 프론트엔드 `scheduleConfirmedDlSave()` → `scheduleTimetableSave()` 통합 (P23 일관성). 사용자 체감 변화 없음 (UI 입력칸, 다운로드 시간, 토글 동작 모두 기존과 동일).
+  - **세션 분할 (5세션 확정)**: 1세션(설계서·완료) / 2세션(심층 사전조사 + 태스크 파일 작성) / 3세션(DB 마이그레이션 + 백엔드 키 변경) / 4세션(타임테이블 통합 + 멱등성 가드) / 5세션(프론트엔드 + 최종 검증 + 계획서 삭제)
+- **2세션 (대기)**: 심층 사전조사 + 태스크 파일 작성 — 대상 파일별 의존성·영향 범위 식별, 태스크 파일에 단계별 검증 항목 명시.
+- **3세션 (대기)**: DB 마이그레이션 + 백엔드 키 변경 — db-backup 스크립트 백업 → 마이그레이션 스크립트 실행 → `settings_defaults.py`/`engine_settings.py`/`settings_store.py` 키 변경 + 순서 검증 2그룹 분리 → 테스트 수정.
+- **4세션 (대기)**: 타임테이블 통합 + 멱등성 가드 — `build_timetable_from_cache()` 11번째 항목 추가 + 토글 연동 + `_on_confirmed_download()` 멱등성 가드 + `schedule_ws_subscribe_timers()` 분기 제거 + `engine_service.py` 설정 변경 감지 키 이동 + 부트스트랩 catch-up 키 참조 변경 → 테스트 수정.
+- **5세션 (대기)**: 프론트엔드 키 참조 변경 + 저장 함수 통합 + 최종 검증 + 계획서 2개 삭제 (규칙 11).
+
+## 다음 세션 진행 대기: 2세션 (심층 사전조사 + 태스크 파일 작성)
+
+> 1세션(설계서 작성) 완료. 2세션 진행은 사용자 명시적 실행 지시어 대기.
+
+## 이전 다단계 작업: 일반설정 탭 재구성 — 전체 완료 (3~8세션, 총 6세션)
 
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계서 작성 — 검토 결과(이전 세션) + 사용자 확정 4항목 반영.
