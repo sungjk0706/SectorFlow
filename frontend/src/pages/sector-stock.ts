@@ -60,7 +60,6 @@ interface DataRowItem {
   stock: SectorStock
   opacity: string
   eliminated: boolean
-  krxInactive: boolean
   seq: number
 }
 
@@ -204,6 +203,15 @@ function computeRows(
     const bgColor = isEliminated ? COLOR.hoverBg : 'transparent'
     const score = scoreMap.get(sector)
 
+    // NXT 전용 시간대: 이 업종의 활성 종목(NXT 지원)이 0개면 그룹 행도 숨김
+    if (krxInactive && codes) {
+      const hasActiveStock = codes.some(code => {
+        const s = stockMap[code]
+        return s && s.nxt_enable
+      })
+      if (!hasActiveStock) continue
+    }
+
     rows.push({
       type: 'group',
       sector,
@@ -220,20 +228,19 @@ function computeRows(
     const sortedCodes = selectedSector ? [...codes].sort() : codes
 
     for (const code of sortedCodes) {
-      stockSeq++
       const stock = stockMap[code]
       if (!stock) continue
-
-      // KRX 비활성 구간: KRX 단독 종목 (nxt_enable !== true) — 탈락과 동일하게 "매수 불가" 처리
-      const stockKrxInactive = krxInactive && !stock.nxt_enable
-      const rowOpacity = (isEliminated || stockKrxInactive) ? '0.85' : opacity
+      // KRX 비활성 구간: KRX 단독 종목 (nxt_enable !== true)은 행 자체를 추가하지 않음 (숨김)
+      if (krxInactive && !stock.nxt_enable) continue
+      stockSeq++
+      const rowOpacity = isEliminated ? '0.85' : opacity
 
       // 행 객체 캐시: stock 참조가 같으면 이전 행 재사용
       const cached = rowCache.get(code)
-      if (cached && cached.stock === stock && cached.row.opacity === rowOpacity && cached.row.eliminated === isEliminated && cached.row.krxInactive === stockKrxInactive && cached.row.seq === stockSeq) {
+      if (cached && cached.stock === stock && cached.row.opacity === rowOpacity && cached.row.eliminated === isEliminated && cached.row.seq === stockSeq) {
         rows.push(cached.row)
       } else {
-        const row: DataRowItem = { type: 'data', stock, opacity: rowOpacity, eliminated: isEliminated, krxInactive: stockKrxInactive, seq: stockSeq }
+        const row: DataRowItem = { type: 'data', stock, opacity: rowOpacity, eliminated: isEliminated, seq: stockSeq }
         rowCache.set(code, { stock, row })
         rows.push(row)
       }
@@ -266,6 +273,7 @@ class SectorStockTable extends HTMLElement {
   private titleFilterNumSpan: HTMLElement | null = null
   private marketCountRow: MarketCountRowHandle | null = null
   private filterBadge: HTMLElement | null = null
+  private nxtOnlyNoticeBadge: HTMLElement | null = null
   private emptyDiv: HTMLElement | null = null
   private scrollContainer: HTMLElement | null = null
   private _rafId: number | null = null
@@ -330,6 +338,22 @@ class SectorStockTable extends HTMLElement {
         if (label) label.textContent = `📌 ${selected}`
       } else {
         this.filterBadge.style.display = 'none'
+      }
+    }
+
+    // NXT 전용 시간대 안내 배지 갱신 (P21 투명성)
+    if (this.nxtOnlyNoticeBadge) {
+      const isNxtOnly = uiState.marketPhase.is_nxt_only === true
+      if (isNxtOnly) {
+        const hiddenCount = stocks.filter(s => !s.nxt_enable).length
+        this.nxtOnlyNoticeBadge.textContent = `NXT 전용 시간대 — KRX 단독 종목 숨김 (${hiddenCount}종목)`
+        this.nxtOnlyNoticeBadge.style.opacity = '0'
+        this.nxtOnlyNoticeBadge.style.display = 'flex'
+        requestAnimationFrame(() => {
+          if (this.nxtOnlyNoticeBadge) this.nxtOnlyNoticeBadge.style.opacity = '1'
+        })
+      } else {
+        this.nxtOnlyNoticeBadge.style.display = 'none'
       }
     }
 
@@ -428,6 +452,26 @@ class SectorStockTable extends HTMLElement {
     this.filterBadge.appendChild(clearBtn)
     this.rootEl.appendChild(this.filterBadge)
 
+    // 2-1. NXT 전용 시간대 안내 배지 (P21 투명성 — KRX 단독 종목 숨김 사유 명시)
+    // filterBadge 패턴 재사용 (같은 페이지 내 동일 배지 구조 — P23 일관성)
+    this.nxtOnlyNoticeBadge = document.createElement('div')
+    Object.assign(this.nxtOnlyNoticeBadge.style, {
+      display: 'none',
+      alignItems: 'center',
+      gap: '8px',
+      marginBottom: '8px',
+      padding: '6px 12px',
+      background: COLOR.warningBg,
+      borderRadius: '6px',
+      border: '1px solid ' + COLOR.warning,
+      fontSize: FONT_SIZE.badge,
+      color: COLOR.warning,
+      transition: 'opacity 0.15s ease',
+      opacity: '0',
+    })
+    this.nxtOnlyNoticeBadge.textContent = ''
+    this.rootEl.appendChild(this.nxtOnlyNoticeBadge)
+
     // 3. 검색 입력란 (좌: 종목명/코드, 우: 업종명)
     const searchRow = document.createElement('div')
     Object.assign(searchRow.style, {
@@ -509,7 +553,6 @@ class SectorStockTable extends HTMLElement {
         opacity: row.opacity,
         background: this.currentMatchedCodes?.has(row.stock.code)
           ? COLOR.downBg
-          : row.krxInactive ? COLOR.inactiveRowBg
           : row.eliminated ? COLOR.hoverBg : '',
       }),
     })
@@ -605,6 +648,7 @@ class SectorStockTable extends HTMLElement {
     this.titleH3 = null
     this.marketCountRow = null
     this.filterBadge = null
+    this.nxtOnlyNoticeBadge = null
     this.emptyDiv = null
     this.scrollContainer = null
     this.searchInput = null

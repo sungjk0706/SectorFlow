@@ -1,26 +1,101 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (매도내역 매수일시 컬럼 추가 + 평균가 현행 유지)
-- 작업: 수익상세 페이지 매도내역 테이블에 "매수일시" 컬럼 추가 (잔여 FIFO lot의 최초 매수일 기준). 평균가 방식은 현행(FIFO 차감 + 잔여 lot 평균가) 유지. DB 마이그레이션(`trades.buy_date TEXT`) + 백엔드 `record_sell()` buy_date 저장 + 프론트엔드 SELL_COLS 컬럼 추가. 검증 완료.
-- 상태: 1세션 완료. 검증 완료 (pytest test_trade_history 64 + test_stock_tables/test_web_app 49 전체 통과 + npm run build 성공 + 마이그레이션 직접 호출 검증 + 분할 매수 시뮬레이션 최초 매수일/평균가 정확 계산 확인). 커밋 + 푸시 완료.
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 UI 기준 설명) + P10/P15/P16/P18/P23 + safe-trade 스킬 + db-backup 스킬
+- 날짜: 2026-07-17 (NXT 전용 시간대 KRX 종목 숨김 처리 — 다단계 3세션 완료)
+- 작업: NXT 전용 시간대(07:59~08:59, 15:20~20:00 — 구독 시점 기준)에 KRX 단독 종목을 회색 배경에서 완전 숨김 방식으로 전환하는 다단계 작업 3세션(구현 Step 1: sector-stock.ts + ui-styles.ts) 완료. sector-stock.ts — DataRowItem 인터페이스 krxInactive 필드 제거 + computeRows KRX 단독 종목 continue 숨김 + 빈 업종 그룹 행 숨김 + stockSeq++ 위치 이동(순번 자동 재정렬) + 안내 배지 DOM/갱신(filterBadge 패턴 재사용, fade-in 150ms) + rowStyle 분기 제거 + disconnectedCallback 정리. ui-styles.ts — inactiveRowBg 상수 제거. 검증: typecheck + build + 테스트 108/108 통과.
+- 상태: 3세션(구현 Step 1) 완료. 4세션(구현 Step 2: sector-settings.ts 수신률 섹션 3상태 숨김) 승인 대기.
+- **참조 문서**: `docs/architecture_krx_hide_in_nxt_only_design.md` (설계서, 565줄) + `docs/plan_krx_hide_in_nxt_only.md` (태스크 파일, 567줄)
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 UI 기준 설명) + 섹션4 다단계 작업 워크플로우 + P10/P16/P20/P21/P22/P23/P24 + frontend-fix 스킬
 
-## 다음 세션 진행 대기: 없음 (매수일시 컬럼 추가 완료)
-- **1세션 완료**: 매도내역 매수일시 컬럼 추가 + 평균가 현행 유지 완료.
-- **세션 분할** (완료):
-  - 1세션(완료): 설계서 작성
-  - 2세션(완료): 심층 사전조사 + 태스크 파일
-  - 3세션(완료): 구현 Step 1 — 사전 구간 판정 + 07:58 통합 (Change 1, 2)
-  - 4세션(완료): 구현 Step 2 — 08:59 KRX 사전 구독 + 15:20 KRX 해지 (Change 3, 4)
-  - 5세션(완료): 통합 런타임 검증 + `ARCHITECTURE.md` 타임라인 섹션 갱신 + 계획서 2개 + 조사보고서 1개 삭제
-- **5세션 작업 상세**:
-  - `ARCHITECTURE.md` 12.1 타임라인 갱신 (L976-984) — 구 버전(08:00/09:00/15:30/16:01/18:00/20:00/20:40/00:00 8개) → 신 버전(07:58/07:59/08:00/08:59/09:00/15:20/20:00/20:40/00:00 9개). 07:58 `_on_realtime_fields_reset()` + 07:59 WS 구독 구간 진입 + 08:59 `_on_krx_pre_subscribe()` + 15:20 `_on_krx_closing_auction_start()` 추가. 구 15:30/16:01/18:00 제거 (동시호가 해지 15:20으로 통합).
-  - `ARCHITECTURE.md` 12.3 WS 구독 구간 판정 갱신 (L998-1004) — 사전 구간(07:59~08:00) 시간 기반 판정 `_is_pre_subscribe_window()` 추가 명시. 정규 구간은 기존 NXT_ACTIVE_PHASES 판정 유지.
-  - 계획서 2개 + 조사보고서 1개 삭제 (`git rm`) — `docs/architecture_subscribe_timeline_design.md`, `docs/plan_subscribe_timeline.md`, `docs/subscribe_timeline_investigation.md`. 조사보고서는 계획서에 명시되지 않았으나 사용자 승인으로 함께 삭제 (이번 작업 사이클 산출물, 구 함수명 참조 3건 포함).
-- **검증 결과**: pytest 2838 passed (회귀 없음) + npm run build 성공 (2.09s) + 런타임 기동 RuntimeWarning 0건 + /api/settings 정상 (200) + 잔존 프로세스 0건 + `backend/` 잔존 참조 0건 + `docs/` 잔존 참조 0건 (session_state 계획서 3건은 2026-07-17 규칙 11 삭제됨).
+## 다음 세션 진행 대기: NXT 전용 시간대 KRX 종목 숨김 처리 (다단계 작업 4세션)
+
+### 단계 진행 상황
+- **1세션 (완료)**: 설계 검토 + 디자인 파일 작성 — ARCHITECTURE.md 24개 원칙 검토 + 기존 공통 자산 조사(badge.ts, fade-in 패턴, filterBadge 패턴) + 사용자 결정 5항목 확정 + 시간 표기 구독 시점 기준 통일.
+  - **설계서**: `docs/architecture_krx_hide_in_nxt_only_design.md` (565줄)
+  - **사용자 확정 사항**:
+    1. 빈 업종 그룹 행 → 그룹 행도 숨김
+    2. 안내 배지 → 추가 (기존 filterBadge 패턴 재사용)
+    3. 전환 애니메이션 → 배지 fade-in만 (150ms)
+    4. "정규장 여부" 판단 방식 → **안 B: 프론트엔드 phase 문자열 매칭** (백엔드 변경 없음)
+    5. "그 외 시간대" 안내 텍스트 → 추가 없음 (섹션 자체만 숨김)
+  - **시간대 정의 (구독 신청/해지 시점 기준)**:
+    | 시간대 | 구간 | KRX 종목 | NXT 종목 | 수신률 KRX 바 | 수신률 NXT 바 |
+    |---|---|---|---|---|---|
+    | NXT 전용 (오전) | 07:59 ~ 08:59 | 숨김 | 표시 | 숨김 | 표시 |
+    | 정규장 | 08:59 ~ 15:20 | 표시 | 표시 | 표시 | 표시 |
+    | NXT 전용 (오후) | 15:20 ~ 20:00 | 숨김 | 표시 | 숨김 | 표시 |
+    | 그 외 | 20:00 ~ 07:59 | 숨김 | 숨김 | 숨김 | 숨김 |
+  - **영향 범위 (안 B 확정 — 프론트엔드 only, 3개 파일)**:
+    - `frontend/src/pages/sector-stock.ts` (중) — computeRows KRX 필터 + 빈 그룹 행 숨김 + krxInactive 제거 + 안내 배지 추가 + rowStyle 분기 제거
+    - `frontend/src/pages/sector-settings.ts` (소) — _applyMarketPhaseActive 3상태 분기 + opacity→display 토글
+    - `frontend/src/components/common/ui-styles.ts` (소) — inactiveRowBg 상수 제거
+- **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성 — sector-stock.ts krxInactive 심볼 6곳 + inactiveRowBg 단일 사용처 + _applyMarketPhaseActive 호출부 2곳 + header.ts PHASE_STYLE 19개 phase 분석 → REGULAR_PHASES 4개 확정. 작업량 계산 → 단계 분할(3세션 + 4세션) + 태스크 파일 `docs/plan_krx_hide_in_nxt_only.md` (567줄) 작성.
+  - **사전조사 결과 (규칙 0-2 4항목)**:
+    1. **의존성**: krxInactive는 sector-stock.ts 내 6곳만 참조(외부 파일 참조 없음, 단일 파일 내 완결). inactiveRowBg는 sector-stock.ts:512 단일 사용처. _applyMarketPhaseActive 호출부 2곳(L231, L399) 모두 이미 marketPhase 전체 객체 전달 중 → 시그니처 확장해도 호출부 수정 불필요. krxRowEl/nxtRowEl은 모듈 변수로 mount에서 생성, unmount에서 null → display 토글로 전환해도 참조 유효.
+    2. **영향범위**: 프론트엔드 3개 파일 (sector-stock.ts 중, sector-settings.ts 소, ui-styles.ts 소) — 백엔드 변경 없음(안 B 확정).
+    3. **아키텍처 원칙 부합**: P10/P16/P20/P21/P22/P23/P24 전부 재확인 완료. 안 B P10/P23 부분 위험은 REGULAR_PHASES 동기화 주석으로 완화.
+    4. **기존 공통 자산 확인**: filterBadge 패턴, COLOR.warningBg/warning, transition 속성, requestAnimationFrame 패턴 재사용 확정. badge.ts/toast.ts는 구조 부적합으로 기각.
+  - **REGULAR_PHASES 확정** (header.ts PHASE_STYLE 분석 기반): `new Set(['정규장', '시가 동시호가', '종가 동시호가', '메인마켓'])` — 시간외/NXT 전용 phase 6개는 is_nxt_only 플래그로 우선 분리되므로 제외. 판정 순서: is_nxt_only 우선 → false일 때만 REGULAR_PHASES 참조.
+  - **단계 분할 (세션당 1단계 — 규칙 0-1)**:
+    | 세션 | 단계 | 파일 | 검증 |
+    |---|---|---|---|
+    | 3세션 | 종목 숨김 + 안내 배지 + 색상 상수 제거 | sector-stock.ts (4-1,4-2,4-3,4-4) + ui-styles.ts (4-5) | type-check + build + 브라우저 |
+    | 4세션 | 수신률 섹션 3상태 숨김 | sector-settings.ts (4-7) | type-check + build + 브라우저 |
+  - **sector-stock.ts 한 세션 전체 수정 이유**: krxInactive 필드 제거 시 computeRows/rowStyle/DataRowItem 인터페이스/updateUI가 모두 연관 → 부분 제거 시 타입 오류 또는 dead code 발생 위험.
+- **3세션 (완료)**: 구현 Step 1 — sector-stock.ts (DataRowItem krxInactive 필드 제거 + computeRows KRX 단독 종목 continue 숨김 + 빈 업종 그룹 행 숨김 + stockSeq++ 위치 이동 순번 재정렬 + 안내 배지 DOM/갱신 + rowStyle 분기 제거 + disconnectedCallback 정리) + ui-styles.ts (inactiveRowBg 상수 제거). 검증: typecheck 통과 + build 성공(2.07s, 63 모듈) + 테스트 108/108 통과 + 브라우저 검증(개발 서버 5174).
+  - **sector-stock.ts 수정 상세**:
+    - `DataRowItem` 인터페이스: `krxInactive: boolean` 필드 제거.
+    - `computeRows`: 그룹 행 push 이전에 `krxInactive && codes`일 때 활성 종목(NXT 지원) 0개면 `continue`로 그룹 행 숨김. 종목 루프에서 `if (krxInactive && !stock.nxt_enable) continue`로 KRX 단독 종목 행 숨김. `stockSeq++`를 두 continue 이후로 이동 → 활성 종목만 1, 2, 3... 자동 재정렬. `stockKrxInactive` 변수 제거. `rowOpacity`에서 `stockKrxInactive` 분기 제거. 캐시 체크 조건에서 `krxInactive` 항 제거. row 생성에서 `krxInactive` 필드 제거.
+    - `nxtOnlyNoticeBadge` 필드 추가 + connectedCallback에서 filterBadge 이후 DOM 생성(filterBadge 패턴 재사용, COLOR.warningBg/warning, fade-in transition 150ms).
+    - `updateUI`: filterBadge 갱신 이후 안내 배지 갱신 로직 추가 — `is_nxt_only === true`일 때 `hiddenCount` 계산 + 텍스트 `NXT 전용 시간대 — KRX 단독 종목 숨김 (N종목)` + fade-in(opacity 0→1 다음 프레임). 정규장/그 외 시 `display: none`.
+    - `rowStyle`: `row.krxInactive ? COLOR.inactiveRowBg` 분기 제거.
+    - `disconnectedCallback`: `this.nxtOnlyNoticeBadge = null` 추가.
+  - **ui-styles.ts 수정 상세**: `inactiveRowBg: '#c8c8c8'` 상수 1줄 제거 (단일 사용처라 안전). `inactiveBg: '#e0e0e0'`는 별도 용도 유지.
+  - **검증 결과**: typecheck 통과(타입 오류 없음) + build 성공(63 모듈 변환, 2.07s) + 테스트 108/108 통과(7개 테스트 파일) + 개발 서버 5174 기동 정상.
+- **4세션 (대기)**: 구현 Step 2 — sector-settings.ts (REGULAR_PHASES 상수 추가 + _applyMarketPhaseActive 시그니처 확장 + 3상태 분기 + opacity→display 토글). 검증: type-check + build + 브라우저.
+
+### 참조 문서
+- **설계서**: `docs/architecture_krx_hide_in_nxt_only_design.md` (1세션 산출물, 565줄)
+- **태스크 파일**: `docs/plan_krx_hide_in_nxt_only.md` (2세션 산출물, 567줄)
+
+### 승인 대기 항목
+- **4세션 진행**: 구현 Step 2 — sector-settings.ts 수정 (REGULAR_PHASES 상수 추가 + _applyMarketPhaseActive 시그니처 확장 + 3상태 분기 + opacity→display 토글). 사용자 "진행" 지시 시 시작.
 
 ## 직전 완료 작업
+- **NXT 전용 시간대 KRX 종목 숨김 + 안내 배지 구현 (다단계 3세션)**: sector-stock.ts + ui-styles.ts 구현 Step 1 완료.
+  - **sector-stock.ts 수정**: DataRowItem 인터페이스 krxInactive 필드 제거 + computeRows KRX 단독 종목 continue 숨김 + 빈 업종 그룹 행 숨김 + stockSeq++ 위치 이동(순번 자동 재정렬) + 안내 배지 DOM/갱신(filterBadge 패턴 재사용, COLOR.warningBg/warning, fade-in 150ms) + rowStyle 분기 제거 + disconnectedCallback 정리.
+  - **ui-styles.ts 수정**: inactiveRowBg 상수 1줄 제거 (단일 사용처라 안전).
+  - **UI 기준 변경 내용** (규칙 0-4):
+    - NXT 전용 시간대: KRX 단독 종목이 회색 배경 흐릿 표시 → 행 자체 숨김 + 순번 1,2,3... 자동 재정렬. 업종 전체가 NXT 종목 0개면 그룹 행도 숨김.
+    - 안내 배지: NXT 전용 시간대에 주황색 배지 표시 `NXT 전용 시간대 — KRX 단독 종목 숨김 (N종목)` (fade-in 150ms). 정규장 전환 시 자동 숨김.
+    - 회색 배경(#c8c8c8) 제거: 행 자체를 숨기므로 불필요.
+  - **검증 결과**: typecheck 통과 + build 성공(2.07s, 63 모듈) + 테스트 108/108 통과 + 개발 서버 5174 기동 정상.
+  - **커밋**: `feat: NXT 전용 시간대 KRX 종목 숨김 + 안내 배지 추가 (3세션)`.
+  - **작업 여력**: 충분.
+- **NXT 전용 시간대 KRX 종목 숨김 처리 심층 사전조사 + 태스크 파일 작성 (다단계 2세션)**: 규칙 0-2 4항목 사전조사 + 단계 분할 + 태스크 파일 작성.
+  - **산출물**: `docs/plan_krx_hide_in_nxt_only.md` (567줄) — 3세션/4세션 구현 태스크 상세.
+  - **사전조사 (규칙 0-2 4항목)**:
+    1. **의존성 조사**: krxInactive 심볼 sector-stock.ts 내 6곳만 참조(외부 파일 참조 없음). inactiveRowBg 단일 사용처(sector-stock.ts:512). _applyMarketPhaseActive 호출부 2곳(L231, L399) 모두 이미 marketPhase 전체 객체 전달 중 → 시그니처 확장해도 호출부 수정 불필요. krxRowEl/nxtRowEl 모듈 변수 참조 유효.
+    2. **영향 범위**: 프론트엔드 3개 파일 (sector-stock.ts 중, sector-settings.ts 소, ui-styles.ts 소) — 백엔드 변경 없음(안 B 확정).
+    3. **아키텍처 원칙 부합**: P10/P16/P20/P21/P22/P23/P24 전부 재확인. 안 B P10/P23 부분 위험은 REGULAR_PHASES 동기화 주석으로 완화.
+    4. **기존 공통 자산 확인**: filterBadge 패턴, COLOR.warningBg/warning, transition 속성, requestAnimationFrame 패턴 재사용 확정. badge.ts/toast.ts 구조 부적합 기각.
+  - **REGULAR_PHASES 확정** (header.ts PHASE_STYLE 19개 phase 분석): `new Set(['정규장', '시가 동시호가', '종가 동시호가', '메인마켓'])` — 시간외/NXT 전용 phase 6개('장전 시간외', '장후 시간외', '프리마켓', '애프터마켓', '애프터마켓 지속', '시간외 종가매매 종료 + 시간외 단일가매매 개시')는 is_nxt_only 플래그로 우선 분리되므로 제외. 판정 순서: is_nxt_only 우선 → false일 때만 REGULAR_PHASES 참조.
+  - **단계 분할 (세션당 1단계 — 규칙 0-1)**: 3세션(sector-stock.ts + ui-styles.ts — krxInactive 필드 제거 시 computeRows/rowStyle/DataRowItem/updateUI 모두 연관되어 한 세션 전체 수정) + 4세션(sector-settings.ts — 별도 파일, 별도 검증).
+  - **커밋 계획**: 3세션 `feat: NXT 전용 시간대 KRX 종목 숨김 + 안내 배지 + 순번 재정렬 (다단계 3세션)` / 4세션 `feat: 업종순위설정 수신률 섹션 3상태 숨김 (NXT 전용/정규장/그 외) (다단계 4세션)`.
+  - **코드 수정 없음**: 사전조사 + 태스크 파일 작성 only. 3세션 구현은 사용자 "진행" 지시 시 시작.
+  - **작업 여력**: 충분.
+- **NXT 전용 시간대 KRX 종목 숨김 처리 설계서 작성 (다단계 1세션)**: 설계 검토 + 디자인 파일 작성.
+  - **배경**: 기존 NXT 전용 시간대에 KRX 단독 종목을 회색 배경(#c8c8c8) + 투명도 0.85로 표시 → 사용자가 숨김 방식으로 개선 요청. 업종순위설정 패널 수신률 섹션도 함께 개선 요청.
+  - **설계 내용**:
+    - sector-stock.ts: computeRows에서 KRX 비활성 종목 continue 제외 + stockSeq++ 위치 이동(순번 자동 재정렬) + 빈 업종 그룹 행 숨김 + krxInactive 필드/분기/색상 상수 제거 + 안내 배지("NXT 전용 시간대 — KRX 단독 종목 숨김 (N종목)", filterBadge 패턴 재사용, fade-in 150ms) 추가.
+    - sector-settings.ts: _applyMarketPhaseActive를 2상태(opacity 0.3/1.0) → 3상태(display none/flex) 분기로 확장. 안 B(프론트엔드 phase 문자열 매칭, REGULAR_PHASES 상수) 채택.
+    - ui-styles.ts: inactiveRowBg 상수 제거 (단일 사용처라 안전).
+    - 트리거 체인: 기존 market-phase WS 이벤트 → applyMarketPhase → uiStore.marketPhase → subscribe 감지 → refreshRows/_applyMarketPhaseActive. 신규 트리거 불필요.
+  - **시간 표기 통일**: 모든 표시/숨김 전환 시점을 실제 구독 신청/해지 시간(07:59/08:59/15:20/20:00) 기준으로 통일. 기존 실제 장 시간(08:00/09:00/15:30/15:40) 표기에서 구독 시점 기준으로 변경.
+  - **사용자 결정 5항목 확정**: 빈 그룹 행 숨김 / 안내 배지 추가 / fade-in만 / 안 B(프론트엔드 매칭) / 안내 텍스트 미추가.
+  - **P원칙 검토**: P10(SSOT — is_nxt_only, nxt_enable 단일 소스) · P16(살아있는 경로 — dead code 위험 없음) · P20(폴백 금지) · P21(사용자 투명성 — 안내 배지 + market-count-row + 헤더 칩 3중 보완) · P22(데이터 정합성 — 파생 데이터 실시간 계산) · P23(일관성 — filterBadge 패턴 재사용, 용어 사전 준수) · P24(단순성 — 제거 분량 ≥ 추가 분량) 부합.
+  - **안 B 채택 시 P10/P23 부분 위험**: phase 문자열 목록 변경 시 프론트엔드 추적 필요. 2세션 태스크 파일에서 REGULAR_PHASES와 header.ts PHASE_STYLE 동기화 주석 명시 예정.
+  - **작업 여력**: 충분.
 - **매도내역 매수일시 컬럼 추가 + 평균가 현행 유지**: 수익상세 페이지 매도내역 테이블에 "매수일시" 컬럼 신규 추가. 평균가 방식은 현행(FIFO 차감 + 잔여 lot 평균가) 유지 — 키움 HTS 0328 화면(매입가 = 총매수금액/보유수량)과 개념 일치.
   - **사전 검토** (코드 수정 전): 한국 주식시장 표준 처리 방식 웹 검색 — 세금 기준 원칙 FIFO(소득세법 시행령 제162조제5항), 예외 이동평균법(일부 증권사). 키움 HTS 0328 화면은 평균단가 표시, 매수일시는 미표시. 사용자 선호(평균가) = HTS 화면 표시 기준 부합. 매수일시 의미: 평균가 조정 시 단일 매수일시는 본질적 모순이나, "잔여 보유분의 최초 매수일"로 타협 (`get_earliest_buy_date`와 동일 출처 재사용, P23).
   - **DB 백업** (db-backup 스킬): `stocks.db.20260717_150244.backup` (1.0M) + `stocks.db-shm.20260717_150244.backup` (32K) + `stocks.db-wal.20260717_150244.backup` (0B).
