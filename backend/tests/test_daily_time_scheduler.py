@@ -587,13 +587,13 @@ class TestIsOrderBlockedByTime:
             assert is_order_blocked_by_time("005930") is True
             assert is_order_blocked_by_time("005930_AL") is True
 
-    def test_holiday_both_blocked(self):
-        """휴장일 — 양쪽 비활성 → 전부 차단."""
+    def test_holiday_returns_false(self):
+        """휴장일 — 장 안 열리므로 주문 자체 발생 안 함 → False (P23 일관성)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "휴장일", "nxt": "휴장일"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
-            assert is_order_blocked_by_time("005930") is True
+            assert is_order_blocked_by_time("005930") is False
 
     # ── 빈 문자열 phase (P20) ──
 
@@ -732,15 +732,15 @@ class TestGetOrderTimeBlockStatus:
             assert blocked is True
             assert reason == "동시호가/장외 시간대"
 
-    def test_holiday_returns_auction_reason(self):
-        """휴장일 — 양쪽 비활성 → (True, "동시호가/장외 시간대")."""
+    def test_holiday_returns_false(self):
+        """휴장일 — 장 안 열리므로 칩 표시 불필요 → (False, "") (P21 사용자 투명성)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "휴장일", "nxt": "휴장일"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
             blocked, reason = get_order_time_block_status()
-            assert blocked is True
-            assert reason == "동시호가/장외 시간대"
+            assert blocked is False
+            assert reason == ""
 
     def test_aftermarket_returns_nxt_only_reason(self):
         """15:40~20:00 KRX 장후 시간외 + NXT 애프터마켓 — (True, "NXT 전용 구간...")."""

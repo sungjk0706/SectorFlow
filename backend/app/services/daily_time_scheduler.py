@@ -336,6 +336,8 @@ def is_order_blocked_by_time(stk_cd: str) -> bool:
       — NXT 종목은 허용, KRX 단독 종목만 차단.
     ±5초 버퍼: 경계 시각 ±5초 내면 무조건 차단 (안전 측, P24 단순화).
     빈 문자열 phase 시 False 반환 + 에러 로그 (P20 폴백 금지).
+    휴장일 시 False 반환 — 장 안 열리므로 주문 자체 발생 안 함 (P23 일관성,
+    get_order_time_block_status()와 동일 패턴).
     """
     mp = state.market_phase
     krx = mp.get("krx", "")
@@ -343,6 +345,10 @@ def is_order_blocked_by_time(stk_cd: str) -> bool:
     if not krx or not nxt:
         logger.error("[시스템] 장 상태 빈 문자열 감지: krx=%r, nxt=%r — 시간 기반 초기화 누락 가능", krx, nxt)
         return False  # P20 폴백 금지 — 빈 문자열은 차단하지 않고 에러 로그
+
+    # 휴장일 조기 반환 — 장 안 열리므로 주문 자체 발생 안 함 (P23 일관성).
+    if krx == "휴장일" or nxt == "휴장일":
+        return False
 
     # ±5초 버퍼 — 경계 근처면 무조건 차단
     now = _kst_now()
@@ -373,6 +379,7 @@ def get_order_time_block_status() -> tuple[bool, str]:
       - (True, "동시호가/장외 시간대"): 양쪽 비활성 — 전부 차단
       - (True, "동시호가/장외 시간대 (전환 시각 근처)"): ±5초 버퍼 — 전부 차단
       - (False, ""): 빈 문자열 phase — 에러 로그 (P20 폴백 금지)
+      - (False, ""): 휴장일 — 장 안 열리므로 칩 표시 불필요 (P21 사용자 투명성)
     """
     mp = state.market_phase
     krx = mp.get("krx", "")
@@ -380,6 +387,11 @@ def get_order_time_block_status() -> tuple[bool, str]:
     if not krx or not nxt:
         logger.error("[시스템] 장 상태 빈 문자열 감지: krx=%r, nxt=%r — 시간 기반 초기화 누락 가능", krx, nxt)
         return (False, "")  # P20 폴백 금지 — 빈 문자열은 차단하지 않고 에러 로그
+
+    # 휴장일 조기 반환 — 장 안 열리므로 주문 차단 칩 불필요 (P21 사용자 투명성).
+    # _is_pre_subscribe_window() L255-256과 동일 패턴 (P23 일관성).
+    if krx == "휴장일" or nxt == "휴장일":
+        return (False, "")
 
     # ±5초 버퍼 — 경계 근처면 무조건 차단
     now = _kst_now()
