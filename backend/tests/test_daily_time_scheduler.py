@@ -47,7 +47,8 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     _broadcast_market_phase,
     _apply_market_phase,
     _on_krx_market_open,
-    _on_krx_after_hours_start,
+    _on_krx_pre_subscribe,
+    _on_krx_closing_auction_start,
     _on_ws_subscribe_start,
     _on_ws_subscribe_end,
     _fire_confirmed_download,
@@ -802,17 +803,17 @@ class TestBroadcastMarketPhase:
             contexts = [c.kwargs.get("context", "") for c in mock_sched.call_args_list]
             assert any("KRX 정규장 진입" in ctx for ctx in contexts)
 
-    def test_triggers_krx_after_hours_on_phase_change(self):
-        """KRX '체결 정산' 전환 시 _on_krx_after_hours_start() 트리거 (수정 8)."""
+    def test_triggers_krx_closing_auction_on_phase_change(self):
+        """KRX '종가 동시호가' 전환 시 _on_krx_closing_auction_start() 트리거 (15:20 구독 해지)."""
         mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "종가 동시호가", "nxt": "조기 마감"}
+        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "체결 정산", "nxt": "단일가 매매"}), \
-             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "체결 정산", "nxt": "단일가 매매"}), \
+             patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "종가 동시호가", "nxt": "조기 마감"}), \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "종가 동시호가", "nxt": "조기 마감"}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _broadcast_market_phase()
             contexts = [c.kwargs.get("context", "") for c in mock_sched.call_args_list]
-            assert any("KRX 장외 전환" in ctx for ctx in contexts)
+            assert any("KRX 종가 동시호가 — 구독 해지" in ctx for ctx in contexts)
 
     def test_triggers_ws_subscribe_end_on_nxt_close(self):
         """NXT '장마감' 전환 시 _on_ws_subscribe_end() 트리거 (Step 2)."""
@@ -920,14 +921,14 @@ class TestOnKrxMarketOpen:
             await _on_krx_market_open()
 
 
-# ── _on_krx_after_hours_start ─────────────────────────────────────────────────
+# ── _on_krx_closing_auction_start ─────────────────────────────────────────────
 
-class TestOnKrxAfterHoursStart:
+class TestOnKrxClosingAuctionStart:
     @pytest.mark.asyncio
     async def test_weekend_skips(self):
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 30, weekday=5)):
+        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20, weekday=5)):
             with patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock) as mock_recompute:
-                await _on_krx_after_hours_start()
+                await _on_krx_closing_auction_start()
                 mock_recompute.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -935,11 +936,11 @@ class TestOnKrxAfterHoursStart:
         mock_state = MagicMock()
         mock_state.krx_remove_done = False
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 30)), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock), \
              patch("backend.app.services.market_close_pipeline.remove_krx_only_stocks", new_callable=AsyncMock, return_value={"removed": 5, "failed": 0}):
-            await _on_krx_after_hours_start()
+            await _on_krx_closing_auction_start()
             assert mock_state.krx_remove_done is True
 
     @pytest.mark.asyncio
@@ -947,11 +948,11 @@ class TestOnKrxAfterHoursStart:
         mock_state = MagicMock()
         mock_state.krx_remove_done = False
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 30)), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock), \
              patch("backend.app.services.market_close_pipeline.remove_krx_only_stocks", new_callable=AsyncMock, return_value={"skipped": True}):
-            await _on_krx_after_hours_start()
+            await _on_krx_closing_auction_start()
             assert mock_state.krx_remove_done is False
 
 
@@ -1116,11 +1117,115 @@ class TestCheckPrestartTriggers:
         mock_state = MagicMock()
         mock_state.last_realtime_reset_date = ""
         mock_state.last_ws_subscribe_start_date = ""
+        mock_state.last_krx_pre_subscribe_date = ""
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 57)), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _check_prestart_triggers()
             mock_sched.assert_not_called()
+
+    def test_triggers_krx_pre_subscribe_at_0859(self):
+        """08:59 시각 도달 시 KRX 사전 구독 트리거 1회 (08:00~09:00 구간)."""
+        mock_state = MagicMock()
+        mock_state.last_realtime_reset_date = "20250106"
+        mock_state.last_ws_subscribe_start_date = "20250106"
+        mock_state.last_krx_pre_subscribe_date = ""
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59)), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
+            _check_prestart_triggers()
+            contexts = [c.kwargs.get("context", "") for c in mock_sched.call_args_list]
+            assert any("KRX 사전 구독 (08:59)" in ctx for ctx in contexts)
+            assert mock_sched.call_count == 1  # 07:58/07:59는 이미 실행 → 08:59만
+
+    def test_skips_krx_pre_subscribe_if_already_run(self):
+        """멱등성 가드 — last_krx_pre_subscribe_date == today 시 스킵."""
+        mock_state = MagicMock()
+        mock_state.last_realtime_reset_date = "20250106"
+        mock_state.last_ws_subscribe_start_date = "20250106"
+        mock_state.last_krx_pre_subscribe_date = "20250106"  # 이미 실행
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59)), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
+            _check_prestart_triggers()
+            mock_sched.assert_not_called()
+
+    def test_skips_krx_pre_subscribe_after_0900(self):
+        """09:00 이상 시 KRX 사전 구독 스킵 — phase 변경 감지(_on_krx_market_open)가 담당."""
+        mock_state = MagicMock()
+        mock_state.last_realtime_reset_date = "20250106"
+        mock_state.last_ws_subscribe_start_date = "20250106"
+        mock_state.last_krx_pre_subscribe_date = ""
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0)), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
+            _check_prestart_triggers()
+            # 09:00 이상 — 사전 트리거 구간 아님 (phase 변경 감지가 담당)
+            mock_sched.assert_not_called()
+
+
+# ── _on_krx_pre_subscribe (08:59 KRX 사전 구독) ───────────────────────────────
+
+class TestOnKrxPreSubscribe:
+    """_on_krx_pre_subscribe() — 08:59 KRX 단독 종목 사전 구독 테스트."""
+
+    @pytest.mark.asyncio
+    async def test_trading_day_subscribes(self):
+        mock_state = MagicMock()
+        mock_state.last_krx_pre_subscribe_date = ""
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.engine_ws_reg.subscribe_sector_stocks_0b", new_callable=AsyncMock) as mock_subscribe:
+            await _on_krx_pre_subscribe()
+            mock_subscribe.assert_awaited_once()
+            assert mock_state.last_krx_pre_subscribe_date == "20250106"
+
+    @pytest.mark.asyncio
+    async def test_weekend_skips(self):
+        mock_state = MagicMock()
+        mock_state.last_krx_pre_subscribe_date = ""
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59, weekday=5)), \
+             patch("backend.app.services.engine_ws_reg.subscribe_sector_stocks_0b", new_callable=AsyncMock) as mock_subscribe:
+            await _on_krx_pre_subscribe()
+            mock_subscribe.assert_not_awaited()
+            # 주말 시 가드 미설정 — 다음 거래일에 실행
+            assert mock_state.last_krx_pre_subscribe_date == ""
+
+    @pytest.mark.asyncio
+    async def test_holiday_skips(self):
+        mock_state = MagicMock()
+        mock_state.last_krx_pre_subscribe_date = ""
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=False), \
+             patch("backend.app.services.engine_ws_reg.subscribe_sector_stocks_0b", new_callable=AsyncMock) as mock_subscribe:
+            await _on_krx_pre_subscribe()
+            mock_subscribe.assert_not_awaited()
+            # 공휴일 시 가드 미설정 — 다음 거래일에 실행
+            assert mock_state.last_krx_pre_subscribe_date == ""
+
+    @pytest.mark.asyncio
+    async def test_skips_if_already_run_today(self):
+        """멱등성 가드 — 같은 날 중복 실행 방지."""
+        mock_state = MagicMock()
+        mock_state.last_krx_pre_subscribe_date = "20250106"  # 이미 오늘 실행됨
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.engine_ws_reg.subscribe_sector_stocks_0b", new_callable=AsyncMock) as mock_subscribe:
+            await _on_krx_pre_subscribe()
+            mock_subscribe.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_exception_does_not_raise(self):
+        mock_state = MagicMock()
+        mock_state.last_krx_pre_subscribe_date = ""
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", side_effect=Exception("boom")):
+            await _on_krx_pre_subscribe()
 
 
 # ── _on_ws_subscribe_start 멱등성 + 보완 경로 (4단계) ──────────────────────────

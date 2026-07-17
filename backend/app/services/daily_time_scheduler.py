@@ -45,6 +45,7 @@ NXT_AFTERMARKET_END   = (20, 0)    # 20:00 애프터마켓 지속 종료 → 장
 # ── 사전 트리거 시각 (장 시작 전 사전 준비 — 안 D 4단계) ──────────────────────
 REALTIME_FIELDS_RESET_TIME = (7, 58)   # 07:58 실시간 필드 초기화 (WS 구독 1분 전)
 WS_SUBSCRIBE_PRESTART_TIME = (7, 59)   # 07:59 WS 구독 사전 시작 (NXT 프리마켓 1분 전)
+KRX_PRE_SUBSCRIBE_TIME    = (8, 59)   # 08:59 KRX 사전 구독 (정규장 1분 전)
 NXT_MAINMARKET_START_SECOND = 30       # 09:00:30 NXT 메인마켓 시작 (초 단위 예외)
 
 
@@ -459,10 +460,38 @@ async def _on_krx_market_open() -> None:
         logger.warning("[작업실행] 전체 종목 재구독 + 업종 재계산 콜백 오류: %s", e, exc_info=True)
 
 
-async def _on_krx_after_hours_start() -> None:
-    """15:30 전환 콜백 — 업종 종합점수 재계산 + KRX 단독 종목 구독해지.
+async def _on_krx_pre_subscribe() -> None:
+    """08:59 KRX 사전 구독 콜백 — KRX 단독 종목 사전 구독 (재계산 없음).
 
-    KRX 종가 동시호가 종료(15:30) 시점에 KRX 단독 종목(nxt_enable=False) WS 구독 해지.
+    정규장(09:00) 1분 전에 KRX 단독 종목(nxt_enable=False) WS 구독을 미리 수행하여
+    09:00 시가 동시호가 체결 시점부터 실시간 시세를 즉시 수신 (P16 살아있는 경로).
+    재계산은 09:00 _on_krx_market_open()에서 수행하므로 여기서는 구독만 담당.
+    subscribe_sector_stocks_0b() 내부 _subscribed 플래그 멱등성으로 09:00 재호출 시 스킵 (P22).
+    날짜 기반 멱등성 가드(last_krx_pre_subscribe_date)로 중복 실행 방지.
+    거래일 아닌 시 가드 미설정 — 다음 거래일에 실행 (기존 _on_realtime_fields_reset 패턴 준수).
+    """
+    try:
+        today = _kst_now()
+        today_str = today.strftime("%Y%m%d")
+        if state.last_krx_pre_subscribe_date == today_str:
+            return  # 이미 오늘 실행됨 — 중복 방지
+        from backend.app.core.trading_calendar import is_trading_day
+        if today.weekday() >= 5 or not is_trading_day(today.date()):
+            return
+        logger.info("[작업실행] KRX 단독 종목 사전 구독 시작 (08:59)")
+        from backend.app.services.engine_ws_reg import subscribe_sector_stocks_0b
+        await subscribe_sector_stocks_0b()
+        state.last_krx_pre_subscribe_date = today_str
+        logger.info("[작업실행] KRX 단독 종목 사전 구독 완료")
+    except Exception as e:
+        logger.warning("[작업실행] KRX 사전 구독 콜백 오류: %s", e, exc_info=True)
+
+
+async def _on_krx_closing_auction_start() -> None:
+    """15:20 종가 동시호가 전환 콜백 — 업종 종합점수 재계산 + KRX 단독 종목 구독해지.
+
+    KRX 정규장 종료(15:20) 시점에 KRX 단독 종목(nxt_enable=False) WS 구독 해지.
+    시장가 주문만 사용하므로 종가 동시호가 구간(15:20~15:30) 체결이 불가하여 구독 유지 불필요.
     NXT-enabled 종목은 NXT 거래(20:00까지)가 가능하므로 구독 유지.
     recompute_sector_summary_now() 내부에서 notify 3종이 이미 호출되므로 중복 호출을 제거한다.
     _broadcast_market_phase() 내 페이즈 변경 감지 시 자동 트리거된다 (수정 8 통합).
@@ -604,7 +633,7 @@ def _apply_market_phase(phase: dict) -> None:
       - NXT "프리마켓" 진입 → _on_nxt_premarket_start() (08:00, KRX 단독 종목 제외)
       - NXT "프리마켓" 진입 → _on_ws_subscribe_start() (08:00, WS 연결 + 실시간 필드 초기화)
       - KRX "정규장" 진입 → _on_krx_market_open() (09:00, 전체 종목 + 재구독)
-      - KRX "체결 정산" 진입 → _on_krx_after_hours_start() (15:30, KRX 단독 종목 구독해지)
+      - KRX "종가 동시호가" 진입 → _on_krx_closing_auction_start() (15:20, KRX 단독 종목 구독해지)
       - NXT "장마감" 진입 → _on_ws_subscribe_end() (20:00, WS 연결 해제 + 구독 해지)
     """
     try:
@@ -628,8 +657,8 @@ def _apply_market_phase(phase: dict) -> None:
                 schedule_engine_task(_on_ws_subscribe_start(), context="WS 구독 시작")
             if new_krx == "정규장" and prev_krx != "정규장":
                 schedule_engine_task(_on_krx_market_open(), context="KRX 정규장 진입")
-            if new_krx == "체결 정산" and prev_krx != "체결 정산":
-                schedule_engine_task(_on_krx_after_hours_start(), context="KRX 장외 전환")
+            if new_krx == "종가 동시호가" and prev_krx != "종가 동시호가":
+                schedule_engine_task(_on_krx_closing_auction_start(), context="KRX 종가 동시호가 — 구독 해지")
             if new_nxt == "장마감" and prev_nxt != "장마감":
                 schedule_engine_task(_on_ws_subscribe_end(), context="WS 구독 종료")
     except Exception as e:
@@ -1164,10 +1193,11 @@ _MARKET_PHASE_PERIODIC_INTERVAL = 10.0  # 10초 간격 (안 D 설계)
 
 
 def _check_prestart_triggers() -> None:
-    """주기 태스크 내 사전 트리거 체크 — 07:58/07:59 시각 도달 시 사전 실행.
+    """주기 태스크 내 사전 트리거 체크 — 07:58/07:59/08:59 시각 도달 시 사전 실행.
 
     phase 계산(08:00)과 분리하여 부작용만 사전 실행 (P10 SSOT — phase는 실제 스케줄 유지).
     날짜 기반 멱등성 가드로 중복 실행 방지 (P22).
+    08:59 KRX 사전 구독은 08:00~09:00 구간에서 별도 트리거 (정규장 1분 전).
     """
     try:
         now = _kst_now()
@@ -1176,7 +1206,12 @@ def _check_prestart_triggers() -> None:
         reset_t = REALTIME_FIELDS_RESET_TIME[0] * 60 + REALTIME_FIELDS_RESET_TIME[1]      # 478 (07:58)
         prestart_t = WS_SUBSCRIBE_PRESTART_TIME[0] * 60 + WS_SUBSCRIBE_PRESTART_TIME[1]   # 479 (07:59)
         market_t = NXT_PREMARKET_START[0] * 60 + NXT_PREMARKET_START[1]                   # 480 (08:00)
-        # 08:00 이상이면 사전 트리거 구간 아님 — phase 변경 감지가 담당
+        krx_pre_t = KRX_PRE_SUBSCRIBE_TIME[0] * 60 + KRX_PRE_SUBSCRIBE_TIME[1]            # 539 (08:59)
+        krx_open_t = KRX_REGULAR_START[0] * 60 + KRX_REGULAR_START[1]                     # 540 (09:00)
+        # 08:59 KRX 사전 구독 트리거 (08:00~09:00 구간 — phase 변경 감지와 분리)
+        if krx_pre_t <= t < krx_open_t and state.last_krx_pre_subscribe_date != today_str:
+            schedule_engine_task(_on_krx_pre_subscribe(), context="KRX 사전 구독 (08:59)")
+        # 08:00 이상이면 07:58/07:59 사전 트리거 구간 아님 — phase 변경 감지가 담당
         if t >= market_t:
             return
         # 07:58 이상 — 실시간 필드 초기화 사전 트리거
