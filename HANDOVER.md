@@ -1,13 +1,13 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-18 (DB 테이블 스케줄러 5세션 — 백엔드 Step 3: 저장 후 재예약 배선 완료)
-- 작업: DB 테이블 스케줄러 다단계 작업의 5세션(백엔드 Step 3 구현). 사용자 명시적 실행 지시어("5세션 진행해")로 승인 후 착수. (1) 사전조사(규칙 0-2): 삽입 위치 `engine_service.py` 라인 147(`_WS_SCHEDULE_KEYS` 분기 종료) 다음, 149(`_SECTOR_UI_KEYS`) 이전 — 태스크 파일 0-4절과 일치. 의존성 `build_timetable_from_cache`/`_schedule_next_timetable_event`/`_TIMETABLE` 모듈 전역은 4세션 구현 완료. `state.integrated_system_settings_cache`는 라인 48 `refresh_engine_integrated_system_settings_cache()`로 최신값 보장. (2) `engine_service.py`: `_WS_SCHEDULE_KEYS` 분기 종료 직후 `_TIMETABLE_KEYS` 분기 삽입 — 3개 키(`timetable.realtime_reset`/`timetable.ws_prestart`/`timetable.krx_pre_subscribe`) 집합 정의 + `changed_keys & _TIMETABLE_KEYS` 시 lazy import(`build_timetable_from_cache`, `_schedule_next_timetable_event`, 모듈 전역 `_dts_mod`) + `_dts_mod._TIMETABLE = build_timetable_from_cache(state.integrated_system_settings_cache)` 직접 재할당 (P24 setter 1회용 래퍼 금지) + `_schedule_next_timetable_event()` 재예약 (P14 기존 타이머 취소 후 단일 타이머 유지) + `[설정] 타임테이블 변경 감지 — 재빌드 + 타이머 재예약 완료` info 로그 (P21 투명성) + 예외 시 warning 로그 (P20 폴백 금지, 전파 차단). (3) `test_engine_settings.py`: `TestApplySettingsChangeTimetableRebuild` 신규 클래스 5개 케이스 (realtime_reset/ws_prestart/krx_pre_subscribe 각 키 변경 시 build+schedule 호출 + _TIMETABLE 갱신 확인 / 관련 없는 키(tele_on) 시 미호출 / build 예외 시 apply_settings_change 정상 반환 P20/P21) + setup/teardown으로 _TIMETABLE 모듈 전역 백업·복원 (P22 정합성). (4) 검증: py_compile + ruff 통과 + test_engine_settings.py 63개 통과 (신규 5 + 기존 58) + 전체 회귀 2887 passed / 1 failed (기존 실패 test_rebuy_block_disabled — git stash + 단독 실행으로 본 수정 무관 확인, 4세션과 동일 테스트 격리 문제) + 런타임 기동(`-W error::RuntimeWarning`) RuntimeWarning 0건 + 에러 없음 + `[기동] 타임테이블 빌드 완료 — 10항목` + `[기동] 타임테이블 스케줄러 시작 — 다음 이벤트 예약 완료` 로그 정상 + 잔존 프로세스 0건. P10(SSOT)/P14(단일 타이머)/P16(살아있는 경로)/P20(폴백 금지)/P21(사용자 투명성)/P22(데이터 정합성)/P23(일관성)/P24(단순성) 부합. 거래소 고정 7개 시간은 코드 상수 유지.
-- 상태: 5세션(백엔드 Step 3) 완료. 커밋 완료. 다음 작업: 6세션(프론트엔드 Step 4: 입력칸 + 거래소 고정 표시) 승인 대기.
+- 날짜: 2026-07-18 (DB 테이블 스케줄러 6세션 — 프론트엔드 Step 4: 입력칸 3개 + 거래소 고정 시간 참고 표시 완료)
+- 작업: DB 테이블 스케줄러 다단계 작업의 6세션(프론트엔드 Step 4 구현). 사용자 명시적 실행 지시어("6세션 진행해")로 승인 후 착수. (1) 사전조사(규칙 0-2): `general-settings.ts` 라인 288(`createDescText('동시호가·장외 시간대...')`) 다음, 닫는 `}` (289) 이전 — 태스크 파일 0-5절과 일치. 의존성 `createTimeSlot`/`parseHM`/`updateTimeSlotDisplay`/`sectionTitle`/`createDescText`/`toastResult`/`settingsMgr.saveSection` 모두 기존 import/전역 변수로 사용 가능. `AppSettings` 타입이 `[key: string]: unknown` 인덱스 시그니처 포함 → `timetable.*` 키 3개 별도 타입 선언 불필요. 기존 `confirmed_download_time` 행(588-616)이 동일 패턴 — 재사용 확정. (2) `general-settings.ts` 3개 변경: (a) 모듈 상태 변수 9개 추가 (3개 슬롯 참조 + 6개 H/M 값 + savingTimetable 플래그) — 기존 `confirmedDl*` 패턴과 동일. (b) `scheduleTimetableSave(key, newVal)` 함수 추가 — 기존 `scheduleConfirmedDlSave` 패턴 재사용, 변경된 키만 전송 (P10 SSOT, P24 단순성), 422 응답 시 `toastResult`가 에러 토스트 표시 (P21). (c) `renderAutoTradeTab()` 맨 아래에 "장 시작 전 사전 준비 시간" 카드 삽입 — `sectionTitle` + `createDescText` + 입력칸 3개 행(`createTimeSlot` 인스턴스 3개, 기존 행 패턴 동일) + 거래소 고정 시간 7개 참고 박스 (읽기 전용, 변경 불가, P21 투명성). (d) `syncFromSettings()`에 3개 키 동기화 추가 — `parseHM` + `updateTimeSlotDisplay`로 슬롯 표시 갱신. (3) 검증: typecheck 통과 (tsc --noEmit) + build 통과 (tsc -b + vite build, general-settings 청크 새 해시 C0gdq2_y.js) + 개발 서버 HTTP 200 응답 정상. P10(SSOT)/P21(사용자 투명성)/P23(공통 자산 재사용·용어 통일)/P24(단순성) 부합. 신규 컴포넌트 생성 없음 — `createTimeSlot` 3개 인스턴스 + 기존 `sectionTitle`/`createDescText` 재사용. 거래소 고정 7개 시간은 백엔드 코드 상수 유지, UI 참고 표시만.
+- 상태: 6세션(프론트엔드 Step 4) 완료. 커밋 완료. 다음 작업: 7세션(프론트엔드 Step 5: 검증 에러 표시 + 저장 플로우 연결 + 테스트 갱신) 승인 대기.
 - **참조 문서**: `docs/architecture_db_timetable_design.md` (325줄, 설계서) + `docs/plan_db_timetable.md` (631줄, 태스크 파일)
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-5(사용자 설계 로직 변경 시 엄격 절차) + 규칙 4-1(테스트 실패 추적 의무) + P10/P14/P16/P20/P21/P22/P23/P24
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 시 UI 기준 설명) + P10/P21/P23/P24
 
-## 다음 세션 진행 대기: DB 테이블 스케줄러 (다단계 작업) — 6세션 프론트엔드 Step 4 승인 대기
+## 다음 세션 진행 대기: DB 테이블 스케줄러 (다단계 작업) — 7세션 프론트엔드 Step 5 승인 대기
 
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계서 작성 — 사전조사 + 사용자 검토 요청 → 방식 B 채택 결정 + 설계서 작성.
@@ -16,7 +16,7 @@
 - **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성.
   - **태스크 파일**: `docs/plan_db_timetable.md` (631줄)
   - **심층 발견사항 6항목**: (2-1) `settings_defaults.py:117` 삽입 위치 확정 + `DEFAULT_SETTINGS` 병합 자동 전파 확인 / (2-2) `_validate_timetable_order()` 구현 세부 — `before` 인자로 나머지 2개 키 보충 + `select_keys` (라인 148) 확장 필요 + `routes/settings.py:84`가 `ValueError` → HTTP 422 자동 변환 (라우트 변경 불필요) / (2-3) `_TIMETABLE` 정적 리스트 제거 → 빈 리스트 + 빌더 함수 + `_schedule_next_timetable_event()` fallback(999-1003)도 `_TIMETABLE[0]["time"]` 참조로 변경 필요 (불일치 가능성 발견) / (2-4) 기동 빌드 배선 위치: `start_daily_time_scheduler()` 내 `_timetable_startup_scan()` 직전이 최적 (app.py 변경 불필요) / (2-5) `_TIMETABLE_KEYS` 분기는 `_WS_SCHEDULE_KEYS` 종료 직후 + 모듈 전역 재할당은 `_dts_mod._TIMETABLE = ...` 방식 (state 필드 아님, setter는 P24 위반) / (2-6) 프론트엔드 `createTimeSlot()` 재사용 — `confirmed_download_time` 행(590) 동일 패턴, 신규 컴포넌트 불필요, `renderAutoTradeTab()` 라인 288 다음 삽입
-  - **다단계 분할 (6세션 확정)**: 1세션(설계서·완료) / 2세션(태스크 파일·완료) / 3세션(백엔드 Step 1·완료) / 4세션(백엔드 Step 2: 빌더 함수 + 기동 배선·완료) / 5세션(백엔드 Step 3: 저장 후 재예약 배선) / 6세션(프론트엔드 Step 4-5: 입력칸 + 거래소 고정 표시 + 검증 에러) / 7세션(테스트 갱신 + 신규 테스트)
+  - **다단계 분할 (6세션 확정)**: 1세션(설계서·완료) / 2세션(태스크 파일·완료) / 3세션(백엔드 Step 1·완료) / 4세션(백엔드 Step 2: 빌더 함수 + 기동 배선·완료) / 5세션(백엔드 Step 3: 저장 후 재예약 배선·완료) / 6세션(프론트엔드 Step 4: 입력칸 + 거래소 고정 표시·완료) / 7세션(프론트엔드 Step 5: 검증 에러 표시 + 저장 플로우 연결 + 테스트 갱신)
 - **3세션 (완료)**: 백엔드 Step 1 구현 — 설정 키 3개 + 시간 순서 검증.
   - **변경 파일 3개**: `backend/app/core/settings_defaults.py` (3개 키 추가) + `backend/app/core/settings_store.py` (import + _TIME_FIELDS 확장 + _validate_timetable_order() + select_keys 확장 + 검증 배선) + `backend/tests/test_settings_store.py` (신규 11개 테스트)
   - **검증**: py_compile + ruff 통과 + test_settings_store.py 63개 통과 (신규 11 + 기존 52) + 전체 회귀 2876 passed / 1 failed (기존 실패, 본 수정 무관 — git stash로 검증) + 런타임 기동 RuntimeWarning 0건 + 잔존 프로세스 0건
@@ -26,9 +26,13 @@
 - **5세션 (완료)**: 백엔드 Step 3 구현 — `engine_service.py` `_TIMETABLE_KEYS` 분기 + 재빌드/재예약 배선.
   - **변경 파일 2개**: `backend/app/services/engine_service.py` (_TIMETABLE_KEYS 집합 + lazy import + _dts_mod._TIMETABLE 직접 재할당 + _schedule_next_timetable_event 재예약 + info/warning 로그) + `backend/tests/test_engine_settings.py` (TestApplySettingsChangeTimetableRebuild 5개 + setup/teardown _TIMETABLE 백업·복원)
   - **검증**: py_compile + ruff 통과 + test_engine_settings.py 63개 통과 (신규 5 + 기존 58) + 전체 회귀 2887 passed / 1 failed (기존 실패 test_rebuy_block_disabled, 본 수정 무관 — git stash + 단독 실행으로 검증, 4세션과 동일 테스트 격리 문제) + 런타임 기동 RuntimeWarning 0건 + `[기동] 타임테이블 빌드 완료 — 10항목` 로그 정상 + 잔존 프로세스 0건
-- **6세션 (승인 대기)**: 프론트엔드 Step 4 구현 — `general-settings.ts` "장 시작 전 사전 준비 시간" 카드 + 입력칸 3개 + 거래소 고정 시간 참고 표시.
-  - **수정 파일 1개**: `frontend/src/pages/general-settings.ts`
-  - **검증**: 빌드 + 브라우저 확인
+- **6세션 (완료)**: 프론트엔드 Step 4 구현 — `general-settings.ts` "장 시작 전 사전 준비 시간" 카드 + 입력칸 3개 + 거래소 고정 시간 참고 표시.
+  - **변경 파일 1개**: `frontend/src/pages/general-settings.ts` (모듈 상태 변수 9개 + scheduleTimetableSave 함수 + renderAutoTradeTab 카드 삽입 + syncFromSettings 동기화)
+  - **검증**: typecheck 통과 + build 통과 (tsc -b + vite build, general-settings 청크 새 해시 C0gdq2_y.js) + 개발 서버 HTTP 200 응답 정상
+  - **UI 변경 (규칙 0-4)**: 자동매매 탭 하단에 "장 시작 전 사전 준비 시간" 카드 추가 — 입력칸 3개(실시간 항목 초기화/구독 사전 시작/정규장 사전 구독, 기존 시간 입력칸과 동일 패턴) + 거래소 고정 시간 7개 참고 박스(읽기 전용)
+- **7세션 (승인 대기)**: 프론트엔드 Step 5 구현 — 검증 에러 표시 + 저장 플로우 연결 (422 응답 시 에러 토스트 정교화) + 테스트 갱신.
+  - **수정 파일**: `frontend/src/pages/general-settings.ts` (에러 토스트 정교화) + 테스트 파일 갱신 (백엔드 테스트 정합성 재확인)
+  - **검증**: 빌드 + 브라우저 확인 (422 시 에러 토스트)
   - **승인 대기**: 사용자 명시적 실행 지시어("진행해", "구현해", "go" 등) 대기
 
 ## 이전 다단계 작업: 타임테이블 기반 스케줄러 (다단계 작업) — 전체 완료
