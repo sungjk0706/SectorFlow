@@ -1,33 +1,37 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (구독/해지 타임라인 재설계 — 4세션 구현 Step 2: 08:59 KRX 사전 구독 + 15:20 KRX 해지)
-- 작업: Change 3, 4 구현 — `KRX_PRE_SUBSCRIBE_TIME` 상수 + `_on_krx_pre_subscribe()` 신규(08:59 KRX 단독 종목 사전 구독) + `_check_prestart_triggers()` 08:59 트리거 확장 + `_apply_market_phase()` 트리거 조건 "체결 정산" → "종가 동시호가" 변경 + `_on_krx_after_hours_start()` → `_on_krx_closing_auction_start()` 개명 + `last_krx_pre_subscribe_date` 필드 추가. 테스트 8개 신규 + 기존 3개 갱신.
-- 상태: 4세션 구현 Step 2 완료. 검증 완료 (pytest 2838 passed + 런타임 기동 RuntimeWarning 0건 + /api/settings 정상 + 잔존 프로세스 0건). 커밋 대기.
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + P10/P16/P20/P21/P22/P23/P24
-- **태스크 파일**: `docs/plan_subscribe_timeline.md` (구현 Step + 세션 분할 + 테스트 계획 + 런타임 검증 방법 + 사용자 결정 항목)
-- **설계서**: `docs/architecture_subscribe_timeline_design.md` (1세션 산출물 — 4개 변경안 구현 방안, 설계안 비교표, P원칙 검토)
-- **조사 보고서**: `docs/subscribe_timeline_investigation.md` (사전 심층 조사 — 타임라인 전체 흐름, "웹소켓 연결" API 명세서 존재 여부)
+- 날짜: 2026-07-17 (구독/해지 타임라인 재설계 — 5세션 통합 런타임 검증 + 문서 갱신 + 계획서 삭제)
+- 작업: `ARCHITECTURE.md` 12.1 타임라인 섹션 갱신 (07:58~00:00 9개 이벤트) + 12.3 WS 구독 구간 판정 갱신 (사전 구간 시간 기반 판정 추가) + 계획서 2개 + 조사보고서 1개 삭제 (`git rm`). 통합 런타임 검증 완료.
+- 상태: 5세션 완료. 구독/해지 타임라인 재설계 5세션 전체 완료. 검증 완료 (pytest 2838 passed + npm run build 성공 + 런타임 기동 RuntimeWarning 0건 + /api/settings 정상 + 잔존 프로세스 0건 + `backend/` 잔존 참조 0건). 커밋 대기.
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 11(계획서 삭제) + P10/P16/P20/P21/P22/P23/P24
 
-## 다음 세션 진행 대기: 구독/해지 타임라인 재설계 5세션 (통합 런타임 검증 + 문서 갱신 + 계획서 삭제)
-- **4세션 완료**: Change 3, 4 구현 완료. 08:59 KRX 단독 종목 사전 구독(정규장 1분 전) + 15:20 KRX 해지(종가 동시호가 진입 시점, 기존 15:30에서 10분 앞당김). 함수 개명 `_on_krx_after_hours_start` → `_on_krx_closing_auction_start` (명칭-동작 일치, P23).
-- **사용자 승인 대기**: 5세션 통합 런타임 검증 + `ARCHITECTURE.md` 갱신 + 계획서 2개 삭제 승인 여부.
-- **세션 분할** (태스크 파일 2절 참조):
+## 다음 세션 진행 대기: 없음 (구독/해지 타임라인 재설계 5세션 전체 완료)
+- **5세션 완료**: 통합 런타임 검증 + `ARCHITECTURE.md` 타임라인 섹션 갱신 + 계획서 2개 + 조사보고서 1개 삭제 완료.
+- **세션 분할** (완료):
   - 1세션(완료): 설계서 작성
   - 2세션(완료): 심층 사전조사 + 태스크 파일
   - 3세션(완료): 구현 Step 1 — 사전 구간 판정 + 07:58 통합 (Change 1, 2)
-  - 4세션(현재 완료): 구현 Step 2 — 08:59 KRX 사전 구독 + 15:20 KRX 해지 (Change 3, 4) — `daily_time_scheduler.py`, `engine_state.py`, `test_daily_time_scheduler.py` + 함수 개명
-  - 5세션: 통합 런타임 검증 + `ARCHITECTURE.md` 타임라인 섹션 갱신 + 계획서 2개 삭제 (`architecture_subscribe_timeline_design.md`, `plan_subscribe_timeline.md`)
-- **4세션 구현 상세**:
-  - `KRX_PRE_SUBSCRIBE_TIME = (8, 59)` 상수 추가 (L48) — 기존 사전 트리거 상수 그룹에 추가 (P10)
-  - `_on_krx_pre_subscribe()` 신규 함수 (L463~) — 08:59 KRX 단독 종목 사전 구독 (재계산 없음). 멱등성 가드 `last_krx_pre_subscribe_date`. 거래일 체크 후 가드 설정 (주말/공휴일 시 가드 미설정 → 다음 거래일 실행). `subscribe_sector_stocks_0b()` 내부 `_subscribed` 플래그로 09:00 중복 구독 방지 (P22).
-  - `_check_prestart_triggers()` 확장 (L1189~) — 08:59 KRX 사전 구독 트리거 추가 (08:00~09:00 구간). 기존 07:58/07:59 트리거는 08:00 이상 시 스킵 (phase 변경 감지가 담당).
-  - `_apply_market_phase()` 트리거 조건 변경 (L659) — `new_krx == "체결 정산"` → `new_krx == "종가 동시호가"`, context `"KRX 장외 전환"` → `"KRX 종가 동시호가 — 구독 해지"`. docstring 갱신 (L635).
-  - `_on_krx_after_hours_start()` → `_on_krx_closing_auction_start()` 개명 (L490) — docstring "15:30 전환 콜백" → "15:20 종가 동시호가 전환 콜백", "KRX 종가 동시호가 종료(15:30)" → "KRX 정규장 종료(15:20)". 동작 내용 동일 (재계산 + KRX 단독 종목 해지).
-  - `engine_state.py` — `last_krx_pre_subscribe_date: str = ""` 필드 추가 (L116) — 멱등성 가드 그룹에 추가 (기존 패턴 준수, P22).
-- **검증 결과**: pytest 2838 passed (기존 2830 + 신규 8, 회귀 없음) + 런타임 기동 RuntimeWarning 0건 + /api/settings 정상 + 잔존 프로세스 0건 + `backend/` 잔존 참조 0건 (`docs/` 19건은 역사적 문서 — Code Removal Rules 규칙 3 예외, 5세션에서 계획서 2개 삭제 예정).
+  - 4세션(완료): 구현 Step 2 — 08:59 KRX 사전 구독 + 15:20 KRX 해지 (Change 3, 4)
+  - 5세션(완료): 통합 런타임 검증 + `ARCHITECTURE.md` 타임라인 섹션 갱신 + 계획서 2개 + 조사보고서 1개 삭제
+- **5세션 작업 상세**:
+  - `ARCHITECTURE.md` 12.1 타임라인 갱신 (L976-984) — 구 버전(08:00/09:00/15:30/16:01/18:00/20:00/20:40/00:00 8개) → 신 버전(07:58/07:59/08:00/08:59/09:00/15:20/20:00/20:40/00:00 9개). 07:58 `_on_realtime_fields_reset()` + 07:59 WS 구독 구간 진입 + 08:59 `_on_krx_pre_subscribe()` + 15:20 `_on_krx_closing_auction_start()` 추가. 구 15:30/16:01/18:00 제거 (동시호가 해지 15:20으로 통합).
+  - `ARCHITECTURE.md` 12.3 WS 구독 구간 판정 갱신 (L998-1004) — 사전 구간(07:59~08:00) 시간 기반 판정 `_is_pre_subscribe_window()` 추가 명시. 정규 구간은 기존 NXT_ACTIVE_PHASES 판정 유지.
+  - 계획서 2개 + 조사보고서 1개 삭제 (`git rm`) — `docs/architecture_subscribe_timeline_design.md`, `docs/plan_subscribe_timeline.md`, `docs/subscribe_timeline_investigation.md`. 조사보고서는 계획서에 명시되지 않았으나 사용자 승인으로 함께 삭제 (이번 작업 사이클 산출물, 구 함수명 참조 3건 포함).
+- **검증 결과**: pytest 2838 passed (회귀 없음) + npm run build 성공 (2.09s) + 런타임 기동 RuntimeWarning 0건 + /api/settings 정상 (200) + 잔존 프로세스 0건 + `backend/` 잔존 참조 0건 + `docs/` 잔존 참조 3건 (역사적 session_state 문서 — Code Removal Rules 규칙 3 예외).
 
 ## 직전 완료 작업
+- **구독/해지 타임라인 재설계 5세션 — 통합 런타임 검증 + 문서 갱신 + 계획서 삭제**: 5세션 전체 작업의 마지막 단계.
+  - **`ARCHITECTURE.md`** (2곳):
+    - 12.1 타이머 기반 트리거 갱신 (L976-984) — 타임라인 9개 이벤트로 재작성. 07:58 `_on_realtime_fields_reset()` (실시간 필드 초기화 + GC 비활성화 + 캐시 초기화) + 07:59 WS 구독 구간 진입 (상태 전환 + 엔진 루프 통지, 사전 구독) + 08:00 NXT 프리마켓 진입 (업종 재계산, 이미 구독됨) + 08:59 `_on_krx_pre_subscribe()` (KRX 단독 종목 사전 구독, 정규장 1분 전) + 09:00 KRX 정규장 진입 (업종 재계산, 구독은 멱등 스킵) + 15:20 `_on_krx_closing_auction_start()` (KRX 단독 종목 구독 해지, 종가 동시호가 진입) + 20:00 `_on_ws_subscribe_end()` (WS 구독 종료 + GC 정상화) + 20:40 `_fire_unified_confirmed_fetch()` (확정 시세 + 5일봉 다운로드, confirmed_download_time 설정 기본값) + 00:00 `_on_midnight()` (일일 리셋). 구 15:30/16:01/18:00 이벤트 제거 (15:20 종가 동시호가 해지로 통합).
+    - 12.3 WS 구독 구간 판정 갱신 (L998-1004) — 사전 구간(07:59~08:00) 시간 기반 판정 `_is_pre_subscribe_window()` 추가 명시. `WS_SUBSCRIBE_PRESTART_TIME(07:59) <= t < NXT_PREMARKET_START(08:00)`, market_phase krx/nxt "휴장일" 시 False. 정규 구간은 기존 NXT_ACTIVE_PHASES 판정 유지.
+  - **계획서/조사보고서 삭제 3건** (`git rm`):
+    - `docs/architecture_subscribe_timeline_design.md` (설계서 — 1세션 산출물)
+    - `docs/plan_subscribe_timeline.md` (태스크 파일 — 2세션 산출물)
+    - `docs/subscribe_timeline_investigation.md` (조사보고서 — 2세션 산출물, 사용자 승인으로 추가 삭제 — 계획서에는 2개만 명시되었으나 이번 작업 사이클 산출물이므로 일관성 차원에서 함께 삭제)
+  - **검증**: pytest 2838 passed (회귀 없음) + npm run build 성공 (2.09s) + 런타임 기동 `python -W error::RuntimeWarning main.py` RuntimeWarning 0건 + /api/settings 응답 정상 (200) + 잔존 프로세스 0건 + `backend/` 잔존 참조 0건 (Code Removal Rules 규칙 3 만족) + `docs/` 잔존 참조 3건 (역사적 session_state 문서 — Code Removal Rules 규칙 3 예외).
+  - **P원칙**: P10(SSOT — ARCHITECTURE.md 타임라인 단일 진실 소스 갱신) · P21(사용자 투명성 — 타임라인 문서 최신화) · P23(일관성 — 구현과 문서 일치, 구 함수명 참조 정리) 준수.
+  - **작업 여력**: 충분.
 - **구독/해지 타임라인 재설계 4세션 — 구현 Step 2: 08:59 KRX 사전 구독 + 15:20 KRX 해지 (Change 3, 4)**: 4개 변경안 중 Change 3, 4 구현.
   - **`backend/app/services/engine_state.py`** (1곳):
     - `last_krx_pre_subscribe_date: str = ""` 필드 추가 (L116) — KRX 사전 구독 실행 날짜 (YYYYMMDD). 멱등성 가드 그룹(L113-115)에 추가 — 기존 `last_realtime_reset_date`/`last_ws_subscribe_start_date` 패턴 준수 (P22).

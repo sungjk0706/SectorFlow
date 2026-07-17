@@ -973,13 +973,14 @@ WSManager (싱글톤)
 ```
 asyncio.call_later() 기반 — 매일 재스케줄링
 
-08:00  _on_ws_subscribe_start()     — WS 구독 시작 + GC 비활성화 (NXT 프리마켓 진입 시 자동 트리거)
-09:00  KRX 개장 감지
+07:58  _on_realtime_fields_reset()  — 실시간 필드 초기화 + GC 비활성화 + 캐시 초기화
+07:59  WS 구독 구간 진입             — 상태 전환 + 엔진 루프 통지 (사전 구독, NXT 프리마켓 1분 전)
+08:00  NXT 프리마켓 진입             — 업종 재계산 (이미 구독됨)
+08:59  _on_krx_pre_subscribe()      — KRX 단독 종목 사전 구독 (정규장 1분 전)
+09:00  KRX 정규장 진입              — 업종 재계산 (구독은 멱등 스킵)
+15:20  _on_krx_closing_auction_start() — KRX 단독 종목 구독 해지 (종가 동시호가 진입)
 20:00  _on_ws_subscribe_end()       — WS 구독 종료 + GC 정상화 (NXT 장마감 진입 시 자동 트리거)
-15:30  KRX after hours / NXT aftermarket 시작
-16:01  KRX unsubscribe              — KRX 종목 구독 해제
-18:00  NXT aftermarket 종료
-20:40  _fire_unified_confirmed_fetch() — 확정 시세 + 5일봉 다운로드
+20:40  _fire_unified_confirmed_fetch() — 확정 시세 + 5일봉 다운로드 (confirmed_download_time 설정, 기본값)
 00:00  _on_midnight()               — 일일 리셋 (거래일 판단, 타이머 재예약)
 ```
 
@@ -996,7 +997,10 @@ sell_time_end   — auto_sell_effective() 비활성화
 
 ```python
 is_ws_subscribe_window(settings):
-  1. state.market_phase["nxt"]가 NXT_ACTIVE_PHASES에 포함 여부
+  1. 사전 구간(07:59~08:00): 시간 기반 판정 (_is_pre_subscribe_window())
+     - WS_SUBSCRIBE_PRESTART_TIME(07:59) <= t < NXT_PREMARKET_START(08:00)
+     - market_phase의 krx/nxt가 "휴장일"이면 False
+  2. 정규 구간: state.market_phase["nxt"]가 NXT_ACTIVE_PHASES에 포함 여부
      (주말/공휴일은 calc_timebased_market_phase()가 nxt="휴장일"로 자동 차단)
 ```
 
