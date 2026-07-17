@@ -59,7 +59,6 @@ let orderTimeGuardToggle: ReturnType<typeof createToggleBtn> | null = null
 let confirmedDlSlot: HTMLElement | null = null
 let confirmedDlToggle: ReturnType<typeof createToggleBtn> | null = null
 let confirmedDlH = '20', confirmedDlM = '40'
-let savingConfirmedDl = false
 
 // 장 시작 전 사전 준비 시간 (타임테이블 사용자 조정 3개 슬롯)
 // 백엔드 키: timetable.realtime_reset / timetable.ws_prestart / timetable.krx_pre_subscribe
@@ -110,28 +109,10 @@ function updateHolidayBadges(): void {
   for (const el of holidayBadgeEls) el.style.display = show ? 'inline' : 'none'
 }
 
-function scheduleConfirmedDlSave(): void {
-  if (!settingsMgr) return
-  if (savingConfirmedDl) return
-  savingConfirmedDl = true
-  const run = async (): Promise<void> => {
-    const serverVal = String(vals['confirmed_download_time'] ?? '')
-    const newVal = `${confirmedDlH}:${confirmedDlM}`
-    if (newVal !== serverVal) {
-      const dirty: Record<string, unknown> = { confirmed_download_time: newVal }
-      const res = await settingsMgr!.saveSection(dirty)
-      toastResult(res)
-      if (res.ok) Object.assign(vals, dirty)
-    }
-    savingConfirmedDl = false
-  }
-  run()
-}
-
-// 타임테이블 3개 키 저장 — 변경된 키만 전송 (P10 SSOT, P24 단순성)
-// 백엔드 _validate_timetable_order()가 나머지 2개 키를 DB에서 보충해 순서 검증
+// 타임테이블 4개 키 저장 — 변경된 키만 전송 (P10 SSOT, P24 단순성)
+// 백엔드 _validate_timetable_order()가 나머지 키를 DB에서 보충해 순서 검증
 // 422 응답 시 api/client.ts가 detail 필드 추출 → toastResult가 검증 에러 메시지 토스트 (P21)
-function scheduleTimetableSave(key: 'timetable.realtime_reset' | 'timetable.ws_prestart' | 'timetable.krx_pre_subscribe', newVal: string): void {
+function scheduleTimetableSave(key: 'timetable.realtime_reset' | 'timetable.ws_prestart' | 'timetable.krx_pre_subscribe' | 'timetable.confirmed_download', newVal: string): void {
   if (!settingsMgr) return
   if (savingTimetable) return
   savingTimetable = true
@@ -309,11 +290,11 @@ function renderTimeSettingsTab(container: HTMLElement): void {
   const confirmedDlRight = document.createElement('span')
   confirmedDlRight.style.cssText = 'display:flex;align-items:center;gap:10px;'
 
-  const [cdh, cdm] = parseHM(String(vals.confirmed_download_time ?? '20:40'))
+  const [cdh, cdm] = parseHM(String(vals['timetable.confirmed_download'] ?? '20:40'))
   confirmedDlH = cdh; confirmedDlM = cdm
   confirmedDlSlot = createTimeSlot(confirmedDlH, confirmedDlM, (h, m) => {
     confirmedDlH = h; confirmedDlM = m; updateTimeSlotDisplay(confirmedDlSlot!, h, m)
-    scheduleConfirmedDlSave()
+    scheduleTimetableSave('timetable.confirmed_download', `${h}:${m}`)
   })
   confirmedDlRight.appendChild(confirmedDlSlot)
 
@@ -964,7 +945,7 @@ function syncFromSettings(s: AppSettings | null): void {
     updateHolidayBadges()
 
     // 확정 시세 다운로드 시간 + 자동다운로드 토글
-    const [cdh, cdm] = parseHM(String(r.confirmed_download_time ?? '20:40'))
+    const [cdh, cdm] = parseHM(String(r['timetable.confirmed_download'] ?? '20:40'))
     confirmedDlH = cdh; confirmedDlM = cdm
     if (confirmedDlSlot) updateTimeSlotDisplay(confirmedDlSlot, cdh, cdm)
     const dlOn = r.scheduler_market_close_on !== false
