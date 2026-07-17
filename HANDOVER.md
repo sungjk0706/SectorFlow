@@ -1,13 +1,12 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (NXT 전용 시간대 KRX 종목 숨김 처리 — 다단계 3세션 완료)
-- 작업: NXT 전용 시간대(07:59~08:59, 15:20~20:00 — 구독 시점 기준)에 KRX 단독 종목을 회색 배경에서 완전 숨김 방식으로 전환하는 다단계 작업 3세션(구현 Step 1: sector-stock.ts + ui-styles.ts) 완료. sector-stock.ts — DataRowItem 인터페이스 krxInactive 필드 제거 + computeRows KRX 단독 종목 continue 숨김 + 빈 업종 그룹 행 숨김 + stockSeq++ 위치 이동(순번 자동 재정렬) + 안내 배지 DOM/갱신(filterBadge 패턴 재사용, fade-in 150ms) + rowStyle 분기 제거 + disconnectedCallback 정리. ui-styles.ts — inactiveRowBg 상수 제거. 검증: typecheck + build + 테스트 108/108 통과.
-- 상태: 3세션(구현 Step 1) 완료. 4세션(구현 Step 2: sector-settings.ts 수신률 섹션 3상태 숨김) 승인 대기.
-- **참조 문서**: `docs/architecture_krx_hide_in_nxt_only_design.md` (설계서, 565줄) + `docs/plan_krx_hide_in_nxt_only.md` (태스크 파일, 567줄)
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 UI 기준 설명) + 섹션4 다단계 작업 워크플로우 + P10/P16/P20/P21/P22/P23/P24 + frontend-fix 스킬
+- 날짜: 2026-07-17 (NXT 전용 시간대 KRX 종목 숨김 처리 — 다단계 4세션 전체 완료)
+- 작업: NXT 전용 시간대(07:59~08:59, 15:20~20:00 — 구독 시점 기준)에 KRX 단독 종목을 회색 배경에서 완전 숨김 방식으로 전환하는 다단계 작업 4세션(구현 Step 2: sector-settings.ts 수신률 섹션 3상태 숨김) 완료. sector-settings.ts — REGULAR_PHASES 상수 추가(new Set(['정규장', '시가 동시호가', '종가 동시호가', '메인마켓']), header.ts PHASE_STYLE 동기화 주석 포함) + _applyMarketPhaseActive 시그니처 확장({ is_nxt_only?, krx, nxt }) + 3상태 분기(NXT 전용/정규장/그 외) + opacity 0.3/1.0 토글 → display none/flex 토글 전환. 호출부 2곳(L231, L399)은 이미 marketPhase 전체 객체 전달 중이라 수정 불필요. 검증: typecheck + build(637ms) + 테스트 108/108 통과 + 개발 서버 5174 기동 정상.
+- 상태: 다단계 작업 4세션 전체 완료. 다음 작업 대기.
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 UI 기준 설명) + 섹션4 다단계 작업 워크플로우 + 규칙 11(완료 시 계획서 삭제) + P10/P16/P20/P21/P22/P23/P24 + frontend-fix 스킬
 
-## 다음 세션 진행 대기: NXT 전용 시간대 KRX 종목 숨김 처리 (다단계 작업 4세션)
+## 다음 세션 진행 대기: 없음 (다단계 작업 전체 완료)
 
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계 검토 + 디자인 파일 작성 — ARCHITECTURE.md 24개 원칙 검토 + 기존 공통 자산 조사(badge.ts, fade-in 패턴, filterBadge 패턴) + 사용자 결정 5항목 확정 + 시간 표기 구독 시점 기준 통일.
@@ -55,13 +54,21 @@
 - **4세션 (대기)**: 구현 Step 2 — sector-settings.ts (REGULAR_PHASES 상수 추가 + _applyMarketPhaseActive 시그니처 확장 + 3상태 분기 + opacity→display 토글). 검증: type-check + build + 브라우저.
 
 ### 참조 문서
-- **설계서**: `docs/architecture_krx_hide_in_nxt_only_design.md` (1세션 산출물, 565줄)
-- **태스크 파일**: `docs/plan_krx_hide_in_nxt_only.md` (2세션 산출물, 567줄)
+- (다단계 작업 전체 완료 — 설계서/태스크 파일은 규칙 11에 따라 삭제 예정)
 
 ### 승인 대기 항목
-- **4세션 진행**: 구현 Step 2 — sector-settings.ts 수정 (REGULAR_PHASES 상수 추가 + _applyMarketPhaseActive 시그니처 확장 + 3상태 분기 + opacity→display 토글). 사용자 "진행" 지시 시 시작.
+- (없음 — 다단계 작업 전체 완료)
 
 ## 직전 완료 작업
+- **NXT 전용 시간대 KRX 수신률 섹션 3상태 숨김 (다단계 4세션)**: sector-settings.ts 구현 Step 2 완료.
+  - **sector-settings.ts 수정**: REGULAR_PHASES 상수 추가(new Set(['정규장', '시가 동시호가', '종가 동시호가', '메인마켓']), header.ts PHASE_STYLE 동기화 주석 포함 — P10/P23) + _applyMarketPhaseActive 시그니처 확장({ is_nxt_only?, krx, nxt }) + 3상태 분기(NXT 전용/정규장/그 외) + opacity 0.3/1.0 토글 → display none/flex 토글 전환. 호출부 2곳(L231, L399)은 이미 marketPhase 전체 객체 전달 중이라 수정 불필요.
+  - **UI 기준 변경 내용** (규칙 0-4):
+    - NXT 전용 시간대(07:59~08:59, 15:20~20:00): 업종순위 설정 화면에서 KRX 수신률 바(배지 + 진행 바)가 흐릿하게 회색 표시되던 것 → 완전히 숨김. NXT 수신률 바만 표시. 임계치 입력란·상태 라벨은 유지.
+    - 정규장(08:59~15:20): KRX/NXT 수신률 바 둘 다 정상 표시 (기존과 동일).
+    - 그 외 시간대(20:00~07:59): KRX/NXT 수신률 바 둘 다 완전 숨김 (기존에는 둘 다 흐릿 표시).
+  - **검증 결과**: typecheck 통과 + build 성공(637ms) + 테스트 108/108 통과 + 개발 서버 5174 기동 정상.
+  - **커밋**: `feat: NXT 전용 시간대 KRX 수신률 섹션 3상태 숨김 (4세션)`.
+  - **작업 여력**: 충분.
 - **NXT 전용 시간대 KRX 종목 숨김 + 안내 배지 구현 (다단계 3세션)**: sector-stock.ts + ui-styles.ts 구현 Step 1 완료.
   - **sector-stock.ts 수정**: DataRowItem 인터페이스 krxInactive 필드 제거 + computeRows KRX 단독 종목 continue 숨김 + 빈 업종 그룹 행 숨김 + stockSeq++ 위치 이동(순번 자동 재정렬) + 안내 배지 DOM/갱신(filterBadge 패턴 재사용, COLOR.warningBg/warning, fade-in 150ms) + rowStyle 분기 제거 + disconnectedCallback 정리.
   - **ui-styles.ts 수정**: inactiveRowBg 상수 1줄 제거 (단일 사용처라 안전).
