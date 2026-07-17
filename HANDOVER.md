@@ -1,12 +1,34 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (매수/매도 주문 간격 설정 개선 — 다단계 작업 7세션: 문서 + 런타임 검증 + 계획서 삭제 Step 5 — **다단계 작업 전체 완료**)
-- 작업: 7세션 진행 → 사전조사(ARCHITECTURE.md:817-818 현재 상태 + 잔존 `buy_interval_min` 56곳 분석 — 마이그레이션 로직/테스트 6곳 의도적 잔존 + 계획서 49곳은 삭제로 제거 + ARCHITECTURE.md 1곳은 수정) → `ARCHITECTURE.md:813-823`(섹션 7.4 제목 "매수 주문 간격 및 쓰로틀" → "매수/매도 주문 간격 및 쓰로틀" + `buy_interval_min` 1줄 제거 → `buy_interval_sec` + `sell_interval_on` + `sell_interval_sec` 3줄 추가) → 계획서 2개 삭제(`docs/plan_order_interval.md` 450줄 + `backend/docs/architecture_order_interval_design.md` 433줄 — `git rm`) → 검증(pytest 전체 2822 passed 회귀 없음 + npm run build 635ms 성공 + 잔존 `buy_interval_min` 6곳 모두 마이그레이션 로직/테스트 의도적 잔존 + 런타임 기동 RuntimeWarning 0건 146ms + WS 설정 응답 4개 필드 모두 존재 `buy_interval_on=True`/`buy_interval_sec=30`/`sell_interval_on=False`/`sell_interval_sec=30` + 잔존 프로세스 0건) → 커밋.
-- 상태: **다단계 작업 7세션 전체 완료** (설계 1세션 → 태스크 2세션 → 백엔드 기반 3세션 → 백엔드 배선 4세션 → 프론트엔드 5세션 → 테스트 6세션 → 문서+검증+정리 7세션). 매수/매도 주문 간격 설정 개선 기능 전체 구현 완료.
-- **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우" 7세션 + backend-fix 스킬
+- 날짜: 2026-07-17 (매수/매도 설정 패널 UI 일관성 정리 + 주문 간격 라벨 2행/위치 정렬)
+- 작업: 매도설정 패널을 매수설정 패널 기준으로 일관성 정리 (익절/손절/추적매도 토글+입력 1줄 통합, 추적 매도 B-1 패턴, syncFromSettings 널 체크 통일, 모듈 상태 주석 기능별 분류, 라벨 영문 제거, unmount 그룹화) + 주문 간격 라벨 2행 처리(`createToggleLabelControlsRow`에 `labelSubText` 옵션 추가) + 매수 주문 간격 섹션을 가장 하단으로 이동 (매도와 동일 배치). 타입체크+빌드 통과 → 커밋+푸시.
+- 상태: 매수/매도 설정 패널 UI 일관성 개선 완료. 다단계 작업 아님 (단일 세션 프론트엔드 리팩토링).
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0-2(사전조사) + frontend-fix 스킬
 
 ## 직전 완료 작업
+- **매수/매도 설정 패널 UI 일관성 정리 + 주문 간격 라벨 2행/위치 정렬**: 매도설정 패널을 매수설정 기준으로 정리 + 주문 간격 섹션 UI 개선.
+  - **`frontend/src/components/common/setting-row.ts`** (1곳 — `createToggleLabelControlsRow`):
+    - `labelSubText?: string` 옵션 추가 (라벨 2행 처리). 보조 텍스트는 `FONT_SIZE.small`(11px) + `COLOR.tertiary`(회색)로 본문과 시각적 구분.
+    - `labelWrap` 내부에 `labelBox`(flex column, line-height 1.2) 추가 — 본문 라벨 + 보조 라벨 2줄 구성.
+    - 기존 호출처는 `labelSubText` 생략 시 기존 동작 유지 (선택적 옵션, 호환성 보장).
+  - **`frontend/src/pages/sell-settings.ts`** (매수설정 기준 일관성 정리 — 169줄 → 173줄):
+    - 익절/손절: 2줄 분리(토글 행 + 입력 행) → `createToggleLabelControlsRow` 1줄 통합. 인라인 토글 핸들러(`setOn`+`setDisabled`+`saveImmediate` 직접 작성) 제거 → `onToggle` 콜백만 작성 (매수 패턴).
+    - 추적 매도 B-1 패턴: 토글+`ts_start_val` 한 줄(`createToggleLabelControlsRow` + `extraDisableTargets: [tsDropRow]`), `ts_drop_val` 별도 행. 토글 끄기 시 두 입력칸 함께 비활성화 (매수 잔량비율 dual slider 패턴과 동일).
+    - syncFromSettings: `setDisabled(tpValRow!, !tpOn)` (non-null assertion) → `if (tpValControls) setDisabled(tpValControls, !tpOn)` (널 체크, 매수 패턴).
+    - 모듈 상태 변수 주석: 역할별(`// 토글 참조`/`// 입력 참조`/`// 비활성 래퍼`) → 기능별(`// 익절/손절 UI 참조`/`// 추적 매도 UI 참조`/`// 매도 주문 간격 UI 참조`).
+    - 라벨: `고점 추적 매도(Trailing Stop)` → `고점 추적 매도` (영문 제거, P23 용어 통일).
+    - unmount: 기능별 그룹화 (매수 패턴).
+    - 매도 주문 간격 라벨: `'매도 주문 간격 활성화 (초, 5초 단위)'` → `labelText: '매도 주문 간격 활성화'` + `labelSubText: '(초, 5초 단위, 손절 포함)'`.
+  - **`frontend/src/pages/buy-settings.ts`** (주문 간격 섹션):
+    - 라벨: `'매수 주문 간격 활성화 (초, 5초 단위)'` → `labelText: '매수 주문 간격 활성화'` + `labelSubText: '(초, 5초 단위)'`.
+    - 섹션 위치: 중간(매수 금액 한도 → 매수 주문 간격 → 동일 종목 재매수 제어) → 가장 하단(매수 금액 한도 → 동일 종목 재매수 제어 → 매수 주문 간격). 매도(매도 유형 → 매도 주문 간격)와 동일 배치.
+  - **유지 항목** (변경 금지 — 의도적 차이):
+    - 매도 "매도 유형" 섹션 구조 (주문 유형 + 익절/손절/추적매도 묶음 — 매도 특성상 합리적).
+    - 매도 주문 간격 안내 문구 "손절 포함 모든 매도에 간격이 적용됩니다" (P21 사용자 투명성).
+  - **검증**: `npm run typecheck` 통과 + `npm run build` 성공(2.05s, `setting-row` 8.16 kB / `sell-settings` 2.86 kB / `buy-settings` 정상 생성, 에러 없음).
+  - **P원칙**: P23(일관성 — 공통 컴포넌트 `createToggleLabelControlsRow` 재사용, 매수/매도 패턴 통일, 용어 통일) · P24(단순성 — 인라인 토글 핸들러 제거로 코드 감소) 준수.
+  - **작업 여력**: 충분.
 - **매수/매도 주문 간격 설정 개선 다단계 7세션 — 문서 + 런타임 검증 + 계획서 삭제 Step 5 (다단계 작업 전체 완료)**: 1~6세션 구현의 문서 갱신 + 통합 런타임 검증 + 작업 계획서 정리.
   - **`ARCHITECTURE.md:813-823`** (섹션 7.4 — 1곳):
     - 제목: "매수 주문 간격 및 쓰로틀" → "매수/매도 주문 간격 및 쓰로틀" (매도 간격 추가 반영).
