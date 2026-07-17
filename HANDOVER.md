@@ -1,12 +1,28 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (매수/매도 설정 패널 UI 일관성 정리 + 주문 간격 라벨 2행/위치 정렬)
-- 작업: 매도설정 패널을 매수설정 패널 기준으로 일관성 정리 (익절/손절/추적매도 토글+입력 1줄 통합, 추적 매도 B-1 패턴, syncFromSettings 널 체크 통일, 모듈 상태 주석 기능별 분류, 라벨 영문 제거, unmount 그룹화) + 주문 간격 라벨 2행 처리(`createToggleLabelControlsRow`에 `labelSubText` 옵션 추가) + 매수 주문 간격 섹션을 가장 하단으로 이동 (매도와 동일 배치). 타입체크+빌드 통과 → 커밋+푸시.
-- 상태: 매수/매도 설정 패널 UI 일관성 개선 완료. 다단계 작업 아님 (단일 세션 프론트엔드 리팩토링).
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0-2(사전조사) + frontend-fix 스킬
+- 날짜: 2026-07-17 (문서 폴더 통합 — backend/docs/ → docs/ + 문서 경로 규칙 추가)
+- 작업: backend/docs/ 산하 문서 2개를 docs/로 통합 이동 + AGENTS.md에 문서 저장 경로 규칙 섹션 신규 추가 + 모든 경로 참조 갱신(10곳) + backend/docs/ 빈 폴더 삭제. 코드 수정 없음(경로 참조만).
+- 상태: 문서 폴더 통합 완료. 다단계 작업 아님 (단일 세션 문서 정리).
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0-2(사전조사) + P10(SSOT) + P23(일관성)
 
 ## 직전 완료 작업
+- **문서 폴더 통합 — backend/docs/ → docs/ + 문서 경로 규칙 추가**: 분산된 문서를 docs/ 한 곳으로 통합 + 경로 규칙 문서화.
+  - **파일 이동 2건** (`git mv` — 이력 보존):
+    - `backend/docs/architecture_session_state_design.md` → `docs/architecture_session_state_design.md`
+    - `backend/docs/log_korean_migration_plan.md` → `docs/log_korean_migration_plan.md`
+  - **`backend/docs/` 빈 폴더 삭제**.
+  - **경로 참조 갱신 10곳**:
+    - `AGENTS.md` 2곳 (line 201, 270 — 다단계 워크플로우 설계서 경로).
+    - `docs/plan_session_state_*.md` 3곳 (line 5 — 관련 설계 문서 참조).
+    - `HANDOVER.md` 5곳 (역사적 참조 경로 일관성 유지 — 삭제된 파일 포함).
+  - **`AGENTS.md` 신규 섹션 추가** — "문서 저장 경로 규칙 (P10 SSOT · P23 일관성)":
+    - 설계서 `docs/architecture_*_design.md` / 태스크 `docs/plan_*.md` / 조사보고서 `docs/*_investigation.md` / API 스펙 `docs/api_specs/` / 감사계획 `docs/architecture_audit_plan.md` 경로 패턴 명시.
+    - 금지: `backend/docs/`, `frontend/docs/` 등 코드 디렉터리 하위 문서 폴더 신규 생성.
+    - 의무: 문서 이동 시 AGENTS.md·HANDOVER.md·태스크 파일 모든 참조 경로 동시 갱신 (P10 SSOT — 잔존 참조 방지).
+  - **검증**: `grep "backend/docs/"` 잔존 2곳은 신규 규칙의 "금지 패턴 명시"로 의도적 (실제 파일 경로 참조 0건). 루트 폴더 임시/불필요 파일 없음. 코드 수정 없음(경로 참조만) — 빌드/테스트 영향 없음.
+  - **P원칙**: P10(SSOT — 문서 단일 진실 소스) · P23(일관성 — 경로 패턴 표준화) 준수.
+  - **작업 여력**: 충분.
 - **매수/매도 설정 패널 UI 일관성 정리 + 주문 간격 라벨 2행/위치 정렬**: 매도설정 패널을 매수설정 기준으로 정리 + 주문 간격 섹션 UI 개선.
   - **`frontend/src/components/common/setting-row.ts`** (1곳 — `createToggleLabelControlsRow`):
     - `labelSubText?: string` 옵션 추가 (라벨 2행 처리). 보조 텍스트는 `FONT_SIZE.small`(11px) + `COLOR.tertiary`(회색)로 본문과 시각적 구분.
