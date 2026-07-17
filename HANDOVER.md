@@ -1,21 +1,23 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (타임테이블 기반 스케줄러 설계서 작성 — 1세션)
-- 작업: 타임테이블(시간표 + 단일 타이머) 패턴 도입 검토 → 설계서 작성. (1) 사전조사: 4개 서브에이전트 병렬 조사 (10초 주기 루프 + JIF 구조 / 구독·해지 타임라인 + KRX·NXT 이중 시장 / integrated_system_settings + DB 구조 / ARCHITECTURE.md P10·P11·P16·P24 원칙). (2) 검토 의견 제시: 10초 주기 `_market_phase_periodic_loop()` → 타임테이블 + 단일 `call_later` 타이머 교체 추천 (하루 깨어남 8,640회 → 7~8회, 1,080배 감소), JIF 1순위 경로 유지, DB 연동은 2세션에서 검토. (3) 사용자 6항목 확정 (10초 루프 교체 / JIF 유지 / DB 1단계 보류 / 자정 타이머 별도 유지 / 헬스체크 옵션 A / 시간표 코드 내 정의). (4) 설계서 작성: 13개 섹션 526줄 — 시간표 10개 항목(07:58~20:00, direct 3개 + phase 7개), 구현 10 Step, 변경 범위(daily_time_scheduler.py 순증 +40줄, engine_state.py 필드 2개 추가, engine_ws_dispatch.py 1줄 추가), 검증 계획(단위 테스트 10개 케이스 + 런타임 기동), 리스크 6항목, 2세션 예고(DB 연동 + call_later 3개 통합 + 예외 시간표). P5/P10/P11/P13/P14/P16/P20/P21/P22/P23/P24 부합. 코드 수정 없음 — 설계서만 작성.
-- 상태: 설계서 작성 완료. 커밋 완료. 다음 작업: 2세션 태스크 파일 작성 승인 대기.
-- **참조 문서**: `docs/architecture_timetable_scheduler_design.md` (526줄)
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + P5/P10/P11/P13/P14/P16/P20/P21/P22/P23/P24
+- 날짜: 2026-07-17 (타임테이블 기반 스케줄러 태스크 파일 작성 — 2세션)
+- 작업: 심층 사전조사 + 태스크 파일 작성. (1) 사전조사: 3개 서브에이전트 병렬 조사 (daily_time_scheduler.py 실제 구조 — 시간 상수/루프/사전트리거/페이즈적용/콜백/start-stop/타이머 3개 / engine_state.py 필드 + engine_ws_dispatch.py JIF 핸들러 / 테스트 파일 구조 + 기존 태스크 파일 패턴). (2) 심층 발견사항 6항목 식별: engine_state.py datetime import 누락(2-1) / market_phase_periodic_task 필드 위치 정정 89→112(2-2) / 15:30·18:00 부작용 트리거 직접 분기 없음(2-3) / _on_krx_pre_subscribe 위치 559(2-4) / typing import 불필요 list[dict] 단순화(2-5) / _check_prestart_triggers 제거 시점 4세션(2-6). (3) 태스크 파일 작성: 7개 섹션 484줄 — 사전조사 결과(의존성 26항목 + 영향범위 + 원칙 11개 부합 + 공통 자산 재사용) + 심층 발견사항 6항목 + 세션 분할(3-5세션) + 세션별 태스크 상세(3세션 Step 1~6 신규 함수 5개 + state 필드 / 4세션 Step 7+8 루프 제거 + 배선 / 5세션 Step 9+10 테스트 + 런타임) + 위험 10항목 + 승인 대기. P5/P10/P11/P13/P14/P16/P20/P21/P22/P23/P24 부합. 코드 수정 없음 — 태스크 파일만 작성.
+- 상태: 태스크 파일 작성 완료. 커밋 완료. 다음 작업: 3세션 구현(Step 1~6) 승인 대기.
+- **참조 문서**: `docs/plan_timetable_scheduler.md` (484줄) + `docs/architecture_timetable_scheduler_design.md` (526줄)
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 4-1(테스트 실패 추적) + 규칙 5(런타임 기동 검증) + P5/P10/P11/P13/P14/P16/P20/P21/P22/P23/P24
 
-## 다음 세션 진행 대기: 타임테이블 기반 스케줄러 (다단계 작업) — 1세션 완료
+## 다음 세션 진행 대기: 타임테이블 기반 스케줄러 (다단계 작업) — 2세션 완료
 
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계서 작성 — 사전조사(4개 서브에이전트 병렬) + 사용자 결정 6항목 확정 + 설계서 작성.
   - **설계서**: `docs/architecture_timetable_scheduler_design.md` (526줄)
   - **핵심 설계**: 10초 주기 `_market_phase_periodic_loop()` → 시간표 리스트 + 단일 `call_later` 타이머 교체. 시간표 10개 항목(07:58~20:00, direct 3개 + phase 7개). JIF 1순위 경로 유지(수신 시각 기록 1줄 추가만). 헬스체크 옵션 A(이벤트 시점 JIF 미수신 체크). 자정 타이머 별도 유지. DB 연동·call_later 3개 통합·예외 시간표는 2세션 예고.
-- **2세션 (대기)**: 심층 사전조사 + 태스크 파일 작성 — 사용자 승인 대기.
-  - **예상 태스크 파일**: `docs/plan_timetable_scheduler.md`
-  - **예상 내용**: 설계서 10 Step를 실행 가능한 태스크로 분해 + 파일별 변경 상세 + 테스트 케이스 명세
+- **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성.
+  - **태스크 파일**: `docs/plan_timetable_scheduler.md` (484줄)
+  - **심층 발견사항 6항목**: (2-1) engine_state.py datetime import 누락 → 3세션에서 추가 / (2-2) market_phase_periodic_task 필드 라인 89→112 정정 / (2-3) 15:30·18:00 부작용 트리거 직접 분기 없음 → 페이즈 변경 감지로 자동 처리, 문제 없음 / (2-4) _on_krx_pre_subscribe 위치 559 → _TIMETABLE 배치 871 이후 / (2-5) typing import 불필요 → list[dict] 단순화 / (2-6) _check_prestart_triggers 제거는 4세션 (3세션은 신규 추가만)
+  - **세션 분할**: 3세션(Step 1~6: 신규 함수 5개 + state 필드, 기존 코드 변경 없음) / 4세션(Step 7+8: JIF 갱신 1줄 + 10초 루프 3함수 + _check_prestart_triggers 제거 + start/stop 갱신) / 5세션(Step 9+10: 단위 테스트 10개 케이스 + 기존 테스트 갱신/제거 + 런타임 기동 검증)
+- **3세션 (대기)**: Step 1~6 구현 — 신규 함수 5개(_TIMETABLE, _schedule_next_timetable_event, _timetable_event_fired, _check_jif_health, _timetable_startup_scan) + engine_state.py 필드 2개(timetable_timer_handle, last_jif_received_at) + datetime import. 사용자 승인 대기.
 
 ---
 
