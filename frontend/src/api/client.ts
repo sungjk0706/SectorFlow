@@ -29,7 +29,16 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
 
   if (!res.ok) {
-    throw new Error(`API error: ${res.status}`);
+    // 백엔드 에러 응답 본문의 detail 필드 추출 (FastAPI HTTPException 형식)
+    // — P21: 사용자가 검증 실패 사유를 토스트에서 확인 가능 (예: 타임테이블 시간 순서 오류)
+    let detail = ''
+    try {
+      const body = await res.json()
+      if (typeof body?.detail === 'string' && body.detail.length > 0) detail = body.detail
+    } catch {
+      // 본문이 JSON이 아닌 경우 status 코드만 사용 (에러 경로 처리 — P20 폴백 금지 대상 아님)
+    }
+    throw new Error(detail || `API error: ${res.status}`)
   }
 
   return res.json();
