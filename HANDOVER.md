@@ -1,13 +1,13 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (구독/해지 타임라인 재설계 — 5세션 통합 런타임 검증 + 문서 갱신 + 계획서 삭제)
-- 작업: `ARCHITECTURE.md` 12.1 타임라인 섹션 갱신 (07:58~00:00 9개 이벤트) + 12.3 WS 구독 구간 판정 갱신 (사전 구간 시간 기반 판정 추가) + 계획서 2개 + 조사보고서 1개 삭제 (`git rm`). 통합 런타임 검증 완료.
-- 상태: 5세션 완료. 구독/해지 타임라인 재설계 5세션 전체 완료. 검증 완료 (pytest 2838 passed + npm run build 성공 + 런타임 기동 RuntimeWarning 0건 + /api/settings 정상 + 잔존 프로세스 0건 + `backend/` 잔존 참조 0건). 커밋 대기.
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 11(계획서 삭제) + P10/P16/P20/P21/P22/P23/P24
+- 날짜: 2026-07-17 (매도내역 매수일시 컬럼 추가 + 평균가 현행 유지)
+- 작업: 수익상세 페이지 매도내역 테이블에 "매수일시" 컬럼 추가 (잔여 FIFO lot의 최초 매수일 기준). 평균가 방식은 현행(FIFO 차감 + 잔여 lot 평균가) 유지. DB 마이그레이션(`trades.buy_date TEXT`) + 백엔드 `record_sell()` buy_date 저장 + 프론트엔드 SELL_COLS 컬럼 추가. 검증 완료.
+- 상태: 1세션 완료. 검증 완료 (pytest test_trade_history 64 + test_stock_tables/test_web_app 49 전체 통과 + npm run build 성공 + 마이그레이션 직접 호출 검증 + 분할 매수 시뮬레이션 최초 매수일/평균가 정확 계산 확인). 커밋 + 푸시 완료.
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 UI 기준 설명) + P10/P15/P16/P18/P23 + safe-trade 스킬 + db-backup 스킬
 
-## 다음 세션 진행 대기: 없음 (구독/해지 타임라인 재설계 5세션 전체 완료)
-- **5세션 완료**: 통합 런타임 검증 + `ARCHITECTURE.md` 타임라인 섹션 갱신 + 계획서 2개 + 조사보고서 1개 삭제 완료.
+## 다음 세션 진행 대기: 없음 (매수일시 컬럼 추가 완료)
+- **1세션 완료**: 매도내역 매수일시 컬럼 추가 + 평균가 현행 유지 완료.
 - **세션 분할** (완료):
   - 1세션(완료): 설계서 작성
   - 2세션(완료): 심층 사전조사 + 태스크 파일
@@ -21,6 +21,31 @@
 - **검증 결과**: pytest 2838 passed (회귀 없음) + npm run build 성공 (2.09s) + 런타임 기동 RuntimeWarning 0건 + /api/settings 정상 (200) + 잔존 프로세스 0건 + `backend/` 잔존 참조 0건 + `docs/` 잔존 참조 0건 (session_state 계획서 3건은 2026-07-17 규칙 11 삭제됨).
 
 ## 직전 완료 작업
+- **매도내역 매수일시 컬럼 추가 + 평균가 현행 유지**: 수익상세 페이지 매도내역 테이블에 "매수일시" 컬럼 신규 추가. 평균가 방식은 현행(FIFO 차감 + 잔여 lot 평균가) 유지 — 키움 HTS 0328 화면(매입가 = 총매수금액/보유수량)과 개념 일치.
+  - **사전 검토** (코드 수정 전): 한국 주식시장 표준 처리 방식 웹 검색 — 세금 기준 원칙 FIFO(소득세법 시행령 제162조제5항), 예외 이동평균법(일부 증권사). 키움 HTS 0328 화면은 평균단가 표시, 매수일시는 미표시. 사용자 선호(평균가) = HTS 화면 표시 기준 부합. 매수일시 의미: 평균가 조정 시 단일 매수일시는 본질적 모순이나, "잔여 보유분의 최초 매수일"로 타협 (`get_earliest_buy_date`와 동일 출처 재사용, P23).
+  - **DB 백업** (db-backup 스킬): `stocks.db.20260717_150244.backup` (1.0M) + `stocks.db-shm.20260717_150244.backup` (32K) + `stocks.db-wal.20260717_150244.backup` (0B).
+  - **스키마 마이그레이션** (`backend/app/db/stock_tables.py` 2곳):
+    - `init_cache_tables()` CREATE TABLE trades에 `buy_date TEXT` 컬럼 추가 (L46) — 신규 DB 생성 시 포함.
+    - `migrate_add_buy_date_to_trades()` 신규 함수 (L268~) — 기존 DB 마이그레이션. `PRAGMA table_info(trades)`로 buy_date 존재 여부 확인 후 `ALTER TABLE trades ADD COLUMN buy_date TEXT`. 기존 `migrate_add_nxt_enable_column`/`migrate_add_hidden_to_custom_sectors` 패턴 준수 (P23).
+    - `backend/app/web/app.py` (L48-53) — 기동 시 `migrate_add_buy_date_to_trades()` 호출 추가. `migrate_add_hidden_to_custom_sectors()` 직후.
+  - **백엔드 수정** (`backend/app/services/trade_history.py` 4곳):
+    - `_ensure_loaded()` SELECT (L45-53) — `t.buy_date` 컬럼 추가 조회.
+    - `_TRADE_INSERT_SQL` (L72-78) — INSERT 컬럼/플레이스홀더에 buy_date 추가 (17→18 필드).
+    - `_trade_params()` (L81-90) — 튜플 끝에 `rec.get("buy_date", "")` 추가.
+    - `record_buy()` rec dict (L284) — `"buy_date": ""` 기본값 추가 (매수 레코드는 buy_date 무의미, 빈 값).
+    - `record_sell()` 시그니처 (L309-319) — `buy_date: str = ""` 파라미터 추가. rec dict (L371) — `"buy_date": buy_date` 저장.
+  - **백엔드 수정** (`backend/app/services/trading.py` 2곳):
+    - `execute_sell()` 평균가 조회부 (L477-504) — `_buy_date` 변수 추가. test 모드: `_computed_pos.get("buy_date")` 추출 (`build_positions_from_trades` 결과). real 모드: `_p.get("buy_date")` 추출 (positions에서). P23 — `get_earliest_buy_date`와 동일 출처 재사용, 신규 함수 생성 없음.
+    - `record_sell()` 호출부 (L559-565) — `buy_date=_buy_date` 전달.
+  - **프론트엔드 수정** (`frontend/src/pages/profit-shared.ts` 1곳):
+    - `SELL_COLS` (L365) — "매수일시" 컬럼 신규 추가 (매수가 컬럼 좌측). `key: 'buy_date'`, `label: '매수일시'`, MM/DD 형식 렌더. 12개 → 13개 컬럼.
+  - **테스트 수정** (`backend/tests/test_trade_history.py` 1곳):
+    - `TestTradeParams.test_params_order` (L444-460) — 17필드 → 18필드 튜플 순서 갱신. `rec.get("buy_date", "")` 추가.
+  - **검증**: pytest test_trade_history 64 passed + test_stock_tables/test_web_app 49 passed (회귀 없음) + npm run build 성공 (1.02s) + 마이그레이션 직접 호출 검증 (buy_date 컬럼 정상 감지/추가) + 분할 매수 시뮬레이션 (7/1 10주@70000 + 7/5 10주@80000 → buy_date=2026-07-01, avg_price=75000 정확) + record_sell buy_date 저장 + _trade_params 18필드 순서 검증 통과.
+  - **P원칙**: P10(SSOT — buy_date는 build_positions_from_trades에서 파생, trades가 단일 진실 원천) · P15(단일 주문 경로 — execute_sell 경로 내에서만 buy_date 추출, 분기/우회 없음) · P16(살아있는 경로 — record_sell → _insert_trade → DB INSERT 경로에 연결) · P18(테스트모드 동등성 — test/real 모드 모두 buy_date 추출 로직 포함) · P23(공통 자산 재사용 — get_earliest_buy_date와 동일 출처 재사용, 마이그레이션 함수 기존 패턴 준수) 준수.
+  - **safe-trade 스킬 준수**: 주문 경로 분기 없음, RiskManager/CircuitBreaker 미변경, test 모드 유지, 하드코딩 API 키 없음.
+  - **주의 사항**: 실전 모드 REST API positions에 buy_date가 없는 경우 빈 문자열로 저장될 수 있음 (engine_account.py에 trade_history SSOT 주입 로직이 있으나 execute_sell 시점 보장은 아님). 기존 매도 레코드(변경 전)는 buy_date 빈 값 — 신규 매도 건부터 매수일시 채워짐.
+  - **작업 여력**: 충분.
 - **구독/해지 타임라인 재설계 5세션 — 통합 런타임 검증 + 문서 갱신 + 계획서 삭제**: 5세션 전체 작업의 마지막 단계.
   - **`ARCHITECTURE.md`** (2곳):
     - 12.1 타이머 기반 트리거 갱신 (L976-984) — 타임라인 9개 이벤트로 재작성. 07:58 `_on_realtime_fields_reset()` (실시간 필드 초기화 + GC 비활성화 + 캐시 초기화) + 07:59 WS 구독 구간 진입 (상태 전환 + 엔진 루프 통지, 사전 구독) + 08:00 NXT 프리마켓 진입 (업종 재계산, 이미 구독됨) + 08:59 `_on_krx_pre_subscribe()` (KRX 단독 종목 사전 구독, 정규장 1분 전) + 09:00 KRX 정규장 진입 (업종 재계산, 구독은 멱등 스킵) + 15:20 `_on_krx_closing_auction_start()` (KRX 단독 종목 구독 해지, 종가 동시호가 진입) + 20:00 `_on_ws_subscribe_end()` (WS 구독 종료 + GC 정상화) + 20:40 `_fire_unified_confirmed_fetch()` (확정 시세 + 5일봉 다운로드, confirmed_download_time 설정 기본값) + 00:00 `_on_midnight()` (일일 리셋). 구 15:30/16:01/18:00 이벤트 제거 (15:20 종가 동시호가 해지로 통합).

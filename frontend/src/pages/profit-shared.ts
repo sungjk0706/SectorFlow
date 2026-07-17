@@ -362,6 +362,7 @@ export const SELL_COLS: ColumnDef<Record<string, unknown>>[] = [
       }
     }
   ),
+  { key: 'buy_date', label: '매수일시', align: 'center', type: 'date_short', render: r => { const d = String(r.buy_date ?? ''); return d.length >= 10 ? d.slice(5, 7) + '/' + d.slice(8, 10) : d } },
   { key: 'avg_buy_price', label: '매수가', align: 'right', type: 'avg_buy_price', render: r => createNumberCell(Number(r.avg_buy_price ?? 0)) },
   { key: 'price', label: '매도가', align: 'right', type: 'sell_price', render: r => {
     const sell = Number(r.price ?? 0)

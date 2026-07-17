@@ -42,7 +42,8 @@ async def init_cache_tables():
             realized_pnl INTEGER,
             pnl_rate REAL,
             reason TEXT,
-            trade_mode TEXT NOT NULL
+            trade_mode TEXT NOT NULL,
+            buy_date TEXT
         )
     ''')
     await conn.execute('''
@@ -263,6 +264,26 @@ async def migrate_add_nxt_enable_column():
         logger.info("[데이터] 전종목 마스터 테이블에 NXT 거래 가능 컬럼 추가 완료")
     else:
         logger.debug("[데이터] NXT 거래 가능 컬럼 이미 존재 - 생략")
+
+
+async def migrate_add_buy_date_to_trades():
+    """기존 trades에 buy_date 컬럼 추가 (마이그레이션).
+
+    매도 레코드에 한해 해당 종목의 최초 매수일(잔여 FIFO lot 기준)을 저장.
+    앱 기동 시마다 1회 실행하여 구 버전 DB에서도 buy_date 컬럼이 보장되도록 한다.
+    """
+    conn = await get_db_connection()
+
+    cursor = await conn.execute("PRAGMA table_info(trades)")
+    columns = await cursor.fetchall()
+    column_names = {col["name"] for col in columns}
+
+    if "buy_date" not in column_names:
+        await conn.execute("ALTER TABLE trades ADD COLUMN buy_date TEXT")
+        await conn.commit()
+        logger.info("[데이터] 체결 이력 테이블에 매수일 컬럼 추가 완료")
+    else:
+        logger.debug("[데이터] 체결 이력 매수일 컬럼 이미 존재 - 생략")
 
 
 # load_stock_name_cache 함수 삭제: 메모리 캐시(_master_stocks_cache)로 단일화

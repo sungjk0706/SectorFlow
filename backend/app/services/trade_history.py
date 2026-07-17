@@ -45,7 +45,7 @@ async def _ensure_loaded() -> None:
         async with conn.execute(
             "SELECT t.ts, t.date, t.time, t.side, t.stk_cd, t.stk_nm, t.price, t.qty,"
             " t.total_amt, t.fee, t.tax, t.avg_buy_price, t.buy_total_amt,"
-            " t.realized_pnl, t.pnl_rate, t.reason, t.trade_mode,"
+            " t.realized_pnl, t.pnl_rate, t.reason, t.trade_mode, t.buy_date,"
             " cs.name AS sector"
             " FROM trades t"
             " LEFT JOIN custom_sectors cs ON t.stk_cd = cs.stock_code"
@@ -73,8 +73,8 @@ _TRADE_INSERT_SQL = (
     "INSERT OR IGNORE INTO trades"
     " (ts, date, time, side, stk_cd, stk_nm, price, qty,"
     "  total_amt, fee, tax, avg_buy_price, buy_total_amt,"
-    "  realized_pnl, pnl_rate, reason, trade_mode)"
-    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    "  realized_pnl, pnl_rate, reason, trade_mode, buy_date)"
+    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
 )
 
 
@@ -86,6 +86,7 @@ def _trade_params(rec: dict) -> tuple:
         rec["avg_buy_price"], rec["buy_total_amt"],
         rec["realized_pnl"], rec["pnl_rate"],
         rec["reason"], rec["trade_mode"],
+        rec.get("buy_date", ""),
     )
 
 
@@ -279,6 +280,7 @@ async def record_buy(
         "pnl_rate": 0.0,
         "reason": reason,
         "trade_mode": trade_mode,
+        "buy_date": "",
     }
     logger.info(
         "[정산] 매수 기록 -- %s(%s) %d주 @%s 수수료=%s %s",
@@ -314,6 +316,7 @@ async def record_sell(
     reason: str = "",
     pnl_rate: float = 0.0,  # Legacy field
     trade_mode: str = "test",
+    buy_date: str = "",
 ) -> dict:
     """매도 체결 기록. 실현손익 자동 계산.
 
@@ -363,6 +366,7 @@ async def record_sell(
         "reason": reason,
         "trade_mode": trade_mode,
         "sector": sector,
+        "buy_date": buy_date,
     }
     logger.info(
         "[정산] 매도 기록 -- %s(%s) %d주 @%s 실현손익=%s 수수료=%s 세금=%s %s",

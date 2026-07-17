@@ -442,7 +442,7 @@ class TestTrimExpired:
 # ── _trade_params ─────────────────────────────────────────────────────────────
 
 class TestTradeParams:
-    """_trade_params: 17필드 튜플 순서 검증."""
+    """_trade_params: 18필드 튜플 순서 검증."""
 
     def test_params_order(self):
         from backend.app.services import trade_history
@@ -455,8 +455,9 @@ class TestTradeParams:
             rec["avg_buy_price"], rec["buy_total_amt"],
             rec["realized_pnl"], rec["pnl_rate"],
             rec["reason"], rec["trade_mode"],
+            rec.get("buy_date", ""),
         )
-        assert len(params) == 17
+        assert len(params) == 18
 
 
 # ── record_buy ────────────────────────────────────────────────────────────────

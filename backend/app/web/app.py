@@ -45,11 +45,12 @@ async def lifespan(app: FastAPI):
 
     # DB 테이블 초기화 (CREATE TABLE IF NOT EXISTS — 기존 테이블 영향 없음)
     # 다른 DB read가 해당 테이블에 의존할 수 있으므로 가장 먼저 실행
-    from backend.app.db.stock_tables import init_cache_tables, migrate_add_hidden_to_custom_sectors, create_master_stocks_table, migrate_master_stocks_table_pk, create_stock_5d_bars_table
+    from backend.app.db.stock_tables import init_cache_tables, migrate_add_hidden_to_custom_sectors, create_master_stocks_table, migrate_master_stocks_table_pk, create_stock_5d_bars_table, migrate_add_buy_date_to_trades
     await init_cache_tables()
     await create_master_stocks_table()
     await migrate_master_stocks_table_pk()
     await migrate_add_hidden_to_custom_sectors()
+    await migrate_add_buy_date_to_trades()
     await create_stock_5d_bars_table()
 
     # 전역 큐 초기화 (엔진 시작 전 보장)
