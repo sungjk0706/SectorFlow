@@ -941,6 +941,147 @@ async def _ws_disconnect_only() -> None:
         logger.warning("[스케줄] 실시간 구독 해제 오류: %s", e)
 
 
+# ── 타임테이블 스케줄러 (10초 루프 대체) ──────────────────────────────────────
+# 시간표 항목: (시각 상수, 동작 종류, 콜백, 컨텍스트)
+# - kind="direct": 시각 도달 시 callback 직접 실행 (사전 트리거)
+# - kind="phase":  시각 도달 시 _broadcast_market_phase() 호출 (페이즈 재계산)
+#
+# P10 SSOT: 시간 상수는 기존 라인 21-49 재사용, 신규 상수 생성 없음.
+# P24 단순성: 두 종류를 동일 리스트에서 kind 필드로 구분 (별도 리스트 분할 금지).
+_TIMETABLE: list[dict] = [
+    {"time": REALTIME_FIELDS_RESET_TIME, "kind": "direct", "action": _on_realtime_fields_reset, "ctx": "실시간 필드 초기화 (07:58)"},
+    {"time": WS_SUBSCRIBE_PRESTART_TIME,  "kind": "direct", "action": _on_ws_subscribe_start,    "ctx": "WS 구독 사전 시작 (07:59)"},
+    {"time": NXT_PREMARKET_START,         "kind": "phase",  "ctx": "NXT 프리마켓 진입 감지 (08:00)"},
+    {"time": KRX_PRE_SUBSCRIBE_TIME,      "kind": "direct", "action": _on_krx_pre_subscribe,     "ctx": "KRX 사전 구독 (08:59)"},
+    {"time": KRX_REGULAR_START,           "kind": "phase",  "ctx": "KRX 정규장 진입 감지 (09:00)"},
+    {"time": KRX_REGULAR_END,             "kind": "phase",  "ctx": "KRX 종가 동시호가 진입 감지 (15:20)"},
+    {"time": KRX_CLOSING_AUCTION_END,     "kind": "phase",  "ctx": "KRX 체결 정산 전환 감지 (15:30)"},
+    {"time": NXT_SINGLE_PRICE_END,        "kind": "phase",  "ctx": "NXT 애프터마켓 진입 감지 (15:40)"},
+    {"time": NXT_AFTERMARKET_MID_END,     "kind": "phase",  "ctx": "NXT 애프터마켓 지속 전환 감지 (18:00)"},
+    {"time": NXT_AFTERMARKET_END,         "kind": "phase",  "ctx": "NXT 장마감 진입 감지 (20:00)"},
+]
+
+
+def _schedule_next_timetable_event() -> None:
+    """시간표에서 다음 미래 이벤트를 찾아 call_later 1개 예약.
+
+    P11 (폴링 금지): while + sleep 대신 call_later 이벤트 기반.
+    P14 (멀티스레드 금지): 타이머 1개만 유지 (기존 타이머 취소 후 재예약).
+    P24 단순성: 시간표 선형 스캔, 복잡도 O(n) n=10.
+    """
+    # 기존 타이머 취소
+    if state.timetable_timer_handle is not None:
+        state.timetable_timer_handle.cancel()
+        state.timetable_timer_handle = None
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+
+    now = _kst_now()
+    now_sec = now.hour * 3600 + now.minute * 60 + now.second
+
+    # 다음 미래 이벤트 탐색 (오늘 남은 이벤트)
+    next_entry = None
+    next_delay = None
+    for entry in _TIMETABLE:
+        h, m = entry["time"]
+        event_sec = h * 3600 + m * 60
+        delay = event_sec - now_sec
+        if delay <= 0:
+            continue  # 이미 지난 이벤트
+        if next_delay is None or delay < next_delay:
+            next_delay = delay
+            next_entry = entry
+
+    if next_entry is None or next_delay is None:
+        # 오늘 남은 이벤트 없음 → 익일 첫 이벤트(07:58)까지 대기
+        h, m = REALTIME_FIELDS_RESET_TIME
+        target = now.replace(hour=h, minute=m, second=0, microsecond=0) + timedelta(days=1)
+        next_delay = (target - now).total_seconds()
+        next_entry = {"time": REALTIME_FIELDS_RESET_TIME, "kind": "phase", "ctx": "익일 첫 이벤트 (07:58 재스케줄)"}
+
+    # 최소 1초 보장 (즉시 실행 방지)
+    delay = max(next_delay, 1)
+    state.timetable_timer_handle = loop.call_later(
+        delay,
+        lambda: schedule_engine_task(_timetable_event_fired(next_entry), context=f"타임테이블: {next_entry['ctx']}"),
+    )
+    logger.debug("[스케줄] 다음 타임테이블 이벤트 — %s (%.0f초 후)", next_entry["ctx"], delay)
+
+
+async def _timetable_event_fired(entry: dict) -> None:
+    """타임테이블 이벤트 발생 시 실행 — 동작 수행 + 다음 이벤트 예약.
+
+    P16 (살아있는 경로): JIF 미수신 시 시간표가 보완 경로 유지.
+    P22 (데이터 정합성): 멱등성 가드는 각 _on_* 콜백 내부에서 유지.
+    P20 (폴백 금지): 예외 시 logger.warning(exc_info=True), silent pass 금지.
+    """
+    try:
+        kind = entry["kind"]
+        ctx = entry["ctx"]
+        logger.info("[스케줄] 타임테이블 이벤트 실행 — %s", ctx)
+
+        if kind == "direct":
+            # 직접 동작: 사전 트리거 콜백 실행
+            action = entry["action"]
+            await action()
+        elif kind == "phase":
+            # 페이즈 재계산: _broadcast_market_phase() → _apply_market_phase() 내 부작용 트리거
+            _broadcast_market_phase()
+
+        # JIF 미수신 헬스체크 (옵션 A — 이벤트 실행 시점에 체크)
+        _check_jif_health()
+
+    except Exception as e:
+        logger.warning("[스케줄] 타임테이블 이벤트 오류: %s", e, exc_info=True)
+    finally:
+        # 다음 이벤트 예약 (오류 발생 여부와 무관하게 스케줄러 지속)
+        _schedule_next_timetable_event()
+
+
+# JIF 헬스체크 임계값 — 마지막 JIF 수신 후 이 시간(초) 경과 시 경고
+_JIF_STALE_WARN_SEC = 120  # 2분 (JIF는 페이즈 전환 시점에만 수신되므로 넉넉한 임계값)
+
+
+def _check_jif_health() -> None:
+    """마지막 JIF 수신 시각 경과 시간 체크 — 경고만 로깅, 자동 조치 없음 (P24).
+
+    P21 (사용자 투명성): JIF 미수신 시 사용자가 인지할 수 있도록 로그.
+    단, 자동 조치(강제 페이즈 전환 등)는 금지 — 시간표가 이미 보완 역할 수행 중.
+    """
+    last_jif = state.last_jif_received_at
+    if last_jif is None:
+        # 기동 후 JIF 미수신 — 시간표가 보완 중이므로 경고만
+        logger.debug("[스케줄] JIF 미수신 상태 — 시간표 보완 동작 중")
+        return
+    elapsed = (_kst_now() - last_jif).total_seconds()
+    if elapsed > _JIF_STALE_WARN_SEC:
+        logger.warning("[스케줄] JIF 미수신 %.0f초 경과 — 시간표 보완 경로로 동작 중", elapsed)
+
+
+async def _timetable_startup_scan() -> None:
+    """기동 시 시간표 스캔 — 다음 미래 이벤트 예약.
+
+    P16 (살아있는 경로): 재기동 시 사전 트리거 구간(07:58~08:00) 누락 방지.
+    P22 (데이터 정합성): 멱등성 가드(state.last_*_date)로 중복 실행 차단.
+    P24 단순성: 본 함수는 "다음 예약"에만 집중 — 직접 동작 즉시 실행은
+    기존 _init_ws_subscribe_state()(998-1046)가 담당, 중복 금지.
+
+    기동 시나리오:
+    - 07:55 재기동: 07:58/07:59 이벤트 예약만 (아직 도달 전)
+    - 07:58:30 재기동: 07:58 direct 동작은 _init_ws_subscribe_state()가 담당 + 07:59 예약
+    - 09:30 재기동: 07:58/07:59/08:59 direct 동작 스킵 (이미 지난, 멱등성 가드) + 15:20 예약
+    """
+    # 기동 시 현재 페이즈 즉시 산정은 기존 start_daily_time_scheduler()(1394-1397)가 담당
+    # — 본 함수에서 중복 수행 금지
+
+    # 다음 미래 이벤트 예약
+    _schedule_next_timetable_event()
+    logger.info("[기동] 타임테이블 스케줄러 시작 — 다음 이벤트 예약 완료")
+
+
 async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
     """
     confirmed_download_time 타이머 + market_phase 전환 타이머를 예약한다.

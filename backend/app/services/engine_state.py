@@ -6,6 +6,7 @@
 순환 import 방지: 이 모듈은 다른 engine_*.py를 import하지 않는다.
 """
 import asyncio
+from datetime import datetime
 from typing import Any, TYPE_CHECKING
 from backend.app.core.broker_connector import BrokerConnector
 from backend.app.services.trading import AutoTradeManager
@@ -110,6 +111,8 @@ class EngineState:
         self.auto_trade_timer_handles: list = []
         self.midnight_timer_handle: asyncio.TimerHandle | None = None
         self.market_phase_periodic_task: asyncio.Task | None = None
+        self.timetable_timer_handle: asyncio.TimerHandle | None = None  # 타임테이블 단일 타이머
+        self.last_jif_received_at: datetime | None = None               # JIF 헬스체크용
         # ── 사전 트리거 멱등성 가드 (안 D 4단계 — 날짜 기반, P22 데이터 정합성) ──
         self.last_realtime_reset_date: str = ""        # 실시간 필드 초기화 실행 날짜 (YYYYMMDD)
         self.last_ws_subscribe_start_date: str = ""    # WS 구독 시작 실행 날짜 (YYYYMMDD)
