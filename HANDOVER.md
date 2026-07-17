@@ -1,12 +1,25 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (휴장일 주문 일시중단 칩 표시 문제 수정 — 옵션 A 페이즈 기반 조기 반환)
-- 작업: 휴장일/비거래일에 헤더 "주문 일시중단(동시호가/장외 시간대)" 칩이 표시되는 문제 수정. (1) `daily_time_scheduler.py` `get_order_time_block_status()` (L363)에 휴장일 조기 반환 추가 — `krx == "휴장일" or nxt == "휴장일"` 시 `(False, "")` 반환, ±5초 버퍼 판별 전 조기 종료, `_is_pre_subscribe_window()` L255-256과 동일 패턴 (P23 일관성), P21(사용자 투명성) — 장 안 열리는 날에 칩 표시 불필요. (2) `is_order_blocked_by_time()` (L331)에도 동일 휴장일 조기 반환 추가 — P23 일관성 (양쪽 함수 동일 패턴). 휴장일에는 매수 후보 자체가 생성되지 않으므로 실질 영향 없으나 일관성 차원 적용. (3) `test_daily_time_scheduler.py` 기대값 갱신 — `TestIsOrderBlockedByTime.test_holiday_both_blocked` → `test_holiday_returns_false` (True → False), `TestGetOrderTimeBlockStatus.test_holiday_returns_auction_reason` → `test_holiday_returns_false` ((True, "동시호가/장외 시간대") → (False, "")). 검증: py_compile + ruff 통과 + 단위 테스트 249개 전부 통과(test_daily_time_scheduler 216 + test_buy_order_executor 33, 회귀 없음) + 런타임 기동(`-W error::RuntimeWarning`) 174ms 정상 기동 + "KRX: 휴장일, NXT: 휴장일" 표시 확인 + 에러/Traceback/RuntimeWarning 0건 + 잔존 프로세스 0건.
-- 상태: 수정 완료. 커밋 완료. 다음 작업: 사용자 신규 요청 대기.
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 UI 기준 설명) + 규칙 4-1(테스트 실패 추적) + P10/P15/P16/P20/P21/P23/P24 + backend-fix 스킬 + frontend-fix 스킬
+- 날짜: 2026-07-17 (타임테이블 기반 스케줄러 설계서 작성 — 1세션)
+- 작업: 타임테이블(시간표 + 단일 타이머) 패턴 도입 검토 → 설계서 작성. (1) 사전조사: 4개 서브에이전트 병렬 조사 (10초 주기 루프 + JIF 구조 / 구독·해지 타임라인 + KRX·NXT 이중 시장 / integrated_system_settings + DB 구조 / ARCHITECTURE.md P10·P11·P16·P24 원칙). (2) 검토 의견 제시: 10초 주기 `_market_phase_periodic_loop()` → 타임테이블 + 단일 `call_later` 타이머 교체 추천 (하루 깨어남 8,640회 → 7~8회, 1,080배 감소), JIF 1순위 경로 유지, DB 연동은 2세션에서 검토. (3) 사용자 6항목 확정 (10초 루프 교체 / JIF 유지 / DB 1단계 보류 / 자정 타이머 별도 유지 / 헬스체크 옵션 A / 시간표 코드 내 정의). (4) 설계서 작성: 13개 섹션 526줄 — 시간표 10개 항목(07:58~20:00, direct 3개 + phase 7개), 구현 10 Step, 변경 범위(daily_time_scheduler.py 순증 +40줄, engine_state.py 필드 2개 추가, engine_ws_dispatch.py 1줄 추가), 검증 계획(단위 테스트 10개 케이스 + 런타임 기동), 리스크 6항목, 2세션 예고(DB 연동 + call_later 3개 통합 + 예외 시간표). P5/P10/P11/P13/P14/P16/P20/P21/P22/P23/P24 부합. 코드 수정 없음 — 설계서만 작성.
+- 상태: 설계서 작성 완료. 커밋 완료. 다음 작업: 2세션 태스크 파일 작성 승인 대기.
+- **참조 문서**: `docs/architecture_timetable_scheduler_design.md` (526줄)
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + P5/P10/P11/P13/P14/P16/P20/P21/P22/P23/P24
 
-## 다음 세션 진행 대기: 시장가 주문 중단 시간대 게이트 (다단계 작업) — 완료
+## 다음 세션 진행 대기: 타임테이블 기반 스케줄러 (다단계 작업) — 1세션 완료
+
+### 단계 진행 상황
+- **1세션 (완료)**: 설계서 작성 — 사전조사(4개 서브에이전트 병렬) + 사용자 결정 6항목 확정 + 설계서 작성.
+  - **설계서**: `docs/architecture_timetable_scheduler_design.md` (526줄)
+  - **핵심 설계**: 10초 주기 `_market_phase_periodic_loop()` → 시간표 리스트 + 단일 `call_later` 타이머 교체. 시간표 10개 항목(07:58~20:00, direct 3개 + phase 7개). JIF 1순위 경로 유지(수신 시각 기록 1줄 추가만). 헬스체크 옵션 A(이벤트 시점 JIF 미수신 체크). 자정 타이머 별도 유지. DB 연동·call_later 3개 통합·예외 시간표는 2세션 예고.
+- **2세션 (대기)**: 심층 사전조사 + 태스크 파일 작성 — 사용자 승인 대기.
+  - **예상 태스크 파일**: `docs/plan_timetable_scheduler.md`
+  - **예상 내용**: 설계서 10 Step를 실행 가능한 태스크로 분해 + 파일별 변경 상세 + 테스트 케이스 명세
+
+---
+
+## 이전 세션: 시장가 주문 중단 시간대 게이트 (다단계 작업) — 완료
 
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계서 작성 — 사전조사 + 사용자 결정 5항목 확정 + 설계서 작성.
