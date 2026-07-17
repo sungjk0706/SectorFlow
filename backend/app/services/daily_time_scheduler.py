@@ -312,6 +312,54 @@ def is_krx_after_hours() -> bool:
     return krx in ("체결 정산", "장후 시간외", "시간외 종가매매 종료 + 시간외 단일가매매 개시", "장 종료")
 
 
+# ── 체결 불가 시간대 주문 게이트 (Order Time Guard) ────────────────────────────
+# ±5초 버퍼 — 주문 체크 시점 전용 (phase 산정은 건드리지 않음, P24 단순화).
+# 차단 상태가 전환되는 경계 시각(초 단위) 근처면 무조건 차단 (양방향 안전 측).
+ORDER_TIME_BUFFER_SEC = 5
+
+# block↔allow 전환 경계 (초 단위 = hour*3600 + minute*60 + second).
+# 09:00:30(NXT 메인마켓 시작)은 calc_timebased_market_phase()가 이미 초 단위 처리 → 제외.
+_ORDER_TIME_BOUNDARIES_SEC: frozenset[int] = frozenset({
+    8 * 3600,               # 08:00:00 NXT 프리마켓 시작 (KRX 단독 종목 차단 시작)
+    9 * 3600,               # 09:00:00 KRX 정규장 시작 (5초 대기 후 허용 — 체결 안정)
+    15 * 3600 + 20 * 60,    # 15:20:00 종가 동시호가 시작 (양쪽 차단)
+    15 * 3600 + 40 * 60,    # 15:40:00 NXT 애프터마켓 시작 (KRX 단독 차단, NXT 5초 대기)
+    20 * 3600,              # 20:00:00 장마감 (양쪽 차단)
+})
+
+
+def is_order_blocked_by_time(stk_cd: str) -> bool:
+    """체결 불가 시간대 주문 차단 판별 (매수·매도 공통).
+
+    SSOT: state.market_phase 기반. 기존 is_nxt_only_window() 패턴과 동일 구조.
+    KRX 비활성 + NXT 활성 시 is_nxt_enabled(stk_cd)로 종목별 분기
+      — NXT 종목은 허용, KRX 단독 종목만 차단.
+    ±5초 버퍼: 경계 시각 ±5초 내면 무조건 차단 (안전 측, P24 단순화).
+    빈 문자열 phase 시 False 반환 + 에러 로그 (P20 폴백 금지).
+    """
+    mp = state.market_phase
+    krx = mp.get("krx", "")
+    nxt = mp.get("nxt", "")
+    if not krx or not nxt:
+        logger.error("[시스템] 장 상태 빈 문자열 감지: krx=%r, nxt=%r — 시간 기반 초기화 누락 가능", krx, nxt)
+        return False  # P20 폴백 금지 — 빈 문자열은 차단하지 않고 에러 로그
+
+    # ±5초 버퍼 — 경계 근처면 무조건 차단
+    now = _kst_now()
+    now_sec = now.hour * 3600 + now.minute * 60 + now.second
+    for boundary in _ORDER_TIME_BOUNDARIES_SEC:
+        if abs(now_sec - boundary) <= ORDER_TIME_BUFFER_SEC:
+            return True
+
+    # 본 판별 — 기존 is_nxt_only_window()와 동일 구조
+    if krx in KRX_INACTIVE_PHASES:
+        if nxt in NXT_ACTIVE_PHASES:
+            from backend.app.services.engine_symbol_utils import is_nxt_enabled
+            return not is_nxt_enabled(stk_cd)  # NXT 종목 허용, KRX 단독 종목 차단
+        return True  # 양쪽 비활성 — 전부 차단
+    return False  # KRX 활성 — 허용
+
+
 def get_market_phase() -> dict:
     """현재 KRX/NXT 장 상태 반환 (순수 읽기).
 

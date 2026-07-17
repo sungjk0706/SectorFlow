@@ -1,10 +1,10 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (시장가 주문 중단 시간대 게이트 2세션 — 심층 사전조사 + 태스크 파일 작성 완료)
-- 작업: 시장가 주문 중단 시간대 게이트 2세션 완료. 심층 사전조사(의존성/영향범위/아키텍처 원칙/기존 공통 자산 4항목) + 태스크 파일 `docs/plan_order_time_guard.md` (300줄) 작성 + 전신 문서 `docs/plan_order_suspension_by_time.md` 삭제(규칙 11, 설계서에 통합됨). 사전조사 중 설계서 대비 핵심 발견사항 5건 식별 — (1) ★`_to_trade_settings` 설정 키 누락: `order_time_guard_on`이 `_to_trade_settings()` 반환 dict에 없어 토글 OFF 무효화 위험(P17) → 헬퍼에 raw engine_settings 전달로 해결(buy: raw_all, sell: base_settings). (2) ±5초 버퍼 구현 방식 확정: 분 단위 phase와 별도로 초 단위 경계 집합 정의, 경계 ±5초 내 무조건 차단(안전 측, P24). (3) WS 이벤트 브로드캐스트 시점 확정: 기존 10초 주기 `_broadcast_market_phase`에 탑승, 별도 이벤트. (4) execute_sell 삽입 위치 확인: L461 is_sell_auto 체크 직후, order_type 선언 전. (5) 기존 plan_order_suspension_by_time.md 잔존(규칙 11) → 삭제. 코드 수정 없음(사전조사 + 태스크 파일 작성 only).
-- 상태: 2세션 완료. 커밋 완료. 다음 세션: 시장가 주문 중단 시간대 게이트 3세션(Step 1 차단 판별 함수 + ±5초 버퍼 + Step 4 설정 키) 승인 대기.
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 11(계획서 삭제) + P10/P13/P15/P16/P17/P20/P21/P22/P23/P24 + problem-solve 스킬
+- 날짜: 2026-07-17 (시장가 주문 중단 시간대 게이트 3세션 — Step 1 차단 판별 함수 + ±5초 버퍼 + Step 4 설정 키)
+- 작업: 시장가 주문 중단 시간대 게이트 3세션 완료. (1) `daily_time_scheduler.py`에 `is_order_blocked_by_time(stk_cd)` 신규 함수 + `ORDER_TIME_BUFFER_SEC=5` 상수 + `_ORDER_TIME_BOUNDARIES_SEC` frozenset(5개 경계: 08:00/09:00/15:20/15:40/20:00, 09:00:30 제외) 추가 — 기존 `is_nxt_only_window()` 패턴 재사용, KRX 비활성+NXT 활성 시 `is_nxt_enabled(stk_cd)` 종목 분기, ±5초 버퍼는 경계 근처 무조건 차단(양방향 안전 측, P24). (2) `settings_defaults.py`에 `order_time_guard_on: True` 설정 키 추가(P13/P17). (3) `test_daily_time_scheduler.py`에 `TestIsOrderBlockedByTime` 클래스 20개 테스트 추가 — 시간대별 6구간 + 빈 문자열(P20) + ±5초 버퍼 경계 8건 + 상수값 검증. 검증: 단위 테스트 203개 전부 통과(신규 20 + 기존 183) + test_buy_order_executor 33개 통과(회귀 없음) + 런타임 기동(`-W error::RuntimeWarning`) 202ms 정상 기동 + 에러/Traceback/RuntimeWarning 0건 + 잔존 프로세스 0건.
+- 상태: 3세션 완료. 커밋 완료. 다음 세션: 시장가 주문 중단 시간대 게이트 4세션(Step 2 execute_buy 게이트 + Step 3 execute_sell 게이트 + Step 5 헬퍼 `_is_order_time_blocked`) 승인 대기.
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + P10/P13/P15/P16/P17/P20/P21/P22/P23/P24 + problem-solve 스킬 + backend-fix 스킬
 
 ## 다음 세션 진행 대기: 시장가 주문 중단 시간대 게이트 (다단계 작업)
 
@@ -14,6 +14,9 @@
   - **전신 문서**: `docs/plan_order_suspension_by_time.md` (사전조사 + 사용자 결정 완료 → 본 설계서로 통합, 2세션에서 삭제)
 - **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성.
   - **태스크 파일**: `docs/plan_order_time_guard.md` (300줄)
+- **3세션 (완료)**: Step 1 (차단 판별 함수 + ±5초 버퍼) + Step 4 (설정 키).
+  - **변경 파일**: `daily_time_scheduler.py` (신규 함수 `is_order_blocked_by_time()` + `ORDER_TIME_BUFFER_SEC`/`_ORDER_TIME_BOUNDARIES_SEC` 상수) + `settings_defaults.py` (`order_time_guard_on: True`) + `test_daily_time_scheduler.py` (`TestIsOrderBlockedByTime` 20개 테스트)
+  - **검증**: 단위 테스트 203개 통과 + test_buy_order_executor 33개 통과 + 런타임 기동 정상 (RuntimeWarning 0건)
   - **사전조사 결과 (규칙 0-2 4항목)**:
     1. **의존성**: `KRX_INACTIVE_PHASES`(daily_time_scheduler.py:227)·`NXT_ACTIVE_PHASES`(L233)·`is_nxt_enabled()`(engine_symbol_utils.py:11)·`_broadcast()`(engine_account_notify.py:69)·`createToggleBtn()`·`circuitBreakerOpen` 패턴 전부 재사용 확정. 외부 참조 없음.
     2. **영향범위**: 백엔드 4개 파일(daily_time_scheduler.py, settings_defaults.py, trading.py, engine_ws_dispatch.py) + 프론트엔드 4개 파일(general-settings.ts, header.ts, binding.ts, uiStore.ts) + 테스트 1개 파일(test_daily_time_scheduler.py). 기존 test_buy_order_executor.py는 변경 없음(기존 is_krx_after_hours 유지).
@@ -66,7 +69,7 @@
 - **전신 문서**: `docs/plan_order_suspension_by_time.md` (2세션에서 삭제 — 설계서에 통합됨, 규칙 11)
 
 ### 승인 대기 항목
-- **3세션 진행**: Step 1 (차단 판별 함수 `is_order_blocked_by_time()` + ±5초 버퍼) + Step 4 (`order_time_guard_on` 설정 키) — `daily_time_scheduler.py` + `settings_defaults.py` + `test_daily_time_scheduler.py` — 사용자 "진행" 지시 시 시작
+- **4세션 진행**: Step 2 (`execute_buy` 게이트 — `raw_all` 전달, 2-1 해결안) + Step 3 (`execute_sell` 게이트 — `base_settings` 전달) + Step 5 (`_is_order_time_blocked(stk_cd, raw_settings)` 헬퍼) — `trading.py` — 사용자 "진행" 지시 시 시작. ★2-1 해결안 필수 반영: 헬퍼에 raw engine_settings 전달 (`_to_trade_settings` 출력이 아님 — `order_time_guard_on` 키 누락).
 
 ---
 

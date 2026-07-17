@@ -112,6 +112,9 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
 
      # UI 설정 — 실시간 현재가 플래시 효과 (기본값 True = 활성화)
      "ui_price_flash_on": True,
+
+     # 체결 불가 시간대 주문 차단 (동시호가·장외 시장가 주문 자동 중단, 기본 ON)
+     "order_time_guard_on": True,
  }
  
  # 시스템 설정 기본값 (system_config)
