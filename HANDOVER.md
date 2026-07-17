@@ -3,9 +3,9 @@
 ## 세션 개요
 - 날짜: 2026-07-18 (DB 테이블 스케줄러 7세션 — 프론트엔드 Step 5: 422 검증 에러 메시지 정교화 + 테스트 갱신 완료 — 다단계 작업 전체 완료)
 - 작업: DB 테이블 스케줄러 다단계 작업의 7세션(프론트엔드 Step 5 구현, 마지막 단계). 사용자 명시적 실행 지시어("7세션 진행해 주세요")로 승인 후 착수. (1) 사전조사(규칙 0-2): 422 에러 메시지 전파 경로 추적 — `frontend/src/api/client.ts:32`의 `request<T>`가 `!res.ok`일 때 `throw new Error(`API error: ${res.status}`)`만 던져서 백엔드 422 응답 본문의 `detail` 필드(실제 검증 에러 메시지)를 버림. `settings.ts:79-82`의 `saveSection`이 catch에서 `e.message`를 `SaveResult.error`로 전달 → 사용자가 "API error: 422" 토스트만 보고 뭘 고쳐야 할지 모름 (P21 위반). 백엔드 `routes/settings.py:84-85`는 이미 `{"detail": "유효하지 않은 설정값: 타임테이블 시간 순서 오류: ..."}`로 UI 친화적 일반 용어 사용. `request<T>`는 모든 API 호출의 공통 경로 → 여기서 처리 시 special case 없이 모든 호출자 동일 혜택 (P23 일관성). (2) `api/client.ts` 1개 변경: `request<T>`의 `!res.ok` 분기에서 응답 본문 JSON 파싱 시도 → `detail` 필드(string, 비어있지 않음) 있으면 Error 메시지에 포함. 파싱 실패/`detail` 없으면 기존 status 코드 메시지 유지 (에러 경로 처리이므로 P20 폴백 금지 대상 아님). `general-settings.ts` 주석 1줄 갱신 (422 → detail 추출 → toastResult 검증 에러 메시지 토스트, P21). (3) 테스트 갱신 2개 파일: `tests/api/client.test.ts` 신규 (5개 — 422 detail 추출 / detail 없음 / 비-JSON 본문 / 400 일관성 / 정상 응답) + `tests/settings.test.ts`에 `createSettingsManager.saveSection` 3개 추가 (422 detail 전파 / detail 없음 / 정상 저장). fetch + localStorage mock 기반. (4) 검증: typecheck 통과 (tsc --noEmit) + build 통과 (tsc -b + vite build, general-settings 청크 새 해시 Db12K4gv.js) + vitest 116개 통과 (8개 파일, 신규 8개 포함). P21(사용자 투명성)/P23(일관성·공통 자산 재사용)/P24(단순성) 부합. 신규 컴포넌트/함수 생성 없음 — `request<T>` 공통 에러 처리 확장만.
-- 상태: 7세션(프론트엔드 Step 5) 완료. 커밋 완료. **DB 테이블 스케줄러 다단계 작업 전체 완료 (7세션 전부 종료).**
-- **참조 문서**: `docs/architecture_db_timetable_design.md` (325줄, 설계서) + `docs/plan_db_timetable.md` (631줄, 태스크 파일)
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 시 UI 기준 설명) + P21/P23/P24
+- 상태: 7세션(프론트엔드 Step 5) 완료. 커밋 완료. **DB 테이블 스케줄러 다단계 작업 전체 완료 (7세션 전부 종료). 계획서 2개 삭제 완료 (규칙 11).**
+- **참조 문서**: 없음 (계획서 2개 삭제 완료 — `docs/architecture_db_timetable_design.md` + `docs/plan_db_timetable.md`, 규칙 11)
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 시 UI 기준 설명) + 규칙 11(계획서 삭제) + P21/P23/P24
 
 ## 다음 세션 진행 대기: 없음 — DB 테이블 스케줄러 다단계 작업 전체 완료
 
