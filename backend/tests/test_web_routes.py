@@ -547,6 +547,7 @@ class TestResetTestData:
             mock_state.auto_trade = None
             mock_state.sector_summary_cache = None
             mock_state._last_global_buy_ts = 0.0
+            mock_state._last_global_sell_ts = 0.0
             result = await reset_test_data(_="dev")
         assert result["ok"] is True
         assert "초기화 완료" in result["message"]
