@@ -92,21 +92,19 @@ class AutoTradeManager:
                 )
 
     async def execute_buy(self, stk_cd: str, current_price: float,
-                    access_token: str, force_buy: bool = False, reason: str = "") -> bool:
+                    access_token: str, reason: str = "") -> bool:
         """
         매수 주문 실행 (글로벌 매수 락으로 순차 처리).
-        force_buy=True: 매수대기 수동 매수 전용. 스케줄 자동매매 게이트만 우회하고
-                        나머지 판단(buy_amt, max_limit, 쓰로틀 등)은 그대로 적용.
         reason: 매수 사유 (체결 이력 기록용).
         반환값: True=주문 전송 성공, False=가드에 의해 차단/실패
         """
         if self._buy_lock is None:
             self._buy_lock = asyncio.Lock()
         async with self._buy_lock:
-            return await self._execute_buy_locked(stk_cd, current_price, access_token, force_buy, reason)
+            return await self._execute_buy_locked(stk_cd, current_price, access_token, reason)
 
     async def _execute_buy_locked(self, stk_cd: str, current_price: float,
-                    access_token: str, force_buy: bool = False, reason: str = "") -> bool:
+                    access_token: str, reason: str = "") -> bool:
         """
         매수 주문 실행 본문 (글로벌 매수 락 내부).
         TOCTOU 경쟁 상태 방지: reserve_buy_power로 검증+즉시 차감을 원자적 수행.
@@ -129,10 +127,10 @@ class AutoTradeManager:
         except Exception:
             logger.warning("[매매] 실시간 지연 체크 실패", exc_info=True)
 
-        # 스케줄 자동매매 게이트: force_buy(매수대기 수동 매수) 시에만 우회
-        if not settings["is_auto"] and not force_buy:
+        # 스케줄 자동매매 게이트: 자동매매 비활성화 시 주문 생략
+        if not settings["is_auto"]:
             stk_nm = data_manager.get_stock_name(stk_cd, access_token)
-            logger.info("[매매] [자동매매 비활성화] %s(%s) 주문 생략 (강제매수=%s, 출처=자동신호)", stk_nm, stk_cd, force_buy)
+            logger.info("[매매] [자동매매 비활성화] %s(%s) 주문 생략 (출처=자동신호)", stk_nm, stk_cd)
             return False
         # ── 재매수 차단 (설정 기반: ON/OFF + 차단 기간) ──────────────────────
         rebuy_block_on = bool(settings.get("rebuy_block_on", True))
