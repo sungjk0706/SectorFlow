@@ -261,7 +261,7 @@ function renderTimeSettingsTab(container: HTMLElement): void {
   })
   ttResetRow.appendChild(timetableResetSlot)
   container.appendChild(ttResetRow)
-  container.appendChild(createDescText('장 시작 1분 전에 실시간 데이터 수신을 시작합니다 (기본 07:58)'))
+  container.appendChild(createDescText('장 시작 전 실시간 데이터 초기화'))
 
   // 구독 사전 시작 시간 (timetable.ws_prestart, 기본 07:59)
   const ttWsRow = document.createElement('div')
@@ -278,7 +278,7 @@ function renderTimeSettingsTab(container: HTMLElement): void {
   })
   ttWsRow.appendChild(timetableWsSlot)
   container.appendChild(ttWsRow)
-  container.appendChild(createDescText('실시간 항목 초기화 직후 WS 구독을 사전 시작합니다 (기본 07:59)'))
+  container.appendChild(createDescText('장 시작 전 NXT 구독 시작'))
 
   // 정규장 사전 구독 시간 (timetable.krx_pre_subscribe, 기본 08:59)
   const ttKrxRow = document.createElement('div')
@@ -295,7 +295,7 @@ function renderTimeSettingsTab(container: HTMLElement): void {
   })
   ttKrxRow.appendChild(timetableKrxSlot)
   container.appendChild(ttKrxRow)
-  container.appendChild(createDescText('정규장 시작 1분 전에 KRX 종목을 사전 구독합니다 (기본 08:59, 09:00 미만)'))
+  container.appendChild(createDescText('정규장 시작 전 KRX 종목 구독 시작'))
 
   // 1일봉차트 자동다운로드 (토글 + 시간 슬롯) — API 설정 탭에서 이동 (Step 4)
   container.appendChild(sectionTitle('1일봉차트 자동다운로드'))
