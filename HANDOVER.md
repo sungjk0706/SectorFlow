@@ -1,13 +1,13 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (타임테이블 기반 스케줄러 태스크 파일 작성 — 2세션)
-- 작업: 심층 사전조사 + 태스크 파일 작성. (1) 사전조사: 3개 서브에이전트 병렬 조사 (daily_time_scheduler.py 실제 구조 — 시간 상수/루프/사전트리거/페이즈적용/콜백/start-stop/타이머 3개 / engine_state.py 필드 + engine_ws_dispatch.py JIF 핸들러 / 테스트 파일 구조 + 기존 태스크 파일 패턴). (2) 심층 발견사항 6항목 식별: engine_state.py datetime import 누락(2-1) / market_phase_periodic_task 필드 위치 정정 89→112(2-2) / 15:30·18:00 부작용 트리거 직접 분기 없음(2-3) / _on_krx_pre_subscribe 위치 559(2-4) / typing import 불필요 list[dict] 단순화(2-5) / _check_prestart_triggers 제거 시점 4세션(2-6). (3) 태스크 파일 작성: 7개 섹션 484줄 — 사전조사 결과(의존성 26항목 + 영향범위 + 원칙 11개 부합 + 공통 자산 재사용) + 심층 발견사항 6항목 + 세션 분할(3-5세션) + 세션별 태스크 상세(3세션 Step 1~6 신규 함수 5개 + state 필드 / 4세션 Step 7+8 루프 제거 + 배선 / 5세션 Step 9+10 테스트 + 런타임) + 위험 10항목 + 승인 대기. P5/P10/P11/P13/P14/P16/P20/P21/P22/P23/P24 부합. 코드 수정 없음 — 태스크 파일만 작성.
-- 상태: 태스크 파일 작성 완료. 커밋 완료. 다음 작업: 3세션 구현(Step 1~6) 승인 대기.
+- 날짜: 2026-07-18 (타임테이블 기반 스케줄러 3세션 — Step 1~6 신규 함수 5개 + state 필드 추가)
+- 작업: 3세션 구현 (Step 1~6). (1) 사전조사 검증: 태스크 파일의 모든 라인 위치·의존성을 실제 코드에서 재확인 — 시간 상수 10개(21-49)·direct 콜백 3개(802/838/559)·phase 콜백(769)·_kst_now(450)·schedule_engine_task(import L14)·engine_state.py(라인 8/111/112, datetime import 누락 2-1 확인). (2) 코드 추가: daily_time_scheduler.py 942~944 사이에 _TIMETABLE 상수(10항목) + _schedule_next_timetable_event()(동기, call_later 1개 예약) + _timetable_event_fired()(async, direct/phase 분기 + finally 다음 예약) + _JIF_STALE_WARN_SEC(120초) + _check_jif_health()(동기, 경고만 로깅) + _timetable_startup_scan()(async, _schedule_next_timetable_event 호출 1줄). engine_state.py 라인 8에 from datetime import datetime 추가 + 라인 111 이후에 timetable_timer_handle/last_jif_received_at 필드 2개 추가. (3) 검증: py_compile + ruff 통과 + 기존 테스트 216개 전체 통과(회귀 없음) + 런타임 기동(-W error::RuntimeWarning) RuntimeWarning 0건 + 에러 없음 + 잔존 프로세스 0건. P5/P10/P11/P13/P14/P16/P20/P21/P22/P23/P24 부합. **기존 코드 변경 없음 — 신규 추가만** (P16 주의: 4세션 배선 전까지 dead code, 다단계 워크플로우 허용).
+- 상태: 3세션 구현 완료. 커밋 완료. 다음 작업: 4세션(Step 7+8 — 10초 루프 제거 + 배선) 승인 대기.
 - **참조 문서**: `docs/plan_timetable_scheduler.md` (484줄) + `docs/architecture_timetable_scheduler_design.md` (526줄)
 - **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 4-1(테스트 실패 추적) + 규칙 5(런타임 기동 검증) + P5/P10/P11/P13/P14/P16/P20/P21/P22/P23/P24
 
-## 다음 세션 진행 대기: 타임테이블 기반 스케줄러 (다단계 작업) — 2세션 완료
+## 다음 세션 진행 대기: 타임테이블 기반 스케줄러 (다단계 작업) — 3세션 완료
 
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계서 작성 — 사전조사(4개 서브에이전트 병렬) + 사용자 결정 6항목 확정 + 설계서 작성.
@@ -17,7 +17,12 @@
   - **태스크 파일**: `docs/plan_timetable_scheduler.md` (484줄)
   - **심층 발견사항 6항목**: (2-1) engine_state.py datetime import 누락 → 3세션에서 추가 / (2-2) market_phase_periodic_task 필드 라인 89→112 정정 / (2-3) 15:30·18:00 부작용 트리거 직접 분기 없음 → 페이즈 변경 감지로 자동 처리, 문제 없음 / (2-4) _on_krx_pre_subscribe 위치 559 → _TIMETABLE 배치 871 이후 / (2-5) typing import 불필요 → list[dict] 단순화 / (2-6) _check_prestart_triggers 제거는 4세션 (3세션은 신규 추가만)
   - **세션 분할**: 3세션(Step 1~6: 신규 함수 5개 + state 필드, 기존 코드 변경 없음) / 4세션(Step 7+8: JIF 갱신 1줄 + 10초 루프 3함수 + _check_prestart_triggers 제거 + start/stop 갱신) / 5세션(Step 9+10: 단위 테스트 10개 케이스 + 기존 테스트 갱신/제거 + 런타임 기동 검증)
-- **3세션 (대기)**: Step 1~6 구현 — 신규 함수 5개(_TIMETABLE, _schedule_next_timetable_event, _timetable_event_fired, _check_jif_health, _timetable_startup_scan) + engine_state.py 필드 2개(timetable_timer_handle, last_jif_received_at) + datetime import. 사용자 승인 대기.
+- **3세션 (완료)**: Step 1~6 구현 — 신규 함수 5개 + state 필드 2개 + datetime import.
+  - **변경 파일**: `daily_time_scheduler.py` (신규 추가 5개 함수 + `_TIMETABLE` 상수 + `_JIF_STALE_WARN_SEC` 상수, 942~944 사이 배치) + `engine_state.py` (`from datetime import datetime` import 추가 + `timetable_timer_handle`/`last_jif_received_at` 필드 2개 추가)
+  - **사전조사 결과 (규칙 0-2 4항목)**: 태스크 파일의 모든 라인 위치·의존성을 실제 코드에서 재검증 완료. 시간 상수 10개(21-49)·direct 콜백 3개(802/838/559)·phase 콜백(769)·_kst_now(450)·schedule_engine_task(import L14) 전부 일치. engine_state.py datetime import 누락(2-1) 확인 후 추가.
+  - **영향범위**: 백엔드 2개 파일만 변경. 기존 코드 변경 없음 — 신규 추가만 (P16 주의: 4세션 배선 전까지 dead code, 다단계 워크플로우 허용).
+  - **검증**: py_compile + ruff 통과 + 기존 테스트 216개 전체 통과(회귀 없음) + 런타임 기동(`-W error::RuntimeWarning`) RuntimeWarning 0건 + 에러 없음 + 잔존 프로세스 0건. 기동 로그에서 기존 `[기동] 장 상태 주기 태스크 시작 (10초 간격)` 유지 출력 (4세션 제거 예정) + 타임테이블 로그 미출력 (배선 전이므로 정상).
+- **4세션 (대기)**: Step 7+8 구현 — engine_ws_dispatch.py `_handle_jif()` 내 `last_jif_received_at` 갱신 1줄 + `_kst_now` import 추가 + daily_time_scheduler.py 10초 루프 3함수 제거(`_market_phase_periodic_loop`/`_start_market_phase_periodic_task`/`_stop_market_phase_periodic_task`) + `_check_prestart_triggers` 제거 + `start/stop_daily_time_scheduler` 갱신 + engine_state.py `market_phase_periodic_task` 필드 제거 + 관련 주석 갱신. 사용자 승인 대기.
 
 ---
 
