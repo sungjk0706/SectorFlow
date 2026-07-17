@@ -119,6 +119,7 @@ export function createSettingRow(label: string | HTMLElement, child: HTMLElement
 /* ── 토글 + 라벨 + 컨트롤 컴포지션 행 ─────────────────────── */
 export function createToggleLabelControlsRow(options: {
   labelText: string
+  labelSubText?: string
   toggleOn: boolean
   onToggle: (next: boolean) => void
   controlsChild: HTMLElement
@@ -147,9 +148,18 @@ export function createToggleLabelControlsRow(options: {
   const labelWrap = document.createElement('span')
   labelWrap.style.cssText = 'display:flex;align-items:center;gap:8px;'
   labelWrap.appendChild(toggle.el)
+  const labelBox = document.createElement('span')
+  labelBox.style.cssText = 'display:flex;flex-direction:column;line-height:1.2;'
   const label = document.createElement('span')
   label.textContent = options.labelText
-  labelWrap.appendChild(label)
+  labelBox.appendChild(label)
+  if (options.labelSubText) {
+    const sub = document.createElement('span')
+    sub.style.cssText = `font-size:${FONT_SIZE.small};color:${COLOR.tertiary};`
+    sub.textContent = options.labelSubText
+    labelBox.appendChild(sub)
+  }
+  labelWrap.appendChild(labelBox)
 
   controls.appendChild(options.controlsChild)
   const initDisabled = options.initialDisabled ?? !options.toggleOn
