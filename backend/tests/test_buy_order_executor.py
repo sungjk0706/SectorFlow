@@ -263,6 +263,42 @@ class TestBuyIntervalGate:
             await evaluate_buy_candidates()
         fresh_state.auto_trade.execute_buy.assert_awaited_once()
 
+    @pytest.mark.asyncio
+    async def test_buy_interval_off_passes(self, fresh_state, reset_cash_gate):
+        import time as _time
+        fresh_state.integrated_system_settings_cache = _default_settings(
+            buy_interval_on=False, buy_interval_sec=300,
+        )
+        fresh_state._last_global_buy_ts = _time.time()  # 간격 내라도 토글 OFF면 통과
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_buy_interval_zero_sec_passes(self, fresh_state, reset_cash_gate):
+        import time as _time
+        fresh_state.integrated_system_settings_cache = _default_settings(
+            buy_interval_on=True, buy_interval_sec=0,
+        )
+        fresh_state._last_global_buy_ts = _time.time()  # 간격 내라도 0초=비활성이면 통과
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            await evaluate_buy_candidates()
+        fresh_state.auto_trade.execute_buy.assert_awaited_once()
+
 
 # ── 매수 실행 경로 ─────────────────────────────────────────────────────────────
 

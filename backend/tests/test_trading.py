@@ -400,6 +400,105 @@ class TestCheckSellConditions:
         mgr.execute_sell.assert_not_awaited()
 
 
+# ── 매도 주문 간격 게이트 ──────────────────────────────────────────────────────
+
+class TestSellIntervalGate:
+    """check_sell_conditions 진입 전 매도 간격 게이트 (trading.py:611-613).
+
+    손절 포함 모든 매도에 간격이 적용됨 (사용자 결정 — plan_order_interval.md 1-3).
+    """
+
+    @pytest.mark.asyncio
+    @patch("backend.app.services.trading.auto_sell_effective", return_value=True)
+    async def test_sell_interval_blocks_within_period(self, _mock_sell):
+        mgr = _make_manager()
+        mgr.execute_sell = AsyncMock()
+        stock = {
+            "stk_cd": "005930", "stk_nm": "삼성전자",
+            "cur_price": "65000", "qty": "10",
+            "pnl_rate": -6.0, "pnl_amount": -50000,
+        }
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm:
+            mock_state.realtime_latency_exceeded = False
+            mock_state._last_global_sell_ts = _time.time()  # 간격 내
+            mock_rm.return_value.check_sell_order_allowed.return_value = (True, "승인")
+            await mgr.check_sell_conditions(
+                [stock], _raw_settings(sell_interval_on=True, sell_interval_sec=30), "token",
+            )
+        mgr.execute_sell.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @patch("backend.app.services.trading.auto_sell_effective", return_value=True)
+    async def test_sell_interval_passes_after_period(self, _mock_sell):
+        mgr = _make_manager()
+        mgr.execute_sell = AsyncMock()
+        stock = {
+            "stk_cd": "005930", "stk_nm": "삼성전자",
+            "cur_price": "65000", "qty": "10",
+            "pnl_rate": -6.0, "pnl_amount": -50000,
+        }
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm:
+            mock_state.realtime_latency_exceeded = False
+            mock_state._last_global_sell_ts = _time.time() - 60  # 간격(30초) 초과
+            mock_rm.return_value.check_sell_order_allowed.return_value = (True, "승인")
+            await mgr.check_sell_conditions(
+                [stock], _raw_settings(sell_interval_on=True, sell_interval_sec=30), "token",
+            )
+        mgr.execute_sell.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @patch("backend.app.services.trading.auto_sell_effective", return_value=True)
+    async def test_sell_interval_off_passes(self, _mock_sell):
+        mgr = _make_manager()
+        mgr.execute_sell = AsyncMock()
+        stock = {
+            "stk_cd": "005930", "stk_nm": "삼성전자",
+            "cur_price": "65000", "qty": "10",
+            "pnl_rate": -6.0, "pnl_amount": -50000,
+        }
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm:
+            mock_state.realtime_latency_exceeded = False
+            mock_state._last_global_sell_ts = _time.time()  # 간격 내라도 토글 OFF면 통과
+            mock_rm.return_value.check_sell_order_allowed.return_value = (True, "승인")
+            await mgr.check_sell_conditions(
+                [stock], _raw_settings(sell_interval_on=False, sell_interval_sec=30), "token",
+            )
+        mgr.execute_sell.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @patch("backend.app.services.trading.auto_sell_effective", return_value=True)
+    async def test_sell_interval_applies_to_loss_cut(self, _mock_sell):
+        """손절 조건 충족 종목도 간격 내면 매도 차단 — 손절 포함 모든 매도에 적용 (사용자 결정)."""
+        mgr = _make_manager()
+        mgr.execute_sell = AsyncMock()
+        stock = {
+            "stk_cd": "005930", "stk_nm": "삼성전자",
+            "cur_price": "65000", "qty": "10",
+            "pnl_rate": -6.0, "pnl_amount": -50000,  # 손절 조건 (loss_val 5% 초과 손실)
+        }
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm:
+            mock_state.realtime_latency_exceeded = False
+            mock_state._last_global_sell_ts = _time.time()  # 간격 내
+            mock_rm.return_value.check_sell_order_allowed.return_value = (True, "승인")
+            await mgr.check_sell_conditions(
+                [stock], _raw_settings(sell_interval_on=True, sell_interval_sec=30), "token",
+            )
+        mgr.execute_sell.assert_not_awaited()  # 손절이어도 간격 게이트가 차단
+
+    @pytest.mark.asyncio
+    async def test_mark_order_executed_updates_sell_ts(self):
+        """mark_order_executed("sell") 호출 시 _last_global_sell_ts 갱신 (trading.py:535-536 배선)."""
+        from backend.app.services.order_interval import mark_order_executed
+        with patch("backend.app.services.engine_state.state") as mock_state:
+            mock_state._last_global_sell_ts = 0.0
+            mark_order_executed("sell")
+            assert mock_state._last_global_sell_ts > 0
+
+
 # ── on_fill_update ─────────────────────────────────────────────────────────────
 
 class TestOnFillUpdate:

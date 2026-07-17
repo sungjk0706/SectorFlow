@@ -1,13 +1,28 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (매수/매도 주문 간격 설정 개선 — 다단계 작업 5세션: 프론트엔드 Step 3)
-- 작업: 5세션 진행 → 사전조사(3개 프론트엔드 파일 현재 상태 + `createDescText` 공통 자산 발견) → `types/index.ts`(`buy_interval_min`→`buy_interval_sec` + 매도 설정 영역에 `sell_interval_on`/`sell_interval_sec` 추가) → `buy-settings.ts`(import `createDescText` + syncFromSettings `_sec` 교체 + createNumInput step 5/min 5/max 300/value 30 + 라벨 "초, 5초 단위" + 안내 라벨) → `sell-settings.ts`(import 2개 + 변수 3개 + syncFromSettings 매도 간격 블록 + mount "매도 주문 간격" 섹션 + unmount 정리) → 검증(typecheck 통과 + build 772ms 성공 + 잔존 `buy_interval_min` 프론트엔드 0건) → 커밋.
-- 상태: 다단계 작업 5세션(구현 Step 3) 완료. 6세션(구현 Step 4 — 테스트) 대기.
-- **참조 문서**: `docs/plan_order_interval.md` (태스크 파일 — 심층조사 결과 + 수정 범위 15곳 + 구현 Step 5개 + 세션 분할 7세션 + 테스트 계획 + 런타임 검증)
-- **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우" 5세션 + frontend-fix 스킬
+- 날짜: 2026-07-17 (매수/매도 주문 간격 설정 개선 — 다단계 작업 6세션: 테스트 Step 4)
+- 작업: 6세션 진행 → 사전조사(3개 테스트 파일 현재 상태 + 기존 `TestCheckSellConditions` 패턴 분석 + 마이그레이션 테스트 3개 3세션 이미 완료 확인) → `test_buy_order_executor.py`(`TestBuyIntervalGate` 신규 2개: `test_buy_interval_off_passes` 토글 OFF 시 통과 + `test_buy_interval_zero_sec_passes` 0초=비활성 시 통과) → `test_trading.py`(`TestSellIntervalGate` 신규 클래스 5개: `test_sell_interval_blocks_within_period` 간격 내 차단 + `test_sell_interval_passes_after_period` 간격 초과 통과 + `test_sell_interval_off_passes` 토글 OFF 통과 + `test_sell_interval_applies_to_loss_cut` 손절도 간격 적용 차단 + `test_mark_order_executed_updates_sell_ts` 헬퍼 직접 단위테스트 타이머 갱신 검증) → `test_web_routes.py:549`(`mock_state._last_global_sell_ts = 0.0` 1줄 추가 — 일일 리셋 시 매도 타이머 초기화) → 검증(py_compile 통과 + pytest 전체 2822 passed = 이전 2815 + 신규 7, 회귀 없음) → 커밋.
+- 상태: 다단계 작업 6세션(구현 Step 4 — 테스트) 완료. 7세션(구현 Step 5 — 문서 + 런타임 검증 + 계획서 삭제) 대기.
+- **참조 문서**: `docs/plan_order_interval.md` (태스크 파일 — 섹션 4-4 6세션 테스트 계획 + 섹션 6 테스트 상세)
+- **참조 규칙**: AGENTS.md 섹션4 "다단계 작업 워크플로우" 6세션 + backend-fix 스킬
 
 ## 직전 완료 작업
+- **매수/매도 주문 간격 설정 개선 다단계 6세션 — 테스트 Step 4**: 3~5세션에서 구축·배선·UI 반영된 매수/매도 주문 간격 기능의 테스트 검증 (P16 살아있는 경로 — 게이트/타이머 배선 테스트로 확인). 마이그레이션 테스트 3개는 3세션에서 이미 완료(중복 제외).
+  - **`test_buy_order_executor.py`** (신규 2개 — `TestBuyIntervalGate` 클래스 내):
+    - `test_buy_interval_off_passes`: `buy_interval_on=False, buy_interval_sec=300` + `_last_global_buy_ts=now` → 토글 OFF 시 간격 내라도 통과 → `execute_buy` 호출. 기존 2개(차단/통과)와 함께 4개 케이스로 게이트 4가지 상태全覆盖.
+    - `test_buy_interval_zero_sec_passes`: `buy_interval_on=True, buy_interval_sec=0` + `_last_global_buy_ts=now` → 0초=비활성 시 통과 → `execute_buy` 호출. `check_order_interval` 헬퍼의 `_sec <= 0` 분기 검증.
+  - **`test_trading.py`** (신규 클래스 `TestSellIntervalGate` 5개 — `TestCheckSellConditions` 이후, `TestOnFillUpdate` 이전):
+    - `test_sell_interval_blocks_within_period`: `sell_interval_on=True, sell_interval_sec=30` + `_last_global_sell_ts=now` + 손절 종목 → `execute_sell` 미호출 (간격 게이트가 for-loop 진입 차단).
+    - `test_sell_interval_passes_after_period`: `_last_global_sell_ts=now-60` (간격 30초 초과) → `execute_sell` 호출.
+    - `test_sell_interval_off_passes`: `sell_interval_on=False` + `_last_global_sell_ts=now` → 토글 OFF 시 통과 → `execute_sell` 호출.
+    - `test_sell_interval_applies_to_loss_cut`: 손절 조건(pnl_rate=-6.0, loss_val=5%) + 간격 내 → `execute_sell` 미호출. **사용자 결정(손절 포함 모든 매도에 간격 적용) 검증** — plan_order_interval.md 1-3.
+    - `test_mark_order_executed_updates_sell_ts`: `mark_order_executed("sell")` 헬퍼 직접 호출 → `state._last_global_sell_ts > 0` 갱신 확인. trading.py:535-536 배선 검증 (기존 test_trading.py 모든 테스트가 `mgr.execute_sell = AsyncMock()`로 실제 execute_sell 미호출 → 헬퍼 직접 단위테스트로 배선 검증).
+  - **`test_web_routes.py:549`**: `mock_state._last_global_buy_ts = 0.0` 옆에 `mock_state._last_global_sell_ts = 0.0` 1줄 추가 — 일일 리셋 시 매도 타이머도 0으로 초기화됨을 테스트 설정에 반영 (settings.py:153-154 배선).
+  - **검증**: py_compile 3개 파일 통과 + pytest 전체 2822 passed (이전 2815 + 신규 7 = 2822, 회귀 없음) + 잔존 프로세스 0건. ruff 미설치 환경으로 생략 (py_compile + pytest로 대체).
+  - **P원칙**: P16(살아있는 경로 — 게이트/타이머 배선 테스트로 확인) · P22(데이터 정합성 — 성공 시만 타이머 갱신 검증) · P23(일관성 — 매수/매도 동일 패턴 테스트 구조) 준수.
+  - **작업 여력**: 충분.
+
 - **매수/매도 주문 간격 설정 개선 다단계 5세션 — 프론트엔드 Step 3**: UI에 매도 간격 섹션 추가 + 매수 간격 초 단위 변경 (P21 사용자 투명성). 3~4세션에서 구축·배선된 백엔드 `_sec` 키를 UI에 반영.
   - **`types/index.ts`** (2곳):
     - line 122-124: `buy_interval_min: number` → `buy_interval_sec: number` + 주석 "초 단위 5~300 5초 단위" (P10 SSOT).
