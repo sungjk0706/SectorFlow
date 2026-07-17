@@ -67,6 +67,9 @@ export interface UIState {
 
   /* ── OMS 서킷브레이커 발동 상태 ── */
   circuitBreakerOpen: { message: string } | null
+
+  /* ── 체결 불가 시간대 주문 차단 상태 (동시호가/장외) ── */
+  orderTimeBlocked: { reason: string } | null
 }
 
 const initialState: UIState = {
@@ -88,6 +91,7 @@ const initialState: UIState = {
   receiveRate: null,
   indexData: null,
   circuitBreakerOpen: null,
+  orderTimeBlocked: null,
 }
 
 export const uiStore = createStore<UIState>(initialState)
@@ -143,6 +147,20 @@ export function applyCircuitBreakerOpen(data: { message?: string }): void {
 /* ── 서킷브레이커 알림 수동 해제 (사용자 클릭) ── */
 export function clearCircuitBreakerOpen(): void {
   uiStore.setState({ circuitBreakerOpen: null })
+}
+
+/* ── order_time_blocked: 체결 불가 시간대 주문 차단 상태 갱신 ── */
+export function applyOrderTimeBlocked(data: { blocked?: boolean; reason?: string }): void {
+  if (data.blocked) {
+    uiStore.setState({ orderTimeBlocked: { reason: data.reason ?? '동시호가/장외 시간대 — 주문 일시중단' } })
+  } else {
+    uiStore.setState({ orderTimeBlocked: null })
+  }
+}
+
+/* ── 주문 일시중단 상태 수동 해제 (사용자 클릭) ── */
+export function clearOrderTimeBlocked(): void {
+  uiStore.setState({ orderTimeBlocked: null })
 }
 
 /* ── snapshot-update: 수익 이력만 갱신 ── */
@@ -230,6 +248,7 @@ export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
     wsSubscribeStatus: (data.ws_subscribe_status as { index_subscribed: boolean; quote_subscribed: boolean }) ?? { index_subscribed: false, quote_subscribed: false },
     initialized: true,
     circuitBreakerOpen: null,
+    orderTimeBlocked: null,
     engineReady: !!(data.bootstrap_done),
     marketPhase: (data.market_phase as UIState['marketPhase']) ?? { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null },
     receiveRate: (() => {

@@ -360,6 +360,42 @@ def is_order_blocked_by_time(stk_cd: str) -> bool:
     return False  # KRX 활성 — 허용
 
 
+def get_order_time_block_status() -> tuple[bool, str]:
+    """체결 불가 시간대 주문 차단 상태 (페이즈 기반, 종목 구분 없음).
+
+    WS 브로드캐스트용 — 헤더 칩 표시에 사용 (P21 사용자 투명성).
+    is_order_blocked_by_time(stk_cd)와 동일한 페이즈·버퍼 판별을 사용하되
+    종목별 is_nxt_enabled 분기 없이 페이즈 수준에서 차단 여부와 사유 반환.
+
+    반환 (blocked, reason):
+      - (False, ""): KRX 활성 — 전부 허용
+      - (True, "NXT 전용 구간 (KRX 단독 종목 차단)"): KRX 비활성 + NXT 활성 — NXT 종목은 허용
+      - (True, "동시호가/장외 시간대"): 양쪽 비활성 — 전부 차단
+      - (True, "동시호가/장외 시간대 (전환 시각 근처)"): ±5초 버퍼 — 전부 차단
+      - (False, ""): 빈 문자열 phase — 에러 로그 (P20 폴백 금지)
+    """
+    mp = state.market_phase
+    krx = mp.get("krx", "")
+    nxt = mp.get("nxt", "")
+    if not krx or not nxt:
+        logger.error("[시스템] 장 상태 빈 문자열 감지: krx=%r, nxt=%r — 시간 기반 초기화 누락 가능", krx, nxt)
+        return (False, "")  # P20 폴백 금지 — 빈 문자열은 차단하지 않고 에러 로그
+
+    # ±5초 버퍼 — 경계 근처면 무조건 차단
+    now = _kst_now()
+    now_sec = now.hour * 3600 + now.minute * 60 + now.second
+    for boundary in _ORDER_TIME_BOUNDARIES_SEC:
+        if abs(now_sec - boundary) <= ORDER_TIME_BUFFER_SEC:
+            return (True, "동시호가/장외 시간대 (전환 시각 근처)")
+
+    # 본 판별 — 페이즈 수준 (종목별 분기 없음)
+    if krx in KRX_INACTIVE_PHASES:
+        if nxt in NXT_ACTIVE_PHASES:
+            return (True, "NXT 전용 구간 (KRX 단독 종목 차단)")
+        return (True, "동시호가/장외 시간대")
+    return (False, "")
+
+
 def get_market_phase() -> dict:
     """현재 KRX/NXT 장 상태 반환 (순수 읽기).
 
@@ -694,6 +730,11 @@ def _apply_market_phase(phase: dict) -> None:
         state.market_phase["nxt"] = new_nxt
         broadcast_phase = get_market_phase()
         schedule_engine_task(_broadcast("market-phase", broadcast_phase), context="market-phase 브로드캐스트")
+        # ── 체결 불가 시간대 주문 차단 상태 브로드캐스트 (P21 사용자 투명성) ──
+        # 페이즈 갱신 시마다 차단 상태 산정 — JIF + 10초 주기 양쪽에서 자동 전송 (P10 SSOT, P16 살아있는 경로).
+        # 시간 기반이므로 blocked=False 시 자동 해제 (P24 — 별도 해제 로직 없음).
+        blocked, reason = get_order_time_block_status()
+        schedule_engine_task(_broadcast("order_time_blocked", {"blocked": blocked, "reason": reason}), context="order_time_blocked 브로드캐스트")
         # 페이즈 변경 감지 → 업종 재계산 + WS 구독 시작/종료 트리거
         if prev_krx != new_krx or prev_nxt != new_nxt:
             # ── 장 상태 변경 로그 (P21 사용자 투명성) ──

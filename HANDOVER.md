@@ -1,10 +1,10 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (시장가 주문 중단 시간대 게이트 4세션 — Step 2 execute_buy 게이트 + Step 3 execute_sell 게이트 + Step 5 헬퍼)
-- 작업: 시장가 주문 중단 시간대 게이트 4세션 완료. (1) `trading.py`에 `_is_order_time_blocked(stk_cd, raw_settings)` 헬퍼 메서드 추가 — 토글(`order_time_guard_on`) 조회 후 `is_order_blocked_by_time(stk_cd)` 호출, raw engine_settings 전달(2-1 해결안 — `_to_trade_settings` 출력이 아님, P17). (2) `execute_buy()` 내부 자동매매 게이트(L134) 직후·재매수 차단 전에 시간 게이트 배선 — `raw_all` 전달, 차단 시 `return False`(P15 단일 경로, P16 살아있는 경로). (3) `execute_sell()` 내부 `is_sell_auto` 체크 직후·`order_type` 선언 전에 시간 게이트 배선 — `base_settings` 전달, 차단 시 `return`(매도 동일 적용). 검증: py_compile + ruff 통과 + 단위 테스트 236개 전부 통과(test_daily_time_scheduler 203 + test_buy_order_executor 33, 회귀 없음) + 런타임 기동(`-W error::RuntimeWarning`) 102ms 정상 기동 + 에러/Traceback/RuntimeWarning 0건 + 잔존 프로세스 0건.
-- 상태: 4세션 완료. 커밋 완료. 다음 세션: 시장가 주문 중단 시간대 게이트 5세션(Step 7 WS 이벤트 `order_time_blocked` 브로드캐스트 + Step 8 바인딩 `binding.ts` + `uiStore.ts`) 승인 대기.
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 UI 기준 설명) + P10/P13/P15/P16/P17/P20/P21/P22/P23/P24 + safe-trade 스킬 + backend-fix 스킬
+- 날짜: 2026-07-17 (시장가 주문 중단 시간대 게이트 5세션 — Step 7 WS 이벤트 `order_time_blocked` 브로드캐스트 + Step 8 바인딩 `binding.ts` + `uiStore.ts`)
+- 작업: 시장가 주문 중단 시간대 게이트 5세션 완료. (1) `daily_time_scheduler.py`에 `get_order_time_block_status() -> tuple[bool, str]` 신규 함수 추가 — 페이즈 기반 차단 상태 산정(종목 구분 없음), `is_order_blocked_by_time()`과 동일한 페이즈·버퍼 판별 사용하되 종목별 `is_nxt_enabled` 분기 없이 `(blocked, reason)` 반환. reason: "NXT 전용 구간 (KRX 단독 종목 차단)" / "동시호가/장외 시간대" / "동시호가/장외 시간대 (전환 시각 근처)" / "". (2) `_apply_market_phase()` 내 `market-phase` 브로드캐스트 직후에 `order_time_blocked` 이벤트 브로드캐스트 배선 — `schedule_engine_task(_broadcast("order_time_blocked", {"blocked": blocked, "reason": reason}))`, JIF + 10초 주기 양쪽에서 자동 전송(P10 SSOT 단일 경로, P16 살아있는 경로), `blocked=False` 시 자동 해제(P24). (3) `test_daily_time_scheduler.py`에 `TestGetOrderTimeBlockStatus` 13개 테스트 추가 + 기존 3개 테스트(`test_broadcasts_phase`/`test_no_recompute_trigger_when_phase_unchanged`/`test_apply_market_phase_no_change_no_side_effects`) 기대값 1→2 갱신(브로드캐스트 2회). (4) `uiStore.ts`에 `orderTimeBlocked: { reason: string } | null` 상태 + `applyOrderTimeBlocked(data)`/`clearOrderTimeBlocked()` 함수 추가(기존 `circuitBreakerOpen` 패턴 재사용, P23). (5) `binding.ts`에 `order_time_blocked` 이벤트 바인딩 추가(`pricesClient.onEvent`). 검증: py_compile + ruff 통과 + typecheck + build 1.77s 통과 + 단위 테스트 249개 전부 통과(test_daily_time_scheduler 216 + test_buy_order_executor 33, 회귀 없음) + 런타임 기동(`-W error::RuntimeWarning`) 175ms 정상 기동 + 에러/Traceback/RuntimeWarning 0건 + 잔존 프로세스 0건.
+- 상태: 5세션 완료. 커밋 완료. 다음 세션: 시장가 주문 중단 시간대 게이트 6세션(Step 6 설정 토글 `general-settings.ts` + Step 9 헤더 칩 `header.ts`) 승인 대기.
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 UI 기준 설명) + 규칙 4-1(테스트 실패 추적) + P10/P15/P16/P20/P21/P23/P24 + backend-fix 스킬 + frontend-fix 스킬
 
 ## 다음 세션 진행 대기: 시장가 주문 중단 시간대 게이트 (다단계 작업)
 
@@ -27,6 +27,18 @@
   - **2-1 해결안 반영 (핵심)**: 헬퍼 `_is_order_time_blocked(stk_cd, raw_settings)`에 raw engine_settings 전달 — execute_buy는 `raw_all`(L113), execute_sell은 `base_settings`(L457 인자). `_to_trade_settings` 출력이 아님(`order_time_guard_on` 키 누락 → 토글 OFF 무효화 방지, P17).
   - **UI 기준 변경 내용 (규칙 0-4)**: 동시호가/장외 시간대에 자동매수 발생 시 주문 전송 중단(KRX 단독 종목만, NXT 종목은 NXT 거래 시간 허용). 동시호가 20분간 자동매도도 중단(종목 구분 없이 양쪽 차단). 토글 OFF 시 차단 없음(6세션에서 UI 토글 추가 예정). 이번 세션은 백엔드 only — 화면 변화 없음.
   - **검증**: py_compile + ruff 통과 + 단위 테스트 236개 통과(test_daily_time_scheduler 203 + test_buy_order_executor 33, 회귀 없음) + 런타임 기동(`-W error::RuntimeWarning`) 102ms 정상 기동 + RuntimeWarning 0건 + 잔존 프로세스 0건.
+- **5세션 (완료)**: Step 7 (WS 이벤트 `order_time_blocked` 브로드캐스트) + Step 8 (바인딩 `binding.ts` + `uiStore.ts`).
+  - **변경 파일**: `daily_time_scheduler.py` (신규 함수 `get_order_time_block_status() -> tuple[bool, str]` + `_apply_market_phase()` 내 브로드캐스트 배선) + `test_daily_time_scheduler.py` (`TestGetOrderTimeBlockStatus` 13개 테스트 + 기존 3개 테스트 기대값 1→2 갱신) + `uiStore.ts` (`orderTimeBlocked` 상태 + `applyOrderTimeBlocked`/`clearOrderTimeBlocked` 함수) + `binding.ts` (`order_time_blocked` 이벤트 바인딩)
+  - **사전조사 결과 (규칙 0-2 4항목)**:
+    1. **의존성**: `_apply_market_phase()`(daily_time_scheduler.py:673, SSOT 단일 경로) + `_broadcast()`(engine_account_notify.py:69) + `KRX_INACTIVE_PHASES`(L227) + `NXT_ACTIVE_PHASES`(L233) + `_ORDER_TIME_BOUNDARIES_SEC`(L322) + `ORDER_TIME_BUFFER_SEC` + `state.market_phase` + `_kst_now()` + `schedule_engine_task()`. 프론트엔드: `circuitBreakerOpen` 패턴(uiStore.ts:69/90/135/140/145/232) + `onEvent` 패턴(binding.ts:322-327). 기존 `is_order_blocked_by_time(stk_cd)`(L331, 3세션)은 변경하지 않음 — 20개 테스트 보호.
+    2. **영향범위**: 백엔드 2개 파일(daily_time_scheduler.py, test_daily_time_scheduler.py) + 프론트엔드 2개 파일(uiStore.ts, binding.ts). 기존 코드 변경 최소화 — 신규 추가 + 기존 테스트 3개 기대값 갱신만.
+    3. **아키텍처 원칙 부합**: P10(SSOT — `_apply_market_phase` 단일 경로에 탑승) + P15/P16(살아있는 경로 — JIF + 10초 주기 양쪽) + P20(빈 문자열 시 `blocked=False` + 에러 로그) + P21(헤더 칩 표시용 상태 전송) + P23(`circuit_breaker_open` 패턴 동일) + P24(신규 함수 ~20줄, 브로드캐스트 1줄) 전부 재확인 완료.
+    4. **기존 공통 자산 확인**: `_broadcast()`·`schedule_engine_task()`·`KRX_INACTIVE_PHASES`·`NXT_ACTIVE_PHASES`·`_ORDER_TIME_BOUNDARIES_SEC`·`ORDER_TIME_BUFFER_SEC`·`circuitBreakerOpen` 패턴 전부 재사용. 새 자산 생성 없음.
+  - **핵심 설계 결정**: `get_order_time_block_status()`를 페이즈 기반(종목 구분 없음) 신규 함수로 추가 — `is_order_blocked_by_time(stk_cd)`는 종목별 분기가 필요하므로 기존 로직 유지(규칙 0-3/0-5: 기존 승인된 로직 변경 최소화). 두 함수는 서로 다른 추상화 수준(페이즈 수준 vs 종목별)이므로 P10 위반 아님.
+  - **브로드캐스트 탑승 위치**: `_apply_market_phase()` 내 `market-phase` 브로드캐스트 직후 — JIF 경로 + 10초 주기 양쪽에서 자동 전송(P10 SSOT 단일 경로). `blocked=False` 시 자동 해제(P24 — 별도 해제 로직 없음).
+  - **테스트 실패 추적 (규칙 4-1)**: `_apply_market_phase`에 브로드캐스트 1줄 추가로 기존 3개 테스트(`test_broadcasts_phase`/`test_no_recompute_trigger_when_phase_unchanged`/`test_apply_market_phase_no_change_no_side_effects`)가 `schedule_engine_task.call_count == 1` 기대값 실패(2 == 1). 내 수정과 직접 연관 — 기대값 1→2 갱신 + 컨텍스트 검증 추가("market-phase" + "order_time_blocked" 포함 확인).
+  - **UI 기준 변경 내용 (규칙 0-4)**: 이번 세션은 화면 변화 없음 — 백엔드가 "주문 일시중단 상태"를 10초마다 화면에 전송하고 프론트엔드가 저장만 하는 단계. 화면에 칩이 표시되는 것은 6세션(헤더 칩 구현)에서.
+  - **검증**: py_compile + ruff 통과 + typecheck + build 1.77s 통과 + 단위 테스트 249개 통과(test_daily_time_scheduler 216 + test_buy_order_executor 33, 회귀 없음) + 런타임 기동(`-W error::RuntimeWarning`) 175ms 정상 기동 + RuntimeWarning 0건 + 잔존 프로세스 0건.
   - **사전조사 결과 (규칙 0-2 4항목)**:
     1. **의존성**: `KRX_INACTIVE_PHASES`(daily_time_scheduler.py:227)·`NXT_ACTIVE_PHASES`(L233)·`is_nxt_enabled()`(engine_symbol_utils.py:11)·`_broadcast()`(engine_account_notify.py:69)·`createToggleBtn()`·`circuitBreakerOpen` 패턴 전부 재사용 확정. 외부 참조 없음.
     2. **영향범위**: 백엔드 4개 파일(daily_time_scheduler.py, settings_defaults.py, trading.py, engine_ws_dispatch.py) + 프론트엔드 4개 파일(general-settings.ts, header.ts, binding.ts, uiStore.ts) + 테스트 1개 파일(test_daily_time_scheduler.py). 기존 test_buy_order_executor.py는 변경 없음(기존 is_krx_after_hours 유지).
@@ -79,7 +91,8 @@
 - **전신 문서**: `docs/plan_order_suspension_by_time.md` (2세션에서 삭제 — 설계서에 통합됨, 규칙 11)
 
 ### 승인 대기 항목
-- **5세션 진행**: Step 7 (`order_time_blocked` WS 이벤트 브로드캐스트 — `_broadcast_market_phase()` 10초 주기에 탑승, 페이로드 `{"blocked": bool, "reason": str}`, 기존 `circuit_breaker_open` 패턴 재사용) + Step 8 (`binding.ts` 이벤트 바인딩 + `uiStore.ts` `orderTimeBlocked` 상태 추가, 기존 `circuitBreakerOpen` 패턴 재사용) — `engine_ws_dispatch.py` + `binding.ts` + `uiStore.ts` — 사용자 "진행" 지시 시 시작.
+- **5세션 진행 (완료)**: Step 7 (`order_time_blocked` WS 이벤트 브로드캐스트 — `_apply_market_phase()` SSOT 단일 경로에 탑승, 페이로드 `{"blocked": bool, "reason": str}`, 기존 `circuit_breaker_open` 패턴 재사용) + Step 8 (`binding.ts` 이벤트 바인딩 + `uiStore.ts` `orderTimeBlocked` 상태 추가, 기존 `circuitBreakerOpen` 패턴 재사용) — `daily_time_scheduler.py` + `test_daily_time_scheduler.py` + `binding.ts` + `uiStore.ts` — 완료.
+- **6세션 진행**: Step 6 (`general-settings.ts` 자동매매 탭에 "체결 불가 시간대 주문 차단" 토글 추가, `createToggleBtn()` 재사용, 설정 키 `order_time_guard_on`, 기본 ON) + Step 9 (`header.ts` 노란색 "주문 일시중단(동시호가)" 칩 추가, 기존 `circuitBreakerChip` 패턴 재사용, `COLOR.warning`/`COLOR.warningBg` 사용) — `general-settings.ts` + `header.ts` — 사용자 "진행" 지시 시 시작.
 
 ---
 
