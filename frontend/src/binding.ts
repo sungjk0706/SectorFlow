@@ -34,6 +34,7 @@ import {
   applyBuyLimitStatus,
   applyEngineReloadComplete,
   applyCircuitBreakerOpen,
+  applyOrderTimeBlocked,
   applyMarketPhase,
   applyIndexData,
   uiStore,
@@ -324,6 +325,11 @@ export function bindWSToStore(
     const d = data as { message?: string }
     applyCircuitBreakerOpen(d)
     showToast('error', d.message ?? '서킷브레이커 발동 — 자동매매 중지', 8000)
+  })
+
+  /* ── order_time_blocked: 체결 불가 시간대 주문 차단 상태 (10초 주기) ── */
+  pricesClient.onEvent('order_time_blocked', (data) => {
+    applyOrderTimeBlocked(data as { blocked?: boolean; reason?: string })
   })
 
   /* ── buy-limit-status: 매수 한도 상태 실시간 갱신 ── */

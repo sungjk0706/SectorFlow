@@ -36,6 +36,7 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     get_nxt_trde_tp,
     is_krx_after_hours,
     is_order_blocked_by_time,
+    get_order_time_block_status,
     ORDER_TIME_BUFFER_SEC,
     get_market_phase,
     calc_countdown,
@@ -682,6 +683,142 @@ class TestIsOrderBlockedByTime:
         assert ORDER_TIME_BUFFER_SEC == 5
 
 
+# ── get_order_time_block_status ───────────────────────────────────────────────
+
+class TestGetOrderTimeBlockStatus:
+    """체결 불가 시간대 주문 차단 상태 (페이즈 기반, 종목 구분 없음) — WS 브로드캐스트용.
+
+    is_order_blocked_by_time(stk_cd)와 동일한 페이즈·버퍼 판별을 사용하되
+    종목별 is_nxt_enabled 분기 없이 (blocked, reason) 튜플 반환.
+    """
+
+    # ── 본 판별: 시간대별 (버퍼 밖 안전 시각 사용) ──
+
+    def test_krx_regular_returns_not_blocked(self):
+        """09:00~15:20 정규장/메인마켓 — (False, "")."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
+            assert get_order_time_block_status() == (False, "")
+
+    def test_krx_inactive_nxt_active_returns_nxt_only_reason(self):
+        """08:00~08:50 KRX 장전 대기 + NXT 프리마켓 — (True, "NXT 전용 구간...")."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장전 대기", "nxt": "프리마켓"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 20)):
+            blocked, reason = get_order_time_block_status()
+            assert blocked is True
+            assert reason == "NXT 전용 구간 (KRX 단독 종목 차단)"
+
+    def test_both_inactive_returns_auction_reason(self):
+        """15:20~15:30 종가 동시호가 + NXT 조기 마감 — 양쪽 비활성 → (True, "동시호가/장외 시간대")."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "종가 동시호가", "nxt": "조기 마감"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 25)):
+            blocked, reason = get_order_time_block_status()
+            assert blocked is True
+            assert reason == "동시호가/장외 시간대"
+
+    def test_market_closed_returns_auction_reason(self):
+        """20:00~24:00 장마감 — 양쪽 비활성 → (True, "동시호가/장외 시간대")."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장마감", "nxt": "장마감"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(21, 0)):
+            blocked, reason = get_order_time_block_status()
+            assert blocked is True
+            assert reason == "동시호가/장외 시간대"
+
+    def test_holiday_returns_auction_reason(self):
+        """휴장일 — 양쪽 비활성 → (True, "동시호가/장외 시간대")."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "휴장일", "nxt": "휴장일"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
+            blocked, reason = get_order_time_block_status()
+            assert blocked is True
+            assert reason == "동시호가/장외 시간대"
+
+    def test_aftermarket_returns_nxt_only_reason(self):
+        """15:40~20:00 KRX 장후 시간외 + NXT 애프터마켓 — (True, "NXT 전용 구간...")."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장후 시간외", "nxt": "애프터마켓"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(16, 0)):
+            blocked, reason = get_order_time_block_status()
+            assert blocked is True
+            assert reason == "NXT 전용 구간 (KRX 단독 종목 차단)"
+
+    # ── 빈 문자열 phase (P20) ──
+
+    def test_empty_krx_returns_not_blocked(self):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "", "nxt": "메인마켓"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
+            assert get_order_time_block_status() == (False, "")
+
+    def test_empty_nxt_returns_not_blocked(self):
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "정규장", "nxt": ""}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
+            assert get_order_time_block_status() == (False, "")
+
+    # ── ±5초 버퍼 (경계 근처 무조건 차단) ──
+
+    def test_buffer_at_0900_exact_blocked(self):
+        """09:00:00 정각 — 경계 ±5초 내 → (True, "동시호가/장외 시간대 (전환 시각 근처)")."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0, 0)):
+            blocked, reason = get_order_time_block_status()
+            assert blocked is True
+            assert reason == "동시호가/장외 시간대 (전환 시각 근처)"
+
+    def test_buffer_at_090005_blocked(self):
+        """09:00:05 — 09:00:00 경계 5초 후 → 무조건 차단."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0, 5)):
+            blocked, reason = get_order_time_block_status()
+            assert blocked is True
+            assert reason == "동시호가/장외 시간대 (전환 시각 근처)"
+
+    def test_buffer_at_090006_allowed(self):
+        """09:00:06 — 09:00:00 경계 6초 후 (버퍼 밖) → 본 판별 적용 (정규장 → 허용)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0, 6)):
+            assert get_order_time_block_status() == (False, "")
+
+    def test_buffer_at_152000_blocked(self):
+        """15:20:00 — 종가 동시호가 시작 경계 → 무조건 차단."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "종가 동시호가", "nxt": "조기 마감"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20, 0)):
+            blocked, reason = get_order_time_block_status()
+            assert blocked is True
+            assert reason == "동시호가/장외 시간대 (전환 시각 근처)"
+
+    def test_buffer_at_080000_blocked(self):
+        """08:00:00 — NXT 프리마켓 시작 경계 → 무조건 차단."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장전 대기", "nxt": "프리마켓"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0, 0)):
+            blocked, reason = get_order_time_block_status()
+            assert blocked is True
+            assert reason == "동시호가/장외 시간대 (전환 시각 근처)"
+
+
 # ── get_market_phase ──────────────────────────────────────────────────────────
 
 class TestGetMarketPhase:
@@ -951,7 +1088,11 @@ class TestBroadcastMarketPhase:
             _broadcast_market_phase()
             assert mock_state.market_phase["krx"] == "정규장"
             assert mock_state.market_phase["nxt"] == "메인마켓"
-            mock_sched.assert_called_once()
+            # market-phase + order_time_blocked 브로드캐스트 2회 (5세션 Step 7)
+            assert mock_sched.call_count == 2
+            contexts = [c.kwargs.get("context", "") for c in mock_sched.call_args_list]
+            assert any("market-phase" in ctx for ctx in contexts)
+            assert any("order_time_blocked" in ctx for ctx in contexts)
 
     def test_exception_does_not_raise(self):
         with patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", side_effect=Exception("boom")):
@@ -1015,7 +1156,10 @@ class TestBroadcastMarketPhase:
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _broadcast_market_phase()
-            assert mock_sched.call_count == 1  # 브로드캐스트만, 재계산 없음
+            # market-phase + order_time_blocked 브로드캐스트 2회, 재계산 없음 (5세션 Step 7)
+            assert mock_sched.call_count == 2
+            contexts = [c.kwargs.get("context", "") for c in mock_sched.call_args_list]
+            assert all("진입" not in ctx and "구독" not in ctx for ctx in contexts)
 
     def test_broadcast_delegates_to_apply_market_phase(self):
         """_broadcast_market_phase()가 calc 결과를 _apply_market_phase에 전달 (P10 단일 적용 경로)."""
@@ -1050,7 +1194,10 @@ class TestApplyMarketPhase:
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓", "krx_countdown": None, "nxt_countdown": None}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _apply_market_phase({"krx": "정규장", "nxt": "메인마켓"})
-            assert mock_sched.call_count == 1  # 브로드캐스트만, 부작용 없음
+            # market-phase + order_time_blocked 브로드캐스트 2회, 부작용 없음 (5세션 Step 7)
+            assert mock_sched.call_count == 2
+            contexts = [c.kwargs.get("context", "") for c in mock_sched.call_args_list]
+            assert all("진입" not in ctx and "구독" not in ctx for ctx in contexts)
 
     def test_apply_market_phase_partial_update_krx_only(self):
         """JIF 경로 — krx만 갱신 시 nxt는 기존 state 값 유지 (P10 SSOT)."""
