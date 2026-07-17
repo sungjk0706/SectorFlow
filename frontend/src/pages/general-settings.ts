@@ -61,6 +61,17 @@ let confirmedDlToggle: ReturnType<typeof createToggleBtn> | null = null
 let confirmedDlH = '20', confirmedDlM = '40'
 let savingConfirmedDl = false
 
+// 장 시작 전 사전 준비 시간 (타임테이블 사용자 조정 3개 슬롯)
+// 백엔드 키: timetable.realtime_reset / timetable.ws_prestart / timetable.krx_pre_subscribe
+// 거래소 고정 7개 시간(08:00~20:00)은 코드 상수로 백엔드에 유지 → UI에는 참고 표시만.
+let timetableResetSlot: HTMLElement | null = null
+let timetableWsSlot: HTMLElement | null = null
+let timetableKrxSlot: HTMLElement | null = null
+let timetableResetH = '07', timetableResetM = '58'
+let timetableWsH = '07', timetableWsM = '59'
+let timetableKrxH = '08', timetableKrxM = '59'
+let savingTimetable = false
+
 // 텔레그램 탭 참조
 let teleToggle: ReturnType<typeof createToggleBtn> | null = null
 let teleInputs: Record<string, HTMLInputElement> = {}
@@ -113,6 +124,25 @@ function scheduleConfirmedDlSave(): void {
       if (res.ok) Object.assign(vals, dirty)
     }
     savingConfirmedDl = false
+  }
+  run()
+}
+
+// 타임테이블 3개 키 저장 — 변경된 키만 전송 (P10 SSOT, P24 단순성)
+// 백엔드 _validate_timetable_order()가 나머지 2개 키를 DB에서 보충해 순서 검증 (422 → toastResult 에러 토스트)
+function scheduleTimetableSave(key: 'timetable.realtime_reset' | 'timetable.ws_prestart' | 'timetable.krx_pre_subscribe', newVal: string): void {
+  if (!settingsMgr) return
+  if (savingTimetable) return
+  savingTimetable = true
+  const run = async (): Promise<void> => {
+    const serverVal = String(vals[key] ?? '')
+    if (newVal !== serverVal) {
+      const dirty: Record<string, unknown> = { [key]: newVal }
+      const res = await settingsMgr!.saveSection(dirty)
+      toastResult(res)
+      if (res.ok) Object.assign(vals, dirty)
+    }
+    savingTimetable = false
   }
   run()
 }
@@ -286,6 +316,99 @@ function renderAutoTradeTab(container: HTMLElement): void {
   container.appendChild(orderTimeGuardRow)
 
   container.appendChild(createDescText('동시호가·장외 시간대에 시장가 주문 자동 중단 (KRX 단독 종목만, NXT 종목은 NXT 거래 시간에 허용)'))
+
+  // 장 시작 전 사전 준비 시간 (타임테이블 사용자 조정 3개) — P21 투명성
+  container.appendChild(sectionTitle('장 시작 전 사전 준비 시간'))
+  container.appendChild(createDescText('장 시작 전 사전 준비 시간을 설정합니다. 너무 늦으면 실시간 데이터가 누락될 수 있습니다.'))
+
+  // 실시간 항목 초기화 시간 (timetable.realtime_reset, 기본 07:58)
+  const ttResetRow = document.createElement('div')
+  Object.assign(ttResetRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
+  const ttResetLabel = document.createElement('span')
+  Object.assign(ttResetLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  ttResetLabel.textContent = '실시간 항목 초기화'
+  ttResetRow.appendChild(ttResetLabel)
+  const [trh, trm] = parseHM(String(vals['timetable.realtime_reset'] ?? '07:58'))
+  timetableResetH = trh; timetableResetM = trm
+  timetableResetSlot = createTimeSlot(timetableResetH, timetableResetM, (h, m) => {
+    timetableResetH = h; timetableResetM = m; updateTimeSlotDisplay(timetableResetSlot!, h, m)
+    scheduleTimetableSave('timetable.realtime_reset', `${h}:${m}`)
+  })
+  ttResetRow.appendChild(timetableResetSlot)
+  container.appendChild(ttResetRow)
+  container.appendChild(createDescText('장 시작 1분 전에 실시간 데이터 수신을 시작합니다 (기본 07:58)'))
+
+  // 구독 사전 시작 시간 (timetable.ws_prestart, 기본 07:59)
+  const ttWsRow = document.createElement('div')
+  Object.assign(ttWsRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
+  const ttWsLabel = document.createElement('span')
+  Object.assign(ttWsLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  ttWsLabel.textContent = '구독 사전 시작'
+  ttWsRow.appendChild(ttWsLabel)
+  const [twh, twm] = parseHM(String(vals['timetable.ws_prestart'] ?? '07:59'))
+  timetableWsH = twh; timetableWsM = twm
+  timetableWsSlot = createTimeSlot(timetableWsH, timetableWsM, (h, m) => {
+    timetableWsH = h; timetableWsM = m; updateTimeSlotDisplay(timetableWsSlot!, h, m)
+    scheduleTimetableSave('timetable.ws_prestart', `${h}:${m}`)
+  })
+  ttWsRow.appendChild(timetableWsSlot)
+  container.appendChild(ttWsRow)
+  container.appendChild(createDescText('실시간 항목 초기화 직후 WS 구독을 사전 시작합니다 (기본 07:59)'))
+
+  // 정규장 사전 구독 시간 (timetable.krx_pre_subscribe, 기본 08:59)
+  const ttKrxRow = document.createElement('div')
+  Object.assign(ttKrxRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
+  const ttKrxLabel = document.createElement('span')
+  Object.assign(ttKrxLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  ttKrxLabel.textContent = '정규장 사전 구독'
+  ttKrxRow.appendChild(ttKrxLabel)
+  const [tkh, tkm] = parseHM(String(vals['timetable.krx_pre_subscribe'] ?? '08:59'))
+  timetableKrxH = tkh; timetableKrxM = tkm
+  timetableKrxSlot = createTimeSlot(timetableKrxH, timetableKrxM, (h, m) => {
+    timetableKrxH = h; timetableKrxM = m; updateTimeSlotDisplay(timetableKrxSlot!, h, m)
+    scheduleTimetableSave('timetable.krx_pre_subscribe', `${h}:${m}`)
+  })
+  ttKrxRow.appendChild(timetableKrxSlot)
+  container.appendChild(ttKrxRow)
+  container.appendChild(createDescText('정규장 시작 1분 전에 KRX 종목을 사전 구독합니다 (기본 08:59, 09:00 미만)'))
+
+  // 거래소 고정 시간 참고 표시 (읽기 전용, 변경 불가) — P21 투명성
+  const fixedTimes: Array<[string, string]> = [
+    ['08:00', 'NXT 프리마켓 시작'],
+    ['09:00', '정규장 시작'],
+    ['15:20', '정규장 종료'],
+    ['15:30', '종가 동시호가 종료'],
+    ['15:40', 'NXT 애프터마켓 시작'],
+    ['18:00', '애프터마켓 지속 전환'],
+    ['20:00', '장마감'],
+  ]
+  const fixedBox = document.createElement('div')
+  Object.assign(fixedBox.style, {
+    margin: '8px 0 0',
+    padding: '8px 10px',
+    background: COLOR.surface,
+    border: '1px solid ' + COLOR.borderLight,
+    borderRadius: '6px',
+    fontSize: FONT_SIZE.desc,
+    color: COLOR.tertiary,
+  })
+  const fixedTitle = document.createElement('div')
+  Object.assign(fixedTitle.style, { fontWeight: FONT_WEIGHT.normal, color: COLOR.neutral, marginBottom: '4px' })
+  fixedTitle.textContent = '참고: 거래소 고정 시간 (변경 불가)'
+  fixedBox.appendChild(fixedTitle)
+  for (const [t, label] of fixedTimes) {
+    const row = document.createElement('div')
+    Object.assign(row.style, { display: 'flex', gap: '8px', fontVariantNumeric: 'tabular-nums' })
+    const time = document.createElement('span')
+    Object.assign(time.style, { color: COLOR.neutral, minWidth: '48px' })
+    time.textContent = t
+    const desc = document.createElement('span')
+    desc.textContent = label
+    row.appendChild(time)
+    row.appendChild(desc)
+    fixedBox.appendChild(row)
+  }
+  container.appendChild(fixedBox)
 }
 
 function handleMasterToggle(): void {
@@ -832,6 +955,17 @@ function syncFromSettings(s: AppSettings | null): void {
 
     // 체결 불가 시간대 주문 차단
     orderTimeGuardToggle?.setOn(r.order_time_guard_on !== false)
+
+    // 장 시작 전 사전 준비 시간 (타임테이블 3개 키)
+    const [trh, trm] = parseHM(String(r['timetable.realtime_reset'] ?? '07:58'))
+    timetableResetH = trh; timetableResetM = trm
+    if (timetableResetSlot) updateTimeSlotDisplay(timetableResetSlot, trh, trm)
+    const [twh, twm] = parseHM(String(r['timetable.ws_prestart'] ?? '07:59'))
+    timetableWsH = twh; timetableWsM = twm
+    if (timetableWsSlot) updateTimeSlotDisplay(timetableWsSlot, twh, twm)
+    const [tkh, tkm] = parseHM(String(r['timetable.krx_pre_subscribe'] ?? '08:59'))
+    timetableKrxH = tkh; timetableKrxM = tkm
+    if (timetableKrxSlot) updateTimeSlotDisplay(timetableKrxSlot, tkh, tkm)
 
     // 자동매수
     autoBuyToggle?.setOn(!!r.auto_buy_on)
