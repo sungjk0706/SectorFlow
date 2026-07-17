@@ -191,6 +191,22 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
 3. **사용자 지시 대기**: 보고 후 사용자의 다음 작업 지시 대기. 사용자가 명확히 다른 작업을 즉시 지시한 경우(예: "X 수정해줘") 핸드오버 요약은 생략하고 지시된 작업에 집중 가능.
 4. **완료 작업 정리 (규칙 7 연계)**: 새 세션 시작 시 `HANDOVER.md`의 "직전 완료 작업" 섹션에서 최근 1~2건만 유지하고 과거 완료 작업은 삭제 (규칙 7 준수).
 
+### 문서 저장 경로 규칙 (P10 SSOT · P23 일관성)
+
+모든 프로젝트 문서는 `docs/` 한 곳에서 통합 관리. `backend/docs/` 등 하위 디렉터리에 문서를 분산 배치하지 않는다.
+
+| 문서 종류 | 경로 패턴 | 비고 |
+|---|---|---|
+| 설계서 (디자인 파일) | `docs/architecture_*_design.md` | 다단계 작업 1세션 산출물. 완료 시 삭제(규칙 11) |
+| 태스크 파일 | `docs/plan_*.md` | 다단계 작업 2세션 산출물. 완료 시 삭제(규칙 11) |
+| 조사 보고서 | `docs/*_investigation.md` | 역사적 기록. 유지 (삭제 금지) |
+| API 스펙 | `docs/api_specs/` | 증권사 API 문서 등 |
+| 아키텍처 감사 계획 | `docs/architecture_audit_plan.md` | Code Removal Rules 규칙 3 역사적 로그 유지 대상 |
+| 기타 계획서 | `docs/plan_*.md` | 단일 세션 구현 계획서 포함 |
+
+- **금지**: `backend/docs/`, `frontend/docs/` 등 코드 디렉터리 하위에 문서 폴더 신규 생성.
+- **기존 참조 갱신**: 문서 이동 시 `AGENTS.md`·`HANDOVER.md`·태스크 파일 등 모든 참조 경로를 함께 갱신 (P10 SSOT — 잔존 참조 방지).
+
 ### 다단계 작업 워크플로우 (설계 → 태스크 → 구현)
 
 신규 기능, 구조 변경, 다단계 작업은 다음 순서로 진행. 각 세션은 섹션3 규칙 0-1(세션당 1단계) 준수.
@@ -198,7 +214,7 @@ SectorFlow is a local real-time stock auto-trading web app for one person.
 #### 1세션: 설계 검토 + 디자인 파일 작성
 1. 표준 아키텍처(`ARCHITECTURE.md` 24개 불변 원칙) + 프로젝트 아키텍처 검토
 2. 사용자에게 질문하여 요구사항 확인 (사용자 의사소통 규칙 1~4 준수)
-3. 디자인 파일 작성: `backend/docs/architecture_*_design.md` (설계안 비교표 + 선택안 동작 원리 + 표준 검토 근거)
+3. 디자인 파일 작성: `docs/architecture_*_design.md` (설계안 비교표 + 선택안 동작 원리 + 표준 검토 근거)
 4. 사용자 승인 (규칙 0 승인 트리거) — 승인 전 다음 세션 진행 금지
 
 #### 2세션: 심층 사전조사 + 태스크 파일 작성
@@ -267,7 +283,7 @@ When in doubt, invoke `/problem-solve` first. Always follow the rules in this fi
     - **보고 후 진행**: 커밋 + `HANDOVER.md` 갱신 진행 여부를 사용자 승인(규칙 6)받아 진행. 승인 전 커밋/핸드오버 갱신 금지.
     - **세션 종료 시 보고와 구분**: 규칙 5(세션 종료 시 진행 상태 + 다음 단계 전달)은 세션 종료 시점 보고. 본 규칙 10은 매 단계 완료 시점 보고. 두 규칙은 시점이 다르며 모두 준수.
 11. **계획서 파일 삭제 (강제 — 다단계 작업 완료 시).** 다단계 작업 워크플로우(섹션4 "다단계 작업 워크플로우")의 모든 단계 완료 후 최종 커밋 시, 해당 작업의 계획서 파일을 함께 삭제.
-    - **삭제 대상**: `docs/plan_*.md` (태스크 파일), `backend/docs/architecture_*_design.md` (디자인 파일)
+    - **삭제 대상**: `docs/plan_*.md` (태스크 파일), `docs/architecture_*_design.md` (디자인 파일)
     - **삭제 시점**: 모든 단계 완료 후 최종 커밋에 삭제 포함 (동일 커밋)
     - **삭제 제외 (혼동 주의)**:
       - `docs/*_investigation.md` (조사 보고서 — 역사적 기록, 유지)

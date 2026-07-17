@@ -35,7 +35,7 @@
     - 표 항목: `buy_interval_min | 0분 | 1순위 종목 매수 후 대기 간격 (분 단위)` 1줄 제거 → `buy_interval_sec | 30초 | 매수 주문 간격 (초 단위, 5~300, 5초 단위)` + `sell_interval_on | False | 매도 주문 간격 활성화 (토글)` + `sell_interval_sec | 30초 | 매도 주문 간격 (초 단위, 5~300, 5초 단위, 손절 포함)` 3줄 추가 (P10 SSOT — 문서와 코드 단일 진실 소스 일치, P21 사용자 투명성 — 손절 포함 명시).
   - **삭제 2개 파일** (사용자 승인 — 계획서 삭제 규칙):
     - `docs/plan_order_interval.md` (450줄 — 2세션 태스크 파일, 심층 사전조사 + 수정 범위 + 구현 Step + 테스트 계획).
-    - `backend/docs/architecture_order_interval_design.md` (433줄 — 1세션 설계서, 안 B 공통 모듈 추출 + 분리 설정 + 초 단위).
+    - `docs/architecture_order_interval_design.md` (433줄 — 1세션 설계서, 안 B 공통 모듈 추출 + 분리 설정 + 초 단위).
     - `git rm`로 삭제 — 다단계 작업 완료 후 계획서 정리 (AGENTS.md 섹션4 다단계 워크플로우 규칙).
   - **검증 (통합 런타임 검증)**:
     - pytest 전체 2822 passed (6세션과 동일 카운트, 회귀 없음).
@@ -118,7 +118,7 @@
 
 ### 단계 진행 상황
 - **1세션 (완료, 커밋 `d49cbcc`)**: 설계 검토 + 디자인 파일 작성 — 매수 간격 로직 분석 + 매도 로직 분석 → 3가지 설계안 비교 → 사용자 4가지 결정 + 초 단위 범위 확정 → 설계서 작성.
-  - **설계서**: `backend/docs/architecture_order_interval_design.md` (433줄)
+  - **설계서**: `docs/architecture_order_interval_design.md` (433줄)
   - **선택안**: 안 B (공통 모듈 추출 + 분리 설정 + 초 단위)
   - **사용자 확정 사항**: 매도 간격 추가(손절 포함) / 초 단위(5~300초, 기본 30초, 5초 단위) / `_sec` 키 + 마이그레이션 / 각각 따로 / 공통 모듈 추출 / "5초 단위로 설정 가능" 안내
 - **2세션 (완료, 커밋 `f1c5dde`)**: 심층 사전조사 + 태스크 파일 작성 — 매도 타이머 갱신 시점 확정(line 534) + 설계서 누락 4곳 발견 + 프론트엔드 구조 분석 → 태스크 파일 작성.
@@ -133,7 +133,7 @@
 - **7세션 (대기)**: 구현 Step 5 — 문서(`ARCHITECTURE.md`) + 런타임 검증 + 계획서 2개 삭제
 
 ### 참조 문서
-- **설계서**: `backend/docs/architecture_order_interval_design.md` (1세션)
+- **설계서**: `docs/architecture_order_interval_design.md` (1세션)
 - **태스크 파일**: `docs/plan_order_interval.md` (2세션)
 
 ### 승인 대기 항목
@@ -146,7 +146,7 @@
 ## 완료된 다단계 작업: 카운트다운 SSOT 구현 (안 3 — 백엔드 카운트다운 SSOT) ✅
 
 ### 단계 진행 상황
-- **1세션 (완료)**: 설계 검토 + 디자인 파일 작성 — 3안 비교(안 1 JIF 카운트다운 코드 처리 / 안 2 현상 유지 / 안 3 백엔드 카운트다운 SSOT) → 안 3 추천 → 사용자 안 3 확정. 디자인 파일: `backend/docs/architecture_countdown_supplement_design.md` (삭제됨)
+- **1세션 (완료)**: 설계 검토 + 디자인 파일 작성 — 3안 비교(안 1 JIF 카운트다운 코드 처리 / 안 2 현상 유지 / 안 3 백엔드 카운트다운 SSOT) → 안 3 추천 → 사용자 안 3 확정. 디자인 파일: `docs/architecture_countdown_supplement_design.md` (삭제됨)
 - **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성 — WS 메시지 흐름 파악 + 기존 시간표 상수 재사용 확인 + 구현 상세 + 세션 분할 + 테스트 계획. 태스크 파일: `docs/plan_countdown_supplement.md` (삭제됨)
 - **3세션 (Step 1, 완료, 커밋 `9bd99ef`)**: 백엔드 구현 + 테스트 — `calc_countdown()` 신규 + 상수 3개 + `get_market_phase()` 필드 추가 + 테스트 9개. 검증 통과 (py_compile + ruff + pytest 167개 + 런타임 기동 RuntimeWarning 없음 + 잔존 프로세스 0건).
 - **4세션 (Step 2, 완료, 커밋 `bf992fb`)**: 프론트엔드 구현 + 빌드 — 4개 파일 수정 (34 insertions, 44 deletions). `types/index.ts`/`uiStore.ts`/`binding.ts` 타입 정의에 countdown 필드 추가 + `header.ts`에서 `KRX_COUNTDOWN`/`NXT_COUNTDOWN`/`COUNTDOWN_THRESHOLD_MIN`/`computeCountdown()` 제거 + `formatCountdown()` 신규 + 호출부 2곳 수정 + 30초 setInterval 유지(수신값 재적용). 검증 통과 (`npm run build` 성공 + 잔존 참조 0건).
@@ -180,7 +180,7 @@
     2. **NXT 종목 구독 신청 시간 07:59 고정값 확정**: 설정에서 변경할 필요 없이 고정값 처리. 4단계 상수 `WS_SUBSCRIBE_PRESTART_TIME = (7, 59)`와 연계 — 설정 기반 가변 시각이 아닌 고정 상수로 확정.
 
 ### 참조 문서
-- **설계 검토**: `backend/docs/architecture_session_state_design.md` (4안 비교표 + 안 D 동작 원리 + 표준 검토 근거)
+- **설계 검토**: `docs/architecture_session_state_design.md` (4안 비교표 + 안 D 동작 원리 + 표준 검토 근거)
 - **2단계 구현 계획**: `docs/plan_session_state_jif_handler.md`
 - **3단계 구현 계획**: `docs/plan_session_state_periodic_task.md`
 - **4단계 구현 계획**: `docs/plan_session_state_phase_timing.md`
