@@ -1,54 +1,50 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (구독/해지 타임라인 재설계 — 3세션 구현 Step 1: 사전 구간 판정 + 07:58 통합)
-- 작업: Change 1, 2 구현 — `_is_pre_subscribe_window()` 신규 헬퍼 + `is_ws_subscribe_window()`/`is_nxt_only_window()` 사전 구간 판정 추가 + `_on_realtime_fields_reset()` 확장(GC+게이트+캐시 통합) + `_on_ws_subscribe_start()` 축소(상태 전환+통지만) + `_init_ws_subscribe_state()` 사전 구간 재시작 대응. 테스트 8개 신규 + 기존 3개 갱신.
-- 상태: 3세션 구현 Step 1 완료. 검증 완료 (pytest 2830 passed + 런타임 기동 RuntimeWarning 0건 + /api/settings 정상 + 잔존 프로세스 0건). 커밋 대기.
+- 날짜: 2026-07-17 (구독/해지 타임라인 재설계 — 4세션 구현 Step 2: 08:59 KRX 사전 구독 + 15:20 KRX 해지)
+- 작업: Change 3, 4 구현 — `KRX_PRE_SUBSCRIBE_TIME` 상수 + `_on_krx_pre_subscribe()` 신규(08:59 KRX 단독 종목 사전 구독) + `_check_prestart_triggers()` 08:59 트리거 확장 + `_apply_market_phase()` 트리거 조건 "체결 정산" → "종가 동시호가" 변경 + `_on_krx_after_hours_start()` → `_on_krx_closing_auction_start()` 개명 + `last_krx_pre_subscribe_date` 필드 추가. 테스트 8개 신규 + 기존 3개 갱신.
+- 상태: 4세션 구현 Step 2 완료. 검증 완료 (pytest 2838 passed + 런타임 기동 RuntimeWarning 0건 + /api/settings 정상 + 잔존 프로세스 0건). 커밋 대기.
 - **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + P10/P16/P20/P21/P22/P23/P24
 - **태스크 파일**: `docs/plan_subscribe_timeline.md` (구현 Step + 세션 분할 + 테스트 계획 + 런타임 검증 방법 + 사용자 결정 항목)
 - **설계서**: `docs/architecture_subscribe_timeline_design.md` (1세션 산출물 — 4개 변경안 구현 방안, 설계안 비교표, P원칙 검토)
 - **조사 보고서**: `docs/subscribe_timeline_investigation.md` (사전 심층 조사 — 타임라인 전체 흐름, "웹소켓 연결" API 명세서 존재 여부)
 
-## 다음 세션 진행 대기: 구독/해지 타임라인 재설계 4세션 (구현 Step 2)
-- **3세션 완료**: Change 1, 2 구현 완료. 사전 구간(07:59~08:00) 시간 기반 판정 + 07:58 데이터 준비 통합(GC+필드+게이트+캐시). 주말 GC 비활성화 제거 개선 적용.
-- **사용자 승인 대기**: 4세션 구현 Step 2 승인 여부. 승인 시 Change 3, 4 구현 진행.
+## 다음 세션 진행 대기: 구독/해지 타임라인 재설계 5세션 (통합 런타임 검증 + 문서 갱신 + 계획서 삭제)
+- **4세션 완료**: Change 3, 4 구현 완료. 08:59 KRX 단독 종목 사전 구독(정규장 1분 전) + 15:20 KRX 해지(종가 동시호가 진입 시점, 기존 15:30에서 10분 앞당김). 함수 개명 `_on_krx_after_hours_start` → `_on_krx_closing_auction_start` (명칭-동작 일치, P23).
+- **사용자 승인 대기**: 5세션 통합 런타임 검증 + `ARCHITECTURE.md` 갱신 + 계획서 2개 삭제 승인 여부.
 - **세션 분할** (태스크 파일 2절 참조):
   - 1세션(완료): 설계서 작성
   - 2세션(완료): 심층 사전조사 + 태스크 파일
-  - 3세션(현재 완료): 구현 Step 1 — 사전 구간 판정 + 07:58 통합 (Change 1, 2) — `daily_time_scheduler.py`, `test_daily_time_scheduler.py` (engine_state.py 변경 없음 — Change 1, 2는 신규 필드 불필요)
-  - 4세션: 구현 Step 2 — 08:59 KRX 사전 구독 + 15:20 KRX 해지 (Change 3, 4) — `daily_time_scheduler.py`, `engine_state.py`, `test_daily_time_scheduler.py` + 함수 개명
-  - 5세션: 통합 런타임 검증 + `ARCHITECTURE.md` 갱신 + 계획서 2개 삭제
-- **3세션 구현 상세**:
-  - `_is_pre_subscribe_window()` 신규 헬퍼 (L238~) — 07:59~08:00 시간 기반 판정, 휴장일 차단, 재시작 대응 (P16)
-  - `is_ws_subscribe_window()` 사전 구간 OR 조건 추가 (L367~) — NXT_ACTIVE_PHASES 또는 사전 구간
-  - `is_nxt_only_window()` 사전 구간 조건 추가 (L262~) — KRX_INACTIVE + 사전 구간 → NXT-only 구독
-  - `_on_realtime_fields_reset()` 확장 (L672~) — 필드 초기화 + GC 비활성화 + 게이트 리셋 + 캐시 초기화 통합, 거래일 체크 이후 GC 비활성화 (주말 개선)
-  - `_on_ws_subscribe_start()` 축소 (L708~) — 상태 전환 + 통지만, 보완 시 `_on_realtime_fields_reset()` 1회 호출
-  - `_init_ws_subscribe_state()` docstring 갱신 (L868~) — 사전 구간 재시작 시 in_window=True 분기가 자동 대응 (추가 분기 없음 — P16/P24)
-- **검증 결과**: pytest 2830 passed (기존 2822 + 신규 8, 회귀 없음) + 런타임 기동 RuntimeWarning 0건 + /api/settings 정상 + 잔존 프로세스 0건.
+  - 3세션(완료): 구현 Step 1 — 사전 구간 판정 + 07:58 통합 (Change 1, 2)
+  - 4세션(현재 완료): 구현 Step 2 — 08:59 KRX 사전 구독 + 15:20 KRX 해지 (Change 3, 4) — `daily_time_scheduler.py`, `engine_state.py`, `test_daily_time_scheduler.py` + 함수 개명
+  - 5세션: 통합 런타임 검증 + `ARCHITECTURE.md` 타임라인 섹션 갱신 + 계획서 2개 삭제 (`architecture_subscribe_timeline_design.md`, `plan_subscribe_timeline.md`)
+- **4세션 구현 상세**:
+  - `KRX_PRE_SUBSCRIBE_TIME = (8, 59)` 상수 추가 (L48) — 기존 사전 트리거 상수 그룹에 추가 (P10)
+  - `_on_krx_pre_subscribe()` 신규 함수 (L463~) — 08:59 KRX 단독 종목 사전 구독 (재계산 없음). 멱등성 가드 `last_krx_pre_subscribe_date`. 거래일 체크 후 가드 설정 (주말/공휴일 시 가드 미설정 → 다음 거래일 실행). `subscribe_sector_stocks_0b()` 내부 `_subscribed` 플래그로 09:00 중복 구독 방지 (P22).
+  - `_check_prestart_triggers()` 확장 (L1189~) — 08:59 KRX 사전 구독 트리거 추가 (08:00~09:00 구간). 기존 07:58/07:59 트리거는 08:00 이상 시 스킵 (phase 변경 감지가 담당).
+  - `_apply_market_phase()` 트리거 조건 변경 (L659) — `new_krx == "체결 정산"` → `new_krx == "종가 동시호가"`, context `"KRX 장외 전환"` → `"KRX 종가 동시호가 — 구독 해지"`. docstring 갱신 (L635).
+  - `_on_krx_after_hours_start()` → `_on_krx_closing_auction_start()` 개명 (L490) — docstring "15:30 전환 콜백" → "15:20 종가 동시호가 전환 콜백", "KRX 종가 동시호가 종료(15:30)" → "KRX 정규장 종료(15:20)". 동작 내용 동일 (재계산 + KRX 단독 종목 해지).
+  - `engine_state.py` — `last_krx_pre_subscribe_date: str = ""` 필드 추가 (L116) — 멱등성 가드 그룹에 추가 (기존 패턴 준수, P22).
+- **검증 결과**: pytest 2838 passed (기존 2830 + 신규 8, 회귀 없음) + 런타임 기동 RuntimeWarning 0건 + /api/settings 정상 + 잔존 프로세스 0건 + `backend/` 잔존 참조 0건 (`docs/` 19건은 역사적 문서 — Code Removal Rules 규칙 3 예외, 5세션에서 계획서 2개 삭제 예정).
 
 ## 직전 완료 작업
-- **구독/해지 타임라인 재설계 3세션 — 구현 Step 1: 사전 구간 판정 + 07:58 통합 (Change 1, 2)**: 4개 변경안 중 Change 1, 2 구현.
-  - **`backend/app/services/daily_time_scheduler.py`** (3곳):
-    - `_is_pre_subscribe_window()` 신규 헬퍼 (L238~) — 07:59~08:00 시간 기반 사전 구독 구간 판정. `WS_SUBSCRIBE_PRESTART_TIME`(07:59) ~ `NXT_PREMARKET_START`(08:00) 범위. 휴장일 차단. 시간 기반 → 재시작 시 사전 구간 누락 없음 (P16). 기존 시간 상수 재사용 (P10).
-    - `is_nxt_only_window()` 확장 (L262~) — 기존 조건(KRX_INACTIVE + NXT_ACTIVE) 후 사전 구간 조건 추가: `_is_pre_subscribe_window() and krx in KRX_INACTIVE_PHASES` → True. 07:59 시점 KRX 단독 종목 제외 NXT-only 구독.
-    - `is_ws_subscribe_window()` 확장 (L367~) — 기존 조건(`nxt in NXT_ACTIVE_PHASES`) True 시 반환, 아니면 `_is_pre_subscribe_window()` 반환. 사전 구간(07:59~08:00) 시간 기반 판정 추가.
-    - `_on_realtime_fields_reset()` 확장 (L672~) — 기존 필드 초기화만 → 필드 초기화 + GC 비활성화 + 수신율 게이트 리셋 + delta 캐시 초기화 통합. 거래일 체크 이후 GC 비활성화 (주말 GC 비활성화 제거 개선). 멱등성 가드 `last_realtime_reset_date`가 전체 작업 보호.
-    - `_on_ws_subscribe_start()` 축소 (L708~) — GC 비활성화/게이트 리셋/캐시 초기화 제거 (07:58로 이동). 상태 전환 + `_broadcast_market_phase()` + 엔진 루프 통지만. 보완 로직: `last_realtime_reset_date != today_str` 시 `_on_realtime_fields_reset()` 1회 호출 (07:58 누락 시 전체 데이터 준비 복구).
-    - `_init_ws_subscribe_state()` docstring 갱신 (L868~) — 사전 구간 재시작 시 `is_ws_subscribe_window()`가 시간 기반으로 True 반환 → in_window=True 분기가 자동으로 GC+캐시 초기화 수행. 추가 분기 없음 (P16/P24 — dead code 방지).
+- **구독/해지 타임라인 재설계 4세션 — 구현 Step 2: 08:59 KRX 사전 구독 + 15:20 KRX 해지 (Change 3, 4)**: 4개 변경안 중 Change 3, 4 구현.
+  - **`backend/app/services/engine_state.py`** (1곳):
+    - `last_krx_pre_subscribe_date: str = ""` 필드 추가 (L116) — KRX 사전 구독 실행 날짜 (YYYYMMDD). 멱등성 가드 그룹(L113-115)에 추가 — 기존 `last_realtime_reset_date`/`last_ws_subscribe_start_date` 패턴 준수 (P22).
+  - **`backend/app/services/daily_time_scheduler.py`** (5곳):
+    - `KRX_PRE_SUBSCRIBE_TIME = (8, 59)` 상수 추가 (L48) — 08:59 KRX 사전 구독 (정규장 1분 전). 기존 사전 트리거 상수 그룹에 추가 (P10 SSOT).
+    - `_on_krx_pre_subscribe()` 신규 함수 (L463~) — 08:59 KRX 단독 종목 사전 구독 (재계산 없음). 정규장(09:00) 1분 전에 KRX 단독 종목 WS 구독을 미리 수행하여 09:00 시가 동시호가 체결 시점부터 실시간 시세 즉시 수신 (P16). 멱등성 가드 `last_krx_pre_subscribe_date == today_str` 시 스킵. 거래일 체크 후 가드 설정 (주말/공휴일 시 가드 미설정 → 다음 거래일 실행). `subscribe_sector_stocks_0b()` 내부 `_subscribed` 플래그로 09:00 중복 구독 방지 (P22).
+    - `_check_prestart_triggers()` 확장 (L1189~) — 08:59 KRX 사전 구독 트리거 추가. `KRX_PRE_SUBSCRIBE_TIME <= t < KRX_REGULAR_START and last_krx_pre_subscribe_date != today_str` 조건. 08:00~09:00 구간에서 별도 트리거 (phase 변경 감지와 분리). docstring 갱신 — 07:58/07:59/08:59 사전 트리거 체크.
+    - `_apply_market_phase()` 트리거 조건 변경 (L659) — `new_krx == "체결 정산"` → `new_krx == "종가 동시호가"`, context `"KRX 장외 전환"` → `"KRX 종가 동시호가 — 구독 해지"`. docstring 갱신 (L635) — "15:30 체결 정산" → "15:20 종가 동시호가".
+    - `_on_krx_after_hours_start()` → `_on_krx_closing_auction_start()` 개명 (L490) — docstring "15:30 전환 콜백" → "15:20 종가 동시호가 전환 콜백", "KRX 종가 동시호가 종료(15:30) 시점" → "KRX 정규장 종료(15:20) 시점". 시장가 주문만 사용하므로 종가 동시호가 구간 체결 불가 → 구독 유지 불필요 명시. 동작 내용 동일 (재계산 + KRX 단독 종목 해지).
   - **`backend/tests/test_daily_time_scheduler.py`** (갱신 3 + 신규 8):
-    - import 갱신: `_is_pre_subscribe_window` 추가.
-    - `TestOnRealtimeFieldsReset::test_resets_fields_and_sets_flag` 갱신 — GC 비활성화 + 게이트 리셋 + 캐시 초기화 검증 추가.
-    - `TestOnRealtimeFieldsReset::test_skips_on_weekend` 갱신 — 주말 시 GC 비활성화 미실행 검증 (개선).
-    - `TestOnWsSubscribeStartIdempotency::test_compensates_missing_fields_reset` 갱신 — 보완 시 `_on_realtime_fields_reset()` 호출 검증으로 변경.
-    - `TestOnWsSubscribeStartIdempotency::test_skips_fields_reset_if_already_done` 갱신 — 보완 스킵 검증.
-    - `TestIsPreSubscribeWindow` 신규 클래스 (4개) — 사전 구간 True/08:00 False/07:58 이전 False/휴장일 False.
-    - `TestIsNxtOnlyWindow::test_pre_subscribe_window_nxt_only` 신규 — 사전 구간 NXT-only True.
-    - `TestIsWsSubscribeWindow::test_pre_subscribe_window_returns_true` 신규 — 사전 구간 True.
-    - `TestIsWsSubscribeWindow::test_pre_subscribe_window_holiday_returns_false` 신규 — 휴장일 사전 구간 False.
-    - `TestInitWsSubscribeState::test_pre_subscribe_window_init` 신규 — 사전 구간 재시작 시 GC+캐시 초기화.
-  - **검증**: pytest 2830 passed (기존 2822 + 신규 8, 회귀 없음) + 런타임 기동 `python -W error::RuntimeWarning main.py` RuntimeWarning 0건 + /api/settings 응답 정상 + 잔존 프로세스 0건.
-  - **P원칙**: P10(SSOT — 시간 상수 재사용, 헬퍼로 판정 단일화) · P16(살아있는 경로 — 시간 기반 판정으로 재시작 대응, 07:58 누락 시 07:59 보완) · P20(폴백 금지 — 정상 경로 확장) · P22(데이터 정합성 — 멱등성 가드 유지) · P23(일관성 — 공통 헬퍼 추출, 기존 패턴 준수) · P24(단순성 — 신규 함수 1개만 추가) 준수.
+    - import 갱신: `_on_krx_pre_subscribe`, `_on_krx_closing_auction_start` 추가 (기존 `_on_krx_after_hours_start` 제거).
+    - `TestOnKrxAfterHoursStart` → `TestOnKrxClosingAuctionStart` 개명 — 시각 `_make_kst(15, 30)` → `_make_kst(15, 20)` 3곳. 함수 호출 `_on_krx_after_hours_start()` → `_on_krx_closing_auction_start()` 3곳.
+    - `test_triggers_krx_after_hours_on_phase_change` → `test_triggers_krx_closing_auction_on_phase_change` 갱신 — "체결 정산" 전환 → "종가 동시호가" 전환, context "KRX 장외 전환" → "KRX 종가 동시호가 — 구독 해지".
+    - `TestCheckPrestartTriggers` 신규 3: `test_triggers_krx_pre_subscribe_at_0859` (08:59 트리거 1회), `test_skips_krx_pre_subscribe_if_already_run` (멱등성 가드), `test_skips_krx_pre_subscribe_after_0900` (09:00 이상 스킵).
+    - `TestOnKrxPreSubscribe` 신규 클래스 5: `test_trading_day_subscribes` (거래일 구독 + 가드 설정), `test_weekend_skips` (주말 스킵 + 가드 미설정), `test_holiday_skips` (공휴일 스킵 + 가드 미설정), `test_skips_if_already_run_today` (멱등성 가드), `test_exception_does_not_raise` (예외 처리).
+  - **검증**: pytest 2838 passed (기존 2830 + 신규 8, 회귀 없음) + 런타임 기동 `python -W error::RuntimeWarning main.py` RuntimeWarning 0건 + /api/settings 응답 정상 + 잔존 프로세스 0건 + `backend/` 잔존 참조 0건.
+  - **P원칙**: P10(SSOT — 기존 시간 상수 재사용, 멱등성 가드 패턴 준수) · P16(살아있는 경로 — 08:59 시간 기반 트리거로 재시작 시 사전 구간 누락 없음) · P20(폴백 금지 — 정상 경로 확장) · P22(데이터 정합성 — `last_krx_pre_subscribe_date` 멱등성 가드, `subscribe_sector_stocks_0b()` 내부 `_subscribed` 플래그로 09:00 중복 구독 방지) · P23(일관성 — 함수 개명으로 명칭-동작 일치, 기존 패턴 준수) · P24(단순성 — 신규 함수 1개 + 상수 1개 + 필드 1개만 추가) 준수.
   - **작업 여력**: 충분.
 - **문서 폴더 통합 — backend/docs/ → docs/ + 문서 경로 규칙 추가**: 분산된 문서를 docs/ 한 곳으로 통합 + 경로 규칙 문서화.
   - **파일 이동 2건** (`git mv` — 이력 보존):
