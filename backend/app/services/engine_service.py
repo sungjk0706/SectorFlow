@@ -35,7 +35,6 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         notify_desktop_settings_toggled,
     )
     from backend.app.services import settlement_engine as _se
-    from backend.app.services import daily_time_scheduler as _dts
     from backend.app.services import ws_subscribe_control
 
     if not changed_keys:
@@ -123,34 +122,15 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         except Exception:
             logger.warning("[설정] 자동매매 타이머 재예약 실패", exc_info=True)
 
-    # WS 구독 시간/스케줄 변경 시 → 즉시 구간 재판정 + 타이머 재예약
-    _WS_SCHEDULE_KEYS = {"confirmed_download_time", "scheduler_market_close_on"}
-    if changed_keys & _WS_SCHEDULE_KEYS:
-        try:
-            new_settings = get_settings_snapshot()
-            now_in_window = await _dts.is_ws_subscribe_window(new_settings)
-            was_active = bool(state.ws_subscribe_window_active)
-
-            # 1) 타이머 재예약 (항상)
-            await _dts.schedule_ws_subscribe_timers(new_settings)
-
-            # 2) 활성→구간밖: 즉시 구독 해제 + WS 끊기 (장마감 후처리 없이)
-            if was_active and not now_in_window:
-                logger.info("[설정] 실시간 구독 구간 변경 → 현재 구간 밖 — 즉시 구독 해제")
-                _dts._fire_ws_disconnect_only()
-
-            # 3) 비활성→구간안: 즉시 WS 연결 + 구독 시작
-            elif not was_active and now_in_window:
-                logger.info("[설정] 실시간 구독 구간 변경 → 현재 구간 안 — 즉시 구독 시작")
-                schedule_engine_task(_dts._on_ws_subscribe_start(), context="실시간 구독 시작")
-        except Exception:
-            logger.warning("[설정] 실시간 구독 타이머 재예약 실패", exc_info=True)
-
-    # 타임테이블 시각 변경 시 → _TIMETABLE 재빌드 + 타이머 재예약 (P14 단일 타이머 유지)
+    # 타임테이블 시각/토글 변경 시 → _TIMETABLE 재빌드 + 타이머 재예약 (P14 단일 타이머 유지)
+    # - timetable.confirmed_download: 11번째 항목 시각 변경 (4세션 통합)
+    # - scheduler_market_close_on: 11번째 항목 스킵/추가 토글 (P16 살아있는 경로)
     _TIMETABLE_KEYS = {
         "timetable.realtime_reset",
         "timetable.ws_prestart",
         "timetable.krx_pre_subscribe",
+        "timetable.confirmed_download",
+        "scheduler_market_close_on",
     }
     if changed_keys & _TIMETABLE_KEYS:
         try:

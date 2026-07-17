@@ -57,7 +57,6 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     _on_krx_closing_auction_start,
     _on_ws_subscribe_start,
     _on_ws_subscribe_end,
-    _fire_confirmed_download,
     _on_confirmed_download,
     _fire_ws_disconnect_only,
     _ws_disconnect_only,
@@ -73,7 +72,6 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     _apply_detail_to_entry,
     start_daily_time_scheduler,
     stop_daily_time_scheduler,
-    schedule_ws_subscribe_timers,
     schedule_auto_trade_timers,
     retry_pipeline_catchup_after_bootstrap,
     _on_realtime_fields_reset,
@@ -938,7 +936,7 @@ class TestIsWsSubscribeWindow:
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "휴장일", "nxt": "휴장일"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
-            result = await is_ws_subscribe_window({"confirmed_download_time": "20:40"})
+            result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
             assert result is False
 
     @pytest.mark.asyncio
@@ -946,7 +944,7 @@ class TestIsWsSubscribeWindow:
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
-            result = await is_ws_subscribe_window({"confirmed_download_time": "20:40"})
+            result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
             assert result is True
 
     @pytest.mark.asyncio
@@ -954,7 +952,7 @@ class TestIsWsSubscribeWindow:
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
-            result = await is_ws_subscribe_window({"confirmed_download_time": "20:40"})
+            result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
             assert result is False
 
     @pytest.mark.asyncio
@@ -962,7 +960,7 @@ class TestIsWsSubscribeWindow:
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": ""}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
-            result = await is_ws_subscribe_window({"confirmed_download_time": "20:40"})
+            result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
             assert result is False
 
     @pytest.mark.asyncio
@@ -981,7 +979,7 @@ class TestIsWsSubscribeWindow:
         mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
-            result = await is_ws_subscribe_window({"confirmed_download_time": "20:40"})
+            result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
             assert result is True
 
     @pytest.mark.asyncio
@@ -991,7 +989,7 @@ class TestIsWsSubscribeWindow:
         mock_state.market_phase = {"krx": "휴장일", "nxt": "휴장일"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
-            result = await is_ws_subscribe_window({"confirmed_download_time": "20:40"})
+            result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
             assert result is False
 
 
@@ -1003,7 +1001,7 @@ class TestIsEditWindowOpen:
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
-            result = await is_edit_window_open({"confirmed_download_time": "20:40"})
+            result = await is_edit_window_open({"timetable.confirmed_download": "20:40"})
             assert result is True
 
     @pytest.mark.asyncio
@@ -1011,7 +1009,7 @@ class TestIsEditWindowOpen:
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
-            result = await is_edit_window_open({"confirmed_download_time": "20:40"})
+            result = await is_edit_window_open({"timetable.confirmed_download": "20:40"})
             assert result is False
 
 
@@ -1305,7 +1303,7 @@ class TestOnWsSubscribeStart:
     @pytest.mark.asyncio
     async def test_trading_day_starts_subscription(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.ws_window_changed_event = MagicMock()
         # 멱등성 가드 통과: 빈 문자열이어야 실행됨 (4단계)
         mock_state.last_ws_subscribe_start_date = ""
@@ -1330,7 +1328,7 @@ class TestOnRealtimeFieldsReset:
     @pytest.mark.asyncio
     async def test_resets_fields_and_sets_flag(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.last_realtime_reset_date = ""
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
@@ -1350,7 +1348,7 @@ class TestOnRealtimeFieldsReset:
     @pytest.mark.asyncio
     async def test_skips_if_already_run_today(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.last_realtime_reset_date = "20250106"  # 이미 오늘 실행됨
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
@@ -1362,7 +1360,7 @@ class TestOnRealtimeFieldsReset:
     @pytest.mark.asyncio
     async def test_skips_on_weekend(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.last_realtime_reset_date = ""
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58, weekday=5)), \
@@ -1376,7 +1374,7 @@ class TestOnRealtimeFieldsReset:
     @pytest.mark.asyncio
     async def test_skips_on_non_trading_day(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.last_realtime_reset_date = ""
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
@@ -1458,7 +1456,7 @@ class TestOnWsSubscribeStartIdempotency:
     @pytest.mark.asyncio
     async def test_skips_if_already_started_today(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.ws_window_changed_event = MagicMock()
         mock_state.last_ws_subscribe_start_date = "20250106"  # 이미 오늘 실행됨
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
@@ -1474,7 +1472,7 @@ class TestOnWsSubscribeStartIdempotency:
     @pytest.mark.asyncio
     async def test_compensates_missing_fields_reset(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.ws_window_changed_event = MagicMock()
         mock_state.last_ws_subscribe_start_date = ""        # WS 구독 미실행
         mock_state.last_realtime_reset_date = ""            # 데이터 준비도 미실행 → 보완 경로
@@ -1491,7 +1489,7 @@ class TestOnWsSubscribeStartIdempotency:
     @pytest.mark.asyncio
     async def test_skips_fields_reset_if_already_done(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.ws_window_changed_event = MagicMock()
         mock_state.last_ws_subscribe_start_date = ""        # WS 구독 미실행
         mock_state.last_realtime_reset_date = "20250106"    # 데이터 준비 이미 실행 → 보완 스킵
@@ -1527,14 +1525,9 @@ class TestOnWsSubscribeEnd:
             mock_state.ws_window_changed_event.set.assert_called_once()
 
 
-# ── _fire_confirmed_download / _fire_ws_disconnect_only ──
+# ── _fire_ws_disconnect_only ──
 
 class TestFireWrappers:
-    def test_fire_confirmed_download_schedules(self):
-        with patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
-            _fire_confirmed_download()
-            mock_sched.assert_called_once()
-
     def test_fire_ws_disconnect_only_schedules(self):
         with patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _fire_ws_disconnect_only()
@@ -1546,14 +1539,48 @@ class TestFireWrappers:
 class TestOnConfirmedDownload:
     @pytest.mark.asyncio
     async def test_calls_fire_unified(self):
-        with patch("backend.app.services.daily_time_scheduler._fire_unified_confirmed_fetch") as mock_fire:
+        mock_state = MagicMock()
+        mock_state.last_confirmed_download_date = ""  # 아직 오늘 실행 안 됨
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 40)), \
+             patch("backend.app.services.daily_time_scheduler._fire_unified_confirmed_fetch") as mock_fire:
             await _on_confirmed_download()
             mock_fire.assert_called_once()
+            # 가드 날짜 기록 — 다음 호출 스킵용
+            assert mock_state.last_confirmed_download_date == _make_kst(20, 40).strftime("%Y%m%d")
 
     @pytest.mark.asyncio
     async def test_exception_does_not_raise(self):
-        with patch("backend.app.services.daily_time_scheduler._fire_unified_confirmed_fetch", side_effect=Exception("boom")):
+        mock_state = MagicMock()
+        mock_state.last_confirmed_download_date = ""
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 40)), \
+             patch("backend.app.services.daily_time_scheduler._fire_unified_confirmed_fetch", side_effect=Exception("boom")):
             await _on_confirmed_download()
+
+    @pytest.mark.asyncio
+    async def test_idempotency_guard_skips_same_day(self):
+        """같은 날 2회 호출 시 2회째 스킵 (P22 멱등성 가드)."""
+        mock_state = MagicMock()
+        today_str = _make_kst(20, 40).strftime("%Y%m%d")
+        mock_state.last_confirmed_download_date = today_str  # 이미 오늘 실행됨
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 40)), \
+             patch("backend.app.services.daily_time_scheduler._fire_unified_confirmed_fetch") as mock_fire:
+            await _on_confirmed_download()
+            mock_fire.assert_not_called()  # 가드로 인해 스킵
+
+    @pytest.mark.asyncio
+    async def test_idempotency_guard_allows_next_day(self):
+        """다음 날 호출 시 정상 실행 (가드 날짜 리셋 후)."""
+        mock_state = MagicMock()
+        mock_state.last_confirmed_download_date = "20250105"  # 전날 실행됨
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 40)), \
+             patch("backend.app.services.daily_time_scheduler._fire_unified_confirmed_fetch") as mock_fire:
+            await _on_confirmed_download()
+            mock_fire.assert_called_once()  # 다른 날이므로 실행
+            assert mock_state.last_confirmed_download_date == _make_kst(20, 40).strftime("%Y%m%d")
 
 
 # ── _ws_disconnect_only ───────────────────────────────────────────────────────
@@ -1577,7 +1604,7 @@ class TestInitWsSubscribeState:
     @pytest.mark.asyncio
     async def test_in_window_sets_active(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.preboot_cache_loaded = True
         mock_state.ws_window_changed_event = MagicMock()
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
@@ -1592,7 +1619,7 @@ class TestInitWsSubscribeState:
     @pytest.mark.asyncio
     async def test_outside_window_sets_inactive(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
              patch("backend.app.services.ws_subscribe_control._set_status"):
@@ -1612,7 +1639,7 @@ class TestInitWsSubscribeState:
         """사전 구간(07:59~08:00) 재시작 시 — is_ws_subscribe_window()가 시간 기반으로
         True 반환 → in_window=True 분기가 GC 비활성화 + 캐시 초기화 수행 (07:58 로직과 동일)."""
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.preboot_cache_loaded = True
         mock_state.ws_window_changed_event = MagicMock()
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
@@ -1774,11 +1801,11 @@ class TestOnMidnight:
              patch("backend.app.core.trading_calendar.has_trading_days_for_year", return_value=True), \
              patch("backend.app.services.daily_time_scheduler._apply_auto_toggle_on_startup", new_callable=AsyncMock), \
              patch("backend.app.services.daily_time_scheduler.schedule_auto_trade_timers", new_callable=AsyncMock), \
-             patch("backend.app.services.daily_time_scheduler.schedule_ws_subscribe_timers", new_callable=AsyncMock), \
              patch("backend.app.services.daily_time_scheduler.schedule_midnight_timer") as mock_midnight:
             await _on_midnight()
             assert mock_state.krx_remove_done is False
             assert mock_state.confirmed_done is False
+            assert mock_state.last_confirmed_download_date == ""  # 가드 리셋 (P22)
             mock_midnight.assert_called_once()
 
     @pytest.mark.asyncio
@@ -1875,19 +1902,15 @@ class TestStopDailyTimeScheduler:
     @pytest.mark.asyncio
     async def test_cancels_all_timers(self):
         auto_handles = [MagicMock(), MagicMock()]
-        ws_handles = [MagicMock()]
         midnight_handle = MagicMock()
         timetable_handle = MagicMock()
         mock_state = MagicMock()
         mock_state.auto_trade_timer_handles = auto_handles
-        mock_state.ws_subscribe_timer_handles = ws_handles
         mock_state.midnight_timer_handle = midnight_handle
         mock_state.timetable_timer_handle = timetable_handle
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             await stop_daily_time_scheduler()
             for h in auto_handles:
-                h.cancel.assert_called_once()
-            for h in ws_handles:
                 h.cancel.assert_called_once()
             midnight_handle.cancel.assert_called_once()
             timetable_handle.cancel.assert_called_once()
@@ -1898,7 +1921,6 @@ class TestStopDailyTimeScheduler:
     async def test_no_timers_no_error(self):
         mock_state = MagicMock()
         mock_state.auto_trade_timer_handles = []
-        mock_state.ws_subscribe_timer_handles = []
         mock_state.midnight_timer_handle = None
         mock_state.timetable_timer_handle = None
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
@@ -1918,7 +1940,6 @@ class TestStartDailyTimeScheduler:
              patch("backend.app.services.daily_time_scheduler._apply_auto_toggle_on_startup", new_callable=AsyncMock), \
              patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
              patch("backend.app.services.daily_time_scheduler.schedule_auto_trade_timers", new_callable=AsyncMock), \
-             patch("backend.app.services.daily_time_scheduler.schedule_ws_subscribe_timers", new_callable=AsyncMock), \
              patch("backend.app.services.daily_time_scheduler.schedule_midnight_timer"), \
              patch("backend.app.services.daily_time_scheduler._init_ws_subscribe_state", new_callable=AsyncMock), \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase") as mock_broadcast, \
@@ -1936,37 +1957,6 @@ class TestStartDailyTimeScheduler:
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             # start_daily_time_scheduler catches exceptions internally
             await start_daily_time_scheduler()
-
-
-# ── schedule_ws_subscribe_timers ──────────────────────────────────────────────
-
-class TestScheduleWsSubscribeTimers:
-    @pytest.mark.asyncio
-    async def test_cancels_existing_and_schedules(self):
-        existing_handle = MagicMock()
-        mock_state = MagicMock()
-        mock_state.ws_subscribe_timer_handles = [existing_handle]
-        mock_loop = MagicMock()
-        mock_loop.call_later.return_value = MagicMock()
-        settings = {
-            "confirmed_download_time": "20:40",
-        }
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
-             patch("asyncio.get_running_loop", return_value=mock_loop), \
-             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(6, 0)):
-            await schedule_ws_subscribe_timers(settings)
-            existing_handle.cancel.assert_called_once()
-            # 11개 market-phase 타이머 제거됨 (안 D 3단계) — confirmed_download_time 타이머 1개만 예약
-            assert len(mock_state.ws_subscribe_timer_handles) == 1
-
-    @pytest.mark.asyncio
-    async def test_no_loop_skips(self):
-        mock_state = MagicMock()
-        mock_state.ws_subscribe_timer_handles = []
-        settings = {"confirmed_download_time": "20:40"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
-             patch("asyncio.get_running_loop", side_effect=RuntimeError("no loop")):
-            await schedule_ws_subscribe_timers(settings)
 
 
 # ── schedule_auto_trade_timers ────────────────────────────────────────────────
@@ -2011,7 +2001,7 @@ class TestRetryPipelineCatchup:
     @pytest.mark.asyncio
     async def test_in_ws_window_returns(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)), \
@@ -2021,7 +2011,7 @@ class TestRetryPipelineCatchup:
     @pytest.mark.asyncio
     async def test_disconnected_before_download_time_returns(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.master_stocks_cache = {}
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
@@ -2033,7 +2023,7 @@ class TestRetryPipelineCatchup:
     @pytest.mark.asyncio
     async def test_disconnected_cache_outdated_triggers_fetch(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         # 캐시 date=20250104, 최근 확정 거래일=20250105(is_trading_day=True 모킹이므로 -1일) → 불일치 → 트리거
         mock_state.master_stocks_cache = {"005930": {"date": "20250104"}}
         mock_state.confirmed_done = False
@@ -2049,7 +2039,7 @@ class TestRetryPipelineCatchup:
     @pytest.mark.asyncio
     async def test_disconnected_cache_fresh_sets_done(self):
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         # 캐시 date=20250105 = 최근 확정 거래일(is_trading_day=True 모킹이므로 current 20250106의 -1일) → 일치 → 스킵
         mock_state.master_stocks_cache = {"005930": {"date": "20250105"}}
         mock_state.confirmed_done = False
@@ -2065,17 +2055,18 @@ class TestRetryPipelineCatchup:
 # ── 타임테이블 스케줄러 (10초 루프 대체) ──────────────────────────────────────
 
 class TestTimetableBuilder:
-    """build_timetable_from_cache 단위 테스트 — 캐시 기반 동적 빌드 (Step 2)."""
+    """build_timetable_from_cache 단위 테스트 — 캐시 기반 동적 빌드 (Step 2 + 4세션 통합)."""
 
-    def test_build_with_cache_values_returns_10_items(self):
-        """캐시에서 3개 direct 시각을 읽어 10항목 리스트 반환."""
+    def test_build_with_cache_values_returns_11_items(self):
+        """캐시에서 4개 direct 시각을 읽어 11항목 리스트 반환 (토글 ON 기본)."""
         tt = build_timetable_from_cache({
             "timetable.realtime_reset": "07:55",
             "timetable.ws_prestart": "07:56",
             "timetable.krx_pre_subscribe": "08:58",
+            "timetable.confirmed_download": "20:40",
         })
-        assert len(tt) == 10
-        # 3개 direct 항목 — 캐시 시각 반영
+        assert len(tt) == 11
+        # 4개 direct 항목 — 캐시 시각 반영
         assert tt[0]["time"] == (7, 55)
         assert tt[0]["kind"] == "direct"
         assert tt[0]["action"] is _on_realtime_fields_reset
@@ -2085,17 +2076,22 @@ class TestTimetableBuilder:
         assert tt[3]["time"] == (8, 58)
         assert tt[3]["kind"] == "direct"
         assert tt[3]["action"] is _on_krx_pre_subscribe
+        # 11번째 direct 항목 — 확정 데이터 다운로드 (4세션 통합)
+        assert tt[10]["time"] == (20, 40)
+        assert tt[10]["kind"] == "direct"
+        assert tt[10]["action"] is _on_confirmed_download
         # 7개 phase 항목 — 코드 상수 유지
         assert tt[2]["time"] == NXT_PREMARKET_START
         assert tt[4]["time"] == KRX_REGULAR_START
         assert tt[9]["time"] == NXT_AFTERMARKET_END
 
     def test_build_with_empty_cache_falls_back_to_defaults(self):
-        """캐시에 키 없으면 DEFAULT_USER_SETTINGS 기본값(07:58/07:59/08:59) 사용."""
+        """캐시에 키 없으면 DEFAULT_USER_SETTINGS 기본값(07:58/07:59/08:59/20:40) 사용."""
         tt = build_timetable_from_cache({})
         assert tt[0]["time"] == (7, 58)
         assert tt[1]["time"] == (7, 59)
         assert tt[3]["time"] == (8, 59)
+        assert tt[10]["time"] == (20, 40)  # confirmed_download 기본값
 
     def test_build_with_none_cache_value_falls_back_to_default(self):
         """캐시 값이 None/빈 문자열이면 DEFAULT_USER_SETTINGS 기본값 사용 (P20)."""
@@ -2114,10 +2110,39 @@ class TestTimetableBuilder:
             "timetable.realtime_reset": "07:55",
             "timetable.ws_prestart": "07:56",
             "timetable.krx_pre_subscribe": "08:58",
+            "timetable.confirmed_download": "20:40",
         })
         assert "07:55" in tt[0]["ctx"]
         assert "07:56" in tt[1]["ctx"]
         assert "08:58" in tt[3]["ctx"]
+        assert "20:40" in tt[10]["ctx"]
+
+    def test_build_toggle_off_skips_confirmed_download(self):
+        """scheduler_market_close_on=False 시 11번째 항목 스킵 (P16 살아있는 경로)."""
+        tt = build_timetable_from_cache({
+            "timetable.realtime_reset": "07:55",
+            "timetable.ws_prestart": "07:56",
+            "timetable.krx_pre_subscribe": "08:58",
+            "timetable.confirmed_download": "20:40",
+            "scheduler_market_close_on": False,
+        })
+        assert len(tt) == 10  # 11번째 항목 스킵
+        # 마지막 항목은 NXT 장마감 (phase) — confirmed_download direct 없음
+        assert tt[9]["kind"] == "phase"
+        # confirmed_download action을 가진 항목 없음
+        assert not any(e.get("action") is _on_confirmed_download for e in tt)
+
+    def test_build_toggle_on_includes_confirmed_download(self):
+        """scheduler_market_close_on=True 시 11번째 항목 포함 (명시적 True)."""
+        tt = build_timetable_from_cache({
+            "timetable.realtime_reset": "07:55",
+            "timetable.ws_prestart": "07:56",
+            "timetable.krx_pre_subscribe": "08:58",
+            "timetable.confirmed_download": "20:40",
+            "scheduler_market_close_on": True,
+        })
+        assert len(tt) == 11
+        assert tt[10]["action"] is _on_confirmed_download
 
     def test_parse_hm_tuple_valid(self):
         """정상 HH:MM → (h, m) 튜플."""
@@ -2147,6 +2172,7 @@ class TestTimetableScheduler:
             "timetable.realtime_reset": "07:58",
             "timetable.ws_prestart": "07:59",
             "timetable.krx_pre_subscribe": "08:59",
+            "timetable.confirmed_download": "20:40",
         })
 
     def teardown_method(self, _method):
@@ -2188,8 +2214,8 @@ class TestTimetableScheduler:
             # 15:20 - 09:30 = 5h50m = 21000초
             assert delay == 21000
 
-    def test_schedule_next_event_at_2030_reserves_next_day_0758(self):
-        """20:30 기동 시 익일 07:58 예약 (24시간 + delay)."""
+    def test_schedule_next_event_at_2030_reserves_2040(self):
+        """20:30 기동 시 20:40(확정 다운로드) 예약 — 4세션 11번째 항목 통합."""
         mock_state = MagicMock()
         mock_state.timetable_timer_handle = None
         mock_loop = MagicMock()
@@ -2200,8 +2226,23 @@ class TestTimetableScheduler:
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
             _schedule_next_timetable_event()
             delay = mock_loop.call_later.call_args.args[0]
-            # 20:30 → 익일 07:58 = 24h - (20:30 - 07:58) = 24h - 12h32m = 11h28m = 41280초
-            assert delay == 41280
+            # 20:40 - 20:30 = 600초
+            assert delay == 600
+
+    def test_schedule_next_event_at_2045_reserves_next_day_0758(self):
+        """20:45 기동 시 익일 07:58 예약 (24시간 + delay) — 20:40 이후."""
+        mock_state = MagicMock()
+        mock_state.timetable_timer_handle = None
+        mock_loop = MagicMock()
+        mock_loop.call_later.return_value = MagicMock()
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("asyncio.get_running_loop", return_value=mock_loop), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 45)), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
+            _schedule_next_timetable_event()
+            delay = mock_loop.call_later.call_args.args[0]
+            # 20:45 → 익일 07:58 = 24h - (20:45 - 07:58) = 24h - 12h47m = 11h13m = 40380초
+            assert delay == 40380
 
     @pytest.mark.asyncio
     async def test_direct_event_fires_action_and_reschedules(self):
@@ -2231,7 +2272,7 @@ class TestTimetableScheduler:
     async def test_direct_event_idempotency_guard_no_op(self):
         """같은 날 direct 이벤트 중복 실행 시 _on_realtime_fields_reset 내 가드로 no-op."""
         mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.last_realtime_reset_date = "20250106"  # 이미 오늘 실행됨
         # _TIMETABLE 의 07:58 direct 항목 — 실제 _on_realtime_fields_reset 사용
         entry = next(e for e in _TIMETABLE if e["ctx"].startswith("실시간 필드 초기화"))
@@ -2298,7 +2339,6 @@ class TestTimetableScheduler:
         timetable_handle = MagicMock()
         mock_state = MagicMock()
         mock_state.auto_trade_timer_handles = []
-        mock_state.ws_subscribe_timer_handles = []
         mock_state.midnight_timer_handle = None
         mock_state.timetable_timer_handle = timetable_handle
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):

@@ -106,7 +106,6 @@ class EngineState:
         self.last_reset_date: str = ""
         self.krx_remove_done: bool = False
         self.confirmed_done: bool = False
-        self.ws_subscribe_timer_handles: list = []
         self.ws_subscribe_window_active: bool | None = None
         self.auto_trade_timer_handles: list = []
         self.midnight_timer_handle: asyncio.TimerHandle | None = None
@@ -116,6 +115,7 @@ class EngineState:
         self.last_realtime_reset_date: str = ""        # 실시간 필드 초기화 실행 날짜 (YYYYMMDD)
         self.last_ws_subscribe_start_date: str = ""    # WS 구독 시작 실행 날짜 (YYYYMMDD)
         self.last_krx_pre_subscribe_date: str = ""     # KRX 사전 구독 실행 날짜 (YYYYMMDD)
+        self.last_confirmed_download_date: str = ""    # 확정 데이터 다운로드 실행 날짜 (YYYYMMDD)
 
     async def on_filter_settings_changed(self) -> None:
         """필터 설정 변경 시 처리 (engine_sector 모듈 위임)."""

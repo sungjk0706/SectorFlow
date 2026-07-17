@@ -522,6 +522,74 @@ class TestApplySettingsChangeTimetableRebuild:
         assert _dts_mod._TIMETABLE == dummy_built
 
     @pytest.mark.asyncio
+    async def test_confirmed_download_triggers_rebuild(self):
+        """timetable.confirmed_download 변경 → 재빌드 + 재예약 호출 (4세션 통합)."""
+        from backend.app.services.engine_service import apply_settings_change
+        from backend.app.services import daily_time_scheduler as _dts_mod
+
+        dummy_built = [{"time": (20, 40), "kind": "direct", "ctx": "test"}]
+        with (
+            patch(
+                "backend.app.services.engine_service.refresh_engine_integrated_system_settings_cache",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_header_refresh",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_settings_toggled",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.daily_time_scheduler.build_timetable_from_cache",
+                return_value=dummy_built,
+            ) as mock_build,
+            patch(
+                "backend.app.services.daily_time_scheduler._schedule_next_timetable_event",
+            ) as mock_sched,
+        ):
+            await apply_settings_change({"timetable.confirmed_download"})
+
+        mock_build.assert_called_once()
+        mock_sched.assert_called_once()
+        assert _dts_mod._TIMETABLE == dummy_built
+
+    @pytest.mark.asyncio
+    async def test_scheduler_market_close_on_triggers_rebuild(self):
+        """scheduler_market_close_on 토글 변경 → 재빌드 + 재예약 호출 (4세션 — 11번째 항목 스킵/추가)."""
+        from backend.app.services.engine_service import apply_settings_change
+        from backend.app.services import daily_time_scheduler as _dts_mod
+
+        dummy_built = [{"time": (7, 58), "kind": "direct", "ctx": "test"}]
+        with (
+            patch(
+                "backend.app.services.engine_service.refresh_engine_integrated_system_settings_cache",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_header_refresh",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.engine_account_notify.notify_desktop_settings_toggled",
+                AsyncMock(),
+            ),
+            patch(
+                "backend.app.services.daily_time_scheduler.build_timetable_from_cache",
+                return_value=dummy_built,
+            ) as mock_build,
+            patch(
+                "backend.app.services.daily_time_scheduler._schedule_next_timetable_event",
+            ) as mock_sched,
+        ):
+            await apply_settings_change({"scheduler_market_close_on"})
+
+        mock_build.assert_called_once()
+        mock_sched.assert_called_once()
+        assert _dts_mod._TIMETABLE == dummy_built
+
+    @pytest.mark.asyncio
     async def test_non_timetable_key_no_rebuild(self):
         """관련 없는 키 변경 → 재빌드/재예약 미호출."""
         from backend.app.services.engine_service import apply_settings_change
