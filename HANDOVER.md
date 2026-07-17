@@ -1,10 +1,10 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-17 (시장가 주문 중단 시간대 게이트 3세션 — Step 1 차단 판별 함수 + ±5초 버퍼 + Step 4 설정 키)
-- 작업: 시장가 주문 중단 시간대 게이트 3세션 완료. (1) `daily_time_scheduler.py`에 `is_order_blocked_by_time(stk_cd)` 신규 함수 + `ORDER_TIME_BUFFER_SEC=5` 상수 + `_ORDER_TIME_BOUNDARIES_SEC` frozenset(5개 경계: 08:00/09:00/15:20/15:40/20:00, 09:00:30 제외) 추가 — 기존 `is_nxt_only_window()` 패턴 재사용, KRX 비활성+NXT 활성 시 `is_nxt_enabled(stk_cd)` 종목 분기, ±5초 버퍼는 경계 근처 무조건 차단(양방향 안전 측, P24). (2) `settings_defaults.py`에 `order_time_guard_on: True` 설정 키 추가(P13/P17). (3) `test_daily_time_scheduler.py`에 `TestIsOrderBlockedByTime` 클래스 20개 테스트 추가 — 시간대별 6구간 + 빈 문자열(P20) + ±5초 버퍼 경계 8건 + 상수값 검증. 검증: 단위 테스트 203개 전부 통과(신규 20 + 기존 183) + test_buy_order_executor 33개 통과(회귀 없음) + 런타임 기동(`-W error::RuntimeWarning`) 202ms 정상 기동 + 에러/Traceback/RuntimeWarning 0건 + 잔존 프로세스 0건.
-- 상태: 3세션 완료. 커밋 완료. 다음 세션: 시장가 주문 중단 시간대 게이트 4세션(Step 2 execute_buy 게이트 + Step 3 execute_sell 게이트 + Step 5 헬퍼 `_is_order_time_blocked`) 승인 대기.
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + P10/P13/P15/P16/P17/P20/P21/P22/P23/P24 + problem-solve 스킬 + backend-fix 스킬
+- 날짜: 2026-07-17 (시장가 주문 중단 시간대 게이트 4세션 — Step 2 execute_buy 게이트 + Step 3 execute_sell 게이트 + Step 5 헬퍼)
+- 작업: 시장가 주문 중단 시간대 게이트 4세션 완료. (1) `trading.py`에 `_is_order_time_blocked(stk_cd, raw_settings)` 헬퍼 메서드 추가 — 토글(`order_time_guard_on`) 조회 후 `is_order_blocked_by_time(stk_cd)` 호출, raw engine_settings 전달(2-1 해결안 — `_to_trade_settings` 출력이 아님, P17). (2) `execute_buy()` 내부 자동매매 게이트(L134) 직후·재매수 차단 전에 시간 게이트 배선 — `raw_all` 전달, 차단 시 `return False`(P15 단일 경로, P16 살아있는 경로). (3) `execute_sell()` 내부 `is_sell_auto` 체크 직후·`order_type` 선언 전에 시간 게이트 배선 — `base_settings` 전달, 차단 시 `return`(매도 동일 적용). 검증: py_compile + ruff 통과 + 단위 테스트 236개 전부 통과(test_daily_time_scheduler 203 + test_buy_order_executor 33, 회귀 없음) + 런타임 기동(`-W error::RuntimeWarning`) 102ms 정상 기동 + 에러/Traceback/RuntimeWarning 0건 + 잔존 프로세스 0건.
+- 상태: 4세션 완료. 커밋 완료. 다음 세션: 시장가 주문 중단 시간대 게이트 5세션(Step 7 WS 이벤트 `order_time_blocked` 브로드캐스트 + Step 8 바인딩 `binding.ts` + `uiStore.ts`) 승인 대기.
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 UI 기준 설명) + P10/P13/P15/P16/P17/P20/P21/P22/P23/P24 + safe-trade 스킬 + backend-fix 스킬
 
 ## 다음 세션 진행 대기: 시장가 주문 중단 시간대 게이트 (다단계 작업)
 
@@ -17,6 +17,16 @@
 - **3세션 (완료)**: Step 1 (차단 판별 함수 + ±5초 버퍼) + Step 4 (설정 키).
   - **변경 파일**: `daily_time_scheduler.py` (신규 함수 `is_order_blocked_by_time()` + `ORDER_TIME_BUFFER_SEC`/`_ORDER_TIME_BOUNDARIES_SEC` 상수) + `settings_defaults.py` (`order_time_guard_on: True`) + `test_daily_time_scheduler.py` (`TestIsOrderBlockedByTime` 20개 테스트)
   - **검증**: 단위 테스트 203개 통과 + test_buy_order_executor 33개 통과 + 런타임 기동 정상 (RuntimeWarning 0건)
+- **4세션 (완료)**: Step 2 (execute_buy 게이트) + Step 3 (execute_sell 게이트) + Step 5 (헬퍼).
+  - **변경 파일**: `trading.py` (신규 헬퍼 `_is_order_time_blocked(stk_cd, raw_settings)` + execute_buy 게이트 배선 L135-139 + execute_sell 게이트 배선 L468-471)
+  - **사전조사 결과 (규칙 0-2 4항목)**:
+    1. **의존성**: `is_order_blocked_by_time(stk_cd)`(daily_time_scheduler.py:331, 3세션 구현) + `order_time_guard_on`(settings_defaults.py:117, 3세션) + `raw_all`(trading.py:113) + `base_settings`(trading.py:457 인자) + `data_manager`(trading.py:11 import) + `logger`(trading.py:21). `_to_trade_settings`(L716)에 `order_time_guard_on` 키 없음 확인 → raw settings 전달(2-1 해결안).
+    2. **영향범위**: 백엔드 1개 파일(trading.py) — 헬퍼 1개 + 게이트 2곳. 프론트엔드/테스트 변경 없음.
+    3. **아키텍처 원칙 부합**: P15(단일 주문 경로 — execute_buy/sell 내부) + P16(살아있는 경로 — 주문 전송 전 호출) + P17(raw settings에서 토글 조회) + P20(빈 문자열 시 에러 로그) + P23(기존 게이트 패턴 동일) + P24(헬퍼 5줄) 전부 재확인 완료.
+    4. **기존 공통 자산 확인**: `is_order_blocked_by_time()`(3세션 구현) 재사용. 새 자산 생성 없음.
+  - **2-1 해결안 반영 (핵심)**: 헬퍼 `_is_order_time_blocked(stk_cd, raw_settings)`에 raw engine_settings 전달 — execute_buy는 `raw_all`(L113), execute_sell은 `base_settings`(L457 인자). `_to_trade_settings` 출력이 아님(`order_time_guard_on` 키 누락 → 토글 OFF 무효화 방지, P17).
+  - **UI 기준 변경 내용 (규칙 0-4)**: 동시호가/장외 시간대에 자동매수 발생 시 주문 전송 중단(KRX 단독 종목만, NXT 종목은 NXT 거래 시간 허용). 동시호가 20분간 자동매도도 중단(종목 구분 없이 양쪽 차단). 토글 OFF 시 차단 없음(6세션에서 UI 토글 추가 예정). 이번 세션은 백엔드 only — 화면 변화 없음.
+  - **검증**: py_compile + ruff 통과 + 단위 테스트 236개 통과(test_daily_time_scheduler 203 + test_buy_order_executor 33, 회귀 없음) + 런타임 기동(`-W error::RuntimeWarning`) 102ms 정상 기동 + RuntimeWarning 0건 + 잔존 프로세스 0건.
   - **사전조사 결과 (규칙 0-2 4항목)**:
     1. **의존성**: `KRX_INACTIVE_PHASES`(daily_time_scheduler.py:227)·`NXT_ACTIVE_PHASES`(L233)·`is_nxt_enabled()`(engine_symbol_utils.py:11)·`_broadcast()`(engine_account_notify.py:69)·`createToggleBtn()`·`circuitBreakerOpen` 패턴 전부 재사용 확정. 외부 참조 없음.
     2. **영향범위**: 백엔드 4개 파일(daily_time_scheduler.py, settings_defaults.py, trading.py, engine_ws_dispatch.py) + 프론트엔드 4개 파일(general-settings.ts, header.ts, binding.ts, uiStore.ts) + 테스트 1개 파일(test_daily_time_scheduler.py). 기존 test_buy_order_executor.py는 변경 없음(기존 is_krx_after_hours 유지).
@@ -69,7 +79,7 @@
 - **전신 문서**: `docs/plan_order_suspension_by_time.md` (2세션에서 삭제 — 설계서에 통합됨, 규칙 11)
 
 ### 승인 대기 항목
-- **4세션 진행**: Step 2 (`execute_buy` 게이트 — `raw_all` 전달, 2-1 해결안) + Step 3 (`execute_sell` 게이트 — `base_settings` 전달) + Step 5 (`_is_order_time_blocked(stk_cd, raw_settings)` 헬퍼) — `trading.py` — 사용자 "진행" 지시 시 시작. ★2-1 해결안 필수 반영: 헬퍼에 raw engine_settings 전달 (`_to_trade_settings` 출력이 아님 — `order_time_guard_on` 키 누락).
+- **5세션 진행**: Step 7 (`order_time_blocked` WS 이벤트 브로드캐스트 — `_broadcast_market_phase()` 10초 주기에 탑승, 페이로드 `{"blocked": bool, "reason": str}`, 기존 `circuit_breaker_open` 패턴 재사용) + Step 8 (`binding.ts` 이벤트 바인딩 + `uiStore.ts` `orderTimeBlocked` 상태 추가, 기존 `circuitBreakerOpen` 패턴 재사용) — `engine_ws_dispatch.py` + `binding.ts` + `uiStore.ts` — 사용자 "진행" 지시 시 시작.
 
 ---
 
@@ -127,6 +137,14 @@
 - (없음 — 다단계 작업 전체 완료)
 
 ## 직전 완료 작업
+- **시장가 주문 중단 시간대 게이트 4세션 (다단계)**: trading.py 구현 Step 2+3+5 완료.
+  - **trading.py 수정**: (1) `_is_order_time_blocked(stk_cd, raw_settings)` 헬퍼 메서드 추가 — 토글(`order_time_guard_on`) 조회 후 `is_order_blocked_by_time(stk_cd)` 호출, raw engine_settings 전달(2-1 해결안, P17). (2) `execute_buy()` 내부 자동매매 게이트(L134) 직후·재매수 차단 전에 시간 게이트 배선 — `raw_all` 전달, 차단 시 `return False`(P15/P16). (3) `execute_sell()` 내부 `is_sell_auto` 체크 직후·`order_type` 선언 전에 시간 게이트 배선 — `base_settings` 전달, 차단 시 `return`(매도 동일 적용).
+  - **UI 기준 변경 내용** (규칙 0-4): 동시호가/장외 시간대에 자동매수 발생 시 주문 전송 중단(KRX 단독 종목만, NXT 종목은 NXT 거래 시간 허용). 동시호가 20분간 자동매도도 중단(종목 구분 없이 양쪽 차단). 토글 OFF 시 차단 없음(6세션에서 UI 토글 추가 예정). 이번 세션은 백엔드 only — 화면 변화 없음.
+  - **2-1 해결안 반영 (핵심)**: 헬퍼에 raw engine_settings 전달(`raw_all`/`base_settings`) — `_to_trade_settings` 출력이 아님(`order_time_guard_on` 키 누락 → 토글 OFF 무효화 방지, P17).
+  - **검증 결과**: py_compile + ruff 통과 + 단위 테스트 236개 통과(test_daily_time_scheduler 203 + test_buy_order_executor 33, 회귀 없음) + 런타임 기동(`-W error::RuntimeWarning`) 102ms 정상 기동 + RuntimeWarning 0건 + 잔존 프로세스 0건.
+  - **원칙 15/16/18 준수 여부 (safe-trade 스킬)**: P15(단일 주문 경로 — execute_buy/execute_sell 내부에만 게이트 배선, 분기/우회 경로 없음) ✅ + P16(살아있는 경로 — 주문 전송 전 호출, dead code 아님) ✅ + P18(테스트모드 동등성 — 테스트모드/실전모드 동일하게 게이트 동작, 모드 분기 없음) ✅.
+  - **커밋**: `feat: 시장가 주문 중단 시간대 게이트 4세션 — execute_buy/execute_sell 게이트 + 헬퍼 (Step 2+3+5)`.
+  - **작업 여력**: 충분.
 - **NXT 전용 시간대 KRX 수신률 섹션 3상태 숨김 (다단계 4세션)**: sector-settings.ts 구현 Step 2 완료.
   - **sector-settings.ts 수정**: REGULAR_PHASES 상수 추가(new Set(['정규장', '시가 동시호가', '종가 동시호가', '메인마켓']), header.ts PHASE_STYLE 동기화 주석 포함 — P10/P23) + _applyMarketPhaseActive 시그니처 확장({ is_nxt_only?, krx, nxt }) + 3상태 분기(NXT 전용/정규장/그 외) + opacity 0.3/1.0 토글 → display none/flex 토글 전환. 호출부 2곳(L231, L399)은 이미 marketPhase 전체 객체 전달 중이라 수정 불필요.
   - **UI 기준 변경 내용** (규칙 0-4):
