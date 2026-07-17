@@ -3,18 +3,17 @@
 ## 세션 개요
 - 날짜: 2026-07-18 (타임테이블 기반 스케줄러 5세션 — Step 9+10 단위 테스트 11개 케이스 + 기존 테스트 갱신/제거 + 런타임 기동 검증 완료)
 - 작업: 5세션 구현 (Step 9+10). (1) 사전조사 검증: 4세션 완료 상태 재확인 — 신규 자산 5개(_TIMETABLE L951, _schedule_next_timetable_event L965, _timetable_event_fired L1014, _check_jif_health L1048, _timetable_startup_scan L1064, _JIF_STALE_WARN_SEC L1045) 정상 존재 + 제거된 4함수 잔존 0건 + engine_state.py 필드 2개(timetable_timer_handle L113, last_jif_received_at L114) + start/stop 배선(L1460/L1480-1482) 확인. (2) Step 9-A: import 문 갱신 — 제거 5개(_market_phase_periodic_loop, _start_market_phase_periodic_task, _stop_market_phase_periodic_task, _MARKET_PHASE_PERIODIC_INTERVAL, _check_prestart_triggers) → 신규 6개(_TIMETABLE, _schedule_next_timetable_event, _timetable_event_fired, _check_jif_health, _timetable_startup_scan, _JIF_STALE_WARN_SEC). (3) Step 9-B: TestCheckPrestartTriggers 클래스 전체 제거 (-117줄, 9개 케이스) — _check_prestart_triggers() 제거됨. (4) Step 9-C: TestMarketPhasePeriodicLoop 클래스 전체 제거 (-137줄, 8개 케이스) — _market_phase_periodic_loop()/_start/_stop/_MARKET_PHASE_PERIODIC_INTERVAL 제거됨. (5) Step 9-D: TestStopDailyTimeScheduler 갱신 — _stop_market_phase_periodic_task 패치 제거 + timetable_timer_handle cancel 검증 추가. (6) Step 9-E: TestStartDailyTimeScheduler 갱신 — _start_market_phase_periodic_task 패치 → _timetable_startup_scan 패치 교체. (7) Step 9-F: TestTimetableScheduler 신규 클래스 11개 케이스 추가 (파일 끝) — test_jif_stale_warn_sec_is_120, test_schedule_next_event_at_0755/0930/2030, test_direct_event_fires_action_and_reschedules, test_phase_event_fires_broadcast_and_reschedules, test_direct_event_idempotency_guard_no_op, test_check_jif_health_recent/none/stale, test_startup_scan_at_075830, test_stop_cancels_timetable_timer. (8) 검증: py_compile + ruff 통과 + pytest 211개 전체 통과(기존 200 + 신규 11, 제거 17) + test_buy_order_executor 33개 + test_trading 31개 통과(회귀 없음) + 런타임 기동(`-W error::RuntimeWarning`) RuntimeWarning 0건 + 에러 없음 + `[기동] 타임테이블 스케줄러 시작 — 다음 이벤트 예약 완료` 로그 출력 + 기존 `[기동] 장 상태 주기 태스크 시작 (10초 간격)` 로그 미출력 + 잔존 프로세스 0건. P5/P10/P11/P13/P14/P16/P20/P21/P22/P23/P24 부합. **롤백 아님** — 2세션 승인 다단계 작업의 5번째(마지막) 단계 정상 진행.
-- 상태: 5세션 구현 완료. 타임테이블 기반 스케줄러 다단계 작업 전체 완료 (1~5세션). 커밋 완료. 다음 작업: 사용자 다음 작업 지시 대기.
-- **참조 문서**: `docs/plan_timetable_scheduler.md` (484줄) + `docs/architecture_timetable_scheduler_design.md` (526줄)
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 4-1(테스트 실패 추적) + 규칙 5(런타임 기동 검증) + P5/P10/P11/P13/P14/P16/P20/P21/P22/P23/P24
+- 상태: 5세션 구현 완료. 타임테이블 기반 스케줄러 다단계 작업 전체 완료 (1~5세션). 계획서 파일 삭제 완료 (규칙 11). 커밋 완료. 다음 작업: 사용자 다음 작업 지시 대기.
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 4-1(테스트 실패 추적) + 규칙 5(런타임 기동 검증) + 규칙 11(계획서 파일 삭제) + P5/P10/P11/P13/P14/P16/P20/P21/P22/P23/P24
 
 ## 다음 세션 진행 대기: 타임테이블 기반 스케줄러 (다단계 작업) — 전체 완료
 
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계서 작성 — 사전조사(4개 서브에이전트 병렬) + 사용자 결정 6항목 확정 + 설계서 작성.
-  - **설계서**: `docs/architecture_timetable_scheduler_design.md` (526줄)
+  - **설계서**: `docs/architecture_timetable_scheduler_design.md` (526줄, 완료 후 삭제 — 규칙 11)
   - **핵심 설계**: 10초 주기 `_market_phase_periodic_loop()` → 시간표 리스트 + 단일 `call_later` 타이머 교체. 시간표 10개 항목(07:58~20:00, direct 3개 + phase 7개). JIF 1순위 경로 유지(수신 시각 기록 1줄 추가만). 헬스체크 옵션 A(이벤트 시점 JIF 미수신 체크). 자정 타이머 별도 유지. DB 연동·call_later 3개 통합·예외 시간표는 2세션 예고.
 - **2세션 (완료)**: 심층 사전조사 + 태스크 파일 작성.
-  - **태스크 파일**: `docs/plan_timetable_scheduler.md` (484줄)
+  - **태스크 파일**: `docs/plan_timetable_scheduler.md` (484줄, 완료 후 삭제 — 규칙 11)
   - **심층 발견사항 6항목**: (2-1) engine_state.py datetime import 누락 → 3세션에서 추가 / (2-2) market_phase_periodic_task 필드 라인 89→112 정정 / (2-3) 15:30·18:00 부작용 트리거 직접 분기 없음 → 페이즈 변경 감지로 자동 처리, 문제 없음 / (2-4) _on_krx_pre_subscribe 위치 559 → _TIMETABLE 배치 871 이후 / (2-5) typing import 불필요 → list[dict] 단순화 / (2-6) _check_prestart_triggers 제거는 4세션 (3세션은 신규 추가만)
   - **세션 분할**: 3세션(Step 1~6: 신규 함수 5개 + state 필드, 기존 코드 변경 없음) / 4세션(Step 7+8: JIF 갱신 1줄 + 10초 루프 3함수 + _check_prestart_triggers 제거 + start/stop 갱신) / 5세션(Step 9+10: 단위 테스트 10개 케이스 + 기존 테스트 갱신/제거 + 런타임 기동 검증)
 - **3세션 (완료)**: Step 1~6 구현 — 신규 함수 5개 + state 필드 2개 + datetime import.
