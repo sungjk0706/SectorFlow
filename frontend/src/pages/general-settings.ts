@@ -470,6 +470,33 @@ function renderAutoTradeTab(container: HTMLElement): void {
   container.appendChild(orderTimeGuardRow)
 
   container.appendChild(createDescText('동시호가·장외 시간대에 시장가 주문 자동 중단 (KRX 단독 종목만, NXT 종목은 NXT 거래 시간에 허용)'))
+
+  // 화면 표시 섹션 — 플래시 효과 (API 설정 탭에서 이동, Step 5, 설계서 5-3)
+  container.appendChild(sectionTitle('화면 표시'))
+
+  // 실시간 현재가 플래시 효과
+  const uiFlashRow = document.createElement('div')
+  Object.assign(uiFlashRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  const uiFlashLabel = document.createElement('span')
+  Object.assign(uiFlashLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  uiFlashLabel.textContent = '실시간 현재가 플래시 효과'
+  uiFlashRow.appendChild(uiFlashLabel)
+
+  uiFlashToggle = createToggleBtn({ on: false, onClick: async () => {
+    const next = !vals.ui_price_flash_on
+    vals.ui_price_flash_on = next
+    uiFlashToggle!.setOn(next)
+    const res = await settingsMgr!.saveSection({ ui_price_flash_on: next })
+    toastResult(res)
+    if (!res.ok) {
+      vals.ui_price_flash_on = !next
+      uiFlashToggle!.setOn(!next)
+    }
+  }})
+  uiFlashRow.appendChild(uiFlashToggle.el)
+  container.appendChild(uiFlashRow)
+
+  container.appendChild(createDescText('실시간 시세 변경 시 노란색 플래시 깜빡임 효과 적용 여부'))
 }
 
 function handleMasterToggle(): void {
@@ -755,32 +782,6 @@ function renderApiSettingsTab(container: HTMLElement): void {
   container.appendChild(brokerRadioGroup.el)
 
   container.appendChild(createDescText('선택한 증권사로 시스템 전체 통신망(시세, 계좌, 주문)이 전환됩니다. 엔진이 재기동되어 실시간 연결이 잠시 끊깁니다.', { textAlign: 'center' }))
-
-  container.appendChild(sectionTitle('실시간 데이터 통신'))
-
-  // 실시간 현재가 플래시 효과
-  const uiFlashRow = document.createElement('div')
-  Object.assign(uiFlashRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const uiFlashLabel = document.createElement('span')
-  Object.assign(uiFlashLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  uiFlashLabel.textContent = '실시간 현재가 플래시 효과'
-  uiFlashRow.appendChild(uiFlashLabel)
-
-  uiFlashToggle = createToggleBtn({ on: false, onClick: async () => {
-    const next = !vals.ui_price_flash_on
-    vals.ui_price_flash_on = next
-    uiFlashToggle!.setOn(next)
-    const res = await settingsMgr!.saveSection({ ui_price_flash_on: next })
-    toastResult(res)
-    if (!res.ok) {
-      vals.ui_price_flash_on = !next
-      uiFlashToggle!.setOn(!next)
-    }
-  }})
-  uiFlashRow.appendChild(uiFlashToggle.el)
-  container.appendChild(uiFlashRow)
-
-  container.appendChild(createDescText('실시간 시세 변경 시 노란색 플래시 깜빡임 효과 적용 여부'))
 
   // Step 2B: API 키 보관용 탭 (키움 API / LS API)
   const apiTabBar = document.createElement('div')
