@@ -1,13 +1,13 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-18 (DB 테이블 스케줄러 6세션 — 프론트엔드 Step 4: 입력칸 3개 + 거래소 고정 시간 참고 표시 완료)
-- 작업: DB 테이블 스케줄러 다단계 작업의 6세션(프론트엔드 Step 4 구현). 사용자 명시적 실행 지시어("6세션 진행해")로 승인 후 착수. (1) 사전조사(규칙 0-2): `general-settings.ts` 라인 288(`createDescText('동시호가·장외 시간대...')`) 다음, 닫는 `}` (289) 이전 — 태스크 파일 0-5절과 일치. 의존성 `createTimeSlot`/`parseHM`/`updateTimeSlotDisplay`/`sectionTitle`/`createDescText`/`toastResult`/`settingsMgr.saveSection` 모두 기존 import/전역 변수로 사용 가능. `AppSettings` 타입이 `[key: string]: unknown` 인덱스 시그니처 포함 → `timetable.*` 키 3개 별도 타입 선언 불필요. 기존 `confirmed_download_time` 행(588-616)이 동일 패턴 — 재사용 확정. (2) `general-settings.ts` 3개 변경: (a) 모듈 상태 변수 9개 추가 (3개 슬롯 참조 + 6개 H/M 값 + savingTimetable 플래그) — 기존 `confirmedDl*` 패턴과 동일. (b) `scheduleTimetableSave(key, newVal)` 함수 추가 — 기존 `scheduleConfirmedDlSave` 패턴 재사용, 변경된 키만 전송 (P10 SSOT, P24 단순성), 422 응답 시 `toastResult`가 에러 토스트 표시 (P21). (c) `renderAutoTradeTab()` 맨 아래에 "장 시작 전 사전 준비 시간" 카드 삽입 — `sectionTitle` + `createDescText` + 입력칸 3개 행(`createTimeSlot` 인스턴스 3개, 기존 행 패턴 동일) + 거래소 고정 시간 7개 참고 박스 (읽기 전용, 변경 불가, P21 투명성). (d) `syncFromSettings()`에 3개 키 동기화 추가 — `parseHM` + `updateTimeSlotDisplay`로 슬롯 표시 갱신. (3) 검증: typecheck 통과 (tsc --noEmit) + build 통과 (tsc -b + vite build, general-settings 청크 새 해시 C0gdq2_y.js) + 개발 서버 HTTP 200 응답 정상. P10(SSOT)/P21(사용자 투명성)/P23(공통 자산 재사용·용어 통일)/P24(단순성) 부합. 신규 컴포넌트 생성 없음 — `createTimeSlot` 3개 인스턴스 + 기존 `sectionTitle`/`createDescText` 재사용. 거래소 고정 7개 시간은 백엔드 코드 상수 유지, UI 참고 표시만.
-- 상태: 6세션(프론트엔드 Step 4) 완료. 커밋 완료. 다음 작업: 7세션(프론트엔드 Step 5: 검증 에러 표시 + 저장 플로우 연결 + 테스트 갱신) 승인 대기.
+- 날짜: 2026-07-18 (DB 테이블 스케줄러 7세션 — 프론트엔드 Step 5: 422 검증 에러 메시지 정교화 + 테스트 갱신 완료 — 다단계 작업 전체 완료)
+- 작업: DB 테이블 스케줄러 다단계 작업의 7세션(프론트엔드 Step 5 구현, 마지막 단계). 사용자 명시적 실행 지시어("7세션 진행해 주세요")로 승인 후 착수. (1) 사전조사(규칙 0-2): 422 에러 메시지 전파 경로 추적 — `frontend/src/api/client.ts:32`의 `request<T>`가 `!res.ok`일 때 `throw new Error(`API error: ${res.status}`)`만 던져서 백엔드 422 응답 본문의 `detail` 필드(실제 검증 에러 메시지)를 버림. `settings.ts:79-82`의 `saveSection`이 catch에서 `e.message`를 `SaveResult.error`로 전달 → 사용자가 "API error: 422" 토스트만 보고 뭘 고쳐야 할지 모름 (P21 위반). 백엔드 `routes/settings.py:84-85`는 이미 `{"detail": "유효하지 않은 설정값: 타임테이블 시간 순서 오류: ..."}`로 UI 친화적 일반 용어 사용. `request<T>`는 모든 API 호출의 공통 경로 → 여기서 처리 시 special case 없이 모든 호출자 동일 혜택 (P23 일관성). (2) `api/client.ts` 1개 변경: `request<T>`의 `!res.ok` 분기에서 응답 본문 JSON 파싱 시도 → `detail` 필드(string, 비어있지 않음) 있으면 Error 메시지에 포함. 파싱 실패/`detail` 없으면 기존 status 코드 메시지 유지 (에러 경로 처리이므로 P20 폴백 금지 대상 아님). `general-settings.ts` 주석 1줄 갱신 (422 → detail 추출 → toastResult 검증 에러 메시지 토스트, P21). (3) 테스트 갱신 2개 파일: `tests/api/client.test.ts` 신규 (5개 — 422 detail 추출 / detail 없음 / 비-JSON 본문 / 400 일관성 / 정상 응답) + `tests/settings.test.ts`에 `createSettingsManager.saveSection` 3개 추가 (422 detail 전파 / detail 없음 / 정상 저장). fetch + localStorage mock 기반. (4) 검증: typecheck 통과 (tsc --noEmit) + build 통과 (tsc -b + vite build, general-settings 청크 새 해시 Db12K4gv.js) + vitest 116개 통과 (8개 파일, 신규 8개 포함). P21(사용자 투명성)/P23(일관성·공통 자산 재사용)/P24(단순성) 부합. 신규 컴포넌트/함수 생성 없음 — `request<T>` 공통 에러 처리 확장만.
+- 상태: 7세션(프론트엔드 Step 5) 완료. 커밋 완료. **DB 테이블 스케줄러 다단계 작업 전체 완료 (7세션 전부 종료).**
 - **참조 문서**: `docs/architecture_db_timetable_design.md` (325줄, 설계서) + `docs/plan_db_timetable.md` (631줄, 태스크 파일)
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 시 UI 기준 설명) + P10/P21/P23/P24
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 시 UI 기준 설명) + P21/P23/P24
 
-## 다음 세션 진행 대기: DB 테이블 스케줄러 (다단계 작업) — 7세션 프론트엔드 Step 5 승인 대기
+## 다음 세션 진행 대기: 없음 — DB 테이블 스케줄러 다단계 작업 전체 완료
 
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계서 작성 — 사전조사 + 사용자 검토 요청 → 방식 B 채택 결정 + 설계서 작성.
@@ -30,10 +30,10 @@
   - **변경 파일 1개**: `frontend/src/pages/general-settings.ts` (모듈 상태 변수 9개 + scheduleTimetableSave 함수 + renderAutoTradeTab 카드 삽입 + syncFromSettings 동기화)
   - **검증**: typecheck 통과 + build 통과 (tsc -b + vite build, general-settings 청크 새 해시 C0gdq2_y.js) + 개발 서버 HTTP 200 응답 정상
   - **UI 변경 (규칙 0-4)**: 자동매매 탭 하단에 "장 시작 전 사전 준비 시간" 카드 추가 — 입력칸 3개(실시간 항목 초기화/구독 사전 시작/정규장 사전 구독, 기존 시간 입력칸과 동일 패턴) + 거래소 고정 시간 7개 참고 박스(읽기 전용)
-- **7세션 (승인 대기)**: 프론트엔드 Step 5 구현 — 검증 에러 표시 + 저장 플로우 연결 (422 응답 시 에러 토스트 정교화) + 테스트 갱신.
-  - **수정 파일**: `frontend/src/pages/general-settings.ts` (에러 토스트 정교화) + 테스트 파일 갱신 (백엔드 테스트 정합성 재확인)
-  - **검증**: 빌드 + 브라우저 확인 (422 시 에러 토스트)
-  - **승인 대기**: 사용자 명시적 실행 지시어("진행해", "구현해", "go" 등) 대기
+- **7세션 (완료)**: 프론트엔드 Step 5 구현 — 422 검증 에러 메시지 정교화 + 테스트 갱신.
+  - **변경 파일 3개**: `frontend/src/api/client.ts` (`request<T>` 에러 분기에서 422 응답 본문 `detail` 필드 추출 → Error 메시지에 포함, 모든 API 호출자 동일 혜택 P23) + `frontend/src/pages/general-settings.ts` (주석 1줄 갱신) + `frontend/tests/api/client.test.ts` 신규 (5개 테스트) + `frontend/tests/settings.test.ts` (saveSection 3개 테스트 추가)
+  - **검증**: typecheck 통과 + build 통과 (general-settings 청크 새 해시 Db12K4gv.js) + vitest 116개 통과 (8개 파일, 신규 8개 포함)
+  - **UI 변경 (규칙 0-4)**: 사용자가 시간 순서 위반 시(예: 정규장 사전 구독을 09:30으로 입력) 기존 "API error: 422" 대신 실제 검증 메시지("유효하지 않은 설정값: 타임테이블 시간 순서 오류: 실시간 초기화(07:58) ≤ 구독 시작(07:59) ≤ 정규장 사전 구독(09:30) < 09:00 이어야 합니다")가 토스트에 표시 → 어떤 값을 고쳐야 하는지 즉시 인지 (P21)
 
 ## 이전 다단계 작업: 타임테이블 기반 스케줄러 (다단계 작업) — 전체 완료
 

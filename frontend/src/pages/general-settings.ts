@@ -129,7 +129,8 @@ function scheduleConfirmedDlSave(): void {
 }
 
 // 타임테이블 3개 키 저장 — 변경된 키만 전송 (P10 SSOT, P24 단순성)
-// 백엔드 _validate_timetable_order()가 나머지 2개 키를 DB에서 보충해 순서 검증 (422 → toastResult 에러 토스트)
+// 백엔드 _validate_timetable_order()가 나머지 2개 키를 DB에서 보충해 순서 검증
+// 422 응답 시 api/client.ts가 detail 필드 추출 → toastResult가 검증 에러 메시지 토스트 (P21)
 function scheduleTimetableSave(key: 'timetable.realtime_reset' | 'timetable.ws_prestart' | 'timetable.krx_pre_subscribe', newVal: string): void {
   if (!settingsMgr) return
   if (savingTimetable) return
