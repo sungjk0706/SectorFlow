@@ -17,21 +17,20 @@ let unsubSettings: (() => void) | null = null
 let saveHelper: AutoSaveHelper | null = null
 let vals: Record<string, unknown> = {}
 
-// 토글 참조
+// 익절/손절 UI 참조
 let tpToggle: ReturnType<typeof createToggleBtn> | null = null
-let lossToggle: ReturnType<typeof createToggleBtn> | null = null
-let tsToggle: ReturnType<typeof createToggleBtn> | null = null
-
-// 입력 참조
 let tpValInput: ReturnType<typeof createNumInput> | null = null
-let lossValInput: ReturnType<typeof createNumInput> | null = null
-let tsStartValInput: ReturnType<typeof createNumInput> | null = null
-let tsDropValInput: ReturnType<typeof createNumInput> | null = null
+let tpValControls: HTMLElement | null = null
 
-// 비활성 래퍼
-let tpValRow: HTMLElement | null = null
-let lossValRow: HTMLElement | null = null
-let tsStartRow: HTMLElement | null = null
+let lossToggle: ReturnType<typeof createToggleBtn> | null = null
+let lossValInput: ReturnType<typeof createNumInput> | null = null
+let lossValControls: HTMLElement | null = null
+
+// 추적 매도 UI 참조
+let tsToggle: ReturnType<typeof createToggleBtn> | null = null
+let tsStartValInput: ReturnType<typeof createNumInput> | null = null
+let tsStartControls: HTMLElement | null = null
+let tsDropValInput: ReturnType<typeof createNumInput> | null = null
 let tsDropRow: HTMLElement | null = null
 
 // 매도 주문 간격 UI 참조
@@ -50,21 +49,21 @@ function syncFromSettings(s: AppSettings): void {
   const tpOn = !!r.tp_apply
   tpToggle?.setOn(tpOn)
   if (tpValInput && (!act || !tpValInput.el.contains(act))) tpValInput.setValue(Number(r.tp_val) || 0)
-  setDisabled(tpValRow!, !tpOn)
+  if (tpValControls) setDisabled(tpValControls, !tpOn)
 
   // 손절
   const lossOn = !!r.loss_apply
   lossToggle?.setOn(lossOn)
   if (lossValInput && (!act || !lossValInput.el.contains(act))) lossValInput.setValue(Number(r.loss_val) || 0)
-  setDisabled(lossValRow!, !lossOn)
+  if (lossValControls) setDisabled(lossValControls, !lossOn)
 
-  // 추적매도
+  // 추적 매도
   const tsOn = !!r.ts_apply
   tsToggle?.setOn(tsOn)
   if (tsStartValInput && (!act || !tsStartValInput.el.contains(act))) tsStartValInput.setValue(Number(r.ts_start_val) || 0)
   if (tsDropValInput && (!act || !tsDropValInput.el.contains(act))) tsDropValInput.setValue(Number(r.ts_drop_val) || 0)
-  setDisabled(tsStartRow!, !tsOn)
-  setDisabled(tsDropRow!, !tsOn)
+  if (tsStartControls) setDisabled(tsStartControls, !tsOn)
+  if (tsDropRow) setDisabled(tsDropRow, !tsOn)
 
   // 매도 주문 간격
   const sellIntervalOn = !!r.sell_interval_on
@@ -92,45 +91,47 @@ function mount(container: HTMLElement): void {
   // 매도 주문 유형
   root.appendChild(createSettingRow('매도 주문 유형', createFixedValue('시장가')))
 
-  // 익절
-  tpToggle = createToggleBtn({ on: false, onClick: async () => {
-    const next = !vals.tp_apply; vals.tp_apply = next; tpToggle!.setOn(next)
-    setDisabled(tpValRow!, !next)
-    await saveHelper!.saveImmediate({ tp_apply: next })
-  }})
-  root.appendChild(createSettingRow('익절', tpToggle.el))
-
+  // 익절 (토글 + 입력)
   tpValInput = createNumInput({ value: 0, onChange: v => { vals.tp_val = v; saveHelper!.autoSave('tp_val', v) }, step: 0.1, name: 'tp_val' })
-  tpValRow = createSettingRow('익절 상승률 (%)', tpValInput.el)
-  root.appendChild(tpValRow)
+  {
+    const r = createToggleLabelControlsRow({
+      labelText: '익절 (상승률 %)',
+      toggleOn: false,
+      onToggle: next => { vals.tp_apply = next; saveHelper!.saveImmediate({ tp_apply: next }) },
+      controlsChild: tpValInput.el,
+    })
+    tpToggle = r.toggle; tpValControls = r.controls
+    root.appendChild(r.el)
+  }
 
-  // 손절
-  lossToggle = createToggleBtn({ on: false, onClick: async () => {
-    const next = !vals.loss_apply; vals.loss_apply = next; lossToggle!.setOn(next)
-    setDisabled(lossValRow!, !next)
-    await saveHelper!.saveImmediate({ loss_apply: next })
-  }})
-  root.appendChild(createSettingRow('손절', lossToggle.el))
-
+  // 손절 (토글 + 입력)
   lossValInput = createNumInput({ value: 0, onChange: v => { vals.loss_val = v; saveHelper!.autoSave('loss_val', v) }, step: 0.1, name: 'loss_val' })
-  lossValRow = createSettingRow('손절 하락률 (%)', lossValInput.el)
-  root.appendChild(lossValRow)
+  {
+    const r = createToggleLabelControlsRow({
+      labelText: '손절 (하락률 %)',
+      toggleOn: false,
+      onToggle: next => { vals.loss_apply = next; saveHelper!.saveImmediate({ loss_apply: next }) },
+      controlsChild: lossValInput.el,
+    })
+    lossToggle = r.toggle; lossValControls = r.controls
+    root.appendChild(r.el)
+  }
 
-  // 추적 매도
-  tsToggle = createToggleBtn({ on: false, onClick: async () => {
-    const next = !vals.ts_apply; vals.ts_apply = next; tsToggle!.setOn(next)
-    setDisabled(tsStartRow!, !next)
-    setDisabled(tsDropRow!, !next)
-    await saveHelper!.saveImmediate({ ts_apply: next })
-  }})
-  root.appendChild(createSettingRow('고점 추적 매도(Trailing Stop)', tsToggle.el))
-
+  // 추적 매도 (토글 + 시작값 한 줄, 하락값 별도 행)
   tsStartValInput = createNumInput({ value: 0, onChange: v => { vals.ts_start_val = v; saveHelper!.autoSave('ts_start_val', v) }, step: 0.1, name: 'ts_start_val' })
-  tsStartRow = createSettingRow('추적 시작 상승률 (%)', tsStartValInput.el)
-  root.appendChild(tsStartRow)
-
   tsDropValInput = createNumInput({ value: 0, onChange: v => { vals.ts_drop_val = v; saveHelper!.autoSave('ts_drop_val', v) }, step: 0.1, name: 'ts_drop_val' })
   tsDropRow = createSettingRow('추적 고점대비 하락률 (%)', tsDropValInput.el)
+  {
+    const r = createToggleLabelControlsRow({
+      labelText: '고점 추적 매도 (시작 상승률 %)',
+      toggleOn: false,
+      onToggle: next => { vals.ts_apply = next; saveHelper!.saveImmediate({ ts_apply: next }) },
+      controlsChild: tsStartValInput.el,
+      extraDisableTargets: [tsDropRow],
+    })
+    tsToggle = r.toggle; tsStartControls = r.controls
+    root.appendChild(r.el)
+  }
   root.appendChild(tsDropRow)
 
   // ── 매도 주문 간격 섹션 ──
@@ -138,7 +139,8 @@ function mount(container: HTMLElement): void {
   {
     sellIntervalInput = createNumInput({ value: 30, onChange: v => { vals.sell_interval_sec = v; saveHelper!.autoSave('sell_interval_sec', v) }, step: 5, min: 5, max: 300, name: 'sell_interval_sec' })
     const r = createToggleLabelControlsRow({
-      labelText: '매도 주문 간격 활성화 (초, 5초 단위)',
+      labelText: '매도 주문 간격 활성화',
+      labelSubText: '(초, 5초 단위, 손절 포함)',
       toggleOn: false,
       onToggle: next => { vals.sell_interval_on = next; saveHelper!.saveImmediate({ sell_interval_on: next }) },
       controlsChild: sellIntervalInput.el,
@@ -158,10 +160,13 @@ function mount(container: HTMLElement): void {
 function unmount(): void {
   destroySettingsPage(unsubSettings, saveHelper, settingsMgr)
   unsubSettings = null; saveHelper = null; settingsMgr = null
-  tpToggle = null; lossToggle = null; tsToggle = null
-  tpValInput = null; lossValInput = null
-  tsStartValInput = null; tsDropValInput = null
-  tpValRow = null; lossValRow = null; tsStartRow = null; tsDropRow = null
+  // 익절/손절
+  tpToggle = null; tpValInput = null; tpValControls = null
+  lossToggle = null; lossValInput = null; lossValControls = null
+  // 추적 매도
+  tsToggle = null; tsStartValInput = null; tsStartControls = null
+  tsDropValInput = null; tsDropRow = null
+  // 매도 주문 간격
   sellIntervalToggle = null; sellIntervalInput = null; sellIntervalControls = null
   vals = {}
 }

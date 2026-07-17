@@ -335,21 +335,6 @@ function mount(container: HTMLElement): void {
     root.appendChild(r.el)
   }
 
-  // ── 매수 주문 간격 섹션 ──
-  root.appendChild(sectionTitle('매수 주문 간격'))
-  {
-    buyIntervalInput = createNumInput({ value: 30, onChange: v => { vals.buy_interval_sec = v; saveHelper!.autoSave('buy_interval_sec', v) }, step: 5, min: 5, max: 300, name: 'buy_interval_sec' })
-    const r = createToggleLabelControlsRow({
-      labelText: '매수 주문 간격 활성화 (초, 5초 단위)',
-      toggleOn: false,
-      onToggle: next => { vals.buy_interval_on = next; saveHelper!.saveImmediate({ buy_interval_on: next }) },
-      controlsChild: buyIntervalInput.el,
-    })
-    buyIntervalToggle = r.toggle; buyIntervalControls = r.controls
-    root.appendChild(r.el)
-  }
-  root.appendChild(createDescText('5초 단위로 설정 가능합니다 (5~300초, 기본 30초)'))
-
   // ── 동일 종목 재매수 제어 섹션 ──
   root.appendChild(sectionTitle('동일 종목 재매수 제어'))
 
@@ -390,6 +375,22 @@ function mount(container: HTMLElement): void {
     rebuyBlockToggle = r.toggle; rebuyBlockControls = r.controls
     root.appendChild(r.el)
   }
+
+  // ── 매수 주문 간격 섹션 ──
+  root.appendChild(sectionTitle('매수 주문 간격'))
+  {
+    buyIntervalInput = createNumInput({ value: 30, onChange: v => { vals.buy_interval_sec = v; saveHelper!.autoSave('buy_interval_sec', v) }, step: 5, min: 5, max: 300, name: 'buy_interval_sec' })
+    const r = createToggleLabelControlsRow({
+      labelText: '매수 주문 간격 활성화',
+      labelSubText: '(초, 5초 단위)',
+      toggleOn: false,
+      onToggle: next => { vals.buy_interval_on = next; saveHelper!.saveImmediate({ buy_interval_on: next }) },
+      controlsChild: buyIntervalInput.el,
+    })
+    buyIntervalToggle = r.toggle; buyIntervalControls = r.controls
+    root.appendChild(r.el)
+  }
+  root.appendChild(createDescText('5초 단위로 설정 가능합니다 (5~300초, 기본 30초)'))
 
   container.appendChild(root)
 
