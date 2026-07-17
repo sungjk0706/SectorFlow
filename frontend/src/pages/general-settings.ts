@@ -53,6 +53,7 @@ let autoSellToggle: ReturnType<typeof createToggleBtn> | null = null
 let sellTimeHandle: TimePairInputHandle | null = null
 let holidayBadgeEls: HTMLElement[] = []
 let uiFlashToggle: ReturnType<typeof createToggleBtn> | null = null
+let orderTimeGuardToggle: ReturnType<typeof createToggleBtn> | null = null
 
 // 확정 시세 다운로드 시간 (단일 슬롯) + 자동다운로드 토글
 let confirmedDlSlot: HTMLElement | null = null
@@ -262,6 +263,29 @@ function renderAutoTradeTab(container: HTMLElement): void {
   container.appendChild(autoSellRow)
 
   container.appendChild(createDescText('거래일 설정시간 내에서만 자동 매수/매도 실행. 공휴일·주말에는 자동매매가 항상 차단됩니다'))
+
+  // 체결 불가 시간대 주문 차단 토글 (자동매도 행 아래)
+  const orderTimeGuardRow = document.createElement('div')
+  Object.assign(orderTimeGuardRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
+  const orderTimeGuardLabel = document.createElement('span')
+  Object.assign(orderTimeGuardLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  orderTimeGuardLabel.textContent = '체결 불가 시간대 주문 차단'
+  orderTimeGuardRow.appendChild(orderTimeGuardLabel)
+  orderTimeGuardToggle = createToggleBtn({ on: true, onClick: async () => {
+    const next = !vals.order_time_guard_on
+    vals.order_time_guard_on = next
+    orderTimeGuardToggle!.setOn(next)
+    const res = await settingsMgr!.saveSection({ order_time_guard_on: next })
+    toastResult(res)
+    if (!res.ok) {
+      vals.order_time_guard_on = !next
+      orderTimeGuardToggle!.setOn(!next)
+    }
+  }})
+  orderTimeGuardRow.appendChild(orderTimeGuardToggle.el)
+  container.appendChild(orderTimeGuardRow)
+
+  container.appendChild(createDescText('동시호가·장외 시간대에 시장가 주문 자동 중단 (KRX 단독 종목만, NXT 종목은 NXT 거래 시간에 허용)'))
 }
 
 function handleMasterToggle(): void {
@@ -805,6 +829,9 @@ function syncFromSettings(s: AppSettings | null): void {
 
     // 실시간 현재가 플래시 효과
     uiFlashToggle?.setOn(r.ui_price_flash_on !== false)
+
+    // 체결 불가 시간대 주문 차단
+    orderTimeGuardToggle?.setOn(r.order_time_guard_on !== false)
 
     // 자동매수
     autoBuyToggle?.setOn(!!r.auto_buy_on)
