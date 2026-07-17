@@ -132,6 +132,11 @@ class AutoTradeManager:
             stk_nm = data_manager.get_stock_name(stk_cd, access_token)
             logger.info("[매매] [자동매매 비활성화] %s(%s) 주문 생략 (출처=자동신호)", stk_nm, stk_cd)
             return False
+        # ── 체결 불가 시간대 주문 게이트 (P15 단일 경로, P16 살아있는 경로) ──
+        if self._is_order_time_blocked(stk_cd, raw_all):
+            stk_nm = data_manager.get_stock_name(stk_cd, access_token)
+            logger.info("[매매] [주문차단] %s(%s) 체결 불가 시간대 — 동시호가/장외", stk_nm, stk_cd)
+            return False
         # ── 재매수 차단 (설정 기반: ON/OFF + 차단 기간) ──────────────────────
         rebuy_block_on = bool(settings.get("rebuy_block_on", True))
         if rebuy_block_on:
@@ -460,6 +465,10 @@ class AutoTradeManager:
         """trade_settings: _to_trade_settings (is_sell_mkt 등). base_settings: engine_settings (kiwoom/telegram용)."""
         if not trade_settings.get("is_sell_auto", False):
             return
+        # ── 체결 불가 시간대 주문 게이트 — 매도 동일 적용 (P15/P16) ──
+        if self._is_order_time_blocked(stk_cd, base_settings):
+            logger.info("[매매] [주문차단] %s(%s) 체결 불가 시간대 — 매도 중단", stk_nm, stk_cd)
+            return
         # 시장가 단일 운용
         order_type = "시장가"
 
@@ -690,6 +699,19 @@ class AutoTradeManager:
                             await self.execute_sell(stk_cd, cur_price, stk_nm, "T/S 익절", sell_qty, pnl_rate, s, base_settings, access_token)
                         except Exception:
                             logger.error("[매매] T/S 익절 실행 실패", exc_info=True)
+
+    def _is_order_time_blocked(self, stk_cd: str, raw_settings: dict) -> bool:
+        """체결 불가 시간대 주문 게이트 헬퍼 (토글 + 시간 판별).
+
+        raw_settings: raw engine_settings (order_time_guard_on 포함).
+        동기 함수 — 시간 계산만 수행 (P1-P3 async 일관성 위반 아님).
+        P15(단일 주문 경로): execute_buy/execute_sell 내부에서만 호출.
+        P17(플래그 단일 소스): order_time_guard_on은 raw engine_settings에서만 조회.
+        """
+        if not raw_settings.get("order_time_guard_on", True):
+            return False  # 토글 OFF — 차단 없음
+        from backend.app.services.daily_time_scheduler import is_order_blocked_by_time
+        return is_order_blocked_by_time(stk_cd)
 
     def _to_trade_settings(self, raw: dict) -> dict:
         """engine_settings 형식을 logic_auto_trade 호환 형식으로 변환."""
