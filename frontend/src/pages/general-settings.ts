@@ -187,9 +187,61 @@ function refreshUI(): void {
 }
 
 /* ── 시간 설정 탭 ── */
-// Step 1 골조: 섹션 제목만. 시간쌍·타임테이블·1일봉·거래소 고정 시간은 Step 2~5에서 이동.
+// Step 1 골조 + Step 2 자동매수/매도 시간쌍 이동.
+// 사전 준비 시간·1일봉·거래소 고정 시간은 Step 3~5에서 이동.
+// 토글 OFF 시에도 시간 입력 활성화 유지 (설계서 2-1, P24 탭 간 의존성 최소화, P21 안내 문구로 보완).
 function renderTimeSettingsTab(container: HTMLElement): void {
   container.appendChild(sectionTitle('시간 설정'))
+
+  // 자동매수 시간쌍 (시작/종료)
+  const buyTimeRow = document.createElement('div')
+  Object.assign(buyTimeRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  const buyTimeLabel = document.createElement('span')
+  Object.assign(buyTimeLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  buyTimeLabel.textContent = '자동매수 시간'
+  buyTimeRow.appendChild(buyTimeLabel)
+  const buyStart = String(vals.buy_time_start ?? '09:00')
+  const buyEnd = String(vals.buy_time_end ?? '15:00')
+  const { el: buyTpWrap, handle: buyHandle } = createTimePairInput(buyStart, buyEnd, (s, e) => {
+    if (settingsMgr) {
+      const dirty: Record<string, unknown> = {}
+      if (s !== vals.buy_time_start) dirty.buy_time_start = s
+      if (e !== vals.buy_time_end) dirty.buy_time_end = e
+      if (Object.keys(dirty).length > 0) {
+        settingsMgr.saveSection(dirty).then(toastResult)
+        Object.assign(vals, dirty)
+      }
+    }
+  })
+  buyTimeHandle = buyHandle
+  buyTimeRow.appendChild(buyTpWrap)
+  container.appendChild(buyTimeRow)
+
+  // 자동매도 시간쌍 (시작/종료)
+  const sellTimeRow = document.createElement('div')
+  Object.assign(sellTimeRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  const sellTimeLabel = document.createElement('span')
+  Object.assign(sellTimeLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  sellTimeLabel.textContent = '자동매도 시간'
+  sellTimeRow.appendChild(sellTimeLabel)
+  const sellStart = String(vals.sell_time_start ?? '09:00')
+  const sellEnd = String(vals.sell_time_end ?? '15:00')
+  const { el: sellTpWrap, handle: sellHandle } = createTimePairInput(sellStart, sellEnd, (s, e) => {
+    if (settingsMgr) {
+      const dirty: Record<string, unknown> = {}
+      if (s !== vals.sell_time_start) dirty.sell_time_start = s
+      if (e !== vals.sell_time_end) dirty.sell_time_end = e
+      if (Object.keys(dirty).length > 0) {
+        settingsMgr.saveSection(dirty).then(toastResult)
+        Object.assign(vals, dirty)
+      }
+    }
+  })
+  sellTimeHandle = sellHandle
+  sellTimeRow.appendChild(sellTpWrap)
+  container.appendChild(sellTimeRow)
+
+  container.appendChild(createDescText('자동매수/매도가 꺼져 있어도 시간을 미리 설정할 수 있습니다. "자동매매" 탭에서 자동매수/매도를 켜면 이 시간에 맞춰 실행됩니다.'))
 }
 
 /* ── 자동매매 탭 ── */
@@ -214,7 +266,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
 
   container.appendChild(createDescText('자동매매(매수/매도) 마스터 스위치 — OFF면 모든 매매 중단'))
 
-  // 자동매수 행
+  // 자동매수 행 (토글만 — 시간쌍은 시간 설정 탭으로 이동, Step 2)
   const autoBuyRow = document.createElement('div')
   Object.assign(autoBuyRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
   const autoBuyLabel = document.createElement('span')
@@ -222,42 +274,22 @@ function renderAutoTradeTab(container: HTMLElement): void {
   autoBuyLabel.textContent = '자동매수'
   autoBuyRow.appendChild(autoBuyLabel)
   const autoBuyRight = document.createElement('span')
-  autoBuyRight.style.cssText = 'display:flex;align-items:center;gap:10px;'
-  const buyStart = String(vals.buy_time_start ?? '09:00')
-  const buyEnd = String(vals.buy_time_end ?? '15:00')
-  const { el: buyTpWrap, handle: buyHandle } = createTimePairInput(buyStart, buyEnd, (s, e) => {
-    if (settingsMgr) {
-      const dirty: Record<string, unknown> = {}
-      if (s !== vals.buy_time_start) dirty.buy_time_start = s
-      if (e !== vals.buy_time_end) dirty.buy_time_end = e
-      if (Object.keys(dirty).length > 0) {
-        settingsMgr.saveSection(dirty).then(toastResult)
-        Object.assign(vals, dirty)
-      }
-    }
-  })
-  buyTimeHandle = buyHandle
+  autoBuyRight.style.cssText = 'display:flex;align-items:center;'
   autoBuyToggle = createToggleBtn({ on: false, onClick: async () => {
     const next = !vals.auto_buy_on
     vals.auto_buy_on = next; autoBuyToggle!.setOn(next)
-    if (buyTimeHandle) buyTimeHandle.setEnabled(next)
     const res = await settingsMgr!.saveSection({ auto_buy_on: next })
     toastResult(res)
     if (!res.ok) {
       vals.auto_buy_on = !next; autoBuyToggle!.setOn(!next)
-      if (buyTimeHandle) buyTimeHandle.setEnabled(!next)
     }
   }})
-  autoBuyRight.appendChild(buyTpWrap)
-  const buyToggleWrap = document.createElement('span')
-  buyToggleWrap.style.cssText = 'display:flex;align-items:center;'
-  buyToggleWrap.appendChild(createHolidayBadge())
-  buyToggleWrap.appendChild(autoBuyToggle.el)
-  autoBuyRight.appendChild(buyToggleWrap)
+  autoBuyRight.appendChild(createHolidayBadge())
+  autoBuyRight.appendChild(autoBuyToggle.el)
   autoBuyRow.appendChild(autoBuyRight)
   container.appendChild(autoBuyRow)
 
-  // 자동매도 행
+  // 자동매도 행 (토글만 — 시간쌍은 시간 설정 탭으로 이동, Step 2)
   const autoSellRow = document.createElement('div')
   Object.assign(autoSellRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
   const autoSellLabel = document.createElement('span')
@@ -265,42 +297,22 @@ function renderAutoTradeTab(container: HTMLElement): void {
   autoSellLabel.textContent = '자동매도'
   autoSellRow.appendChild(autoSellLabel)
   const autoSellRight = document.createElement('span')
-  autoSellRight.style.cssText = 'display:flex;align-items:center;gap:10px;'
-  const sellStart = String(vals.sell_time_start ?? '09:00')
-  const sellEnd = String(vals.sell_time_end ?? '15:00')
-  const { el: sellTpWrap, handle: sellHandle } = createTimePairInput(sellStart, sellEnd, (s, e) => {
-    if (settingsMgr) {
-      const dirty: Record<string, unknown> = {}
-      if (s !== vals.sell_time_start) dirty.sell_time_start = s
-      if (e !== vals.sell_time_end) dirty.sell_time_end = e
-      if (Object.keys(dirty).length > 0) {
-        settingsMgr.saveSection(dirty).then(toastResult)
-        Object.assign(vals, dirty)
-      }
-    }
-  })
-  sellTimeHandle = sellHandle
+  autoSellRight.style.cssText = 'display:flex;align-items:center;'
   autoSellToggle = createToggleBtn({ on: false, onClick: async () => {
     const next = !vals.auto_sell_on
     vals.auto_sell_on = next; autoSellToggle!.setOn(next)
-    if (sellTimeHandle) sellTimeHandle.setEnabled(next)
     const res = await settingsMgr!.saveSection({ auto_sell_on: next })
     toastResult(res)
     if (!res.ok) {
       vals.auto_sell_on = !next; autoSellToggle!.setOn(!next)
-      if (sellTimeHandle) sellTimeHandle.setEnabled(!next)
     }
   }})
-  autoSellRight.appendChild(sellTpWrap)
-  const sellToggleWrap = document.createElement('span')
-  sellToggleWrap.style.cssText = 'display:flex;align-items:center;'
-  sellToggleWrap.appendChild(createHolidayBadge())
-  sellToggleWrap.appendChild(autoSellToggle.el)
-  autoSellRight.appendChild(sellToggleWrap)
+  autoSellRight.appendChild(createHolidayBadge())
+  autoSellRight.appendChild(autoSellToggle.el)
   autoSellRow.appendChild(autoSellRight)
   container.appendChild(autoSellRow)
 
-  container.appendChild(createDescText('거래일 설정시간 내에서만 자동 매수/매도 실행. 공휴일·주말에는 자동매매가 항상 차단됩니다'))
+  container.appendChild(createDescText('거래일 설정시간 내에서만 자동 매수/매도 실행. 공휴일·주말에는 자동매매가 항상 차단됩니다. 시간 설정은 "시간 설정" 탭에서'))
 
   // 체결 불가 시간대 주문 차단 토글 (자동매도 행 아래)
   const orderTimeGuardRow = document.createElement('div')
@@ -975,18 +987,16 @@ function syncFromSettings(s: AppSettings | null): void {
     timetableKrxH = tkh; timetableKrxM = tkm
     if (timetableKrxSlot) updateTimeSlotDisplay(timetableKrxSlot, tkh, tkm)
 
-    // 자동매수
+    // 자동매수 (시간쌍은 시간 설정 탭에서 표시, 토글 OFF 시에도 활성화 유지 — 설계서 2-1)
     autoBuyToggle?.setOn(!!r.auto_buy_on)
     if (buyTimeHandle) {
       buyTimeHandle.setValue(String(r.buy_time_start ?? '09:00'), String(r.buy_time_end ?? '15:00'))
-      buyTimeHandle.setEnabled(!!r.auto_buy_on)
     }
 
-    // 자동매도
+    // 자동매도 (시간쌍은 시간 설정 탭에서 표시, 토글 OFF 시에도 활성화 유지 — 설계서 2-1)
     autoSellToggle?.setOn(!!r.auto_sell_on)
     if (sellTimeHandle) {
       sellTimeHandle.setValue(String(r.sell_time_start ?? '09:00'), String(r.sell_time_end ?? '15:00'))
-      sellTimeHandle.setEnabled(!!r.auto_sell_on)
     }
   }
 
