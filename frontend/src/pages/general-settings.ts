@@ -17,7 +17,7 @@ import { createCardTitle } from '../components/common/card-title'
 import { createActionButton, createTabBar } from '../components/common/button'
 import type { AppSettings } from '../types'
 
-type TabId = 'auto-trade' | 'telegram' | 'account-manage' | 'api-settings'
+type TabId = 'auto-trade' | 'time-settings' | 'telegram' | 'account-manage' | 'api-settings'
 
 // 일반설정 페이지 전용 스타일 상수 (공유 FONT_SIZE와 분리)
 const GS = {
@@ -155,9 +155,10 @@ function renderTabBar(): HTMLElement {
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'auto-trade', label: '자동매매' },
+    { id: 'time-settings', label: '시간 설정' },
     { id: 'account-manage', label: '투자모드' },
-    { id: 'telegram', label: '텔레그램' },
     { id: 'api-settings', label: 'API 설정' },
+    { id: 'telegram', label: '텔레그램' },
   ]
 
   tabBarHandle = createTabBar({
@@ -183,6 +184,12 @@ function refreshUI(): void {
   }
 
   syncFromSettings(settingsMgr?.getSettings() ?? null)
+}
+
+/* ── 시간 설정 탭 ── */
+// Step 1 골조: 섹션 제목만. 시간쌍·타임테이블·1일봉·거래소 고정 시간은 Step 2~5에서 이동.
+function renderTimeSettingsTab(container: HTMLElement): void {
+  container.appendChild(sectionTitle('시간 설정'))
 }
 
 /* ── 자동매매 탭 ── */
@@ -1055,8 +1062,8 @@ function mount(container: HTMLElement): void {
   const autoTradePanel = document.createElement('div')
   renderAutoTradeTab(autoTradePanel)
 
-  const telegramPanel = document.createElement('div')
-  renderTelegramTab(telegramPanel)
+  const timeSettingsPanel = document.createElement('div')
+  renderTimeSettingsTab(timeSettingsPanel)
 
   const accountPanel = document.createElement('div')
   renderAccountTab(accountPanel)
@@ -1064,11 +1071,15 @@ function mount(container: HTMLElement): void {
   const apiPanel = document.createElement('div')
   renderApiSettingsTab(apiPanel)
 
+  const telegramPanel = document.createElement('div')
+  renderTelegramTab(telegramPanel)
+
   tabPanels = {
     'auto-trade': autoTradePanel,
-    'telegram': telegramPanel,
+    'time-settings': timeSettingsPanel,
     'account-manage': accountPanel,
     'api-settings': apiPanel,
+    'telegram': telegramPanel,
   }
 
   // DOM에 추가하고 비활성 탭은 숨김
