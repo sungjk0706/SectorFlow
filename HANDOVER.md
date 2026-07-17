@@ -1,12 +1,25 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-18 (타임테이블 기반 스케줄러 5세션 — Step 9+10 단위 테스트 11개 케이스 + 기존 테스트 갱신/제거 + 런타임 기동 검증 완료)
-- 작업: 5세션 구현 (Step 9+10). (1) 사전조사 검증: 4세션 완료 상태 재확인 — 신규 자산 5개(_TIMETABLE L951, _schedule_next_timetable_event L965, _timetable_event_fired L1014, _check_jif_health L1048, _timetable_startup_scan L1064, _JIF_STALE_WARN_SEC L1045) 정상 존재 + 제거된 4함수 잔존 0건 + engine_state.py 필드 2개(timetable_timer_handle L113, last_jif_received_at L114) + start/stop 배선(L1460/L1480-1482) 확인. (2) Step 9-A: import 문 갱신 — 제거 5개(_market_phase_periodic_loop, _start_market_phase_periodic_task, _stop_market_phase_periodic_task, _MARKET_PHASE_PERIODIC_INTERVAL, _check_prestart_triggers) → 신규 6개(_TIMETABLE, _schedule_next_timetable_event, _timetable_event_fired, _check_jif_health, _timetable_startup_scan, _JIF_STALE_WARN_SEC). (3) Step 9-B: TestCheckPrestartTriggers 클래스 전체 제거 (-117줄, 9개 케이스) — _check_prestart_triggers() 제거됨. (4) Step 9-C: TestMarketPhasePeriodicLoop 클래스 전체 제거 (-137줄, 8개 케이스) — _market_phase_periodic_loop()/_start/_stop/_MARKET_PHASE_PERIODIC_INTERVAL 제거됨. (5) Step 9-D: TestStopDailyTimeScheduler 갱신 — _stop_market_phase_periodic_task 패치 제거 + timetable_timer_handle cancel 검증 추가. (6) Step 9-E: TestStartDailyTimeScheduler 갱신 — _start_market_phase_periodic_task 패치 → _timetable_startup_scan 패치 교체. (7) Step 9-F: TestTimetableScheduler 신규 클래스 11개 케이스 추가 (파일 끝) — test_jif_stale_warn_sec_is_120, test_schedule_next_event_at_0755/0930/2030, test_direct_event_fires_action_and_reschedules, test_phase_event_fires_broadcast_and_reschedules, test_direct_event_idempotency_guard_no_op, test_check_jif_health_recent/none/stale, test_startup_scan_at_075830, test_stop_cancels_timetable_timer. (8) 검증: py_compile + ruff 통과 + pytest 211개 전체 통과(기존 200 + 신규 11, 제거 17) + test_buy_order_executor 33개 + test_trading 31개 통과(회귀 없음) + 런타임 기동(`-W error::RuntimeWarning`) RuntimeWarning 0건 + 에러 없음 + `[기동] 타임테이블 스케줄러 시작 — 다음 이벤트 예약 완료` 로그 출력 + 기존 `[기동] 장 상태 주기 태스크 시작 (10초 간격)` 로그 미출력 + 잔존 프로세스 0건. P5/P10/P11/P13/P14/P16/P20/P21/P22/P23/P24 부합. **롤백 아님** — 2세션 승인 다단계 작업의 5번째(마지막) 단계 정상 진행.
-- 상태: 5세션 구현 완료. 타임테이블 기반 스케줄러 다단계 작업 전체 완료 (1~5세션). 계획서 파일 삭제 완료 (규칙 11). 커밋 완료. 다음 작업: 사용자 다음 작업 지시 대기.
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 4-1(테스트 실패 추적) + 규칙 5(런타임 기동 검증) + 규칙 11(계획서 파일 삭제) + P5/P10/P11/P13/P14/P16/P20/P21/P22/P23/P24
+- 날짜: 2026-07-18 (DB 테이블 스케줄러 1세션 — 설계서 작성 완료)
+- 작업: DB 테이블 스케줄러 다단계 작업의 1세션(설계서 작성). (1) 사전조사: `daily_time_scheduler.py:951-962`의 `_TIMETABLE` 파이썬 리스트(10항목) + `integrated_system_settings` 테이블 스키마(`stock_tables.py:76-82`, key/value/value_type/updated_at) + `settings_store.py`/`settings_file.py`의 증분 저장 API(`save_selected_settings`/`load_selected_settings`/`apply_settings_updates`) + `engine_state.py:90`의 `integrated_system_settings_cache` + `engine_service.py:30-160`의 `apply_settings_change` 분기 패턴(`_TIME_SCHEDULE_KEYS`/`_WS_SCHEDULE_KEYS`) 조사. (2) 검토 의견 제시: 방식 A(key-value JSON 단일키)·B(key-value 평면 `timetable.*`)·C(신규 테이블) 비교 → 방식 B 추천 (P24 단순성·P23 일관성·항목 단위 저널링·UI 1:1 매핑). (3) 사용자 결정: 방식 B 채택 + 3개 키만 DB 저장(realtime_reset/ws_prestart/krx_pre_subscribe) + 거래소 고정 7개는 코드 상수 유지 + 시간 순서 검증 필수. (4) 설계서 작성: `docs/architecture_db_timetable_design.md` (325줄) — 11개 섹션(배경·확정 결정·원칙 준수·백엔드 설계 6단계·프론트엔드 설계 3단계·데이터 흐름·영향 범위·다단계 분할 6세션·위험 완화·승인 대기·참조). (5) 규칙 0-5 통지: 기존 `_TIMETABLE` 정적 리스트 → 빌더 함수 방식 변경 사전 명시 (사유·영향·대안 포함). P10/P13/P16/P20/P21/P22/P23/P24 부합. **코드 수정 없음** — 규칙 0(승인 전 수정 금지) 준수, 설계서만 작성.
+- 상태: 1세션(설계서) 완료. 커밋 완료. 다음 작업: 2세션(태스크 파일 작성) 승인 대기.
+- **참조 문서**: `docs/architecture_db_timetable_design.md` (325줄, DB 테이블 스케줄러 설계서)
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-5(사용자 설계 로직 변경 시 엄격 절차) + P10/P13/P16/P20/P21/P22/P23/P24
 
-## 다음 세션 진행 대기: 타임테이블 기반 스케줄러 (다단계 작업) — 전체 완료
+## 다음 세션 진행 대기: DB 테이블 스케줄러 (다단계 작업) — 2세션 태스크 파일 작성 승인 대기
+
+### 단계 진행 상황
+- **1세션 (완료)**: 설계서 작성 — 사전조사 + 사용자 검토 요청 → 방식 B 채택 결정 + 설계서 작성.
+  - **설계서**: `docs/architecture_db_timetable_design.md` (325줄)
+  - **핵심 설계**: 방식 B(key-value 평면 `timetable.*` 네임스페이스)로 3개 키(realtime_reset 07:58 / ws_prestart 07:59 / krx_pre_subscribe 08:59)를 `integrated_system_settings` 테이블에 저장. 거래소 고정 7개(08:00/09:00/15:20/15:30/15:40/18:00/20:00)는 코드 상수 유지. 시간 순서 검증(`realtime_reset ≤ ws_prestart ≤ krx_pre_subscribe < 09:00`) 필수. 저장 후 `_schedule_next_timetable_event()` 재호출로 타이머 재예약. `_TIMETABLE` 정적 리스트 → `build_timetable_from_cache()` 빌더 함수 방식 변경(규칙 0-5 사전 통지).
+  - **다단계 분할 (6세션)**: 1세션(설계서·완료) / 2세션(태스크 파일) / 3세션(백엔드 Step 1: 설정 키 + 검증 함수) / 4세션(백엔드 Step 2: 빌더 함수 + 기동 배선) / 5세션(백엔드 Step 3: 저장 후 재예약 배선) / 6세션(프론트엔드 Step 4-5: 입력칸 + 거래소 고정 표시 + 검증 에러) / 7세션(테스트 갱신 + 신규 테스트)
+- **2세션 (승인 대기)**: 심층 사전조사 + 태스크 파일 작성.
+  - **예상 산출물**: `docs/plan_db_timetable.md` (태스크 파일)
+  - **예상 심층 조사 항목**: (1) `settings_defaults.py`의 `DEFAULT_USER_SETTINGS` 정확한 삽입 위치 (2) `settings_store.py`의 `_TIME_FIELDS` 확장 지점 + `_validate_timetable_order()` 구현 세부 (3) `daily_time_scheduler.py`의 `_TIMETABLE` 전역 리스트 제거 범위 + `build_timetable_from_cache()` 구현 (4) 기동 시 빌드 배선 위치(`engine_bootstrap.py` vs `engine_config.py`) (5) `engine_service.py`의 `_TIMETABLE_KEYS` 분기 삽입 위치 (6) 프론트엔드 `general-settings.ts`의 입력칸 패턴 재사용 지점
+  - **승인 대기**: 사용자 명시적 실행 지시어("진행해", "구현해", "go" 등) 대기
+
+## 이전 다단계 작업: 타임테이블 기반 스케줄러 (다단계 작업) — 전체 완료
 
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계서 작성 — 사전조사(4개 서브에이전트 병렬) + 사용자 결정 6항목 확정 + 설계서 작성.
@@ -37,7 +50,7 @@
 
 ---
 
-## 이전 세션: 시장가 주문 중단 시간대 게이트 (다단계 작업) — 완료
+## 이전 다단계 작업: 시장가 주문 중단 시간대 게이트 (다단계 작업) — 완료
 
 ### 단계 진행 상황
 - **1세션 (완료)**: 설계서 작성 — 사전조사 + 사용자 결정 5항목 확정 + 설계서 작성.
