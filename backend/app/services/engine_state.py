@@ -110,7 +110,6 @@ class EngineState:
         self.ws_subscribe_window_active: bool | None = None
         self.auto_trade_timer_handles: list = []
         self.midnight_timer_handle: asyncio.TimerHandle | None = None
-        self.market_phase_periodic_task: asyncio.Task | None = None
         self.timetable_timer_handle: asyncio.TimerHandle | None = None  # 타임테이블 단일 타이머
         self.last_jif_received_at: datetime | None = None               # JIF 헬스체크용
         # ── 사전 트리거 멱등성 가드 (안 D 4단계 — 날짜 기반, P22 데이터 정합성) ──

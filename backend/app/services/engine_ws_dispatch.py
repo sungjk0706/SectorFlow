@@ -272,6 +272,10 @@ async def _handle_jif(data: dict) -> None:
     if not jangubun or not jstatus:
         return
 
+    # ── JIF 수신 시각 기록 (타임테이블 헬스체크용) ──
+    from backend.app.services.daily_time_scheduler import _kst_now
+    state.last_jif_received_at = _kst_now()
+
     # 임시 INFO 로그 — 런타임 JIF 수신 코드 검증용 (2단계). 검증 후 INFO→DEBUG 조정 예정.
     logger.info("[연결] JIF 수신: jangubun=%s, jstatus=%s", jangubun, jstatus)
 

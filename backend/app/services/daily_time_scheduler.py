@@ -838,7 +838,7 @@ async def _on_realtime_fields_reset() -> None:
 async def _on_ws_subscribe_start() -> None:
     """WS 구독 시작 — WS 구독 구간 진입 상태 전환 + 엔진 루프 통지.
 
-    07:59 사전 트리거 (주기 태스크) 또는 08:00 phase 변경 감지 (_apply_market_phase)로 호출.
+    07:59 사전 트리거 (타임테이블) 또는 08:00 phase 변경 감지 (_apply_market_phase)로 호출.
     날짜 기반 멱등성 가드: 같은 날 중복 실행 방지.
     데이터 준비(GC 비활성화 + 필드 초기화 + 게이트 리셋 + 캐시 초기화)는
     _on_realtime_fields_reset()에서 07:58에 사전 실행 (통합). 사전 실행 누락 시 보완.
@@ -1131,9 +1131,9 @@ async def schedule_ws_subscribe_timers(settings: dict | None = None) -> None:
 
     # ★ 09:00/15:30 고정 폴링 타이머 제거됨 (Task 5.1, 0J REAL 수신 여부로 자동 판단)
 
-    # ★ market-phase 전환 타이머 제거됨 (안 D 3단계) — 주기 태스크 _market_phase_periodic_loop()가
-    #   10초 간격으로 시간 기반 보완 담당 (P10 SSOT, P16 살아있는 경로, P24 단순성).
-    #   JIF가 1순위 장 상태 소스이며, 주기 태스크는 WS 끊김/JIF 미수신 시 보완 역할.
+    # ★ market-phase 전환 타이머 제거됨 — 타임테이블 스케줄러가 시간표 기반으로 장 상태 보완
+    #   (P10 SSOT, P11 폴링 금지, P16 살아있는 경로, P24 단순성).
+    #   JIF가 1순위 장 상태 소스이며, 타임테이블은 WS 끊김/JIF 미수신 시 보완 역할.
 
 
 async def _init_ws_subscribe_state() -> None:
@@ -1428,95 +1428,6 @@ def _apply_detail_to_entry(entry: dict, detail: dict, *, base_nk: str = "") -> N
             pass
 
 
-# ── 장 상태 주기 태스크 (안 D 3단계 — 시간 기반 보완) ───────────────────────────
-
-
-_MARKET_PHASE_PERIODIC_INTERVAL = 10.0  # 10초 간격 (안 D 설계)
-
-
-def _check_prestart_triggers() -> None:
-    """주기 태스크 내 사전 트리거 체크 — 07:58/07:59/08:59 시각 도달 시 사전 실행.
-
-    phase 계산(08:00)과 분리하여 부작용만 사전 실행 (P10 SSOT — phase는 실제 스케줄 유지).
-    날짜 기반 멱등성 가드로 중복 실행 방지 (P22).
-    08:59 KRX 사전 구독은 08:00~09:00 구간에서 별도 트리거 (정규장 1분 전).
-    """
-    try:
-        now = _kst_now()
-        today_str = now.strftime("%Y%m%d")
-        t = now.hour * 60 + now.minute
-        reset_t = REALTIME_FIELDS_RESET_TIME[0] * 60 + REALTIME_FIELDS_RESET_TIME[1]      # 478 (07:58)
-        prestart_t = WS_SUBSCRIBE_PRESTART_TIME[0] * 60 + WS_SUBSCRIBE_PRESTART_TIME[1]   # 479 (07:59)
-        market_t = NXT_PREMARKET_START[0] * 60 + NXT_PREMARKET_START[1]                   # 480 (08:00)
-        krx_pre_t = KRX_PRE_SUBSCRIBE_TIME[0] * 60 + KRX_PRE_SUBSCRIBE_TIME[1]            # 539 (08:59)
-        krx_open_t = KRX_REGULAR_START[0] * 60 + KRX_REGULAR_START[1]                     # 540 (09:00)
-        # 08:59 KRX 사전 구독 트리거 (08:00~09:00 구간 — phase 변경 감지와 분리)
-        if krx_pre_t <= t < krx_open_t and state.last_krx_pre_subscribe_date != today_str:
-            schedule_engine_task(_on_krx_pre_subscribe(), context="KRX 사전 구독 (08:59)")
-        # 08:00 이상이면 07:58/07:59 사전 트리거 구간 아님 — phase 변경 감지가 담당
-        if t >= market_t:
-            return
-        # 07:58 이상 — 실시간 필드 초기화 사전 트리거
-        if t >= reset_t and state.last_realtime_reset_date != today_str:
-            schedule_engine_task(_on_realtime_fields_reset(), context="실시간 필드 초기화 (사전 07:58)")
-        # 07:59 이상 — WS 구독 시작 사전 트리거
-        if t >= prestart_t and state.last_ws_subscribe_start_date != today_str:
-            schedule_engine_task(_on_ws_subscribe_start(), context="WS 구독 시작 (사전 07:59)")
-    except Exception as e:
-        logger.warning("[스케줄] 사전 트리거 체크 오류: %s", e, exc_info=True)
-
-
-async def _market_phase_periodic_loop() -> None:
-    """장 상태 시간 기반 보완 주기 태스크 (안 D — 하우스키핑 타이머).
-
-    JIF가 1순위 장 상태 소스이나, WS 끊김/JIF 미수신/네트워크 지연 시
-    시간 기반 계산이 살아있는 경로로 동작 (P16 살아있는 경로).
-    10초 간격으로 사전 트리거 체크(07:58/07:59) + _broadcast_market_phase() 호출.
-    페이즈 변경 감지는 _apply_market_phase() 내 멱등성 보장 (같은 페이즈면 부작용 미발생).
-
-    P11 (폴링 금지) 준수: 하우스키핑 타이머는 이벤트 루프 내에서 허용
-    (NexusFi Academy "Trading Automation Fundamentals" — 세션 종료/조정/헬스체크 타이머 허용).
-    JIF가 1순위 이벤트 소스이므로 본 주기 태스크는 보완 역할.
-    """
-    logger.info("[기동] 장 상태 주기 태스크 시작 (10초 간격)")
-    try:
-        while not state.engine_stop_event.is_set():
-            try:
-                _check_prestart_triggers()       # 07:58/07:59 사전 트리거 (안 D 4단계)
-                _broadcast_market_phase()
-            except Exception as e:
-                logger.warning("[스케줄] 장 상태 주기 계산 오류: %s", e, exc_info=True)
-            try:
-                await asyncio.wait_for(state.engine_stop_event.wait(), timeout=_MARKET_PHASE_PERIODIC_INTERVAL)
-            except asyncio.TimeoutError:
-                pass  # 10초 경과 → 다음 주기 실행
-    except asyncio.CancelledError:
-        logger.info("[스케줄] 장 상태 주기 태스크 취소됨")
-        raise
-
-
-def _start_market_phase_periodic_task() -> None:
-    """주기 태스크 기동 — start_daily_time_scheduler()에서 호출."""
-    if state.market_phase_periodic_task is not None:
-        return
-    state.market_phase_periodic_task = asyncio.get_running_loop().create_task(
-        _market_phase_periodic_loop()
-    )
-
-
-async def _stop_market_phase_periodic_task() -> None:
-    """주기 태스크 종료 — stop_daily_time_scheduler()에서 호출."""
-    task = state.market_phase_periodic_task
-    if task is None:
-        return
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-    state.market_phase_periodic_task = None
-
-
 # ── 스케줄러 시작/중지 ────────────────────────────────────────────────────────
 
 
@@ -1545,8 +1456,8 @@ async def start_daily_time_scheduler() -> None:
         await schedule_auto_trade_timers(settings)
         await schedule_ws_subscribe_timers(settings)
         schedule_midnight_timer()
-        # ── 장 상태 주기 태스크 기동 (안 D 3단계 — 시간 기반 보완) ──
-        _start_market_phase_periodic_task()
+        # ── 타임테이블 스케줄러 기동 (10초 루프 대체 — 시간표 기반 보완) ──
+        await _timetable_startup_scan()
         # WS 구독 상태 초기화는 engine_loop.run_engine_loop()에서 WS 연결 이전에 수행됨
         # (표준 기동 순서: 초기화 → 연결 → 구독). 여기서 중복 호출 제거 — 경쟁 조건 방지 (P22).
     except Exception as e:
@@ -1565,6 +1476,8 @@ async def stop_daily_time_scheduler() -> None:
     if state.midnight_timer_handle is not None:
         state.midnight_timer_handle.cancel()
         state.midnight_timer_handle = None
-    # ── 장 상태 주기 태스크 종료 (안 D 3단계) ──
-    await _stop_market_phase_periodic_task()
+    # ── 타임테이블 타이머 취소 (10초 루프 대체) ──
+    if state.timetable_timer_handle is not None:
+        state.timetable_timer_handle.cancel()
+        state.timetable_timer_handle = None
     logger.info("[스케줄] 중지")
