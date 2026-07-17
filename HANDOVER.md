@@ -307,9 +307,6 @@
 - `backend/app/services/daily_time_scheduler.py` — `is_nxt_only_window()` (market_phase 기반 판단)
 - `backend/logs/trading_2026-07-16.log` — 08:30~10:52 구간 로그
 
-### 계획서 경로
-- **`docs/plan_krx_nxt_receive_rate_separation.md`** — 3단계 구현 계획서 (사전조사 결과 + 단계별 파일 목록 + 검증 방법 + 사용자 승인 항목)
-
 ### 사용자 승인 완료 항목 (이전 세션)
 - **7-1 임계값 게이트 정책 (3단계)**: 옵션 C(시간대별 분기) 승인 — NXT-only 구간은 NXT 수신률만 기준, 정규장은 KRX/NXT 양쪽 모두 임계값 도달 시(AND).
 - **7-2 진행 방식**: 분리 진행 (규칙 0-1 준수) 승인.
