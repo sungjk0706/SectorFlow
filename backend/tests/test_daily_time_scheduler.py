@@ -32,6 +32,7 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     is_nxt_aftermarket_window,
     calc_timebased_market_phase,
     is_nxt_only_window,
+    _is_pre_subscribe_window,
     get_nxt_trde_tp,
     is_krx_after_hours,
     get_market_phase,
@@ -376,8 +377,54 @@ class TestIsNxtOnlyWindow:
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             assert is_nxt_only_window() is True
 
+    def test_pre_subscribe_window_nxt_only(self):
+        """07:59~08:00 사전 구간: KRX 장개시전(비활성) + NXT 장개시전(비활성) →
+        시간 기반 사전 구간 판정으로 NXT-only True (KRX 단독 종목 제외 구독)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
+            assert is_nxt_only_window() is True
+
 
 # ── get_nxt_trde_tp ───────────────────────────────────────────────────────────
+
+
+class TestIsPreSubscribeWindow:
+    """_is_pre_subscribe_window() — 07:59~08:00 사전 구독 구간 시간 기반 판정 테스트."""
+
+    def test_in_pre_subscribe_window_returns_true(self):
+        """07:59~08:00 사이 + 거래일 → True."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
+            assert _is_pre_subscribe_window() is True
+
+    def test_at_0800_returns_false(self):
+        """08:00 정각은 사전 구간 종료 (NXT_PREMARKET_START 상한 미만) → False."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장전 대기", "nxt": "프리마켓"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)):
+            assert _is_pre_subscribe_window() is False
+
+    def test_before_0759_returns_false(self):
+        """07:58은 사전 구간 시작 전 → False."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)):
+            assert _is_pre_subscribe_window() is False
+
+    def test_holiday_returns_false(self):
+        """휴장일 시간 내라도 → False (calc_timebased_market_phase가 "휴장일" 산정)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "휴장일", "nxt": "휴장일"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
+            assert _is_pre_subscribe_window() is False
+
 
 class TestGetNxtTrdeTp:
     def test_premarket_returns_P(self):
@@ -603,6 +650,26 @@ class TestIsWsSubscribeWindow:
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             with pytest.raises(RuntimeError, match="settings cache not initialized"):
                 await is_ws_subscribe_window(None)
+
+    @pytest.mark.asyncio
+    async def test_pre_subscribe_window_returns_true(self):
+        """07:59~08:00 사전 구간 — 시간 기반 판정으로 True (재시작 대응, P16)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
+            result = await is_ws_subscribe_window({"confirmed_download_time": "20:40"})
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_pre_subscribe_window_holiday_returns_false(self):
+        """휴장일 사전 구간 — 시간 내라도 휴장일 → False."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "휴장일", "nxt": "휴장일"}
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
+            result = await is_ws_subscribe_window({"confirmed_download_time": "20:40"})
+            assert result is False
 
 
 # ── is_edit_window_open ───────────────────────────────────────────────────────
@@ -935,9 +1002,16 @@ class TestOnRealtimeFieldsReset:
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
-             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
+             patch("backend.app.services.daily_time_scheduler.gc") as mock_gc, \
+             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset, \
+             patch("backend.app.pipelines.pipeline_compute.reset_sector_threshold") as mock_reset_threshold, \
+             patch("backend.app.services.engine_account_notify.notify_cache") as mock_notify_cache:
             await _on_realtime_fields_reset()
             mock_reset.assert_awaited_once()
+            mock_gc.disable.assert_called_once()
+            mock_reset_threshold.assert_called_once()
+            mock_notify_cache.prev_scores = []
+            assert mock_state.sector_summary_cache is None
             assert mock_state.last_realtime_reset_date == "20250106"
 
     @pytest.mark.asyncio
@@ -959,9 +1033,12 @@ class TestOnRealtimeFieldsReset:
         mock_state.last_realtime_reset_date = ""
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58, weekday=5)), \
+             patch("backend.app.services.daily_time_scheduler.gc") as mock_gc, \
              patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
             await _on_realtime_fields_reset()
             mock_reset.assert_not_awaited()
+            # 주말 시 GC 비활성화 미실행 (개선 — 거래일 체크 이후 GC 비활성화)
+            mock_gc.disable.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_skips_on_non_trading_day(self):
@@ -1073,16 +1150,14 @@ class TestOnWsSubscribeStartIdempotency:
         mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
         mock_state.ws_window_changed_event = MagicMock()
         mock_state.last_ws_subscribe_start_date = ""        # WS 구독 미실행
-        mock_state.last_realtime_reset_date = ""            # 필드 초기화도 미실행 → 보완 경로
+        mock_state.last_realtime_reset_date = ""            # 데이터 준비도 미실행 → 보완 경로
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
-             patch("backend.app.services.daily_time_scheduler.gc"), \
-             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset, \
-             patch("backend.app.services.engine_account_notify.notify_cache"), \
+             patch("backend.app.services.daily_time_scheduler._on_realtime_fields_reset", new_callable=AsyncMock) as mock_reset, \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
             await _on_ws_subscribe_start()
-            # 보완 경로 — 필드 초기화 실행
+            # 보완 경로 — _on_realtime_fields_reset() 호출 (GC+필드+게이트+캐시 통합)
             mock_reset.assert_awaited_once()
             assert mock_state.ws_subscribe_window_active is True
 
@@ -1092,16 +1167,14 @@ class TestOnWsSubscribeStartIdempotency:
         mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
         mock_state.ws_window_changed_event = MagicMock()
         mock_state.last_ws_subscribe_start_date = ""        # WS 구독 미실행
-        mock_state.last_realtime_reset_date = "20250106"    # 필드 초기화 이미 실행 → 보완 스킵
+        mock_state.last_realtime_reset_date = "20250106"    # 데이터 준비 이미 실행 → 보완 스킵
         with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
-             patch("backend.app.services.daily_time_scheduler.gc"), \
-             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset, \
-             patch("backend.app.services.engine_account_notify.notify_cache"), \
+             patch("backend.app.services.daily_time_scheduler._on_realtime_fields_reset", new_callable=AsyncMock) as mock_reset, \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
             await _on_ws_subscribe_start()
-            # 보완 스킵 — 필드 초기화 호출 없음
+            # 보완 스킵 — _on_realtime_fields_reset() 호출 없음
             mock_reset.assert_not_awaited()
             assert mock_state.ws_subscribe_window_active is True
 
@@ -1206,6 +1279,27 @@ class TestInitWsSubscribeState:
         with patch("backend.app.services.daily_time_scheduler.state", mock_state):
             with pytest.raises(RuntimeError, match="settings cache not initialized"):
                 await _init_ws_subscribe_state()
+
+    @pytest.mark.asyncio
+    async def test_pre_subscribe_window_init(self):
+        """사전 구간(07:59~08:00) 재시작 시 — is_ws_subscribe_window()가 시간 기반으로
+        True 반환 → in_window=True 분기가 GC 비활성화 + 캐시 초기화 수행 (07:58 로직과 동일)."""
+        mock_state = MagicMock()
+        mock_state.integrated_system_settings_cache = {"confirmed_download_time": "20:40"}
+        mock_state.preboot_cache_loaded = True
+        mock_state.ws_window_changed_event = MagicMock()
+        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True), \
+             patch("backend.app.services.daily_time_scheduler.gc") as mock_gc, \
+             patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset, \
+             patch("backend.app.services.engine_account_notify.notify_cache") as mock_notify_cache, \
+             patch("backend.app.services.daily_time_scheduler._broadcast_market_phase"):
+            await _init_ws_subscribe_state()
+            assert mock_state.ws_subscribe_window_active is True
+            mock_gc.disable.assert_called_once()
+            mock_reset.assert_awaited_once()
+            mock_notify_cache.prev_scores = []
+            assert mock_state.sector_summary_cache is None
 
 
 # ── _trigger_reg_pipeline ─────────────────────────────────────────────────────
