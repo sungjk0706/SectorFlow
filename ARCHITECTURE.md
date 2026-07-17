@@ -980,7 +980,7 @@ asyncio.call_later() 기반 — 매일 재스케줄링
 09:00  KRX 정규장 진입              — 업종 재계산 (구독은 멱등 스킵)
 15:20  _on_krx_closing_auction_start() — KRX 단독 종목 구독 해지 (종가 동시호가 진입)
 20:00  _on_ws_subscribe_end()       — WS 구독 종료 + GC 정상화 (NXT 장마감 진입 시 자동 트리거)
-20:40  _fire_unified_confirmed_fetch() — 확정 시세 + 5일봉 다운로드 (confirmed_download_time 설정, 기본값)
+20:40  _fire_unified_confirmed_fetch() — 확정 시세 + 5일봉 다운로드 (timetable.confirmed_download 설정, 기본값)
 00:00  _on_midnight()               — 일일 리셋 (거래일 판단, 타이머 재예약)
 ```
 
@@ -1038,7 +1038,6 @@ class EngineState:
     
     # 스케줄러 상태
     ws_subscribe_window_active: bool | None
-    ws_subscribe_timer_handles: list
     auto_trade_timer_handles: list
     midnight_timer_handle
     

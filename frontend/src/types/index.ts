@@ -147,7 +147,7 @@ export interface AppSettings {
   buy_time_end: string;
   sell_time_start: string;
   sell_time_end: string;
-  confirmed_download_time: string;
+  'timetable.confirmed_download': string;
   industry_auto_subscribe: boolean;
   index_auto_subscribe: boolean;
   quote_auto_subscribe: boolean;
