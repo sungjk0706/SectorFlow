@@ -18,7 +18,7 @@
   - `ARCHITECTURE.md` 12.1 타임라인 갱신 (L976-984) — 구 버전(08:00/09:00/15:30/16:01/18:00/20:00/20:40/00:00 8개) → 신 버전(07:58/07:59/08:00/08:59/09:00/15:20/20:00/20:40/00:00 9개). 07:58 `_on_realtime_fields_reset()` + 07:59 WS 구독 구간 진입 + 08:59 `_on_krx_pre_subscribe()` + 15:20 `_on_krx_closing_auction_start()` 추가. 구 15:30/16:01/18:00 제거 (동시호가 해지 15:20으로 통합).
   - `ARCHITECTURE.md` 12.3 WS 구독 구간 판정 갱신 (L998-1004) — 사전 구간(07:59~08:00) 시간 기반 판정 `_is_pre_subscribe_window()` 추가 명시. 정규 구간은 기존 NXT_ACTIVE_PHASES 판정 유지.
   - 계획서 2개 + 조사보고서 1개 삭제 (`git rm`) — `docs/architecture_subscribe_timeline_design.md`, `docs/plan_subscribe_timeline.md`, `docs/subscribe_timeline_investigation.md`. 조사보고서는 계획서에 명시되지 않았으나 사용자 승인으로 함께 삭제 (이번 작업 사이클 산출물, 구 함수명 참조 3건 포함).
-- **검증 결과**: pytest 2838 passed (회귀 없음) + npm run build 성공 (2.09s) + 런타임 기동 RuntimeWarning 0건 + /api/settings 정상 (200) + 잔존 프로세스 0건 + `backend/` 잔존 참조 0건 + `docs/` 잔존 참조 3건 (역사적 session_state 문서 — Code Removal Rules 규칙 3 예외).
+- **검증 결과**: pytest 2838 passed (회귀 없음) + npm run build 성공 (2.09s) + 런타임 기동 RuntimeWarning 0건 + /api/settings 정상 (200) + 잔존 프로세스 0건 + `backend/` 잔존 참조 0건 + `docs/` 잔존 참조 0건 (session_state 계획서 3건은 2026-07-17 규칙 11 삭제됨).
 
 ## 직전 완료 작업
 - **구독/해지 타임라인 재설계 5세션 — 통합 런타임 검증 + 문서 갱신 + 계획서 삭제**: 5세션 전체 작업의 마지막 단계.
@@ -29,7 +29,7 @@
     - `docs/architecture_subscribe_timeline_design.md` (설계서 — 1세션 산출물)
     - `docs/plan_subscribe_timeline.md` (태스크 파일 — 2세션 산출물)
     - `docs/subscribe_timeline_investigation.md` (조사보고서 — 2세션 산출물, 사용자 승인으로 추가 삭제 — 계획서에는 2개만 명시되었으나 이번 작업 사이클 산출물이므로 일관성 차원에서 함께 삭제)
-  - **검증**: pytest 2838 passed (회귀 없음) + npm run build 성공 (2.09s) + 런타임 기동 `python -W error::RuntimeWarning main.py` RuntimeWarning 0건 + /api/settings 응답 정상 (200) + 잔존 프로세스 0건 + `backend/` 잔존 참조 0건 (Code Removal Rules 규칙 3 만족) + `docs/` 잔존 참조 3건 (역사적 session_state 문서 — Code Removal Rules 규칙 3 예외).
+  - **검증**: pytest 2838 passed (회귀 없음) + npm run build 성공 (2.09s) + 런타임 기동 `python -W error::RuntimeWarning main.py` RuntimeWarning 0건 + /api/settings 응답 정상 (200) + 잔존 프로세스 0건 + `backend/` 잔존 참조 0건 (Code Removal Rules 규칙 3 만족) + `docs/` 잔존 참조 0건 (session_state 계획서 3건은 2026-07-17 규칙 11 삭제됨).
   - **P원칙**: P10(SSOT — ARCHITECTURE.md 타임라인 단일 진실 소스 갱신) · P21(사용자 투명성 — 타임라인 문서 최신화) · P23(일관성 — 구현과 문서 일치, 구 함수명 참조 정리) 준수.
   - **작업 여력**: 충분.
 - **구독/해지 타임라인 재설계 4세션 — 구현 Step 2: 08:59 KRX 사전 구독 + 15:20 KRX 해지 (Change 3, 4)**: 4개 변경안 중 Change 3, 4 구현.
@@ -52,12 +52,12 @@
   - **작업 여력**: 충분.
 - **문서 폴더 통합 — backend/docs/ → docs/ + 문서 경로 규칙 추가**: 분산된 문서를 docs/ 한 곳으로 통합 + 경로 규칙 문서화.
   - **파일 이동 2건** (`git mv` — 이력 보존):
-    - `backend/docs/architecture_session_state_design.md` → `docs/architecture_session_state_design.md`
+    - `backend/docs/architecture_session_state_design.md` → `docs/architecture_session_state_design.md` (2026-07-17 규칙 11 삭제됨 — 안 D 완료)
     - `backend/docs/log_korean_migration_plan.md` → `docs/log_korean_migration_plan.md`
   - **`backend/docs/` 빈 폴더 삭제**.
   - **경로 참조 갱신 10곳**:
     - `AGENTS.md` 2곳 (line 201, 270 — 다단계 워크플로우 설계서 경로).
-    - `docs/plan_session_state_*.md` 3곳 (line 5 — 관련 설계 문서 참조).
+    - `docs/plan_session_state_*.md` 3곳 (line 5 — 관련 설계 문서 참조, 2026-07-17 규칙 11 삭제됨 — 안 D 완료).
     - `HANDOVER.md` 5곳 (역사적 참조 경로 일관성 유지 — 삭제된 파일 포함).
   - **`AGENTS.md` 신규 섹션 추가** — "문서 저장 경로 규칙 (P10 SSOT · P23 일관성)":
     - 설계서 `docs/architecture_*_design.md` / 태스크 `docs/plan_*.md` / 조사보고서 `docs/*_investigation.md` / API 스펙 `docs/api_specs/` / 감사계획 `docs/architecture_audit_plan.md` 경로 패턴 명시.
@@ -216,41 +216,6 @@
 
 ### 차기 권장 (별도 세션)
 - **장 시간대 브라우저 카운트다운 칩 확인**: 카운트다운 대상 페이즈 진입 시점(08:50, 15:10, 19:50 등)에 백엔드+프론트엔드 기동 후 헤더 카운트다운 칩 실시간 표시 확인. 현재 시각(휴장일 새벽)은 확인 불가.
-
----
-
-## 이전 세션 진행 대기: 장 상태 관리 안 D 구현 (하이브리드 — JIF + 주기적 계산)
-
-### 단계 진행 상황
-- **1단계** (완료): JIF jstatus 코드 맵핑 사전 검증 — LS증권 API 스펙 문서 조회. 결과는 2단계 태스크 파일에 통합.
-- **2단계** (완료, 커밋 `b54edca`): JIF 핸들러 확장 (`_handle_jif()` 장 상태 전환 처리 추가) + `_apply_market_phase()` 분리 + 테스트 11개. 구현 + 검증 + 커밋 완료.
-  - **태스크 파일**: `docs/plan_session_state_jif_handler.md`
-  - **런타임 JIF 검증 대기 (장 시간대 별도 진행)**: 임시 INFO 로그(`[연결] JIF 수신: jangubun=%s, jstatus=%s`)로 장 시작 시점(08:00~09:00, 15:20~15:40, 20:00) 실제 push 코드 확인 필요. **현재 장 마감 시간이라 런타임 JIF 검증 불가 — 다음 장 시간대에 별도 진행**. 맵핑 테이블과 불일치 시 3단계 진행 전 맵 수정.
-- **3단계** (완료, 커밋 `6533a79`): 주기 태스크 추가 + 11개 타이머 제거 + 주기적 시간 계산으로 전환 + 테스트 8개 추가. 구현 + 검증 + 커밋 완료.
-  - **태스크 파일**: `docs/plan_session_state_periodic_task.md` (11개 타이머 제거 + 10초 간격 주기 태스크 + 기동/종료 연결 + 테스트 계획 + 런타임 검증 방법)
-  - **수정 범위**: 3개 파일 — `daily_time_scheduler.py` (타이머 제거 + 주기 태스크), `engine_state.py` (핸들 필드), `test_daily_time_scheduler.py` (테스트 수정 3개 + 신규 8개)
-- **4단계** (태스크 파일 작성 완료, **구현 승인 대기**): WS/NXT 시간 조정 — 07:59 WS 구독 사전 트리거 + 07:58 실시간 필드 초기화 분리 + NXT 09:00:30 초 단위 예외.
-  - **태스크 파일**: `docs/plan_session_state_phase_timing.md` (WS 07:59 사전 트리거 + 필드 초기화 07:58 분리 + NXT 09:00:30 초 단위 예외 + 멱등성 가드 + 보완 경로 + 테스트 계획 + 런타임 검증 방법)
-  - **사용자 결정 사항 4건**: WS 구독 "phase 08:00 유지 + WS만 07:59", 필드 초기화 "07:58 단독 트리거", NXT "NXT만 초 단위 예외", jstatus 52 문구 "4단계에서 제외 (별도 세션)"
-  - **수정 범위 예정**: 3개 파일 — `daily_time_scheduler.py` (상수 3개 + calc NXT 예외 + `_on_realtime_fields_reset()` 신규 + `_on_ws_subscribe_start()` 수정 + `_check_prestart_triggers()` 신규 + `_market_phase_periodic_loop()` 수정 + `_init_ws_subscribe_state()` 수정), `engine_state.py` (필드 2개), `engine_cache.py` (플래그 동기화 1줄) + `test_daily_time_scheduler.py` (기존 수정 + 신규 3 클래스)
-  - **jstatus 52 표시 문구 수정**: 본 4단계에서 제외 (사용자 결정 — 별도 세션에서 P23 용어 통일 검토 포함 진행)
-  - **4단계 사전 검토 항목 (계획서에 없음 — 구현 시 함께 검토)**:
-    1. **일반 설정 페이지 > API 설정 탭 "실시간 연결 토글" 제거 검토**: 사용자 판단 — 불필요한 토글, 제거하는 것이 깔끔함. NXT 구독은 항상 07:59에 자동으로 이루어져야 함 (수동 토글 불필요). 4단계 구현 시 `ws_subscribe_on` 설정 키 + UI 토글 제거 범위 조사 후 승인받아 진행.
-    2. **NXT 종목 구독 신청 시간 07:59 고정값 확정**: 설정에서 변경할 필요 없이 고정값 처리. 4단계 상수 `WS_SUBSCRIBE_PRESTART_TIME = (7, 59)`와 연계 — 설정 기반 가변 시각이 아닌 고정 상수로 확정.
-
-### 참조 문서
-- **설계 검토**: `docs/architecture_session_state_design.md` (4안 비교표 + 안 D 동작 원리 + 표준 검토 근거)
-- **2단계 구현 계획**: `docs/plan_session_state_jif_handler.md`
-- **3단계 구현 계획**: `docs/plan_session_state_periodic_task.md`
-- **4단계 구현 계획**: `docs/plan_session_state_phase_timing.md`
-
-### 승인 대기 항목
-- **런타임 JIF 검증**: 장 시작 시점(08:00~09:00, 15:20~15:40, 20:00)에 임시 INFO 로그로 실제 push되는 jstatus 코드 확인 → 맵핑 테이블 검증. 검증 후 INFO→DEBUG 조정.
-- **4단계 런타임 통합 검증**: 장 시간대에 JIF push + 주기 태스크 실제 동작 확인 (페이즈 전환 시 `[장상태]` 로그 + 10초 간격 동작).
-- **4단계 사전 검토 — 실시간 연결 토글 제거**: 일반 설정 페이지 > API 설정 탭의 "실시간 연결 토글" 제거 검토 (사용자 판단: 불필요, NXT 구독은 항상 07:59 자동). 4단계 구현 시 조사 후 승인.
-- **4단계 사전 검토 — NXT 구독 시간 07:59 고정**: NXT 종목 구독 신청 시간을 설정 가변이 아닌 07:59 고정값으로 확정.
-- NXT 09:00:30 수정 포함 여부 (3단계에서 제외 — 별도 검토, JIF 1순위가 보완).
-- WS 07:55/07:59 조정 포함 여부 (3단계에서 제외 — 별도 검토).
 
 ---
 
