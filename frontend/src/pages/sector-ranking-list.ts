@@ -92,11 +92,15 @@ function renderScoreBar(row: SectorScoreRow): HTMLElement {
 
   const barInner = document.createElement('div')
   const barPct = Math.min((row.final_score / currentMaxScore) * 100, 100)
-  const barColor = !row.is_cutoff_passed ? COLOR.inactiveBg : (row.rank <= currentMaxTargets ? COLOR.down : COLOR.muted)
+  // 상위 N 이내 파랑 바 — 공통 progress-bar.ts _colorGradient 패턴과 동일 (P23 시각 일관성)
+  // 회색 계열(미통과/N밖)은 그라데이션 효과 미미해 단색 유지 (P24 단순성)
+  const barBackground = row.is_cutoff_passed && row.rank <= currentMaxTargets
+    ? `linear-gradient(to right, ${COLOR.downLight}, ${COLOR.down})`
+    : !row.is_cutoff_passed ? COLOR.inactiveBg : COLOR.muted
   Object.assign(barInner.style, {
     height: '100%',
     width: `${barPct}%`,
-    background: barColor,
+    background: barBackground,
     borderRadius: '3px',
   })
   barOuter.appendChild(barInner)
