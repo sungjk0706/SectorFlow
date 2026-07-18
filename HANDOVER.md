@@ -876,25 +876,6 @@
 
 ## 다음 세션 진행 대기: 실시간 체결 불가 시간대 주문 일시 중단
 
-**문제**: NXT 장마감(20:00) 후 ~ 확정 다운로드(20:40) 전 구간에서 업종별 종목 시세 테이블과 보유종목 테이블의 실시간 필드가 0과 -로 혼용 표시됨.
-
-**근본 원인**: `load_master_stocks_table()`에서 DB NULL을 로드할 때 필드마다 변환 방식이 불일치 — `cur_price`/`change`는 `int(... or 0)` 폴백으로 0 변환, `change_rate`/`trade_amount`는 None 보존. 이로 인해 같은 "데이터 없음" 상태가 0과 None 두 값으로 분리 관리됨 (P10 SSOT 위반, P20 폴백 금지 위반, P23 일관성 위반).
-
-**수정 내용**:
-1. `backend/app/db/stock_tables.py` 348-349줄: `cur_price`/`change`의 `int(... or 0)` 폴백 제거 → `int(...) if ... is not None else None` 패턴으로 `change_rate`/`trade_amount`와 통일
-2. `backend/app/services/market_close_pipeline.py` 825-840줄: 신규 종목 초기값 `cur_price: 0, change: 0, change_rate: 0.0, trade_amount: 0` → `None` 4개 통일
-3. `backend/tests/test_stock_tables.py`: NULL 보존 테스트 추가 (`test_load_null_realtime_fields_preserved`)
-
-**검증**: 백엔드 테스트 264개 통과 + 런타임 기동 (RuntimeWarning 에러 없음, 1340종목 로드, 99ms 기동) + 잔존 프로세스 0건.
-
-**위반 원칙**: P10 (SSOT — "데이터 없음" 단일 기준 None 통일), P20 (폴백 금지 — or 0 폴백 제거), P23 (일관성 — 4개 실시간 필드 동일 패턴).
-
-**수정 후 화면 변화**: 20:00~20:40 구간에서 모든 실시간 필드가 동일하게 "-"로 표시 (현재가·대비의 "0"이 "-"로 통일). 20:40 이후 확정 데이터 채워지면 실제 값 표시.
-
----
-
-## 다음 세션 진행 대기: 실시간 체결 불가 시간대 주문 일시 중단
-
 ### 계획서 경로
 - **`docs/plan_order_suspension_by_time.md`** — 구현 계획서 (사전조사 결과 + 구현 Step 1~10 + 세션 분할 + 사용자 결정 항목)
 
