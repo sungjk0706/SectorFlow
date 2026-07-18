@@ -12,7 +12,7 @@ from backend.app.services.engine_symbol_utils import (
     get_ws_subscribe_code,
     is_nxt_enabled,
 )
-from backend.app.services.engine_state import state
+from backend.app.services import engine_state
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 
 logger = logging.getLogger(__name__)
@@ -210,14 +210,14 @@ async def _unreg_grp(grp_no: str) -> bool:
     Returns:
         True if 성공(또는 등록 항목 없음), False if 실패/시간 초과.
     """
-    ws = state.connector_manager or state.active_connector
+    ws = engine_state.state.connector_manager or engine_state.state.active_connector
     if not ws or not ws.is_connected():
         return True
 
     # grp_no=4(0B): 등록된 종목 코드를 data에 포함
     if grp_no == "4":
         from backend.app.services.engine_ws import _ws_send_remove_fire_and_forget
-        subscribed_codes = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed", False)}
+        subscribed_codes = {cd for cd, entry in engine_state.state.master_stocks_cache.items() if entry.get("_subscribed", False)}
         if subscribed_codes:
             stock_list = [get_ws_subscribe_code(cd) for cd in list(subscribed_codes)]
             _CHUNK = 100
@@ -235,8 +235,8 @@ async def _unreg_grp(grp_no: str) -> bool:
                 except Exception as e:
                     logger.warning("[구독] 구독해지 청크 %d/%d 오류: %s", ci+1, nchunks, e, exc_info=True)
             for cd in subscribed_codes:
-                if cd in state.master_stocks_cache:
-                    state.master_stocks_cache[cd].pop("_subscribed", None)
+                if cd in engine_state.state.master_stocks_cache:
+                    engine_state.state.master_stocks_cache[cd].pop("_subscribed", None)
             return True
     return True
 
@@ -251,8 +251,8 @@ async def subscribe_sector_stocks_0b(*, nxt_only: bool = False) -> None:
         nxt_only: True일 때 NXT 중복상장 종목(is_nxt_enabled=True)만 구독.
                   KRX 단독 종목은 09:00 _on_krx_market_open()에서 추가 구독.
     """
-    ws = state.connector_manager or state.active_connector
-    if not ws or not ws.is_connected() or not state.login_ok:
+    ws = engine_state.state.connector_manager or engine_state.state.active_connector
+    if not ws or not ws.is_connected() or not engine_state.state.login_ok:
         return
 
     _WS_0B_LIMIT = 200
@@ -272,7 +272,7 @@ async def subscribe_sector_stocks_0b(*, nxt_only: bool = False) -> None:
         pos_codes = [cd for cd in pos_codes if is_nxt_enabled(cd)]
 
     # ── 2) 필터 통과 종목 코드 수집 ──
-    _raw_filter = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_filtered", False)}
+    _raw_filter = {cd for cd, entry in engine_state.state.master_stocks_cache.items() if entry.get("_filtered", False)}
     filtered_codes: list[str] = list(dict.fromkeys(
         _base_stk_cd(cd) for cd in _raw_filter if cd
     ))
@@ -295,38 +295,38 @@ async def subscribe_sector_stocks_0b(*, nxt_only: bool = False) -> None:
         filtered_only = filtered_only[:allowed_filtered]
 
     # ── 4) 보유종목 별도 선행 REG ──
-    pos_targets = [cd for cd in pos_codes if not state.master_stocks_cache.get(cd, {}).get("_subscribed")]
+    pos_targets = [cd for cd in pos_codes if not engine_state.state.master_stocks_cache.get(cd, {}).get("_subscribed")]
     if pos_targets:
         for cd in pos_targets:
-            if cd in state.master_stocks_cache:
-                state.master_stocks_cache[cd]["_subscribed"] = True
+            if cd in engine_state.state.master_stocks_cache:
+                engine_state.state.master_stocks_cache[cd]["_subscribed"] = True
 
         ok = await ws.subscribe_stocks(pos_targets)
         if ok:
             logger.info("[구독] 보유종목 구독 완료 — %d종목", len(pos_targets))
         else:
             for cd in pos_targets:
-                if cd in state.master_stocks_cache:
-                    entry = state.master_stocks_cache[cd]
+                if cd in engine_state.state.master_stocks_cache:
+                    entry = engine_state.state.master_stocks_cache[cd]
                     entry.pop("_subscribed", None)
             logger.warning("[구독] 보유종목 구독 실패 — %d종목 롤백", len(pos_targets))
 
     # ── 5) 필터 통과 종목 누적 REG ──
-    filter_targets = [cd for cd in filtered_only if not state.master_stocks_cache.get(cd, {}).get("_subscribed")]
+    filter_targets = [cd for cd in filtered_only if not engine_state.state.master_stocks_cache.get(cd, {}).get("_subscribed")]
     if not filter_targets:
         return
 
     for cd in filter_targets:
-        if cd in state.master_stocks_cache:
-            state.master_stocks_cache[cd]["_subscribed"] = True
+        if cd in engine_state.state.master_stocks_cache:
+            engine_state.state.master_stocks_cache[cd]["_subscribed"] = True
 
     ok = await ws.subscribe_stocks(filter_targets)
     if ok:
         logger.info("[구독] 필터 종목 구독 완료 — %d종목", len(filter_targets))
     else:
         for cd in filter_targets:
-            if cd in state.master_stocks_cache:
-                state.master_stocks_cache[cd].pop("_subscribed", None)
+            if cd in engine_state.state.master_stocks_cache:
+                engine_state.state.master_stocks_cache[cd].pop("_subscribed", None)
         logger.warning("[구독] 필터 종목 구독 실패 — %d종목 롤백", len(filter_targets))
 
 
@@ -335,7 +335,7 @@ async def subscribe_index_realtime() -> None:
 
     커넥터의 subscribe_index() 메서드를 호출 (증권사별 내부 구현에 위임).
     """
-    ws = state.connector_manager or state.active_connector
+    ws = engine_state.state.connector_manager or engine_state.state.active_connector
     if not ws or not ws.is_connected():
         logger.warning("[구독] 업종지수 구독 생략 — 연결 없음")
         return
@@ -360,12 +360,12 @@ async def subscribe_account_realtime() -> None:
     키움: grp_no=10으로 계좌 구독 전송.
     LS증권: 소켓 연결 및 로그인 핸드셰이크 단계에서 계좌 등록(tr_type="1")을 수행하므로 여기서 생략.
     """
-    s = state.integrated_system_settings_cache
+    s = engine_state.state.integrated_system_settings_cache
     broker_nm = str(s.get("broker", "") or "").lower().strip()
     if broker_nm != "kiwoom":
         return
 
-    ws = state.connector_manager or state.active_connector
+    ws = engine_state.state.connector_manager or engine_state.state.active_connector
     if not ws or not ws.is_connected():
         return
 
@@ -378,7 +378,7 @@ async def subscribe_account_realtime() -> None:
         from backend.app.services.engine_ws import _ws_send_reg_unreg_and_wait_ack
         ok, _rc = await _ws_send_reg_unreg_and_wait_ack(payload, sender=ws)
         if ok:
-            state.ws_account_subscribed = True
+            engine_state.state.ws_account_subscribed = True
             logger.info(
                 "[계좌] 계좌 구독 완료 — 계좌 설정=%s",
                 "Y" if acnt else "N",
@@ -391,11 +391,11 @@ async def subscribe_account_realtime() -> None:
 
 async def subscribe_positions_stocks_realtime() -> None:
     """보유 종목 0B REG — 이미 구독된 종목 제외, 누적 등록."""
-    ws = state.connector_manager or state.active_connector
+    ws = engine_state.state.connector_manager or engine_state.state.active_connector
     if not ws or not ws.is_connected():
         logger.warning("[구독] 보유종목 구독 생략 — 연결 없음")
         return
-    if not state.login_ok:
+    if not engine_state.state.login_ok:
         logger.warning("[구독] 보유종목 구독 생략 — 로그인 전 (로그인 후 재시도)")
         return
 
@@ -414,21 +414,21 @@ async def subscribe_positions_stocks_realtime() -> None:
     logger.info("[구독] 보유종목 구독 대상 %d종목: %s", len(norm_list), norm_list)
 
     # 이미 구독 중인 종목 제외
-    new_0b = [cd for cd in norm_list if not state.master_stocks_cache.get(cd, {}).get("_subscribed")]
+    new_0b = [cd for cd in norm_list if not engine_state.state.master_stocks_cache.get(cd, {}).get("_subscribed")]
     if not new_0b:
         return
 
     for cd in new_0b:
-        if cd in state.master_stocks_cache:
-            state.master_stocks_cache[cd]["_subscribed"] = True
+        if cd in engine_state.state.master_stocks_cache:
+            engine_state.state.master_stocks_cache[cd]["_subscribed"] = True
 
     ok = await ws.subscribe_stocks(new_0b)
     if ok:
         logger.info("[구독] 보유종목 구독 완료 — %d종목", len(new_0b))
     else:
         for cd in new_0b:
-            if cd in state.master_stocks_cache:
-                state.master_stocks_cache[cd].pop("_subscribed", None)
+            if cd in engine_state.state.master_stocks_cache:
+                engine_state.state.master_stocks_cache[cd].pop("_subscribed", None)
         logger.warning("[구독] 보유종목 구독 실패 — %d종목 롤백", len(new_0b))
 
 
@@ -439,40 +439,40 @@ async def subscribe_positions_stocks_realtime() -> None:
 async def restore_subscriptions_after_reconnect(broker_id: str) -> None:
     """재연결 성공 후 기존 구독 종목을 복원한다.
 
-    state.master_stocks_cache의 "_subscribed" 키를 기준으로 0B REG를 재전송한다.
+    engine_state.state.master_stocks_cache의 "_subscribed" 키를 기준으로 0B REG를 재전송한다.
     지수(0J)와 계좌(00/04) 구독도 함께 복원한다.
 
     Args:
         es: engine_service 모듈 참조
         broker_id: 재연결된 증권사 ID
     """
-    if not state.login_ok:
+    if not engine_state.state.login_ok:
         return
 
-    ws = state.connector_manager or state.active_connector
+    ws = engine_state.state.connector_manager or engine_state.state.active_connector
     if not ws or not ws.is_connected():
         logger.warning("[연결] %s 구독 복원 생략 — 연결 없음", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()))
         return
 
-    subscribed = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed", False)}
+    subscribed = {cd for cd, entry in engine_state.state.master_stocks_cache.items() if entry.get("_subscribed", False)}
     if subscribed:
         # 재연결 시 서버 측 구독이 초기화됐으므로 "_subscribed" 키를 제거하고 재등록
         for cd in subscribed:
-            if cd in state.master_stocks_cache:
-                state.master_stocks_cache[cd].pop("_subscribed", None)
+            if cd in engine_state.state.master_stocks_cache:
+                engine_state.state.master_stocks_cache[cd].pop("_subscribed", None)
 
         targets_list = list(subscribed)
         for cd in targets_list:
-            if cd in state.master_stocks_cache:
-                state.master_stocks_cache[cd]["_subscribed"] = True
+            if cd in engine_state.state.master_stocks_cache:
+                engine_state.state.master_stocks_cache[cd]["_subscribed"] = True
         
         ok = await ws.subscribe_stocks(targets_list)
         if ok:
             logger.info("[연결] %s 구독 복원 완료 — %d종목", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()), len(targets_list))
         else:
             for cd in targets_list:
-                if cd in state.master_stocks_cache:
-                    state.master_stocks_cache[cd].pop("_subscribed", None)
+                if cd in engine_state.state.master_stocks_cache:
+                    engine_state.state.master_stocks_cache[cd].pop("_subscribed", None)
             logger.warning("[연결] %s 구독 복원 실패", BROKER_DISPLAY_NAMES.get(broker_id, broker_id.upper()))
 
     # 데이터(0J) 복원

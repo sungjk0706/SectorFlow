@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.app.services import engine_loop
+from backend.app.services import engine_loop, engine_state
 from backend.app.core.broker_providers import AuthProvider
 
 
@@ -191,7 +191,7 @@ class TestGetAllTokensAsync:
         router._auth_cache = {}
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop.asyncio, "gather", new_callable=AsyncMock) as mock_gather,
         ):
             await engine_loop._get_all_tokens_async(router)
@@ -211,7 +211,7 @@ class TestGetAllTokensAsync:
         router._auth_cache = {"kiwoom": auth_provider}
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
         ):
             # asyncio.gather가 실제로 실행되도록 create_task 없이 직접 호출
             await engine_loop._get_all_tokens_async(router)
@@ -231,7 +231,7 @@ class TestGetAllTokensAsync:
         router._auth_cache = {"kiwoom": auth_provider}
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "logger") as mock_logger,
         ):
             await engine_loop._get_all_tokens_async(router)
@@ -253,7 +253,7 @@ class TestGetAllTokensAsync:
         router._auth_cache = {}  # 빈 캐시
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.core.broker_registry._create_provider", return_value=new_auth_provider) as mock_cp,
         ):
             await engine_loop._get_all_tokens_async(router)
@@ -277,7 +277,7 @@ class TestGetAllTokensAsync:
         router = MagicMock()
         router._auth_cache = {"kiwoom": kiwoom_auth, "ls": ls_auth}
 
-        with patch.object(engine_loop, "state", mock_state):
+        with patch.object(engine_state, "state", mock_state):
             await engine_loop._get_all_tokens_async(router)
 
         assert mock_state.broker_tokens.get("kiwoom") == "kw_token"
@@ -295,7 +295,7 @@ class TestGetAllTokensAsync:
         router = MagicMock()
         router._auth_cache = {"kiwoom": auth_provider}
 
-        with patch.object(engine_loop, "state", mock_state):
+        with patch.object(engine_state, "state", mock_state):
             await engine_loop._get_all_tokens_async(router)
 
         assert "old_broker" not in mock_state.broker_tokens
@@ -313,7 +313,7 @@ class TestGetAllTokensAsync:
         router = MagicMock()
         router._auth_cache = {"kiwoom": auth_provider}
 
-        with patch.object(engine_loop, "state", mock_state):
+        with patch.object(engine_state, "state", mock_state):
             await engine_loop._get_all_tokens_async(router)
 
         # 빈 문자열은 수집되지 않음 — kiwoom만 토큰 발급
@@ -409,7 +409,7 @@ class TestRunEngineLoopInit:
         # rest_api 속성 없음 → hasattr False
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -444,7 +444,7 @@ class TestRunEngineLoopInit:
         mock_router = _mock_router()
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -475,7 +475,7 @@ class TestRunEngineLoopInit:
         mock_router = _mock_router()
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -507,7 +507,7 @@ class TestRunEngineLoopInit:
         mock_router = _mock_router()
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -546,7 +546,7 @@ class TestRunEngineLoopInit:
             mock_state.broker_tokens["kiwoom"] = "valid_token"
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -577,7 +577,7 @@ class TestRunEngineLoopInit:
         mock_router = _mock_router()
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -614,7 +614,7 @@ class TestRunEngineLoopInit:
         mock_router = _mock_router()
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -646,7 +646,7 @@ class TestRunEngineLoopInit:
         mock_router = _mock_router()
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -683,7 +683,7 @@ class TestRunEngineLoopInit:
         mock_router = _mock_router()
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -716,7 +716,7 @@ class TestRunEngineLoopInit:
         mock_router = _mock_router()
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -748,7 +748,7 @@ class TestRunEngineLoopInit:
         mock_router = _mock_router()
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -796,7 +796,7 @@ class TestRunEngineLoopRestApi:
             mock_state.broker_tokens["kiwoom"] = "valid_token"
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -834,7 +834,7 @@ class TestRunEngineLoopRestApi:
             mock_state.broker_tokens["kiwoom"] = "valid_token"
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -866,7 +866,7 @@ class TestRunEngineLoopRestApi:
         mock_router = _mock_router()
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -898,7 +898,7 @@ class TestRunEngineLoopRestApi:
         mock_router = _mock_router()
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -929,7 +929,7 @@ class TestRunEngineLoopRestApi:
         mock_router = _mock_router()
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -967,7 +967,7 @@ class TestRunEngineLoopAccountMasking:
         mock_router = _mock_router()
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -1001,7 +1001,7 @@ class TestRunEngineLoopAccountMasking:
         mock_router = _mock_router()
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=True),
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
@@ -1034,7 +1034,7 @@ class TestRunEngineLoopAccountMasking:
         mock_router = _mock_router()
 
         with (
-            patch.object(engine_loop, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch.object(engine_loop, "get_router", return_value=mock_router),
             patch.object(engine_loop, "is_test_mode", return_value=False),  # 실전모드
             patch.object(engine_loop, "_load_caches_preboot", new_callable=AsyncMock),
