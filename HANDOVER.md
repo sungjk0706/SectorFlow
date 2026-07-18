@@ -1,10 +1,10 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-18 (차순위 매수 시도 알고리즘 다단계 작업 구현 2세션 — buy_order_executor 루프 제어 + 차순위 시도 알고리즘 완성 · **다단계 작업 전체 완료**)
-- 작업: 차순위 매수 시도 알고리즘 다단계 작업 구현 2세션(buy_order_executor 루프 제어 + 차순위 시도 알고리즘 완성) 진행. 사용자 명시적 실행 지시어("구현 2세션 진행해")로 진행 승인. 사전조사: 1세션에서 trading.py 사유코드 체계 + 임시 호환 코드 완료 확인. 백엔드 1개 파일 수정: `backend/app/services/buy_order_executor.py`(임시 호환 코드 제거 + `_refresh_buyable_prices()` 헬퍼 추가 모듈 레벨 — 기존 `_buyable_codes` 구축 로직(120-137줄)과 통합하여 P10 SSOT 단일 진실 소스화 + 루프 제어 로직 변경 — 차순위 시도 알고리즘: 1순위 성공 후 잔액/한도 잔존 시 `continue`(차순위 시도), 1순위 종목별 차단 시 `continue`, 1순위 전체 차단 시 `break`, 잔액 0·최대 보유수·일일 한도 도달 시 `break` + BUY_REJECT_QTY_ZERO 조건부 판별(잔액 재조회로 전체/종목별 분기) + 매수 사유 문자열에 순위 추가 `reason=f"업종자동매수 업종={s.sector} 순위={bt.rank}"` (P21) + docstring 갱신 "매수 후보 순회 — 차순위 시도 알고리즘" + import 추가 `BUY_REJECT_QTY_ZERO, BUY_GLOBAL_REJECT_REASONS` + `get_risk_manager as _get_rm`). 테스트 1개 파일 수정: `backend/tests/test_buy_order_executor.py`(9곳 `return_value=True` → `(True, "")` 치환 + 3곳 `return_value=False` → `(False, BUY_REJECT_RISE_GUARD)` 치환 + `test_only_first_target_attempted` 제거(더 이상 유효하지 않은 "1순위만 시도" 검증 — 설계서 7-3 누락 발견) + `test_same_buyable_codes_different_order_skips` await_count 1→2 수정(2세션 차순위 시도로 종목별 차단 시 2회 호출) + 신규 TestMultiRankBuyAlgorithm 클래스 10개 테스트 추가). 신규 테스트 10개: second_rank_tried_after_first_success_with_remaining_cash/loop_breaks_on_cash_zero_after_first_success/loop_breaks_on_max_holding_after_first_success/loop_breaks_on_daily_limit_after_first_success/second_rank_tried_after_first_symbol_block/loop_breaks_on_global_block/qty_zero_with_cash_zero_breaks_loop/qty_zero_with_remaining_cash_continues/exception_breaks_loop/loop_breaks_after_two_successes_on_cash_zero. 정적 검증: py_compile OK + ruff check OK. pytest: test_buy_order_executor.py 42/42 통과(기존 32 + 신규 10) + test_trading.py 48/48 통과(회귀 없음). 전체 회귀: 10 failed, 2918 passed — 10개 실패는 1세션 상태(git stash)에서도 동일 실패 확인 → **본 2세션 수정 무관한 기존 실패(테스트 격리 문제)** (규칙 4-1 추적 완료). 런타임 기동: `python -W error::RuntimeWarning main.py` 기동 성공 — RuntimeWarning 0건 + 에러/Traceback 없음 + "타임테이블 빌드 완료 — 11항목" + "일일 매수 상태 로드 — 날짜=2026-07-18 누적매수=0원" 로그 확인 + 잔존 프로세스 0건. 사용자 체감 변화: "잔액이 남을 때 1순위만 사고 끝나지 않고 2순위·3순위로 잔액을 더 쓴다" + 1순위가 종목별 사유(등락률·재매수 등)로 차단되면 차순위 시도. 단, 전체 차단 사유(자동매매 OFF·잔액 0·최대 보유수·일일 한도·서킷브레이커 등)면 차순위 시도 없이 종료. **차순위 매수 시도 알고리즘 다단계 작업 전체 완료 (설계→구현 1세션→구현 2세션).**
-- 상태: 구현 2세션(buy_order_executor 루프 제어 + 차순위 시도 알고리즘 완성) 완료. **차순위 매수 시도 알고리즘 다단계 작업 전체 완료.** 다음 작업 대기.
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 시 UI 기준 설명 + 승인) + 규칙 0-5(사용자가 설계/승인한 로직은 더 엄격하게) + 규칙 4-1(테스트 실패 추적 의무) + 섹션4 "다단계 작업 워크플로우" + 규칙 9(발견 문제 기록) + 규칙 11(계획서 삭제) + safe-trade 스킬 + backend-fix 스킬 + P10/P15/P16/P20/P21/P22/P23/P24
+- 날짜: 2026-07-18 (test_trading.py 테스트 격리 문제 근본 원인 해결 — daily_time_scheduler.py state 참조 패턴 P23 위반 수정)
+- 작업: test_trading.py 전체 회귀 시 10개 실패(단독 실행 시 통과)의 근본 원인 심층 검증 후 해결. 사용자 명시적 실행 지시어("꼼꼼하게 진행해")로 진행 승인. 사전조사: 사용자 제시 보고 검증 — `daily_time_scheduler.py:13`의 `from backend.app.services.engine_state import state` 모듈 로드 시점 고정 바인딩이 `patch("engine_state.state")` 전파를 차단하여 `is_order_blocked_by_time`이 실제 `market_phase`(장개시전/장개시전)를 읽어 `True` 반환 → 시간 차단 사유가 의도한 사유코드보다 먼저 반환되어 10개 테스트 실패. 소스코드 P23(일관성) 위반 — `state` 참조 패턴 3가지 혼재(패턴 A: 모듈 레벨 `from ... import state` 16개 / 패턴 B: `import engine_state` + `engine_state.state.X` 2개 / 패턴 C: 함수 내부 지연 임포트 11개). 백엔드 1개 파일 수정: `backend/app/services/daily_time_scheduler.py`(패턴 A → 패턴 B 전환 — `from backend.app.services.engine_state import state` → `from backend.app.services import engine_state` + `state.X` 참조 113곳 → `engine_state.state.X` 치환 + 이중 치환 6곳 수정 `engine_engine_state.state.` → `engine_state.state.` + 주석 내 `state.market_phase` 설명도 P23 일관성 위해 함께 갱신). 테스트 1개 파일 수정: `backend/tests/test_daily_time_scheduler.py`(150곳 `patch("backend.app.services.daily_time_scheduler.state", mock_state)` → `patch("backend.app.services.engine_state.state", mock_state)` — 같은 근본 원인 해결의 일부, 패턴 B 전환으로 모듈 `state` 속성 사라져 AttributeError 해결). 정적 검증: py_compile OK + ruff check OK. pytest: 전체 회귀 **2928 passed, 0 failed**(이전 10 failed → 0). 런타임 기동: `python -W error::RuntimeWarning main.py` 기동 성공 — RuntimeWarning 0건 + "타임테이블 빌드 완료 — 11항목" + "타임테이블 스케줄러 시작 — 다음 이벤트 예약 완료" + "장 상태 계산 완료 | KRX: 휴장일, NXT: 휴장일" 로그 확인 + 잔존 프로세스 0건. 사용자 체감 변화 없음(프로덕션 동작 100% 보존 — state 싱글톤 속성 변경은 모든 패턴에서 동일 전파, 객체 교체는 테스트에서만 발생).
+- 상태: test_trading.py 테스트 격리 문제 근본 원인 해결 완료. **15개 모듈 잔존 P23 위반(패턴 A)은 별도 세션에서 단계적 전환 필요** → "미해결 문제" 섹션에 기록.
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 4-1(테스트 실패 추적 의무) + 규칙 9(발견 문제 기록) + problem-solve 스킬 + backend-fix 스킬 + P10/P16/P23/P24
 
 ## 차순위 매수 시도 알고리즘 다단계 작업 — 완료 (2/2세션)
 
@@ -699,6 +699,32 @@
 
 ## 직전 완료 작업 (이번 세션)
 
+### test_trading.py 테스트 격리 문제 근본 원인 해결 — daily_time_scheduler.py state 참조 패턴 P23 위반 수정
+
+**배경**: 전체 회귀 시 test_trading.py 10개 테스트 실패(단독 실행 시 통과). 사용자 제시 보고 심층 검증 후 근본 원인 확인 — `daily_time_scheduler.py:13`의 모듈 레벨 `from backend.app.services.engine_state import state` 고정 바인딩이 `patch("engine_state.state")` 전파를 차단. 임포트 순서 의존성: `test_daily_time_scheduler.py`가 알파벳 순으로 먼저 수집되어 `daily_time_scheduler` 모듈 로드 → `state` = 실제 EngineState 인스턴스 고정 → 이후 `test_trading.py`의 `patch("engine_state.state")`가 `daily_time_scheduler.state`에 전파 안 됨 → `is_order_blocked_by_time`이 실제 `market_phase`(장개시전/장개시전)를 읽어 `True` 반환 → 시간 차단 사유가 의도한 사유코드보다 먼저 반환.
+
+**근본 원인 판단**: 소스코드 P23(일관성) 위반. `state` 참조 패턴 3가지 혼재 — 패턴 A(모듈 레벨 `from ... import state` 16개 모듈) / 패턴 B(`import engine_state` + `engine_state.state.X` 2개) / 패턴 C(함수 내부 지연 임포트 11개). `trading.py`는 패턴 C로 올바르게 작성되어 있으나 `daily_time_scheduler.py`만 패턴 A를 써서 불일치 발생. 테스트코드는 2차적 책임 — 소스코드 불일치의 증상을 받은 것.
+
+**해결 방식**: 패턴 B(모듈 통째 임포트)로 전환 — `patch("engine_state.state")`가 모든 `engine_state.state` 접근에 전파. P10(SSOT)/P16(살아있는 경로)/P23(일관성)/P24(단순성) 부합. Option C(프록시)는 P24 불필요 추상화 위반으로 기각.
+
+**수정 파일**:
+- `backend/app/services/daily_time_scheduler.py`: 라인 13 import 변경 `from backend.app.services.engine_state import state` → `from backend.app.services import engine_state` + `state.X` 참조 113곳 → `engine_state.state.X` 치환(replace_all) + 이중 치환 6곳 수정(`engine_engine_state.state.` → `engine_state.state.` — 주석 내 "engine_state.market_phase"의 "state."가 매칭된 것) + 주석/docstring 내 "state.market_phase" 설명도 P23 일관성 위해 함께 갱신.
+- `backend/tests/test_daily_time_scheduler.py`: 150곳 `patch("backend.app.services.daily_time_scheduler.state", mock_state)` → `patch("backend.app.services.engine_state.state", mock_state)` — 패턴 B 전환으로 모듈 `state` 속성 사라져 AttributeError 해결. 같은 근본 원인 해결의 일부.
+
+**검증**:
+- 정적: py_compile OK + ruff check OK
+- pytest 전체 회귀: **2928 passed, 0 failed**(이전 10 failed → 0)
+- 런타임: `python -W error::RuntimeWarning main.py` 기동 성공 — RuntimeWarning 0건 + "타임테이블 빌드 완료 — 11항목" + "타임테이블 스케줄러 시작 — 다음 이벤트 예약 완료" + "장 상태 계산 완료 | KRX: 휴장일, NXT: 휴장일" + 잔존 프로세스 0건
+- 프로덕션 동작 100% 보존 — state 싱글톤 속성 변경은 모든 패턴에서 동일 전파, 객체 교체는 테스트에서만 발생
+
+**사용자 체감 변화**: 없음(프로덕션 동작 100% 보존).
+
+**잔존 문제**: 15개 모듈이 여전히 패턴 A(모듈 레벨 `from ... import state`)를 사용 — P23 위반 잔존. 별도 세션에서 단계적 전환 필요 → "미해결 문제" 섹션에 기록.
+
+---
+
+## 직전 완료 작업 (이전 세션)
+
 ### 3차 조사: 09:00 타이머 미실행 근본 원인 심층 추적 (문서 업데이트 only — 코드 수정 없음)
 
 **배경**: 2차 조사까지 09:00 타이머 미실행을 확인했으나 근본 원인 미확인. 3차 조사에서 타이머 미실행 패턴을 심층 추적.
@@ -1189,7 +1215,7 @@
 
 ## 미해결 문제
 
-### 기존 테스트 실패: test_trading.py 테스트 격리 문제 (전체 회귀 시 10개 실패, 단독 실행 시 통과) — 본 세션 수정 무관 (규칙 4-1 검증 완료)
+### 기존 테스트 실패: test_trading.py 테스트 격리 문제 (전체 회귀 시 10개 실패, 단독 실행 시 통과) → 해결 완료 (2026-07-18)
 
 **발견일**: 2026-07-18 (DB 테이블 스케줄러 3세션 전체 회귀 테스트 실행 중 최초 발견 / 차순위 매수 시도 2세션 전체 회귀에서 9개 추가 발견)
 
@@ -1205,11 +1231,42 @@
 - `TestExecuteBuyReasonCodes::test_strength_guard_returns_strength_guard_reason` (1세션 추가 테스트)
 - `TestExecuteBuyReasonCodes::test_risk_circuit_returns_risk_circuit_reason` (1세션 추가 테스트)
 
-**본 세션 수정 무관 확인 (규칙 4-1)**: 차순위 매수 시도 2세션에서 `git stash`로 본 세션 수정을 임시 분리 후(1세션 커밋 상태) 전체 회귀 실행 → 동일하게 10개 실패 (2909 passed / 10 failed). 수정 복구 후에도 동일 (2918 passed / 10 failed). 즉, 본 2세션의 `buy_order_executor.py`/`test_buy_order_executor.py` 변경과 무관한 기존 실패. 1세션에서 전체 회귀를 실행하지 않아 9개 실패가 미발견 상태였음.
+**근본 원인 (해결 완료 2026-07-18)**: `daily_time_scheduler.py:13`의 모듈 레벨 `from backend.app.services.engine_state import state` 고정 바인딩이 `patch("engine_state.state")` 전파를 차단. 임포트 순서 의존성: `test_daily_time_scheduler.py`가 알파벳 순으로 먼저 수집되어 `daily_time_scheduler` 모듈 로드 → `state` = 실제 EngineState 인스턴스 고정 → 이후 `test_trading.py`의 `patch("engine_state.state")`가 `daily_time_scheduler.state`에 전파 안 됨 → `is_order_blocked_by_time`이 실제 `market_phase`(장개시전/장개시전)를 읽어 `True` 반환 → 시간 차단 사유가 의도한 사유코드보다 먼저 반환되어 10개 테스트 실패.
 
-**위반/부합 원칙**: 해당 없음 (본 세션 수정 무관). 다만 테스트 격리성 문제로 향후 별도 조사 필요.
+**해결 내역 (2026-07-18)**: `daily_time_scheduler.py` 패턴 A(모듈 레벨 `from ... import state`) → 패턴 B(`import engine_state` + `engine_state.state.X`) 전환. `test_daily_time_scheduler.py`의 patch 대상도 `engine_state.state`로 변경(150곳). 전체 회귀 2928 passed, 0 failed. 상세는 "직전 완료 작업 (이번 세션)" 섹션 참조.
 
-**조치**: 본 세션에서는 수정 범위 밖이므로 보류. 향후 별도 세션에서 조사 예정.
+**위반 원칙**: P23(일관성) — `state` 참조 패턴 3가지 혼재. 해결 완료.
+
+---
+
+### P-NEW-5: 15개 모듈 state 참조 패턴 A(모듈 레벨 고정 바인딩) 잔존 — P23 일관성 위반 (미해결)
+
+**이슈 ID**: P-NEW-5 (신규 등록 2026-07-18, test_trading.py 테스트 격리 문제 근본 원인 해결 중 발견)
+
+**현상**: `from backend.app.services.engine_state import state`를 모듈 레벨에서 사용하는 15개 모듈이 잔존. `daily_time_scheduler.py`는 본 세션에서 패턴 B로 전환 완료했으나, 나머지 15개 모듈은 여전히 패턴 A를 사용. 이들 모두 동일한 잠재적 테스트 격리 문제를 가짐. 현재 실패가 발생하지 않는 이유는 해당 모듈들을 간접 호출하는 테스트에서 `patch("engine_state.state")`가 아닌 다른 patch 방식을 사용하거나, 해당 경로가 테스트에서 호출되지 않기 때문. 향후 테스트 추가 시 동일한 문제 재발 가능.
+
+**잔존 모듈 15개** (패턴 A — 모듈 레벨 `from backend.app.services.engine_state import state`):
+1. `engine_service.py:7`
+2. `engine_strategy_core.py:10`
+3. `engine_sector_confirm.py:13`
+4. `sector_data_provider.py:8`
+5. `market_close_pipeline.py:26`
+6. `engine_radar.py:8`
+7. `engine_snapshot.py:12`
+8. `ws_subscribe_control.py:19`
+9. `engine_ws_reg.py:15`
+10. `engine_loop.py:18`
+11. `engine_lifecycle.py:15`
+12. `engine_ws.py:10`
+13. `engine_config.py:11`
+14. `engine_bootstrap.py:10`
+15. `engine_cache.py:10`
+
+**위반 원칙**: P23(일관성) — `state` 참조 패턴 3가지 혼재(패턴 A 15개 / 패턴 B 3개(daily_time_scheduler 포함) / 패턴 C 11개). P16(살아있는 경로) 정신 위반 — 모듈 로드 시점 고정 바인딩은 객체 교체 시 죽은 참조가 됨(프로덕션에서는 교체 안 일어나므로 미드러나나, 테스트 동작 입증 시 죽은 참조).
+
+**수정 방안 (제안)**: 각 모듈을 패턴 B(`from backend.app.services import engine_state` + `engine_state.state.X`)로 전환. 세션당 1단계 원칙(규칙 0-1)에 따라 세션당 1~2개 모듈씩 단계적 전환 권장. 각 전환 시 전체 회귀 + 런타임 기동 검증 필수. `engine_ws_dispatch.py`는 이미 패턴 B를 부분 사용 중이나 `from ... import state`도 잔존(line 9) — dead import 제거 필요.
+
+**조치**: 본 세션에서는 `daily_time_scheduler.py` 1개만 전환(실제 발생한 실패의 근본 원인). 15개 모듈 일괄 수정은 범위 과대이므로 별도 세션에서 검토.
 
 ### P-NEW-4: force_buy dead parameter — execute_buy 파라미터/분기/docstring 잔존 (P16 살아있는 경로, P23 일관성) → 해결 완료 (2026-07-17)
 

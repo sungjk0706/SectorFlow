@@ -10,7 +10,7 @@ import asyncio
 import gc
 from datetime import datetime, timezone, timedelta
 import logging
-from backend.app.services.engine_state import state
+from backend.app.services import engine_state
 from backend.app.services.engine_lifecycle import schedule_engine_task
 logger = logging.getLogger(__name__)
 
@@ -52,11 +52,11 @@ NXT_MAINMARKET_START_SECOND = 30       # 09:00:30 NXT 메인마켓 시작 (초 �
 def is_nxt_premarket_window() -> bool:
     """현재 장 상태가 NXT 프리마켓 구간인지 판단.
 
-    SSOT: engine_state.market_phase에서 읽어 판단.
+    SSOT: engine_state.state.market_phase에서 읽어 판단.
     market_phase는 시간 기반 스케줄러 + JIF 경계 이벤트가 갱신하므로 빈 문자열이면 안 됨.
     거래일 판별은 calc_timebased_market_phase()에서 이미 수행되어 market_phase에 반영됨.
     """
-    mp = state.market_phase
+    mp = engine_state.state.market_phase
     nxt = mp.get("nxt", "")
     if not nxt:
         logger.error("[시스템] 장 상태 빈 문자열 감지: nxt=%r — 시간 기반 초기화 누락 가능", nxt)
@@ -67,12 +67,12 @@ def is_nxt_premarket_window() -> bool:
 def is_nxt_aftermarket_window() -> bool:
     """현재 장 상태가 NXT 애프터마켓 구간(애프터마켓 + 애프터마켓 지속)인지 판단.
 
-    SSOT: engine_state.market_phase에서 읽어 판단.
+    SSOT: engine_state.state.market_phase에서 읽어 판단.
     market_phase는 시간 기반 스케줄러 + JIF 경계 이벤트가 갱신하므로 빈 문자열이면 안 됨.
     거래일 판별은 calc_timebased_market_phase()에서 이미 수행되어 market_phase에 반영됨
     (기존 시간 기반 구현의 거래일 체크 누락이 자동 해결됨).
     """
-    mp = state.market_phase
+    mp = engine_state.state.market_phase
     nxt = mp.get("nxt", "")
     if not nxt:
         logger.error("[시스템] 장 상태 빈 문자열 감지: nxt=%r — 시간 기반 초기화 누락 가능", nxt)
@@ -251,7 +251,7 @@ def _is_pre_subscribe_window() -> bool:
     market_t = NXT_PREMARKET_START[0] * 60 + NXT_PREMARKET_START[1]
     if not (prestart_t <= t < market_t):
         return False
-    mp = state.market_phase
+    mp = engine_state.state.market_phase
     if mp.get("nxt") == "휴장일" or mp.get("krx") == "휴장일":
         return False
     return True
@@ -260,11 +260,11 @@ def _is_pre_subscribe_window() -> bool:
 def is_nxt_only_window() -> bool:
     """현재 장 상태가 NXT-only 거래 구간인지 판단 (KRX 비활성 + NXT 활성).
 
-    SSOT: engine_state.market_phase에서 읽어 판단.
+    SSOT: engine_state.state.market_phase에서 읽어 판단.
     market_phase는 시간 기반 스케줄러가 갱신하므로 빈 문자열이면 안 됨.
     사전 구독 구간(07:59~08:00) 시간 기반 판정 추가 — NXT-only 구독 (KRX 단독 종목 제외).
     """
-    mp = state.market_phase
+    mp = engine_state.state.market_phase
     krx = mp.get("krx", "")
     nxt = mp.get("nxt", "")
     if not krx or not nxt:
@@ -286,7 +286,7 @@ def get_nxt_trde_tp(base_trde_tp: str = "3") -> str:
     - 그 외(메인마켓/정규장 준비/조기 마감/단일가 매매): base_trde_tp
       (실시간 매매 불가 구간 — 자동매매 게이트에서 차단 전제)
 
-    SSOT: engine_state.market_phase 기반으로 is_nxt_premarket_window/is_nxt_aftermarket_window 경유 판단.
+    SSOT: engine_state.state.market_phase 기반으로 is_nxt_premarket_window/is_nxt_aftermarket_window 경유 판단.
     """
     if is_nxt_premarket_window():
         return "P"
@@ -300,11 +300,11 @@ def is_krx_after_hours() -> bool:
     현재 장 상태가 KRX 장외 시간대인지 판별.
 
     거래 게이트용 함수 — 정규장 종료 후 KRX 단독 종목 자동매매를 차단하기 위한 기준.
-    SSOT: engine_state.market_phase에서 읽어 판단.
+    SSOT: engine_state.state.market_phase에서 읽어 판단.
     market_phase는 시간 기반 스케줄러 + JIF 경계 이벤트가 갱신하므로 빈 문자열이면 안 됨.
     거래일 판별은 calc_timebased_market_phase()에서 이미 수행되어 market_phase에 반영됨.
     """
-    mp = state.market_phase
+    mp = engine_state.state.market_phase
     krx = mp.get("krx", "")
     if not krx:
         logger.error("[시스템] 장 상태 빈 문자열 감지: krx=%r — 시간 기반 초기화 누락 가능", krx)
@@ -331,7 +331,7 @@ _ORDER_TIME_BOUNDARIES_SEC: frozenset[int] = frozenset({
 def is_order_blocked_by_time(stk_cd: str) -> bool:
     """체결 불가 시간대 주문 차단 판별 (매수·매도 공통).
 
-    SSOT: state.market_phase 기반. 기존 is_nxt_only_window() 패턴과 동일 구조.
+    SSOT: engine_state.state.market_phase 기반. 기존 is_nxt_only_window() 패턴과 동일 구조.
     KRX 비활성 + NXT 활성 시 is_nxt_enabled(stk_cd)로 종목별 분기
       — NXT 종목은 허용, KRX 단독 종목만 차단.
     ±5초 버퍼: 경계 시각 ±5초 내면 무조건 차단 (안전 측, P24 단순화).
@@ -339,7 +339,7 @@ def is_order_blocked_by_time(stk_cd: str) -> bool:
     휴장일 시 False 반환 — 장 안 열리므로 주문 자체 발생 안 함 (P23 일관성,
     get_order_time_block_status()와 동일 패턴).
     """
-    mp = state.market_phase
+    mp = engine_state.state.market_phase
     krx = mp.get("krx", "")
     nxt = mp.get("nxt", "")
     if not krx or not nxt:
@@ -381,7 +381,7 @@ def get_order_time_block_status() -> tuple[bool, str]:
       - (False, ""): 빈 문자열 phase — 에러 로그 (P20 폴백 금지)
       - (False, ""): 휴장일 — 장 안 열리므로 칩 표시 불필요 (P21 사용자 투명성)
     """
-    mp = state.market_phase
+    mp = engine_state.state.market_phase
     krx = mp.get("krx", "")
     nxt = mp.get("nxt", "")
     if not krx or not nxt:
@@ -411,10 +411,10 @@ def get_order_time_block_status() -> tuple[bool, str]:
 def get_market_phase() -> dict:
     """현재 KRX/NXT 장 상태 반환 (순수 읽기).
 
-    SSOT: engine_state.market_phase에서 읽어 복사본 반환.
+    SSOT: engine_state.state.market_phase에서 읽어 복사본 반환.
     market_phase는 시간 기반 스케줄러가 갱신하므로 빈 문자열이면 안 됨.
     """
-    mp = state.market_phase
+    mp = engine_state.state.market_phase
     krx = mp.get("krx", "")
     nxt = mp.get("nxt", "")
     if not krx or not nxt:
@@ -469,14 +469,14 @@ async def is_ws_subscribe_window(settings: dict | None = None) -> bool:
     사전 구독 구간(07:59~08:00) 시간 기반 판정 추가 — 재시작 대응 (P16 살아있는 경로).
     주말/공휴일은 calc_timebased_market_phase()가 nxt="휴장일"로 산정하므로 자동 차단.
     settings 미전달 시 integrated_system_settings_cache에서 읽음.
-    SSOT: state.market_phase가 구독 구간 판정의 단일 기준 (P10).
+    SSOT: engine_state.state.market_phase가 구독 구간 판정의 단일 기준 (P10).
     """
     if settings is None:
-        settings = state.integrated_system_settings_cache
+        settings = engine_state.state.integrated_system_settings_cache
     if not settings:
         raise RuntimeError("settings cache not initialized")
 
-    mp = state.market_phase
+    mp = engine_state.state.market_phase
     nxt = mp.get("nxt", "")
     if not nxt:
         logger.error("[시스템] 장 상태 빈 문자열 감지: nxt=%r — 시간 기반 초기화 누락 가능", nxt)
@@ -492,7 +492,7 @@ async def is_edit_window_open(settings: dict | None = None) -> bool:
     허용: NOT is_ws_subscribe_window().
     WS 구독 구간 밖이면 편집 가능 (프론트 computeEditWindowOpenByTime과 동일 기준)."""
     if settings is None:
-        settings = state.integrated_system_settings_cache
+        settings = engine_state.state.integrated_system_settings_cache
     if not settings:
         raise RuntimeError("settings cache not initialized")
     return not await is_ws_subscribe_window(settings)
@@ -569,7 +569,7 @@ async def _on_krx_pre_subscribe() -> None:
     try:
         today = _kst_now()
         today_str = today.strftime("%Y%m%d")
-        if state.last_krx_pre_subscribe_date == today_str:
+        if engine_state.state.last_krx_pre_subscribe_date == today_str:
             return  # 이미 오늘 실행됨 — 중복 방지
         from backend.app.core.trading_calendar import is_trading_day
         if today.weekday() >= 5 or not is_trading_day(today.date()):
@@ -577,7 +577,7 @@ async def _on_krx_pre_subscribe() -> None:
         logger.info("[작업실행] KRX 단독 종목 사전 구독 시작 (08:59)")
         from backend.app.services.engine_ws_reg import subscribe_sector_stocks_0b
         await subscribe_sector_stocks_0b()
-        state.last_krx_pre_subscribe_date = today_str
+        engine_state.state.last_krx_pre_subscribe_date = today_str
         logger.info("[작업실행] KRX 단독 종목 사전 구독 완료")
     except Exception as e:
         logger.warning("[작업실행] KRX 사전 구독 콜백 오류: %s", e, exc_info=True)
@@ -603,17 +603,17 @@ async def _on_krx_closing_auction_start() -> None:
         logger.info("[작업실행] 업종 재계산 완료")
 
         # KRX 단독 종목 장마감 구독해지
-        if not state.krx_remove_done:
-            state.krx_remove_done = True
+        if not engine_state.state.krx_remove_done:
+            engine_state.state.krx_remove_done = True
             from backend.app.services.market_close_pipeline import remove_krx_only_stocks
             result = await remove_krx_only_stocks()
             if result.get("skipped"):
-                state.krx_remove_done = False
+                engine_state.state.krx_remove_done = False
                 logger.debug("[작업실행] KRX 단독 종목 구독 해지 생략 — 플래그 복원 (앱준비 후 재시도 가능)")
             else:
                 logger.info("[작업실행] KRX 단독 종목 구독 해지 완료 — 해지 %d종목, 실패 %d종목", result.get("removed", 0), result.get("failed", 0))
     except Exception as e:
-        state.krx_remove_done = False
+        engine_state.state.krx_remove_done = False
         logger.warning("[작업실행] KRX 단독 종목 구독 해지 콜백 오류: %s", e, exc_info=True)
 
 
@@ -625,9 +625,9 @@ def _fire_unified_confirmed_fetch() -> None:
     성공 시 confirmed_done = True, 실패 시 confirmed_done = False로 복원.
     """
     try:
-        if state.confirmed_done:
+        if engine_state.state.confirmed_done:
             return
-        state.confirmed_done = True
+        engine_state.state.confirmed_done = True
         schedule_engine_task(_do_unified_confirmed_fetch(), context="통합 확정 조회")
     except Exception as e:
         logger.warning("[스케줄] 통합 확정 조회 시작 오류: %s", e, exc_info=True)
@@ -638,14 +638,14 @@ async def _do_unified_confirmed_fetch() -> None:
     try:
         from backend.app.services.market_close_pipeline import fetch_unified_confirmed_data
         await fetch_unified_confirmed_data()
-        state.confirmed_done = True
+        engine_state.state.confirmed_done = True
         logger.info("[스케줄] 통합 확정 조회 완료")
     except Exception as e:
-        state.confirmed_done = False
+        engine_state.state.confirmed_done = False
         logger.warning("[스케줄] 통합 확정 조회 실패 — 플래그 복원: %s", e, exc_info=True)
         try:
-            state.confirmed_refresh_running_confirmed = False
-            state.confirmed_refresh_message = ""
+            engine_state.state.confirmed_refresh_running_confirmed = False
+            engine_state.state.confirmed_refresh_message = ""
         except Exception as _e:
             logger.warning("[시스템] 플래그 복원 실패: %s", _e, exc_info=True)
 
@@ -661,12 +661,12 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
     """
     t = _kst_now().hour * 60 + _kst_now().minute
 
-    _settings = state.integrated_system_settings_cache
+    _settings = engine_state.state.integrated_system_settings_cache
 
     # 마스터 캐시에서 데이터 유효기간(date) 추출
     _cached_date_str = ""
-    if len(state.master_stocks_cache) > 0:
-        _first_stock = next(iter(state.master_stocks_cache.values()))
+    if len(engine_state.state.master_stocks_cache) > 0:
+        _first_stock = next(iter(engine_state.state.master_stocks_cache.values()))
         _cached_date_str = _first_stock.get("date", "")
 
     # 기준일 = 가장 최근 확정된 거래일 (소속 거래일의 직전 거래일).
@@ -695,7 +695,7 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
             )
             return
 
-        if not _cache_is_fresh and not state.confirmed_done:
+        if not _cache_is_fresh and not engine_state.state.confirmed_done:
             logger.info(
                 "[스케줄] 단절 구간 기동 — 캐시 날짜(%s) ≠ 최근 확정 거래일(%s) → 확정 데이터 자동 다운로드 트리거",
                 _cached_date_str or "없음", _latest_confirmed_day
@@ -707,7 +707,7 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
             "[스케줄] 단절 구간 기동 — 캐시(%s) = 최근 확정 거래일(%s) 확정 다운로드 시각 경과 (스킵)",
             _cached_date_str, _latest_confirmed_day
         )
-        state.confirmed_done = True
+        engine_state.state.confirmed_done = True
         return
     else:
         # 실시간 연결 구간 (market_phase 활성)
@@ -719,7 +719,7 @@ async def retry_pipeline_catchup_after_bootstrap() -> None:
 
 
 def _apply_market_phase(phase: dict) -> None:
-    """전달받은 phase(krx, nxt)를 state.market_phase에 적용 + 브로드캐스트 + 부작용 트리거.
+    """전달받은 phase(krx, nxt)를 engine_state.state.market_phase에 적용 + 브로드캐스트 + 부작용 트리거.
 
     JIF 경로(_handle_jif → _apply_jif_phase)와 시간 기반 경로(_broadcast_market_phase)가
     공통으로 사용하는 단일 적용 경로 (P10 SSOT, P24 단순성).
@@ -734,12 +734,12 @@ def _apply_market_phase(phase: dict) -> None:
     """
     try:
         from backend.app.services.engine_account_notify import _broadcast
-        prev_krx = state.market_phase.get("krx")
-        prev_nxt = state.market_phase.get("nxt")
+        prev_krx = engine_state.state.market_phase.get("krx")
+        prev_nxt = engine_state.state.market_phase.get("nxt")
         new_krx = phase.get("krx", "")
         new_nxt = phase.get("nxt", "")
-        state.market_phase["krx"] = new_krx
-        state.market_phase["nxt"] = new_nxt
+        engine_state.state.market_phase["krx"] = new_krx
+        engine_state.state.market_phase["nxt"] = new_nxt
         broadcast_phase = get_market_phase()
         schedule_engine_task(_broadcast("market-phase", broadcast_phase), context="market-phase 브로드캐스트")
         # ── 체결 불가 시간대 주문 차단 상태 브로드캐스트 (P21 사용자 투명성) ──
@@ -810,7 +810,7 @@ async def _on_realtime_fields_reset() -> None:
     try:
         today = _kst_now()
         today_str = today.strftime("%Y%m%d")
-        if state.last_realtime_reset_date == today_str:
+        if engine_state.state.last_realtime_reset_date == today_str:
             return  # 이미 오늘 실행됨 — 중복 방지
         from backend.app.core.trading_calendar import is_trading_day
         if today.weekday() >= 5 or not is_trading_day(today.date()):
@@ -828,8 +828,8 @@ async def _on_realtime_fields_reset() -> None:
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
         from backend.app.services.engine_account_notify import notify_cache
         notify_cache.prev_scores = []
-        state.sector_summary_cache = None
-        state.last_realtime_reset_date = today_str
+        engine_state.state.sector_summary_cache = None
+        engine_state.state.last_realtime_reset_date = today_str
         logger.info("[작업실행] 실시간 필드 초기화 + GC 비활성화 + 캐시 초기화 완료 (사전)")
     except Exception as e:
         logger.warning("[작업실행] 실시간 필드 초기화 오류: %s", e, exc_info=True)
@@ -846,7 +846,7 @@ async def _on_ws_subscribe_start() -> None:
     try:
         today = _kst_now()
         today_str = today.strftime("%Y%m%d")
-        if state.last_ws_subscribe_start_date == today_str:
+        if engine_state.state.last_ws_subscribe_start_date == today_str:
             logger.debug("[작업실행] WS 구독 시작 스킵 (이미 실행됨 — %s)", today_str)
             return
         if today.weekday() >= 5:
@@ -855,17 +855,17 @@ async def _on_ws_subscribe_start() -> None:
         if not is_trading_day(today.date()):
             return
         logger.info("[작업실행] WS 구독 시작")
-        state.ws_subscribe_window_active = True
-        state.last_ws_subscribe_start_date = today_str
+        engine_state.state.ws_subscribe_window_active = True
+        engine_state.state.last_ws_subscribe_start_date = today_str
         # ── 데이터 준비는 07:58 사전 실행됨 (_on_realtime_fields_reset — GC+필드+게이트+캐시 통합) ──
         #    사전 실행 누락 시 여기서 보완 (멱등성 — last_realtime_reset_date 체크, P16 살아있는 경로)
-        if state.last_realtime_reset_date != today_str:
+        if engine_state.state.last_realtime_reset_date != today_str:
             logger.info("[스케줄] 데이터 준비 사전 실행 누락 — 보완 (_on_realtime_fields_reset)")
             await _on_realtime_fields_reset()
         # market-phase WS 브로드캐스트 (WS 구독 시작 = 07:59 또는 08:00 전환 시점)
         _broadcast_market_phase()
         # ── WS 연결은 엔진 루프의 구간 감지가 담당 → 이벤트 통지 ──
-        state.ws_window_changed_event.set()
+        engine_state.state.ws_window_changed_event.set()
         logger.info("[작업실행] WS 구독 시작 완료 — 엔진 루프에 연결 통지")
     except Exception as e:
         logger.warning("[작업실행] WS 구독 시작 콜백 오류: %s", e, exc_info=True)
@@ -884,11 +884,11 @@ async def _on_ws_subscribe_end() -> None:
         start_memory_monitor()
         log_memory_snapshot("장마감 GC 정리 후")
         stop_memory_monitor()
-        state.ws_subscribe_window_active = False
+        engine_state.state.ws_subscribe_window_active = False
         # ── 수신율 임계값 게이트 해제 — 장마감 후 확정 데이터 기반 전송 허용 ──
         from backend.app.pipelines.pipeline_compute import mark_sector_threshold_passed
         mark_sector_threshold_passed()
-        state.confirmed_done = False  # 오후 8시 구독 종료 → 8시 30분 확정 갱신 허용
+        engine_state.state.confirmed_done = False  # 오후 8시 구독 종료 → 8시 30분 확정 갱신 허용
         await _trigger_unreg_all()
         # 구독 상태 전체 false + WS 브로드캐스트
         from backend.app.services.ws_subscribe_control import _set_status
@@ -896,7 +896,7 @@ async def _on_ws_subscribe_end() -> None:
         # market-phase WS 브로드캐스트 (구독 종료 시각 기준 상태 반영)
         _broadcast_market_phase()
         # ── WS 연결 해제는 엔진 루프의 구간 감지가 담당 → 이벤트 통지 ──
-        state.ws_window_changed_event.set()
+        engine_state.state.ws_window_changed_event.set()
         logger.info("[작업실행] WS 연결 해제 + 전체 구독 해지 완료 — 엔진 루프에 해제 통지")
         # ── 확정 데이터 다운로드는 타임테이블 11번째 항목(timetable.confirmed_download)이 담당 ──
         # ws_subscribe_end와 분리하여 증권사 확정 데이터 준비 시간 확보 (기본값 20:40)
@@ -913,12 +913,12 @@ async def _on_confirmed_download() -> None:
     """
     try:
         today_str = _kst_now().strftime("%Y%m%d")
-        if state.last_confirmed_download_date == today_str:
+        if engine_state.state.last_confirmed_download_date == today_str:
             logger.debug("[스케줄] 확정 다운로드 오늘 이미 실행 — 스킵 (P22)")
             return
         logger.info("[스케줄] 확정 시세 다운로드 시각 도달 → 확정 데이터 다운로드 트리거")
         _fire_unified_confirmed_fetch()
-        state.last_confirmed_download_date = today_str
+        engine_state.state.last_confirmed_download_date = today_str
     except Exception as e:
         logger.warning("[스케줄] 확정 데이터 다운로드 콜백 오류: %s", e, exc_info=True)
 
@@ -932,7 +932,7 @@ async def _ws_disconnect_only() -> None:
     """구독 해제 + WS 연결 해제 요청만 수행 (장마감 후처리 제외).
     실제 WS 연결 해제는 엔진 루프의 구간 감지가 담당."""
     try:
-        state.ws_subscribe_window_active = False
+        engine_state.state.ws_subscribe_window_active = False
         # ── 수신율 임계값 게이트 해제 — 구독 구간 밖 전환 시 확정 데이터 기반 전송 허용 ──
         from backend.app.pipelines.pipeline_compute import mark_sector_threshold_passed
         mark_sector_threshold_passed()
@@ -940,7 +940,7 @@ async def _ws_disconnect_only() -> None:
         await _trigger_unreg_all()
         from backend.app.services.ws_subscribe_control import _set_status
         _set_status(quote=False)
-        state.ws_window_changed_event.set()
+        engine_state.state.ws_window_changed_event.set()
     except Exception as e:
         logger.warning("[스케줄] 실시간 구독 해제 오류: %s", e)
 
@@ -966,7 +966,7 @@ def _parse_hm_tuple(v: str) -> tuple[int, int]:
 def build_timetable_from_cache(settings: dict) -> list[dict]:
     """설정 캐시 기반으로 타임테이블 리스트 빌드 (P10 SSOT · P13 메모리 상주).
 
-    인자: state.integrated_system_settings_cache 스냅샷
+    인자: engine_state.state.integrated_system_settings_cache 스냅샷
     반환: 기존 _TIMETABLE과 동일한 dict 리스트 (10~11항목)
           - 3~4개 direct: 시각을 캐시에서 읽음 (없으면 DEFAULT_USER_SETTINGS 기본값)
           - 7개 phase:    시각을 코드 상수(21-49)에서 읽음 (거래소 고정)
@@ -1024,9 +1024,9 @@ def _schedule_next_timetable_event() -> None:
     P24 단순성: 시간표 선형 스캔, 복잡도 O(n) n=10.
     """
     # 기존 타이머 취소
-    if state.timetable_timer_handle is not None:
-        state.timetable_timer_handle.cancel()
-        state.timetable_timer_handle = None
+    if engine_state.state.timetable_timer_handle is not None:
+        engine_state.state.timetable_timer_handle.cancel()
+        engine_state.state.timetable_timer_handle = None
 
     try:
         loop = asyncio.get_running_loop()
@@ -1061,7 +1061,7 @@ def _schedule_next_timetable_event() -> None:
 
     # 최소 1초 보장 (즉시 실행 방지)
     delay = max(next_delay, 1)
-    state.timetable_timer_handle = loop.call_later(
+    engine_state.state.timetable_timer_handle = loop.call_later(
         delay,
         lambda: schedule_engine_task(_timetable_event_fired(next_entry), context=f"타임테이블: {next_entry['ctx']}"),
     )
@@ -1108,7 +1108,7 @@ def _check_jif_health() -> None:
     P21 (사용자 투명성): JIF 미수신 시 사용자가 인지할 수 있도록 로그.
     단, 자동 조치(강제 페이즈 전환 등)는 금지 — 시간표가 이미 보완 역할 수행 중.
     """
-    last_jif = state.last_jif_received_at
+    last_jif = engine_state.state.last_jif_received_at
     if last_jif is None:
         # 기동 후 JIF 미수신 — 시간표가 보완 중이므로 경고만
         logger.debug("[스케줄] JIF 미수신 상태 — 시간표 보완 동작 중")
@@ -1122,7 +1122,7 @@ async def _timetable_startup_scan() -> None:
     """기동 시 시간표 스캔 — 다음 미래 이벤트 예약.
 
     P16 (살아있는 경로): 재기동 시 사전 트리거 구간(07:58~08:00) 누락 방지.
-    P22 (데이터 정합성): 멱등성 가드(state.last_*_date)로 중복 실행 차단.
+    P22 (데이터 정합성): 멱등성 가드(engine_state.state.last_*_date)로 중복 실행 차단.
     P24 단순성: 본 함수는 "다음 예약"에만 집중 — 직접 동작 즉시 실행은
     기존 _init_ws_subscribe_state()(998-1046)가 담당, 중복 금지.
 
@@ -1149,11 +1149,11 @@ async def _init_ws_subscribe_state() -> None:
     리셋 + 캐시 초기화 수행 (07:58 로직과 동일). P16 살아있는 경로 — 재시작 시 사전
     구간 누락 없음.
     """
-    settings = state.integrated_system_settings_cache
+    settings = engine_state.state.integrated_system_settings_cache
     if not settings or not isinstance(settings, dict):
         raise RuntimeError("settings cache not initialized")
     in_window = await is_ws_subscribe_window(settings)
-    state.ws_subscribe_window_active = in_window
+    engine_state.state.ws_subscribe_window_active = in_window
 
     # ── 수신율 임계값 게이트 동기화 — 엔진 재기동 시 현재 구간에 맞게 플래그 설정 ──
     from backend.app.pipelines.pipeline_compute import reset_sector_threshold, mark_sector_threshold_passed
@@ -1168,28 +1168,28 @@ async def _init_ws_subscribe_state() -> None:
         logger.info("[스케줄] 장중 메모리 정리 비활성화 (실시간 처리 지연 방지)")
         # ── 4단계: 구독 구간 내 기동 시 날짜 플래그 동기화 (중복 실행 방지) ──
         today_str = _kst_now().strftime("%Y%m%d")
-        state.last_ws_subscribe_start_date = today_str
+        engine_state.state.last_ws_subscribe_start_date = today_str
         # ── 실시간 필드 초기화 (전일 확정 데이터 제거) ──
         # 캐시 로드 전이면 스킵 — engine_cache._load_caches_preboot()에서 DB 로드 후 수행
-        if state.preboot_cache_loaded:
+        if engine_state.state.preboot_cache_loaded:
             logger.info("[스케줄] 구독 구간 내 시작 — 실시간 필드 초기화")
             from backend.app.services.engine_snapshot import _reset_realtime_fields
             await _reset_realtime_fields()
-            state.last_realtime_reset_date = today_str
+            engine_state.state.last_realtime_reset_date = today_str
         else:
             logger.info("[스케줄] 구독 구간 내 시작 — 실시간 필드 초기화는 캐시 로드 후 수행")
         # delta 비교 캐시 초기화 → 다음 sector-scores 전송이 전체 스냅샷으로 나감
         try:
             from backend.app.services.engine_account_notify import notify_cache
             notify_cache.prev_scores = []
-            state.sector_summary_cache = None
+            engine_state.state.sector_summary_cache = None
         except Exception as e:
             logger.warning("[시스템] 캐시 초기화 실패: %s", e, exc_info=True)
 
         # market-phase WS 브로드캐스트 — _on_ws_subscribe_start와 동일
         _broadcast_market_phase()
 
-        state.ws_window_changed_event.set()
+        engine_state.state.ws_window_changed_event.set()
         logger.info("[스케줄] 구독 구간 내 시작 — 엔진 루프에 연결 통지")
     else:
         # 구독 상태 false + WS 브로드캐스트
@@ -1200,8 +1200,8 @@ async def _init_ws_subscribe_state() -> None:
 def _trigger_reg_pipeline() -> None:
     """로그인 상태면 REG 파이프라인 재실행."""
     try:
-        ws = state.connector_manager or state.active_connector
-        if ws and ws.is_connected() and state.login_ok:
+        ws = engine_state.state.connector_manager or engine_state.state.active_connector
+        if ws and ws.is_connected() and engine_state.state.login_ok:
             from backend.app.services.engine_bootstrap import _login_post_pipeline
             schedule_engine_task(_login_post_pipeline(), context="REG 파이프라인 재실행")
         else:
@@ -1216,8 +1216,8 @@ async def _trigger_unreg_all() -> None:
         # 실시간 틱 데이터 캐시 clear() 로직 삭제 (_latest_trade_prices, _latest_trade_amounts, _latest_strength)
         logger.info("[스케줄] 캐시 데이터 삭제 완료")
 
-        ws = state.connector_manager or state.active_connector
-        if not ws or not ws.is_connected() or not state.login_ok:
+        ws = engine_state.state.connector_manager or engine_state.state.active_connector
+        if not ws or not ws.is_connected() or not engine_state.state.login_ok:
             return
         await _do_unreg_all()
     except Exception as e:
@@ -1227,8 +1227,8 @@ async def _trigger_unreg_all() -> None:
 async def _do_unreg_all() -> None:
     """구독 중인 종목 전체 REMOVE 전송 (비동기)."""
     try:
-        subscribed = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed", False)}
-        ws = state.connector_manager or state.active_connector
+        subscribed = {cd for cd, entry in engine_state.state.master_stocks_cache.items() if entry.get("_subscribed", False)}
+        ws = engine_state.state.connector_manager or engine_state.state.active_connector
         if not ws or not ws.is_connected():
             return
 
@@ -1241,9 +1241,9 @@ async def _do_unreg_all() -> None:
         ok = await ws.unsubscribe_stocks(all_codes)
 
         # 키움증권일 때만 계좌 실시간도 해지 (grp 10)
-        broker_nm = str(state.integrated_system_settings_cache["broker"]).lower().strip()
+        broker_nm = str(engine_state.state.integrated_system_settings_cache["broker"]).lower().strip()
         if broker_nm == "kiwoom":
-            acnt_no = str(state.integrated_system_settings_cache.get(f"{broker_nm}_account_no", "") or "").strip()
+            acnt_no = str(engine_state.state.integrated_system_settings_cache.get(f"{broker_nm}_account_no", "") or "").strip()
             if acnt_no:
                 await ws.send_message({
                     "trnm": "REMOVE", "grp_no": "10", "refresh": "0",
@@ -1252,8 +1252,8 @@ async def _do_unreg_all() -> None:
 
         # 구독 상태 초기화
         for cd in subscribed:
-            if cd in state.master_stocks_cache:
-                state.master_stocks_cache[cd].pop("_subscribed", None)
+            if cd in engine_state.state.master_stocks_cache:
+                engine_state.state.master_stocks_cache[cd].pop("_subscribed", None)
 
         logger.info("[스케줄] 구독 해지 완료 — %d종목 (성공=%s)", len(all_codes), ok)
 
@@ -1299,9 +1299,9 @@ async def schedule_auto_trade_timers(settings: dict | None = None) -> None:
     """
 
     # 기존 타이머 전부 취소
-    for handle in state.auto_trade_timer_handles:
+    for handle in engine_state.state.auto_trade_timer_handles:
         handle.cancel()
-    state.auto_trade_timer_handles.clear()
+    engine_state.state.auto_trade_timer_handles.clear()
 
     try:
         loop = asyncio.get_running_loop()
@@ -1309,8 +1309,8 @@ async def schedule_auto_trade_timers(settings: dict | None = None) -> None:
         return  # 이벤트 루프 없으면 스킵
 
     if settings is None:
-        # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
-        settings = state.integrated_system_settings_cache
+        # engine_state.state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
+        settings = engine_state.state.integrated_system_settings_cache
     if not settings:
         raise RuntimeError("settings cache not initialized")
 
@@ -1335,7 +1335,7 @@ async def schedule_auto_trade_timers(settings: dict | None = None) -> None:
         if delay < 1:
             delay = 1  # 최소 1초 (즉시 실행 방지)
         handle = loop.call_later(delay, lambda: schedule_engine_task(_on_auto_trade_transition(label), context=f"자동매매 전환({label})"))
-        state.auto_trade_timer_handles.append(handle)
+        engine_state.state.auto_trade_timer_handles.append(handle)
         logger.debug(
             "[스케줄] %s (%s) — %.0f초 후 예약",
             label, hm_str, delay,
@@ -1350,12 +1350,12 @@ async def _on_midnight() -> None:
     try:
         now = _kst_now()
 
-        if state.last_reset_date != now.strftime("%Y%m%d"):
-            state.last_reset_date = now.strftime("%Y%m%d")
-            state.krx_remove_done = False
-            state.confirmed_done = False
-            state.last_confirmed_download_date = ""  # 확정 다운로드 멱등성 가드 리셋 (P22)
-            logger.info("[스케줄] 자정 날짜 변경 — 플래그 초기화 (%s)", state.last_reset_date)
+        if engine_state.state.last_reset_date != now.strftime("%Y%m%d"):
+            engine_state.state.last_reset_date = now.strftime("%Y%m%d")
+            engine_state.state.krx_remove_done = False
+            engine_state.state.confirmed_done = False
+            engine_state.state.last_confirmed_download_date = ""  # 확정 다운로드 멱등성 가드 리셋 (P22)
+            logger.info("[스케줄] 자정 날짜 변경 — 플래그 초기화 (%s)", engine_state.state.last_reset_date)
 
             # 연도 변경 시 다음 연도 거래일 캐시 미리 생성 (블로킹 방지)
             current_year = now.year
@@ -1367,8 +1367,8 @@ async def _on_midnight() -> None:
 
 
             # 날짜 변경 시 거래일/시간 기준 자동 ON/OFF 판별
-            # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
-            settings = state.integrated_system_settings_cache
+            # engine_state.state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
+            settings = engine_state.state.integrated_system_settings_cache
             if not settings:
                 raise RuntimeError("settings cache not initialized")
             await _apply_auto_toggle_on_startup(settings)
@@ -1385,9 +1385,9 @@ async def _on_midnight() -> None:
 
 def schedule_midnight_timer() -> None:
     """다음 자정(00:00)에 call_later 타이머를 예약하는 함수. 엔진 기동 시 + 자정 콜백에서 호출."""
-    if state.midnight_timer_handle is not None:
-        state.midnight_timer_handle.cancel()
-        state.midnight_timer_handle = None
+    if engine_state.state.midnight_timer_handle is not None:
+        engine_state.state.midnight_timer_handle.cancel()
+        engine_state.state.midnight_timer_handle = None
 
     try:
         loop = asyncio.get_running_loop()
@@ -1398,7 +1398,7 @@ def schedule_midnight_timer() -> None:
     if delay <= 0:
         # 이미 자정 지남 → 다음날 자정까지 (24시간 + delay)
         delay += 86400
-    state.midnight_timer_handle = loop.call_later(max(delay, 1), lambda: schedule_engine_task(_on_midnight(), context="자정 날짜 변경"))
+    engine_state.state.midnight_timer_handle = loop.call_later(max(delay, 1), lambda: schedule_engine_task(_on_midnight(), context="자정 날짜 변경"))
     logger.debug("[스케줄] 자정 타이머 — %.0f초 후 예약", delay)
 
 
@@ -1442,22 +1442,22 @@ async def start_daily_time_scheduler() -> None:
     # 엔진 기동 시 타이머 초기 예약
     try:
         # ── 기동 시 자동 ON/OFF 판별: 거래일+시간구간이면 ON, 아니면 OFF ──
-        # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
-        settings = state.integrated_system_settings_cache
+        # engine_state.state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
+        settings = engine_state.state.integrated_system_settings_cache
         if not settings:
             raise RuntimeError("settings cache not initialized")
         await _apply_auto_toggle_on_startup(settings)
 
         # ── market_phase 시간 기반 초기화 (SSOT) ──
         phase = calc_timebased_market_phase()
-        state.market_phase["krx"] = phase["krx"]
-        state.market_phase["nxt"] = phase["nxt"]
+        engine_state.state.market_phase["krx"] = phase["krx"]
+        engine_state.state.market_phase["nxt"] = phase["nxt"]
         logger.info("[기동] 장 상태 계산 완료 | KRX: %s, NXT: %s", phase["krx"], phase["nxt"])
 
         # 기동 시 현재 장 상태 즉시 브로드캐스트 (WS 구독 창과 무관)
         _broadcast_market_phase()
 
-        state.last_reset_date = _kst_now().strftime("%Y%m%d")
+        engine_state.state.last_reset_date = _kst_now().strftime("%Y%m%d")
 
         await schedule_auto_trade_timers(settings)
         schedule_midnight_timer()
@@ -1479,14 +1479,14 @@ async def start_daily_time_scheduler() -> None:
 async def stop_daily_time_scheduler() -> None:
     """타임스케줄러를 중지하는 함수 — 모든 타이머 취소."""
     # 모든 타이머 취소
-    for handle in state.auto_trade_timer_handles:
+    for handle in engine_state.state.auto_trade_timer_handles:
         handle.cancel()
-    state.auto_trade_timer_handles.clear()
-    if state.midnight_timer_handle is not None:
-        state.midnight_timer_handle.cancel()
-        state.midnight_timer_handle = None
+    engine_state.state.auto_trade_timer_handles.clear()
+    if engine_state.state.midnight_timer_handle is not None:
+        engine_state.state.midnight_timer_handle.cancel()
+        engine_state.state.midnight_timer_handle = None
     # ── 타임테이블 타이머 취소 (10초 루프 대체) ──
-    if state.timetable_timer_handle is not None:
-        state.timetable_timer_handle.cancel()
-        state.timetable_timer_handle = None
+    if engine_state.state.timetable_timer_handle is not None:
+        engine_state.state.timetable_timer_handle.cancel()
+        engine_state.state.timetable_timer_handle = None
     logger.info("[스케줄] 중지")

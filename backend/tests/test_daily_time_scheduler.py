@@ -149,33 +149,33 @@ class TestIsNxtPremarketWindow:
     def test_premarket_phase_returns_true(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"nxt": "프리마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_premarket_window() is True
 
     def test_regular_market_returns_false(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_premarket_window() is False
 
     def test_prep_gap_returns_false(self):
         """정규장 준비(거래 없음) 구간은 프리마켓에서 제외."""
         mock_state = MagicMock()
         mock_state.market_phase = {"nxt": "정규장 준비"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_premarket_window() is False
 
     def test_holiday_returns_false(self):
         """휴장일 — calc_timebased_market_phase가 '휴장일' 페이즈 산정."""
         mock_state = MagicMock()
         mock_state.market_phase = {"nxt": "휴장일"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_premarket_window() is False
 
     def test_empty_nxt_returns_false(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"nxt": ""}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_premarket_window() is False
 
 
@@ -187,32 +187,32 @@ class TestIsNxtAftermarketWindow:
     def test_aftermarket_returns_true(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"nxt": "애프터마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_aftermarket_window() is True
 
     def test_aftermarket_sustained_returns_true(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"nxt": "애프터마켓 지속"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_aftermarket_window() is True
 
     def test_single_price_gap_returns_false(self):
         """단일가 매매(일괄 체결) 구간은 애프터마켓에서 제외."""
         mock_state = MagicMock()
         mock_state.market_phase = {"nxt": "단일가 매매"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_aftermarket_window() is False
 
     def test_market_closed_returns_false(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"nxt": "장마감"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_aftermarket_window() is False
 
     def test_empty_nxt_returns_false(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"nxt": ""}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_aftermarket_window() is False
 
 
@@ -350,39 +350,39 @@ class TestIsNxtOnlyWindow:
     def test_krx_inactive_nxt_active(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장마감", "nxt": "애프터마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_only_window() is True
 
     def test_krx_active_returns_false(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_only_window() is False
 
     def test_nxt_inactive_returns_false(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장마감", "nxt": "장마감"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_only_window() is False
 
     def test_empty_krx_returns_false(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "", "nxt": "애프터마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_only_window() is False
 
     def test_opening_auction_nxt_prep_returns_true(self):
         """08:50~09:00 구간: KRX 시가 동시호가(비활성) + NXT 정규장 준비(활성) → True."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_only_window() is True
 
     def test_settle_nxt_single_price_returns_true(self):
         """15:30~15:40 구간: KRX 체결 정산(비활성) + NXT 단일가 매매(활성) → True."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "체결 정산", "nxt": "단일가 매매"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_only_window() is True
 
     def test_pre_subscribe_window_nxt_only(self):
@@ -390,7 +390,7 @@ class TestIsNxtOnlyWindow:
         시간 기반 사전 구간 판정으로 NXT-only True (KRX 단독 종목 제외 구독)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
             assert is_nxt_only_window() is True
 
@@ -405,7 +405,7 @@ class TestIsPreSubscribeWindow:
         """07:59~08:00 사이 + 거래일 → True."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
             assert _is_pre_subscribe_window() is True
 
@@ -413,7 +413,7 @@ class TestIsPreSubscribeWindow:
         """08:00 정각은 사전 구간 종료 (NXT_PREMARKET_START 상한 미만) → False."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장전 대기", "nxt": "프리마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)):
             assert _is_pre_subscribe_window() is False
 
@@ -421,7 +421,7 @@ class TestIsPreSubscribeWindow:
         """07:58은 사전 구간 시작 전 → False."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)):
             assert _is_pre_subscribe_window() is False
 
@@ -429,7 +429,7 @@ class TestIsPreSubscribeWindow:
         """휴장일 시간 내라도 → False (calc_timebased_market_phase가 "휴장일" 산정)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "휴장일", "nxt": "휴장일"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
             assert _is_pre_subscribe_window() is False
 
@@ -463,50 +463,50 @@ class TestIsKrxAfterHours:
     def test_settle_returns_true(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "체결 정산"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_krx_after_hours() is True
 
     def test_after_hours_returns_true(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장후 시간외"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_krx_after_hours() is True
 
     def test_single_price_returns_true(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "시간외 종가매매 종료 + 시간외 단일가매매 개시"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_krx_after_hours() is True
 
     def test_close_none_returns_true(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장 종료"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_krx_after_hours() is True
 
     def test_regular_market_returns_false(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_krx_after_hours() is False
 
     def test_market_closed_returns_false(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장마감"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_krx_after_hours() is False
 
     def test_holiday_returns_false(self):
         """휴장일 — calc_timebased_market_phase가 '휴장일' 페이즈 산정."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "휴장일"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_krx_after_hours() is False
 
     def test_empty_krx_returns_false(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": ""}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             assert is_krx_after_hours() is False
 
 
@@ -521,7 +521,7 @@ class TestIsOrderBlockedByTime:
         """09:00~15:20 정규장/메인마켓 — 양쪽 허용 (KRX 단독·NXT 종목 모두)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
             assert is_order_blocked_by_time("005930") is False
 
@@ -529,7 +529,7 @@ class TestIsOrderBlockedByTime:
         """08:00~08:50 KRX 장전 대기 + NXT 프리마켓 — KRX 단독 종목 차단, NXT 종목 허용."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장전 대기", "nxt": "프리마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 20)), \
              patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
             assert is_order_blocked_by_time("005930") is True  # KRX 단독
@@ -538,7 +538,7 @@ class TestIsOrderBlockedByTime:
         """08:00~08:50 — NXT 중복상장 종목은 허용."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장전 대기", "nxt": "프리마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 20)), \
              patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=True):
             assert is_order_blocked_by_time("005930_AL") is False  # NXT 종목
@@ -549,7 +549,7 @@ class TestIsOrderBlockedByTime:
         KRX 단독 종목은 차단, NXT 종목은 허용."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 55)), \
              patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
             assert is_order_blocked_by_time("005930") is True  # KRX 단독 — 차단
@@ -559,7 +559,7 @@ class TestIsOrderBlockedByTime:
         (KRX '종가 동시호가' 비활성, NXT '조기 마감' 비활성 → NXT_ACTIVE_PHASES 아님)"""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "종가 동시호가", "nxt": "조기 마감"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 25)):
             assert is_order_blocked_by_time("005930") is True
             assert is_order_blocked_by_time("005930_AL") is True
@@ -568,7 +568,7 @@ class TestIsOrderBlockedByTime:
         """15:40~20:00 KRX 장후 시간외(비활성) + NXT 애프터마켓(활성) — KRX 단독 차단, NXT 허용."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장후 시간외", "nxt": "애프터마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(16, 0)), \
              patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
             assert is_order_blocked_by_time("005930") is True
@@ -577,7 +577,7 @@ class TestIsOrderBlockedByTime:
         """15:40~20:00 — NXT 중복상장 종목은 허용."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장후 시간외", "nxt": "애프터마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(16, 0)), \
              patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=True):
             assert is_order_blocked_by_time("005930_AL") is False
@@ -586,7 +586,7 @@ class TestIsOrderBlockedByTime:
         """20:00~24:00 장마감 — 양쪽 비활성 → 전부 차단."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장마감", "nxt": "장마감"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(21, 0)):
             assert is_order_blocked_by_time("005930") is True
             assert is_order_blocked_by_time("005930_AL") is True
@@ -595,7 +595,7 @@ class TestIsOrderBlockedByTime:
         """휴장일 — 장 안 열리므로 주문 자체 발생 안 함 → False (P23 일관성)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "휴장일", "nxt": "휴장일"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
             assert is_order_blocked_by_time("005930") is False
 
@@ -604,14 +604,14 @@ class TestIsOrderBlockedByTime:
     def test_empty_krx_returns_false(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
             assert is_order_blocked_by_time("005930") is False
 
     def test_empty_nxt_returns_false(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": ""}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
             assert is_order_blocked_by_time("005930") is False
 
@@ -621,7 +621,7 @@ class TestIsOrderBlockedByTime:
         """09:00:00 정각 — 경계 ±5초 내 → 무조건 차단 (정규장 진입 5초 대기)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0, 0)):
             assert is_order_blocked_by_time("005930") is True
 
@@ -629,7 +629,7 @@ class TestIsOrderBlockedByTime:
         """08:59:55 — 09:00:00 경계 5초 전 → 무조건 차단."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59, 55)):
             assert is_order_blocked_by_time("005930") is True
 
@@ -637,7 +637,7 @@ class TestIsOrderBlockedByTime:
         """09:00:05 — 09:00:00 경계 5초 후 → 무조건 차단."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0, 5)):
             assert is_order_blocked_by_time("005930") is True
 
@@ -645,7 +645,7 @@ class TestIsOrderBlockedByTime:
         """09:00:06 — 09:00:00 경계 6초 후 (버퍼 밖) → 본 판별 적용 (정규장 → 허용)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0, 6)):
             assert is_order_blocked_by_time("005930") is False
 
@@ -653,7 +653,7 @@ class TestIsOrderBlockedByTime:
         """15:20:00 — 종가 동시호가 시작 경계 → 무조건 차단."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "종가 동시호가", "nxt": "조기 마감"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20, 0)):
             assert is_order_blocked_by_time("005930") is True
 
@@ -661,7 +661,7 @@ class TestIsOrderBlockedByTime:
         """15:40:00 — NXT 애프터마켓 시작 경계 → 무조건 차단 (NXT 종목도 5초 대기)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장후 시간외", "nxt": "애프터마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 40, 0)), \
              patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=True):
             assert is_order_blocked_by_time("005930_AL") is True
@@ -670,7 +670,7 @@ class TestIsOrderBlockedByTime:
         """20:00:00 — 장마감 경계 → 무조건 차단."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장마감", "nxt": "장마감"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 0, 0)):
             assert is_order_blocked_by_time("005930") is True
 
@@ -678,7 +678,7 @@ class TestIsOrderBlockedByTime:
         """08:00:00 — NXT 프리마켓 시작 경계 → 무조건 차단."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장전 대기", "nxt": "프리마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0, 0)):
             assert is_order_blocked_by_time("005930") is True
 
@@ -702,7 +702,7 @@ class TestGetOrderTimeBlockStatus:
         """09:00~15:20 정규장/메인마켓 — (False, "")."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
             assert get_order_time_block_status() == (False, "")
 
@@ -710,7 +710,7 @@ class TestGetOrderTimeBlockStatus:
         """08:00~08:50 KRX 장전 대기 + NXT 프리마켓 — (True, "NXT 전용 구간...")."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장전 대기", "nxt": "프리마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 20)):
             blocked, reason = get_order_time_block_status()
             assert blocked is True
@@ -720,7 +720,7 @@ class TestGetOrderTimeBlockStatus:
         """15:20~15:30 종가 동시호가 + NXT 조기 마감 — 양쪽 비활성 → (True, "동시호가/장외 시간대")."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "종가 동시호가", "nxt": "조기 마감"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 25)):
             blocked, reason = get_order_time_block_status()
             assert blocked is True
@@ -730,7 +730,7 @@ class TestGetOrderTimeBlockStatus:
         """20:00~24:00 장마감 — 양쪽 비활성 → (True, "동시호가/장외 시간대")."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장마감", "nxt": "장마감"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(21, 0)):
             blocked, reason = get_order_time_block_status()
             assert blocked is True
@@ -740,7 +740,7 @@ class TestGetOrderTimeBlockStatus:
         """휴장일 — 장 안 열리므로 칩 표시 불필요 → (False, "") (P21 사용자 투명성)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "휴장일", "nxt": "휴장일"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
             blocked, reason = get_order_time_block_status()
             assert blocked is False
@@ -750,7 +750,7 @@ class TestGetOrderTimeBlockStatus:
         """15:40~20:00 KRX 장후 시간외 + NXT 애프터마켓 — (True, "NXT 전용 구간...")."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장후 시간외", "nxt": "애프터마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(16, 0)):
             blocked, reason = get_order_time_block_status()
             assert blocked is True
@@ -761,14 +761,14 @@ class TestGetOrderTimeBlockStatus:
     def test_empty_krx_returns_not_blocked(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
             assert get_order_time_block_status() == (False, "")
 
     def test_empty_nxt_returns_not_blocked(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": ""}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
             assert get_order_time_block_status() == (False, "")
 
@@ -778,7 +778,7 @@ class TestGetOrderTimeBlockStatus:
         """09:00:00 정각 — 경계 ±5초 내 → (True, "동시호가/장외 시간대 (전환 시각 근처)")."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0, 0)):
             blocked, reason = get_order_time_block_status()
             assert blocked is True
@@ -788,7 +788,7 @@ class TestGetOrderTimeBlockStatus:
         """09:00:05 — 09:00:00 경계 5초 후 → 무조건 차단."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0, 5)):
             blocked, reason = get_order_time_block_status()
             assert blocked is True
@@ -798,7 +798,7 @@ class TestGetOrderTimeBlockStatus:
         """09:00:06 — 09:00:00 경계 6초 후 (버퍼 밖) → 본 판별 적용 (정규장 → 허용)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0, 6)):
             assert get_order_time_block_status() == (False, "")
 
@@ -806,7 +806,7 @@ class TestGetOrderTimeBlockStatus:
         """15:20:00 — 종가 동시호가 시작 경계 → 무조건 차단."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "종가 동시호가", "nxt": "조기 마감"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20, 0)):
             blocked, reason = get_order_time_block_status()
             assert blocked is True
@@ -816,7 +816,7 @@ class TestGetOrderTimeBlockStatus:
         """08:00:00 — NXT 프리마켓 시작 경계 → 무조건 차단."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장전 대기", "nxt": "프리마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0, 0)):
             blocked, reason = get_order_time_block_status()
             assert blocked is True
@@ -829,7 +829,7 @@ class TestGetMarketPhase:
     def test_returns_copy_with_krx_nxt(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = get_market_phase()
             assert result["krx"] == "정규장"
             assert result["nxt"] == "메인마켓"
@@ -838,7 +838,7 @@ class TestGetMarketPhase:
     def test_includes_krx_alert(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓", "krx_alert": "테스트"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = get_market_phase()
             assert result["krx_alert"] == "테스트"
             assert result["is_nxt_only"] is False
@@ -846,7 +846,7 @@ class TestGetMarketPhase:
     def test_empty_krx_logs_error(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = get_market_phase()
             assert result["krx"] == ""
             assert result["is_nxt_only"] is False
@@ -855,7 +855,7 @@ class TestGetMarketPhase:
         """KRX 비활성 + NXT 활성 구간 → is_nxt_only=True 파생 (P10 SSOT)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장마감", "nxt": "애프터마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = get_market_phase()
             assert result["is_nxt_only"] is True
 
@@ -863,7 +863,7 @@ class TestGetMarketPhase:
         """get_market_phase() 반환에 krx_countdown/nxt_countdown 필드 포함 검증 (P10/P16)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 55)):
             result = get_market_phase()
             assert "krx_countdown" in result
@@ -935,7 +935,7 @@ class TestIsWsSubscribeWindow:
     async def test_holiday_returns_false(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "휴장일", "nxt": "휴장일"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
             assert result is False
 
@@ -943,7 +943,7 @@ class TestIsWsSubscribeWindow:
     async def test_in_window_returns_true(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
             assert result is True
 
@@ -951,7 +951,7 @@ class TestIsWsSubscribeWindow:
     async def test_outside_window_returns_false(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
             assert result is False
 
@@ -959,7 +959,7 @@ class TestIsWsSubscribeWindow:
     async def test_empty_nxt_returns_false(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": ""}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
             assert result is False
 
@@ -968,7 +968,7 @@ class TestIsWsSubscribeWindow:
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {}
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             with pytest.raises(RuntimeError, match="settings cache not initialized"):
                 await is_ws_subscribe_window(None)
 
@@ -977,7 +977,7 @@ class TestIsWsSubscribeWindow:
         """07:59~08:00 사전 구간 — 시간 기반 판정으로 True (재시작 대응, P16)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
             result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
             assert result is True
@@ -987,7 +987,7 @@ class TestIsWsSubscribeWindow:
         """휴장일 사전 구간 — 시간 내라도 휴장일 → False."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "휴장일", "nxt": "휴장일"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 59)):
             result = await is_ws_subscribe_window({"timetable.confirmed_download": "20:40"})
             assert result is False
@@ -1000,7 +1000,7 @@ class TestIsEditWindowOpen:
     async def test_ws_window_closed_edit_open(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await is_edit_window_open({"timetable.confirmed_download": "20:40"})
             assert result is True
 
@@ -1008,7 +1008,7 @@ class TestIsEditWindowOpen:
     async def test_ws_window_open_edit_closed(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await is_edit_window_open({"timetable.confirmed_download": "20:40"})
             assert result is False
 
@@ -1035,7 +1035,7 @@ class TestFireUnifiedConfirmedFetch:
     def test_already_done_skips(self):
         mock_state = MagicMock()
         mock_state.confirmed_done = True
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.engine_lifecycle.schedule_engine_task") as mock_sched:
             _fire_unified_confirmed_fetch()
             mock_sched.assert_not_called()
@@ -1043,7 +1043,7 @@ class TestFireUnifiedConfirmedFetch:
     def test_not_done_schedules_task(self):
         mock_state = MagicMock()
         mock_state.confirmed_done = False
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _fire_unified_confirmed_fetch()
             mock_sched.assert_called_once()
@@ -1053,7 +1053,7 @@ class TestFireUnifiedConfirmedFetch:
         mock_state = MagicMock()
         mock_state.confirmed_done = False
         mock_state.confirmed_done = True  # Simulate setting
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=Exception("boom")):
             _fire_unified_confirmed_fetch()
 
@@ -1064,7 +1064,7 @@ class TestDoUnifiedConfirmedFetch:
     @pytest.mark.asyncio
     async def test_success_sets_done(self):
         mock_state = MagicMock()
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.market_close_pipeline.fetch_unified_confirmed_data", new_callable=AsyncMock):
             await _do_unified_confirmed_fetch()
             assert mock_state.confirmed_done is True
@@ -1072,7 +1072,7 @@ class TestDoUnifiedConfirmedFetch:
     @pytest.mark.asyncio
     async def test_failure_resets_done(self):
         mock_state = MagicMock()
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.market_close_pipeline.fetch_unified_confirmed_data", new_callable=AsyncMock, side_effect=Exception("fail")):
             await _do_unified_confirmed_fetch()
             assert mock_state.confirmed_done is False
@@ -1085,7 +1085,7 @@ class TestBroadcastMarketPhase:
     def test_broadcasts_phase(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
@@ -1106,7 +1106,7 @@ class TestBroadcastMarketPhase:
         """NXT '프리마켓' 전환 시 _on_nxt_premarket_start() + _on_ws_subscribe_start() 트리거."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장개시전", "nxt": "장개시전"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "장전 대기", "nxt": "프리마켓"}), \
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "장전 대기", "nxt": "프리마켓"}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
@@ -1119,7 +1119,7 @@ class TestBroadcastMarketPhase:
         """KRX '정규장' 전환 시 _on_krx_market_open() 트리거 (수정 8)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
@@ -1131,7 +1131,7 @@ class TestBroadcastMarketPhase:
         """KRX '종가 동시호가' 전환 시 _on_krx_closing_auction_start() 트리거 (15:20 구독 해지)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "종가 동시호가", "nxt": "조기 마감"}), \
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "종가 동시호가", "nxt": "조기 마감"}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
@@ -1143,7 +1143,7 @@ class TestBroadcastMarketPhase:
         """NXT '장마감' 전환 시 _on_ws_subscribe_end() 트리거 (Step 2)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장마감", "nxt": "애프터마켓 지속"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "장마감", "nxt": "장마감"}), \
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "장마감", "nxt": "장마감"}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
@@ -1155,7 +1155,7 @@ class TestBroadcastMarketPhase:
         """페이즈 변경 없을 시 재계산 트리거 없음 (중복 방지, 수정 8)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
@@ -1181,7 +1181,7 @@ class TestApplyMarketPhase:
         """krx '정규장' 전환 시 _on_krx_market_open 부작용 트리거 (JIF/타이머 공통 경로)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓", "krx_countdown": None, "nxt_countdown": None}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _apply_market_phase({"krx": "정규장", "nxt": "메인마켓"})
@@ -1194,7 +1194,7 @@ class TestApplyMarketPhase:
         """동일 페이즈 적용 시 부작용 미발생 (멱등성 — JIF/타이머 동시 존재 시 충돌 방지)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓", "krx_countdown": None, "nxt_countdown": None}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _apply_market_phase({"krx": "정규장", "nxt": "메인마켓"})
@@ -1207,7 +1207,7 @@ class TestApplyMarketPhase:
         """JIF 경로 — krx만 갱신 시 nxt는 기존 state 값 유지 (P10 SSOT)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "메인마켓"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓", "krx_countdown": None, "nxt_countdown": None}), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
             # JIF가 krx만 전달 — _apply_jif_phase가 nxt를 기존 값으로 채워 전달
@@ -1265,7 +1265,7 @@ class TestOnKrxClosingAuctionStart:
     async def test_trading_day_recomputes_and_removes_krx(self):
         mock_state = MagicMock()
         mock_state.krx_remove_done = False
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock), \
@@ -1277,7 +1277,7 @@ class TestOnKrxClosingAuctionStart:
     async def test_remove_skipped_resets_flag(self):
         mock_state = MagicMock()
         mock_state.krx_remove_done = False
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock), \
@@ -1295,7 +1295,7 @@ class TestOnWsSubscribeStart:
              patch("backend.app.services.daily_time_scheduler.gc"):
             mock_state = MagicMock()
             mock_state.ws_subscribe_window_active = False
-            with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+            with patch("backend.app.services.engine_state.state", mock_state):
                 await _on_ws_subscribe_start()
                 # Weekend: function returns early without setting ws_subscribe_window_active to True
                 assert mock_state.ws_subscribe_window_active is False
@@ -1308,7 +1308,7 @@ class TestOnWsSubscribeStart:
         # 멱등성 가드 통과: 빈 문자열이어야 실행됨 (4단계)
         mock_state.last_ws_subscribe_start_date = ""
         mock_state.last_realtime_reset_date = ""
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.daily_time_scheduler.gc"), \
@@ -1330,7 +1330,7 @@ class TestOnRealtimeFieldsReset:
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.last_realtime_reset_date = ""
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.daily_time_scheduler.gc") as mock_gc, \
@@ -1350,7 +1350,7 @@ class TestOnRealtimeFieldsReset:
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.last_realtime_reset_date = "20250106"  # 이미 오늘 실행됨
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
@@ -1362,7 +1362,7 @@ class TestOnRealtimeFieldsReset:
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.last_realtime_reset_date = ""
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58, weekday=5)), \
              patch("backend.app.services.daily_time_scheduler.gc") as mock_gc, \
              patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
@@ -1376,7 +1376,7 @@ class TestOnRealtimeFieldsReset:
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.last_realtime_reset_date = ""
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=False), \
              patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
@@ -1393,7 +1393,7 @@ class TestOnKrxPreSubscribe:
     async def test_trading_day_subscribes(self):
         mock_state = MagicMock()
         mock_state.last_krx_pre_subscribe_date = ""
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.engine_ws_reg.subscribe_sector_stocks_0b", new_callable=AsyncMock) as mock_subscribe:
@@ -1405,7 +1405,7 @@ class TestOnKrxPreSubscribe:
     async def test_weekend_skips(self):
         mock_state = MagicMock()
         mock_state.last_krx_pre_subscribe_date = ""
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59, weekday=5)), \
              patch("backend.app.services.engine_ws_reg.subscribe_sector_stocks_0b", new_callable=AsyncMock) as mock_subscribe:
             await _on_krx_pre_subscribe()
@@ -1417,7 +1417,7 @@ class TestOnKrxPreSubscribe:
     async def test_holiday_skips(self):
         mock_state = MagicMock()
         mock_state.last_krx_pre_subscribe_date = ""
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=False), \
              patch("backend.app.services.engine_ws_reg.subscribe_sector_stocks_0b", new_callable=AsyncMock) as mock_subscribe:
@@ -1431,7 +1431,7 @@ class TestOnKrxPreSubscribe:
         """멱등성 가드 — 같은 날 중복 실행 방지."""
         mock_state = MagicMock()
         mock_state.last_krx_pre_subscribe_date = "20250106"  # 이미 오늘 실행됨
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.engine_ws_reg.subscribe_sector_stocks_0b", new_callable=AsyncMock) as mock_subscribe:
@@ -1442,7 +1442,7 @@ class TestOnKrxPreSubscribe:
     async def test_exception_does_not_raise(self):
         mock_state = MagicMock()
         mock_state.last_krx_pre_subscribe_date = ""
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59)), \
              patch("backend.app.core.trading_calendar.is_trading_day", side_effect=Exception("boom")):
             await _on_krx_pre_subscribe()
@@ -1459,7 +1459,7 @@ class TestOnWsSubscribeStartIdempotency:
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.ws_window_changed_event = MagicMock()
         mock_state.last_ws_subscribe_start_date = "20250106"  # 이미 오늘 실행됨
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
              patch("backend.app.services.daily_time_scheduler.gc"), \
              patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
@@ -1476,7 +1476,7 @@ class TestOnWsSubscribeStartIdempotency:
         mock_state.ws_window_changed_event = MagicMock()
         mock_state.last_ws_subscribe_start_date = ""        # WS 구독 미실행
         mock_state.last_realtime_reset_date = ""            # 데이터 준비도 미실행 → 보완 경로
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.daily_time_scheduler._on_realtime_fields_reset", new_callable=AsyncMock) as mock_reset, \
@@ -1493,7 +1493,7 @@ class TestOnWsSubscribeStartIdempotency:
         mock_state.ws_window_changed_event = MagicMock()
         mock_state.last_ws_subscribe_start_date = ""        # WS 구독 미실행
         mock_state.last_realtime_reset_date = "20250106"    # 데이터 준비 이미 실행 → 보완 스킵
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.daily_time_scheduler._on_realtime_fields_reset", new_callable=AsyncMock) as mock_reset, \
@@ -1511,7 +1511,7 @@ class TestOnWsSubscribeEnd:
     async def test_end_sets_flags_and_triggers_unreg(self):
         mock_state = MagicMock()
         mock_state.ws_window_changed_event = MagicMock()
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.gc"), \
              patch("backend.app.core.memory_monitor.start_memory_monitor"), \
              patch("backend.app.core.memory_monitor.log_memory_snapshot"), \
@@ -1541,7 +1541,7 @@ class TestOnConfirmedDownload:
     async def test_calls_fire_unified(self):
         mock_state = MagicMock()
         mock_state.last_confirmed_download_date = ""  # 아직 오늘 실행 안 됨
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 40)), \
              patch("backend.app.services.daily_time_scheduler._fire_unified_confirmed_fetch") as mock_fire:
             await _on_confirmed_download()
@@ -1553,7 +1553,7 @@ class TestOnConfirmedDownload:
     async def test_exception_does_not_raise(self):
         mock_state = MagicMock()
         mock_state.last_confirmed_download_date = ""
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 40)), \
              patch("backend.app.services.daily_time_scheduler._fire_unified_confirmed_fetch", side_effect=Exception("boom")):
             await _on_confirmed_download()
@@ -1564,7 +1564,7 @@ class TestOnConfirmedDownload:
         mock_state = MagicMock()
         today_str = _make_kst(20, 40).strftime("%Y%m%d")
         mock_state.last_confirmed_download_date = today_str  # 이미 오늘 실행됨
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 40)), \
              patch("backend.app.services.daily_time_scheduler._fire_unified_confirmed_fetch") as mock_fire:
             await _on_confirmed_download()
@@ -1575,7 +1575,7 @@ class TestOnConfirmedDownload:
         """다음 날 호출 시 정상 실행 (가드 날짜 리셋 후)."""
         mock_state = MagicMock()
         mock_state.last_confirmed_download_date = "20250105"  # 전날 실행됨
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 40)), \
              patch("backend.app.services.daily_time_scheduler._fire_unified_confirmed_fetch") as mock_fire:
             await _on_confirmed_download()
@@ -1590,7 +1590,7 @@ class TestWsDisconnectOnly:
     async def test_sets_flags_and_triggers_unreg(self):
         mock_state = MagicMock()
         mock_state.ws_window_changed_event = MagicMock()
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._trigger_unreg_all", new_callable=AsyncMock), \
              patch("backend.app.services.ws_subscribe_control._set_status"):
             await _ws_disconnect_only()
@@ -1607,7 +1607,7 @@ class TestInitWsSubscribeState:
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.preboot_cache_loaded = True
         mock_state.ws_window_changed_event = MagicMock()
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True), \
              patch("backend.app.services.daily_time_scheduler.gc"), \
              patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock), \
@@ -1620,7 +1620,7 @@ class TestInitWsSubscribeState:
     async def test_outside_window_sets_inactive(self):
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
              patch("backend.app.services.ws_subscribe_control._set_status"):
             await _init_ws_subscribe_state()
@@ -1630,7 +1630,7 @@ class TestInitWsSubscribeState:
     async def test_empty_settings_raises(self):
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             with pytest.raises(RuntimeError, match="settings cache not initialized"):
                 await _init_ws_subscribe_state()
 
@@ -1642,7 +1642,7 @@ class TestInitWsSubscribeState:
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.preboot_cache_loaded = True
         mock_state.ws_window_changed_event = MagicMock()
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True), \
              patch("backend.app.services.daily_time_scheduler.gc") as mock_gc, \
              patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset, \
@@ -1663,7 +1663,7 @@ class TestTriggerRegPipeline:
         mock_state = MagicMock()
         mock_state.connector_manager = None
         mock_state.active_connector = None
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.engine_lifecycle.schedule_engine_task") as mock_sched:
             _trigger_reg_pipeline()
             mock_sched.assert_not_called()
@@ -1675,7 +1675,7 @@ class TestTriggerRegPipeline:
         mock_state.connector_manager = mock_ws
         mock_state.active_connector = None
         mock_state.login_ok = True
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
             _trigger_reg_pipeline()
             mock_sched.assert_called_once()
@@ -1689,7 +1689,7 @@ class TestTriggerUnregAll:
         mock_state = MagicMock()
         mock_state.connector_manager = None
         mock_state.active_connector = None
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._do_unreg_all", new_callable=AsyncMock) as mock_do:
             await _trigger_unreg_all()
             mock_do.assert_not_awaited()
@@ -1702,7 +1702,7 @@ class TestTriggerUnregAll:
         mock_state.connector_manager = mock_ws
         mock_state.active_connector = None
         mock_state.login_ok = True
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._do_unreg_all", new_callable=AsyncMock) as mock_do:
             await _trigger_unreg_all()
             mock_do.assert_not_awaited()
@@ -1715,7 +1715,7 @@ class TestTriggerUnregAll:
         mock_state.connector_manager = mock_ws
         mock_state.active_connector = None
         mock_state.login_ok = True
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._do_unreg_all", new_callable=AsyncMock) as mock_do:
             await _trigger_unreg_all()
             mock_do.assert_awaited_once()
@@ -1730,7 +1730,7 @@ class TestDoUnregAll:
         mock_ws.is_connected.return_value = True
         mock_state = MagicMock()
         mock_state.master_stocks_cache = {}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await _do_unreg_all()
 
     @pytest.mark.asyncio
@@ -1748,7 +1748,7 @@ class TestDoUnregAll:
             "035420": {"_subscribed": False},
         }
         mock_state.integrated_system_settings_cache = {"broker": "kiwoom", "kiwoom_account_no": "12345678"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.ws_subscribe_control._set_status"):
             await _do_unreg_all()
             mock_cm.unsubscribe_stocks.assert_awaited_once()
@@ -1763,7 +1763,7 @@ class TestDoUnregAll:
         mock_ws.is_connected.return_value = False
         mock_state = MagicMock()
         mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await _do_unreg_all()
             mock_ws.unsubscribe_stocks.assert_not_called()
 
@@ -1796,7 +1796,7 @@ class TestOnMidnight:
         mock_state = MagicMock()
         mock_state.last_reset_date = "20250105"
         mock_state.integrated_system_settings_cache = {"time_scheduler_on": False}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(0, 0)), \
              patch("backend.app.core.trading_calendar.has_trading_days_for_year", return_value=True), \
              patch("backend.app.services.daily_time_scheduler._apply_auto_toggle_on_startup", new_callable=AsyncMock), \
@@ -1812,7 +1812,7 @@ class TestOnMidnight:
     async def test_same_date_skips_reset(self):
         mock_state = MagicMock()
         mock_state.last_reset_date = _make_kst(0, 0).strftime("%Y%m%d")
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(0, 0)), \
              patch("backend.app.services.daily_time_scheduler.schedule_midnight_timer") as mock_midnight:
             await _on_midnight()
@@ -1829,7 +1829,7 @@ class TestScheduleMidnightTimer:
         mock_loop = MagicMock()
         mock_handle = MagicMock()
         mock_loop.call_later.return_value = mock_handle
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("asyncio.get_running_loop", return_value=mock_loop), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
             schedule_midnight_timer()
@@ -1839,7 +1839,7 @@ class TestScheduleMidnightTimer:
     def test_no_loop_returns(self):
         mock_state = MagicMock()
         mock_state.midnight_timer_handle = None
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("asyncio.get_running_loop", side_effect=RuntimeError("no loop")):
             schedule_midnight_timer()
 
@@ -1908,7 +1908,7 @@ class TestStopDailyTimeScheduler:
         mock_state.auto_trade_timer_handles = auto_handles
         mock_state.midnight_timer_handle = midnight_handle
         mock_state.timetable_timer_handle = timetable_handle
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await stop_daily_time_scheduler()
             for h in auto_handles:
                 h.cancel.assert_called_once()
@@ -1923,7 +1923,7 @@ class TestStopDailyTimeScheduler:
         mock_state.auto_trade_timer_handles = []
         mock_state.midnight_timer_handle = None
         mock_state.timetable_timer_handle = None
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await stop_daily_time_scheduler()
 
 
@@ -1936,7 +1936,7 @@ class TestStartDailyTimeScheduler:
         mock_state.integrated_system_settings_cache = {"time_scheduler_on": False}
         mock_state.market_phase = {}
         mock_state.timetable_timer_handle = None
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._apply_auto_toggle_on_startup", new_callable=AsyncMock), \
              patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "정규장", "nxt": "메인마켓"}), \
              patch("backend.app.services.daily_time_scheduler.schedule_auto_trade_timers", new_callable=AsyncMock), \
@@ -1954,7 +1954,7 @@ class TestStartDailyTimeScheduler:
     async def test_empty_settings_logs_warning(self):
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             # start_daily_time_scheduler catches exceptions internally
             await start_daily_time_scheduler()
 
@@ -1967,7 +1967,7 @@ class TestScheduleAutoTradeTimers:
         mock_state = MagicMock()
         mock_state.auto_trade_timer_handles = []
         settings = {"time_scheduler_on": False, "buy_time_start": "09:00", "buy_time_end": "15:00", "sell_time_start": "15:00", "sell_time_end": "20:00"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("asyncio.get_running_loop", return_value=MagicMock()):
             await schedule_auto_trade_timers(settings)
             assert len(mock_state.auto_trade_timer_handles) == 0
@@ -1979,7 +1979,7 @@ class TestScheduleAutoTradeTimers:
         mock_loop = MagicMock()
         mock_loop.call_later.return_value = MagicMock()
         settings = {"time_scheduler_on": True, "buy_time_start": "09:00", "buy_time_end": "15:00", "sell_time_start": "15:00", "sell_time_end": "20:00"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("asyncio.get_running_loop", return_value=mock_loop), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(6, 0)):
             await schedule_auto_trade_timers(settings)
@@ -1990,7 +1990,7 @@ class TestScheduleAutoTradeTimers:
         mock_state = MagicMock()
         mock_state.auto_trade_timer_handles = []
         settings = {"time_scheduler_on": True, "buy_time_start": "09:00", "buy_time_end": "15:00", "sell_time_start": "15:00", "sell_time_end": "20:00"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("asyncio.get_running_loop", side_effect=RuntimeError("no loop")):
             await schedule_auto_trade_timers(settings)
 
@@ -2002,7 +2002,7 @@ class TestRetryPipelineCatchup:
     async def test_in_ws_window_returns(self):
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=True), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
@@ -2013,7 +2013,7 @@ class TestRetryPipelineCatchup:
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"timetable.confirmed_download": "20:40"}
         mock_state.master_stocks_cache = {}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 10)), \
              patch("backend.app.core.trading_calendar.get_current_trading_day_str", return_value="20250106"), \
@@ -2027,7 +2027,7 @@ class TestRetryPipelineCatchup:
         # 캐시 date=20250104, 최근 확정 거래일=20250105(is_trading_day=True 모킹이므로 -1일) → 불일치 → 트리거
         mock_state.master_stocks_cache = {"005930": {"date": "20250104"}}
         mock_state.confirmed_done = False
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(21, 0)), \
              patch("backend.app.core.trading_calendar.get_current_trading_day_str", return_value="20250106"), \
@@ -2043,7 +2043,7 @@ class TestRetryPipelineCatchup:
         # 캐시 date=20250105 = 최근 확정 거래일(is_trading_day=True 모킹이므로 current 20250106의 -1일) → 일치 → 스킵
         mock_state.master_stocks_cache = {"005930": {"date": "20250105"}}
         mock_state.confirmed_done = False
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new_callable=AsyncMock, return_value=False), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(21, 0)), \
              patch("backend.app.core.trading_calendar.get_current_trading_day_str", return_value="20250106"), \
@@ -2189,7 +2189,7 @@ class TestTimetableScheduler:
         mock_state.timetable_timer_handle = None
         mock_loop = MagicMock()
         mock_loop.call_later.return_value = MagicMock()
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("asyncio.get_running_loop", return_value=mock_loop), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 55)), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
@@ -2205,7 +2205,7 @@ class TestTimetableScheduler:
         mock_state.timetable_timer_handle = None
         mock_loop = MagicMock()
         mock_loop.call_later.return_value = MagicMock()
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("asyncio.get_running_loop", return_value=mock_loop), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 30)), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
@@ -2220,7 +2220,7 @@ class TestTimetableScheduler:
         mock_state.timetable_timer_handle = None
         mock_loop = MagicMock()
         mock_loop.call_later.return_value = MagicMock()
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("asyncio.get_running_loop", return_value=mock_loop), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 30)), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
@@ -2235,7 +2235,7 @@ class TestTimetableScheduler:
         mock_state.timetable_timer_handle = None
         mock_loop = MagicMock()
         mock_loop.call_later.return_value = MagicMock()
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("asyncio.get_running_loop", return_value=mock_loop), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(20, 45)), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
@@ -2250,7 +2250,7 @@ class TestTimetableScheduler:
         mock_state = MagicMock()
         mock_action = AsyncMock()
         entry = {"kind": "direct", "action": mock_action, "ctx": "테스트 direct"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._schedule_next_timetable_event") as mock_resched:
             await _timetable_event_fired(entry)
             mock_action.assert_awaited_once()
@@ -2261,7 +2261,7 @@ class TestTimetableScheduler:
         """phase 항목 전달 시 _broadcast_market_phase 호출 + finally에서 다음 예약."""
         mock_state = MagicMock()
         entry = {"kind": "phase", "ctx": "테스트 phase"}
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._broadcast_market_phase") as mock_broadcast, \
              patch("backend.app.services.daily_time_scheduler._schedule_next_timetable_event") as mock_resched:
             await _timetable_event_fired(entry)
@@ -2276,7 +2276,7 @@ class TestTimetableScheduler:
         mock_state.last_realtime_reset_date = "20250106"  # 이미 오늘 실행됨
         # _TIMETABLE 의 07:58 direct 항목 — 실제 _on_realtime_fields_reset 사용
         entry = next(e for e in _TIMETABLE if e["ctx"].startswith("실시간 필드 초기화"))
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58)), \
              patch("backend.app.services.daily_time_scheduler._schedule_next_timetable_event"), \
              patch("backend.app.services.engine_snapshot._reset_realtime_fields", new_callable=AsyncMock) as mock_reset:
@@ -2288,7 +2288,7 @@ class TestTimetableScheduler:
         import logging
         mock_state = MagicMock()
         mock_state.last_jif_received_at = _make_kst(10, 0)
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0, 10)):
             with caplog.at_level(logging.WARNING, logger="backend.app.services.daily_time_scheduler"):
                 _check_jif_health()
@@ -2299,7 +2299,7 @@ class TestTimetableScheduler:
         import logging
         mock_state = MagicMock()
         mock_state.last_jif_received_at = None
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 0)):
             with caplog.at_level(logging.DEBUG, logger="backend.app.services.daily_time_scheduler"):
                 _check_jif_health()
@@ -2311,7 +2311,7 @@ class TestTimetableScheduler:
         mock_state = MagicMock()
         # 10:00:00 에서 10:02:30 (150초 경과 → 120초 초과)
         mock_state.last_jif_received_at = _make_kst(10, 0)
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(10, 2, 30)):
             with caplog.at_level(logging.WARNING, logger="backend.app.services.daily_time_scheduler"):
                 _check_jif_health()
@@ -2324,7 +2324,7 @@ class TestTimetableScheduler:
         mock_state.timetable_timer_handle = None
         mock_loop = MagicMock()
         mock_loop.call_later.return_value = MagicMock()
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("asyncio.get_running_loop", return_value=mock_loop), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(7, 58, 30)), \
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
@@ -2341,7 +2341,7 @@ class TestTimetableScheduler:
         mock_state.auto_trade_timer_handles = []
         mock_state.midnight_timer_handle = None
         mock_state.timetable_timer_handle = timetable_handle
-        with patch("backend.app.services.daily_time_scheduler.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await stop_daily_time_scheduler()
             timetable_handle.cancel.assert_called_once()
             assert mock_state.timetable_timer_handle is None
