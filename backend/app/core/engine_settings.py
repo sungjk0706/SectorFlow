@@ -219,6 +219,10 @@ def build_engine_settings_dict(flat: dict) -> dict:
     _v = merged.get("sector_start_threshold_pct")
     result["sector_start_threshold_pct"]   = float(_v if _v is not None else 70.0)
 
+    # ── 구독 한도 (0B 종목 동시 구독 최대 개수, 기본 200) — P20 폴백 금지 ──
+    _v = merged.get("subscribe.max_0b_count")
+    result["subscribe.max_0b_count"]      = int(_v if _v is not None else 200)
+
     # ── 업종 점수 3단계 가산점 슬라이더 (-100~+100, 기본값 0) — 조정 만점 = 업종 수 × (1 + slider/100) ──
     _v = merged.get("sector_bonus_rise_ratio_slider")
     result["sector_bonus_rise_ratio_slider"] = int(_v if _v is not None else 0)
