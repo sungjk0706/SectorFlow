@@ -693,12 +693,19 @@ class AutoTradeManager:
         except Exception:
             logger.warning("[매매] 실시간 지연 체크 실패", exc_info=True)
 
-        # ── RiskManager 서킷브레이커 체크 ───────────────────────────────────
+        # ── RiskManager 매도 차단 체크 ───────────────────────────────────
         try:
             risk_mgr = get_risk_manager()
-            allowed, reason = risk_mgr.check_sell_order_allowed("", 0, 0)
+            allowed, reason = await risk_mgr.check_sell_order_allowed("", 0, 0)
             if not allowed:
                 logger.info("[매매] [리스크차단] 매도 조건 전체 차단 — %s", reason)
+                # P21 사용자 투명성 — 차단 사유 WS 브로드캐스트
+                from backend.app.services.engine_account_notify import _safe_broadcast
+                await _safe_broadcast("risk_block_status", {
+                    "blocked": True,
+                    "side": "sell",
+                    "reason": reason,
+                })
                 return
         except Exception:
             logger.warning("[매매] 리스크 관리자 체크 실패 — 매도 전체 중단", exc_info=True)
