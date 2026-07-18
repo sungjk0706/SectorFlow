@@ -1,26 +1,28 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-18 (차순위 매수 시도 알고리즘 다단계 작업 구현 1세션 — trading.py 반환값 변경 완료)
-- 작업: 차순위 매수 시도 알고리즘 다단계 작업 구현 1세션(trading.py 반환값 변경 + 사유코드 체계) 진행. 사용자 명시적 실행 지시어("2세션 진행해")로 진행 승인. 사전조사 결과: 설계서의 구현 1세션(trading.py 반환값 변경)이 아직 적용되지 않았음을 발견 — trading.py에 사유코드 상수 없음 + test_trading.py 9곳 미변경 + buy_order_executor 임시 호환 코드 없음. 사용자 확인(ask_user_question)으로 "설계서 1세션 먼저" 선택 → 구현 1세션만 진행. 백엔드 2개 파일 수정: `backend/app/services/trading.py`(사유코드 상수 21개 + BUY_OK + BUY_GLOBAL_REJECT_REASONS frozenset 11개 + _map_risk_reason_to_code() 헬퍼 추가 + execute_buy/_execute_buy_locked 시그니처 bool → tuple[bool, str] 변경 + docstring 갱신 + 21개 return False → return False, BUY_REJECT_XXX 변경 + 최종 return True → return True, BUY_OK + 등락률 가드 상승/하락 구분 via _reject_code 변수 + RiskManager 사유 _map_risk_reason_to_code 분기), `backend/app/services/buy_order_executor.py`(임시 호환 코드 추가 — _ordered_result tuple 언패, 2세션에서 제거 예정). 테스트 1개 파일 수정: `backend/tests/test_trading.py`(9곳 result 언패킹 치환 + 신규 TestExecuteBuyReasonCodes 클래스 12개 테스트 + TestMapRiskReasonToCode 클래스 5개 테스트 = 신규 17개 추가). 신규 테스트: auto_buy_off/rebuy/open_order/signal_interval/max_holding/buy_amt_zero/price_zero/daily_state/realtime_latency/rise_guard/strength_guard/risk_circuit 사유코드 검증 12개 + _map_risk_reason_to_code 매핑 5개(circuit/loss/cash/single/unknown fallback). 정적 검증: py_compile OK + ruff check OK. pytest: test_trading.py 48/48 통과(기존 31 + 신규 17) + test_buy_order_executor.py 33/33 통과(임시 호환 코드 정상 동작). 런타임 기동: `python -W error::RuntimeWarning main.py` 기동 성공 — RuntimeWarning 0건 + 에러/Traceback 없음 + "타임테이블 빌드 완료 — 11항목" + "일일 매수 상태 로드 — 날짜=2026-07-18 누적매수=0원" 로그 확인 + 잔존 프로세스 0건. 사유코드 21개: 전체 차단 11개(daily_state/realtime_latency/auto_buy_off/max_holding/buy_amt_zero/daily_limit/risk_circuit/risk_loss/risk_cash/test_cash/order_fail) + 종목별 차단 9개(time_blocked/rebuy/open_order/signal_interval/price_zero/rise_guard/fall_guard/strength_guard/symbol_limit/risk_single) + 조건부 1개(qty_zero). 사용자 체감 변화 없음 (구현 1세션은 반환값 변경만 — buy_order_executor 루프는 임시 호환 코드로 기존 동작 유지, 2세션에서 차순위 시도 활성화).
-- 상태: 구현 1세션(trading.py 반환값 변경) 완료. **차순위 매수 시도 알고리즘 다단계 작업 구현 1세션 완료.** 구현 2세션(buy_order_executor 루프 제어) 진행 대기.
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 시 UI 기준 설명 + 승인) + 규칙 0-5(사용자가 설계/승인한 로직은 더 엄격하게) + 섹션4 "다단계 작업 워크플로우" + 규칙 11(계획서 삭제) + safe-trade 스킬 + backend-fix 스킬 + P10/P15/P16/P20/P21/P22/P23/P24
+- 날짜: 2026-07-18 (차순위 매수 시도 알고리즘 다단계 작업 구현 2세션 — buy_order_executor 루프 제어 + 차순위 시도 알고리즘 완성 · **다단계 작업 전체 완료**)
+- 작업: 차순위 매수 시도 알고리즘 다단계 작업 구현 2세션(buy_order_executor 루프 제어 + 차순위 시도 알고리즘 완성) 진행. 사용자 명시적 실행 지시어("구현 2세션 진행해")로 진행 승인. 사전조사: 1세션에서 trading.py 사유코드 체계 + 임시 호환 코드 완료 확인. 백엔드 1개 파일 수정: `backend/app/services/buy_order_executor.py`(임시 호환 코드 제거 + `_refresh_buyable_prices()` 헬퍼 추가 모듈 레벨 — 기존 `_buyable_codes` 구축 로직(120-137줄)과 통합하여 P10 SSOT 단일 진실 소스화 + 루프 제어 로직 변경 — 차순위 시도 알고리즘: 1순위 성공 후 잔액/한도 잔존 시 `continue`(차순위 시도), 1순위 종목별 차단 시 `continue`, 1순위 전체 차단 시 `break`, 잔액 0·최대 보유수·일일 한도 도달 시 `break` + BUY_REJECT_QTY_ZERO 조건부 판별(잔액 재조회로 전체/종목별 분기) + 매수 사유 문자열에 순위 추가 `reason=f"업종자동매수 업종={s.sector} 순위={bt.rank}"` (P21) + docstring 갱신 "매수 후보 순회 — 차순위 시도 알고리즘" + import 추가 `BUY_REJECT_QTY_ZERO, BUY_GLOBAL_REJECT_REASONS` + `get_risk_manager as _get_rm`). 테스트 1개 파일 수정: `backend/tests/test_buy_order_executor.py`(9곳 `return_value=True` → `(True, "")` 치환 + 3곳 `return_value=False` → `(False, BUY_REJECT_RISE_GUARD)` 치환 + `test_only_first_target_attempted` 제거(더 이상 유효하지 않은 "1순위만 시도" 검증 — 설계서 7-3 누락 발견) + `test_same_buyable_codes_different_order_skips` await_count 1→2 수정(2세션 차순위 시도로 종목별 차단 시 2회 호출) + 신규 TestMultiRankBuyAlgorithm 클래스 10개 테스트 추가). 신규 테스트 10개: second_rank_tried_after_first_success_with_remaining_cash/loop_breaks_on_cash_zero_after_first_success/loop_breaks_on_max_holding_after_first_success/loop_breaks_on_daily_limit_after_first_success/second_rank_tried_after_first_symbol_block/loop_breaks_on_global_block/qty_zero_with_cash_zero_breaks_loop/qty_zero_with_remaining_cash_continues/exception_breaks_loop/loop_breaks_after_two_successes_on_cash_zero. 정적 검증: py_compile OK + ruff check OK. pytest: test_buy_order_executor.py 42/42 통과(기존 32 + 신규 10) + test_trading.py 48/48 통과(회귀 없음). 전체 회귀: 10 failed, 2918 passed — 10개 실패는 1세션 상태(git stash)에서도 동일 실패 확인 → **본 2세션 수정 무관한 기존 실패(테스트 격리 문제)** (규칙 4-1 추적 완료). 런타임 기동: `python -W error::RuntimeWarning main.py` 기동 성공 — RuntimeWarning 0건 + 에러/Traceback 없음 + "타임테이블 빌드 완료 — 11항목" + "일일 매수 상태 로드 — 날짜=2026-07-18 누적매수=0원" 로그 확인 + 잔존 프로세스 0건. 사용자 체감 변화: "잔액이 남을 때 1순위만 사고 끝나지 않고 2순위·3순위로 잔액을 더 쓴다" + 1순위가 종목별 사유(등락률·재매수 등)로 차단되면 차순위 시도. 단, 전체 차단 사유(자동매매 OFF·잔액 0·최대 보유수·일일 한도·서킷브레이커 등)면 차순위 시도 없이 종료. **차순위 매수 시도 알고리즘 다단계 작업 전체 완료 (설계→구현 1세션→구현 2세션).**
+- 상태: 구현 2세션(buy_order_executor 루프 제어 + 차순위 시도 알고리즘 완성) 완료. **차순위 매수 시도 알고리즘 다단계 작업 전체 완료.** 다음 작업 대기.
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 0-4(핵심 로직 변경 시 UI 기준 설명 + 승인) + 규칙 0-5(사용자가 설계/승인한 로직은 더 엄격하게) + 규칙 4-1(테스트 실패 추적 의무) + 섹션4 "다단계 작업 워크플로우" + 규칙 9(발견 문제 기록) + 규칙 11(계획서 삭제) + safe-trade 스킬 + backend-fix 스킬 + P10/P15/P16/P20/P21/P22/P23/P24
 
-## 차순위 매수 시도 알고리즘 다단계 작업 — 진행 중 (구현 1/2세션)
+## 차순위 매수 시도 알고리즘 다단계 작업 — 완료 (2/2세션)
 
 ### 단계 진행 상황
 - **설계 세션 (완료)**: 설계서 작성 — 사전조사 결과 + 사용자 결정 4항목 + 구현 방식 확정 반영.
-  - **설계서**: `docs/architecture_multi_rank_buy_design.md` (821줄, 14개 섹션)
+  - **설계서**: `docs/architecture_multi_rank_buy_design.md` (821줄, 14개 섹션) — **2세션 완료 후 삭제 (규칙 11)**
   - **핵심 설계**: `execute_buy` 반환값 `bool` → `tuple[bool, str]` (성공여부, 사유코드). 사유코드 21개 상수 + `BUY_GLOBAL_REJECT_REASONS` frozenset(전체 차단 11개) + `_map_risk_reason_to_code()` 헬퍼(RiskManager 사유 문자열 → 사유코드 매핑). `buy_order_executor` 루프: 1순위 성공 후 잔액/한도 잔존 시 `continue`(차순위 시도), 1순위 종목별 차단 시 `continue`, 1순위 전체 차단 시 `break`, 잔액 0·최대 보유수·일일 한도 도달 시 `break`. `_refresh_buyable_prices()` 헬퍼 추가(매수 성공 후 잔액 갱신 시 _buyable_codes 재계산, P10 SSOT). `BUY_REJECT_QTY_ZERO`는 조건부 — 잔액 재조회로 전체/종목별 판별. 매수 사유 문자열에 순위 추가(`reason=f"업종자동매수 업종={s.sector} 순위={bt.rank}"`, P21). 간격 게이트: 같은 호출 내 연속 시도 허용, `mark_order_executed`는 매 성공 시마다 호출. 프론트엔드 변경 없음. UI 기준 변경(규칙 0-4): 사용자 체감 변화 "잔액이 남을 때 1순위만 사고 끝나지 않고 2순위·3순위로 잔액을 더 쓴다" only. 로그에 매수 시도 순위·사유 명시.
 - **구현 1세션 (완료)**: trading.py 반환값 변경 + 사유코드 체계 + test_trading.py 갱신.
   - **수정 파일**: `backend/app/services/trading.py` + `backend/app/services/buy_order_executor.py`(임시 호환) + `backend/tests/test_trading.py`
   - **trading.py 변경**: 사유코드 상수 21개 + BUY_OK + BUY_GLOBAL_REJECT_REASONS frozenset(전체 차단 11개) + _map_risk_reason_to_code() 헬퍼 추가(모듈 상단). execute_buy/_execute_buy_locked 시그니처 `-> bool` → `-> tuple[bool, str]` + docstring 갱신. 21개 `return False` → `return False, BUY_REJECT_XXX` (4-2 매핑표 준수). 최종 `return True` → `return True, BUY_OK`. 등락률 가드는 _reject_code 변수로 상승(BUY_REJECT_RISE_GUARD)/하락(BUY_REJECT_FALL_GUARD) 구분. RiskManager 거부는 _map_risk_reason_to_code(_risk_reason)로 사유코드 분기.
-  - **buy_order_executor.py 변경**: 임시 호환 코드 추가 — `_ordered_result = await ... execute_buy(...)` + `_ordered = _ordered_result[0] if isinstance(_ordered_result, tuple) else _ordered_result`. **2세션에서 제거 예정**.
+  - **buy_order_executor.py 변경**: 임시 호환 코드 추가 — `_ordered_result = await ... execute_buy(...)` + `_ordered = _ordered_result[0] if isinstance(_ordered_result, tuple) else _ordered_result`. **2세션에서 제거 완료**.
   - **test_trading.py 변경**: 9곳 `result = await mgr.execute_buy(...)` → `result, _reason = await mgr.execute_buy(...)` (replace_all). 신규 TestExecuteBuyReasonCodes 클래스 12개 테스트(auto_buy_off/rebuy/open_order/signal_interval/max_holding/buy_amt_zero/price_zero/daily_state/realtime_latency/rise_guard/strength_guard/risk_circuit 사유코드 검증) + TestMapRiskReasonToCode 클래스 5개 테스트(circuit/loss/cash/single/unknown fallback). is_auto 체크 이후 가드 테스트는 `patch("backend.app.services.trading.auto_buy_effective", return_value=True)` 추가.
   - **검증**: py_compile OK + ruff check OK + pytest test_trading.py 48/48 통과(기존 31 + 신규 17) + pytest test_buy_order_executor.py 33/33 통과(임시 호환 코드 정상) + 런타임 `python -W error::RuntimeWarning main.py` 기동 성공 RuntimeWarning 0건 + 잔존 프로세스 0건.
-- **구현 2세션 (대기)**: buy_order_executor 루프 제어 + _refresh_buyable_prices 헬퍼 + test_buy_order_executor.py 치환 + 차순위 시도 신규 테스트 10개 + 런타임 기동 검증 + HANDOVER.md 갱신 + 설계서 삭제(규칙 11) — 구현 1세션 완료 후 사용자 승인 시 진행.
-  - **임시 호환 코드 제거 대상**: `buy_order_executor.py:172-178` (_ordered_result tuple 언패 임시 코드)
-  - **import 추가 대상**: `from backend.app.services.trading import BUY_OK, BUY_REJECT_QTY_ZERO, BUY_GLOBAL_REJECT_REASONS`
+- **구현 2세션 (완료)**: buy_order_executor 루프 제어 + _refresh_buyable_prices 헬퍼 + test_buy_order_executor.py 치환 + 차순위 시도 신규 테스트 10개 + 런타임 기동 검증 + HANDOVER.md 갱신 + 설계서 삭제(규칙 11).
+  - **수정 파일**: `backend/app/services/buy_order_executor.py` + `backend/tests/test_buy_order_executor.py`
+  - **buy_order_executor.py 변경**: 임시 호환 코드 제거 + `_refresh_buyable_prices()` 헬퍼 추가(모듈 레벨 — 기존 `_buyable_codes` 구축 로직과 통합, P10 SSOT) + 루프 제어 로직 변경(차순위 시도 알고리즘 — 1순위 성공 후 잔액/한도 잔존 시 continue, 1순위 종목별 차단 시 continue, 1순위 전체 차단 시 break, 잔액 0·최대 보유수·일일 한도 도달 시 break) + BUY_REJECT_QTY_ZERO 조건부 판별(잔액 재조회로 전체/종목별 분기) + 매수 사유 문자열에 순위 추가 + docstring 갱신 + import 추가(BUY_REJECT_QTY_ZERO, BUY_GLOBAL_REJECT_REASONS, get_risk_manager as _get_rm).
+  - **test_buy_order_executor.py 변경**: 9곳 `return_value=True` → `(True, "")` 치환 + 3곳 `return_value=False` → `(False, BUY_REJECT_RISE_GUARD)` 치환 + `test_only_first_target_attempted` 제거(더 이상 유효하지 않은 "1순위만 시도" 검증 — 설계서 7-3 누락 발견) + `test_same_buyable_codes_different_order_skips` await_count 1→2 수정(2세션 차순위 시도로 종목별 차단 시 2회 호출) + 신규 TestMultiRankBuyAlgorithm 클래스 10개 테스트 추가.
+  - **검증**: py_compile OK + ruff check OK + pytest test_buy_order_executor.py 42/42 통과(기존 32 + 신규 10) + pytest test_trading.py 48/48 통과(회귀 없음) + 전체 회귀 10 failed/2918 passed(10개 실패는 1세션 상태에서도 동일 — 본 2세션 수정 무관한 기존 실패, 규칙 4-1 추적 완료) + 런타임 `python -W error::RuntimeWarning main.py` 기동 성공 RuntimeWarning 0건 + 잔존 프로세스 0건.
 
 ---
 
@@ -1187,13 +1189,23 @@
 
 ## 미해결 문제
 
-### 기존 테스트 실패: test_trading.py::TestExecuteBuyGates::test_rebuy_block_disabled (본 세션 수정과 무관 — 규칙 4-1 검증 완료)
+### 기존 테스트 실패: test_trading.py 테스트 격리 문제 (전체 회귀 시 10개 실패, 단독 실행 시 통과) — 본 세션 수정 무관 (규칙 4-1 검증 완료)
 
-**발견일**: 2026-07-18 (DB 테이블 스케줄러 3세션 전체 회귀 테스트 실행 중 발견)
+**발견일**: 2026-07-18 (DB 테이블 스케줄러 3세션 전체 회귀 테스트 실행 중 최초 발견 / 차순위 매수 시도 2세션 전체 회귀에서 9개 추가 발견)
 
-**현상**: `backend/tests/test_trading.py::TestExecuteBuyGates::test_rebuy_block_disabled` 테스트가 전체 회귀 실행 시에만 실패. 단독 실행 시 통과. 순서 의존성/상태 공유 문제로 추정.
+**현상**: `backend/tests/test_trading.py`의 10개 테스트가 전체 회귀 실행 시에만 실패. 단독 실행 시 모두 통과. 순서 의존성/상태 공유 문제로 추정.
+- `TestExecuteBuyGates::test_rebuy_block_disabled` (기존 실패 — DB 테이블 스케줄러 3세션에서 발견)
+- `TestExecuteBuyReasonCodes::test_rebuy_block_today_returns_rebuy_reason` (1세션 추가 테스트)
+- `TestExecuteBuyReasonCodes::test_open_order_returns_open_order_reason` (1세션 추가 테스트)
+- `TestExecuteBuyReasonCodes::test_signal_interval_returns_signal_interval_reason` (1세션 추가 테스트)
+- `TestExecuteBuyReasonCodes::test_max_holding_returns_max_holding_reason` (1세션 추가 테스트)
+- `TestExecuteBuyReasonCodes::test_buy_amt_zero_returns_buy_amt_zero_reason` (1세션 추가 테스트)
+- `TestExecuteBuyReasonCodes::test_price_zero_returns_price_zero_reason` (1세션 추가 테스트)
+- `TestExecuteBuyReasonCodes::test_rise_guard_returns_rise_guard_reason` (1세션 추가 테스트)
+- `TestExecuteBuyReasonCodes::test_strength_guard_returns_strength_guard_reason` (1세션 추가 테스트)
+- `TestExecuteBuyReasonCodes::test_risk_circuit_returns_risk_circuit_reason` (1세션 추가 테스트)
 
-**본 세션 수정 무관 확인 (규칙 4-1)**: `git stash`로 본 세션 수정을 임시 분리 후 동일 환경에서 전체 회귀 실행 → 동일하게 1개 실패 (2865 passed / 1 failed). 수정 복구 후에도 동일. 즉, 본 세션의 `settings_defaults.py`/`settings_store.py` 변경과 무관한 기존 실패.
+**본 세션 수정 무관 확인 (규칙 4-1)**: 차순위 매수 시도 2세션에서 `git stash`로 본 세션 수정을 임시 분리 후(1세션 커밋 상태) 전체 회귀 실행 → 동일하게 10개 실패 (2909 passed / 10 failed). 수정 복구 후에도 동일 (2918 passed / 10 failed). 즉, 본 2세션의 `buy_order_executor.py`/`test_buy_order_executor.py` 변경과 무관한 기존 실패. 1세션에서 전체 회귀를 실행하지 않아 9개 실패가 미발견 상태였음.
 
 **위반/부합 원칙**: 해당 없음 (본 세션 수정 무관). 다만 테스트 격리성 문제로 향후 별도 조사 필요.
 
