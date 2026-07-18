@@ -31,7 +31,11 @@ from backend.app.services.trading import (  # noqa: E402
     BUY_REJECT_RISE_GUARD,
     BUY_REJECT_RISK_CASH,
     BUY_REJECT_RISK_CIRCUIT,
+    BUY_REJECT_RISK_CONSEC_LOSS,
     BUY_REJECT_RISK_LOSS,
+    BUY_REJECT_RISK_LOSS_RATE,
+    BUY_REJECT_RISK_PROFIT,
+    BUY_REJECT_RISK_PROFIT_RATE,
     BUY_REJECT_RISK_SINGLE,
     BUY_REJECT_SIGNAL_INTERVAL,
     BUY_REJECT_STRENGTH_GUARD,
@@ -465,6 +469,18 @@ class TestMapRiskReasonToCode:
     def test_single_mapping(self):
         assert _map_risk_reason_to_code("단일 종목 비중 한도 초과 (삼성전자)") == BUY_REJECT_RISK_SINGLE
 
+    def test_profit_mapping(self):
+        assert _map_risk_reason_to_code("일일 수익 한도 도달") == BUY_REJECT_RISK_PROFIT
+
+    def test_loss_rate_mapping(self):
+        assert _map_risk_reason_to_code("일일 손실률 한도 초과") == BUY_REJECT_RISK_LOSS_RATE
+
+    def test_profit_rate_mapping(self):
+        assert _map_risk_reason_to_code("일일 수익률 한도 도달") == BUY_REJECT_RISK_PROFIT_RATE
+
+    def test_consec_loss_mapping(self):
+        assert _map_risk_reason_to_code("연속 손실 한도 초과 (3회)") == BUY_REJECT_RISK_CONSEC_LOSS
+
     def test_unknown_falls_back_to_circuit(self):
         """알 수 없는 사유는 보수적 전체 차단(BUY_REJECT_RISK_CIRCUIT) 분류 (P20 폴백 금지)."""
         assert _map_risk_reason_to_code("알 수 없는 리스크 사유") == BUY_REJECT_RISK_CIRCUIT
@@ -497,7 +513,7 @@ class TestCheckSellConditions:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.trading.get_risk_manager") as mock_rm:
             mock_state.realtime_latency_exceeded = False
-            mock_rm.return_value.check_sell_order_allowed.return_value = (True, "승인")
+            mock_rm.return_value.check_sell_order_allowed = AsyncMock(return_value=(True, "승인"))
             await mgr.check_sell_conditions([stock], _raw_settings(), "token")
         mgr.execute_sell.assert_awaited_once()
         call_kwargs = mgr.execute_sell.call_args
@@ -519,7 +535,7 @@ class TestCheckSellConditions:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.trading.get_risk_manager") as mock_rm:
             mock_state.realtime_latency_exceeded = False
-            mock_rm.return_value.check_sell_order_allowed.return_value = (True, "승인")
+            mock_rm.return_value.check_sell_order_allowed = AsyncMock(return_value=(True, "승인"))
             await mgr.check_sell_conditions([stock], _raw_settings(), "token")
         mgr.execute_sell.assert_awaited_once()
         call_kwargs = mgr.execute_sell.call_args
@@ -541,7 +557,7 @@ class TestCheckSellConditions:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.trading.get_risk_manager") as mock_rm:
             mock_state.realtime_latency_exceeded = False
-            mock_rm.return_value.check_sell_order_allowed.return_value = (True, "승인")
+            mock_rm.return_value.check_sell_order_allowed = AsyncMock(return_value=(True, "승인"))
             await mgr.check_sell_conditions([stock], _raw_settings(), "token")
         mgr.execute_sell.assert_not_awaited()
 
@@ -570,7 +586,7 @@ class TestCheckSellConditions:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.trading.get_risk_manager") as mock_rm:
             mock_state.realtime_latency_exceeded = False
-            mock_rm.return_value.check_sell_order_allowed.return_value = (True, "승인")
+            mock_rm.return_value.check_sell_order_allowed = AsyncMock(return_value=(True, "승인"))
             await mgr.check_sell_conditions([stock_up], _raw_settings(ts_apply=True, ts_start_val=5.0, ts_drop_val=2.0), "token")
             # drop_rate = (76000 - 74000) / 76000 * 100 = 2.63% >= 2.0
             await mgr.check_sell_conditions([stock_drop], _raw_settings(ts_apply=True, ts_start_val=5.0, ts_drop_val=2.0), "token")
@@ -595,7 +611,7 @@ class TestCheckSellConditions:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.trading.get_risk_manager") as mock_rm:
             mock_state.realtime_latency_exceeded = False
-            mock_rm.return_value.check_sell_order_allowed.return_value = (True, "승인")
+            mock_rm.return_value.check_sell_order_allowed = AsyncMock(return_value=(True, "승인"))
             await mgr.check_sell_conditions([stock], _raw_settings(), "token")
         mgr.execute_sell.assert_not_awaited()
 
@@ -615,7 +631,7 @@ class TestCheckSellConditions:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.trading.get_risk_manager") as mock_rm:
             mock_state.realtime_latency_exceeded = False
-            mock_rm.return_value.check_sell_order_allowed.return_value = (True, "승인")
+            mock_rm.return_value.check_sell_order_allowed = AsyncMock(return_value=(True, "승인"))
             await mgr.check_sell_conditions([stock], _raw_settings(), "token")
         mgr.execute_sell.assert_not_awaited()
 
@@ -642,7 +658,7 @@ class TestSellIntervalGate:
              patch("backend.app.services.trading.get_risk_manager") as mock_rm:
             mock_state.realtime_latency_exceeded = False
             mock_state._last_global_sell_ts = _time.time()  # 간격 내
-            mock_rm.return_value.check_sell_order_allowed.return_value = (True, "승인")
+            mock_rm.return_value.check_sell_order_allowed = AsyncMock(return_value=(True, "승인"))
             await mgr.check_sell_conditions(
                 [stock], _raw_settings(sell_interval_on=True, sell_interval_sec=30), "token",
             )
@@ -662,7 +678,7 @@ class TestSellIntervalGate:
              patch("backend.app.services.trading.get_risk_manager") as mock_rm:
             mock_state.realtime_latency_exceeded = False
             mock_state._last_global_sell_ts = _time.time() - 60  # 간격(30초) 초과
-            mock_rm.return_value.check_sell_order_allowed.return_value = (True, "승인")
+            mock_rm.return_value.check_sell_order_allowed = AsyncMock(return_value=(True, "승인"))
             await mgr.check_sell_conditions(
                 [stock], _raw_settings(sell_interval_on=True, sell_interval_sec=30), "token",
             )
@@ -682,7 +698,7 @@ class TestSellIntervalGate:
              patch("backend.app.services.trading.get_risk_manager") as mock_rm:
             mock_state.realtime_latency_exceeded = False
             mock_state._last_global_sell_ts = _time.time()  # 간격 내라도 토글 OFF면 통과
-            mock_rm.return_value.check_sell_order_allowed.return_value = (True, "승인")
+            mock_rm.return_value.check_sell_order_allowed = AsyncMock(return_value=(True, "승인"))
             await mgr.check_sell_conditions(
                 [stock], _raw_settings(sell_interval_on=False, sell_interval_sec=30), "token",
             )
@@ -703,7 +719,7 @@ class TestSellIntervalGate:
              patch("backend.app.services.trading.get_risk_manager") as mock_rm:
             mock_state.realtime_latency_exceeded = False
             mock_state._last_global_sell_ts = _time.time()  # 간격 내
-            mock_rm.return_value.check_sell_order_allowed.return_value = (True, "승인")
+            mock_rm.return_value.check_sell_order_allowed = AsyncMock(return_value=(True, "승인"))
             await mgr.check_sell_conditions(
                 [stock], _raw_settings(sell_interval_on=True, sell_interval_sec=30), "token",
             )
