@@ -35,6 +35,7 @@ import {
   applyEngineReloadComplete,
   applyCircuitBreakerOpen,
   applyOrderTimeBlocked,
+  applyRiskBlockStatus,
   applyMarketPhase,
   applyIndexData,
   uiStore,
@@ -330,6 +331,11 @@ export function bindWSToStore(
   /* ── order_time_blocked: 체결 불가 시간대 주문 차단 상태 (10초 주기) ── */
   pricesClient.onEvent('order_time_blocked', (data) => {
     applyOrderTimeBlocked(data as { blocked?: boolean; reason?: string })
+  })
+
+  /* ── risk_block_status: 리스크 매니저 차단 상태 (손실/수익 한도 도달 등) ── */
+  pricesClient.onEvent('risk_block_status', (data) => {
+    applyRiskBlockStatus(data as { blocked?: boolean; side?: string; reason?: string })
   })
 
   /* ── buy-limit-status: 매수 한도 상태 실시간 갱신 ── */

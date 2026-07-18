@@ -70,6 +70,9 @@ export interface UIState {
 
   /* ── 체결 불가 시간대 주문 차단 상태 (동시호가/장외) ── */
   orderTimeBlocked: { reason: string } | null
+
+  /* ── 리스크 매니저 차단 상태 (손실/수익 한도 도달 등) ── */
+  riskBlockStatus: { side: string; reason: string } | null
 }
 
 const initialState: UIState = {
@@ -92,6 +95,7 @@ const initialState: UIState = {
   indexData: null,
   circuitBreakerOpen: null,
   orderTimeBlocked: null,
+  riskBlockStatus: null,
 }
 
 export const uiStore = createStore<UIState>(initialState)
@@ -161,6 +165,20 @@ export function applyOrderTimeBlocked(data: { blocked?: boolean; reason?: string
 /* ── 주문 일시중단 상태 수동 해제 (사용자 클릭) ── */
 export function clearOrderTimeBlocked(): void {
   uiStore.setState({ orderTimeBlocked: null })
+}
+
+/* ── risk_block_status: 리스크 매니저 차단 상태 갱신 ── */
+export function applyRiskBlockStatus(data: { blocked?: boolean; side?: string; reason?: string }): void {
+  if (data.blocked) {
+    uiStore.setState({ riskBlockStatus: { side: data.side ?? 'unknown', reason: data.reason ?? '리스크 차단' } })
+  } else {
+    uiStore.setState({ riskBlockStatus: null })
+  }
+}
+
+/* ── 리스크 차단 상태 수동 해제 (사용자 클릭) ── */
+export function clearRiskBlockStatus(): void {
+  uiStore.setState({ riskBlockStatus: null })
 }
 
 /* ── snapshot-update: 수익 이력만 갱신 ── */
@@ -249,6 +267,7 @@ export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
     initialized: true,
     circuitBreakerOpen: null,
     orderTimeBlocked: null,
+    riskBlockStatus: null,
     engineReady: !!(data.bootstrap_done),
     marketPhase: (data.market_phase as UIState['marketPhase']) ?? { krx: 'CLOSED', nxt: 'CLOSED', krx_alert: null },
     receiveRate: (() => {
