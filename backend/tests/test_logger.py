@@ -31,6 +31,8 @@ from backend.app.core.logger import (
     _info_file_sink,
     InterceptHandler,
     get_logger,
+    log_progress,
+    log_progress_end,
 )
 
 
@@ -333,3 +335,90 @@ class TestSetupConsoleIntercept:
         # httpx, httpcore 노이즈 차단 확인
         assert logging.getLogger("httpx").level == logging.WARNING
         assert logging.getLogger("httpcore").level == logging.WARNING
+
+
+# ── log_progress / log_progress_end ───────────────────────────────────────────────
+
+class TestLogProgress:
+    """다운로드 진행률 1줄 갱신 헬퍼 — TTY/\r 갱신 + 파일 DEBUG + 인터리브 안전."""
+
+    def test_tty_writes_carriage_return_and_sets_progress_active(self):
+        mock_stdout = MagicMock()
+        mock_stdout.isatty.return_value = True
+        logger_mod._progress_active = False
+        with (
+            patch("backend.app.core.logger._get_stdout_utf8", return_value=mock_stdout),
+            patch("backend.app.core.logger.sys.stdout", mock_stdout),
+            patch("backend.app.core.logger._loguru_logger.opt") as mock_opt,
+        ):
+            log_progress("[다운로드]", 5, 100, code="005930")
+        # \r 로 같은 줄 갱신
+        written = mock_stdout.write.call_args_list[0].args[0]
+        assert written.startswith("\r")
+        assert "005930" in written
+        assert "5/100" in written
+        assert "5.0%" in written
+        assert logger_mod._progress_active is True
+        # 파일은 DEBUG로 기록
+        mock_opt.return_value.debug.assert_called_once()
+
+    def test_non_tty_writes_newline_no_carriage_return(self):
+        mock_stdout = MagicMock()
+        mock_stdout.isatty.return_value = False
+        logger_mod._progress_active = False
+        with (
+            patch("backend.app.core.logger._get_stdout_utf8", return_value=mock_stdout),
+            patch("backend.app.core.logger.sys.stdout", mock_stdout),
+            patch("backend.app.core.logger._loguru_logger.opt"),
+        ):
+            log_progress("[다운로드]", 1, 10)
+        written = mock_stdout.write.call_args_list[0].args[0]
+        assert not written.startswith("\r")
+        assert written.endswith("\n")
+        assert "1/10" in written
+        # non-TTY는 _progress_active 유지 안 함
+        assert logger_mod._progress_active is False
+
+    def test_zero_total_does_not_raise(self):
+        mock_stdout = MagicMock()
+        mock_stdout.isatty.return_value = True
+        with (
+            patch("backend.app.core.logger._get_stdout_utf8", return_value=mock_stdout),
+            patch("backend.app.core.logger.sys.stdout", mock_stdout),
+            patch("backend.app.core.logger._loguru_logger.opt"),
+        ):
+            log_progress("[다운로드]", 0, 0)
+        assert "0/0" in mock_stdout.write.call_args_list[0].args[0]
+
+    def test_log_progress_end_writes_newline_when_active(self):
+        mock_stdout = MagicMock()
+        mock_stdout.isatty.return_value = True
+        logger_mod._progress_active = True
+        with (
+            patch("backend.app.core.logger._get_stdout_utf8", return_value=mock_stdout),
+            patch("backend.app.core.logger.sys.stdout", mock_stdout),
+        ):
+            log_progress_end()
+        mock_stdout.write.assert_called_once_with("\n")
+        assert logger_mod._progress_active is False
+
+    def test_log_progress_end_noop_when_not_active(self):
+        mock_stdout = MagicMock()
+        logger_mod._progress_active = False
+        with (
+            patch("backend.app.core.logger._get_stdout_utf8", return_value=mock_stdout),
+            patch("backend.app.core.logger.sys.stdout", mock_stdout),
+        ):
+            log_progress_end()
+        mock_stdout.write.assert_not_called()
+
+    def test_stdout_sink_inserts_newline_when_progress_active(self):
+        """진행률 \r 갱신 중 다른 로그가 끼어들면 줄 바꿈 후 출력하여 커서 꼬임 방지."""
+        mock_stdout = MagicMock()
+        logger_mod._progress_active = True
+        with patch("backend.app.core.logger._get_stdout_utf8", return_value=mock_stdout):
+            logger_mod._stdout_sink("2026-07-18 20:00:00 [정보] 다른 로그\n")
+        # 첫 write: \n (진행 줄 종료), 두 번째 write: 메시지 본문
+        assert mock_stdout.write.call_args_list[0].args[0] == "\n"
+        assert mock_stdout.write.call_args_list[1].args[0] == "2026-07-18 20:00:00 [정보] 다른 로그\n"
+        assert logger_mod._progress_active is False

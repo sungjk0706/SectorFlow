@@ -25,6 +25,7 @@ from backend.app.core.trading_calendar import (
 )
 from backend.app.services import engine_state
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
+from backend.app.core.logger import log_progress, log_progress_end
 from backend.app.db.json_utils import dumps
 
 logger = logging.getLogger(__name__)
@@ -1266,11 +1267,12 @@ async def fetch_5d_data_only() -> dict:
                 eta_sec=_eta,
                 step=5
             )
-            logger.info("[다운로드] 진행 중: %d/%d (%d%%)", idx + 1, total, pct)
+            log_progress("[다운로드]", idx + 1, total, code=base_cd)
 
             # 요청 간격 조절
             await asyncio.sleep(0.3)
 
+        log_progress_end()
         # ── 5일봉 세로 행 테이블 직접 삽입 (5일치 전체 저장) ───────────────────
         if confirmed_5d:
             logger.info("[다운로드] 5일봉 세로 행 테이블 직접 삽입 — %d종목", len(confirmed_5d))
