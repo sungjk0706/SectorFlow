@@ -530,30 +530,44 @@ async def _on_nxt_premarket_start() -> None:
 
 
 async def _on_krx_market_open() -> None:
-    """09:00 KRX 정규장 진입 콜백 — 업종 종합점수 재계산 + KRX 단독 종목 재구독.
+    """09:00 KRX 정규장 진입 콜백 — 업종 종합점수 재계산 + KRX 단독 종목 조건부 재구독.
 
     NXT 프리마켓(08:00~08:50)에는 NXT-enabled 종목만 업종 점수에 포함되었으므로,
     09:00 KRX 정규장 진입 시 전체 종목을 포함하도록 재계산 필요.
-    또한 15:30에 구독해지된 KRX 단독 종목을 재구독하여 실시간 시세를 수신한다.
+    또한 15:20에 구독해지된 KRX 단독 종목을 재구독하여 실시간 시세를 수신한다.
+
+    구독 스킵 조건 (P16 살아있는 경로 · P22 정합성):
+    - 08:59 사전 구독이 성공했으면(last_krx_pre_subscribe_date == 오늘) 09:00 구독 스킵.
+      subscribe_sector_stocks_0b() 내부 _subscribed 플래그 멱등성으로 중복 전송은 막히지만,
+      함수 진입 자체가 불필요 연산(보유종목 조회·필터 스캔·한도 계산)을 유발하므로 조기 스킵.
+    - 08:59 실패/누락 시(last_krx_pre_subscribe_date != 오늘) 09:00 복구 구독 수행.
+      08:59 WS 미연결, 엔진 09:00 직전 기동, 예외 발생 등 복구 시나리오 커버.
+
     recompute_sector_summary_now() 내부에서 notify 3종이 이미 호출되므로 중복 호출을 제거한다.
     _broadcast_market_phase() 내 페이즈 변경 감지 시 자동 트리거된다 (수정 8 통합).
     """
     try:
         from backend.app.core.trading_calendar import is_trading_day
-        today = _kst_now().date()
-        if today.weekday() >= 5 or not is_trading_day(today):
+        today = _kst_now()
+        today_str = today.strftime("%Y%m%d")
+        if today.weekday() >= 5 or not is_trading_day(today.date()):
             return
-        logger.info("[작업실행] KRX 정규장 진입 — KRX 단독 종목 추가 구독 + 업종 재계산 시작 (09:00)")
+        logger.info("[작업실행] KRX 정규장 진입 — 업종 재계산 + KRX 단독 종목 조건부 재구독 시작 (09:00)")
         from backend.app.services.sector_data_provider import recompute_sector_summary_now
         await recompute_sector_summary_now()
         logger.info("[작업실행] 업종 재계산 완료 (09:00 KRX 정규장)")
 
-        # KRX 단독 종목 재구독 (15:30 구독해지 복원)
-        from backend.app.services.engine_ws_reg import subscribe_sector_stocks_0b
-        await subscribe_sector_stocks_0b()
-        logger.info("[작업실행] KRX 단독 종목 추가 구독 완료 (09:00 KRX 정규장)")
+        # KRX 단독 종목 조건부 재구독 (15:20 구독해지 복원 + 08:59 실패 복구)
+        # 08:59 사전 구독 성공 시 09:00 구독 스킵 — 불필요 연산 제거 (P24 단순성)
+        # 08:59 실패/누락 시 09:00 복구 구독 — 안전장치 유지 (P16 살아있는 경로)
+        if engine_state.state.last_krx_pre_subscribe_date == today_str:
+            logger.info("[작업실행] 08:59 사전 구독 완료 상태 — 09:00 KRX 단독 종목 구독 스킵")
+        else:
+            from backend.app.services.engine_ws_reg import subscribe_sector_stocks_0b
+            await subscribe_sector_stocks_0b()
+            logger.info("[작업실행] KRX 단독 종목 복구 구독 완료 (09:00 — 08:59 사전 구독 누락 복구)")
     except Exception as e:
-        logger.warning("[작업실행] KRX 단독 종목 추가 구독 + 업종 재계산 콜백 오류: %s", e, exc_info=True)
+        logger.warning("[작업실행] KRX 단독 종목 조건부 재구독 + 업종 재계산 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_krx_pre_subscribe() -> None:

@@ -1235,8 +1235,26 @@ class TestOnKrxMarketOpen:
                 mock_recompute.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_trading_day_recomputes_and_resubscribes(self):
-        with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0)), \
+    async def test_trading_day_skips_subscribe_when_pre_subscribe_done(self):
+        """08:59 사전 구독 성공 시 09:00 구독 스킵 — 재계산만 수행 (P16/P24)."""
+        mock_state = MagicMock()
+        mock_state.last_krx_pre_subscribe_date = "20250106"  # 08:59 사전 구독 완료
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock) as mock_recompute, \
+             patch("backend.app.services.engine_ws_reg.subscribe_sector_stocks_0b", new_callable=AsyncMock) as mock_subscribe:
+            await _on_krx_market_open()
+            mock_recompute.assert_awaited_once()
+            mock_subscribe.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_trading_day_resubscribes_when_pre_subscribe_missed(self):
+        """08:59 사전 구독 누락/실패 시 09:00 복구 구독 수행 (P16 살아있는 경로)."""
+        mock_state = MagicMock()
+        mock_state.last_krx_pre_subscribe_date = ""  # 08:59 사전 구독 안 됨
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new_callable=AsyncMock) as mock_recompute, \
              patch("backend.app.services.engine_ws_reg.subscribe_sector_stocks_0b", new_callable=AsyncMock) as mock_subscribe:
