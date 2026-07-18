@@ -192,8 +192,6 @@ function refreshUI(): void {
 // Step 1 골조 + Step 2 자동매수/매도 시간쌍 이동 + Step 3 사전 준비 시간·거래소 고정 시간 이동 + Step 4 1일봉 다운로드 이동.
 // 토글 OFF 시에도 시간 입력 활성화 유지 (설계서 2-1, P24 탭 간 의존성 최소화, P21 안내 문구로 보완).
 function renderTimeSettingsTab(container: HTMLElement): void {
-  container.appendChild(sectionTitle('시간 설정'))
-
   // 자동매수 시간쌍 (시작/종료)
   const buyTimeRow = document.createElement('div')
   Object.assign(buyTimeRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
@@ -413,8 +411,6 @@ function renderTimeSettingsTab(container: HTMLElement): void {
 
 /* ── 자동매매 탭 ── */
 function renderAutoTradeTab(container: HTMLElement): void {
-  container.appendChild(sectionTitle('자동매매'))
-
   // 마스터 토글
   const masterRow = document.createElement('div')
   Object.assign(masterRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
@@ -513,7 +509,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
   Object.assign(riskManagerRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
   const riskManagerLabel = document.createElement('span')
   Object.assign(riskManagerLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  riskManagerLabel.textContent = '리스크 매니저'
+  riskManagerLabel.textContent = '자동 매매 중단 기능'
   riskManagerRow.appendChild(riskManagerLabel)
   riskManagerToggle = createToggleBtn({ on: false, onClick: async () => {
     const next = !vals.risk_manager_on
@@ -742,8 +738,6 @@ function handleMasterToggle(): void {
 
 /* ── 텔레그램 탭 ── */
 function renderTelegramTab(container: HTMLElement): void {
-  container.appendChild(sectionTitle('텔레그램'))
-
   // tele_on 토글
   const teleRow = document.createElement('div')
   Object.assign(teleRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
@@ -832,8 +826,6 @@ function renderTelegramTab(container: HTMLElement): void {
 
 /* ── 계정관리 탭 ── */
 function renderAccountTab(container: HTMLElement): void {
-  container.appendChild(sectionTitle('투자모드'))
-
   // 투자모드 선택 (중앙정렬)
   tradeModeRadioGroup = createRadioGroup({
     items: [
