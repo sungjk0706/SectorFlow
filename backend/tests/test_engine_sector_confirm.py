@@ -291,7 +291,7 @@ class TestFlushUnregBatch:
             mock_cache.pop("005935", None)
 
         mock_queue.put_nowait.side_effect = put_side_effect
-        with patch("backend.app.services.engine_sector_confirm.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.core_queues.get_control_queue", return_value=mock_queue), \
              patch("backend.app.services.engine_lifecycle.schedule_engine_task") as mock_schedule, \
              patch("backend.app.services.engine_account_notify.notify_buy_targets_update"):
@@ -323,7 +323,7 @@ class TestFlushUnregBatch:
         mock_cache = {
             "005930": {"_subscribed_dynamic": True, "order_ratio": 0.5, "program_net_buy": 1000},
         }
-        with patch("backend.app.services.engine_sector_confirm.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.core_queues.get_control_queue", return_value=mock_queue), \
              patch("backend.app.services.engine_lifecycle.schedule_engine_task"), \
              patch("backend.app.services.engine_account_notify.notify_buy_targets_update"):
@@ -377,7 +377,7 @@ class TestFlushSectorRecomputeImpl:
     async def test_cold_start_calls_full_recompute(self):
         """캐시 없음(콜드 스타트) → _full_recompute 호출 (L92-94)."""
         request_sector_recompute("005930")
-        with patch("backend.app.services.engine_sector_confirm.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_sector_confirm._full_recompute", new=AsyncMock()) as mock_full:
             mock_state.sector_summary_cache = None
             await _flush_sector_recompute_impl()
@@ -389,7 +389,7 @@ class TestFlushSectorRecomputeImpl:
         request_sector_recompute("005930")
         mock_cache = MagicMock()
         mock_cache.sectors = []
-        with patch("backend.app.services.engine_sector_confirm.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.core.sector_mapping.get_merged_sectors_batch", new=AsyncMock(return_value={"005930": ""})):
             mock_state.sector_summary_cache = mock_cache
             await _flush_sector_recompute_impl()
@@ -409,7 +409,7 @@ class TestFlushSectorRecomputeImpl:
         mock_result.sectors = [existing_sector, new_sector]
         mock_result.buy_targets = []
 
-        with patch("backend.app.services.engine_sector_confirm.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
                  "all_codes": ["005930", "005935"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {},
              })), \
@@ -455,7 +455,7 @@ class TestFlushSectorRecomputeImpl:
         mock_result.sectors = [existing_sector]
         mock_result.buy_targets = []
 
-        with patch("backend.app.services.engine_sector_confirm.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
                  "all_codes": ["005930", "005935"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {},
              })), \
@@ -497,7 +497,7 @@ class TestFlushSectorRecomputeImpl:
         mock_result.sectors = [pass_sector, fail_sector]
         mock_result.buy_targets = []
 
-        with patch("backend.app.services.engine_sector_confirm.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
                  "all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {},
              })), \
@@ -540,7 +540,7 @@ class TestFlushSectorRecomputeImpl:
         mock_result.sectors = [existing_sector]
         mock_result.buy_targets = [_make_buy_target("005930")]
 
-        with patch("backend.app.services.engine_sector_confirm.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
                  "all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {},
              })), \
@@ -586,7 +586,7 @@ class TestFlushSectorRecomputeImpl:
         mock_result.sectors = [existing_sector]
         mock_result.buy_targets = [_make_buy_target("005930")]
 
-        with patch("backend.app.services.engine_sector_confirm.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
                  "all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {},
              })), \
@@ -623,7 +623,7 @@ class TestFlushSectorRecomputeImpl:
     async def test_exception_logged(self):
         """try 블록 내 예외 시 로깅만 수행 (L208-209)."""
         request_sector_recompute("005930")
-        with patch("backend.app.services.engine_sector_confirm.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(side_effect=Exception("test error"))):
             mock_state.sector_summary_cache = MagicMock()
             mock_state.sector_summary_cache.sectors = []
@@ -645,7 +645,7 @@ class TestFlushSectorRecomputeImpl:
         mock_auto_trade = MagicMock()
         mock_auto_trade._bought_today = {"005940": True}
 
-        with patch("backend.app.services.engine_sector_confirm.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
                  "all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {},
              })), \
@@ -689,7 +689,7 @@ class TestFlushSectorRecomputeImpl:
         mock_result.sectors = []
         mock_result.buy_targets = []
 
-        with patch("backend.app.services.engine_sector_confirm.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
                  "all_codes": ["000660"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {},
              })), \
@@ -732,7 +732,7 @@ class TestFlushSectorRecomputeImpl:
         mock_result.sectors = []
         mock_result.buy_targets = []
 
-        with patch("backend.app.services.engine_sector_confirm.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
                  "all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {},
              })), \
@@ -778,7 +778,7 @@ class TestFullRecompute:
         mock_result.sectors = mock_summary.sectors
         mock_result.buy_targets = [_make_buy_target("005930")]
 
-        with patch("backend.app.services.engine_sector_confirm.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
                  "all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {},
              })), \
@@ -821,7 +821,7 @@ class TestFullRecompute:
         prev_cache = MagicMock()
         prev_cache.buy_targets = []
 
-        with patch("backend.app.services.engine_sector_confirm.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
                  "all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {},
              })), \
@@ -860,7 +860,7 @@ class TestFullRecompute:
         mock_auto_trade = MagicMock()
         mock_auto_trade._bought_today = {"005940": True}
 
-        with patch("backend.app.services.engine_sector_confirm.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
                  "all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {},
              })), \

@@ -10,7 +10,7 @@ recompute_sector_for_code(code)는 이벤트 발생 시 호출되며,
 from __future__ import annotations
 import asyncio
 import logging
-from backend.app.services.engine_state import state
+from backend.app.services import engine_state
 logger = logging.getLogger(__name__)
 
 _dirty_codes: set[str] = set()
@@ -87,7 +87,7 @@ async def _flush_sector_recompute_impl() -> None:
         )
         from backend.app.core import sector_mapping
 
-        existing = state.sector_summary_cache
+        existing = engine_state.state.sector_summary_cache
 
         # 캐시 없음(콜드 스타트) → 전체 재계산 1회 (이후 증분 모드 전환)
         if not existing:
@@ -116,7 +116,7 @@ async def _flush_sector_recompute_impl() -> None:
         # 2. 해당 업종의 종목만 재계산
         inputs = await get_sector_summary_inputs()
         all_codes = inputs["all_codes"]
-        min_avg_amt_eok = float(state.integrated_system_settings_cache["sector_min_trade_amt"])
+        min_avg_amt_eok = float(engine_state.state.integrated_system_settings_cache["sector_min_trade_amt"])
 
         # dirty 업종에 속한 종목코드만 필터 (배치 조회)
         all_sectors_map = await sector_mapping.get_merged_sectors_batch(all_codes)
@@ -152,13 +152,13 @@ async def _flush_sector_recompute_impl() -> None:
             merged.append(sc)
 
         # 4. 3단계 누적 가산점 계산 + 컷오프 + 순위 재정렬
-        min_rise_ratio = float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0
+        min_rise_ratio = float(engine_state.state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0
         calculate_bonus_scores(
             merged,
             min_rise_ratio=min_rise_ratio,
-            rise_ratio_slider=int(state.integrated_system_settings_cache["sector_bonus_rise_ratio_slider"]),
-            relative_strength_slider=int(state.integrated_system_settings_cache["sector_bonus_relative_strength_slider"]),
-            trade_amount_slider=int(state.integrated_system_settings_cache["sector_bonus_trade_amount_slider"]),
+            rise_ratio_slider=int(engine_state.state.integrated_system_settings_cache["sector_bonus_rise_ratio_slider"]),
+            relative_strength_slider=int(engine_state.state.integrated_system_settings_cache["sector_bonus_relative_strength_slider"]),
+            trade_amount_slider=int(engine_state.state.integrated_system_settings_cache["sector_bonus_trade_amount_slider"]),
         )
 
         # 5. 매수 타겟 큐
@@ -168,17 +168,17 @@ async def _flush_sector_recompute_impl() -> None:
         from backend.app.services import engine_account
         _held = await engine_account.get_held_codes()
         _bought_today: set[str] = set()
-        if state.auto_trade is not None:
-            _bought_today = set(state.auto_trade._bought_today.keys())
+        if engine_state.state.auto_trade is not None:
+            _bought_today = set(engine_state.state.auto_trade._bought_today.keys())
         ss = build_buy_targets_from_settings(
             merged,
-            state.integrated_system_settings_cache,
+            engine_state.state.integrated_system_settings_cache,
             held_codes=_held,
             bought_today_codes=_bought_today,
         )
 
         # 참조 교체 방식으로 캐시 갱신 (R5.6)
-        state.sector_summary_cache = ss
+        engine_state.state.sector_summary_cache = ss
 
         # 업종 점수 증분 전송 (내부에서 변경분만 비교)
         await notify_desktop_sector_scores()
@@ -192,7 +192,7 @@ async def _flush_sector_recompute_impl() -> None:
                 await evaluate_buy_candidates()
 
         # 업종 요약정보 생성 완료 이벤트 설정
-        state.sector_summary_ready_event.set()
+        engine_state.state.sector_summary_ready_event.set()
 
     except Exception as e:
         logger.warning("[업종] 증분 재계산 오류: %s", e, exc_info=True)
@@ -211,7 +211,7 @@ async def _full_recompute(codes_snapshot: set[str] | None = None) -> None:
         notify_buy_targets_update,
     )
     # buy_targets 변경 감지를 위해 이전 값 저장
-    _prev_cache = state.sector_summary_cache
+    _prev_cache = engine_state.state.sector_summary_cache
     prev_targets = _prev_cache.buy_targets if _prev_cache and hasattr(_prev_cache, 'buy_targets') else None
 
     inputs = await get_sector_summary_inputs()
@@ -219,26 +219,26 @@ async def _full_recompute(codes_snapshot: set[str] | None = None) -> None:
     compute_inputs = {k: v for k, v in inputs.items() if k not in ("krx_codes", "nxt_codes")}
     sector_summary = await compute_full_sector_summary(
         **compute_inputs,
-        min_rise_ratio=float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
-        min_avg_amt_eok=float(state.integrated_system_settings_cache["sector_min_trade_amt"]),
-        rise_ratio_slider=int(state.integrated_system_settings_cache["sector_bonus_rise_ratio_slider"]),
-        relative_strength_slider=int(state.integrated_system_settings_cache["sector_bonus_relative_strength_slider"]),
-        trade_amount_slider=int(state.integrated_system_settings_cache["sector_bonus_trade_amount_slider"]),
+        min_rise_ratio=float(engine_state.state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
+        min_avg_amt_eok=float(engine_state.state.integrated_system_settings_cache["sector_min_trade_amt"]),
+        rise_ratio_slider=int(engine_state.state.integrated_system_settings_cache["sector_bonus_rise_ratio_slider"]),
+        relative_strength_slider=int(engine_state.state.integrated_system_settings_cache["sector_bonus_relative_strength_slider"]),
+        trade_amount_slider=int(engine_state.state.integrated_system_settings_cache["sector_bonus_trade_amount_slider"]),
     )
     from backend.app.services import engine_account
     _held = await engine_account.get_held_codes()
     _bought_today: set[str] = set()
-    if state.auto_trade is not None:
-        _bought_today = set(state.auto_trade._bought_today.keys())
+    if engine_state.state.auto_trade is not None:
+        _bought_today = set(engine_state.state.auto_trade._bought_today.keys())
     ss = build_buy_targets_from_settings(
         sector_summary.sectors,
-        state.integrated_system_settings_cache,
+        engine_state.state.integrated_system_settings_cache,
         held_codes=_held,
         bought_today_codes=_bought_today,
     )
 
     # 참조 교체 방식으로 캐시 갱신 (R5.6)
-    state.sector_summary_cache = ss
+    engine_state.state.sector_summary_cache = ss
 
     # 업종 점수 증분 전송 (내부에서 변경분만 비교)
     await notify_desktop_sector_scores()
@@ -251,7 +251,7 @@ async def _full_recompute(codes_snapshot: set[str] | None = None) -> None:
         await evaluate_buy_candidates()
 
     # 업종 요약정보 생성 완료 이벤트 설정
-    state.sector_summary_ready_event.set()
+    engine_state.state.sector_summary_ready_event.set()
 
 
 # ── 0D 구독 증분 갱신 ────────────────────────────────────────────────────
@@ -266,18 +266,17 @@ def sync_dynamic_subscriptions(new_buy_targets) -> None:
     """
     global _PENDING_UNREG_TIMERS
 
-    from backend.app.services.engine_state import state
     from backend.app.services.core_queues import get_control_queue
     import time
 
     # 실시간 통신 미연결 → 생략
-    ws = state.connector_manager or state.active_connector
-    if not ws or not ws.is_connected() or not state.login_ok:
+    ws = engine_state.state.connector_manager or engine_state.state.active_connector
+    if not ws or not ws.is_connected() or not engine_state.state.login_ok:
         return
 
     new_codes = {bt.stock.code for bt in new_buy_targets if bt.stock.guard_pass}
 
-    all_stocks = state.master_stocks_cache
+    all_stocks = engine_state.state.master_stocks_cache
     # 구독 중 + 구독 대기 중 종목 모두 포함 — 중복 REG 방지 (P10 SSOT)
     prev_codes = ({cd for cd, entry in all_stocks.items() if entry.get("_subscribed_dynamic", False)}
                   | _PENDING_REG_CODES)
@@ -356,7 +355,7 @@ def _flush_unreg_batch() -> None:
     from backend.app.services.core_queues import get_control_queue
     import time
 
-    all_stocks = state.master_stocks_cache
+    all_stocks = engine_state.state.master_stocks_cache
     current_codes = {cd for cd, entry in all_stocks.items() if entry.get("_subscribed_dynamic", False)}
     to_unreg = codes & current_codes  # 아직 구독 중인 것만
 
@@ -376,8 +375,8 @@ def _flush_unreg_batch() -> None:
 
     # state.master_stocks_cache에서 "_subscribed_dynamic" 및 동적 데이터 완전 제거 (데이터 왜곡 차단)
     for cd in to_unreg:
-        if cd in state.master_stocks_cache:
-            entry = state.master_stocks_cache[cd]
+        if cd in engine_state.state.master_stocks_cache:
+            entry = engine_state.state.master_stocks_cache[cd]
             entry.pop("_subscribed_dynamic", None)
             entry.pop("order_ratio", None)
             entry.pop("program_net_buy", None)
