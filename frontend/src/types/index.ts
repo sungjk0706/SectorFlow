@@ -152,6 +152,9 @@ export interface AppSettings {
   index_auto_subscribe: boolean;
   quote_auto_subscribe: boolean;
 
+  // 구독 한도 (종목 실시간 시세 0B 동시 구독 최대 개수, 기본 200, 범위 1~1000)
+  'subscribe.max_0b_count'?: number;
+
   // 업종 필터
   sector_min_rise_ratio_pct: number;
   sector_min_trade_amt: number;

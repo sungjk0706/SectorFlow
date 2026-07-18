@@ -5,7 +5,7 @@
 import { uiStore, applyTestDataResetCompleted } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingsManager, extractDirty, MASKED_FIELDS, type SettingsManager } from '../settings'
-import { createToggleBtn, createMoneyInput, createTextInput, createRadioGroup, focusNext } from '../components/common/setting-row'
+import { createToggleBtn, createMoneyInput, createTextInput, createRadioGroup, createNumInput, focusNext } from '../components/common/setting-row'
 import { toastResult, showSaveToast } from '../components/common/toast'
 import { createDataTable, type ColumnDef } from '../components/common/data-table'
 import { api } from '../api/client'
@@ -70,6 +70,9 @@ let timetableResetH = '07', timetableResetM = '58'
 let timetableWsH = '07', timetableWsM = '59'
 let timetableKrxH = '08', timetableKrxM = '59'
 let savingTimetable = false
+
+// 구독 한도 (종목 동시 구독 최대 개수, 기본 200, 범위 1~1000)
+let subscribeMaxInput: ReturnType<typeof createNumInput> | null = null
 
 // 텔레그램 탭 참조
 let teleToggle: ReturnType<typeof createToggleBtn> | null = null
@@ -357,6 +360,37 @@ function renderTimeSettingsTab(container: HTMLElement): void {
     fixedBox.appendChild(row)
   }
   container.appendChild(fixedBox)
+
+  // 구독 한도 (종목 동시 구독 최대 개수) — P10 SSOT 단일 설정 키, P21 사용자 조정 가능
+  // 백엔드 settings_store.py가 1~1000 외 값 저장 차단 (422) — UI clamp와 이중 방어
+  container.appendChild(sectionTitle('구독 한도'))
+  container.appendChild(createDescText('종목 실시간 시세를 동시에 구독할 최대 개수입니다. 보유 종목을 우선 등록한 뒤, 남은 자리만큼 필터 통과 종목이 추가로 등록됩니다. (기본값 200, 범위 1~1000)'))
+
+  const subMaxRow = document.createElement('div')
+  Object.assign(subMaxRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  const subMaxLabel = document.createElement('span')
+  Object.assign(subMaxLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  subMaxLabel.textContent = '종목 동시 구독 최대 개수'
+  subMaxRow.appendChild(subMaxLabel)
+
+  const initMax = Number(vals['subscribe.max_0b_count'] ?? 200) || 200
+  subscribeMaxInput = createNumInput({
+    value: initMax,
+    min: 1,
+    max: 1000,
+    step: 10,
+    name: 'subscribe.max_0b_count',
+    onChange: (v) => {
+      if (!settingsMgr) return
+      const dirty: Record<string, unknown> = { 'subscribe.max_0b_count': v }
+      settingsMgr.saveSection(dirty).then(res => {
+        toastResult(res)
+        if (res.ok) Object.assign(vals, dirty)
+      })
+    },
+  })
+  subMaxRow.appendChild(subscribeMaxInput.el)
+  container.appendChild(subMaxRow)
 }
 
 /* ── 자동매매 탭 ── */
@@ -968,6 +1002,9 @@ function syncFromSettings(s: AppSettings | null): void {
     const [tkh, tkm] = parseHM(String(r['timetable.krx_pre_subscribe'] ?? '08:59'))
     timetableKrxH = tkh; timetableKrxM = tkm
     if (timetableKrxSlot) updateTimeSlotDisplay(timetableKrxSlot, tkh, tkm)
+
+    // 구독 한도 (종목 동시 구독 최대 개수)
+    subscribeMaxInput?.setValue(Number(r['subscribe.max_0b_count'] ?? 200) || 200)
 
     // 자동매수 (시간쌍은 시간 설정 탭에서 표시, 토글 OFF 시에도 활성화 유지 — 설계서 2-1)
     autoBuyToggle?.setOn(!!r.auto_buy_on)
