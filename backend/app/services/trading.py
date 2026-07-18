@@ -21,6 +21,71 @@ from backend.app.services.risk_manager import get_risk_manager
 logger = logging.getLogger(__name__)
 
 
+# ── 매수 실패 사유코드 (P23 일관성 — buy_order_executor 소비) ──────────────
+# 빈 문자열 = 성공
+BUY_OK = ""
+
+# 전체 차단 사유 (차순위 시도 무의미 → 루프 종료)
+BUY_REJECT_DAILY_STATE = "daily_state"           # 일일 매수 상태 로드 실패
+BUY_REJECT_REALTIME_LATENCY = "realtime_latency" # 실시간 지연 200ms 초과
+BUY_REJECT_AUTO_BUY_OFF = "auto_buy_off"         # 자동매매 비활성화
+BUY_REJECT_MAX_HOLDING = "max_holding"           # 최대 보유 종목 수 초과
+BUY_REJECT_BUY_AMT_ZERO = "buy_amt_zero"         # 종목당 한도 설정값 0
+BUY_REJECT_DAILY_LIMIT = "daily_limit"           # 일일 매수 한도 초과
+BUY_REJECT_RISK_CIRCUIT = "risk_circuit"         # 서킷브레이커 차단
+BUY_REJECT_RISK_LOSS = "risk_loss"               # 일일 손실 한도 초과
+BUY_REJECT_RISK_CASH = "risk_cash"               # 예수금 부족 (잔액 0)
+BUY_REJECT_TEST_CASH = "test_cash"               # 테스트 예수금 검증 실패
+BUY_REJECT_ORDER_FAIL = "order_fail"             # 주문 전송 실패
+
+# 종목별 차단 사유 (차순위 시도 유효 → continue)
+BUY_REJECT_TIME_BLOCKED = "time_blocked"         # 체결 불가 시간대 (nxt 여부)
+BUY_REJECT_REBUY = "rebuy"                       # 재매수 차단
+BUY_REJECT_OPEN_ORDER = "open_order"             # 미체결 주문 존재
+BUY_REJECT_SIGNAL_INTERVAL = "signal_interval"   # 30초 연속신호 차단
+BUY_REJECT_PRICE_ZERO = "price_zero"             # 현재가 ≤ 0
+BUY_REJECT_RISE_GUARD = "rise_guard"             # 등락률 상승 가드
+BUY_REJECT_FALL_GUARD = "fall_guard"             # 등락률 하락 가드
+BUY_REJECT_STRENGTH_GUARD = "strength_guard"     # 체결강도 가드
+BUY_REJECT_SYMBOL_LIMIT = "symbol_limit"         # 종목당 한도 초과
+BUY_REJECT_RISK_SINGLE = "risk_single"           # 단일 종목 비중 초과
+
+# 조건부 사유 (buy_order_executor에서 잔액 재조회로 전체/종목별 판별)
+BUY_REJECT_QTY_ZERO = "qty_zero"                 # buy_qty ≤ 0 (잔액 0이면 전체, 단가 비싸면 종목별)
+
+# 전체 차단 사유 집합 (frozenset — P10 SSOT, 사유 분류의 단일 진실 소스)
+BUY_GLOBAL_REJECT_REASONS: frozenset[str] = frozenset({
+    BUY_REJECT_DAILY_STATE,
+    BUY_REJECT_REALTIME_LATENCY,
+    BUY_REJECT_AUTO_BUY_OFF,
+    BUY_REJECT_MAX_HOLDING,
+    BUY_REJECT_BUY_AMT_ZERO,
+    BUY_REJECT_DAILY_LIMIT,
+    BUY_REJECT_RISK_CIRCUIT,
+    BUY_REJECT_RISK_LOSS,
+    BUY_REJECT_RISK_CASH,
+    BUY_REJECT_TEST_CASH,
+    BUY_REJECT_ORDER_FAIL,
+})
+
+
+def _map_risk_reason_to_code(risk_reason: str) -> str:
+    """RiskManager 거부 사유 문자열 → 사유코드 매핑 (P23 일관성).
+
+    알 수 없는 사유는 보수적으로 전체 차단 분류 (P20 폴백 금지 — 추정 아님, 보수적 차단).
+    """
+    if "서킷브레이커" in risk_reason:
+        return BUY_REJECT_RISK_CIRCUIT
+    if "일일 손실 한도" in risk_reason:
+        return BUY_REJECT_RISK_LOSS
+    if "예수금 부족" in risk_reason:
+        return BUY_REJECT_RISK_CASH
+    if "단일 종목 비중" in risk_reason:
+        return BUY_REJECT_RISK_SINGLE
+    logger.warning("[매매] RiskManager 알 수 없는 사유 — 전체 차단 분류: %s", risk_reason)
+    return BUY_REJECT_RISK_CIRCUIT
+
+
 def _fire_and_forget_telegram(message: str, settings: dict | None) -> None:
     """텔레그램 알림을 NotificationWorker 큐로 전송. 예외 격리."""
     try:
@@ -92,11 +157,11 @@ class AutoTradeManager:
                 )
 
     async def execute_buy(self, stk_cd: str, current_price: float,
-                    access_token: str, reason: str = "") -> bool:
+                    access_token: str, reason: str = "") -> tuple[bool, str]:
         """
         매수 주문 실행 (글로벌 매수 락으로 순차 처리).
         reason: 매수 사유 (체결 이력 기록용).
-        반환값: True=주문 전송 성공, False=가드에 의해 차단/실패
+        반환값: (True, "")=주문 전송 성공, (False, 사유코드)=가드에 의해 차단/실패
         """
         if self._buy_lock is None:
             self._buy_lock = asyncio.Lock()
@@ -104,10 +169,11 @@ class AutoTradeManager:
             return await self._execute_buy_locked(stk_cd, current_price, access_token, reason)
 
     async def _execute_buy_locked(self, stk_cd: str, current_price: float,
-                    access_token: str, reason: str = "") -> bool:
+                    access_token: str, reason: str = "") -> tuple[bool, str]:
         """
         매수 주문 실행 본문 (글로벌 매수 락 내부).
         TOCTOU 경쟁 상태 방지: reserve_buy_power로 검증+즉시 차감을 원자적 수행.
+        반환값: (True, "")=주문 전송 성공, (False, 사유코드)=가드에 의해 차단/실패
         """
         settings = self._to_trade_settings(self.get_settings_fn())
         raw_all = self.get_settings_fn()
@@ -116,14 +182,14 @@ class AutoTradeManager:
         # ── 일일 매수 상태 로드 실패 시 매수 차단 (P20 폴백 금지) ──────────────
         if self._daily_buy_spent is None:
             logger.critical("[매매] [매수차단] %s 일일 매수 상태 로드 실패 — 매수 불가", stk_cd)
-            return False
+            return False, BUY_REJECT_DAILY_STATE
 
         # ── 실시간 지연 중단 게이트 ────────────────────────────────────────────
         try:
             from backend.app.services.engine_state import state as engine_state
             if engine_state.realtime_latency_exceeded:
                 logger.info("[매매] [실시간지연] %s 매수 차단 — 실시간 통신 지연 200ms 초과", stk_cd)
-                return False
+                return False, BUY_REJECT_REALTIME_LATENCY
         except Exception:
             logger.warning("[매매] 실시간 지연 체크 실패", exc_info=True)
 
@@ -131,12 +197,12 @@ class AutoTradeManager:
         if not settings["is_auto"]:
             stk_nm = data_manager.get_stock_name(stk_cd, access_token)
             logger.info("[매매] [자동매매 비활성화] %s(%s) 주문 생략 (출처=자동신호)", stk_nm, stk_cd)
-            return False
+            return False, BUY_REJECT_AUTO_BUY_OFF
         # ── 체결 불가 시간대 주문 게이트 (P15 단일 경로, P16 살아있는 경로) ──
         if self._is_order_time_blocked(stk_cd, raw_all):
             stk_nm = data_manager.get_stock_name(stk_cd, access_token)
             logger.info("[매매] [주문차단] %s(%s) 체결 불가 시간대 — 동시호가/장외", stk_nm, stk_cd)
-            return False
+            return False, BUY_REJECT_TIME_BLOCKED
         # ── 재매수 차단 (설정 기반: ON/OFF + 차단 기간) ──────────────────────
         rebuy_block_on = bool(settings.get("rebuy_block_on", True))
         if rebuy_block_on:
@@ -145,14 +211,14 @@ class AutoTradeManager:
             if last_buy_ts is not None:
                 if rebuy_period == "today":
                     logger.info("[매매] [매수차단] %s 오늘 이미 매수한 종목입니다.", stk_cd)
-                    return False
+                    return False, BUY_REJECT_REBUY
                 else:
                     _period_hours = float(rebuy_period.rstrip("h")) if rebuy_period.endswith("h") else 24.0
                     _elapsed = time.time() - last_buy_ts
                     if _elapsed < _period_hours * 3600:
                         _remain_min = int((_period_hours * 3600 - _elapsed) / 60)
                         logger.info("[매매] [매수차단] %s 재매수 차단 중 (남은 %d분 / 차단 %.0f시간)", stk_cd, _remain_min, _period_hours)
-                        return False
+                        return False, BUY_REJECT_REBUY
 
         state = self._buy_state.get(stk_cd, {"last_req_ts": 0.0, "has_open_buy": False})
         last_ts = float(state.get("last_req_ts", 0) or 0)
@@ -162,10 +228,10 @@ class AutoTradeManager:
 
         if has_open_buy:
             logger.info("[매매] [매수차단] %s 매수 주문이 이미 처리 중입니다.", stk_cd)
-            return False
+            return False, BUY_REJECT_OPEN_ORDER
         if now - last_ts < MIN_INTERVAL:
             logger.info("[매매] [연속신호 차단] %s 연속 신호 감지. 차단.", stk_cd)
-            return False
+            return False, BUY_REJECT_SIGNAL_INTERVAL
 
         # ── 실제 잔고 보유종목 수 기준으로 최대보유종목수 체크 ─────────────
         # 테스트모드: 모의투자 가상 잔고 / 실전투자: 키움 실제 잔고
@@ -180,7 +246,7 @@ class AutoTradeManager:
         )
         if max_limit_on and holding_count >= max_limit:
             logger.info("[매매] [매수제한] 잔고 보유종목 %d종목 ≥ 최대 %d종목. %s 매수 차단.", holding_count, max_limit, stk_cd)
-            return False
+            return False, BUY_REJECT_MAX_HOLDING
 
         # ── 종목당 일일 최대 매수 금액 (buy_amt_on=False → 한도 없음) ──
         buy_amt_on = bool(raw_all.get("buy_amt_on", True))
@@ -189,19 +255,19 @@ class AutoTradeManager:
         max_daily_on = bool(settings.get("max_daily_total_buy_on", False))
         if buy_amt_on:
             if buy_amt <= 0:
-                return False
+                return False, BUY_REJECT_BUY_AMT_ZERO
             # ── 종목당 일일 누적 매수금액 한도 체크 ──
             symbol_spent = self._symbol_daily_buy_spent.get(stk_cd, 0)
             symbol_remain = max(0, int(buy_amt) - symbol_spent)
             if symbol_remain <= 0:
                 logger.info("[매매] [종목당한도] %s 차단. 종목누적 %s원 / 한도 %s원", stk_cd, f"{symbol_spent:,}", f"{int(buy_amt):,}")
-                return False
+                return False, BUY_REJECT_SYMBOL_LIMIT
             # 일일 한도 내에서 실제 사용 가능 금액 계산 (잔여 한도가 종목당 한도보다 적으면 잔여 한도만큼만 매수)
             if max_daily_on and max_daily_total > 0:
                 daily_remain = max(0, max_daily_total - self._daily_buy_spent)
                 if daily_remain <= 0:
                     logger.info("[매매] [일일매수한도] %s 차단. 잔여 0원 / 한도 %s원", stk_cd, f"{max_daily_total:,}")
-                    return False
+                    return False, BUY_REJECT_DAILY_LIMIT
                 effective_buy_amt = min(symbol_remain, daily_remain)
             else:
                 effective_buy_amt = symbol_remain
@@ -212,7 +278,7 @@ class AutoTradeManager:
                 daily_remain = max(0, max_daily_total - self._daily_buy_spent)
                 if daily_remain <= 0:
                     logger.info("[매매] [일일매수한도] %s 차단. 잔여 0원 / 한도 %s원", stk_cd, f"{max_daily_total:,}")
-                    return False
+                    return False, BUY_REJECT_DAILY_LIMIT
                 effective_buy_amt = daily_remain
             else:
                 # 한도 없음 — 주문가능 금액이 실제 상한 (아래 _orderable 체크에서 산출)
@@ -220,7 +286,7 @@ class AutoTradeManager:
 
         if current_price <= 0:
             logger.info("[매매] [매수제한] %s 서버 현재가 미수신(<=0). 주문 차단.", stk_cd)
-            return False
+            return False, BUY_REJECT_PRICE_ZERO
 
         # ── 등락률 + 거래대금 가드 (설정값 기반) ──────────────────────────────
         # 단일 소스 진리: master_stocks_cache에서 직접 읽기
@@ -235,16 +301,19 @@ class AutoTradeManager:
         if _change_rate is not None:
             _blocked = False
             _block_reason = ""
+            _reject_code = ""
             if _rise_on and _rise_limit > 0 and _change_rate >= _rise_limit:
                 _blocked = True
                 _block_reason = f"상승률 {_change_rate:+.1f}%"
+                _reject_code = BUY_REJECT_RISE_GUARD
             elif _fall_on and _fall_limit > 0 and _change_rate <= -_fall_limit:
                 _blocked = True
                 _block_reason = f"하락률 {abs(_change_rate):.1f}%"
+                _reject_code = BUY_REJECT_FALL_GUARD
             if _blocked:
                 stk_nm_g = data_manager.get_stock_name(stk_cd, access_token)
                 logger.info("[매매] [등락률가드] %s(%s) 등락률 %s — 매수 차단", stk_nm_g, stk_cd, _block_reason)
-                return False
+                return False, _reject_code
 
         # 체결강도 가드 (토글 기반)
         _strength_on = bool(raw_all.get("buy_block_strength_on", False))
@@ -257,11 +326,11 @@ class AutoTradeManager:
                 except (ValueError, TypeError):
                     stk_nm_s = data_manager.get_stock_name(stk_cd, access_token)
                     logger.warning("[매매] [체결강도가드] %s(%s) 체결강도 값 해석 실패 (원본=%r) — 매수 차단", stk_nm_s, stk_cd, _strength_raw)
-                    return False
+                    return False, BUY_REJECT_STRENGTH_GUARD
                 if _strength_val < _min_strength:
                     stk_nm_s = data_manager.get_stock_name(stk_cd, access_token)
                     logger.info("[매매] [체결강도가드] %s(%s) 체결강도 %.0f < %.0f — 매수 차단", stk_nm_s, stk_cd, _strength_val, _min_strength)
-                    return False
+                    return False, BUY_REJECT_STRENGTH_GUARD
 
         # ── 주문가능 금액 내에서 최대한 매수 (buy_amt는 한도, 의무 지출액 아님) ──
         _orderable = get_risk_manager().get_withdrawable_deposit()
@@ -270,7 +339,7 @@ class AutoTradeManager:
         _est_buy_price = dry_run.estimate_fill_price(int(current_price), "BUY") if is_test_mode(raw_all) else int(current_price)
         buy_qty = _max_available // _est_buy_price
         if buy_qty <= 0:
-            return False
+            return False, BUY_REJECT_QTY_ZERO
 
         # 시장가 단일 운용
         trde_tp = "3"
@@ -283,8 +352,9 @@ class AutoTradeManager:
             stk_cd, float(current_price), buy_qty
         )
         if not _allowed:
-            logger.info("[매매] [리스크차단] %s 매수 차단 — %s", stk_cd, _risk_reason)
-            return False
+            _reason_code = _map_risk_reason_to_code(_risk_reason)
+            logger.info("[매매] [리스크차단] %s 매수 차단 — %s (사유코드=%s)", stk_cd, _risk_reason, _reason_code)
+            return False, _reason_code
 
         self._buy_state[stk_cd] = {"last_req_ts": now, "has_open_buy": True}
         stk_nm = data_manager.get_stock_name(stk_cd, access_token)
@@ -304,7 +374,7 @@ class AutoTradeManager:
             if not ok:
                 logger.info("[매매] 매수 거부: %s (%s)", stk_cd, reason)
                 self._buy_state[stk_cd]["has_open_buy"] = False
-                return False
+                return False, BUY_REJECT_TEST_CASH
 
         # ── 테스트모드 가드: 테스트모드면 실전 서버에 절대 주문 안 보냄 ─────────
         if is_test_mode(raw_all):
@@ -341,7 +411,7 @@ class AutoTradeManager:
                     logger.error("[매매] 서킷브레이커 차단 — 자동매매 마스터 스위치 강제 OFF")
             except Exception:
                 logger.warning("[매매] 리스크 관리자 실패 보고 실패", exc_info=True)
-            return False
+            return False, BUY_REJECT_ORDER_FAIL
 
         # ── 저널링: 주문 요청 기록 ─────────────────────────────────────────────
         order_id = res.get("order_id", f"buy_{stk_cd}_{int(time.time())}")
@@ -414,7 +484,7 @@ class AutoTradeManager:
         except Exception:
             logger.warning("[매매] 리스크 관리자 성공 보고 실패", exc_info=True)
 
-        return True
+        return True, BUY_OK
 
     async def on_fill_update(
         self, stk_cd: str, side: str, unex_qty: int, access_token: str | None = None
