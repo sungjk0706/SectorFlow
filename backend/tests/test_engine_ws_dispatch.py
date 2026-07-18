@@ -32,7 +32,7 @@ from backend.app.services.engine_ws_dispatch import (
 
 class TestGetWlCodesCached:
     def test_first_call(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state:
+        with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.integrated_system_settings_cache = {
                 "sector_stock_layout": [("code", "005930"), ("name", "삼성전자"), ("code", "000660")]
             }
@@ -43,7 +43,7 @@ class TestGetWlCodesCached:
             assert result == {"005930", "000660"}
 
     def test_cached_same_len(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state:
+        with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.integrated_system_settings_cache = {
                 "sector_stock_layout": [("code", "005930"), ("code", "000660")]
             }
@@ -54,7 +54,7 @@ class TestGetWlCodesCached:
             assert result == {"005930", "000660"}
 
     def test_layout_changed_rebuilds(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state:
+        with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.integrated_system_settings_cache = {
                 "sector_stock_layout": [("code", "005930"), ("code", "000660"), ("code", "035420")]
             }
@@ -82,21 +82,21 @@ class TestUpdateTradeAmountFid14:
 
 class TestHandleLogin:
     def test_success(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state, \
-             patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_state._notify_reg_ack") as mock_notify, \
              patch("backend.app.services.engine_ws_dispatch._trigger_reg_pipeline", create=True), \
              patch("backend.app.services.daily_time_scheduler._trigger_reg_pipeline", create=True):
             _handle_login({"return_code": "0"})
             assert mock_state.login_ok is True
-            mock_es._notify_reg_ack.assert_called_once()
+            mock_notify.assert_called_once()
 
     def test_failure(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state, \
-             patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es:
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_state._notify_reg_ack") as mock_notify:
             mock_state.login_ok = False
             _handle_login({"return_code": "1"})
             assert mock_state.login_ok is False
-            mock_es._notify_reg_ack.assert_not_called()
+            mock_notify.assert_not_called()
 
 
 # ── _reg_response_item_val ────────────────────────────────────────────────────────
@@ -153,32 +153,32 @@ class TestRegDataRows:
 
 class TestHandleReg:
     def test_success_rc0(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state, \
-             patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es:
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_state._notify_reg_ack") as mock_notify:
             mock_state.master_stocks_cache = {}
             mock_state.REG_REAL_DEBUG_EXTRA_LOG = False
             _handle_reg({"trnm": "REG", "return_code": "0", "data": [{"item": "005930", "type": "0B"}]})
-            mock_es._notify_reg_ack.assert_called_once_with(return_code="0")
+            mock_notify.assert_called_once_with(return_code="0")
 
     def test_unreg_skips_item_processing(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state, \
-             patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es:
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_state._notify_reg_ack") as mock_notify:
             mock_state.master_stocks_cache = {}
             mock_state.REG_REAL_DEBUG_EXTRA_LOG = False
             _handle_reg({"trnm": "UNREG", "return_code": "0", "data": [{"item": "005930", "type": "0B"}]})
-            mock_es._notify_reg_ack.assert_called_once_with(return_code="0")
+            mock_notify.assert_called_once_with(return_code="0")
 
     def test_rc_105110_unsubscribes(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state, \
-             patch("backend.app.services.engine_ws_dispatch.engine_state"):
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_state._notify_reg_ack"):
             mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
             mock_state.REG_REAL_DEBUG_EXTRA_LOG = False
             _handle_reg({"trnm": "REG", "return_code": "105110", "data": [{"item": "005930", "type": "0B"}]})
             assert "_subscribed" not in mock_state.master_stocks_cache["005930"]
 
     def test_non_zero_rc_unsubscribes(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state, \
-             patch("backend.app.services.engine_ws_dispatch.engine_state"):
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_state._notify_reg_ack"):
             mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
             mock_state.REG_REAL_DEBUG_EXTRA_LOG = False
             _handle_reg({"trnm": "REG", "return_code": "999", "data": [{"item": "005930", "type": "0B"}]})
@@ -189,14 +189,14 @@ class TestHandleReg:
 
 class TestCheckRealtimeLatency:
     def test_no_latency(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state:
+        with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.realtime_latency_exceeded = False
             ts = int(__import__("time").time() * 1000)
             _check_realtime_latency(ts)
             assert mock_state.realtime_latency_exceeded is False
 
     def test_latency_exceeded_200ms(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state:
+        with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.realtime_latency_exceeded = False
             import time
             ts = int(time.time() * 1000) - 250
@@ -204,7 +204,7 @@ class TestCheckRealtimeLatency:
             assert mock_state.realtime_latency_exceeded is True
 
     def test_latency_recovery(self):
-        with patch("backend.app.services.engine_ws_dispatch.state") as mock_state:
+        with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.realtime_latency_exceeded = True
             ts = int(__import__("time").time() * 1000)
             _check_realtime_latency(ts)
@@ -287,45 +287,45 @@ class TestHandleJif:
 
     @pytest.mark.asyncio
     async def test_cb_activation(self):
-        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc, \
              patch("backend.app.services.engine_ws_dispatch._notify_krx_cb_telegram"):
-            mock_es.state.market_phase = {"krx_alert": None}
-            mock_es.state.krx_circuit_breaker_active = False
-            mock_es.state.integrated_system_settings_cache = {}
+            mock_state.market_phase = {"krx_alert": None}
+            mock_state.krx_circuit_breaker_active = False
+            mock_state.integrated_system_settings_cache = {}
             await _handle_jif({"jangubun": "1", "jstatus": "61"})
-            assert mock_es.state.krx_circuit_breaker_active is True
-            assert mock_es.state.market_phase["krx_alert"] == "서킷브레이커 1단계 발동"
+            assert mock_state.krx_circuit_breaker_active is True
+            assert mock_state.market_phase["krx_alert"] == "서킷브레이커 1단계 발동"
             assert mock_bc.call_count >= 2
 
     @pytest.mark.asyncio
     async def test_cb_release(self):
-        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock), \
              patch("backend.app.services.engine_ws_dispatch._notify_krx_cb_telegram"):
-            mock_es.state.market_phase = {"krx_alert": "서킷브레이커 1단계 발동"}
-            mock_es.state.krx_circuit_breaker_active = True
-            mock_es.state.integrated_system_settings_cache = {}
+            mock_state.market_phase = {"krx_alert": "서킷브레이커 1단계 발동"}
+            mock_state.krx_circuit_breaker_active = True
+            mock_state.integrated_system_settings_cache = {}
             await _handle_jif({"jangubun": "1", "jstatus": "63"})
-            assert mock_es.state.krx_circuit_breaker_active is False
-            assert mock_es.state.market_phase["krx_alert"] == "서킷브레이커 1단계 동시호가 종료"
+            assert mock_state.krx_circuit_breaker_active is False
+            assert mock_state.market_phase["krx_alert"] == "서킷브레이커 1단계 동시호가 종료"
 
     @pytest.mark.asyncio
     async def test_same_alert_no_change(self):
-        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
-            mock_es.state.market_phase = {"krx_alert": "서킷브레이커 1단계 발동"}
-            mock_es.state.krx_circuit_breaker_active = True
-            mock_es.state.integrated_system_settings_cache = {}
+            mock_state.market_phase = {"krx_alert": "서킷브레이커 1단계 발동"}
+            mock_state.krx_circuit_breaker_active = True
+            mock_state.integrated_system_settings_cache = {}
             await _handle_jif({"jangubun": "1", "jstatus": "61"})
             mock_bc.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_none_alert_no_change(self):
-        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
-            mock_es.state.market_phase = {"krx_alert": None}
-            mock_es.state.integrated_system_settings_cache = {}
+            mock_state.market_phase = {"krx_alert": None}
+            mock_state.integrated_system_settings_cache = {}
             await _handle_jif({"jangubun": "1", "jstatus": "62"})
             mock_bc.assert_not_awaited()
 
@@ -337,10 +337,10 @@ class TestHandleJif:
         NXT 페이즈 전환도 미발생, CB 처리도 jangubun 1/2 전용이라 미수행.
         (NXT 페이즈 전환 코드 55/57/21/31/41/56/58은 별도 테스트에서 검증)
         """
-        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_ws_dispatch._apply_jif_phase") as mock_apply, \
              patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
-            mock_es.state.market_phase = {"krx_alert": None}
+            mock_state.market_phase = {"krx_alert": None}
             await _handle_jif({"jangubun": "6", "jstatus": "61"})
             mock_apply.assert_not_called()
             mock_bc.assert_not_awaited()
@@ -386,16 +386,16 @@ class TestHandleJif:
     @pytest.mark.asyncio
     async def test_jif_krx_circuit_breaker_no_phase_transition(self):
         """jstatus=61 (서킷브레이커) → 페이즈 전환 없음, CB 처리만 수행."""
-        with patch("backend.app.services.engine_ws_dispatch.engine_state") as mock_es, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_ws_dispatch._apply_jif_phase") as mock_apply, \
              patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock), \
              patch("backend.app.services.engine_ws_dispatch._notify_krx_cb_telegram"):
-            mock_es.state.market_phase = {"krx_alert": None}
-            mock_es.state.krx_circuit_breaker_active = False
-            mock_es.state.integrated_system_settings_cache = {}
+            mock_state.market_phase = {"krx_alert": None}
+            mock_state.krx_circuit_breaker_active = False
+            mock_state.integrated_system_settings_cache = {}
             await _handle_jif({"jangubun": "1", "jstatus": "61"})
             mock_apply.assert_not_called()  # CB 코드는 페이즈 맵에 없으므로 페이즈 전환 미발생
-            assert mock_es.state.krx_circuit_breaker_active is True
+            assert mock_state.krx_circuit_breaker_active is True
 
 
 # ── JIF constants ──────────────────────────────────────────────────────────────────
