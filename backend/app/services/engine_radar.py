@@ -5,7 +5,7 @@
 - 실시간 데이터 보강
 """
 import logging
-from backend.app.services.engine_state import state
+from backend.app.services import engine_state
 from backend.app.services.engine_account_rest import _parse_float_loose
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ def get_trade_amount_cache() -> dict[str, int | None]:
     None = 실시간 데이터 미수신 — 0으로 폴백하지 않고 None 유지 (P20 폴백 금지).
     """
     result: dict[str, int | None] = {}
-    for cd, stock in state.master_stocks_cache.items():
+    for cd, stock in engine_state.state.master_stocks_cache.items():
         ta = stock.get("trade_amount")
         result[cd] = int(ta) if ta is not None else None
     return result
@@ -27,18 +27,18 @@ def get_trade_amount_cache() -> dict[str, int | None]:
 
 def get_high_price_5d_cache() -> dict[str, int]:
     """5일 전고점 캐시 반환."""
-    return {cd: int(stock.get("high_5d_price", 0) or 0) for cd, stock in state.master_stocks_cache.items()}
+    return {cd: int(stock.get("high_5d_price", 0) or 0) for cd, stock in engine_state.state.master_stocks_cache.items()}
 
 
 def get_program_net_buy_cache() -> dict[str, int]:
     """프로그램 순매수 캐시 반환."""
-    return {cd: int(stock.get("program_net_buy", 0) or 0) for cd, stock in state.master_stocks_cache.items()}
+    return {cd: int(stock.get("program_net_buy", 0) or 0) for cd, stock in engine_state.state.master_stocks_cache.items()}
 
 
 def get_orderbook_cache() -> dict[str, tuple[int, int]]:
     """호가잔량 캐시 반환 — (매수잔량, 매도잔량) 튜플. order_ratio=[bid, ask] 형식에서 변환."""
     result: dict[str, tuple[int, int]] = {}
-    for cd, stock in state.master_stocks_cache.items():
+    for cd, stock in engine_state.state.master_stocks_cache.items():
         ob = stock.get("order_ratio")
         if ob is not None and len(ob) == 2:
             try:
@@ -58,7 +58,7 @@ def _apply_real01_volume_amount_to_radar_rows(raw_cd: str, vals: dict, *, is_0b_
     if not nk:
         return
 
-    entry = state.master_stocks_cache.get(nk)
+    entry = engine_state.state.master_stocks_cache.get(nk)
     if not entry:
         return
 

@@ -132,7 +132,7 @@ class TestBroadcastConfirmedProgress:
 class TestGetKrxOnlyCodes:
     def test_empty_cache_returns_empty(self):
         mock_state = _mock_state()
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x), \
              patch("backend.app.services.market_close_pipeline.is_nxt_enabled", return_value=True):
             result = _get_krx_only_codes()
@@ -145,7 +145,7 @@ class TestGetKrxOnlyCodes:
             "000660": {"_subscribed": True},
             "035420": {"_subscribed": False},
         }
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x), \
              patch("backend.app.services.market_close_pipeline.is_nxt_enabled", side_effect=lambda cd: cd != "005930"):
             result = _get_krx_only_codes()
@@ -160,7 +160,7 @@ class TestGetKrxOnlyCodes:
             ("code", "005930"),
             ("code", "000660"),
         ]
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x), \
              patch("backend.app.services.market_close_pipeline.is_nxt_enabled", side_effect=lambda cd: cd == "005930"):
             result = _get_krx_only_codes()
@@ -175,7 +175,7 @@ class TestRemoveKrxOnlyStocks:
     @pytest.mark.asyncio
     async def test_no_ws_returns_skipped(self):
         mock_state = _mock_state()
-        with patch("backend.app.services.market_close_pipeline.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await remove_krx_only_stocks()
             assert result == {"removed": 0, "failed": 0, "skipped": True}
 
@@ -184,7 +184,7 @@ class TestRemoveKrxOnlyStocks:
         mock_ws = MagicMock()
         mock_ws.is_connected.return_value = True
         mock_state = _mock_state(connector_manager=mock_ws)
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=[]):
             result = await remove_krx_only_stocks()
             assert result == {"removed": 0, "failed": 0, "skipped": False}
@@ -196,7 +196,7 @@ class TestRemoveKrxOnlyStocks:
         mock_ws.supports_ack.return_value = True
         mock_state = _mock_state(connector_manager=mock_ws)
         mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]), \
              patch("backend.app.services.market_close_pipeline.get_ws_subscribe_code", side_effect=lambda x: x), \
              patch("backend.app.services.market_close_pipeline.build_0b_remove_payloads", return_value=[{"test": True}]), \
@@ -213,7 +213,7 @@ class TestRemoveKrxOnlyStocks:
         mock_ws.supports_ack.return_value = False
         mock_state = _mock_state(connector_manager=mock_ws)
         mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]), \
              patch("backend.app.services.market_close_pipeline.get_ws_subscribe_code", side_effect=lambda x: x), \
              patch("backend.app.services.market_close_pipeline.build_0b_remove_payloads", return_value=[{"test": True}]), \
@@ -229,7 +229,7 @@ class TestRemoveKrxOnlyStocks:
         mock_ws.supports_ack.return_value = True
         mock_state = _mock_state(connector_manager=mock_ws)
         mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]), \
              patch("backend.app.services.market_close_pipeline.get_ws_subscribe_code", side_effect=lambda x: x), \
              patch("backend.app.services.market_close_pipeline.build_0b_remove_payloads", return_value=[{"test": True}]), \
@@ -245,7 +245,7 @@ class TestRemoveKrxOnlyStocks:
         mock_ws.supports_ack.return_value = True
         mock_state = _mock_state(connector_manager=mock_ws)
         mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]), \
              patch("backend.app.services.market_close_pipeline.get_ws_subscribe_code", side_effect=lambda x: x), \
              patch("backend.app.services.market_close_pipeline.build_0b_remove_payloads", return_value=[{"test": True}]), \
@@ -258,7 +258,7 @@ class TestRemoveKrxOnlyStocks:
         mock_ws = MagicMock()
         mock_ws.is_connected.return_value = True
         mock_state = _mock_state(connector_manager=mock_ws)
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.market_close_pipeline._get_krx_only_codes", return_value=["005930"]), \
              patch("backend.app.services.market_close_pipeline.get_ws_subscribe_code", side_effect=lambda x: x), \
              patch("backend.app.services.market_close_pipeline.build_0b_remove_payloads", return_value=[]):
@@ -296,7 +296,7 @@ class TestExecuteUnifiedRollingAndSave:
         confirmed = {
             "005930": {"cur_price": 50000, "change": 1000, "change_rate": 2.0, "trade_amount": 5000000, "high_price": 51000},
         }
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
              patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
@@ -347,7 +347,7 @@ class TestExecuteUnifiedRollingAndSave:
         confirmed = {
             "005930": {"dt": "20250106", "cur_price": 50000, "change": 1000, "change_rate": 2.0, "trade_amount": 555, "high_price": 8888},
         }
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
              patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250107"), \
@@ -388,7 +388,7 @@ class TestExecuteUnifiedRollingAndSave:
         confirmed = {
             "005930": {"dt": "20250106", "cur_price": 50000, "change": 1000, "change_rate": 2.0, "trade_amount": 999, "high_price": 9999},
         }
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
              patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250107"), \
@@ -428,7 +428,7 @@ class TestExecuteUnifiedRollingAndSave:
         confirmed = {
             "005930": {"dt": "20250105", "cur_price": 50000, "change": 1000, "change_rate": 2.0, "trade_amount": 200, "high_price": 2000},
         }
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
              patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
@@ -464,7 +464,7 @@ class TestExecuteUnifiedRollingAndSave:
         confirmed = {
             "005930": {"dt": "20250106", "cur_price": 50000, "change": 0, "change_rate": 0.0, "trade_amount": 0, "high_price": 50000},
         }
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
              patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
@@ -499,7 +499,7 @@ class TestExecuteUnifiedRollingAndSave:
         confirmed = {
             "005930": {"dt": "20250106", "cur_price": 50000, "change": 1000, "change_rate": 2.0, "trade_amount": 555, "high_price": 8888},
         }
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
              patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250107"), \
@@ -539,7 +539,7 @@ class TestExecuteUnifiedRollingAndSave:
         confirmed = {
             "005930": {"dt": "20250105", "cur_price": 50000, "change": 1000, "change_rate": 2.0, "trade_amount": 555, "high_price": 8888},
         }
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.db.database.get_db_lock", return_value=mock_lock), \
              patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
@@ -571,7 +571,7 @@ class TestApplyConfirmedToMemory:
         }
         confirmed = {"005930": {"cur_price": 50000, "change": 1000, "change_rate": 2.0, "sign": "2", "trade_amount": 5000000}}
         mock_conn = _mock_conn()
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x):
             result = await _apply_confirmed_to_memory(confirmed, {})
@@ -591,7 +591,7 @@ class TestApplyConfirmedToMemory:
             "000660": {"cur_price": 100000, "change": 2000, "change_rate": 2.0, "trade_amount": 3000000},
         }
         mock_conn = _mock_conn()
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x):
             result = await _apply_confirmed_to_memory(confirmed, {}, confirmed_codes={"005930"})
@@ -605,7 +605,7 @@ class TestApplyConfirmedToMemory:
         confirmed = {"005930": {"cur_price": 50000, "change": 1000, "change_rate": 2.0, "sign": "2", "trade_amount": 5000000}}
         mock_conn = _mock_conn()
         mock_detail = {"name": "삼성전자", "cur_price": 50000, "status": "active"}
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x), \
              patch("backend.app.services.engine_strategy_core.make_detail", return_value=mock_detail):
@@ -621,7 +621,7 @@ class TestApplyConfirmedToMemory:
         }
         confirmed = {"005930": {"cur_price": 50000, "change": 0, "change_rate": 0.0, "trade_amount": 0}}
         mock_conn = _mock_conn()
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x):
             await _apply_confirmed_to_memory(confirmed, {"005930": 85.5})
@@ -634,7 +634,7 @@ class TestApplyConfirmedToMemory:
             "005930": {"name": "삼성전자", "cur_price": 0, "status": "inactive"},
         }
         confirmed = {"005930": {"cur_price": 50000, "change": 0, "change_rate": 0.0, "trade_amount": 0}}
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, side_effect=Exception("DB fail")), \
              patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x):
             result = await _apply_confirmed_to_memory(confirmed, {})
@@ -663,7 +663,7 @@ class TestSaveConfirmedCache:
     async def test_empty_cache_returns_false(self):
         mock_state = _mock_state()
         mock_state.master_stocks_cache = {}
-        with patch("backend.app.services.market_close_pipeline.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await _save_confirmed_cache()
             assert result is False
 
@@ -673,7 +673,7 @@ class TestSaveConfirmedCache:
         mock_state.master_stocks_cache = {
             "005930": {"status": "inactive", "name": "삼성전자"},
         }
-        with patch("backend.app.services.market_close_pipeline.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await _save_confirmed_cache()
             assert result is False
 
@@ -684,7 +684,7 @@ class TestSaveConfirmedCache:
             "005930": {"status": "active", "name": "삼성전자", "cur_price": 50000, "change": 1000, "change_rate": 2.0, "trade_amount": 5000000, "avg_5d_trade_amount": 4000000, "high_5d_price": 51000, "sector": "반도체"},
         }
         mock_conn = _mock_conn()
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
              patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x):
@@ -700,7 +700,7 @@ class TestSaveConfirmedCache:
             "000660": {"status": "active", "name": "SK하이닉스", "cur_price": 100000, "change": 0, "change_rate": 0.0, "trade_amount": 0, "avg_5d_trade_amount": 0, "high_5d_price": 0, "sector": "반도체"},
         }
         mock_conn = _mock_conn()
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
              patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x):
@@ -715,7 +715,7 @@ class TestSaveConfirmedCache:
             "000660": {"status": "active", "name": "SK하이닉스", "cur_price": 100000, "change": 0, "change_rate": 0.0, "trade_amount": 0, "avg_5d_trade_amount": 0, "high_5d_price": 0, "sector": "반도체"},
         }
         mock_conn = _mock_conn()
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
              patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x):
@@ -729,7 +729,7 @@ class TestSaveConfirmedCache:
         mock_state.master_stocks_cache = {
             "005930": {"status": "active", "name": "삼성전자", "cur_price": 50000, "change": 0, "change_rate": 0.0, "trade_amount": 0, "avg_5d_trade_amount": 0, "high_5d_price": 0, "sector": "반도체"},
         }
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, side_effect=Exception("DB fail")), \
              patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"):
             result = await _save_confirmed_cache()
@@ -749,7 +749,7 @@ class TestUpdateLayoutCache:
             "035420": {"sector": "자동차"},
         }
         mock_conn = _mock_conn()
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
              patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x), \
              patch("backend.app.services.engine_account_notify._rebuild_layout_cache") as mock_rebuild:
@@ -764,7 +764,7 @@ class TestUpdateLayoutCache:
     async def test_db_exception_continues(self):
         mock_state = _mock_state()
         mock_state.master_stocks_cache = {"005930": {"sector": "반도체"}}
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, side_effect=Exception("DB fail")), \
              patch("backend.app.services.market_close_pipeline._base_stk_cd", side_effect=lambda x: x), \
              patch("backend.app.services.engine_account_notify._rebuild_layout_cache"):
@@ -778,7 +778,7 @@ class TestRunConfirmedPipeline:
     async def test_already_running_returns_skipped(self):
         mock_state = _mock_state()
         mock_state.confirmed_refresh_running_confirmed = True
-        with patch("backend.app.services.market_close_pipeline.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await _run_confirmed_pipeline("test")
             assert result == {"fetched": 0, "failed": 0, "cached": False, "skipped": True}
 
@@ -786,7 +786,7 @@ class TestRunConfirmedPipeline:
     async def test_scheduler_off_returns_skipped(self):
         mock_state = _mock_state()
         mock_state.integrated_system_settings_cache["scheduler_market_close_on"] = False
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.engine_account_notify._rebuild_layout_cache"), \
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"):
             result = await _run_confirmed_pipeline("test", check_scheduler=True)
@@ -799,7 +799,7 @@ class TestRunConfirmedPipeline:
         mock_auth.get_access_token = AsyncMock(return_value=None)
         mock_sector = MagicMock()
         mock_sector.fetch_all_stocks = AsyncMock(return_value=[])
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.engine_account_notify._rebuild_layout_cache"), \
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
              patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector):
@@ -813,7 +813,7 @@ class TestRunConfirmedPipeline:
         mock_auth.get_access_token = AsyncMock(return_value=None)
         mock_sector = MagicMock()
         mock_sector.fetch_all_stocks = AsyncMock(side_effect=Exception("API fail"))
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.engine_account_notify._rebuild_layout_cache"), \
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
              patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector):
@@ -840,7 +840,7 @@ class TestRunConfirmedPipeline:
         mock_lock = MagicMock()
         mock_lock.__aenter__ = AsyncMock(return_value=mock_lock)
         mock_lock.__aexit__ = AsyncMock(return_value=None)
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.engine_account_notify._rebuild_layout_cache"), \
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
              patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
@@ -878,7 +878,7 @@ class TestRunConfirmedPipeline:
         mock_lock = MagicMock()
         mock_lock.__aenter__ = AsyncMock(return_value=mock_lock)
         mock_lock.__aexit__ = AsyncMock(return_value=None)
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.engine_account_notify._rebuild_layout_cache"), \
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
              patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
@@ -904,7 +904,7 @@ class TestRunConfirmedPipeline:
         mock_auth.get_access_token = AsyncMock(return_value="token123")
         mock_sector = MagicMock()
         mock_sector.fetch_all_stocks = AsyncMock(return_value=[])
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.engine_account_notify._rebuild_layout_cache"), \
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
              patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
@@ -952,7 +952,7 @@ class TestFetch5dDataOnly:
     async def test_already_running_returns_skipped(self):
         mock_state = _mock_state()
         mock_state.confirmed_refresh_running_5d = True
-        with patch("backend.app.services.market_close_pipeline.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await fetch_5d_data_only()
             assert result == {"fetched": 0, "failed": 0, "cached": False, "skipped": True}
 
@@ -963,7 +963,7 @@ class TestFetch5dDataOnly:
         mock_auth = MagicMock()
         mock_auth.get_access_token = AsyncMock(return_value=None)
         mock_sector = MagicMock()
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"):
             result = await fetch_5d_data_only()
@@ -991,7 +991,7 @@ class TestFetch5dDataOnly:
         # 최근 5개 거래일 mock — 오래된 행 정리 로직 검증용
         from datetime import date
         recent_5_days = [date(2025, 1, 2), date(2025, 1, 3), date(2025, 1, 4), date(2025, 1, 5), date(2025, 1, 6)]
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
@@ -1050,7 +1050,7 @@ class TestFetch5dDataOnly:
         mock_lock.__aexit__ = AsyncMock(return_value=None)
         from datetime import date
         recent_5_days = [date(2025, 1, 2), date(2025, 1, 3), date(2025, 1, 4), date(2025, 1, 5), date(2025, 1, 6)]
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
@@ -1106,7 +1106,7 @@ class TestFetch5dDataOnly:
         from datetime import date
         # qry_dt=20250105 기준 recent_5 (오래된 순)
         recent_5_days = [date(2025, 1, 1), date(2025, 1, 2), date(2025, 1, 3), date(2025, 1, 4), date(2025, 1, 5)]
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
@@ -1148,7 +1148,7 @@ class TestFetch5dDataOnly:
         mock_lock = MagicMock()
         mock_lock.__aenter__ = AsyncMock(return_value=mock_lock)
         mock_lock.__aexit__ = AsyncMock(return_value=None)
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
@@ -1179,7 +1179,7 @@ class TestFetch5dDataOnly:
         mock_lock = MagicMock()
         mock_lock.__aenter__ = AsyncMock(return_value=mock_lock)
         mock_lock.__aexit__ = AsyncMock(return_value=None)
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
@@ -1210,7 +1210,7 @@ class TestFetch5dDataOnly:
         mock_lock = MagicMock()
         mock_lock.__aenter__ = AsyncMock(return_value=mock_lock)
         mock_lock.__aexit__ = AsyncMock(return_value=None)
-        with patch("backend.app.services.market_close_pipeline.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.core.broker_registry._create_provider", side_effect=lambda kind, *a, **kw: mock_auth if kind == "auth" else mock_sector), \
              patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
              patch("backend.app.db.database.get_db_connection", new_callable=AsyncMock, return_value=mock_conn), \
