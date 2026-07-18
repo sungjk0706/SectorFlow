@@ -24,6 +24,42 @@ def invalidate_buy_snapshot() -> None:
     _last_global_snapshot = None
 
 
+def _refresh_buyable_prices(ss, available: int, effective_buy_amt: int | None, is_test: bool) -> set[str]:
+    """매수 가능 종목 집합 재계산 (P10 SSOT — execute_buy 내부와 동일 기준).
+
+    최초 _buyable_codes 구축과 매수 성공 후 잔액 갱신 시 모두 이 헬퍼를 호출하여
+    단일 진실 소스화. 잔액이 줄어들면 고가 종목이 _buyable_codes에서 빠짐.
+    execute_buy 내부(trading.py:267-273)와 동일 기준.
+    """
+    from backend.app.services import dry_run
+    from backend.app.services.daily_time_scheduler import is_krx_after_hours
+    from backend.app.services.engine_symbol_utils import is_nxt_enabled
+    from backend.app.services.engine_state import state
+
+    _after_hours = is_krx_after_hours()
+    _rebuy_block_on = bool(state.integrated_system_settings_cache.get("rebuy_block_on", True))
+    _new_codes: set[str] = set()
+    for bt in ss.buy_targets:
+        s = bt.stock
+        if not s.guard_pass:
+            continue
+        if _after_hours and not is_nxt_enabled(s.code):
+            continue
+        if _rebuy_block_on and s.code in state.auto_trade._bought_today:
+            continue
+        _price = int(s.cur_price or 0)
+        if _price <= 0:
+            continue
+        # 테스트모드 슬리피지 적용 (trading.py:254와 동일)
+        _est_price = dry_run.estimate_fill_price(_price, "BUY") if is_test else _price
+        # 종목별 가용 금액 = min(effective_buy_amt, available) 또는 available
+        _max_for_code = min(effective_buy_amt, available) if effective_buy_amt is not None else available
+        if _max_for_code < _est_price:
+            continue
+        _new_codes.add(s.code)
+    return _new_codes
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 업종 매수 실행 함수
 # ──────────────────────────────────────────────────────────────────────────────
@@ -32,7 +68,12 @@ async def evaluate_buy_candidates() -> None:
     """
     이벤트 기반 매수 판단 — 실시간 데이터 변경 시 _do_sector_recompute()에서 호출.
     auto_buy_effective(시간 범위 + auto_buy_on + 마스터 스위치) 통과 시 매수 실행.
-    매수 후보 테이블 1순위 종목만 매수, buy_interval_on 시 사용자 설정 간격(초) 대기.
+    매수 후보 순회 — 차순위 시도 알고리즘:
+      - 1순위 성공 후 잔액/한도 잔존 시 차순위 continue
+      - 1순위 종목별 차단 시 차순위 continue
+      - 1순위 전체 차단 시 break
+      - 잔액 0·최대 보유수·일일 한도 도달 시 break
+    buy_interval_on 시 사용자 설정 간격(초) 대기 (같은 호출 내 차순위 연속 시도는 간격 게이트 재적용 안 함).
     """
     global _cash_insufficient
     from backend.app.services import dry_run
@@ -112,29 +153,12 @@ async def evaluate_buy_candidates() -> None:
     _is_test = is_test_mode(state.integrated_system_settings_cache)
 
     # ── 매수 가능 종목 집합: guard_pass + 장외 + 재매수 + 주문가능금액/가격 ──
+    # _refresh_buyable_prices 헬퍼로 단일 진실 소스화 (P10 SSOT).
     # execute_buy 내부(trading.py:250-257)와 동일 기준으로 사전 필터링하여
-    # "매수 시도" 로그 후 차단되는 불필요한 호출 제거 (P10 SSOT, P21 사용자 투명성).
+    # "매수 시도" 로그 후 차단되는 불필요한 호출 제거 (P21 사용자 투명성).
     # available_cash를 snapshot에서 제거하고 _buyable_codes가 orderable/가격에
     # 의존하도록 통일 — orderable 변동 시 _buyable_codes가 변하여 snapshot 반영.
-    _buyable_codes: set[str] = set()
-    for bt in ss.buy_targets:
-        s = bt.stock
-        if not s.guard_pass:
-            continue
-        if _after_hours and not is_nxt_enabled(s.code):
-            continue
-        if _rebuy_block_on and s.code in state.auto_trade._bought_today:
-            continue
-        _price = int(s.cur_price or 0)
-        if _price <= 0:
-            continue
-        # 테스트모드 슬리피지 적용 (trading.py:254와 동일)
-        _est_price = dry_run.estimate_fill_price(_price, "BUY") if _is_test else _price
-        # 종목별 가용 금액 = min(effective_buy_amt, available) 또는 available
-        _max_for_code = min(_effective_buy_amt, _available) if _effective_buy_amt is not None else _available
-        if _max_for_code < _est_price:
-            continue
-        _buyable_codes.add(s.code)
+    _buyable_codes = _refresh_buyable_prices(ss, _available, _effective_buy_amt, _is_test)
 
     _current_snapshot = {
         "buyable_codes": tuple(sorted(_buyable_codes)),
@@ -151,7 +175,16 @@ async def evaluate_buy_candidates() -> None:
         return
     _last_global_snapshot = _current_snapshot
 
-    # ── 1순위 종목만 매수 시도 ───────────────────────────────────────
+    # ── 매수 후보 순회 — 차순위 시도 알고리즘 ──────────────────────
+    # 1순위 성공 후 잔액/한도 잔존 시 차순위 continue
+    # 1순위 종목별 차단 시 차순위 continue
+    # 1순위 전체 차단 시 break
+    # 잔액 0·최대 보유수·일일 한도 도달 시 break
+    from backend.app.services.trading import (
+        BUY_REJECT_QTY_ZERO, BUY_GLOBAL_REJECT_REASONS,
+    )
+    from backend.app.services.risk_manager import get_risk_manager as _get_rm
+
     for bt in ss.buy_targets:
         s = bt.stock
         if not s.guard_pass:
@@ -163,30 +196,59 @@ async def evaluate_buy_candidates() -> None:
         if s.code not in _buyable_codes:
             continue
 
-        logger.info("[매매] 매수 시도: %s(%s) 업종=%s",
-                    s.name, s.code, s.sector)
+        logger.info("[매매] 매수 시도: %s(%s) 순위=%d 업종=%s",
+                    s.name, s.code, bt.rank, s.sector)
         try:
             _price = int(s.cur_price or 0)
             if _price <= 0:
-                break
-            _ordered_result = await state.auto_trade.execute_buy(
+                break  # 현재가 0은 전역 이상 → 루프 종료
+            _ordered, _reason = await state.auto_trade.execute_buy(
                 s.code, float(_price), state.access_token or "",
-                reason=f"업종자동매수 업종={s.sector}",
+                reason=f"업종자동매수 업종={s.sector} 순위={bt.rank}",
             )
-            # 임시 호환 — 2세션에서 제거 예정 (tuple 언패 정식 적용 시)
-            _ordered = _ordered_result[0] if isinstance(_ordered_result, tuple) else _ordered_result
             if _ordered:
-                logger.info("[매매] 매수 주문 전송: %s(%s)", s.name, s.code)
+                logger.info("[매매] 매수 주문 전송: %s(%s) 순위=%d", s.name, s.code, bt.rank)
                 invalidate_buy_snapshot()
                 from backend.app.services.order_interval import mark_order_executed
                 mark_order_executed("buy")
                 _holding_cnt += 1
+                # 최대 보유수 도달 시 루프 종료
                 if _max_limit_on and _holding_cnt >= _max_limit:
+                    logger.info("[매매] 최대 보유 종목 수 도달 — 차순위 시도 중단 (보유=%d)", _holding_cnt)
                     break
+                # 잔액 재조회 — 0이면 _cash_insufficient 설정 후 루프 종료
+                _available = _get_rm().get_withdrawable_deposit()
+                if _available <= 0:
+                    _cash_insufficient = True
+                    logger.info("[매매] 주문가능 금액 0원 — 차순위 시도 중단")
+                    break
+                # 일일 한도 도달 시 루프 종료
                 await state.auto_trade._ensure_daily_buy_counter()
-                if state.auto_trade._daily_buy_spent is not None and _max_daily > 0 and state.auto_trade._daily_buy_spent >= _max_daily:
+                if state.auto_trade._daily_buy_spent is not None and _max_daily > 0 \
+                        and state.auto_trade._daily_buy_spent >= _max_daily:
+                    logger.info("[매매] 일일 매수 한도 도달 — 차순위 시도 중단 (누적=%s원)",
+                                f"{state.auto_trade._daily_buy_spent:,}")
                     break
+                # 차순위 시도를 위해 _buyable_codes 잔액/가격 부분 갱신 (P10 SSOT)
+                _buyable_codes = _refresh_buyable_prices(ss, _available, _effective_buy_amt, _is_test)
+                continue  # ← 차순위 시도
+            else:
+                # 실패 사유 분류
+                if _reason == BUY_REJECT_QTY_ZERO:
+                    # 잔액 0이면 전체 차단, 단가 비싸면 종목별 차단
+                    if _get_rm().get_withdrawable_deposit() <= 0:
+                        _cash_insufficient = True
+                        logger.info("[매매] %s 잔액 0 — 차순위 시도 중단 (사유=%s)", s.code, _reason)
+                        break
+                    else:
+                        logger.info("[매매] %s 단가 초과 — 차순위 시도 (사유=%s)", s.code, _reason)
+                        continue
+                if _reason in BUY_GLOBAL_REJECT_REASONS:
+                    logger.info("[매매] %s 전체 차단 사유 — 차순위 시도 중단 (사유=%s)", s.code, _reason)
+                    break
+                # 종목별 차단 사유 → 차순위 시도
+                logger.info("[매매] %s 종목별 차단 — 차순위 시도 (사유=%s)", s.code, _reason)
+                continue
         except Exception as e:
-            logger.warning("[매매] 매수 실행 오류 %s: %s", s.code, e, exc_info=True)
-        # 1순위 종목 1종목만 시도 후 종료
-        break
+            logger.warning("[매매] 매수 실행 오류 %s: %s — 차순위 시도 중단", s.code, e, exc_info=True)
+            break  # 예외 시 안전 종료
