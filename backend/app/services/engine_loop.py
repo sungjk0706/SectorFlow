@@ -15,7 +15,7 @@ import logging
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.services.trading import AutoTradeManager
 from backend.app.services.engine_cache import _load_caches_preboot
-from backend.app.services.engine_state import state
+from backend.app.services import engine_state
 logger = logging.getLogger(__name__)
 
 
@@ -50,14 +50,14 @@ async def _get_all_tokens_async(router) -> None:
     # broker_config + confirmed_data_broker의 모든 증권사 수집 (auth_cache에 없는 stock 증권사 포함)
     # 캐시는 app.py 시작 시 build_engine_settings_dict로 정규화되어
     # broker_config가 항상 dict로 존재함 (P20 폴백 금지).
-    broker_config = state.integrated_system_settings_cache["broker_config"]
+    broker_config = engine_state.state.integrated_system_settings_cache["broker_config"]
     all_broker_ids = set(auth_cache.keys())
     for _feat, _bname in broker_config.items():
         _bname = str(_bname or "").lower().strip()
         if _bname:
             all_broker_ids.add(_bname)
     _confirmed_broker = str(
-        state.integrated_system_settings_cache.get("confirmed_data_broker") or ""
+        engine_state.state.integrated_system_settings_cache.get("confirmed_data_broker") or ""
     ).lower().strip()
     if _confirmed_broker:
         all_broker_ids.add(_confirmed_broker)
@@ -65,8 +65,8 @@ async def _get_all_tokens_async(router) -> None:
     # API 키가 설정된 증권사만 발급 대상
     valid_broker_ids = []
     for bid in all_broker_ids:
-        _key = state.integrated_system_settings_cache.get(f"{bid}_app_key", "")
-        _sec = state.integrated_system_settings_cache.get(f"{bid}_app_secret", "")
+        _key = engine_state.state.integrated_system_settings_cache.get(f"{bid}_app_key", "")
+        _sec = engine_state.state.integrated_system_settings_cache.get(f"{bid}_app_secret", "")
         if _key and _sec:
             valid_broker_ids.append(bid)
 
@@ -80,7 +80,7 @@ async def _get_all_tokens_async(router) -> None:
                 from backend.app.core.broker_registry import _create_provider
                 auth_provider = _create_provider(
                     "auth", broker_id,
-                    state.integrated_system_settings_cache, auth_cache,
+                    engine_state.state.integrated_system_settings_cache, auth_cache,
                 )
             assert auth_provider is not None
             token = await auth_provider.get_access_token()
@@ -94,13 +94,13 @@ async def _get_all_tokens_async(router) -> None:
         return_exceptions=True,
     )
 
-    state.broker_tokens.clear()
+    engine_state.state.broker_tokens.clear()
 
     for result in results:
         if isinstance(result, tuple):
             broker_id, token = result
             if token:
-                state.broker_tokens[broker_id] = token
+                engine_state.state.broker_tokens[broker_id] = token
 
 
 async def _load_broker_spec_async(broker_nm: str, settings: dict) -> list:
@@ -134,31 +134,31 @@ async def run_engine_loop() -> None:
 
     _t0 = time.perf_counter()
 
-    state.login_ok = False
-    state.connector_manager = None
-    state.broker_tokens.clear()
-    state.token_ready_event.clear()
+    engine_state.state.login_ok = False
+    engine_state.state.connector_manager = None
+    engine_state.state.broker_tokens.clear()
+    engine_state.state.token_ready_event.clear()
     # _master_stocks_cache에서 "_subscribed" 제거
-    for entry in state.master_stocks_cache.values():
+    for entry in engine_state.state.master_stocks_cache.values():
         entry.pop("_subscribed", None)
     from backend.app.services.engine_state import _notify_reg_ack
     _notify_reg_ack()
-    state.integrated_system_settings_cache["sector_stock_layout"] = []
+    engine_state.state.integrated_system_settings_cache["sector_stock_layout"] = []
     from backend.app.services.engine_account_notify import _rebuild_layout_cache
     _rebuild_layout_cache([])
-    state.running = True
-    state.engine_loop_ref = asyncio.get_running_loop()
+    engine_state.state.running = True
+    engine_state.state.engine_loop_ref = asyncio.get_running_loop()
     # 캐시선행 플래그 초기화
-    state.preboot_cache_loaded = False
-    state.preboot_ready_event.clear()
+    engine_state.state.preboot_cache_loaded = False
+    engine_state.state.preboot_ready_event.clear()
     # 계좌 REST Lock 초기화 -- 이전 세션 잠금 상태 초기화
-    state.account_rest_lock = None
+    engine_state.state.account_rest_lock = None
 
     # 전역 이벤트 버스 (Queues)는 app.py lifespan에서 이미 초기화됨
 
     try:
         # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
-        settings = state.integrated_system_settings_cache
+        settings = engine_state.state.integrated_system_settings_cache
 
         # ── WS 구독 상태 초기화 (표준 기동 순서: 초기화 → 연결 → 구독) ──
         # 엔진 루프의 WS 연결/구독/틱 수신 이전에 실행 보장 (경쟁 조건 제거, P22 데이터 정합성).
@@ -169,7 +169,7 @@ async def run_engine_loop() -> None:
         await _init_ws_subscribe_state()
 
         # 엔진 내부 준비 완료 시그널 — Uvicorn 리스닝 + 브라우저 열기 즉시 허용
-        state.preboot_ready_event.set()
+        engine_state.state.preboot_ready_event.set()
 
         # ── broker/router 생성 (단일 소스 진리: _integrated_system_settings_cache 직접 사용) ──
         broker_nm: str = str(settings["broker"]).lower().strip()
@@ -203,7 +203,7 @@ async def run_engine_loop() -> None:
 
         # 3개 독립 파이프라인 병렬 실행 — broker_spec은 gather 완료 후 사용
         async def _load_spec():
-            state.broker_spec = await _load_broker_spec_async(broker_nm, settings)
+            engine_state.state.broker_spec = await _load_broker_spec_async(broker_nm, settings)
 
         await asyncio.gather(
             _cache_and_bootstrap(settings),
@@ -213,7 +213,7 @@ async def run_engine_loop() -> None:
 
         # 토큰 발급 phase 완료 시그널 — WS 유니캐스트가 stale broker_statuses를
         # 전송하지 않도록 보장 (token_ready_event.wait()에서 대기 중인 태스크가 깨어남)
-        state.token_ready_event.set()
+        engine_state.state.token_ready_event.set()
 
         # 가상 예수금 로드는 _cache_and_bootstrap(→ engine_cache)에서 load_state로 수행
 
@@ -224,19 +224,19 @@ async def run_engine_loop() -> None:
         )
 
         # ── broker_spec 결과 반영 ──
-        if isinstance(state.broker_spec, list):
+        if isinstance(engine_state.state.broker_spec, list):
             acnt_no = settings.get(f"{broker_nm}_account_no", "")
             from backend.app.services.engine_lifecycle import log_message
-            log_message(f"[연산] 설정 로딩 — TR {len(state.broker_spec)}개, 계좌: {acnt_no or '미설정'}")
+            log_message(f"[연산] 설정 로딩 — TR {len(engine_state.state.broker_spec)}개, 계좌: {acnt_no or '미설정'}")
 
         # ── token 결과 반영 ──
-        token = state.broker_tokens.get(broker_nm)
+        token = engine_state.state.broker_tokens.get(broker_nm)
         if token:
-            state.access_token = token
+            engine_state.state.access_token = token
         else:
             from backend.app.services.engine_lifecycle import log_message
             log_message(f" [연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 토큰 발급 실패. 스냅샷 전용 모드로 기동.")
-            state.access_token = None
+            engine_state.state.access_token = None
 
         # ── 계좌 조회용 REST = Router의 AuthProvider에서 REST 실시간 인스턴스 공유 ──
         _auth_provider = router.auth
@@ -245,7 +245,7 @@ async def run_engine_loop() -> None:
             # 증권사별 state 분리
             _rest_api = _auth_provider.rest_api
             _rest_api._acnt_no = str(settings.get(f"{broker_nm}_account_no", "") or "")
-            for spec in state.broker_spec:
+            for spec in engine_state.state.broker_spec:
                 tr = spec.get("tr_id", "")
                 if tr == "kt00001":
                     _rest_api._deposit_tr_id = tr
@@ -253,7 +253,7 @@ async def run_engine_loop() -> None:
                     _rest_api._balance_tr_id = tr
                 elif tr == "ka00001":
                     _rest_api._account_tr_id = tr
-            state.broker_rest_apis[broker_nm] = _rest_api
+            engine_state.state.broker_rest_apis[broker_nm] = _rest_api
             from backend.app.services.engine_lifecycle import log_message
             log_message(f"[연결] {BROKER_DISPLAY_NAMES.get(broker_nm, broker_nm)} 연결 완료 (테스트모드={_is_test})")
 
@@ -270,10 +270,10 @@ async def run_engine_loop() -> None:
         _real_warn     = " ★ 실제 자금 투입 ★" if not _is_test_flag else ""
         logger.info("[연산] 기동 완료 — %s %s / 계좌: %s%s", _broker_str, _mode_str, _acnt_disp, _real_warn)
 
-        if state.access_token:
+        if engine_state.state.access_token:
             from backend.app.services.engine_lifecycle import sync_sell_overrides as _sync_sell_overrides_from_settings
             from backend.app.services.engine_config import _get_settings
-            state.auto_trade = AutoTradeManager(
+            engine_state.state.auto_trade = AutoTradeManager(
                 get_settings_fn=_get_settings,
             )
             _sync_sell_overrides_from_settings()
@@ -296,15 +296,15 @@ async def run_engine_loop() -> None:
         await start_compute_loop()
 
         # ── WS 구간 변화 감지 루프 (WS 연결/해제 단일 책임) ──
-        state.engine_stop_event.clear()
+        engine_state.state.engine_stop_event.clear()
         from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
 
-        while not state.engine_stop_event.is_set():
-            _settings = state.integrated_system_settings_cache
-            _should_connect_ws = await is_ws_subscribe_window(_settings) if state.access_token else False
+        while not engine_state.state.engine_stop_event.is_set():
+            _settings = engine_state.state.integrated_system_settings_cache
+            _should_connect_ws = await is_ws_subscribe_window(_settings) if engine_state.state.access_token else False
 
             if _should_connect_ws:
-                if state.connector_manager is None:
+                if engine_state.state.connector_manager is None:
                     try:
                         from backend.app.core.connector_manager import ConnectorManager
                         from backend.app.services.engine_ws import _broker_message_handler
@@ -316,8 +316,8 @@ async def run_engine_loop() -> None:
                             if hasattr(connector, 'set_queue_callback'):
                                 connector.set_queue_callback(tick_queue)
                         logger.info("[연결] 커넥터 큐 콜백 설정 완료 (틱 큐)")
-                        state.connector_manager = _mgr
-                        state.active_connector = _mgr.get_connector(broker_nm)
+                        engine_state.state.connector_manager = _mgr
+                        engine_state.state.active_connector = _mgr.get_connector(broker_nm)
                         await _mgr.connect_all()
                         if _mgr.is_connected():
                             logger.info("[연결] 실시간 연결 완료")
@@ -326,29 +326,29 @@ async def run_engine_loop() -> None:
                         await _broadcast_engine_ws()
                     except Exception as e:
                         logger.error("[연결] 실시간 연결 초기화 실패: %s", e, exc_info=True)
-                        state.connector_manager = None
-                        state.active_connector = None
+                        engine_state.state.connector_manager = None
+                        engine_state.state.active_connector = None
             else:
-                if state.connector_manager is not None:
+                if engine_state.state.connector_manager is not None:
                     try:
-                        if hasattr(state.connector_manager, 'disconnect_all'):
-                            await state.connector_manager.disconnect_all()
-                        state.connector_manager = None
-                        state.active_connector = None
+                        if hasattr(engine_state.state.connector_manager, 'disconnect_all'):
+                            await engine_state.state.connector_manager.disconnect_all()
+                        engine_state.state.connector_manager = None
+                        engine_state.state.active_connector = None
                         logger.info("[연결] 실시간 연결 해제 완료")
                         await _broadcast_engine_ws()
                     except Exception as e:
                         logger.error("[연결] 실시간 연결 해제 실패: %s", e, exc_info=True)
 
-            stop_wait = asyncio.create_task(state.engine_stop_event.wait())
-            change_wait = asyncio.create_task(state.ws_window_changed_event.wait())
+            stop_wait = asyncio.create_task(engine_state.state.engine_stop_event.wait())
+            change_wait = asyncio.create_task(engine_state.state.ws_window_changed_event.wait())
             done, pending = await asyncio.wait(
                 [stop_wait, change_wait],
                 return_when=asyncio.FIRST_COMPLETED,
             )
             for p in pending:
                 p.cancel()
-            state.ws_window_changed_event.clear()
+            engine_state.state.ws_window_changed_event.clear()
 
     except asyncio.CancelledError:
         pass
@@ -370,15 +370,15 @@ async def run_engine_loop() -> None:
         logger.info("[연산] 백그라운드 태스크 종료 완료")
 
         # ── Event Bus 종료 ───────────────────────────────────────────────────
-        if state.connector_manager:
-            await state.connector_manager.disconnect_all()
+        if engine_state.state.connector_manager:
+            await engine_state.state.connector_manager.disconnect_all()
         else:
-            if state.active_connector:
-                await state.active_connector.disconnect()
-        state.connector_manager = None
-        state.active_connector = None
+            if engine_state.state.active_connector:
+                await engine_state.state.active_connector.disconnect()
+        engine_state.state.connector_manager = None
+        engine_state.state.active_connector = None
         # 증권사별 REST API 클라이언트 정리
-        for _broker_id, _rest_api in state.broker_rest_apis.items():
+        for _broker_id, _rest_api in engine_state.state.broker_rest_apis.items():
             try:
                 await _rest_api.revoke_token()
             except Exception as e:
@@ -387,9 +387,9 @@ async def run_engine_loop() -> None:
                 await _rest_api._reset_client()
             elif hasattr(_rest_api, '_client') and _rest_api._client:
                 await _rest_api._client.aclose()
-        state.broker_rest_apis.clear()
-        state.broker_tokens.clear()
-        state.running = False
+        engine_state.state.broker_rest_apis.clear()
+        engine_state.state.broker_tokens.clear()
+        engine_state.state.running = False
         from backend.app.services.engine_lifecycle import broadcast_engine_status, log_message, get_current_kst_time
         await broadcast_engine_status()
         log_message(f"[연산] 정지됨 ({get_current_kst_time()})")
