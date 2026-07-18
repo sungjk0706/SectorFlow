@@ -12,7 +12,7 @@ import logging
 from datetime import datetime
 from backend.app.core.trade_mode import is_test_mode
 from backend.app.core.constants import _KST
-from backend.app.services.engine_state import state
+from backend.app.services import engine_state
 
 logger = logging.getLogger(__name__)
 
@@ -22,17 +22,17 @@ logger = logging.getLogger(__name__)
 async def start_engine(user_id: str = "") -> bool:
     """엔진 시작."""
 
-    if state.engine_task and not state.engine_task.done():
+    if engine_state.state.engine_task and not engine_state.state.engine_task.done():
         return False
 
-    state.engine_user_id = user_id
-    state.running = True
-    state.engine_task = asyncio.create_task(_engine_loop())
+    engine_state.state.engine_user_id = user_id
+    engine_state.state.running = True
+    engine_state.state.engine_task = asyncio.create_task(_engine_loop())
 
     # ── 테스트모드: 거래내역 기반 포지션 구축 ──────────────────────────────────
     # 테스트모드는 증권사 서버가 없으므로 trades 테이블(SSOT)에서 포지션 구축.
     # 실전투자 모드는 증권사 서버가 SSOT이므로 별도 대조 불필요.
-    if is_test_mode(state.integrated_system_settings_cache):
+    if is_test_mode(engine_state.state.integrated_system_settings_cache):
         logger.info("[연산] 테스트모드 - 거래내역 기반 포지션 구축")
         from backend.app.services import dry_run
         await dry_run._refresh_positions_if_dirty()
@@ -64,10 +64,10 @@ async def stop_engine() -> None:
         _PENDING_REG_CODES,
     )
 
-    state.running = False
+    engine_state.state.running = False
 
-    if state.engine_stop_event:
-        state.engine_stop_event.set()
+    if engine_state.state.engine_stop_event:
+        engine_state.state.engine_stop_event.set()
 
     # 디바운스 타이머 정리
     cancel_recompute_timer()
@@ -76,13 +76,13 @@ async def stop_engine() -> None:
     cancel_all_dynamic_unreg_timers()
     _PENDING_REG_CODES.clear()
 
-    if state.engine_task:
-        state.engine_task.cancel()
+    if engine_state.state.engine_task:
+        engine_state.state.engine_task.cancel()
         try:
-            await state.engine_task
+            await engine_state.state.engine_task
         except asyncio.CancelledError:
             pass
-        state.engine_task = None
+        engine_state.state.engine_task = None
 
     # 백그라운드 작업 일괄 취소
     current = asyncio.current_task()
@@ -115,29 +115,29 @@ def reset_broker_session_state() -> None:
     원칙 11 (이벤트 기반): Events를 clear하여 새 증권사 기동 시 대기 상태로 복원.
     """
     # 구독 상태 플래그
-    state.ws_account_subscribed = False
-    state.quote_subscribed = False
-    state.ws_connection_status = False
-    state.account_rest_bootstrapped = False
-    state.login_ok = False
-    state.access_token = None
+    engine_state.state.ws_account_subscribed = False
+    engine_state.state.quote_subscribed = False
+    engine_state.state.ws_connection_status = False
+    engine_state.state.account_rest_bootstrapped = False
+    engine_state.state.login_ok = False
+    engine_state.state.access_token = None
 
     # 계좌 데이터 (이전 증권사 데이터 무효화)
-    state.account_snapshot = {}
-    state.broker_rest_totals = {"total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_rate": 0.0}
-    state.positions = []
-    state.snapshot_history = []
-    state.auto_trade = None
+    engine_state.state.account_snapshot = {}
+    engine_state.state.broker_rest_totals = {"total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_rate": 0.0}
+    engine_state.state.positions = []
+    engine_state.state.snapshot_history = []
+    engine_state.state.auto_trade = None
 
     # Events (새 증권사 기동 시 재설정될 때까지 대기 상태로 복원)
-    state.data_ready_event.clear()
-    state.bootstrap_event.clear()
-    state.sector_summary_ready_event.clear()
-    state.ws_reg_pipeline_done.clear()
+    engine_state.state.data_ready_event.clear()
+    engine_state.state.bootstrap_event.clear()
+    engine_state.state.sector_summary_ready_event.clear()
+    engine_state.state.ws_reg_pipeline_done.clear()
 
     # 동적 구독 상태 초기화 (원칙 10 SSOT, 원칙 17 플래그 단일 소스)
     # 1. master_stocks_cache에서 동적 구독 플래그 + 파생 데이터 제거
-    for entry in state.master_stocks_cache.values():
+    for entry in engine_state.state.master_stocks_cache.values():
         entry.pop("_subscribed_dynamic", None)
         entry.pop("order_ratio", None)
         entry.pop("program_net_buy", None)
@@ -148,7 +148,7 @@ def reset_broker_session_state() -> None:
     _PENDING_REG_CODES.clear()
 
     # 2. sector_summary_cache 초기화 — are_buy_targets_changed가 True 반환 유도
-    state.sector_summary_cache = None
+    engine_state.state.sector_summary_cache = None
 
     # 3. 동적 구독 해지 타이머 일괄 취소
     from backend.app.services.engine_sector_confirm import cancel_all_dynamic_unreg_timers
@@ -157,43 +157,43 @@ def reset_broker_session_state() -> None:
 
 def is_engine_running() -> bool:
     """엔진이 현재 가동 중인지 확인한다."""
-    return state.running and state.engine_task is not None and not state.engine_task.done()
+    return engine_state.state.running and engine_state.state.engine_task is not None and not engine_state.state.engine_task.done()
 
 
 def get_engine_status() -> dict:
     """엔진 상태 반환."""
     from backend.app.services.daily_time_scheduler import get_market_phase
     # 실시간 구독 종목 수
-    sub_count = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
+    sub_count = sum(1 for entry in engine_state.state.master_stocks_cache.values() if entry.get("_subscribed", False))
 
-    test_mode = is_test_mode(state.integrated_system_settings_cache)
-    ws = state.connector_manager or state.active_connector
+    test_mode = is_test_mode(engine_state.state.integrated_system_settings_cache)
+    ws = engine_state.state.connector_manager or engine_state.state.active_connector
     conn_ok = bool(ws and ws.is_connected())
 
     # broker별 실제 연결 상태 (state.broker_tokens 기반)
     broker_statuses: dict = {}
-    for broker_id, token in state.broker_tokens.items():
+    for broker_id, token in engine_state.state.broker_tokens.items():
         ws_connected = False
-        if state.connector_manager:
-            conn = state.connector_manager.get_connector(broker_id)
+        if engine_state.state.connector_manager:
+            conn = engine_state.state.connector_manager.get_connector(broker_id)
             ws_connected = bool(conn and conn.is_connected())
-        elif broker_id == "kiwoom" and state.active_connector:
-            ws_connected = state.active_connector.is_connected()
+        elif broker_id == "kiwoom" and engine_state.state.active_connector:
+            ws_connected = engine_state.state.active_connector.is_connected()
         broker_statuses[broker_id] = {
             "token_valid": bool(token),
             "ws_connected": ws_connected,
         }
 
     return {
-        "running": state.running,
+        "running": engine_state.state.running,
         "connected": conn_ok,
         "broker_connected": conn_ok,  # 프론트 매핑용 (하위 호환)
-        "logged_in": state.login_ok,
-        "login_ok": state.login_ok,  # 프론트 매핑용
-        "broker_token_valid": bool(state.access_token),  # 하위 호환
+        "logged_in": engine_state.state.login_ok,
+        "login_ok": engine_state.state.login_ok,  # 프론트 매핑용
+        "broker_token_valid": bool(engine_state.state.access_token),  # 하위 호환
         "trade_mode": "test" if test_mode else "real",
         "is_test_mode": test_mode,  # 프론트 매핑용
-        "engine_task_alive": state.engine_task is not None and not state.engine_task.done(),
+        "engine_task_alive": engine_state.state.engine_task is not None and not engine_state.state.engine_task.done(),
         "stock_subscribed_count": sub_count,
         "ws_reg_total_estimate": sub_count,
         "broker_statuses": broker_statuses,  # broker별 실제 연결 상태
@@ -209,12 +209,12 @@ async def on_trade_mode_switched() -> None:
     from backend.app.services.engine_ws import _subscribe_account_realtime, _subscribe_positions_stocks_realtime
     from backend.app.services.engine_account import _refresh_account_snapshot_meta, _broadcast_account
 
-    _new_test = is_test_mode(state.integrated_system_settings_cache)
+    _new_test = is_test_mode(engine_state.state.integrated_system_settings_cache)
     _mode_str = "테스트모드" if _new_test else "실전투자"
     logger.info("[연산] 투자모드 전환 — %s (엔진 재기동 없음)", _mode_str)
 
     # BrokerRouter를 통해 현재 연결된 커넥터 확인 (증권사 하드코딩 제거)
-    ws = state.connector_manager or state.active_connector
+    ws = engine_state.state.connector_manager or engine_state.state.active_connector
     if not is_engine_running() or not ws or not ws.is_connected():
         return
 
@@ -282,7 +282,7 @@ def schedule_engine_task(coro: Coroutine[Any, Any, Any], *, context: str) -> boo
     엔진 이벤트 루프에 코루틴을 안전하게 스케줄한다.
     UI 스레드(이벤트 루프 없음)에서 호출되는 경우 call_soon_threadsafe를 사용한다.
     """
-    loop = state.engine_loop_ref
+    loop = engine_state.state.engine_loop_ref
     if loop and not loop.is_closed():
         try:
             def _create_with_callback():
@@ -312,10 +312,10 @@ def schedule_engine_task(coro: Coroutine[Any, Any, Any], *, context: str) -> boo
 
 def sync_sell_overrides() -> None:
     """sell_per_symbol -> AutoTradeManager.ts_overrides 동기화."""
-    if not state.auto_trade or not isinstance(state.integrated_system_settings_cache, dict):
+    if not engine_state.state.auto_trade or not isinstance(engine_state.state.integrated_system_settings_cache, dict):
         return
-    sp = state.integrated_system_settings_cache["sell_per_symbol"]
-    state.auto_trade.ts_overrides = dict(sp) if isinstance(sp, dict) else {}
+    sp = engine_state.state.integrated_system_settings_cache["sell_per_symbol"]
+    engine_state.state.auto_trade.ts_overrides = dict(sp) if isinstance(sp, dict) else {}
 
 
 async def broadcast_engine_status() -> None:

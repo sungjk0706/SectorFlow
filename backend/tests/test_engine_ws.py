@@ -51,7 +51,7 @@ def _mock_event():
 
 
 def _mock_state(**overrides):
-    """engine_ws.state 기본 mock — 모든 asyncio 객체를 mock으로 대체."""
+    """engine_state.state 기본 mock — 모든 asyncio 객체를 mock으로 대체."""
     mock = MagicMock()
     mock.connector_manager = None
     mock.active_connector = None
@@ -73,13 +73,13 @@ def _mock_state(**overrides):
 
 class TestWsLive:
     def test_no_connector(self):
-        with patch("backend.app.services.engine_ws.state") as mock_state:
+        with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.connector_manager = None
             mock_state.active_connector = None
             assert _ws_live() is False
 
     def test_connector_manager_connected(self):
-        with patch("backend.app.services.engine_ws.state") as mock_state:
+        with patch("backend.app.services.engine_state.state") as mock_state:
             mock_cm = MagicMock()
             mock_cm.is_connected.return_value = True
             mock_state.connector_manager = mock_cm
@@ -87,7 +87,7 @@ class TestWsLive:
             assert _ws_live() is True
 
     def test_active_connector_connected(self):
-        with patch("backend.app.services.engine_ws.state") as mock_state:
+        with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.connector_manager = None
             mock_ac = MagicMock()
             mock_ac.is_connected.return_value = True
@@ -95,7 +95,7 @@ class TestWsLive:
             assert _ws_live() is True
 
     def test_connector_disconnected(self):
-        with patch("backend.app.services.engine_ws.state") as mock_state:
+        with patch("backend.app.services.engine_state.state") as mock_state:
             mock_cm = MagicMock()
             mock_cm.is_connected.return_value = False
             mock_state.connector_manager = mock_cm
@@ -109,7 +109,7 @@ class TestWsSendRegUnregAndWaitAck:
     @pytest.mark.asyncio
     async def test_no_sender(self):
         mock_state = _mock_state()
-        with patch("backend.app.services.engine_ws.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             ok, rc = await _ws_send_reg_unreg_and_wait_ack({"trnm": "REG"})
             assert ok is False
             assert rc == ""
@@ -119,7 +119,7 @@ class TestWsSendRegUnregAndWaitAck:
         mock_cm = MagicMock()
         mock_cm.is_connected.return_value = False
         mock_state = _mock_state(connector_manager=mock_cm)
-        with patch("backend.app.services.engine_ws.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             ok, rc = await _ws_send_reg_unreg_and_wait_ack({"trnm": "REG"})
             assert ok is False
 
@@ -129,7 +129,7 @@ class TestWsSendRegUnregAndWaitAck:
         mock_cm.is_connected.return_value = True
         mock_cm.send_message = AsyncMock(return_value=False)
         mock_state = _mock_state(connector_manager=mock_cm)
-        with patch("backend.app.services.engine_ws.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             ok, rc = await _ws_send_reg_unreg_and_wait_ack({"trnm": "REG"})
             assert ok is False
 
@@ -146,7 +146,7 @@ class TestWsSendRegUnregAndWaitAck:
                 coro.close()
             return True
 
-        with patch("backend.app.services.engine_ws.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.engine_ws.asyncio.wait_for", new=_fake_wait_for_ok):
             ok, rc = await _ws_send_reg_unreg_and_wait_ack({"trnm": "REG"})
             assert ok is True
@@ -164,7 +164,7 @@ class TestWsSendRegUnregAndWaitAck:
                 coro.close()
             raise asyncio.TimeoutError()
 
-        with patch("backend.app.services.engine_ws.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.engine_ws.asyncio.wait_for", new=_fake_wait_for):
             ok, rc = await _ws_send_reg_unreg_and_wait_ack({"trnm": "REG"})
             assert ok is False
@@ -177,7 +177,7 @@ class TestWsSendRemoveFireAndForget:
     @pytest.mark.asyncio
     async def test_no_sender(self):
         mock_state = _mock_state()
-        with patch("backend.app.services.engine_ws.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await _ws_send_remove_fire_and_forget({"trnm": "REMOVE"})
             assert result is False
 
@@ -186,7 +186,7 @@ class TestWsSendRemoveFireAndForget:
         mock_cm = MagicMock()
         mock_cm.is_connected.return_value = False
         mock_state = _mock_state(connector_manager=mock_cm)
-        with patch("backend.app.services.engine_ws.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await _ws_send_remove_fire_and_forget({"trnm": "REMOVE"})
             assert result is False
 
@@ -196,7 +196,7 @@ class TestWsSendRemoveFireAndForget:
         mock_cm.is_connected.return_value = True
         mock_cm.send_message = AsyncMock(return_value=True)
         mock_state = _mock_state(connector_manager=mock_cm)
-        with patch("backend.app.services.engine_ws.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await _ws_send_remove_fire_and_forget({"trnm": "REMOVE", "grp_no": "4"})
             assert result is True
 
@@ -206,7 +206,7 @@ class TestWsSendRemoveFireAndForget:
         mock_cm.is_connected.return_value = True
         mock_cm.send_message = AsyncMock(return_value=False)
         mock_state = _mock_state(connector_manager=mock_cm)
-        with patch("backend.app.services.engine_ws.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             result = await _ws_send_remove_fire_and_forget({"trnm": "REMOVE", "grp_no": "4"})
             assert result is False
 
@@ -261,7 +261,7 @@ class TestSubscribeStockRealtimeWhenReady:
     @pytest.mark.asyncio
     async def test_empty_code(self):
         mock_state = _mock_state()
-        with patch("backend.app.services.engine_ws.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await _subscribe_stock_realtime_when_ready("")
 
     @pytest.mark.asyncio
@@ -269,14 +269,14 @@ class TestSubscribeStockRealtimeWhenReady:
         mock_state = _mock_state()
         mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
         mock_state.ws_reg_pipeline_done = None
-        with patch("backend.app.services.engine_ws.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await _subscribe_stock_realtime_when_ready("005930")
 
     @pytest.mark.asyncio
     async def test_no_ws_connection(self):
         mock_state = _mock_state()
         mock_state.master_stocks_cache = {"005930": {"_subscribed": False}}
-        with patch("backend.app.services.engine_ws.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await _subscribe_stock_realtime_when_ready("005930")
 
     @pytest.mark.asyncio
@@ -286,7 +286,7 @@ class TestSubscribeStockRealtimeWhenReady:
         mock_cm.subscribe_stocks = AsyncMock(return_value=True)
         mock_state = _mock_state(connector_manager=mock_cm)
         mock_state.master_stocks_cache = {"005930": {"_subscribed": False}}
-        with patch("backend.app.services.engine_ws.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await _subscribe_stock_realtime_when_ready("005930")
             assert mock_state.master_stocks_cache["005930"]["_subscribed"] is True
 
@@ -297,7 +297,7 @@ class TestSubscribeStockRealtimeWhenReady:
         mock_cm.subscribe_stocks = AsyncMock(return_value=False)
         mock_state = _mock_state(connector_manager=mock_cm)
         mock_state.master_stocks_cache = {"005930": {"_subscribed": False}}
-        with patch("backend.app.services.engine_ws.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await _subscribe_stock_realtime_when_ready("005930")
             assert "_subscribed" not in mock_state.master_stocks_cache["005930"]
 
@@ -325,7 +325,7 @@ class TestSubscribePositionsStocksRealtime:
     @pytest.mark.asyncio
     async def test_delegates(self):
         with patch("backend.app.services.engine_ws_reg.subscribe_positions_stocks_realtime", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_ws.state") as mock_state, \
+             patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.ws_subscribe_control._set_status") as mock_set:
             mock_state.master_stocks_cache = {"005930": {"_subscribed": True}}
             await _subscribe_positions_stocks_realtime()
@@ -334,7 +334,7 @@ class TestSubscribePositionsStocksRealtime:
     @pytest.mark.asyncio
     async def test_no_subscribed_no_set_status(self):
         with patch("backend.app.services.engine_ws_reg.subscribe_positions_stocks_realtime", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_ws.state") as mock_state, \
+             patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.ws_subscribe_control._set_status") as mock_set:
             mock_state.master_stocks_cache = {"005930": {"_subscribed": False}}
             await _subscribe_positions_stocks_realtime()
@@ -358,7 +358,7 @@ class TestEnsureWsSubscriptionsForPositions:
     @pytest.mark.asyncio
     async def test_no_ws(self):
         mock_state = _mock_state()
-        with patch("backend.app.services.engine_ws.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await _ensure_ws_subscriptions_for_positions()
 
     @pytest.mark.asyncio
@@ -366,7 +366,7 @@ class TestEnsureWsSubscriptionsForPositions:
         mock_cm = MagicMock()
         mock_cm.is_connected.return_value = True
         mock_state = _mock_state(connector_manager=mock_cm, login_ok=False)
-        with patch("backend.app.services.engine_ws.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.engine_ws._ws_live", return_value=False):
             await _ensure_ws_subscriptions_for_positions()
 
@@ -375,7 +375,7 @@ class TestEnsureWsSubscriptionsForPositions:
         mock_cm = MagicMock()
         mock_cm.is_connected.return_value = True
         mock_state = _mock_state(connector_manager=mock_cm, login_ok=True)
-        with patch("backend.app.services.engine_ws.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_ws._subscribe_account_realtime", new_callable=AsyncMock) as mock_acct, \
              patch("backend.app.services.engine_ws._subscribe_positions_stocks_realtime", new_callable=AsyncMock) as mock_pos, \
@@ -389,7 +389,7 @@ class TestEnsureWsSubscriptionsForPositions:
         mock_cm = MagicMock()
         mock_cm.is_connected.return_value = True
         mock_state = _mock_state(connector_manager=mock_cm, login_ok=True)
-        with patch("backend.app.services.engine_ws.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
              patch("backend.app.services.engine_ws._subscribe_account_realtime", new_callable=AsyncMock) as mock_acct, \
              patch("backend.app.services.engine_ws._subscribe_positions_stocks_realtime", new_callable=AsyncMock) as mock_pos, \
@@ -405,7 +405,7 @@ class TestRunSectorRegPipeline:
     @pytest.mark.asyncio
     async def test_no_ws(self):
         mock_state = _mock_state()
-        with patch("backend.app.services.engine_ws.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await _run_sector_reg_pipeline()
 
     @pytest.mark.asyncio
@@ -415,7 +415,7 @@ class TestRunSectorRegPipeline:
         mock_event = MagicMock()
         mock_event.set = MagicMock()
         mock_state = _mock_state(connector_manager=mock_cm, login_ok=True, ws_reg_pipeline_done=mock_event)
-        with patch("backend.app.services.engine_ws.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.ws_subscribe_control.run_conditional_reg_pipeline", new_callable=AsyncMock) as mock_run, \
              patch("backend.app.services.engine_ws._ws_live", return_value=False):
             await _run_sector_reg_pipeline()
@@ -429,7 +429,7 @@ class TestCleanupStaleWsSubscriptions:
     @pytest.mark.asyncio
     async def test_no_ws(self):
         mock_state = _mock_state()
-        with patch("backend.app.services.engine_ws.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await _cleanup_stale_ws_subscriptions_on_session_ready()
 
     @pytest.mark.asyncio
@@ -437,7 +437,7 @@ class TestCleanupStaleWsSubscriptions:
         mock_cm = MagicMock()
         mock_cm.is_connected.return_value = True
         mock_state = _mock_state(connector_manager=mock_cm, account_rest_bootstrapped=False)
-        with patch("backend.app.services.engine_ws.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.ws_subscribe_control.cleanup_stale_subscriptions", new_callable=AsyncMock) as mock_cleanup:
             await _cleanup_stale_ws_subscriptions_on_session_ready()
             mock_cleanup.assert_awaited_once()
@@ -449,8 +449,7 @@ class TestSubscribeDynamicData:
     @pytest.mark.asyncio
     async def test_no_ws(self):
         mock_state = _mock_state()
-        with patch("backend.app.services.engine_ws.state", mock_state), \
-             patch("backend.app.services.engine_state.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await subscribe_dynamic_data(["0D"])
 
     @pytest.mark.asyncio
@@ -459,8 +458,7 @@ class TestSubscribeDynamicData:
         mock_cm.is_connected.return_value = True
         mock_cm.subscribe_dynamic = AsyncMock()
         mock_state = _mock_state(connector_manager=mock_cm, login_ok=True)
-        with patch("backend.app.services.engine_ws.state", mock_state), \
-             patch("backend.app.services.engine_state.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await subscribe_dynamic_data(["0D"])
             mock_cm.subscribe_dynamic.assert_awaited_once_with(["0D"])
 
@@ -470,8 +468,7 @@ class TestSubscribeDynamicData:
         mock_cm.is_connected.return_value = True
         del mock_cm.subscribe_dynamic
         mock_state = _mock_state(connector_manager=mock_cm, login_ok=True)
-        with patch("backend.app.services.engine_ws.state", mock_state), \
-             patch("backend.app.services.engine_state.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await subscribe_dynamic_data(["0D"])
 
 
@@ -481,8 +478,7 @@ class TestUnsubscribeDynamicData:
     @pytest.mark.asyncio
     async def test_no_ws(self):
         mock_state = _mock_state()
-        with patch("backend.app.services.engine_ws.state", mock_state), \
-             patch("backend.app.services.engine_state.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await unsubscribe_dynamic_data(["0D"])
 
     @pytest.mark.asyncio
@@ -491,7 +487,6 @@ class TestUnsubscribeDynamicData:
         mock_cm.is_connected.return_value = True
         mock_cm.unsubscribe_dynamic = AsyncMock()
         mock_state = _mock_state(connector_manager=mock_cm, login_ok=True)
-        with patch("backend.app.services.engine_ws.state", mock_state), \
-             patch("backend.app.services.engine_state.state", mock_state):
+        with patch("backend.app.services.engine_state.state", mock_state):
             await unsubscribe_dynamic_data(["0D"])
             mock_cm.unsubscribe_dynamic.assert_awaited_once_with(["0D"])

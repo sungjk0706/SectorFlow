@@ -7,14 +7,14 @@ WebSocket 구독 관련 모듈
 """
 import asyncio
 import logging
-from backend.app.services.engine_state import state
+from backend.app.services import engine_state
 
 logger = logging.getLogger(__name__)
 
 
 def _ws_live() -> bool:
     """WebSocket 연결 상태 확인."""
-    ws = state.connector_manager or state.active_connector
+    ws = engine_state.state.connector_manager or engine_state.state.active_connector
     return bool(ws and ws.is_connected())
 
 
@@ -29,16 +29,16 @@ async def _ws_send_reg_unreg_and_wait_ack(payload: dict, *, sender=None) -> tupl
         payload: 전송할 REG/UNREG 페이로드.
         sender: 송신할 커넥터 (증권사 커넥터). None이면 state에서 자동 해결.
     """
-    if state.reg_seq_lock is None:
-        state.reg_seq_lock = asyncio.Lock()
+    if engine_state.state.reg_seq_lock is None:
+        engine_state.state.reg_seq_lock = asyncio.Lock()
 
-    async with state.reg_seq_lock:
-        if state.reg_ack_event:
-            state.reg_ack_event.clear()
-        state.reg_ack_return_code = ""
+    async with engine_state.state.reg_seq_lock:
+        if engine_state.state.reg_ack_event:
+            engine_state.state.reg_ack_event.clear()
+        engine_state.state.reg_ack_return_code = ""
 
         _sender = sender if sender is not None else (
-            state.connector_manager if state.connector_manager and state.connector_manager.is_connected() else state.active_connector
+            engine_state.state.connector_manager if engine_state.state.connector_manager and engine_state.state.connector_manager.is_connected() else engine_state.state.active_connector
         )
 
         if not _sender or not _sender.is_connected():
@@ -49,16 +49,16 @@ async def _ws_send_reg_unreg_and_wait_ack(payload: dict, *, sender=None) -> tupl
             return False, ""
 
         try:
-            if state.reg_ack_event:
-                await asyncio.wait_for(state.reg_ack_event.wait(), timeout=10.0)
+            if engine_state.state.reg_ack_event:
+                await asyncio.wait_for(engine_state.state.reg_ack_event.wait(), timeout=10.0)
         except asyncio.TimeoutError:
-            if state.reg_ack_event:
-                state.reg_ack_event.clear()
+            if engine_state.state.reg_ack_event:
+                engine_state.state.reg_ack_event.clear()
             logger.warning("[구독] 구독 응답 대기 시간 초과(10초) — 메시지유형=%s", payload.get("trnm"))
             return False, ""
 
-        rc = state.reg_ack_return_code
-        await asyncio.sleep(state.REG_POST_ACK_GAP_SEC)
+        rc = engine_state.state.reg_ack_return_code
+        await asyncio.sleep(engine_state.state.REG_POST_ACK_GAP_SEC)
         return True, rc
 
 
@@ -76,7 +76,7 @@ async def _ws_send_remove_fire_and_forget(payload: dict, *, sender=None) -> bool
         sender: 송신할 커넥터 (증권사 커넥터). None이면 state에서 자동 해결.
     """
     _sender = sender if sender is not None else (
-        state.connector_manager if state.connector_manager and state.connector_manager.is_connected() else state.active_connector
+        engine_state.state.connector_manager if engine_state.state.connector_manager and engine_state.state.connector_manager.is_connected() else engine_state.state.active_connector
     )
 
     if not _sender or not _sender.is_connected():
@@ -126,28 +126,28 @@ async def _subscribe_stock_realtime_when_ready(stk_cd: str) -> None:
         return
     
     # 배치 파이프라인 완료 대기 (이벤트 구동 - 시간 초과 제거)
-    if state.ws_reg_pipeline_done:
-        await state.ws_reg_pipeline_done.wait()
+    if engine_state.state.ws_reg_pipeline_done:
+        await engine_state.state.ws_reg_pipeline_done.wait()
 
     # 배치에서 이미 구독됐으면 단건 불필요 (0B 기준)
     item_cd = _base_stk_cd(stk_cd)
-    if state.master_stocks_cache.get(item_cd, {}).get("_subscribed"):
+    if engine_state.state.master_stocks_cache.get(item_cd, {}).get("_subscribed"):
         return
 
     # 배치에 포함되지 않은 신규 모니터링 종목 — 단건 0B REG 전송
-    ws = state.connector_manager or state.active_connector
+    ws = engine_state.state.connector_manager or engine_state.state.active_connector
     if not ws or not ws.is_connected():
         return
 
-    if item_cd in state.master_stocks_cache:
-        state.master_stocks_cache[item_cd]["_subscribed"] = True
+    if item_cd in engine_state.state.master_stocks_cache:
+        engine_state.state.master_stocks_cache[item_cd]["_subscribed"] = True
 
     ok = await ws.subscribe_stocks([item_cd])
     if ok:
         pass
     else:
-        if item_cd in state.master_stocks_cache:
-            state.master_stocks_cache[item_cd].pop("_subscribed", None)
+        if item_cd in engine_state.state.master_stocks_cache:
+            engine_state.state.master_stocks_cache[item_cd].pop("_subscribed", None)
         logger.warning("[구독] 단건 종목 구독 실패 — %s", item_cd)
 
 
@@ -174,7 +174,7 @@ async def _subscribe_positions_stocks_realtime() -> None:
     from backend.app.services import engine_ws_reg, ws_subscribe_control
     await engine_ws_reg.subscribe_positions_stocks_realtime()
     # REG 실행 후 인메모리 상태 동기화
-    if any(entry.get("_subscribed", False) for entry in state.master_stocks_cache.values()):
+    if any(entry.get("_subscribed", False) for entry in engine_state.state.master_stocks_cache.values()):
         ws_subscribe_control._set_status(quote=True)
 
 
@@ -200,10 +200,10 @@ async def _ensure_ws_subscriptions_for_positions() -> None:
     from backend.app.services.engine_account import _refresh_account_snapshot_meta
 
     try:
-        ws = state.connector_manager or state.active_connector
-        if not ws or not ws.is_connected() or not state.login_ok:
+        ws = engine_state.state.connector_manager or engine_state.state.active_connector
+        if not ws or not ws.is_connected() or not engine_state.state.login_ok:
             return
-        if not is_test_mode(state.integrated_system_settings_cache):
+        if not is_test_mode(engine_state.state.integrated_system_settings_cache):
             await _subscribe_account_realtime()
         else:
             logger.info("[구독] 테스트모드 — 계좌 실시간 구독 생략")
@@ -218,8 +218,8 @@ async def _ensure_ws_subscriptions_for_positions() -> None:
 async def _run_sector_reg_pipeline() -> None:
     """실시간 구독 파이프라인 실행."""
     try:
-        ws = state.connector_manager or state.active_connector
-        if not ws or not ws.is_connected() or not state.login_ok:
+        ws = engine_state.state.connector_manager or engine_state.state.active_connector
+        if not ws or not ws.is_connected() or not engine_state.state.login_ok:
             return
         # 구독 제어 모듈에 위임 (설정 기반 조건부 REG)
         from backend.app.services import ws_subscribe_control
@@ -227,8 +227,8 @@ async def _run_sector_reg_pipeline() -> None:
     except Exception as e:
         logger.warning("[연산] 실시간 구독 파이프라인 실패: %s", e, exc_info=True)
     finally:
-        if state.ws_reg_pipeline_done:
-            state.ws_reg_pipeline_done.set()
+        if engine_state.state.ws_reg_pipeline_done:
+            engine_state.state.ws_reg_pipeline_done.set()
         logger.info("[연산] 실시간 구독 준비 완료 — 단건 구독 허용")
         from backend.app.services.engine_account import _refresh_account_snapshot_meta
         if _ws_live():
@@ -237,7 +237,7 @@ async def _run_sector_reg_pipeline() -> None:
 
 async def _cleanup_stale_ws_subscriptions_on_session_ready() -> None:
     """로그인 직후 1회: 잔존 구독 정리 (grp_no=5,2,4 UNREG 최선 노력)."""
-    ws = state.connector_manager or state.active_connector
+    ws = engine_state.state.connector_manager or engine_state.state.active_connector
     if not ws or not ws.is_connected():
         return
 
@@ -253,10 +253,9 @@ async def subscribe_dynamic_data(codes: list[str]) -> bool:
     Returns:
         True if 커넥터 subscribe_dynamic이 1건 이상 성공, False if 연결/로그인 없거나 전부 실패 (P22 정합성).
     """
-    from backend.app.services.engine_state import state
-    ws = state.connector_manager or state.active_connector
-    if not ws or not ws.is_connected() or not state.login_ok:
-        logger.warning("[구독] 호가·프로그램매매 구독 실패 — 연결=%s, 로그인=%s", ws.is_connected() if ws else False, state.login_ok)
+    ws = engine_state.state.connector_manager or engine_state.state.active_connector
+    if not ws or not ws.is_connected() or not engine_state.state.login_ok:
+        logger.warning("[구독] 호가·프로그램매매 구독 실패 — 연결=%s, 로그인=%s", ws.is_connected() if ws else False, engine_state.state.login_ok)
         return False
     if hasattr(ws, "subscribe_dynamic"):
         return bool(await ws.subscribe_dynamic(codes))
@@ -265,9 +264,8 @@ async def subscribe_dynamic_data(codes: list[str]) -> bool:
 
 async def unsubscribe_dynamic_data(codes: list[str]) -> None:
     """동적 데이터 실시간 구독 해지를 커넥터에 위임합니다."""
-    from backend.app.services.engine_state import state
-    ws = state.connector_manager or state.active_connector
-    if not ws or not ws.is_connected() or not state.login_ok:
+    ws = engine_state.state.connector_manager or engine_state.state.active_connector
+    if not ws or not ws.is_connected() or not engine_state.state.login_ok:
         return
     if hasattr(ws, "unsubscribe_dynamic"):
         await ws.unsubscribe_dynamic(codes)
