@@ -682,11 +682,11 @@ StockScore (종목 단위)
 SectorScore (업종 단위)
 ├── sector, total, rise_count, rise_ratio
 ├── avg_change_rate, avg_trade_amount, avg_ratio_5d_pct
-├── final_score (종합 가산점 = 1차+2차+3차, 0~만점 합, 정수)
+├── final_score (종합 가산점 = 1차+2차+3차, 0~만점 합, float)
 ├── bonus_rise_ratio (1차 가산점: 상승 종목 비율 순위, tiered 점수 0~만점)
-├── bonus_relative_strength (2차 가산점: 통과 업종 종목 백분위 평균 순위, tiered 점수 0~만점)
+├── bonus_relative_strength (2차 가산점: 통과 업종 종목들 가중 순위 합, tiered 점수 0~만점)
 ├── bonus_trade_amount (3차 가산점: 거래대금 순위, tiered 점수 0~만점)
-├── rank (1=최강, 0=순위 없음/컷오프 미달)
+├── rank (1=최강, 모든 업종에 순위 부여 — 컷오프 미달은 is_cutoff_passed=False로 매수 대상 구분)
 └── stocks: list[StockScore]
 
 SectorSummary (전체 결과)
@@ -699,7 +699,7 @@ SectorSummary (전체 결과)
 ### 6.2 3단계 누적 가산점 시스템
 
 **설계 원칙**: 기존 가중치 슬라이더(주관 개입)와 트리밍(인위적 잘라내기)을 제거하고,
-순위/백분위 기반의 3단계 누적 가산점으로 업종 강도 평가. 매수 설정 `boost_score` 누적
+순위/가중 순위 합 기반의 3단계 누적 가산점으로 업종 강도 평가. 매수 설정 `boost_score` 누적
 합산 패턴과 동일 구조 (P23 일관성).
 
 **3개 단계 (각 0~사용자 설정 만점, 종합 0~만점 합):**
@@ -707,26 +707,29 @@ SectorSummary (전체 결과)
 | 단계 | 의미 | 데이터 | 점수 변환 | 함수 |
 |------|------|--------|-----------|------|
 | 1차 | 상승 폭 (참여 폭) | `rise_ratio` (상승 종목 비율) | 업종 간 순위 → tiered 점수 (0~만점) | `rank_to_tiered_score` |
-| 2차 | 상승 강도 (상승 폭) | 통과 업종 종목 `change_rate` | 종목 백분위 → 업종별 평균 → 업종 간 순위 → tiered 점수 (0~만점) | `percentile_to_score` + `rank_to_tiered_score` |
+| 2차 | 상승 강도 (상승 폭) | 통과 업종 종목 `change_rate` | 종목 상승률 내림차순 정렬 → 가중치 (N-순위+1)/N → 업종별 가중치 합산 → 업종 간 순위 → tiered 점수 (0~만점) | `rank_to_tiered_score` |
 | 3차 | 거래대금 (유동성) | `avg_trade_amount` (평균 거래대금) | 업종 간 순위 → tiered 점수 (0~만점) | `rank_to_tiered_score` |
 
-**사용자 설정 만점 (기본값):**
-- `sector_bonus_rise_ratio_max` = 10 (1차 만점)
-- `sector_bonus_relative_strength_max` = 7 (2차 만점)
-- `sector_bonus_trade_amount_max` = 5 (3차 만점)
+**사용자 설정 만점 (슬라이더 기반 자동화):**
+- 만점 = 업종 수 × (1 + 슬라이더/100) — 업종 수에서 자동 도출 (P10 SSOT)
+- `sector_bonus_rise_ratio_slider` (-100~+100, 기본 0) → 1차 조정 만점
+- `sector_bonus_relative_strength_slider` (-100~+100, 기본 0) → 2차 조정 만점
+- `sector_bonus_trade_amount_slider` (-100~+100, 기본 0) → 3차 조정 만점
+- 슬라이더 0% → 만점 = 업종 수 / +50% → 업종 수 × 1.5 / -50% → 업종 수 × 0.5 / -100% → 만점 0 (해당 가산점 무효화, P20 폴백 아님)
+- 종합 만점 = 1차 + 2차 + 3차 조정 만점의 합
 
 **점수 변환 함수:**
-- `rank_to_tiered_score`: 순위별 차등 점수 = max(0, max_score - rank + 1) — 1위=만점, 2위=만점-1, ..., 만점 순위=1, 그 아래=0. 업종 간 순위 비교용 (1차/3차, 2차 최종 변환).
-- `percentile_to_score`: 백분위 점수 = (N - rank) / (N - 1) × 100 — 최대값=100점, 최소값=0점 (완전 0~100 스케일). 종목 간 상대 비교용 (2차 중간 단계). N=1이면 100점.
+- `rank_to_tiered_score`: 순위별 차등 점수 = max(0, max_score - rank + 1) — 1위=만점, 2위=만점-1, ..., 만점 순위=1, 그 아래=0. 업종 간 순위 비교용 (1차/3차/2차 최종 변환 모두 단일 함수 사용, P24 단순성).
+- 2차 가산점 가중치: 종목 상승률 내림차순 정렬 시 순위 1..N에 대해 `weight = (N - 순위 + 1) / N` — 1위 가중치=1.0, N위 가중치=1/N. 업종별 가중치 합산 후 업종 간 순위 → `rank_to_tiered_score`로 tiered 점수 변환.
 - 동점 처리: 같은 값 = 같은 점수, 다음 순위 건너뜀 (표준 순위 방식).
 
 **계산 과정 (옵션 C — 2패스, `calculate_bonus_scores`):**
 1. **1패스**: 1차(상승비율 순위 → tiered) + 3차(거래대금 순위 → tiered) 계산 → 임시 합산 기반 정렬
-2. **컷오프**: `min_rise_ratio` 미만 업종 `rank=0` (매수 대상 제외) — `calculate_bonus_scores` 내부에서 수행 (진실 소스 1곳, P10/P22)
-3. **2패스**: 통과 업종(rank>0) 종목들만 모집단 → `percentile_to_score` 백분위 → 업종별 평균 → 업종 간 순위 → `rank_to_tiered_score` tiered 점수 = 2차 가산점
-4. **종합**: `final_score = 1차 + 2차 + 3차` (0~만점 합, 정수)
+2. **컷오프**: `min_rise_ratio` 미만 업종 `is_cutoff_passed=False` (rank는 최종 단계에서 모든 업종에 부여, `is_cutoff_passed`로 매수 대상 구분) — `calculate_bonus_scores` 내부에서 수행 (진실 소스 1곳, P10/P22)
+3. **2패스**: 통과 업종(`is_cutoff_passed=True`) 종목들만 모집단 → 종목 상승률 내림차순 정렬 → 가중치 `(N-순위+1)/N` → 업종별 가중치 합산 → 업종 간 순위 → `rank_to_tiered_score` tiered 점수 = 2차 가산점
+4. **종합**: `final_score = 1차 + 2차 + 3차` (0~만점 합, float)
 5. **재정렬**: `final_score` 내림차순 → `bonus_relative_strength` 내림차순 → `bonus_rise_ratio` 내림차순 → 업종명 오름차순 (결정적 정렬)
-6. **rank 부여**: 1-based, 컷오프 미달 업종은 `rank=0` 유지
+6. **rank 부여**: 1-based, 모든 업종에 1, 2, 3... 순위 부여 (컷오프 미달 포함, `is_cutoff_passed`로 매수 대상 구분)
 
 > **2차 가산점 모집단 (P22 데이터 정합성)**: 컷오프 적용 후 통과 업종이 확정된 상태에서
 > 모집단 구성. 옵션 C 2패스 채택으로 진실 소스 1곳 유지. 미통과 업종은 2차 가산점=0점.
@@ -738,7 +741,7 @@ SectorSummary (전체 결과)
   - `get_sector_stocks()`에서 필터 통과 종목만 `all_codes`에 포함 → 업종 순위 계산 대상
   - 필터 통과 종목에 `_filtered` 플래그 설정 → `subscribe_sector_stocks_0b()`에서 WS 구독 대상 선정 (보유종목 포함, 설정 가능 한도 `subscribe.max_0b_count` 기본 200)
   - **필터 미통과 종목**: WS 구독 안됨 → 실시간 시세 수신 없음 → 업종 순위 계산 대상 아님 → 아무 처리도 하지 않음
-- **업종 컷오프**: `min_rise_ratio` 미만 업종은 `rank=0` (매수 대상 제외)
+- **업종 컷오프**: `min_rise_ratio` 미만 업종은 `is_cutoff_passed=False` (매수 대상 제외, rank는 모든 업종에 부여)
 - **개별 종목 가드**: 상승률 과열(`block_rise_pct`), 하락률 과열(`block_fall_pct`), 체결강도 최소값
 
 ### 6.4 증분 연산 모드
