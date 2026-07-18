@@ -23,7 +23,7 @@ from backend.app.core.trading_calendar import (
     get_current_trading_day_str,
     get_previous_trading_day_str,
 )
-from backend.app.services.engine_state import state
+from backend.app.services import engine_state
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 from backend.app.db.json_utils import dumps
 
@@ -87,7 +87,7 @@ def _get_krx_only_codes() -> list[str]:
 
     sources: list[set | dict | list] = []
     # 전종목 마스터 캐시의 "_subscribed" 사용
-    subscribed_codes = {cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed", False)}
+    subscribed_codes = {cd for cd, entry in engine_state.state.master_stocks_cache.items() if entry.get("_subscribed", False)}
     if subscribed_codes:
         sources.append(subscribed_codes)
     # _radar_cnsr_order 삭제
@@ -102,7 +102,7 @@ def _get_krx_only_codes() -> list[str]:
                 result.append(base)
 
     # 레이아웃 캐시에서 seen에 없는 KRX 단독 종목 추가 (항상 순회)
-    layout = state.integrated_system_settings_cache["sector_stock_layout"]
+    layout = engine_state.state.integrated_system_settings_cache["sector_stock_layout"]
     for kind, val in layout:
         if kind == "code":
             base = _base_stk_cd(val)
@@ -126,7 +126,7 @@ async def remove_krx_only_stocks() -> dict:
         {"removed": int, "failed": int, "skipped": bool}
     """
     # 0B REMOVE 페이로드 전송 — 증권사별 ACK 지원 여부로 분기
-    ws = state.connector_manager or state.active_connector
+    ws = engine_state.state.connector_manager or engine_state.state.active_connector
     if not ws or not ws.is_connected():
         logger.warning("[스케줄] KRX 장마감 구독해지 생략 — 실시간 미연결")
         return {"removed": 0, "failed": 0, "skipped": True}
@@ -174,8 +174,8 @@ async def remove_krx_only_stocks() -> dict:
         if ack_ok:
             # 성공 — 전종목 마스터 캐시에서 "_subscribed" 제거
             for cd in chunk:
-                if cd in state.master_stocks_cache:
-                    state.master_stocks_cache[cd].pop("_subscribed", None)
+                if cd in engine_state.state.master_stocks_cache:
+                    engine_state.state.master_stocks_cache[cd].pop("_subscribed", None)
             removed += len(chunk)
             if supports_ack:
                 logger.info(
@@ -289,8 +289,8 @@ async def execute_unified_rolling_and_save(
                 ))
 
                 # 메모리 캐시 동시 갱신 (avg_5d/high_5d는 아래에서 재계산 후 갱신)
-                if nk in state.master_stocks_cache:
-                    entry = state.master_stocks_cache[nk]
+                if nk in engine_state.state.master_stocks_cache:
+                    entry = engine_state.state.master_stocks_cache[nk]
                     entry.update({
                         "cur_price": cur_price,
                         "change": change,
@@ -339,9 +339,9 @@ async def execute_unified_rolling_and_save(
                     high_5d = max(valid_highs) if valid_highs else 0
                     recalc_params.append((avg_5d, high_5d, nk))
                     # 메모리 캐시 갱신
-                    if nk in state.master_stocks_cache:
-                        state.master_stocks_cache[nk]["avg_5d_trade_amount"] = avg_5d
-                        state.master_stocks_cache[nk]["high_5d_price"] = high_5d
+                    if nk in engine_state.state.master_stocks_cache:
+                        engine_state.state.master_stocks_cache[nk]["avg_5d_trade_amount"] = avg_5d
+                        engine_state.state.master_stocks_cache[nk]["high_5d_price"] = high_5d
 
             # 마스터 테이블 적재 (UPSERT)
             if master_bulk_params:
@@ -405,7 +405,7 @@ async def _apply_confirmed_to_memory(
         반영된 종목 수.
     """
     _nm = name_map or {}
-    pending: dict = state.master_stocks_cache
+    pending: dict = engine_state.state.master_stocks_cache
 
     updated = 0
 
@@ -454,8 +454,8 @@ async def _apply_confirmed_to_memory(
             entry["reason"] = "확정 데이터 조회"
             pending[nk] = entry
             # _radar_cnsr_order 삭제: 전종목 마스터 캐시의 "_subscribed" 사용
-            if nk in state.master_stocks_cache:
-                state.master_stocks_cache[nk]["_subscribed"] = True
+            if nk in engine_state.state.master_stocks_cache:
+                engine_state.state.master_stocks_cache[nk]["_subscribed"] = True
             updated += 1
             continue
 
@@ -541,7 +541,7 @@ async def _save_confirmed_cache(
     Returns:
         저장 성공 여부.
     """
-    pending: dict = state.master_stocks_cache
+    pending: dict = engine_state.state.master_stocks_cache
     if not pending:
         logger.warning("[스케줄] 저장할 데이터(전종목 마스터 캐시)가 비어있음 — 데이터 저장 생략")
         return False
@@ -816,13 +816,13 @@ async def _step4_save_to_db_and_cache(
                 )
                 await _conn.commit()
 
-            keys_to_delete = [cd for cd in list(state.master_stocks_cache.keys()) if cd not in confirmed_codes]
+            keys_to_delete = [cd for cd in list(engine_state.state.master_stocks_cache.keys()) if cd not in confirmed_codes]
             for cd in keys_to_delete:
-                state.master_stocks_cache.pop(cd, None)
+                engine_state.state.master_stocks_cache.pop(cd, None)
             for r in records:
                 if r.code in confirmed_codes:
-                    if r.code not in state.master_stocks_cache:
-                        state.master_stocks_cache[r.code] = {
+                    if r.code not in engine_state.state.master_stocks_cache:
+                        engine_state.state.master_stocks_cache[r.code] = {
                             "name": r.name,
                             "market": r.market_code,
                             "nxt_enable": bool(r.nxt_enable),
@@ -839,13 +839,13 @@ async def _step4_save_to_db_and_cache(
                             "status": "active",
                         }
                     else:
-                        state.master_stocks_cache[r.code]["market"] = r.market_code
-                        state.master_stocks_cache[r.code]["nxt_enable"] = bool(r.nxt_enable)
+                        engine_state.state.master_stocks_cache[r.code]["market"] = r.market_code
+                        engine_state.state.master_stocks_cache[r.code]["nxt_enable"] = bool(r.nxt_enable)
 
             from backend.app.core.stock_classification_data import sync_sector_from_custom_sectors
             await sync_sector_from_custom_sectors()
 
-        state.latest_filter_summary_meta = filter_summary_meta
+        engine_state.state.latest_filter_summary_meta = filter_summary_meta
 
         all_codes = list(confirmed_codes)
         await _update_layout_cache(all_codes, name_map)
@@ -944,11 +944,11 @@ async def _step5_download_daily_confirmed(
     if cached:
         final_eligible = confirmed_codes
         if final_eligible:
-            to_remove = [cd for cd, entry in state.master_stocks_cache.items() if entry.get("_subscribed", False) and cd not in final_eligible]
+            to_remove = [cd for cd, entry in engine_state.state.master_stocks_cache.items() if entry.get("_subscribed", False) and cd not in final_eligible]
             for cd in to_remove:
-                if cd in state.master_stocks_cache:
-                    state.master_stocks_cache[cd].pop("_subscribed", None)
-            subscribed_count = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
+                if cd in engine_state.state.master_stocks_cache:
+                    engine_state.state.master_stocks_cache[cd].pop("_subscribed", None)
+            subscribed_count = sum(1 for entry in engine_state.state.master_stocks_cache.values() if entry.get("_subscribed", False))
             logger.info("%s 6단계 메모리 교체 완료 — 구독 중=%d종목", tag, subscribed_count)
     else:
         logger.warning("%s 캐시 미적용 — 메모리 교체 생략", tag)
@@ -983,34 +983,34 @@ async def _run_confirmed_pipeline(
     1~7단계: 전종목 통합 조회(ka10099) 전종목 다운로드 → 필터링 → 해석 → DB저장 →
     전종목 1일봉챠트 시세 조회(ka10081) 1일봉챠트 시세 다운로드 → 정규화 → 메모리/DB 저장 → 메모리 교체 → 전송.
     """
-    if state.confirmed_refresh_running_confirmed:
+    if engine_state.state.confirmed_refresh_running_confirmed:
         logger.info("%s 확정 조회 이미 진행 중 — 생략", tag)
         return {"fetched": 0, "failed": 0, "cached": False, "skipped": True}
-    state.confirmed_refresh_running_confirmed = True
-    state.confirmed_refresh_message = ""
+    engine_state.state.confirmed_refresh_running_confirmed = True
+    engine_state.state.confirmed_refresh_message = ""
 
     _broker_token_registered = False
 
     try:
         # ── 메모리 전체 초기화 ──
-        state.integrated_system_settings_cache["sector_stock_layout"] = []
+        engine_state.state.integrated_system_settings_cache["sector_stock_layout"] = []
         from backend.app.services.engine_account_notify import _rebuild_layout_cache
         _rebuild_layout_cache([])
         logger.info("%s 메모리 전체 초기화 완료 — 새 데이터로 교체 시작", tag)
 
         # 스케줄러 토글 체크 (타이머 전용)
-        if check_scheduler and not state.integrated_system_settings_cache["scheduler_market_close_on"]:
+        if check_scheduler and not engine_state.state.integrated_system_settings_cache["scheduler_market_close_on"]:
             logger.info("%s 장마감 스케줄러=꺼짐 — 전체 갱신 생략", tag)
             return {"fetched": 0, "failed": 0, "cached": False, "skipped": True}
 
         from backend.app.core.broker_registry import _create_provider
-        _settings = state.integrated_system_settings_cache
+        _settings = engine_state.state.integrated_system_settings_cache
         _broker_name = "kiwoom"
         _auth_cache: dict[str, AuthProvider] = {}
         _auth_provider = _create_provider("auth", _broker_name, _settings, _auth_cache)
         _broker_token = await _auth_provider.get_access_token() if _auth_provider else None
-        if _broker_token and _broker_name not in state.broker_tokens:
-            state.broker_tokens[_broker_name] = _broker_token
+        if _broker_token and _broker_name not in engine_state.state.broker_tokens:
+            engine_state.state.broker_tokens[_broker_name] = _broker_token
             _broker_token_registered = True
             from backend.app.services.engine_lifecycle import broadcast_engine_status
             await broadcast_engine_status()
@@ -1056,11 +1056,11 @@ async def _run_confirmed_pipeline(
         return {"fetched": fetched, "failed": failed, "cached": cached}
     finally:
         if _broker_token_registered:
-            state.broker_tokens.pop(_broker_name, None)
+            engine_state.state.broker_tokens.pop(_broker_name, None)
             from backend.app.services.engine_lifecycle import broadcast_engine_status
             await broadcast_engine_status()
-        state.confirmed_refresh_running_confirmed = False
-        state.confirmed_refresh_message = ""
+        engine_state.state.confirmed_refresh_running_confirmed = False
+        engine_state.state.confirmed_refresh_message = ""
 
 
 # ---------------------------------------------------------------------------
@@ -1106,7 +1106,7 @@ async def _update_layout_cache(
     sector_groups: dict[str, list[str]] = {}
     for cd in all_codes:
         sec = None
-        entry = state.master_stocks_cache.get(cd)
+        entry = engine_state.state.master_stocks_cache.get(cd)
         if entry and "sector" in entry:
             sec = entry["sector"]
         # 2) DB 매핑 확인
@@ -1123,7 +1123,7 @@ async def _update_layout_cache(
         sector_groups[sec].sort()
 
     # 업종 순서: 기존 레이아웃의 업종 순서를 최대한 유지하고 신규 업종는 뒤에 추가
-    old_layout: list[tuple[str, str]] = state.integrated_system_settings_cache["sector_stock_layout"]
+    old_layout: list[tuple[str, str]] = engine_state.state.integrated_system_settings_cache["sector_stock_layout"]
     old_sector_order = list(dict.fromkeys(v for t, v in old_layout if t == "sector"))
 
     new_sectors = [s for s in sector_groups if s not in old_sector_order]
@@ -1136,7 +1136,7 @@ async def _update_layout_cache(
         for cd in sector_groups[sec]:
             new_layout.append(("code", cd))
 
-    state.integrated_system_settings_cache["sector_stock_layout"] = new_layout
+    engine_state.state.integrated_system_settings_cache["sector_stock_layout"] = new_layout
     from backend.app.services.engine_account_notify import _rebuild_layout_cache
     _rebuild_layout_cache(new_layout)
     logger.info(
@@ -1171,23 +1171,23 @@ async def fetch_5d_data_only() -> dict:
     """
 
     # 중복 실행 방지
-    if state.confirmed_refresh_running_5d:
+    if engine_state.state.confirmed_refresh_running_5d:
         logger.info("[다운로드] 다운로드 이미 진행 중 — 생략")
         return {"fetched": 0, "failed": 0, "cached": False, "skipped": True}
-    state.confirmed_refresh_running_5d = True
-    state.confirmed_refresh_message = ""
+    engine_state.state.confirmed_refresh_running_5d = True
+    engine_state.state.confirmed_refresh_message = ""
 
     _broker_token_registered = False
 
     try:
         from backend.app.core.broker_registry import _create_provider
-        _settings = state.integrated_system_settings_cache
+        _settings = engine_state.state.integrated_system_settings_cache
         _broker_name = "kiwoom"
         _auth_cache: dict[str, AuthProvider] = {}
         _auth_provider = _create_provider("auth", _broker_name, _settings, _auth_cache)
         _broker_token = await _auth_provider.get_access_token() if _auth_provider else None
-        if _broker_token and _broker_name not in state.broker_tokens:
-            state.broker_tokens[_broker_name] = _broker_token
+        if _broker_token and _broker_name not in engine_state.state.broker_tokens:
+            engine_state.state.broker_tokens[_broker_name] = _broker_token
             _broker_token_registered = True
             from backend.app.services.engine_lifecycle import broadcast_engine_status
             await broadcast_engine_status()
@@ -1196,14 +1196,14 @@ async def fetch_5d_data_only() -> dict:
 
         # ── 메모리 캐시에서 매매적격종목 코드 리스트 로드 (SSOT: DB에서만 로드된 캐시 사용) ──
         logger.info("[다운로드] 매매적격종목 목록 로드 시작")
-        all_codes = [cd for cd, entry in state.master_stocks_cache.items() if entry.get("status") == "active"]
+        all_codes = [cd for cd, entry in engine_state.state.master_stocks_cache.items() if entry.get("status") == "active"]
         total = len(all_codes)
 
         logger.info("[다운로드] 대상 적격 종목 수: %d", total)
         if total == 0:
             logger.warning("[다운로드] 대상 종목 없음 — 중단")
-            state.confirmed_refresh_running_5d = False
-            state.confirmed_refresh_message = ""
+            engine_state.state.confirmed_refresh_running_5d = False
+            engine_state.state.confirmed_refresh_message = ""
             return {"fetched": 0, "failed": 0, "cached": False}
 
         # ── DB 연결 (INSERT OR REPLACE 기반 — 전체 DELETE 제거로 부분 실패 시 기존 데이터 보존) ──
@@ -1356,9 +1356,9 @@ async def fetch_5d_data_only() -> dict:
                 valid_highs = [h for h in highs_5d if h is not None and h > 0]
                 high_5d = max(valid_highs) if valid_highs else 0
 
-                if cd in state.master_stocks_cache:
-                    state.master_stocks_cache[cd]["avg_5d_trade_amount"] = avg_5d
-                    state.master_stocks_cache[cd]["high_5d_price"] = high_5d
+                if cd in engine_state.state.master_stocks_cache:
+                    engine_state.state.master_stocks_cache[cd]["avg_5d_trade_amount"] = avg_5d
+                    engine_state.state.master_stocks_cache[cd]["high_5d_price"] = high_5d
 
             logger.info("[다운로드] 메모리 캐시 갱신 완료")
 
@@ -1398,8 +1398,8 @@ async def fetch_5d_data_only() -> dict:
         return {"fetched": fetched, "failed": failed, "cached": False}
     finally:
         if _broker_token_registered:
-            state.broker_tokens.pop(_broker_name, None)
+            engine_state.state.broker_tokens.pop(_broker_name, None)
             from backend.app.services.engine_lifecycle import broadcast_engine_status
             await broadcast_engine_status()
-        state.confirmed_refresh_running_5d = False
-        state.confirmed_refresh_message = ""
+        engine_state.state.confirmed_refresh_running_5d = False
+        engine_state.state.confirmed_refresh_message = ""

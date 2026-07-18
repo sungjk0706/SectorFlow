@@ -1,9 +1,9 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-18 (P-NEW-5 — 15개 모듈 state 참조 패턴 A → B 단계적 전환 3세션, engine_sector_confirm.py + sector_data_provider.py 2개 모듈 전환)
-- 작업: HANDOVER.md P-NEW-5에 기록된 15개 모듈의 `state` 참조 패턴 A(모듈 레벨 `from backend.app.services.engine_state import state`) → 패턴 B(`from backend.app.services import engine_state` + `engine_state.state.X`) 단계적 전환 3세션. 사용자 명시적 실행 지시어("진행해")로 진행 승인. 사전조사(규칙 0-2): 의존성 — 백엔드 2개 파일 + 테스트 2개 파일 수정 필요(test_engine_sector_confirm.py 16곳 + test_sector_data_provider.py 7곳 patch 경로 변경), 프론트엔드 영향 없음. 원칙 부합 — P23(일관성) daily_time_scheduler.py/engine_service.py/engine_strategy_core.py/engine_ws_dispatch.py와 동일 패턴 통일, P16(살아있는 경로) 모듈 로드 시점 고정 바인딩 제거, P10/P24 부합. 기존 공통 자산 — daily_time_scheduler.py가 패턴 B 참조 모델. 백엔드 2개 파일 수정: (1) `engine_sector_confirm.py` — line 13 모듈 레벨 import 패턴 B 전환 + line 269 함수 내 지역 import 제거(모듈 레벨로 충분) + `state.X` 29곳 → `engine_state.state.X` 치환. line 376 주석("state.master_stocks_cache에서...")은 규칙(주석 무단 수정 금지)에 따라 원본 유지. (2) `sector_data_provider.py` — line 8 모듈 레벨 import 패턴 B 전환 + line 67, 187 함수 내 지역 import 2곳 제거 + `state.X` 22곳 → `engine_state.state.X` 치환. line 73, 187 주석 2곳("단일 소스 진리: state.master_stocks_cache...")은 규칙에 따라 원본 유지. 테스트 2개 파일 수정: (1) `test_engine_sector_confirm.py` — `patch("...engine_sector_confirm.state")` 16곳 → `patch("...engine_state.state")`. (2) `test_sector_data_provider.py` — `patch("...sector_data_provider.state")` 7곳 → `patch("...engine_state.state")`. 정적 검증: py_compile OK + ruff check OK. pytest: test_engine_sector_confirm.py + test_sector_data_provider.py 64 passed + 전체 회귀 **2928 passed, 0 failed**(이전 세션과 동일). 런타임 기동: `python -W error::RuntimeWarning main.py` 기동 성공 — RuntimeWarning 0건 + "앱 시작 완료" + "타임테이블 빌드 완료 — 11항목" + "기동 완료 — LS증권 테스트모드" + "업종 재계산 완료"(engine_sector_confirm.py 경로 정상 동작 확인) + 잔존 프로세스 0건. 사용자 체감 변화 없음(프로덕션 동작 100% 보존 — state 싱글톤 속성 참조 방식만 변경, 동일 객체 접근).
-- 상태: P-NEW-5 15개 모듈 중 5개 전환 완료(engine_service.py, engine_strategy_core.py, engine_ws_dispatch.py, engine_sector_confirm.py, sector_data_provider.py). **잔존 10개 모듈**은 다음 세션에서 진행 → "미해결 문제" P-NEW-5 섹션에 진행 상황 갱신.
+- 날짜: 2026-07-18 (P-NEW-5 — 15개 모듈 state 참조 패턴 A → B 단계적 전환 4세션, engine_radar.py + market_close_pipeline.py 2개 모듈 전환)
+- 작업: HANDOVER.md P-NEW-5에 기록된 15개 모듈의 `state` 참조 패턴 A(모듈 레벨 `from backend.app.services.engine_state import state`) → 패턴 B(`from backend.app.services import engine_state` + `engine_state.state.X`) 단계적 전환 4세션. 사용자 명시적 실행 지시어("진행해")로 진행 승인. 사전조사(규칙 0-2): 의존성 — 백엔드 2개 파일 + 테스트 1개 파일 수정 필요(test_market_close_pipeline.py patch 45곳 변경), test_engine_radar.py는 존재하지 않아 테스트 수정 불필요, 프론트엔드 영향 없음. 원칙 부합 — P23(일관성) 3세션까지 전환한 5개 모듈과 동일 패턴 통일, P16(살아있는 경로) 모듈 로드 시점 고정 바인딩 제거, P10/P24 부합. 기존 공통 자산 — daily_time_scheduler.py가 패턴 B 참조 모델. 백엔드 2개 파일 수정: (1) `engine_radar.py` — line 8 모듈 레벨 import 패턴 B 전환 + `state.X` 5곳 → `engine_state.state.X` 치환(전부 `state.master_stocks_cache`). 함수 내 지역 import 없음. (2) `market_close_pipeline.py` — line 26 모듈 레벨 import 패턴 B 전환 + `state.X` 54곳 → `engine_state.state.X` 치환(master_stocks_cache / integrated_system_settings_cache / connector_manager / active_connector / broker_tokens / confirmed_refresh_running_confirmed / confirmed_refresh_running_5d / confirmed_refresh_message / latest_filter_summary_meta). line 807, 814 `system_state_cache`는 DB 테이블 이름이라 변경 대상 아님. 함수 내 지역 import 없음. 테스트 1개 파일 수정: `test_market_close_pipeline.py` — `patch("...market_close_pipeline.state", mock_state)` 45곳 → `patch("...engine_state.state", mock_state)` 치환. 정적 검증: py_compile OK + ruff check OK. pytest: test_market_close_pipeline.py 57 passed + 전체 회귀 **2928 passed, 0 failed**(이전 세션과 동일). 런타임 기동: `python -W error::RuntimeWarning main.py` 기동 성공 — RuntimeWarning 0건 + "앱 시작 완료" + "타임테이블 빌드 완료 — 11항목" + "기동 완료 — LS증권 테스트모드" + "업종 재계산 완료" + 잔존 프로세스 0건. 사용자 체감 변화 없음(프로덕션 동작 100% 보존 — state 싱글톤 속성 참조 방식만 변경, 동일 객체 접근).
+- 상태: P-NEW-5 15개 모듈 중 7개 전환 완료(engine_service.py, engine_strategy_core.py, engine_ws_dispatch.py, engine_sector_confirm.py, sector_data_provider.py, engine_radar.py, market_close_pipeline.py). **잔존 8개 모듈**은 다음 세션에서 진행 → "미해결 문제" P-NEW-5 섹션에 진행 상황 갱신.
 - **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 9(발견 문제 기록) + backend-fix 스킬 + P10/P16/P23/P24
 
 ## 차순위 매수 시도 알고리즘 다단계 작업 — 완료 (2/2세션)
@@ -1239,7 +1239,7 @@
 
 ---
 
-### P-NEW-5: 15개 모듈 state 참조 패턴 A(모듈 레벨 고정 바인딩) 잔존 — P23 일관성 위반 (진행 중 — 5/15 전환 완료)
+### P-NEW-5: 15개 모듈 state 참조 패턴 A(모듈 레벨 고정 바인딩) 잔존 — P23 일관성 위반 (진행 중 — 7/15 전환 완료)
 
 **이슈 ID**: P-NEW-5 (신규 등록 2026-07-18, test_trading.py 테스트 격리 문제 근본 원인 해결 중 발견 / 단계적 전환 진행 중 2026-07-18)
 
@@ -1251,14 +1251,16 @@
 
 **진행 상황 (2026-07-18 3세션)**: 15개 중 5개 전환 완료 — `engine_sector_confirm.py`(state.X 29곳 + 함수 내 지역 import 1곳 제거) + `sector_data_provider.py`(state.X 22곳 + 함수 내 지역 import 2곳 제거). 주석 3곳(engine_sector_confirm.py:376, sector_data_provider.py:73/187)은 규칙(주석 무단 수정 금지)에 따라 원본 유지. 테스트 patch 경로 동반 수정: test_engine_sector_confirm.py 16곳 + test_sector_data_provider.py 7곳. 정적 검증 OK + 전체 회귀 2928 passed + 런타임 기동 OK("업종 재계산 완료" — engine_sector_confirm.py 경로 정상 동작 확인). 잔존 10개 모듈은 다음 세션에서 진행.
 
-**잔존 모듈 10개** (패턴 A — 모듈 레벨 `from backend.app.services.engine_state import state`):
+**진행 상황 (2026-07-18 4세션)**: 15개 중 7개 전환 완료 — `engine_radar.py`(state.X 5곳, 전부 master_stocks_cache) + `market_close_pipeline.py`(state.X 54곳 — master_stocks_cache/integrated_system_settings_cache/connector_manager/active_connector/broker_tokens/confirmed_refresh_running_confirmed/confirmed_refresh_running_5d/confirmed_refresh_message/latest_filter_summary_meta). line 807, 814 `system_state_cache`는 DB 테이블 이름이라 변경 대상 아님. 함수 내 지역 import 없음. 테스트 patch 경로 동반 수정: test_market_close_pipeline.py 45곳(`patch("...market_close_pipeline.state", mock_state)` → `patch("...engine_state.state", mock_state)`). test_engine_radar.py는 존재하지 않아 테스트 수정 불필요. 정적 검증 OK + test_market_close_pipeline.py 57 passed + 전체 회귀 2928 passed + 런타임 기동 OK("업종 재계산 완료" — engine_radar.py 경로 정상 동작 확인). 잔존 8개 모듈은 다음 세션에서 진행.
+
+**잔존 모듈 8개** (패턴 A — 모듈 레벨 `from backend.app.services.engine_state import state`):
 1. ~~`engine_service.py:7`~~ ✅ 전환 완료 (2026-07-18 1세션)
 2. ~~`engine_strategy_core.py:10`~~ ✅ 전환 완료 (2026-07-18 1세션)
 3. ~~`engine_ws_dispatch.py:9`~~ ✅ 전환 완료 (2026-07-18 2세션 — dead import 제거 포함)
 4. ~~`engine_sector_confirm.py:13`~~ ✅ 전환 완료 (2026-07-18 3세션)
 5. ~~`sector_data_provider.py:8`~~ ✅ 전환 완료 (2026-07-18 3세션)
-6. `market_close_pipeline.py:26`
-7. `engine_radar.py:8`
+6. ~~`engine_radar.py:8`~~ ✅ 전환 완료 (2026-07-18 4세션)
+7. ~~`market_close_pipeline.py:26`~~ ✅ 전환 완료 (2026-07-18 4세션)
 8. `engine_snapshot.py:12`
 9. `ws_subscribe_control.py:19`
 10. `engine_ws_reg.py:15`
@@ -1271,11 +1273,11 @@
 
 **별도**: ~~`engine_ws_dispatch.py:9`~~ ✅ dead import 제거 완료 (2026-07-18 2세션)
 
-**위반 원칙**: P23(일관성) — `state` 참조 패턴 3가지 혼재(패턴 A 10개 / 패턴 B 7개(daily_time_scheduler, engine_service, engine_strategy_core, engine_ws_dispatch, engine_sector_confirm, sector_data_provider 포함) / 패턴 C 11개). P16(살아있는 경로) 정신 위반 — 모듈 로드 시점 고정 바인딩은 객체 교체 시 죽은 참조가 됨(프로덕션에서는 교체 안 일어나므로 미드러나나, 테스트 동작 입증 시 죽은 참조).
+**위반 원칙**: P23(일관성) — `state` 참조 패턴 3가지 혼재(패턴 A 8개 / 패턴 B 9개(daily_time_scheduler, engine_service, engine_strategy_core, engine_ws_dispatch, engine_sector_confirm, sector_data_provider, engine_radar, market_close_pipeline 포함) / 패턴 C 11개). P16(살아있는 경로) 정신 위반 — 모듈 로드 시점 고정 바인딩은 객체 교체 시 죽은 참조가 됨(프로덕션에서는 교체 안 일어나므로 미드러나나, 테스트 동작 입증 시 죽은 참조).
 
-**수정 방안 (제안)**: 각 모듈을 패턴 B(`from backend.app.services import engine_state` + `engine_state.state.X`)로 전환. 세션당 1단계 원칙(규칙 0-1)에 따라 세션당 1~2개 모듈씩 단계적 전환 권장. 각 전환 시 전체 회귀 + 런타임 기동 검증 필수. 테스트 patch 경로 동반 수정 필요 시 `patch("...engine_state.state")`로 통일 (P23 일관성). `engine_ws_dispatch.py` 2세션에서 발견: 테스트가 `patch("...engine_ws_dispatch.engine_state")`로 전체 모듈을 mock하는 패턴은 패턴 B 전환 시 깨짐 — `engine_state.state`가 MagicMock 속성이 되어 `mock_state`와 불일치. 해결: `engine_state._notify_reg_ack` 개별 patch 또는 `engine_state.state` patch로 대체. 3세션에서 확인: `engine_sector_confirm.py`/`sector_data_provider.py`는 단순 `patch("...module.state")` 패턴만 사용 → `patch("...engine_state.state")` 단순 치환으로 해결. 함수 내 지역 import는 모듈 레벨 import로 충분하므로 제거.
+**수정 방안 (제안)**: 각 모듈을 패턴 B(`from backend.app.services import engine_state` + `engine_state.state.X`)로 전환. 세션당 1단계 원칙(규칙 0-1)에 따라 세션당 1~2개 모듈씩 단계적 전환 권장. 각 전환 시 전체 회귀 + 런타임 기동 검증 필수. 테스트 patch 경로 동반 수정 필요 시 `patch("...engine_state.state")`로 통일 (P23 일관성). `engine_ws_dispatch.py` 2세션에서 발견: 테스트가 `patch("...engine_ws_dispatch.engine_state")`로 전체 모듈을 mock하는 패턴은 패턴 B 전환 시 깨짐 — `engine_state.state`가 MagicMock 속성이 되어 `mock_state`와 불일치. 해결: `engine_state._notify_reg_ack` 개별 patch 또는 `engine_state.state` patch로 대체. 3세션에서 확인: `engine_sector_confirm.py`/`sector_data_provider.py`는 단순 `patch("...module.state")` 패턴만 사용 → `patch("...engine_state.state")` 단순 치환으로 해결. 4세션에서 확인: `market_close_pipeline.py`도 동일 단순 패턴 → 45곳 단순 치환으로 해결. `engine_radar.py`는 테스트 patch 0건(test_engine_radar.py 없음). 함수 내 지역 import는 모듈 레벨 import로 충분하므로 제거.
 
-**조치**: 본 세션에서는 `engine_sector_confirm.py` + `sector_data_provider.py` 2개 전환. 잔존 10개 모듈은 다음 세션에서 1~2개씩 단계적 전환.
+**조치**: 본 세션에서는 `engine_radar.py` + `market_close_pipeline.py` 2개 전환. 잔존 8개 모듈은 다음 세션에서 1~2개씩 단계적 전환.
 
 ### P-NEW-4: force_buy dead parameter — execute_buy 파라미터/분기/docstring 잔존 (P16 살아있는 경로, P23 일관성) → 해결 완료 (2026-07-17)
 
