@@ -9,7 +9,7 @@
 import asyncio
 import time
 import logging
-from backend.app.services.engine_state import state
+from backend.app.services import engine_state
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ async def build_initial_snapshot() -> dict:
     scores_list, ranked_count = scores_snapshot if isinstance(scores_snapshot, tuple) else (scores_snapshot, 0)
 
     # 종목수 일치 보장: master_stocks_table 기준
-    total_stocks_count = len(state.master_stocks_cache)
+    total_stocks_count = len(engine_state.state.master_stocks_cache)
 
     snapshot: dict = {
         "_v":               1,
@@ -62,9 +62,9 @@ async def build_initial_snapshot() -> dict:
         "positions":        positions,
         "sector_stocks":    [],  # 분할 전송 — sector-stocks-refresh 이벤트로 별도 전송
         "sector_scores":    scores_list,
-        "sector_status":    {"total_stocks": total_stocks_count, "max_targets": int(state.integrated_system_settings_cache["sector_max_targets"]), "ranked_sectors_count": ranked_count},
+        "sector_status":    {"total_stocks": total_stocks_count, "max_targets": int(engine_state.state.integrated_system_settings_cache["sector_max_targets"]), "ranked_sectors_count": ranked_count},
         "buy_targets":      await _safe(get_buy_targets_sector_stocks, []),
-        "settings":         _mask_sensitive_settings(state.integrated_system_settings_cache),
+        "settings":         _mask_sensitive_settings(engine_state.state.integrated_system_settings_cache),
         "status":           get_engine_status(),
         "snapshot_history": await _safe(get_snapshot_history, []),
         "sell_history":     await _safe(lambda: _get_trade_history_for_snapshot("sell"), []),
@@ -72,10 +72,10 @@ async def build_initial_snapshot() -> dict:
         "daily_summary":    await _safe(lambda: _get_daily_summary_for_snapshot(), []),
         "buy_limit_status": await _safe(get_buy_limit_status, {"daily_buy_spent": 0}),
         "ws_subscribe_status": ws_subscribe_control.get_subscribe_status(),
-        "bootstrap_done":   state.bootstrap_event.is_set() if state.bootstrap_event else state.preboot_cache_loaded,
+        "bootstrap_done":   engine_state.state.bootstrap_event.is_set() if engine_state.state.bootstrap_event else engine_state.state.preboot_cache_loaded,
         "market_phase":     get_market_phase(),
         "receive_rate":     get_current_receive_rate(),
-        "broker_config":    state.integrated_system_settings_cache["broker_config"],
+        "broker_config":    engine_state.state.integrated_system_settings_cache["broker_config"],
         "avg_amt_refresh":  None,
     }
 
@@ -155,12 +155,12 @@ async def _reset_realtime_fields() -> None:
     )
     from backend.app.services.engine_account import _broadcast_account
 
-    for entry in state.master_stocks_cache.values():
+    for entry in engine_state.state.master_stocks_cache.values():
         for f in _REALTIME_FIELDS:
             entry[f] = None
-    state.snapshot_history.clear()
+    engine_state.state.snapshot_history.clear()
     # 보유종목 실시간 필드 초기화 (전일 종가 혼입 방지)
-    for pos in state.positions:
+    for pos in engine_state.state.positions:
         pos["cur_price"] = None
         pos["change"] = None
         pos["change_rate"] = None
@@ -168,7 +168,7 @@ async def _reset_realtime_fields() -> None:
         pos["ask_depth"] = None
 
     # 테스트모드 가상 보유종목 실시간 필드 초기화
-    if is_test_mode(state.integrated_system_settings_cache):
+    if is_test_mode(engine_state.state.integrated_system_settings_cache):
         for pos in dry_run._test_positions.values():
             pos["cur_price"] = None
             pos["change"] = None
@@ -177,7 +177,7 @@ async def _reset_realtime_fields() -> None:
             pos["ask_depth"] = None
 
     # 업종 점수 캐시 초기화 (실시간 데이터 재계산 유도)
-    state.sector_summary_cache = None
+    engine_state.state.sector_summary_cache = None
     # 캡슐화된 notify_cache.clear_all() 호출로 결합성 제거
     notify_cache.clear_all()
 
@@ -199,7 +199,7 @@ async def _reset_realtime_fields() -> None:
         logger.error("[시스템] DB 전종목 마스터 테이블 실시간 필드 초기화 실패: %s", db_err, exc_info=True)
     logger.info(
         "[시스템] 실시간 필드 및 REST 보완 저장 데이터, 수익 이력 초기화 완료 — %d종목, 실시간/REST 저장 데이터 전체 클리어",
-        len(state.master_stocks_cache),
+        len(engine_state.state.master_stocks_cache),
     )
     await notify_desktop_sector_stocks_refresh()
     await _broadcast_account("realtime_reset")

@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import time
 import logging
-from backend.app.services.engine_state import state
+from backend.app.services import engine_state
 from backend.app.services.engine_lifecycle import schedule_engine_task
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ def _get_lock() -> asyncio.Lock:
 def get_subscribe_status() -> dict[str, bool]:
     """현재 구독 상태 반환."""
     return {
-        "quote_subscribed": state.quote_subscribed,
+        "quote_subscribed": engine_state.state.quote_subscribed,
     }
 
 
@@ -53,23 +53,23 @@ def _set_status(
 ) -> None:
     """상태 변경 시에만 실시간 통신 ws-subscribe-status 전송."""
     changed = False
-    if quote is not None and quote != state.quote_subscribed:
-        state.quote_subscribed = quote
+    if quote is not None and quote != engine_state.state.quote_subscribed:
+        engine_state.state.quote_subscribed = quote
         changed = True
 
     if changed:
         from backend.app.services.engine_account_notify import _broadcast
         schedule_engine_task(_broadcast("ws-subscribe-status", {
             "_v": 1,
-            "quote_subscribed": state.quote_subscribed,
+            "quote_subscribed": engine_state.state.quote_subscribed,
         }), context="ws-subscribe-status 전송")
 
 
 def broadcast_ws_connection_status(connected: bool) -> None:
     """키움 실시간 통신 연결/해제 상태를 화면으로 전송 (상태 변경 시에만)."""
-    if state.ws_connection_status == connected:
+    if engine_state.state.ws_connection_status == connected:
         return  # 상태 변경 없음 → 전송 생략
-    state.ws_connection_status = connected
+    engine_state.state.ws_connection_status = connected
     from backend.app.services.engine_account_notify import _broadcast
     schedule_engine_task(_broadcast("ws-connection-status", {
         "_v": 1,
@@ -88,11 +88,11 @@ async def _ensure_account_subscription() -> None:
     테스트모드에서는 계좌 구독 안 함.
     """
     from backend.app.core.trade_mode import is_test_mode
-    if is_test_mode(state.integrated_system_settings_cache):
+    if is_test_mode(engine_state.state.integrated_system_settings_cache):
         return
 
     # 이미 구독 중이면 작업 없음 (멱등)
-    if state.ws_account_subscribed:
+    if engine_state.state.ws_account_subscribed:
         return
 
     from backend.app.services import engine_ws_reg
@@ -115,7 +115,7 @@ async def start_quote() -> dict:
         {"ok": False, "message": "..."} on error.
     """
     async with _get_lock():
-        if state.quote_subscribed:
+        if engine_state.state.quote_subscribed:
             return {"ok": True, "status": get_subscribe_status()}
 
         if not _ws_connected():
@@ -154,7 +154,7 @@ async def stop_quote() -> dict:
         {"ok": False, "message": "..."} on error.
     """
     async with _get_lock():
-        if not state.quote_subscribed:
+        if not engine_state.state.quote_subscribed:
             return {"ok": True, "status": get_subscribe_status()}
 
         from backend.app.services.engine_ws_reg import _unreg_grp
@@ -176,7 +176,7 @@ async def run_conditional_reg_pipeline() -> None:
     """
     from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
 
-    settings = state.integrated_system_settings_cache
+    settings = engine_state.state.integrated_system_settings_cache
 
     if not await is_ws_subscribe_window(settings):
         return
@@ -218,8 +218,7 @@ async def cleanup_stale_subscriptions() -> None:
 
     # 서버 측 구독은 다음 REG의 refresh='0'(reset_first=True)이 덮어씀.
     # REMOVE ACK 대기 없이 인메모리 상태만 초기화 — 장외 시간 90초 지연 응답으로 인한 이벤트 오염 방지.
-    from backend.app.services.engine_state import state
-    for entry in state.master_stocks_cache.values():
+    for entry in engine_state.state.master_stocks_cache.values():
         entry.pop("_subscribed", None)
     _set_status(quote=False)
     logger.debug("[구독] 잔존 구독 정리 완료 — 전체 끄기 (인메모리 초기화, 서버 측은 다음 구독 등록 갱신=0으로 덮어씀)")
@@ -236,7 +235,7 @@ async def on_setting_changed(key: str, value: bool) -> None:
     """
     from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
 
-    settings = state.integrated_system_settings_cache
+    settings = engine_state.state.integrated_system_settings_cache
 
     if not await is_ws_subscribe_window(settings):
         logger.info(
@@ -257,7 +256,7 @@ async def on_setting_changed(key: str, value: bool) -> None:
 def _ws_connected() -> bool:
     """실시간 통신 연결 + 로그인 완료 여부."""
     # ConnectorManager가 있으면 우선 사용 (키움/LS 모두 지원)
-    if state.connector_manager is not None:
-        return bool(state.connector_manager.is_connected() and state.login_ok)
+    if engine_state.state.connector_manager is not None:
+        return bool(engine_state.state.connector_manager.is_connected() and engine_state.state.login_ok)
     # 하위 호환: 키움 단독
-    return bool(state.active_connector and state.active_connector.is_connected() and state.login_ok)
+    return bool(engine_state.state.active_connector and engine_state.state.active_connector.is_connected() and engine_state.state.login_ok)

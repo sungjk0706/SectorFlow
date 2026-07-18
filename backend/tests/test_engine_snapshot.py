@@ -138,7 +138,7 @@ class TestBuildInitialSnapshot:
             "krx": {"received": 8, "total": 10, "pct": 80.0},
             "nxt": {"received": 4, "total": 5, "pct": 80.0},
         }
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account.get_positions", new=AsyncMock(return_value=[{"stk_cd": "005930"}])), \
              patch("backend.app.services.engine_account.get_account_snapshot", new=AsyncMock(return_value={"balance": 100000})), \
              patch("backend.app.services.engine_account.get_snapshot_history", new=AsyncMock(return_value=[])), \
@@ -182,7 +182,7 @@ class TestBuildInitialSnapshot:
     @pytest.mark.asyncio
     async def test_getter_exception_returns_default(self):
         """getter 예외 시 _safe 래퍼가 기본값 반환."""
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account.get_positions", new=AsyncMock(side_effect=Exception("fail"))), \
              patch("backend.app.services.engine_account.get_account_snapshot", new=AsyncMock(side_effect=Exception("fail"))), \
              patch("backend.app.services.engine_account.get_snapshot_history", new=AsyncMock(side_effect=Exception("fail"))), \
@@ -219,7 +219,7 @@ class TestBuildInitialSnapshot:
     @pytest.mark.asyncio
     async def test_scores_non_tuple(self):
         """get_sector_scores_snapshot이 tuple이 아닌 경우 (scores_list, 0) 분기 (L55)."""
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account.get_positions", new=AsyncMock(return_value=[])), \
              patch("backend.app.services.engine_account.get_account_snapshot", new=AsyncMock(return_value={})), \
              patch("backend.app.services.engine_account.get_snapshot_history", new=AsyncMock(return_value=[])), \
@@ -248,7 +248,7 @@ class TestBuildInitialSnapshot:
     @pytest.mark.asyncio
     async def test_bootstrap_event_none(self):
         """bootstrap_event가 None인 경우 preboot_cache_loaded 사용 (L76)."""
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account.get_positions", new=AsyncMock(return_value=[])), \
              patch("backend.app.services.engine_account.get_account_snapshot", new=AsyncMock(return_value={})), \
              patch("backend.app.services.engine_account.get_snapshot_history", new=AsyncMock(return_value=[])), \
@@ -275,7 +275,7 @@ class TestBuildInitialSnapshot:
     @pytest.mark.asyncio
     async def test_init_sent_caches_exception(self):
         """init_sent_caches 예외 시 로깅만 수행, 스냅샷 정상 반환 (L87-88)."""
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account.get_positions", new=AsyncMock(return_value=[])), \
              patch("backend.app.services.engine_account.get_account_snapshot", new=AsyncMock(return_value={})), \
              patch("backend.app.services.engine_account.get_snapshot_history", new=AsyncMock(return_value=[])), \
@@ -348,7 +348,7 @@ class TestResetRealtimeFields:
              "bid_depth": 100, "ask_depth": 200},
         ]
         mock_notify_cache = MagicMock()
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account_notify.notify_cache", mock_notify_cache), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new=AsyncMock()) as mock_notify_refresh, \
@@ -399,7 +399,7 @@ class TestResetRealtimeFields:
             "005930": {"cur_price": 70000, "change": 500, "change_rate": 0.72,
                        "bid_depth": 100, "ask_depth": 200},
         }
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=True), \
              patch("backend.app.services.dry_run._test_positions", test_positions), \
              patch("backend.app.services.engine_account_notify.notify_cache", MagicMock()), \
@@ -430,7 +430,7 @@ class TestResetRealtimeFields:
     @pytest.mark.asyncio
     async def test_db_exception_still_notifies(self):
         """DB 초기화 실패 시에도 notify 호출 수행 (L200-201)."""
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account_notify.notify_cache", MagicMock()), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new=AsyncMock()) as mock_notify_refresh, \
@@ -458,7 +458,7 @@ class TestResetRealtimeFields:
     @pytest.mark.asyncio
     async def test_empty_master_cache(self):
         """master_stocks_cache가 빈 경우에도 정상 동작."""
-        with patch("backend.app.services.engine_snapshot.state") as mock_state, \
+        with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.core.trade_mode.is_test_mode", return_value=False), \
              patch("backend.app.services.engine_account_notify.notify_cache", MagicMock()), \
              patch("backend.app.services.engine_account_notify.notify_desktop_sector_stocks_refresh", new=AsyncMock()), \
