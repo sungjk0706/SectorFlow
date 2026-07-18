@@ -1,10 +1,10 @@
 # SectorFlow Handover
 
 ## 세션 개요
-- 날짜: 2026-07-18 (test_trading.py 테스트 격리 문제 근본 원인 해결 — daily_time_scheduler.py state 참조 패턴 P23 위반 수정)
-- 작업: test_trading.py 전체 회귀 시 10개 실패(단독 실행 시 통과)의 근본 원인 심층 검증 후 해결. 사용자 명시적 실행 지시어("꼼꼼하게 진행해")로 진행 승인. 사전조사: 사용자 제시 보고 검증 — `daily_time_scheduler.py:13`의 `from backend.app.services.engine_state import state` 모듈 로드 시점 고정 바인딩이 `patch("engine_state.state")` 전파를 차단하여 `is_order_blocked_by_time`이 실제 `market_phase`(장개시전/장개시전)를 읽어 `True` 반환 → 시간 차단 사유가 의도한 사유코드보다 먼저 반환되어 10개 테스트 실패. 소스코드 P23(일관성) 위반 — `state` 참조 패턴 3가지 혼재(패턴 A: 모듈 레벨 `from ... import state` 16개 / 패턴 B: `import engine_state` + `engine_state.state.X` 2개 / 패턴 C: 함수 내부 지연 임포트 11개). 백엔드 1개 파일 수정: `backend/app/services/daily_time_scheduler.py`(패턴 A → 패턴 B 전환 — `from backend.app.services.engine_state import state` → `from backend.app.services import engine_state` + `state.X` 참조 113곳 → `engine_state.state.X` 치환 + 이중 치환 6곳 수정 `engine_engine_state.state.` → `engine_state.state.` + 주석 내 `state.market_phase` 설명도 P23 일관성 위해 함께 갱신). 테스트 1개 파일 수정: `backend/tests/test_daily_time_scheduler.py`(150곳 `patch("backend.app.services.daily_time_scheduler.state", mock_state)` → `patch("backend.app.services.engine_state.state", mock_state)` — 같은 근본 원인 해결의 일부, 패턴 B 전환으로 모듈 `state` 속성 사라져 AttributeError 해결). 정적 검증: py_compile OK + ruff check OK. pytest: 전체 회귀 **2928 passed, 0 failed**(이전 10 failed → 0). 런타임 기동: `python -W error::RuntimeWarning main.py` 기동 성공 — RuntimeWarning 0건 + "타임테이블 빌드 완료 — 11항목" + "타임테이블 스케줄러 시작 — 다음 이벤트 예약 완료" + "장 상태 계산 완료 | KRX: 휴장일, NXT: 휴장일" 로그 확인 + 잔존 프로세스 0건. 사용자 체감 변화 없음(프로덕션 동작 100% 보존 — state 싱글톤 속성 변경은 모든 패턴에서 동일 전파, 객체 교체는 테스트에서만 발생).
-- 상태: test_trading.py 테스트 격리 문제 근본 원인 해결 완료. **15개 모듈 잔존 P23 위반(패턴 A)은 별도 세션에서 단계적 전환 필요** → "미해결 문제" 섹션에 기록.
-- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 4-1(테스트 실패 추적 의무) + 규칙 9(발견 문제 기록) + problem-solve 스킬 + backend-fix 스킬 + P10/P16/P23/P24
+- 날짜: 2026-07-18 (P-NEW-5 — 15개 모듈 state 참조 패턴 A → B 단계적 전환 1세션, engine_service.py + engine_strategy_core.py 2개 모듈 전환)
+- 작업: HANDOVER.md P-NEW-5에 기록된 15개 모듈의 `state` 참조 패턴 A(모듈 레벨 `from backend.app.services.engine_state import state`) → 패턴 B(`from backend.app.services import engine_state` + `engine_state.state.X`) 단계적 전환 1세션. 사용자 명시적 실행 지시어("전환해 주세요", "시작해 주세요")로 진행 승인. 사전조사(규칙 0-2): 의존성 — 백엔드 2개 파일만 수정, 테스트 코드는 `engine_service.state`/`engine_strategy_core.state` 직접 patch 0건으로 수정 불필요, 프론트엔드 영향 없음. 원칙 부합 — P23(일관성) daily_time_scheduler.py와 동일 패턴 통일, P16(살아있는 경로) 모듈 로드 시점 고정 바인딩 제거, P10/P24 부합. 기존 공통 자산 — daily_time_scheduler.py가 패턴 B 참조 모델. 백엔드 2개 파일 수정: (1) `backend/app/services/engine_service.py` — 임포트 구문 변경 + `state.X` 참조 7곳 → `engine_state.state.X` 치환(line 79, 93, 107, 142, 173, 188, 201). (2) `backend/app/services/engine_strategy_core.py` — 임포트 구문 변경 + `state.X` 참조 4곳 → `engine_state.state.X` 치환(line 38, 39, 53, 54 — 2쌍 동일 패턴 replace_all). 정적 검증: py_compile OK + ruff check OK. pytest: 전체 회귀 **2928 passed, 0 failed**(이전 세션과 동일). 런타임 기동: `python -W error::RuntimeWarning main.py` 기동 성공 — RuntimeWarning 0건 + "앱 시작 완료" + "타임테이블 빌드 완료 — 11항목" + "기동 완료 — LS증권 테스트모드" + 잔존 프로세스 0건. 사용자 체감 변화 없음(프로덕션 동작 100% 보존 — state 싱글톤 속성 참조 방식만 변경, 동일 객체 접근).
+- 상태: P-NEW-5 15개 모듈 중 2개 전환 완료(engine_service.py, engine_strategy_core.py). **잔존 13개 모듈 + engine_ws_dispatch.py dead import 제거**는 다음 세션에서 진행 → "미해결 문제" P-NEW-5 섹션에 진행 상황 갱신.
+- **참조 규칙**: AGENTS.md 섹션3 규칙 0(승인 전 수정 금지) + 규칙 0-1(세션당 1단계) + 규칙 0-2(수정 전 사전조사) + 규칙 9(발견 문제 기록) + backend-fix 스킬 + P10/P16/P23/P24
 
 ## 차순위 매수 시도 알고리즘 다단계 작업 — 완료 (2/2세션)
 
@@ -1239,15 +1239,17 @@
 
 ---
 
-### P-NEW-5: 15개 모듈 state 참조 패턴 A(모듈 레벨 고정 바인딩) 잔존 — P23 일관성 위반 (미해결)
+### P-NEW-5: 15개 모듈 state 참조 패턴 A(모듈 레벨 고정 바인딩) 잔존 — P23 일관성 위반 (진행 중 — 2/15 전환 완료)
 
-**이슈 ID**: P-NEW-5 (신규 등록 2026-07-18, test_trading.py 테스트 격리 문제 근본 원인 해결 중 발견)
+**이슈 ID**: P-NEW-5 (신규 등록 2026-07-18, test_trading.py 테스트 격리 문제 근본 원인 해결 중 발견 / 단계적 전환 진행 중 2026-07-18)
 
 **현상**: `from backend.app.services.engine_state import state`를 모듈 레벨에서 사용하는 15개 모듈이 잔존. `daily_time_scheduler.py`는 본 세션에서 패턴 B로 전환 완료했으나, 나머지 15개 모듈은 여전히 패턴 A를 사용. 이들 모두 동일한 잠재적 테스트 격리 문제를 가짐. 현재 실패가 발생하지 않는 이유는 해당 모듈들을 간접 호출하는 테스트에서 `patch("engine_state.state")`가 아닌 다른 patch 방식을 사용하거나, 해당 경로가 테스트에서 호출되지 않기 때문. 향후 테스트 추가 시 동일한 문제 재발 가능.
 
-**잔존 모듈 15개** (패턴 A — 모듈 레벨 `from backend.app.services.engine_state import state`):
-1. `engine_service.py:7`
-2. `engine_strategy_core.py:10`
+**진행 상황 (2026-07-18 1세션)**: 15개 중 2개 전환 완료 — `engine_service.py`(state.X 7곳), `engine_strategy_core.py`(state.X 4곳). 정적 검증 OK + 전체 회귀 2928 passed + 런타임 기동 OK. 잔존 13개 모듈 + `engine_ws_dispatch.py` dead import 제거는 다음 세션에서 진행.
+
+**잔존 모듈 13개** (패턴 A — 모듈 레벨 `from backend.app.services.engine_state import state`):
+1. ~~`engine_service.py:7`~~ ✅ 전환 완료 (2026-07-18)
+2. ~~`engine_strategy_core.py:10`~~ ✅ 전환 완료 (2026-07-18)
 3. `engine_sector_confirm.py:13`
 4. `sector_data_provider.py:8`
 5. `market_close_pipeline.py:26`
@@ -1262,11 +1264,13 @@
 14. `engine_bootstrap.py:10`
 15. `engine_cache.py:10`
 
-**위반 원칙**: P23(일관성) — `state` 참조 패턴 3가지 혼재(패턴 A 15개 / 패턴 B 3개(daily_time_scheduler 포함) / 패턴 C 11개). P16(살아있는 경로) 정신 위반 — 모듈 로드 시점 고정 바인딩은 객체 교체 시 죽은 참조가 됨(프로덕션에서는 교체 안 일어나므로 미드러나나, 테스트 동작 입증 시 죽은 참조).
+**별도**: `engine_ws_dispatch.py:9` — 이미 패턴 B 부분 사용 중이나 `from ... import state` dead import 잔존, 제거 필요.
+
+**위반 원칙**: P23(일관성) — `state` 참조 패턴 3가지 혼재(패턴 A 13개 / 패턴 B 5개(daily_time_scheduler, engine_service, engine_strategy_core 포함) / 패턴 C 11개). P16(살아있는 경로) 정신 위반 — 모듈 로드 시점 고정 바인딩은 객체 교체 시 죽은 참조가 됨(프로덕션에서는 교체 안 일어나므로 미드러나나, 테스트 동작 입증 시 죽은 참조).
 
 **수정 방안 (제안)**: 각 모듈을 패턴 B(`from backend.app.services import engine_state` + `engine_state.state.X`)로 전환. 세션당 1단계 원칙(규칙 0-1)에 따라 세션당 1~2개 모듈씩 단계적 전환 권장. 각 전환 시 전체 회귀 + 런타임 기동 검증 필수. `engine_ws_dispatch.py`는 이미 패턴 B를 부분 사용 중이나 `from ... import state`도 잔존(line 9) — dead import 제거 필요.
 
-**조치**: 본 세션에서는 `daily_time_scheduler.py` 1개만 전환(실제 발생한 실패의 근본 원인). 15개 모듈 일괄 수정은 범위 과대이므로 별도 세션에서 검토.
+**조치**: 본 세션에서는 `engine_service.py` + `engine_strategy_core.py` 2개 전환. 잔존 13개 모듈 + engine_ws_dispatch.py dead import는 다음 세션에서 1~2개씩 단계적 전환.
 
 ### P-NEW-4: force_buy dead parameter — execute_buy 파라미터/분기/docstring 잔존 (P16 살아있는 경로, P23 일관성) → 해결 완료 (2026-07-17)
 

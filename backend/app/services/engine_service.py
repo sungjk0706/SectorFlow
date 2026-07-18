@@ -4,7 +4,7 @@
 파사드 재내보내기는 제거됨. 각 모듈에서 직접 import할 것.
 """
 import logging
-from backend.app.services.engine_state import state
+from backend.app.services import engine_state
 from backend.app.services.engine_account import (
     _refresh_account_snapshot_meta,
     _broadcast_account,
@@ -76,7 +76,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
     
     changed_dict = {}
     try:
-        display_settings = dict(state.integrated_system_settings_cache)
+        display_settings = dict(engine_state.state.integrated_system_settings_cache)
         masked_settings = _mask_sensitive_settings(display_settings)
         for k in changed_keys:
             if k in masked_settings:
@@ -90,7 +90,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
     _VIRTUAL_BALANCE_KEYS = {"test_virtual_balance", "test_virtual_deposit"}
     if changed_keys & _VIRTUAL_BALANCE_KEYS:
         try:
-            _s = state.integrated_system_settings_cache
+            _s = engine_state.state.integrated_system_settings_cache
             _deposit = int(_s.get("test_virtual_balance", _s.get("test_virtual_deposit", 10_000_000)) or 0)
             await _se.reset(_deposit)
             # 계좌 스냅샷 갱신 + WS account-update 발송
@@ -104,7 +104,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         _5d_on = bool(get_settings_snapshot().get("scheduler_5d_download_on", True))
         if _5d_on:
             try:
-                state.avg_amt_needs_bg_refresh = True
+                engine_state.state.avg_amt_needs_bg_refresh = True
                 logger.info("[설정] 5일봉 다운로드 설정=ON → 5일봉 다운로드 트리거")
             except Exception:
                 logger.warning("[설정] 5일봉 다운로드 트리거 실패", exc_info=True)
@@ -139,7 +139,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
                 _schedule_next_timetable_event, build_timetable_from_cache,
             )
             _dts_mod._TIMETABLE = build_timetable_from_cache(
-                state.integrated_system_settings_cache
+                engine_state.state.integrated_system_settings_cache
             )
             _schedule_next_timetable_event()  # 기존 타이머 취소 후 재예약 (P14)
             logger.info("[설정] 타임테이블 변경 감지 — 재빌드 + 타이머 재예약 완료")
@@ -170,7 +170,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         if is_engine_running():
             if "sector_min_trade_amt" in changed_keys:
                 schedule_engine_task(
-                    state.on_filter_settings_changed(), context="필터 설정 변경"
+                    engine_state.state.on_filter_settings_changed(), context="필터 설정 변경"
                 )
             schedule_engine_task(
                 recompute_sector_summary_now(), context="업종 설정 변경"
@@ -185,7 +185,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
     _ws_changed = changed_keys & _WS_SUBSCRIBE_CONTROL_KEYS
     if _ws_changed:
         try:
-            raw = state.integrated_system_settings_cache
+            raw = engine_state.state.integrated_system_settings_cache
             for key in _ws_changed:
                 schedule_engine_task(
                     ws_subscribe_control.on_setting_changed(key, bool(raw.get(key))),
@@ -198,7 +198,7 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
     if "tele_on" in changed_keys:
         try:
             from backend.app.services.telegram_bot import telegram_bot
-            _tele_on = bool(state.integrated_system_settings_cache.get("tele_on", False))
+            _tele_on = bool(engine_state.state.integrated_system_settings_cache.get("tele_on", False))
             if _tele_on:
                 telegram_bot.start()
                 logger.info("[설정] 텔레그램 설정=ON → 텔레그램 폴링 시작")
