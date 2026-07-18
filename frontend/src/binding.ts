@@ -25,7 +25,6 @@ import {
 } from './stores/hotStore'
 import {
   applySettingsChanged,
-  applySnapshotUpdate,
   applyBootstrapStage,
   applyAvgAmtProgress,
   applyTestDataResetCompleted,
@@ -44,7 +43,6 @@ import {
 import type {
   AccountUpdateEvent,
   AppSettings,
-  SnapshotHistory,
   SectorStock,
   StockClassificationChangedEvent,
   RealDataEvent,
@@ -203,11 +201,6 @@ export function bindWSToStore(
   settingsClient.onEvent('index-data', (data) => {
     applyIndexData(data as IndexData)
   })
-
-  settingsClient.onEvent('snapshot-update', (data) => {
-    applySnapshotUpdate(data as { snapshot_history: SnapshotHistory[] })
-  })
-
 
   settingsClient.onEvent('bootstrap-stage', (data) => {
     applyBootstrapStage(data as { stage_id: number; stage_name: string; total: number; progress?: { current: number; total: number } })

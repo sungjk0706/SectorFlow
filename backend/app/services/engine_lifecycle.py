@@ -126,7 +126,6 @@ def reset_broker_session_state() -> None:
     engine_state.state.account_snapshot = {}
     engine_state.state.broker_rest_totals = {"total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_rate": 0.0}
     engine_state.state.positions = []
-    engine_state.state.snapshot_history = []
     engine_state.state.auto_trade = None
 
     # Events (새 증권사 기동 시 재설정될 때까지 대기 상태로 복원)

@@ -24,7 +24,7 @@ async def build_initial_snapshot() -> dict:
     from backend.app.services import ws_subscribe_control
     from backend.app.services.daily_time_scheduler import get_market_phase
     from backend.app.services.engine_account import (
-        get_positions, get_account_snapshot, get_snapshot_history,
+        get_positions, get_account_snapshot,
         get_buy_limit_status, _refresh_account_snapshot_meta,
     )
     from backend.app.services.sector_data_provider import get_sector_scores_snapshot, get_buy_targets_sector_stocks
@@ -66,7 +66,6 @@ async def build_initial_snapshot() -> dict:
         "buy_targets":      await _safe(get_buy_targets_sector_stocks, []),
         "settings":         _mask_sensitive_settings(engine_state.state.integrated_system_settings_cache),
         "status":           get_engine_status(),
-        "snapshot_history": await _safe(get_snapshot_history, []),
         "sell_history":     await _safe(lambda: _get_trade_history_for_snapshot("sell"), []),
         "buy_history":      await _safe(lambda: _get_trade_history_for_snapshot("buy"), []),
         "daily_summary":    await _safe(lambda: _get_daily_summary_for_snapshot(), []),
@@ -158,7 +157,6 @@ async def _reset_realtime_fields() -> None:
     for entry in engine_state.state.master_stocks_cache.values():
         for f in _REALTIME_FIELDS:
             entry[f] = None
-    engine_state.state.snapshot_history.clear()
     # 보유종목 실시간 필드 초기화 (전일 종가 혼입 방지)
     for pos in engine_state.state.positions:
         pos["cur_price"] = None

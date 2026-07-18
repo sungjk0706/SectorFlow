@@ -128,7 +128,6 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         state.positions = []
         for entry in state.master_stocks_cache.values():
             entry.pop("_subscribed", None)
-        state.snapshot_history.clear()
         _rebuild_positions_cache([])
         subscribed_count_after = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
         _logger.info(
@@ -139,11 +138,8 @@ async def reset_test_data(_: str = Depends(get_current_user)):
         )
         await _refresh_account_snapshot_meta()
         await _broadcast_account(reason="test_data_reset")
-        _logger.info("[연산] 보유종목, 실시간 필드 및 REST 보완 저장데이터, 수익 이력 초기화 완료")
-        # 8. 수익 이력 초기화 WS 브로드캐스트
-        from backend.app.services.engine_account_notify import notify_snapshot_history_update
-        await notify_snapshot_history_update()
-        # 9. 일일매수 누적 인메모리 상태 리셋 + 매수 쿨다운/쓰로틀 기록 초기화 + WS buy-limit-status 발송
+        _logger.info("[연산] 보유종목, 실시간 필드 및 REST 보완 저장데이터 초기화 완료")
+        # 8. 일일매수 누적 인메모리 상태 리셋 + 매수 쿨다운/쓰로틀 기록 초기화 + WS buy-limit-status 발송
         if state.auto_trade:
             state.auto_trade._daily_buy_spent = 0
             state.auto_trade._bought_today = {}

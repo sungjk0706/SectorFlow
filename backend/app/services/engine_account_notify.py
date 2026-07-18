@@ -553,11 +553,6 @@ def _build_lightweight_payload_for_profit_overview(snapshot: dict, changed_posit
     }
 
 
-async def notify_snapshot_history_update() -> None:
-    """수익 이력 WS 브로드캐스트 — 프론트엔드 미사용으로 no-op."""
-    pass
-
-
 # 매수 후보 비교 키: 순위·시세·가드 상태 등 변경 감지 대상 필드
 _BUY_TARGET_CMP_KEYS = ("rank", "cur_price", "change_rate", "strength", "trade_amount", "boost_score", "guard_pass", "reason", "order_ratio", "program_net_buy", "high_5d", "avg_amt_5d")
 

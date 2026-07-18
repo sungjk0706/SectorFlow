@@ -534,7 +534,6 @@ class TestResetTestData:
              patch("backend.app.services.engine_account_notify._rebuild_positions_cache") as mock_rebuild, \
              patch("backend.app.services.engine_account._refresh_account_snapshot_meta", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_account", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_account_notify.notify_snapshot_history_update", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_broadcast:
             mock_state.integrated_system_settings_cache = {
@@ -543,7 +542,6 @@ class TestResetTestData:
             }
             mock_state.master_stocks_cache.values.return_value = []
             mock_state.positions = []
-            mock_state.snapshot_history = MagicMock()
             mock_state.auto_trade = None
             mock_state.sector_summary_cache = None
             mock_state._last_global_buy_ts = 0.0
