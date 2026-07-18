@@ -226,16 +226,16 @@ function renderTimeSettingsTab(container: HTMLElement): void {
 
   container.appendChild(createDescText('자동매수/매도가 꺼져 있어도 시간을 미리 설정할 수 있습니다. "자동매매" 탭에서 자동매수/매도를 켜면 이 시간에 맞춰 실행됩니다.'))
 
-  // 장 시작 전 사전 준비 시간 (타임테이블 사용자 조정 3개) — P21 투명성
-  container.appendChild(sectionTitle('장 시작 전 사전 준비 시간'))
-  container.appendChild(createDescText('장 시작 전 사전 준비 시간을 설정합니다. 너무 늦으면 실시간 데이터가 누락될 수 있습니다.'))
+  // 사전 준비 시간 설정 (타임테이블 사용자 조정 3개) — P21 투명성
+  container.appendChild(sectionTitle('사전 준비 시간 설정'))
+  container.appendChild(createDescText('너무 늦으면 실시간 데이터가 누락될 수 있습니다.'))
 
   // 실시간 항목 초기화 시간 (timetable.realtime_reset, 기본 07:58)
   const ttResetRow = document.createElement('div')
   Object.assign(ttResetRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
   const ttResetLabel = document.createElement('span')
   Object.assign(ttResetLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  ttResetLabel.textContent = '실시간 항목 초기화'
+  ttResetLabel.textContent = '실시간 데이터 필드 초기화'
   ttResetRow.appendChild(ttResetLabel)
   const [trh, trm] = parseHM(String(vals['timetable.realtime_reset'] ?? '07:58'))
   timetableResetH = trh; timetableResetM = trm
@@ -245,14 +245,14 @@ function renderTimeSettingsTab(container: HTMLElement): void {
   })
   ttResetRow.appendChild(timetableResetSlot)
   container.appendChild(ttResetRow)
-  container.appendChild(createDescText('장 시작 전 실시간 데이터 초기화'))
+  container.appendChild(createDescText('장 시작 전 필드를 비워 새 데이터를 받을 준비를 합니다'))
 
   // 구독 사전 시작 시간 (timetable.ws_prestart, 기본 07:59)
   const ttWsRow = document.createElement('div')
   Object.assign(ttWsRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
   const ttWsLabel = document.createElement('span')
   Object.assign(ttWsLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  ttWsLabel.textContent = '구독 사전 시작'
+  ttWsLabel.textContent = 'NXT 종목 구독 신청'
   ttWsRow.appendChild(ttWsLabel)
   const [twh, twm] = parseHM(String(vals['timetable.ws_prestart'] ?? '07:59'))
   timetableWsH = twh; timetableWsM = twm
@@ -262,14 +262,14 @@ function renderTimeSettingsTab(container: HTMLElement): void {
   })
   ttWsRow.appendChild(timetableWsSlot)
   container.appendChild(ttWsRow)
-  container.appendChild(createDescText('장 시작 전 NXT 구독 시작'))
+  container.appendChild(createDescText('NXT 프리마켓 시작 전 구독을 미리 신청합니다'))
 
   // 정규장 사전 구독 시간 (timetable.krx_pre_subscribe, 기본 08:59)
   const ttKrxRow = document.createElement('div')
   Object.assign(ttKrxRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
   const ttKrxLabel = document.createElement('span')
   Object.assign(ttKrxLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  ttKrxLabel.textContent = '정규장 사전 구독'
+  ttKrxLabel.textContent = 'KRX 종목 추가 구독'
   ttKrxRow.appendChild(ttKrxLabel)
   const [tkh, tkm] = parseHM(String(vals['timetable.krx_pre_subscribe'] ?? '08:59'))
   timetableKrxH = tkh; timetableKrxM = tkm
@@ -279,10 +279,10 @@ function renderTimeSettingsTab(container: HTMLElement): void {
   })
   ttKrxRow.appendChild(timetableKrxSlot)
   container.appendChild(ttKrxRow)
-  container.appendChild(createDescText('정규장 시작 전 KRX 종목 구독 시작'))
+  container.appendChild(createDescText('KRX 정규장 시작 전 KRX 단독 종목 구독을 추가합니다'))
 
   // 1일봉차트 자동다운로드 (토글 + 시간 슬롯) — API 설정 탭에서 이동 (Step 4)
-  container.appendChild(sectionTitle('1일봉차트 자동다운로드'))
+  // 단일 항목이라 섹션 제목 생략 — 행 라벨 하나로 충분 (P24 단순성)
   const confirmedDlRow = document.createElement('div')
   Object.assign(confirmedDlRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
   const confirmedDlLabel = document.createElement('span')
