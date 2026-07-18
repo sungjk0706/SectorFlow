@@ -5,7 +5,7 @@
 단일 소스 진리 원칙: master_stocks_cache 직접 접근
 """
 import logging
-from backend.app.services.engine_state import state
+from backend.app.services import engine_state
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +64,9 @@ async def get_sector_stocks() -> list:
     """업종별 종목 시세 테이블용 — _master_stocks_cache 기반 실시간 필터링/정렬."""
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
     from backend.app.core.sector_mapping import get_merged_sectors_batch
-    from backend.app.services.engine_state import state
 
     # 5일평균거래대금 필터링 (백엔드에서 필터링 수행 - 단일 소스 진리)
-    min_avg_amt_eok = float(state.integrated_system_settings_cache["sector_min_trade_amt"])
+    min_avg_amt_eok = float(engine_state.state.integrated_system_settings_cache["sector_min_trade_amt"])
 
     merged: dict[str, dict] = {}
 
@@ -75,8 +74,8 @@ async def get_sector_stocks() -> list:
 
     # 1차 필터링: 시세/이름 없는 엔트리 제거 + 5일평균거래대금 필터링
     valid_codes: list[str] = []
-    for cd in state.master_stocks_cache:
-        e = state.master_stocks_cache.get(cd, {}).copy()
+    for cd in engine_state.state.master_stocks_cache:
+        e = engine_state.state.master_stocks_cache.get(cd, {}).copy()
         e["code"] = cd
         e["status"] = "active"
         if int(e.get("cur_price") or 0) <= 0 and (not e.get("name") or e.get("name") == cd):
@@ -100,7 +99,7 @@ async def get_sector_stocks() -> list:
 
     # 업종 분석 순위 기준 정렬
     sector_order: dict[str, int] = {}
-    ss = state.sector_summary_cache
+    ss = engine_state.state.sector_summary_cache
     if ss:
         for sc in ss.sectors:
             sector_order[sc.sector] = sc.rank
@@ -113,7 +112,7 @@ async def get_sector_stocks() -> list:
 
 async def get_buy_targets_sector_stocks() -> list:
     """매수 후보 테이블용 — _sector_summary_cache.buy_targets + blocked_targets 반환 (guard_pass 필드 포함)."""
-    ss = state.sector_summary_cache
+    ss = engine_state.state.sector_summary_cache
     if not ss:
         return []
 
@@ -124,7 +123,7 @@ async def get_buy_targets_sector_stocks() -> list:
     for bt in ss.buy_targets:
         s = bt.stock
         # master_stocks_cache에서 실시간 데이터 병합
-        cache_entry = state.master_stocks_cache.get(s.code, {})
+        cache_entry = engine_state.state.master_stocks_cache.get(s.code, {})
         result.append({
             "code": s.code,
             "name": s.name,
@@ -151,7 +150,7 @@ async def get_buy_targets_sector_stocks() -> list:
     for bt in ss.blocked_targets:
         s = bt.stock
         # master_stocks_cache에서 실시간 데이터 병합
-        cache_entry = state.master_stocks_cache.get(s.code, {})
+        cache_entry = engine_state.state.master_stocks_cache.get(s.code, {})
         result.append({
             "code": s.code,
             "name": s.name,
@@ -184,12 +183,11 @@ async def get_all_sector_stocks() -> list[dict]:
     """
     from backend.app.core.sector_mapping import get_merged_sectors_batch
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
-    from backend.app.services.engine_state import state
 
     # 단일 소스 진리: state.master_stocks_cache만 사용 (실시간 구독 상태와 분리)
 
     valid_codes: list[str] = []
-    for cd, entry in state.master_stocks_cache.items():
+    for cd, entry in engine_state.state.master_stocks_cache.items():
         if entry.get("status") != "active":
             continue
         valid_codes.append(cd)
@@ -199,7 +197,7 @@ async def get_all_sector_stocks() -> list[dict]:
 
     result: list[dict] = []
     for cd in valid_codes:
-        entry = state.master_stocks_cache[cd]
+        entry = engine_state.state.master_stocks_cache[cd]
         result.append({
             "code": cd,
             "name": entry.get("name", ""),
@@ -217,7 +215,7 @@ def get_sector_scores_snapshot() -> tuple[list[dict], int]:
     - scores_list: 전체 업종 목록 (모든 업종에 순위 부여, is_cutoff_passed 포함)
     - ranked_sectors_count: 컷오프 통과 업종 수 (is_cutoff_passed=True)
     """
-    ss = state.sector_summary_cache
+    ss = engine_state.state.sector_summary_cache
     if not ss:
         return [], 0
     out: list[dict] = []
@@ -262,30 +260,30 @@ async def recompute_sector_summary_now() -> None:
         _compute_inputs = {k: v for k, v in _inputs.items() if k not in ("krx_codes", "nxt_codes")}
         _sector_summary = await compute_full_sector_summary(
             **_compute_inputs,
-            min_rise_ratio=float(state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
-            min_avg_amt_eok=float(state.integrated_system_settings_cache["sector_min_trade_amt"]),
-            rise_ratio_slider=int(state.integrated_system_settings_cache["sector_bonus_rise_ratio_slider"]),
-            relative_strength_slider=int(state.integrated_system_settings_cache["sector_bonus_relative_strength_slider"]),
-            trade_amount_slider=int(state.integrated_system_settings_cache["sector_bonus_trade_amount_slider"]),
+            min_rise_ratio=float(engine_state.state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
+            min_avg_amt_eok=float(engine_state.state.integrated_system_settings_cache["sector_min_trade_amt"]),
+            rise_ratio_slider=int(engine_state.state.integrated_system_settings_cache["sector_bonus_rise_ratio_slider"]),
+            relative_strength_slider=int(engine_state.state.integrated_system_settings_cache["sector_bonus_relative_strength_slider"]),
+            trade_amount_slider=int(engine_state.state.integrated_system_settings_cache["sector_bonus_trade_amount_slider"]),
         )
         from backend.app.services import engine_account
         _held = await engine_account.get_held_codes()
         _bought_today: set[str] = set()
-        if state.auto_trade is not None:
-            _bought_today = set(state.auto_trade._bought_today.keys())
+        if engine_state.state.auto_trade is not None:
+            _bought_today = set(engine_state.state.auto_trade._bought_today.keys())
         _ss = build_buy_targets_from_settings(
             _sector_summary.sectors,
-            state.integrated_system_settings_cache,
+            engine_state.state.integrated_system_settings_cache,
             held_codes=_held,
             bought_today_codes=_bought_today,
         )
-        state.sector_summary_cache = _ss
+        engine_state.state.sector_summary_cache = _ss
         cancel_sector_recompute()
 
         # ── 5일평균최소거래대금(N억원) 이상 종목 마킹 ──
         # get_sector_stocks()에서 이미 필터링된 all_codes 재사용 — 불필요한 .copy() 및 재순회 제거
         _filtered_codes = set(_inputs["all_codes"])
-        for cd, entry in state.master_stocks_cache.items():
+        for cd, entry in engine_state.state.master_stocks_cache.items():
             if cd in _filtered_codes:
                 entry["_filtered"] = True
             else:
@@ -295,10 +293,10 @@ async def recompute_sector_summary_now() -> None:
         await notify_desktop_sector_stocks_refresh(force=True)
         await notify_buy_targets_update()
         logger.info("[업종] 재계산 완료")
-        state.sector_summary_ready_event.set()
+        engine_state.state.sector_summary_ready_event.set()
     except Exception as e:
         logger.warning("[업종] 재계산 실패: %s", e, exc_info=True)
-        state.sector_summary_ready_event.set()
+        engine_state.state.sector_summary_ready_event.set()
 
 
 async def _on_filter_settings_changed() -> None:

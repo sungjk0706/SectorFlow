@@ -29,7 +29,7 @@ def _mock_db():
 
 class TestGetSectorScoresSnapshot:
     def test_no_cache_returns_empty(self):
-        with patch("backend.app.services.sector_data_provider.state") as mock_state:
+        with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.sector_summary_cache = None
             result = get_sector_scores_snapshot()
             assert result == ([], 0)
@@ -46,7 +46,7 @@ class TestGetSectorScoresSnapshot:
         mock_ss = MagicMock()
         mock_ss.sectors = [mock_sc]
 
-        with patch("backend.app.services.sector_data_provider.state") as mock_state:
+        with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.sector_summary_cache = mock_ss
             scores, ranked_count = get_sector_scores_snapshot()
             assert len(scores) == 1
@@ -77,7 +77,7 @@ class TestGetSectorScoresSnapshot:
         mock_ss = MagicMock()
         mock_ss.sectors = [mock_sc1, mock_sc2]
 
-        with patch("backend.app.services.sector_data_provider.state") as mock_state:
+        with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.sector_summary_cache = mock_ss
             scores, ranked_count = get_sector_scores_snapshot()
             assert len(scores) == 2
@@ -94,7 +94,7 @@ class TestGetSectorScoresSnapshot:
 class TestGetBuyTargetsSectorStocks:
     @pytest.mark.asyncio
     async def test_no_cache_returns_empty(self):
-        with patch("backend.app.services.sector_data_provider.state") as mock_state:
+        with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.sector_summary_cache = None
             result = await get_buy_targets_sector_stocks()
             assert result == []
@@ -122,7 +122,7 @@ class TestGetBuyTargetsSectorStocks:
         mock_ss.buy_targets = [mock_bt]
         mock_ss.blocked_targets = []
 
-        with patch("backend.app.services.sector_data_provider.state") as mock_state:
+        with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.sector_summary_cache = mock_ss
             mock_state.master_stocks_cache = {
                 "005930": {"cur_price": 70000, "change_rate": 0.5, "change": 350,
@@ -159,7 +159,7 @@ class TestGetBuyTargetsSectorStocks:
         mock_ss.buy_targets = []
         mock_ss.blocked_targets = [mock_bt]
 
-        with patch("backend.app.services.sector_data_provider.state") as mock_state:
+        with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.sector_summary_cache = mock_ss
             mock_state.master_stocks_cache = {"005935": {}}
             result = await get_buy_targets_sector_stocks()
@@ -290,7 +290,7 @@ class TestRecomputeSectorSummaryNow:
         }
 
         with patch("backend.app.services.engine_lifecycle.is_engine_running", return_value=True), \
-             patch("backend.app.services.sector_data_provider.state") as mock_state, \
+             patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
                  "all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {}, "latest_index": {}
              })), \
