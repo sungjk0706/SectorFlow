@@ -8,7 +8,7 @@
 """
 import logging
 from backend.app.core.engine_settings import get_engine_settings
-from backend.app.services.engine_state import state
+from backend.app.services import engine_state
 
 logger = logging.getLogger(__name__)
 
@@ -17,13 +17,13 @@ logger = logging.getLogger(__name__)
 
 def _get_settings() -> dict:
     """설정 캐시 반환."""
-    return state.integrated_system_settings_cache
+    return engine_state.state.integrated_system_settings_cache
 
 
 def get_settings_snapshot() -> dict:
     """설정 스냅샷 반환 (민감 정보 마스킹 포함)."""
     # state.integrated_system_settings_cache는 app.py에서 이미 초기화됨 (단일 소스 진리)
-    d = dict(state.integrated_system_settings_cache)
+    d = dict(engine_state.state.integrated_system_settings_cache)
 
     if "tele_on" not in d:
         d["tele_on"] = bool(d.get("telegram_on", False))
@@ -54,7 +54,7 @@ async def refresh_engine_integrated_system_settings_cache(user_id: str | None = 
     필터 콜백(step 2: on_filter_settings_changed)은 엔진 실행 중일 때만 호출한다.
     이로써 PATCH 후 브로드캐스트 시 항상 최신 설정값이 반영된다.
     """
-    uid_engine = (state.engine_user_id or "").strip()
+    uid_engine = (engine_state.state.engine_user_id or "").strip()
 
     if use_root:
         load_user = None
@@ -67,27 +67,27 @@ async def refresh_engine_integrated_system_settings_cache(user_id: str | None = 
     try:
         # ── step 1) 항상 수행: DB → 메모리 캐시 갱신 ──────────────────────────
         # 필터 설정 변경 감지용 -- 갱신 전 값 보존
-        old_min_amt = state.integrated_system_settings_cache["sector_min_trade_amt"] if state.integrated_system_settings_cache else 0.0
+        old_min_amt = engine_state.state.integrated_system_settings_cache["sector_min_trade_amt"] if engine_state.state.integrated_system_settings_cache else 0.0
 
         fresh = await get_engine_settings(load_user if load_user else None)
         # 런타임 전용 상태 보존 (build_engine_settings_dict 결과에 없는 캐시 B 전용 런타임 상태)
         _RUNTIME_ONLY_KEYS = ("sector_stock_layout",)
         preserved = {
-            k: state.integrated_system_settings_cache.get(k)
+            k: engine_state.state.integrated_system_settings_cache.get(k)
             for k in _RUNTIME_ONLY_KEYS
-            if k in state.integrated_system_settings_cache
+            if k in engine_state.state.integrated_system_settings_cache
         }
-        state.integrated_system_settings_cache.clear()
-        state.integrated_system_settings_cache.update(fresh)
-        state.integrated_system_settings_cache.update(preserved)
+        engine_state.state.integrated_system_settings_cache.clear()
+        engine_state.state.integrated_system_settings_cache.update(fresh)
+        engine_state.state.integrated_system_settings_cache.update(preserved)
         logger.info("[설정] 설정 캐시 갱신 완료")
 
         # ── step 2) 엔진 실행 중일 때만: 필터 콜백 트리거 ──────────────────────
-        if state.running:
+        if engine_state.state.running:
             new_min_amt = fresh.get("sector_min_trade_amt", 0.0)
             if old_min_amt != new_min_amt:
                 logger.info("[설정] 업종 최소 거래대금 변경: %.0f억 → %.0f억", old_min_amt, new_min_amt)
-                await state.on_filter_settings_changed()
+                await engine_state.state.on_filter_settings_changed()
     except Exception as e:
         logger.error("[설정] 설정 캐시 갱신 실패: %s", e, exc_info=True)
         raise
@@ -95,7 +95,7 @@ async def refresh_engine_integrated_system_settings_cache(user_id: str | None = 
 
 async def reload_engine_settings() -> None:
     """엔진 런타임 중 설정 재로드 (필터 변경 등)."""
-    await refresh_engine_integrated_system_settings_cache(state.engine_user_id or None, use_root=True)
+    await refresh_engine_integrated_system_settings_cache(engine_state.state.engine_user_id or None, use_root=True)
     # broker 설정 변경 시 BrokerRouter 캐시 초기화
     from backend.app.core.broker_factory import reset_router
     reset_router()

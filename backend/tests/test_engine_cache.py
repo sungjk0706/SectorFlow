@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.app.services import engine_state
+
 
 # ── 헬퍼 ──────────────────────────────────────────────────────────────────────
 
@@ -59,7 +61,7 @@ class TestLoadCachesPrebootEmptyAndError:
         mock_state = MagicMock()
         _apply_mocks(mock_state)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value={}),
             patch.object(engine_cache, "logger") as mock_logger,
         ):
@@ -76,7 +78,7 @@ class TestLoadCachesPrebootEmptyAndError:
         mock_state = MagicMock()
         _apply_mocks(mock_state)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, side_effect=Exception("DB error")),
             patch.object(engine_cache, "logger") as mock_logger,
         ):
@@ -97,7 +99,7 @@ class TestLoadCachesPrebootNormal:
         mock_state = MagicMock()
         _apply_mocks(mock_state)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
@@ -122,7 +124,7 @@ class TestLoadCachesPrebootNormal:
         mock_state = MagicMock()
         _apply_mocks(mock_state)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
@@ -143,7 +145,7 @@ class TestLoadCachesPrebootNormal:
         mock_state = MagicMock()
         _apply_mocks(mock_state)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
@@ -165,7 +167,7 @@ class TestLoadCachesPrebootNormal:
         mock_state = MagicMock()
         _apply_mocks(mock_state)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache") as mock_rebuild,
             patch("backend.app.services.engine_account_notify.notify_cache"),
@@ -188,7 +190,7 @@ class TestLoadCachesPrebootNormal:
         mock_notify = MagicMock()
         mock_notify.prev_scores = ["old_score"]
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache", mock_notify),
@@ -209,7 +211,7 @@ class TestLoadCachesPrebootNormal:
         mock_state = MagicMock()
         _apply_mocks(mock_state)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
@@ -234,7 +236,7 @@ class TestLoadCachesPrebootNormal:
         settings = _make_settings(layout=[("sector", "old_sector")])
         _apply_mocks(mock_state, settings=settings)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
@@ -265,7 +267,7 @@ class TestLoadCachesPrebootWsWindow:
         mock_state = MagicMock()
         _apply_mocks(mock_state)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
@@ -288,7 +290,7 @@ class TestLoadCachesPrebootWsWindow:
         mock_state = MagicMock()
         _apply_mocks(mock_state)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
@@ -317,7 +319,7 @@ class TestLoadCachesPrebootWsWindow:
         mock_state = MagicMock()
         _apply_mocks(mock_state)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
@@ -345,7 +347,7 @@ class TestLoadCachesPrebootTradeMode:
         settings = _make_settings(trade_mode="test", virtual_deposit=50000000)
         _apply_mocks(mock_state, settings=settings)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
@@ -368,7 +370,7 @@ class TestLoadCachesPrebootTradeMode:
         settings = _make_settings(trade_mode="real")
         _apply_mocks(mock_state, settings=settings)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
@@ -394,7 +396,7 @@ class TestLoadCachesPrebootMetrics:
         mock_state = MagicMock()
         _apply_mocks(mock_state)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
@@ -417,7 +419,7 @@ class TestLoadCachesPrebootMetrics:
         mock_state = MagicMock()
         _apply_mocks(mock_state)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
@@ -440,7 +442,7 @@ class TestLoadCachesPrebootMetrics:
         mock_state = MagicMock()
         _apply_mocks(mock_state)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
@@ -468,7 +470,7 @@ class TestLoadCachesPrebootCatchup:
         mock_state = MagicMock()
         _apply_mocks(mock_state)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),
@@ -495,7 +497,7 @@ class TestLoadCachesPrebootCatchup:
         mock_state = MagicMock()
         _apply_mocks(mock_state)
         with (
-            patch.object(engine_cache, "state", mock_state),
+            patch.object(engine_state, "state", mock_state),
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value=snap),
             patch("backend.app.services.engine_account_notify._rebuild_layout_cache"),
             patch("backend.app.services.engine_account_notify.notify_cache"),

@@ -42,7 +42,7 @@ class TestLoginPostPipeline:
     async def test_test_mode_skips_rest(self):
         """test_mode인 경우 REST 잔고 조회 생략 (L148-149)."""
         mock_state = _make_login_state_mock()
-        with patch("backend.app.services.engine_bootstrap.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=False)), \
@@ -59,7 +59,7 @@ class TestLoginPostPipeline:
     async def test_non_ws_window_not_bootstrapped_rest(self):
         """비 WS 윈도우 + 미부트스트랩 → REST 잔고 조회 (L150-155)."""
         mock_state = _make_login_state_mock(account_rest_bootstrapped=False, positions={})
-        with patch("backend.app.services.engine_bootstrap.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=False)), \
@@ -76,7 +76,7 @@ class TestLoginPostPipeline:
     async def test_non_ws_window_bootstrapped_skip(self):
         """비 WS 윈도우 + 부트스트랩 완료 → 재조회 생략 (L156-157)."""
         mock_state = _make_login_state_mock(account_rest_bootstrapped=True, positions={"005930": {}})
-        with patch("backend.app.services.engine_bootstrap.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=False)), \
@@ -93,7 +93,7 @@ class TestLoginPostPipeline:
     async def test_ws_window_no_positions_rest(self):
         """WS 윈도우 + 잔고없음 + 미부트스트랩 → REST 조회 (L158-161)."""
         mock_state = _make_login_state_mock(account_rest_bootstrapped=False, positions={})
-        with patch("backend.app.services.engine_bootstrap.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=True)), \
@@ -118,7 +118,7 @@ class TestLoginPostPipeline:
                 "035420": {"_subscribed": True, "price": 300},
             },
         )
-        with patch("backend.app.services.engine_bootstrap.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=False)), \
@@ -143,7 +143,7 @@ class TestLoginPostPipeline:
             account_rest_bootstrapped=True,
             connector_manager=mock_connector,
         )
-        with patch("backend.app.services.engine_bootstrap.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()) as mock_recompute, \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=True)), \
@@ -172,7 +172,7 @@ class TestLoginPostPipeline:
             account_rest_bootstrapped=True,
             connector_manager=mock_connector,
         )
-        with patch("backend.app.services.engine_bootstrap.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()) as mock_recompute, \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=True)), \
@@ -194,7 +194,7 @@ class TestLoginPostPipeline:
     async def test_non_ws_window_sets_event(self):
         """비 WS 윈도우 → ws_reg_pipeline_done.set 호출 (L186-189)."""
         mock_state = _make_login_state_mock(account_rest_bootstrapped=True, positions={"005930": {}})
-        with patch("backend.app.services.engine_bootstrap.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock()), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=False)), \
@@ -211,7 +211,7 @@ class TestLoginPostPipeline:
     async def test_exception_handler(self):
         """전체 예외 핸들러 확인 (L190-191) — 예외 발생 시 로깅만 수행 (raise 아님)."""
         mock_state = _make_login_state_mock()
-        with patch("backend.app.services.engine_bootstrap.state", mock_state), \
+        with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()), \
              patch("backend.app.services.engine_ws._cleanup_stale_ws_subscriptions_on_session_ready", new=AsyncMock(side_effect=Exception("pipeline error"))), \
              patch("backend.app.services.daily_time_scheduler.is_ws_subscribe_window", new=AsyncMock(return_value=False)), \

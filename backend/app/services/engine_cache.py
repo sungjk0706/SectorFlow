@@ -7,7 +7,7 @@
 from __future__ import annotations
 import asyncio
 import logging
-from backend.app.services.engine_state import state
+from backend.app.services import engine_state
 logger = logging.getLogger(__name__)
 
 
@@ -28,7 +28,7 @@ async def _load_caches_preboot(settings: dict) -> None:
             raise RuntimeError("master_stocks_table 테이블에 데이터가 없습니다. 장마감 후 다시 시도하세요.")
         
         # 마스터 캐시 저장 (_sector_cache 제거)
-        state.master_stocks_cache = _cached_snapshot
+        engine_state.state.master_stocks_cache = _cached_snapshot
 
         # ── 업종 레이아웃 자동 구성 (engine_bootstrap.py에서 이동) ──
         from collections import defaultdict
@@ -40,7 +40,7 @@ async def _load_caches_preboot(settings: dict) -> None:
             sector_groups[sector].append(code)
 
         # 업종 순서: 기존 레이아웃의 업종 순서를 최대한 유지하고 신규 업종는 뒤에 추가
-        old_layout: list[tuple[str, str]] = state.integrated_system_settings_cache["sector_stock_layout"]
+        old_layout: list[tuple[str, str]] = engine_state.state.integrated_system_settings_cache["sector_stock_layout"]
         old_sector_order = list(dict.fromkeys(v for t, v in old_layout if t == "sector"))
         new_sectors = [s for s in sector_groups if s not in old_sector_order]
         final_sector_order = [s for s in old_sector_order if s in sector_groups] + new_sectors
@@ -51,7 +51,7 @@ async def _load_caches_preboot(settings: dict) -> None:
             final_sector_order
         )
         auto_layout: list[tuple[str, str]] = list(chain.from_iterable(sector_blocks))
-        state.integrated_system_settings_cache["sector_stock_layout"] = auto_layout
+        engine_state.state.integrated_system_settings_cache["sector_stock_layout"] = auto_layout
 
         from backend.app.services.engine_account_notify import _rebuild_layout_cache
         _rebuild_layout_cache(auto_layout)
@@ -73,8 +73,8 @@ async def _load_caches_preboot(settings: dict) -> None:
             _cached_high_5d[cd] = high_5d
             # 즉시 메모리 반영 (단일 루프로 통합)
             if high_5d > 0:
-                if cd in state.master_stocks_cache:
-                    state.master_stocks_cache[cd]["high_5d_price"] = high_5d
+                if cd in engine_state.state.master_stocks_cache:
+                    engine_state.state.master_stocks_cache[cd]["high_5d_price"] = high_5d
 
         # ── [수정] 기동 시 단건 실시간 구독 신청 루프 및 asyncio.gather 제거 ──
         # 로그인 이후 배치 파이프라인에서 일괄 등록되므로 기동 단계에서는 스킵합니다.
@@ -87,11 +87,11 @@ async def _load_caches_preboot(settings: dict) -> None:
         logger.debug("[데이터] 5일거래대금평균/고가 저장데이터 로드 — %d종목", len(_cached_avg))
 
         # ── 시장구분 적재 제거 (master_stocks_cache 사용으로 대체) ──
-        _total_nxt = sum(1 for v in state.master_stocks_cache.values() if v.get("nxt_enable"))
-        logger.debug("[데이터] 시장구분(마스터 캐시) 로드 완료 — %d종목 (NXT %d)", len(state.master_stocks_cache), _total_nxt)
+        _total_nxt = sum(1 for v in engine_state.state.master_stocks_cache.values() if v.get("nxt_enable"))
+        logger.debug("[데이터] 시장구분(마스터 캐시) 로드 완료 — %d종목 (NXT %d)", len(engine_state.state.master_stocks_cache), _total_nxt)
 
         # 캐시선행 완료 플래그 — 앱준비 에서 중복 로드 스킵용
-        state.preboot_cache_loaded = True
+        engine_state.state.preboot_cache_loaded = True
 
         # ── WS 구독 구간 내 기동 시 실시간 필드 초기화 (DB 로드 이후 실행 보장) ──
         # _init_ws_subscribe_state()와 경쟁하지 않도록 preboot_cache_loaded 플래그로 조정
@@ -102,14 +102,14 @@ async def _load_caches_preboot(settings: dict) -> None:
             await _reset_realtime_fields()
             # ── 4단계: 사전 트리거 멱등성 플래그 동기화 (중복 실행 방지) ──
             from backend.app.services.daily_time_scheduler import _kst_now
-            state.last_realtime_reset_date = _kst_now().strftime("%Y%m%d")
+            engine_state.state.last_realtime_reset_date = _kst_now().strftime("%Y%m%d")
             logger.info("[데이터] 실시간 통신 구독 구간 — 실시간 필드 초기화 완료 (DB 로드 후)")
 
         # ── 기동 완료 로직 ──
         # 테스트모드: Settlement Engine 상태 로드 (설정 test_virtual_deposit 우선, DB 없으면 초기화)
-        if state.integrated_system_settings_cache["trade_mode"] == "test":
+        if engine_state.state.integrated_system_settings_cache["trade_mode"] == "test":
             from backend.app.services import settlement_engine
-            initial_deposit = state.integrated_system_settings_cache["test_virtual_deposit"]
+            initial_deposit = engine_state.state.integrated_system_settings_cache["test_virtual_deposit"]
             await settlement_engine.load_state(initial_deposit=initial_deposit)
             logger.debug("[데이터] 정산 엔진 상태 로드 완료 (테스트모드)")
 
@@ -117,9 +117,9 @@ async def _load_caches_preboot(settings: dict) -> None:
         notify_cache.prev_scores = []
 
         # 기동 완료 플래그 설정
-        state.bootstrap_event.set()
+        engine_state.state.bootstrap_event.set()
 
-        state.data_ready_event.set()
+        engine_state.state.data_ready_event.set()
 
         # 업종순위 캐시 초기 계산
         # WS 구간 내: _init_ws_subscribe_state가 _sector_summary_cache를 클리어하므로
@@ -127,7 +127,7 @@ async def _load_caches_preboot(settings: dict) -> None:
         #   UI 블로킹 방지를 위해 sector_summary_ready_event만 set.
         # WS 구간 외: 유일한 계산 경로이므로 반드시 수행.
         if _in_ws_window:
-            state.sector_summary_ready_event.set()
+            engine_state.state.sector_summary_ready_event.set()
             logger.info("[데이터] 실시간 통신 구독 구간 — 업종순위 계산 생략 (로그인 후 파이프라인에서 수행)")
         else:
             from backend.app.services.sector_data_provider import recompute_sector_summary_now
