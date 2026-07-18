@@ -89,11 +89,6 @@ async def get_total_pnl_rate() -> float:
     return float(state.broker_rest_totals.get("total_rate", 0.0) or 0.0)
 
 
-def get_snapshot_history() -> list:
-    """스냅샷 이력 반환."""
-    return list(state.snapshot_history)
-
-
 async def get_buy_limit_status() -> dict:
     """매수 한도 상태를 dict로 반환 (프론트 배지용)."""
     daily_buy_spent = 0

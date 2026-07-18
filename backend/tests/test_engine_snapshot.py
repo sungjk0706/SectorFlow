@@ -141,7 +141,6 @@ class TestBuildInitialSnapshot:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account.get_positions", new=AsyncMock(return_value=[{"stk_cd": "005930"}])), \
              patch("backend.app.services.engine_account.get_account_snapshot", new=AsyncMock(return_value={"balance": 100000})), \
-             patch("backend.app.services.engine_account.get_snapshot_history", new=AsyncMock(return_value=[])), \
              patch("backend.app.services.engine_account.get_buy_limit_status", new=AsyncMock(return_value={"daily_buy_spent": 5000})), \
              patch("backend.app.services.engine_account._refresh_account_snapshot_meta", new=AsyncMock()), \
              patch("backend.app.services.sector_data_provider.get_sector_scores_snapshot", new=AsyncMock(return_value=([{"sector": "반도체"}], 3))), \
@@ -185,7 +184,6 @@ class TestBuildInitialSnapshot:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account.get_positions", new=AsyncMock(side_effect=Exception("fail"))), \
              patch("backend.app.services.engine_account.get_account_snapshot", new=AsyncMock(side_effect=Exception("fail"))), \
-             patch("backend.app.services.engine_account.get_snapshot_history", new=AsyncMock(side_effect=Exception("fail"))), \
              patch("backend.app.services.engine_account.get_buy_limit_status", new=AsyncMock(side_effect=Exception("fail"))), \
              patch("backend.app.services.engine_account._refresh_account_snapshot_meta", new=AsyncMock(side_effect=Exception("fail"))), \
              patch("backend.app.services.sector_data_provider.get_sector_scores_snapshot", new=AsyncMock(side_effect=Exception("fail"))), \
@@ -210,7 +208,6 @@ class TestBuildInitialSnapshot:
             assert result["sector_scores"] == []
             assert result["sector_status"]["ranked_sectors_count"] == 0
             assert result["buy_targets"] == []
-            assert result["snapshot_history"] == []
             assert result["sell_history"] == []
             assert result["buy_history"] == []
             assert result["daily_summary"] == []
@@ -222,7 +219,6 @@ class TestBuildInitialSnapshot:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account.get_positions", new=AsyncMock(return_value=[])), \
              patch("backend.app.services.engine_account.get_account_snapshot", new=AsyncMock(return_value={})), \
-             patch("backend.app.services.engine_account.get_snapshot_history", new=AsyncMock(return_value=[])), \
              patch("backend.app.services.engine_account.get_buy_limit_status", new=AsyncMock(return_value={})), \
              patch("backend.app.services.engine_account._refresh_account_snapshot_meta", new=AsyncMock()), \
              patch("backend.app.services.sector_data_provider.get_sector_scores_snapshot", new=AsyncMock(return_value=[{"sector": "반도체"}])), \
@@ -251,7 +247,6 @@ class TestBuildInitialSnapshot:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account.get_positions", new=AsyncMock(return_value=[])), \
              patch("backend.app.services.engine_account.get_account_snapshot", new=AsyncMock(return_value={})), \
-             patch("backend.app.services.engine_account.get_snapshot_history", new=AsyncMock(return_value=[])), \
              patch("backend.app.services.engine_account.get_buy_limit_status", new=AsyncMock(return_value={})), \
              patch("backend.app.services.engine_account._refresh_account_snapshot_meta", new=AsyncMock()), \
              patch("backend.app.services.sector_data_provider.get_sector_scores_snapshot", new=AsyncMock(return_value=([], 0))), \
@@ -278,7 +273,6 @@ class TestBuildInitialSnapshot:
         with patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.engine_account.get_positions", new=AsyncMock(return_value=[])), \
              patch("backend.app.services.engine_account.get_account_snapshot", new=AsyncMock(return_value={})), \
-             patch("backend.app.services.engine_account.get_snapshot_history", new=AsyncMock(return_value=[])), \
              patch("backend.app.services.engine_account.get_buy_limit_status", new=AsyncMock(return_value={})), \
              patch("backend.app.services.engine_account._refresh_account_snapshot_meta", new=AsyncMock()), \
              patch("backend.app.services.sector_data_provider.get_sector_scores_snapshot", new=AsyncMock(return_value=([], 0))), \
@@ -364,7 +358,6 @@ class TestResetRealtimeFields:
             mock_get_conn.return_value = mock_conn
 
             mock_state.master_stocks_cache = master_cache
-            mock_state.snapshot_history = MagicMock()
             mock_state.positions = positions
             mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
             mock_state.sector_summary_cache = MagicMock()
@@ -381,7 +374,6 @@ class TestResetRealtimeFields:
             assert positions[0]["change_rate"] is None
             assert positions[0]["bid_depth"] is None
             assert positions[0]["ask_depth"] is None
-            mock_state.snapshot_history.clear.assert_called_once()
             assert mock_state.sector_summary_cache is None
             mock_notify_cache.clear_all.assert_called_once()
             mock_conn.execute.assert_called_once()
@@ -414,7 +406,6 @@ class TestResetRealtimeFields:
             mock_get_lock.return_value = mock_lock
 
             mock_state.master_stocks_cache = master_cache
-            mock_state.snapshot_history = MagicMock()
             mock_state.positions = []
             mock_state.integrated_system_settings_cache = {"trade_mode": "test"}
             mock_state.sector_summary_cache = MagicMock()
@@ -444,7 +435,6 @@ class TestResetRealtimeFields:
             mock_get_lock.return_value = mock_lock
 
             mock_state.master_stocks_cache = {}
-            mock_state.snapshot_history = MagicMock()
             mock_state.positions = []
             mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
             mock_state.sector_summary_cache = None
@@ -472,7 +462,6 @@ class TestResetRealtimeFields:
             mock_get_lock.return_value = mock_lock
 
             mock_state.master_stocks_cache = {}
-            mock_state.snapshot_history = MagicMock()
             mock_state.positions = []
             mock_state.integrated_system_settings_cache = {"trade_mode": "real"}
             mock_state.sector_summary_cache = None

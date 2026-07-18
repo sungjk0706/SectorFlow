@@ -16,7 +16,6 @@ from backend.app.services.engine_account import (
     get_total_eval_amount,
     get_total_pnl,
     get_total_pnl_rate,
-    get_snapshot_history,
     get_buy_limit_status,
     _position_codes_with_qty,
     _merge_positions_from_rest,
@@ -173,22 +172,6 @@ class TestGetTotalPnlRate:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[{"buy_amt": 0, "pnl_amount": 0}]):
             result = await get_total_pnl_rate()
             assert result == 0.0
-
-
-# ── get_snapshot_history ──────────────────────────────────────────────────────────────
-
-class TestGetSnapshotHistory:
-    def test_basic(self):
-        with patch("backend.app.services.engine_account.state") as mock_state:
-            mock_state.snapshot_history = [{"ts": 1}, {"ts": 2}]
-            result = get_snapshot_history()
-            assert result == [{"ts": 1}, {"ts": 2}]
-
-    def test_empty(self):
-        with patch("backend.app.services.engine_account.state") as mock_state:
-            mock_state.snapshot_history = []
-            result = get_snapshot_history()
-            assert result == []
 
 
 # ── get_buy_limit_status ──────────────────────────────────────────────────────────────

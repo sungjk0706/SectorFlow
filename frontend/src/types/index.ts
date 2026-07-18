@@ -252,15 +252,6 @@ export interface SectionProps {
   onEditingChange: (editing: boolean) => void;
 }
 
-export interface SnapshotHistory {
-  timestamp?: string;
-  snapshot_at?: string;
-  total_buy_amount: number;
-  total_eval_amount: number;
-  total_pnl: number;
-  total_pnl_rate: number;
-}
-
 export interface SectorScoreRow {
   rank: number;
   sector: string;

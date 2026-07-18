@@ -92,7 +92,6 @@ class EngineState:
         self.broker_rest_apis: dict[str, Any] = {}  # {broker_id: RestApi}
         self.account_snapshot: dict = {}
         self.positions: list = []
-        self.snapshot_history: list = []
 
         # ── 상수 ────────────────────────────────────────────────────────────────
         self.REG_POST_ACK_GAP_SEC = 0.35

@@ -5,7 +5,6 @@ import type {
   SectorStatus,
   AppSettings,
   EngineStatus,
-  SnapshotHistory,
   IndexData,
 } from '../types'
 
@@ -20,7 +19,6 @@ export interface UIState {
   /* ── UI 상태 필드 ── */
   settings: AppSettings | null
   status: EngineStatus | null
-  snapshotHistory: SnapshotHistory[]
   sectorStatus: SectorStatus | null
   selectedSector: string | null
 
@@ -78,7 +76,6 @@ export interface UIState {
 const initialState: UIState = {
   settings: null,
   status: null,
-  snapshotHistory: [],
   sectorStatus: null,
   selectedSector: null,
   initialized: false,
@@ -181,28 +178,6 @@ export function clearRiskBlockStatus(): void {
   uiStore.setState({ riskBlockStatus: null })
 }
 
-/* ── snapshot-update: 수익 이력만 갱신 ── */
-export function applySnapshotUpdate(data: { snapshot_history: SnapshotHistory[] }): void {
-  const incoming = data.snapshot_history ?? []
-  const prev = uiStore.getState().snapshotHistory
-
-  // 길이 같고 마지막 항목의 timestamp·total_pnl·total_pnl_rate 동일하면 스킵
-  if (
-    incoming.length === prev.length
-    && incoming.length > 0
-  ) {
-    const a = incoming[incoming.length - 1]
-    const b = prev[prev.length - 1]
-    if (
-      a.timestamp === b.timestamp
-      && a.total_pnl === b.total_pnl
-      && a.total_pnl_rate === b.total_pnl_rate
-    ) return
-  }
-
-  uiStore.setState({ snapshotHistory: incoming })
-}
-
 /* ── buy-limit-status: 매수 한도 상태 갱신 ── */
 export function applyBuyLimitStatus(data: { daily_buy_spent: number }): void {
   uiStore.setState({ buyLimitStatus: { daily_buy_spent: data.daily_buy_spent ?? 0 } })
@@ -211,7 +186,6 @@ export function applyBuyLimitStatus(data: { daily_buy_spent: number }): void {
 /* ── test-data-reset-completed: 통합 초기화 완료 ── */
 export function applyTestDataResetCompleted(): void {
   uiStore.setState({
-    snapshotHistory: [],
     buyLimitStatus: { daily_buy_spent: 0 },
   })
 }
@@ -259,7 +233,6 @@ export function applyInitialSnapshotUI(data: Record<string, unknown>): void {
   uiStore.setState({
     settings: (data.settings as AppSettings) ?? null,
     status: (data.status as EngineStatus) ?? null,
-    snapshotHistory: (data.snapshot_history as SnapshotHistory[]) ?? [],
     sectorStatus: (data.sector_status as SectorStatus) ?? null,
     sectorSummary: (data.sector_summary as Record<string, unknown>) ?? null,
     buyLimitStatus: (data.buy_limit_status as { daily_buy_spent: number }) ?? { daily_buy_spent: 0 },
