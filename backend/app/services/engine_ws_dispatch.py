@@ -6,7 +6,6 @@ engine_state에서 직접 상태를 참조하여 순환 import 없이 모듈 전
 from __future__ import annotations
 import time
 import backend.app.services.engine_state as engine_state
-from backend.app.services.engine_state import state
 from backend.app.services import engine_account
 import logging
 from backend.app.services.engine_symbol_utils import (
@@ -24,9 +23,9 @@ _wl_codes_layout_len: int = -1
 def _get_wl_codes_cached() -> set[str]:
     """sector_stock_layout → code Set 캐시. 레이아웃 길이가 바뀔 때만 재생성."""
     global _wl_codes_cache, _wl_codes_layout_len
-    cur_len = len(state.integrated_system_settings_cache["sector_stock_layout"])
+    cur_len = len(engine_state.state.integrated_system_settings_cache["sector_stock_layout"])
     if cur_len != _wl_codes_layout_len:
-        _wl_codes_cache = {v for t, v in state.integrated_system_settings_cache["sector_stock_layout"] if t == "code"}
+        _wl_codes_cache = {v for t, v in engine_state.state.integrated_system_settings_cache["sector_stock_layout"] if t == "code"}
         _wl_codes_layout_len = cur_len
     return _wl_codes_cache
 
@@ -55,7 +54,7 @@ def _update_trade_amount_fid14(
 
 def _handle_login(data: dict) -> None:
     if str(data.get("return_code", "")) == "0":
-        state.login_ok = True
+        engine_state.state.login_ok = True
         engine_state._notify_reg_ack()
         # LOGIN 성공 → 구독 파이프라인 트리거 (구독 구간 내이면 REG 자동 시작)
         try:
@@ -109,15 +108,15 @@ def _handle_reg(data: dict) -> None:
             if not norm:
                 continue
             if rc == "105110":
-                if norm in state.master_stocks_cache:
-                    state.master_stocks_cache[norm].pop("_subscribed", None)
+                if norm in engine_state.state.master_stocks_cache:
+                    engine_state.state.master_stocks_cache[norm].pop("_subscribed", None)
                 logger.warning(
                     "[연결] REG 응답 건수한도(105110) -- 즉시 재시도하지 않음 item=%s (응답 본문 기준)",
                     norm,
                 )
             elif rc not in ("0", "00", ""):
-                if norm in state.master_stocks_cache:
-                    state.master_stocks_cache[norm].pop("_subscribed", None)
+                if norm in engine_state.state.master_stocks_cache:
+                    engine_state.state.master_stocks_cache[norm].pop("_subscribed", None)
     finally:
         engine_state._notify_reg_ack(return_code=rc)
 
@@ -127,12 +126,12 @@ def _check_realtime_latency(_ts: int) -> None:
     elapsed = int(time.time() * 1000) - _ts
     if elapsed >= 200:
         logger.error("[체결지연] 처리 시간 %sms → 자동매매 중단 플래그 설정", elapsed)
-        state.realtime_latency_exceeded = True
+        engine_state.state.realtime_latency_exceeded = True
     else:
         # 지연 회복: 플래그 단일 소유자(이 함수)가 직접 해제 — 원칙 17(플래그 단일 소스)
-        if state.realtime_latency_exceeded:
+        if engine_state.state.realtime_latency_exceeded:
             logger.info("[체결지연] 처리 시간 %sms → 지연 회복, 자동매매 재개", elapsed)
-            state.realtime_latency_exceeded = False
+            engine_state.state.realtime_latency_exceeded = False
         if elapsed >= 50:
             logger.warning("[체결지연] 처리 시간 %sms → 50ms 초과", elapsed)
 
@@ -147,8 +146,8 @@ async def _handle_real_00(item: dict, vals: dict) -> None:
     except (ValueError, TypeError) as e:
         logger.warning("[매매] %s 파싱 실패 902=%r: %s", raw_cd, vals.get("902"), e)
         unex = 0
-    if state.auto_trade:
-        await state.auto_trade.on_fill_update(raw_cd, side, unex, state.access_token)
+    if engine_state.state.auto_trade:
+        await engine_state.state.auto_trade.on_fill_update(raw_cd, side, unex, engine_state.state.access_token)
 
     # [근본해결] 부분 체결(unex > 0) 포함 모든 체결 발생 시 즉시 계좌 상태 반영
     await engine_account._on_fill_after_ws()
@@ -274,7 +273,7 @@ async def _handle_jif(data: dict) -> None:
 
     # ── JIF 수신 시각 기록 (타임테이블 헬스체크용) ──
     from backend.app.services.daily_time_scheduler import _kst_now
-    state.last_jif_received_at = _kst_now()
+    engine_state.state.last_jif_received_at = _kst_now()
 
     # 임시 INFO 로그 — 런타임 JIF 수신 코드 검증용 (2단계). 검증 후 INFO→DEBUG 조정 예정.
     logger.info("[연결] JIF 수신: jangubun=%s, jstatus=%s", jangubun, jstatus)
