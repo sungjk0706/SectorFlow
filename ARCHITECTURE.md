@@ -789,12 +789,25 @@ RiskManager
 │   ├── OPEN → HALF_OPEN: 60초 경과
 │   ├── HALF_OPEN → CLOSED: 테스트 주문 성공
 │   └── HALF_OPEN → OPEN: 테스트 주문 실패
-├── 일일 손실 한도 (-500,000원)
-├── 예수금 잔액 검사
-└── 단일 종목 비중 한도 (TODO)
+├── [항상 실행] 일일 손실 한도 (daily_loss_limit, 기본 -500,000원)
+├── [항상 실행] 예수금 잔액 검사
+├── [항상 실행] 단일 종목 비중 한도 (TODO)
+└── [risk_manager_on + risk_block_buy_on 시 실행] 확장 리스크 조건
+    ├── 일일 손실률 한도 (daily_loss_rate_limit, 기본 -5.0%)
+    ├── 일일 수익 한도 (daily_profit_limit, 기본 +500,000원)
+    ├── 일일 수익률 한도 (daily_profit_rate_limit, 기본 +5.0%)
+    └── 연속 손실 한도 (consecutive_loss_limit, 기본 3회)
 ```
 
+**토글 계층 (P17 플래그 단일 소스 — `integrated_system_settings_cache`):**
+- `risk_manager_on`(마스터, 기본 False): OFF 시 확장 리스크 조건 전체 스킵. 단, 일일 손실 한도/예수금/단일 종목 비중은 주문 실행 기본 전제이므로 항상 실행(회귀 방지).
+- `risk_block_buy_on`(기본 True): OFF 시 매수 확장 리스크 조건 스킵.
+- `risk_block_sell_on`(기본 False): ON 시 매도 확장 리스크 조건 실행. 손실 상태에서 매도 차단 시 손실 확대 위험 UI 문구 표시.
+
+**레거시 호환:** `max_daily_loss_limit`/`max_single_stock_exposure`/`max_position_size` 키는 기존 호환용으로 유지되며, 신규 `daily_loss_limit` 등과 별도 관리.
+
 **CircuitBreaker OPEN 시:** 마스터 스위치 강제 OFF + 프론트엔드 브로드캐스트
+**리스크 조건 차단 시:** `risk_block_status` WS 이벤트 브로드캐스트 → 프론트엔드 헤더 빨간 칩 표시(클릭 시 해제)
 
 ### 7.3 자동매매 게이트
 
@@ -960,6 +973,7 @@ WSManager (싱글톤)
 | `engine-status` | 상태형 | 엔진 상태 |
 | `market-phase` | 이벤트형 | 장 단계 (개장/장중/장마감 etc.) |
 | `circuit_breaker_open` | 이벤트형 | 서킷 브레이커 알림 |
+| `risk_block_status` | 이벤트형 | 리스크 매니저 매수/매도 차단 알림 (헤더 빨간 칩) |
 | `engine-ready` | 이벤트형 | 엔진 준비 완료 |
 | `buy-history-append` | 이벤트형 | 매수 체결 단건 |
 | `sell-history-append` | 이벤트형 | 매도 체결 단건 + 일자 요약 |

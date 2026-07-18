@@ -12,6 +12,8 @@ from backend.app.services import buy_order_executor
 from backend.app.services.buy_order_executor import evaluate_buy_candidates
 from backend.app.services.trading import (
     BUY_REJECT_RISE_GUARD, BUY_REJECT_AUTO_BUY_OFF, BUY_REJECT_QTY_ZERO,
+    BUY_REJECT_RISK_PROFIT, BUY_REJECT_RISK_LOSS_RATE,
+    BUY_REJECT_RISK_PROFIT_RATE, BUY_REJECT_RISK_CONSEC_LOSS,
 )
 from backend.app.domain.models import StockScore, SectorSummary, BuyTarget
 
@@ -847,6 +849,74 @@ class TestMultiRankBuyAlgorithm:
         """1순위 전체 차단(자동매매 OFF) → 2순위 호출 안 됨."""
         fresh_state.sector_summary_cache = self._two_targets()
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_AUTO_BUY_OFF))
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            await evaluate_buy_candidates()
+        assert fresh_state.auto_trade.execute_buy.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_risk_profit_reason_blocks_all(self, fresh_state, reset_cash_gate):
+        """BUY_REJECT_RISK_PROFIT(일일 수익 한도) → 전역 차단 → 2순위 호출 안 됨."""
+        fresh_state.sector_summary_cache = self._two_targets()
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_RISK_PROFIT))
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            await evaluate_buy_candidates()
+        assert fresh_state.auto_trade.execute_buy.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_risk_loss_rate_reason_blocks_all(self, fresh_state, reset_cash_gate):
+        """BUY_REJECT_RISK_LOSS_RATE(일일 손실률 한도) → 전역 차단 → 2순위 호출 안 됨."""
+        fresh_state.sector_summary_cache = self._two_targets()
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_RISK_LOSS_RATE))
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            await evaluate_buy_candidates()
+        assert fresh_state.auto_trade.execute_buy.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_risk_profit_rate_reason_blocks_all(self, fresh_state, reset_cash_gate):
+        """BUY_REJECT_RISK_PROFIT_RATE(일일 수익률 한도) → 전역 차단 → 2순위 호출 안 됨."""
+        fresh_state.sector_summary_cache = self._two_targets()
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_RISK_PROFIT_RATE))
+        with patch("backend.app.services.engine_state.state", fresh_state), \
+             patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[]), \
+             patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
+             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            await evaluate_buy_candidates()
+        assert fresh_state.auto_trade.execute_buy.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_risk_consec_loss_reason_blocks_all(self, fresh_state, reset_cash_gate):
+        """BUY_REJECT_RISK_CONSEC_LOSS(연속 손실 한도) → 전역 차단 → 2순위 호출 안 됨."""
+        fresh_state.sector_summary_cache = self._two_targets()
+        fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(False, BUY_REJECT_RISK_CONSEC_LOSS))
         with patch("backend.app.services.engine_state.state", fresh_state), \
              patch("backend.app.services.buy_order_executor.auto_buy_effective", return_value=True), \
              patch("backend.app.services.buy_order_executor.is_test_mode", return_value=True), \
