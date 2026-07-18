@@ -584,6 +584,50 @@ class TestApplySettingsUpdates:
             assert "timetable.confirmed_download" in called_keys
 
 
+# ── subscribe.max_0b_count 범위 검증 (apply_settings_updates) ──────────────────────
+
+class TestSubscribeMax0bCountValidation:
+    """subscribe.max_0b_count 범위 검증 (신규 — 1~1000 외 값 저장 차단)."""
+
+    @pytest.mark.asyncio
+    async def test_rejects_zero(self):
+        """0 값 저장 시 ValueError → 저장 차단 (P20/P22)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="구독 한도는 1~1000 사이여야 합니다"):
+                await apply_settings_updates({"subscribe.max_0b_count": 0})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_over_1000(self):
+        """1001 값 저장 시 ValueError → 저장 차단 (P20/P22)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="구독 한도는 1~1000 사이여야 합니다"):
+                await apply_settings_updates({"subscribe.max_0b_count": 1001})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_integer(self):
+        """정수가 아닌 값 저장 시 ValueError → 저장 차단 (P20/P22)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="구독 한도는 정수여야 합니다"):
+                await apply_settings_updates({"subscribe.max_0b_count": "abc"})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_accepts_valid_range(self):
+        """1~1000 범위 내 값 저장 성공 (경계값 1과 1000 포함)."""
+        for valid_val in (1, 500, 1000):
+            with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+                 patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+                result = await apply_settings_updates({"subscribe.max_0b_count": valid_val})
+                assert "subscribe.max_0b_count" in result
+                saved = mock_save.call_args[0][0]
+                assert saved["subscribe.max_0b_count"] == valid_val
+
+
 # ── build_masked_settings_dict (async) ──────────────────────────────
 
 class TestBuildMaskedSettingsDict:

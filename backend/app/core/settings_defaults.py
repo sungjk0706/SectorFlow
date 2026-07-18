@@ -119,6 +119,10 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
      "timetable.ws_prestart": "07:59",         # WS 구독 사전 시작
      "timetable.krx_pre_subscribe": "08:59",   # KRX 정규장 사전 구독
      "timetable.confirmed_download": "20:40",  # 장 후 확정 데이터 다운로드 (NXT 종료 이후)
+
+     # 구독 한도 (종목 실시간 시세 0B 동시 구독 최대 개수, 기본 200)
+     # 보유종목 우선 등록 후 필터 통과 종목은 남은 자리만큼만 등록
+     "subscribe.max_0b_count": 200,
  }
  
  # 시스템 설정 기본값 (system_config)

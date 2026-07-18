@@ -1,18 +1,18 @@
 # SectorFlow Handover
 
 ## 세션 개요 (최근)
-- **2026-07-18**: 09:00 KRX 구독 중복 요청 제거 + 200개 한도 설정화 설계서 작성. (1) `daily_time_scheduler.py` `_on_krx_market_open()`에 조건부 스킵 추가 — 08:59 사전 구독 성공 시(`last_krx_pre_subscribe_date == today_str`) 09:00 구독 스킵, 08:59 실패/누락 시 09:00 복구 구독 수행 (P16 살아있는 경로 유지). 주석 불일치 수정 ("15:30 구독해지" → "15:20 구독해지", 실제 해지는 15:20 `_on_krx_closing_auction_start()`에서 수행). 테스트 1개 → 2개 분리 (스킵 시나리오 + 복구 시나리오). (2) `docs/architecture_subscribe_limit_config_design.md` 작성 (379줄) — `engine_ws_reg.py` 하드코딩 `_WS_0B_LIMIT = 200` → 설정 키 `subscribe.max_0b_count` 이관 설계. 백엔드 3파일 + 프론트엔드 2파일 변경 예정, 기본값 200 유지로 기존 동작 100% 호환. P10/P13/P20/P21/P22/P23/P24 부합. 검증: py_compile OK + test_daily_time_scheduler 220 passed + 런타임 기동 OK (RuntimeWarning 0건).
-- **2026-07-18 (이전)**: 타임테이블 로그 문구 개선 — `daily_time_scheduler.py` 내 11개 로그 메시지 개선 (P21 사용자 투명성 · P23 용어 통일). 07:58/07:59/08:59 direct + 09:00/15:20/20:00 phase 부작용 로그에 `(HH:MM — 맥락)` 접미 통일, KRX/NXT 구분 명확화, 시작/완료 짝 일치. 07:59 "WS 구독 시작" → "NXT 종목 구독 신청", 09:00 "전체 종목 재구독" → "KRX 단독 종목 추가 구독", 20:00 "WS 연결 해제" → "NXT 종목 구독 해지 + 장마감". 로직 변경 없음. 검증: py_compile OK + 런타임 기동 OK (RuntimeWarning 0건) + test_daily_time_scheduler 219 passed.
+- **2026-07-18**: 종목 구독 200개 한도 설정 키 이관 Step 1 (백엔드) 완료. `subscribe.max_0b_count` 설정 키 추가 (기본값 200, 범위 1~1000). 백엔드 4파일 수정: (1) `settings_defaults.py` — 신규 키 기본값 200 추가. (2) `engine_settings.py` — 타입 캐스팅 `int(_v if _v is not None else 200)` 추가 (P20 폴백 금지 패턴 준수). (3) `engine_ws_reg.py:258` — 하드코딩 `_WS_0B_LIMIT = 200` → `int(engine_state.state.integrated_system_settings_cache.get("subscribe.max_0b_count", 200))` 교체 (P10 SSOT, P13 메모리 상주). (4) `settings_store.py` — `apply_settings_updates()` 내 범위 검증 추가 (1~1000 외 ValueError → 422 차단, P20/P22). 테스트 6개 신규 추가: `test_engine_ws.py` 한도 적용 로직 2개 (설정값 반영 + 기본값 200 폴백), `test_settings_store.py` 범위 검증 4개 (0/1001/비정수 거부 + 유효범위 통과). 검증: py_compile OK + 런타임 기동 OK (RuntimeWarning 0건) + 전체 회귀 2935 passed / 0 failed.
+- **2026-07-18 (이전)**: 09:00 KRX 구독 중복 요청 제거 + 200개 한도 설정화 설계서 작성. (1) `daily_time_scheduler.py` `_on_krx_market_open()`에 조건부 스킵 추가 — 08:59 사전 구독 성공 시 09:00 구독 스킵, 실패/누락 시 09:00 복구 구독 수행 (P16). (2) `docs/architecture_subscribe_limit_config_design.md` 작성 (379줄) + `docs/plan_subscribe_limit_config.md` 태스크 파일 작성 (374줄) — 3단계 세션 분할 (백엔드 → 프론트엔드 → 문서 갱신).
 
 ## 현재 상태 (빌드/테스트 스냅샷)
-- **백엔드**: pytest 2928 passed / 0 failed
+- **백엔드**: pytest 2935 passed / 0 failed
 - **런타임**: `python -W error::RuntimeWarning main.py` 기동 성공, RuntimeWarning 0건
 - **프론트엔드**: `npm run build` 성공
 
 ## 다음 세션 진행 대기
 
-### 구현 대기 (설계서 완료)
-- **종목 구독 200개 한도 설정 키 이관**: `docs/architecture_subscribe_limit_config_design.md` 참조. `subscribe.max_0b_count` 설정 키 추가 (기본값 200, 범위 1~1000). 백엔드 3파일(`settings_defaults.py` · `engine_settings.py` · `engine_ws_reg.py`) + 프론트엔드 2파일(`general-settings.ts` · `types/index.ts`) 변경. 다단계 작업(백엔드 → 프론트엔드)이므로 섹션4 다단계 워크플로우 적용 권장.
+### 구현 대기 (Step 1 완료, Step 2 대기)
+- **종목 구독 한도 설정 키 이관 Step 2 (프론트엔드)**: `docs/plan_subscribe_limit_config.md` 섹션 3 참조. 2파일 수정: (1) `frontend/src/types/index.ts` — `'subscribe.max_0b_count'?: number` 타입 정의 추가. (2) `frontend/src/pages/general-settings.ts` — `createNumInput` import 추가 + `scheduleSubscribeLimitSave()` 신규 저장 함수 + "구독 한도" 섹션 UI 추가 (시간 설정 탭 내 타임테이블 섹션 이후). 검증: `npm run build` + 브라우저 UI 확인 (기본값 200 표시, 값 변경 저장, 1~1000 범위 clamp). Step 3은 문서 갱신 + 계획서 2파일 삭제.
 
 ### 기타 대기 항목
 - **다운로드 완료 시간 표시 (제안2)**: 1일봉/5일봉 다운로드 버튼 우측에 최근 다운로드 완료 시간 표시. 백엔드 신규 기능 필요 (저장소 설계 사전조사 후 제안).

@@ -31,6 +31,7 @@ from backend.app.services.engine_ws import (
     subscribe_dynamic_data,
     unsubscribe_dynamic_data,
 )
+from backend.app.services.engine_ws_reg import subscribe_sector_stocks_0b as subscribe_sector_stocks_0b_impl
 
 
 def _mock_lock():
@@ -350,6 +351,68 @@ class TestSubscribeSectorStocks0b:
              patch("backend.app.services.ws_subscribe_control._set_status") as mock_set:
             await _subscribe_sector_stocks_0b()
             mock_set.assert_called_once_with(quote=True)
+
+
+# ── subscribe_sector_stocks_0b 한도 적용 로직 (engine_ws_reg 직접 검증) ──────────────
+
+class TestSubscribeSectorStocks0bLimit:
+    """subscribe_sector_stocks_0b 내 한도 적용 로직 검증 (신규 — 설정 키 이관)."""
+
+    @pytest.mark.asyncio
+    async def test_respects_configured_limit(self):
+        """설정된 한도값이 반영되는지 검증 — 보유 10 + 필터 100, 한도 50 → 필터 40만 등록."""
+        mock_cm = MagicMock()
+        mock_cm.is_connected.return_value = True
+        mock_cm.subscribe_stocks = AsyncMock(return_value=True)
+        # 보유 10개 + 필터 통과 100개 (보유와 미중복)
+        pos_positions = [{"stk_cd": f"00000{i+1}", "qty": 1} for i in range(10)]
+        master_cache: dict = {}
+        for i in range(10):
+            master_cache[f"00000{i+1}"] = {"_filtered": False}
+        for i in range(100):
+            master_cache[f"0001{i:03d}"] = {"_filtered": True}
+        mock_state = _mock_state(
+            connector_manager=mock_cm,
+            login_ok=True,
+            master_stocks_cache=master_cache,
+            integrated_system_settings_cache={"subscribe.max_0b_count": 50},
+        )
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.engine_account.get_positions", new=AsyncMock(return_value=pos_positions)):
+            await subscribe_sector_stocks_0b_impl()
+        # subscribe_stocks 호출: 1) 보유 10개, 2) 필터 40개 (한도 50 - 보유 10)
+        assert mock_cm.subscribe_stocks.await_count == 2
+        pos_call_args = mock_cm.subscribe_stocks.await_args_list[0].args[0]
+        filter_call_args = mock_cm.subscribe_stocks.await_args_list[1].args[0]
+        assert len(pos_call_args) == 10
+        assert len(filter_call_args) == 40
+
+    @pytest.mark.asyncio
+    async def test_defaults_to_200_when_key_missing(self):
+        """설정 키 없을 때 기본값 200 적용 검증 (P22 호환성) — 보유 10 + 필터 300, 한도 200 → 필터 190."""
+        mock_cm = MagicMock()
+        mock_cm.is_connected.return_value = True
+        mock_cm.subscribe_stocks = AsyncMock(return_value=True)
+        pos_positions = [{"stk_cd": f"00000{i+1}", "qty": 1} for i in range(10)]
+        master_cache: dict = {}
+        for i in range(10):
+            master_cache[f"00000{i+1}"] = {"_filtered": False}
+        for i in range(300):
+            master_cache[f"0001{i:03d}"] = {"_filtered": True}
+        mock_state = _mock_state(
+            connector_manager=mock_cm,
+            login_ok=True,
+            master_stocks_cache=master_cache,
+            integrated_system_settings_cache={},
+        )
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.engine_account.get_positions", new=AsyncMock(return_value=pos_positions)):
+            await subscribe_sector_stocks_0b_impl()
+        assert mock_cm.subscribe_stocks.await_count == 2
+        pos_call_args = mock_cm.subscribe_stocks.await_args_list[0].args[0]
+        filter_call_args = mock_cm.subscribe_stocks.await_args_list[1].args[0]
+        assert len(pos_call_args) == 10
+        assert len(filter_call_args) == 190  # 200 - 10
 
 
 # ── _ensure_ws_subscriptions_for_positions ──────────────────────────────────────────

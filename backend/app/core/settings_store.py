@@ -292,6 +292,16 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
     # 타임테이블 시간 순서 검증 (P20/P22) — 저장 전 차단
     await _validate_timetable_order(data, before)
 
+    # 구독 한도 범위 검증 (P20/P22) — 1~1000 외 값 저장 차단
+    if "subscribe.max_0b_count" in data:
+        _v = data["subscribe.max_0b_count"]
+        try:
+            _n = int(_v)
+        except (TypeError, ValueError):
+            raise ValueError("구독 한도는 정수여야 합니다")
+        if _n < 1 or _n > 1000:
+            raise ValueError("구독 한도는 1~1000 사이여야 합니다")
+
     # 증분 저장 (전체 설정 덮어쓰기 없이 변경된 필드만 저장)
     await save_selected_settings(to_save)
 

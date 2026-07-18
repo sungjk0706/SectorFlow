@@ -255,7 +255,7 @@ async def subscribe_sector_stocks_0b(*, nxt_only: bool = False) -> None:
     if not ws or not ws.is_connected() or not engine_state.state.login_ok:
         return
 
-    _WS_0B_LIMIT = 200
+    _WS_0B_LIMIT = int(engine_state.state.integrated_system_settings_cache.get("subscribe.max_0b_count", 200))
 
     # ── 1) 보유종목 코드 수집 (최우선) ──
     from backend.app.services.engine_account import get_positions
