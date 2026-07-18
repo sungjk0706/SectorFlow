@@ -548,7 +548,7 @@ while _compute_running:
 
 **WS 구독 대상 (1차 필터 게이트):**
 - 1차 필터(5일평균거래대금 `sector_min_trade_amt`억원 이상) 통과 종목 + 보유종목만 WS 구독
-- `subscribe_sector_stocks_0b()`가 `_filtered` 플래그 기반으로 구독 대상 선정 (200개 한도, 보유종목 우선)
+- `subscribe_sector_stocks_0b()`가 `_filtered` 플래그 기반으로 구독 대상 선정 (설정 가능 한도 `subscribe.max_0b_count` 기본 200, 보유종목 우선)
 - 필터 미통과 종목: WS 구독 안됨 → 01 틱 수신 없음 → 업종 순위 계산 대상 아님 → 아무 처리도 하지 않음
 
 ```
@@ -736,7 +736,7 @@ SectorSummary (전체 결과)
 
 - **1차 필터**: 5일평균거래대금 (`min_avg_amt_eok`) — 업종 그룹핑 전 적용
   - `get_sector_stocks()`에서 필터 통과 종목만 `all_codes`에 포함 → 업종 순위 계산 대상
-  - 필터 통과 종목에 `_filtered` 플래그 설정 → `subscribe_sector_stocks_0b()`에서 WS 구독 대상 선정 (보유종목 포함, 200개 한도)
+  - 필터 통과 종목에 `_filtered` 플래그 설정 → `subscribe_sector_stocks_0b()`에서 WS 구독 대상 선정 (보유종목 포함, 설정 가능 한도 `subscribe.max_0b_count` 기본 200)
   - **필터 미통과 종목**: WS 구독 안됨 → 실시간 시세 수신 없음 → 업종 순위 계산 대상 아님 → 아무 처리도 하지 않음
 - **업종 컷오프**: `min_rise_ratio` 미만 업종은 `rank=0` (매수 대상 제외)
 - **개별 종목 가드**: 상승률 과열(`block_rise_pct`), 하락률 과열(`block_fall_pct`), 체결강도 최소값
