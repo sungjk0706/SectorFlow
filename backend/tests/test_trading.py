@@ -19,6 +19,24 @@ def _close_coro(*args, **kwargs):
     return DEFAULT
 
 from backend.app.services.trading import AutoTradeManager  # noqa: E402
+from backend.app.services.trading import (  # noqa: E402
+    BUY_REJECT_AUTO_BUY_OFF,
+    BUY_REJECT_BUY_AMT_ZERO,
+    BUY_REJECT_DAILY_STATE,
+    BUY_REJECT_MAX_HOLDING,
+    BUY_REJECT_OPEN_ORDER,
+    BUY_REJECT_PRICE_ZERO,
+    BUY_REJECT_REALTIME_LATENCY,
+    BUY_REJECT_REBUY,
+    BUY_REJECT_RISE_GUARD,
+    BUY_REJECT_RISK_CASH,
+    BUY_REJECT_RISK_CIRCUIT,
+    BUY_REJECT_RISK_LOSS,
+    BUY_REJECT_RISK_SINGLE,
+    BUY_REJECT_SIGNAL_INTERVAL,
+    BUY_REJECT_STRENGTH_GUARD,
+    _map_risk_reason_to_code,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -135,7 +153,7 @@ class TestExecuteBuyGates:
         mgr = _make_manager(_raw_settings(time_scheduler_on=False))
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.realtime_latency_exceeded = False
-            result = await mgr.execute_buy("005930", 70000, "token")
+            result, _reason = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
 
     @pytest.mark.asyncio
@@ -145,7 +163,7 @@ class TestExecuteBuyGates:
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings()
-            result = await mgr.execute_buy("005930", 70000, "token")
+            result, _reason = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
 
     @pytest.mark.asyncio
@@ -155,7 +173,7 @@ class TestExecuteBuyGates:
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_period="2h")
-            result = await mgr.execute_buy("005930", 70000, "token")
+            result, _reason = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
 
     @pytest.mark.asyncio
@@ -188,7 +206,7 @@ class TestExecuteBuyGates:
             mock_task = MagicMock()
             mock_task.add_done_callback = MagicMock()
             mock_create_task.return_value = mock_task
-            result = await mgr.execute_buy("005930", 70000, "token")
+            result, _reason = await mgr.execute_buy("005930", 70000, "token")
         assert result is True
 
     @pytest.mark.asyncio
@@ -198,7 +216,7 @@ class TestExecuteBuyGates:
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings()
-            result = await mgr.execute_buy("005930", 70000, "token")
+            result, _reason = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
 
     @pytest.mark.asyncio
@@ -208,7 +226,7 @@ class TestExecuteBuyGates:
         with patch("backend.app.services.engine_state.state") as mock_state:
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings()
-            result = await mgr.execute_buy("005930", 70000, "token")
+            result, _reason = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
 
     @pytest.mark.asyncio
@@ -220,7 +238,7 @@ class TestExecuteBuyGates:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings()
-            result = await mgr.execute_buy("005930", 0, "token")
+            result, _reason = await mgr.execute_buy("005930", 0, "token")
         assert result is False
 
     @pytest.mark.asyncio
@@ -232,7 +250,7 @@ class TestExecuteBuyGates:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(buy_amt=0)
-            result = await mgr.execute_buy("005930", 70000, "token")
+            result, _reason = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
 
     @pytest.mark.asyncio
@@ -246,8 +264,210 @@ class TestExecuteBuyGates:
                    return_value=[{"qty": 1}]):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(max_stock_cnt=1)
-            result = await mgr.execute_buy("005930", 70000, "token")
+            result, _reason = await mgr.execute_buy("005930", 70000, "token")
         assert result is False
+
+
+# ── execute_buy 사유코드 검증 (P23 일관성) ──────────────────────────────────────
+
+class TestExecuteBuyReasonCodes:
+    """execute_buy 반환값 tuple[bool, str]의 사유코드 검증."""
+
+    @pytest.mark.asyncio
+    async def test_auto_buy_off_returns_auto_buy_off_reason(self):
+        """자동매매 비활성화 시 사유코드 BUY_REJECT_AUTO_BUY_OFF 반환."""
+        mgr = _make_manager(_raw_settings(time_scheduler_on=False))
+        with patch("backend.app.services.engine_state.state") as mock_state:
+            mock_state.realtime_latency_exceeded = False
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_AUTO_BUY_OFF
+
+    @pytest.mark.asyncio
+    async def test_rebuy_block_today_returns_rebuy_reason(self):
+        """재매수 차단(당일) 시 사유코드 BUY_REJECT_REBUY 반환."""
+        mgr = _make_manager()
+        mgr._bought_today["005930"] = _time.time()
+        with patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_state.state") as mock_state:
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings()
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_REBUY
+
+    @pytest.mark.asyncio
+    async def test_open_order_returns_open_order_reason(self):
+        """미체결 주문 존재 시 사유코드 BUY_REJECT_OPEN_ORDER 반환."""
+        mgr = _make_manager()
+        mgr._buy_state["005930"] = {"last_req_ts": 0.0, "has_open_buy": True}
+        with patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_state.state") as mock_state:
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings()
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_OPEN_ORDER
+
+    @pytest.mark.asyncio
+    async def test_signal_interval_returns_signal_interval_reason(self):
+        """30초 연속신호 차단 시 사유코드 BUY_REJECT_SIGNAL_INTERVAL 반환."""
+        mgr = _make_manager()
+        mgr._buy_state["005930"] = {"last_req_ts": _time.time(), "has_open_buy": False}
+        with patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_state.state") as mock_state:
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings()
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_SIGNAL_INTERVAL
+
+    @pytest.mark.asyncio
+    async def test_max_holding_returns_max_holding_reason(self):
+        """최대 보유수 초과 시 사유코드 BUY_REJECT_MAX_HOLDING 반환."""
+        mgr = _make_manager(_raw_settings(max_stock_cnt=1))
+        with patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock,
+                   return_value=[{"qty": 1}]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
+                   return_value=[{"qty": 1}]):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings(max_stock_cnt=1)
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_MAX_HOLDING
+
+    @pytest.mark.asyncio
+    async def test_buy_amt_zero_returns_buy_amt_zero_reason(self):
+        """종목당 한도 설정값 0 시 사유코드 BUY_REJECT_BUY_AMT_ZERO 반환."""
+        mgr = _make_manager(_raw_settings(buy_amt=0))
+        with patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings(buy_amt=0)
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_BUY_AMT_ZERO
+
+    @pytest.mark.asyncio
+    async def test_price_zero_returns_price_zero_reason(self):
+        """현재가 ≤ 0 시 사유코드 BUY_REJECT_PRICE_ZERO 반환."""
+        mgr = _make_manager()
+        with patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings()
+            result, reason = await mgr.execute_buy("005930", 0, "token")
+        assert result is False
+        assert reason == BUY_REJECT_PRICE_ZERO
+
+    @pytest.mark.asyncio
+    async def test_daily_state_load_fail_returns_daily_state_reason(self):
+        """일일 매수 상태 로드 실패 시 사유코드 BUY_REJECT_DAILY_STATE 반환."""
+        mgr = _make_manager()
+        mgr._daily_buy_spent = None  # 로드 실패 상태 시뮬레이션
+        with patch("backend.app.services.engine_state.state") as mock_state:
+            mock_state.realtime_latency_exceeded = False
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_DAILY_STATE
+
+    @pytest.mark.asyncio
+    async def test_realtime_latency_returns_realtime_latency_reason(self):
+        """실시간 지연 200ms 초과 시 사유코드 BUY_REJECT_REALTIME_LATENCY 반환."""
+        mgr = _make_manager()
+        with patch("backend.app.services.engine_state.state") as mock_state:
+            mock_state.realtime_latency_exceeded = True
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_REALTIME_LATENCY
+
+    @pytest.mark.asyncio
+    async def test_rise_guard_returns_rise_guard_reason(self):
+        """등락률 상승 가드 시 사유코드 BUY_REJECT_RISE_GUARD 반환."""
+        mgr = _make_manager()
+        with patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings()
+            mock_state.master_stocks_cache = {"005930": {"change_rate": 8.0}}  # 상승률 8% > 한도 7%
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_RISE_GUARD
+
+    @pytest.mark.asyncio
+    async def test_strength_guard_returns_strength_guard_reason(self):
+        """체결강도 미달 시 사유코드 BUY_REJECT_STRENGTH_GUARD 반환."""
+        mgr = _make_manager(_raw_settings(buy_block_strength_on=True, buy_min_strength=100))
+        with patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings(buy_block_strength_on=True, buy_min_strength=100)
+            mock_state.master_stocks_cache = {"005930": {"strength": 50.0}}  # 체결강도 50 < 한도 100
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_STRENGTH_GUARD
+
+    @pytest.mark.asyncio
+    async def test_risk_circuit_returns_risk_circuit_reason(self):
+        """RiskManager 서킷브레이커 차단 시 사유코드 BUY_REJECT_RISK_CIRCUIT 반환."""
+        mgr = _make_manager()
+        with patch("backend.app.services.trading.auto_buy_effective", return_value=True), \
+             patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.engine_account.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.trading.is_test_mode", return_value=True), \
+             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock, return_value=[]), \
+             patch("backend.app.services.dry_run.estimate_fill_price", return_value=70000), \
+             patch("backend.app.services.trading.get_risk_manager") as mock_rm, \
+             patch("backend.app.services.data_manager.get_stock_name", return_value="삼성전자"):
+            mock_state.realtime_latency_exceeded = False
+            mock_state.integrated_system_settings_cache = _raw_settings()
+            mock_state.master_stocks_cache = {}
+            mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
+            mock_rm.return_value.check_buy_order_allowed = AsyncMock(
+                return_value=(False, "서킷브레이커 차단 상태 (연속 실패)")
+            )
+            result, reason = await mgr.execute_buy("005930", 70000, "token")
+        assert result is False
+        assert reason == BUY_REJECT_RISK_CIRCUIT
+
+
+# ── _map_risk_reason_to_code 헬퍼 단위 테스트 (P23 일관성) ─────────────────────
+
+class TestMapRiskReasonToCode:
+    """RiskManager 사유 문자열 → 사유코드 매핑 검증."""
+
+    def test_circuit_mapping(self):
+        assert _map_risk_reason_to_code("서킷브레이커 차단 상태 (연속 실패)") == BUY_REJECT_RISK_CIRCUIT
+
+    def test_loss_mapping(self):
+        assert _map_risk_reason_to_code("일일 손실 한도 초과") == BUY_REJECT_RISK_LOSS
+
+    def test_cash_mapping(self):
+        assert _map_risk_reason_to_code("예수금 부족") == BUY_REJECT_RISK_CASH
+
+    def test_single_mapping(self):
+        assert _map_risk_reason_to_code("단일 종목 비중 한도 초과 (삼성전자)") == BUY_REJECT_RISK_SINGLE
+
+    def test_unknown_falls_back_to_circuit(self):
+        """알 수 없는 사유는 보수적 전체 차단(BUY_REJECT_RISK_CIRCUIT) 분류 (P20 폴백 금지)."""
+        assert _map_risk_reason_to_code("알 수 없는 리스크 사유") == BUY_REJECT_RISK_CIRCUIT
 
 
 # ── check_sell_conditions ──────────────────────────────────────────────────────

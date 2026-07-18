@@ -169,10 +169,12 @@ async def evaluate_buy_candidates() -> None:
             _price = int(s.cur_price or 0)
             if _price <= 0:
                 break
-            _ordered = await state.auto_trade.execute_buy(
+            _ordered_result = await state.auto_trade.execute_buy(
                 s.code, float(_price), state.access_token or "",
                 reason=f"업종자동매수 업종={s.sector}",
             )
+            # 임시 호환 — 2세션에서 제거 예정 (tuple 언패 정식 적용 시)
+            _ordered = _ordered_result[0] if isinstance(_ordered_result, tuple) else _ordered_result
             if _ordered:
                 logger.info("[매매] 매수 주문 전송: %s(%s)", s.name, s.code)
                 invalidate_buy_snapshot()
