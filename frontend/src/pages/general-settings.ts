@@ -5,7 +5,7 @@
 import { uiStore, applyTestDataResetCompleted } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingsManager, extractDirty, MASKED_FIELDS, type SettingsManager } from '../settings'
-import { createToggleBtn, createMoneyInput, createTextInput, createRadioGroup, createNumInput, focusNext } from '../components/common/setting-row'
+import { createToggleBtn, createMoneyInput, createTextInput, createRadioGroup, createNumInput, createToggleLabelControlsRow, createSettingRow, focusNext } from '../components/common/setting-row'
 import { toastResult, showSaveToast } from '../components/common/toast'
 import { createDataTable, type ColumnDef } from '../components/common/data-table'
 import { api } from '../api/client'
@@ -54,6 +54,24 @@ let sellTimeHandle: TimePairInputHandle | null = null
 let holidayBadgeEls: HTMLElement[] = []
 let uiFlashToggle: ReturnType<typeof createToggleBtn> | null = null
 let orderTimeGuardToggle: ReturnType<typeof createToggleBtn> | null = null
+
+// 리스크 매니저 참조 (전역매매설정 섹션)
+let riskManagerToggle: ReturnType<typeof createToggleBtn> | null = null
+let dailyLossInput: ReturnType<typeof createNumInput> | null = null
+let dailyLossRateToggle: ReturnType<typeof createToggleBtn> | null = null
+let dailyLossRateInput: ReturnType<typeof createNumInput> | null = null
+let dailyLossRateControls: HTMLElement | null = null
+let dailyProfitToggle: ReturnType<typeof createToggleBtn> | null = null
+let dailyProfitInput: ReturnType<typeof createMoneyInput> | null = null
+let dailyProfitControls: HTMLElement | null = null
+let dailyProfitRateToggle: ReturnType<typeof createToggleBtn> | null = null
+let dailyProfitRateInput: ReturnType<typeof createNumInput> | null = null
+let dailyProfitRateControls: HTMLElement | null = null
+let consecLossToggle: ReturnType<typeof createToggleBtn> | null = null
+let consecLossInput: ReturnType<typeof createNumInput> | null = null
+let consecLossControls: HTMLElement | null = null
+let riskBlockBuyToggle: ReturnType<typeof createToggleBtn> | null = null
+let riskBlockSellToggle: ReturnType<typeof createToggleBtn> | null = null
 
 // 확정 시세 다운로드 시간 (단일 슬롯) + 자동다운로드 토글
 let confirmedDlSlot: HTMLElement | null = null
@@ -485,6 +503,205 @@ function renderAutoTradeTab(container: HTMLElement): void {
   container.appendChild(orderTimeGuardRow)
 
   container.appendChild(createDescText('동시호가·장외 시간대에 시장가 주문 자동 중단 (KRX 단독 종목만, NXT 종목은 NXT 거래 시간에 허용)'))
+
+  // 전역매매설정 (리스크 매니저) 섹션 — 목표 수익/손실 도달 시 자동 매매 중단
+  container.appendChild(sectionTitle('전역매매설정 (리스크 매니저)'))
+  container.appendChild(createDescText('목표 수익/손실 도달 시 자동 매매 중단. 리스크 매니저 OFF 시 모든 조건 비활성화.'))
+
+  // 리스크 매니저 마스터 토글
+  const riskManagerRow = document.createElement('div')
+  Object.assign(riskManagerRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  const riskManagerLabel = document.createElement('span')
+  Object.assign(riskManagerLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  riskManagerLabel.textContent = '리스크 매니저'
+  riskManagerRow.appendChild(riskManagerLabel)
+  riskManagerToggle = createToggleBtn({ on: false, onClick: async () => {
+    const next = !vals.risk_manager_on
+    vals.risk_manager_on = next; riskManagerToggle!.setOn(next)
+    const res = await settingsMgr!.saveSection({ risk_manager_on: next })
+    toastResult(res)
+    if (!res.ok) { vals.risk_manager_on = !next; riskManagerToggle!.setOn(!next) }
+  }})
+  riskManagerRow.appendChild(riskManagerToggle.el)
+  container.appendChild(riskManagerRow)
+
+  // 일일 손실 한도 (금액 입력, 음수 — createNumInput 사용, createMoneyInput은 음수 미지원)
+  dailyLossInput = createNumInput({
+    value: -500000,
+    onChange: v => {
+      vals.daily_loss_limit = v
+      settingsMgr?.saveSection({ daily_loss_limit: v }).then(res => {
+        toastResult(res)
+        if (res.ok) vals.daily_loss_limit = v
+      })
+    },
+    step: 10000,
+    min: -1000000000,
+    max: 0,
+    name: 'daily_loss_limit',
+  })
+  container.appendChild(createSettingRow('일일 손실 한도 (원, 음수)', dailyLossInput.el))
+
+  // 일일 손실률 한도 (토글 + % 입력)
+  dailyLossRateInput = createNumInput({
+    value: -5,
+    onChange: v => {
+      vals.daily_loss_rate_limit = v
+      settingsMgr?.saveSection({ daily_loss_rate_limit: v }).then(res => {
+        toastResult(res)
+        if (res.ok) vals.daily_loss_rate_limit = v
+      })
+    },
+    step: 0.1,
+    min: -100,
+    max: 0,
+    name: 'daily_loss_rate_limit',
+  })
+  {
+    const r = createToggleLabelControlsRow({
+      labelText: '일일 손실률 한도 (%)',
+      toggleOn: false,
+      onToggle: next => {
+        vals.daily_loss_rate_limit_on = next
+        settingsMgr?.saveSection({ daily_loss_rate_limit_on: next }).then(res => {
+          toastResult(res)
+          if (!res.ok) vals.daily_loss_rate_limit_on = !next
+        })
+      },
+      controlsChild: dailyLossRateInput.el,
+    })
+    dailyLossRateToggle = r.toggle; dailyLossRateControls = r.controls
+    container.appendChild(r.el)
+  }
+
+  // 일일 수익 한도 (토글 + 금액 입력, 양수)
+  dailyProfitInput = createMoneyInput({
+    value: 500000,
+    onChange: v => {
+      vals.daily_profit_limit = v
+      settingsMgr?.saveSection({ daily_profit_limit: v }).then(res => {
+        toastResult(res)
+        if (res.ok) vals.daily_profit_limit = v
+      })
+    },
+    name: 'daily_profit_limit',
+  })
+  {
+    const r = createToggleLabelControlsRow({
+      labelText: '일일 수익 한도 (원)',
+      toggleOn: false,
+      onToggle: next => {
+        vals.daily_profit_limit_on = next
+        settingsMgr?.saveSection({ daily_profit_limit_on: next }).then(res => {
+          toastResult(res)
+          if (!res.ok) vals.daily_profit_limit_on = !next
+        })
+      },
+      controlsChild: dailyProfitInput.el,
+    })
+    dailyProfitToggle = r.toggle; dailyProfitControls = r.controls
+    container.appendChild(r.el)
+  }
+
+  // 일일 수익률 한도 (토글 + % 입력, 양수)
+  dailyProfitRateInput = createNumInput({
+    value: 5,
+    onChange: v => {
+      vals.daily_profit_rate_limit = v
+      settingsMgr?.saveSection({ daily_profit_rate_limit: v }).then(res => {
+        toastResult(res)
+        if (res.ok) vals.daily_profit_rate_limit = v
+      })
+    },
+    step: 0.1,
+    min: 0,
+    max: 100,
+    name: 'daily_profit_rate_limit',
+  })
+  {
+    const r = createToggleLabelControlsRow({
+      labelText: '일일 수익률 한도 (%)',
+      toggleOn: false,
+      onToggle: next => {
+        vals.daily_profit_rate_limit_on = next
+        settingsMgr?.saveSection({ daily_profit_rate_limit_on: next }).then(res => {
+          toastResult(res)
+          if (!res.ok) vals.daily_profit_rate_limit_on = !next
+        })
+      },
+      controlsChild: dailyProfitRateInput.el,
+    })
+    dailyProfitRateToggle = r.toggle; dailyProfitRateControls = r.controls
+    container.appendChild(r.el)
+  }
+
+  // 연속 손실 횟수 한도 (토글 + 횟수 입력)
+  consecLossInput = createNumInput({
+    value: 3,
+    onChange: v => {
+      vals.consecutive_loss_limit = v
+      settingsMgr?.saveSection({ consecutive_loss_limit: v }).then(res => {
+        toastResult(res)
+        if (res.ok) vals.consecutive_loss_limit = v
+      })
+    },
+    step: 1,
+    min: 1,
+    max: 100,
+    name: 'consecutive_loss_limit',
+  })
+  {
+    const r = createToggleLabelControlsRow({
+      labelText: '연속 손실 횟수 한도 (회)',
+      toggleOn: false,
+      onToggle: next => {
+        vals.consecutive_loss_limit_on = next
+        settingsMgr?.saveSection({ consecutive_loss_limit_on: next }).then(res => {
+          toastResult(res)
+          if (!res.ok) vals.consecutive_loss_limit_on = !next
+        })
+      },
+      controlsChild: consecLossInput.el,
+    })
+    consecLossToggle = r.toggle; consecLossControls = r.controls
+    container.appendChild(r.el)
+  }
+
+  // 매수 차단 토글 (리스크 조건 충족 시 매수 중단)
+  const riskBlockBuyRow = document.createElement('div')
+  Object.assign(riskBlockBuyRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
+  const riskBlockBuyLabel = document.createElement('span')
+  Object.assign(riskBlockBuyLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  riskBlockBuyLabel.textContent = '리스크 조건 충족 시 매수 차단'
+  riskBlockBuyRow.appendChild(riskBlockBuyLabel)
+  riskBlockBuyToggle = createToggleBtn({ on: true, onClick: async () => {
+    const next = !vals.risk_block_buy_on
+    vals.risk_block_buy_on = next; riskBlockBuyToggle!.setOn(next)
+    const res = await settingsMgr!.saveSection({ risk_block_buy_on: next })
+    toastResult(res)
+    if (!res.ok) { vals.risk_block_buy_on = !next; riskBlockBuyToggle!.setOn(!next) }
+  }})
+  riskBlockBuyRow.appendChild(riskBlockBuyToggle.el)
+  container.appendChild(riskBlockBuyRow)
+
+  // 매도 차단 토글 (손실 상태에서 매도 차단 시 손실 확대 위험)
+  const riskBlockSellRow = document.createElement('div')
+  Object.assign(riskBlockSellRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
+  const riskBlockSellLabel = document.createElement('span')
+  Object.assign(riskBlockSellLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  riskBlockSellLabel.textContent = '리스크 조건 충족 시 매도 차단'
+  riskBlockSellRow.appendChild(riskBlockSellLabel)
+  riskBlockSellToggle = createToggleBtn({ on: false, onClick: async () => {
+    const next = !vals.risk_block_sell_on
+    vals.risk_block_sell_on = next; riskBlockSellToggle!.setOn(next)
+    const res = await settingsMgr!.saveSection({ risk_block_sell_on: next })
+    toastResult(res)
+    if (!res.ok) { vals.risk_block_sell_on = !next; riskBlockSellToggle!.setOn(!next) }
+  }})
+  riskBlockSellRow.appendChild(riskBlockSellToggle.el)
+  container.appendChild(riskBlockSellRow)
+
+  container.appendChild(createDescText('손실 상태에서 매도 차단 시 손실 확대 위험 — 신중하게 활성화하세요'))
 
   // 화면 표시 섹션 — 플래시 효과 (API 설정 탭에서 이동, Step 5, 설계서 5-3)
   container.appendChild(sectionTitle('화면 표시'))
@@ -992,6 +1209,39 @@ function syncFromSettings(s: AppSettings | null): void {
     // 체결 불가 시간대 주문 차단
     orderTimeGuardToggle?.setOn(r.order_time_guard_on !== false)
 
+    // 리스크 매니저 (전역매매설정)
+    const act = document.activeElement
+    riskManagerToggle?.setOn(!!r.risk_manager_on)
+    if (dailyLossInput && (!act || !dailyLossInput.el.contains(act))) {
+      dailyLossInput.setValue(Number(r.daily_loss_limit ?? -500000) || -500000)
+    }
+    const lossRateOn = !!r.daily_loss_rate_limit_on
+    dailyLossRateToggle?.setOn(lossRateOn)
+    if (dailyLossRateInput && (!act || !dailyLossRateInput.el.contains(act))) {
+      dailyLossRateInput.setValue(Number(r.daily_loss_rate_limit ?? -5) || -5)
+    }
+    if (dailyLossRateControls) setDisabled(dailyLossRateControls, !lossRateOn)
+    const profitOn = !!r.daily_profit_limit_on
+    dailyProfitToggle?.setOn(profitOn)
+    if (dailyProfitInput && (!act || !dailyProfitInput.el.contains(act))) {
+      dailyProfitInput.setValue(Number(r.daily_profit_limit ?? 500000) || 500000)
+    }
+    if (dailyProfitControls) setDisabled(dailyProfitControls, !profitOn)
+    const profitRateOn = !!r.daily_profit_rate_limit_on
+    dailyProfitRateToggle?.setOn(profitRateOn)
+    if (dailyProfitRateInput && (!act || !dailyProfitRateInput.el.contains(act))) {
+      dailyProfitRateInput.setValue(Number(r.daily_profit_rate_limit ?? 5) || 5)
+    }
+    if (dailyProfitRateControls) setDisabled(dailyProfitRateControls, !profitRateOn)
+    const consecOn = !!r.consecutive_loss_limit_on
+    consecLossToggle?.setOn(consecOn)
+    if (consecLossInput && (!act || !consecLossInput.el.contains(act))) {
+      consecLossInput.setValue(Number(r.consecutive_loss_limit ?? 3) || 3)
+    }
+    if (consecLossControls) setDisabled(consecLossControls, !consecOn)
+    riskBlockBuyToggle?.setOn(r.risk_block_buy_on !== false)
+    riskBlockSellToggle?.setOn(!!r.risk_block_sell_on)
+
     // 장 시작 전 사전 준비 시간 (타임테이블 3개 키)
     const [trh, trm] = parseHM(String(r['timetable.realtime_reset'] ?? '07:58'))
     timetableResetH = trh; timetableResetM = trm
@@ -1145,6 +1395,23 @@ function unmount(): void {
   autoSellToggle = null
   sellTimeHandle = null
   holidayBadgeEls = []
+  // 리스크 매니저
+  riskManagerToggle = null
+  dailyLossInput = null
+  dailyLossRateToggle = null
+  dailyLossRateInput = null
+  dailyLossRateControls = null
+  dailyProfitToggle = null
+  dailyProfitInput = null
+  dailyProfitControls = null
+  dailyProfitRateToggle = null
+  dailyProfitRateInput = null
+  dailyProfitRateControls = null
+  consecLossToggle = null
+  consecLossInput = null
+  consecLossControls = null
+  riskBlockBuyToggle = null
+  riskBlockSellToggle = null
   teleToggle = null
   teleInputs = {}
   tradeModeRadioGroup = null

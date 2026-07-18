@@ -155,6 +155,20 @@ export interface AppSettings {
   // 구독 한도 (종목 실시간 시세 0B 동시 구독 최대 개수, 기본 200, 범위 1~1000)
   'subscribe.max_0b_count'?: number;
 
+  // 전역매매설정 (리스크 매니저) — 목표 수익/손실 도달 시 자동 매매 중단
+  risk_manager_on?: boolean;
+  daily_loss_limit?: number;                    // 일일 손실 한도 (원, 음수, 기본 -50만원)
+  daily_loss_rate_limit_on?: boolean;           // 일일 손실률 한도 활성화
+  daily_loss_rate_limit?: number;               // 일일 손실률 한도 (%, 음수, 기본 -5.0)
+  daily_profit_limit_on?: boolean;              // 일일 수익 한도 활성화
+  daily_profit_limit?: number;                  // 일일 수익 한도 (원, 양수, 기본 50만원)
+  daily_profit_rate_limit_on?: boolean;         // 일일 수익률 한도 활성화
+  daily_profit_rate_limit?: number;             // 일일 수익률 한도 (%, 양수, 기본 5.0)
+  risk_block_buy_on?: boolean;                  // 리스크 조건 충족 시 매수 차단
+  risk_block_sell_on?: boolean;                 // 리스크 조건 충족 시 매도 차단 (손실 확대 위험)
+  consecutive_loss_limit_on?: boolean;          // 연속 손실 횟수 한도 활성화
+  consecutive_loss_limit?: number;              // 연속 손실 횟수 한도 (회, 기본 3)
+
   // 업종 필터
   sector_min_rise_ratio_pct: number;
   sector_min_trade_amt: number;

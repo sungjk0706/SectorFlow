@@ -4,7 +4,7 @@
 
 import { uiStore } from '../stores/uiStore'
 import type { UIState } from '../stores/uiStore'
-import { clearCircuitBreakerOpen, clearOrderTimeBlocked } from '../stores/uiStore'
+import { clearCircuitBreakerOpen, clearOrderTimeBlocked, clearRiskBlockStatus } from '../stores/uiStore'
 import type { IndexData } from '../types'
 import { BROKER_LABELS } from '../components/common/broker-badge'
 import { COLOR } from '../components/common/ui-styles'
@@ -222,6 +222,13 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   orderTimeBlockedChip.addEventListener('click', () => clearOrderTimeBlocked())
   header.appendChild(orderTimeBlockedChip)
 
+  // 리스크 매니저 차단 칩 (빨간색 — 손실/수익 한도 도달, 클릭 시 해제)
+  const riskBlockChip = createChipEl()
+  riskBlockChip.style.display = 'none'
+  riskBlockChip.style.cursor = 'pointer'
+  riskBlockChip.addEventListener('click', () => clearRiskBlockStatus())
+  header.appendChild(riskBlockChip)
+
   // 앱준비 진행률 칩
   const bootstrapChip = createChipEl()
   bootstrapChip.style.display = 'none'
@@ -255,7 +262,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   // ── Store 구독 ──
 
   function onStateChange(state: UIState): void {
-    const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings, indexData, circuitBreakerOpen, orderTimeBlocked } = state
+    const { marketPhase, bootstrapStage, engineReady, avgAmtProgress, status, settings, indexData, circuitBreakerOpen, orderTimeBlocked, riskBlockStatus } = state
 
     // OMS 서킷브레이커 발동 칩
     if (circuitBreakerOpen) {
@@ -277,6 +284,18 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
       orderTimeBlockedChip.textContent = `⏸ 주문 일시중단(${orderTimeBlocked.reason})`
     } else {
       orderTimeBlockedChip.style.display = 'none'
+    }
+
+    // 리스크 매니저 차단 칩 (빨간색 — 손실/수익 한도 도달, 클릭 시 해제)
+    if (riskBlockStatus) {
+      riskBlockChip.style.display = ''
+      riskBlockChip.style.background = `${COLOR.upBg}`
+      riskBlockChip.style.color = `${COLOR.up}`
+      riskBlockChip.style.border = `1px solid ${COLOR.up}40`
+      const sideLabel = riskBlockStatus.side === 'buy' ? '매수' : riskBlockStatus.side === 'sell' ? '매도' : '매매'
+      riskBlockChip.textContent = `⚠ 리스크 차단(${sideLabel}): ${riskBlockStatus.reason}`
+    } else {
+      riskBlockChip.style.display = 'none'
     }
 
     // 장 상태 — 카운트다운(백엔드 SSOT 수신값)이 있으면 우선 표시, 없으면 시계 페이즈명
