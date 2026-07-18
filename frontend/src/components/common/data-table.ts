@@ -59,6 +59,8 @@ export interface DataTableOptions<T> {
   stickyHeader?: boolean
   emptyText?: string
   rowStyle?: (row: T, index: number) => Partial<CSSStyleDeclaration> | undefined
+  /** 행 전체 너비(1 / -1)를 차지하는 하단 footer 요소 렌더링. 가상 스크롤 호환. */
+  rowFooter?: (row: T, index: number) => HTMLElement
   rowHeight?: number
   groupRowHeight?: number
   zebraStriping?: boolean
@@ -161,6 +163,7 @@ export function createDataTable<T extends object>(
     stickyHeader = true,
     emptyText = '데이터가 없습니다.',
     rowStyle,
+    rowFooter,
     rowHeight = 32,
     groupRowHeight = 48,
     zebraStriping = false,
@@ -171,7 +174,7 @@ export function createDataTable<T extends object>(
   }
 
   if (virtualScroll) {
-    return createVirtualScrollMode(options, columns, stickyHeader, emptyText, rowStyle, rowHeight, groupRowHeight, zebraStriping)
+    return createVirtualScrollMode(options, columns, stickyHeader, emptyText, rowStyle, rowFooter, rowHeight, groupRowHeight, zebraStriping)
   }
   return createFixedMode(options, columns, stickyHeader, emptyText, rowStyle, zebraStriping)
 }
@@ -621,6 +624,7 @@ function createVirtualScrollMode<T extends object>(
   stickyHeader: boolean,
   emptyText: string,
   rowStyle: ((row: T, index: number) => Partial<CSSStyleDeclaration> | undefined) | undefined,
+  rowFooter: ((row: T, index: number) => HTMLElement) | undefined,
   rowHeight: number,
   groupRowHeight: number,
   zebraStriping: boolean,
@@ -809,6 +813,10 @@ function createVirtualScrollMode<T extends object>(
       const dataRow = row as T
       const rs = rowStyle ? rowStyle(dataRow, index) : undefined
       if (rs) Object.assign(rowEl.style, rs)
+      // rowFooter 사용 시 2행 grid (데이터 행 + footer 행)
+      if (rowFooter) {
+        rowEl.style.gridTemplateRows = 'auto auto'
+      }
       for (let i = 0; i < columns.length; i++) {
         const c = columns[i]
         const cell = document.createElement('div')
@@ -837,6 +845,22 @@ function createVirtualScrollMode<T extends object>(
           }
         } catch (e) { console.error('[DataTable] cell render error', e) }
         rowEl.appendChild(cell)
+      }
+
+      // rowFooter — 행 전체 너비(1 / -1) 하단 별도 줄
+      if (rowFooter) {
+        const footerCell = document.createElement('div')
+        Object.assign(footerCell.style, {
+          gridColumn: '1 / -1',
+          padding: '0 4px 2px',
+          overflow: 'hidden',
+        })
+        footerCell.setAttribute('data-row-footer', 'true')
+        try {
+          const footerContent = rowFooter(dataRow, index)
+          footerCell.appendChild(footerContent)
+        } catch (e) { console.error('[DataTable] rowFooter render error', e) }
+        rowEl.appendChild(footerCell)
       }
 
       return
@@ -913,6 +937,23 @@ function createVirtualScrollMode<T extends object>(
           }
         }
       } catch (e) { console.error('[DataTable] cell render error', e) }
+    }
+
+    // rowFooter diff — 행 전체 너비 하단 줄 갱신
+    if (rowFooter) {
+      const footerCell = rowEl.querySelector('[data-row-footer="true"]') as HTMLElement | null
+      if (footerCell) {
+        try {
+          const newFooter = rowFooter(dataRow, index)
+          const existing = footerCell.firstElementChild as HTMLElement | null
+          if (!existing || !existing.isEqualNode(newFooter)) {
+            while (footerCell.firstChild) {
+              footerCell.removeChild(footerCell.firstChild)
+            }
+            footerCell.appendChild(newFooter)
+          }
+        } catch (e) { console.error('[DataTable] rowFooter diff error', e) }
+      }
     }
 
   }
