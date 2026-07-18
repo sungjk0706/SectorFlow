@@ -267,6 +267,8 @@ class InterceptHandler(logging.Handler):
 # ── 메인 설정 함수 ────────────────────────────────────────────────────────────
 
 _stdout_utf8: io.TextIOWrapper | None = None
+# 진행률 \r 갱신 중인지 추적 — 다른 로그가 끼어들면 줄 바꿈 후 출력하여 커서 꼬임 방지 (P23/P24)
+_progress_active: bool = False
 
 
 def _get_stdout_utf8() -> io.TextIOWrapper:
@@ -280,13 +282,67 @@ def _get_stdout_utf8() -> io.TextIOWrapper:
 
 
 def _stdout_sink(message) -> None:
-    """loguru 콘솔 싱크 — 함수 기반 (loguru가 close하지 않음)."""
+    """loguru 콘솔 싱크 — 함수 기반 (loguru가 close하지 않음).
+
+    진행률 \r 갱신 중에 다른 로그가 끼어들면 먼저 줄 바꿈하여 커서 꼬임 방지.
+    """
+    global _progress_active
     try:
         s = _get_stdout_utf8()
+        if _progress_active:
+            s.write("\n")
+            s.flush()
+            _progress_active = False
         s.write(str(message))
         s.flush()
     except (ValueError, OSError):
         pass  # stdout이 닫힌 경우 — 무시
+
+
+# ── 다운로드 진행률 1줄 갱신 헬퍼 ──────────────────────────────────────────────
+# 콘솔: \r 로 같은 줄 갱신 (TTY 아니면 \n), 파일: DEBUG 레벨 (INFO 운영 시 파일에 안 씀)
+# 완료/실패 요약은 logger.info/warning 으로 별도 출력 — P21(사용자 투명성) + P24(단순성)
+
+def log_progress(label: str, cur: int, total: int, *, code: str = "") -> None:
+    """다운로드 진행률을 콘솔 1줄에 \r 갱신 + 파일은 DEBUG 기록.
+
+    label: "[다운로드]" 같은 접두 태그
+    cur/total: 현재/전체 (1-based cur 권장)
+    code: 종목코드 (선택 — 있으면 "삼성전자(005930) 다운로드 완료 — N/M (X%)" 형태)
+    """
+    global _progress_active
+    pct = (cur / total * 100) if total > 0 else 0.0
+    code_part = f"{code} " if code else ""
+    msg = f"{label} {code_part}다운로드 완료 — {cur:,}/{total:,} ({pct:.1f}%)"
+    try:
+        s = _get_stdout_utf8()
+        if sys.stdout.isatty():
+            s.write("\r" + msg)
+            s.flush()
+            _progress_active = True
+        else:
+            # 파이프/리다이렉트 시 \r 깨짐 방지 — 일반 줄 출력
+            s.write(msg + "\n")
+            s.flush()
+    except (ValueError, OSError):
+        pass
+    # 파일에는 DEBUG로 기록 (INFO 운영 시 파일에 진행률 누적 안 됨 → 용량 절감)
+    _loguru_logger.opt(depth=1).debug(msg)
+
+
+def log_progress_end() -> None:
+    """진행률 1줄 갱신 종료 — 다음 로그가 새 줄에서 시작하도록 줄 바꿈."""
+    global _progress_active
+    if not _progress_active:
+        return
+    try:
+        s = _get_stdout_utf8()
+        if sys.stdout.isatty():
+            s.write("\n")
+            s.flush()
+    except (ValueError, OSError):
+        pass
+    _progress_active = False
 
 
 def setup_console_intercept(log_level: str = "INFO") -> None:

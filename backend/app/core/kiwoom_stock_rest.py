@@ -11,6 +11,7 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional
 from backend.app.core.broker_providers import UnifiedStockRecord
+from backend.app.core.logger import log_progress, log_progress_end
 if TYPE_CHECKING:
     from backend.app.core.kiwoom_rest import KiwoomRestAPI
 
@@ -260,13 +261,13 @@ async def fetch_ka10081_all_stocks_daily_confirmed(
         if on_progress:
             on_progress(len(result), total)
 
-        _pct = int(len(result) / total * 100) if total else 0
-        logger.info("[다운로드] 진행 중: %d/%d (%d%%)", len(result), total, _pct)
+        log_progress("[다운로드]", len(result), total, code=cd)
 
         await asyncio.sleep(interval_sec)
 
     if on_progress:
         on_progress(total, total)
+    log_progress_end()
 
     if failed_codes:
         logger.warning("[다운로드] 실패 종목 %d개: %s", len(failed_codes), failed_codes)
@@ -307,13 +308,13 @@ async def fetch_ka10081_all_stocks_5day(
         if on_progress:
             on_progress(len(result), total)
 
-        _pct = int(len(result) / total * 100) if total else 0
-        logger.info("[다운로드] 진행 중: %d/%d (%d%%)", len(result), total, _pct)
+        log_progress("[다운로드]", len(result), total, code=cd)
 
         await asyncio.sleep(interval_sec)
 
     if on_progress:
         on_progress(total, total)
+    log_progress_end()
 
     if failed_codes:
         logger.warning("[다운로드] 실패 종목 %d개: %s", len(failed_codes), failed_codes)
