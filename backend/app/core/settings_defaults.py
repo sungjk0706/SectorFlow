@@ -54,6 +54,23 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     "max_single_stock_exposure": 20000000,
     "max_position_size": 0,
 
+    # 리스크 매니저 (신규 — 일일 손실/수익 한도, 손실률/수익률, 연속 손실)
+    # risk_manager_on=False 기본 — 사용자가 명시적으로 ON 해야 활성화
+    # risk_block_buy_on=True 기본 — 리스크 조건 충족 시 매수 차단 (보수적)
+    # risk_block_sell_on=False 기본 — 매도 차단은 손실 확대 방지를 위해 사용자 명시적 ON 필요
+    "risk_manager_on": False,
+    "daily_loss_limit": -500000,               # 일일 손실 한도 (원, 음수) — max_daily_loss_limit과 동일 기준
+    "daily_loss_rate_limit_on": False,
+    "daily_loss_rate_limit": -5.0,             # 일일 손실률 한도 (%)
+    "daily_profit_limit_on": False,
+    "daily_profit_limit": 500000,              # 일일 수익 한도 (원, 양수)
+    "daily_profit_rate_limit_on": False,
+    "daily_profit_rate_limit": 5.0,            # 일일 수익률 한도 (%)
+    "risk_block_buy_on": True,
+    "risk_block_sell_on": False,
+    "consecutive_loss_limit_on": False,
+    "consecutive_loss_limit": 3,               # 연속 손실 N회 시 중단
+
      # 매도 설정
      "tp_apply": False,
      "tp_val": 0,
