@@ -302,6 +302,33 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
         if _n < 1 or _n > 1000:
             raise ValueError("구독 한도는 1~1000 사이여야 합니다")
 
+    # 리스크 매니저 설정 검증 (P20/P22) — 범위/부호 검증
+    _RISK_INT_KEYS = {
+        "daily_loss_limit": (-1_000_000_000, 0),        # 음수만 허용 (손실 한도)
+        "daily_profit_limit": (0, 1_000_000_000),       # 양수만 허용 (수익 한도)
+        "consecutive_loss_limit": (1, 100),             # 1~100회
+    }
+    _RISK_FLOAT_KEYS = {
+        "daily_loss_rate_limit": (-100.0, 0.0),         # 음수만 허용
+        "daily_profit_rate_limit": (0.0, 100.0),        # 양수만 허용
+    }
+    for _k, (_lo, _hi) in _RISK_INT_KEYS.items():
+        if _k in data:
+            try:
+                _n = int(data[_k])
+            except (TypeError, ValueError):
+                raise ValueError(f"{_k}는 정수여야 합니다")
+            if _n < _lo or _n > _hi:
+                raise ValueError(f"{_k}는 {_lo}~{_hi} 사이여야 합니다")
+    for _k, (_lo, _hi) in _RISK_FLOAT_KEYS.items():
+        if _k in data:
+            try:
+                _f = float(data[_k])
+            except (TypeError, ValueError):
+                raise ValueError(f"{_k}는 숫자여야 합니다")
+            if _f < _lo or _f > _hi:
+                raise ValueError(f"{_k}는 {_lo}~{_hi} 사이여야 합니다")
+
     # 증분 저장 (전체 설정 덮어쓰기 없이 변경된 필드만 저장)
     await save_selected_settings(to_save)
 

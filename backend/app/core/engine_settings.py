@@ -143,6 +143,26 @@ def build_engine_settings_dict(flat: dict) -> dict:
     _v = merged.get("max_single_stock_exposure")
     result["max_single_stock_exposure"] = int(_v if _v is not None else 20000000)
 
+    # 리스크 매니저 (신규) — 0도 유효값이므로 or 폴백 금지 (P20)
+    # bool 키는 merged.get(k, 기본값) 인자로 폴백 (False/True)
+    result["risk_manager_on"]              = bool(merged.get("risk_manager_on", False))
+    _v = merged.get("daily_loss_limit")
+    result["daily_loss_limit"]             = int(_v if _v is not None else -500000)
+    result["daily_loss_rate_limit_on"]     = bool(merged.get("daily_loss_rate_limit_on", False))
+    _v = merged.get("daily_loss_rate_limit")
+    result["daily_loss_rate_limit"]        = float(_v if _v is not None else -5.0)
+    result["daily_profit_limit_on"]        = bool(merged.get("daily_profit_limit_on", False))
+    _v = merged.get("daily_profit_limit")
+    result["daily_profit_limit"]           = int(_v if _v is not None else 500000)
+    result["daily_profit_rate_limit_on"]   = bool(merged.get("daily_profit_rate_limit_on", False))
+    _v = merged.get("daily_profit_rate_limit")
+    result["daily_profit_rate_limit"]      = float(_v if _v is not None else 5.0)
+    result["risk_block_buy_on"]            = bool(merged.get("risk_block_buy_on", True))
+    result["risk_block_sell_on"]           = bool(merged.get("risk_block_sell_on", False))
+    result["consecutive_loss_limit_on"]    = bool(merged.get("consecutive_loss_limit_on", False))
+    _v = merged.get("consecutive_loss_limit")
+    result["consecutive_loss_limit"]       = int(_v if _v is not None else 3)
+
     # 모든 증권사 API 키/시크릿/계좌번호 동적 수집 및 복호화 (real 키 우선)
     broker_names = {k.split("_")[0] for k in merged if k.endswith("_app_key") or k.endswith("_app_key_real")}
     for b_name in broker_names:

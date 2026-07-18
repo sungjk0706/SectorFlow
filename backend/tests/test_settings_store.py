@@ -628,6 +628,98 @@ class TestSubscribeMax0bCountValidation:
                 assert saved["subscribe.max_0b_count"] == valid_val
 
 
+# ── 리스크 매니저 설정 범위 검증 (apply_settings_updates) ──────────────────────
+
+class TestRiskManagerSettingsValidation:
+    """리스크 매니저 신규 키 범위/부호 검증 (P20/P22 — 범위 위반 시 422 차단)."""
+
+    @pytest.mark.asyncio
+    async def test_rejects_positive_daily_loss_limit(self):
+        """daily_loss_limit 양수 입력 시 ValueError (음수만 허용)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="daily_loss_limit는 -1000000000~0 사이여야 합니다"):
+                await apply_settings_updates({"daily_loss_limit": 100000})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_negative_daily_profit_limit(self):
+        """daily_profit_limit 음수 입력 시 ValueError (양수만 허용)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="daily_profit_limit는 0~1000000000 사이여야 합니다"):
+                await apply_settings_updates({"daily_profit_limit": -100000})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_zero_consecutive_loss_limit(self):
+        """consecutive_loss_limit 0 입력 시 ValueError (1~100만 허용)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="consecutive_loss_limit는 1~100 사이여야 합니다"):
+                await apply_settings_updates({"consecutive_loss_limit": 0})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_positive_daily_loss_rate_limit(self):
+        """daily_loss_rate_limit 양수 입력 시 ValueError (음수만 허용)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="daily_loss_rate_limit는 -100.0~0.0 사이여야 합니다"):
+                await apply_settings_updates({"daily_loss_rate_limit": 5.0})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_negative_daily_profit_rate_limit(self):
+        """daily_profit_rate_limit 음수 입력 시 ValueError (양수만 허용)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="daily_profit_rate_limit는 0.0~100.0 사이여야 합니다"):
+                await apply_settings_updates({"daily_profit_rate_limit": -5.0})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_integer_daily_loss_limit(self):
+        """daily_loss_limit 정수가 아닌 값 입력 시 ValueError."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="daily_loss_limit는 정수여야 합니다"):
+                await apply_settings_updates({"daily_loss_limit": "abc"})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_float_daily_loss_rate_limit(self):
+        """daily_loss_rate_limit 숫자가 아닌 값 입력 시 ValueError."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+            with pytest.raises(ValueError, match="daily_loss_rate_limit는 숫자여야 합니다"):
+                await apply_settings_updates({"daily_loss_rate_limit": "abc"})
+            mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_accepts_valid_risk_values(self):
+        """유효한 경계값 저장 성공 (P20 — 0/음수 유효값 허용)."""
+        valid_cases = [
+            ("daily_loss_limit", 0),               # 상한 경계 (0 포함)
+            ("daily_loss_limit", -1_000_000_000),  # 하한 경계
+            ("daily_profit_limit", 0),             # 하한 경계
+            ("daily_profit_limit", 1_000_000_000), # 상한 경계
+            ("consecutive_loss_limit", 1),         # 하한 경계
+            ("consecutive_loss_limit", 100),       # 상한 경계
+            ("daily_loss_rate_limit", 0.0),        # 상한 경계
+            ("daily_loss_rate_limit", -100.0),     # 하한 경계
+            ("daily_profit_rate_limit", 0.0),      # 하한 경계
+            ("daily_profit_rate_limit", 100.0),    # 상한 경계
+        ]
+        for k, v in valid_cases:
+            with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+                 patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
+                result = await apply_settings_updates({k: v})
+                assert k in result
+                saved = mock_save.call_args[0][0]
+                assert saved[k] == v
+
+
 # ── build_masked_settings_dict (async) ──────────────────────────────
 
 class TestBuildMaskedSettingsDict:
