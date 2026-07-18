@@ -40,6 +40,8 @@ let bonusRiseRatioInput: ReturnType<typeof createNumInput> | null = null
 let bonusRelativeStrengthInput: ReturnType<typeof createNumInput> | null = null
 let bonusTradeAmountInput: ReturnType<typeof createNumInput> | null = null
 let maxScoreDisplayEl: HTMLSpanElement | null = null
+let maxScoreDetailEl: HTMLSpanElement | null = null
+let maxScoreTotalEl: HTMLSpanElement | null = null
 let maxTargetsStatusEl: HTMLSpanElement | null = null
 let maxTargetsSumEl: HTMLDivElement | null = null
 let unsubHotStore: (() => void) | null = null
@@ -61,6 +63,34 @@ async function onNumChange(key: string, value: number): Promise<void> {
   if (autoSaveHelper) {
     autoSaveHelper.autoSave(key, v)
   }
+}
+
+// 가산점 만점 표시 갱신 — 1차/2차/3차 각각 + 합계 (P21 투명성, P10 SSOT — 백엔드 sector_score.py 계산식과 동일)
+// 조정 만점 = 업종 수 × (1 + 슬라이더/100). 슬라이더/업종 수 변경 시 호출.
+// 표시 형식: (1차: N점 | 2차: N점 | 3차: N점) — 작게, 합계: N점 (업종 N개) — 크고 진하게.
+function _formatScore(v: number): string {
+  return Number.isInteger(v) ? String(v) : v.toFixed(1)
+}
+function _updateMaxScoreDisplay(): void {
+  if (!maxScoreDisplayEl) return
+  const n = hotStore.getState().sectorScores.length
+  if (n <= 0) {
+    maxScoreDetailEl!.textContent = '(업종 수에 따라 자동 설정)'
+    maxScoreDetailEl!.style.display = 'inline'
+    maxScoreTotalEl!.style.display = 'none'
+    return
+  }
+  const riseSlider = currentVals.sector_bonus_rise_ratio_slider ?? 0
+  const relSlider = currentVals.sector_bonus_relative_strength_slider ?? 0
+  const tradeSlider = currentVals.sector_bonus_trade_amount_slider ?? 0
+  const max1 = n * (1 + riseSlider / 100)
+  const max2 = n * (1 + relSlider / 100)
+  const max3 = n * (1 + tradeSlider / 100)
+  const total = max1 + max2 + max3
+  maxScoreDetailEl!.textContent = `(1차: ${_formatScore(max1)}점 | 2차: ${_formatScore(max2)}점 | 3차: ${_formatScore(max3)}점)`
+  maxScoreDetailEl!.style.display = 'inline'
+  maxScoreTotalEl!.textContent = `합계: ${_formatScore(total)}점 (업종 ${n}개)`
+  maxScoreTotalEl!.style.display = 'inline'
 }
 
 // 수신율 상태 라벨 갱신 — 임계치 대기/진행 중 (P21 투명성)
@@ -130,6 +160,8 @@ function syncFromSettings(s: AppSettings): void {
     const curPhase = uiStore.getState().marketPhase
     _updateStatusLabel(curRate, threshold, curPhase)
   }
+  // 가산점 만점 표시 갱신 — 슬라이더 값 동기화 후 (P21 투명성)
+  _updateMaxScoreDisplay()
 }
 
 /* ── 가산점 슬라이더 2행 레이아웃 (매수설정 슬라이더와 동일 패턴 — P23 일관성) ── */
@@ -256,24 +288,28 @@ function mount(container: HTMLElement): void {
   // ④ 가산점 가중치 슬라이더 (상승비율·가중 순위 합·거래대금 3단계)
   root.appendChild(createStepLabel('④', '가산점 가중치 조절 (3단계)'))
 
-  // 만점 자동 표시 — 업종 수 = 만점 (P21 투명성)
+  // 만점 자동 표시 — 1차/2차/3차 각각(작게) + 합계(크고 진하게) (P21 투명성, P10 SSOT — 백엔드 sector_score.py 계산식과 동일)
   maxScoreDisplayEl = document.createElement('span')
-  Object.assign(maxScoreDisplayEl.style, { fontSize: FONT_SIZE.small, color: COLOR.down, marginLeft: '8px' })
-  const _initialSectorCount = hotStore.getState().sectorScores.length
-  maxScoreDisplayEl.textContent = _initialSectorCount > 0
-    ? `(현재 만점 = ${_initialSectorCount}점, 업종 ${_initialSectorCount}개)`
-    : '(업종 수에 따라 자동 설정)'
+  Object.assign(maxScoreDisplayEl.style, { marginLeft: '8px', display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' })
+  maxScoreDetailEl = document.createElement('span')
+  Object.assign(maxScoreDetailEl.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary })
+  maxScoreTotalEl = document.createElement('span')
+  Object.assign(maxScoreTotalEl.style, { fontSize: FONT_SIZE.label, color: COLOR.down, fontWeight: 'bold' })
+  maxScoreDisplayEl.appendChild(maxScoreDetailEl)
+  maxScoreDisplayEl.appendChild(maxScoreTotalEl)
   const maxScoreLabel = document.createElement('div')
-  Object.assign(maxScoreLabel.style, { display: 'flex', alignItems: 'center', marginBottom: '8px' })
+  Object.assign(maxScoreLabel.style, { display: 'flex', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap' })
   const maxScoreLabelText = document.createElement('span')
-  maxScoreLabelText.textContent = '만점 = 업종 수 (자동)'
+  maxScoreLabelText.textContent = '만점 = 업종 수 × (1 + 슬라이더/100)'
   Object.assign(maxScoreLabelText.style, { color: COLOR.neutral, fontSize: FONT_SIZE.small })
   maxScoreLabel.appendChild(maxScoreLabelText)
   maxScoreLabel.appendChild(maxScoreDisplayEl)
   root.appendChild(maxScoreLabel)
+  // 초기 만점 표시 — currentVals 동기화 전이므로 슬라이더 기본값 0 기준
+  _updateMaxScoreDisplay()
 
   // 1차 가산점 — 업종 내 상승 종목 비율 (슬라이더-입력란 양방향 연동)
-  bonusRiseRatioInput = createNumInput({ value: 0, min: -100, max: 100, onChange: v => { bonusRiseRatioSlider?.setValue(v); onNumChange('sector_bonus_rise_ratio_slider', v) }, step: 1, name: 'sector_bonus_rise_ratio_slider' })
+  bonusRiseRatioInput = createNumInput({ value: 0, min: -100, max: 100, onChange: v => { bonusRiseRatioSlider?.setValue(v); onNumChange('sector_bonus_rise_ratio_slider', v); _updateMaxScoreDisplay() }, step: 1, name: 'sector_bonus_rise_ratio_slider' })
   bonusRiseRatioSlider = createDualLabelSlider({
     min: -100, max: 100, value: 0, step: 1,
     leftLabel: v => v < 0 ? `${v}%` : '0%',
@@ -282,12 +318,12 @@ function mount(container: HTMLElement): void {
     leftColorLight: COLOR.downLight,
     rightColor: COLOR.up,
     rightColorLight: COLOR.upLight,
-    onChange: v => { bonusRiseRatioInput?.setValue(v); onNumChange('sector_bonus_rise_ratio_slider', v) },
+    onChange: v => { bonusRiseRatioInput?.setValue(v); onNumChange('sector_bonus_rise_ratio_slider', v); _updateMaxScoreDisplay() },
   })
   root.appendChild(createBonusSliderRow('1차 가산점 — 업종 내 상승 종목 비율', bonusRiseRatioSlider.el, bonusRiseRatioInput.el))
 
   // 2차 가산점 — 종목 상승률 상위 집중도 (슬라이더-입력란 양방향 연동)
-  bonusRelativeStrengthInput = createNumInput({ value: 0, min: -100, max: 100, onChange: v => { bonusRelativeStrengthSlider?.setValue(v); onNumChange('sector_bonus_relative_strength_slider', v) }, step: 1, name: 'sector_bonus_relative_strength_slider' })
+  bonusRelativeStrengthInput = createNumInput({ value: 0, min: -100, max: 100, onChange: v => { bonusRelativeStrengthSlider?.setValue(v); onNumChange('sector_bonus_relative_strength_slider', v); _updateMaxScoreDisplay() }, step: 1, name: 'sector_bonus_relative_strength_slider' })
   bonusRelativeStrengthSlider = createDualLabelSlider({
     min: -100, max: 100, value: 0, step: 1,
     leftLabel: v => v < 0 ? `${v}%` : '0%',
@@ -296,12 +332,12 @@ function mount(container: HTMLElement): void {
     leftColorLight: COLOR.downLight,
     rightColor: COLOR.up,
     rightColorLight: COLOR.upLight,
-    onChange: v => { bonusRelativeStrengthInput?.setValue(v); onNumChange('sector_bonus_relative_strength_slider', v) },
+    onChange: v => { bonusRelativeStrengthInput?.setValue(v); onNumChange('sector_bonus_relative_strength_slider', v); _updateMaxScoreDisplay() },
   })
   root.appendChild(createBonusSliderRow('2차 가산점 — 종목 상승률 상위 집중도', bonusRelativeStrengthSlider.el, bonusRelativeStrengthInput.el))
 
   // 3차 가산점 — 업종 평균 거래대금 (슬라이더-입력란 양방향 연동)
-  bonusTradeAmountInput = createNumInput({ value: 0, min: -100, max: 100, onChange: v => { bonusTradeAmountSlider?.setValue(v); onNumChange('sector_bonus_trade_amount_slider', v) }, step: 1, name: 'sector_bonus_trade_amount_slider' })
+  bonusTradeAmountInput = createNumInput({ value: 0, min: -100, max: 100, onChange: v => { bonusTradeAmountSlider?.setValue(v); onNumChange('sector_bonus_trade_amount_slider', v); _updateMaxScoreDisplay() }, step: 1, name: 'sector_bonus_trade_amount_slider' })
   bonusTradeAmountSlider = createDualLabelSlider({
     min: -100, max: 100, value: 0, step: 1,
     leftLabel: v => v < 0 ? `${v}%` : '0%',
@@ -310,7 +346,7 @@ function mount(container: HTMLElement): void {
     leftColorLight: COLOR.downLight,
     rightColor: COLOR.up,
     rightColorLight: COLOR.upLight,
-    onChange: v => { bonusTradeAmountInput?.setValue(v); onNumChange('sector_bonus_trade_amount_slider', v) },
+    onChange: v => { bonusTradeAmountInput?.setValue(v); onNumChange('sector_bonus_trade_amount_slider', v); _updateMaxScoreDisplay() },
   })
   root.appendChild(createBonusSliderRow('3차 가산점 — 업종 평균 거래대금', bonusTradeAmountSlider.el, bonusTradeAmountInput.el))
 
@@ -417,17 +453,13 @@ function mount(container: HTMLElement): void {
     _updateStatusLabel(rate, threshold, phase)
   })
 
-  // hotStore 구독 — 만점 자동 표시 갱신 (업종 수 = 만점)
+  // hotStore 구독 — 만점 표시 갱신 (업종 수 변경 시 1차/2차/3차/합계 모두 자동 갱신, P21 투명성)
   let prevSectorCount = hotStore.getState().sectorScores.length
   unsubHotStore = hotStore.subscribe(() => {
     const sectorCount = hotStore.getState().sectorScores.length
     if (sectorCount !== prevSectorCount) {
       prevSectorCount = sectorCount
-      if (maxScoreDisplayEl) {
-        maxScoreDisplayEl.textContent = sectorCount > 0
-          ? `(현재 만점 = ${sectorCount}점, 업종 ${sectorCount}개)`
-          : '(업종 수에 따라 자동 설정)'
-      }
+      _updateMaxScoreDisplay()
     }
   })
 }
@@ -450,6 +482,8 @@ function unmount(): void {
   bonusRelativeStrengthInput = null
   bonusTradeAmountInput = null
   maxScoreDisplayEl = null
+  maxScoreDetailEl = null
+  maxScoreTotalEl = null
   maxTargetsStatusEl = null
   maxTargetsSumEl = null
   krxProgressBar = null
