@@ -59,11 +59,6 @@ async def debug_sector_stock(code: str):
     pend = state.master_stocks_cache.get(nk, {})
     in_filter = pend.get("_filtered", False)
     in_subscribed = pend.get("_subscribed", False)
-    # 실시간 틱 데이터 캐시 읽기 로직 삭제 (캐시가 삭제되었으므로 읽기 불가, None 반환)
-    tp = None
-    ta = None
-    st = None
-    rq = None
     return {
         "code": nk,
         "in_filtered_sector_codes": in_filter,
@@ -76,10 +71,6 @@ async def debug_sector_stock(code: str):
         "pending_change_rate": pend.get("change_rate") if pend else None,
         "pending_strength": pend.get("strength") if pend else None,
         "pending_trade_amount": pend.get("trade_amount") if pend else None,
-        "latest_trade_price": tp,
-        "latest_trade_amount": ta,
-        "latest_strength": st,
-        "rest_quote_cache_exists": rq is not None,
     }
 
 
@@ -95,10 +86,8 @@ async def debug_ws_status():
         "subscribed_stocks_count": sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False)),
         "filtered_sector_codes_count": sum(1 for entry in state.master_stocks_cache.values() if entry.get("_filtered", False)),
         # _radar_cnsr_order 삭제: subscribed_stocks_count로 대체
-        "latest_trade_prices_count": 0,  # 실시간 틱 데이터 캐시 삭제로 0 반환
         "ws_reg_pipeline_done": state.ws_reg_pipeline_done.is_set(),
         "bootstrap_done": state.bootstrap_event.is_set(),
-        "sector_confirmed": False,  # 확정 개념 제거됨
     }
 
 
@@ -118,7 +107,6 @@ async def debug_sector_refresh_sample():
     """디버그용: sector-refresh WS 이벤트와 동일한 데이터를 직접 반환."""
     from backend.app.services.sector_data_provider import get_sector_stocks
     stocks = await get_sector_stocks()
-    status = {}  # 확정 개념 제거됨
     # 삼성전자, SK하이닉스 찾기
     sample = {}
     for s in stocks:
@@ -137,7 +125,6 @@ async def debug_sector_refresh_sample():
     from backend.app.web.ws_manager import ws_manager
     return {
         "total_stocks_in_response": len(stocks),
-        "status": status,
         "sample_005930": sample.get("005930", "NOT_FOUND"),
         "sample_000660": sample.get("000660", "NOT_FOUND"),
         "ws_client_count": ws_manager.client_count,
