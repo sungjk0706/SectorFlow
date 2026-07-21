@@ -5,7 +5,7 @@
 import { uiStore, applyTestDataResetCompleted } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingsManager, extractDirty, MASKED_FIELDS, type SettingsManager } from '../settings'
-import { createToggleBtn, createMoneyInput, createTextInput, createRadioGroup, createNumInput, createToggleLabelControlsRow, createSettingRow, focusNext } from '../components/common/setting-row'
+import { createToggleBtn, createMoneyInput, createTextInput, createRadioGroup, createNumInput, createToggleLabelControlsRow, focusNext } from '../components/common/setting-row'
 import { toastResult, showSaveToast } from '../components/common/toast'
 import { createDataTable, type ColumnDef } from '../components/common/data-table'
 import { api } from '../api/client'
@@ -57,7 +57,9 @@ let orderTimeGuardToggle: ReturnType<typeof createToggleBtn> | null = null
 
 // 리스크 매니저 참조 (전역매매설정 섹션)
 let riskManagerToggle: ReturnType<typeof createToggleBtn> | null = null
-let dailyLossInput: ReturnType<typeof createNumInput> | null = null
+let dailyLossToggle: ReturnType<typeof createToggleBtn> | null = null
+let dailyLossInput: ReturnType<typeof createMoneyInput> | null = null
+let dailyLossControls: HTMLElement | null = null
 let dailyLossRateToggle: ReturnType<typeof createToggleBtn> | null = null
 let dailyLossRateInput: ReturnType<typeof createNumInput> | null = null
 let dailyLossRateControls: HTMLElement | null = null
@@ -521,8 +523,8 @@ function renderAutoTradeTab(container: HTMLElement): void {
   riskManagerRow.appendChild(riskManagerToggle.el)
   container.appendChild(riskManagerRow)
 
-  // 일일 손실 한도 (금액 입력, 음수 — createNumInput 사용, createMoneyInput은 음수 미지원)
-  dailyLossInput = createNumInput({
+  // 일일 손실 한도 (토글 + 금액 입력, 음수)
+  dailyLossInput = createMoneyInput({
     value: -500000,
     onChange: v => {
       vals.daily_loss_limit = v
@@ -536,7 +538,22 @@ function renderAutoTradeTab(container: HTMLElement): void {
     max: 0,
     name: 'daily_loss_limit',
   })
-  container.appendChild(createSettingRow('일일 손실 한도 (원, 음수)', dailyLossInput.el))
+  {
+    const r = createToggleLabelControlsRow({
+      labelText: '일일 손실 한도 (원)',
+      toggleOn: true,
+      onToggle: next => {
+        vals.daily_loss_limit_on = next
+        settingsMgr?.saveSection({ daily_loss_limit_on: next }).then(res => {
+          toastResult(res)
+          if (!res.ok) vals.daily_loss_limit_on = !next
+        })
+      },
+      controlsChild: dailyLossInput.el,
+    })
+    dailyLossToggle = r.toggle; dailyLossControls = r.controls
+    container.appendChild(r.el)
+  }
 
   // 일일 손실률 한도 (토글 + % 입력)
   dailyLossRateInput = createNumInput({
@@ -1204,9 +1221,12 @@ function syncFromSettings(s: AppSettings | null): void {
     // 리스크 매니저 (전역매매설정)
     const act = document.activeElement
     riskManagerToggle?.setOn(!!r.risk_manager_on)
+    const lossOn = r.daily_loss_limit_on !== false
+    dailyLossToggle?.setOn(lossOn)
     if (dailyLossInput && (!act || !dailyLossInput.el.contains(act))) {
       dailyLossInput.setValue(Number(r.daily_loss_limit ?? -500000) || -500000)
     }
+    if (dailyLossControls) setDisabled(dailyLossControls, !lossOn)
     const lossRateOn = !!r.daily_loss_rate_limit_on
     dailyLossRateToggle?.setOn(lossRateOn)
     if (dailyLossRateInput && (!act || !dailyLossRateInput.el.contains(act))) {
@@ -1389,7 +1409,9 @@ function unmount(): void {
   holidayBadgeEls = []
   // 리스크 매니저
   riskManagerToggle = null
+  dailyLossToggle = null
   dailyLossInput = null
+  dailyLossControls = null
   dailyLossRateToggle = null
   dailyLossRateInput = null
   dailyLossRateControls = null
