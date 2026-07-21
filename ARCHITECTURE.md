@@ -273,7 +273,7 @@
 - **검증 방법**: `python -W error::RuntimeWarning main.py`로 기동 시 RuntimeWarning을 에러로 승격하여 검증
 
 ### 5. no-op/dead code 방치 금지
-- **위반 사례**: `notify_desktop_buy_radar_only` 등 호출되지 않는 함수 방치 (`notify_snapshot_history_update` 및 `snapshot_history` 계열은 2026-07-18 삭제 완료)
+- **위반 사례**: `notify_desktop_buy_radar_only` 등 호출되지 않는 함수 방치 — 2026-07-21 B-10-a 세션에서 전부 삭제 완료 (`notify_snapshot_history_update` 및 `snapshot_history` 계열은 2026-07-18 삭제 완료)
 - **관련 원칙**: 원칙 16 ("구현 = 살아있는 경로에 배선됨")
 - **이유**: 아키텍처 문서와 실제 코드 불일치 — 호출 안 되는 함수는 존재하지 않는 것과 같음
 - **대체**: 사용하지 않는 함수는 삭제하거나, 명시적으로 `# DEPRECATED: ...` 주석으로 표시

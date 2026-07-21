@@ -213,5 +213,5 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
         from backend.app.services.buy_order_executor import invalidate_buy_snapshot
         invalidate_buy_snapshot()
     except Exception:
-        pass
+        logger.warning("[설정] 매수 재평가 무효화 실패 — 설정 변경 후 매수 후보가 갱신되지 않을 수 있음", exc_info=True)
 

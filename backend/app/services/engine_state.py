@@ -37,8 +37,6 @@ class EngineState:
         self.last_ws_limit_warn_ts: float = 0.0
         self.realtime_latency_exceeded: bool = False
         self.avg_amt_needs_bg_refresh: bool = False
-        self.refresh_account_snapshot_meta = None
-        self.update_account_memory = None
 
         # ── Locks & Events ───────────────────────────────────────────────────────
         self.data_ready_event: LazyEvent = LazyEvent()
