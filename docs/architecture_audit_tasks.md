@@ -323,7 +323,7 @@
 > **분할 권장**: 총 1732줄. B-16-a (ls_connector 895줄) / B-16-b (ls_rest + ls_providers 837줄) 분할 권장.
 
 **대상 파일** (3개, 총 1732줄)
-- [ ] `backend/app/core/ls_connector.py` (895줄, 초대형)
+- [x] `backend/app/core/ls_connector.py` (895줄→839줄, B-16-a 완료)
 - [ ] `backend/app/core/ls_rest.py` (639줄, 대형)
 - [ ] `backend/app/core/ls_providers.py` (198줄, 중형)
 
@@ -346,6 +346,8 @@
 - [ ] `pytest backend/tests -k "ls_"` 통과
 - [ ] `python -W error::RuntimeWarning main.py` 기동 검증 (LS 모의투자 모드)
 - [ ] 잔여 `_run_async` / `asyncio.run` / 동기 `requests` grep 추가 인스턴스 없음
+
+**B-16-a 완료 (2026-07-21)**: 5건 해결 (B16-01~05). B16-01 _make_queue_callback() 헬퍼 추출로 connect()/_reconnect_loop() 중복 _queue_put_with_drop 중첩함수 통합 (P23/P24, kiwoom B15-02 동일 패턴), B16-02 except Exception 4곳에 exc_info=True 추가 (P23, kiwoom B15-03/B15-04 동일 패턴), B16-03 _recv_loop queue_callback None 폴백 dead code 제거 (P20/P16, kiwoom은 폴백 없이 직접 호출), B16-04 connect() 초기 연결 실패 로그 logger.warning→logger.error로 kiwoom과 일치 (P23), B16-05 subscribe_stocks/unsubscribe_stocks를 subscribe_stocks_tr/unsubscribe_stocks_tr US3 고정 래퍼로 통합 (P23/P24). test_fallback_on_message_when_no_queue 테스트 제거 (폴백 경로 제거로 무효). 검증: py_compile OK + ruff OK + pytest 263 passed(test_ls*) + 2960 passed(전체, 회귀 없음) + 런타임 기동 183ms 정상 (RuntimeWarning 없음, LS 토큰 발급·연결 정상).
 
 ---
 

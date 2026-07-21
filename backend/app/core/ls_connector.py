@@ -133,14 +133,11 @@ class _LsSocket:
                     # Kiwoom 커넥터와 동일한 패턴: JIF는 큐 대기 없이 즉시 핸들러로 전달
                     if internal_msg.get("trnm") == "JIF":
                         await self._on_message(internal_msg)
-                    elif self._queue_callback:
+                    else:
                         try:
                             self._queue_callback(internal_msg)  # put_nowait 호출
                         except asyncio.QueueFull:
                             logger.warning("[연결] %s 데이터 큐 가득 참 — 실시간 데이터 일부 누락: %s", _BROKER_DISPLAY, tr_cd)
-                    else:
-                        # 대체: 기존 방식 유지
-                        await self._on_message(internal_msg)
                 else:
                     # 변환 실패 또는 처리 불필요한 메시지
                     logger.debug("[연결] %s 변환 실패 또는 처리 불필요: %s", _BROKER_DISPLAY, tr_cd)
@@ -353,22 +350,7 @@ class LsConnector(BrokerConnector):
             if not token:
                 raise ConnectionError(f"{_BROKER_DISPLAY} 토큰 발급 실패")
             self._token = token
-            # Queue 콜백 래퍼 (누락 정책 적용)
-            queue_callback = None
-            if self._ws_queue is not None:
-                _q = self._ws_queue
-                def _queue_put_with_drop(msg: dict) -> None:
-                    """누락 정책 적용 — 큐 가득 찼을 때 가장 오래된 데이터 버리고 최신 데이터 삽입."""
-                    try:
-                        _q.put_nowait(msg)
-                    except asyncio.QueueFull:
-                        try:
-                            _q.get_nowait()
-                            _q.put_nowait(msg)
-                            logger.warning("[연결] %s 데이터 큐 누락 발생 — 최신 데이터 유지", _BROKER_DISPLAY)
-                        except asyncio.QueueEmpty:
-                            _q.put_nowait(msg)
-                queue_callback = _queue_put_with_drop
+            queue_callback = self._make_queue_callback()
 
             self._socket = _LsSocket(
                 uri=self._ws_uri,
@@ -380,7 +362,7 @@ class LsConnector(BrokerConnector):
             try:
                 await self._socket.connect()
             except Exception:
-                logger.warning("[연결] %s 초기 연결 실패 — 재연결 시작", _BROKER_DISPLAY)
+                logger.error("[연결] %s 초기 웹소켓 연결 실패 — 재연결 시작", _BROKER_DISPLAY, exc_info=True)
                 asyncio.get_running_loop().create_task(self._on_socket_disconnect())
                 raise
             self._connected = True
@@ -441,63 +423,20 @@ class LsConnector(BrokerConnector):
         return await self.unsubscribe_stocks([code])
 
     async def subscribe_stocks(self, codes: list[str]) -> bool:
-        """종목 리스트 실시간 구독 등록 (LS WebSocket: tr_type=3, tr_cd=US3)."""
-        if not self.is_connected() or not self._socket:
-            logger.warning("[구독] %s 종목 구독 실패 — 연결 없음", _BROKER_DISPLAY)
-            return False
+        """종목 리스트 실시간 구독 등록 (LS WebSocket: tr_type=3, tr_cd=US3).
 
-        success_all = True
-        for code in codes:
-            if not self._socket:
-                logger.warning("[구독] %s 종목 구독 중단 — 연결 해제됨", _BROKER_DISPLAY)
-                success_all = False
-                break
-            formatted_code = self._format_code(code)
-            payload = {
-                "header": {
-                    "token": self._token,
-                    "tr_type": "3"  # 3: 실시간 시세 등록
-                },
-                "body": {
-                    "tr_cd": "US3",
-                    "tr_key": formatted_code
-                }
-            }
-            success = await self._socket.send(payload)
-            if not success:
-                success_all = False
-            await asyncio.sleep(0)
-        return success_all
+        subscribe_stocks_tr의 US3 고정 래퍼 (P23/P24 — 중복 로직 제거).
+        """
+        _success, fail = await self.subscribe_stocks_tr(codes, "US3")
+        return fail == 0
 
     async def unsubscribe_stocks(self, codes: list[str]) -> bool:
-        """종목 리스트 실시간 구독 해지 (LS WebSocket: tr_type=4, tr_cd=US3)."""
-        if not self.is_connected() or not self._socket:
-            return False
+        """종목 리스트 실시간 구독 해지 (LS WebSocket: tr_type=4, tr_cd=US3).
 
-        success_all = True
-        for code in codes:
-            if not self._socket:
-                logger.warning("[구독] %s 종목 구독 해지 중단 — 연결 해제됨", _BROKER_DISPLAY)
-                success_all = False
-                break
-            # LS 종목코드 포맷: U + 6자리 + 공백 3자리
-            formatted_code = self._format_code(code)
-
-            payload = {
-                "header": {
-                    "token": self._token,
-                    "tr_type": "4"  # 4: 실시간 시세 해제
-                },
-                "body": {
-                    "tr_cd": "US3",
-                    "tr_key": formatted_code
-                }
-            }
-            success = await self._socket.send(payload)
-            if not success:
-                success_all = False
-            await asyncio.sleep(0)
-        return success_all
+        unsubscribe_stocks_tr의 US3 고정 래퍼 (P23/P24 — 중복 로직 제거).
+        """
+        _success, fail = await self.unsubscribe_stocks_tr(codes, "US3")
+        return fail == 0
 
     async def subscribe_stocks_tr(self, codes: list[str], tr_cd: str) -> tuple[int, int]:
         """지정된 TR 코드로 종목 리스트 실시간 구독 등록 (예: UH1, UPH).
@@ -762,22 +701,7 @@ class LsConnector(BrokerConnector):
                 if self._lock is None:
                     self._lock = asyncio.Lock()
                 async with self._lock:
-                    # Queue 콜백 래퍼 (재연결 시도 - 누락 정책 적용)
-                    queue_callback = None
-                    if self._ws_queue is not None:
-                        _q = self._ws_queue
-                        def _queue_put_with_drop(msg: dict) -> None:
-                            """누락 정책 적용 - 재연결 시도."""
-                            try:
-                                _q.put_nowait(msg)
-                            except asyncio.QueueFull:
-                                try:
-                                    _q.get_nowait()
-                                    _q.put_nowait(msg)
-                                    logger.warning("[연결] %s 데이터 큐 누락 발생 (재연결) — 최신 데이터 유지", _BROKER_DISPLAY)
-                                except asyncio.QueueEmpty:
-                                    _q.put_nowait(msg)
-                        queue_callback = _queue_put_with_drop
+                    queue_callback = self._make_queue_callback()
 
                     self._socket = _LsSocket(
                         uri=self._ws_uri,
@@ -792,7 +716,7 @@ class LsConnector(BrokerConnector):
                         from backend.app.services.engine_state import state
                         state.login_ok = True
                     except Exception as e:
-                        logger.warning("[연결] %s 로그인 상태 설정 실패: %s", _BROKER_DISPLAY, e)
+                        logger.warning("[연결] %s 로그인 상태 설정 실패: %s", _BROKER_DISPLAY, e, exc_info=True)
                 logger.info("[연결] %s 재연결 성공 (시도 %d회)", _BROKER_DISPLAY, attempt)
                 # 재연결 성공 후 큐 클리어 (과거 데이터 제거)
                 if self._ws_queue is not None:
@@ -821,12 +745,32 @@ class LsConnector(BrokerConnector):
                     await self._on_reconnect_success(self.broker_id)
                 return
             except Exception as e:
-                logger.warning("[연결] %s 재연결 %d회 실패: %s", _BROKER_DISPLAY, attempt, e)
+                logger.warning("[연결] %s 재연결 %d회 실패: %s", _BROKER_DISPLAY, attempt, e, exc_info=True)
         logger.error("[연결] %s 최대 재연결 횟수(20회) 초과 — 중단", _BROKER_DISPLAY, exc_info=True)
 
     def set_reconnect_success_callback(self, callback: Callable) -> None:
         """재연결 성공 시 호출될 콜백 설정 (ConnectorManager가 구독 복원에 사용)."""
         self._on_reconnect_success = callback
+
+    def _make_queue_callback(self) -> Callable[[dict], None] | None:
+        """시세 큐 누락 정책 콜백 생성 — 큐 가득 시 가장 오래된 데이터 버리고 최신 유지.
+
+        Producer-Consumer Queue가 설정되지 않은 경우 None 반환.
+        """
+        if self._ws_queue is None:
+            return None
+        _q = self._ws_queue
+        def _queue_put_with_drop(msg: dict) -> None:
+            try:
+                _q.put_nowait(msg)
+            except asyncio.QueueFull:
+                try:
+                    _q.get_nowait()
+                    _q.put_nowait(msg)
+                    logger.warning("[연결] %s 데이터 큐 누락 발생 — 최신 데이터 유지", _BROKER_DISPLAY)
+                except asyncio.QueueEmpty:
+                    _q.put_nowait(msg)
+        return _queue_put_with_drop
 
     def set_message_callback(self, callback: Callable) -> None:
         """메시지 수신 콜백 설정."""
@@ -864,7 +808,7 @@ class LsConnector(BrokerConnector):
                 if auth_provider and hasattr(auth_provider, "rest_api"):
                     rest_api = auth_provider.rest_api
             except Exception as e:
-                logger.warning("[연결] %s 토큰 조회 실패: %s", _BROKER_DISPLAY, e)
+                logger.warning("[연결] %s 토큰 조회 실패: %s", _BROKER_DISPLAY, e, exc_info=True)
 
         if rest_api and hasattr(rest_api, "ensure_token"):
             ok = await rest_api.ensure_token()
