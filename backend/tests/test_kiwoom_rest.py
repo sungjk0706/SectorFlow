@@ -1,8 +1,8 @@
 """kiwoom_rest.py 단위 테스트 — 키움증권 REST API 클라이언트 검증.
 
 TokenInfo: is_expired_soon (정상/만료임박/짧은dt/파싱예외)
-KiwoomRestAPI: __init__, __enter__/__exit__/__aenter__/__aexit__, _get_client, _reset_client,
-  _ensure_token, get_spec, _call_api (429/성공/HTTP오류/예외/토큰없음),
+KiwoomRestAPI: __init__, __aenter__/__aexit__, _get_client, _reset_client,
+  _ensure_token, _call_api (429/성공/HTTP오류/예외/토큰없음),
   _issue_token (성공/429/HTTP실패/토큰필드없음/크리덴셜없음),
   revoke_token, get_access_token, get_auth_headers,
   _request (성공/429/예외), _paginated_request (단일/연속조회/토큰없음),
@@ -115,11 +115,6 @@ class TestKiwoomRestInit:
         assert api.app_key == ""
         assert api.app_secret == ""
 
-    def test_sync_context_manager(self):
-        api = _make_kiwoom_rest()
-        with api as ctx:
-            assert ctx is api
-
     async def test_async_context_manager(self):
         api = _make_kiwoom_rest()
         with patch.object(api, "_reset_client", AsyncMock()):
@@ -197,30 +192,6 @@ class TestKiwoomRestEnsureToken:
             result = await api._ensure_token()
             assert result is False
             mock_issue.assert_called_once()
-
-
-# ── KiwoomRestAPI.get_spec ─────────────────────────────────────────────────────
-
-class TestKiwoomRestGetSpec:
-    def test_get_spec_success(self):
-        api = _make_kiwoom_rest()
-        mock_router = MagicMock()
-        mock_router.get_spec.return_value = "spec_value"
-        with patch("backend.app.core.broker_factory.get_router", MagicMock(return_value=mock_router)):
-            result = api.get_spec("role1", feature="feat1")
-            assert result == "spec_value"
-
-    def test_get_spec_no_router(self):
-        api = _make_kiwoom_rest()
-        with patch("backend.app.core.broker_factory.get_router", MagicMock(return_value=None)):
-            result = api.get_spec("role1")
-            assert result is None
-
-    def test_get_spec_exception_returns_none(self):
-        api = _make_kiwoom_rest()
-        with patch("backend.app.core.broker_factory.get_router", MagicMock(side_effect=Exception("fail"))):
-            result = api.get_spec("role1")
-            assert result is None
 
 
 # ── KiwoomRestAPI._call_api ────────────────────────────────────────────────────

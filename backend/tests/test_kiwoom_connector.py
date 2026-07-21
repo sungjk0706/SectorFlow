@@ -850,8 +850,7 @@ class TestKiwoomConnectorCallbacks:
     def test_set_queue_callback(self):
         conn = _make_kiwoom_connector()
         q = asyncio.Queue()
-        with patch("backend.app.services.core_queues.put_tick_with_drop_policy", MagicMock()):
-            conn.set_queue_callback(q)
+        conn.set_queue_callback(q)
         assert conn._ws_queue is q
 
 
