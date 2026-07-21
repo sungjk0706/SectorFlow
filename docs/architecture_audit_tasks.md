@@ -67,7 +67,7 @@
 | B-08 | P1 | 엔진 부트스트랩/캐시/스냅샷 | 5 | ☑ | 14건 수정 |
 | B-09 | P1 | 엔진 섹터 확인/전략/레이더 | 5 | ☑ | 24건 수정 |
 | **B-10** | **P1** | **엔진 계좌/서비스** | 4 | ◐ | **B-10-a 완료 (11건 수정), B-10-b 대기 (6건)** |
-| B-11 | P1 | 파이프라인 (Compute/Gateway) | 2 | ☐ | |
+| **B-11** | **P1** | **파이프라인 (Compute/Gateway)** | 2 | ◐ | **B-11-a 완료 (8건 수정), B-11-b 대기 (4건)** |
 | B-12 | P2 | DB 계층 | 4 | ☐ | |
 | B-13 | P2 | 설정 관리 | 5 | ☐ | |
 | B-14 | P2 | Broker 추상화 (공통) | 7 | ☐ | |
@@ -88,7 +88,7 @@
 | F-06 | P3 | 공통 컴포넌트 | 25 | ☐ | 분할 권장 |
 | F-07 | P3 | 타입 및 유틸 | 5 | ☐ | |
 
-**진행률**: 10/30 세션 완료 (33%). B-10-a 완료 (11건 수정), B-10-b 대기 (6건). 잔여 19세션.
+**진행률**: 10/30 세션 완료 (33%). B-10-a 완료 (11건 수정), B-10-b 대기 (6건). B-11-a 완료 (8건 수정), B-11-b 대기 (4건). 잔여 19세션.
 
 ---
 
@@ -144,30 +144,41 @@
 
 ### 세션 B-11: P1 — 파이프라인 (Compute / Gateway)
 
-**대상 파일** (2개, 총 983줄)
-- [ ] `backend/app/pipelines/pipeline_compute.py` (863줄, 대형)
-- [ ] `backend/app/pipelines/pipeline_gateway.py` (120줄, 중형)
+**대상 파일** (3개, 총 1112줄)
+- [x] `backend/app/pipelines/pipeline_compute.py` (672줄, B-11-a 분할 완료 — 863줄→672줄)
+- [x] `backend/app/pipelines/pipeline_compute_tick_handlers.py` (320줄, B-11-a 신규 — 틱 핸들러/코얼레싱 분리)
+- [ ] `backend/app/pipelines/pipeline_gateway.py` (120줄, 중형 — B-11-b에서 점검)
 
 **대상 원칙**: P1, P2, P5, P7, P8, P9, P11, P14, P19, P20, P23, P24
 
-**조사 체크리스트**
-- [ ] P1: 단일 이벤트 루프 (`asyncio.run()` 신규 루프 없음)
-- [ ] P2: 모든 I/O `async def`
-- [ ] P5: `asyncio.Queue` 파이프라인, 직접 호출 (옵서버 패턴 금지)
-- [ ] P7: 파이프라인 단계에 블로킹 연산 없음
-- [ ] P8: 실시간 파이프라인으로서 배치(`market_close_pipeline`)와 분리
-- [ ] P9: 파이프라인 독립성 (다른 파이프라인 간섭 없음)
-- [ ] P11: 이벤트 기반 (`Queue.get()` 대기, `while + sleep` 폴링 금지)
-- [ ] P14: 멀티스레드 없음 (`threading.Thread()` 신규 생성 금지)
-- [ ] P19: `await` 누락 없음
-- [ ] P20: 폴백/silent except 없음
-- [ ] P23: 용어 사전 준수, 패턴 일관
-- [ ] P24: 단순성 기준 (pipeline_compute.py 863줄 → 분할 검토 권장)
+**조사 체크리스트** (2026-07-21 조사 완료)
+- [x] P1: 단일 이벤트 루프 (`asyncio.run()` 신규 루프 없음) — 준수
+- [x] P2: 모든 I/O `async def` — 준수
+- [x] P5: `asyncio.Queue` 파이프라인, 직접 호출 (옵서버 패턴 금지) — 준수
+- [x] P7: 파이프라인 단계에 블로킹 연산 없음 — 준수 (배치 처리)
+- [x] P8: 실시간 파이프라인으로서 배치(`market_close_pipeline`)와 분리 — 준수
+- [x] P9: 파이프라인 독립성 (gateway는 app.py에서 독립 시작) — 준수
+- [ ] P11: 이벤트 기반 (`Queue.get()` 대기, `while + sleep` 폴링 금지) — **B11-11 보류 (B-11-b)** (Phase 1 `while + asyncio.sleep(1.0)` 폴링)
+- [x] P14: 멀티스레드 없음 (`threading.Thread()` 신규 생성 금지) — 준수
+- [x] P19: `await` 누락 없음 — 준수 (런타임 기동 검증)
+- [ ] P20: 폴백/silent except 없음 — **B11-08~10 보류 (B-11-b)** (PGM `except ValueError: tval=0`, `get(nk, {})` 폴백 2건)
+- [x] P23: 용어 사전 준수, 패턴 일관 — 준수 ("업종"/"종목" 사용)
+- [x] P24: 단순성 기준 — **해결 B11-01~07** (B-11-a: 모든 함수 50줄 이하, 파일 863줄→672줄+320줄 분할). 잔여 172줄 초과분은 수신율 로직(테스트 모듈 전역 직접 참조)으로 B-11-b에서 별도 검토
+- [x] P16/P21: `add_done_callback` 배선 — **해결 B11-12** (B-11-a: compute/sector_recompute 태스크 실패 시 로깅, gateway 루프와 일관)
 
-**검증**
-- [ ] `pytest backend/tests -k "pipeline"` 통과
-- [ ] `python -W error::RuntimeWarning main.py` 기동 검증
-- [ ] 잔여 폴링 패턴 grep (`while True.*await asyncio.sleep`) 추가 인스턴스 없음
+**검증** (B-11-a 세션에서 수행 완료)
+- [x] `pytest backend/tests/test_pipeline_compute.py backend/tests/test_pipeline_gateway.py` 106 passed
+- [x] `pytest backend/tests` 2961 passed (전체)
+- [x] `python -W error::RuntimeWarning main.py` 10s 기동 검증 (188ms 기동, RuntimeWarning/Traceback 없음, Phase 1 임계값 통과 → Phase 2 진입 정상)
+- [x] 잔존 프로세스 0건 확인
+
+**조사 결과 요약** (2026-07-21)
+- 위반 12건 발견: B11-01 ~ B11-12 (HIGH 2건, MEDIUM 9건, LOW 1건)
+- 해결 8건 (B-11-a: B11-01~07 P24 분할 + B11-12 add_done_callback)
+- 보류 4건 (B-11-b 대기): B11-08~10 (P20 폴백 3건) + B11-11 (P11 폴링→이벤트, 사용자 설계 로직 규칙 0-5)
+- 위반 원칙: P11(1), P16/P21(1), P20(3), P24(7)
+- 준수 원칙: P1, P2, P5, P7, P8, P9, P14, P19, P23
+- 상세 기록: `architecture_audit_plan.md` 섹션 7 "발견된 문제 기록" 참조
 
 ---
 
