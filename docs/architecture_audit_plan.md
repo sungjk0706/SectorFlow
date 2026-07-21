@@ -1156,7 +1156,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B-19 | P2 | WS 구독 제어 및 업종 데이터 | ☑ 완료 (4건 P16/P20/P24) |
 | B-20 | P3 | 알림 (Telegram) | ☑ 완료 (3건 P16/P21) |
 | B-21 | P3 | 기타 Core 유틸 | ◐ B-21-a/b 완료 (journal 12건 + logger 1건 + encryption 3건 P16), B-21-c 잔여 |
-| B-22 | P3 | Web API 계층 | ☐ 미시작 |
+| B-22 | P3 | Web API 계층 | ◐ B-22-a 완료 (ws_manager dead code 3건 P16), B-22-b/c 잔여 |
 | B-23 | P3 | 테스트 품질 점검 | ☐ 미시작 |
 | F-01 | P0 | 통신 계층 및 상태 관리 | ☑ 완료 (10건 수정, V-02 해결, 112 tests passed) |
 | F-02 | P1 | 진입점, 라우팅, 레이아웃 | ☐ 미시작 |
