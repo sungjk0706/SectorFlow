@@ -7,13 +7,14 @@ import asyncio
 import logging
 import re as _re
 from typing import Any
-from backend.app.core.encryption import decrypt_value, encrypt_value
 from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
 from backend.app.core.settings_file import (
     load_integrated_system_settings,
     load_selected_settings,
     save_selected_settings,
     _ENCRYPT_FIELDS as ENCRYPT_FIELDS,
+    _decrypt_encrypt_fields,
+    _encrypt_field_or_raise,
 )
 from backend.app.core import journal as _journal
 from backend.app.services.auto_trading_effective import auto_trading_effective
@@ -287,11 +288,10 @@ def _prepare_save_payload(data: dict, before: dict) -> tuple[dict, dict]:
             v = normalize_symbol_override_map(v)
         if k in ENCRYPT_FIELDS and v and v != "***":
             if not str(v).startswith("gAAAA"):
-                enc = encrypt_value(str(v))
-                if enc:
-                    to_save[k] = enc
-                    after[k] = enc
-                    continue
+                enc = _encrypt_field_or_raise(k, str(v))
+                to_save[k] = enc
+                after[k] = enc
+                continue
         to_save[k] = v
         after[k] = v
 
@@ -398,8 +398,5 @@ async def load_integrated_system_settings_for_editing() -> dict:
     """
     flat = await load_integrated_system_settings()
     out = dict(flat)
-    for f in ENCRYPT_FIELDS:
-        v = out.get(f)
-        if v and str(v).startswith("gAAAA"):
-            out[f] = decrypt_value(v) or ""
+    _decrypt_encrypt_fields(out)
     return out

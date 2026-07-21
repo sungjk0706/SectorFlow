@@ -454,11 +454,21 @@ class TestApplySettingsUpdates:
     async def test_encrypt_field_plain_text(self):
         with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
              patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save, \
-             patch("backend.app.core.settings_store.encrypt_value", return_value="gAAAAencrypted"):
+             patch("backend.app.core.settings_store._encrypt_field_or_raise", return_value="gAAAAencrypted"):
             result = await apply_settings_updates({"kiwoom_app_key": "plaintext_key"})
             assert "kiwoom_app_key" in result
             saved = mock_save.call_args[0][0]
             assert saved["kiwoom_app_key"] == "gAAAAencrypted"
+
+    @pytest.mark.asyncio
+    async def test_encrypt_field_failure_raises(self):
+        """암호화 실패 시 ValueError 발생 — 평문 저장 차단 (P20/보안)."""
+        with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
+             patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save, \
+             patch("backend.app.core.settings_store._encrypt_field_or_raise", side_effect=ValueError("암호화 실패")):
+            with pytest.raises(ValueError, match="암호화 실패"):
+                await apply_settings_updates({"kiwoom_app_key": "plaintext_key"})
+            mock_save.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_encrypt_field_masked_skipped(self):
@@ -771,7 +781,7 @@ class TestLoadIntegratedSystemSettingsForEditing:
             "broker": "kiwoom",
         }
         with patch("backend.app.core.settings_store.load_integrated_system_settings", new=AsyncMock(return_value=flat)), \
-             patch("backend.app.core.settings_store.decrypt_value", return_value="decrypted_key"):
+             patch("backend.app.core.encryption.decrypt_value", return_value="decrypted_key"):
             result = await load_integrated_system_settings_for_editing()
             assert result["kiwoom_app_key"] == "decrypted_key"
             assert result["broker"] == "kiwoom"
@@ -785,9 +795,13 @@ class TestLoadIntegratedSystemSettingsForEditing:
             assert result["trade_mode"] == "test"
 
     @pytest.mark.asyncio
-    async def test_decrypt_returns_none(self):
+    async def test_decrypt_returns_none_logs_warning(self):
+        """B13-04: 복호화 실패(None) 시 경고 로그 + 빈문자열 (P21 사용자 투명성)."""
         flat = {"kiwoom_app_key": "gAAAAencrypted"}
         with patch("backend.app.core.settings_store.load_integrated_system_settings", new=AsyncMock(return_value=flat)), \
-             patch("backend.app.core.settings_store.decrypt_value", return_value=None):
+             patch("backend.app.core.encryption.decrypt_value", return_value=None), \
+             patch("backend.app.core.settings_file.logger") as mock_logger:
             result = await load_integrated_system_settings_for_editing()
             assert result["kiwoom_app_key"] == ""
+            mock_logger.warning.assert_called_once()
+            assert "복호화 실패" in mock_logger.warning.call_args[0][0]
