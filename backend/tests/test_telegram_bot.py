@@ -10,7 +10,6 @@
 """
 from __future__ import annotations
 
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -100,24 +99,8 @@ class TestTelegramBotInit:
         assert bot._task is None
         assert bot._running is False
         assert bot._offsets == {}
-        assert bot._last_poll_ok_mon is None
         assert bot._last_poll_err_mon is None
         assert bot._last_poll_err_msg == ""
-
-
-# ── TelegramBot.get_poll_ok_age_sec ─────────────────────────────────────────────
-
-class TestGetPollOkAgeSec:
-    def test_none_when_no_poll(self):
-        bot = TelegramBot()
-        assert bot.get_poll_ok_age_sec() is None
-
-    def test_returns_elapsed_seconds(self):
-        bot = TelegramBot()
-        bot._last_poll_ok_mon = time.monotonic() - 5.0
-        age = bot.get_poll_ok_age_sec()
-        assert age is not None
-        assert age >= 4.9
 
 
 # ── TelegramBot.start ───────────────────────────────────────────────────────────
@@ -154,38 +137,6 @@ class TestStart:
             bot.start()
         assert bot._task is new_task
         assert bot._running is True
-
-
-# ── TelegramBot.stop ────────────────────────────────────────────────────────────
-
-class TestStop:
-    def test_stop_sets_running_false(self):
-        bot = TelegramBot()
-        bot._running = True
-        bot.stop()
-        assert bot._running is False
-
-    def test_stop_cancels_task(self):
-        bot = TelegramBot()
-        mock_task = MagicMock()
-        mock_task.done.return_value = False
-        bot._task = mock_task
-        bot._running = True
-        bot.stop()
-        mock_task.cancel.assert_called_once()
-        assert bot._running is False
-
-    def test_stop_clears_poll_ok_mon(self):
-        bot = TelegramBot()
-        bot._last_poll_ok_mon = 123.45
-        bot.stop()
-        assert bot._last_poll_ok_mon is None
-
-    def test_stop_no_task_no_error(self):
-        bot = TelegramBot()
-        bot.stop()
-        assert bot._running is False
-        assert bot._last_poll_ok_mon is None
 
 
 # ── TelegramBot.stop_async ──────────────────────────────────────────────────────
@@ -255,13 +206,6 @@ class TestStopAsync:
         await bot.stop_async()
         mock_task.cancel.assert_not_called()
         assert bot._task is None
-
-    @pytest.mark.asyncio
-    async def test_stop_async_clears_poll_ok_mon(self):
-        bot = TelegramBot()
-        bot._last_poll_ok_mon = 999.0
-        await bot.stop_async()
-        assert bot._last_poll_ok_mon is None
 
 
 def asyncio_cancelled_error():
@@ -429,7 +373,6 @@ class TestPollOne:
             })
         mock_handle.assert_called_once_with("tok", "12345", "자동", "root")
         assert bot._offsets["tok"] == 101
-        assert bot._last_poll_ok_mon is not None
 
     @pytest.mark.asyncio
     async def test_non_200_status_returns_silently(self):

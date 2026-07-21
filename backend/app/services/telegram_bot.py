@@ -60,7 +60,6 @@ class TelegramBot:
         self._task: asyncio.Task | None = None
         self._running = False
         self._offsets: dict[str, int] = {}
-        self._last_poll_ok_mon: float | None = None
         self._last_poll_err_mon: float | None = None
         self._last_poll_err_msg: str = ""
 
@@ -82,22 +81,7 @@ class TelegramBot:
             except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
         self._task = None
-        self._last_poll_ok_mon = None
         logger.info("[알림] 폴링 종료")
-
-    def stop(self) -> None:
-        """비동기 루프 밖에서 취소만 할 때. 엔진 종료 경로는 stop_async 를 사용한다."""
-        self._running = False
-        if self._task and not self._task.done():
-            self._task.cancel()
-        self._last_poll_ok_mon = None
-        logger.info("[알림] 폴링 종료(취소만, 대기 없음)")
-
-    def get_poll_ok_age_sec(self) -> float | None:
-        """마지막 getUpdates 성공(HTTP 200·ok) 이후 경과 초. 없으면 None."""
-        if self._last_poll_ok_mon is None:
-            return None
-        return time.monotonic() - self._last_poll_ok_mon
 
     # ── 내부 폴링 반복 ────────────────────────────────────────────────────────
 
@@ -192,8 +176,6 @@ class TelegramBot:
 
         if not data.get("ok"):
             return
-
-        self._last_poll_ok_mon = time.monotonic()
 
         for update in data.get("result", []):
             uid = update.get("update_id", 0)

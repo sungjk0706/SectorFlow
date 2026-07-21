@@ -76,7 +76,7 @@
 | B-17 | P2 | Domain 계층 | 6 | ☑ | 완료 (3건 P16/P24) |
 | B-18 | P2 | 스케줄러 및 장마감 파이프라인 | 3 | ☑ | 완료 (6건 P16/P20, P24 분할 이월) |
 | B-19 | P2 | WS 구독 제어 및 업종 데이터 | 2 | ☑ | 완료 (4건 P16/P20/P24) |
-| B-20 | P3 | 알림 (Telegram) | 3 | ☐ | |
+| B-20 | P3 | 알림 (Telegram) | 3 | ☑ | 완료 (3건 P16/P21) |
 | B-21 | P3 | 기타 Core 유틸 | 11 | ☐ | |
 | B-22 | P3 | Web API 계층 | 14 | ☐ | |
 | B-23 | P3 | 테스트 품질 점검 | 67 | ☐ | |
@@ -88,7 +88,7 @@
 | F-06 | P3 | 공통 컴포넌트 | 25 | ☐ | 분할 권장 |
 | F-07 | P3 | 타입 및 유틸 | 5 | ☐ | |
 
-**진행률**: 10/30 세션 완료 (33%). B-10-a 완료 (11건 수정), B-10-b 대기 (6건). B-11-a 완료 (8건 수정), B-11-b 대기 (4건). 잔여 19세션.
+**진행률**: 11/30 세션 완료 (37%). B-10-a 완료 (11건 수정), B-10-b 대기 (6건). B-11-a 완료 (8건 수정), B-11-b 대기 (4건). 잔여 18세션.
 
 ---
 
@@ -451,27 +451,29 @@
 ### 세션 B-20: P3 — 알림 (Telegram / Notification)
 
 **대상 파일** (3개, 총 668줄)
-- [ ] `backend/app/services/telegram_bot.py` (527줄, 대형)
-- [ ] `backend/app/services/telegram.py` (43줄, 소형)
-- [ ] `backend/app/services/notification_worker.py` (98줄, 중형)
+- [x] `backend/app/services/telegram_bot.py` (527줄→505줄)
+- [x] `backend/app/services/telegram.py` (43줄, 변경 없음)
+- [x] `backend/app/services/notification_worker.py` (98줄, 변경 없음 — app.py에서 호출 추가)
 
 **대상 원칙**: P2, P5, P14, P16, P19, P20, P21, P23, P24
 
 **조사 체크리스트**
-- [ ] P2: HTTP I/O `async def` (`httpx.AsyncClient`)
-- [ ] P5: 직접 호출 체인
-- [ ] P14: 멀티스레드 없음
-- [ ] P16: dead code 없음
-- [ ] P19: `await` 누락 없음
-- [ ] P20: 폴백/silent except 없음
-- [ ] P21: 중요 상태 변화(서킷브레이커, 매수 차단 등)가 알림으로 전달됨
-- [ ] P23: 용어 사전 준수, 패턴 일관
-- [ ] P24: 단순성 기준
+- [x] P2: HTTP I/O `async def` (`httpx.AsyncClient`) — 모든 HTTP 요청 비동기, 동기 `requests` 없음
+- [x] P5: 직접 호출 체인 — EventBus/옵서버 패턴 없음
+- [x] P14: 멀티스레드 없음 — `asyncio.create_task` 2건(telegram_bot:71, notification_worker:38)은 장기 실행 백그라운드 폴링/워커로 schedule_engine_task 전환 부적합, 보류
+- [x] P16: dead code 없음 — B20-01 `stop` 제거, B20-02 `get_poll_ok_age_sec` 제거
+- [x] P19: `await` 누락 없음 — create_task의 await 누락은 의도적(fire-and-forget)
+- [x] P20: 폴백/silent except 없음 — `or ""` 패턴은 외부 입력 None 정규화로 P20 위반 아님
+- [x] P21: 중요 상태 변화가 알림으로 전달됨 — B20-03 app.py shutdown에 NotificationWorker.shutdown() 호출 추가
+- [x] P23: 용어 사전 준수, 패턴 일관 — "업종"/"종목"/"매수 후보" 용어 사용
+- [x] P24: 단순성 기준 — 함수 50줄 이하, 불필요한 추상화 없음
 
 **검증**
-- [ ] `pytest backend/tests -k "telegram or notification"` 통과
-- [ ] `python -W error::RuntimeWarning main.py` 기동 검증
-- [ ] 잔여 동기 `requests` / dead code grep 추가 인스턴스 없음
+- [x] `pytest backend/tests -k "telegram or notification"` 통과 (146 passed)
+- [x] `python -W error::RuntimeWarning main.py` 기동 검증 (440ms 정상, RuntimeWarning 없음)
+- [x] 잔여 동기 `requests` / dead code grep 추가 인스턴스 없음
+
+**B-20 완료 (2026-07-22)**: 3건 해결 (B20-01~03). B20-01 `stop` 제거 (P16, 동기 취소 전용 메서드, production 호출처 0건/테스트 4건 → stop_async가 유일 종료 경로, TestStop 4건 제거). B20-02 `get_poll_ok_age_sec` 제거 (P16, 폴링 성공 경과 초 반환, production 호출처 0건/테스트 2건 → `_last_poll_ok_mon` 필드도 함께 제거, TestGetPollOkAgeSec 2건 + test_stop_async_clears_poll_ok_mon 1건 + assertion 2건 제거, import time 제거). B20-03 app.py shutdown에 `NotificationWorker.get_instance().shutdown()` 호출 추가 (P21, stop_engine() 이후 큐 잔량 알림 처리, 종료 시 알림 누락 방지). telegram_bot.py 527줄→505줄. subagent 병렬 조사로 3개 파일 28개 함수 전체 추적. 검증: py_compile 5파일 OK + ruff OK + pytest 146 passed(telegram_bot/telegram/notification_worker) + 2903 passed(전체, B-19 2910 - 제거 테스트 7건 = 2903, 회귀 없음) + 런타임 기동 440ms 정상 (RuntimeWarning 없음, 1356종목 로드·업종순위 재계산 완료·LS/키움 토큰 발급·LS 연결 정상, 잔존 프로세스 0건). **B-20 완료**: 알림 Telegram/Notification 3개 파일 3건 전부 해결.
 
 ---
 
