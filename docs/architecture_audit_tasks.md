@@ -70,7 +70,7 @@
 | **B-11** | **P1** | **파이프라인 (Compute/Gateway)** | 2 | ◐ | **B-11-a 완료 (8건 수정), B-11-b 대기 (4건)** |
 | B-12 | P2 | DB 계층 | 4 | ☑ | 9건 수정 |
 | B-13 | P2 | 설정 관리 | 5 | ☐ | |
-| B-14 | P2 | Broker 추상화 (공통) | 7 | ☐ | |
+| B-14 | P2 | Broker 추상화 (공통) | 7 | ◐ | B-14-a 완료 (6건 수정), B-14-b 대기 (2건 P20/P21 폴백) |
 | B-15 | P2 | 증권사 구현: 키움 | 5 | ☐ | 분할 권장 |
 | B-16 | P2 | 증권사 구현: LS | 3 | ☐ | 분할 권장 |
 | B-17 | P2 | Domain 계층 | 6 | ☐ | |
@@ -241,33 +241,38 @@
 
 ### 세션 B-14: P2 — Broker 추상화 (공통)
 
+> **분할 진행**: B-14-a (기계적 6건 완료) / B-14-b (핵심 동작 2건 잔여 — B14-05/B14-06 P20/P21 폴백)
+
 **대상 파일** (7개, 총 1133줄)
-- [ ] `backend/app/core/broker_router.py` (290줄, 대형)
-- [ ] `backend/app/core/connector_manager.py` (292줄, 대형)
-- [ ] `backend/app/core/broker_registry.py` (184줄, 중형)
-- [ ] `backend/app/core/broker_providers.py` (120줄, 중형)
-- [ ] `backend/app/core/broker_factory.py` (58줄, 중형)
-- [ ] `backend/app/core/broker_connector.py` (107줄, 중형)
-- [ ] `backend/app/core/broker_urls.py` (82줄, 중형)
+- [x] `backend/app/core/broker_router.py` (290줄→281줄, 대형) — B14-07 dead 분기 제거
+- [ ] `backend/app/core/connector_manager.py` (292줄, 대형) — B14-08 완료, B14-b 대상 아님
+- [x] `backend/app/core/broker_registry.py` (184줄→179줄, 중형) — B14-04 중복 통합
+- [ ] `backend/app/core/broker_providers.py` (120줄, 중형) — B14-09 재검토: P4 위반 아님
+- [x] `backend/app/core/broker_factory.py` (58줄→36줄, 중형) — B14-01/02 dead code 제거
+- [ ] `backend/app/core/broker_connector.py` (107줄, 중형) — 위반 없음
+- [x] `backend/app/core/broker_urls.py` (82줄→80줄, 중형) — B14-03 dead 상수 제거
 
 **대상 원칙**: P2, P3, P4, P5, P10, P14, P19, P20, P23, P24
 
 **조사 체크리스트**
-- [ ] P2: 모든 I/O `async def`
-- [ ] P3: `run_in_executor` 없음
-- [ ] P4: 공통 로직에 `kiwoom_`/`ls_` 접두사 없음 (B08-13/B08-14 교훈)
-- [ ] P5: 직접 호출 체인
-- [ ] P10: 인증 토큰 캐시 SSOT
-- [ ] P14: 멀티스레드 없음
-- [ ] P19: `await` 누락 없음
-- [ ] P20: 폴백/silent except 없음
-- [ ] P23: 용어 사전 준수, 패턴 일관
-- [ ] P24: 단순성 기준
+- [x] P2: 모든 I/O `async def`
+- [x] P3: `run_in_executor` 없음
+- [x] P4: 공통 로직에 `kiwoom_`/`ls_` 접두사 없음 (B14-01 해결 — broker_factory kiwoom 분기 제거)
+- [x] P5: 직접 호출 체인
+- [x] P10: 인증 토큰 캐시 SSOT
+- [x] P14: 멀티스레드 없음
+- [x] P19: `await` 누락 없음
+- [~] P20: 폴백/silent except 없음 — **B14-b 잔여** (B14-05 broker_router._build 폴백, B14-06 get_provider 폴백)
+- [x] P23: 용어 사전 준수, 패턴 일관 (B14-04/B14-08 해결)
+- [x] P24: 단순성 기준 (B14-04 중복 통합)
 
 **검증**
-- [ ] `pytest backend/tests -k "broker or connector"` 통과
-- [ ] `python -W error::RuntimeWarning main.py` 기동 검증
-- [ ] 잔여 `kiwoom_`/`ls_` 접두사가 공통 파일에 침투하지 않았는지 grep 확인
+- [x] `pytest backend/tests -k "broker or connector"` 통과 (342 passed)
+- [x] `python -W error::RuntimeWarning main.py` 기동 검증 (359ms 정상 기동)
+- [x] 잔여 `kiwoom_`/`ls_` 접두사가 공통 파일에 침투하지 않았는지 grep 확인
+
+**B-14-a 완료 (2026-07-21)**: 기계적 6건 해결 (B14-01/02/03/04/07/08). B14-09는 재검토 결과 P4 위반 아님 (UnifiedStockRecord는 범용 공통 데이터 클래스).
+**B-14-b 잔여**: B14-05 (broker_router._build 증권사 비어있음 → 기본 증권사 조용히 대체, P20/P21), B14-06 (get_provider 페이지 오버라이드 실패 시 전역 Provider 폴백, P20) — 규칙 0-4 적용, UI 기준 설명 + 승인 필수.
 
 ---
 
