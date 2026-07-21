@@ -157,6 +157,7 @@ export interface AppSettings {
 
   // 전역매매설정 (리스크 매니저) — 목표 수익/손실 도달 시 자동 매매 중단
   risk_manager_on?: boolean;
+  daily_loss_limit_on?: boolean;                // 일일 손실 한도 활성화 (기본 ON — 기존 항상 실행 동작 유지)
   daily_loss_limit?: number;                    // 일일 손실 한도 (원, 음수, 기본 -50만원)
   daily_loss_rate_limit_on?: boolean;           // 일일 손실률 한도 활성화
   daily_loss_rate_limit?: number;               // 일일 손실률 한도 (%, 음수, 기본 -5.0)

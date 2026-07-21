@@ -270,16 +270,25 @@ export function createNumInput(options: {
   return { el: wrap as HTMLElement, setValue, getValue }
 }
 
-/* ── 금액 입력란 (콤마 포맷 + 커스텀 스핀 버튼) ────────────── */
+/* ── 금액 입력란 (콤마 포맷 + 커스텀 스핀 버튼, 음수 지원) ─── */
 export function createMoneyInput(options: {
   value: number
   onChange: (v: number) => void
   step?: number
+  min?: number          // ▼ 버튼 하한 (기본 0 — 양수 전용 사용처 호환)
+  max?: number          // ▲ 버튼 상한 (기본 Infinity — 상한 없음)
   name?: string
   style?: Partial<CSSStyleDeclaration>
 }) {
   let currentValue = options.value
   const step = options.step ?? 10000
+  const minVal = options.min ?? 0
+  const maxVal = options.max ?? Infinity
+
+  // 금액 포맷: 0은 '0', 음수/양수 모두 천 단위 콤마 (음수 예: -500,000)
+  function fmtMoney(v: number): string {
+    return v === 0 ? '0' : v.toLocaleString()
+  }
 
   const wrap = document.createElement('div')
   wrap.style.display = 'flex'
@@ -289,7 +298,7 @@ export function createMoneyInput(options: {
   input.type = 'text'
   input.inputMode = 'numeric'
   if (options.name) input.setAttribute('data-name', options.name)
-  input.value = currentValue > 0 ? currentValue.toLocaleString() : '0'
+  input.value = fmtMoney(currentValue)
   applyInputBase(input, {
     borderRight: 'none',
     borderTopRightRadius: '0',
@@ -299,7 +308,7 @@ export function createMoneyInput(options: {
 
   input.addEventListener('focus', () => {
     // 포커스 시 콤마 제거 → 순수 숫자로 편집 가능
-    input.value = currentValue > 0 ? String(currentValue) : ''
+    input.value = currentValue !== 0 ? String(currentValue) : ''
   })
   input.addEventListener('input', () => {
     currentValue = Number(input.value.replace(/,/g, '')) || 0
@@ -307,7 +316,7 @@ export function createMoneyInput(options: {
   })
   input.addEventListener('blur', () => {
     // 포커스 해제 시 콤마 포맷 복원
-    input.value = currentValue > 0 ? currentValue.toLocaleString() : '0'
+    input.value = fmtMoney(currentValue)
   })
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); focusNext(input) }
@@ -315,8 +324,8 @@ export function createMoneyInput(options: {
 
   const spinBtns = createSpinButtons(
     input,
-    () => { currentValue = currentValue + step; input.value = currentValue > 0 ? currentValue.toLocaleString() : '0'; options.onChange(currentValue) },
-    () => { currentValue = Math.max(0, currentValue - step); input.value = currentValue > 0 ? currentValue.toLocaleString() : '0'; options.onChange(currentValue) },
+    () => { currentValue = Math.min(maxVal, currentValue + step); input.value = fmtMoney(currentValue); options.onChange(currentValue) },
+    () => { currentValue = Math.max(minVal, currentValue - step); input.value = fmtMoney(currentValue); options.onChange(currentValue) },
   )
 
   wrap.appendChild(input)
@@ -326,7 +335,7 @@ export function createMoneyInput(options: {
     currentValue = v
     // 포커스 중이면 DOM 값 덮어쓰지 않음 (사용자 편집 보호)
     if (document.activeElement === input) return
-    input.value = v > 0 ? v.toLocaleString() : '0'
+    input.value = fmtMoney(v)
   }
 
   function getValue(): number {

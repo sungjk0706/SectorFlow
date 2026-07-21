@@ -37,6 +37,7 @@ class RiskManager:
         self.max_single_stock_exposure = int(cache.get("max_single_stock_exposure", 20000000) or 20000000)
         # 신규 — 리스크 매니저 확장 (P13 메모리 상주)
         self.risk_manager_on = bool(cache.get("risk_manager_on", False))
+        self.daily_loss_limit_on = bool(cache.get("daily_loss_limit_on", True))
         self.daily_loss_rate_limit_on = bool(cache.get("daily_loss_rate_limit_on", False))
         self.daily_loss_rate_limit = float(cache.get("daily_loss_rate_limit", -5.0) or -5.0)
         self.daily_profit_limit_on = bool(cache.get("daily_profit_limit_on", False))
@@ -119,12 +120,12 @@ class RiskManager:
         if not self.circuit_breaker.allow_request():
             return False, f"서킷브레이커 차단 상태 ({self.circuit_breaker.get_state()})"
 
-        # 2. 일일 손실 한도 검사 (기존 — 항상 실행, trade_history에 모드 구분 있음)
+        # 2. 일일 손실 한도 검사 (기본 관문 — daily_loss_limit_on ON 시에만, 기본 ON)
         from backend.app.services.engine_state import state as engine_state
         cache = engine_state.integrated_system_settings_cache
         trade_mode = "test" if is_test_mode(cache) else "real"
         today_pnl = await get_total_realized_pnl(today_only=True, trade_mode=trade_mode)
-        if today_pnl <= self.daily_loss_limit:
+        if self.daily_loss_limit_on and today_pnl <= self.daily_loss_limit:
             logger.warning("[매매] 일일 손실 한도 초과: 현재 %s, 한도 %s", f"{today_pnl:,}", f"{self.daily_loss_limit:,}")
             return False, "일일 손실 한도 초과"
 
@@ -199,8 +200,8 @@ class RiskManager:
             trade_mode = "test" if is_test_mode(cache) else "real"
             today_pnl = await get_total_realized_pnl(today_only=True, trade_mode=trade_mode)
 
-            # 일일 손실 한도 (매도 차단 시 손실 확대 위험 — 사용자 명시적 활성화 시에만)
-            if today_pnl <= self.daily_loss_limit:
+            # 일일 손실 한도 (매도 차단 시 손실 확대 위험 — daily_loss_limit_on ON 시에만)
+            if self.daily_loss_limit_on and today_pnl <= self.daily_loss_limit:
                 return False, "일일 손실 한도 초과 (매도 차단)"
 
             from backend.app.services.trade_history import get_buy_history

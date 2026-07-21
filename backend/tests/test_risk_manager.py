@@ -32,6 +32,7 @@ def risk_manager(mock_circuit_breaker):
     rm.max_single_stock_exposure = 20_000_000
     # 신규 — 리스크 매니저 확장 속성 (기본값: risk_manager_on=False)
     rm.risk_manager_on = False
+    rm.daily_loss_limit_on = True
     rm.risk_block_buy_on = True
     rm.risk_block_sell_on = False
     rm.daily_loss_rate_limit_on = False
@@ -85,6 +86,7 @@ class TestSyncThresholds:
         assert rm.max_daily_loss_limit == -500_000
         assert rm.daily_loss_limit == -500_000
         assert rm.max_single_stock_exposure == 20_000_000
+        assert rm.daily_loss_limit_on is True  # 기본 ON — 기존 항상 실행 동작 유지
 
 
 # ── get_withdrawable_deposit ──────────────────────────────────────────────────
@@ -153,6 +155,20 @@ class TestCheckBuyOrderAllowed:
             allowed, reason = await risk_manager.check_buy_order_allowed("005930", 70_000, 10)
         assert allowed is False
         assert "일일 손실 한도" in reason
+
+    @pytest.mark.asyncio
+    async def test_daily_loss_limit_off_skips_check(self, risk_manager, settings_cache):
+        """daily_loss_limit_on=False 시 손실 한도 체크 스킵 — 한도 초과여도 매수 허용."""
+        settings_cache["daily_loss_limit_on"] = False
+        settings_cache["daily_loss_limit"] = -500_000
+        with patch("backend.app.services.engine_state.state") as mock_state, \
+             patch("backend.app.services.risk_manager.is_test_mode", return_value=False), \
+             patch("backend.app.services.risk_manager.get_total_realized_pnl", new_callable=AsyncMock, return_value=-600_000):
+            mock_state.integrated_system_settings_cache = settings_cache
+            mock_state.account_snapshot = {"orderable": 100_000_000}
+            mock_state.positions = []
+            allowed, reason = await risk_manager.check_buy_order_allowed("005930", 70_000, 10)
+        assert allowed is True
 
     @pytest.mark.asyncio
     async def test_daily_loss_at_limit_blocks(self, risk_manager, settings_cache):
