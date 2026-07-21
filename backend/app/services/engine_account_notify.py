@@ -200,69 +200,78 @@ async def notify_desktop_sector_scores(*, force: bool = False) -> None:
     except Exception as e:
         logger.warning("[시스템] 수신율 임계값 게이트 조회 실패 (전송 허용): %s", e)
 
-    from backend.app.services.engine_state import state
     from backend.app.services.sector_data_provider import get_sector_scores_snapshot
     scores, ranked_count = get_sector_scores_snapshot()
 
     # 수신율 가져오기 (pipeline_compute.py에서 이벤트 기반으로 갱신)
-    receive_rate = None
-    try:
-        from backend.app.pipelines.pipeline_compute import get_current_receive_rate
-        receive_rate = get_current_receive_rate()
-    except Exception as e:
-        logger.warning("[시스템] 수신율 조회 실패 (빈 값으로 진행): %s", e)
+    receive_rate = _get_current_receive_rate()
 
     # delta 계산: 변경된 업종만 전송
     if not force and notify_cache.prev_scores:
-        prev_map = {s["sector"]: s for s in notify_cache.prev_scores}
-        changed = []
-        for s in scores:
-            prev = prev_map.get(s["sector"])
-            if prev is None or s != prev:
-                changed.append(s)
-        # 삭제된 업종 감지 (이전에 있었는데 지금 없는 경우)
-        cur_sectors = {s["sector"] for s in scores}
-        removed = [s["sector"] for s in notify_cache.prev_scores if s["sector"] not in cur_sectors]
-
-        # 메모리 클리닝: 임시 변수 삭제
-        del prev_map, cur_sectors
-
-        # 수신율 변경 감지
-        receive_rate_changed = receive_rate != notify_cache.prev_receive_rate
-
-        if not changed and not removed and not receive_rate_changed:
+        payload = _build_sector_score_delta_payload(scores, receive_rate, ranked_count)
+        if payload is None:
             return  # 변경 없음 → 전송 생략
-
-        payload = {
-            "changed_scores": changed,
-            "status": {
-                "total_stocks": len(scores),
-                "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3)),
-                "ranked_sectors_count": ranked_count,
-                "receive_rate": receive_rate,
-            },
-            "delta": True,
-            "changed_sectors": [s["sector"] for s in changed],
-            "removed_sectors": removed,
-        }
-
-        # 메모리 클리닝: 임시 리스트 삭제
-        del changed, removed
     else:
         # 최초 전송 또는 force → 전체 스냅샷
-        payload = {
-            "scores": scores,
-            "status": {
-                "total_stocks": len(scores),
-                "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3)),
-                "ranked_sectors_count": ranked_count,
-                "receive_rate": receive_rate,
-            },
-        }
+        payload = _build_sector_score_full_payload(scores, receive_rate, ranked_count)
 
     await _safe_broadcast("sector-scores", payload)
     notify_cache.prev_scores = scores
     notify_cache.prev_receive_rate = receive_rate
+
+
+def _get_current_receive_rate():
+    """pipeline_compute에서 수신율 조회. 실패 시 None."""
+    try:
+        from backend.app.pipelines.pipeline_compute import get_current_receive_rate
+        return get_current_receive_rate()
+    except Exception as e:
+        logger.warning("[시스템] 수신율 조회 실패 (빈 값으로 진행): %s", e)
+        return None
+
+
+def _build_sector_score_delta_payload(scores: list, receive_rate, ranked_count: int) -> dict | None:
+    """delta 페이로드 조립. 변경 없으면 None 반환."""
+    prev_map = {s["sector"]: s for s in notify_cache.prev_scores}
+    changed = []
+    for s in scores:
+        prev = prev_map.get(s["sector"])
+        if prev is None or s != prev:
+            changed.append(s)
+    # 삭제된 업종 감지 (이전에 있었는데 지금 없는 경우)
+    cur_sectors = {s["sector"] for s in scores}
+    removed = [s["sector"] for s in notify_cache.prev_scores if s["sector"] not in cur_sectors]
+    receive_rate_changed = receive_rate != notify_cache.prev_receive_rate
+
+    if not changed and not removed and not receive_rate_changed:
+        return None  # 변경 없음 → 전송 생략
+
+    return {
+        "changed_scores": changed,
+        "status": _build_sector_score_status(scores, ranked_count, receive_rate),
+        "delta": True,
+        "changed_sectors": [s["sector"] for s in changed],
+        "removed_sectors": removed,
+    }
+
+
+def _build_sector_score_full_payload(scores: list, receive_rate, ranked_count: int) -> dict:
+    """전체 스냅샷 페이로드 조립 (최초 전송 또는 force)."""
+    return {
+        "scores": scores,
+        "status": _build_sector_score_status(scores, ranked_count, receive_rate),
+    }
+
+
+def _build_sector_score_status(scores: list, ranked_count: int, receive_rate) -> dict:
+    """sector-scores 공통 status 블록 조립."""
+    from backend.app.services.engine_state import state
+    return {
+        "total_stocks": len(scores),
+        "max_targets": int(state.integrated_system_settings_cache.get("sector_max_targets", 3)),
+        "ranked_sectors_count": ranked_count,
+        "receive_rate": receive_rate,
+    }
 
 
 async def notify_desktop_sector_refresh(*, force: bool = False) -> None:
@@ -328,107 +337,6 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
         code = s.get("code", "")
         if code:
             notify_cache.prev_sent[code] = {}
-
-
-async def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str | None = None) -> None:
-    """체결·잔고·실시간 시세 변경 시 → WS account-update (delta 방식, 페이지별 페이로드 분리)."""
-    changed_positions, removed_codes = _compute_position_delta(positions)
-    snapshot_changed = not _snap_equal(snapshot, notify_cache.snapshot_sent)
-
-    if not changed_positions and not removed_codes and not snapshot_changed:
-        return
-
-    # 페이지별 페이로드 분리
-    from backend.app.web.ws_manager import ws_manager
-
-    active_pages = ws_manager.get_active_pages()
-    profit_overview_active = "profit-overview" in active_pages
-    sell_position_active = "sell-position" in active_pages
-
-    # 수익현황 페이지만 활성: 경량화 페이로드 전송
-    if profit_overview_active and not sell_position_active:
-        lightweight_payload = _build_lightweight_payload_for_profit_overview(snapshot, changed_positions, removed_codes)
-        try:
-            await ws_manager.broadcast_to_pages("account-update", lightweight_payload, {"profit-overview"})
-        except Exception as e:
-            logger.warning("[시스템] 수익현황 경량화 페이로드 전송 실패: %s", e, exc_info=True)
-    # sell-position 페이지 활성 또는 두 페이지 모두 활성: 전체 페이로드 전송
-    else:
-        payload = {
-            "snapshot": dict(snapshot),
-            "changed_positions": changed_positions,
-            "removed_codes": removed_codes,
-        }
-        target_pages = set()
-        if sell_position_active:
-            target_pages.add("sell-position")
-        if profit_overview_active and sell_position_active:
-            target_pages.add("profit-overview")
-
-        if target_pages:
-            try:
-                await ws_manager.broadcast_to_pages("account-update", payload, target_pages)
-            except Exception as e:
-                logger.warning("[시스템] 계좌 화면 전송 실패: %s", e, exc_info=True)
-        else:
-            await _safe_broadcast("account-update", payload)
-
-    # 캐시 갱신
-    notify_cache.snapshot_sent = dict(snapshot)
-    notify_cache.position_sent = {}
-    for p in positions:
-        cd = str(p.get("stk_cd", "") or "").strip()
-        if cd:
-            notify_cache.position_sent[cd] = dict(p)
-    # notify_cache.positions_code_set 동기화 — real-data 필터링용 O(1) Set 캐시
-    _rebuild_positions_cache(positions)
-
-    if reason and not reason.startswith("price_tick"):
-        cur_pairs = [
-            (_base_stk_cd(str(p.get("stk_cd", "") or "")), p.get("cur_price"))
-            for p in positions
-            if int(p.get("qty", 0) or 0) > 0
-        ]
-        logger.info(
-            "[시스템] 계좌 화면 전송 사유=%s 총평가=%s 보유현재가=%s 변경=%d 제거=%d 수익개요=%s 매도포지션=%s",
-            reason, snapshot.get("total_eval"), cur_pairs,
-            len(changed_positions), len(removed_codes),
-            profit_overview_active, sell_position_active,
-        )
-
-
-def _build_lightweight_payload_for_profit_overview(snapshot: dict, changed_positions: list[dict], removed_codes: list[str]) -> dict:
-    """수익현황 페이지용 경량화 페이로드 생성.
-
-    - snapshot: total_buy_amount 제거, total_eval_amount, total_pnl, total_pnl_rate 유지
-    - changed_positions: 보유종목 표시에 필요한 최소 필드(stk_cd, stk_nm, qty, cur_price)만 포함
-    """
-    # snapshot 필터링
-    lightweight_snapshot = {
-        "deposit": snapshot.get("deposit"),
-        "orderable": snapshot.get("orderable"),
-        "accumulated_investment": snapshot.get("accumulated_investment"),
-        "initial_deposit": snapshot.get("initial_deposit"),
-        "total_eval_amount": snapshot.get("total_eval_amount"),
-        "total_pnl": snapshot.get("total_pnl"),
-        "total_pnl_rate": snapshot.get("total_pnl_rate"),
-    }
-
-    position_count = snapshot.get("position_count", 0)
-
-    # changed_positions: 보유종목 리스트 갱신에 필요한 최소 필드만 추출
-    _MIN_POSITION_KEYS = ("stk_cd", "stk_nm", "qty", "buy_price", "avg_price", "buy_amount", "buy_amt", "total_fee", "tax", "cur_price", "buy_date")
-    lightweight_positions = [
-        {k: p.get(k) for k in _MIN_POSITION_KEYS}
-        for p in changed_positions
-    ]
-
-    return {
-        "snapshot": lightweight_snapshot,
-        "position_count": position_count,
-        "changed_positions": lightweight_positions,
-        "removed_codes": removed_codes,
-    }
 
 
 # 매수 후보 비교 키: 순위·시세·가드 상태 등 변경 감지 대상 필드

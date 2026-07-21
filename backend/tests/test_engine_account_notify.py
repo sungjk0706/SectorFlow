@@ -18,9 +18,11 @@ from backend.app.services.engine_account_notify import (
     _is_relevant_code,
     _rebuild_positions_cache,
     _rebuild_layout_cache,
-    _build_lightweight_payload_for_profit_overview,
     broadcast_engine_status_ws,
     notify_program_update,
+)
+from backend.app.services.engine_account_broadcast import (
+    _build_lightweight_payload_for_profit_overview,
 )
 
 
