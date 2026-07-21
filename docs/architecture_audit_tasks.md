@@ -158,25 +158,24 @@
 - [x] P7: 파이프라인 단계에 블로킹 연산 없음 — 준수 (배치 처리)
 - [x] P8: 실시간 파이프라인으로서 배치(`market_close_pipeline`)와 분리 — 준수
 - [x] P9: 파이프라인 독립성 (gateway는 app.py에서 독립 시작) — 준수
-- [ ] P11: 이벤트 기반 (`Queue.get()` 대기, `while + sleep` 폴링 금지) — **B11-11 보류 (B-11-b)** (Phase 1 `while + asyncio.sleep(1.0)` 폴링)
+- [x] P11: 이벤트 기반 (`Queue.get()` 대기, `while + sleep` 폴링 금지) — **해결 B11-11** (B-11-b: Phase 1 `while + asyncio.sleep(1.0)` 폴링 → `LazyEvent.wait()` + 200ms 디바운스 전환, 사용자 승인 대안1)
 - [x] P14: 멀티스레드 없음 (`threading.Thread()` 신규 생성 금지) — 준수
 - [x] P19: `await` 누락 없음 — 준수 (런타임 기동 검증)
-- [ ] P20: 폴백/silent except 없음 — **B11-08~10 보류 (B-11-b)** (PGM `except ValueError: tval=0`, `get(nk, {})` 폴백 2건)
+- [x] P20: 폴백/silent except 없음 — **해결 B11-08~10** (B-11-b: PGM `except ValueError: tval=0` → 로깅+스킵, `get(nk, {})` 폴백 2건 → `nk in cache` 명시적 분기+로깅)
 - [x] P23: 용어 사전 준수, 패턴 일관 — 준수 ("업종"/"종목" 사용)
 - [x] P24: 단순성 기준 — **해결 B11-01~07** (B-11-a: 모든 함수 50줄 이하, 파일 863줄→672줄+320줄 분할). 잔여 172줄 초과분은 수신율 로직(테스트 모듈 전역 직접 참조)으로 B-11-b에서 별도 검토
 - [x] P16/P21: `add_done_callback` 배선 — **해결 B11-12** (B-11-a: compute/sector_recompute 태스크 실패 시 로깅, gateway 루프와 일관)
 
-**검증** (B-11-a 세션에서 수행 완료)
-- [x] `pytest backend/tests/test_pipeline_compute.py backend/tests/test_pipeline_gateway.py` 106 passed
-- [x] `pytest backend/tests` 2961 passed (전체)
-- [x] `python -W error::RuntimeWarning main.py` 10s 기동 검증 (188ms 기동, RuntimeWarning/Traceback 없음, Phase 1 임계값 통과 → Phase 2 진입 정상)
+**검증** (B-11-a + B-11-b 세션에서 수행 완료)
+- [x] `pytest backend/tests/test_pipeline_compute.py backend/tests/test_pipeline_gateway.py` 106 passed (B-11-a)
+- [x] `pytest backend/tests` 2964 passed (전체, B-11-b)
+- [x] `python -W error::RuntimeWarning main.py` 기동 검증 (B-11-b: RuntimeWarning/Traceback 없음, 잔존 프로세스 0건)
 - [x] 잔존 프로세스 0건 확인
 
 **조사 결과 요약** (2026-07-21)
 - 위반 12건 발견: B11-01 ~ B11-12 (HIGH 2건, MEDIUM 9건, LOW 1건)
-- 해결 8건 (B-11-a: B11-01~07 P24 분할 + B11-12 add_done_callback)
-- 보류 4건 (B-11-b 대기): B11-08~10 (P20 폴백 3건) + B11-11 (P11 폴링→이벤트, 사용자 설계 로직 규칙 0-5)
-- 위반 원칙: P11(1), P16/P21(1), P20(3), P24(7)
+- 해결 12건 전부 완료: B-11-a (B11-01~07 P24 분할 + B11-12 add_done_callback) + B-11-b (B11-08~10 P20 폴백 + B11-11 P11 폴링→이벤트)
+- 위반 원칙: P11(1), P16/P21(1), P20(3), P24(7) — 전부 해결
 - 준수 원칙: P1, P2, P5, P7, P8, P9, P14, P19, P23
 - 상세 기록: `architecture_audit_plan.md` 섹션 7 "발견된 문제 기록" 참조
 

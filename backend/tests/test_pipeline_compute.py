@@ -551,6 +551,20 @@ class TestHandleReal0dTick:
              patch("backend.app.services.engine_ws_parsing._ws_fid_int", side_effect=[-1, 100]):
             await _handle_real_0d_tick(item, vals, AsyncMock())
 
+    @pytest.mark.asyncio
+    async def test_cache_miss_skips(self):
+        item = {"item": "005930"}
+        vals = {"125": "1000", "121": "800"}
+        mock_state = MagicMock()
+        mock_state.master_stocks_cache = {}
+        with patch("backend.app.services.engine_symbol_utils._real_item_stk_cd", return_value="005930"), \
+             patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"), \
+             patch("backend.app.services.engine_ws_parsing._ws_fid_int", side_effect=[1000, 800]), \
+             patch("backend.app.services.engine_account_notify.notify_orderbook_update", new_callable=AsyncMock) as mock_notify, \
+             patch("backend.app.pipelines.pipeline_compute.state", mock_state):
+            await _handle_real_0d_tick(item, vals, AsyncMock())
+            mock_notify.assert_not_awaited()
+
 
 # ── _handle_real_pgm_tick ─────────────────────────────────────────────────────
 
@@ -582,7 +596,7 @@ class TestHandleRealPgmTick:
             mock_notify.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_invalid_tval_defaults_to_zero(self):
+    async def test_invalid_tval_skips(self):
         item = {"item": "005930"}
         vals = {"tval": "not_a_number"}
         mock_state = MagicMock()
@@ -592,7 +606,33 @@ class TestHandleRealPgmTick:
              patch("backend.app.services.engine_account_notify.notify_program_update", new_callable=AsyncMock) as mock_notify, \
              patch("backend.app.pipelines.pipeline_compute.state", mock_state):
             await _handle_real_pgm_tick(item, vals, AsyncMock())
-            mock_notify.assert_awaited_once_with("005930", 0)
+            mock_notify.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_missing_tval_skips(self):
+        item = {"item": "005930"}
+        vals = {}
+        mock_state = MagicMock()
+        mock_state.master_stocks_cache = {"005930": {"_subscribed_dynamic": True}}
+        with patch("backend.app.services.engine_symbol_utils._real_item_stk_cd", return_value="005930"), \
+             patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"), \
+             patch("backend.app.services.engine_account_notify.notify_program_update", new_callable=AsyncMock) as mock_notify, \
+             patch("backend.app.pipelines.pipeline_compute.state", mock_state):
+            await _handle_real_pgm_tick(item, vals, AsyncMock())
+            mock_notify.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_skips(self):
+        item = {"item": "005930"}
+        vals = {"tval": "5000"}
+        mock_state = MagicMock()
+        mock_state.master_stocks_cache = {}
+        with patch("backend.app.services.engine_symbol_utils._real_item_stk_cd", return_value="005930"), \
+             patch("backend.app.services.engine_symbol_utils._base_stk_cd", return_value="005930"), \
+             patch("backend.app.services.engine_account_notify.notify_program_update", new_callable=AsyncMock) as mock_notify, \
+             patch("backend.app.pipelines.pipeline_compute.state", mock_state):
+            await _handle_real_pgm_tick(item, vals, AsyncMock())
+            mock_notify.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_no_raw_cd_returns(self):
@@ -1022,6 +1062,25 @@ class TestHandleRealPgmTickException:
 # ── _sector_recompute_loop_impl ───────────────────────────────────────────────
 
 class TestSectorRecomputeLoopImpl:
+    def _make_event_mock(self, stop_after=None):
+        """Phase 1 이벤트 기반 루프 테스트용 mock_event 생성.
+
+        stop_after: 이 횟수만큼 wait() 호출 후 _compute_running=False로 종료.
+                    None이면 항상 반환 (Phase 1 통과 후 Phase 2로 진입).
+        """
+        wait_count = 0
+        async def _wait_mock():
+            nonlocal wait_count
+            wait_count += 1
+            if stop_after is not None and wait_count >= stop_after:
+                compute_mod._compute_running = False
+
+        mock_event = MagicMock()
+        mock_event.wait = _wait_mock
+        mock_event.clear = MagicMock()
+        mock_event.set = MagicMock()
+        return mock_event
+
     @pytest.mark.asyncio
     async def test_phase1_threshold_met_transitions_to_phase2(self):
         compute_mod._compute_running = True
@@ -1041,20 +1100,26 @@ class TestSectorRecomputeLoopImpl:
             if sleep_count >= 3:
                 compute_mod._compute_running = False
 
-        with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
-             patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={
-                 "krx": {"received": 8, "total": 10, "pct": 80.0},
-                 "nxt": {"received": 4, "total": 5, "pct": 80.0},
-             }), \
-             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
-             patch("backend.app.services.engine_sector_confirm.request_sector_recompute"), \
-             patch("backend.app.services.engine_sector_confirm.has_dirty_sectors", return_value=False), \
-             patch("backend.app.services.engine_sector_confirm._flush_sector_recompute_impl", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new_callable=AsyncMock), \
-             patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
-            await _sector_recompute_loop_impl(mock_bq)
+        mock_event = self._make_event_mock(stop_after=None)
+        orig_event = compute_mod._receive_rate_event
+        compute_mod._receive_rate_event = mock_event
+        try:
+            with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
+                 patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
+                 patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
+                 patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={
+                     "krx": {"received": 8, "total": 10, "pct": 80.0},
+                     "nxt": {"received": 4, "total": 5, "pct": 80.0},
+                 }), \
+                 patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
+                 patch("backend.app.services.engine_sector_confirm.request_sector_recompute"), \
+                 patch("backend.app.services.engine_sector_confirm.has_dirty_sectors", return_value=False), \
+                 patch("backend.app.services.engine_sector_confirm._flush_sector_recompute_impl", new_callable=AsyncMock), \
+                 patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new_callable=AsyncMock), \
+                 patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
+                await _sector_recompute_loop_impl(mock_bq)
+        finally:
+            compute_mod._receive_rate_event = orig_event
         compute_mod._compute_running = False
         compute_mod._receive_rate_dirty = False
         compute_mod._current_receive_rate = {
@@ -1074,19 +1139,18 @@ class TestSectorRecomputeLoopImpl:
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"sector_start_threshold_pct": 50.0}
 
-        sleep_count = 0
-        async def _sleep_mock(seconds):
-            nonlocal sleep_count
-            sleep_count += 1
-            if sleep_count >= 2:
-                compute_mod._compute_running = False
-
-        with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
-             patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
-             patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
-            await _sector_recompute_loop_impl(mock_bq)
+        mock_event = self._make_event_mock(stop_after=2)
+        orig_event = compute_mod._receive_rate_event
+        compute_mod._receive_rate_event = mock_event
+        try:
+            with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
+                 patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
+                 patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
+                 patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
+                 patch("asyncio.sleep", new_callable=AsyncMock):
+                await _sector_recompute_loop_impl(mock_bq)
+        finally:
+            compute_mod._receive_rate_event = orig_event
         compute_mod._compute_running = False
         compute_mod._receive_rate_dirty = False
         compute_mod._current_receive_rate = {
@@ -1106,19 +1170,18 @@ class TestSectorRecomputeLoopImpl:
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"sector_start_threshold_pct": 50.0}
 
-        sleep_count = 0
-        async def _sleep_mock(seconds):
-            nonlocal sleep_count
-            sleep_count += 1
-            if sleep_count >= 2:
-                compute_mod._compute_running = False
-
-        with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
-             patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
-             patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
-            await _sector_recompute_loop_impl(mock_bq)
+        mock_event = self._make_event_mock(stop_after=2)
+        orig_event = compute_mod._receive_rate_event
+        compute_mod._receive_rate_event = mock_event
+        try:
+            with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
+                 patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
+                 patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
+                 patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
+                 patch("asyncio.sleep", new_callable=AsyncMock):
+                await _sector_recompute_loop_impl(mock_bq)
+        finally:
+            compute_mod._receive_rate_event = orig_event
         compute_mod._compute_running = False
         compute_mod._receive_rate_dirty = False
         compute_mod._current_receive_rate = {
@@ -1138,20 +1201,19 @@ class TestSectorRecomputeLoopImpl:
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"sector_start_threshold_pct": 80.0}
 
-        sleep_count = 0
-        async def _sleep_mock(seconds):
-            nonlocal sleep_count
-            sleep_count += 1
-            if sleep_count >= 2:
-                compute_mod._compute_running = False
-
-        with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
-             patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock) as mock_send, \
-             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
-             patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
-            await _sector_recompute_loop_impl(mock_bq)
-            mock_send.assert_awaited()
+        mock_event = self._make_event_mock(stop_after=2)
+        orig_event = compute_mod._receive_rate_event
+        compute_mod._receive_rate_event = mock_event
+        try:
+            with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
+                 patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
+                 patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock) as mock_send, \
+                 patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
+                 patch("asyncio.sleep", new_callable=AsyncMock):
+                await _sector_recompute_loop_impl(mock_bq)
+                mock_send.assert_awaited()
+        finally:
+            compute_mod._receive_rate_event = orig_event
         compute_mod._compute_running = False
         compute_mod._receive_rate_dirty = False
         compute_mod._current_receive_rate = {
@@ -1179,20 +1241,26 @@ class TestSectorRecomputeLoopImpl:
             if sleep_count >= 3:
                 compute_mod._compute_running = False
 
-        with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
-             patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={
-                 "krx": {"received": 0, "total": 0, "pct": 0.0},
-                 "nxt": {"received": 8, "total": 10, "pct": 80.0},
-             }), \
-             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=True), \
-             patch("backend.app.services.engine_sector_confirm.request_sector_recompute"), \
-             patch("backend.app.services.engine_sector_confirm.has_dirty_sectors", return_value=False), \
-             patch("backend.app.services.engine_sector_confirm._flush_sector_recompute_impl", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new_callable=AsyncMock), \
-             patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
-            await _sector_recompute_loop_impl(mock_bq)
+        mock_event = self._make_event_mock(stop_after=None)
+        orig_event = compute_mod._receive_rate_event
+        compute_mod._receive_rate_event = mock_event
+        try:
+            with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
+                 patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
+                 patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
+                 patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={
+                     "krx": {"received": 0, "total": 0, "pct": 0.0},
+                     "nxt": {"received": 8, "total": 10, "pct": 80.0},
+                 }), \
+                 patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=True), \
+                 patch("backend.app.services.engine_sector_confirm.request_sector_recompute"), \
+                 patch("backend.app.services.engine_sector_confirm.has_dirty_sectors", return_value=False), \
+                 patch("backend.app.services.engine_sector_confirm._flush_sector_recompute_impl", new_callable=AsyncMock), \
+                 patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new_callable=AsyncMock), \
+                 patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
+                await _sector_recompute_loop_impl(mock_bq)
+        finally:
+            compute_mod._receive_rate_event = orig_event
         # NXT-only 구간에서 NXT 수신률 80% ≥ 임계값 50% → 통과
         assert is_sector_threshold_passed() is True
         compute_mod._compute_running = False
@@ -1216,19 +1284,18 @@ class TestSectorRecomputeLoopImpl:
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"sector_start_threshold_pct": 50.0}
 
-        sleep_count = 0
-        async def _sleep_mock(seconds):
-            nonlocal sleep_count
-            sleep_count += 1
-            if sleep_count >= 2:
-                compute_mod._compute_running = False
-
-        with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
-             patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
-             patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
-            await _sector_recompute_loop_impl(mock_bq)
+        mock_event = self._make_event_mock(stop_after=2)
+        orig_event = compute_mod._receive_rate_event
+        compute_mod._receive_rate_event = mock_event
+        try:
+            with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
+                 patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
+                 patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
+                 patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
+                 patch("asyncio.sleep", new_callable=AsyncMock):
+                await _sector_recompute_loop_impl(mock_bq)
+        finally:
+            compute_mod._receive_rate_event = orig_event
         # 정규장 AND 정책: KRX 통과해도 NXT 미달 → 게이트 False 유지
         assert is_sector_threshold_passed() is False
         compute_mod._compute_running = False
@@ -1246,18 +1313,27 @@ class TestSectorRecomputeLoopImpl:
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"sector_start_threshold_pct": 50.0}
 
-        sleep_count = 0
-        async def _sleep_mock(seconds):
-            nonlocal sleep_count
-            sleep_count += 1
-            if sleep_count >= 2:
+        wait_count = 0
+        async def _wait_mock():
+            nonlocal wait_count
+            wait_count += 1
+            if wait_count >= 2:
                 compute_mod._compute_running = False
 
-        with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
-             patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock, side_effect=Exception("calc error")), \
-             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
-             patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
-            await _sector_recompute_loop_impl(mock_bq)
+        mock_event = MagicMock()
+        mock_event.wait = _wait_mock
+        mock_event.clear = MagicMock()
+        mock_event.set = MagicMock()
+        orig_event = compute_mod._receive_rate_event
+        compute_mod._receive_rate_event = mock_event
+        try:
+            with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
+                 patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock, side_effect=Exception("calc error")), \
+                 patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
+                 patch("asyncio.sleep", new_callable=AsyncMock):
+                await _sector_recompute_loop_impl(mock_bq)
+        finally:
+            compute_mod._receive_rate_event = orig_event
         compute_mod._compute_running = False
         compute_mod._receive_rate_dirty = False
 
@@ -1266,11 +1342,19 @@ class TestSectorRecomputeLoopImpl:
         compute_mod._compute_running = True
         mock_bq = MagicMock()
 
-        async def _sleep_raise_cancel(seconds):
+        async def _wait_raise_cancel():
             raise asyncio.CancelledError()
 
-        with patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_raise_cancel):
+        mock_event = MagicMock()
+        mock_event.wait = _wait_raise_cancel
+        mock_event.clear = MagicMock()
+        mock_event.set = MagicMock()
+        orig_event = compute_mod._receive_rate_event
+        compute_mod._receive_rate_event = mock_event
+        try:
             await _sector_recompute_loop_impl(mock_bq)
+        finally:
+            compute_mod._receive_rate_event = orig_event
         compute_mod._compute_running = False
 
 
@@ -1325,20 +1409,36 @@ class TestSectorThresholdGate:
             if sleep_count >= 3:
                 compute_mod._compute_running = False
 
-        with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
-             patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={
-                 "krx": {"received": 8, "total": 10, "pct": 80.0},
-                 "nxt": {"received": 4, "total": 5, "pct": 80.0},
-             }), \
-             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
-             patch("backend.app.services.engine_sector_confirm.request_sector_recompute"), \
-             patch("backend.app.services.engine_sector_confirm.has_dirty_sectors", return_value=False), \
-             patch("backend.app.services.engine_sector_confirm._flush_sector_recompute_impl", new_callable=AsyncMock), \
-             patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new_callable=AsyncMock), \
-             patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
-            await _sector_recompute_loop_impl(mock_bq)
+        # 이벤트 wait는 1회만 반환 (Phase 1 통과 후 Phase 2로 진입)
+        wait_count = 0
+        async def _wait_mock():
+            nonlocal wait_count
+            wait_count += 1
+            # 1회만 반환, 이후는 블록 (Phase 2는 asyncio.sleep 기반)
+
+        mock_event = MagicMock()
+        mock_event.wait = _wait_mock
+        mock_event.clear = MagicMock()
+        mock_event.set = MagicMock()
+        orig_event = compute_mod._receive_rate_event
+        compute_mod._receive_rate_event = mock_event
+        try:
+            with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
+                 patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
+                 patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
+                 patch("backend.app.pipelines.pipeline_compute.get_current_receive_rate", return_value={
+                     "krx": {"received": 8, "total": 10, "pct": 80.0},
+                     "nxt": {"received": 4, "total": 5, "pct": 80.0},
+                 }), \
+                 patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
+                 patch("backend.app.services.engine_sector_confirm.request_sector_recompute"), \
+                 patch("backend.app.services.engine_sector_confirm.has_dirty_sectors", return_value=False), \
+                 patch("backend.app.services.engine_sector_confirm._flush_sector_recompute_impl", new_callable=AsyncMock), \
+                 patch("backend.app.services.engine_account_notify.notify_desktop_sector_scores", new_callable=AsyncMock), \
+                 patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
+                await _sector_recompute_loop_impl(mock_bq)
+        finally:
+            compute_mod._receive_rate_event = orig_event
 
         # Phase 1 통과 후 플래그가 True로 전환되었는지 검증
         assert is_sector_threshold_passed() is True
@@ -1364,19 +1464,29 @@ class TestSectorThresholdGate:
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {"sector_start_threshold_pct": 80.0}
 
-        sleep_count = 0
-        async def _sleep_mock(seconds):
-            nonlocal sleep_count
-            sleep_count += 1
-            if sleep_count >= 2:
+        # 이벤트 wait 2회째에 _compute_running=False로 종료
+        wait_count = 0
+        async def _wait_mock():
+            nonlocal wait_count
+            wait_count += 1
+            if wait_count >= 2:
                 compute_mod._compute_running = False
 
-        with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
-             patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
-             patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
-             patch("asyncio.sleep", new_callable=AsyncMock, side_effect=_sleep_mock):
-            await _sector_recompute_loop_impl(mock_bq)
+        mock_event = MagicMock()
+        mock_event.wait = _wait_mock
+        mock_event.clear = MagicMock()
+        mock_event.set = MagicMock()
+        orig_event = compute_mod._receive_rate_event
+        compute_mod._receive_rate_event = mock_event
+        try:
+            with patch("backend.app.pipelines.pipeline_compute.state", mock_state), \
+                 patch("backend.app.pipelines.pipeline_compute._calculate_receive_rate", new_callable=AsyncMock), \
+                 patch("backend.app.pipelines.pipeline_compute._send_receive_rate", new_callable=AsyncMock), \
+                 patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False), \
+                 patch("asyncio.sleep", new_callable=AsyncMock):
+                await _sector_recompute_loop_impl(mock_bq)
+        finally:
+            compute_mod._receive_rate_event = orig_event
 
         # 임계값 미달 → 플래그가 False로 유지
         assert is_sector_threshold_passed() is False

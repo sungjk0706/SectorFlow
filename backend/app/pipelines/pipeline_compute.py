@@ -15,6 +15,7 @@ import time
 import logging
 from backend.app.services.engine_state import state
 from backend.app.services.engine_ws_dispatch import _check_realtime_latency
+from backend.app.services.engine_utils import LazyEvent
 from backend.app.services.core_queues import (
     get_tick_queue,
     get_broadcast_queue,
@@ -40,6 +41,8 @@ _current_receive_rate: dict = {
     "nxt": {"received": 0, "total": 0, "pct": 0.0},
 }
 _receive_rate_dirty: bool = False
+# 수신율 갱신 이벤트 — 틱 수신 시 set(), Phase 1 루프에서 wait() (P11 이벤트 기반, while+sleep 폴링 금지)
+_receive_rate_event: LazyEvent = LazyEvent()
 
 # 누적 수신 종목 세트 — _reset_realtime_fields()에 의해 초기화되지 않음
 # 한 번 수신된 종목은 앱 종료까지 수신된 것으로 유지되어 수신율이 0%로 강하하지 않음
@@ -74,6 +77,7 @@ def reset_sector_threshold() -> None:
     """
     global _sector_threshold_passed
     _sector_threshold_passed = False
+    _receive_rate_event.clear()
 
 
 def mark_sector_threshold_passed() -> None:
@@ -564,6 +568,8 @@ def _evaluate_threshold(threshold_pct: float) -> tuple[bool, bool]:
 async def _phase1_wait_threshold() -> None:
     """Phase 1: 실시간데이터 필드 수신율 임계값 대기 (1회성 스타트업 게이트).
 
+    이벤트 기반 대기 — 틱 수신 시 _receive_rate_event.set() 신호로 즉시 웨이크업 (P11).
+    200ms 디바운스로 다수 틱을 코얼레싱하여 수신율 갱신 빈도를 제한.
     항상 master_stocks_cache의 change_rate, trade_amount 필드 기반으로 수신율 계산.
     WS 구독 시작 시 _reset_realtime_fields()가 필드를 None으로 초기화하므로
     비-WS 구간(확정 데이터 있음)은 100%로 즉시 통과, WS 구간은 0%에서 틱 수신시 상승.
@@ -580,7 +586,12 @@ async def _phase1_wait_threshold() -> None:
     _prev_nxt_received = -1
     while _compute_running and not phase1_completed:
         try:
-            await asyncio.sleep(1.0)
+            # 이벤트 대기 (틱 수신 시 신호) — P11 이벤트 기반, while+sleep 폴링 금지
+            await _receive_rate_event.wait()
+            _receive_rate_event.clear()
+            # 디바운스: 200ms 대기로 다수 틱 코얼레싱 (수신율 갱신 빈도 제한)
+            # 대기 중 새 틱이 event를 set하면 다음 반복이 즉시 웨이크업 — 신호 손실 없음
+            await asyncio.sleep(0.2)
 
             await _calculate_receive_rate()
             threshold_pct = float(state.integrated_system_settings_cache["sector_start_threshold_pct"])
