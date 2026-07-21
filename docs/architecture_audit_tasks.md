@@ -241,7 +241,7 @@
 
 ### 세션 B-14: P2 — Broker 추상화 (공통)
 
-> **분할 진행**: B-14-a (기계적 6건 완료) / B-14-b (핵심 동작 2건 잔여 — B14-05/B14-06 P20/P21 폴백)
+> **분할 진행**: B-14-a (기계적 6건 완료) / B-14-b (핵심 동작 2건 완료 — B14-05/B14-06 P20/P21 폴백) — **B-14 완료**
 
 **대상 파일** (7개, 총 1133줄)
 - [x] `backend/app/core/broker_router.py` (290줄→281줄, 대형) — B14-07 dead 분기 제거
@@ -262,7 +262,7 @@
 - [x] P10: 인증 토큰 캐시 SSOT
 - [x] P14: 멀티스레드 없음
 - [x] P19: `await` 누락 없음
-- [~] P20: 폴백/silent except 없음 — **B14-b 잔여** (B14-05 broker_router._build 폴백, B14-06 get_provider 폴백)
+- [x] P20: 폴백/silent except 없음 (B14-05/B14-06 해결 — broker_router._build·get_provider 폴백 제거, ValueError 전파)
 - [x] P23: 용어 사전 준수, 패턴 일관 (B14-04/B14-08 해결)
 - [x] P24: 단순성 기준 (B14-04 중복 통합)
 
@@ -272,7 +272,8 @@
 - [x] 잔여 `kiwoom_`/`ls_` 접두사가 공통 파일에 침투하지 않았는지 grep 확인
 
 **B-14-a 완료 (2026-07-21)**: 기계적 6건 해결 (B14-01/02/03/04/07/08). B14-09는 재검토 결과 P4 위반 아님 (UnifiedStockRecord는 범용 공통 데이터 클래스).
-**B-14-b 잔여**: B14-05 (broker_router._build 증권사 비어있음 → 기본 증권사 조용히 대체, P20/P21), B14-06 (get_provider 페이지 오버라이드 실패 시 전역 Provider 폴백, P20) — 규칙 0-4 적용, UI 기준 설명 + 승인 필수.
+**B-14-b 완료 (2026-07-21)**: B14-05 (broker_router._build 증권사 비어있음 → 기본 증권사 조용히 대체, P20/P21) — dead code 제거 + ValueError 전파. B14-06 (get_provider 페이지 오버라이드 실패 시 전역 Provider 폴백, P20) — try/except 제거 + ValueError 전파. 규칙 0-4 적용, UI 기준 설명 + 승인 완료.
+**B-14 완료**: Broker 추상화 공통 7개 파일 9건 전부 해결.
 
 ---
 
