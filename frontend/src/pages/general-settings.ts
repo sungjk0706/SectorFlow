@@ -55,8 +55,9 @@ let holidayBadgeEls: HTMLElement[] = []
 let uiFlashToggle: ReturnType<typeof createToggleBtn> | null = null
 let orderTimeGuardToggle: ReturnType<typeof createToggleBtn> | null = null
 
-// 리스크 매니저 참조 (전역매매설정 섹션)
+// 매매 안전장치 참조 (전역매매설정 섹션)
 let riskManagerToggle: ReturnType<typeof createToggleBtn> | null = null
+let riskManagerChildren: HTMLElement | null = null
 let dailyLossToggle: ReturnType<typeof createToggleBtn> | null = null
 let dailyLossInput: ReturnType<typeof createMoneyInput> | null = null
 let dailyLossControls: HTMLElement | null = null
@@ -502,27 +503,33 @@ function renderAutoTradeTab(container: HTMLElement): void {
 
   container.appendChild(createDescText('동시호가·장외 시간대에 시장가 주문 자동 중단 (KRX 단독 종목만, NXT 종목은 NXT 거래 시간에 허용)'))
 
-  // 전역매매설정 (리스크 매니저) 섹션 — 목표 수익/손실 도달 시 자동 매매 중단
-  container.appendChild(sectionTitle('전역매매설정 (리스크 매니저)'))
-  container.appendChild(createDescText('목표 수익/손실 도달 시 자동 매매 중단. 리스크 매니저 OFF 시 모든 조건 비활성화.'))
+  // 전역매매설정 (매매 안전장치) 섹션 — 목표 수익/손실 도달 시 자동 매매 중단
+  container.appendChild(sectionTitle('전역매매설정 (매매 안전장치)'))
+  container.appendChild(createDescText('목표 수익/손실 도달 시 자동 매매 중단. 매매 안전장치 OFF 시 모든 조건이 적용되지 않습니다.'))
 
-  // 리스크 매니저 마스터 토글
+  // 매매 안전장치 마스터 토글
   const riskManagerRow = document.createElement('div')
   Object.assign(riskManagerRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
   const riskManagerLabel = document.createElement('span')
   Object.assign(riskManagerLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  riskManagerLabel.textContent = '자동 매매 중단 기능'
+  riskManagerLabel.textContent = '매매 안전장치'
   riskManagerRow.appendChild(riskManagerLabel)
+  riskManagerChildren = document.createElement('div')
   riskManagerToggle = createToggleBtn({ on: false, onClick: async () => {
     const next = !vals.risk_manager_on
     vals.risk_manager_on = next; riskManagerToggle!.setOn(next)
+    setDisabled(riskManagerChildren!, !next)
     const res = await settingsMgr!.saveSection({ risk_manager_on: next })
     toastResult(res)
-    if (!res.ok) { vals.risk_manager_on = !next; riskManagerToggle!.setOn(!next) }
+    if (!res.ok) {
+      vals.risk_manager_on = !next; riskManagerToggle!.setOn(!next)
+      setDisabled(riskManagerChildren!, next)
+    }
   }})
   riskManagerRow.appendChild(riskManagerToggle.el)
   container.appendChild(riskManagerRow)
 
+  // 하위 컨트롤: 매매 안전장치 OFF 시 일괄 비활성화
   // 일일 손실 한도 (토글 + 금액 입력, 음수)
   dailyLossInput = createMoneyInput({
     value: -500000,
@@ -552,7 +559,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
       controlsChild: dailyLossInput.el,
     })
     dailyLossToggle = r.toggle; dailyLossControls = r.controls
-    container.appendChild(r.el)
+    riskManagerChildren.appendChild(r.el)
   }
 
   // 일일 손실률 한도 (토글 + % 입력)
@@ -584,7 +591,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
       controlsChild: dailyLossRateInput.el,
     })
     dailyLossRateToggle = r.toggle; dailyLossRateControls = r.controls
-    container.appendChild(r.el)
+    riskManagerChildren.appendChild(r.el)
   }
 
   // 일일 수익 한도 (토글 + 금액 입력, 양수)
@@ -613,7 +620,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
       controlsChild: dailyProfitInput.el,
     })
     dailyProfitToggle = r.toggle; dailyProfitControls = r.controls
-    container.appendChild(r.el)
+    riskManagerChildren.appendChild(r.el)
   }
 
   // 일일 수익률 한도 (토글 + % 입력, 양수)
@@ -645,7 +652,7 @@ function renderAutoTradeTab(container: HTMLElement): void {
       controlsChild: dailyProfitRateInput.el,
     })
     dailyProfitRateToggle = r.toggle; dailyProfitRateControls = r.controls
-    container.appendChild(r.el)
+    riskManagerChildren.appendChild(r.el)
   }
 
   // 연속 손실 횟수 한도 (토글 + 횟수 입력)
@@ -677,15 +684,15 @@ function renderAutoTradeTab(container: HTMLElement): void {
       controlsChild: consecLossInput.el,
     })
     consecLossToggle = r.toggle; consecLossControls = r.controls
-    container.appendChild(r.el)
+    riskManagerChildren.appendChild(r.el)
   }
 
-  // 매수 차단 토글 (리스크 조건 충족 시 매수 중단)
+  // 매수 차단 토글 (안전장치 조건 충족 시 매수 중단)
   const riskBlockBuyRow = document.createElement('div')
   Object.assign(riskBlockBuyRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
   const riskBlockBuyLabel = document.createElement('span')
   Object.assign(riskBlockBuyLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  riskBlockBuyLabel.textContent = '리스크 조건 충족 시 매수 차단'
+  riskBlockBuyLabel.textContent = '안전장치 조건 충족 시 매수 차단'
   riskBlockBuyRow.appendChild(riskBlockBuyLabel)
   riskBlockBuyToggle = createToggleBtn({ on: true, onClick: async () => {
     const next = !vals.risk_block_buy_on
@@ -695,14 +702,14 @@ function renderAutoTradeTab(container: HTMLElement): void {
     if (!res.ok) { vals.risk_block_buy_on = !next; riskBlockBuyToggle!.setOn(!next) }
   }})
   riskBlockBuyRow.appendChild(riskBlockBuyToggle.el)
-  container.appendChild(riskBlockBuyRow)
+  riskManagerChildren.appendChild(riskBlockBuyRow)
 
   // 매도 차단 토글 (손실 상태에서 매도 차단 시 손실 확대 위험)
   const riskBlockSellRow = document.createElement('div')
   Object.assign(riskBlockSellRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
   const riskBlockSellLabel = document.createElement('span')
   Object.assign(riskBlockSellLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  riskBlockSellLabel.textContent = '리스크 조건 충족 시 매도 차단'
+  riskBlockSellLabel.textContent = '안전장치 조건 충족 시 매도 차단'
   riskBlockSellRow.appendChild(riskBlockSellLabel)
   riskBlockSellToggle = createToggleBtn({ on: false, onClick: async () => {
     const next = !vals.risk_block_sell_on
@@ -712,9 +719,10 @@ function renderAutoTradeTab(container: HTMLElement): void {
     if (!res.ok) { vals.risk_block_sell_on = !next; riskBlockSellToggle!.setOn(!next) }
   }})
   riskBlockSellRow.appendChild(riskBlockSellToggle.el)
-  container.appendChild(riskBlockSellRow)
+  riskManagerChildren.appendChild(riskBlockSellRow)
 
-  container.appendChild(createDescText('손실 상태에서 매도 차단 시 손실 확대 위험 — 신중하게 활성화하세요'))
+  riskManagerChildren.appendChild(createDescText('손실 상태에서 매도 차단 시 손실 확대 위험 — 신중하게 활성화하세요'))
+  container.appendChild(riskManagerChildren)
 
   // 화면 표시 섹션 — 플래시 효과 (API 설정 탭에서 이동, Step 5, 설계서 5-3)
   container.appendChild(sectionTitle('화면 표시'))
@@ -1218,9 +1226,10 @@ function syncFromSettings(s: AppSettings | null): void {
     // 체결 불가 시간대 주문 차단
     orderTimeGuardToggle?.setOn(r.order_time_guard_on !== false)
 
-    // 리스크 매니저 (전역매매설정)
+    // 매매 안전장치 (전역매매설정)
     const act = document.activeElement
     riskManagerToggle?.setOn(!!r.risk_manager_on)
+    if (riskManagerChildren) setDisabled(riskManagerChildren, !r.risk_manager_on)
     const lossOn = r.daily_loss_limit_on !== false
     dailyLossToggle?.setOn(lossOn)
     if (dailyLossInput && (!act || !dailyLossInput.el.contains(act))) {
@@ -1407,8 +1416,9 @@ function unmount(): void {
   autoSellToggle = null
   sellTimeHandle = null
   holidayBadgeEls = []
-  // 리스크 매니저
+  // 매매 안전장치
   riskManagerToggle = null
+  riskManagerChildren = null
   dailyLossToggle = null
   dailyLossInput = null
   dailyLossControls = null
