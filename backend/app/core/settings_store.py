@@ -5,6 +5,7 @@
 from __future__ import annotations
 import asyncio
 import logging
+import re as _re
 from typing import Any
 from backend.app.core.encryption import decrypt_value, encrypt_value
 from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
@@ -219,31 +220,44 @@ async def _validate_timetable_order(data: dict, before: dict) -> None:
             )
 
 
-async def apply_settings_updates(data: dict, username: str = "admin", profile: str | None = None) -> set[str]:
-    """업데이트 데이터를 SQLite integrated_system_settings 테이블에 증분 저장.
-    전체 설정 로드/저장 대신 변경된 필드만 로드/저장."""
-    import re
-    _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
-    _TIME_FIELDS = frozenset({
-        "buy_time_start", "buy_time_end",
-        "sell_time_start", "sell_time_end",
-        "timetable.realtime_reset",
-        "timetable.ws_prestart",
-        "timetable.krx_pre_subscribe",
-        "timetable.confirmed_download",
-    })
+_TIME_RE = _re.compile(r"^\d{2}:\d{2}$")
+_TIME_FIELDS = frozenset({
+    "buy_time_start", "buy_time_end",
+    "sell_time_start", "sell_time_end",
+    "timetable.realtime_reset",
+    "timetable.ws_prestart",
+    "timetable.krx_pre_subscribe",
+    "timetable.confirmed_download",
+})
 
-    # 변경 대상 키 + broker 키만 SELECT (전체 로드 대신 증분 로드)
-    # 타임테이블 키 중 하나라도 data에 있으면 해당 그룹의 모든 키를 select_keys에 추가
-    # (순서 검증 시 나머지 키의 기존 DB 값이 필요하므로)
+# 리스크 매니저 설정 검증 (P20/P22) — 범위/부호 검증
+_RISK_INT_KEYS = {
+    "daily_loss_limit": (-1_000_000_000, 0),        # 음수만 허용 (손실 한도)
+    "daily_profit_limit": (0, 1_000_000_000),       # 양수만 허용 (수익 한도)
+    "consecutive_loss_limit": (1, 100),             # 1~100회
+}
+_RISK_FLOAT_KEYS = {
+    "daily_loss_rate_limit": (-100.0, 0.0),         # 음수만 허용
+    "daily_profit_rate_limit": (0.0, 100.0),        # 양수만 허용
+}
+
+
+def _compute_select_keys(data: dict) -> set[str]:
+    """변경 대상 키 + broker 키 + 타임테이블 그룹 키를 SELECT 대상으로 수집.
+    타임테이블 키 중 하나라도 data에 있으면 해당 그룹의 모든 키를 추가 (순서 검증 시 나머지 키의 기존 DB 값이 필요)."""
     select_keys = set(data.keys()) | {"broker"}
     if set(data.keys()) & set(_TIMETABLE_PRE_OPEN_KEYS):
         select_keys = select_keys | set(_TIMETABLE_PRE_OPEN_KEYS)
     if set(data.keys()) & set(_TIMETABLE_POST_CLOSE_KEYS):
         select_keys = select_keys | set(_TIMETABLE_POST_CLOSE_KEYS)
-    before = await load_selected_settings(select_keys)
+    return select_keys
 
-    # 검증 + 저장할 값 준비
+
+def _prepare_save_payload(data: dict, before: dict) -> tuple[dict, dict]:
+    """저장할 값 준비 + 검증. (to_save, after) 반환.
+    - None/빈문자열 무시, broker 허용값 검증, 시간 필드 형식 검증
+    - 암호화 필드 평문 → 암호화
+    - trade_mode 변경 시 로깅"""
     to_save: dict = {}
     after: dict = {}
 
@@ -289,10 +303,11 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
             sorted(list(set(data.keys()) & mode_keys)),
         )
 
-    # 타임테이블 시간 순서 검증 (P20/P22) — 저장 전 차단
-    await _validate_timetable_order(data, before)
+    return to_save, after
 
-    # 구독 한도 범위 검증 (P20/P22) — 1~1000 외 값 저장 차단
+
+def _validate_numeric_fields(data: dict) -> None:
+    """구독 한도(1~1000) + 리스크 매니저 필드(범위/부호) 검증 (P20/P22). 위반 시 ValueError."""
     if "subscribe.max_0b_count" in data:
         _v = data["subscribe.max_0b_count"]
         try:
@@ -302,16 +317,6 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
         if _n < 1 or _n > 1000:
             raise ValueError("구독 한도는 1~1000 사이여야 합니다")
 
-    # 리스크 매니저 설정 검증 (P20/P22) — 범위/부호 검증
-    _RISK_INT_KEYS = {
-        "daily_loss_limit": (-1_000_000_000, 0),        # 음수만 허용 (손실 한도)
-        "daily_profit_limit": (0, 1_000_000_000),       # 양수만 허용 (수익 한도)
-        "consecutive_loss_limit": (1, 100),             # 1~100회
-    }
-    _RISK_FLOAT_KEYS = {
-        "daily_loss_rate_limit": (-100.0, 0.0),         # 음수만 허용
-        "daily_profit_rate_limit": (0.0, 100.0),        # 양수만 허용
-    }
     for _k, (_lo, _hi) in _RISK_INT_KEYS.items():
         if _k in data:
             try:
@@ -329,17 +334,37 @@ async def apply_settings_updates(data: dict, username: str = "admin", profile: s
             if _f < _lo or _f > _hi:
                 raise ValueError(f"{_k}는 {_lo}~{_hi} 사이여야 합니다")
 
-    # 증분 저장 (전체 설정 덮어쓰기 없이 변경된 필드만 저장)
-    await save_selected_settings(to_save)
 
-    # 저널링: 변경된 키 추적
-    changed_keys = set()
+def _compute_changed_keys(data: dict, before: dict, after: dict) -> set[str]:
+    """before와 after 비교하여 실제로 값이 달라진 키 집합 반환."""
+    changed_keys: set[str] = set()
     for k in data.keys():
         if k in before and before[k] != after.get(k):
             changed_keys.add(k)
         elif k not in before and k in after:
             changed_keys.add(k)
+    return changed_keys
 
+
+async def apply_settings_updates(data: dict, username: str = "admin", profile: str | None = None) -> set[str]:
+    """업데이트 데이터를 SQLite integrated_system_settings 테이블에 증분 저장.
+    전체 설정 로드/저장 대신 변경된 필드만 로드/저장."""
+    select_keys = _compute_select_keys(data)
+    before = await load_selected_settings(select_keys)
+
+    to_save, after = _prepare_save_payload(data, before)
+
+    # 타임테이블 시간 순서 검증 (P20/P22) — 저장 전 차단
+    await _validate_timetable_order(data, before)
+
+    # 구독 한도 + 리스크 매니저 필드 검증 (P20/P22)
+    _validate_numeric_fields(data)
+
+    # 증분 저장 (전체 설정 덮어쓰기 없이 변경된 필드만 저장)
+    await save_selected_settings(to_save)
+
+    # 저널링: 변경된 키 추적
+    changed_keys = _compute_changed_keys(data, before, after)
     if changed_keys:
         journal_before = {k: before.get(k) for k in changed_keys if k in before}
         journal_after = {k: after.get(k) for k in changed_keys}
@@ -356,9 +381,7 @@ async def build_masked_settings_dict(username: str = "admin", profile: str | Non
 
     for f in ENCRYPT_FIELDS:
         v = masked.get(f)
-        if v and str(v).startswith("gAAAA"):
-            masked[f] = "***"
-        elif v:
+        if v:
             masked[f] = "***"
 
     masked["id"] = display_id

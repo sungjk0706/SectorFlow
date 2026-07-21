@@ -232,16 +232,12 @@ async def save_selected_settings(data: dict) -> None:
             raise
 
 
-async def load_integrated_system_settings() -> dict:
-    """
-    DB에서 직접 로드 (캐시 제거).
-    engine_state._integrated_system_settings_cache를 단일 소스 진리로 사용.
-    """
+async def _load_db_settings() -> dict:
+    """integrated_system_settings 테이블에서 모든 키 로드. broker_specs 키는 _broker_specs dict로 병합."""
     from backend.app.db.database import get_db_connection
     from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS, DEFAULT_SYSTEM_CONFIG
 
     db_data: dict = {}
-
     try:
         conn = await get_db_connection()
         cursor = await conn.execute("SELECT key, value, value_type FROM integrated_system_settings")
@@ -263,42 +259,48 @@ async def load_integrated_system_settings() -> dict:
         return {**DEFAULT_USER_SETTINGS, **DEFAULT_SYSTEM_CONFIG}
 
     for key, default_value in DEFAULT_USER_SETTINGS.items():
-        if key not in db_data or db_data[key] is None or db_data[key] == "":
+        if key not in db_data or db_data[key] is None:
             db_data[key] = default_value
 
     for key, default_value in DEFAULT_SYSTEM_CONFIG.items():
-        if key not in db_data or db_data[key] is None or db_data[key] == "":
+        if key not in db_data or db_data[key] is None:
             db_data[key] = default_value
 
-    if "_broker_specs" not in db_data or not db_data["_broker_specs"]:
-        broker_specs_dir = Path(__file__).parent.parent.parent / "data" / "broker_specs"
-        if await asyncio.to_thread(broker_specs_dir.exists):
-            db_data["_broker_specs"] = {}
-            spec_files = await asyncio.to_thread(lambda: list(broker_specs_dir.glob("*.json")))
-            for spec_file in spec_files:
-                broker_name = spec_file.stem
-                try:
-                    async with aiofiles.open(spec_file, mode="r", encoding="utf-8") as f:
-                        content = await f.read()
-                    spec_data = loads(content)
-                    db_data["_broker_specs"][broker_name] = spec_data
-                    logger.info("[설정] 증권사 명세 초기화: %s", BROKER_DISPLAY_NAMES.get(broker_name, broker_name))
-                except Exception as e:
-                    logger.warning("[설정] 증권사 명세 로드 실패 (%s): %s", spec_file, e)
+    return db_data
 
-    global _migrations_completed
 
-    if _migrations_completed:
-        # 마이그레이션 이미 완료 — 생략하고 복호화만 수행
-        merged = {**db_data}
-        from backend.app.core.encryption import decrypt_value
-        for enc_field in _ENCRYPT_FIELDS:
-            v = merged.get(enc_field)
-            if v and str(v).startswith("gAAAA"):
-                merged[enc_field] = decrypt_value(v) or ""
-        return dict(merged)
+async def _ensure_broker_specs(db_data: dict) -> None:
+    """_broker_specs가 DB에 없으면 디스크(data/broker_specs/*.json)에서 로드하여 채운다."""
+    if "_broker_specs" in db_data and db_data["_broker_specs"]:
+        return
+    broker_specs_dir = Path(__file__).parent.parent.parent / "data" / "broker_specs"
+    if not await asyncio.to_thread(broker_specs_dir.exists):
+        return
+    db_data["_broker_specs"] = {}
+    spec_files = await asyncio.to_thread(lambda: list(broker_specs_dir.glob("*.json")))
+    for spec_file in spec_files:
+        broker_name = spec_file.stem
+        try:
+            async with aiofiles.open(spec_file, mode="r", encoding="utf-8") as f:
+                content = await f.read()
+            spec_data = loads(content)
+            db_data["_broker_specs"][broker_name] = spec_data
+            logger.info("[설정] 증권사 명세 초기화: %s", BROKER_DISPLAY_NAMES.get(broker_name, broker_name))
+        except Exception as e:
+            logger.warning("[설정] 증권사 명세 로드 실패 (%s): %s", spec_file, e, exc_info=True)
 
-    merged = {**db_data}
+
+def _decrypt_encrypt_fields(merged: dict) -> None:
+    """_ENCRYPT_FIELDS의 암호문(gAAAA 접두)을 복호화하여 in-place 치환."""
+    from backend.app.core.encryption import decrypt_value
+    for enc_field in _ENCRYPT_FIELDS:
+        v = merged.get(enc_field)
+        if v and str(v).startswith("gAAAA"):
+            merged[enc_field] = decrypt_value(v) or ""
+
+
+async def _apply_all_migrations(merged: dict, db_data: dict) -> None:
+    """레거시 키 마이그레이션 9개 순차 적용. dirty 시 DB에 저장."""
     _keys_before = set(merged.keys())
     merged, dirty = _migrate_legacy_auto_trade_on(merged)
     merged, dirty_tm = _migrate_trade_mode(merged)
@@ -310,19 +312,31 @@ async def load_integrated_system_settings() -> dict:
     merged, dirty_ws = _migrate_remove_ws_subscribe_window_keys(merged)
     merged, dirty_wso = _migrate_remove_ws_subscribe_on(merged)
 
-    dirty = dirty or dirty_tm or dirty_tr or dirty_si or dirty_bc or dirty_tg or dirty_krx or dirty_ws or dirty_wso
-    if dirty:
+    if dirty or dirty_tm or dirty_tr or dirty_si or dirty_bc or dirty_tg or dirty_krx or dirty_ws or dirty_wso:
         _legacy_keys = list(_keys_before - set(merged.keys()))
         await save_settings(merged, delete_keys=_legacy_keys or None)
 
+
+async def load_integrated_system_settings() -> dict:
+    """
+    DB에서 직접 로드 (캐시 제거).
+    engine_state._integrated_system_settings_cache를 단일 소스 진리로 사용.
+    """
+    db_data = await _load_db_settings()
+    await _ensure_broker_specs(db_data)
+
+    global _migrations_completed
+
+    if _migrations_completed:
+        # 마이그레이션 이미 완료 — 생략하고 복호화만 수행
+        merged = {**db_data}
+        _decrypt_encrypt_fields(merged)
+        return dict(merged)
+
+    merged = {**db_data}
+    await _apply_all_migrations(merged, db_data)
     _migrations_completed = True
-
-    from backend.app.core.encryption import decrypt_value
-    for enc_field in _ENCRYPT_FIELDS:
-        v = merged.get(enc_field)
-        if v and str(v).startswith("gAAAA"):
-            merged[enc_field] = decrypt_value(v) or ""
-
+    _decrypt_encrypt_fields(merged)
     return dict(merged)
 
 
@@ -347,12 +361,66 @@ def _parse_value(value: str, value_type: str) -> Any:
         return value
 
 
+def _collect_save_params(data: dict) -> tuple[list[tuple[str, str, str]], list[tuple[str, str, str]]]:
+    """save_settings용 벌크 파라미터 수집. (bulk_params, broker_specs_params) 반환.
+    암호화 필드는 평문인 경우 자동 암호화. _broker_specs dict와 _broker_specs: 접두 키는 별도 파라미터로 분리."""
+    from backend.app.core.encryption import encrypt_value
+
+    bulk_params: list[tuple[str, str, str]] = []
+    broker_specs_params: list[tuple[str, str, str]] = []
+
+    for k, v in data.items():
+        if v is None:
+            continue
+        # 암호화 필드: 평문이면 암호화 (engine_state 캐시에서 온 복호화값 처리)
+        if k in _ENCRYPT_FIELDS and v and not str(v).startswith("gAAAA"):
+            enc = encrypt_value(str(v))
+            if enc:
+                v = enc
+        if k == "_broker_specs":
+            if isinstance(v, dict):
+                for b_name, spec in v.items():
+                    spec_str = encode_json_field(spec)
+                    broker_specs_params.append((f"_broker_specs:{b_name}", spec_str, "json"))
+            continue
+        if k.startswith("_broker_specs:") or k.startswith("broker_specs:"):
+            b_name = k.split(":", 1)[1]
+            spec_str = encode_json_field(v)
+            broker_specs_params.append((f"_broker_specs:{b_name}", spec_str, "json"))
+            continue
+
+        # 타입 변환
+        if isinstance(v, bool):
+            value_type = "boolean"
+            val_str = str(v)
+        elif isinstance(v, (int, float)):
+            value_type = "number"
+            val_str = str(v)
+        elif isinstance(v, (dict, list)):
+            value_type = "json"
+            val_str = encode_json_field(v)
+        else:
+            value_type = "string"
+            val_str = str(v)
+
+        bulk_params.append((k, val_str, value_type))
+
+    return bulk_params, broker_specs_params
+
+
+_UPSERT_SQL = (
+    "INSERT OR REPLACE INTO integrated_system_settings "
+    "(key, value, value_type, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)"
+)
+
+
 async def save_settings(data: dict, delete_keys: list[str] | None = None) -> None:
     """SQLite 데이터베이스 integrated_system_settings 테이블에 저장.
     암호화 필드가 평문인 경우 자동 암호화 후 저장 (engine_state 캐시에서 온 복호화값 대응).
     delete_keys: 마이그레이션으로 제거된 레거시 키 목록 — 같은 트랜잭션 내에서 DELETE 처리."""
     from backend.app.db.database import get_db_connection, get_db_lock
-    from backend.app.core.encryption import encrypt_value
+
+    bulk_params, broker_specs_params = _collect_save_params(data)
 
     async with get_db_lock():
         conn = await get_db_connection()
@@ -368,57 +436,11 @@ async def save_settings(data: dict, delete_keys: list[str] | None = None) -> Non
                 )
                 logger.info("[설정] 레거시 키 %d개 DB에서 삭제: %s", len(delete_keys), delete_keys)
 
-            # 벌크 파라미터 수집
-            bulk_params = []
-            broker_specs_params = []
-
-            for k, v in data.items():
-                if v is None:
-                    continue
-                # 암호화 필드: 평문이면 암호화 (engine_state 캐시에서 온 복호화값 처리)
-                if k in _ENCRYPT_FIELDS and v and not str(v).startswith("gAAAA"):
-                    enc = encrypt_value(str(v))
-                    if enc:
-                        v = enc
-                if k == "_broker_specs":
-                    if isinstance(v, dict):
-                        for b_name, spec in v.items():
-                            spec_str = encode_json_field(spec)
-                            broker_specs_params.append((f"_broker_specs:{b_name}", spec_str, "json"))
-                    continue
-                if k.startswith("_broker_specs:") or k.startswith("broker_specs:"):
-                    b_name = k.split(":", 1)[1]
-                    spec_str = encode_json_field(v)
-                    broker_specs_params.append((f"_broker_specs:{b_name}", spec_str, "json"))
-                    continue
-
-                # 타입 변환
-                if isinstance(v, bool):
-                    value_type = "boolean"
-                    val_str = str(v)
-                elif isinstance(v, (int, float)):
-                    value_type = "number"
-                    val_str = str(v)
-                elif isinstance(v, (dict, list)):
-                    value_type = "json"
-                    val_str = encode_json_field(v)
-                else:
-                    value_type = "string"
-                    val_str = str(v)
-
-                bulk_params.append((k, val_str, value_type))
-
             # 벌크 실행
             if broker_specs_params:
-                await conn.executemany(
-                    "INSERT OR REPLACE INTO integrated_system_settings (key, value, value_type, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
-                    broker_specs_params
-                )
+                await conn.executemany(_UPSERT_SQL, broker_specs_params)
             if bulk_params:
-                await conn.executemany(
-                    "INSERT OR REPLACE INTO integrated_system_settings (key, value, value_type, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
-                    bulk_params
-                )
+                await conn.executemany(_UPSERT_SQL, bulk_params)
 
             await conn.commit()
             logger.info("[설정] DB 저장 완료 — %d개 증권사 명세, %d개 일반 설정", len(broker_specs_params), len(bulk_params))
