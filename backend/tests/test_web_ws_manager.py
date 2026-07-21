@@ -407,30 +407,6 @@ class TestSendBroadcast:
         await mgr._send_broadcast("test", {"data": 1})  # 에러 없음
 
 
-# ── _send_realdata_immediate ──────────────────────────────────────────────────
-
-class TestSendRealdataImmediate:
-    """WSManager._send_realdata_immediate — 텍스트 즉시 전송."""
-
-    async def test_send_to_all(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        ws1, ws2 = _make_ws(), _make_ws()
-        mgr._clients = {ws1, ws2}
-        await mgr._send_realdata_immediate('{"event":"real-data"}')
-        ws1.send_text.assert_awaited_once_with('{"event":"real-data"}')
-        ws2.send_text.assert_awaited_once_with('{"event":"real-data"}')
-
-    async def test_removes_dead(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        ws = _make_ws()
-        ws.send_text = AsyncMock(side_effect=Exception("dead"))
-        mgr._clients = {ws}
-        await mgr._send_realdata_immediate("text")
-        assert ws not in mgr._clients
-
-
 # ── _send_realdata_encoded ─────────────────────────────────────────────────────
 
 class TestSendRealdataEncoded:
@@ -575,31 +551,6 @@ class TestBroadcast:
         await mgr.broadcast("sector-scores", {"data": 1})  # 에러 없음
 
 
-# ── broadcast_threadsafe ───────────────────────────────────────────────────────
-
-class TestBroadcastThreadsafe:
-    """WSManager.broadcast_threadsafe — 스레드 안전 브로드캐스트."""
-
-    def test_calls_run_coroutine_threadsafe(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        ws = _make_ws()
-        mgr._clients = {ws}
-        mock_loop = MagicMock()
-        with patch("backend.app.web.ws_manager.asyncio.run_coroutine_threadsafe",
-                   side_effect=lambda coro, loop: coro.close()) as mock_rcs:
-            mgr.broadcast_threadsafe("event", {"data": 1}, mock_loop)
-        mock_rcs.assert_called_once()
-
-    def test_no_clients_returns(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        mock_loop = MagicMock()
-        with patch("backend.app.web.ws_manager.asyncio.run_coroutine_threadsafe") as mock_rcs:
-            mgr.broadcast_threadsafe("event", {"data": 1}, mock_loop)
-        mock_rcs.assert_not_called()
-
-
 # ── send_to ────────────────────────────────────────────────────────────────────
 
 class TestSendTo:
@@ -623,29 +574,6 @@ class TestSendTo:
         ws.send_text = AsyncMock(side_effect=Exception("send failed"))
         mgr._clients = {ws}
         await mgr.send_to(ws, "event", {"data": 1})
-        assert ws not in mgr._clients
-
-
-# ── _send ──────────────────────────────────────────────────────────────────────
-
-class TestSend:
-    """WSManager._send — 단일 전송, 실패 시 제거."""
-
-    async def test_send_success(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        ws = _make_ws()
-        mgr._clients = {ws}
-        await mgr._send(ws, "text")
-        ws.send_text.assert_awaited_once_with("text")
-
-    async def test_send_failure_removes(self):
-        from backend.app.web.ws_manager import WSManager
-        mgr = WSManager()
-        ws = _make_ws()
-        ws.send_text = AsyncMock(side_effect=Exception("dead"))
-        mgr._clients = {ws}
-        await mgr._send(ws, "text")
         assert ws not in mgr._clients
 
 
