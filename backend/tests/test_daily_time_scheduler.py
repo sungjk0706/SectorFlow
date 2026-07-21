@@ -58,8 +58,6 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     _on_ws_subscribe_start,
     _on_ws_subscribe_end,
     _on_confirmed_download,
-    _fire_ws_disconnect_only,
-    _ws_disconnect_only,
     _init_ws_subscribe_state,
     _trigger_reg_pipeline,
     _trigger_unreg_all,
@@ -68,8 +66,6 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     _on_auto_trade_transition,
     _on_midnight,
     schedule_midnight_timer,
-    _freeze_krx_amt29_baseline,
-    _apply_detail_to_entry,
     start_daily_time_scheduler,
     stop_daily_time_scheduler,
     schedule_auto_trade_timers,
@@ -1543,15 +1539,6 @@ class TestOnWsSubscribeEnd:
             mock_state.ws_window_changed_event.set.assert_called_once()
 
 
-# ── _fire_ws_disconnect_only ──
-
-class TestFireWrappers:
-    def test_fire_ws_disconnect_only_schedules(self):
-        with patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro) as mock_sched:
-            _fire_ws_disconnect_only()
-            mock_sched.assert_called_once()
-
-
 # ── _on_confirmed_download ────────────────────────────────────────────────────
 
 class TestOnConfirmedDownload:
@@ -1599,21 +1586,6 @@ class TestOnConfirmedDownload:
             await _on_confirmed_download()
             mock_fire.assert_called_once()  # 다른 날이므로 실행
             assert mock_state.last_confirmed_download_date == _make_kst(20, 40).strftime("%Y%m%d")
-
-
-# ── _ws_disconnect_only ───────────────────────────────────────────────────────
-
-class TestWsDisconnectOnly:
-    @pytest.mark.asyncio
-    async def test_sets_flags_and_triggers_unreg(self):
-        mock_state = MagicMock()
-        mock_state.ws_window_changed_event = MagicMock()
-        with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler._trigger_unreg_all", new_callable=AsyncMock), \
-             patch("backend.app.services.ws_subscribe_control._set_status"):
-            await _ws_disconnect_only()
-            assert mock_state.ws_subscribe_window_active is False
-            mock_state.ws_window_changed_event.set.assert_called_once()
 
 
 # ── _init_ws_subscribe_state ──────────────────────────────────────────────────
@@ -1860,58 +1832,6 @@ class TestScheduleMidnightTimer:
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("asyncio.get_running_loop", side_effect=RuntimeError("no loop")):
             schedule_midnight_timer()
-
-
-# ── _freeze_krx_amt29_baseline ────────────────────────────────────────────────
-
-class TestFreezeKrxAmt29Baseline:
-    def test_is_noop(self):
-        _freeze_krx_amt29_baseline()
-
-
-# ── _apply_detail_to_entry ────────────────────────────────────────────────────
-
-class TestApplyDetailToEntry:
-    def test_applies_all_fields(self):
-        entry = {}
-        detail = {"cur_price": 50000, "change": 1000, "change_rate": 2.0, "sign": "2", "trade_amount": 5000000, "strength": 85.5}
-        _apply_detail_to_entry(entry, detail)
-        assert entry["cur_price"] == 50000
-        assert entry["change"] == 1000
-        assert entry["change_rate"] == 2.0
-        assert entry["sign"] == "2"
-        assert entry["trade_amount"] == 5000000
-        assert entry["strength"] == "85.50"
-
-    def test_zero_price_not_overwritten(self):
-        entry = {"cur_price": 60000}
-        detail = {"cur_price": 0}
-        _apply_detail_to_entry(entry, detail)
-        assert entry["cur_price"] == 60000
-
-    def test_zero_change_not_overwritten(self):
-        entry = {"change": 500}
-        detail = {"change": 0}
-        _apply_detail_to_entry(entry, detail)
-        assert entry["change"] == 500
-
-    def test_sign_3_not_overwritten(self):
-        entry = {"sign": "2"}
-        detail = {"sign": "3"}
-        _apply_detail_to_entry(entry, detail)
-        assert entry["sign"] == "2"
-
-    def test_invalid_strength_ignored(self):
-        entry = {}
-        detail = {"strength": "not_a_number"}
-        _apply_detail_to_entry(entry, detail)
-        assert "strength" not in entry
-
-    def test_none_strength_ignored(self):
-        entry = {"strength": "50.00"}
-        detail = {"strength": None}
-        _apply_detail_to_entry(entry, detail)
-        assert entry["strength"] == "50.00"
 
 
 # ── stop_daily_time_scheduler ─────────────────────────────────────────────────

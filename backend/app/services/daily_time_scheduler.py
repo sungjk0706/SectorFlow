@@ -937,28 +937,6 @@ async def _on_confirmed_download() -> None:
         logger.warning("[스케줄] 확정 데이터 다운로드 콜백 오류: %s", e, exc_info=True)
 
 
-def _fire_ws_disconnect_only() -> None:
-    """설정 변경으로 인한 구독 해제 전용 — 구독 해제 + WS 끊기만 수행, 장마감 후처리(갱신/캐시저장) 없음."""
-    schedule_engine_task(_ws_disconnect_only(), context="WS 구독 해제 전용")
-
-
-async def _ws_disconnect_only() -> None:
-    """구독 해제 + WS 연결 해제 요청만 수행 (장마감 후처리 제외).
-    실제 WS 연결 해제는 엔진 루프의 구간 감지가 담당."""
-    try:
-        engine_state.state.ws_subscribe_window_active = False
-        # ── 수신율 임계값 게이트 해제 — 구독 구간 밖 전환 시 확정 데이터 기반 전송 허용 ──
-        from backend.app.pipelines.pipeline_compute import mark_sector_threshold_passed
-        mark_sector_threshold_passed()
-        logger.info("[스케줄] 구독 구간 변경 — 구독 해지 + 엔진 루프에 해제 통지")
-        await _trigger_unreg_all()
-        from backend.app.services.ws_subscribe_control import _set_status
-        _set_status(quote=False)
-        engine_state.state.ws_window_changed_event.set()
-    except Exception as e:
-        logger.warning("[스케줄] 실시간 구독 해제 오류: %s", e)
-
-
 # ── 타임테이블 스케줄러 (10초 루프 대체) ──────────────────────────────────────
 # 시간표 항목: (시각 상수, 동작 종류, 콜백, 컨텍스트)
 # - kind="direct": 시각 도달 시 callback 직접 실행 (사전 트리거)
@@ -1414,38 +1392,6 @@ def schedule_midnight_timer() -> None:
         delay += 86400
     engine_state.state.midnight_timer_handle = loop.call_later(max(delay, 1), lambda: schedule_engine_task(_on_midnight(), context="자정 날짜 변경"))
     logger.debug("[스케줄] 자정 타이머 — %.0f초 후 예약", delay)
-
-
-# ── ka10001 확정 데이터 갱신 ─────────────────────────────────────────────────
-
-def _freeze_krx_amt29_baseline() -> None:
-    pass  # KRX 단독 구조에서는 freeze 불필요 — 호환성 유지용 stub
-
-
-def _apply_detail_to_entry(entry: dict, detail: dict, *, base_nk: str = "") -> None:
-    """ka10086 응답 detail을 pending 행에 반영. 0값은 덮지 않음."""
-    px = int(detail.get("cur_price") or 0)
-    if px > 0:
-        entry["cur_price"] = px
-    change = int(detail.get("change") or 0)
-    if change != 0:
-        entry["change"] = change
-    rate = float(detail["change_rate"]) if detail.get("change_rate") is not None else None
-    if rate is not None and rate != 0.0:
-        entry["change_rate"] = rate
-    sign = str(detail.get("sign") or "").strip()
-    if sign and sign != "3":
-        entry["sign"] = sign
-    amt = int(detail["trade_amount"]) if detail.get("trade_amount") is not None else None
-    if amt is not None and amt > 0:
-        entry["trade_amount"] = amt
-        # 실시간 틱 데이터 저장 제거 (장 마감 후 UI 표시용 저장 안 함)
-    strength = detail.get("strength")
-    if strength is not None:
-        try:
-            entry["strength"] = f"{float(strength):.2f}"
-        except (ValueError, TypeError):
-            pass
 
 
 # ── 스케줄러 시작/중지 ────────────────────────────────────────────────────────
