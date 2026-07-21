@@ -22,10 +22,6 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
     index-data(broker_statuses 포함)는 token_ready와 무관하게 즉시 전송."""
     try:
         from backend.app.services.engine_state import state
-        from backend.app.services.engine_config import get_settings_snapshot
-
-        settings = get_settings_snapshot()
-        _trade_mode = settings.get("trade_mode", "")
 
         # 이벤트 구동 방식: 데이터 준비 완료 시 즉시 전송 (타임아웃/폴링 제거)
         # 테스트모드와 실전모드 동일하게 데이터 준비 대기 (앱 기동 준비는 돈과 무관)
@@ -154,12 +150,10 @@ async def _send_initial_snapshot_delayed(websocket: WebSocket, ws_manager) -> No
 
 @router.websocket("/prices")
 async def ws_prices(websocket: WebSocket, token: str = Query(...)):
-    """통합 WebSocket 엔드포인트 — 연결 관리 + initial snapshot + ping-pong."""
-    # TODO: 개발 완료 후 토큰 검증 재활성화
-    # username = verify_token(token)
-    # if username is None:
-    #     await websocket.close(code=1008)
-    #     return
+    """통합 WebSocket 엔드포인트 — 연결 관리 + initial snapshot + ping-pong.
+
+    현재 개발 모드: 토큰 검증 비활성화, 항상 'dev' 사용.
+    """
     username = "dev"
 
     await websocket.accept()
