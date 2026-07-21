@@ -1120,10 +1120,10 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B11-05 | B-11 | `pipeline_compute.py:349-408` `_process_control_signal` 60줄 | P24 | MEDIUM | 함수 50줄 초과 — DYNAMIC_REG/DYNAMIC_UNREG 헬퍼 분리(`_handle_dynamic_reg`, `_handle_dynamic_unreg`) | 해결 (B-11-a: ~35줄 + 2개 헬퍼) |
 | B11-06 | B-11 | `pipeline_compute.py:473-538` `_handle_real_tick` 66줄 | P24 | MEDIUM | 함수 50줄 초과 — 아이템 추출/디스패치 헬퍼 분리(`_extract_real_items`, `_dispatch_real_item`) | 해결 (B-11-a: ~18줄 + 2개 헬퍼) |
 | B11-07 | B-11 | `pipeline_compute.py:223-275` `_coalesce_batch` 53줄 | P24 | LOW | 함수 50줄 초과 (경미) — 내부 아이템 코얼레싱 헬퍼 분리(`_coalesce_real_items`) | 해결 (B-11-a: ~30줄 + 1개 헬퍼) |
-| B11-08 | B-11 | `pipeline_compute_tick_handlers.py:275-278` (이관) | P20 | MEDIUM | `except ValueError: tval = 0` — 잘못된 PGM 데이터를 0으로 조용히 대체. 사용자가 프로그램 순매수 0을 실데이터로 오인 | 보류 (B-11-b) |
-| B11-09 | B-11 | `pipeline_compute_tick_handlers.py:247` (이관) | P20 | MEDIUM | `state.master_stocks_cache.get(nk, {})` 빈 dict 폴백 — "캐시 미스(비정상)"와 "미구독 종목(정상)" 구분 불가 | 보류 (B-11-b) |
-| B11-10 | B-11 | `pipeline_compute_tick_handlers.py:281` (이관) | P20 | MEDIUM | 동일 `get(nk, {})` 폴백 (PGM 핸들러) | 보류 (B-11-b) |
-| B11-11 | B-11 | `pipeline_compute.py:548-610` Phase 1 루프 | P11 | HIGH | `while + asyncio.sleep(1.0)` 폴링으로 수신율 임계값 대기 — `asyncio.Event` 기반 전환 가능 (사용자 설계 로직, 규칙 0-5 적용) | 보류 (B-11-b) |
+| B11-08 | B-11 | `pipeline_compute_tick_handlers.py:275-278` (이관) | P20 | MEDIUM | `except ValueError: tval = 0` — 잘못된 PGM 데이터를 0으로 조용히 대체. 사용자가 프로그램 순매수 0을 실데이터로 오인 | 해결 (B-11-b: `tval` 누락/오류 시 로깅+스킵, 0 대체 제거) |
+| B11-09 | B-11 | `pipeline_compute_tick_handlers.py:247` (이관) | P20 | MEDIUM | `state.master_stocks_cache.get(nk, {})` 빈 dict 폴백 — "캐시 미스(비정상)"와 "미구독 종목(정상)" 구분 불가 | 해결 (B-11-b: `nk in cache` 명시적 분기, 캐시 미스 시 로깅+스킵) |
+| B11-10 | B-11 | `pipeline_compute_tick_handlers.py:281` (이관) | P20 | MEDIUM | 동일 `get(nk, {})` 폴백 (PGM 핸들러) | 해결 (B-11-b: B11-09와 동일 패턴 적용) |
+| B11-11 | B-11 | `pipeline_compute.py:548-610` Phase 1 루프 | P11 | HIGH | `while + asyncio.sleep(1.0)` 폴링으로 수신율 임계값 대기 — `asyncio.Event` 기반 전환 가능 (사용자 설계 로직, 규칙 0-5 적용) | 해결 (B-11-b: 사용자 승인 대안1 — `LazyEvent.wait()` + 200ms 디바운스 전환, `reset_sector_threshold`에서 이벤트 클리어) |
 | B11-12 | B-11 | `pipeline_compute.py:195-196` `start_compute_loop` | P16/P21 | HIGH | `create_task()` 후 `add_done_callback` 미설정 — compute/sector_recompute 태스크 조용히 사망 시 사용자 인지 불가. gateway 루프(`app.py:63`)는 설정되어 있어 비일관 (P23) | 해결 (B-11-a: `add_done_callback` 추가, gateway 루프와 일관) |
 
 ---
@@ -1144,7 +1144,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B-08 | P1 | 엔진 부트스트랩/캐시/스냅샷 | ☑ 완료 (14건 수정, 261 tests passed) |
 | B-09 | P1 | 엔진 섹터 확인/전략/레이더 | ☑ 완료 (24건 수정, 2714 tests passed) |
 | B-10 | P1 | 엔진 계좌/서비스 | ◐ B-10-a 완료 (11건 수정), B-10-b 대기 (6건) |
-| B-11 | P1 | 파이프라인 (Compute/Gateway) | ◐ B-11-a 완료 (8건 수정), B-11-b 대기 (4건) |
+| B-11 | P1 | 파이프라인 (Compute/Gateway) | ☑ 완료 (B-11-a 8건 + B-11-b 4건 = 12건 수정, 2964 tests passed) |
 | B-12 | P2 | DB 계층 | ☐ 미시작 |
 | B-13 | P2 | 설정 관리 | ☐ 미시작 |
 | B-14 | P2 | Broker 추상화 (공통) | ☐ 미시작 |
@@ -1170,12 +1170,12 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | 항목 | 카운트 |
 |------|--------|
 | 전체 세션 | 30 |
-| 완료 | 9 |
-| 진행 중 | 2 (B-10-a 완료/B-10-b 대기, B-11-a 완료/B-11-b 대기) |
+| 완료 | 10 |
+| 진행 중 | 1 (B-10-a 완료/B-10-b 대기) |
 | 미시작 | 19 |
 | 발견된 문제 | 71 |
-| 해결된 문제 | 59 |
-| 보류된 문제 | 4 (B11-08~11, B-11-b 대기) |
+| 해결된 문제 | 63 |
+| 보류된 문제 | 0 |
 
 ---
 

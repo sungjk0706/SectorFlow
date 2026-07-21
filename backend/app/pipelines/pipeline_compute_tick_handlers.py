@@ -130,6 +130,7 @@ def _apply_01_radar_and_receive_rate(
     else:
         _pc._received_codes_krx.add(nk_px)
     _pc._receive_rate_dirty = True
+    _pc._receive_rate_event.set()
 
 
 async def _apply_01_price_to_positions(
@@ -279,7 +280,11 @@ async def _handle_real_0d_tick(
             return
 
         # 매수 후보 종목이면 호가잔량비 변경을 프론트에 즉시 전송
-        cache_entry = _pc.state.master_stocks_cache.get(nk, {})
+        cache = _pc.state.master_stocks_cache
+        if nk not in cache:
+            logger.warning("[연산] 호가 틱(0D) 수신 종목이 캐시에 없음 (종목=%s) — 비정상. 틱 스킵.", nk)
+            return
+        cache_entry = cache[nk]
         if cache_entry.get("_subscribed_dynamic", False):
             cache_entry["order_ratio"] = [bid, ask]
             await notify_orderbook_update(nk, bid, ask)
@@ -304,14 +309,22 @@ async def _handle_real_pgm_tick(
             return
 
         nk = _base_stk_cd(raw_cd)
-        tval_str = vals.get("tval", "0")
+        tval_str = vals.get("tval")
+        if tval_str is None:
+            logger.warning("[연산] PGM 순매수 데이터 누락 (tval 필드 없음, 종목=%s) — 틱 스킵. 화면에 순매수 0이 잘못 표시되지 않도록 갱신을 생략합니다.", nk)
+            return
         try:
             tval = int(tval_str)
-        except ValueError:
-            tval = 0
+        except (ValueError, TypeError):
+            logger.warning("[연산] PGM 순매수 데이터 오류 (tval=%r, 종목=%s) — 틱 스킵. 화면에 순매수 0이 잘못 표시되지 않도록 갱신을 생략합니다.", tval_str, nk)
+            return
 
         # 매수 후보 종목이면 프로그램 순매수 변경을 프론트에 즉시 전송
-        cache_entry = _pc.state.master_stocks_cache.get(nk, {})
+        cache = _pc.state.master_stocks_cache
+        if nk not in cache:
+            logger.warning("[연산] PGM 틱 수신 종목이 캐시에 없음 (종목=%s) — 비정상. 틱 스킵.", nk)
+            return
+        cache_entry = cache[nk]
         if cache_entry.get("_subscribed_dynamic", False):
             cache_entry["program_net_buy"] = tval
             await notify_program_update(nk, tval)
