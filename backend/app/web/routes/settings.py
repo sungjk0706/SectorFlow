@@ -60,8 +60,8 @@ async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_
                 for k in changed_keys:
                     if k in masked_settings:
                         changed_dict[k] = masked_settings[k]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[설정] 엔진 미실행 중 마스킹된 변경 설정 수집 실패: %s", e, exc_info=True)
             await notify_desktop_settings_toggled(changed_dict)
 
             # tele_on은 엔진 실행 여부와 무관하게 폴링 태스크에 즉시 반영 (원칙 17)
@@ -86,13 +86,77 @@ async def patch_setting_field(field_name: str, body: dict, _: str = Depends(get_
         )
 
 
+async def _reset_test_trades_and_deposit(default_deposit: int) -> None:
+    """테스트 매매 이력·가상 보유종목·예수금·정산엔진 초기화 + 이력 브로드캐스트."""
+    from backend.app.services.dry_run import clear, set_virtual_deposit
+    from backend.app.services.trade_history import clear_test_history, broadcast_history
+    from backend.app.services import settlement_engine
+
+    # 1. 테스트 매매 이력 초기화 (실전 이력은 보존) — trades가 SSOT이므로 먼저 삭제
+    await clear_test_history()
+    # 2. 가상 보유종목 메모리 초기화 (trades 삭제 후이므로 빈 상태로 복원됨)
+    await clear()
+    # 3. 가상 예수금 초기화 (기본예수금으로 리셋)
+    await set_virtual_deposit(default_deposit)
+    # 4. Settlement Engine 초기화 (예수금 리셋 + 미정산 삭제 + 타이머 취소)
+    await settlement_engine.reset(default_deposit)
+    # 5. 초기화된 매매 이력 브로드캐스트 → 프론트 테이블 갱신
+    await broadcast_history("test")
+
+
+async def _reset_positions_and_account() -> None:
+    """보유종목 메모리·캐시 초기화 + 계좌 스냅샷 갱신 + WS account-update 발송."""
+    from backend.app.services.engine_state import state
+    from backend.app.services.engine_account_notify import _rebuild_positions_cache, notify_cache
+    from backend.app.services.engine_account import _refresh_account_snapshot_meta, _broadcast_account
+
+    subscribed_count = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
+    logger.info(
+        "[디버그] 초기화 직전 구독목록 보유종목=%d 구독중=%d 레이아웃=%d 종목코드=%d",
+        len(state.positions), subscribed_count,
+        len(state.integrated_system_settings_cache["sector_stock_layout"]),
+        len(notify_cache.positions_code_set),
+    )
+    state.positions = []
+    for entry in state.master_stocks_cache.values():
+        entry.pop("_subscribed", None)
+    _rebuild_positions_cache([])
+    subscribed_count_after = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
+    logger.info(
+        "[디버그] 초기화 직후 구독목록 보유종목=%d 구독중=%d 레이아웃=%d 종목코드=%d",
+        len(state.positions), subscribed_count_after,
+        len(state.integrated_system_settings_cache["sector_stock_layout"]),
+        len(notify_cache.positions_code_set),
+    )
+    await _refresh_account_snapshot_meta()
+    await _broadcast_account(reason="test_data_reset")
+    logger.info("[연산] 보유종목, 실시간 필드 및 REST 보완 저장데이터 초기화 완료")
+
+
+async def _reset_buy_state_and_broadcast() -> None:
+    """일일매수 누적 상태·쿨다운·buy_targets 리셋 + WS buy-limit-status 발송."""
+    from backend.app.services.engine_state import state
+    from backend.app.services.engine_account import _broadcast_buy_limit_status
+
+    # 8. 일일매수 누적 인메모리 상태 리셋 + 매수 쿨다운/쓰로틀 기록 초기화
+    if state.auto_trade:
+        state.auto_trade._daily_buy_spent = 0
+        state.auto_trade._bought_today = {}
+        state.auto_trade._symbol_daily_buy_spent = {}
+        state.auto_trade._buy_state.clear()
+    # 주문 간격 타이머 리셋 (매수/매도)
+    state._last_global_buy_ts = 0.0
+    state._last_global_sell_ts = 0.0
+    # buy_targets 메모리 초기화 (매수 후보 테이블 동기화)
+    if state.sector_summary_cache and hasattr(state.sector_summary_cache, 'buy_targets'):
+        state.sector_summary_cache.buy_targets = []
+    await _broadcast_buy_limit_status()
+
+
 @router.post("/test-data/reset")
 async def reset_test_data(_: str = Depends(get_current_user)):
     """테스트 데이터 전체 초기화 (가상 보유종목 + 예수금 + 테스트 매매 이력)."""
     try:
-        from backend.app.services.dry_run import clear, set_virtual_deposit
-        from backend.app.services.trade_history import clear_test_history
-        from backend.app.services import settlement_engine
         from backend.app.services.engine_state import state
 
         default_deposit = 10_000_000
@@ -101,57 +165,12 @@ async def reset_test_data(_: str = Depends(get_current_user)):
             settings.get("test_virtual_deposit", default_deposit) or default_deposit
         )
 
-        # 1. 테스트 매매 이력 초기화 (실전 이력은 보존) — trades가 SSOT이므로 먼저 삭제
-        await clear_test_history()
-        # 2. 가상 보유종목 메모리 초기화 (trades 삭제 후이므로 빈 상태로 복원됨)
-        await clear()
-        # 3. 가상 예수금 초기화 (기본예수금으로 리셋)
-        await set_virtual_deposit(default_deposit)
-        # 4. Settlement Engine 초기화 (예수금 리셋 + 미정산 삭제 + 타이머 취소)
-        await settlement_engine.reset(default_deposit)
-        # 5. 초기화된 매매 이력 브로드캐스트 → 프론트 테이블 갱신
-        from backend.app.services.trade_history import broadcast_history
-        await broadcast_history("test")
+        # 1~5. 테스트 매매 이력·가상 보유종목·예수금·정산엔진 초기화 + 이력 브로드캐스트
+        await _reset_test_trades_and_deposit(default_deposit)
         # 7. 보유종목 메모리 리스트 및 캐시 초기화 + 계좌 스냅샷 갱신 + WS account-update 발송
-        import logging
-        from backend.app.services.engine_state import state
-        from backend.app.services.engine_account_notify import _rebuild_positions_cache, notify_cache
-        from backend.app.services.engine_account import _refresh_account_snapshot_meta, _broadcast_account, _broadcast_buy_limit_status
-        _logger = logging.getLogger(__name__)
-        subscribed_count = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
-        _logger.info(
-            "[디버그] 초기화 직전 구독목록 보유종목=%d 구독중=%d 레이아웃=%d 종목코드=%d",
-            len(state.positions), subscribed_count,
-            len(state.integrated_system_settings_cache["sector_stock_layout"]),
-            len(notify_cache.positions_code_set),
-        )
-        state.positions = []
-        for entry in state.master_stocks_cache.values():
-            entry.pop("_subscribed", None)
-        _rebuild_positions_cache([])
-        subscribed_count_after = sum(1 for entry in state.master_stocks_cache.values() if entry.get("_subscribed", False))
-        _logger.info(
-            "[디버그] 초기화 직후 구독목록 보유종목=%d 구독중=%d 레이아웃=%d 종목코드=%d",
-            len(state.positions), subscribed_count_after,
-            len(state.integrated_system_settings_cache["sector_stock_layout"]),
-            len(notify_cache.positions_code_set),
-        )
-        await _refresh_account_snapshot_meta()
-        await _broadcast_account(reason="test_data_reset")
-        _logger.info("[연산] 보유종목, 실시간 필드 및 REST 보완 저장데이터 초기화 완료")
-        # 8. 일일매수 누적 인메모리 상태 리셋 + 매수 쿨다운/쓰로틀 기록 초기화 + WS buy-limit-status 발송
-        if state.auto_trade:
-            state.auto_trade._daily_buy_spent = 0
-            state.auto_trade._bought_today = {}
-            state.auto_trade._symbol_daily_buy_spent = {}
-            state.auto_trade._buy_state.clear()
-        # 주문 간격 타이머 리셋 (매수/매도)
-        state._last_global_buy_ts = 0.0
-        state._last_global_sell_ts = 0.0
-        # buy_targets 메모리 초기화 (매수 후보 테이블 동기화)
-        if state.sector_summary_cache and hasattr(state.sector_summary_cache, 'buy_targets'):
-            state.sector_summary_cache.buy_targets = []
-        await _broadcast_buy_limit_status()
+        await _reset_positions_and_account()
+        # 8. 일일매수 누적 상태·쿨다운·buy_targets 리셋 + WS buy-limit-status 발송
+        await _reset_buy_state_and_broadcast()
         # 10. 통합 초기화 완료 신호 (모든 클라이언트 일괄 동기화)
         from backend.app.services.engine_account_notify import _broadcast
         await _broadcast("test-data-reset-completed", {"_v": 1})
