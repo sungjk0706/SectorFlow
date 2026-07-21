@@ -733,22 +733,27 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 
 ---
 
-### 세션 B-23: P3 — 테스트 품질 점검
+### 세션 B-23: P3 — 테스트 품질 점검 (분할: B-23-a/b/c/d)
 > **우선순위**: P3 (테스트 품질)  
-> **파일**: 테스트 파일 66개  
-> **대상 원칙**: P16, P18, P19, P22, P23, P24
+> **파일**: 테스트 파일 65개 (실측; 계획 66개는 추정치) / 35,673줄 / 테스트 함수 약 2844개  
+> **대상 원칙**: P16, P18, P19, P22, P23, P24  
+> **분할 사유**: 단일 세션 전수 점검 불가 (규칙 0-1). B-23-a 메타 점검 + B-23-b/c/d 파일 규모별 세부 점검.
 
 | 점검 항목 | 점검 완료 |
 |-----------|----------|
-| 테스트 커버리지 현황 파악 (모듈별) | ☐ |
-| P16: 테스트가 살아있는 경로를 검증하는지 (dead code 테스트 아님) | ☐ |
-| P18: 테스트모드 동등성 검증 존재 여부 | ☐ |
-| P19: `RuntimeWarning(coroutine never awaited)` 감지 테스트 | ☐ |
-| P22: 데이터 정합성 대조(reconciliation) 테스트 | ☐ |
-| P23: 용어/에러/비동기/네이밍/상수 일관성 점검 | ☐ |
-| P24: 단순성 점검 (불필요한 추상화, 복잡도) | ☐ |
-| 미커버 모듈 식별 (테스트 파일 없는 소스 파일) | ☐ |
-| 통합 테스트 vs 단위 테스트 비율 | ☐ |
+| 테스트 커버리지 현황 파악 (모듈별) | ☑ B-23-a |
+| P16: 테스트가 살아있는 경로를 검증하는지 (dead code 테스트 아님) | ☐ B-23-b/c/d |
+| P18: 테스트모드 동등성 검증 존재 여부 | △ B-23-a 스캔/B-23-b/c/d 심층 |
+| P19: `RuntimeWarning(coroutine never awaited)` 감지 테스트 | ☑ B-23-a (부재 확인) |
+| P22: 데이터 정합성 대조(reconciliation) 테스트 | △ B-23-a 스캔/B-23-b/c/d 심층 |
+| P23: 용어/에러/비동기/네이밍/상수 일관성 점검 | ☐ B-23-b/c/d |
+| P24: 단순성 점검 (불필요한 추상화, 복잡도) | ☐ B-23-b/c/d |
+| 미커버 모듈 식별 (테스트 파일 없는 소스 파일) | ☑ B-23-a (17개) |
+| 통합 테스트 vs 단위 테스트 비율 | ☑ B-23-a (2/63, async 1482/sync 1362) |
+
+**B-23-a 메타 점검 결과**: P19 감지 테스트 부재(4개 파일 "방지" 주석만). 미커버 17개 모듈(`engine_config`/`engine_strategy_core`/`engine_utils`/`engine_radar`/`auto_trading_effective`/`ws_subscribe_control`/`broker_factory`/`broker_registry`/`broker_connector`/`trade_mode`/`settings_defaults`/`memory_monitor`/`logging_config`/`sector_stock_cache`/`sector_filter`/`pipeline_compute_tick_handlers`/`json_utils`).
+
+**B-23-b**: 대형 9개(1000줄+) · **B-23-c**: 중형 20개(400-1000줄) · **B-23-d**: 소형 36개(400줄-) — 각 P16/P23/P24/P18/P22 점검.
 
 ---
 
@@ -1157,7 +1162,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B-20 | P3 | 알림 (Telegram) | ☑ 완료 (3건 P16/P21) |
 | B-21 | P3 | 기타 Core 유틸 | ◐ B-21-a/b 완료 (journal 12건 + logger 1건 + encryption 3건 P16), B-21-c 잔여 |
 | B-22 | P3 | Web API 계층 | ☑ 완료 (B-22-a ws_manager dead code 3건 + B-22-b 주석 dead code 4건 + B-22-c silent except 1건/dead 변수·필드 4건/reset_test_data 분할 = 13건 P16/P20/P21/P24) |
-| B-23 | P3 | 테스트 품질 점검 | ☐ 미시작 |
+| B-23 | P3 | 테스트 품질 점검 | ◐ B-23-a 메타 점검 완료(9항목 중 4 완료/2 부분/3 세부 이월, 미커버 17개 모듈 식별, P19 감지 테스트 부재), B-23-b/c/d 세부 점검 잔여 |
 | F-01 | P0 | 통신 계층 및 상태 관리 | ☑ 완료 (10건 수정, V-02 해결, 112 tests passed) |
 | F-02 | P1 | 진입점, 라우팅, 레이아웃 | ☐ 미시작 |
 | F-03 | P2 | 핵심 매매 페이지 | ☐ 미시작 |

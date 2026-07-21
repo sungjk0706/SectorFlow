@@ -79,7 +79,7 @@
 | B-20 | P3 | 알림 (Telegram) | 3 | ☑ | 완료 (3건 P16/P21) |
 | B-21 | P3 | 기타 Core 유틸 | 11 | ☑ | 완료 (B-21-a journal.py 12건, B-21-b logger+encryption 4건, B-21-c classification+mapping+cache 3건 P16) |
 | B-22 | P3 | Web API 계층 | 14 | ☑ | 완료 (B-22-a ws_manager dead code 3건 + B-22-b 주석 dead code 4건 + B-22-c silent except 1건/dead 변수·필드 4건/reset_test_data 분할 = 13건 P16/P20/P21/P24) |
-| B-23 | P3 | 테스트 품질 점검 | 67 | ☐ | |
+| B-23 | P3 | 테스트 품질 점검 | 67 | ☐ | 분할: B-23-a 메타 점검 완료(9항목 중 4 완료/2 부분/3 세부 이월), B-23-b 대형 9개(1000줄+), B-23-c 중형 20개(400-1000줄), B-23-d 소형 36개(400줄-) 잔여 |
 | F-01 | P0 | 통신 계층 및 상태 관리 | 8 | ☑ | 10건 수정 |
 | **F-02** | **P1** | **진입점, 라우팅, 레이아웃** | 6 | ☐ | |
 | F-03 | P2 | 핵심 매매 페이지 | 6 | ☐ | |
@@ -558,22 +558,56 @@
 
 ---
 
-### 세션 B-23: P3 — 테스트 품질 점검
+### 세션 B-23: P3 — 테스트 품질 점검 (분할: B-23-a/b/c/d)
 
-**대상 파일** (67개, `backend/tests/` 전체)
+> **분할 사유**: 테스트 파일 65개 / 35,673줄 / 테스트 함수 약 2844개로 단일 세션 전수 점검 불가 (규칙 0-1). 메타 점검(B-23-a) + 파일 규모별 세부 점검 3분할(B-23-b/c/d).
+
+**대상 파일** (65개, `backend/tests/` 전체 — 계획 문서의 67개는 추정치, 실측 65개)
 
 **대상 원칙**: P16, P18, P19, P22, P23, P24
 
 **조사 체크리스트**
-- [ ] 테스트 커버리지 현황 파악 (모듈별)
-- [ ] P16: 테스트가 살아있는 경로를 검증하는지 (dead code 테스트 아님)
-- [ ] P18: 테스트모드 동등성 검증 존재 여부
-- [ ] P19: `RuntimeWarning(coroutine never awaited)` 감지 테스트
-- [ ] P22: 데이터 정합성 대조(reconciliation) 테스트
-- [ ] P23: 용어/에러/비동기/네이밍/상수 일관성 점검
-- [ ] P24: 단순성 점검 (불필요한 추상화, 복잡도)
-- [ ] 미커버 모듈 식별 (테스트 파일 없는 소스 파일)
-- [ ] 통합 테스트 vs 단위 테스트 비율
+- [x] 테스트 커버리지 현황 파악 (모듈별) — B-23-a 완료
+- [ ] P16: 테스트가 살아있는 경로를 검증하는지 (dead code 테스트 아님) — B-23-b/c/d 이월
+- [~] P18: 테스트모드 동등성 검증 존재 여부 — B-23-a 키워드 스캔(7개 파일), 심층은 B-23-b/c/d
+- [x] P19: `RuntimeWarning(coroutine never awaited)` 감지 테스트 — B-23-a 완료 (감지 테스트 부재, 4개 파일에서 "방지" 주석만)
+- [~] P22: 데이터 정합성 대조(reconciliation) 테스트 — B-23-a 키워드 스캔(5개 파일), 심층은 B-23-b/c/d
+- [ ] P23: 용어/에러/비동기/네이밍/상수 일관성 점검 — B-23-b/c/d 이월
+- [ ] P24: 단순성 점검 (불필요한 추상화, 복잡도) — B-23-b/c/d 이월
+- [x] 미커버 모듈 식별 (테스트 파일 없는 소스 파일) — B-23-a 완료 (17개 모듈 전용+간접 0건)
+- [x] 통합 테스트 vs 단위 테스트 비율 — B-23-a 완료 (integration 2개, 단위 63개; async 1482 / sync 1362)
+
+#### B-23-a 메타 점검 결과 (완료)
+
+**규모**: 테스트 파일 65개 / 소스 파일 103개 / 테스트 코드 35,673줄 / 테스트 함수 약 2844개 (async 1482, sync 1362)
+
+**P19 RuntimeWarning 감지 테스트**: 부재. 4개 파일(`test_web_app`, `test_pipeline_compute`, `test_trading`, `test_daily_time_scheduler`)에서 mock 코루틴 close를 통한 RuntimeWarning "방지" 주석만 존재. 감지 자체를 검증하는 테스트 없음 → B-23-b/c/d에서 보완 권장.
+
+**P18 테스트모드 동등성**: 7개 파일에서 키워드 스캔(`test_telegram`, `test_engine_ws`, `test_pipeline_compute`, `test_buy_order_executor`, `test_engine_bootstrap`, `test_risk_manager`, `test_trading`). 심층 검증 내용은 B-23-b/c/d에서 확인.
+
+**P22 reconciliation**: 5개 파일에서 키워드 스캔(`test_engine_sector_confirm`, `test_settlement_engine`, `test_engine_settings`, `test_daily_time_scheduler`, `test_settlement_verification`). 심층은 B-23-b/c/d.
+
+**미커버 모듈** (전용 테스트 + 간접 import 모두 0건, 17개):
+`engine_config`, `engine_strategy_core`, `engine_utils`, `engine_radar`, `auto_trading_effective`, `ws_subscribe_control`, `broker_factory`, `broker_registry`, `broker_connector`, `trade_mode`, `settings_defaults`, `memory_monitor`, `logging_config`, `sector_stock_cache`, `sector_filter`, `pipeline_compute_tick_handlers`, `json_utils`
+
+**간접 import만 있는 모듈** (전용 테스트 없으나 다른 테스트에서 import):
+`engine_state`(9), `core_queues`(6), `database`(4), `engine_service`(3), `constants`(3), `broker_urls`(2), `broker_providers`(2), `engine_lifecycle`(1), `order_interval`(1), `kiwoom_account_parsing`(1), `engine_account_broadcast`(1), `db_writer`(1)
+
+**웹 라우트 커버리지**: 전용 테스트 없는 라우트 — `stock_detail`, `trade`, `deps`. 나머지 라우트(account/auth/market/settlement/status/ws_orders/ws_settings/ws_subscribe)는 `test_web_routes`에서 통합 커버 추정(각 1개 파일).
+
+**통합 vs 단위 비율**: integration 명시 2개(`test_sector_calculator_integration`, `test_settings_file_integration`), 단위 63개.
+
+#### B-23-b 세부 점검 — 대형 파일 (1000줄+, 9개)
+- [ ] P16/P23/P24/P18/P22 점검
+- 대상: `test_daily_time_scheduler`(2285), `test_pipeline_compute`(1540), `test_telegram_bot`(1244), `test_market_close_pipeline`(1228), `test_trade_history`(1119), `test_ls_connector`(1090), `test_engine_sector_confirm`(1068), `test_engine_loop`(1059), `test_buy_order_executor`(1001)
+
+#### B-23-c 세부 점검 — 중형 파일 (400-1000줄, 20개)
+- [ ] P16/P23/P24/P18/P22 점검
+- 대상: `test_kiwoom_connector`(985), `test_kiwoom_rest`(878), `test_kiwoom_providers`(827), `test_settings_store`(807), `test_trading`(769), `test_kiwoom_stock_rest`(755), `test_web_ws_manager`(723), `test_web_ws_routes`(700), `test_buy_filter`(680), `test_engine_settings`(657), `test_broker_router`(624), `test_web_routes`(581), `test_web_stock_classification`(580), `test_connector_manager`(561), `test_ls_rest`(560), `test_ls_providers`(560), `test_engine_ws`(555), `test_engine_cache`(513), `test_risk_manager`(512), `test_sector_calculator`(488)
+
+#### B-23-d 세부 점검 — 소형 파일 (400줄-, 36개)
+- [ ] P16/P23/P24/P18/P22 점검
+- 대상: `test_settlement_engine`(472) 외 35개 (400줄 이하 전체)
 
 **검증**
 - [ ] `pytest backend/tests` 전체 통과
