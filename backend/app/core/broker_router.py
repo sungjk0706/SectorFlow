@@ -265,11 +265,6 @@ class BrokerRouter:
                 if not key or not secret:
                     messages.append("증권사 API 키가 설정되지 않았습니다")
 
-        # 매매 페이지: order 증권사 확인
-        trading_config = page_overrides.get("trading") or {}
-        if isinstance(trading_config, dict):
-            pass  # order만 사용
-
         return messages
 
     def get_spec(self, role_key: str, feature: str | None = None) -> str | None:

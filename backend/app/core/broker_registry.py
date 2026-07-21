@@ -63,16 +63,22 @@ def _lazy_ls_registry() -> dict[str, type]:
 
 
 
-# 지연 로딩 래퍼 -- 최초 접근 시 실제 클래스 로드
-class _LazyRegistry(dict):
-    """PROVIDER_REGISTRY['kiwoom'] 접근 시 lazy import 수행."""
-    _loaded = False
+# 지연 로딩 베이스 -- 최초 접근 시 로더 함수 호출하여 dict 채움
+class _LazyBrokerRegistry(dict):
+    """증권사별 레지스트리 지연 로딩 — 최초 접근 시 로더 호출.
+
+    순환 import 방지: 최초 get/__getitem__/__contains__/keys 호출 시 로더 실행.
+    """
+    def __init__(self, loader: Callable[[], dict[str, dict]]):
+        super().__init__()
+        self._loader = loader
+        self._loaded = False
 
     def _ensure(self) -> None:
         if not self._loaded:
             self._loaded = True
-            self["kiwoom"] = _lazy_kiwoom_registry()
-            self["ls"] = _lazy_ls_registry()
+            for k, v in self._loader().items():
+                self[k] = v
 
     def get(self, key, default=None):
         self._ensure()
@@ -91,7 +97,15 @@ class _LazyRegistry(dict):
         return super().keys()
 
 
-PROVIDER_REGISTRY: dict[str, dict[str, type]] = _LazyRegistry()
+def _load_provider_registry() -> dict[str, dict[str, type]]:
+    """PROVIDER_REGISTRY 최초 접근 시 키움/LS Provider 클래스 로드."""
+    return {
+        "kiwoom": _lazy_kiwoom_registry(),
+        "ls":     _lazy_ls_registry(),
+    }
+
+
+PROVIDER_REGISTRY: dict[str, dict[str, type]] = _LazyBrokerRegistry(_load_provider_registry)
 
 
 # ── Connector 레지스트리 ───────────────────────────────────────────────
@@ -113,34 +127,15 @@ def _lazy_ls_connector_registry() -> dict[str, Callable]:
     }
 
 
-class _LazyConnectorRegistry(dict):
-    """CONNECTOR_REGISTRY['kiwoom'] 접근 시 lazy import 수행."""
-    _loaded = False
-
-    def _ensure(self) -> None:
-        if not self._loaded:
-            self._loaded = True
-            self["kiwoom"] = _lazy_kiwoom_connector_registry()
-            self["ls"] = _lazy_ls_connector_registry()
-
-    def get(self, key, default=None):
-        self._ensure()
-        return super().get(key, default)
-
-    def __getitem__(self, key):
-        self._ensure()
-        return super().__getitem__(key)
-
-    def __contains__(self, key):
-        self._ensure()
-        return super().__contains__(key)
-
-    def keys(self):
-        self._ensure()
-        return super().keys()
+def _load_connector_registry() -> dict[str, dict[str, Callable]]:
+    """CONNECTOR_REGISTRY 최초 접근 시 키움/LS Connector 팩토리 로드."""
+    return {
+        "kiwoom": _lazy_kiwoom_connector_registry(),
+        "ls":     _lazy_ls_connector_registry(),
+    }
 
 
-CONNECTOR_REGISTRY: dict[str, dict[str, Callable]] = _LazyConnectorRegistry()
+CONNECTOR_REGISTRY: dict[str, dict[str, Callable]] = _LazyBrokerRegistry(_load_connector_registry)
 
 
 def _create_provider(

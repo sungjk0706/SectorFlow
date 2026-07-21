@@ -99,7 +99,7 @@ class ConnectorManager:
                 await connector.connect()
                 logger.info("[연결] %s 연결 완료", BROKER_DISPLAY_NAMES.get(broker_name, broker_name.upper()))
             except Exception as e:
-                logger.warning("[연결] %s 연결 실패: %s", BROKER_DISPLAY_NAMES.get(broker_name, broker_name.upper()), e)
+                logger.warning("[연결] %s 연결 실패: %s", BROKER_DISPLAY_NAMES.get(broker_name, broker_name.upper()), e, exc_info=True)
 
         await asyncio.gather(
             *[_connect_one(name, conn) for name, conn in self._connectors.items()],
