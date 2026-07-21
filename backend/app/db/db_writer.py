@@ -89,25 +89,17 @@ async def _db_writer_loop() -> None:
 
 
 async def _process_operation(op: DBWriteOperation) -> None:
-    """단일 DB 쓰기 작업 처리"""
+    """단일 DB 쓰기 작업 처리. query+params 필수 (모든 호출처가 제공)."""
     async with get_db_lock():
         conn = await get_db_connection()
 
         try:
-            if op.query and op.params is not None:
-                # 사용자 정의 쿼리 실행
-                if isinstance(op.params, list) and len(op.params) > 0:
-                    # 일괄 실행
-                    await conn.executemany(op.query, op.params)
-                else:
-                    # 단일 실행
-                    await conn.execute(op.query, op.params)
+            if isinstance(op.params, list) and len(op.params) > 0:
+                # 일괄 실행
+                await conn.executemany(op.query, op.params)
             else:
-                # 기본 테이블 작업 (확장 가능)
-                logger.warning("[데이터] 사용자 정의 쿼리 없음 - 작업 생략: %s", op.table)
-                if op.future and not op.future.done():
-                    op.future.set_result(None)
-                return
+                # 단일 실행
+                await conn.execute(op.query, op.params)
 
             await conn.commit()
             if op.future and not op.future.done():
@@ -124,7 +116,7 @@ async def _process_operation(op: DBWriteOperation) -> None:
 # ── Public API ───────────────────────────────────────────────────────────────
 
 async def start_db_writer() -> None:
-    """DB Writer 루프 시작"""
+    """DB Writer 루프 시작. 태스크 조용히 사맅 시 로깅 (P16/P21)."""
     global _writer_task
 
     if _writer_task is not None and not _writer_task.done():
@@ -133,6 +125,10 @@ async def start_db_writer() -> None:
 
     _get_shutdown_event().clear()
     _writer_task = asyncio.create_task(_db_writer_loop())
+    _writer_task.add_done_callback(
+        lambda t: logger.warning("[데이터] DB Writer 루프 비정상 종료: %s", t.exception(), exc_info=t.exception())
+        if t.exception() and not t.cancelled() else None
+    )
     logger.info("[데이터] 시작됨")
 
 
