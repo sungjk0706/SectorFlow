@@ -1,20 +1,25 @@
 """engine_account_rest.py 단위 테스트 — REST 파싱·포지션 병합·스냅샷 메타 계산 순수 함수 검증.
 
 모든 함수는 전역 상태 없이 입력→출력만 검증한다.
+키움 전용 파싱 함수(parse_kt00001_deposit, parse_kt00018_balance, real04_official_*)는
+P4(증권사명 침투 금지)에 따라 backend.app.core.kiwoom_account_parsing 로 이동됨 —
+해당 테스트는 kiwoom_account_parsing 모듈에서 import하여 검증한다.
 """
 from __future__ import annotations
 
 from backend.app.services.engine_account_rest import (
-    _parse_int_loose,
-    _parse_float_loose,
     merge_positions_from_rest,
     broker_totals_from_summary,
     recalc_broker_totals_from_positions,
+    build_account_snapshot_meta,
+    apply_last_price_to_positions_inplace,
+)
+from backend.app.core.kiwoom_account_parsing import (
+    _parse_int_loose,
+    _parse_float_loose,
     _real04_is_stock_item,
     real04_official_account_delta,
     real04_official_apply_position_line,
-    build_account_snapshot_meta,
-    apply_last_price_to_positions_inplace,
     parse_kt00001_deposit,
     parse_kt00018_balance,
 )

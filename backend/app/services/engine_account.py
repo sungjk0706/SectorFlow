@@ -111,56 +111,29 @@ async def _broadcast_buy_limit_status() -> None:
 # ── REST 계좌 데이터 조회 ─────────────────────────────────────────────────
 
 async def _fetch_account_data(settings: dict) -> dict:
-    """
-    브로커 REST API로 실계좌 잔고/평가 조회.
-    - 영속 _rest_api 인스턴스를 재사용해 토큰 중복 발급 방지
-    - 토큰 없으면 즉시 실패 반환 (0원 stub 금지)
-    - deposit -> balance 순차 호출 + 0.5초 간격으로 429 예방
-    """
-    from backend.app.services.engine_account_rest import parse_kt00001_deposit, parse_kt00018_balance
+    """브로커 REST API로 실계좌 잔고/평가 조회. 토큰 없으면 즉시 실패(0원 stub 금지). deposit→balance 순차 + 0.5초 간격 429 예방."""
+    from backend.app.core.kiwoom_account_parsing import parse_kt00001_deposit, parse_kt00018_balance
 
     _EMPTY = {"success": False, "summary": {}, "stock_list": []}
     # 증권사별 REST API 분리
     broker = str(settings.get("broker", "") or "").lower().strip()
     _rest_api = state.broker_rest_apis.get(broker)
     _rest_api_thread_sem = state.rest_api_thread_sem or _ensure_rest_api_thread_sem()
-    
+
     if _rest_api is None:
         logger.warning("[계좌] REST API 없음 — 엔진 기동 완료 전 호출. 계좌 조회 건너뜀.")
         return _EMPTY
 
     # ── 토큰 유효성 먼저 확인 ─────────────────────────────────────────────
-    async with _rest_api_thread_sem:
-        token_ok = await _rest_api._ensure_token()
+    token_ok = await _ensure_account_token(_rest_api, _rest_api_thread_sem)
     if not token_ok:
-        logger.warning(
-            "[계좌] 유효한 토큰 없음 (토큰 발급 실패) — 계좌 조회 건너뜀. "
-            "이전 값을 그대로 유지합니다. (0원 표시 방지)"
-        )
         return _EMPTY
-
-    if _rest_api._token_info and _rest_api._token_info.token:
-        t = _rest_api._token_info.token
-        token_preview = t[:4] + "****" + t[-2:] if len(t) > 6 else "****"
-    else:
-        token_preview = "?"
-    logger.info("[계좌] 토큰 유효 확인 (%s) — 계좌 조회 시작", token_preview)
 
     acnt_no = str(getattr(_rest_api, "_acnt_no", "") or "")
 
     # ── deposit -> (0.5초 대기) -> balance 순차 호출로 429 예방 ─────────────
-    try:
-        async with _rest_api_thread_sem:
-            deposit_raw = await _rest_api.get_deposit_detail(acnt_no)
-        await asyncio.sleep(0.5)
-        async with _rest_api_thread_sem:
-            balance_raw = await _rest_api.get_balance_detail()
-    except Exception as e:
-        logger.warning("[계좌] API 호출 예외: %s", e, exc_info=True)
-        return _EMPTY
-
-    if not deposit_raw:
-        logger.warning("[계좌] 예수금 응답 없음 (예수금 상세현황(kt00001) 실패) — 조회 중단")
+    deposit_raw, balance_raw = await _fetch_account_raw(_rest_api, _rest_api_thread_sem, acnt_no)
+    if deposit_raw is None:
         return _EMPTY
 
     ok_dep, dep_body, deposit, orderable, _withdrawable = parse_kt00001_deposit(deposit_raw)
@@ -180,6 +153,11 @@ async def _fetch_account_data(settings: dict) -> dict:
         f"{tot_eval:,}", f"{tot_pnl:,}", f"{tot_buy:,}", f"{deposit:,}", len(stock_list),
     )
 
+    return _build_account_yield_result(deposit, orderable, tot_eval, tot_pnl, tot_buy, total_rate, stock_list, dep_body)
+
+
+def _build_account_yield_result(deposit, orderable, tot_eval, tot_pnl, tot_buy, total_rate, stock_list, dep_body) -> dict:
+    """계좌 조회 결과 dict 조립 (파싱 결과 → 표준 반환 구조)."""
     return {
         "success": True,
         "summary": {
@@ -193,6 +171,44 @@ async def _fetch_account_data(settings: dict) -> dict:
         "stock_list": stock_list,
         "raw_data":   dep_body,
     }
+
+
+async def _ensure_account_token(_rest_api, _rest_api_thread_sem) -> bool:
+    """REST API 토큰 유효성 확인. 유효하면 True, 없으면 로깅 후 False."""
+    async with _rest_api_thread_sem:
+        token_ok = await _rest_api._ensure_token()
+    if not token_ok:
+        logger.warning(
+            "[계좌] 유효한 토큰 없음 (토큰 발급 실패) — 계좌 조회 건너뜀. "
+            "이전 값을 그대로 유지합니다. (0원 표시 방지)"
+        )
+        return False
+
+    if _rest_api._token_info and _rest_api._token_info.token:
+        t = _rest_api._token_info.token
+        token_preview = t[:4] + "****" + t[-2:] if len(t) > 6 else "****"
+    else:
+        token_preview = "?"
+    logger.info("[계좌] 토큰 유효 확인 (%s) — 계좌 조회 시작", token_preview)
+    return True
+
+
+async def _fetch_account_raw(_rest_api, _rest_api_thread_sem, acnt_no: str) -> tuple[dict | None, dict | None]:
+    """deposit -> (0.5초 대기) -> balance 순차 호출. 실패 시 (None, None)."""
+    try:
+        async with _rest_api_thread_sem:
+            deposit_raw = await _rest_api.get_deposit_detail(acnt_no)
+        await asyncio.sleep(0.5)
+        async with _rest_api_thread_sem:
+            balance_raw = await _rest_api.get_balance_detail()
+    except Exception as e:
+        logger.warning("[계좌] API 호출 예외: %s", e, exc_info=True)
+        return None, None
+
+    if not deposit_raw:
+        logger.warning("[계좌] 예수금 응답 없음 (예수금 상세현황(kt00001) 실패) — 조회 중단")
+        return None, None
+    return deposit_raw, balance_raw
 
 
 async def _update_account_memory(settings: dict) -> None:
@@ -214,18 +230,7 @@ async def _update_account_memory(settings: dict) -> None:
 
 async def _update_account_memory_inner(settings: dict) -> None:
     """_update_account_memory 실제 구현 (Lock 내부에서 호출)."""
-    from backend.app.services.engine_account_notify import _rebuild_positions_cache
-    from backend.app.core.engine_settings import get_engine_settings
-
-    s = settings or {}
-    broker = str(s.get("broker", "") or "").lower().strip()
-    need_reload = False
-    if broker:
-        if not s.get(f"{broker}_app_key") or not s.get(f"{broker}_app_secret"):
-            need_reload = True
-    if need_reload:
-        s = await get_engine_settings(state.engine_user_id or None)
-
+    s = await _resolve_account_settings(settings)
     yield_data = await _fetch_account_data(s)
 
     if not yield_data.get("success"):
@@ -235,8 +240,28 @@ async def _update_account_memory_inner(settings: dict) -> None:
         )
         return
 
+    _apply_account_yield_to_state(yield_data, s)
+
+
+async def _resolve_account_settings(settings: dict) -> dict:
+    """계좌 조회용 설정 준비 — broker 키/시크릿 누락 시 DB에서 재조회."""
+    from backend.app.core.engine_settings import get_engine_settings
+    s = settings or {}
+    broker = str(s.get("broker", "") or "").lower().strip()
+    need_reload = bool(broker) and (
+        not s.get(f"{broker}_app_key") or not s.get(f"{broker}_app_secret")
+    )
+    if need_reload:
+        s = await get_engine_settings(state.engine_user_id or None)
+    return s
+
+
+def _apply_account_yield_to_state(yield_data: dict, s: dict) -> None:
+    """조회된 잔고를 메모리 상태에 반영 (포지션·스냅샷·합계)."""
+    from backend.app.services.engine_account_notify import _rebuild_positions_cache
     stock_list = yield_data.get("stock_list", [])
     summary    = yield_data.get("summary", {})
+    broker = str(s.get("broker", "") or "").lower().strip()
 
     _apply_broker_totals_from_summary(summary)
     # 테스트모드: 실전 잔고로 _positions 덮어쓰지 않음 — 모의투자 가상 잔고 격리
@@ -249,17 +274,14 @@ async def _update_account_memory_inner(settings: dict) -> None:
         _rebuild_positions_cache(merged)
 
     state.account_rest_bootstrapped = True
-
     state.account_snapshot["broker"] = broker
     state.account_snapshot["deposit"] = int(summary.get("deposit", 0) or 0)
     state.account_snapshot["orderable"] = int(summary.get("orderable", 0) or 0)
 
     _ps = state.account_snapshot.get("price_source", "?")
     _ps_kr = (
-        "웹소켓(실시간)"
-        if _ps == "websocket"
-        else "REST초기화"
-        if _ps == "rest_bootstrap"
+        "웹소켓(실시간)" if _ps == "websocket"
+        else "REST초기화" if _ps == "rest_bootstrap"
         else str(_ps)
     )
     logger.info(
@@ -355,7 +377,7 @@ async def _apply_balance_realtime(item: dict, vals: dict) -> None:
     계좌 단위(item=계좌번호): FID 930~934 계좌 합계 갱신.
     종목 단위(item=종목코드): FID 930~933·950·8019·10 포지션 갱신.
     """
-    from backend.app.services.engine_account_rest import (
+    from backend.app.core.kiwoom_account_parsing import (
         _real04_is_stock_item,
         real04_official_account_delta,
         real04_official_apply_position_line,
@@ -413,7 +435,7 @@ async def _on_fill_after_ws() -> None:
 async def _broadcast_account(reason: str | None = None) -> None:
     """데이터 갱신 후 UI/WS 계좌 브로드캐스트 — 직접 await 호출."""
     from backend.app.services import dry_run
-    from backend.app.services.engine_account_notify import broadcast_account_update
+    from backend.app.services.engine_account_broadcast import broadcast_account_update
 
     try:
         pos = await dry_run.get_positions() if is_test_mode(state.integrated_system_settings_cache) else list(state.positions or [])

@@ -105,37 +105,40 @@
 ### 세션 B-10: P1 — 엔진 계좌/서비스
 
 **대상 파일** (4개, 총 1733줄)
-- [ ] `backend/app/services/engine_account_notify.py` (632줄, 대형)
-- [ ] `backend/app/services/engine_account.py` (484줄, 대형)
-- [ ] `backend/app/services/engine_account_rest.py` (400줄, 대형)
-- [ ] `backend/app/services/engine_service.py` (217줄, 대형)
+- [x] `backend/app/services/engine_account_notify.py` (412줄, B-10-b 분할 완료)
+- [x] `backend/app/services/engine_account.py` (473줄, B-10-b 분할 완료)
+- [x] `backend/app/services/engine_account_rest.py` (176줄, B-10-b 파싱 함수 이동 완료)
+- [x] `backend/app/services/engine_service.py` (249줄, B-10-b 분할 완료)
+- [x] `backend/app/core/kiwoom_account_parsing.py` (244줄, B-10-b 신규 — 키움 파싱 단일 진실 소스)
+- [x] `backend/app/services/engine_account_broadcast.py` (124줄, B-10-b 신규 — account-update 브로드캐스트 분리)
 
 **대상 원칙**: P2, P4, P5, P10, P13, P16, P19, P20, P21, P23, P24
 
 **조사 체크리스트** (2026-07-21 조사 완료)
 - [x] P2: 모든 I/O `async def` (동기 `requests`/`sqlite3`/`time.sleep`/`threading.Lock` 없음) — 준수
-- [ ] P4: 증권사명 (`kiwoom_`/`ls_`)이 공통 계좌 로직에 침투하지 않음 — **위반 B10-01** (키움 파싱 5함수 공통 services에 위치)
+- [x] P4: 증권사명 (`kiwoom_`/`ls_`)이 공통 계좌 로직에 침투하지 않음 — **해결 B10-01** (키움 파싱 5함수 `kiwoom_account_parsing.py`로 이동)
 - [x] P5: 직접 호출 체인 (콜백 리스트 옵서버, fire-and-forget `create_task` 없음) — 준수
-- [ ] P10: 계좌 상태 SSOT (한 플래그/상태를 다중 소스에서 관리하지 않음) — **위반 B10-02** (키움 파싱 로직 2곳 중복)
+- [ ] P10: 계좌 상태 SSOT (한 플래그/상태를 다중 소스에서 관리하지 않음) — **B10-02 이월 (B-14)** (kiwoom_providers.py 중복 구현 dead code 조사 필요)
 - [x] P13: 설정값 O(1) 메모리 조회 (틱/통지 단계에서 DB 설정 조회 없음) — 준수
-- [ ] P16: dead code/no-op 함수 없음 (전체 grep으로 호출처 확인) — **위반 B10-03 ~ B10-09** (7건: 레거시 콜백 변수 8개, no-op 함수 11개, dead 함수 4개, dead 분기 2곳)
+- [x] P16: dead code/no-op 함수 없음 (전체 grep으로 호출처 확인) — **해결 B10-03 ~ B10-09** (B-10-a 완료)
 - [x] P19: `await` 누락 없음 (`python -W error::RuntimeWarning main.py` 검증) — 준수
-- [ ] P20: 폴백/silent `except: pass` 없음 ("행 없음" vs "DB 에러" 구분) — **위반 B10-10, B10-11** (silent except 2건)
-- [x] P21: 계좌 상태 변화(잔고/평가금/서킷브레이커)가 WS 브로드캐스트로 UI에 전달됨 — 준수 (단, B10-10/B10-11 silent except로 인해 일부 실패 시 UI 미전달)
+- [x] P20: 폴백/silent `except: pass` 없음 ("행 없음" vs "DB 에러" 구분) — **해결 B10-10, B10-11** (B-10-a 완료)
+- [x] P21: 계좌 상태 변화(잔고/평가금/서킷브레이커)가 WS 브로드캐스트로 UI에 전달됨 — 준수
 - [x] P23: 용어 사전 준수 ("업종"/"종목"), 에러/비동기/네이밍/상수 패턴 파일 간 일관 — 준수
-- [ ] P24: 함수 50줄·파일 500줄·복잡도 10 기준, 불필요한 추상화/1회용 래퍼 없음 — **위반 B10-12 ~ B10-17** (6건: 파일 1개 500줄 초과, 함수 5개 50줄 초과)
+- [x] P24: 함수 50줄·파일 500줄·복잡도 10 기준, 불필요한 추상화/1회용 래퍼 없음 — **해결 B10-12 ~ B10-17** (B-10-b 완료)
 
-**검증** (수정 세션에서 수행 예정)
-- [ ] `pytest backend/tests -k "account or engine_service"` 통과
-- [ ] `python -W error::RuntimeWarning main.py` 10~30s 기동 검증
-- [ ] 잔여 위반 패턴 grep (`kiwoom_`/`ls_` 접두사, `except.*pass`, dead code) 추가 인스턴스 없음
+**검증** (B-10-b 세션에서 수행 완료)
+- [x] `pytest backend/tests` 2961 passed (test_engine_account_notify + test_engine_account_rest + 전체)
+- [x] `python -W error::RuntimeWarning main.py` 10s 기동 검증 (RuntimeWarning 없음)
+- [x] 잔여 위반 패턴 grep (`kiwoom_`/`ls_` 접두사, `except.*pass`, dead code) 추가 인스턴스 없음
 
 **조사 결과 요약** (2026-07-21)
 - 위반 17건 발견: B10-01 ~ B10-17 (HIGH 3건, MEDIUM 14건)
+- 해결 16건 (B-10-a: B10-03~11 9건, B-10-b: B10-01, B10-12~17 7건)
+- 이월 1건: B10-02 (B-14에서 kiwoom_providers.py dead code 조사)
 - 위반 원칙: P4(1), P10(1), P16(7), P20(2), P24(6)
 - 준수 원칙: P2, P5, P13, P19, P21, P23
 - 상세 기록: `architecture_audit_plan.md` 섹션 7 "발견된 문제 기록" 참조
-- 다음 세션에서 사용자 승인 후 수정 진행 (세션당 1단계 원칙)
 
 ---
 
