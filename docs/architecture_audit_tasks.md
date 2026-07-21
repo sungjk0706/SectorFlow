@@ -68,7 +68,7 @@
 | B-09 | P1 | 엔진 섹터 확인/전략/레이더 | 5 | ☑ | 24건 수정 |
 | **B-10** | **P1** | **엔진 계좌/서비스** | 4 | ◐ | **B-10-a 완료 (11건 수정), B-10-b 대기 (6건)** |
 | **B-11** | **P1** | **파이프라인 (Compute/Gateway)** | 2 | ◐ | **B-11-a 완료 (8건 수정), B-11-b 대기 (4건)** |
-| B-12 | P2 | DB 계층 | 4 | ☐ | |
+| B-12 | P2 | DB 계층 | 4 | ☑ | 9건 수정 |
 | B-13 | P2 | 설정 관리 | 5 | ☐ | |
 | B-14 | P2 | Broker 추상화 (공통) | 7 | ☐ | |
 | B-15 | P2 | 증권사 구현: 키움 | 5 | ☐ | 분할 권장 |
@@ -181,13 +181,13 @@
 
 ---
 
-### 세션 B-12: P2 — DB 계층
+### 세션 B-12: P2 — DB 계층 ☑ 완료 (9건 수정)
 
 **대상 파일** (4개, 총 698줄)
-- [ ] `backend/app/db/stock_tables.py` (387줄, 대형)
-- [ ] `backend/app/db/db_writer.py` (183줄, 중형)
-- [ ] `backend/app/db/database.py` (43줄, 소형)
-- [ ] `backend/app/db/json_utils.py` (85줄, 소형)
+- [x] `backend/app/db/stock_tables.py` (387줄, 대형)
+- [x] `backend/app/db/db_writer.py` (183줄, 중형)
+- [x] `backend/app/db/database.py` (43줄, 소형) — 위반 없음
+- [x] `backend/app/db/json_utils.py` (85줄, 소형) — 위반 없음
 
 **대상 원칙**: P2, P6, P8, P9, P10, P12, P19, P20, P23, P24
 

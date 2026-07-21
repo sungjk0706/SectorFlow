@@ -58,11 +58,11 @@ class TestSaveSettlementState:
             # 예외 없이 완료
 
     @pytest.mark.asyncio
-    async def test_save_exception_logged(self, _mock_db_connection):
-        """저장 실패 시 예외 로깅 후 종료 (raise 아님)."""
+    async def test_save_exception_propagates(self, _mock_db_connection):
+        """저장 실패 시 예외 전파 (P20 폴백 금지)."""
         with patch("backend.app.db.db_writer.execute_db_write", new=AsyncMock(side_effect=Exception("DB error"))):
-            # 예외가 raise되지 않고 로깅만 수행
-            await save_settlement_state({"accumulated_investment": 0})
+            with pytest.raises(Exception, match="DB error"):
+                await save_settlement_state({"accumulated_investment": 0})
 
 
 # ── load_settlement_state ───────────────────────────────────────────
@@ -239,10 +239,11 @@ class TestSaveTradingDaysCache:
         _mock_db_connection.commit.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_save_exception_logged(self, _mock_db_connection):
+    async def test_save_exception_propagates(self, _mock_db_connection):
         _mock_db_connection.execute = AsyncMock(side_effect=Exception("DB error"))
-        # 예외가 raise되지 않고 로깅만
-        await save_trading_days_cache({2024: {"2024-01-01"}})
+        # 예외 전파 (P20 폴백 금지)
+        with pytest.raises(Exception, match="DB error"):
+            await save_trading_days_cache({2024: {"2024-01-01"}})
 
 
 # ── load_trading_days_cache ─────────────────────────────────────────
@@ -272,10 +273,11 @@ class TestLoadTradingDaysCache:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_load_exception_returns_none(self, _mock_db_connection):
+    async def test_load_exception_propagates(self, _mock_db_connection):
         _mock_db_connection.execute = AsyncMock(side_effect=Exception("DB error"))
-        result = await load_trading_days_cache()
-        assert result is None
+        # 예외 전파 (P20 폴백 금지)
+        with pytest.raises(Exception, match="DB error"):
+            await load_trading_days_cache()
 
 
 # ── load_master_stocks_table ────────────────────────────────────────
@@ -347,7 +349,8 @@ class TestLoadMasterStocksTable:
         assert entry["high_5d_price"] == 0
 
     @pytest.mark.asyncio
-    async def test_load_exception_returns_empty(self, _mock_db_connection):
+    async def test_load_exception_propagates(self, _mock_db_connection):
         _mock_db_connection.execute = AsyncMock(side_effect=Exception("DB error"))
-        result = await load_master_stocks_table()
-        assert result == {}
+        # 예외 전파 (P20 폴백 금지) — 호출자가 빈 dict를 "데이터 없음"으로 오인 방지
+        with pytest.raises(Exception, match="DB error"):
+            await load_master_stocks_table()
