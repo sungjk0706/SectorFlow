@@ -6,6 +6,7 @@ invalidate_page / validate_page_overrides / get_spec 동작 검증.
 """
 from __future__ import annotations
 
+import pytest
 from unittest.mock import MagicMock, patch
 
 from backend.app.core.broker_router import BrokerRouter, FEATURES, _FEATURE_DISPLAY
@@ -171,8 +172,12 @@ class TestBuild:
             assert feat in router._providers
             assert feat in router._broker_map
 
-    def test_build_provider_none_falls_back_to_default(self):
-        """_create_provider가 None 반환 → 기본 broker로 폴백."""
+    def test_build_provider_none_raises_value_error(self):
+        """_create_provider가 None 반환 → ValueError 전파 (P20 폴백 금지).
+
+        정상 경로에서는 _normalize_broker_config가 모든 feature를 채우므로
+        None 반환은 불가능. 비정상 상태를 폴백으로 덮지 않고 에러 전파.
+        """
         mock_provider = MagicMock()
         # 첫 호출은 None, 이후는 mock_provider
         side_effect = [None] + [mock_provider] * (len(FEATURES) * 2)
@@ -180,13 +185,10 @@ class TestBuild:
         with (
             patch("backend.app.services.engine_state.state") as mock_state,
             patch("backend.app.core.broker_router._create_provider", side_effect=side_effect),
-            patch("backend.app.core.broker_router.logger") as mock_logger,
         ):
             mock_state.integrated_system_settings_cache = settings
-            BrokerRouter()
-
-        warning_msgs = [str(c) for c in mock_logger.warning.call_args_list]
-        assert any("대체" in m for m in warning_msgs)
+            with pytest.raises(ValueError, match="지원하지 않는 증권사"):
+                BrokerRouter()
 
     def test_build_broker_map_set_correctly(self):
         """_broker_map에 feature → broker_name 매핑이 설정됨."""
@@ -387,8 +389,12 @@ class TestGetProvider:
         assert result1 is result2
         mock_cp.assert_called_once()  # _create_provider는 1회만 호출
 
-    def test_get_provider_value_error_falls_back(self):
-        """_create_provider가 ValueError → 전역 provider 폴백."""
+    def test_get_provider_value_error_propagates(self):
+        """_create_provider가 ValueError → 예외 전파 (P20 폴백 금지).
+
+        validate_page_overrides가 사전 검증하므로 런타임 ValueError는 비정상 상태.
+        폴백으로 덮지 않고 예외 전파하여 사용자에게 투명하게 알림 (P21).
+        """
         settings = _mock_settings(
             broker="kiwoom",
             page_overrides={"trading": {"order": "ls"}},
@@ -400,13 +406,9 @@ class TestGetProvider:
         with (
             patch("backend.app.services.engine_state.state", mock_state),
             patch("backend.app.core.broker_router._create_provider", side_effect=ValueError("unsupported")),
-            patch("backend.app.core.broker_router.logger") as mock_logger,
         ):
-            result = router.get_provider("order", page="trading")
-
-        assert result is router._providers["order"]
-        warning_msgs = [str(c) for c in mock_logger.warning.call_args_list]
-        assert any("대체" in m for m in warning_msgs)
+            with pytest.raises(ValueError, match="unsupported"):
+                router.get_provider("order", page="trading")
 
     def test_get_provider_empty_page_config_returns_global(self):
         """page_overrides에 page가 있지만 config가 빈 dict → 전역 provider."""
