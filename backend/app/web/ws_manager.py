@@ -168,18 +168,6 @@ class WSManager:
         for ws in dead:
             self.unregister(ws)
 
-    async def _send_realdata_immediate(self, text: str) -> None:
-        """real-data 즉시 전송 — 수신 즉시 모든 클라이언트에 전달."""
-        dead: set[WebSocket] = set()
-        for ws in set(self._clients):
-            try:
-                await ws.send_text(text)
-            except Exception:
-                dead.add(ws)
-                logger.debug("[연결] 실시간 통신 실시간 데이터 즉시 전송 실패 — 클라이언트 제거", exc_info=True)
-        for ws in dead:
-            self.unregister(ws)
-
     async def _send_realdata_encoded(self, data: dict, code: str) -> None:
         """real-data 전송 — 클라이언트별 FID 구독 반영.
 
@@ -256,24 +244,6 @@ class WSManager:
             await self._send_realdata_encoded(data, code)
             return
         await self._send_broadcast(event_type, data)
-
-    def broadcast_threadsafe(self, event_type: str, data: dict, loop: asyncio.AbstractEventLoop) -> None:
-        """스레드풀(asyncio.to_thread) 내부에서 안전하게 호출 가능한 브로드캐스트.
-
-        run_coroutine_threadsafe()로 메인 이벤트 루프에 coroutine을 예약하므로
-        이벤트 루프가 없는 스레드에서도 RuntimeError 없이 동작한다.
-        """
-        if not self._clients:
-            return
-        asyncio.run_coroutine_threadsafe(self.broadcast(event_type, data), loop)
-
-    async def _send(self, ws: WebSocket, text: str) -> None:
-        """단일 클라이언트 전송. 실패 시 해당 클라이언트만 제거."""
-        try:
-            await ws.send_text(text)
-        except Exception:
-            self.unregister(ws)
-            logger.debug("[연결] 실시간 통신 단일 전송 실패 — 클라이언트 제거", exc_info=True)
 
     async def send_to(self, ws: WebSocket, event_type: str, data: dict) -> None:
         """특정 클라이언트에만 유니캐스트 (initial-snapshot용)."""

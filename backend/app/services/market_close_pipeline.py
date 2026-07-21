@@ -38,8 +38,8 @@ def _broadcast_confirmed_progress(
 ) -> None:
     """확정 데이터 조회 진행률 → confirmed-progress 실시간 통신 전송 (헤더 칩 표시용).
 
-    _loop가 전달된 경우(스레드풀 내부 호출): broadcast_threadsafe()로 메인 루프에 예약.
-    _loop가 없는 경우(async context 직접 호출): broadcast() 사용.
+    _loop가 전달된 경우(스레드풀 내부 호출): _loop.call_soon_threadsafe()로 메인 루프에 큐 적재.
+    _loop가 없는 경우(async context 직접 호출): q.put_nowait() 사용.
     """
     try:
         payload = {
