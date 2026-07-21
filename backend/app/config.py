@@ -43,17 +43,6 @@ class Settings(BaseSettings):
     # Encryption
     ENCRYPTION_KEY: str = ""
 
-    # 관리자 계정 (사용하지 않음 - 관리자모드 제거됨)
-    # ADMIN_USERNAME: str = "admin"
-    # ADMIN_PASSWORD: str = "1234"
-
-    # Broker REST API (엔진 테스트용 .env 폴백)
-    # URL 상수는 broker_urls.py (Single Source of Truth) 참조.
-    # BROKER_BASE_URL: str = ""
-    # BROKER_APP_KEY: str = ""
-    # BROKER_APP_SECRET: str = ""
-    # BROKER_ACCOUNT_NO: str = ""
-
     # Telegram
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""

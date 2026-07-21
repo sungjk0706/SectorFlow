@@ -13,7 +13,6 @@
 from __future__ import annotations
 import asyncio
 import logging
-from pathlib import Path
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from backend.app.web.deps import get_current_user
@@ -29,8 +28,6 @@ async def _maybe_warning() -> dict:
 
 
 router = APIRouter(prefix="/api/stock-classification", tags=["stock-classification"])
-
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data"
 
 
 # ── Request 모델 ─────────────────────────────────────────────────────
@@ -66,7 +63,7 @@ async def broadcast_stock_classification_changed() -> None:
 
     merged = await get_merged_all_sectors()
 
-    # all_stocks: get_all_sector_stocks() SSOT 함수 사용 (status==active 필터 + get_merged_sector 기반)
+    # all_stocks: get_all_sector_stocks() SSOT 함수 사용 (status==active 필터 + get_merged_sectors_batch 기반)
     stocks = []
     filter_summary = ""
     try:
