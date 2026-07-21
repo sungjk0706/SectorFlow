@@ -55,33 +55,3 @@ def decrypt_value(cipher: str) -> str | None:
         return cipher
     except Exception:
         return None
-
-
-# 암호화 대상 필드
-SENSITIVE_KEYS = frozenset({
-    "kiwoom_app_key", "kiwoom_app_secret",
-    "telegram_bot_token_test", "telegram_bot_token_real",
-    "admin_password",
-})
-
-
-def encrypt_sensitive(data: dict) -> dict:
-    """딕셔너리 내 민감 필드만 암호화"""
-    result = dict(data)
-    for k in SENSITIVE_KEYS:
-        if k in result and result[k]:
-            enc = encrypt_value(str(result[k]))
-            if enc:
-                result[k] = enc
-    return result
-
-
-def decrypt_sensitive(data: dict) -> dict:
-    """딕셔너리 내 민감 필드만 복호화"""
-    result = dict(data)
-    for k in SENSITIVE_KEYS:
-        if k in result and result[k]:
-            dec = decrypt_value(str(result[k]))
-            if dec:
-                result[k] = dec
-    return result

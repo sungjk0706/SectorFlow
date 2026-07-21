@@ -413,14 +413,3 @@ async def setup_loguru(log_level: str = "INFO") -> None:
 
     # 파일 쓰기 asyncio 태스크 시작
     await _start_file_writers()
-
-
-def get_logger(name: str = "sectorflow") -> logging.Logger:
-    """[Deprecated] logging.getLogger(__name__) 사용할 것 — loguru로 인터셉트됨."""
-    import warnings
-    warnings.warn(
-        "get_logger() is deprecated. Use logging.getLogger(__name__) instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return logging.getLogger(name)

@@ -77,7 +77,7 @@
 | B-18 | P2 | 스케줄러 및 장마감 파이프라인 | 3 | ☑ | 완료 (6건 P16/P20, P24 분할 이월) |
 | B-19 | P2 | WS 구독 제어 및 업종 데이터 | 2 | ☑ | 완료 (4건 P16/P20/P24) |
 | B-20 | P3 | 알림 (Telegram) | 3 | ☑ | 완료 (3건 P16/P21) |
-| B-21 | P3 | 기타 Core 유틸 | 11 | ◐ | B-21-a 완료 (journal.py 12건 P16), B-21-b/c 잔여 |
+| B-21 | P3 | 기타 Core 유틸 | 11 | ◐ | B-21-a 완료 (journal.py 12건 P16), B-21-b 완료 (logger.py 1건 + encryption.py 3건 P16, lock_manager.py 살아있는 경로 확인), B-21-c 잔여 |
 | B-22 | P3 | Web API 계층 | 14 | ☐ | |
 | B-23 | P3 | 테스트 품질 점검 | 67 | ☐ | |
 | F-01 | P0 | 통신 계층 및 상태 관리 | 8 | ☑ | 10건 수정 |
@@ -481,13 +481,13 @@
 
 **대상 파일** (11개, 총 1951줄) — 3서브세션 분할 (B-21-a/b/c)
 - [x] `backend/app/core/journal.py` (324줄→123줄, B-21-a 완료)
-- [ ] `backend/app/core/logger.py` (426줄, 대형, B-21-b)
+- [x] `backend/app/core/logger.py` (426줄→415줄, B-21-b 완료 — get_logger deprecated 제거)
 - [ ] `backend/app/core/trading_calendar.py` (406줄, 대형, B-21-c)
 - [ ] `backend/app/core/stock_classification_data.py` (238줄, 대형, B-21-c)
 - [ ] `backend/app/core/sector_mapping.py` (99줄, 중형, B-21-c)
 - [ ] `backend/app/core/sector_stock_cache.py` (140줄, 중형, B-21-c)
-- [ ] `backend/app/core/lock_manager.py` (146줄, 중형, B-21-b)
-- [ ] `backend/app/core/encryption.py` (87줄, 중형, B-21-b)
+- [x] `backend/app/core/lock_manager.py` (146줄, B-21-b — 살아있는 경로 확인, 수정 없음)
+- [x] `backend/app/core/encryption.py` (87줄→59줄, B-21-b 완료 — SENSITIVE_KEYS/encrypt_sensitive/decrypt_sensitive 제거)
 - [ ] `backend/app/core/memory_monitor.py` (52줄, 중형, 위반 없음)
 - [ ] `backend/app/core/constants.py` (14줄, 소형, 위반 없음)
 - [ ] `backend/app/core/logging_config.py` (19줄, 소형, 위반 없음)
@@ -511,6 +511,8 @@
 - [ ] 잔여 `threading.Lock` / `threading.Thread` grep 추가 인스턴스 없음
 
 **B-21-a 완료 (2026-07-22)**: journal.py dead code 12개 함수 제거 (P16). production 호출처 0건인 함수 12개 제거: `_get_conn`/`_ensure_loaded`/`_migrate_from_json` (no-op 잔재), `close_db_connection` (no-op, database.py 중복), `_read_all_entries` (삭제 함수에서만 호출), `_perform_compaction` (내부 호출 없음), `record_fill_event` (production 호출 0건), `oms_get_pending_orders`/`oms_update_order_status`/`oms_get_next_seq`(+`_next_seq`) (OMS API, production 호출 0건), `replay_journal`/`clear_journal`/`get_journal_stats` (production 호출 0건). 유지: start/stop_consumer_task(app.py 호출), record_settings_change(settings_store.py 호출), record_order_request(trading.py 호출), _append_entry(내부 호출), JournalEventType/JournalEntry. journal.py 324줄→123줄, test_journal.py 502줄→169줄 (삭제 테스트 26건). 검증: py_compile + ruff OK + pytest 2877 passed(전체, 회귀 없음) + 런타임 기동 192ms 정상 (RuntimeWarning 없음) + 잔존 프로세스 0건. **B-21-a 완료**: journal.py dead code 전부 해결. B-21-b(logger+encryption+lock_manager), B-21-c(trading_calendar+classification+mapping+cache) 잔여.
+
+**B-21-b 완료 (2026-07-22)**: logger.py + encryption.py dead code 제거 (P16). logger.py: `get_logger` 함수 제거 (deprecated, production 호출처 0건, test_logger.py만 참조). `except: pass` 5건 유지 — 로그 싱크 I/O 실패 시 앱 크래시 방지용 정당한 처리 (P20 위반 아님, `logger.warning`으로 바꾸면 무한 재귀). `_async_file_writer_loop` 78줄 유지 — 단일 응집 asyncio 태스크 루프, 분할 시 상태 공유 복잡도 증가 (P24). encryption.py: `SENSITIVE_KEYS`/`encrypt_sensitive`/`decrypt_sensitive` 제거 (production 호출처 0건, test_encryption.py만 참조). 유지: `_get_fernet`/`encrypt_value`/`decrypt_value` (engine_settings·telegram_bot·settings_file 호출). "Fernet 없으면 평문 반환" 패턴 유지 — 보안 설계 결정, 규칙 0-4(핵심 로직 변경 시 UI 기준 설명 + 승인) 해당 → B21-01로 보류 등록 (사용자 승인 대기). lock_manager.py: **태스크 노트 "전체 파일 dead code" 주장은 오류** — main.py가 5개 심볼 활발히 사용 (`acquire_lock`/`read_lock_pid`/`format_duplicate_message`/`register_cleanup`/`LOCK_FILE_PATH`), `release_lock`도 `register_cleanup` 내부 cleanup 핸들러에서 호출 → 살아있는 경로, dead code 없음, 수정 없음. logger.py 426줄→415줄, test_logger.py 423줄→401줄 (삭제 2건), encryption.py 87줄→59줄, test_encryption.py 270줄→145줄 (삭제 15건). 검증: py_compile + ruff OK + pytest 57 passed(logger+encryption) + 2860 passed(전체, 이전 2877 - 17건 = 2860, 회귀 없음) + 런타임 기동 126ms 정상 (RuntimeWarning 없음, 1356종목 로드·업종순위 재계산 완료·LS/키움 토큰 발급·LS 연결 정상·종료 시 잠금 파일 삭제 정상) + 잔존 프로세스 0건. **B-21-b 완료**: logger.py + encryption.py dead code 전부 해결. lock_manager.py는 살아있는 경로 확인 (태스크 노트 오류 정정). B-21-c(trading_calendar+classification+mapping+cache) 잔여.
 
 ---
 
