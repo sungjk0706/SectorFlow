@@ -56,7 +56,6 @@ async def get_sector_summary_inputs() -> dict:
         "trade_prices": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
         "trade_amounts": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
         "avg_amt_5d": avg_amt_5d,
-        "latest_index": {},
     }
 
 

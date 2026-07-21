@@ -1156,7 +1156,7 @@ class TestCmdSector:
     @pytest.mark.asyncio
     async def test_sector_with_data(self):
         bot = TelegramBot()
-        inputs = {"all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {}, "latest_index": {}}
+        inputs = {"all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {}}
 
         mock_sector1 = MagicMock()
         mock_sector1.rank = 1
@@ -1182,7 +1182,7 @@ class TestCmdSector:
     @pytest.mark.asyncio
     async def test_sector_empty_sectors_list(self):
         bot = TelegramBot()
-        inputs = {"all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {}, "latest_index": {}}
+        inputs = {"all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {}}
         mock_summary = MagicMock()
         mock_summary.sectors = []
 
@@ -1207,7 +1207,7 @@ class TestCmdSector:
     @pytest.mark.asyncio
     async def test_sector_with_lower_sectors(self):
         bot = TelegramBot()
-        inputs = {"all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {}, "latest_index": {}}
+        inputs = {"all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {}}
 
         sectors = []
         for i in range(8):

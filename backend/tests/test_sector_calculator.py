@@ -316,7 +316,6 @@ class TestComputeFullSectorSummary:
             trade_prices={},
             trade_amounts={},
             avg_amt_5d=_AVG_AMT_5D,
-            latest_index={},
         )
         assert isinstance(result, SectorSummary)
 
@@ -328,7 +327,6 @@ class TestComputeFullSectorSummary:
             trade_prices={},
             trade_amounts={},
             avg_amt_5d=_AVG_AMT_5D,
-            latest_index={},
         )
         # 업종 2개 → 만점 = 2, 만점 합 = 6 (슬라이더 기본값 0)
         n_sectors = len(result.sectors)
@@ -343,7 +341,7 @@ class TestComputeFullSectorSummary:
 
     async def test_empty_input_returns_empty_summary(self, cache):
         result = await compute_full_sector_summary(
-            [], trade_prices={}, trade_amounts={}, avg_amt_5d={}, latest_index={},
+            [], trade_prices={}, trade_amounts={}, avg_amt_5d={},
         )
         assert isinstance(result, SectorSummary)
         assert result.sectors == []
@@ -357,7 +355,6 @@ class TestComputeFullSectorSummary:
             trade_prices={},
             trade_amounts={},
             avg_amt_5d=_AVG_AMT_5D,
-            latest_index={},
             min_rise_ratio=0.6,
         )
         semi = next(sc for sc in result.sectors if sc.sector == "반도체")
@@ -374,7 +371,6 @@ class TestComputeFullSectorSummary:
             trade_prices={},
             trade_amounts={},
             avg_amt_5d=_AVG_AMT_5D,
-            latest_index={},
             min_rise_ratio=0.0,
         )
         for sc in result.sectors:
@@ -387,7 +383,6 @@ class TestComputeFullSectorSummary:
             trade_prices={},
             trade_amounts={},
             avg_amt_5d=_AVG_AMT_5D,
-            latest_index={},
         )
         assert result.buy_targets == []
         assert result.blocked_targets == []
@@ -399,7 +394,6 @@ class TestComputeFullSectorSummary:
             trade_prices={},
             trade_amounts={},
             avg_amt_5d=_AVG_AMT_5D,
-            latest_index={},
             min_rise_ratio=0.6,
         )
         # 모든 업종에 1..N 순위 부여 (컷오프 미달 포함, is_cutoff_passed로 구분)

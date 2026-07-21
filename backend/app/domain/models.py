@@ -6,7 +6,6 @@
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Literal
 @dataclass
 class StockScore:
     """업종 내 개별 종목 스코어."""
@@ -64,18 +63,3 @@ class SectorSummary:
     buy_targets: list[BuyTarget]        # 매수 타겟 큐 (가드 통과 종목만)
     blocked_targets: list[BuyTarget]    # 가드 차단 종목 (UI 표시용)
     version: int = 1                    # 버전 관리 필드 (캐시 갱신 감지용)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 종목 우선순위 정렬 기준
-# ──────────────────────────────────────────────────────────────────────────────
-
-SortKey = Literal["strength", "change_rate", "trade_amount"]
-
-_SORT_LABEL: dict[SortKey, str] = {
-    "strength":        "체결강도",
-    "change_rate":     "등락률",
-    "trade_amount":    "거래대금",
-}
-
-DEFAULT_SORT_KEYS: list[SortKey] = ["change_rate", "trade_amount", "strength"]

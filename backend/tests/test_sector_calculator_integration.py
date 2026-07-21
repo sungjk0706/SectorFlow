@@ -222,7 +222,6 @@ class TestComputeSectorScoresDBIntegration:
             trade_prices={},
             trade_amounts={},
             avg_amt_5d=avg_amt_5d,
-            latest_index={},
         )
 
         for s in result.sectors:
