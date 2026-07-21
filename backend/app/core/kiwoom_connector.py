@@ -221,24 +221,7 @@ class KiwoomConnector(BrokerConnector):
             if not token:
                 raise ConnectionError(f"{_BROKER_DISPLAY} 토큰 발급 실패")
             self._token = token
-            # Queue 콜백 래퍼 (Step 2: 누락 정책 적용)
-            queue_callback = None
-            if self._ws_queue is not None:
-                _q = self._ws_queue
-                def _queue_put_with_drop(msg: dict) -> None:
-                    """Step 2: 누락 정책 적용 — 큐 가득 찼을 때 가장 오래된 데이터 버리고 최신 데이터 삽입."""
-                    try:
-                        _q.put_nowait(msg)
-                    except asyncio.QueueFull:
-                        # 큐가 가득 찼으면 가장 오래된 데이터 버리고 최신 데이터 삽입
-                        try:
-                            _q.get_nowait()  # 가장 오래된 데이터 제거
-                            _q.put_nowait(msg)  # 최신 데이터 삽입
-                            logger.debug("[연결] %s 시세 큐 누락 발생 — 최신 데이터 유지", _BROKER_DISPLAY)
-                        except asyncio.QueueEmpty:
-                            # 경합 조건: 다른 태스크가 이미 데이터를 꺼낸 경우
-                            _q.put_nowait(msg)
-                queue_callback = _queue_put_with_drop
+            queue_callback = self._make_queue_callback()
 
             self._socket = _KiwoomSocket(
                 uri=self._ws_uri,
@@ -250,7 +233,7 @@ class KiwoomConnector(BrokerConnector):
             try:
                 await self._socket.connect()
             except Exception:
-                logger.error("[연결] %s 초기 웹소켓 연결 실패 — 재연결 시작", _BROKER_DISPLAY)
+                logger.error("[연결] %s 초기 웹소켓 연결 실패 — 재연결 시작", _BROKER_DISPLAY, exc_info=True)
                 asyncio.get_running_loop().create_task(self._on_socket_disconnect())
                 raise
             self._connected = True
@@ -442,24 +425,7 @@ class KiwoomConnector(BrokerConnector):
                 if self._lock is None:
                     self._lock = asyncio.Lock()
                 async with self._lock:
-                    # Queue 콜백 래퍼 (Step 2: 재연결 시도 - 누락 정책 적용)
-                    queue_callback = None
-                    if self._ws_queue is not None:
-                        _q = self._ws_queue
-                        def _queue_put_with_drop(msg: dict) -> None:
-                            """Step 2: 누락 정책 적용 - 재연결 시도."""
-                            try:
-                                _q.put_nowait(msg)
-                            except asyncio.QueueFull:
-                                # 큐가 가득 찼으면 가장 오래된 데이터 버리고 최신 데이터 삽입
-                                try:
-                                    _q.get_nowait()  # 가장 오래된 데이터 제거
-                                    _q.put_nowait(msg)  # 최신 데이터 삽입
-                                    logger.debug("[연결] %s 시세 큐 누락 발생 (재연결) — 최신 데이터 유지", _BROKER_DISPLAY)
-                                except asyncio.QueueEmpty:
-                                    # 경합 조건: 다른 태스크가 이미 데이터를 꺼낸 경우
-                                    _q.put_nowait(msg)
-                        queue_callback = _queue_put_with_drop
+                    queue_callback = self._make_queue_callback()
 
                     self._socket = _KiwoomSocket(
                         uri=self._ws_uri,
@@ -503,12 +469,29 @@ class KiwoomConnector(BrokerConnector):
         """메시지 수신 콜백 설정."""
         self._receive_callback = callback
 
+    def _make_queue_callback(self) -> Optional[Callable[[dict], None]]:
+        """시세 큐 누락 정책 콜백 생성 — 큐 가득 시 가장 오래된 데이터 버리고 최신 유지.
+
+        Producer-Consumer Queue가 설정되지 않은 경우 None 반환.
+        """
+        if self._ws_queue is None:
+            return None
+        _q = self._ws_queue
+        def _queue_put_with_drop(msg: dict) -> None:
+            try:
+                _q.put_nowait(msg)
+            except asyncio.QueueFull:
+                try:
+                    _q.get_nowait()
+                    _q.put_nowait(msg)
+                    logger.debug("[연결] %s 시세 큐 누락 발생 — 최신 데이터 유지", _BROKER_DISPLAY)
+                except asyncio.QueueEmpty:
+                    _q.put_nowait(msg)
+        return _queue_put_with_drop
+
     def set_queue_callback(self, queue: asyncio.Queue) -> None:
         """Producer-Consumer Queue 설정 (Step 2: 시세 큐 누락 정책 적용)."""
         self._ws_queue = queue
-        # Step 2: 누락 정책 적용을 위해 큐 콜백 래퍼 설정
-        from backend.app.services.core_queues import put_tick_with_drop_policy
-        self._queue_put_with_drop = put_tick_with_drop_policy
 
     def _format_code(self, code: str) -> str:
         """종목코드 포맷팅 — 키움 형식."""
@@ -531,7 +514,7 @@ class KiwoomConnector(BrokerConnector):
                 if auth_provider and hasattr(auth_provider, "rest_api"):
                     rest_api = auth_provider.rest_api
             except Exception as e:
-                logger.warning("[연결] %s 라우터 인증 캐시에서 REST API 조회 실패: %s", _BROKER_DISPLAY, e)
+                logger.warning("[연결] %s 라우터 인증 캐시에서 REST API 조회 실패: %s", _BROKER_DISPLAY, e, exc_info=True)
 
         if rest_api and hasattr(rest_api, "get_access_token"):
             return await rest_api.get_access_token()

@@ -282,31 +282,37 @@
 > **분할 권장**: 총 2060줄. B-15-a (connector + rest, 1209줄) / B-15-b (stock_rest + providers + order, 851줄) 분할 권장.
 
 **대상 파일** (5개, 총 2060줄)
-- [ ] `backend/app/core/kiwoom_connector.py` (554줄, 대형)
-- [ ] `backend/app/core/kiwoom_rest.py` (655줄, 대형)
-- [ ] `backend/app/core/kiwoom_stock_rest.py` (436줄, 대형)
-- [ ] `backend/app/core/kiwoom_providers.py` (342줄, 대형)
-- [ ] `backend/app/core/kiwoom_order.py` (73줄, 중형)
+- [x] `backend/app/core/kiwoom_connector.py` (554줄→520줄, B-15-a 완료)
+- [x] `backend/app/core/kiwoom_rest.py` (655줄→636줄, B-15-a 완료)
+- [ ] `backend/app/core/kiwoom_stock_rest.py` (436줄, 대형) — B-15-b
+- [ ] `backend/app/core/kiwoom_providers.py` (342줄, 대형) — B-15-b
+- [ ] `backend/app/core/kiwoom_order.py` (73줄, 중형) — B-15-b
 
 **대상 원칙**: P1, P2, P3, P4, P5, P7, P14, P19, P20, P23, P24
 
 **조사 체크리스트**
-- [ ] P1: `asyncio.run()` 신규 루프 생성 없음
-- [ ] P2: `httpx.AsyncClient` 사용, 동기 `requests` 없음
-- [ ] P3: `run_in_executor` 없음
-- [ ] P4: 키움 특화 로직이 공통 로직에 침투하지 않음 (별도 파일 격리 확인)
-- [ ] P5: 직접 호출 체인
-- [ ] P7: WS 수신 핸들러에 블로킹 없음
-- [ ] P14: 멀티스레드 없음
-- [ ] P19: `await` 누락 없음
-- [ ] P20: 폴백/silent except 없음
-- [ ] P23: 용어 사전 준수, 패턴 일관
-- [ ] P24: 단순성 기준 (kiwoom_rest.py 655줄 → 분할 검토)
+- [x] P1: `asyncio.run()` 신규 루프 생성 없음 (B-15-a)
+- [x] P2: `httpx.AsyncClient` 사용, 동기 `requests` 없음 (B-15-a)
+- [x] P3: `run_in_executor` 없음 (B-15-a)
+- [x] P4: 키움 특화 로직이 공통 로직에 침투하지 않음 (별도 파일 격리 확인) (B-15-a)
+- [x] P5: 직접 호출 체인 (B-15-a)
+- [x] P7: WS 수신 핸들러에 블로킹 없음 (B-15-a)
+- [x] P14: 멀티스레드 없음 (B-15-a)
+- [x] P19: `await` 누락 없음 (B-15-a)
+- [x] P20: 폴백/silent except 없음 (B-15-a)
+- [x] P23: 용어 사전 준수, 패턴 일관 (B-15-a)
+- [x] P24: 단순성 기준 (B-15-a: 중복 함수 추출로 connector 34줄 감소)
+- [ ] P1~P24 잔여: B-15-b (stock_rest + providers + order)
 
 **검증**
-- [ ] `pytest backend/tests -k "kiwoom"` 통과
-- [ ] `python -W error::RuntimeWarning main.py` 기동 검증 (키움 모의투자 모드)
-- [ ] 잔여 동기 `requests` / `asyncio.run` / `run_in_executor` grep 추가 인스턴스 없음
+- [x] `pytest backend/tests -k "kiwoom"` 통과 (336 passed, B-15-a)
+- [x] `python -W error::RuntimeWarning main.py` 기동 검증 (95ms 정상 기동, B-15-a)
+- [x] 잔여 동기 `requests` / `asyncio.run` / `run_in_executor` grep 추가 인스턴스 없음 (B-15-a)
+- [ ] B-15-b 검증 (stock_rest + providers + order)
+
+**B-15-a 완료 (2026-07-21)**: 7건 해결 (B15-01~07). B15-01 set_queue_callback dead code 제거 (P16), B15-02 _make_queue_callback 헬퍼 추출로 connect()/_reconnect_loop() 중복 중첩함수 통합 (P23/P24), B15-03/B15-04 except Exception logger에 exc_info=True 추가 (P23), B15-05 get_spec dead wrapper 제거 (P16), B15-06 __enter__/__exit__ 동기 컨텍스트 매니저 dead code 제거 (P16), B15-07 fetch_ka20001_index JSON 파싱 실패 로그를 info→warning으로 변경 (P23).
+
+**B-15-b (다음 세션)**: `kiwoom_stock_rest.py` (436줄) + `kiwoom_providers.py` (342줄) + `kiwoom_order.py` (73줄) 조사·수정.
 
 ---
 

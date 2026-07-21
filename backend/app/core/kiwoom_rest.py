@@ -76,12 +76,6 @@ class KiwoomRestAPI:
         self._client: Optional[httpx.AsyncClient] = None
         self._acnt_no: str = ""
 
-    def __enter__(self) -> "KiwoomRestAPI":
-        return self
-
-    def __exit__(self, *_) -> None:
-        pass
-
     async def __aenter__(self) -> "KiwoomRestAPI":
         return self
 
@@ -116,17 +110,6 @@ class KiwoomRestAPI:
             if self._token_info and not self._token_info.is_expired_soon():
                 return True
             return await self._issue_token()
-
-    def get_spec(self, role_key: str, feature: Optional[str] = None) -> Optional[str]:
-        """BrokerRouter에서 spec 조회 (connector에서 사용 가능한 래퍼)."""
-        try:
-            from backend.app.core.broker_factory import get_router
-            router = get_router()
-            if router:
-                return router.get_spec(role_key, feature=feature)
-        except Exception as e:
-            logger.warning("[연결] %s 명세 조회 실패 (역할=%s, 기능=%s): %s", _BROKER_DISPLAY, role_key, feature, e)
-        return None
 
     # ── 공통 REST 호출 (429 adaptive backoff) ────────────────────────────────
     # 모든 키움 REST API 호출은 이 함수를 경유하여 일관된 429 처리를 보장한다.
@@ -499,7 +482,7 @@ class KiwoomRestAPI:
         try:
             data = resp.json()
         except Exception:
-            logger.info("[스케줄] %s 업종별 거래량 조회(ka20001) JSON 해석 실패 (업종코드=%s)", _BROKER_DISPLAY, inds_cd)
+            logger.warning("[스케줄] %s 업종별 거래량 조회(ka20001) JSON 해석 실패 (업종코드=%s)", _BROKER_DISPLAY, inds_cd)
             return None
 
         def _f(v) -> float:
