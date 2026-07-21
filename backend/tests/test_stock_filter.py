@@ -8,7 +8,6 @@ from backend.app.core.stock_filter import (
     _preferred_reason,
     evaluate_stock_filter,
     is_excluded,
-    is_excluded_with_ka10100,
     to_display_reason,
 )
 
@@ -336,82 +335,6 @@ class TestIsExcluded:
         excluded, reason = is_excluded(item, "005930")
         assert excluded is True
         assert reason == "투자경고"
-
-
-# ── is_excluded_with_ka10100 ────────────────────────────────────────
-
-class TestIsExcludedWithKa10100:
-    def _normal_item(self) -> dict:
-        return {
-            "marketCode": "0",
-            "orderWarning": "0",
-            "state": "정상",
-            "hname": "삼성전자",
-            "companyClassName": "보통주",
-            "auditInfo": "",
-            "listCount": "100000",
-            "lastPrice": "70000",
-        }
-
-    def test_1st_filter_excluded(self):
-        """1차 필터에서 제외되면 2차 필터 수행 없이 반환."""
-        item = self._normal_item()
-        item["orderWarning"] = "5"
-        excluded, reason = is_excluded_with_ka10100(item, "005930", {})
-        assert excluded is True
-        assert reason == "투자경고"
-
-    def test_no_ka10100_data(self):
-        """ka10100_data가 None이면 1차 필터 결과만 반환."""
-        excluded, reason = is_excluded_with_ka10100(self._normal_item(), "005930", None)
-        assert excluded is False
-        assert reason == ""
-
-    def test_ka10100_preferred_stock(self):
-        """ka10100 companyClassName에 '우선주' 포함 시 제외."""
-        ka = {"companyClassName": "우선주"}
-        excluded, reason = is_excluded_with_ka10100(self._normal_item(), "005930", ka)
-        assert excluded is True
-        assert "우선주(ka10100)" in reason
-
-    def test_ka10100_list_count_zero(self):
-        """ka10100 listCount가 0 또는 0000000000000000이면 제외."""
-        ka = {"listCount": "0000000000000000"}
-        excluded, reason = is_excluded_with_ka10100(self._normal_item(), "005930", ka)
-        assert excluded is True
-        assert "상장주식수비정상(ka10100)" in reason
-
-    def test_ka10100_list_count_single_zero(self):
-        ka = {"listCount": "0"}
-        excluded, reason = is_excluded_with_ka10100(self._normal_item(), "005930", ka)
-        assert excluded is True
-        assert "상장주식수비정상(ka10100)" in reason
-
-    def test_ka10100_last_price_zero(self):
-        """ka10100 lastPrice가 0 또는 00000000이면 제외."""
-        ka = {"lastPrice": "00000000"}
-        excluded, reason = is_excluded_with_ka10100(self._normal_item(), "005930", ka)
-        assert excluded is True
-        assert "전일종가비정상(ka10100)" in reason
-
-    def test_ka10100_last_price_single_zero(self):
-        ka = {"lastPrice": "0"}
-        excluded, reason = is_excluded_with_ka10100(self._normal_item(), "005930", ka)
-        assert excluded is True
-        assert "전일종가비정상(ka10100)" in reason
-
-    def test_ka10100_all_normal(self):
-        """ka10100 데이터가 정상이면 제외되지 않음."""
-        ka = {"companyClassName": "보통주", "listCount": "100000", "lastPrice": "70000"}
-        excluded, reason = is_excluded_with_ka10100(self._normal_item(), "005930", ka)
-        assert excluded is False
-        assert reason == ""
-
-    def test_ka10100_empty_company_class(self):
-        """companyClassName이 빈 경우 제외되지 않음."""
-        ka = {"companyClassName": ""}
-        excluded, reason = is_excluded_with_ka10100(self._normal_item(), "005930", ka)
-        assert excluded is False
 
 
 # ── to_display_reason ───────────────────────────────────────────────

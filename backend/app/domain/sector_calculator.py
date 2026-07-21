@@ -3,7 +3,6 @@
 업종 계산기 - 업종 점수 계산 및 통합 진입점.
 """
 from __future__ import annotations
-from typing import Literal
 import logging
 from backend.app.domain.models import SectorSummary
 from backend.app.domain.sector_filter import filter_by_avg_amt, group_by_sector
@@ -156,30 +155,12 @@ async def compute_full_sector_summary(
     trade_prices: dict[str, int],
     trade_amounts: dict[str, int],
     avg_amt_5d: dict[str, int],
-    latest_index: dict[str, dict],
-    # 설정값
-    sort_keys: list[Literal["strength", "change_rate", "trade_amount"]] | None = None,
     min_rise_ratio: float = 0.6,
-    block_rise_pct: float = 7.0,
-    block_fall_pct: float = 7.0,
-    min_strength: float = 0.0,
     min_avg_amt_eok: float = 0.0,
-    max_sectors: int = 3,
     # ── 업종 점수 3단계 가산점 슬라이더 (-100~+100, 기본값 0) — 조정 만점 = 업종 수 × (1 + slider/100) ──
     rise_ratio_slider: int = 0,
     relative_strength_slider: int = 0,
     trade_amount_slider: int = 0,
-    # ── 가산점 관련 파라미터 (pass-through → build_buy_targets) ──
-    high_5d_cache: dict[str, int] | None = None,
-    orderbook_cache: dict[str, tuple[int, int]] | None = None,
-    program_net_buy_cache: dict[str, int] | None = None,
-    boost_high_on: bool = False,
-    boost_high_score: float = 1.0,
-    boost_order_ratio_on: bool = False,
-    boost_order_ratio_pct: float = 20.0,
-    boost_order_ratio_score: float = 1.0,
-    boost_program_net_buy_on: bool = False,
-    boost_program_net_buy_score: float = 1.0,
 ) -> SectorSummary:
     """
     전체 파이프라인 한 번에 실행.
@@ -187,6 +168,8 @@ async def compute_full_sector_summary(
 
     sector_mapping.get_merged_sector() 기반 커스텀 업종 그룹핑.
     컷오프(min_rise_ratio)는 calculate_bonus_scores 내부에서 처리 (옵션 C 2패스).
+
+    매수 타겟 생성은 build_buy_targets_from_settings에서 별도 수행.
     """
     # 1. 업종 스코어 계산 (컷오프는 calculate_bonus_scores 내부에서 처리)
     sector_scores = await compute_sector_scores(
