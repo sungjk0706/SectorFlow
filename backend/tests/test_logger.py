@@ -7,7 +7,6 @@ _info_file_sink: 큐 적재 싱크
 InterceptHandler: 표준 logging → loguru 리다이렉트
 setup_loguru: 메인 설정 (이벤트 루프 + 파일 I/O mock)
 stop_file_writers: 태스크 정지
-get_logger: deprecated 경고
 
 주의: 실제 asyncio.Queue / create_task / 파일 I/O 사용 금지 (hang 방지).
 """
@@ -30,7 +29,6 @@ from backend.app.core.logger import (
     _get_daily_log_path,
     _info_file_sink,
     InterceptHandler,
-    get_logger,
     log_progress,
     log_progress_end,
 )
@@ -259,21 +257,6 @@ class TestStopFileWriters:
         ):
             await logger_mod.stop_file_writers()
         mock_queue.put.assert_called_once_with(None)
-
-
-# ── get_logger ─────────────────────────────────────────────────────────────────────
-
-class TestGetLogger:
-    def test_returns_logger(self):
-        with pytest.warns(DeprecationWarning):
-            log = get_logger("test_logger")
-        assert isinstance(log, logging.Logger)
-        assert log.name == "test_logger"
-
-    def test_default_name(self):
-        with pytest.warns(DeprecationWarning):
-            log = get_logger()
-        assert log.name == "sectorflow"
 
 
 # ── setup_loguru ───────────────────────────────────────────────────────────────────

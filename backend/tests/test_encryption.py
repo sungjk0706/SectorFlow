@@ -1,8 +1,7 @@
-"""encryption.py 단위 테스트 — Fernet 암호화/복호화, 민감 필드 일괄 처리 검증.
+"""encryption.py 단위 테스트 — Fernet 암호화/복호화 검증.
 
 _get_fernet()는 get_settings().ENCRYPTION_KEY 기반이므로 patch로 제어.
 encrypt_value/decrypt_value는 순수 함수 경로 + Fernet 없을 때 폴백 검증.
-encrypt_sensitive/decrypt_sensitive는 SENSITIVE_KEYS 필드만 처리 확인.
 """
 from __future__ import annotations
 
@@ -10,12 +9,9 @@ from unittest.mock import patch, MagicMock
 from cryptography.fernet import Fernet
 
 from backend.app.core.encryption import (
-    SENSITIVE_KEYS,
     _get_fernet,
     encrypt_value,
     decrypt_value,
-    encrypt_sensitive,
-    decrypt_sensitive,
 )
 
 
@@ -146,125 +142,3 @@ class TestEncryptDecryptRoundtrip:
         with patch("backend.app.core.encryption._get_fernet", return_value=f):
             cipher = encrypt_value("한글비밀키123")
             assert decrypt_value(cipher) == "한글비밀키123"
-
-
-# ── SENSITIVE_KEYS ─────────────────────────────────────────────────────────────
-
-class TestSensitiveKeys:
-    def test_contains_kiwoom_keys(self):
-        assert "kiwoom_app_key" in SENSITIVE_KEYS
-        assert "kiwoom_app_secret" in SENSITIVE_KEYS
-
-    def test_contains_telegram_keys(self):
-        assert "telegram_bot_token_test" in SENSITIVE_KEYS
-        assert "telegram_bot_token_real" in SENSITIVE_KEYS
-
-    def test_contains_admin_password(self):
-        assert "admin_password" in SENSITIVE_KEYS
-
-    def test_is_frozen(self):
-        assert isinstance(SENSITIVE_KEYS, frozenset)
-
-
-# ── encrypt_sensitive ──────────────────────────────────────────────────────────
-
-class TestEncryptSensitive:
-    def test_empty_dict_returns_empty(self):
-        with patch("backend.app.core.encryption._get_fernet", return_value=None):
-            assert encrypt_sensitive({}) == {}
-
-    def test_non_sensitive_fields_unchanged(self):
-        data = {"broker": "kiwoom", "trade_mode": "test"}
-        with patch("backend.app.core.encryption._get_fernet", return_value=None):
-            result = encrypt_sensitive(data)
-        assert result == data
-
-    def test_sensitive_fields_encrypted(self):
-        key = Fernet.generate_key()
-        f = Fernet(key)
-        data = {"kiwoom_app_key": "abc123", "broker": "kiwoom"}
-        with patch("backend.app.core.encryption._get_fernet", return_value=f):
-            result = encrypt_sensitive(data)
-        assert result["kiwoom_app_key"] != "abc123"
-        assert result["broker"] == "kiwoom"
-        # 복호화로 원문 확인
-        assert f.decrypt(result["kiwoom_app_key"].encode()).decode() == "abc123"
-
-    def test_empty_sensitive_field_skipped(self):
-        data = {"kiwoom_app_key": "", "broker": "kiwoom"}
-        with patch("backend.app.core.encryption._get_fernet", return_value=None):
-            result = encrypt_sensitive(data)
-        assert result["kiwoom_app_key"] == ""
-
-    def test_does_not_mutate_original(self):
-        data = {"kiwoom_app_key": "abc123"}
-        original = dict(data)
-        with patch("backend.app.core.encryption._get_fernet", return_value=None):
-            encrypt_sensitive(data)
-        assert data == original
-
-
-# ── decrypt_sensitive ──────────────────────────────────────────────────────────
-
-class TestDecryptSensitive:
-    def test_empty_dict_returns_empty(self):
-        with patch("backend.app.core.encryption._get_fernet", return_value=None):
-            assert decrypt_sensitive({}) == {}
-
-    def test_non_sensitive_fields_unchanged(self):
-        data = {"broker": "kiwoom", "trade_mode": "test"}
-        with patch("backend.app.core.encryption._get_fernet", return_value=None):
-            result = decrypt_sensitive(data)
-        assert result == data
-
-    def test_sensitive_fields_decrypted(self):
-        key = Fernet.generate_key()
-        f = Fernet(key)
-        cipher = f.encrypt(b"secret_value").decode()
-        data = {"kiwoom_app_secret": cipher, "broker": "kiwoom"}
-        with patch("backend.app.core.encryption._get_fernet", return_value=f):
-            result = decrypt_sensitive(data)
-        assert result["kiwoom_app_secret"] == "secret_value"
-        assert result["broker"] == "kiwoom"
-
-    def test_empty_sensitive_field_skipped(self):
-        data = {"kiwoom_app_key": "", "broker": "kiwoom"}
-        with patch("backend.app.core.encryption._get_fernet", return_value=None):
-            result = decrypt_sensitive(data)
-        assert result["kiwoom_app_key"] == ""
-
-    def test_does_not_mutate_original(self):
-        data = {"kiwoom_app_key": "ciphertext"}
-        original = dict(data)
-        with patch("backend.app.core.encryption._get_fernet", return_value=None):
-            decrypt_sensitive(data)
-        assert data == original
-
-
-# ── encrypt_sensitive + decrypt_sensitive roundtrip ─────────────────────────────
-
-class TestSensitiveRoundtrip:
-    def test_full_roundtrip(self):
-        key = Fernet.generate_key()
-        f = Fernet(key)
-        original = {
-            "kiwoom_app_key": "my_api_key",
-            "kiwoom_app_secret": "my_secret",
-            "telegram_bot_token_test": "test_token",
-            "telegram_bot_token_real": "real_token",
-            "admin_password": "pass123",
-            "broker": "kiwoom",
-            "trade_mode": "test",
-        }
-        with patch("backend.app.core.encryption._get_fernet", return_value=f):
-            encrypted = encrypt_sensitive(original)
-            decrypted = decrypt_sensitive(encrypted)
-        # 민감 필드 복원
-        assert decrypted["kiwoom_app_key"] == "my_api_key"
-        assert decrypted["kiwoom_app_secret"] == "my_secret"
-        assert decrypted["telegram_bot_token_test"] == "test_token"
-        assert decrypted["telegram_bot_token_real"] == "real_token"
-        assert decrypted["admin_password"] == "pass123"
-        # 비민감 필드 유지
-        assert decrypted["broker"] == "kiwoom"
-        assert decrypted["trade_mode"] == "test"

@@ -1125,6 +1125,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B11-10 | B-11 | `pipeline_compute_tick_handlers.py:281` (이관) | P20 | MEDIUM | 동일 `get(nk, {})` 폴백 (PGM 핸들러) | 해결 (B-11-b: B11-09와 동일 패턴 적용) |
 | B11-11 | B-11 | `pipeline_compute.py:548-610` Phase 1 루프 | P11 | HIGH | `while + asyncio.sleep(1.0)` 폴링으로 수신율 임계값 대기 — `asyncio.Event` 기반 전환 가능 (사용자 설계 로직, 규칙 0-5 적용) | 해결 (B-11-b: 사용자 승인 대안1 — `LazyEvent.wait()` + 200ms 디바운스 전환, `reset_sector_threshold`에서 이벤트 클리어) |
 | B11-12 | B-11 | `pipeline_compute.py:195-196` `start_compute_loop` | P16/P21 | HIGH | `create_task()` 후 `add_done_callback` 미설정 — compute/sector_recompute 태스크 조용히 사망 시 사용자 인지 불가. gateway 루프(`app.py:63`)는 설정되어 있어 비일관 (P23) | 해결 (B-11-a: `add_done_callback` 추가, gateway 루프와 일관) |
+| B21-01 | B-21 | `encryption.py:32-42, 45-57` | P20 | MEDIUM | `encrypt_value`/`decrypt_value`가 Fernet 인스턴스 없을 때 평문 그대로 반환 (`return plain`, `return cipher`) — 암호화 미설정 시 민감 정보(API 키, 비밀번호)가 DB에 평문 저장됨. 보안 설계 결정으로 분류되나, P20(폴백 금지) 관점에서는 "정상 경로의 None/누락을 폴백으로 덮는" 패턴에 해당. 규칙 0-4(핵심 로직 변경 시 UI 기준 설명 + 승인) 해당 — 암호화 미설정 시 동작이 화면에서 어떻게 보이는지 사용자 인지 불가 | 보류 (사용자 승인 대기 — 보안 동작 변화, UI 기준 설명 필요) |
 
 ---
 
@@ -1154,7 +1155,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B-18 | P2 | 스케줄러 및 장마감 파이프라인 | ☑ 완료 (6건 P16/P20, P24 분할 이월) |
 | B-19 | P2 | WS 구독 제어 및 업종 데이터 | ☑ 완료 (4건 P16/P20/P24) |
 | B-20 | P3 | 알림 (Telegram) | ☑ 완료 (3건 P16/P21) |
-| B-21 | P3 | 기타 Core 유틸 | ☐ 미시작 |
+| B-21 | P3 | 기타 Core 유틸 | ◐ B-21-a/b 완료 (journal 12건 + logger 1건 + encryption 3건 P16), B-21-c 잔여 |
 | B-22 | P3 | Web API 계층 | ☐ 미시작 |
 | B-23 | P3 | 테스트 품질 점검 | ☐ 미시작 |
 | F-01 | P0 | 통신 계층 및 상태 관리 | ☑ 완료 (10건 수정, V-02 해결, 112 tests passed) |
@@ -1170,12 +1171,12 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | 항목 | 카운트 |
 |------|--------|
 | 전체 세션 | 30 |
-| 완료 | 14 (B-01~B-14, F-01) |
-| 진행 중 | 2 (B-10-a 완료/B-10-b 대기, B-15-a 완료/B-15-b 대기) |
-| 미시작 | 14 |
-| 발견된 문제 | 78 |
+| 완료 | 18 (B-01~B-14, B-17, B-18, B-19, B-20, F-01) |
+| 진행 중 | 3 (B-10-a 완료/B-10-b 대기, B-15-a 완료/B-15-b 대기, B-21-a/b 완료/B-21-c 대기) |
+| 미시작 | 9 |
+| 발견된 문제 | 79 |
 | 해결된 문제 | 70 |
-| 보류된 문제 | 0 |
+| 보류된 문제 | 1 (B21-01) |
 
 ---
 
