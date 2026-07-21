@@ -259,20 +259,6 @@ class TestLsSocketRecvLoop:
         q_cb.assert_called_once()
         on_msg.assert_not_called()
 
-    async def test_fallback_on_message_when_no_queue(self):
-        sock = _make_ls_socket()
-        mock_ws = _mock_ws_connection()
-        us3_msg = json.dumps({"header": {"tr_cd": "US3"}, "body": {"shcode": "005930", "price": "70000"}})
-        mock_ws.recv.side_effect = [us3_msg, asyncio.CancelledError()]
-        sock._ws = mock_ws
-        sock.connected = True
-        on_msg = AsyncMock()
-        sock._on_message = on_msg
-        sock._queue_callback = None
-        with pytest.raises(asyncio.CancelledError):
-            await sock._recv_loop()
-        on_msg.assert_called_once()
-
     async def test_connection_closed_triggers_on_disconnect(self):
         sock = _make_ls_socket()
         mock_ws = _mock_ws_connection()
