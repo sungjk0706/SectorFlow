@@ -74,7 +74,7 @@
 | B-15 | P2 | 증권사 구현: 키움 | 5 | ☐ | 분할 권장 |
 | B-16 | P2 | 증권사 구현: LS | 3 | ☑ | 분할 권장 (완료) |
 | B-17 | P2 | Domain 계층 | 6 | ☑ | 완료 (3건 P16/P24) |
-| B-18 | P2 | 스케줄러 및 장마감 파이프라인 | 3 | ☐ | 분할 권장 (초대형 2개) |
+| B-18 | P2 | 스케줄러 및 장마감 파이프라인 | 3 | ☑ | 완료 (6건 P16/P20, P24 분할 이월) |
 | B-19 | P2 | WS 구독 제어 및 업종 데이터 | 2 | ☐ | |
 | B-20 | P3 | 알림 (Telegram) | 3 | ☐ | |
 | B-21 | P3 | 기타 Core 유틸 | 11 | ☐ | |
@@ -389,31 +389,33 @@
 > **분할 강력 권장**: 총 3150줄 (초대형 2개). B-18-a (market_close_pipeline 1407줄) / B-18-b (daily_time_scheduler 1506줄 + data_manager 237줄) 분할.
 
 **대상 파일** (3개, 총 3150줄)
-- [ ] `backend/app/services/market_close_pipeline.py` (1407줄, 초대형)
-- [ ] `backend/app/services/daily_time_scheduler.py` (1506줄, 초대형)
-- [ ] `backend/app/services/data_manager.py` (237줄, 대형)
+- [x] `backend/app/services/market_close_pipeline.py` (1407줄, 초대형) — dead code 없음, 18개 함수 모두 살아있는 경로
+- [x] `backend/app/services/daily_time_scheduler.py` (1506줄→1443줄, 초대형) — 4건 dead code 제거
+- [x] `backend/app/services/data_manager.py` (237줄→45줄, 대형) — 3건 dead code 제거
 
 **대상 원칙**: P1, P2, P5, P7, P8, P9, P11, P14, P16, P19, P20, P23, P24
 
 **조사 체크리스트**
-- [ ] P1: 단일 이벤트 루프
-- [ ] P2: 모든 I/O `async def`
-- [ ] P5: 직접 호출 체인
-- [ ] P7: 배치 연산 중 실시간 틱 차단 금지
-- [ ] P8: 배치 파이프라인으로서 실시간과 분리
-- [ ] P9: 파이프라인 독립성
-- [ ] P11: `asyncio.call_later()` 기반, 폴링 없음
-- [ ] P14: 멀티스레드 없음
-- [ ] P16: dead code 없음
-- [ ] P19: `await` 누락 없음
-- [ ] P20: 폴백/silent except 없음
-- [ ] P23: 용어 사전 준수, 패턴 일관
-- [ ] P24: 단순성 기준 (1407줄/1506줄 → 분할 필수)
+- [x] P1: 단일 이벤트 루프 — 위반 없음
+- [x] P2: 모든 I/O `async def` — 위반 없음
+- [x] P5: 직접 호출 체인 — 위반 없음
+- [x] P7: 배치 연산 중 실시간 틱 차단 금지 — 위반 없음
+- [x] P8: 배치 파이프라인으로서 실시간과 분리 — 위반 없음
+- [x] P9: 파이프라인 독립성 — 위반 없음
+- [x] P11: `asyncio.call_later()` 기반, 폴링 없음 — 위반 없음
+- [x] P14: 멀티스레드 없음 — 위반 없음
+- [x] P16: dead code 없음 — 6건 제거 (B18-01~05 + B18-06 연동)
+- [x] P19: `await` 누락 없음 — 런타임 기동 검증 OK
+- [x] P20: 폴백/silent except 없음 — 1건 제거 (B18-06, _load_broker_settings 제거로 해결)
+- [x] P23: 용어 사전 준수, 패턴 일관 — 위반 없음
+- [ ] P24: 단순성 기준 (1407줄/1443줄 → 분할 필수) — **이월**: 파일 분할은 대형 작업이므로 별도 세션
 
 **검증**
-- [ ] `pytest backend/tests -k "market_close or scheduler or data_manager"` 통과
-- [ ] `python -W error::RuntimeWarning main.py` 기동 검증 (장마감 시뮬레이션)
-- [ ] 잔여 폴링 / `threading.Thread` / dead code grep 추가 인스턴스 없음
+- [x] `pytest backend/tests -k "market_close or scheduler or data_manager"` 통과 (285 passed)
+- [x] `python -W error::RuntimeWarning main.py` 기동 검증 (95ms 정상, RuntimeWarning 없음)
+- [x] 잔여 폴링 / `threading.Thread` / dead code grep 추가 인스턴스 없음
+
+**B-18 완료 (2026-07-22)**: 6건 해결 (B18-01~06). B18-01 `get_account_profit_rate` 제거 (P16, 계좌 수익률 조회 kt00018, production 0건/테스트 7건). B18-02 `get_main_account_info` 제거 (P16, 계좌 메인 정보 조회 kt00001, production 0건/테스트 7건). B18-03 `_freeze_krx_amt29_baseline` 제거 (P16, body가 pass만 있는 stub, production 0건/테스트 1건). B18-04 `_apply_detail_to_entry` 제거 (P16, ka10086 응답 처리 헬퍼, production 0건/테스트 6건). B18-05 `_fire_ws_disconnect_only` + `_ws_disconnect_only` 제거 (P16, WS 구독 해제 전용, _fire_ws_disconnect_only production 0건/테스트 1건, _ws_disconnect_only도 _fire에서만 호출되어 함께 제거/테스트 1건 — subagent가 _ws_disconnect_only를 잘못 "살아있는 경로"로 판정한 것을 직접 grep으로 바로잡음). B18-06 `_load_broker_settings` 제거 (P16/P20, get_main_account_info에서만 호출되어 함께 제거, silent `except Exception: return None`도 함께 해결). data_manager.py 237줄→45줄, daily_time_scheduler.py 1506줄→1443줄. subagent 병렬 조사로 3개 파일 75개 함수 전체 추적, market_close_pipeline.py 18개 함수는 dead code 없음(_step6 의도적 누락 — 5단계→7단계 직접 진행). 검증: py_compile 5파일 OK + ruff OK + pytest 285 passed(market_close/scheduler/data_manager) + 2913 passed(전체, B-17 2941 - 제거 테스트 28건 = 2913, 회귀 없음) + 런타임 기동 95ms 정상 (RuntimeWarning 없음, 168ms 연산 준비·LS/키움 토큰 발급·LS 연결 정상, 잔존 프로세스 0건). **P24 파일 길이 초과 이월**: market_close_pipeline.py(1407줄)/daily_time_scheduler.py(1443줄) 분할은 대형 작업이므로 별도 세션. **B-18 완료**: 스케줄러 및 장마감 파이프라인 3개 파일 6건 전부 해결.
 
 ---
 
