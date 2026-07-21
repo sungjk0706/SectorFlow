@@ -19,9 +19,7 @@ from backend.app.services.engine_account_notify import (
     _rebuild_positions_cache,
     _rebuild_layout_cache,
     _build_lightweight_payload_for_profit_overview,
-    notify_raw_real_data,
     broadcast_engine_status_ws,
-    notify_ws_subscribe_status,
     notify_program_update,
 )
 
@@ -274,43 +272,6 @@ class TestBuildLightweightPayload:
         assert result["removed_codes"] == ["000660"]
 
 
-# ── notify_raw_real_data (ws_manager mock) ────────────────────────────────────────
-
-class TestNotifyRawRealData:
-    @pytest.mark.asyncio
-    async def test_valid_item(self):
-        notify_cache.positions_code_set = {"005930"}
-        notify_cache.layout_code_set = set()
-        notify_cache.buy_targets_code_set = set()
-        with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc:
-            item = {"item": "005930", "values": {"9001": "005930"}}
-            await notify_raw_real_data(item)
-            mock_bc.assert_awaited_once()
-            assert mock_bc.call_args.args[0] == "real-data"
-
-    @pytest.mark.asyncio
-    async def test_not_relevant_skipped(self):
-        notify_cache.positions_code_set = set()
-        notify_cache.layout_code_set = set()
-        notify_cache.buy_targets_code_set = set()
-        with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc:
-            item = {"item": "999999", "values": {"9001": "999999"}}
-            await notify_raw_real_data(item)
-            mock_bc.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_none_item_skipped(self):
-        with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc:
-            await notify_raw_real_data(None)
-            mock_bc.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_non_dict_item_skipped(self):
-        with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc:
-            await notify_raw_real_data("not_dict")
-            mock_bc.assert_not_awaited()
-
-
 # ── broadcast_engine_status_ws ────────────────────────────────────────────────────
 
 class TestBroadcastEngineStatusWs:
@@ -329,19 +290,6 @@ class TestBroadcastEngineStatusWs:
             await broadcast_engine_status_ws({"_v": 2, "connected": False})
             payload = mock_bc.call_args.args[1]
             assert payload["_v"] == 2
-
-
-# ── notify_ws_subscribe_status ────────────────────────────────────────────────────
-
-class TestNotifyWsSubscribeStatus:
-    @pytest.mark.asyncio
-    async def test_basic(self):
-        with patch("backend.app.services.engine_account_notify._safe_broadcast", new_callable=AsyncMock) as mock_bc:
-            await notify_ws_subscribe_status({"status": "ok"})
-            mock_bc.assert_awaited_once()
-            payload = mock_bc.call_args.args[1]
-            assert payload["_v"] == 1
-            assert payload["status"] == "ok"
 
 
 # ── notify_program_update ──────────────────────────────────────────────────────────

@@ -254,12 +254,6 @@ async def _update_account_memory_inner(settings: dict) -> None:
     state.account_snapshot["deposit"] = int(summary.get("deposit", 0) or 0)
     state.account_snapshot["orderable"] = int(summary.get("orderable", 0) or 0)
 
-    if state.refresh_account_snapshot_meta:
-        await state.refresh_account_snapshot_meta()
-
-    if state.update_account_memory:
-        state.update_account_memory()
-    
     _ps = state.account_snapshot.get("price_source", "?")
     _ps_kr = (
         "웹소켓(실시간)"
@@ -386,11 +380,6 @@ async def _apply_balance_realtime(item: dict, vals: dict) -> None:
                 state.broker_rest_totals["total_pnl"] = int(delta["total_pnl"])
             if "total_rate" in delta:
                 state.broker_rest_totals["total_rate"] = float(delta["total_rate"])
-    
-    if state.refresh_account_snapshot_meta:
-        await state.refresh_account_snapshot_meta()
-    if state.update_account_memory:
-        state.update_account_memory()
 
     # ── 상태 게이트 회복: 실전투자 잔고 업데이트 시 매수 재평가 ──
     try:
@@ -399,7 +388,7 @@ async def _apply_balance_realtime(item: dict, vals: dict) -> None:
             invalidate_buy_snapshot()
             await evaluate_buy_candidates()
     except Exception:
-        pass
+        logger.warning("[계좌] 잔고 회복 후 매수 재평가 실패 — 사용자가 수동으로 매수 후보 확인 필요", exc_info=True)
 
 
 async def _on_fill_after_ws() -> None:

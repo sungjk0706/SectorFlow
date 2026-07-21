@@ -1096,6 +1096,23 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B09-19 | B-09 | `engine_radar.py:70-71` | P20 | MEDIUM | `get_orderbook_cache` silent except → 로깅 추가 (데이터 정합성 가시화) | 해결 |
 | B09-20 | B-09 | `engine_radar.py:45,51,57,63` | P23 | LOW | 함수 내 중복 `from ... import state` 4건 (상단 import 사용) | 해결 |
 | B09-21 | B-09 | `engine_strategy_core.py:64` | P23 | LOW | 삭제된 `register_pending_stock` 참조 주석 잔존 | 해결 |
+| B10-01 | B-10 | `engine_account_rest.py:111-232, 312-400` | P4 | HIGH | 키움 전용 파싱 함수 5개(`parse_kt00001_deposit`, `parse_kt00018_balance`, `real04_official_account_delta`, `real04_official_apply_position_line`, `_real04_is_stock_item`)가 공통 services 파일에 위치. docstring에 "키움 공식" 명시. LS는 `ls_providers.py`에 별도 Provider 존재하므로 키움 파싱도 `kiwoom_providers.py`로 이동 필요 | 발견 |
+| B10-02 | B-10 | `engine_account_rest.py:26-400` vs `kiwoom_providers.py:96-214` | P10 | MEDIUM | 키움 계좌 파싱 로직이 두 곳에 중복 구현(`_fetch_account_data` 경로 vs `KiwoomAccountProvider.get_account_balance`). 단일 진실 소스 위반 (kiwoom_providers.py 구현은 B-14 범위에서 별도 dead code 조사 필요) | 발견 |
+| B10-03 | B-10 | `engine_account_notify.py:51-59` | P16 | MEDIUM | 8개 레거시 데스크톱 콜백 변수(`_desktop_*_notifier`) — 정의만 있고 대입/참조 전무 | 해결 (B-10-a) |
+| B10-04 | B-10 | `engine_account_notify.py:112-171` | P16 | MEDIUM | 11개 no-op 함수(7개 `register_desktop_*` + 4개 `register/unregister_*_ws_queue`) — 호출처 전무 | 해결 (B-10-a) |
+| B10-05 | B-10 | `engine_account_notify.py:401-405` | P16 | MEDIUM | `notify_desktop_buy_radar_only()` no-op(`pass`) — app/ 내 호출처 전무 (ARCHITECTURE.md:276에 이미 지적) | 해결 (B-10-a) |
+| B10-06 | B-10 | `engine_account_notify.py:447-452` | P16 | MEDIUM | `notify_desktop_account_tabs_refresh()` — app/ 및 tests 전체에서 호출처 전무 | 해결 (B-10-a) |
+| B10-07 | B-10 | `engine_account_notify.py:365-392` | P16 | MEDIUM | `notify_raw_real_data()` — 프로덕션 호출처 전무(테스트만). real-data는 `pipeline_compute.py:608`에서 `broadcast_queue` 경로로 전송 | 해결 (B-10-a) |
+| B10-08 | B-10 | `engine_account_notify.py:623-626` | P16/P10 | MEDIUM | `notify_ws_subscribe_status()` — 프로덕션 호출처 전무(테스트만). docstring은 "ws_subscribe_control._set_status()에서 사용"이라고 기술하나 실제는 `_broadcast` 직접 호출 → 주석/코드 불일치 | 해결 (B-10-a) |
+| B10-09 | B-10 | `engine_account.py:257-261, 390-393` | P16 | MEDIUM | `if state.refresh_account_snapshot_meta:` / `if state.update_account_memory:` 분기 — `engine_state.py:40-41`에서 `None` 초기화 후 다른 곳에서 대입 전무 → 항상 False인 dead 분기 | 해결 (B-10-a) |
+| B10-10 | B-10 | `engine_account.py:401-402` | P20/P21 | HIGH | `_apply_balance_realtime`에서 `except Exception: pass` — 잔고 업데이트 후 매수 재평가(`evaluate_buy_candidates`) 실패 시 조용히 무시. 사용자가 "왜 잔고 회복 후에도 매수가 안 되지?" 인지 불가 | 해결 (B-10-a) |
+| B10-11 | B-10 | `engine_service.py:215-216` | P20/P21 | HIGH | `apply_settings_change` 끝 `except Exception: pass` — 설정 변경 후 매수 스냅샷 무효화(`invalidate_buy_snapshot`) 실패 시 조용히 무시. 설정 변경 후 매수 재평가 안 됨을 사용자가 인지 불가 | 해결 (B-10-a) |
+| B10-12 | B-10 | `engine_account_notify.py` 전체 | P24 | MEDIUM | 파일 632줄 — 500줄 초과 | 발견 |
+| B10-13 | B-10 | `engine_service.py:30-216` | P24 | MEDIUM | `apply_settings_change` 함수 186줄 — 50줄 초과(설정 키 그룹별 분리 필요) | 발견 |
+| B10-14 | B-10 | `engine_account.py:113-195` | P24 | MEDIUM | `_fetch_account_data` 함수 82줄 — 50줄 초과 | 발견 |
+| B10-15 | B-10 | `engine_account_notify.py:268-342` | P24 | MEDIUM | `notify_desktop_sector_score` 함수 74줄 — 50줄 초과 | 발견 |
+| B10-16 | B-10 | `engine_account_notify.py:455-519` | P24 | MEDIUM | `broadcast_account_update` 함수 64줄 — 50줄 초과 | 발견 |
+| B10-17 | B-10 | `engine_account.py:215-275` | P24 | MEDIUM | `_update_account_memory_inner` 함수 60줄 — 50줄 초과 | 발견 |
 
 ---
 
@@ -1114,7 +1131,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B-07 | P1 | WS 시세 처리 | ☑ 완료 (7건 수정, 140 tests passed) |
 | B-08 | P1 | 엔진 부트스트랩/캐시/스냅샷 | ☑ 완료 (14건 수정, 261 tests passed) |
 | B-09 | P1 | 엔진 섹터 확인/전략/레이더 | ☑ 완료 (24건 수정, 2714 tests passed) |
-| B-10 | P1 | 엔진 계좌/서비스 | ☐ 미시작 |
+| B-10 | P1 | 엔진 계좌/서비스 | ◐ B-10-a 완료 (11건 수정), B-10-b 대기 (6건) |
 | B-11 | P1 | 파이프라인 (Compute/Gateway) | ☐ 미시작 |
 | B-12 | P2 | DB 계층 | ☐ 미시작 |
 | B-13 | P2 | 설정 관리 | ☐ 미시작 |
@@ -1142,10 +1159,10 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 |------|--------|
 | 전체 세션 | 30 |
 | 완료 | 9 |
-| 진행 중 | 0 |
-| 미시작 | 21 |
-| 발견된 문제 | 42 |
-| 해결된 문제 | 42 |
+| 진행 중 | 1 (B-10-a 완료, B-10-b 대기) |
+| 미시작 | 20 |
+| 발견된 문제 | 59 |
+| 해결된 문제 | 51 |
 | 보류된 문제 | 0 |
 
 ---

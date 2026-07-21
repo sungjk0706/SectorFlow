@@ -8,8 +8,6 @@
 델타 비교만으로 전송 여부를 결정한다 — 변경 있으면 즉시 전송, 변경 없으면 생략.
 """
 from __future__ import annotations
-import time
-from collections.abc import Callable
 import logging
 from backend.app.services.engine_symbol_utils import _base_stk_cd
 logger = logging.getLogger(__name__)
@@ -46,17 +44,6 @@ class NotificationCache:
 
 # 전역 인스턴스 1개만 생성
 notify_cache = NotificationCache()
-
-
-# ── 레거시 데스크톱 콜백 변수 (호환성 유지, 사용되지 않음) ──────────────────
-_desktop_account_notifier: Callable[[str | None, dict], None] | None = None
-_desktop_trade_price_notifier: Callable[[str, int], None] | None = None
-_desktop_buy_radar_notifier: Callable[[], None] | None = None
-_desktop_account_tabs_refresh: Callable[[], None] | None = None
-_desktop_header_refresh_notifier: Callable[[], None] | None = None
-_desktop_index_notifier: Callable[[], None] | None = None
-_desktop_sector_notifier: Callable[[], None] | None = None
-_desktop_settings_toggled_notifier: Callable[[], None] | None = None
 
 
 # ── 실시간 데이터 필드 정의 ─────────────────────────────────────────────────
@@ -105,70 +92,6 @@ def _rebuild_layout_cache(layout: list) -> None:
         notify_cache.layout_code_set.update({v for t, v in layout if t == "code" and v})
     except Exception:
         logger.warning("[시스템] 레이아웃 캐시 재구축 실패 (이전 캐시 유지)", exc_info=True)
-
-
-
-
-def register_desktop_trade_price_notifier(
-    fn: Callable[[str, int], None] | None,
-) -> None:
-    """레거시 no-op."""
-    pass
-
-
-def register_desktop_buy_radar_notifier(fn: Callable[[], None] | None) -> None:
-    """레거시 no-op."""
-    pass
-
-
-def register_desktop_account_tabs_refresh(fn: Callable[[], None] | None) -> None:
-    """레거시 no-op."""
-    pass
-
-
-def register_desktop_header_refresh_notifier(
-    fn: Callable[[], None] | None,
-) -> None:
-    """레거시 no-op."""
-    pass
-
-
-def register_desktop_index_notifier(fn: Callable[[], None] | None) -> None:
-    """레거시 no-op."""
-    pass
-
-
-def register_desktop_sector_notifier(fn: Callable[[], None] | None) -> None:
-    """레거시 no-op."""
-    pass
-
-
-def register_desktop_settings_toggled_notifier(fn: Callable[[], None] | None) -> None:
-    """레거시 no-op."""
-    pass
-
-
-# ── WS 큐 등록 (레거시 호환 no-op) ────────────────────────────
-# NOTE: 과거 WS 기반에서 WS 기반으로 전환됨. 함수명은 유지하되 내부는 no-op.
-
-def register_account_ws_queue(q) -> None:
-    """레거시 호환 no-op (WS→WS 전환)."""
-    pass
-
-
-def unregister_account_ws_queue(q) -> None:
-    """레거시 호환 no-op (WS→WS 전환)."""
-    pass
-
-
-def register_engine_ws_queue(q) -> None:
-    """레거시 호환 no-op (WS→WS 전환)."""
-    pass
-
-
-def unregister_engine_ws_queue(q) -> None:
-    """레거시 호환 no-op (WS→WS 전환)."""
-    pass
 
 
 # ── Delta 계산 함수 ─────────────────────────────────────────────────────────
@@ -362,47 +285,10 @@ def _is_relevant_code(nk: str) -> bool:
     return False
 
 
-async def notify_raw_real_data(item: dict) -> None:
-    """
-    키움 실시간 메시지(REAL)를 가공 없이 브로드캐스트.
-    프론트에 필요한 종목(업종+보유+레이아웃)만 전송하여 렌더링 과부하 방지.
-    """
-    if not item or not isinstance(item, dict):
-        return
-    vals = item.get("values", {})
-    if not isinstance(vals, dict):
-        vals = {}
-        
-    try:
-        from backend.app.services.engine_symbol_utils import _real_item_stk_cd
-        nk = _real_item_stk_cd(item, vals)
-        if not nk:
-            return
-            
-        if not _is_relevant_code(nk):
-            return
-    except Exception as e:
-        logger.error("[시스템] 종목코드 추출 실패: %s", e, exc_info=True)
-        return
-            
-    # [수정] 프론트엔드 및 ws_manager가 정상 작동할 수 있도록 원본 코드를 정규화된 코드로 교체
-    item["item"] = nk
-    
-    item["_ts"] = int(time.time() * 1000)
-    await _safe_broadcast("real-data", item)
-
-
 async def notify_orderbook_update(code: str, bid: int, ask: int) -> None:
     """매수 후보 종목의 호가잔량 변경 시 프론트에 즉시 전송 (이벤트 기반)."""
     payload = {"code": code, "bid": bid, "ask": ask}
     await _safe_broadcast("orderbook-update", payload)
-
-
-async def notify_desktop_buy_radar_only() -> None:
-    """레이더 종목 변경 알림 — no-op.
-    레이더 데이터는 account-update 이벤트에 radar_stocks로 포함되어 전송된다.
-    매 틱마다 호출되므로 빈 이벤트도 보내지 않는다 (큐 과부하 방지)."""
-    pass
 
 
 async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
@@ -442,14 +328,6 @@ async def notify_desktop_sector_stocks_refresh(*, force: bool = False) -> None:
         code = s.get("code", "")
         if code:
             notify_cache.prev_sent[code] = {}
-
-
-async def notify_desktop_account_tabs_refresh() -> None:
-    """계좌 탭(보유/미체결/수익/거래내역) 전환 시 1회 전체 새로고침 → WS account-tabs-refresh."""
-    from backend.app.services.engine_lifecycle import get_engine_status
-    payload = get_engine_status()
-    payload["_v"] = 1
-    await _safe_broadcast("index-data", payload)
 
 
 async def broadcast_account_update(positions: list[dict], snapshot: dict, reason: str | None = None) -> None:
@@ -618,12 +496,6 @@ async def broadcast_engine_status_ws(engine_status: dict) -> None:
     if "_v" not in engine_status:
         engine_status["_v"] = 1
     await _safe_broadcast("index-data", engine_status)
-
-
-async def notify_ws_subscribe_status(status: dict) -> None:
-    """WS 구독 상태 변경 시 WS 브로드캐스트. ws_subscribe_control._set_status()에서 사용."""
-    payload = {"_v": 1, **status}
-    await _safe_broadcast("ws-subscribe-status", payload)
 
 
 async def notify_program_update(code: str, net_buy: int) -> None:
