@@ -647,20 +647,20 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 
 | 파일 | 줄 수 | 규모 | 점검 완료 |
 |------|-------|------|----------|
-| `services/telegram_bot.py` | 525 | 대형 | ☐ |
-| `services/telegram.py` | — | 중형 | ☐ |
-| `services/notification_worker.py` | 98 | 중형 | ☐ |
+| `services/telegram_bot.py` | 527→505 | 대형 | ☑ |
+| `services/telegram.py` | 43 | 소형 | ☑ |
+| `services/notification_worker.py` | 98 | 중형 | ☑ |
 
 **원칙 체크리스트**:
-- [ ] P2: HTTP I/O async def (`httpx.AsyncClient`)
-- [ ] P5: 직접 호출 체인
-- [ ] P14: 멀티스레드 없음
-- [ ] P16: dead code 없음
-- [ ] P19: `await` 누락 없음
-- [ ] P20: 폴백/silent except 없음
-- [ ] P21: 중요 상태 변화가 알림으로 전달됨
-- [ ] P23: 용어 사전 준수, 에러/비동기/네이밍/상수 패턴 파일 간 일관
-- [ ] P24: 더 단순한 대체 가능성, 불필요한 추상화, 함수/파일 길이·복잡도 기준
+- [x] P2: HTTP I/O async def (`httpx.AsyncClient`) — 모든 HTTP 요청 비동기
+- [x] P5: 직접 호출 체인 — EventBus/옵서버 없음
+- [x] P14: 멀티스레드 없음 — create_task 2건은 장기 실행 백그라운드로 보류
+- [x] P16: dead code 없음 — B20-01 `stop` 제거, B20-02 `get_poll_ok_age_sec` 제거
+- [x] P19: `await` 누락 없음 — create_task await 누락은 의도적
+- [x] P20: 폴백/silent except 없음 — `or ""`는 외부 입력 정규화
+- [x] P21: 중요 상태 변화가 알림으로 전달됨 — B20-03 shutdown 호출 추가
+- [x] P23: 용어 사전 준수, 에러/비동기/네이밍/상수 패턴 파일 간 일관
+- [x] P24: 더 단순한 대체 가능성, 불필요한 추상화, 함수/파일 길이·복잡도 기준
 
 ---
 
@@ -1153,7 +1153,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B-17 | P2 | Domain 계층 | ☑ 완료 (3건 P16/P24) |
 | B-18 | P2 | 스케줄러 및 장마감 파이프라인 | ☑ 완료 (6건 P16/P20, P24 분할 이월) |
 | B-19 | P2 | WS 구독 제어 및 업종 데이터 | ☑ 완료 (4건 P16/P20/P24) |
-| B-20 | P3 | 알림 (Telegram) | ☐ 미시작 |
+| B-20 | P3 | 알림 (Telegram) | ☑ 완료 (3건 P16/P21) |
 | B-21 | P3 | 기타 Core 유틸 | ☐ 미시작 |
 | B-22 | P3 | Web API 계층 | ☐ 미시작 |
 | B-23 | P3 | 테스트 품질 점검 | ☐ 미시작 |

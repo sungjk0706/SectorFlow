@@ -165,6 +165,11 @@ async def lifespan(app: FastAPI):
     await telegram_bot.stop_async()
     await stop_engine()
 
+    # 알림 워커 종료 — 엔진 종료 후 큐 잔량 알림 처리 (P21 사용자 투명성)
+    from backend.app.services.notification_worker import NotificationWorker
+    await NotificationWorker.get_instance().shutdown()
+    logger.info("[웹서버] 알림 워커 종료 완료")
+
     # 게이트웨이 루프 종료 (compute 종료 후 broadcast_queue 컨슘 중단)
     from backend.app.pipelines.pipeline_gateway import stop_gateway_loop
     await stop_gateway_loop()
