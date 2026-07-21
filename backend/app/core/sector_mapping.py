@@ -10,39 +10,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-async def get_merged_sector(stock_code: str) -> str:
-    """인메모리 캐시 또는 SQLite DB에서 종목의 최종 업종명을 반환."""
-    stock_code = stock_code.upper()  # 대문자 통일 (키움 원본 포맷 고수, 대조 시점에만 변환)
-
-    # 1) 인메모리 캐시에서 조회 (_master_stocks_cache)
-    try:
-        from backend.app.services.engine_state import state
-        entry = state.master_stocks_cache.get(stock_code)
-        if entry and "sector" in entry:
-            return entry["sector"] or "미분류"
-    except Exception as e:
-        logger.warning("[데이터] 인메모리 캐시 조회 실패: %s", e)
-
-    # 2) SQLite DB에서 조회
-    from backend.app.db.database import get_db_connection
-    conn = await get_db_connection()
-    try:
-        cursor = await conn.cursor()
-        await cursor.execute("SELECT sector FROM master_stocks_table WHERE code = ?", (stock_code,))
-        row = await cursor.fetchone()
-        if row and row["sector"]:
-            return row["sector"]
-    except Exception as e:
-        logger.warning("[데이터] 업종 통합 조회 실패 (%s): %s", stock_code, e)
-
-    return "미분류"
-
-
 async def get_merged_sectors_batch(codes: list[str]) -> dict[str, str]:
     """종목 코드 리스트 → {code: sector} 배치 반환.
 
     메모리 캐시에서 일괄 조회하고, 캐시 미스 코드만 단일 DB 쿼리로 해결.
-    1353회 개별 await get_merged_sector() 호출을 1회 await로 대체.
     """
     result: dict[str, str] = {}
     missed: list[str] = []

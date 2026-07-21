@@ -16,21 +16,6 @@ async def _init_cache_table() -> None:
         """)
         await conn.commit()
 
-async def save_filter_summary_meta_cache(meta_json: str) -> None:
-    """filter_summary 메타데이터(종목수 제외)를 DB에 저장 — SSOT: 종목수는 master_stocks_table"""
-    await _init_cache_table()
-    conn = await get_db_connection()
-    try:
-        async with get_db_lock():
-            await conn.execute(
-                "INSERT OR REPLACE INTO system_state_cache (key, value) VALUES (?, ?)",
-                ("filter_summary_meta", meta_json)
-            )
-            await conn.commit()
-        logger.info("[데이터] 필터 요약 메타 DB 저장 완료")
-    except Exception as e:
-        logger.error("[데이터] 필터 요약 메타 DB 저장 실패: %s", e)
-
 async def load_filter_summary_meta_cache() -> str:
     """DB에서 filter_summary 메타데이터 JSON 로드"""
     await _init_cache_table()

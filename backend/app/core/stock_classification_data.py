@@ -26,11 +26,6 @@ def load_custom_data() -> StockClassificationData:
     return StockClassificationData()
 
 
-def load_custom_data_readonly() -> StockClassificationData:
-    """하위 호환성을 위한 빈 데이터 로드 함수."""
-    return StockClassificationData()
-
-
 # ── 캐시 쓰기 단일 진입점 ──
 
 def update_sector_in_cache(code: str, sector: str) -> None:

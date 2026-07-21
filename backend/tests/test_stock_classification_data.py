@@ -7,7 +7,6 @@ from unittest.mock import patch, AsyncMock
 from backend.app.core.stock_classification_data import (
     StockClassificationData,
     load_custom_data,
-    load_custom_data_readonly,
     update_sector_in_cache,
     rename_sector,
     create_sector,
@@ -29,11 +28,6 @@ class TestStockClassificationData:
         result = load_custom_data()
         assert isinstance(result, StockClassificationData)
         assert result.sectors == {}
-
-    def test_load_custom_data_readonly_returns_empty(self):
-        result = load_custom_data_readonly()
-        assert isinstance(result, StockClassificationData)
-        assert result.stock_moves == {}
 
 
 # ── update_sector_in_cache ──────────────────────────────────────────
