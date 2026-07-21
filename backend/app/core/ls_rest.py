@@ -83,7 +83,7 @@ class LsRestAPI:
                     if getattr(self, '_loop', None) and getattr(self, '_loop').is_running():
                         await self._client.aclose()
             except Exception as e:
-                logger.warning("[연결] %s 이전 클라이언트 정리 실패: %s", _BROKER_DISPLAY, e)
+                logger.warning("[연결] %s 이전 클라이언트 정리 실패: %s", _BROKER_DISPLAY, e, exc_info=True)
             
             self._client = httpx.AsyncClient()
             self._loop = current_loop
@@ -172,7 +172,7 @@ class LsRestAPI:
                 return True
 
             except Exception as e:
-                logger.warning(f"[연결] {_BROKER_DISPLAY} 토큰 발급 오류 (시도={attempt+1}): {e}")
+                logger.warning(f"[연결] {_BROKER_DISPLAY} 토큰 발급 오류 (시도={attempt+1}): {e}", exc_info=True)
                 if attempt < max_retries - 1:
                     continue
 
@@ -204,7 +204,7 @@ class LsRestAPI:
             else:
                 logger.warning("[연결] %s 토큰 폐기 실패 (응답코드=%s)", _BROKER_DISPLAY, resp.status_code)
         except Exception as e:
-            logger.warning("[연결] %s 토큰 폐기 오류: %s: %s", _BROKER_DISPLAY, type(e).__name__, e)
+            logger.warning("[연결] %s 토큰 폐기 오류: %s: %s", _BROKER_DISPLAY, type(e).__name__, e, exc_info=True)
         finally:
             self._token_info = None
         return True
@@ -265,7 +265,7 @@ class LsRestAPI:
                 return resp.json()
 
             except Exception as e:
-                logger.warning(f"[연결] {_BROKER_DISPLAY} 오류 (시도={attempt+1}): {e}")
+                logger.warning(f"[연결] {_BROKER_DISPLAY} 오류 (시도={attempt+1}): {e}", exc_info=True)
                 if attempt < max_retries - 1:
                     await asyncio.sleep(2 * (attempt + 1))
                     continue
@@ -274,109 +274,29 @@ class LsRestAPI:
         logger.warning(f"[연결] {_BROKER_DISPLAY} {max_retries}번 재시도 모두 실패")
         return None
 
-    async def call_tr(
-        self,
-        path: str,
-        tr_cd: str,
-        body: Optional[dict] = None,
-        *,
-        tr_cont: str = "N",
-        tr_cont_key: str = "",
-        timeout: float = 15.0,
-        max_retries: int = 3,
-    ) -> Optional[dict]:
-        await self.ensure_client()
-        if self._client is None:
-            logger.warning("[연결] %s HTTP 클라이언트 초기화 안됨", _BROKER_DISPLAY)
-            return None
-
-        if not await self.ensure_token():
-            logger.warning("[연결] %s 토큰 없음", _BROKER_DISPLAY)
-            return None
-
-        assert self._token_info is not None
-        url = f"{self.base_url}{path}"
-        headers = {
-            "Content-Type": "application/json;charset=UTF-8",
-            "Authorization": f"Bearer {self._token_info.access_token}",
-            "tr_cd": tr_cd,
-            "tr_cont": tr_cont,
-            "tr_cont_key": tr_cont_key,
-        }
-
-        for attempt in range(max_retries):
-            try:
-                resp = await self._client.post(url, headers=headers, json=body or {}, timeout=timeout)
-                data = resp.json() if resp.text else {}
-
-                if resp.status_code == 429:
-                    wait_sec = 8 * (attempt + 1)
-                    logger.warning(
-                        "[연결] %s %s 요청 과다 — %.0f초 대기 후 재시도 (%d/%d)",
-                        _BROKER_DISPLAY, tr_cd, wait_sec, attempt + 1, max_retries,
-                    )
-                    await asyncio.sleep(wait_sec)
-                    continue
-
-                if resp.status_code != 200:
-                    logger.info("[연결] %s %s 응답 코드 %s - 본문: %s", _BROKER_DISPLAY, tr_cd, resp.status_code, resp.text)
-                    return None
-
-                rsp_cd = str(data.get("rsp_cd") or "")
-                if rsp_cd and rsp_cd not in ("00000", "00040"):
-                    logger.warning("[연결] %s %s 실패: %s - %s", _BROKER_DISPLAY, tr_cd, rsp_cd, data.get("rsp_msg", ""))
-                    return {"data": data, "headers": dict(resp.headers), "tr_cont": "N", "tr_cont_key": ""}
-
-                resp_headers = dict(resp.headers)
-                next_cont = (
-                    resp.headers.get("tr_cont")
-                    or resp.headers.get("tr-cont")
-                    or resp.headers.get("cont-yn")
-                    or "N"
-                )
-                next_key = (
-                    resp.headers.get("tr_cont_key")
-                    or resp.headers.get("tr-cont-key")
-                    or resp.headers.get("next-key")
-                    or ""
-                )
-                return {
-                    "data": data,
-                    "headers": resp_headers,
-                    "tr_cont": str(next_cont or "N"),
-                    "tr_cont_key": str(next_key or ""),
-                }
-
-            except Exception as e:
-                logger.warning("[연결] %s %s 오류 (시도=%d): %s", _BROKER_DISPLAY, tr_cd, attempt + 1, e)
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(2 * (attempt + 1))
-                    continue
-                return None
-
-        logger.warning("[연결] %s %s %d번 재시도 모두 실패", _BROKER_DISPLAY, tr_cd, max_retries)
-        return None
-
     # ========== 주문 관련 메서드 ==========
 
-    async def buy_order(
+    async def _place_order(
         self,
         stock_code: str,
         quantity: int,
         price: float,
+        bns_tp_code: str,  # "1":매도, "2":매수
+        order_kind: str,  # "매수" or "매도" (로그용)
         order_type: str = "00",  # 00:지정가, 03:시장가
         order_condition: str = "0",  # 0:없음, 1:IOC, 2:FOK
         credit_code: str = "000",  # 000:보통
         loan_date: str = "",
         member_code: str = "NXT",  # KRX, NXT
     ) -> Optional[dict]:
-        """
-        현물 매수 주문 (CSPAT00601)
+        """현물 주문 공통 로직 (CSPAT00601). buy_order/sell_order 래퍼에서 호출.
 
         Args:
             stock_code: 종목번호 (A+종목코드 형식)
             quantity: 주문수량
             price: 주문가
+            bns_tp_code: "1"=매도, "2"=매수
+            order_kind: 로그용 라벨 ("매수" or "매도")
             order_type: 호가유형코드 (00:지정가, 03:시장가)
             order_condition: 주문조건구분 (0:없음, 1:IOC, 2:FOK)
             credit_code: 신용거래코드 (000:보통)
@@ -410,7 +330,7 @@ class LsRestAPI:
                 "IsuNo": stock_code,
                 "OrdQty": quantity,
                 "OrdPrc": price,
-                "BnsTpCode": "2",  # 2:매수
+                "BnsTpCode": bns_tp_code,
                 "OrdprcPtnCode": order_type,
                 "MgntrnCode": credit_code,
                 "LoanDt": loan_date,
@@ -425,7 +345,7 @@ class LsRestAPI:
                 if attempt > 0:
                     wait_sec = 2 * attempt
                     logger.warning(
-                        f"[연결] {_BROKER_DISPLAY} 매수 주문 재시도 {attempt+1}/{max_retries} — {wait_sec}초 대기"
+                        f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 재시도 {attempt+1}/{max_retries} — {wait_sec}초 대기"
                     )
                     await asyncio.sleep(wait_sec)
 
@@ -435,34 +355,53 @@ class LsRestAPI:
                 if resp.status_code == 429:
                     wait_sec = 8 * (attempt + 1)
                     logger.warning(
-                        f"[연결] {_BROKER_DISPLAY} 매수 주문 요청 과다 — {wait_sec}초 대기 후 재시도"
+                        f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 요청 과다 — {wait_sec}초 대기 후 재시도"
                     )
                     await asyncio.sleep(wait_sec)
                     continue
 
                 if resp.status_code != 200:
-                    logger.warning(f"[연결] {_BROKER_DISPLAY} 매수 주문 실패 (응답코드={resp.status_code})")
+                    logger.warning(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 실패 (응답코드={resp.status_code})")
                     return data
 
                 rsp_cd = data.get("rsp_cd", "")
                 rsp_msg = data.get("rsp_msg", "")
 
                 if rsp_cd == "00040" or rsp_cd == "00000":  # 성공 코드
-                    logger.info(f"[연결] {_BROKER_DISPLAY} 매수 주문 성공: {rsp_msg}")
+                    logger.info(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 성공: {rsp_msg}")
                 else:
-                    logger.warning(f"[연결] {_BROKER_DISPLAY} 매수 주문 실패: {rsp_cd} - {rsp_msg}")
+                    logger.warning(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 실패: {rsp_cd} - {rsp_msg}")
 
                 return data
 
             except Exception as e:
-                logger.warning(f"[연결] {_BROKER_DISPLAY} 매수 주문 오류 (시도={attempt+1}): {e}")
+                logger.warning(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 오류 (시도={attempt+1}): {e}", exc_info=True)
                 if attempt < max_retries - 1:
                     await asyncio.sleep(2 * (attempt + 1))
                     continue
                 return None
 
-        logger.warning(f"[연결] {_BROKER_DISPLAY} 매수 주문 {max_retries}번 모두 실패")
+        logger.warning(f"[연결] {_BROKER_DISPLAY} {order_kind} 주문 {max_retries}번 모두 실패")
         return None
+
+    async def buy_order(
+        self,
+        stock_code: str,
+        quantity: int,
+        price: float,
+        order_type: str = "00",  # 00:지정가, 03:시장가
+        order_condition: str = "0",  # 0:없음, 1:IOC, 2:FOK
+        credit_code: str = "000",  # 000:보통
+        loan_date: str = "",
+        member_code: str = "NXT",  # KRX, NXT
+    ) -> Optional[dict]:
+        """현물 매수 주문 (CSPAT00601). _place_order 래퍼."""
+        return await self._place_order(
+            stock_code, quantity, price,
+            bns_tp_code="2", order_kind="매수",
+            order_type=order_type, order_condition=order_condition,
+            credit_code=credit_code, loan_date=loan_date, member_code=member_code,
+        )
 
     async def sell_order(
         self,
@@ -475,99 +414,13 @@ class LsRestAPI:
         loan_date: str = "",
         member_code: str = "NXT",  # KRX, NXT
     ) -> Optional[dict]:
-        """
-        현물 매도 주문 (CSPAT00601)
-
-        Args:
-            stock_code: 종목번호 (A+종목코드 형식)
-            quantity: 주문수량
-            price: 주문가
-            order_type: 호가유형코드
-            order_condition: 주문조건구분
-            credit_code: 신용거래코드
-            loan_date: 대출일
-            member_code: 회원사번호
-
-        Returns:
-            주문 결과 {rsp_cd, rsp_msg, CSPAT00601OutBlock1, CSPAT00601OutBlock2}
-        """
-        await self.ensure_client()
-        if self._client is None:
-            logger.warning("[연결] %s HTTP 클라이언트 초기화 안됨", _BROKER_DISPLAY)
-            return None
-
-        if not await self.ensure_token():
-            logger.warning("[연결] %s 토큰 없음", _BROKER_DISPLAY)
-            return None
-
-        assert self._token_info is not None
-        url = f"{self.base_url}/stock/order"
-        headers = {
-            "Content-Type": "application/json; charset=UTF-8",
-            "Authorization": f"Bearer {self._token_info.access_token}",
-            "tr_cd": "CSPAT00601",
-            "tr_cont": "N",
-            "tr_cont_key": "",
-        }
-
-        body = {
-            "CSPAT00601InBlock1": {
-                "IsuNo": stock_code,
-                "OrdQty": quantity,
-                "OrdPrc": price,
-                "BnsTpCode": "1",  # 1:매도
-                "OrdprcPtnCode": order_type,
-                "MgntrnCode": credit_code,
-                "LoanDt": loan_date,
-                "OrdCndiTpCode": order_condition,
-                "MbrNo": member_code,
-            }
-        }
-
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                if attempt > 0:
-                    wait_sec = 2 * attempt
-                    logger.warning(
-                        f"[연결] {_BROKER_DISPLAY} 매도 주문 재시도 {attempt+1}/{max_retries} — {wait_sec}초 대기"
-                    )
-                    await asyncio.sleep(wait_sec)
-
-                resp = await self._client.post(url, headers=headers, json=body, timeout=15)
-                data = resp.json() if resp.text else {}
-
-                if resp.status_code == 429:
-                    wait_sec = 8 * (attempt + 1)
-                    logger.warning(
-                        f"[연결] {_BROKER_DISPLAY} 매도 주문 요청 과다 — {wait_sec}초 대기 후 재시도"
-                    )
-                    await asyncio.sleep(wait_sec)
-                    continue
-
-                if resp.status_code != 200:
-                    logger.warning(f"[연결] {_BROKER_DISPLAY} 매도 주문 실패 (응답코드={resp.status_code})")
-                    return data
-
-                rsp_cd = data.get("rsp_cd", "")
-                rsp_msg = data.get("rsp_msg", "")
-
-                if rsp_cd == "00040" or rsp_cd == "00000":  # 성공 코드
-                    logger.info(f"[연결] {_BROKER_DISPLAY} 매도 주문 성공: {rsp_msg}")
-                else:
-                    logger.warning(f"[연결] {_BROKER_DISPLAY} 매도 주문 실패: {rsp_cd} - {rsp_msg}")
-
-                return data
-
-            except Exception as e:
-                logger.warning(f"[연결] {_BROKER_DISPLAY} 매도 주문 오류 (시도={attempt+1}): {e}")
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(2 * (attempt + 1))
-                    continue
-                return None
-
-        logger.warning(f"[연결] {_BROKER_DISPLAY} 매도 주문 {max_retries}번 모두 실패")
-        return None
+        """현물 매도 주문 (CSPAT00601). _place_order 래퍼."""
+        return await self._place_order(
+            stock_code, quantity, price,
+            bns_tp_code="1", order_kind="매도",
+            order_type=order_type, order_condition=order_condition,
+            credit_code=credit_code, loan_date=loan_date, member_code=member_code,
+        )
 
     # ========== 계좌 관련 메서드 ==========
 
@@ -597,43 +450,3 @@ class LsRestAPI:
         }
         return await self.call_api(url, method="POST", headers=headers, body=body)
 
-    async def get_daily_history(
-        self,
-        cts_medosu: str = "0",
-        cts_expcode: str = "",
-        cts_price: str = "",
-        cts_middiv: str = "",
-    ) -> Optional[dict]:
-        """주식당일매매일지/수수료 (t0150) 조회"""
-        url = f"{self.base_url}/stock/accno"
-        headers = {
-            "tr_cd": "t0150",
-            "tr_cont": "N",
-            "tr_cont_key": "",
-        }
-        body = {
-            "t0150InBlock": {
-                "cts_medosu": cts_medosu,
-                "cts_expcode": cts_expcode,
-                "cts_price": cts_price,
-                "cts_middiv": cts_middiv,
-            }
-        }
-        return await self.call_api(url, method="POST", headers=headers, body=body)
-
-    # ========== 종목/테마 관련 메서드 ==========
-
-    async def get_themes(self) -> Optional[dict]:
-        """전체테마 (t8425) 조회"""
-        url = f"{self.base_url}/stock/sector"
-        headers = {
-            "tr_cd": "t8425",
-            "tr_cont": "N",
-            "tr_cont_key": "",
-        }
-        body = {
-            "t8425InBlock": {
-                "dummy": "",
-            }
-        }
-        return await self.call_api(url, method="POST", headers=headers, body=body)
