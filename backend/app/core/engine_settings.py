@@ -171,6 +171,7 @@ def _build_risk_settings(merged: dict) -> dict:
         "max_daily_loss_limit": max_daily_loss,
         "max_single_stock_exposure": max_single_exposure,
         "risk_manager_on": bool(merged.get("risk_manager_on", False)),
+        "daily_loss_limit_on": bool(merged.get("daily_loss_limit_on", True)),
         "daily_loss_limit": daily_loss,
         "daily_loss_rate_limit_on": bool(merged.get("daily_loss_rate_limit_on", False)),
         "daily_loss_rate_limit": daily_loss_rate,

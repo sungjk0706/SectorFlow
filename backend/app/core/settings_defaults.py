@@ -59,6 +59,7 @@ DEFAULT_USER_SETTINGS: dict[str, Any] = {
     # risk_block_buy_on=True 기본 — 리스크 조건 충족 시 매수 차단 (보수적)
     # risk_block_sell_on=False 기본 — 매도 차단은 손실 확대 방지를 위해 사용자 명시적 ON 필요
     "risk_manager_on": False,
+    "daily_loss_limit_on": True,               # 일일 손실 한도 활성화 (기본 ON — 기존 항상 실행 동작 유지)
     "daily_loss_limit": -500000,               # 일일 손실 한도 (원, 음수) — max_daily_loss_limit과 동일 기준
     "daily_loss_rate_limit_on": False,
     "daily_loss_rate_limit": -5.0,             # 일일 손실률 한도 (%)
