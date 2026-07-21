@@ -2,7 +2,6 @@
 
 _si (정상/콤마/플러스/빈값/대시/음수절대값/예외)
 _si_signed (정상/음수부호보존/콤마/플러스/빈값/대시/예외)
-_pct (정상/퍼센트제거/콤마/빈값/예외)
 fetch_ka10081_daily_price (정상/오름차순정렬/resp None/빈rows/비list/종가0/등락률계산/prev_close 0/파싱예외/숫자코드/알파벳코드/_raw_cd/sign기본값)
 fetch_ka10081_daily_5d_data (정상5개/오름차순정렬/신규상장3개/resp None/빈rows/비list/파싱예외/연속조회2페이지/연속조회중단/정확히5개)
 fetch_ka10081_all_stocks_daily_confirmed (정상/빈리스트/일부실패/on_progress/예외처리)
@@ -131,34 +130,6 @@ class TestSiSigned:
     def test_float_string(self):
         from backend.app.core.kiwoom_stock_rest import _si_signed
         assert _si_signed("123.45") == 123
-
-
-# ── _pct ────────────────────────────────────────────────────────────────────────
-
-class TestPct:
-    def test_normal(self):
-        from backend.app.core.kiwoom_stock_rest import _pct
-        assert _pct("5.2") == 5.2
-
-    def test_percent_removed(self):
-        from backend.app.core.kiwoom_stock_rest import _pct
-        assert _pct("5.2%") == 5.2
-
-    def test_comma_removed(self):
-        from backend.app.core.kiwoom_stock_rest import _pct
-        assert _pct("1,234.5") == 1234.5
-
-    def test_empty_returns_zero(self):
-        from backend.app.core.kiwoom_stock_rest import _pct
-        assert _pct("") == 0.0
-
-    def test_none_returns_zero(self):
-        from backend.app.core.kiwoom_stock_rest import _pct
-        assert _pct(None) == 0.0
-
-    def test_invalid_returns_zero(self):
-        from backend.app.core.kiwoom_stock_rest import _pct
-        assert _pct("abc") == 0.0
 
 
 # ── fetch_ka10081_daily_price ──────────────────────────────────────────────────

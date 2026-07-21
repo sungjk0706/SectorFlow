@@ -6,11 +6,14 @@ legacy_pc_engine/api_order.py 이식 (Settings 기반)
 from typing import Optional
 import asyncio
 import httpx
+import logging
 from backend.app.core.broker_urls import build_broker_urls, BROKER_DISPLAY_NAMES
+
+logger = logging.getLogger(__name__)
+_BROKER_DISPLAY = BROKER_DISPLAY_NAMES["kiwoom"]
+
+
 async def _send_request(url: str, headers: dict, params: dict, max_retries: int = 3, delay: float = 1.0) -> Optional[httpx.Response]:
-    import logging
-    logger = logging.getLogger(__name__)
-    _BROKER_DISPLAY = BROKER_DISPLAY_NAMES["kiwoom"]
     for attempt in range(max_retries):
         try:
             async with httpx.AsyncClient() as client:
@@ -19,7 +22,7 @@ async def _send_request(url: str, headers: dict, params: dict, max_retries: int 
                     return r
                 logger.warning("[매매] %s 응답 코드 %s (시도=%d/%d) URL=%s", _BROKER_DISPLAY, r.status_code, attempt + 1, max_retries, url)
         except Exception as e:
-            logger.warning("[매매] %s 통신 오류 (시도=%d/%d): %s", _BROKER_DISPLAY, attempt + 1, max_retries, e)
+            logger.warning("[매매] %s 통신 오류 (시도=%d/%d): %s", _BROKER_DISPLAY, attempt + 1, max_retries, e, exc_info=True)
         await asyncio.sleep(delay)
     logger.error("[매매] %s %d번 재시도 모두 실패 (URL=%s)", _BROKER_DISPLAY, max_retries, url)
     return None

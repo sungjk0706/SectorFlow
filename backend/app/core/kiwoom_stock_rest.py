@@ -39,12 +39,31 @@ def _si_signed(v: Any) -> int:
         return 0
 
 
-def _pct(v: Any) -> float:
-    try:
-        s = str(v).replace("%", "").replace(",", "").strip()
-        return float(s) if s else 0.0
-    except (ValueError, TypeError):
-        return 0.0
+def _build_ka10081_request(
+    api: "KiwoomRestAPI", stk_cd: str, qry_dt: str, _raw_cd: str = ""
+) -> tuple[str, dict, str, str]:
+    """ka10081 요청 URL/body/로그용 코드 조합 (fetch_ka10081_daily_price/5d_data 공통)."""
+    base = api.base_url.rstrip("/")
+    url = f"{base}/api/dostk/chart"
+
+    raw = str(stk_cd).strip().upper()
+    api_cd = raw
+    if raw.isdigit():
+        api_cd_sor = f"{raw.zfill(6)[-6:]}_AL"
+    else:
+        api_cd_sor = raw
+    log_cd = _raw_cd or api_cd
+
+    body = {"stk_cd": api_cd_sor, "base_dt": qry_dt, "upd_stkpc_tp": "1"}
+    return url, body, log_cd, api_cd
+
+
+def _ensure_descending_by_dt(rows: list[dict]) -> list[dict]:
+    """일봉 rows를 내림차순(최신순) 정렬 보장 (dt 기준)."""
+    if rows and len(rows) > 1 and "dt" in rows[0] and "dt" in rows[-1]:
+        if str(rows[0]["dt"]) < str(rows[-1]["dt"]):
+            return list(reversed(rows))
+    return rows
 
 
 async def fetch_ka10081_daily_price(
@@ -59,20 +78,9 @@ async def fetch_ka10081_daily_price(
     ka10081(주식일봉차트조회요청) 단건 조회.
     장외 시간 확정 종가·등락률·거래대금만 반환 (1일봉).
     """
-    base = api.base_url.rstrip("/")
-    url = f"{base}/api/dostk/chart"
+    url, body, log_cd, api_cd = _build_ka10081_request(api, stk_cd, qry_dt, _raw_cd)
 
-    raw = str(stk_cd).strip().upper()
-    api_cd = raw
-    if raw.isdigit():
-        api_cd_sor = f"{raw.zfill(6)[-6:]}_AL"
-    else:
-        api_cd_sor = raw
-    log_cd = _raw_cd or api_cd
-
-    body = {"stk_cd": api_cd_sor, "base_dt": qry_dt, "upd_stkpc_tp": "1"}
-
-    resp, hit_429 = await api._call_api(
+    resp, _ = await api._call_api(
         url=url,
         api_id="ka10081",
         body=body,
@@ -90,10 +98,7 @@ async def fetch_ka10081_daily_price(
             logger.warning("[다운로드] 실패(데이터 없음) 응답 없음 — %s (API:%s)", log_cd, api_cd)
             return None
 
-        # 내림차순(최신순) 정렬 보장
-        if rows and len(rows) > 1 and "dt" in rows[0] and "dt" in rows[-1]:
-            if str(rows[0]["dt"]) < str(rows[-1]["dt"]):
-                rows = list(reversed(rows))
+        rows = _ensure_descending_by_dt(rows)
 
         latest = rows[0]
         close_px = _si(latest.get("cur_prc") or 0)
@@ -126,7 +131,7 @@ async def fetch_ka10081_daily_price(
             "high_price": high_price,
         }
     except Exception as e:
-        logger.warning("[다운로드] 데이터 해석 오류 %s/%s: %s", log_cd, api_cd, e)
+        logger.warning("[다운로드] 데이터 해석 오류 %s/%s: %s", log_cd, api_cd, e, exc_info=True)
         return None
 
 
@@ -142,25 +147,14 @@ async def fetch_ka10081_daily_5d_data(
     ka10081(주식일봉차트조회요청) 단건 조회.
     최근 5개 일봉에서 5일 평균 거래대금, 최고가, 각 일봉의 거래일(dt)을 반환.
     """
-    base = api.base_url.rstrip("/")
-    url = f"{base}/api/dostk/chart"
-
-    raw = str(stk_cd).strip().upper()
-    api_cd = raw
-    if raw.isdigit():
-        api_cd_sor = f"{raw.zfill(6)[-6:]}_AL"
-    else:
-        api_cd_sor = raw
-    log_cd = _raw_cd or api_cd
-
-    body = {"stk_cd": api_cd_sor, "base_dt": qry_dt, "upd_stkpc_tp": "1"}
+    url, body, log_cd, api_cd = _build_ka10081_request(api, stk_cd, qry_dt, _raw_cd)
 
     all_rows: list[dict] = []
     cont_yn = "N"
     next_key = ""
 
     while True:
-        resp, hit_429 = await api._call_api(
+        resp, _ = await api._call_api(
             url=url,
             api_id="ka10081",
             body=body,
@@ -180,7 +174,7 @@ async def fetch_ka10081_daily_5d_data(
                 break
             all_rows.extend(page_rows)
         except Exception as e:
-            logger.warning("[다운로드] 데이터 해석 오류 %s/%s: %s", log_cd, api_cd, e)
+            logger.warning("[다운로드] 데이터 해석 오류 %s/%s: %s", log_cd, api_cd, e, exc_info=True)
             break
 
         if len(all_rows) >= 5:
@@ -200,12 +194,7 @@ async def fetch_ka10081_daily_5d_data(
         return None
 
     try:
-        rows = all_rows
-
-        # 내림차순(최신순) 정렬 보장
-        if rows and len(rows) > 1 and "dt" in rows[0] and "dt" in rows[-1]:
-            if str(rows[0]["dt"]) < str(rows[-1]["dt"]):
-                rows = list(reversed(rows))
+        rows = _ensure_descending_by_dt(all_rows)
 
         # 최근 5개 추출 (신규 상장 종목 지원: 부족한 날짜는 None으로 채움)
         recent_5: list[dict | None] = list(rows[:5])
@@ -225,8 +214,54 @@ async def fetch_ka10081_daily_5d_data(
             "dts_5d_array": dts_5d,
         }
     except Exception as e:
-        logger.warning("[다운로드] 데이터 해석 오류 %s/%s: %s", log_cd, api_cd, e)
+        logger.warning("[다운로드] 데이터 해석 오류 %s/%s: %s", log_cd, api_cd, e, exc_info=True)
         return None
+
+
+async def _fetch_all_stocks_ka10081(
+    api: "KiwoomRestAPI",
+    krx_codes: list[str],
+    qry_dt: str,
+    fetch_fn: "Callable[..., Any]",
+    *,
+    interval_sec: float = 0.3,
+    on_progress: "Callable[[int, int], None] | None" = None,
+) -> dict[str, dict]:
+    """전체 종목 ka10081 순차 조회 공통 루프 (확정시세/5일봉 공통)."""
+    result: dict[str, dict] = {}
+    failed_codes: list[str] = []
+    total = len(krx_codes)
+
+    if on_progress:
+        on_progress(0, total)
+
+    for cd in krx_codes:
+        try:
+            detail = await fetch_fn(api, cd, qry_dt, _raw_cd=cd)
+            if detail:
+                result[cd] = detail
+            else:
+                failed_codes.append(cd)
+        except Exception as e:
+            logger.warning("[다운로드] 조회 오류 %s: %s", cd, e, exc_info=True)
+            failed_codes.append(cd)
+
+        if on_progress:
+            on_progress(len(result), total)
+
+        log_progress("[다운로드]", len(result), total, code=cd)
+
+        await asyncio.sleep(interval_sec)
+
+    if on_progress:
+        on_progress(total, total)
+    log_progress_end()
+
+    if failed_codes:
+        logger.warning("[다운로드] 실패 종목 %d개: %s", len(failed_codes), failed_codes)
+    logger.info("[다운로드] 다운로드 완료 — 성공 %d/%d종목, 실패 %d종목",
+              len(result), total, len(failed_codes))
+    return result
 
 
 async def fetch_ka10081_all_stocks_daily_confirmed(
@@ -237,43 +272,11 @@ async def fetch_ka10081_all_stocks_daily_confirmed(
     interval_sec: float = 0.3,
     on_progress: "Callable[[int, int], None] | None" = None,
 ) -> dict[str, dict]:
-    """
-    전체 종목 ka10081 순차 조회 — 확정시세 전용.
-    """
-    result: dict[str, dict] = {}
-    failed_codes: list[str] = []
-    total = len(krx_codes)
-
-    if on_progress:
-        on_progress(0, total)
-
-    for cd in krx_codes:
-        try:
-            detail = await fetch_ka10081_daily_price(api, cd, qry_dt, _raw_cd=cd)
-            if detail:
-                result[cd] = detail
-            else:
-                failed_codes.append(cd)
-        except Exception as e:
-            logger.warning("[다운로드] 조회 오류 %s: %s", cd, e)
-            failed_codes.append(cd)
-
-        if on_progress:
-            on_progress(len(result), total)
-
-        log_progress("[다운로드]", len(result), total, code=cd)
-
-        await asyncio.sleep(interval_sec)
-
-    if on_progress:
-        on_progress(total, total)
-    log_progress_end()
-
-    if failed_codes:
-        logger.warning("[다운로드] 실패 종목 %d개: %s", len(failed_codes), failed_codes)
-    logger.info("[다운로드] 다운로드 완료 — 성공 %d/%d종목, 실패 %d종목",
-              len(result), total, len(failed_codes))
-    return result
+    """전체 종목 ka10081 순차 조회 — 확정시세 전용."""
+    return await _fetch_all_stocks_ka10081(
+        api, krx_codes, qry_dt, fetch_ka10081_daily_price,
+        interval_sec=interval_sec, on_progress=on_progress,
+    )
 
 
 async def fetch_ka10081_all_stocks_5day(
@@ -284,43 +287,11 @@ async def fetch_ka10081_all_stocks_5day(
     interval_sec: float = 0.3,
     on_progress: "Callable[[int, int], None] | None" = None,
 ) -> dict[str, dict]:
-    """
-    전체 종목 ka10081 순차 조회 — 5일봉 전용.
-    """
-    result: dict[str, dict] = {}
-    failed_codes: list[str] = []
-    total = len(krx_codes)
-
-    if on_progress:
-        on_progress(0, total)
-
-    for cd in krx_codes:
-        try:
-            detail = await fetch_ka10081_daily_5d_data(api, cd, qry_dt, _raw_cd=cd)
-            if detail:
-                result[cd] = detail
-            else:
-                failed_codes.append(cd)
-        except Exception as e:
-            logger.warning("[다운로드] 조회 오류 %s: %s", cd, e)
-            failed_codes.append(cd)
-
-        if on_progress:
-            on_progress(len(result), total)
-
-        log_progress("[다운로드]", len(result), total, code=cd)
-
-        await asyncio.sleep(interval_sec)
-
-    if on_progress:
-        on_progress(total, total)
-    log_progress_end()
-
-    if failed_codes:
-        logger.warning("[다운로드] 실패 종목 %d개: %s", len(failed_codes), failed_codes)
-    logger.info("[다운로드] 다운로드 완료 — 성공 %d/%d종목, 실패 %d종목",
-              len(result), total, len(failed_codes))
-    return result
+    """전체 종목 ka10081 순차 조회 — 5일봉 전용."""
+    return await _fetch_all_stocks_ka10081(
+        api, krx_codes, qry_dt, fetch_ka10081_daily_5d_data,
+        interval_sec=interval_sec, on_progress=on_progress,
+    )
 
 
 async def fetch_ka10099_unified(
@@ -349,7 +320,7 @@ async def fetch_ka10099_unified(
 
         while True:
             body = {"mrkt_tp": mrkt_tp}
-            resp, hit_429 = await api._call_api(
+            resp, _ = await api._call_api(
                 url=url,
                 api_id="ka10099",
                 body=body,
@@ -420,7 +391,7 @@ async def fetch_ka10099_unified(
                 else:
                     break  # while 루프 종료
             except Exception as e:
-                logger.warning("[다운로드] 데이터 해석 오류 %s: %s", label, e)
+                logger.warning("[다운로드] 데이터 해석 오류 %s: %s", label, e, exc_info=True)
                 break
             
             # 연속 조회 종료 확인
