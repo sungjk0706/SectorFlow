@@ -1113,6 +1113,18 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B10-15 | B-10 | `engine_account_notify.py:268-342` | P24 | MEDIUM | `notify_desktop_sector_score` 함수 74줄 — 50줄 초과 | 해결 (B-10-b: 32줄 + 4개 페이로드 헬퍼로 분리) |
 | B10-16 | B-10 | `engine_account_notify.py:455-519` | P24 | MEDIUM | `broadcast_account_update` 함수 64줄 — 50줄 초과 | 해결 (B-10-b: 15줄 + 3개 헬퍼, `engine_account_broadcast.py`로 이동) |
 | B10-17 | B-10 | `engine_account.py:215-275` | P24 | MEDIUM | `_update_account_memory_inner` 함수 60줄 — 50줄 초과 | 해결 (B-10-b: 15줄 + 2개 헬퍼로 분리) |
+| B11-01 | B-11 | `pipeline_compute.py` 전체 863줄 | P24 | MEDIUM | 파일 500줄 기준 초과 → 틱 핸들러/코얼레싱을 `pipeline_compute_tick_handlers.py`(320줄)로 분리. 본 파일 672줄(수신율 로직은 테스트가 모듈 전역을 직접 참조하여 추가 분할 시 테스트 대폭 수정 필요 — 잔여 172줄 초과분은 B-11-b에서 별도 검토) | 해결 (B-11-a) |
+| B11-02 | B-11 | `pipeline_compute.py:556-663` `_handle_real_01_tick` 108줄 | P24 | MEDIUM | 함수 50줄 초과 — 5단계(전송/레이더/보유종목/매도/지연) 중 3단계를 헬퍼로 분리(`_apply_01_radar_and_receive_rate`, `_apply_01_price_to_positions`, `_check_01_auto_sell`) | 해결 (B-11-a: ~50줄 + 3개 헬퍼) |
+| B11-03 | B-11 | `pipeline_compute.py:740-862` `_sector_recompute_loop_impl` 123줄 | P24 | MEDIUM | 함수 50줄 초과 — Phase 1/Phase 2 분리 + 임계값 판정 헬퍼 추출(`_phase1_wait_threshold`, `_evaluate_threshold`, `_phase2_batch_recompute_loop`) | 해결 (B-11-a: 본체 8줄 + 3개 헬퍼) |
+| B11-04 | B-11 | `pipeline_compute.py:278-346` `_compute_loop_impl` 69줄 | P24 | MEDIUM | 함수 50줄 초과 — control 드레인/배치 처리 헬퍼 분리(`_drain_control_queue`, `_process_tick_batch`) | 해결 (B-11-a: ~40줄 + 2개 헬퍼) |
+| B11-05 | B-11 | `pipeline_compute.py:349-408` `_process_control_signal` 60줄 | P24 | MEDIUM | 함수 50줄 초과 — DYNAMIC_REG/DYNAMIC_UNREG 헬퍼 분리(`_handle_dynamic_reg`, `_handle_dynamic_unreg`) | 해결 (B-11-a: ~35줄 + 2개 헬퍼) |
+| B11-06 | B-11 | `pipeline_compute.py:473-538` `_handle_real_tick` 66줄 | P24 | MEDIUM | 함수 50줄 초과 — 아이템 추출/디스패치 헬퍼 분리(`_extract_real_items`, `_dispatch_real_item`) | 해결 (B-11-a: ~18줄 + 2개 헬퍼) |
+| B11-07 | B-11 | `pipeline_compute.py:223-275` `_coalesce_batch` 53줄 | P24 | LOW | 함수 50줄 초과 (경미) — 내부 아이템 코얼레싱 헬퍼 분리(`_coalesce_real_items`) | 해결 (B-11-a: ~30줄 + 1개 헬퍼) |
+| B11-08 | B-11 | `pipeline_compute_tick_handlers.py:275-278` (이관) | P20 | MEDIUM | `except ValueError: tval = 0` — 잘못된 PGM 데이터를 0으로 조용히 대체. 사용자가 프로그램 순매수 0을 실데이터로 오인 | 보류 (B-11-b) |
+| B11-09 | B-11 | `pipeline_compute_tick_handlers.py:247` (이관) | P20 | MEDIUM | `state.master_stocks_cache.get(nk, {})` 빈 dict 폴백 — "캐시 미스(비정상)"와 "미구독 종목(정상)" 구분 불가 | 보류 (B-11-b) |
+| B11-10 | B-11 | `pipeline_compute_tick_handlers.py:281` (이관) | P20 | MEDIUM | 동일 `get(nk, {})` 폴백 (PGM 핸들러) | 보류 (B-11-b) |
+| B11-11 | B-11 | `pipeline_compute.py:548-610` Phase 1 루프 | P11 | HIGH | `while + asyncio.sleep(1.0)` 폴링으로 수신율 임계값 대기 — `asyncio.Event` 기반 전환 가능 (사용자 설계 로직, 규칙 0-5 적용) | 보류 (B-11-b) |
+| B11-12 | B-11 | `pipeline_compute.py:195-196` `start_compute_loop` | P16/P21 | HIGH | `create_task()` 후 `add_done_callback` 미설정 — compute/sector_recompute 태스크 조용히 사망 시 사용자 인지 불가. gateway 루프(`app.py:63`)는 설정되어 있어 비일관 (P23) | 해결 (B-11-a: `add_done_callback` 추가, gateway 루프와 일관) |
 
 ---
 
@@ -1132,7 +1144,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B-08 | P1 | 엔진 부트스트랩/캐시/스냅샷 | ☑ 완료 (14건 수정, 261 tests passed) |
 | B-09 | P1 | 엔진 섹터 확인/전략/레이더 | ☑ 완료 (24건 수정, 2714 tests passed) |
 | B-10 | P1 | 엔진 계좌/서비스 | ◐ B-10-a 완료 (11건 수정), B-10-b 대기 (6건) |
-| B-11 | P1 | 파이프라인 (Compute/Gateway) | ☐ 미시작 |
+| B-11 | P1 | 파이프라인 (Compute/Gateway) | ◐ B-11-a 완료 (8건 수정), B-11-b 대기 (4건) |
 | B-12 | P2 | DB 계층 | ☐ 미시작 |
 | B-13 | P2 | 설정 관리 | ☐ 미시작 |
 | B-14 | P2 | Broker 추상화 (공통) | ☐ 미시작 |
@@ -1159,11 +1171,11 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 |------|--------|
 | 전체 세션 | 30 |
 | 완료 | 9 |
-| 진행 중 | 1 (B-10-a 완료, B-10-b 대기) |
-| 미시작 | 20 |
-| 발견된 문제 | 59 |
-| 해결된 문제 | 51 |
-| 보류된 문제 | 0 |
+| 진행 중 | 2 (B-10-a 완료/B-10-b 대기, B-11-a 완료/B-11-b 대기) |
+| 미시작 | 19 |
+| 발견된 문제 | 71 |
+| 해결된 문제 | 59 |
+| 보류된 문제 | 4 (B11-08~11, B-11-b 대기) |
 
 ---
 

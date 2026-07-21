@@ -20,6 +20,15 @@ from backend.app.services.core_queues import (
     get_broadcast_queue,
     get_control_queue,
 )
+# 틱 핸들러·코얼레싱 — 분리 모듈 (P24 단순성). pipeline_compute 전역(state/수신세트/플래그)을
+# 지연 import로 참조하므로 테스트 patch("...pipeline_compute.state") 경로가 유효.
+from backend.app.pipelines.pipeline_compute_tick_handlers import (
+    _coalesce_batch,
+    _handle_real_0j_tick,
+    _handle_real_01_tick,
+    _handle_real_0d_tick,
+    _handle_real_pgm_tick,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +202,15 @@ async def start_compute_loop() -> None:
     _compute_running = True
 
     _compute_task = asyncio.get_running_loop().create_task(_compute_loop_impl())
+    _compute_task.add_done_callback(
+        lambda t: logger.warning("[연산] compute 루프 작업 실패: %s", t.exception())
+        if t.exception() else None
+    )
     _sector_recompute_task = asyncio.get_running_loop().create_task(_sector_recompute_loop_impl(get_broadcast_queue()))
+    _sector_recompute_task.add_done_callback(
+        lambda t: logger.warning("[연산] 업종 재계산 루프 작업 실패: %s", t.exception())
+        if t.exception() else None
+    )
 
 
 async def stop_compute_loop() -> None:
@@ -220,59 +237,37 @@ async def stop_compute_loop() -> None:
 _BATCH_MAX = 500
 
 
-def _coalesce_batch(batch: list) -> list:
-    """배치 내 동일 종목 01 틱 코얼레싱 — 최신 데이터만 유지.
+async def _drain_control_queue(control_queue: asyncio.Queue, broadcast_queue: asyncio.Queue) -> None:
+    """control_queue non-blocking 드레인 — 모든 제어 신호를 즉시 처리."""
+    while True:
+        try:
+            _, _, control_signal = control_queue.get_nowait()
+        except asyncio.QueueEmpty:
+            break
+        await _process_control_signal(control_signal, broadcast_queue)
+        control_queue.task_done()
 
-    01(체결) 타입 틱은 동일 종목코드에 대해 최신 1개만 처리.
-    0d, 0j, PGM 등 다른 타입은 모두 유지.
-    """
-    from backend.app.services.engine_ws_parsing import _normalize_real_type
 
-    _latest_01_by_code: dict[str, dict] = {}
-    other_queue_items: list[dict] = []
+async def _process_tick_batch(batch: list, broadcast_queue: asyncio.Queue) -> None:
+    """배치 처리 + 계좌 전송 디바운스 — 코얼레싱 후 이벤트별 처리 + 1회 계좌 전송."""
+    coalesced = _coalesce_batch(batch)
 
-    for queue_item in batch:
-        if not isinstance(queue_item, dict):
-            other_queue_items.append(queue_item)
-            continue
+    _account_broadcast_dirty = False
+    for event in coalesced:
+        try:
+            _hit = await _process_tick_data(event, broadcast_queue)
+            if _hit:
+                _account_broadcast_dirty = True
+        except Exception as e:
+            logger.error("[연산] 이벤트 처리 오류 (계속): %s", e, exc_info=True)
 
-        trnm = queue_item.get("trnm")
-        if trnm != "REAL":
-            other_queue_items.append(queue_item)
-            continue
-
-        real_data = queue_item.get("data")
-        if isinstance(real_data, list):
-            items = real_data
-        elif isinstance(real_data, dict):
-            items = [real_data]
-        else:
-            items = []
-
-        remaining_items = []
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            msg_type = item.get("type")
-            norm_type = _normalize_real_type(msg_type)
-
-            if norm_type == "01":
-                code = str(item.get("code") or item.get("item") or "").strip()
-                if code:
-                    _latest_01_by_code[code] = item
-                else:
-                    remaining_items.append(item)
-            else:
-                remaining_items.append(item)
-
-        if remaining_items:
-            other_queue_items.append({"trnm": "REAL", "data": remaining_items})
-
-    result = other_queue_items
-    if _latest_01_by_code:
-        result.append({"trnm": "REAL", "data": list(_latest_01_by_code.values())})
-
-    return result
+    if _account_broadcast_dirty:
+        try:
+            from backend.app.services import engine_account
+            await engine_account._refresh_account_snapshot_meta()
+            await engine_account._broadcast_account(reason="price_tick_batch")
+        except Exception as e:
+            logger.error("[연산] 배치 계좌 전송 실패: %s", e, exc_info=True)
 
 
 async def _compute_loop_impl() -> None:
@@ -291,14 +286,7 @@ async def _compute_loop_impl() -> None:
                 except asyncio.TimeoutError:
                     data = None
 
-                # control_queue non-blocking 드레인
-                while True:
-                    try:
-                        _, _, control_signal = control_queue.get_nowait()
-                    except asyncio.QueueEmpty:
-                        break
-                    await _process_control_signal(control_signal, broadcast_queue)
-                    control_queue.task_done()
+                await _drain_control_queue(control_queue, broadcast_queue)
 
                 # tick_queue 데이터 처리
                 if data is not None:
@@ -314,27 +302,7 @@ async def _compute_loop_impl() -> None:
                         except asyncio.QueueEmpty:
                             break
 
-                    # 동일 종목 01 틱 코얼레싱 — 최신 데이터만 유지
-                    coalesced = _coalesce_batch(batch)
-
-                    # 배치 처리 + 계좌 전송 디바운스
-                    _account_broadcast_dirty = False
-                    for event in coalesced:
-                        try:
-                            _hit = await _process_tick_data(event, broadcast_queue)
-                            if _hit:
-                                _account_broadcast_dirty = True
-                        except Exception as e:
-                            logger.error("[연산] 이벤트 처리 오류 (계속): %s", e, exc_info=True)
-
-                    # 배치 후 계좌 전송 1회 실행
-                    if _account_broadcast_dirty:
-                        try:
-                            from backend.app.services import engine_account
-                            await engine_account._refresh_account_snapshot_meta()
-                            await engine_account._broadcast_account(reason="price_tick_batch")
-                        except Exception as e:
-                            logger.error("[연산] 배치 계좌 전송 실패: %s", e, exc_info=True)
+                    await _process_tick_batch(batch, broadcast_queue)
 
                 # P0-1: 틱 폭주 시 이벤트 루프 고갈 방지 - 협력적 멀티태스킹 (Yielding)
                 await asyncio.sleep(0)
@@ -344,6 +312,42 @@ async def _compute_loop_impl() -> None:
                 logger.error("[연산] 처리 오류 (계속): %s", e, exc_info=True)
     finally:
         _compute_running = False
+
+
+async def _handle_dynamic_reg(payload: dict) -> None:
+    """DYNAMIC_REG 제어 신호 처리 — 동적 구독 요청 + _subscribed_dynamic 플래그 갱신 (P10 SSOT, P22 정합성)."""
+    from backend.app.services.engine_ws import subscribe_dynamic_data
+    from backend.app.services.engine_state import state
+    from backend.app.services.engine_sector_confirm import _PENDING_REG_CODES
+
+    codes = payload.get("codes", [])
+    ok = await subscribe_dynamic_data(codes)
+    if ok:
+        # 구독 성공 — _subscribed_dynamic 플래그 설정 (단일 진실 소스, P10 SSOT, P22 정합성)
+        for cd in codes:
+            if cd in state.master_stocks_cache:
+                state.master_stocks_cache[cd]["_subscribed_dynamic"] = True
+        # 대기 세트에서 제거 — 실제 구독 완료되었으므로
+        _PENDING_REG_CODES.difference_update(codes)
+    else:
+        # 구독 실패 — _subscribed_dynamic 미설정, _PENDING_REG_CODES 유지하여 재시도 가능 (P22)
+        logger.warning("[연산] 동적 구독 실패 — %d종목 대기 세트 유지 (재시도 대상)", len(codes))
+
+
+async def _handle_dynamic_unreg(payload: dict) -> None:
+    """DYNAMIC_UNREG 제어 신호 처리 — 동적 구독 해지 + _subscribed_dynamic 플래그 제거."""
+    from backend.app.services.engine_ws import unsubscribe_dynamic_data
+    from backend.app.services.engine_state import state
+    from backend.app.services.engine_sector_confirm import _PENDING_REG_CODES
+
+    codes = payload.get("codes", [])
+    await unsubscribe_dynamic_data(codes)
+    # _subscribed_dynamic 플래그 제거
+    for cd in codes:
+        if cd in state.master_stocks_cache:
+            state.master_stocks_cache[cd].pop("_subscribed_dynamic", None)
+    # 대기 세트에서도 제거 — 해지된 종목이 대기 중이었을 수 있음
+    _PENDING_REG_CODES.difference_update(codes)
 
 
 async def _process_control_signal(
@@ -374,33 +378,9 @@ async def _process_control_signal(
                 from backend.app.services.engine_sector_confirm import request_sector_recompute
                 request_sector_recompute(code)
         elif signal_type == "DYNAMIC_REG":
-            from backend.app.services.engine_ws import subscribe_dynamic_data
-            from backend.app.services.engine_state import state
-            from backend.app.services.engine_sector_confirm import _PENDING_REG_CODES
-            codes = payload.get("codes", [])
-            ok = await subscribe_dynamic_data(codes)
-            if ok:
-                # 구독 성공 — _subscribed_dynamic 플래그 설정 (단일 진실 소스, P10 SSOT, P22 정합성)
-                for cd in codes:
-                    if cd in state.master_stocks_cache:
-                        state.master_stocks_cache[cd]["_subscribed_dynamic"] = True
-                # 대기 세트에서 제거 — 실제 구독 완료되었으므로
-                _PENDING_REG_CODES.difference_update(codes)
-            else:
-                # 구독 실패 — _subscribed_dynamic 미설정, _PENDING_REG_CODES 유지하여 재시도 가능 (P22)
-                logger.warning("[연산] 동적 구독 실패 — %d종목 대기 세트 유지 (재시도 대상)", len(codes))
+            await _handle_dynamic_reg(payload)
         elif signal_type == "DYNAMIC_UNREG":
-            from backend.app.services.engine_ws import unsubscribe_dynamic_data
-            from backend.app.services.engine_state import state
-            from backend.app.services.engine_sector_confirm import _PENDING_REG_CODES
-            codes = payload.get("codes", [])
-            await unsubscribe_dynamic_data(codes)
-            # _subscribed_dynamic 플래그 제거
-            for cd in codes:
-                if cd in state.master_stocks_cache:
-                    state.master_stocks_cache[cd].pop("_subscribed_dynamic", None)
-            # 대기 세트에서도 제거 — 해지된 종목이 대기 중이었을 수 있음
-            _PENDING_REG_CODES.difference_update(codes)
+            await _handle_dynamic_unreg(payload)
         else:
             logger.warning("[연산] 알 수 없는 제어 신호: %s", signal_type)
 
@@ -470,6 +450,57 @@ async def _process_tick_data(
     return False
 
 
+def _extract_real_items(real_data) -> list:
+    """REAL 틱의 data 필드를 아이템 리스트로 정규화 (list/dict/기타 → list)."""
+    if isinstance(real_data, list):
+        return real_data
+    if isinstance(real_data, dict):
+        return [real_data]
+    return []
+
+
+async def _dispatch_real_item(item: dict, broadcast_queue: asyncio.Queue) -> bool:
+    """단일 REAL 아이템을 타입별 leaf 핸들러로 분배.
+
+    Returns: 보유종목 가격 갱신 발생 여부 (01 체결 틱만 True).
+    """
+    from backend.app.services.engine_ws_parsing import _normalize_real_type
+
+    msg_type = item.get("type")
+    norm_type = _normalize_real_type(msg_type)
+
+    vals = item.get("values", {})
+    if not isinstance(vals, dict):
+        vals = {}
+
+    # 0B/01 체결 처리 (주식 현재가)
+    if norm_type == "01":
+        return await _handle_real_01_tick(item, vals, broadcast_queue)
+    # 00 주문체결 처리 (자동매매 체결 콜백 + 잔고 갱신)
+    if norm_type == "00":
+        from backend.app.services.engine_ws_dispatch import _handle_real_00
+        await _handle_real_00(item, vals)
+        return False
+    # 04/80 잔고 처리 (실시간 잔고 변동 반영)
+    if norm_type in ("04", "80"):
+        from backend.app.services.engine_ws_dispatch import _handle_real_balance
+        await _handle_real_balance(item, vals)
+        return False
+    # 0D 호가 처리 (호가 잔량 테이블)
+    if norm_type == "0d":
+        await _handle_real_0d_tick(item, vals, broadcast_queue)
+        return False
+    # 0J 업종지수 처리 (즉시 전송, 저장 없음)
+    if norm_type == "0j":
+        await _handle_real_0j_tick(item, vals)
+        return False
+    # PGM 프로그램 순매수 처리 (커스텀 타입)
+    if norm_type == "PGM":
+        await _handle_real_pgm_tick(item, vals, broadcast_queue)
+        return False
+    return False
+
+
 async def _handle_real_tick(
     data: dict,
     broadcast_queue: asyncio.Queue,
@@ -477,264 +508,154 @@ async def _handle_real_tick(
     """
     REAL 틱 데이터 처리.
 
-    Args:
-        data: REAL 틱 데이터
-        broadcast_queue: UI 전송 큐
-
-    Returns:
-        True if 보유종목 가격 갱신 발생 (계좌 전송 필요), False otherwise.
+    Returns: 보유종목 가격 갱신 발생 시 True (계좌 전송 필요).
     """
     _account_dirty = False
-    # engine_service._apply_real01_volume_amount_to_radar_rows 이관
-    # 실제 연산 로직은 engine_service 모듈의 전역 변수에 접근하여 수행
     try:
-        # 틱 데이터 파싱
-        real_data = data.get("data")
-        if isinstance(real_data, list):
-            items = real_data
-        elif isinstance(real_data, dict):
-            items = [real_data]
-        else:
-            items = []
-
+        items = _extract_real_items(data.get("data"))
         for item in items:
             if not isinstance(item, dict):
                 continue
-
-            # 틱 타입 확인 및 정규화 (호가잔량 "0d", 체결 "01" 등)
-            msg_type = item.get("type")
-            from backend.app.services.engine_ws_parsing import _normalize_real_type
-            norm_type = _normalize_real_type(msg_type)
-            
-            vals = item.get("values", {})
-            if not isinstance(vals, dict):
-                vals = {}
-
-            # 0B/01 체결 처리 (주식 현재가)
-            if norm_type == "01":
-                _hit = await _handle_real_01_tick(item, vals, broadcast_queue)
-                if _hit:
-                    _account_dirty = True
-            # 00 주문체결 처리 (자동매매 체결 콜백 + 잔고 갱신)
-            elif norm_type == "00":
-                from backend.app.services.engine_ws_dispatch import _handle_real_00
-                await _handle_real_00(item, vals)
-            # 04/80 잔고 처리 (실시간 잔고 변동 반영)
-            elif norm_type in ("04", "80"):
-                from backend.app.services.engine_ws_dispatch import _handle_real_balance
-                await _handle_real_balance(item, vals)
-            # 0D 호가 처리 (호가 잔량 테이블)
-            elif norm_type == "0d":
-                await _handle_real_0d_tick(item, vals, broadcast_queue)
-            # 0J 업종지수 처리 (즉시 전송, 저장 없음)
-            elif norm_type == "0j":
-                await _handle_real_0j_tick(item, vals)
-            # PGM 프로그램 순매수 처리 (커스텀 타입)
-            elif norm_type == "PGM":
-                await _handle_real_pgm_tick(item, vals, broadcast_queue)
-
+            _hit = await _dispatch_real_item(item, broadcast_queue)
+            if _hit:
+                _account_dirty = True
     except Exception as e:
         logger.error("[연산] 실시간 틱 처리 오류: %s", e, exc_info=True)
     return _account_dirty
 
 
-async def _handle_real_0j_tick(item: dict, vals: dict) -> None:
-    """0J 업종지수 틱 처리 — 저장 없이 즉시 화면에 전송."""
-    upcode = str(item.get("item", "") or "").strip()
-    if not upcode:
-        return
-    jisu = str(vals.get("10", "") or "").strip()
-    change = str(vals.get("11", "") or "").strip()
-    drate = str(vals.get("12", "") or "").strip()
-    sign = str(vals.get("25", "") or "").strip()
-    if not jisu:
-        return
-    from backend.app.services.engine_account_notify import notify_index_data
-    await notify_index_data(upcode, jisu, change, drate, sign)
+def _evaluate_threshold(threshold_pct: float) -> tuple[bool, bool]:
+    """임계값 판정 — 시간대별 분기 정책 (옵션 C, P21 사용자 투명성).
 
-
-async def _handle_real_01_tick(
-    item: dict,
-    vals: dict,
-    broadcast_queue: asyncio.Queue,
-) -> bool:
+    Returns: (threshold_met, skip_this_round)
+      - threshold_met: 임계값 통과 여부 (True 시 Phase 1 → Phase 2 전환)
+      - skip_this_round: 이번 라운드 건너뜀 (종목 0건 등 비활성 상태)
     """
-    0B/01 체결 틱 처리.
+    from backend.app.services.daily_time_scheduler import is_nxt_only_window
 
-    Args:
-        item: 틱 아이템
-        vals: 틱 값
-        broadcast_queue: UI 전송 큐
+    krx_rate = _current_receive_rate["krx"]
+    nxt_rate = _current_receive_rate["nxt"]
+    krx_pct = krx_rate["pct"]
+    nxt_pct = nxt_rate["pct"]
+    krx_received = krx_rate["received"]
+    krx_total = krx_rate["total"]
+    nxt_received = nxt_rate["received"]
+    nxt_total = nxt_rate["total"]
 
-    Returns:
-        True if 보유종목 가격 갱신 발생 (계좌 전송 필요), False otherwise.
+    # 비-WS 구간: 양쪽 모두 확정 데이터 → 100% 산출 → 즉시 통과
+    # WS 구간: 시간대별 분기 정책 (옵션 C)
+    if is_nxt_only_window():
+        # NXT-only 구간: NXT 수신률만 기준
+        if nxt_total == 0 or nxt_received == 0:
+            return False, True
+        return nxt_pct >= threshold_pct, False
+    # 정규장 또는 비-WS 구간: KRX/NXT 양쪽 모두 임계값 도달 (AND)
+    # 비-WS 구간은 양쪽 모두 100%이므로 자연스럽게 통과
+    if krx_total == 0 or nxt_total == 0:
+        # 한쪽이라도 종목이 없으면 통과 불가 (비-WS 구간 제외 — 양쪽 모두 100%)
+        # 단, 양쪽 모두 total=0인 빈 캐시 상태는 스킵
+        # 한쪽만 0인 경우 — 비정상 상황이므로 대기
+        return False, True
+    if krx_received == 0 and nxt_received == 0:
+        return False, True
+    return krx_pct >= threshold_pct and nxt_pct >= threshold_pct, False
+
+
+async def _phase1_wait_threshold() -> None:
+    """Phase 1: 실시간데이터 필드 수신율 임계값 대기 (1회성 스타트업 게이트).
+
+    항상 master_stocks_cache의 change_rate, trade_amount 필드 기반으로 수신율 계산.
+    WS 구독 시작 시 _reset_realtime_fields()가 필드를 None으로 초기화하므로
+    비-WS 구간(확정 데이터 있음)은 100%로 즉시 통과, WS 구간은 0%에서 틱 수신시 상승.
+
+    임계값 게이트 정책 — 옵션 C (시간대별 분기, P21 사용자 투명성):
+    - NXT-only 구간(08:00~08:50, 15:40~20:00): NXT 수신률만 기준
+    - 정규장(09:00~15:20): KRX/NXT 양쪽 모두 임계값 도달 시 (AND)
+    - 비-WS 구간: 확정 데이터 기반이므로 양쪽 모두 100% → 즉시 통과
     """
-    global _received_codes_krx, _received_codes_nxt, _receive_rate_dirty
+    from backend.app.services.engine_sector_confirm import request_sector_recompute
 
-    _price_hit = False
-    _ts = int(time.time() * 1000)
-    try:
-        from backend.app.services.engine_symbol_utils import _real_item_stk_cd, _base_stk_cd
-        from backend.app.services.engine_ws_parsing import (
-            _parse_fid10_price,
-            parse_change_rate_to_percent,
-            _ws_fid_int,
-            _ws_fid_key_present,
-            _ws_fid_raw,
-        )
-        from backend.app.services.auto_trading_effective import auto_sell_effective
-        from backend.app.core.trade_mode import is_test_mode
-        from backend.app.services import dry_run
-        from backend.app.services.engine_account_rest import (
-            apply_last_price_to_positions_inplace,
-            recalc_broker_totals_from_positions,
-        )
-        raw_cd = _real_item_stk_cd(item, vals)
-        if not raw_cd:
-            return False
-
-        nk_px = _base_stk_cd(raw_cd)
-        last_px = _parse_fid10_price(vals)
-        is_0b_tick = str(item.get("type", "")).strip().upper() in ("0B", "01")
-
-        if not nk_px or last_px <= 0:
-            _check_realtime_latency(_ts)
-            return False
-
-        # ── 1. 화면으로 실시간 틱 데이터 전송 ──
-        item["item"] = raw_cd
-        item["_ts"] = _ts
+    phase1_completed = False
+    _prev_krx_received = -1
+    _prev_nxt_received = -1
+    while _compute_running and not phase1_completed:
         try:
-            broadcast_queue.put_nowait({"type": "real-data", "data": item})
-        except asyncio.QueueFull:
-            logger.warning("[연산] 전송 큐 가득 참 — 화면 데이터 누락 (종목코드=%s)", raw_cd)
+            await asyncio.sleep(1.0)
 
-        # ── 2. 레이더 행 갱신 + 업종 점수 증분 재계산 트리거 ──
-        if is_0b_tick and any(f in vals for f in ("10", "11", "12", "14", "17", "228")):
-            from backend.app.services.engine_radar import _apply_real01_volume_amount_to_radar_rows
-            _apply_real01_volume_amount_to_radar_rows(raw_cd, vals, is_0b_tick=is_0b_tick)
-            if nk_px:
-                from backend.app.services.engine_sector_confirm import request_sector_recompute
-                from backend.app.services.engine_symbol_utils import is_nxt_enabled
-                request_sector_recompute(nk_px)
-                # KRX/NXT 분리 수신 세트 추가 (P10 SSOT — nxt_enable 필드 기반, P23 일관성)
-                if is_nxt_enabled(nk_px):
-                    _received_codes_nxt.add(nk_px)
-                else:
-                    _received_codes_krx.add(nk_px)
-                _receive_rate_dirty = True
+            await _calculate_receive_rate()
+            threshold_pct = float(state.integrated_system_settings_cache["sector_start_threshold_pct"])
+            krx_rate = _current_receive_rate["krx"]
+            nxt_rate = _current_receive_rate["nxt"]
+            krx_received = krx_rate["received"]
+            krx_total = krx_rate["total"]
+            nxt_received = nxt_rate["received"]
+            nxt_total = nxt_rate["total"]
+            krx_pct = krx_rate["pct"]
+            nxt_pct = nxt_rate["pct"]
 
-        # ── 3. 보유종목 현재가 반영 — 평가손익·수익률 실시간 재계산 ──
-        _raw11 = _ws_fid_raw(vals, "11")
-        diff = _ws_fid_int(vals, "11") if _raw11 is not None and str(_raw11).strip() and str(_raw11).strip() != "-" else None
-        _raw12 = _ws_fid_raw(vals, "12")
-        rate = parse_change_rate_to_percent(_raw12) if _raw12 is not None and str(_raw12).strip() else None
-        _price_hit = False
-        if is_test_mode(state.integrated_system_settings_cache):
-            _price_hit = await dry_run.update_price(nk_px, last_px)
-            if _price_hit:
-                _dr_pos = await dry_run.get_position(nk_px)
-                if _dr_pos:
-                    _dr_pos["change"] = diff
-                    _dr_pos["change_rate"] = rate
-        else:
-            _price_hit = apply_last_price_to_positions_inplace(state.positions, raw_cd, last_px)
-            if _price_hit:
-                state.broker_rest_totals = recalc_broker_totals_from_positions(
-                    state.positions, state.broker_rest_totals
+            threshold_met, skip = _evaluate_threshold(threshold_pct)
+            if skip:
+                continue
+
+            if threshold_met:
+                logger.info(
+                    "[연산] 실시간데이터 수신율 임계값 통과 (KRX: %.1f%%, NXT: %.1f%%, 임계값: %.1f%%). 업종순위 계산을 시작합니다.",
+                    krx_pct, nxt_pct, threshold_pct
                 )
-
-        # ── 4. 자동매도 조건 체크 ──
-        if _price_hit and state.auto_trade and auto_sell_effective(state.integrated_system_settings_cache) and state.access_token:
-            if is_test_mode(state.integrated_system_settings_cache):
-                _pos = await dry_run.get_position(nk_px)
-                if _pos:
-                    await state.auto_trade.check_sell_conditions([_pos], state.integrated_system_settings_cache, state.access_token)
+                mark_sector_threshold_passed()
+                request_sector_recompute(None)  # 콜드 스타트 1회 전체 재계산
+                phase1_completed = True
             else:
-                _matched = [p for p in state.positions if _base_stk_cd(str(p.get("stk_cd", "") or "")) == nk_px]
-                if _matched:
-                    await state.auto_trade.check_sell_conditions(_matched, state.integrated_system_settings_cache, state.access_token)
+                # 수신율 전송 (단일 진입점)
+                await _send_receive_rate(_current_receive_rate)
+                # 수신 종목 수 증가 시에만 로그 출력 (P21 사용자 투명성)
+                if krx_received != _prev_krx_received or nxt_received != _prev_nxt_received:
+                    logger.info(
+                        "[연산] 수신율 갱신 — KRX: %d/%d (%.1f%%), NXT: %d/%d (%.1f%%) — 임계값 대기 중 (%.1f%%)",
+                        krx_received, krx_total, krx_pct,
+                        nxt_received, nxt_total, nxt_pct,
+                        threshold_pct
+                    )
+                    _prev_krx_received = krx_received
+                    _prev_nxt_received = nxt_received
 
-        # ── 5. 지연 측정 ──
-        _check_realtime_latency(_ts)
-
-    except Exception as e:
-        logger.error("[연산] 체결 틱(0B/01) 처리 오류: %s", e, exc_info=True)
-    return _price_hit
-
-
-async def _handle_real_0d_tick(
-    item: dict,
-    vals: dict,
-    broadcast_queue: asyncio.Queue,
-) -> None:
-    """
-    0D 호가 틱 처리 (호가 잔량 테이블).
-
-    Args:
-        item: 틱 아이템
-        vals: 틱 값
-        broadcast_queue: UI 전송 큐
-    """
-    try:
-        from backend.app.services.engine_symbol_utils import _real_item_stk_cd, _base_stk_cd
-        from backend.app.services.engine_ws_parsing import _ws_fid_int
-        from backend.app.services.engine_account_notify import notify_orderbook_update
-
-        # 종목코드 추출
-        raw_cd = _real_item_stk_cd(item, vals)
-        if not raw_cd:
-            return
-
-        nk = _base_stk_cd(raw_cd)
-        bid = _ws_fid_int(vals, "125", 0)  # 총 매수호가잔량
-        ask = _ws_fid_int(vals, "121", 0)  # 총 매도호가잔량
-
-        if bid < 0 or ask < 0:
-            return
-
-        # 매수 후보 종목이면 호가잔량비 변경을 프론트에 즉시 전송
-        cache_entry = state.master_stocks_cache.get(nk, {})
-        if cache_entry.get("_subscribed_dynamic", False):
-            cache_entry["order_ratio"] = [bid, ask]
-            await notify_orderbook_update(nk, bid, ask)
-
-    except Exception as e:
-        logger.error("[연산] 호가 틱(0D) 처리 오류: %s", e, exc_info=True)
+        except Exception as e:
+            logger.error("[연산] 수신율 체크 오류: %s", e, exc_info=True)
 
 
-async def _handle_real_pgm_tick(
-    item: dict,
-    vals: dict,
-    broadcast_queue: asyncio.Queue,
-) -> None:
-    """
-    PGM 프로그램 순매수 틱 처리.
-    """
-    try:
-        from backend.app.services.engine_symbol_utils import _real_item_stk_cd, _base_stk_cd
-        from backend.app.services.engine_account_notify import notify_program_update
+async def _phase2_batch_recompute_loop() -> None:
+    """Phase 2: 0.2초 배치 재계산 루프 (틱 기반 증분 재계산)."""
+    global _receive_rate_dirty
+    from backend.app.services.engine_sector_confirm import has_dirty_sectors, _flush_sector_recompute_impl
+    from backend.app.services.engine_account_notify import notify_desktop_sector_scores
 
-        # 종목코드 추출
-        raw_cd = _real_item_stk_cd(item, vals)
-        if not raw_cd:
-            return
+    _prev_p2_krx_received = _current_receive_rate["krx"]["received"]
+    _prev_p2_nxt_received = _current_receive_rate["nxt"]["received"]
+    while _compute_running:
+        await asyncio.sleep(0.2)
 
-        nk = _base_stk_cd(raw_cd)
-        tval_str = vals.get("tval", "0")
-        try:
-            tval = int(tval_str)
-        except ValueError:
-            tval = 0
+        # 수신율 계산 및 전송 (변경 시에만) — per-tick O(n) 계산 제거, 배치 처리
+        if _receive_rate_dirty:
+            await _calculate_receive_rate()
+            await _send_receive_rate(get_current_receive_rate())
+            _receive_rate_dirty = False
+            # 수신 종목 수 증가 시에만 로그 출력 (P21 사용자 투명성)
+            _p2_krx_received = _current_receive_rate["krx"]["received"]
+            _p2_nxt_received = _current_receive_rate["nxt"]["received"]
+            if _p2_krx_received != _prev_p2_krx_received or _p2_nxt_received != _prev_p2_nxt_received:
+                logger.info(
+                    "[연산] 수신율 갱신 — KRX: %d/%d (%.1f%%), NXT: %d/%d (%.1f%%)",
+                    _p2_krx_received, _current_receive_rate["krx"]["total"], _current_receive_rate["krx"]["pct"],
+                    _p2_nxt_received, _current_receive_rate["nxt"]["total"], _current_receive_rate["nxt"]["pct"]
+                )
+                _prev_p2_krx_received = _p2_krx_received
+                _prev_p2_nxt_received = _p2_nxt_received
 
-        # 매수 후보 종목이면 프로그램 순매수 변경을 프론트에 즉시 전송
-        cache_entry = state.master_stocks_cache.get(nk, {})
-        if cache_entry.get("_subscribed_dynamic", False):
-            cache_entry["program_net_buy"] = tval
-            await notify_program_update(nk, tval)
+        # sector-scores 전송 (delta — 변경된 업종만)
+        await notify_desktop_sector_scores(force=False)
 
-    except Exception as e:
-        logger.error("[연산] 프로그램 순매수 틱(PGM) 처리 오류: %s", e, exc_info=True)
+        if has_dirty_sectors():
+            await _flush_sector_recompute_impl()
 
 
 async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
@@ -744,120 +665,10 @@ async def _sector_recompute_loop_impl(broadcast_queue: asyncio.Queue) -> None:
     Phase 1 (1회): 실시간데이터 필드 수신율 임계값 대기 — 통과 후 Phase 2로 전환
     Phase 2: 0.2초 배치 재계산 루프 (틱 기반 증분 재계산)
     """
-    from backend.app.services.engine_sector_confirm import request_sector_recompute
-    global _compute_running, _receive_rate_dirty
+    global _compute_running
     try:
-        # Phase 1: 실시간데이터 필드 수신율 임계값 대기 (1회성 스타트업 게이트)
-        # 항상 master_stocks_cache의 change_rate, trade_amount 필드 기반으로 수신율 계산.
-        # WS 구독 시작 시 _reset_realtime_fields()가 필드를 None으로 초기화하므로
-        # 비-WS 구간(확정 데이터 있음)은 100%로 즉시 통과, WS 구간은 0%에서 틱 수신시 상승.
-        #
-        # 임계값 게이트 정책 — 옵션 C (시간대별 분기, P21 사용자 투명성):
-        # - NXT-only 구간(08:00~08:50, 15:40~20:00): NXT 수신률만 기준
-        # - 정규장(09:00~15:20): KRX/NXT 양쪽 모두 임계값 도달 시 (AND)
-        # - 비-WS 구간: 확정 데이터 기반이므로 양쪽 모두 100% → 즉시 통과
-        from backend.app.services.daily_time_scheduler import is_nxt_only_window
-        phase1_completed = False
-        _prev_krx_received = -1
-        _prev_nxt_received = -1
-        while _compute_running and not phase1_completed:
-            try:
-                await asyncio.sleep(1.0)
-
-                await _calculate_receive_rate()
-                threshold_pct = float(state.integrated_system_settings_cache["sector_start_threshold_pct"])
-                krx_rate = _current_receive_rate["krx"]
-                nxt_rate = _current_receive_rate["nxt"]
-                krx_pct = krx_rate["pct"]
-                nxt_pct = nxt_rate["pct"]
-                krx_received = krx_rate["received"]
-                krx_total = krx_rate["total"]
-                nxt_received = nxt_rate["received"]
-                nxt_total = nxt_rate["total"]
-
-                # 비-WS 구간: 양쪽 모두 확정 데이터 → 100% 산출 → 즉시 통과
-                # WS 구간: 시간대별 분기 정책 (옵션 C)
-                if is_nxt_only_window():
-                    # NXT-only 구간: NXT 수신률만 기준
-                    if nxt_total == 0 or nxt_received == 0:
-                        continue
-                    threshold_met = nxt_pct >= threshold_pct
-                    active_pct = nxt_pct
-                    active_received = nxt_received
-                    active_total = nxt_total
-                else:
-                    # 정규장 또는 비-WS 구간: KRX/NXT 양쪽 모두 임계값 도달 (AND)
-                    # 비-WS 구간은 양쪽 모두 100%이므로 자연스럽게 통과
-                    if krx_total == 0 or nxt_total == 0:
-                        # 한쪽이라도 종목이 없으면 통과 불가 (비-WS 구간 제외 — 양쪽 모두 100%)
-                        # 단, 양쪽 모두 total=0인 빈 캐시 상태는 스킵
-                        if krx_total == 0 and nxt_total == 0:
-                            continue
-                        # 한쪽만 0인 경우 — 비정상 상황이므로 대기
-                        continue
-                    if krx_received == 0 and nxt_received == 0:
-                        continue
-                    threshold_met = krx_pct >= threshold_pct and nxt_pct >= threshold_pct
-                    active_pct = min(krx_pct, nxt_pct)
-                    active_received = krx_received + nxt_received
-                    active_total = krx_total + nxt_total
-
-                if threshold_met:
-                    logger.info(
-                        "[연산] 실시간데이터 수신율 임계값 통과 (KRX: %.1f%%, NXT: %.1f%%, 임계값: %.1f%%). 업종순위 계산을 시작합니다.",
-                        krx_pct, nxt_pct, threshold_pct
-                    )
-                    mark_sector_threshold_passed()
-                    request_sector_recompute(None)  # 콜드 스타트 1회 전체 재계산
-                    phase1_completed = True
-                else:
-                    # 수신율 전송 (단일 진입점)
-                    await _send_receive_rate(_current_receive_rate)
-                    # 수신 종목 수 증가 시에만 로그 출력 (P21 사용자 투명성)
-                    if krx_received != _prev_krx_received or nxt_received != _prev_nxt_received:
-                        logger.info(
-                            "[연산] 수신율 갱신 — KRX: %d/%d (%.1f%%), NXT: %d/%d (%.1f%%) — 임계값 대기 중 (%.1f%%)",
-                            krx_received, krx_total, krx_pct,
-                            nxt_received, nxt_total, nxt_pct,
-                            threshold_pct
-                        )
-                        _prev_krx_received = krx_received
-                        _prev_nxt_received = nxt_received
-
-            except Exception as e:
-                logger.error("[연산] 수신율 체크 오류: %s", e, exc_info=True)
-
-        # Phase 2: 0.2초 배치 재계산 루프
-        from backend.app.services.engine_sector_confirm import has_dirty_sectors, _flush_sector_recompute_impl
-        _prev_p2_krx_received = _current_receive_rate["krx"]["received"]
-        _prev_p2_nxt_received = _current_receive_rate["nxt"]["received"]
-        while _compute_running:
-            await asyncio.sleep(0.2)
-
-            # 수신율 계산 및 전송 (변경 시에만) — per-tick O(n) 계산 제거, 배치 처리
-            if _receive_rate_dirty:
-                await _calculate_receive_rate()
-                await _send_receive_rate(get_current_receive_rate())
-                _receive_rate_dirty = False
-                # 수신 종목 수 증가 시에만 로그 출력 (P21 사용자 투명성)
-                _p2_krx_received = _current_receive_rate["krx"]["received"]
-                _p2_nxt_received = _current_receive_rate["nxt"]["received"]
-                if _p2_krx_received != _prev_p2_krx_received or _p2_nxt_received != _prev_p2_nxt_received:
-                    logger.info(
-                        "[연산] 수신율 갱신 — KRX: %d/%d (%.1f%%), NXT: %d/%d (%.1f%%)",
-                        _p2_krx_received, _current_receive_rate["krx"]["total"], _current_receive_rate["krx"]["pct"],
-                        _p2_nxt_received, _current_receive_rate["nxt"]["total"], _current_receive_rate["nxt"]["pct"]
-                    )
-                    _prev_p2_krx_received = _p2_krx_received
-                    _prev_p2_nxt_received = _p2_nxt_received
-
-            # sector-scores 전송 (delta — 변경된 업종만)
-            from backend.app.services.engine_account_notify import notify_desktop_sector_scores
-            await notify_desktop_sector_scores(force=False)
-
-            if has_dirty_sectors():
-                await _flush_sector_recompute_impl()
-
+        await _phase1_wait_threshold()
+        await _phase2_batch_recompute_loop()
     except asyncio.CancelledError:
         logger.info("[연산] 백그라운드 업종 점수 재계산 반복 취소됨")
 
