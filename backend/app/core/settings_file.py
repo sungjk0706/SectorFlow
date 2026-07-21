@@ -154,27 +154,20 @@ async def load_selected_settings(keys: set[str]) -> dict:
     from backend.app.db.database import get_db_connection
 
     result: dict = {}
-    try:
-        conn = await get_db_connection()
-        placeholders = ",".join("?" * len(keys))
-        cursor = await conn.execute(
-            f"SELECT key, value, value_type FROM integrated_system_settings WHERE key IN ({placeholders})",
-            list(keys),
-        )
-        rows = await cursor.fetchall()
-        for row in rows:
-            key = row["key"]
-            if key.startswith("_broker_specs:") or key.startswith("broker_specs:"):
-                continue
-            result[key] = _parse_value(row["value"], row["value_type"])
-    except Exception as e:
-        logger.error("[설정] 선택 설정 로드 실패 (키=%s): %s", keys, e)
+    conn = await get_db_connection()
+    placeholders = ",".join("?" * len(keys))
+    cursor = await conn.execute(
+        f"SELECT key, value, value_type FROM integrated_system_settings WHERE key IN ({placeholders})",
+        list(keys),
+    )
+    rows = await cursor.fetchall()
+    for row in rows:
+        key = row["key"]
+        if key.startswith("_broker_specs:") or key.startswith("broker_specs:"):
+            continue
+        result[key] = _parse_value(row["value"], row["value_type"])
 
-    from backend.app.core.encryption import decrypt_value
-    for enc_field in _ENCRYPT_FIELDS:
-        v = result.get(enc_field)
-        if v and str(v).startswith("gAAAA"):
-            result[enc_field] = decrypt_value(v) or ""
+    _decrypt_encrypt_fields(result)
 
     return result
 
@@ -238,25 +231,21 @@ async def _load_db_settings() -> dict:
     from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS, DEFAULT_SYSTEM_CONFIG
 
     db_data: dict = {}
-    try:
-        conn = await get_db_connection()
-        cursor = await conn.execute("SELECT key, value, value_type FROM integrated_system_settings")
-        rows = await cursor.fetchall()
-        for row in rows:
-            key = row["key"]
-            value = row["value"]
-            value_type = row["value_type"]
-            parsed_val = _parse_value(value, value_type)
-            if key.startswith("_broker_specs:") or key.startswith("broker_specs:"):
-                broker_name = key.split(":", 1)[1]
-                if "_broker_specs" not in db_data:
-                    db_data["_broker_specs"] = {}
-                db_data["_broker_specs"][broker_name] = parsed_val
-            else:
-                db_data[key] = parsed_val
-    except Exception as e:
-        logger.error("[설정] DB 통합 설정 로드 실패: %s", e)
-        return {**DEFAULT_USER_SETTINGS, **DEFAULT_SYSTEM_CONFIG}
+    conn = await get_db_connection()
+    cursor = await conn.execute("SELECT key, value, value_type FROM integrated_system_settings")
+    rows = await cursor.fetchall()
+    for row in rows:
+        key = row["key"]
+        value = row["value"]
+        value_type = row["value_type"]
+        parsed_val = _parse_value(value, value_type)
+        if key.startswith("_broker_specs:") or key.startswith("broker_specs:"):
+            broker_name = key.split(":", 1)[1]
+            if "_broker_specs" not in db_data:
+                db_data["_broker_specs"] = {}
+            db_data["_broker_specs"][broker_name] = parsed_val
+        else:
+            db_data[key] = parsed_val
 
     for key, default_value in DEFAULT_USER_SETTINGS.items():
         if key not in db_data or db_data[key] is None:
@@ -291,12 +280,21 @@ async def _ensure_broker_specs(db_data: dict) -> None:
 
 
 def _decrypt_encrypt_fields(merged: dict) -> None:
-    """_ENCRYPT_FIELDS의 암호문(gAAAA 접두)을 복호화하여 in-place 치환."""
+    """_ENCRYPT_FIELDS의 암호문(gAAAA 접두)을 복호화하여 in-place 치환.
+    복호화 실패(None) 시 빈문자열 폴백하되 경고 로그 (P21 사용자 투명성)."""
     from backend.app.core.encryption import decrypt_value
     for enc_field in _ENCRYPT_FIELDS:
         v = merged.get(enc_field)
         if v and str(v).startswith("gAAAA"):
-            merged[enc_field] = decrypt_value(v) or ""
+            plain = decrypt_value(v)
+            if plain is None:
+                logger.warning(
+                    "[설정] %s 복호화 실패 — 빈문자열로 폴백 (사용자가 자격증명을 다시 입력해야 함). cipher 앞 10자: %s...",
+                    enc_field, str(v)[:10],
+                )
+                merged[enc_field] = ""
+            else:
+                merged[enc_field] = plain
 
 
 async def _apply_all_migrations(merged: dict, db_data: dict) -> None:
@@ -361,11 +359,23 @@ def _parse_value(value: str, value_type: str) -> Any:
         return value
 
 
+def _encrypt_field_or_raise(field: str, plain: str) -> str:
+    """암호화 필드 평문 → 암호문. 암호화 실패(Fernet 미가용/예외) 시 평문을 그대로 반환하지 않고
+    ValueError 발생 (P20 폴백 금지 + 보안: 평문 저장 차단)."""
+    from backend.app.core.encryption import encrypt_value
+    enc = encrypt_value(str(plain))
+    if enc is None or not str(enc).startswith("gAAAA"):
+        logger.error(
+            "[설정] %s 암호화 실패 — 평문 저장 차단 (P20/보안). Fernet 키 확인 필요.",
+            field, exc_info=True,
+        )
+        raise ValueError(f"암호화 실패 — 평문 저장 차단 (필드: {field})")
+    return enc
+
+
 def _collect_save_params(data: dict) -> tuple[list[tuple[str, str, str]], list[tuple[str, str, str]]]:
     """save_settings용 벌크 파라미터 수집. (bulk_params, broker_specs_params) 반환.
     암호화 필드는 평문인 경우 자동 암호화. _broker_specs dict와 _broker_specs: 접두 키는 별도 파라미터로 분리."""
-    from backend.app.core.encryption import encrypt_value
-
     bulk_params: list[tuple[str, str, str]] = []
     broker_specs_params: list[tuple[str, str, str]] = []
 
@@ -374,9 +384,7 @@ def _collect_save_params(data: dict) -> tuple[list[tuple[str, str, str]], list[t
             continue
         # 암호화 필드: 평문이면 암호화 (engine_state 캐시에서 온 복호화값 처리)
         if k in _ENCRYPT_FIELDS and v and not str(v).startswith("gAAAA"):
-            enc = encrypt_value(str(v))
-            if enc:
-                v = enc
+            v = _encrypt_field_or_raise(k, str(v))
         if k == "_broker_specs":
             if isinstance(v, dict):
                 for b_name, spec in v.items():

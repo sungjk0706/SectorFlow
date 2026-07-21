@@ -8,12 +8,16 @@ from __future__ import annotations
 
 import pytest
 import aiosqlite
+from unittest.mock import patch, AsyncMock
 
 from backend.app.db import database
 from backend.app.core.settings_file import (
     load_integrated_system_settings,
+    load_selected_settings,
     save_settings,
     update_settings,
+    _decrypt_encrypt_fields,
+    _encrypt_field_or_raise,
 )
 
 
@@ -242,3 +246,49 @@ class TestUpdateSettingsDB:
         )
         row = await cursor.fetchone()
         assert row["value"] == "ls"
+
+
+class TestSettingsFileP20Propagation:
+    """P20 폴백 제거: DB/암호화 실패 시 예외 전파 또는 로깅 (B13-01/02/04/11)."""
+
+    @pytest.mark.asyncio
+    async def test_load_selected_settings_propagates_db_error(self, in_memory_db):
+        """B13-01: load_selected_settings DB 에러 시 예외 전파 (빈 dict 폴백 금지)."""
+        with patch("backend.app.db.database.get_db_connection", new=AsyncMock(side_effect=RuntimeError("DB 에러"))):
+            with pytest.raises(RuntimeError, match="DB 에러"):
+                await load_selected_settings({"broker"})
+
+    @pytest.mark.asyncio
+    async def test_load_integrated_settings_propagates_db_error(self, in_memory_db):
+        """B13-02: _load_db_settings DB 에러 시 예외 전파 (기본값 폴백 금지)."""
+        with patch("backend.app.db.database.get_db_connection", new=AsyncMock(side_effect=RuntimeError("DB 에러"))):
+            with pytest.raises(RuntimeError, match="DB 에러"):
+                await load_integrated_system_settings()
+
+    def test_decrypt_encrypt_fields_logs_on_failure(self):
+        """B13-04: 복호화 실패(None) 시 경고 로그 + 빈문자열 (P21 사용자 투명성)."""
+        with patch("backend.app.core.encryption.decrypt_value", return_value=None), \
+             patch("backend.app.core.settings_file.logger") as mock_logger:
+            merged = {"kiwoom_app_key": "gAAAAinvalidcipher"}
+            _decrypt_encrypt_fields(merged)
+            assert merged["kiwoom_app_key"] == ""
+            mock_logger.warning.assert_called_once()
+            assert "복호화 실패" in mock_logger.warning.call_args[0][0]
+
+    def test_encrypt_field_or_raise_blocks_plaintext(self):
+        """B13-11: 암호화 실패(평문 반환) 시 ValueError — 평문 저장 차단 (P20/보안)."""
+        with patch("backend.app.core.encryption.encrypt_value", return_value="plaintext_not_encrypted"):
+            with pytest.raises(ValueError, match="암호화 실패"):
+                _encrypt_field_or_raise("kiwoom_app_key", "plaintext_key")
+
+    def test_encrypt_field_or_raise_blocks_none(self):
+        """B13-11: 암호화 실패(None) 시 ValueError — 평문 저장 차단."""
+        with patch("backend.app.core.encryption.encrypt_value", return_value=None):
+            with pytest.raises(ValueError, match="암호화 실패"):
+                _encrypt_field_or_raise("kiwoom_app_key", "plaintext_key")
+
+    def test_encrypt_field_or_raise_success(self):
+        """B13-11: 암호화 성공(gAAAA 접두) 시 암호문 반환."""
+        with patch("backend.app.core.encryption.encrypt_value", return_value="gAAAAencrypted"):
+            result = _encrypt_field_or_raise("kiwoom_app_key", "plaintext_key")
+            assert result == "gAAAAencrypted"
