@@ -5,10 +5,9 @@ LsRestAPI: __init__, __aenter__/__aexit__, ensure_client, ensure_token, get_toke
   _issue_token (성공/429/HTTP실패/토큰필드없음/크리덴셜없음),
   revoke_token (정상/HTTP실패/토큰없음/예외),
   call_api (GET/POST/429/예외/토큰없음),
-  call_tr (성공+tr_cont추출/rsp_cd실패/429/HTTP실패/예외),
   buy_order (성공/HTTP실패/429/예외),
   sell_order (성공/HTTP실패/예외),
-  get_balance, get_daily_history, get_themes (call_api 위임)
+  get_balance (call_api 위임)
 
 의존성: httpx, broker_urls
 → 모두 mock으로 대체 (conftest hang 방지 원칙 준수)
@@ -405,113 +404,6 @@ class TestLsRestCallApi:
             assert result is None
 
 
-# ── LsRestAPI.call_tr ──────────────────────────────────────────────────────────
-
-class TestLsRestCallTr:
-    async def test_success_with_tr_cont(self):
-        api = _make_ls_rest()
-        api._token_info = _make_ls_token_info()
-        mock_resp = _mock_httpx_response(200, {"rsp_cd": "00000", "data": "ok"}, headers={"tr_cont": "Y", "tr_cont_key": "key123"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
-        api._client = mock_client
-        with (
-            patch.object(api, "ensure_client", AsyncMock()),
-            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
-        ):
-            result = await api.call_tr("/stock/order", "CSPAT00601")
-            assert result is not None
-            assert result["data"]["rsp_cd"] == "00000"
-            assert result["tr_cont"] == "Y"
-            assert result["tr_cont_key"] == "key123"
-
-    async def test_rsp_cd_failure(self):
-        api = _make_ls_rest()
-        api._token_info = _make_ls_token_info()
-        mock_resp = _mock_httpx_response(200, {"rsp_cd": "10001", "rsp_msg": "error"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
-        api._client = mock_client
-        with (
-            patch.object(api, "ensure_client", AsyncMock()),
-            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
-        ):
-            result = await api.call_tr("/stock/order", "CSPAT00601")
-            assert result is not None
-            assert result["tr_cont"] == "N"
-
-    async def test_429_retry(self):
-        api = _make_ls_rest()
-        api._token_info = _make_ls_token_info()
-        resp_429 = _mock_httpx_response(429)
-        resp_200 = _mock_httpx_response(200, {"rsp_cd": "00000"})
-        mock_client = _mock_httpx_client(post_side_effect=[resp_429, resp_200])
-        api._client = mock_client
-        with (
-            patch.object(api, "ensure_client", AsyncMock()),
-            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
-            patch("backend.app.core.ls_rest.asyncio.sleep", new_callable=AsyncMock),
-        ):
-            result = await api.call_tr("/stock/order", "CSPAT00601")
-            assert result is not None
-
-    async def test_http_500(self):
-        api = _make_ls_rest()
-        api._token_info = _make_ls_token_info()
-        mock_resp = _mock_httpx_response(500)
-        mock_client = _mock_httpx_client(post_return=mock_resp)
-        api._client = mock_client
-        with (
-            patch.object(api, "ensure_client", AsyncMock()),
-            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
-        ):
-            result = await api.call_tr("/stock/order", "CSPAT00601")
-            assert result is None
-
-    async def test_exception(self):
-        api = _make_ls_rest()
-        api._token_info = _make_ls_token_info()
-        mock_client = _mock_httpx_client(post_side_effect=[Exception("err"), Exception("err"), Exception("err")])
-        api._client = mock_client
-        with (
-            patch.object(api, "ensure_client", AsyncMock()),
-            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
-            patch("backend.app.core.ls_rest.asyncio.sleep", new_callable=AsyncMock),
-        ):
-            result = await api.call_tr("/stock/order", "CSPAT00601")
-            assert result is None
-
-    async def test_no_token(self):
-        api = _make_ls_rest()
-        api._client = _mock_httpx_client()
-        with (
-            patch.object(api, "ensure_client", AsyncMock()),
-            patch.object(api, "ensure_token", AsyncMock(return_value=False)),
-        ):
-            result = await api.call_tr("/stock/order", "CSPAT00601")
-            assert result is None
-
-    async def test_no_client(self):
-        api = _make_ls_rest()
-        api._token_info = _make_ls_token_info()
-        api._client = None
-        with patch.object(api, "ensure_client", AsyncMock()):
-            result = await api.call_tr("/stock/order", "CSPAT00601")
-            assert result is None
-
-    async def test_tr_cont_header_fallback(self):
-        api = _make_ls_rest()
-        api._token_info = _make_ls_token_info()
-        mock_resp = _mock_httpx_response(200, {"rsp_cd": "00000"}, headers={"cont-yn": "Y", "next-key": "nk"})
-        mock_client = _mock_httpx_client(post_return=mock_resp)
-        api._client = mock_client
-        with (
-            patch.object(api, "ensure_client", AsyncMock()),
-            patch.object(api, "ensure_token", AsyncMock(return_value=True)),
-        ):
-            result = await api.call_tr("/stock/order", "CSPAT00601")
-            assert result["tr_cont"] == "Y"
-            assert result["tr_cont_key"] == "nk"
-
-
 # ── LsRestAPI.buy_order ────────────────────────────────────────────────────────
 
 class TestLsRestBuyOrder:
@@ -654,7 +546,7 @@ class TestLsRestSellOrder:
             assert result is None
 
 
-# ── LsRestAPI.get_balance / get_daily_history / get_themes ─────────────────────
+# ── LsRestAPI.get_balance ─────────────────────────────────────────────────────
 
 class TestLsRestAccountQueries:
     async def test_get_balance_delegates(self):
@@ -666,16 +558,3 @@ class TestLsRestAccountQueries:
             call_kwargs = mock_call.call_args[1]
             assert call_kwargs["method"] == "POST"
 
-    async def test_get_daily_history_delegates(self):
-        api = _make_ls_rest()
-        with patch.object(api, "call_api", AsyncMock(return_value={"data": "ok"})) as mock_call:
-            result = await api.get_daily_history()
-            assert result == {"data": "ok"}
-            mock_call.assert_called_once()
-
-    async def test_get_themes_delegates(self):
-        api = _make_ls_rest()
-        with patch.object(api, "call_api", AsyncMock(return_value={"data": "ok"})) as mock_call:
-            result = await api.get_themes()
-            assert result == {"data": "ok"}
-            mock_call.assert_called_once()

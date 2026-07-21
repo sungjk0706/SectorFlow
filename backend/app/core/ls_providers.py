@@ -58,18 +58,12 @@ class LsAccountProvider(AccountProvider):
     async def get_deposit_detail(self, acnt_no: str = "") -> dict | None:
         if not self._rest_api:
             return None
-        res = await self._rest_api.get_balance(cts_expcode="")
-        if not res or res.get("rsp_cd") not in ("00040", "00000"):
-            return res
-        return res
+        return await self._rest_api.get_balance(cts_expcode="")
 
     async def get_balance_detail(self, qry_tp: str = "1", dmst_stex_tp: str = "KRX") -> dict | None:
         if not self._rest_api:
             return None
-        res = await self._rest_api.get_balance(cts_expcode="")
-        if not res or res.get("rsp_cd") not in ("00040", "00000"):
-            return res
-        return res
+        return await self._rest_api.get_balance(cts_expcode="")
 
     async def get_account_balance(self, acnt_no: str = "") -> dict:
         _empty: dict = {
@@ -152,18 +146,16 @@ class LsOrderProvider(OrderProvider):
         if not self._rest_api:
             return {"success": False, "error": "LS Rest API Not initialized"}
 
-        # order_type (매수: 'buy', 매도: 'sell')
-        ls_order_type = 1 if order_type == 'buy' else 2
         hoga_gb = trde_tp  # 호가구분 매핑
 
-        if ls_order_type == 1:
+        if order_type == 'buy':
             res = await self._rest_api.buy_order(
                 stock_code=f"A{code}",
                 quantity=qty,
                 price=float(price),
                 order_type=hoga_gb
             )
-        elif ls_order_type == 2:
+        elif order_type == 'sell':
             res = await self._rest_api.sell_order(
                 stock_code=f"A{code}",
                 quantity=qty,

@@ -72,7 +72,7 @@
 | B-13 | P2 | 설정 관리 | 5 | ☐ | |
 | B-14 | P2 | Broker 추상화 (공통) | 7 | ◐ | B-14-a 완료 (6건 수정), B-14-b 대기 (2건 P20/P21 폴백) |
 | B-15 | P2 | 증권사 구현: 키움 | 5 | ☐ | 분할 권장 |
-| B-16 | P2 | 증권사 구현: LS | 3 | ☐ | 분할 권장 |
+| B-16 | P2 | 증권사 구현: LS | 3 | ☑ | 분할 권장 (완료) |
 | B-17 | P2 | Domain 계층 | 6 | ☐ | |
 | B-18 | P2 | 스케줄러 및 장마감 파이프라인 | 3 | ☐ | 분할 권장 (초대형 2개) |
 | B-19 | P2 | WS 구독 제어 및 업종 데이터 | 2 | ☐ | |
@@ -324,8 +324,8 @@
 
 **대상 파일** (3개, 총 1732줄)
 - [x] `backend/app/core/ls_connector.py` (895줄→839줄, B-16-a 완료)
-- [ ] `backend/app/core/ls_rest.py` (639줄, 대형)
-- [ ] `backend/app/core/ls_providers.py` (198줄, 중형)
+- [x] `backend/app/core/ls_rest.py` (639줄→452줄, B-16-b 완료)
+- [x] `backend/app/core/ls_providers.py` (198줄→190줄, B-16-b 완료)
 
 **대상 원칙**: P1, P2, P3, P4, P5, P7, P14, P19, P20, P23, P24
 
@@ -348,6 +348,8 @@
 - [ ] 잔여 `_run_async` / `asyncio.run` / 동기 `requests` grep 추가 인스턴스 없음
 
 **B-16-a 완료 (2026-07-21)**: 5건 해결 (B16-01~05). B16-01 _make_queue_callback() 헬퍼 추출로 connect()/_reconnect_loop() 중복 _queue_put_with_drop 중첩함수 통합 (P23/P24, kiwoom B15-02 동일 패턴), B16-02 except Exception 4곳에 exc_info=True 추가 (P23, kiwoom B15-03/B15-04 동일 패턴), B16-03 _recv_loop queue_callback None 폴백 dead code 제거 (P20/P16, kiwoom은 폴백 없이 직접 호출), B16-04 connect() 초기 연결 실패 로그 logger.warning→logger.error로 kiwoom과 일치 (P23), B16-05 subscribe_stocks/unsubscribe_stocks를 subscribe_stocks_tr/unsubscribe_stocks_tr US3 고정 래퍼로 통합 (P23/P24). test_fallback_on_message_when_no_queue 테스트 제거 (폴백 경로 제거로 무효). 검증: py_compile OK + ruff OK + pytest 263 passed(test_ls*) + 2960 passed(전체, 회귀 없음) + 런타임 기동 183ms 정상 (RuntimeWarning 없음, LS 토큰 발급·연결 정상).
+
+**B-16-b 완료 (2026-07-22)**: 7건 해결 (B16-06~12). B16-06 except Exception as e: 7곳(line 85/174/206/267/350/457/562)에 exc_info=True 추가 (P23, kiwoom connector 12/12·kiwoom stock_rest 6/6·kiwoom order 1/1·ls connector B16-02 4/4와 일관성 — LS rest 파일은 0/7이었음), B16-07 call_tr 메서드 dead code 제거 (P16, production 호출처 0건/테스트 8건만, B15-05 get_spec 제거와 동일 패턴 — call_api가 production 사용 중이므로 중복 미사용), B16-08 get_daily_history 메서드 dead code 제거 (P16, production 0건/테스트 1건), B16-09 get_themes 메서드 dead code 제거 (P16, production 0건/테스트 1건), B16-10 buy_order/sell_order 중복 → _place_order 헬퍼 추출 (P23/P24, 104줄×2 중 차이 2곳만 → 헬퍼 1개 + 얇은 래퍼 2개, B15-10/B15-11 동일 패턴, 약 80줄 감소), B16-11 get_deposit_detail/get_balance_detail dead 분기 제거 (P16/P24, 양분기 모두 return res — 조건식 dead code, kiwoom은 조건 없이 직접 위임), B16-12 LsOrderProvider.send_order dead 변수/분기 제거 (P16/P24, ls_order_type = 1 if order_type == 'buy' else 2 → 항상 1 또는 2 → else 분기 도달 불가 → order_type 직접 분기로 단순화, 잘못된 입력 처리 버그 수정: 기존 조용히 매도 처리 → 에러 반환, 정상 입력 변화 없음). TestLsRestCallTr 8건 + test_get_daily_history_delegates 1건 + test_get_themes_delegates 1건 제거, 파일 헤더 주석 정리. 검증: py_compile 4파일 OK + ruff OK + pytest 253 passed(test_ls*, B-16-a 263 - 10건 = 253, 회귀 없음) + 2950 passed(전체, B-16-a 2960 - 10건 = 2950, 회귀 없음) + 런타임 기동 161ms 정상 (RuntimeWarning 없음, LS 토큰 발급·연결 정상, 잔존 프로세스 0건). **B-16 완료**: LS증권 구현 3개 파일 12건(B-16-a 5건 + B-16-b 7건) 전부 해결.
 
 ---
 
