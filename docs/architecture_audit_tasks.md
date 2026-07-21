@@ -73,7 +73,7 @@
 | B-14 | P2 | Broker 추상화 (공통) | 7 | ◐ | B-14-a 완료 (6건 수정), B-14-b 대기 (2건 P20/P21 폴백) |
 | B-15 | P2 | 증권사 구현: 키움 | 5 | ☐ | 분할 권장 |
 | B-16 | P2 | 증권사 구현: LS | 3 | ☑ | 분할 권장 (완료) |
-| B-17 | P2 | Domain 계층 | 6 | ☐ | |
+| B-17 | P2 | Domain 계층 | 6 | ☑ | 완료 (3건 P16/P24) |
 | B-18 | P2 | 스케줄러 및 장마감 파이프라인 | 3 | ☐ | 분할 권장 (초대형 2개) |
 | B-19 | P2 | WS 구독 제어 및 업종 데이터 | 2 | ☐ | |
 | B-20 | P3 | 알림 (Telegram) | 3 | ☐ | |
@@ -356,29 +356,31 @@
 ### 세션 B-17: P2 — Domain 계층 (모델/업종계산/필터)
 
 **대상 파일** (6개, 총 1209줄)
-- [ ] `backend/app/domain/sector_calculator.py` (213줄, 대형)
-- [ ] `backend/app/domain/buy_filter.py` (336줄, 대형)
-- [ ] `backend/app/domain/sector_score.py` (200줄, 대형)
-- [ ] `backend/app/domain/sector_filter.py` (57줄, 소형)
-- [ ] `backend/app/domain/models.py` (81줄, 중형)
-- [ ] `backend/app/core/stock_filter.py` (322줄, 대형)
+- [x] `backend/app/domain/sector_calculator.py` (213줄→195줄)
+- [x] `backend/app/domain/buy_filter.py` (336줄, 변경 없음 — 조사 결과 P원칙 위반 없음)
+- [x] `backend/app/domain/sector_score.py` (200줄, 변경 없음 — 조사 결과 P원칙 위반 없음)
+- [x] `backend/app/domain/sector_filter.py` (57줄, 변경 없음 — 조사 결과 P원칙 위반 없음)
+- [x] `backend/app/domain/models.py` (81줄→65줄)
+- [x] `backend/app/core/stock_filter.py` (322줄→269줄)
 
 **대상 원칙**: P7, P10, P13, P16, P18, P20, P22, P23, P24
 
 **조사 체크리스트**
-- [ ] P7: 계산 로직에 블로킹/DB 조회 없음 (순수 계산)
-- [ ] P10: 데이터 모델 SSOT
-- [ ] P13: 설정값 메모리 조회
-- [ ] P16: dead code 없음
-- [ ] P18: 테스트모드와 동일한 계산
-- [ ] P20: 폴백/silent except 없음
-- [ ] P22: 파생 데이터 모델 선호, 단계 간 일관성
-- [ ] P23: 용어 사전 준수, 패턴 일관
-- [ ] P24: 단순성 기준
+- [x] P7: 계산 로직에 블로킹/DB 조회 없음 (순수 계산)
+- [x] P10: 데이터 모델 SSOT
+- [x] P13: 설정값 메모리 조회
+- [x] P16: dead code 없음 — 3건 제거 (B17-01 미사용 파라미터 16개, B17-02 is_excluded_with_ka10100, B17-03 SortKey/_SORT_LABEL/DEFAULT_SORT_KEYS)
+- [x] P18: 테스트모드와 동일한 계산
+- [x] P20: 폴백/silent except 없음
+- [x] P22: 파생 데이터 모델 선호, 단계 간 일관성
+- [x] P23: 용어 사전 준수, 패턴 일관
+- [x] P24: 단순성 기준 — compute_full_sector_summary 시그니처 30→14 파라미터 감소 (B17-01)
 
 **검증**
-- [ ] `pytest backend/tests -k "sector or buy_filter or stock_filter or domain"` 통과
-- [ ] 잔여 DB 직접 조회 / 동기 I/O grep 추가 인스턴스 없음
+- [x] `pytest backend/tests -k "sector or buy_filter or stock_filter or domain"` 통과 (376 passed)
+- [x] 잔여 DB 직접 조회 / 동기 I/O grep 추가 인스턴스 없음
+
+**B-17 완료 (2026-07-22)**: 3건 해결 (B17-01~03). B17-01 compute_full_sector_summary 미사용 파라미터 16개 제거 (P16/P24, 과거 매수 타겟 생성까지 수행했던 시절의 잔재 — 현재는 build_buy_targets_from_settings가 별도 수행, 시그니처 30→14 파라미터로 감소, Literal import 제거, sector_data_provider.py get_sector_summary_inputs에서 latest_index 키 제거 연동), B17-02 is_excluded_with_ka10100 함수 제거 (P16, production 호출처 0건/테스트 11건만, is_excluded가 production 사용 중, B15-05/B16-07과 동일 패턴, TestIsExcludedWithKa10100 9건 제거), B17-03 SortKey/_SORT_LABEL/DEFAULT_SORT_KEYS 상수 제거 (P16, 외부 import 0건/파일 내 참조도 없음, Literal import 제거). subagent 조사에서 간접 호출 헬퍼(create_buy_targets/calculate_boost_score/check_stock_guards/rank_to_tiered_score 등)를 dead code로 잘못 분류한 것을 바로잡음 — P16은 "실제 실행 경로에 연결되어 있는가"가 기준이므로 build_buy_targets_from_settings → create_buy_targets → 헬퍼 호출 체인은 살아있는 경로. 검증: py_compile 12파일 OK + ruff OK + pytest 376 passed(sector/buy_filter/stock_filter/domain) + 2941 passed(전체, B-16-b 2950 - is_excluded_with_ka10100 9건 = 2941, 회귀 없음) + 런타임 기동 123ms 정상 (RuntimeWarning 없음, 1356종목 로드·업종순위 재계산·LS/키움 토큰 발급 정상, 잔존 프로세스 0건). **B-17 완료**: Domain 계층 6개 파일 3건 전부 해결.
 
 ---
 
