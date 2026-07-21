@@ -100,9 +100,6 @@ class BrokerRouter:
         """
         from backend.app.services.engine_state import state
         broker_config = state.integrated_system_settings_cache["broker_config"]
-        default_broker = str(
-            state.integrated_system_settings_cache["broker"]
-        ).lower().strip()
 
         for feature in FEATURES:
             broker_name = str(broker_config[feature]).lower().strip()
@@ -110,16 +107,12 @@ class BrokerRouter:
             provider = _create_provider(
                 feature, broker_name, state.integrated_system_settings_cache, self._auth_cache
             )
-            if provider:
-                self._providers[feature] = provider
-                self._broker_map[feature] = broker_name
-            else:
-                # 증권사 비어있음 → 기본 증권사로 대체
-                logger.warning("[설정] 증권사 비어있음 — %s 대체", default_broker)
-                self._providers[feature] = _create_provider(
-                    feature, default_broker, state.integrated_system_settings_cache, self._auth_cache
-                )
-                self._broker_map[feature] = default_broker
+            if provider is None:
+                # _create_provider는 broker_name이 빈 문자열일 때만 None 반환.
+                # _normalize_broker_config가 모든 feature를 채우므로 정상 경로 도달 불가 (P20).
+                raise ValueError(f"지원하지 않는 증권사: {broker_name!r}")
+            self._providers[feature] = provider
+            self._broker_map[feature] = broker_name
 
     # ── Property 접근자 (dict lookup O(1)) ────────────────────────────
 
@@ -215,16 +208,16 @@ class BrokerRouter:
         if broker_name == self._broker_map.get(feature):
             return self._providers[feature]
 
-        # 오버라이드 증권사의 Provider 생성
-        try:
-            provider = _create_provider(
-                feature, broker_name, state.integrated_system_settings_cache, self._auth_cache
-            )
-            self._page_providers[cache_key] = provider
-            return provider
-        except ValueError as e:
-            logger.warning("[설정] 페이지 설정 대체: %s", e)
-            return self._providers[feature]
+        # 오버라이드 증권사의 Provider 생성.
+        # ValueError(미지원 증권사/기능)는 validate_page_overrides가 사전 검증하므로
+        # 런타임 도달 시 비정상 상태 — 폴백으로 덮지 않고 예외 전파 (P20/P21).
+        provider = _create_provider(
+            feature, broker_name, state.integrated_system_settings_cache, self._auth_cache
+        )
+        if provider is None:
+            raise ValueError(f"지원하지 않는 증권사: {broker_name!r}")
+        self._page_providers[cache_key] = provider
+        return provider
 
     def invalidate_page(self, page: str | None = None) -> None:
         """페이지별 Provider 캐시 무효화. page=None이면 전체 무효화."""
