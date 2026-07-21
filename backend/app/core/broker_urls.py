@@ -25,10 +25,8 @@ _BROKER_URL_DEFAULTS: dict[str, dict[str, str]] = {
 }
 
 # ── 하위 호환 상수 (기존 import 깨지지 않도록 유지) ───────────────────────
-KIWOOM_REST_BASE  = _BROKER_URL_DEFAULTS["kiwoom"]["rest_base"]
-KIWOOM_WS_URI     = _BROKER_URL_DEFAULTS["kiwoom"]["ws_uri"]
-KIWOOM_TOKEN_PATH = _BROKER_URL_DEFAULTS["kiwoom"]["token_path"]
-KIWOOM_REST_REAL  = KIWOOM_REST_BASE
+# KIWOOM_REST_REAL만 사용 중 (kiwoom_rest.py). 나머지는 _BROKER_URL_DEFAULTS 참조.
+KIWOOM_REST_REAL  = _BROKER_URL_DEFAULTS["kiwoom"]["rest_base"]
 
 # ── 증권사별 표시 이름 (단일 진실 공급원) ────────────────────────────────
 BROKER_DISPLAY_NAMES: dict[str, str] = {
