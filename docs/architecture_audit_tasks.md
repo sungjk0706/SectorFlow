@@ -77,7 +77,7 @@
 | B-18 | P2 | 스케줄러 및 장마감 파이프라인 | 3 | ☑ | 완료 (6건 P16/P20, P24 분할 이월) |
 | B-19 | P2 | WS 구독 제어 및 업종 데이터 | 2 | ☑ | 완료 (4건 P16/P20/P24) |
 | B-20 | P3 | 알림 (Telegram) | 3 | ☑ | 완료 (3건 P16/P21) |
-| B-21 | P3 | 기타 Core 유틸 | 11 | ☐ | |
+| B-21 | P3 | 기타 Core 유틸 | 11 | ◐ | B-21-a 완료 (journal.py 12건 P16), B-21-b/c 잔여 |
 | B-22 | P3 | Web API 계층 | 14 | ☐ | |
 | B-23 | P3 | 테스트 품질 점검 | 67 | ☐ | |
 | F-01 | P0 | 통신 계층 및 상태 관리 | 8 | ☑ | 10건 수정 |
@@ -479,18 +479,18 @@
 
 ### 세션 B-21: P3 — 기타 Core 유틸
 
-**대상 파일** (11개, 총 1951줄)
-- [ ] `backend/app/core/journal.py` (324줄, 대형)
-- [ ] `backend/app/core/logger.py` (426줄, 대형)
-- [ ] `backend/app/core/trading_calendar.py` (406줄, 대형)
-- [ ] `backend/app/core/stock_classification_data.py` (238줄, 대형)
-- [ ] `backend/app/core/sector_mapping.py` (99줄, 중형)
-- [ ] `backend/app/core/sector_stock_cache.py` (140줄, 중형)
-- [ ] `backend/app/core/lock_manager.py` (146줄, 중형)
-- [ ] `backend/app/core/encryption.py` (87줄, 중형)
-- [ ] `backend/app/core/memory_monitor.py` (52줄, 중형)
-- [ ] `backend/app/core/constants.py` (14줄, 소형)
-- [ ] `backend/app/core/logging_config.py` (19줄, 소형)
+**대상 파일** (11개, 총 1951줄) — 3서브세션 분할 (B-21-a/b/c)
+- [x] `backend/app/core/journal.py` (324줄→123줄, B-21-a 완료)
+- [ ] `backend/app/core/logger.py` (426줄, 대형, B-21-b)
+- [ ] `backend/app/core/trading_calendar.py` (406줄, 대형, B-21-c)
+- [ ] `backend/app/core/stock_classification_data.py` (238줄, 대형, B-21-c)
+- [ ] `backend/app/core/sector_mapping.py` (99줄, 중형, B-21-c)
+- [ ] `backend/app/core/sector_stock_cache.py` (140줄, 중형, B-21-c)
+- [ ] `backend/app/core/lock_manager.py` (146줄, 중형, B-21-b)
+- [ ] `backend/app/core/encryption.py` (87줄, 중형, B-21-b)
+- [ ] `backend/app/core/memory_monitor.py` (52줄, 중형, 위반 없음)
+- [ ] `backend/app/core/constants.py` (14줄, 소형, 위반 없음)
+- [ ] `backend/app/core/logging_config.py` (19줄, 소형, 위반 없음)
 
 **대상 원칙**: P2, P5, P10, P14, P16, P19, P20, P23, P24
 
@@ -509,6 +509,8 @@
 - [ ] `pytest backend/tests -k "journal or logger or calendar or classification or lock or encryption"` 통과
 - [ ] `python -W error::RuntimeWarning main.py` 기동 검증
 - [ ] 잔여 `threading.Lock` / `threading.Thread` grep 추가 인스턴스 없음
+
+**B-21-a 완료 (2026-07-22)**: journal.py dead code 12개 함수 제거 (P16). production 호출처 0건인 함수 12개 제거: `_get_conn`/`_ensure_loaded`/`_migrate_from_json` (no-op 잔재), `close_db_connection` (no-op, database.py 중복), `_read_all_entries` (삭제 함수에서만 호출), `_perform_compaction` (내부 호출 없음), `record_fill_event` (production 호출 0건), `oms_get_pending_orders`/`oms_update_order_status`/`oms_get_next_seq`(+`_next_seq`) (OMS API, production 호출 0건), `replay_journal`/`clear_journal`/`get_journal_stats` (production 호출 0건). 유지: start/stop_consumer_task(app.py 호출), record_settings_change(settings_store.py 호출), record_order_request(trading.py 호출), _append_entry(내부 호출), JournalEventType/JournalEntry. journal.py 324줄→123줄, test_journal.py 502줄→169줄 (삭제 테스트 26건). 검증: py_compile + ruff OK + pytest 2877 passed(전체, 회귀 없음) + 런타임 기동 192ms 정상 (RuntimeWarning 없음) + 잔존 프로세스 0건. **B-21-a 완료**: journal.py dead code 전부 해결. B-21-b(logger+encryption+lock_manager), B-21-c(trading_calendar+classification+mapping+cache) 잔여.
 
 ---
 
