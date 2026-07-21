@@ -284,9 +284,9 @@
 **대상 파일** (5개, 총 2060줄)
 - [x] `backend/app/core/kiwoom_connector.py` (554줄→520줄, B-15-a 완료)
 - [x] `backend/app/core/kiwoom_rest.py` (655줄→636줄, B-15-a 완료)
-- [ ] `backend/app/core/kiwoom_stock_rest.py` (436줄, 대형) — B-15-b
-- [ ] `backend/app/core/kiwoom_providers.py` (342줄, 대형) — B-15-b
-- [ ] `backend/app/core/kiwoom_order.py` (73줄, 중형) — B-15-b
+- [x] `backend/app/core/kiwoom_stock_rest.py` (436줄→407줄, B-15-b 완료)
+- [x] `backend/app/core/kiwoom_providers.py` (342줄, B-15-b 조사 결과 위반 없음)
+- [x] `backend/app/core/kiwoom_order.py` (73줄→76줄, B-15-b 완료)
 
 **대상 원칙**: P1, P2, P3, P4, P5, P7, P14, P19, P20, P23, P24
 
@@ -302,17 +302,19 @@
 - [x] P20: 폴백/silent except 없음 (B-15-a)
 - [x] P23: 용어 사전 준수, 패턴 일관 (B-15-a)
 - [x] P24: 단순성 기준 (B-15-a: 중복 함수 추출로 connector 34줄 감소)
-- [ ] P1~P24 잔여: B-15-b (stock_rest + providers + order)
+- [x] P1~P24 잔여: B-15-b (stock_rest + providers + order) — 7건 해결
 
 **검증**
-- [x] `pytest backend/tests -k "kiwoom"` 통과 (336 passed, B-15-a)
-- [x] `python -W error::RuntimeWarning main.py` 기동 검증 (95ms 정상 기동, B-15-a)
+- [x] `pytest backend/tests -k "kiwoom"` 통과 (336 passed, B-15-a / 330 passed, B-15-b)
+- [x] `python -W error::RuntimeWarning main.py` 기동 검증 (95ms 정상 기동, B-15-a / 94ms 정상 기동, B-15-b)
 - [x] 잔여 동기 `requests` / `asyncio.run` / `run_in_executor` grep 추가 인스턴스 없음 (B-15-a)
-- [ ] B-15-b 검증 (stock_rest + providers + order)
+- [x] B-15-b 검증 (stock_rest + providers + order) — 330 passed(test_kiwoom) + 2961 passed(전체) + 94ms 기동
 
 **B-15-a 완료 (2026-07-21)**: 7건 해결 (B15-01~07). B15-01 set_queue_callback dead code 제거 (P16), B15-02 _make_queue_callback 헬퍼 추출로 connect()/_reconnect_loop() 중복 중첩함수 통합 (P23/P24), B15-03/B15-04 except Exception logger에 exc_info=True 추가 (P23), B15-05 get_spec dead wrapper 제거 (P16), B15-06 __enter__/__exit__ 동기 컨텍스트 매니저 dead code 제거 (P16), B15-07 fetch_ka20001_index JSON 파싱 실패 로그를 info→warning으로 변경 (P23).
 
-**B-15-b (다음 세션)**: `kiwoom_stock_rest.py` (436줄) + `kiwoom_providers.py` (342줄) + `kiwoom_order.py` (73줄) 조사·수정.
+**B-15-b 완료 (2026-07-21)**: 7건 해결 (B15-08~14). B15-08 except Exception 6곳에 exc_info=True 추가 (P23), B15-09 _pct dead code 제거 (P16), B15-10 _build_ka10081_request/_ensure_descending_by_dt 헬퍼 추출로 fetch_ka10081_daily_price/5d_data 중복 로직 통합 (P23/P24), B15-11 _fetch_all_stocks_ka10081 공통 루프 헬퍼 추출로 fetch_ka10081_all_stocks_daily_confirmed/5day 통합 (P23/P24), B15-14 hit_429 미사용 변수 _로 대체 (P24), B15-12 kiwoom_order.py logger 모듈 레벨로 이동 (P23/P24), B15-13 kiwoom_order.py except Exception에 exc_info=True 추가 (P23). kiwoom_providers.py는 조사 결과 위반 없음. 미해결 문제 2건 HANDOVER.md 기록: kiwoom_rest.py exc_info 8곳 누락, kiwoom_providers.py:75 계좌번호 real/legacy 불일치.
+
+**B-15 완료**: 키움증권 구현 5개 파일 14건(B-15-a 7건 + B-15-b 7건) 전부 해결.
 
 ---
 
