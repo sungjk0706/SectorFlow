@@ -138,14 +138,6 @@ async def start_quote() -> dict:
 # 구독 해지 — grp 단위 독립 UNREG
 # ---------------------------------------------------------------------------
 
-async def stop_industry() -> dict:
-    """업종 구독 해지 — 작업 없음 (하위 호환용 스텁).
-
-    하위 호환을 위해 함수 시그니처 유지, 항상 성공 반환.
-    """
-    return {"ok": True, "status": get_subscribe_status()}
-
-
 async def stop_quote() -> dict:
     """grp 4(0B)만 UNREG. quote_subscribed만 False.
 
@@ -222,31 +214,6 @@ async def cleanup_stale_subscriptions() -> None:
         entry.pop("_subscribed", None)
     _set_status(quote=False)
     logger.debug("[구독] 잔존 구독 정리 완료 — 전체 끄기 (인메모리 초기화, 서버 측은 다음 구독 등록 갱신=0으로 덮어씀)")
-
-
-# ---------------------------------------------------------------------------
-# 설정 변경 즉시 반영
-# ---------------------------------------------------------------------------
-
-async def on_setting_changed(key: str, value: bool) -> None:
-    """quote_auto_subscribe 변경 시 즉시 반영.
-
-    실시간 통신 구독 구간 밖이면 설정만 저장 (구독 변경 없음).
-    """
-    from backend.app.services.daily_time_scheduler import is_ws_subscribe_window
-
-    settings = engine_state.state.integrated_system_settings_cache
-
-    if not await is_ws_subscribe_window(settings):
-        logger.info(
-            "[구독] 설정 변경 %s=%s — 실시간 구독 구간 외, 구독 변경 없음",
-            key, value,
-        )
-        return
-
-    if key == "quote_auto_subscribe":
-        # 토글 제거 — 구독은 엔진이 자동 관리. 수동 해지 차단.
-        pass
 
 
 # ---------------------------------------------------------------------------

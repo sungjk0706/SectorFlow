@@ -75,7 +75,7 @@
 | B-16 | P2 | 증권사 구현: LS | 3 | ☑ | 분할 권장 (완료) |
 | B-17 | P2 | Domain 계층 | 6 | ☑ | 완료 (3건 P16/P24) |
 | B-18 | P2 | 스케줄러 및 장마감 파이프라인 | 3 | ☑ | 완료 (6건 P16/P20, P24 분할 이월) |
-| B-19 | P2 | WS 구독 제어 및 업종 데이터 | 2 | ☐ | |
+| B-19 | P2 | WS 구독 제어 및 업종 데이터 | 2 | ☑ | 완료 (4건 P16/P20/P24) |
 | B-20 | P3 | 알림 (Telegram) | 3 | ☐ | |
 | B-21 | P3 | 기타 Core 유틸 | 11 | ☐ | |
 | B-22 | P3 | Web API 계층 | 14 | ☐ | |
@@ -422,27 +422,29 @@
 ### 세션 B-19: P2 — WS 구독 제어 및 업종 데이터 제공자
 
 **대상 파일** (2개, 총 572줄)
-- [ ] `backend/app/services/ws_subscribe_control.py` (262줄, 대형)
-- [ ] `backend/app/services/sector_data_provider.py` (310줄, 대형)
+- [x] `backend/app/services/ws_subscribe_control.py` (262줄→230줄)
+- [x] `backend/app/services/sector_data_provider.py` (309줄→282줄)
 
 **대상 원칙**: P4, P5, P7, P10, P11, P13, P16, P20, P23, P24
 
 **조사 체크리스트**
-- [ ] P4: 증권사 이름 침투 없음
-- [ ] P5: 직접 호출 체인
-- [ ] P7: 구독 제어에 블로킹 없음
-- [ ] P10: 업종 데이터 SSOT
-- [ ] P11: 이벤트 기반
-- [ ] P13: 설정 메모리 조회
-- [ ] P16: dead code 없음
-- [ ] P20: 폴백/silent except 없음
-- [ ] P23: 용어 사전 준수, 패턴 일관
-- [ ] P24: 단순성 기준
+- [x] P4: 증권사 이름 침투 없음
+- [x] P5: 직접 호출 체인
+- [x] P7: 구독 제어에 블로킹 없음
+- [x] P10: 업종 데이터 SSOT
+- [x] P11: 이벤트 기반
+- [x] P13: 설정 메모리 조회
+- [x] P16: dead code 없음 — B19-01 `stop_industry` 스텁 제거, B19-02 `on_setting_changed` no-op 제거
+- [x] P20: 폴백/silent except 없음 — B19-04 try/except 중복 제거
+- [x] P23: 용어 사전 준수, 패턴 일관
+- [x] P24: 단순성 기준 — B19-03 루프 중복 제거, B19-04 try/except 중복 제거
 
 **검증**
-- [ ] `pytest backend/tests -k "ws_subscribe or sector_data"` 통과
-- [ ] `python -W error::RuntimeWarning main.py` 기동 검증
-- [ ] 잔여 증권사 접두사 / 폴링 grep 추가 인스턴스 없음
+- [x] `pytest backend/tests -k "ws_subscribe or sector_data"` 통과 (62 passed)
+- [x] `python -W error::RuntimeWarning main.py` 기동 검증 (152ms 정상, RuntimeWarning 없음)
+- [x] 잔여 증권사 접두사 / 폴링 grep 추가 인스턴스 없음
+
+**B-19 완료 (2026-07-22)**: 4건 해결 (B19-01~04). B19-01 `stop_industry` 제거 (P16, 하위 호환용 스텁, body가 return만, production 2건/테스트 5건 → ws_subscribe.py 호출처 `get_subscribe_status()` 직접 반환으로 수정, 실패 케이스 테스트 2건 제거). B19-02 `on_setting_changed` 제거 (P16, `quote_auto_subscribe` 브랜치가 pass만, no-op, production 1건/테스트 0건 → engine_service.py의 `_apply_ws_subscribe_control_change`도 no-op이므로 함께 제거, 68행 호출처도 제거). B19-03 `get_buy_targets_sector_stocks` 루프 중복 제거 (P24, buy_targets/blocked_targets 루프 19개 필드 동일 반복 → `_build_target_entry` 헬퍼 추출). B19-04 `_on_filter_settings_changed` try/except 중복 제거 (P20/P24, `recompute_sector_summary_now`가 내부에서 이미 예외 처리 → 외부 try/except 제거, `test_exception_logged` 테스트 1건 제거). ws_subscribe_control.py 262줄→230줄, sector_data_provider.py 309줄→282줄. subagent 병렬 조사로 2개 파일 19개 함수 전체 추적. 검증: py_compile 5파일 OK + ruff OK + pytest 62 passed(ws_subscribe/sector_data/web_ws_routes/engine_service) + 2910 passed(전체, B-18 2913 - 제거 테스트 3건 = 2910, 회귀 없음) + 런타임 기동 152ms 정상 (RuntimeWarning 없음, 1356종목 로드·업종순위 재계산 완료·LS/키움 토큰 발급·LS 연결 정상, 잔존 프로세스 0건). **B-19 완료**: WS 구독 제어 및 업종 데이터 제공자 2개 파일 4건 전부 해결.
 
 ---
 

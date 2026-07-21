@@ -411,26 +411,17 @@ class TestStopSubscription:
     async def test_sector_stops_industry(self):
         from backend.app.web.routes.ws_subscribe import stop_subscription, SubscribeRequest, SubscribeGroup
         req = SubscribeRequest(group=SubscribeGroup.sector)
-        with patch("backend.app.services.ws_subscribe_control.stop_industry", new_callable=AsyncMock, return_value={"ok": True, "status": {"industry": False}}):
-            with patch("backend.app.services.ws_subscribe_control.get_subscribe_status", return_value={"industry": False}):
-                result = await stop_subscription(req, _="dev")
+        with patch("backend.app.services.ws_subscribe_control.get_subscribe_status", return_value={"quote": False}):
+            result = await stop_subscription(req, _="dev")
         assert result["ok"] is True
 
     async def test_industry_stop_success(self):
         from backend.app.web.routes.ws_subscribe import stop_subscription, SubscribeRequest, SubscribeGroup
         req = SubscribeRequest(group=SubscribeGroup.industry)
-        with patch("backend.app.services.ws_subscribe_control.stop_industry", new_callable=AsyncMock, return_value={"ok": True, "status": {"industry": False}}):
-                result = await stop_subscription(req, _="dev")
+        with patch("backend.app.services.ws_subscribe_control.get_subscribe_status", return_value={"quote": False}):
+            result = await stop_subscription(req, _="dev")
         assert result["ok"] is True
-        assert result["status"] == {"industry": False}
-
-    async def test_industry_stop_failure(self):
-        from backend.app.web.routes.ws_subscribe import stop_subscription, SubscribeRequest, SubscribeGroup
-        req = SubscribeRequest(group=SubscribeGroup.industry)
-        with patch("backend.app.services.ws_subscribe_control.stop_industry", new_callable=AsyncMock, return_value={"ok": False, "message": "미구독 상태"}):
-                result = await stop_subscription(req, _="dev")
-        assert result["ok"] is False
-        assert "미구독 상태" in result["message"]
+        assert result["status"] == {"quote": False}
 
     async def test_quote_stop_success(self):
         from backend.app.web.routes.ws_subscribe import stop_subscription, SubscribeRequest, SubscribeGroup
@@ -447,15 +438,6 @@ class TestStopSubscription:
                 result = await stop_subscription(req, _="dev")
         assert result["ok"] is False
         assert "미구독 상태" in result["message"]
-
-    async def test_sector_stop_industry_failure(self):
-        from backend.app.web.routes.ws_subscribe import stop_subscription, SubscribeRequest, SubscribeGroup
-        req = SubscribeRequest(group=SubscribeGroup.sector)
-        with patch("backend.app.services.ws_subscribe_control.stop_industry", new_callable=AsyncMock, return_value={"ok": False, "message": "미구독"}):
-                result = await stop_subscription(req, _="dev")
-        assert result["ok"] is False
-        assert "미구독" in result["message"]
-
 
 class TestWsSubscribeRouter:
     """ws_subscribe.py: 라우터 설정 검증."""

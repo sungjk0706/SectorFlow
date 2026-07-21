@@ -65,7 +65,6 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
     await _apply_time_schedule_change(changed_keys)
     await _apply_timetable_change(changed_keys)
     await _apply_sector_ui_change(changed_keys)
-    await _apply_ws_subscribe_control_change(changed_keys)
     await _apply_telegram_toggle(changed_keys)
 
     # ── 매수 조건 스냅샷 무효화 — 설정 변경 시 매수 재평가 허용 ──
@@ -240,24 +239,6 @@ async def _apply_sector_ui_change(changed_keys: set[str]) -> None:
         await notify_desktop_sector_scores(force=True)
     except Exception as e:
         logger.warning("[설정] 업종 점수 전송 실패: %s", e, exc_info=True)
-
-
-async def _apply_ws_subscribe_control_change(changed_keys: set[str]) -> None:
-    """WS 구독 제어 설정 변경 시 즉시 반영 (구독 시작/해지)."""
-    from backend.app.services import ws_subscribe_control
-    _WS_SUBSCRIBE_CONTROL_KEYS = {"index_auto_subscribe", "quote_auto_subscribe"}
-    _ws_changed = changed_keys & _WS_SUBSCRIBE_CONTROL_KEYS
-    if not _ws_changed:
-        return
-    try:
-        raw = engine_state.state.integrated_system_settings_cache
-        for key in _ws_changed:
-            schedule_engine_task(
-                ws_subscribe_control.on_setting_changed(key, bool(raw.get(key))),
-                context=f"WS 구독 제어 설정 반영({key})",
-            )
-    except Exception:
-        logger.warning("[설정] 실시간 구독 제어 설정 변경 반영 실패", exc_info=True)
 
 
 async def _apply_telegram_toggle(changed_keys: set[str]) -> None:

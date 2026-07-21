@@ -56,13 +56,11 @@ async def stop_subscription(
     from backend.app.services import ws_subscribe_control
 
     if body.group == SubscribeGroup.sector:
-        # 하위 호환: industry 해지
-        r1 = await ws_subscribe_control.stop_industry()
-        if not r1.get("ok"):
-            return {"ok": False, "message": r1.get("message", "알 수 없는 오류")}
+        # 업종 구독 폐지됨 (sector_mapping 기반 자체 집계)
         return {"ok": True, "status": ws_subscribe_control.get_subscribe_status()}
     elif body.group == SubscribeGroup.industry:
-        result = await ws_subscribe_control.stop_industry()
+        # 업종 구독 폐지됨 (sector_mapping 기반 자체 집계)
+        return {"ok": True, "status": ws_subscribe_control.get_subscribe_status()}
     else:
         result = await ws_subscribe_control.stop_quote()
 

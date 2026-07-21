@@ -316,10 +316,3 @@ class TestOnFilterSettingsChanged:
         with patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock()) as mock_recompute:
             await _on_filter_settings_changed()
             mock_recompute.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_exception_logged(self):
-        """recompute 예외 시 로깅만 수행 (raise 아님)."""
-        with patch("backend.app.services.sector_data_provider.recompute_sector_summary_now", new=AsyncMock(side_effect=Exception("test error"))):
-            # 예외가 raise되지 않음
-            await _on_filter_settings_changed()

@@ -116,63 +116,36 @@ async def get_buy_targets_sector_stocks() -> list:
         return []
 
     # buy_targets와 blocked_targets 통합 (단일 소스 진리: _sector_summary_cache)
-    result = []
-
-    # buy_targets (guard_pass=True)
-    for bt in ss.buy_targets:
-        s = bt.stock
-        # master_stocks_cache에서 실시간 데이터 병합
-        cache_entry = engine_state.state.master_stocks_cache.get(s.code, {})
-        result.append({
-            "code": s.code,
-            "name": s.name,
-            "cur_price": cache_entry.get("cur_price"),
-            "change_rate": cache_entry.get("change_rate"),
-            "change": cache_entry.get("change"),
-            "strength": cache_entry.get("strength"),
-            "trade_amount": cache_entry.get("trade_amount"),
-            "avg_amt_5d": s.avg_amt_5d,
-            "market_type": s.market_type,
-            "nxt_enable": s.nxt_enable,
-            "sector": s.sector,
-            "rank": bt.rank,
-            "guard_pass": s.guard_pass,
-            "reason": bt.reason,
-            "boost_score": s.boost_score,
-            "trade_amount_rank": s.trade_amount_rank,
-            "high_5d": int(cache_entry.get("high_5d_price", 0) or 0),
-            "order_ratio": cache_entry.get("order_ratio"),
-            "program_net_buy": cache_entry.get("program_net_buy"),
-        })
-
-    # blocked_targets (guard_pass=False)
-    for bt in ss.blocked_targets:
-        s = bt.stock
-        # master_stocks_cache에서 실시간 데이터 병합
-        cache_entry = engine_state.state.master_stocks_cache.get(s.code, {})
-        result.append({
-            "code": s.code,
-            "name": s.name,
-            "cur_price": cache_entry.get("cur_price"),
-            "change_rate": cache_entry.get("change_rate"),
-            "change": cache_entry.get("change"),
-            "strength": cache_entry.get("strength"),
-            "trade_amount": cache_entry.get("trade_amount"),
-            "avg_amt_5d": s.avg_amt_5d,
-            "market_type": s.market_type,
-            "nxt_enable": s.nxt_enable,
-            "sector": s.sector,
-            "rank": bt.rank,
-            "guard_pass": s.guard_pass,
-            "reason": bt.reason,
-            "boost_score": s.boost_score,
-            "trade_amount_rank": s.trade_amount_rank,
-            "high_5d": int(cache_entry.get("high_5d_price", 0) or 0),
-            "order_ratio": cache_entry.get("order_ratio"),
-            "program_net_buy": cache_entry.get("program_net_buy"),
-        })
-
+    result = [_build_target_entry(bt) for bt in ss.buy_targets]
+    result.extend(_build_target_entry(bt) for bt in ss.blocked_targets)
     return result
+
+
+def _build_target_entry(bt) -> dict:
+    """매수 후보/차단 후보 공통 엔트리 생성 — master_stocks_cache 실시간 데이터 병합."""
+    s = bt.stock
+    cache_entry = engine_state.state.master_stocks_cache.get(s.code, {})
+    return {
+        "code": s.code,
+        "name": s.name,
+        "cur_price": cache_entry.get("cur_price"),
+        "change_rate": cache_entry.get("change_rate"),
+        "change": cache_entry.get("change"),
+        "strength": cache_entry.get("strength"),
+        "trade_amount": cache_entry.get("trade_amount"),
+        "avg_amt_5d": s.avg_amt_5d,
+        "market_type": s.market_type,
+        "nxt_enable": s.nxt_enable,
+        "sector": s.sector,
+        "rank": bt.rank,
+        "guard_pass": s.guard_pass,
+        "reason": bt.reason,
+        "boost_score": s.boost_score,
+        "trade_amount_rank": s.trade_amount_rank,
+        "high_5d": int(cache_entry.get("high_5d_price", 0) or 0),
+        "order_ratio": cache_entry.get("order_ratio"),
+        "program_net_buy": cache_entry.get("program_net_buy"),
+    }
 
 
 async def get_all_sector_stocks() -> list[dict]:
@@ -301,9 +274,7 @@ async def recompute_sector_summary_now() -> None:
 async def _on_filter_settings_changed() -> None:
     """필터 설정 변경 시 업종순위 재계산 + 실시간 통신 전송.
 
-    recompute_sector_summary_now() 내부에서 알림 3종이 이미 호출되므로 중복 호출을 제거한다.
+    recompute_sector_summary_now() 내부에서 알림 3종 및 예외 처리가 이미 수행되므로
+    중복 try/except를 제거한다.
     """
-    try:
-        await recompute_sector_summary_now()
-    except Exception as e:
-        logger.warning("[연산] 필터 변경 — 업종순위 재계산 실패: %s", e, exc_info=True)
+    await recompute_sector_summary_now()
