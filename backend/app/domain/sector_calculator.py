@@ -128,19 +128,19 @@ async def compute_sector_scores(
         if not filtered_stocks:
             continue
 
-        # ── 전체 종목 기준 실제 값 (트리밍 제거 — 순위/백분위 기반 점수이므로 불필요) ──
-        raw_rise_count = sum(1 for s in filtered_stocks if s.change_rate > 0)
-        raw_total = len(filtered_stocks)
-        raw_rise_ratio = raw_rise_count / raw_total if raw_total > 0 else 0.0
-        raw_total_ta = sum(s.trade_amount for s in filtered_stocks)
-        avg_ta = raw_total_ta // raw_total if raw_total > 0 else 0
+        # ── 필터링된 종목 기준 집계값 (순위 기반 점수이므로 트리밍 불필요) ──
+        rise_count = sum(1 for s in filtered_stocks if s.change_rate > 0)
+        total = len(filtered_stocks)
+        rise_ratio = rise_count / total if total > 0 else 0.0
+        total_ta = sum(s.trade_amount for s in filtered_stocks)
+        avg_ta = total_ta // total if total > 0 else 0
         avg_cr = sum(s.change_rate for s in filtered_stocks) / len(filtered_stocks) if len(filtered_stocks) > 0 else 0.0
 
         sector_scores.append(SectorScore(
             sector=sector,
-            total=raw_total,
-            rise_count=raw_rise_count,
-            rise_ratio=raw_rise_ratio,
+            total=total,
+            rise_count=rise_count,
+            rise_ratio=rise_ratio,
             avg_change_rate=avg_cr,
             avg_trade_amount=avg_ta,
             stocks=filtered_stocks,
