@@ -248,7 +248,7 @@
 - 슬라이더 우측 트랙: 미세하게 더 진한 회색 (비활성 영역 의미 강화)
 - 에러/정보 토스트 테두리: 기존 어두운 톤 → 표준 COLOR 톤 (약간 더 밝고 선명)
 
-## 미해결 문제 (발견 즉시 기록)
+## 해결된 문제 (F-06-c 세션 발견)
 
 ### 프론트엔드 — 용어 통일 잔존 (F06-10 범위 밖) — 해결됨 (2026-07-22, F-06-d 세션)
 - ~~`frontend/src/pages/profit-overview.ts:347` — `보유주식 평가금액 (` UI 텍스트 (P23 위반)~~ → 해결 ("보유 종목 평가금액 ("로 변경)
@@ -341,11 +341,6 @@
 - `profit-overview.ts` 742줄 (500줄 초과) — `renderSectorStockPnl` 146줄 (135-280줄, P24 50줄의 2.9배) 분할 포함. 업종 그룹 헤더 + 종목 행 렌더 로직을 헬퍼로 분할.
 - `profit-detail.ts` 674줄 (500줄 초과) — 별도 세션에서 추가 분할 검토.
 - F05-07 "보유주식" → "보유 종목" 용어 통일 잔존: profit-overview.ts:347 + profit-shared.ts:426 (account-labels.ts, sell-position.ts는 F06-10에서 완료).
-
-## 미해결 문제 (발견 즉시 기록)
-
-### 백엔드 버그 (F-05-a 조사 중 발견) — 해결됨 (2026-07-22)
-- ~~`backend/app/services/engine_account_rest.py:125-144` `build_account_snapshot_meta`가 응답 dict에서 `accumulated_investment`를 **누락**~~ → 해결 (백엔드 #3 세션에서 반환 dict에 키 추가).
 
 ## 작업 여력
 
