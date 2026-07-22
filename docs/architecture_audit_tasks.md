@@ -79,7 +79,7 @@
 | B-20 | P3 | 알림 (Telegram) | 3 | ☑ | 완료 (3건 P16/P21) |
 | B-21 | P3 | 기타 Core 유틸 | 11 | ☑ | 완료 (B-21-a journal.py 12건, B-21-b logger+encryption 4건, B-21-c classification+mapping+cache 3건 P16) |
 | B-22 | P3 | Web API 계층 | 14 | ☑ | 완료 (B-22-a ws_manager dead code 3건 + B-22-b 주석 dead code 4건 + B-22-c silent except 1건/dead 변수·필드 4건/reset_test_data 분할 = 13건 P16/P20/P21/P24) |
-| B-23 | P3 | 테스트 품질 점검 | 67 | ☐ | 분할: B-23-a 메타 점검 완료(9항목 중 4 완료/2 부분/3 세부 이월), B-23-b 대형 9개(1000줄+), B-23-c 중형 20개(400-1000줄), B-23-d 소형 36개(400줄-) 잔여 |
+| B-23 | P3 | 테스트 품질 점검 | 67 | ☑ | 완료 (B-23-a 메타 점검, B-23-b 대형 9개, B-23-c 중형 20개, B-23-d 소형 36개 점검 완료) |
 | F-01 | P0 | 통신 계층 및 상태 관리 | 8 | ☑ | 10건 수정 |
 | **F-02** | **P1** | **진입점, 라우팅, 레이아웃** | 6 | ☐ | |
 | F-03 | P2 | 핵심 매매 페이지 | 6 | ☐ | |
@@ -88,7 +88,7 @@
 | F-06 | P3 | 공통 컴포넌트 | 25 | ☐ | 분할 권장 |
 | F-07 | P3 | 타입 및 유틸 | 5 | ☐ | |
 
-**진행률**: 11/30 세션 완료 (37%). B-10-a 완료 (11건 수정), B-10-b 대기 (6건). B-11-a 완료 (8건 수정), B-11-b 대기 (4건). 잔여 18세션.
+**진행률**: 12/30 세션 완료 (40%). B-10-a 완료 (11건 수정), B-10-b 대기 (6건). B-11-a 완료 (8건 수정), B-11-b 대기 (4건). B-23 완료 (테스트 품질 점검 — 점검만, 수정은 별도 세션). 잔여 17세션.
 
 ---
 
@@ -653,17 +653,112 @@
 4. (P18/P22) 동등성/reconciliation 테스트 보완 — 신규 테스트 추가
 
 #### B-23-c 세부 점검 — 중형 파일 (400-1000줄, 20개)
-- [ ] P16/P23/P24/P18/P22 점검
+- [x] P16/P23/P24/P18/P22 점검 (2026-07-22 완료, 코드 수정 없음 — 점검/조사 작업)
 - 대상: `test_kiwoom_connector`(985), `test_kiwoom_rest`(878), `test_kiwoom_providers`(827), `test_settings_store`(807), `test_trading`(769), `test_kiwoom_stock_rest`(755), `test_web_ws_manager`(723), `test_web_ws_routes`(700), `test_buy_filter`(680), `test_engine_settings`(657), `test_broker_router`(624), `test_web_routes`(581), `test_web_stock_classification`(580), `test_connector_manager`(561), `test_ls_rest`(560), `test_ls_providers`(560), `test_engine_ws`(555), `test_engine_cache`(513), `test_risk_manager`(512), `test_sector_calculator`(488)
 
-#### B-23-d 세부 점검 — 소형 파일 (400줄-, 36개)
-- [ ] P16/P23/P24/P18/P22 점검
-- 대상: `test_settlement_engine`(472) 외 35개 (400줄 이하 전체)
+**B-23-c 점검 결과 상세** (20개 파일, 총 13,315줄)
 
-**검증**
-- [ ] `pytest backend/tests` 전체 통과
-- [ ] 커버리지 리포트 (`pytest --cov`) 확인
-- [ ] 미커버 모듈 목록화
+| 파일 | 줄 수 | P16 | P23 | P24 | P18 | P22 |
+|------|-------|-----|-----|-----|-----|-----|
+| test_kiwoom_connector | 985 | 0건 | 0건 | 2건 (파일 길이, 중복 patch) | 해당 없음 | 해당 없음 |
+| test_kiwoom_rest | 878 | 0건 | 0건 | 2건 (파일 길이, 중복 patch) | 해당 없음 | 해당 없음 |
+| test_kiwoom_providers | 827 | 0건 | 0건 | 2건 (파일 길이, 중복 patch) | 해당 없음 | 해당 없음 |
+| test_settings_store | 807 | 0건 | 0건 | 2건 (파일 길이, 중복 dict) | 해당 없음 | 부분 (_payload_values_equal) |
+| test_trading | 769 | 0건 | 0건 | 3건 (파일 길이, 중복 patch 10회+, 가독성) | 부분 (단순 test_mode=True만) | 해당 없음 |
+| test_kiwoom_stock_rest | 755 | 0건 | 0건 | 0건 (파일 길이 기록만) | 해당 없음 | 해당 없음 |
+| test_web_ws_manager | 723 | 0건 | 0건 | 0건 (파일 길이 기록만) | 해당 없음 | 해당 없음 |
+| test_web_ws_routes | 700 | 0건 | 0건 | 0건 (파일 길이 기록만) | 해당 없음 | 해당 없음 |
+| test_buy_filter | 680 | 0건 | 0건 | 0건 (파일 길이 기록만) | 해당 없음 | 해당 없음 |
+| test_engine_settings | 657 | 0건 | 0건 | 0건 (파일 길이 기록만) | 해당 없음 | 해당 (전역 상태 백업/복원) |
+| test_broker_router | 624 | 0건 | 0건 | 1건 (파일 길이, patch 24회) | 해당 없음 | 해당 없음 |
+| test_web_routes | 581 | 0건 | 0건 | 1건 (파일 길이, patch 14회) | 해당 없음 | 해당 없음 |
+| test_web_stock_classification | 580 | 0건 | 0건 | 1건 (파일 길이, patch 6회) | 해당 없음 | 해당 없음 |
+| test_connector_manager | 561 | 0건 | 0건 | 1건 (파일 길이) | 해당 없음 | 해당 없음 |
+| test_ls_rest | 560 | 0건 | 0건 | 1건 (파일 길이) | 해당 없음 | 해당 없음 |
+| test_ls_providers | 560 | 0건 | 0건 | 1건 (파일 길이) | 해당 없음 | 해당 없음 |
+| test_engine_ws | 555 | 0건 | 0건 | 1건 (파일 길이) | 부분 (각 모드 동작만) | 해당 없음 |
+| test_engine_cache | 513 | 0건 | 0건 | 1건 (파일 길이) | 부분 (각 모드 동작만) | 해당 없음 |
+| test_risk_manager | 512 | 0건 | 0건 | 1건 (파일 길이) | 부분 (각 모드 동작만, 31개) | 해당 없음 |
+| test_sector_calculator | 488 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+
+**B-23-c 발견 위반 요약**
+| 원칙 | 위반 건수 | 주요 내용 |
+|------|----------|----------|
+| P16 | 0건 | 전부 양호 (제거된 함수 테스트 없음, dead code 없음) |
+| P23 | 0건 | 전부 준수 (금지 용어 "섹터"/"주식"/"바이 리스트"/"홀딩" 사용 없음) |
+| P24 | 19건 | 파일 길이 500줄 초과 19개 (테스트 파일 예외 검토) + 중복 patch 패턴 8개 파일 (test_trading 10회+, test_broker_router 24회, test_web_routes 14회, test_web_stock_classification 6회, test_kiwoom_connector/rest/providers, test_settings_store) |
+| P18 | 부분 4건 | test_trading(단순 test_mode=True만), test_engine_ws/engine_cache/risk_manager(각 모드 동작만 검증, 동등성 명시 검증 부재) |
+| P22 | 부분 2건 | test_settings_store(_payload_values_equal 유틸 테스트), test_engine_settings(전역 상태 백업/복원). 시스템 레벨 reconciliation(메모리 vs DB, 캐시 vs 원본) 테스트 부재 |
+
+**수정 권장 순위** (별도 세션 승인 필요):
+1. (P24) 중복 patch 패턴 conftest.py fixture 추출 — test_trading(10회+), test_broker_router(24회), test_web_routes(14회) 우선
+2. (P18) test_mode=True/False 동등성 명시 검증 테스트 추가 — test_trading, test_engine_ws, test_engine_cache, test_risk_manager
+3. (P22) 시스템 레벨 reconciliation 테스트 보완 — 메모리 vs DB, 캐시 vs 원본 비교
+4. (P24) 파일 길이 500줄 초과 19개 — 테스트 파일 예외 검토 후 분할 여부 결정
+
+#### B-23-d 세부 점검 — 소형 파일 (400줄-, 36개) — 완료
+- [x] P16/P23/P24/P18/P22 점검 (2026-07-22 완료, 코드 수정 없음 — 점검/조사 작업)
+- 대상 (36개, 총 10,724줄): `test_engine_ws_fill_followup`(77), `test_data_manager`(110), `test_encryption`(144), `test_engine_ws_reg`(146), `test_journal`(169), `test_sector_mapping`(185), `test_lock_manager`(219), `test_engine_bootstrap`(223), `test_circuit_breaker`(231), `test_sector_calculator_integration`(243), `test_settings_boost_order_ratio`(244), `test_telegram`(250), `test_engine_symbol_utils`(252), `test_engine_account`(253), `test_pipeline_gateway`(259), `test_notification_worker`(274), `test_trading_calendar`(276), `test_stock_classification_data`(292), `test_settings_file_integration`(294), `test_kiwoom_order`(295), `test_engine_account_notify`(307), `test_sector_data_provider`(318), `test_broker_change`(331), `test_dry_run`(333), `test_stock_tables`(356), `test_dry_run_fill_event`(380), `test_stock_filter`(388), `test_web_app`(401), `test_logger`(407), `test_settlement_verification`(410), `test_engine_ws_parsing`(411), `test_sector_score`(413), `test_engine_account_rest`(441), `test_engine_ws_dispatch`(450), `test_engine_snapshot`(470), `test_settlement_engine`(472)
+
+**B-23-d 점검 결과 상세** (36개 파일, 총 10,724줄)
+
+| 파일 | 줄 수 | P16 | P23 | P24 | P18 | P22 |
+|------|-------|-----|-----|-----|-----|-----|
+| test_engine_ws_fill_followup | 77 | 0건 | 0건 | 부분 (refresh/sell mock 7회 반복) | 해당 없음 | 해당 없음 |
+| test_data_manager | 110 | 0건 | 0건 | 부분 (mock_state patch 5회 반복) | 해당 없음 | 해당 없음 |
+| test_encryption | 144 | 0건 | 0건 | 부분 (get_settings patch 6회 반복) | 해당 없음 | 해당 없음 |
+| test_engine_ws_reg | 146 | 0건 | 0건 | 부분 (empty/invalid 패턴 반복) | 해당 없음 | 해당 없음 |
+| test_journal | 169 | 0건 | 0건 | 부분 (_fake_lock_ctx patch 4회 반복) | 해당 없음 | 해당 없음 |
+| test_sector_mapping | 185 | 0건 | 0건 | 부분 (mock_state/conn/cursor 8회 반복) | 해당 없음 | 해당 없음 |
+| test_lock_manager | 219 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_engine_bootstrap | 223 | 0건 | 0건 | 0건 | 부분 (test_mode skip REST만, 동등성 명시 검증 부재) | 해당 없음 |
+| test_circuit_breaker | 231 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_sector_calculator_integration | 243 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_settings_boost_order_ratio | 244 | 0건 | 0건 | 1건 (5개 patch 블록 5회 중복) | 해당 없음 | 해당 없음 |
+| test_telegram | 250 | 0건 | 0건 | 1건 (settings dict + mock 11회 중복) | 부분 (test/real 토큰 각각 테스트, 동등성 명시 검증 부재) | 해당 없음 |
+| test_engine_symbol_utils | 252 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_engine_account | 253 | 0건 | 0건 | 0건 | 부분 (test/real 모드 13쌍, 동등성 명시 검증 부재) | 해당 없음 |
+| test_pipeline_gateway | 259 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_notification_worker | 274 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_trading_calendar | 276 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_stock_classification_data | 292 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_settings_file_integration | 294 | 0건 | 0건 | 0건 | 부분 (trade_mode 저장/로드만, 동등성 명시 검증 부재) | 1건 (roundtrip save→load 정합성) |
+| test_kiwoom_order | 295 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_engine_account_notify | 307 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_sector_data_provider | 318 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_broker_change | 331 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_dry_run | 333 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_stock_tables | 356 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_dry_run_fill_event | 380 | 0건 | 0건 | 1건 (_setup_test_env fixture 44줄, test_settlement_verification과 중복) | 부분 (헤더에 P18 명시하나 test_mode만 실행) | 해당 없음 |
+| test_stock_filter | 388 | 0건 | 2건 ("상장주식수비정상" 261/388줄 — "주식" 금지 용어) | 0건 | 해당 없음 | 해당 없음 |
+| test_web_app | 401 | 0건 | 0건 | 1건 (_lifespan_patches 52줄, 28개 patch 리스트) | 해당 없음 | 해당 없음 |
+| test_logger | 407 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_settlement_verification | 410 | 0건 | 0건 | 1건 (_setup_settlement_env fixture 44줄, test_dry_run_fill_event과 중복) | 부분 (sync vs async 동등성은 있으나 test/real 모드 동등성 아님) | 해당 없음 |
+| test_engine_ws_parsing | 411 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_sector_score | 413 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_engine_account_rest | 441 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_engine_ws_dispatch | 450 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_engine_snapshot | 470 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+| test_settlement_engine | 472 | 0건 | 0건 | 0건 | 해당 없음 | 해당 없음 |
+
+**B-23-d 발견 위반 요약**
+| 원칙 | 위반 건수 | 주요 내용 |
+|------|----------|----------|
+| P16 | 0건 | 36개 전부 양호 (제거된 함수 테스트 없음, dead code 없음) |
+| P23 | 2건 | test_stock_filter "상장주식수비정상" 문자열 2회 (261/388줄) — "주식" 금지 용어, "상장종목수비정상"으로 수정 권장 |
+| P24 | 13건 | 중복 mock/patch 패턴 12개 파일 (그룹 1의 6개 + test_settings_boost_order_ratio + test_telegram + test_dry_run_fill_event + test_web_app + test_settlement_verification) + 함수 길이 50줄 초과 1건 (test_web_app _lifespan_patches 52줄) |
+| P18 | 부분 6건 | test_engine_bootstrap/test_telegram/test_engine_account/test_settings_file_integration (각 모드 동작만, 동등성 명시 검증 부재), test_dry_run_fill_event (헤더에 P18 명시하나 test_mode만), test_settlement_verification (sync vs async는 있으나 test/real 아님) |
+| P22 | 1건 | test_settings_file_integration (roundtrip save→load 정합성) — 시스템 레벨 reconciliation(메모리 vs DB, 캐시 vs 원본) 테스트 부재 |
+
+**수정 권장 순위** (별도 세션 승인 필요):
+1. (P23) test_stock_filter "상장주식수비정상" → "상장종목수비정상" 수정 (261/388줄) — 가장 단순, 1파일 2곳
+2. (P24) test_web_app `_lifespan_patches` 함수 52줄 → 분할 또는 별도 모듈 이동
+3. (P24) 중복 fixture 패턴 conftest.py 추출 — test_dry_run_fill_event + test_settlement_verification 공통 fixture 우선 (중복이 가장 명확)
+4. (P24) 중복 mock/patch 패턴 fixture 추출 — test_settings_boost_order_ratio (5 patch 5회), test_telegram (settings dict 11회) 우선
+5. (P18) test/real 모드 동등성 명시 검증 테스트 추가 — test_engine_account (13쌍) 우선, test_engine_bootstrap/test_telegram/test_settings_file_integration 보완
+6. (P22) 시스템 레벨 reconciliation 테스트 보완 — test_settings_file_integration의 roundtrip 외 캐시 vs 원본 대조 추가
+
+**검증**: 코드 수정 없음 → pytest/런타임 검증 대상 아님. **B-23-d 완료**: 소형 36개 점검 완료. B-23 (테스트 품질 점검) 전체 완료.
 
 ---
 

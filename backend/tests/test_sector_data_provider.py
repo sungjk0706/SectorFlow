@@ -245,10 +245,12 @@ class TestGetSectorSummaryInputs:
              patch("backend.app.services.daily_time_scheduler.is_nxt_only_window", return_value=False):
             result = await get_sector_summary_inputs()
             assert "all_codes" in result
+            assert "all_filter_codes" in result
             assert "trade_prices" in result
             assert "trade_amounts" in result
             assert "avg_amt_5d" in result
             assert result["all_codes"] == ["005930"]
+            assert result["all_filter_codes"] == ["005930"]
             assert result["avg_amt_5d"]["005930"] == 50000
 
     @pytest.mark.asyncio
@@ -262,6 +264,8 @@ class TestGetSectorSummaryInputs:
              patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", side_effect=lambda cd: cd == "005930"):
             result = await get_sector_summary_inputs()
             assert result["all_codes"] == ["005930"]
+            # all_filter_codes는 NXT 필터링 전 전체 종목 — KRX 단독 종목(005931)도 포함
+            assert set(result["all_filter_codes"]) == {"005930", "005931"}
 
 
 # ── recompute_sector_summary_now ────────────────────────────────────
@@ -291,7 +295,7 @@ class TestRecomputeSectorSummaryNow:
         with patch("backend.app.services.engine_lifecycle.is_engine_running", return_value=True), \
              patch("backend.app.services.engine_state.state") as mock_state, \
              patch("backend.app.services.sector_data_provider.get_sector_summary_inputs", new=AsyncMock(return_value={
-                 "all_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {}
+                 "all_codes": ["005930"], "all_filter_codes": ["005930"], "trade_prices": {}, "trade_amounts": {}, "avg_amt_5d": {}
              })), \
              patch("backend.app.domain.sector_calculator.compute_full_sector_summary", new=AsyncMock(return_value=mock_ss)), \
              patch("backend.app.domain.buy_filter.build_buy_targets_from_settings", return_value=mock_ss), \

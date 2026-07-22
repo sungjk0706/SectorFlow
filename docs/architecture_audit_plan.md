@@ -742,18 +742,22 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | 점검 항목 | 점검 완료 |
 |-----------|----------|
 | 테스트 커버리지 현황 파악 (모듈별) | ☑ B-23-a |
-| P16: 테스트가 살아있는 경로를 검증하는지 (dead code 테스트 아님) | △ B-23-b 완료(1건)/B-23-c/d |
-| P18: 테스트모드 동등성 검증 존재 여부 | △ B-23-a 스캔/B-23-b 부분(동등성 명시 검증 부재)/B-23-c/d |
+| P16: 테스트가 살아있는 경로를 검증하는지 (dead code 테스트 아님) | ☑ B-23-b(1건)/B-23-c(0건)/B-23-d(0건) 완료 |
+| P18: 테스트모드 동등성 검증 존재 여부 | △ B-23-a 스캔/B-23-b 부분(동등성 명시 검증 부재)/B-23-c 부분(4개 파일 각 모드 동작만)/B-23-d 부분(6개 파일 각 모드 동작만, 동등성 명시 검증 부재) |
 | P19: `RuntimeWarning(coroutine never awaited)` 감지 테스트 | ☑ B-23-a (부재 확인) |
-| P22: 데이터 정합성 대조(reconciliation) 테스트 | △ B-23-a 스캔/B-23-b 부분(1개 파일 양호, 8개 부재)/B-23-c/d |
-| P23: 용어/에러/비동기/네이밍/상수 일관성 점검 | ☑ B-23-b 완료(위반 0건)/B-23-c/d |
-| P24: 단순성 점검 (불필요한 추상화, 복잡도) | △ B-23-b 완료(위반 7건)/B-23-c/d |
+| P22: 데이터 정합성 대조(reconciliation) 테스트 | △ B-23-a 스캔/B-23-b 부분(1개 파일 양호, 8개 부재)/B-23-c 부분(2개 파일 유틸/전역상태, 시스템 레벨 부재)/B-23-d 부분(1개 파일 roundtrip, 시스템 레벨 부재) |
+| P23: 용어/에러/비동기/네이밍/상수 일관성 점검 | ☑ B-23-b(위반 0건)/B-23-c(위반 0건)/B-23-d(위반 2건 — test_stock_filter "상장주식수비정상") 완료 |
+| P24: 단순성 점검 (불필요한 추상화, 복잡도) | ☑ B-23-b(위반 7건)/B-23-c(위반 19건)/B-23-d(위반 13건 — 중복 patch 12개 + 함수 길이 1건) 완료 |
 | 미커버 모듈 식별 (테스트 파일 없는 소스 파일) | ☑ B-23-a (17개) |
 | 통합 테스트 vs 단위 테스트 비율 | ☑ B-23-a (2/63, async 1482/sync 1362) |
 
 **B-23-a 메타 점검 결과**: P19 감지 테스트 부재(4개 파일 "방지" 주석만). 미커버 17개 모듈(`engine_config`/`engine_strategy_core`/`engine_utils`/`engine_radar`/`auto_trading_effective`/`ws_subscribe_control`/`broker_factory`/`broker_registry`/`broker_connector`/`trade_mode`/`settings_defaults`/`memory_monitor`/`logging_config`/`sector_stock_cache`/`sector_filter`/`pipeline_compute_tick_handlers`/`json_utils`).
 
-**B-23-b 완료**: 대형 9개(1000줄+) 점검 — P16 위반 1건(`_calc_avg_buy_price` dead code 테스트), P23 위반 0건, P24 위반 7건(함수 길이 초과 4건 + 중복 로직 3건), P18/P22 부분. 상세는 `architecture_audit_tasks.md` B-23-b 섹션 참조. **B-23-c**: 중형 20개(400-1000줄) · **B-23-d**: 소형 36개(400줄-) — 각 P16/P23/P24/P18/P22 점검.
+**B-23-b 완료**: 대형 9개(1000줄+) 점검 — P16 위반 1건(`_calc_avg_buy_price` dead code 테스트), P23 위반 0건, P24 위반 7건(함수 길이 초과 4건 + 중복 로직 3건), P18/P22 부분. 상세는 `architecture_audit_tasks.md` B-23-b 섹션 참조.
+
+**B-23-c 완료**: 중형 20개(400-1000줄, 총 13,315줄) 점검 — P16 위반 0건, P23 위반 0건, P24 위반 19건(파일 길이 500줄 초과 19개 + 중복 patch 패턴 8개 파일 — test_trading 10회+, test_broker_router 24회, test_web_routes 14회 등), P18 부분 4건(test_trading/engine_ws/engine_cache/risk_manager — 각 모드 동작만 검증, 동등성 명시 검증 부재), P22 부분 2건(test_settings_store _payload_values_equal 유틸, test_engine_settings 전역 상태 백업/복원 — 시스템 레벨 reconciliation 부재). 상세는 `architecture_audit_tasks.md` B-23-c 섹션 참조.
+
+**B-23-d 완료**: 소형 36개(400줄-, 총 10,724줄) 점검 — P16 위반 0건(36개 전부 양호, 제거된 함수 테스트 없음), P23 위반 2건(test_stock_filter "상장주식수비정상" 261/388줄 — "주식" 금지 용어), P24 위반 13건(중복 mock/patch 패턴 12개 파일 + 함수 길이 50줄 초과 1건 test_web_app _lifespan_patches 52줄), P18 부분 6건(test_engine_bootstrap/test_telegram/test_engine_account/test_settings_file_integration/test_dry_run_fill_event/test_settlement_verification — 각 모드 동작만, 동등성 명시 검증 부재), P22 1건(test_settings_file_integration roundtrip save→load — 시스템 레벨 reconciliation 부재). 상세는 `architecture_audit_tasks.md` B-23-d 섹션 참조. **B-23 전체 완료**: 테스트 품질 점검 65개 파일 전수 완료. 수정은 별도 세션 승인 필요.
 
 ---
 
@@ -1162,7 +1166,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B-20 | P3 | 알림 (Telegram) | ☑ 완료 (3건 P16/P21) |
 | B-21 | P3 | 기타 Core 유틸 | ◐ B-21-a/b 완료 (journal 12건 + logger 1건 + encryption 3건 P16), B-21-c 잔여 |
 | B-22 | P3 | Web API 계층 | ☑ 완료 (B-22-a ws_manager dead code 3건 + B-22-b 주석 dead code 4건 + B-22-c silent except 1건/dead 변수·필드 4건/reset_test_data 분할 = 13건 P16/P20/P21/P24) |
-| B-23 | P3 | 테스트 품질 점검 | ◐ B-23-a 메타 점검 완료(9항목 중 4 완료/2 부분/3 세부 이월, 미커버 17개 모듈 식별, P19 감지 테스트 부재), B-23-b/c/d 세부 점검 잔여 |
+| B-23 | P3 | 테스트 품질 점검 | ☑ 완료 (B-23-a 메타 점검 + B-23-b 대형 9개 + B-23-c 중형 20개 + B-23-d 소형 36개 점검 완료 — 점검만, 수정은 별도 세션) |
 | F-01 | P0 | 통신 계층 및 상태 관리 | ☑ 완료 (10건 수정, V-02 해결, 112 tests passed) |
 | F-02 | P1 | 진입점, 라우팅, 레이아웃 | ☐ 미시작 |
 | F-03 | P2 | 핵심 매매 페이지 | ☐ 미시작 |
@@ -1176,9 +1180,9 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | 항목 | 카운트 |
 |------|--------|
 | 전체 세션 | 30 |
-| 완료 | 18 (B-01~B-14, B-17, B-18, B-19, B-20, F-01) |
+| 완료 | 19 (B-01~B-14, B-17, B-18, B-19, B-20, B-23, F-01) |
 | 진행 중 | 3 (B-10-a 완료/B-10-b 대기, B-15-a 완료/B-15-b 대기, B-21-a/b 완료/B-21-c 대기) |
-| 미시작 | 9 |
+| 미시작 | 8 |
 | 발견된 문제 | 79 |
 | 해결된 문제 | 70 |
 | 보류된 문제 | 1 (B21-01) |
