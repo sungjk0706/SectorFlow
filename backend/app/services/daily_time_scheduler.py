@@ -579,6 +579,11 @@ async def _on_krx_pre_subscribe() -> None:
     subscribe_sector_stocks_0b() 내부 _subscribed 플래그 멱등성으로 09:00 재호출 시 스킵 (P22).
     날짜 기반 멱등성 가드(last_krx_pre_subscribe_date)로 중복 실행 방지.
     거래일 아닌 시 가드 미설정 — 다음 거래일에 실행 (기존 _on_realtime_fields_reset 패턴 준수).
+
+    가짜 성공 방지 (P20 폴백 금지 · P22 정합성):
+    구독 전후 _subscribed 카운트를 비교하여 실제 구독이 발생한 경우에만 가드를 설정.
+    0건 구독(WS 미연결·필터 누락·이미 전량 구독 등) 시 가드 미설정 →
+    09:00 _on_krx_market_open()에서 복구 구독 수행.
     """
     try:
         today = _kst_now()
@@ -590,9 +595,23 @@ async def _on_krx_pre_subscribe() -> None:
             return
         logger.info("[작업실행] KRX 단독 종목 사전 구독 시작 (08:59)")
         from backend.app.services.engine_ws_reg import subscribe_sector_stocks_0b
+
+        _cache = engine_state.state.master_stocks_cache
+        before_count = sum(1 for e in _cache.values() if e.get("_subscribed"))
+
         await subscribe_sector_stocks_0b()
-        engine_state.state.last_krx_pre_subscribe_date = today_str
-        logger.info("[작업실행] KRX 단독 종목 사전 구독 완료")
+
+        after_count = sum(1 for e in _cache.values() if e.get("_subscribed"))
+        if after_count > before_count:
+            engine_state.state.last_krx_pre_subscribe_date = today_str
+            logger.info(
+                "[작업실행] KRX 단독 종목 사전 구독 완료 — 신규 %d종목 (구독 %d→%d)",
+                after_count - before_count, before_count, after_count,
+            )
+        else:
+            logger.warning(
+                "[작업실행] KRX 사전 구독 0건 — 가짜 성공 방지: 가드 미설정, 09:00 복구 구독 대기"
+            )
     except Exception as e:
         logger.warning("[작업실행] KRX 사전 구독 콜백 오류: %s", e, exc_info=True)
 
