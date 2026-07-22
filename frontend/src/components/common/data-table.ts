@@ -340,10 +340,9 @@ function createFixedMode<T extends object>(
 
   function scheduleRender() {
     if (rafId !== null) return
-    let callbackRan = false
-    const id = requestAnimationFrame((timestamp) => {
+    rafId = -1
+    requestAnimationFrame((timestamp) => {
       rafId = null
-      callbackRan = true
       if (pendingRows === null) {
         return
       }
@@ -548,9 +547,6 @@ function createFixedMode<T extends object>(
         }
       }
     })
-    if (!callbackRan) {
-      rafId = id
-    }
   }
 
   function updateRows(rows: TableRow<T>[]) {
@@ -997,10 +993,9 @@ function createVirtualScrollMode<T extends object>(
 
   function scheduleRender() {
     if (rafId !== null) return
-    let callbackRan = false
-    const id = requestAnimationFrame((timestamp) => {
+    rafId = -1
+    requestAnimationFrame((timestamp) => {
       rafId = null
-      callbackRan = true
 
       if (pendingRows === null) {
         return
@@ -1016,9 +1011,6 @@ function createVirtualScrollMode<T extends object>(
       if (destroyed) return
       internalUpdate(rows)
     })
-    if (!callbackRan) {
-      rafId = id
-    }
   }
 
   function updateRows(rows: TableRow<T>[]) {

@@ -6,6 +6,35 @@
 
 ## 직전 완료 작업
 
+### F-06-b (F06-06): data-table.ts callbackRan dead code 제거 (2026-07-22)
+
+**세션**: F-06 (P3 — 공통 컴포넌트) 1단계. F06-06 (P16 dead code) 해결.
+
+**수정 파일 1개**:
+- `frontend/src/components/common/data-table.ts` (1053→1045줄, -8줄): `callbackRan` 플래그 6곳(고정 모드 3곳 + 가상 스크롤 모드 3곳) 제거 → `rafId = -1` 센티넬 방식으로 대체
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| F06-06 | P16 | `callbackRan` dead code — 프로덕션(비동기 rAF)에서는 항상 `false`로 남아 조건문이 항상 true인 dead code. 단, 테스트 환경(`vitest.setup.ts` 동기 rAF mock)에서는 살아있는 경로. 근본 원인: 프로덕션-테스트 rAF 동작 불일치. 해결: `rafId = -1` 센티넬을 rAF 호출 전에 설정하여 양 환경에서 동일하게 작동. `callbackRan` 6곳 전부 제거. 테스트 코드는 변경 없음. |
+
+**검증**: `npm run typecheck` exit 0, `npm run build` 1.77s exit 0, `npx vitest run tests/components/data-table.ui.test.ts` 17 tests passed (380ms). 잔여 `callbackRan` 참조 grep 0건 확인.
+
+**화면 영향**: 없음. 렌더링 스케줄링 내부 로직만 변경하며, 테이블 표시/업데이트/플래시 등 사용자에게 보이는 동작은 동일.
+
+## 다음 세션 작업
+
+**잔여 F-06 (별도 세션 each)**:
+- F06-01: `data-table.ts` 파일 분할 (1045줄 → ~500줄, fixed/virtual 모드 분리)
+- F06-02: `setting-row.ts` 파일 분할 (569줄, 입력란 그룹 분리 검토)
+- F06-03: `ui-styles.ts` 파일 분할 (564줄, 셀/컬럼 팩토리 분리 검토)
+- F06-10: "보유주식" → "보유 종목" 용어 통일 (account-labels.ts + sell-position.ts 동시 수정 → F-03/F-05 범위와 연계 검토)
+- F06-11, F06-12: LOW — 색상 상수화
+
+---
+
+## 직전 완료 작업 (이전 세션)
+
 ### F-06-a (F06-07/08): 공통 컴포넌트 dead code 제거 (2026-07-22)
 
 **세션**: F-06 (P3 — 공통 컴포넌트) 1단계. dead code 2건 제거.
@@ -27,7 +56,6 @@
 ## 다음 세션 작업
 
 **잔여 F-06 (별도 세션 each)**:
-- F06-06: `data-table.ts` `callbackRan` dead code 제거 (MEDIUM, 6곳)
 - F06-01: `data-table.ts` 파일 분할 (1054줄 → ~500줄, fixed/virtual 모드 분리)
 - F06-02: `setting-row.ts` 파일 분할 (569줄, 입력란 그룹 분리 검토)
 - F06-03: `ui-styles.ts` 파일 분할 (564줄, 셀/컬럼 팩토리 분리 검토)
