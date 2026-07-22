@@ -48,44 +48,36 @@ function syncFromSettings(s: AppSettings): void {
   // 익절
   const tpOn = !!r.tp_apply
   tpToggle?.setOn(tpOn)
-  if (tpValInput && (!act || !tpValInput.el.contains(act))) tpValInput.setValue(Number(r.tp_val) || 0)
+  if (tpValInput && (!act || !tpValInput.el.contains(act))) tpValInput.setValue(Number(r.tp_val) ?? 0)
   if (tpValControls) setDisabled(tpValControls, !tpOn)
 
   // 손절
   const lossOn = !!r.loss_apply
   lossToggle?.setOn(lossOn)
-  if (lossValInput && (!act || !lossValInput.el.contains(act))) lossValInput.setValue(Number(r.loss_val) || 0)
+  if (lossValInput && (!act || !lossValInput.el.contains(act))) lossValInput.setValue(Number(r.loss_val) ?? 0)
   if (lossValControls) setDisabled(lossValControls, !lossOn)
 
   // 추적 매도
   const tsOn = !!r.ts_apply
   tsToggle?.setOn(tsOn)
-  if (tsStartValInput && (!act || !tsStartValInput.el.contains(act))) tsStartValInput.setValue(Number(r.ts_start_val) || 0)
-  if (tsDropValInput && (!act || !tsDropValInput.el.contains(act))) tsDropValInput.setValue(Number(r.ts_drop_val) || 0)
+  if (tsStartValInput && (!act || !tsStartValInput.el.contains(act))) tsStartValInput.setValue(Number(r.ts_start_val) ?? 0)
+  if (tsDropValInput && (!act || !tsDropValInput.el.contains(act))) tsDropValInput.setValue(Number(r.ts_drop_val) ?? 0)
   if (tsStartControls) setDisabled(tsStartControls, !tsOn)
   if (tsDropRow) setDisabled(tsDropRow, !tsOn)
 
   // 매도 주문 간격
   const sellIntervalOn = !!r.sell_interval_on
   sellIntervalToggle?.setOn(sellIntervalOn)
-  if (sellIntervalInput && (!act || !sellIntervalInput.el.contains(act))) sellIntervalInput.setValue(Number(r.sell_interval_sec) || 30)
+  if (sellIntervalInput && (!act || !sellIntervalInput.el.contains(act))) sellIntervalInput.setValue(Number(r.sell_interval_sec) ?? 30)
   if (sellIntervalControls) {
     setDisabled(sellIntervalControls, !sellIntervalOn)
   }
 }
 
-/* ── mount ── */
-function mount(container: HTMLElement): void {
-  const ctx = initSettingsPage(syncFromSettings)
-  settingsMgr = ctx.settingsMgr
-  saveHelper = ctx.saveHelper
-  vals = {}
+/* ── mount 섹션 빌더 ── */
+// mount() 80줄 → 섹션별 빌더로 분할 (P24)
 
-  const root = document.createElement('div')
-
-  root.appendChild(createCardTitle('매도설정'))
-
-  // ── 익절 / 손절 / 추적 매도 섹션 ──
+function buildSellTypeSection(root: HTMLElement): void {
   root.appendChild(sectionTitle('매도 유형'))
 
   // 매도 주문 유형
@@ -133,8 +125,9 @@ function mount(container: HTMLElement): void {
     root.appendChild(r.el)
   }
   root.appendChild(tsDropRow)
+}
 
-  // ── 매도 주문 간격 섹션 ──
+function buildSellIntervalSection(root: HTMLElement): void {
   root.appendChild(sectionTitle('매도 주문 간격'))
   {
     sellIntervalInput = createNumInput({ value: 30, onChange: v => { vals.sell_interval_sec = v; saveHelper!.autoSave('sell_interval_sec', v) }, step: 5, min: 5, max: 300, name: 'sell_interval_sec' })
@@ -149,6 +142,20 @@ function mount(container: HTMLElement): void {
     root.appendChild(r.el)
   }
   root.appendChild(createDescText('5초 단위로 설정 가능합니다 (5~300초, 기본 30초). 손절 포함 모든 매도에 간격이 적용됩니다.'))
+}
+
+/* ── mount ── */
+function mount(container: HTMLElement): void {
+  const ctx = initSettingsPage(syncFromSettings)
+  settingsMgr = ctx.settingsMgr
+  saveHelper = ctx.saveHelper
+  vals = {}
+
+  const root = document.createElement('div')
+
+  root.appendChild(createCardTitle('매도설정'))
+  buildSellTypeSection(root)
+  buildSellIntervalSection(root)
 
   container.appendChild(root)
 

@@ -69,50 +69,30 @@ let buyIntervalInput: ReturnType<typeof createNumInput> | null = null
 let buyIntervalControls: HTMLElement | null = null
 
 
-/* ── 설정 동기화 ── */
-function syncFromSettings(s: AppSettings): void {
-  if (boostOrderDualSlider && boostOrderDualSlider.isInteracting) return
-  const r = s as Record<string, unknown>
-  vals = { ...r }
+/* ── 설정 동기화 섹션 ── */
+// syncFromSettings() 92줄 → 섹션별 동기화 함수로 분할 (P24)
 
-  const act = document.activeElement
-
-  // 매수 조건 (토글 + 값)
+function syncBuyBlock(r: Record<string, unknown>, act: Element | null): void {
   const riseOn = !!r.buy_block_rise_on
   riseToggle?.setOn(riseOn)
-  if (riseInput && (!act || !riseInput.el.contains(act))) riseInput.setValue(Number(r.buy_block_rise_pct) || 0)
+  if (riseInput && (!act || !riseInput.el.contains(act))) riseInput.setValue(Number(r.buy_block_rise_pct) ?? 0)
   if (riseControls) setDisabled(riseControls, !riseOn)
 
   const fallOn = !!r.buy_block_fall_on
   fallToggle?.setOn(fallOn)
-  if (fallInput && (!act || !fallInput.el.contains(act))) fallInput.setValue(Number(r.buy_block_fall_pct) || 0)
+  if (fallInput && (!act || !fallInput.el.contains(act))) fallInput.setValue(Number(r.buy_block_fall_pct) ?? 0)
   if (fallControls) setDisabled(fallControls, !fallOn)
 
   const strengthOn = !!r.buy_block_strength_on
   strengthToggle?.setOn(strengthOn)
-  if (strengthInput && (!act || !strengthInput.el.contains(act))) strengthInput.setValue(Number(r.buy_min_strength) || 0)
+  if (strengthInput && (!act || !strengthInput.el.contains(act))) strengthInput.setValue(Number(r.buy_min_strength) ?? 0)
   if (strengthControls) setDisabled(strengthControls, !strengthOn)
+}
 
-  // 매수 금액
-  const dailyOn = !!r.max_daily_total_buy_on
-  maxDailyToggle?.setOn(dailyOn)
-  if (maxDailyInput && (!act || !maxDailyInput.el.contains(act))) maxDailyInput.setValue(Number(r.max_daily_total_buy_amt) || 0)
-  if (maxDailyControls) setDisabled(maxDailyControls, !dailyOn)
-
-  const stockCntOn = !!r.max_stock_cnt_on
-  maxStockCntToggle?.setOn(stockCntOn)
-  if (maxStockCntInput && (!act || !maxStockCntInput.el.contains(act))) maxStockCntInput.setValue(Number(r.max_stock_cnt) || 0)
-  if (maxStockCntControls) setDisabled(maxStockCntControls, !stockCntOn)
-
-  const buyAmtOn = !!r.buy_amt_on
-  buyAmtToggle?.setOn(buyAmtOn)
-  if (buyAmtInput && (!act || !buyAmtInput.el.contains(act))) buyAmtInput.setValue(Number(r.buy_amt) || 0)
-  if (buyAmtControls) setDisabled(buyAmtControls, !buyAmtOn)
-
-  // 매수 가산점
+function syncBoost(r: Record<string, unknown>, act: Element | null): void {
   const highOn = !!r.boost_high_breakout_on
   boostHighToggle?.setOn(highOn)
-  if (boostHighScoreInput && (!act || !boostHighScoreInput.el.contains(act))) boostHighScoreInput.setValue(Number(r.boost_high_breakout_score) || 1.0)
+  if (boostHighScoreInput && (!act || !boostHighScoreInput.el.contains(act))) boostHighScoreInput.setValue(Number(r.boost_high_breakout_score) ?? 1.0)
   if (boostHighControls) {
     setDisabled(boostHighControls, !highOn)
   }
@@ -121,7 +101,7 @@ function syncFromSettings(s: AppSettings): void {
   boostOrderToggle?.setOn(orderOn)
   const signedPct = Number(r.boost_order_ratio_pct ?? 20)
   boostOrderDualSlider?.setValue(signedPct + 100)
-  boostOrderScoreInput?.setValue(Number(r.boost_order_ratio_score) || 1.0)
+  boostOrderScoreInput?.setValue(Number(r.boost_order_ratio_score) ?? 1.0)
   if (boostOrderControls) {
     setDisabled(boostOrderControls, !orderOn)
   }
@@ -131,19 +111,37 @@ function syncFromSettings(s: AppSettings): void {
 
   const programOn = !!r.boost_program_net_buy_on
   boostProgramToggle?.setOn(programOn)
-  if (boostProgramScoreInput && (!act || !boostProgramScoreInput.el.contains(act))) boostProgramScoreInput.setValue(Number(r.boost_program_net_buy_score) || 1.0)
+  if (boostProgramScoreInput && (!act || !boostProgramScoreInput.el.contains(act))) boostProgramScoreInput.setValue(Number(r.boost_program_net_buy_score) ?? 1.0)
   if (boostProgramControls) {
     setDisabled(boostProgramControls, !programOn)
   }
 
   const tradeAmountOn = !!r.boost_trade_amount_rank_on
   boostTradeAmountToggle?.setOn(tradeAmountOn)
-  if (boostTradeAmountScoreInput && (!act || !boostTradeAmountScoreInput.el.contains(act))) boostTradeAmountScoreInput.setValue(Number(r.boost_trade_amount_rank_score) || 1.0)
+  if (boostTradeAmountScoreInput && (!act || !boostTradeAmountScoreInput.el.contains(act))) boostTradeAmountScoreInput.setValue(Number(r.boost_trade_amount_rank_score) ?? 1.0)
   if (boostTradeAmountControls) {
     setDisabled(boostTradeAmountControls, !tradeAmountOn)
   }
+}
 
-  // 재매수 차단
+function syncBuyAmount(r: Record<string, unknown>, act: Element | null): void {
+  const dailyOn = !!r.max_daily_total_buy_on
+  maxDailyToggle?.setOn(dailyOn)
+  if (maxDailyInput && (!act || !maxDailyInput.el.contains(act))) maxDailyInput.setValue(Number(r.max_daily_total_buy_amt) ?? 0)
+  if (maxDailyControls) setDisabled(maxDailyControls, !dailyOn)
+
+  const stockCntOn = !!r.max_stock_cnt_on
+  maxStockCntToggle?.setOn(stockCntOn)
+  if (maxStockCntInput && (!act || !maxStockCntInput.el.contains(act))) maxStockCntInput.setValue(Number(r.max_stock_cnt) ?? 0)
+  if (maxStockCntControls) setDisabled(maxStockCntControls, !stockCntOn)
+
+  const buyAmtOn = !!r.buy_amt_on
+  buyAmtToggle?.setOn(buyAmtOn)
+  if (buyAmtInput && (!act || !buyAmtInput.el.contains(act))) buyAmtInput.setValue(Number(r.buy_amt) ?? 0)
+  if (buyAmtControls) setDisabled(buyAmtControls, !buyAmtOn)
+}
+
+function syncRebuy(r: Record<string, unknown>, act: Element | null): void {
   const rebuyOn = !!r.rebuy_block_on
   rebuyBlockToggle?.setOn(rebuyOn)
   if (rebuyBlockSelect && (!act || !rebuyBlockSelect.el.contains(act))) {
@@ -152,29 +150,36 @@ function syncFromSettings(s: AppSettings): void {
   if (rebuyBlockControls) {
     setDisabled(rebuyBlockControls, !rebuyOn)
   }
+}
 
-  // 매수 주문 간격
+function syncBuyInterval(r: Record<string, unknown>, act: Element | null): void {
   const intervalOn = !!r.buy_interval_on
   buyIntervalToggle?.setOn(intervalOn)
-  if (buyIntervalInput && (!act || !buyIntervalInput.el.contains(act))) buyIntervalInput.setValue(Number(r.buy_interval_sec) || 30)
+  if (buyIntervalInput && (!act || !buyIntervalInput.el.contains(act))) buyIntervalInput.setValue(Number(r.buy_interval_sec) ?? 30)
   if (buyIntervalControls) {
     setDisabled(buyIntervalControls, !intervalOn)
   }
-
 }
 
-/* ── mount ── */
-function mount(container: HTMLElement): void {
-  const ctx = initSettingsPage(syncFromSettings)
-  settingsMgr = ctx.settingsMgr
-  saveHelper = ctx.saveHelper
-  vals = {}
+/* ── 설정 동기화 ── */
+function syncFromSettings(s: AppSettings): void {
+  if (boostOrderDualSlider && boostOrderDualSlider.isInteracting) return
+  const r = s as Record<string, unknown>
+  vals = { ...r }
 
-  const root = document.createElement('div')
+  const act = document.activeElement
 
-  root.appendChild(createCardTitle('매수설정'))
+  syncBuyBlock(r, act)
+  syncBoost(r, act)
+  syncBuyAmount(r, act)
+  syncRebuy(r, act)
+  syncBuyInterval(r, act)
+}
 
-  // ── 매수 조건 섹션 ──
+/* ── mount 섹션 빌더 ── */
+// 각 섹션은 독립된 빌더 함수로 분할 (P24 — mount() 233줄 → 섹션별 30~50줄)
+
+function buildBuyBlockSection(root: HTMLElement): void {
   root.appendChild(sectionTitle('매수 차단'))
 
   // 상승률 제한 (토글 + 입력)
@@ -215,8 +220,9 @@ function mount(container: HTMLElement): void {
     strengthToggle = r.toggle; strengthControls = r.controls
     root.appendChild(r.el)
   }
+}
 
-  // ── 매수 가산점 섹션 ──
+function buildBoostSection(root: HTMLElement): void {
   root.appendChild(sectionTitle('매수 가산점 (+N)'))
 
   // --- 5일 고가 돌파 ---
@@ -259,51 +265,54 @@ function mount(container: HTMLElement): void {
   }
 
   // --- 매수/매도호가 잔량비율 ---
-  {
-    const block = document.createElement('div')
-    block.style.borderBottom = '1px solid ' + COLOR.borderLight
+  buildBoostOrderBlock(root)
+}
 
-    // Row 2: dual label slider (먼저 생성 — extraDisableTargets로 전달)
-    boostOrderDualSlider = createDualLabelSlider({
-      min: 0, max: 200, value: 120, step: 1,
-      leftLabel: (v) => v < 100 ? `매도잔량 +${100 - v}%` : '매도잔량',
-      rightLabel: (v) => v > 100 ? `매수잔량 +${v - 100}%` : '매수잔량',
-      leftColor: COLOR.down,
-      leftColorLight: COLOR.downLight,
-      rightColor: COLOR.up,
-      rightColorLight: COLOR.upLight,
-      onChange(_v) {
-        // live preview only
-      },
-      onCommit(v) {
-        vals.boost_order_ratio_pct = v - 100
-        saveHelper!.autoSave('boost_order_ratio_pct', v - 100)
-      },
-    })
+function buildBoostOrderBlock(root: HTMLElement): void {
+  const block = document.createElement('div')
+  block.style.borderBottom = '1px solid ' + COLOR.borderLight
 
-    const row2 = document.createElement('div')
-    Object.assign(row2.style, { padding: '0 0 6px' })
-    row2.appendChild(boostOrderDualSlider.el)
-    boostOrderRow2 = row2
+  // Row 2: dual label slider (먼저 생성 — extraDisableTargets로 전달)
+  boostOrderDualSlider = createDualLabelSlider({
+    min: 0, max: 200, value: 120, step: 1,
+    leftLabel: (v) => v < 100 ? `매도잔량 +${100 - v}%` : '매도잔량',
+    rightLabel: (v) => v > 100 ? `매수잔량 +${v - 100}%` : '매수잔량',
+    leftColor: COLOR.down,
+    leftColorLight: COLOR.downLight,
+    rightColor: COLOR.up,
+    rightColorLight: COLOR.upLight,
+    onChange(_v) {
+      // live preview only
+    },
+    onCommit(v) {
+      vals.boost_order_ratio_pct = v - 100
+      saveHelper!.autoSave('boost_order_ratio_pct', v - 100)
+    },
+  })
 
-    // Row 1: toggle + label | 가산점 + input
-    boostOrderScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_order_ratio_score = v; saveHelper!.autoSave('boost_order_ratio_score', v) }, step: 1, name: 'boost_order_ratio_score' })
-    const r = createToggleLabelControlsRow({
-      labelText: '매수/매도호가 잔량비율',
-      toggleOn: false,
-      onToggle: next => { vals.boost_order_ratio_on = next; saveHelper!.saveImmediate({ boost_order_ratio_on: next }) },
-      controlsChild: boostOrderScoreInput.el,
-      extraDisableTargets: [row2],
-      rowStyle: { borderBottom: 'none' },
-    })
-    boostOrderToggle = r.toggle; boostOrderControls = r.controls
+  const row2 = document.createElement('div')
+  Object.assign(row2.style, { padding: '0 0 6px' })
+  row2.appendChild(boostOrderDualSlider.el)
+  boostOrderRow2 = row2
 
-    block.appendChild(r.el)
-    block.appendChild(row2)
-    root.appendChild(block)
-  }
+  // Row 1: toggle + label | 가산점 + input
+  boostOrderScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_order_ratio_score = v; saveHelper!.autoSave('boost_order_ratio_score', v) }, step: 1, name: 'boost_order_ratio_score' })
+  const r = createToggleLabelControlsRow({
+    labelText: '매수/매도호가 잔량비율',
+    toggleOn: false,
+    onToggle: next => { vals.boost_order_ratio_on = next; saveHelper!.saveImmediate({ boost_order_ratio_on: next }) },
+    controlsChild: boostOrderScoreInput.el,
+    extraDisableTargets: [row2],
+    rowStyle: { borderBottom: 'none' },
+  })
+  boostOrderToggle = r.toggle; boostOrderControls = r.controls
 
-  // ── 매수 금액 섹션 ──
+  block.appendChild(r.el)
+  block.appendChild(row2)
+  root.appendChild(block)
+}
+
+function buildBuyAmountSection(root: HTMLElement): void {
   root.appendChild(sectionTitle('매수 금액 한도'))
 
   // 매수 주문 유형 (시장가 고정)
@@ -334,8 +343,9 @@ function mount(container: HTMLElement): void {
     maxStockCntToggle = r.toggle; maxStockCntControls = r.controls
     root.appendChild(r.el)
   }
+}
 
-  // ── 동일 종목 재매수 제어 섹션 ──
+function buildRebuySection(root: HTMLElement): void {
   root.appendChild(sectionTitle('동일 종목 재매수 제어'))
 
   // 종목당 일일 최대 매수 금액 (토글 + 입력)
@@ -375,8 +385,9 @@ function mount(container: HTMLElement): void {
     rebuyBlockToggle = r.toggle; rebuyBlockControls = r.controls
     root.appendChild(r.el)
   }
+}
 
-  // ── 매수 주문 간격 섹션 ──
+function buildBuyIntervalSection(root: HTMLElement): void {
   root.appendChild(sectionTitle('매수 주문 간격'))
   {
     buyIntervalInput = createNumInput({ value: 30, onChange: v => { vals.buy_interval_sec = v; saveHelper!.autoSave('buy_interval_sec', v) }, step: 5, min: 5, max: 300, name: 'buy_interval_sec' })
@@ -391,6 +402,23 @@ function mount(container: HTMLElement): void {
     root.appendChild(r.el)
   }
   root.appendChild(createDescText('5초 단위로 설정 가능합니다 (5~300초, 기본 30초)'))
+}
+
+/* ── mount ── */
+function mount(container: HTMLElement): void {
+  const ctx = initSettingsPage(syncFromSettings)
+  settingsMgr = ctx.settingsMgr
+  saveHelper = ctx.saveHelper
+  vals = {}
+
+  const root = document.createElement('div')
+
+  root.appendChild(createCardTitle('매수설정'))
+  buildBuyBlockSection(root)
+  buildBoostSection(root)
+  buildBuyAmountSection(root)
+  buildRebuySection(root)
+  buildBuyIntervalSection(root)
 
   container.appendChild(root)
 
