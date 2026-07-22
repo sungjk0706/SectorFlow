@@ -6,6 +6,47 @@
 
 ## 직전 완료 작업
 
+### F-06-d (F06-10 잔존): 용어 통일 마무리 (2026-07-22)
+
+**세션**: F-06 (P3 — 공통 컴포넌트) 1단계. F06-10 잔존 2곳 해결 (프로젝트 전역 용어 통일 종료).
+
+**수정 파일 2개**:
+- `frontend/src/pages/profit-overview.ts:347`: UI 텍스트 "보유주식 평가금액 (" → "보유 종목 평가금액 (" (F06-10 잔존)
+- `frontend/src/pages/profit-shared.ts:426`: 주석 "보유주식 평가금액/평가손익/수익률" → "보유 종목 평가금액/평가손익/수익률" (F06-10 잔존)
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| F06-10 잔존 | P23 | F06-10에서 account-labels.ts + sell-position.ts 완료 후 남은 2곳. UI 텍스트 1곳 + 주석 1곳. "보유주식" → "보유 종목" (용어 사전 준수). 프로젝트 전역 "보유주식" 잔존 0건 달성 |
+
+**검증**: `npm run build` 612ms exit 0. 잔여 "보유주식" grep (frontend 전역): 0건 확인.
+
+**화면 영향**:
+- 수익 요약 페이지 계좌 현황 표: "보유주식 평가금액 (N종목)" → "보유 종목 평가금액 (N종목)"으로 표시 변경
+
+## 미해결 문제 (발견 즉시 기록)
+
+### 백엔드 버그 (F-05-a 조사 중 발견)
+- `backend/app/services/engine_account_rest.py:125-144` `build_account_snapshot_meta`가 응답 dict에서 `accumulated_investment`를 **누락**. 테스트모드에서 `state.account_snapshot["accumulated_investment"]`를 set한 후 `build_account_snapshot_meta`가 새 dict을 반환하므로 누락됨. 프론트엔드 F05-01은 `initial_deposit`만 사용하여 우회(테스트모드에서는 동일 값이므로 UI 변화 없음). 백엔드 수정은 별도 세션 필요.
+
+## 다음 세션 작업
+
+**잔여 F-06 (별도 세션 each)**:
+- F06-01: `data-table.ts` 파일 분할 (1045줄 → ~500줄, fixed/virtual 모드 분리)
+- F06-02: `setting-row.ts` 파일 분할 (569줄, 입력란 그룹 분리 검토)
+- F06-03: `ui-styles.ts` 파일 분할 (564줄, 셀/컬럼 팩토리 분리 검토)
+
+**잔여 F-05 (별도 세션 each)**:
+- `profit-overview.ts` 742줄 (500줄 초과) — `renderSectorStockPnl` 146줄 분할 포함
+- `profit-detail.ts` 674줄 (500줄 초과) — 별도 세션에서 추가 분할 검토
+
+**백엔드 (별도 세션)**:
+- `engine_account_rest.py:125-144` `accumulated_investment` 누락 수정 (미해결 문제 참조)
+
+---
+
+## 직전 완료 작업 (이전 세션)
+
 ### F-06-c (F06-10/11/12): 용어 통일 + 색상 상수화 (2026-07-22)
 
 **세션**: F-06 (P3 — 공통 컴포넌트) 1단계. F06-10 (P23 용어), F06-11/12 (P23 색상 상수화) 해결.
