@@ -123,32 +123,37 @@
 
 ### 3.2 사전조사 항목 (수정 전 필수, 규칙 0-2)
 
-- [ ] **의존성**: trades 테이블의 realized_pnl/pnl_rate 필드를 읽는 모든 코드 경로 식별 (백엔드 집계 + 프론트엔드 표시).
-- [ ] **영향범위**: backend/app/services/trade_history.py, DB trades 테이블, 프론트엔드 수익률 표시 전체.
-- [ ] **기존 데이터 규모**: trades 테이블 레코드 수 확인 (마이그레이션 I/O 비용 추정).
+- [x] **의존성**: trades 테이블의 realized_pnl/pnl_rate 필드를 읽는 코드 경로 식별 — trade_history.py per-trade 생성(353,369), per-day 집계(518,527), get_total_realized_pnl(453), risk_manager.py 연속손실 카운트(63), 프론트엔드 수익률 표시 전체.
+- [x] **영향범위**: backend/app/services/trade_history.py, DB trades 테이블(stock_tables.py:22-43 — realized_pnl/pnl_rate/buy_total_amt 필드 모두 존재, 스키마 변경 불필요), 프론트엔드 수익률 표시 전체.
+- [x] **기존 데이터 규모**: trades 테이블 SELL 레코드 **0건** (전체 0건). test_positions 테이블 3건은 pnl_amount/pnl_rate(평가손익) 필드이며 realized_pnl/buy_total_amt 없음 → 마이그레이션 대상 아님.
 - [x] **마이그레이션 방식 결정**: **옵션 2(1회 마이그레이션 스크립트 실행)** 확정 (사용자 결정 2026-07-22). 옵션 1(기동 시 재계산)은 기각. 옵션 3(P22 위반 잔존)은 부적합 후보에서 제외.
-- [ ] **아키텍처 원칙 부합**: P22(데이터 정합성) — 과거/현재 데이터 기준 일치. P18(모드 동등성) — 실전/테스트 동일 마이그레이션 적용.
+- [x] **아키텍처 원칙 부합**: P22(데이터 정합성) — 과거/현재 데이터 기준 일치. P18(모드 동등성) — 실전/테스트 동일 마이그레이션 적용 (실전은 fee/tax=0이므로 영향 없음).
 
 ### 3.3 수정 체크리스트
 
-- [ ] **DB 백업**: db-backup 스킬 호출 — stocks.db, stocks.db-shm, stocks.db-wal 백업 (사용자 승인 필수).
+- [x] **DB 백업**: db-backup 스킬 호출 — stocks.db.20260722_230709.backup (1.2M), stocks.db-shm.20260722_230709.backup (32K), stocks.db-wal.20260722_230709.backup (0B). 백엔드 미실행 상태에서 안전 백업.
 - [x] **마이그레이션 방식 사용자 승인**: 옵션 2(1회 스크립트 실행) 확정.
-- [ ] **마이그레이션 스크립트 설계** (옵션 2 적용):
-  - trades 테이블 모든 SELL 레코드 순회
+- [x] **마이그레이션 스크립트 설계** (옵션 2 적용, 사용자 설계 승인 2026-07-22):
+  - 대상: `trades` 테이블 SELL 레코드 전체 (현재 0건, 향후 매도 발생 시 대상)
+  - 조건: `side='SELL' AND avg_buy_price > 0 AND buy_total_amt > 0` (유령 데이터/0매입 제외, trade_history.py:340 안전장치와 동일 기준)
   - `realized_pnl = total_amt - buy_total_amt` (현금 기준 재계산)
   - `pnl_rate = round(realized_pnl / buy_total_amt * 100, 2)` (buy_total_amt 기준, 수수료 포함)
-  - UPDATE 쿼리 실행
+  - UPDATE 쿼리 1건 실행 (트랜잭션 단위)
+  - **idempotent (멱등)**: 이미 현금 기준인 레코드는 재실행해도 동일값 → 안전 재실행 가능
+  - **스키마 변경 없음**: UPDATE만, DDL 없음
+  - **모드 무관**: trade_mode 분기 없이 동일 적용 (P18 준수)
+  - 실행 시점: 단계 B-본 세션에서 per-trade 생성 공식 변경 직후 실행 (같은 세션 내)
 
 ### 3.4 검증
 
-- [ ] DB 백업 파일 생성 확인 (타임스탬프 포함).
-- [ ] 마이그레이션 방식 사용자 승인 확보.
+- [x] DB 백업 파일 생성 확인 (타임스탬프 20260722_230709 포함, 3개 파일 모두 존재).
+- [x] 마이그레이션 방식 사용자 승인 확보 (설계 승인 2026-07-22).
 
 ### 3.5 완료 조건
 
-- DB 백업 완료.
-- 마이그레이션 방식 확정 + 사용자 승인.
-- HANDOVER.md 직전 완료 작업 섹션 갱신.
+- [x] DB 백업 완료.
+- [x] 마이그레이션 방식 확정 + 사용자 승인.
+- [x] HANDOVER.md 직전 완료 작업 섹션 갱신.
 
 ---
 
