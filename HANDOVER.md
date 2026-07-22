@@ -6,6 +6,43 @@
 
 ## 직전 완료 작업
 
+### F-06-c (F06-10/11/12): 용어 통일 + 색상 상수화 (2026-07-22)
+
+**세션**: F-06 (P3 — 공통 컴포넌트) 1단계. F06-10 (P23 용어), F06-11/12 (P23 색상 상수화) 해결.
+
+**수정 파일 5개**:
+- `frontend/src/components/common/ui-styles.ts`: `hexToRgba(hex, alpha)` 공통 헬퍼 추가 (P23 공통 자산 — toast.ts + 향후 재사용)
+- `frontend/src/components/common/toast.ts`: TYPE_CONFIG bg/border 8곳 하드코딩 rgba → `hexToRgba(COLOR.*, alpha)` (F06-12)
+- `frontend/src/components/common/create-slider.ts`: 우측 트랙 기본색 `'#e9ecef'` → `COLOR.inactiveBg` (F06-11)
+- `frontend/src/components/common/account-labels.ts`: "보유주식" → "보유 종목" 6곳 (F06-10)
+- `frontend/src/pages/sell-position.ts`: "보유주식" → "보유 종목" 6곳 (주석 2 + 배지 라벨 4, F06-10)
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| F06-10 | P23 | UI 라벨 "보유주식" → "보유 종목" (용어 사전 준수). account-labels.ts 6곳 + sell-position.ts 6곳 |
+| F06-11 | P23 | create-slider.ts 우측 트랙 하드코딩 `#e9ecef` → `COLOR.inactiveBg` (비활성 영역 의미 부합) |
+| F06-12 | P23 | toast.ts TYPE_CONFIG 8곳 하드코딩 rgba → `hexToRgba(COLOR.*, alpha)` 공통 헬퍼 활용. 에러/정보 토스트 테두리 색상 톤이 표준 COLOR 팔레트로 통일 |
+
+**검증**: `npm run build` 618ms exit 0. 잔여 "보유주식" grep: profit-overview.ts 1곳 + profit-shared.ts 1곳 (사용자 지시 범위 밖, 미해결 문제에 기록).
+
+**화면 영향**:
+- 계좌 현황 표 라벨: "보유주식 평가 금액" → "보유 종목 평가 금액" 등으로 표시 변경
+- 보유 종목 페이지 요약 배지: "📊 보유주식 평가금액 합계" → "📊 보유 종목 평가금액 합계" 등
+- 슬라이더 우측 트랙: 미세하게 더 진한 회색 (비활성 영역 의미 강화)
+- 에러/정보 토스트 테두리: 기존 어두운 톤 → 표준 COLOR 톤 (약간 더 밝고 선명)
+
+## 미해결 문제 (발견 즉시 기록)
+
+### 프론트엔드 — 용어 통일 잔존 (F06-10 범위 밖)
+- `frontend/src/pages/profit-overview.ts:347` — `보유주식 평가금액 (` UI 텍스트 (P23 위반)
+- `frontend/src/pages/profit-shared.ts:426` — `// 보유주식 평가금액/...` 주석 (P23 위반)
+- 사용자 지시(F06-10)가 account-labels.ts + sell-position.ts로 한정되었으므로 본 세션에서 제외. 다음 세션에서 profit-overview/profit-shared 동시 수정 권장.
+
+---
+
+## 직전 완료 작업 (이전 세션)
+
 ### F-06-b (F06-06): data-table.ts callbackRan dead code 제거 (2026-07-22)
 
 **세션**: F-06 (P3 — 공통 컴포넌트) 1단계. F06-06 (P16 dead code) 해결.
@@ -28,8 +65,7 @@
 - F06-01: `data-table.ts` 파일 분할 (1045줄 → ~500줄, fixed/virtual 모드 분리)
 - F06-02: `setting-row.ts` 파일 분할 (569줄, 입력란 그룹 분리 검토)
 - F06-03: `ui-styles.ts` 파일 분할 (564줄, 셀/컬럼 팩토리 분리 검토)
-- F06-10: "보유주식" → "보유 종목" 용어 통일 (account-labels.ts + sell-position.ts 동시 수정 → F-03/F-05 범위와 연계 검토)
-- F06-11, F06-12: LOW — 색상 상수화
+- F06-10 잔존: profit-overview.ts:347 + profit-shared.ts:426 "보유주식" → "보유 종목" (미해결 문제 참조)
 
 ---
 
@@ -59,8 +95,7 @@
 - F06-01: `data-table.ts` 파일 분할 (1054줄 → ~500줄, fixed/virtual 모드 분리)
 - F06-02: `setting-row.ts` 파일 분할 (569줄, 입력란 그룹 분리 검토)
 - F06-03: `ui-styles.ts` 파일 분할 (564줄, 셀/컬럼 팩토리 분리 검토)
-- F06-10: "보유주식" → "보유 종목" 용어 통일 (account-labels.ts + sell-position.ts 동시 수정 → F-03/F-05 범위와 연계 검토)
-- F06-11, F06-12: LOW — 색상 상수화
+- F06-10 잔존: profit-overview.ts:347 + profit-shared.ts:426 "보유주식" → "보유 종목" (미해결 문제 참조)
 
 ---
 
@@ -89,7 +124,7 @@
 **잔여 (별도 세션 필요)**:
 - `profit-overview.ts` 742줄 (500줄 초과) — `renderSectorStockPnl` 146줄 (135-280줄, P24 50줄의 2.9배) 분할 포함. 업종 그룹 헤더 + 종목 행 렌더 로직을 헬퍼로 분할.
 - `profit-detail.ts` 674줄 (500줄 초과) — 별도 세션에서 추가 분할 검토.
-- F05-07 "보유주식" → "보유 종목" 용어 통일 (account-labels.ts, sell-position.ts 전역 동시 수정 필요).
+- F05-07 "보유주식" → "보유 종목" 용어 통일 잔존: profit-overview.ts:347 + profit-shared.ts:426 (account-labels.ts, sell-position.ts는 F06-10에서 완료).
 
 ## 미해결 문제 (발견 즉시 기록)
 
