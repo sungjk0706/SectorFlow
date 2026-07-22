@@ -5,7 +5,7 @@ _safe_broadcast/_broadcast를 mock하여 검증.
 """
 from __future__ import annotations
 
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 
 import pytest
 
@@ -366,13 +366,21 @@ class TestHandleJif:
             mock_bc.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_jif_countdown_ignored(self):
-        """jstatus=22 (장개시 10초전) → 카운트다운 코드 무시, _apply_jif_phase 미호출."""
-        with patch("backend.app.services.engine_ws_dispatch._apply_jif_phase") as mock_apply, \
-             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc:
+    async def test_jif_countdown_handled(self):
+        """jstatus=22 (장개시 10초전) → 카운트다운 코드 처리, _apply_jif_phase 미호출 + override 저장 + 브로드캐스트."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
+        with patch("backend.app.services.engine_ws_dispatch.engine_state.state", mock_state), \
+             patch("backend.app.services.engine_ws_dispatch._apply_jif_phase") as mock_apply, \
+             patch("backend.app.services.engine_account_notify._broadcast", new_callable=AsyncMock) as mock_bc, \
+             patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "시가 동시호가", "nxt": "정규장 준비"}):
             await _handle_jif({"jangubun": "1", "jstatus": "22"})
-            mock_apply.assert_not_called()
-            mock_bc.assert_not_awaited()
+            mock_apply.assert_not_called()  # 카운트다운 코드는 페이즈 전환 아님
+            mock_bc.assert_awaited_once()  # 카운트다운 브로드캐스트
+            # override 저장 확인 — jstatus=22는 KRX 장개시 10초전
+            assert mock_state.krx_countdown_override is not None
+            assert mock_state.krx_countdown_override["label"] == "정규장 장개시"
+            assert mock_state.krx_countdown_override["remaining_sec"] == 10
 
     @pytest.mark.asyncio
     async def test_jif_nxt_aftermarket_close(self):
@@ -442,7 +450,7 @@ class TestJifConstants:
         }
         valid_nxt = {
             "장개시전", "프리마켓", "정규장 준비", "메인마켓", "조기 마감",
-            "단일가 매매", "애프터마켓", "애프터마켓 지속", "장마감", "휴장일",
+            "단일가 매매", "애프터마켓", "장마감", "휴장일",
         }
         for name in _JIF_PHASE_MAP_KRX.values():
             assert name in valid_krx, f"KRX 페이즈명 '{name}'이 calc_timebased 페이즈명과 불일치"

@@ -225,14 +225,47 @@ _JIF_PHASE_MAP_NXT: dict[str, str] = {
     "58": "장마감",             # 에프터마켓 마감 (20:00)
 }
 
-# ── JIF 카운트다운 코드 (무시 — 페이즈 전환 아님) ──
+# ── JIF 카운트다운 코드 → (라벨, 남은초) 매핑 (API 문서 기준 — P10 SSOT) ──
+# 출처: docs/api_specs/LS증권API/websocket/실시간/장운영정보JIF.txt 112-144줄
+# KRX 장마감은 5분전(44)이 최대 — 10분전 코드 없음 (설계 문서 3.2 오류 바로잡기 적용).
+# NXT 프리마켓/에프터마켓 장마감(C/D)도 5분전이 최대 — 10분전 코드 없음.
+_JIF_COUNTDOWN_KRX: dict[str, tuple[str, int]] = {
+    # 장개시 카운트다운 (→ 09:00) — 현재 페이즈가 "시가 동시호가"일 때
+    "25": ("정규장 장개시", 600),   # 10분전 (08:50)
+    "24": ("정규장 장개시", 300),   # 5분전  (08:55)
+    "23": ("정규장 장개시", 60),    # 1분전  (08:59)
+    "22": ("정규장 장개시", 10),    # 10초전 (08:59:50)
+    # 장마감 카운트다운 (→ 15:20, 종가동시호가 개시) — 현재 페이즈가 "정규장"일 때
+    # API 문서 기준: 44=5분전(최대), 10분전 코드 없음
+    "44": ("정규장 장마감", 300),   # 5분전  (15:15)
+    "43": ("정규장 장마감", 60),    # 1분전  (15:19)
+    "42": ("정규장 장마감", 10),    # 10초전 (15:19:50)
+}
+
+_JIF_COUNTDOWN_NXT: dict[str, tuple[str, int]] = {
+    # 프리마켓 장개시 (→ 08:00)
+    "A5": ("프리마켓 장개시", 600),  # 10분전
+    "A4": ("프리마켓 장개시", 300),  # 5분전
+    "A3": ("프리마켓 장개시", 60),   # 1분전
+    "A2": ("프리마켓 장개시", 10),   # 10초전
+    # 프리마켓 장마감 (→ 08:50) — 5분전이 최대
+    "C4": ("프리마켓 장마감", 300),  # 5분전
+    "C3": ("프리마켓 장마감", 60),   # 1분전
+    "C2": ("프리마켓 장마감", 10),   # 10초전
+    # 에프터마켓 장개시 (→ 15:40)
+    "B5": ("에프터마켓 장개시", 600),  # 10분전
+    "B4": ("에프터마켓 장개시", 300),  # 5분전
+    "B3": ("에프터마켓 장개시", 60),   # 1분전
+    "B2": ("에프터마켓 장개시", 10),   # 10초전
+    # 에프터마켓 장마감 (→ 20:00) — 5분전이 최대
+    "D4": ("에프터마켓 장마감", 300),  # 5분전
+    "D3": ("에프터마켓 장마감", 60),   # 1분전
+    "D2": ("에프터마켓 장마감", 10),   # 10초전
+}
+
+# ── JIF 무시 코드 (카운트다운 코드는 _JIF_COUNTDOWN_*에서 처리하므로 제외) ──
+# "53"(사용안함)만 남김 — 페이즈 전환도 카운트다운도 아닌 미사용 코드.
 _JIF_IGNORE_CODES: frozenset[str] = frozenset({
-    "22", "23", "24", "25",           # KRX 장개시 N전
-    "42", "43", "44",                 # KRX 장마감 N전
-    "A2", "A3", "A4", "A5",           # NXT 프리마켓 장개시 N전
-    "B2", "B3", "B4", "B5",           # NXT 에프터마켓 장개시 N전
-    "C2", "C3", "C4",                 # NXT 프리마켓 장마감 N전
-    "D2", "D3", "D4",                 # NXT 에프터마켓 장마감 N전
     "53",                             # 사용안함
 })
 
@@ -260,11 +293,13 @@ async def _handle_jif(data: dict) -> None:
     카운트다운 표시는 프론트엔드가 페이즈명 + 현재 시각으로 자체 계산 (P24 단순성).
 
     jangubun 1/2(코스피/코스닥):
-      - jstatus 11/21/31/41/51/52/54 → KRX 페이즈 전환 (_apply_jif_phase)
+      - jstatus 11/21/31/41/51/52/54 → KRX 페이즈 전환 (_apply_jif_phase) + override 초기화
+      - jstatus 22~25/42~44 → KRX 카운트다운 (override 저장 + 브로드캐스트)
       - jstatus 61~71 → krx_alert(서킷브레이커/사이드카) + 자동매매 임시중단/재개
     jangubun 6(NXT):
-      - jstatus 55/57/21/31/41/56/58 → NXT 페이즈 전환 (_apply_jif_phase)
-    카운트다운 코드(22~25, 42~44, A2~A5 등)는 _JIF_IGNORE_CODES에서 무시.
+      - jstatus 55/57/21/31/41/56/58 → NXT 페이즈 전환 (_apply_jif_phase) + override 초기화
+      - jstatus A2~A5/B2~B5/C2~C4/D2~D4 → NXT 카운트다운 (override 저장 + 브로드캐스트)
+    "53"(사용안함)만 _JIF_IGNORE_CODES에서 무시.
     """
     jangubun = str(data.get("jangubun", "")).strip()
     jstatus = str(data.get("jstatus", "")).strip()
@@ -273,23 +308,53 @@ async def _handle_jif(data: dict) -> None:
 
     # ── JIF 수신 시각 기록 (타임테이블 헬스체크용) ──
     from backend.app.services.daily_time_scheduler import _kst_now
-    engine_state.state.last_jif_received_at = _kst_now()
+    now = _kst_now()
+    engine_state.state.last_jif_received_at = now
 
     # 임시 INFO 로그 — 런타임 JIF 수신 코드 검증용 (2단계). 검증 후 INFO→DEBUG 조정 예정.
     logger.info("[연결] JIF 수신: jangubun=%s, jstatus=%s", jangubun, jstatus)
 
-    # 카운트다운 코드 무시 (페이즈 전환 아님)
+    # "53"(사용안함)만 무시 — 카운트다운 코드는 아래에서 처리
     if jstatus in _JIF_IGNORE_CODES:
         return
 
+    # ── 카운트다운 코드 처리 (override 저장 + 브로드캐스트, P10 SSOT · P16 살아있는 경로) ──
+    # jangubun 1/2 = KRX, 6 = NXT. 매핑 테이블에서 (라벨, remaining_sec) 조회.
+    countdown_entry: tuple[str, int] | None = None
+    countdown_market: str | None = None
+    if jangubun in ("1", "2"):
+        countdown_entry = _JIF_COUNTDOWN_KRX.get(jstatus)
+        countdown_market = "krx"
+    elif jangubun == "6":
+        countdown_entry = _JIF_COUNTDOWN_NXT.get(jstatus)
+        countdown_market = "nxt"
+
+    if countdown_entry is not None and countdown_market is not None:
+        label, remaining_sec = countdown_entry
+        from datetime import timedelta
+        expires_at = now + timedelta(seconds=remaining_sec + 5)  # 여유 5초
+        override = {"label": label, "remaining_sec": remaining_sec, "expires_at": expires_at}
+        if countdown_market == "krx":
+            engine_state.state.krx_countdown_override = override
+        else:
+            engine_state.state.nxt_countdown_override = override
+        from backend.app.services.daily_time_scheduler import get_market_phase
+        from backend.app.services.engine_account_notify import _broadcast
+        await _broadcast("market-phase", get_market_phase())
+        logger.info("[연결] JIF 카운트다운 수신: %s %s초 전 (override 저장)", label, remaining_sec)
+        return  # 카운트다운 코드는 페이즈 전환/CB 아님 → 여기서 종료
+
     # ── 장 상태 전환 처리 (안 D — JIF 1순위) ──
+    # 페이즈 전환 시 해당 시장 override 초기화 — 이전 카운트다운 만료 처리 (P10 SSOT).
     if jangubun in ("1", "2"):
         new_krx = _JIF_PHASE_MAP_KRX.get(jstatus)
         if new_krx:
+            engine_state.state.krx_countdown_override = None
             _apply_jif_phase(krx=new_krx)
     elif jangubun == "6":
         new_nxt = _JIF_PHASE_MAP_NXT.get(jstatus)
         if new_nxt:
+            engine_state.state.nxt_countdown_override = None
             _apply_jif_phase(nxt=new_nxt)
 
     # ── 서킷브레이커/사이드카 처리 (기존 로직 유지) ──
