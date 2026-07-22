@@ -6,6 +6,53 @@
 
 ## 직전 완료 작업
 
+### F-05-a: 수익 페이지 폴백/중복/비동기 안전 (7건 해결, 2026-07-22)
+
+**세션**: F-05 (P3 — 수익 페이지) 전반부. F-05-b(후반)는 다음 세션에서 진행.
+
+**수정 파일 3개**:
+- `frontend/src/pages/profit-shared.ts` (569→598줄): 공통 함수 추가(`buildSectorDonutRows`, `filterTradeRows`), 폴백 제거(F05-01/02)
+- `frontend/src/pages/profit-overview.ts` (718→698줄): 중복 함수 제거(`buildSectorDonutData`, `filterSellHistoryByDate`), catch 로깅(F05-03/04), 레이스 가드(F05-11)
+- `frontend/src/pages/profit-detail.ts` (667→654줄): 중복 함수 제거(`filterRows`), catch 로깅(F05-03/04)
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| F05-01 | P20 | `accumulated_investment ?? initial_deposit ?? 0` 3단 폴백 → `initial_deposit ?? 0` (테스트모드 동일 값) |
+| F05-02 | P20 | `orderable ?? Math.max(0, deposit - todayBuyAmt)` 폴백 → `orderable ?? 0` (백엔드 항상 전송) |
+| F05-03 | P20 | save 함수 `catch { }` 빈 블록 → `console.warn` 로깅 |
+| F05-04 | P20 | load 함수 `catch { return null }` → `console.warn` 로깅 |
+| F05-05 | P10/P23 | `buildSectorDonutData` 중복 → `buildSectorDonutRows` shared SSOT, `buildSectorStockPnl`이 재사용 |
+| F05-06 | P23 | `filterSellHistoryByDate`/`filterRows` 중복 → `filterTradeRows` shared SSOT |
+| F05-11 | P19 | `applyDateRange` 레이스 가드 추가 (`_applyDateRangeSeq` 시퀀스) |
+
+**검증**: `npm run typecheck` exit 0, `npm run build` 2.06s exit 0, 잔여 참조 grep 0건. 브라우저 확인 권장.
+
+## 다음 세션 작업 (F-05-b)
+
+**잔여 4건** (P24 단순성 — 파일/함수 분할):
+- F05-08: 파일 길이 698/654/598줄 (P24 500줄 초과)
+- F05-09: `profit-overview.ts` `mount()` ~380줄 (P24 함수 50줄의 7.6배)
+- F05-10: `profit-detail.ts` `mount()` ~303줄 (P24 함수 50줄의 6배)
+- F05-12: `profit-detail.ts` `drilldownCols` 모듈 변수 + `displayRows` 불필요 별칭
+
+**별도 세션 권장**: F05-07 "보유주식" → "보유 종목" 용어 통일 (account-labels.ts, sell-position.ts 전역 동시 수정 필요)
+
+## 미해결 문제 (발견 즉시 기록)
+
+### 백엔드 버그 (F-05-a 조사 중 발견)
+- `backend/app/services/engine_account_rest.py:125-144` `build_account_snapshot_meta`가 응답 dict에서 `accumulated_investment`를 **누락**. 테스트모드에서 `state.account_snapshot["accumulated_investment"]`를 set한 후 `build_account_snapshot_meta`가 새 dict을 반환하므로 누락됨. 프론트엔드 F05-01은 `initial_deposit`만 사용하여 우회(테스트모드에서는 동일 값이므로 UI 변화 없음). 백엔드 수정은 별도 세션 필요.
+
+## 작업 여력
+
+F-05-a 완료 후 작업 여력: **적정**. F-05-b(4건 P24 분할)는 다음 세션에서 진행 권장 (규칙 0-1 세션당 1단계 준수).
+
+---
+
+## 직전 완료 작업 (이전 세션)
+
+## 직전 완료 작업
+
 ### F-04-e: P2 — stock-classification.ts + general-settings.ts 함수 분할 11건 (2026-07-22)
 
 **수정 파일 2개**:

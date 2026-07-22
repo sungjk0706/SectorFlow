@@ -3,7 +3,7 @@
 // 요약 대시보드: 일별 수익률 차트(좌상) + 업종별 수익 도넛 차트(좌하) + 계좌 현황(우) + 상세 분석 보기 버튼
 
 import { createProfitChart, type ProfitChartApi } from '../components/canvas-profit-chart'
-import { createSectorDonut, type SectorDonutApi, type SectorDonutRow } from '../components/canvas-sector-donut'
+import { createSectorDonut, type SectorDonutApi } from '../components/canvas-sector-donut'
 import { globalSettingsManager } from '../settings'
 import { FONT_SIZE, FONT_WEIGHT, COLOR, pnlColor } from '../components/common/ui-styles'
 import { createActionButton } from '../components/common/button'
@@ -17,6 +17,8 @@ import {
   buildChartFromDailySummary,
   renderAccountVals as renderAccountValsShared,
   buildSectorStockPnl,
+  buildSectorDonutRows,
+  filterTradeRows,
   getLocalToday,
   type AccountValsParams,
 } from './profit-shared'
@@ -48,7 +50,8 @@ function loadProfitDateRange(): ProfitDateRange | null {
       return { from: parsed.from, to: parsed.to }
     }
     return null
-  } catch {
+  } catch (e) {
+    console.warn('[profit-overview] 저장된 날짜 범위 로드 실패 (손상된 데이터):', e)
     return null
   }
 }
@@ -56,8 +59,8 @@ function loadProfitDateRange(): ProfitDateRange | null {
 function saveProfitDateRange(from: string, to: string, quickLabel?: string): void {
   try {
     localStorage.setItem(PROFIT_DATE_KEY, JSON.stringify({ from, to, quickLabel }))
-  } catch {
-    // localStorage 접근 불가 시 무시 (private mode 등)
+  } catch (e) {
+    console.warn('[profit-overview] 날짜 범위 localStorage 저장 실패:', e)
   }
 }
 
@@ -270,39 +273,11 @@ function updateExpandToggleBtn(): void {
   expandToggleBtn.textContent = _allExpanded ? '전체접기' : '전체보기'
 }
 
-/* ── 도넛 차트 데이터 빌드 (sellHistory → 업종별 손익 + 수익률 집계) ── */
-function buildSectorDonutData(sells: Record<string, unknown>[]): SectorDonutRow[] {
-  const pnlMap = new Map<string, number>()
-  const buyTotalMap = new Map<string, number>()
-  for (const r of sells) {
-    const sector = String(r.sector ?? '미분류')
-    const pnl = Number(r.realized_pnl ?? 0)
-    const buyTotal = Number(r.avg_buy_price ?? 0) * Number(r.qty ?? 0)
-    pnlMap.set(sector, (pnlMap.get(sector) ?? 0) + pnl)
-    buyTotalMap.set(sector, (buyTotalMap.get(sector) ?? 0) + buyTotal)
-  }
-  return Array.from(pnlMap.entries()).map(([sector, pnl]) => {
-    const buyTotal = buyTotalMap.get(sector) ?? 0
-    const rate = buyTotal > 0 ? Math.round(pnl / buyTotal * 10000) / 100 : 0
-    return { sector, pnl, rate, buyTotal }
-  })
-}
-
-/* ── 날짜 범위로 sellHistory 필터링 (profit-detail.ts filterRows와 동일 패턴) ── */
-function filterSellHistoryByDate(rows: Record<string, unknown>[], from: string, to: string): Record<string, unknown>[] {
-  return rows.filter(r => {
-    const d = String(r.date ?? '')
-    if (from && d < from) return false
-    if (to && d > to) return false
-    return true
-  })
-}
-
 /* ── 필터된 뷰 데이터 갱신: 도넛 차트 + 업종별 종목 수익 동시 업데이트 ── */
 function refreshFilteredViews(): void {
   const { profitDateFrom, profitDateTo } = hotStore.getState()
-  filteredSellHistory = filterSellHistoryByDate(sellHistory, profitDateFrom, profitDateTo)
-  donutChart?.updateData(buildSectorDonutData(filteredSellHistory))
+  filteredSellHistory = filterTradeRows(sellHistory, profitDateFrom, profitDateTo)
+  donutChart?.updateData(buildSectorDonutRows(filteredSellHistory))
   renderSectorStockPnl()
 }
 
@@ -518,7 +493,10 @@ function mount(container: HTMLElement): void {
   ]
 
   // 날짜 범위 적용 공통 로직 — from/to가 빈 문자열인 quickRange(직전/5일/전체)는 실제 범위 확보 후 입력란 동기화
+  // 레이스 가드: 빠른 연속 클릭 시 구식 응답이 늦게 도착하면 날짜 범위가 덮어씌워지는 것 방지 (P19)
+  let _applyDateRangeSeq = 0
   async function applyDateRange(from: string, to: string, days?: number, label?: string): Promise<void> {
+    const seq = ++_applyDateRangeSeq
     try {
       const settings = globalSettingsManager.getSettings()
       const tradeMode = settings?.trade_mode || 'test'
@@ -528,10 +506,12 @@ function mount(container: HTMLElement): void {
       // 직전(days 없음) — 백엔드에서 단일 거래일 조회
       if (needsRangeFill && days === undefined) {
         const prev = await api.getPrevTradingDay()
+        if (seq !== _applyDateRangeSeq) return
         actualFrom = prev.date
         actualTo = prev.date
       }
       const data = await api.getDailySummary(actualFrom, actualTo, tradeMode, days)
+      if (seq !== _applyDateRangeSeq) return
       // days 기반(5일/전체) — 응답 데이터에서 실제 from/to 추출
       if (needsRangeFill && days !== undefined && data.length > 0) {
         actualFrom = String(data[0].date)
@@ -574,12 +554,12 @@ function mount(container: HTMLElement): void {
   const initState = hotStore.getState()
   sellHistory = initState.sellHistory
   buyHistory = initState.buyHistory
-  filteredSellHistory = filterSellHistoryByDate(sellHistory, initState.profitDateFrom, initState.profitDateTo)
+  filteredSellHistory = filterTradeRows(sellHistory, initState.profitDateFrom, initState.profitDateTo)
 
   // 차트 생성 — 업종별 수익 도넛 (필터링된 데이터로 초기 생성)
   donutChart = createSectorDonut({
     container: donutChartContainer,
-    data: buildSectorDonutData(filteredSellHistory),
+    data: buildSectorDonutRows(filteredSellHistory),
     onSectorClick: (sector: string) => {
       // 좌측 도넛 범례 업종 클릭 → 우측 종목수익 해당 업종으로 스크롤 + 하이라이트
       _activeSector = sector
