@@ -9,8 +9,8 @@ export interface SliderOptions {
   step?: number         // 기본 1
   onChange?: (value: number) => void   // input 이벤트
   onCommit?: (value: number) => void   // mouseup/touchend 이벤트 (저장 시점)
-  leftColor?: string    // 좌측 색상 (기본 #0d6efd)
-  rightColor?: string   // 우측 색상 (기본 #e9ecef)
+  leftColor?: string    // 좌측 색상 (기본 COLOR.down)
+  rightColor?: string   // 우측 색상 (기본 COLOR.inactiveBg)
   valueLabel?: (value: number) => string  // 현재 값 표시 라벨 (선택 — 지정 시 상단 우측에 표시)
 }
 
@@ -35,7 +35,7 @@ export function createSlider(opts: SliderOptions = {}): SliderHandle {
   const value = opts.value ?? min
   const step = opts.step ?? 1
   const leftColor = opts.leftColor ?? COLOR.down
-  const rightColor = opts.rightColor ?? '#e9ecef'
+  const rightColor = opts.rightColor ?? COLOR.inactiveBg
 
   const input = document.createElement('input')
   input.type = 'range'

@@ -1,5 +1,5 @@
 // frontend/src/components/common/toast.ts — 공통 토스트 알림 시스템
-import { COLOR } from './ui-styles'
+import { COLOR, hexToRgba } from './ui-styles'
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info'
 
@@ -20,27 +20,27 @@ const _timers = new Map<number, ReturnType<typeof setTimeout>>()
 
 const TYPE_CONFIG = {
   success: {
-    bg: 'rgba(232, 245, 233, 0.95)',
+    bg: hexToRgba(COLOR.successBg, 0.95),
     color: `${COLOR.success}`,
-    border: 'rgba(46, 125, 50, 0.25)',
+    border: hexToRgba(COLOR.success, 0.25),
     icon: '✓'
   },
   error: {
-    bg: 'rgba(255, 235, 235, 0.95)',
+    bg: hexToRgba(COLOR.upBg, 0.95),
     color: `${COLOR.up}`,
-    border: 'rgba(198, 40, 40, 0.25)',
+    border: hexToRgba(COLOR.up, 0.25),
     icon: '✗'
   },
   warning: {
-    bg: 'rgba(255, 243, 224, 0.95)',
+    bg: hexToRgba(COLOR.warningBg, 0.95),
     color: `${COLOR.warning}`,
-    border: 'rgba(230, 81, 0, 0.25)',
+    border: hexToRgba(COLOR.warning, 0.25),
     icon: '⚠'
   },
   info: {
-    bg: 'rgba(227, 242, 253, 0.95)',
+    bg: hexToRgba(COLOR.downBg, 0.95),
     color: `${COLOR.down}`,
-    border: 'rgba(21, 101, 192, 0.25)',
+    border: hexToRgba(COLOR.down, 0.25),
     icon: 'ℹ'
   }
 } as const

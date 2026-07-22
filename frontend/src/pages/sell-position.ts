@@ -103,12 +103,12 @@ let _summaryRafId: number | null = null
 let onRealDataTick: ((e: Event) => void) | null = null
 let _mounted = false
 
-/* ── 보유주식 요약 행 참조 ── */
+/* ── 보유 종목 요약 행 참조 ── */
 let summaryEvalBadge: BadgeHandle | null = null
 let summaryPnlBadge: BadgeHandle | null = null
 let summaryRateBadge: BadgeHandle | null = null
 
-/** 보유주식 요약 행 렌더 — positions + sectorStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식) */
+/** 보유 종목 요약 행 렌더 — positions + sectorStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식) */
 function renderSummary(): void {
   const state = hotStore.getState()
   const count = state.positionCount ?? state.positions.length
@@ -143,11 +143,11 @@ function mount(container: HTMLElement): void {
   const headerRow = createCardHeaderWithMargin('보유종목', undefined, '4px')
   root.appendChild(headerRow)
 
-  // 보유주식 요약 배지 행 — 공통 컴포넌트 (flex 3등분 고정)
+  // 보유 종목 요약 배지 행 — 공통 컴포넌트 (flex 3등분 고정)
   const summaryRow = createBadgeRow()
-  summaryEvalBadge = createBadge('📊 보유주식 평가금액 합계', '원')
-  summaryPnlBadge = createBadge('📉 보유주식 평가손익 합계', '원')
-  summaryRateBadge = createBadge('📈 보유주식 평가수익률', '%')
+  summaryEvalBadge = createBadge('📊 보유 종목 평가금액 합계', '원')
+  summaryPnlBadge = createBadge('📉 보유 종목 평가손익 합계', '원')
+  summaryRateBadge = createBadge('📈 보유 종목 평가수익률', '%')
   summaryRow.appendChild(summaryEvalBadge.el)
   summaryRow.appendChild(summaryPnlBadge.el)
   summaryRow.appendChild(summaryRateBadge.el)
