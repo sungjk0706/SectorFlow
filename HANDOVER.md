@@ -6,6 +6,37 @@
 
 ## 직전 완료 작업
 
+### 주문 일시중단 배지 문구/표시 로직 정비 (2026-07-22)
+
+**세션**: 헤더 "주문 일시중단" 배지 UI/UX 개선. P21/P16/P23. "NXT 전용 구간 (KRX 단독 종목 차단)" 문구의 모호성 해소 및 설정 OFF 시 배지 숨김.
+
+**문제 현상**: 배지 문구 "주문 일시중단(NXT 전용 구간 (KRX 단독 종목 차단))"이 KRX 단독 종목만 차단하는지, NXT/KRX 모든 종목이 일시중단인지 명확하지 않았음. 또한 "체결 불가 시간대 주문 차단" 설정이 OFF인데도 배지가 계속 표시되어 실제 차단 상태와 불일치 (P16 살아있는 경로).
+
+**수정 파일 4개**:
+- `backend/app/services/daily_time_scheduler.py` — `get_order_time_block_status()`에서 `order_time_guard_on` OFF 시 `(False, "")` 반환. reason을 `"KRX 단독 종목 차단 · NXT 가능"` / `"KRX·NXT 모두 주문 불가"`로 변경.
+- `backend/app/services/engine_service.py` — `apply_settings_change()`에 `_apply_order_time_guard_change()` 추가. `order_time_guard_on` 토글 변경 시 `order_time_blocked` 웹소켓 이벤트 즉시 브로드캐스트.
+- `frontend/src/layout/header.ts` — 배지 텍스트를 `⏸ ${reason}`으로 변경. 중복/모호한 `주문 일시중단(` 접두사 제거.
+- `backend/tests/test_daily_time_scheduler.py` — 새 reason 및 `order_time_guard_on=OFF` 케이스 테스트 추가/갱신.
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| 배지문구 | P21/P23 | KRX/NXT 각각 주문 가능 여부를 배지 문구만 보고도 파악 가능. KRX 단독 종목 차단 / NXT 가능, 또는 KRX·NXT 모두 주문 불가로 명시. |
+| 배지숨김 | P16 | `order_time_guard_on` OFF 시 `get_order_time_block_status()`가 `(False, "")`를 반환하여 배지를 표시하지 않음. 실제 주문 게이트(`trading.py::_is_order_time_blocked`)와 동일한 설정 기준 적용. |
+
+**검증**: `pytest backend/tests/` 2792 passed. `python -W error::RuntimeWarning main.py` 런타임 기동 15초+ RuntimeWarning 없음. `npm run typecheck`/`npm run build` 정상. 잔존 프로세스 0건.
+
+**화면 영향**:
+- NXT-only 시간대(예: 08:00~09:00, 15:40~20:00): `⏸ KRX 단독 종목 차단 · NXT 가능` 표시.
+- KRX·NXT 모두 비활성 시간대(예: 15:20~15:30, 20:00 이후): `⏸ KRX·NXT 모두 주문 불가` 표시.
+- "체결 불가 시간대 주문 차단" 설정 OFF: 배지 완전히 숨김.
+
+**잔존 프로세스**: 없음 (백엔드 기동 후 종료, 런타임 검증만 수행).
+
+**다음 세션 대기 사항**: `buy_order_executor.py`의 `is_krx_after_hours()` 필터가 `order_time_guard_on` 토글과 무관하게 동작하는 문제 — 사용자 요청으로 별도 세션에서 다룰 예정.
+
+## 직전 완료 작업 (이전 세션)
+
 ### 상단 헤더 인디케이터 순서 재배치 — KRX/NXT 장 상태 칩 좌측 이동 (2026-07-22)
 
 **세션**: 프론트엔드 헤더 UI 개선. P21/P23/P24. 단순 순서 변경 (로직 변경 없음).

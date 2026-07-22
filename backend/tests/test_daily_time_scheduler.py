@@ -694,27 +694,27 @@ class TestGetOrderTimeBlockStatus:
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 20)):
             blocked, reason = get_order_time_block_status()
             assert blocked is True
-            assert reason == "NXT 전용 구간 (KRX 단독 종목 차단)"
+            assert reason == "KRX 단독 종목 차단 · NXT 가능"
 
     def test_both_inactive_returns_auction_reason(self):
-        """15:20~15:30 종가 동시호가 + NXT 조기 마감 — 양쪽 비활성 → (True, "동시호가/장외 시간대")."""
+        """15:20~15:30 종가 동시호가 + NXT 조기 마감 — 양쪽 비활성 → (True, "KRX·NXT 모두 주문 불가")."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "종가 동시호가", "nxt": "조기 마감"}
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 25)):
             blocked, reason = get_order_time_block_status()
             assert blocked is True
-            assert reason == "동시호가/장외 시간대"
+            assert reason == "KRX·NXT 모두 주문 불가"
 
     def test_market_closed_returns_auction_reason(self):
-        """20:00~24:00 장마감 — 양쪽 비활성 → (True, "동시호가/장외 시간대")."""
+        """20:00~24:00 장마감 — 양쪽 비활성 → (True, "KRX·NXT 모두 주문 불가")."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장마감", "nxt": "장마감"}
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(21, 0)):
             blocked, reason = get_order_time_block_status()
             assert blocked is True
-            assert reason == "동시호가/장외 시간대"
+            assert reason == "KRX·NXT 모두 주문 불가"
 
     def test_holiday_returns_false(self):
         """휴장일 — 장 안 열리므로 칩 표시 불필요 → (False, "") (P21 사용자 투명성)."""
@@ -734,7 +734,7 @@ class TestGetOrderTimeBlockStatus:
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(16, 0)):
             blocked, reason = get_order_time_block_status()
             assert blocked is True
-            assert reason == "NXT 전용 구간 (KRX 단독 종목 차단)"
+            assert reason == "KRX 단독 종목 차단 · NXT 가능"
 
     # ── 빈 문자열 phase (P20) ──
 
@@ -763,24 +763,42 @@ class TestGetOrderTimeBlockStatus:
             assert get_order_time_block_status() == (False, "")
 
     def test_boundary_at_152000_closing_auction_blocked(self):
-        """15:20:00 — 페이즈 "종가 동시호가" → (True, "동시호가/장외 시간대")."""
+        """15:20:00 — 페이즈 "종가 동시호가" → (True, "KRX·NXT 모두 주문 불가")."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "종가 동시호가", "nxt": "조기 마감"}
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 20, 0)):
             blocked, reason = get_order_time_block_status()
             assert blocked is True
-            assert reason == "동시호가/장외 시간대"
+            assert reason == "KRX·NXT 모두 주문 불가"
 
     def test_boundary_at_080000_premarket_nxt_only(self):
-        """08:00:00 — 페이즈 "장전 대기"+"프리마켓" → (True, "NXT 전용 구간 (KRX 단독 종목 차단)")."""
+        """08:00:00 — 페이즈 "장전 대기"+"프리마켓" → (True, "KRX 단독 종목 차단 · NXT 가능")."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장전 대기", "nxt": "프리마켓"}
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 0, 0)):
             blocked, reason = get_order_time_block_status()
             assert blocked is True
-            assert reason == "NXT 전용 구간 (KRX 단독 종목 차단)"
+            assert reason == "KRX 단독 종목 차단 · NXT 가능"
+
+    def test_order_time_guard_off_hides_nxt_only_badge(self):
+        """order_time_guard_on=OFF — NXT-only 구간에서도 배지 숨김 (P16 살아있는 경로)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "장전 대기", "nxt": "프리마켓"}
+        mock_state.integrated_system_settings_cache = {"order_time_guard_on": False}
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 20)):
+            assert get_order_time_block_status() == (False, "")
+
+    def test_order_time_guard_off_hides_both_inactive_badge(self):
+        """order_time_guard_on=OFF — 양쪽 비활성 구간에서도 배지 숨김 (P16 살아있는 경로)."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "종가 동시호가", "nxt": "조기 마감"}
+        mock_state.integrated_system_settings_cache = {"order_time_guard_on": False}
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 25)):
+            assert get_order_time_block_status() == (False, "")
 
 
 # ── get_market_phase ──────────────────────────────────────────────────────────
