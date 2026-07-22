@@ -131,9 +131,9 @@ class TestBuildEngineSettingsDictOverride:
     """flat dict 오버라이드 검증."""
 
     def test_broker_override(self):
-        result = build_engine_settings_dict({"broker": "naver"})
-        assert result["broker"] == "naver"
-        assert result["broker_config"]["websocket"] == "naver"
+        result = build_engine_settings_dict({"broker": "testbroker"})
+        assert result["broker"] == "testbroker"
+        assert result["broker_config"]["websocket"] == "testbroker"
 
     def test_trade_mode_real(self):
         result = build_engine_settings_dict({"trade_mode": "real"})
@@ -215,13 +215,13 @@ class TestBuildEngineSettingsDictOverride:
     def test_non_kiwoom_broker_credentials(self):
         """kiwoom 외 증권사 자격증명 동적 수집."""
         result = build_engine_settings_dict({
-            "naver_app_key": "naver_key",
-            "naver_app_secret": "naver_secret",
-            "naver_account_no": "11111111",
+            "testbroker_app_key": "testbroker_key",
+            "testbroker_app_secret": "testbroker_secret",
+            "testbroker_account_no": "11111111",
         })
-        assert result["naver_app_key"] == "naver_key"
-        assert result["naver_app_secret"] == "naver_secret"
-        assert result["naver_account_no"] == "11111111"
+        assert result["testbroker_app_key"] == "testbroker_key"
+        assert result["testbroker_app_secret"] == "testbroker_secret"
+        assert result["testbroker_account_no"] == "11111111"
 
     def test_decrypt_failure_logs_warning(self):
         """복호화 실패 시 logger.warning 호출 (P21 사용자 투명성)."""

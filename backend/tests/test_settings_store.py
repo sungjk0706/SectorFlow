@@ -146,19 +146,19 @@ class TestGeneralSavePayloadFromFlat:
 
     def test_non_kiwoom_broker_credentials_collected(self):
         d = self._full_input()
-        d["naver_app_key"] = "naver_key"
-        d["naver_app_secret"] = "naver_secret"
-        d["naver_account_no"] = "11111111"
+        d["testbroker_app_key"] = "testbroker_key"
+        d["testbroker_app_secret"] = "testbroker_secret"
+        d["testbroker_account_no"] = "11111111"
         result = general_save_payload_from_flat(d)
-        assert result["naver_app_key"] == "naver_key"
-        assert result["naver_app_secret"] == "naver_secret"
-        assert result["naver_account_no"] == "11111111"
+        assert result["testbroker_app_key"] == "testbroker_key"
+        assert result["testbroker_app_secret"] == "testbroker_secret"
+        assert result["testbroker_account_no"] == "11111111"
 
     def test_non_kiwoom_empty_values_excluded(self):
         d = self._full_input()
-        d["naver_app_key"] = ""
+        d["testbroker_app_key"] = ""
         result = general_save_payload_from_flat(d)
-        assert "naver_app_key" not in result
+        assert "testbroker_app_key" not in result
 
 
 # ── _payload_values_equal ───────────────────────────────────────────
@@ -237,7 +237,7 @@ class TestChangedKeysGeneralSave:
             "broker": "kiwoom",
         }
         new_payload = general_save_payload_from_flat(before)
-        new_payload["broker"] = "naver"
+        new_payload["broker"] = "testbroker"
         changed = changed_keys_general_save(before, new_payload)
         assert "broker" in changed
 
@@ -423,13 +423,13 @@ class TestApplySettingsUpdates:
     async def test_broker_validation_valid(self):
         with patch("backend.app.core.settings_store.load_selected_settings", new=AsyncMock(return_value={})), \
              patch("backend.app.core.settings_store.save_selected_settings", new=AsyncMock()) as mock_save:
-            with patch("backend.app.core.broker_registry.PROVIDER_REGISTRY", {"kiwoom": {}, "naver": {}}):
-                result = await apply_settings_updates({"broker": "naver"})
+            with patch("backend.app.core.broker_registry.PROVIDER_REGISTRY", {"kiwoom": {}, "testbroker": {}}):
+                result = await apply_settings_updates({"broker": "testbroker"})
                 assert "broker" in result
                 # save_selected_settings가 호출되었는지 확인
                 mock_save.assert_called_once()
                 saved = mock_save.call_args[0][0]
-                assert saved["broker"] == "naver"
+                assert saved["broker"] == "testbroker"
 
     @pytest.mark.asyncio
     async def test_time_field_invalid_ignored(self):
