@@ -5,7 +5,7 @@
  * - 인터랙티브: 호버 시 업종명 + 손익 금액 툴팁
  */
 
-import { FONT_FAMILY, COLOR, fmtWon, positionTooltip } from './common/ui-styles'
+import { FONT_FAMILY, COLOR, fmtWon, positionTooltip, computeWeightedRate } from './common/ui-styles'
 
 // ── 타입 ────────────────────────────────────────────────────
 
@@ -200,7 +200,7 @@ export function createSectorDonut(options: SectorDonutOptions): SectorDonutApi {
     // 중액 텍스트 — 누적 손익 + 누적 수익률
     const totalPnl = processed.reduce((s, r) => s + r.pnl, 0)
     const totalBuy = processed.reduce((s, r) => s + (r.buyTotal ?? 0), 0)
-    const totalRate = totalBuy > 0 ? Math.round(totalPnl / totalBuy * 10000) / 100 : 0
+    const totalRate = computeWeightedRate(totalPnl, totalBuy)
     ctx.fillStyle = totalPnl >= 0 ? COLOR.up : COLOR.down
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'

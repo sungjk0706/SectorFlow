@@ -1,7 +1,7 @@
 // frontend/src/pages/profit-shared.ts
 // 수익현황 페이지 공통 모듈 — profit-overview.ts와 profit-detail.ts가 공유하는 로직
 
-import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR } from '../components/common/ui-styles'
+import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR, computeWeightedRate } from '../components/common/ui-styles'
 import { normalizeStockCode } from '../stores/hotStore'
 import type { AccountSnapshot, Position, SectorStock } from '../types'
 import type { SectorDonutRow } from '../components/canvas-sector-donut'
@@ -179,9 +179,7 @@ export function buildSectorDonutRows(sells: Record<string, unknown>[]): SectorDo
   return Array.from(pnlMap.entries())
     .map(([sector, pnl]) => ({
       sector, pnl,
-      rate: (buyTotalMap.get(sector) ?? 0) > 0
-        ? Math.round(pnl / (buyTotalMap.get(sector) ?? 0) * 10000) / 100
-        : 0,
+      rate: computeWeightedRate(pnl, buyTotalMap.get(sector) ?? 0),
       buyTotal: buyTotalMap.get(sector) ?? 0,
     }))
     .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl))
@@ -221,9 +219,9 @@ export function buildSectorStockPnl(
     }
   }
 
-  // 5. pnl_rate 계산 (합산된 기준)
+  // 5. pnl_rate 계산 (합산된 기준) — 공통 함수 사용 (P23 일관성)
   for (const v of stockMap.values()) {
-    v.pnl_rate = v.buy_total > 0 ? Math.round(v.realized_pnl / v.buy_total * 10000) / 100 : 0
+    v.pnl_rate = computeWeightedRate(v.realized_pnl, v.buy_total)
   }
 
   // 6. 업종별 그룹 조립
@@ -242,7 +240,7 @@ export function buildSectorStockPnl(
       }
     }
     stocks.sort((a, b) => Math.abs(b.realized_pnl) - Math.abs(a.realized_pnl))
-    const sectorRate = (sectorBuyTotal ?? 0) > 0 ? Math.round(pnl / (sectorBuyTotal ?? 0) * 10000) / 100 : 0
+    const sectorRate = computeWeightedRate(pnl, sectorBuyTotal ?? 0)
     return {
       sector,
       color: colorMap.get(sector) ?? COLOR.disabled,
@@ -296,7 +294,7 @@ export function aggregatePnl(
     pnl += Number(r.realized_pnl ?? 0)
     buyTotal += Number(r.avg_buy_price ?? 0) * Number(r.qty ?? 0)
   }
-  return { pnl, buyTotal, rate: buyTotal > 0 ? Math.round(pnl / buyTotal * 10000) / 100 : 0 }
+  return { pnl, buyTotal, rate: computeWeightedRate(pnl, buyTotal) }
 }
 
 /** 백엔드 dailySummary에서 당월 일별 요약 집계 — P10 SSOT (per-day rate 재계산 금지, 백엔드 값 직접 사용).
@@ -365,7 +363,7 @@ export function computeHoldingsSummary(
     buyTotal += buyPrice * qty
   }
   const evalPnl = evalTotal - buyTotal
-  const evalRate = buyTotal > 0 ? Math.round((evalPnl / buyTotal) * 10000) / 100 : 0
+  const evalRate = computeWeightedRate(evalPnl, buyTotal)
   return { evalTotal, evalPnl, evalRate, buyTotal }
 }
 

@@ -3,7 +3,7 @@
 // profit-detail.ts에서 이관. 순수 이동, 동작 변경 없음.
 
 import { createDataTable, type DataTableApi } from '../components/common/data-table'
-import { FONT_WEIGHT, pnlColor, fmtWon, COLOR } from '../components/common/ui-styles'
+import { FONT_WEIGHT, pnlColor, fmtWon, COLOR, computeWeightedRate } from '../components/common/ui-styles'
 import {
   BUY_COLS,
   SELL_COLS,
@@ -148,7 +148,7 @@ function updateStatistics(state: ProfitDetailState): void {
   const winRate = sellCount > 0 ? Math.round(winCount / sellCount * 10000) / 100 : 0
   // 가중 평균 수익률 = 실현손익 합 / 매입금액 합 × 100 (좌측상단 당일 손익 카드와 동일 공식, P22 데이터 정합성)
   const buyTotal = filteredSells.reduce((s, r) => s + Number(r.avg_buy_price ?? 0) * Number(r.qty ?? 0), 0)
-  const avgRate = buyTotal > 0 ? Math.round(pnl / buyTotal * 10000) / 100 : 0
+  const avgRate = computeWeightedRate(pnl, buyTotal)
 
   if (state.statCountEl) state.statCountEl.textContent = `매도 ${sellCount}건 / 매수 ${buyCount}건`
   if (state.statBuyAmtEl) { state.statBuyAmtEl.textContent = fmtWon(buyAmt); state.statBuyAmtEl.style.color = COLOR.tertiary }
