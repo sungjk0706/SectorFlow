@@ -89,6 +89,12 @@ export const COLOR = {
 
 /* ── 공통 색상 함수 ── */
 
+/** 가중 수익률 = pnl / buyTotal × 100 (소수 2자리 반올림, buyTotal 0이면 0).
+ *  실현손익/평가손익 수익률의 단일 공식 — P22/P23 일관성. */
+export function computeWeightedRate(pnl: number, buyTotal: number): number {
+  return buyTotal > 0 ? Math.round(pnl / buyTotal * 10000) / 100 : 0
+}
+
 /** 등락률 / 대비 / 현재가 색상: 양수 빨강, 음수 파랑, 0 기본 */
 export function rateColor(v: number | null | undefined): string {
   if (v === null || v === undefined) return COLOR.neutral

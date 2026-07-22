@@ -6,6 +6,37 @@
 
 ## 직전 완료 작업
 
+### 단계 C: 공통 함수 computeWeightedRate 신설 + 7곳 호출부 통일 (2026-07-22)
+
+**세션**: 수익률 계산 SSOT/P22 일괄 정비 단계 C (프론트엔드 단독). P22/P23/P10/P24 해결.
+
+**문제 현상**: 동일한 수익률 공식(`Math.round(pnl / buyTotal * 10000) / 100`, 소수 2자리 반올림)이 프론트엔드 7곳에서 독립 구현. 한쪽 공식 변경 시 타측 불일치 위험 (P22/P23 위반). 작업 파일 예상 5곳에서 사전조사 결과 7곳으로 확정 (단계 A로 1곳 감소 + 조사로 3곳 추가 발견).
+
+**수정 파일 4개**:
+- `frontend/src/components/common/ui-styles.ts:90-96` — `computeWeightedRate(pnl, buyTotal): number` 공통 함수 신설. 구현: `buyTotal > 0 ? Math.round(pnl / buyTotal * 10000) / 100 : 0`. `fmtRate`/`pnlColor`/`rateColor` 등 동일 성격 공통 함수군 옆에 배치. profit-shared.ts ↔ canvas-sector-donut.ts 순환 참조 방지 (두 파일 모두 ui-styles.ts를 이미 import 중).
+- `frontend/src/pages/profit-shared.ts:4,179-187,222-226,242-245,297-299,365-368` — import 라인에 `computeWeightedRate` 추가. 5곳 치환: buildSectorDonutRows(업종별 도넛 행 수익률), buildSectorStockPnl(종목별 수익률 + 업종 합계 수익률), aggregatePnl(범위 손익 집계 수익률), computeHoldingsSummary(보유종목 평가손익 수익률).
+- `frontend/src/pages/profit-detail-display.ts:6,149-151` — import 라인에 `computeWeightedRate` 추가. updateStatistics의 가중평균 수익률 1곳 치환.
+- `frontend/src/components/canvas-sector-donut.ts:8,203` — import 라인에 `computeWeightedRate` 추가. 도넛 차트 중앙 "누적 수익률" 1곳 치환.
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| C | P22/P23/P10/P24 | 수익률 가중 평균 공식을 ui-styles.ts 1곳에서 정의. 7곳 호출부가 모두 공통 함수 사용. 백엔드 공식 변경 시(단계 B) 프론트엔드 동기화 지점 1곳 집중. |
+
+**검증**: `npm run typecheck` exit 0, `npm run build` 1.99s exit 0, `npx vitest run` 8 files / 116 tests passed (8.07s). 공식 동일하므로 화면 수치 변화 없음.
+
+**화면 영향**: 없음. 모든 화면의 수익률(%) 수치가 그대로 표시. 공식을 하나로 모았을 뿐 계산 결과 동일.
+
+**잔존 프로세스**: 없음 (프론트엔드 typecheck/build/vitest만 수행, 백엔드 기동 없음).
+
+**작업 파일 갱신**: `docs/pnl_rate_ssot_tasks.md` 단계 C 섹션을 5곳 → 7곳 실제 내역으로 갱신 (사전조사 항목·체크리스트·검증·완료조건 모두 [x] 표시).
+
+**다음 세션 대기 사항**:
+1. **단계 B-사전 실행 시작 승인** — DB 백업 + 마이그레이션 방식 확정 (백엔드/DB). tasks.md 섹션 3 기반.
+2. **마이그레이션 방식 결정 완료**: **옵션 2(1회 스크립트 실행)** 로 확정 (사용자 결정 2026-07-22). 기동 시 재계산(옵션 1)은 기각. 단계 B-사전 세션에서 DB 백업 후 1회 마이그레이션 스크립트 설계·실행.
+
+## 직전 완료 작업 (이전 세션)
+
 ### 단계 A: buildMonthlyDrilldown SSOT 위반 해결 (2026-07-22)
 
 **세션**: 수익률 계산 SSOT/P22 일괄 정비 단계 A (프론트엔드 단독). P10/P22/P21 해결.
@@ -29,9 +60,9 @@
 
 **잔존 프로세스**: 없음 (프론트엔드 typecheck/build/vitest만 수행, 백엔드 기동 없음).
 
-**다음 세션 대기 사항**:
-1. **단계 C 실행 시작 승인** — 공통 함수 `computeWeightedRate` 신설 + 5곳 호출부 통일 (프론트엔드 단독). tasks.md 섹션 2 기반.
-2. **단계 B-사전 전 마이그레이션 방식 사전 결정** — 옵션 1(기동 시 재계산) vs 옵션 2(1회 스크립트 실행). 단계 B-사전 세션 전까지 확정 필요.
+**다음 세션 대기 사항** (단계 C 완료로 갱신):
+1. **단계 B-사전 전 마이그레이션 방식 사전 결정** — 옵션 1(기동 시 재계산) vs 옵션 2(1회 스크립트 실행). 단계 B-사전 세션 전까지 확정 필요.
+2. **단계 B-사전 실행 시작 승인** — DB 백업 + 마이그레이션 방식 확정 (백엔드/DB). tasks.md 섹션 3 기반.
 
 ## 직전 완료 작업 (이전 세션)
 

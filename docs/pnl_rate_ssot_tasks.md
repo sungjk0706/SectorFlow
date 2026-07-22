@@ -13,7 +13,7 @@
 | 세션 | 단계 | 내용 | 영역 | 사용자 승인 필요 |
 |------|------|------|------|-------------------|
 | 1 | A | buildMonthlyDrilldown SSOT 위반 해결 | 프론트엔드 | 사전조사 + 수정 계획 승인 |
-| 2 | C | 공통 함수 computeWeightedRate 신설 + 5곳 호출부 통일 | 프론트엔드 | 사전조사 + 수정 계획 승인 |
+| 2 | C | 공통 함수 computeWeightedRate 신설 + 7곳 호출부 통일 | 프론트엔드 | 사전조사 + 수정 계획 승인 |
 | 3 | B-사전 | DB 백업 + 마이그레이션 방식 확정 | 백엔드/DB | DB 백업 승인 + 마이그레이션 방식 승인 |
 | 4 | B-본 | per-trade realized_pnl/pnl_rate 공식 현금 기준 전환 + 기존 데이터 마이그레이션 | 백엔드/DB | 핵심 로직 변경 승인 (규칙 0-4/0-5) |
 | 5 | B-연계 | 프론트엔드 공식 동기화 + 테스트 갱신 | 프론트엔드/테스트 | 사전조사 + 수정 계획 승인 |
@@ -65,7 +65,12 @@
 
 ---
 
-## 2. 단계 C: 공통 함수 computeWeightedRate 신설 + 5곳 호출부 통일
+## 2. 단계 C: 공통 함수 computeWeightedRate 신설 + 7곳 호출부 통일
+
+> **갱신 (2026-07-22)**: 사전조사 결과 작업 파일 예상 5곳이 아닌 7곳으로 확정.
+> - 단계 A에서 buildMonthlyDrilldown per-day rate이 백엔드 값 직접 사용으로 전환되어 1곳 감소.
+> - 조사로 3곳 추가 발견: profit-shared.ts:245(업종 합계 수익률), profit-shared.ts:368(보유종목 평가손익 수익률), canvas-sector-donut.ts:203(도넛 차트 누적 수익률).
+> - 함수 위치를 profit-shared.ts가 아닌 `components/common/ui-styles.ts`로 변경 — canvas-sector-donut.ts와의 순환 참조 방지 + fmtRate/pnlColor 등 동일 성격 공통 함수군과 함께 배치.
 
 ### 2.1 목표
 
@@ -75,34 +80,37 @@
 
 ### 2.2 사전조사 항목 (수정 전 필수, 규칙 0-2)
 
-- [ ] **의존성**: 공식 `Math.round(pnl / buyTotal * 10000) / 100` 사용 5곳 식별:
-  - profit-shared.ts:183-185 (buildSectorDonutRows)
-  - profit-shared.ts:227 (buildSectorStockPnl)
-  - profit-shared.ts:300 (aggregatePnl)
-  - profit-shared.ts:332 (buildMonthlyDrilldown — 단계 A 해결 후 잔존 시)
-  - profit-detail-display.ts:149-150 (updateStatistics)
-- [ ] **영향범위**: profit-shared.ts, profit-detail-display.ts.
-- [ ] **아키텍처 원칙 부합**: P23(일관성) — 공통 함수 재사용. P22 — 공식 통제 지점 단일화. P24(단순성) — 1회용 래퍼 아님 (5곳 재사용).
-- [ ] **기존 공통 자산 확인**: profit-shared.ts에 유사 공통 함수 존재 여부 검색 (현재 없음 — 신설).
+- [x] **의존성**: 공식 `Math.round(pnl / buyTotal * 10000) / 100` 사용 7곳 식별 (단계 A 이후 잔존):
+  - profit-shared.ts:183 (buildSectorDonutRows — 업종별 도넛 행 수익률)
+  - profit-shared.ts:226 (buildSectorStockPnl — 종목별 수익률)
+  - profit-shared.ts:245 (buildSectorStockPnl — 업종 합계 수익률, 작업 파일 누락분)
+  - profit-shared.ts:299 (aggregatePnl — 범위 손익 집계 수익률)
+  - profit-shared.ts:368 (computeHoldingsSummary — 보유종목 평가손익 수익률, 작업 파일 누락분)
+  - profit-detail-display.ts:151 (updateStatistics — 통계 가중평균 수익률)
+  - canvas-sector-donut.ts:203 (도넛 차트 중앙 누적 수익률, 작업 파일 누락분)
+- [x] **영향범위**: profit-shared.ts, profit-detail-display.ts, canvas-sector-donut.ts, components/common/ui-styles.ts (신규 함수).
+- [x] **아키텍처 원칙 부합**: P23(일관성) — 공통 함수 재사용. P22 — 공식 통제 지점 단일화. P24(단순성) — 1회용 래퍼 아님 (7곳 재사용). P10(SSOT) — 공식 1곳 정의.
+- [x] **기존 공통 자산 확인**: ui-styles.ts에 fmtRate/pnlColor/rateColor 등 동일 성격 공통 함수 존재 → 이 파일에 배치가 자연스러움. computeWeightedRate 기존 함수 없음 (신설 확정).
+- [x] **순환 참조 검토**: profit-shared.ts가 canvas-sector-donut.ts를 사용 중 → 함수를 profit-shared.ts에 두면 역방향 참조 발생. ui-styles.ts는 두 파일 모두 이미 import 중이므로 순환 없음.
 
 ### 2.3 수정 체크리스트
 
-- [ ] **공통 함수 신설**: `profit-shared.ts`에 `computeWeightedRate(pnl: number, buyTotal: number): number` 추가. 구현: `buyTotal > 0 ? Math.round(pnl / buyTotal * 10000) / 100 : 0`.
-- [ ] **5곳 호출부 변경**: 직접 공식 → `computeWeightedRate(pnl, buyTotal)` 호출.
-- [ ] **주석 일관성**: 각 호출부에 "공통 함수 사용 — P23 일관성" 주석 추가 (기존 주석 패턴 준수).
-- [ ] **export 추가**: computeWeightedRate를 export (타 모듈에서 사용 가능하도록).
+- [x] **공통 함수 신설**: `components/common/ui-styles.ts`에 `computeWeightedRate(pnl: number, buyTotal: number): number` 추가. 구현: `buyTotal > 0 ? Math.round(pnl / buyTotal * 10000) / 100 : 0`.
+- [x] **7곳 호출부 변경**: 직접 공식 → `computeWeightedRate(pnl, buyTotal)` 호출.
+- [x] **import 추가**: profit-shared.ts, profit-detail-display.ts, canvas-sector-donut.ts의 ui-styles import 라인에 computeWeightedRate 추가.
+- [x] **export**: ui-styles.ts에 export function으로 정의 (타 모듈 사용 가능).
 
 ### 2.4 검증
 
-- [ ] `npm run typecheck` exit 0
-- [ ] `npm run build` exit 0
-- [ ] `npx vitest run` — 기존 테스트 모두 통과 (공식 동일하므로 수치 변화 없음)
+- [x] `npm run typecheck` exit 0
+- [x] `npm run build` exit 0 (1.99s)
+- [x] `npx vitest run` — 8 files / 116 tests passed (8.07s, 공식 동일하므로 수치 변화 없음)
 
 ### 2.5 완료 조건
 
-- pnl_rate 공식이 profit-shared.ts 1곳에서만 정의.
-- 5곳 호출부가 모두 공통 함수 사용.
-- HANDOVER.md 직전 완료 작업 섹션 갱신.
+- [x] pnl_rate 공식이 components/common/ui-styles.ts 1곳에서만 정의.
+- [x] 7곳 호출부가 모두 공통 함수 사용.
+- [x] HANDOVER.md 직전 완료 작업 섹션 갱신.
 
 ---
 
@@ -118,24 +126,18 @@
 - [ ] **의존성**: trades 테이블의 realized_pnl/pnl_rate 필드를 읽는 모든 코드 경로 식별 (백엔드 집계 + 프론트엔드 표시).
 - [ ] **영향범위**: backend/app/services/trade_history.py, DB trades 테이블, 프론트엔드 수익률 표시 전체.
 - [ ] **기존 데이터 규모**: trades 테이블 레코드 수 확인 (마이그레이션 I/O 비용 추정).
-- [ ] **마이그레이션 방식 검토**:
-  - 옵션 1: 기동 시 재계산 (trades 전체 스캔 + UPDATE) — 자동화 but 기동 지연.
-  - 옵션 2: 1회 마이그레이션 스크립트 실행 — 사용자 승인 필요, 명시적.
-  - 옵션 3: 기존 데이터는 순수 차익 유지 + 신규 데이터만 현금 기준 — P22 위반 잔존 (부적합, 후보에서 제외).
+- [x] **마이그레이션 방식 결정**: **옵션 2(1회 마이그레이션 스크립트 실행)** 확정 (사용자 결정 2026-07-22). 옵션 1(기동 시 재계산)은 기각. 옵션 3(P22 위반 잔존)은 부적합 후보에서 제외.
 - [ ] **아키텍처 원칙 부합**: P22(데이터 정합성) — 과거/현재 데이터 기준 일치. P18(모드 동등성) — 실전/테스트 동일 마이그레이션 적용.
 
 ### 3.3 수정 체크리스트
 
 - [ ] **DB 백업**: db-backup 스킬 호출 — stocks.db, stocks.db-shm, stocks.db-wal 백업 (사용자 승인 필수).
-- [ ] **마이그레이션 방식 사용자 승인**: 옵션 1 vs 옵션 2 중 선택.
-- [ ] **마이그레이션 스크립트 설계** (옵션 2 선택 시):
+- [x] **마이그레이션 방식 사용자 승인**: 옵션 2(1회 스크립트 실행) 확정.
+- [ ] **마이그레이션 스크립트 설계** (옵션 2 적용):
   - trades 테이블 모든 SELL 레코드 순회
   - `realized_pnl = total_amt - buy_total_amt` (현금 기준 재계산)
   - `pnl_rate = round(realized_pnl / buy_total_amt * 100, 2)` (buy_total_amt 기준, 수수료 포함)
   - UPDATE 쿼리 실행
-- [ ] **기동 시 재계산 로직 설계** (옵션 1 선택 시):
-  - trade_history.py 초기 로드 시 `_migrate_pnl_to_cash_basis()` 1회 실행
-  - 마이그레이션 완료 플래그 DB 저장 (중복 실행 방지)
 
 ### 3.4 검증
 
