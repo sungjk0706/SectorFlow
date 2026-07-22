@@ -597,9 +597,60 @@
 
 **통합 vs 단위 비율**: integration 명시 2개(`test_sector_calculator_integration`, `test_settings_file_integration`), 단위 63개.
 
-#### B-23-b 세부 점검 — 대형 파일 (1000줄+, 9개)
-- [ ] P16/P23/P24/P18/P22 점검
+#### B-23-b 세부 점검 — 대형 파일 (1000줄+, 9개) — 완료
+- [x] P16/P23/P24/P18/P22 점검
 - 대상: `test_daily_time_scheduler`(2285), `test_pipeline_compute`(1540), `test_telegram_bot`(1244), `test_market_close_pipeline`(1228), `test_trade_history`(1119), `test_ls_connector`(1090), `test_engine_sector_confirm`(1068), `test_engine_loop`(1059), `test_buy_order_executor`(1001)
+
+##### B-23-b 점검 결과
+
+**P16 (살아있는 경로) — 위반 1건**
+- `test_trade_history.py:609-642` (`TestCalcAvgBuyPrice`): `_calc_avg_buy_price` 함수(`trade_history.py:295`)가 소스에 정의만 있고 백엔드 전체에서 호출 경로 없음 (dead code). 이 dead code를 테스트하고 있음 → P16 위반. 수정 필요: `_calc_avg_buy_price` 함수 제거 + 테스트 제거 (별도 세션 승인 필요).
+- 나머지 8개 파일: 위반 없음. 모든 테스트가 실제 소스의 살아있는 함수/클래스를 참조. 제거된 기능(`sector_confirmed` 확정, `get_merged_sector`) 테스트 없음.
+  - 주의: `test_engine_sector_confirm.py` 파일명의 "sector_confirm"은 업종 재계산 기능을 의미하며, 제거된 "sector_confirmed 확정" 개념과 무관함 (오해 주의).
+
+**P23 (일관성) — 위반 0건**
+- 모든 9개 파일에서 용어 사전 준수 ("섹터"/"주식"/"바이 리스트" 사용 없음, "업종"/"종목"/"매수 후보" 올바르게 사용).
+- 코드 식별자(`sector`, `stock`, `buy`)는 ARCHITECTURE.md 부록 L/M 예외 조항에 따라 허용.
+- 네이밍/에러/비동기/상수 패턴 파일 내 일관적.
+
+**P24 (단순성) — 위반 7건**
+- 파일 길이 초과 (500줄 기준): 9개 파일 전부 초과 (1001~2285줄). 단, 테스트 파일은 기능별 그룹화된 클래스 단위이므로 예외적 허용 범위 검토 필요.
+- 함수 길이 초과 (50줄 기준) — 4건:
+  - `test_pipeline_compute.py:1391-1449` `test_phase1_marks_threshold_passed` (59줄)
+  - `test_market_close_pipeline.py:1026-1079` `test_5d_safety_net_blocks_current_trading_day_bar` (54줄)
+  - `test_market_close_pipeline.py:1082-1136` `test_5d_deletes_future_bars` (55줄)
+  - `test_buy_order_executor.py:535-585` `test_same_buyable_codes_different_order_skips` (51줄)
+- 중복 테스트 로직 (fixture/파라미터화 가능) — 3건:
+  - `test_daily_time_scheduler.py:511-820` `TestIsOrderBlockedByTime` vs `TestGetOrderTimeBlockStatus` 버퍼 테스트 중복 (약 17개 메서드)
+  - `test_engine_loop.py:411-1054` 19개 테스트에서 동일한 16개 patch 블록 반복
+  - `test_market_close_pipeline.py:973-1228` 5일봉 파이프라인 테스트 6개에서 13-19개 patch 문 중복
+  - 기타: `test_telegram_bot.py:596-787` TestHandleCommand 21개 테스트 명령어 라우팅 중복, `test_engine_sector_confirm.py` 9개 테스트 설정 캐시 중복, `test_ls_connector.py` 구독/해제 테스트 그룹 중복, `test_buy_order_executor.py` 40개+ 테스트 patch 설정 중복
+
+**P18 (테스트모드 동등성) — 부분**
+- 모드별 차이 검증 있음: `test_trade_history.py` (수수료/세금/보관기한 test vs real 6개 테스트), `test_pipeline_compute.py` (test_mode/real_mode 개별 테스트 3개).
+- "동등성" 명시적 검증 부재: "로직은 동일하고 돈 I/O만 다르다"를 검증하는 테스트 없음.
+- `test_buy_order_executor.py`/`test_engine_loop.py`: 모든 테스트가 test_mode=True로만 실행, 실전모드 경로 검증 부족.
+- 나머지 5개 파일: 해당 없음 (테스트모드 구분 없는 영역).
+
+**P22 (데이터 정합성) — 부분**
+- `test_daily_time_scheduler.py`: 4건 reconciliation 테스트 존재 (멱등성 가드 3건 + 캐시 날짜 불일치 검증 1건) — 양호.
+- `test_engine_sector_confirm.py:1032`: 주석에 "(P22 정합성)" 언급만 있고 실제 대조 검증 로직 없음.
+- 나머지 7개 파일: reconciliation(대조) 검증 테스트 전무.
+
+**B-23-b 발견 위반 요약**
+| 원칙 | 위반 건수 | 주요 내용 |
+|------|----------|----------|
+| P16 | 1건 | `_calc_avg_buy_price` dead code 테스트 (test_trade_history) |
+| P23 | 0건 | 전부 준수 |
+| P24 | 7건 | 함수 길이 초과 4건 + 중복 로직 3건 (파일 길이 초과는 테스트 파일 예외 검토) |
+| P18 | 부분 | 모드별 차이 검증은 있으나 동등성 명시적 검증 부재 |
+| P22 | 부분 | 1개 파일만 양호, 나머지 reconciliation 테스트 부재 |
+
+**수정 권장 순위** (별도 세션 승인 필요):
+1. (P16) `_calc_avg_buy_price` dead code 제거 + 테스트 제거 — `trade_history.py:295` + `test_trade_history.py:609-642`
+2. (P24) 함수 길이 초과 4건 — 헬퍼 추출 또는 단순화
+3. (P24) 중복 로직 — fixture 추출 (test_engine_loop 19개 patch, test_market_close_pipeline 5일봉 6개, test_daily_time_scheduler 버퍼 17개)
+4. (P18/P22) 동등성/reconciliation 테스트 보완 — 신규 테스트 추가
 
 #### B-23-c 세부 점검 — 중형 파일 (400-1000줄, 20개)
 - [ ] P16/P23/P24/P18/P22 점검

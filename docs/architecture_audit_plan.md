@@ -742,18 +742,18 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | 점검 항목 | 점검 완료 |
 |-----------|----------|
 | 테스트 커버리지 현황 파악 (모듈별) | ☑ B-23-a |
-| P16: 테스트가 살아있는 경로를 검증하는지 (dead code 테스트 아님) | ☐ B-23-b/c/d |
-| P18: 테스트모드 동등성 검증 존재 여부 | △ B-23-a 스캔/B-23-b/c/d 심층 |
+| P16: 테스트가 살아있는 경로를 검증하는지 (dead code 테스트 아님) | △ B-23-b 완료(1건)/B-23-c/d |
+| P18: 테스트모드 동등성 검증 존재 여부 | △ B-23-a 스캔/B-23-b 부분(동등성 명시 검증 부재)/B-23-c/d |
 | P19: `RuntimeWarning(coroutine never awaited)` 감지 테스트 | ☑ B-23-a (부재 확인) |
-| P22: 데이터 정합성 대조(reconciliation) 테스트 | △ B-23-a 스캔/B-23-b/c/d 심층 |
-| P23: 용어/에러/비동기/네이밍/상수 일관성 점검 | ☐ B-23-b/c/d |
-| P24: 단순성 점검 (불필요한 추상화, 복잡도) | ☐ B-23-b/c/d |
+| P22: 데이터 정합성 대조(reconciliation) 테스트 | △ B-23-a 스캔/B-23-b 부분(1개 파일 양호, 8개 부재)/B-23-c/d |
+| P23: 용어/에러/비동기/네이밍/상수 일관성 점검 | ☑ B-23-b 완료(위반 0건)/B-23-c/d |
+| P24: 단순성 점검 (불필요한 추상화, 복잡도) | △ B-23-b 완료(위반 7건)/B-23-c/d |
 | 미커버 모듈 식별 (테스트 파일 없는 소스 파일) | ☑ B-23-a (17개) |
 | 통합 테스트 vs 단위 테스트 비율 | ☑ B-23-a (2/63, async 1482/sync 1362) |
 
 **B-23-a 메타 점검 결과**: P19 감지 테스트 부재(4개 파일 "방지" 주석만). 미커버 17개 모듈(`engine_config`/`engine_strategy_core`/`engine_utils`/`engine_radar`/`auto_trading_effective`/`ws_subscribe_control`/`broker_factory`/`broker_registry`/`broker_connector`/`trade_mode`/`settings_defaults`/`memory_monitor`/`logging_config`/`sector_stock_cache`/`sector_filter`/`pipeline_compute_tick_handlers`/`json_utils`).
 
-**B-23-b**: 대형 9개(1000줄+) · **B-23-c**: 중형 20개(400-1000줄) · **B-23-d**: 소형 36개(400줄-) — 각 P16/P23/P24/P18/P22 점검.
+**B-23-b 완료**: 대형 9개(1000줄+) 점검 — P16 위반 1건(`_calc_avg_buy_price` dead code 테스트), P23 위반 0건, P24 위반 7건(함수 길이 초과 4건 + 중복 로직 3건), P18/P22 부분. 상세는 `architecture_audit_tasks.md` B-23-b 섹션 참조. **B-23-c**: 중형 20개(400-1000줄) · **B-23-d**: 소형 36개(400줄-) — 각 P16/P23/P24/P18/P22 점검.
 
 ---
 
