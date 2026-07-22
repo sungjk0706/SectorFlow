@@ -1192,7 +1192,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | F-03 | P2 | 핵심 매매 페이지 | ☐ 미시작 |
 | F-04 | P2 | 설정 페이지 | ☐ 미시작 |
 | F-05 | P3 | 수익 페이지 | ☐~ F-05-a 완료 (7건 P10/P19/P20/P23), F-05-b 1/2세션 완료 (F05-10/F05-12 해결), F-05-b 2/2세션 F05-09 해결 (mount 분할 + 실전/테스트 루프 중복 제거), F-05-c F05-08 해결 (컬럼 정의 3개 profit-columns.ts 분할, profit-shared.ts 598→493줄), 잔여 profit-overview.ts 742줄/profit-detail.ts 674줄 + renderSectorStockPnl 146줄 분할 |
-| F-06 | P3 | 공통 컴포넌트 | ☐~ F-06-a 완료 (F06-07/08 dead code 2건 제거), F-06-b 완료 (F06-06 callbackRan dead code 제거, rafId=-1 센티넬 방식), 잔여 F06-01/02/03 파일 분할 + F06-10 용어 통일 + F06-11/12 색상 상수화 |
+| F-06 | P3 | 공통 컴포넌트 | ☐~ F-06-a 완료 (F06-07/08 dead code 2건 제거), F-06-b 완료 (F06-06 callbackRan dead code 제거, rafId=-1 센티넬 방식), F-06-c 완료 (F06-10/11/12 용어 통일 + 색상 상수화), F-06-d 완료 (F06-10 잔존 2곳), F-06-e 완료 (F06-01 data-table.ts 1045→176/454/454줄 분할), 잔여 F06-02/03 파일 분할 |
 | F-07 | P3 | 타입 및 유틸 | ☐ 미시작 |
 
 ### 진행률

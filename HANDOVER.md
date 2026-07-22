@@ -6,6 +6,46 @@
 
 ## 직전 완료 작업
 
+### F-06-e (F06-01): data-table.ts 파일 분할 (2026-07-22)
+
+**세션**: F-06 (P3 — 공통 컴포넌트) 1단계. F06-01 (P24 단순성) 해결.
+
+**수정 파일 3개**:
+- `frontend/src/components/common/data-table.ts` (메인): 1045줄 → 176줄. 타입/인터페이스 + 공통 유틸리티(triggerFlash, isGroupRow, scoreColor, createColumnWidthManager) + createDataTable 팩토리만 잔류. 유틸리티 함수에 export 추가 (모드 파일에서 import).
+- `frontend/src/components/common/data-table-fixed.ts` (신규, 454줄): createFixedMode + CellWithPrevContent 이관.
+- `frontend/src/components/common/data-table-virtual.ts` (신규, 454줄): createVirtualScrollMode + RowWithKey 이관.
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| F06-01 | P24 | data-table.ts 1045줄 → 3개 파일 분할 (176/454/454줄, 모두 500줄 이하). 순수 이동(move)만 수행, 동작 변경 없음. 외부 import 경로 유지 (9개 페이지 + ui-styles.ts + 테스트) |
+
+**검증**: `npm run typecheck` exit 0, `npm run build` 1.93s exit 0, `npx vitest run tests/components/data-table.ui.test.ts` 17/17 passed. 잔여 createFixedMode/createVirtualScrollMode 참조: 메인 + 각 모드 파일에서만 (외부 누출 없음).
+
+**화면 영향**: 없음. 순수 파일 분할이며 외부 import 경로가 동일하게 유지되어 모든 페이지가 동일하게 동작.
+
+## 미해결 문제 (발견 즉시 기록)
+
+### 백엔드 버그 (F-05-a 조사 중 발견)
+- `backend/app/services/engine_account_rest.py:125-144` `build_account_snapshot_meta`가 응답 dict에서 `accumulated_investment`를 **누락**. 테스트모드에서 `state.account_snapshot["accumulated_investment"]`를 set한 후 `build_account_snapshot_meta`가 새 dict을 반환하므로 누락됨. 프론트엔드 F05-01은 `initial_deposit`만 사용하여 우회(테스트모드에서는 동일 값이므로 UI 변화 없음). 백엔드 수정은 별도 세션 필요.
+
+## 다음 세션 작업
+
+**잔여 F-06 (별도 세션 each)**:
+- F06-02: `setting-row.ts` 파일 분할 (569줄, 입력란 그룹 분리 검토)
+- F06-03: `ui-styles.ts` 파일 분할 (564줄, 셀/컬럼 팩토리 분리 검토)
+
+**잔여 F-05 (별도 세션 each)**:
+- `profit-overview.ts` 742줄 (500줄 초과) — `renderSectorStockPnl` 146줄 분할 포함
+- `profit-detail.ts` 674줄 (500줄 초과) — 별도 세션에서 추가 분할 검토
+
+**백엔드 (별도 세션)**:
+- `engine_account_rest.py:125-144` `accumulated_investment` 누락 수정 (미해결 문제 참조)
+
+---
+
+## 직전 완료 작업 (이전 세션)
+
 ### F-06-d (F06-10 잔존): 용어 통일 마무리 (2026-07-22)
 
 **세션**: F-06 (P3 — 공통 컴포넌트) 1단계. F06-10 잔존 2곳 해결 (프로젝트 전역 용어 통일 종료).
@@ -23,27 +63,6 @@
 
 **화면 영향**:
 - 수익 요약 페이지 계좌 현황 표: "보유주식 평가금액 (N종목)" → "보유 종목 평가금액 (N종목)"으로 표시 변경
-
-## 미해결 문제 (발견 즉시 기록)
-
-### 백엔드 버그 (F-05-a 조사 중 발견)
-- `backend/app/services/engine_account_rest.py:125-144` `build_account_snapshot_meta`가 응답 dict에서 `accumulated_investment`를 **누락**. 테스트모드에서 `state.account_snapshot["accumulated_investment"]`를 set한 후 `build_account_snapshot_meta`가 새 dict을 반환하므로 누락됨. 프론트엔드 F05-01은 `initial_deposit`만 사용하여 우회(테스트모드에서는 동일 값이므로 UI 변화 없음). 백엔드 수정은 별도 세션 필요.
-
-## 다음 세션 작업
-
-**잔여 F-06 (별도 세션 each)**:
-- F06-01: `data-table.ts` 파일 분할 (1045줄 → ~500줄, fixed/virtual 모드 분리)
-- F06-02: `setting-row.ts` 파일 분할 (569줄, 입력란 그룹 분리 검토)
-- F06-03: `ui-styles.ts` 파일 분할 (564줄, 셀/컬럼 팩토리 분리 검토)
-
-**잔여 F-05 (별도 세션 each)**:
-- `profit-overview.ts` 742줄 (500줄 초과) — `renderSectorStockPnl` 146줄 분할 포함
-- `profit-detail.ts` 674줄 (500줄 초과) — 별도 세션에서 추가 분할 검토
-
-**백엔드 (별도 세션)**:
-- `engine_account_rest.py:125-144` `accumulated_investment` 누락 수정 (미해결 문제 참조)
-
----
 
 ## 직전 완료 작업 (이전 세션)
 
