@@ -59,9 +59,8 @@ async def test_daily_summary_no_duplicate_buy_total():
     sell_net = sell_total - fee - tax   # 688516
     buy_fee = 105
     buy_total = 700000 + buy_fee        # 700105 (매수가*수량 + 매수수수료)
-    buy_principal = 700000              # 순매입 (수수료 제외)
-    realized_pnl = (69000 - 70000) * 10  # -10000 (순수 차익)
-    pnl_rate = round(realized_pnl / buy_principal * 100, 2)
+    realized_pnl = sell_net - buy_total  # -11589 (현금 기준, 수수료/세금 포함)
+    pnl_rate = round(realized_pnl / buy_total * 100, 2)
 
     trade_history._sell_history.append({
         "ts": f"{today}T10:00:00",
@@ -150,7 +149,7 @@ async def test_daily_summary_fee_tax_aggregation():
     sell_tax = round(sell_total * 0.002)    # 1380
     sell_net = sell_total - sell_fee - sell_tax
     buy_total = 700000 + buy_fee             # 700105
-    realized_pnl = (69000 - 70000) * 10      # -10000 (순수 차익)
+    realized_pnl = sell_net - buy_total      # 현금 기준 (수수료/세금 포함)
 
     trade_history._buy_history.append({
         "ts": f"{today}T09:10:00",
@@ -186,7 +185,7 @@ async def test_daily_summary_fee_tax_aggregation():
         "avg_buy_price": 70000,
         "buy_total_amt": buy_total,
         "realized_pnl": realized_pnl,
-        "pnl_rate": round(realized_pnl / 700000 * 100, 2),
+        "pnl_rate": round(realized_pnl / buy_total * 100, 2),
         "reason": "손절",
         "trade_mode": "test",
     })
@@ -269,15 +268,14 @@ def _make_sell_rec(
     sell_net = total_amt - fee - tax
     buy_fee = round(avg_buy_price * qty * 0.00015) if trade_mode == "test" and avg_buy_price > 0 else 0
     buy_total = avg_buy_price * qty + buy_fee if avg_buy_price > 0 else 0
-    buy_principal = avg_buy_price * qty if avg_buy_price > 0 else 0
-    realized_pnl = (price - avg_buy_price) * qty if avg_buy_price > 0 else 0
+    realized_pnl = sell_net - buy_total if avg_buy_price > 0 else 0
     rec = {
         "ts": f"{date}T{time}", "date": date, "time": time, "side": "SELL",
         "stk_cd": stk_cd, "stk_nm": stk_nm, "price": price, "qty": qty,
         "total_amt": sell_net, "fee": fee, "tax": tax,
         "avg_buy_price": avg_buy_price, "buy_total_amt": buy_total,
         "realized_pnl": realized_pnl,
-        "pnl_rate": round(realized_pnl / buy_principal * 100, 2) if buy_principal > 0 else 0.0,
+        "pnl_rate": round(realized_pnl / buy_total * 100, 2) if buy_total > 0 else 0.0,
         "reason": reason, "trade_mode": trade_mode,
     }
     if sector is not None:

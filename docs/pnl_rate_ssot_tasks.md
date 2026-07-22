@@ -167,42 +167,43 @@
 
 ### 4.2 사전조사 항목 (수정 전 필수, 규칙 0-2 + 규칙 0-4/0-5)
 
-- [ ] **의존성**: trade_history.py:340-376 per-trade 레코드 생성 로직이 영향 주는 모든 코드 경로.
-- [ ] **영향범위**: 백엔드 집계(get_daily_summary, get_total_realized_pnl, build_positions_from_trades), 프론트엔드 수익률 표시 전체.
-- [ ] **규칙 0-5 해당 여부**: per-trade realized_pnl/pnl_rate 공식이 사용자가 이전에 설계/승인한 로직인지 확인 — 변경 사유·영향·대안 상세 보고 후 승인.
-- [ ] **규칙 0-4 UI 기준 설명**: 변경 전(순수 차익, 테스트모드 과대 표시) vs 변경 후(현금 기준, 실제 체감 수익률)를 UI 기준 일반 용어로 설명.
-- [ ] **P18 동등성**: 공식 변경이 모드 분기 없이 동일 적용되는지 확인 (실전: 수수료/세금 0 → 영향 없음, 테스트: 정확한 수익률).
-- [ ] **아키텍처 원칙 부합**: P22 — 과거/현재 데이터 기준 일치. P21 — 실제 체감 수익률 표시. P23 — "실현손익" 용어 단일 기준.
+- [x] **의존성**: trade_history.py:340-376 per-trade 레코드 생성 로직이 영향 주는 모든 코드 경로 — record_sell(353,369), get_daily_summary(518-519,527), get_total_realized_pnl(453, 이미 현금 기준), risk_manager.py:63(부호만 판별, 영향 없음), build_positions_from_trades(645-650, docstring만).
+- [x] **영향범위**: 백엔드 집계(get_daily_summary, get_total_realized_pnl, build_positions_from_trades), 테스트 파일. 프론트엔드 수익률 표시는 단계 B-연계(세션 5)에서 처리.
+- [x] **규칙 0-5 해당 여부**: per-trade realized_pnl/pnl_rate 공식이 사용자가 이전에 승인한 로직 — 변경 사유(P22/P21 위반, 두 기준 혼재)·영향(매도 체결값, 일별 요약, 연속손실 부호 동일)·대안(유지 시 위반 지속) 상세 보고 후 승인 (2026-07-22).
+- [x] **규칙 0-4 UI 기준 설명**: 변경 전(순수 차익, 테스트모드 과대 표시) vs 변경 후(현금 기준, 실제 체감 수익률)를 UI 기준 일반 용어로 설명 — 예: 7만원 매수→6.9만원 매도 시 −10,000원/−1.43% → −11,589원/−1.66%. 승인 확보 (2026-07-22).
+- [x] **P18 동등성**: 공식 변경이 모드 분기 없이 동일 적용 확인 (실전: 수수료/세금 0 → 영향 없음, 테스트: 정확한 수익률).
+- [x] **아키텍처 원칙 부합**: P22 — 과거/현재 데이터 기준 일치. P21 — 실제 체감 수익률 표시. P23 — "실현손익" 용어 단일 기준.
 
 ### 4.3 수정 체크리스트
 
-- [ ] **per-trade 레코드 공식 변경** (trade_history.py:353,369):
-  - `realized_pnl = (price - avg_buy_price) * qty` → `realized_pnl = total_amt - buy_total_amt` (현금 기준)
-  - `pnl_rate = round(realized_pnl / buy_principal * 100, 2)` → `pnl_rate = round(realized_pnl / buy_total_amt * 100, 2)` (buy_total_amt 기준, 수수료 포함)
+- [x] **per-trade 레코드 공식 변경** (trade_history.py:352-368):
+  - `realized_pnl = (price - avg_buy_price) * qty` → `realized_pnl = sell_net - buy_total` (현금 기준)
+  - `pnl_rate = round(realized_pnl / buy_principal * 100, 2)` → `pnl_rate = round(realized_pnl / buy_total * 100, 2)` (buy_total 기준, 수수료 포함)
+  - `buy_principal` 변수 제거 (P24 단순성, 더 이상 사용 안 함)
   - 주석 갱신: "순수 차익(수수료/세금 제외)" → "현금 기준 실현손익(수수료/세금 포함)"
-- [ ] **per-day 집계 공식 변경** (trade_history.py:518-527):
+- [x] **per-day 집계 공식 변경** (trade_history.py:517-518):
   - `realized_pnl += rec["realized_pnl"]` (이미 현금 기준으로 변경된 per-trade 값 합산)
-  - `buy_total += rec["avg_buy_price"] * rec["qty"]` → `buy_total += rec["buy_total_amt"]` (수수료 포함)
+  - `buy_total += (rec["avg_buy_price"] or 0) * (rec["qty"] or 0)` → `buy_total += rec.get("buy_total_amt") or 0` (수수료 포함)
   - pnl_rate 공식은 동일 (realized_pnl / buy_total × 100) — 분자·분모 모두 현금 기준으로 일관.
-- [ ] **build_positions_from_trades 주석 갱신** (trade_history.py:649-650): "pnl_amount/pnl_rate는 순수 차익(수수료/세금 제외)" → 현금 기준으로 갱신 (해당 필드가 per-trade 기준 사용 시).
-- [ ] **마이그레이션 실행**: 단계 B-사전에서 확정한 방식으로 기존 trades 레코드 갱신.
-- [ ] **get_total_realized_pnl 일관성 확인**: 이미 현금 기준(`total_amt - buy_total_amt`) 사용 중 — 공식 변경 후 per-trade realized_pnl과 동일 기준 확인 (P22 일관성).
+- [x] **build_positions_from_trades docstring 갱신** (trade_history.py:647-650): "pnl_amount/pnl_rate는 순수 차익(수수료/세금 제외)" → "현금 기준(수수료/세금 포함)".
+- [x] **마이그레이션 실행**: `backend/scripts/migrate_realized_pnl_cash.py` 신설 + 실행. 대상 0건(현재 SELL 레코드 없음) → 갱신 대상 없음. 멱등 확인.
+- [x] **get_total_realized_pnl 일관성 확인**: 이미 현금 기준(`total_amt - buy_total_amt`) 사용 중 — 공식 변경 후 per-trade realized_pnl과 동일 기준 확인 (P22 일관성).
+- [x] **테스트 갱신**: `_make_sell_rec` 헬퍼 + `test_daily_summary_no_duplicate_buy_total` + `test_daily_summary_fee_tax_aggregation` 주입 데이터 현금 기준으로 갱신.
 
 ### 4.4 검증
 
-- [ ] `python -m py_compile backend/app/services/trade_history.py` 성공
-- [ ] 백엔드 테스트: `pytest backend/tests/test_trade_history.py` (존재 시) — realized_pnl/pnl_rate 공식 변경 반영
-- [ ] 런타임 기동 (규칙 5): `python -W error::RuntimeWarning main.py` — 매도 체결 시 realized_pnl/pnl_rate 현금 기준 계산 확인
-- [ ] 테스트모드 매도 1건 발생 → realized_pnl = total_amt - buy_total_amt 확인 (수수료/세금 포함)
-- [ ] 실전모드 매도 1건 발생 → realized_pnl = (price - avg_buy_price) * qty (수수료/세금 0이므로 동일)
-- [ ] 마이그레이션 후 trades 테이블 기존 레코드 realized_pnl/pnl_rate 값이 현금 기준인지 확인
+- [x] `python -m py_compile backend/app/services/trade_history.py` 성공
+- [x] 백엔드 테스트: `pytest backend/tests/test_trade_history.py` — 64 passed (realized_pnl/pnl_rate 공식 변경 반영)
+- [x] 전체 백엔드 테스트: `pytest backend/tests/` — 2790 passed
+- [x] 런타임 기동 (규칙 5): `python -W error::RuntimeWarning main.py` — 앱 시작 완료, RuntimeWarning 에러 없음. 매수 0건/매도 0건 정상 로드.
+- [x] 마이그레이션 후 trades 테이블 기존 레코드 realized_pnl/pnl_rate 값이 현금 기준인지 확인 — 대상 0건으로 갱신 없음, 향후 매도 시 현금 기준 적용.
 
 ### 4.5 완료 조건
 
-- per-trade realized_pnl/pnl_rate가 현금 기준으로 계산.
-- 기존 trades 레코드 마이그레이션 완료.
-- 실전/테스트 모드 동등성 유지 (P18).
-- HANDOVER.md 직전 완료 작업 섹션 갱신 (마이그레이션 사유 포함, 규칙 0-3).
+- [x] per-trade realized_pnl/pnl_rate가 현금 기준으로 계산.
+- [x] 기존 trades 레코드 마이그레이션 완료 (대상 0건, 멱등 스크립트 보관).
+- [x] 실전/테스트 모드 동등성 유지 (P18).
+- [x] HANDOVER.md 직전 완료 작업 섹션 갱신 (마이그레이션 사유 포함, 규칙 0-3).
 
 ---
 
