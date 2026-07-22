@@ -6,6 +6,48 @@
 
 ## 직전 완료 작업
 
+### F-05-b: profit-detail.ts 파일 분할 (2026-07-22)
+
+**세션**: F-05 (페이지 파일 분할) 1단계. P24 단순성 해결. F-05-a와 동일한 메인+re-export 패턴.
+
+**수정 파일 4개**:
+- `frontend/src/pages/profit-detail.ts` (메인): 674줄 → 166줄. `ProfitDetailState` 인터페이스 (모든 가변 상태를 단일 상태 객체로 관리 — P10 SSOT) + `createState()` 팩토리 + `mount`/`unmount` + `export default`. 분할 파일에서 사용하는 타입(`LowerTab`, `SelectedView`, `ProfitDetailState`) export. F-05-a 메인+re-export 패턴 준수.
+- `frontend/src/pages/profit-detail-view.ts` (신규, 52줄): `PROFIT_DETAIL_VIEW_KEY`, `ProfitDetailViewState`, `loadProfitDetailView`, `saveProfitDetailView` 이관. 순수 이동.
+- `frontend/src/pages/profit-detail-display.ts` (신규, 215줄): `applyCardStyle` + `updateStatCardSelection` + `updateCardSelection` + `updateDrilldownBtnStyle` + `setTabLabel` + `updateTabLabels` + `showDrilldown` + `filterByDate` + `filterByDateRange` + `updateStatistics` + `showTable` + `persistViewState` 이관. 모든 함수가 `state: ProfitDetailState` 인자를 받도록 시그니처만 변경, 로직 동일.
+- `frontend/src/pages/profit-detail-mount.ts` (신규, 326줄): `buildSummaryRow` + `onDrilldownToggle` + `buildFilterRow` + `buildTabRow` + `buildTableContainer` + `buildStatRow` + `restoreInitialView` + `flushDirtyRender` + `subscribeProfitDetailStore` 이관. 모든 함수가 `state` 인자 사용.
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| F-05-b | P24 | profit-detail.ts 674줄 → 4개 파일 분할 (166/52/215/326줄, 모두 500줄 이하). 순수 이동(move)만 수행, 동작 변경 없음. 외부 import 경로 유지 (라우터 `./pages/profit-detail` 경로 + `export default { mount, unmount }` 시그니처). F-05-a 메인+re-export 패턴 준수 (상태 객체를 인자로 전달 — profit-overview 분할과 동일). |
+
+**검증**: `npm run typecheck` exit 0, `npm run build` 2.18s exit 0, `npx vitest run` 8 files / 116 tests passed (8.94s). 모든 파일 500줄 이하.
+
+**화면 영향**: 없음. 순수 파일 분할이며 외부 import 경로가 동일하게 유지되어 수익 상세 페이지의 모든 기능(요약 카드 당일/직전/당월/누적 손익, 드릴다운 당월 일별 요약, 매도/매수 탭, 날짜 범위 필터, 종목 검색, 통계 정보, 가상 스크롤 거래내역)이 동일하게 동작.
+
+## 직전 완료 작업 (이전 세션)
+
+### F-05-a: profit-overview.ts 파일 분할 + renderSectorStockPnl 함수 분할 (2026-07-22)
+
+**세션**: F-05 (페이지 파일 분할) 1단계. P24 단순성 해결.
+
+**수정 파일 4개**:
+- `frontend/src/pages/profit-overview.ts` (메인): 742줄 → 175줄. `ProfitOverviewState` 인터페이스 (28개 가변 필드를 단일 상태 객체로 관리 — P10 SSOT) + `createState()` 팩토리 + `mount`/`unmount` + `export default`. 분할 파일에서 사용하는 타입을 export. F-06 메인+re-export 패턴 준수.
+- `frontend/src/pages/profit-overview-date.ts` (신규, 62줄): `PROFIT_DATE_KEY`, `ProfitDateRange`, `loadProfitDateRange`, `saveProfitDateRange`, `defaultDateRange`, `initDateRange` 이관. 순수 이동.
+- `frontend/src/pages/profit-overview-sector-pnl.ts` (신규, 219줄): `createAmountCell` (셀 헬퍼 — 헤더/행 공통, P23 일관성) + `createSectorHeader` (업종 헤더 5컬럼) + `createStockRow` (종목 행 5컬럼) + `renderSectorStockPnl` (orchestrator, 45줄 — 50줄 이하 달성) + `updateExpandToggleBtn` + `buildStockListSection` 이관. `renderSectorStockPnl` 146줄 → 5개 함수로 분할 (createAmountCell 25줄 + createSectorHeader 40줄 + createStockRow 35줄 + renderSectorStockPnl 45줄 + updateExpandToggleBtn 4줄).
+- `frontend/src/pages/profit-overview-mount.ts` (신규, 377줄): `renderAccountVals`, `refreshFilteredViews`, `buildLeftColumn`, `buildAccountRows`, `buildAccountPanel`, `buildLowerSection`, `applyDateRange`, `buildProfitChart`, `buildDonutChart`, `flushRender`, `subscribeProfitOverviewStore` 이관. 순수 이동.
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| F-05-a | P24 | profit-overview.ts 742줄 → 4개 파일 분할 (175/62/219/377줄, 모두 500줄 이하). renderSectorStockPnl 146줄 → 5개 함수 분할 (최대 45줄, 모두 50줄 이하). 순수 이동(move) + 함수 분할만 수행, 동작 변경 없음. 외부 import 경로 유지 (라우터 `./pages/profit-overview` 경로 + `export default { mount, unmount }` 시그니처). F-06 메인+re-export 패턴 준수 (상태 객체를 인자로 전달 — data-table-fixed.ts의 options 인자 패턴과 동일). |
+
+**검증**: `npm run typecheck` exit 0, `npm run build` 1.73s exit 0, `npx vitest run` 8 files / 116 tests passed (8.09s). 모든 파일 500줄 이하, renderSectorStockPnl 45줄 (50줄 이하).
+
+**화면 영향**: 없음. 순수 파일 분할이며 외부 import 경로가 동일하게 유지되어 수익현황 페이지의 모든 기능(일별 수익률 차트, 업종별 도넛 차트, 계좌 현황, 업종별 종목 수익, 전체보기 토글, 상세 분석 버튼)이 동일하게 동작.
+
+## 직전 완료 작업 (이전 세션)
+
 ### 백엔드 #3: build_account_snapshot_meta accumulated_investment 누락 수정 (2026-07-22)
 
 **세션**: 백엔드 정합성 버그 수정 1단계. P22 데이터 정합성 회복.
@@ -93,8 +135,10 @@
 **잔여 F-06**: 없음 (F06-01/02/03 완료)
 
 **잔여 F-05 (별도 세션 each)**:
-- `profit-overview.ts` 742줄 (500줄 초과) — `renderSectorStockPnl` 146줄 분할 포함
-- `profit-detail.ts` 674줄 (500줄 초과) — 별도 세션에서 추가 분할 검토
+- ~~`profit-overview.ts` 742줄 (500줄 초과) — `renderSectorStockPnl` 146줄 분할 포함~~ → 완료 (F-05-a 세션)
+- ~~`profit-detail.ts` 674줄 (500줄 초과)~~ → 완료 (F-05-b 세션, 4개 파일 분할 166/52/215/326줄)
+
+**잔여 F-05**: 없음 (F-05-a + F-05-b 완료)
 
 **백엔드**: 없음 (accumulated_investment 누락 수정 완료)
 
