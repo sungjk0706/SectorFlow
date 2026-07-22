@@ -1,8 +1,8 @@
 # SectorFlow Handover
 
 ## 직전 완료 작업 (최근 2건)
-- **2026-07-22 (최근)**: `kiwoom_rest.py` `exc_info=True` 누락 8곳 추가 (P23). **수정 파일 1개** (백엔드 1파일): `backend/app/core/kiwoom_rest.py` — 8곳의 `except Exception` 블록 로그 호출(189/262/289/354/414/485/562/592행)에 `exc_info=True` 키워드 인자 추가. **근본 원인**: P23(일관성) 위반 — `kiwoom_connector.py`(12/12)·`ls_rest.py`(2/2)는 모든 예외 로그에 `exc_info=True` 사용 중이나 `kiwoom_rest.py`만 8곳 누락. 예외 시 스택트레이스가 로그에 남지 않아 디버깅 어려움. **해결**: 8곳 모두 동일 패턴 적용 (로직/제어 흐름/반환값 변경 없음, 로그 출력만 보강). **검증**: py_compile OK + ruff check 통과 + `python -W error::RuntimeWarning main.py` 기동 성공 (RuntimeWarning 0건, 정상 구독/매매 로그 확인) + 잔존 프로세스 0건. **UI에서 달라지는 점**: 없음 — 로그 보강만. 이후 REST API 오류 시 `backend/logs/trading_*.log`에 스택트레이스 함께 기록.
-- **2026-07-22 (이전)**: `auth.py` `verify_token` dead code 제거 (P16). **수정 파일 1개** (백엔드 1파일): `backend/app/web/auth.py` — `verify_token` 함수(30-39행) 제거 + 미사용 `JWTError` import 제거. **근본 원인**: B-22-b 세션에서 deps.py/ws.py의 주석 처리된 `verify_token` 호출 코드 제거 후 호출처 0건이 됨 (auth.py:30 정의만 남음 = P16 dead code). `create_access_token`/`authenticate_user`는 살아있는 경로 (routes/auth.py에서 호출). **검증**: py_compile OK + pytest 2783 passed / 0 failed + `python -W error::RuntimeWarning main.py` 기동 성공 (RuntimeWarning 0건). **UI에서 달라지는 점**: 없음 — 호출되지 않는 함수 제거만. **다음 세션**: HANDOVER 기타 대기 항목 2번 `kiwoom_rest.py` `exc_info=True` 누락 8곳 (P23) 진행 예정.
+- **2026-07-22 (최근)**: `get_merged_sector` 참조 주석 3곳 정정 (P23). **수정 파일 2개** (백엔드 2파일): `backend/app/services/sector_data_provider.py:160` + `backend/app/domain/sector_calculator.py:28/169` — 제거된 `get_merged_sector` 함수를 참조하던 주석/docstring 3곳을 살아있는 `get_merged_sectors_batch`로 정정. **근본 원인**: B-21-c 세션에서 `get_merged_sector`(단일 종목) 제거 후 3곳의 주석이 여전히 해당 함수 참조 (P23 주석-코드 불일치 + Code Removal Rules 위반). **해결**: 3곳 모두 `get_merged_sectors_batch` 참조로 정정 (로직/제어 흐름/반환값 변경 없음, 주석만). 잔존 참조 0건 확인 (docs/architecture_audit_tasks.md 역사적 로그 3건은 Code Removal Rules 예외로 유지). **검증**: py_compile OK. 런타임 재기동은 백엔드 실행 중(PID 21277)으로 생략 — 주석 전용 변경이므로 런타임 영향 없음. **UI에서 달라지는 점**: 없음 — 주석 정정만. **참고**: 핸드오버 기존 기재 경로(`backend/app/core/...`)가 실제 경로(`backend/app/services/...`, `backend/app/domain/...`)와 불일치했었음 — 본 세션에서 정정.
+- **2026-07-22 (이전)**: `kiwoom_rest.py` `exc_info=True` 누락 8곳 추가 (P23). **수정 파일 1개** (백엔드 1파일): `backend/app/core/kiwoom_rest.py` — 8곳의 `except Exception` 블록 로그 호출(189/262/289/354/414/485/562/592행)에 `exc_info=True` 키워드 인자 추가. **근본 원인**: P23(일관성) 위반 — `kiwoom_connector.py`(12/12)·`ls_rest.py`(2/2)는 모든 예외 로그에 `exc_info=True` 사용 중이나 `kiwoom_rest.py`만 8곳 누락. 예외 시 스택트레이스가 로그에 남지 않아 디버깅 어려움. **해결**: 8곳 모두 동일 패턴 적용 (로직/제어 흐름/반환값 변경 없음, 로그 출력만 보강). **검증**: py_compile OK + ruff check 통과 + `python -W error::RuntimeWarning main.py` 기동 성공 (RuntimeWarning 0건, 정상 구독/매매 로그 확인) + 잔존 프로세스 0건. **UI에서 달라지는 점**: 없음 — 로그 보강만. 이후 REST API 오류 시 `backend/logs/trading_*.log`에 스택트레이스 함께 기록.
 
 ## 현재 상태 (빌드/테스트 스냅샷)
 - **백엔드**: pytest 2783 passed / 0 failed
@@ -38,7 +38,7 @@
 - **추가 컬럼 너비 조정**: 사용자 UI 확인 후 필요 시 해당 페이지만 override로 진행.
 - **`sector_calculator.py:132` 코드 주석-코드 불일치 (P10/P23)**: 2026-07-18 ARCHITECTURE.md 6.2절 불일치 수정 세션 중 발견. 주석 "순위/백분위 기반 점수이므로 불필요" → 실제 2차 가산점은 "가중 순위 합" 방식 (백분위 미사용). 사용자가 "문서만 수정, 코드 변경 없음" 명시하여 코드 주석은 수정 안 함. 사용자 승인 시 별도 세션에서 코드 주석 1줄 갱신 권장.
 - **`kiwoom_rest.py` `except Exception as e:` 8곳 `exc_info=True` 누락 (P23)**: 2026-07-22 해결 완료 — 8곳에 `exc_info=True` 추가 (직전 완료 작업 참조).
-- **`sector_data_provider.py:154`·`sector_calculator.py:28/169` `get_merged_sector` 참조 주석 (P23)**: 2026-07-22 B-22-b 세션 중 발견. B-21-c에서 `get_merged_sector` 함수 제거되었으나 3곳의 주석/docstring이 여전히 해당 함수 참조. 별도 세션에서 주석 정정 권장 (Code Removal Rules 준수).
+- **`sector_data_provider.py`·`sector_calculator.py` `get_merged_sector` 참조 주석 (P23)**: 2026-07-22 해결 완료 — 3곳 주석을 `get_merged_sectors_batch`로 정정 (직전 완료 작업 참조).
 
 ## DB 데이터 특성 (참고)
 - `master_stocks_table.name`: 최대 14자, 평균 4.8자, 99% ≤ 9자
