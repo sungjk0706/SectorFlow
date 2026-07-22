@@ -6,28 +6,35 @@
 
 ## 직전 완료 작업
 
-### F-05-b 1/2세션: 수익상세 페이지 단순성 2건 해결 (2026-07-22)
+### F-05-b 2/2세션 (F05-09): 수익현황 mount() 분할 (2026-07-22)
 
-**세션**: F-05-b (P3 — 수익 페이지 후반) 전반부. F-05-b 2/2세션(수익현황 분할)은 다음 세션에서 진행.
+**세션**: F-05-b (P3 — 수익 페이지 후반) 후반부 1단계. F05-08(파일 길이)은 다음 세션에서 진행.
 
 **수정 파일 1개**:
-- `frontend/src/pages/profit-detail.ts` (654→672줄, +18줄): F05-10 `mount()` ~303줄 → 9개 헬퍼 함수로 분할 (general-settings.ts 패턴 적용), F05-12 불필요 변수 2건 제거
+- `frontend/src/pages/profit-overview.ts` (698→742줄, +44줄): F05-09 `mount()` ~384줄 → 10개 헬퍼 함수로 분할 (profit-detail.ts 패턴 적용), 실전/테스트 계좌 루프 중복 제거 (P23 부수 해결)
 
 **해결 건**:
 | ID | 위반 | 설명 |
 |----|------|------|
-| F05-10 | P24 | `mount()` ~303줄 (50줄의 6배) → 9개 헬퍼 분할 (buildSummaryRow 48줄, onDrilldownToggle 18줄, buildFilterRow 43줄, buildTabRow 27줄, buildTableContainer 13줄, buildStatRow 39줄, restoreInitialView 30줄, flushDirtyRender 34줄, subscribeProfitDetailStore 35줄, mount 본체 31줄 — 모두 50줄 이하) |
-| F05-12 | P16/P24 | `drilldownCols` 모듈 변수 → `showDrilldown()` 지역 변수화 (재사용 없음, `ColumnDef` import 제거), `displayRows` 별칭 제거 → `rows` 직접 사용, `unmount` `drilldownCols=[]` 제거 |
+| F05-09 | P24 | `mount()` ~384줄 (50줄의 7.7배) → 10개 헬퍼 분할 (buildLeftColumn 33줄, buildAccountRows 33줄, buildStockListSection 39줄, buildAccountPanel 27줄, buildLowerSection 19줄, initDateRange 11줄, applyDateRange 34줄, buildProfitChart 36줄, buildDonutChart 21줄, flushRender 37줄, subscribeProfitOverviewStore 48줄, mount 본체 48줄 — 모두 50줄 이하) |
+| (부수) | P23 | 실전/테스트 계좌 행 루프 중복 (~23줄 × 2) → `buildAccountRows` 공통 헬퍼 1개로 통합 (`ACCOUNT_LABELS_REAL`/`ACCOUNT_LABELS_TEST` + `holdingCountSpan`/`holdingCountSpanTest` 콜백 주입) |
 
-**검증**: `npm run typecheck` exit 0, `npm run build` 1.70s exit 0 (profit-detail 8.92 kB). 모든 함수 50줄 이하 확인.
+**레이스 가드 승격 (P19)**: `applyDateRange`의 `_applyDateRangeSeq` 시퀀스 변수를 mount 내 지역 변수 → 모듈 변수로 승격. `unmount()`에서 `= 0` 리셋 추가 (재진입 시 시퀀스 꼬임 방지). prev* 참조 6개(prevSellRef/prevBuyRef/prevDailySummaryRef/prevAccountRef/prevPositionsRef/prevTradeMode)도 모듈 변수 승격 + unmount 리셋.
 
-**화면 영향**: 없음. 수익상세 페이지 요약 카드/드릴다운 토글/탭 전환/종목 검색/화면 복원 동작 동일. 구조 개선만 수행.
+**검증**: `npm run typecheck` exit 0, `npm run build` 1.95s exit 0 (profit-overview 21.94 kB). mount 포함 모든 mount 헬퍼 함수 50줄 이하 확인 (Python 스크립트 전수 검증).
 
-## 다음 세션 작업 (F-05-b 2/2세션)
+**화면 영향**: 없음. 수익현황 페이지 일별 수익률 차트/업종별 도넛/계좌 현황/업종별 종목 수익/상세 분석 버튼/날짜 범위 변경/실시간 틱 갱신 동작 동일. 구조 개선만 수행.
 
-**잔여 2건** (P24 단순성 — 수익현황 분할):
-- F05-09 (HIGH): `profit-overview.ts` `mount()` ~380줄 (P24 함수 50줄의 7.6배) → 헬퍼 함수로 분할
-- F05-08 (MEDIUM): 파일 길이 698/672/598줄 (P24 500줄 초과) — 수익현황 분할 후 3개 파일 재측정, 필요 시 `profit-shared.ts` 컬럼 정의(BUY_COLS/SELL_COLS/createDrilldownCols) 분할 검토
+## 다음 세션 작업 (F05-08)
+
+**잔여 1건** (P24 단순성 — 파일 길이):
+- F05-08 (MEDIUM): `profit-shared.ts` 컬럼 정의(BUY_COLS/SELL_COLS/createDrilldownCols, ~98줄) → 신규 `profit-columns.ts`로 분할. `profit-detail.ts` import 경로 변경. 3개 파일 재측정.
+  - profit-shared.ts: 598줄 → ~500줄 달성 예상
+  - profit-overview.ts: 742줄 (F05-09 분할 후 증가 — 헬퍼 추가) → 500줄 초과 유지, 별도 세션에서 추가 분할 검토
+  - profit-detail.ts: 672줄 → 500줄 초과 유지, 별도 세션에서 추가 분할 검토
+
+**새로 발견된 위반 (별도 세션 필요)**:
+- `profit-overview.ts:135-280` `renderSectorStockPnl` 146줄 (P24 50줄의 2.9배) — F05-09 범위(mount 분할) 밖의 기존 위반. 업종 그룹 헤더 + 종목 행 렌더 로직을 헬퍼로 분할 필요.
 
 **별도 세션 권장**: F05-07 "보유주식" → "보유 종목" 용어 통일 (account-labels.ts, sell-position.ts 전역 동시 수정 필요)
 
@@ -38,7 +45,7 @@
 
 ## 작업 여력
 
-F-05-b 1/2세션 완료 후 작업 여력: **충분**. F-05-b 2/2세션(F05-09 + F05-08, 수익현황)은 규칙 0-1 세션당 1단계 준수를 위해 별도 세션에서 진행 권장.
+F-05-b 2/2세션(F05-09) 완료 후 작업 여력: **충분**. F05-08(파일 길이 분할)은 규칙 0-1 세션당 1단계 준수를 위해 별도 세션에서 진행 권장.
 
 ---
 
