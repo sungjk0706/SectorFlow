@@ -42,11 +42,11 @@
 - S-1: 백엔드 핵심 11 Step (engine_state.py, engine_ws_dispatch.py, daily_time_scheduler.py + 설계 문서 수정)
 - S-2: 프론트엔드 3파일 + 테스트 1파일 (header.ts, general-settings.ts, sector-settings.ts, test_engine_ws_dispatch.py)
 - 전체 수정 파일 8개 (백엔드 3 + 프론트엔드 3 + 테스트 2 + 문서 1)
-- 태스크 파일(`docs/plan_jif_countdown.md`) + 설계 문서(`docs/jif_countdown_design.md`) 삭제 대상 (규칙 11 — 모든 단계 완료 후)
+- 태스크 파일(`docs/plan_jif_countdown.md`) + 설계 문서(`docs/jif_countdown_design.md`) 삭제 완료 (규칙 11 — 모든 단계 완료 후)
 
 **잔존 프로세스**: 없음.
 
-**다음 세션 대기 사항**: JIF 카운트다운 복구 전체 완료. 태스크 파일 + 설계 문서 삭제 여부 사용자 확인 필요 (규칙 11). 이후 다음 우선순위 작업 진행.
+**다음 세션 대기 사항**: JIF 카운트다운 복구 전체 완료 + 태스크 파일/설계 문서 삭제 완료 (규칙 11). 이후 다음 우선순위 작업 진행.
 
 ---
 
