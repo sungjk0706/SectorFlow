@@ -36,7 +36,6 @@ export interface DailyDrilldownRow {
   sellCount: number
   buyCount: number
   pnl: number
-  buyTotal: number
   rate: number
 }
 
@@ -300,37 +299,22 @@ export function aggregatePnl(
   return { pnl, buyTotal, rate: buyTotal > 0 ? Math.round(pnl / buyTotal * 10000) / 100 : 0 }
 }
 
-/** sellHistory + buyHistory에서 당월 일별 요약 집계 */
+/** 백엔드 dailySummary에서 당월 일별 요약 집계 — P10 SSOT (per-day rate 재계산 금지, 백엔드 값 직접 사용).
+ *  buildChartFromDailySummary와 동일한 dailySummary 직접 사용 패턴 (P23 일관성). */
 export function buildMonthlyDrilldown(
-  sells: Record<string, unknown>[],
-  buys: Record<string, unknown>[],
+  dailySummary: Record<string, unknown>[],
   yearMonth: string,
 ): DailyDrilldownRow[] {
   const prefix = yearMonth + '-'
-  const map = new Map<string, DailyDrilldownRow>()
-
-  for (const r of sells) {
-    const d = String(r.date ?? '')
-    if (!d.startsWith(prefix)) continue
-    let row = map.get(d)
-    if (!row) { row = { date: d, sellCount: 0, buyCount: 0, pnl: 0, buyTotal: 0, rate: 0 }; map.set(d, row) }
-    row.sellCount++
-    row.pnl += Number(r.realized_pnl ?? 0)
-    row.buyTotal += Number(r.avg_buy_price ?? 0) * Number(r.qty ?? 0)
-  }
-
-  for (const r of buys) {
-    const d = String(r.date ?? '')
-    if (!d.startsWith(prefix)) continue
-    let row = map.get(d)
-    if (!row) { row = { date: d, sellCount: 0, buyCount: 0, pnl: 0, buyTotal: 0, rate: 0 }; map.set(d, row) }
-    row.buyCount++
-  }
-
-  const rows = [...map.values()]
-  for (const row of rows) {
-    row.rate = row.buyTotal > 0 ? Math.round(row.pnl / row.buyTotal * 10000) / 100 : 0
-  }
+  const rows = dailySummary
+    .filter(r => String(r.date ?? '').startsWith(prefix))
+    .map(r => ({
+      date: String(r.date ?? ''),
+      sellCount: Number(r.sell_count ?? 0),
+      buyCount: Number(r.buy_count ?? 0),
+      pnl: Number(r.realized_pnl ?? 0),
+      rate: Number(r.pnl_rate ?? 0),
+    }))
   rows.sort((a, b) => b.date.localeCompare(a.date))
   return rows
 }

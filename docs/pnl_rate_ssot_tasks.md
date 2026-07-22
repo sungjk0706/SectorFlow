@@ -1,0 +1,259 @@
+# 수익률 계산 SSOT/P22 일괄 정비 작업 파일
+
+> 작성일: 2026-07-22
+> 기준 설계: `docs/pnl_rate_ssot_design.md`
+> 관련 원칙: P10(SSOT), P21(사용자 투명성), P22(데이터 정합성), P23(일관성), P18(테스트모드 동등성)
+> 사용자 결정: 문제 B는 B-2(수수료/세금 포함 현금 기준 진짜 수익률)로 확정.
+> 상태: 작업 파일 작성 완료 — 사용자 승인 대기. 승인 후 단계별 실행 (세션당 1단계, 규칙 0-1).
+
+---
+
+## 0. 세션 분할 및 실행 순서
+
+| 세션 | 단계 | 내용 | 영역 | 사용자 승인 필요 |
+|------|------|------|------|-------------------|
+| 1 | A | buildMonthlyDrilldown SSOT 위반 해결 | 프론트엔드 | 사전조사 + 수정 계획 승인 |
+| 2 | C | 공통 함수 computeWeightedRate 신설 + 5곳 호출부 통일 | 프론트엔드 | 사전조사 + 수정 계획 승인 |
+| 3 | B-사전 | DB 백업 + 마이그레이션 방식 확정 | 백엔드/DB | DB 백업 승인 + 마이그레이션 방식 승인 |
+| 4 | B-본 | per-trade realized_pnl/pnl_rate 공식 현금 기준 전환 + 기존 데이터 마이그레이션 | 백엔드/DB | 핵심 로직 변경 승인 (규칙 0-4/0-5) |
+| 5 | B-연계 | 프론트엔드 공식 동기화 + 테스트 갱신 | 프론트엔드/테스트 | 사전조사 + 수정 계획 승인 |
+
+> 각 세션은 규칙 0-1(세션당 1단계) 준수. 검증(테스트 + 런타임 기동/빌드) 완료 후 커밋 + HANDOVER.md 갱신 + 사용자 보고 후 세션 종료.
+
+---
+
+## 1. 단계 A: buildMonthlyDrilldown SSOT 위반 해결
+
+### 1.1 목표
+
+- 드릴다운 뷰(수익상세 페이지 "당월 일별 요약")가 sellHistory 재집계 대신 백엔드 `dailySummary`의 per-day rate를 직접 사용.
+- P10(SSOT), P22(데이터 정합성), P21(사용자 투명성) 준수.
+
+### 1.2 사전조사 항목 (수정 전 필수, 규칙 0-2)
+
+- [ ] **의존성**: `buildMonthlyDrilldown` 호출부 전체 식별 (showDrilldown, 테스트 파일).
+- [ ] **영향범위**: profit-shared.ts, profit-detail-display.ts, profit-detail-mount.ts, types/index.ts, 테스트 파일.
+- [ ] **dailySummary 필드 확인**: 당월 범위 조회 시 per-day rate/buy_count/sell_count/realized_pnl 포함 여부. buyTotal 필드 존재 여부 (현재 미존재 — 백엔드 추가 또는 드릴다운 컬럼에서 buyTotal 제거 검토).
+- [ ] **dailySummary 당월 범위 보장**: showDrilldown 호출 시점에 hotStore.dailySummary가 당월 전체를 포함하는지 확인 (현재 applyDateRange에서 조회 범위 확인 필요).
+- [ ] **아키텍처 원칙 부합**: P10(SSOT) — dailySummary 단일 소스. P22 — 재계산 제거. P21 — 백엔드 값과 UI 일치.
+- [ ] **기존 공통 자산 확인**: dailySummary 기반 차트 변환 `buildChartFromDailySummary`(profit-shared.ts:339)가 이미 동일 패턴 사용 — 참고.
+
+### 1.3 수정 체크리스트
+
+- [ ] **백엔드 검토**: `get_daily_summary` 응답에 `buy_total` 필드 추가 필요 여부 결정 (드릴다운 표시 컬럼 요구사항 기준).
+  - 옵션 1: 백엔드에 `buy_total` 필드 추가 (trade_history.py:522-531) → 프론트엔드는 dailySummary만 사용.
+  - 옵션 2: 드릴다운 표시에서 buyTotal 컬럼 제거 → 백엔드 변경 없음.
+  - 사용자와 확인 후 결정.
+- [ ] **프론트엔드 buildMonthlyDrilldown 재작성**: sellHistory/buyHistory 인자 대신 dailySummary 인자 사용. per-day rate는 `Number(r.pnl_rate ?? 0)` 직접 사용.
+- [ ] **DailyDrilldownRow 타입 조정**: buyTotal 필드 제거 시 타입에서도 제거 (P23 일관성).
+- [ ] **showDrilldown 호출부 갱신**: `buildMonthlyDrilldown(state.sellHistory, state.buyHistory, yearMonth)` → `buildMonthlyDrilldown(hotStore.getState().dailySummary, yearMonth)` (profit-detail-display.ts:106).
+- [ ] **초기화 연계**: profit-detail-mount.ts에서 dailySummary가 당월 범위 보장하도록 초기 조회 확인 (필요 시 applyDateRange 호출 추가).
+- [ ] **테스트 갱신**: buildMonthlyDrilldown 테스트 케이스 시그니처 변경 반영.
+
+### 1.4 검증
+
+- [ ] `npm run typecheck` exit 0
+- [ ] `npm run build` exit 0
+- [ ] `npx vitest run` — buildMonthlyDrilldown 관련 테스트 통과
+- [ ] (백엔드 변경 시) 백엔드 테스트 + 런타임 기동 (규칙 5)
+
+### 1.5 완료 조건
+
+- 드릴다운 뷰 per-day rate가 백엔드 dailySummary 값과 일치.
+- sellHistory 재집계 코드 제거 (P16 살아있는 경로 — dead code 잔존 금지).
+- HANDOVER.md 직전 완료 작업 섹션 갱신.
+
+---
+
+## 2. 단계 C: 공통 함수 computeWeightedRate 신설 + 5곳 호출부 통일
+
+### 2.1 목표
+
+- 프론트엔드 내 pnl_rate 공식(소수 2자리 반올림)을 공통 함수 1곳으로 통일.
+- 백엔드 공식 변경 시(단계 B) 프론트엔드 동기화 지점 1곳으로 집중.
+- P22(파이프라인 단계 간 일관성), P23(동일 기능 파일 간 일관성) 준수.
+
+### 2.2 사전조사 항목 (수정 전 필수, 규칙 0-2)
+
+- [ ] **의존성**: 공식 `Math.round(pnl / buyTotal * 10000) / 100` 사용 5곳 식별:
+  - profit-shared.ts:183-185 (buildSectorDonutRows)
+  - profit-shared.ts:227 (buildSectorStockPnl)
+  - profit-shared.ts:300 (aggregatePnl)
+  - profit-shared.ts:332 (buildMonthlyDrilldown — 단계 A 해결 후 잔존 시)
+  - profit-detail-display.ts:149-150 (updateStatistics)
+- [ ] **영향범위**: profit-shared.ts, profit-detail-display.ts.
+- [ ] **아키텍처 원칙 부합**: P23(일관성) — 공통 함수 재사용. P22 — 공식 통제 지점 단일화. P24(단순성) — 1회용 래퍼 아님 (5곳 재사용).
+- [ ] **기존 공통 자산 확인**: profit-shared.ts에 유사 공통 함수 존재 여부 검색 (현재 없음 — 신설).
+
+### 2.3 수정 체크리스트
+
+- [ ] **공통 함수 신설**: `profit-shared.ts`에 `computeWeightedRate(pnl: number, buyTotal: number): number` 추가. 구현: `buyTotal > 0 ? Math.round(pnl / buyTotal * 10000) / 100 : 0`.
+- [ ] **5곳 호출부 변경**: 직접 공식 → `computeWeightedRate(pnl, buyTotal)` 호출.
+- [ ] **주석 일관성**: 각 호출부에 "공통 함수 사용 — P23 일관성" 주석 추가 (기존 주석 패턴 준수).
+- [ ] **export 추가**: computeWeightedRate를 export (타 모듈에서 사용 가능하도록).
+
+### 2.4 검증
+
+- [ ] `npm run typecheck` exit 0
+- [ ] `npm run build` exit 0
+- [ ] `npx vitest run` — 기존 테스트 모두 통과 (공식 동일하므로 수치 변화 없음)
+
+### 2.5 완료 조건
+
+- pnl_rate 공식이 profit-shared.ts 1곳에서만 정의.
+- 5곳 호출부가 모두 공통 함수 사용.
+- HANDOVER.md 직전 완료 작업 섹션 갱신.
+
+---
+
+## 3. 단계 B-사전: DB 백업 + 마이그레이션 방식 확정
+
+### 3.1 목표
+
+- 문제 B-2(현금 기준 진짜 수익률) 적용 전 DB 백업 수행.
+- 기존 trades 테이블 레코드의 realized_pnl/pnl_rate 마이그레이션 방식 확정.
+
+### 3.2 사전조사 항목 (수정 전 필수, 규칙 0-2)
+
+- [ ] **의존성**: trades 테이블의 realized_pnl/pnl_rate 필드를 읽는 모든 코드 경로 식별 (백엔드 집계 + 프론트엔드 표시).
+- [ ] **영향범위**: backend/app/services/trade_history.py, DB trades 테이블, 프론트엔드 수익률 표시 전체.
+- [ ] **기존 데이터 규모**: trades 테이블 레코드 수 확인 (마이그레이션 I/O 비용 추정).
+- [ ] **마이그레이션 방식 검토**:
+  - 옵션 1: 기동 시 재계산 (trades 전체 스캔 + UPDATE) — 자동화 but 기동 지연.
+  - 옵션 2: 1회 마이그레이션 스크립트 실행 — 사용자 승인 필요, 명시적.
+  - 옵션 3: 기존 데이터는 순수 차익 유지 + 신규 데이터만 현금 기준 — P22 위반 잔존 (부적합, 후보에서 제외).
+- [ ] **아키텍처 원칙 부합**: P22(데이터 정합성) — 과거/현재 데이터 기준 일치. P18(모드 동등성) — 실전/테스트 동일 마이그레이션 적용.
+
+### 3.3 수정 체크리스트
+
+- [ ] **DB 백업**: db-backup 스킬 호출 — stocks.db, stocks.db-shm, stocks.db-wal 백업 (사용자 승인 필수).
+- [ ] **마이그레이션 방식 사용자 승인**: 옵션 1 vs 옵션 2 중 선택.
+- [ ] **마이그레이션 스크립트 설계** (옵션 2 선택 시):
+  - trades 테이블 모든 SELL 레코드 순회
+  - `realized_pnl = total_amt - buy_total_amt` (현금 기준 재계산)
+  - `pnl_rate = round(realized_pnl / buy_total_amt * 100, 2)` (buy_total_amt 기준, 수수료 포함)
+  - UPDATE 쿼리 실행
+- [ ] **기동 시 재계산 로직 설계** (옵션 1 선택 시):
+  - trade_history.py 초기 로드 시 `_migrate_pnl_to_cash_basis()` 1회 실행
+  - 마이그레이션 완료 플래그 DB 저장 (중복 실행 방지)
+
+### 3.4 검증
+
+- [ ] DB 백업 파일 생성 확인 (타임스탬프 포함).
+- [ ] 마이그레이션 방식 사용자 승인 확보.
+
+### 3.5 완료 조건
+
+- DB 백업 완료.
+- 마이그레이션 방식 확정 + 사용자 승인.
+- HANDOVER.md 직전 완료 작업 섹션 갱신.
+
+---
+
+## 4. 단계 B-본: per-trade realized_pnl/pnl_rate 공식 현금 기준 전환 + 마이그레이션
+
+### 4.1 목표
+
+- per-trade 레코드 생성 시 realized_pnl/pnl_rate를 현금 기준(수수료/세금 포함)으로 변경.
+- 기존 trades 테이블 레코드 마이그레이션 실행.
+- P22(데이터 정합성), P21(사용자 투명성), P18(테스트모드 동등성) 준수.
+
+### 4.2 사전조사 항목 (수정 전 필수, 규칙 0-2 + 규칙 0-4/0-5)
+
+- [ ] **의존성**: trade_history.py:340-376 per-trade 레코드 생성 로직이 영향 주는 모든 코드 경로.
+- [ ] **영향범위**: 백엔드 집계(get_daily_summary, get_total_realized_pnl, build_positions_from_trades), 프론트엔드 수익률 표시 전체.
+- [ ] **규칙 0-5 해당 여부**: per-trade realized_pnl/pnl_rate 공식이 사용자가 이전에 설계/승인한 로직인지 확인 — 변경 사유·영향·대안 상세 보고 후 승인.
+- [ ] **규칙 0-4 UI 기준 설명**: 변경 전(순수 차익, 테스트모드 과대 표시) vs 변경 후(현금 기준, 실제 체감 수익률)를 UI 기준 일반 용어로 설명.
+- [ ] **P18 동등성**: 공식 변경이 모드 분기 없이 동일 적용되는지 확인 (실전: 수수료/세금 0 → 영향 없음, 테스트: 정확한 수익률).
+- [ ] **아키텍처 원칙 부합**: P22 — 과거/현재 데이터 기준 일치. P21 — 실제 체감 수익률 표시. P23 — "실현손익" 용어 단일 기준.
+
+### 4.3 수정 체크리스트
+
+- [ ] **per-trade 레코드 공식 변경** (trade_history.py:353,369):
+  - `realized_pnl = (price - avg_buy_price) * qty` → `realized_pnl = total_amt - buy_total_amt` (현금 기준)
+  - `pnl_rate = round(realized_pnl / buy_principal * 100, 2)` → `pnl_rate = round(realized_pnl / buy_total_amt * 100, 2)` (buy_total_amt 기준, 수수료 포함)
+  - 주석 갱신: "순수 차익(수수료/세금 제외)" → "현금 기준 실현손익(수수료/세금 포함)"
+- [ ] **per-day 집계 공식 변경** (trade_history.py:518-527):
+  - `realized_pnl += rec["realized_pnl"]` (이미 현금 기준으로 변경된 per-trade 값 합산)
+  - `buy_total += rec["avg_buy_price"] * rec["qty"]` → `buy_total += rec["buy_total_amt"]` (수수료 포함)
+  - pnl_rate 공식은 동일 (realized_pnl / buy_total × 100) — 분자·분모 모두 현금 기준으로 일관.
+- [ ] **build_positions_from_trades 주석 갱신** (trade_history.py:649-650): "pnl_amount/pnl_rate는 순수 차익(수수료/세금 제외)" → 현금 기준으로 갱신 (해당 필드가 per-trade 기준 사용 시).
+- [ ] **마이그레이션 실행**: 단계 B-사전에서 확정한 방식으로 기존 trades 레코드 갱신.
+- [ ] **get_total_realized_pnl 일관성 확인**: 이미 현금 기준(`total_amt - buy_total_amt`) 사용 중 — 공식 변경 후 per-trade realized_pnl과 동일 기준 확인 (P22 일관성).
+
+### 4.4 검증
+
+- [ ] `python -m py_compile backend/app/services/trade_history.py` 성공
+- [ ] 백엔드 테스트: `pytest backend/tests/test_trade_history.py` (존재 시) — realized_pnl/pnl_rate 공식 변경 반영
+- [ ] 런타임 기동 (규칙 5): `python -W error::RuntimeWarning main.py` — 매도 체결 시 realized_pnl/pnl_rate 현금 기준 계산 확인
+- [ ] 테스트모드 매도 1건 발생 → realized_pnl = total_amt - buy_total_amt 확인 (수수료/세금 포함)
+- [ ] 실전모드 매도 1건 발생 → realized_pnl = (price - avg_buy_price) * qty (수수료/세금 0이므로 동일)
+- [ ] 마이그레이션 후 trades 테이블 기존 레코드 realized_pnl/pnl_rate 값이 현금 기준인지 확인
+
+### 4.5 완료 조건
+
+- per-trade realized_pnl/pnl_rate가 현금 기준으로 계산.
+- 기존 trades 레코드 마이그레이션 완료.
+- 실전/테스트 모드 동등성 유지 (P18).
+- HANDOVER.md 직전 완료 작업 섹션 갱신 (마이그레이션 사유 포함, 규칙 0-3).
+
+---
+
+## 5. 단계 B-연계: 프론트엔드 공식 동기화 + 테스트 갱신
+
+### 5.1 목표
+
+- 프론트엔드 공통 함수 `computeWeightedRate`(단계 C 신설)가 백엔드 현금 기준 공식과 일치하는지 확인.
+- 프론트엔드 집계(업종별/종목별/임의 범위)가 현금 기준으로 동작하도록 동기화.
+- 테스트 케이스 현금 기준으로 갱신.
+
+### 5.2 사전조사 항목 (수정 전 필수, 규칙 0-2)
+
+- [ ] **의존성**: 프론트엔드가 sellHistory의 `realized_pnl`/`avg_buy_price`/`qty`를 사용하는 모든 집계 지점.
+- [ ] **영향범위**: profit-shared.ts (aggregatePnl, buildSectorDonutRows, buildSectorStockPnl), profit-detail-display.ts (updateStatistics).
+- [ ] **공식 일치 확인**: 프론트엔드 `computeWeightedRate(pnl, buyTotal)`의 분자·분모가 백엔드 현금 기준과 동일한지.
+  - 분자: `realized_pnl` (백엔드 per-trade가 현금 기준으로 변경되면 자동 동기화 — sellHistory에서 그대로 읽음)
+  - 분모: 현재 `avg_buy_price * qty` (수수료 미포함) → `buy_total_amt` (수수료 포함)로 변경 필요 여부 확인.
+- [ ] **아키텍처 원칙 부합**: P22 — 백엔드/프론트엔드 공식 일치. P23 — 공통 함수 일관성.
+
+### 5.3 수정 체크리스트
+
+- [ ] **프론트엔드 분모 변경** (필요 시): `avg_buy_price * qty` → `buy_total_amt` (수수료 포함). sellHistory 레코드에 `buy_total_amt` 필드 존재 확인.
+- [ ] **computeWeightedRate 호출부 확인**: 5곳 모두 현금 기준 분자·분모 사용.
+- [ ] **테스트 갱신**: vitest 테스트 케이스의 기대값을 현금 기준으로 조정.
+- [ ] **UI 수치 변화 확인**: 테스트모드에서 수익률 표시가 기존보다 낮아짐(수수료/세금 반영) — 사용자에게 사전 안내 (P21).
+
+### 5.4 검증
+
+- [ ] `npm run typecheck` exit 0
+- [ ] `npm run build` exit 0
+- [ ] `npx vitest run` — 현금 기준 기대값으로 갱신된 테스트 통과
+- [ ] 브라우저 확인: 수익현황/수익상세 페이지 수익률 표시가 백엔드 dailySummary와 일치
+
+### 5.5 완료 조건
+
+- 프론트엔드 집계가 백엔드 현금 기준과 동일 공식 사용.
+- 테스트 케이스 현금 기준 반영.
+- HANDOVER.md 직전 완료 작업 섹션 갱신.
+
+---
+
+## 6. 전체 완료 조건
+
+- [ ] 문제 A: buildMonthlyDrilldown이 백엔드 dailySummary 사용 (P10/P22/P21 준수)
+- [ ] 문제 C: pnl_rate 공식이 computeWeightedRate 공통 함수 1곳에서 정의 (P22/P23 준수)
+- [ ] 문제 B: per-trade realized_pnl/pnl_rate가 현금 기준 (수수료/세금 포함) (P22/P21/P18 준수)
+- [ ] 기존 trades 레코드 마이그레이션 완료 (P22 과거/현재 일치)
+- [ ] 실전/테스트 모드 동등성 유지 (P18)
+- [ ] 프론트엔드/백엔드 공식 일치 (P22)
+- [ ] 모든 테스트 통과
+- [ ] HANDOVER.md 최종 갱신
+- [ ] docs/architecture_audit_plan.md 관련 위반 항목 해결 표시 (해당 시)
+
+---
+
+## 7. 승인 대기 항목
+
+- [ ] 본 작업 파일의 단계 분할·체크리스트·검증 항목 승인.
+- [ ] 단계 A 실행 시작 승인 (다음 세션).
+- [ ] 단계 B-사전의 마이그레이션 방식(옵션 1 기동 시 재계산 vs 옵션 2 스크립트) 사전 선택 — 단계 B-사전 세션 전 확정.
