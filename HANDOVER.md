@@ -6,45 +6,48 @@
 
 ## 직전 완료 작업
 
-### F-03: P2 — 핵심 매매 페이지 (업종순위/매수후보/보유종목) (2026-07-22)
+### F-04-a: P2 — 설정 페이지 stock-classification.ts 5건 (2026-07-22)
 
-**수정 파일 3개** (총 80줄 감소, 99 삭제/19 추가):
-- `frontend/src/pages/sector-stock.ts` (672→653줄): `filterStocksBySector` dead code 제거 (15줄, PBT 테스트 없음), `SectorStockTable` default export 제거 (6줄, 커스텀 엘리먼트로만 사용), `disconnectedCallback` 내 `rowCache.clear()` + `new Map()` 중복 제거 (1줄) — **P16/P24**
-- `frontend/src/pages/buy-target.ts` (469→462줄): 헤더 수동 조립(10줄) → `createCardHeaderWithMargin` 공통 컴포넌트 교체 (3줄). sell-position.ts 동일 패턴 — **P23**
-- `frontend/src/pages/stock-detail.ts` (304→247줄): 합계 바 57줄 수동 조립 → `createMarketCountRow` 공통 컴포넌트 교체 (9줄). NXT 삼각 아이콘/`appendSummaryItem` 로컬 헬퍼 중복 제거. `_mounted` 가드 + unmount 정리 추가 (비동기 데이터 로딩 중 페이지 이탈 시 메모리 누수/분리 DOM 조작 방지) — **P19/P23**
+**수정 파일 1개** (1617→1597줄, 20줄 감소):
+- `frontend/src/pages/stock-classification.ts`: F04-08 `_testSetState` dead code 제거 (10줄, 사용처 없는 테스트 헬퍼) — **P16**. F04-09 전역 이벤트 리스너(`window mouseup`, `detailTableRef keydown`)를 명명된 핸들러로 변경 후 unmount 시 `removeEventListener` 제거 (메모리 누수 방지) — **P19**. F04-10 `_mounted` 플래그 추가, `onMoveStock` async 응답 후 store 업데이트 전 가드 (race condition 방지) — **P19**. F04-11 외부 미사용 export 9개 제거 (`parseBatchInput`, `resolveToken`, `getMoveSource`, `getMovableCount`, `createChip`, `addToStaging`, `removeFromStaging`, `clearStaging`, `buildMoveMessage` — 모두 파일 내부에서만 사용) — **P16/P24**. F04-19 제거된 코드 참조 주석 2건 정리 (`// import ... (removed)`, `// buildSchedulerCard removed.`) — **P23**
 
-**해결 원칙**: P16 (살아있는 경로), P19 (비동기 누락), P23 (일관성), P24 (단순성)
+**해결 원칙**: P16 (살아있는 경로), P19 (비동기 누락/메모리 누수), P23 (주석 정리), P24 (단순성)
 
 **검증**:
-- `npm run typecheck` (tsc --noEmit) — 성공
-- `npm run build` (tsc + vite) — 성공
-- 잔여 dead code grep (`filterStocksBySector`, `SectorStockTable` default export) — 추가 인스턴스 없음
+- `npm run build` (tsc -b + vite build) — 성공 (exit code 0)
+- 타입 오류 없음, 빌드 산출물 정상 생성
 
-**화면 영향**: 없음. 업종순위/매수후보/보유종목/종목상세 모든 페이지 표시 동일. 구조 개선만 수행.
+**화면 영향**: 없음. 업종분류 페이지 표시/동작 동일. 구조 개선만 수행.
 
-**보류 항목 (B그룹, 추후 검토)**:
-- F03-07 (P20/P22): sell-position.ts:59,73 — `sectorStock?.cur_price ?? p.cur_price` 폴백 (사용자 설계 로직, 규칙 0-5)
-- F03-08 (P24): sector-stock.ts 653줄 — 500줄 기준 초과, 분할 시 별도 세션 필요
-- F03-09 (P24): computeRows(115줄)/connectedCallback(263줄)/updateBadges(79줄)/mount(192줄) — 50줄 기준 초과
-- F03-10 (P23): filterStocksBySearch가 페이지 파일에 정의, buy-target.ts 크로스 사용 — utils/ 이동 검토
+**보류 항목 (F-04-a 범위외, 추후 세션)**:
+- F04-01/F04-03 (P24): stock-classification.ts 파일 1597줄 / 함수 4개 50줄 초과 (buildSectorManageCard 278줄, buildTripleCenter 231줄, mount 103줄, buildTripleHeader 71줄) — 파일 분할은 별도 세션 필요 (구조 변경)
+- F04-15 (P10): 로컬 캐시/파생 상태 (cachedSectorStocksRef, cachedAllStocksMap, stockNameIndex, stagingSet, selectedStocks) — 성능 최적화 목적이므로 판단 필요
+- F04-16 (P23): fuzzy 검색 로직 중복 (612-628줄, 684-694줄) — 공통 함수 추출 검토
+- F04-18 (P21): 업종 삭제 시 사용자 명시적 알림 부재 — 경미
 
 ---
 
 ## 현재 진행 상황
 
-### 아키텍처 전수 조사 진행률: 26/30 세션 완료 (87%)
+### 아키텍처 전수 조사 진행률: 26/30 세션 완료 (87%, F-04-a 부분 진행)
 
 | 상태 | 세션 |
 |------|------|
 | 완료 | B-01~B-12, B-14~B-23, F-01, F-02, F-03 |
-| 부분 완료 | B-13 (3건 해결, 5건 보류 LOW/INFO) |
-| 미시작 | F-04, F-05, F-06, F-07 |
+| 부분 완료 | B-13 (3건 해결, 5건 보류 LOW/INFO), F-04-a (stock-classification 5건 해결) |
+| 미시작 | F-04-b/c/d, F-05, F-06, F-07 |
 
-**다음 세션**: F-04 (P2 — 설정 페이지: 매수/매도/일반/업종/종목분류, 총 3145줄 분할 권장)
+**다음 세션**: F-04-b (P2 — general-settings.ts: 거래일 폴백 수정 + 함수 분할)
 
 ---
 
 ## 미해결 문제
+
+### F-04-a 보류 항목 (F-04-a 범위외, 추후 세션)
+- F04-01/F04-03 (P24): stock-classification.ts 파일 1597줄 / 함수 4개 50줄 초과 — 파일 분할은 별도 세션 필요 (구조 변경)
+- F04-15 (P10): 로컬 캐시/파생 상태 — 성능 최적화 목적이므로 판단 필요
+- F04-16 (P23): fuzzy 검색 로직 중복 — 공통 함수 추출 검토
+- F04-18 (P21): 업종 삭제 시 사용자 명시적 알림 부재 — 경미
 
 ### F-03 보류 항목 (B그룹 4건, 추후 검토)
 - F03-07 (P20/P22): sell-position.ts:59,73 — `sectorStock?.cur_price ?? p.cur_price` 폴백 (사용자 설계 로직, 규칙 0-5 적용 대상)
@@ -66,13 +69,12 @@
 
 ## 다음 세션 인계 사항
 
-1. **F-04 (P2 — 설정 페이지)** 부터 시작. 대상 파일 5개 (총 3145줄, 분할 권장):
-   - `frontend/src/pages/stock-classification.ts` (1617줄, 초대형)
-   - `frontend/src/pages/general-settings.ts` (1421줄, 대형)
-   - `frontend/src/pages/buy-settings.ts` (424줄, 대형)
-   - `frontend/src/pages/sell-settings.ts` (174줄, 중형)
-   - `frontend/src/pages/sector-settings.ts` (509줄, 대형)
-2. 분할 권장: F-04-a (stock-classification 1617줄) / F-04-b (general-settings 1421줄 + buy-settings 424 + sell-settings 174 + sector-settings 509)
-3. 대상 원칙: P10, P13, P16, P17, P19, P21, P23, P24
-4. `architecture_audit_tasks.md` 섹션 F-04 체크리스트 참조
-5. 세션당 1단계 원칙 준수 (AGENTS.md 규칙 0-1)
+1. **F-04-b (P2 — general-settings.ts)** 부터 시작. F-04-a 완료 (stock-classification 5건 해결).
+   - F-04-b 대상: `frontend/src/pages/general-settings.ts` (1453줄) — F04-02 파일 길이 초과, F04-04 함수 7개 50줄 초과, F04-14 거래일 확인 실패 시 폴백 (P20)
+   - F-04-c 대상: `buy-settings.ts` (425줄) + `sell-settings.ts` (174줄) — F04-06/F04-07 함수 길이 초과, F04-12/F04-13 `Number() || 0` 폴백 (P20)
+   - F-04-d 대상: `sector-settings.ts` (509줄) — F04-05 mount 269줄, F04-17 파일 9줄 초과
+   - F-04-e (별도): stock-classification.ts 파일 분할 (구조 변경, 다단계 워크플로우 적용)
+2. 대상 원칙: P10, P13, P16, P17, P19, P21, P23, P24
+3. `architecture_audit_tasks.md` 섹션 F-04 체크리스트 참조
+4. 세션당 1단계 원칙 준수 (AGENTS.md 규칙 0-1)
+5. F-04-a 사전조사 보고서의 발견사항 ID(F04-01~F04-19) 참조

@@ -8,7 +8,6 @@ import { uiStore } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { api } from '../api/client'
 import { createSettingsManager, type SettingsManager } from '../settings'
-// import { createSettingRow } from '../components/common/setting-row' (removed)
 import { createCardTitleWithContent } from '../components/common/card-title'
 import { toastResult, showSaveToast } from '../components/common/toast'
 import { showContextPopup, closeContextPopup } from '../components/common/context-popup'
@@ -62,6 +61,7 @@ let unsubSse: (() => void) | null = null
 let settingsMgr: SettingsManager | null = null
 let unsubSettings: (() => void) | null = null
 let unsubHot: (() => void) | null = null
+let _mounted = false  // P19: unmount 후 async 응답으로 인한 store 업데이트 방지
 
 // UI 참조 — Indicator Bar (우측 정렬, 두 줄 표시)
 let indicatorLabelMain: HTMLElement | null = null
@@ -93,6 +93,10 @@ let centerContentRef: HTMLElement | null = null
 let centerEmptyRef: HTMLElement | null = null
 let detailTitleRef: HTMLElement | null = null
 let detailTableRef: DataTableApi<DetailRow> | null = null
+
+// 이벤트 리스너 참조 — unmount 시 removeEventListener로 제거 (P19 메모리 누수 방지)
+let onWindowMouseUp: (() => void) | null = null
+let onDetailKeyDown: ((e: KeyboardEvent) => void) | null = null
 
 // UI 참조 — Right (Target_Sector_List)
 let rightContentRef: HTMLElement | null = null
@@ -128,7 +132,7 @@ interface SearchResultRow {
 
 /* ── 순수 함수 및 유틸리티 (Task 1) ── */
 
-export function parseBatchInput(input: string): string[] {
+function parseBatchInput(input: string): string[] {
   // 따옴표 제거 후 쉼표, 탭, 줄바꿈, 공백, 괄호 기준으로 분리
   const cleaned = input.replace(/["']/g, '')
   return cleaned.split(/[\s,()（）]+/).map(t => t.trim()).filter(t => t.length > 0)
@@ -136,7 +140,7 @@ export function parseBatchInput(input: string): string[] {
 
 /** Task 1.3: 토큰 → 종목코드 매칭. 코드 우선(O(1)), 종목명 차선(O(1)), 미매칭 시 null
  *  "나인테크(267320)" 형태 → 괄호 안 코드 추출 후 매칭, 실패 시 괄호 밖 이름으로 재시도 */
-export function resolveToken(token: string): string | null {
+function resolveToken(token: string): string | null {
   if (getAllStocks().has(token)) return token
   const codeByName = stockNameIndex.get(token)
   if (codeByName !== undefined) return codeByName
@@ -155,14 +159,14 @@ export function resolveToken(token: string): string | null {
 }
 
 /** Task 1.5: Move_Source 결정 — stagingSet 우선, 비어있으면 selectedStocks, 둘 다 비면 null */
-export function getMoveSource(): { source: 'staging' | 'checked'; codes: string[] } | null {
+function getMoveSource(): { source: 'staging' | 'checked'; codes: string[] } | null {
   if (stagingSet.size > 0) return { source: 'staging', codes: [...stagingSet] }
   if (selectedStocks.size > 0) return { source: 'checked', codes: [...selectedStocks] }
   return null
 }
 
 /** Task 1.5: 이동 가능 종목 수 (버튼 텍스트용) */
-export function getMovableCount(): number {
+function getMovableCount(): number {
   if (stagingSet.size > 0) return stagingSet.size
   return selectedStocks.size
 }
@@ -170,7 +174,7 @@ export function getMovableCount(): number {
 /* ── Staging_Panel 함수 (Task 4) ── */
 
 /** Task 4.4: Chip DOM 생성 — 종목명 + 업종명 + × 버튼 */
-export function createChip(code: string): HTMLElement {
+function createChip(code: string): HTMLElement {
   const stock = getAllStocks().get(code)
   const stockName = stock?.name ?? code
 
@@ -217,7 +221,7 @@ export function createChip(code: string): HTMLElement {
 }
 
 /** Task 4.2: Staging_Set에 종목 추가. 중복 시 false + 토스트 */
-export function addToStaging(code: string): boolean {
+function addToStaging(code: string): boolean {
   if (stagingSet.has(code)) {
     showSaveToast('error', '이미 추가된 종목입니다')
     return false
@@ -235,7 +239,7 @@ export function addToStaging(code: string): boolean {
 }
 
 /** Task 4.2: Staging_Set에서 종목 제거 + 해당 Chip DOM만 삭제 (전체 리렌더링 금지) */
-export function removeFromStaging(code: string): void {
+function removeFromStaging(code: string): void {
   stagingSet.delete(code)
   const chip = stagingChipMap.get(code)
   if (chip) chip.remove()
@@ -246,7 +250,7 @@ export function removeFromStaging(code: string): void {
 }
 
 /** Task 4.2: Staging_Set 전체 비우기 + 모든 Chip DOM 삭제 */
-export function clearStaging(): void {
+function clearStaging(): void {
   stagingSet.clear()
   for (const [, chip] of stagingChipMap) chip.remove()
   stagingChipMap.clear()
@@ -438,7 +442,6 @@ function updateIndicatorBar(): void {
   }
 }
 
-// buildSchedulerCard removed.
 async function onTriggerConfirmedDownload(e: MouseEvent): Promise<void> {
   const label = '1일봉챠트 시세 다운로드'
   const endpoint = '/api/stock-classification/trigger-confirmed-download'
@@ -1089,9 +1092,8 @@ function buildTripleCenter(): void {
   detailTableRef.el.tabIndex = 0
 
   // 전역 마우스 업 이벤트로 드래그 상태 해제
-  window.addEventListener('mouseup', () => {
-    isDragging = false
-  })
+  onWindowMouseUp = () => { isDragging = false }
+  window.addEventListener('mouseup', onWindowMouseUp)
 
   // 드래그 시작 및 단일/다중 클릭 핸들러
   detailTableRef.el.addEventListener('mousedown', (e: MouseEvent) => {
@@ -1156,7 +1158,7 @@ function buildTripleCenter(): void {
   })
 
   // Esc 키 → 전체 선택 해제
-  detailTableRef.el.addEventListener('keydown', (e: KeyboardEvent) => {
+  onDetailKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       selectedStocks.clear()
       anchorRow = -1
@@ -1166,7 +1168,8 @@ function buildTripleCenter(): void {
       }
       updateAllInlineMoveButtons()
     }
-  })
+  }
+  detailTableRef.el.addEventListener('keydown', onDetailKeyDown)
 
   centerContentRef.appendChild(detailTableRef.el)
 
@@ -1383,7 +1386,7 @@ function updateRightPanel(): void {
 }
 
 /** 이동 확인 팝업 메시지 생성 (순수 함수) */
-export function buildMoveMessage(
+function buildMoveMessage(
   codes: string[],
   allStocks: Map<string, { code: string; name: string }>,
   targetSector: string,
@@ -1420,6 +1423,9 @@ async function onMoveStock(e: MouseEvent, targetSector: string): Promise<void> {
     })
     handleMutationResult(lastRes)
 
+    // unmount 후 응답 도착 시 store 업데이트 차단 (P19 race condition 방지)
+    if (!_mounted) return
+
     // 서버 응답 기반 로컬 상태 업데이트 — allStocks + stockMoves 통합 setState (1회 렌더)
     if (lastRes.ok && lastRes.all_stocks && Array.isArray(lastRes.all_stocks)) {
       const currentState = stockClassificationStore.getState()
@@ -1450,6 +1456,7 @@ function updateStockNameIndex(): void {
 
 function mount(_container: HTMLElement): void {
   notifyPageActive('stock-classification')
+  _mounted = true
   // 8.2: Build tripleHeader
   buildTripleHeader()
 
@@ -1556,12 +1563,17 @@ function mount(_container: HTMLElement): void {
 
 function unmount(): void {
   notifyPageInactive('stock-classification')
+  _mounted = false
   if (unsubCustom) { unsubCustom(); unsubCustom = null }
   if (unsubSse) { unsubSse(); unsubSse = null }
   if (unsubSettings) { unsubSettings(); unsubSettings = null }
   if (unsubHot) { unsubHot(); unsubHot = null }
   if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }
   closeContextPopup()
+
+  // 전역/요소 이벤트 리스너 제거 (P19 메모리 누수 방지)
+  if (onWindowMouseUp) { window.removeEventListener('mouseup', onWindowMouseUp); onWindowMouseUp = null }
+  if (onDetailKeyDown && detailTableRef) { detailTableRef.el.removeEventListener('keydown', onDetailKeyDown); onDetailKeyDown = null }
 
   // Null all DOM refs
   indicatorLabelMain = null
@@ -1603,15 +1615,3 @@ function unmount(): void {
 
 const pageModule: PageModule = { mount, unmount }
 export default pageModule
-
-/* ── 테스트 전용 상태 설정 헬퍼 (export for testing) ── */
-export function _testSetState(opts: {
-  allStocks?: Map<string, { code: string; name: string; sector: string }>
-  stockNameIndex?: Map<string, string>
-  stagingSet?: Set<string>
-  selectedStocks?: Set<string>
-}): void {
-  if (opts.stockNameIndex !== undefined) stockNameIndex = opts.stockNameIndex
-  if (opts.stagingSet !== undefined) stagingSet = opts.stagingSet
-  if (opts.selectedStocks !== undefined) selectedStocks = opts.selectedStocks
-}
