@@ -249,7 +249,7 @@ async def subscribe_sector_stocks_0b(*, nxt_only: bool = False) -> None:
 
     Args:
         nxt_only: True일 때 NXT 중복상장 종목(is_nxt_enabled=True)만 구독.
-                  KRX 단독 종목은 09:00 _on_krx_market_open()에서 추가 구독.
+                  KRX 단독 종목은 08:59 _on_krx_pre_subscribe()에서 사전 구독.
     """
     ws = engine_state.state.connector_manager or engine_state.state.active_connector
     if not ws or not ws.is_connected() or not engine_state.state.login_ok:
