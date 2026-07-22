@@ -279,7 +279,7 @@ class TestVirtualBalance:
     """가상 예수금 관리 — set_virtual_deposit 검증 (예수금 잔액/충전/리셋은 settlement_engine 라우터가 직접 처리)."""
 
     async def test_set_virtual_deposit(self):
-        with patch("backend.app.services.dry_run.update_settings", new_callable=AsyncMock) as mock_update:
+        with patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock) as mock_update:
             await dry_run.set_virtual_deposit(20_000_000)
         mock_update.assert_called_once_with({
             "test_virtual_deposit": 20_000_000,

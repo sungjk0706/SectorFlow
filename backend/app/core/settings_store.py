@@ -3,7 +3,6 @@
 설정(SQLite DB) 읽기·저장·엔진 동기화 -- HTTP 레이어 없이 데스크톱/UI에서 직접 사용.
 """
 from __future__ import annotations
-import asyncio
 import logging
 import re as _re
 from typing import Any
@@ -19,20 +18,6 @@ from backend.app.core.settings_file import (
 from backend.app.core import journal as _journal
 from backend.app.services.auto_trading_effective import auto_trading_effective
 logger = logging.getLogger(__name__)
-
-
-def _schedule_settings_task(coro, context: str) -> None:
-    task = asyncio.create_task(coro)
-
-    def _log_task_error(done_task: asyncio.Task) -> None:
-        try:
-            done_task.result()
-        except asyncio.CancelledError:
-            logger.info("[설정] %s 작업 취소됨", context)
-        except Exception:
-            logger.warning("[설정] %s 작업 실패", context, exc_info=True)
-
-    task.add_done_callback(_log_task_error)
 
 
 def normalize_stk_cd_key(code: str) -> str:

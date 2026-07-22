@@ -15,7 +15,6 @@ from backend.app.core.settings_file import (
     load_integrated_system_settings,
     load_selected_settings,
     save_settings,
-    update_settings,
     _decrypt_encrypt_fields,
     _encrypt_field_or_raise,
 )
@@ -224,28 +223,16 @@ class TestSaveSettingsDB:
 class TestUpdateSettingsDB:
 
     @pytest.mark.asyncio
-    async def test_update_merges_with_existing(self, in_memory_db):
-        """기존 설정에 업데이트가 병합되는지 확인."""
-        await save_settings({"broker": "kiwoom", "sector_max_targets": 3})
-
-        result = await update_settings({"sector_max_targets": 5})
-
-        assert result["broker"] == "kiwoom"
-        assert result["sector_max_targets"] == 5
-
-    @pytest.mark.asyncio
-    async def test_update_persists_to_db(self, in_memory_db):
-        """업데이트 후 DB에서 값이 확인되는지 확인."""
+    async def test_save_persists_to_db(self, in_memory_db):
+        """save_settings 후 DB에서 값이 확인되는지 확인."""
         await save_settings({"broker": "kiwoom"})
-
-        await update_settings({"broker": "ls"})
 
         cursor = await in_memory_db.execute(
             "SELECT value FROM integrated_system_settings WHERE key = ?",
             ("broker",),
         )
         row = await cursor.fetchone()
-        assert row["value"] == "ls"
+        assert row["value"] == "kiwoom"
 
 
 class TestSettingsFileP20Propagation:
