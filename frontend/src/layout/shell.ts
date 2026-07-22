@@ -9,7 +9,6 @@ export const SETTINGS_PANEL_WIDTH = 340
 
 export function createLayoutShell(): {
   el: HTMLElement
-  contentArea: HTMLElement
   leftPanel: HTMLElement
   rightPanel: HTMLElement
   tripleHeader: HTMLElement
@@ -165,5 +164,5 @@ export function createLayoutShell(): {
     sidebar.setBadge(path, count)
   }
 
-  return { el: root, contentArea, leftPanel, rightPanel, tripleHeader, tripleLeft, tripleCenter, tripleRight, setLayout, setOverlay, setActiveRoute, setBadge }
+  return { el: root, leftPanel, rightPanel, tripleHeader, tripleLeft, tripleCenter, tripleRight, setLayout, setOverlay, setActiveRoute, setBadge }
 }

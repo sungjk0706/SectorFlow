@@ -5,7 +5,6 @@ import { api } from './api/client'
 import type { StoreApi } from './stores/store'
 import type { UIState } from './stores/uiStore'
 import type { AppSettings, SaveResult } from './types'
-import { COLOR } from './components/common/ui-styles'
 
 export const MASKED_VALUE = '***'
 
@@ -95,47 +94,5 @@ export function createSettingsManager(store: StoreApi<UIState> = uiStore): Setti
   return { getSettings, isLoading, saveSection, subscribe, destroy }
 }
 
-// ── 전역 싱글톤 Settings Manager (Python GC 최적화) ──
+// ── 전역 싱글톤 Settings Manager ──
 export const globalSettingsManager = createSettingsManager(uiStore)
-
-// ── 전역 싱글톤 WebSocket 상태 배지 모듈 (store subscriber 1개만 유지) ──
-let globalWsBadgeInstance: HTMLElement | null = null
-let globalWsBadgeUnsub: (() => void) | null = null
-
-export function createGlobalWsBadge(): HTMLElement {
-  if (globalWsBadgeInstance) {
-    return globalWsBadgeInstance
-  }
-
-  const badge = document.createElement('span')
-  Object.assign(badge.style, {
-    fontSize: '11px',
-    fontWeight: 'normal',
-    borderRadius: '3px',
-    padding: '2px 6px',
-    marginLeft: '8px',
-    display: 'inline-block',
-  })
-
-  function updateBadge(): void {
-    const state = uiStore.getState()
-    const connected = state.wsSubscribeStatus?.quote_subscribed ?? false
-    badge.textContent = connected ? 'WS 연결' : 'WS 해제'
-    badge.style.color = connected ? `${COLOR.success}` : `${COLOR.up}`
-    badge.style.background = connected ? `${COLOR.successBg}` : `${COLOR.upBg}`
-  }
-
-  updateBadge()
-  globalWsBadgeUnsub = uiStore.subscribe(updateBadge)
-  globalWsBadgeInstance = badge
-
-  return badge
-}
-
-export function destroyGlobalWsBadge(): void {
-  if (globalWsBadgeUnsub) {
-    globalWsBadgeUnsub()
-    globalWsBadgeUnsub = null
-  }
-  globalWsBadgeInstance = null
-}

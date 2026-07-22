@@ -81,14 +81,14 @@
 | B-22 | P3 | Web API 계층 | 14 | ☑ | 완료 (B-22-a ws_manager dead code 3건 + B-22-b 주석 dead code 4건 + B-22-c silent except 1건/dead 변수·필드 4건/reset_test_data 분할 = 13건 P16/P20/P21/P24) |
 | B-23 | P3 | 테스트 품질 점검 | 67 | ☑ | 완료 (B-23-a 메타 점검, B-23-b 대형 9개, B-23-c 중형 20개, B-23-d 소형 36개 점검 완료) |
 | F-01 | P0 | 통신 계층 및 상태 관리 | 8 | ☑ | 10건 수정 |
-| **F-02** | **P1** | **진입점, 라우팅, 레이아웃** | 6 | ☐ | |
+| **F-02** | **P1** | **진입점, 라우팅, 레이아웃** | 6 | ☑ | 완료 (7건 P16/P23/P24) |
 | F-03 | P2 | 핵심 매매 페이지 | 6 | ☐ | |
 | F-04 | P2 | 설정 페이지 | 5 | ☐ | 분할 권장 |
 | F-05 | P3 | 수익 페이지 | 3 | ☐ | |
 | F-06 | P3 | 공통 컴포넌트 | 25 | ☐ | 분할 권장 |
 | F-07 | P3 | 타입 및 유틸 | 5 | ☐ | |
 
-**진행률**: 24/30 세션 완료 (80%). B-10 완료 (B-10-a 11건 + B-10-b 7건, B10-02는 B-14 이월). B-11 완료 (B-11-a 8건 + B-11-b 4건). B-13 부분 완료 (3건 해결 B13-01/02/05, 잔여 5건 보류 LOW/INFO). B-14 완료 (B-14-a 6건 + B-14-b 2건). B-15 완료 (B-15-a 7건 + B-15-b 7건). B-23 완료 (테스트 품질 점검). 잔여 6세션 (F-02~F-07).
+**진행률**: 25/30 세션 완료 (83%). B-10 완료 (B-10-a 11건 + B-10-b 7건, B10-02는 B-14 이월). B-11 완료 (B-11-a 8건 + B-11-b 4건). B-13 부분 완료 (3건 해결 B13-01/02/05, 잔여 5건 보류 LOW/INFO). B-14 완료 (B-14-a 6건 + B-14-b 2건). B-15 완료 (B-15-a 7건 + B-15-b 7건). B-23 완료 (테스트 품질 점검). F-02 완료 (7건 P16/P23/P24). 잔여 5세션 (F-03~F-07) + B-13 보류.
 
 ---
 
@@ -780,28 +780,29 @@
 ### 세션 F-02: P1 — 진입점, 라우팅, 레이아웃
 
 **대상 파일** (6개, 총 1530줄)
-- [ ] `frontend/src/main.ts` (329줄, 대형)
-- [ ] `frontend/src/layout/header.ts` (519줄, 대형)
-- [ ] `frontend/src/router.ts` (273줄, 대형)
-- [ ] `frontend/src/layout/shell.ts` (169줄, 중형)
-- [ ] `frontend/src/layout/sidebar.ts` (99줄, 중형)
-- [ ] `frontend/src/settings.ts` (141줄, 중형)
+- [x] `frontend/src/main.ts` (322줄, 대형)
+- [x] `frontend/src/layout/header.ts` (500줄, 대형 → 분할 완료)
+- [x] `frontend/src/router.ts` (237줄, 대형)
+- [x] `frontend/src/layout/shell.ts` (168줄, 중형)
+- [x] `frontend/src/layout/sidebar.ts` (99줄, 중형)
+- [x] `frontend/src/settings.ts` (98줄, 중형)
 
 **대상 원칙**: P5, P10, P16, P19, P21, P23, P24
 
 **조사 체크리스트**
-- [ ] P5: 직접 호출 체인 (이벤트 버스 없음)
-- [ ] P10: 전역 상태 SSOT 참조
-- [ ] P16: dead code/미사용 라우트 없음
-- [ ] P19: 비동기 초기화 누락 없음
-- [ ] P21: 엔진 상태/연결 상태가 헤더에 표시됨
-- [ ] P23: 용어 사전 준수, 패턴 일관
-- [ ] P24: 단순성 기준 (header.ts 519줄 → 분할 검토)
+- [x] P5: 직접 호출 체인 (이벤트 버스 없음) — 준수
+- [x] P10: 전역 상태 SSOT 참조 — 준수 (uiStore 단일 소스)
+- [x] P16: dead code/미사용 라우트 없음 — **해결 F02-01~F02-05** (WebComponentPage 분기, createGlobalWsBadge, settingsModuleCache 주석, router tail 주석, shell contentArea export)
+- [x] P19: 비동기 초기화 누락 없음 — 준수
+- [x] P21: 엔진 상태/연결 상태가 헤더에 표시됨 — 준수 (header.ts 모든 상태 칩 배선 유지)
+- [x] P23: 용어 사전 준수, 패턴 일관 — **해결 F02-06** (settings.ts "Python GC" 잘못된 주석, main.ts 중복 번호)
+- [x] P24: 단순성 기준 (header.ts 519줄 → 분할 검토) — **해결 F02-07** (header.ts 519→500줄, onStateChange 분할, renderAvgAmtChip/resolveAvgAmtMsg/resolveAvgAmtStyle 3함수 추출)
 
 **검증**
-- [ ] `npm run build` 성공 (tsc 타입체크 + vite 빌드)
-- [ ] 브라우저 확인 (모든 라우트 진입, 헤더 상태 표시)
-- [ ] 잔여 dead code / 미사용 라우트 grep 추가 인스턴스 없음
+- [x] `npm run build` 성공 (tsc 타입체크 + vite 빌드)
+- [x] `npm run typecheck` 성공 (tsc --noEmit)
+- [ ] 브라우저 확인 (모든 라우트 진입, 헤더 상태 표시) — 백엔드 미기동으로 WS 데이터 미확인, 구조는 정상
+- [x] 잔여 dead code / 미사용 라우트 grep 추가 인스턴스 없음
 
 ---
 
