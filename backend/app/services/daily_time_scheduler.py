@@ -502,18 +502,11 @@ async def _on_nxt_premarket_start() -> None:
 
 
 async def _on_krx_market_open() -> None:
-    """09:00 KRX 정규장 진입 콜백 — 업종 종합점수 재계산 + KRX 단독 종목 조건부 재구독.
+    """09:00 KRX 정규장 진입 콜백 — 업종 종합점수 재계산.
 
     NXT 프리마켓(08:00~08:50)에는 NXT-enabled 종목만 업종 점수에 포함되었으므로,
     09:00 KRX 정규장 진입 시 전체 종목을 포함하도록 재계산 필요.
-    또한 15:20에 구독해지된 KRX 단독 종목을 재구독하여 실시간 시세를 수신한다.
-
-    구독 스킵 조건 (P16 살아있는 경로 · P22 정합성):
-    - 08:59 사전 구독이 성공했으면(last_krx_pre_subscribe_date == 오늘) 09:00 구독 스킵.
-      subscribe_sector_stocks_0b() 내부 _subscribed 플래그 멱등성으로 중복 전송은 막히지만,
-      함수 진입 자체가 불필요 연산(보유종목 조회·필터 스캔·한도 계산)을 유발하므로 조기 스킵.
-    - 08:59 실패/누락 시(last_krx_pre_subscribe_date != 오늘) 09:00 복구 구독 수행.
-      08:59 WS 미연결, 엔진 09:00 직전 기동, 예외 발생 등 복구 시나리오 커버.
+    KRX 단독 종목 구독은 08:59 _on_krx_pre_subscribe()에서 수행하므로 여기서는 재계산만 담당.
 
     recompute_sector_summary_now() 내부에서 notify 3종이 이미 호출되므로 중복 호출을 제거한다.
     _broadcast_market_phase() 내 페이즈 변경 감지 시 자동 트리거된다 (수정 8 통합).
@@ -521,25 +514,14 @@ async def _on_krx_market_open() -> None:
     try:
         from backend.app.core.trading_calendar import is_trading_day
         today = _kst_now()
-        today_str = today.strftime("%Y%m%d")
         if today.weekday() >= 5 or not is_trading_day(today.date()):
             return
-        logger.info("[작업실행] KRX 정규장 진입 — 업종 재계산 + KRX 단독 종목 조건부 재구독 시작 (09:00)")
+        logger.info("[작업실행] KRX 정규장 진입 — 업종 재계산 시작 (09:00)")
         from backend.app.services.sector_data_provider import recompute_sector_summary_now
         await recompute_sector_summary_now()
         logger.info("[작업실행] 업종 재계산 완료 (09:00 KRX 정규장)")
-
-        # KRX 단독 종목 조건부 재구독 (15:20 구독해지 복원 + 08:59 실패 복구)
-        # 08:59 사전 구독 성공 시 09:00 구독 스킵 — 불필요 연산 제거 (P24 단순성)
-        # 08:59 실패/누락 시 09:00 복구 구독 — 안전장치 유지 (P16 살아있는 경로)
-        if engine_state.state.last_krx_pre_subscribe_date == today_str:
-            logger.info("[작업실행] 08:59 사전 구독 완료 상태 — 09:00 KRX 단독 종목 구독 스킵")
-        else:
-            from backend.app.services.engine_ws_reg import subscribe_sector_stocks_0b
-            await subscribe_sector_stocks_0b()
-            logger.info("[작업실행] KRX 단독 종목 복구 구독 완료 (09:00 — 08:59 사전 구독 누락 복구)")
     except Exception as e:
-        logger.warning("[작업실행] KRX 단독 종목 조건부 재구독 + 업종 재계산 콜백 오류: %s", e, exc_info=True)
+        logger.warning("[작업실행] KRX 정규장 진입 업종 재계산 콜백 오류: %s", e, exc_info=True)
 
 
 async def _on_krx_pre_subscribe() -> None:
@@ -548,14 +530,13 @@ async def _on_krx_pre_subscribe() -> None:
     정규장(09:00) 1분 전에 KRX 단독 종목(nxt_enable=False) WS 구독을 미리 수행하여
     09:00 시가 동시호가 체결 시점부터 실시간 시세를 즉시 수신 (P16 살아있는 경로).
     재계산은 09:00 _on_krx_market_open()에서 수행하므로 여기서는 구독만 담당.
-    subscribe_sector_stocks_0b() 내부 _subscribed 플래그 멱등성으로 09:00 재호출 시 스킵 (P22).
     날짜 기반 멱등성 가드(last_krx_pre_subscribe_date)로 중복 실행 방지.
     거래일 아닌 시 가드 미설정 — 다음 거래일에 실행 (기존 _on_realtime_fields_reset 패턴 준수).
 
     가짜 성공 방지 (P20 폴백 금지 · P22 정합성):
     구독 전후 _subscribed 카운트를 비교하여 실제 구독이 발생한 경우에만 가드를 설정.
-    0건 구독(WS 미연결·필터 누락·이미 전량 구독 등) 시 가드 미설정 →
-    09:00 _on_krx_market_open()에서 복구 구독 수행.
+    0건 구독(WS 미연결·필터 누락·이미 전량 구독 등) 시 가드 미설정 + 경고 로그 —
+    실패 원인을 로그로 기록하여 사용자가 인지하고 근본 수정할 수 있도록 함.
     """
     try:
         today = _kst_now()
@@ -582,7 +563,7 @@ async def _on_krx_pre_subscribe() -> None:
             )
         else:
             logger.warning(
-                "[작업실행] KRX 사전 구독 0건 — 가짜 성공 방지: 가드 미설정, 09:00 복구 구독 대기"
+                "[작업실행] KRX 사전 구독 0건 — 가짜 성공 방지: 가드 미설정 (WS 미연결·필터 누락·이미 전량 구독 등 원인 확인 필요)"
             )
     except Exception as e:
         logger.warning("[작업실행] KRX 사전 구독 콜백 오류: %s", e, exc_info=True)
@@ -733,7 +714,7 @@ def _apply_market_phase(phase: dict) -> None:
     페이즈 변경 감지 시 부작용 트리거 (수정 8 — 타이머 3개 통합):
       - NXT "프리마켓" 진입 → _on_nxt_premarket_start() (08:00, KRX 단독 종목 제외)
       - NXT "프리마켓" 진입 → _on_ws_subscribe_start() (08:00, WS 연결 + 실시간 필드 초기화)
-      - KRX "정규장" 진입 → _on_krx_market_open() (09:00, 전체 종목 + 재구독)
+      - KRX "정규장" 진입 → _on_krx_market_open() (09:00, 업종 재계산)
       - KRX "종가 동시호가" 진입 → _on_krx_closing_auction_start() (15:20, KRX 단독 종목 구독해지)
       - NXT "장마감" 진입 → _on_ws_subscribe_end() (20:00, WS 연결 해제 + 구독 해지)
     """

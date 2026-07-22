@@ -994,7 +994,7 @@ asyncio.call_later() 기반 — 매일 재스케줄링
 07:59  WS 구독 구간 진입             — 상태 전환 + 엔진 루프 통지 (사전 구독, NXT 프리마켓 1분 전)
 08:00  NXT 프리마켓 진입             — 업종 재계산 (이미 구독됨)
 08:59  _on_krx_pre_subscribe()      — KRX 단독 종목 사전 구독 (정규장 1분 전)
-09:00  KRX 정규장 진입              — 업종 재계산 (구독은 멱등 스킵)
+09:00  KRX 정규장 진입              — 업종 재계산 (구독은 08:59 사전 구독에서 담당)
 15:20  _on_krx_closing_auction_start() — KRX 단독 종목 구독 해지 (종가 동시호가 진입)
 20:00  _on_ws_subscribe_end()       — WS 구독 종료 + GC 정상화 (NXT 장마감 진입 시 자동 트리거)
 20:40  _fire_unified_confirmed_fetch() — 확정 시세 + 5일봉 다운로드 (timetable.confirmed_download 설정, 기본값)
