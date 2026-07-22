@@ -14,11 +14,13 @@ import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import {
   BUY_COLS,
   SELL_COLS,
+  createDrilldownCols,
+} from './profit-columns'
+import {
   type DailyDrilldownRow,
   type SummaryCardEls,
   getLocalToday,
   buildMonthlyDrilldown,
-  createDrilldownCols,
   createSummaryCards,
   updateSummaryCards,
   filterTradeRows,
