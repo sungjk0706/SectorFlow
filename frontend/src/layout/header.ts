@@ -25,7 +25,6 @@ const PHASE_STYLE: Record<string, { bg: string; color: string }> = {
   '프리마켓': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
   '메인마켓': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
   '애프터마켓': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
-  '애프터마켓 지속': { bg: `${COLOR.successBg}`, color: `${COLOR.success}` },
   /* 비장중(휴장/대기/거래없음/종료) — 회색 */
   '휴장일': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
   '장개시전': { bg: `${COLOR.neutralBg}`, color: `${COLOR.disabled}` },
@@ -77,7 +76,11 @@ function formatCountdown(
   if (!countdown) return null
   const { label, remaining_sec } = countdown
   if (remaining_sec <= 0) return null
-  if (remaining_sec >= 60) return `${label} ${Math.floor(remaining_sec / 60)}분 전`
+  if (remaining_sec >= 60) {
+    const min = Math.floor(remaining_sec / 60)
+    const sec = remaining_sec % 60
+    return sec > 0 ? `${label} ${min}분 ${sec}초 전` : `${label} ${min}분 전`
+  }
   return `${label} ${remaining_sec}초 전`
 }
 

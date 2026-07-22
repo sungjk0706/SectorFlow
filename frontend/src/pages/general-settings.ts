@@ -308,7 +308,6 @@ function buildFixedTimesBox(): HTMLElement {
     ['15:20', '정규장 종료'],
     ['15:30', '종가 동시호가 종료'],
     ['15:40', 'NXT 애프터마켓 시작'],
-    ['18:00', '애프터마켓 지속 전환'],
     ['20:00', '장마감'],
   ]
   const box = document.createElement('div')
