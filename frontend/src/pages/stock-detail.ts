@@ -6,6 +6,7 @@ import { api } from '../api/client'
 import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
 import { createSearchInput } from '../components/common/search-input'
 import { createCardTitle } from '../components/common/card-title'
+import { createMarketCountRow, type MarketCountRowHandle } from '../components/common/market-count-row'
 import { FONT_SIZE, FONT_WEIGHT, COLOR, fmtComma, createStockNameColumn, createSeqCell } from '../components/common/ui-styles'
 
 interface StockDetail5dBar {
@@ -31,13 +32,8 @@ let tableRef: DataTableApi<StockDetail5dItem> | null = null
 let searchInputRef: ReturnType<typeof createSearchInput> | null = null
 let allItems: StockDetail5dItem[] = []
 let searchQuery = ''
-let summaryEls: {
-  total: HTMLSpanElement
-  krx: HTMLSpanElement
-  nxt: HTMLSpanElement
-  kospi: HTMLSpanElement
-  kosdaq: HTMLSpanElement
-} | null = null
+let summaryRow: MarketCountRowHandle | null = null
+let _mounted = false
 
 function fmtAmount(v: number | null): string {
   if (v === null || v === undefined) return '-'
@@ -112,17 +108,13 @@ function buildColumns(sampleBars: StockDetail5dBar[]): ColumnDef<StockDetail5dIt
 }
 
 function updateSummary(items: StockDetail5dItem[]): void {
-  if (!summaryEls) return
+  if (!summaryRow) return
   const total = items.length
   const krx = items.filter(s => !s.nxt_enable).length
   const nxt = items.filter(s => s.nxt_enable).length
   const kospi = items.filter(s => s.market_type === '0').length
   const kosdaq = items.filter(s => s.market_type === '10').length
-  summaryEls.total.textContent = String(total)
-  summaryEls.krx.textContent = String(krx)
-  summaryEls.nxt.textContent = String(nxt)
-  summaryEls.kospi.textContent = String(kospi)
-  summaryEls.kosdaq.textContent = String(kosdaq)
+  summaryRow.updateCounts({ total, krx, nxt, kospi, kosdaq })
 }
 
 function applySearchFilter(): void {
@@ -141,6 +133,7 @@ function applySearchFilter(): void {
 }
 
 function mount(container: HTMLElement): void {
+  _mounted = true
   const root = document.createElement('div')
   Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
 
@@ -185,65 +178,15 @@ function mount(container: HTMLElement): void {
 
   root.appendChild(headerBar)
 
-  // 합계 정보 바
-  const summaryBar = document.createElement('div')
-  Object.assign(summaryBar.style, {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
+  // 합계 정보 바 — 공통 컴포넌트 (sector-stock.ts 동일 패턴, P23 일관성)
+  summaryRow = createMarketCountRow()
+  Object.assign(summaryRow.el.style, {
     marginBottom: '8px',
     flexShrink: '0',
     fontSize: FONT_SIZE.label,
     fontWeight: FONT_WEIGHT.normal,
   })
-
-  function appendSummaryItem(label: string, labelColor: string): HTMLSpanElement {
-    const text = document.createElement('span')
-    Object.assign(text.style, { color: labelColor })
-    text.textContent = label
-    summaryBar.appendChild(text)
-    const numSpan = document.createElement('span')
-    Object.assign(numSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
-    summaryBar.appendChild(numSpan)
-    const suffix = document.createElement('span')
-    Object.assign(suffix.style, { color: COLOR.neutral })
-    suffix.textContent = '종목'
-    summaryBar.appendChild(suffix)
-    return numSpan
-  }
-
-  const totalSpan = appendSummaryItem('합계:', COLOR.neutral)
-  const krxSpan = appendSummaryItem(' KRX:', COLOR.neutral)
-
-  // NXT: 삼각이모지가 콜론과 숫자 사이에 위치하도록 수동 빌드
-  const nxtLabel = document.createElement('span')
-  Object.assign(nxtLabel.style, { color: COLOR.up })
-  nxtLabel.textContent = ' NXT:'
-  summaryBar.appendChild(nxtLabel)
-  const nxtTri = document.createElement('span')
-  Object.assign(nxtTri.style, {
-    display: 'inline-block',
-    width: '0',
-    height: '0',
-    borderLeft: '5px solid transparent',
-    borderBottom: `5px solid ${COLOR.up}`,
-    marginRight: '3px',
-    verticalAlign: 'middle',
-  })
-  summaryBar.appendChild(nxtTri)
-  const nxtSpan = document.createElement('span')
-  Object.assign(nxtSpan.style, { color: COLOR.down, fontWeight: FONT_WEIGHT.semibold })
-  summaryBar.appendChild(nxtSpan)
-  const nxtSuffix = document.createElement('span')
-  Object.assign(nxtSuffix.style, { color: COLOR.neutral })
-  nxtSuffix.textContent = '종목'
-  summaryBar.appendChild(nxtSuffix)
-
-  const kospiSpan = appendSummaryItem(' 코스피:', COLOR.neutral)
-  const kosdaqSpan = appendSummaryItem(' 코스닥:', COLOR.kosdaq)
-  summaryEls = { total: totalSpan, krx: krxSpan, nxt: nxtSpan, kospi: kospiSpan, kosdaq: kosdaqSpan }
-
-  root.appendChild(summaryBar)
+  root.appendChild(summaryRow.el)
 
   // 테이블 자리 (데이터 로드 후 실제 날짜 라벨 컬럼으로 생성)
   const tableSlot = document.createElement('div')
@@ -253,7 +196,9 @@ function mount(container: HTMLElement): void {
   container.appendChild(root)
 
   // 데이터 로드 → 날짜 라벨 컬럼 생성 → 테이블 생성
+  // _mounted 가드: 페이지 이탈 후 비동기 콜백 실행 시 DOM 조작/DataTable 생성 차단 (P19)
   api.getStockDetail5d().then((data: StockDetail5dResponse) => {
+    if (!_mounted) return
     allItems = data.items
     if (data.date) {
       dateLabel.textContent = `기준일: ${data.date}`
@@ -276,6 +221,7 @@ function mount(container: HTMLElement): void {
     tableRef.updateRows(allItems)
     updateSummary(allItems)
   }).catch((err) => {
+    if (!_mounted) return
     console.error('[stock-detail] 데이터 로드 실패:', err)
     const errEl = document.createElement('div')
     Object.assign(errEl.style, {
@@ -288,6 +234,7 @@ function mount(container: HTMLElement): void {
 }
 
 function unmount(): void {
+  _mounted = false
   if (tableRef) {
     tableRef.destroy()
     tableRef = null
@@ -298,7 +245,7 @@ function unmount(): void {
   }
   allItems = []
   searchQuery = ''
-  summaryEls = null
+  summaryRow = null
 }
 
 export default { mount, unmount } satisfies PageModule
