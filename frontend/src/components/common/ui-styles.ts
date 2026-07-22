@@ -5,7 +5,6 @@
 
 import type { ColumnDef } from './data-table'
 import { COLUMN_WIDTH } from './table-config'
-import { hotStore, normalizeStockCode } from '../../stores/hotStore'
 
 /* ── 폰트 ── */
 
@@ -510,39 +509,6 @@ export function createStockNameColumn<T extends object>(
     render: (item: T) => {
       const lookup = fallbackLookup(item)
       return createStockNameCell(lookup.name, lookup.market_type, lookup.nxt_enable)
-    }
-  }
-}
-
-/** sell-position 페이지용 종목명 컬럼 - sectorStocks에서 조회 */
-export function createStockNameColumnWithSectorLookup<T extends object>(
-  nameKey: keyof T,
-  codeKey: keyof T
-): ColumnDef<T> {
-  return {
-    key: String(nameKey),
-    label: '종목명',
-    align: 'left',
-    type: 'name',
-    ...COLUMN_WIDTH.name,
-    cellStyle: { fontWeight: 'normal', color: COLOR.neutral },
-    render: (item: T) => {
-      const name = String(item[nameKey] || '')
-      const code = String(item[codeKey] || '')
-
-      // hotStore에서 sectorStock 조회
-      const sectorStocks = hotStore.getState().sectorStocks
-      const sectorStock = sectorStocks[normalizeStockCode(code)]
-
-      if (!sectorStock && Object.keys(sectorStocks).length === 0) {
-        console.warn('[createStockNameColumnWithSectorLookup] sectorStocks is empty. Market type and NXT enable indicators will not be displayed.')
-      }
-      
-      return createStockNameCell(
-        name,
-        sectorStock?.market_type,
-        sectorStock?.nxt_enable
-      )
     }
   }
 }
