@@ -186,7 +186,7 @@ class KiwoomRestAPI:
                 return resp, hit_429
 
             except Exception as e:
-                logger.warning("[연결] %s %s 오류 (시도=%d): %s: %s", _BROKER_DISPLAY, tag, attempt + 1, type(e).__name__, str(e))
+                logger.warning("[연결] %s %s 오류 (시도=%d): %s: %s", _BROKER_DISPLAY, tag, attempt + 1, type(e).__name__, str(e), exc_info=True)
                 await self._reset_client()
                 if attempt < retries - 1:
                     await asyncio.sleep(2 * (attempt + 1))
@@ -259,7 +259,7 @@ class KiwoomRestAPI:
                 logger.info("[연결] %s 토큰 발급 완료", _BROKER_DISPLAY)
                 return True
             except Exception as e:
-                logger.warning("[연결] %s 토큰 발급 오류 (시도=%d): %s: %s", _BROKER_DISPLAY, attempt + 1, type(e).__name__, e)
+                logger.warning("[연결] %s 토큰 발급 오류 (시도=%d): %s: %s", _BROKER_DISPLAY, attempt + 1, type(e).__name__, e, exc_info=True)
                 await self._reset_client()
                 continue
         logger.warning("[연결] %s 토큰 발급 3번 모두 실패 (요청 과다 초과)", _BROKER_DISPLAY)
@@ -286,7 +286,7 @@ class KiwoomRestAPI:
             else:
                 logger.warning("[연결] %s 토큰 폐기 실패 (응답코드=%s)", _BROKER_DISPLAY, resp.status_code)
         except Exception as e:
-            logger.warning("[연결] %s 토큰 폐기 오류: %s: %s", _BROKER_DISPLAY, type(e).__name__, e)
+            logger.warning("[연결] %s 토큰 폐기 오류: %s: %s", _BROKER_DISPLAY, type(e).__name__, e, exc_info=True)
         finally:
             self._token_info = None
         return True
@@ -351,7 +351,7 @@ class KiwoomRestAPI:
                     return None
                 return resp.json()
             except Exception as e:
-                logger.warning("[연결] %s 요청 오류 (요청ID=%s): %s: %s", _BROKER_DISPLAY, api_id, type(e).__name__, e)
+                logger.warning("[연결] %s 요청 오류 (요청ID=%s): %s: %s", _BROKER_DISPLAY, api_id, type(e).__name__, e, exc_info=True)
                 await self._reset_client()
                 return None
         return None
@@ -411,7 +411,7 @@ class KiwoomRestAPI:
                     next_key = resp.headers.get("next-key", "")
                     break
                 except Exception as e:
-                    logger.warning("[연결] %s 연속 조회 요청 오류 (요청ID=%s, 페이지=%d): %s: %s", _BROKER_DISPLAY, api_id, page, type(e).__name__, e)
+                    logger.warning("[연결] %s 연속 조회 요청 오류 (요청ID=%s, 페이지=%d): %s: %s", _BROKER_DISPLAY, api_id, page, type(e).__name__, e, exc_info=True)
                     await self._reset_client()
                     return result
             if cont_yn != "Y" or not next_key:
@@ -482,7 +482,7 @@ class KiwoomRestAPI:
         try:
             data = resp.json()
         except Exception:
-            logger.warning("[스케줄] %s 업종별 거래량 조회(ka20001) JSON 해석 실패 (업종코드=%s)", _BROKER_DISPLAY, inds_cd)
+            logger.warning("[스케줄] %s 업종별 거래량 조회(ka20001) JSON 해석 실패 (업종코드=%s)", _BROKER_DISPLAY, inds_cd, exc_info=True)
             return None
 
         def _f(v) -> float:
@@ -559,7 +559,7 @@ class KiwoomRestAPI:
                 result.append((c6, nxt, mkt_code))
             return result
         except Exception as e:
-            logger.warning("[연결] %s 전종목 통합 조회(ka10099) 오류 (시장구분=%s): %s", _BROKER_DISPLAY, mrkt_tp, e)
+            logger.warning("[연결] %s 전종목 통합 조회(ka10099) 오류 (시장구분=%s): %s", _BROKER_DISPLAY, mrkt_tp, e, exc_info=True)
             return []
 
 
@@ -589,7 +589,7 @@ class KiwoomRestAPI:
                             break
             return str(nxt_val or "N").strip().upper()
         except Exception as e:
-            logger.debug("[연결] 전체 종목 조회(ka10001) 실패 %s: %s", stk_cd, e)
+            logger.debug("[연결] 전체 종목 조회(ka10001) 실패 %s: %s", stk_cd, e, exc_info=True)
             return ""
 
     async def fetch_nxt_enable_map(self, codes: list[str], interval_sec: float = 0.17) -> dict[str, bool]:
