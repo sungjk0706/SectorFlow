@@ -6,6 +6,59 @@
 
 ## 직전 완료 작업
 
+### JIF 카운트다운 복구 S-1 백엔드 핵심 구현 (2026-07-23)
+
+**세션**: 다단계 작업 워크플로우 3세션 — `plan_jif_countdown.md` 기반 S-1 구현. 백엔드 핵심 11 Step + 테스트 보완.
+
+**구현 내용 (Step 1-1 ~ 1-11)**:
+1. `engine_state.py` — `krx_countdown_override`, `nxt_countdown_override` 필드 추가 (P10 SSOT — override 단일 소스)
+2. `engine_ws_dispatch.py` — `_JIF_COUNTDOWN_KRX`/`_JIF_COUNTDOWN_NXT` 매핑 테이블 신설 (API 문서 기준) + `_JIF_IGNORE_CODES`에서 카운트다운 코드 전부 제거 ("53"만 남김)
+3. `engine_ws_dispatch.py` — `_handle_jif()` 카운트다운 처리 추가 (override 저장 + 브로드캐스트) + 페이즈 전환 시 override 초기화
+4. `daily_time_scheduler.py` — 카운트다운 임계 시각 상수 22개 정의 (KRX/NXT 장개시·장마감, 거래소 규정 코드 상수)
+5. `daily_time_scheduler.py` — `build_timetable_from_cache()`에 `kind="countdown"` 엔트리 22개 추가 (타임테이블 12→33항목)
+6. `daily_time_scheduler.py` — `_timetable_event_fired()`에 `kind="countdown"` 분기 추가 (JIF override 활성 시 스킵, 없으면 calc_countdown 보조)
+7. `daily_time_scheduler.py` — `_get_active_override()` 헬퍼 신설 (만료 시 None 반환 — P20 폴백 금지)
+8. `daily_time_scheduler.py` — `get_market_phase()` override 우선 적용 (JIF 1순위, calc_countdown 보조)
+9. `daily_time_scheduler.py` — `_KRX_COUNTDOWN_MAP` 누락 페이즈 3개 보완 (종가 동시호가, 장후 시간외, 시간외 단일가 — `KRX_AFTER_HOURS_END` 사용)
+10. `daily_time_scheduler.py` — NXT 페이즈명 "애프터마켓" 통일 ("애프터마켓 지속" 제거) + 18:00 엔트리/상수/분기 제거
+11. `jif_countdown_design.md` 3.2절 KRX 장마감 매핑 오류 수정 (44=300초/43=60초/42=10초 — API 문서 기준)
+
+**재심층 사전조사에서 발견·보고한 태스크 파일 오차 3건**:
+- 발견 A: Step 1-9 상수명 `KRX_AFTER_CLOSE_START` → 실제 `KRX_AFTER_HOURS_END` 사용 (태스크 파일이 예견한 사항)
+- 발견 B: 기존 테스트 2건 S-1에서 깨짐 → 규칙 0-1 준수를 위해 S-2 범위 일부를 S-1로 이동하여 수정
+- 발견 C: `_KRX_COUNTDOWN_MAP` 라벨을 "장마감" 대신 "종가 동시호가 종료" 등 명확한 이름 사용 (P21/P23 — "장마감" 페이즈명과 혼동 방지)
+
+**수정 파일 5개**:
+- 백엔드 3개: `engine_state.py`, `engine_ws_dispatch.py`, `daily_time_scheduler.py`
+- 테스트 2개: `test_engine_ws_dispatch.py` (1건 변경 + MagicMock import 추가), `test_daily_time_scheduler.py` (기존 6건 수정 + 신규 4 클래스 20건 추가)
+- 문서 1개: `jif_countdown_design.md` (3.2절 매핑 오류 수정)
+
+**검증**:
+- `pytest backend/tests/` 2802 passed (이전 2782에서 20개 증가 — 신규 테스트 20건 반영, 기존 테스트 6건 수정)
+- `python -W error::RuntimeWarning main.py` 런타임 기동 18초 — RuntimeWarning 없음, 타임테이블 33항목 빌드 확인, 스케줄러 정상 시작
+- 잔존 프로세스 0건 확인
+
+**화면 영향 (S-1 완료 후)**:
+- 상단 헤더 칩: 카운트다운 코드 수신 시 즉시 "정규장 장마감 5분 전" 등 상세 카운트다운 표시 (JIF 기반 — 기존에는 무시됨)
+- NXT 애프터마켓: 15:40~20:00 단일 "애프터마켓" 표시 (기존 18:00에 "애프터마켓 지속"으로 전환되던 것 제거 — UI 변화 없음, 동일 초록 칩 유지)
+- 매수/매도 동작: 영향 없음 (카운트다운은 표시 전용, 주문 차단은 `get_order_time_block_status()` 담당)
+
+**S-2 대기 사항 (프론트엔드 + 테스트 보완)**:
+- `header.ts` — `formatCountdown()` "X분 Y초 전" 포맷 확장 (90초 → "1분 30초 전")
+- `header.ts` — PHASE_STYLE "애프터마켓 지속" 항목 제거 (dead code — P16)
+- `general-settings.ts` — timetable 표시 "18:00 애프터마켓 지속 전환" 항목 제거
+- `sector-settings.ts` — 주석 "애프터마켓 지속" 제거
+- `test_engine_ws_dispatch.py` — `_JIF_COUNTDOWN_KRX`/`_JIF_COUNTDOWN_NXT` 매핑 완전성 검증 추가
+- `test_daily_time_scheduler.py` — override 만료 전환, 카운트다운 엔트리 수 검증 등 보완
+
+**잔존 프로세스**: 없음 (런타임 기동 후 완전 종료 확인).
+
+**다음 세션 대기 사항**: JIF 카운트다운 복구 S-2(프론트엔드 + 테스트 보완) 구현 — 다단계 작업 워크플로우 4세션. 태스크 파일(`docs/plan_jif_countdown.md`) 섹션 4 기반 진행. S-2 착수 전 재심층 사전조사(규칙 0-2) 수행 후 사용자 승인(규칙 0) 받아 Step 2-1~2-3 구현. 참조 문서: `docs/plan_jif_countdown.md`, `docs/jif_countdown_design.md`.
+
+---
+
+## 직전 완료 작업 (이전 세션)
+
 ### JIF 카운트다운 복구 태스크 파일 작성 (2026-07-23)
 
 **세션**: 다단계 작업 워크플로우 2세션 — `jif_countdown_design.md` 기반 심층 사전조사 + 태스크 파일 작성. 코드 수정 없음 (조사·태스크 작성 전용 세션).

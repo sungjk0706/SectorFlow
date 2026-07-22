@@ -80,6 +80,32 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     _check_jif_health,
     _timetable_startup_scan,
     _JIF_STALE_WARN_SEC,
+    _get_active_override,
+    _KRX_COUNTDOWN_MAP,
+    _NXT_COUNTDOWN_MAP,
+    NXT_ACTIVE_PHASES,
+    KRX_CLOSE_COUNTDOWN_10M,
+    KRX_CLOSE_COUNTDOWN_5M,
+    KRX_CLOSE_COUNTDOWN_1M,
+    KRX_CLOSE_COUNTDOWN_10S,
+    KRX_OPEN_COUNTDOWN_10M,
+    KRX_OPEN_COUNTDOWN_5M,
+    KRX_OPEN_COUNTDOWN_1M,
+    KRX_OPEN_COUNTDOWN_10S,
+    NXT_PRE_OPEN_COUNTDOWN_10M,
+    NXT_PRE_OPEN_COUNTDOWN_5M,
+    NXT_PRE_OPEN_COUNTDOWN_1M,
+    NXT_PRE_OPEN_COUNTDOWN_10S,
+    NXT_PRE_CLOSE_COUNTDOWN_5M,
+    NXT_PRE_CLOSE_COUNTDOWN_1M,
+    NXT_PRE_CLOSE_COUNTDOWN_10S,
+    NXT_AFT_OPEN_COUNTDOWN_10M,
+    NXT_AFT_OPEN_COUNTDOWN_5M,
+    NXT_AFT_OPEN_COUNTDOWN_1M,
+    NXT_AFT_OPEN_COUNTDOWN_10S,
+    NXT_AFT_CLOSE_COUNTDOWN_5M,
+    NXT_AFT_CLOSE_COUNTDOWN_1M,
+    NXT_AFT_CLOSE_COUNTDOWN_10S,
 )
 
 
@@ -184,12 +210,6 @@ class TestIsNxtAftermarketWindow:
     def test_aftermarket_returns_true(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"nxt": "애프터마켓"}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            assert is_nxt_aftermarket_window() is True
-
-    def test_aftermarket_sustained_returns_true(self):
-        mock_state = MagicMock()
-        mock_state.market_phase = {"nxt": "애프터마켓 지속"}
         with patch("backend.app.services.engine_state.state", mock_state):
             assert is_nxt_aftermarket_window() is True
 
@@ -333,12 +353,13 @@ class TestCalcTimebasedMarketPhase:
             assert result["krx"] == "시간외 종가매매 종료 + 시간외 단일가매매 개시"
             assert result["nxt"] == "애프터마켓"
 
-    def test_krx_close_none_and_nxt_aftermarket_sustained(self):
+    def test_krx_close_none_and_nxt_aftermarket(self):
+        """18:30 — KRX '장 종료', NXT '애프터마켓' (15:40~20:00 단일 구간, 18:00 전환 제거)."""
         with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(18, 30)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True):
             result = calc_timebased_market_phase()
             assert result["krx"] == "장 종료"
-            assert result["nxt"] == "애프터마켓 지속"
+            assert result["nxt"] == "애프터마켓"
 
 
 # ── is_nxt_only_window ────────────────────────────────────────────────────────
@@ -733,6 +754,8 @@ class TestGetMarketPhase:
     def test_returns_copy_with_krx_nxt(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
+        mock_state.krx_countdown_override = None
+        mock_state.nxt_countdown_override = None
         with patch("backend.app.services.engine_state.state", mock_state):
             result = get_market_phase()
             assert result["krx"] == "정규장"
@@ -742,6 +765,8 @@ class TestGetMarketPhase:
     def test_includes_krx_alert(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓", "krx_alert": "테스트"}
+        mock_state.krx_countdown_override = None
+        mock_state.nxt_countdown_override = None
         with patch("backend.app.services.engine_state.state", mock_state):
             result = get_market_phase()
             assert result["krx_alert"] == "테스트"
@@ -750,6 +775,8 @@ class TestGetMarketPhase:
     def test_empty_krx_logs_error(self):
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "", "nxt": "메인마켓"}
+        mock_state.krx_countdown_override = None
+        mock_state.nxt_countdown_override = None
         with patch("backend.app.services.engine_state.state", mock_state):
             result = get_market_phase()
             assert result["krx"] == ""
@@ -759,6 +786,8 @@ class TestGetMarketPhase:
         """KRX 비활성 + NXT 활성 구간 → is_nxt_only=True 파생 (P10 SSOT)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "장마감", "nxt": "애프터마켓"}
+        mock_state.krx_countdown_override = None
+        mock_state.nxt_countdown_override = None
         with patch("backend.app.services.engine_state.state", mock_state):
             result = get_market_phase()
             assert result["is_nxt_only"] is True
@@ -767,6 +796,8 @@ class TestGetMarketPhase:
         """get_market_phase() 반환에 krx_countdown/nxt_countdown 필드 포함 검증 (P10/P16)."""
         mock_state = MagicMock()
         mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
+        mock_state.krx_countdown_override = None
+        mock_state.nxt_countdown_override = None
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 55)):
             result = get_market_phase()
@@ -814,9 +845,9 @@ class TestCalcCountdown:
             assert result == {"label": "프리마켓 장개시", "remaining_sec": 300}
 
     def test_nxt_countdown_aftermarket(self):
-        """NXT '애프터마켓 지속' 19:59 → remaining 60초, label '에프터마켓 장마감'."""
+        """NXT '애프터마켓' 19:59 → remaining 60초, label '에프터마켓 장마감'."""
         with patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(19, 59)):
-            result = calc_countdown("nxt", "애프터마켓 지속")
+            result = calc_countdown("nxt", "애프터마켓")
             assert result == {"label": "에프터마켓 장마감", "remaining_sec": 60}
 
     def test_nxt_countdown_over_threshold(self):
@@ -1046,7 +1077,7 @@ class TestBroadcastMarketPhase:
     def test_triggers_ws_subscribe_end_on_nxt_close(self):
         """NXT '장마감' 전환 시 _on_ws_subscribe_end() 트리거 (Step 2)."""
         mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "장마감", "nxt": "애프터마켓 지속"}
+        mock_state.market_phase = {"krx": "장마감", "nxt": "애프터마켓"}
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler.calc_timebased_market_phase", return_value={"krx": "장마감", "nxt": "장마감"}), \
              patch("backend.app.services.daily_time_scheduler.get_market_phase", return_value={"krx": "장마감", "nxt": "장마감"}), \
@@ -1912,15 +1943,15 @@ class TestRetryPipelineCatchup:
 class TestTimetableBuilder:
     """build_timetable_from_cache 단위 테스트 — 캐시 기반 동적 빌드 (Step 2 + 4세션 통합)."""
 
-    def test_build_with_cache_values_returns_12_items(self):
-        """캐시에서 4개 direct 시각을 읽어 12항목 리스트 반환 (토글 ON 기본, 09:00:30 포함)."""
+    def test_build_with_cache_values_returns_33_items(self):
+        """캐시에서 4개 direct 시각을 읽어 33항목 리스트 반환 (토글 ON, 09:00:30 + 22 countdown 포함)."""
         tt = build_timetable_from_cache({
             "timetable.realtime_reset": "07:55",
             "timetable.ws_prestart": "07:56",
             "timetable.krx_pre_subscribe": "08:58",
             "timetable.confirmed_download": "20:40",
         })
-        assert len(tt) == 12
+        assert len(tt) == 33
         # 4개 direct 항목 — 캐시 시각 반영 (time 필드는 3-tuple)
         assert tt[0]["time"] == (7, 55, 0)
         assert tt[0]["kind"] == "direct"
@@ -1931,17 +1962,20 @@ class TestTimetableBuilder:
         assert tt[3]["time"] == (8, 58, 0)
         assert tt[3]["kind"] == "direct"
         assert tt[3]["action"] is _on_krx_pre_subscribe
-        # 12번째 direct 항목 — 확정 데이터 다운로드 (4세션 통합)
-        assert tt[11]["time"] == (20, 40, 0)
-        assert tt[11]["kind"] == "direct"
-        assert tt[11]["action"] is _on_confirmed_download
-        # 8개 phase 항목 — 코드 상수 유지 (3-tuple 정규화)
+        # 마지막 direct 항목 — 확정 데이터 다운로드 (인덱스 32)
+        assert tt[32]["time"] == (20, 40, 0)
+        assert tt[32]["kind"] == "direct"
+        assert tt[32]["action"] is _on_confirmed_download
+        # 7개 phase 항목 — 코드 상수 유지 (3-tuple 정규화, 18:00 엔트리 제거)
         assert tt[2]["time"] == _to3(NXT_PREMARKET_START)
         assert tt[4]["time"] == _to3(KRX_REGULAR_START)
         assert tt[5]["time"] == NXT_MAINMARKET_START  # 09:00:30 신규 엔트리
         assert tt[5]["kind"] == "phase"
         assert "09:00:30" in tt[5]["ctx"]
-        assert tt[10]["time"] == _to3(NXT_AFTERMARKET_END)
+        assert tt[9]["time"] == _to3(NXT_AFTERMARKET_END)  # 18:00 제거로 인덱스 10→9
+        # 22개 countdown 항목 — 인덱스 10~31
+        assert tt[10]["kind"] == "countdown"
+        assert tt[31]["kind"] == "countdown"
 
     def test_build_with_empty_cache_falls_back_to_defaults(self):
         """캐시에 키 없으면 DEFAULT_USER_SETTINGS 기본값(07:58/07:59/08:59/20:40) 사용."""
@@ -1949,7 +1983,7 @@ class TestTimetableBuilder:
         assert tt[0]["time"] == (7, 58, 0)
         assert tt[1]["time"] == (7, 59, 0)
         assert tt[3]["time"] == (8, 59, 0)
-        assert tt[11]["time"] == (20, 40, 0)  # confirmed_download 기본값
+        assert tt[32]["time"] == (20, 40, 0)  # confirmed_download 기본값 (인덱스 32)
 
     def test_build_with_none_cache_value_falls_back_to_default(self):
         """캐시 값이 None/빈 문자열이면 DEFAULT_USER_SETTINGS 기본값 사용 (P20)."""
@@ -1974,10 +2008,10 @@ class TestTimetableBuilder:
         assert "07:56" in tt[1]["ctx"]
         assert "08:58" in tt[3]["ctx"]
         assert "09:00:30" in tt[5]["ctx"]  # NXT 메인마켓 진입 (초 단위)
-        assert "20:40" in tt[11]["ctx"]
+        assert "20:40" in tt[32]["ctx"]  # confirmed_download (인덱스 32)
 
     def test_build_toggle_off_skips_confirmed_download(self):
-        """scheduler_market_close_on=False 시 마지막 항목 스킵 (P16 살아있는 경로)."""
+        """scheduler_market_close_on=False 시 마지막 direct 항목 스킵 (P16 살아있는 경로)."""
         tt = build_timetable_from_cache({
             "timetable.realtime_reset": "07:55",
             "timetable.ws_prestart": "07:56",
@@ -1985,9 +2019,9 @@ class TestTimetableBuilder:
             "timetable.confirmed_download": "20:40",
             "scheduler_market_close_on": False,
         })
-        assert len(tt) == 11  # confirmed_download 항목 스킵
-        # 마지막 항목은 NXT 장마감 (phase) — confirmed_download direct 없음
-        assert tt[10]["kind"] == "phase"
+        assert len(tt) == 32  # confirmed_download 항목 스킵 (33 - 1)
+        # 마지막 항목은 countdown — confirmed_download direct 없음
+        assert tt[31]["kind"] == "countdown"
         # confirmed_download action을 가진 항목 없음
         assert not any(e.get("action") is _on_confirmed_download for e in tt)
 
@@ -2000,8 +2034,8 @@ class TestTimetableBuilder:
             "timetable.confirmed_download": "20:40",
             "scheduler_market_close_on": True,
         })
-        assert len(tt) == 12
-        assert tt[11]["action"] is _on_confirmed_download
+        assert len(tt) == 33
+        assert tt[32]["action"] is _on_confirmed_download
 
     def test_parse_hm_tuple_valid(self):
         """정상 HH:MM → (h, m) 튜플."""
@@ -2077,8 +2111,8 @@ class TestTimetableScheduler:
             assert delay == 180  # 07:58 - 07:55 = 180초
             assert mock_state.timetable_timer_handle is not None
 
-    def test_schedule_next_event_at_0930_reserves_1520(self):
-        """09:30 기동 시 15:20 이벤트 예약 (가장 가까운 미래 phase)."""
+    def test_schedule_next_event_at_0930_reserves_1510(self):
+        """09:30 기동 시 15:10 카운트다운 이벤트 예약 (가장 가까운 미래 — KRX 장마감 10분전)."""
         mock_state = MagicMock()
         mock_state.timetable_timer_handle = None
         mock_loop = MagicMock()
@@ -2089,8 +2123,8 @@ class TestTimetableScheduler:
              patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
             _schedule_next_timetable_event()
             delay = mock_loop.call_later.call_args.args[0]
-            # 15:20 - 09:30 = 5h50m = 21000초
-            assert delay == 21000
+            # 15:10 - 09:30 = 5h40m = 20400초 (KRX 장마감 10분전 countdown — 15:20 phase보다 먼저)
+            assert delay == 20400
 
     def test_schedule_next_event_at_090000_reserves_090030(self):
         """09:00:00 기동 시 09:00:30 NXT 메인마켓 예약 (delay=30초) — 핵심 신규 테스트.
@@ -2259,3 +2293,206 @@ class TestTimetableScheduler:
             await stop_daily_time_scheduler()
             timetable_handle.cancel.assert_called_once()
             assert mock_state.timetable_timer_handle is None
+
+
+# ── _get_active_override (S-1 신규) ────────────────────────────────────────────
+
+class TestGetActiveOverride:
+    """_get_active_override() 단위 테스트 — JIF override 활성/만료 판별 (P10 SSOT, P20 폴백 금지)."""
+
+    def test_no_override_returns_none(self):
+        """override 미설정 시 None."""
+        mock_state = MagicMock()
+        mock_state.krx_countdown_override = None
+        with patch("backend.app.services.engine_state.state", mock_state):
+            assert _get_active_override("krx") is None
+
+    def test_active_override_returns_dict(self):
+        """override 활성(만료 전) 시 dict 반환."""
+        mock_state = MagicMock()
+        future = _kst_now() + timedelta(seconds=30)
+        mock_state.krx_countdown_override = {"label": "정규장 장마감", "remaining_sec": 300, "expires_at": future}
+        with patch("backend.app.services.engine_state.state", mock_state):
+            result = _get_active_override("krx")
+            assert result is not None
+            assert result["label"] == "정규장 장마감"
+            assert result["remaining_sec"] == 300
+
+    def test_expired_override_returns_none(self):
+        """override 만료(expires_at 경과) 시 None (P20 — 만료된 값 사용 금지)."""
+        mock_state = MagicMock()
+        past = _kst_now() - timedelta(seconds=10)
+        mock_state.nxt_countdown_override = {"label": "에프터마켓 장마감", "remaining_sec": 60, "expires_at": past}
+        with patch("backend.app.services.engine_state.state", mock_state):
+            assert _get_active_override("nxt") is None
+
+    def test_missing_expires_at_returns_none(self):
+        """expires_at 키 누락 시 None (P20 — 정상 경로 누락 폴백 금지)."""
+        mock_state = MagicMock()
+        mock_state.krx_countdown_override = {"label": "정규장 장마감", "remaining_sec": 300}  # expires_at 없음
+        with patch("backend.app.services.engine_state.state", mock_state):
+            assert _get_active_override("krx") is None
+
+
+# ── get_market_phase override 우선 (S-1 신규) ──────────────────────────────────
+
+class TestGetMarketPhaseOverride:
+    """get_market_phase() 카운트다운 override 우선 적용 검증 (P10 SSOT — JIF 1순위)."""
+
+    def test_krx_override_takes_priority(self):
+        """KRX override 활성 시 calc_countdown() 무시하고 override 값 반환."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "정규장", "nxt": "메인마켓"}
+        future = _kst_now() + timedelta(seconds=100)
+        mock_state.krx_countdown_override = {"label": "정규장 장마감", "remaining_sec": 180, "expires_at": future}
+        mock_state.nxt_countdown_override = None
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 10)):
+            result = get_market_phase()
+            # override 값이 우선 — calc_countdown("krx", "정규장")은 15:10에 600초(10분)이나
+            # override의 180초가 우선 적용되는지 확인
+            assert result["krx_countdown"]["remaining_sec"] == 180
+            assert result["krx_countdown"]["label"] == "정규장 장마감"
+
+    def test_no_override_falls_back_to_calc(self):
+        """override 없을 시 calc_countdown() 보조 값 반환."""
+        mock_state = MagicMock()
+        mock_state.market_phase = {"krx": "시가 동시호가", "nxt": "정규장 준비"}
+        mock_state.krx_countdown_override = None
+        mock_state.nxt_countdown_override = None
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 55)):
+            result = get_market_phase()
+            assert result["krx_countdown"] == {"label": "정규장 장개시", "remaining_sec": 300}
+
+
+# ── 카운트다운 맵 보완 (S-1 신규 — 방안 4-2) ───────────────────────────────────
+
+class TestCountdownMapCompleteness:
+    """_KRX_COUNTDOWN_MAP 누락 페이즈 보완 검증 (P16 — 누락 페이즈 카운트다운 경로 활성화)."""
+
+    def test_krx_countdown_map_includes_closing_auction(self):
+        """'종가 동시호가' 페이즈 카운트다운 맵 포함 (→ 15:30)."""
+        assert "종가 동시호가" in _KRX_COUNTDOWN_MAP
+        target, label = _KRX_COUNTDOWN_MAP["종가 동시호가"]
+        assert target == (15, 30)
+
+    def test_krx_countdown_map_includes_after_hours(self):
+        """'장후 시간외' 페이즈 카운트다운 맵 포함 (→ 16:00)."""
+        assert "장후 시간외" in _KRX_COUNTDOWN_MAP
+        target, label = _KRX_COUNTDOWN_MAP["장후 시간외"]
+        assert target == (16, 0)
+
+    def test_krx_countdown_map_includes_single_price(self):
+        """'시간외 종가매매 종료 + 시간외 단일가매매 개시' 페이즈 카운트다운 맵 포함 (→ 18:00)."""
+        key = "시간외 종가매매 종료 + 시간외 단일가매매 개시"
+        assert key in _KRX_COUNTDOWN_MAP
+        target, label = _KRX_COUNTDOWN_MAP[key]
+        assert target == (18, 0)
+
+    def test_nxt_countdown_map_uses_aftermarket_not_sustained(self):
+        """_NXT_COUNTDOWN_MAP이 '애프터마켓' 사용 (P23 — '애프터마켓 지속' 제거)."""
+        assert "애프터마켓" in _NXT_COUNTDOWN_MAP
+        assert "애프터마켓 지속" not in _NXT_COUNTDOWN_MAP
+
+    def test_nxt_active_phases_no_sustained(self):
+        """NXT_ACTIVE_PHASES에 '애프터마켓 지속' 없음 (P23 페이즈명 통일)."""
+        assert "애프터마켓 지속" not in NXT_ACTIVE_PHASES
+        assert "애프터마켓" in NXT_ACTIVE_PHASES
+
+
+# ── 카운트다운 타임테이블 엔트리 (S-1 신규 — 방안 2) ─────────────────────────────
+
+class TestCountdownTimetableEntries:
+    """build_timetable_from_cache() 카운트다운 엔트리 존재 검증 (P16 살아있는 경로)."""
+
+    def _build_entries(self):
+        from backend.app.core.settings_defaults import DEFAULT_USER_SETTINGS
+        return build_timetable_from_cache(dict(DEFAULT_USER_SETTINGS))
+
+    def test_krx_open_countdown_entries_exist(self):
+        """KRX 장개시 카운트다운 엔트리 4개(10분/5분/1분/10초) 존재."""
+        entries = self._build_entries()
+        countdown_krx_open = [
+            e for e in entries
+            if e.get("kind") == "countdown" and e.get("market") == "krx" and "장개시" in e["ctx"]
+        ]
+        assert len(countdown_krx_open) == 4
+
+    def test_krx_close_countdown_entries_exist(self):
+        """KRX 장마감 카운트다운 엔트리 4개(10분/5분/1분/10초) 존재."""
+        entries = self._build_entries()
+        countdown_krx_close = [
+            e for e in entries
+            if e.get("kind") == "countdown" and e.get("market") == "krx" and "장마감" in e["ctx"]
+        ]
+        assert len(countdown_krx_close) == 4
+
+    def test_nxt_premarket_countdown_entries_exist(self):
+        """NXT 프리마켓 장개시/장마감 카운트다운 엔트리 존재."""
+        entries = self._build_entries()
+        countdown_nxt_pre = [
+            e for e in entries
+            if e.get("kind") == "countdown" and e.get("market") == "nxt" and "프리마켓" in e["ctx"]
+        ]
+        # 장개시 4개(10분/5분/1분/10초) + 장마감 3개(5분/1분/10초 — 10분전 없음)
+        assert len(countdown_nxt_pre) == 7
+
+    def test_nxt_aftermarket_countdown_entries_exist(self):
+        """NXT 에프터마켓 장개시/장마감 카운트다운 엔트리 존재."""
+        entries = self._build_entries()
+        countdown_nxt_aft = [
+            e for e in entries
+            if e.get("kind") == "countdown" and e.get("market") == "nxt" and "에프터마켓" in e["ctx"]
+        ]
+        # 장개시 4개(10분/5분/1분/10초) + 장마감 3개(5분/1분/10초 — 10분전 없음)
+        assert len(countdown_nxt_aft) == 7
+
+    def test_no_18pm_phase_entry(self):
+        """18:00 phase 엔트리 제거됨 (P23 — '애프터마켓 지속' 전환 제거)."""
+        entries = self._build_entries()
+        phase_18pm = [
+            e for e in entries
+            if e.get("kind") == "phase" and "18:00" in e["ctx"]
+        ]
+        assert len(phase_18pm) == 0
+
+    def test_countdown_entries_have_market_key(self):
+        """모든 countdown 엔트리에 'market' 키 존재 (P23 엔트리 구조 일관)."""
+        entries = self._build_entries()
+        for e in entries:
+            if e.get("kind") == "countdown":
+                assert "market" in e, f"countdown 엔트리에 market 키 없음: {e}"
+                assert e["market"] in ("krx", "nxt"), f"잘못된 market 값: {e['market']}"
+
+
+# ── 카운트다운 임계 시각 상수 (S-1 신규) ────────────────────────────────────────
+
+class TestCountdownConstants:
+    """카운트다운 임계 시각 상수 값 검증 (P10 SSOT — 거래소 규정 코드 상수)."""
+
+    def test_krx_close_countdown_constants(self):
+        """KRX 장마감 카운트다운 임계 시각 — 10분/5분/1분/10초."""
+        assert KRX_CLOSE_COUNTDOWN_10M == (15, 10)
+        assert KRX_CLOSE_COUNTDOWN_5M == (15, 15)
+        assert KRX_CLOSE_COUNTDOWN_1M == (15, 19)
+        assert KRX_CLOSE_COUNTDOWN_10S == (15, 19, 50)
+
+    def test_krx_open_countdown_constants(self):
+        """KRX 장개시 카운트다운 임계 시각 — 10분/5분/1분/10초."""
+        assert KRX_OPEN_COUNTDOWN_10M == (8, 50)
+        assert KRX_OPEN_COUNTDOWN_5M == (8, 55)
+        assert KRX_OPEN_COUNTDOWN_1M == (8, 59)
+        assert KRX_OPEN_COUNTDOWN_10S == (8, 59, 50)
+
+    def test_nxt_pre_close_countdown_constants(self):
+        """NXT 프리마켓 장마감 카운트다운 임계 — 5분/1분/10초 (10분전 없음)."""
+        assert NXT_PRE_CLOSE_COUNTDOWN_5M == (8, 45)
+        assert NXT_PRE_CLOSE_COUNTDOWN_1M == (8, 49)
+        assert NXT_PRE_CLOSE_COUNTDOWN_10S == (8, 49, 50)
+
+    def test_nxt_aft_close_countdown_constants(self):
+        """NXT 에프터마켓 장마감 카운트다운 임계 — 5분/1분/10초 (10분전 없음)."""
+        assert NXT_AFT_CLOSE_COUNTDOWN_5M == (19, 55)
+        assert NXT_AFT_CLOSE_COUNTDOWN_1M == (19, 59)
+        assert NXT_AFT_CLOSE_COUNTDOWN_10S == (19, 59, 50)

@@ -108,6 +108,10 @@ class EngineState:
         self.midnight_timer_handle: asyncio.TimerHandle | None = None
         self.timetable_timer_handle: asyncio.TimerHandle | None = None  # 타임테이블 단일 타이머
         self.last_jif_received_at: datetime | None = None               # JIF 헬스체크용
+        # ── JIF 카운트다운 override (P10 SSOT — JIF 1순위, 시간표 보조) ──
+        # {label, remaining_sec, expires_at} | None — 만료 시 _get_active_override()가 None 반환 (P20)
+        self.krx_countdown_override: dict | None = None
+        self.nxt_countdown_override: dict | None = None
         # ── 사전 트리거 멱등성 가드 (안 D 4단계 — 날짜 기반, P22 데이터 정합성) ──
         self.last_realtime_reset_date: str = ""        # 실시간 필드 초기화 실행 날짜 (YYYYMMDD)
         self.last_ws_subscribe_start_date: str = ""    # WS 구독 시작 실행 날짜 (YYYYMMDD)
