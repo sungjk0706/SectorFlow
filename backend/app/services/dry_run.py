@@ -11,7 +11,6 @@ from __future__ import annotations
 from typing import Optional
 import asyncio
 import logging
-from backend.app.core.settings_file import update_settings
 from backend.app.services import settlement_engine
 logger = logging.getLogger(__name__)
 
@@ -326,7 +325,8 @@ async def clear() -> None:
 
 async def set_virtual_deposit(amount: int) -> None:
     """가상 예수금 설정값 저장."""
-    await update_settings({
+    from backend.app.core.settings_store import apply_settings_updates
+    await apply_settings_updates({
         "test_virtual_deposit": amount,
         "test_virtual_balance": amount,
     })

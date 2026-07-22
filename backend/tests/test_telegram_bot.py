@@ -839,7 +839,7 @@ class TestToggleSettingBool:
     async def test_toggle_false_to_true(self):
         bot = TelegramBot()
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.core.settings_file.update_settings", new_callable=AsyncMock) as mock_update, \
+             patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock) as mock_update, \
              patch("backend.app.services.engine_config.refresh_engine_integrated_system_settings_cache", new_callable=AsyncMock) as mock_refresh, \
              patch("backend.app.services.engine_account_notify.notify_desktop_header_refresh", new_callable=AsyncMock) as mock_hdr, \
              patch("backend.app.services.engine_account_notify.notify_desktop_settings_toggled", new_callable=AsyncMock) as mock_tgl:
@@ -855,7 +855,7 @@ class TestToggleSettingBool:
     async def test_toggle_true_to_false(self):
         bot = TelegramBot()
         with patch("backend.app.services.engine_state.state") as mock_state, \
-             patch("backend.app.core.settings_file.update_settings", new_callable=AsyncMock) as mock_update, \
+             patch("backend.app.core.settings_store.apply_settings_updates", new_callable=AsyncMock) as mock_update, \
              patch("backend.app.services.engine_config.refresh_engine_integrated_system_settings_cache", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account_notify.notify_desktop_header_refresh", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account_notify.notify_desktop_settings_toggled", new_callable=AsyncMock):

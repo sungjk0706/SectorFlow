@@ -30,20 +30,19 @@ def _dec(v) -> str:
 
 
 def _pick_broker_credentials(merged: dict) -> dict:
-    """키움 + 동적으로 발견된 모든 증권사의 자격증명을 수집 (복호화 + 타입 정규화)."""
+    """동적으로 발견된 모든 증권사의 자격증명을 수집 (복호화 + 타입 정규화).
+    kiwoom 특수 분기 없이 모든 증권사를 균일하게 처리 (P4 준수).
+    현재 선택된 증권사(broker)는 자격증명 키가 없어도 빈 값으로 포함 —
+    connector가 키 존재 여부에 관계없이 현재 증권사 자격을 참조할 수 있도록 보장."""
     result: dict = {}
-    result["kiwoom_app_key"] = _dec(merged.get("kiwoom_app_key"))
-    result["kiwoom_app_secret"] = _dec(merged.get("kiwoom_app_secret"))
-    result["kiwoom_account_no"] = str(merged.get("kiwoom_account_no") or "").strip()
-
     broker_names = {k.split("_")[0] for k in merged if k.endswith("_app_key")}
+    current_broker = str(merged.get("broker", "")).strip().lower()
+    if current_broker:
+        broker_names.add(current_broker)
     for b_name in broker_names:
-        if b_name == "kiwoom":
-            continue
         result[f"{b_name}_app_key"] = _dec(merged.get(f"{b_name}_app_key"))
         result[f"{b_name}_app_secret"] = _dec(merged.get(f"{b_name}_app_secret"))
         result[f"{b_name}_account_no"] = str(merged.get(f"{b_name}_account_no") or "").strip()
-
     return result
 
 

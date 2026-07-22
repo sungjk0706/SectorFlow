@@ -456,15 +456,3 @@ async def save_settings(data: dict, delete_keys: list[str] | None = None) -> Non
             await conn.rollback()
             logger.error("[설정] DB 저장 실패: %s", e, exc_info=True)
             raise
-
-
-async def update_settings(updates: dict) -> dict:
-    """기존 설정에 업데이트를 병합하여 DB 저장.
-    전체 로드/저장 대신 변경된 필드만 증분 저장."""
-    to_save = {k: v for k, v in updates.items() if v is not None}
-    if to_save:
-        await save_selected_settings(to_save)
-    # 반환용: 기존 전체 설정 + 업데이트 병합
-    current = await load_integrated_system_settings()
-    current.update({k: v for k, v in updates.items() if v is not None or k in current})
-    return current
