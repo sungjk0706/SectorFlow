@@ -353,14 +353,21 @@ def get_order_time_block_status() -> tuple[bool, str]:
     WS 브로드캐스트용 — 헤더 칩 표시에 사용 (P21 사용자 투명성).
     is_order_blocked_by_time(stk_cd)와 동일한 페이즈 판별을 사용하되
     종목별 is_nxt_enabled 분기 없이 페이즈 수준에서 차단 여부와 사유 반환.
+    order_time_guard_on OFF 시 차단하지 않으므로 배지도 띄우지 않음 (P16 살아있는 경로).
 
     반환 (blocked, reason):
       - (False, ""): KRX 활성 — 전부 허용
-      - (True, "NXT 전용 구간 (KRX 단독 종목 차단)"): KRX 비활성 + NXT 활성 — NXT 종목은 허용
-      - (True, "동시호가/장외 시간대"): 양쪽 비활성 — 전부 차단
+      - (True, "KRX 단독 종목 차단 · NXT 가능"): KRX 비활성 + NXT 활성 — KRX 단독 종목 차단, NXT 종목 허용
+      - (True, "KRX·NXT 모두 주문 불가"): 양쪽 비활성 — 전부 차단
+      - (False, ""): order_time_guard_on OFF — 차단 없음
       - (False, ""): 빈 문자열 phase — 에러 로그 (P20 폴백 금지)
       - (False, ""): 휴장일 — 장 안 열리므로 칩 표시 불필요 (P21 사용자 투명성)
     """
+    # 설정 OFF 시 차단 없음 — 배지도 표시하지 않음 (P16 살아있는 경로).
+    settings = engine_state.state.integrated_system_settings_cache or {}
+    if not settings.get("order_time_guard_on", True):
+        return (False, "")
+
     mp = engine_state.state.market_phase
     krx = mp.get("krx", "")
     nxt = mp.get("nxt", "")
@@ -376,8 +383,8 @@ def get_order_time_block_status() -> tuple[bool, str]:
     # 본 판별 — 페이즈 수준 (종목별 분기 없음)
     if krx in KRX_INACTIVE_PHASES:
         if nxt in NXT_ACTIVE_PHASES:
-            return (True, "NXT 전용 구간 (KRX 단독 종목 차단)")
-        return (True, "동시호가/장외 시간대")
+            return (True, "KRX 단독 종목 차단 · NXT 가능")
+        return (True, "KRX·NXT 모두 주문 불가")
     return (False, "")
 
 

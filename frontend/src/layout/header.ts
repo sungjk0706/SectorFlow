@@ -371,7 +371,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
       orderTimeBlockedChip.style.background = `${COLOR.warningBg}`
       orderTimeBlockedChip.style.color = `${COLOR.warning}`
       orderTimeBlockedChip.style.border = `1px solid ${COLOR.warning}40`
-      orderTimeBlockedChip.textContent = `⏸ 주문 일시중단(${orderTimeBlocked.reason})`
+      orderTimeBlockedChip.textContent = `⏸ ${orderTimeBlocked.reason}`
     } else {
       orderTimeBlockedChip.style.display = 'none'
     }
