@@ -6,6 +6,27 @@
 
 ## 직전 완료 작업
 
+### F-04-d: P2 — sector-settings.ts 구조 분할 2건 (2026-07-22)
+
+**수정 파일 1개**:
+- `frontend/src/pages/sector-settings.ts` (503→466줄, 37줄 감소): F04-05 `mount()` 261줄 → 24줄, 7개 빌더 함수 + 2개 구독 함수 분할 (buildFilterSection/buildThresholdSection/buildReceiveProgressSection/buildCutoffSection/buildMaxScoreDisplay/buildBonusSection/buildMaxTargetsSection + startUiStoreSubscription/startHotStoreSubscription) — **P24**. F04-17 파일 503줄 → 466줄 (500줄 기준 해결) — **P24**. 가산점 슬라이더 3블록 중복 (각 13줄 × 3 = 39줄, 슬라이더 설정 완전 동일) → `createBonusSliderBlock` 헬퍼 1개 + 호출 3줄로 통합, 기존 `createBonusSliderRow` 제거 — **P23/P24**
+
+**해결 원칙**: P23 (일관성 — buy-settings.ts 분할 패턴과 동일), P24 (단순성)
+
+**검증**:
+- `npm run typecheck` (tsc --noEmit) — 성공 (exit code 0)
+- `npm run build` (vite build) — 성공 (3.94s, exit code 0)
+- 모든 함수 50줄 이하 (최장 buildReceiveProgressSection 39줄, createBonusSliderBlock 38줄)
+- 파일 466줄 (500줄 기준 충족)
+- 잔여 `createBonusSliderRow` grep 0건, `createDualLabelSlider` 직접 호출 1건(헬퍼 내)만
+
+**화면 영향**: 없음. 업종순위 설정 패널 표시/입력/저장 동작 동일. 구조 개선만 수행.
+
+**보류 항목 (F-04-d 범위외, 추후 세션)**:
+- F-04-e (별도): stock-classification.ts + general-settings.ts 파일 분할 (구조 변경, 다단계 워크플로우 적용)
+
+---
+
 ### F-04-c: P2 — 매수/매도 설정 페이지 buy-settings.ts + sell-settings.ts 4건 (2026-07-22)
 
 **수정 파일 2개**:
@@ -78,19 +99,22 @@
 
 ## 현재 진행 상황
 
-### 아키텍처 전수 조사 진행률: 28/30 세션 완료 (93%, F-04-c 완료)
+### 아키텍처 전수 조사 진행률: 29/30 세션 완료 (97%, F-04-d 완료)
 
 | 상태 | 세션 |
 |------|------|
 | 완료 | B-01~B-12, B-14~B-23, F-01, F-02, F-03 |
-| 부분 완료 | B-13 (3건 해결, 5건 보류 LOW/INFO), F-04 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 해결, 잔여 F-04-d/e) |
+| 부분 완료 | B-13 (3건 해결, 5건 보류 LOW/INFO), F-04 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 해결, 잔여 F-04-e) |
 | 미시작 | F-05, F-06, F-07 |
 
-**다음 세션**: F-04-d (P2 — sector-settings.ts: F04-05 mount 함수 길이, F04-17 파일 길이)
+**다음 세션**: F-04-e (P2 — stock-classification.ts + general-settings.ts 파일 분할, 구조 변경 다단계 워크플로우 적용)
 
 ---
 
 ## 미해결 문제
+
+### F-04-d 보류 항목 (F-04-d 범위외, 추후 세션)
+- F-04-e (별도): stock-classification.ts + general-settings.ts 파일 분할 (구조 변경, 다단계 워크플로우 적용)
 
 ### F-04-c 보류 항목 (F-04-c 범위외, 추후 세션)
 - F04-14 (P23, INFO): 저장 호출 패턴 3종 혼재 (buy/sell: saveHelper.saveImmediate 미await / general: async/await saveSection / sector: autoSave 디바운스) — saveSection이 내부 try/catch로 reject하지 않으므로 안전. F-07 범위(settings-save.ts)와 연계 검토 권장
@@ -98,9 +122,10 @@
 
 ### F-04-b 보류 항목 (F-04-b 범위외, 추후 세션)
 - F04-02/F04-04 (P24): general-settings.ts 파일 1448줄 / 함수 7개 50줄 초과 — 파일 분할은 별도 세션 필요 (구조 변경)
-- F04-05 (P24): sector-settings.ts mount 함수 길이 — 분할 검토
 - F04-06/F04-07 (P24): buy-settings/sell-settings 함수 길이 — 분할 검토
 - F04-12/F04-13 (P20): buy-settings/sell-settings `Number() || 0` 폴백 — 사용자 설계 로직 판단 필요
+- ~~F04-05 (P24): sector-settings.ts mount 함수 길이~~ — **F-04-d 해결** (mount 261→24줄)
+- ~~F04-17 (P24): sector-settings.ts 파일 길이~~ — **F-04-d 해결** (503→466줄)
 
 ### F-04-a 보류 항목 (F-04-a 범위외, 추후 세션)
 - F04-01/F04-03 (P24): stock-classification.ts 파일 1597줄 / 함수 4개 50줄 초과 — 파일 분할은 별도 세션 필요 (구조 변경)
