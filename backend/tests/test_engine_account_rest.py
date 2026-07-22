@@ -285,6 +285,18 @@ class TestBuildAccountSnapshotMeta:
         assert result["position_count"] == 2
         assert result["price_source"] == "websocket"
 
+    def test_accumulated_investment_passed_through(self):
+        snap = {"accumulated_investment": 12_000_000, "initial_deposit": 10_000_000}
+        totals = {"total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_sell": 0, "total_rate": 0.0}
+        result = build_account_snapshot_meta(snap, totals, [], True, "test")
+        assert result["accumulated_investment"] == 12_000_000
+        assert result["initial_deposit"] == 10_000_000
+
+    def test_accumulated_investment_none_when_absent(self):
+        totals = {"total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_sell": 0, "total_rate": 0.0}
+        result = build_account_snapshot_meta({}, totals, [], True, "real")
+        assert result["accumulated_investment"] is None
+
     def test_price_source_rest(self):
         result = build_account_snapshot_meta({}, {"total_eval": 0, "total_pnl": 0, "total_buy": 0, "total_sell": 0, "total_rate": 0.0}, [], False, "test")
         assert result["price_source"] == "rest_bootstrap"

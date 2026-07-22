@@ -6,6 +6,25 @@
 
 ## 직전 완료 작업
 
+### 백엔드 #3: build_account_snapshot_meta accumulated_investment 누락 수정 (2026-07-22)
+
+**세션**: 백엔드 정합성 버그 수정 1단계. P22 데이터 정합성 회복.
+
+**수정 파일 2개**:
+- `backend/app/services/engine_account_rest.py:131`: `build_account_snapshot_meta` 반환 dict에 `"accumulated_investment": account_snapshot.get("accumulated_investment")` 1줄 추가. 기존에 누락되어 호출부(engine_account.py:330)에서 `state.account_snapshot["accumulated_investment"]`를 set한 직후 반환 dict로 덮어쓰기(line 350)하면서 값이 사라지던 P22 위반 해결. 실전모드에서는 account_snapshot에 키가 없으므로 None 전달 (P20 폴백 금지 준수 — 0으로 덮지 않음).
+- `backend/tests/test_engine_account_rest.py:288-302`: 새 테스트 2개 추가 — `test_accumulated_investment_passed_through` (테스트모드 값 전달 검증), `test_accumulated_investment_none_when_absent` (실전모드 None 전달 검증).
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| 백엔드 #3 | P22 | `build_account_snapshot_meta`가 매번 새 dict 반환 시 `accumulated_investment` 키 누락. 호출부에서 set 후 덮어쓰기로 값 소실 → broadcast가 None 전송. 반환 dict에 키 추가로 단일 흐름 유지 (settlement_engine → state.account_snapshot → broadcast → 프론트엔드). |
+
+**검증**: `py_compile` OK. `pytest test_engine_account_rest.py` 63/63 passed (새 테스트 2개 포함). `pytest test_engine_account.py + test_engine_account_notify.py + test_settlement_verification.py` 62/62 passed. 런타임 기동(`-W error::RuntimeWarning`) 정상 — 에러/Traceback/RuntimeWarning 없음, "누적투자금: 10,000,000원" 정상 로드. 잔존 프로세스 0건.
+
+**화면 영향**: 현재 화면 변화 없음 (프론트엔드 F05-01이 `initial_deposit` 사용 중이며 테스트모드에서는 initial_deposit == accumulated_investment). 향후 프론트엔드가 `accumulated_investment` 직접 사용 시 정확한 누적 투자금 표시 가능.
+
+## 직전 완료 작업 (이전 세션)
+
 ### F-06-g (F06-03): ui-styles.ts 파일 분할 (2026-07-22)
 
 **세션**: F-06 (P3 — 공통 컴포넌트) 1단계. F06-03 (P24 단순성) 해결.
@@ -66,8 +85,8 @@
 
 ## 미해결 문제 (발견 즉시 기록)
 
-### 백엔드 버그 (F-05-a 조사 중 발견)
-- `backend/app/services/engine_account_rest.py:125-144` `build_account_snapshot_meta`가 응답 dict에서 `accumulated_investment`를 **누락**. 테스트모드에서 `state.account_snapshot["accumulated_investment"]`를 set한 후 `build_account_snapshot_meta`가 새 dict을 반환하므로 누락됨. 프론트엔드 F05-01은 `initial_deposit`만 사용하여 우회(테스트모드에서는 동일 값이므로 UI 변화 없음). 백엔드 수정은 별도 세션 필요.
+### 백엔드 버그 (F-05-a 조사 중 발견) — 해결됨 (2026-07-22)
+- ~~`backend/app/services/engine_account_rest.py:125-144` `build_account_snapshot_meta`가 응답 dict에서 `accumulated_investment`를 **누락**~~ → 해결 (백엔드 #3 세션에서 반환 dict에 키 추가).
 
 ## 다음 세션 작업
 
@@ -77,8 +96,7 @@
 - `profit-overview.ts` 742줄 (500줄 초과) — `renderSectorStockPnl` 146줄 분할 포함
 - `profit-detail.ts` 674줄 (500줄 초과) — 별도 세션에서 추가 분할 검토
 
-**백엔드 (별도 세션)**:
-- `engine_account_rest.py:125-144` `accumulated_investment` 누락 수정 (미해결 문제 참조)
+**백엔드**: 없음 (accumulated_investment 누락 수정 완료)
 
 ---
 
@@ -226,8 +244,8 @@
 
 ## 미해결 문제 (발견 즉시 기록)
 
-### 백엔드 버그 (F-05-a 조사 중 발견)
-- `backend/app/services/engine_account_rest.py:125-144` `build_account_snapshot_meta`가 응답 dict에서 `accumulated_investment`를 **누락**. 테스트모드에서 `state.account_snapshot["accumulated_investment"]`를 set한 후 `build_account_snapshot_meta`가 새 dict을 반환하므로 누락됨. 프론트엔드 F05-01은 `initial_deposit`만 사용하여 우회(테스트모드에서는 동일 값이므로 UI 변화 없음). 백엔드 수정은 별도 세션 필요.
+### 백엔드 버그 (F-05-a 조사 중 발견) — 해결됨 (2026-07-22)
+- ~~`backend/app/services/engine_account_rest.py:125-144` `build_account_snapshot_meta`가 응답 dict에서 `accumulated_investment`를 **누락**~~ → 해결 (백엔드 #3 세션에서 반환 dict에 키 추가).
 
 ## 작업 여력
 
