@@ -31,7 +31,6 @@ def _mock_settings(
         broker_config = {
             "websocket": broker,
             "order": broker,
-            "account": broker,
             "sector": broker,
             "auth": broker,
         }
@@ -40,7 +39,6 @@ def _mock_settings(
         full = {
             "websocket": broker,
             "order": broker,
-            "account": broker,
             "sector": broker,
             "auth": broker,
         }
@@ -153,7 +151,7 @@ class TestInitAndLoadSpecs:
         }
         settings = _mock_settings(
             broker="kiwoom",
-            broker_config={"account": "ls"},
+            broker_config={"order": "ls"},
             preloaded_specs=specs,
         )
         router, _ = _make_router(settings=settings)
@@ -201,7 +199,7 @@ class TestBuild:
         """broker_config에서 특정 feature의 broker를 다르게 설정."""
         settings = _mock_settings(
             broker="kiwoom",
-            broker_config={"account": "ls"},
+            broker_config={"order": "ls"},
         )
         # _create_provider가 feature별로 다른 provider 반환
         providers = {feat: MagicMock() for feat in FEATURES}
@@ -216,17 +214,13 @@ class TestBuild:
             mock_state.integrated_system_settings_cache = settings
             router = BrokerRouter()
 
-        assert router._broker_map["account"] == "ls"
-        assert router._broker_map["order"] == "kiwoom"
+        assert router._broker_map["order"] == "ls"
+        assert router._broker_map["auth"] == "kiwoom"
 
 
 # ── Property 접근자 ────────────────────────────────────────────────────────────
 
 class TestProperties:
-    def test_account_property(self):
-        router, _ = _make_router()
-        assert router.account is router._providers["account"]
-
     def test_order_property(self):
         router, _ = _make_router()
         assert router.order is router._providers["order"]
@@ -259,31 +253,6 @@ class TestValidate:
         with patch("backend.app.services.engine_state.state", mock_state):
             messages = router.validate()
         assert len(messages) == 0
-
-    def test_validate_order_account_different_brokers(self):
-        """order와 account가 다른 증권사면 경고 메시지."""
-        settings = _mock_settings(
-            broker="kiwoom",
-            broker_config={"account": "ls"},
-            app_key="key",
-            app_secret="secret",
-        )
-        # ls의 API 키도 추가
-        settings["ls_app_key"] = "ls_key"
-        settings["ls_app_secret"] = "ls_secret"
-
-        router, mock_state = _make_router(settings=settings)
-        with patch("backend.app.services.engine_state.state", mock_state):
-            messages = router.validate()
-        assert any("동일 증권사" in m for m in messages)
-
-    def test_validate_order_account_same_broker_no_message(self):
-        """order와 account가 같은 증권사면 메시지 없음."""
-        settings = _mock_settings(app_key="key", app_secret="secret")
-        router, mock_state = _make_router(settings=settings)
-        with patch("backend.app.services.engine_state.state", mock_state):
-            messages = router.validate()
-        assert not any("동일 증권사" in m for m in messages)
 
     def test_validate_returns_list(self):
         """validate는 항상 list를 반환함."""
@@ -426,18 +395,18 @@ class TestInvalidatePage:
         """특정 페이지의 캐시만 무효화."""
         router, _ = _make_router()
         router._page_providers[("trading", "order")] = MagicMock()
-        router._page_providers[("account", "auth")] = MagicMock()
+        router._page_providers[("realtime_quote", "websocket")] = MagicMock()
 
         router.invalidate_page("trading")
 
         assert ("trading", "order") not in router._page_providers
-        assert ("account", "auth") in router._page_providers
+        assert ("realtime_quote", "websocket") in router._page_providers
 
     def test_invalidate_all_pages(self):
         """page=None → 전체 무효화."""
         router, _ = _make_router()
         router._page_providers[("trading", "order")] = MagicMock()
-        router._page_providers[("account", "auth")] = MagicMock()
+        router._page_providers[("realtime_quote", "websocket")] = MagicMock()
 
         router.invalidate_page(None)
 
@@ -545,7 +514,7 @@ class TestGetSpec:
         specs = {"kiwoom": {"role_mappings": {"tr_deposit": "KT00001"}}}
         settings = _mock_settings(preloaded_specs=specs)
         router, _ = _make_router(settings=settings)
-        result = router.get_spec("tr_deposit", feature="account")
+        result = router.get_spec("tr_deposit", feature="order")
         assert result == "KT00001"
 
     def test_get_spec_without_feature(self):
@@ -561,7 +530,7 @@ class TestGetSpec:
         specs = {"kiwoom": {"role_mappings": {"tr_deposit": "KT00001"}}}
         settings = _mock_settings(preloaded_specs=specs)
         router, _ = _make_router(settings=settings)
-        result = router.get_spec("nonexistent_key", feature="account")
+        result = router.get_spec("nonexistent_key", feature="order")
         assert result is None
 
     def test_get_spec_empty_broker_map_returns_none(self):
@@ -577,7 +546,7 @@ class TestGetSpec:
         """해당 broker의 spec이 없으면 None."""
         settings = _mock_settings(preloaded_specs={})
         router, _ = _make_router(settings=settings)
-        result = router.get_spec("tr_deposit", feature="account")
+        result = router.get_spec("tr_deposit", feature="order")
         assert result is None
 
     def test_get_spec_value_is_none_returns_none(self):
@@ -585,7 +554,7 @@ class TestGetSpec:
         specs = {"kiwoom": {"role_mappings": {"tr_deposit": None}}}
         settings = _mock_settings(preloaded_specs=specs)
         router, _ = _make_router(settings=settings)
-        result = router.get_spec("tr_deposit", feature="account")
+        result = router.get_spec("tr_deposit", feature="order")
         assert result is None
 
     def test_get_spec_value_converted_to_str(self):
@@ -593,7 +562,7 @@ class TestGetSpec:
         specs = {"kiwoom": {"role_mappings": {"tr_deposit": 12345}}}
         settings = _mock_settings(preloaded_specs=specs)
         router, _ = _make_router(settings=settings)
-        result = router.get_spec("tr_deposit", feature="account")
+        result = router.get_spec("tr_deposit", feature="order")
         assert result == "12345"
         assert isinstance(result, str)
 
@@ -617,8 +586,3 @@ class TestPageFeatures:
     def test_page_features_contains_trading(self):
         assert "trading" in BrokerRouter.PAGE_FEATURES
         assert "order" in BrokerRouter.PAGE_FEATURES["trading"]
-
-    def test_page_features_contains_account(self):
-        assert "account" in BrokerRouter.PAGE_FEATURES
-        assert "account" in BrokerRouter.PAGE_FEATURES["account"]
-        assert "auth" in BrokerRouter.PAGE_FEATURES["account"]

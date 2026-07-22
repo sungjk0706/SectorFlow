@@ -530,8 +530,8 @@ class KiwoomConnector(BrokerConnector):
 def create_kiwoom_connector() -> KiwoomConnector:
     """단일 소스 진리: state.integrated_system_settings_cache 직접 사용."""
     from backend.app.services.engine_state import state
-    app_key = (state.integrated_system_settings_cache.get("kiwoom_app_key_real") or state.integrated_system_settings_cache.get("kiwoom_app_key") or "").strip()
-    app_secret = (state.integrated_system_settings_cache.get("kiwoom_app_secret_real") or state.integrated_system_settings_cache.get("kiwoom_app_secret") or "").strip()
+    app_key = (state.integrated_system_settings_cache.get("kiwoom_app_key") or "").strip()
+    app_secret = (state.integrated_system_settings_cache.get("kiwoom_app_secret") or "").strip()
     if not app_key or not app_secret:
         raise ValueError("키움 app_key, app_secret이 설정되지 않았습니다")
     return KiwoomConnector(app_key=app_key, app_secret=app_secret)

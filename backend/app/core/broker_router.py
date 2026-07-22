@@ -9,7 +9,6 @@ BrokerRouter — 기능별 Provider 매핑 중앙 라우터.
 from __future__ import annotations
 import logging
 from backend.app.core.broker_providers import (
-    AccountProvider,
     AuthProvider,
     OrderProvider,
     WebSocketProvider,
@@ -23,11 +22,10 @@ from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
 
 logger = logging.getLogger(__name__)
 
-FEATURES = ("account", "order", "auth", "websocket")
+FEATURES = ("order", "auth", "websocket")
 
 # 기능 → 한글 표시 이름
 _FEATURE_DISPLAY: dict[str, str] = {
-    "account": "계좌",
     "order": "주문",
     "auth": "인증",
     "websocket": "웹소켓",
@@ -48,7 +46,6 @@ class BrokerRouter:
     PAGE_FEATURES: dict[str, tuple[str, ...]] = {
         "realtime_quote":  ("websocket",),
         "trading":         ("order",),
-        "account":         ("account", "auth"),
     }
 
     def __init__(self):
@@ -115,10 +112,6 @@ class BrokerRouter:
             self._broker_map[feature] = broker_name
 
     # ── Property 접근자 (dict lookup O(1)) ────────────────────────────
-
-    @property
-    def account(self) -> AccountProvider:
-        return self._providers["account"]  # type: ignore[return-value]
 
     @property
     def order(self) -> OrderProvider:

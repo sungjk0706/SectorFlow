@@ -3,8 +3,8 @@
 키움증권 REST/REAL04 응답 파싱 — P4(증권사명 침투 금지)에 따라 공통 services에서 분리.
 
 키움 전용 파싱 로직(parse_kt00001_deposit, parse_kt00018_balance, real04_official_*)은
-본 모듈에 단일 진실 소스로 보관한다. KiwoomAccountProvider 및 engine_account 계좌
-조회 경로 모두 이 함수들을 재사용한다.
+본 모듈에 단일 진실 소스로 보관한다. engine_account 계좌
+조회 경로가 이 함수들을 재사용한다.
 
 전역 엔진 상태 없음 — 동일 입력에 동일 출력만 보장.
 """

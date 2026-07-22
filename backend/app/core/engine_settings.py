@@ -29,70 +29,20 @@ def _dec(v) -> str:
     return s
 
 
-def _pick_real_or_legacy(merged: dict, real_key: str, legacy_key: str, field_name: str) -> str:
-    """real 키 우선, real 키가 None/빈값이면 레거시 폴백 (정상 마이그레이션).
-    real 키가 암호문인데 복호화 실패 → 레거시 폴백 금지 + 에러 로그 (P21 사용자 투명성)."""
-    _raw_real = merged.get(real_key)
-    if _raw_real is not None and str(_raw_real).strip() != "":
-        _dec_real = _dec(_raw_real)
-        if _dec_real != "":
-            return _dec_real
-        if str(_raw_real).startswith("gAAAA"):
-            logger.error(
-                "[설정] %s real 키 복호화 실패 — 레거시 폴백 금지 (P21). "
-                "사용자가 real 키를 설정했으나 복호화 불가 → 인증 차단 필요.",
-                field_name,
-            )
-            return ""
-    return _dec(merged.get(legacy_key))
-
-
-def _pick_account_no(merged: dict, real_key: str, legacy_key: str) -> str:
-    """real 계좌번호 우선, 없으면 레거시 계좌번호 폴백."""
-    _ra = merged.get(real_key)
-    if _ra is not None and str(_ra).strip() != "":
-        return str(_ra).strip()
-    return str(merged.get(legacy_key) or "").strip()
-
-
-def _pick_kiwoom_cred(merged: dict) -> tuple[str, str, str]:
-    """키움 real 키 우선, 없으면 레거시 kiwoom_* 단일 필드."""
-    k = _pick_real_or_legacy(merged, "kiwoom_app_key_real", "kiwoom_app_key", "kiwoom_app_key")
-    s = _pick_real_or_legacy(merged, "kiwoom_app_secret_real", "kiwoom_app_secret", "kiwoom_app_secret")
-    a = _pick_account_no(merged, "kiwoom_account_no_real", "kiwoom_account_no")
-    return k, s, a
-
-
 def _pick_broker_credentials(merged: dict) -> dict:
-    """키움 + 동적으로 발견된 모든 증권사의 자격증명(real 우선)을 수집."""
+    """키움 + 동적으로 발견된 모든 증권사의 자격증명을 수집 (복호화 + 타입 정규화)."""
     result: dict = {}
-    k_woom, s_woom, acnt_woom = _pick_kiwoom_cred(merged)
-    result["kiwoom_app_key"] = k_woom
-    result["kiwoom_app_secret"] = s_woom
-    result["kiwoom_account_no"] = acnt_woom
+    result["kiwoom_app_key"] = _dec(merged.get("kiwoom_app_key"))
+    result["kiwoom_app_secret"] = _dec(merged.get("kiwoom_app_secret"))
+    result["kiwoom_account_no"] = str(merged.get("kiwoom_account_no") or "").strip()
 
-    broker_names = {k.split("_")[0] for k in merged if k.endswith("_app_key") or k.endswith("_app_key_real")}
+    broker_names = {k.split("_")[0] for k in merged if k.endswith("_app_key")}
     for b_name in broker_names:
         if b_name == "kiwoom":
             continue
-        result[f"{b_name}_app_key"] = _pick_real_or_legacy(
-            merged, f"{b_name}_app_key_real", f"{b_name}_app_key", f"{b_name}_app_key"
-        )
-        result[f"{b_name}_app_secret"] = _pick_real_or_legacy(
-            merged, f"{b_name}_app_secret_real", f"{b_name}_app_secret", f"{b_name}_app_secret"
-        )
-        result[f"{b_name}_account_no"] = _pick_account_no(
-            merged, f"{b_name}_account_no_real", f"{b_name}_account_no"
-        )
-
-    # UI 표시용 _real 키 (마스킹 상태 유지) — P20: 빈문자열도 유효값이므로 or 폴백 금지
-    for b_name in broker_names:
-        _rv = merged.get(f"{b_name}_app_key_real")
-        result[f"{b_name}_app_key_real"] = _rv if _rv is not None else ""
-        _rv = merged.get(f"{b_name}_app_secret_real")
-        result[f"{b_name}_app_secret_real"] = _rv if _rv is not None else ""
-        _rv = merged.get(f"{b_name}_account_no_real")
-        result[f"{b_name}_account_no_real"] = str(_rv if _rv is not None else "").strip()
+        result[f"{b_name}_app_key"] = _dec(merged.get(f"{b_name}_app_key"))
+        result[f"{b_name}_app_secret"] = _dec(merged.get(f"{b_name}_app_secret"))
+        result[f"{b_name}_account_no"] = str(merged.get(f"{b_name}_account_no") or "").strip()
 
     return result
 
@@ -323,7 +273,6 @@ def _normalize_broker_config(settings: dict) -> dict:
     return {
         "websocket": broker,
         "order": broker,
-        "account": broker,
         "sector": broker,
         "auth": broker,
     }

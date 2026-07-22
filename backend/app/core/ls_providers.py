@@ -5,7 +5,7 @@ LS증권 Provider 구현체
 from __future__ import annotations
 import logging
 from backend.app.core.broker_providers import (
-    AuthProvider, AccountProvider, OrderProvider, WebSocketProvider
+    AuthProvider, OrderProvider, WebSocketProvider
 )
 from backend.app.core.ls_rest import LsRestAPI
 from backend.app.core.broker_urls import BROKER_DISPLAY_NAMES
@@ -43,86 +43,6 @@ class LsAuthProvider(AuthProvider):
     @property
     def rest_api(self) -> LsRestAPI:
         return self._rest_api
-
-
-# ── Account Provider ──────────────────────────────────────────────────
-class LsAccountProvider(AccountProvider):
-    def __init__(self, auth_provider: AuthProvider):
-        from backend.app.services.engine_state import state
-        self._rest_api = getattr(auth_provider, "rest_api", None)
-        self._acnt_no = str(state.integrated_system_settings_cache.get("ls_account_no", "") or "")
-
-    async def get_account_number(self) -> str | None:
-        return self._acnt_no
-
-    async def get_deposit_detail(self, acnt_no: str = "") -> dict | None:
-        if not self._rest_api:
-            return None
-        return await self._rest_api.get_balance(cts_expcode="")
-
-    async def get_balance_detail(self, qry_tp: str = "1", dmst_stex_tp: str = "KRX") -> dict | None:
-        if not self._rest_api:
-            return None
-        return await self._rest_api.get_balance(cts_expcode="")
-
-    async def get_account_balance(self, acnt_no: str = "") -> dict:
-        _empty: dict = {
-            "success": False,
-            "summary": {
-                "tot_eval": 0, "tot_pnl": 0, "tot_buy": 0,
-                "deposit": 0, "orderable": 0, "withdrawable": 0, "total_rate": 0.0,
-            },
-            "stock_list": [], "raw_data": {},
-        }
-        if not self._rest_api:
-            return _empty
-
-        res = await self._rest_api.get_balance(cts_expcode="")
-        if not res or res.get("rsp_cd") not in ("00040", "00000"):
-            logger.warning("[연결] %s 잔고 조회 실패: %s", _BROKER_DISPLAY, res.get("rsp_msg") if res else "응답 없음")
-            return _empty
-
-        outblock = res.get("t0424OutBlock", {})
-        deposit = int(outblock.get("sunamt1") or 0)
-        tot_eval = int(outblock.get("tappamt") or 0)
-        tot_buy = int(outblock.get("mamt") or 0)
-        tot_pnl = int(outblock.get("tdtsunik") or 0)
-
-        total_rate = 0.0
-        if tot_buy > 0:
-            total_rate = round((tot_eval / tot_buy - 1.0) * 100, 2)
-
-        stock_list = []
-        for item in res.get("t0424OutBlock1", []):
-            stk_cd = item.get("expcode", "").strip()
-            qty = int(item.get("janqty") or 0)
-            if qty <= 0:
-                continue
-            stock_list.append({
-                "stk_cd": stk_cd,
-                "stk_nm": item.get("hname", "").strip(),
-                "qty": qty,
-                "buy_price": int(item.get("pamt") or 0),
-                "eval_price": int(item.get("price") or 0),
-                "eval_amt": int(item.get("appamt") or 0),
-                "eval_pnl": int(item.get("dtsunik") or 0),
-                "eval_rate": float(item.get("sunikrt") or 0.0),
-            })
-
-        return {
-            "success": True,
-            "summary": {
-                "tot_eval": tot_eval,
-                "tot_pnl": tot_pnl,
-                "tot_buy": tot_buy,
-                "deposit": deposit,
-                "orderable": deposit,
-                "withdrawable": deposit,
-                "total_rate": total_rate,
-            },
-            "stock_list": stock_list,
-            "raw_data": {"t0424": res},
-        }
 
 
 # ── Order Provider ────────────────────────────────────────────────────
