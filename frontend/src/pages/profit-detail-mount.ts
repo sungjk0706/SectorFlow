@@ -180,13 +180,13 @@ export function buildTableContainer(state: ProfitDetailState): HTMLDivElement {
   return state.tableContainer
 }
 
-/* ── mount 헬퍼: 통계 정보 행 (총 건수/매수금액/매도금액/실현손익/승률/평균 수익률) ── */
+/* ── mount 헬퍼: 통계 정보 행 (총 건수/매수금액/매도금액/실현손익/승률/수익률) ── */
 export function buildStatRow(state: ProfitDetailState): HTMLDivElement {
   const statRow = document.createElement('div')
   Object.assign(statRow.style, { display: 'flex', gap: '8px', padding: '6px 4px', borderTop: '1px solid ' + COLOR.borderLight, flex: 'none' })
 
   const STAT_STYLE = `flex:1;background:${COLOR.surfaceLight};border:1px solid ${COLOR.borderLight};border-radius:4px;padding:4px 8px;display:flex;flex-direction:column;align-items:center;gap:2px;`
-  const STAT_LABELS = ['총 건수', '매수금액', '매도금액', '실현손익', '승률', '평균 수익률']
+  const STAT_LABELS = ['총 건수', '매수금액', '매도금액', '실현손익', '승률', '수익률']
   const statEls: HTMLSpanElement[] = []
   state.statCardEls = []
 
