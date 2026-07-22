@@ -1135,6 +1135,14 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B11-11 | B-11 | `pipeline_compute.py:548-610` Phase 1 루프 | P11 | HIGH | `while + asyncio.sleep(1.0)` 폴링으로 수신율 임계값 대기 — `asyncio.Event` 기반 전환 가능 (사용자 설계 로직, 규칙 0-5 적용) | 해결 (B-11-b: 사용자 승인 대안1 — `LazyEvent.wait()` + 200ms 디바운스 전환, `reset_sector_threshold`에서 이벤트 클리어) |
 | B11-12 | B-11 | `pipeline_compute.py:195-196` `start_compute_loop` | P16/P21 | HIGH | `create_task()` 후 `add_done_callback` 미설정 — compute/sector_recompute 태스크 조용히 사망 시 사용자 인지 불가. gateway 루프(`app.py:63`)는 설정되어 있어 비일관 (P23) | 해결 (B-11-a: `add_done_callback` 추가, gateway 루프와 일관) |
 | B21-01 | B-21 | `encryption.py:32-42, 45-57` | P20 | MEDIUM | `encrypt_value`/`decrypt_value`가 Fernet 인스턴스 없을 때 평문 그대로 반환 (`return plain`, `return cipher`) — 암호화 미설정 시 민감 정보(API 키, 비밀번호)가 DB에 평문 저장됨. 보안 설계 결정으로 분류되나, P20(폴백 금지) 관점에서는 "정상 경로의 None/누락을 폴백으로 덮는" 패턴에 해당. 규칙 0-4(핵심 로직 변경 시 UI 기준 설명 + 승인) 해당 — 암호화 미설정 시 동작이 화면에서 어떻게 보이는지 사용자 인지 불가 | 보류 (사용자 승인 대기 — 보안 동작 변화, UI 기준 설명 필요) |
+| B13-01 | B-13 | `settings_file.py:461-470`, `telegram_bot.py:275-282`, `dry_run.py:329` | P22 | MEDIUM | `update_settings` 함수가 저장만 수행하고 저널링/검증(타임테이블 순서, 숫자 범위) 생략 — `apply_settings_updates`가 제공하는 검증+저널링 우회 경로. 텔레그램 토글/가상 예수금 변경 시 설정 변경 이력 누락 | 해결 (함수 삭제 + 호출자 2곳 `apply_settings_updates` 전환) |
+| B13-02 | B-13 | `settings_store.py:24-35` | P16 | MEDIUM | `_schedule_settings_task` dead code — 호출처 0건 (전체 코드베이스 grep 확인) | 해결 (함수 삭제 + 미사용 `asyncio` import 제거) |
+| B13-03 | B-13 | `engine_settings.py` 61곳 | P10/P16 | LOW | `merged = {**DEFAULT_USER_SETTINGS, **flat}` 후에도 `_build_*` 함수들이 `merged.get(key, default)`로 기본값 하드코딩 — `settings_defaults.py`와 중복 (SSOT 위반). `merged`에 항상 값 존재하므로 `else default` 분기는 dead code | 보류 (별도 세션) |
+| B13-04 | B-13 | `engine_settings.py:53, 272` | P4/P10 | LOW | `"kiwoom"` 기본값 공통 로직 침투 2곳 — `merged.get("broker", "kiwoom")`. SSOT는 `settings_defaults.py:31`. B13-03 해결 시 함께 처리 가능 | 보류 (별도 세션) |
+| B13-05 | B-13 | `engine_settings.py:32-47` | P4 | LOW | `_pick_broker_credentials` 키움 특수 분기 — kiwoom 명시处理后 `if b_name == "kiwoom": continue` skip. 공통 로직에 증권사 특수 케이스 | 해결 (동적 loop 통일 — 현재 선택 증권사 + `_app_key` 접미 키 기반 균일 처리) |
+| B13-06 | B-13 | `settings_file.py:261-279` | P3 | LOW | `asyncio.to_thread`로 `Path.exists`/`glob` 실행 — `run_in_executor` 우회. 단, `aiofiles` 미지원 메서드, 1회 실행, 핫 경로 아님 | 보류 (async 대체재 없음, 보류 권장) |
+| B13-07 | B-13 | `engine_settings.py:179-237`, `settings_store.py:154-221` | P24 | LOW | 함수 길이 50줄 초과 2곳 — `_build_sector_and_order_settings` 59줄, `_validate_timetable_order` 68줄 | 보류 (별도 세션 — 그룹별 헬퍼 분리) |
+| B13-08 | B-13 | `settings_file.py:76`, `settings_store.py:73`, `trade_mode.py:24` | P10/P23 | INFO | "mock" → "test" 매핑 3곳 분산 — 각각 다른 계층(마이그레이션/UI/런타임)에서 다른 목적 | 보류 (강제 통합 시 복잡도 증가, 현재 구조 유지 권장) |
 
 ---
 
@@ -1156,7 +1164,7 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B-10 | P1 | 엔진 계좌/서비스 | ☑ 완료 (B-10-a 11건 + B-10-b 7건 = 18건, B10-02는 B-14 이월) |
 | B-11 | P1 | 파이프라인 (Compute/Gateway) | ☑ 완료 (B-11-a 8건 + B-11-b 4건 = 12건 수정, 2964 tests passed) |
 | B-12 | P2 | DB 계층 | ☑ 완료 (9건 수정) |
-| B-13 | P2 | 설정 관리 | ☐ 미시작 |
+| B-13 | P2 | 설정 관리 | ☑ 부분 완료 (3건 해결 B13-01/02/05, 잔여 5건 보류 LOW/INFO, 2788 tests passed) |
 | B-14 | P2 | Broker 추상화 (공통) | ☑ 완료 (B-14-a 6건 + B-14-b 2건 = 8건) |
 | B-15 | P2 | 증권사 구현: 키움 | ☑ 완료 (B-15-a 7건 + B-15-b 7건 = 14건) |
 | B-16 | P2 | 증권사 구현: LS | ☑ 완료 (B-16-a 5건 + B-16-b 7건 = 12건) |
