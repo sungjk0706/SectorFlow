@@ -172,7 +172,7 @@ export function buildSectorDonutRows(sells: Record<string, unknown>[]): SectorDo
   for (const r of sells) {
     const sector = String(r.sector ?? '미분류')
     const pnl = Number(r.realized_pnl ?? 0)
-    const buyTotal = Number(r.avg_buy_price ?? 0) * Number(r.qty ?? 0)
+    const buyTotal = Number(r.buy_total_amt ?? 0)
     pnlMap.set(sector, (pnlMap.get(sector) ?? 0) + pnl)
     buyTotalMap.set(sector, (buyTotalMap.get(sector) ?? 0) + buyTotal)
   }
@@ -202,7 +202,7 @@ export function buildSectorStockPnl(
     const key = sector + '\0' + stkCd
     const pnl = Number(r.realized_pnl ?? 0)
     const qty = Number(r.qty ?? 0)
-    const buyTotal = Number(r.avg_buy_price ?? 0) * qty
+    const buyTotal = Number(r.buy_total_amt ?? 0)
     const existing = stockMap.get(key)
     if (existing) {
       existing.realized_pnl += pnl
@@ -292,7 +292,7 @@ export function aggregatePnl(
     if (dateFrom && d < dateFrom) continue
     if (dateTo && d > dateTo) continue
     pnl += Number(r.realized_pnl ?? 0)
-    buyTotal += Number(r.avg_buy_price ?? 0) * Number(r.qty ?? 0)
+    buyTotal += Number(r.buy_total_amt ?? 0)
   }
   return { pnl, buyTotal, rate: computeWeightedRate(pnl, buyTotal) }
 }

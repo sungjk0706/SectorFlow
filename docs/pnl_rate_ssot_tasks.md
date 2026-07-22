@@ -217,46 +217,47 @@
 
 ### 5.2 사전조사 항목 (수정 전 필수, 규칙 0-2)
 
-- [ ] **의존성**: 프론트엔드가 sellHistory의 `realized_pnl`/`avg_buy_price`/`qty`를 사용하는 모든 집계 지점.
-- [ ] **영향범위**: profit-shared.ts (aggregatePnl, buildSectorDonutRows, buildSectorStockPnl), profit-detail-display.ts (updateStatistics).
-- [ ] **공식 일치 확인**: 프론트엔드 `computeWeightedRate(pnl, buyTotal)`의 분자·분모가 백엔드 현금 기준과 동일한지.
-  - 분자: `realized_pnl` (백엔드 per-trade가 현금 기준으로 변경되면 자동 동기화 — sellHistory에서 그대로 읽음)
-  - 분모: 현재 `avg_buy_price * qty` (수수료 미포함) → `buy_total_amt` (수수료 포함)로 변경 필요 여부 확인.
-- [ ] **아키텍처 원칙 부합**: P22 — 백엔드/프론트엔드 공식 일치. P23 — 공통 함수 일관성.
+- [x] **의존성**: 프론트엔드가 sellHistory의 `realized_pnl`/`avg_buy_price`/`qty`를 사용하는 모든 집계 지점 — 4곳 식별 (profit-detail-display.ts:150, profit-shared.ts:175/205/295).
+- [x] **영향범위**: profit-shared.ts (aggregatePnl, buildSectorDonutRows, buildSectorStockPnl), profit-detail-display.ts (updateStatistics). canvas-sector-donut.ts:202는 buildSectorDonutRows 출력 사용으로 자동 동기화.
+- [x] **공식 일치 확인**: 프론트엔드 `computeWeightedRate(pnl, buyTotal)`의 분자·분모가 백엔드 현금 기준과 동일한지.
+  - 분자: `realized_pnl` (백엔드 per-trade가 현금 기준으로 변경되면 자동 동기화 — sellHistory에서 그대로 음) ✅
+  - 분모: 현재 `avg_buy_price * qty` (수수료 미포함) → `buy_total_amt` (수수료 포함)로 변경 완료.
+- [x] **아키텍처 원칙 부합**: P22 — 백엔드/프론트엔드 공식 일치. P23 — 공통 함수 일관성.
+- [x] **기존 공통 자산 확인**: computeWeightedRate 공통 함수(단계 C 신설) 그대로 사용, 분모 source만 변경. buy_total_amt 필드는 백엔드 SELECT(trade_history.py:53)에 이미 포함 → 신규 필드 추가 불필요.
 
 ### 5.3 수정 체크리스트
 
-- [ ] **프론트엔드 분모 변경** (필요 시): `avg_buy_price * qty` → `buy_total_amt` (수수료 포함). sellHistory 레코드에 `buy_total_amt` 필드 존재 확인.
-- [ ] **computeWeightedRate 호출부 확인**: 5곳 모두 현금 기준 분자·분모 사용.
-- [ ] **테스트 갱신**: vitest 테스트 케이스의 기대값을 현금 기준으로 조정.
-- [ ] **UI 수치 변화 확인**: 테스트모드에서 수익률 표시가 기존보다 낮아짐(수수료/세금 반영) — 사용자에게 사전 안내 (P21).
+- [x] **프론트엔드 분모 변경**: `avg_buy_price * qty` → `buy_total_amt` (수수료 포함). sellHistory 레코드에 `buy_total_amt` 필드 존재 확인 (백엔드 SELECT 포함).
+- [x] **computeWeightedRate 호출부 확인**: 4곳 모두 현금 기준 분자·분모 사용.
+- [x] **테스트 갱신**: 프론트엔드 테스트 8개 파일 중 buildSectorDonutRows/buildSectorStockPnl/aggregatePnl/updateStatistics 직접 커버 테스트 없음 → 갱신 항목 없음.
+- [x] **UI 수치 변화 확인**: 테스트모드에서 수익률 표시가 기존보다 약간 낮아짐(수수료/세금 반영) — 사용자에게 사전 안내 완료 (P21).
 
 ### 5.4 검증
 
-- [ ] `npm run typecheck` exit 0
-- [ ] `npm run build` exit 0
-- [ ] `npx vitest run` — 현금 기준 기대값으로 갱신된 테스트 통과
-- [ ] 브라우저 확인: 수익현황/수익상세 페이지 수익률 표시가 백엔드 dailySummary와 일치
+- [x] `npm run typecheck` exit 0
+- [x] `npm run build` exit 0 (2.02s, 76 modules)
+- [x] `npx vitest run` — 8 files / 116 tests passed (7.58s, 기존 테스트 영향 없음)
+- [ ] 브라우저 확인: 수익현황/수익상세 페이지 수익률 표시가 백엔드 dailySummary와 일치 — 사용자 환경에서 확인 필요
 
 ### 5.5 완료 조건
 
-- 프론트엔드 집계가 백엔드 현금 기준과 동일 공식 사용.
-- 테스트 케이스 현금 기준 반영.
-- HANDOVER.md 직전 완료 작업 섹션 갱신.
+- [x] 프론트엔드 집계가 백엔드 현금 기준과 동일 공식 사용.
+- [x] 테스트 케이스 현금 기준 반영 (직접 커버 테스트 없음, 기존 테스트 통과).
+- [x] HANDOVER.md 직전 완료 작업 섹션 갱신.
 
 ---
 
 ## 6. 전체 완료 조건
 
-- [ ] 문제 A: buildMonthlyDrilldown이 백엔드 dailySummary 사용 (P10/P22/P21 준수)
-- [ ] 문제 C: pnl_rate 공식이 computeWeightedRate 공통 함수 1곳에서 정의 (P22/P23 준수)
-- [ ] 문제 B: per-trade realized_pnl/pnl_rate가 현금 기준 (수수료/세금 포함) (P22/P21/P18 준수)
-- [ ] 기존 trades 레코드 마이그레이션 완료 (P22 과거/현재 일치)
-- [ ] 실전/테스트 모드 동등성 유지 (P18)
-- [ ] 프론트엔드/백엔드 공식 일치 (P22)
-- [ ] 모든 테스트 통과
-- [ ] HANDOVER.md 최종 갱신
-- [ ] docs/architecture_audit_plan.md 관련 위반 항목 해결 표시 (해당 시)
+- [x] 문제 A: buildMonthlyDrilldown이 백엔드 dailySummary 사용 (P10/P22/P21 준수)
+- [x] 문제 C: pnl_rate 공식이 computeWeightedRate 공통 함수 1곳에서 정의 (P22/P23 준수)
+- [x] 문제 B: per-trade realized_pnl/pnl_rate가 현금 기준 (수수료/세금 포함) (P22/P21/P18 준수)
+- [x] 기존 trades 레코드 마이그레이션 완료 (P22 과거/현재 일치)
+- [x] 실전/테스트 모드 동등성 유지 (P18)
+- [x] 프론트엔드/백엔드 공식 일치 (P22)
+- [x] 모든 테스트 통과 (백엔드 2790 passed, 프론트엔드 116 passed)
+- [x] HANDOVER.md 최종 갱신
+- [ ] docs/architecture_audit_plan.md 관련 위반 항목 해결 표시 (해당 시) — 별도 세션에서 확인
 
 ---
 

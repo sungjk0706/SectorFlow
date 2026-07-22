@@ -6,6 +6,46 @@
 
 ## 직전 완료 작업
 
+### 단계 B-연계: 프론트엔드 수익률 분모 buy_total_amt 동기화 (2026-07-22)
+
+**세션**: 수익률 계산 SSOT/P22 일괄 정비 단계 B-연계 (프론트엔드). P22/P23/P21 해결. **수익률 SSOT/P22 일괄 정비 전체 완료 (단계 A·C·B-사전·B-본·B-연계 5세션).**
+
+**문제 현상**: 단계 B-본에서 백엔드 per-trade realized_pnl을 현금 기준(`total_amt - buy_total_amt`)으로 전환. 분자(realized_pnl)는 sellHistory에서 그대로 읽어 자동 동기화되었으나, 프론트엔드 수익률 분모가 `avg_buy_price * qty`(수수료 미포함)로 백엔드 `buy_total_amt`(수수료 포함)와 불일치 (P22 위반).
+
+**수정 파일 2개 (4곳)**:
+- `frontend/src/pages/profit-detail-display.ts:149-150` — updateStatistics 가중평균 수익률 분모 `avg_buy_price * qty` → `buy_total_amt`. 주석 "백엔드 현금 기준 buy_total_amt 분모" 갱신.
+- `frontend/src/pages/profit-shared.ts:175` — buildSectorDonutRows 업종별 분모 `avg_buy_price * qty` → `buy_total_amt`.
+- `frontend/src/pages/profit-shared.ts:205` — buildSectorStockPnl 종목별 분모 `avg_buy_price * qty` → `buy_total_amt`.
+- `frontend/src/pages/profit-shared.ts:295` — aggregatePnl 범위 손익 분모 `avg_buy_price * qty` → `buy_total_amt`.
+
+**자동 동기화 (수정 불필요)**: `canvas-sector-donut.ts:202` — buildSectorDonutRows 출력의 `buyTotal` 필드 사용으로 #2 수정 시 자동 동기화.
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| B-연계 | P22/P23/P21 | 프론트엔드 수익률 분모 4곳을 백엔드 현금 기준 buy_total_amt로 동기화. 분자(realized_pnl)는 B-본에서 이미 동기화. 백엔드/프론트엔드 공식 완전 일치. |
+
+**검증**: `npm run typecheck` exit 0. `npm run build` exit 0 (2.02s, 76 modules). `npx vitest run` 8 files / 116 tests passed (7.58s). 프론트엔드 테스트는 buildSectorDonutRows/buildSectorStockPnl/aggregatePnl/updateStatistics 직접 커버 테스트 없음 (기존 테스트 영향 없음).
+
+**화면 영향 (테스트모드)**: 수익현황/수익상세 페이지의 업종별 수익률·종목별 수익률·범위 손익 수익률·가중평균 수익률이 **테스트모드에서 약간 낮게** 표시됨 (분모에 매수 수수료 포함으로 분모 증가, 수익률 절대값 미세 감소). **실전모드는 수수료/세금이 0이므로 화면 수치 변화 없음.**
+
+**잔존 프로세스**: 없음 (프론트엔드 빌드/테스트만 수행, 런타임 기동 없음).
+
+**작업 파일 갱신**: `docs/pnl_rate_ssot_tasks.md` 단계 B-연계 섹션(5.2~5.5) 체크리스트 [x] 표시 + 섹션 6 전체 완료 조건 [x] 표시.
+
+**수익률 SSOT/P22 일괄 정비 전체 완료**:
+| 단계 | 세션 | 위반 | 내용 |
+|------|------|------|------|
+| A | 1 | P10/P22/P21 | buildMonthlyDrilldown이 백엔드 dailySummary 직접 사용 (sellHistory 재집계 제거) |
+| C | 2 | P22/P23/P10/P24 | computeWeightedRate 공통 함수 신설 + 7곳 호출부 통일 |
+| B-사전 | 3 | P22/P18 | DB 백업 + 마이그레이션 방식 확정 |
+| B-본 | 4 | P22/P21/P18/P10 | per-trade realized_pnl/pnl_rate 현금 기준 전환 + 마이그레이션 |
+| B-연계 | 5 | P22/P23/P21 | 프론트엔드 분모 buy_total_amt 동기화 |
+
+**다음 세션 대기 사항**: 없음 (일괄 정비 완료). 신규 작업 대기.
+
+## 직전 완료 작업 (이전 세션)
+
 ### 단계 B-본: per-trade realized_pnl/pnl_rate 현금 기준 전환 + 마이그레이션 실행 (2026-07-22)
 
 **세션**: 수익률 계산 SSOT/P22 일괄 정비 단계 B-본 (백엔드/DB). P22/P21/P18/P10 해결. 핵심 로직 변경(규칙 0-4/0-5) — UI 기준 변경 전/후 설명 + 사용자 승인 완료.
