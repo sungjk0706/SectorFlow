@@ -68,12 +68,12 @@ async def evaluate_buy_candidates() -> None:
     """
     이벤트 기반 매수 판단 — 실시간 데이터 변경 시 _do_sector_recompute()에서 호출.
     auto_buy_effective(시간 범위 + auto_buy_on + 마스터 스위치) 통과 시 매수 실행.
-    매수 후보 순회 — 차순위 시도 알고리즘:
-      - 1순위 성공 후 잔액/한도 잔존 시 차순위 continue
-      - 1순위 종목별 차단 시 차순위 continue
-      - 1순위 전체 차단 시 break
+    매수 후보 순회 — 1건 매수 성공 후 루프 종료 (건별 간격 적용):
+      - 1건 매수 성공 시 break — 다음 evaluate_buy_candidates 호출 시 간격 게이트 적용
+      - 종목별 차단 시 차순위 continue
+      - 전체 차단 시 break
       - 잔액 0·최대 보유수·일일 한도 도달 시 break
-    buy_interval_on 시 사용자 설정 간격(초) 대기 (같은 호출 내 차순위 연속 시도는 간격 게이트 재적용 안 함).
+    buy_interval_on 시 사용자 설정 간격(초) 대기 — 매수 1건마다 간격 적용 (P21 UI 일치).
     """
     global _cash_insufficient
     from backend.app.services import dry_run
@@ -142,7 +142,7 @@ async def evaluate_buy_candidates() -> None:
         return
     _cash_insufficient = False
 
-    # ── 전체 매수 간격 게이트 (토글 ON 시) ──────────────────────────
+    # ── 전체 매수 간격 게이트 (토글 ON 시, 건별 적용) ───────────────
     from backend.app.services.order_interval import check_order_interval
     if not check_order_interval(state.integrated_system_settings_cache, "buy"):
         return
@@ -175,10 +175,10 @@ async def evaluate_buy_candidates() -> None:
         return
     _last_global_snapshot = _current_snapshot
 
-    # ── 매수 후보 순회 — 차순위 시도 알고리즘 ──────────────────────
-    # 1순위 성공 후 잔액/한도 잔존 시 차순위 continue
-    # 1순위 종목별 차단 시 차순위 continue
-    # 1순위 전체 차단 시 break
+    # ── 매수 후보 순회 — 1건 매수 성공 후 루프 종료 (건별 간격) ──────────
+    # 1건 매수 성공 시 break — 다음 이벤트 시 check_order_interval이 간격 판정
+    # 종목별 차단 시 차순위 continue
+    # 전체 차단 시 break
     # 잔액 0·최대 보유수·일일 한도 도달 시 break
     from backend.app.services.trading import (
         BUY_REJECT_QTY_ZERO, BUY_GLOBAL_REJECT_REASONS,
@@ -211,27 +211,9 @@ async def evaluate_buy_candidates() -> None:
                 invalidate_buy_snapshot()
                 from backend.app.services.order_interval import mark_order_executed
                 mark_order_executed("buy")
-                _holding_cnt += 1
-                # 최대 보유수 도달 시 루프 종료
-                if _max_limit_on and _holding_cnt >= _max_limit:
-                    logger.info("[매매] 최대 보유 종목 수 도달 — 차순위 시도 중단 (보유=%d)", _holding_cnt)
-                    break
-                # 잔액 재조회 — 0이면 _cash_insufficient 설정 후 루프 종료
-                _available = _get_rm().get_withdrawable_deposit()
-                if _available <= 0:
-                    _cash_insufficient = True
-                    logger.info("[매매] 주문가능 금액 0원 — 차순위 시도 중단")
-                    break
-                # 일일 한도 도달 시 루프 종료
-                await state.auto_trade._ensure_daily_buy_counter()
-                if state.auto_trade._daily_buy_spent is not None and _max_daily > 0 \
-                        and state.auto_trade._daily_buy_spent >= _max_daily:
-                    logger.info("[매매] 일일 매수 한도 도달 — 차순위 시도 중단 (누적=%s원)",
-                                f"{state.auto_trade._daily_buy_spent:,}")
-                    break
-                # 차순위 시도를 위해 _buyable_codes 잔액/가격 부분 갱신 (P10 SSOT)
-                _buyable_codes = _refresh_buyable_prices(ss, _available, _effective_buy_amt, _is_test)
-                continue  # ← 차순위 시도
+                # 1건 매수 성공 — 건별 간격 적용 (다음 이벤트 시 check_order_interval 판정)
+                logger.info("[매매] 매수 1건 완료 — 주문 간격 대기")
+                break  # ← 1건 매수 후 루프 종료 (건별 간격)
             else:
                 # 실패 사유 분류
                 if _reason == BUY_REJECT_QTY_ZERO:

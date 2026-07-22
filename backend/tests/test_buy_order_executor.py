@@ -716,10 +716,10 @@ class TestPriceBasedFiltering:
         assert "available_cash" not in buy_order_executor._last_global_snapshot
 
 
-# ── 차순위 매수 시도 알고리즘 ──────────────────────────────────────────────────
+# ── 건별 간격 적용 매수 알고리즘 ──────────────────────────────────────────────
 
 class TestMultiRankBuyAlgorithm:
-    """차순위 매수 시도 알고리즘 검증 — 1순위 성공/차단 시 차순위 시도 여부."""
+    """건별 간격 적용 매수 알고리즘 검증 — 1건 매수 성공 후 break, 실패 시 차순위 시도 여부."""
 
     def _two_targets(self):
         s1 = _stock(code="A001", cur_price=70_000)
@@ -751,7 +751,7 @@ class TestMultiRankBuyAlgorithm:
 
     @pytest.mark.asyncio
     async def test_second_rank_tried_after_first_success_with_remaining_cash(self, fresh_state, reset_cash_gate):
-        """1순위 성공 + 잔액 남음 → 2순위 execute_buy 호출됨."""
+        """1건 매수 성공 후 건별 간격 적용 → 2순위 execute_buy 호출 안 됨 (다음 이벤트 시 간격 판정)."""
         fresh_state.sector_summary_cache = self._two_targets()
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(True, ""))
         with patch("backend.app.services.engine_state.state", fresh_state), \
@@ -764,11 +764,11 @@ class TestMultiRankBuyAlgorithm:
              patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
-        assert fresh_state.auto_trade.execute_buy.await_count == 2
+        assert fresh_state.auto_trade.execute_buy.await_count == 1
 
     @pytest.mark.asyncio
     async def test_loop_breaks_on_cash_zero_after_first_success(self, fresh_state, reset_cash_gate):
-        """1순위 성공 후 잔액 0 도달 → 2순위 호출 안 됨 + _cash_insufficient=True."""
+        """1건 매수 성공 후 루프 종료 — 잔액 0 여부와 무관하게 건별 간격 적용."""
         fresh_state.sector_summary_cache = self._two_targets()
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(True, ""))
         with patch("backend.app.services.engine_state.state", fresh_state), \
@@ -783,11 +783,10 @@ class TestMultiRankBuyAlgorithm:
             mock_rm.return_value.get_withdrawable_deposit.side_effect = [10_000_000, 0]
             await evaluate_buy_candidates()
         assert fresh_state.auto_trade.execute_buy.await_count == 1
-        assert buy_order_executor._cash_insufficient is True
 
     @pytest.mark.asyncio
     async def test_loop_breaks_on_max_holding_after_first_success(self, fresh_state, reset_cash_gate):
-        """1순위 성공 + 최대 보유수 도달 → 2순위 호출 안 됨."""
+        """1건 매수 성공 후 루프 종료 — 최대 보유수 도달과 무관하게 건별 간격 적용."""
         fresh_state.integrated_system_settings_cache = _default_settings(max_stock_cnt=1)
         fresh_state.sector_summary_cache = self._two_targets()
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(True, ""))
@@ -805,7 +804,7 @@ class TestMultiRankBuyAlgorithm:
 
     @pytest.mark.asyncio
     async def test_loop_breaks_on_daily_limit_after_first_success(self, fresh_state, reset_cash_gate):
-        """1순위 성공 + 일일 한도 도달 → 2순위 호출 안 됨."""
+        """1건 매수 성공 후 루프 종료 — 일일 한도 도달과 무관하게 건별 간격 적용."""
         fresh_state.integrated_system_settings_cache = _default_settings(
             max_daily_total_buy_amt=300_000, max_daily_total_buy_on=True,
         )
@@ -984,7 +983,7 @@ class TestMultiRankBuyAlgorithm:
 
     @pytest.mark.asyncio
     async def test_loop_breaks_after_two_successes_on_cash_zero(self, fresh_state, reset_cash_gate):
-        """1순위 성공 + 2순위 성공 + 잔액 0 → 3순위 호출 안 됨."""
+        """1건 매수 성공 후 건별 간격 적용 → 2순위/3순위 호출 안 됨 (잔액과 무관)."""
         fresh_state.sector_summary_cache = self._three_targets()
         fresh_state.auto_trade.execute_buy = AsyncMock(return_value=(True, ""))
         with patch("backend.app.services.engine_state.state", fresh_state), \
@@ -998,4 +997,4 @@ class TestMultiRankBuyAlgorithm:
             # 사전=10M, 1순위 후=10M, 2순위 후=0
             mock_rm.return_value.get_withdrawable_deposit.side_effect = [10_000_000, 10_000_000, 0]
             await evaluate_buy_candidates()
-        assert fresh_state.auto_trade.execute_buy.await_count == 2
+        assert fresh_state.auto_trade.execute_buy.await_count == 1
