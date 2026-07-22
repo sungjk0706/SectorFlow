@@ -6,37 +6,62 @@
 
 ## 직전 완료 작업
 
-### F-05-b 2/2세션 (F05-09): 수익현황 mount() 분할 (2026-07-22)
+### F-06-a (F06-07/08): 공통 컴포넌트 dead code 제거 (2026-07-22)
 
-**세션**: F-05-b (P3 — 수익 페이지 후반) 후반부 1단계. F05-08(파일 길이)은 다음 세션에서 진행.
+**세션**: F-06 (P3 — 공통 컴포넌트) 1단계. dead code 2건 제거.
 
-**수정 파일 1개**:
-- `frontend/src/pages/profit-overview.ts` (698→742줄, +44줄): F05-09 `mount()` ~384줄 → 10개 헬퍼 함수로 분할 (profit-detail.ts 패턴 적용), 실전/테스트 계좌 루프 중복 제거 (P23 부수 해결)
+**수정 파일 2개**:
+- `frontend/src/components/common/ui-styles.ts` (599→564줄, -35줄): `createStockNameColumnWithSectorLookup` 함수 제거 + unused import 제거 (`hotStore`, `normalizeStockCode`)
+- `frontend/src/components/common/setting-row.ts` (635→569줄, -66줄): `createWsStatusBadge` + `createWsToggleGroup` 함수 제거
 
 **해결 건**:
 | ID | 위반 | 설명 |
 |----|------|------|
-| F05-09 | P24 | `mount()` ~384줄 (50줄의 7.7배) → 10개 헬퍼 분할 (buildLeftColumn 33줄, buildAccountRows 33줄, buildStockListSection 39줄, buildAccountPanel 27줄, buildLowerSection 19줄, initDateRange 11줄, applyDateRange 34줄, buildProfitChart 36줄, buildDonutChart 21줄, flushRender 37줄, subscribeProfitOverviewStore 48줄, mount 본체 48줄 — 모두 50줄 이하) |
-| (부수) | P23 | 실전/테스트 계좌 행 루프 중복 (~23줄 × 2) → `buildAccountRows` 공통 헬퍼 1개로 통합 (`ACCOUNT_LABELS_REAL`/`ACCOUNT_LABELS_TEST` + `holdingCountSpan`/`holdingCountSpanTest` 콜백 주입) |
+| F06-07 | P16 | `createStockNameColumnWithSectorLookup` dead code — `createStockNameColumn`(사용처 7개)과 기능 중복, 정의 외 호출 0건. 제거 |
+| F06-08 | P16 | `createWsStatusBadge` + `createWsToggleGroup` dead code — 정의 외 호출 0건. 제거. F06-09(증권사 색상/이름 중복 정의 P10) 동시 해결 (brokerColors/brokerNames 하드코딩 함께 제거) |
 
-**레이스 가드 승격 (P19)**: `applyDateRange`의 `_applyDateRangeSeq` 시퀀스 변수를 mount 내 지역 변수 → 모듈 변수로 승격. `unmount()`에서 `= 0` 리셋 추가 (재진입 시 시퀀스 꼬임 방지). prev* 참조 6개(prevSellRef/prevBuyRef/prevDailySummaryRef/prevAccountRef/prevPositionsRef/prevTradeMode)도 모듈 변수 승격 + unmount 리셋.
+**검증**: `npm run typecheck` exit 0, `npm run build` 1.40s exit 0. 잔여 참조 grep 0건 확인 (createStockNameColumnWithSectorLookup / createWsStatusBadge / createWsToggleGroup).
 
-**검증**: `npm run typecheck` exit 0, `npm run build` 1.95s exit 0 (profit-overview 21.94 kB). mount 포함 모든 mount 헬퍼 함수 50줄 이하 확인 (Python 스크립트 전수 검증).
+**화면 영향**: 없음. 제거된 함수는 어떤 페이지에서도 호출되지 않았으므로 UI 변화 없음.
 
-**화면 영향**: 없음. 수익현황 페이지 일별 수익률 차트/업종별 도넛/계좌 현황/업종별 종목 수익/상세 분석 버튼/날짜 범위 변경/실시간 틱 갱신 동작 동일. 구조 개선만 수행.
+## 다음 세션 작업
 
-## 다음 세션 작업 (F05-08)
+**잔여 F-06 (별도 세션 each)**:
+- F06-06: `data-table.ts` `callbackRan` dead code 제거 (MEDIUM, 6곳)
+- F06-01: `data-table.ts` 파일 분할 (1054줄 → ~500줄, fixed/virtual 모드 분리)
+- F06-02: `setting-row.ts` 파일 분할 (569줄, 입력란 그룹 분리 검토)
+- F06-03: `ui-styles.ts` 파일 분할 (564줄, 셀/컬럼 팩토리 분리 검토)
+- F06-10: "보유주식" → "보유 종목" 용어 통일 (account-labels.ts + sell-position.ts 동시 수정 → F-03/F-05 범위와 연계 검토)
+- F06-11, F06-12: LOW — 색상 상수화
 
-**잔여 1건** (P24 단순성 — 파일 길이):
-- F05-08 (MEDIUM): `profit-shared.ts` 컬럼 정의(BUY_COLS/SELL_COLS/createDrilldownCols, ~98줄) → 신규 `profit-columns.ts`로 분할. `profit-detail.ts` import 경로 변경. 3개 파일 재측정.
-  - profit-shared.ts: 598줄 → ~500줄 달성 예상
-  - profit-overview.ts: 742줄 (F05-09 분할 후 증가 — 헬퍼 추가) → 500줄 초과 유지, 별도 세션에서 추가 분할 검토
-  - profit-detail.ts: 672줄 → 500줄 초과 유지, 별도 세션에서 추가 분할 검토
+---
 
-**새로 발견된 위반 (별도 세션 필요)**:
-- `profit-overview.ts:135-280` `renderSectorStockPnl` 146줄 (P24 50줄의 2.9배) — F05-09 범위(mount 분할) 밖의 기존 위반. 업종 그룹 헤더 + 종목 행 렌더 로직을 헬퍼로 분할 필요.
+## 직전 완료 작업 (이전 세션)
 
-**별도 세션 권장**: F05-07 "보유주식" → "보유 종목" 용어 통일 (account-labels.ts, sell-position.ts 전역 동시 수정 필요)
+### F-05-c (F05-08): 수익 페이지 컬럼 정의 분할 (2026-07-22)
+
+**세션**: F-05-c (P3 — 수익 페이지) 1단계. F05-08 (파일 길이) 해결.
+
+**수정 파일 3개**:
+- `frontend/src/pages/profit-columns.ts` (신규, 111줄): 컬럼 정의 3개 이동 (BUY_COLS/SELL_COLS/createDrilldownCols)
+- `frontend/src/pages/profit-shared.ts` (598→493줄, -105줄): 컬럼 정의 3개 제거 + unused import 6개 제거 (ColumnDef/fmtComma/createStockNameColumn/createCodeCell/createNumberCell/hotStore)
+- `frontend/src/pages/profit-detail.ts` (672→674줄, +2줄): import 분할 (BUY_COLS/SELL_COLS/createDrilldownCols → profit-columns, 나머지 → profit-shared 유지)
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| F05-08 | P24 | `profit-shared.ts` 598줄 (500줄 초과) → 493줄 달성. 컬럼 정의 3개를 신규 `profit-columns.ts` (111줄)로 분할 |
+
+**검증**: `npm run typecheck` exit 0, `npm run build` 1.07s exit 0 (profit-shared 13.84 kB, profit-detail 12.65 kB, profit-overview 21.94 kB). 잔여 참조 grep: profit-shared.ts에서 BUY_COLS/SELL_COLS/createDrilldownCols 0건 확인.
+
+**화면 영향**: 없음. 수익 상세 페이지 매수/매도/드릴다운 테이블 표시 동일. 구조 개선만 수행.
+
+## 다음 세션 작업
+
+**잔여 (별도 세션 필요)**:
+- `profit-overview.ts` 742줄 (500줄 초과) — `renderSectorStockPnl` 146줄 (135-280줄, P24 50줄의 2.9배) 분할 포함. 업종 그룹 헤더 + 종목 행 렌더 로직을 헬퍼로 분할.
+- `profit-detail.ts` 674줄 (500줄 초과) — 별도 세션에서 추가 분할 검토.
+- F05-07 "보유주식" → "보유 종목" 용어 통일 (account-labels.ts, sell-position.ts 전역 동시 수정 필요).
 
 ## 미해결 문제 (발견 즉시 기록)
 
@@ -45,7 +70,7 @@
 
 ## 작업 여력
 
-F-05-b 2/2세션(F05-09) 완료 후 작업 여력: **충분**. F05-08(파일 길이 분할)은 규칙 0-1 세션당 1단계 준수를 위해 별도 세션에서 진행 권장.
+F-05-c(F05-08) 완료 후 작업 여력: **충분**. 잔여 profit-overview.ts/profit-detail.ts 파일 길이 분할 및 renderSectorStockPnl 분할은 규칙 0-1 세션당 1단계 준수를 위해 별도 세션에서 진행 권장.
 
 ---
 
