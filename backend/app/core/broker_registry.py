@@ -20,9 +20,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # ── 동일 증권사 강제 쌍 ───────────────────────────────────────────────
-MUST_SAME_BROKER_PAIRS: list[tuple[str, str]] = [
-    ("order", "account"),  # 주문과 계좌는 동일 증권사 필수
-]
+MUST_SAME_BROKER_PAIRS: list[tuple[str, str]] = []
 
 # ── Provider 레지스트리 ───────────────────────────────────────────────
 # 새 증권사 추가 시 이 dict에 한 줄만 추가하면 됨.
@@ -31,7 +29,6 @@ def _lazy_kiwoom_registry() -> dict[str, type]:
     """순환 import 방지: 최초 접근 시 키움 Provider 클래스 로드."""
     from backend.app.core.kiwoom_providers import (
         KiwoomAuthProvider,
-        KiwoomAccountProvider,
         KiwoomOrderProvider,
         KiwoomWebSocketProvider,
         KiwoomStockProvider,
@@ -39,7 +36,6 @@ def _lazy_kiwoom_registry() -> dict[str, type]:
     # sector는 증권사와 무관한 사용자 커스텀 데이터이므로 broker_registry에서 제거
     return {
         "auth":      KiwoomAuthProvider,
-        "account":   KiwoomAccountProvider,
         "order":     KiwoomOrderProvider,
         "websocket": KiwoomWebSocketProvider,
         "stock":     KiwoomStockProvider,
@@ -50,13 +46,11 @@ def _lazy_ls_registry() -> dict[str, type]:
     """순환 import 방지: 최초 접근 시 LS Provider 클래스 로드."""
     from backend.app.core.ls_providers import (
         LsAuthProvider,
-        LsAccountProvider,
         LsOrderProvider,
         LsWebSocketProvider,
     )
     return {
         "auth":      LsAuthProvider,
-        "account":   LsAccountProvider,
         "order":     LsOrderProvider,
         "websocket": LsWebSocketProvider,
     }

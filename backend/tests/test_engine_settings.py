@@ -115,7 +115,7 @@ class TestBuildEngineSettingsDictDefaults:
         result = build_engine_settings_dict({})
         assert result["broker_config"]["websocket"] == "kiwoom"
         assert result["broker_config"]["order"] == "kiwoom"
-        assert result["broker_config"]["account"] == "kiwoom"
+        assert result["broker_config"]["auth"] == "kiwoom"
 
     def test_test_virtual_deposit(self):
         result = build_engine_settings_dict({})
@@ -185,19 +185,7 @@ class TestBuildEngineSettingsDictOverride:
         assert result["tele_on"] is True
         assert result["telegram_on"] is True
 
-    def test_kiwoom_credentials_real_mode(self):
-        result = build_engine_settings_dict({
-            "trade_mode": "real",
-            "kiwoom_app_key_real": "real_key",
-            "kiwoom_app_secret_real": "real_secret",
-            "kiwoom_account_no_real": "12345678",
-        })
-        assert result["kiwoom_app_key"] == "real_key"
-        assert result["kiwoom_app_secret"] == "real_secret"
-        assert result["kiwoom_account_no"] == "12345678"
-
-    def test_kiwoom_credentials_test_mode_fallback_legacy(self):
-        """test 모드에서 real 키 없으면 레거시 단일 필드 사용."""
+    def test_kiwoom_credentials(self):
         result = build_engine_settings_dict({
             "trade_mode": "test",
             "kiwoom_app_key": "test_key",
@@ -235,17 +223,6 @@ class TestBuildEngineSettingsDictOverride:
         assert result["naver_app_secret"] == "naver_secret"
         assert result["naver_account_no"] == "11111111"
 
-    def test_non_kiwoom_broker_credentials_real_priority(self):
-        """non-kiwoom real 키 우선."""
-        result = build_engine_settings_dict({
-            "naver_app_key": "naver_key",
-            "naver_app_key_real": "naver_real_key",
-            "naver_app_secret": "naver_secret",
-            "naver_app_secret_real": "naver_real_secret",
-        })
-        assert result["naver_app_key"] == "naver_real_key"
-        assert result["naver_app_secret"] == "naver_real_secret"
-
     def test_decrypt_failure_logs_warning(self):
         """복호화 실패 시 logger.warning 호출 (P21 사용자 투명성)."""
         with patch("backend.app.core.engine_settings.decrypt_value", return_value=None), \
@@ -256,40 +233,6 @@ class TestBuildEngineSettingsDictOverride:
             assert result["kiwoom_app_key"] == ""
             mock_logger.warning.assert_called_once()
             assert "복호화 실패" in mock_logger.warning.call_args[0][0]
-
-    def test_real_key_decrypt_failure_blocks_legacy_fallback(self):
-        """real 키가 암호문인데 복호화 실패 → 레거시 폴백 금지 + 에러 로그 (P21)."""
-        with patch("backend.app.core.engine_settings.decrypt_value", return_value=None), \
-             patch("backend.app.core.engine_settings.logger") as mock_logger:
-            result = build_engine_settings_dict({
-                "trade_mode": "real",
-                "kiwoom_app_key_real": "gAAAAAencrypted_real",
-                "kiwoom_app_key": "legacy_key",
-            })
-            # real 키 복호화 실패 → 빈문자열 (레거시 폴백 금지)
-            assert result["kiwoom_app_key"] == ""
-            mock_logger.error.assert_called_once()
-            assert "레거시 폴백 금지" in mock_logger.error.call_args[0][0]
-
-    def test_real_key_empty_falls_back_to_legacy(self):
-        """real 키가 빈문자열 → 레거시 폴백 허용 (정상 마이그레이션 유지)."""
-        result = build_engine_settings_dict({
-            "trade_mode": "real",
-            "kiwoom_app_key_real": "",
-            "kiwoom_app_key": "legacy_key",
-        })
-        assert result["kiwoom_app_key"] == "legacy_key"
-
-    def test_non_kiwoom_real_key_decrypt_failure_blocks_legacy(self):
-        """non-kiwoom real 키 복호화 실패 → 레거시 폴백 금지 (P21)."""
-        with patch("backend.app.core.engine_settings.decrypt_value", return_value=None), \
-             patch("backend.app.core.engine_settings.logger") as mock_logger:
-            result = build_engine_settings_dict({
-                "naver_app_key_real": "gAAAAAencrypted_real",
-                "naver_app_key": "naver_legacy_key",
-            })
-            assert result["naver_app_key"] == ""
-            mock_logger.error.assert_called_once()
 
     def test_sector_sort_keys_migration(self):
         """foreign_net / institution_net 제거 마이그레이션."""

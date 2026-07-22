@@ -4,7 +4,6 @@
 
 기능별 독립 인터페이스 정의:
   - AuthProvider     : 인증 토큰 발급/관리
-  - AccountProvider  : 계좌 조회 (예수금, 잔고, 보유종목)
   - OrderProvider    : 주문 실행 (매수, 매도)
   - WebSocketProvider: 실시간 WebSocket 연결
 
@@ -42,48 +41,6 @@ class AuthProvider(ABC):
     @abstractmethod
     def broker_name(self) -> str:
         """증권사 식별자 (예: 'kiwoom')."""
-        ...
-
-
-# ── Account Provider ──────────────────────────────────────────────────
-class AccountProvider(ABC):
-    """계좌 조회: 예수금, 잔고, 보유종목."""
-
-    @abstractmethod
-    async def get_account_number(self) -> str | None:
-        """계좌번호 조회."""
-        ...
-
-    @abstractmethod
-    async def get_deposit_detail(self, acnt_no: str = "") -> dict | None:
-        """예수금 상세 조회."""
-        ...
-
-    @abstractmethod
-    async def get_account_balance(self, acnt_no: str = "") -> dict:
-        """
-        계좌 잔고 통합 조회 -- 공통 표준 반환 구조.
-
-        반환:
-        {
-            "success": bool,
-            "summary": {
-                "tot_eval": int, "tot_pnl": int, "tot_buy": int,
-                "deposit": int, "orderable": int, "total_rate": float,
-            },
-            "stock_list": [
-                {"stk_cd": str, "stk_nm": str, "qty": int, "buy_price": int, ...}
-            ],
-            "raw_data": dict,
-        }
-        """
-        ...
-
-    @abstractmethod
-    async def get_balance_detail(
-        self, qry_tp: str = "1", dmst_stex_tp: str = "KRX"
-    ) -> dict | None:
-        """계좌평가잔고내역 조회 (연속조회 포함)."""
         ...
 
 

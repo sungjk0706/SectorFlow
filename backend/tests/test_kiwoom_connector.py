@@ -964,18 +964,6 @@ class TestCreateKiwoomConnector:
             assert conn._app_key == "mykey"
             assert conn._app_secret == "mysecret"
 
-    def test_create_with_real_credentials(self):
-        mock_state = MagicMock()
-        mock_state.integrated_system_settings_cache = {
-            "kiwoom_app_key_real": "realkey",
-            "kiwoom_app_secret_real": "realsecret",
-        }
-        with patch("backend.app.services.engine_state.state", mock_state):
-            from backend.app.core.kiwoom_connector import create_kiwoom_connector
-            conn = create_kiwoom_connector()
-            assert conn._app_key == "realkey"
-            assert conn._app_secret == "realsecret"
-
     def test_create_no_credentials_raises(self):
         mock_state = MagicMock()
         mock_state.integrated_system_settings_cache = {}

@@ -4,17 +4,14 @@
 
 기존 코드를 최대한 재사용하며, 각 Provider가 해당 기능만 캡슐화:
   - KiwoomAuthProvider      : KiwoomRestAPI 토큰 관리 위임
-  - KiwoomAccountProvider   : KiwoomRestAPI 계좌 조회 위임
   - KiwoomOrderProvider     : kiwoom_order.send_order 캡슐화
   - KiwoomStockProvider     : kiwoom_stock_rest + kiwoom_daily_avg_volume 캡슐화
   - KiwoomWebSocketProvider : broker_urls 기반 WS URI 제공
 """
 from __future__ import annotations
-import asyncio
 import logging
 from typing import Callable, Optional
 from backend.app.core.broker_providers import (
-    AccountProvider,
     AuthProvider,
     OrderProvider,
     WebSocketProvider,
@@ -36,13 +33,13 @@ class KiwoomAuthProvider(AuthProvider):
         # broker_rest_apis에 이미 존재하면 재사용 (엔진 루프에서 초기화됨)
         _existing = state.broker_rest_apis.get("kiwoom")
         if _existing is None:
-            app_key = (state.integrated_system_settings_cache.get("kiwoom_app_key_real") or state.integrated_system_settings_cache.get("kiwoom_app_key") or "").strip()
-            app_secret = (state.integrated_system_settings_cache.get("kiwoom_app_secret_real") or state.integrated_system_settings_cache.get("kiwoom_app_secret") or "").strip()
+            app_key = (state.integrated_system_settings_cache.get("kiwoom_app_key") or "").strip()
+            app_secret = (state.integrated_system_settings_cache.get("kiwoom_app_secret") or "").strip()
             _existing = KiwoomRestAPI(app_key, app_secret)
             state.broker_rest_apis["kiwoom"] = _existing
         self._rest_api = _existing
         self._rest_api._acnt_no = str(
-            state.integrated_system_settings_cache.get("kiwoom_account_no_real") or state.integrated_system_settings_cache.get("kiwoom_account_no", "") or ""
+            state.integrated_system_settings_cache.get("kiwoom_account_no", "") or ""
         )
 
     async def get_access_token(self) -> Optional[str]:
@@ -59,159 +56,6 @@ class KiwoomAuthProvider(AuthProvider):
     def rest_api(self) -> KiwoomRestAPI:
         """내부 REST API 인스턴스 접근 (키움 전용 확장 메서드용)."""
         return self._rest_api
-
-
-# ── Account Provider ──────────────────────────────────────────────────
-class KiwoomAccountProvider(AccountProvider):
-    """기존 KiwoomRestAPI 계좌 조회 로직 위임."""
-
-    def __init__(
-        self,
-        auth_provider: Optional[KiwoomAuthProvider] = None,
-    ):
-        from backend.app.services.engine_state import state
-        self._auth = auth_provider
-        self._rest_api = auth_provider.rest_api if auth_provider else None
-        self._acnt_no = str(state.integrated_system_settings_cache.get("kiwoom_account_no", "") or "")
-
-    async def get_account_number(self) -> Optional[str]:
-        if self._rest_api is None:
-            return None
-        return await self._rest_api.get_account_number()
-
-    async def get_deposit_detail(self, acnt_no: str = "") -> Optional[dict]:
-        if self._rest_api is None:
-            return None
-        resolved = acnt_no or self._acnt_no
-        self._rest_api._acnt_no = resolved
-        return await self._rest_api.get_deposit_detail(acnt_no=resolved)
-
-    async def get_balance_detail(
-        self, qry_tp: str = "1", dmst_stex_tp: str = "KRX"
-    ) -> Optional[dict]:
-        if self._rest_api is None:
-            return None
-        return await self._rest_api.get_balance_detail(qry_tp, dmst_stex_tp)
-
-    async def get_account_balance(self, acnt_no: str = "") -> dict:
-        """
-        [공통 표준] 계좌 잔고 통합 조회.
-        kt00001(예수금) + kt00018(평가잔고) 결합 → 표준 구조 반환.
-        기존 KiwoomBroker.get_account_balance() 로직 그대로 이동.
-        """
-        _empty: dict = {
-            "success": False,
-            "summary": {
-                "tot_eval": 0, "tot_pnl": 0, "tot_buy": 0,
-                "deposit": 0, "orderable": 0, "withdrawable": 0,
-                "total_rate": 0.0,
-            },
-            "stock_list": [],
-            "raw_data": {},
-        }
-        if self._rest_api is None:
-            return _empty
-        if not await self._rest_api._ensure_token():
-            logger.warning(
-                "[연결] %s 토큰 없음 — 계좌 잔고 조회 중단", _BROKER_DISPLAY
-            )
-            return _empty
-
-        resolved = acnt_no or self._acnt_no
-
-        def _n(v) -> int:
-            try:
-                return int(str(v).replace(",", "") or 0)
-            except (ValueError, TypeError):
-                return 0
-
-        def _f(v) -> float:
-            try:
-                return float(
-                    str(v).replace(",", "").replace("%", "") or 0
-                )
-            except (ValueError, TypeError):
-                return 0.0
-
-        dep_raw = await self._rest_api.get_deposit_detail(acnt_no=resolved)
-        await asyncio.sleep(0.5)  # 429 예방
-        bal_raw = await self._rest_api.get_balance_detail()
-
-        if not dep_raw:
-            logger.warning("[연결] %s 예수금 상세현황(kt00001) 응답 없음", _BROKER_DISPLAY)
-            return _empty
-
-        dep_body = dep_raw.get("body") or dep_raw
-        if _n(dep_body.get("return_code", 0)) != 0:
-            logger.warning(
-                "[연결] %s 예수금 상세현황(kt00001) 오류 응답코드=%s 메시지=%s",
-                _BROKER_DISPLAY,
-                dep_body.get("return_code"),
-                dep_body.get("return_msg", ""),
-            )
-            return _empty
-
-        deposit = _n(
-            dep_body.get("entr", dep_body.get("d2_entra", 0))
-        )
-        orderable = _n(dep_body.get("ord_alow_amt", 0))
-        withdrawable = _n(dep_body.get("pymn_alow_amt", 0))
-        tot_eval = 0
-        tot_pnl = 0
-        total_rate = 0.0
-        tot_buy = 0
-
-        stock_list: list = []
-        if bal_raw:
-            bal = bal_raw.get("body") or bal_raw
-            if _n(bal.get("return_code", 0)) == 0:
-                tot_eval = _n(bal.get("tot_evlt_amt", 0))
-                tot_pnl = _n(bal.get("tot_evlt_pl", 0))
-                tot_buy = _n(bal.get("tot_pur_amt", 0))
-                total_rate = _f(bal.get("tot_prft_rt", 0))
-                if not deposit:
-                    deposit = _n(bal.get("prsm_dpst_aset_amt", 0))
-
-            for item in bal.get("acnt_evlt_remn_indv_tot", []):
-                stk_cd = str(item.get("stk_cd", "")).strip().lstrip("A")
-                if not stk_cd:
-                    continue
-                qty = _n(item.get("rmnd_qty", 0))
-                if qty <= 0:
-                    continue
-                stock_list.append({
-                    "stk_cd": stk_cd,
-                    "stk_nm": str(item.get("stk_nm", stk_cd)).strip(),
-                    "qty": qty,
-                    "buy_price": _n(item.get("buy_uv", 0)),
-                    "cur_price": _n(item.get("cur_pric", 0)),
-                    "buy_amt": _n(item.get("buy_amt", 0)),
-                    "pnl_amt": _n(item.get("evlt_ploss", 0)),
-                    "pnl_rate": _f(item.get("prft_rt", 0)),
-                    "crd_tp": str(item.get("crd_tp", "") or "").strip(),
-                })
-
-        logger.info(
-            "[연결] %s 잔고 조회 완료 — 총평가 %s원 | 손익 %s원 | 종목 %d개",
-            _BROKER_DISPLAY,
-            f"{tot_eval:,}",
-            f"{tot_pnl:,}",
-            len(stock_list),
-        )
-        return {
-            "success": True,
-            "summary": {
-                "tot_eval": tot_eval,
-                "tot_pnl": tot_pnl,
-                "tot_buy": tot_buy,
-                "deposit": deposit,
-                "orderable": orderable,
-                "withdrawable": withdrawable,
-                "total_rate": total_rate,
-            },
-            "stock_list": stock_list,
-            "raw_data": dep_body,
-        }
 
 
 # ── Order Provider ────────────────────────────────────────────────────
