@@ -423,7 +423,7 @@ export function renderAccountVals(params: AccountValsParams): void {
     buyHistory.reduce((s, r) => s + Number(r.fee ?? 0), 0) +
     sellHistory.reduce((s, r) => s + Number(r.fee ?? 0) + Number(r.tax ?? 0), 0)
 
-  // 보유주식 평가금액/평가손익/수익률: positions + sectorStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식)
+  // 보유 종목 평가금액/평가손익/수익률: positions + sectorStocks에서 직접 계산 (개별 종목 행과 동일 소스·공식)
   const { evalTotal, evalPnl, evalRate } = computeHoldingsSummary(params.positions, params.sectorStocks)
 
   // 누적 실현 손익: sellHistory 전체 합산

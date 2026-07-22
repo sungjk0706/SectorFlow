@@ -344,7 +344,7 @@ function buildAccountRows(
     if (i % 2 === 1) row.style.backgroundColor = COLOR.zebra
     const label = document.createElement('span')
     if (i === 4) {
-      label.appendChild(document.createTextNode('보유주식 평가금액 ('))
+      label.appendChild(document.createTextNode('보유 종목 평가금액 ('))
       const cntSpan = document.createElement('span')
       cntSpan.style.color = COLOR.down
       cntSpan.style.fontWeight = 'bold'
