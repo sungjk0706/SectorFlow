@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import logging
 from datetime import datetime, timedelta, timezone
-from jose import JWTError, jwt
+from jose import jwt
 from backend.app.config import get_settings
 logger = logging.getLogger(__name__)
 
@@ -25,18 +25,6 @@ def create_access_token(username: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS)
     payload = {"sub": username, "exp": expire, "iat": datetime.now(timezone.utc)}
     return jwt.encode(payload, _get_secret(), algorithm=ALGORITHM)
-
-
-def verify_token(token: str) -> str | None:
-    """JWT 토큰 검증. 유효하면 username 반환, 아니면 None."""
-    try:
-        payload = jwt.decode(token, _get_secret(), algorithms=[ALGORITHM])
-        username: str | None = payload.get("sub")
-        if username is None:
-            return None
-        return username
-    except JWTError:
-        return None
 
 
 def authenticate_user(username: str, password: str) -> bool:
