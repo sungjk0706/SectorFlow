@@ -97,6 +97,11 @@ async def init_cache_tables():
     # master_stocks_table sector 컬럼 또는 메모리 캐시로 대체되어 제거됨.
     await _create_runtime_tables(conn)
     await _create_user_tables(conn)
+    # order_time_guard_on 토글 제거 마이그레이션 (idempotent) — 시장가 단일 운용에서
+    # OFF의 의미가 없어 토글 자체를 제거. key-value row이므로 스키마 변경 아님.
+    await conn.execute(
+        "DELETE FROM integrated_system_settings WHERE key = 'order_time_guard_on'"
+    )
     await conn.commit()
     logger.info("SQLite 캐시 테이블 초기화 완료.")
 

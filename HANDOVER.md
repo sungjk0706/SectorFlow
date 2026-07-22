@@ -6,6 +6,73 @@
 
 ## 직전 완료 작업
 
+### order_time_guard_on 토글 제거 — 대안 A + 옵션 2 (2026-07-23)
+
+**세션**: 6세션에 걸쳐 사용자가 설계한 "체결 불가 시간대 주문 차단" 토글 제거. P10(SSOT)/P16(살아있는 경로)/P23(일관성)/P24(단순성). 시장가 단일 운용에서 OFF의 의미 부재로 인한 제거 결정 (규칙 0-5 엄격 절차 적용).
+
+**문제 배경**: SectorFlow는 시장가 주문만 사용. 체결 불가 시간대(동시호가·장외)에 시장가 주문을 전송해도 체결되지 않음. 토글 OFF의 유일한 효과 = 미체결 주문 적체(P22 위험) + 불필요한 API 호출/에러 로그. 사용자 이득 없음. 토글 ON이 항상 올바른 상태이므로 토글 자체가 무의미.
+
+**사용자 결정**: 대안 A (토글 제거) + 옵션 2 (buy_order_executor.py의 is_krx_after_hours() → is_order_blocked_by_time() 교체). 옵션 2 선택으로 인해 is_krx_after_hours() 함수 정의도 dead code 제거.
+
+**수정 파일 10개**:
+
+백엔드 6개:
+- `backend/app/core/settings_defaults.py:131-132` — `order_time_guard_on` 키 + 주석 제거 (2줄).
+- `backend/app/services/daily_time_scheduler.py` — `get_order_time_block_status()` 토글 분기 4줄 제거 + docstring 갱신. `is_krx_after_hours()` 함수 정의 제거 (dead code — buy_order_executor.py에서 옵션 2 교체로 인해 실사용 0건).
+- `backend/app/services/trading.py:820-831` — `_is_order_time_blocked()` 토글 분기 제거, 서명 `(self, stk_cd: str)` 단순화 (raw_settings 인자 제거). 호출부 2곳(L218 매수, L558 매도) 인자 수정.
+- `backend/app/services/engine_service.py` — `_apply_order_time_guard_change()` 전체 제거 (16줄) + L69 호출부 제거.
+- `backend/app/db/stock_tables.py:98-105` — `init_cache_tables()`에 idempotent DELETE 쿼리 추가 (`DELETE FROM integrated_system_settings WHERE key = 'order_time_guard_on'`). 스키마 변경 아님 (key-value row 삭제).
+- `backend/app/services/buy_order_executor.py` — `_refresh_buyable_prices()`와 `evaluate_buy_candidates()`에서 `is_krx_after_hours()` + `is_nxt_enabled()` 이원화 판별 → `is_order_blocked_by_time(s.code)` 단일 호출로 통일. `_after_hours` 변수 제거.
+
+프론트엔드 2개:
+- `frontend/src/pages/general-settings.ts` — `buildOrderTimeGuardRow()` 함수 제거 (18줄) + L702 호출부 + L703 설명 텍스트 + L57 `orderTimeGuardToggle` 변수 선언 + L1210 sync 라인 제거.
+- `frontend/src/types/index.ts:231-232` — `order_time_guard_on: boolean;` 필드 + 주석 제거.
+
+테스트 2개:
+- `backend/tests/test_daily_time_scheduler.py` — 토글 OFF 케이스 2건 제거 + `is_krx_after_hours` import 제거 + `TestIsKrxAfterHours` 클래스 전체 제거 (8 테스트).
+- `backend/tests/test_buy_order_executor.py` — 36곳 `is_krx_after_hours` + `is_nxt_enabled` mock → `is_order_blocked_by_time` mock 교체. (False,False)→False 34곳, (True,False)→True 1곳, (True,True)→False 1곳.
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| 토글제거 | P10/P24 | 시장가 단일 운용에서 무의미한 토글 제거. 불필요한 분기 3곳 제거 (get_order_time_block_status, _is_order_time_blocked, _apply_order_time_guard_change 전체 제거). 코드 약 50줄 감소. |
+| 일관성 | P23 | buy_order_executor.py의 is_krx_after_hours() + is_nxt_enabled() 이원화 판별 → is_order_blocked_by_time() 단일 함수로 통일. is_krx_after_hours() dead code 제거. |
+| DB정리 | P10/P21 | integrated_system_settings 테이블에서 order_time_guard_on row 삭제 (idempotent DELETE). DB 잔존 시 코드=무시 vs DB=존재 진실 소스 분리 위험 제거. |
+
+**검증**: `pytest backend/tests/` 2782 passed (이전 2792에서 10개 감소 — 제거한 테스트 10개 반영: TestIsKrxAfterHours 8건 + 토글 OFF 케이스 2건). `python -W error::RuntimeWarning main.py` 런타임 기동 15초+ RuntimeWarning 없음. `npm run typecheck`/`npm run build` 정상. DB에서 order_time_guard_on row 삭제 확인. 잔존 프로세스 0건.
+
+**화면 영향**:
+- 설정 페이지: "체결 불가 시간대 주문 차단" 토글 행 사라짐 (설정 항목 1개 감소).
+- 상단 헤더 배지: 체결 불가 시간대에 항상 배지 표시 (이전에는 설정 OFF 시 숨김). "지금은 주문 불가 시간"이 항상 보여 더 명확.
+- 매수 후보 목록: 양쪽 비활성 시간대(15:20~15:30, 20:00 이후)에 NXT 종목도 후보에서 제외 (옵션 2 적용 — 실제 거래 영향 없음, 어차피 주문 차단).
+- 매수/매도 동작: 체결 불가 시간대 주문 안 함 — 기존 토글 ON일 때와 동일 (사용자 체감 차이 없음).
+
+**잔존 프로세스**: 없음 (백엔드 기동 후 종료, 런타임 검증만 수행).
+
+**다음 세션 대기 사항**: 특별한 대기 사항 없음. 필요 시 다음 개선 작업 지시.
+
+## 사용자 결정 변경 (이전 세션 기록 — 2026-07-23)
+
+### 옵션 C → 대안 A (토글 제거) 결정 전환
+
+**검토 배경**: 옵션 C(통합 게이트 방식) 상세 구현 계획 보고 전, 사용자 제기 — "SectorFlow는 시장가 주문만 사용하는데, 체결 불가 시간대에 주문을 넣어도 체결이 안 되면 `order_time_guard_on` 토글 자체가 무의미하지 않은가? ON/OFF와 관계없이 무조건 차단하는 게 더 단순하고 명확하지 않은가?"
+
+**검토 결과 (코드 수정 없음)**:
+- 시장가 단일 운용 확인 (trading.py:360-363 매수, 561-568 매도 — `trde_tp="3"`, `order_type="시장가"`, 지정가 경로 없음).
+- 체결 불가 시간대 시장가 체결 불가 — 코드 주석에 명시.
+- 토글 OFF의 유일한 효과 = 미체결 주문 적체 + 불필요한 API 호출/에러 로그. 사용자 이득 없음.
+- 결론: 토글 제거가 P24(단순성)/P10(SSOT)에 부합.
+
+**사용자 결정: 대안 A (토글 제거) + 옵션 2 (buy_order_executor.py 교체)**:
+- 6세션에 걸쳐 사용자가 직접 설계한 토글이나, 시장가 단일 운용에서 무의미하다는 검토에 동의.
+- 설정 페이지 토글 제거 승인.
+- DB row 제거 승인 — 기동 시 자동 정리(idempotent DELETE) 방식.
+- 옵션 2 선택: buy_order_executor.py의 is_krx_after_hours() → is_order_blocked_by_time() 교체 (P23 일관성 + is_krx_after_hours() dead code 제거).
+
+**구현 완료**: 위 "직전 완료 작업" 섹션 참조.
+
+## 직전 완료 작업 (이전 세션)
+
 ### 주문 일시중단 배지 문구/표시 로직 정비 (2026-07-22)
 
 **세션**: 헤더 "주문 일시중단" 배지 UI/UX 개선. P21/P16/P23. "NXT 전용 구간 (KRX 단독 종목 차단)" 문구의 모호성 해소 및 설정 OFF 시 배지 숨김.
@@ -29,11 +96,11 @@
 **화면 영향**:
 - NXT-only 시간대(예: 08:00~09:00, 15:40~20:00): `⏸ KRX 단독 종목 차단 · NXT 가능` 표시.
 - KRX·NXT 모두 비활성 시간대(예: 15:20~15:30, 20:00 이후): `⏸ KRX·NXT 모두 주문 불가` 표시.
-- "체결 불가 시간대 주문 차단" 설정 OFF: 배지 완전히 숨김.
+- "체결 불가 시간대 주문 차단" 설정 OFF: 배지 완전히 숨김. **[참고: 다음 세션 대안 A로 토글 제거 예정 — 이 동작은 사라짐]**
 
 **잔존 프로세스**: 없음 (백엔드 기동 후 종료, 런타임 검증만 수행).
 
-**다음 세션 대기 사항**: `buy_order_executor.py`의 `is_krx_after_hours()` 필터가 `order_time_guard_on` 토글과 무관하게 동작하는 문제 — 사용자 요청으로 별도 세션에서 다룰 예정.
+**다음 세션 대기 사항**: 특별한 대기 사항 없음 (대안 A 토글 제거는 다음 섹션에서 완료됨).
 
 ## 직전 완료 작업 (이전 세션)
 

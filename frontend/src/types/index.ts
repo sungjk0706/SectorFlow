@@ -228,9 +228,6 @@ export interface AppSettings {
   // UI 설정
   ui_price_flash_on: boolean;
 
-  // 주문 시간대 게이트
-  order_time_guard_on: boolean;
-
   // 기타
   auto_trading_effective: boolean;
   auto_buy_effective: boolean;
