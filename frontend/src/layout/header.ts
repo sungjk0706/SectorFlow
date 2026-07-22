@@ -263,6 +263,17 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   modeChip.style.fontWeight = '700'
   header.appendChild(modeChip)
 
+  // KRX / NXT 장 상태 칩
+  const krxChip = createChipEl()
+  const nxtChip = createChipEl()
+  header.appendChild(krxChip)
+  header.appendChild(nxtChip)
+
+  // KRX 알림 칩 (서킷브레이커/사이드카)
+  const krxAlertChip = createChipEl()
+  krxAlertChip.style.display = 'none'
+  header.appendChild(krxAlertChip)
+
   // 백그라운드 데이터 갱신 칩
   const avgAmtChip = createChipEl()
   avgAmtChip.style.display = 'none'
@@ -287,17 +298,6 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
 
     brokerChipRefs[brokerId] = { token: tokenChip, ws: wsChip }
   }
-
-  // KRX / NXT 장 상태 칩
-  const krxChip = createChipEl()
-  const nxtChip = createChipEl()
-  header.appendChild(krxChip)
-  header.appendChild(nxtChip)
-
-  // KRX 알림 칩 (서킷브레이커/사이드카)
-  const krxAlertChip = createChipEl()
-  krxAlertChip.style.display = 'none'
-  header.appendChild(krxAlertChip)
 
   // OMS 서킷브레이커 발동 칩 (클릭 시 해제)
   const circuitBreakerChip = createChipEl()
