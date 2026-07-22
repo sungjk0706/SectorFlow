@@ -157,7 +157,7 @@ def _build_target_entry(bt) -> dict:
 async def get_all_sector_stocks() -> list[dict]:
     """전체 종목(매매부적격 제외) — 업종분류 커스텀 페이지 전용.
 
-    각 종목: { code, name, sector(get_merged_sector 기반), market_type, nxt_enable }
+    각 종목: { code, name, sector(get_merged_sectors_batch 기반), market_type, nxt_enable }
     """
     from backend.app.core.sector_mapping import get_merged_sectors_batch
     from backend.app.services.engine_symbol_utils import get_stock_market as _get_mkt, is_nxt_enabled as _is_nxt
