@@ -69,7 +69,7 @@
 | B-10 | P1 | 엔진 계좌/서비스 | 4 | ☑ | 완료 (B-10-a 11건 + B-10-b 7건 = 18건, B10-02는 B-14 이월) |
 | B-11 | P1 | 파이프라인 (Compute/Gateway) | 2 | ☑ | 완료 (B-11-a 8건 + B-11-b 4건 = 12건) |
 | B-12 | P2 | DB 계층 | 4 | ☑ | 9건 수정 |
-| B-13 | P2 | 설정 관리 | 5 | ☐ | |
+| B-13 | P2 | 설정 관리 | 5 | ☑ | 부분 완료 (3건 해결 B13-01/02/05, 잔여 5건 보류 LOW/INFO) |
 | B-14 | P2 | Broker 추상화 (공통) | 7 | ☑ | 완료 (B-14-a 6건 + B-14-b 2건 = 8건) |
 | B-15 | P2 | 증권사 구현: 키움 | 5 | ☑ | 완료 (B-15-a 7건 + B-15-b 7건 = 14건) |
 | B-16 | P2 | 증권사 구현: LS | 3 | ☑ | 분할 권장 (완료) |
@@ -88,11 +88,11 @@
 | F-06 | P3 | 공통 컴포넌트 | 25 | ☐ | 분할 권장 |
 | F-07 | P3 | 타입 및 유틸 | 5 | ☐ | |
 
-**진행률**: 23/30 세션 완료 (77%). B-10 완료 (B-10-a 11건 + B-10-b 7건, B10-02는 B-14 이월). B-11 완료 (B-11-a 8건 + B-11-b 4건). B-14 완료 (B-14-a 6건 + B-14-b 2건). B-15 완료 (B-15-a 7건 + B-15-b 7건). B-23 완료 (테스트 품질 점검). 잔여 7세션 (B-13, F-02~F-07).
+**진행률**: 24/30 세션 완료 (80%). B-10 완료 (B-10-a 11건 + B-10-b 7건, B10-02는 B-14 이월). B-11 완료 (B-11-a 8건 + B-11-b 4건). B-13 부분 완료 (3건 해결 B13-01/02/05, 잔여 5건 보류 LOW/INFO). B-14 완료 (B-14-a 6건 + B-14-b 2건). B-15 완료 (B-15-a 7건 + B-15-b 7건). B-23 완료 (테스트 품질 점검). 잔여 6세션 (F-02~F-07).
 
 ---
 
-## 3. 세션별 실행 태스크 (잔여 7세션)
+## 3. 세션별 실행 태스크 (잔여 6세션)
 
 > 각 세션은 아래 4블록으로 구성:
 > 1. **대상 파일** (실측 줄 수)
@@ -212,30 +212,45 @@
 
 ### 세션 B-13: P2 — 설정 관리
 
+> **부분 완료 (2026-07-22)**: 3건 해결 (B13-01/02/05) — MEDIUM 2건 + LOW 1건 (P4). 잔여 5건 보류 (B13-03/04/06/07/08 — LOW/INFO 등급). 별도 세션에서 추가 수정 가능.
+
 **대상 파일** (5개, 총 1387줄)
-- [ ] `backend/app/core/settings_file.py` (440줄, 대형)
-- [ ] `backend/app/core/settings_store.py` (382줄, 대형)
-- [ ] `backend/app/core/engine_settings.py` (346줄, 대형)
-- [ ] `backend/app/core/settings_defaults.py` (180줄, 중형)
-- [ ] `backend/app/core/trade_mode.py` (39줄, 소형)
+- [x] `backend/app/core/settings_file.py` (440줄→428줄, B13-01 update_settings 삭제)
+- [x] `backend/app/core/settings_store.py` (382줄→362줄, B13-02 dead code 삭제)
+- [x] `backend/app/core/engine_settings.py` (346줄→341줄, B13-05 키움 분기 제거)
+- [ ] `backend/app/core/settings_defaults.py` (180줄, 중형) — 위반 없음
+- [ ] `backend/app/core/trade_mode.py` (39줄, 소형) — 위반 없음
 
 **대상 원칙**: P2, P6, P10, P12, P13, P17, P20, P23, P24
 
-**조사 체크리스트**
-- [ ] P2: DB I/O `async def`
-- [ ] P6: SQLite, Raw SQL
-- [ ] P10: `integrated_system_settings_cache` SSOT (다중 캐시 금지)
-- [ ] P12: DB 연결 싱글톤
-- [ ] P13: 설정 메모리 상주, 틱 연산에서 DB 조회 없음
-- [ ] P17: 플래그 단일 소스 (`auto_buy_on`/`auto_sell_on` 등 다중 수정 금지)
-- [ ] P20: 폴백/silent except 없음
-- [ ] P23: 용어 사전 준수, 패턴 일관
-- [ ] P24: 단순성 기준
+**조사 체크리스트** (2026-07-22 조사 완료)
+- [x] P2: DB I/O `async def` — 준수
+- [x] P6: SQLite, Raw SQL — 준수
+- [x] P10: `integrated_system_settings_cache` SSOT (다중 캐시 금지) — 준수 (잔여: B13-03 engine_settings 기본값 61곳 중복, LOW)
+- [x] P12: DB 연결 싱글톤 — 준수
+- [x] P13: 설정 메모리 상주, 틱 연산에서 DB 조회 없음 — 준수
+- [x] P17: 플래그 단일 소스 (`auto_buy_on`/`auto_sell_on` 등 다중 수정 금지) — 준수
+- [x] P20: 폴백/silent except 없음 — 준수
+- [x] P23: 용어 사전 준수, 패턴 일관 — 준수
+- [x] P24: 단순성 기준 — 잔여: B13-07 함수 길이 50줄 초과 2곳 (LOW, 보류)
 
 **검증**
-- [ ] `pytest backend/tests -k "settings"` 통과
-- [ ] `python -W error::RuntimeWarning main.py` 기동 검증
-- [ ] 잔여 플래그 다중 수정 패턴 grep (`auto_buy_on\s*=`) 추가 인스턴스 없음
+- [x] `pytest backend/tests -k "settings"` 통과 (301 passed)
+- [x] `python -W error::RuntimeWarning main.py` 기동 검증 (344ms, RuntimeWarning 0건)
+- [x] 잔여 플래그 다중 수정 패턴 grep (`auto_buy_on\s*=`) 추가 인스턴스 없음
+- [x] 잔존 참조 grep (`update_settings`, `_schedule_settings_task`) 0건 확인
+
+**해결 내역**
+- **B13-01 (MEDIUM, P22)**: `update_settings` 저널링/검증 우회 경로 제거 — 함수 삭제 + 호출자 2곳(telegram_bot, dry_run)을 `apply_settings_updates`로 전환. 모든 설정 변경이 단일 경로 통해 저널 기록.
+- **B13-02 (MEDIUM, P16)**: `_schedule_settings_task` dead code 삭제 — 호출처 0건 + 미사용 `asyncio` import 제거.
+- **B13-05 (LOW, P4)**: `_pick_broker_credentials` 키움 특수 분기 제거 — 현재 선택 증권사 + `_app_key` 접미 키 기반 동적 loop로 모든 증권사 균일 처리.
+
+**잔여 위반 (보류 — 별도 세션 가능)**
+- B13-03 (LOW, P10/P16): engine_settings.py 기본값 61곳 중복 — `merged = {**DEFAULT_USER_SETTINGS, **flat}` 후에도 `merged.get(key, default)`로 기본값 하드코딩. `settings_defaults.py`와 중복.
+- B13-04 (LOW, P4/P10): `"kiwoom"` 기본값 공통 로직 침투 2곳 — B13-03 해결 시 함께 처리 가능.
+- B13-06 (LOW, P3): `asyncio.to_thread` 파일 I/O — async 대체재 없음, 1회 실행, 보류 권장.
+- B13-07 (LOW, P24): 함수 길이 50줄 초과 2곳 — 그룹별 헬퍼 분리 필요.
+- B13-08 (INFO, P10/P23): "mock" 매핑 3곳 분산 — 각각 다른 계층/목적, 보류 권장.
 
 ---
 
