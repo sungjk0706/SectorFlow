@@ -84,11 +84,11 @@
 | **F-02** | **P1** | **진입점, 라우팅, 레이아웃** | 6 | ☑ | 완료 (7건 P16/P23/P24) |
 | F-03 | P2 | 핵심 매매 페이지 | 6 | ✅ | 6건 해결 (P16/P19/P23/P24), 4건 보류 |
 | F-04 | P2 | 설정 페이지 | 5 | ☐ | 분할 권장 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 + F-04-e 11건 해결, 잔여 파일 분할 별도) |
-| F-05 | P3 | 수익 페이지 | 3 | ☐~ | F-05-a 완료 (7건 P10/P19/P20/P23), F-05-b 1/2세션 완료 (F05-10/F05-12 해결, F05-09/F05-08 잔여) |
+| F-05 | P3 | 수익 페이지 | 3 | ☐~ | F-05-a 완료 (7건 P10/P19/P20/P23), F-05-b 1/2세션 완료 (F05-10/F05-12 해결), F-05-b 2/2세션 F05-09 해결 (mount 분할 10개 헬퍼 + 실전/테스트 루프 중복 제거), F05-08 잔여 (파일 길이) |
 | F-06 | P3 | 공통 컴포넌트 | 25 | ☐ | 분할 권장 |
 | F-07 | P3 | 타입 및 유틸 | 5 | ☐ | |
 
-**진행률**: 30/30 세션 완료 (100%). B-10 완료 (B-10-a 11건 + B-10-b 7건, B10-02는 B-14 이월). B-11 완료 (B-11-a 8건 + B-11-b 4건). B-13 부분 완료 (3건 해결 B13-01/02/05, 잔여 5건 보류 LOW/INFO). B-14 완료 (B-14-a 6건 + B-14-b 2건). B-15 완료 (B-15-a 7건 + B-15-b 7건). B-23 완료 (테스트 품질 점검). F-02 완료 (7건 P16/P23/P24). F-03 완료 (6건 P16/P19/P23/P24, 4건 보류). F-04 완료 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 + F-04-e 11건 해결, 잔여 파일 분할 별도). F-05-a 완료 (7건 P10/P19/P20/P23 — 폴백 제거/중복 SSOT화/레이스 가드), F-05-b 1/2세션 완료 (F05-10 mount 분할 9개 헬퍼 50줄 이하 + F05-12 불필요 변수 2건 제거), F-05-b 2/2세션 잔여 (F05-09/F05-08). 잔여 2세션 (F-06, F-07) + F-05-b 2/2 + B-13 보류.
+**진행률**: 30/30 세션 완료 (100%). B-10 완료 (B-10-a 11건 + B-10-b 7건, B10-02는 B-14 이월). B-11 완료 (B-11-a 8건 + B-11-b 4건). B-13 부분 완료 (3건 해결 B13-01/02/05, 잔여 5건 보류 LOW/INFO). B-14 완료 (B-14-a 6건 + B-14-b 2건). B-15 완료 (B-15-a 7건 + B-15-b 7건). B-23 완료 (테스트 품질 점검). F-02 완료 (7건 P16/P23/P24). F-03 완료 (6건 P16/P19/P23/P24, 4건 보류). F-04 완료 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 + F-04-e 11건 해결, 잔여 파일 분할 별도). F-05-a 완료 (7건 P10/P19/P20/P23 — 폴백 제거/중복 SSOT화/레이스 가드), F-05-b 1/2세션 완료 (F05-10 mount 분할 9개 헬퍼 50줄 이하 + F05-12 불필요 변수 2건 제거), F-05-b 2/2세션 F05-09 해결 (mount 분할 10개 헬퍼 50줄 이하 + 실전/테스트 계좌 루프 중복 제거 P23), F05-08 잔여 (파일 길이). 잔여 2세션 (F-06, F-07) + F05-08 + B-13 보류.
 
 ---
 
@@ -869,10 +869,10 @@
 
 ### 세션 F-05: P3 — 수익 페이지
 
-> **분할 진행**: F-05-a (7건 — 폴백/중복/비동기 안전) 완료. F-05-b 1/2세션 (F05-10/F05-12 — 수익상세 단순성) 완료. F-05-b 2/2세션 (F05-09/F05-08 — 수익현황 단순성 + 파일 길이) 다음 세션 예정.
+> **분할 진행**: F-05-a (7건 — 폴백/중복/비동기 안전) 완료. F-05-b 1/2세션 (F05-10/F05-12 — 수익상세 단순성) 완료. F-05-b 2/2세션 F05-09 해결 (수익현황 mount 분할 10개 헬퍼 + 실전/테스트 루프 중복 제거). F05-08 (파일 길이) 잔여 — 다음 세션 예정.
 
-**대상 파일** (3개, 총 1968줄)
-- [~] `frontend/src/pages/profit-overview.ts` (718→698줄, F-05-a 완료)
+**대상 파일** (3개, 총 2012줄)
+- [~] `frontend/src/pages/profit-overview.ts` (718→698→742줄, F-05-a + F-05-b 2/2세션 F05-09 완료 — mount 10개 헬퍼로 분할, 모든 mount 헬퍼 50줄 이하, 실전/테스트 루프 중복 제거. renderSectorStockPnl 146줄 별도 세션 필요)
 - [~] `frontend/src/pages/profit-detail.ts` (667→654→672줄, F-05-a + F-05-b 1/2세션 완료 — mount 9개 헬퍼로 분할, 모든 함수 50줄 이하)
 - [~] `frontend/src/pages/profit-shared.ts` (569→598줄, F-05-a 완료 — 공통 함수 추가로 증가)
 
@@ -900,9 +900,14 @@
 - F05-10: profit-detail.ts mount() ~303줄 → 9개 헬퍼 함수로 분할 (buildSummaryRow 48줄, onDrilldownToggle 18줄, buildFilterRow 43줄, buildTabRow 27줄, buildTableContainer 13줄, buildStatRow 39줄, restoreInitialView 30줄, flushDirtyRender 34줄, subscribeProfitDetailStore 35줄, mount 본체 31줄 — 모두 50줄 이하)
 - F05-12: profit-detail.ts drilldownCols 모듈 변수 → showDrilldown() 지역 변수화 (ColumnDef import 제거), displayRows 별칭 제거 (rows 직접 사용), unmount drilldownCols=[] 제거
 
-**F-05-b 2/2세션 잔여 (2건 — 다음 세션)**
-- F05-08: 파일 길이 698/672/598줄 (P24 500줄 초과) — 수익현황 분할 후 재측정, 필요 시 profit-shared.ts 컬럼 정의 분할 검토
-- F05-09: profit-overview.ts mount() ~380줄 (P24 함수 50줄 초과)
+**F-05-b 2/2세션 F05-09 해결 완료**
+- F05-09: profit-overview.ts mount() ~384줄 → 10개 헬퍼 함수로 분할 (buildLeftColumn 33줄, buildAccountRows 33줄, buildStockListSection 39줄, buildAccountPanel 27줄, buildLowerSection 19줄, initDateRange 11줄, applyDateRange 34줄, buildProfitChart 36줄, buildDonutChart 21줄, flushRender 37줄, subscribeProfitOverviewStore 48줄, mount 본체 48줄 — 모두 50줄 이하). 부수: 실전/테스트 계좌 행 루프 중복(~23줄×2) → buildAccountRows 공통 헬퍼 통합 (P23). applyDateRange 시퀀스 변수 모듈 변수 승격 + unmount 리셋 (P19 레이스 가드 유지).
+
+**F-05-b 2/2세션 잔여 (1건 — 다음 세션)**
+- F05-08: 파일 길이 742/672/598줄 (P24 500줄 초과) — profit-shared.ts 컬럼 정의(BUY_COLS/SELL_COLS/createDrilldownCols) → profit-columns.ts 분할 검토
+
+**새로 발견된 위반 (별도 세션 필요)**
+- renderSectorStockPnl: profit-overview.ts:135-280, 146줄 (P24 50줄의 2.9배) — F05-09 범위 밖 기존 위반. 업종 그룹 헤더 + 종목 행 렌더 로직 헬퍼 분할 필요.
 
 **별도 세션 권장**
 - F05-07: "보유주식" → "보유 종목" 용어 통일 (account-labels.ts, sell-position.ts 전역 동시 수정 필요)
