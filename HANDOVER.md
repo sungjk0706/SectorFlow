@@ -6,6 +6,52 @@
 
 ## 직전 완료 작업
 
+### JIF 카운트다운 복구 S-2 프론트엔드 + 테스트 보완 (2026-07-23)
+
+**세션**: 다단계 작업 워크플로우 4세션 — `plan_jif_countdown.md` 기반 S-2 구현. 프론트엔드 3파일 + 테스트 1파일. JIF 카운트다운 복구 최종 세션.
+
+**구현 내용 (Step 2-1 ~ 2-2)**:
+1. `header.ts` — `formatCountdown()` 포맷 확장: 60초 이상일 때 "X분 Y초 전" 표시 (예: 90초 → "1분 30초 전"). sec=0이면 "X분 전" 유지.
+2. `header.ts` — `PHASE_STYLE` "애프터마켓 지속" 항목 제거 (dead code — P16. 백엔드에서 더 이상 해당 페이즈명 사용 안 함).
+3. `general-settings.ts` — `fixedTimes` "18:00 애프터마켓 지속 전환" 항목 제거 (백엔드 타임테이블에서 18:00 phase 엔트리 제거됨 — P10 SSOT 일치).
+4. `sector-settings.ts` — 주석에서 "애프터마켓 지속" 제거 (P23 용어 통일).
+5. `test_engine_ws_dispatch.py` — `_JIF_COUNTDOWN_KRX`/`_JIF_COUNTDOWN_NXT` 임포트 추가 + `TestJifConstants` 클래스에 매핑 완전성 검증 6건 추가:
+   - 카운트다운 맵/페이즈 맵 중복 없음
+   - 카운트다운 맵/무시 코드 중복 없음 (P20)
+   - KRX 7개 / NXT 14개 엔트리 수 검증
+   - remaining_sec 값 {600, 300, 60, 10} 일치 (API 문서 기준 — P10)
+   - KRX 장마감 10분전 코드 없음 검증 (API 문서 — 44=5분전이 최대)
+
+**수정 파일 4개**:
+- 프론트엔드 3개: `header.ts`, `general-settings.ts`, `sector-settings.ts`
+- 테스트 1개: `test_engine_ws_dispatch.py`
+
+**검증**:
+- `npm run build` 성공 (vite build, 76 modules, 945ms, 타입 오류 없음)
+- `pytest backend/tests/test_engine_ws_dispatch.py backend/tests/test_daily_time_scheduler.py` 286 passed
+- `pytest backend/tests/` 전체 2808 passed (이전 2802에서 6개 증가 — 신규 매핑 완전성 테스트 6건)
+- 잔존 프로세스 0건
+
+**화면 영향 (S-2 완료 후)**:
+- 상단 헤더 카운트다운 칩: 90초 전일 때 "1분 30초 전"으로 더 정확하게 표시 (기존 "1분 전" → 개선)
+- 설정 화면 "거래소 고정 시간" 안내: "18:00 애프터마켓 지속 전환" 항목 제거 (NXT 애프터마켓은 15:40~20:00 단일 구간)
+- NXT 애프터마켓 칩: 15:40~20:00 동일 "애프터마켓" 표시 (UI 변화 없음, dead code 제거만)
+- 매수/매도 동작: 영향 없음 (카운트다운은 표시 전용)
+
+**JIF 카운트다운 복구 전체 완료 (S-1 + S-2)**:
+- S-1: 백엔드 핵심 11 Step (engine_state.py, engine_ws_dispatch.py, daily_time_scheduler.py + 설계 문서 수정)
+- S-2: 프론트엔드 3파일 + 테스트 1파일 (header.ts, general-settings.ts, sector-settings.ts, test_engine_ws_dispatch.py)
+- 전체 수정 파일 8개 (백엔드 3 + 프론트엔드 3 + 테스트 2 + 문서 1)
+- 태스크 파일(`docs/plan_jif_countdown.md`) + 설계 문서(`docs/jif_countdown_design.md`) 삭제 대상 (규칙 11 — 모든 단계 완료 후)
+
+**잔존 프로세스**: 없음.
+
+**다음 세션 대기 사항**: JIF 카운트다운 복구 전체 완료. 태스크 파일 + 설계 문서 삭제 여부 사용자 확인 필요 (규칙 11). 이후 다음 우선순위 작업 진행.
+
+---
+
+## 직전 완료 작업 (이전 세션)
+
 ### JIF 카운트다운 복구 S-1 백엔드 핵심 구현 (2026-07-23)
 
 **세션**: 다단계 작업 워크플로우 3세션 — `plan_jif_countdown.md` 기반 S-1 구현. 백엔드 핵심 11 Step + 테스트 보완.

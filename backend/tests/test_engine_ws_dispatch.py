@@ -25,6 +25,8 @@ from backend.app.services.engine_ws_dispatch import (
     _JIF_PHASE_MAP_KRX,
     _JIF_PHASE_MAP_NXT,
     _JIF_IGNORE_CODES,
+    _JIF_COUNTDOWN_KRX,
+    _JIF_COUNTDOWN_NXT,
 )
 
 
@@ -456,3 +458,57 @@ class TestJifConstants:
             assert name in valid_krx, f"KRX 페이즈명 '{name}'이 calc_timebased 페이즈명과 불일치"
         for name in _JIF_PHASE_MAP_NXT.values():
             assert name in valid_nxt, f"NXT 페이즈명 '{name}'이 calc_timebased 페이즈명과 불일치"
+
+    # ── JIF 카운트다운 맵 완전성 (S-2 신규 — 방안 1) ──
+
+    def test_countdown_map_no_overlap_with_phase_map(self):
+        """_JIF_COUNTDOWN_KRX/NXT 키가 _JIF_PHASE_MAP_KRX/NXT와 중복 없음 (분리 처리 보장)."""
+        krx_countdown_keys = set(_JIF_COUNTDOWN_KRX.keys())
+        krx_phase_keys = set(_JIF_PHASE_MAP_KRX.keys())
+        assert not (krx_countdown_keys & krx_phase_keys), \
+            f"KRX 카운트다운/페이즈 맵 중복: {krx_countdown_keys & krx_phase_keys}"
+        nxt_countdown_keys = set(_JIF_COUNTDOWN_NXT.keys())
+        nxt_phase_keys = set(_JIF_PHASE_MAP_NXT.keys())
+        assert not (nxt_countdown_keys & nxt_phase_keys), \
+            f"NXT 카운트다운/페이즈 맵 중복: {nxt_countdown_keys & nxt_phase_keys}"
+
+    def test_countdown_map_no_overlap_with_ignore_codes(self):
+        """_JIF_COUNTDOWN_KRX/NXT 키가 _JIF_IGNORE_CODES와 중복 없음 (P20 폴백 금지)."""
+        ignore = set(_JIF_IGNORE_CODES)
+        assert not (set(_JIF_COUNTDOWN_KRX.keys()) & ignore), \
+            f"KRX 카운트다운 맵과 무시 코드 중복: {set(_JIF_COUNTDOWN_KRX.keys()) & ignore}"
+        assert not (set(_JIF_COUNTDOWN_NXT.keys()) & ignore), \
+            f"NXT 카운트다운 맵과 무시 코드 중복: {set(_JIF_COUNTDOWN_NXT.keys()) & ignore}"
+
+    def test_countdown_krx_entry_count(self):
+        """_JIF_COUNTDOWN_KRX는 7개 (장개시 4 + 장마감 3 — 10분전 코드 없음)."""
+        assert len(_JIF_COUNTDOWN_KRX) == 7
+
+    def test_countdown_nxt_entry_count(self):
+        """_JIF_COUNTDOWN_NXT는 14개 (프리마켓 장개시 4 + 장마감 3 + 에프터마켓 장개시 4 + 장마감 3)."""
+        assert len(_JIF_COUNTDOWN_NXT) == 14
+
+    def test_countdown_remaining_sec_values(self):
+        """remaining_sec 값이 API 문서 기준 (600/300/60/10) 일치 (P10 SSOT — 설계 문서 3.2 오류 바로잡기)."""
+        expected = {600, 300, 60, 10}
+        krx_secs = {sec for _, sec in _JIF_COUNTDOWN_KRX.values()}
+        nxt_secs = {sec for _, sec in _JIF_COUNTDOWN_NXT.values()}
+        assert krx_secs == expected, f"KRX remaining_sec 값 불일치: {krx_secs}"
+        assert nxt_secs == expected, f"NXT remaining_sec 값 불일치: {nxt_secs}"
+
+    def test_countdown_krx_no_10min_close(self):
+        """KRX 장마감 10분전 코드 없음 (API 문서 기준 — 44=5분전이 최대)."""
+        close_codes = {
+            code for code, (label, _) in _JIF_COUNTDOWN_KRX.items()
+            if "장마감" in label
+        }
+        # 장마감 코드는 44/43/42 (5분/1분/10초) — 10분전 코드 없음
+        assert "44" in close_codes
+        assert "43" in close_codes
+        assert "42" in close_codes
+        # 10분전(600초) 장마감 코드 없음 확인
+        close_10min = [
+            code for code, (label, sec) in _JIF_COUNTDOWN_KRX.items()
+            if "장마감" in label and sec == 600
+        ]
+        assert len(close_10min) == 0, f"KRX 장마감 10분전 코드 존재 (API 문서 위반): {close_10min}"
