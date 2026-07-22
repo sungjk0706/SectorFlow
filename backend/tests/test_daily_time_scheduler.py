@@ -1407,13 +1407,39 @@ class TestOnKrxPreSubscribe:
     async def test_trading_day_subscribes(self):
         mock_state = MagicMock()
         mock_state.last_krx_pre_subscribe_date = ""
+        mock_state.master_stocks_cache = {
+            "005930": {"_filtered": True, "_subscribed": False},
+            "000660": {"_filtered": True, "_subscribed": False},
+        }
+
+        async def _fake_subscribe(*, nxt_only=False):
+            for cd in mock_state.master_stocks_cache:
+                mock_state.master_stocks_cache[cd]["_subscribed"] = True
+
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59)), \
+             patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
+             patch("backend.app.services.engine_ws_reg.subscribe_sector_stocks_0b", new_callable=AsyncMock, side_effect=_fake_subscribe) as mock_subscribe:
+            await _on_krx_pre_subscribe()
+            mock_subscribe.assert_awaited_once()
+            assert mock_state.last_krx_pre_subscribe_date == "20250106"
+
+    @pytest.mark.asyncio
+    async def test_zero_subscription_no_guard(self):
+        """가짜 성공 방지 — 구독 0건 시 가드 미설정, 09:00 복구 대기 (P20/P22)."""
+        mock_state = MagicMock()
+        mock_state.last_krx_pre_subscribe_date = ""
+        mock_state.master_stocks_cache = {
+            "005930": {"_filtered": True, "_subscribed": False},
+        }
+        # subscribe_sector_stocks_0b 호출되지만 _subscribed 플래그 변경 없음 (가짜 성공)
         with patch("backend.app.services.engine_state.state", mock_state), \
              patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 59)), \
              patch("backend.app.core.trading_calendar.is_trading_day", return_value=True), \
              patch("backend.app.services.engine_ws_reg.subscribe_sector_stocks_0b", new_callable=AsyncMock) as mock_subscribe:
             await _on_krx_pre_subscribe()
             mock_subscribe.assert_awaited_once()
-            assert mock_state.last_krx_pre_subscribe_date == "20250106"
+            assert mock_state.last_krx_pre_subscribe_date == ""  # 가드 미설정
 
     @pytest.mark.asyncio
     async def test_weekend_skips(self):
