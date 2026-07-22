@@ -73,6 +73,9 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     _TIMETABLE,
     build_timetable_from_cache,
     _parse_hm_tuple,
+    _to3,
+    _fmt_hms,
+    NXT_MAINMARKET_START,
     _schedule_next_timetable_event,
     _timetable_event_fired,
     _check_jif_health,
@@ -1965,41 +1968,44 @@ class TestRetryPipelineCatchup:
 class TestTimetableBuilder:
     """build_timetable_from_cache 단위 테스트 — 캐시 기반 동적 빌드 (Step 2 + 4세션 통합)."""
 
-    def test_build_with_cache_values_returns_11_items(self):
-        """캐시에서 4개 direct 시각을 읽어 11항목 리스트 반환 (토글 ON 기본)."""
+    def test_build_with_cache_values_returns_12_items(self):
+        """캐시에서 4개 direct 시각을 읽어 12항목 리스트 반환 (토글 ON 기본, 09:00:30 포함)."""
         tt = build_timetable_from_cache({
             "timetable.realtime_reset": "07:55",
             "timetable.ws_prestart": "07:56",
             "timetable.krx_pre_subscribe": "08:58",
             "timetable.confirmed_download": "20:40",
         })
-        assert len(tt) == 11
-        # 4개 direct 항목 — 캐시 시각 반영
-        assert tt[0]["time"] == (7, 55)
+        assert len(tt) == 12
+        # 4개 direct 항목 — 캐시 시각 반영 (time 필드는 3-tuple)
+        assert tt[0]["time"] == (7, 55, 0)
         assert tt[0]["kind"] == "direct"
         assert tt[0]["action"] is _on_realtime_fields_reset
-        assert tt[1]["time"] == (7, 56)
+        assert tt[1]["time"] == (7, 56, 0)
         assert tt[1]["kind"] == "direct"
         assert tt[1]["action"] is _on_ws_subscribe_start
-        assert tt[3]["time"] == (8, 58)
+        assert tt[3]["time"] == (8, 58, 0)
         assert tt[3]["kind"] == "direct"
         assert tt[3]["action"] is _on_krx_pre_subscribe
-        # 11번째 direct 항목 — 확정 데이터 다운로드 (4세션 통합)
-        assert tt[10]["time"] == (20, 40)
-        assert tt[10]["kind"] == "direct"
-        assert tt[10]["action"] is _on_confirmed_download
-        # 7개 phase 항목 — 코드 상수 유지
-        assert tt[2]["time"] == NXT_PREMARKET_START
-        assert tt[4]["time"] == KRX_REGULAR_START
-        assert tt[9]["time"] == NXT_AFTERMARKET_END
+        # 12번째 direct 항목 — 확정 데이터 다운로드 (4세션 통합)
+        assert tt[11]["time"] == (20, 40, 0)
+        assert tt[11]["kind"] == "direct"
+        assert tt[11]["action"] is _on_confirmed_download
+        # 8개 phase 항목 — 코드 상수 유지 (3-tuple 정규화)
+        assert tt[2]["time"] == _to3(NXT_PREMARKET_START)
+        assert tt[4]["time"] == _to3(KRX_REGULAR_START)
+        assert tt[5]["time"] == NXT_MAINMARKET_START  # 09:00:30 신규 엔트리
+        assert tt[5]["kind"] == "phase"
+        assert "09:00:30" in tt[5]["ctx"]
+        assert tt[10]["time"] == _to3(NXT_AFTERMARKET_END)
 
     def test_build_with_empty_cache_falls_back_to_defaults(self):
         """캐시에 키 없으면 DEFAULT_USER_SETTINGS 기본값(07:58/07:59/08:59/20:40) 사용."""
         tt = build_timetable_from_cache({})
-        assert tt[0]["time"] == (7, 58)
-        assert tt[1]["time"] == (7, 59)
-        assert tt[3]["time"] == (8, 59)
-        assert tt[10]["time"] == (20, 40)  # confirmed_download 기본값
+        assert tt[0]["time"] == (7, 58, 0)
+        assert tt[1]["time"] == (7, 59, 0)
+        assert tt[3]["time"] == (8, 59, 0)
+        assert tt[11]["time"] == (20, 40, 0)  # confirmed_download 기본값
 
     def test_build_with_none_cache_value_falls_back_to_default(self):
         """캐시 값이 None/빈 문자열이면 DEFAULT_USER_SETTINGS 기본값 사용 (P20)."""
@@ -2008,9 +2014,9 @@ class TestTimetableBuilder:
             "timetable.ws_prestart": "",
             "timetable.krx_pre_subscribe": "08:55",
         })
-        assert tt[0]["time"] == (7, 58)  # None → 기본값
-        assert tt[1]["time"] == (7, 59)  # 빈 문자열 → 기본값
-        assert tt[3]["time"] == (8, 55)  # 캐시값 우선
+        assert tt[0]["time"] == (7, 58, 0)  # None → 기본값
+        assert tt[1]["time"] == (7, 59, 0)  # 빈 문자열 → 기본값
+        assert tt[3]["time"] == (8, 55, 0)  # 캐시값 우선
 
     def test_build_ctx_string_includes_time(self):
         """ctx 문자열에 시각이 포함되어 사용자에게 의미 전달 (P21 투명성)."""
@@ -2023,10 +2029,11 @@ class TestTimetableBuilder:
         assert "07:55" in tt[0]["ctx"]
         assert "07:56" in tt[1]["ctx"]
         assert "08:58" in tt[3]["ctx"]
-        assert "20:40" in tt[10]["ctx"]
+        assert "09:00:30" in tt[5]["ctx"]  # NXT 메인마켓 진입 (초 단위)
+        assert "20:40" in tt[11]["ctx"]
 
     def test_build_toggle_off_skips_confirmed_download(self):
-        """scheduler_market_close_on=False 시 11번째 항목 스킵 (P16 살아있는 경로)."""
+        """scheduler_market_close_on=False 시 마지막 항목 스킵 (P16 살아있는 경로)."""
         tt = build_timetable_from_cache({
             "timetable.realtime_reset": "07:55",
             "timetable.ws_prestart": "07:56",
@@ -2034,14 +2041,14 @@ class TestTimetableBuilder:
             "timetable.confirmed_download": "20:40",
             "scheduler_market_close_on": False,
         })
-        assert len(tt) == 10  # 11번째 항목 스킵
+        assert len(tt) == 11  # confirmed_download 항목 스킵
         # 마지막 항목은 NXT 장마감 (phase) — confirmed_download direct 없음
-        assert tt[9]["kind"] == "phase"
+        assert tt[10]["kind"] == "phase"
         # confirmed_download action을 가진 항목 없음
         assert not any(e.get("action") is _on_confirmed_download for e in tt)
 
     def test_build_toggle_on_includes_confirmed_download(self):
-        """scheduler_market_close_on=True 시 11번째 항목 포함 (명시적 True)."""
+        """scheduler_market_close_on=True 시 마지막 항목 포함 (명시적 True)."""
         tt = build_timetable_from_cache({
             "timetable.realtime_reset": "07:55",
             "timetable.ws_prestart": "07:56",
@@ -2049,8 +2056,8 @@ class TestTimetableBuilder:
             "timetable.confirmed_download": "20:40",
             "scheduler_market_close_on": True,
         })
-        assert len(tt) == 11
-        assert tt[10]["action"] is _on_confirmed_download
+        assert len(tt) == 12
+        assert tt[11]["action"] is _on_confirmed_download
 
     def test_parse_hm_tuple_valid(self):
         """정상 HH:MM → (h, m) 튜플."""
@@ -2065,6 +2072,25 @@ class TestTimetableBuilder:
             _parse_hm_tuple("7:58:99")
         with pytest.raises(ValueError):
             _parse_hm_tuple("")
+
+    def test_to3_normalizes_2tuple_to_3tuple(self):
+        """(h, m) → (h, m, 0) 정규화 (P23 일관성)."""
+        assert _to3((7, 58)) == (7, 58, 0)
+        assert _to3((20, 40)) == (20, 40, 0)
+
+    def test_to3_passes_3tuple_unchanged(self):
+        """(h, m, s) → 그대로 반환."""
+        assert _to3((9, 0, 30)) == (9, 0, 30)
+        assert _to3((7, 58, 0)) == (7, 58, 0)
+
+    def test_fmt_hms_zero_seconds_omits_seconds(self):
+        """s=0 → "HH:MM" (기존 표시 호환)."""
+        assert _fmt_hms((7, 58, 0)) == "07:58"
+        assert _fmt_hms((20, 40, 0)) == "20:40"
+
+    def test_fmt_hms_nonzero_seconds_includes_seconds(self):
+        """s≠0 → "HH:MM:SS" (초 단위 이벤트 표시)."""
+        assert _fmt_hms((9, 0, 30)) == "09:00:30"
 
 
 class TestTimetableScheduler:
@@ -2121,6 +2147,42 @@ class TestTimetableScheduler:
             delay = mock_loop.call_later.call_args.args[0]
             # 15:20 - 09:30 = 5h50m = 21000초
             assert delay == 21000
+
+    def test_schedule_next_event_at_090000_reserves_090030(self):
+        """09:00:00 기동 시 09:00:30 NXT 메인마켓 예약 (delay=30초) — 핵심 신규 테스트.
+
+        JIF 미수신 시 시간표 보완 경로가 09:00:30에 메인마켓 전환을 수행하는지 검증 (P16).
+        """
+        mock_state = MagicMock()
+        mock_state.timetable_timer_handle = None
+        mock_loop = MagicMock()
+        mock_loop.call_later.return_value = MagicMock()
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("asyncio.get_running_loop", return_value=mock_loop), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0, 0)), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
+            _schedule_next_timetable_event()
+            delay = mock_loop.call_later.call_args.args[0]
+            # 09:00:30 - 09:00:00 = 30초
+            assert delay == 30
+            # 예약된 콜백의 ctx에 09:00:30 메인마켓 진입 포함 확인
+            sched_ctx = mock_state.timetable_timer_handle  # call_later 반환값 (사용되지 않음)
+            # call_later 두 번째 인자(콜백)는 lambda이므로 ctx는 로그로만 검증 가능 — delay로 충분
+
+    def test_schedule_next_event_at_090015_reserves_090030(self):
+        """09:00:15 기동 시 09:00:30 예약 (delay=15초) — 초 단위 정밀 예약 검증."""
+        mock_state = MagicMock()
+        mock_state.timetable_timer_handle = None
+        mock_loop = MagicMock()
+        mock_loop.call_later.return_value = MagicMock()
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("asyncio.get_running_loop", return_value=mock_loop), \
+             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(9, 0, 15)), \
+             patch("backend.app.services.daily_time_scheduler.schedule_engine_task", side_effect=_close_coro):
+            _schedule_next_timetable_event()
+            delay = mock_loop.call_later.call_args.args[0]
+            # 09:00:30 - 09:00:15 = 15초
+            assert delay == 15
 
     def test_schedule_next_event_at_2030_reserves_2040(self):
         """20:30 기동 시 20:40(확정 다운로드) 예약 — 4세션 11번째 항목 통합."""
