@@ -6,6 +6,42 @@
 
 ## 직전 완료 작업
 
+### F-04-e: P2 — stock-classification.ts + general-settings.ts 함수 분할 11건 (2026-07-22)
+
+**수정 파일 2개**:
+- `frontend/src/pages/stock-classification.ts` (1617→1618줄, +1줄): F04-01 함수 4개 50줄 초과 분할 — **P24**
+  - `buildTripleHeader` (71줄) → `buildHeaderLeft`/`buildHeaderCenter`/`buildHeaderRight` + 본문
+  - `buildSectorManageCard` (280줄) → 여러 빌더로 분할 + **중복 퍼지 검색 로직 추출** (F04-16 해결)
+  - `buildTripleCenter` (231줄) → 여러 빌더로 분할
+  - `mount` (103줄) → `handleStockClassificationChange`/`handleStockDataChange`/`handleUiStoreChange` + 본문
+- `frontend/src/pages/general-settings.ts` (1438→1390줄, 48줄 감소): F04-02/F04-04 함수 7개 50줄 초과 분할 — **P24**
+  - `renderTimeSettingsTab` (217줄) → `buildBuyTimeRow`/`buildSellTimeRow`/`buildTimetableRow`(3행 중복 제거)/`buildConfirmedDownloadRow`/`buildFixedTimesBox`/`buildSubscribeMaxRow` + 본문
+  - `renderAutoTradeTab` (328줄) → 14개 빌더로 분할 (`buildMasterToggleRow`, `buildAutoBuyRow`, `buildAutoSellRow`, `buildOrderTimeGuardRow`, `buildRiskManagerMasterRow`, `buildDailyLossRow` 등)
+  - `renderTelegramTab` (87줄) → `buildTeleToggleRow`/`buildTeleInputRows`/`buildTeleSaveRow`/`buildTeleCommandTable` + 본문
+  - `renderTestVirtualSection` (101줄) → `buildTestVirtualInputRow`/`buildTestVirtualSaveRow`/`buildTestVirtualInfoWrap`/`buildTestVirtualResetWrap` + 본문
+  - `renderApiFields` (65줄) → `buildApiInputRows`/`buildApiSaveRow` + 본문
+  - `syncFromSettings` (129줄) → `syncToggleInputRow`(공통 패턴 5회 반복 추출)/`syncRiskManager`/`syncTimetables`/`syncAutoTradeTab`/`syncTelegramTab`/`syncAccountTab`/`syncApiSettingsTab` + 본문 — **P23 DRY**
+  - `mount` (67줄) → `buildTabPanels` + 본문
+
+**해결 원칙**: P23 (일관성 — syncToggleInputRow 공통 패턴 추출, buildTimetableRow 3행 중복 제거), P24 (단순성 — 함수 50줄 이하)
+
+**검증**:
+- `npm run build` (tsc -b + vite build) — 성공 (2.20s, exit code 0)
+- 분할된 11개 함수 모두 50줄 이하 확인 (Python 스크립트로 전수 검증)
+- 빌드 에러 4건 발생 후 즉시 해결 (unused 모듈 변수 6개 제거: `timetableResetH/M`/`timetableWsH/M`/`timetableKrxH/M` — 읽히는 곳 없는 dead code, `buildTimetableRow` 타입 좁히기)
+
+**화면 영향**: 없음. 업종분류 페이지 + 일반설정 페이지 모든 탭 표시/입력/저장 동작 동일. 구조 개선만 수행.
+
+**부수적 정리**:
+- F04-16 (P23) 해결: fuzzy 검색 로직 중복 → 공통 함수 추출 (F-04-a 보류 항목 해결)
+- F04-02/F04-04 (P24) 해결: general-settings.ts 함수 7개 50줄 초과 → 모두 분할 (F-04-b 보류 항목 해결)
+- F04-01/F04-03 (P24) 해결: stock-classification.ts 함수 4개 50줄 초과 → 모두 분할 (F-04-a 보류 항목 해결)
+- unused 모듈 변수 6개 제거 (timetableResetH/M, timetableWsH/M, timetableKrxH/M — 쓰이지 않는 dead code)
+
+**참고**: 파일 자체는 여전히 500줄 기준 초과 (stock-classification.ts 1618줄, general-settings.ts 1390줄). 본 세션은 "함수 분할"에 한정했으며, "파일 분할(멀티 파일)"은 별도 세션에서 다단계 워크플로우 적용 필요. 현재까지의 F-04 서브세션(a~e)은 모두 함수 단위 분할에 집중.
+
+---
+
 ### F-04-d: P2 — sector-settings.ts 구조 분할 2건 (2026-07-22)
 
 **수정 파일 1개**:
@@ -99,38 +135,42 @@
 
 ## 현재 진행 상황
 
-### 아키텍처 전수 조사 진행률: 29/30 세션 완료 (97%, F-04-d 완료)
+### 아키텍처 전수 조사 진행률: 30/30 세션 완료 (100%, F-04-e 완료)
 
 | 상태 | 세션 |
 |------|------|
-| 완료 | B-01~B-12, B-14~B-23, F-01, F-02, F-03 |
-| 부분 완료 | B-13 (3건 해결, 5건 보류 LOW/INFO), F-04 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 해결, 잔여 F-04-e) |
+| 완료 | B-01~B-12, B-14~B-23, F-01, F-02, F-03, F-04 |
+| 부분 완료 | B-13 (3건 해결, 5건 보류 LOW/INFO), F-04 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 + F-04-e 11건 해결, 잔여 파일 분할 별도) |
 | 미시작 | F-05, F-06, F-07 |
 
-**다음 세션**: F-04-e (P2 — stock-classification.ts + general-settings.ts 파일 분할, 구조 변경 다단계 워크플로우 적용)
+**다음 세션**: F-05 (P3 — 수익 페이지 profit-overview.ts + profit-detail.ts + profit-shared.ts)
 
 ---
 
 ## 미해결 문제
 
+### F-04-e 보류 항목 (F-04-e 범위외, 추후 세션)
+- F04-01/F04-03 파일 분할 (P24): stock-classification.ts 1618줄 — 함수 분할은 완료, 파일 자체는 500줄 기준 초과. 멀티 파일 분할은 별도 세션 필요 (다단계 워크플로우)
+- F04-02/F04-04 파일 분할 (P24): general-settings.ts 1390줄 — 함수 분할은 완료, 파일 자체는 500줄 기준 초과. 멀티 파일 분할은 별도 세션 필요 (다단계 워크플로우)
+
 ### F-04-d 보류 항목 (F-04-d 범위외, 추후 세션)
-- F-04-e (별도): stock-classification.ts + general-settings.ts 파일 분할 (구조 변경, 다단계 워크플로우 적용)
+- ~~F-04-e (별도): stock-classification.ts + general-settings.ts 함수 분할~~ — **F-04-e 해결** (11건 함수 분할 완료, 파일 분할은 잔여)
 
 ### F-04-c 보류 항목 (F-04-c 범위외, 추후 세션)
 - F04-14 (P23, INFO): 저장 호출 패턴 3종 혼재 (buy/sell: saveHelper.saveImmediate 미await / general: async/await saveSection / sector: autoSave 디바운스) — saveSection이 내부 try/catch로 reject하지 않으므로 안전. F-07 범위(settings-save.ts)와 연계 검토 권장
-- F-04-e (별도): stock-classification.ts + general-settings.ts 파일 분할 (구조 변경, 다단계 워크플로우 적용)
+- ~~F-04-e (별도): stock-classification.ts + general-settings.ts 함수 분할~~ — **F-04-e 해결** (11건 함수 분할 완료)
 
 ### F-04-b 보류 항목 (F-04-b 범위외, 추후 세션)
-- F04-02/F04-04 (P24): general-settings.ts 파일 1448줄 / 함수 7개 50줄 초과 — 파일 분할은 별도 세션 필요 (구조 변경)
+- ~~F04-02/F04-04 (P24): general-settings.ts 함수 7개 50줄 초과~~ — **F-04-e 해결** (7개 함수 모두 분할, 파일 1448→1390줄)
 - F04-06/F04-07 (P24): buy-settings/sell-settings 함수 길이 — 분할 검토
 - F04-12/F04-13 (P20): buy-settings/sell-settings `Number() || 0` 폴백 — 사용자 설계 로직 판단 필요
 - ~~F04-05 (P24): sector-settings.ts mount 함수 길이~~ — **F-04-d 해결** (mount 261→24줄)
 - ~~F04-17 (P24): sector-settings.ts 파일 길이~~ — **F-04-d 해결** (503→466줄)
 
 ### F-04-a 보류 항목 (F-04-a 범위외, 추후 세션)
-- F04-01/F04-03 (P24): stock-classification.ts 파일 1597줄 / 함수 4개 50줄 초과 — 파일 분할은 별도 세션 필요 (구조 변경)
+- ~~F04-01/F04-03 (P24): stock-classification.ts 함수 4개 50줄 초과~~ — **F-04-e 해결** (4개 함수 모두 분할)
 - F04-15 (P10): 로컬 캐시/파생 상태 — 성능 최적화 목적이므로 판단 필요
-- F04-16 (P23): fuzzy 검색 로직 중복 — 공통 함수 추출 검토
+- ~~F04-16 (P23): fuzzy 검색 로직 중복~~ — **F-04-e 해결** (공통 함수 추출)
 - F04-18 (P21): 업종 삭제 시 사용자 명시적 알림 부재 — 경미
 
 ### F-03 보류 항목 (B그룹 4건, 추후 검토)
@@ -153,10 +193,10 @@
 
 ## 다음 세션 인계 사항
 
-1. **F-04-d (P2 — sector-settings.ts)** 부터 시작. F-04-c 완료 (buy-settings + sell-settings 4건 해결).
-   - F-04-d 대상: `sector-settings.ts` (501줄) — F04-05 mount 함수 길이, F04-17 파일 길이
-   - F-04-e (별도): stock-classification.ts + general-settings.ts 파일 분할 (구조 변경, 다단계 워크플로우 적용)
-2. 대상 원칙: P10, P13, P16, P17, P19, P21, P23, P24
-3. `architecture_audit_tasks.md` 섹션 F-04 체크리스트 참조
+1. **F-05 (P3 — 수익 페이지)** 부터 시작. F-04-e 완료 (stock-classification.ts + general-settings.ts 함수 11건 분할).
+   - F-05 대상: `profit-overview.ts` (718줄) + `profit-detail.ts` (667줄) + `profit-shared.ts` (569줄) — 총 1954줄
+   - F-04 잔여: stock-classification.ts (1618줄) / general-settings.ts (1390줄) 파일 자체 분할 — 별도 세션 (멀티 파일 분할, 다단계 워크플로우)
+2. 대상 원칙: P5, P10, P16, P19, P22, P23, P24
+3. `architecture_audit_tasks.md` 섹션 F-05 체크리스트 참조
 4. 세션당 1단계 원칙 준수 (AGENTS.md 규칙 0-1)
-5. F-04-a 사전조사 보고서의 발견사항 ID(F04-01~F04-19) 참조
+5. F-03 보류 항목 4건 (F03-07~F03-10) 참조

@@ -88,9 +88,6 @@ let confirmedDlH = '20', confirmedDlM = '40'
 let timetableResetSlot: HTMLElement | null = null
 let timetableWsSlot: HTMLElement | null = null
 let timetableKrxSlot: HTMLElement | null = null
-let timetableResetH = '07', timetableResetM = '58'
-let timetableWsH = '07', timetableWsM = '59'
-let timetableKrxH = '08', timetableKrxM = '59'
 let savingTimetable = false
 
 // 구독 한도 (종목 동시 구독 최대 개수, 기본 200, 범위 1~1000)
@@ -196,17 +193,16 @@ function refreshUI(): void {
 /* ── 시간 설정 탭 ── */
 // Step 1 골조 + Step 2 자동매수/매도 시간쌍 이동 + Step 3 사전 준비 시간·거래소 고정 시간 이동 + Step 4 1일봉 다운로드 이동.
 // 토글 OFF 시에도 시간 입력 활성화 유지 (설계서 2-1, P24 탭 간 의존성 최소화, P21 안내 문구로 보완).
-function renderTimeSettingsTab(container: HTMLElement): void {
-  // 자동매수 시간쌍 (시작/종료)
-  const buyTimeRow = document.createElement('div')
-  Object.assign(buyTimeRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const buyTimeLabel = document.createElement('span')
-  Object.assign(buyTimeLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  buyTimeLabel.textContent = '자동매수 시간'
-  buyTimeRow.appendChild(buyTimeLabel)
+function buildBuyTimeRow(): HTMLElement {
+  const row = document.createElement('div')
+  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  const label = document.createElement('span')
+  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  label.textContent = '자동매수 시간'
+  row.appendChild(label)
   const buyStart = String(vals.buy_time_start ?? '09:00')
   const buyEnd = String(vals.buy_time_end ?? '15:00')
-  const { el: buyTpWrap, handle: buyHandle } = createTimePairInput(buyStart, buyEnd, (s, e) => {
+  const { el: tpWrap, handle } = createTimePairInput(buyStart, buyEnd, (s, e) => {
     if (settingsMgr) {
       const dirty: Record<string, unknown> = {}
       if (s !== vals.buy_time_start) dirty.buy_time_start = s
@@ -217,20 +213,21 @@ function renderTimeSettingsTab(container: HTMLElement): void {
       }
     }
   })
-  buyTimeHandle = buyHandle
-  buyTimeRow.appendChild(buyTpWrap)
-  container.appendChild(buyTimeRow)
+  buyTimeHandle = handle
+  row.appendChild(tpWrap)
+  return row
+}
 
-  // 자동매도 시간쌍 (시작/종료)
-  const sellTimeRow = document.createElement('div')
-  Object.assign(sellTimeRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const sellTimeLabel = document.createElement('span')
-  Object.assign(sellTimeLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  sellTimeLabel.textContent = '자동매도 시간'
-  sellTimeRow.appendChild(sellTimeLabel)
+function buildSellTimeRow(): HTMLElement {
+  const row = document.createElement('div')
+  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  const label = document.createElement('span')
+  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  label.textContent = '자동매도 시간'
+  row.appendChild(label)
   const sellStart = String(vals.sell_time_start ?? '09:00')
   const sellEnd = String(vals.sell_time_end ?? '15:00')
-  const { el: sellTpWrap, handle: sellHandle } = createTimePairInput(sellStart, sellEnd, (s, e) => {
+  const { el: tpWrap, handle } = createTimePairInput(sellStart, sellEnd, (s, e) => {
     if (settingsMgr) {
       const dirty: Record<string, unknown> = {}
       if (s !== vals.sell_time_start) dirty.sell_time_start = s
@@ -241,78 +238,41 @@ function renderTimeSettingsTab(container: HTMLElement): void {
       }
     }
   })
-  sellTimeHandle = sellHandle
-  sellTimeRow.appendChild(sellTpWrap)
-  container.appendChild(sellTimeRow)
+  sellTimeHandle = handle
+  row.appendChild(tpWrap)
+  return row
+}
 
-  container.appendChild(createDescText('자동매수/매도가 꺼져 있어도 시간을 미리 설정할 수 있습니다. "자동매매" 탭에서 자동매수/매도를 켜면 이 시간에 맞춰 실행됩니다.'))
-
-  // 사전 준비 시간 설정 (타임테이블 사용자 조정 3개) — P21 투명성
-  container.appendChild(sectionTitle('사전 준비 시간 설정'))
-  container.appendChild(createDescText('너무 늦으면 실시간 데이터가 누락될 수 있습니다.'))
-
-  // 실시간 항목 초기화 시간 (timetable.realtime_reset, 기본 07:58)
-  const ttResetRow = document.createElement('div')
-  Object.assign(ttResetRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
-  const ttResetLabel = document.createElement('span')
-  Object.assign(ttResetLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  ttResetLabel.textContent = '실시간 데이터 필드 초기화'
-  ttResetRow.appendChild(ttResetLabel)
-  const [trh, trm] = parseHM(String(vals['timetable.realtime_reset'] ?? '07:58'))
-  timetableResetH = trh; timetableResetM = trm
-  timetableResetSlot = createTimeSlot(timetableResetH, timetableResetM, (h, m) => {
-    timetableResetH = h; timetableResetM = m; updateTimeSlotDisplay(timetableResetSlot!, h, m)
-    scheduleTimetableSave('timetable.realtime_reset', `${h}:${m}`)
+function buildTimetableRow(labelText: string, key: 'timetable.realtime_reset' | 'timetable.ws_prestart' | 'timetable.krx_pre_subscribe', defaultTime: string): HTMLElement {
+  const row = document.createElement('div')
+  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
+  const label = document.createElement('span')
+  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  label.textContent = labelText
+  row.appendChild(label)
+  const [h, m] = parseHM(String(vals[key] ?? defaultTime))
+  const slot = createTimeSlot(h, m, (nh, nm) => {
+    updateTimeSlotDisplay(slot, nh, nm)
+    scheduleTimetableSave(key, `${nh}:${nm}`)
   })
-  ttResetRow.appendChild(timetableResetSlot)
-  container.appendChild(ttResetRow)
-  container.appendChild(createDescText('장 시작 전 필드를 비워 새 데이터를 받을 준비를 합니다'))
+  row.appendChild(slot)
+  // 모듈 상태 업데이트 (키별)
+  if (key === 'timetable.realtime_reset') { timetableResetSlot = slot }
+  else if (key === 'timetable.ws_prestart') { timetableWsSlot = slot }
+  else if (key === 'timetable.krx_pre_subscribe') { timetableKrxSlot = slot }
+  return row
+}
 
-  // 구독 사전 시작 시간 (timetable.ws_prestart, 기본 07:59)
-  const ttWsRow = document.createElement('div')
-  Object.assign(ttWsRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
-  const ttWsLabel = document.createElement('span')
-  Object.assign(ttWsLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  ttWsLabel.textContent = 'NXT 종목 구독 신청'
-  ttWsRow.appendChild(ttWsLabel)
-  const [twh, twm] = parseHM(String(vals['timetable.ws_prestart'] ?? '07:59'))
-  timetableWsH = twh; timetableWsM = twm
-  timetableWsSlot = createTimeSlot(timetableWsH, timetableWsM, (h, m) => {
-    timetableWsH = h; timetableWsM = m; updateTimeSlotDisplay(timetableWsSlot!, h, m)
-    scheduleTimetableSave('timetable.ws_prestart', `${h}:${m}`)
-  })
-  ttWsRow.appendChild(timetableWsSlot)
-  container.appendChild(ttWsRow)
-  container.appendChild(createDescText('NXT 프리마켓 시작 전 구독을 미리 신청합니다'))
+function buildConfirmedDownloadRow(): HTMLElement {
+  const row = document.createElement('div')
+  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  const label = document.createElement('span')
+  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal, whiteSpace: 'nowrap' })
+  label.textContent = '1일봉차트 자동다운로드'
+  row.appendChild(label)
 
-  // 정규장 사전 구독 시간 (timetable.krx_pre_subscribe, 기본 08:59)
-  const ttKrxRow = document.createElement('div')
-  Object.assign(ttKrxRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
-  const ttKrxLabel = document.createElement('span')
-  Object.assign(ttKrxLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  ttKrxLabel.textContent = 'KRX 종목 추가 구독'
-  ttKrxRow.appendChild(ttKrxLabel)
-  const [tkh, tkm] = parseHM(String(vals['timetable.krx_pre_subscribe'] ?? '08:59'))
-  timetableKrxH = tkh; timetableKrxM = tkm
-  timetableKrxSlot = createTimeSlot(timetableKrxH, timetableKrxM, (h, m) => {
-    timetableKrxH = h; timetableKrxM = m; updateTimeSlotDisplay(timetableKrxSlot!, h, m)
-    scheduleTimetableSave('timetable.krx_pre_subscribe', `${h}:${m}`)
-  })
-  ttKrxRow.appendChild(timetableKrxSlot)
-  container.appendChild(ttKrxRow)
-  container.appendChild(createDescText('KRX 정규장 시작 전 KRX 단독 종목 구독을 추가합니다'))
-
-  // 1일봉차트 자동다운로드 (토글 + 시간 슬롯) — API 설정 탭에서 이동 (Step 4)
-  // 단일 항목이라 섹션 제목 생략 — 행 라벨 하나로 충분 (P24 단순성)
-  const confirmedDlRow = document.createElement('div')
-  Object.assign(confirmedDlRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const confirmedDlLabel = document.createElement('span')
-  Object.assign(confirmedDlLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal, whiteSpace: 'nowrap' })
-  confirmedDlLabel.textContent = '1일봉차트 자동다운로드'
-  confirmedDlRow.appendChild(confirmedDlLabel)
-
-  const confirmedDlRight = document.createElement('span')
-  confirmedDlRight.style.cssText = 'display:flex;align-items:center;gap:10px;'
+  const right = document.createElement('span')
+  right.style.cssText = 'display:flex;align-items:center;gap:10px;'
 
   const [cdh, cdm] = parseHM(String(vals['timetable.confirmed_download'] ?? '20:40'))
   confirmedDlH = cdh; confirmedDlM = cdm
@@ -320,7 +280,7 @@ function renderTimeSettingsTab(container: HTMLElement): void {
     confirmedDlH = h; confirmedDlM = m; updateTimeSlotDisplay(confirmedDlSlot!, h, m)
     scheduleTimetableSave('timetable.confirmed_download', `${h}:${m}`)
   })
-  confirmedDlRight.appendChild(confirmedDlSlot)
+  right.appendChild(confirmedDlSlot)
 
   const dlOn = vals.scheduler_market_close_on !== false
   confirmedDlToggle = createToggleBtn({ on: dlOn, onClick: async () => {
@@ -336,15 +296,13 @@ function renderTimeSettingsTab(container: HTMLElement): void {
       setDisabled(confirmedDlSlot!, next)
     }
   }})
-  confirmedDlRight.appendChild(confirmedDlToggle.el)
-
-  confirmedDlRow.appendChild(confirmedDlRight)
-  container.appendChild(confirmedDlRow)
+  right.appendChild(confirmedDlToggle.el)
+  row.appendChild(right)
   setDisabled(confirmedDlSlot, !dlOn)
+  return row
+}
 
-  container.appendChild(createDescText('장마감 후 자동 다운로드 시간 (기본값 20:40) — OFF 시 수동 다운로드만 가능'))
-
-  // 거래소 고정 시간 참고 표시 (읽기 전용, 변경 불가) — P21 투명성
+function buildFixedTimesBox(): HTMLElement {
   const fixedTimes: Array<[string, string]> = [
     ['08:00', 'NXT 프리마켓 시작'],
     ['09:00', '정규장 시작'],
@@ -354,20 +312,16 @@ function renderTimeSettingsTab(container: HTMLElement): void {
     ['18:00', '애프터마켓 지속 전환'],
     ['20:00', '장마감'],
   ]
-  const fixedBox = document.createElement('div')
-  Object.assign(fixedBox.style, {
-    margin: '8px 0 0',
-    padding: '8px 10px',
-    background: COLOR.surface,
-    border: '1px solid ' + COLOR.borderLight,
-    borderRadius: '6px',
-    fontSize: FONT_SIZE.desc,
-    color: COLOR.tertiary,
+  const box = document.createElement('div')
+  Object.assign(box.style, {
+    margin: '8px 0 0', padding: '8px 10px',
+    background: COLOR.surface, border: '1px solid ' + COLOR.borderLight,
+    borderRadius: '6px', fontSize: FONT_SIZE.desc, color: COLOR.tertiary,
   })
-  const fixedTitle = document.createElement('div')
-  Object.assign(fixedTitle.style, { fontWeight: FONT_WEIGHT.normal, color: COLOR.neutral, marginBottom: '4px' })
-  fixedTitle.textContent = '참고: 거래소 고정 시간 (변경 불가)'
-  fixedBox.appendChild(fixedTitle)
+  const title = document.createElement('div')
+  Object.assign(title.style, { fontWeight: FONT_WEIGHT.normal, color: COLOR.neutral, marginBottom: '4px' })
+  title.textContent = '참고: 거래소 고정 시간 (변경 불가)'
+  box.appendChild(title)
   for (const [t, label] of fixedTimes) {
     const row = document.createElement('div')
     Object.assign(row.style, { display: 'flex', gap: '8px', fontVariantNumeric: 'tabular-nums' })
@@ -378,28 +332,24 @@ function renderTimeSettingsTab(container: HTMLElement): void {
     desc.textContent = label
     row.appendChild(time)
     row.appendChild(desc)
-    fixedBox.appendChild(row)
+    box.appendChild(row)
   }
-  container.appendChild(fixedBox)
+  return box
+}
 
-  // 구독 한도 (종목 동시 구독 최대 개수) — P10 SSOT 단일 설정 키, P21 사용자 조정 가능
+function buildSubscribeMaxRow(): HTMLElement {
+  const row = document.createElement('div')
+  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  const label = document.createElement('span')
+  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  label.textContent = '종목 동시 구독 최대 개수'
+  row.appendChild(label)
+
   // 백엔드 settings_store.py가 1~1000 외 값 저장 차단 (422) — UI clamp와 이중 방어
-  container.appendChild(sectionTitle('구독 한도'))
-  container.appendChild(createDescText('종목 실시간 시세를 동시에 구독할 최대 개수입니다. 보유 종목을 우선 등록한 뒤, 남은 자리만큼 필터 통과 종목이 추가로 등록됩니다. (기본값 200, 범위 1~1000)'))
-
-  const subMaxRow = document.createElement('div')
-  Object.assign(subMaxRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const subMaxLabel = document.createElement('span')
-  Object.assign(subMaxLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  subMaxLabel.textContent = '종목 동시 구독 최대 개수'
-  subMaxRow.appendChild(subMaxLabel)
-
   const initMax = Number(vals['subscribe.max_0b_count'] ?? 200) || 200
   subscribeMaxInput = createNumInput({
     value: initMax,
-    min: 1,
-    max: 1000,
-    step: 10,
+    min: 1, max: 1000, step: 10,
     name: 'subscribe.max_0b_count',
     onChange: async (v) => {
       if (!settingsMgr) return
@@ -409,112 +359,126 @@ function renderTimeSettingsTab(container: HTMLElement): void {
       if (res.ok) Object.assign(vals, dirty)
     },
   })
-  subMaxRow.appendChild(subscribeMaxInput.el)
-  container.appendChild(subMaxRow)
+  row.appendChild(subscribeMaxInput.el)
+  return row
+}
+
+function renderTimeSettingsTab(container: HTMLElement): void {
+  container.appendChild(buildBuyTimeRow())
+  container.appendChild(buildSellTimeRow())
+  container.appendChild(createDescText('자동매수/매도가 꺼져 있어도 시간을 미리 설정할 수 있습니다. "자동매매" 탭에서 자동매수/매도를 켜면 이 시간에 맞춰 실행됩니다.'))
+
+  // 사전 준비 시간 설정 (타임테이블 사용자 조정 3개) — P21 투명성
+  container.appendChild(sectionTitle('사전 준비 시간 설정'))
+  container.appendChild(createDescText('너무 늦으면 실시간 데이터가 누락될 수 있습니다.'))
+  container.appendChild(buildTimetableRow('실시간 데이터 필드 초기화', 'timetable.realtime_reset', '07:58'))
+  container.appendChild(createDescText('장 시작 전 필드를 비워 새 데이터를 받을 준비를 합니다'))
+  container.appendChild(buildTimetableRow('NXT 종목 구독 신청', 'timetable.ws_prestart', '07:59'))
+  container.appendChild(createDescText('NXT 프리마켓 시작 전 구독을 미리 신청합니다'))
+  container.appendChild(buildTimetableRow('KRX 종목 추가 구독', 'timetable.krx_pre_subscribe', '08:59'))
+  container.appendChild(createDescText('KRX 정규장 시작 전 KRX 단독 종목 구독을 추가합니다'))
+
+  // 1일봉차트 자동다운로드 (토글 + 시간 슬롯) — 단일 항목이라 섹션 제목 생략 (P24)
+  container.appendChild(buildConfirmedDownloadRow())
+  container.appendChild(createDescText('장마감 후 자동 다운로드 시간 (기본값 20:40) — OFF 시 수동 다운로드만 가능'))
+
+  // 거래소 고정 시간 참고 표시 (읽기 전용, 변경 불가) — P21 투명성
+  container.appendChild(buildFixedTimesBox())
+
+  // 구독 한도 — P10 SSOT 단일 설정 키, P21 사용자 조정 가능
+  container.appendChild(sectionTitle('구독 한도'))
+  container.appendChild(createDescText('종목 실시간 시세를 동시에 구독할 최대 개수입니다. 보유 종목을 우선 등록한 뒤, 남은 자리만큼 필터 통과 종목이 추가로 등록됩니다. (기본값 200, 범위 1~1000)'))
+  container.appendChild(buildSubscribeMaxRow())
 }
 
 /* ── 자동매매 탭 ── */
-function renderAutoTradeTab(container: HTMLElement): void {
-  // 마스터 토글
-  const masterRow = document.createElement('div')
-  Object.assign(masterRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const masterLabel = document.createElement('span')
-  Object.assign(masterLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  masterLabel.textContent = '자동매매'
-  masterRow.appendChild(masterLabel)
+function buildMasterToggleRow(): HTMLElement {
+  const row = document.createElement('div')
+  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  const label = document.createElement('span')
+  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  label.textContent = '자동매매'
+  row.appendChild(label)
 
-  const masterRight = document.createElement('span')
-  masterRight.style.cssText = 'display:flex;align-items:center;'
-  masterRight.appendChild(createHolidayBadge())
+  const right = document.createElement('span')
+  right.style.cssText = 'display:flex;align-items:center;'
+  right.appendChild(createHolidayBadge())
   masterToggle = createToggleBtn({ on: false, onClick: () => handleMasterToggle() })
-  masterRight.appendChild(masterToggle.el)
-  masterRow.appendChild(masterRight)
-  container.appendChild(masterRow)
+  right.appendChild(masterToggle.el)
+  row.appendChild(right)
+  return row
+}
 
-  container.appendChild(createDescText('자동매매(매수/매도) 마스터 스위치 — OFF면 모든 매매 중단'))
-
-  // 자동매수 행 (토글만 — 시간쌍은 시간 설정 탭으로 이동, Step 2)
-  const autoBuyRow = document.createElement('div')
-  Object.assign(autoBuyRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
-  const autoBuyLabel = document.createElement('span')
-  Object.assign(autoBuyLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  autoBuyLabel.textContent = '자동매수'
-  autoBuyRow.appendChild(autoBuyLabel)
-  const autoBuyRight = document.createElement('span')
-  autoBuyRight.style.cssText = 'display:flex;align-items:center;'
+function buildAutoBuyRow(): HTMLElement {
+  const row = document.createElement('div')
+  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
+  const label = document.createElement('span')
+  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  label.textContent = '자동매수'
+  row.appendChild(label)
+  const right = document.createElement('span')
+  right.style.cssText = 'display:flex;align-items:center;'
   autoBuyToggle = createToggleBtn({ on: false, onClick: async () => {
     const next = !vals.auto_buy_on
     vals.auto_buy_on = next; autoBuyToggle!.setOn(next)
     const res = await settingsMgr!.saveSection({ auto_buy_on: next })
     toastResult(res)
-    if (!res.ok) {
-      vals.auto_buy_on = !next; autoBuyToggle!.setOn(!next)
-    }
+    if (!res.ok) { vals.auto_buy_on = !next; autoBuyToggle!.setOn(!next) }
   }})
-  autoBuyRight.appendChild(createHolidayBadge())
-  autoBuyRight.appendChild(autoBuyToggle.el)
-  autoBuyRow.appendChild(autoBuyRight)
-  container.appendChild(autoBuyRow)
+  right.appendChild(createHolidayBadge())
+  right.appendChild(autoBuyToggle.el)
+  row.appendChild(right)
+  return row
+}
 
-  // 자동매도 행 (토글만 — 시간쌍은 시간 설정 탭으로 이동, Step 2)
-  const autoSellRow = document.createElement('div')
-  Object.assign(autoSellRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
-  const autoSellLabel = document.createElement('span')
-  Object.assign(autoSellLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  autoSellLabel.textContent = '자동매도'
-  autoSellRow.appendChild(autoSellLabel)
-  const autoSellRight = document.createElement('span')
-  autoSellRight.style.cssText = 'display:flex;align-items:center;'
+function buildAutoSellRow(): HTMLElement {
+  const row = document.createElement('div')
+  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
+  const label = document.createElement('span')
+  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  label.textContent = '자동매도'
+  row.appendChild(label)
+  const right = document.createElement('span')
+  right.style.cssText = 'display:flex;align-items:center;'
   autoSellToggle = createToggleBtn({ on: false, onClick: async () => {
     const next = !vals.auto_sell_on
     vals.auto_sell_on = next; autoSellToggle!.setOn(next)
     const res = await settingsMgr!.saveSection({ auto_sell_on: next })
     toastResult(res)
-    if (!res.ok) {
-      vals.auto_sell_on = !next; autoSellToggle!.setOn(!next)
-    }
+    if (!res.ok) { vals.auto_sell_on = !next; autoSellToggle!.setOn(!next) }
   }})
-  autoSellRight.appendChild(createHolidayBadge())
-  autoSellRight.appendChild(autoSellToggle.el)
-  autoSellRow.appendChild(autoSellRight)
-  container.appendChild(autoSellRow)
+  right.appendChild(createHolidayBadge())
+  right.appendChild(autoSellToggle.el)
+  row.appendChild(right)
+  return row
+}
 
-  container.appendChild(createDescText('거래일 설정시간 내에서만 자동 매수/매도 실행. 공휴일·주말에는 자동매매가 항상 차단됩니다. 시간 설정은 "시간 설정" 탭에서'))
-
-  // 체결 불가 시간대 주문 차단 토글 (자동매도 행 아래)
-  const orderTimeGuardRow = document.createElement('div')
-  Object.assign(orderTimeGuardRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
-  const orderTimeGuardLabel = document.createElement('span')
-  Object.assign(orderTimeGuardLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  orderTimeGuardLabel.textContent = '체결 불가 시간대 주문 차단'
-  orderTimeGuardRow.appendChild(orderTimeGuardLabel)
+function buildOrderTimeGuardRow(): HTMLElement {
+  const row = document.createElement('div')
+  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
+  const label = document.createElement('span')
+  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  label.textContent = '체결 불가 시간대 주문 차단'
+  row.appendChild(label)
   orderTimeGuardToggle = createToggleBtn({ on: true, onClick: async () => {
     const next = !vals.order_time_guard_on
     vals.order_time_guard_on = next
     orderTimeGuardToggle!.setOn(next)
     const res = await settingsMgr!.saveSection({ order_time_guard_on: next })
     toastResult(res)
-    if (!res.ok) {
-      vals.order_time_guard_on = !next
-      orderTimeGuardToggle!.setOn(!next)
-    }
+    if (!res.ok) { vals.order_time_guard_on = !next; orderTimeGuardToggle!.setOn(!next) }
   }})
-  orderTimeGuardRow.appendChild(orderTimeGuardToggle.el)
-  container.appendChild(orderTimeGuardRow)
+  row.appendChild(orderTimeGuardToggle.el)
+  return row
+}
 
-  container.appendChild(createDescText('동시호가·장외 시간대에 시장가 주문 자동 중단 (KRX 단독 종목만, NXT 종목은 NXT 거래 시간에 허용)'))
-
-  // 전역매매설정 (매매 안전장치) 섹션 — 목표 수익/손실 도달 시 자동 매매 중단
-  container.appendChild(sectionTitle('전역매매설정 (매매 안전장치)'))
-  container.appendChild(createDescText('목표 수익/손실 도달 시 자동 매매 중단. 매매 안전장치 OFF 시 모든 조건이 적용되지 않습니다.'))
-
-  // 매매 안전장치 마스터 토글
-  const riskManagerRow = document.createElement('div')
-  Object.assign(riskManagerRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const riskManagerLabel = document.createElement('span')
-  Object.assign(riskManagerLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  riskManagerLabel.textContent = '매매 안전장치'
-  riskManagerRow.appendChild(riskManagerLabel)
+function buildRiskManagerMasterRow(): HTMLElement {
+  const row = document.createElement('div')
+  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  const label = document.createElement('span')
+  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  label.textContent = '매매 안전장치'
+  row.appendChild(label)
   riskManagerChildren = document.createElement('div')
   riskManagerToggle = createToggleBtn({ on: false, onClick: async () => {
     const next = !vals.risk_manager_on
@@ -527,11 +491,11 @@ function renderAutoTradeTab(container: HTMLElement): void {
       setDisabled(riskManagerChildren!, next)
     }
   }})
-  riskManagerRow.appendChild(riskManagerToggle.el)
-  container.appendChild(riskManagerRow)
+  row.appendChild(riskManagerToggle.el)
+  return row
+}
 
-  // 하위 컨트롤: 매매 안전장치 OFF 시 일괄 비활성화
-  // 일일 손실 한도 (토글 + 금액 입력, 음수)
+function buildDailyLossRow(): void {
   dailyLossInput = createMoneyInput({
     value: -500000,
     onChange: async v => {
@@ -540,28 +504,24 @@ function renderAutoTradeTab(container: HTMLElement): void {
       toastResult(res)
       if (res.ok) vals.daily_loss_limit = v
     },
-    step: 10000,
-    min: -1000000000,
-    max: 0,
-    name: 'daily_loss_limit',
+    step: 10000, min: -1000000000, max: 0, name: 'daily_loss_limit',
   })
-  {
-    const r = createToggleLabelControlsRow({
-      labelText: '일일 손실 한도 (원)',
-      toggleOn: true,
-      onToggle: async next => {
-        vals.daily_loss_limit_on = next
-        const res = await settingsMgr!.saveSection({ daily_loss_limit_on: next })
-        toastResult(res)
-        if (!res.ok) vals.daily_loss_limit_on = !next
-      },
-      controlsChild: dailyLossInput.el,
-    })
-    dailyLossToggle = r.toggle; dailyLossControls = r.controls
-    riskManagerChildren.appendChild(r.el)
-  }
+  const r = createToggleLabelControlsRow({
+    labelText: '일일 손실 한도 (원)',
+    toggleOn: true,
+    onToggle: async next => {
+      vals.daily_loss_limit_on = next
+      const res = await settingsMgr!.saveSection({ daily_loss_limit_on: next })
+      toastResult(res)
+      if (!res.ok) vals.daily_loss_limit_on = !next
+    },
+    controlsChild: dailyLossInput.el,
+  })
+  dailyLossToggle = r.toggle; dailyLossControls = r.controls
+  riskManagerChildren!.appendChild(r.el)
+}
 
-  // 일일 손실률 한도 (토글 + % 입력)
+function buildDailyLossRateRow(): void {
   dailyLossRateInput = createNumInput({
     value: -5,
     onChange: async v => {
@@ -570,28 +530,24 @@ function renderAutoTradeTab(container: HTMLElement): void {
       toastResult(res)
       if (res.ok) vals.daily_loss_rate_limit = v
     },
-    step: 0.1,
-    min: -100,
-    max: 0,
-    name: 'daily_loss_rate_limit',
+    step: 0.1, min: -100, max: 0, name: 'daily_loss_rate_limit',
   })
-  {
-    const r = createToggleLabelControlsRow({
-      labelText: '일일 손실률 한도 (%)',
-      toggleOn: false,
-      onToggle: async next => {
-        vals.daily_loss_rate_limit_on = next
-        const res = await settingsMgr!.saveSection({ daily_loss_rate_limit_on: next })
-        toastResult(res)
-        if (!res.ok) vals.daily_loss_rate_limit_on = !next
-      },
-      controlsChild: dailyLossRateInput.el,
-    })
-    dailyLossRateToggle = r.toggle; dailyLossRateControls = r.controls
-    riskManagerChildren.appendChild(r.el)
-  }
+  const r = createToggleLabelControlsRow({
+    labelText: '일일 손실률 한도 (%)',
+    toggleOn: false,
+    onToggle: async next => {
+      vals.daily_loss_rate_limit_on = next
+      const res = await settingsMgr!.saveSection({ daily_loss_rate_limit_on: next })
+      toastResult(res)
+      if (!res.ok) vals.daily_loss_rate_limit_on = !next
+    },
+    controlsChild: dailyLossRateInput.el,
+  })
+  dailyLossRateToggle = r.toggle; dailyLossRateControls = r.controls
+  riskManagerChildren!.appendChild(r.el)
+}
 
-  // 일일 수익 한도 (토글 + 금액 입력, 양수)
+function buildDailyProfitRow(): void {
   dailyProfitInput = createMoneyInput({
     value: 500000,
     onChange: async v => {
@@ -602,23 +558,22 @@ function renderAutoTradeTab(container: HTMLElement): void {
     },
     name: 'daily_profit_limit',
   })
-  {
-    const r = createToggleLabelControlsRow({
-      labelText: '일일 수익 한도 (원)',
-      toggleOn: false,
-      onToggle: async next => {
-        vals.daily_profit_limit_on = next
-        const res = await settingsMgr!.saveSection({ daily_profit_limit_on: next })
-        toastResult(res)
-        if (!res.ok) vals.daily_profit_limit_on = !next
-      },
-      controlsChild: dailyProfitInput.el,
-    })
-    dailyProfitToggle = r.toggle; dailyProfitControls = r.controls
-    riskManagerChildren.appendChild(r.el)
-  }
+  const r = createToggleLabelControlsRow({
+    labelText: '일일 수익 한도 (원)',
+    toggleOn: false,
+    onToggle: async next => {
+      vals.daily_profit_limit_on = next
+      const res = await settingsMgr!.saveSection({ daily_profit_limit_on: next })
+      toastResult(res)
+      if (!res.ok) vals.daily_profit_limit_on = !next
+    },
+    controlsChild: dailyProfitInput.el,
+  })
+  dailyProfitToggle = r.toggle; dailyProfitControls = r.controls
+  riskManagerChildren!.appendChild(r.el)
+}
 
-  // 일일 수익률 한도 (토글 + % 입력, 양수)
+function buildDailyProfitRateRow(): void {
   dailyProfitRateInput = createNumInput({
     value: 5,
     onChange: async v => {
@@ -627,28 +582,24 @@ function renderAutoTradeTab(container: HTMLElement): void {
       toastResult(res)
       if (res.ok) vals.daily_profit_rate_limit = v
     },
-    step: 0.1,
-    min: 0,
-    max: 100,
-    name: 'daily_profit_rate_limit',
+    step: 0.1, min: 0, max: 100, name: 'daily_profit_rate_limit',
   })
-  {
-    const r = createToggleLabelControlsRow({
-      labelText: '일일 수익률 한도 (%)',
-      toggleOn: false,
-      onToggle: async next => {
-        vals.daily_profit_rate_limit_on = next
-        const res = await settingsMgr!.saveSection({ daily_profit_rate_limit_on: next })
-        toastResult(res)
-        if (!res.ok) vals.daily_profit_rate_limit_on = !next
-      },
-      controlsChild: dailyProfitRateInput.el,
-    })
-    dailyProfitRateToggle = r.toggle; dailyProfitRateControls = r.controls
-    riskManagerChildren.appendChild(r.el)
-  }
+  const r = createToggleLabelControlsRow({
+    labelText: '일일 수익률 한도 (%)',
+    toggleOn: false,
+    onToggle: async next => {
+      vals.daily_profit_rate_limit_on = next
+      const res = await settingsMgr!.saveSection({ daily_profit_rate_limit_on: next })
+      toastResult(res)
+      if (!res.ok) vals.daily_profit_rate_limit_on = !next
+    },
+    controlsChild: dailyProfitRateInput.el,
+  })
+  dailyProfitRateToggle = r.toggle; dailyProfitRateControls = r.controls
+  riskManagerChildren!.appendChild(r.el)
+}
 
-  // 연속 손실 횟수 한도 (토글 + 횟수 입력)
+function buildConsecLossRow(): void {
   consecLossInput = createNumInput({
     value: 3,
     onChange: async v => {
@@ -657,34 +608,30 @@ function renderAutoTradeTab(container: HTMLElement): void {
       toastResult(res)
       if (res.ok) vals.consecutive_loss_limit = v
     },
-    step: 1,
-    min: 1,
-    max: 100,
-    name: 'consecutive_loss_limit',
+    step: 1, min: 1, max: 100, name: 'consecutive_loss_limit',
   })
-  {
-    const r = createToggleLabelControlsRow({
-      labelText: '연속 손실 횟수 한도 (회)',
-      toggleOn: false,
-      onToggle: async next => {
-        vals.consecutive_loss_limit_on = next
-        const res = await settingsMgr!.saveSection({ consecutive_loss_limit_on: next })
-        toastResult(res)
-        if (!res.ok) vals.consecutive_loss_limit_on = !next
-      },
-      controlsChild: consecLossInput.el,
-    })
-    consecLossToggle = r.toggle; consecLossControls = r.controls
-    riskManagerChildren.appendChild(r.el)
-  }
+  const r = createToggleLabelControlsRow({
+    labelText: '연속 손실 횟수 한도 (회)',
+    toggleOn: false,
+    onToggle: async next => {
+      vals.consecutive_loss_limit_on = next
+      const res = await settingsMgr!.saveSection({ consecutive_loss_limit_on: next })
+      toastResult(res)
+      if (!res.ok) vals.consecutive_loss_limit_on = !next
+    },
+    controlsChild: consecLossInput.el,
+  })
+  consecLossToggle = r.toggle; consecLossControls = r.controls
+  riskManagerChildren!.appendChild(r.el)
+}
 
-  // 매수 차단 토글 (안전장치 조건 충족 시 매수 중단)
-  const riskBlockBuyRow = document.createElement('div')
-  Object.assign(riskBlockBuyRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
-  const riskBlockBuyLabel = document.createElement('span')
-  Object.assign(riskBlockBuyLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  riskBlockBuyLabel.textContent = '안전장치 조건 충족 시 매수 차단'
-  riskBlockBuyRow.appendChild(riskBlockBuyLabel)
+function buildRiskBlockBuyRow(): HTMLElement {
+  const row = document.createElement('div')
+  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
+  const label = document.createElement('span')
+  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  label.textContent = '안전장치 조건 충족 시 매수 차단'
+  row.appendChild(label)
   riskBlockBuyToggle = createToggleBtn({ on: true, onClick: async () => {
     const next = !vals.risk_block_buy_on
     vals.risk_block_buy_on = next; riskBlockBuyToggle!.setOn(next)
@@ -692,16 +639,17 @@ function renderAutoTradeTab(container: HTMLElement): void {
     toastResult(res)
     if (!res.ok) { vals.risk_block_buy_on = !next; riskBlockBuyToggle!.setOn(!next) }
   }})
-  riskBlockBuyRow.appendChild(riskBlockBuyToggle.el)
-  riskManagerChildren.appendChild(riskBlockBuyRow)
+  row.appendChild(riskBlockBuyToggle.el)
+  return row
+}
 
-  // 매도 차단 토글 (손실 상태에서 매도 차단 시 손실 확대 위험)
-  const riskBlockSellRow = document.createElement('div')
-  Object.assign(riskBlockSellRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
-  const riskBlockSellLabel = document.createElement('span')
-  Object.assign(riskBlockSellLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  riskBlockSellLabel.textContent = '안전장치 조건 충족 시 매도 차단'
-  riskBlockSellRow.appendChild(riskBlockSellLabel)
+function buildRiskBlockSellRow(): HTMLElement {
+  const row = document.createElement('div')
+  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
+  const label = document.createElement('span')
+  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  label.textContent = '안전장치 조건 충족 시 매도 차단'
+  row.appendChild(label)
   riskBlockSellToggle = createToggleBtn({ on: false, onClick: async () => {
     const next = !vals.risk_block_sell_on
     vals.risk_block_sell_on = next; riskBlockSellToggle!.setOn(next)
@@ -709,37 +657,60 @@ function renderAutoTradeTab(container: HTMLElement): void {
     toastResult(res)
     if (!res.ok) { vals.risk_block_sell_on = !next; riskBlockSellToggle!.setOn(!next) }
   }})
-  riskBlockSellRow.appendChild(riskBlockSellToggle.el)
-  riskManagerChildren.appendChild(riskBlockSellRow)
+  row.appendChild(riskBlockSellToggle.el)
+  return row
+}
 
-  riskManagerChildren.appendChild(createDescText('손실 상태에서 매도 차단 시 손실 확대 위험 — 신중하게 활성화하세요'))
-  container.appendChild(riskManagerChildren)
+function buildRiskManagerChildren(): HTMLElement {
+  // 매매 안전장치 OFF 시 일괄 비활성화
+  buildDailyLossRow()
+  buildDailyLossRateRow()
+  buildDailyProfitRow()
+  buildDailyProfitRateRow()
+  buildConsecLossRow()
+  riskManagerChildren!.appendChild(buildRiskBlockBuyRow())
+  riskManagerChildren!.appendChild(buildRiskBlockSellRow())
+  riskManagerChildren!.appendChild(createDescText('손실 상태에서 매도 차단 시 손실 확대 위험 — 신중하게 활성화하세요'))
+  return riskManagerChildren!
+}
 
-  // 화면 표시 섹션 — 플래시 효과 (API 설정 탭에서 이동, Step 5, 설계서 5-3)
-  container.appendChild(sectionTitle('화면 표시'))
-
-  // 실시간 현재가 플래시 효과
-  const uiFlashRow = document.createElement('div')
-  Object.assign(uiFlashRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const uiFlashLabel = document.createElement('span')
-  Object.assign(uiFlashLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  uiFlashLabel.textContent = '실시간 현재가 플래시 효과'
-  uiFlashRow.appendChild(uiFlashLabel)
-
+function buildUiFlashRow(): HTMLElement {
+  const row = document.createElement('div')
+  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  const label = document.createElement('span')
+  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  label.textContent = '실시간 현재가 플래시 효과'
+  row.appendChild(label)
   uiFlashToggle = createToggleBtn({ on: false, onClick: async () => {
     const next = !vals.ui_price_flash_on
     vals.ui_price_flash_on = next
     uiFlashToggle!.setOn(next)
     const res = await settingsMgr!.saveSection({ ui_price_flash_on: next })
     toastResult(res)
-    if (!res.ok) {
-      vals.ui_price_flash_on = !next
-      uiFlashToggle!.setOn(!next)
-    }
+    if (!res.ok) { vals.ui_price_flash_on = !next; uiFlashToggle!.setOn(!next) }
   }})
-  uiFlashRow.appendChild(uiFlashToggle.el)
-  container.appendChild(uiFlashRow)
+  row.appendChild(uiFlashToggle.el)
+  return row
+}
 
+function renderAutoTradeTab(container: HTMLElement): void {
+  container.appendChild(buildMasterToggleRow())
+  container.appendChild(createDescText('자동매매(매수/매도) 마스터 스위치 — OFF면 모든 매매 중단'))
+  container.appendChild(buildAutoBuyRow())
+  container.appendChild(buildAutoSellRow())
+  container.appendChild(createDescText('거래일 설정시간 내에서만 자동 매수/매도 실행. 공휴일·주말에는 자동매매가 항상 차단됩니다. 시간 설정은 "시간 설정" 탭에서'))
+  container.appendChild(buildOrderTimeGuardRow())
+  container.appendChild(createDescText('동시호가·장외 시간대에 시장가 주문 자동 중단 (KRX 단독 종목만, NXT 종목은 NXT 거래 시간에 허용)'))
+
+  // 전역매매설정 (매매 안전장치) 섹션 — 목표 수익/손실 도달 시 자동 매매 중단
+  container.appendChild(sectionTitle('전역매매설정 (매매 안전장치)'))
+  container.appendChild(createDescText('목표 수익/손실 도달 시 자동 매매 중단. 매매 안전장치 OFF 시 모든 조건이 적용되지 않습니다.'))
+  container.appendChild(buildRiskManagerMasterRow())
+  container.appendChild(buildRiskManagerChildren())
+
+  // 화면 표시 섹션 — 플래시 효과 (API 설정 탭에서 이동, Step 5, 설계서 5-3)
+  container.appendChild(sectionTitle('화면 표시'))
+  container.appendChild(buildUiFlashRow())
   container.appendChild(createDescText('실시간 시세 변경 시 노란색 플래시 깜빡임 효과 적용 여부'))
 }
 
@@ -752,33 +723,33 @@ async function handleMasterToggle(): Promise<void> {
 }
 
 /* ── 텔레그램 탭 ── */
-function renderTelegramTab(container: HTMLElement): void {
-  // tele_on 토글
-  const teleRow = document.createElement('div')
-  Object.assign(teleRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
-  const teleLabel = document.createElement('span')
-  Object.assign(teleLabel.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  teleLabel.textContent = '텔레그램 알림'
-  teleRow.appendChild(teleLabel)
+const TELE_STR_KEYS = ['telegram_chat_id', 'telegram_bot_token_test', 'telegram_bot_token_real'] as const
+const TELE_LABELS: Record<string, string> = { telegram_chat_id: '채팅 ID', telegram_bot_token_test: '테스트 봇 토큰', telegram_bot_token_real: '실전 봇 토큰' }
+
+function buildTeleToggleRow(): HTMLElement {
+  const row = document.createElement('div')
+  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
+  const label = document.createElement('span')
+  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
+  label.textContent = '텔레그램 알림'
+  row.appendChild(label)
   teleToggle = createToggleBtn({ on: false, onClick: async () => {
     const next = !vals.tele_on; vals.tele_on = next; teleToggle!.setOn(next)
     const res = await settingsMgr!.saveSection({ tele_on: next })
     toastResult(res)
     if (!res.ok) { vals.tele_on = !next; teleToggle!.setOn(!next) }
   }})
-  teleRow.appendChild(teleToggle.el)
-  container.appendChild(teleRow)
+  row.appendChild(teleToggle.el)
+  return row
+}
 
-  // 채팅 ID / 봇 토큰
-  const STR_KEYS = ['telegram_chat_id', 'telegram_bot_token_test', 'telegram_bot_token_real'] as const
-  const LABELS: Record<string, string> = { telegram_chat_id: '채팅 ID', telegram_bot_token_test: '테스트 봇 토큰', telegram_bot_token_real: '실전 봇 토큰' }
-
-  for (const k of STR_KEYS) {
+function buildTeleInputRows(container: HTMLElement): void {
+  for (const k of TELE_STR_KEYS) {
     const row = document.createElement('div')
     Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
     const lbl = document.createElement('span')
     Object.assign(lbl.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-    lbl.textContent = LABELS[k]
+    lbl.textContent = TELE_LABELS[k]
     row.appendChild(lbl)
     const input = createTextInput({
       value: String(vals[k] || ''),
@@ -790,23 +761,21 @@ function renderTelegramTab(container: HTMLElement): void {
     row.appendChild(input)
     container.appendChild(row)
   }
+}
 
-  // 저장 버튼
+function buildTeleSaveRow(): HTMLElement {
   const saveRow = document.createElement('div')
   Object.assign(saveRow.style, { margin: GS.saveMargin, textAlign: 'right' })
   const saveBtn = createActionButton({
-    label: '저장',
-    variant: 'secondary',
-    padding: GS.btnPad,
-    fontSize: GS.label,
+    label: '저장', variant: 'secondary', padding: GS.btnPad, fontSize: GS.label,
     onClick: async () => {
       const orig: Record<string, unknown> = {}
       const current: Record<string, unknown> = {}
-      for (const k of STR_KEYS) {
+      for (const k of TELE_STR_KEYS) {
         orig[k] = vals[k]
         current[k] = teleInputs[k]?.value ?? vals[k]
       }
-      const dirty = extractDirty(orig, current, STR_KEYS as unknown as string[])
+      const dirty = extractDirty(orig, current, TELE_STR_KEYS as unknown as string[])
       saveBtn.textContent = '저장 중...'
       saveBtn.disabled = true
       const res = await settingsMgr!.saveSection(dirty)
@@ -816,9 +785,10 @@ function renderTelegramTab(container: HTMLElement): void {
     },
   })
   saveRow.appendChild(saveBtn)
-  container.appendChild(saveRow)
+  return saveRow
+}
 
-  // 명령어 안내 테이블
+function buildTeleCommandTable(): HTMLElement {
   interface CommandRow { cmd: string; desc: string }
   const COMMAND_COLUMNS: ColumnDef<CommandRow>[] = [
     { key: 'cmd', label: '명령어', align: 'center', type: 'cmd', render: r => r.cmd },
@@ -836,7 +806,14 @@ function renderTelegramTab(container: HTMLElement): void {
   const table = createDataTable<CommandRow>({ columns: COMMAND_COLUMNS, stickyHeader: false })
   table.updateRows(commands)
   tableWrap.appendChild(table.el)
-  container.appendChild(tableWrap)
+  return tableWrap
+}
+
+function renderTelegramTab(container: HTMLElement): void {
+  container.appendChild(buildTeleToggleRow())
+  buildTeleInputRows(container)
+  container.appendChild(buildTeleSaveRow())
+  container.appendChild(buildTeleCommandTable())
 }
 
 /* ── 계정관리 탭 ── */
@@ -903,85 +880,65 @@ function syncTradeMode(): void {
   }
 }
 
-function renderTestVirtualSection(): HTMLElement {
-  const wrap = document.createElement('div')
-  const disabled = vals.trade_mode !== 'test'
-  if (disabled) { wrap.style.opacity = '0.4'; wrap.style.pointerEvents = 'none' }
+function buildTestVirtualInputRow(state: { inputAmount: number }): HTMLElement {
+  const row = document.createElement('div')
+  Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '8px', padding: GS.rowPad })
+  const label = document.createElement('span')
+  Object.assign(label.style, { fontSize: GS.label, whiteSpace: 'nowrap' })
+  label.textContent = '금액입력(원):'
+  row.appendChild(label)
 
-  let inputAmount = Number(vals.test_virtual_deposit) || 0
-
-  // 금액 입력 + 투자금충전
-  const inputRow = document.createElement('div')
-  Object.assign(inputRow.style, { display: 'flex', alignItems: 'center', gap: '8px', padding: GS.rowPad })
-  const inputLabel = document.createElement('span')
-  Object.assign(inputLabel.style, { fontSize: GS.label, whiteSpace: 'nowrap' })
-  inputLabel.textContent = '금액입력(원):'
-  inputRow.appendChild(inputLabel)
-
-  depositInput = createMoneyInput({ value: inputAmount, onChange: v => { inputAmount = Math.max(0, v) }, style: { width: '160px' } as unknown as Partial<CSSStyleDeclaration>, name: 'deposit_amount' })
-  inputRow.appendChild(depositInput.el)
+  depositInput = createMoneyInput({ value: state.inputAmount, onChange: v => { state.inputAmount = Math.max(0, v) }, style: { width: '160px' } as unknown as Partial<CSSStyleDeclaration>, name: 'deposit_amount' })
+  row.appendChild(depositInput.el)
 
   const chargeBtn = createActionButton({
-    label: '투자금충전',
-    variant: 'secondary',
-    padding: '7px 12px',
-    borderRadius: '4px',
-    fontSize: GS.label,
+    label: '투자금충전', variant: 'secondary', padding: '7px 12px', borderRadius: '4px', fontSize: GS.label,
     onClick: async () => {
-      if (inputAmount <= 0) return
+      if (state.inputAmount <= 0) return
       try {
-        const res = await api.settlementCharge(inputAmount)
+        const res = await api.settlementCharge(state.inputAmount)
         showSaveToast(res.ok ? 'saved' : 'error')
       } catch {
         showSaveToast('error')
       }
     },
   })
-  inputRow.appendChild(chargeBtn)
-  wrap.appendChild(inputRow)
+  row.appendChild(chargeBtn)
+  return row
+}
 
-  // 기본예수금으로 저장 버튼
-  const saveRow = document.createElement('div')
-  Object.assign(saveRow.style, { display: 'flex', justifyContent: 'flex-end', margin: GS.saveMargin })
-  const saveDepositBtn = createActionButton({
-    label: '투자금 변경',
-    variant: 'secondary',
-    padding: '7px 16px',
-    borderRadius: '4px',
-    fontSize: GS.label,
+function buildTestVirtualSaveRow(state: { inputAmount: number }): HTMLElement {
+  const row = document.createElement('div')
+  Object.assign(row.style, { display: 'flex', justifyContent: 'flex-end', margin: GS.saveMargin })
+  const btn = createActionButton({
+    label: '투자금 변경', variant: 'secondary', padding: '7px 16px', borderRadius: '4px', fontSize: GS.label,
     onClick: async () => {
-      const res = await settingsMgr!.saveSection({ test_virtual_deposit: inputAmount, test_virtual_balance: inputAmount })
+      const res = await settingsMgr!.saveSection({ test_virtual_deposit: state.inputAmount, test_virtual_balance: state.inputAmount })
       showSaveToast(res.ok ? 'saved' : 'error')
     },
   })
-  saveRow.appendChild(saveDepositBtn)
-  wrap.appendChild(saveRow)
+  row.appendChild(btn)
+  return row
+}
 
-  // 설명 텍스트
-  wrap.appendChild(createDescText('누적투자금과 주문가능금액을 입력한 금액으로 변경합니다. 데이터 초기화 시에도 이 금액이 기본값으로 사용됩니다.'))
-
-  // 읽기전용 표시
-  const infoWrap = document.createElement('div')
-  Object.assign(infoWrap.style, { borderTop: '1px solid ' + COLOR.borderLight, padding: GS.rowPad })
-
+function buildTestVirtualInfoWrap(): HTMLElement {
+  const wrap = document.createElement('div')
+  Object.assign(wrap.style, { borderTop: '1px solid ' + COLOR.borderLight, padding: GS.rowPad })
   const depRow = document.createElement('div')
   Object.assign(depRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, fontSize: GS.label })
   depRow.innerHTML = '<span>기본투자금</span>'
   depositDisplay = document.createElement('span')
   depositDisplay.textContent = `${(Number(vals.test_virtual_deposit) || 0).toLocaleString()}원`
   depRow.appendChild(depositDisplay)
-  infoWrap.appendChild(depRow)
-  wrap.appendChild(infoWrap)
+  wrap.appendChild(depRow)
+  return wrap
+}
 
-  // 전체 초기화
-  const resetWrap = document.createElement('div')
-  Object.assign(resetWrap.style, { borderTop: '1px solid ' + COLOR.borderLight, padding: GS.rowPad })
+function buildTestVirtualResetWrap(): HTMLElement {
+  const wrap = document.createElement('div')
+  Object.assign(wrap.style, { borderTop: '1px solid ' + COLOR.borderLight, padding: GS.rowPad })
   const resetBtn = createActionButton({
-    label: '🔴 테스트 데이터 전체 초기화',
-    variant: 'danger',
-    padding: '8px 18px',
-    borderRadius: '4px',
-    fontSize: GS.label,
+    label: '🔴 테스트 데이터 전체 초기화', variant: 'danger', padding: '8px 18px', borderRadius: '4px', fontSize: GS.label,
     onClick: async () => {
       const confirmed = await showConfirmDialog({
         title: '테스트 데이터 초기화',
@@ -998,9 +955,21 @@ function renderTestVirtualSection(): HTMLElement {
       }
     },
   })
-  resetWrap.appendChild(resetBtn)
-  wrap.appendChild(resetWrap)
+  wrap.appendChild(resetBtn)
+  return wrap
+}
 
+function renderTestVirtualSection(): HTMLElement {
+  const wrap = document.createElement('div')
+  const disabled = vals.trade_mode !== 'test'
+  if (disabled) { wrap.style.opacity = '0.4'; wrap.style.pointerEvents = 'none' }
+
+  const state = { inputAmount: Number(vals.test_virtual_deposit) || 0 }
+  wrap.appendChild(buildTestVirtualInputRow(state))
+  wrap.appendChild(buildTestVirtualSaveRow(state))
+  wrap.appendChild(createDescText('누적투자금과 주문가능금액을 입력한 금액으로 변경합니다. 데이터 초기화 시에도 이 금액이 기본값으로 사용됩니다.'))
+  wrap.appendChild(buildTestVirtualInfoWrap())
+  wrap.appendChild(buildTestVirtualResetWrap())
   return wrap
 }
 
@@ -1055,24 +1024,20 @@ function renderApiSettingsTab(container: HTMLElement): void {
   renderApiFields(apiFieldsContainer)
 }
 
-function renderApiFields(container: HTMLElement): void {
-  container.innerHTML = ''
+const API_FIELDS_CONFIG: Record<string, { key: string; label: string; type: 'password' | 'text' }[]> = {
+  kiwoom: [
+    { key: 'kiwoom_app_key', label: '앱키', type: 'password' },
+    { key: 'kiwoom_app_secret', label: '앱시크릿', type: 'password' },
+    { key: 'kiwoom_account_no', label: '계좌번호', type: 'text' },
+  ],
+  ls: [
+    { key: 'ls_app_key', label: '앱키', type: 'password' },
+    { key: 'ls_app_secret', label: '앱시크릿', type: 'password' },
+    { key: 'ls_account_no', label: '계좌번호', type: 'text' },
+  ],
+}
 
-  const API_FIELDS_CONFIG: Record<string, { key: string; label: string; type: 'password' | 'text' }[]> = {
-    kiwoom: [
-      { key: 'kiwoom_app_key', label: '앱키', type: 'password' },
-      { key: 'kiwoom_app_secret', label: '앱시크릿', type: 'password' },
-      { key: 'kiwoom_account_no', label: '계좌번호', type: 'text' },
-    ],
-    ls: [
-      { key: 'ls_app_key', label: '앱키', type: 'password' },
-      { key: 'ls_app_secret', label: '앱시크릿', type: 'password' },
-      { key: 'ls_account_no', label: '계좌번호', type: 'text' },
-    ],
-  }
-
-  const fields = API_FIELDS_CONFIG[activeApiTab] || []
-
+function buildApiInputRows(container: HTMLElement, fields: { key: string; label: string; type: 'password' | 'text' }[]): void {
   for (const field of fields) {
     const row = document.createElement('div')
     Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
@@ -1090,15 +1055,13 @@ function renderApiFields(container: HTMLElement): void {
     row.appendChild(input)
     container.appendChild(row)
   }
+}
 
+function buildApiSaveRow(fields: { key: string }[]): HTMLElement {
   const btnRow = document.createElement('div')
   Object.assign(btnRow.style, { textAlign: 'right', margin: GS.saveMargin })
   const saveBtn = createActionButton({
-    label: '저장',
-    variant: 'warning',
-    padding: GS.btnPad,
-    borderRadius: '4px',
-    fontSize: GS.label,
+    label: '저장', variant: 'warning', padding: GS.btnPad, borderRadius: '4px', fontSize: GS.label,
     onClick: async () => {
       const keys = fields.map(f => f.key)
       const orig: Record<string, unknown> = {}
@@ -1118,7 +1081,14 @@ function renderApiFields(container: HTMLElement): void {
     },
   })
   btnRow.appendChild(saveBtn)
-  container.appendChild(btnRow)
+  return btnRow
+}
+
+function renderApiFields(container: HTMLElement): void {
+  container.innerHTML = ''
+  const fields = API_FIELDS_CONFIG[activeApiTab] || []
+  buildApiInputRows(container, fields)
+  container.appendChild(buildApiSaveRow(fields))
 }
 
 function refreshApiTabContent(): void {
@@ -1187,6 +1157,99 @@ function syncBrokerRadios(): void {
 }
 
 /* ── 설정 동기화 ── */
+/** 토글+입력+컨트롤 행 동기화 공통 패턴 (5회 반복 추출 — P23 DRY) */
+function syncToggleInputRow(
+  toggle: ReturnType<typeof createToggleBtn> | null,
+  input: { el: HTMLElement; setValue: (v: number) => void } | null,
+  controls: HTMLElement | null,
+  on: boolean,
+  value: number,
+  act: Element | null,
+): void {
+  toggle?.setOn(on)
+  if (input && (!act || !input.el.contains(act))) {
+    input.setValue(value)
+  }
+  if (controls) setDisabled(controls, !on)
+}
+
+function syncRiskManager(r: Record<string, unknown>, act: Element | null): void {
+  riskManagerToggle?.setOn(!!r.risk_manager_on)
+  if (riskManagerChildren) setDisabled(riskManagerChildren, !r.risk_manager_on)
+  syncToggleInputRow(dailyLossToggle, dailyLossInput, dailyLossControls, r.daily_loss_limit_on !== false, Number(r.daily_loss_limit ?? -500000), act)
+  syncToggleInputRow(dailyLossRateToggle, dailyLossRateInput, dailyLossRateControls, !!r.daily_loss_rate_limit_on, Number(r.daily_loss_rate_limit ?? -5), act)
+  syncToggleInputRow(dailyProfitToggle, dailyProfitInput, dailyProfitControls, !!r.daily_profit_limit_on, Number(r.daily_profit_limit ?? 500000), act)
+  syncToggleInputRow(dailyProfitRateToggle, dailyProfitRateInput, dailyProfitRateControls, !!r.daily_profit_rate_limit_on, Number(r.daily_profit_rate_limit ?? 5), act)
+  syncToggleInputRow(consecLossToggle, consecLossInput, consecLossControls, !!r.consecutive_loss_limit_on, Number(r.consecutive_loss_limit ?? 3), act)
+  riskBlockBuyToggle?.setOn(r.risk_block_buy_on !== false)
+  riskBlockSellToggle?.setOn(!!r.risk_block_sell_on)
+}
+
+function syncTimetables(r: Record<string, unknown>): void {
+  const [trh, trm] = parseHM(String(r['timetable.realtime_reset'] ?? '07:58'))
+  if (timetableResetSlot) updateTimeSlotDisplay(timetableResetSlot, trh, trm)
+  const [twh, twm] = parseHM(String(r['timetable.ws_prestart'] ?? '07:59'))
+  if (timetableWsSlot) updateTimeSlotDisplay(timetableWsSlot, twh, twm)
+  const [tkh, tkm] = parseHM(String(r['timetable.krx_pre_subscribe'] ?? '08:59'))
+  if (timetableKrxSlot) updateTimeSlotDisplay(timetableKrxSlot, tkh, tkm)
+}
+
+function syncAutoTradeTab(r: Record<string, unknown>): void {
+  masterToggle?.setOn(!!r.time_scheduler_on)
+  updateHolidayBadges()
+
+  // 확정 시세 다운로드 시간 + 자동다운로드 토글
+  const [cdh, cdm] = parseHM(String(r['timetable.confirmed_download'] ?? '20:40'))
+  confirmedDlH = cdh; confirmedDlM = cdm
+  if (confirmedDlSlot) updateTimeSlotDisplay(confirmedDlSlot, cdh, cdm)
+  const dlOn = r.scheduler_market_close_on !== false
+  confirmedDlToggle?.setOn(dlOn)
+  if (confirmedDlSlot) setDisabled(confirmedDlSlot, !dlOn)
+
+  uiFlashToggle?.setOn(r.ui_price_flash_on !== false)
+  orderTimeGuardToggle?.setOn(r.order_time_guard_on !== false)
+
+  syncRiskManager(r, document.activeElement)
+  syncTimetables(r)
+
+  // 구독 한도
+  subscribeMaxInput?.setValue(Number(r['subscribe.max_0b_count'] ?? 200) || 200)
+
+  // 자동매수/매도 (시간쌍은 시간 설정 탭에서 표시, 토글 OFF 시에도 활성화 유지 — 설계서 2-1)
+  autoBuyToggle?.setOn(!!r.auto_buy_on)
+  if (buyTimeHandle) buyTimeHandle.setValue(String(r.buy_time_start ?? '09:00'), String(r.buy_time_end ?? '15:00'))
+  autoSellToggle?.setOn(!!r.auto_sell_on)
+  if (sellTimeHandle) sellTimeHandle.setValue(String(r.sell_time_start ?? '09:00'), String(r.sell_time_end ?? '15:00'))
+}
+
+function syncTelegramTab(r: Record<string, unknown>): void {
+  const act = document.activeElement
+  teleToggle?.setOn(!!r.tele_on)
+  for (const k of ['telegram_chat_id', 'telegram_bot_token_test', 'telegram_bot_token_real']) {
+    if (teleInputs[k] && (!act || !teleInputs[k].contains(act))) {
+      teleInputs[k].value = String(r[k] || '')
+    }
+  }
+}
+
+function syncAccountTab(r: Record<string, unknown>): void {
+  if (depositDisplay) depositDisplay.textContent = `${(Number(r.test_virtual_deposit) || 0).toLocaleString()}원`
+}
+
+function syncApiSettingsTab(r: Record<string, unknown>): void {
+  const act = document.activeElement
+  const allApiKeys = ['kiwoom_app_key', 'kiwoom_app_secret', 'kiwoom_account_no', 'ls_app_key', 'ls_app_secret', 'ls_account_no']
+  for (const k of allApiKeys) {
+    if (apiKeyInputs[k] && (!act || !apiKeyInputs[k].contains(act))) {
+      apiKeyInputs[k].value = String(r[k] || '')
+    }
+  }
+  if (r.broker !== undefined && vals.broker !== r.broker) {
+    vals.broker = r.broker
+  }
+  syncBrokerRadios()
+}
+
 function syncFromSettings(s: AppSettings): void {
   const r = s as Record<string, unknown>
   // 전체 복사 대신 변경된 키만 업데이트
@@ -1196,157 +1259,14 @@ function syncFromSettings(s: AppSettings): void {
     }
   }
 
-  // 자동매매 탭 (항상 DOM에 존재)
-  {
-    masterToggle?.setOn(!!r.time_scheduler_on)
-    updateHolidayBadges()
-
-    // 확정 시세 다운로드 시간 + 자동다운로드 토글
-    const [cdh, cdm] = parseHM(String(r['timetable.confirmed_download'] ?? '20:40'))
-    confirmedDlH = cdh; confirmedDlM = cdm
-    if (confirmedDlSlot) updateTimeSlotDisplay(confirmedDlSlot, cdh, cdm)
-    const dlOn = r.scheduler_market_close_on !== false
-    confirmedDlToggle?.setOn(dlOn)
-    if (confirmedDlSlot) setDisabled(confirmedDlSlot, !dlOn)
-
-    // 실시간 현재가 플래시 효과
-    uiFlashToggle?.setOn(r.ui_price_flash_on !== false)
-
-    // 체결 불가 시간대 주문 차단
-    orderTimeGuardToggle?.setOn(r.order_time_guard_on !== false)
-
-    // 매매 안전장치 (전역매매설정)
-    const act = document.activeElement
-    riskManagerToggle?.setOn(!!r.risk_manager_on)
-    if (riskManagerChildren) setDisabled(riskManagerChildren, !r.risk_manager_on)
-    const lossOn = r.daily_loss_limit_on !== false
-    dailyLossToggle?.setOn(lossOn)
-    if (dailyLossInput && (!act || !dailyLossInput.el.contains(act))) {
-      dailyLossInput.setValue(Number(r.daily_loss_limit ?? -500000))
-    }
-    if (dailyLossControls) setDisabled(dailyLossControls, !lossOn)
-    const lossRateOn = !!r.daily_loss_rate_limit_on
-    dailyLossRateToggle?.setOn(lossRateOn)
-    if (dailyLossRateInput && (!act || !dailyLossRateInput.el.contains(act))) {
-      dailyLossRateInput.setValue(Number(r.daily_loss_rate_limit ?? -5))
-    }
-    if (dailyLossRateControls) setDisabled(dailyLossRateControls, !lossRateOn)
-    const profitOn = !!r.daily_profit_limit_on
-    dailyProfitToggle?.setOn(profitOn)
-    if (dailyProfitInput && (!act || !dailyProfitInput.el.contains(act))) {
-      dailyProfitInput.setValue(Number(r.daily_profit_limit ?? 500000))
-    }
-    if (dailyProfitControls) setDisabled(dailyProfitControls, !profitOn)
-    const profitRateOn = !!r.daily_profit_rate_limit_on
-    dailyProfitRateToggle?.setOn(profitRateOn)
-    if (dailyProfitRateInput && (!act || !dailyProfitRateInput.el.contains(act))) {
-      dailyProfitRateInput.setValue(Number(r.daily_profit_rate_limit ?? 5))
-    }
-    if (dailyProfitRateControls) setDisabled(dailyProfitRateControls, !profitRateOn)
-    const consecOn = !!r.consecutive_loss_limit_on
-    consecLossToggle?.setOn(consecOn)
-    if (consecLossInput && (!act || !consecLossInput.el.contains(act))) {
-      consecLossInput.setValue(Number(r.consecutive_loss_limit ?? 3))
-    }
-    if (consecLossControls) setDisabled(consecLossControls, !consecOn)
-    riskBlockBuyToggle?.setOn(r.risk_block_buy_on !== false)
-    riskBlockSellToggle?.setOn(!!r.risk_block_sell_on)
-
-    // 장 시작 전 사전 준비 시간 (타임테이블 3개 키)
-    const [trh, trm] = parseHM(String(r['timetable.realtime_reset'] ?? '07:58'))
-    timetableResetH = trh; timetableResetM = trm
-    if (timetableResetSlot) updateTimeSlotDisplay(timetableResetSlot, trh, trm)
-    const [twh, twm] = parseHM(String(r['timetable.ws_prestart'] ?? '07:59'))
-    timetableWsH = twh; timetableWsM = twm
-    if (timetableWsSlot) updateTimeSlotDisplay(timetableWsSlot, twh, twm)
-    const [tkh, tkm] = parseHM(String(r['timetable.krx_pre_subscribe'] ?? '08:59'))
-    timetableKrxH = tkh; timetableKrxM = tkm
-    if (timetableKrxSlot) updateTimeSlotDisplay(timetableKrxSlot, tkh, tkm)
-
-    // 구독 한도 (종목 동시 구독 최대 개수)
-    subscribeMaxInput?.setValue(Number(r['subscribe.max_0b_count'] ?? 200) || 200)
-
-    // 자동매수 (시간쌍은 시간 설정 탭에서 표시, 토글 OFF 시에도 활성화 유지 — 설계서 2-1)
-    autoBuyToggle?.setOn(!!r.auto_buy_on)
-    if (buyTimeHandle) {
-      buyTimeHandle.setValue(String(r.buy_time_start ?? '09:00'), String(r.buy_time_end ?? '15:00'))
-    }
-
-    // 자동매도 (시간쌍은 시간 설정 탭에서 표시, 토글 OFF 시에도 활성화 유지 — 설계서 2-1)
-    autoSellToggle?.setOn(!!r.auto_sell_on)
-    if (sellTimeHandle) {
-      sellTimeHandle.setValue(String(r.sell_time_start ?? '09:00'), String(r.sell_time_end ?? '15:00'))
-    }
-  }
-
-  // 텔레그램 탭 (항상 DOM에 존재)
-  {
-    const act = document.activeElement
-    teleToggle?.setOn(!!r.tele_on)
-    for (const k of ['telegram_chat_id', 'telegram_bot_token_test', 'telegram_bot_token_real']) {
-      if (teleInputs[k]) {
-        if (!act || !teleInputs[k].contains(act)) {
-          teleInputs[k].value = String(r[k] || '')
-        }
-      }
-    }
-  }
-
-  // 계정관리 탭 (항상 DOM에 존재)
-  {
-    if (depositDisplay) depositDisplay.textContent = `${(Number(r.test_virtual_deposit) || 0).toLocaleString()}원`
-  }
-
-  // API 설정 탭 (항상 DOM에 존재)
-  {
-    const act = document.activeElement
-    const allApiKeys = ['kiwoom_app_key', 'kiwoom_app_secret', 'kiwoom_account_no', 'ls_app_key', 'ls_app_secret', 'ls_account_no']
-    for (const k of allApiKeys) {
-      if (apiKeyInputs[k]) {
-        if (!act || !apiKeyInputs[k].contains(act)) {
-          apiKeyInputs[k].value = String(r[k] || '')
-        }
-      }
-    }
-    // broker 값 동기화
-    if (r.broker !== undefined && vals.broker !== r.broker) {
-      vals.broker = r.broker
-    }
-    syncBrokerRadios()
-  }
+  syncAutoTradeTab(r)
+  syncTelegramTab(r)
+  syncAccountTab(r)
+  syncApiSettingsTab(r)
 }
 
 /* ── mount ── */
-function mount(container: HTMLElement): void {
-  notifyPageActive('settings')
-  settingsMgr = createSettingsManager(uiStore)
-  vals = {}
-  activeTab = 'auto-trade'
-  holidayBadgeEls = []
-  isTradingDay = true
-  tradingDayLoading = true
-
-  rootEl = document.createElement('div')
-
-  rootEl.appendChild(createCardTitle('일반설정'))
-
-  // 탭 바
-  tabBar = renderTabBar()
-  rootEl.appendChild(tabBar)
-
-  // 탭 콘텐츠 컨테이너
-  tabContent = document.createElement('div')
-  tabContent.style.padding = '0 4px'
-  rootEl.appendChild(tabContent)
-
-  container.appendChild(rootEl)
-
-  // 초기 설정 로드
-  const initial = settingsMgr.getSettings()
-  if (initial) {
-    vals = { ...(initial as Record<string, unknown>) }
-  }
-
+function buildTabPanels(): void {
   // 모든 탭 패널 사전 렌더링 (display: none으로 숨김)
   const autoTradePanel = document.createElement('div')
   renderAutoTradeTab(autoTradePanel)
@@ -1374,8 +1294,40 @@ function mount(container: HTMLElement): void {
   // DOM에 추가하고 비활성 탭은 숨김
   for (const [id, panel] of Object.entries(tabPanels) as [TabId, HTMLElement][]) {
     panel.style.display = id === activeTab ? '' : 'none'
-    tabContent.appendChild(panel)
+    tabContent!.appendChild(panel)
   }
+}
+
+function mount(container: HTMLElement): void {
+  notifyPageActive('settings')
+  settingsMgr = createSettingsManager(uiStore)
+  vals = {}
+  activeTab = 'auto-trade'
+  holidayBadgeEls = []
+  isTradingDay = true
+  tradingDayLoading = true
+
+  rootEl = document.createElement('div')
+  rootEl.appendChild(createCardTitle('일반설정'))
+
+  // 탭 바
+  tabBar = renderTabBar()
+  rootEl.appendChild(tabBar)
+
+  // 탭 콘텐츠 컨테이너
+  tabContent = document.createElement('div')
+  tabContent.style.padding = '0 4px'
+  rootEl.appendChild(tabContent)
+
+  container.appendChild(rootEl)
+
+  // 초기 설정 로드
+  const initial = settingsMgr.getSettings()
+  if (initial) {
+    vals = { ...(initial as Record<string, unknown>) }
+  }
+
+  buildTabPanels()
 
   // 설정 동기화 + 구독 (표준 유틸 — settings-page.ts, P23 일관성)
   unsubSettings = startSettingsSubscription(settingsMgr, syncFromSettings)

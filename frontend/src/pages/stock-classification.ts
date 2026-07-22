@@ -350,22 +350,15 @@ function cardWrap(): HTMLElement {
 
 /* ── 8.2: tripleHeader — 공통 헤더 (Indicator_Bar) ── */
 
-function buildTripleHeader(): void {
-  const header = shell.tripleHeader
-  while (header.firstChild) header.removeChild(header.firstChild)
-  header.style.fontFamily = FONT_FAMILY
-
-  // 좌측: 수동 갱신 버튼 배치 (기존 타이틀 자리)
+function buildHeaderLeft(): HTMLElement {
   const left = document.createElement('div')
   Object.assign(left.style, {
     flex: '1', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', gap: '6px', alignItems: 'flex-start'
   })
 
-  // 설명라벨
   const descLabel = createStepLabel('', '장마감 후 매매적격종목 확정시세 및 5일봉 거래대금,고가 데이터 저장', { whiteSpace: 'nowrap' })
   left.appendChild(descLabel)
 
-  // 버튼 컨테이너 (가로 정렬)
   const buttonContainer = document.createElement('div')
   Object.assign(buttonContainer.style, { display: 'flex', gap: '6px' })
 
@@ -375,7 +368,6 @@ function buildTripleHeader(): void {
     hoverColor: '#157347',
     onClick: (e) => onTriggerConfirmedDownload(e),
   })
-
   const btn2 = createSolidBtn({
     label: '⬇️ 5일봉챠트 거래대금,고가 다운로드',
     color: COLOR.success,
@@ -386,19 +378,20 @@ function buildTripleHeader(): void {
   buttonContainer.appendChild(btn1)
   buttonContainer.appendChild(btn2)
   left.appendChild(buttonContainer)
-  header.appendChild(left)
+  return left
+}
 
-  // 중앙: Indicator_Bar — dot + label (flex:1, text-align:center, fontSize: FONT_SIZE.title)
+function buildHeaderCenter(): HTMLElement {
   const center = document.createElement('div')
   Object.assign(center.style, {
     flex: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
     textAlign: 'center', fontSize: FONT_SIZE.title,
     minWidth: '0',
   })
+  return center
+}
 
-  header.appendChild(center)
-
-  // 우측: 필터요약 라벨 (두 줄 표시, 우측 정렬)
+function buildHeaderRight(): HTMLElement {
   const right = document.createElement('div')
   Object.assign(right.style, {
     flex: '3', display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
@@ -419,7 +412,16 @@ function buildTripleHeader(): void {
 
   right.appendChild(indicatorLabelMain)
   right.appendChild(indicatorLabelSub)
-  header.appendChild(right)
+  return right
+}
+
+function buildTripleHeader(): void {
+  const header = shell.tripleHeader
+  while (header.firstChild) header.removeChild(header.firstChild)
+  header.style.fontFamily = FONT_FAMILY
+  header.appendChild(buildHeaderLeft())
+  header.appendChild(buildHeaderCenter())
+  header.appendChild(buildHeaderRight())
 }
 
 function updateIndicatorBar(): void {
@@ -541,10 +543,7 @@ async function onTrigger5dDownload(e: MouseEvent): Promise<void> {
 
 /* ── 업종 관리 테이블 (Sector_Table) ── */
 
-function buildSectorManageCard(): HTMLElement {
-  const card = cardWrap()
-
-  // Card title: "업종 관리" (left) + stats (right)
+function buildSectorManageTitle(): HTMLElement {
   const titleContainer = document.createElement('div')
   Object.assign(titleContainer.style, {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%',
@@ -554,8 +553,7 @@ function buildSectorManageCard(): HTMLElement {
   statsLabelRef = document.createElement('span')
   Object.assign(statsLabelRef.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, fontWeight: FONT_WEIGHT.normal })
 
-  // 우측 컨테이너: 통계 레이블 + 새 업종 추가 버튼
-  // "새 업종 추가"는 중요 액션 → md 사이즈(6px 12px, 12px label)로 작업 컬럼 버튼(sm)보다 한 단계 크게
+  // "새 업종 추가"는 중요 액션 → md 사이즈로 작업 컬럼 버튼(sm)보다 한 단계 크게
   addSectorBtnRef = createSolidBtn({
     label: '+ 새 업종 추가',
     color: COLOR.down,
@@ -571,72 +569,101 @@ function buildSectorManageCard(): HTMLElement {
 
   titleContainer.appendChild(titleText)
   titleContainer.appendChild(titleRightContainer)
-  const sectorManageTitle = createCardTitleWithContent(titleContainer)
-  card.appendChild(sectorManageTitle)
+  return createCardTitleWithContent(titleContainer)
+}
 
-  card.appendChild(createStepLabel('', '업종명을 변경하거나, 새 업종을 만들거나, 불필요한 업종을 삭제할 수 있습니다'))
+/** fuzzy 검색 결과 수집 — onSearch 핸들러와 검색 결과 클릭 핸들러에서 공통 사용 (F04-16 중복 제거) */
+function collectFuzzyResults(q: string): SearchResultRow[] {
+  const state = stockClassificationStore.getState()
+  const { stockMoves, sectors } = state
+  const searchTokens = q.split(/[\s()（）]+/).filter(t => t.length > 0)
+  const results: SearchResultRow[] = []
+  for (const [, stock] of getAllStocks()) {
+    const nameLower = stock.name.toLowerCase()
+    const codeLower = stock.code.toLowerCase()
+    const matched = searchTokens.some(t => nameLower.includes(t) || codeLower.includes(t))
+    if (matched) {
+      let sector = stockMoves[stock.code] ?? stock.sector ?? ''
+      if (sectors[sector]) sector = sectors[sector]
+      results.push({ code: stock.code, name: stock.name, sector, market_type: stock.market_type, nxt_enable: stock.nxt_enable })
+    }
+  }
+  return results
+}
 
-  // ── 종목 검색 UI ──
+/** onSearch 콜백 — 토큰 분리 후 정확 매칭 시도 → 성공 시 Staging 추가, 실패 시 fuzzy 검색 */
+function handleSearchQuery(query: string): void {
+  if (!searchResultTableRef || !masterTableRef) return
+  if (!query) {
+    searchResultTableRef.el.style.display = 'none'
+    masterTableRef.el.style.display = ''
+    return
+  }
+
+  const tokens = parseBatchInput(query)
+  const matchedCodes: string[] = []
+  for (const token of tokens) {
+    const code = resolveToken(token)
+    if (code && !matchedCodes.includes(code)) matchedCodes.push(code)
+  }
+
+  if (matchedCodes.length > 0) {
+    for (const code of matchedCodes) {
+      if (!stagingSet.has(code)) addToStaging(code)
+    }
+    if (searchInputRef) {
+      searchInputRef.clear()
+      const inputEl = searchInputRef.el.querySelector('input')
+      if (inputEl) inputEl.focus()
+    }
+    return
+  }
+
+  // 정확 매칭 실패 → fuzzy 검색 결과 표시
+  const results = collectFuzzyResults(query.toLowerCase())
+  searchResultTableRef.updateRows(results)
+  searchResultTableRef.el.style.display = ''
+  masterTableRef.el.style.display = 'none'
+}
+
+function buildSearchInputEl(): HTMLElement {
   searchInputRef = createSearchInput({
     label: '종목명/코드',
     labelColor: COLOR.down,
     placeholder: '종목명/코드 검색',
     width: '100%',
     borderColor: COLOR.down,
-    onSearch: (query) => {
-      if (!searchResultTableRef || !masterTableRef) return
-      if (!query) {
-        searchResultTableRef.el.style.display = 'none'
-        masterTableRef.el.style.display = ''
-        return
-      }
-
-      // 통합 파이프라인: 토큰 분리 후 정확 매칭 시도 → 성공 시 Staging 추가, 실패 시 fuzzy 검색
-      const tokens = parseBatchInput(query)
-      const matchedCodes: string[] = []
-      for (const token of tokens) {
-        const code = resolveToken(token)
-        if (code && !matchedCodes.includes(code)) matchedCodes.push(code)
-      }
-
-      if (matchedCodes.length > 0) {
-        for (const code of matchedCodes) {
-          if (!stagingSet.has(code)) addToStaging(code)
-        }
-        if (searchInputRef) {
-          searchInputRef.clear()
-          const inputEl = searchInputRef.el.querySelector('input')
-          if (inputEl) inputEl.focus()
-        }
-        return
-      }
-
-      // 정확 매칭 실패 → fuzzy 검색 결과 표시
-      const q = query.toLowerCase()
-      const state = stockClassificationStore.getState()
-      const { stockMoves, sectors } = state
-      const results: SearchResultRow[] = []
-
-      const searchTokens = q.split(/[\s()（）]+/).filter(t => t.length > 0)
-
-      for (const [, stock] of getAllStocks()) {
-        const nameLower = stock.name.toLowerCase()
-        const codeLower = stock.code.toLowerCase()
-        const matched = searchTokens.some(t => nameLower.includes(t) || codeLower.includes(t))
-        if (matched) {
-          let sector = stockMoves[stock.code] ?? stock.sector ?? ''
-          if (sectors[sector]) sector = sectors[sector]
-          results.push({ code: stock.code, name: stock.name, sector, market_type: stock.market_type, nxt_enable: stock.nxt_enable })
-        }
-      }
-      searchResultTableRef.updateRows(results)
-      searchResultTableRef.el.style.display = ''
-      masterTableRef.el.style.display = 'none'
-    },
+    onSearch: (query) => handleSearchQuery(query),
   })
-  card.appendChild(searchInputRef.el)
+  return searchInputRef.el
+}
 
-  // 검색 결과 테이블
+/** 검색 결과 클릭 → Staging_Set에 추가 (Req 1.1, 1.3, 1.4) */
+function handleSearchResultClick(e: Event): void {
+  const target = e.target as HTMLElement
+  const tr = target.closest('tr')
+  if (!tr || tr.getAttribute('data-row-type') !== 'data') return
+  const tbody = searchResultTableRef?.el.querySelector('tbody')
+  if (!tbody) return
+  const rows = Array.from(tbody.querySelectorAll('tr[data-row-type="data"]'))
+  const idx = rows.indexOf(tr as HTMLTableRowElement)
+  if (idx < 0) return
+  const q = searchInputRef?.getValue()?.toLowerCase() ?? ''
+  if (!q) return
+  const results = collectFuzzyResults(q)
+  if (idx >= results.length) return
+  const clicked = results[idx]
+
+  // 왼쪽 검색 결과 클릭 시: Staging_Set에만 추가하고 선택된 업종은 변경하지 않음 (UX 개선)
+  const added = addToStaging(clicked.code)
+  if (added && searchInputRef) {
+    searchInputRef.clear()
+    const inputEl = searchInputRef.el.querySelector('input')
+    if (inputEl) inputEl.focus()
+  }
+}
+
+function buildSearchResultTable(): HTMLElement {
   const searchColumns: ColumnDef<SearchResultRow>[] = [
     {
       key: 'code', label: '종목코드', align: 'center', type: 'code',
@@ -667,52 +694,59 @@ function buildSectorManageCard(): HTMLElement {
     rowStyle: () => ({ cursor: 'pointer' }),
   })
   searchResultTableRef.el.style.display = 'none'
+  searchResultTableRef.el.addEventListener('click', handleSearchResultClick)
+  return searchResultTableRef.el
+}
 
-  // 검색 결과 클릭 → Staging_Set에 추가 (Req 1.1, 1.3, 1.4)
-  searchResultTableRef.el.addEventListener('click', (e: Event) => {
-    const target = e.target as HTMLElement
-    const tr = target.closest('tr')
-    if (!tr || tr.getAttribute('data-row-type') !== 'data') return
-    const tbody = searchResultTableRef?.el.querySelector('tbody')
-    if (!tbody) return
-    const rows = Array.from(tbody.querySelectorAll('tr[data-row-type="data"]'))
-    const idx = rows.indexOf(tr as HTMLTableRowElement)
-    if (idx < 0) return
-    // 현재 검색 결과에서 클릭된 행 찾기
-    const q = searchInputRef?.getValue()?.toLowerCase() ?? ''
-    if (!q) return
-    const state = stockClassificationStore.getState()
-    const { stockMoves, sectors } = state
-    const results: SearchResultRow[] = []
-    const searchTokens = q.split(/[\s()（）]+/).filter(t => t.length > 0)
-    for (const [, stock] of getAllStocks()) {
-      const nameLower = stock.name.toLowerCase()
-      const codeLower = stock.code.toLowerCase()
-      const matched = searchTokens.some(t => nameLower.includes(t) || codeLower.includes(t))
-      if (matched) {
-        let sector = stockMoves[stock.code] ?? stock.sector ?? ''
-        if (sectors[sector]) sector = sectors[sector]
-        results.push({ code: stock.code, name: stock.name, sector, market_type: stock.market_type, nxt_enable: stock.nxt_enable })
-      }
-    }
-    if (idx >= results.length) return
-    const clicked = results[idx]
+function renderCountCell(row: MasterRow): HTMLElement | string {
+  if (row.sectorName === '미분류' && row.stockCount > 0) {
+    const badge = document.createElement('span')
+    Object.assign(badge.style, {
+      background: COLOR.up,
+      color: COLOR.white,
+      borderRadius: '50%',
+      fontSize: FONT_SIZE.chip,
+      minWidth: '18px',
+      height: '18px',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontWeight: '600',
+    })
+    badge.textContent = String(row.stockCount)
+    return badge
+  }
+  return String(row.stockCount)
+}
 
-    // 왼쪽 검색 결과 클릭 시: Staging_Set에만 추가하고 선택된 업종은 변경하지 않음 (UX 개선)
-    const added = addToStaging(clicked.code)
-    if (added) {
-      // 검색창 초기화 및 포커스 복원 (Req 1.5)
-      if (searchInputRef) {
-        searchInputRef.clear()
-        const inputEl = searchInputRef.el.querySelector('input')
-        if (inputEl) inputEl.focus()
-      }
-    }
+function renderActionsCell(row: MasterRow): HTMLElement {
+  const container = document.createElement('div')
+  Object.assign(container.style, { display: 'flex', gap: '4px', justifyContent: 'center' })
+  const renameBtn = createSolidBtn({
+    label: '이름변경',
+    color: COLOR.tertiary,
+    editControl: true,
+    onClick: (e: MouseEvent) => {
+      e.stopPropagation()
+      onRenameSector(row.sectorName, e)
+    },
   })
+  const deleteBtn = createSolidBtn({
+    label: '삭제',
+    color: COLOR.up,
+    editControl: true,
+    onClick: (e: MouseEvent) => {
+      e.stopPropagation()
+      onDeleteSector(row.sectorName, e)
+    },
+  })
+  container.appendChild(renameBtn)
+  container.appendChild(deleteBtn)
+  return container
+}
 
-  card.appendChild(searchResultTableRef.el)
-
-  const masterColumns: ColumnDef<MasterRow>[] = [
+function buildMasterColumns(): ColumnDef<MasterRow>[] {
+  return [
     {
       key: 'seq', label: '순번', align: 'center', type: 'seq',
       cellStyle: { color: COLOR.disabled, fontSize: FONT_SIZE.small },
@@ -721,65 +755,45 @@ function buildSectorManageCard(): HTMLElement {
     {
       key: 'name', label: '업종명', align: 'left', type: 'sector',
       cellStyle: { fontWeight: 'normal', color: COLOR.neutral },
-      render: (row) => {
-        return row.sectorName
-      },
+      render: (row) => row.sectorName,
     },
     {
       key: 'count', label: '종목수', align: 'center', type: 'count',
-      render: (row) => {
-        if (row.sectorName === '미분류' && row.stockCount > 0) {
-          const badge = document.createElement('span')
-          Object.assign(badge.style, {
-            background: COLOR.up,
-            color: COLOR.white,
-            borderRadius: '50%',
-            fontSize: FONT_SIZE.chip,
-            minWidth: '18px',
-            height: '18px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: '600',
-          })
-          badge.textContent = String(row.stockCount)
-          return badge
-        }
-        return String(row.stockCount)
-      },
+      render: (row) => renderCountCell(row),
     },
     {
       key: 'actions', label: '작업', align: 'center', type: 'actions',
-      render: (row) => {
-        const container = document.createElement('div')
-        Object.assign(container.style, { display: 'flex', gap: '4px', justifyContent: 'center' })
-        const renameBtn = createSolidBtn({
-          label: '이름변경',
-          color: COLOR.tertiary,
-          editControl: true,
-          onClick: (e: MouseEvent) => {
-            e.stopPropagation()
-            onRenameSector(row.sectorName, e)
-          },
-        })
-        const deleteBtn = createSolidBtn({
-          label: '삭제',
-          color: COLOR.up,
-          editControl: true,
-          onClick: (e: MouseEvent) => {
-            e.stopPropagation()
-            onDeleteSector(row.sectorName, e)
-          },
-        })
-        container.appendChild(renameBtn)
-        container.appendChild(deleteBtn)
-        return container
-      },
+      render: (row) => renderActionsCell(row),
     },
   ]
+}
 
+/** Row click handler via event delegation */
+function handleMasterRowClick(e: Event): void {
+  const target = e.target as HTMLElement
+  if (target.closest('button')) return
+  const tr = target.closest('tr')
+  if (!tr) return
+  const tbody = masterTableRef?.el.querySelector('tbody')
+  if (!tbody) return
+  // emptyTr 제외하고 실제 데이터 행만 찾아서 인덱싱
+  const rows = Array.from(tbody.querySelectorAll('tr[data-row-type="data"]'))
+  const idx = rows.indexOf(tr as HTMLTableRowElement)
+  if (idx < 0) return
+  const masterRows = buildMasterRows()
+  if (idx >= masterRows.length) return
+  const clickedRow = masterRows[idx]
+  selectedSector = selectedSector === clickedRow.sectorName ? null : clickedRow.sectorName
+  selectedStocks.clear()
+  anchorRow = -1
+  updateMasterPanel()
+  updateCenterPanel()
+  updateRightPanel()
+}
+
+function buildMasterTable(): HTMLElement {
   masterTableRef = createDataTable<MasterRow>({
-    columns: masterColumns,
+    columns: buildMasterColumns(),
     emptyText: '업종이 없습니다.',
     stickyHeader: false,
     rowStyle: (row) => {
@@ -791,32 +805,17 @@ function buildSectorManageCard(): HTMLElement {
       return style
     },
   })
+  masterTableRef.el.addEventListener('click', handleMasterRowClick)
+  return masterTableRef.el
+}
 
-  // Row click handler via event delegation
-  masterTableRef.el.addEventListener('click', (e: Event) => {
-    const target = e.target as HTMLElement
-    if (target.closest('button')) return
-    const tr = target.closest('tr')
-    if (!tr) return
-    const tbody = masterTableRef?.el.querySelector('tbody')
-    if (!tbody) return
-    // emptyTr 제외하고 실제 데이터 행만 찾아서 인덱싱
-    const rows = Array.from(tbody.querySelectorAll('tr[data-row-type="data"]'))
-    const idx = rows.indexOf(tr as HTMLTableRowElement)
-    if (idx < 0) return
-    const masterRows = buildMasterRows()
-    if (idx >= masterRows.length) return
-    const clickedRow = masterRows[idx]
-    selectedSector = selectedSector === clickedRow.sectorName ? null : clickedRow.sectorName
-    selectedStocks.clear()
-    anchorRow = -1
-    updateMasterPanel()
-    updateCenterPanel()
-    updateRightPanel()
-  })
-
-  card.appendChild(masterTableRef.el)
-
+function buildSectorManageCard(): HTMLElement {
+  const card = cardWrap()
+  card.appendChild(buildSectorManageTitle())
+  card.appendChild(createStepLabel('', '업종명을 변경하거나, 새 업종을 만들거나, 불필요한 업종을 삭제할 수 있습니다'))
+  card.appendChild(buildSearchInputEl())
+  card.appendChild(buildSearchResultTable())
+  card.appendChild(buildMasterTable())
   return card
 }
 
@@ -945,15 +944,7 @@ function buildTripleLeft(): void {
 
 /* ── 8.4: tripleCenter — Stock_List_Panel ── */
 
-function buildTripleCenter(): void {
-  const center = shell.tripleCenter
-  while (center.firstChild) center.removeChild(center.firstChild)
-  center.style.fontFamily = FONT_FAMILY
-
-  centerContentRef = document.createElement('div')
-  center.appendChild(centerContentRef)
-
-  // ── Staging_Panel (Task 4.5) ──
+function buildStagingPanel(): HTMLElement {
   stagingPanelRef = document.createElement('div')
   Object.assign(stagingPanelRef.style, {
     padding: '8px 12px', marginBottom: '8px',
@@ -996,12 +987,31 @@ function buildTripleCenter(): void {
   stagingEmptyRef.textContent = '검색으로 종목을 추가하세요'
   stagingPanelRef.appendChild(stagingEmptyRef)
 
-  centerContentRef.appendChild(stagingPanelRef)
-
-  // Initialize staging panel state
   updateStagingPanel()
+  return stagingPanelRef
+}
 
-  // 제목 + 전체 선택/해제 버튼 컨테이너
+function handleSelectAll(): void {
+  if (!selectedSector) return
+  const stocks = getStocksForSector(selectedSector)
+  selectedStocks.clear()
+  for (const s of stocks) selectedStocks.add(s.code)
+  anchorRow = stocks.length > 0 ? 0 : -1
+  if (detailTableRef) detailTableRef.updateRows(stocks)
+  updateAllInlineMoveButtons()
+}
+
+function handleDeselectAll(): void {
+  selectedStocks.clear()
+  anchorRow = -1
+  if (selectedSector && detailTableRef) {
+    const stocks = getStocksForSector(selectedSector)
+    detailTableRef.updateRows(stocks)
+  }
+  updateAllInlineMoveButtons()
+}
+
+function buildDetailTitleRow(): HTMLElement {
   const titleRow = document.createElement('div')
   Object.assign(titleRow.style, {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px',
@@ -1013,50 +1023,27 @@ function buildTripleCenter(): void {
   })
   titleRow.appendChild(detailTitleRef)
 
-  // "전체 선택" / "전체 해제" 버튼
   const btnGroup = document.createElement('div')
   Object.assign(btnGroup.style, { display: 'flex', gap: '4px' })
 
   const selectAllBtn = createSolidBtn({
-    label: '전체 선택',
-    color: COLOR.down,
-    editControl: true,
-    onClick: () => {
-      if (!selectedSector) return
-      const stocks = getStocksForSector(selectedSector)
-      selectedStocks.clear()
-      for (const s of stocks) selectedStocks.add(s.code)
-      anchorRow = stocks.length > 0 ? 0 : -1
-      if (detailTableRef) detailTableRef.updateRows(stocks)
-      updateAllInlineMoveButtons()
-    },
+    label: '전체 선택', color: COLOR.down, editControl: true, onClick: () => handleSelectAll(),
   })
   Object.assign(selectAllBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.small })
 
   const deselectAllBtn = createSolidBtn({
-    label: '전체 해제',
-    color: COLOR.tertiary,
-    editControl: true,
-    onClick: () => {
-      selectedStocks.clear()
-      anchorRow = -1
-      if (selectedSector && detailTableRef) {
-        const stocks = getStocksForSector(selectedSector)
-        detailTableRef.updateRows(stocks)
-      }
-      updateAllInlineMoveButtons()
-    },
+    label: '전체 해제', color: COLOR.tertiary, editControl: true, onClick: () => handleDeselectAll(),
   })
   Object.assign(deselectAllBtn.style, { padding: '2px 8px', fontSize: FONT_SIZE.small })
 
   btnGroup.appendChild(selectAllBtn)
   btnGroup.appendChild(deselectAllBtn)
   titleRow.appendChild(btnGroup)
+  return titleRow
+}
 
-  centerContentRef.appendChild(titleRow)
-
-  // 종목 테이블 — 체크박스 컬럼 제거, cellStyle 적용
-  const detailColumns: ColumnDef<DetailRow>[] = [
+function buildDetailColumns(): ColumnDef<DetailRow>[] {
+  return [
     {
       key: 'code', label: '종목코드', minWidth: 72, maxWidth: 72, align: 'center',
       cellStyle: { color: COLOR.disabled, fontSize: FONT_SIZE.small },
@@ -1074,9 +1061,69 @@ function buildTripleCenter(): void {
       }
     ),
   ]
+}
 
+/** 드래그 시작 및 단일/다중 클릭 핸들러 */
+function handleDetailMouseDown(e: MouseEvent): void {
+  if (e.button !== 0) return // 좌클릭만 허용
+  const tr = (e.target as HTMLElement).closest('tr')
+  if (!tr || !selectedSector) return
+  const clickedCode = tr.dataset.rowKey
+  if (!clickedCode) return
+
+  e.preventDefault()
+  isDragging = true
+
+  const stocks = getStocksForSector(selectedSector)
+  const idx = stocks.findIndex(s => s.code === clickedCode)
+  if (idx < 0) return
+
+  if (e.shiftKey && anchorRow >= 0) {
+    const [start, end] = [Math.min(anchorRow, idx), Math.max(anchorRow, idx)]
+    for (let i = start; i <= end; i++) selectedStocks.add(stocks[i].code)
+  } else if (e.ctrlKey || e.metaKey) {
+    if (selectedStocks.has(clickedCode)) selectedStocks.delete(clickedCode)
+    else selectedStocks.add(clickedCode)
+    anchorRow = idx
+  } else {
+    selectedStocks.clear()
+    selectedStocks.add(clickedCode)
+    anchorRow = idx
+  }
+
+  if (selectedSector) {
+    const updatedStocks = getStocksForSector(selectedSector)
+    detailTableRef!.updateRows(updatedStocks)
+  }
+  updateAllInlineMoveButtons()
+}
+
+/** 드래그 중 영역 선택 */
+function handleDetailMouseOver(e: MouseEvent): void {
+  if (!isDragging || !selectedSector) return
+  const tr = (e.target as HTMLElement).closest('tr')
+  if (!tr) return
+  const clickedCode = tr.dataset.rowKey
+  if (!clickedCode) return
+
+  const stocks = getStocksForSector(selectedSector)
+  const idx = stocks.findIndex(s => s.code === clickedCode)
+  if (idx < 0 || anchorRow < 0) return
+
+  selectedStocks.clear()
+  const [start, end] = [Math.min(anchorRow, idx), Math.max(anchorRow, idx)]
+  for (let i = start; i <= end; i++) selectedStocks.add(stocks[i].code)
+
+  if (selectedSector) {
+    const updatedStocks = getStocksForSector(selectedSector)
+    detailTableRef!.updateRows(updatedStocks)
+  }
+  updateAllInlineMoveButtons()
+}
+
+function buildDetailTable(): HTMLElement {
   detailTableRef = createDataTable<DetailRow>({
-    columns: detailColumns,
+    columns: buildDetailColumns(),
     emptyText: '종목이 없습니다.',
     stickyHeader: true,
     keyFn: (row) => row.code,
@@ -1088,74 +1135,14 @@ function buildTripleCenter(): void {
     },
   })
 
-  // 키보드 포커스 가능하게 설정
   detailTableRef.el.tabIndex = 0
 
   // 전역 마우스 업 이벤트로 드래그 상태 해제
   onWindowMouseUp = () => { isDragging = false }
   window.addEventListener('mouseup', onWindowMouseUp)
 
-  // 드래그 시작 및 단일/다중 클릭 핸들러
-  detailTableRef.el.addEventListener('mousedown', (e: MouseEvent) => {
-    if (e.button !== 0) return // 좌클릭만 허용
-    const tr = (e.target as HTMLElement).closest('tr')
-    if (!tr || !selectedSector) return
-    const clickedCode = tr.dataset.rowKey
-    if (!clickedCode) return
-
-    // 텍스트 선택 방지
-    e.preventDefault()
-    isDragging = true
-
-    const stocks = getStocksForSector(selectedSector)
-    const idx = stocks.findIndex(s => s.code === clickedCode)
-    if (idx < 0) return
-
-    if (e.shiftKey && anchorRow >= 0) {
-      // Shift+클릭: anchorRow ~ idx 범위 선택
-      const [start, end] = [Math.min(anchorRow, idx), Math.max(anchorRow, idx)]
-      for (let i = start; i <= end; i++) selectedStocks.add(stocks[i].code)
-    } else if (e.ctrlKey || e.metaKey) {
-      // Ctrl+클릭: 토글
-      if (selectedStocks.has(clickedCode)) selectedStocks.delete(clickedCode)
-      else selectedStocks.add(clickedCode)
-      anchorRow = idx
-    } else {
-      // 일반 클릭: 단일 선택
-      selectedStocks.clear()
-      selectedStocks.add(clickedCode)
-      anchorRow = idx
-    }
-
-    if (selectedSector) {
-      const updatedStocks = getStocksForSector(selectedSector)
-      detailTableRef!.updateRows(updatedStocks)
-    }
-    updateAllInlineMoveButtons()
-  })
-
-  // 드래그 중 영역 선택
-  detailTableRef.el.addEventListener('mouseover', (e: MouseEvent) => {
-    if (!isDragging || !selectedSector) return
-    const tr = (e.target as HTMLElement).closest('tr')
-    if (!tr) return
-    const clickedCode = tr.dataset.rowKey
-    if (!clickedCode) return
-
-    const stocks = getStocksForSector(selectedSector)
-    const idx = stocks.findIndex(s => s.code === clickedCode)
-    if (idx < 0 || anchorRow < 0) return
-
-    selectedStocks.clear()
-    const [start, end] = [Math.min(anchorRow, idx), Math.max(anchorRow, idx)]
-    for (let i = start; i <= end; i++) selectedStocks.add(stocks[i].code)
-
-    if (selectedSector) {
-      const updatedStocks = getStocksForSector(selectedSector)
-      detailTableRef!.updateRows(updatedStocks)
-    }
-    updateAllInlineMoveButtons()
-  })
+  detailTableRef.el.addEventListener('mousedown', handleDetailMouseDown)
+  detailTableRef.el.addEventListener('mouseover', handleDetailMouseOver)
 
   // Esc 키 → 전체 선택 해제
   onDetailKeyDown = (e: KeyboardEvent) => {
@@ -1170,8 +1157,19 @@ function buildTripleCenter(): void {
     }
   }
   detailTableRef.el.addEventListener('keydown', onDetailKeyDown)
+  return detailTableRef.el
+}
 
-  centerContentRef.appendChild(detailTableRef.el)
+function buildTripleCenter(): void {
+  const center = shell.tripleCenter
+  while (center.firstChild) center.removeChild(center.firstChild)
+  center.style.fontFamily = FONT_FAMILY
+
+  centerContentRef = document.createElement('div')
+  center.appendChild(centerContentRef)
+  centerContentRef.appendChild(buildStagingPanel())
+  centerContentRef.appendChild(buildDetailTitleRow())
+  centerContentRef.appendChild(buildDetailTable())
 
   // 초기 빈 상태
   updateCenterPanel()
@@ -1454,22 +1452,85 @@ function updateStockNameIndex(): void {
 
 /* ── 8.1 + 8.8: mount / unmount ── */
 
+/** stockClassificationStore 구독 — 데이터 변경 시 이동한 종목만 선택 상태에서 제거 */
+function handleStockDataChange(state: StockClassificationState, prev: StockClassificationState): void {
+  if (state.allStocks !== prev.allStocks) {
+    updateStockNameIndex()
+  }
+
+  // Check if selectedSector still exists (미분류 등 특수 카테고리 포함)
+  if (selectedSector && !getActiveSectors().includes(selectedSector)) {
+    selectedSector = null
+  }
+
+  // 이동한 종목 코드 식별 (stockMoves가 변경된 종목)
+  const prevStockMoves = prev.stockMoves
+  const newStockMoves = state.stockMoves
+  const movedCodes: string[] = []
+  for (const code of selectedStocks) {
+    if (prevStockMoves[code] !== newStockMoves[code]) {
+      movedCodes.push(code)
+    }
+  }
+
+  // 이동한 종목만 선택 상태에서 제거
+  for (const code of movedCodes) {
+    selectedStocks.delete(code)
+  }
+
+  // 모든 종목이 이동한 경우 anchorRow 초기화
+  if (selectedStocks.size === 0) {
+    anchorRow = -1
+  }
+
+  updateMasterPanel()
+  updateCenterPanel()
+  updateRightPanel()
+  updateStagingChipSectors()
+}
+
+/** stockClassificationStore 구독 콜백 */
+function handleStockClassificationChange(state: StockClassificationState, prev: StockClassificationState | null): void {
+  if (!prev) {
+    // 첫 호출: 초기 렌더링
+    updateStockNameIndex()
+    updateMasterPanel()
+    updateCenterPanel()
+    updateRightPanel()
+    updateStagingChipSectors()
+    updateIndicatorBar()
+    return
+  }
+
+  if (state.allStocks !== prev.allStocks || state.mergedSectors !== prev.mergedSectors || state.sectors !== prev.sectors || state.stockMoves !== prev.stockMoves) {
+    handleStockDataChange(state, prev)
+  }
+
+  if (state.allStocks !== prev.allStocks || state.editWindowOpen !== prev.editWindowOpen || state.filter_summary !== prev.filter_summary) {
+    updateIndicatorBar()
+    setControlsDisabled(!state.editWindowOpen)
+  }
+}
+
+/** uiStore 구독 콜백 — settings 변경 시 editWindowOpen 재계산 */
+function handleUiStoreChange(state: { settings: ReturnType<typeof uiStore.getState>['settings'] }, prevSettingsRef: { settings: ReturnType<typeof uiStore.getState>['settings'] }): void {
+  if (state.settings !== prevSettingsRef.settings) {
+    prevSettingsRef.settings = state.settings
+    const newEditWindowOpen = computeEditWindowOpenByTime(state.settings)
+    if (newEditWindowOpen !== stockClassificationStore.getState().editWindowOpen) {
+      stockClassificationStore.setState({ editWindowOpen: newEditWindowOpen })
+    }
+  }
+}
+
 function mount(_container: HTMLElement): void {
   notifyPageActive('stock-classification')
   _mounted = true
-  // 8.2: Build tripleHeader
   buildTripleHeader()
-
-  // 8.3: Build tripleLeft
   buildTripleLeft()
-
-  // 8.4: Build tripleCenter
   buildTripleCenter()
-
-  // 8.5: Build tripleRight
   buildTripleRight()
 
-  // settingsManager for scheduler toggles
   settingsMgr = createSettingsManager()
 
   // Initialize editWindowOpen state
@@ -1482,73 +1543,13 @@ function mount(_container: HTMLElement): void {
   unsubCustom = stockClassificationStore.subscribe((state) => {
     const prev = prevState
     prevState = state
-
-    if (!prev) {
-      // 첫 호출: 초기 렌더링
-      updateStockNameIndex()
-      updateMasterPanel()
-      updateCenterPanel()
-      updateRightPanel()
-      updateStagingChipSectors()
-      updateIndicatorBar()
-      return
-    }
-
-    if (state.allStocks !== prev.allStocks || state.mergedSectors !== prev.mergedSectors || state.sectors !== prev.sectors || state.stockMoves !== prev.stockMoves) {
-      if (state.allStocks !== prev.allStocks) {
-        updateStockNameIndex()
-      }
-
-      // Check if selectedSector still exists (미분류 등 특수 카테고리 포함)
-      if (selectedSector && !getActiveSectors().includes(selectedSector)) {
-        selectedSector = null
-      }
-
-      // 데이터 변경 시 이동한 종목만 선택 상태에서 제거 (나머지 선택 유지)
-      const prevStockMoves = prev.stockMoves
-      const newStockMoves = state.stockMoves
-
-      // 이동한 종목 코드 식별 (stockMoves가 변경된 종목)
-      const movedCodes: string[] = []
-      for (const code of selectedStocks) {
-        if (prevStockMoves[code] !== newStockMoves[code]) {
-          movedCodes.push(code)
-        }
-      }
-
-      // 이동한 종목만 선택 상태에서 제거
-      for (const code of movedCodes) {
-        selectedStocks.delete(code)
-      }
-
-      // 모든 종목이 이동한 경우 anchorRow 초기화
-      if (selectedStocks.size === 0) {
-        anchorRow = -1
-      }
-
-      updateMasterPanel()
-      updateCenterPanel()
-      updateRightPanel()
-      updateStagingChipSectors()
-    }
-
-    if (state.allStocks !== prev.allStocks || state.editWindowOpen !== prev.editWindowOpen || state.filter_summary !== prev.filter_summary) {
-      updateIndicatorBar()
-      setControlsDisabled(!state.editWindowOpen)
-    }
+    handleStockClassificationChange(state, prev)
   })
 
   // uiStore 구독 — settings 변경 시 editWindowOpen 재계산 + 토글 갱신
-  let prevSettings = uiStore.getState().settings
+  const prevSettingsRef = { settings: uiStore.getState().settings }
   unsubSse = uiStore.subscribe((state) => {
-    // Settings check
-    if (state.settings !== prevSettings) {
-      prevSettings = state.settings
-      const newEditWindowOpen = computeEditWindowOpenByTime(state.settings)
-      if (newEditWindowOpen !== stockClassificationStore.getState().editWindowOpen) {
-        stockClassificationStore.setState({ editWindowOpen: newEditWindowOpen })
-      }
-    }
+    handleUiStoreChange(state, prevSettingsRef)
   })
 
   // 초기 렌더링 강제 실행 (초기 상태 반영)
