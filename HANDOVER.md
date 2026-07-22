@@ -6,6 +6,44 @@
 
 ## 직전 완료 작업
 
+### F-05-b 1/2세션: 수익상세 페이지 단순성 2건 해결 (2026-07-22)
+
+**세션**: F-05-b (P3 — 수익 페이지 후반) 전반부. F-05-b 2/2세션(수익현황 분할)은 다음 세션에서 진행.
+
+**수정 파일 1개**:
+- `frontend/src/pages/profit-detail.ts` (654→672줄, +18줄): F05-10 `mount()` ~303줄 → 9개 헬퍼 함수로 분할 (general-settings.ts 패턴 적용), F05-12 불필요 변수 2건 제거
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| F05-10 | P24 | `mount()` ~303줄 (50줄의 6배) → 9개 헬퍼 분할 (buildSummaryRow 48줄, onDrilldownToggle 18줄, buildFilterRow 43줄, buildTabRow 27줄, buildTableContainer 13줄, buildStatRow 39줄, restoreInitialView 30줄, flushDirtyRender 34줄, subscribeProfitDetailStore 35줄, mount 본체 31줄 — 모두 50줄 이하) |
+| F05-12 | P16/P24 | `drilldownCols` 모듈 변수 → `showDrilldown()` 지역 변수화 (재사용 없음, `ColumnDef` import 제거), `displayRows` 별칭 제거 → `rows` 직접 사용, `unmount` `drilldownCols=[]` 제거 |
+
+**검증**: `npm run typecheck` exit 0, `npm run build` 1.70s exit 0 (profit-detail 8.92 kB). 모든 함수 50줄 이하 확인.
+
+**화면 영향**: 없음. 수익상세 페이지 요약 카드/드릴다운 토글/탭 전환/종목 검색/화면 복원 동작 동일. 구조 개선만 수행.
+
+## 다음 세션 작업 (F-05-b 2/2세션)
+
+**잔여 2건** (P24 단순성 — 수익현황 분할):
+- F05-09 (HIGH): `profit-overview.ts` `mount()` ~380줄 (P24 함수 50줄의 7.6배) → 헬퍼 함수로 분할
+- F05-08 (MEDIUM): 파일 길이 698/672/598줄 (P24 500줄 초과) — 수익현황 분할 후 3개 파일 재측정, 필요 시 `profit-shared.ts` 컬럼 정의(BUY_COLS/SELL_COLS/createDrilldownCols) 분할 검토
+
+**별도 세션 권장**: F05-07 "보유주식" → "보유 종목" 용어 통일 (account-labels.ts, sell-position.ts 전역 동시 수정 필요)
+
+## 미해결 문제 (발견 즉시 기록)
+
+### 백엔드 버그 (F-05-a 조사 중 발견)
+- `backend/app/services/engine_account_rest.py:125-144` `build_account_snapshot_meta`가 응답 dict에서 `accumulated_investment`를 **누락**. 테스트모드에서 `state.account_snapshot["accumulated_investment"]`를 set한 후 `build_account_snapshot_meta`가 새 dict을 반환하므로 누락됨. 프론트엔드 F05-01은 `initial_deposit`만 사용하여 우회(테스트모드에서는 동일 값이므로 UI 변화 없음). 백엔드 수정은 별도 세션 필요.
+
+## 작업 여력
+
+F-05-b 1/2세션 완료 후 작업 여력: **충분**. F-05-b 2/2세션(F05-09 + F05-08, 수익현황)은 규칙 0-1 세션당 1단계 준수를 위해 별도 세션에서 진행 권장.
+
+---
+
+## 직전 완료 작업 (이전 세션)
+
 ### F-05-a: 수익 페이지 폴백/중복/비동기 안전 (7건 해결, 2026-07-22)
 
 **세션**: F-05 (P3 — 수익 페이지) 전반부. F-05-b(후반)는 다음 세션에서 진행.
@@ -28,30 +66,9 @@
 
 **검증**: `npm run typecheck` exit 0, `npm run build` 2.06s exit 0, 잔여 참조 grep 0건. 브라우저 확인 권장.
 
-## 다음 세션 작업 (F-05-b)
-
-**잔여 4건** (P24 단순성 — 파일/함수 분할):
-- F05-08: 파일 길이 698/654/598줄 (P24 500줄 초과)
-- F05-09: `profit-overview.ts` `mount()` ~380줄 (P24 함수 50줄의 7.6배)
-- F05-10: `profit-detail.ts` `mount()` ~303줄 (P24 함수 50줄의 6배)
-- F05-12: `profit-detail.ts` `drilldownCols` 모듈 변수 + `displayRows` 불필요 별칭
-
-**별도 세션 권장**: F05-07 "보유주식" → "보유 종목" 용어 통일 (account-labels.ts, sell-position.ts 전역 동시 수정 필요)
-
-## 미해결 문제 (발견 즉시 기록)
-
-### 백엔드 버그 (F-05-a 조사 중 발견)
-- `backend/app/services/engine_account_rest.py:125-144` `build_account_snapshot_meta`가 응답 dict에서 `accumulated_investment`를 **누락**. 테스트모드에서 `state.account_snapshot["accumulated_investment"]`를 set한 후 `build_account_snapshot_meta`가 새 dict을 반환하므로 누락됨. 프론트엔드 F05-01은 `initial_deposit`만 사용하여 우회(테스트모드에서는 동일 값이므로 UI 변화 없음). 백엔드 수정은 별도 세션 필요.
-
-## 작업 여력
-
-F-05-a 완료 후 작업 여력: **적정**. F-05-b(4건 P24 분할)는 다음 세션에서 진행 권장 (규칙 0-1 세션당 1단계 준수).
-
 ---
 
 ## 직전 완료 작업 (이전 세션)
-
-## 직전 완료 작업
 
 ### F-04-e: P2 — stock-classification.ts + general-settings.ts 함수 분할 11건 (2026-07-22)
 

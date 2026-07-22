@@ -2,7 +2,7 @@
 // 수익 상세 페이지 — Vanilla TS PageModule
 // 차트(크게) + 드릴다운 + 날짜/종목 필터 + 전체 거래내역(가상 스크롤) + 통계 정보
 
-import { createDataTable, type ColumnDef, type DataTableApi } from '../components/common/data-table'
+import { createDataTable, type DataTableApi } from '../components/common/data-table'
 import { FONT_SIZE, FONT_WEIGHT, pnlColor, fmtWon, COLOR } from '../components/common/ui-styles'
 import { createCardTitle } from '../components/common/card-title'
 import { createSearchInput } from '../components/common/search-input'
@@ -46,7 +46,6 @@ let unsubStore: (() => void) | null = null
 /* ── 드릴다운 상태 ── */
 let drilldownActive = true
 let drilldownTable: DataTableApi<DailyDrilldownRow> | null = null
-let drilldownCols: ColumnDef<DailyDrilldownRow>[] = []
 let tabRow: HTMLDivElement | null = null
 let drilldownBtnHandle: ReturnType<typeof createToggleSelectBtn> | null = null
 
@@ -191,7 +190,7 @@ function showDrilldown(): void {
   if (tabRow) tabRow.style.display = 'none'
 
   if (!drilldownTable) {
-    drilldownCols = createDrilldownCols((date: string) => {
+    const drilldownCols = createDrilldownCols((date: string) => {
       filterByDate(date)
       selectedView = null
       updateCardSelection()
@@ -273,8 +272,6 @@ function showTable(): void {
   let rows = isSell ? sellHistory : buyHistory
   rows = filterTradeRows(rows, dateRange.from, dateRange.to, stockQuery || undefined)
 
-  const displayRows = rows
-
   if (!sellTable) {
     sellTable = createDataTable<Record<string, unknown>>({
       columns: SELL_COLS,
@@ -301,31 +298,15 @@ function showTable(): void {
   buyTable.el.style.display = isSell ? 'none' : ''
 
   const activeTbl = isSell ? sellTable : buyTable
-  activeTbl.updateRows(displayRows)
+  activeTbl.updateRows(rows)
 
   if (tabBarHandle) tabBarHandle.setActive(activeTab)
 
   updateStatistics()
 }
 
-/* ── mount ── */
-function mount(container: HTMLElement): void {
-  notifyPageActive('profit-detail')
-  buyHistory = []
-  sellHistory = []
-  activeTab = 'sell'
-  drilldownActive = true
-
-  const root = document.createElement('div')
-  Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
-
-  root.appendChild(createCardTitle('수익 상세'))
-
-  /* ── 상단: 요약 카드 3개 ── */
-  const todayStr = getLocalToday()
-  const monthStart = todayStr.slice(0, 8) + '01'
-  const monthEnd = todayStr.slice(0, 8) + '31'
-
+/* ── mount 헬퍼: 요약 카드 행 (당일/직전/당월/누적 손익) ── */
+function buildSummaryRow(todayStr: string, monthStart: string, monthEnd: string): HTMLDivElement {
   const summaryRow = document.createElement('div')
   Object.assign(summaryRow.style, { display: 'flex', gap: '8px', padding: '8px 4px', flex: 'none', borderBottom: '1px solid ' + COLOR.borderDark })
 
@@ -370,13 +351,30 @@ function mount(container: HTMLElement): void {
     },
   })
 
-  root.appendChild(summaryRow)
+  return summaryRow
+}
 
-  /* ── 하단: 필터 + 드릴다운/거래내역 + 통계 ── */
-  const lower = document.createElement('div')
-  Object.assign(lower.style, { flex: '1', overflow: 'auto', display: 'flex', flexDirection: 'column' })
+/* ── mount 헬퍼: 드릴다운 토글 버튼 클릭 콜백 ── */
+function onDrilldownToggle(): void {
+  drilldownActive = !drilldownActive
+  if (drilldownActive) {
+    selectedView = 'drilldown'
+    updateCardSelection()
+    updateDrilldownBtnStyle(true)
+    showDrilldown()
+    persistViewState()
+  } else {
+    selectedView = null
+    updateCardSelection()
+    updateDrilldownBtnStyle(false)
+    showTable()
+    updateTabLabels()
+    persistViewState()
+  }
+}
 
-  // 필터 행 (날짜 + 종목 + 드릴다운 토글)
+/* ── mount 헬퍼: 필터 행 (날짜 범위 + 드릴다운 토글 + 종목 검색) ── */
+function buildFilterRow(monthStart: string, todayStr: string): HTMLDivElement {
   const filterRow = document.createElement('div')
   Object.assign(filterRow.style, { display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 4px', borderBottom: '1px solid ' + COLOR.borderLight, flexWrap: 'wrap' })
 
@@ -395,31 +393,13 @@ function mount(container: HTMLElement): void {
   })
   filterRow.appendChild(dateRangeInput.el)
 
-  // 드릴다운 토글 버튼
   drilldownBtnHandle = createToggleSelectBtn({
     label: '당월 일별 요약',
     active: false,
-    onClick: () => {
-      drilldownActive = !drilldownActive
-      if (drilldownActive) {
-        selectedView = 'drilldown'
-        updateCardSelection()
-        updateDrilldownBtnStyle(true)
-        showDrilldown()
-        persistViewState()
-      } else {
-        selectedView = null
-        updateCardSelection()
-        updateDrilldownBtnStyle(false)
-        showTable()
-        updateTabLabels()
-        persistViewState()
-      }
-    },
+    onClick: onDrilldownToggle,
   })
   filterRow.appendChild(drilldownBtnHandle.el)
 
-  // 종목 필터
   const stockSep = document.createElement('span')
   stockSep.textContent = '|'
   stockSep.style.color = COLOR.border
@@ -434,9 +414,11 @@ function mount(container: HTMLElement): void {
   })
   filterRow.appendChild(stockFilterInput.el)
 
-  lower.appendChild(filterRow)
+  return filterRow
+}
 
-  // 탭 헤더
+/* ── mount 헬퍼: 탭 헤더 (매도/매수 내역) ── */
+function buildTabRow(): HTMLDivElement {
   tabRow = document.createElement('div')
   Object.assign(tabRow.style, { display: 'flex', marginTop: '4px', padding: '0 4px', marginBottom: '12px' })
 
@@ -460,9 +442,11 @@ function mount(container: HTMLElement): void {
   sellTabBtn = tabBarHandle.buttons.get('sell') ?? null
   buyTabBtn = tabBarHandle.buttons.get('buy') ?? null
   tabRow.appendChild(tabBarHandle.el)
-  lower.appendChild(tabRow)
+  return tabRow
+}
 
-  // 테이블 컨테이너 (테이블 뷰 + 드릴다운 뷰)
+/* ── mount 헬퍼: 테이블 컨테이너 (테이블 뷰 + 드릴다운 뷰) ── */
+function buildTableContainer(): HTMLDivElement {
   tableContainer = document.createElement('div')
   Object.assign(tableContainer.style, { flex: '1', padding: '0 4px', overflow: 'auto' })
 
@@ -472,10 +456,11 @@ function mount(container: HTMLElement): void {
 
   tableContainer.appendChild(tableViewContainer)
   tableContainer.appendChild(drilldownViewContainer)
+  return tableContainer
+}
 
-  lower.appendChild(tableContainer)
-
-  // 통계 정보 행
+/* ── mount 헬퍼: 통계 정보 행 (총 건수/매수금액/매도금액/실현손익/승률/평균 수익률) ── */
+function buildStatRow(): HTMLDivElement {
   const statRow = document.createElement('div')
   Object.assign(statRow.style, { display: 'flex', gap: '8px', padding: '6px 4px', borderTop: '1px solid ' + COLOR.borderLight, flex: 'none' })
 
@@ -511,13 +496,11 @@ function mount(container: HTMLElement): void {
   statWinRateEl = statEls[4]
   statAvgRateEl = statEls[5]
 
-  lower.appendChild(statRow)
+  return statRow
+}
 
-  root.appendChild(lower)
-  container.appendChild(root)
-
-  // 초기 데이터 반영
-  const initState = hotStore.getState()
+/* ── mount 헬퍼: 초기 데이터 반영 + 저장된 뷰 상태 복원 ── */
+function restoreInitialView(todayStr: string, initState: ReturnType<typeof hotStore.getState>): void {
   sellHistory = initState.sellHistory
   buyHistory = initState.buyHistory
   updateTabLabels()
@@ -545,8 +528,45 @@ function mount(container: HTMLElement): void {
   if (summaryCardEls) {
     updateSummaryCards(sellHistory, initState.dailySummary, summaryCardEls)
   }
+}
 
-  // hotStore 구독 — rAF 배칭 + selective update
+/* ── mount 헬퍼: rAF 배칭 렌더 (dirty 플래그 기반 selective update) ── */
+function flushDirtyRender(): void {
+  _rafId = null
+  if (!_mounted) return
+
+  if (_dirtyHistory) {
+    _dirtyHistory = false
+    if (drilldownActive) {
+      showDrilldown()
+    } else {
+      showTable()
+    }
+    updateTabLabels()
+    if (summaryCardEls) {
+      updateSummaryCards(sellHistory, hotStore.getState().dailySummary, summaryCardEls)
+    }
+  }
+
+  if (_dirtySummary) {
+    _dirtySummary = false
+    if (summaryCardEls) {
+      updateSummaryCards(sellHistory, hotStore.getState().dailySummary, summaryCardEls)
+    }
+  }
+
+  if (_dirtySectorStocks) {
+    _dirtySectorStocks = false
+    if (drilldownActive) {
+      showDrilldown()
+    } else {
+      showTable()
+    }
+  }
+}
+
+/* ── mount 헬퍼: hotStore 구독 (rAF 배칭 + selective update) ── */
+function subscribeProfitDetailStore(initState: ReturnType<typeof hotStore.getState>): void {
   let prevSellRef = initState.sellHistory
   let prevBuyRef = initState.buyHistory
   let prevDailySummaryRef = initState.dailySummary
@@ -577,41 +597,40 @@ function mount(container: HTMLElement): void {
     }
 
     if (_rafId !== null) return
-
-    _rafId = requestAnimationFrame(() => {
-      _rafId = null
-      if (!_mounted) return
-
-      if (_dirtyHistory) {
-        _dirtyHistory = false
-        if (drilldownActive) {
-          showDrilldown()
-        } else {
-          showTable()
-        }
-        updateTabLabels()
-        if (summaryCardEls) {
-          updateSummaryCards(sellHistory, hotStore.getState().dailySummary, summaryCardEls)
-        }
-      }
-
-      if (_dirtySummary) {
-        _dirtySummary = false
-        if (summaryCardEls) {
-          updateSummaryCards(sellHistory, hotStore.getState().dailySummary, summaryCardEls)
-        }
-      }
-
-      if (_dirtySectorStocks) {
-        _dirtySectorStocks = false
-        if (drilldownActive) {
-          showDrilldown()
-        } else {
-          showTable()
-        }
-      }
-    })
+    _rafId = requestAnimationFrame(flushDirtyRender)
   })
+}
+
+/* ── mount ── */
+function mount(container: HTMLElement): void {
+  notifyPageActive('profit-detail')
+  buyHistory = []
+  sellHistory = []
+  activeTab = 'sell'
+  drilldownActive = true
+
+  const root = document.createElement('div')
+  Object.assign(root.style, { display: 'flex', flexDirection: 'column', height: '100%' })
+  root.appendChild(createCardTitle('수익 상세'))
+
+  const todayStr = getLocalToday()
+  const monthStart = todayStr.slice(0, 8) + '01'
+  const monthEnd = todayStr.slice(0, 8) + '31'
+
+  root.appendChild(buildSummaryRow(todayStr, monthStart, monthEnd))
+
+  const lower = document.createElement('div')
+  Object.assign(lower.style, { flex: '1', overflow: 'auto', display: 'flex', flexDirection: 'column' })
+  lower.appendChild(buildFilterRow(monthStart, todayStr))
+  lower.appendChild(buildTabRow())
+  lower.appendChild(buildTableContainer())
+  lower.appendChild(buildStatRow())
+  root.appendChild(lower)
+  container.appendChild(root)
+
+  const initState = hotStore.getState()
+  restoreInitialView(todayStr, initState)
+  subscribeProfitDetailStore(initState)
 }
 
 /* ── unmount ── */
@@ -627,7 +646,6 @@ function unmount(): void {
   if (buyTable) { buyTable.destroy(); buyTable = null }
   if (drilldownTable) { drilldownTable.destroy(); drilldownTable = null }
   drilldownActive = false
-  drilldownCols = []
   drilldownBtnHandle = null
   selectedView = null
   tabRow = null
