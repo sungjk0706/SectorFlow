@@ -349,9 +349,8 @@ async def record_sell(
     # 매수금액(실지출) = 매수가×수량 + 매수수수료
     buy_fee = round(avg_buy_price * qty * BUY_COMMISSION) if trade_mode == "test" and avg_buy_price > 0 else 0
     buy_total = avg_buy_price * qty + buy_fee if avg_buy_price > 0 else 0
-    # 순수 실현손익 = (매도가 - 평균매수가) × 수량 (수수료/세금 제외)
-    realized_pnl = (price - avg_buy_price) * qty if avg_buy_price > 0 else 0
-    buy_principal = avg_buy_price * qty if avg_buy_price > 0 else 0
+    # 현금 기준 실현손익 = 매도 실수령 - 매수 실지출 (수수료/세금 포함)
+    realized_pnl = sell_net - buy_total if avg_buy_price > 0 else 0
 
     rec = {
         "ts": now.isoformat(timespec="seconds"),
@@ -366,7 +365,7 @@ async def record_sell(
         "avg_buy_price": avg_buy_price,
         "buy_total_amt": buy_total,
         "realized_pnl": realized_pnl,
-        "pnl_rate": round(realized_pnl / buy_principal * 100, 2) if buy_principal > 0 else 0.0,
+        "pnl_rate": round(realized_pnl / buy_total * 100, 2) if buy_total > 0 else 0.0,
         "fee": fee,
         "tax": tax,
         "reason": reason,
@@ -516,7 +515,7 @@ async def get_daily_summary(
                 if rec["date"] == d:
                     sell_count += 1
                     realized_pnl += rec["realized_pnl"] or 0
-                    buy_total += (rec["avg_buy_price"] or 0) * (rec["qty"] or 0)
+                    buy_total += rec.get("buy_total_amt") or 0
                     sell_fee += rec.get("fee") or 0
                     sell_tax += rec.get("tax") or 0
             daily_map[d] = {
@@ -647,7 +646,7 @@ async def build_positions_from_trades(trade_mode: str) -> dict[str, dict]:
 
     - 종목별 FIFO(선입선출) lot 매칭: 매도 시 가장 오래된 매수 lot부터 차감.
     - 반환된 `avg_price`/`buy_amount`는 순매입(수수료 제외), `buy_amt`/`total_fee`는
-      수수료 포함, `pnl_amount`/`pnl_rate`는 순수 차익(수수료/세금 제외).
+      수수료 포함, `pnl_amount`/`pnl_rate`는 현금 기준(수수료/세금 포함).
     """
     await _ensure_loaded()
     async with _history_lock:

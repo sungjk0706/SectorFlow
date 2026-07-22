@@ -6,6 +6,38 @@
 
 ## 직전 완료 작업
 
+### 단계 B-본: per-trade realized_pnl/pnl_rate 현금 기준 전환 + 마이그레이션 실행 (2026-07-22)
+
+**세션**: 수익률 계산 SSOT/P22 일괄 정비 단계 B-본 (백엔드/DB). P22/P21/P18/P10 해결. 핵심 로직 변경(규칙 0-4/0-5) — UI 기준 변경 전/후 설명 + 사용자 승인 완료.
+
+**문제 현상**: per-trade realized_pnl/pnl_rate가 순수 차익 기준(`(price - avg_buy_price) * qty`)으로 계산되나, get_total_realized_pnl(합계)은 현금 기준(`total_amt - buy_total_amt`) 사용. 같은 "실현손익"이 두 기준으로 혼재 (P22 위반). 순수 차익은 수수료/세금 미반영으로 실제 체감 수익률과 불일치 (P21 위반).
+
+**수정 파일 3개 + 신규 1개**:
+- `backend/app/services/trade_history.py:352-368` — record_sell의 realized_pnl/pnl_rate 공식 현금 기준 전환. `realized_pnl = sell_net - buy_total` (매도 실수령 - 매수 실지출, 수수료/세금 포함). `pnl_rate = round(realized_pnl / buy_total * 100, 2)`. `buy_principal` 변수 제거 (P24 단순성). 주석 "순수 차익" → "현금 기준 실현손익" 갱신.
+- `backend/app/services/trade_history.py:517-518` — get_daily_summary의 buy_total 집계를 `avg_buy_price * qty` → `buy_total_amt` 로 변경 (수수료 포함, per-trade와 동일 기준).
+- `backend/app/services/trade_history.py:647-650` — build_positions_from_trades docstring "순수 차익" → "현금 기준" 갱신.
+- `backend/scripts/migrate_realized_pnl_cash.py` (신규) — trades 테이블 SELL 레코드 현금 기준 마이그레이션 스크립트. 조건: `side='SELL' AND avg_buy_price > 0 AND buy_total_amt > 0`. `realized_pnl = total_amt - buy_total_amt`, `pnl_rate = round(realized_pnl / buy_total_amt * 100, 2)`. idempotent, 스키마 변경 없음, 모드 무관 (P18). 실행 결과: 대상 0건 (현재 SELL 레코드 없음) → 갱신 없음. 향후 매도 시 현금 기준 적용.
+
+**테스트 갱신**: `backend/tests/test_trade_history.py` — `_make_sell_rec` 헬퍼(270-282) + `test_daily_summary_no_duplicate_buy_total`(55-100) + `test_daily_summary_fee_tax_aggregation`(151-202) 주입 데이터 현금 기준으로 갱신.
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| B-본 | P22/P21/P18/P10 | per-trade realized_pnl/pnl_rate를 현금 기준으로 전환. get_total_realized_pnl과 동일 기준 단일화. 실전/테스트 모드 동등 (실전은 fee/tax=0이므로 영향 없음). 마이그레이션 스크립트로 과거 데이터 일치 확보 (현재 0건). |
+
+**검증**: `python -m py_compile` 성공. `pytest backend/tests/test_trade_history.py` 64 passed. `pytest backend/tests/` 2790 passed. `python -W error::RuntimeWarning main.py` 런타임 기동 — 앱 시작 완료, RuntimeWarning 에러 없음, 매수 0건/매도 0건 정상 로드.
+
+**화면 영향 (테스트모드)**: 수익현황/수익상세 페이지의 실현손익(원)과 수익률(%)이 **테스트모드에서 더 낮게** 표시됨 (수수료/세금 반영). 예: 7만원 매수→6.9만원 매도 시 기존 −10,000원/−1.43% → 변경 후 −11,589원/−1.66%. **실전모드는 수수료/세금이 0이므로 화면 수치 변화 없음.** 일별 요약 수익률도 현금 기준으로 일관. 프론트엔드 분모 동기화는 단계 B-연계(세션 5)에서 처리.
+
+**잔존 프로세스**: 없음 (백엔드 기동 후 종료, 런타임 검증만 수행).
+
+**작업 파일 갱신**: `docs/pnl_rate_ssot_tasks.md` 단계 B-본 섹션(4.2~4.5) 체크리스트 [x] 표시 — 사전조사 항목·수정 체크리스트·검증·완료조건 모두 완료.
+
+**다음 세션 대기 사항**:
+1. **단계 B-연계 실행 시작 승인** — 프론트엔드 공식 동기화 + 테스트 갱신 (프론트엔드/테스트). tasks.md 섹션 5 기반. 사전조사 항목: 프론트엔드가 sellHistory의 `realized_pnl`/`avg_buy_price`/`qty`를 사용하는 집계 지점, 분모를 `buy_total_amt`(수수료 포함)로 변경 필요 여부 확인. UI 수치 변화(테스트모드 수익률 낮아짐) 사전 안내 포함 (P21).
+
+## 직전 완료 작업 (이전 세션)
+
 ### 단계 B-사전: DB 백업 + 마이그레이션 스크립트 설계 확정 (2026-07-22)
 
 **세션**: 수익률 계산 SSOT/P22 일괄 정비 단계 B-사전 (백엔드/DB 사전 준비). 코드 수정 없음 (DB 백업 + 설계 보고만). P22/P18 준비.
