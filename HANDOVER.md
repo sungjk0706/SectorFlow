@@ -6,6 +6,26 @@
 
 ## 직전 완료 작업
 
+### F-06-g (F06-03): ui-styles.ts 파일 분할 (2026-07-22)
+
+**세션**: F-06 (P3 — 공통 컴포넌트) 1단계. F06-03 (P24 단순성) 해결.
+
+**수정 파일 3개**:
+- `frontend/src/components/common/ui-styles.ts` (메인): 581줄 → 252줄. 상수(FONT_FAMILY/FONT_SIZE/FONT_WEIGHT/COLOR) + 색상함수(rateColor/pnlColor/strengthColor/hexToRgba) + 기호/포맷함수(changeArrow/fmtRate/fmtComma/fmtWon) + positionTooltip + CELL_BORDER/ROW_HEIGHT/ROW_HEIGHT_PX + 다크폼(createDarkInput/createDarkSelect) + 헬퍼(setDisabled/setDisplay) + `export * from` cells/columns re-export. ColumnDef/COLUMN_WIDTH import 제거 (columns 파일로 이동).
+- `frontend/src/components/common/ui-styles-cells.ts` (신규, 211줄): createStockNameCell + applyCell(private 이동) + CELL_PADDING(private 이동) + createHeaderCell + 11개 createCell 함수 (Seq/Code/Price/Change/Rate/Amount/Strength/AvgAmount/Number/Pnl). 메인의 COLOR/FONT_*/rateColor/pnlColor/strengthColor/changeArrow/fmtComma/fmtRate import.
+- `frontend/src/components/common/ui-styles-columns.ts` (신규, 148줄): 8개 makeColumn (Seq/Code/Price/Change/Rate/Strength/Amount/AvgAmount) + createStockNameColumn. data-table(ColumnDef) + table-config(COLUMN_WIDTH) + 메인(COLOR) + cells(create* 함수) import.
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| F06-03 | P24 | ui-styles.ts 581줄 → 3개 파일 분할 (252/211/148줄, 모두 500줄 이하). 순수 이동(move)만 수행, 동작 변경 없음. 외부 import 경로 유지 (41곳: 컴포넌트 18 + 페이지 14 + 레이아웃 3 + 기타 6). F-06-e(data-table)/F-06-f(setting-row)와 동일한 메인+re-export 패턴. |
+
+**검증**: `npm run typecheck` exit 0, `npm run build` 735ms exit 0, `npx vitest run` 8 files / 116 tests passed (4.18s). 잔여 ui-styles-cells/columns 참조: 메인 re-export(2곳) + columns 내부 import(1곳)만 (외부 누출 없음).
+
+**화면 영향**: 없음. 순수 파일 분할이며 외부 import 경로가 동일하게 유지되어 모든 페이지의 테이블 셀·컬럼·다크폼이 동일하게 동작.
+
+## 직전 완료 작업 (이전 세션)
+
 ### F-06-f (F06-02): setting-row.ts 파일 분할 (2026-07-22)
 
 **세션**: F-06 (P3 — 공통 컴포넌트) 1단계. F06-02 (P24 단순성) 해결.
@@ -51,8 +71,7 @@
 
 ## 다음 세션 작업
 
-**잔여 F-06 (별도 세션 each)**:
-- F06-03: `ui-styles.ts` 파일 분할 (564줄, 셀/컬럼 팩토리 분리 검토)
+**잔여 F-06**: 없음 (F06-01/02/03 완료)
 
 **잔여 F-05 (별도 세션 each)**:
 - `profit-overview.ts` 742줄 (500줄 초과) — `renderSectorStockPnl` 146줄 분할 포함
