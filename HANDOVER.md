@@ -6,6 +6,30 @@
 
 ## 직전 완료 작업
 
+### F-04-c: P2 — 매수/매도 설정 페이지 buy-settings.ts + sell-settings.ts 4건 (2026-07-22)
+
+**수정 파일 2개**:
+- `frontend/src/pages/buy-settings.ts` (425→452줄, +27줄): F04-12 `Number() || 기본값` 폴백 11건 → `??` (nullish coalescing). **가산점 점수 0 설정 후 새로고침 시 1.0으로 잘못 표시되는 버그 수정** (boost_high/order/program/trade_amount_score 4건). 나머지 7건(rise_pct/fall_pct/min_strength/max_daily_amt/max_stock_cnt/buy_amt/buy_interval_sec)도 동일 패턴으로 통일 — **P20/P21**. F04-06 `mount()` 233줄 → 5개 섹션 빌더 분할 (buildBuyBlockSection/buildBoostSection+buildBoostOrderBlock/buildBuyAmountSection/buildRebuySection/buildBuyIntervalSection), mount 본문 20줄 — **P24**. F04-07 `syncFromSettings` 92줄 → 5개 동기화 함수 분할 (syncBuyBlock/syncBoost/syncBuyAmount/syncRebuy/syncBuyInterval), 본문 13줄 — **P24**
+- `frontend/src/pages/sell-settings.ts` (174→181줄, +7줄): F04-13 `Number() || 기본값` 폴백 5건 → `??` (일관성, 동작 버그 없음) — **P20**. F04-07 `mount()` 80줄 → 2개 섹션 빌더 분할 (buildSellTypeSection/buildSellIntervalSection), mount 본문 17줄 — **P24**
+
+**해결 원칙**: P20 (폴백 금지), P21 (사용자 투명성 — 가산점 0 표시 버그), P24 (단순성)
+
+**검증**:
+- `npm run typecheck` (tsc --noEmit) — 성공 (exit code 0)
+- `npm run build` (vite build) — 성공 (2.05s, exit code 0)
+- 잔여 `Number() ||` 폴백 grep 0건
+- 모든 함수 50줄 이하 (최장 buildSellTypeSection 49줄)
+
+**화면 영향**:
+- 매수 가산점 점수 0 설정 시: 이전 화면 1.0 잘못 표시 → 이제 0 올바르게 표시 (버그 수정)
+- 매수/매도 설정 페이지 표시/저장 동작: 동일 (구조 개선만, 사용자 동작 변화 없음)
+
+**보류 항목 (F-04-c 범위외, 추후 세션)**:
+- F04-14 (P23, INFO): 저장 호출 패턴 3종 혼재 (buy/sell: saveHelper.saveImmediate 미await / general: async/await saveSection / sector: autoSave 디바운스) — saveSection이 내부 try/catch로 reject하지 않으므로 안전. F-07 범위(settings-save.ts)와 연계 검토 권장
+- F-04-e (별도): stock-classification.ts + general-settings.ts 파일 분할 (구조 변경, 다단계 워크플로우 적용)
+
+---
+
 ### F-04-b: P2 — 설정 페이지 general-settings.ts + sector-settings.ts 4건 (2026-07-22)
 
 **수정 파일 2개**:
@@ -54,19 +78,23 @@
 
 ## 현재 진행 상황
 
-### 아키텍처 전수 조사 진행률: 27/30 세션 완료 (90%, F-04-b 완료)
+### 아키텍처 전수 조사 진행률: 28/30 세션 완료 (93%, F-04-c 완료)
 
 | 상태 | 세션 |
 |------|------|
 | 완료 | B-01~B-12, B-14~B-23, F-01, F-02, F-03 |
-| 부분 완료 | B-13 (3건 해결, 5건 보류 LOW/INFO), F-04 (F-04-a 5건 + F-04-b 4건 해결, 잔여 F-04-c/d/e) |
+| 부분 완료 | B-13 (3건 해결, 5건 보류 LOW/INFO), F-04 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 해결, 잔여 F-04-d/e) |
 | 미시작 | F-05, F-06, F-07 |
 
-**다음 세션**: F-04-c (P2 — buy-settings.ts + sell-settings.ts: 함수 분할 검토 + Number() 폴백 검토)
+**다음 세션**: F-04-d (P2 — sector-settings.ts: F04-05 mount 함수 길이, F04-17 파일 길이)
 
 ---
 
 ## 미해결 문제
+
+### F-04-c 보류 항목 (F-04-c 범위외, 추후 세션)
+- F04-14 (P23, INFO): 저장 호출 패턴 3종 혼재 (buy/sell: saveHelper.saveImmediate 미await / general: async/await saveSection / sector: autoSave 디바운스) — saveSection이 내부 try/catch로 reject하지 않으므로 안전. F-07 범위(settings-save.ts)와 연계 검토 권장
+- F-04-e (별도): stock-classification.ts + general-settings.ts 파일 분할 (구조 변경, 다단계 워크플로우 적용)
 
 ### F-04-b 보류 항목 (F-04-b 범위외, 추후 세션)
 - F04-02/F04-04 (P24): general-settings.ts 파일 1448줄 / 함수 7개 50줄 초과 — 파일 분할은 별도 세션 필요 (구조 변경)
@@ -100,8 +128,7 @@
 
 ## 다음 세션 인계 사항
 
-1. **F-04-c (P2 — buy-settings.ts + sell-settings.ts)** 부터 시작. F-04-b 완료 (general-settings + sector-settings 4건 해결).
-   - F-04-c 대상: `buy-settings.ts` (425줄) + `sell-settings.ts` (174줄) — F04-06/F04-07 함수 길이 초과, F04-12/F04-13 `Number() || 0` 폴백 (P20)
+1. **F-04-d (P2 — sector-settings.ts)** 부터 시작. F-04-c 완료 (buy-settings + sell-settings 4건 해결).
    - F-04-d 대상: `sector-settings.ts` (501줄) — F04-05 mount 함수 길이, F04-17 파일 길이
    - F-04-e (별도): stock-classification.ts + general-settings.ts 파일 분할 (구조 변경, 다단계 워크플로우 적용)
 2. 대상 원칙: P10, P13, P16, P17, P19, P21, P23, P24
