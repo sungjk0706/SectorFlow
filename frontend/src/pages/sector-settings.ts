@@ -165,53 +165,58 @@ function syncFromSettings(s: AppSettings): void {
   _updateMaxScoreDisplay()
 }
 
-/* ── 가산점 슬라이더 2행 레이아웃 (매수설정 슬라이더와 동일 패턴 — P23 일관성) ── */
-function createBonusSliderRow(labelText: string, sliderEl: HTMLElement, numInputEl: HTMLElement): HTMLElement {
-  const block = document.createElement('div')
-  block.style.borderBottom = '1px solid ' + COLOR.borderLight
-
-  // Row 1: 라벨 행 — 설명 라벨(좌) + 숫자 입력란(우) (매수설정 라벨 행과 동일 패턴)
-  const labelRow = document.createElement('div')
-  Object.assign(labelRow.style, {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '6px 0',
+/* ── 가산점 슬라이더 블록 (슬라이더+입력란 양방향 연동 + 2행 레이아웃, 매수설정과 동일 패턴 — P23 일관성/P24 중복 제거) ── */
+// 3개 가산점(1차/2차/3차) 슬라이더 설정이 완전 동일하므로 단일 헬퍼로 통합.
+function createBonusSliderBlock(key: string, label: string): {
+  input: ReturnType<typeof createNumInput>
+  slider: DualLabelSliderHandle
+  row: HTMLElement
+} {
+  let slider: DualLabelSliderHandle | null = null
+  const input = createNumInput({
+    value: 0, min: -100, max: 100, step: 1, name: key,
+    onChange: v => { slider?.setValue(v); onNumChange(key, v); _updateMaxScoreDisplay() },
   })
+  slider = createDualLabelSlider({
+    min: -100, max: 100, value: 0, step: 1,
+    leftLabel: v => v < 0 ? `${v}%` : '0%',
+    rightLabel: v => v > 0 ? `+${v}%` : '0%',
+    leftColor: COLOR.down,
+    leftColorLight: COLOR.downLight,
+    rightColor: COLOR.up,
+    rightColorLight: COLOR.upLight,
+    onChange: v => { input.setValue(v); onNumChange(key, v); _updateMaxScoreDisplay() },
+  })
+  // Row 1: 라벨(좌) + 숫자 입력란(우)
+  const labelRow = document.createElement('div')
+  Object.assign(labelRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' })
   const labelSpan = document.createElement('span')
-  labelSpan.textContent = labelText
+  labelSpan.textContent = label
   labelSpan.style.color = COLOR.neutral
   labelRow.appendChild(labelSpan)
-  labelRow.appendChild(numInputEl)
-  block.appendChild(labelRow)
-
-  // Row 2: 슬라이더 행 (전체 너비 — 매수설정 row2와 동일)
+  labelRow.appendChild(input.el)
+  // Row 2: 슬라이더 (전체 너비)
   const sliderRow = document.createElement('div')
   Object.assign(sliderRow.style, { padding: '0 0 6px' })
-  sliderRow.appendChild(sliderEl)
+  sliderRow.appendChild(slider.el)
+  const block = document.createElement('div')
+  block.style.borderBottom = '1px solid ' + COLOR.borderLight
+  block.appendChild(labelRow)
   block.appendChild(sliderRow)
-
-  return block
+  return { input, slider, row: block }
 }
 
-/* ── mount ── */
-function mount(container: HTMLElement): void {
-  const ctx = initSettingsPage(syncFromSettings)
-  settingsMgr = ctx.settingsMgr
-  autoSaveHelper = ctx.saveHelper
-  currentVals = {}
-  saving = false
+/* ── mount 빌더 함수들 (F-04-c buy-settings.ts 패턴과 동일 — P23/P24) ── */
 
-  const root = document.createElement('div')
-
-  root.appendChild(createCardTitle('업종순위 설정'))
-
-  // ① 종목 필터
+// ① 종목 필터 — 5일 평균 거래대금 이하 차단
+function buildFilterSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('①', '5일 평균 거래대금 이하 차단'))
   minTradeAmtInput = createMoneyInput({ value: 0, onChange: v => onNumChange('sector_min_trade_amt', v), step: 1, name: 'sector_min_trade_amt' })
   root.appendChild(createSettingRow('5일평균 최소 거래대금', minTradeAmtInput.el))
+}
 
-  // ② 업종순위
+// ② 업종순위 — 임계치 입력 + 상태 라벨 (KRX/NXT 진행 바는 별도 섹션)
+function buildThresholdSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('②', '업종순위: 수신율 기반 계산'))
   thresholdInput = createNumInput({ value: 70, onChange: v => { onNumChange('sector_start_threshold_pct', v) }, step: 1, name: 'sector_start_threshold_pct' })
 
@@ -227,29 +232,22 @@ function mount(container: HTMLElement): void {
 
   // 2행: 상태 라벨 — P21 투명성 (KRX/NXT 분리 배지가 각 행에 표시되므로 상태 라벨만 단독)
   const statusRow = document.createElement('div')
-  Object.assign(statusRow.style, {
-    display: 'flex',
-    alignItems: 'center',
-    padding: '4px 0 2px 0',
-  })
-
+  Object.assign(statusRow.style, { display: 'flex', alignItems: 'center', padding: '4px 0 2px 0' })
   receiveStatusLabelEl = document.createElement('span')
-  Object.assign(receiveStatusLabelEl.style, {
-    fontSize: FONT_SIZE.small,
-    color: COLOR.down,
-  })
+  Object.assign(receiveStatusLabelEl.style, { fontSize: FONT_SIZE.small, color: COLOR.down })
   statusRow.appendChild(receiveStatusLabelEl)
   _updateStatusLabel(_initialRate, _initialThreshold, _initialPhase)
   root.appendChild(statusRow)
+}
 
-  // 3행/4행: KRX/NXT 분리 배지 + 진행 바 2인스턴스 (P21 투명성, P23 일관성 — createMarketCountRow 재사용)
-  // createMarketCountRow: showKrx/showNxt 옵션으로 각 시장 세그먼트만 표시, updateCounts로 수신 종목수 갱신
+// ② KRX/NXT 분리 배지 + 진행 바 2인스턴스 (P21 투명성, P23 일관성 — createMarketCountRow 재사용)
+function buildReceiveProgressSection(root: HTMLElement): void {
+  const _initialRate = uiStore.getState().receiveRate
+  const _initialThreshold = uiStore.getState().settings?.sector_start_threshold_pct ?? 70
+  const _initialPhase = uiStore.getState().marketPhase
+
   const progressWrap = document.createElement('div')
-  Object.assign(progressWrap.style, {
-    padding: '6px 0 6px 0',
-    borderBottom: '1px solid ' + COLOR.borderLight,
-    marginBottom: '12px',
-  })
+  Object.assign(progressWrap.style, { padding: '6px 0 6px 0', borderBottom: '1px solid ' + COLOR.borderLight, marginBottom: '12px' })
 
   // KRX 행: 배지(KRX: N종목) + 진행 바(% 표시)
   krxRowEl = document.createElement('div')
@@ -281,16 +279,18 @@ function mount(container: HTMLElement): void {
 
   _applyMarketPhaseActive(_initialPhase)
   root.appendChild(progressWrap)
+}
 
-  // ③ 업종 컷오프
+// ③ 업종 컷오프 — 업종 내 상승비율 이하 차단
+function buildCutoffSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('③', '업종 내 상승비율 이하 차단'))
   minRiseRatioInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_min_rise_ratio_pct', v), step: 1, name: 'sector_min_rise_ratio_pct' })
   root.appendChild(createSettingRow('업종내 종목 상승비율', minRiseRatioInput.el))
+}
 
-  // ④ 가산점 가중치 슬라이더 (상승비율·가중 순위 합·거래대금 3단계)
+// ④ 만점 자동 표시 — 1차/2차/3차 각각(작게) + 합계(크고 진하게) (P21 투명성, P10 SSOT — 백엔드 sector_score.py 계산식과 동일)
+function buildMaxScoreDisplay(root: HTMLElement): void {
   root.appendChild(createStepLabel('④', '가산점 가중치 조절 (3단계)'))
-
-  // 만점 자동 표시 — 1차/2차/3차 각각(작게) + 합계(크고 진하게) (P21 투명성, P10 SSOT — 백엔드 sector_score.py 계산식과 동일)
   maxScoreDisplayEl = document.createElement('span')
   Object.assign(maxScoreDisplayEl.style, { marginLeft: '8px', display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' })
   maxScoreDetailEl = document.createElement('span')
@@ -309,91 +309,43 @@ function mount(container: HTMLElement): void {
   root.appendChild(maxScoreLabel)
   // 초기 만점 표시 — currentVals 동기화 전이므로 슬라이더 기본값 0 기준
   _updateMaxScoreDisplay()
+}
 
+// ④ 가산점 슬라이더 3개 (createBonusSliderBlock 헬퍼 사용) + 설명
+function buildBonusSection(root: HTMLElement): void {
   // 1차 가산점 — 업종 내 상승 종목 비율 (슬라이더-입력란 양방향 연동)
-  bonusRiseRatioInput = createNumInput({ value: 0, min: -100, max: 100, onChange: v => { bonusRiseRatioSlider?.setValue(v); onNumChange('sector_bonus_rise_ratio_slider', v); _updateMaxScoreDisplay() }, step: 1, name: 'sector_bonus_rise_ratio_slider' })
-  bonusRiseRatioSlider = createDualLabelSlider({
-    min: -100, max: 100, value: 0, step: 1,
-    leftLabel: v => v < 0 ? `${v}%` : '0%',
-    rightLabel: v => v > 0 ? `+${v}%` : '0%',
-    leftColor: COLOR.down,
-    leftColorLight: COLOR.downLight,
-    rightColor: COLOR.up,
-    rightColorLight: COLOR.upLight,
-    onChange: v => { bonusRiseRatioInput?.setValue(v); onNumChange('sector_bonus_rise_ratio_slider', v); _updateMaxScoreDisplay() },
-  })
-  root.appendChild(createBonusSliderRow('1차 가산점 — 업종 내 상승 종목 비율', bonusRiseRatioSlider.el, bonusRiseRatioInput.el))
-
+  const b1 = createBonusSliderBlock('sector_bonus_rise_ratio_slider', '1차 가산점 — 업종 내 상승 종목 비율')
+  bonusRiseRatioInput = b1.input; bonusRiseRatioSlider = b1.slider; root.appendChild(b1.row)
   // 2차 가산점 — 종목 상승률 상위 집중도 (슬라이더-입력란 양방향 연동)
-  bonusRelativeStrengthInput = createNumInput({ value: 0, min: -100, max: 100, onChange: v => { bonusRelativeStrengthSlider?.setValue(v); onNumChange('sector_bonus_relative_strength_slider', v); _updateMaxScoreDisplay() }, step: 1, name: 'sector_bonus_relative_strength_slider' })
-  bonusRelativeStrengthSlider = createDualLabelSlider({
-    min: -100, max: 100, value: 0, step: 1,
-    leftLabel: v => v < 0 ? `${v}%` : '0%',
-    rightLabel: v => v > 0 ? `+${v}%` : '0%',
-    leftColor: COLOR.down,
-    leftColorLight: COLOR.downLight,
-    rightColor: COLOR.up,
-    rightColorLight: COLOR.upLight,
-    onChange: v => { bonusRelativeStrengthInput?.setValue(v); onNumChange('sector_bonus_relative_strength_slider', v); _updateMaxScoreDisplay() },
-  })
-  root.appendChild(createBonusSliderRow('2차 가산점 — 종목 상승률 상위 집중도', bonusRelativeStrengthSlider.el, bonusRelativeStrengthInput.el))
-
+  const b2 = createBonusSliderBlock('sector_bonus_relative_strength_slider', '2차 가산점 — 종목 상승률 상위 집중도')
+  bonusRelativeStrengthInput = b2.input; bonusRelativeStrengthSlider = b2.slider; root.appendChild(b2.row)
   // 3차 가산점 — 업종 평균 거래대금 (슬라이더-입력란 양방향 연동)
-  bonusTradeAmountInput = createNumInput({ value: 0, min: -100, max: 100, onChange: v => { bonusTradeAmountSlider?.setValue(v); onNumChange('sector_bonus_trade_amount_slider', v); _updateMaxScoreDisplay() }, step: 1, name: 'sector_bonus_trade_amount_slider' })
-  bonusTradeAmountSlider = createDualLabelSlider({
-    min: -100, max: 100, value: 0, step: 1,
-    leftLabel: v => v < 0 ? `${v}%` : '0%',
-    rightLabel: v => v > 0 ? `+${v}%` : '0%',
-    leftColor: COLOR.down,
-    leftColorLight: COLOR.downLight,
-    rightColor: COLOR.up,
-    rightColorLight: COLOR.upLight,
-    onChange: v => { bonusTradeAmountInput?.setValue(v); onNumChange('sector_bonus_trade_amount_slider', v); _updateMaxScoreDisplay() },
-  })
-  root.appendChild(createBonusSliderRow('3차 가산점 — 업종 평균 거래대금', bonusTradeAmountSlider.el, bonusTradeAmountInput.el))
+  const b3 = createBonusSliderBlock('sector_bonus_trade_amount_slider', '3차 가산점 — 업종 평균 거래대금')
+  bonusTradeAmountInput = b3.input; bonusTradeAmountSlider = b3.slider; root.appendChild(b3.row)
 
   const bonusDescWrap = document.createElement('div')
-  Object.assign(bonusDescWrap.style, {
-    borderBottom: '1px solid ' + COLOR.borderLight,
-    marginBottom: '12px',
-  })
+  Object.assign(bonusDescWrap.style, { borderBottom: '1px solid ' + COLOR.borderLight, marginBottom: '12px' })
   bonusDescWrap.appendChild(createDescText('슬라이더 -100%~+100%: 조정 만점 = 업종 수 × (1 + 슬라이더/100)', { marginTop: '8px' }))
   bonusDescWrap.appendChild(createDescText('1위 = 조정 만점, 2위 = 조정 만점 - 1, ... 0점까지 1점씩 차감'))
   bonusDescWrap.appendChild(createDescText('종합 점수 = 1차 + 2차 + 3차'))
   root.appendChild(bonusDescWrap)
+}
 
-  // ⑤ 매수 대상
+// ⑤ 매수 대상 — 최대 매수 대상 업종수 설정 + 상위 N 업종 종목 합계 보조 줄 (P21 투명성)
+function buildMaxTargetsSection(root: HTMLElement): void {
   root.appendChild(createStepLabel('⑤', '최대 매수 대상 업종수 설정'))
   maxTargetsInput = createNumInput({ value: 0, onChange: v => onNumChange('sector_max_targets', v), step: 1, name: 'sector_max_targets' })
 
   const maxTargetsRow = document.createElement('div')
-  Object.assign(maxTargetsRow.style, {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '6px 0',
-    borderBottom: '1px solid ' + COLOR.borderLight,
-  })
-
+  Object.assign(maxTargetsRow.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid ' + COLOR.borderLight })
   const maxTargetsLabel = document.createElement('span')
   maxTargetsLabel.textContent = '매수대상 업종수'
   Object.assign(maxTargetsLabel.style, { flex: '1.5', color: COLOR.neutral, display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' })
-
   maxTargetsStatusEl = document.createElement('span')
-  Object.assign(maxTargetsStatusEl.style, {
-    flex: '1',
-    fontSize: FONT_SIZE.label,
-    color: COLOR.tertiary,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    whiteSpace: 'nowrap',
-  })
-
+  Object.assign(maxTargetsStatusEl.style, { flex: '1', fontSize: FONT_SIZE.label, color: COLOR.tertiary, display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap' })
   const rightWrap = document.createElement('div')
   Object.assign(rightWrap.style, { flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' })
   rightWrap.appendChild(maxTargetsInput.el)
-
   maxTargetsRow.appendChild(maxTargetsLabel)
   maxTargetsRow.appendChild(maxTargetsStatusEl)
   maxTargetsRow.appendChild(rightWrap)
@@ -401,32 +353,15 @@ function mount(container: HTMLElement): void {
 
   // ⑤ 행 아래 보조 줄 — 상위 N 업종 종목 합계 (P21 투명성)
   maxTargetsSumEl = document.createElement('div')
-  Object.assign(maxTargetsSumEl.style, {
-    fontSize: FONT_SIZE.small,
-    color: COLOR.tertiary,
-    textAlign: 'right',
-    marginTop: '4px',
-    marginBottom: '6px',
-    minHeight: '16px',
-    padding: '4px 8px',
-    background: COLOR.downBg,
-    borderRadius: '6px',
-    display: 'flex',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    gap: '4px',
-  })
+  Object.assign(maxTargetsSumEl.style, { fontSize: FONT_SIZE.small, color: COLOR.tertiary, textAlign: 'right', marginTop: '4px', marginBottom: '6px', minHeight: '16px', padding: '4px 8px', background: COLOR.downBg, borderRadius: '6px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4px' })
   root.appendChild(maxTargetsSumEl)
+}
 
-  container.appendChild(root)
-
-  // 설정 동기화 + 구독 (표준 유틸 — settings-page.ts, P23 일관성)
-  unsubSettings = startSettingsSubscription(settingsMgr, syncFromSettings)
-
-  // uiStore 구독 — 수신율 표시 갱신 (KRX/NXT 분리 진행 바 + 카운트 + 라벨 + 시간대별 활성/비활성)
+// uiStore 구독 — 수신율 표시 갱신 (KRX/NXT 분리 진행 바 + 카운트 + 라벨 + 시간대별 활성/비활성)
+function startUiStoreSubscription(): () => void {
   let prevReceiveRate = uiStore.getState().receiveRate
   let prevMarketPhase = uiStore.getState().marketPhase
-  unsubUiStore = uiStore.subscribe(() => {
+  return uiStore.subscribe(() => {
     const uiState = uiStore.getState()
     const rateChanged = uiState.receiveRate !== prevReceiveRate
     const phaseChanged = uiState.marketPhase !== prevMarketPhase
@@ -445,16 +380,44 @@ function mount(container: HTMLElement): void {
     _applyMarketPhaseActive(phase)
     _updateStatusLabel(rate, threshold, phase)
   })
+}
 
-  // hotStore 구독 — 만점 표시 갱신 (업종 수 변경 시 1차/2차/3차/합계 모두 자동 갱신, P21 투명성)
+// hotStore 구독 — 만점 표시 갱신 (업종 수 변경 시 1차/2차/3차/합계 모두 자동 갱신, P21 투명성)
+function startHotStoreSubscription(): () => void {
   let prevSectorCount = hotStore.getState().sectorScores.length
-  unsubHotStore = hotStore.subscribe(() => {
+  return hotStore.subscribe(() => {
     const sectorCount = hotStore.getState().sectorScores.length
     if (sectorCount !== prevSectorCount) {
       prevSectorCount = sectorCount
       _updateMaxScoreDisplay()
     }
   })
+}
+
+/* ── mount ── */
+function mount(container: HTMLElement): void {
+  const ctx = initSettingsPage(syncFromSettings)
+  settingsMgr = ctx.settingsMgr
+  autoSaveHelper = ctx.saveHelper
+  currentVals = {}
+  saving = false
+
+  const root = document.createElement('div')
+  root.appendChild(createCardTitle('업종순위 설정'))
+  buildFilterSection(root)
+  buildThresholdSection(root)
+  buildReceiveProgressSection(root)
+  buildCutoffSection(root)
+  buildMaxScoreDisplay(root)
+  buildBonusSection(root)
+  buildMaxTargetsSection(root)
+  container.appendChild(root)
+
+  // 설정 동기화 + 구독 (표준 유틸 — settings-page.ts, P23 일관성)
+  unsubSettings = startSettingsSubscription(settingsMgr, syncFromSettings)
+  // 수신율/업종수 구독
+  unsubUiStore = startUiStoreSubscription()
+  unsubHotStore = startHotStoreSubscription()
 }
 
 /* ── unmount ── */
