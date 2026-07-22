@@ -3,8 +3,9 @@
 
 import { uiStore } from '../stores/uiStore'
 import { hotStore } from '../stores/hotStore'
-import { createSettingsManager } from '../settings'
-import { createAutoSaveHelper, type AutoSaveHelper } from '../utils/settings-save'
+import { type SettingsManager } from '../settings'
+import { initSettingsPage, startSettingsSubscription, destroySettingsPage } from '../utils/settings-page'
+import type { AutoSaveHelper } from '../utils/settings-save'
 import { createSettingRow, createNumInput, createMoneyInput } from '../components/common/setting-row'
 import { createDualLabelSlider, type DualLabelSliderHandle } from '../components/common/create-slider'
 import { createProgressBar, type ProgressBarHandle } from '../components/common/progress-bar'
@@ -22,7 +23,7 @@ const NUM_KEYS = [
 ] as const
 
 /* ── 모듈 상태 ── */
-let settingsMgr: ReturnType<typeof createSettingsManager> | null = null
+let settingsMgr: SettingsManager | null = null
 let autoSaveHelper: AutoSaveHelper | null = null
 let unsubSettings: (() => void) | null = null
 let unsubUiStore: (() => void) | null = null
@@ -195,8 +196,9 @@ function createBonusSliderRow(labelText: string, sliderEl: HTMLElement, numInput
 
 /* ── mount ── */
 function mount(container: HTMLElement): void {
-  settingsMgr = createSettingsManager(uiStore)
-  autoSaveHelper = createAutoSaveHelper(settingsMgr)
+  const ctx = initSettingsPage(syncFromSettings)
+  settingsMgr = ctx.settingsMgr
+  autoSaveHelper = ctx.saveHelper
   currentVals = {}
   saving = false
 
@@ -418,17 +420,8 @@ function mount(container: HTMLElement): void {
 
   container.appendChild(root)
 
-  // 설정 초기 동기화
-  const initialSettings = settingsMgr.getSettings()
-  if (initialSettings) syncFromSettings(initialSettings)
-
-  // 설정 변경 구독 — 사용자 입력에 의한 설정 동기화
-  unsubSettings = settingsMgr.subscribe(() => {
-    const s = settingsMgr?.getSettings()
-    if (s) {
-      syncFromSettings(s)
-    }
-  })
+  // 설정 동기화 + 구독 (표준 유틸 — settings-page.ts, P23 일관성)
+  unsubSettings = startSettingsSubscription(settingsMgr, syncFromSettings)
 
   // uiStore 구독 — 수신율 표시 갱신 (KRX/NXT 분리 진행 바 + 카운트 + 라벨 + 시간대별 활성/비활성)
   let prevReceiveRate = uiStore.getState().receiveRate
@@ -466,11 +459,12 @@ function mount(container: HTMLElement): void {
 
 /* ── unmount ── */
 function unmount(): void {
-  if (unsubSettings) { unsubSettings(); unsubSettings = null }
+  destroySettingsPage(unsubSettings, autoSaveHelper, settingsMgr)
+  unsubSettings = null
+  autoSaveHelper = null
+  settingsMgr = null
   if (unsubUiStore) { unsubUiStore(); unsubUiStore = null }
   if (unsubHotStore) { unsubHotStore(); unsubHotStore = null }
-  if (autoSaveHelper) { autoSaveHelper.destroy(); autoSaveHelper = null }
-  if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }
   thresholdInput = null
   minTradeAmtInput = null
   minRiseRatioInput = null

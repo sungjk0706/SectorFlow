@@ -6,6 +6,31 @@
 
 ## 직전 완료 작업
 
+### F-04-b: P2 — 설정 페이지 general-settings.ts + sector-settings.ts 4건 (2026-07-22)
+
+**수정 파일 2개**:
+- `frontend/src/pages/general-settings.ts` (1453→1448줄, 5줄 감소): F04-20 `.then()` 패턴 12개 → async/await 통일 (handleMasterToggle, dailyLoss/Rate/Profit/ProfitRate/ConsecLoss Input onChange 5개 + onToggle 5개, subscribeMaxInput onChange) — **P23**. F04-21 구독/정리를 `startSettingsSubscription`/`destroySettingsPage` 표준 유틸로 전환 (buy-settings/sell-settings와 동일 패턴) — **P23**. F04-23 거래일 조회 실패 시 조용한 폴백 → 사용자 알림 토스트 추가 ("거래일 조회 실패 — 거래일로 간주하여 자동매매를 허용합니다") — **P20/P21**
+- `frontend/src/pages/sector-settings.ts` (509→501줄, 8줄 감소): F04-22 `initSettingsPage`/`startSettingsSubscription`/`destroySettingsPage` 표준 유틸로 전환 + **onSync 콜백 누락 해결** (기존 `createAutoSaveHelper(settingsMgr)`는 onSync 없이 생성 → 저장 후 동기화 누락 버그) — **P23**
+
+**해결 원칙**: P20 (폴백 금지), P21 (사용자 투명성), P23 (일관성)
+
+**검증**:
+- `npm run typecheck` (tsc --noEmit) — 성공 (exit code 0)
+- `npm run build` (vite build) — 성공 (1.94s, exit code 0)
+
+**화면 영향**:
+- 설정 저장 동작: 동일 (토글/입력 저장 방식 변함 없음)
+- 거래일 조회 실패 시: 이전 화면 알림 없음 → 이제 "거래일 조회 실패" 토스트 표시 (자동매매는 여전히 거래일로 간주하여 허용)
+- 업종순위 설정 저장 후: 이전 화면 갱신 누락 가능 → 이제 저장 후 즉시 갱신 (onSync 콜백 연결)
+
+**보류 항목 (F-04-b 범위외, 추후 세션)**:
+- F04-02/F04-04 (P24): general-settings.ts 파일 1448줄 / 함수 7개 50줄 초과 — 파일 분할은 별도 세션 필요 (구조 변경)
+- F04-05 (P24): sector-settings.ts mount 함수 길이 — 분할 검토
+- F04-06/F04-07 (P24): buy-settings/sell-settings 함수 길이 — 분할 검토
+- F04-12/F04-13 (P20): buy-settings/sell-settings `Number() || 0` 폴백 — 사용자 설계 로직 판단 필요
+
+---
+
 ### F-04-a: P2 — 설정 페이지 stock-classification.ts 5건 (2026-07-22)
 
 **수정 파일 1개** (1617→1597줄, 20줄 감소):
@@ -29,19 +54,25 @@
 
 ## 현재 진행 상황
 
-### 아키텍처 전수 조사 진행률: 26/30 세션 완료 (87%, F-04-a 부분 진행)
+### 아키텍처 전수 조사 진행률: 27/30 세션 완료 (90%, F-04-b 완료)
 
 | 상태 | 세션 |
 |------|------|
 | 완료 | B-01~B-12, B-14~B-23, F-01, F-02, F-03 |
-| 부분 완료 | B-13 (3건 해결, 5건 보류 LOW/INFO), F-04-a (stock-classification 5건 해결) |
-| 미시작 | F-04-b/c/d, F-05, F-06, F-07 |
+| 부분 완료 | B-13 (3건 해결, 5건 보류 LOW/INFO), F-04 (F-04-a 5건 + F-04-b 4건 해결, 잔여 F-04-c/d/e) |
+| 미시작 | F-05, F-06, F-07 |
 
-**다음 세션**: F-04-b (P2 — general-settings.ts: 거래일 폴백 수정 + 함수 분할)
+**다음 세션**: F-04-c (P2 — buy-settings.ts + sell-settings.ts: 함수 분할 검토 + Number() 폴백 검토)
 
 ---
 
 ## 미해결 문제
+
+### F-04-b 보류 항목 (F-04-b 범위외, 추후 세션)
+- F04-02/F04-04 (P24): general-settings.ts 파일 1448줄 / 함수 7개 50줄 초과 — 파일 분할은 별도 세션 필요 (구조 변경)
+- F04-05 (P24): sector-settings.ts mount 함수 길이 — 분할 검토
+- F04-06/F04-07 (P24): buy-settings/sell-settings 함수 길이 — 분할 검토
+- F04-12/F04-13 (P20): buy-settings/sell-settings `Number() || 0` 폴백 — 사용자 설계 로직 판단 필요
 
 ### F-04-a 보류 항목 (F-04-a 범위외, 추후 세션)
 - F04-01/F04-03 (P24): stock-classification.ts 파일 1597줄 / 함수 4개 50줄 초과 — 파일 분할은 별도 세션 필요 (구조 변경)
@@ -69,11 +100,10 @@
 
 ## 다음 세션 인계 사항
 
-1. **F-04-b (P2 — general-settings.ts)** 부터 시작. F-04-a 완료 (stock-classification 5건 해결).
-   - F-04-b 대상: `frontend/src/pages/general-settings.ts` (1453줄) — F04-02 파일 길이 초과, F04-04 함수 7개 50줄 초과, F04-14 거래일 확인 실패 시 폴백 (P20)
+1. **F-04-c (P2 — buy-settings.ts + sell-settings.ts)** 부터 시작. F-04-b 완료 (general-settings + sector-settings 4건 해결).
    - F-04-c 대상: `buy-settings.ts` (425줄) + `sell-settings.ts` (174줄) — F04-06/F04-07 함수 길이 초과, F04-12/F04-13 `Number() || 0` 폴백 (P20)
-   - F-04-d 대상: `sector-settings.ts` (509줄) — F04-05 mount 269줄, F04-17 파일 9줄 초과
-   - F-04-e (별도): stock-classification.ts 파일 분할 (구조 변경, 다단계 워크플로우 적용)
+   - F-04-d 대상: `sector-settings.ts` (501줄) — F04-05 mount 함수 길이, F04-17 파일 길이
+   - F-04-e (별도): stock-classification.ts + general-settings.ts 파일 분할 (구조 변경, 다단계 워크플로우 적용)
 2. 대상 원칙: P10, P13, P16, P17, P19, P21, P23, P24
 3. `architecture_audit_tasks.md` 섹션 F-04 체크리스트 참조
 4. 세션당 1단계 원칙 준수 (AGENTS.md 규칙 0-1)

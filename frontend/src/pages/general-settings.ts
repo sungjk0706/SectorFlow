@@ -5,6 +5,7 @@
 import { uiStore, applyTestDataResetCompleted } from '../stores/uiStore'
 import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createSettingsManager, extractDirty, MASKED_FIELDS, type SettingsManager } from '../settings'
+import { startSettingsSubscription, destroySettingsPage } from '../utils/settings-page'
 import { createToggleBtn, createMoneyInput, createTextInput, createRadioGroup, createNumInput, createToggleLabelControlsRow, focusNext } from '../components/common/setting-row'
 import { toastResult, showSaveToast } from '../components/common/toast'
 import { createDataTable, type ColumnDef } from '../components/common/data-table'
@@ -188,7 +189,8 @@ function refreshUI(): void {
     panel.style.display = id === activeTab ? '' : 'none'
   }
 
-  syncFromSettings(settingsMgr?.getSettings() ?? null)
+  const s = settingsMgr?.getSettings()
+  if (s) syncFromSettings(s)
 }
 
 /* ── 시간 설정 탭 ── */
@@ -399,13 +401,12 @@ function renderTimeSettingsTab(container: HTMLElement): void {
     max: 1000,
     step: 10,
     name: 'subscribe.max_0b_count',
-    onChange: (v) => {
+    onChange: async (v) => {
       if (!settingsMgr) return
       const dirty: Record<string, unknown> = { 'subscribe.max_0b_count': v }
-      settingsMgr.saveSection(dirty).then(res => {
-        toastResult(res)
-        if (res.ok) Object.assign(vals, dirty)
-      })
+      const res = await settingsMgr.saveSection(dirty)
+      toastResult(res)
+      if (res.ok) Object.assign(vals, dirty)
     },
   })
   subMaxRow.appendChild(subscribeMaxInput.el)
@@ -533,12 +534,11 @@ function renderAutoTradeTab(container: HTMLElement): void {
   // 일일 손실 한도 (토글 + 금액 입력, 음수)
   dailyLossInput = createMoneyInput({
     value: -500000,
-    onChange: v => {
+    onChange: async v => {
       vals.daily_loss_limit = v
-      settingsMgr?.saveSection({ daily_loss_limit: v }).then(res => {
-        toastResult(res)
-        if (res.ok) vals.daily_loss_limit = v
-      })
+      const res = await settingsMgr!.saveSection({ daily_loss_limit: v })
+      toastResult(res)
+      if (res.ok) vals.daily_loss_limit = v
     },
     step: 10000,
     min: -1000000000,
@@ -549,12 +549,11 @@ function renderAutoTradeTab(container: HTMLElement): void {
     const r = createToggleLabelControlsRow({
       labelText: '일일 손실 한도 (원)',
       toggleOn: true,
-      onToggle: next => {
+      onToggle: async next => {
         vals.daily_loss_limit_on = next
-        settingsMgr?.saveSection({ daily_loss_limit_on: next }).then(res => {
-          toastResult(res)
-          if (!res.ok) vals.daily_loss_limit_on = !next
-        })
+        const res = await settingsMgr!.saveSection({ daily_loss_limit_on: next })
+        toastResult(res)
+        if (!res.ok) vals.daily_loss_limit_on = !next
       },
       controlsChild: dailyLossInput.el,
     })
@@ -565,12 +564,11 @@ function renderAutoTradeTab(container: HTMLElement): void {
   // 일일 손실률 한도 (토글 + % 입력)
   dailyLossRateInput = createNumInput({
     value: -5,
-    onChange: v => {
+    onChange: async v => {
       vals.daily_loss_rate_limit = v
-      settingsMgr?.saveSection({ daily_loss_rate_limit: v }).then(res => {
-        toastResult(res)
-        if (res.ok) vals.daily_loss_rate_limit = v
-      })
+      const res = await settingsMgr!.saveSection({ daily_loss_rate_limit: v })
+      toastResult(res)
+      if (res.ok) vals.daily_loss_rate_limit = v
     },
     step: 0.1,
     min: -100,
@@ -581,12 +579,11 @@ function renderAutoTradeTab(container: HTMLElement): void {
     const r = createToggleLabelControlsRow({
       labelText: '일일 손실률 한도 (%)',
       toggleOn: false,
-      onToggle: next => {
+      onToggle: async next => {
         vals.daily_loss_rate_limit_on = next
-        settingsMgr?.saveSection({ daily_loss_rate_limit_on: next }).then(res => {
-          toastResult(res)
-          if (!res.ok) vals.daily_loss_rate_limit_on = !next
-        })
+        const res = await settingsMgr!.saveSection({ daily_loss_rate_limit_on: next })
+        toastResult(res)
+        if (!res.ok) vals.daily_loss_rate_limit_on = !next
       },
       controlsChild: dailyLossRateInput.el,
     })
@@ -597,12 +594,11 @@ function renderAutoTradeTab(container: HTMLElement): void {
   // 일일 수익 한도 (토글 + 금액 입력, 양수)
   dailyProfitInput = createMoneyInput({
     value: 500000,
-    onChange: v => {
+    onChange: async v => {
       vals.daily_profit_limit = v
-      settingsMgr?.saveSection({ daily_profit_limit: v }).then(res => {
-        toastResult(res)
-        if (res.ok) vals.daily_profit_limit = v
-      })
+      const res = await settingsMgr!.saveSection({ daily_profit_limit: v })
+      toastResult(res)
+      if (res.ok) vals.daily_profit_limit = v
     },
     name: 'daily_profit_limit',
   })
@@ -610,12 +606,11 @@ function renderAutoTradeTab(container: HTMLElement): void {
     const r = createToggleLabelControlsRow({
       labelText: '일일 수익 한도 (원)',
       toggleOn: false,
-      onToggle: next => {
+      onToggle: async next => {
         vals.daily_profit_limit_on = next
-        settingsMgr?.saveSection({ daily_profit_limit_on: next }).then(res => {
-          toastResult(res)
-          if (!res.ok) vals.daily_profit_limit_on = !next
-        })
+        const res = await settingsMgr!.saveSection({ daily_profit_limit_on: next })
+        toastResult(res)
+        if (!res.ok) vals.daily_profit_limit_on = !next
       },
       controlsChild: dailyProfitInput.el,
     })
@@ -626,12 +621,11 @@ function renderAutoTradeTab(container: HTMLElement): void {
   // 일일 수익률 한도 (토글 + % 입력, 양수)
   dailyProfitRateInput = createNumInput({
     value: 5,
-    onChange: v => {
+    onChange: async v => {
       vals.daily_profit_rate_limit = v
-      settingsMgr?.saveSection({ daily_profit_rate_limit: v }).then(res => {
-        toastResult(res)
-        if (res.ok) vals.daily_profit_rate_limit = v
-      })
+      const res = await settingsMgr!.saveSection({ daily_profit_rate_limit: v })
+      toastResult(res)
+      if (res.ok) vals.daily_profit_rate_limit = v
     },
     step: 0.1,
     min: 0,
@@ -642,12 +636,11 @@ function renderAutoTradeTab(container: HTMLElement): void {
     const r = createToggleLabelControlsRow({
       labelText: '일일 수익률 한도 (%)',
       toggleOn: false,
-      onToggle: next => {
+      onToggle: async next => {
         vals.daily_profit_rate_limit_on = next
-        settingsMgr?.saveSection({ daily_profit_rate_limit_on: next }).then(res => {
-          toastResult(res)
-          if (!res.ok) vals.daily_profit_rate_limit_on = !next
-        })
+        const res = await settingsMgr!.saveSection({ daily_profit_rate_limit_on: next })
+        toastResult(res)
+        if (!res.ok) vals.daily_profit_rate_limit_on = !next
       },
       controlsChild: dailyProfitRateInput.el,
     })
@@ -658,12 +651,11 @@ function renderAutoTradeTab(container: HTMLElement): void {
   // 연속 손실 횟수 한도 (토글 + 횟수 입력)
   consecLossInput = createNumInput({
     value: 3,
-    onChange: v => {
+    onChange: async v => {
       vals.consecutive_loss_limit = v
-      settingsMgr?.saveSection({ consecutive_loss_limit: v }).then(res => {
-        toastResult(res)
-        if (res.ok) vals.consecutive_loss_limit = v
-      })
+      const res = await settingsMgr!.saveSection({ consecutive_loss_limit: v })
+      toastResult(res)
+      if (res.ok) vals.consecutive_loss_limit = v
     },
     step: 1,
     min: 1,
@@ -674,12 +666,11 @@ function renderAutoTradeTab(container: HTMLElement): void {
     const r = createToggleLabelControlsRow({
       labelText: '연속 손실 횟수 한도 (회)',
       toggleOn: false,
-      onToggle: next => {
+      onToggle: async next => {
         vals.consecutive_loss_limit_on = next
-        settingsMgr?.saveSection({ consecutive_loss_limit_on: next }).then(res => {
-          toastResult(res)
-          if (!res.ok) vals.consecutive_loss_limit_on = !next
-        })
+        const res = await settingsMgr!.saveSection({ consecutive_loss_limit_on: next })
+        toastResult(res)
+        if (!res.ok) vals.consecutive_loss_limit_on = !next
       },
       controlsChild: consecLossInput.el,
     })
@@ -752,13 +743,12 @@ function renderAutoTradeTab(container: HTMLElement): void {
   container.appendChild(createDescText('실시간 시세 변경 시 노란색 플래시 깜빡임 효과 적용 여부'))
 }
 
-function handleMasterToggle(): void {
+async function handleMasterToggle(): Promise<void> {
   const next = !vals.time_scheduler_on
   vals.time_scheduler_on = next; masterToggle?.setOn(next)
-  settingsMgr?.saveSection({ time_scheduler_on: next }).then(r => {
-    toastResult(r)
-    if (!r.ok) { vals.time_scheduler_on = !next; masterToggle?.setOn(!next) }
-  })
+  const r = await settingsMgr!.saveSection({ time_scheduler_on: next })
+  toastResult(r)
+  if (!r.ok) { vals.time_scheduler_on = !next; masterToggle?.setOn(!next) }
 }
 
 /* ── 텔레그램 탭 ── */
@@ -1197,8 +1187,7 @@ function syncBrokerRadios(): void {
 }
 
 /* ── 설정 동기화 ── */
-function syncFromSettings(s: AppSettings | null): void {
-  if (!s) return
+function syncFromSettings(s: AppSettings): void {
   const r = s as Record<string, unknown>
   // 전체 복사 대신 변경된 키만 업데이트
   for (const k of Object.keys(r)) {
@@ -1388,23 +1377,19 @@ function mount(container: HTMLElement): void {
     tabContent.appendChild(panel)
   }
 
-  syncFromSettings(initial)
-
-  // 설정 변경 구독
-  unsubSettings = settingsMgr.subscribe(() => {
-    const s = settingsMgr?.getSettings()
-    if (s) syncFromSettings(s)
-  })
+  // 설정 동기화 + 구독 (표준 유틸 — settings-page.ts, P23 일관성)
+  unsubSettings = startSettingsSubscription(settingsMgr, syncFromSettings)
 
   // 거래일 확인
   api.getTradingDay()
     .then(data => { isTradingDay = data.is_trading_day; tradingDayLoading = false; updateHolidayBadges() })
-    .catch(() => { isTradingDay = true; tradingDayLoading = false })
+    .catch(() => { isTradingDay = true; tradingDayLoading = false; showSaveToast('error', '거래일 조회 실패 — 거래일로 간주하여 자동매매를 허용합니다') })
 }
 function unmount(): void {
   notifyPageInactive('settings')
-  if (unsubSettings) { unsubSettings(); unsubSettings = null }
-  if (settingsMgr) { settingsMgr.destroy(); settingsMgr = null }
+  destroySettingsPage(unsubSettings, null, settingsMgr)
+  unsubSettings = null
+  settingsMgr = null
   rootEl = null
   tabBar = null
   tabBarHandle = null
