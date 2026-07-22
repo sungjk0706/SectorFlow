@@ -109,6 +109,97 @@ const INDEX_LABELS: Record<string, string> = {
   '301': '코스닥',
 }
 
+// ── 백그라운드 데이터 갱신 칩 렌더링 ──
+// avgAmtProgress 상태를 avgAmtChip에 반영. onStateChange에서 분리 (P24 단순성).
+type AvgAmtProgress = NonNullable<UIState['avgAmtProgress']>
+
+interface AvgAmtRender {
+  msg: string
+  bg: string
+  color: string
+  progressPct: number
+}
+
+// 백엔드 메시지가 비어있을 때 상태별 하드코딩 템플릿
+function resolveAvgAmtMsg(p: AvgAmtProgress, status: string): { msg: string; bg: string; color: string; progressPct: number } {
+  const pct = () => p.total > 0 ? (p.current / p.total) * 100 : 0
+  switch (status) {
+    case 'downloading':
+      return { msg: `전종목 5일거래대금/고가 데이터 다운로드 중 (${p.current.toLocaleString()}/${p.total.toLocaleString()}, ${Math.round(pct())}%)`, bg: `${COLOR.warningBg}`, color: `${COLOR.warning}`, progressPct: pct() }
+    case 'completed':
+      return { msg: '전종목 5일 거래대금,고가 데이터 다운로드 완료', bg: `${COLOR.successBg}`, color: `${COLOR.success}`, progressPct: 100 }
+    case 'failed':
+      return { msg: '전종목 5일 고가 실패', bg: `${COLOR.upBg}`, color: `${COLOR.up}`, progressPct: 0 }
+    case 'partial': {
+      const failedCount = (p as Record<string, unknown>).failed_count as number || 0
+      return { msg: p.message || `⚠️ 다운로드 부분 완료 (${p.current.toLocaleString()}/${p.total.toLocaleString()}) — ${failedCount}종목 실패`, bg: `${COLOR.warningBg}`, color: `${COLOR.warning}`, progressPct: pct() }
+    }
+    case 'cache_deleted':
+      return { msg: '전종목 5일 고가 재계산 중', bg: `${COLOR.warningBg}`, color: `${COLOR.warning}`, progressPct: 100 }
+    case 'token_pending':
+      return { msg: '인증 대기중', bg: `${COLOR.neutralBg}`, color: COLOR.tertiary, progressPct: 0 }
+    case 'requested':
+      return { msg: '전종목 5일 데이터 준비 시작', bg: `${COLOR.downBg}`, color: `${COLOR.down}`, progressPct: 0 }
+    case 'confirmed':
+      return { msg: (p.total > 0 ? `전종목 확정시세 데이터 다운로드 중 (${p.current.toLocaleString()}/${p.total.toLocaleString()}, ${Math.round(pct())}%)` : '확정 데이터 갱신 중'), bg: `${COLOR.downBg}`, color: `${COLOR.down}`, progressPct: pct() }
+    default:
+      return { msg: (p.total > 0 ? `전종목 5일거래대금/고가 데이터 다운로드 중 (${p.current.toLocaleString()}/${p.total.toLocaleString()}, ${Math.round(pct())}%)` : '전종목 5일 데이터 준비 중'), bg: `${COLOR.warningBg}`, color: `${COLOR.warning}`, progressPct: pct() }
+  }
+}
+
+// 백엔드 메시지가 있을 때 상태별 스타일만 결정
+function resolveAvgAmtStyle(status: string, p: AvgAmtProgress): { bg: string; color: string; progressPct: number } {
+  const progressPct = p.total > 0 ? (p.current / p.total) * 100 : 0
+  if (status === 'completed') return { bg: `${COLOR.successBg}`, color: `${COLOR.success}`, progressPct }
+  if (status === 'confirmed') return { bg: `${COLOR.downBg}`, color: `${COLOR.down}`, progressPct }
+  if (status === 'failed') return { bg: `${COLOR.upBg}`, color: `${COLOR.up}`, progressPct }
+  return { bg: `${COLOR.warningBg}`, color: `${COLOR.warning}`, progressPct }
+}
+
+function renderAvgAmtChip(chip: HTMLSpanElement, p: AvgAmtProgress): void {
+  chip.style.display = 'flex'
+  chip.style.position = 'relative'
+  chip.style.overflow = 'hidden'
+  chip.style.alignItems = 'center'
+  chip.style.padding = '3px 8px'
+
+  const status = (p as Record<string, unknown>).status as string || ''
+  const backendMsg = p.message || ''
+  let r: AvgAmtRender
+  if (backendMsg) {
+    const s = resolveAvgAmtStyle(status, p)
+    r = { msg: backendMsg, bg: s.bg, color: s.color, progressPct: s.progressPct }
+  } else {
+    r = resolveAvgAmtMsg(p, status)
+  }
+
+  let msg = r.msg
+  if (msg.length > 45) msg = msg.slice(0, 44) + '…'
+
+  chip.style.background = r.bg
+  chip.style.border = `1px solid ${r.color}20`
+
+  // ETA 표시
+  const etaSec = p.eta_sec ?? 0
+  const sec = Math.ceil(etaSec)
+  const eta = etaSec > 0 ? ` · 약 ${sec >= 60 ? `${Math.floor(sec / 60)}분 ${sec % 60}초` : `${sec}초`} 남음` : ''
+  const finalMsg = msg + eta
+
+  // 로딩 중이거나 다운로드 중일 때는 프로그레스 바 적용
+  if (['downloading', 'confirmed', 'partial'].includes(status) || status === '') {
+    const fillColor = r.color + '30'
+    chip.innerHTML = `
+      <div style="position:absolute;left:0;top:0;height:100%;width:${r.progressPct}%;background:${fillColor};transition:width 0.3s ease;"></div>
+      <span style="position:relative;color:${r.color};display:flex;align-items:center;gap:4px;z-index:1;">
+        <span style="display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:header-spin 0.8s linear infinite"></span>
+        ${finalMsg}
+      </span>
+    `
+  } else {
+    chip.innerHTML = `<span style="position:relative;color:${r.color};z-index:1;">${finalMsg}</span>`
+  }
+}
+
 function applyIndexChip(el: HTMLSpanElement, data: IndexData): void {
   const upcode = data.upcode ?? ''
   const label = INDEX_LABELS[upcode] || upcode
@@ -256,7 +347,6 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
   header.appendChild(kospiChip)
   header.appendChild(kosdaqChip)
 
-
   const spinnerHtml = '<span style="display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:header-spin 0.8s linear infinite"></span>'
 
   // ── Store 구독 ──
@@ -339,116 +429,7 @@ export function createHeader(): { el: HTMLElement; destroy(): void } {
 
     // 백그라운드 데이터 갱신
     if (avgAmtProgress) {
-      avgAmtChip.style.display = 'flex'
-      avgAmtChip.style.position = 'relative'
-      avgAmtChip.style.overflow = 'hidden'
-      avgAmtChip.style.alignItems = 'center'
-      avgAmtChip.style.padding = '3px 8px'
-
-      const status = (avgAmtProgress as Record<string, unknown>).status as string || ''
-      let msg = avgAmtProgress.message || '' // 백엔드에서 제공한 메시지가 있으면 최우선으로 사용
-      let bg = `${COLOR.warningBg}`
-      let color = `${COLOR.warning}`
-      let progressPct = 0
-
-      // 백엔드 메시지가 비어있을 때만 하드코딩 템플릿으로 분기
-      if (!msg) {
-        switch (status) {
-          case 'downloading': {
-            progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
-            msg = `전종목 5일거래대금/고가 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${Math.round(progressPct)}%)`
-            bg = `${COLOR.warningBg}`; color = `${COLOR.warning}`
-            break
-          }
-          case 'completed': {
-            progressPct = 100
-            msg = '전종목 5일 거래대금,고가 데이터 다운로드 완료'
-            bg = `${COLOR.successBg}`; color = `${COLOR.success}`
-            break
-          }
-          case 'failed':
-            msg = '전종목 5일 고가 실패'
-            bg = `${COLOR.upBg}`; color = `${COLOR.up}`
-            break
-          case 'partial': {
-            progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
-            const failedCount = (avgAmtProgress as Record<string, unknown>).failed_count as number || 0
-            msg = avgAmtProgress.message || `⚠️ 다운로드 부분 완료 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}) — ${failedCount}종목 실패`
-            bg = `${COLOR.warningBg}`; color = `${COLOR.warning}`
-            break
-          }
-          case 'cache_deleted':
-            msg = '전종목 5일 고가 재계산 중'
-            bg = `${COLOR.warningBg}`; color = `${COLOR.warning}`
-            progressPct = 100
-            break
-          case 'token_pending':
-            msg = '인증 대기중'
-            bg = `${COLOR.neutralBg}`; color = COLOR.tertiary
-            break
-          case 'requested':
-            msg = '전종목 5일 데이터 준비 시작'
-            bg = `${COLOR.downBg}`; color = `${COLOR.down}`
-            break
-          case 'confirmed': {
-            progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
-            msg = (avgAmtProgress.total > 0 ? `전종목 확정시세 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${Math.round(progressPct)}%)` : '확정 데이터 갱신 중')
-            bg = `${COLOR.downBg}`; color = `${COLOR.down}`
-            break
-          }
-          default: {
-            progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
-            msg = (avgAmtProgress.total > 0
-              ? `전종목 5일거래대금/고가 데이터 다운로드 중 (${avgAmtProgress.current.toLocaleString()}/${avgAmtProgress.total.toLocaleString()}, ${Math.round(progressPct)}%)`
-              : '전종목 5일 데이터 준비 중')
-            break
-          }
-        }
-      } else {
-        // 백엔드에서 메시지가 전달된 경우 적절한 스타일을 설정해 준다
-        progressPct = avgAmtProgress.total > 0 ? (avgAmtProgress.current / avgAmtProgress.total) * 100 : 0
-        if (status === 'completed') {
-          bg = `${COLOR.successBg}`; color = `${COLOR.success}`
-        } else if (status === 'confirmed') {
-          bg = `${COLOR.downBg}`; color = `${COLOR.down}`
-        } else if (status === 'failed') {
-          bg = `${COLOR.upBg}`; color = `${COLOR.up}`
-        } else {
-          bg = `${COLOR.warningBg}`; color = `${COLOR.warning}`
-        }
-      }
-
-      if (msg.length > 45) msg = msg.slice(0, 44) + '…'
-
-      // 배경/보더 설정
-      avgAmtChip.style.background = bg
-      avgAmtChip.style.border = `1px solid ${color}20`
-
-      // ETA 표시
-      const _etaSec = avgAmtProgress.eta_sec ?? 0
-      const _sec = Math.ceil(_etaSec)
-      const _etaStr = _sec >= 60
-        ? `${Math.floor(_sec / 60)}분 ${_sec % 60}초`
-        : `${_sec}초`
-      const eta = (_etaSec > 0)
-        ? ` · 약 ${_etaStr} 남음`
-        : ''
-      
-      const finalMsg = msg + eta
-
-      // 로딩 중이거나 다운로드 중일 때는 프로그레스 바 적용
-      if (['downloading', 'confirmed', 'partial'].includes(status) || status === '') {
-        const fillColor = color + '30' // 투명도를 준 색상
-        avgAmtChip.innerHTML = `
-          <div style="position:absolute;left:0;top:0;height:100%;width:${progressPct}%;background:${fillColor};transition:width 0.3s ease;"></div>
-          <span style="position:relative;color:${color};display:flex;align-items:center;gap:4px;z-index:1;">
-            <span style="display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:header-spin 0.8s linear infinite"></span>
-            ${finalMsg}
-          </span>
-        `
-      } else {
-        avgAmtChip.innerHTML = `<span style="position:relative;color:${color};z-index:1;">${finalMsg}</span>`
-      }
+      renderAvgAmtChip(avgAmtChip, avgAmtProgress)
     } else {
       avgAmtChip.style.display = 'none'
     }

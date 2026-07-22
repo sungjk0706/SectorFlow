@@ -216,7 +216,7 @@ function main(): void {
     shell.setBadge('#/stock-classification', state.noSectorCount)
   })
 
-  // 6. Health Check 후 WS 연결 시작 (현대적 안정성 패턴)
+  // 7. Health Check 후 WS 연결 시작 (현대적 안정성 패턴)
   const token = localStorage.getItem('token') || 'dev-bypass'
   
   // Health Check — localhost 고정 간격 폴링 (지수 백오프 불필요)
@@ -298,15 +298,8 @@ function patchRouterForDualLayout(
     if (!route || !route.settingsCard) return
 
     try {
-      /*
-      let settingsMod = settingsModuleCache.get(path)
-      if (!settingsMod) {
-        settingsMod = await route.settingsCard()
-        settingsModuleCache.set(path, settingsMod)
-      }
-      */
       const settingsMod = await route.settingsCard()
-      
+
       // 비동기 로딩이 완료된 시점에 사용자가 이미 다른 페이지로 이동했다면 마운트를 스킵한다.
       if (location.hash !== path) {
         console.log(`[Router] 라우트 전환 감지로 비동기 마운트 취소: ${path}`)

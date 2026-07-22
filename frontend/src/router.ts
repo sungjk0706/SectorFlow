@@ -12,15 +12,9 @@ export interface PageModule {
   unmount(): void
 }
 
-export interface WebComponentPage {
-  tagName: string
-}
-
-export type PageLoadResult = PageModule | WebComponentPage
-
 export interface RouteConfig {
   path: string
-  load: () => Promise<PageLoadResult>
+  load: () => Promise<PageModule>
   layout: 'dual' | 'single' | 'full' | 'triple'
   settingsCard?: () => Promise<PageModule>
 }
@@ -91,20 +85,15 @@ function removeSpinner(container: HTMLElement): void {
 export function createRouter(routes: RouteConfig[]): RouterApi {
   const validPaths = routes.map((r) => r.path)
   const routeMap = new Map<string, RouteConfig>(routes.map((r) => [r.path, r]))
-  const moduleCache = new Map<string, PageLoadResult>()
+  const moduleCache = new Map<string, PageModule>()
 
   let contentEl: HTMLElement | null = null
   let currentRoute = ''
   let currentModule: PageModule | null = null
-  let currentWebComponent: HTMLElement | null = null
   const routeChangeListeners = new Set<(route: string) => void>()
   let hashListener: (() => void) | null = null
 
-  function isWebComponentPage(result: PageLoadResult): result is WebComponentPage {
-    return 'tagName' in result
-  }
-
-  async function loadModule(config: RouteConfig): Promise<PageLoadResult> {
+  async function loadModule(config: RouteConfig): Promise<PageModule> {
     const cached = moduleCache.get(config.path)
     if (cached) return cached
 
@@ -142,10 +131,6 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
       currentModule.unmount()
       currentModule = null
     }
-    if (currentWebComponent) {
-      currentWebComponent.remove()
-      currentWebComponent = null
-    }
 
     // 콘텐츠 영역 비우기
     while (contentEl.firstChild) contentEl.removeChild(contentEl.firstChild)
@@ -158,14 +143,8 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
     // 캐시 히트: 스피너 없이 동기 마운트
     const cachedResult = moduleCache.get(config.path)
     if (cachedResult) {
-      if (isWebComponentPage(cachedResult)) {
-        const wc = document.createElement(cachedResult.tagName)
-        currentWebComponent = wc
-        contentEl.appendChild(wc)
-      } else {
-        currentModule = cachedResult
-        cachedResult.mount(contentEl)
-      }
+      currentModule = cachedResult
+      cachedResult.mount(contentEl)
       return
     }
 
@@ -181,16 +160,9 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
       // 스피너 제거
       removeSpinner(contentEl)
 
-      // Web Component vs PageModule 처리
-      if (isWebComponentPage(pageResult)) {
-        const wc = document.createElement(pageResult.tagName)
-        currentWebComponent = wc
-        contentEl.appendChild(wc)
-      } else {
-        // 새 페이지 mount (settingsCard는 main.ts의 patchRouterForDualLayout에서 leftPanel에 마운트)
-        currentModule = pageResult
-        pageResult.mount(contentEl)
-      }
+      // 새 페이지 mount (settingsCard는 main.ts의 patchRouterForDualLayout에서 leftPanel에 마운트)
+      currentModule = pageResult
+      pageResult.mount(contentEl)
     } catch (err) {
       // destroy()가 호출되었으면 중단
       if (!contentEl) return
@@ -255,10 +227,6 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
       currentModule.unmount()
       currentModule = null
     }
-    if (currentWebComponent) {
-      currentWebComponent.remove()
-      currentWebComponent = null
-    }
     routeChangeListeners.clear()
     moduleCache.clear()
     currentRoute = ''
@@ -267,7 +235,3 @@ export function createRouter(routes: RouteConfig[]): RouterApi {
 
   return { init, navigate, getCurrentRoute, onRouteChange, destroy }
 }
-
-// ── 기본 라우트 설정 ──
-// 실제 페이지 모듈이 구현되면 main.ts 또는 routes.ts에서 동적 import 경로를 연결한다.
-// 페이지 모듈이 아직 없으므로 여기서는 정의하지 않음.
