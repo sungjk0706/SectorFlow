@@ -32,18 +32,16 @@ def _refresh_buyable_prices(ss, available: int, effective_buy_amt: int | None, i
     execute_buy 내부(trading.py:267-273)와 동일 기준.
     """
     from backend.app.services import dry_run
-    from backend.app.services.daily_time_scheduler import is_krx_after_hours
-    from backend.app.services.engine_symbol_utils import is_nxt_enabled
+    from backend.app.services.daily_time_scheduler import is_order_blocked_by_time
     from backend.app.services.engine_state import state
 
-    _after_hours = is_krx_after_hours()
     _rebuy_block_on = bool(state.integrated_system_settings_cache.get("rebuy_block_on", True))
     _new_codes: set[str] = set()
     for bt in ss.buy_targets:
         s = bt.stock
         if not s.guard_pass:
             continue
-        if _after_hours and not is_nxt_enabled(s.code):
+        if is_order_blocked_by_time(s.code):
             continue
         if _rebuy_block_on and s.code in state.auto_trade._bought_today:
             continue
@@ -77,8 +75,7 @@ async def evaluate_buy_candidates() -> None:
     """
     global _cash_insufficient
     from backend.app.services import dry_run
-    from backend.app.services.daily_time_scheduler import is_krx_after_hours
-    from backend.app.services.engine_symbol_utils import is_nxt_enabled
+    from backend.app.services.daily_time_scheduler import is_order_blocked_by_time
     from backend.app.services.engine_state import state
 
     if not state.running:
@@ -148,7 +145,6 @@ async def evaluate_buy_candidates() -> None:
         return
 
     # ── 전역 조건 스냅샷: 변화 없으면 매수 시도 스킵 (원칙 11 이벤트 기반) ──
-    _after_hours = is_krx_after_hours()
     _rebuy_block_on = bool(state.integrated_system_settings_cache.get("rebuy_block_on", True))
     _is_test = is_test_mode(state.integrated_system_settings_cache)
 
@@ -191,8 +187,8 @@ async def evaluate_buy_candidates() -> None:
         s = bt.stock
         if not s.guard_pass:
             continue
-        # 장외 시간 KRX 단독 종목 매수 차단
-        if _after_hours and not is_nxt_enabled(s.code):
+        # 체결 불가 시간대 주문 차단 (KRX 단독 종목만, NXT 종목은 허용)
+        if is_order_blocked_by_time(s.code):
             continue
         # 재매수 차단 + 주문가능금액/가격 필터 (buyable_codes와 동일 조건)
         if s.code not in _buyable_codes:

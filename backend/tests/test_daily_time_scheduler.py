@@ -37,7 +37,6 @@ from backend.app.services.daily_time_scheduler import (  # noqa: E402
     is_nxt_only_window,
     _is_pre_subscribe_window,
     get_nxt_trde_tp,
-    is_krx_after_hours,
     is_order_blocked_by_time,
     get_order_time_block_status,
     get_market_phase,
@@ -453,61 +452,6 @@ class TestGetNxtTrdeTp:
             assert get_nxt_trde_tp() == "3"
 
 
-# ── is_krx_after_hours ────────────────────────────────────────────────────────
-
-class TestIsKrxAfterHours:
-    """market_phase 기반 판별 — state.market_phase를 mock하여 검증."""
-
-    def test_settle_returns_true(self):
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "체결 정산"}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            assert is_krx_after_hours() is True
-
-    def test_after_hours_returns_true(self):
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "장후 시간외"}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            assert is_krx_after_hours() is True
-
-    def test_single_price_returns_true(self):
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "시간외 종가매매 종료 + 시간외 단일가매매 개시"}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            assert is_krx_after_hours() is True
-
-    def test_close_none_returns_true(self):
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "장 종료"}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            assert is_krx_after_hours() is True
-
-    def test_regular_market_returns_false(self):
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "정규장"}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            assert is_krx_after_hours() is False
-
-    def test_market_closed_returns_false(self):
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "장마감"}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            assert is_krx_after_hours() is False
-
-    def test_holiday_returns_false(self):
-        """휴장일 — calc_timebased_market_phase가 '휴장일' 페이즈 산정."""
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "휴장일"}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            assert is_krx_after_hours() is False
-
-    def test_empty_krx_returns_false(self):
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": ""}
-        with patch("backend.app.services.engine_state.state", mock_state):
-            assert is_krx_after_hours() is False
-
-
 # ── is_order_blocked_by_time ──────────────────────────────────────────────────
 
 class TestIsOrderBlockedByTime:
@@ -781,24 +725,6 @@ class TestGetOrderTimeBlockStatus:
             blocked, reason = get_order_time_block_status()
             assert blocked is True
             assert reason == "KRX 단독 종목 차단 · NXT 가능"
-
-    def test_order_time_guard_off_hides_nxt_only_badge(self):
-        """order_time_guard_on=OFF — NXT-only 구간에서도 배지 숨김 (P16 살아있는 경로)."""
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "장전 대기", "nxt": "프리마켓"}
-        mock_state.integrated_system_settings_cache = {"order_time_guard_on": False}
-        with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(8, 20)):
-            assert get_order_time_block_status() == (False, "")
-
-    def test_order_time_guard_off_hides_both_inactive_badge(self):
-        """order_time_guard_on=OFF — 양쪽 비활성 구간에서도 배지 숨김 (P16 살아있는 경로)."""
-        mock_state = MagicMock()
-        mock_state.market_phase = {"krx": "종가 동시호가", "nxt": "조기 마감"}
-        mock_state.integrated_system_settings_cache = {"order_time_guard_on": False}
-        with patch("backend.app.services.engine_state.state", mock_state), \
-             patch("backend.app.services.daily_time_scheduler._kst_now", return_value=_make_kst(15, 25)):
-            assert get_order_time_block_status() == (False, "")
 
 
 # ── get_market_phase ──────────────────────────────────────────────────────────

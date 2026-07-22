@@ -163,8 +163,7 @@ class TestEarlyReturnGates:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 500_000
             await evaluate_buy_candidates()
         # execute_buy가 호출되어야 함 (buy_amt_on=False로 차단되지 않음)
@@ -180,8 +179,7 @@ class TestEarlyReturnGates:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[{"qty": 1}, {"qty": 2}]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 500_000
             await evaluate_buy_candidates()
         fresh_state.auto_trade.execute_buy.assert_called_once()
@@ -225,8 +223,7 @@ class TestCashInsufficientGate:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             await evaluate_buy_candidates()
         assert buy_order_executor._cash_insufficient is False
 
@@ -263,8 +260,7 @@ class TestBuyIntervalGate:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             await evaluate_buy_candidates()
         fresh_state.auto_trade.execute_buy.assert_awaited_once()
 
@@ -281,8 +277,7 @@ class TestBuyIntervalGate:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             await evaluate_buy_candidates()
         fresh_state.auto_trade.execute_buy.assert_awaited_once()
 
@@ -299,8 +294,7 @@ class TestBuyIntervalGate:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             await evaluate_buy_candidates()
         fresh_state.auto_trade.execute_buy.assert_awaited_once()
 
@@ -317,8 +311,7 @@ class TestBuyExecution:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             await evaluate_buy_candidates()
         fresh_state.auto_trade.execute_buy.assert_awaited_once()
 
@@ -342,8 +335,7 @@ class TestBuyExecution:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             await evaluate_buy_candidates()
         # Should only call execute_buy for A002 (guard_pass=True), not A001
         call_args = fresh_state.auto_trade.execute_buy.call_args
@@ -363,8 +355,7 @@ class TestBuyExecution:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=True), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=True):
             await evaluate_buy_candidates()
         fresh_state.auto_trade.execute_buy.assert_not_called()
 
@@ -382,8 +373,7 @@ class TestBuyExecution:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=True), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=True):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             await evaluate_buy_candidates()
         fresh_state.auto_trade.execute_buy.assert_awaited_once()
 
@@ -401,8 +391,7 @@ class TestBuyExecution:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             await evaluate_buy_candidates()
         fresh_state.auto_trade.execute_buy.assert_not_called()
 
@@ -415,8 +404,7 @@ class TestBuyExecution:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000), \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             # Should not raise
             await evaluate_buy_candidates()
 
@@ -437,8 +425,7 @@ class TestGlobalSnapshotCache:
             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                   return_value=[]),
             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
-            patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False),
-            patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False),
+            patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False),
         ]
         for p in patches:
             p.start()
@@ -467,8 +454,7 @@ class TestGlobalSnapshotCache:
             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                   return_value=[]),
             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
-            patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False),
-            patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False),
+            patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False),
         ]
         for p in patches:
             p.start()
@@ -505,8 +491,7 @@ class TestGlobalSnapshotCache:
             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                   return_value=[]),
             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
-            patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False),
-            patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False),
+            patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False),
         ]
         for p in patches:
             p.start()
@@ -553,8 +538,7 @@ class TestGlobalSnapshotCache:
             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                   return_value=[]),
             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
-            patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False),
-            patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False),
+            patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False),
         ]
         for p in patches:
             p.start()
@@ -595,8 +579,7 @@ class TestGlobalSnapshotCache:
             patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                   return_value=[]),
             patch("backend.app.services.settlement_engine.get_available_cash", return_value=10_000_000),
-            patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False),
-            patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False),
+            patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False),
         ]
         for p in patches:
             p.start()
@@ -637,8 +620,7 @@ class TestPriceBasedFiltering:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 50_000
             await evaluate_buy_candidates()
         fresh_state.auto_trade.execute_buy.assert_not_called()
@@ -654,8 +636,7 @@ class TestPriceBasedFiltering:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
         fresh_state.auto_trade.execute_buy.assert_called_once()
@@ -672,8 +653,7 @@ class TestPriceBasedFiltering:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 50_000
             await evaluate_buy_candidates()
         fresh_state.auto_trade.execute_buy.assert_not_called()
@@ -688,8 +668,7 @@ class TestPriceBasedFiltering:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
         fresh_state.auto_trade.execute_buy.assert_not_called()
@@ -705,8 +684,7 @@ class TestPriceBasedFiltering:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
         # execute_buy 호출은 되었지만 실패 → snapshot 유지
@@ -760,8 +738,7 @@ class TestMultiRankBuyAlgorithm:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
         assert fresh_state.auto_trade.execute_buy.await_count == 1
@@ -777,8 +754,7 @@ class TestMultiRankBuyAlgorithm:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             # 사전 체크=10M, 루프 내 재조회=0
             mock_rm.return_value.get_withdrawable_deposit.side_effect = [10_000_000, 0]
             await evaluate_buy_candidates()
@@ -796,8 +772,7 @@ class TestMultiRankBuyAlgorithm:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
         assert fresh_state.auto_trade.execute_buy.await_count == 1
@@ -820,8 +795,7 @@ class TestMultiRankBuyAlgorithm:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
         assert fresh_state.auto_trade.execute_buy.await_count == 1
@@ -837,8 +811,7 @@ class TestMultiRankBuyAlgorithm:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
         assert fresh_state.auto_trade.execute_buy.await_count == 2
@@ -854,8 +827,7 @@ class TestMultiRankBuyAlgorithm:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
         assert fresh_state.auto_trade.execute_buy.await_count == 1
@@ -871,8 +843,7 @@ class TestMultiRankBuyAlgorithm:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
         assert fresh_state.auto_trade.execute_buy.await_count == 1
@@ -888,8 +859,7 @@ class TestMultiRankBuyAlgorithm:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
         assert fresh_state.auto_trade.execute_buy.await_count == 1
@@ -905,8 +875,7 @@ class TestMultiRankBuyAlgorithm:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
         assert fresh_state.auto_trade.execute_buy.await_count == 1
@@ -922,8 +891,7 @@ class TestMultiRankBuyAlgorithm:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
         assert fresh_state.auto_trade.execute_buy.await_count == 1
@@ -939,8 +907,7 @@ class TestMultiRankBuyAlgorithm:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             # 사전 체크=10M, 루프 내 재조회=0
             mock_rm.return_value.get_withdrawable_deposit.side_effect = [10_000_000, 0]
             await evaluate_buy_candidates()
@@ -958,8 +925,7 @@ class TestMultiRankBuyAlgorithm:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
         assert fresh_state.auto_trade.execute_buy.await_count == 2
@@ -975,8 +941,7 @@ class TestMultiRankBuyAlgorithm:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             await evaluate_buy_candidates()
         assert fresh_state.auto_trade.execute_buy.await_count == 1
@@ -992,8 +957,7 @@ class TestMultiRankBuyAlgorithm:
              patch("backend.app.services.dry_run.get_positions", new_callable=AsyncMock,
                    return_value=[]), \
              patch("backend.app.services.risk_manager.get_risk_manager") as mock_rm, \
-             patch("backend.app.services.daily_time_scheduler.is_krx_after_hours", return_value=False), \
-             patch("backend.app.services.engine_symbol_utils.is_nxt_enabled", return_value=False):
+             patch("backend.app.services.daily_time_scheduler.is_order_blocked_by_time", return_value=False):
             # 사전=10M, 1순위 후=10M, 2순위 후=0
             mock_rm.return_value.get_withdrawable_deposit.side_effect = [10_000_000, 10_000_000, 0]
             await evaluate_buy_candidates()

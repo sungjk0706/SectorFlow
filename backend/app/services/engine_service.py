@@ -66,7 +66,6 @@ async def apply_settings_change(changed_keys: set[str]) -> None:
     await _apply_timetable_change(changed_keys)
     await _apply_sector_ui_change(changed_keys)
     await _apply_telegram_toggle(changed_keys)
-    await _apply_order_time_guard_change(changed_keys)
 
     # ── 매수 조건 스냅샷 무효화 — 설정 변경 시 매수 재평가 허용 ──
     try:
@@ -257,21 +256,4 @@ async def _apply_telegram_toggle(changed_keys: set[str]) -> None:
             logger.info("[설정] 텔레그램 설정=OFF → 텔레그램 폴링 종료")
     except Exception:
         logger.warning("[설정] 텔레그램 폴링 토글 실패", exc_info=True)
-
-
-async def _apply_order_time_guard_change(changed_keys: set[str]) -> None:
-    """order_time_guard_on 토글 변경 시 체결 불가 시간대 배지 즉시 갱신."""
-    if "order_time_guard_on" not in changed_keys:
-        return
-    try:
-        from backend.app.services.daily_time_scheduler import get_order_time_block_status
-        from backend.app.services.engine_account_notify import _broadcast
-        blocked, reason = get_order_time_block_status()
-        schedule_engine_task(
-            _broadcast("order_time_blocked", {"blocked": blocked, "reason": reason}),
-            context="order_time_guard_on 변경",
-        )
-        logger.info("[설정] 체결 불가 시간대 주문 차단 설정 변경 — 배지 갱신: blocked=%s, reason=%r", blocked, reason)
-    except Exception:
-        logger.warning("[설정] order_time_guard_on 변경 후 배지 갱신 실패", exc_info=True)
 

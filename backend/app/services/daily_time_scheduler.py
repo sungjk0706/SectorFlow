@@ -296,23 +296,6 @@ def get_nxt_trde_tp(base_trde_tp: str = "3") -> str:
     return base_trde_tp
 
 
-def is_krx_after_hours() -> bool:
-    """
-    현재 장 상태가 KRX 장외 시간대인지 판별.
-
-    거래 게이트용 함수 — 정규장 종료 후 KRX 단독 종목 자동매매를 차단하기 위한 기준.
-    SSOT: engine_state.state.market_phase에서 읽어 판단.
-    market_phase는 시간 기반 스케줄러 + JIF 경계 이벤트가 갱신하므로 빈 문자열이면 안 됨.
-    거래일 판별은 calc_timebased_market_phase()에서 이미 수행되어 market_phase에 반영됨.
-    """
-    mp = engine_state.state.market_phase
-    krx = mp.get("krx", "")
-    if not krx:
-        logger.error("[시스템] 장 상태 빈 문자열 감지: krx=%r — 시간 기반 초기화 누락 가능", krx)
-        return False
-    return krx in ("체결 정산", "장후 시간외", "시간외 종가매매 종료 + 시간외 단일가매매 개시", "장 종료")
-
-
 # ── 체결 불가 시간대 주문 게이트 (Order Time Guard) ────────────────────────────
 # 페이즈 기반 판별 — 별도 버퍼 없이 engine_state.state.market_phase로 즉시 차단 여부 결정 (P24 단순화).
 
@@ -353,21 +336,14 @@ def get_order_time_block_status() -> tuple[bool, str]:
     WS 브로드캐스트용 — 헤더 칩 표시에 사용 (P21 사용자 투명성).
     is_order_blocked_by_time(stk_cd)와 동일한 페이즈 판별을 사용하되
     종목별 is_nxt_enabled 분기 없이 페이즈 수준에서 차단 여부와 사유 반환.
-    order_time_guard_on OFF 시 차단하지 않으므로 배지도 띄우지 않음 (P16 살아있는 경로).
 
     반환 (blocked, reason):
       - (False, ""): KRX 활성 — 전부 허용
       - (True, "KRX 단독 종목 차단 · NXT 가능"): KRX 비활성 + NXT 활성 — KRX 단독 종목 차단, NXT 종목 허용
       - (True, "KRX·NXT 모두 주문 불가"): 양쪽 비활성 — 전부 차단
-      - (False, ""): order_time_guard_on OFF — 차단 없음
       - (False, ""): 빈 문자열 phase — 에러 로그 (P20 폴백 금지)
       - (False, ""): 휴장일 — 장 안 열리므로 칩 표시 불필요 (P21 사용자 투명성)
     """
-    # 설정 OFF 시 차단 없음 — 배지도 표시하지 않음 (P16 살아있는 경로).
-    settings = engine_state.state.integrated_system_settings_cache or {}
-    if not settings.get("order_time_guard_on", True):
-        return (False, "")
-
     mp = engine_state.state.market_phase
     krx = mp.get("krx", "")
     nxt = mp.get("nxt", "")

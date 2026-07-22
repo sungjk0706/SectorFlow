@@ -54,7 +54,6 @@ let autoSellToggle: ReturnType<typeof createToggleBtn> | null = null
 let sellTimeHandle: TimePairInputHandle | null = null
 let holidayBadgeEls: HTMLElement[] = []
 let uiFlashToggle: ReturnType<typeof createToggleBtn> | null = null
-let orderTimeGuardToggle: ReturnType<typeof createToggleBtn> | null = null
 
 // 매매 안전장치 참조 (전역매매설정 섹션)
 let riskManagerToggle: ReturnType<typeof createToggleBtn> | null = null
@@ -453,25 +452,6 @@ function buildAutoSellRow(): HTMLElement {
   return row
 }
 
-function buildOrderTimeGuardRow(): HTMLElement {
-  const row = document.createElement('div')
-  Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, paddingLeft: '20px', borderBottom: GS.rowBorder })
-  const label = document.createElement('span')
-  Object.assign(label.style, { fontSize: GS.label, fontWeight: FONT_WEIGHT.normal })
-  label.textContent = '체결 불가 시간대 주문 차단'
-  row.appendChild(label)
-  orderTimeGuardToggle = createToggleBtn({ on: true, onClick: async () => {
-    const next = !vals.order_time_guard_on
-    vals.order_time_guard_on = next
-    orderTimeGuardToggle!.setOn(next)
-    const res = await settingsMgr!.saveSection({ order_time_guard_on: next })
-    toastResult(res)
-    if (!res.ok) { vals.order_time_guard_on = !next; orderTimeGuardToggle!.setOn(!next) }
-  }})
-  row.appendChild(orderTimeGuardToggle.el)
-  return row
-}
-
 function buildRiskManagerMasterRow(): HTMLElement {
   const row = document.createElement('div')
   Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: GS.rowPad, borderBottom: GS.rowBorder })
@@ -699,8 +679,6 @@ function renderAutoTradeTab(container: HTMLElement): void {
   container.appendChild(buildAutoBuyRow())
   container.appendChild(buildAutoSellRow())
   container.appendChild(createDescText('거래일 설정시간 내에서만 자동 매수/매도 실행. 공휴일·주말에는 자동매매가 항상 차단됩니다. 시간 설정은 "시간 설정" 탭에서'))
-  container.appendChild(buildOrderTimeGuardRow())
-  container.appendChild(createDescText('동시호가·장외 시간대에 시장가 주문 자동 중단 (KRX 단독 종목만, NXT 종목은 NXT 거래 시간에 허용)'))
 
   // 전역매매설정 (매매 안전장치) 섹션 — 목표 수익/손실 도달 시 자동 매매 중단
   container.appendChild(sectionTitle('전역매매설정 (매매 안전장치)'))
@@ -1207,7 +1185,6 @@ function syncAutoTradeTab(r: Record<string, unknown>): void {
   if (confirmedDlSlot) setDisabled(confirmedDlSlot, !dlOn)
 
   uiFlashToggle?.setOn(r.ui_price_flash_on !== false)
-  orderTimeGuardToggle?.setOn(r.order_time_guard_on !== false)
 
   syncRiskManager(r, document.activeElement)
   syncTimetables(r)
