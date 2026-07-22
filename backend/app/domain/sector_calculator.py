@@ -25,7 +25,7 @@ async def compute_sector_scores(
     단일 소스 진리: master_stocks_cache를 직접 참조.
 
     그룹핑 방식:
-      - sector_mapping.get_merged_sector(code) 로 종목코드 → 커스텀 업종 매핑
+      - sector_mapping.get_merged_sectors_batch(codes) 로 종목코드 → 커스텀 업종 일괄 매핑
       - 빈 문자열 반환 종목은 스킵 (미매핑 종목 제외)
 
     데이터 우선순위:
@@ -166,7 +166,7 @@ async def compute_full_sector_summary(
     전체 파이프라인 한 번에 실행.
     engine_bootstrap, engine_sector_confirm, sector_data_provider, telegram_bot에서 이벤트 기반 호출.
 
-    sector_mapping.get_merged_sector() 기반 커스텀 업종 그룹핑.
+    sector_mapping.get_merged_sectors_batch() 기반 커스텀 업종 그룹핑.
     컷오프(min_rise_ratio)는 calculate_bonus_scores 내부에서 처리 (옵션 C 2패스).
 
     매수 타겟 생성은 build_buy_targets_from_settings에서 별도 수행.
