@@ -313,19 +313,7 @@ def is_krx_after_hours() -> bool:
 
 
 # ── 체결 불가 시간대 주문 게이트 (Order Time Guard) ────────────────────────────
-# ±5초 버퍼 — 주문 체크 시점 전용 (phase 산정은 건드리지 않음, P24 단순화).
-# 차단 상태가 전환되는 경계 시각(초 단위) 근처면 무조건 차단 (양방향 안전 측).
-ORDER_TIME_BUFFER_SEC = 5
-
-# block↔allow 전환 경계 (초 단위 = hour*3600 + minute*60 + second).
-# 09:00:30(NXT 메인마켓 시작)은 calc_timebased_market_phase()가 이미 초 단위 처리 → 제외.
-_ORDER_TIME_BOUNDARIES_SEC: frozenset[int] = frozenset({
-    8 * 3600,               # 08:00:00 NXT 프리마켓 시작 (KRX 단독 종목 차단 시작)
-    9 * 3600,               # 09:00:00 KRX 정규장 시작 (5초 대기 후 허용 — 체결 안정)
-    15 * 3600 + 20 * 60,    # 15:20:00 종가 동시호가 시작 (양쪽 차단)
-    15 * 3600 + 40 * 60,    # 15:40:00 NXT 애프터마켓 시작 (KRX 단독 차단, NXT 5초 대기)
-    20 * 3600,              # 20:00:00 장마감 (양쪽 차단)
-})
+# 페이즈 기반 판별 — 별도 버퍼 없이 engine_state.state.market_phase로 즉시 차단 여부 결정 (P24 단순화).
 
 
 def is_order_blocked_by_time(stk_cd: str) -> bool:
@@ -334,7 +322,6 @@ def is_order_blocked_by_time(stk_cd: str) -> bool:
     SSOT: engine_state.state.market_phase 기반. 기존 is_nxt_only_window() 패턴과 동일 구조.
     KRX 비활성 + NXT 활성 시 is_nxt_enabled(stk_cd)로 종목별 분기
       — NXT 종목은 허용, KRX 단독 종목만 차단.
-    ±5초 버퍼: 경계 시각 ±5초 내면 무조건 차단 (안전 측, P24 단순화).
     빈 문자열 phase 시 False 반환 + 에러 로그 (P20 폴백 금지).
     휴장일 시 False 반환 — 장 안 열리므로 주문 자체 발생 안 함 (P23 일관성,
     get_order_time_block_status()와 동일 패턴).
@@ -350,13 +337,6 @@ def is_order_blocked_by_time(stk_cd: str) -> bool:
     if krx == "휴장일" or nxt == "휴장일":
         return False
 
-    # ±5초 버퍼 — 경계 근처면 무조건 차단
-    now = _kst_now()
-    now_sec = now.hour * 3600 + now.minute * 60 + now.second
-    for boundary in _ORDER_TIME_BOUNDARIES_SEC:
-        if abs(now_sec - boundary) <= ORDER_TIME_BUFFER_SEC:
-            return True
-
     # 본 판별 — 기존 is_nxt_only_window()와 동일 구조
     if krx in KRX_INACTIVE_PHASES:
         if nxt in NXT_ACTIVE_PHASES:
@@ -370,14 +350,13 @@ def get_order_time_block_status() -> tuple[bool, str]:
     """체결 불가 시간대 주문 차단 상태 (페이즈 기반, 종목 구분 없음).
 
     WS 브로드캐스트용 — 헤더 칩 표시에 사용 (P21 사용자 투명성).
-    is_order_blocked_by_time(stk_cd)와 동일한 페이즈·버퍼 판별을 사용하되
+    is_order_blocked_by_time(stk_cd)와 동일한 페이즈 판별을 사용하되
     종목별 is_nxt_enabled 분기 없이 페이즈 수준에서 차단 여부와 사유 반환.
 
     반환 (blocked, reason):
       - (False, ""): KRX 활성 — 전부 허용
       - (True, "NXT 전용 구간 (KRX 단독 종목 차단)"): KRX 비활성 + NXT 활성 — NXT 종목은 허용
       - (True, "동시호가/장외 시간대"): 양쪽 비활성 — 전부 차단
-      - (True, "동시호가/장외 시간대 (전환 시각 근처)"): ±5초 버퍼 — 전부 차단
       - (False, ""): 빈 문자열 phase — 에러 로그 (P20 폴백 금지)
       - (False, ""): 휴장일 — 장 안 열리므로 칩 표시 불필요 (P21 사용자 투명성)
     """
@@ -392,13 +371,6 @@ def get_order_time_block_status() -> tuple[bool, str]:
     # _is_pre_subscribe_window() L255-256과 동일 패턴 (P23 일관성).
     if krx == "휴장일" or nxt == "휴장일":
         return (False, "")
-
-    # ±5초 버퍼 — 경계 근처면 무조건 차단
-    now = _kst_now()
-    now_sec = now.hour * 3600 + now.minute * 60 + now.second
-    for boundary in _ORDER_TIME_BOUNDARIES_SEC:
-        if abs(now_sec - boundary) <= ORDER_TIME_BUFFER_SEC:
-            return (True, "동시호가/장외 시간대 (전환 시각 근처)")
 
     # 본 판별 — 페이즈 수준 (종목별 분기 없음)
     if krx in KRX_INACTIVE_PHASES:
@@ -777,7 +749,7 @@ def _apply_market_phase(phase: dict) -> None:
         schedule_engine_task(_broadcast("market-phase", broadcast_phase), context="market-phase 브로드캐스트")
         # ── 체결 불가 시간대 주문 차단 상태 브로드캐스트 (P21 사용자 투명성) ──
         # 페이즈 갱신 시마다 차단 상태 산정 — JIF + 10초 주기 양쪽에서 자동 전송 (P10 SSOT, P16 살아있는 경로).
-        # 시간 기반이므로 blocked=False 시 자동 해제 (P24 — 별도 해제 로직 없음).
+        # 페이즈 기반이므로 blocked=False 시 자동 해제 (P24 — 별도 해제 로직 없음).
         blocked, reason = get_order_time_block_status()
         schedule_engine_task(_broadcast("order_time_blocked", {"blocked": blocked, "reason": reason}), context="order_time_blocked 브로드캐스트")
         # 페이즈 변경 감지 → 업종 재계산 + WS 구독 시작/종료 트리거
