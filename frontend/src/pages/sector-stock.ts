@@ -82,20 +82,6 @@ export function filterStocksBySearch(
   return codes
 }
 
-/* ── 업종 필터링 (export for PBT) ── */
-
-export function filterStocksBySector(
-  stocks: Iterable<SectorStock>,
-  selectedSector: string | null,
-): SectorStock[] {
-  if (!selectedSector) return [...stocks]
-  const result: SectorStock[] = []
-  for (const s of stocks) {
-    if ((s.sector || '미분류') === selectedSector) result.push(s)
-  }
-  return result
-}
-
 /* ── 업종명 검색 필터링 ── */
 
 export function filterSectorsByName(
@@ -653,7 +639,6 @@ class SectorStockTable extends HTMLElement {
     this.scrollContainer = null
     this.searchInput = null
     this.sectorSearchInput = null
-    this.rowCache.clear()
     this.rowCache = new Map()
     this.currentMatchedCodes = null
     this.currentMatchedSectors = null
@@ -665,8 +650,3 @@ class SectorStockTable extends HTMLElement {
 /* ── Custom Element 등록 ── */
 
 customElements.define('sector-stock-table', SectorStockTable)
-
-/* ── Export for backward compatibility (optional) ── */
-// This export is kept for potential backward compatibility,
-// but the primary usage should be via <sector-stock-table> custom element.
-export default SectorStockTable
