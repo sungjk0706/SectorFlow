@@ -23,7 +23,8 @@ async def get_sector_summary_inputs() -> dict:
     KRX/NXT 분리 (P10 SSOT — nxt_enable 필드 기반, P23 일관성 — sector-stock.ts 카운트와 동일 기준):
     - krx_codes: KRX 단독 상장 종목 (nxt_enable=False)
     - nxt_codes: NXT 중복상장 종목 (nxt_enable=True)
-    - all_codes: krx_codes + nxt_codes (기존 업종 점수 계산용 — 하위 호환)
+    - all_codes: krx_codes + nxt_codes (업종 점수 계산용 — NXT-only 구간에는 NXT 종목만 포함)
+    - all_filter_codes: NXT 필터링 전 전체 종목 (구독 대상 식별용 — NXT-only 구간에도 KRX 종목 포함)
     """
     from backend.app.services.engine_symbol_utils import is_nxt_enabled as _is_nxt
     from backend.app.services.daily_time_scheduler import is_nxt_only_window
@@ -31,6 +32,10 @@ async def get_sector_summary_inputs() -> dict:
     # 우측테이블의 종목들을 그대로 사용 (단일 소스 진리)
     # get_sector_stocks는 이미 5일평균거래대금 필터링된 종목들만 반환
     sector_stocks_list = await get_sector_stocks()
+
+    # all_filter_codes: NXT 필터링 전 전체 종목 — 구독 대상 식별용 (P10 SSOT)
+    # NXT-only 구간에서도 KRX 단독 종목이 구독 대상에서 누락되지 않도록 필터링 전 리스트 보존
+    all_filter_codes = [entry["code"] for entry in sector_stocks_list]
 
     # NXT-only 구간(08:00~09:00, 15:30~20:00) 거래일: NXT-enabled 종목만 포함
     # KRX 단독 종목은 틱 수신 불가하므로 업종 점수 및 수신율에서 제외
@@ -50,7 +55,8 @@ async def get_sector_summary_inputs() -> dict:
                   for entry in sector_stocks_list}
 
     return {
-        "all_codes": all_codes,  # 우측테이블의 종목만 반환 (기존 — 업종 점수 계산용)
+        "all_codes": all_codes,  # 업종 점수 계산용 (NXT-only 구간에는 NXT 종목만)
+        "all_filter_codes": all_filter_codes,  # 구독 대상 식별용 (NXT 필터링 전 전체)
         "krx_codes": krx_codes,  # KRX 단독 상장 종목 (수신률 분리 집계용)
         "nxt_codes": nxt_codes,  # NXT 중복상장 종목 (수신률 분리 집계용)
         "trade_prices": {},  # 실시간 틱 데이터 캐시 삭제로 빈 dict 반환
@@ -228,8 +234,9 @@ async def recompute_sector_summary_now() -> None:
     try:
         logger.info("[업종] 업종순위 재계산 (3단계 누적 가산점)")
         _inputs = await get_sector_summary_inputs()
-        # krx_codes/nxt_codes는 수신률 분리 집계 전용 — compute_full_sector_summary에는 all_codes만 전달
-        _compute_inputs = {k: v for k, v in _inputs.items() if k not in ("krx_codes", "nxt_codes")}
+        # krx_codes/nxt_codes는 수신률 분리 집계 전용, all_filter_codes는 구독 대상 식별 전용
+        # — compute_full_sector_summary에는 all_codes만 전달
+        _compute_inputs = {k: v for k, v in _inputs.items() if k not in ("krx_codes", "nxt_codes", "all_filter_codes")}
         _sector_summary = await compute_full_sector_summary(
             **_compute_inputs,
             min_rise_ratio=float(engine_state.state.integrated_system_settings_cache["sector_min_rise_ratio_pct"]) / 100.0,
@@ -253,8 +260,8 @@ async def recompute_sector_summary_now() -> None:
         cancel_sector_recompute()
 
         # ── 5일평균최소거래대금(N억원) 이상 종목 마킹 ──
-        # get_sector_stocks()에서 이미 필터링된 all_codes 재사용 — 불필요한 .copy() 및 재순회 제거
-        _filtered_codes = set(_inputs["all_codes"])
+        # all_filter_codes(NXT 필터링 전 전체) 사용 — NXT-only 구간에도 KRX 종목 _filtered 플래그 유지
+        _filtered_codes = set(_inputs["all_filter_codes"])
         for cd, entry in engine_state.state.master_stocks_cache.items():
             if cd in _filtered_codes:
                 entry["_filtered"] = True
