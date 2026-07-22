@@ -184,12 +184,15 @@ async def _flush_sector_recompute_impl() -> None:
         await notify_desktop_sector_scores()
         await notify_buy_targets_update()
 
-        # buy_targets 변경 시 구독 갱신 + 매수 시도 (이벤트 기반)
+        # 구독 갱신 — guard_pass 종목 집합 변동 시만 (종목 진입/이탈)
         if are_buy_targets_changed(prev_targets, ss.buy_targets):
             sync_dynamic_subscriptions(ss.buy_targets)
-            from backend.app.services.buy_order_executor import evaluate_buy_candidates, _cash_insufficient
-            if not _cash_insufficient:
-                await evaluate_buy_candidates()
+
+        # 매수 시도 — 업종 점수/순위 변동 시 항상 호출 (간격은 check_order_interval이 판정)
+        # are_buy_targets_changed와 분리: 점수만 변해도 매수 기회 평가 (P11 이벤트 기반, P23 매도와 일관)
+        from backend.app.services.buy_order_executor import evaluate_buy_candidates, _cash_insufficient
+        if not _cash_insufficient:
+            await evaluate_buy_candidates()
 
         # 업종 요약정보 생성 완료 이벤트 설정
         engine_state.state.sector_summary_ready_event.set()
@@ -245,11 +248,14 @@ async def _full_recompute(codes_snapshot: set[str] | None = None) -> None:
     await notify_desktop_sector_scores()
     await notify_buy_targets_update()
 
-    # buy_targets 변경 시 구독 갱신 + 매수 시도 (이벤트 기반)
+    # 구독 갱신 — guard_pass 종목 집합 변동 시만 (종목 진입/이탈)
     if are_buy_targets_changed(prev_targets, ss.buy_targets):
         sync_dynamic_subscriptions(ss.buy_targets)
-        from backend.app.services.buy_order_executor import evaluate_buy_candidates
-        await evaluate_buy_candidates()
+
+    # 매수 시도 — 업종 점수/순위 변동 시 항상 호출 (간격은 check_order_interval이 판정)
+    # are_buy_targets_changed와 분리: 점수만 변해도 매수 기회 평가 (P11 이벤트 기반, P23 매도와 일관)
+    from backend.app.services.buy_order_executor import evaluate_buy_candidates
+    await evaluate_buy_candidates()
 
     # 업종 요약정보 생성 완료 이벤트 설정
     engine_state.state.sector_summary_ready_event.set()

@@ -532,8 +532,8 @@ class TestGlobalSnapshotCache:
                 p.stop()
 
     @pytest.mark.asyncio
-    async def test_same_buyable_codes_different_order_skips(self, fresh_state, reset_cash_gate):
-        """동일 매수 가능 종목 집합의 정렬 순서만 바뀐 경우 스킵."""
+    async def test_same_buyable_codes_different_order_retries(self, fresh_state, reset_cash_gate):
+        """동일 매수 가능 종목 집합의 정렬 순서가 바뀐 경우 재시도 (rank 변동 감지)."""
         s1 = _stock(code="A001")
         s2 = _stock(code="A002")
         fresh_state.sector_summary_cache = SectorSummary(
@@ -566,7 +566,7 @@ class TestGlobalSnapshotCache:
 
             fresh_state.auto_trade.execute_buy.reset_mock()
 
-            # 정렬 순서만 변경: A002 → A001 (buyable_codes는 동일)
+            # 정렬 순서만 변경: A002 → A001 (buyable_codes는 동일, rank는 변동)
             fresh_state.sector_summary_cache = SectorSummary(
                 sectors=[],
                 buy_targets=[
@@ -577,9 +577,9 @@ class TestGlobalSnapshotCache:
                 version=1,
             )
 
-            # 2차 호출 — buyable_codes 동일 → 스냅샷 일치 → 스킵
+            # 2차 호출 — rank 변동 → 스냅샷 불일치 → 재시도 (P11 이벤트 기반)
             await evaluate_buy_candidates()
-            assert fresh_state.auto_trade.execute_buy.await_count == 0
+            assert fresh_state.auto_trade.execute_buy.await_count == 2
         finally:
             for p in patches:
                 p.stop()

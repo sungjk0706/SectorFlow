@@ -812,7 +812,7 @@ class TestFullRecompute:
 
     @pytest.mark.asyncio
     async def test_prev_cache_targets_unchanged_skips_sync(self):
-        """이전 캐시 존재 + buy_targets 미변경 → sync/evaluate 스킵 (L260)."""
+        """이전 캐시 존재 + buy_targets 미변경 → sync 스킵, evaluate는 호출 (분리)."""
         mock_summary = MagicMock()
         mock_summary.sectors = []
         mock_result = MagicMock()
@@ -846,8 +846,10 @@ class TestFullRecompute:
 
             await _full_recompute()
 
+            # sync는 buy_targets 미변경 시 스킵
             mock_sync.assert_not_called()
-            mock_eval.assert_not_called()
+            # evaluate는 are_buy_targets_changed와 분리 — 업종 점수 변동 시 항상 호출
+            mock_eval.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_auto_trade_provides_bought_today(self):

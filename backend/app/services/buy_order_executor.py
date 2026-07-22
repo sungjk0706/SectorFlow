@@ -168,6 +168,8 @@ async def evaluate_buy_candidates() -> None:
         "buy_amt_on": _buy_amt_on,
         "max_limit": _max_limit,
         "max_limit_on": _max_limit_on,
+        # 매수 후보 순서 변동 감지 — 업종 점수/순위 변동 시 매수 기회 재평가 (P11 이벤트 기반)
+        "ranks": tuple((bt.stock.code, bt.rank) for bt in ss.buy_targets if bt.stock.guard_pass),
     }
 
     global _last_global_snapshot
