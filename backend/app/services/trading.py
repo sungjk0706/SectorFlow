@@ -547,14 +547,17 @@ class AutoTradeManager:
         trade_settings: dict,
         base_settings: dict,
         access_token: str,
-    ) -> None:
-        """trade_settings: _to_trade_settings (is_sell_mkt 등). base_settings: engine_settings (kiwoom/telegram용)."""
+    ) -> bool:
+        """trade_settings: _to_trade_settings (is_sell_mkt 등). base_settings: engine_settings (kiwoom/telegram용).
+
+        반환: True=주문 전송 성공, False=차단/실패 (check_sell_conditions에서 건별 간격 적용에 사용).
+        """
         if not trade_settings.get("is_sell_auto", False):
-            return
+            return False
         # ── 체결 불가 시간대 주문 게이트 — 매도 동일 적용 (P15/P16) ──
         if self._is_order_time_blocked(stk_cd, base_settings):
             logger.info("[매매] [주문차단] %s(%s) 체결 불가 시간대 — 매도 중단", stk_nm, stk_cd)
-            return
+            return False
         # 시장가 단일 운용
         order_type = "시장가"
 
@@ -583,7 +586,7 @@ class AutoTradeManager:
                         f"⚠️ [매도중단] {stk_nm}({stk_cd}) trades에 매수 기록 없음 — 유령 포지션 의심",
                         base_settings,
                     )
-                    return
+                    return False
                 _avg_buy = int(_computed_pos.get("avg_price", 0))
                 _buy_date = str(_computed_pos.get("buy_date", "") or "")
             else:
@@ -625,7 +628,7 @@ class AutoTradeManager:
                     logger.error("[매매] 서킷브레이커 차단 — 자동매매 마스터 스위치 강제 OFF")
             except Exception:
                 logger.warning("[매매] 리스크 관리자 실패 보고 실패", exc_info=True)
-            return
+            return False
 
         # ── 매도 주문 전송 성공 — 간격 타이머 갱신 (P22: 실제 실행만 기록) ──
         from backend.app.services.order_interval import mark_order_executed
@@ -679,7 +682,15 @@ class AutoTradeManager:
         except Exception:
             logger.warning("[매매] 리스크 관리자 성공 보고 실패", exc_info=True)
 
+        return True  # 매도 주문 전송 성공
+
     async def check_sell_conditions(self, stock_list: list, base_settings: dict, access_token: str) -> None:
+        """매도 조건 순회 — 1건 매도 성공 후 루프 종료 (건별 간격 적용).
+
+        sell_interval_on 시 사용자 설정 간격(초) 대기 — 매도 1건마다 간격 적용 (P21 UI 일치).
+        매도 성공 시 break — 다음 check_sell_conditions 호출 시 check_order_interval이 간격 판정.
+        매도 실패 시 continue — 차순위 종목 시도.
+        """
         settings = self._to_trade_settings(base_settings)
         if not settings.get("is_sell_auto", False):
             return
@@ -711,7 +722,7 @@ class AutoTradeManager:
             logger.warning("[매매] 리스크 관리자 체크 실패 — 매도 전체 중단", exc_info=True)
             return
 
-        # ── 매도 주문 간격 게이트 (토글 ON 시) ──────────────────────────
+        # ── 매도 주문 간격 게이트 (토글 ON 시, 건별 적용) ───────────────
         from backend.app.services.order_interval import check_order_interval
         if not check_order_interval(base_settings, "sell"):
             return
@@ -766,20 +777,28 @@ class AutoTradeManager:
                 hit_sl = pnl_rate <= -loss_val
                 if hit_sl:
                     try:
-                        await self.execute_sell(stk_cd, cur_price, stk_nm, "손절 발동", sell_qty, pnl_rate, s, base_settings, access_token)
+                        _sold = await self.execute_sell(stk_cd, cur_price, stk_nm, "손절 발동", sell_qty, pnl_rate, s, base_settings, access_token)
                     except Exception:
                         logger.error("[매매] 손절 실행 실패", exc_info=True)
-                    continue
+                        _sold = False
+                    if _sold:
+                        logger.info("[매매] 매도 1건 완료 — 주문 간격 대기")
+                        break  # 1건 매도 성공 — 건별 간격 적용
+                    continue  # 실패 시 차순위
 
             if s.get("chk_tp", False):
                 tp_val = float(s.get("tp_val") or 0)
                 hit_tp = pnl_rate >= tp_val
                 if hit_tp:
                     try:
-                        await self.execute_sell(stk_cd, cur_price, stk_nm, "익절 발동", sell_qty, pnl_rate, s, base_settings, access_token)
+                        _sold = await self.execute_sell(stk_cd, cur_price, stk_nm, "익절 발동", sell_qty, pnl_rate, s, base_settings, access_token)
                     except Exception:
                         logger.error("[매매] 익절 실행 실패", exc_info=True)
-                    continue
+                        _sold = False
+                    if _sold:
+                        logger.info("[매매] 매도 1건 완료 — 주문 간격 대기")
+                        break  # 1건 매도 성공 — 건별 간격 적용
+                    continue  # 실패 시 차순위
 
             if s.get("chk_ts", False):
                 ts_start_val = float(s.get("ts_start_val") or 0)
@@ -789,9 +808,14 @@ class AutoTradeManager:
                     drop_rate = ((highest_price - cur_price) / highest_price * 100) if highest_price > 0 else 0
                     if drop_rate >= ts_drop_val:
                         try:
-                            await self.execute_sell(stk_cd, cur_price, stk_nm, "T/S 익절", sell_qty, pnl_rate, s, base_settings, access_token)
+                            _sold = await self.execute_sell(stk_cd, cur_price, stk_nm, "T/S 익절", sell_qty, pnl_rate, s, base_settings, access_token)
                         except Exception:
                             logger.error("[매매] T/S 익절 실행 실패", exc_info=True)
+                            _sold = False
+                        if _sold:
+                            logger.info("[매매] 매도 1건 완료 — 주문 간격 대기")
+                            break  # 1건 매도 성공 — 건별 간격 적용
+                        continue  # 실패 시 차순위
 
     def _is_order_time_blocked(self, stk_cd: str, raw_settings: dict) -> bool:
         """체결 불가 시간대 주문 게이트 헬퍼 (토글 + 시간 판별).
