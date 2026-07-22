@@ -84,11 +84,11 @@
 | **F-02** | **P1** | **진입점, 라우팅, 레이아웃** | 6 | ☑ | 완료 (7건 P16/P23/P24) |
 | F-03 | P2 | 핵심 매매 페이지 | 6 | ✅ | 6건 해결 (P16/P19/P23/P24), 4건 보류 |
 | F-04 | P2 | 설정 페이지 | 5 | ☐ | 분할 권장 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 + F-04-e 11건 해결, 잔여 파일 분할 별도) |
-| F-05 | P3 | 수익 페이지 | 3 | ☐ | |
+| F-05 | P3 | 수익 페이지 | 3 | ☐~ | F-05-a 완료 (7건 P10/P19/P20/P23), F-05-b 잔여 (4건 P24) |
 | F-06 | P3 | 공통 컴포넌트 | 25 | ☐ | 분할 권장 |
 | F-07 | P3 | 타입 및 유틸 | 5 | ☐ | |
 
-**진행률**: 30/30 세션 완료 (100%). B-10 완료 (B-10-a 11건 + B-10-b 7건, B10-02는 B-14 이월). B-11 완료 (B-11-a 8건 + B-11-b 4건). B-13 부분 완료 (3건 해결 B13-01/02/05, 잔여 5건 보류 LOW/INFO). B-14 완료 (B-14-a 6건 + B-14-b 2건). B-15 완료 (B-15-a 7건 + B-15-b 7건). B-23 완료 (테스트 품질 점검). F-02 완료 (7건 P16/P23/P24). F-03 완료 (6건 P16/P19/P23/P24, 4건 보류). F-04 완료 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 + F-04-e 11건 해결, 잔여 파일 분할 별도). 잔여 3세션 (F-05, F-06, F-07) + B-13 보류.
+**진행률**: 30/30 세션 완료 (100%). B-10 완료 (B-10-a 11건 + B-10-b 7건, B10-02는 B-14 이월). B-11 완료 (B-11-a 8건 + B-11-b 4건). B-13 부분 완료 (3건 해결 B13-01/02/05, 잔여 5건 보류 LOW/INFO). B-14 완료 (B-14-a 6건 + B-14-b 2건). B-15 완료 (B-15-a 7건 + B-15-b 7건). B-23 완료 (테스트 품질 점검). F-02 완료 (7건 P16/P23/P24). F-03 완료 (6건 P16/P19/P23/P24, 4건 보류). F-04 완료 (F-04-a 5건 + F-04-b 4건 + F-04-c 4건 + F-04-d 2건 + F-04-e 11건 해결, 잔여 파일 분할 별도). F-05-a 완료 (7건 P10/P19/P20/P23 — 폴백 제거/중복 SSOT화/레이스 가드), F-05-b 잔여 (4건 P24 — 파일/함수 분할). 잔여 2세션 (F-06, F-07) + F-05-b + B-13 보류.
 
 ---
 
@@ -869,26 +869,47 @@
 
 ### 세션 F-05: P3 — 수익 페이지
 
-**대상 파일** (3개, 총 1954줄)
-- [ ] `frontend/src/pages/profit-overview.ts` (718줄, 대형)
-- [ ] `frontend/src/pages/profit-detail.ts` (667줄, 대형)
-- [ ] `frontend/src/pages/profit-shared.ts` (569줄, 대형)
+> **분할 진행**: F-05-a (7건 — 폴백/중복/비동기 안전) 완료. F-05-b (4건 — 단순성/분할) 다음 세션 예정.
+
+**대상 파일** (3개, 총 1950줄)
+- [~] `frontend/src/pages/profit-overview.ts` (718→698줄, F-05-a 완료)
+- [~] `frontend/src/pages/profit-detail.ts` (667→654줄, F-05-a 완료)
+- [~] `frontend/src/pages/profit-shared.ts` (569→598줄, F-05-a 완료 — 공통 함수 추가로 증가)
 
 **대상 원칙**: P5, P10, P16, P19, P22, P23, P24
 
 **조사 체크리스트**
-- [ ] P5: 직접 호출 체인
-- [ ] P10: 수익 데이터가 Store에서 관리됨
-- [ ] P16: dead code 없음
-- [ ] P19: 비동기 데이터 로딩 누락 없음
-- [ ] P22: 수익 데이터와 백엔드 정산 데이터 간 정합성
-- [ ] P23: 용어 사전 준수, 패턴 일관
-- [ ] P24: 단순성 기준 (718/667/569줄 → 분할 검토)
+- [x] P5: 직접 호출 체인 — 위반 없음 (hotStore.subscribe, real-data-tick 기존 패턴)
+- [x] P10: 수익 데이터가 Store에서 관리됨 — 양호. F05-05 해결 (buildSectorDonutData 중복 → buildSectorDonutRows SSOT)
+- [x] P16: dead code 없음 — 양호
+- [x] P19: 비동기 데이터 로딩 누락 없음 — F05-11 해결 (applyDateRange 레이스 가드 추가)
+- [x] P22: 수익 데이터와 백엔드 정산 데이터 간 정합성 — 양호 (computeHoldingsSummary 동일 소스)
+- [x] P23: 용어 사전 준수, 패턴 일관 — F05-06 해결 (filterRows 중복 → filterTradeRows SSOT). F05-07(보유주식→보유종목)은 프로젝트 전역 이슈로 별도
+- [ ] P24: 단순성 기준 (698/654/598줄 → 분할 검토) — F-05-b에서 진행
+
+**F-05-a 해결 건 (7건)**
+- F05-01: profit-shared.ts:547 — accumulated_investment 3단 폴백 제거 (initial_deposit만 사용, 테스트모드 동일 값)
+- F05-02: profit-shared.ts:574 — orderable 폴백 제거 (백엔드 항상 전송)
+- F05-03: profit-overview.ts:59, profit-detail.ts:96 — save 함수 catch 빈 블록 → console.warn 로깅
+- F05-04: profit-overview.ts:51, profit-detail.ts:88 — load 함수 catch 빈 블록 → console.warn 로깅
+- F05-05: profit-overview.ts:274-289 — buildSectorDonutData 중복 제거 → buildSectorDonutRows shared SSOT
+- F05-06: profit-overview.ts:292-299, profit-detail.ts:183-195 — filterRows/filterSellHistoryByDate 중복 제거 → filterTradeRows shared SSOT
+- F05-11: profit-overview.ts:496-526 — applyDateRange 레이스 가드 추가 (_applyDateRangeSeq 시퀀스)
+
+**F-05-b 잔여 (4건 — 다음 세션)**
+- F05-08: 파일 길이 698/654/598줄 (P24 500줄 초과)
+- F05-09: profit-overview.ts mount() ~380줄 (P24 함수 50줄 초과)
+- F05-10: profit-detail.ts mount() ~303줄 (P24 함수 50줄 초과)
+- F05-12: profit-detail.ts drilldownCols 모듈 변수 + displayRows 불필요 별칭
+
+**별도 세션 권장**
+- F05-07: "보유주식" → "보유 종목" 용어 통일 (account-labels.ts, sell-position.ts 전역 동시 수정 필요)
 
 **검증**
-- [ ] `npm run build` 성공
-- [ ] 브라우저 확인 (수익 페이지 렌더링)
-- [ ] 잔여 dead code / 정합성 위반 grep 추가 인스턴스 없음
+- [x] `npm run typecheck` 성공 (exit 0)
+- [x] `npm run build` 성공 (2.06s, exit 0)
+- [ ] 브라우저 확인 (수익 페이지 렌더링) — 사용자 확인 권장
+- [x] 잔여 dead code / 정합성 위반 grep 추가 인스턴스 없음
 
 ---
 

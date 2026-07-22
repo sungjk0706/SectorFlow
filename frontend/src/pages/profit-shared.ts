@@ -166,26 +166,36 @@ export function updateSummaryCards(
  *  2. 동일 종목(stk_cd)의 여러 매도 기록을 합산
  *  3. 도넛 차트와 동일한 절대값 내림차순 정렬 + 색상 할당
  */
-export function buildSectorStockPnl(
-  sells: Record<string, unknown>[],
-): SectorPnlGroup[] {
-  // 1. 업종별 손익 및 매수금액 집계 (도넛 차트와 동일 로직)
-  const sectorPnlMap = new Map<string, number>()
-  const sectorBuyTotalMap = new Map<string, number>()
+/** sellHistory → 업종별 손익 집계 + 도넛 차트 행 (절대값 내림차순 정렬).
+ *  buildSectorStockPnl과 canvas-sector-donut의 공통 집계 소스 — P10 SSOT. */
+export function buildSectorDonutRows(sells: Record<string, unknown>[]): SectorDonutRow[] {
+  const pnlMap = new Map<string, number>()
+  const buyTotalMap = new Map<string, number>()
   for (const r of sells) {
     const sector = String(r.sector ?? '미분류')
     const pnl = Number(r.realized_pnl ?? 0)
     const buyTotal = Number(r.avg_buy_price ?? 0) * Number(r.qty ?? 0)
-    sectorPnlMap.set(sector, (sectorPnlMap.get(sector) ?? 0) + pnl)
-    sectorBuyTotalMap.set(sector, (sectorBuyTotalMap.get(sector) ?? 0) + buyTotal)
+    pnlMap.set(sector, (pnlMap.get(sector) ?? 0) + pnl)
+    buyTotalMap.set(sector, (buyTotalMap.get(sector) ?? 0) + buyTotal)
   }
-
-  // 2. 절대값 내림차순 정렬 (도넛 차트 processData와 동일)
-  const donutRows: SectorDonutRow[] = Array.from(sectorPnlMap.entries())
-    .map(([sector, pnl]) => ({ sector, pnl }))
+  return Array.from(pnlMap.entries())
+    .map(([sector, pnl]) => ({
+      sector, pnl,
+      rate: (buyTotalMap.get(sector) ?? 0) > 0
+        ? Math.round(pnl / (buyTotalMap.get(sector) ?? 0) * 10000) / 100
+        : 0,
+      buyTotal: buyTotalMap.get(sector) ?? 0,
+    }))
     .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl))
+}
 
-  // 3. 색상 할당 (공유 함수 사용 — SSOT)
+export function buildSectorStockPnl(
+  sells: Record<string, unknown>[],
+): SectorPnlGroup[] {
+  // 1. 업종별 손익 집계 — 공통 함수 재사용 (P10 SSOT)
+  const donutRows = buildSectorDonutRows(sells)
+
+  // 2. 색상 할당 (공유 함수 사용 — SSOT)
   const colorMap = assignSectorColors(donutRows)
 
   // 4. 종목별 집계: 동일 stk_cd의 매도 기록 합산
@@ -219,7 +229,7 @@ export function buildSectorStockPnl(
   }
 
   // 6. 업종별 그룹 조립
-  return donutRows.map(({ sector, pnl }) => {
+  return donutRows.map(({ sector, pnl, buyTotal: sectorBuyTotal }) => {
     const stocks: SectorStockPnl[] = []
     for (const [key, v] of stockMap) {
       const [sec] = key.split('\0')
@@ -234,8 +244,7 @@ export function buildSectorStockPnl(
       }
     }
     stocks.sort((a, b) => Math.abs(b.realized_pnl) - Math.abs(a.realized_pnl))
-    const sectorBuyTotal = sectorBuyTotalMap.get(sector) ?? 0
-    const sectorRate = sectorBuyTotal > 0 ? Math.round(pnl / sectorBuyTotal * 10000) / 100 : 0
+    const sectorRate = (sectorBuyTotal ?? 0) > 0 ? Math.round(pnl / (sectorBuyTotal ?? 0) * 10000) / 100 : 0
     return {
       sector,
       color: colorMap.get(sector) ?? COLOR.disabled,
@@ -252,6 +261,26 @@ export function buildSectorStockPnl(
 export function getLocalToday(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+/** 거래내역 날짜 + 종목 필터 (profit-overview/profit-detail 공통 — P23 SSOT) */
+export function filterTradeRows(
+  rows: Record<string, unknown>[],
+  dateFrom: string,
+  dateTo: string,
+  stockQuery?: string,
+): Record<string, unknown>[] {
+  return rows.filter(r => {
+    const d = String(r.date ?? '')
+    if (dateFrom && d < dateFrom) return false
+    if (dateTo && d > dateTo) return false
+    if (stockQuery) {
+      const code = String(r.stk_cd ?? '')
+      const name = String(r.stk_nm ?? '')
+      if (!code.includes(stockQuery) && !name.includes(stockQuery)) return false
+    }
+    return true
+  })
 }
 
 /** sellHistory에서 날짜 필터 기반 손익 집계 */
@@ -515,7 +544,7 @@ export function renderAccountVals(params: AccountValsParams): void {
     // 테스트모드: 11행 (누적투자금, 주문가능금액, 오늘매수, 오늘매도, 보유평가금액, 보유평가손익, 보유평가수익률, 오늘수수료/세금, 누적수수료/세금, 누적손익, 누적수익률)
     const tv = params.testAccountValRefs
     if (tv.length < 11) return
-    const accumulatedInvestment = a?.accumulated_investment ?? a?.initial_deposit ?? 0
+    const accumulatedInvestment = a?.initial_deposit ?? 0
     const orderable = a?.orderable ?? 0
     tv[0].textContent = `${accumulatedInvestment.toLocaleString()}원`
     tv[1].textContent = `${orderable.toLocaleString()}원`
@@ -543,7 +572,7 @@ export function renderAccountVals(params: AccountValsParams): void {
     const rv = params.accountValRefs
     if (rv.length < 11) return
     const deposit = a?.deposit ?? 0
-    const orderable = a?.orderable ?? Math.max(0, deposit - todayBuyAmt)
+    const orderable = a?.orderable ?? 0
     rv[0].textContent = `${deposit.toLocaleString()}원`
     rv[1].textContent = `${orderable.toLocaleString()}원`
     rv[2].textContent = `${todayBuyAmt.toLocaleString()}원`

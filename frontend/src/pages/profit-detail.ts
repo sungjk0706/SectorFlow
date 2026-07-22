@@ -21,6 +21,7 @@ import {
   createDrilldownCols,
   createSummaryCards,
   updateSummaryCards,
+  filterTradeRows,
 } from './profit-shared'
 
 /* ── 모듈 변수 ── */
@@ -85,7 +86,8 @@ function loadProfitDetailView(): ProfitDetailViewState | null {
       from,
       to,
     }
-  } catch {
+  } catch (e) {
+    console.warn('[profit-detail] 저장된 뷰 상태 로드 실패 (손상된 데이터):', e)
     return null
   }
 }
@@ -93,8 +95,8 @@ function loadProfitDetailView(): ProfitDetailViewState | null {
 function saveProfitDetailView(state: ProfitDetailViewState): void {
   try {
     localStorage.setItem(PROFIT_DETAIL_VIEW_KEY, JSON.stringify(state))
-  } catch {
-    // localStorage 접근 불가 시 무시 (private mode 등)
+  } catch (e) {
+    console.warn('[profit-detail] 뷰 상태 localStorage 저장 실패:', e)
   }
 }
 
@@ -173,25 +175,10 @@ function setTabLabel(btn: HTMLButtonElement, label: string, count: number): void
 function updateTabLabels(): void {
   const dateRange = dateRangeInput?.getValue() ?? { from: '', to: '' }
   const stockQuery = stockFilterInput?.getValue() || ''
-  const filteredSells = filterRows(sellHistory, dateRange.from, dateRange.to, stockQuery || undefined)
-  const filteredBuys = filterRows(buyHistory, dateRange.from, dateRange.to, stockQuery || undefined)
+  const filteredSells = filterTradeRows(sellHistory, dateRange.from, dateRange.to, stockQuery || undefined)
+  const filteredBuys = filterTradeRows(buyHistory, dateRange.from, dateRange.to, stockQuery || undefined)
   if (sellTabBtn) setTabLabel(sellTabBtn, '매도 내역', filteredSells.length)
   if (buyTabBtn) setTabLabel(buyTabBtn, '매수 내역', filteredBuys.length)
-}
-
-/* ── 날짜 + 종목 필터 ── */
-function filterRows(rows: Record<string, unknown>[], dateFrom: string, dateTo: string, stockQuery?: string): Record<string, unknown>[] {
-  return rows.filter(r => {
-    const d = String(r.date ?? '')
-    if (dateFrom && d < dateFrom) return false
-    if (dateTo && d > dateTo) return false
-    if (stockQuery) {
-      const code = String(r.stk_cd ?? '')
-      const name = String(r.stk_nm ?? '')
-      if (!code.includes(stockQuery) && !name.includes(stockQuery)) return false
-    }
-    return true
-  })
 }
 
 /* ── 드릴다운 테이블 표시 ── */
@@ -251,8 +238,8 @@ function filterByDateRange(from: string, to: string): void {
 function updateStatistics(): void {
   const dateRange = dateRangeInput?.getValue() ?? { from: '', to: '' }
   const stockQuery = stockFilterInput?.getValue() || ''
-  const filteredSells = filterRows(sellHistory, dateRange.from, dateRange.to, stockQuery || undefined)
-  const filteredBuys = filterRows(buyHistory, dateRange.from, dateRange.to, stockQuery || undefined)
+  const filteredSells = filterTradeRows(sellHistory, dateRange.from, dateRange.to, stockQuery || undefined)
+  const filteredBuys = filterTradeRows(buyHistory, dateRange.from, dateRange.to, stockQuery || undefined)
 
   const sellCount = filteredSells.length
   const buyCount = filteredBuys.length
@@ -284,7 +271,7 @@ function showTable(): void {
   const stockQuery = stockFilterInput?.getValue() || ''
   const isSell = activeTab === 'sell'
   let rows = isSell ? sellHistory : buyHistory
-  rows = filterRows(rows, dateRange.from, dateRange.to, stockQuery || undefined)
+  rows = filterTradeRows(rows, dateRange.from, dateRange.to, stockQuery || undefined)
 
   const displayRows = rows
 
