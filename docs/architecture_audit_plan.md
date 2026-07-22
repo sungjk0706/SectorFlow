@@ -885,18 +885,18 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 
 | 파일 | 줄 수 | 규모 | 점검 완료 |
 |------|-------|------|----------|
-| `pages/profit-overview.ts` | 646 | 대형 | ☐ |
-| `pages/profit-detail.ts` | 620 | 대형 | ☐ |
-| `pages/profit-shared.ts` | 515 | 대형 | ☐ |
+| `pages/profit-overview.ts` | 175 (분할 후) | 대형 | ☑ (742줄→4개 파일 분할 175/62/219/377줄 + renderSectorStockPnl 146줄→5개 함수 분할) |
+| `pages/profit-detail.ts` | 166 (분할 후) | 대형 | ☑ (674줄→4개 파일 분할 166/52/215/326줄) |
+| `pages/profit-shared.ts` | 493 (분할 후) | 대형 | ☑ (598줄→493줄, 컬럼 정의 3개 profit-columns.ts 분할) |
 
 **원칙 체크리스트**:
-- [ ] P5: 직접 호출 체인
-- [ ] P10: 수익 데이터가 Store에서 관리됨
-- [ ] P16: dead code 없음
-- [ ] P19: 비동기 데이터 로딩 누락 없음
-- [ ] P22: 수익 데이터와 백엔드 정산 데이터 간 정합성
-- [ ] P23: 용어 사전 준수, 에러/비동기/네이밍/상수 패턴 파일 간 일관
-- [ ] P24: 더 단순한 대체 가능성, 불필요한 추상화, 함수/파일 길이·복잡도 기준
+- [x] P5: 직접 호출 체인 — 준수
+- [x] P10: 수익 데이터가 Store에서 관리됨 — 해결 (F05-05 buildSectorDonutRows shared SSOT)
+- [x] P16: dead code 없음 — 해결 (F05-12 불필요 변수 제거)
+- [x] P19: 비동기 데이터 로딩 누락 없음 — 해결 (F05-11 _applyDateRangeSeq 레이스 가드)
+- [x] P22: 수익 데이터와 백엔드 정산 데이터 간 정합성 — 해결 (F05-01/F05-02 폴백 제거, 백엔드 accumulated_investment 누락 수정)
+- [x] P23: 용어 사전 준수, 에러/비동기/네이밍/상수 패턴 파일 간 일관 — 해결 (F05-07 "보유주식"→"보유 종목", F05-06 filterTradeRows shared SSOT)
+- [x] P24: 더 단순한 대체 가능성, 불필요한 추상화, 함수/파일 길이·복잡도 기준 — 해결 (F05-08/09/10 파일 분할 + mount 함수 분할)
 
 ---
 
@@ -907,34 +907,34 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 
 | 파일 | 줄 수 | 규모 | 점검 완료 |
 |------|-------|------|----------|
-| `components/common/data-table.ts` | 943 | 대형 | ☐ |
-| `components/common/setting-row.ts` | 597 | 대형 | ☐ |
-| `components/common/ui-styles.ts` | 575 | 대형 | ☐ |
-| `components/virtual-scroller.ts` | 528 | 대형 | ☐ |
-| `components/canvas-profit-chart.ts` | 508 | 대형 | ☐ |
-| `components/common/button.ts` | 321 | 대형 | ☐ |
-| `components/canvas-sector-donut.ts` | 347 | 대형 | ☐ |
-| `components/common/dialog.ts` | 261 | 대형 | ☐ |
-| `components/common/context-popup.ts` | 260 | 대형 | ☐ |
-| `components/common/settings-common.ts` | 221 | 대형 | ☐ |
-| `components/common/toast.ts` | 189 | 중형 | ☐ |
-| `components/common/create-slider.ts` | 173 | 중형 | ☐ |
-| `components/common/search-input.ts` | 153 | 중형 | ☐ |
-| `components/common/auto-width.ts` | 133 | 중형 | ☐ |
-| `components/common/date-range-input.ts` | 96 | 중형 | ☐ |
-| `components/common/time-pair-input.ts` | 64 | 소형 | ☐ |
-| `components/common/sector-row.ts` | 62 | 소형 | ☐ |
-| `components/common/card-header.ts` | 42 | 소형 | ☐ |
-| `components/common/broker-badge.ts` | 42 | 소형 | ☐ |
-| `components/common/account-labels.ts` | 32 | 소형 | ☐ |
-| `components/common/card-title.ts` | 21 | 소형 | ☐ |
+| `components/common/data-table.ts` | 176 (분할 후) | 대형 | ☑ (F06-01: 1045줄→176/454/454줄 분할) |
+| `components/common/setting-row.ts` | 분할 후 | 대형 | ☑ (F06-02: 분할 완료) |
+| `components/common/ui-styles.ts` | 252 (분할 후) | 대형 | ☑ (F06-03: 581줄→252/211/148줄 분할) |
+| `components/virtual-scroller.ts` | 528 | 대형 | ☑ |
+| `components/canvas-profit-chart.ts` | 508 | 대형 | ☑ |
+| `components/common/button.ts` | 321 | 대형 | ☑ |
+| `components/canvas-sector-donut.ts` | 347 | 대형 | ☑ |
+| `components/common/dialog.ts` | 261 | 대형 | ☑ |
+| `components/common/context-popup.ts` | 260 | 대형 | ☑ |
+| `components/common/settings-common.ts` | 221 | 대형 | ☑ |
+| `components/common/toast.ts` | 189 | 중형 | ☑ (F06-12: rgba 하드코딩→hexToRgba 공통 헬퍼) |
+| `components/common/create-slider.ts` | 173 | 중형 | ☑ (F06-11: #e9ecef→COLOR.inactiveBg) |
+| `components/common/search-input.ts` | 153 | 중형 | ☑ |
+| `components/common/auto-width.ts` | 133 | 중형 | ☑ |
+| `components/common/date-range-input.ts` | 96 | 중형 | ☑ |
+| `components/common/time-pair-input.ts` | 64 | 소형 | ☑ |
+| `components/common/sector-row.ts` | 62 | 소형 | ☑ |
+| `components/common/card-header.ts` | 42 | 소형 | ☑ |
+| `components/common/broker-badge.ts` | 42 | 소형 | ☑ |
+| `components/common/account-labels.ts` | 32 | 소형 | ☑ (F06-10: "보유주식"→"보유 종목" 6곳) |
+| `components/common/card-title.ts` | 21 | 소형 | ☑ |
 
 **원칙 체크리스트**:
-- [ ] P5: 컴포넌트 간 직접 호출 (이벤트 버스 없음)
-- [ ] P10: 컴포넌트 상태가 Store에서 관리됨 (로컬 상태 최소화)
-- [ ] P16: dead code/미사용 컴포넌트 없음
-- [ ] P23: UI 패턴(목록/카드/태그/버튼/모달) 2회 이상 반복 시 공통 컴포넌트 추출, 직접 중복 구현 없음. 용어 사전 준수
-- [ ] P24: 더 단순한 대체 가능성, 불필요한 추상화, 함수/파일 길이·복잡도 기준
+- [x] P5: 컴포넌트 간 직접 호출 (이벤트 버스 없음) — 준수
+- [x] P10: 컴포넌트 상태가 Store에서 관리됨 (로컬 상태 최소화) — 준수
+- [x] P16: dead code/미사용 컴포넌트 없음 — 해결 (F06-06/07/08 dead code 제거)
+- [x] P23: UI 패턴(목록/카드/태그/버튼/모달) 2회 이상 반복 시 공통 컴포넌트 추출, 직접 중복 구현 없음. 용어 사전 준수 — 해결 (F06-10 "보유주식"→"보유 종목" 전역 0건, F06-11/12 색상 상수화)
+- [x] P24: 더 단순한 대체 가능성, 불필요한 추상화, 함수/파일 길이·복잡도 기준 — 해결 (F06-01/02/03 대형 파일 3개 분할)
 
 ---
 
@@ -1143,14 +1143,14 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | B13-06 | B-13 | `settings_file.py:261-279` | P3 | LOW | `asyncio.to_thread`로 `Path.exists`/`glob` 실행 — `run_in_executor` 우회. 단, `aiofiles` 미지원 메서드, 1회 실행, 핫 경로 아님 | 보류 (async 대체재 없음, 보류 권장) |
 | B13-07 | B-13 | `engine_settings.py:179-237`, `settings_store.py:154-221` | P24 | LOW | 함수 길이 50줄 초과 2곳 — `_build_sector_and_order_settings` 59줄, `_validate_timetable_order` 68줄 | 보류 (별도 세션 — 그룹별 헬퍼 분리) |
 | B13-08 | B-13 | `settings_file.py:76`, `settings_store.py:73`, `trade_mode.py:24` | P10/P23 | INFO | "mock" → "test" 매핑 3곳 분산 — 각각 다른 계층(마이그레이션/UI/런타임)에서 다른 목적 | 보류 (강제 통합 시 복잡도 증가, 현재 구조 유지 권장) |
-| F05-01 | F-05 | `profit-shared.ts:547` | P20 | MEDIUM | `a?.accumulated_investment ?? a?.initial_deposit ?? 0` 3단 폴백 — 백엔드 `build_account_snapshot_meta`가 `accumulated_investment` 누락(별도 백엔드 버그). 테스트모드에서는 `initial_deposit == accumulated_investment`이므로 `initial_deposit`만 사용 | 해결 (F-05-a: `initial_deposit`만 사용, 백엔드 버그는 HANDOVER.md 기록) |
+| F05-01 | F-05 | `profit-shared.ts:547` | P20 | MEDIUM | `a?.accumulated_investment ?? a?.initial_deposit ?? 0` 3단 폴백 — 백엔드 `build_account_snapshot_meta`가 `accumulated_investment` 누락(별도 백엔드 버그). 테스트모드에서는 `initial_deposit == accumulated_investment`이므로 `initial_deposit`만 사용 | 해결 (F-05-a: `initial_deposit`만 사용 + 백엔드 #3 세션: `build_account_snapshot_meta` 반환 dict에 `accumulated_investment` 키 추가로 P22 정합성 회복) |
 | F05-02 | F-05 | `profit-shared.ts:574` | P20 | MEDIUM | `a?.orderable ?? Math.max(0, deposit - todayBuyAmt)` 폴백 — 백엔드가 항상 `orderable` 전송하므로 폴백 dead code. 수수료/세금 미반영 추정치 표시 위험 | 해결 (F-05-a: `a?.orderable ?? 0`) |
 | F05-03 | F-05 | `profit-overview.ts:59`, `profit-detail.ts:96` | P20 | LOW | `saveProfitDateRange`/`saveProfitDetailView`의 `catch { }` 빈 블록 — localStorage 저장 실패 조용히 무시 | 해결 (F-05-a: `console.warn` 로깅) |
 | F05-04 | F-05 | `profit-overview.ts:51`, `profit-detail.ts:88` | P20 | LOW | `loadProfitDateRange`/`loadProfitDetailView`의 `catch { return null }` — JSON 파싱 실패 조용히 무시 | 해결 (F-05-a: `console.warn` 로깅) |
 | F05-05 | F-05 | `profit-overview.ts:274-289` | P10/P23 | MEDIUM | `buildSectorDonutData`가 `buildSectorStockPnl` 및 `canvas-sector-donut.ts:processData`와 동일 업종별 집계 로직 3회 중복 | 해결 (F-05-a: `buildSectorDonutRows` shared SSOT, `buildSectorStockPnl`이 재사용) |
 | F05-06 | F-05 | `profit-overview.ts:292-299`, `profit-detail.ts:183-195` | P23 | LOW | `filterSellHistoryByDate`/`filterRows` 동일 날짜+종목 필터 로직 중복 | 해결 (F-05-a: `filterTradeRows` shared SSOT) |
-| F05-07 | F-05 | `profit-overview.ts:385,413`, `profit-shared.ts:502`, `account-labels.ts`, `sell-position.ts` | P23 | LOW | UI 텍스트/주석에 "보유주식" 사용 — 용어 사전 기준 "보유 종목". 프로젝트 전역 이슈 | 보류 (별도 세션 — account-labels.ts, sell-position.ts 동시 수정 필요) |
-| F05-08 | F-05 | 3개 파일 전체 | P24 | MEDIUM | 파일 길이 698/654/598줄 — P24 기준 500줄 초과 | 해결 (F-05-c: 컬럼 정의 3개 profit-columns.ts 분할, profit-shared.ts 598→493줄. profit-overview.ts 742줄/profit-detail.ts 674줄은 잔여 — 별도 세션) |
+| F05-07 | F-05 | `profit-overview.ts:385,413`, `profit-shared.ts:502`, `account-labels.ts`, `sell-position.ts` | P23 | LOW | UI 텍스트/주석에 "보유주식" 사용 — 용어 사전 기준 "보유 종목". 프로젝트 전역 이슈 | 해결 (F-06-c: account-labels.ts 6곳 + sell-position.ts 6곳, F-06-d: profit-overview.ts 1곳 + profit-shared.ts 1곳. 잔여 "보유주식" 0건) |
+| F05-08 | F-05 | 3개 파일 전체 | P24 | MEDIUM | 파일 길이 698/654/598줄 — P24 기준 500줄 초과 | 해결 (F-05-c: 컬럼 정의 3개 profit-columns.ts 분할, profit-shared.ts 598→493줄 + F-05-a 추가 세션: profit-overview.ts 742줄→4개 파일 분할 175/62/219/377줄 + F-05-b: profit-detail.ts 674줄→4개 파일 분할 166/52/215/326줄, 모두 500줄 이하) |
 | F05-09 | F-05 | `profit-overview.ts:310-689` `mount()` | P24 | HIGH | 단일 함수 ~380줄 — P24 기준 50줄의 7.6배 | 해결 (F-05-b 2/2세션: 10개 헬퍼 분할, 모두 50줄 이하, 실전/테스트 루프 중복 제거 부수) |
 | F05-10 | F-05 | `profit-detail.ts:325-628` `mount()` | P24 | HIGH | 단일 함수 ~303줄 — P24 기준 50줄의 6배 | 해결 (F-05-b 1/2세션: 9개 헬퍼 함수로 분할, 모두 50줄 이하) |
 | F05-11 | F-05 | `profit-overview.ts:521-551` `applyDateRange` | P19 | MEDIUM | async 날짜 범위 조회에 레이스 가드 없음 — 빠른 연속 클릭 시 구식 응답이 날짜 범위 덮어씌움 | 해결 (F-05-a: `_applyDateRangeSeq` 시퀀스 가드) |
@@ -1191,8 +1191,8 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | F-02 | P1 | 진입점, 라우팅, 레이아웃 | ☑ 완료 (7건 P16/P23/P24, npm run build + typecheck 통과) |
 | F-03 | P2 | 핵심 매매 페이지 | ☐ 미시작 |
 | F-04 | P2 | 설정 페이지 | ☐ 미시작 |
-| F-05 | P3 | 수익 페이지 | ☐~ F-05-a 완료 (7건 P10/P19/P20/P23), F-05-b 1/2세션 완료 (F05-10/F05-12 해결), F-05-b 2/2세션 F05-09 해결 (mount 분할 + 실전/테스트 루프 중복 제거), F-05-c F05-08 해결 (컬럼 정의 3개 profit-columns.ts 분할, profit-shared.ts 598→493줄), 잔여 profit-overview.ts 742줄/profit-detail.ts 674줄 + renderSectorStockPnl 146줄 분할 |
-| F-06 | P3 | 공통 컴포넌트 | ☐~ F-06-a 완료 (F06-07/08 dead code 2건 제거), F-06-b 완료 (F06-06 callbackRan dead code 제거, rafId=-1 센티넬 방식), F-06-c 완료 (F06-10/11/12 용어 통일 + 색상 상수화), F-06-d 완료 (F06-10 잔존 2곳), F-06-e 완료 (F06-01 data-table.ts 1045→176/454/454줄 분할), 잔여 F06-02/03 파일 분할 |
+| F-05 | P3 | 수익 페이지 | ☑ 완료 (F-05-a 7건 P10/P19/P20/P23 + F-05-b 1/2·2/2세션 F05-09/10/12 + F-05-c F05-08 + F-05-a 추가 세션 profit-overview.ts 742줄→4개 파일 분할 175/62/219/377줄 + renderSectorStockPnl 146줄→5개 함수 분할 + F-05-b profit-detail.ts 674줄→4개 파일 분할 166/52/215/326줄) |
+| F-06 | P3 | 공통 컴포넌트 | ☑ 완료 (F-06-a F06-07/08 dead code + F-06-b F06-06 + F-06-c F06-10/11/12 용어/색상 + F-06-d F06-10 잔존 2곳 + F-06-e F06-01 data-table.ts 1045→176/454/454줄 + F-06-f F06-02 setting-row.ts 분할 + F-06-g F06-03 ui-styles.ts 581→252/211/148줄) |
 | F-07 | P3 | 타입 및 유틸 | ☐ 미시작 |
 
 ### 진행률
@@ -1200,12 +1200,12 @@ SectorFlow 전체 코드베이스를 `ARCHITECTURE.md`에 정의된 22개 불변
 | 항목 | 카운트 |
 |------|--------|
 | 전체 세션 | 30 |
-| 완료 | 24 (B-01~B-12, B-14~B-23, F-01, F-02) |
-| 진행 중 | 1 (F-05 — F-05-a/b/c 완료, 잔여 profit-overview.ts/profit-detail.ts 파일 길이 + renderSectorStockPnl 분할) |
-| 미시작 | 5 (B-13, F-03, F-04, F-06, F-07) |
+| 완료 | 26 (B-01~B-12, B-14~B-23, F-01, F-02, F-05, F-06) |
+| 진행 중 | 0 |
+| 미시작 | 4 (B-13 부분 완료, F-03, F-04, F-07) |
 | 발견된 문제 | 91 (79 + F05-01~12) |
-| 해결된 문제 | 80 (70 + F05-01~06, F05-11, F05-10, F05-12, F05-09) |
-| 보류된 문제 | 2 (B21-01, F05-07) |
+| 해결된 문제 | 81 (70 + F05-01~06, F05-11, F05-10, F05-12, F05-09, F05-07) |
+| 보류된 문제 | 1 (B21-01) |
 
 ---
 
