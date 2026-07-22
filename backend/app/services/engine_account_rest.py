@@ -128,6 +128,7 @@ def build_account_snapshot_meta(
         "deposit":          dep,
         "orderable":        ord_a,
         "initial_deposit":  init_dep,
+        "accumulated_investment": account_snapshot.get("accumulated_investment"),
         "total_eval":       t_eval,
         "total_pnl":        t_pnl,
         "total_buy":        t_buy,
