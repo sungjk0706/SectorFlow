@@ -23,6 +23,7 @@ import {
   buildTableContainer,
   buildStatRow,
   restoreInitialView,
+  ensureMonthlyDailySummary,
   subscribeProfitDetailStore,
 } from './profit-detail-mount'
 
@@ -145,6 +146,7 @@ function mount(container: HTMLElement): void {
 
   const initState = hotStore.getState()
   restoreInitialView(state, todayStr, initState)
+  ensureMonthlyDailySummary(state, todayStr)
   subscribeProfitDetailStore(state, initState)
 }
 

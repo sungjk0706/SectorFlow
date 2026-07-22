@@ -17,6 +17,7 @@ import {
   filterTradeRows,
 } from './profit-shared'
 import { saveProfitDetailView } from './profit-detail-view'
+import { hotStore } from '../stores/hotStore'
 import type { ProfitDetailState } from './profit-detail'
 
 /* ── 요약 카드 선택 스타일 ── */
@@ -103,7 +104,7 @@ export function showDrilldown(state: ProfitDetailState): void {
   }
 
   const yearMonth = getLocalToday().slice(0, 7)
-  const rows = buildMonthlyDrilldown(state.sellHistory, state.buyHistory, yearMonth)
+  const rows = buildMonthlyDrilldown(hotStore.getState().dailySummary, yearMonth)
   state.drilldownTable.updateRows(rows)
 }
 

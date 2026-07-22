@@ -6,6 +6,68 @@
 
 ## 직전 완료 작업
 
+### 단계 A: buildMonthlyDrilldown SSOT 위반 해결 (2026-07-22)
+
+**세션**: 수익률 계산 SSOT/P22 일괄 정비 단계 A (프론트엔드 단독). P10/P22/P21 해결.
+
+**문제 현상**: 수익상세 페이지 "당월 일별 요약" 드릴다운이 백엔드 `dailySummary`의 per-day 수익률을 무시하고 sellHistory 원시 레코드에서 수익률을 재계산. 백엔드 공식 변경 시 드릴다운만 다른 수치 표시 위험 (P10/P22/P21 위반).
+
+**수정 파일 4개**:
+- `frontend/src/pages/profit-shared.ts:34-41,302-320` — `DailyDrilldownRow`에서 `buyTotal` 필드 제거 (표시되지 않는 dead data, P16). `buildMonthlyDrilldown` 시그니처 변경: `(sells, buys, yearMonth)` → `(dailySummary, yearMonth)`. dailySummary에서 `yearMonth` 접두사 필터 후 백엔드 per-day rate(`pnl_rate`) 직접 사용, 재계산 제거. `buildChartFromDailySummary`와 동일한 dailySummary 직접 사용 패턴 (P23 일관성).
+- `frontend/src/pages/profit-detail-display.ts:19-21,106` — `hotStore` import 추가. `showDrilldown` 호출부를 `buildMonthlyDrilldown(state.sellHistory, state.buyHistory, yearMonth)` → `buildMonthlyDrilldown(hotStore.getState().dailySummary, yearMonth)`로 갱신.
+- `frontend/src/pages/profit-detail-mount.ts:9-16,250-269,290-300` — `globalSettingsManager` import 추가. `ensureMonthlyDailySummary` 비동기 헬퍼 신설: mount 시 당월 범위(monthStart~today) dailySummary 조회 후 `hotStore.setState({ dailySummary: data })`. 수익현황 페이지의 `applyDateRange`와 동일한 `api.getDailySummary` + `hotStore.setState` 패턴 (P23). `flushDirtyRender`의 `dirtySummary` 분기에 드릴다운 갱신 추가 (dailySummary 기반이므로 summary 변경 시 드릴다운도 갱신).
+- `frontend/src/pages/profit-detail.ts:19-28,147` — `ensureMonthlyDailySummary` import 추가. mount에서 `restoreInitialView` 후 `ensureMonthlyDailySummary(state, todayStr)` 호출.
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| A | P10/P22/P21 | 드릴다운 per-day 수익률을 백엔드 dailySummary에서 직접 사용. 프론트엔드 재계산 제거. 수익현황에서 "당일"/"5일" 선택 후 진입해도 드릴다운은 항상 당월 전체 표시 (mount 시 당월 dailySummary 재조회). |
+
+**검증**: `npm run typecheck` exit 0, `npm run build` 1.86s exit 0, `npx vitest run` 8 files / 116 tests passed (9.25s).
+
+**화면 영향**: 수익상세 페이지 "당월 일별 요약" 드릴다운의 수익률(%) 수치가 백엔드 기준값으로 표시. 기존 프론트엔드 재계산값에서 백엔드 dailySummary 값으로 변경. 표시 날짜 범위는 당월 전체로 유지 (수익현황에서 다른 범위 선택 후 진입해도 당월 전체 표시). 매도건수/매수건수/당일손익 수치는 동일 데이터 소스이므로 변화 없음.
+
+**잔존 프로세스**: 없음 (프론트엔드 typecheck/build/vitest만 수행, 백엔드 기동 없음).
+
+**다음 세션 대기 사항**:
+1. **단계 C 실행 시작 승인** — 공통 함수 `computeWeightedRate` 신설 + 5곳 호출부 통일 (프론트엔드 단독). tasks.md 섹션 2 기반.
+2. **단계 B-사전 전 마이그레이션 방식 사전 결정** — 옵션 1(기동 시 재계산) vs 옵션 2(1회 스크립트 실행). 단계 B-사전 세션 전까지 확정 필요.
+
+## 직전 완료 작업 (이전 세션)
+
+### 수익률 계산 SSOT/P22 일괄 정비 — 설계 문서 + 작업 파일 작성 (2026-07-22)
+
+**세션**: 다단계 작업 워크플로우 1단계(설계). 코드 수정 없음 (문서 2개 신규 작성).
+
+**배경**: 이전 세션에서 수익상세 페이지 "수익률" 공식 불일치 해결(가중 평균 통일) 후, 심층 조사로 pnl_rate 계산 분산 3개 문제 식별. 본 세션은 설계 단계만 수행 (규칙 0-1 세션당 1단계).
+
+**신규 파일 2개**:
+- `docs/pnl_rate_ssot_design.md` — 문제 정의(A/B/C), 해결 방향, 영향 범위, 원칙 준수 매핑, 위험/주의사항. 사용자 결정: 문제 B는 B-2(수수료/세금 포함 현금 기준 진짜 수익률)로 확정.
+- `docs/pnl_rate_ssot_tasks.md` — 5세션 단계별 체크리스트(A → C → B-사전 → B-본 → B-연계). 사전조사/수정/검증/완료조건 포함.
+
+**식별된 3개 문제**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| A | P10/P22/P21 | `buildMonthlyDrilldown`(profit-shared.ts:332)가 백엔드 dailySummary 무시하고 per-day rate 재계산. 백엔드가 이미 제공하므로 SSOT 위반. |
+| B | P22/P21/P18 | pnl_rate가 수수료/세금 미포함(순수 차익). 테스트모드에서만 실제 수익률 과대 표시 → 모드 동등성 위반. 사용자 결정: B-2(현금 기준 통일)로 해결. |
+| C | P22/P23 | 동일 pnl_rate 공식이 7곳에서 독립 구현. 공통 함수 computeWeightedRate 신설로 변경 지점 1곳 집중. |
+
+**사용자 결정 사항**:
+- 문제 B 해결 방향: **B-2**(수수료/세금 포함 현금 기준 진짜 수익률) 확정. B-1(용어 명확화)은 기각.
+- 실행 순서: A → C → B 그대로 유지.
+
+**다음 세션 대기 사항**:
+1. **단계 A 실행 시작 승인** — buildMonthlyDrilldown SSOT 위반 해결 (프론트엔드 단독).
+2. **단계 B-사전 전 마이그레이션 방식 사전 결정** — 옵션 1(기동 시 재계산) vs 옵션 2(1회 스크립트 실행). 단계 B-사전 세션 전까지 확정 필요.
+
+**검증**: 코드 수정 없음 (문서만 작성). 설계 문서와 작업 파일 간 단계 분할·체크리스트·원칙 매핑 일치 확인.
+
+**화면 영향**: 없음. 문서 작성만 수행.
+
+**잔존 프로세스**: 없음. 다음 세션에서 단계 A 실행 시작 (tasks.md 섹션 1 기반).
+
+## 직전 완료 작업 (이전 세션)
+
 ### 수익상세 페이지 통계 "평균 수익률" 가중 평균 통일 (2026-07-22)
 
 **세션**: P22/P21 데이터 정합성 해결 1단계. 수익상세 페이지 내 "수익률" 용어 공식 불일치 해소.
