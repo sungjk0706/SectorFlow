@@ -6,6 +6,26 @@
 
 ## 직전 완료 작업
 
+### F-06-f (F06-02): setting-row.ts 파일 분할 (2026-07-22)
+
+**세션**: F-06 (P3 — 공통 컴포넌트) 1단계. F06-02 (P24 단순성) 해결.
+
+**수정 파일 3개**:
+- `frontend/src/components/common/setting-row.ts` (메인): 569줄 → 168줄. 상수(INPUT_WIDTH, TEXT_INPUT_WIDTH) + 공통 유틸(focusNext, applyInputBase, createSpinButtons — inputs에서 import하도록 export 추가) + createSettingRow + createSettingField + createFixedValue + `export * from` inputs/controls re-export. 사용처가 controls로 이동한 setDisabled/FONT_SIZE import 제거.
+- `frontend/src/components/common/setting-row-inputs.ts` (신규, 243줄): createNumInput, createMoneyInput, createTextInput, createSelect 이관. 메인의 유틸(focusNext, applyInputBase, createSpinButtons, TEXT_INPUT_WIDTH) import.
+- `frontend/src/components/common/setting-row-controls.ts` (신규, 191줄): createToggleBtn, createRadioGroup, createToggleLabelControlsRow 이관. 메인의 createSettingRow + ui-styles(COLOR, FONT_SIZE, setDisabled) import.
+
+**해결 건**:
+| ID | 위반 | 설명 |
+|----|------|------|
+| F06-02 | P24 | setting-row.ts 569줄 → 3개 파일 분할 (168/243/191줄, 모두 500줄 이하). 순수 이동(move)만 수행, 동작 변경 없음. 외부 import 경로 유지 (4개 설정 페이지: general/sector/sell/buy-settings). F-06-e(data-table.ts)와 동일한 메인+re-export 패턴. |
+
+**검증**: `npm run typecheck` exit 0, `npm run build` 982ms exit 0, `npx vitest run` 8 files / 116 tests passed (6.07s). 잔여 setting-row 참조: 메인 + inputs + controls(상호 import) + 4 설정 페이지(동일 경로 유지) + docs 역사적 로그.
+
+**화면 영향**: 없음. 순수 파일 분할이며 외부 import 경로가 동일하게 유지되어 모든 설정 화면(일반/업종/매수/매도)의 입력란·토글·라디오·드롭다운이 동일하게 동작.
+
+## 직전 완료 작업 (이전 세션)
+
 ### F-06-e (F06-01): data-table.ts 파일 분할 (2026-07-22)
 
 **세션**: F-06 (P3 — 공통 컴포넌트) 1단계. F06-01 (P24 단순성) 해결.
@@ -32,7 +52,6 @@
 ## 다음 세션 작업
 
 **잔여 F-06 (별도 세션 each)**:
-- F06-02: `setting-row.ts` 파일 분할 (569줄, 입력란 그룹 분리 검토)
 - F06-03: `ui-styles.ts` 파일 분할 (564줄, 셀/컬럼 팩토리 분리 검토)
 
 **잔여 F-05 (별도 세션 each)**:
