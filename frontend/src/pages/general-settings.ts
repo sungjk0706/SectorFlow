@@ -1233,31 +1233,31 @@ function syncFromSettings(s: AppSettings | null): void {
     const lossOn = r.daily_loss_limit_on !== false
     dailyLossToggle?.setOn(lossOn)
     if (dailyLossInput && (!act || !dailyLossInput.el.contains(act))) {
-      dailyLossInput.setValue(Number(r.daily_loss_limit ?? -500000) || -500000)
+      dailyLossInput.setValue(Number(r.daily_loss_limit ?? -500000))
     }
     if (dailyLossControls) setDisabled(dailyLossControls, !lossOn)
     const lossRateOn = !!r.daily_loss_rate_limit_on
     dailyLossRateToggle?.setOn(lossRateOn)
     if (dailyLossRateInput && (!act || !dailyLossRateInput.el.contains(act))) {
-      dailyLossRateInput.setValue(Number(r.daily_loss_rate_limit ?? -5) || -5)
+      dailyLossRateInput.setValue(Number(r.daily_loss_rate_limit ?? -5))
     }
     if (dailyLossRateControls) setDisabled(dailyLossRateControls, !lossRateOn)
     const profitOn = !!r.daily_profit_limit_on
     dailyProfitToggle?.setOn(profitOn)
     if (dailyProfitInput && (!act || !dailyProfitInput.el.contains(act))) {
-      dailyProfitInput.setValue(Number(r.daily_profit_limit ?? 500000) || 500000)
+      dailyProfitInput.setValue(Number(r.daily_profit_limit ?? 500000))
     }
     if (dailyProfitControls) setDisabled(dailyProfitControls, !profitOn)
     const profitRateOn = !!r.daily_profit_rate_limit_on
     dailyProfitRateToggle?.setOn(profitRateOn)
     if (dailyProfitRateInput && (!act || !dailyProfitRateInput.el.contains(act))) {
-      dailyProfitRateInput.setValue(Number(r.daily_profit_rate_limit ?? 5) || 5)
+      dailyProfitRateInput.setValue(Number(r.daily_profit_rate_limit ?? 5))
     }
     if (dailyProfitRateControls) setDisabled(dailyProfitRateControls, !profitRateOn)
     const consecOn = !!r.consecutive_loss_limit_on
     consecLossToggle?.setOn(consecOn)
     if (consecLossInput && (!act || !consecLossInput.el.contains(act))) {
-      consecLossInput.setValue(Number(r.consecutive_loss_limit ?? 3) || 3)
+      consecLossInput.setValue(Number(r.consecutive_loss_limit ?? 3))
     }
     if (consecLossControls) setDisabled(consecLossControls, !consecOn)
     riskBlockBuyToggle?.setOn(r.risk_block_buy_on !== false)
