@@ -16,7 +16,17 @@ export function createStore<T extends object>(initialState: T): StoreApi<T> {
   }
 
   function setState(partial: Partial<T> | ((state: T) => Partial<T>)): void {
-    const nextPartial = typeof partial === 'function' ? partial(state) : partial
+    // updater 함수 호출을 try/catch로 격리 — updater 본문 throw 시
+    // setState 호출자로 전파되어 binding.ts 핸들러 → WS 디스패치로 전파되는 것을 차단 (P25/P16).
+    // 실패 시 기존 state 유지 — 잘못된 부분 상태로 교체 방지 (P22).
+    // silent pass가 아님 — 에러는 콘솔에 명시 로깅 (P20).
+    let nextPartial: Partial<T>
+    try {
+      nextPartial = typeof partial === 'function' ? partial(state) : partial
+    } catch (e) {
+      console.error('[Store] updater error', e)
+      return
+    }
 
     // shallow merge + Object.is 비교: 실제 변경된 키가 있을 때만 상태 교체 + 구독자 통지
     let hasChange = false
