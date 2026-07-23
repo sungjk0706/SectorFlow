@@ -71,20 +71,26 @@
   - [ ] 런타임: `is_ws_subscribe_window` 고의 예외 시 루프 종료 아닌 continue 확인
   - [ ] 로그: `logger.warning(..., exc_info=True)` 스택트레이스 포함 확인
 
-### T1-S3 — Phase2 recompute 루프 격리
+### T1-S3 — Phase2 recompute 루프 격리 — 완료 (2026-07-23)
 
-- **대상 위반 ID**: B2-03-01 (HIGH)
+- **대상 위반 ID**: B2-03-01 (HIGH), B2-03-02 (MEDIUM) — 동일 파일 인접 함수라 함께 처리
 - **수정 파일**: `backend/app/pipelines/pipeline_compute.py`
 - **프론트/백엔드**: 백엔드
 - **safe-trade 스킬**: 불필요
 - **의존성**: 없음 (T1-S2, T1-S4와 독립)
 - **수정 방향**:
-  - while 루프 본문 try/except + `except Exception: logger.warning(..., exc_info=True); continue` (`_compute_loop_impl` 패턴과 일치, P23)
+  - B2-03-01: `_phase2_batch_recompute_loop` while 본문 try/except + `except asyncio.CancelledError: break` + `except Exception: logger.error(..., exc_info=True)` (`_compute_loop_impl` 패턴과 일치, P23). `await asyncio.sleep(0.2)`는 try 밖 유지 (sleep 취소 시 정상 종료)
+  - B2-03-02: `_sector_recompute_loop_impl`에 `except Exception as e: logger.error(..., exc_info=True)` 추가 (기존 `except asyncio.CancelledError` 외)
+- **진행 상태**:
+  - [x] B2-03-01 완료 — `_phase2_batch_recompute_loop` 649-675줄
+  - [x] B2-03-02 완료 — `_sector_recompute_loop_impl` 686-692줄 (T2-S8에서 중복 처리 예정이었으나 동일 파일 인접 함수라 본 세션에서 선제 처리, T2-S8에서는 engine_loop.py만 남음)
 - **검증 방법**:
-  - [ ] `pytest tests/` 관련 테스트 통과 (pipeline_compute 관련)
-  - [ ] `python -W error::RuntimeWarning main.py` 기동 확인
-  - [ ] 런타임: Phase2 recompute 루프 중 예외 시 루프 종료 아닌 continue 확인
-  - [ ] 로그: 스택트레이스 포함 확인
+  - [x] `pytest backend/tests/test_pipeline_compute.py` 통과 — 93개 테스트 전부 통과 (0.21s)
+  - [x] `python -W error::RuntimeWarning main.py` 기동 확인 — RuntimeWarning/Traceback/Error 0건
+  - [x] 런타임: Phase 1 임계값 대기 → 통과 → Phase 2 진입 정상 동작 확인 (기동 후 23초)
+  - [x] 로그: `logger.error(..., exc_info=True)` 스택트레이스 포함 형태 적용 (정상 기동 시 미발생)
+  - [x] 잔존 프로세스 0건 확인
+- **비고**: B2-03-02는 T2-S8 태스크에 포함되어 있었으나, 동일 파일 인접 함수라 본 세션에서 선제 처리. T2-S8 진행 시 engine_loop.py만 남음 (B1-02-02/03).
 
 ### T1-S4 — `_save_confirmed_cache` 반환값 정정
 
