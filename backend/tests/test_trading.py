@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 import time as _time
 import asyncio
-from unittest.mock import AsyncMock, DEFAULT, MagicMock, patch
+from unittest.mock import AsyncMock, DEFAULT, patch
 
 
 def _close_coro(*args, **kwargs):
@@ -199,7 +199,7 @@ class TestExecuteBuyGates:
              patch("backend.app.services.trade_history.record_buy", new_callable=AsyncMock), \
              patch("backend.app.core.journal.record_order_request", new_callable=AsyncMock), \
              patch("backend.app.services.engine_account._broadcast_buy_limit_status", new_callable=AsyncMock), \
-             patch("backend.app.services.trading.asyncio.create_task", side_effect=_close_coro) as mock_create_task, \
+             patch("backend.app.services.engine_lifecycle.schedule_engine_task", side_effect=_close_coro), \
              patch("backend.app.services.trading._fire_and_forget_telegram"):
             mock_state.realtime_latency_exceeded = False
             mock_state.integrated_system_settings_cache = _raw_settings(rebuy_block_on=False)
@@ -207,9 +207,6 @@ class TestExecuteBuyGates:
             mock_rm.return_value.circuit_breaker.get_state.return_value = "CLOSED"
             mock_rm.return_value.get_withdrawable_deposit.return_value = 10_000_000
             mock_rm.return_value.check_buy_order_allowed = AsyncMock(return_value=(True, "승인"))
-            mock_task = MagicMock()
-            mock_task.add_done_callback = MagicMock()
-            mock_create_task.return_value = mock_task
             result, _reason = await mgr.execute_buy("005930", 70000, "token")
         assert result is True
 
