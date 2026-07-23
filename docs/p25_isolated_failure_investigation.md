@@ -115,6 +115,10 @@ AGENTS.md 섹션3 규칙 0-1 (세션당 1단계 원칙) 준수.
 | B2-03-05 | B2 파이프라인 연산 | `backend/app/pipelines/pipeline_gateway.py:32` | `start_gateway_loop`가 `_gateway_task`에 done_callback 없음. compute 서브태스크(`pipeline_compute.py:210-218`)는 done_callback 있는데 게이트웨이는 없음 → P23 일관성 위반 | 루프 자체는 `_broadcast_loop` try/except로 격리되어 영향도 낮음. 단 태스크 예외 시 로깅 누락(P21) | LOW | P25, P21, P23 | 세션 3 | 미승인 |
 | A2-04-01 | A2 Store listener | `frontend/src/stores/store.ts:19` | `setState`의 updater 함수 `partial(state)`가 try/catch 밖. updater 본문 throw 시 listener 루프(40-46) 보호 우회, setState 호출자에게 즉시 전파 → binding.ts 핸들러(A1-01-04) → WS 디스패치(A1-01-01)로 전파 → 같은 이벤트 후속 핸들러 미실행 + 같은 바이너리 프레임 후속 이벤트 손실 | 고빈도 이벤트(real-data, buy-targets-delta, account-update)의 updater throw 시 화면 갱신 전체 중단 위험. throw 확률은 낮으나 구조적 보호 부재 | MEDIUM | P25, P16 | 세션 4 | 미승인 |
 | A2-04-02 | A2 Store listener | `frontend/src/stores/hotStore.ts:367-370,390,412,431` | `window.dispatchEvent(new CustomEvent(...))`가 try/catch 밖. CustomEvent 핸들러(real-data-tick/orderbook-tick/program-tick) throw 시 apply* 함수 호출자로 전파 → binding.ts 핸들러 → WS 디스패치로 전파. real-data-tick은 매 틱 발생 | 한 UI 컴포넌트 핸들러 오류가 같은 틱의 다른 종목 시세 갱신 중단. 핸들러 등록부는 A3(세션 7)에서 조사 예정 | MEDIUM | P25, P7 | 세션 4 | 미승인 |
+| B3-05-01 | B3 스케줄러·파이프라인 | `backend/app/services/market_close_pipeline.py:645-650` | `_save_confirmed_cache` inner except에서 rollback+warning 후 fall-through → 650 `return True` → 전종목 마스터 테이블 DB 저장 실패해도 함수 True 반환. 후속 6단계 메모리 교체 로직이 잘못된 성공 전제로 진행 | DB 저장 실패를 성공으로 보고 → 6단계 메모리 교체가 잘못된 전제로 실행 → 메모리/DB 불일치 상태 지속. P22 데이터 정합성 위반 + P21 사용자 투명성 위반 | HIGH | P22, P21 | 세션 5 | 미승인 |
+| B3-05-02 | B3 스케줄러·파이프라인 | `backend/app/services/market_close_pipeline.py:897` | `_step5_download_daily_confirmed`에서 `confirmed = {}` 빈 폴백. if confirmed 가드로 메모리/DB는 보호되나, 빈 eligible_codes로 `_run_post_confirmed_pipeline` 실행 → 빈 캐시 저장 시도 | 전종목 다운로드 실패 시 빈 데이터로 후속 파이프라인 진행. P20 폴백 금지 위반. 단 if confirmed 가드로 메모리/DB 파손은 차단 | MEDIUM | P20 | 세션 5 | 미승인 |
+| B3-05-03 | B3 스케줄러·파이프라인 | `backend/app/services/market_close_pipeline.py:492` | `except (ValueError, TypeError): pass` silent pass. float 변환 실패 시 strength_str 갱신 스킵만 하고 종목 루프 계속 (로깅 없음) | strength 필드 갱신 누락이 로그에 남지 않아 디버깅 불가. P20 위반. 영향도 국소적 (단일 종목 strength 필드) | LOW | P20 | 세션 5 | 미승인 |
+| B3-05-04 | B3 스케줄러·파이프라인 | 11곳 (`market_close_pipeline.py` 424, 858, 934, 1103, 1254 + `daily_time_scheduler.py` 1273, 1287, 1327, 1354, 1446, 1507) | exc_info 누락. logger.warning은 하나 exc_info=True 누락. 단 934는 "(무시)" 표시로 의도적 일부 드러남 | 스택트레이스 누락으로 디버깅困难. P23 일관성 위반 (다른 경로는 exc_info=True). 즉시 중단 유발 아님 | LOW | P23 | 세션 5 | 미승인 |
 
 ### 등급 정의
 - **CRITICAL**: 한 구성요소 실패가 시스템 전체 중단 유발 (자동매매 정지, 화면 전체 멈춤)
@@ -599,8 +603,8 @@ app.py lifespan (62):
 
 ## 7. 세션 5: B3 대형 스케줄러·파이프라인 조사
 
-> 상태: 미시작
-> 조사 파일: `daily_time_scheduler.py` (1524줄), `market_close_pipeline.py` (1407줄)
+> 상태: 완료 (2026-07-23)
+> 조사 파일: `daily_time_scheduler.py` (1524줄), `market_close_pipeline.py` (1407줄), `engine_lifecycle.py` (328줄, schedule_engine_task 정의 확인용)
 > 조사 범위:
 > - `daily_time_scheduler.py` schedule_engine_task 15회 호출별 context 명시·격리 여부
 > - `market_close_pipeline.py` except 블록 19개 — silent pass 여부 (P20 교차), exc_info 로깅 여부
@@ -608,10 +612,43 @@ app.py lifespan (62):
 > - `call_later` / `call_soon_threadsafe` 콜백 실패 시 루프 영향
 
 ### 7.1 조사 결과
-_작성 예정_
+
+**1. schedule_engine_task 15회 호출 격리 (daily_time_scheduler.py)** — 양호
+- 14회 실제 호출 + 1회 import. 모두 `schedule_engine_task(coro, context="...")` 일관 패턴 (P23 OK)
+- `engine_lifecycle.py:279-309` 정의: `loop.call_soon_threadsafe(_create_with_callback)` + `task.add_done_callback(lambda t: logger.warning(...) if t.exception() else None)` → 태스크 실패 시 경고 로깅, 루프 중단 없음 → **P25 격리 준수**
+- call_soon_threadsafe 자체 실패 시 `coro.close()` 정리 → OK
+- 15회 모두 동일 패턴, 격리 일관적
+
+**2. except 블록 silent pass 여부 (P20)**
+- **market_close_pipeline.py 19개**: silent pass 1건(492 float 변환 `pass`), 빈 폴백 1건(897 `confirmed={}`), exc_info 누락 5건(424, 858, 934, 1103, 1254), raise 전파 1건(385 의도적), 나머지 11건 logger.warning+exc_info OK
+- **daily_time_scheduler.py 26개**: silent pass 0건, exc_info 누락 6건(1273, 1287, 1327, 1354, 1446, 1507), RuntimeError→return 3건(1085, 1372, 1458 의도적 루프 없음 시 스킵), 나머지 17건 OK
+
+**3. 파이프라인 단계 간 실패 전파 (P9)**
+- `_run_confirmed_pipeline` (976-1064): 1~4단계 None 반환 시 즉시 `return {"fetched":0,"failed":0,"cached":False}` → 전파 명시적. 단 실패 상태 알림 필드 없어 fetched=0이 정상 0건인지 실패인지 구분 안 됨 → **P21 부분 위반**
+- 5단계 `confirmed={}` 폴백(897) → `if confirmed` 가드로 메모리/DB 보호되나, `_run_post_confirmed_pipeline(eligible_codes=confirmed_codes)`는 여전히 실행 → 빈 eligible로 캐시 저장 시도
+- 7단계 `_step7_recompute_and_broadcast` except(972) → logger.warning+exc_info → 격리 OK
+- finally 플래그 복원 → OK
+
+**4. call_later/call_soon_threadsafe 콜백 실패 시 루프 영향** — 양호
+- daily_time_scheduler.py call_later 3곳(1116, 1401, 1465): 모두 `lambda: schedule_engine_task(coro, context=...)` → schedule_engine_task 내부 try/except로 보호되어 lambda 예외 거의 불가능. lambda 자체 예외 시 asyncio "Exception in callback" 경고, 루프 중단 없음 → **P25 OK**
+- market_close_pipeline.py call_soon_threadsafe 1곳(68): `lambda: q.put_nowait(data) if not q.full() else None` + 외부 try/except(44-73) → 실패 시 logger.warning → OK. 단일 루프 스레드이므로 full()/put_nowait 레이스 없음
 
 ### 7.2 위반 목록
-_작성 예정_
+
+| ID | 등급 | 파일:줄 | 위반 | 관련 원칙 |
+|----|------|---------|------|-----------|
+| B3-05-01 | HIGH | `market_close_pipeline.py:645-650` | `_save_confirmed_cache` inner except에서 rollback+warning 후 fall-through → 650 `return True` → 전종목 마스터 테이블 DB 저장 실패해도 함수 True 반환. 후속 6단계 메모리 교체 로직이 잘못된 성공 전제로 진행 | P22, P21 |
+| B3-05-02 | MEDIUM | `market_close_pipeline.py:897` | `_step5_download_daily_confirmed`에서 `confirmed = {}` 빈 폴백. if confirmed 가드로 메모리/DB는 보호되나, 빈 eligible_codes로 `_run_post_confirmed_pipeline` 실행 → 빈 캐시 저장 시도 | P20 |
+| B3-05-03 | LOW | `market_close_pipeline.py:492` | `except (ValueError, TypeError): pass` silent pass. float 변환 실패 시 strength_str 갱신 스킵만 하고 종목 루프 계속 (로깅 없음) | P20 |
+| B3-05-04 | LOW | 11곳 | exc_info 누락: `market_close_pipeline.py` 424, 858, 934, 1103, 1254 + `daily_time_scheduler.py` 1273, 1287, 1327, 1354, 1446, 1507. logger.warning은 하나 exc_info=True 누락. 단 934는 "(무시)" 표시로 의도적 일부 드러남 | P23 |
+
+### 7.3 양호 항목
+- schedule_engine_task 15회 호출 모두 P25 격리 준수 (add_done_callback)
+- call_later 3곳 + call_soon_threadsafe 1곳 모두 보호 (schedule_engine_task 경유 또는 외부 try/except)
+- 45개 except 중 28개 logger.warning+exc_info=True로 P25 준수
+- RuntimeError→return 3건(1085, 1372, 1458) 의도적 스킵 (루프 없음 시)
+- _run_confirmed_pipeline 1~4단계 None 반환 패턴 명시적
+- _step7_recompute_and_broadcast·finally 플래그 복원 격리 OK
 
 ---
 
@@ -702,3 +739,6 @@ _세션 1~8 완료 후 작성_
 | 2026-07-23 | (준비) | 본 보고서 생성 (조사 개요, 매트릭스 빈 템플릿, 세션 1~9 기본 구조) |
 | 2026-07-23 | 세션 1 | A1 WS 디스패치 조사 완료. 위반 5건 식별 (A1-01-01~05). 섹션 2 매트릭스 + 섹션 3 결과 작성. CRITICAL 2건, HIGH 1건, MEDIUM 1건, LOW 1건 |
 | 2026-07-23 | 세션 2 | B1 엔진 코어 루프 조사 완료. 위반 7건 식별 (B1-02-01~07). 섹션 2 매트릭스 + 섹션 4 결과 작성. HIGH 2건, MEDIUM 2건, LOW 3건. 사전 위반 후보 engine_loop.py:343-344는 위반 아님으로 확정. schedule_engine_task 중앙 격리 메커니즘 P25 준수 확인. 커넥터 recv 루프 P23 일관성 확인 |
+| 2026-07-23 | 세션 3 | B2 파이프라인 연산 루프 조사 완료. 위반 5건 식별 (B2-03-01~05). 섹션 2 매트릭스 + 섹션 5 결과 작성. HIGH 1건, MEDIUM 1건, LOW 3건. 사전 위반 후보 pipeline_compute.py:209,214 create_task 직접 호출은 위반 아님으로 확정 (엔진 루프 안 await 호출). B1-02-05/06 호출부 격리 확인 완료 (LOW 유지). while 루프 4곳 중 2곳만 보호되어 P23 비대칭 |
+| 2026-07-23 | 세션 4 | A2 Store listener 조사 완료. 위반 2건 식별 (A2-04-01~02). 섹션 2 매트릭스 + 섹션 6 결과 작성. MEDIUM 2건. store.ts:40-46 listener 루프는 F-02 fix로 P25 준수 확인. 단 updater 함수(19)와 dispatchEvent(367-431)가 listener 루프 보호 우회 경로. 3개 store 동일 createStore 패턴 P23 일관성 준수 |
+| 2026-07-23 | 세션 5 | B3 대형 스케줄러·파이프라인 조사 완료. 위반 4건 식별 (B3-05-01~04). 섹션 2 매트릭스 + 섹션 7 결과 작성. HIGH 1건, MEDIUM 1건, LOW 2건. schedule_engine_task 15회 호출 모두 P25 격리 준수 (add_done_callback). call_later 3곳+call_soon_threadsafe 1곳 모두 보호. 45개 except 중 28개 logger.warning+exc_info=True 준수. B3-05-01 (HIGH) DB 저장 실패를 True 반환하는 P22/P21 위반이 가장 심각 |
