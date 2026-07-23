@@ -274,32 +274,6 @@ class TestCalculateBoostScore:
         )
         assert score == 0.0
 
-    def test_trade_amount_rank_boost_first_place(self):
-        stock = _stock(code="005930")
-        score = calculate_boost_score(
-            stock,
-            high_5d_cache={},
-            orderbook_cache={},
-            program_net_buy_cache={},
-            trade_amount_rank=0,
-            boost_trade_amount_rank_on=True,
-            boost_trade_amount_rank_score=2.0,
-        )
-        assert score == 2.0
-
-    def test_trade_amount_rank_no_boost_when_not_first(self):
-        stock = _stock(code="005930")
-        score = calculate_boost_score(
-            stock,
-            high_5d_cache={},
-            orderbook_cache={},
-            program_net_buy_cache={},
-            trade_amount_rank=1,
-            boost_trade_amount_rank_on=True,
-            boost_trade_amount_rank_score=1.0,
-        )
-        assert score == 0.0
-
     def test_multiple_boosts_accumulate(self):
         stock = _stock(code="005930", cur_price=75000)
         score = calculate_boost_score(
@@ -475,55 +449,8 @@ class TestCreateBuyTargets:
         assert len(result.buy_targets) == 1
         assert len(result.blocked_targets) == 1
 
-    def test_trade_amount_rank_calculated_for_guard_pass_stocks(self):
-        s1 = _stock(code="A001", trade_amount=1_000_000)
-        s2 = _stock(code="A002", trade_amount=5_000_000)
-        s3 = _stock(code="A003", trade_amount=3_000_000)
-        sc = _sector(rank=1, stocks=[s1, s2, s3])
-        result = create_buy_targets(
-            [sc],
-            boost_trade_amount_rank_on=True,
-        )
-        stock_map = {t.stock.code: t.stock for t in result.buy_targets}
-        assert stock_map["A002"].trade_amount_rank == 0
-        assert stock_map["A003"].trade_amount_rank == 1
-        assert stock_map["A001"].trade_amount_rank == 2
-
-    def test_trade_amount_rank_excludes_held_codes(self):
-        # 보유 종목(차단)은 거래대금 순위에서 제외 — 통과 종목끼리만 순위 부여
-        s1 = _stock(code="A001", trade_amount=1_000_000)
-        s2 = _stock(code="A002", trade_amount=5_000_000)
-        sc = _sector(rank=1, stocks=[s1, s2])
-        result = create_buy_targets(
-            [sc],
-            held_codes={"A002"},
-            boost_trade_amount_rank_on=True,
-        )
-        buy_map = {t.stock.code: t.stock for t in result.buy_targets}
-        blocked_map = {t.stock.code: t.stock for t in result.blocked_targets}
-        # A002(보유, 거래대금 5M)는 차단 → 순위 제외 (rank = -1)
-        assert blocked_map["A002"].trade_amount_rank == -1
-        # A001(통과, 거래대금 1M)는 통과 종목 중 1위 → rank 0
-        assert buy_map["A001"].trade_amount_rank == 0
-
-    def test_trade_amount_cache_overrides_stale_stockscore(self):
-        # StockScore has stale trade_amount (A001 > A002),
-        # but trade_amount_cache has real-time values (A002 > A001).
-        # Rank must be based on cache, not stale StockScore.
-        s1 = _stock(code="A001", trade_amount=9_000_000)
-        s2 = _stock(code="A002", trade_amount=1_000_000)
-        sc = _sector(rank=1, stocks=[s1, s2])
-        result = create_buy_targets(
-            [sc],
-            boost_trade_amount_rank_on=True,
-            trade_amount_cache={"A001": 1_000_000, "A002": 9_000_000},
-        )
-        stock_map = {t.stock.code: t.stock for t in result.buy_targets}
-        assert stock_map["A002"].trade_amount_rank == 0
-        assert stock_map["A001"].trade_amount_rank == 1
-
     def test_blocked_stock_receives_high_breakout_boost(self):
-        # 차단 종목이지만 5일고가 돌파(75000 > 70000) → 가산점 부여 (거래대금 순위는 통과 종목만)
+        # 차단 종목이지만 5일고가 돌파(75000 > 70000) → 가산점 부여
         s1 = _stock(code="A001", change_rate=10.0, cur_price=75000)
         sc = _sector(rank=1, stocks=[s1])
         result = create_buy_targets(

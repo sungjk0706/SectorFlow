@@ -375,7 +375,7 @@ async def notify_buy_targets_update() -> None:
     for c in cur_codes - prev_codes:
         item = cur_map[c].copy()
         # 실시간 필드 제거: 프론트엔드 sectorStocks 단일 소스
-        for key in ['cur_price', 'change', 'change_rate', 'strength', 'trade_amount', 'trade_amount_rank']:
+        for key in ['cur_price', 'change', 'change_rate', 'strength', 'trade_amount']:
             item.pop(key, None)
         added.append(item)
     removed = list(prev_codes - cur_codes)
@@ -384,7 +384,7 @@ async def notify_buy_targets_update() -> None:
     for code in cur_codes & prev_codes:
         cur_t = cur_map[code].copy()
         # 실시간 필드 제거: 프론트엔드 sectorStocks 단일 소스
-        for key in ['cur_price', 'change', 'change_rate', 'strength', 'trade_amount', 'trade_amount_rank']:
+        for key in ['cur_price', 'change', 'change_rate', 'strength', 'trade_amount']:
             cur_t.pop(key, None)
         prev_t = notify_cache.prev_buy_targets_map[code]
         # 비교 키에서 실시간 필드 제외

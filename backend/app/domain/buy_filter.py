@@ -18,10 +18,6 @@ def calculate_boost_score(
     boost_order_ratio_score: float = 1.0,
     boost_program_net_buy_on: bool = False,
     boost_program_net_buy_score: float = 1.0,
-    # ── 거래대금 순위 가산점 ──
-    trade_amount_rank: int = -1,  # 0 = 매수 후보 내 거래대금 1위, -1 = 순위 밖/차단 종목 제외
-    boost_trade_amount_rank_on: bool = False,
-    boost_trade_amount_rank_score: float = 1.0,
 ) -> float:
     """종목 가산점 합계 계산. 항상 >= 0.0 반환.
     """
@@ -53,10 +49,6 @@ def calculate_boost_score(
         net_buy = program_net_buy_cache.get(stock.code, 0)
         if net_buy > 0:
             score += boost_program_net_buy_score
-
-    # 4. 거래대금 순위 (매수후보 테이블 통과 종목 중 거래대금 상위 1종목)
-    if boost_trade_amount_rank_on and trade_amount_rank == 0:
-        score += boost_trade_amount_rank_score
 
     return max(score, 0.0)
 
@@ -116,7 +108,6 @@ def create_buy_targets(
     high_5d_cache: dict[str, int] | None = None,
     orderbook_cache: dict[str, tuple[int, int]] | None = None,
     program_net_buy_cache: dict[str, int] | None = None,
-    trade_amount_cache: dict[str, int] | None = None,
     boost_high_on: bool = False,
     boost_high_score: float = 1.0,
     boost_order_ratio_on: bool = False,
@@ -124,12 +115,9 @@ def create_buy_targets(
     boost_order_ratio_score: float = 1.0,
     boost_program_net_buy_on: bool = False,
     boost_program_net_buy_score: float = 1.0,
-    # ── 거래대금 순위 가산점 ──
+    # ── 재매수 차단 (보유중/금일매수 종목 차단 여부) ──
     held_codes: set[str] | None = None,
     bought_today_codes: set[str] | None = None,
-    boost_trade_amount_rank_on: bool = False,
-    boost_trade_amount_rank_score: float = 1.0,
-    # ── 재매수 차단 (보유중/금일매수 종목 차단 여부) ──
     rebuy_block_on: bool = True,
 ) -> SectorSummary:
     """
@@ -199,23 +187,8 @@ def create_buy_targets(
                 s.guard_pass = False
                 s.guard_reason = "금일매수"
 
-    # ── 거래대금 순위 계산: 매수후보 테이블 통과 종목만 대상 (차단 종목 제외) ──
-    _trade_amount_rank_map: dict[str, int] = {}
-    if boost_trade_amount_rank_on:
-        # 실시간 거래대금으로 StockScore.trade_amount 갱신 — 증분 재계산 시 비-dirty 업종의 stale 값 방지
-        _ta_cache = trade_amount_cache or {}
-        for s, _ in all_stocks:
-            if s.code in _ta_cache:
-                _ta_val = _ta_cache[s.code]
-                if _ta_val is not None:
-                    s.trade_amount = _ta_val
-        _pass_for_rank = [s for s, _ in all_stocks if s.guard_pass]
-        _pass_for_rank.sort(key=lambda st: float(st.trade_amount) if st.trade_amount is not None else float('-inf'), reverse=True)
-        for i, st in enumerate(_pass_for_rank):
-            _trade_amount_rank_map[st.code] = i  # 0 = 1위
-
     for s, _ in all_stocks:
-        # 차단 종목도 가산점 계산 (5일고가; 잔량비/프순매는 구독 세션 제한으로 통과 종목만, 거래대금 순위는 통과 종목만)
+        # 차단 종목도 가산점 계산 (5일고가; 잔량비/프순매는 구독 세션 제한으로 통과 종목만)
         _is_blocked = not s.guard_pass
         s.boost_score = calculate_boost_score(
             s,
@@ -229,11 +202,7 @@ def create_buy_targets(
             boost_order_ratio_score=boost_order_ratio_score,
             boost_program_net_buy_on=boost_program_net_buy_on and not _is_blocked,
             boost_program_net_buy_score=boost_program_net_buy_score,
-            trade_amount_rank=_trade_amount_rank_map.get(s.code, -1),
-            boost_trade_amount_rank_on=boost_trade_amount_rank_on,
-            boost_trade_amount_rank_score=boost_trade_amount_rank_score,
         )
-        s.trade_amount_rank = _trade_amount_rank_map.get(s.code, -1)
 
     def _sort_value(s, key: Literal["strength", "change_rate", "trade_amount"]) -> float:
         if key == "strength":
@@ -292,7 +261,7 @@ def build_buy_targets_from_settings(
     held_codes: set[str] | None = None,
     bought_today_codes: set[str] | None = None,
 ) -> SectorSummary:
-    from backend.app.services.engine_radar import get_high_price_5d_cache, get_orderbook_cache, get_program_net_buy_cache, get_trade_amount_cache
+    from backend.app.services.engine_radar import get_high_price_5d_cache, get_orderbook_cache, get_program_net_buy_cache
 
     return create_buy_targets(
         sector_scores,
@@ -306,7 +275,6 @@ def build_buy_targets_from_settings(
         high_5d_cache=get_high_price_5d_cache(),
         orderbook_cache=get_orderbook_cache(),
         program_net_buy_cache=get_program_net_buy_cache(),
-        trade_amount_cache=get_trade_amount_cache(),
         boost_high_on=bool(settings.get("boost_high_breakout_on", False)),
         boost_high_score=float(settings.get("boost_high_breakout_score", 1.0)),
         boost_order_ratio_on=bool(settings.get("boost_order_ratio_on", False)),
@@ -316,7 +284,5 @@ def build_buy_targets_from_settings(
         boost_program_net_buy_score=float(settings.get("boost_program_net_buy_score", 1.0)),
         held_codes=held_codes,
         bought_today_codes=bought_today_codes,
-        boost_trade_amount_rank_on=bool(settings.get("boost_trade_amount_rank_on", False)),
-        boost_trade_amount_rank_score=float(settings.get("boost_trade_amount_rank_score", 1.0)),
         rebuy_block_on=bool(settings.get("rebuy_block_on", True)),
     )

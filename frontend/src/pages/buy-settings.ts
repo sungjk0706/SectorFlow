@@ -51,10 +51,6 @@ let boostProgramToggle: ReturnType<typeof createToggleBtn> | null = null
 let boostProgramScoreInput: ReturnType<typeof createNumInput> | null = null
 let boostProgramControls: HTMLElement | null = null
 
-let boostTradeAmountToggle: ReturnType<typeof createToggleBtn> | null = null
-let boostTradeAmountScoreInput: ReturnType<typeof createNumInput> | null = null
-let boostTradeAmountControls: HTMLElement | null = null
-
 // 재매수 차단 UI 참조
 let rebuyBlockToggle: ReturnType<typeof createToggleBtn> | null = null
 let rebuyBlockSelect: ReturnType<typeof createSelect> | null = null
@@ -106,13 +102,6 @@ function syncBoost(r: Record<string, unknown>, act: Element | null): void {
   if (boostProgramScoreInput && (!act || !boostProgramScoreInput.el.contains(act))) boostProgramScoreInput.setValue(Number(r.boost_program_net_buy_score) ?? 1.0)
   if (boostProgramControls) {
     setDisabled(boostProgramControls, !programOn)
-  }
-
-  const tradeAmountOn = !!r.boost_trade_amount_rank_on
-  boostTradeAmountToggle?.setOn(tradeAmountOn)
-  if (boostTradeAmountScoreInput && (!act || !boostTradeAmountScoreInput.el.contains(act))) boostTradeAmountScoreInput.setValue(Number(r.boost_trade_amount_rank_score) ?? 1.0)
-  if (boostTradeAmountControls) {
-    setDisabled(boostTradeAmountControls, !tradeAmountOn)
   }
 }
 
@@ -227,19 +216,6 @@ function buildBoostSection(root: HTMLElement): void {
       controlsChild: boostProgramScoreInput.el,
     })
     boostProgramToggle = r.toggle; boostProgramControls = r.controls
-    root.appendChild(r.el)
-  }
-
-  // --- 거래대금 순위 ---
-  {
-    boostTradeAmountScoreInput = createNumInput({ value: 1.0, onChange: v => { vals.boost_trade_amount_rank_score = v; saveHelper!.autoSave('boost_trade_amount_rank_score', v) }, step: 1, name: 'boost_trade_amount_rank_score' })
-    const r = createToggleLabelControlsRow({
-      labelText: '거래대금 순위 (매수가능종목만)',
-      toggleOn: false,
-      onToggle: next => { vals.boost_trade_amount_rank_on = next; saveHelper!.saveImmediate({ boost_trade_amount_rank_on: next }) },
-      controlsChild: boostTradeAmountScoreInput.el,
-    })
-    boostTradeAmountToggle = r.toggle; boostTradeAmountControls = r.controls
     root.appendChild(r.el)
   }
 
@@ -422,7 +398,6 @@ function unmount(): void {
   boostOrderDualSlider = null
   boostOrderScoreInput = null; boostOrderControls = null; boostOrderRow2 = null
   boostProgramToggle = null; boostProgramScoreInput = null; boostProgramControls = null
-  boostTradeAmountToggle = null; boostTradeAmountScoreInput = null; boostTradeAmountControls = null
   rebuyBlockToggle = null; rebuyBlockSelect = null; rebuyBlockControls = null
   buyIntervalToggle = null; buyIntervalInput = null; buyIntervalControls = null
   vals = {}

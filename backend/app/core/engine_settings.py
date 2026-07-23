@@ -247,8 +247,6 @@ def _build_boost_settings(merged: dict) -> dict:
     boost_order_ratio_score = max(float(_v if _v is not None else 1.0), 0)
     _v = merged.get("boost_program_net_buy_score")
     boost_program_net_buy_score = max(float(_v if _v is not None else 1.0), 0)
-    _v = merged.get("boost_trade_amount_rank_score")
-    boost_trade_amount_rank_score = max(float(_v if _v is not None else 1.0), 0)
     return {
         "boost_high_breakout_on": bool(merged.get("boost_high_breakout_on")),
         "boost_high_breakout_score": boost_high_breakout_score,
@@ -257,8 +255,6 @@ def _build_boost_settings(merged: dict) -> dict:
         "boost_order_ratio_score": boost_order_ratio_score,
         "boost_program_net_buy_on": bool(merged.get("boost_program_net_buy_on")),
         "boost_program_net_buy_score": boost_program_net_buy_score,
-        "boost_trade_amount_rank_on": bool(merged.get("boost_trade_amount_rank_on")),
-        "boost_trade_amount_rank_score": boost_trade_amount_rank_score,
     }
 
 

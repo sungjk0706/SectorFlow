@@ -25,7 +25,6 @@ class StockScore:
     guard_reason: str = ""      # 차단 사유 (빈 문자열 = 통과)
     # 가산점
     boost_score: float = 0.0    # 가산점 합계 (>= 0.0)
-    trade_amount_rank: int = -1 # 매수 후보 간 거래대금 순위 (0=1위, -1=미산정/비활성)
 
 
 @dataclass

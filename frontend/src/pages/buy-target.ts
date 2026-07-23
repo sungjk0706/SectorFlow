@@ -8,13 +8,13 @@ import { notifyPageActive, notifyPageInactive } from '../api/ws'
 import { createCardHeaderWithMargin } from '../components/common/card-header'
 import { createSearchInput } from '../components/common/search-input'
 import { globalSettingsManager } from '../settings'
-import { createStockNameColumn, createSeqCell, makeCodeColumn, makeChangeColumn, makeRateColumn, createAmountCell, createPriceCell, createNumberCell, FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
+import { createStockNameColumn, createSeqCell, makeCodeColumn, makeChangeColumn, makeRateColumn, createPriceCell, createNumberCell, FONT_SIZE, FONT_WEIGHT, COLOR } from '../components/common/ui-styles'
 import { createBadgeRow, createBadge, updateBadge, type BadgeHandle, type BadgeStatus } from '../components/common/badge'
 import { computeOrderBlockStatus } from '../utils/order-block-status'
 import { filterStocksBySearch } from './sector-stock'
 import type { SectorStock } from '../types'
 
-/* ── ColumnDef 배열 (13개 컬럼) ── */
+/* ── ColumnDef 배열 (12개 컬럼) ── */
 const COLUMNS: ColumnDef<SectorStock>[] = [
   { key: 'seq', label: '순번', align: 'center', type: 'seq', render: (_t, idx) => createSeqCell(idx + 1) },
   makeCodeColumn<SectorStock>((t) => t.code),
@@ -46,16 +46,6 @@ const COLUMNS: ColumnDef<SectorStock>[] = [
   },
   makeChangeColumn<SectorStock>((t) => t.change != null ? Number(t.change) : null),
   makeRateColumn<SectorStock>((t) => t.change_rate != null ? Number(t.change_rate) : null),
-  {
-    key: 'trade_amount', label: '거래대금(억)', align: 'right', type: 'amount', maxWidth: 126,
-    render: (t) => {
-      const cell = createAmountCell(t.trade_amount != null ? Number(t.trade_amount) : null)
-      if (t.trade_amount_rank === 0) {
-        cell.style.backgroundColor = COLOR.successBg
-      }
-      return cell
-    },
-  },
   {
     key: 'order_ratio', label: '호가잔량비(%)', align: 'right', type: 'order_ratio', maxWidth: 110,
     render: (t) => {

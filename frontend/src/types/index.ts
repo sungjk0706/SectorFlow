@@ -54,7 +54,6 @@ export interface SectorStock {
   boost_score?: number;
   order_ratio?: [number, number] | null;
   high_5d?: number;
-  trade_amount_rank?: number;
   program_net_buy?: number;
 }
 
