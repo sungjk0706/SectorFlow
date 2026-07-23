@@ -385,10 +385,9 @@ export function createVirtualScrollMode<T extends object>(
   function internalUpdate(rows: TableRow<T>[]) {
     currentRows = rows
     toggleEmpty(rows)
-    if (rows.length > 0) {
-      // 첫 updateRows 시 1회만 데이터 기반 폭 계산 (이후 no-op, 구분선 고정)
-      widthMgr.initFromRows(rows)
-    }
+    // 첫 updateRows 시 1회만 데이터 기반 폭 계산 (이후 no-op, 구분선 고정).
+    // 빈 데이터라도 라벨 폭 기반으로 헤더 잘림 방지 (computeColWidths는 샘플 비어도 라벨 폭 사용).
+    widthMgr.initFromRows(rows)
     scroller.updateItems(rows)
   }
 
