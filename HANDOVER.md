@@ -9,7 +9,8 @@
 | 날짜 | 세션 | 작업 | 상태 |
 |------|------|------|------|
 | 2026-07-24 | CLEAN-04 | 프론트엔드 죽은 `??` 폴백 15개 정리 — `Number(x) ?? 기본값` → `Number(x ?? 기본값)` (NaN 표시 버그 해결, buy-settings 10개 + sell-settings 5개) — P16/P20/P23 | 완료 |
-| 2026-07-24 | CLEAN-05 | 프론트엔드 죽은 초기 할당 2개 제거 — stock-classification.ts `let dataExists = false` → `let dataExists: boolean` (try/catch 경로에서 초기값 미사용) — P16/P24 | 완료 (2-3은 다음 세션 대기) |
+| 2026-07-24 | CLEAN-06 | 프론트엔드 명명 중복 4개 조사 — COLUMNS/PADDING/initialState/mount-unmount 모두 파일 로컬·의도적 중복 확인, 수정 불필요 (P23/P24 준수) — 조사 전용 | 완료 (코드 변경 없음) |
+| 2026-07-24 | CLEAN-05 | 프론트엔드 죽은 초기 할당 2개 제거 — stock-classification.ts `let dataExists = false` → `let dataExists: boolean` (try/catch 경로에서 초기값 미사용) — P16/P24 | 완료 |
 | 2026-07-24 | CLEAN-03 | 백엔드 죽은 코드 정리 — 사용되지 않는 import/변수/global 선언/함수/메서드/상태속성/모듈/중복 wrapper 제거 (75개 파일, +43/-2520줄) — P16/P24 | 완료 |
 | 2026-07-24 | CLEAN-02 | 프로젝트 폴더 추가 용량 정리 — 캐시/PDF/DB백업/worktree 고아브랜치 정리(18MB) + .venv 개발도구 제거(113MB) + 방치 브랜치 삭제 = 총 131MB 절감 (339MB→208MB) — P24/P25 | 완료 |
 | 2026-07-24 | CLEAN-01 | 프로젝트 폴더 용량 정리 — 캐시 22MB 삭제 + DB 백업 파일 9.6MB 정리(최근 1세트만 남김) + 백업 자동 정리 로직 추가(기동 시 최근 1세트만 유지) — P10/P16/P22/P25 | 완료 |
@@ -29,13 +30,26 @@
 
 ## 직전 완료 작업
 
+### CLEAN-06 프론트엔드 명명 중복 4개 조사 (2026-07-24)
+- **작업**: CLEAN-05 보류 항목 2-3. 프론트엔드 명명 중복 후보 4개(COLUMNS/PADDING/initialState/mount-unmount) 사전조사.
+- **조사 결과**: 4개 모두 **의도적·정당한 파일 로컬 명명 중복, 수정 불필요**.
+  - `COLUMNS` — 5개 페이지 파일 로컬 테이블 컬럼 상수(`ColumnDef<페이지별 타입>[]`). export 없음, 제네릭 타입 상이. 각 페이지의 "이 페이지 컬럼" 동일 로컬 개념 → P23(일관성) 준수. 접두사 부여 시 P24(단순성) 위반.
+  - `PADDING` — `canvas-sector-donut.ts`(number=20)와 `canvas-profit-chart.ts`(객체 {top,right,bottom,left}). 타입·용도 상이, 둘 다 export 없는 파일 로컬. (참고: `CELL_PADDING`/`CELL_HORIZONTAL_PADDING`은 이미 별명으로 구분되어 본 중복 후보 아님.)
+  - `initialState` — 3개 스토어(hotStore/uiStore/stockClassificationStore) 로컬 초기 상태. `createStore(initialState)` 매개변수명과 일치 → 호출-인자 이름 일치로 가독성 향상. export 없음.
+  - `mount`/`unmount` — `router.ts`의 `interface PageModule { mount, unmount }` 강제 인터페이스 이름. 모든 페이지가 동일 이름으로 구현(satisfies PageModule). 아키텍처 강제 이름, 변경 불가.
+- **판단 근거**: (1) 모두 파일 로컬(export 없음) → 네임스페이스 충돌 없음, P10 SSOT 위반 아님. (2) 동일 로컬 개념에 동일 이름 → P23 준수. (3) 강제 통일 시 P24 위반(불필요한 장황함/추상화). (4) P23 "공통 자산 재사용"은 동일 기능 신규 생성 금지 조항이지 로컬 심볼 이름 강제 통일 조항 아님.
+- **수정**: 코드 변경 없음 (조사 전용 세션).
+- **아키텍처 원칙**: P10 (SSOT — 로컬 심볼이라 위반 아님) / P23 (일관성 — 동일 로컬 개념에 동일 이름) / P24 (단순성 — 강제 통일 시 위반).
+- **검증**: 조사 전용이므로 typecheck/build/브라우저 확인 생략. 코드 미변경.
+- **결론**: CLEAN 시리즈(01~06) 프론트엔드·백엔드 죽은 코드 정리 전체 완료.
+
 ### CLEAN-05 프론트엔드 죽은 초기 할당 2개 제거 (2026-07-24)
 - **작업**: CLEAN-04 프론트엔드 정리 2-2. `stock-classification.ts`의 죽은 초기 할당 2개 제거.
 - **문제**: `onTriggerConfirmedDownload`(줄 474)와 `onTrigger5dDownload`(줄 522)의 `let dataExists = false` 초기값이 어떤 실행 경로에서도 사용되지 않는 dead code. try 성공 시 재할당, try 실패 시 catch에서 return → 초기값 false 도달 불가.
 - **수정 (1개 파일, +2/-2줄)**: `let dataExists = false` → `let dataExists: boolean` (초기화 제거, 타입만 명시). TS 제어 흐름 분석이 catch의 return을 인식하여 try 이후 할당 보장 추론.
 - **아키텍처 원칙**: P16 (살아있는 경로 — dead code 제거) / P24 (단순성 — 불필요한 초기화 제거).
 - **검증**: typecheck 통과 / build 성공 (634ms) / 브라우저 확인 — 1일봉 시세 다운로드·5일봉 거래대금/고가 다운로드 버튼 클릭 시 확인 팝업 정상 표시 / 커밋 `d78bfdc`
-- **보류**: 2-3 명명 중복 4개 (COLUMNS/PADDING/initialState/mount-unmount, 의도된 중복 가능성 검토 필요) — 다음 세션에서 진행
+- **후속**: 2-3 명명 중복 4개 조사는 CLEAN-06에서 완료 (4개 모두 의도적 파일 로컬 중복, 수정 불필요).
 
 ### CLEAN-04 프론트엔드 죽은 `??` 폴백 15개 정리 (2026-07-24)
 - **작업**: CLEAN-03 백엔드 정리에 이은 프론트엔드 정리 2-1. `Number(x) ?? 기본값` 패턴 15개 수정.
@@ -45,7 +59,7 @@
   - `frontend/src/pages/sell-settings.ts` 5개 (줄 51,57,63,64,71)
 - **아키텍처 원칙**: P16 (살아있는 경로 — dead code 제거) / P20 (폴백 금지 — 잘못된 폴백을 정상 경로로 수정) / P23 (일관성 — profit-columns.ts 기존 패턴과 통일).
 - **검증**: typecheck 통과 / build 성공 (636ms) / 브라우저 확인 — 매수·매도 설정 화면 모든 숫자 정상 표시, NaN 없음 / 커밋 `e605149`
-- **보류**: 2-3 명명 중복 4개 (COLUMNS/PADDING/initialState/mount-unmount, 의도된 중복 가능성 검토 필요) — 다음 세션에서 진행.
+- **후속**: 2-3 명명 중복 4개 조사는 CLEAN-06에서 완료.
 
 ### CLEAN-03 백엔드 죽은 코드 정리 (2026-07-24)
 - **작업**: 연속 개발 과정에서 누적된 백엔드 죽은 코드/중복 코드 정리. 사전 조사 보고서 102개 항목 검증(정확도 99%, 오진단 1건 제외) 후 7단계로 분할 정리.
@@ -59,7 +73,7 @@
   - 1-7: 중복 wrapper 2개 제거 (`fetch_ka10081_daily_price` kiwoom_rest wrapper, `_apply_last_price_to_positions` engine_account wrapper). 이름 중복 1개(stock_classification_data vs routes)는 기능상 정상 동작이므로 유지
 - **안전장치**: (1) pyflakes로 unused import/변수 탐지, vulture로 dead function 탐지, grep 교차 검증. (2) 함수 제거 시 관련 테스트 + docstring + 헤더 주석 동시 정리 (AGENTS.md Code Removal Rules 준수). (3) 런타임 기동 검증으로 main.py 진입점 import 확인 → lock_manager.py 잘못된 삭제 발견 및 복구.
 - **검증**: pyflakes `app/` 0 경고 / pytest 2693 passed 3 failed (3개 실패는 `test_web_app.py::TestSpaFallback` — `frontend/dist` 디렉토리 없음으로 인한 기존 환경 문제, 본 작업과 무관) / 런타임 import 16개 핵심 모듈 전부 성공 / 커밋 `d471103`
-- **보류**: 프론트엔드 죽은 코드 정리 (2-1: 죽은 `??` 폴백 15개, 2-2: 죽은 초기 할당 2개, 2-3: 명명 중복 4개) — 다음 세션에서 진행
+- **후속**: 프론트엔드 죽은 코드 정리 2-1(CLEAN-04)·2-2(CLEAN-05)·2-3(CLEAN-06) 전부 완료.
 
 ### CLEAN-02 프로젝트 폴더 추가 용량 정리 + .venv 경량화 (2026-07-24)
 - **작업**: CLEAN-01 이후 추가 용량 정리 2단계. (1) 1단계(A+D+DB백업+worktree): 화면 빌드 결과(`frontend/dist` 556K) + 빌드 캐시(`tsconfig.tsbuildinfo`) + 테스트 임시(`.pytest_cache`) + Python 캐시 9개(`backend/**/__pycache__`) + `.DS_Store` 3개 삭제. 키움 REST API 문서 PDF(15MB) 삭제. DB 백업 3개(`stocks.db.20260723_234321.backup` 외 2개, 1.2MB) 삭제. 미사용 worktree 2개(`amber-einstein`/`enamel-camshaft`) + 고아 브랜치 2개 + `.git/filter-repo` 잔재 정리. (2) 2단계(.venv 경량화): 실행 파일(`SectorFlow.command`/`main.py`)이 호출하지 않는 개발 도구 제거 — mypy/mypyc(38MB 바이너리 포함)/ruff/pytest 4종/coverage/pygments + mypy/pytest 전용 의존성 7개. `typing_extensions`는 실행 패키지(fastapi/pydantic)가 필요하므로 유지.
