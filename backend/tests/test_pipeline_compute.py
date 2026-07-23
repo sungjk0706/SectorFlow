@@ -1036,6 +1036,31 @@ class TestHandleRealTickEdgeCases:
              patch("backend.app.services.engine_ws_parsing._normalize_real_type", return_value="01"):
             await _handle_real_tick(data, mock_bq)
 
+    @pytest.mark.asyncio
+    async def test_per_item_exception_continues_remaining_items(self):
+        """B2-03-03: 첫째 item 예외 시 둘째 item이 계속 처리되는지 검증."""
+        mock_bq = AsyncMock()
+        data = {"data": [
+            {"type": "01", "values": {}},
+            {"type": "01", "values": {}},
+        ]}
+        mock_01 = AsyncMock(side_effect=[Exception("first boom"), False])
+        with patch("backend.app.pipelines.pipeline_compute._handle_real_01_tick", new=mock_01), \
+             patch("backend.app.services.engine_ws_parsing._normalize_real_type", return_value="01"):
+            await _handle_real_tick(data, mock_bq)
+            assert mock_01.await_count == 2
+
+
+# ── _handle_real_0j_tick exception (B2-03-04) ─────────────────────────────────
+
+class TestHandleReal0jTickException:
+    @pytest.mark.asyncio
+    async def test_exception_does_not_raise(self):
+        item = {"item": "001"}
+        vals = {"10": "2500"}
+        with patch("backend.app.services.engine_account_notify.notify_index_data", new_callable=AsyncMock, side_effect=Exception("boom")):
+            await _handle_real_0j_tick(item, vals)
+
 
 # ── _handle_real_0d_tick exception ────────────────────────────────────────────
 

@@ -351,8 +351,11 @@ class KiwoomRestAPI:
                     return None
                 return resp.json()
             except Exception as e:
-                logger.warning("[연결] %s 요청 오류 (요청ID=%s): %s: %s", _BROKER_DISPLAY, api_id, type(e).__name__, e, exc_info=True)
+                logger.warning("[연결] %s 요청 오류 (요청ID=%s, 시도=%d): %s: %s", _BROKER_DISPLAY, api_id, attempt + 1, type(e).__name__, e, exc_info=True)
                 await self._reset_client()
+                if attempt < 2:
+                    await asyncio.sleep(3 * (attempt + 1))
+                    continue
                 return None
         return None
 

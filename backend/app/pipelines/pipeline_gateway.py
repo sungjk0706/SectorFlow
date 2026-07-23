@@ -30,6 +30,10 @@ async def start_gateway_loop() -> None:
 
     _gateway_running = True
     _gateway_task = asyncio.get_running_loop().create_task(_gateway_loop_impl())
+    _gateway_task.add_done_callback(
+        lambda t: logger.warning("[연결] 게이트웨이 루프 작업 실패: %s", t.exception())
+        if t.exception() else None
+    )
     logger.info("[연결] 반복 시작")
 
 
