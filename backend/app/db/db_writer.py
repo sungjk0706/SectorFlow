@@ -75,8 +75,13 @@ async def _db_writer_loop() -> None:
 
                 if queue_task in done and not queue_task.cancelled():
                     op = queue_task.result()
-                    await _process_operation(op)
-                    _db_write_queue.task_done()
+                    # task_done()은 _process_operation 실패 여부와 무관하게 항상 호출 (P25).
+                    # 실패 시 큐 미완료 카운트 누적 → graceful shutdown queue.join() 무한 대기 위험.
+                    # 예외는 외부 except(81줄)에서 logger.error 로깅 후 루프 계속.
+                    try:
+                        await _process_operation(op)
+                    finally:
+                        _db_write_queue.task_done()
 
             except Exception as e:
                 logger.error("[데이터] 작업 처리 실패: %s", e, exc_info=True)

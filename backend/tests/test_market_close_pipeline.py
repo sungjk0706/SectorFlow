@@ -26,6 +26,7 @@ from backend.app.services.market_close_pipeline import (
     fetch_confirmed_data_only,
     fetch_5d_data_only,
     _update_layout_cache,
+    _step5_download_daily_confirmed,
 )
 
 
@@ -1226,3 +1227,83 @@ class TestFetch5dDataOnly:
             result = await fetch_5d_data_only()
             assert result["fetched"] == 0
             assert result["failed"] == 1
+
+
+# ── _step5_download_daily_confirmed — B3-05-02 빈 폴백 제거 ────────────────────
+
+class TestStep5DownloadDailyConfirmedEmptyFallback:
+    """B3-05-02: 전종목 1일봉 시세 다운로드 실패 시 빈 폴백(confirmed={}) 제거 검증.
+
+    빈 폴백으로 후속 파이프라인 진행 금지 → early return (0, total, False).
+    _run_post_confirmed_pipeline 미호출, execute_unified_rolling_and_save 미호출.
+    """
+
+    @pytest.mark.asyncio
+    async def test_fetch_exception_early_returns_without_post_pipeline(self):
+        """fetch_all_stocks_daily_confirmed 예외 → early return, 후속 파이프라인 스킵 (P20)."""
+        mock_state = _mock_state()
+        mock_sector = MagicMock()
+        mock_sector.fetch_all_stocks_daily_confirmed = AsyncMock(side_effect=Exception("API fail"))
+        all_codes = ["005930", "000660"]
+        name_map = {"005930": "삼성전자", "000660": "SK하이닉스"}
+        confirmed_codes = {"005930", "000660"}
+
+        post_pipeline_mock = AsyncMock()
+        unified_save_mock = AsyncMock()
+        apply_memory_mock = AsyncMock()
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
+             patch("backend.app.services.market_close_pipeline.get_previous_trading_day_str", return_value="20250105"), \
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
+             patch("backend.app.services.market_close_pipeline._run_post_confirmed_pipeline", post_pipeline_mock), \
+             patch("backend.app.services.market_close_pipeline.execute_unified_rolling_and_save", unified_save_mock), \
+             patch("backend.app.services.market_close_pipeline._apply_confirmed_to_memory", apply_memory_mock), \
+             patch("backend.app.web.routes.stock_classification.broadcast_stock_classification_changed", new_callable=AsyncMock):
+            fetched, failed, cached = await _step5_download_daily_confirmed(
+                "[test]", mock_sector, all_codes, name_map, confirmed_codes,
+            )
+
+        # early return — 실패 전체, 캐시 미적용
+        assert fetched == 0
+        assert failed == len(all_codes)
+        assert cached is False
+        # 후속 파이프라인 미호출 (빈 폴백으로 진행 금지, P20)
+        post_pipeline_mock.assert_not_awaited()
+        unified_save_mock.assert_not_awaited()
+        apply_memory_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_fetch_success_runs_post_pipeline(self):
+        """fetch_all_stocks_daily_confirmed 성공 → 후속 파이프라인 정상 실행 (회귀 보호)."""
+        mock_state = _mock_state()
+        mock_state.master_stocks_cache = {}
+        mock_sector = MagicMock()
+        mock_sector.fetch_all_stocks_daily_confirmed = AsyncMock(return_value={
+            "005930": {"close": 50000, "value": 5000000, "high": 51000, "volume": 100000, "change": 1000, "rate": 2.0, "sign": "2"},
+        })
+        all_codes = ["005930"]
+        name_map = {"005930": "삼성전자"}
+        confirmed_codes = {"005930"}
+
+        post_pipeline_mock = AsyncMock()
+        unified_save_mock = AsyncMock()
+        apply_memory_mock = AsyncMock()
+        with patch("backend.app.services.engine_state.state", mock_state), \
+             patch("backend.app.services.market_close_pipeline._broadcast_confirmed_progress"), \
+             patch("backend.app.services.market_close_pipeline.get_previous_trading_day_str", return_value="20250105"), \
+             patch("backend.app.services.market_close_pipeline.get_current_trading_day_str", return_value="20250106"), \
+             patch("backend.app.services.market_close_pipeline._run_post_confirmed_pipeline", post_pipeline_mock), \
+             patch("backend.app.services.market_close_pipeline.execute_unified_rolling_and_save", unified_save_mock), \
+             patch("backend.app.services.market_close_pipeline._apply_confirmed_to_memory", apply_memory_mock), \
+             patch("backend.app.web.routes.stock_classification.broadcast_stock_classification_changed", new_callable=AsyncMock):
+            fetched, failed, cached = await _step5_download_daily_confirmed(
+                "[test]", mock_sector, all_codes, name_map, confirmed_codes,
+            )
+
+        assert fetched == 1
+        assert failed == 0
+        assert cached is True
+        # 정상 경로 — 후속 파이프라인 호출
+        post_pipeline_mock.assert_awaited_once()
+        unified_save_mock.assert_awaited_once()
+        apply_memory_mock.assert_awaited_once()

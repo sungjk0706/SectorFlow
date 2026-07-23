@@ -50,12 +50,16 @@ def _apply_mocks(mock_state, settings=None, snapshot=None):
         mock_state.master_stocks_cache = snapshot
 
 
-# ── _load_caches_preboot — 빈 snapshot / 예외 ──────────────────────────────────
+# ── _load_caches_preboot — 빈 snapshot / 예외 (B4-06-03: 치명 오류 전파) ──────────
 
 class TestLoadCachesPrebootEmptyAndError:
     @pytest.mark.asyncio
-    async def test_empty_snapshot_raises_runtime_error_caught(self):
-        """빈 snapshot → RuntimeError → 외부 try/except에서 warning 로그."""
+    async def test_empty_snapshot_raises_runtime_error_propagated(self):
+        """빈 snapshot → RuntimeError → log-and-rethrow (P20 폴백 금지, B4-06-03).
+
+        치명 오류를 "무시하고 진행"하지 않고 호출자로 전파 — engine_loop.py에서
+        "감소 모드로 기동" 에러 로그 + engine-ready 화면 전송 처리.
+        """
         from backend.app.services import engine_cache
 
         mock_state = MagicMock()
@@ -65,14 +69,16 @@ class TestLoadCachesPrebootEmptyAndError:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, return_value={}),
             patch.object(engine_cache, "logger") as mock_logger,
         ):
-            await engine_cache._load_caches_preboot(_make_settings())
+            with pytest.raises(RuntimeError, match="master_stocks_table"):
+                await engine_cache._load_caches_preboot(_make_settings())
 
-        mock_logger.warning.assert_called()
-        mock_state.preboot_cache_loaded is False or True  # 외부 except에서 플래그 미설정
+        # error 로그로 치명 오류 기록 (warning 아님, P20)
+        mock_logger.error.assert_called()
+        mock_logger.warning.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_load_master_stocks_table_exception_caught(self):
-        """load_master_stocks_table 예외 → 외부 try/except에서 warning 로그."""
+    async def test_load_master_stocks_table_exception_propagated(self):
+        """load_master_stocks_table 예외 → log-and-rethrow (P20 폴백 금지, B4-06-03)."""
         from backend.app.services import engine_cache
 
         mock_state = MagicMock()
@@ -82,9 +88,11 @@ class TestLoadCachesPrebootEmptyAndError:
             patch("backend.app.db.stock_tables.load_master_stocks_table", new_callable=AsyncMock, side_effect=Exception("DB error")),
             patch.object(engine_cache, "logger") as mock_logger,
         ):
-            await engine_cache._load_caches_preboot(_make_settings())
+            with pytest.raises(Exception, match="DB error"):
+                await engine_cache._load_caches_preboot(_make_settings())
 
-        mock_logger.warning.assert_called()
+        mock_logger.error.assert_called()
+        mock_logger.warning.assert_not_called()
 
 
 # ── _load_caches_preboot — 정상 로드 ───────────────────────────────────────────
