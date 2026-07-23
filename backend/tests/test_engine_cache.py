@@ -12,6 +12,19 @@ import pytest
 from backend.app.services import engine_state
 
 
+# ── Settlement Engine 정합성 대조 패치 (autouse) ──────────────────────────────
+# engine_cache 테스트는 캐시 로드 로직을 검증하는 것이지 settlement 정합성을
+# 검증하는 것이 아님. reconcile_with_trades가 실제 실행되면 _persist가 DB writer
+# 큐 대기로 무한 hang 발생 (테스트 환경에서 DB writer 미기동).
+@pytest.fixture(autouse=True)
+def _patch_reconcile_with_trades():
+    with patch(
+        "backend.app.services.settlement_engine.reconcile_with_trades",
+        new_callable=AsyncMock,
+    ):
+        yield
+
+
 # ── 헬퍼 ──────────────────────────────────────────────────────────────────────
 
 def _make_snapshot(num=5, with_high=True):
