@@ -1271,7 +1271,7 @@ def _trigger_reg_pipeline() -> None:
         else:
             logger.info("[스케줄] 구독 구간 진입 — 연결 없음, 연결 후 자동 구독됨")
     except Exception as e:
-        logger.warning("[스케줄] 구독 등록 파이프라인 실행 오류: %s", e)
+        logger.warning("[스케줄] 구독 등록 파이프라인 실행 오류: %s", e, exc_info=True)
 
 
 async def _trigger_unreg_all() -> None:
@@ -1285,7 +1285,7 @@ async def _trigger_unreg_all() -> None:
             return
         await _do_unreg_all()
     except Exception as e:
-        logger.warning("[스케줄] 구독 해지 오류: %s", e)
+        logger.warning("[스케줄] 구독 해지 오류: %s", e, exc_info=True)
 
 
 async def _do_unreg_all() -> None:
@@ -1325,7 +1325,7 @@ async def _do_unreg_all() -> None:
         from backend.app.services import ws_subscribe_control
         ws_subscribe_control._set_status(quote=False)
     except Exception as e:
-        logger.warning("[스케줄] 구독 해지 전송 오류: %s", e)
+        logger.warning("[스케줄] 구독 해지 전송 오류: %s", e, exc_info=True)
 
 
 # ── call_later 기반 매수/매도 시간 전환 타이머 ─────────────────────────────────
@@ -1352,7 +1352,7 @@ async def _on_auto_trade_transition(label: str) -> None:
         await notify_desktop_header_refresh()
         await notify_desktop_settings_toggled()
     except Exception as e:
-        logger.warning("[스케줄] 자동매매 전환 콜백 오류: %s", e)
+        logger.warning("[스케줄] 자동매매 전환 콜백 오류: %s", e, exc_info=True)
 
 
 async def schedule_auto_trade_timers(settings: dict | None = None) -> None:
@@ -1444,7 +1444,7 @@ async def _on_midnight() -> None:
         # 다음날 자정 타이머 재예약 (날짜 변경 여부와 무관하게 항상 수행)
         schedule_midnight_timer()
     except Exception as e:
-        logger.warning("[스케줄] 자정 콜백 오류: %s", e)
+        logger.warning("[스케줄] 자정 콜백 오류: %s", e, exc_info=True)
 
 
 def schedule_midnight_timer() -> None:
@@ -1505,7 +1505,7 @@ async def start_daily_time_scheduler() -> None:
         # WS 구독 상태 초기화는 engine_loop.run_engine_loop()에서 WS 연결 이전에 수행됨
         # (표준 기동 순서: 초기화 → 연결 → 구독). 여기서 중복 호출 제거 — 경쟁 조건 방지 (P22).
     except Exception as e:
-        logger.warning("[스케줄] 타이머 초기 예약 실패: %s", e)
+        logger.warning("[스케줄] 타이머 초기 예약 실패: %s", e, exc_info=True)
 
 
 async def stop_daily_time_scheduler() -> None:

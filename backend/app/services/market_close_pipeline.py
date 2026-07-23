@@ -422,7 +422,7 @@ async def _apply_confirmed_to_memory(
             if r["code"] and r["sector"]:
                 db_mapping[r["code"]] = r["sector"]
     except Exception as e:
-        logger.warning("[데이터] 전체 매핑 DB 조회 실패: %s", e)
+        logger.warning("[데이터] 전체 매핑 DB 조회 실패: %s", e, exc_info=True)
 
     for raw_cd, detail in confirmed.items():
         nk = _base_stk_cd(raw_cd)
@@ -490,7 +490,7 @@ async def _apply_confirmed_to_memory(
                 strength_str = f"{float(str_val):.2f}"
                 entry["strength"] = strength_str
             except (ValueError, TypeError):
-                pass
+                logger.warning("[데이터] strength 변환 실패 (코드=%s, 값=%r)", raw_cd, str_val, exc_info=True)
 
         # name (from name_map)
         mapped_nm = _nm.get(_base_stk_cd(raw_cd))
@@ -857,7 +857,7 @@ async def _step4_save_to_db_and_cache(
             from backend.app.web.routes.stock_classification import broadcast_stock_classification_changed
             await broadcast_stock_classification_changed()
         except Exception as e:
-            logger.warning("필터 요약 전송 실패: %s", e)
+            logger.warning("필터 요약 전송 실패: %s", e, exc_info=True)
         return all_codes
     except Exception as exc:
         logger.warning("%s 4단계 저장 실패: %s", tag, exc, exc_info=True)
@@ -941,7 +941,7 @@ async def _step5_download_daily_confirmed(
         await broadcast_stock_classification_changed()
         logger.info("%s 종목분류 페이지 갱신 전송 완료", tag)
     except Exception as _bc_err:
-        logger.warning("%s 종목분류 페이지 갱신 전송 실패(무시): %s", tag, _bc_err)
+        logger.warning("%s 종목분류 페이지 갱신 전송 실패(무시): %s", tag, _bc_err, exc_info=True)
 
     if failed > 0:
         _broadcast_confirmed_progress(total, total, message=f"⚠️ 1일봉챠트 시세 다운로드 부분 완료 ({fetched:,}/{total:,}) — {failed}종목 실패", step=5, failed_count=failed)
@@ -1110,7 +1110,7 @@ async def _update_layout_cache(
             if r["code"] and r["sector"]:
                 db_mapping[r["code"]] = r["sector"]
     except Exception as e:
-        logger.warning("[데이터] 전체 매핑 DB 조회 실패: %s", e)
+        logger.warning("[데이터] 전체 매핑 DB 조회 실패: %s", e, exc_info=True)
 
     # 전체 종목을 업종별로 그룹핑 (stock_classification.json 최신 매핑 적용)
     sector_groups: dict[str, list[str]] = {}
@@ -1262,7 +1262,7 @@ async def fetch_5d_data_only() -> dict:
 
             except Exception as e:
                 failed += 1
-                logger.warning("[다운로드] 오류 발생 [%d/%d] %s: %s", idx + 1, total, base_cd, e)
+                logger.warning("[다운로드] 오류 발생 [%d/%d] %s: %s", idx + 1, total, base_cd, e, exc_info=True)
 
             # 진행률 전송 (매 종목)
             pct = int((idx + 1) / total * 100) if total else 0
