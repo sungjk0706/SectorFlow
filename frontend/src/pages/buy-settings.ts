@@ -72,19 +72,19 @@ let buyIntervalControls: HTMLElement | null = null
 function syncBuyBlock(r: Record<string, unknown>, act: Element | null): void {
   const riseOn = !!r.buy_block_rise_on
   riseToggle?.setOn(riseOn)
-  if (riseInput && (!act || !riseInput.el.contains(act))) riseInput.setValue(Number(r.buy_block_rise_pct) ?? 0)
+  if (riseInput && (!act || !riseInput.el.contains(act))) riseInput.setValue(Number(r.buy_block_rise_pct ?? 0))
   if (riseControls) setDisabled(riseControls, !riseOn)
 
   const fallOn = !!r.buy_block_fall_on
   fallToggle?.setOn(fallOn)
-  if (fallInput && (!act || !fallInput.el.contains(act))) fallInput.setValue(Number(r.buy_block_fall_pct) ?? 0)
+  if (fallInput && (!act || !fallInput.el.contains(act))) fallInput.setValue(Number(r.buy_block_fall_pct ?? 0))
   if (fallControls) setDisabled(fallControls, !fallOn)
 }
 
 function syncBoost(r: Record<string, unknown>, act: Element | null): void {
   const highOn = !!r.boost_high_breakout_on
   boostHighToggle?.setOn(highOn)
-  if (boostHighScoreInput && (!act || !boostHighScoreInput.el.contains(act))) boostHighScoreInput.setValue(Number(r.boost_high_breakout_score) ?? 1.0)
+  if (boostHighScoreInput && (!act || !boostHighScoreInput.el.contains(act))) boostHighScoreInput.setValue(Number(r.boost_high_breakout_score ?? 1.0))
   if (boostHighControls) {
     setDisabled(boostHighControls, !highOn)
   }
@@ -93,7 +93,7 @@ function syncBoost(r: Record<string, unknown>, act: Element | null): void {
   boostOrderToggle?.setOn(orderOn)
   const signedPct = Number(r.boost_order_ratio_pct ?? 20)
   boostOrderDualSlider?.setValue(signedPct + 100)
-  boostOrderScoreInput?.setValue(Number(r.boost_order_ratio_score) ?? 1.0)
+  boostOrderScoreInput?.setValue(Number(r.boost_order_ratio_score ?? 1.0))
   if (boostOrderControls) {
     setDisabled(boostOrderControls, !orderOn)
   }
@@ -103,14 +103,14 @@ function syncBoost(r: Record<string, unknown>, act: Element | null): void {
 
   const programOn = !!r.boost_program_net_buy_on
   boostProgramToggle?.setOn(programOn)
-  if (boostProgramScoreInput && (!act || !boostProgramScoreInput.el.contains(act))) boostProgramScoreInput.setValue(Number(r.boost_program_net_buy_score) ?? 1.0)
+  if (boostProgramScoreInput && (!act || !boostProgramScoreInput.el.contains(act))) boostProgramScoreInput.setValue(Number(r.boost_program_net_buy_score ?? 1.0))
   if (boostProgramControls) {
     setDisabled(boostProgramControls, !programOn)
   }
 
   const newsOn = !!r.boost_news_on
   boostNewsToggle?.setOn(newsOn)
-  if (boostNewsScoreInput && (!act || !boostNewsScoreInput.el.contains(act))) boostNewsScoreInput.setValue(Number(r.boost_news_score) ?? 1.0)
+  if (boostNewsScoreInput && (!act || !boostNewsScoreInput.el.contains(act))) boostNewsScoreInput.setValue(Number(r.boost_news_score ?? 1.0))
   if (boostNewsControls) {
     setDisabled(boostNewsControls, !newsOn)
   }
@@ -119,17 +119,17 @@ function syncBoost(r: Record<string, unknown>, act: Element | null): void {
 function syncBuyAmount(r: Record<string, unknown>, act: Element | null): void {
   const dailyOn = !!r.max_daily_total_buy_on
   maxDailyToggle?.setOn(dailyOn)
-  if (maxDailyInput && (!act || !maxDailyInput.el.contains(act))) maxDailyInput.setValue(Number(r.max_daily_total_buy_amt) ?? 0)
+  if (maxDailyInput && (!act || !maxDailyInput.el.contains(act))) maxDailyInput.setValue(Number(r.max_daily_total_buy_amt ?? 0))
   if (maxDailyControls) setDisabled(maxDailyControls, !dailyOn)
 
   const stockCntOn = !!r.max_stock_cnt_on
   maxStockCntToggle?.setOn(stockCntOn)
-  if (maxStockCntInput && (!act || !maxStockCntInput.el.contains(act))) maxStockCntInput.setValue(Number(r.max_stock_cnt) ?? 0)
+  if (maxStockCntInput && (!act || !maxStockCntInput.el.contains(act))) maxStockCntInput.setValue(Number(r.max_stock_cnt ?? 0))
   if (maxStockCntControls) setDisabled(maxStockCntControls, !stockCntOn)
 
   const buyAmtOn = !!r.buy_amt_on
   buyAmtToggle?.setOn(buyAmtOn)
-  if (buyAmtInput && (!act || !buyAmtInput.el.contains(act))) buyAmtInput.setValue(Number(r.buy_amt) ?? 0)
+  if (buyAmtInput && (!act || !buyAmtInput.el.contains(act))) buyAmtInput.setValue(Number(r.buy_amt ?? 0))
   if (buyAmtControls) setDisabled(buyAmtControls, !buyAmtOn)
 }
 
@@ -147,7 +147,7 @@ function syncRebuy(r: Record<string, unknown>, act: Element | null): void {
 function syncBuyInterval(r: Record<string, unknown>, act: Element | null): void {
   const intervalOn = !!r.buy_interval_on
   buyIntervalToggle?.setOn(intervalOn)
-  if (buyIntervalInput && (!act || !buyIntervalInput.el.contains(act))) buyIntervalInput.setValue(Number(r.buy_interval_sec) ?? 30)
+  if (buyIntervalInput && (!act || !buyIntervalInput.el.contains(act))) buyIntervalInput.setValue(Number(r.buy_interval_sec ?? 30))
   if (buyIntervalControls) {
     setDisabled(buyIntervalControls, !intervalOn)
   }
