@@ -82,7 +82,7 @@ export function createLayoutShell(): {
   // ── 우측 패널 (dual 레이아웃 시 데이터 영역) ──
   const rightPanel = document.createElement('div')
   rightPanel.style.cssText =
-    'flex:1;min-width:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;outline:none;'
+    'flex:1;min-width:0;overflow-y:auto;padding:8px;display:flex;flex-direction:column;outline:none;'
 
   // ── Triple 레이아웃 요소 (3컬럼 모드) ──
   const tripleHeader = document.createElement('div')
@@ -93,13 +93,13 @@ export function createLayoutShell(): {
   tripleContainer.style.cssText = 'display:flex;flex:1;min-height:0;display:none;'
 
   const tripleLeft = document.createElement('div')
-  tripleLeft.style.cssText = `flex:4;overflow-y:auto;padding:16px;border-right:1px solid ${COLOR.borderDark};`
+  tripleLeft.style.cssText = `flex:4;overflow-y:auto;padding:8px;border-right:1px solid ${COLOR.borderDark};`
 
   const tripleCenter = document.createElement('div')
-  tripleCenter.style.cssText = `flex:3;overflow-y:auto;padding:16px;border-right:1px solid ${COLOR.borderDark};`
+  tripleCenter.style.cssText = `flex:3;overflow-y:auto;padding:8px;border-right:1px solid ${COLOR.borderDark};`
 
   const tripleRight = document.createElement('div')
-  tripleRight.style.cssText = 'flex:3;overflow-y:auto;padding:16px;'
+  tripleRight.style.cssText = 'flex:3;overflow-y:auto;padding:8px;'
 
   tripleContainer.appendChild(tripleLeft)
   tripleContainer.appendChild(tripleCenter)
